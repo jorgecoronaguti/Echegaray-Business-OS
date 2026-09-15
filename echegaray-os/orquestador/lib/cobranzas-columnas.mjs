@@ -12,6 +12,25 @@
 // respaldo; la fila de rótulos se lee una vez por corrida y se pasa hacia abajo.
 
 import { COBRANZAS, columnasDe, lectorDeEncabezados } from './columnas-por-encabezado.mjs'
+import { letra, normalizarRotulo } from './compras-columnas.mjs'
+
+/**
+ * Una columna que el OS escribe con un rótulo que CAMBIA en cada corrida («Qué dice el banco de este
+ * valor · al 2026-09-14»): se ubica por cómo EMPIEZA. Exactamente una, o error — entre dos, elegir la
+ * primera es elegir a ciegas, y no hay letra de respaldo.
+ * @param {any[]} encabezado
+ * @param {string|string[]} prefijos uno o varios comienzos aceptados (p. ej. las dos variantes del glifo)
+ */
+export function ubicarPorPrefijo(encabezado = [], prefijos, pestana = 'Cobranzas') {
+  const lista = [].concat(prefijos)
+  const ps = lista.map(normalizarRotulo)
+  const hits = encabezado.flatMap((c, i) => (ps.some((p) => normalizarRotulo(c).startsWith(p)) ? [i] : []))
+  if (hits.length !== 1) {
+    const que = hits.length ? `aparece ${hits.length} veces` : 'no está'
+    throw new Error(`${pestana}: la columna que empieza con «${lista[0]}» ${que} en la fila de rótulos. No uso una letra de respaldo.`)
+  }
+  return { letra: letra(hits[0]), indice: hits[0] }
+}
 
 /** Todos los rótulos de Cobranzas que usa este grupo. Leídos del archivo real el 14/09/2026. */
 export const COBRANZAS_OS = Object.freeze({

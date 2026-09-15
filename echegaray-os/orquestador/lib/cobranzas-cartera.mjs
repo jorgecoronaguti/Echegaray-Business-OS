@@ -27,19 +27,22 @@
 // filas dejan de contarse y nadie se entera. Por eso `formulaEstadoDesconocido` publica en la propia
 // pestaña cuántas filas tienen un estado que el OS no conoce. Una lista blanca sin ese contador es
 // peor que la lista negra que reemplaza.
+//
+// ═══ LAS COLUMNAS SALEN DE LA FILA DE RÓTULOS, NO DE ESTE ARCHIVO (14/09/2026) ═══
+//
+// `COB` declaraba `cliente: 'G', monto: 'M', estado: 'O', fecha: 'Q'`. Con «Obra» insertada en H, el
+// vencido de CAJA habría filtrado «Forma de Cobro» = "Pendiente" (nunca) y el ranking habría sumado
+// retenciones. Cada función recibe `cols`, resueltas contra la fila 4 leída en esa corrida.
 
-/** Dónde vive cada cosa en la pestaña `Cobranzas`. Se lee, NUNCA se escribe: es fuente. */
-export const COB = {
-  pestaña: 'Cobranzas',
-  primera: 5,
-  ultima: 400,
-  cliente: 'G',
-  monto: 'M',
-  estado: 'O',
-  fecha: 'Q',
-}
+import { exigirColumnas } from './cobranzas-columnas.mjs'
 
-/** Los cinco estados reales de la columna O, con el texto EXACTO que está cargado en el Sheet. */
+/** Dónde vive la cartera en `Cobranzas`: la GEOMETRÍA. Se lee, NUNCA se escribe: es fuente. */
+export const COB = Object.freeze({ pestaña: 'Cobranzas', primera: 5, ultima: 400 })
+
+/** Las columnas que usan estas fórmulas, por clave de `COBRANZAS_OS`. */
+export const COLUMNAS_CARTERA = Object.freeze(['cliente', 'total', 'estado', 'fechaCobro'])
+
+/** Los cinco estados reales de la columna Estado, con el texto EXACTO que está cargado en el Sheet. */
 export const ESTADOS = {
   cobrado: 'Cobrado',
   pendiente: 'Pendiente',
@@ -57,40 +60,45 @@ export const ESTADOS = {
  */
 export const ESPERADOS = ['pendiente', 'facturado', 'proyectado']
 
-/** El rango absoluto de una columna de Cobranzas. PURA. */
-export const rango = (col) => `${COB.pestaña}!$${col}$${COB.primera}:$${col}$${COB.ultima}`
+const cc = (cols) => exigirColumnas(cols, COLUMNAS_CARTERA, 'cobranzas-cartera')
+
+/** El rango absoluto de una columna RESUELTA de Cobranzas. PURA. */
+export const rango = (col) => `${COB.pestaña}!$${col.letra}$${COB.primera}:$${col.letra}$${COB.ultima}`
 
 /**
  * NÚCLEO PURO: la condición SUMPRODUCT de "la fila está en alguno de estos estados".
  * Se suman las pertenencias, no los importes: `(O="a")+(O="b")` da 1 en las filas que califican.
  * @param {Array<string>} claves claves de ESTADOS
  */
-export const esAlgunoDe = (claves) =>
-  `(${claves.map((k) => `(${rango(COB.estado)}="${ESTADOS[k]}")`).join('+')}>0)`
+export const esAlgunoDe = (cols, claves) =>
+  `(${claves.map((k) => `(${rango(cc(cols).estado)}="${ESTADOS[k]}")`).join('+')}>0)`
 
 /** NÚCLEO PURO: el importe de la fila, con las celdas no numéricas en cero. */
-export const importe = () => `IF(ISNUMBER(${rango(COB.monto)});${rango(COB.monto)};0)`
+export const importe = (cols) => `IF(ISNUMBER(${rango(cc(cols).total)});${rango(cc(cols).total)};0)`
+
+/** Las condiciones de estado y ventana de fecha de cobro, compartidas por el monto y la cantidad. */
+function condiciones(cols, clave, { desde = null, hasta = null } = {}) {
+  const { estado, fechaCobro } = cc(cols)
+  const cond = [`(${rango(estado)}="${ESTADOS[clave]}")`]
+  if (desde || hasta) cond.push(`ISNUMBER(${rango(fechaCobro)})`)
+  if (desde) cond.push(`(${rango(fechaCobro)}>=${desde})`)
+  if (hasta) cond.push(`(${rango(fechaCobro)}<${hasta})`)
+  return cond
+}
 
 /**
  * NÚCLEO PURO: el total de un solo estado, opcionalmente acotado por fecha de cobro.
+ * @param {Record<string,{letra:string}>} cols columnas de Cobranzas resueltas por encabezado
  * @param {string} clave clave de ESTADOS
  * @param {{hasta?:string, desde?:string}} ventana expresiones es-AR; límites EXCLUYENTES
  */
-export function formulaTotalEstado(clave, { desde = null, hasta = null } = {}) {
-  const cond = [`(${rango(COB.estado)}="${ESTADOS[clave]}")`]
-  if (desde || hasta) cond.push(`ISNUMBER(${rango(COB.fecha)})`)
-  if (desde) cond.push(`(${rango(COB.fecha)}>=${desde})`)
-  if (hasta) cond.push(`(${rango(COB.fecha)}<${hasta})`)
-  return `=SUMPRODUCT(${cond.join('*')}*${importe()})`
+export function formulaTotalEstado(cols, clave, ventana = {}) {
+  return `=SUMPRODUCT(${condiciones(cols, clave, ventana).join('*')}*${importe(cols)})`
 }
 
 /** NÚCLEO PURO: cuántas filas hay en ese estado y ventana. Un monto sin cantidad no se puede auditar. */
-export function formulaCantidadEstado(clave, { desde = null, hasta = null } = {}) {
-  const cond = [`(${rango(COB.estado)}="${ESTADOS[clave]}")`]
-  if (desde || hasta) cond.push(`ISNUMBER(${rango(COB.fecha)})`)
-  if (desde) cond.push(`(${rango(COB.fecha)}>=${desde})`)
-  if (hasta) cond.push(`(${rango(COB.fecha)}<${hasta})`)
-  return `=SUMPRODUCT(${cond.join('*')}*1)`
+export function formulaCantidadEstado(cols, clave, ventana = {}) {
+  return `=SUMPRODUCT(${condiciones(cols, clave, ventana).join('*')}*1)`
 }
 
 /**
@@ -99,9 +107,10 @@ export function formulaCantidadEstado(clave, { desde = null, hasta = null } = {}
  * Es el precio de usar una lista blanca, y hay que pagarlo a la vista. Si esta celda deja de dar
  * cero, hay plata en Cobranzas que ningún cuadro de esta pestaña está sumando.
  */
-export function formulaEstadoDesconocido() {
-  const conocidos = Object.values(ESTADOS).map((v) => `(${rango(COB.estado)}="${v}")`).join('+')
-  return `=SUMPRODUCT((${rango(COB.estado)}<>"")*((${conocidos})=0)*1)`
+export function formulaEstadoDesconocido(cols) {
+  const { estado } = cc(cols)
+  const conocidos = Object.values(ESTADOS).map((v) => `(${rango(estado)}="${v}")`).join('+')
+  return `=SUMPRODUCT((${rango(estado)}<>"")*((${conocidos})=0)*1)`
 }
 
 /**
@@ -111,14 +120,15 @@ export function formulaEstadoDesconocido() {
  * un cobro" se dibujan igual: cero. Esta fecha es lo que distingue una cosa de la otra, y por eso el
  * bloque de vencidos la muestra al lado del total en vez de festejar el cero.
  */
-export function formulaUltimoCobroRegistrado() {
+export function formulaUltimoCobroRegistrado(cols) {
   // ═══ MAX(IF(...)) SIN CONTEXTO DE ARRAY NO FILTRA NADA (dictamen 07/08) ═══
   //
   // La versión anterior devolvía el MAX de TODAS las fechas de cobro — un "Pendiente" al 30/12/2026
   // la clavaba en el futuro y el control "hace N días que no se registra un cobro" no podía disparar
   // NUNCA. MAXIFS filtra de verdad, y el tope TODAY() deja afuera las fechas futuras de los
   // pendientes y de los valores endosados que figuran "Cobrado" con fecha por venir.
-  const maxifs = `MAXIFS(${rango(COB.fecha)};${rango(COB.estado)};"${ESTADOS.cobrado}";${rango(COB.fecha)};"<="&TODAY())`
+  const { estado, fechaCobro } = cc(cols)
+  const maxifs = `MAXIFS(${rango(fechaCobro)};${rango(estado)};"${ESTADOS.cobrado}";${rango(fechaCobro)};"<="&TODAY())`
   // MAXIFS sin coincidencias devuelve 0, no un error: el vacío se decide comparando, no con IFERROR.
   return `=IF(${maxifs}=0;"";${maxifs})`
 }
@@ -153,12 +163,22 @@ export function formulaUltimoCobroRegistrado() {
 // LA REGLA QUE QUEDA: no se prohíbe QUERY, se exige que esté CONSUMIDA. Un array que entra a INDEX, a
 // LARGE o a SUM no derrama; uno que queda solo en la celda, sí.
 
-/** El rango que ve la consulta. G=Col1 … M=Col7 … O=Col9. Si cambia el orden de columnas de Cobranzas
- *  esto se rompe FUERTE (da otro número, no un error), y por eso vive al lado del mapa COB. */
-const Q_RANGO = `${COB.pestaña}!$${COB.cliente}$${COB.primera}:$${COB.estado}$${COB.ultima}`
-/** Sin el label vacío, QUERY agrega una fila de encabezado para la columna agregada y el ranking se
- *  corre un puesto: el primer cliente desaparecería sin dar error. */
-const Q_LABEL = "label sum(Col7) ''"
+/**
+ * El rango que ve la consulta y el NÚMERO de columna de cada dato dentro de él. Hoy G=Col1, M=Col7,
+ * O=Col9; con «Obra» en H, N=Col8 y P=Col10. Tipeados, la consulta sumaba la columna de al lado sin
+ * dar error: por eso salen de los índices resueltos, y un orden imposible es un error.
+ */
+function rangoDeConsulta(cols) {
+  const { cliente, total, estado } = cc(cols)
+  if (!(cliente.indice < total.indice && total.indice < estado.indice)) {
+    throw new Error('cobranzas-cartera: la consulta va de «Obra / Cliente» a «Estado» con el total adentro, y el orden de las columnas ya no es ése')
+  }
+  return {
+    rango: `${COB.pestaña}!$${cliente.letra}$${COB.primera}:$${estado.letra}$${COB.ultima}`,
+    colTotal: total.indice - cliente.indice + 1,
+    colEstado: estado.indice - cliente.indice + 1,
+  }
+}
 
 /**
  * NÚCLEO PURO: el ranking de clientes por total en un estado, agrupado y ordenado.
@@ -166,16 +186,20 @@ const Q_LABEL = "label sum(Col7) ''"
  * Devuelve la CONSULTA, no la celda: siempre tiene que entrar a un INDEX. Sola en una celda derrama.
  * `Col1 is not null` deja afuera las filas sin cliente, que si no se agrupan todas en un mismo bucket
  * anónimo y pueden ganarle el primer puesto a un cliente real.
+ *
+ * Sin el label vacío, QUERY agrega una fila de encabezado para la columna agregada y el ranking se
+ * corre un puesto: el primer cliente desaparecería sin dar error.
  */
-export function consultaPorCliente(clave = 'pendiente') {
+export function consultaPorCliente(cols, clave = 'pendiente') {
+  const { rango: r, colTotal, colEstado } = rangoDeConsulta(cols)
   const estado = String(ESTADOS[clave]).replace(/'/g, "''")
-  return `QUERY(${Q_RANGO};"select Col1,sum(Col7) where Col9 = '${estado}' and Col1 is not null`
-    + ` group by Col1 order by sum(Col7) desc ${Q_LABEL}";0)`
+  return `QUERY(${r};"select Col1,sum(Col${colTotal}) where Col${colEstado} = '${estado}' and Col1 is not null`
+    + ` group by Col1 order by sum(Col${colTotal}) desc label sum(Col${colTotal}) ''";0)`
 }
 
 /** NÚCLEO PURO: el importe del k-ésimo cliente. Vacío si hay menos de k clientes. */
-export function formulaMontoRanking(k, clave = 'pendiente') {
-  return `=IFERROR(INDEX(${consultaPorCliente(clave)};${k};2);"")`
+export function formulaMontoRanking(cols, k, clave = 'pendiente') {
+  return `=IFERROR(INDEX(${consultaPorCliente(cols, clave)};${k};2);"")`
 }
 
 /**
@@ -188,6 +212,6 @@ export function formulaMontoRanking(k, clave = 'pendiente') {
  * La fila igual se apaga si no hay importe: sin plata no hay nombre, y una fila a medias se lee como
  * un dato roto.
  */
-export function formulaClienteRanking(puesto, k, celdaMonto, clave = 'pendiente') {
-  return `=IF(${celdaMonto}="";"";"${puesto}  "&IFERROR(INDEX(${consultaPorCliente(clave)};${k};1);"(sin nombre)"))`
+export function formulaClienteRanking(cols, puesto, k, celdaMonto, clave = 'pendiente') {
+  return `=IF(${celdaMonto}="";"";"${puesto}  "&IFERROR(INDEX(${consultaPorCliente(cols, clave)};${k};1);"(sin nombre)"))`
 }

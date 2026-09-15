@@ -14,6 +14,28 @@ import { CALENDARIO_IMPUESTOS, rotulosCalendarioImpuestos } from './cash-flow-li
 import { EN_CARTERA } from './cartera-cheques.mjs'
 import * as BANCO from './banco-santander.mjs'
 import { ALIAS, filaDeCuenta } from './caja-disponibilidades.mjs'
+import { COMPRAS, columnasDe, lectorDeEncabezados } from './columnas-por-encabezado.mjs'
+import { columnasCobranzas } from './cobranzas-columnas.mjs'
+import { COLUMNAS_CMP, COLUMNAS_COB } from './caja-posterior-al-corte.mjs'
+import { COLUMNAS_CARTERA } from './cobranzas-cartera.mjs'
+import { CLAVE } from './cobranzas-duplicado.mjs'
+
+/**
+ * LAS COLUMNAS DE COBRANZAS Y COMPRAS DE ESTA CORRIDA, POR RÓTULO (14/09/2026).
+ *
+ * CAJA y su anexo arman fórmulas sobre las dos pestañas, y las dos reciben la columna «Obra» (H y L).
+ * Se resuelven UNA vez —una lectura de cada fila de rótulos— y viajan en `refs.columnas` hasta cada
+ * fórmula. Sólo se piden las que alguna fórmula usa: un rótulo ajeno renombrado no tiene por qué
+ * frenar la caja. Un rótulo que falta sí aborta, con su nombre.
+ */
+export async function columnasDelArchivo(google, fileId) {
+  const lector = lectorDeEncabezados(google, fileId)
+  const cob = [...new Set([...COLUMNAS_COB, ...COLUMNAS_CARTERA, ...Object.values(CLAVE)])]
+  return {
+    cobranzas: columnasCobranzas(await lector.encabezado('Cobranzas'), cob),
+    compras: columnasDe(await lector.encabezado('Compras'), Object.fromEntries(COLUMNAS_CMP.map((k) => [k, COMPRAS[k]])), 'Compras'),
+  }
+}
 
 /**
  * Las líneas del cuadro de caja que NO tienen fuente con fecha, y por eso valen CERO por tramo.
@@ -79,6 +101,7 @@ export async function refsDelArchivo(google, fileId, hojas) {
     inicio: nombreSiExiste('CF_INICIO'),
     cab: nombreSiExiste('CF_MESES'),
     filasCal: await filasDelCalendarioFiscal(google, fileId, hojas),
+    columnas: await columnasDelArchivo(google, fileId),
   }
 }
 

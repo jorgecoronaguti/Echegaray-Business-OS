@@ -14,6 +14,8 @@ import { DESDE_CAJA } from './caja-anexo-nombres.mjs'
 import { formulaChequesSinFactura, formulaCalendarioImpuestosSemana, INSTRUMENTOS } from './cash-flow-lineas.mjs'
 import { MARCAS } from './cheques-cobertura.mjs'
 import { SIN_FUENTE_EN_VENTANA } from './caja-refs.mjs'
+import { exigirColumnas } from './cobranzas-columnas.mjs'
+import { rangoHasta } from './columnas-por-encabezado.mjs'
 
 /**
  * LOS TRAMOS SE DEFINEN POR SUS BORDES, NO POR SEIS CONDICIONES SUELTAS.
@@ -136,11 +138,17 @@ export function resolutorDeTramo(k, filasCal, anio = new Date().getFullYear()) {
  * ISNUMBER sobre la fecha, SIEMPRE: una fecha guardada como TEXTO compara como mayor que cualquier
  * número y el mismo cobro entraría en varios tramos. Es el defecto que ya costó $657.000 del lado de
  * los cheques.
+ *
+ * LAS TRES COLUMNAS, POR RÓTULO (14/09/2026): eran `O`/`Q`/`M` tipeadas y con «Obra» en H el tramo
+ * habría filtrado por «Forma de Cobro» y sumado retenciones. `cob` sale de la fila 4 de la corrida.
+ * @param {Record<string,{letra:string}>} cob columnas de Cobranzas resueltas por encabezado
  */
-export function cobranzasEsperadasTramo(desde, hasta) {
-  const est = 'LOWER(Cobranzas!$O$5:$O$400)'
-  const fecha = 'Cobranzas!$Q$5:$Q$400'
-  const monto = 'IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0)'
+export function cobranzasEsperadasTramo(desde, hasta, cob) {
+  const { estado, fechaCobro, total } = exigirColumnas(cob, ['estado', 'fechaCobro', 'total'], 'cobranzasEsperadasTramo')
+  const est = `LOWER(${rangoHasta('Cobranzas', estado, 400)})`
+  const fecha = rangoHasta('Cobranzas', fechaCobro, 400)
+  const m = rangoHasta('Cobranzas', total, 400)
+  const monto = `IF(ISNUMBER(${m});${m};0)`
   const cond = [`(${est}<>"cobrado")`, `(${est}<>"endosado")`, `ISNUMBER(${fecha})`]
   if (desde) cond.push(`(${fecha}>=${desde})`)
   if (hasta) cond.push(`(${fecha}<${hasta})`)

@@ -20,6 +20,8 @@ import {
 } from './impuestos-cuadro.mjs'
 import { formulaDebitoArca, formulaCreditoArca, nuncaMenosQue } from './arca-formula.mjs'
 import { ventasFacturadasDelMes } from './impuestos-base-libro.mjs'
+import { exigirColumnas } from './cobranzas-columnas.mjs'
+import { rangoAbierto } from './columnas-por-encabezado.mjs'
 import { IIBB_RAW, IIBB_COL, IIBB_FILA0, BANCO_RAW } from './impuestos-fuentes.mjs'
 import { M12, cmes, AJENO } from './impuestos-grilla.mjs'
 
@@ -316,16 +318,27 @@ export function bloqueIibb(G, { anio, iibb, proy, hoy }) {
 // Una retención es impuesto YA PAGADO. No se suma al hero porque ya está DENTRO de la libre
 // disponibilidad del F.2051 y de la DDJJ de Rentas: sumarla otra vez la contaría dos veces.
 
-export function bloqueRetenciones(G, { anio }) {
+/**
+ * LAS TRES COLUMNAS DE RETENCIONES Y LA FECHA DE COBRO, POR RÓTULO (14/09/2026). Eran `X`/`Y`/`Z` y
+ * `Q` tipeadas: con «Obra» insertada en Cobranzas H, la fila «IVA» habría sumado las retenciones de
+ * Ganancias y la de Ingresos Brutos la columna «Moneda», agrupadas por «Mes cobro (auto)».
+ * @param {{anio:number, cob:Record<string,{letra:string}>}} ctx `cob` resuelto contra la fila 4 viva
+ */
+export function bloqueRetenciones(G, { anio, cob }) {
+  const { retIva, retGanancias, retIibb, fechaCobro } = exigirColumnas(cob, ['retIva', 'retGanancias', 'retIibb', 'fechaCobro'], 'bloqueRetenciones')
   G.push([seccion(3, 'Retenciones sufridas')])
   G.cabecera()
   // RANGO ABIERTO. Cerrado en la fila 400 funcionaba con 357 filas de Cobranzas y reventaba callado
   // en la 401: el número que decide sale de la fuente con rango abierto.
-  const retMes = (col) => (m) => `=SUMPRODUCT((YEAR(Cobranzas!$Q$5:$Q)=${anio})*(MONTH(Cobranzas!$Q$5:$Q)=${m})*IF(ISNUMBER(Cobranzas!$${col}$5:$${col});Cobranzas!$${col}$5:$${col};0))`
+  const fecha = rangoAbierto('Cobranzas', fechaCobro)
+  const retMes = (col) => (m) => {
+    const r = rangoAbierto('Cobranzas', col)
+    return `=SUMPRODUCT((YEAR(${fecha})=${anio})*(MONTH(${fecha})=${m})*IF(ISNUMBER(${r});${r};0))`
+  }
   const r0 = G.n() + 1
-  G.mensual('IVA', retMes('X'), 'Cobranzas · ya computada en el "a pagar" de la sección 1.')
-  G.mensual('Ganancias', retMes('Y'), 'Cobranzas · es pago a cuenta del impuesto anual: no se recupera hasta la DDJJ.')
-  G.mensual('Ingresos Brutos', retMes('Z'), 'Cobranzas · ya viene declarada en la DDJJ de Rentas de la sección 2.')
+  G.mensual('IVA', retMes(retIva), 'Cobranzas · ya computada en el "a pagar" de la sección 1.')
+  G.mensual('Ganancias', retMes(retGanancias), 'Cobranzas · es pago a cuenta del impuesto anual: no se recupera hasta la DDJJ.')
+  G.mensual('Ingresos Brutos', retMes(retIibb), 'Cobranzas · ya viene declarada en la DDJJ de Rentas de la sección 2.')
   const r1 = G.n()
   const fTotal = G.mensual(rotuloTotal('Total retenido'), (m) => `=SUM(${cmes(m)}${r0}:${cmes(m)}${r1})`,
     'Plata de la empresa que está en manos del fisco. NO se suma a la posición: ya está adentro de los dos saldos a favor.')

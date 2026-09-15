@@ -55,7 +55,7 @@ import { VACIO } from './preservar-anotaciones.mjs'
 import { rotuloAlDia } from './fecha-de-frescura.mjs'
 import {
   formulaFrescuraCaja, formulaNetaPosterior, formulaFechaCorte,
-  formulaCobrosUsdEfectivoPosteriores, celdaFechaDelEfectivo,
+  formulaCobrosUsdEfectivoPosteriores, celdaFechaDelEfectivo, mapasDe,
 } from './caja-posterior-al-corte.mjs'
 import { formulaCartera } from './cartera-cheques.mjs'
 // EL SALDO DEL BANCO NETO DE LO RETENIDO. Una sola definición, compartida con el control del anexo
@@ -164,6 +164,10 @@ export function grilla(cargado, refs) {
   if (!refs?.filasCal) {
     throw new Error('caja-grilla: faltan las filas de "Impuestos y Financieros" (IVA/IIBB): sin esa pestaña el libro no ve el egreso más grande del cuatrimestre y el piso sube sin que se haya pagado nada')
   }
+  // LAS COLUMNAS DE COBRANZAS Y COMPRAS DE ESTA CORRIDA (14/09/2026): las resolvió `refsDelArchivo`
+  // contra las filas de rótulos. Sin ellas, error acá: una letra por defecto después de insertar
+  // «Obra» publica el saldo con las retenciones adentro.
+  const mapas = mapasDe(refs)
   const previo = (cuenta, campo) => cargado?.get(cuenta)?.[campo] ?? ''
   /** Una celda que NO es mía: sale `undefined` y la fusión la PRESERVA. Con el centinela VACIO la
    *  primera corrida le borraba el conteo al dueño — la diferencia no es cosmética. */
@@ -272,7 +276,7 @@ export function grilla(cargado, refs) {
     const pesos = c.arqueo === DESDE_CAJA.arqueoArsFecha
       ? `=N(B${f})+N(${ANEXO.efectivoNeto})`
       : c.arqueo === DESDE_CAJA.arqueoUsdFecha
-        ? `=(N(B${f})+IF(NOT(ISNUMBER(${DESDE_CAJA.arqueoUsdFecha}));0;${formulaCobrosUsdEfectivoPosteriores(DESDE_CAJA.arqueoUsdFecha)}))*${RANGO_TC}`
+        ? `=(N(B${f})+IF(NOT(ISNUMBER(${DESDE_CAJA.arqueoUsdFecha}));0;${formulaCobrosUsdEfectivoPosteriores(DESDE_CAJA.arqueoUsdFecha, mapas.cob)}))*${RANGO_TC}`
         : c.moneda === 'USD' ? `=IF(ISNUMBER(B${f});B${f}*${RANGO_TC};"")` : `=IF(ISNUMBER(B${f});B${f};"")`
     izq.push([
       c.nombre,
@@ -293,7 +297,7 @@ export function grilla(cargado, refs) {
   // posterior no existía en la pestaña. Es NETA a propósito: con un solo lado la caja crecería y
   // nunca bajaría. Sus cuatro sumandos son el desglose y viven en `_CAJA_ANEXO`.
   const fPost = fBancoPesos && refs.bancoRaw ? FILA_0 + izq.length : 0
-  if (fPost) izq.push(['Movimientos posteriores al corte', formulaNetaPosterior(`$D$${fBancoPesos}`), `=B${fPost}`, '=TODAY()'])
+  if (fPost) izq.push(['Movimientos posteriores al corte', formulaNetaPosterior(`$D$${fBancoPesos}`, mapas), `=B${fPost}`, '=TODAY()'])
   const d0 = FILA_0
   const d1 = FILA_0 + izq.length - 1
 
@@ -449,7 +453,7 @@ export function grilla(cargado, refs) {
   // mueven esta caja (extracto, compras pagadas, cobranzas), calculada por Sheets. Con el pipeline
   // detenido, una fecha de corrida es una mentira que se lee como un hecho.
   const fTitulo = push(['POSICIÓN DE CAJA', '', '', '', '',
-    rotuloAlDia('Dato', formulaFrescuraCaja({ bancoRaw: refs.bancoRaw }))])
+    rotuloAlDia('Dato', formulaFrescuraCaja({ bancoRaw: refs.bancoRaw, ...mapas }))])
   const fRotulos = push(porTarjeta('rotulo'))
   const fCifras = push(porTarjeta('valor'))
   const fContexto = push(porTarjeta('contexto'))

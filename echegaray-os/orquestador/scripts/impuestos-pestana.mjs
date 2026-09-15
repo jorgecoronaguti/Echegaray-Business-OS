@@ -123,7 +123,7 @@ const brutoCreditoLibro = (m) => [creditoDeComprasDelMes(AÑO, m)]
  * detalle —que es quien sabe en qué fila queda cada total— y recién entonces se llena la posición con
  * referencias. Ni un número pegado arriba.
  */
-export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
+export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy, cob }) {
   const G = crearGrilla(anio)
   G.push([PESTAÑA])  // tipeado aparte decía «Impuestos y financiero»: dos nombres para la misma pestaña
   // LA FRESCURA, POR FUENTE Y COMPACTA. Una sola fecha está prohibida acá: esta pestaña cruza fuentes
@@ -159,7 +159,7 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
   // ── EL DETALLE ─────────────────────────────────────────────────────────────────────────────────
   const iva = bloqueIva(G, { anio, ivaOficial, proy, arca, hoy })
   const ibb = bloqueIibb(G, { anio, iibb, proy, hoy })
-  bloqueRetenciones(G, { anio })
+  bloqueRetenciones(G, { anio, cob })
   bloqueOtros(G, { anio, C })
   // El cuadro de planes se retiró: vive en «Cargas Sociales». Desde el 09/09/2026 tampoco queda la
   // fila mensual de la cuota — era la misma serie de aquella pestaña, publicada dos veces.
@@ -378,7 +378,9 @@ async function main() {
   if (faltan.length) { console.error(`⚠ faltan columnas en Compras: ${faltan.join(', ')} — no escribo con referencias inventadas`); process.exit(1) }
   console.log(`  Compras por encabezado: Total=${C.total} · Concepto=${C.concepto} · Rubro=${C.rubro} · Fecha prevista=${C.fechaPrev}`)
 
-  const g = grilla({ anio: AÑO, C, planes, iibb, ivaOficial, proy, arca, hoy })
+  // Las retenciones de la sección 3 se suman de Cobranzas por RÓTULO, contra su fila 4 de esta corrida.
+  const cob = await leerColumnasCobranzas(google, ID, ['retIva', 'retGanancias', 'retIibb', 'fechaCobro'])
+  const g = grilla({ anio: AÑO, C, planes, iibb, ivaOficial, proy, arca, hoy, cob })
   if (ret.sospechosas.length) {
     console.error(`  ⚠ ${ret.sospechosas.length} retención(es) con alícuota que no encaja con ningún régimen — NO se computaron:`)
     for (const x of ret.sospechosas) console.error(`     fila ${x.fila} ${x.cliente}: ${x.regimen} ${Math.round(x.monto).toLocaleString('es-AR')} = ${(x.alicuota * 100).toFixed(2)}%`)

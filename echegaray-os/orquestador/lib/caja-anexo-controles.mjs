@@ -14,7 +14,9 @@
 // posible que el anexo cambie de forma sin romper CAJA y al revés.
 
 import * as BANCO from './banco-santander.mjs'
-import { formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores, formulaExtraccionesEfectivoPosteriores, celdaFechaDelEfectivo } from './caja-posterior-al-corte.mjs'
+import { formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores, formulaExtraccionesEfectivoPosteriores, celdaFechaDelEfectivo, mapaCompras, rangoAbiertoDe } from './caja-posterior-al-corte.mjs'
+import { exigirColumnas } from './cobranzas-columnas.mjs'
+import { rangoAbierto, rangoHasta } from './columnas-por-encabezado.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { DESDE_CAJA, ANEXO } from './caja-anexo-nombres.mjs'
 import { formulaEgresoDiario } from './egreso-diario.mjs'
@@ -41,8 +43,12 @@ import {
  */
 export const DIAS_SIN_CARGA = 10
 
-/** La MISMA definición de "dos cobros que no se pueden distinguir" que usa la pestaña Cobranzas. */
-const INDIST_COB = esIndistinguible('Cobranzas', 5, 400)
+// ═══ LAS COLUMNAS DE COMPRAS Y COBRANZAS LLEGAN EN `h.refs.columnas` (14/09/2026) ═══
+//
+// Estos bloques tenían `Compras!$O`, `Cobranzas!$N…$Q` y `'Compras'!$P/$T` tipeados, y el término de
+// duplicados se armaba una vez al cargar el módulo. Con «Obra» insertada en las dos pestañas, el
+// efectivo cobrado habría filtrado «Estado» = "Efectivo" (cero) y el ritmo de egreso habría sumado
+// el IVA. Las columnas las resuelve `refsDelArchivo` contra las filas de rótulos de la corrida.
 
 /**
  * A4 · DÍAS DE LIQUIDEZ Y CAJA MÍNIMA — hasta cuándo alcanza si no entrara un peso más.
@@ -57,7 +63,9 @@ const INDIST_COB = esIndistinguible('Cobranzas', 5, 400)
 export function bloqueLiquidez(h) {
   const { push, refs } = h
   push(['A4 · DÍAS DE LIQUIDEZ Y CAJA MÍNIMA — hasta cuándo alcanza si no entra un peso'])
-  const egr90 = 'SUMIFS(Compras!$O$4:$O;Compras!$AD$4:$AD;">="&TODAY()-90;Compras!$AD$4:$AD;"<="&TODAY())'
+  const { total, fechaCaja } = mapaCompras(refs?.columnas?.compras) && refs.columnas.compras
+  const [T, F] = [rangoAbierto('Compras', total), rangoAbierto('Compras', fechaCaja)]
+  const egr90 = `SUMIFS(${T};${F};">="&TODAY()-90;${F};"<="&TODAY())`
   const fRitmo = push(['Egreso promedio por día (meses cerrados, todas las fuentes)', 'ARS',
     `=${formulaEgresoDiario(egr90)}`, '', `=C${h.n + 1}`, '=TODAY()', ''])
   const fDias = push(['⇒ Días de caja, si no entrara nada más', '',
@@ -156,6 +164,7 @@ export function bloqueConciliacion(h) {
  */
 export function bloqueVencido(h) {
   const { push, ch } = h
+  const cob = h.refs?.columnas?.cobranzas
   const K400 = `UPPER(${rangoEn(ch, 'K')})<>"SI"`
   const I400 = rangoEn(ch, 'I')
   const F400 = `IF(ISNUMBER(${rangoEn(ch, 'F')});${rangoEn(ch, 'F')};0)`
@@ -167,8 +176,8 @@ export function bloqueVencido(h) {
   // se lo reclama, al segundo se lo reproyecta.
   for (const clave of ESPERADOS) {
     push([`Cobros en "${ESTADOS[clave]}" con fecha de cobro ya pasada`, '',
-      formulaTotalEstado(clave, { hasta: 'TODAY()' }), '', '', '',
-      formulaCantidadEstado(clave, { hasta: 'TODAY()' })])
+      formulaTotalEstado(cob, clave, { hasta: 'TODAY()' }), '', '', '',
+      formulaCantidadEstado(cob, clave, { hasta: 'TODAY()' })])
   }
   // EL LADO QUE PAGA. Un cheque librado, no debitado y con fecha vencida: o el banco todavía no lo
   // presentó, o ya lo debitó y nadie marcó la columna. La segunda ensucia el saldo.
@@ -179,7 +188,7 @@ export function bloqueVencido(h) {
   const fTot = push(['⇒ Total vencido sin conciliar', '',
     `=SUM($C$${f0}:$C$${f1})+SUM($D$${f0}:$D$${f1})`, '', '', '', ''])
   const fUlt = push(['Último cobro efectivamente registrado en Cobranzas', '', '', '', '',
-    formulaUltimoCobroRegistrado(), ''])
+    formulaUltimoCobroRegistrado(cob), ''])
   // LA ÚLTIMA COLUMNA DE ESTE BLOQUE NO ES PROSA: ES UN CONTEO — y quien lo escribe lo declara acá.
   //
   // El contrato de la pestaña dice "la última columna es PROSA: texto, gris, con ajuste. Nunca plata",
@@ -195,7 +204,7 @@ export function bloqueVencido(h) {
   // EL PRECIO DE LA LISTA BLANCA, PAGADO A LA VISTA: los cuadros eligen estados POR NOMBRE, así que un
   // sexto estado dejaría plata afuera en silencio. Tiene que dar cero.
   push(['   · riesgo: filas de Cobranzas con un estado que el OS no conoce', '',
-    formulaEstadoDesconocido(), '', '', '', ''])
+    formulaEstadoDesconocido(cob), '', '', '', ''])
   return { fTot, fCuantos: [f0, f1] }
 }
 
@@ -208,6 +217,13 @@ export function bloqueVencido(h) {
  */
 export function bloqueTrazabilidad(h, { yaRevisados = decisionesDe(CONTROLES.cobroDuplicado) } = {}) {
   const { push } = h
+  const cob = h.refs?.columnas?.cobranzas
+  const cmp = mapaCompras(h.refs?.columnas?.compras)
+  const { formaCobro, estado, fechaCobro, total, cliente } = exigirColumnas(cob, ['formaCobro', 'estado', 'fechaCobro', 'total', 'cliente'], 'bloqueTrazabilidad')
+  const r = (col) => rangoHasta('Cobranzas', col, 400)
+  const M = r(total)
+  // La MISMA definición de "dos cobros que no se pueden distinguir" que usa la pestaña Cobranzas.
+  const INDIST_COB = esIndistinguible(cob, 'Cobranzas', 5, 400)
   // ═══ LA VENTANA FOSILIZADA ERA EL DEFECTO (dictamen 07/08) ═══
   //
   // La versión anterior clavaba la ventana en las fechas de la CAPTURA del extracto (22/06–22/07,
@@ -220,9 +236,9 @@ export function bloqueTrazabilidad(h, { yaRevisados = decisionesDe(CONTROLES.cob
   push(['A7 · TRAZABILIDAD DEL EFECTIVO — todo lo cobrado contra depósitos, gastos y el cajón'])
   // SÓLO LO "COBRADO": un cobro en estado "Proyectado" no es efectivo en la caja. Y hasta HOY: un
   // "Cobrado" con fecha futura (un valor endosado, una carga adelantada) no es billete en la mano.
-  const CONEF = `(Cobranzas!$N$5:$N$400="Efectivo")*(Cobranzas!$O$5:$O$400="Cobrado")*(Cobranzas!$Q$5:$Q$400<=TODAY())`
+  const CONEF = `(${r(formaCobro)}="Efectivo")*(${r(estado)}="Cobrado")*(${r(fechaCobro)}<=TODAY())`
   const fCob = push(['Cobrado en EFECTIVO — historia completa (Cobranzas)', '', '', '',
-    `=SUMPRODUCT(${CONEF}*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))`,
+    `=SUMPRODUCT(${CONEF}*IF(ISNUMBER(${M});${M};0))`,
     '', ''])
   // ⚠ Mismo ID y mismo importe más de una vez. Caso real del 17/07: San Francisco pagó $16.200.000 en
   // efectivo y quedó cargado dos veces —una al cobrarlo y otra al depositarlo—. Un depósito NO es un
@@ -239,12 +255,12 @@ export function bloqueTrazabilidad(h, { yaRevisados = decisionesDe(CONTROLES.cob
   //
   // NO SE APAGA EL CONTROL, SE EXCLUYE ESE GRUPO. Cualquier otro par indistinguible sigue restando.
   const fDup = push(['  · de eso, cargado DOS VECES con el mismo ID', '', '', '',
-    `=SUMPRODUCT(${CONEF}*(${INDIST_COB})${factorSinYaRevisados(yaRevisados, 'Cobranzas', 5, 400)}`
-    + '*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))/2',
+    `=SUMPRODUCT(${CONEF}*(${INDIST_COB})${factorSinYaRevisados(cob, yaRevisados, 'Cobranzas', 5, 400)}`
+    + `*IF(ISNUMBER(${M});${M};0))/2`,
     '', ''])
   // EL DETALLE NO VA EN LA COLUMNA DEL DINERO: es una tira larga y el ojo que recorre una columna de
   // números se choca con un párrafo. Va en la columna del rótulo, que ya tiene overflow.
-  push([`=IFERROR("   · "&TEXTJOIN("   ·   ";1;ARRAYFORMULA(IF(${CONEF};TEXT(Cobranzas!$Q$5:$Q$400;"dd/mm")&"  "&IF(Cobranzas!$G$5:$G$400="";"";Cobranzas!$G$5:$G$400&"  ")&TEXT(Cobranzas!$M$5:$M$400;"$#,##0");"")));"")`,
+  push([`=IFERROR("   · "&TEXTJOIN("   ·   ";1;ARRAYFORMULA(IF(${CONEF};TEXT(${r(fechaCobro)};"dd/mm")&"  "&IF(${r(cliente)}="";"";${r(cliente)}&"  ")&TEXT(${M};"$#,##0");"")));"")`,
     '', '', '', '', '', ''])
   const dep = (col) => `_BANCO_RAW!$${col}$4:$${col}`
   const CONDEP = `(${dep('E')}="entra")*ISNUMBER(SEARCH("deposito";LOWER(SUBSTITUTE(${dep('B')};"ó";"o"))))*(ISNUMBER(SEARCH("efectivo";LOWER(SUBSTITUTE(${dep('B')};"ó";"o"))))+ISNUMBER(SEARCH("efvo";LOWER(SUBSTITUTE(${dep('B')};"ó";"o"))))>0)`
@@ -270,7 +286,7 @@ export function bloqueTrazabilidad(h, { yaRevisados = decisionesDe(CONTROLES.cob
   // la planilla entera en los dos términos siguientes. $22.627.750 de "sin explicar" que era la misma
   // plata. El factor sale de rubro-caja.mjs, la misma lista que usa el cajón vivo de CAJA.
   const fGasto = push(['Pagado en efectivo — Compras (monto pagado) + jornales + oficina', '', '', '',
-    `=SUMPRODUCT(('Compras'!$P$4:$P="Efectivo")*${factorSinPlanilla()}*N('Compras'!$T$4:$T))`
+    `=SUMPRODUCT((${rangoAbiertoDe(cmp, 'tipoPago')}="Efectivo")*${factorSinPlanilla(rangoAbiertoDe(cmp, 'rubro'))}*N(${rangoAbiertoDe(cmp, 'montoPagado')}))`
     + `+${formulaJornalesEfectivoPosteriores('0')}+${formulaOficinaEfectivoPosteriores('0')}`, '', ''])
   // EL CAJÓN VIVO, NO EL ARQUEO CRUDO: con la identidad a historia completa, lo que cierra la resta
   // es lo que HAY en la caja hoy (arqueo ± movimientos posteriores) — el mismo número de CAJA!B7.

@@ -30,32 +30,46 @@
 // aparecer depositado en el banco o declarado en la caja. Ese no depende de cómo alguien redactó un
 // concepto. Los dos controles se complementan; ninguno reemplaza al otro.
 
+import { exigirColumnas } from './cobranzas-columnas.mjs'
+
 /** Las columnas de Cobranzas que definen la identidad DURA de un cobro. El concepto queda afuera a
- *  propósito: es texto libre y dos redacciones distintas de lo mismo lo harían inútil. */
-export const CLAVE = {
-  cliente: 'G',
-  monto: 'M',
-  formaCobro: 'N',
-  estado: 'O',
-  fechaCobro: 'Q',
+ *  propósito: es texto libre y dos redacciones distintas de lo mismo lo harían inútil.
+ *
+ *  Son CLAVES de `COBRANZAS_OS`, no letras (14/09/2026). Eran `{ cliente: 'G', monto: 'M', … }`: con
+ *  «Obra» insertada en H, la identidad dura habría pasado a ser cliente + RETENCIONES + ESTADO + …, y
+ *  el control de efectivo de CAJA habría restado «duplicados» que no lo son. Cada función recibe las
+ *  columnas resueltas contra la fila de rótulos de la corrida. */
+export const CLAVE = Object.freeze({
+  cliente: 'cliente',
+  monto: 'total',
+  formaCobro: 'formaCobro',
+  estado: 'estado',
+  fechaCobro: 'fechaCobro',
+})
+
+/** Las cinco letras de la clave, resueltas. Sin columnas no hay fórmula: no existe una letra por defecto. */
+const letrasClave = (cols) => {
+  exigirColumnas(cols, Object.values(CLAVE), 'cobranzas-duplicado')
+  return Object.fromEntries(Object.entries(CLAVE).map(([k, c]) => [k, cols[c].letra]))
 }
 
 /**
  * NÚCLEO PURO: el COUNTIFS que cuenta cuántas filas comparten la identidad dura de cada fila.
  * `>1` significa "hay otra igual". Es la única definición de esto en todo el OS.
  *
+ * @param {Record<string,{letra:string}>} cols columnas de Cobranzas resueltas por encabezado
  * @param {string} pestana normalmente 'Cobranzas'
  * @param {number} f0 primera fila de datos
  * @param {number} f1 última
  */
-export function countifsClave(pestana = 'Cobranzas', f0 = 5, f1 = 400) {
+export function countifsClave(cols, pestana = 'Cobranzas', f0 = 5, f1 = 400) {
   const r = (col) => `${pestana}!$${col}$${f0}:$${col}$${f1}`
-  return Object.values(CLAVE).map((c) => `${r(c)};${r(c)}`).join(';')
+  return Object.values(letrasClave(cols)).map((c) => `${r(c)};${r(c)}`).join(';')
 }
 
 /** NÚCLEO PURO: la condición "esta fila tiene al menos otra idéntica en los datos duros". */
-export function esIndistinguible(pestana = 'Cobranzas', f0 = 5, f1 = 400) {
-  return `COUNTIFS(${countifsClave(pestana, f0, f1)})>1`
+export function esIndistinguible(cols, pestana = 'Cobranzas', f0 = 5, f1 = 400) {
+  return `COUNTIFS(${countifsClave(cols, pestana, f0, f1)})>1`
 }
 
 /**
@@ -65,9 +79,10 @@ export function esIndistinguible(pestana = 'Cobranzas', f0 = 5, f1 = 400) {
  * corregir: un trío de filas idénticas la sobreestimaría, y sólo quien conoce el cobro sabe cuál
  * sobra. Se dice así en el rótulo, no se disimula.
  */
-export function plataEnJuego(pestana = 'Cobranzas', f0 = 5, f1 = 400) {
-  const m = `${pestana}!$${CLAVE.monto}$${f0}:$${CLAVE.monto}$${f1}`
-  return `SUMPRODUCT((${esIndistinguible(pestana, f0, f1)})*IF(ISNUMBER(${m});${m};0))/2`
+export function plataEnJuego(cols, pestana = 'Cobranzas', f0 = 5, f1 = 400) {
+  const { monto } = letrasClave(cols)
+  const m = `${pestana}!$${monto}$${f0}:$${monto}$${f1}`
+  return `SUMPRODUCT((${esIndistinguible(cols, pestana, f0, f1)})*IF(ISNUMBER(${m});${m};0))/2`
 }
 
 /**
@@ -87,11 +102,12 @@ export function plataEnJuego(pestana = 'Cobranzas', f0 = 5, f1 = 400) {
  * importe cambia, la condición deja de darse y la marca vuelve sola. El lado seguro para equivocarse
  * es el ruido, nunca el silencio.
  */
-export function esCobroYaRevisado(forma = {}, pestana = 'Cobranzas', f0 = 5, f1 = 400) {
+export function esCobroYaRevisado(cols, forma = {}, pestana = 'Cobranzas', f0 = 5, f1 = 400) {
+  const L = letrasClave(cols)
   const r = (col) => `${pestana}!$${col}$${f0}:$${col}$${f1}`
-  return `(ROW(${r(CLAVE.cliente)})=${Number(forma.fila)})`
-    + `*(${r(CLAVE.cliente)}="${String(forma.cliente ?? '').replace(/"/g, '""')}")`
-    + `*(${r(CLAVE.monto)}=${Number(forma.importe)})`
+  return `(ROW(${r(L.cliente)})=${Number(forma.fila)})`
+    + `*(${r(L.cliente)}="${String(forma.cliente ?? '').replace(/"/g, '""')}")`
+    + `*(${r(L.monto)}=${Number(forma.importe)})`
 }
 
 /**
@@ -147,13 +163,14 @@ export function gruposIndistinguibles(filas = []) {
  * Y EL ANCLA SIGUE SIENDO LA FORMA DECLARADA: si la fila 39 dejó de ser LA ESTRELLA por $10.000.000
  * —porque alguien insertó un renglón arriba— el ancla da 0, no libera nada y la resta vuelve sola.
  */
-export function esDelGrupoYaRevisado(forma = {}, pestana = 'Cobranzas', f0 = 5, f1 = 400) {
+export function esDelGrupoYaRevisado(cols, forma = {}, pestana = 'Cobranzas', f0 = 5, f1 = 400) {
+  const L = letrasClave(cols)
   const r = (col) => `${pestana}!$${col}$${f0}:$${col}$${f1}`
   const i = Number(forma.fila) - f0 + 1
   const en = (col) => `INDEX(${r(col)};${i})`
   const cli = String(forma.cliente ?? '').replace(/"/g, '""')
-  const ancla = `(${en(CLAVE.cliente)}="${cli}")*(${en(CLAVE.monto)}=${Number(forma.importe)})`
-  const mismoGrupo = Object.values(CLAVE).map((c) => `(${r(c)}=${en(c)})`).join('*')
+  const ancla = `(${en(L.cliente)}="${cli}")*(${en(L.monto)}=${Number(forma.importe)})`
+  const mismoGrupo = Object.values(L).map((c) => `(${r(c)}=${en(c)})`).join('*')
   return `${ancla}*${mismoGrupo}`
 }
 
@@ -164,9 +181,10 @@ export function esDelGrupoYaRevisado(forma = {}, pestana = 'Cobranzas', f0 = 5, 
  * y el registro vacío no cambia un solo número. Se multiplica, no se resta: quien lo usa no tiene que
  * saber cómo está armada la suma.
  */
-export function factorSinYaRevisados(decisiones = [], pestana = 'Cobranzas', f0 = 5, f1 = 400) {
+export function factorSinYaRevisados(cols, decisiones = [], pestana = 'Cobranzas', f0 = 5, f1 = 400) {
+  letrasClave(cols)
   const grupos = decisiones
     .filter((d) => Number(d?.forma?.fila) >= f0 && Number(d?.forma?.fila) <= f1)
-    .map((d) => esDelGrupoYaRevisado(d.forma, pestana, f0, f1))
+    .map((d) => esDelGrupoYaRevisado(cols, d.forma, pestana, f0, f1))
   return grupos.length ? `*((${grupos.join(')+(')})=0)` : ''
 }

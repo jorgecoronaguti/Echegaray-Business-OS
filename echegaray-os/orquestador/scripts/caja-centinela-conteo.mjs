@@ -19,7 +19,8 @@ import { makeGoogleClient } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { DESDE_CAJA } from '../lib/caja-anexo-nombres.mjs'
 import { PESTANA_ANEXO, SELLO_EFECTIVO, claveDeRotulo } from '../lib/caja-anexo.mjs'
-import { CMP } from '../lib/caja-posterior-al-corte.mjs'
+/** La pestaña vigilada. Sólo el NOMBRE: las columnas las resuelve `leerCeldasDeEfectivo` por rótulo. */
+const COMPRAS = 'Compras'
 import { CONCEPTO, RESOLUCION_HORAS, anclaDelConteo } from '../lib/caja-conteo-centinela.mjs'
 import { avisoCargaTardia } from '../lib/caja-carga-tardia.mjs'
 import { leerCeldasDeEfectivo, medirCargaTardia } from '../lib/caja-carga-tardia-compras.mjs'
@@ -90,11 +91,11 @@ async function mirarConteo(google, concepto, rango, sello, ahora, { critico = fa
 async function mirarComprasEfectivo(google, ancla, ahora) {
   if (DRY) {
     const celdas = await leerCeldasDeEfectivo(google, ID)
-    console.log(`  (dry) ${celdas.length} celda(s) de pago en efectivo en ${CMP.hoja} bajo vigilancia`)
+    console.log(`  (dry) ${celdas.length} celda(s) de pago en efectivo en ${COMPRAS} bajo vigilancia`)
     return null
   }
   const r = await medirCargaTardia(google, ID, ancla, { ahora })
-  const aviso = avisoCargaTardia(r, { marca: ALERTA, fuente: CMP.hoja })
+  const aviso = avisoCargaTardia(r, { marca: ALERTA, fuente: COMPRAS })
   if (aviso) console.log(`  ${aviso}`)
   else {
     console.log(`  💵 sin carga tardía: ${r.cubiertas} celda(s) con su valor probado desde ANTES del conteo`

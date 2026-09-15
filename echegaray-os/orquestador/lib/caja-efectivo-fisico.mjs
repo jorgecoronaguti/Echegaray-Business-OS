@@ -68,7 +68,7 @@
 // la celda nueva (o restaría movimientos de una ventana distinta de la suya).
 
 import {
-  COB, CMP, DEP,
+  DEP,
   formulaCobrosEfectivoPosteriores, formulaComprasEfectivoPosteriores,
   formulaDepositosEfectivoPosteriores,
 } from './caja-posterior-al-corte.mjs'
@@ -320,12 +320,14 @@ export function avisoTechoNoVerificable(d = {}, marca = '▲') {
     + 'cargan (cobrado en efectivo, extraído del banco).'
 }
 
-/** Los cobros en efectivo posteriores al arqueo (CARGA la caja). Con `=` adelante, para una celda. */
-export function celdaCobrosEfectivo(arqueo, c = COB) {
+/** Los cobros en efectivo posteriores al arqueo (CARGA la caja). Con `=` adelante, para una celda.
+ *  `c` es el mapa de Cobranzas por encabezado (`mapaCobranzas`): no hay default con letras. */
+export function celdaCobrosEfectivo(arqueo, c) {
   return guardado(arqueo, formulaCobrosEfectivoPosteriores(arqueo, c))
 }
-/** Los pagos en efectivo posteriores al arqueo (DESCARGAN la caja), ya con signo negativo. */
-export function celdaPagosEfectivo(arqueo, c = CMP) {
+/** Los pagos en efectivo posteriores al arqueo (DESCARGAN la caja), ya con signo negativo.
+ *  `c` es el mapa de Compras por encabezado (`mapaCompras`). */
+export function celdaPagosEfectivo(arqueo, c) {
   return guardado(arqueo, `-(${formulaComprasEfectivoPosteriores(arqueo, c)})`)
 }
 /** Los depósitos de efectivo al banco posteriores al arqueo (DESCARGAN la caja), con signo negativo. */
