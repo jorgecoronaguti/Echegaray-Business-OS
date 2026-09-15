@@ -1,4 +1,4 @@
--- TIEMPO REAL: UN AVISO POR SENTENCIA, SIN DATOS DE FILAS.
+-- TIEMPO REAL: UN AVISO POR SENTENCIA QUE CAMBIÓ ALGO, SIN DATOS DE FILAS.
 --
 -- El dueño (15/09/2026): «necesito que la plataforma app.ecsas.com.ar se actualice en tiempo real
 -- cuando más de un usuario está editando cosas al mismo tiempo en ella».
@@ -10,19 +10,37 @@
 -- de filas × cada pestaña abierta, cada una con su consulta de RLS, sobre una base Small de 2 GB que
 -- el 13/09 ya se cayó tres veces por carga. No se usa.
 --
--- Acá cada SENTENCIA que escribe una tabla con pantalla manda un aviso de 40 bytes al tópico
+-- Acá cada SENTENCIA que cambia una tabla con pantalla manda un aviso de 40 bytes al tópico
 -- `os:cambios`: `{tabla, op}`. Ningún dato de fila viaja. El navegador no muestra lo que llega: lo
 -- usa como señal para volver a pedir la página al servidor (`router.refresh()`), y esa lectura pasa
 -- por la misma RLS de siempre. El aviso no abre ninguna puerta a los datos.
 --
+-- ═══ SÓLO SI ALGO CAMBIÓ DE VERDAD ═══
+--
+-- Un trigger FOR EACH STATEMENT se dispara aunque la sentencia afecte CERO filas, y los timers
+-- (JORNALES cada hora, pedidos cada 5 min) hacen upserts que casi siempre no cambian nada: sin esta
+-- guarda, cada corrida refrescaría todas las pestañas. Por eso tres triggers con TABLAS DE TRANSICIÓN
+-- (Postgres exige uno por evento para poder nombrar `viejas`/`nuevas`):
+--   · INSERT y DELETE avisan si hubo alguna fila.
+--   · UPDATE avisa si alguna fila quedó DISTINTA de como estaba, comparando la fila entera en jsonb
+--     MENOS LAS COLUMNAS DE SELLO. Sin quitarlas no hay UPDATE que no cambie nada: `registros_hh`,
+--     `clientes`, `proveedores`, `personas` y `documentacion_legajo` tienen triggers BEFORE que ponen
+--     `updated_at`/`actualizado_en` en cada escritura (medido en la base el 15/09); los sincronizadores
+--     ponen `sincronizado_en`, y el cron de la ficha del cliente reescribe `calculado_en` y `ms`.
+--   · Un sello que no está en la lista hace avisar de más, nunca de menos.
+--
+-- Lo que esta guarda NO resuelve: un sincronizador que BORRA la tabla entera y la vuelve a insertar
+-- cambia filas de verdad aunque el contenido final sea el mismo. Esas tablas no llevan aviso (ver la
+-- lista abajo).
+--
 -- ═══ UN AVISO POR TABLA POR TRANSACCIÓN ═══
 --
 -- Una transacción que hace 300 UPDATE sueltos sobre la misma tabla mandaría 300 avisos idénticos.
--- La marca `os_aviso.<tabla>` es LOCAL a la transacción (`set_config(…, true)`): el primer aviso la
--- pone y los siguientes la ven. Mandarlo al principio y no al final no adelanta nada: `realtime.send`
--- inserta en `realtime.messages`, y Realtime lo lee de la replicación, o sea recién al COMMIT. Si la
--- transacción aborta, el aviso se va con ella. Y deja UNA sola subtransacción (el bloque `exception`)
--- por tabla por transacción, no una por sentencia.
+-- La marca `os_aviso.<tabla>` es LOCAL a la transacción (`set_config(…, true)`) y se pone sólo cuando
+-- se avisa de verdad: un UPDATE sin cambios al principio no tapa el cambio real que viene después.
+-- Mandarlo al principio y no al final no adelanta nada: `realtime.send` inserta en
+-- `realtime.messages`, y Realtime lo lee de la replicación, o sea recién al COMMIT. Si la transacción
+-- aborta, el aviso se va con ella.
 --
 -- ═══ EL AVISO NUNCA ROMPE LA ESCRITURA ═══
 --
@@ -33,9 +51,9 @@
 -- ═══ QUIÉN ESCUCHA ═══
 --
 -- `realtime.messages` tiene RLS activa y ninguna política: hoy nadie puede unirse a un canal privado.
--- Se agrega UNA: `authenticated` puede LEER el tópico `os:cambios` de la extensión broadcast. Ninguna
--- política de INSERT: un navegador no puede publicar avisos falsos en ese tópico. No se toca ninguna
--- otra RLS.
+-- Se agrega UNA: puede LEER el tópico `os:cambios` de la extensión broadcast sólo quien es personal
+-- interno. Ninguna política de INSERT: un navegador no puede publicar avisos falsos en ese tópico. No
+-- se toca ninguna otra RLS.
 --
 -- ═══ SE ENSAYA SIN BLOQUEAR LA APP ═══
 --
@@ -53,20 +71,43 @@ set search_path = ''
 as $fn$
 declare
   marca text := 'os_aviso.' || tg_table_name;
+  -- LAS COLUMNAS QUE SE REESCRIBEN SOLAS EN CADA ESCRITURA: no cuentan como cambio.
+  sellos constant text[] := array[
+    'updated_at', 'actualizado_en', 'actualizado_at', 'actualizado_por', 'calculado_en', 'sincronizado_en', 'ms'
+  ];
+  cambio boolean;
 begin
-  if pg_catalog.current_setting(marca, true) is distinct from '1' then
-    perform pg_catalog.set_config(marca, '1', true);
-    begin
-      perform realtime.send(
-        pg_catalog.jsonb_build_object('tabla', tg_table_name, 'op', tg_op),
-        'cambio',
-        'os:cambios',
-        true
-      );
-    exception when others then
-      raise warning 'aviso de tiempo real no enviado (%): %', tg_table_name, sqlerrm;
-    end;
+  if pg_catalog.current_setting(marca, true) is not distinct from '1' then
+    return null;
   end if;
+
+  if tg_op = 'INSERT' then
+    cambio := exists (select 1 from nuevas);
+  elsif tg_op = 'DELETE' then
+    cambio := exists (select 1 from viejas);
+  else
+    cambio := exists (
+      select pg_catalog.to_jsonb(n) - sellos from nuevas n
+      except
+      select pg_catalog.to_jsonb(o) - sellos from viejas o
+    );
+  end if;
+
+  if not cambio then
+    return null;
+  end if;
+
+  perform pg_catalog.set_config(marca, '1', true);
+  begin
+    perform realtime.send(
+      pg_catalog.jsonb_build_object('tabla', tg_table_name, 'op', tg_op),
+      'cambio',
+      'os:cambios',
+      true
+    );
+  exception when others then
+    raise warning 'aviso de tiempo real no enviado (%): %', tg_table_name, sqlerrm;
+  end;
   return null;
 end;
 $fn$;
@@ -74,8 +115,9 @@ $fn$;
 revoke all on function public.avisar_cambio_de_tabla() from public, anon, authenticated;
 
 comment on function public.avisar_cambio_de_tabla() is
-  'Trigger FOR EACH STATEMENT: avisa por Realtime (tópico os:cambios) que una tabla cambió. Sin datos '
-  'de filas; un aviso por tabla por transacción; un fallo del aviso nunca hace fallar la escritura.';
+  'Triggers FOR EACH STATEMENT con tablas de transición: avisa por Realtime (tópico os:cambios) que una '
+  'tabla cambió de verdad (filas insertadas/borradas, o actualizadas con algo distinto fuera de los '
+  'sellos). Sin datos de filas; un aviso por tabla por transacción; un fallo nunca rompe la escritura.';
 
 -- LA LISTA ES EL CONTRATO CON EL NAVEGADOR. `src/shared/tiempo-real/tablas.ts` declara las mismas
 -- tablas y un test compara las dos listas: una pantalla no puede declarar que depende de una tabla
@@ -109,9 +151,20 @@ begin
       select 1 from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relname = t and c.relkind in ('r', 'p')
     ) then
+      -- La primera versión de este archivo (sin tablas de transición) usaba un solo trigger: si llegó a
+      -- aplicarse en alguna base, se retira.
       execute format('drop trigger if exists zz_avisar_cambio on public.%I', t);
+      execute format('drop trigger if exists zz_avisar_insert on public.%I', t);
+      execute format('drop trigger if exists zz_avisar_update on public.%I', t);
+      execute format('drop trigger if exists zz_avisar_delete on public.%I', t);
       execute format(
-        'create trigger zz_avisar_cambio after insert or update or delete on public.%I '
+        'create trigger zz_avisar_insert after insert on public.%I referencing new table as nuevas '
+        'for each statement execute function public.avisar_cambio_de_tabla()', t);
+      execute format(
+        'create trigger zz_avisar_update after update on public.%I referencing old table as viejas new table as nuevas '
+        'for each statement execute function public.avisar_cambio_de_tabla()', t);
+      execute format(
+        'create trigger zz_avisar_delete after delete on public.%I referencing old table as viejas '
         'for each statement execute function public.avisar_cambio_de_tabla()', t);
     else
       raise notice 'tiempo real: public.% no es una tabla en esta base, sin aviso', t;
