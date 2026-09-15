@@ -29,6 +29,13 @@ export const HOJA_COPIA = 'CF_GAS'
 export const HOJA_COPIA_COBRANZAS = 'CF_COB'
 /** Índice (0 = A) de la primera columna de Compras que se corre: la L, donde entra «Obra». */
 export const DESDE = 11
+/**
+ * Índice de la última columna que trae el IMPORTRANGE ANTES de correr (la Y de `A:Y`). Lo que
+ * `05_Dashboard_P&L` cita más a la derecha (`CF_GAS!$AC$15`, `$AD$15`: 24 celdas medidas el 15/09) no es
+ * Compras: es una celda PROPIA de la copia, fuera del derrame del import, y no se mueve con la inserción.
+ * Correrla a AD/AE apuntaría a otra celda de CF_GAS.
+ */
+export const HASTA = 24
 
 const indiceDe = (l) => [...String(l).toUpperCase()].reduce((n, c) => n * 26 + (c.charCodeAt(0) - 64), 0) - 1
 
@@ -49,7 +56,7 @@ const partir = (formula) => String(formula).split(/("(?:[^"]|"")*")/)
  * @param {string} formula tal como la devuelve el render FORMULA (en el locale del archivo: `;`)
  * @returns {{formula:string, cambio:boolean, columnas:{antes:string[], despues:string[]}, dudas:string[], avisos:string[], importa:string|null}}
  */
-export function correrFormula(formula, { hoja = HOJA_COPIA, desde = DESDE } = {}) {
+export function correrFormula(formula, { hoja = HOJA_COPIA, desde = DESDE, hasta = HASTA } = {}) {
   const partes = partir(formula)
   const codigo = partes.filter((_, i) => i % 2 === 0).join(' ')
   const dudas = []
@@ -64,12 +71,14 @@ export function correrFormula(formula, { hoja = HOJA_COPIA, desde = DESDE } = {}
   const salida = partes.map((p, i) => {
     if (i % 2 === 0) {
       return p.replace(reRefDeHoja(hoja), (m, pref, d1, l1, n1, d2, l2, n2) => {
-        antes.add(l1); despues.add(correrLetra(l1, desde))
-        if (l2) {
-          antes.add(l2); despues.add(correrLetra(l2, desde))
-          if (indiceDe(l1) < desde && indiceDe(l2) >= desde) avisos.push(`${m} cruza la columna insertada: se ensancha, como lo haría Google`)
+        const mover = (l) => (indiceDe(l) > hasta ? l : correrLetra(l, desde))
+        for (const l of [l1, l2].filter(Boolean)) {
+          antes.add(l); despues.add(mover(l))
+          if (indiceDe(l) > hasta) avisos.push(`${m}: ${l} está fuera de lo importado (hasta ${letra(hasta)}), es una celda propia de ${hoja}: no se corre`)
         }
-        return `${pref}${d1}${correrLetra(l1, desde)}${n1}${l2 ? `:${d2}${correrLetra(l2, desde)}${n2}` : ''}`
+        if (l2 && indiceDe(l1) <= hasta && indiceDe(l2) > hasta) dudas.push(`${m} empieza adentro de lo importado y termina afuera: revisarlo a mano`)
+        if (l2 && indiceDe(l1) < desde && indiceDe(l2) >= desde && indiceDe(l2) <= hasta) avisos.push(`${m} cruza la columna insertada: se ensancha, como lo haría Google`)
+        return `${pref}${d1}${mover(l1)}${n1}${l2 ? `:${d2}${mover(l2)}${n2}` : ''}`
       })
     }
     const t = RE_TEXTO_COMPRAS.exec(p)
@@ -109,13 +118,14 @@ export function correrFormula(formula, { hoja = HOJA_COPIA, desde = DESDE } = {}
  * @param {{rangoEsperado?:string}} [o] el rango que tiene que decir el IMPORTRANGE ANTES de correr
  */
 export function planDelPyl(formulas = [], { rangoEsperado = 'A:Y', desde = DESDE } = {}) {
+  const hasta = indiceDe(rangoEsperado.split(':').pop().replace(/\d+$/, ''))
   const cambios = []
   const dudas = []
   const imports = []
   let citanCob = 0
   for (const f of formulas) {
     if (reRefDeHoja(HOJA_COPIA_COBRANZAS).test(f.formula)) citanCob++
-    const r = correrFormula(f.formula, { desde })
+    const r = correrFormula(f.formula, { desde, hasta })
     if (r.importa) imports.push({ hoja: f.hoja, celda: f.celda, rango: r.importa })
     if (r.dudas.length) dudas.push({ ...f, dudas: r.dudas })
     if (r.cambio) cambios.push({ hoja: f.hoja, celda: f.celda, antes: f.formula, despues: r.formula, columnas: r.columnas, avisos: r.avisos })

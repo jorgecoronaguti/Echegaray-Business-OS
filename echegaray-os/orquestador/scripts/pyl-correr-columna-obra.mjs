@@ -68,6 +68,16 @@ export function requestsDelPlan(cambios = []) {
   })
 }
 
+/**
+ * ¿La columna donde el import va a derramar de más está vacía? NÚCLEO PURO. `A:Y` → `A:Z` ensancha el
+ * derrame de `IMPORTRANGE` una columna: si en la Z de `CF_GAS` hay algo escrito a mano, el import entero
+ * da `#REF!` y el P&L se queda sin gastos. Medido el 15/09: AC15 y AD15 tienen valores cargados a mano,
+ * así que la copia NO es sólo el derrame. Devuelve las celdas ocupadas.
+ */
+export function ocupadasEnColumna(valores = [], letraColumna) {
+  return valores.flatMap((f, i) => (f?.[0] !== undefined && f?.[0] !== '' ? [`${letraColumna}${i + 1}`] : []))
+}
+
 /** Lo planeado contra lo releído. NÚCLEO PURO. */
 export function diferenciasDeRelectura(cambios = [], releidas = []) {
   const vivo = new Map(releidas.map((f) => [clave(f.hoja, f.celda), f.formula]))
@@ -98,6 +108,11 @@ export async function correrPyl({ google, aplicar = false, guardar, log = consol
   plan.cambios = plan.cambios.map((c) => ({ ...c, sheetId: sheetIds.get(clave(c.hoja, c.celda)) }))
   mostrar(plan, log)
   log(`P&L: plan en ${guardar('pyl-plan', plan)}`)
+  for (const i of plan.imports) {
+    const nueva = letra(coordenadas(`${i.rango.split(':').pop().replace(/\d+$/, '')}1`).col + 1)
+    const ocupadas = ocupadasEnColumna(await google.readSheetValues(id, `'${i.hoja}'!${nueva}1:${nueva}`, { render: 'FORMULA' }), nueva)
+    if (ocupadas.length) plan.problemas.push(`${i.hoja}: el import va a derramar sobre ${nueva} y hay ${ocupadas.length} celda(s) escritas (${ocupadas.slice(0, 5).join(', ')}): daría #REF!`)
+  }
   if (plan.problemas.length) {
     log(`✖ P&L — no corro nada:\n  ${plan.problemas.join('\n  ')}`)
     return { ok: false, paso: 'plan', detalle: plan.problemas, plan }
@@ -131,7 +146,7 @@ async function main() {
   const { makeGoogleClient, WRITE_SCOPES, READONLY_SCOPES } = await import('../lib/google.mjs')
   const { loadConfig } = await import('../lib/config.mjs')
   const google = makeGoogleClient({ config: loadConfig(), scopes: aplicar ? WRITE_SCOPES : READONLY_SCOPES })
-  const r = await correrPyl({ google, aplicar, guardar: guardarEnRespaldos('pyl') })
+  const r = await correrPyl({ google, aplicar, guardar: guardarEnRespaldos('obra') })
   if (!r.ok) process.exitCode = 1
 }
 

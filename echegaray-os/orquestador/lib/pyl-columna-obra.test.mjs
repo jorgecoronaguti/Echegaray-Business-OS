@@ -36,7 +36,7 @@ test('el IMPORTRANGE: "Compras!A:Y" pasa a "Compras!A:Z"', () => {
 
 test('el nombre de pestaña entre comillas simples se conserva, en el texto y en la referencia', () => {
   assert.equal(correrFormula('=IMPORTRANGE("x";"\'Compras\'!A1:Y900")').formula, '=IMPORTRANGE("x";"\'Compras\'!A1:Z900")')
-  assert.equal(correrFormula("=SUM('CF_GAS'!$AD$2:$AD)").formula, "=SUM('CF_GAS'!$AE$2:$AE)")
+  assert.equal(correrFormula("=SUM('CF_GAS'!$X$2:$X)").formula, "=SUM('CF_GAS'!$Y$2:$Y)")
 })
 
 test('QUERY sobre el IMPORTRANGE: Col13 (M) → Col14; Col3 (C) no', () => {
@@ -92,4 +92,25 @@ test('plan: sin el IMPORTRANGE de Compras no se corre nada', () => {
 test('plan: una duda en cualquier celda es un problema que frena la escritura', () => {
   const p = planDelPyl([...FORMULAS, { hoja: 'X', celda: 'C3', formula: '=VLOOKUP(A2;CF_GAS!$A:$Y;13;FALSE)' }])
   assert.match(p.problemas.join(), /X!C3/)
+})
+
+test('CF_GAS!$AC$15 (fuera de A:Y) es una celda PROPIA de la copia: no se corre, se avisa', () => {
+  // Las 24 celdas reales `=CF_GAS!$AC$15/12` y `=CF_GAS!$AD$15/12` del dashboard (dry del 15/09).
+  const r = correrFormula('=CF_GAS!$AC$15/12')
+  assert.equal(r.formula, '=CF_GAS!$AC$15/12')
+  assert.equal(r.cambio, false)
+  assert.equal(r.avisos.length, 1)
+  assert.equal(correrFormula('=CF_GAS!$Y$15').formula, '=CF_GAS!$Z$15', 'la Y sí es Compras: pasa a Z')
+})
+
+test('un rango que empieza adentro de lo importado y termina afuera es una DUDA', () => {
+  assert.equal(correrFormula('=SUM(CF_GAS!$X$2:$AC$9)').dudas.length, 1)
+})
+
+test('plan: el límite sale del rango esperado del import, no de una constante escondida', () => {
+  const p = planDelPyl([
+    { hoja: 'CF_GAS', celda: 'A1', formula: '=IMPORTRANGE("x";"Compras!A:AB")' },
+    { hoja: 'D', celda: 'B2', formula: '=CF_GAS!$AA$3' },
+  ], { rangoEsperado: 'A:AB' })
+  assert.equal(p.cambios.find((c) => c.hoja === 'D').despues, '=CF_GAS!$AB$3')
 })
