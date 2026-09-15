@@ -6,6 +6,7 @@ import {
   ALIAS_JORNALES, columnasDelBloque, columnasSinRotuloEntre, controlDeCierre, esError, importe,
   lineasDelBloque, primeraFecha, quincenaDeFecha, quincenaEnCurso, resolverPersona,
 } from './liquidacion-jornales.mjs'
+import { emparejarPersona, indicePersonas } from './jornales-a-registros-hh.mjs'
 
 // La grilla mínima que reproduce el layout real de «Obreros 26»: rótulos en la fila de arriba de
 // las fechas (así está de marzo en adelante), y una fila de persona con las cuatro cifras.
@@ -117,14 +118,47 @@ test('el puente CUIL gana, la igualdad exacta resuelve, y el alias es una TABLA,
   assert.equal(ALIAS_JORNALES['Emanuel Alaniz'], 'ALANIZ EMANUEL ARIEL')
 })
 
-test('EL DEFECTO QUE SE ELIMINÓ: un nombre nuevo YA NO se resuelve solo por subconjunto de tokens', () => {
-  // Antes, «Ariel Alaniz» (⊂ ALANIZ EMANUEL ARIEL, candidato único) entraba a la liquidación sin
-  // que nadie lo hubiera mirado. Ahora entra sólo lo que está escrito en la tabla de alias: un
-  // nombre nuevo se INFORMA con su candidato, y su plata queda declarada afuera.
+test('sin el índice del importador de horas, un nombre nuevo no se resuelve por subconjunto de tokens', () => {
+  // La regla de subconjunto propia de esta función sigue sin decidir sola: sólo informa candidatos.
+  // Lo que resuelve un nombre nuevo desde el 15/09/2026 es `emparejarPersona` —el test siguiente—,
+  // el mismo que ya decidió a quién van las horas de esa fila.
   const r = resolverPersona('alaniz ariel', ctx)
   assert.equal(r.via, 'sin-persona')
   assert.equal(r.persona, null)
   assert.deepEqual(r.candidatos, ['ALANIZ EMANUEL ARIEL'])
+})
+
+// ═══ UNA FILA DE LA PLANILLA, UNA PERSONA, EN LOS DOS IMPORTADORES (15/09/2026) ═══
+// «Ruben Palacio» y «Gonzalez Valentin» tenían sus horas en PALACIOS RUBEN y GONZALES ABEL VALENTIN
+// (emparejarPersona, jornales-a-registros-hh) y su plata en `excluidas` como «no existen» ($2,42 M).
+// MUTACIÓN QUE PONE ESTO ROJO: quitar el nivel `emparejado` de resolverPersona.
+const padron = [
+  { id: 'r1', nombre_completo: 'PALACIOS RUBEN', es_prueba: false },
+  { id: 'v1', nombre_completo: 'GONZALES ABEL VALENTIN', es_prueba: false },
+  { id: 'c1', nombre_completo: 'GONZALEZ CARLOS SAMUEL', es_prueba: false },
+  { id: 'c2', nombre_completo: 'GONZALEZ CARLOS OTRO', es_prueba: false },
+  { id: 'cb', nombre_completo: 'CASTILLO BENITEZ JUAN CARLOS', es_prueba: false },
+  { id: 'e2e', nombre_completo: 'PABLO RAMOS', es_prueba: true },
+]
+const ctxHH = {
+  puente: new Map(), porCuil: new Map(), indice: indicePersonas(padron),
+  personas: padron.map((p) => {
+    const clave = p.nombre_completo.toLowerCase().split(' ').sort().join(' ')
+    return { id: p.id, nombre: p.nombre_completo, clave, tokens: clave.split(' ') }
+  }),
+}
+test('resolverPersona usa el MISMO emparejamiento que el importador de horas', () => {
+  for (const [nombre, clave, id] of [['Ruben Palacio', 'palacio ruben', 'r1'], ['Gonzalez Valentin', 'gonzalez valentin', 'v1']]) {
+    const r = resolverPersona(clave, { ...ctxHH, nombre })
+    assert.equal(r.via, 'emparejado', nombre)
+    assert.equal(r.persona.id, id)
+    assert.equal(r.persona.id, emparejarPersona(nombre, ctxHH.indice).persona.id, 'misma persona que sus horas')
+  }
+  // Lo que el importador de horas tampoco resuelve sigue afuera: ambiguo, inexistente o de prueba.
+  assert.equal(resolverPersona('carlos gonzalez', { ...ctxHH, nombre: 'Carlos Gonzalez' }).persona, null)
+  assert.equal(resolverPersona('carlos castillo', { ...ctxHH, nombre: 'Castillo Carlos' }).persona.id, 'cb')
+  assert.equal(resolverPersona('balmaceda jose luis', { ...ctxHH, nombre: 'Jose Luis Balmaceda' }).persona, null)
+  assert.equal(resolverPersona('pablo ramos', { ...ctxHH, personas: [], nombre: 'Pablo Ramos' }).persona, null, 'una persona de prueba no recibe plata')
 })
 
 test('con dos candidatos NO elige: «Castillo Carlos» no se vuelve un González', () => {
