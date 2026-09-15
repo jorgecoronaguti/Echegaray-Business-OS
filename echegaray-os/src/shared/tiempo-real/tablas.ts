@@ -8,8 +8,9 @@ export const TABLAS_CON_AVISO = [
   'analisis', 'analisis_linea', 'asistencia_dia', 'asistencia_marca',
   'certificado_cliente', 'certificados', 'cliente_acceso', 'cliente_actividad_portal',
   'cliente_contacto', 'cliente_documento', 'cliente_nota', 'clientes',
-  'cobranza', 'cobranza_cambio', 'cobranzas',
-  'compra_adjunto', 'compra_sheet', 'comprobante_entrada', 'comprobantes_arca',
+  // Sin `compra_sheet`, `cobranzas` ni `cobranza`: sus sincronizadores las reescriben enteras (ver la migración).
+  'cobranza_cambio',
+  'compra_adjunto', 'comprobante_entrada', 'comprobantes_arca',
   'convenio_escala', 'costo_hora_alicuota', 'cotizacion_partida', 'cotizaciones',
   'cuadrilla', 'cuadrilla_integrante', 'documentacion_legajo', 'documento_presentacion',
   'esquema_pago', 'ficha_cliente_cache', 'herramientas', 'liquidacion_linea', 'liquidacion_quincena', 'liquidacion_reapertura',

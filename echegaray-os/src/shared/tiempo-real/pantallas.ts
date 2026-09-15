@@ -35,14 +35,14 @@ const OBRA: Lista = [
 
 const CLIENTE: Lista = [
   'clientes', 'cliente_contacto', 'cliente_nota', 'cliente_documento', 'cliente_acceso', 'cliente_actividad_portal',
-  'cobranza', 'cobranzas', 'cobranza_cambio', 'certificado_cliente', 'certificados', 'esquema_pago', 'pago_informado',
+  'cobranza_cambio', 'certificado_cliente', 'certificados', 'esquema_pago', 'pago_informado',
   'obra_canonica',
   // LA FICHA SE SIRVE DE ESTA CACHÉ (refresco por pg_cron cada minuto, lo vencido a los 5 min). Avisa
   // cuando el cron cambia el json o se invalida; un refresco que deja el mismo json no avisa.
   'ficha_cliente_cache',
 ]
 
-const PROVEEDOR: Lista = ['proveedores', 'proveedor_documento', 'proveedor_alias', 'subcontrato', 'compra_sheet']
+const PROVEEDOR: Lista = ['proveedores', 'proveedor_documento', 'proveedor_alias', 'subcontrato']
 
 const COTIZACION: Lista = ['cotizaciones', 'cotizacion_partida', 'analisis', 'analisis_linea', 'recurso', 'recurso_precio']
 
@@ -55,13 +55,13 @@ export const TABLAS_DE = {
   legajo: unir(PERSONAS, HH_Y_ASISTENCIA, ['liquidacion_linea', 'liquidacion_quincena']),
   cuadrillas: unir(['cuadrilla', 'cuadrilla_integrante', 'personas'], HH_Y_ASISTENCIA),
   asistencia: unir(HH_Y_ASISTENCIA, ['personas']),
-  compras: unir(['compra_sheet', 'compra_adjunto', 'comprobante_entrada', 'comprobantes_arca'], PROVEEDOR),
+  compras: unir(['compra_adjunto', 'comprobante_entrada', 'comprobantes_arca'], PROVEEDOR),
   proveedores: unir(PROVEEDOR, ['subcontrato_documento', 'comprobantes_arca']),
-  obras: unir(OBRA, ['clientes', 'certificados', 'cobranza', 'cobranzas', 'subcontrato']),
+  obras: unir(OBRA, ['clientes', 'certificados', 'subcontrato']),
   gantt: ['obra_canonica', 'obra_actividad', 'obra_ejecucion', 'obra_restriccion'],
   fichaObra: unir(OBRA, [
     'subcontrato', 'subcontrato_alcance', 'subcontrato_aporte', 'subcontrato_documento', 'pedidos_materiales',
-    'herramientas', 'certificados', 'cobranza', 'cobranzas', 'cuadrilla', 'cuadrilla_integrante', 'personas',
+    'herramientas', 'certificados', 'cuadrilla', 'cuadrilla_integrante', 'personas',
     'cotizacion_partida',
   ]),
   clientes: CLIENTE,

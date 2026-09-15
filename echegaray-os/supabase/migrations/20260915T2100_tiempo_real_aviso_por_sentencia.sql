@@ -132,8 +132,12 @@ begin
     'analisis', 'analisis_linea', 'asistencia_dia', 'asistencia_marca',
     'certificado_cliente', 'certificados', 'cliente_acceso', 'cliente_actividad_portal',
     'cliente_contacto', 'cliente_documento', 'cliente_nota', 'clientes',
-    'cobranza', 'cobranza_cambio', 'cobranzas',
-    'compra_adjunto', 'compra_sheet', 'comprobante_entrada', 'comprobantes_arca',
+    -- SIN AVISO A PROPÓSITO: `compra_sheet` (sync-compras la borra entera cada 10 min), `cobranzas`
+    -- (sync-cobranzas borra y reinserta cada hora) y `cobranza` (la réplica del Flujo de Caja borra y
+    -- reinserta). Cambian filas de verdad en cada corrida aunque el contenido quede igual: avisarían
+    -- siempre. Lo que el usuario edita de cobranzas y compras sí avisa (`cobranza_cambio`, adjuntos).
+    'cobranza_cambio',
+    'compra_adjunto', 'comprobante_entrada', 'comprobantes_arca',
     'convenio_escala', 'costo_hora_alicuota', 'cotizacion_partida', 'cotizaciones',
     'cuadrilla', 'cuadrilla_integrante', 'documentacion_legajo', 'documento_presentacion',
     'esquema_pago', 'ficha_cliente_cache', 'herramientas', 'liquidacion_linea', 'liquidacion_quincena', 'liquidacion_reapertura',
