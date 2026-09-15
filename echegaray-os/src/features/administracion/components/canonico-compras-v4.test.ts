@@ -275,8 +275,15 @@ test('la lista ordena por CARGA y el chip de lo recién cargado está enchufado'
   // fuera de las 200 dibujadas. La regla es pura y se prueba en `comprasSheet.test.ts`; acá se clava
   // que la pantalla la USA — una regla perfecta que nadie llama deja la lista igual que antes.
   const p = codigoPagina()
-  assert.match(p, /clavesRecienCargadas\(todas\)/, 'el corte de lo recién cargado dejó de calcularse')
+  // EL RELOJ ENTRA DESDE LA PÁGINA (15/09/2026). El criterio pasó a mirar la FECHA DE CARGA —ver
+  // `clavesRecienCargadas`— y eso necesita saber qué hora es. Si la función leyera `new Date()`
+  // adentro dejaría de ser pura y su test se pondría rojo solo cuando pasaran 14 días; la pantalla
+  // es el único lugar del circuito con derecho a consultar el reloj, y acá se clava que lo pasa.
+  assert.match(p, /clavesRecienCargadas\(todas, RECIEN_CARGADAS, new Date\(\)\)/,
+    'el corte de lo recién cargado dejó de calcularse, o dejó de recibir el reloj')
   assert.match(p, /pasa\(f, filtro, recien\)/, 'el filtro dejó de recibir el conjunto: el chip mostraría todo')
+  assert.match(p, /conteosDe\(todas, recien\)/,
+    'el número del chip volvió a calcularse aparte: diría un número y abriría otra lista')
   const servicio = sinComentarios(readFileSync(join(DIR, '../services/comprasSheetService.ts'), 'utf8'))
   assert.match(servicio, /ordenarPorCarga\(leidas\)/, 'la lista volvió a salir en el orden de la consulta')
   assert.ok(servicio.indexOf(".order('fila'") < servicio.indexOf(".order('fecha'"),
