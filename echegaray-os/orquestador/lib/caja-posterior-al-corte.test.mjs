@@ -48,15 +48,24 @@ test('colIndex traduce letras de Sheet a 0-based: la "Fecha de caja" es la AD (2
   assert.equal(colIndex(CMP.total), 14)      // O = Total
 })
 
-test('el escritor NO vuelve a hardcodear la columna: la toma de la constante compartida', async () => {
-  // Si mañana alguien pone `const COL_FECHA = 29` de nuevo en el script, el contrato se puede
-  // desincronizar en silencio. El generador tiene que derivar la columna de COL_FECHA_CAJA.
+// El escritor dejó de tomar la letra de `COL_FECHA_CAJA` el 14/09/2026 (5ece93fe): con «Obra» en L,
+// AD pasa a ser la 2.ª «Rubro de caja» y la AC la fósil. Ahora resuelve contra la fila de rótulos viva
+// y pasa por el portón. Lo que este test protege no cambió —que la columna que se ESCRIBE sea la que
+// CAJA LEE—; cambió cómo se prueba: por comportamiento, en los dos layouts, y no mirando el texto.
+test('el escritor NO vuelve a hardcodear la columna: escribe la misma «Fecha de caja» que CAJA lee, antes y después de «Obra»', async () => {
+  const { requestsDeRubroCaja } = await import('../scripts/rubro-caja-sheet.mjs')
+  const { COMPRAS_2508, COMPRAS_CON_OBRA } = await import('./encabezados-referencia.mjs')
+  const { MAPAS_CON_OBRA } = await import('./columnas-caja.fixture.mjs')
+  const hoy = requestsDeRubroCaja(COMPRAS_2508, { sheetId: 1, filas: 10 })
+  const conObra = requestsDeRubroCaja(COMPRAS_CON_OBRA, { sheetId: 1, filas: 10 })
+  assert.equal(hoy.colFecha.letra, CMP.fecha)
+  assert.equal(conObra.colFecha.letra, MAPAS_CON_OBRA.cmp.fecha)
+  assert.notEqual(conObra.colFecha.letra, hoy.colFecha.letra, 'con «Obra» insertada la fecha de caja se corre una letra')
   const { readFile } = await import('node:fs/promises')
-  const src = await readFile('orquestador/scripts/rubro-caja-sheet.mjs', 'utf8')
-  assert.match(src, /colIndex\(COL_FECHA_CAJA\)/)
-  assert.match(src, /colIndex\(COL_RUBRO_CAJA\)/)
-  assert.doesNotMatch(src, /const COL_FECHA = \d/)
-  assert.doesNotMatch(src, /const COL_RUBRO = \d/)
+  const { sinComentarios } = await import('./columnas-fijas.mjs')
+  const src = sinComentarios(await readFile('orquestador/scripts/rubro-caja-sheet.mjs', 'utf8'))
+  assert.doesNotMatch(src, /const COL_(FECHA|RUBRO) = (\d|')/)
+  assert.doesNotMatch(src, /COL_(FECHA|RUBRO)_CAJA/)
 })
 
 test('la línea neta ahora también resta las compras pagadas por banco', () => {

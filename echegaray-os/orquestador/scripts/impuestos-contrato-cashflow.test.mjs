@@ -38,6 +38,7 @@ import { deImpuestosCalendario } from '../lib/libro-extractores.mjs'
 import { CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
 import { ROTULO as ROTULO_IMPUESTO_CHEQUE } from '../lib/impuesto-cheque.mjs'
 import { contratoDeRotulos } from '../lib/iva-libre-disponibilidad.mjs'
+import { COB_HOY } from '../lib/columnas-caja.fixture.mjs'
 
 /** Los cuatro totales del cuadro, medidos el 09/09/2026. */
 const IMPUESTOS = { real: 1_023_684, proyectado: 11_800_936 }
@@ -46,6 +47,7 @@ const FINANCIERO = { real: 15_781_442, proyectado: 3_848_432 }
 const C = { total: 'O', concepto: 'L', fecha: 'AD', rubro: 'AB', fechaPrev: 'Q', detalle: 'K' }
 const armar = () => grilla({
   anio: 2026,
+  cob: COB_HOY,
   C,
   hoy: '2026-09-09',
   iibb: [1, 2, 3, 4, 5, 6].map((m) => ({ periodo: `2026-0${m}` })),
