@@ -82,7 +82,7 @@ export function EditorObraDeCompra({
       {error && <p style={{ fontSize: 11.5, color: '#B42318', paddingTop: 6 }} data-testid="obra-compra-error">{error}</p>}
       {hecho && (
         <p style={{ fontSize: 11.5, color: C.apagado, paddingTop: 6 }} data-testid="obra-compra-guardada">
-          Quedó guardada en el OS. La celda Obra del Sheet queda en cola: todavía no hay un proceso que la escriba.
+          Quedó guardada en el OS y en cola para el Sheet: el worker relee la fila y escribe la celda Obra sólo si sigue siendo la misma compra.
         </p>
       )}
     </div>

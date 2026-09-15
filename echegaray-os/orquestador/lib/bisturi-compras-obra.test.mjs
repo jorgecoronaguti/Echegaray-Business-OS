@@ -22,6 +22,12 @@ const CAMBIO = {
   id: 'k-1', fila: 57, clave: CLAVE, sheet_id: 53, valor_anterior: null,
   valor_nuevo: 'OB-0021 · ME - PLAYÓN DE AZUFRE', pedido_por: 'u-1', intentos: 1,
 }
+// El catálogo que el worker lee de `obra_canonica`: el valor a escribir tiene que ser una opción exacta.
+const OBRAS = [
+  { id: 'playon', codigo: 'OB-0021', nombre: 'ME - PLAYÓN DE AZUFRE', cliente_texto: 'MESSINA', fusionada_en: null },
+  { id: 'galpon', codigo: 'OB-0007', nombre: 'LE - GALPÓN 9', cliente_texto: 'LA ESTRELLA', fusionada_en: null },
+  { id: 'comedor', codigo: 'OB-0006', nombre: 'LE - COMEDOR', cliente_texto: 'LA ESTRELLA', fusionada_en: null },
+]
 const conObra = (obra) => filaDe(COMPRAS_CON_OBRA, { ...COMPRA, Obra: obra })
 
 test('la clave de la fixture existe: sin ella los rechazos por huella serían triviales', () => {
@@ -29,7 +35,7 @@ test('la clave de la fixture existe: sin ella los rechazos por huella serían tr
 })
 
 test('encuentra la columna por su rótulo: tras la inserción escribe L de ESA fila y nada más', () => {
-  const p = planificarObra({ cambio: CAMBIO, encabezado: COMPRAS_CON_OBRA, fila: conObra('') })
+  const p = planificarObra({ obras: OBRAS, cambio: CAMBIO, encabezado: COMPRAS_CON_OBRA, fila: conObra('') })
   assert.equal(p.accion, 'escribir')
   assert.equal(p.celda, 'Compras!L57')
   assert.equal(p.valor, 'OB-0021 · ME - PLAYÓN DE AZUFRE')
@@ -37,13 +43,13 @@ test('encuentra la columna por su rótulo: tras la inserción escribe L de ESA f
 
 test('la letra sale del rótulo, no de una constante: con «Obra» en otro lugar escribe ahí', () => {
   const movido = [...COMPRAS_2508, 'Obra']              // al final: AO, como en el diseño viejo
-  const p = planificarObra({ cambio: CAMBIO, encabezado: movido, fila: filaDe(movido, COMPRA) })
+  const p = planificarObra({ obras: OBRAS, cambio: CAMBIO, encabezado: movido, fila: filaDe(movido, COMPRA) })
   assert.equal(p.accion, 'escribir')
   assert.equal(p.celda, 'Compras!AO57')
 })
 
 test('sin la columna «Obra» NO escribe: difiere con motivo y deja la fila pendiente', () => {
-  const p = planificarObra({ cambio: CAMBIO, encabezado: COMPRAS_2508, fila: filaDe(COMPRAS_2508, COMPRA) })
+  const p = planificarObra({ obras: OBRAS, cambio: CAMBIO, encabezado: COMPRAS_2508, fila: filaDe(COMPRAS_2508, COMPRA) })
   assert.equal(p.accion, 'diferir')
   assert.equal(p.motivo, 'sin_columna_obra')
   assert.equal(p.celda, undefined)
@@ -51,7 +57,7 @@ test('sin la columna «Obra» NO escribe: difiere con motivo y deja la fila pend
 
 test('con «Obra» repetida aborta: difiere sin elegir una a ciegas', () => {
   const doble = [...COMPRAS_CON_OBRA, 'Obra']
-  const p = planificarObra({ cambio: CAMBIO, encabezado: doble, fila: filaDe(COMPRAS_CON_OBRA, COMPRA) })
+  const p = planificarObra({ obras: OBRAS, cambio: CAMBIO, encabezado: doble, fila: filaDe(COMPRAS_CON_OBRA, COMPRA) })
   assert.equal(p.accion, 'diferir')
   assert.equal(p.motivo, 'layout_ambiguo')
   assert.match(p.detalle, /«Obra» aparece 2 veces/)
@@ -59,32 +65,32 @@ test('con «Obra» repetida aborta: difiere sin elegir una a ciegas', () => {
 
 test('si la fila ya es otra compra (alguien insertó arriba), rechaza aunque el ID coincida', () => {
   const otra = filaDe(COMPRAS_CON_OBRA, { ...COMPRA, 'N° Comprobante': '0003-00099999', Obra: '' })
-  const p = planificarObra({ cambio: CAMBIO, encabezado: COMPRAS_CON_OBRA, fila: otra })
+  const p = planificarObra({ obras: OBRAS, cambio: CAMBIO, encabezado: COMPRAS_CON_OBRA, fila: otra })
   assert.equal(p.accion, 'rechazar')
   assert.equal(p.motivo, 'huella_distinta')
 })
 
 test('si el ID no coincide también rechaza', () => {
-  const p = planificarObra({ cambio: { ...CAMBIO, sheet_id: 54 }, encabezado: COMPRAS_CON_OBRA, fila: conObra('') })
+  const p = planificarObra({ obras: OBRAS, cambio: { ...CAMBIO, sheet_id: 54 }, encabezado: COMPRAS_CON_OBRA, fila: conObra('') })
   assert.equal(p.accion, 'rechazar')
   assert.equal(p.motivo, 'huella_distinta')
 })
 
 test('sin clave de comprobante no hay identidad: rechaza antes de mirar la celda', () => {
-  const p = planificarObra({ cambio: { ...CAMBIO, clave: null }, encabezado: COMPRAS_CON_OBRA, fila: conObra('') })
+  const p = planificarObra({ obras: OBRAS, cambio: { ...CAMBIO, clave: null }, encabezado: COMPRAS_CON_OBRA, fila: conObra('') })
   assert.equal(p.accion, 'rechazar')
   assert.equal(p.motivo, 'sin_huella')
 })
 
 test('si la celda cambió desde que la pantalla la miró (`esperado` distinto), NO la pisa', () => {
-  const p = planificarObra({ cambio: CAMBIO, encabezado: COMPRAS_CON_OBRA, fila: conObra('ES-TAL · Estructura – Taller') })
+  const p = planificarObra({ obras: OBRAS, cambio: CAMBIO, encabezado: COMPRAS_CON_OBRA, fila: conObra('ES-TAL · Estructura – Taller') })
   assert.equal(p.accion, 'rechazar')
   assert.equal(p.motivo, 'celda_cambio')
   assert.match(p.detalle, /ES-TAL/)
 })
 
 test('cambiar una obra por otra pasa si la celda dice lo que la pantalla vio', () => {
-  const p = planificarObra({
+  const p = planificarObra({ obras: OBRAS,
     cambio: { ...CAMBIO, valor_anterior: 'ES-ADM · Estructura – Administración' },
     encabezado: COMPRAS_CON_OBRA, fila: conObra('  ES-ADM · Estructura – Administración '),
   })
@@ -92,20 +98,20 @@ test('cambiar una obra por otra pasa si la celda dice lo que la pantalla vio', (
 })
 
 test('idempotente: si la celda ya dice lo pedido, no vuelve a escribir', () => {
-  const p = planificarObra({ cambio: CAMBIO, encabezado: COMPRAS_CON_OBRA, fila: conObra('OB-0021 · ME - PLAYÓN DE AZUFRE') })
+  const p = planificarObra({ obras: OBRAS, cambio: CAMBIO, encabezado: COMPRAS_CON_OBRA, fila: conObra('OB-0021 · ME - PLAYÓN DE AZUFRE') })
   assert.equal(p.accion, 'ya_aplicado')
 })
 
 test('un valor fuera del desplegable se rechaza sin leer nada más', () => {
-  const p = planificarObra({ cambio: { ...CAMBIO, valor_nuevo: 'la de Arcor' }, encabezado: COMPRAS_CON_OBRA, fila: conObra('') })
+  const p = planificarObra({ obras: OBRAS, cambio: { ...CAMBIO, valor_nuevo: 'la de Arcor' }, encabezado: COMPRAS_CON_OBRA, fila: conObra('') })
   assert.equal(p.accion, 'rechazar')
   assert.equal(p.motivo, 'valor_invalido')
 })
 
 test('«Sin obra – cliente» y vaciar la celda son valores legítimos', () => {
-  const sin = planificarObra({ cambio: { ...CAMBIO, valor_nuevo: 'Sin obra – LA ESTRELLA' }, encabezado: COMPRAS_CON_OBRA, fila: conObra('') })
+  const sin = planificarObra({ obras: OBRAS, cambio: { ...CAMBIO, valor_nuevo: 'Sin obra – LA ESTRELLA' }, encabezado: COMPRAS_CON_OBRA, fila: conObra('') })
   assert.equal(sin.accion, 'escribir')
-  const vaciar = planificarObra({
+  const vaciar = planificarObra({ obras: OBRAS,
     cambio: { ...CAMBIO, valor_anterior: 'OB-0007 · X', valor_nuevo: '' }, encabezado: COMPRAS_CON_OBRA, fila: conObra('OB-0007 · X'),
   })
   assert.equal(vaciar.accion, 'escribir')
@@ -113,13 +119,30 @@ test('«Sin obra – cliente» y vaciar la celda son valores legítimos', () => 
 })
 
 test('una fila de encabezado o sin ID no es un renglón de datos', () => {
-  assert.equal(planificarObra({ cambio: { ...CAMBIO, fila: 3 }, encabezado: COMPRAS_CON_OBRA, fila: conObra('') }).motivo, 'fila_invalida')
+  assert.equal(planificarObra({ obras: OBRAS, cambio: { ...CAMBIO, fila: 3 }, encabezado: COMPRAS_CON_OBRA, fila: conObra('') }).motivo, 'fila_invalida')
   const sinId = filaDe(COMPRAS_CON_OBRA, { ...COMPRA, ID: '' })
-  assert.equal(planificarObra({ cambio: CAMBIO, encabezado: COMPRAS_CON_OBRA, fila: sinId }).motivo, 'fila_vacia')
+  assert.equal(planificarObra({ obras: OBRAS, cambio: CAMBIO, encabezado: COMPRAS_CON_OBRA, fila: sinId }).motivo, 'fila_vacia')
 })
 
 test('la relectura compara texto normalizado: igual confirma, distinto no', () => {
   assert.equal(relecturaConfirma(' OB-0021 · X ', 'OB-0021 · X'), true)
   assert.equal(relecturaConfirma('ES-ADM · Estructura – Administración', 'OB-0021 · X'), false)
   assert.equal(relecturaConfirma(null, ''), true)
+})
+
+test('un valor con FORMA de obra que no es una opción exacta del catálogo se rechaza y no se escribe', () => {
+  for (const v of ['OB-0021 · X', 'OB-0002 · X', 'Sin obra – FULANO INVENTADO', 'ES-TAL · Taller']) {
+    const p = planificarObra({ obras: OBRAS, cambio: { ...CAMBIO, valor_nuevo: v }, encabezado: COMPRAS_CON_OBRA, fila: conObra('') })
+    assert.equal(p.accion, 'rechazar', v)
+    assert.equal(p.motivo, 'valor_invalido', v)
+    assert.equal(p.celda, undefined)
+  }
+})
+
+test('sin catálogo de obras NO escribe: difiere (no rechaza: la lectura que faltó se reintenta)', () => {
+  for (const obras of [undefined, []]) {
+    const p = planificarObra({ obras, cambio: CAMBIO, encabezado: COMPRAS_CON_OBRA, fila: conObra('') })
+    assert.equal(p.accion, 'diferir')
+    assert.equal(p.motivo, 'sin_catalogo')
+  }
 })

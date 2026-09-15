@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   DESTINO, catalogoDeDestinos, leerCeldaObra, opcionesDeObra, resolverCeldaObra, rotuloDeObra,
-  rotuloSinObra, unidadIncoherente,
+  rotuloSinObra, unidadIncoherente, validarValorDeObra,
 } from './obra-destino.mjs'
 
 // Recorte del catálogo vivo del 14/09/2026 (códigos reales).
@@ -140,4 +140,30 @@ test('Cobranzas: la columna Obra se encuentra por encabezado (AB), no por posici
   const conObra = [...enc]; conObra[27] = ' Obra '
   assert.equal(indiceColumnaObra(conObra, 'Cobranzas'), 27)
   assert.throws(() => indiceColumnaObra([...conObra, 'obra'], 'Cobranzas'), /2 veces/)
+})
+
+test('lo que se ESCRIBE tiene que ser letra por letra una opción del desplegable de la app', () => {
+  // Las que la app ofrece hoy con este catálogo (obraDeCompra.ts · opcionesDeObra): pasan.
+  for (const ok of ['', '  ', 'OB-0021 · ME - PLAYÓN DE AZUFRE', 'ES-ADM · Estructura – Administración',
+    'ES-TAL · Estructura – Taller', 'Sin obra – MESSINA', 'Sin obra – La Estrella']) {
+    assert.equal(validarValorDeObra(ok, OBRAS), null, ok)
+  }
+  // El bloqueante del auditor: el código existe pero el texto no es su rótulo, o el cliente no existe.
+  for (const [mal, motivo] of [
+    ['OB-0021 · X', /no es el rótulo de OB-0021/],
+    ['OB-0021', /no es el rótulo/],
+    ['ob-0021 · ME - PLAYÓN DE AZUFRE', /no es el rótulo/],
+    ['OB-0002 · X', /no es una obra viva/],
+    ['OB-0013 · ME - BSA PLANTA', /no es una obra viva/],          // fusionada: la app no la ofrece
+    ['ZZ-0001 · [PRUEBA E2E] Obra de pruebas', /no es una obra viva/],
+    ['ES-ADM · Otra cosa', /no es «ES-ADM · Estructura – Administración»/],
+    ['Sin obra – FULANO INVENTADO', /no es un cliente/],
+    ['Sin obra – Quattropani - Melisa García SAS', /no es un cliente con más de una obra/],
+    ['la de Arcor', /no es una opción/],
+  ]) assert.match(validarValorDeObra(mal, OBRAS) ?? 'PASÓ', motivo, mal)
+})
+
+test('sin catálogo no hay obra válida: una lista vacía rechaza toda obra y sólo deja vaciar o estructura', () => {
+  assert.match(validarValorDeObra('OB-0021 · ME - PLAYÓN DE AZUFRE', []), /no es una obra viva/)
+  assert.equal(validarValorDeObra('', []), null)
 })

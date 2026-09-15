@@ -50,6 +50,40 @@ export function rotuloDeObra({ nombre, codigo } = {}) {
 
 export const rotuloSinObra = (cliente) => `Sin obra – ${cliente}`
 
+/**
+ * ¿ESTE TEXTO ES, LETRA POR LETRA, UNA OPCIÓN DEL DESPLEGABLE DE LA APP? `null` si sí; si no, el motivo.
+ *
+ * Para lo que se va a ESCRIBIR (la cola de la app), no para lo que se LEE del Sheet: `resolverCeldaObra`
+ * tolera un nombre viejo porque la celda ya la escribió el dueño; acá tolerar sería dejar pasar
+ * «OB-0002 · X» o «Sin obra – FULANO» a una celda que después el sync lee como imputación válida.
+ * El universo es el de `opcionesDeObra` de `src/features/administracion/services/obraDeCompra.ts`
+ * (obras vivas con código OB-, fijos, «Sin obra – cliente» con más de una obra viva) y su espejo SQL es
+ * `public.obra_celda_resolver` (migración 20260915T0700). Vacío es legítimo: es vaciar la celda.
+ * @param {string} valor @param {Array<{id:string,codigo:string|null,nombre:string|null,cliente_texto:string|null,fusionada_en:string|null}>} obras
+ */
+export function validarValorDeObra(valor, obras = []) {
+  const t = String(valor ?? '').trim()
+  const leida = leerCeldaObra(t)
+  if (leida.tipo === 'vacia') return null
+  const vivas = obras.filter((o) => !o.fusionada_en)
+  if (leida.tipo === 'codigo') {
+    const o = vivas.find((x) => /^OB-/i.test(String(x.codigo ?? '')) && String(x.codigo).trim().toUpperCase() === leida.codigo)
+    if (!o) return `${leida.codigo} no es una obra viva del desplegable`
+    const rotulo = rotuloDeObra(o)
+    return t === rotulo ? null : `«${t.slice(0, 60)}» no es el rótulo de ${leida.codigo}: el desplegable dice «${rotulo}»`
+  }
+  if (leida.tipo === 'fijo') {
+    const f = FIJOS.find((x) => x.codigo === leida.codigo)
+    const rotulo = rotuloDeObra({ codigo: f.codigo, nombre: f.nombre })
+    return t === rotulo ? null : `«${t.slice(0, 60)}» no es «${rotulo}»`
+  }
+  if (leida.tipo === 'sin_obra') {
+    const cuantas = vivas.filter((o) => rotuloSinObra(String(o.cliente_texto ?? '').trim()) === t).length
+    return cuantas > 1 ? null : `«${t.slice(0, 60)}» no es un cliente con más de una obra viva`
+  }
+  return `«${t.slice(0, 60)}» no es una opción del desplegable de Obra`
+}
+
 /** Lo que la celda DICE, sin catálogo. */
 export function leerCeldaObra(valor) {
   const t = String(valor ?? '').trim()

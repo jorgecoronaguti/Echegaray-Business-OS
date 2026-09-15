@@ -37,13 +37,15 @@ function dobleGoogle({ encabezado = COMPRAS_CON_OBRA, obra = '', respuesta = {},
   }
 }
 
-function doblePort({ perfil = { nombre: 'Rodrigo' }, cambios = [] } = {}) {
+const OBRAS = [{ id: 'playon', codigo: 'OB-0021', nombre: 'ME - PLAYÓN DE AZUFRE', cliente_texto: 'MESSINA', fusionada_en: null }]
+function doblePort({ perfil = { nombre: 'Rodrigo' }, cambios = [], obras = OBRAS } = {}) {
   const updates = []; const cola = [...cambios]; const sqls = []
   return {
     updates, sqls,
     async query(sql, params) {
       sqls.push(sql)
       if (/from public\.perfiles/.test(sql)) return { rows: perfil ? [perfil] : [] }
+      if (/from public\.obra_canonica/.test(sql)) return { rows: obras }
       if (/set estado = 'procesando'/.test(sql)) { const c = cola.shift(); return { rows: c ? [c] : [] } }
       if (/^\s*select \* from public\.compra_obra_cambio/.test(sql)) return { rows: cola }
       if (/set estado/.test(sql)) { updates.push({ sql, params }); return { rows: [] } }
@@ -189,4 +191,20 @@ test('tomarCambio marca procesando en el MISMO update, con skip locked', async (
   await tomarCambio({ async query(s) { sql = s; return { rows: [CAMBIO] } } })
   assert.match(sql, /for update skip locked/i)
   assert.match(sql, /set estado = 'procesando'/)
+})
+
+test('el valor se valida contra obra_canonica ANTES de escribir: «OB-0021 · X» se rechaza sin tocar el Sheet', async () => {
+  const google = dobleGoogle(); const port = doblePort()
+  const r = await aplicarCambio({ port, google, fileId: 'F', cambio: { ...CAMBIO, valor_nuevo: 'OB-0021 · X' }, encabezado: COMPRAS_CON_OBRA })
+  assert.equal(r, 'rechazado')
+  assert.equal(google.escrituras.length, 0)
+  assert.match(ultimo(port).params[2], /valor_invalido: .*no es el rótulo de OB-0021/)
+  assert.ok(port.sqls.some((q) => /from public\.obra_canonica/.test(q)), 'el catálogo sale de la base')
+})
+
+test('sin obras en la base no escribe: difiere', async () => {
+  const google = dobleGoogle(); const port = doblePort({ obras: [] })
+  const r = await aplicarCambio({ port, google, fileId: 'F', cambio: CAMBIO, encabezado: COMPRAS_CON_OBRA })
+  assert.equal(r, 'diferido')
+  assert.equal(google.escrituras.length, 0)
 })

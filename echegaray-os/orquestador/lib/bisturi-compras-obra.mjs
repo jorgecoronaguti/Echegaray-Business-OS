@@ -11,10 +11,11 @@
 //   ya_aplicado  la celda YA dice lo pedido. Es el reintento de una escritura que aterrizó y cuyo cierre
 //                se perdió (el worker murió entre escribir y marcar): se cierra sin volver a escribir.
 //   rechazar     TERMINAL. La fila es otra compra, la celda cambió desde que se miró, o el valor no es
-//                del desplegable. Ninguna de las tres se arregla sola en el intento siguiente.
+//                LETRA POR LETRA una opción del desplegable (contra `obra_canonica` leída de la base:
+//                «OB-0002 · X» tiene forma de obra y no es ninguna). Ninguna se arregla sola.
 //   diferir      el mundo todavía no permite escribir: la columna «Obra» no existe (la inserción no se
-//                hizo) o el layout no se puede resolver sin adivinar (rótulo repetido o faltante). Lo
-//                arregla una persona en el Sheet; el cambio espera en `pendiente` con el motivo.
+//                hizo), el layout no se puede resolver sin adivinar (rótulo repetido o faltante), o no
+//                llegó el catálogo de obras. El cambio espera en `pendiente` con el motivo.
 //
 // ═══ POR QUÉ LA HUELLA ES LA CLAVE DEL COMPROBANTE Y NO EL ID ═══
 //
@@ -26,7 +27,7 @@
 
 import { letra } from './compras-columnas.mjs'
 import { PRIMERA_FILA, claveDeCompra, contratoDeColumnas, filaACompra } from './compras-fila.mjs'
-import { leerCeldaObra } from './obra-destino.mjs'
+import { validarValorDeObra } from './obra-destino.mjs'
 
 /** Lo que la celda dice, para comparar. Vacía y de espacios son lo mismo: no hay obra. */
 export const normalizarCelda = (v) => String(v ?? '').trim()
@@ -77,17 +78,21 @@ function verificarHuella(compra, cambio) {
  * después que la fila sea la misma compra, y recién ahí qué dice la celda. Mirar la celda de una fila
  * que no es la misma compra respondería una pregunta sobre otra plata.
  *
- * @param {{cambio:object, encabezado:any[], fila:any[]}} p `fila` leída con UNFORMATTED_VALUE, como el sync
+ * @param {{cambio:object, encabezado:any[], fila:any[], obras:object[]}} p `fila` leída con UNFORMATTED_VALUE,
+ *   como el sync · `obras` = filas de `obra_canonica` (id, codigo, nombre, cliente_texto, fusionada_en)
  */
-export function planificarObra({ cambio, encabezado, fila } = {}) {
+export function planificarObra({ cambio, encabezado, fila, obras } = {}) {
   const n = Number(cambio?.fila)
   if (!Number.isInteger(n) || n < PRIMERA_FILA) {
     return rechazar('fila_invalida', `la fila ${cambio?.fila} no es un renglón de datos (empiezan en la ${PRIMERA_FILA})`)
   }
-  const valor = normalizarCelda(cambio?.valor_nuevo)
-  if (leerCeldaObra(valor).tipo === 'invalida') {
-    return rechazar('valor_invalido', `«${valor.slice(0, 60)}» no es una opción del desplegable de Obra`)
+  // Sin catálogo no se sabe qué es válido, y rechazar sería TERMINAL por una lectura que faltó.
+  if (!Array.isArray(obras) || !obras.length) {
+    return diferir('sin_catalogo', 'no hay obras leídas de la base: no puedo validar el valor contra el desplegable')
   }
+  const valor = normalizarCelda(cambio?.valor_nuevo)
+  const invalido = validarValorDeObra(valor, obras)
+  if (invalido) return rechazar('valor_invalido', invalido)
 
   const { idx, decision } = resolverLayout(encabezado)
   if (decision) return decision

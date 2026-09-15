@@ -21,8 +21,15 @@
 --   5. `compra_obra_cambio`: la cola por la que la app (y la respuesta del chat) escribe la columna Obra, por encabezado (Compras L / Cobranzas H) en el Sheet.
 --      Hoy la app NO escribe Compras: el camino es el mismo que ya usa Cobranzas (`cobranza_cambio` →
 --      worker con `confirmacion` de quien pidió → relectura).
---   6. `compra_obra_asignar(fila, valor, esperado)`: la ÚNICA puerta de escritura de la app. Valida el
---      rol, que la celda no haya cambiado desde que se miró (`esperado`), guarda y encola.
+--   6. `obra_celda_resolver(valor)`: el texto contra el catálogo, LETRA POR LETRA. «OB-0002 · X» tiene
+--      forma de obra y no es ninguna: si pasara, el sync lo leería después como imputación válida.
+--      Mismo universo que el desplegable de la app (`obraDeCompra.ts · opcionesDeObra`) y que el worker
+--      (`lib/obra-destino.mjs · validarValorDeObra`): obra viva con código OB- y su rótulo
+--      «código · nombre», ES-ADM/ES-TAL con su rótulo, «Sin obra – cliente» de un cliente con más de
+--      una obra viva.
+--   7. `compra_obra_asignar(fila, valor, esperado)`: la ÚNICA puerta de escritura de la app. Valida el
+--      rol, bloquea la fila (`for update`: dos pantallas no validan contra la misma `esperado`), que la
+--      celda no haya cambiado desde que se miró, el texto contra el catálogo, guarda y encola.
 --
 -- IMP/FIN no existen como destino: el dueño ordenó que impuestos, cargas y financieros salgan de
 -- Compras a sus pestañas (14/09/2026).
@@ -70,7 +77,6 @@ alter table public.costos_obra add constraint costos_obra_obra_con_destino_obra
 grant select (destino, obra_id) on public.costos_obra to authenticated;
 
 -- ─── 3 · cobranzas ───────────────────────────────────────────────────────────────────────────────
--- Sin grant a authenticated: la tabla sólo concede columnas puntuales y ninguna cara lee esto todavía.
 alter table public.cobranzas
   add column if not exists destino text,
   add column if not exists obra_id text references public.obra_canonica (id) on delete set null,
@@ -81,6 +87,9 @@ alter table public.cobranzas add constraint cobranzas_destino_chk
 alter table public.cobranzas drop constraint if exists cobranzas_obra_con_destino_obra;
 alter table public.cobranzas add constraint cobranzas_obra_con_destino_obra
   check (obra_id is null or destino = 'obra');
+-- La tabla concede SELECT por columna: una columna nueva nace SIN permiso y la web la leería como error
+-- de permisos, no como vacía. Igual que compra_sheet y costos_obra. Las policies no se tocan.
+grant select (destino, obra_id, obra_celda) on public.cobranzas to authenticated;
 
 -- ─── 4 · compra_obra_asignada: las vías de la columna Obra ──────────────────────────────────────
 alter table public.compra_obra_asignada drop constraint if exists compra_obra_asignada_via_check;
@@ -127,7 +136,62 @@ create policy compra_obra_cambio_select on public.compra_obra_cambio for select
 grant select on public.compra_obra_cambio to authenticated;
 grant select, insert, update, delete on public.compra_obra_cambio to service_role;
 
--- ─── 6 · la puerta de la app ────────────────────────────────────────────────────────────────────
+-- ─── 6 · el texto contra el catálogo ──────────────────────────────────────────────────────────────
+-- Devuelve {destino, obra_id} o {error}. Vacío = vaciar la celda (destino null). Sin tolerancias: ni
+-- mayúsculas distintas, ni nombre viejo, ni código de obra fusionada o de prueba (ZZ-).
+create or replace function public.obra_celda_resolver(p_valor text)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_valor  text := nullif(btrim(coalesce(p_valor, '')), '');
+  v_codigo text;
+  v_obra   record;
+  v_rotulo text;
+  v_cliente text;
+begin
+  if v_valor is null then
+    return jsonb_build_object('destino', null, 'obra_id', null);
+  end if;
+  v_codigo := upper(substring(v_valor from '^((?:[Oo][Bb]|[Zz][Zz])-[0-9]{4,})(?![A-Za-z0-9_-])'));
+  if v_codigo is not null then
+    select id, btrim(codigo) as codigo, btrim(coalesce(nombre, '')) as nombre into v_obra
+      from public.obra_canonica
+     where upper(btrim(codigo)) = v_codigo and fusionada_en is null and btrim(codigo) ~* '^OB-';
+    if not found then
+      return jsonb_build_object('error', format('%s no es una obra viva del desplegable', v_codigo));
+    end if;
+    v_rotulo := case when v_obra.nombre = '' then v_obra.codigo else v_obra.codigo || ' · ' || v_obra.nombre end;
+    if v_valor is distinct from v_rotulo then
+      return jsonb_build_object('error', format('«%s» no es el rótulo de %s: el desplegable dice «%s»', left(v_valor, 60), v_codigo, v_rotulo));
+    end if;
+    return jsonb_build_object('destino', 'obra', 'obra_id', v_obra.id);
+  end if;
+  if v_valor = 'ES-ADM · Estructura – Administración' then
+    return jsonb_build_object('destino', 'estructura_admin', 'obra_id', null);
+  end if;
+  if v_valor = 'ES-TAL · Estructura – Taller' then
+    return jsonb_build_object('destino', 'estructura_taller', 'obra_id', null);
+  end if;
+  if v_valor like 'Sin obra – %' then
+    v_cliente := substring(v_valor from char_length('Sin obra – ') + 1);
+    if (select count(*) from public.obra_canonica
+         where fusionada_en is null and 'Sin obra – ' || btrim(coalesce(cliente_texto, '')) = v_valor) > 1 then
+      return jsonb_build_object('destino', 'obra', 'obra_id', null);
+    end if;
+    return jsonb_build_object('error', format('«%s» no es un cliente con más de una obra viva', left(v_cliente, 60)));
+  end if;
+  return jsonb_build_object('error', format('«%s» no es una opción del desplegable de Obra', left(v_valor, 60)));
+end;
+$$;
+
+-- Sólo se llama desde adentro de la RPC (que es security definer): nadie la necesita directo.
+revoke all on function public.obra_celda_resolver(text) from public, anon, authenticated;
+
+-- ─── 7 · la puerta de la app ────────────────────────────────────────────────────────────────────
 create or replace function public.compra_obra_asignar(p_fila integer, p_valor text, p_esperado text)
 returns jsonb
 language plpgsql
@@ -137,14 +201,14 @@ as $$
 declare
   v_fila    record;
   v_valor   text := nullif(btrim(coalesce(p_valor, '')), '');
-  v_destino text := null;
-  v_obra    text := null;
-  v_codigo  text;
+  v_res     jsonb;
 begin
   if not public.es_administracion() then
     return jsonb_build_object('ok', false, 'error', 'sin permiso para imputar compras');
   end if;
-  select fila, clave, sheet_id, obra_celda into v_fila from public.compra_sheet where fila = p_fila;
+  -- FOR UPDATE: sin el bloqueo, dos pantallas que vieron la misma celda pasan las dos el control de
+  -- `esperado` y la segunda pisa a la primera sin que nadie lo vea.
+  select fila, clave, sheet_id, obra_celda into v_fila from public.compra_sheet where fila = p_fila for update;
   if not found then
     return jsonb_build_object('ok', false, 'error', 'esa fila ya no está en Compras');
   end if;
@@ -153,28 +217,17 @@ begin
     return jsonb_build_object('ok', false, 'error',
       format('la obra de la fila %s cambió mientras la mirabas: ahora dice «%s»', p_fila, coalesce(v_fila.obra_celda, 'vacía')));
   end if;
-  if v_valor is not null then
-    v_codigo := upper(substring(v_valor from '^\s*((?:[Oo][Bb]|[Zz][Zz])-[0-9]{4,})'));
-    if v_codigo is not null then
-      select coalesce(fusionada_en, id) into v_obra from public.obra_canonica where codigo = v_codigo;
-      if v_obra is null then
-        return jsonb_build_object('ok', false, 'error', format('%s no es el código de ninguna obra', v_codigo));
-      end if;
-      v_destino := 'obra';
-    elsif v_valor ~* '^\s*ES-ADM' then v_destino := 'estructura_admin';
-    elsif v_valor ~* '^\s*ES-TAL' then v_destino := 'estructura_taller';
-    elsif v_valor ~* '^\s*sin\s+obra\s*[–—-]' then v_destino := 'obra';
-    else
-      return jsonb_build_object('ok', false, 'error', 'no es una opción del desplegable de Obra');
-    end if;
+  v_res := public.obra_celda_resolver(v_valor);
+  if v_res ? 'error' then
+    return jsonb_build_object('ok', false, 'error', v_res ->> 'error');
   end if;
 
   update public.compra_sheet
-     set destino = v_destino, obra_id = v_obra, obra_celda = v_valor, obra_inconsistencia = null
+     set destino = v_res ->> 'destino', obra_id = v_res ->> 'obra_id', obra_celda = v_valor, obra_inconsistencia = null
    where fila = p_fila;
   insert into public.compra_obra_cambio (fila, clave, sheet_id, valor_anterior, valor_nuevo, origen, pedido_por)
   values (p_fila, v_fila.clave, v_fila.sheet_id, v_fila.obra_celda, v_valor, 'app', (select auth.uid()));
-  return jsonb_build_object('ok', true, 'destino', v_destino, 'obra_id', v_obra);
+  return jsonb_build_object('ok', true, 'destino', v_res ->> 'destino', 'obra_id', v_res ->> 'obra_id');
 end;
 $$;
 

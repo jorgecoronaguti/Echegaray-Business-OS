@@ -92,14 +92,23 @@ const leerEncabezado = async (google, fileId) =>
 const leerFila = async (google, fileId, fila) =>
   (await google.readSheetValues(fileId, rangoFilas('Compras', fila, fila), SIN_FORMATO))?.[0] ?? []
 
+/**
+ * El catálogo contra el que se valida el valor ANTES de escribir: el mismo universo que el desplegable de
+ * la app y que `public.obra_celda_resolver`. Sin `.catch()`: sin catálogo no hay validación (difiere).
+ */
+export async function leerObras(port) {
+  const r = await port.query('select id, codigo, nombre, cliente_texto, fusionada_en from public.obra_canonica')
+  return r?.rows ?? []
+}
+
 /** La decisión sin efectos: la usa la corrida real y la corrida en seco, así las dos dicen lo mismo. */
-export async function decidir({ port, google, fileId, cambio, encabezado }) {
+export async function decidir({ port, google, fileId, cambio, encabezado, obras }) {
   const actor = await actorDelCambio(port, cambio)
   if (!actor) {
     return { accion: 'rechazar', motivo: 'sin_actor', detalle: 'el cambio no tiene una persona identificada y el Sheet no se escribe sin nombre' }
   }
   const fila = await leerFila(google, fileId, Number(cambio.fila))
-  return { ...planificarObra({ cambio, encabezado, fila }), actor }
+  return { ...planificarObra({ cambio, encabezado, fila, obras: obras ?? await leerObras(port) }), actor }
 }
 
 const marcar = (port, id, estado, motivo) => port.query(
@@ -161,8 +170,8 @@ async function escribirYReleer({ port, google, fileId, cambio, plan }) {
  * APLICA UN CAMBIO. Verificar → escribir → releer, en ese orden. Una escritura no es buena porque la
  * API devolvió 200: es buena cuando la celda, releída, dice lo pedido.
  */
-export async function aplicarCambio({ port, google, fileId, cambio, encabezado }) {
-  const plan = await decidir({ port, google, fileId, cambio, encabezado })
+export async function aplicarCambio({ port, google, fileId, cambio, encabezado, obras }) {
+  const plan = await decidir({ port, google, fileId, cambio, encabezado, obras })
   if (plan.accion === 'rechazar') {
     await cerrar(port, cambio.id, { estado: 'rechazado', motivo: `${plan.motivo}: ${plan.detalle}` })
     return 'rechazado'
@@ -183,9 +192,10 @@ async function planEnSeco({ port, google, fileId, max }) {
   const pendientes = await verPendientes(port, max)
   if (!pendientes.length) return []
   const encabezado = await leerEncabezado(google, fileId)
+  const obras = await leerObras(port)
   const plan = []
   for (const cambio of pendientes) {
-    plan.push({ id: cambio.id, fila: cambio.fila, ...await decidir({ port, google, fileId, cambio, encabezado }) })
+    plan.push({ id: cambio.id, fila: cambio.fila, ...await decidir({ port, google, fileId, cambio, encabezado, obras }) })
   }
   return plan
 }
@@ -198,13 +208,15 @@ export async function procesarCola({ port, google, fileId = null, max = 20, dry 
   const cuenta = { dry: false, reciclados: await reciclarColgados(port), aplicado: 0, rechazado: 0, diferido: 0, error: 0 }
   // La fila de rótulos, UNA vez por corrida y sólo si hay algo que aplicar.
   let encabezado = null
+  let obras = null
   for (let i = 0; i < max; i += 1) {
     const cambio = await tomarCambio(port)
     if (!cambio) break
     let estado
     try {
       encabezado = encabezado ?? await leerEncabezado(google, id)
-      estado = await aplicarCambio({ port, google, fileId: id, cambio, encabezado })
+      obras = obras ?? await leerObras(port)
+      estado = await aplicarCambio({ port, google, fileId: id, cambio, encabezado, obras })
     } catch (e) {
       estado = 'error'
       const agotado = cambio.intentos >= MAX_INTENTOS
