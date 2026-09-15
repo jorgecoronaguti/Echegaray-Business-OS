@@ -178,8 +178,10 @@ import { CeldaComprobante } from './CeldaComprobante'
 // poder imputar desde el teléfono, así que el desplegable ocupa la segunda columna y el importe baja
 // a un segundo renglón DENTRO de la celda del proveedor (el mismo recurso que ya usa la deuda
 // parcial). No se pierde ningún dato: se apilan dos que antes iban al lado.
-// El piso de 140px del desplegable más el de 160 del nombre entran en los 350 útiles de un teléfono
-// de 390 — la cuenta la hace `grilla-v2-en-telefono.test.ts` y no se declara a ojo.
+// LA CUENTA NO SE DECLARA A OJO: la hace `grilla-v2-en-telefono.test.ts`. El desplegable declara su
+// piso de 140px y el nombre queda fraccional, así que de los 350 útiles de un teléfono de 390 el
+// control se lleva 140, el `gap` 14, y al proveedor le quedan 196 — muy por encima de `PISO_NOMBRE`.
+// Escribirle un piso en px al nombre sería peor: dos pisos fijos suman y dejan de ceder.
 const COLS
   = 'grid-cols-[minmax(150px,1.2fr)_minmax(120px,1fr)_112px_minmax(168px,1fr)_92px_72px_72px_104px_112px_26px]'
   + ' max-[1587px]:grid-cols-[minmax(150px,1.2fr)_minmax(168px,1fr)_92px_72px_72px_112px_26px]'

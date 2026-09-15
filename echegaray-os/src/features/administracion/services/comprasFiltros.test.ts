@@ -163,3 +163,35 @@ test('«(sin asignar)» aparece en el desplegable SÓLO cuando hay filas sin imp
   assert.deepEqual(o.obras, ['OB-0003 · MESSINA', SIN_ASIGNAR])
   assert.equal(o.obras.at(-1), SIN_ASIGNAR, '«sin asignar» tiene que quedar al final, no mezclado entre las obras')
 })
+
+test('el desplegable no ofrece DOS VECES el mismo valor escrito distinto', () => {
+  // ═══ EL DEFECTO QUE ATRAPA, medido el 15/09/2026 en producción ═══
+  //
+  // `pasaCriterios` compara con `trim().toLowerCase()`: elegir «DUPEC» YA traía también las filas de
+  // «Dupec». Pero las opciones se juntaban con un `Set` de textos crudos, así que el desplegable
+  // ofrecía las dos — dos entradas que filtran exactamente lo mismo. De los 132 proveedores de la
+  // pestaña, `DUPEC`/`Dupec` y `FEMENIA`/`Femenia` eran ese caso.
+  //
+  // No se perdía ninguna fila; se perdía la confianza en la lista: quien elige no puede saber que da
+  // igual cuál de las dos toque. El desplegable y el filtro tienen que tener UNA idea de «el mismo
+  // valor», y la del filtro ya estaba escrita.
+  const o = opcionesDe([
+    fila({ proveedor: 'DUPEC' }),
+    fila({ proveedor: 'DUPEC' }),
+    fila({ proveedor: 'Dupec' }),
+    fila({ proveedor: 'Combustibles Barcelo' }),
+  ])
+  assert.deepEqual(o.proveedores, ['Combustibles Barcelo', 'DUPEC'],
+    'el desplegable volvió a ofrecer dos veces el mismo proveedor con otra mayúscula')
+  // Y LA GRAFÍA QUE QUEDA ES LA MÁS USADA, no la primera que aparece: es la que el dueño escribe y
+  // la que va a reconocer en la lista.
+  const alReves = opcionesDe([
+    fila({ proveedor: 'Dupec' }),
+    fila({ proveedor: 'DUPEC' }),
+    fila({ proveedor: 'DUPEC' }),
+  ])
+  assert.deepEqual(alReves.proveedores, ['DUPEC'], 'quedó la primera grafía en vez de la más frecuente')
+  // La opción que quedó TIENE que seguir trayendo las filas de la otra grafía — si no, deduplicar
+  // habría escondido trabajo en vez de ordenar la lista.
+  assert.equal(pasaCriterios(fila({ proveedor: 'Dupec' }), { proveedor: 'DUPEC' }), true)
+})

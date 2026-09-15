@@ -211,10 +211,33 @@ export interface Opciones {
  */
 export function opcionesDe(filas: Criteriable[]): Opciones {
   const vivas = filas.filter((f) => !(f as { anulada?: boolean }).anulada)
+  /**
+   * LOS VALORES DISTINTOS DE UNA COLUMNA, CON LA MISMA DEFINICIÓN DE «DISTINTO» QUE USA EL FILTRO.
+   *
+   * `pasaCriterios` compara con `trim().toLowerCase()`, así que elegir «DUPEC» ya trae también las
+   * filas de «Dupec». Un `Set` de textos crudos, en cambio, las cuenta como dos: el desplegable
+   * ofrecía DOS ENTRADAS que filtran exactamente lo mismo. Medido el 15/09/2026 sobre las 891 filas
+   * vivas: de 132 proveedores distintos, `DUPEC`/`Dupec` y `FEMENIA`/`Femenia` son ese caso.
+   *
+   * No se pierde ninguna fila —nunca se perdió, la comparación ya era insensible— pero una lista que
+   * ofrece dos veces el mismo proveedor hace dudar de cuál es el bueno, y el que elige no puede
+   * saber que da igual. El desplegable y el filtro tienen que tener UNA sola idea de qué es el mismo
+   * valor.
+   *
+   * SE CONSERVA LA GRAFÍA MÁS FRECUENTE, no la primera que aparece: es la que el dueño escribe
+   * habitualmente y la que va a reconocer. Empate ⇒ la primera, que es estable entre corridas.
+   */
   const junta = (lee: (f: Criteriable) => string | null | undefined) => {
-    const s = new Set<string>()
-    for (const f of vivas) { const v = String(lee(f) ?? '').trim(); if (v) s.add(v) }
-    return [...s]
+    // Por valor normalizado, cuántas veces aparece cada grafía.
+    const grafias = new Map<string, Map<string, number>>()
+    for (const f of vivas) {
+      const v = String(lee(f) ?? '').trim()
+      if (!v) continue
+      const m = grafias.get(v.toLowerCase()) ?? new Map<string, number>()
+      m.set(v, (m.get(v) ?? 0) + 1)
+      grafias.set(v.toLowerCase(), m)
+    }
+    return [...grafias.values()].map((m) => [...m.entries()].reduce((a, b) => (b[1] > a[1] ? b : a))[0])
   }
   const alfa = (l: string[]) => l.sort((a, b) => a.localeCompare(b, 'es'))
   const tramos = new Map<string, string>()
