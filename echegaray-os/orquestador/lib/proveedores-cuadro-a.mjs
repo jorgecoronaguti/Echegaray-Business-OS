@@ -105,7 +105,7 @@ export const letra = (i) => String.fromCharCode(65 + i)
 export function formulaVence(fila, letraProveedor = 'A', cols) {
   if (!cols?.fecha || !cols?.proveedor || !cols?.saldo) throw new Error('formulaVence: faltan las columnas de Compras resueltas por rótulo — columnasVence(encabezado)')
   const r = (c) => rangoAbierto('Compras', c)
-  const ancla = `${letraProveedor}${fila}`
+  const ancla = `$${letraProveedor}${fila}`
   const minifs = `MINIFS(${r(cols.fecha)};${r(cols.proveedor)};${ancla};${r(cols.saldo)};">0")`
   return `=IF(${ancla}="";"";IFERROR(LET(venceProx;${minifs};IF(venceProx=0;"";venceProx));""))`
 }
