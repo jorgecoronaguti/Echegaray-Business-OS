@@ -58,10 +58,16 @@ export const rotuloSinObra = (cliente) => `Sin obra – ${cliente}`
  * «OB-0002 · X» o «Sin obra – FULANO» a una celda que después el sync lee como imputación válida.
  * El universo es el de `opcionesDeObra` de `src/features/administracion/services/obraDeCompra.ts`
  * (obras vivas con código OB-, fijos, «Sin obra – cliente» con más de una obra viva) y su espejo SQL es
- * `public.obra_celda_resolver` (migración 20260915T0700). Vacío es legítimo: es vaciar la celda.
+ * `public.obra_celda_resolver` (migraciones 20260915T0700 y T2200 «sin mayúsculas»). Vacío es legítimo: es vaciar la celda.
+ *
+ * «Sin obra – X»: X se compara con `cliente_texto` SIN distinguir mayúsculas —la MISMA regla que
+ * `obra_celda_resolver` desde 20260915T2200: el desplegable dice «Sin obra – SAN FRANCISCO» y la obra
+ * «San Francisco»— y, con `clienteAlias`, también con el cliente canónico (`cliente_alias`), que es de
+ * donde `opcionesDeObra` saca el rótulo. El 15/09 el worker rechazaba lo que el desplegable ofrecía.
  * @param {string} valor @param {Array<{id:string,codigo:string|null,nombre:string|null,cliente_texto:string|null,fusionada_en:string|null}>} obras
+ * @param {Map<string,string>} [clienteAlias] normAlias(rótulo) → cliente canónico
  */
-export function validarValorDeObra(valor, obras = []) {
+export function validarValorDeObra(valor, obras = [], clienteAlias = new Map()) {
   const t = String(valor ?? '').trim()
   const leida = leerCeldaObra(t)
   if (leida.tipo === 'vacia') return null
@@ -78,7 +84,12 @@ export function validarValorDeObra(valor, obras = []) {
     return t === rotulo ? null : `«${t.slice(0, 60)}» no es «${rotulo}»`
   }
   if (leida.tipo === 'sin_obra') {
-    const cuantas = vivas.filter((o) => rotuloSinObra(String(o.cliente_texto ?? '').trim()) === t).length
+    const nombra = (o) => {
+      const crudo = String(o.cliente_texto ?? '').trim()
+      const canonico = clienteAlias.get(normAlias(crudo)) ?? null
+      return rotuloSinObra(crudo).toUpperCase() === t.toUpperCase() || (canonico !== null && rotuloSinObra(canonico) === t)
+    }
+    const cuantas = vivas.filter(nombra).length
     return cuantas > 1 ? null : `«${t.slice(0, 60)}» no es un cliente con más de una obra viva`
   }
   return `«${t.slice(0, 60)}» no es una opción del desplegable de Obra`
