@@ -209,7 +209,7 @@ test('sin obras en la base no escribe: difiere', async () => {
   assert.equal(google.escrituras.length, 0)
 })
 
-// ═══ DOS PESTAÑAS, UNA COLA (20260915T2200) ═══
+// ═══ DOS PESTAÑAS, UNA COLA (20260915T2210) ═══
 import { COBRANZAS_CON_OBRA } from '../../lib/encabezados-referencia.mjs'
 import { huellaDeCobranza } from '../../lib/bisturi-cobranzas-obra.mjs'
 

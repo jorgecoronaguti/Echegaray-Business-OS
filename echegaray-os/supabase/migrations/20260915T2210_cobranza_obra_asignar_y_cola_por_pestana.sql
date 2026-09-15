@@ -23,15 +23,12 @@
 -- `lib/bisturi-cobranzas-obra.mjs`; el worker relee las tres celdas y compara. El total es el nativo
 -- de la fila (`total_bruto_origen`): `total_bruto` puede estar valuado a pesos y la celda dice dólares.
 --
--- ═══ EL DEFECTO QUE ESTA MIGRACIÓN ARREGLA EN `obra_celda_resolver` ═══
+-- ═══ «Sin obra – SAN FRANCISCO» ═══
 --
--- El desplegable real (`_OBRAS_OS`, 31 opciones, generado por `opcionesDeObra` de `obra-destino.mjs`)
--- ofrece «Sin obra – SAN FRANCISCO» y «Sin obra – LA ESTRELLA»: el nombre CANÓNICO del cliente
--- (`cliente_alias.cliente_canonico`). El resolver de 0700 comparaba contra `obra_canonica.cliente_texto`
--- crudo («San Francisco», «La Estrella») y rechazaba las dos: 226 filas del relleno habrían muerto en
--- la RPC con «no es un cliente con más de una obra viva». Verificado el 15/09 con SELECT sobre la base.
--- Ahora acepta las dos formas —la canónica del desplegable y la cruda que la app todavía ofrece— y en
--- las dos exige más de una obra viva del cliente. `validarValorDeObra` (el worker) hace lo mismo.
+-- El desplegable real ofrece el cliente CANÓNICO en mayúsculas y `obra_celda_resolver` comparaba contra
+-- `cliente_texto` crudo: 20260915T2200_sin_obra_cliente_sin_mayusculas.sql (main, ya aplicada) lo
+-- resuelve sin distinguir mayúsculas. Esta migración NO redefine el resolver: una sola definición.
+-- El espejo JS (`validarValorDeObra`, que usa el worker) aplica la misma regla desde este commit.
 --
 -- ═══ RLS ═══
 -- Ninguna policy se toca. La cola sigue con RLS y sólo SELECT para administración; la inserción es de
@@ -48,68 +45,7 @@ alter table public.compra_obra_cambio add constraint compra_obra_cambio_pestana_
 comment on column public.compra_obra_cambio.pestana is
   'Compras (fila de compra_sheet, clave = clave del comprobante) o Cobranzas (fila = sheet_id + 4, clave = «comprobante|cliente|total»).';
 
--- ─── 2 · el resolver acepta el rótulo canónico de «Sin obra – X» ─────────────────────────────────
-create or replace function public.obra_celda_resolver(p_valor text)
-returns jsonb
-language plpgsql
-stable
-security definer
-set search_path = public
-as $$
-declare
-  v_valor  text := nullif(btrim(coalesce(p_valor, '')), '');
-  v_codigo text;
-  v_obra   record;
-  v_rotulo text;
-  v_cliente text;
-  v_vivas  integer;
-begin
-  if v_valor is null then
-    return jsonb_build_object('destino', null, 'obra_id', null);
-  end if;
-  v_codigo := upper(substring(v_valor from '^((?:[Oo][Bb]|[Zz][Zz])-[0-9]{4,})(?![A-Za-z0-9_-])'));
-  if v_codigo is not null then
-    select id, btrim(codigo) as codigo, btrim(coalesce(nombre, '')) as nombre into v_obra
-      from public.obra_canonica
-     where upper(btrim(codigo)) = v_codigo and fusionada_en is null and btrim(codigo) ~* '^OB-';
-    if not found then
-      return jsonb_build_object('error', format('%s no es una obra viva del desplegable', v_codigo));
-    end if;
-    v_rotulo := case when v_obra.nombre = '' then v_obra.codigo else v_obra.codigo || ' · ' || v_obra.nombre end;
-    if v_valor is distinct from v_rotulo then
-      return jsonb_build_object('error', format('«%s» no es el rótulo de %s: el desplegable dice «%s»', left(v_valor, 60), v_codigo, v_rotulo));
-    end if;
-    return jsonb_build_object('destino', 'obra', 'obra_id', v_obra.id);
-  end if;
-  if v_valor = 'ES-ADM · Estructura – Administración' then
-    return jsonb_build_object('destino', 'estructura_admin', 'obra_id', null);
-  end if;
-  if v_valor = 'ES-TAL · Estructura – Taller' then
-    return jsonb_build_object('destino', 'estructura_taller', 'obra_id', null);
-  end if;
-  if v_valor like 'Sin obra – %' then
-    v_cliente := substring(v_valor from char_length('Sin obra – ') + 1);
-    -- Obras vivas del cliente, nombrado como lo nombra el desplegable (canónico por cliente_alias,
-    -- la MISMA clave que indexa obra_alias: norm_obra) o como lo escribió la app (cliente_texto crudo).
-    select count(*) into v_vivas
-      from public.obra_canonica o
-     where o.fusionada_en is null
-       and (btrim(coalesce(o.cliente_texto, '')) = v_cliente
-            or exists (select 1 from public.cliente_alias a
-                        where public.norm_obra(a.rotulo_clave) = public.norm_obra(o.cliente_texto)
-                          and a.cliente_canonico = v_cliente));
-    if v_vivas > 1 then
-      return jsonb_build_object('destino', 'obra', 'obra_id', null);
-    end if;
-    return jsonb_build_object('error', format('«%s» no es un cliente con más de una obra viva', left(v_cliente, 60)));
-  end if;
-  return jsonb_build_object('error', format('«%s» no es una opción del desplegable de Obra', left(v_valor, 60)));
-end;
-$$;
-
-revoke all on function public.obra_celda_resolver(text) from public, anon, authenticated;
-
--- ─── 3 · la puerta de Cobranzas ──────────────────────────────────────────────────────────────────
+-- ─── 2 · la puerta de Cobranzas ──────────────────────────────────────────────────────────────────
 -- `p_fila` es la fila FÍSICA de la pestaña (datos desde la 5): `public.cobranzas` no guarda la fila,
 -- guarda `sheet_id` = ROW()-4 como texto. Misma firma que `compra_obra_asignar` para que el relleno y
 -- la app las llamen igual.

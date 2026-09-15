@@ -69,7 +69,7 @@ async function hayObraPorFila(q) {
 /**
  * Los cambios de la app que el worker todavía no escribió en la columna Obra (Compras L).
  *
- * Desde 20260915T2200 la cola también lleva los de Cobranzas H (columna `pestana`): un cambio de la fila
+ * Desde 20260915T2210 la cola también lleva los de Cobranzas H (columna `pestana`): un cambio de la fila
  * 57 de Cobranzas NO es la fila 57 de Compras. Se filtra por `to_jsonb` y no por la columna a secas
  * porque este sync corre cada hora en producción y puede desplegarse antes de que la migración se
  * aplique: sin la columna, la consulta directa abortaría el sync entero; así, toda fila vieja es 'Compras'.

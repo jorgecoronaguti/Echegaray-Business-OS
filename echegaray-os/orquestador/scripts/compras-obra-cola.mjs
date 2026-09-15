@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Arranque del worker que lleva al Sheet la obra elegida en la app para una fila de Compras (L) o de
-// Cobranzas (H): una sola cola con `pestana` desde 20260915T2200. La lógica vive en
+// Cobranzas (H): una sola cola con `pestana` desde 20260915T2210. La lógica vive en
 // `comunicacion/compras/cola-obra.mjs` (probada con dobles); acá sólo se cablean Postgres y Google y
 // se reporta.
 //

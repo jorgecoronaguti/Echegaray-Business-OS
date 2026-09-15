@@ -67,9 +67,11 @@ test('sin columna «Obra» en Cobranzas difiere; sin catálogo difiere; valor qu
   assert.equal(plan({ cambio: { ...CAMBIO, fila: 4 } }).motivo, 'fila_invalida')
 })
 
-test('«Sin obra – SAN FRANCISCO» (canónico, el del desplegable) vale con el mapa de clientes y no sin él', () => {
+test('«Sin obra – SAN FRANCISCO» (el rótulo del desplegable) vale aunque la obra diga «San Francisco», y el mapa de clientes llega al validador', () => {
   const cambio = { ...CAMBIO, valor_nuevo: 'Sin obra – SAN FRANCISCO' }
-  assert.equal(plan({ cambio }).motivo, 'valor_invalido')
-  const clienteAlias = new Map([['san francisco', 'SAN FRANCISCO']])
-  assert.equal(plan({ cambio, clienteAlias }).accion, 'escribir')
+  assert.equal(plan({ cambio }).accion, 'escribir')
+  // El canónico que difiere más allá de las mayúsculas sólo pasa si el mapa llegó hasta acá.
+  const sf = OBRAS.map((o) => (o.cliente_texto === 'San Francisco' ? { ...o, cliente_texto: 'Javier Sánchez - San Francisco' } : o))
+  assert.equal(plan({ cambio, obras: sf }).motivo, 'valor_invalido')
+  assert.equal(plan({ cambio, obras: sf, clienteAlias: new Map([['javier sanchez san francisco', 'SAN FRANCISCO']]) }).accion, 'escribir')
 })

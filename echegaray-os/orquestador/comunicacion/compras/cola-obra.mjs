@@ -22,7 +22,7 @@
 //   3. Un diferido corta la corrida. El freno, el candado o la columna que falta no se levantan en el
 //      mismo minuto; seguir tomaría el mismo cambio (el más viejo) hasta `max` veces.
 //
-// ═══ DOS PESTAÑAS, UNA COLA (20260915T2200) ═══
+// ═══ DOS PESTAÑAS, UNA COLA (20260915T2210) ═══
 //
 // `cobranza_obra_asignar` encola en la MISMA tabla con `pestana = 'Cobranzas'`. Acá la pestaña decide
 // qué fila de rótulos se lee y qué bisturí planifica (`bisturi-cobranzas-obra.mjs`, con la huella
@@ -101,7 +101,7 @@ const leerEncabezado = async (google, fileId, pestana) =>
 const leerFila = async (google, fileId, pestana, fila) =>
   (await google.readSheetValues(fileId, rangoFilas(pestana, fila, fila), SIN_FORMATO))?.[0] ?? []
 
-/** De qué pestaña es el cambio. Sin columna (cola anterior a T2200) es Compras. */
+/** De qué pestaña es el cambio. Sin columna (cola anterior a T2210) es Compras. */
 export const pestanaDe = (cambio) => (cambio?.pestana === 'Cobranzas' ? 'Cobranzas' : 'Compras')
 
 const PLANIFICADOR = Object.freeze({ Compras: planificarObra, Cobranzas: planificarObraCobranza })

@@ -168,18 +168,22 @@ test('sin catálogo no hay obra válida: una lista vacía rechaza toda obra y s�
   assert.equal(validarValorDeObra('', []), null)
 })
 
-test('«Sin obra – X» con X CANÓNICO (lo que ofrece el desplegable real) vale si el mapa de clientes lo nombra', () => {
+test('«Sin obra – X» vale como lo ofrece el desplegable: sin distinguir mayúsculas (regla del SQL) y por cliente canónico', () => {
   // El 15/09 el desplegable `_OBRAS_OS` decía «Sin obra – SAN FRANCISCO» y el validador lo rechazaba: sólo
-  // aceptaba el cliente_texto crudo. Con el mapa, las dos formas valen; sin él, sólo la cruda (como antes).
+  // aceptaba el cliente_texto crudo. Ahora: mayúsculas indistintas siempre; el canónico por alias, con el mapa.
   const obras = [
     { id: 'a', codigo: 'OB-0011', nombre: 'SF - PISOS', cliente_texto: 'San Francisco', fusionada_en: null },
     { id: 'b', codigo: 'OB-0010', nombre: 'SF - ENTREPISO', cliente_texto: 'San Francisco', fusionada_en: null },
     { id: 'c', codigo: 'OB-0003', nombre: 'LE - GENERAL', cliente_texto: 'La Estrella', fusionada_en: null },
+    { id: 'q1', codigo: 'OB-0008', nombre: 'QP - SALÓN', cliente_texto: 'Quattropani - Melisa García SAS', fusionada_en: null },
+    { id: 'q2', codigo: 'OB-0009', nombre: 'QP - DEPÓSITO', cliente_texto: 'Quattropani - Melisa García SAS', fusionada_en: null },
   ]
-  const clienteAlias = new Map([['san francisco', 'SAN FRANCISCO'], ['estrella', 'LA ESTRELLA']])
-  assert.equal(validarValorDeObra('Sin obra – SAN FRANCISCO', obras, clienteAlias), null)
+  const clienteAlias = new Map([['san francisco', 'SAN FRANCISCO'], ['estrella', 'LA ESTRELLA'], ['quattropani melisa garcia sas', 'QUATTROPANI']])
+  assert.equal(validarValorDeObra('Sin obra – SAN FRANCISCO', obras), null, 'sin mapa, mayúsculas indistintas')
   assert.equal(validarValorDeObra('Sin obra – San Francisco', obras, clienteAlias), null)
-  assert.match(validarValorDeObra('Sin obra – SAN FRANCISCO', obras) ?? 'PASÓ', /no es un cliente con más de una obra/)
-  // Una sola obra viva del cliente canónico: tampoco con el mapa.
+  // El canónico difiere del cliente_texto más allá de las mayúsculas: sólo con el mapa.
+  assert.equal(validarValorDeObra('Sin obra – QUATTROPANI', obras, clienteAlias), null)
+  assert.match(validarValorDeObra('Sin obra – QUATTROPANI', obras) ?? 'PASÓ', /no es un cliente con más de una obra/)
+  // Una sola obra viva del cliente: tampoco con el mapa.
   assert.match(validarValorDeObra('Sin obra – LA ESTRELLA', obras, clienteAlias) ?? 'PASÓ', /no es un cliente con más de una obra/)
 })
