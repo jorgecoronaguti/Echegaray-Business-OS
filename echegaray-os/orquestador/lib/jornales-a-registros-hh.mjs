@@ -286,6 +286,17 @@ const ORIGEN_EN_NOTA = {
 }
 
 /**
+ * LAS ASIGNACIONES QUE PUEDEN MOVER HORAS DE OBRA: las cargadas en la app, con fecha de inicio.
+ *
+ * Las 208 «historial reconstruido desde JORNALES» (08/09/2026) están a nivel CLIENTE: si mandan, pisan
+ * la obra específica que dice la planilla (medido 14/09: 638 filas / 5.470 h movidas, LE Mampostería
+ * 3.660 → 48 h). El dueño aprobó sacarlas (14/09, «si»). Sin `desde` no hay día que decidir.
+ */
+export function asignacionesQueMandan(filas = []) {
+  return filas.filter((a) => a.desde && !/reconstru/i.test(a.notas ?? ''))
+}
+
+/**
  * LA OBRA DEL DÍA LA DA LA ASIGNACIÓN DE LA WEB (dueño, 14/09/2026: «La asignación de la web»).
  *
  * JORNALES pone UN cliente/obra por persona para todo el bloque; en la web se asigna gente a otra obra
@@ -296,9 +307,9 @@ const ORIGEN_EN_NOTA = {
  * DOS LÍMITES, LOS DOS DECIDIDOS:
  *  · «galpon 9 es la estrella»: si la planilla dice la obra GENERAL del cliente (la que se llama como
  *    él) y la asignación es otra obra del MISMO cliente, queda la de la planilla.
- *  · TODAS las asignaciones que muestra la app, también las «reconstruidas desde JORNALES» (dueño,
- *    14/09/2026: «respetar lo que manda app.ecsas.com.ar»). Dos obras el mismo día: gana la
- *    asignación más corta y, empatadas, la más reciente (`asignacionVigente`); empate total no decide.
+ *  · Sólo las asignaciones cargadas en la app (`asignacionesQueMandan`), nunca las «reconstruidas desde
+ *    JORNALES». Dos obras el mismo día: gana la asignación más corta y, empatadas, la más reciente
+ *    (`asignacionVigente`); empate total no decide.
  */
 export function obraPorAsignacionWeb(obraPlanilla, asignada, clienteDeObra = new Map()) {
   if (!asignada || !obraPlanilla || asignada === obraPlanilla) return null

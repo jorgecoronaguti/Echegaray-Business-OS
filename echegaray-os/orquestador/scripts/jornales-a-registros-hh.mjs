@@ -27,7 +27,7 @@ import { fechaOperativaSanJuan } from '../comunicacion/asistencia-ui.mjs'
 import {
   FUENTE, marcasDeGrid, planDeRegistros, resolutorDeObra, separarConflictos, resumir, columnasParaUpsert,
   SQL_UPSERT, SQL_MOVER, SQL_PISAR_WEB, mapaDeRotulos, normAlias, separarAnticipadas, pisarLoDeLaWeb,
-  separarLoQueGanaLaWeb,
+  separarLoQueGanaLaWeb, asignacionesQueMandan,
 } from '../lib/jornales-a-registros-hh.mjs'
 
 const arg = (n, d = null) => { const i = process.argv.indexOf(`--${n}`); return i > 0 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : d }
@@ -53,10 +53,9 @@ async function catalogos() {
     query("select persona_id, obra_id, to_char(desde, 'YYYY-MM-DD') desde, to_char(hasta, 'YYYY-MM-DD') hasta, notas from public.obra_asignacion"),
     query('select obra_id, cliente_slug from public.obra_panel where cliente_slug is not null'),
   ])
-  // TODAS LAS QUE MUESTRA LA APP (dueño, 14/09/2026: «respetar lo que manda app.ecsas.com.ar»). El
-  // primer corte dejaba afuera las «reconstruidas desde JORNALES» y Rosales quedaba en Mampostería del
-  // 01 al 07/09 cuando la app lo muestra en Quattropani. Sin fecha de inicio no hay día que decidir.
-  const hechasAMano = asignaciones.rows.filter((a) => a.desde)
+  // Sólo las cargadas en la app: las «reconstruidas desde JORNALES» son de cliente y pisaban la obra
+  // de la planilla (5.470 h movidas). Ver `asignacionesQueMandan`.
+  const hechasAMano = asignacionesQueMandan(asignaciones.rows)
   // El cliente de cada obra por `cliente_id` (no por nombre): lo usan la asignación web y la guarda
   // que impide que un alias global de una obra se lleve el rótulo de otro cliente.
   const clienteDeObra = new Map(panel.rows.map((r) => [r.obra_id, r.cliente_slug]))
