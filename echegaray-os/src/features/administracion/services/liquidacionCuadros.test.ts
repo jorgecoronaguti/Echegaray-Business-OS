@@ -86,10 +86,23 @@ test('quien tiene liquidación final en la ventana NO aparece también en el cua
   const obreros = cuadros.find((c) => c.grupo === 'obreros')!
   const final = cuadros.find((c) => c.grupo === 'final')!
   assert.equal(obreros.lineas.length, 0, 'tener horas no es cobrar la quincena')
-  assert.equal(final.lineas.length, 1)
-  assert.equal(final.lineas[0].cobra, 660861.36, 'la mitad blanca por dos')
-  assert.equal(final.lineas[0].yaTransferido, 300000)
-  assert.equal(final.lineas[0].total, 360861.36)
+  // «NO CONSIDERAR» (dueño, 15/09/2026): la liquidación final tampoco es una línea de la quincena.
+  assert.equal(final.lineas.length, 0)
+})
+
+test('01–15/08: las finales que egresaron en la ventana no suman al pie sellado', () => {
+  // AVILA, CASTRO GALVAN, DIAZ, FLORES: recibo FINAL 123.806,34 pagado el 12/08, egreso 12/08, sin tarifa ni
+  // horas. El plantel les pone actividad por el egreso; antes sumaban 4 × 247.612,68 a una quincena sellada.
+  const finales = ['AVILA', 'CASTRO GALVAN', 'DIAZ', 'FLORES'].map((n, i) => ({ ...persona(`f${i}`, n, `27${i}`), conActividad: true }))
+  const cuadros = armarCuadros(base({
+    personas: [...finales, persona('o1', 'AGUERO', '201')],
+    tarifas: [porHora('o1', 5600)],
+    horas: new Map([['o1', { horas: 113, presentesSinHoras: 0 }]]),
+    recibos: finales.map((_, i) => ({ cuil: `27${i}`, periodo: 'FINAL', neto: 123806.34, fecha_pago: '2026-09-04' })),
+  }))
+  const lineas = cuadros.flatMap((c) => c.lineas)
+  assert.deepEqual(lineas.map((l) => l.personaId), ['o1'], 'MUTACIÓN: volver a empujar la línea final')
+  assert.equal(lineas.reduce((s, l) => s + (l.cobra ?? 0), 0), 632800)
 })
 
 test('oficina va a su cuadro por tener neto mensual, aunque tenga horas cargadas', () => {

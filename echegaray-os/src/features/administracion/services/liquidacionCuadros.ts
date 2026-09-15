@@ -215,7 +215,7 @@ function entradaDe(
  * QUIÉN ENTRA EN CUÁL, en este orden y sin repetir a nadie: una persona que aparece en dos cuadros
  * con dos importes es cómo se paga dos veces (ya pasó con Jofre y Sosa el 31/08/2026).
  *
- *   final    tiene un recibo de LIQUIDACIÓN FINAL pagado dentro de la ventana.
+ *   final    no recibe líneas: una liquidación final no es de la quincena (dueño, 15/09/2026).
  *   oficina  es jefe de obra (`esJefeDeObra`), o tiene tarifa de neto mensual vigente.
  *   obreros  el resto de quienes están en la empresa Y tienen tarifa por hora o movimiento en la
  *            ventana. Quien no tiene ni una cosa ni la otra no es una fila vacía: no es de esta
@@ -237,8 +237,11 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
     const redondeo = d.redondeos.get(p.id) ?? null
 
     const cuilDeLaPersona = cuilNormalizado(p.cuil)
+    // UNA LIQUIDACIÓN FINAL NO ES UNA LÍNEA DE QUINCENA (dueño, 15/09/2026: «no considerar»; antes «no hay liq
+    // final»). Quien tiene recibo FINAL pagado en la ventana no genera fila en NINGÚN cuadro: ni en «final» ni en
+    // Obreros por la actividad que el plantel le deduce al egreso. Sin esto, 01–15/08 —sellada el 09/09— sumaba
+    // 4 × 247.612,68 de AVILA, CASTRO GALVAN, DIAZ y FLORES al «Cobra total» que ya se había pagado.
     if (cuilDeLaPersona && finales.has(cuilDeLaPersona)) {
-      cuadros.final.push(lineaFinal(ctx, p, redondeo))
       continue
     }
     // QUIÉN ES JEFE LO DECIDE EL PUESTO, NO LA TARIFA (dueño, 15/09/2026). Los jefes tienen neto mensual
@@ -276,31 +279,4 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
     // cuenta. Se declara en los tres cuadros: los tres la restan.
     adelantoSinFuente: true,
   }))
-}
-
-/**
- * UNA LIQUIDACIÓN FINAL. COBRA es la mitad blanca por dos (acuerdo 50/50 con el personal), y lo ya
- * transferido se resta igual que en la quincena — pero con su propio concepto, porque la plata que
- * se le giró a alguien que se fue no se resta del cuadro de los que siguen.
- */
-function lineaFinal(
-  ctx: Contexto, p: PersonaDeLiquidacion, redondeo: number | null,
-): LineaLiquidada {
-  const recibo = ctx.recibos.find((r) => mismoCuil(r.cuil, p.cuil) && r.periodo === 'FINAL') ?? null
-  const mitadBlanca = recibo == null ? null : Number(recibo.neto)
-  const { giroEnElLote, yaTransferido } = girosDe(
-    ctx.quincena, ctx.adelantos, p.cuil, CONCEPTO_DEL_GIRO.final, mitadBlanca,
-  )
-  return liquidarLinea({
-    personaId: p.id,
-    nombre: p.nombre,
-    esJefe: p.esJefe === true,
-    horas: null,
-    tarifa: null,
-    adelanto: 0,
-    yaTransferido,
-    reciboNeto: mitadBlanca,
-    giroEnElLote,
-    mitadBlanca,
-  }, 'final', redondeo)
 }
