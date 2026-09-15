@@ -37,6 +37,9 @@ const CLIENTE: Lista = [
   'clientes', 'cliente_contacto', 'cliente_nota', 'cliente_documento', 'cliente_acceso', 'cliente_actividad_portal',
   'cobranza', 'cobranzas', 'cobranza_cambio', 'certificado_cliente', 'certificados', 'esquema_pago', 'pago_informado',
   'obra_canonica',
+  // LA FICHA SE SIRVE DE ESTA CACHÉ (refresco por pg_cron cada minuto, lo vencido a los 5 min). Avisa
+  // cuando el cron cambia el json o se invalida; un refresco que deja el mismo json no avisa.
+  'ficha_cliente_cache',
 ]
 
 const PROVEEDOR: Lista = ['proveedores', 'proveedor_documento', 'proveedor_alias', 'subcontrato', 'compra_sheet']

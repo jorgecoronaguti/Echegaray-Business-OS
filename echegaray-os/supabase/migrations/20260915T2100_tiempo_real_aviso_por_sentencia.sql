@@ -136,7 +136,7 @@ begin
     'compra_adjunto', 'compra_sheet', 'comprobante_entrada', 'comprobantes_arca',
     'convenio_escala', 'costo_hora_alicuota', 'cotizacion_partida', 'cotizaciones',
     'cuadrilla', 'cuadrilla_integrante', 'documentacion_legajo', 'documento_presentacion',
-    'esquema_pago', 'herramientas', 'liquidacion_linea', 'liquidacion_quincena', 'liquidacion_reapertura',
+    'esquema_pago', 'ficha_cliente_cache', 'herramientas', 'liquidacion_linea', 'liquidacion_quincena', 'liquidacion_reapertura',
     'movimientos_herramienta', 'obra_actividad', 'obra_actividad_nota', 'obra_actividad_paso',
     'obra_adjunto_cliente', 'obra_asignacion', 'obra_canonica', 'obra_dependencia', 'obra_documento',
     'obra_ejecucion', 'obra_ejecucion_equipo', 'obra_restriccion', 'pago_informado', 'pedidos_materiales',
