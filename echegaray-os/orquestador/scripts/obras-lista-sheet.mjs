@@ -74,26 +74,6 @@ export async function refrescarLista({ google, id, opciones, aplicar = false, lo
 }
 
 /**
- * EL FILTRO DE LA PESTAÑA, GUARDADO Y SACADO — y devuelto al terminar.
- *
- * ═══ EL DEFECTO QUE ESTO CIERRA (copia de ensayo, 15/09/2026) ═══
- *
- * Cobranzas tiene un `basicFilter` sobre A4:AH352 con orden. A las filas que ese filtro esconde Google
- * NO les aplica `setDataValidation` —y contesta 200 igual—: 28 celdas de Cobranzas H quedaron con la
- * lista heredada de la G. Se probó con el rango acotado y celda por celda: mismo resultado. Lo único
- * que las alcanza es sacar el filtro, escribir y volver a ponerlo tal cual estaba.
- *
- * El spec se devuelve al llamador para que, si la restitución falla, quede escrito qué filtro había.
- */
-async function filtrosDe(google, id, pestanas) {
-  const campos = 'sheets(properties(sheetId,title),basicFilter)'
-  const j = await google.apiGetSheets(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(id)}?fields=${encodeURIComponent(campos)}`)
-  return (j.sheets || [])
-    .filter((s) => pestanas.includes(s.properties?.title) && s.basicFilter)
-    .map((s) => ({ pestana: s.properties.title, sheetId: s.properties.sheetId, filtro: s.basicFilter }))
-}
-
-/**
  * LAS VALIDACIONES DE COMPRAS Y COBRANZAS, y su prueba: la COLUMNA ENTERA releída, no una celda.
  * Idempotente: `setDataValidation` reemplaza la regla del rango, no apila.
  */
@@ -101,19 +81,13 @@ export async function ponerDesplegable({ google, id, inserciones = INSERCIONES, 
   const meta = await google.getSheetMeta(id)
   const hoja = (p) => meta.find((s) => s.title === p)
   const req = requestsDeValidacion(inserciones, (p) => hoja(p)?.sheetId, (p) => hoja(p)?.rows)
-
-  const filtros = await filtrosDe(google, id, inserciones.map((i) => i.pestana))
-  if (filtros.length) {
-    await google.spreadsheetBatchUpdate(id, filtros.map((f) => ({ clearBasicFilter: { sheetId: f.sheetId } })), { espejo: true })
-    log(`  filtro sacado de ${filtros.map((f) => f.pestana).join(', ')} (esconde filas y las filas escondidas no reciben la validación)`)
-  }
+  // SIN `yaGuardado`: la guarda central se mira entera. Los dos requests son inocuos para ella —uno es
+  // `setDataValidation`, el otro un `updateCells` cuya máscara es `dataValidation` sola, que no puede
+  // tocar ni un valor ni un formato— y desde hoy `claveDeFormato` tampoco lo confunde con una pasada de
+  // diseño. Saltear la guarda para poner un desplegable sería apagar la alarma de toda la casa para
+  // entrar por la puerta que ya estaba abierta. Lo que quedó escrito se verifica releyendo la columna
+  // entera, abajo: la que manda es la celda releída, no el 200 del batchUpdate.
   const res = await google.spreadsheetBatchUpdate(id, req)
-  const devolverFiltros = filtros.length
-    ? google.spreadsheetBatchUpdate(id, filtros.map((f) => ({ setBasicFilter: { filter: { ...f.filtro, range: f.filtro.range ?? { sheetId: f.sheetId } } } })), { espejo: true })
-      .then(() => null).catch((e) => e.message)
-    : Promise.resolve(null)
-  const falloElFiltro = await devolverFiltros
-  if (falloElFiltro) return { ok: false, paso: 'filtro', detalle: [`no pude devolver el filtro: ${falloElFiltro}`], filtros }
   if (res?.protegido || res?.congelado || res?.frenados?.length) return { ok: false, paso: 'escritura', detalle: [JSON.stringify(res).slice(0, 200)] }
 
   const hojas = await google.readSheetValidations(id, inserciones.map((ins) => `${rangoDeDatos(ins)}${hoja(ins.pestana)?.rows ?? ''}`))

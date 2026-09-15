@@ -55,7 +55,7 @@ const FILAS = { Compras: 1262, Cobranzas: 352 }
 const validaciones = (ins = INSERCIONES) => requestsDeValidacion(ins, (p) => ({ Compras: 1, Cobranzas: 2 })[p], (p) => FILAS[p])
 
 test('EL DEFECTO: la validación arranca en la fila de DATOS, no en la del rótulo', () => {
-  const req = validaciones().filter((r) => r.setDataValidation.range.endRowIndex === undefined)
+  const req = validaciones().filter((r) => r.setDataValidation)
   const [c, cob] = req.map((r) => r.setDataValidation.range)
   assert.deepEqual(c, { sheetId: 1, startRowIndex: 3, startColumnIndex: 11, endColumnIndex: 12 })   // Compras L4:L
   assert.deepEqual(cob, { sheetId: 2, startRowIndex: 4, startColumnIndex: 7, endColumnIndex: 8 })   // Cobranzas H5:H
@@ -80,12 +80,17 @@ test('sin sheetId, o sin saber cuántas filas tiene la grilla, no se pone el des
   assert.throws(() => requestsDeValidacion([COMPRAS], () => 1, () => 2), /cuántas filas/)
 })
 
-test('EL DEFECTO: van DOS requests por columna — el default no pisa la regla heredada de la columna de al lado', () => {
+test('EL DEFECTO: el segundo request es updateCells con máscara — es el único que llega a una fila escondida por el filtro', () => {
   const req = validaciones([COMPRAS])
   assert.equal(req.length, 2)
   assert.equal(req[0].setDataValidation.range.endRowIndex, undefined, 'primero el default de la columna (filas futuras)')
-  assert.equal(req[1].setDataValidation.range.endRowIndex, FILAS.Compras, 'después celda por celda hasta el fin de la grilla')
-  assert.equal(req[1].setDataValidation.rule.condition.type, 'ONE_OF_RANGE')
+  const u = req[1].updateCells
+  assert.ok(u, 'el segundo NO es setDataValidation: a las filas escondidas no les llega')
+  assert.equal(u.fields, 'dataValidation', 'la máscara es lo que impide que toque un valor o un formato')
+  assert.equal(u.range.endRowIndex, FILAS.Compras)
+  assert.equal(u.rows.length, FILAS.Compras - COMPRAS.filaEncabezado)
+  assert.equal(u.rows[0].values[0].dataValidation.condition.type, 'ONE_OF_RANGE')
+  assert.equal(u.rows.at(-1).values[0].dataValidation.strict, false)
 })
 
 // ═══ LA PRUEBA DEL EFECTO: lo que dice la celda releída, no lo que contestó el batchUpdate ═══

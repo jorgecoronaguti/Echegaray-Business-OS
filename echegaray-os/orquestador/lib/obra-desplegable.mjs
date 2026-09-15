@@ -100,15 +100,19 @@ const REGLA = Object.freeze({
  * LAS VALIDACIONES DE LAS DOS COLUMNAS, EN DOS REQUESTS CADA UNA. Empiezan en la fila SIGUIENTE al
  * encabezado: una validación sobre la celda del rótulo le pondría desplegable a la palabra «Obra».
  *
- * ═══ POR QUÉ DOS Y NO UNA (medido en la copia de ensayo, 15/09/2026) ═══
+ * ═══ POR QUÉ DOS, Y POR QUÉ EL SEGUNDO NO ES `setDataValidation` (medido, 15/09/2026) ═══
  *
- * El request SIN `endRowIndex` fija el default de la columna: una fila agregada mañana nace con el
- * desplegable. Pero a la celda que ya trae una regla PROPIA no la pisa, y al insertar en Cobranzas H
- * con `inheritFromBefore` cada celda hereda la regla de la G («Administracion|Almacen|…»). Con un solo
- * request quedaban celdas ofreciendo la lista equivocada.
+ * `setDataValidation` sin `endRowIndex` fija el DEFAULT de la columna: una fila agregada mañana nace
+ * con el desplegable. Pero no pisa la regla propia de una celda —al insertar Cobranzas H con
+ * `inheritFromBefore`, cada celda hereda la lista de la G («Administracion|Almacen|…»)— y, sobre todo,
+ * **no llega a las filas que el filtro de la pestaña esconde**: Google contesta 200 y no aplica nada.
+ * En la copia de ensayo quedaron así 28 celdas de Cobranzas H. Se probó acotando el rango a la grilla y
+ * celda por celda: mismo resultado.
  *
- * El request ACOTADO a las filas de la grilla escribe la regla celda por celda y sí las pisa. Van los
- * dos, en este orden: primero el default, después las celdas.
+ * `updateCells` con `fields: 'dataValidation'` SÍ llega a las filas escondidas (medido: 348 de 348) y,
+ * por la máscara, no puede tocar ni un valor ni un formato. Sacar el filtro para escribir no es una
+ * opción: el de Cobranzas trae `sortSpecs` y reponerlo REORDENA físicamente las filas —2.572 celdas
+ * cambiadas en la copia—, que es exactamente el daño que la inserción entera trata de evitar.
  * @param {Array<{pestana:string, filaEncabezado:number, indice:number}>} inserciones
  * @param {(pestana:string) => number|undefined} sheetIdDe
  * @param {(pestana:string) => number|undefined} filasDe cuántas filas tiene la grilla de esa pestaña
@@ -122,7 +126,11 @@ export function requestsDeValidacion(inserciones = [], sheetIdDe = () => undefin
     const base = { sheetId, startRowIndex: ins.filaEncabezado, startColumnIndex: ins.indice, endColumnIndex: ins.indice + 1 }
     return [
       { setDataValidation: { range: { ...base }, rule: REGLA } },
-      { setDataValidation: { range: { ...base, endRowIndex: filas }, rule: REGLA } },
+      { updateCells: {
+        range: { ...base, endRowIndex: filas },
+        rows: Array.from({ length: filas - ins.filaEncabezado }, () => ({ values: [{ dataValidation: REGLA }] })),
+        fields: 'dataValidation',
+      } },
     ]
   })
 }
