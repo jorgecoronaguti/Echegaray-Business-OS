@@ -62,6 +62,17 @@ export interface CompraSheet {
    * se contradicen el día que el criterio del Sheet cambie. El filtro de vencimiento lo usa.
    */
   tramo_vencimiento: string | null
+  // ═══ `fecha_caja` (AD · «Fecha de caja») NO SE TRAE, Y ES A PROPÓSITO ═══
+  //
+  // Su nombre promete «cuándo salió la plata» y no es eso. Medido el 15/09/2026 contra la base viva,
+  // sobre las 891 filas no anuladas: coincide con `fecha_prevista` en 889 —las 2 que difieren es
+  // sólo porque Q está vacía y AD la rellena—, las 41 compras PENDIENTES la tienen cargada y 40 con
+  // día FUTURO. `scripts/sync-compras.mjs` ya las escribía como intercambiables
+  // (`fecha_caja ?? fecha_prevista`), así que la igualdad no es una casualidad de los datos.
+  //
+  // Traerla es la trampa: la primera pantalla que la lea creyendo el rótulo va a afirmar 41 pagos
+  // que no ocurrieron. No está en `COLUMNAS` ni en este tipo para que ese error no compile, y
+  // `canonico-compras-v4.test.ts` se pone rojo si vuelve.
   monto_pagado: number | null
   saldo_pendiente: number | null
   cuit: string | null

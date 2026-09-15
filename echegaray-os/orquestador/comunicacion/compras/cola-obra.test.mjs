@@ -208,3 +208,57 @@ test('sin obras en la base no escribe: difiere', async () => {
   assert.equal(r, 'diferido')
   assert.equal(google.escrituras.length, 0)
 })
+
+// ═══ DOS PESTAÑAS, UNA COLA (20260915T2210) ═══
+import { COBRANZAS_CON_OBRA } from '../../lib/encabezados-referencia.mjs'
+import { huellaDeCobranza } from '../../lib/bisturi-cobranzas-obra.mjs'
+
+const COBRO = { ID: 10, 'N° Comprobante': '01-00000204', 'Obra / Cliente': 'ARCOR', 'TOTAL a cobrar (neto de retenciones)': 1066808 }
+const OBRAS_2 = [...OBRAS, { id: 'arcor', codigo: 'OB-0001', nombre: 'AR - MANTENIMIENTO', cliente_texto: 'ARCOR', fusionada_en: null }]
+const CAMBIO_COB = {
+  id: 'c-1', pestana: 'Cobranzas', fila: 14, sheet_id: 10, valor_anterior: null, valor_nuevo: 'OB-0001 · AR - MANTENIMIENTO',
+  pedido_por: 'u-1', intentos: 1, clave: huellaDeCobranza({ comprobante: '01-00000204', cliente: 'ARCOR', total: 1066808 }),
+}
+/** Google en memoria que sabe las DOS pestañas: cada una con su fila de rótulos y su fila de datos. */
+function dobleGoogleDosPestanas() {
+  const escrituras = []; const lecturas = []
+  return {
+    escrituras, lecturas,
+    async readSheetValues(_id, rango, opts) {
+      lecturas.push({ rango, opts })
+      if (rango === rangoEncabezado('Compras')) return [COMPRAS_CON_OBRA]
+      if (rango === rangoEncabezado('Cobranzas')) return [COBRANZAS_CON_OBRA]
+      if (rango.startsWith('Cobranzas!A')) return [filaDe(COBRANZAS_CON_OBRA, { ...COBRO, Obra: '' })]
+      if (rango.startsWith('Compras!A')) return [filaDe(COMPRAS_CON_OBRA, { ...COMPRA, Obra: '' })]
+      return [[escrituras.at(-1)?.data[0].values[0][0]]]
+    },
+    async batchUpdateValues(_id, data, opts) { escrituras.push({ data, opts }); return {} },
+  }
+}
+
+test('un cambio de Cobranzas lee la fila de rótulos de Cobranzas y escribe H de ESA fila', async () => {
+  const google = dobleGoogleDosPestanas(); const port = doblePort({ obras: OBRAS_2 })
+  const r = await aplicarCambio({ port, google, fileId: 'F', cambio: CAMBIO_COB, encabezado: COBRANZAS_CON_OBRA })
+  assert.equal(r, 'aplicado')
+  assert.deepEqual(google.escrituras[0].data, [{ range: 'Cobranzas!H14', values: [['OB-0001 · AR - MANTENIMIENTO']] }])
+  assert.match(google.escrituras[0].opts.confirmacion.motivo, /Cobranzas/)
+  assert.ok(google.lecturas.some((l) => l.rango === 'Cobranzas!A14:BZ14' && l.opts?.render === 'UNFORMATTED_VALUE'), 'la fila de Cobranzas se relee sin formato')
+})
+
+test('la cola mezclada: cada cambio va con el encabezado de SU pestaña, y sin `pestana` es Compras', async () => {
+  const google = dobleGoogleDosPestanas()
+  const port = doblePort({ obras: OBRAS_2, cambios: [CAMBIO_COB, { ...CAMBIO, pestana: undefined }, { ...CAMBIO, id: 'k-3', pestana: 'Compras' }] })
+  const c = await procesarCola({ port, google, fileId: 'F', dry: false })
+  assert.equal(c.aplicado, 3)
+  assert.deepEqual(google.escrituras.map((e) => e.data[0].range), ['Cobranzas!H14', 'Compras!L57', 'Compras!L57'])
+  const encabezados = google.lecturas.filter((l) => [rangoEncabezado('Compras'), rangoEncabezado('Cobranzas')].includes(l.rango))
+  assert.equal(encabezados.length, 2, 'cada fila de rótulos se lee UNA vez por corrida')
+  assert.ok(port.sqls.some((s) => /from public\.cliente_alias/.test(s)), 'el mapa de clientes sale de la base, para «Sin obra – X» canónico')
+})
+
+test('en seco, un cambio de Cobranzas dice qué celda escribiría y no toca nada', async () => {
+  const google = dobleGoogleDosPestanas(); const port = doblePort({ obras: OBRAS_2, cambios: [CAMBIO_COB] })
+  const c = await procesarCola({ port, google, fileId: 'F' })
+  assert.equal(c.plan[0].celda, 'Cobranzas!H14'); assert.equal(c.plan[0].pestana, 'Cobranzas')
+  assert.equal(google.escrituras.length, 0); assert.equal(port.updates.length, 0)
+})

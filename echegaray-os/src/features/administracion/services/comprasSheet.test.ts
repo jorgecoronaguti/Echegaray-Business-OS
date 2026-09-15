@@ -13,7 +13,7 @@ const fila = (p: Partial<Filtrable> = {}): Filtrable => ({
   // El renglón se autoincrementa: los casos que no hablan del orden no tienen por qué escribirlo, y
   // repetir `fila: 1` en todos haría que «las últimas 30» no pudiera distinguir ninguna.
   fila: siguiente++,
-  estado: ESTADO.PAGADO, obra_texto: 'Quattropani', anulada: false, total: 1000,
+  estado: ESTADO.PAGADO, obra: { rotulo: 'OB-0004 · QUATTROPANI' }, anulada: false, total: 1000,
   tiene_adjunto: true, ...p,
 })
 
@@ -54,7 +54,7 @@ test('«A pagar» cuenta SÓLO las pendientes, no las proyectadas', () => {
 
 test('UNA FILA ANULADA NO APARECE EN NINGÚN FILTRO DE TRABAJO', () => {
   // Sin esto, «6 sin obra» manda a alguien a imputar seis filas muertas.
-  const muerta = fila({ anulada: true, estado: ESTADO.ANULADA, obra_texto: null, tiene_adjunto: false })
+  const muerta = fila({ anulada: true, estado: ESTADO.ANULADA, obra: null, tiene_adjunto: false })
   assert.equal(pasa(muerta, 'sinObra'), false)
   assert.equal(pasa(muerta, 'sinComprobante'), false)
   assert.equal(pasa(muerta, 'aPagar'), false)
@@ -65,10 +65,19 @@ test('pero SÍ aparece en «todo»: la cuenta de la pantalla tiene que cerrar co
   assert.equal(pasa(fila({ anulada: true }), 'todo'), true)
 })
 
-test('«sin obra» mira el texto, y un espacio en blanco no es una obra', () => {
-  assert.equal(pasa(fila({ obra_texto: '   ' }), 'sinObra'), true)
-  assert.equal(pasa(fila({ obra_texto: null }), 'sinObra'), true)
-  assert.equal(pasa(fila({ obra_texto: 'Taller' }), 'sinObra'), false)
+test('«sin obra» mira la OBRA DE SUPABASE, no el texto libre de la columna J', () => {
+  // ═══ EL DEFECTO QUE ATRAPA (15/09/2026) ═══
+  //
+  // El chip preguntaba `!obra_texto?.trim()`. La columna J («Cliente / Asignación») está escrita en
+  // las 947 filas —dice el CLIENTE, o «Taller», o «Papa»—, así que el chip contaba CERO y la pantalla
+  // prometía que no quedaba nada por imputar. Lo que falta imputar es lo que no tiene `obra_id` ni
+  // destino en Supabase, que es lo que mira ahora. Una fila con J escrita y sin obra resuelta tiene
+  // que ENTRAR en el chip: es exactamente el trabajo que estaba escondido.
+  const conJPeroSinObra = { ...fila({ obra: null }), obra_texto: 'Taller' } as Filtrable
+  assert.equal(pasa(conJPeroSinObra, 'sinObra'), true,
+    'el chip volvió a mirar la columna J: una fila sin imputar deja de contarse porque la J no está vacía')
+  assert.equal(pasa(fila({ obra: { rotulo: null } }), 'sinObra'), true, 'un obra_id que no se pudo nombrar no es una imputación')
+  assert.equal(pasa(fila({ obra: { rotulo: 'ES-TAL · Estructura – Taller' } }), 'sinObra'), false)
 })
 
 test('«sin comprobante» trata el dato ausente como faltante, no como presente', () => {
@@ -88,7 +97,7 @@ test('un filtro que no existe vuelve a «todo» en vez de vaciar la lista', () =
 test('las anuladas cuentan en el total de FILAS y no en los conteos de trabajo', () => {
   const t = totalesDe([
     fila({ total: 100 }),
-    fila({ anulada: true, estado: ESTADO.ANULADA, total: 0, obra_texto: null, tiene_adjunto: false }),
+    fila({ anulada: true, estado: ESTADO.ANULADA, total: 0, obra: null, tiene_adjunto: false }),
   ])
   assert.equal(t.nTotal, 2)
   assert.equal(t.nSinObra, 0)
@@ -129,7 +138,7 @@ test('sin filas sin importe, el aviso no existe: no es «0 sin importe»', () =>
 
 test('el conteo de cada chip sale de la población entera, no de la página', () => {
   const c = conteosDe([
-    fila({ estado: ESTADO.PENDIENTE }), fila({ obra_texto: null }),
+    fila({ estado: ESTADO.PENDIENTE }), fila({ obra: null }),
     fila({ tiene_adjunto: false }), fila({ anulada: true }),
   ])
   assert.equal(c.todo, 4)

@@ -22,9 +22,18 @@
 //   3. Un diferido corta la corrida. El freno, el candado o la columna que falta no se levantan en el
 //      mismo minuto; seguir tomaría el mismo cambio (el más viejo) hasta `max` veces.
 //
+// ═══ DOS PESTAÑAS, UNA COLA (20260915T2210) ═══
+//
+// `cobranza_obra_asignar` encola en la MISMA tabla con `pestana = 'Cobranzas'`. Acá la pestaña decide
+// qué fila de rótulos se lee y qué bisturí planifica (`bisturi-cobranzas-obra.mjs`, con la huella
+// «comprobante|cliente|total»); todo lo demás —tomar, diferir, escribir con el nombre de quien pidió,
+// releer— es idéntico. Una fila sin `pestana` (anterior a la migración) es de Compras.
+//
 // Todo entra inyectado (`port`, `google`): se prueba con dobles, sin Postgres ni Google.
 import { planificarObra, relecturaConfirma } from '../../lib/bisturi-compras-obra.mjs'
+import { planificarObraCobranza } from '../../lib/bisturi-cobranzas-obra.mjs'
 import { rangoEncabezado, rangoFilas } from '../../lib/columnas-por-encabezado.mjs'
+import { normAlias } from '../../lib/jornales-a-registros-hh.mjs'
 
 /** Cuántos minutos puede quedar un cambio en `procesando` antes de darlo por colgado. */
 export const LEASE_MIN = Number(process.env.ORQ_COMPRA_OBRA_CAMBIO_LEASE_MIN || 10)
@@ -86,11 +95,16 @@ export async function actorDelCambio(port, cambio) {
 
 // SIN `.catch()`: una lectura fallida que devuelve vacío haría que la huella no coincida y el cambio se
 // cerraría `rechazado` —terminal— por una caída de red. Que suba y se reintente.
-const leerEncabezado = async (google, fileId) =>
-  (await google.readSheetValues(fileId, rangoEncabezado('Compras'), SIN_FORMATO))?.[0] ?? []
+const leerEncabezado = async (google, fileId, pestana) =>
+  (await google.readSheetValues(fileId, rangoEncabezado(pestana), SIN_FORMATO))?.[0] ?? []
 
-const leerFila = async (google, fileId, fila) =>
-  (await google.readSheetValues(fileId, rangoFilas('Compras', fila, fila), SIN_FORMATO))?.[0] ?? []
+const leerFila = async (google, fileId, pestana, fila) =>
+  (await google.readSheetValues(fileId, rangoFilas(pestana, fila, fila), SIN_FORMATO))?.[0] ?? []
+
+/** De qué pestaña es el cambio. Sin columna (cola anterior a T2210) es Compras. */
+export const pestanaDe = (cambio) => (cambio?.pestana === 'Cobranzas' ? 'Cobranzas' : 'Compras')
+
+const PLANIFICADOR = Object.freeze({ Compras: planificarObra, Cobranzas: planificarObraCobranza })
 
 /**
  * El catálogo contra el que se valida el valor ANTES de escribir: el mismo universo que el desplegable de
@@ -101,14 +115,24 @@ export async function leerObras(port) {
   return r?.rows ?? []
 }
 
+/** normAlias(rótulo) → cliente canónico: el MISMO mapa de `catalogosDeAsignacion`, para «Sin obra – X» canónico. */
+export async function leerClienteAlias(port) {
+  const r = await port.query('select rotulo_clave, cliente_canonico from public.cliente_alias')
+  return new Map((r?.rows ?? []).map((x) => [normAlias(x.rotulo_clave), x.cliente_canonico]))
+}
+
 /** La decisión sin efectos: la usa la corrida real y la corrida en seco, así las dos dicen lo mismo. */
-export async function decidir({ port, google, fileId, cambio, encabezado, obras }) {
+export async function decidir({ port, google, fileId, cambio, encabezado, obras, clienteAlias }) {
   const actor = await actorDelCambio(port, cambio)
   if (!actor) {
     return { accion: 'rechazar', motivo: 'sin_actor', detalle: 'el cambio no tiene una persona identificada y el Sheet no se escribe sin nombre' }
   }
-  const fila = await leerFila(google, fileId, Number(cambio.fila))
-  return { ...planificarObra({ cambio, encabezado, fila, obras: obras ?? await leerObras(port) }), actor }
+  const pestana = pestanaDe(cambio)
+  const fila = await leerFila(google, fileId, pestana, Number(cambio.fila))
+  const plan = PLANIFICADOR[pestana]({
+    cambio, encabezado, fila, obras: obras ?? await leerObras(port), clienteAlias: clienteAlias ?? await leerClienteAlias(port),
+  })
+  return { ...plan, actor, pestana }
 }
 
 const marcar = (port, id, estado, motivo) => port.query(
@@ -137,7 +161,7 @@ async function escribirYReleer({ port, google, fileId, cambio, plan }) {
   const r = await google.batchUpdateValues(
     fileId,
     [{ range: plan.celda, values: [[plan.valor]] }],
-    { confirmacion: { actor: plan.actor, motivo: `obra de la compra elegida en la app por ${plan.actor} (cambio ${cambio.id})` } },
+    { confirmacion: { actor: plan.actor, motivo: `obra de la fila de ${plan.pestana} elegida en la app por ${plan.actor} (cambio ${cambio.id})` } },
   )
   if (r?.congelado) { await diferir(port, cambio.id, 'el freno de mano de Sheets está puesto'); return 'diferido' }
   if (r?.protegido) {
@@ -170,8 +194,8 @@ async function escribirYReleer({ port, google, fileId, cambio, plan }) {
  * APLICA UN CAMBIO. Verificar → escribir → releer, en ese orden. Una escritura no es buena porque la
  * API devolvió 200: es buena cuando la celda, releída, dice lo pedido.
  */
-export async function aplicarCambio({ port, google, fileId, cambio, encabezado, obras }) {
-  const plan = await decidir({ port, google, fileId, cambio, encabezado, obras })
+export async function aplicarCambio({ port, google, fileId, cambio, encabezado, obras, clienteAlias }) {
+  const plan = await decidir({ port, google, fileId, cambio, encabezado, obras, clienteAlias })
   if (plan.accion === 'rechazar') {
     await cerrar(port, cambio.id, { estado: 'rechazado', motivo: `${plan.motivo}: ${plan.detalle}` })
     return 'rechazado'
@@ -191,13 +215,24 @@ export async function aplicarCambio({ port, google, fileId, cambio, encabezado, 
 async function planEnSeco({ port, google, fileId, max }) {
   const pendientes = await verPendientes(port, max)
   if (!pendientes.length) return []
-  const encabezado = await leerEncabezado(google, fileId)
+  const encabezados = lectorPorPestana(google, fileId)
   const obras = await leerObras(port)
+  const clienteAlias = await leerClienteAlias(port)
   const plan = []
   for (const cambio of pendientes) {
-    plan.push({ id: cambio.id, fila: cambio.fila, ...await decidir({ port, google, fileId, cambio, encabezado, obras }) })
+    const encabezado = await encabezados(pestanaDe(cambio))
+    plan.push({ id: cambio.id, fila: cambio.fila, ...await decidir({ port, google, fileId, cambio, encabezado, obras, clienteAlias }) })
   }
   return plan
+}
+
+/** La fila de rótulos de cada pestaña, UNA vez por corrida y sólo si algún cambio la pide. */
+function lectorPorPestana(google, fileId) {
+  const cache = new Map()
+  return async (pestana) => {
+    if (!cache.has(pestana)) cache.set(pestana, await leerEncabezado(google, fileId, pestana))
+    return cache.get(pestana)
+  }
 }
 
 /** Vacía la cola, o con `dry` sólo dice qué escribiría. `max` acota una corrida. */
@@ -206,17 +241,19 @@ export async function procesarCola({ port, google, fileId = null, max = 20, dry 
   if (dry) return { dry: true, plan: await planEnSeco({ port, google, fileId: id, max }) }
 
   const cuenta = { dry: false, reciclados: await reciclarColgados(port), aplicado: 0, rechazado: 0, diferido: 0, error: 0 }
-  // La fila de rótulos, UNA vez por corrida y sólo si hay algo que aplicar.
-  let encabezado = null
+  // La fila de rótulos de cada pestaña y el catálogo, UNA vez por corrida y sólo si hay algo que aplicar.
+  const encabezados = lectorPorPestana(google, id)
   let obras = null
+  let clienteAlias = null
   for (let i = 0; i < max; i += 1) {
     const cambio = await tomarCambio(port)
     if (!cambio) break
     let estado
     try {
-      encabezado = encabezado ?? await leerEncabezado(google, id)
+      const encabezado = await encabezados(pestanaDe(cambio))
       obras = obras ?? await leerObras(port)
-      estado = await aplicarCambio({ port, google, fileId: id, cambio, encabezado, obras })
+      clienteAlias = clienteAlias ?? await leerClienteAlias(port)
+      estado = await aplicarCambio({ port, google, fileId: id, cambio, encabezado, obras, clienteAlias })
     } catch (e) {
       estado = 'error'
       const agotado = cambio.intentos >= MAX_INTENTOS

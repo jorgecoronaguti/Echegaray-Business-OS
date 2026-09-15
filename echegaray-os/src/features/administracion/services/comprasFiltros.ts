@@ -30,16 +30,37 @@
 // «¿esto está vencido?» y se contradirían el día que el criterio del Sheet cambie. El prefijo
 // numérico es su ORDEN — se usa para ordenar y se saca para mostrar.
 
-/** Lo que un criterio necesita mirar de una fila. Subconjunto de `CompraSheet`. */
+/** Lo que un criterio necesita mirar de una fila. Subconjunto de `CompraSheet` más su obra. */
 export interface Criteriable {
   proveedor: string | null
-  obra_texto: string | null
   categoria: string | null
   estado: string | null
   total: number | null
   fecha: string | null
   tramo_vencimiento?: string | null
+  /**
+   * LA OBRA RESUELTA (`obraDeCompra.ts`): el rótulo único que sale de `obra_id` y `destino` de
+   * Supabase. `null` o ausente = esta fila no tiene obra que nombrar.
+   *
+   * NO es `obra_texto`, y ése es el arreglo del 15/09/2026. La columna J de la pestaña es texto
+   * libre —«Administracion», «Almacen», «ARCOR», «Papa», «Taller» y «TALLER» convivían en el mismo
+   * desplegable— así que el filtro ofrecía doce opciones de las que varias eran la misma obra escrita
+   * de dos formas, otras eran clientes y otras ya no existían. El rótulo único (`OB-#### · NOMBRE`,
+   * `ES-ADM`, `ES-TAL`, «Sin obra – cliente») es el mismo vocabulario del desplegable de la fila y
+   * del panel: elegir en el filtro y elegir en la fila pasaron a nombrar la misma cosa.
+   */
+  obra?: { rotulo: string | null } | null
 }
+
+/**
+ * EL VALOR DEL FILTRO PARA «LAS QUE NO TIENEN OBRA». No puede ser la cadena vacía —ésa significa
+ * «sin filtro»— ni un rótulo, porque todos empiezan por `OB-`, `ES-` o «Sin obra – ». Los paréntesis
+ * lo sacan del espacio de los rótulos válidos a propósito.
+ *
+ * Y no es lo mismo que «Sin obra – cliente», que SÍ es una imputación: quiere decir «este gasto es
+ * de este cliente y todavía no se sabe de qué obra suya». Esto otro es «nadie lo imputó».
+ */
+export const SIN_ASIGNAR = '(sin asignar)'
 
 export interface Criterios {
   proveedor?: string
@@ -143,7 +164,11 @@ export function pasaCriterios(f: Criteriable, c: Criterios): boolean {
     return String(celda ?? '').trim().toLowerCase() === valor.trim().toLowerCase()
   }
   if (!igual(f.proveedor, c.proveedor)) return false
-  if (!igual(f.obra_texto, c.obra)) return false
+  // LA OBRA SE COMPARA CONTRA EL RÓTULO ÚNICO. `SIN_ASIGNAR` es el único valor que SÍ puede pasar
+  // con la celda vacía: es la opción que existe justamente para juntar las filas sin imputar, y es
+  // trabajo pendiente que hay que poder ver.
+  if (c.obra === SIN_ASIGNAR) { if (f.obra?.rotulo) return false }
+  else if (!igual(f.obra?.rotulo, c.obra)) return false
   if (!igual(f.categoria, c.categoria)) return false
   if (!igual(f.estado, c.estado)) return false
   if (c.vencimiento && tramoVisible(f.tramo_vencimiento).toLowerCase() !== c.vencimiento.trim().toLowerCase()) return false
@@ -186,10 +211,33 @@ export interface Opciones {
  */
 export function opcionesDe(filas: Criteriable[]): Opciones {
   const vivas = filas.filter((f) => !(f as { anulada?: boolean }).anulada)
+  /**
+   * LOS VALORES DISTINTOS DE UNA COLUMNA, CON LA MISMA DEFINICIÓN DE «DISTINTO» QUE USA EL FILTRO.
+   *
+   * `pasaCriterios` compara con `trim().toLowerCase()`, así que elegir «DUPEC» ya trae también las
+   * filas de «Dupec». Un `Set` de textos crudos, en cambio, las cuenta como dos: el desplegable
+   * ofrecía DOS ENTRADAS que filtran exactamente lo mismo. Medido el 15/09/2026 sobre las 891 filas
+   * vivas: de 132 proveedores distintos, `DUPEC`/`Dupec` y `FEMENIA`/`Femenia` son ese caso.
+   *
+   * No se pierde ninguna fila —nunca se perdió, la comparación ya era insensible— pero una lista que
+   * ofrece dos veces el mismo proveedor hace dudar de cuál es el bueno, y el que elige no puede
+   * saber que da igual. El desplegable y el filtro tienen que tener UNA sola idea de qué es el mismo
+   * valor.
+   *
+   * SE CONSERVA LA GRAFÍA MÁS FRECUENTE, no la primera que aparece: es la que el dueño escribe
+   * habitualmente y la que va a reconocer. Empate ⇒ la primera, que es estable entre corridas.
+   */
   const junta = (lee: (f: Criteriable) => string | null | undefined) => {
-    const s = new Set<string>()
-    for (const f of vivas) { const v = String(lee(f) ?? '').trim(); if (v) s.add(v) }
-    return [...s]
+    // Por valor normalizado, cuántas veces aparece cada grafía.
+    const grafias = new Map<string, Map<string, number>>()
+    for (const f of vivas) {
+      const v = String(lee(f) ?? '').trim()
+      if (!v) continue
+      const m = grafias.get(v.toLowerCase()) ?? new Map<string, number>()
+      m.set(v, (m.get(v) ?? 0) + 1)
+      grafias.set(v.toLowerCase(), m)
+    }
+    return [...grafias.values()].map((m) => [...m.entries()].reduce((a, b) => (b[1] > a[1] ? b : a))[0])
   }
   const alfa = (l: string[]) => l.sort((a, b) => a.localeCompare(b, 'es'))
   const tramos = new Map<string, string>()
@@ -198,9 +246,13 @@ export function opcionesDe(filas: Criteriable[]): Opciones {
     const visible = tramoVisible(crudo)
     if (visible) tramos.set(visible, crudo)
   }
+  // «SIN ASIGNAR» SÓLO SI HAY ALGUNA. Ofrecer una opción que devuelve la lista vacía manda a alguien
+  // a buscar trabajo que no existe; esconderla cuando sí hay filas sin imputar esconde el trabajo.
+  const obras = alfa(junta((f) => f.obra?.rotulo))
+  if (vivas.some((f) => !f.obra?.rotulo)) obras.push(SIN_ASIGNAR)
   return {
     proveedores: alfa(junta((f) => f.proveedor)),
-    obras: alfa(junta((f) => f.obra_texto)),
+    obras,
     categorias: alfa(junta((f) => f.categoria)),
     estados: alfa(junta((f) => f.estado)),
     vencimientos: [...tramos.entries()]

@@ -40,6 +40,25 @@ export const ESTADO = {
 } as const
 
 /**
+ * ¿LA PLATA DE ESTA COMPRA YA SALIÓ? Un solo criterio para toda la pantalla.
+ *
+ * Existe porque la lista muestra una columna de fecha de pago y la fuente NO TIENE una: la única
+ * fecha ligada al pago es Q («Fecha prevista de pago (día)»), que en una fila paga es el día en que
+ * se pagó y en una impaga es una intención. Medido el 15/09/2026 sobre las 891 filas vivas: las 41
+ * pendientes tienen esa fecha cargada y 40 con día FUTURO. Sin este predicado, la columna afirma 41
+ * pagos que no ocurrieron.
+ *
+ * MIRA EL ESTADO, NO LA FECHA NI EL MONTO. `monto_pagado > 0` incluiría las 3 pendientes con un pago
+ * parcial —plata que salió, deuda que sigue viva— y llamarlas «pagadas» taparía el saldo. El estado
+ * es lo que el dueño escribe cuando cierra el pago, y es el mismo que cuenta el chip «A pagar».
+ *
+ * FALLA CERRADO: lo que la pestaña no dice NO está pagado. Una fila sin estado se dibuja como
+ * impaga, que es el error que se puede ver y corregir; al revés se esconde solo.
+ */
+export const estaPagada = (estado: string | null | undefined): boolean =>
+  estado?.trim() === ESTADO.PAGADO
+
+/**
  * LA PASTILLA DE UNA FILA. Nunca inventa un estado: lo que la pestaña no dice se dibuja «Sin
  * estado» y apagado, no se asume pagado ni pendiente.
  */
@@ -80,7 +99,26 @@ export interface Filtrable {
   /** La fecha del COMPROBANTE. No ordena la lista: sólo desempata renglones iguales. */
   fecha?: string | null
   estado: string | null
-  obra_texto: string | null
+  /**
+   * LA OBRA RESUELTA, no el texto de la columna J (15/09/2026). El chip «Sin obra» preguntaba
+   * `!obra_texto`, y la J está escrita en todas las filas —dice el CLIENTE, no la obra—, así que el
+   * chip contaba 0 y prometía que no quedaba nada por imputar. Lo que de verdad falta imputar es lo
+   * que no tiene `obra_id` ni destino en Supabase, que es lo que este campo trae.
+   *
+   * ═══ EL CHIP VA A SALTAR DE 0 A ~518, Y ESO NO ES UNA REGRESIÓN ═══
+   *
+   * Medido contra la base viva el 15/09/2026, sobre las 891 filas no anuladas: 10 tienen la celda
+   * «Obra» escrita (origen `columna`), 363 llegan a una obra por inferencia del sync (origen
+   * `inferida`) y 518 quedan en `sin_obra` — la tabla `compra_obra_asignada` guarda el motivo de cada
+   * una: «"Taller" no es un cliente en cliente_alias», «columna K "combustible" no nombra una obra de
+   * SAN FRANCISCO».
+   *
+   * Esas 518 son trabajo real que estaba escondido detrás de un contador en cero, y buena parte son
+   * gastos de estructura que ahora se imputan con `ES-ADM`/`ES-TAL` desde el desplegable de la fila
+   * —que es exactamente para lo que el dueño lo pidió—. El número no se clava en ningún test: es un
+   * derivado de dato vivo y bajaría solo a medida que se imputen.
+   */
+  obra?: { rotulo: string | null } | null
   anulada: boolean
   total: number | null
   tiene_adjunto?: boolean
@@ -120,7 +158,7 @@ export function pasa(f: Filtrable, filtro: FiltroSheet, recien?: ReadonlySet<num
   if (f.anulada) return false
   switch (filtro) {
     case 'aPagar': return f.estado === ESTADO.PENDIENTE
-    case 'sinObra': return !f.obra_texto?.trim()
+    case 'sinObra': return !f.obra?.rotulo
     case 'sinComprobante': return f.tiene_adjunto !== true
     // SIN EL CONJUNTO NO HAY CORTE, Y NO PASA NADIE. «Recién cargadas» es una propiedad de la
     // POBLACIÓN —qué entró último, ver `clavesRecienCargadas`—, no de la fila: una fila sola no
@@ -155,7 +193,7 @@ export function totalesDe(filas: Filtrable[]): Totales {
   const vivas = filas.filter((f) => !f.anulada)
   return {
     nTotal: filas.length,
-    nSinObra: vivas.filter((f) => !f.obra_texto?.trim()).length,
+    nSinObra: vivas.filter((f) => !f.obra?.rotulo).length,
     nSinComprobante: vivas.filter((f) => f.tiene_adjunto !== true).length,
     aPagar: vivas.filter((f) => f.estado === ESTADO.PENDIENTE).reduce((s, f) => s + (f.total ?? 0), 0),
     total: vivas.reduce((s, f) => s + (f.total ?? 0), 0),

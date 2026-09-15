@@ -46,17 +46,25 @@ export function FiltrosComprasSheet({
 }) {
   return (
     <div className="flex flex-col gap-1">
+      {/* SIN SU PROPIO BUSCADOR (15/09/2026): el de la pantalla es el de `CabeceraSeccion`, y hasta
+          hoy había DOS campos `name="q"` para el mismo parámetro. `q` viaja oculto en `extra` para
+          que poner un filtro no borre lo que la persona había buscado. */}
       <BarraFiltros
         accion={accion}
-        q={q}
-        placeholder="Proveedor, concepto, comprobante…"
+        buscador={false}
+        placeholder=""
         testid="filtros-compras"
-        extra={extra}
+        extra={{ ...extra, q }}
       >
         <SelectFiltro
           label="Proveedor" name={LLAVE.proveedor} valor={criterios.proveedor} testid="f-proveedor"
           opciones={[TODOS, ...opciones.proveedores.map((v) => ({ valor: v, etiqueta: v }))]}
         />
+        {/* OBRA — el rótulo único de Supabase (`OB-#### · NOMBRE`, `ES-ADM`, `ES-TAL`, «Sin obra –
+            cliente») más «(sin asignar)». Hasta el 15/09 este desplegable traía los textos crudos de
+            la columna J: «Administracion», «Almacen», «ARCOR», «Papa», «Taller» y «TALLER» juntos —
+            la misma obra escrita de dos formas, clientes que no son obras, y obras que ya no existen.
+            Es el mismo vocabulario que el desplegable de la fila: se filtra por lo que se elige. */}
         <SelectFiltro
           label="Obra" name={LLAVE.obra} valor={criterios.obra} testid="f-obra"
           opciones={[TODOS, ...opciones.obras.map((v) => ({ valor: v, etiqueta: v }))]}
