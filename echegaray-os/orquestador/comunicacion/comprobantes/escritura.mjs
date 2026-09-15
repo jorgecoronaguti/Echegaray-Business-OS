@@ -730,6 +730,35 @@ const ROTULO_COLUMNA = Object.freeze({
 /** $ en es-AR, sin decimales: es un total de control, no un asiento. */
 const enPesos = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
 
+/**
+ * LA OBRA DE CADA FILA RECIÉN CARGADA, dicha en el mismo mensaje que dice la fila (15/09/2026).
+ *
+ * La columna «Obra» registra una DECISIÓN (ver `obra-y-destino.mjs`). El cargador la escribe sólo
+ * cuando la obra es segura; si no, la deja vacía y dice por qué. Si el mensaje de «cargado» no lo
+ * dice, la persona da por imputada una fila que quedó sin obra, y el costo de esa obra sale corto.
+ * Se lee de `datos.filas` (la línea JSON del cargador, `filasDelPlan`): un cargador viejo que no manda
+ * `obra` no produce ninguna línea, en vez de afirmar «sin obra» sobre algo que nunca se miró.
+ * @returns {Map<number, {corta:string, larga:string}>}
+ */
+export function obraPorFila(datos) {
+  const out = new Map()
+  for (const p of datos?.filas ?? []) {
+    if (p?.fila == null || !Object.hasOwn(p, 'obra')) continue
+    if (p.obra && p.obraEscrita) {
+      out.set(p.fila, { corta: `obra ${p.obra}`, larga: `Obra: **${p.obra}**` })
+    } else if (p.obra) {
+      out.set(p.fila, {
+        corta: `obra ${p.obra} (sin escribir)`,
+        larga: `Obra: ${p.obra} — _no la escribí: Compras todavía no tiene la columna «Obra»._`,
+      })
+    } else {
+      const porque = p.obraPorque ? ` — ${p.obraPorque}` : ''
+      out.set(p.fila, { corta: 'sin obra', larga: `Obra: **sin completar**${porque}. Completala en la columna «Obra» de Compras.` })
+    }
+  }
+  return out
+}
+
 export function textoCargado(filas, yaEstaban, datos, { pendientes = [], suma = null, varios = [] } = {}) {
   const l = []
   const conFila = filas.filter((f) => f.fila != null)
@@ -737,7 +766,15 @@ export function textoCargado(filas, yaEstaban, datos, { pendientes = [], suma = 
   l.push(conFila.length === 1
     ? `✔ Cargado en **Compras, fila ${conFila[0].fila}**${plata}.`
     : `✔ Cargué ${filas.length} comprobante(s) en **Compras**${plata}.`)
-  if (filas.length > 1) for (const f of filas) l.push(`· ${f.proveedor ?? '?'} ${f.numero ?? ''} → fila ${f.fila ?? '?'}`)
+  const obraDe = obraPorFila(datos)
+  if (filas.length > 1) {
+    for (const f of filas) {
+      const o = obraDe.get(f.fila)
+      l.push(`· ${f.proveedor ?? '?'} ${f.numero ?? ''} → fila ${f.fila ?? '?'}${o ? ` · ${o.corta}` : ''}`)
+    }
+  } else if (conFila.length === 1 && obraDe.has(conFila[0].fila)) {
+    l.push(obraDe.get(conFila[0].fila).larga)
+  }
   if (yaEstaban.length) l.push(`_${yaEstaban.length} ya estaba(n) cargado(s); no los dupliqué._`)
   if (datos?.errores) l.push(`⚠ ${datos.errores} fila(s) quedaron con #ERROR — revisalas.`)
   if (datos?.nuevos?.length) l.push(`⚠ Proveedor(es) sin CUIT legible, fuera del desplegable: ${datos.nuevos.join(' · ')}. Agregalos vos o mandá el comprobante donde se lea el CUIT.`)
