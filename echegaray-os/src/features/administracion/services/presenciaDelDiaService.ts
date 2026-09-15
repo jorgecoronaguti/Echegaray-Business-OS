@@ -28,7 +28,7 @@ interface FilaCruda {
   persona_id: string
   estado: string
   motivo: string | null
-  /** Ausentes mientras `20260915T2200` no esté aplicada: se leen como `false`. */
+  /** Ausentes mientras `20260915T2220` no esté aplicada: se leen como `false`. */
   llego_tarde?: boolean
   salio_antes?: boolean
 }
@@ -43,7 +43,7 @@ const ESTADOS: readonly string[] = ['presente', 'ausente', 'licencia']
 export async function getPresenciaDelDia(
   supabase: SupabaseClient, fecha: string, obraId?: string | null,
 ): Promise<ServiceResult<PresenciaGuardada[]>> {
-  // LA TARDANZA VIAJA SI LA BASE LA TIENE. Mientras `20260915T2200` no esté aplicada se relee sin
+  // LA TARDANZA VIAJA SI LA BASE LA TIENE. Mientras `20260915T2220` no esté aplicada se relee sin
   // ella: la pantalla de presencia no puede quedar rota entera por una migración pendiente.
   const leer = (campos: string) => {
     let consulta = supabase.from('asistencia_dia').select(campos).eq('fecha', fecha)

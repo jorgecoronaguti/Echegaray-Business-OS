@@ -58,7 +58,7 @@ type Lectura<T> = { data: T[] | null; error: { code?: string; message: string } 
 
 export type FilaPresencia = {
   persona_id: string; fecha: string; estado: string; motivo: string | null
-  /** La marca de tardanza (20260915T2200). Ausente mientras la migración no esté aplicada: se lee como `false`. */
+  /** La marca de tardanza (20260915T2220). Ausente mientras la migración no esté aplicada: se lee como `false`. */
   llego_tarde?: boolean; salio_antes?: boolean
 }
 export type FilaCuil = { id: string; cuil: string | null }
@@ -79,7 +79,7 @@ export function leerPresenciasDeLaQuincena(
   supabase: SupabaseClient, desde: string, hasta: string,
 ): Promise<Lectura<FilaPresencia>> {
   return recordar(memoPresencias(), `${desde}|${hasta}`, async () => {
-    // LA TARDANZA VIAJA SI LA BASE LA TIENE: sin `20260915T2200` aplicada se relee sin ella, para que
+    // LA TARDANZA VIAJA SI LA BASE LA TIENE: sin `20260915T2220` aplicada se relee sin ella, para que
     // Liquidación y Horas no queden rotas por una migración pendiente. Sin columna nadie pudo marcar.
     const leer = (campos: string) => supabase.from('asistencia_dia').select(campos).gte('fecha', desde).lte('fecha', hasta)
     let { data, error } = await leer('persona_id, fecha, estado, motivo, llego_tarde, salio_antes')

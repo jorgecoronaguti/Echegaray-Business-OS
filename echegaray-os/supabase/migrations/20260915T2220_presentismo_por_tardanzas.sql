@@ -1,4 +1,4 @@
--- 20260915T2200 · PRESENTISMO: LLEGAR TARDE O IRSE ANTES PIERDE EL 20 % DEL BÁSICO (dueño, 15/09/2026)
+-- 20260915T2220 · PRESENTISMO: LLEGAR TARDE O IRSE ANTES PIERDE EL 20 % DEL BÁSICO (dueño, 15/09/2026)
 --
 -- Dueño, textual: «hacelo». Parte de lo que hoy cobra un obrero pasa a llamarse PRESENTISMO:
 -- 20 % × (horas de la quincena ÷ 2) × básico UOCRA de su categoría (art. 52 CCT 76/75). Sin ninguna

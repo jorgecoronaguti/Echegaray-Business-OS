@@ -42,7 +42,7 @@ test('las presencias se piden con la MISMA tabla, columnas y ventana que la cons
   const { supabase, pedido } = espia({ data: [], error: null })
   await leerPresenciasDeLaQuincena(supabase, '2026-09-01', '2026-09-15')
   assert.equal(pedido.from, 'asistencia_dia')
-  // La tardanza viaja desde el 15/09/2026 (20260915T2200): es la marca que decide el presentismo.
+  // La tardanza viaja desde el 15/09/2026 (20260915T2220): es la marca que decide el presentismo.
   assert.equal(pedido.select, 'persona_id, fecha, estado, motivo, llego_tarde, salio_antes')
   assert.deepEqual(pedido.gte, ['fecha', '2026-09-01'])
   assert.deepEqual(pedido.lte, ['fecha', '2026-09-15'])

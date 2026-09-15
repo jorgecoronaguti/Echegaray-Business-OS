@@ -100,7 +100,7 @@ export interface LiquidacionDeLaQuincena {
   /** Los `persona_id` del plantel de ESTA quincena (`plantelDeLaQuincena`). Caja, Cierre y Costo leen éste. */
   plantel: string[]
   /**
-   * `liquidacion_linea.presentismo` y `presentismo_perdido` EXISTEN en la base (20260915T2200). El sello
+   * `liquidacion_linea.presentismo` y `presentismo_perdido` EXISTEN en la base (20260915T2220). El sello
    * los escribe sólo si están: sin la migración, la foto sale sin presentismo y no rompe el cierre.
    */
   hayColumnasPresentismo: boolean
@@ -378,7 +378,7 @@ const COLUMNAS_NEGRO = ['negro_manual'] as const
 /** Horas y Hs negro escritas a mano, si la migración `20260915T0510` ya se aplicó. */
 const COLUMNAS_HORAS = ['horas_manual', 'horas_negro_manual'] as const
 
-/** La foto del presentismo, si la migración `20260915T2200` ya se aplicó. */
+/** La foto del presentismo, si la migración `20260915T2220` ya se aplicó. */
 const COLUMNAS_PRESENTISMO = ['presentismo', 'presentismo_perdido'] as const
 
 /** Los grupos que dependen de una migración, del más viejo al más nuevo. */

@@ -180,7 +180,7 @@ function acuseTardanzas(marcas: readonly MarcaPresencia[]): string | null {
 }
 
 /**
- * EL UPSERT, CON LA TARDANZA SI LA BASE LA TIENE. Mientras `20260915T2200` no esté aplicada las dos
+ * EL UPSERT, CON LA TARDANZA SI LA BASE LA TIENE. Mientras `20260915T2220` no esté aplicada las dos
  * columnas no existen: PostgREST contesta PGRST204 / 42703 y se reintenta sin ellas, para que la
  * presencia se siga guardando. Si alguna marca traía tardanza y no se pudo escribir, se dice con el
  * nombre de la migración: la marca NO quedó, y fingir que sí sería pagar un presentismo que se perdió.
@@ -198,7 +198,7 @@ async function escribirMarcas(
   if (!con.error) return { data: (con.data ?? []) as unknown as PresenciaGuardada[], error: null }
   if (!sinColumnaTardanza(con.error)) return { data: null, error: con.error }
   if (cambios.some(hayTardanza)) {
-    return { data: null, error: { message: 'Todavía no está aplicada la migración 20260915T2200_presentismo_por_tardanzas.sql: la tardanza no se puede guardar. Guardá sin la marca o aplicala primero.' } }
+    return { data: null, error: { message: 'Todavía no está aplicada la migración 20260915T2220_presentismo_por_tardanzas.sql: la tardanza no se puede guardar. Guardá sin la marca o aplicala primero.' } }
   }
   const sin = await upsert(cambios.map(fila), 'persona_id, estado, motivo')
   return { data: (sin.data ?? []) as unknown as PresenciaGuardada[], error: sin.error }
@@ -369,7 +369,7 @@ export async function marcarTardanza(entrada: unknown): Promise<ResultadoTardanz
     return {
       ok: false,
       error: sinColumnaTardanza(error)
-        ? 'Todavía no está aplicada la migración 20260915T2200_presentismo_por_tardanzas.sql: la tardanza no se puede guardar.'
+        ? 'Todavía no está aplicada la migración 20260915T2220_presentismo_por_tardanzas.sql: la tardanza no se puede guardar.'
         : error.message,
     }
   }

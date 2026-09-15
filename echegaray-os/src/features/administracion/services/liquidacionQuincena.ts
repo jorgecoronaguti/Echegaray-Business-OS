@@ -76,7 +76,7 @@ export interface PresenciaDeQuincena {
   fecha: string
   estado: 'presente' | 'ausente' | 'licencia'
   motivo: string | null
-  /** La marca de tardanza (`asistencia_dia`, 20260915T2200). Ausente = sin marca. */
+  /** La marca de tardanza (`asistencia_dia`, 20260915T2220). Ausente = sin marca. */
   llego_tarde?: boolean
   salio_antes?: boolean
 }
