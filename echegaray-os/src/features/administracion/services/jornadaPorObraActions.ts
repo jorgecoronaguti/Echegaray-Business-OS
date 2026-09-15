@@ -50,6 +50,7 @@ import {
   declararPresencia, quitarPresenciaDelDia, retirarPresenciaPorHoras,
 } from './presenciaDelDiaService'
 import { vaciarHorasDelDia } from './vaciadoDeHorasService'
+import { admiteHorasEl, type ObraConVentana } from './obrasPorFecha'
 import {
   declaracionDeCorreccion, declaracionesDeJornada, type MarcaConHoras,
 } from './presenciaPorHoras'
@@ -71,11 +72,14 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
   // venir de cualquier lado. Sin esto se podían cargar horas contra una obra inexistente y el costo
   // se imputaba a una obra que ya nadie mira.
   const obra = await supabase.from('obra_canonica')
-    .select('nombre, estado, jornada_horas').eq('id', obraId).maybeSingle()
+    .select('nombre, estado, jornada_horas, fecha_inicio_real, fecha_inicio_plan, fecha_fin_real')
+    .eq('id', obraId).maybeSingle()
   if (obra.error) return { ok: false, error: obra.error.message }
   if (!obra.data) return { ok: false, error: 'Esa obra no existe o no la ves.' }
-  const { nombre, estado, jornada_horas: jornada } =
-    obra.data as { nombre: string; estado: string | null; jornada_horas: number | string | null }
+  const { nombre, estado, jornada_horas: jornada } = obra.data as {
+    nombre: string; estado: string | null; jornada_horas: number | string | null
+  }
+  const ventana = obra.data as Omit<ObraConVentana, 'id' | 'nombre'>
 
   // LA CASILLA QUE SE DEJÓ EN BLANCO TENIENDO HORAS ES «SIN HORAS» (dueño, 15/09/2026). Antes no
   // viajaba, y la hora quedaba guardada mientras la pantalla decía que se había guardado el día.
@@ -113,7 +117,10 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
   // no existe. Lo que sí sigue bloqueado es estrenar HORAS TRABAJADAS ahí.
   const presentes = marcas.filter((m) => m.estado === 'presente')
   const estrenan = personasQueEstrenanDia(presentes, existentes)
-  const cerrada = puertaDeObraNoActiva({ nombre, estado, crea: estrenan.length > 0 })
+  // LA OBRA CERRADA QUE ESTABA EN MARCHA ESE DÍA SÍ RECIBE HORAS (dueño, 15/09/2026): ver `obrasPorFecha.ts`.
+  const cerrada = puertaDeObraNoActiva({
+    nombre, estado, crea: estrenan.length > 0, admiteLaFecha: admiteHorasEl(ventana, fecha),
+  })
   if (cerrada) return { ok: false, error: cerrada }
 
   // LA FALTA DE ASIGNACIÓN AVISA, NO RECHAZA (ver el bloque «LA ASIGNACIÓN NO ES LA PUERTA DE LAS
@@ -403,10 +410,11 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
   const obraDestino = c.obra_destino as string
   const enDestino = filas.filter((f) => f.obra_canonica_id === obraDestino)
   const destino = await supabase.from('obra_canonica')
-    .select('nombre, estado').eq('id', obraDestino).maybeSingle()
+    .select('nombre, estado, fecha_inicio_real, fecha_inicio_plan, fecha_fin_real')
+    .eq('id', obraDestino).maybeSingle()
   if (destino.error) return { ok: false, error: destino.error.message }
   if (!destino.data) return { ok: false, error: 'Esa obra no existe o no la ves.' }
-  const o = destino.data as { nombre: string; estado: string | null }
+  const o = destino.data as Omit<ObraConVentana, 'id'>
 
   const marca: MarcaDeJornada = { persona_id: c.persona_id, estado: 'presente', horas: c.horas as number }
 
@@ -418,6 +426,9 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
     || personasQueEstrenanDia([marca], enDestino, { administraLicencias: true }).length > 0
   const cerrada = puertaDeObraNoActiva({
     nombre: o.nombre, estado: o.estado, crea, motivo: mueve ? 'mover' : 'cargar',
+    // Cargar o mover horas de un día en que la obra estaba en marcha no le imputa costo ajeno a su
+    // ventana: es el costo de ese día. Fuera de la ventana sigue el no.
+    admiteLaFecha: admiteHorasEl(o, c.fecha),
   })
   if (cerrada) return { ok: false, error: cerrada }
 

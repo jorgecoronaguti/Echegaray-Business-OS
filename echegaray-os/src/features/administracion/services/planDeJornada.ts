@@ -229,8 +229,11 @@ export function puertaDeObraNoActiva(o: {
   /** `true` si la escritura estrena un día en esa obra o mueve horas hacia ella. */
   crea: boolean
   motivo?: 'cargar' | 'mover'
+  /** `admiteHorasEl(obra, fecha)` (`obrasPorFecha.ts`): la obra cerrada o pausada estaba en marcha ese
+   *  día. Opcional para que quien no lo mande siga cerrado —el default es el no—. */
+  admiteLaFecha?: boolean
 }): string | null {
-  if (o.estado === 'activa' || !o.crea) return null
+  if (o.estado === 'activa' || !o.crea || o.admiteLaFecha === true) return null
   const como = o.estado === 'cerrada' ? 'está cerrada' : `no está activa (${o.estado ?? 'sin estado'})`
   // CORTO Y EN UNA LÍNEA: este texto se dibuja bajo la fila de la grilla. El mensaje largo de antes
   // ocupaba diez renglones DENTRO de la celda y rompía la fila entera.
