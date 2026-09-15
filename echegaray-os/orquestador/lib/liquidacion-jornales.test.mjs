@@ -199,6 +199,22 @@ test('la plata ILEGIBLE sí voltea la quincena entera: no se sabe cuánto es', (
   assert.equal(c.cargables.length, 0)
 })
 
+test('--incluir-bajas: la BAJA ilegible se declara afuera; una línea ACTIVA ilegible sigue volteando la quincena', () => {
+  // MUTACIÓN QUE LO PONE ROJO: sacar `if (l.baja && l.incompleta)` → la BAJA vuelve a bloquear; ampliarlo a
+  // cualquier `incompleta` → la línea activa rota deja de bloquear.
+  const baja = { cobra: 86652.06, persona_id: 'p-aguirre', baja: true, incompleta: 'no cierra por -383347.94' }
+  const sana = { cobra: 1000, persona_id: 'p1' }
+  const c = controlDeCierre([sana, baja], { incluirBajas: true })
+  assert.equal(c.cierra, true)
+  assert.deepEqual(c.excluidas.map((l) => l.motivo), ['baja_ilegible'])
+  assert.equal(c.montoExcluido, 86652.06)
+  assert.equal(c.bajasCargadas, 0)
+  const activaRota = controlDeCierre([sana, { cobra: 100, persona_id: 'p2', incompleta: 'no cierra por 200' }], { incluirBajas: true })
+  assert.equal(activaRota.cierra, false)
+  // Sin --incluir-bajas la misma fila sigue siendo «baja», como antes.
+  assert.deepEqual(controlDeCierre([baja]).excluidas.map((l) => l.motivo), ['baja'])
+})
+
 test('LA COLUMNA 24 SIN RÓTULO SE DESCUENTA: si no, cinco filas de agosto no cierran', () => {
   // Fila 531 del 17/8/2026: TOTAL 586.476 = BANCO 192.887,48 + Y 200.000 + ADELANTO 60.000 +
   // EFECTIVO 133.589. Ignorar Y dejaba un residuo de exactamente $200.000 por cabeza.
@@ -283,4 +299,19 @@ test('lineasDelBloque: la plata sale de la grilla cruda y el nombre de la format
   assert.equal(conCruda.incompleta, null)
   assert.equal(conCruda.cobra, 36500.5)
   assert.equal(conCruda.valorHora, 3650.05)
+})
+
+test('TOTAL roto corregido por Hs × $/h SÓLO en BAJA: una línea activa con el mismo cuadro sigue incompleta', () => {
+  // MUTACIÓN QUE LO PONE ROJO: sacar `linea.baja &&` en lineasDelBloque → la activa se corrige sola.
+  // 113 h × $5.600 = 632.800 = BANCO 260.000 + ADELANTO 100.000 + EFECTIVO 272.800; el TOTAL dice 86.652,06.
+  const activa = grillaObreros({ total: '$86.652,06' })
+  const [a] = lineasDelBloque(activa.grid, activa.bloque, columnasDelBloque(activa.grid, activa.bloque).cols)
+  assert.match(a.incompleta ?? '', /no cierra/)
+  assert.equal(a.cobra, 86652.06)
+  const baja = grillaObreros({ total: '$86.652,06' })
+  baja.grid[2][0] = 'BAJA'
+  const [b] = lineasDelBloque(baja.grid, baja.bloque, columnasDelBloque(baja.grid, baja.bloque).cols)
+  assert.equal(b.incompleta, null)
+  assert.equal(b.cobra, 632800)
+  assert.equal(b.totalDeLaPlanilla, 86652.06)
 })

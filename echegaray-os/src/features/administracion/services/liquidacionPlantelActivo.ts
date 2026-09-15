@@ -52,6 +52,11 @@ export interface PersonaDelPlantel {
   /** `personas.es_prueba`. Las vistas ya lo filtran; si llega, manda. */
   esPrueba?: boolean | null
   email?: string | null
+  /**
+   * `personas.subcontrato_id` (20260915T0910). Quien lo tiene es de la cuadrilla de un subcontratista: su costo va a
+   * la obra del subcontrato y NO es plantel propio en ninguna quincena, aunque tenga recibos.
+   */
+  subcontratoId?: string | null
 }
 
 /** Qué personas tuvieron actividad EN ESTA quincena. Cualquiera alcanza. */
@@ -76,16 +81,30 @@ export interface PlantelDeLaQuincena<P extends PersonaDelPlantel> {
   sinActividad: P[]
   /** Los `id` con actividad propia en la quincena (a): entran aunque falten tarifa u horas. */
   conActividad: Set<string>
+  /**
+   * LA CUADRILLA DE UN SUBCONTRATISTA que habría entrado por la regla. No son plantel propio, pero se devuelven: sacar
+   * a alguien de la vista no es perderlo, y sus recibos siguen existiendo.
+   */
+  deSubcontrato: P[]
 }
+
+// ═══ DESDE EL 15/09/2026: SIN FECHA DE INGRESO NO ES «DESDE SIEMPRE» ═══
+//
+// Dueño, textual: *«están mal las quincenas anteriores porque aparecen personas que son parte de un equipo de
+// subcontratistas»*. Diez personas dadas de alta el 01/09 desde la liquidación del estudio tienen `fecha_ingreso`
+// vacía, y la regla vieja leía el vacío como «ya estaba»: aparecían de enero a agosto. Un ingreso sin cargar no
+// afirma nada, ni antes ni después; lo único que ubica a esa persona en una quincena es lo que la empresa hizo con
+// ella ESA quincena. El espejo SQL es `activo` en `costo_mo_quincena_calculo` (20260915T0900).
 
 /**
  * EL PLANTEL DE LA QUINCENA [desde, hasta]. Ni una escritura.
  *
  *   a) actividad en la quincena → entra, esté o no en la empresa hoy;
- *   b) sin actividad → ingresó a más tardar `hasta` (un ingreso sin cargar no afirma que ingresó después),
+ *   b) sin actividad → tiene `fecha_ingreso` CARGADA y a más tardar `hasta` (sin fecha, sólo entra por a),
  *      no egresó antes de `desde`, y está en la empresa o tiene la fecha de egreso cargada. Una baja SIN
  *      fecha de egreso no tiene cómo ubicarse en el tiempo: sin actividad, no entra.
- *   siempre fuera: `es_prueba` y las identidades de prueba (salvo una sesión de prueba, como la base).
+ *   siempre fuera: `es_prueba`, las identidades de prueba (salvo una sesión de prueba, como la base) y la cuadrilla
+ *   de un subcontratista (`subcontratoId`), que se devuelve aparte en `deSubcontrato`.
  */
 export function plantelDeLaQuincena<P extends PersonaDelPlantel>(
   personas: readonly P[], q: { desde: string; hasta: string }, a: ActividadDeLaQuincena, laSesionEsDePrueba = false,
@@ -97,16 +116,19 @@ export function plantelDeLaQuincena<P extends PersonaDelPlantel>(
   )
   const activas: P[] = []
   const sinActividad: P[] = []
+  const deSubcontrato: P[] = []
   for (const p of reales) {
     const tuvo = a.conHoras.has(p.id) || a.conLinea.has(p.id) || a.conRecibo.has(p.id) || a.conJornales.has(p.id)
-    if (tuvo) conActividad.add(p.id)
-    const ingreso = p.fechaIngreso == null || p.fechaIngreso <= q.hasta
+    const ingreso = p.fechaIngreso != null && p.fechaIngreso <= q.hasta
     const egreso = p.fechaEgreso == null || p.fechaEgreso >= q.desde
     const ubicable = p.enLaEmpresa || p.fechaEgreso != null
-    if (tuvo || (ingreso && egreso && ubicable)) activas.push(p)
+    const entra = tuvo || (ingreso && egreso && ubicable)
+    if (p.subcontratoId) { if (entra) deSubcontrato.push(p); continue }
+    if (tuvo) conActividad.add(p.id)
+    if (entra) activas.push(p)
     else if (p.enLaEmpresa) sinActividad.push(p)
   }
-  return { activas, sinActividad, conActividad }
+  return { activas, sinActividad, conActividad, deSubcontrato }
 }
 
 /**

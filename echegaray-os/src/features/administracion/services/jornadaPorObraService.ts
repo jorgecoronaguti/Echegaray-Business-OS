@@ -11,6 +11,7 @@
 
 import { marcaDeBaja, plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
 import { leerPlantelDeLaQuincena, personaDelDirectorio } from './plantelDeLaQuincenaService.ts'
+import { leerSubcontratoDePersonas, subcontratoPorPersona } from './lecturasCompartidasDeQuincena.ts'
 import { quincenaDe } from './quincena.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getAsignaciones } from '../../obras/services/personalService.ts'
@@ -338,15 +339,18 @@ async function plantelDe(
   supabase: SupabaseClient, ids: string[], desde: string, hasta: string,
 ): Promise<Record<string, PersonaRotulo>> {
   if (ids.length === 0) return {}
-  const { data } = await supabase
-    .from('persona_directorio')
-    .select('id, nombre_completo, especialidad, categoria, en_la_empresa, fecha_ingreso, fecha_egreso').in('id', ids)
+  const [{ data }, subcontratos] = await Promise.all([
+    supabase.from('persona_directorio')
+      .select('id, nombre_completo, especialidad, categoria, en_la_empresa, fecha_ingreso, fecha_egreso').in('id', ids),
+    leerSubcontratoDePersonas(supabase),
+  ])
+  const deSubcontrato = subcontratoPorPersona(subcontratos)
   const filas = ((data ?? []) as {
     id: string; nombre_completo: string | null; especialidad: string | null; categoria: string | null
     en_la_empresa: boolean | null; fecha_ingreso: string | null; fecha_egreso: string | null
   }[]).filter((p) => (p.nombre_completo ?? '').trim())
   const vacio = new Set<string>()
-  const { activas } = plantelDeLaQuincena(filas.map((p) => ({ ...personaDelDirectorio(p), fila: p })), { desde, hasta },
+  const { activas } = plantelDeLaQuincena(filas.map((p) => ({ ...personaDelDirectorio(p), subcontratoId: deSubcontrato.get(p.id) ?? null, fila: p })), { desde, hasta },
     { conHoras: new Set(ids), conLinea: vacio, conRecibo: vacio, conJornales: vacio })
   return Object.fromEntries(activas.map(({ fila: p, ...persona }) => [p.id, {
     nombre: persona.nombre,

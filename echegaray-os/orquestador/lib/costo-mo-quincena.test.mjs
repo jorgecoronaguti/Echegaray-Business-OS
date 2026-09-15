@@ -441,3 +441,56 @@ test('quién es jefe: el corte de esJefeDeObra, en JS y en la SQL de la definici
   assert.match(calc, /case when pc\.es_jefe then 'ES-ADM'/)
   assert.match(calc, /case when pc\.horas > 0 and not pc\.es_jefe then ho\.horas \/ pc\.horas else 1 end as k/)
 })
+
+// ═══ SIN FECHA DE INGRESO NO ES «DESDE SIEMPRE» (dueño, 15/09/2026) ═══
+// MUTACIÓN QUE LO PONE ROJO: volver a `!x.persona.fecha_ingreso ||` en esDelPlantel, o a `p.fecha_ingreso is null or`
+// en la SQL de 20260915T0900 / 0910.
+test('sin fecha de ingreso, un mensual sin actividad no es plantel; con la fecha cargada, sí', () => {
+  const t = tarifa('m', null, '2026-08-01', 1800000)
+  assert.deepEqual(calcular({ personas: [persona('m', { fecha_ingreso: null })], tarifas: [t] }).filas, [])
+  assert.equal(calcular({ personas: [persona('m')], tarifas: [t] }).filas.length, 1)
+  // Con horas en la quincena entra igual: la actividad lo ubica (Jofre).
+  assert.equal(calcular({ personas: [persona('jofre', { fecha_ingreso: null })], registros: dias('jofre', 'la-estrella', 2, 9), tarifas: [tarifa('jofre', 5000)] }).filas.length, 1)
+})
+
+// ═══ LA CUADRILLA DE UN SUBCONTRATISTA: SU COSTO VA A LA OBRA DEL SUBCONTRATO (dueño, 15/09/2026) ═══
+// MUTACIÓN QUE LO PONE ROJO: sacar `sub` de `repartir` → Castro JM vuelve a Estructura – Administración.
+test('CERRADA, recibo de quincena de la cuadrilla de Gerson Castro: entero a la obra del subcontrato, nunca a ES-ADM', () => {
+  const castro = persona('castro-jm', { subcontrato_obra_id: 'limpieza-de-escombros' })
+  const r = cerrada({ personas: [castro], recibos: [recibo('castro-jm', 'Q2-08/2026', 80, 269950, 192887.48, 422185.06)] })
+  assert.deepEqual(r.filas.map((f) => [f.obra_canonica_id, f.destino]), [['limpieza-de-escombros', 'obra']])
+  cerca(r.filas[0].costo_total, 422185.06, 'el mismo costo del recibo, en otra obra')
+  // Con horas cargadas en otra obra, tampoco se reparte: va entero al subcontrato.
+  const conHoras = calcular({ personas: [castro], registros: dias('castro-jm', 'quattropani', 2, 9), tarifas: [tarifa('castro-jm', 5000)] })
+  assert.deepEqual(conHoras.filas.map((f) => [f.obra_canonica_id, f.destino, f.horas]), [['limpieza-de-escombros', 'obra', 18]])
+})
+
+test('«no hay liq final»: un recibo FINAL-08 no es costo de ninguna quincena', () => {
+  const gerson = persona('gerson', { subcontrato_obra_id: 'limpieza-de-escombros' })
+  const final = recibo('gerson', 'FINAL-08/2026', 26, 167741.01, 123806.34, 224955.08)
+  assert.deepEqual(cerrada({ personas: [gerson], recibos: [final] }).filas, [])
+  assert.deepEqual(calcular({ quincena: { desde: '2026-08-01', hasta: '2026-08-15' }, personas: [gerson], recibos: [final] }).filas, [])
+})
+
+test('la SQL dice lo mismo: 0900 y 0910 exigen el ingreso cargado; 0910 manda la cuadrilla al subcontrato y nunca cruza FINAL', () => {
+  // Sin comentarios: la cabecera de 0900 cita la regla vieja para explicar qué cambió.
+  const leer = (f) => readFileSync(join(DIR, `../../supabase/migrations/${f}`), 'utf8').split('\n').map((l) => l.replace(/--.*$/, '')).join('\n')
+  const ACTIVO = '(p.fecha_ingreso is not null and p.fecha_ingreso <= q.hasta) and (p.fecha_egreso is null or p.fecha_egreso >= q.desde) as activo'
+  for (const f of ['20260915T0900_plantel_sin_ingreso_no_es_desde_siempre.sql', '20260915T0910_cuadrilla_de_subcontrato_no_es_plantel_propio.sql']) {
+    const sql = leer(f)
+    assert.ok(sql.includes(ACTIVO), `${f}: activo volvió a leer el ingreso vacío como «ya estaba»`)
+    assert.doesNotMatch(sql, /p\.fecha_ingreso is null or/)
+    assert.match(sql, /revoke execute on function public\.costo_mo_quincena_calculo\(date, text\[\]\) from public, anon, authenticated;/)
+    assert.doesNotMatch(sql, /grant execute on function public\.costo_mo_quincena_calculo[^;]*authenticated/)
+  }
+  const sub = leer('20260915T0910_cuadrilla_de_subcontrato_no_es_plantel_propio.sql')
+  assert.match(sub, /left join public\.subcontrato sc on sc\.id = p\.subcontrato_id/)
+  assert.match(sub, /coalesce\(pc\.sub_obra, ho\.obra\) as obra/)
+  assert.match(sub, /case when pc\.sub_obra is not null then 'obra'\n\s+when pc\.es_jefe then 'ES-ADM'/)
+  assert.match(sub, /left join horas_obra ho on pc\.horas > 0 and not pc\.es_jefe and pc\.sub_obra is null and/)
+  assert.match(sub, /where r\.periodo = q\.periodo/)
+  // La columna nace con permiso y la vista no pierde security_invoker.
+  assert.match(sub, /grant select \(subcontrato_id\)[^;]*on public\.personas to authenticated;/)
+  assert.match(sub, /create or replace view public\.persona_directorio with \(security_invoker = true\) as/)
+  assert.match(sub, /revoke all on function public\.persona_para_costo\(\) from public, anon, authenticated;/)
+})
