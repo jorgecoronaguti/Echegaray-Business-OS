@@ -39,15 +39,11 @@ export const FALTA = Object.freeze({
   BLOQUE_DESCARTADO: 'bloque_descartado',
 })
 
-/** Minúsculas, sin acentos, sólo letras y números separados por un espacio. */
-export function norm(s) {
-  return String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-    .replace(/[^a-z0-9ñ]+/g, ' ').trim()
-}
+// `norm` y `normAlias` viven en `norm-alias.mjs` desde el 15/09/2026 (la web los necesita sin este
+// parser); se re-exportan para que nada de lo que ya los importa de acá cambie.
+export { norm, normAlias } from './norm-alias.mjs'
+import { norm, normAlias } from './norm-alias.mjs'
 const tokens = (s) => norm(s).split(' ').filter((t) => t && !/^\d+$/.test(t))
-/** La MISMA clave que `public.norm_obra` (la que indexa `obra_alias`): sin artículos ni «de/del».
- *  Si acá se normaliza distinto que en la base, un alias cargado no se encuentra y parece que falta. */
-export const normAlias = (s) => norm(s).replace(/\b(la|el|los|las|de|del)\b/g, ' ').replace(/\s+/g, ' ').trim()
 
 /**
  * Lee TODAS las celdas diarias de una pestaña: una marca por (trabajador, fecha) escrita.

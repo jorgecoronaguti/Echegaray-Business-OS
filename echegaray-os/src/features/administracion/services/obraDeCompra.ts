@@ -23,6 +23,7 @@
 // no entiende.
 
 import { rotuloDeObra } from '../../../shared/utils/obra.ts'
+import { normAlias } from '../../../../orquestador/lib/norm-alias.mjs'
 
 export type DestinoObra = 'obra' | 'estructura_admin' | 'estructura_taller'
 
@@ -97,11 +98,20 @@ export interface ObraParaOpciones {
   fusionada_en: string | null
 }
 
+/** `normAlias(rotulo_clave)` → cliente canónico, leído de `cliente_alias`. El mismo mapa que usa el sync. */
+export type ClienteAlias = Map<string, string>
+
 /**
  * LAS OPCIONES DEL DESPLEGABLE, en el orden del Sheet: fijas, obras con código, «Sin obra – X».
+ *
  * «Sin obra – X» sólo para el cliente con más de una obra viva: con una sola no hay nada que decidir.
+ * Y X ES EL CLIENTE CANÓNICO de `cliente_alias`, no `cliente_texto`: medido en producción el
+ * 15/09/2026, agrupar por el texto crudo ofrecía «Sin obra – Messina» y «Sin obra – MESSINA» como dos
+ * opciones y «Sin obra – La Estrella» con otra capitalización que la del filtro, la del Sheet
+ * (`_OBRAS_OS`) y la que `obra_celda_resolver` valida. Una obra cuyo cliente no tiene alias no
+ * suma a ningún «Sin obra»: es lo que hace el sync (`catalogoDeDestinos`), y no se inventa un cliente.
  */
-export function opcionesDeObra(obras: ObraParaOpciones[], codigos: Map<string, string>): string[] {
+export function opcionesDeObra(obras: ObraParaOpciones[], codigos: Map<string, string>, clienteAlias: ClienteAlias): string[] {
   const fijas = FIJOS.map((f) => rotuloDeObra({ codigo: f.codigo, nombre: f.nombre }))
   const vivas = obras.filter((o) => !o.fusionada_en)
   const conCodigo = vivas
@@ -111,8 +121,9 @@ export function opcionesDeObra(obras: ObraParaOpciones[], codigos: Map<string, s
     .map((o) => rotuloDeObra({ codigo: o.codigo, nombre: o.nombre }))
   const porCliente = new Map<string, number>()
   for (const o of vivas) {
-    const c = o.cliente_texto?.trim()
-    if (c) porCliente.set(c, (porCliente.get(c) ?? 0) + 1)
+    const clave = normAlias(o.cliente_texto)
+    const canonico = clave ? clienteAlias.get(clave) : undefined
+    if (canonico) porCliente.set(canonico, (porCliente.get(canonico) ?? 0) + 1)
   }
   const sinObra = [...porCliente].filter(([, n]) => n > 1).map(([c]) => `Sin obra – ${c}`).sort()
   return [...fijas, ...conCodigo, ...sinObra]

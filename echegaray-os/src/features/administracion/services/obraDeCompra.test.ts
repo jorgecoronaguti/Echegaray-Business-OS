@@ -6,7 +6,7 @@ import {
 } from './obraDeCompra.ts'
 import * as sync from '../../../../orquestador/lib/obra-destino.mjs'
 import { referenciaDeCompra as referenciaDelSync } from '../../../../orquestador/lib/compras-obra-asignada.mjs'
-import { normAlias } from '../../../../orquestador/lib/jornales-a-registros-hh.mjs'
+import { normAlias } from '../../../../orquestador/lib/norm-alias.mjs'
 
 // ═══ LA APP Y EL SYNC TIENEN QUE ENTENDER LA MISMA COLUMNA ═══
 //
@@ -28,8 +28,35 @@ test('las opciones de la app son EXACTAMENTE las del sync', () => {
   const clienteAlias = new Map(OBRAS.map((o) => [normAlias(o.cliente_texto), o.cliente_texto]))
   // El `.mjs` declara `obras = []` sin JSDoc y TS lo infiere `never[]`: el cast es del tipado, no del dato.
   const delSync = sync.opcionesDeObra(sync.catalogoDeDestinos({ obras: OBRAS as unknown as never[], clienteAlias }))
-  assert.deepEqual(opcionesDeObra(OBRAS, codigos), delSync)
+  assert.deepEqual(opcionesDeObra(OBRAS, codigos, clienteAlias), delSync)
   assert.ok(delSync.includes('Sin obra – QUATTROPANI'), 'el caso interesante está en el fixture: una obra sin código también cuenta como viva')
+})
+
+test('«Sin obra – X» es UNA opción por cliente canónico, en la capitalización de cliente_alias', () => {
+  // ═══ EL DEFECTO QUE ATRAPA (QA en producción, 15/09/2026) ═══
+  //
+  // El desplegable ofrecía «Sin obra – Messina» y «Sin obra – MESSINA» como dos opciones, y «Sin obra –
+  // La Estrella» con otra capitalización que el filtro, el Sheet y `obra_celda_resolver` (que validan
+  // contra el canónico en MAYÚSCULAS). Agrupaba por `cliente_texto` crudo.
+  const obras = [
+    { id: 'me-1', codigo: 'OB-0001', nombre: 'ME - UNO', cliente_texto: 'Messina', fusionada_en: null },
+    { id: 'me-2', codigo: 'OB-0002', nombre: 'ME - DOS', cliente_texto: 'MESSINA', fusionada_en: null },
+    { id: 'me-3', codigo: 'OB-0003', nombre: 'ME - TRES', cliente_texto: 'Messinas', fusionada_en: null },
+    { id: 'le-1', codigo: 'OB-0004', nombre: 'LE - UNO', cliente_texto: 'La Estrella', fusionada_en: null },
+    { id: 'le-2', codigo: 'OB-0005', nombre: 'LE - DOS', cliente_texto: 'La Estrella', fusionada_en: null },
+    // Un cliente sin alias no se inventa: ni «Sin obra – Galpones» ni nada.
+    { id: 'x-1', codigo: 'OB-0006', nombre: 'X - UNO', cliente_texto: 'Galpones', fusionada_en: null },
+    { id: 'x-2', codigo: 'OB-0007', nombre: 'X - DOS', cliente_texto: 'Galpones', fusionada_en: null },
+  ]
+  const codigos = new Map(obras.map((o) => [o.id, o.codigo]))
+  const clienteAlias = new Map([
+    ['messina', 'MESSINA'], ['messinas', 'MESSINA'], ['estrella', 'LA ESTRELLA'],
+  ])
+  const sinObra = opcionesDeObra(obras, codigos, clienteAlias).filter((o) => o.startsWith('Sin obra'))
+  assert.deepEqual(sinObra, ['Sin obra – LA ESTRELLA', 'Sin obra – MESSINA'])
+  // Y es lo mismo que arma el sync con el mismo mapa.
+  const delSync = sync.opcionesDeObra(sync.catalogoDeDestinos({ obras: obras as unknown as never[], clienteAlias }))
+  assert.deepEqual(opcionesDeObra(obras, codigos, clienteAlias), delSync)
 })
 
 test('los fijos y la clave de referencia son los del sync', () => {

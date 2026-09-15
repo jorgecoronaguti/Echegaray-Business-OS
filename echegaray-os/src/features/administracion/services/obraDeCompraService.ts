@@ -13,8 +13,9 @@ import { nombresDeObra } from '../../clientes/services/nombresDeObra.ts'
 import { codigosDeObra } from '../../../shared/services/codigosDeObra.ts'
 import {
   obraDeLaCompra, opcionesDeObra, referenciaDeCompra,
-  type AsignacionDeCompra, type CeldaObraDeCompra, type ObraDeCompra, type ObraParaOpciones,
+  type AsignacionDeCompra, type CeldaObraDeCompra, type ClienteAlias, type ObraDeCompra, type ObraParaOpciones,
 } from './obraDeCompra.ts'
+import { normAlias } from '../../../../orquestador/lib/norm-alias.mjs'
 
 export interface CeldasObra {
   /** `false` = la base todavía no tiene las columnas (o no se pudieron leer): no se puede editar. */
@@ -54,12 +55,22 @@ export async function obrasDeLasCompras(
   return new Map(fuentes.map((x) => [x.fila, obraDeLaCompra(x.celda, x.asignacion, rotulos)]))
 }
 
-/** Las opciones del desplegable. Sólo se pide con el panel abierto. Error ⇒ lista vacía. */
+/**
+ * Las opciones del desplegable. Error en obras ⇒ lista vacía. Error en `cliente_alias` ⇒ sin las
+ * opciones «Sin obra – X»: se ofrecen las obras, no un cliente adivinado desde `cliente_texto`.
+ */
 export async function getOpcionesDeObra(supabase: SupabaseClient): Promise<string[]> {
-  const [{ data, error }, codigos] = await Promise.all([
+  const [{ data, error }, codigos, alias] = await Promise.all([
     supabase.from('obra_canonica').select('id, nombre, cliente_texto, fusionada_en'),
     codigosDeObra(supabase, null),
+    supabase.from('cliente_alias').select('rotulo_clave, cliente_canonico'),
   ])
   if (error || !data) return []
-  return opcionesDeObra(data as unknown as ObraParaOpciones[], codigos)
+  const filas = (alias.error ? [] : alias.data ?? []) as unknown as { rotulo_clave: string | null; cliente_canonico: string | null }[]
+  const clienteAlias: ClienteAlias = new Map()
+  for (const a of filas) {
+    const clave = normAlias(a.rotulo_clave)
+    if (clave && a.cliente_canonico) clienteAlias.set(clave, a.cliente_canonico)
+  }
+  return opcionesDeObra(data as unknown as ObraParaOpciones[], codigos, clienteAlias)
 }
