@@ -33,6 +33,7 @@ import {
   liquidarLinea, tarifaVigenteAl, type EntradaDeLinea, type GrupoLiquidacion, type LineaLiquidada,
   type TarifaVigente,
 } from './liquidacionQuincena.ts'
+import { cobraPorMes } from './cobroMensual.ts'
 import type { Quincena } from './quincena.ts'
 import { ORDEN_DE_CUADROS, ordenarComoPersonal } from './ordenDePersonal.ts'
 
@@ -243,7 +244,7 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
     // QUIÉN ES JEFE LO DECIDE EL PUESTO, NO LA TARIFA (dueño, 15/09/2026). Los jefes tienen neto mensual
     // recién desde septiembre: con la tarifa como criterio, en agosto caían a Obreros «sin tarifa». Sin neto
     // vigente la línea sigue en Oficina y dice que falta el dato (o usa el importe cargado de la planilla).
-    if (p.esJefe === true || vigente?.netoMensual != null) {
+    if (cobraPorMes({ esJefe: p.esJefe, netoMensual: vigente?.netoMensual })) {
       cuadros.oficina.push(liquidarLinea(entradaDe(ctx, p, vigente, 'oficina'), 'oficina', redondeo))
       continue
     }

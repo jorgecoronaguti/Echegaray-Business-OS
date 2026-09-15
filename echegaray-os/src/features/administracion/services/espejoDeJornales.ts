@@ -364,7 +364,8 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
     t.cobra += l.cobra
     // NETO + NEGRO + MENSUALES = TOTAL, EXACTO (QA, 14/09/2026). El mensual no va en las bandas: su
     // sueldo fijo sumaba al Total sin estar en Neto ni en Negro, y el pie no cerraba por 3.600.000.
-    if (l.netoMensual != null) t.mensuales += l.cobra
+    // POR MODALIDAD: el jefe sin neto cargado cobra por mes igual (`cobroMensual.ts`) y no va en las bandas.
+    if (l.modalidad === 'mensual') t.mensuales += l.cobra
     else { t.netoBandas += l.porBanco; t.negro += negroDeLaFila(l) ?? 0 }
     t.adelanto += l.adelanto
     t.yaTransferido += l.yaTransferido
