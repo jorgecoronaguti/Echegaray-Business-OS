@@ -65,20 +65,33 @@ test('no existe una bandera para saltearlas', () => {
 // Con la cotización del día, la inserción dio 52 y 112 diferencias de VALOR con 0 de fórmula: todas
 // colgaban de GOOGLEFINANCE. Clavado por el dueño, el archivo queda quieto.
 
+// C109 es la cotización de Google · C110 la del dueño · C111 la que se usa. `declarado = null` deja en
+// C110 la fórmula que trae el archivo, que repite a Google: la celda MUESTRA un número y no clava nada.
 const bloqueDolar = (declarado) => ({
-  formulas: [['=IFERROR(GOOGLEFINANCE("CURRENCY:USDARS");"")'], [declarado === '' ? '' : declarado], ['=IF(C109<>"";C109;C108)'], ['=IF(C110<>"";C110;C109)']],
-  valores: [[1505.95], [declarado === '' ? '' : declarado], [declarado || 1505.95], [declarado || 1505.95]],
+  formulas: [
+    ['=IFERROR(GOOGLEFINANCE("CURRENCY:USDARS");"")'],
+    [declarado == null ? '=IF(C109<>"";C109;C108)' : String(declarado)],
+    ['=IF(C110<>"";C110;C109)'],
+  ],
+  valores: [[1505.95], [declarado == null ? 1505.95 : declarado], [declarado == null ? 1505.95 : declarado]],
 })
 
 test('EL DEFECTO: con el dólar colgando de GOOGLEFINANCE, NO se inserta', () => {
-  assert.match(problemaDelTipoDeCambio(bloqueDolar('')), /cuelga de GOOGLEFINANCE/)
-  assert.match(problemaDelTipoDeCambio(bloqueDolar('')), /_CAJA_ANEXO!C109/)
+  assert.match(problemaDelTipoDeCambio(bloqueDolar(null)), /cuelga de GOOGLEFINANCE/)
+  assert.match(problemaDelTipoDeCambio(bloqueDolar(null)), /_CAJA_ANEXO!C110/)
   assert.match(problemaDelTipoDeCambio(bloqueDolar(0)), /cuelga de GOOGLEFINANCE/)
+  assert.match(problemaDelTipoDeCambio(bloqueDolar('')), /cuelga de GOOGLEFINANCE/)
 })
 
-test('con el dólar declarado por el dueño, se puede insertar', () => {
+test('con el dólar declarado a mano por el dueño, se puede insertar', () => {
   assert.equal(problemaDelTipoDeCambio(bloqueDolar(1480)), null)
-  assert.equal(DOLAR.declarado, 1)
+  assert.equal(`C${DOLAR.primeraFila + DOLAR.declarado}`, 'C110', 'la celda del dueño es C110, no C109')
+})
+
+test('EL DEFECTO QUE COSTÓ UNA COPIA: una FÓRMULA en C110 muestra un número y no clava nada', () => {
+  const conFormula = bloqueDolar(1480)
+  conFormula.formulas[DOLAR.declarado] = ['=IF(C109<>"";C109;C108)']
+  assert.match(problemaDelTipoDeCambio(conFormula), /escribí a mano/)
 })
 
 test('si el bloque del tipo de cambio se movió, no se afirma que esté quieto', () => {

@@ -155,13 +155,16 @@ export async function sondearPrecondiciones({ script, query, cwd = process.cwd()
 // Aplica TAMBIÉN al ensayo sobre una copia: es una propiedad del archivo, no del mundo de producción.
 
 /** Dónde vive el bloque del tipo de cambio y qué tiene que decir cada celda. 0-based dentro del rango. */
+// LAS FILAS SE LEYERON DEL ARCHIVO, NO SE SUPUSIERON: suponerlas costó una copia de ensayo arruinada
+// —se escribió en C109 creyendo que era la celda del dueño y se pisó la cotización de Google—. C109 es
+// de Google; la del dueño, la que dice «Dólar declarado por la empresa (opcional)», es C110.
 export const DOLAR = Object.freeze({
   pestana: '_CAJA_ANEXO',
-  rango: "'_CAJA_ANEXO'!C108:C111",
-  referencia: 0,   // C108 · =GOOGLEFINANCE("CURRENCY:USDARS")
-  declarado: 1,    // C109 · lo que el dueño clava (vacío = se usa la cotización del día)
-  usoA: 2,         // C110 · =IF(C109<>"";C109;C108)
-  usoB: 3,         // C111 · =IF(C110<>"";C110;C109)  ← TIPO_CAMBIO_USD
+  rango: "'_CAJA_ANEXO'!C109:C111",
+  primeraFila: 109,
+  referencia: 0,   // C109 · =IFERROR(GOOGLEFINANCE("CURRENCY:USDARS");"")
+  declarado: 1,    // C110 · «Dólar declarado por la empresa (opcional)» — lo que el dueño clava
+  enUso: 2,        // C111 · =IF(C110<>"";C110;C109)  ← TIPO_CAMBIO_USD
 })
 
 /**
@@ -173,13 +176,18 @@ export const DOLAR = Object.freeze({
  */
 export function problemaDelTipoDeCambio({ formulas = [], valores = [] } = {}) {
   const f = (i) => String(formulas[i]?.[0] ?? '')
-  if (!/GOOGLEFINANCE\s*\(/i.test(f(DOLAR.referencia)) || !/^=IF\(/i.test(f(DOLAR.usoA)) || !/^=IF\(/i.test(f(DOLAR.usoB))) {
+  const celda = (i) => `${DOLAR.pestana}!C${DOLAR.primeraFila + i}`
+  if (!/GOOGLEFINANCE\s*\(/i.test(f(DOLAR.referencia)) || !/^=IF\(/i.test(f(DOLAR.enUso))) {
     return `el bloque del tipo de cambio no está donde se esperaba (${DOLAR.rango}): no puedo afirmar que el dólar esté quieto`
   }
+  // Un NÚMERO escrito a mano. Mientras en esa celda viva una fórmula —hoy trae `=IF(C109<>"";C109;C108)`,
+  // que la hace repetir la cotización de Google—, el valor en uso se sigue moviendo aunque la celda
+  // muestre un número.
   const declarado = valores[DOLAR.declarado]?.[0]
-  if (typeof declarado === 'number' && declarado > 0) return null
+  if (typeof declarado === 'number' && declarado > 0 && !f(DOLAR.declarado).startsWith('=')) return null
   const hoy = valores[DOLAR.referencia]?.[0]
-  return 'el tipo de cambio cuelga de GOOGLEFINANCE y se mueve solo: cargá el dólar declarado en '
-    + `${DOLAR.pestana}!C${108 + DOLAR.declarado} (hoy la cotización dice ${hoy ?? '—'}) y volvé a correr.`
-    + ' Cuando termine la inserción, vaciá esa celda y vuelve la cotización del día.'
+  return 'el tipo de cambio cuelga de GOOGLEFINANCE y se mueve solo: escribí a mano el dólar en '
+    + `${celda(DOLAR.declarado)} «Dólar declarado por la empresa (opcional)» (hoy la cotización dice ${hoy ?? '—'})`
+    + ` y volvé a correr. Cuando termine la inserción, VACIÁ ${celda(DOLAR.declarado)}: ${celda(DOLAR.enUso)}`
+    + ' vuelve sola a la cotización del día.'
 }

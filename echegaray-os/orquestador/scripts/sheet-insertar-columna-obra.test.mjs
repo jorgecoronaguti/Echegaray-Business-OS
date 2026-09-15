@@ -34,8 +34,8 @@ const GOOGLE = new Map([
 /** Un doble de Google que inserta de verdad sobre las grillas en memoria y anota cada llamada. */
 // El bloque del tipo de cambio: con el dólar declarado (paso 1b en verde) salvo que el caso lo rompa.
 const BLOQUE_DOLAR = (declarado = 1480) => ({
-  formulas: [['=GOOGLEFINANCE("CURRENCY:USDARS")'], [String(declarado || '')], ['=IF(C109<>"";C109;C108)'], ['=IF(C110<>"";C110;C109)']],
-  valores: [[1505.95], [declarado || ''], [declarado || 1505.95], [declarado || 1505.95]],
+  formulas: [['=GOOGLEFINANCE("CURRENCY:USDARS")'], [declarado ? String(declarado) : '=IF(C109<>"";C109;C108)'], ['=IF(C110<>"";C110;C109)']],
+  valores: [[1505.95], [declarado || 1505.95], [declarado || 1505.95]],
 })
 
 function dobleDeGoogle({ encCompras = COMPRAS_2508, encCobranzas = COBRANZAS_1409, tocar = null, falla = null, dolar = 1480 } = {}) {
