@@ -25,7 +25,7 @@ import { millones, pesos } from '@/shared/components/canon/formato'
 import { V } from '@/shared/components/v2/patron'
 import type { ObraEnCurso } from '@/features/administracion/services/homeCartera'
 import { baseDelContrato, cobradoParaLaBarra, fraseDeFuente } from '../services/contratoDeObra'
-import { ORIGEN_SUMA_VIVA } from '../services/economiaObras'
+import { ORIGEN_SUMA_VIVA, fraseDeOrigenContratado } from '../services/economiaObras'
 import { progresoDeCobro } from '../services/progresoCobro'
 import type { Consolidado } from '../services/obrasAdicionales'
 
@@ -108,7 +108,9 @@ export function ContratadoDelTrabajo({ o, veEconomia, tam = '11.5px', consolidad
   // esto». La moneda del contrato no se pierde: sigue entera en el `title`.
   const adicionales = consolidado ? lineaDelConsolidado(consolidado) : null
   const secundaria = adicionales ?? (usd !== null ? dolares(usd) : null)
-  const origen = o.contratoTotal !== null
+  // EL FORMULARIO SE DICE (dueño, 14/09/2026): un monto del formulario no se lee con la tinta de una OC.
+  const formulario = fraseDeOrigenContratado(o.origenContratado)
+  const origen = formulario ? `${formulario} ` : o.contratoTotal !== null
     ? 'Mano de obra + materiales según el papel, en pesos de hoy. '
     : viva
       ? 'OBRAS NO publica precio para este trabajo: el número es la SUMA VIVA de lo que Cobranzas lleva registrado como venta y sube cada vez que se factura. No es lo que el trabajo vale. '

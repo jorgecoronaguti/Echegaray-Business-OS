@@ -87,6 +87,16 @@ export interface EconomiaDeObra {
 /** El `origen` que dice «esto NO es un precio contratado, es lo vendido hasta hoy». */
 export const ORIGEN_SUMA_VIVA = 'suma-viva'
 
+/** Contratado del formulario de la obra: obras CERRADAS sin OBRAS ni contrato (dueño, 14/09/2026; 20260915T0830). */
+export const ORIGEN_FORMULARIO = 'formulario'
+
+/** Lo que el `title` del contratado agrega por su origen. `null` = el origen no necesita aclaración. */
+export function fraseDeOrigenContratado(origen: string | null | undefined): string | null {
+  return origen === ORIGEN_FORMULARIO
+    ? 'Contratado según formulario de la obra: la obra está cerrada, no figura en OBRAS ni tiene contrato desglosado (decisión del dueño, 14/09/2026).'
+    : null
+}
+
 /** El `origen` que dice «no lo declara OBRAS, pero hay una ORDEN DE COMPRA que lo respalda». Es un
  *  papel del cliente, no una suma que sube sola: la fila lo dice con la `referencia` («según OC
  *  2256») en vez de con la marca de suma viva. */
