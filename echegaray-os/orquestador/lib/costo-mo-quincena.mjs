@@ -256,7 +256,9 @@ function costoDeLaPersona(p, e, periodo) {
 function esDelPlantel(x, q) {
   if (x.persona.es_prueba === true) return false
   if (x.horas > 0 || x.recibo || (x.cerrada && x.cobra != null)) return true
-  const activo = (!x.persona.fecha_ingreso || iso(x.persona.fecha_ingreso) <= q.hasta)
+  // SIN FECHA DE INGRESO NO ES «DESDE SIEMPRE» (15/09/2026): sin fecha, sólo entra por la actividad de arriba.
+  // Espejo de `plantelDeLaQuincena` y de `activo` en la SQL (20260915T0900).
+  const activo = (!!x.persona.fecha_ingreso && iso(x.persona.fecha_ingreso) <= q.hasta)
     && (!x.persona.fecha_egreso || iso(x.persona.fecha_egreso) >= q.desde)
   return activo && num(x.tarifa?.neto_mensual) != null
 }
@@ -287,17 +289,20 @@ export function destinoDe(obra, tipos, persona = {}) {
  */
 function repartir(x, q, tipos) {
   const jefe = esJefeDeObra(x.persona.puesto)
-  const base = jefe ? [[null, x.horas]] : x.horas > 0 ? [...x.porObra.entries()].filter(([, h]) => h > 0) : [[null, 0]]
+  // LA CUADRILLA DE UN SUBCONTRATISTA (dueño, 15/09/2026): su costo va ENTERO a la obra del subcontrato, nunca a
+  // Estructura, tenga o no horas. `subcontrato_obra_id` es `subcontrato.obra_id` de `personas.subcontrato_id`.
+  const sub = x.persona.subcontrato_obra_id ?? null
+  const base = sub ? [[sub, x.horas]] : jefe ? [[null, x.horas]] : x.horas > 0 ? [...x.porObra.entries()].filter(([, h]) => h > 0) : [[null, 0]]
   const acc = new Map()
   for (const [obra, horas] of base) {
-    const destino = jefe ? 'ES-ADM' : destinoDe(obra, tipos, x.persona)
+    const destino = sub ? 'obra' : jefe ? 'ES-ADM' : destinoDe(obra, tipos, x.persona)
     const clave = `${destino === 'obra' ? obra : ''}|${destino}`
     const a = acc.get(clave) ?? { obra: destino === 'obra' ? obra : null, destino, horas: 0 }
     a.horas += horas
     acc.set(clave, a)
   }
   return [...acc.values()].map(({ obra, destino, horas }) => {
-    const k = x.horas > 0 && !jefe ? horas / x.horas : 1
+    const k = x.horas > 0 && !jefe && !sub ? horas / x.horas : 1
     return {
       quincena_desde: q.desde, quincena_hasta: q.hasta, obra_canonica_id: obra, persona_id: x.persona.id,
       horas, costo_blanco: parte(x.blanco, k), costo_negro: parte(x.negro, k), costo_total: parte(x.total, k),
