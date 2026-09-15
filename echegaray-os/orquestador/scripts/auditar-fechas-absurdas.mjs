@@ -139,7 +139,8 @@ export const COLUMNAS = [
   // El registro empieza donde dice su encabezado, no en una fila contada: ver `filaDelRegistro`.
   { hoja: 'Cheques Emitidos', col: 'C', anclaRegistro: 'Tipo', desde: FILA_DATO0, que: 'fecha de emisión' },
   { hoja: 'Cheques Emitidos', col: 'I', anclaRegistro: 'Tipo', desde: FILA_DATO0, que: 'fecha de pago' },
-  { hoja: 'Cobranzas', col: 'Q', desde: 5, que: 'fecha de cobro' },
+  // Por su ENCABEZADO desde el 14/09/2026: con «Obra» insertada en H, «Fecha cobro» pasa de Q a R.
+  { hoja: 'Cobranzas', encabezado: 'Fecha cobro', desde: 5, que: 'fecha de cobro' },
   // El extracto no tiene futuro: un movimiento fechado mañana no es un diferido, es un error de
   // importación. La ventana hacia adelante se cierra sólo donde de verdad no puede haber nada.
   { hoja: '_BANCO_RAW', col: 'A', desde: 4, que: 'fecha del movimiento', adelante: 0 },

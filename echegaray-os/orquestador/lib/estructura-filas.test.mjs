@@ -5,13 +5,19 @@
 // ya habían divergido en la regla del MES EN CURSO — una lo trataba como cerrado y la otra no.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { CRITERIO, RUBRO_RECURRENTE, celdasDelAnio } from './estructura-filas.mjs'
+import { criterios, refsCompras, RUBRO_RECURRENTE, celdasDelAnio } from './estructura-filas.mjs'
+import { COMPRAS, columnasDe } from './columnas-por-encabezado.mjs'
+import { COMPRAS_2508, COMPRAS_CON_OBRA } from './encabezados-referencia.mjs'
 import { MIN_MESES, MES_EN_CURSO } from './cash-flow-lineas.mjs'
-import { RANGOS_ANTES as RG } from './cash-flow-rangos-referencia.mjs'
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 const COL = { mes0: 1, aux0: 17, nmeses: 14, prom: 15, filaCab: 5 }
-const armar = (criterio, fila = 7) => celdasDelAnio({ rg: RG, fila, criterio, col: COL, letra })
+/** Los rangos de Compras del layout de hoy, resueltos por rótulo como los resuelve el generador. */
+const REFS = refsCompras(columnasDe(COMPRAS_2508, COMPRAS, 'Compras'))
+const CRITERIO = criterios(REFS)
+const COL_SUBRUBRO = REFS.subRubro
+const COL_PROVEEDOR = REFS.proveedor
+const armar = (criterio, fila = 7, refs = REFS) => celdasDelAnio({ fila, criterio, col: COL, letra, refs })
 
 test('doce y doce: un año tiene doce meses y cada uno trae su real y su celda visible', () => {
   const { aux, visible } = armar(CRITERIO.subrubro)
@@ -27,8 +33,8 @@ test('el CRITERIO es lo único que cambia entre las dos familias', () => {
   assert.deepEqual(s.visible, p.visible, 'las dos familias tienen que mostrar con la MISMA regla')
   // Y las auxiliares difieren SÓLO en el criterio.
   assert.notDeepEqual(s.aux, p.aux)
-  assert.ok(s.aux[0].includes(RG.compras.sub), 'la familia Estructura empareja por sub-rubro')
-  assert.ok(p.aux[0].includes(RG.compras.proveedor) && p.aux[0].includes(`"${RUBRO_RECURRENTE}"`),
+  assert.ok(s.aux[0].includes(COL_SUBRUBRO), 'la familia Estructura empareja por sub-rubro')
+  assert.ok(p.aux[0].includes(COL_PROVEEDOR) && p.aux[0].includes(`"${RUBRO_RECURRENTE}"`),
     'la familia recurrente empareja por rubro Y proveedor: sólo por proveedor traería gasto de obra')
 })
 
@@ -75,4 +81,15 @@ test('el promedio sale del PROMEDIO DECLARADO, no de recalcularlo adentro de cad
   // Doce recálculos del mismo promedio son doce lugares donde se puede desincronizar.
   const v = armar(CRITERIO.subrubro).visible
   for (const c of v) assert.ok(c.includes(`$${letra(COL.prom)}7`), 'la celda cita el promedio de su fila')
+})
+
+// ═══ «OBRA» INSERTADA EN COMPRAS L (14/09/2026) ═══
+test('con «Obra» insertada, el real suma el Total, el sub-rubro y la fecha de caja que dicen su rótulo', () => {
+  const refs = refsCompras(columnasDe(COMPRAS_CON_OBRA, COMPRAS, 'Compras'))
+  const [despues] = armar(criterios(refs).subrubro, 7, refs).aux
+  assert.ok(despues.startsWith('=SUMIFS(Compras!$P$4:$P;Compras!$AG$4:$AG;$A7;Compras!$AE$4:$AE;'), despues)
+  const [antes] = armar(CRITERIO.subrubro).aux
+  assert.ok(antes.startsWith('=SUMIFS(Compras!$O$4:$O;Compras!$AF$4:$AF;$A7;Compras!$AD$4:$AD;'), antes)
+  assert.ok(criterios(refs).proveedor(9).startsWith('Compras!$AD$4:$AD;"Servicios recurrentes";Compras!$E$4:$E;$A9'))
+  assert.throws(() => celdasDelAnio({ fila: 7, criterio: CRITERIO.subrubro, col: COL, letra }), /refsCompras/)
 })

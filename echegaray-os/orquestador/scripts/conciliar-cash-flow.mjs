@@ -24,6 +24,7 @@ import {
   cobradasConFechaFutura, pendientesFueraDeVentana, ritmoMensual,
 } from '../lib/cash-flow-conciliacion.mjs'
 import { LINEAS, SUBTOTALES, impuestoAlChequeDeColumna } from '../lib/cash-flow-mapa.mjs'
+import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import {
   columnasDePeriodo, mesDeSerial, cadenaDeCaja, subtotales, totalAnual, semanasPorMes, cuadreDeFila,
 } from '../lib/cash-flow-invariantes.mjs'
@@ -40,8 +41,8 @@ async function leer(google) {
   const v = (r) => google.readSheetValues(ID, r, { render: 'UNFORMATTED_VALUE' })
   const leido = new Date()
   const [men, sem, compras, cobranzas, cheques, tarjeta, banco, impuestos, jor, caja] = await Promise.all([
-    v(`'Cash Flow Mensual'!A1:P70`), v(`'Cash Flow Semanal'!A1:BZ70`), v(`'Compras'!A1:AJ2000`),
-    v(`'Cobranzas'!A1:BD400`), v(`'Cheques Emitidos'!A1:P400`), v(`'Tarjeta de Credito'!A1:N400`),
+    v(`'Cash Flow Mensual'!A1:P70`), v(`'Cash Flow Semanal'!A1:BZ70`), v(rangoFilas('Compras', 1, 2000)),
+    v(rangoFilas('Cobranzas', 1, 400)), v(`'Cheques Emitidos'!A1:P400`), v(`'Tarjeta de Credito'!A1:N400`),
     // "Impuestos y Financieros" hasta la 120, no hasta la 40 (06/08). El rango cortaba en la fila 40
     // y dejaba INVISIBLES los bloques de planes, deuda financiera, gaps y parámetros — que ya vivían
     // más abajo. Con la reconstrucción (posición y calendario ARRIBA del detalle) el corte se llevaba

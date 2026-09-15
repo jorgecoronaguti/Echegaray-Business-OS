@@ -31,7 +31,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ALERTA, SEMAFORO, esInvisible, glifosInvisibles, variantesDeMarca } from './glifos.mjs'
-import { formulaEstadoPago } from './compras-valores.mjs'
+import { columnasValores, formulaEstadoPago } from './compras-valores.mjs'
+import { COMPRAS_2508 } from './encabezados-referencia.mjs'
 import { MARCAS, marcaDe } from './cheques-cobertura.mjs'
 import { SIN_FACTURA } from './cash-flow-conciliacion.mjs'
 import { formulasInstrumento, formulaChequesSinFactura, INSTRUMENTOS } from './cash-flow-lineas.mjs'
@@ -90,7 +91,7 @@ test('las fórmulas que suman por la marca no publican el glifo viejo COMO TEXTO
 test('el semáforo de Compras —846 celdas, la peor concentración del archivo— se dibuja', () => {
   // Era de AppSheet y del dueño; desde el 15/08 lo escribe `scripts/compras-semaforo.mjs`, así que
   // deja de ser una excepción de esta lista y pasa a estar exigido como cualquier otro generador.
-  sinGlifosCiegos(formulaEstadoPago(4), 'formulaEstadoPago')
+  sinGlifosCiegos(formulaEstadoPago(4, columnasValores(COMPRAS_2508)), 'formulaEstadoPago')
   assert.equal(esInvisible(SEMAFORO.porVencer), false, 'el glifo de "Por vencer" volvió a ser emoji')
   assert.equal(esInvisible(SEMAFORO.vigente), false, 'el glifo de "Vigente" volvió a ser emoji')
   assert.equal(SEMAFORO.vencido, ALERTA, 'el semáforo no puede tener una segunda decisión sobre la alerta')

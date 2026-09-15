@@ -19,6 +19,7 @@ import { REGLAS, DERIVADAS, CALCULADAS, CON_ORIGEN, TOPE_PEGADOS, CLASE, sinClas
 import { RUBROS } from '../lib/rubro-caja.mjs'
 import { SUBRUBROS, OTROS } from '../lib/sub-rubro-estructura.mjs'
 import { USA, CABECERA, comparar } from '../lib/cobertura-datos.mjs'
+import { COMPRAS, columnasDe, rangoEncabezado } from '../lib/columnas-por-encabezado.mjs'
 import { PASOS } from '../lib/flujo-caja-pasos.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 
@@ -159,12 +160,17 @@ async function main() {
   console.log('\nREGLA · el cash flow usa la fecha de CAJA, no la de la factura')
   const gcf = await google.readSheetGrid(ID, 'Cash Flow Mensual!A1:N40').catch(() => ({ filas: [] }))
   const sumifs = (gcf.filas ?? []).flatMap((f) => (f || []).map((c) => c?.formula).filter((x) => x && /SUMIFS|SUMPRODUCT/.test(x)))
-  const porFactura = sumifs.filter((f) => /Compras!\$C\$/.test(f))
-  const porCaja = sumifs.filter((f) => /Compras!\$AD\$/.test(f))
+  // Las dos fechas de Compras por RÓTULO (14/09/2026): con «Obra» insertada en L, la de caja pasa de AD a
+  // AE y un control con la letra vieja diría «0 fórmulas por fecha de caja» sobre un cuadro correcto.
+  const cabCompras = (await google.readSheetValues(ID, rangoEncabezado('Compras')).catch(() => []))?.[0] ?? []
+  const { fecha: cFactura, fechaCaja: cCaja } = columnasDe(cabCompras, { fecha: COMPRAS.fecha, fechaCaja: COMPRAS.fechaCaja }, 'Compras')
+  const citaA = (c) => new RegExp(`Compras!\\$${c.letra}\\$`)
+  const porFactura = sumifs.filter((f) => citaA(cFactura).test(f))
+  const porCaja = sumifs.filter((f) => citaA(cCaja).test(f))
   if (porFactura.length) {
-    mal(`${porFactura.length} fórmula(s) del cuadro suman por FECHA DE FACTURA (Compras!C) — eso es devengado, no caja`)
+    mal(`${porFactura.length} fórmula(s) del cuadro suman por FECHA DE FACTURA (Compras · «${COMPRAS.fecha}») — eso es devengado, no caja`)
     anotar('devengado_percibido', 'el cash flow suma por fecha de factura', porFactura[0].slice(0, 120))
-  } else ok(`${porCaja.length} fórmulas del cuadro suman por la fecha de caja (Compras!AD)`)
+  } else ok(`${porCaja.length} fórmulas del cuadro suman por la fecha de caja (Compras · «${COMPRAS.fechaCaja}»)`)
 
   // ── REGLA "sin_huecos" ──────────────────────────────────────────────────────────────────────────
   console.log('\nREGLA · no tiene que haber dato sin contemplar')

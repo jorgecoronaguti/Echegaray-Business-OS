@@ -22,7 +22,8 @@ import {
   saldoNetoProveedor, deudaComercialTotal, reservaPara,
   filasLibreta, verificarMigracionNotas, esNombreSeguro,
 } from './proveedores-deuda-viva.mjs'
-import { expresionSaldo, formulaParcial1Monto } from './deuda-por-tramos.mjs'
+import { columnasDeuda, expresionSaldo, formulaParcial1Monto } from './deuda-por-tramos.mjs'
+import { COMPRAS_2508 as CAB_DEUDA } from './encabezados-referencia.mjs'
 import { esProsa } from './diseno-unificado.mjs'
 
 /** Las columnas reales de Compras, tal como las resuelve el generador por encabezado. */
@@ -110,7 +111,7 @@ test('el saldo neto y el titular usan LA MISMA resta canónica: Total - Pagado -
 
 test('el saldo del bloque dice EXACTAMENTE lo mismo que la canónica de deuda-por-tramos', () => {
   // La prueba de que no hay dos definiciones: las dos restan las mismas tres columnas de Compras.
-  const canonica = expresionSaldo('Compras!')
+  const canonica = expresionSaldo(columnasDeuda(CAB_DEUDA))
   for (const col of ['O', 'T', 'W']) {
     assert.ok(canonica.includes(`$${col}$4:$${col}`), `la canónica tiene que restar ${col}`)
   }
@@ -126,7 +127,7 @@ test('el saldo del bloque dice EXACTAMENTE lo mismo que la canónica de deuda-po
 // el formato. Los NOMBRES se pierden a propósito: el rótulo dice con qué filtro se encuentran en
 // Compras, que es donde hay que ir a corregirlas.
 test('el hallazgo de «Monto Parcial 1» es el monto, y nada más', () => {
-  const f = formulaParcial1Monto()
+  const f = formulaParcial1Monto(columnasDeuda(CAB_DEUDA))
   assert.ok(f.startsWith('='), 'es una fórmula viva, no un número calculado acá')
   assert.ok(f.includes('$U$4:$U') && f.includes('>0'), 'mira los positivos de Parcial 1, con rango abierto')
   assert.ok(f.includes('SUMPRODUCT'), 'pondera por importe sobre rangos abiertos')

@@ -71,6 +71,7 @@
 // tomar solo y sin tocar una línea de código — que es la prueba de que el criterio está bien puesto.
 
 import { expresionPagoDelMes } from './jornales-fecha-pago.mjs'
+import { COMPRAS, columnasDe, rangoEncabezado } from './columnas-por-encabezado.mjs'
 
 /** Las tres personas de Dirección. Definidas UNA vez: de acá salen el rótulo, el regex y el total. */
 export const NOMBRES_DIRECCION = ['Jorge Echegaray', 'Rodrigo Echegaray', 'Jorge Corona']
@@ -103,12 +104,31 @@ export const PARAMETRO_DIA_PAGO = {
   retirado: true,
 }
 
-// Las columnas de Compras que mira este bloque. Las mismas que ya usa el cash flow (COL_TOTAL,
-// COL_RUBRO, COL_FECHA de cash-flow-lineas.mjs) más las dos que identifican a la persona y el estado.
-export const COL_PERSONA = "'Compras'!$K$4:$K" // "Detalles / Obra" — ahí está el nombre
-export const COL_IMPORTE = "'Compras'!$O$4:$O" // "Total"
-export const COL_FECHA_CAJA = "'Compras'!$AD$4:$AD" // cuándo sale la plata
-export const COL_ESTADO_PAGO = "'Compras'!$Z$4:$Z" // "✅ Pagado" / "🟢 Vigente"
+// Las columnas de Compras que mira este bloque, por RÓTULO (14/09/2026): la persona está en «Detalles /
+// Obra», el importe en «Total», cuándo sale la plata en «Fecha de caja» y el estado en «Estado pago»
+// ("✅ Pagado" / "🟢 Vigente", de AppSheet). Eran letras fijas: con «Obra» insertada en L se corren tres.
+export const ROTULOS_RETIROS = Object.freeze({
+  persona: COMPRAS.detalle, importe: COMPRAS.total, fechaCaja: COMPRAS.fechaCaja, estadoPago: 'Estado pago',
+})
+
+/** Esas columnas contra la fila de rótulos leída en ESTA corrida. Un rótulo que falta rompe. */
+export const columnasRetiros = (encabezado) => columnasDe(encabezado, ROTULOS_RETIROS, 'Compras')
+
+/** La fila de rótulos de Compras leída una vez por el generador, ya resuelta. */
+export async function leerColumnasRetiros(google, fileId) {
+  return columnasRetiros((await google.readSheetValues(fileId, rangoEncabezado('Compras')))?.[0] ?? [])
+}
+
+/** Los rangos citados, con la pestaña entre comillas como estaban: así los reconocen el libro y los tests. */
+function refsRetiros(cols) {
+  const out = {}
+  for (const [k, rotulo] of Object.entries(ROTULOS_RETIROS)) {
+    const l = cols?.[k]?.letra
+    if (!l) throw new Error(`direccion-retiros: falta «${rotulo}» resuelta por rótulo — usá columnasRetiros(encabezado)`)
+    out[k] = `'Compras'!$${l}$4:$${l}`
+  }
+  return Object.freeze(out)
+}
 
 /** NÚCLEO PURO: escapa lo que en un regex de Sheets significaría otra cosa. */
 const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -142,18 +162,18 @@ export const esRetiro = (persona, nombres = NOMBRES_DIRECCION) =>
  *
  * @param {string} celdaNombre la celda con el nombre de la persona (ej. "$A$47")
  */
-export const formulaRetiroMensual = (celdaNombre) =>
+const formulaRetiroMensual = (r, celdaNombre) =>
   // Sólo filas CON importe: una proyección ELIMINADA (O=0) o sin cargar no es "la última carga" —
   // el 06/08 las filas de julio (importes viejos, fecha de caja posterior) taparon el pago real.
-  `=IFERROR(INDEX(SORT(FILTER({${COL_IMPORTE}\\${COL_FECHA_CAJA}};LOWER(${COL_PERSONA}&"")=LOWER(${celdaNombre});IF(ISNUMBER(${COL_IMPORTE});${COL_IMPORTE};0)>0);2;0);1;1);"")`
+  `=IFERROR(INDEX(SORT(FILTER({${r.importe}\\${r.fechaCaja}};LOWER(${r.persona}&"")=LOWER(${celdaNombre});IF(ISNUMBER(${r.importe});${r.importe};0)>0);2;0);1;1);"")`
 
 /**
  * NÚCLEO PURO: la fecha de caja MÁS TEMPRANA de un retiro de Dirección — desde cuándo corre.
  * Si no hay ninguna fila cargada devuelve "" y toda la proyección queda apagada: sin evidencia de
  * que el retiro exista, el cuadro no lo inventa.
  */
-export const formulaPrimerRetiro = (nombres = NOMBRES_DIRECCION) =>
-  `=IFERROR(MIN(FILTER(${COL_FECHA_CAJA};REGEXMATCH(LOWER(${COL_PERSONA}&"");"${regexDireccion(nombres)}");ISNUMBER(${COL_FECHA_CAJA})));"")`
+const formulaPrimerRetiro = (r, nombres = NOMBRES_DIRECCION) =>
+  `=IFERROR(MIN(FILTER(${r.fechaCaja};REGEXMATCH(LOWER(${r.persona}&"");"${regexDireccion(nombres)}");ISNUMBER(${r.fechaCaja})));"")`
 
 /**
  * NÚCLEO PURO: desde cuándo corre el retiro DE UNA PERSONA — su fecha de caja más temprana en Compras.
@@ -167,8 +187,8 @@ export const formulaPrimerRetiro = (nombres = NOMBRES_DIRECCION) =>
  *
  * @param {string} celdaNombre la celda con el nombre de la persona (ej. "$A$47")
  */
-export const formulaPrimerRetiroDe = (celdaNombre) =>
-  `=IFERROR(MIN(FILTER(${COL_FECHA_CAJA};LOWER(${COL_PERSONA}&"")=LOWER(${celdaNombre});ISNUMBER(${COL_FECHA_CAJA})));"")`
+const formulaPrimerRetiroDe = (r, celdaNombre) =>
+  `=IFERROR(MIN(FILTER(${r.fechaCaja};LOWER(${r.persona}&"")=LOWER(${celdaNombre});ISNUMBER(${r.fechaCaja})));"")`
 
 /**
  * NÚCLEO PURO: EL MES AL QUE PERTENECE EL IMPORTE BASE — que no es el mes en que se pagó.
@@ -196,9 +216,9 @@ export const formulaPrimerRetiroDe = (celdaNombre) =>
  * M+1, así que es `EOMONTH(fecha de caja de esa carga; -1)`. Sale del MISMO dato que el importe —la
  * fila de Compras con la fecha de caja más alta— así que los dos no se pueden separar.
  */
-export const expresionMesBaseRetiro = (nombres = NOMBRES_DIRECCION) =>
-  `EOMONTH(MAX(FILTER(${COL_FECHA_CAJA};REGEXMATCH(LOWER(${COL_PERSONA}&"");"${regexDireccion(nombres)}");`
-  + `IF(ISNUMBER(${COL_IMPORTE});${COL_IMPORTE};0)>0));-1)`
+const expresionMesBaseRetiro = (r, nombres = NOMBRES_DIRECCION) =>
+  `EOMONTH(MAX(FILTER(${r.fechaCaja};REGEXMATCH(LOWER(${r.persona}&"");"${regexDireccion(nombres)}");`
+  + `IF(ISNUMBER(${r.importe});${r.importe};0)>0));-1)`
 
 /**
  * NÚCLEO PURO: LAS FILAS DE COMPRAS QUE PAGAN EL RETIRO DEL MES `mes` — definidas UNA sola vez.
@@ -226,22 +246,22 @@ export const expresionMesBaseRetiro = (nombres = NOMBRES_DIRECCION) =>
  *
  * @returns {string[]} las condiciones, en orden. Se unen con `*` para SUMPRODUCT y con `;` para FILTER.
  */
-export function condicionesPagoDelMes(mes, anio, nombres = NOMBRES_DIRECCION) {
+function condicionesPagoDelMes(r, mes, anio, nombres = NOMBRES_DIRECCION) {
   const desde = fechaDeMes(anio, mes + 1, '1')
   const hasta = fechaDeMes(anio, mes + 2, '1')
-  const f = `IF(ISNUMBER(${COL_FECHA_CAJA});${COL_FECHA_CAJA};0)`
+  const f = `IF(ISNUMBER(${r.fechaCaja});${r.fechaCaja};0)`
   return [
-    `REGEXMATCH(LOWER(${COL_PERSONA}&"");"${regexDireccion(nombres)}")`,
+    `REGEXMATCH(LOWER(${r.persona}&"");"${regexDireccion(nombres)}")`,
     `(${f}>=${desde})`,
     `(${f}<${hasta})`,
-    `REGEXMATCH(${COL_ESTADO_PAGO}&"";"Pagado")`,
+    `REGEXMATCH(${r.estadoPago}&"";"Pagado")`,
   ]
 }
 
 /** NÚCLEO PURO: lo REALMENTE pagado a Dirección en un mes, según Compras. */
-export function formulaPagadoMes(mes, anio, nombres = NOMBRES_DIRECCION) {
-  return `=SUMPRODUCT(${condicionesPagoDelMes(mes, anio, nombres).join('*')}`
-    + `*IF(ISNUMBER(${COL_IMPORTE});${COL_IMPORTE};0))`
+function formulaPagadoMes(r, mes, anio, nombres = NOMBRES_DIRECCION) {
+  return `=SUMPRODUCT(${condicionesPagoDelMes(r, mes, anio, nombres).join('*')}`
+    + `*IF(ISNUMBER(${r.importe});${r.importe};0))`
 }
 
 /**
@@ -271,7 +291,7 @@ export function formulaPagadoMes(mes, anio, nombres = NOMBRES_DIRECCION) {
  *
  * Diciembre da enero del año que viene, y está bien: es percibido, y ese pago no es caja de este año.
  */
-export function formulaSePagaElDireccion(mes, anio, nombres = NOMBRES_DIRECCION) {
+function formulaSePagaElDireccion(r, mes, anio, nombres = NOMBRES_DIRECCION) {
   // LA PREVISTA YA NO ES EL DÍA 10: ES LA FECHA DE LA NÓMINA DEL MES, LA MISMA DE LOS OTROS DOS GRUPOS
   // (14/08, orden del dueño — "los tres grupos quiero q cobren el mismo dia"). El día 10 salía de
   // medir las cinco filas de Compras de julio, que tenían fecha de caja 10/08 — una PREVISIÓN cargada
@@ -282,7 +302,7 @@ export function formulaSePagaElDireccion(mes, anio, nombres = NOMBRES_DIRECCION)
   // M+1, que es exactamente cuando sale el retiro. Medido: julio → WORKDAY(31/07;1) = lun 03/08, y el
   // banco pagó los honorarios el 03/08.
   const prevista = expresionPagoDelMes(anio, mes)
-  return `=IFERROR(MAX(FILTER(${COL_FECHA_CAJA};${condicionesPagoDelMes(mes, anio, nombres).join(';')}));${prevista})`
+  return `=IFERROR(MAX(FILTER(${r.fechaCaja};${condicionesPagoDelMes(r, mes, anio, nombres).join(';')}));${prevista})`
 }
 
 /**
@@ -350,4 +370,26 @@ export function formulaDireccion(desde, hasta) {
   const pagado = `IF(ISNUMBER(${DIR.pagado});${DIR.pagado};0)`
   const proy = `IF(ISNUMBER(${DIR.proyectado});${DIR.proyectado};0)`
   return `=SUMPRODUCT(${en}*(${pagado}+${proy}))`
+}
+
+/**
+ * LAS FÓRMULAS DE RETIROS CONTRA LAS COLUMNAS DE COMPRAS DE ESTA CORRIDA (14/09/2026).
+ *
+ * Eran constantes con la letra adentro (`K`, `O`, `AD`, `Z`). Con «Obra» insertada en Compras L, el
+ * importe, la fecha de caja y el estado se corren una letra y el retiro mensual habría sumado la
+ * columna de al lado. El generador resuelve las columnas contra la fila de rótulos viva.
+ *
+ * @param {Record<string,{letra:string}>} cols las de `columnasRetiros`
+ */
+export function retirosDeDireccion(cols) {
+  const r = refsRetiros(cols)
+  return Object.freeze({
+    formulaRetiroMensual: (celdaNombre) => formulaRetiroMensual(r, celdaNombre),
+    formulaPrimerRetiro: (nombres) => formulaPrimerRetiro(r, nombres),
+    formulaPrimerRetiroDe: (celdaNombre) => formulaPrimerRetiroDe(r, celdaNombre),
+    expresionMesBaseRetiro: (nombres) => expresionMesBaseRetiro(r, nombres),
+    condicionesPagoDelMes: (mes, anio, nombres) => condicionesPagoDelMes(r, mes, anio, nombres),
+    formulaPagadoMes: (mes, anio, nombres) => formulaPagadoMes(r, mes, anio, nombres),
+    formulaSePagaElDireccion: (mes, anio, nombres) => formulaSePagaElDireccion(r, mes, anio, nombres),
+  })
 }

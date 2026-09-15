@@ -8,6 +8,8 @@ import { grillaObras } from '../lib/obras-grilla.mjs'
 import { OBRAS_FUTURAS } from '../lib/obras-datos.mjs'
 import { construir } from '../lib/subcontratistas/pestana.mjs'
 import { grilla as grillaJornales } from './jornales-pestana.mjs'
+import { columnasRetiros } from '../lib/direccion-retiros.mjs'
+import { COMPRAS_2508 } from '../lib/encabezados-referencia.mjs'
 import { grilla as grillaImpuestos } from './impuestos-pestana.mjs'
 import { ANCHO as ANCHO_IMPUESTOS } from '../lib/impuestos-grilla.mjs'
 import { vaciarColumnaDeProsa } from '../lib/nota-celda.mjs'
@@ -156,7 +158,7 @@ test('«Jornales por Quincena» no publica un solo glifo de prosa en la grilla q
   const bloques = [{ filaFecha: 6, inicio: 7, fin: 20 }, { filaFecha: 30, inicio: 31, fin: 44 }]
   const pendientes = [{ desde: new Date(2026, 7, 1) }, { desde: new Date(2026, 7, 16) }]
   const bloquesOfi = [{ mes: 6, inicio: 5, fin: 8 }, { mes: 7, inicio: 12, fin: 15 }]
-  const filas = comoSeVe(grillaJornales({ bloques, pendientes, bloquesOfi }).filas)
+  const filas = comoSeVe(grillaJornales({ colsCompras: columnasRetiros(COMPRAS_2508),  bloques, pendientes, bloquesOfi }).filas)
   // Que la grilla tenga tamaño es parte del control: con una grilla vacía todo pasa (es la mutación
   // que dejó verde el test de OBRAS mirando una pestaña sin su cuadro 5).
   assert.ok(filas.length > 50, `no armé la pestaña: ${filas.length} filas`)
@@ -181,7 +183,7 @@ test('y su encabezado de bloque sigue siendo el del patrón: dos secciones y cin
   // navegable la pestaña. El patrón los reconoce por su forma (`N · TÍTULO`), la misma que usan
   // «Cargas Sociales» y «Nómina».
   const bloques = [{ filaFecha: 6, inicio: 7, fin: 20 }, { filaFecha: 30, inicio: 31, fin: 44 }]
-  const filas = comoSeVe(grillaJornales({
+  const filas = comoSeVe(grillaJornales({ colsCompras: columnasRetiros(COMPRAS_2508), 
     bloques, pendientes: [{ desde: new Date(2026, 7, 1) }], bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }],
   }).filas)
   const colA = filas.map((f) => String(f[0] ?? '').trim())

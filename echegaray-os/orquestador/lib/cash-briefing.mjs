@@ -2,6 +2,15 @@
 // del modelo). Piso firme: cada número sale de una columna estructurada, verificable, barato y
 // rápido, para correr solo cada mañana. NUNCA inventa. Complementa al briefingEjecutivo (DB) con
 // la foto de CAJA real de la planilla: saldo hoy, cobranzas del mes, vencimientos de la semana.
+import { COBRANZAS, PESTANAS, rangoFilas } from './columnas-por-encabezado.mjs'
+import { conEncabezado } from './columnas-lectura.mjs'
+
+/** Las columnas de Cobranzas que lee el briefing, por RÓTULO (14/09/2026, «Obra» insertada en H). */
+export const ROTULOS_BRIEFING = Object.freeze({
+  estado: COBRANZAS.estado, total: COBRANZAS.total, mesCobro: 'Mes cobro (auto)', fechaCobro: COBRANZAS.fechaCobro,
+  cliente: COBRANZAS.cliente,
+})
+
 export const CASHFLOW_ID = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 
@@ -101,25 +110,28 @@ export async function cashBriefing(google, hoy = new Date(), opts = {}) {
     ? parseMonto(cajaRaw[iTotal]?.[iSaldo])
     : [...saldos.values()].reduce((s, v) => s + v.saldo, 0)
 
-  // 2) COBRANZAS del mes en curso (02_Cobranzas: R idx17 "Mes cobro", O idx14 Estado, M idx12 Total,
-  //    G idx6 Obra/Cliente, Q idx16 "Fecha cobro" fecha real) + VENCIDAS (fecha de cobro ya pasó y
+  // 2) COBRANZAS del mes en curso («Mes cobro (auto)», «Estado», «TOTAL a cobrar», «Obra / Cliente» y
+  //    «Fecha cobro», ubicadas por RÓTULO en la misma lectura) + VENCIDAS (fecha de cobro ya pasó y
   //    sin cobrar = plata que debería estar y no está). "Vencida" NO interpreta la taxonomía de
   //    estados (Pendiente/Proyectado/Facturado…): solo "no Cobrado" + fecha de cobro < hoy. Honesto.
-  const cob = await google.readSheetValues(ID, 'Cobranzas!A5:R2000').catch(() => [])
+  // Una lectura que falla sigue siendo «sin cobranzas», como antes. Un rótulo que falta, en cambio,
+  // rompe con su nombre: leer por posición con «Obra» insertada daría montos de la columna de al lado.
+  const crudoCob = await google.readSheetValues(ID, rangoFilas('Cobranzas', PESTANAS.Cobranzas.filaEncabezado, 2000)).catch(() => [])
+  const { idx: ic, datos: cob } = crudoCob.length ? conEncabezado(crudoCob, 'Cobranzas', ROTULOS_BRIEFING) : { idx: {}, datos: [] }
   let cobrado = 0, porCobrar = 0, entra7 = 0
   const vencidas = []
   for (const r of cob) {
-    const estado = String(r?.[14] ?? '').trim()
+    const estado = String(r?.[ic.estado] ?? '').trim()
     const cobradoYa = /cobrado/i.test(estado)
-    const monto = parseMonto(r?.[12])
+    const monto = parseMonto(r?.[ic.total])
     // cobranzas del mes en curso (por "Mes cobro (auto)")
-    if (String(r?.[17] ?? '').trim().toLowerCase() === mesActual) {
+    if (String(r?.[ic.mesCobro] ?? '').trim().toLowerCase() === mesActual) {
       if (cobradoYa) cobrado += monto; else porCobrar += monto
     }
-    // Por "Fecha cobro" real (idx16), sin cobrar: VENCIDA (pasada) o ENTRA esta semana (dentro 7d)
+    // Por "Fecha cobro" real (por rótulo), sin cobrar: VENCIDA (pasada) o ENTRA esta semana (dentro 7d)
     if (!cobradoYa && monto > 0) {
-      const fc = parseFecha(r?.[16])
-      if (fc && fc < hoy0) vencidas.push({ cliente: String(r?.[6] ?? '').trim() || '(sin cliente)', estado, fecha: String(r?.[16]).trim(), monto, dias: Math.round((hoy0 - fc) / 86400000) })
+      const fc = parseFecha(r?.[ic.fechaCobro])
+      if (fc && fc < hoy0) vencidas.push({ cliente: String(r?.[ic.cliente] ?? '').trim() || '(sin cliente)', estado, fecha: String(r?.[ic.fechaCobro]).trim(), monto, dias: Math.round((hoy0 - fc) / 86400000) })
       else if (dentro7(fc)) entra7 += monto
     }
   }

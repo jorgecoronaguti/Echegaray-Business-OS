@@ -139,8 +139,7 @@ import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { JORNALES_FILE_ID } from '../lib/espejo-jornales.mjs'
 import { formulaSePagaEl, expresionPagoDelMes, PARAMETROS } from '../lib/jornales-fecha-pago.mjs'
 import {
-  NOMBRES_DIRECCION, formulaRetiroMensual, formulaPrimerRetiro, expresionMesBaseRetiro,
-  formulaPrimerRetiroDe, formulaPagadoMes, formulaSePagaElDireccion, formulaProyectadoMes,
+  NOMBRES_DIRECCION, formulaProyectadoMes, leerColumnasRetiros, retirosDeDireccion,
 } from '../lib/direccion-retiros.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 import { quincenaConAumento } from '../lib/proyeccion-convenio.mjs'
@@ -410,7 +409,13 @@ export function grilla({
   // EL PLANTEL DEL AÑO, ya separado en quien sigue y quien se fue. Se resuelve en `main()` porque
   // necesita el espejo entero y acá sólo llegan los bloques.
   desvinculacion = null,
+  // LAS COLUMNAS DE COMPRAS DE LOS RETIROS DE DIRECCIÓN, resueltas por rótulo en main() (14/09/2026).
+  colsCompras,
 }) {
+  const {
+    formulaRetiroMensual, formulaPrimerRetiro, expresionMesBaseRetiro, formulaPrimerRetiroDe, formulaPagadoMes,
+    formulaSePagaElDireccion,
+  } = retirosDeDireccion(colsCompras)
   // El bloque base por defecto es el último del espejo: mantiene el comportamiento anterior cuando
   // el llamador no resolvió la última quincena cerrada (sólo pasa en tests viejos).
   bloqueBase ??= bloques[bloques.length - 1]
@@ -1764,8 +1769,9 @@ async function main() {
   // dibuja. Dos pestañas publicando el mismo número es como empiezan las dos verdades.
   const desvinculacion = separarPlantel(plantelDelEspejo(espejo ?? [], bloques, { anio: AÑO }), bloques)
   console.log(`plantel del año: ${desvinculacion.activos.length} activo(s) · ${desvinculacion.desafectados.length} desafectado(s) — el costo de desvincular se publica en «Nómina»`)
+  const colsCompras = await leerColumnasRetiros(google, ID)
   const g = grilla({
-    bloques, pendientes, bloquesOfi, pagoPrevio, ultimoDiaOfi,
+    colsCompras, bloques, pendientes, bloquesOfi, pagoPrevio, ultimoDiaOfi,
     escalones, bloqueBase, categorias, personasBase, origenPlantel: piso.origen ?? 'cerrada',
     escalonVigente, meses, hoy, periodoBase, demanda,
     desvinculacion: null,

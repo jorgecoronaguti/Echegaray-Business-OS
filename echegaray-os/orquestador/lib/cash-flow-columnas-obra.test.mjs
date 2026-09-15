@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { CUADRO, expresionReal, formulaCobranzas, bloqueControl, destinoDetalle, SUB_BIENES_DE_USO } from './cash-flow-lineas.mjs'
 import { sumandosEnVentana } from './calendario-egresos.mjs'
 import { formulaLineaSemana } from './cash-flow-horizonte.mjs'
-import { CRITERIO, celdasDelAnio } from './estructura-filas.mjs'
+import { criterios, refsCompras, celdasDelAnio } from './estructura-filas.mjs'
 import { RANGOS_ANTES, RANGOS_DESPUES } from './cash-flow-rangos-referencia.mjs'
 import { COMPRAS, columnasDe } from './columnas-por-encabezado.mjs'
 import { COMPRAS_2508, COMPRAS_CON_OBRA } from './encabezados-referencia.mjs'
@@ -87,16 +87,17 @@ test('sin rangos no hay fórmula: ninguna función del cuadro cae en una letra p
   assert.throws(() => expresionReal(undefined, l, 'B$3', 'C$3'), /rangos de Compras/)
   assert.throws(() => formulaCobranzas({ compras: RANGOS_ANTES.compras }, 'civil', 'A1', 'B1'), /rangos de Cobranzas/)
   assert.throws(() => grillaCashFlow(undefined, 'mensual'), /rangos de Compras/)
-  assert.throws(() => celdasDelAnio({ fila: 7, criterio: CRITERIO.subrubro, col: { mes0: 1, aux0: 17, nmeses: 14, prom: 15, filaCab: 5 }, letra: String }), /rangos de Compras/)
+  assert.throws(() => celdasDelAnio({ fila: 7, criterio: () => '', col: { mes0: 1, aux0: 17, nmeses: 14, prom: 15, filaCab: 5 }, letra: String }), /refsCompras/)
 })
 
 test('Estructura y Recurrentes (el constructor compartido) siguen al sub-rubro, la fecha y el Total', () => {
   const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
   const col = { mes0: 1, aux0: 17, nmeses: 14, prom: 15, filaCab: 5 }
-  const aux = (rg, criterio) => celdasDelAnio({ rg, fila: 7, criterio, col, letra }).aux[0]
-  assert.equal(aux(RANGOS_ANTES, CRITERIO.subrubro), '=SUMIFS(Compras!$O$4:$O;Compras!$AF$4:$AF;$A7;Compras!$AD$4:$AD;">="&B$5;Compras!$AD$4:$AD;"<"&EOMONTH(B$5;0)+1)')
-  assert.equal(aux(RANGOS_DESPUES, CRITERIO.subrubro), '=SUMIFS(Compras!$P$4:$P;Compras!$AG$4:$AG;$A7;Compras!$AE$4:$AE;">="&B$5;Compras!$AE$4:$AE;"<"&EOMONTH(B$5;0)+1)')
-  assert.ok(aux(RANGOS_DESPUES, CRITERIO.proveedor).includes('Compras!$AD$4:$AD;"Servicios recurrentes";Compras!$E$4:$E;$A7'))
+  const refsDe = (enc) => refsCompras(columnasDe(enc, COMPRAS, 'Compras'))
+  const aux = (enc, k) => { const refs = refsDe(enc); return celdasDelAnio({ fila: 7, criterio: criterios(refs)[k], col, letra, refs }).aux[0] }
+  assert.equal(aux(COMPRAS_2508, 'subrubro'), '=SUMIFS(Compras!$O$4:$O;Compras!$AF$4:$AF;$A7;Compras!$AD$4:$AD;">="&B$5;Compras!$AD$4:$AD;"<"&EOMONTH(B$5;0)+1)')
+  assert.equal(aux(COMPRAS_CON_OBRA, 'subrubro'), '=SUMIFS(Compras!$P$4:$P;Compras!$AG$4:$AG;$A7;Compras!$AE$4:$AE;">="&B$5;Compras!$AE$4:$AE;"<"&EOMONTH(B$5;0)+1)')
+  assert.ok(aux(COMPRAS_CON_OBRA, 'proveedor').includes('Compras!$AD$4:$AD;"Servicios recurrentes";Compras!$E$4:$E;$A7'))
 
   const antes = grillaRecurrentes(['Movistar'], columnasDe(COMPRAS_2508, COMPRAS, 'Compras')).filas.flat().join('\n')
   const despues = grillaRecurrentes(['Movistar'], columnasDe(COMPRAS_CON_OBRA, COMPRAS, 'Compras')).filas.flat().join('\n')
