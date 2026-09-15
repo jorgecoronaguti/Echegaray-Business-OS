@@ -3,8 +3,10 @@ import assert from 'node:assert/strict'
 import {
   COL, PENDIENTE, filtrosDeudaViva, filtrosPorCondicion, fuenteCompras, pivotDetalle, pivotPorProveedor,
 } from './deuda-viva-pivot.mjs'
+import { columnasDelPivot } from './proveedores-pivot-seccion1.mjs'
+import { COMPRAS_2508 } from './encabezados-referencia.mjs'
 
-const fuente = fuenteCompras({ sheetId: 1666326819, filas: 932 })
+const fuente = fuenteCompras({ sheetId: 1666326819, filas: 932, col: columnasDelPivot(COMPRAS_2508) })
 
 // ═══ EL DEFECTO QUE ESTOS TESTS ATRAPAN ═══
 // La dinámica salió VACÍA dos veces en el archivo real, sin un solo error a la vista, porque los

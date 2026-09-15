@@ -52,7 +52,7 @@ import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
 import { leerParaDecidirBorrado } from '../lib/proveedores-lectura-dinamica.mjs'
 import { esSubtituloDeDetalle, SECCIONES_DINAMICAS, subtituloDetalle, VALORES_DETALLE } from '../lib/proveedores-titulos.mjs'
 import {
-  altoEmitido, bandasDeFormato, COL, formatoDeTodo, fuenteCompras, geometriaDeLaSeccion,
+  altoEmitido, bandasDeFormato, COL, columnasDelPivot, formatoDeTodo, fuenteCompras, geometriaDeLaSeccion,
   diasDePago, letraDeLaDeuda, PENDIENTE, pivotSeccion1, rotulosDelCuadro, VISTA,
 } from '../lib/proveedores-pivot-seccion1.mjs'
 import {
@@ -99,9 +99,11 @@ const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 // A · A QUIÉN SE LE DEBE — una línea por proveedor, ordenada por lo que se le debe (el ranking).
 // B · CADA OPERACIÓN     — el detalle, agrupado por día de pago: a quién, por qué comprobante, con
 //                          qué medio, para qué obra.
-const cuadroTotales = (fuente) => pivotSeccion1(fuente, { vista: VISTA.POR_PROVEEDOR, nombres: [...VALORES] })
+// `col` son los offsets de la fila de rótulos VIVA (`columnasDelPivot`): nunca `COL`, que es el layout
+// de referencia de las filas ya normalizadas.
+const cuadroTotales = (fuente, col) => pivotSeccion1(fuente, { vista: VISTA.POR_PROVEEDOR, nombres: [...VALORES], col })
 
-const cuadroDetalle = (fuente) => pivotSeccion1(fuente, { vista: VISTA.DETALLE })
+const cuadroDetalle = (fuente, col) => pivotSeccion1(fuente, { vista: VISTA.DETALLE, col })
 
 const texto = (sheetId, fila, valor, bold = false) => ({ updateCells: {
   range: { sheetId, startRowIndex: fila, endRowIndex: fila + 1, startColumnIndex: 0, endColumnIndex: 1 },
@@ -118,6 +120,7 @@ async function main() {
   const [cabecera] = filasAlLayoutDeReferencia([encabezadoVivo], encabezadoVivo)
   const compras = filasAlLayoutDeReferencia(await google.readSheetValues(ID, rangoFilas('Compras', 4), { render: 'UNFORMATTED_VALUE' }) ?? [], encabezadoVivo)
   const colsVence = columnasVence(encabezadoVivo)
+  const colPivot = columnasDelPivot(encabezadoVivo)
   const pendientes = (compras ?? []).filter((f) => String(f?.[COL.estado] ?? '').trim() === PENDIENTE
     && String(f?.[COL.comercial] ?? '').trim() === '1')
   // LA RESERVA SE CUENTA COMO AGRUPA EL PIVOT —por el valor CRUDO— y con una fila de colchón: el
@@ -183,7 +186,7 @@ async function main() {
     await google.spreadsheetBatchUpdate(ID, [{ appendDimension: {
       sheetId: compraMeta.sheetId, dimension: 'ROWS', length: filasCompras - compraMeta.rows } }], { espejo: true })
   }
-  const fuente = fuenteCompras({ sheetId: compraMeta.sheetId, filas: filasCompras })
+  const fuente = fuenteCompras({ sheetId: compraMeta.sheetId, filas: filasCompras, col: colPivot })
 
   if (faltan) {
     await google.spreadsheetBatchUpdate(ID, [{ insertDimension: {
@@ -245,9 +248,9 @@ async function main() {
     // Limpiar el ancho entero del bloque, incluidas las dinámicas viejas.
     { updateCells: { range: { sheetId, startRowIndex: iA, endRowIndex: finIdx, startColumnIndex: 0, endColumnIndex: 7 },
       rows: vacias, fields: 'userEnteredValue,pivotTable' } },
-    anclaPivot(iA, cuadroTotales(fuente)),
+    anclaPivot(iA, cuadroTotales(fuente, colPivot)),
     texto(sheetId, iSub, subtituloDetalle(), true),
-    anclaPivot(iB, cuadroDetalle(fuente)),
+    anclaPivot(iB, cuadroDetalle(fuente, colPivot)),
     // CADA COLUMNA, DECLARADA EN CADA CORRIDA Y SOBRE EL FOOTPRINT ENTERO. Una dinámica no trae
     // formato: usa el que la celda ya tenía. Midiendo la banda con el alto de la corrida, el cuadro
     // A creció a 10 proveedores y la 10ª fila salió `67797,51 | 31/12/1899` — la columna B en TEXTO
