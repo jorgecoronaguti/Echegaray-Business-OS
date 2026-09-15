@@ -406,8 +406,10 @@ export interface PlanDeHorasPorDefecto {
  * la obra de la pantalla sería el defecto grave de acá: quien ya tiene 9 h cargadas en otra obra
  * recibiría 9 h más en ésta, y el día pasaría a costar el doble sin que nada lo diga.
  */
-export function planDeHorasPorDefecto({ presencias, horasExistentes, fecha, obra }: {
+export function planDeHorasPorDefecto({ presencias, guardadas, horasExistentes, fecha, obra }: {
   presencias: readonly MarcaPresencia[]
+  /** Lo que `asistencia_dia` ya tenía ANTES de este guardado. Obligatorio: ver «SÓLO AL DECLARAR». */
+  guardadas: readonly PresenciaGuardada[]
   horasExistentes: readonly HoraDelDia[]
   fecha: string
   obra: string
@@ -424,7 +426,12 @@ export function planDeHorasPorDefecto({ presencias, horasExistentes, fecha, obra
   const borrar: string[] = []
   const conflictos: string[] = []
 
+  // ═══ SÓLO AL DECLARAR (dueño, 15/09/2026: «quiero dejar sin hs una celda para completar más tarde») ═══
+  // Volver a guardar una presencia que ya estaba NO es declararla: sin este filtro, reabrir el día y
+  // tocar Guardar le devolvía 9 h a quien Administración le había dejado la celda vacía a propósito.
+  const antes = new Map(guardadas.map((g) => [g.persona_id, g.estado]))
   for (const m of presencias) {
+    if (antes.get(m.persona_id) === m.estado) continue
     const suyas = porPersona.get(m.persona_id) ?? []
     if (m.estado === 'presente') {
       // CUALQUIER FILA FRENA EL DEFECTO, no sólo una trabajada. Una ausencia ya cargada para ese

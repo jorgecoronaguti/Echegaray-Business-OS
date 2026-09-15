@@ -212,6 +212,8 @@ export interface EntradaDeLinea {
   giroEnElLote: boolean
   /** Sólo liquidaciones finales: la mitad blanca que liquidó el estudio. El total es el doble. */
   mitadBlanca?: number | null
+  /** Sólo Oficina sin neto mensual: el COBRA que cargó la planilla en `liquidacion_linea`. Nunca pisa al neto. */
+  importeCargado?: number | null
   /**
    * SI ES JEFE DE OBRA — el mismo `esJefeDeObra(persona_directorio.puesto)` que separan el plantel,
    * la asistencia y la grilla de Horas. Viaja con la línea para que las pantallas de Liquidación
@@ -323,7 +325,7 @@ export function liquidarLinea(
     ...repartoComoCampos(cobra, modalidad, e.mitadBlanca ?? null),
     reciboNeto: e.reciboNeto,
     reciboSinGiro: e.reciboNeto != null && !e.giroEnElLote,
-    origenTarifa: e.tarifa?.origen ?? null,
+    origenTarifa: e.tarifa?.origen ?? (grupo === 'oficina' && e.importeCargado != null ? 'importe cargado de la planilla' : null),
     esJefe: e.esJefe === true,
   }
 }
@@ -356,7 +358,7 @@ function cobraDe(
   e: EntradaDeLinea, grupo: GrupoLiquidacion, valorHora: number | null,
 ): number | null {
   if (grupo === 'oficina') {
-    const neto = e.tarifa?.netoMensual ?? null
+    const neto = e.tarifa?.netoMensual ?? e.importeCargado ?? null
     return neto == null ? null : redondear2(neto)
   }
   if (grupo === 'final') {

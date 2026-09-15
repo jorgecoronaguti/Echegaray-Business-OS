@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useDeshacer } from '@/shared/components/deshacer/DeshacerProvider'
 import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
-import { hs, leerHoras } from '../services/jornadaPorObra'
+import { hs, leerCeldaDeHoras } from '../services/jornadaPorObra'
+import { escribirCeldaDeHoras } from './asistencia/escrituraDeCeldaDeHoras'
 import type { CeldaObra, FilaQuincena } from '../services/quincenaPorObra'
 import { SIN_OBRA, totalDeLaQuincena } from '../services/quincenaPorObra'
 import { agruparPorRolOrganizacional } from '../services/vocabularioPersona'
@@ -283,12 +284,47 @@ export function GrillaAsistenciaObra({
       enviar(destino.id, celda.fecha, { persona_id: fila.persona.id, estado: 'ausente', horas: jornada }, k, fila.clave)
       return
     }
-    const { horas, error } = leerHoras(bruto)
-    if (error) { volverAlValorAnterior(k); fallar(k, error); return }
-    // En blanco NO borra: dejar de escribir no es una decisión de nadie. Borrar una jornada
-    // cargada es un acto y necesita su propia puerta, que esta pantalla todavía no tiene.
-    if (horas === null) { setBorradores((b) => ({ ...b, [k]: original })); return }
-    enviar(destino.id, celda.fecha, { persona_id: fila.persona.id, estado: 'presente', horas }, k, fila.clave)
+    const lectura = leerCeldaDeHoras(bruto)
+    if (lectura.accion === 'error') { volverAlValorAnterior(k); fallar(k, lectura.error); return }
+    const deshacible = () => registrarDeshacerDeHoras(fila, celda.fecha, destino.id, k, original, bruto.trim())
+    // ═══ EN BLANCO ES «SIN HORAS» (dueño, 15/09/2026) ═══ «quiero dejar sin hs una celda para
+    // completar más tarde». Hasta hoy el blanco volvía al número de antes. Se vacía sólo lo que el
+    // día tiene en ESTA obra, sin marcar ausente; sin nada cargado acá no hay nada que vaciar.
+    if (lectura.accion === 'vaciar') {
+      if (celda.tramos.length !== 1) { volverAlValorAnterior(k); return }
+      vaciarCelda(fila, celda.fecha, destino.id, k, deshacible)
+      return
+    }
+    enviar(destino.id, celda.fecha, { persona_id: fila.persona.id, estado: 'presente', horas: lectura.horas }, k, fila.clave, deshacible)
+  }
+
+  /** Deja el día sin horas en esa obra. El acuse dice lo que la base borró y lo que quedó. */
+  const vaciarCelda = (fila: FilaQuincena, fecha: string, obraId: string, k: string, alGuardar: () => void) => {
+    setErrores((e) => { const n = { ...e }; delete n[k]; return n })
+    arrancar(async () => {
+      const r = await escribirCeldaDeHoras({ obraId, personaId: fila.persona.id, fecha, valor: '' })
+      if (!r.ok) { volverAlValorAnterior(k); fallar(k, r.error); return }
+      setAcuses((a) => ({ ...a, [fila.clave]: { texto: r.mensaje, error: false } }))
+      alGuardar()
+      router.refresh()
+    })
+  }
+
+  // CMD/CTRL+Z SOBRE LA CELDA DE HORAS: revierte con la misma escritura (`escribirCeldaDeHoras`), así
+  // deshacer un vaciado vuelve a poner el número y rehacerlo lo vuelve a vaciar.
+  const registrarDeshacerDeHoras = (
+    fila: FilaQuincena, fecha: string, obraId: string, k: string, anterior: string, nuevo: string,
+  ) => {
+    deshacer?.registrar({
+      clave: k, rotulo: `Horas de ${fila.persona.nombre} el ${diaCorto(fecha)}`,
+      anterior, nuevo, anteriorTexto: anterior || 'sin horas', nuevoTexto: nuevo || 'sin horas',
+    }, async (v) => {
+      const x = await escribirCeldaDeHoras({ obraId, personaId: fila.persona.id, fecha, valor: v })
+      if (!x.ok) return { ok: false, error: x.error }
+      volverAlValorAnterior(k)
+      router.refresh()
+      return { ok: true }
+    })
   }
 
   /**
@@ -308,11 +344,14 @@ export function GrillaAsistenciaObra({
     k: string,
     /** La fila, para colgarle el aviso del acuse. Es la misma clave que usa `cambiarObra`. */
     claveFila: string,
+    /** Lo que corre sólo si guardó: hoy, apilar el paso de deshacer. */
+    alGuardar?: () => void,
   ) => {
     setErrores((e) => { const n = { ...e }; delete n[k]; return n })
     arrancar(async () => {
       const r = await guardarJornada({ obra_id: obraId, fecha, marcas: [marca] })
       if (!r.ok) { volverAlValorAnterior(k); fallar(k, r.error); return }
+      alGuardar?.()
       // SÓLO LA EXCEPCIÓN SE DIBUJA. El acuse normal («1 marca nueva») ya se ve en la celda, que
       // muestra el número guardado; repetirlo en cada tecleo sería ruido. Lo que no se ve en ningún
       // lado es que esa persona no estaba asignada a la obra ese día, y eso se dice.
