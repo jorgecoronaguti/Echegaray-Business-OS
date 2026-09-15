@@ -29,6 +29,15 @@
 // «comprobante|cliente|total»); todo lo demás —tomar, diferir, escribir con el nombre de quien pidió,
 // releer— es idéntico. Una fila sin `pestana` (anterior a la migración) es de Compras.
 //
+// ═══ LA HUELLA DE RESPALDO DE COMPRAS SALE DE `compra_sheet` AL APLICAR (15/09/2026) ═══
+//
+// La RPC encola con `clave` null cuando la fila no tiene número de comprobante (687 de 837 compras), y
+// el bisturí rechazaba todas por `sin_huella`. Ahora, para un cambio de Compras sin clave, el worker lee
+// de `compra_sheet` —por `fila`— proveedor, fecha, total y concepto, y el bisturí los compara contra la
+// fila viva. No se cambia la RPC (otro agente la redefine): el respaldo lo arma el worker. Un cambio ya
+// cerrado `rechazado` por `sin_huella` no se reintenta solo: `reencolarSinHuella` (bandera
+// `--reintentar-sin-huella` del script) los devuelve a `pendiente` a pedido.
+//
 // Todo entra inyectado (`port`, `google`): se prueba con dobles, sin Postgres ni Google.
 import { planificarObra, relecturaConfirma } from '../../lib/bisturi-compras-obra.mjs'
 import { planificarObraCobranza } from '../../lib/bisturi-cobranzas-obra.mjs'
@@ -121,6 +130,21 @@ export async function leerClienteAlias(port) {
   return new Map((r?.rows ?? []).map((x) => [normAlias(x.rotulo_clave), x.cliente_canonico]))
 }
 
+/**
+ * Lo que `compra_sheet` dice HOY de la fila del cambio, para identificarla cuando no hay comprobante.
+ * `null` si la fila no está en el espejo. `resincronizado` avisa que el espejo se reescribió después de
+ * encolar. Sin `.catch()`: una lectura caída no puede convertirse en un rechazo terminal.
+ */
+export async function leerRespaldo(port, cambio) {
+  const r = await port.query(
+    `select s.proveedor, s.fecha::text as fecha, s.total::float8 as total, s.concepto, s.sheet_id,
+            (s.sincronizado_en > coalesce($2::timestamptz, s.sincronizado_en)) as resincronizado
+       from public.compra_sheet s where s.fila = $1`,
+    [Number(cambio.fila), cambio?.creado_at ?? null],
+  )
+  return r?.rows?.[0] ?? null
+}
+
 /** La decisión sin efectos: la usa la corrida real y la corrida en seco, así las dos dicen lo mismo. */
 export async function decidir({ port, google, fileId, cambio, encabezado, obras, clienteAlias }) {
   const actor = await actorDelCambio(port, cambio)
@@ -129,10 +153,37 @@ export async function decidir({ port, google, fileId, cambio, encabezado, obras,
   }
   const pestana = pestanaDe(cambio)
   const fila = await leerFila(google, fileId, pestana, Number(cambio.fila))
+  // Sólo Compras y sólo sin clave: con comprobante la identidad ya viene en el cambio.
+  const respaldo = pestana === 'Compras' && !cambio.clave ? await leerRespaldo(port, cambio) : null
   const plan = PLANIFICADOR[pestana]({
-    cambio, encabezado, fila, obras: obras ?? await leerObras(port), clienteAlias: clienteAlias ?? await leerClienteAlias(port),
+    cambio, encabezado, fila, respaldo,
+    obras: obras ?? await leerObras(port), clienteAlias: clienteAlias ?? await leerClienteAlias(port),
   })
   return { ...plan, actor, pestana }
+}
+
+/** Sólo lectura: cuántos cambios quedaron `rechazado` por `sin_huella` (los que hoy se pueden reintentar). */
+export async function contarSinHuella(port) {
+  const r = await port.query(
+    `select count(*)::int as n, min(creado_at) as desde, max(creado_at) as hasta
+       from public.compra_obra_cambio where estado = 'rechazado' and motivo like 'sin_huella:%'`,
+  )
+  return r?.rows?.[0] ?? { n: 0, desde: null, hasta: null }
+}
+
+/**
+ * Devuelve a `pendiente` los rechazados por `sin_huella`, con los intentos en cero. Es a pedido, nunca
+ * automático: un rechazo es terminal y reabrirlo es una decisión de quien opera la cola.
+ */
+export async function reencolarSinHuella(port) {
+  const r = await port.query(
+    `update public.compra_obra_cambio
+        set estado = 'pendiente', intentos = 0, tomado_at = null,
+            motivo = 'reencolado a pedido (--reintentar-sin-huella): ahora la identidad se prueba con proveedor|fecha|total de compra_sheet'
+      where estado = 'rechazado' and motivo like 'sin_huella:%'
+      returning id`,
+  )
+  return r?.rows?.length ?? 0
 }
 
 const marcar = (port, id, estado, motivo) => port.query(
@@ -186,7 +237,7 @@ async function escribirYReleer({ port, google, fileId, cambio, plan }) {
     await cerrar(port, cambio.id, { estado: 'error', motivo: `relectura distinta: ${plan.celda} dice «${leido}» y se escribió «${plan.valor}»`, leido })
     return 'error'
   }
-  await cerrar(port, cambio.id, { estado: 'aplicado', motivo: `${plan.celda} escrita por ${plan.actor}`, leido })
+  await cerrar(port, cambio.id, { estado: 'aplicado', motivo: `${plan.celda} escrita por ${plan.actor}${plan.nota ? ` · ${plan.nota}` : ''}`, leido })
   return 'aplicado'
 }
 

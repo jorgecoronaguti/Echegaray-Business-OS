@@ -262,3 +262,101 @@ test('en seco, un cambio de Cobranzas dice qué celda escribiría y no toca nada
   assert.equal(c.plan[0].celda, 'Cobranzas!H14'); assert.equal(c.plan[0].pestana, 'Cobranzas')
   assert.equal(google.escrituras.length, 0); assert.equal(port.updates.length, 0)
 })
+
+// ═══ LA HUELLA DE RESPALDO DESDE compra_sheet (15/09/2026) ═══
+import { contarSinHuella, leerRespaldo, reencolarSinHuella } from './cola-obra.mjs'
+
+const TELLO = { ID: 806, Proveedor: 'PEDRO TELLO', Tipo: '', 'N° Comprobante': '', 'CUIT (OS)': '', 'Fecha factura': 46275, Concepto: 'Galpon 5', Total: 4200000 }
+const RESPALDO = { proveedor: 'PEDRO TELLO', fecha: '2026-09-10', total: 4200000, concepto: 'Galpon 5', sheet_id: 806, resincronizado: false }
+const OBRAS_3 = [...OBRAS, { id: 'galpon', codigo: 'OB-0007', nombre: 'LE - GALPÓN 9', cliente_texto: 'LA ESTRELLA', fusionada_en: null }]
+const CAMBIO_806 = { ...CAMBIO, id: 'k-806', fila: 810, sheet_id: 806, clave: null, valor_nuevo: 'OB-0007 · LE - GALPÓN 9', creado_at: new Date('2026-09-15T17:00:00Z') }
+
+/** Google con la fila 810 de Tello, y un port cuyo compra_sheet devuelve `respaldo` (o nada). */
+function dobleTello({ respaldo = RESPALDO, fila = TELLO } = {}) {
+  const google = dobleGoogle()
+  google.readSheetValues = async function (_id, rango, opts) {
+    this.lecturas.push({ rango, opts })
+    if (rango === rangoEncabezado('Compras')) return [COMPRAS_CON_OBRA]
+    if (rango.includes(':')) return [filaDe(COMPRAS_CON_OBRA, { ...fila, Obra: '' })]
+    return [[this.escrituras.at(-1)?.data[0].values[0][0]]]
+  }
+  const port = doblePort({ obras: OBRAS_3, cambios: [CAMBIO_806] })
+  const base = port.query.bind(port)
+  port.respaldos = []
+  port.query = async (sql, params) => {
+    if (/from public\.compra_sheet/.test(sql)) { port.respaldos.push(params); return { rows: respaldo ? [respaldo] : [] } }
+    return base(sql, params)
+  }
+  return { google, port }
+}
+
+test('DEFECTO 15/09: fila sin comprobante, cambio sin clave → con el respaldo de compra_sheet se ESCRIBE y relee', async () => {
+  const { google, port } = dobleTello()
+  const r = await aplicarCambio({ port, google, fileId: 'F', cambio: CAMBIO_806, encabezado: COMPRAS_CON_OBRA })
+  assert.equal(r, 'aplicado')
+  assert.deepEqual(google.escrituras[0].data, [{ range: 'Compras!L810', values: [['OB-0007 · LE - GALPÓN 9']] }])
+  assert.deepEqual(port.respaldos, [[810, CAMBIO_806.creado_at]], 'el respaldo se pide por la fila del cambio y con su creado_at')
+  assert.equal(ultimo(port).params[1], 'aplicado')
+  assert.doesNotMatch(ultimo(port).params[2], /resincronizado/)
+})
+
+test('proveedor distinto en la fila viva: rechazado por huella_distinta y ni una escritura', async () => {
+  const { google, port } = dobleTello({ fila: { ...TELLO, Proveedor: 'JUAN PÉREZ' } })
+  assert.equal(await aplicarCambio({ port, google, fileId: 'F', cambio: CAMBIO_806, encabezado: COMPRAS_CON_OBRA }), 'rechazado')
+  assert.equal(google.escrituras.length, 0)
+  assert.match(ultimo(port).params[2], /huella_distinta: .*JUAN PÉREZ/)
+})
+
+test('la fila no está en compra_sheet: sin_huella, como antes, y sin escribir', async () => {
+  const { google, port } = dobleTello({ respaldo: null })
+  assert.equal(await aplicarCambio({ port, google, fileId: 'F', cambio: CAMBIO_806, encabezado: COMPRAS_CON_OBRA }), 'rechazado')
+  assert.equal(google.escrituras.length, 0)
+  assert.match(ultimo(port).params[2], /^sin_huella: /)
+})
+
+test('con clave de comprobante NO se consulta compra_sheet; un cambio de Cobranzas tampoco', async () => {
+  const { google, port } = dobleTello()
+  await aplicarCambio({ port, google, fileId: 'F', cambio: CAMBIO, encabezado: COMPRAS_CON_OBRA })
+  assert.equal(port.respaldos.length, 0)
+  const g2 = dobleGoogleDosPestanas(); const p2 = doblePort({ obras: OBRAS_2 })
+  const sinClave = { ...CAMBIO_COB, clave: null }
+  await aplicarCambio({ port: p2, google: g2, fileId: 'F', cambio: sinClave, encabezado: COBRANZAS_CON_OBRA })
+  assert.ok(p2.sqls.every((s) => !/compra_sheet/.test(s)))
+})
+
+test('respaldo tomado de un espejo resincronizado después del pedido: se aplica y el motivo lo dice', async () => {
+  const { google, port } = dobleTello({ respaldo: { ...RESPALDO, resincronizado: true } })
+  assert.equal(await aplicarCambio({ port, google, fileId: 'F', cambio: CAMBIO_806, encabezado: COMPRAS_CON_OBRA }), 'aplicado')
+  assert.match(ultimo(port).params[2], /resincronizado después del pedido/)
+})
+
+test('en seco, el cambio sin clave dice que escribiría L810 y no toca nada', async () => {
+  const { google, port } = dobleTello()
+  const c = await procesarCola({ port, google, fileId: 'F' })
+  assert.equal(c.plan[0].accion, 'escribir'); assert.equal(c.plan[0].celda, 'Compras!L810')
+  assert.equal(google.escrituras.length, 0); assert.equal(port.updates.length, 0)
+})
+
+test('leerRespaldo pide fecha como texto, total como número y si el espejo es posterior al pedido', async () => {
+  let sql = null; let params = null
+  await leerRespaldo({ async query(s, p) { sql = s; params = p; return { rows: [] } } }, CAMBIO_806)
+  assert.match(sql, /fecha::text/); assert.match(sql, /total::float8/); assert.match(sql, /sincronizado_en >/)
+  assert.deepEqual(params, [810, CAMBIO_806.creado_at])
+})
+
+test('reencolar los sin_huella es a pedido: pendiente con intentos en cero, SÓLO los rechazados por sin_huella', async () => {
+  let sql = null
+  const n = await reencolarSinHuella({ async query(s) { sql = s; return { rows: [{ id: 'a' }, { id: 'b' }] } } })
+  assert.equal(n, 2)
+  assert.match(sql, /set estado = 'pendiente', intentos = 0/)
+  assert.match(sql, /where estado = 'rechazado' and motivo like 'sin_huella:%'/)
+  let lectura = null
+  await contarSinHuella({ async query(s) { lectura = s; return { rows: [{ n: 3 }] } } })
+  assert.match(lectura, /^\s*select/i); assert.match(lectura, /motivo like 'sin_huella:%'/)
+})
+
+test('el worker NO reencola solo: procesarCola no toca los rechazados', async () => {
+  const google = dobleGoogle(); const port = doblePort({ cambios: [] })
+  await procesarCola({ port, google, fileId: 'F', dry: false })
+  assert.ok(port.sqls.every((s) => !/sin_huella/.test(s)))
+})
