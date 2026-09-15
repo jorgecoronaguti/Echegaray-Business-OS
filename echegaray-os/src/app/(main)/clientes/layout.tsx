@@ -16,6 +16,8 @@
 
 import type { ReactNode } from 'react'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
+import { RefrescarEnVivo } from '@/shared/tiempo-real/ProveedorTiempoReal'
+import { TABLAS_DE } from '@/shared/tiempo-real/pantallas'
 
 export default function ClientesLayout({ children }: { children: ReactNode }) {
   return (
@@ -24,6 +26,8 @@ export default function ClientesLayout({ children }: { children: ReactNode }) {
           apoya en el header. Metida en un contenedor con `px-4 pt-7` quedaba flotando y el
           contenido saltaba de costado al navegar entre las dos. */}
       <NavAdministracion />
+      {/* TIEMPO REAL (dueño, 15/09/2026): cartera y ficha, con cobranzas y actividad del portal. */}
+      <RefrescarEnVivo tablas={TABLAS_DE.clientes} />
       {children}
     </>
   )
