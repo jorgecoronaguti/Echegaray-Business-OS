@@ -14,6 +14,10 @@ import type { NextConfig } from 'next'
 const raizTurbopack = process.env.NEXT_TURBOPACK_ROOT
 
 const nextConfig: NextConfig = {
+  // LA VERSIÓN CON LA QUE SE COMPILA CADA PESTAÑA (16/09/2026): se compara contra `/api/version` para
+  // recargar una pestaña abierta desde antes de un deploy, cuyos botones ya no graban. Ver
+  // `src/shared/tiempo-real/version.ts`.
+  env: { NEXT_PUBLIC_VERSION_DESPLEGADA: process.env.VERCEL_DEPLOYMENT_ID || 'local' },
   ...(raizTurbopack ? { turbopack: { root: raizTurbopack } } : {}),
   // ═══ POR QUÉ EL QA POR NAVEGADOR NO PODÍA PROBAR NINGÚN CLIC (medido el 10/09/2026) ═══
   //

@@ -29,11 +29,31 @@ import { createClient } from '@/lib/supabase/client'
 import { SELECTOR_EN_EDICION, hayEdicionEnCurso } from './planDeRefresco'
 import { LATIDO_SIN_CANAL_MS, crearMotor, type MotorDeTiempoReal } from './motor'
 import { crearConexion, type AlEstado, type Apertura } from './conexion'
+import {
+  CLAVE_AVISO_RECARGA, CLAVE_ULTIMA_RECARGA, VERSION_DE_LA_PESTANA, hayVersionNueva, puedeRecargar,
+} from './version'
 import type { TablaConAviso } from './tablas'
 
 export const TOPICO_DE_CAMBIOS = 'os:cambios'
 
 const ContextoTiempoReal = createContext<MotorDeTiempoReal | null>(null)
+
+function leerSesion(clave: string): string | null {
+  try { return sessionStorage.getItem(clave) } catch { return null }
+}
+function escribirSesion(clave: string, valor: string | null) {
+  try { if (valor == null) sessionStorage.removeItem(clave); else sessionStorage.setItem(clave, valor) } catch { /* sin storage */ }
+}
+
+/** Recarga la pestaña porque hay otra versión publicada, con freno de bucle y aviso para después. */
+export function recargarPorVersionNueva(motivo: 'publicada' | 'accion') {
+  const ahora = Date.now()
+  if (!puedeRecargar(Number(leerSesion(CLAVE_ULTIMA_RECARGA)) || null, ahora)) return false
+  escribirSesion(CLAVE_ULTIMA_RECARGA, String(ahora))
+  if (motivo === 'accion') escribirSesion(CLAVE_AVISO_RECARGA, '1')
+  window.location.reload()
+  return true
+}
 
 // La última tecla de la pestaña: un foco olvidado en un buscador no frena el refresco para siempre.
 let ultimaTecla = 0
@@ -51,6 +71,7 @@ function entornoDelNavegador() {
 
 export function ProveedorTiempoReal({ children }: { children: ReactNode }) {
   const router = useRouter()
+  const [avisoRecarga, setAvisoRecarga] = useState(false)
   // El motor tiene que existir ANTES de que los hijos registren sus tablas (sus efectos corren antes que
   // el de este componente), por eso nace en el inicializador y no en el efecto. No toca `window` al nacer.
   const [motor] = useState(() => crearMotor({
@@ -102,7 +123,7 @@ export function ProveedorTiempoReal({ children }: { children: ReactNode }) {
 
     // En `focusout` el foco todavía no llegó al campo siguiente: se mira en la vuelta siguiente del
     // bucle, así pasar de una celda a otra con Tab no cuenta como «dejó de editar».
-    const alSalirDelFoco = () => { setTimeout(motor.alPoderRefrescar, 0) }
+    const alSalirDelFoco = () => { setTimeout(() => { motor.alPoderRefrescar(); recargarSiSePuede() }, 0) }
     const alTeclear = () => { ultimaTecla = Date.now() }
     let ocultaDesde: number | null = document.visibilityState === 'hidden' ? Date.now() : null
     const alCambiarVisibilidad = () => {
@@ -110,10 +131,33 @@ export function ProveedorTiempoReal({ children }: { children: ReactNode }) {
       const ms = ocultaDesde == null ? 0 : Date.now() - ocultaDesde
       ocultaDesde = null
       motor.alVolverAVerse(ms)
+      void preguntarVersion()
     }
+    // LA PESTAÑA VIEJA (`version.ts`): si se publicó otra versión, recargar en cuanto nadie escribe.
+    let versionNueva = false
+    const recargarSiSePuede = () => {
+      if (versionNueva && !entornoDelNavegador().editando) recargarPorVersionNueva('publicada')
+    }
+    const preguntarVersion = async () => {
+      try {
+        const r = await fetch('/api/version', { cache: 'no-store' })
+        const { version } = (await r.json()) as { version?: string }
+        if (hayVersionNueva(VERSION_DE_LA_PESTANA, version)) { versionNueva = true; recargarSiSePuede() }
+      } catch { /* sin red: se vuelve a preguntar en el próximo latido */ }
+    }
+    let latidos = 0
     const latido = setInterval(() => {
-      if (document.visibilityState === 'visible') motor.alLatido()
+      if (document.visibilityState !== 'visible') return
+      motor.alLatido()
+      if (++latidos % 2 === 0) void preguntarVersion()
+      else recargarSiSePuede()
     }, LATIDO_SIN_CANAL_MS)
+    void preguntarVersion()
+    if (leerSesion(CLAVE_AVISO_RECARGA)) {
+      escribirSesion(CLAVE_AVISO_RECARGA, null)
+      setTimeout(() => setAvisoRecarga(true), 0)
+      setTimeout(() => setAvisoRecarga(false), 10_000)
+    }
     document.addEventListener('focusout', alSalirDelFoco)
     document.addEventListener('keydown', alTeclear, true)
     document.addEventListener('input', alTeclear, true)
@@ -131,7 +175,20 @@ export function ProveedorTiempoReal({ children }: { children: ReactNode }) {
     }
   }, [motor])
 
-  return <ContextoTiempoReal.Provider value={motor}>{children}</ContextoTiempoReal.Provider>
+  return (
+    <ContextoTiempoReal.Provider value={motor}>
+      {children}
+      {avisoRecarga && (
+        <div
+          role="status"
+          data-testid="aviso-recarga-por-version"
+          className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-[480px] rounded-card bg-ink px-4 py-3 text-[13px] leading-snug text-surface shadow-lg"
+        >
+          Se actualizó la app y lo último que tocaste no llegó a guardarse. Repetilo, por favor.
+        </div>
+      )}
+    </ContextoTiempoReal.Provider>
+  )
 }
 
 /**
