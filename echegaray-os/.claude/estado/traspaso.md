@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-16 ~14:15 (−03) · main = producción (cd01ef5a, Vercel Ready)_
+_actualizado: 2026-09-16 ~14:40 (−03) · main = producción (2b8f288a) · **nada quedó abierto de esta sesión**_
 
 ## 1. OBJETIVO GENERAL
 
@@ -60,28 +60,41 @@ $2.896.036,13 · 8767 Río de la Plata S.A. $9.426.000) **cuando aparezcan en el
 mano hoy los DUPLICA (no están en `_CHEQUES_RAW`, que llega al 10/09). El portal no publica órdenes de pago por
 diseño: `documentos-espejo.mjs` las marca «no se reconoce como papel del cliente» (pasa con 5146, 2983 y 4807).
 
-## 5. PENDIENTES REALES
+## 5. PENDIENTES
 
-- **P0 — `feat/dev-router` SIN MERGEAR y es decisión del dueño.** Development Router + modo `CLAUDE_UNAVAILABLE`.
-  Probado: con Claude apagado, `moonshotai/Kimi-K2.7-Code` corrigió `tests/liquidacion-fidelidad.spec.ts` en
-  1.409 ms y US$ 0,0023. Pareto medido sobre 1.151 transcripts: **editar código es 7,7 % de las llamadas y 1,1 %
-  del contexto**; el 92 % es moverse por el repo y verificar. **Tres reparos**: (a) nunca corrió typecheck/lint/
-  build —el sandbox le bloqueó provisionar `node_modules`—, así que su verificador está a medias; (b) abre una
-  SEGUNDA puerta a HF que no pasa por `hf-inferencia.mjs`, contra la regla del incidente de la captura; (c)
-  **`ORQ_HF_TOKEN` está VACÍO** en `~/.config/echegaray/orquestador.env` (el token sólo vive en
-  `~/.cache/huggingface/token`) → hoy toda llamada del OS a HF muere antes de salir. Esto último aplica esté o no
-  mergeado.
-- P1 — Presentismo: **confirmar con el dueño** si la SUSPENSIÓN y el PERMISO deben hacer perder el presentismo.
-  Hoy no lo hacen (suspensión figura como licencia; permiso sigue marcado `revisar` desde el 08/09).
-- P1 — Sin commitear en el árbol principal: `.agents/`, `.claude/skills/ai-sdk`,
-  `.claude/skills/migrate-ai-sdk-v6-to-v7`, `skills-lock.json` (de `npx skills add vercel/ai`). **El OS no usa el
-  AI SDK de Vercel**: decidir si se commitean o se sacan.
-- P2 — `npm run lint` tarda **2 min 24 s**, no 33 s (medido; no es por el plugin). El número de `CLAUDE.md` está
-  viejo. Mientras se itera: `npx eslint <archivo>`.
-- P2 — Deuda del sistema visual que el linter mide y **sólo puede bajar**: 202 `no-raw-colors` (20 archivos) ·
-  111 `no-restyle` (90 son `<Num>` y `<Td>`) · 160 `no-arbitrary-values`. Tocarlos cambia píxeles: no se hace sin
-  mirar la pantalla.
-- P2 — console.error de WebSocket realtime tras revalidate · sin timer `_UOCRA_RAW`→`uocra_escala`.
+**De la sesión del 16/09 no quedó nada abierto.** Lo que estaba en la lista se cerró así:
+
+- **Development Router: MERGEADO** (3738222b). Se le corrieron las verificaciones que su agente no
+  pudo: typecheck limpio, 205 tests verdes y **`npm run build` en verde** (el build fallaba sólo por
+  el symlink de `node_modules` del worktree, no por el código). Y se resolvió la divergencia: el
+  ejecutor **ya no tiene `fetch` propio a HF**, pasa por `lib/ml/hf-inferencia.mjs`. Para eso se
+  clasificó el dominio `'codigo'` como INTERNAL en `politica.mjs` y el adapter aceptó `opciones`
+  (`temperature`, `max_tokens`), mezcladas de modo que no puedan pisar `model` ni `messages`. El
+  escaneo por fragmento de `revisarEgreso()` sigue corriendo ANTES: son dos controles que se suman.
+  Test con mutación: devolver el `fetch` suelto → rojo.
+- **`ORQ_HF_TOKEN` NO estaba vacío.** El informe del agente era falso y se repitió sin verificar.
+  Probado contra la API: HTTP 200, usuario `jorgecoronaguti`, PRO activo, y el adapter lo lee por sus
+  dos vías. **Lección: una afirmación de un subagente no es evidencia hasta que se mide el efecto.**
+- **Presentismo, suspensión y permiso: las dos DESCUENTAN** (2b8f288a, decisión del dueño). Ojo con
+  la suspensión: se guarda con estado `licencia` y igual pierde el premio — el motivo se evalúa ANTES
+  que el estado, y hay un test con mutación que lo fija.
+- **Skills de Vercel commiteadas** (cb3c53a2) a pedido del dueño. Corren con permisos completos del
+  agente y hoy no tienen consumidor: el OS no usa el AI SDK.
+- **Messina, los eCheqs: convertido en vigía automático** (c13c4945). `vigilar-echeqs-op.mjs` +
+  `echegaray-vigilar-echeqs.timer` cada 30 min, **probado corriendo en producción**. Mira
+  `_CHEQUES_RAW` y avisa por el bot cuando los cheques 6526 y 8767 aparezcan, con los dos pasos que
+  siguen. Se calla cuando no hay novedad. La lista de esperados ES el pendiente: cuando se confirman,
+  se borran de ahí.
+
+**Lo único que sigue esperando un hecho externo:** que el Santander muestre los 2 eCheqs de la OP
+5241. Cuando pase, el vigía avisa → regenerar «Cheques Recibidos» y pasar a Cobrado las filas 46, 47
+y 65 de Cobranzas con la fecha de acreditación real. **No hay que acordarse de nada.**
+
+**Deuda vieja, no de esta sesión:** 202 `no-raw-colors` (20 archivos) · 111 `no-restyle` (90 son
+`<Num>` y `<Td>`) · 160 `no-arbitrary-values` — el linter las mide y **sólo pueden bajar**; tocarlas
+cambia píxeles y no se hace sin mirar la pantalla. `npm run lint` tarda **2 min 24 s**, no 33 s
+(medido; no es por el plugin): mientras se itera, `npx eslint <archivo>`. Sigue sin timer
+`_UOCRA_RAW`→`uocra_escala` y el console.error de WebSocket realtime tras revalidate.
 
 ## 6. ESTADO GIT
 
@@ -91,8 +104,11 @@ diseño: `documentos-espejo.mjs` las marca «no se reconoce como papel del clien
 
 ## 7. PRÓXIMO PASO
 
-Decidir sobre `feat/dev-router` (mergear con los tres reparos resueltos, o dejarlo). Antes que eso, arreglar
-`ORQ_HF_TOKEN`, que rompe HF en producción hoy y es independiente de esa decisión.
+No hay uno heredado: la sesión cerró sin pendientes propios. Lo que sigue lo define el dueño.
+Si se quiere seguir con el Development Router, el cuello de botella medido **no es el modelo** —Kimi
+resolvió una tarea real en 1,4 s por US$ 0,0023— sino **provisionar `node_modules` en los worktrees**:
+sin eso el verificador no puede correr typecheck, lint ni E2E, y el router sólo acepta tareas cuyo
+contrato se verifique leyendo texto. Destrabar eso multiplica las categorías elegibles.
 
 ## 8. REGLA PARA NUEVAS SESIONES
 
