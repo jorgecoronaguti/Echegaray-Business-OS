@@ -52,14 +52,14 @@ async function leer(estado, nombre, fn, contar = (x) => x.length) {
   }
 }
 
-async function leerFuentes(google) {
+export async function leerFuentes(google) {
   const estado = {}
   const ddjjIva = await leer(estado, 'ddjj_iva_pdf', () => leerIVA(google))
   const ddjjIibb = await leer(estado, 'ddjj_iibb_pdf', () => leerIIBB(google))
   const f931 = await leer(estado, 'f931_raw', () => google.readSheetValues(ID, '_F931_RAW!A4:F', { render: 'UNFORMATTED_VALUE' }))
   const cobranzas = await leer(estado, 'cobranzas', async () => {
     const cols = await leerColumnasCobranzas(google, ID, [...COLUMNAS_FUENTES, 'comprobante'])
-    return { cols, filas: (await google.readSheetValues(ID, rangoFilas('Cobranzas', 5))) ?? [] }
+    return { cols, filas: (await google.readSheetValues(ID, rangoFilas('Cobranzas', 5), { render: 'UNFORMATTED_VALUE' })) ?? [] }
   }, (r) => r.filas.length)
   const arca = await leer(estado, 'arca', async () => (await query(
     `select tipo_libro, tipo_comprobante, emisor_cuit, punto_venta, numero, imp_total, total_iva, neto_gravado, periodo,
@@ -75,7 +75,7 @@ async function leerFuentes(google) {
 }
 
 /** Las filas de las dos tablas, a partir de lo leído. Sin E/S. */
-function construir(f) {
+export function construir(f) {
   const oblF931 = obligacionesF931(f.f931 ?? [])
   const totalesF931 = new Map(oblF931.map((o) => [o.periodo, o.determinado]))
   const deCompras = pagosDeCompras(f.compras ?? [], { f931: totalesF931 })

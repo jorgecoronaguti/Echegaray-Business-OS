@@ -90,5 +90,7 @@ test('fechaISO entiende las tres formas y no inventa', () => {
   assert.equal(fechaISO('07/09/26'), '2026-09-07')
   assert.equal(fechaISO('2026-09-07T03:00:00Z'), '2026-09-07')
   assert.equal(fechaISO(new Date(Date.UTC(2026, 8, 7))), '2026-09-07')
+  assert.equal(fechaISO(46272), '2026-09-07', 'serial de Sheets (lectura sin formato)')
+  assert.equal(fechaISO(5), null)
   assert.equal(fechaISO('septiembre'), null)
 })

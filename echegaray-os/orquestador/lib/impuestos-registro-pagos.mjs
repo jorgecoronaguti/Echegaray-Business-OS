@@ -29,9 +29,15 @@ import { c2 } from './impuestos-registro.mjs'
 /** Tolerancia de coincidencia por importe. El débito automático del plan difiere 3 centavos de Compras. */
 export const TOLERANCIA_IMPORTE = 1
 
-/** 'YYYY-MM-DD' desde un Date, un ISO o 'dd/mm/yy(yy)'. null si no se puede. */
+/**
+ * 'YYYY-MM-DD' desde un Date, un ISO, 'dd/mm/yy(yy)' o un SERIAL de Sheets. null si no se puede.
+ *
+ * El serial existe porque Cobranzas se lee SIN FORMATO: leída con formato, «$273.112,60» llega como
+ * «$273.113» si la celda muestra pesos enteros, y la suma de Ganancias salía $1 arriba de la pestaña.
+ */
 export function fechaISO(v) {
   if (v instanceof Date) return Number.isNaN(+v) ? null : v.toISOString().slice(0, 10)
+  if (typeof v === 'number') return v > 20000 && v < 80000 ? new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 86400000).toISOString().slice(0, 10) : null
   const s = String(v ?? '').trim()
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(s)
