@@ -11,7 +11,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
-  PASO_DEL_REDONDEO, accionDelRedondeo, efectivoMostrado, efectivoSugerido, sumaDelRedondeo,
+  PASO_DEL_REDONDEO, accionDelRedondeo, efectivoMostrado, efectivoSugerido, saldoRedondeado, sumaDelRedondeo,
+  sumaDelSaldoRedondeado,
 } from './efectivoRedondeado.ts'
 
 test('el sugerido es el efectivo al $1.000 más cercano, sin centavos', () => {
@@ -70,4 +71,43 @@ test('el pie de la columna suma lo que muestran las filas: guardado o sugerido',
     { efectivoRedondeado: null, enEfectivo: null },
   ]
   assert.equal(sumaDelRedondeo(filas), 742000)
+})
+
+// ═══ SALDO REDONDEADO (dueño, 16/09/2026): lo que resta pagar, como si saliera todo en billetes ═══
+
+test('el saldo redondeado lleva lo que falta pagar al $1.000 más cercano', () => {
+  assert.deepEqual(saldoRedondeado(325808), { valor: 326000, diferencia: 192 })
+  assert.deepEqual(saldoRedondeado(412400), { valor: 412000, diferencia: -400 })
+  // Cae justo: no hay diferencia que avisar.
+  assert.deepEqual(saldoRedondeado(50000), { valor: 50000, diferencia: 0 })
+  // 500 redondea PARA ARRIBA (Math.round), como el efectivo sugerido: el mismo paso y el mismo criterio.
+  assert.equal(saldoRedondeado(1500).valor, 2000)
+})
+
+test('sin saldo que afirmar, saldo cero o pagado de más no hay nada que redondear', () => {
+  assert.equal(saldoRedondeado(null).valor, null)
+  assert.equal(saldoRedondeado(undefined).valor, null)
+  assert.equal(saldoRedondeado(0).valor, null)
+  // Negativo = cobró de más. Una devolución no se redondea: se mira el saldo real, en ámbar, al lado.
+  assert.equal(saldoRedondeado(-8000).valor, null)
+  assert.equal(saldoRedondeado(Number.NaN).valor, null)
+})
+
+test('un saldo menor a medio paso no se convierte en cero entregado', () => {
+  // $400 redondearía a $0: eso diría «no le entregues nada» y falsearía la columna. Se dibuja «—».
+  assert.equal(saldoRedondeado(400).valor, null)
+  assert.equal(saldoRedondeado(600).valor, 1000)
+})
+
+test('el total de la columna suma saldos ya redondeados, no redondea la suma', () => {
+  // 400 + 400 + 400 = 1.200 → redondear la suma daría 1.000; en billetes no sale nada por ninguno.
+  assert.equal(sumaDelSaldoRedondeado([400, 400, 400]), 0)
+  assert.equal(sumaDelSaldoRedondeado([325808, 412400, null, -8000]), 738000)
+  assert.equal(sumaDelSaldoRedondeado([]), 0)
+})
+
+test('el saldo redondeado no se guarda: no hay columna en la base ni escritura', () => {
+  const fuente = readFileSync(new URL('./efectivoRedondeado.ts', import.meta.url), 'utf8')
+  const bloque = fuente.slice(fuente.indexOf('export function saldoRedondeado('))
+  assert.equal(/upsert|insert|update|supabase/i.test(bloque), false)
 })

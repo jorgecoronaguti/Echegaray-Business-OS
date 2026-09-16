@@ -24,6 +24,7 @@ import { estadoDelPago, tituloDeJornales } from './estadoDelPago'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { marcaDeCategoria, negroDeLaFila, tituloDelNetoEstimado, type SueldoBlancoNegro } from '../../../services/sueldoBlancoNegro'
 import { avisoDeExcedente } from '../../../services/pagoDeLaQuincena'
+import { saldoRedondeado } from '../../../services/efectivoRedondeado'
 
 const DERECHA: CSSProperties = { textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden' }
 const ESTIMADO: CSSProperties = { color: V.apagado, fontStyle: 'italic' }
@@ -308,6 +309,36 @@ export function CeldaSaldo({ fila, lado }: { fila: FilaDelEspejo; lado: 'banco' 
       style={{ ...DERECHA, color: negativo ? V.warn : V.tinta, fontWeight: lado === 'total' ? 600 : undefined }}>
       {pesos(valor)}
     </div>
+  )
+}
+
+/**
+ * SALDO REDONDEADO — el saldo total llevado al $1.000, como si todo lo que resta se entregara en billetes
+ * (dueño, 16/09/2026: *«dame una columna más al lado de saldo en donde diga saldo redondeado como si lo que
+ * resta pagar se pagara en efectivo»*).
+ *
+ * ES LECTURA, NO UNA DECISIÓN: se deriva del saldo de al lado, no se guarda y no entra en ninguna cuenta —la
+ * columna que el dueño edita es «Efect. red.», que redondea otra cosa (lo que corresponde por el lado negro).
+ * El `title` dice siempre el saldo exacto y cuánto se entrega de más o de menos: sin eso, dos números casi
+ * iguales uno al lado del otro se leen como una diferencia que el cuadro perdió.
+ */
+export function CeldaSaldoRedondeado({ fila }: { fila: FilaDelEspejo }) {
+  const saldo = fila.linea.pago.saldoTotal
+  const r = saldoRedondeado(saldo)
+  const testid = `saldo-redondeado-${fila.personaId}`
+  if (r.valor == null) {
+    const porQue = saldo == null
+      ? 'Sin negro del período: no hay saldo que afirmar.'
+      : saldo < 0 ? `Pagado de más por ${pesos(-saldo)}: una devolución no se redondea.`
+      : saldo === 0 ? 'Saldo cero: no queda nada por entregar.'
+      : `Saldo ${pesos(saldo)}: menos de medio billete de $1.000, no se entrega.`
+    return <div data-testid={testid} title={porQue} style={{ ...DERECHA, color: V.tenue }}>—</div>
+  }
+  const dif = r.diferencia === 0 ? 'cae justo'
+    : r.diferencia > 0 ? `${pesos(r.diferencia)} de más` : `${pesos(-r.diferencia)} de menos`
+  return (
+    <div data-testid={testid} title={`Saldo exacto ${pesos(saldo)} · en efectivo redondeado ${dif}`}
+      style={{ ...DERECHA, color: V.tinta, fontWeight: 600 }}>{pesos(r.valor)}</div>
   )
 }
 
