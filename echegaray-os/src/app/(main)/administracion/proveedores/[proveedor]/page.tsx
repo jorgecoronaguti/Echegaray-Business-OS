@@ -166,7 +166,15 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
 
   return (
     <PantallaV2>
-      <Migas volverA="/administracion/proveedores" padre="Proveedores" actual={proveedor.nombre} />
+      {/* «COMPRAS › PROVEEDORES › <nombre>» (dueño, 16/09/2026). Proveedores es una sección de
+          Compras, y la ficha es lo único de este módulo que se abre por enlace directo desde el
+          chat, desde una fila de Compras o desde el CRM: sin el ámbito, quien llega ahí ve la barra
+          marcando «Compras» y no sabe por qué. El chevron sigue siendo UN solo enlace y vuelve a la
+          lista, que es de donde se salió. */}
+      <Migas
+        volverA="/administracion/proveedores" ambito="Compras" padre="Proveedores"
+        actual={proveedor.nombre}
+      />
 
       <TituloDeFicha
         titulo={proveedor.nombre}

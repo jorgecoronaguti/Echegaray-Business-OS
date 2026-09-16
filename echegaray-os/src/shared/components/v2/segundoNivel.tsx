@@ -38,9 +38,21 @@ function Chevron({ className }: { className?: string }) {
  * El chevron y el nombre del padre llevan al mismo lado (`23v2:49-53`): partirlos en dos anclas
  * distintas duplica el destino en el árbol de accesibilidad y deja un blanco de 9px entre ellos que
  * no navega. El nombre del hijo NO es enlace: ya estás ahí.
+ *
+ * ═══ `ambito` — EL ÁREA A LA QUE PERTENECE EL PADRE (16/09/2026) ═══
+ *
+ * Desde que Proveedores es una sección de Compras, la ficha de un proveedor tiene que decir «Compras
+ * › Proveedores › Hierros del Centro»: sin eso, quien llega por un enlace del chat no sabe de qué
+ * módulo salió, y la barra de arriba le marca «Compras» sin explicar por qué.
+ *
+ * VA ADENTRO DEL MISMO ENLACE, no como una tercera ancla. La regla de arriba no cambió: el destino
+ * sigue siendo uno solo —la lista— y agregar un ancla a «Compras» daría dos objetivos táctiles de
+ * 12px pegados que en un teléfono se aciertan a los tirones. El ámbito es CONTEXTO, no un atajo.
  */
-export function Migas({ volverA, padre, actual, testid = 'migas' }: {
+export function Migas({ volverA, ambito, padre, actual, testid = 'migas' }: {
   volverA: string
+  /** El área de la que cuelga `padre`. `undefined` = el padre ES el área. */
+  ambito?: string
   padre: string
   actual: string
   testid?: string
@@ -56,6 +68,14 @@ export function Migas({ volverA, padre, actual, testid = 'migas' }: {
         style={{ color: V.tenue }}
       >
         <Chevron className="h-[15px] w-[15px] shrink-0" />
+        {ambito && (
+          <>
+            {/* MÁS TENUE QUE EL PADRE: el ojo tiene que caer en «Proveedores», que es a donde
+                vuelve el enlace. El ámbito dice de dónde cuelga, no a dónde se va. */}
+            <span style={{ fontSize: '12.5px', color: V.tenue }}>{ambito}</span>
+            <span style={{ fontSize: '12.5px', color: V.cuentaApagada }}>/</span>
+          </>
+        )}
         <span style={{ fontSize: '12.5px', color: V.apagado }}>{padre}</span>
       </Link>
       <span style={{ fontSize: '12.5px', color: V.cuentaApagada }}>/</span>

@@ -41,6 +41,9 @@ import { PanelDeudaProveedor } from '@/features/administracion/components/provee
 import { TablaDeuda } from '@/features/administracion/components/proveedores/TablaDeuda'
 import { TablaProveedores } from '@/features/administracion/components/TablaProveedores'
 import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
+import {
+  seccionDeProveedores, seccionesDeCompras,
+} from '@/features/administracion/services/seccionesDeCompras'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
 import { BarraFiltros, SelectFiltro } from '@/features/administracion/components/BarraFiltros'
 import { NotaBloque, V } from '@/shared/components/v2/patron'
@@ -92,11 +95,13 @@ function armarHref(base: Busqueda, cambios: Partial<Busqueda> = {}): string {
 
 export default async function ProveedoresPage({ searchParams }: { searchParams: Promise<Busqueda> }) {
   const sp = await searchParams
-  // TRES SUB-VISTAS DE NIVEL 3. «Deuda» es nueva (dueño, 16/09/2026) y NO es la de entrada: cambiar
-  // el destino por defecto de la sección le movería el piso a quien entra a buscar una ficha. Va
-  // segunda, entre el maestro y la cola de nombres, porque es lo que se mira para decidir un pago.
-  const vista = sp.vista === 'resolver' ? 'resolver' : sp.vista === 'deuda' ? 'deuda' : 'maestro'
-  const maestro = vista === 'maestro'
+  // ESTA PANTALLA SIRVE TRES DE LAS CUATRO SECCIONES DE COMPRAS: el maestro, «A quién le debo» y la
+  // cola de nombres. La regla de qué abre cada `?vista=` NO se escribe acá: vive en
+  // `seccionDeProveedores`, que es la misma que usa la fila de secciones más abajo. Con dos copias,
+  // el día que se agregue una sección una de las dos se olvida y la solapa encendida deja de
+  // coincidir con la tabla que está debajo.
+  const vista = seccionDeProveedores(sp.vista)
+  const maestro = vista === 'proveedores'
   const esDeuda = vista === 'deuda'
   const activo = (ACTIVOS.find((a) => a === sp.activo) ?? 'activos') as FiltroActivo
   // En la cola sólo se ofrecen proveedores ACTIVOS para vincular: uno archivado salió de la cartera
@@ -259,7 +264,10 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
           resolver» sigue siendo una sub-vista con su contador. */}
 
       <CabeceraSeccion
-        testid="vistas-proveedores"
+        // LA MISMA FILA, EL MISMO NOMBRE PARA QUIEN PRUEBA: es la cabecera de Compras, se
+        // dibuje desde la pestaña o desde acá. Dos testids distintos para el mismo control
+        // obligarían a escribir dos veces la misma comprobación.
+        testid="vistas-compras"
         espacioPanel={panelAbierto}
         // NINGUNA ACCIÓN PRIMARIA EN «A QUIÉN LE DEBO»: dar de alta un proveedor no es lo que se va a
         // hacer mirando lo que se debe, y el botón quedaba además debajo del panel —que mide 460px y
@@ -277,28 +285,33 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
               oculto: { activo: sp.activo, vista: sp.vista, cuit: sp.cuit, tipo: sp.tipo, p: sp.p, n: sp.n },
               testid: 'buscar-proveedor',
             }}
-        vistas={[
-          {
-            clave: 'maestro', titulo: 'Proveedores', cuenta: porFiltro.length, activa: maestro,
-            href: armarHref(sp, { vista: undefined, n: undefined, q: undefined, d: undefined }),
-          },
-          {
-            // LA CUENTA ES CUÁNTOS PROVEEDORES SE DEBE, no cuánto: un peso al lado de un conteo de
-            // fichas en la misma línea son dos unidades distintas leyéndose como una.
-            clave: 'deuda', titulo: 'A quién le debo',
-            // DESDE LA VISTA, LOS QUE LA TABLA DIBUJA; desde afuera, los de `proveedor_deuda` —que
-            // es la definición canónica pero sólo cuenta los textos ya vinculados a una ficha—. Los
-            // dos números pueden diferir cuando hay deuda a nombre de un texto sin resolver, y esa
-            // diferencia es un dato: hay plata a pagar sin acreedor identificado.
-            cuenta: deudaLeida?.filas.length ?? deudas?.size ?? null, activa: esDeuda,
-            href: armarHref(sp, { vista: 'deuda', p: undefined, n: undefined, q: undefined, editcuit: undefined }),
-          },
-          {
-            clave: 'resolver', titulo: 'Nombres sin resolver', cuenta: pendientes.error ? null : cola.length,
-            activa: vista === 'resolver',
-            href: armarHref(sp, { vista: 'resolver', p: undefined, q: undefined, editcuit: undefined, d: undefined }),
-          },
-        ]}
+        // LA MISMA FILA DE SECCIONES QUE DIBUJA LA PESTAÑA COMPRAS, de `seccionesDeCompras.ts`
+        // (dueño, 16/09/2026). El rótulo y el orden salen de ahí; lo que esta pantalla aporta es lo
+        // suyo: los conteos que ya leyó y los destinos que CONSERVAN lo que está puesto.
+        //
+        // LOS `hrefs` NO SON UN ADORNO: moverse entre estas tres secciones sin ellos tiraría el
+        // buscador, el recorte por activo y el panel abierto, porque la ruta canónica no sabe
+        // armarlos. Cada una además APAGA lo que no le corresponde: pasar a la deuda con un
+        // formulario de CUIT abierto dejaría un panel gobernando una tabla que ya no está debajo.
+        //
+        // «Compras» va sin número a propósito: contarlo desde acá sería un viaje más a PostgREST
+        // por carga para imprimir un número que no decide nada en esta pantalla.
+        vistas={seccionesDeCompras(vista, {
+          proveedores: porFiltro.length,
+          // LA CUENTA ES CUÁNTOS PROVEEDORES SE DEBE, no cuánto: un peso al lado de un conteo de
+          // fichas en la misma línea son dos unidades distintas leyéndose como una.
+          //
+          // DESDE LA VISTA, LOS QUE LA TABLA DIBUJA; desde afuera, los de `proveedor_deuda` —que es
+          // la definición canónica pero sólo cuenta los textos ya vinculados a una ficha—. Los dos
+          // números pueden diferir cuando hay deuda a nombre de un texto sin resolver, y esa
+          // diferencia es un dato: hay plata a pagar sin acreedor identificado.
+          deuda: deudaLeida?.filas.length ?? deudas?.size ?? null,
+          resolver: pendientes.error ? null : cola.length,
+        }, {
+          proveedores: armarHref(sp, { vista: undefined, n: undefined, q: undefined, d: undefined }),
+          deuda: armarHref(sp, { vista: 'deuda', p: undefined, n: undefined, q: undefined, editcuit: undefined }),
+          resolver: armarHref(sp, { vista: 'resolver', p: undefined, q: undefined, editcuit: undefined, d: undefined }),
+        })}
       />
 
       {errorSeleccionado && (
