@@ -307,7 +307,9 @@ export function historialDelBlanco(recibos: readonly ReciboDelLegajo[]): FilaDel
   const ascendente = [...porPeriodo.values()].sort((a, b) => (a.orden < b.orden ? -1 : 1))
   return ascendente.map((r, i) => {
     const anterior = i > 0 ? ascendente[i - 1].valorHora : null
-    const texto = anterior == null ? null : porcentajeDeVariacion(r.valorHora, anterior)
+    // SIN CAMBIO NO SE ESCRIBE «+0,0 %»: el estudio repite el $/h dos quincenas seguidas casi siempre, y
+    // dieciséis renglones con un cero cada uno esconden los cuatro saltos que sí interesan.
+    const texto = anterior == null || anterior === r.valorHora ? null : porcentajeDeVariacion(r.valorHora, anterior)
     return {
       periodo: r.periodo,
       categoria: r.categoria?.trim() || null,

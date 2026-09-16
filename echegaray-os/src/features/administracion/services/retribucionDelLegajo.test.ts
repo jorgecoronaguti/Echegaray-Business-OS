@@ -179,6 +179,7 @@ test('una quincena sin neto afirmado lo dice, y el recibo real del período viaj
 
 test('el historial del blanco ordena por período real y dice la variación', () => {
   const h = historialDelBlanco([
+    { periodo: 'Q2-09/2026', categoria: 'Oficial', valorHora: 6600 },
     { periodo: 'Q1-09/2026', categoria: 'Oficial', valorHora: 6600 },
     { periodo: 'Q2-08/2026', categoria: 'Oficial', valorHora: 6000 },
     { periodo: 'Q2-08/2026', categoria: 'Oficial', valorHora: 5000 },
@@ -186,10 +187,12 @@ test('el historial del blanco ordena por período real y dice la variación', ()
     { periodo: 'Q2-07/2026', categoria: null, valorHora: null },
     { periodo: 'basura', categoria: null, valorHora: 1 },
   ])
-  assert.deepEqual(h.map((f) => f.periodo), ['Q1-09/2026', 'Q2-08/2026', 'Q1-08/2026'])
-  assert.equal(h[0].valorHora, '$6.600')
-  assert.equal(h[0].variacion, '+10,0 % vs 6.000')
-  assert.equal(h[1].variacion, '+20,0 % vs 5.000')
-  assert.equal(h[2].variacion, null)
-  assert.equal(h[2].categoria, 'Medio oficial')
+  assert.deepEqual(h.map((f) => f.periodo), ['Q2-09/2026', 'Q1-09/2026', 'Q2-08/2026', 'Q1-08/2026'])
+  // El mismo $/h dos quincenas seguidas no es una variación: no se escribe «+0,0 %».
+  assert.equal(h[0].variacion, null)
+  assert.equal(h[1].valorHora, '$6.600')
+  assert.equal(h[1].variacion, '+10,0 % vs 6.000')
+  assert.equal(h[2].variacion, '+20,0 % vs 5.000')
+  assert.equal(h[3].variacion, null)
+  assert.equal(h[3].categoria, 'Medio oficial')
 })

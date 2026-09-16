@@ -111,7 +111,10 @@ function TablaDelAnio({ r, hrefLiquidacion }: { r: Retribucion; hrefLiquidacion:
   if (r.filas.length === 0) {
     return <p data-testid="retribucion-vacia" style={{ margin: 0, fontSize: '12.5px', color: V.tenue }}>Sin quincenas en {r.anio}.</p>
   }
+  // OCHO COLUMNAS NO ENTRAN EN 390px: la tabla se desplaza dentro de su caja y la página no se mueve de
+  // costado, que es la regla medida del v2 (`scrollWidth <= innerWidth`).
   return (
+    <div style={{ overflowX: 'auto' }}>
     <table data-testid="retribucion-tabla" style={{ width: '100%', borderCollapse: 'collapse', fontVariantNumeric: 'tabular-nums' }}>
       <thead>
         <tr>
@@ -137,6 +140,7 @@ function TablaDelAnio({ r, hrefLiquidacion }: { r: Retribucion; hrefLiquidacion:
         </tr>
       </tbody>
     </table>
+    </div>
   )
 }
 
