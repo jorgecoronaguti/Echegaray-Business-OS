@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  SQL_CORREGIR_OBRA,
   fechaDeCelda, limpiarNombre, filasDeValues, agruparPorPersonaDia, planDeCorreccion, planillaSinHh,
 } from './asistencia-obra-por-dia.mjs'
 import { resolutorDeObra, normAlias } from './jornales-a-registros-hh.mjs'
@@ -67,12 +68,15 @@ test('EL DEFECTO: JORNALES rotuló la quincena con una obra y la planilla dice o
   assert.equal(p.coinciden, 0)
 })
 
-test('idempotente: si la obra ya es la de la planilla, no hay nada que corregir', () => {
+test('idempotente: si la obra ya es la de la planilla Y está anclada, no hay nada que corregir; sin ancla se corrige sólo para anclarla', () => {
   const { dias } = armar([fila(46244, 'JS - IMOTOR', 'Mamposteria', 'AGUERO, CRISTIAN DOMINGO')])
-  const hh = [{ id: 'r1', persona_id: 'p1', fecha: '2026-08-10', obra_canonica_id: 'sf-mamposteria', tipo_hora: 'normal', horas: 9, fuente_legacy: 'sheet:jornales' }]
-  const p = planDeCorreccion({ dias, hh })
-  assert.deepEqual(p.corregir, [])
-  assert.equal(p.coinciden, 1)
+  const base = { id: 'r1', persona_id: 'p1', fecha: '2026-08-10', obra_canonica_id: 'sf-mamposteria', tipo_hora: 'normal', horas: 9, fuente_legacy: 'sheet:jornales' }
+  const anclada = planDeCorreccion({ dias, hh: [{ ...base, notas: 'JORNALES f496 · obra del día según ASISTENCIA' }] })
+  assert.deepEqual(anclada.corregir, [])
+  assert.equal(anclada.coinciden, 1)
+  // 16/09/2026: sin el ancla, el importador de JORNALES la devolvía a la obra del rótulo una hora después.
+  const suelta = planDeCorreccion({ dias, hh: [base] })
+  assert.deepEqual(suelta.corregir.map((c) => [c.de, c.a]), [['sf-mamposteria', 'sf-mamposteria']])
 })
 
 test('dos obras el mismo día: NO se reparte, se lista para el dueño', () => {
@@ -160,4 +164,10 @@ test('la segunda oportunidad exige candidata única: dos que caben, ninguna gana
     { id: 'b', nombre_completo: 'QUIROGA ADOLFO' },
   ])
   assert.notEqual(emparejarPersonaPlanilla('QUIROGA SEBASTIAN ADOLFO', dos).estado, 'ok')
+})
+
+test('el SQL que corrige la obra deja el ANCLA en notas y no toca una fila con autor; una fila en la obra correcta pero sin ancla se corrige sólo para anclarla', () => {
+  assert.match(SQL_CORREGIR_OBRA, /obra del día según ASISTENCIA/)
+  assert.match(SQL_CORREGIR_OBRA, /actualizado_por is null/)
+  assert.doesNotMatch(SQL_CORREGIR_OBRA, /set[^;]*horas\s*=/)
 })

@@ -307,6 +307,21 @@ test('separarConflictos: otra fuente no se toca; lo propio se MUEVE de obra si e
   assert.deepEqual(r.mover.map((m) => [m.id, m.desde, m.fila.obra_canonica_id]), [['d', 'madre', 'sub']], 'la misma persona-día-tipo cambió de obra: se mueve la fila existente')
 })
 
+test('separarConflictos: la fila ANCLADA por el ledger diario de ASISTENCIA no vuelve a la obra del rótulo; horas y tipo se actualizan en su lugar', () => {
+  // 16/09/2026: 150 filas iban y venían entre le-galpon-9 (ASISTENCIA, cada 6 h) y la-estrella
+  // (rótulo de JORNALES, cada hora). La cronología de cada empleado dependía de la hora en que se mirara.
+  const filas = [{ persona_id: 'p', fecha: '2026-08-31', obra_canonica_id: 'la-estrella', tipo_hora: 'normal', horas: 9, notas: 'JORNALES f526' }]
+  const anclada = { id: 'z', persona_id: 'p', fecha: '2026-08-31', obra_canonica_id: 'le-galpon-9', tipo_hora: 'normal', fuente_legacy: FUENTE, notas: 'JORNALES f526 · obra del día según ASISTENCIA' }
+  const r = separarConflictos(filas, [anclada])
+  assert.equal(r.escribir.length, 0, 'la fila del plan no se inserta aparte')
+  assert.deepEqual(r.obsoletas, [])
+  assert.equal(r.mover.length, 1)
+  assert.equal(r.mover[0].fila.obra_canonica_id, 'le-galpon-9', 'se queda en la obra del ledger')
+  assert.equal(r.mover[0].fila.horas, 9)
+  assert.match(r.mover[0].fila.notas, /obra del día según ASISTENCIA/, 'el ancla sobrevive a la escritura de notas')
+  assert.equal(r.mover[0].anclada, true)
+})
+
 test('resumir y columnasParaUpsert: las horas trabajadas no incluyen ausencias; el SQL no borra', () => {
   const filas = [
     { persona_id: 'a', fecha: '2026-05-04', obra_canonica_id: 'x', tipo_hora: 'normal', horas: 9, notas: 'n' },

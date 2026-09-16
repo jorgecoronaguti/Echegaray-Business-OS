@@ -90,7 +90,7 @@ async function leerPestanas(google) {
 
 async function existentesEntre(desde, hasta) {
   const { rows } = await query(
-    `select id, persona_id, to_char(fecha, 'YYYY-MM-DD') fecha, obra_canonica_id, tipo_hora, fuente_legacy, horas, actualizado_por
+    `select id, persona_id, to_char(fecha, 'YYYY-MM-DD') fecha, obra_canonica_id, tipo_hora, fuente_legacy, horas, actualizado_por, notas
        from public.registros_hh where persona_id is not null and fecha between $1 and $2`, [desde, hasta])
   return rows
 }
@@ -187,11 +187,14 @@ async function main() {
   // Antes que cualquier otra regla: el día que una persona tocó a mano sale entero de la corrida.
   const { filas: filasSinWeb, existentes, ganaLaWeb } = separarLoQueGanaLaWeb(filasDelPlan, leidos)
   const filas = filasSinWeb
-  console.log(`  GANA LA WEB · días editados a mano que la planilla trae y NO se tocan: ${ganaLaWeb.length}`)
+  console.log(`  GANA LA WEB · días cargados o corregidos en la web que la planilla trae y NO se tocan: ${ganaLaWeb.length}`)
   for (const x of ganaLaWeb.slice(0, DETALLE ? 500 : 25)) {
     console.log(`    ${x.dia}  web ${x.existentes.map((e) => `${h(e.horas)}h ${e.tipo_hora}`).join(' + ')}`
       + ` · planilla ${x.deLaPlanilla.map((f) => `${h(f.horas)}h ${f.tipo_hora}`).join(' + ')}`)
   }
+  const enConflicto = ganaLaWeb.filter((x) => x.conflicto)
+  console.log(`  CONFLICTO · la web dice que no vino y la planilla trae horas (decide una persona, no se pisa): ${enConflicto.length}`)
+  for (const x of enConflicto) console.log(`    ${x.dia}  web: ${x.conflicto.web} · planilla: ${x.conflicto.planilla}`)
   // ═══ LA PLANILLA MANDA SOBRE LA WEB (dueño, 11/09/2026) ═══
   //
   // Antes, CUALQUIER fila de otra fuente hacía intocable el día: desde el momento en que alguien
