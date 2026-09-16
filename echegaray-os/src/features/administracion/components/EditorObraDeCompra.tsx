@@ -13,6 +13,7 @@
 // dice por qué no está.
 
 import { useState, useTransition } from 'react'
+import { useEstadoDelServidor } from '@/shared/tiempo-real/useEstadoDelServidor'
 import { C } from '@/shared/components/canon'
 import { asignarObraDeCompra } from '../services/obraDeCompraActions'
 
@@ -24,7 +25,8 @@ export function EditorObraDeCompra({
   opciones: string[]
   editable: boolean
 }) {
-  const [valor, setValor] = useState(celda ?? '')
+  // La obra la puede cambiar otro usuario: se adopta al releer (tiempo real, 16/09/2026).
+  const [valor, setValor] = useEstadoDelServidor(celda ?? '')
   const [error, setError] = useState<string | null>(null)
   const [hecho, setHecho] = useState(false)
   const [pendiente, empezar] = useTransition()

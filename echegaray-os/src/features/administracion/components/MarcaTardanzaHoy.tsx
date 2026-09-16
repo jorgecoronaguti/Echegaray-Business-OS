@@ -28,6 +28,7 @@
 // error. Mismo patrón y mismo motivo que `BotonPresenteHoy` y `BotonQuitarPresente`.
 
 import { useState, useTransition } from 'react'
+import { useEstadoDelServidor } from '@/shared/tiempo-real/useEstadoDelServidor'
 import { V } from '@/shared/components/v2/patron'
 import { marcarTardanza } from '../services/presenciaDelDiaActions'
 import type { TardanzaDeHoy } from '../services/pulsoDelPlantel'
@@ -48,7 +49,8 @@ export function MarcaTardanzaHoy({ personaId, nombre, fecha, inicial }: {
   /** Lo guardado en `asistencia_dia` hoy. Sin marca llega `undefined`. */
   inicial?: TardanzaDeHoy
 }) {
-  const [marca, setMarca] = useState<TardanzaDeHoy>(inicial ?? { llegoTarde: false, salioAntes: false })
+  // Lo guardado lo puede cambiar otro usuario desde el teléfono: se adopta al releer (16/09/2026).
+  const [marca, setMarca] = useEstadoDelServidor<TardanzaDeHoy>(inicial ?? { llegoTarde: false, salioAntes: false })
   const [error, setError] = useState<{ cual: Cual; mensaje: string } | null>(null)
   const [pendiente, arrancar] = useTransition()
 

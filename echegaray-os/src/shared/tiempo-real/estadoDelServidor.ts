@@ -31,3 +31,21 @@ export function alRecibirDelServidor<T>(
 ): EstadoDelServidor<T> | null {
   return huella === e.huella ? null : { valor: delServidor, huella }
 }
+
+/**
+ * UN FORMULARIO DE VARIAS FILAS QUE SE GUARDA DE UNA VEZ (la presencia del día, las horas de la
+ * cuadrilla): lo que esta persona tocó y todavía no guardó se respeta; lo que NO tocó adopta lo que otro
+ * usuario guardó mientras tanto. Fusión a tres puntas por fila: `local` contra la base de la que partió.
+ */
+export function fusionarConElServidor<T>(
+  local: Readonly<Record<string, T>>,
+  baseAnterior: Readonly<Record<string, T>>,
+  baseNueva: Readonly<Record<string, T>>,
+): Record<string, T> {
+  const out: Record<string, T> = { ...local }
+  for (const id of Object.keys(baseNueva)) {
+    const intacta = !(id in local) || huellaDe(local[id]) === huellaDe(baseAnterior[id])
+    if (intacta) out[id] = baseNueva[id]
+  }
+  return out
+}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useEstadoDelServidor } from '@/shared/tiempo-real/useEstadoDelServidor'
 import { FormPresencia } from './FormPresencia'
 import { FormAsistencia, type FilaConOtraObra } from './FormAsistencia'
 import type { PresenciaGuardada } from '@/features/administracion/services/presenciaDelDia'
@@ -36,7 +37,8 @@ export function CargaDelDia({ obraId, obraNombre, fecha, jornada, filas, presenc
   presencia: PresenciaGuardada[]
 }) {
   const [paso, setPaso] = useState<'presencia' | 'horas'>('presencia')
-  const [guardada, setGuardada] = useState<PresenciaGuardada[]>(presencia)
+  // LO GUARDADO lo manda el servidor y lo puede cambiar otro usuario (tiempo real, 16/09/2026).
+  const [guardada, setGuardada] = useEstadoDelServidor<PresenciaGuardada[]>(presencia)
 
   if (paso === 'horas') {
     return (

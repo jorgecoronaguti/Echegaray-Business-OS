@@ -71,7 +71,7 @@ export function TraerALaObra({ obraId, obraNombre, candidatos, error }: {
       setAbierta(false)
       setBusqueda('')
       // SIN SALIR DE LA PANTALLA. El servidor vuelve a leer la cuadrilla y la persona aparece con su
-      // casilla vacía; `FormAsistencia` le hace lugar con `sumarPersonasNuevas` sin pisar lo tipeado.
+      // casilla vacía; `FormAsistencia` le hace lugar con `fusionarConElServidor` sin pisar lo tipeado.
       router.refresh()
     })
   }

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { alRecibirDelServidor, huellaDe, nacer } from './estadoDelServidor.ts'
+import { alRecibirDelServidor, fusionarConElServidor, huellaDe, nacer } from './estadoDelServidor.ts'
 
 test('otro usuario cambió el dato: el control adopta el valor nuevo del servidor', () => {
   // EL DEFECTO DEL 16/09/2026: «tarde» marcado en el teléfono no se veía en la compu.
@@ -25,4 +25,16 @@ test('un refresco con un arreglo nuevo pero igual no cuenta como cambio', () => 
 test('los Set tienen huella por contenido, no por identidad', () => {
   assert.equal(huellaDe(new Set(['b', 'a'])), huellaDe(new Set(['a', 'b'])))
   assert.notEqual(huellaDe(new Set(['a'])), huellaDe(new Set(['a', 'b'])))
+})
+
+test('formulario de varias filas: lo intacto adopta al otro usuario, lo tocado sin guardar se respeta', () => {
+  const base = { a: { estado: null }, b: { estado: null }, c: { estado: 'presente' } }
+  const local = { a: { estado: 'presente' }, b: { estado: null }, c: { estado: 'presente' } } // tocó «a»
+  const nueva = { a: { estado: 'ausente' }, b: { estado: 'presente' }, c: { estado: 'licencia' }, d: { estado: null } }
+  assert.deepEqual(fusionarConElServidor(local, base, nueva), {
+    a: { estado: 'presente' }, // lo que esta persona está marcando no se le pisa
+    b: { estado: 'presente' }, // lo marcó otro desde el teléfono
+    c: { estado: 'licencia' },
+    d: { estado: null }, // alguien traído a la obra
+  })
 })
