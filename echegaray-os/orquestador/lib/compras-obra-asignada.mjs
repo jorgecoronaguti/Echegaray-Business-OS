@@ -156,7 +156,10 @@ export function planDeAsignacion(compras, asignar) {
 export async function catalogosDeAsignacion(query) {
   const [alias, canonicas, clientes] = [
     await query('select alias, obra_id from public.obra_alias where obra_id is not null'),
-    await query('select id, codigo, nombre, cliente_texto, fusionada_en from public.obra_canonica'),
+    // `tipo` y `estado` viajan desde el 15/09: la Unidad de Negocio de una fila sale del TIPO de la
+    // obra (mantenimiento → «Mantenimiento», el resto → «Civil») y lo escrito a mano no imputa un gasto
+    // nuevo a una obra CERRADA sin que alguien lo diga. Ver `anotacion-a-obra.mjs`.
+    await query('select id, codigo, nombre, cliente_texto, tipo, estado, fusionada_en from public.obra_canonica'),
     await query('select rotulo_clave, cliente_canonico from public.cliente_alias'),
   ]
   return {
