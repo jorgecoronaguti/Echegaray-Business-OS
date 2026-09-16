@@ -6,6 +6,8 @@ import { Boton, BotonEnlace } from '@/shared/components/ds'
 import { diagnosticar, type ErrorDeRuta } from './diagnostico'
 import { leerSelloDatoBueno, textoDatoBueno } from './frescura'
 import { ubicarPantalla } from './ubicacion'
+import { esAccionDeOtraVersion } from '@/shared/tiempo-real/version'
+import { recargarPorVersionNueva } from '@/shared/tiempo-real/ProveedorTiempoReal'
 
 // LA PANTALLA QUE SE CAYÓ — `design/screens/gestion-obras-v5.md` §13, literal:
 // *«Loading / vacío / error visualmente distintos. El error nunca se parece a un vacío: regla roja,
@@ -70,6 +72,11 @@ export function EstadoError({
   // servidor—; en pantalla sólo se dibuja cuando el diagnóstico no lo supo explicar. Un «canceling
   // statement due to statement timeout» al lado de «la consulta tardó más de lo que la base
   // permite» no informa: asusta (auditoría 24/08/2026).
+  // LA PESTAÑA DE OTRA VERSIÓN (16/09/2026): el botón llamó a una acción que el deploy nuevo ya no
+  // tiene y no se grabó nada. No es un error de la pantalla: se recarga y se avisa que hay que repetir.
+  useEffect(() => {
+    if (esAccionDeOtraVersion(error)) recargarPorVersionNueva('accion')
+  }, [error])
   useEffect(() => {
     if (error || mensaje) console.error('[pantalla caída]', pathname, d.clave, error ?? mensaje)
   }, [error, mensaje, pathname, d.clave])
