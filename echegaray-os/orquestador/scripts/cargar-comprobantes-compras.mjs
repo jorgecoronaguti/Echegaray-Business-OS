@@ -40,6 +40,7 @@ import { faltantesDe, puedeCargarse, POLITICA } from '../lib/comprobantes/faltan
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { perfilesDeImputacionDesdeDB, perfilesDeImputacion } from '../lib/imputacion-aprendida.mjs'
 import { completarUno } from '../lib/comprobantes/imputacion-historial.mjs'
+import { completarDesdeAnotacion } from '../lib/comprobantes/anotacion-a-obra.mjs'
 import { aritmetica, colVerificacion } from '../lib/comprobantes/verificacion.mjs'
 import { CONTRATO, colDelCargador, contratoContra, derivar } from '../lib/comprobantes/contrato-columnas.mjs'
 import { lectorDeEncabezados, rangoColumna, rangoFilas, ubicarColumna } from '../lib/columnas-por-encabezado.mjs'
@@ -374,8 +375,17 @@ export async function prepararPlan(comprobantes = [], o = {}) {
     // `campoDetalle: 'detalle'` porque en el `fajo.json` la columna K se llama así — en el ítem del
     // chat se llama `detalleObra` y `detalle` es el desglose del IVA. La forma la declara el que
     // llama; adivinarla dejaba la K vacía por una vía y le escribía texto al IVA por la otra.
+    // ═══ Y ANTES QUE EL HISTORIAL, LO ESCRITO A MANO (15/09/2026) ═══
+    //
+    // El fajo dc2d0273 entró con «Estrella … OFICINA Y FÁB.», «SF Pisos Industriales», «QUATTROPANI»
+    // y «Messino Dilucion» transcriptos… y con la columna «Obra» vacía y sin Unidad, mientras el
+    // historial del proveedor proponía «LA ESTRELLA» a confirmar. El orden ES el arreglo: la
+    // anotación es la decisión del dueño sobre ESTE gasto, el historial una estadística sobre otros.
+    // Lo que la anotación resuelve queda escrito y marcado `*Via='anotacion'`; lo que no, sigue
+    // viajando como sugerencia y el motivo se imprime.
+    const anot = completarDesdeAnotacion(cc, o.destinos, { listas: o.listas, campoDetalle: 'detalle' })
     const { aplicado, sugerencia: sug } = perfiles?.por_proveedor
-      ? completarUno(cc, perfiles, { campoDetalle: 'detalle' })
+      ? completarUno(cc, perfiles, { campoDetalle: 'detalle', salvo: anot.aplicado.length ? ['obra', 'detalle', 'unidad'] : [] })
       : { aplicado: {}, sugerencia: null }
     // ═══ IMPUESTOS, CARGAS Y FINANCIEROS NO ENTRAN A COMPRAS (dueño, 14/09/2026) ═══
     //
@@ -405,6 +415,10 @@ export async function prepararPlan(comprobantes = [], o = {}) {
     plan.push({
       i, valores: valoresInput(cc, o.col), col: o.col ?? colDelCargador(CONTRATO), nuevo: prov.esNuevo, proveedor: prov.valor, sug, aplicado,
       obra, cuit: cuit.length === 11 ? cuit : null, pestana, rubro,
+      // LO QUE VA A QUEDAR EN LAS COLUMNAS QUE DECIDEN EL COSTO, para poder mirarlo en el `--dry`
+      // sin abrir el Sheet: I Unidad, J Cliente/Asignación, K Detalle, y qué dijo la mano.
+      cols: { unidad: cc.unidad ?? null, obraJ: cc.obra ?? null, detalle: cc.detalle ?? null },
+      anotacion: anot.anotacion ?? null, anotacionPorque: anot.resultado?.porque ?? null,
     })
   }
   // `revisadoContraCompras` viaja porque no poder mirar la pestaña NO es "no está cargado", y las dos
@@ -435,7 +449,12 @@ function informar({ plan, rechazos, duplicados, percep, fueraDeCompras = [], nue
     fueraDeCompras.forEach((f) => console.log(`   #${f.i} ${f.proveedor || '(sin proveedor)'} ${f.numero ?? ''} → «${f.pestana}» (rubro ${f.rubro})`))
   }
   for (const p of plan) {
+    const celda = (x) => (x ? `«${x}»` : 'vacía')
     console.log(`   Obra #${p.i} ${p.proveedor ?? ''}: ${p.obra?.valor ? `«${p.obra.valor}»` : `vacía — ${p.obra?.porque ?? 'sin propuesta'}`}${p.cuit ? ` · CUIT ${p.cuit}` : ''}`)
+    // LAS TRES COLUMNAS QUE ACOMPAÑAN A LA OBRA, en la misma corrida: una fila con la obra puesta y
+    // la Unidad vacía sigue sin clasificar en el rubro de caja, y eso no se ve mirando sólo la L.
+    console.log(`      I ${celda(p.cols?.unidad)} · J ${celda(p.cols?.obraJ)} · K ${celda(p.cols?.detalle)}`
+      + `${p.anotacion ? ` · a mano: "${p.anotacion}"` : ''}${!p.obra?.valor && p.anotacionPorque ? ` — ${p.anotacionPorque}` : ''}`)
   }
   // NO PODER MIRAR COMPRAS NO ES "NO ESTÁ CARGADO". Si se callara, una corrida ciega y una corrida
   // verificada se verían iguales — y la ciega es justo la que puede duplicar un gasto.
@@ -601,7 +620,7 @@ async function main() {
   if (!col.obraFila) console.log('ℹ columna Obra: Compras todavía no tiene el rótulo «Obra» — la obra se propone pero no se escribe.')
 
   const { plan, rechazos, duplicados, percep, fueraDeCompras, nuevos, altas, arca } = await prepararPlan(comprobantes, {
-    lista, porCuit, nombresPorCuit, indiceCompras, perfiles, cargarIgual: CARGAR_IGUAL, conocidos, col, destinos,
+    lista, listas, porCuit, nombresPorCuit, indiceCompras, perfiles, cargarIgual: CARGAR_IGUAL, conocidos, col, destinos,
     arcaDe: (c) => candidatasArca({ query }, c),
   })
 

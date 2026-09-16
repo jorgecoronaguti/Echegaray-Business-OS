@@ -42,6 +42,8 @@ import * as repoReal from './repositorio.mjs'
 // obligar a tocar a todos los que ya lo importaban.
 export { armarItem, opcionesParaImputar } from '../../lib/comprobantes/item.mjs'
 import { armarItem } from '../../lib/comprobantes/item.mjs'
+import { catalogosDeAsignacion } from '../../lib/compras-obra-asignada.mjs'
+import { destinosDeObra } from '../../lib/comprobantes/obra-y-destino.mjs'
 import { repartirPendientes, avisoDeVencidos } from '../../lib/comprobantes/arrastre.mjs'
 
 /** Techo de adjuntos por post. Un álbum de 40 fotos no es un fajo: es un accidente. */
@@ -337,9 +339,20 @@ export async function procesarPost(d, m = {}) {
   // 4) Leer con el modelo. Una llamada por adjunto.
   //    Compras VIVO se lee una sola vez y sirve para dos cosas: el vocabulario de la columna K con el
   //    que se resuelve lo escrito a mano, y el índice contra el que se busca el duplicado.
-  const [listasVivas, indiceCompras] = await Promise.all([
+  // ═══ Y EL CATÁLOGO DE OBRAS, QUE ES LO QUE FALTABA PARA LEER LO ESCRITO A MANO (15/09/2026) ═══
+  //
+  // Los desplegables de Compras no contienen las obras: la J son clientes y la K es texto libre. Sin
+  // esto, «SF Pisos Industriales» escrito a mano no podía llegar nunca a OB-0011. Entra INYECTABLE
+  // —el flujo ya tiene el `port` de Postgres— y falla ABIERTO: si la base no contesta, el ítem se
+  // arma exactamente como antes y la columna «Obra» queda para que alguien la elija.
+  const destinosDe = d.destinosDe ?? (() => catalogosDeAsignacion(port.query).then(destinosDeObra))
+  const [listasVivas, indiceCompras, destinos] = await Promise.all([
     listas(),
     typeof comprasDe === 'function' ? comprasDe().catch(() => null) : Promise.resolve(null),
+    Promise.resolve().then(destinosDe).catch((e) => {
+      log?.warn?.('comprobantes: sin catálogo de obras, la columna Obra queda vacía', { detalle: String(e?.message ?? e).slice(0, 160) })
+      return null
+    }),
   ])
   const vocabulario = {
     ...listasVivas,
@@ -362,7 +375,7 @@ export async function procesarPost(d, m = {}) {
     // es la forma en que se manda un fajo de una misma obra.
     // `ahora` es el momento en que llegó la foto, y es el reloj contra el que se juzga si la fecha
     // del comprobante puede ser cierta. Va con el ítem, no se toma al renderizar.
-    items.push(armarItem({ lectura: r.crudo, adjunto: a, listas: vocabulario, textoPost: m.texto ?? null, ahora: m.ahora ?? new Date() }))
+    items.push(armarItem({ lectura: r.crudo, adjunto: a, listas: vocabulario, textoPost: m.texto ?? null, ahora: m.ahora ?? new Date(), destinos }))
   }
   if (!items.length) {
     const rend = rendicionDeAdjuntos({ fileIds, items: [], problemas })

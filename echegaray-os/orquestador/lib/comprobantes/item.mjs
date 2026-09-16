@@ -13,6 +13,7 @@
 import { matchProveedor } from '../carga-comprobantes.mjs'
 import { normalizarLectura, claveComprobante } from './lectura.mjs'
 import { imputacionDeAnotacion, condicionDeAnotacion } from './imputacion.mjs'
+import { completarDesdeAnotacion } from './anotacion-a-obra.mjs'
 import { imputacionDelModelo, valorDeLista } from './desplegables.mjs'
 import { categoriaDelComprobante } from './categoria.mjs'
 import { detalleCompuesto } from './detalle.mjs'
@@ -36,7 +37,7 @@ import { MAX_OPCIONES } from './fajo.mjs'
  * null si la referencia es ambigua. Escribir "ARCOR" no mete "ARCOR" en la celda: mete el rótulo del
  * desplegable que matchea sin ambigüedad, o no mete nada y se pregunta.
  */
-export function armarItem({ lectura, adjunto, listas, textoPost = null, ahora = null } = {}) {
+export function armarItem({ lectura, adjunto, listas, textoPost = null, ahora = null, destinos = null } = {}) {
   const crudo = lectura ?? {}
   const { comprobante, faltantes, dudas } = normalizarLectura(lectura)
   const listasOk = listas?.ok !== false && (listas?.proveedores?.length ?? 0) > 0
@@ -215,6 +216,16 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null, ahora = 
     comprobante.condicionVia = 'manuscrita'
   }
   delete comprobante.condicionManuscrita
+
+  // ═══ Y LA OBRA DE VERDAD: LA DEL CATÁLOGO, NO LA DEL DESPLEGABLE DE CLIENTES (15/09/2026) ═══
+  //
+  // Todo lo de arriba matchea contra la J (que son CLIENTES) y contra el vocabulario de la K. Ninguna
+  // de las dos listas contiene las obras, así que «SF Pisos Industriales» podía resolver «San
+  // Francisco» y nunca OB-0011. Esto le pregunta al catálogo real (`obra_canonica` + `obra_alias`) y
+  // completa lo que quedó VACÍO: la columna «Obra», la J si el desplegable tiene el rótulo del
+  // cliente, la Unidad y el Detalle. Sin `destinos` —que es como corre hoy el chat cuando no hay
+  // Postgres— no cambia absolutamente nada.
+  if (destinos) completarDesdeAnotacion(comprobante, destinos, { listas, campoDetalle: 'detalleObra', texto: textoPost })
 
   const k = claveComprobante(comprobante)
   return {

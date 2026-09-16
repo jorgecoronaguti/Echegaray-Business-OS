@@ -24,6 +24,8 @@ import { SesionesPostgres, crearVencedorPeriodico, VENCER_INTERVALO_MS_DEFAULT }
 import { crearEntregador, ENTREGA_INTERVALO_MS_DEFAULT } from './asistente/entrega-recordatorios.mjs'
 import { crearVigiaDeFajosMudos, VIGIA_INTERVALO_MS_DEFAULT } from './comprobantes/vigia-mudos.mjs'
 import { crearReintentoDeFajos, REINTENTO_INTERVALO_MS_DEFAULT } from './comprobantes/reintento.mjs'
+import { crearRepescaDeRespaldos, REPESCA_INTERVALO_MS_DEFAULT } from '../lib/comprobantes/respaldo-adjunto.mjs'
+import { bajarAdjunto } from './comprobantes/flujo.mjs'
 import { googleDelOs } from '../lib/google-os.mjs'
 import { alPerderLaConexion, query, withTx } from '../lib/db.mjs'
 import { crearLatido, esConexionPerdida, SALIDA_CONEXION_PERDIDA } from '../lib/conexion-perdida.mjs'
@@ -40,6 +42,11 @@ const RECORDATORIOS_MS = Number(process.env.COMM_WORKER_RECORDATORIOS_MS ?? ENTR
 // invisible para todos los controles a la vez, y adentro hay plata sin registrar.
 const MUDOS_MS = Number(process.env.COMM_WORKER_MUDOS_MS ?? VIGIA_INTERVALO_MS_DEFAULT)
 const REINTENTO_MS = Number(process.env.COMM_WORKER_REINTENTO_MS ?? REINTENTO_INTERVALO_MS_DEFAULT)
+// Cada cuánto se reintentan los papeles que quedaron sin guardar en la app. Ver
+// `lib/comprobantes/respaldo-adjunto.mjs`: el escritor que corre sin cliente de Mattermost omite el
+// respaldo, y hasta el 15/09/2026 esa omisión no la reintentaba nadie. Es OTRA cosa que el reintento
+// de arriba: aquél vuelve a cargar la FILA, éste guarda el PAPEL de una fila que ya está.
+const REPESCA_MS = Number(process.env.COMM_WORKER_REPESCA_MS ?? REPESCA_INTERVALO_MS_DEFAULT)
 // EL LATIDO — cuánto silencio se tolera antes de salir con error y dejar que systemd
 // reinicie. Incidente del 10/09/2026: este worker quedó 23 h colgado en un `await` que
 // nunca se resolvió (Supabase reinició, el socket quedó medio abierto y `pg` no tenía
@@ -52,7 +59,7 @@ const log = crearLog()
 let parar = false
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-async function tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos, reintentarComprobantes) {
+async function tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos, reintentarComprobantes, repescarRespaldos) {
   await con.recuperarLeasesWorkFabric()
   await con.recuperarLeasesComm()
   // Barrido de formularios de asistencia abandonados. Tiene su PROPIO intervalo (este loop
@@ -68,6 +75,9 @@ async function tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos, re
   // Los fajos que Google dejó sin cargar (5xx antes de escribir). Mismo criterio: intervalo propio,
   // no suma a `trabajo`, no propaga error. Corre el cargador de verdad y contesta en el hilo.
   await reintentarComprobantes()
+  // Y los papeles que quedaron sin guardar en la app. Mismo criterio que los cuatro de arriba:
+  // intervalo propio, no suma a `trabajo` y no propaga error.
+  await repescarRespaldos()
   const inbox = await con.procesarInbox({ lote: 20 })
   const wf = await con.procesarWorkFabric({ lote: 20 })
   const outbox = await con.procesarOutbox({ lote: 20 })
@@ -157,6 +167,14 @@ async function main() {
     google: () => { try { return googleDelOs({ log }) } catch { return null } },
     intervaloMs: REINTENTO_MS, log,
   })
+  // La repesca del papel vive acá por la misma razón: es el único proceso que tiene a la vez el pool
+  // de la base y el cliente de Mattermost. Baja SIN convertir (`preparar` identidad), igual que el
+  // respaldo del bot: lo que se guarda es el archivo tal como lo mandaron.
+  const repescarRespaldos = crearRepescaDeRespaldos({
+    query: (...a) => query(...a),
+    bajar: (fileId) => bajarAdjunto(con.cliente, fileId, { preparar: async (x) => ({ ok: true, ...x }) }),
+    intervaloMs: REPESCA_MS, log,
+  })
   // El latido: si pasan LATIDO_MS sin un tick completo, el proceso sale con error. Es la
   // única red que cubre un cuelgue cuya causa no conocemos todavía — no necesita clasificar
   // nada, sólo notar el silencio. Va armado ANTES del primer tick.
@@ -171,13 +189,14 @@ async function main() {
     else log.error('pool: error inesperado (no es corte de conexión)', { error: String(err?.message ?? err) })
   })
   log.info('worker-comunicacion arrancado', {
-    vencer_sesiones_ms: VENCER_MS, recordatorios_ms: RECORDATORIOS_MS, fajos_mudos_ms: MUDOS_MS, reintento_fajos_ms: REINTENTO_MS,
+    vencer_sesiones_ms: VENCER_MS, recordatorios_ms: RECORDATORIOS_MS, fajos_mudos_ms: MUDOS_MS,
+    reintento_fajos_ms: REINTENTO_MS, repesca_ms: REPESCA_MS,
     latido_ms: latido.toleranciaMs,
   })
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => { log.info('shutdown pedido', { señal: s }); parar = true })
 
   const { salida } = await correrBucle({
-    tick: () => tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos, reintentarComprobantes), latido,
+    tick: () => tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos, reintentarComprobantes, repescarRespaldos), latido,
   })
   if (salida !== 0) return // el latido ya hizo process.exit con su log
   latido.desarmar()
