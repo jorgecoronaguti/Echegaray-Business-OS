@@ -22,7 +22,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Drawer } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
-import { hh as fmtHH, plata } from '@/shared/utils/format'
+import { hh as fmtHH, plataCentavos } from '@/shared/utils/format'
 import { diaMesISO } from '@/shared/utils/fecha'
 import { etiquetaDeBloque } from '../services/desgloseHH'
 import {
@@ -102,10 +102,10 @@ function ListaComprobantes({ filas, corte, base }: { filas: ComprobanteDeDetalle
         <span />
         <span style={{ fontSize: '12px', fontWeight: 600, color: V.tinta }}>Total</span>
         <span className={MONO} style={{ fontSize: '12px', fontWeight: 600, color: V.tinta, textAlign: 'right' }}>
-          {plata(sumaALaFecha(filas))}
+          {plataCentavos(sumaALaFecha(filas))}
         </span>
         <span className={MONO} style={{ fontSize: '12px', color: V.tenue, textAlign: 'right' }}>
-          {porVencer ? plata(porVencer) : ''}
+          {porVencer ? plataCentavos(porVencer) : ''}
         </span>
       </div>
       {porVencer > 0 && (
@@ -123,21 +123,26 @@ function sumaALaFecha(filas: ComprobanteDeDetalle[]): number {
 }
 
 function Comprobante({ f, base }: { f: ComprobanteDeDetalle; base: string }) {
-  const detalle = [f.comprobante, f.concepto].filter((x) => x).join(' · ')
+  // LA CUOTA ADELANTE: seis cuotas con el mismo concepto largo se veían idénticas porque el recorte se comía el
+  // «cuota N de 6» del final (QA 15/09). El tramo que las distingue va primero; el texto entero queda en el title.
+  const cuota = f.concepto?.match(/(cuota|pago)\s+\d+\s+de\s+\d+/i)?.[0] ?? null
+  const conceptoOrdenado = cuota && f.concepto ? `${cuota} · ${f.concepto.replace(cuota, '').replace(/\s*·\s*$/, '').replace(/^\s*·\s*/, '').trim()}` : f.concepto
+  const detalle = [f.comprobante, conceptoOrdenado].filter((x) => x).join(' · ')
+  const detalleCompleto = [f.comprobante, f.concepto].filter((x) => x).join(' · ')
   const cuerpo = (
     <>
       <span className={MONO} style={{ fontSize: '11.5px', color: V.tenue }}>{diaMesISO(f.fecha) ?? '—'}</span>
       <span style={{ display: 'grid', minWidth: 0 }}>
         <span className="truncate" style={{ fontSize: '12px', fontWeight: 500, color: V.tinta }}>{f.proveedor ?? 'sin proveedor'}</span>
-        {detalle && <span className="truncate" style={{ fontSize: '11px', color: V.apagado }}>{detalle}</span>}
+        {detalle && <span className="truncate" title={detalleCompleto} style={{ fontSize: '11px', color: V.apagado }}>{detalle}</span>}
       </span>
-      <span className={MONO} style={{ fontSize: '12px', color: V.tinta, textAlign: 'right' }}>{plata(f.aLaFecha)}</span>
+      <span className={MONO} style={{ fontSize: '12px', color: V.tinta, textAlign: 'right' }}>{plataCentavos(f.aLaFecha)}</span>
       <span
         className={MONO}
         title={f.fechaPrevista ? `Vence el ${diaMesISO(f.fechaPrevista)} · ${f.estado ?? 'sin estado'}` : undefined}
         style={{ fontSize: '11.5px', color: V.tenue, textAlign: 'right' }}
       >
-        {f.porVencer ? plata(f.porVencer) : ''}
+        {f.porVencer ? plataCentavos(f.porVencer) : ''}
       </span>
     </>
   )
@@ -170,7 +175,7 @@ function ListaManoObra({ filas, horasSinTarifa, puedeVerTarifas }: {
         <span style={{ fontSize: '12px', fontWeight: 600, color: V.tinta }}>Total</span>
         <span className={MONO} style={{ fontSize: '12px', color: V.tinta, textAlign: 'right' }}>{fmtHH(horas)}</span>
         <span className={MONO} style={{ fontSize: '12px', fontWeight: 600, color: V.tinta, textAlign: 'right' }}>
-          {plata(filas.reduce<number | null>((a, f) => (f.estado === 'falta_dato' || f.total == null ? a : (a ?? 0) + f.total), null))}
+          {plataCentavos(filas.reduce<number | null>((a, f) => (f.estado === 'falta_dato' || f.total == null ? a : (a ?? 0) + f.total), null))}
         </span>
       </div>
       {(horasSinTarifa ?? 0) > 0 && (
@@ -190,7 +195,7 @@ function Quincena({ f }: { f: QuincenaDePersona }) {
       <span className="truncate" style={{ fontSize: '12px', fontWeight: 500, color: V.tinta }}>{f.nombre ?? 'fila sin persona'}</span>
       <span className={MONO} style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right' }}>{fmtHH(f.horas)}</span>
       <span className={MONO} style={{ fontSize: '12px', color: faltaDato ? V.warn : V.tinta, textAlign: 'right' }}>
-        {faltaDato ? 'sin tarifa' : plata(f.total)}
+        {faltaDato ? 'sin tarifa' : plataCentavos(f.total)}
         {/* ESTIMADO ≠ REAL: sin recibo del estudio todavía. */}
         {f.estado === 'estimado' && <span style={{ marginLeft: 4, fontSize: '10.5px', color: V.tenue }}>est.</span>}
       </span>

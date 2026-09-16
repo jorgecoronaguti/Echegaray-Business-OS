@@ -75,6 +75,10 @@ export function pct(n: number | string | null | undefined): string {
 export const plata = (n: number | null | undefined) =>
   n == null ? '—' : '$' + Math.round(n).toLocaleString('es-AR')
 
+/** Plata AL CENTAVO, para el detalle comprobante por comprobante: ahí «$1.967.273» esconde los 72,73 del Sheet. */
+export const plataCentavos = (n: number | null | undefined) =>
+  n == null ? '—' : '$' + n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
 /** Plata ABREVIADA, para los titulares donde la cifra compite por el ancho con otras tres.
  *  `$74M` en vez de `$74.300.000`. El número exacto vive en Economía: acá se decide si mirarlo.
  *  El decimal aparece sólo por debajo de 10 unidades de la escala (`$8,4M`, `$74M`): con dos cifras
