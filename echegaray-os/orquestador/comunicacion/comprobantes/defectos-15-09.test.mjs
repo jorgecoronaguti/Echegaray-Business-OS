@@ -336,6 +336,41 @@ test('cuando se agota el cupo se dice que me rendí, con cuánto se esperó', as
   assert.match(publicados[0].texto, /Me rendí después de 2 intentos/)
 })
 
+test('el fajo que se tomó para reintentar y NADIE terminó vuelve a la cola', async () => {
+  // El agujero que abre el propio reintento: `tomarParaReintentar` deja el fajo en `confirmado`, y
+  // si el worker muere ahí (systemd, el latido, la VM saturada) ninguna cola lo mira — el vigía de
+  // mudos sólo barre `abierto`. Sería el mismo defecto con otro disfraz: plata adentro de un fajo
+  // que no está en ninguna cola.
+  // MUTACIÓN QUE LO MATA: sacar `rescatarConfirmadosColgados` del barrido.
+  const { repo, fajo } = await conFajo()
+  await repo.programarReintento(null, { id: fajo.id, esperaMin: 0 })
+  await repo.tomarParaReintentar(null, { id: fajo.id })   // …y acá muere el worker
+  assert.equal(repo._fajos.get(fajo.id).estado, ESTADO.CONFIRMADO)
+
+  repo.en(new Date(repo._ahora.getTime() + 20 * 60_000))
+  let escrituras = 0
+  const salida = await reintentarFajos({
+    port: portMudo, repo, publicar: async () => ({ id: 'x' }),
+    escribir: async (f) => {
+      escrituras++
+      await repo.cerrarFajo(null, { id: f.id, estado: ESTADO.CARGADO, filas: [] })
+      return { estado: ESTADO.CARGADO, texto: 'cargué 1', filas: [{ fila: 964 }] }
+    },
+  })
+  assert.equal(escrituras, 1, 'el fajo colgado volvió a la cola y se terminó de cargar')
+  assert.equal(salida.cargados, 1)
+})
+
+test('un `confirmado` RECIÉN tomado por el flujo normal no se lo roba el barrido', async () => {
+  // El contrapeso: alguien acaba de apretar Confirmar y `escribirFajo` está corriendo. Robarlo sería
+  // escribir el mismo gasto dos veces.
+  const { repo, fajo } = await conFajo()
+  repo._fajos.get(fajo.id).ultimo_at = repo._ahora
+  const salida = await reintentarFajos({ port: portMudo, repo, escribir: async () => { throw new Error('no debería escribir') } })
+  assert.equal(salida.encontrados, 0)
+  assert.equal(repo._fajos.get(fajo.id).estado, ESTADO.CONFIRMADO)
+})
+
 test('la espera crece y tiene techo: 1, 2, 4, 8, 16, 30, 30 minutos', () => {
   assert.deepEqual([1, 2, 3, 4, 5, 6, 7].map(esperaDeReintentoMin), [1, 2, 4, 8, 16, 30, 30])
 })

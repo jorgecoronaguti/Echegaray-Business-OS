@@ -63,6 +63,12 @@ export async function reintentarFajos(d = {}) {
 
   let filas
   try {
+    // Primero los que se tomaron y nadie terminó: un worker que murió a mitad del reintento no puede
+    // dejar el fajo en un estado que ninguna cola mira. Nunca frena el barrido.
+    if (typeof repo.rescatarConfirmadosColgados === 'function') {
+      const rescatados = await repo.rescatarConfirmadosColgados(port, {}).catch(() => [])
+      if (rescatados?.length) log?.warn?.('comprobantes: fajos tomados para reintentar que nadie terminó, devueltos a la cola', { fajos: rescatados })
+    }
     filas = await repo.fajosParaReintentar(port, { limite })
   } catch (e) {
     // Sin la migración (columna `proximo_intento_at` ausente) o con la base caída no se afirma nada.

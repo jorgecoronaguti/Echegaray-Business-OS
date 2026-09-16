@@ -119,6 +119,17 @@ export function repoMemoria() {
         .slice(0, limite).map((f) => ({ ...f }))
     },
 
+    async rescatarConfirmadosColgados(_p, { minutos = 15 } = {}) {
+      const out = []
+      for (const f of fajos.values()) {
+        if (f.estado !== ESTADO.CONFIRMADO || !(f.intentos > 0)) continue
+        if ((api._ahora.getTime() - new Date(f.ultimo_at ?? f.creado_at ?? 0).getTime()) / 60_000 < minutos) continue
+        f.estado = ESTADO.REINTENTO; f.proximo_intento_at = api._ahora
+        out.push(f.id)
+      }
+      return out
+    },
+
     async tomarParaReintentar(_p, { id } = {}) {
       const f = fajos.get(id)
       if (!f || f.estado !== ESTADO.REINTENTO) return null

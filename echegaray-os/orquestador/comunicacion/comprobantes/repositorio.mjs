@@ -200,6 +200,29 @@ export async function fajosParaReintentar(port, { limite = 10 } = {}) {
   return rows
 }
 
+/**
+ * EL FAJO QUE SE TOMÓ PARA REINTENTAR Y NADIE TERMINÓ DE ESCRIBIR (15/09/2026).
+ *
+ * `tomarParaReintentar` lo deja en `confirmado`. Si el worker muere ahí —systemd lo reinicia, la VM
+ * se satura, el latido lo mata— el fajo queda en un estado que NADIE barre: el vigía de mudos sólo
+ * mira `abierto`, y el reintento sólo mira `reintento`. Sería exactamente el defecto que este
+ * trabajo cierra, con otro disfraz: un fajo con plata adentro que no está en ninguna cola.
+ *
+ * Se rescatan sólo los que ya pasaron por acá (`intentos > 0`) y llevan colgados más que cualquier
+ * corrida viva posible (el cargador se corta a los 180 s y se repite dos veces). Un `confirmado`
+ * normal, el de alguien que acaba de apretar Confirmar, no se toca.
+ */
+export async function rescatarConfirmadosColgados(port, { minutos = 15 } = {}) {
+  const { rows } = await port.query(
+    `update comunicacion.comprobante_fajos
+        set estado = $1, proximo_intento_at = now()
+      where estado = $2 and coalesce(intentos, 0) > 0
+        and ultimo_at < now() - make_interval(mins => $3::int)
+      returning id`,
+    [ESTADO.REINTENTO, ESTADO.CONFIRMADO, Math.max(1, Math.round(Number(minutos) || 15))])
+  return rows.map((r) => r.id)
+}
+
 /** COMPARE-AND-SET `reintento` → `confirmado`: dos workers no reintentan el mismo fajo a la vez. */
 export async function tomarParaReintentar(port, { id } = {}) {
   const { rows } = await port.query(
