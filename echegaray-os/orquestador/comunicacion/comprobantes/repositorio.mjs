@@ -174,6 +174,41 @@ export async function cerrarFajo(port, { id, estado, filas = null, error = null,
 }
 
 /** Vuelve un fajo confirmado a abierto: la escritura falló antes de escribir nada. */
+/**
+ * GOOGLE NO CONTESTÓ ANTES DE ESCRIBIR: el fajo queda en `reintento` con sus lecturas, cuenta el
+ * intento y anota cuándo volver a probar (15/09/2026). Compare-and-set desde `confirmado`, que es
+ * el estado en que `escribirFajo` lo recibe. Si la migración `20260915T2330` no está aplicada,
+ * lanza (columna o check ausentes) y el que llama cae al camino viejo: reabrir.
+ */
+export async function programarReintento(port, { id, error = null, esperaMin = 1 } = {}) {
+  const { rows } = await port.query(
+    `update comunicacion.comprobante_fajos
+        set estado = $2, error = $3, intentos = coalesce(intentos, 0) + 1,
+            proximo_intento_at = now() + make_interval(mins => $4::int), ultimo_at = now()
+      where id = $1 and estado = $5 returning *`,
+    [id, ESTADO.REINTENTO, error, Math.max(0, Math.round(Number(esperaMin) || 0)), ESTADO.CONFIRMADO])
+  return rows[0] ?? null
+}
+
+/** Los fajos cuyo turno de reintento ya llegó, del más viejo al más nuevo. */
+export async function fajosParaReintentar(port, { limite = 10 } = {}) {
+  const { rows } = await port.query(
+    `select * from comunicacion.comprobante_fajos
+      where estado = $1 and (proximo_intento_at is null or proximo_intento_at <= now())
+      order by proximo_intento_at asc nulls first, ultimo_at asc limit $2`,
+    [ESTADO.REINTENTO, limite])
+  return rows
+}
+
+/** COMPARE-AND-SET `reintento` → `confirmado`: dos workers no reintentan el mismo fajo a la vez. */
+export async function tomarParaReintentar(port, { id } = {}) {
+  const { rows } = await port.query(
+    `update comunicacion.comprobante_fajos set estado = $2, ultimo_at = now()
+      where id = $1 and estado = $3 returning *`,
+    [id, ESTADO.CONFIRMADO, ESTADO.REINTENTO])
+  return rows[0] ?? null
+}
+
 export async function reabrirFajo(port, { id, error = null } = {}) {
   const { rows } = await port.query(
     `update comunicacion.comprobante_fajos set estado = $2, error = $3, ultimo_at = now()

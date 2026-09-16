@@ -94,10 +94,35 @@ export function repoMemoria() {
       return { ...f }
     },
 
-    async cerrarFajo(_p, { id, estado, filas = null, error = null } = {}) {
+    async cerrarFajo(_p, { id, estado, filas = null, error = null, desde = null } = {}) {
       const f = fajos.get(id)
-      if (!f) return null
+      if (!f || (desde && f.estado !== desde)) return null
       Object.assign(f, { estado, filas, error, cerrado_at: new Date() })
+      return { ...f }
+    },
+
+    /** Igual que la tabla: sólo desde `confirmado`, cuenta el intento y fija el turno siguiente. */
+    async programarReintento(_p, { id, error = null, esperaMin = 1 } = {}) {
+      api._chequear('programarReintento')
+      const f = fajos.get(id)
+      if (!f || f.estado !== ESTADO.CONFIRMADO) return null
+      Object.assign(f, {
+        estado: ESTADO.REINTENTO, error, intentos: (f.intentos ?? 0) + 1,
+        proximo_intento_at: new Date(api._ahora.getTime() + esperaMin * 60_000), ultimo_at: api._ahora,
+      })
+      return { ...f }
+    },
+
+    async fajosParaReintentar(_p, { limite = 10 } = {}) {
+      return [...fajos.values()]
+        .filter((f) => f.estado === ESTADO.REINTENTO && (!f.proximo_intento_at || f.proximo_intento_at <= api._ahora))
+        .slice(0, limite).map((f) => ({ ...f }))
+    },
+
+    async tomarParaReintentar(_p, { id } = {}) {
+      const f = fajos.get(id)
+      if (!f || f.estado !== ESTADO.REINTENTO) return null
+      f.estado = ESTADO.CONFIRMADO
       return { ...f }
     },
 

@@ -95,6 +95,12 @@ export function estadoDeEntrada(salida = {}) {
     // no se pudo verificar. Repetirlo sería publicar la afirmación que este ramo existe para frenar.
     return { ...base, estado: ENTRADA.EN_ESPERA, motivo: 'no quedó constancia de en qué fila de Compras entró' }
   }
+  // Google no contestó antes de que el cargador escribiera: el fajo quedó guardado y el worker de
+  // comunicación lo reintenta solo (15/09/2026). Es espera, no error: un «error» acá haría que la
+  // cola volviera a LEER la misma foto con la visión — el mismo desperdicio que se está evitando.
+  if (e === 'reintento') {
+    return { ...base, estado: ENTRADA.EN_ESPERA, motivo: 'Google Sheets no respondió al cargar: el OS lo reintenta solo' }
+  }
   if (e === 'encolado') {
     return { ...base, estado: ENTRADA.EN_ESPERA, motivo: base.motivo ?? 'la escritura de Sheets está congelada' }
   }

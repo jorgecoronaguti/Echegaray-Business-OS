@@ -36,6 +36,9 @@ export const ESTADO = Object.freeze({
   ENCOLADO: 'encolado', // confirmado con el freno de mano puesto: se escribe cuando se levante
   DESCARTADO: 'descartado',
   ERROR: 'error',
+  // Google no contestó ANTES de que el cargador escribiera nada: el fajo espera, con sus lecturas, a
+  // que el worker lo vuelva a intentar solo (`comunicacion/comprobantes/reintento.mjs`, 15/09/2026).
+  REINTENTO: 'reintento',
 })
 
 /**

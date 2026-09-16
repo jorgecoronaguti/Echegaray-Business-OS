@@ -659,16 +659,24 @@ async function cargarSolo(d, fajo, repo, rendicion = null) {
   // EL RECUENTO. La rendición cuenta los adjuntos (lo que ya estaba, lo ilegible, las copias) y la
   // escritura cuenta las filas y la plata. Se suman una sola vez y con `seCargaron` puesto en lo que
   // de verdad pasó: si la escritura no ocurrió, lo que estaba «listo» pasa a trabado y se nombra.
+  // EN REINTENTO los listos no están «trabados» ni «cargados»: están guardados esperando a Google. Se
+  // cuentan aparte para que el mensaje diga eso y no «terminé, no cargué ninguno» (15/09/2026).
+  const enReintento = estado === ESTADO.REINTENTO
   const parte = sumarPartes(
-    parteDeRendicion(rendicion, { seCargaron: estado === ESTADO.CARGADO }),
-    parteDeEscritura(estado === ESTADO.CARGADO ? r : { ...r, filas: [], suma: 0 }))
+    parteDeRendicion(rendicion, { seCargaron: estado === ESTADO.CARGADO || enReintento }),
+    enReintento
+      ? { reintentando: listos.length, avisos: r?.avisos ?? [] }
+      : parteDeEscritura(estado === ESTADO.CARGADO ? r : { ...r, filas: [], suma: 0 }))
 
   // ═══ LO QUE QUEDÓ TRABADO SE MUDA A UN FAJO NUEVO, CON SUS BOTONES ═══
   //
   // Sólo cuando la escritura CERRÓ el fajo. Si falló, `escribirFajo` ya lo reabrió con su error: abrir
   // otro chocaría contra el índice único parcial (un solo fajo abierto por persona y canal) y
   // devolvería el mismo, duplicando los ítems trabados dentro de él.
-  if (trabados.length && (estado === ESTADO.CARGADO || estado === ESTADO.ENCOLADO)) {
+  // También en REINTENTO: el fajo quedó en ese estado (no abierto), así que abrir otro para lo trabado
+  // no choca con el índice; y si no se abre, lo trabado espera junto con lo que espera a Google y
+  // nadie se lo pregunta al dueño.
+  if (trabados.length && (estado === ESTADO.CARGADO || estado === ESTADO.ENCOLADO || estado === ESTADO.REINTENTO)) {
     const nuevo = await repo.abrirFajo(port, {
       plataforma: fajo.plataforma ?? 'mattermost',
       userId: fajo.plataforma_user_id,
