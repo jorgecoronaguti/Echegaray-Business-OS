@@ -69,6 +69,8 @@ export const V = {
    * README §2 del handoff de Liquidación; `liqhs v2:499` (consumo 31 %).
    */
   pos: '#067647',
+  /** El fondo de una fila que ya está en estado positivo: la línea PAGADA de Liquidación (dueño, 16/09/2026). Verde apenas, sólo estado. */
+  posSuave: '#EEF6F0',
   /** Lo que bloquea: la cifra, el filo y el dato que falta. `22v2:70`, `:415`. */
   warn: '#B54708',
   /** Un comprobante sin obra imputada. `22v2:442`. */

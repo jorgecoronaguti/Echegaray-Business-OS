@@ -39,6 +39,8 @@ import {
 } from './cuadro/CeldasBlancoNegro'
 import { CeldaTarifa, rotuloCategoria } from './cuadro/CeldaTarifa'
 import { PanelDeLaPersona } from './cuadro/PanelDeLaPersona'
+import { MarcaDePago } from './cuadro/MarcaDePago'
+import { filaPagada } from './cuadro/marcaDePago'
 import { horas as nHoras, pesos } from './formato'
 import { CintaHorizontal } from '@/shared/components/v2/CintaHorizontal'
 import { ALTO_LIQ, CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, MONO, fondoDeColumnaFija } from './solapas/tabla'
@@ -279,22 +281,33 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
   abrir: () => void
 }) {
   const l = fila.linea
+  // LA FILA PAGADA SE PINTA ENTERA (dueño, 16/09/2026: «que marque un poco el color distinto»): verde suave = estado
+  // positivo. La celda fija lo repite OPACA, porque con `undefined` los días pasarían por debajo del nombre.
+  const fondo = filaPagada(l.pagadaEn) ? V.posSuave : undefined
   return (
     // `data-fila-edicion`: Tab en una celda pasa a la siguiente editable de ESTA fila (`InlineEdit`).
-    <div data-testid={`espejo-fila-${fila.personaId}`} data-fila-edicion="" style={filaGrid(columnas, ALTO_LIQ.filaAlta)}>
-      <div style={COLUMNA_FIJA}>
-        <button type="button" onClick={abrir} data-testid={`espejo-nombre-${fila.personaId}`} title={`${fila.nombre} · abrir el detalle`}
-          style={{
-            display: 'block', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left',
-            color: V.tinta, font: 'inherit', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{fila.nombre}</button>
-        <div style={{ fontSize: '11px', color: V.apagado, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {`${fila.categoria ? rotuloCategoria(fila.categoria) : 'sin categoría'} · ${corta(fila.alta)}`}
-          {/* QUIEN YA NO ESTÁ NUNCA DESAPARECE DE SU QUINCENA (dueño, 14/09/2026): marca chica y apagada. */}
-          {fila.baja && (
-            <span data-testid={`baja-${fila.personaId}`} title={fila.baja.titulo} style={{ marginLeft: 6, color: V.tenue }}>{fila.baja.texto}</span>
-          )}
+    <div data-testid={`espejo-fila-${fila.personaId}`} data-fila-edicion="" data-pagada={fondo ? '1' : undefined}
+      style={{ ...filaGrid(columnas, ALTO_LIQ.filaAlta), background: fondo }}>
+      <div style={{ ...COLUMNA_FIJA, background: fondoDeColumnaFija(fondo), display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <button type="button" onClick={abrir} data-testid={`espejo-nombre-${fila.personaId}`} title={`${fila.nombre} · abrir el detalle`}
+            style={{
+              display: 'block', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left',
+              color: V.tinta, font: 'inherit', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{fila.nombre}</button>
+          <div style={{ fontSize: '11px', color: V.apagado, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {`${fila.categoria ? rotuloCategoria(fila.categoria) : 'sin categoría'} · ${corta(fila.alta)}`}
+            {/* QUIEN YA NO ESTÁ NUNCA DESAPARECE DE SU QUINCENA (dueño, 14/09/2026): marca chica y apagada. */}
+            {fila.baja && (
+              <span data-testid={`baja-${fila.personaId}`} title={fila.baja.titulo} style={{ marginLeft: 6, color: V.tenue }}>{fila.baja.texto}</span>
+            )}
+          </div>
         </div>
+        {/* UN CLIC Y ESTÁ PAGADA (dueño, 16/09/2026). Sólo donde la base ya tiene la marca (`camposEditables` trae
+            las celdas de pago cuando 20260915T2340 está; la marca es de 20260916T1300 y la acción avisa si falta). */}
+        {camposEditables.includes('pagadoBanco') && (
+          <MarcaDePago personaId={fila.personaId} grupo={fila.grupo} quincena={quincena} pagadaEn={l.pagadaEn} cerrada={fila.cerrada} />
+        )}
       </div>
       {fila.celdas.map((c) => <CeldaDeDia key={c.fecha} celda={c} personaId={fila.personaId} nombre={fila.nombre} />)}
       <CeldaHorasPagas fila={fila} edicion={{ quincena, camposEditables }} />
