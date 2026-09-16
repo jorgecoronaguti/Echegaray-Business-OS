@@ -26,7 +26,7 @@ import { hh as fmtHH, plata } from '@/shared/utils/format'
 import { diaMesISO } from '@/shared/utils/fecha'
 import { etiquetaDeBloque } from '../services/desgloseHH'
 import {
-  ROTULO_RUBRO, avisoDeCotejo, sumaDeFilas,
+  avisoDeCotejo, subtituloDelDetalle, sumaDeFilas,
   type ComprobanteDeDetalle, type DetalleCosto, type PersonaDeHH, type QuincenaDePersona, type Rubro,
 } from '../services/detalleCostoDeObra'
 
@@ -57,7 +57,7 @@ export function PanelDetalleCosto({
   return (
     <Drawer
       titulo={titulo}
-      subtitulo={subtituloDe(rubro, detalle)}
+      subtitulo={subtituloDelDetalle(rubro, detalle)}
       ancho={460}
       onCerrar={() => router.push(cerrarHref)}
       testid="panel-detalle-costo"
@@ -78,15 +78,6 @@ export function PanelDetalleCosto({
       {detalle && <Cotejo detalle={detalle} total={sumaDeFilas(detalle)} celda={celda} />}
     </Drawer>
   )
-}
-
-/** «Subcontratos a la fecha · $3.020.000 · 10 comprobantes». */
-function subtituloDe(rubro: Rubro, d: DetalleCosto | null): string {
-  if (!d) return ROTULO_RUBRO[rubro]
-  const n = d.filas.length
-  if (d.rubro === 'hh') return `${ROTULO_RUBRO.hh} · ${fmtHH(d.total) ?? '—'} h · ${n} ${n === 1 ? 'persona' : 'personas'}`
-  if (d.rubro === 'mo') return `${ROTULO_RUBRO.mo} · ${d.total == null ? 'sin valorizar' : plata(d.total)} · ${n} persona·quincena`
-  return `${ROTULO_RUBRO[d.rubro]} · ${plata(d.total)} · ${n} ${n === 1 ? 'comprobante' : 'comprobantes'}`
 }
 
 function Vacio({ texto }: { texto: string }) {

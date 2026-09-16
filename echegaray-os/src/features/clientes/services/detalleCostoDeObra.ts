@@ -201,6 +201,24 @@ export function cierraConLaCelda(total: number | null, celda: number | null): bo
 }
 
 /**
+ * LA SEGUNDA LÍNEA DEL PANEL: «Subcontratos a la fecha · $1.967.272,73 · por vencer $12.666.727,27 ·
+ * 10 comprobantes». Lo por vencer se nombra ARRIBA y no sólo en la última columna: es la mitad de la
+ * respuesta a «qué está considerando», y era lo que antes entraba sumado al costo. Sin nada por vencer
+ * no se escribe: una línea que dice «por vencer $0» es ruido.
+ */
+export function subtituloDelDetalle(rubro: Rubro, d: DetalleCosto | null): string {
+  if (!d) return ROTULO_RUBRO[rubro]
+  const n = d.filas.length
+  if (d.rubro === 'hh') return `${ROTULO_RUBRO.hh} · ${fmtHH(d.total) ?? '—'} h · ${n} ${n === 1 ? 'persona' : 'personas'}`
+  if (d.rubro === 'mo') return `${ROTULO_RUBRO.mo} · ${d.total == null ? 'sin valorizar' : plata(d.total)} · ${n} persona·quincena`
+  return [
+    ROTULO_RUBRO[d.rubro], plata(d.total),
+    ...(d.porVencer ? [`por vencer ${plata(d.porVencer)}`] : []),
+    `${n} ${n === 1 ? 'comprobante' : 'comprobantes'}`,
+  ].join(' · ')
+}
+
+/**
  * QUÉ DICE EL PIE CUANDO EL PANEL NO CIERRA CON LA CELDA. `null` = cierra, y no se escribe nada.
  *
  * ÁMBAR ES PARA UN PROBLEMA, Y UNA CACHÉ NO LO ES. El desglose de HH es el mismo que el de la pantalla

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  armarDetalleCosto, avisoDeCotejo, cierraConLaCelda, esRubroSinObra, leerRubro, sumaDeFilas,
+  armarDetalleCosto, avisoDeCotejo, cierraConLaCelda, esRubroSinObra, leerRubro, subtituloDelDetalle, sumaDeFilas,
 } from './detalleCostoDeObra.ts'
 import { armarCostosPorObra, tituloMateriales, tituloSubcontratos } from './costosDeObra.ts'
 import { porVencerDeMateriales, textoPorVencer } from './porVencer.ts'
@@ -111,6 +111,23 @@ test('hh: una persona por fila, y la suma es la de la celda', () => {
   assert.equal(sumaDeFilas(d), 193)
   assert.equal(d.filas[0].dias, 6)
   assert.equal(d.desde, '2026-09-08')
+})
+
+test('el subtítulo del panel nombra lo por vencer, y calla cuando no hay nada por vencer', () => {
+  const d = armarDetalleCosto(SUBCONTRATOS_OB11)
+  assert.ok(d)
+  assert.equal(
+    subtituloDelDetalle('subcontratos', d),
+    'Subcontratos a la fecha · $3.020.000 · por vencer $12.864.000 · 10 comprobantes',
+  )
+  // SIN NADA POR VENCER NO SE ESCRIBE «por vencer $0».
+  const pagado = armarDetalleCosto({
+    ...SUBCONTRATOS_OB11, total: '1800000.00', por_vencer: 0, n: 1, filas: [SUBCONTRATOS_OB11.filas[0]],
+  })
+  assert.ok(pagado)
+  assert.equal(subtituloDelDetalle('subcontratos', pagado), 'Subcontratos a la fecha · $1.800.000 · 1 comprobante')
+  // SIN DETALLE, EL NOMBRE DE LA COLUMNA Y NADA MÁS: no se inventa un cero.
+  assert.equal(subtituloDelDetalle('mo', null), 'Mano de obra a la fecha')
 })
 
 test('hh de la caché: el pie dice de cuándo es el desglose, y no acusa un descuadre que no existe', () => {
