@@ -87,11 +87,15 @@ export function aPagarProximos(filas: PosicionImpuesto[], hoy: string) {
   }
 }
 
-/** El saldo a favor del último período de cada impuesto que declara saldo. Null no se publica como 0. */
+/**
+ * El saldo a favor del último período CERRADO de cada impuesto que declara saldo. Null no se publica
+ * como 0. Un mes parcial no cuenta: medido en producción el 16/09/2026, septiembre (ARCA al 04/09) ponía
+ * el IVA a favor en $265.832 contra $6.181.413 de agosto — cuatro días de ventas contra un mes entero.
+ */
 export function saldosAFavor(filas: PosicionImpuesto[]) {
   const ultimo = new Map<Impuesto, PosicionImpuesto>()
   for (const f of filas) {
-    if (f.concepto !== 'ddjj' || f.saldo_a_favor === null) continue
+    if (f.concepto !== 'ddjj' || f.saldo_a_favor === null || f.detalle?.parcial) continue
     const u = ultimo.get(f.impuesto)
     if (!u || f.periodo > u.periodo) ultimo.set(f.impuesto, f)
   }
@@ -120,8 +124,14 @@ export const FUENTES_FRESCURA = [
 /** Una corrida del sincronizador más vieja que esto ya no es «cada 2 h». */
 export const HORAS_SINCRONIZACION_VIEJA = 5
 
+/**
+ * EL DÍA EN SAN JUAN (UTC−3, sin horario de verano). `toISOString()` a secas da el día UTC: desde las
+ * 21 h un vencimiento de hoy se leería como de ayer, «vencido».
+ */
+export const hoyAR = (ahora: Date) => new Date(ahora.getTime() - 3 * 3_600_000).toISOString().slice(0, 10)
+
 export function frescura(sinc: Sincronizacion | null, ahora: Date) {
-  const hoy = ahora.toISOString().slice(0, 10)
+  const hoy = hoyAR(ahora)
   const fuentes = FUENTES_FRESCURA.map((f) => {
     const l = sinc?.lectores?.[f.lector]
     const al = l?.datos_al ?? null

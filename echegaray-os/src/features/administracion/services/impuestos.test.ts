@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { aPagarProximos, frescura, porPeriodo, saldosAFavor, rotuloPeriodo, type PosicionImpuesto } from './impuestos.ts'
+import { aPagarProximos, frescura, hoyAR, porPeriodo, saldosAFavor, rotuloPeriodo, type PosicionImpuesto } from './impuestos.ts'
 
 const fila = (x: Partial<PosicionImpuesto>): PosicionImpuesto => ({
   impuesto: 'iva', periodo: '2026-08', concepto: 'ddjj', fuente: 'ddjj_contador', estado: 'presentado',
@@ -24,10 +24,11 @@ test('a pagar en 30 días: entra lo vencido sin pago y lo de importe desconocido
   assert.equal(r.vencidos, 1)
 })
 
-test('el saldo a favor es el del último período de cada impuesto, no la suma de los meses', () => {
+test('el saldo a favor es el del último período CERRADO de cada impuesto, no la suma ni el mes parcial', () => {
   const s = saldosAFavor([
     fila({ periodo: '2026-07', saldo_a_favor: 9856370.42 }),
     fila({ periodo: '2026-08', saldo_a_favor: 6181413.24, fuente: 'calculo' }),
+    fila({ periodo: '2026-09', saldo_a_favor: 265832, fuente: 'calculo', detalle: { parcial: true } }),
     fila({ impuesto: 'iibb', periodo: '2026-08', saldo_a_favor: 0 }),
     fila({ impuesto: 'ganancias', concepto: 'anticipo', saldo_a_favor: 99 }),
     fila({ impuesto: 'cargas_sociales', saldo_a_favor: null }),
@@ -56,4 +57,9 @@ test('por período: del más nuevo al más viejo, IVA antes que IIBB', () => {
   const o = porPeriodo([fila({ impuesto: 'iibb' }), fila({ periodo: '2026-01' }), fila({})])
   assert.deepEqual(o.map((f) => `${f.periodo}·${f.impuesto}`), ['2026-08·iva', '2026-08·iibb', '2026-01·iva'])
   assert.equal(rotuloPeriodo('2026-08'), 'ago-26')
+})
+
+test('hoy es el día de San Juan, no el de UTC: a las 22 h del 16/09 sigue siendo 16/09', () => {
+  assert.equal(hoyAR(new Date('2026-09-17T01:00:00Z')), '2026-09-16')
+  assert.equal(hoyAR(new Date('2026-09-17T03:00:00Z')), '2026-09-17')
 })
