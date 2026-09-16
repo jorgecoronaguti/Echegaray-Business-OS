@@ -50,7 +50,10 @@ export function PorVencer({ texto }: { texto: string | null }) {
     <span
       data-testid="por-vencer"
       className="font-mono tabular-nums"
-      style={{ fontSize: '10.5px', lineHeight: '12px', color: V.tenue, whiteSpace: 'nowrap', textAlign: 'right' }}
+      title={texto}
+      // BLOQUE CON ELIPSIS: a 1.440 px el «+ $12.666.727 por vencer» se montaba 16 px sobre la celda de al lado
+      // (QA 15/09). Un `nowrap` en línea desborda; un bloque que recorta no.
+      style={{ display: 'block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '10.5px', lineHeight: '12px', color: V.tenue, whiteSpace: 'nowrap', textAlign: 'right' }}
     >
       {texto}
     </span>
