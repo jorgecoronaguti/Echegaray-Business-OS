@@ -1,0 +1,20 @@
+...X
+
+Failed tests:
+
+✖ el bloque conserva de quién y de cuándo viene la decisión (1.016296ms)
+  AssertionError [ERR_ASSERTION]: y contra qué planilla se copió el orden («Obreros 26» de JORNALES)
+      at TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/wt-dev-router/echegaray-os/src/features/administracion/components/liquidacion/cuadro/e2eAlDia.test.mjs:97:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: "const tabla = page.getByTestId('espejo-encabezado')\n    // Dueño, 14/09/2026: blanco (recibo) + negro. Dos bandas rotuladas arriba y las columnas debajo.\n    await expect(page.getByTestId('banda-blanco')).toHaveText(/blanco · recibo/i)\n    await expect(page.getByTestId('banda-negro')).toHaveText(/negro/i)\n    // El orden de las columnas según PLATA, incluyendo 'Persona' al principio.\n    for (const c of ['Persona', 'Horas', 'Hs recibo', '$/h cat.', 'Banco', 'Pagado', 'Saldo', 'Hs', '$/h negro', 'Importe', 'Pagado', 'Saldo', 'Presentismo', 'Efect. red.', 'Total', 'Pagado', 'Saldo', 'Saldo red.']) {\n      await expect(tabla).toContainText(c)\n    }\n    const rotulos = await tabla.locator(':scope > div').allTextContents()\n    const i = (t: string) => rotulos.findIndex((r) => r.includes(t))\n    expect(i('Banco'), 'el blanco va antes que el negro').toBeLessThan(i('$/h negro'))\n    expect(i('Importe'), 'el negro va antes del presentismo').toBeLessThan(i('Presentismo'))\n    expect(i('Saldo red.'), 'saldo redondeado va al final').toBeGreaterThan(i('Saldo'))\n    for (const p of ['Banco', 'Pagado banco', 'Saldo banco', 'Negro', 'Pagado efectivo', 'Saldo efectivo', 'Presentismo en juego', 'Efectivo redondeado', 'Total', 'Pagado', 'Saldo', 'Saldo redondeado']) {\n      await expect(page.getByTestId('espejo-pie')).toContainText(p)\n    }\n\n    // LA FILA DE TOTAL: 48-58 px y `border-top: 1px solid #30302F` — el handoff §2 no la deja opcional.\n    const total = page.getByTestId('",
+    expected: /JORNALES/,
+    operator: 'match',
+    diff: 'simple'
+  }

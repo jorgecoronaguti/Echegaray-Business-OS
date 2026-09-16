@@ -2,7 +2,7 @@
 // una decisión así no puede depender de un modelo, y un control que no puede dar rojo no controla.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { clasificar, escaleraDe, RIESGO, ESTADO, correrTarea } from './router.mjs'
+import { clasificar, escaleraDe, RIESGO, ESTADO, correrTarea, leerBloqueadas } from './router.mjs'
 import { claudeDisponible, ClaudeNoDisponible, ejecutorClaude } from './ejecutores.mjs'
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -94,4 +94,22 @@ test('en verde y sin reparaciones, la tarea se acepta y queda en la bitácora', 
   assert.equal(tz.estado, ESTADO.ACEPTADA)
   assert.equal(tz.ejecutorQueLaHizo, 'deterministico')
   assert.match(readFileSync(path.join(raiz, '.claude/estado/dev-router.jsonl'), 'utf8'), /aceptada/)
+})
+
+test('una tarea que se resuelve SALE de la lista de bloqueadas — si no, el handoff miente', async () => {
+  const raiz = mkdtempSync(path.join(tmpdir(), 'devrouter-'))
+  const antes = process.env.CLAUDE_UNAVAILABLE
+  process.env.CLAUDE_UNAVAILABLE = '1'
+  try {
+    // Primero falla y queda bloqueada…
+    await correrTarea(raiz, { id: 'T-doble', titulo: 'editar un spec', archivos: ['tests/a.spec.ts'], objetivo: 'x',
+      intentos: { deterministico: async () => ({ ok: false, ms: 1, costoUsd: 0, porQue: 'no pude' }) }, plan: [] }, { maxReparaciones: 0 })
+    assert.equal(leerBloqueadas(raiz).length, 1)
+    // …y después el mismo id se resuelve.
+    const ok = await correrTarea(raiz, { id: 'T-doble', titulo: 'editar un spec', archivos: ['tests/a.spec.ts'], objetivo: 'x',
+      intentos: { deterministico: async () => ({ ok: true, ms: 1, costoUsd: 0, porQue: 'ahora sí' }) },
+      plan: [async () => ({ nombre: 'c', verde: true, codigo: 0, ms: 1, cola: '', comando: 'true' })] })
+    assert.equal(ok.estado, ESTADO.ACEPTADA)
+    assert.deepEqual(leerBloqueadas(raiz), [], 'ya no puede seguir figurando como pendiente de Claude')
+  } finally { if (antes === undefined) delete process.env.CLAUDE_UNAVAILABLE; else process.env.CLAUDE_UNAVAILABLE = antes }
 })

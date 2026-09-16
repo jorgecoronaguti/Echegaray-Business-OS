@@ -112,6 +112,17 @@ export function guardarBloqueadas(raiz, filas) {
   return PENDIENTES(raiz)
 }
 
+/**
+ * Sacar de la lista de bloqueadas lo que después se resolvió.
+ * Sin esto la lista sólo crece y el handoff miente: Claude vuelve y rehace trabajo ya hecho.
+ * Encontrado el 16/09/2026 mirando el JSON después de la prueba de fuego, no en un test.
+ */
+export function desbloquear(raiz, id) {
+  if (!existsSync(PENDIENTES(raiz))) return
+  const quedan = JSON.parse(readFileSync(PENDIENTES(raiz), 'utf8')).filter((f) => f.id !== id)
+  writeFileSync(PENDIENTES(raiz), `${JSON.stringify(quedan, null, 2)}\n`)
+}
+
 export function leerBloqueadas(raiz) {
   return existsSync(PENDIENTES(raiz)) ? JSON.parse(readFileSync(PENDIENTES(raiz), 'utf8')) : []
 }
@@ -170,6 +181,7 @@ export async function correrTarea(raiz, tarea, { maxReparaciones = 2 } = {}) {
         traza.ejecutorQueLaHizo = nombre; traza.modelo = r.modelo; traza.proveedor = r.proveedor
         traza.reparaciones = reparacion
         traza.ms = Date.now() - t0; traza.costoUsd = costoUsd
+        desbloquear(raiz, id)
         anotar(raiz, traza)
         return traza
       }

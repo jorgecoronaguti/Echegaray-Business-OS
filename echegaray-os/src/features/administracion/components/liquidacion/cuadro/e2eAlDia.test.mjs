@@ -80,3 +80,19 @@ test('las aserciones de orden comparan columnas que existen (si no, comparan con
   const rotas = ordenes.filter((o) => ![...legales].some((l) => l === o || l.startsWith(o)))
   assert.deepEqual(rotas, [], `i('…') sobre rótulos inexistentes devuelve -1 y la comparación no prueba nada: ${rotas.join(' · ')}`)
 })
+
+/**
+ * LA PROCEDENCIA NO SE BORRA AL ACTUALIZAR.
+ *
+ * Encontrado el 16/09/2026 auditando el trabajo del Dev Router: el modelo puso la lista de columnas
+ * al día —correctamente— pero reemplazó el comentario «El orden de la pestaña "Obreros 26" de
+ * JORNALES (dueño, 14/09/2026)» por uno genérico. En este repo el comentario que dice QUIÉN pidió
+ * algo y CUÁNDO no es decoración: es la única defensa contra que el próximo cambio deshaga una
+ * decisión del dueño sin enterarse. Ningún test lo protegía, así que ahora sí.
+ */
+test('el bloque conserva de quién y de cuándo viene la decisión', () => {
+  const b = bloqueDelCuadro()
+  assert.match(b, /due[ñn]o/i, 'el bloque tiene que decir que esto lo decidió el dueño')
+  assert.match(b, /\b\d{2}\/\d{2}\/\d{4}\b/, 'y con qué fecha, para poder ir al pedido original')
+  assert.match(b, /JORNALES/, 'y contra qué planilla se copió el orden («Obreros 26» de JORNALES)')
+})

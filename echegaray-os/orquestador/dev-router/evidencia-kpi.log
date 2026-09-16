@@ -1,0 +1,27 @@
+KPIs DE DESARROLLO — Dev Router (NO son los del ERP)
+
+CLAUDE DEVELOPMENT OFFLOAD RATE ....... 66.7% (n=3)
+  tareas corridas ..................... 4  (elegibles 3, D3 excluidas del denominador)
+  terminadas sin Claude ............... 2
+  bloqueadas esperando a Claude ....... 2
+  escaladas / rechazadas .............. 0 / 0
+  reparaciones ........................ 0
+  costo HF real (estimado por tarifa) . US$ 0.009364
+  tiempo total ........................ 23.1 s
+
+POR RIESGO
+┌─────────┬────────┬────────┬───────────┐
+│ (index) │ riesgo │ tareas │ sinClaude │
+├─────────┼────────┼────────┼───────────┤
+│ 0       │ 'D0'   │ 0      │ 0         │
+│ 1       │ 'D1'   │ 3      │ 2         │
+│ 2       │ 'D2'   │ 0      │ 0         │
+│ 3       │ 'D3'   │ 1      │ 0         │
+└─────────┴────────┴────────┴───────────┘
+POR MODELO
+┌─────────────────────────────────────┬──────────┬──────────────────────┬───────┬───────────┬────────┬──────────────────┐
+│ (index)                             │ intentos │ verificacionesVerdes │ ms    │ costoUsd  │ tokens │ bloqueosPolitica │
+├─────────────────────────────────────┼──────────┼──────────────────────┼───────┼───────────┼────────┼──────────────────┤
+│ qwen/qwen3-coder-480b-a35b-instruct │ 4        │ 1                    │ 20571 │ 0.0071073 │ 10697  │ 0                │
+│ moonshotai/Kimi-K2.7-Code           │ 1        │ 1                    │ 1409  │ 0.0022568 │ 2311   │ 0                │
+└─────────────────────────────────────┴──────────┴──────────────────────┴───────┴───────────┴────────┴──────────────────┘

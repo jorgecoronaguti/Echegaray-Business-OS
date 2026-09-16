@@ -1,0 +1,38 @@
+CLAUDE DISPONIBLE: false  (CLAUDE_UNAVAILABLE=1)
+
+══ Qwen/Qwen3-Coder-480B-A35B-Instruct ══  contexto entregado ≈ 956 tokens
+   · deterministico: saltado (la tarea no define este ejecutor)
+   · hf intento 0 → ok=true 4602ms prov=? el modelo respondió
+       ROJO  tests(1) (168ms)
+         ✖ el bloque conserva de quién y de cuándo viene la decisión (1.057572ms)
+           AssertionError [ERR_ASSERTION]: y contra qué planilla se copió el orden («Obreros 26» de JORNALES)
+             actual: "const tabla = page.getByTestId('espejo-encabezado')\n    // Dueño, 14/09/2026: blanco (recibo) + negro. Dos bandas rotuladas arriba y las columnas debajo.\n    await expect(page.getByTestId('banda-blanco')).toHaveText(/blanco · recibo/i)\n    await expect(page.getByTestId('banda-negro')).toHaveText(/negro/i)\n    // El orden de las columnas según PLATA, incluyendo 'Persona' al principio.\n    for (const c of ['Persona', 'Horas', 'Hs recibo', '$/h cat.', 'Banco', 'Pagado', 'Saldo', 'Hs', '$/h negro', 'Importe', 'Pagado', 'Saldo', 'Presentismo', 'Efect. red.', 'Total', 'Pagado', 'Saldo', 'Saldo red.']) {\n      await expect(tabla).toContainText(c)\n    }\n    const rotulos = await tabla.locator(':scope > div').allTextContents()\n    const i = (t: string) => rotulos.findIndex((r) => r.includes(t))\n    expect(i('Banco'), 'el blanco va antes que el negro').toBeLessThan(i('$/h negro'))\n    expect(i('Importe'), 'el negro va antes que presentismo').toBeLessThan(i('Presentismo'))\n    expect(i('Saldo'), 'saldo va antes que saldo redondeado').toBeLessThan(i('Saldo red.'))\n    for (const p of ['Banco', 'Pagado banco', 'Saldo banco', 'Negro', 'Pagado efectivo', 'Saldo efectivo', 'Sueldos mensuales', 'Presentismo en juego', 'Efectivo redondeado', 'Total', 'Pagado', 'Saldo', 'Saldo redondeado']) {\n      await expect(page.getByTestId('espejo-pie')).toContainText(p)\n    }\n\n    // LA FILA DE TOTAL: 48-58 px y `border-top: 1px solid #30302F` — el handoff §2 no la deja opcional.\n    const total = page.getByTestId('",
+   · hf intento 1 → ok=true 5089ms prov=? el modelo respondió
+       ROJO  tests(1) (151ms)
+         ✖ el bloque conserva de quién y de cuándo viene la decisión (0.912363ms)
+           AssertionError [ERR_ASSERTION]: y contra qué planilla se copió el orden («Obreros 26» de JORNALES)
+             actual: "const tabla = page.getByTestId('espejo-encabezado')\n    // Dueño, 14/09/2026: blanco (recibo) + negro. Dos bandas rotuladas arriba y las columnas debajo.\n    await expect(page.getByTestId('banda-blanco')).toHaveText(/blanco · recibo/i)\n    await expect(page.getByTestId('banda-negro')).toHaveText(/negro/i)\n    // El orden de las columnas según PLATA, incluyendo 'Persona' al principio.\n    for (const c of ['Persona', 'Horas', 'Hs recibo', '$/h cat.', 'Banco', 'Pagado', 'Saldo', 'Hs', '$/h negro', 'Importe', 'Pagado', 'Saldo', 'Presentismo', 'Efect. red.', 'Total', 'Pagado', 'Saldo', 'Saldo red.']) {\n      await expect(tabla).toContainText(c)\n    }\n    const rotulos = await tabla.locator(':scope > div').allTextContents()\n    const i = (t: string) => rotulos.findIndex((r) => r.includes(t))\n    expect(i('Banco'), 'el blanco va antes que el negro').toBeLessThan(i('$/h negro'))\n    expect(i('Importe'), 'el negro va antes que presentismo').toBeLessThan(i('Presentismo'))\n    expect(i('Saldo'), 'saldo va antes que saldo redondeado').toBeLessThan(i('Saldo red.'))\n    for (const p of ['Banco', 'Pagado banco', 'Saldo banco', 'Negro', 'Pagado efectivo', 'Saldo efectivo', 'Sueldos mensuales', 'Presentismo en juego', 'Efectivo redondeado', 'Total', 'Pagado', 'Saldo', 'Saldo redondeado']) {\n      await expect(page.getByTestId('espejo-pie')).toContainText(p)\n    }\n\n    // LA FILA DE TOTAL: 48-58 px y `border-top: 1px solid #30302F` — el handoff §2 no la deja opcional.\n    const total = page.getByTestId('",
+   · hf intento 2 → ok=true 5831ms prov=? el modelo respondió
+       ROJO  tests(1) (145ms)
+         ✖ el bloque conserva de quién y de cuándo viene la decisión (0.931619ms)
+           AssertionError [ERR_ASSERTION]: y contra qué planilla se copió el orden («Obreros 26» de JORNALES)
+             actual: "const tabla = page.getByTestId('espejo-encabezado')\n    // Dueño, 14/09/2026: blanco (recibo) + negro. Dos bandas rotuladas arriba y las columnas debajo.\n    await expect(page.getByTestId('banda-blanco')).toHaveText(/blanco · recibo/i)\n    await expect(page.getByTestId('banda-negro')).toHaveText(/negro/i)\n    // El orden de las columnas según PLATA, incluyendo 'Persona' al principio.\n    for (const c of ['Persona', 'Horas', 'Hs recibo', '$/h cat.', 'Banco', 'Pagado', 'Saldo', 'Hs', '$/h negro', 'Importe', 'Pagado', 'Saldo', 'Presentismo', 'Efect. red.', 'Total', 'Pagado', 'Saldo', 'Saldo red.']) {\n      await expect(tabla).toContainText(c)\n    }\n    const rotulos = await tabla.locator(':scope > div').allTextContents()\n    const i = (t: string) => rotulos.findIndex((r) => r.includes(t))\n    expect(i('Banco'), 'el blanco va antes que el negro').toBeLessThan(i('$/h negro'))\n    expect(i('Importe'), 'el negro va antes que presentismo').toBeLessThan(i('Presentismo'))\n    expect(i('Saldo'), 'saldo va antes que saldo redondeado').toBeLessThan(i('Saldo red.'))\n    for (const p of ['Banco', 'Pagado banco', 'Saldo banco', 'Negro', 'Pagado efectivo', 'Saldo efectivo', 'Sueldos mensuales', 'Presentismo en juego', 'Efectivo redondeado', 'Total', 'Pagado', 'Saldo', 'Saldo redondeado']) {\n      await expect(page.getByTestId('espejo-pie')).toContainText(p)\n    }\n\n    // LA FILA DE TOTAL: 48-58 px y `border-top: 1px solid #30302F` — el handoff §2 no la deja opcional.\n    const total = page.getByTestId('",
+   · claude: BLOQUEADO — CLAUDE_UNAVAILABLE=1 — la tarea queda bloqueada esperando a Claude, no se sustituye
+   ⇒ bloqueada-espera-claude en 16028ms, US$ 0.005526
+
+══ moonshotai/Kimi-K2.7-Code ══  contexto entregado ≈ 956 tokens
+   · deterministico: saltado (la tarea no define este ejecutor)
+   · hf intento 0 → ok=true 1409ms prov=? el modelo respondió
+       VERDE tests(1) (141ms)
+       VERDE sintaxis(tests/liquidacion-fidelidad.spec.ts) (125ms)
+       VERDE diff (13ms)
+   ⇒ aceptada por hf/moonshotai/Kimi-K2.7-Code en 1691ms, US$ 0.002257
+   (se deja el trabajo aplicado y se corta acá)
+
+RESUMEN
+┌─────────┬───────────────────────────────────────┬───────────────────────────┬────────┬──────────┬──────────────┬───────┬──────────────────────┬──────────┬───────────┐
+│ (index) │ modelo                                │ estado                    │ riesgo │ intentos │ reparaciones │ ms    │ costoUsd             │ tokensHF │ proveedor │
+├─────────┼───────────────────────────────────────┼───────────────────────────┼────────┼──────────┼──────────────┼───────┼──────────────────────┼──────────┼───────────┤
+│ 0       │ 'Qwen/Qwen3-Coder-480B-A35B-Instruct' │ 'bloqueada-espera-claude' │ 'D1'   │ 3        │ null         │ 16028 │ 0.005525550000000001 │ 8436     │ null      │
+│ 1       │ 'moonshotai/Kimi-K2.7-Code'           │ 'aceptada'                │ 'D1'   │ 1        │ 0            │ 1691  │ 0.0022568            │ 2311     │ null      │
+└─────────┴───────────────────────────────────────┴───────────────────────────┴────────┴──────────┴──────────────┴───────┴──────────────────────┴──────────┴───────────┘
