@@ -41,4 +41,9 @@ test('EL BOTÓN LLAMA A LA ACCIÓN DEL SERVIDOR CON LA VENTANA, EL GRUPO Y LA PE
   assert.doesNotMatch(MARCA, /#[0-9A-Fa-f]{3,6}\b/, 'ningún color fuera de los tokens')
   assert.match(MARCA, /disabled=\{pendiente\}/, 'no admite un segundo clic mientras escribe')
   assert.match(MARCA, /if \(cerrada\)/, 'la quincena cerrada no se toca')
+  // HOVER, ALTO DE CONTROL Y FOCO VAN POR CLASES (QA, 16/09/2026): un `style` en línea no puede cambiar con el puntero.
+  assert.match(MARCA, /hover:bg-surface-quiet/, 'hover claro en reposo')
+  assert.match(MARCA, /h-control max-\[767px\]:h-11/, '34 px en escritorio, 44 en el teléfono')
+  assert.match(MARCA, /focus-visible:ring-2/, 'foco visible')
+  assert.doesNotMatch(MARCA, /style=\{\{[^}]*background/, 'ningún fondo en línea que pise las clases')
 })
