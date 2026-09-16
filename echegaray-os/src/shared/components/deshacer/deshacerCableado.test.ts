@@ -52,8 +52,10 @@ test('PILA VACÍA + ATAJO: NO SE RENDERIZA NINGÚN AVISO', () => {
 test('INLINEEDIT GUARDA POR EL HOOK, Y TODOS SUS CONSUMIDORES LO HEREDAN', () => {
   const i = leer('shared/components/ds/InlineEdit.tsx')
   assert.match(i, /useGuardadoDeshacible\(\{/)
-  assert.match(i, /await guardarDeshacible\(v\)/, 'MUTACIÓN: llamar a `guardar` directo saltea la pila')
-  assert.ok(!/await guardar\(v\)/.test(i), 'ningún guardado directo')
+  // `aGuardar` DESDE EL 15/09/2026: es lo tecleado —la CUENTA si empieza con `=`, el número si no—. Lo que
+  // se protege sigue siendo lo mismo: que el guardado pase por el hook y no por `guardar` directo.
+  assert.match(i, /await guardarDeshacible\(aGuardar\)/, 'MUTACIÓN: llamar a `guardar` directo saltea la pila')
+  assert.ok(!/await guardar\(v\)|await guardar\(aGuardar\)/.test(i), 'ningún guardado directo')
   // Ningún consumidor de InlineEdit apaga el deshacer.
   const consumidores = archivos(SRC).filter((p) => /<InlineEdit\b/.test(readFileSync(p, 'utf8')))
   assert.ok(consumidores.length >= 6, `consumidores encontrados: ${consumidores.length}`)

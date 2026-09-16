@@ -154,7 +154,7 @@ export function MarcaDeOrigen({ origen, compacta = false, titulo }: {
  */
 export function CeldaEditable({
   campo, valor, unidad, ceroEsVacio = false, manual, origen, tituloDeOrigen, personaId, quincena,
-  grupo, soloLectura, ancho = 'w-24', marcaCompacta = false, rotuloDeshacer,
+  grupo, soloLectura, ancho = 'w-24', marcaCompacta = false, rotuloDeshacer, expresion = null,
 }: {
   campo: CampoEditable
   valor: number | null
@@ -177,6 +177,8 @@ export function CeldaEditable({
   marcaCompacta?: boolean
   /** Cómo se nombra en el aviso de deshacer («Banco de Rosales»). */
   rotuloDeshacer?: string
+  /** La cuenta guardada de esta celda («=340909,09+197272,73»). Se ve al abrir el campo, no en reposo. */
+  expresion?: string | null
 }) {
   const formato = escribirComo(unidad, ceroEsVacio)
   // `origen` manda cuando viaja; `manual` sigue siendo el contrato viejo para los llamadores que
@@ -198,7 +200,10 @@ export function CeldaEditable({
         falta="—"
         etiqueta={`${campo} de ${personaId}`}
         testid={`celda-${campo}-${personaId}`}
-        mostrar={(v) => formato(Number(v))}
+        expresion={expresion}
+        // UNA CUENTA SE MUESTRA COMO CUENTA. Lo pide el aviso de deshacer, que recibe lo que viajó a la acción:
+        // `Number('=9*105')` es NaN y el aviso diría «$NaN» sobre una celda que se guardó bien.
+        mostrar={(v) => (typeof v === 'string' && v.startsWith('=') ? v : formato(Number(v)))}
         // CMD/CTRL+Z: deshacer restaura el valor MANUAL anterior («sin manual» vuelve al calculado) y el servidor no
         // pisa lo que cambió (`esperado`).
         deshacer={{ anterior: manual ? String(valor ?? '') : '', verificaServidor: true, rotulo: rotuloDeshacer }}

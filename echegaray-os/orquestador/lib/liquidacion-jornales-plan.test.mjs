@@ -181,12 +181,16 @@ test('separarSalteadas: se saltea lo cerrado por alguien, lo sellado, lo reabier
 // MUTACIONES QUE PONEN ESTO ROJO: volver a una lista fija de siete, u olvidar `efectivo_redondeado`.
 test('sqlLineaEditada: sale de las columnas de la base y cubre negro_manual, horas_recibo_manual y efectivo_redondeado', async () => {
   const deLaBase = ['id', 'horas', 'cobra', 'horas_manual', 'cobra_manual', 'negro_manual', 'horas_recibo_manual',
-    'valor_hora_recibo_manual', 'horas_negro_manual', 'efectivo_redondeado', 'sellado_en', 'total']
+    'valor_hora_recibo_manual', 'horas_negro_manual', 'efectivo_redondeado', 'pagado_banco', 'pagado_efectivo',
+    'formulas', 'sellado_en', 'total']
   const sql = sqlLineaEditada(deLaBase)
-  for (const c of ['negro_manual', 'horas_recibo_manual', 'valor_hora_recibo_manual', 'horas_negro_manual', 'efectivo_redondeado', 'horas_manual']) {
+  for (const c of ['negro_manual', 'horas_recibo_manual', 'valor_hora_recibo_manual', 'horas_negro_manual',
+    'efectivo_redondeado', 'horas_manual', 'pagado_banco', 'pagado_efectivo']) {
     assert.match(sql, new RegExp(`l\\.${c} is not null`), c)
   }
-  for (const c of ['horas', 'cobra', 'total', 'sellado_en']) assert.doesNotMatch(sql, new RegExp(`l\\.${c} is not null`), c)
+  // `formulas` NO PUEDE ENTRAR: es `not null default '{}'`, así que `is not null` sería verdadero en TODAS las
+  // filas y la guarda dejaría de cargar una sola quincena desde JORNALES.
+  for (const c of ['horas', 'cobra', 'total', 'sellado_en', 'formulas']) assert.doesNotMatch(sql, new RegExp(`l\\.${c} is not null`), c)
   assert.throws(() => sqlLineaEditada(['id', 'horas']), /NO cargo nada/)
   assert.deepEqual(columnasEditadasEnApp(['x_manual; drop table y', 'ok_manual']), ['ok_manual'])
   // Una sola definición: toda celda que la web guarda (COLUMNA_DE) la reconoce la guarda.

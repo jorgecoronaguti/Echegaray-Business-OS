@@ -179,8 +179,20 @@ export function separarSalteadas(quincenas, grupo, estados = new Map()) {
   return { aCargar, salteadas }
 }
 
-/** No termina en `_manual` y también lo escribe una persona: los billetes que el dueño entrega en mano. */
-const EDITADAS_SIN_SUFIJO = Object.freeze(['efectivo_redondeado'])
+/**
+ * NO TERMINAN EN `_manual` Y TAMBIÉN LAS ESCRIBE UNA PERSONA.
+ *
+ *   efectivo_redondeado            los billetes que el dueño entrega en mano.
+ *   pagado_banco · pagado_efectivo lo que se le pagó de verdad (20260915T2340). Su valor por defecto NO vive
+ *                                  en la columna —se deriva de los adelantos—, así que `is not null` significa
+ *                                  exactamente «alguien registró este pago». Si no estuvieran acá, una línea
+ *                                  con un pago registrado a mano se recargaría desde JORNALES y el registro
+ *                                  del pago desaparecería.
+ *
+ * `formulas` NO entra y no puede entrar: es `not null default '{}'`, así que `is not null` sería verdadero en
+ * TODAS las filas y la guarda dejaría de cargar nada.
+ */
+const EDITADAS_SIN_SUFIJO = Object.freeze(['efectivo_redondeado', 'pagado_banco', 'pagado_efectivo'])
 const IDENTIFICADOR = /^[a-z_][a-z0-9_]*$/
 
 /**

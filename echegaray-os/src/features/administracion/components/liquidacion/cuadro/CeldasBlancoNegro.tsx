@@ -20,9 +20,10 @@ import { IconoDeAviso, MarcaDeOrigen } from '../CeldasDeLiquidacion'
 import { Escribible } from './CeldasDelEspejo'
 import type { CampoEditable } from '../../../services/liquidacionOverrides'
 import { horas as nHoras, pesos } from '../formato'
-import { efectivoSuperado, estadoDelPago, tituloDeJornales } from './estadoDelPago'
+import { estadoDelPago, tituloDeJornales } from './estadoDelPago'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { marcaDeCategoria, negroDeLaFila, tituloDelNetoEstimado, type SueldoBlancoNegro } from '../../../services/sueldoBlancoNegro'
+import { avisoDeExcedente } from '../../../services/pagoDeLaQuincena'
 
 const DERECHA: CSSProperties = { textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden' }
 const ESTIMADO: CSSProperties = { color: V.apagado, fontStyle: 'italic' }
@@ -248,29 +249,74 @@ export function CeldaTotal({ fila, edicion }: { fila: FilaDelEspejo; edicion?: E
   )
 }
 
+// ═══ LO PAGADO Y LO QUE FALTA (dueño, 15/09/2026) ═══
+//
+// *«necesito al lado de banco y negro lo que se le ha pagado efectivamente y que vaya restando al total o
+// incrementando en el otro llegado el caso»*. Las cuentas son las de `pagoDeLaQuincena.ts`: acá no se resta nada.
+
 /**
- * EFECTIVO = total − banco − adelanto − ya transferido. Rojo con el porqué si la fila no cierra; ámbar si
- * da negativo (el adelanto y lo transferido superan lo que le corresponde). Nunca se esconde.
+ * PAGADO — lo que se entregó de verdad por ese canal. **Arranca con los adelantos ya cargados**: una celda en
+ * cero pediría volver a pagar lo que ya salió. Escribirla la vuelve manual y manda; vaciarla devuelve el
+ * adelanto. Acepta una cuenta con `=` como cualquier celda del cuadro.
  */
-export function CeldaEfectivoDelSueldo({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
+export function CeldaPagado({ campo, fila, edicion }: {
+  campo: 'pagadoBanco' | 'pagadoEfectivo'; fila: FilaDelEspejo; edicion?: EdicionDelBlanco
+}) {
   const l = fila.linea
-  const e = estadoDelPago(l)
-  const superado = efectivoSuperado(l)
-  const color = e.noCierra ? V.neg : (superado ? V.warn : V.tinta)
-  // TOTAL EFECTIVO SE ESCRIBE (dueño, 15/09/2026). Vacío vuelve a la resta; rojo con la diferencia si no cierra.
-  if (seEscribeDinero(fila, 'enEfectivo', edicion)) {
+  const lado = campo === 'pagadoBanco' ? 'por banco' : 'en efectivo'
+  const titulo = l.manual[campo]
+    ? `pagado ${lado}, escrito a mano`
+    : `pagado ${lado}: los adelantos ya cargados de esta quincena. Escribilo para corregirlo.`
+  const testid = `pagado-${campo === 'pagadoBanco' ? 'banco' : 'efectivo'}-${fila.personaId}`
+  if (seEscribeDinero(fila, campo, edicion)) {
     return (
-      <div data-testid={`efectivo-${fila.personaId}`} data-superado={superado ? '1' : undefined}
-        title={e.noCierra ? e.titulo : (superado ?? e.titulo)} style={{ color }}>
-        <Escribible campo="enEfectivo" fila={fila} quincena={edicion.quincena} camposEditables={edicion.camposEditables} ancho={108} claseCampo="w-24" />
+      <div data-testid={testid} title={titulo}>
+        <Escribible campo={campo} fila={fila} quincena={edicion.quincena}
+          camposEditables={edicion.camposEditables} ancho={104} claseCampo="w-24" />
       </div>
     )
   }
   return (
-    <div data-testid={`efectivo-${fila.personaId}`} data-superado={superado ? '1' : undefined}
-      title={e.noCierra ? e.titulo : (superado ?? e.titulo)}
-      style={{ ...DERECHA, color, fontWeight: superado ? 600 : undefined }}>
-      {pesos(l.enEfectivo)}<MarcaDeOrigen origen={l.origen.enEfectivo} compacta />
+    <div data-testid={testid} title={titulo} style={{ ...DERECHA, color: l[campo] === 0 ? V.tenue : V.tinta }}>
+      {pesos(l[campo])}<MarcaDeOrigen origen={l.origen[campo]} compacta />
     </div>
+  )
+}
+
+/**
+ * SALDO — lo que falta pagar de ese lado. `null` se dibuja «—» (sin negro no hay saldo que afirmar).
+ *
+ * ÁMBAR CON SIGNO CUANDO ES NEGATIVO, y el `title` dice qué pasa con esa plata: no es un error de la fila, es
+ * alguien que cobró de más por un canal y se le descuenta del otro. Netearlo a cero borraría el dato.
+ */
+export function CeldaSaldo({ fila, lado }: { fila: FilaDelEspejo; lado: 'banco' | 'efectivo' | 'total' }) {
+  const p = fila.linea.pago
+  const valor = lado === 'banco' ? p.saldoBanco : lado === 'efectivo' ? p.saldoEfectivo : p.saldoTotal
+  const testid = `saldo-${lado}-${fila.personaId}`
+  if (valor == null) {
+    return (
+      <div data-testid={testid} title="Sin negro del período: no hay saldo que afirmar." style={{ ...DERECHA, color: V.tenue }}>—</div>
+    )
+  }
+  const negativo = valor < 0
+  const aPagar = lado === 'banco' ? p.aPagarBanco : lado === 'efectivo' ? p.aPagarEfectivo : null
+  const titulo = negativo
+    ? (avisoDeExcedente(p) ?? undefined)
+    : (aPagar != null && aPagar !== valor ? `a pagar hoy ${pesos(aPagar)}: el otro lado quedó pagado de más` : undefined)
+  return (
+    <div data-testid={testid} data-excedido={negativo ? '1' : undefined} title={titulo}
+      style={{ ...DERECHA, color: negativo ? V.warn : V.tinta, fontWeight: lado === 'total' ? 600 : undefined }}>
+      {pesos(valor)}
+    </div>
+  )
+}
+
+/** PAGADO TOTAL — la suma de los dos canales. No se escribe: se escriben los lados. */
+export function CeldaPagadoTotal({ fila }: { fila: FilaDelEspejo }) {
+  const p = fila.linea.pago
+  return (
+    <div data-testid={`pagado-total-${fila.personaId}`}
+      title={`por banco ${pesos(p.pagadoBanco)} + en efectivo ${pesos(p.pagadoEfectivo)}`}
+      style={{ ...DERECHA, color: p.pagado === 0 ? V.tenue : V.tinta }}>{pesos(p.pagado)}</div>
   )
 }

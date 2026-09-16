@@ -14,6 +14,7 @@ import { cierreDeLaFila, cierreDeTotales } from './cuadroDeJornales.ts'
 import { filasDelEspejo, totalesDelEspejo, type DatosDelEspejo } from './espejoDeJornales.ts'
 import { quincenaDe } from './quincena.ts'
 import type { LineaConOverrides } from './liquidacionOverrides.ts'
+import { pagoDeLaLinea } from './pagoDeLaQuincena.ts'
 
 test('Rosales 16–31/08 (planilla): gana $552.156, le falta pagar $352.156 = banco $230.240,12 + efectivo $121.915,88', () => {
   const c = cierreDeLaFila({
@@ -39,7 +40,15 @@ const linea = (personaId: string, l: Partial<LineaConOverrides>): LineaConOverri
   cobra: 0, adelanto: 0, yaTransferido: 0, porBanco: 0, enEfectivo: 0, total: 0,
   efectivoRedondeado: null, sinTarifa: false, reciboNeto: null, blancoAcuerdo: null,
   efectivoAcuerdo: null, reciboSinGiro: false, origenTarifa: 'test',
-  manual: {}, origen: {}, discrepancia: {}, ...l,
+  manual: {}, origen: {}, discrepancia: {}, pagadoBanco: 0, pagadoEfectivo: 0, formulas: {}, ...l,
+  // `pago` NO ES OPCIONAL EN LA LÍNEA REAL (15/09/2026). Se arma DESPUÉS del spread, con lo que quedó en la
+  // línea y con la misma función de producción: un fixture que lo invente daría otro pie.
+  pago: pagoDeLaLinea({
+    banco: l.porBanco ?? 0,
+    negro: (l.cobra ?? 0) - (l.porBanco ?? 0),
+    pagadoBanco: l.yaTransferido ?? 0,
+    pagadoEfectivo: l.adelanto ?? 0,
+  }),
 } as unknown as LineaConOverrides)
 
 const JORNALES = (id: string, fecha: string, horas: number) => ({

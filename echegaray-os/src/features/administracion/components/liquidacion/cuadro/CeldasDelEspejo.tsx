@@ -154,7 +154,7 @@ export function Leida({ valor, medio = false, apagada = false, unidad = 'pesos',
 const ROTULO_DE_CAMPO: Partial<Record<CampoEditable, string>> = {
   porBanco: 'Banco', adelanto: 'Adelanto efectivo', yaTransferido: 'Adelanto banco / embargos', horasRecibo: 'Hs recibo',
   valorHoraRecibo: '$/h cat.', negro: 'Importe negro', enEfectivo: 'Total efectivo', cobra: 'Cobra total', horas: 'Horas',
-  horasNegro: 'Hs negro',
+  horasNegro: 'Hs negro', pagadoBanco: 'Pagado por banco', pagadoEfectivo: 'Pagado en efectivo',
 }
 
 /** Una celda que se escribe. Marco de control para que se vea cuál decide una persona y cuál no. */
@@ -191,6 +191,7 @@ export function Escribible({ campo, fila, quincena, camposEditables, ancho, clas
           quincena={quincena}
           grupo={fila.grupo}
           soloLectura={soloLectura}
+          expresion={fila.linea.formulas[campo] ?? null}
           ancho={claseCampo}
           rotuloDeshacer={`${ROTULO_DE_CAMPO[campo] ?? campo} de ${fila.nombre}`}
           marcaCompacta

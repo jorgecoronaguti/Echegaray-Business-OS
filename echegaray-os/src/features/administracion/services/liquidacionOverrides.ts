@@ -32,6 +32,8 @@ import type { GrupoLiquidacion, LineaLiquidada } from './liquidacionQuincena.ts'
 import { repartoDelAcuerdo } from './liquidacionAcuerdo.ts'
 import { sueldoBlancoNegro, type EntradaDeBlanco, type SueldoBlancoNegro } from './sueldoBlancoNegro.ts'
 import { cobraConPresentismo, presentismoDeLinea, type EntradaDePresentismo, type PresentismoDeLinea } from './presentismo.ts'
+import { negroDeLaFila } from './sueldoBlancoNegro.ts'
+import { pagoDeLaLinea, type PagoDeLaLinea } from './pagoDeLaQuincena.ts'
 
 /** Las celdas que se pueden pisar a mano. El nombre NO está: es la única que el dueño dejó afuera. */
 export const CAMPOS_EDITABLES = [
@@ -43,6 +45,10 @@ export const CAMPOS_EDITABLES = [
   'negro',
   // HS NEGRO (15/09/2026: «todas las celdas editables»). Con ella, Importe negro = Hs negro × $/h negro.
   'horasNegro',
+  // LO PAGADO DE VERDAD (15/09/2026: «necesito al lado de banco y negro lo que se le ha pagado efectivamente»).
+  // NO son adelantos: un adelanto es un eslabón de la resta que compone el sueldo, esto es un HECHO de tesorería.
+  // Arrancan calculados desde los adelantos —lo ya entregado— y se corrigen a mano al registrar un pago más.
+  'pagadoBanco', 'pagadoEfectivo',
 ] as const
 
 export type CampoEditable = (typeof CAMPOS_EDITABLES)[number]
@@ -129,6 +135,22 @@ export interface LineaConOverrides extends LineaLiquidada {
   horasNegro: number | null
   /** La suma de los días, antes de cualquier override: contra ella se avisa una Horas escrita distinta. */
   horasDeLosDias: number | null
+  /** Lo transferido de verdad: los adelantos por banco, salvo que alguien haya escrito otra cifra. */
+  pagadoBanco: number
+  /** Lo entregado en mano de verdad: los adelantos en efectivo, salvo que alguien haya escrito otra cifra. */
+  pagadoEfectivo: number
+  /**
+   * LOS SALDOS DE LA FILA (dueño, 15/09/2026). La cuenta entera vive en `pagoDeLaQuincena.ts`: banco − pagado,
+   * negro − pagado, y el exceso de un lado descontado del otro. Acá sólo se le entrega la entrada.
+   */
+  pago: PagoDeLaLinea
+  /**
+   * LA CUENTA QUE ESCRIBIÓ UNA PERSONA EN CADA CELDA, por campo: `{ pagadoEfectivo: '=100000+40000' }`.
+   *
+   * El valor que manda para la plata es el de la celda; esto existe para que al reabrirla se vea de dónde salió
+   * el número, como en el Sheet. Vacío = ninguna celda de esta fila se escribió con `=`.
+   */
+  formulas: Partial<Record<CampoEditable, string>>
 }
 
 export type OrigenDeCelda = 'calculado' | 'jornales' | 'manual'
@@ -148,11 +170,13 @@ const redondear2 = (n: number): number => Math.round(n * 100) / 100
 const SIN_MARCAS: Record<CampoEditable, boolean> = {
   horas: false, cobra: false, adelanto: false, yaTransferido: false,
   porBanco: false, enEfectivo: false, total: false, horasRecibo: false, valorHoraRecibo: false, negro: false, horasNegro: false,
+  pagadoBanco: false, pagadoEfectivo: false,
 }
 
 const TODO_CALCULADO: Record<CampoEditable, OrigenDeCelda> = {
   horas: 'calculado', cobra: 'calculado', adelanto: 'calculado', yaTransferido: 'calculado',
   porBanco: 'calculado', enEfectivo: 'calculado', total: 'calculado', horasRecibo: 'calculado', valorHoraRecibo: 'calculado', negro: 'calculado', horasNegro: 'calculado',
+  pagadoBanco: 'calculado', pagadoEfectivo: 'calculado',
 }
 
 /**
@@ -187,6 +211,8 @@ export function aplicarOverrides(
   blanco: EntradaDeBlanco | null = null,
   /** Lo que el presentismo necesita saber antes de las horas. `null` = no se evalúa (llamador viejo). */
   entradaPresentismo: EntradaDePresentismo | null = null,
+  /** Las cuentas escritas con `=` en esta fila, por campo. Viajan para poder reabrir la celda con su expresión. */
+  formulas: Partial<Record<CampoEditable, string>> = {},
 ): LineaConOverrides {
   const manual = { ...SIN_MARCAS }
   const origen = { ...TODO_CALCULADO }
@@ -218,7 +244,8 @@ export function aplicarOverrides(
     return jr
   }
   /** Horas y total no tienen fuente en JORNALES: o los escribió alguien, o se calculan. */
-  const puesto = (campo: 'horas' | 'total' | 'horasRecibo' | 'valorHoraRecibo' | 'negro' | 'horasNegro'): number | null => {
+  const puesto = (campo: 'horas' | 'total' | 'horasRecibo' | 'valorHoraRecibo' | 'negro' | 'horasNegro'
+    | 'pagadoBanco' | 'pagadoEfectivo'): number | null => {
     const v = ov[campo]
     if (v == null || !Number.isFinite(v)) return null
     manual[campo] = true
@@ -268,6 +295,23 @@ export function aplicarOverrides(
   const total = (ov.total != null && Number.isFinite(ov.total) ? puesto('total') : null) ?? totalCalc
   // EL ACUERDO 50/50 SE REHACE SOBRE EL COBRA FINAL: las mitades son de LO QUE SE VA A PAGAR.
   const acuerdo = repartoDelAcuerdo(cobra, base.modalidad)
+  // ═══ LO PAGADO DE VERDAD (dueño, 15/09/2026) ═══
+  //
+  // El valor de arranque son LOS ADELANTOS: lo que ya se entregó por cada canal. No es una suposición —salen de
+  // `nomina_adelanto` y de la planilla— y por eso la celda nace con la cifra puesta en vez de vacía. Escribir la
+  // celda la vuelve manual y manda, igual que en el resto del cuadro.
+  const pagadoBanco = puesto('pagadoBanco') ?? yaTransferido
+  const pagadoEfectivo = puesto('pagadoEfectivo') ?? adelanto
+  const pago = pagoDeLaLinea({
+    banco: porBanco,
+    // EL MISMO NEGRO QUE MUESTRA LA COLUMNA (`negroDeLaFila`): un saldo calculado sobre otro negro que el
+    // dibujado sería una segunda respuesta a «cuánto le falta cobrar en mano».
+    negro: negroDeLaFila({
+      netoMensual: base.netoMensual, cobra, porBanco, sueldo, modalidad: base.modalidad,
+      manual: { cobra: manual.cobra, porBanco: manual.porBanco },
+    }),
+    pagadoBanco, pagadoEfectivo,
+  })
 
   return {
     ...base,
@@ -290,6 +334,7 @@ export function aplicarOverrides(
     negro: sueldo?.negro ?? null,
     horasNegro: sueldo?.horasNegro ?? null,
     horasDeLosDias: base.horas,
+    pagadoBanco, pagadoEfectivo, pago, formulas,
   }
 }
 
@@ -325,12 +370,35 @@ function descontarDelNegro(s: SueldoBlancoNegro, p: PresentismoDeLinea | null): 
  * Ninguna celda pisada: la fila calculada, con las marcas en falso. Para cuadros cerrados o sin líneas
  * guardadas. `sellado` es la foto del presentismo que el cierre dejó en `liquidacion_linea`: en una
  * quincena cerrada no se recalcula, se muestra la que se pagó.
+ *
+ * ═══ LO PAGADO SÍ VIAJA, Y NO ES UNA EXCEPCIÓN A R6 ═══
+ *
+ * `pagado_banco` y `pagado_efectivo` no son un override del CÁLCULO: son el registro de una plata que salió.
+ * Si no se leyeran acá, al cerrar la quincena desaparecería la corrección de quien registró el pago y el cuadro
+ * cerrado diría que se le pagó otra cosa que la que se le pagó. La fila sigue siendo de sólo lectura —la puerta
+ * es `fila.cerrada`— y el cierre NO los escribe: se derivan de los adelantos, que ya son historia estable, así
+ * que sellarlos haría que al reabrir la quincena aparecieran como escritos a mano por nadie (el defecto que
+ * `horas_manual` existe para evitar).
  */
-export function sinOverrides(base: LineaLiquidada, sellado: PresentismoDeLinea | null = null): LineaConOverrides {
+export function sinOverrides(
+  base: LineaLiquidada, sellado: PresentismoDeLinea | null = null, ov: OverridesDeLinea = {},
+): LineaConOverrides {
+  const registrado = (v: number | null | undefined): number | null =>
+    v != null && Number.isFinite(v) ? redondear2(v) : null
+  const pagadoBanco = registrado(ov.pagadoBanco) ?? base.yaTransferido
+  const pagadoEfectivo = registrado(ov.pagadoEfectivo) ?? base.adelanto
   return {
     ...base, manual: { ...SIN_MARCAS }, origen: { ...TODO_CALCULADO }, discrepancia: {},
     referenciaJornales: null, sueldo: null, presentismo: sellado, sinNeto: false, horasRecibo: null, valorHoraRecibo: null,
     negro: null, horasNegro: null, horasDeLosDias: base.horas,
+    pagadoBanco, pagadoEfectivo, formulas: {},
+    pago: pagoDeLaLinea({
+      banco: base.porBanco,
+      negro: negroDeLaFila({
+        netoMensual: base.netoMensual, cobra: base.cobra, porBanco: base.porBanco, sueldo: null, modalidad: base.modalidad,
+      }),
+      pagadoBanco, pagadoEfectivo,
+    }),
   }
 }
 
@@ -349,6 +417,8 @@ export const COLUMNA_DE: Record<CampoEditable, string> = {
   valorHoraRecibo: 'valor_hora_recibo_manual',
   negro: 'negro_manual',
   horasNegro: 'horas_negro_manual',
+  pagadoBanco: 'pagado_banco',
+  pagadoEfectivo: 'pagado_efectivo',
 }
 
 /**
@@ -376,8 +446,15 @@ export function horasNoCoincidenConLosDias(l: Pick<LineaConOverrides, 'manual' |
 
 const CAMPOS_DE_HORAS: readonly CampoEditable[] = ['horas', 'horasRecibo', 'horasNegro']
 
+/** Lo pagado tampoco (la base tiene el mismo CHECK): una devolución se carga bajando el pagado, no con un menos. */
+const CAMPOS_DE_PAGO: readonly CampoEditable[] = ['pagadoBanco', 'pagadoEfectivo']
+
 /** Las horas no se escriben negativas (la base tiene el mismo CHECK). La plata sigue admitiendo lo que admitía. */
 export function rechazoDelValorDeCelda(campo: CampoEditable, valor: '' | number): string | null {
-  if (valor === '' || !CAMPOS_DE_HORAS.includes(campo)) return null
-  return valor < 0 ? 'Las horas no pueden ser negativas.' : null
+  if (valor === '') return null
+  if (CAMPOS_DE_HORAS.includes(campo)) return valor < 0 ? 'Las horas no pueden ser negativas.' : null
+  if (CAMPOS_DE_PAGO.includes(campo)) {
+    return valor < 0 ? 'Un pago no puede ser negativo: para una devolución, bajá lo pagado.' : null
+  }
+  return null
 }

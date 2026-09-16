@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { aplicarOverrides, camposGuardables, sinOverrides } from './liquidacionOverrides.ts'
 import { liquidarLinea, type EntradaDeLinea } from './liquidacionQuincena.ts'
 
@@ -111,8 +112,17 @@ test('sin overrides, la línea queda idéntica y sin ninguna marca', () => {
     horasNegro: undefined, horasDeLosDias: undefined,
     // `presentismo` (15/09/2026) es la cuarta marca: la foto cerrada lo trae del sello, no de un cálculo.
     presentismo: undefined,
+    // LOS SALDOS (15/09/2026) SON UNA PUBLICACIÓN NUEVA, NO UN CAMBIO DE LA CADENA: se comprueban aparte,
+    // abajo. Acá se excluyen igual que las marcas para que este test siga afirmando lo único que afirma —que
+    // los importes de la cadena no se mueven—.
+    pago: undefined, pagadoBanco: undefined, pagadoEfectivo: undefined, formulas: undefined,
   }
   assert.deepEqual({ ...r, ...sinMarcas }, { ...linea, ...sinMarcas })
+  // LA FOTO CERRADA TAMBIÉN DICE CUÁNTO FALTA: lo pagado son los adelantos de la foto, y el saldo, la resta.
+  assert.equal(r.pagadoBanco, linea.yaTransferido)
+  assert.equal(r.pagadoEfectivo, linea.adelanto)
+  assert.equal(r.pago.saldoBanco, linea.porBanco - linea.yaTransferido)
+  assert.deepEqual(r.formulas, {})
   assert.equal(r.presentismo, null)
   // LA FOTO CERRADA NO RECALCULA BLANCO + NEGRO (dueño, 14/09/2026).
   assert.equal(r.sueldo, null)
@@ -184,4 +194,73 @@ test('sin entrada (llamador viejo) la línea sigue igual que siempre', () => {
   const r = aplicarOverrides(linea, {}, 'obreros')
   assert.equal(r.presentismo, null)
   assert.equal(r.cobra, 100_000)
+})
+
+// ═══ LO PAGADO DE VERDAD (dueño, 15/09/2026) ═══
+//
+// DEFECTOS QUE ESTOS TESTS ATRAPAN:
+//  6. Que «Pagado» nazca en cero y el cuadro pida pagar de nuevo lo que ya se entregó como adelanto.
+//  7. Que escribir «Pagado» no le gane al adelanto calculado.
+//  8. Que el saldo se calcule sobre un negro distinto del que muestra la columna.
+//  9. Que la cuenta escrita con `=` no llegue a la celda y se pierda al reabrirla.
+
+test('PAGADO ARRANCA EN LOS ADELANTOS: lo ya entregado no se vuelve a pedir', () => {
+  const r = aplicarOverrides(linea, {}, 'obreros')
+  assert.equal(r.pagadoBanco, 20_000, 'MUTACIÓN: arrancar en 0 pediría girar los 20.000 otra vez')
+  assert.equal(r.pagadoEfectivo, 0)
+  assert.equal(r.origen.pagadoBanco, 'calculado')
+  assert.equal(r.pago.saldoBanco, 10_000)
+  assert.equal(r.pago.saldoEfectivo, 70_000, 'el negro de la fila es cobra − banco = 70.000')
+  assert.equal(r.pago.saldoTotal, 80_000)
+})
+
+test('UN PAGO ESCRITO A MANO LE GANA AL ADELANTO CALCULADO, Y SE MARCA', () => {
+  const r = aplicarOverrides(linea, { pagadoEfectivo: 140_000 }, 'obreros')
+  assert.equal(r.pagadoEfectivo, 140_000)
+  assert.equal(r.manual.pagadoEfectivo, true)
+  assert.equal(r.origen.pagadoEfectivo, 'manual')
+  assert.equal(r.pago.saldoEfectivo, -70_000)
+  assert.equal(r.pago.aPagarEfectivo, 0)
+  assert.equal(r.pago.aPagarBanco, 0, 'el exceso del efectivo se come los 10.000 que faltaban por banco')
+  assert.equal(r.pago.saldoTotal, -60_000, 'y el resto queda como cobrado de más, a la vista')
+})
+
+test('VACIAR «PAGADO» DEVUELVE EL ADELANTO, NO UN CERO', () => {
+  const r = aplicarOverrides(linea, { pagadoBanco: null }, 'obreros')
+  assert.equal(r.pagadoBanco, 20_000)
+  assert.equal(r.manual.pagadoBanco, false)
+})
+
+test('UN 0 ESCRITO EN «PAGADO» SÍ MANDA: «todavía no le giré nada» es una afirmación', () => {
+  const r = aplicarOverrides(linea, { pagadoBanco: 0 }, 'obreros')
+  assert.equal(r.pagadoBanco, 0, 'MUTACIÓN: leer el 0 como «sin override» devolvería 20.000')
+  assert.equal(r.manual.pagadoBanco, true)
+  assert.equal(r.pago.saldoBanco, 30_000)
+})
+
+test('LA CUENTA ESCRITA CON `=` VIAJA CON LA LÍNEA', () => {
+  const r = aplicarOverrides(linea, { pagadoEfectivo: 140_000 }, 'obreros', null, null, null,
+    { pagadoEfectivo: '=100000+40000' })
+  assert.deepEqual(r.formulas, { pagadoEfectivo: '=100000+40000' })
+  assert.equal(r.pagadoEfectivo, 140_000, 'lo que se paga es el VALOR; la cuenta sólo lo explica')
+})
+
+test('LA QUINCENA CERRADA CONSERVA EL PAGO REGISTRADO — y no lo marca como escrito a mano', () => {
+  // EL DEFECTO QUE ATRAPA: cerrar la quincena y que el cuadro vuelva a decir que se le pagó el adelanto
+  // calculado, borrando de la pantalla el pago que alguien registró. Y el de la vuelta: sellar esa columna,
+  // que al reabrir haría aparecer como «manual» un número que no escribió nadie.
+  const r = sinOverrides(linea, null, { pagadoBanco: 94_795.5 })
+  assert.equal(r.pagadoBanco, 94_795.5)
+  assert.equal(r.pago.saldoBanco, linea.porBanco - 94_795.5)
+  assert.equal(r.manual.pagadoBanco, false, 'la fila cerrada no dibuja marcas: es una foto')
+  assert.equal(r.origen.pagadoBanco, 'calculado')
+  // Sin registro, vuelven los adelantos de la foto.
+  assert.equal(sinOverrides(linea).pagadoBanco, linea.yaTransferido)
+})
+
+test('EL CIERRE NO ESCRIBE LAS COLUMNAS DE PAGO', () => {
+  // EL DEFECTO QUE ATRAPA: agregarlas a la foto de `escribirFoto`. Es el mismo que `horas_manual` ya pagó.
+  const CIERRE = readFileSync(new URL('./liquidacionCierreActions.ts', import.meta.url), 'utf8')
+  const foto = CIERRE.slice(CIERRE.indexOf('async function escribirFoto('), CIERRE.indexOf('function fotoDelPresentismo('))
+  assert.ok(!/pagado_banco|pagado_efectivo/.test(foto), 'la foto del cierre no sella lo pagado')
 })

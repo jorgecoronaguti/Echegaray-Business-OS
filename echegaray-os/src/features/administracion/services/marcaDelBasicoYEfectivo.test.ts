@@ -4,8 +4,9 @@
 //    el negro no se paga a categoría, el blanco sí. Ahora se compara el $/h del RECIBO real contra el piso
 //    —en el cuadro y en Convenios, con la misma `compararConElPiso`—; el estimado usa el piso y nunca marca.
 //    MUTACIÓN: volver a comparar el $/h negro.
-// 2. González Tobares Emiliano, 01/09: efectivo −$16.250 (adelanto $140.000). Se marca en ámbar, el pie lo
-//    suma igual, y el redondeado sugerido de un negativo queda vacío.
+// 2. González Tobares Emiliano, 01/09: pagado en efectivo $140.000 contra un negro de $123.750. El saldo queda
+//    en −$16.250: se marca en ámbar, el pie lo suma igual, el exceso se descuenta del banco, y el redondeado
+//    sugerido de un negativo queda vacío. (Hasta el 15/09/2026 esto se llamaba «Total efectivo»: ver el test.)
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -14,7 +15,7 @@ import { compararConElPiso, exponerAlPiso, valorHoraAComparar, type FilaEscala }
 import { marcaDeCategoria, sueldoBlancoNegro, ultimoReciboHasta, type ReciboDeSueldo } from './sueldoBlancoNegro.ts'
 import { efectivoMostrado, efectivoSugerido, sumaDelRedondeo } from './efectivoRedondeado.ts'
 import { totalesDelEspejo, type FilaDelEspejo } from './espejoDeJornales.ts'
-import { efectivoSuperado } from '../components/liquidacion/cuadro/estadoDelPago.ts'
+import { avisoDeExcedente, pagoDeLaLinea } from './pagoDeLaQuincena.ts'
 
 const RECIBO: ReciboDeSueldo = {
   personaId: 'p', cuil: null, periodo: 'Q2-08/2026', categoria: 'OFICIAL', valorHora: 6000, horasBlanco: 50,
@@ -59,23 +60,37 @@ test('EL ÚLTIMO RECIBO HASTA LA QUINCENA: incluye la del período y no mira el 
   assert.equal(ultimoReciboHasta(r, 'otro', null, 'Q2-09/2026'), null)
 })
 
-test('EFECTIVO NEGATIVO: se marca, el pie lo suma, y el redondeado sugerido queda vacío', () => {
-  assert.equal(efectivoSuperado({ enEfectivo: -16250 }), 'el adelanto y lo transferido superan lo que le corresponde en efectivo')
-  assert.equal(efectivoSuperado({ enEfectivo: 0 }), null)
-  assert.equal(efectivoSuperado({ enEfectivo: 182094 }), null)
-  assert.equal(efectivoSugerido(-16250), null, 'nunca un sugerido negativo')
+test('PAGADO DE MÁS: se marca en ámbar, el pie lo suma y NO se netea a cero', () => {
+  // CAMBIÓ EL 15/09/2026. Antes acá se probaba `efectivoSuperado`, el ámbar de un «Total efectivo» negativo.
+  // El dueño rechazó esa columna con todas las letras: *«no considera adelantos en efectivo y resta del
+  // efectivo total»*. El control equivalente —y el que dice qué pasa con la plata— es el saldo.
+  const pago = pagoDeLaLinea({ banco: 96443.74, negro: 123750, pagadoEfectivo: 140000 })
+  assert.equal(pago.saldoEfectivo, -16250, 'MUTACIÓN: netear a cero borraría que cobró de más')
+  assert.equal(avisoDeExcedente(pago), 'pagado de más: pasa al otro lado (se descuenta del banco)')
+  assert.equal(pago.aPagarEfectivo, 0)
+  assert.equal(pago.aPagarBanco, 80193.74, 'los 16.250 de más salen del banco, no se pierden')
+  // EL REDONDEADO SUGERIDO NUNCA ES NEGATIVO.
+  assert.equal(efectivoSugerido(-16250), null)
   assert.deepEqual(efectivoMostrado({ efectivoRedondeado: null, enEfectivo: -16250 }), { valor: null, sugerido: false, sugeridoAhora: null })
   assert.equal(sumaDelRedondeo([{ efectivoRedondeado: null, enEfectivo: -16250 }, { efectivoRedondeado: null, enEfectivo: 182094 }]), 182000)
-  // El pie suma el negativo igual: esconderlo inflaría los sobres.
-  const fila = (enEfectivo: number) => ({
-    linea: { cobra: 220193.74, adelanto: 140000, yaTransferido: 0, porBanco: 96443.74, enEfectivo, total: 0, horas: 50, sinTarifa: false, sinNeto: false, sueldo: null },
+  // EL PIE SUMA EL NEGATIVO IGUAL: esconderlo inflaría los sobres.
+  const fila = (entrada: Parameters<typeof pagoDeLaLinea>[0]) => ({
+    linea: {
+      cobra: 220193.74, adelanto: 140000, yaTransferido: 0, porBanco: 96443.74, enEfectivo: 0, total: 0, horas: 50,
+      sinTarifa: false, sinNeto: false, sueldo: null, pago: pagoDeLaLinea(entrada),
+    },
     cotejo: { estado: 'coincide' }, celdas: [], horasPorTipo: { normales: 0, extra50: 0, extra100: 0, total: 0, automaticas: 0 },
   }) as unknown as FilaDelEspejo
-  assert.equal(totalesDelEspejo([fila(-16250), fila(182094)]).enEfectivo, 165844)
-  // Y la celda usa la regla, en ámbar.
+  const t = totalesDelEspejo([
+    fila({ banco: 96443.74, negro: 123750, pagadoEfectivo: 140000 }),
+    fila({ banco: 96443.74, negro: 182094 }),
+  ])
+  assert.equal(t.pago.saldoEfectivo, 165844, 'MUTACIÓN: sumar 0 en vez del negativo daría 182.094')
+  assert.equal(t.pago.pagadoEfectivo, 140000)
+  // Y LA CELDA USA LA REGLA, EN ÁMBAR.
   const CELDAS = readFileSync(new URL('../components/liquidacion/cuadro/CeldasBlancoNegro.tsx', import.meta.url), 'utf8')
-  assert.match(CELDAS, /const superado = efectivoSuperado\(l\)/)
-  assert.match(CELDAS, /superado \? V\.warn/)
+  assert.match(CELDAS, /avisoDeExcedente\(p\)/)
+  assert.match(CELDAS, /negativo \? V\.warn/)
   assert.match(CELDAS, /const bajo = marcaDeCategoria\(s\)/)
   assert.match(CELDAS, /el recibo paga \$\{pesos\(bajo\.valorHora\)\}\/h, el básico es \$\{pesos\(bajo\.piso\)\}\/h/)
 })

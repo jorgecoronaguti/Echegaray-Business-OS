@@ -51,11 +51,26 @@ const CABECERA_PEGAJOSA: CSSProperties = {
 }
 
 export function CintaHorizontal(
-  { children, testid, cabecera }: {
+  { children, testid, cabecera, marcoPropio }: {
     children: ReactNode
     testid?: string
-    /** Los rótulos de las columnas. Se dibujan AFUERA del scroller y se corren con él. */
-    cabecera?: ReactNode
+    /**
+     * Los rótulos de las columnas. Se dibujan AFUERA del scroller y se corren con él.
+     *
+     * COMO FUNCIÓN, RECIBE EL CORRIMIENTO. Lo necesita quien tiene una columna fija a la izquierda: adentro de
+     * este envoltorio `position: sticky` NO sirve —no hay scrollport que lo ancle, el movimiento es un
+     * `transform`— así que el rótulo de esa columna se contra-desplaza con el mismo número. Sin eso, el nombre
+     * de la columna se va de pantalla y sus celdas se quedan: números con un rótulo que no es el suyo.
+     */
+    cabecera?: ReactNode | ((corrimiento: number) => ReactNode)
+    /**
+     * EL QUE LLAMA TRAE SU PROPIO MARCO. Liquidación ya tiene uno (`MARCO_SCROLL` de `solapas/tabla.tsx`): su
+     * degradado de borde y su canal de 20 px no son decoración, son lo que hace funcionar la columna fija
+     * (`COLUMNA_FIJA` frena en `-CANAL_SCROLL`). Con esto, la cinta aporta SÓLO lo que la tabla no puede tener
+     * sola —la cabecera pegada a la ventana— y no dibuja su propio aviso: dos señales de «hay más» encima es
+     * ruido, y una tabla con dos marcos deja de leerse como un objeto.
+     */
+    marcoPropio?: CSSProperties
   },
 ) {
   const [quedaALaDerecha, setQuedaALaDerecha] = useState(false)
@@ -82,13 +97,15 @@ export function CintaHorizontal(
           {/* El fondo opaco es obligatorio: sin él las filas se leen ENCIMA de los rótulos al pasar
               por debajo. Va en el envoltorio y no acá para que cubra todo el ancho visible aunque la
               fila de rótulos esté corrida. */}
-          <div style={{ transform: `translateX(${-corrimiento}px)` }}>{cabecera}</div>
+          <div style={{ transform: `translateX(${-corrimiento}px)` }}>
+            {typeof cabecera === 'function' ? cabecera(corrimiento) : cabecera}
+          </div>
         </div>
       )}
       <div
         ref={montar}
         onScroll={(e) => medir(e.currentTarget)}
-        style={{ overflowX: 'auto' }}
+        style={marcoPropio ?? { overflowX: 'auto' }}
         data-testid={testid}
       >
         {children}
@@ -98,7 +115,7 @@ export function CintaHorizontal(
           `from-line-strong` Y NO `from-ink/15`: en este Tailwind los colores del tema son
           `rgb(var(--os-…) / <alpha-value>)` y el gradiente con modificador de opacidad no genera
           regla — la sombra no existiría. */}
-      {quedaALaDerecha && (
+      {quedaALaDerecha && !marcoPropio && (
         <div
           aria-hidden
           data-testid={testid ? `${testid}-hay-mas` : undefined}
