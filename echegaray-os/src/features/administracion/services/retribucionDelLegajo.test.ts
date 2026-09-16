@@ -17,20 +17,22 @@ import { quincenaDe } from './quincena.ts'
 //  4. Que el jefe de obra vea «sin liquidaciones» cuando lo que pasa es que no puede verlas.
 //  5. Que el historial del blanco ordene `Q2-08/2026` después de `Q1-09/2026` por comparar texto.
 //  6. Que una fila sin saldo que afirmar (sin negro) sume $0 al negro y aun así no cuente lo pagado.
+//  7. Que una quincena que la Liquidación marcó «sin neto» escriba banco $0 como si lo hubiera afirmado,
+//     y que el recibo real del período no llegue a la fila como referencia.
 
 const q = (desde: string): QuincenaRetribuida['quincena'] => quincenaDe(desde)
 
 const porHora = (o: {
   horas: number; valorHora: number; banco: number | null; negro: number | null
-  pagadoBanco?: number; pagadoEfectivo?: number; estimado?: boolean
+  pagadoBanco?: number; pagadoEfectivo?: number; estimado?: boolean; sinNeto?: boolean
 }): LineaRetribuida => ({
-  modalidad: 'hora', horas: o.horas, valorHora: o.valorHora, netoMensual: null, sinTarifa: false,
+  modalidad: 'hora', horas: o.horas, valorHora: o.valorHora, netoMensual: null, sinTarifa: false, sinNeto: o.sinNeto === true,
   sueldo: { estado: o.estimado ? 'estimado' : 'recibo' },
   pago: pagoDeLaLinea({ banco: o.banco, negro: o.negro, pagadoBanco: o.pagadoBanco, pagadoEfectivo: o.pagadoEfectivo }),
 })
 
 const mensual = (neto: number, pagadoBanco: number): LineaRetribuida => ({
-  modalidad: 'mensual', horas: 90, valorHora: null, netoMensual: neto, sinTarifa: false, sueldo: null,
+  modalidad: 'mensual', horas: 90, valorHora: null, netoMensual: neto, sinTarifa: false, sinNeto: false, sueldo: null,
   pago: pagoDeLaLinea({ banco: neto, negro: 0, pagadoBanco }),
 })
 
@@ -140,7 +142,7 @@ test('sin ninguna liquidación las cifras escriben el motivo, nunca $0', () => {
     puedeVer: true, anio: 2026, recibos: [], errores: ['x', 'x', 'y'],
     quincenas: [{ quincena: q('2026-09-01'), estado: null, linea: null }],
   })
-  assert.equal(r.cifras.length, 4)
+  assert.equal(r.cifras.length, 5)
   assert.ok(r.cifras.every((c) => c.valor === null && c.falta === 'sin liquidaciones'))
   assert.deepEqual(r.errores, ['x', 'y'])
 })
@@ -151,8 +153,28 @@ test('con liquidaciones las cifras del año son las del pie, ya formateadas', ()
     quincenas: [{ quincena: q('2026-09-01'), estado: 'cerrada', linea: porHora({ horas: 100.5, valorHora: 6000, banco: 250000, negro: 353000, pagadoBanco: 250000, pagadoEfectivo: 100000 }) }],
   })
   assert.deepEqual(r.cifras.map((c) => [c.rotulo, c.valor]), [
-    ['pagado 2026', '$350.000'], ['negro 2026', '$353.000'], ['blanco 2026', '$250.000'], ['horas 2026', '100,5 h'],
+    ['liquidado 2026', '$603.000'], ['consta pagado 2026', '$350.000'], ['negro 2026', '$353.000'],
+    ['blanco 2026', '$250.000'], ['horas 2026', '100,5 h'],
   ])
+})
+
+test('una quincena sin neto afirmado lo dice, y el recibo real del período viaja como referencia', () => {
+  const filas = filasDeRetribucion([
+    { quincena: q('2026-09-01'), estado: 'abierta', linea: porHora({ horas: 99, valorHora: 5974, banco: 0, negro: 292726, estimado: true, sinNeto: true, pagadoBanco: 200000 }) },
+    { quincena: q('2026-08-16'), estado: 'cerrada', linea: porHora({ horas: 107, valorHora: 5974, banco: 0, negro: 639218 }) },
+  ], [
+    { periodo: 'Q2-08/2026', categoria: 'OFICIAL', valorHora: 6348, neto: 215564.62 },
+    { periodo: 'Q2-08/2026', categoria: 'OFICIAL', valorHora: 6348, neto: 100 },
+    { periodo: 'Q1-09/2026', categoria: 'OFICIAL', valorHora: 6348, neto: null },
+  ])
+  assert.equal(filas[0].sinNeto, true)
+  assert.equal(filas[0].bancoEstimado, false)
+  assert.equal(filas[0].reciboReal, null)
+  assert.equal(filas[1].sinNeto, false)
+  assert.equal(filas[1].reciboReal, 215564.62)
+  const t = totalesDeRetribucion(filas)
+  assert.equal(t.sinNeto, 1)
+  assert.equal(t.pagado, 200000)
 })
 
 test('el historial del blanco ordena por período real y dice la variación', () => {

@@ -14,6 +14,15 @@
 // Lo único que este módulo decide es PRESENTACIÓN: qué quincenas entran en el año, cómo se agrupan los
 // mensuales, cómo se suman los totales y cómo se ordenan los historiales.
 //
+// ═══ LO SELLADO SE MUESTRA COMO ESTÁ, Y LO QUE LE FALTA SE DICE ═══
+//
+// Las quincenas cerradas antes del 14/09/2026 se sellaron sin el modelo blanco + negro: su línea trae
+// `porBanco` = lo GIRADO que el extracto vio (0 si no lo vio) y `sueldo: null`. Reescribirlas acá con el
+// recibo real sería una segunda foto del cierre. En cambio, el recibo real del período —que la sección
+// ya lee para el historial— viaja como REFERENCIA (`reciboReal`) para que la celda pueda decir «hay un
+// recibo de $184.576 que el sello no tomó». Y una fila con `sinNeto` no escribe banco $0: escribe que
+// falta el neto, que es lo que la Liquidación afirma de ella.
+//
 // ═══ EL MENSUAL SE LEE POR MES, Y CÓMO ═══
 //
 // La Liquidación arma a Oficina quincena por quincena con el neto mensual ENTERO en cada una
@@ -37,12 +46,20 @@ import type { ModalidadDeLiquidacion } from './liquidacionQuincena.ts'
 import type { EstadoDelBlanco } from './sueldoBlancoNegro.ts'
 import { periodoOrdenable } from './reglasDelRecibo.ts'
 import { porcentajeDeVariacion, type ReciboDelLegajo } from './valorHoraDelLegajo.ts'
+import { periodoDeRecibo } from './liquidacionCuadros.ts'
 import { pesos } from '../components/liquidacion/formato.ts'
+
+/** Una línea de recibo real, con el neto para la referencia de la fila. */
+export interface ReciboDelBlanco extends ReciboDelLegajo {
+  neto: number | null
+}
 
 /** Lo que esta sección lee de una `LineaConOverrides` de la Liquidación. Ninguna cuenta se repite acá. */
 export interface LineaRetribuida {
   modalidad: ModalidadDeLiquidacion
   horas: number | null
+  /** Hay $/h y horas pero el blanco no tiene neto: la Liquidación no afirma el total. */
+  sinNeto: boolean
   /** $/h negro pactado. `null` en mensuales (tienen `netoMensual`) o sin tarifa. */
   valorHora: number | null
   netoMensual: number | null
@@ -66,8 +83,8 @@ export interface EntradaDeRetribucion {
   anio: number
   /** De la más vieja a la más nueva o al revés: acá se ordenan. */
   quincenas: readonly QuincenaRetribuida[]
-  /** Las líneas de recibo real de la persona, para el historial del blanco. */
-  recibos: readonly ReciboDelLegajo[]
+  /** Las líneas de recibo real de la persona: el historial del blanco y la referencia de cada fila. */
+  recibos: readonly ReciboDelBlanco[]
   errores: readonly string[]
 }
 
@@ -84,6 +101,10 @@ export interface FilaDeRetribucion {
   sinTarifa: boolean
   /** El banco de esta fila es un neto ESTIMADO, no un recibo real. */
   bancoEstimado: boolean
+  /** La Liquidación no pudo afirmar el neto: la celda del banco lo dice en vez de escribir $0. */
+  sinNeto: boolean
+  /** El neto del recibo REAL de este período, si el estudio lo cargó. Referencia, no la cifra de la fila. */
+  reciboReal: number | null
   pago: PagoDeLaLinea | null
 }
 
@@ -98,6 +119,8 @@ export interface TotalesDeRetribucion {
   saldo: number
   /** Filas con línea pero sin saldo que afirmar: no suman a negro/blanco/total y el pie lo dice. */
   sinSaldo: number
+  /** Filas cuyo banco la Liquidación no pudo afirmar (`sinNeto`): su total está incompleto. */
+  sinNeto: number
   /** Cuántas filas tienen línea de la Liquidación. */
   liquidadas: number
 }
@@ -149,7 +172,19 @@ export function quincenasDelAnio(anio: number, hoy: string): Quincena[] {
 const suma = (valores: readonly (number | null)[]): number | null =>
   valores.some((v) => v != null) ? Math.round(valores.reduce<number>((a, v) => a + (v ?? 0), 0) * 100) / 100 : null
 
-const filaDeQuincena = (q: QuincenaRetribuida): FilaDeRetribucion => ({
+/** El neto del recibo real de cada período (`Q1-09/2026`), el mayor si el estudio cargó dos. */
+type NetoPorPeriodo = ReadonlyMap<string, number>
+
+export function netosPorPeriodo(recibos: readonly ReciboDelBlanco[]): NetoPorPeriodo {
+  const m = new Map<string, number>()
+  for (const r of recibos) {
+    if (r.neto == null || !Number.isFinite(r.neto)) continue
+    m.set(r.periodo, Math.max(r.neto, m.get(r.periodo) ?? -Infinity))
+  }
+  return m
+}
+
+const filaDeQuincena = (q: QuincenaRetribuida, netos: NetoPorPeriodo): FilaDeRetribucion => ({
   desde: q.quincena.desde,
   periodo: cabeceraQuincena(q.quincena),
   estado: q.linea && q.estado ? q.estado : 'fuera',
@@ -157,7 +192,9 @@ const filaDeQuincena = (q: QuincenaRetribuida): FilaDeRetribucion => ({
   horas: q.linea?.horas ?? null,
   tarifa: q.linea ? (q.linea.modalidad === 'mensual' ? q.linea.netoMensual : q.linea.valorHora) : null,
   sinTarifa: q.linea?.sinTarifa ?? false,
-  bancoEstimado: q.linea?.sueldo?.estado === 'estimado' && q.linea.pago.banco != null,
+  bancoEstimado: q.linea?.sueldo?.estado === 'estimado' && !q.linea.sinNeto && q.linea.pago.banco != null,
+  sinNeto: q.linea?.sinNeto ?? false,
+  reciboReal: q.linea ? netos.get(periodoDeRecibo(q.quincena)) ?? null : null,
   pago: q.linea?.pago ?? null,
 })
 
@@ -180,7 +217,9 @@ function filaDelMes(mes: readonly QuincenaRetribuida[]): FilaDeRetribucion {
     horas: suma(conLinea.map((q) => q.linea?.horas ?? null)),
     tarifa: ultima.linea.netoMensual,
     sinTarifa: ultima.linea.sinTarifa,
-    bancoEstimado: ultima.linea.sueldo?.estado === 'estimado' && pago.banco != null,
+    bancoEstimado: ultima.linea.sueldo?.estado === 'estimado' && !ultima.linea.sinNeto && pago.banco != null,
+    sinNeto: ultima.linea.sinNeto,
+    reciboReal: null,
     pago,
   }
 }
@@ -190,7 +229,10 @@ function filaDelMes(mes: readonly QuincenaRetribuida[]): FilaDeRetribucion {
  * quincena. Una persona que cambió de modalidad a mitad de año se ve con las dos formas, cada una en
  * su tramo: forzarla a una sola inventaría un neto mensual que no tuvo o partiría uno que sí.
  */
-export function filasDeRetribucion(quincenas: readonly QuincenaRetribuida[]): FilaDeRetribucion[] {
+export function filasDeRetribucion(
+  quincenas: readonly QuincenaRetribuida[], recibos: readonly ReciboDelBlanco[] = [],
+): FilaDeRetribucion[] {
+  const netos = netosPorPeriodo(recibos)
   const orden = [...quincenas].sort((a, b) => (a.quincena.desde < b.quincena.desde ? -1 : 1))
   const porMes = new Map<string, QuincenaRetribuida[]>()
   for (const q of orden) {
@@ -202,7 +244,7 @@ export function filasDeRetribucion(quincenas: readonly QuincenaRetribuida[]): Fi
     const lineas = mes.filter((q) => q.linea)
     const mensual = lineas.length > 0 && lineas.every((q) => q.linea?.modalidad === 'mensual')
     if (mensual) filas.push(filaDelMes(mes))
-    else filas.push(...mes.map(filaDeQuincena))
+    else filas.push(...mes.map((q) => filaDeQuincena(q, netos)))
   }
   return filas.reverse()
 }
@@ -216,23 +258,35 @@ export function totalesDeRetribucion(filas: readonly FilaDeRetribucion[]): Total
     negro: t.negro, blanco: t.banco, total: t.total,
     pagadoBanco: t.pagadoBanco, pagadoEfectivo: t.pagadoEfectivo, pagado: t.pagado,
     saldo: t.saldoTotal, sinSaldo: t.sinSaldo, liquidadas: conPago.length,
+    sinNeto: conPago.filter((f) => f.sinNeto).length,
   }
 }
 
 const horasTexto = (n: number): string => `${n.toLocaleString('es-AR', { maximumFractionDigits: 1 })} h`
 
-/** Las cuatro cifras de arriba. Sin ninguna fila liquidada se escribe el motivo, nunca $0. */
+/**
+ * LAS CINCO CIFRAS DE ARRIBA. Sin ninguna fila liquidada se escribe el motivo, nunca $0.
+ *
+ * «LIQUIDADO» Y «CONSTA PAGADO» SON DOS NÚMEROS Y NO UNO. Lo liquidado es banco + negro de cada quincena
+ * —lo que le corresponde—; lo pagado es lo que la base tiene como plata que salió (adelantos, giros y lo
+ * registrado a mano). Hasta que las quincenas viejas no tengan sus pagos cargados, los dos se separan
+ * por mucho, y un solo número los confundiría: «se le pagó $400.000 en el año» no es lo que pasó, es lo
+ * que consta.
+ */
 export function cifrasDelAnio(anio: number, t: TotalesDeRetribucion): CifraDelAnio[] {
   const nada = t.liquidadas === 0
   const cifra = (rotulo: string, valor: string, titulo: string): CifraDelAnio =>
     nada ? { rotulo, valor: null, falta: 'sin liquidaciones', titulo } : { rotulo, valor, titulo }
+  const fuera = t.sinSaldo > 0 ? ` (${t.sinSaldo} sin saldo que afirmar, fuera de la suma)` : ''
+  const sinNeto = t.sinNeto > 0 ? ` ${t.sinNeto} quincena(s) sin neto afirmado: el banco de ésas no está.` : ''
   return [
-    cifra(`pagado ${anio}`, pesos(t.pagado),
-      `banco ${pesos(t.pagadoBanco)} + efectivo ${pesos(t.pagadoEfectivo)}: lo que consta pagado en las quincenas del año (adelantos, giros y lo registrado en la Liquidación).`),
-    cifra(`negro ${anio}`, pesos(t.negro),
-      `Lo que el recibo no paga, sumado sobre las quincenas con saldo que afirmar${t.sinSaldo > 0 ? ` (${t.sinSaldo} fuera de la suma)` : ''}.`),
+    cifra(`liquidado ${anio}`, pesos(t.total),
+      `banco + negro de cada quincena del año, como lo publica la Liquidación${fuera}.${sinNeto}`),
+    cifra(`consta pagado ${anio}`, pesos(t.pagado),
+      `banco ${pesos(t.pagadoBanco)} + efectivo ${pesos(t.pagadoEfectivo)}: lo que la base tiene como pagado (adelantos, giros y lo registrado en la Liquidación). No es lo liquidado: es lo que consta.`),
+    cifra(`negro ${anio}`, pesos(t.negro), `Lo que el recibo no paga, sumado sobre las quincenas del año${fuera}.`),
     cifra(`blanco ${anio}`, pesos(t.blanco),
-      `El neto del recibo (real o estimado), sumado sobre las quincenas con saldo que afirmar${t.sinSaldo > 0 ? ` (${t.sinSaldo} fuera de la suma)` : ''}.`),
+      `El neto del recibo (real o estimado) que tomó cada quincena${fuera}.${sinNeto} Las quincenas selladas antes del modelo blanco + negro traen sólo lo girado que vio el extracto.`),
     cifra(`horas ${anio}`, horasTexto(t.horas), 'Las horas cargadas que la Liquidación tomó en cada quincena del año.'),
   ]
 }
@@ -271,7 +325,7 @@ export function armarRetribucion(e: EntradaDeRetribucion): RetribucionDelLegajo 
       cifras: [], historialBlanco: [], errores: [],
     }
   }
-  const filas = filasDeRetribucion(e.quincenas)
+  const filas = filasDeRetribucion(e.quincenas, e.recibos)
   const totales = totalesDeRetribucion(filas)
   return {
     puedeVer: true,
