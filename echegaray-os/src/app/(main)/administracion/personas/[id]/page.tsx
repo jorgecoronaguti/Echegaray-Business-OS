@@ -86,6 +86,9 @@ import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { getAsignacionesDe, getDocumentos, getPersona } from '@/features/administracion/services/personasService'
 import { antiguedadEnAnios, papelesPendientes } from '@/features/administracion/services/fichaPersona'
 import { veLaCuentaDeOtro } from '@/features/administracion/services/accesoPersona'
+import { liquidaSueldos } from '@/features/auth/types/areas'
+import { getValorHoraDelLegajo } from '@/features/administracion/services/valorHoraDelLegajoService'
+import { ValorHoraDelLegajo } from '@/features/administracion/components/ValorHoraDelLegajo'
 import { puedeAnotar, veAnotaciones } from '@/features/administracion/services/anotacionesPersona'
 import { getAnotaciones } from '@/features/administracion/services/anotacionesService'
 import { crearAnotacion } from '@/features/administracion/services/anotacionesActions'
@@ -160,11 +163,31 @@ export default async function FichaPersonaPage({
   }
   if (!persona) notFound()
 
-  // Las dos que el slab afirma en TODAS las vistas van juntas y en paralelo; la cara —las horas—
+  // EL DÍA SE FIJA UNA VEZ Y EN EL SERVIDOR. Lo usan la antigüedad, las tres ventanas de HH, la
+  // quincena del resumen y el $/h vigente: calculado en el navegador, cada uno daría una respuesta
+  // distinta a cada lado de la medianoche, y dos de ellos discreparían entre sí en la misma página.
+  const hoy = new Date().toISOString().slice(0, 10)
+  // Las TRES que el slab afirma en TODAS las vistas van juntas y en paralelo; la cara —las horas—
   // sigue corriendo sólo cuando alguien abre su solapa.
-  const [asignaciones, documentos] = await Promise.all([
+  //
+  // EL $/H TAMBIÉN EN LAS SEIS, y por la misma razón que las asignaciones: la tira de arriba lo
+  // AFIRMA en todas. Leerlo sólo en el Resumen escribiría «sin $/h cargado» en las otras cinco
+  // sobre gente que sí tiene tarifa —el defecto que ya se pagó con «Obra actual: sin asignar»—. Son
+  // cuatro consultas chicas: las de UNA persona y la escala de UNA categoría, no el módulo entero.
+  const [asignaciones, documentos, valorHora] = await Promise.all([
     getAsignacionesDe(supabase, id),
     getDocumentos(supabase, id),
+    getValorHoraDelLegajo(supabase, {
+      personaId: id,
+      cuil: persona.cuil ?? null,
+      categoria: persona.categoria ?? null,
+      convenio: persona.convenio_colectivo ?? null,
+      // LA PUERTA, NO LA CERRADURA: la policy `liquida_sueldos()` cierra las tres tablas igual. Esto
+      // evita el viaje y —lo que importa— deja decir «sin permiso» en vez de «sin dato», que es lo
+      // que la RLS sola no puede distinguir: devuelve cero filas y ningún error.
+      puedeVer: liquidaSueldos(rolActor),
+      hoy,
+    }),
   ])
   // LAS HH TAMBIÉN EN EL RESUMEN, desde el canónico 20: la tira de métricas publica HH del mes y del
   // año, y el bloque de arriba dibuja la semana. La consulta filtra por `persona_id`, así que es la
@@ -197,13 +220,11 @@ export default async function FichaPersonaPage({
   const egresada = !persona.en_la_empresa
   // El slab publica los años de antigüedad. El día se fija en el SERVIDOR, igual que la ventana de
   // HH: calcularlo en el navegador daría una antigüedad distinta a cada lado de la medianoche.
-  const antiguedad = antiguedadEnAnios(persona.fecha_ingreso, new Date().toISOString().slice(0, 10))
+  const antiguedad = antiguedadEnAnios(persona.fecha_ingreso, hoy)
   const pendientes = papelesPendientes(papeles, persona.en_la_empresa)
   const filasHH = horas?.data ?? []
   const periodo = esPeriodo(sp.p) ? sp.p : PERIODO_POR_DEFECTO
-  // EL DÍA SE FIJA EN EL SERVIDOR: calcularlo en el cliente daría una quincena distinta alrededor
-  // de la medianoche según desde dónde se mire.
-  const ventana = ventanaDe(periodo, new Date().toISOString().slice(0, 10))
+  const ventana = ventanaDe(periodo, hoy)
   const resumen = resumenDelPeriodo(filasHH, ventana.desde, ventana.hasta)
   // El error de las anotaciones entra al mismo aviso: un bloque que no se pudo leer no puede
   // dibujarse vacío como si la persona no tuviera ninguna. (La tabla ausente NO es un error: viaja
@@ -213,7 +234,6 @@ export default async function FichaPersonaPage({
   // LO QUE PUBLICA LA TIRA DE MÉTRICAS. Las tres ventanas se fijan en el SERVIDOR por la misma razón
   // que la de la liquidación: el mes y el año dependen del día, y el navegador de quien mira puede
   // estar del otro lado de la medianoche.
-  const hoy = new Date().toISOString().slice(0, 10)
   const mes = resumenDelPeriodo(filasHH, ventanaDe('mes', hoy).desde, ventanaDe('mes', hoy).hasta)
   const anio = resumenDelPeriodo(filasHH, `${hoy.slice(0, 4)}-01-01`, `${hoy.slice(0, 4)}-12-31`)
   // LA QUINCENA DEL RESUMEN. Dos lecturas más y sólo en esta vista: los feriados de la ventana y la
@@ -291,9 +311,10 @@ export default async function FichaPersonaPage({
     ...(pareceCategoria(persona.puesto) ? [] : [{ k: 'Puesto', v: persona.puesto }]),
     { k: 'Modalidad', v: persona.modalidad_liquidacion },
     { k: 'Notas', v: persona.notas },
-    // LA RETRIBUCIÓN NO LLEGA A ESTA PANTALLA, y no por decisión de diseño: `persona_legajo` no
-    // publica la columna. Se dice, en vez de dibujar «sin cargar» —que afirmaría que nadie la cargó—.
-    { k: 'Retribución', v: null, falta: 'no llega a esta pantalla' },
+    // LA RETRIBUCIÓN YA NO VIENE DE `persona_legajo` —que no publica la columna— sino de
+    // `persona_tarifa`, que es donde vive el $/h que se paga. Es EL MISMO objeto que pinta la tira
+    // de arriba: no puede decir una cosa acá y otra allá.
+    { k: 'Retribución', v: valorHora.rotulo.pactado.valor, falta: valorHora.rotulo.pactado.falta ?? 'sin dato', mono: true },
   ]
 
   const asignacion: DatoDeLegajo[] = vigente
@@ -400,6 +421,12 @@ export default async function FichaPersonaPage({
           </>
         }
       />
+
+      {/* CUÁNTO SE LE ESTÁ PAGANDO POR HORA, ARRIBA DE TODO (dueño, 15/09/2026). Va ANTES de los
+          avisos y de la tira de cifras porque es la primera pregunta que se le hace a un legajo y
+          hasta hoy no se contestaba acá: había que abrir Liquidación, elegir la quincena y buscar
+          a la persona en la grilla. */}
+      <ValorHoraDelLegajo rotulo={valorHora.rotulo} error={valorHora.error} />
 
       {!egresada && !vigente && (
         <AvisoDeFicha verbo="Asignar obra" href="/obras" testid="aviso-sin-obra">
