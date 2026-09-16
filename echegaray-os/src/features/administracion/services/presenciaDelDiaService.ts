@@ -22,7 +22,7 @@ import type { EstadoPresencia, PresenciaGuardada } from './presenciaDelDia'
 import {
   planDeDeclaracion, seQuitaLaPresencia, seRetiraLaPresencia,
   type DeclaracionPedida, type PresenciaEnLaBase,
-} from './presenciaPorHoras'
+} from './presenciaPorHoras.ts'
 
 interface FilaCruda {
   persona_id: string

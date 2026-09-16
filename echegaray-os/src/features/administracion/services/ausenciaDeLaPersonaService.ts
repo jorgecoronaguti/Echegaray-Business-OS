@@ -11,14 +11,14 @@
 // registra SIN obra; lo único que se sigue buscando de una obra es cuánto vale la jornada.
 
 import type { createClient } from '@/lib/supabase/server'
-import { etiquetaDeMotivo, tipoDeMotivo } from './motivoDeAusencia'
-import { jornadaPorDefecto } from './jornadaPorDefecto'
-import { horasDeAusencia } from './liquidacionDeAusencias'
-import { planDeBorrado, traducirEscritura, type FilaExistente } from './planDeJornada'
-import { acuseDeTramo, planDeTramoDeAusencia, sumarHoras } from './ausenciaDeLaPersona'
-import { declararPresencia } from './presenciaDelDiaService'
-import { declaracionDeCorreccion } from './presenciaPorHoras'
-import type { FilaDelDia, FilaDelTramo, PlanSinObra } from './ausenciaDeLaPersona'
+import { etiquetaDeMotivo, tipoDeMotivo } from './motivoDeAusencia.ts'
+import { jornadaPorDefecto } from './jornadaPorDefecto.ts'
+import { horasDeAusencia } from './liquidacionDeAusencias.ts'
+import { planDeBorrado, traducirEscritura, type FilaExistente } from './planDeJornada.ts'
+import { acuseDeTramo, planDeTramoDeAusencia, sumarHoras } from './ausenciaDeLaPersona.ts'
+import { declararPresencia } from './presenciaDelDiaService.ts'
+import { declaracionDeCorreccion } from './presenciaPorHoras.ts'
+import type { FilaDelDia, FilaDelTramo, PlanSinObra } from './ausenciaDeLaPersona.ts'
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
 

@@ -12,7 +12,7 @@
 //              UNA fila al pie, con su importe en la columna de materiales y los detalles más grandes
 //              en el `title`. NUNCA repartido entre las obras: repartir sería inventar a qué obra fue.
 
-import { V } from '@/shared/components/v2/patron'
+import { ALTO_V2, V } from '@/shared/components/v2/patron'
 import { plata } from '@/features/obras/components/formato'
 import { ROTULO_SIN_OBRA, importeSinObra, tituloSinObra, type GastoSinObra, tituloSubcontratosSinObra } from '../services/costosDeObra'
 import { textoPorVencer } from '../services/porVencer'
@@ -65,7 +65,7 @@ export function FilaGastosSinObra({ gasto, columnas, sangria, visible, hrefDetal
       data-testid="fila-sin-obra-cliente"
       className={`grid items-center ${columnas}`}
       title={tituloSinObra(gasto) ?? undefined}
-      style={{ minHeight: 40, paddingLeft: sangria, borderBottom: `1px solid ${V.lineaFila}` }}
+      style={{ minHeight: ALTO_V2.hija, paddingLeft: sangria, borderBottom: `1px solid ${V.lineaFila}` }}
     >
       <span className="truncate" style={{ fontSize: '12.5px', color: V.apagado }}>{ROTULO_SIN_OBRA}</span>
       {/* INICIO (se suelta al angostar, igual que en la tabla) y HH: esta fila no tiene ninguna. */}
