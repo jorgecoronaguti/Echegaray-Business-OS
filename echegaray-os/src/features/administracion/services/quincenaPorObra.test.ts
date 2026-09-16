@@ -826,3 +826,36 @@ test('EL CERTIFICADO SE PEGA A LA LICENCIA Y NO A LA AUSENCIA, aunque el rango l
   assert.equal(celda(X).estado, 'horas')
   assert.equal(celda(X).certificado ?? null, null, 'un día trabajado tampoco')
 })
+
+// ═══ EN UNA QUINCENA PASADA LA COLUMNA DICE DÓNDE ESTUVO, NO DÓNDE ESTÁ HOY (dueño, 16/09/2026) ═══
+
+test('QUINCENA PASADA: manda la obra con MÁS HORAS de la ventana, aunque hoy esté en otra; no se edita', () => {
+  const HOY_DESPUES = '2026-09-30'
+  const filas = armar({
+    hoy: HOY_DESPUES,
+    asignaciones: [asig('p1', 'Uno', MAMPO, null, '2026-09-20', null), asig('p1', 'Uno', PISOS, null, '2026-08-01', '2026-09-19')],
+    registros: [reg('p1', PISOS, L, 9), reg('p1', PISOS, M, 9), reg('p1', MAMPO, X, 4)],
+  })
+  assert.equal(filas[0].obraEsDeHoy, false)
+  assert.equal(filas[0].rotuloObra, OBRAS[PISOS].nombre)
+  assert.deepEqual(filas[0].obrasDeLaQuincena.map((o) => [o.id, o.horas]), [[PISOS, 18], [MAMPO, 4]])
+})
+
+test('QUINCENA PASADA SIN HORAS: la asignación vigente al ÚLTIMO DÍA de la quincena, no la de hoy', () => {
+  const filas = armar({
+    hoy: '2026-09-30',
+    asignaciones: [asig('p1', 'Uno', PISOS, null, '2026-08-01', '2026-09-15'), asig('p1', 'Uno', MAMPO, null, '2026-09-16', null)],
+    registros: [reg('p1', null, L, 0, 'ausencia')],
+  })
+  assert.equal(filas[0].rotuloObra, OBRAS[PISOS].nombre)
+  assert.equal(filas[0].obraEsDeHoy, false)
+})
+
+test('QUINCENA EN CURSO: sigue siendo la obra de HOY, editable', () => {
+  const filas = armar({
+    asignaciones: [asig('p1', 'Uno', MAMPO, null, J, null), asig('p1', 'Uno', PISOS, null, '2026-08-01', X)],
+    registros: [reg('p1', PISOS, L, 9), reg('p1', PISOS, M, 9), reg('p1', PISOS, X, 9)],
+  })
+  assert.equal(filas[0].obraEsDeHoy, true)
+  assert.equal(filas[0].rotuloObra, OBRAS[MAMPO].nombre)
+})

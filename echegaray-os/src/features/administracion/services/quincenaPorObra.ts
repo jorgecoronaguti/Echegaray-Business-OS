@@ -134,6 +134,14 @@ export interface FilaQuincena {
   /** El `persona_id`. La fila ES la persona: no hay dos filas con la misma clave. */
   clave: string
   persona: { id: string; nombre: string; nota: string | null }
+  /**
+   * ¿`rotuloObra` es la obra de HOY (quincena en curso o futura) o la de ESA quincena (pasada)? Dueño, 16/09/2026:
+   * «"obra actual" no lee bien cuando buscás quincenas anteriores en Horas». En una quincena pasada la columna dice
+   * dónde estuvo —la obra con más horas de la ventana, o la asignación vigente al último día— y no se edita.
+   */
+  obraEsDeHoy: boolean
+  /** Las obras con horas en la ventana, de más a menos. Es lo que explica el rótulo de una quincena pasada. */
+  obrasDeLaQuincena: { id: string; nombre: string; horas: number }[]
   /** Lo que se escribe en la columna OBRA. Nombre de obra, cliente, o «Sin obra activa». */
   rotuloObra: string
   /**
@@ -283,12 +291,26 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
       futuro: fecha > e.hoy,
       esHoy: fecha === e.hoy,
     }))
-    const vigente = obraActivaDe(p.asignaciones, suyos, e.obras, e.hoy)
+    // ═══ EN CURSO: LA OBRA DE HOY. PASADA: DÓNDE ESTUVO (dueño, 16/09/2026) ═══
+    //
+    // La regla de «obra actual» mira HOY, y en una quincena de julio decía la obra de hoy o «Sin obra activa» si
+    // la asignación empezó después. Con la quincena ya pasada, la columna cuenta la cronología: la obra con más
+    // horas en la ventana; si no hubo horas, la asignación vigente al último día de la quincena.
+    const ultimoDia = e.dias[e.dias.length - 1] ?? e.hoy
+    const enCurso = e.hoy <= ultimoDia
+    const obrasDeLaQuincena = obrasConHoras(suyos, e.obras)
+    const vigente = enCurso
+      ? obraActivaDe(p.asignaciones, suyos, e.obras, e.hoy)
+      : (obrasDeLaQuincena[0]
+        ? { obra: e.obras[obrasDeLaQuincena[0].id], elegible: true }
+        : obraActivaDe(p.asignaciones, suyos, e.obras, ultimoDia))
     const activa = vigente?.elegible ? vigente.obra : null
     const noElegible = vigente && !vigente.elegible ? vigente.obra : null
     return {
       clave: p.persona_id,
       persona: { id: p.persona_id, nombre: p.nombre, nota: p.nota },
+      obraEsDeHoy: enCurso,
+      obrasDeLaQuincena,
       // EL CHIP NO PUEDE CONTARLA EN UNA OBRA ACTIVA. Por eso el rótulo de la obra no elegible
       // lleva su estado pegado: «MAMPOSTERÍA (cerrada)» es un chip propio y no engorda PISOS.
       rotuloObra: activa?.nombre
@@ -498,6 +520,22 @@ function obraActivaDe(
     || (horas.get(b.obra.id) ?? 0) - (horas.get(a.obra.id) ?? 0)
     || a.obra.nombre.localeCompare(b.obra.nombre, 'es'))[0]
   return { obra: ganador.obra, elegible: ganador.tramo.elegible }
+}
+
+/** Las obras con horas TRABAJADAS en la ventana, de más a menos horas y después por nombre. Sin ausencias ni filas sin obra. */
+function obrasConHoras(
+  registros: RegistroQuincena[], catalogo: Record<string, ObraRotulo>,
+): { id: string; nombre: string; horas: number }[] {
+  const horas = new Map<string, number>()
+  for (const r of registros) {
+    if (esTrabajada(r.tipo_hora) && r.obra_id && numero(r.horas) > 0) {
+      horas.set(r.obra_id, (horas.get(r.obra_id) ?? 0) + numero(r.horas))
+    }
+  }
+  return [...horas.entries()]
+    .filter(([id]) => catalogo[id])
+    .map(([id, h]) => ({ id, nombre: catalogo[id].nombre, horas: h }))
+    .sort((a, b) => b.horas - a.horas || a.nombre.localeCompare(b.nombre, 'es'))
 }
 
 /**
