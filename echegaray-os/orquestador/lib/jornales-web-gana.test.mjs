@@ -4,13 +4,14 @@
 // (el update es sobre el id) y el importador, que corre cada hora, la volvía a escribir con el valor
 // de la planilla. Lo que distingue a esa fila es el autor que el trigger deja en `actualizado_por`.
 //
-// LA MUTACIÓN QUE PONE ESTO ROJO: ignorar `actualizado_por`, proteger la fila y no el día, o proteger
-// también la jornada automática / la carga del jefe (que la planilla sigue pisando, 11/09/2026).
+// LA MUTACIÓN QUE PONE ESTO ROJO: ignorar `actualizado_por`, proteger la fila y no el día, o volver a
+// dejar que la planilla pise la jornada automática / la carga del jefe. Desde el 16/09/2026 («dejá de
+// borrarme los registros») NINGUNA fila `web:*` cede: la planilla completa, no pisa.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  laTocoUnaPersona, separarLoQueGanaLaWeb, pisarLoDeLaWeb, SQL_UPSERT, SQL_MOVER, SQL_PISAR_WEB, FUENTE,
+  laTocoUnaPersona, separarLoQueGanaLaWeb, pisarLoDeLaWeb, conflictoDeNoVino, SQL_UPSERT, SQL_MOVER, SQL_PISAR_WEB, FUENTE,
 } from './jornales-a-registros-hh.mjs'
 
 const dePlanilla = (extra = {}) => ({
@@ -50,22 +51,33 @@ test('LAS MARCAS DE CARGA A MANO GANAN AUNQUE NO TENGAN AUTOR (un insert no lo d
   }
 })
 
-test('LA JORNADA AUTOMÁTICA Y LA CARGA DEL JEFE, SIN TOCAR, LA SIGUE PISANDO LA PLANILLA', () => {
+test('LA JORNADA AUTOMÁTICA Y LA CARGA DEL JEFE TAMBIÉN GANAN, SIN AUTOR (dueño, 16/09/2026)', () => {
+  // 11–15/09: 28 filas `web:presencia-defecto` / `web:asistencia-obra` pisadas en su lugar por la
+  // planilla; el dueño: «dejá de borrarme los registros en horas de app.ecsas.com.ar».
   for (const m of ['web:presencia-defecto', 'web:asistencia-obra']) {
-    assert.equal(laTocoUnaPersona({ fuente_legacy: m }), false, m)
-    const base = [enLaBase({ fuente_legacy: m })]
-    const r = separarLoQueGanaLaWeb([dePlanilla()], base)
-    assert.equal(pisarLoDeLaWeb(r.filas, r.existentes, { hoy: '2026-09-14' }).pisar.length, 1, m)
+    assert.equal(laTocoUnaPersona({ fuente_legacy: m }), true, m)
+    const r = separarLoQueGanaLaWeb([dePlanilla()], [enLaBase({ fuente_legacy: m })])
+    assert.equal(r.filas.length, 0, `${m}: la planilla no entra en ese día`)
+    assert.equal(r.existentes.length, 0)
+    assert.equal(pisarLoDeLaWeb(r.filas, r.existentes, { hoy: '2026-09-14' }).pisar.length, 0, m)
   }
-  // …pero si alguien la corrigió después, tiene autor y gana.
-  assert.equal(laTocoUnaPersona({ fuente_legacy: 'web:presencia-defecto', actualizado_por: 'u' }), true)
 })
 
-test('LA CARGA DEL JEFE CEDE AUNQUE SE VUELVA A GUARDAR (alcance del dueño, 14/09/2026)', () => {
-  // Auditoría: el update deja autor y protegía el segundo guardado del jefe o del tramo de ausencia.
-  assert.equal(laTocoUnaPersona({ fuente_legacy: 'web:asistencia-obra', actualizado_por: 'u-jefe' }), false)
-  // Una fila de la planilla corregida a mano (autor, marca sheet) sí gana.
+test('LA CARGA DEL JEFE GANA AUNQUE SE VUELVA A GUARDAR; una fila de la planilla corregida a mano también', () => {
+  assert.equal(laTocoUnaPersona({ fuente_legacy: 'web:asistencia-obra', actualizado_por: 'u-jefe' }), true)
   assert.equal(laTocoUnaPersona({ fuente_legacy: FUENTE, actualizado_por: 'u-admin' }), true)
+})
+
+test('LA WEB DICE QUE NO VINO Y LA PLANILLA TRAE HORAS: no se pisa, queda declarado como CONFLICTO con las dos versiones', () => {
+  // Tello y Zogbe, 08/09/2026: «no vino» desde el celular, 9 h en Entrepiso según JORNALES, y el dueño
+  // confirmó que SÍ trabajaron. Lo decide una persona; el importador sólo lo muestra.
+  const licencia = enLaBase({ fuente_legacy: 'web:ausencia-de-la-persona', tipo_hora: 'licencia', horas: 9, obra_canonica_id: null })
+  const r = separarLoQueGanaLaWeb([dePlanilla()], [licencia])
+  assert.equal(r.filas.length, 0, 'la planilla no escribe')
+  assert.deepEqual(r.ganaLaWeb[0].conflicto, { web: 'licencia 9h', planilla: '9h normal en obra-a' })
+  // Sin contradicción no hay conflicto: la web trabajó, o la planilla también dice que no vino.
+  assert.equal(separarLoQueGanaLaWeb([dePlanilla()], [enLaBase({ fuente_legacy: 'web:asistencia-obra' })]).ganaLaWeb[0].conflicto, null)
+  assert.equal(conflictoDeNoVino([licencia], [dePlanilla({ tipo_hora: 'ausencia', horas: 0 })]), null)
 })
 
 test('PISAR UNA FILA DE LA WEB LE SACA EL AUTOR: si no, queda «editada a mano» para siempre', () => {

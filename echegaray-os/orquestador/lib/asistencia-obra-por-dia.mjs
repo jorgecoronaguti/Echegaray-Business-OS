@@ -15,6 +15,7 @@ import {
   emparejarPersona, indicePersonas, norm, FALTA,
 } from './jornales-a-registros-hh.mjs'
 import { TIPOS_TRABAJADOS, fechaIso } from './asignaciones-desde-hh.mjs'
+import { ANCLA_ASISTENCIA } from './hh-ancla-asistencia.mjs'
 
 export const HOJA_ASISTENCIA = 'ASISTENCIA'
 export const FUENTE_JORNALES = 'sheet:jornales'
@@ -185,7 +186,7 @@ export function planDeCorreccion({ dias, hh = [] }) {
       if (r.obra_canonica_id !== obraPlanilla) noTrabajadas.push({ ...base, base_obra: r.obra_canonica_id, planilla: obraPlanilla })
       continue
     }
-    if (r.obra_canonica_id === obraPlanilla) { coinciden++; continue }
+    if (r.obra_canonica_id === obraPlanilla && String(r.notas ?? '').includes(ANCLA_ASISTENCIA)) { coinciden++; continue }
     corregir.push({ ...base, de: r.obra_canonica_id, a: obraPlanilla, rotulos: [...dia.obras.get(obraPlanilla).rotulos] })
   }
   corregir.sort((a, b) => a.fecha.localeCompare(b.fecha) || String(a.persona).localeCompare(String(b.persona)))
@@ -204,12 +205,18 @@ export function planillaSinHh({ dias, hh = [] }) {
 
 // SÓLO la columna de obra, y sólo sobre filas de JORNALES. El `is distinct from` hace la escritura
 // idempotente en la base misma: una segunda corrida devuelve 0 filas aunque el plan se recalcule.
+// Y DEJA EL ANCLA en `notas`: sin ella el importador de JORNALES devolvía la fila a la obra del rótulo
+// una hora después (`hh-ancla-asistencia.mjs`). Una fila que ya está en la obra pero sin ancla también
+// se marca, para que la próxima corrida del importador no la mueva.
 export const SQL_CORREGIR_OBRA = `
   update public.registros_hh
-     set obra_canonica_id = $2
+     set obra_canonica_id = $2,
+         notas = case when coalesce(notas, '') like '%${ANCLA_ASISTENCIA}%' then notas
+                      else nullif(concat_ws(' · ', nullif(notas, ''), '${ANCLA_ASISTENCIA}'), '') end
    where id = $1
      and fuente_legacy = '${FUENTE_JORNALES}'
-     and obra_canonica_id is distinct from $2
+     and actualizado_por is null
+     and (obra_canonica_id is distinct from $2 or coalesce(notas, '') not like '%${ANCLA_ASISTENCIA}%')
   returning id, obra_canonica_id`
 
 export { FALTA }

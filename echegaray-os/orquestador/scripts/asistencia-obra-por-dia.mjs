@@ -61,7 +61,7 @@ async function catalogos() {
   }
 }
 
-const SQL_HH = `select id, persona_id, to_char(fecha, 'YYYY-MM-DD') fecha, obra_canonica_id, tipo_hora, horas, fuente_legacy
+const SQL_HH = `select id, persona_id, to_char(fecha, 'YYYY-MM-DD') fecha, obra_canonica_id, tipo_hora, horas, fuente_legacy, actualizado_por, notas
   from public.registros_hh where persona_id is not null and fecha >= $1::date`
 
 async function leerPlanilla() {

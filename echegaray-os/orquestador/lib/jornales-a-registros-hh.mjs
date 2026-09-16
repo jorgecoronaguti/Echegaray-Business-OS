@@ -20,6 +20,8 @@ import { detectarBloques, trabajadoresDeBloque, leerCeldaDiaria, letraColumna } 
 import { interpretarCarga, FORMA } from './horas-extra.mjs'
 import { obraDeLaAsignacionDelDia } from './asignacion-del-dia.mjs'
 
+import { ANCLA_ASISTENCIA, tieneAncla } from './hh-ancla-asistencia.mjs'
+
 export const FUENTE = 'sheet:jornales'
 export const HORAS_MAX_DIA = 24
 /**
@@ -480,31 +482,27 @@ export function isoDe(f) {
 export const esDeLaWeb = (fuente) => typeof fuente === 'string' && fuente.startsWith('web:')
 
 /**
- * LAS MARCAS QUE DEJA UNA PERSONA CUANDO CARGA O CORRIGE A MANO DESDE LA WEB.
- *
- * `web:presencia-defecto` (la jornada automática) y `web:asistencia-obra` (la carga del jefe) NO
- * están: son las que el 11/09/2026 cruzaban las horas con la planilla, y la planilla las sigue
- * pisando. Éstas cuatro las escribe alguien mirando la liquidación o la asistencia.
+ * LAS MARCAS QUE DEJA UNA PERSONA CUANDO CARGA O CORRIGE A MANO DESDE LA WEB (las conserva la
+ * pantalla que decide con qué marca estrena un día: `jornadaPorObraActions.ts`).
  */
 export const MARCAS_A_MANO = new Set([
   'web:grilla-quincena', 'web:correccion-horas', 'web:correccion-ausencia', 'web:ausencia-de-la-persona',
 ])
 
 /**
- * ¿UNA PERSONA LA TOCÓ EN LA WEB? Con autor (`actualizado_por`, que el trigger escribe en cada
- * update con sesión, por cualquier camino y con cualquier marca, incluso `sheet:jornales`) o con
- * una marca de carga a mano.
+ * ¿UNA PERSONA LA TOCÓ EN LA WEB? TODA fila `web:*` —la carga del jefe desde la obra, la jornada
+ * automática de «está», el tramo de ausencia, la corrección de Administración— y toda fila con autor
+ * (`actualizado_por`, que el trigger escribe en cada update con sesión, incluso sobre `sheet:jornales`).
+ *
+ * Hasta el 16/09/2026 `web:asistencia-obra` y `web:presencia-defecto` sin autor cedían a la planilla
+ * (alcance del 14/09). El dueño ese día: *«dejá de borrarme los registros en horas»*. Lo que alguien
+ * cargó desde la app lo cargó una persona; la planilla COMPLETA lo que la web no tiene y no pisa nada.
  */
-export const laTocoUnaPersona = (e) => MARCAS_A_MANO.has(e?.fuente_legacy)
-  || (e?.actualizado_por != null && !MARCAS_QUE_CEDEN.has(e?.fuente_legacy))
+export const laTocoUnaPersona = (e) => esDeLaWeb(e?.fuente_legacy) || e?.actualizado_por != null
 
-/**
- * ALCANCE FIRMADO POR EL DUEÑO (14/09/2026, «Ninguno de estos»): la carga del jefe desde la obra y
- * el tramo de ausencia —las dos escriben `web:asistencia-obra`— ceden a la planilla AUNQUE se
- * vuelvan a guardar. Sin esta excepción, el segundo guardado (un update, que deja autor) las
- * protegía y el primero (un insert) no: la misma carga con dos reglas.
- */
-export const MARCAS_QUE_CEDEN = new Set(['web:asistencia-obra'])
+/** Ninguna marca de la web cede a la planilla (dueño, 16/09/2026). Queda exportada porque la
+ *  pantalla la lee para saber con qué marca estrena un día. */
+export const MARCAS_QUE_CEDEN = new Set([])
 
 /**
  * LO EDITADO EN LA WEB GANA SIEMPRE — dueño, 14/09/2026: «web gana siempre».
@@ -535,8 +533,26 @@ export function separarLoQueGanaLaWeb(filas, existentes = []) {
     filas: filas.filter((f) => !protegidos.has(diaDe(f.persona_id, f.fecha))),
     existentes: existentes.filter((e) => !protegidos.has(diaDe(e.persona_id, e.fecha))),
     ganaLaWeb: [...planilla].map(([dia, deLaPlanilla]) => ({
-      dia, existentes: protegidos.get(dia), deLaPlanilla, porque: 'una persona lo editó en la web: gana la web',
+      dia,
+      existentes: protegidos.get(dia),
+      deLaPlanilla,
+      porque: 'una persona lo cargó o corrigió en la web: gana la web',
+      conflicto: conflictoDeNoVino(protegidos.get(dia), deLaPlanilla),
     })),
+  }
+}
+
+const trabajada = (r) => r.tipo_hora !== 'licencia' && r.tipo_hora !== 'ausencia' && Number(r.horas ?? 0) > 0
+/**
+ * LA WEB DICE QUE NO VINO Y LA PLANILLA TRAE HORAS. No se pisa (Tello y Zogbe el 08/09/2026: el jefe
+ * marcó «no vino», JORNALES tenía 9 h, y el dueño confirmó que SÍ trabajaron — lo decide una persona).
+ * Se declara con las dos versiones para que la grilla lo muestre; nunca se elige acá.
+ */
+export function conflictoDeNoVino(web = [], planilla = []) {
+  if (web.some(trabajada) || !planilla.some(trabajada)) return null
+  return {
+    web: web.map((e) => `${e.tipo_hora} ${Number(e.horas ?? 0)}h`).join(' + ') || 'sin filas',
+    planilla: planilla.filter(trabajada).map((f) => `${Number(f.horas)}h ${f.tipo_hora} en ${f.obra_canonica_id ?? 'sin obra'}`).join(' + '),
   }
 }
 
@@ -667,10 +683,17 @@ export function separarConflictos(filas, existentes = []) {
     const e = propias.get(k)
     const destino = escribir.filter((f) => `${f.persona_id}|${f.fecha}|${f.tipo_hora}` === `${k.split('|')[0]}|${k.split('|')[1]}|${e.tipo_hora}`
       && !propias.has(`${f.persona_id}|${f.fecha}|${f.obra_canonica_id}|${f.tipo_hora}`))
-    if (destino.length === 1 && e.id) mover.push({ id: e.id, desde: e.obra_canonica_id, fila: destino[0] })
-    else obsoletas.push(k)
+    if (destino.length !== 1 || !e.id) { obsoletas.push(k); continue }
+    // LA OBRA ANCLADA POR EL LEDGER DIARIO NO SE MUEVE (`hh-ancla-asistencia.mjs`): las horas y el
+    // tipo se actualizan en su lugar y el ancla se conserva en `notas`; la fila del plan no se inserta.
+    if (tieneAncla(e.notas)) {
+      const fila = { ...destino[0], obra_canonica_id: e.obra_canonica_id, notas: [destino[0].notas, ANCLA_ASISTENCIA].filter(Boolean).join(' · ') }
+      mover.push({ id: e.id, desde: e.obra_canonica_id, fila, plan: destino[0], anclada: true })
+      continue
+    }
+    mover.push({ id: e.id, desde: e.obra_canonica_id, fila: destino[0] })
   }
-  const movidas = new Set(mover.map((m) => m.fila))
+  const movidas = new Set(mover.map((m) => m.plan ?? m.fila))
   return { escribir: escribir.filter((f) => !movidas.has(f)), conflictos, obsoletas, mover }
 }
 

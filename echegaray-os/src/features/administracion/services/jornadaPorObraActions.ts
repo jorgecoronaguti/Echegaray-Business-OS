@@ -237,9 +237,9 @@ const marcasConHoras = (
 async function escribirPlan(
   supabase: Awaited<ReturnType<typeof createClient>>,
   obraId: string, fecha: string, plan: PlanDeJornada,
-  // QUIÉN ESTRENA EL DÍA DECIDE SI LA PLANILLA LO PISA (`MARCAS_A_MANO` / `MARCAS_QUE_CEDEN` en
-  // `jornales-a-registros-hh.mjs`). La carga del jefe cede (dueño, 14/09/2026); la corrección de
-  // Administración gana. Sin esto, el día pasado cargado a mano desde la celda nacía como carga del jefe.
+  // LA MARCA DICE QUIÉN ESTRENÓ EL DÍA (`MARCAS_A_MANO` / `MARCAS_QUE_CEDEN` en
+  // `jornales-a-registros-hh.mjs`). Desde el 16/09/2026 ninguna marca `web:*` cede a la planilla; la
+  // distinción sigue valiendo para saber si fue el jefe desde la obra o Administración desde la celda.
   fuenteAlta: 'web:asistencia-obra' | typeof FUENTE_CORRECCION_HORAS = 'web:asistencia-obra',
 ): Promise<{ escrito: EscritoEnLaBase | null; error: string | null }> {
   const escrito: EscritoEnLaBase = {
