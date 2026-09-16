@@ -38,7 +38,8 @@ export function EscalaVigente({ escala, href }: { escala: Escala | null; href: s
         fontSize: '12px', color: V.apagado, textDecoration: 'none', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
       }}>
       <span style={{ color: V.tintaSuave, fontWeight: 600 }}>{`UOCRA ${escala.cct} · ${escala.rige}`}</span>
-      <span className="max-[767px]:hidden" style={{ display: 'inline-flex', gap: 10 }}>
+      {/* SIN `display` EN LÍNEA: un style pisa al `hidden` de la clase y los valores se veían a 390 px (medido 16/09). */}
+      <span className="max-[767px]:hidden inline-flex gap-2.5">
         {porHora.map((v) => (
           <span key={v.corto} data-testid={`escala-uocra-${v.corto}`}>
             <span>{v.corto} </span>
