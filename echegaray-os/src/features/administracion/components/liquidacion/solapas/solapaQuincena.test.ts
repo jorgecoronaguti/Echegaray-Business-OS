@@ -88,7 +88,7 @@ test('LOS DÍAS VAN PRIMERO Y DESPUÉS LA PLATA, CON PAGADO Y SALDO EN CADA LADO
     ['horas', 'hsBlanco', 'horaCategoria', 'neto', 'pagadoBanco', 'saldoBanco',
       'hsNegro', 'horaNegro', 'negro', 'pagadoEfectivo', 'saldoEfectivo',
       'presentismo', 'total', 'pagado', 'saldo'])
-  assert.match(GRILLA, /minmax\(200px,1fr\) repeat\(\$\{nDias\},\$\{DIA\}px\) \$\{PLATA/, 'los días van antes que la plata')
+  assert.match(GRILLA, /minmax\(var\(--liq-persona,200px\),1fr\) repeat\(\$\{nDias\},\$\{DIA\}px\) \$\{PLATA/, 'los días van antes que la plata')
   assert.match(PANEL, /campo="porBanco"/)
   assert.match(PANEL, /Acuerdo 50\/50/)
   assert.match(PANEL, /<HistorialDeTarifa/)

@@ -48,7 +48,7 @@ test('EL ENCABEZADO: Persona · días · Horas · BLANCO(5) · NEGRO(5) · prese
     assert.ok(!plata.includes(muerta), `«${muerta}» volvió al encabezado`)
   }
   // LOS DÍAS ADELANTE: la plantilla pone los días antes que la plata, y el encabezado también.
-  assert.match(GRILLA, /`minmax\(200px,1fr\) repeat\(\$\{nDias\},\$\{DIA\}px\) \$\{PLATA\.map/,
+  assert.match(GRILLA, /`minmax\(var\(--liq-persona,200px\),1fr\) repeat\(\$\{nDias\},\$\{DIA\}px\) \$\{PLATA\.map/,
     'MUTACIÓN: la plata antes que los días')
   assert.match(GRILLA, /gridColumn: 2 \+ dias\.length \+ i, gridRow: 2/)
   assert.match(GRILLA, /'Blanco · recibo'/)
