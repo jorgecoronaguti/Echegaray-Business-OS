@@ -15,6 +15,8 @@
 import { V } from '@/shared/components/v2/patron'
 import { plata } from '@/features/obras/components/formato'
 import { ROTULO_SIN_OBRA, importeSinObra, tituloSinObra, type GastoSinObra, tituloSubcontratosSinObra } from '../services/costosDeObra'
+import { textoPorVencer } from '../services/porVencer'
+import { AbrirDetalle, PorVencer } from './CeldaCosto'
 
 /** La segunda línea del rótulo de una columna de costo, debajo de su `RotuloCol`. */
 export function ALaFecha() {
@@ -47,12 +49,14 @@ export function RotuloACorte({ texto, titulo }: { texto: string; titulo: string 
  * Callada cuando no hay nada que decir: sin gastos sin obra no se dibuja una fila de «—». Y cuando no
  * se pudo leer (`legible: false`) tampoco: la tabla de arriba ya calla sus celdas en ese caso.
  */
-export function FilaGastosSinObra({ gasto, columnas, sangria, visible }: {
+export function FilaGastosSinObra({ gasto, columnas, sangria, visible, hrefDetalle }: {
   gasto: GastoSinObra | null
   columnas: string
   sangria: number
   /** Quien no ve economía no ve costo: la misma puerta que las celdas de la tabla. */
   visible: boolean
+  /** Adónde lleva cada importe: el panel con los comprobantes que lo componen (dueño, 15/09/2026). */
+  hrefDetalle?: (rubro: 'materiales' | 'subcontratos') => string
 }) {
   const importe = importeSinObra(gasto)
   if (!visible || importe == null) return null
@@ -67,21 +71,31 @@ export function FilaGastosSinObra({ gasto, columnas, sangria, visible }: {
       {/* INICIO (se suelta al angostar, igual que en la tabla) y HH: esta fila no tiene ninguna. */}
       <span className="max-[1199px]:hidden" />
       <span />
-      <span
-        data-testid="materiales-sin-obra-cliente"
-        className="truncate font-mono tabular-nums"
-        style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right' }}
-      >
-        {plata(gasto?.materiales ?? null)}
+      <span className="grid justify-items-end" style={{ minWidth: 0 }}>
+        <span
+          data-testid="materiales-sin-obra-cliente"
+          className="truncate font-mono tabular-nums"
+          style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right', maxWidth: '100%' }}
+        >
+          <AbrirDetalle href={hrefDetalle ? hrefDetalle('materiales') : null} etiqueta="Ver qué compone los gastos sin obra asignada">
+            {plata(gasto?.materiales ?? null)}
+          </AbrirDetalle>
+        </span>
+        <PorVencer texto={textoPorVencer(gasto?.materialesPorVencer)} />
       </span>
       {/* LOS SUBCONTRATOS SIN OBRA, EN SU COLUMNA (20260915T0810): no se suman en Materiales. */}
-      <span
-        data-testid="subcontratos-sin-obra-cliente"
-        className="truncate font-mono tabular-nums"
-        title={tituloSubcontratosSinObra(gasto) ?? undefined}
-        style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right' }}
-      >
-        {plata(gasto?.subcontratos ?? null)}
+      <span className="grid justify-items-end" style={{ minWidth: 0 }}>
+        <span
+          data-testid="subcontratos-sin-obra-cliente"
+          className="truncate font-mono tabular-nums"
+          title={tituloSubcontratosSinObra(gasto) ?? undefined}
+          style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right', maxWidth: '100%' }}
+        >
+          <AbrirDetalle href={hrefDetalle && gasto?.subcontratos != null ? hrefDetalle('subcontratos') : null} etiqueta="Ver los subcontratos sin obra asignada">
+            {plata(gasto?.subcontratos ?? null)}
+          </AbrirDetalle>
+        </span>
+        <PorVencer texto={textoPorVencer(gasto?.subcontratosPorVencer)} />
       </span>
       {/* MANO DE OBRA y CONTRATADO: las horas siempre tienen obra, y lo sin obra no tiene precio. */}
       <span />

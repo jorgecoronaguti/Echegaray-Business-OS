@@ -73,6 +73,10 @@ import {
   agruparRegistro, armarRegistro, filtrarRegistro, leerFiltro, periodosDe,
 } from '@/features/clientes/services/registroOrdenes'
 import { PanelOrdenes } from '@/features/clientes/components/PanelOrdenes'
+import { PanelDetalleCosto } from '@/features/clientes/components/PanelDetalleCosto'
+import {
+  celdaDeCosto, esRubroSinObra, leerDetalle, leerRubro, type PedidoDeDetalle, type Rubro,
+} from '@/features/clientes/services/detalleCostoDeObra'
 import { registrarCobroDeCertificado } from '@/features/clientes/services/cuentaCorrienteActions'
 import { editarPagoDelEsquema, publicarEsquema } from '@/features/clientes/services/esquemaActions'
 import {
@@ -83,7 +87,7 @@ import { cambiosSinPublicar } from '@/features/clientes/services/reglasEsquema'
 import { A_SANGRE, destinoDe, esCaraRetirada, solapaDe, solapasDeCliente } from '@/features/clientes/services/solapasCliente'
 import { tasaDeConversion } from '@/features/clientes/services/tasaConversion'
 import { leerDesgloseHH } from '@/features/clientes/services/desgloseHH'
-import { totalesDelCliente } from '@/features/clientes/services/costosDeObra'
+import { ROTULO_SIN_OBRA, totalesDelCliente } from '@/features/clientes/services/costosDeObra'
 import { DesgloseHH } from '@/features/clientes/components/DesgloseHH'
 import { PieDeLosTrabajos } from '@/features/clientes/components/PieDeLosTrabajos'
 import { FilaGastosSinObra } from '@/features/clientes/components/CostoALaFecha'
@@ -158,6 +162,17 @@ type Query = {
    */
   hh?: string
   hhq?: string
+  /**
+   * EL DETALLE DE UNA CELDA DE COSTO (`?trabajo=<obra>&rubro=materiales|subcontratos|mo|hh`, o
+   * `?sinobra=1&rubro=` para la fila «Gastos del cliente sin obra asignada»).
+   *
+   * «Cada vez que haga click en Materiales, HH, Mano de obra o Subcontratos, que me salga en ese menú
+   * discriminado lo que está considerando» (dueño, 15/09/2026). Con `rubro` el panel lateral dibuja
+   * el detalle de esa celda; sin él, las órdenes del trabajo, como hasta hoy. Entrada de usuario: la
+   * valida `leerRubro` con Zod y lo que no valida no abre nada.
+   */
+  rubro?: string
+  sinobra?: string
   /**
    * LA PANTALLA DEL PORTAL, COMO SUB-PANTALLA DE LA FICHA (`?portal=1`).
    *
@@ -434,7 +449,9 @@ export default async function ClientePage({ params, searchParams }: {
     const p = new URLSearchParams(
       // `solapa` se lee pero NO se propaga: un enlace viejo abre la cara que pedía y a partir de ahí
       // la dirección se escribe con el nombre de hoy.
-      Object.entries({ ...q, solapa: null, ...cambio })
+      // `rubro` y `sinobra` TAMPOCO: el detalle de una celda es del clic que lo abrió, y cualquier otra
+      // dirección de la ficha lo cierra. Sólo `hrefDetalle` los escribe, a propósito.
+      Object.entries({ ...q, solapa: null, rubro: null, sinobra: null, ...cambio })
         .filter(([, v]) => v != null && v !== '') as [string, string][],
     )
     const s = p.toString()
@@ -528,7 +545,7 @@ export default async function ClientePage({ params, searchParams }: {
     : { desglose: null, error: null }
 
   /** Adónde lleva el número de HH de cada fila: su desglose, en esta misma ficha. */
-  const hrefDesgloseHH = (obraId: string) => url({ hh: obraId, hhq: null })
+  const hrefDesgloseHH = (obraId: string) => url({ hh: obraId, hhq: null, trabajo: null })
   /** La misma obra, otro bloque de JORNALES; `null` = la obra entera. Función declarada y no arrow en
    *  el JSX (React #419). */
   const hrefPeriodoHH = (desde: string | null) => url({ hh: hhAbierta, hhq: desde })
@@ -554,6 +571,22 @@ export default async function ClientePage({ params, searchParams }: {
   // LO SIN OBRA ASIGNADA ENTRA AL TOTAL: sin eso el pie no cierra contra lo que Compras le imputa.
   const sinObraDelCliente = ficha.cliente ? ficha.gastosSinObra?.get(ficha.cliente.cliente_id) ?? null : null
   const costosDelCliente = totalesDelCliente(ficha.costosPorObra, todas.map((o) => o.obra_id), sinObraDelCliente)
+
+  // ═══ EL DETALLE DE UNA CELDA DE COSTO (dueño, 15/09/2026) ═══
+  //
+  // UN VIAJE MÁS, Y SÓLO CON EL PANEL ABIERTO, para quien ve economía —la misma puerta que las celdas—.
+  // El trabajo tiene que ser DE ESTE CLIENTE (`trabajoAbierto`); la RPC vuelve a pasar por
+  // `es_administracion()`, así que esto no es la cerradura: es no hacerle la pregunta.
+  const rubroAbierto = leerRubro(q.rubro)
+  const rubroSinObra = !trabajoAbierto && q.sinobra === '1' && esRubroSinObra(rubroAbierto) ? rubroAbierto : null
+  const pedidoDetalle: PedidoDeDetalle | null = !veEconomia || !rubroAbierto
+    ? null
+    : trabajoAbierto ? { obraId: trabajoAbierto, rubro: rubroAbierto } : rubroSinObra ? { clienteSlug: slug, rubro: rubroSinObra } : null
+  const detalleCosto = pedidoDetalle ? await leerDetalle(supabase, pedidoDetalle) : { detalle: null, error: null }
+  /** Adónde lleva cada celda de costo: el detalle de ESA celda, en el panel de esta ficha. Funciones
+   *  declaradas y no arrows en el JSX (React #419). */
+  const hrefDetalle = (obraId: string, rubro: Rubro) => url({ trabajo: obraId, rubro })
+  const hrefDetalleSinObra = (rubro: 'materiales' | 'subcontratos') => url({ trabajo: null, sinobra: '1', rubro })
 
   // ═══ LOS CUATRO NÚMEROS DE `obra_cuenta` SE RETIRARON (dueño, 12/09/2026 13:10) ═══
   //
@@ -847,6 +880,7 @@ export default async function ClientePage({ params, searchParams }: {
                   horas={ficha.horasPorObra}
                   costos={ficha.costosPorObra}
                   hrefDesgloseHH={hrefDesgloseHH}
+                  hrefDetalle={hrefDetalle}
                   hrefTrabajo={hrefTrabajo}
                   vacio={cerradas.length === 0
                     ? 'Este cliente no tiene ningún trabajo. Se crea desde arriba, colgado de este cliente.'
@@ -869,6 +903,7 @@ export default async function ClientePage({ params, searchParams }: {
                     horas={ficha.horasPorObra}
                     costos={ficha.costosPorObra}
                     hrefDesgloseHH={hrefDesgloseHH}
+                    hrefDetalle={hrefDetalle}
                     hrefTrabajo={hrefTrabajo}
                     titulo={`Terminados · ${cerradas.length}`}
                     vacio=""
@@ -882,7 +917,7 @@ export default async function ClientePage({ params, searchParams }: {
                 {/* EL MISMO SCROLL QUE LA TABLA DE TRABAJOS (QA 14/09/2026): esta fila usa `COLS_OBRAS`,
                     que a 390 px exige 688 px, y suelta hacía que la página entera midiera 708 px de ancho. */}
                 <div data-testid="sin-obra-scroll" className="max-[559px]:overflow-x-auto">
-                  <FilaGastosSinObra gasto={sinObraDelCliente} columnas={COLS_OBRAS} sangria={16} visible={veEconomia} />
+                  <FilaGastosSinObra gasto={sinObraDelCliente} columnas={COLS_OBRAS} sangria={16} visible={veEconomia} hrefDetalle={hrefDetalleSinObra} />
                 </div>
                 <PieDeLosTrabajos hh={hhDelCliente} obras={todas.length} costos={costosDelCliente} />
                 </>
@@ -1070,7 +1105,20 @@ export default async function ClientePage({ params, searchParams }: {
           </CostadoDeFicha>
         </CuerpoDeFicha>
       )}
-      {trabajoAbierto && (
+      {/* CON `rubro`, EL PANEL ES EL DETALLE DE LA CELDA; sin él, las órdenes del trabajo. Cerrar limpia
+          las dos llaves: un enlace con `rubro` suelto no puede volver a abrir nada. */}
+      {pedidoDetalle && rubroAbierto ? (
+        <PanelDetalleCosto
+          titulo={trabajoAbierto ? nombreDeObra.get(trabajoAbierto) ?? trabajoAbierto : ROTULO_SIN_OBRA}
+          rubro={rubroAbierto}
+          detalle={detalleCosto.detalle}
+          error={detalleCosto.error}
+          celda={celdaDeCosto(pedidoDetalle, ficha.costosPorObra, ficha.horasPorObra, sinObraDelCliente)}
+          cerrarHref={url({ trabajo: null })}
+          hrefDesgloseHH={trabajoAbierto ? hrefDesgloseHH(trabajoAbierto) : null}
+          hrefComprasBase="/administracion/compras?s="
+        />
+      ) : trabajoAbierto && (
         <PanelOrdenes
           titulo={nombreDeObra.get(trabajoAbierto) ?? trabajoAbierto}
           ordenes={ordenesDelTrabajo}
