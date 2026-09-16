@@ -8,30 +8,27 @@
  * EGRESO: ningún ejecutor remoto recibe un fragmento que no pasó por `revisarEgreso()`.
  * No es una convención: `ejecutorHF` lo llama él mismo y tira si no pasa.
  *
- * ⚠ DIVERGENCIA DECLARADA, PENDIENTE DE DECISIÓN DEL DUEÑO ⚠
- * ──────────────────────────────────────────────────────────
- * La regla del repo es que TODA llamada remota a Hugging Face pasa por el adapter
- * `lib/ml/hf-inferencia.mjs` y por ningún otro lado — la regla existe porque una vez una captura
- * con datos de clientes reales se fue a un proveedor sin pasar por ahí. **`ejecutorHF` NO pasa
- * por ese adapter: hace su propio `fetch`.** No es un descuido, y tampoco es una exención:
+ * ═══ UNA SOLA PUERTA A HUGGING FACE (resuelto el 16/09/2026) ═══
  *
- *   · `hfInferencia()` está hecho para las capacidades del PRODUCTO (embed, classify, transcribe)
- *     y consulta `puedeSalir(dominio, …)` con la taxonomía de dominios del ERP («banco», «nómina»).
- *     Un fragmento de código fuente no es ninguno de esos dominios.
- *   · Lo que el desarrollo necesita es otro control: escaneo POR FRAGMENTO, que el adapter no hace.
+ * La regla del repo es que TODA llamada remota a Hugging Face pasa por `lib/ml/hf-inferencia.mjs`
+ * y por ningún otro lado. La regla existe porque una vez una captura con datos de clientes reales
+ * se fue a un proveedor sin pasar por ahí. Este ejecutor tuvo su propio `fetch` durante unas horas
+ * y eso era una SEGUNDA puerta: un control que se agregara al adapter no lo habría protegido.
  *
- * Así que hoy hay DOS puertas a HF en vez de una, y eso es exactamente la clase de cosa que la
- * regla quería evitar. Se deja escrito acá y no se resuelve solo. Las dos salidas posibles:
- *   (a) agregar a `hfInferencia()` una capacidad 'editCode' que acepte el escáner de fragmentos, y
- *       que el dev-router pase por ahí — una sola puerta, que es lo que la regla pide; o
- *   (b) que el dueño sancione esta segunda puerta por escrito, con su propio escáner.
- * Mientras no se decida, el riesgo es REAL: un control nuevo que se agregue al adapter no protege
- * a este camino. Lo único que lo protege hoy es `revisarEgreso()` y sus 17 tests.
+ * Ahora pasa por el adapter, y la pieza que faltaba se agregó del lado correcto:
+ *   · `politica.mjs` clasifica el dominio `'codigo'` como INTERNAL — antes no existía y un dominio
+ *     sin clasificar es CONFIDENTIAL, así que el adapter lo habría bloqueado (fallar cerrado, bien).
+ *   · `hfInferencia()` acepta `opciones` para el cuerpo (`temperature`, `max_tokens`), que es lo
+ *     único que le faltaba para servir a chat además de a embeddings.
+ *
+ * EL CONTROL EXTRA DE DESARROLLO NO SE PERDIÓ, VA ANTES: `revisarEgreso()` escanea fragmento por
+ * fragmento y bloquea un CUIT o un mail pegado en el fuente. Eso el adapter no lo hace —su política
+ * es por DOMINIO, no por contenido—, así que los dos controles se suman en vez de reemplazarse.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { revisarEgreso } from './politica-codigo.mjs'
-import { token as tokenHF } from '../lib/ml/hf-inferencia.mjs'
+import { hfInferencia, ErrorHF } from '../lib/ml/hf-inferencia.mjs'
 
 const BASE = 'https://router.huggingface.co/v1'
 
@@ -107,46 +104,46 @@ export async function ejecutorHF({
       porQue: `EGRESO BLOQUEADO — ${bloqueos.join(' | ')}`, huboFallback: false, bloqueadoPorPolitica: true }
   }
 
-  const tk = tokenHF() || (() => { try { return readFileSync(`${process.env.HOME}/.cache/huggingface/token`, 'utf8').trim() } catch { return null } })()
-  if (!tk) {
-    return { ok: false, ejecutor: 'hf', modelo, proveedor, ms: Date.now() - t0, costoUsd: 0, edicion: null,
-      porQue: 'no hay token de Hugging Face', huboFallback: false }
-  }
-
   const contexto = fragmentos.map((f) => `--- ${f.ruta} ---\n${f.texto}`).join('\n\n')
-  const ctrl = new AbortController()
-  const reloj = setTimeout(() => ctrl.abort(), timeoutMs)
+  const t0hf = Date.now()
   try {
-    const res = await fetch(`${BASE}/chat/completions`, {
-      method: 'POST', signal: ctrl.signal,
-      headers: { Authorization: `Bearer ${tk}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: proveedor ? `${modelo}:${proveedor}` : modelo,
-        temperature: temperatura, max_tokens: maxTokens,
-        messages: [
-          { role: 'system', content: 'Sos un programador que edita código de un repo TypeScript/Node. Respondés SÓLO con lo que se te pide, sin explicaciones, sin markdown de cierre, sin texto alrededor.' },
-          { role: 'user', content: `${instruccion}\n\n${contexto}` },
-        ],
-      }),
+    // POR EL ADAPTER: él resuelve token, política por dominio, URL, reintentos, timeout y traza.
+    // Acá sólo se dice QUÉ se manda. `dominio: 'codigo'` es lo que la política evalúa; el escaneo
+    // por fragmento ya corrió arriba y es lo que el adapter no puede hacer.
+    const r = await hfInferencia({
+      capacidad: 'editCode', modelo, proveedor, tarea: 'chat-completions', dominio: 'codigo',
+      timeoutMs, modulo: 'dev-router',
+      opciones: { temperature: temperatura, max_tokens: maxTokens },
+      entrada: [
+        { role: 'system', content: 'Sos un programador que edita código de un repo TypeScript/Node. Respondés SÓLO con lo que se te pide, sin explicaciones, sin markdown de cierre, sin texto alrededor.' },
+        { role: 'user', content: `${instruccion}\n\n${contexto}` },
+      ],
     })
-    if (!res.ok) {
-      const t = await res.text().catch(() => '')
-      return { ok: false, ejecutor: 'hf', modelo, proveedor, ms: Date.now() - t0, costoUsd: 0, edicion: null,
-        porQue: `HF respondió ${res.status}: ${t.slice(0, 200)}`, huboFallback: false }
-    }
-    const json = await res.json()
+    const json = r.datos ?? {}
     const texto = json.choices?.[0]?.message?.content ?? ''
-    const { costoUsd, estimado } = costoDe(modelo, json.usage)
+    // EL COSTO REAL LO DA EL ADAPTER (cabecera del router) y puede ser null. Si no vino, se estima
+    // por tarifa publicada y se DICE que es estimado: un costo inventado sin marcar es peor que
+    // ninguno, y este número después entra en un KPI.
+    const est = costoDe(modelo, json.usage)
+    const costoUsd = r.costoUsd ?? est.costoUsd
     return {
       ok: Boolean(texto), ejecutor: 'hf', modelo: json.model || modelo,
-      proveedor: json.provider || proveedor, ms: Date.now() - t0, costoUsd, costoEstimado: estimado,
-      uso: json.usage || null, salida: texto, edicion: null,
+      proveedor: json.provider || r.proveedor || proveedor, ms: r.ms ?? (Date.now() - t0hf),
+      costoUsd, costoEstimado: r.costoUsd == null, uso: json.usage || null, salida: texto, edicion: null,
+      traceId: r.traceId ?? null,
       porQue: texto ? 'el modelo respondió' : 'el modelo devolvió vacío', huboFallback: false,
     }
   } catch (e) {
-    return { ok: false, ejecutor: 'hf', modelo, proveedor, ms: Date.now() - t0, costoUsd: 0, edicion: null,
-      porQue: `${e.name}: ${e.message}`.slice(0, 200), huboFallback: false }
-  } finally { clearTimeout(reloj) }
+    // UN BLOQUEO DE LA POLÍTICA NO ES UN ERROR DE RED, y no se lee igual: se marca aparte para que
+    // el router no lo reintente ni lo cuente como fallo del modelo.
+    const porPolitica = e instanceof ErrorHF && /pol\u00edtica no deja salir/.test(String(e.message))
+    return {
+      ok: false, ejecutor: 'hf', modelo, proveedor, ms: Date.now() - t0, costoUsd: 0, edicion: null,
+      bloqueadoPorPolitica: porPolitica || undefined,
+      porQue: `${porPolitica ? 'EGRESO BLOQUEADO POR LA POLITICA' : e.name}: ${e.message}`.slice(0, 200),
+      huboFallback: false,
+    }
+  }
 }
 
 // ───────────────────────────── EJECUTOR CLAUDE ─────────────────────────────

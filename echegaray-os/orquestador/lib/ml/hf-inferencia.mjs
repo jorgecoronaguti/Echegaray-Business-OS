@@ -71,6 +71,12 @@ export async function hfInferencia({
   capacidad, modelo, revision = null, proveedor = null, entrada, tarea = 'feature-extraction',
   sensibilidad = null, dominio = null, permitidoExplicitamente = false, timeoutMs = TIMEOUT_MS,
   traceId = null, modulo = null,
+  // OPCIONES DEL CUERPO (16/09/2026): `temperature`, `max_tokens` y lo que la tarea pida. Van
+  // MEZCLADAS al cuerpo, nunca pisando `model` ni `messages`/`input` — el adapter sigue decidiendo
+  // qué se manda y a dónde. Sin este parámetro el cuerpo es idéntico al de antes: nadie que ya
+  // llamaba cambia de comportamiento. Existe para que editar código pase por ACÁ y no por un
+  // `fetch` suelto: una sola puerta a Hugging Face es la regla, y la regla la pagó un incidente.
+  opciones = null,
 } = {}) {
   const tid = traceId ?? randomUUID()
   const t0 = Date.now()
@@ -91,9 +97,12 @@ export async function hfInferencia({
   if (!modelo) throw new ErrorHF('hfInferencia necesita el modelo')
 
   const url = `${BASE}/${tarea === 'feature-extraction' ? 'embeddings' : 'chat/completions'}`
-  const cuerpo = tarea === 'feature-extraction'
+  const base = tarea === 'feature-extraction'
     ? { model: proveedor ? `${modelo}:${proveedor}` : modelo, input: entrada }
     : { model: proveedor ? `${modelo}:${proveedor}` : modelo, messages: entrada }
+  // Las opciones van PRIMERO y el cuerpo después: así `model`, `input` y `messages` no se pueden
+  // pisar desde afuera ni por descuido ni a propósito.
+  const cuerpo = opciones ? { ...opciones, ...base } : base
 
   let ultimo = null
   for (let intento = 0; intento <= ESPERAS.length; intento += 1) {
