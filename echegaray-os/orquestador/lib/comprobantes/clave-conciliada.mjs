@@ -74,8 +74,17 @@ export function mismoComprobante(a, b, { proveedorA = null, proveedorB = null } 
   const pa = normalizar(proveedorA) || (x.por === 'proveedor' ? x.identidad : '')
   const pb = normalizar(proveedorB) || (y.por === 'proveedor' ? y.identidad : '')
   if (!pa || !pb) return false
-  return pa === pb || pa.startsWith(pb) || pb.startsWith(pa)
+  if (pa === pb || pa.startsWith(pb) || pb.startsWith(pa)) return true
+  // «B.D.H. S. R. L.» Y «BDH SRL» SON EL MISMO PROVEEDOR (medido el 16/09/2026, fila 972): `normalizar` vuelve
+  // los puntos espacios («b d h s r l») y el nombre que el dueño escribió a mano no los tiene. Se compara también
+  // sin espacios: la sigla con puntos y la sigla pegada son la misma razón social.
+  const ca = compacto(pa)
+  const cb = compacto(pb)
+  return ca === cb || ca.startsWith(cb) || cb.startsWith(ca)
 }
+
+/** El nombre normalizado sin espacios: «b d h s r l» → «bdhsrl». */
+const compacto = (s) => s.replace(/ /g, '')
 
 /**
  * La fila del espejo que le corresponde a una clave del lector. Devuelve `null` si no hay ninguna, y
