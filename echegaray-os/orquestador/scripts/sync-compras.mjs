@@ -38,6 +38,7 @@ import { PESTANAS, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import { esCostoDeObra } from '../lib/compras-costo-de-obra.mjs'
 import { asignadorConColumnaObra, asignadorDeCompras, catalogosDeAsignacion, planDeAsignacion, VIA } from '../lib/compras-obra-asignada.mjs'
 import { aplicarCambiosPendientes, catalogoDeDestinos, proyectarObraDeFila } from '../lib/obra-destino.mjs'
+import { superponerPagosPendientes } from '../lib/pagos-pendientes.mjs'
 import { planDeReconciliacion, proveedorPorArchivo } from '../lib/comprobantes/reconciliar-adjuntos.mjs'
 
 const DRY = process.argv.includes('--dry')
@@ -80,6 +81,37 @@ async function cambiosPendientes(q) {
       where estado in ('pendiente','procesando') and coalesce(to_jsonb(c) ->> 'pestana', 'Compras') = 'Compras'
       order by fila, creado_at desc`)
   return rows
+}
+
+/**
+ * Los pagos que la app registró y el worker todavía no escribió en el Sheet.
+ *
+ * Se filtra por `to_jsonb` y no por la columna a secas por el mismo motivo que `cambiosPendientes`:
+ * este sync corre cada diez minutos en producción y puede desplegarse antes de que la migración
+ * 20260916T1700 se aplique. Sin la columna `tipo`, la consulta directa abortaría el sync entero.
+ */
+async function pagosPendientes(q) {
+  const { rows } = await q(
+    `select id, fila, clave, celdas, previo from public.compra_obra_cambio c
+      where estado in ('pendiente','procesando') and coalesce(to_jsonb(c) ->> 'tipo', 'obra') = 'pago'
+      order by creado_at`)
+  return rows
+}
+
+/**
+ * UN PEDIDO QUE EL SHEET YA CONTRADIJO NO PUEDE APLICARSE NUNCA MÁS: se cierra con el detalle adentro.
+ *
+ * El bisturí lo iba a rechazar igual cuando el worker lo tomara (`celda_cambio`). Cerrarlo acá evita
+ * que la pantalla muestre «pendiente de Sheet» durante horas por algo que no va a aterrizar, y deja
+ * escrito QUÉ dice el Sheet ahora — que es lo que necesita quien tenga que volver a decidir.
+ */
+async function declararConflictos(q, conflictos) {
+  for (const c of conflictos) {
+    await q(`update public.compra_obra_cambio set estado = 'rechazado', motivo = $2
+              where id = $1 and estado in ('pendiente','procesando')`,
+      [c.id, `conflicto: ${c.detalle}`])
+    console.log(`  ⚠ pago de la fila ${c.fila} descartado — ${c.detalle}`)
+  }
 }
 
 /** Destino y obra de cada fila, con las inconsistencias contadas para el log. */
@@ -277,6 +309,16 @@ async function main() {
   const obraPorFila = await hayObraPorFila(query)
   const catalogos = await catalogosDeAsignacion(query)
   let compras = await leerPestana()
+  // LOS PAGOS PENDIENTES, ANTES QUE NADA: si el sync guardara la foto vieja, la pantalla mostraría el
+  // saldo de antes debajo de su propio ✓. Y si el Sheet los contradice, gana el Sheet y se declara.
+  const pagos = await pagosPendientes(query).catch(() => [])
+  if (pagos.length) {
+    const r = superponerPagosPendientes(compras, pagos)
+    compras = r.compras
+    console.log(`pagos en cola: ${pagos.length} · ${r.superpuestos} superpuesto(s) · ${r.conflictos.length} en conflicto`)
+    if (!DRY) await declararConflictos(query, r.conflictos)
+    else for (const c of r.conflictos) console.log(`  [dry] ⚠ pago de la fila ${c.fila} — ${c.detalle}`)
+  }
   let inconsistentes = []
   if (obraPorFila) {
     compras = aplicarCambiosPendientes(compras, await cambiosPendientes(query))
