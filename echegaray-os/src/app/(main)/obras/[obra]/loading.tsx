@@ -11,21 +11,29 @@ export default function Cargando() {
   return (
     <PantallaEsqueleto>
       <EncabezadoEsqueleto ancho="w-64" />
+      {/* LOS ANCHOS VAN ESCRITOS, NO ARMADOS. Estaban interpolados sobre un map de anchos. No era
+          un defecto —Tailwind escanea el texto del archivo y los anchos estaban ahí, en el array—,
+          pero ni el linter ni quien lee pueden distinguir ese caso de `w-${n}`, que sí sale sin
+          CSS y deja el esqueleto sin ancho. Escribirlas enteras es lo que hace verificable la
+          diferencia, y de paso saca la key por posición. */}
       <div className="mb-4 flex gap-5 border-b border-line pb-2.5">
-        {/* LA CLAVE ES LA POSICIÓN, NO EL ANCHO. Las solapas repiten anchos, y usar el ancho de
-            clave hacía que React avisara "two children with the same key" y pudiera omitir una. */}
-        {['w-16', 'w-24', 'w-20', 'w-16', 'w-20', 'w-20', 'w-24'].map((w, i) => (
-          <Linea key={i} className={`h-2.5 ${w}`} />
-        ))}
+        <Linea className="h-2.5 w-16" />
+        <Linea className="h-2.5 w-24" />
+        <Linea className="h-2.5 w-20" />
+        <Linea className="h-2.5 w-16" />
+        <Linea className="h-2.5 w-20" />
+        <Linea className="h-2.5 w-20" />
+        <Linea className="h-2.5 w-24" />
       </div>
       <div className="mb-3 flex items-center gap-4">
-        {['w-12', 'w-12', 'w-16', 'w-20'].map((w, i) => (
-          <Linea key={i} className={`h-2.5 ${w}`} />
-        ))}
+        <Linea className="h-2.5 w-12" />
+        <Linea className="h-2.5 w-12" />
+        <Linea className="h-2.5 w-16" />
+        <Linea className="h-2.5 w-20" />
         <span className="ml-auto flex gap-3">
-          {['w-16', 'w-24', 'w-28'].map((w, i) => (
-            <Linea key={i} className={`h-2.5 ${w}`} />
-          ))}
+          <Linea className="h-2.5 w-16" />
+          <Linea className="h-2.5 w-24" />
+          <Linea className="h-2.5 w-28" />
         </span>
       </div>
       {/* El reparto de la pantalla: la tabla y el Gantt a la izquierda, el panel a la derecha. */}

@@ -13,6 +13,28 @@
 // el cuadro de la quincena la muestra y el sello la congela. Ninguno de los tres recalcula un número:
 // si mañana el porcentaje cambia, cambia acá y los tres lo siguen.
 //
+// ═══ QUÉ LO HACE PERDER (dueño, 16/09/2026) ═══
+//
+// *«Si tiene falta injustificada, tardanza o retiro anticipado durante la quincena → presentismo = $0»*,
+// y *«las novedades justificadas/excepciones UOCRA deben respetar las reglas existentes y no tratarse
+// automáticamente como falta injustificada»*. Hasta hoy sólo lo perdían la tardanza y la salida temprana.
+//
+// LA FALTA INJUSTIFICADA NO SE INVENTA ACÁ: sale del catálogo único de motivos
+// (`orquestador/lib/asistencia-motivos.mjs`, 16 motivos, el mismo que usa el bot desde julio). Pierden el
+// presentismo SÓLO los dos motivos imputables al trabajador —faltó sin avisar y faltó con aviso: avisar
+// no justifica—. No lo pierden las licencias (enfermedad, accidente, accidente in itinere, vacaciones,
+// licencia especial, suspensión) ni lo que NO depende del trabajador (lluvia, obra parada sin material o
+// sin frente, paro gremial, franco/feriado).
+//
+// ═══ UNA AUSENCIA SIN MOTIVO NO DESCUENTA SOLA: SE REVISA ═══
+//
+// Un día marcado «no vino» sin motivo cargado —o con «Otro», que no dice nada— no es una falta
+// injustificada probada. Quitar plata con un dato ambiguo es fabricar la afirmación que el dueño pidió
+// NO hacer automáticamente. Esos días salen en estado `a_revisar`: el presentismo se mantiene, la
+// pantalla dice qué día falta clasificar, y Administración lo resuelve cargando el motivo. «Permiso»
+// queda del lado que no descuenta hasta que el dueño lo defina (sigue marcado `revisar` en el catálogo,
+// junto con lluvia y obra parada).
+//
 // ═══ CUÁNDO NO RIGE ═══
 //
 //   · Antes de la quincena 16–30/09/2026 (`PRESENTISMO_DESDE`): lo sellado no se toca, y una quincena
@@ -23,10 +45,38 @@
 //     importe ni queda como pendiente del cierre (dueño: «sin categoría, 0, sin pendiente»).
 
 import type { ModalidadDeLiquidacion } from './liquidacionQuincena.ts'
+import { MOTIVO } from '../../../../orquestador/lib/asistencia-motivos.mjs'
+import { etiquetaDeMotivo } from './motivoDeAusencia.ts'
 
 export const PRESENTISMO_PCT = 0.2
+
+/**
+ * LA MITAD QUE PAGA EL RECIBO. El presentismo se calcula sobre el 50 % en blanco y NUNCA sobre el 50 %
+ * en efectivo (dueño, 16/09/2026): `PRESENTISMO = (básico quincenal × 50 %) × 20 %`. En ECSAS el jornal
+ * se paga mitad por recibo y mitad en mano ([[blanco-categoria-del-recibo]]), y el premio del convenio
+ * corre sobre lo registrado.
+ */
+export const PARTE_EN_BLANCO = 0.5
+
+/**
+ * LOS DOS MOTIVOS QUE HACEN PERDER EL PRESENTISMO. Son los imputables al trabajador. Las claves salen del
+ * catálogo único: escribir los strings a mano acá sería la segunda lista que el OS prohíbe.
+ */
+export const MOTIVOS_QUE_PIERDEN: readonly string[] = [MOTIVO.FALTA, MOTIVO.FALTA_CON_AVISO]
+
+/** Un motivo que no dice nada: no prueba una falta injustificada, pero deja el día sin clasificar. */
+export const MOTIVOS_SIN_CLASIFICAR: readonly string[] = [MOTIVO.OTRO]
 /** La primera quincena que liquida con presentismo. Se compara contra `quincena.desde`. */
 export const PRESENTISMO_DESDE = '2026-09-16'
+
+/** Un día NO trabajado, tal como lo guardó el jefe en `asistencia_dia`. */
+export interface AusenciaDelDia {
+  fecha: string
+  /** `'ausente'` o `'licencia'`, el estado declarado. */
+  estado: 'ausente' | 'licencia'
+  /** La clave del catálogo (`falta`, `enfermedad`…). `null` = no la cargaron. */
+  motivo: string | null
+}
 
 /** La marca de un día, tal como la guardó el jefe en `asistencia_dia`. */
 export interface TardanzaDelDia {
@@ -44,15 +94,34 @@ export type EstadoPresentismo =
   | 'sin_categoria'
   /** Rige pero no hay horas con qué calcularlo. */
   | 'sin_horas'
+  /** Rige, no hay causa probada de pérdida, pero quedan días sin clasificar: no se descuenta todavía. */
+  | 'a_revisar'
   /** No rige: jefe, mensual, quincena anterior al 16/09/2026 o cuadro cerrado. */
   | 'no_rige'
 
+/** Por qué un día hizo perder el presentismo. La pantalla lo muestra textual. */
+export interface CausaDePerdida {
+  fecha: string
+  causa: 'tardanza' | 'retiro' | 'falta'
+  /** «Llegó tarde» · «Se retiró antes» · «Faltó sin avisar». Lo que se le dice al dueño. */
+  etiqueta: string
+}
+
 export interface PresentismoDeLinea {
   estado: EstadoPresentismo
-  /** 20 % × (horas ÷ 2) × básico. `null` cuando no se puede calcular; nunca 0 por defecto. */
+  /** 20 % × base. `null` cuando no se puede calcular; nunca 0 por defecto. */
   importe: number | null
-  /** Las fechas (ISO) con marca, ordenadas. Vacío = no lo perdió. */
+  /**
+   * LA BASE: el básico quincenal × 50 % (la mitad que paga el recibo). Es lo que la pantalla muestra
+   * como «Base presentismo», y sobre lo que se aplica el 20 %. `null` sin horas o sin básico.
+   */
+  base: number | null
+  /** Las fechas (ISO) con causa de pérdida, ordenadas. Vacío = no lo perdió. */
   perdido: string[]
+  /** Las causas con su etiqueta: el «motivo si lo perdió» de la pantalla. */
+  causas: CausaDePerdida[]
+  /** Días no trabajados que nadie clasificó: no descuentan, pero hay que resolverlos. */
+  aRevisar: string[]
   basico: number | null
   categoria: string | null
 }
@@ -63,6 +132,8 @@ export interface EntradaDePresentismo {
   /** El básico por hora de su categoría (`pisoVigente`), o `null` si la escala no lo tiene. */
   basico: number | null
   tardanzas: readonly TardanzaDelDia[]
+  /** Los días no trabajados de la quincena, con su motivo. Vacío = no faltó. */
+  ausencias?: readonly AusenciaDelDia[]
   /** `quincena.desde` (ISO). Decide si la regla ya rige. */
   quincenaDesde: string
   modalidad: ModalidadDeLiquidacion
@@ -81,20 +152,80 @@ export function fechasPerdidas(tardanzas: readonly TardanzaDelDia[]): string[] {
   return [...new Set(tardanzas.filter((t) => t.llegoTarde || t.salioAntes).map((t) => t.fecha))].sort()
 }
 
-/** El importe: 20 % × (horas ÷ 2) × básico. `null` sin horas o sin básico. */
-export function importeDePresentismo(horas: number | null, basico: number | null): number | null {
+/**
+ * ¿ESTE DÍA NO TRABAJADO ES UNA FALTA INJUSTIFICADA? Sólo los dos motivos imputables al trabajador.
+ *
+ *   `pierde`      faltó sin avisar · faltó con aviso
+ *   `revisar`     sin motivo cargado, o «Otro»: no prueba nada, se resuelve cargando el motivo
+ *   `no-afecta`   licencias y lo que no depende del trabajador (lluvia, obra parada, paro, franco…)
+ *
+ * UN ESTADO `licencia` NUNCA PIERDE, aunque le hayan puesto un motivo raro: el estado ya dice que la
+ * empresa lo reconoció.
+ */
+export function efectoDeLaAusencia(a: AusenciaDelDia): 'pierde' | 'revisar' | 'no-afecta' {
+  if (a.estado === 'licencia') return 'no-afecta'
+  if (a.motivo != null && MOTIVOS_QUE_PIERDEN.includes(a.motivo)) return 'pierde'
+  if (a.motivo == null || MOTIVOS_SIN_CLASIFICAR.includes(a.motivo)) return 'revisar'
+  return 'no-afecta'
+}
+
+/** LA BASE: básico quincenal × 50 %. Sobre esto corre el 20 %, y NUNCA sobre el 50 % en efectivo. */
+export function baseDePresentismo(horas: number | null, basico: number | null): number | null {
   if (horas == null || !Number.isFinite(horas) || basico == null || !(basico > 0)) return null
-  return r2(PRESENTISMO_PCT * (horas / 2) * basico)
+  return r2(horas * basico * PARTE_EN_BLANCO)
+}
+
+/** El importe: 20 % × base = 20 % × (básico quincenal × 50 %). `null` sin horas o sin básico. */
+export function importeDePresentismo(horas: number | null, basico: number | null): number | null {
+  const base = baseDePresentismo(horas, basico)
+  return base == null ? null : r2(PRESENTISMO_PCT * base)
+}
+
+/**
+ * TODAS LAS CAUSAS DE PÉRDIDA DE LA QUINCENA, ordenadas por fecha. Un mismo día puede traer tardanza y
+ * retiro: se dicen las dos, porque el dueño quiere ver el motivo, no un contador.
+ */
+export function causasDePerdida(
+  tardanzas: readonly TardanzaDelDia[], ausencias: readonly AusenciaDelDia[],
+): CausaDePerdida[] {
+  const out: CausaDePerdida[] = []
+  for (const t of tardanzas) {
+    if (t.llegoTarde) out.push({ fecha: t.fecha, causa: 'tardanza', etiqueta: 'Llegó tarde' })
+    if (t.salioAntes) out.push({ fecha: t.fecha, causa: 'retiro', etiqueta: 'Se retiró antes' })
+  }
+  for (const a of ausencias) {
+    if (efectoDeLaAusencia(a) !== 'pierde') continue
+    out.push({ fecha: a.fecha, causa: 'falta', etiqueta: etiquetaDeMotivo(a.motivo) ?? 'Falta injustificada' })
+  }
+  return out.sort((x, y) => (x.fecha === y.fecha ? x.causa.localeCompare(y.causa) : x.fecha.localeCompare(y.fecha)))
+}
+
+/** Los días no trabajados que nadie clasificó. No descuentan: se resuelven cargando el motivo. */
+export function diasARevisar(ausencias: readonly AusenciaDelDia[]): string[] {
+  return [...new Set(ausencias.filter((a) => efectoDeLaAusencia(a) === 'revisar').map((a) => a.fecha))].sort()
 }
 
 export function presentismoDeLinea(e: EntradaDePresentismo, horas: number | null): PresentismoDeLinea {
-  const base = { basico: e.basico, categoria: e.categoria }
-  if (!rigePresentismo(e)) return { ...base, estado: 'no_rige', importe: null, perdido: [] }
-  const perdido = fechasPerdidas(e.tardanzas)
-  if (e.basico == null || !(e.basico > 0) || !e.categoria) return { ...base, estado: 'sin_categoria', importe: null, perdido }
+  const ausencias = e.ausencias ?? []
+  const causas = causasDePerdida(e.tardanzas, ausencias)
+  const perdido = [...new Set(causas.map((c) => c.fecha))].sort()
+  const aRevisar = diasARevisar(ausencias)
+  const comun = { basico: e.basico, categoria: e.categoria, causas, perdido, aRevisar }
+  if (!rigePresentismo(e)) {
+    return { ...comun, estado: 'no_rige', importe: null, base: null, causas: [], perdido: [], aRevisar: [] }
+  }
+  if (e.basico == null || !(e.basico > 0) || !e.categoria) {
+    return { ...comun, estado: 'sin_categoria', importe: null, base: null }
+  }
+  const base = baseDePresentismo(horas, e.basico)
   const importe = importeDePresentismo(horas, e.basico)
-  if (importe == null) return { ...base, estado: 'sin_horas', importe: null, perdido }
-  return { ...base, estado: perdido.length > 0 ? 'perdido' : 'aplica', importe, perdido }
+  if (base == null || importe == null) return { ...comun, estado: 'sin_horas', importe: null, base: null }
+  // EL ORDEN IMPORTA: una causa probada gana sobre un día sin clasificar. Quien llegó tarde pierde el
+  // presentismo aunque además tenga una ausencia que nadie cargó; lo contrario dejaría de descontar por
+  // un dato que falta en OTRO día.
+  if (causas.length > 0) return { ...comun, estado: 'perdido', importe, base }
+  if (aRevisar.length > 0) return { ...comun, estado: 'a_revisar', importe, base }
+  return { ...comun, estado: 'aplica', importe, base }
 }
 
 /** Lo que cobra: lo de hoy, o lo de hoy menos el presentismo si lo perdió. Sin plata nueva. */
@@ -116,13 +247,16 @@ export interface TotalesDePresentismo {
   /** Cuántas líneas lo perdieron. */
   perdidos: number
   sinCategoria: number
+  /** Cuántas tienen días sin clasificar: cobran el presentismo, pero hay que resolverlos. */
+  aRevisar: number
 }
 
 export function totalesDePresentismo(lineas: readonly { presentismo: PresentismoDeLinea | null }[]): TotalesDePresentismo {
-  const t: TotalesDePresentismo = { enJuego: 0, perdido: 0, perdidos: 0, sinCategoria: 0 }
+  const t: TotalesDePresentismo = { enJuego: 0, perdido: 0, perdidos: 0, sinCategoria: 0, aRevisar: 0 }
   for (const { presentismo: p } of lineas) {
     if (!p) continue
     if (p.estado === 'sin_categoria') t.sinCategoria++
+    if (p.estado === 'a_revisar') t.aRevisar++
     if (p.importe == null) continue
     t.enJuego += p.importe
     if (p.estado === 'perdido') { t.perdido += p.importe; t.perdidos++ }

@@ -37,7 +37,7 @@ import {
 import { plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
 import { esJefeDeObra } from './vocabularioPersona.ts'
 import type { EntradaDePresentismo } from './presentismo.ts'
-import { leerGuardadas, tardanzasPorPersona, type EstadoDeLaQuincena } from './liquidacionGuardadas.ts'
+import { leerGuardadas, ausenciasPorPersona, tardanzasPorPersona, type EstadoDeLaQuincena } from './liquidacionGuardadas.ts'
 import {
   aplicarOverrides, camposGuardables, sinOverrides,
   type CampoEditable, type LineaConOverrides,
@@ -307,11 +307,15 @@ export async function getLiquidacionDeLaQuincena(
   // segunda lectura sería un segundo básico. Las marcas salen de las presencias que esta función ya leyó.
   const categoriaDe = new Map(exposicion.lineas.map((l) => [l.personaId, l.categoria]))
   const tardanzas = tardanzasPorPersona(presencias.data)
+  // LAS FALTAS SALEN DE LAS MISMAS PRESENCIAS (dueño, 16/09/2026). Una falta injustificada pierde el
+  // presentismo igual que una tardanza; una licencia reconocida no. Lo decide `presentismo.ts`.
+  const ausencias = ausenciasPorPersona(presencias.data)
   const presentismoDe = (grupo: string, l: { personaId: string; esJefe: boolean; modalidad: ModalidadDeLiquidacion }): EntradaDePresentismo | null =>
     grupo !== 'obreros' ? null : {
       categoria: categoriaDe.get(l.personaId) ?? null,
       basico: pisoDe.get(l.personaId) ?? null,
       tardanzas: tardanzas.get(l.personaId) ?? [],
+      ausencias: ausencias.get(l.personaId) ?? [],
       quincenaDesde: q.desde,
       modalidad: l.modalidad,
       esJefe: l.esJefe,
