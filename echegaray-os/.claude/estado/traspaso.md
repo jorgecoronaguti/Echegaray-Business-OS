@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-16 ~11:40 (−03) · main = producción (0245acea)_
+_actualizado: 2026-09-16 ~13:30 (−03) · main = producción (03ea3cfd)_
 
 ## 0. HOY 16/09 (mañana) — lo que entró y lo que sigue
 
@@ -16,10 +16,16 @@ Después (hasta 0245acea, todo en producción y mirado con navegador): Horas «O
 (`quincenaPorObra.ts`, 3 tests) · Proveedores «A quién le debo» (`?vista=deuda`, panel derecho, coteja con `proveedor_deuda`) ·
 Plantel filtro por obra (`?obra=<id>`, `FiltroDeObraEnPlantel.tsx`, `recorteDeObra.ts`, `enlaceDeVista.ts`) · barra sin filo entre
 grupos · $/h cat. del blanco verificado = recibo Q2-08 para los 16 con recibo (Castillo sin recibo aún).
-Abierto: agente en `wt-prov-compras` (rama feat/proveedores-en-compras: Proveedores como sección de Compras; redirects de rutas
-viejas) · «cargando pegado» que reporta el dueño: no reproducido (páginas 1–3 s, Pagar 1,4 s); falta que diga pantalla/botón ·
-`tests/liquidacion-fidelidad.spec.ts:228` desactualizado · console.error WebSocket realtime tras revalidate · sin timer que
-replique `_UOCRA_RAW` a `uocra_escala`.
+Tarde (hasta 03ea3cfd, todo en producción y mirado): Proveedores como sección de Compras (mismas URLs; `seccionesDeCompras.ts`) ·
+Liquidación: Recibo/Plataforma con $/h bajo el nombre (`categoriasDeLaFila.ts`), negro 1ª sep = JORNALES col W (4 tarifas
+corregidas en `persona_tarifa` con rastro), Persona ensanchable (`anchoDePersona.ts`, `--liq-persona`, localStorage),
+escala UOCRA sin enlace, «Efect. red. ✎» restaurada (la pidió el dueño; memoria `lo-pedido-por-el-dueno-no-se-quita`).
+Abierto: agente en `wt-pagos` (rama feat/compras-pagos-bidireccional, 4 commits: núcleo puro de pagos, cola app→Sheet
+generalizada con `columna`, sync que no pisa la cola, acciones + comprobante de pago adjunto; migración
+20260916T1700_compra_cambio_columna.sql SIN aplicar; falta UI Compras/Proveedores y verificación) · Castillo: $/h blanco manual
+5.399 (15/09 19:11) vs plataforma 6.348, decide el dueño · «cargando pegado» sin reproducir (falta pantalla/botón) ·
+`tests/liquidacion-fidelidad.spec.ts:228` desactualizado · console.error WebSocket realtime tras revalidate · sin timer
+`_UOCRA_RAW`→`uocra_escala`. Worktrees viejos limpiados con `higiene-worktrees.mjs --ejecutar` (ramas conservadas).
 
 ## 1. OBJETIVO GENERAL
 
