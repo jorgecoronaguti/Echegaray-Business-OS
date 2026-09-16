@@ -9,8 +9,7 @@
 // así no sirve, rehacer»* (15/09). La fila se lee en el orden en que se arma y se paga el sueldo:
 //
 //   Persona · días · Horas │ BLANCO · recibo: Hs · $/h cat. · Banco ✎ · Pagado ✎ · Saldo │
-//   NEGRO: Hs ✎ · $/h negro ✎ · Importe ✎ · Pagado ✎ · Saldo │ Presentismo · Efect. red. ✎ ·
-//   Total · Pagado · Saldo
+//   NEGRO: Hs ✎ · $/h negro ✎ · Importe ✎ · Pagado ✎ · Saldo │ Presentismo · Total · Pagado · Saldo
 //
 // ═══ DOS BANDAS SIMÉTRICAS Y NO DIEZ COLUMNAS SUELTAS ═══
 //
@@ -33,7 +32,6 @@
 import { useState } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { RotuloDeGrupo } from '../RotuloDeGrupo'
-import { CeldaRedondeo } from './CeldasDeLiquidacion'
 import { CeldaDeDia, CeldaHorasPagas, CeldaPresentismo, Leida } from './cuadro/CeldasDelEspejo'
 import {
   CeldaHoraCategoria, CeldaHorasBlanco, CeldaHorasNegro, CeldaImporteNegro, CeldaNeto, CeldaPagado,
@@ -101,7 +99,9 @@ const PLATA = [
   // PRESENTISMO (dueño, 15/09/2026): la parte del cobra que una sola tardanza hace perder. Va después del
   // negro porque de ahí sale el descuento (el neto es del estudio). No es una columna de JORNALES.
   { clave: 'presentismo', rotulo: 'Presentismo', px: 112 },
-  { clave: 'efectivoRedondeado', rotulo: 'Efect. red. ✎', px: 108 },
+  // SIN «Efect. red. ✎» (QA, 16/09/2026): el redondeo de los billetes no entra en ninguna cuenta de la fila y
+  // en el cuadro era una columna editable más entre Presentismo y Total. Se sigue viendo sumado en el pie
+  // («Efectivo redondeado») y se sigue escribiendo en el cuadro clásico (`CuadroLiquidacion`).
   { clave: 'total', rotulo: 'Total', px: 124 },
   { clave: 'pagado', rotulo: 'Pagado', px: 112 },
   { clave: 'saldo', rotulo: 'Saldo', px: 120 },
@@ -173,7 +173,8 @@ export function GrillaEspejoQuincena({
   const columnas = columnasDe(dias.length)
   const visibles = secciones.flatMap((s) => s.filas)
   const filaAbierta = abierta ? visibles.find((f) => f.personaId === abierta) : undefined
-  // EL PIE DEL REDONDEO SUMA LO QUE SE VE: las mismas filas del recorte, guardado o sugerido.
+  // EL PIE DEL REDONDEO SUMA LO QUE SE VE: las mismas filas del recorte, guardado o sugerido. Sólo el pie: la
+  // columna salió del cuadro el 16/09/2026 (ver `PLATA`).
   const redondeo = sumaDelRedondeo(visibles.map((f) => f.linea))
   const ancho = anchoDe(dias.length)
   return (
@@ -209,7 +210,7 @@ export function GrillaEspejoQuincena({
             </div>
           ))}
 
-          <Total columnas={columnas} dias={dias} totales={totales} redondeo={redondeo} />
+          <Total columnas={columnas} dias={dias} totales={totales} />
         </div>
       </CintaHorizontal>
       <PieDelEspejo totales={totales} redondeo={redondeo} />
@@ -247,12 +248,20 @@ function Encabezado({ columnas, dias, sellada, corrimiento = 0 }: {
       display: 'grid', gridTemplateColumns: columnas, columnGap: GAP, rowGap: 4, alignItems: 'end',
       paddingBottom: 8, borderBottom: `1px solid ${V.linea}`, color: V.tenue, ...mono,
     }}>
-      <div style={{ ...COLUMNA_FIJA, gridRow: 1, alignSelf: 'stretch', transform: `translateX(${corrimiento}px)` }} />
+      {/* «PERSONA» NO SE VA CON EL SCROLL, igual que los nombres de abajo. Acá no puede ser `sticky` —este
+          envoltorio no es un scrollport y el movimiento es un `transform`—: se contra-desplaza, y por eso
+          `position: relative` en vez del `sticky` de `COLUMNA_FIJA` (que ahí no ancla nada).
+          UNA SOLA CELDA PARA LOS DOS RENGLONES (QA, 16/09/2026): eran dos, y la de abajo medía una altura fija
+          de 18 px. Cuando un rótulo envuelve («HS RECIBO» en dos líneas) el renglón 2 es más alto que eso, la
+          celda quedaba pegada al piso y por la franja de arriba asomaba el rótulo desplazado —se leía «S RECIBO»
+          debajo de «Persona»—. Cubriendo los dos renglones entera y estirada, tapa todo lo que pasa por debajo,
+          sea cual sea el alto que tomen los rótulos. */}
+      <div style={{
+        ...COLUMNA_FIJA, position: 'relative', gridColumn: 1, gridRow: '1 / span 2', alignSelf: 'stretch',
+        display: 'flex', alignItems: 'end', transform: `translateX(${corrimiento}px)`,
+      }}>Persona</div>
       {banda(inicioDe('blanco', dias.length), 'Blanco · recibo', 'banda-blanco')}
       {banda(inicioDe('negro', dias.length), 'Negro', 'banda-negro')}
-      {/* «PERSONA» NO SE VA CON EL SCROLL, igual que los nombres de abajo. Acá no puede ser `sticky` —este
-          envoltorio no es un scrollport y el movimiento es un `transform`—: se contra-desplaza. */}
-      <div style={{ ...COLUMNA_FIJA, gridColumn: 1, gridRow: 2, height: ALTO_LIQ.encabezado - 16, display: 'flex', alignItems: 'end', transform: `translateX(${corrimiento}px)` }}>Persona</div>
       {dias.map((f, i) => <div key={f} style={{ gridColumn: 2 + i, gridRow: 2, textAlign: 'center' }} title={f}>{rotuloDia(f)}</div>)}
       {PLATA.map((c, i) => (
         <div key={c.clave} style={{ gridColumn: 2 + dias.length + i, gridRow: 2, textAlign: 'right' }}>{c.rotulo}</div>
@@ -317,11 +326,6 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
         </>
       )}
       <CeldaPresentismo fila={fila} />
-      {/* EL REDONDEO SIGUE SIENDO DEL DUEÑO: los billetes que entrega en mano. No entra en ninguna cuenta. */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado} enEfectivo={l.pago.aPagarEfectivo ?? l.enEfectivo}
-          quincena={quincena} grupo={fila.grupo} bloqueada={fila.cerrada} ancho={100} />
-      </div>
       <CeldaTotal fila={fila} edicion={{ quincena, camposEditables }} />
       <CeldaPagadoTotal fila={fila} />
       <CeldaSaldo fila={fila} lado="total" />
@@ -330,10 +334,8 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
 }
 
 /** La fila de total: suma las filas VISIBLES, columna por columna de plata. Cierra igual que cada fila. */
-function Total({ columnas, dias, totales, redondeo }: {
+function Total({ columnas, dias, totales }: {
   columnas: string; dias: readonly string[]; totales: TotalesDelEspejo
-  /** Suma de lo que muestra la columna del redondeo en las filas visibles (guardado o sugerido). */
-  redondeo: number
 }) {
   const cierre = cierreDeTotales(totales)
   const noCierra = cierre?.cierra === false
@@ -363,7 +365,6 @@ function Total({ columnas, dias, totales, redondeo }: {
         title={totales.presentismoPerdido > 0 ? `${totales.presentismoPerdidos} perdieron el presentismo` : 'nadie perdió el presentismo'}>
         {totales.presentismoPerdido > 0 ? `−${pesos(totales.presentismoPerdido)}` : '·'}
       </div>
-      <Leida valor={redondeo > 0 ? redondeo : null} testid="espejo-total-redondeo" />
       <div data-testid="espejo-total-cobra" style={{ textAlign: 'right', whiteSpace: 'nowrap', color: noCierra ? V.neg : V.tinta }}
         title={noCierra ? `No cierra por ${pesos(cierre?.diferencia ?? null)}` : undefined}>{pesos(totales.cobra)}</div>
       <Leida valor={totales.pago.pagado} testid="espejo-total-pagado" />
