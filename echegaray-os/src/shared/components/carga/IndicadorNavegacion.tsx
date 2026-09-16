@@ -56,21 +56,27 @@ export function IndicadorNavegacion() {
 
   useEffect(() => {
     function alClic(e: MouseEvent) {
-      const ancla = (e.target as Element | null)?.closest?.('a')
+      const objetivo = e.target as Element | null
+      const ancla = objetivo?.closest?.('a')
       if (!ancla) return
-      if (
-        abreNavegacionInterna({
-          href: ancla.getAttribute('href'),
-          target: ancla.getAttribute('target'),
-          descarga: ancla.hasAttribute('download'),
-          conModificador: e.metaKey || e.ctrlKey || e.shiftKey || e.altKey,
-          botonPrincipal: e.button === 0,
-          yaPrevenido: e.defaultPrevented,
-          urlActual: window.location.href,
-        })
-      ) {
-        setPedido({ desde: `${window.location.pathname}?${window.location.search.replace(/^\?/, '')}`, n: Date.now() })
+      // UN BOTÓN O UN CAMPO ADENTRO DE LA FILA-ENLACE es del control, no del enlace (dueño, 16/09/2026: «se queda
+      // cargando en Plantel, Clientes, Compras»). Y la decisión se toma en un `setTimeout(0)`, como en `alEnviar`:
+      // este escucha corre en captura, antes que React, y ahí `defaultPrevented` todavía no dice nada.
+      const control = objetivo?.closest?.('button, input, select, textarea, label, summary, [role="button"], [role="separator"]')
+      const dentroDeControl = control != null && ancla.contains(control)
+      const desde = `${window.location.pathname}?${window.location.search.replace(/^\?/, '')}`
+      const clic = {
+        href: ancla.getAttribute('href'),
+        target: ancla.getAttribute('target'),
+        descarga: ancla.hasAttribute('download'),
+        conModificador: e.metaKey || e.ctrlKey || e.shiftKey || e.altKey,
+        botonPrincipal: e.button === 0,
+        dentroDeControl,
+        urlActual: window.location.href,
       }
+      setTimeout(() => {
+        if (abreNavegacionInterna({ ...clic, yaPrevenido: e.defaultPrevented })) setPedido({ desde, n: Date.now() })
+      }, 0)
     }
     // ═══ UN GUARDADO EN EL LUGAR NO ES UNA NAVEGACIÓN (19/08/2026) ═══
     //

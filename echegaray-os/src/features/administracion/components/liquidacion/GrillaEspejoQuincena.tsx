@@ -325,10 +325,12 @@ function Encabezado({ columnas, dias, sellada, corrimiento = 0, tirador }: {
             aria-label="Ancho de la columna Persona: arrastrar para cambiar, doble clic para restablecer"
             title="Arrastrá para ensanchar · doble clic: ancho por defecto"
             className="group"
-            style={{ position: 'absolute', top: 0, right: -4, width: 9, height: '100%', cursor: 'col-resize', touchAction: 'none', zIndex: 2 }}
+            style={{ position: 'absolute', top: 0, right: -5, width: 11, height: '100%', cursor: 'col-resize', touchAction: 'none', zIndex: 2, display: 'flex' }}
             {...tirador}
           >
-            <div className="h-full w-px bg-line-strong group-hover:bg-ink" style={{ margin: '0 auto' }} />
+            {/* VISIBLE SIEMPRE (dueño, 16/09/2026: «no has liberado lo del ensanchamiento»: el borde de 1 px no se veía).
+                Una línea de 3 px, más oscura al pasar o al agarrar; la zona de agarre son 11 px. */}
+            <div className="mx-auto h-full w-[3px] rounded-full bg-line-strong group-hover:bg-ink group-active:bg-ink" />
           </div>
         )}
       </div>

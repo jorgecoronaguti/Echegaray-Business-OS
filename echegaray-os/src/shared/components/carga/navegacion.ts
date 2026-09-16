@@ -19,6 +19,8 @@
 export type ClicDeNavegacion = {
   /** `href` crudo del ancla, tal como está escrito en el HTML. */
   href: string | null
+  /** El clic cayó en un botón/campo que está DENTRO del enlace: es del control, no del enlace. */
+  dentroDeControl?: boolean
   /** `target` del ancla. Cualquier cosa distinta de `_self` abre afuera de esta pestaña. */
   target?: string | null
   /** El ancla tiene atributo `download`. */
@@ -40,6 +42,13 @@ export type ClicDeNavegacion = {
 export function abreNavegacionInterna(c: ClicDeNavegacion): boolean {
   if (!c.href) return false
   if (c.yaPrevenido) return false
+  // ═══ UN CONTROL ADENTRO DEL ENLACE NO ES UNA NAVEGACIÓN (dueño, 16/09/2026) ═══
+  //
+  // «Se queda cargando en Plantel, Clientes, Compras»: la fila es un `<Link>` y adentro viven botones —«tarde»,
+  // «quitar», abrir el panel de costo—. El clic en el botón burbujea hasta el enlace, este escucha lo tomaba por
+  // una navegación, y como la ruta nunca cambia el cartel quedaba dos minutos encima de una acción que terminó
+  // en medio segundo (medido: acción 440 ms, cartel 60 s+). El control se hace cargo del clic; el enlace no.
+  if (c.dentroDeControl) return false
   if (c.descarga) return false
   if (c.conModificador) return false
   if (c.botonPrincipal === false) return false

@@ -71,3 +71,8 @@ test('no prende si otro ya se hizo cargo del clic, ni sin href', () => {
   assert.equal(clic({ href: '/obras', yaPrevenido: true }), false)
   assert.equal(clic({ href: null }), false)
 })
+
+test('NO PRENDE SI EL CLIC CAYÓ EN UN BOTÓN ADENTRO DEL ENLACE (dueño, 16/09/2026: «se queda cargando en Plantel»)', () => {
+  assert.equal(clic({ href: '/administracion/personas/abc', dentroDeControl: true }), false, 'el control se hace cargo; el enlace no navega')
+  assert.equal(clic({ href: '/administracion/personas/abc', dentroDeControl: false }), true, 'el mismo clic fuera del control sí es una navegación')
+})
