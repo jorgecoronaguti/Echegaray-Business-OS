@@ -40,7 +40,7 @@ import { letra } from './compras-columnas.mjs'
 import { COMPRAS, columnasDe } from './columnas-por-encabezado.mjs'
 import { PRIMERA_FILA, filaACompra, pesos } from './compras-fila.mjs'
 import { diferir, rechazar, resolverLayout, verificarHuella } from './bisturi-compras-obra.mjs'
-import { CLAVE_POR_ROTULO, ESPECIE_PAGO, ROTULOS_PAGO, paraElSheet } from './pagos-de-compra.mjs'
+import { CLAVE_POR_ROTULO, ESPECIE_PAGO, paraElSheet } from './pagos-de-compra.mjs'
 
 // El mapa rótulo→clave vive en el núcleo (lo usan los dos lados del viaje) y se re-exporta acá para
 // que quien ya lo importaba del bisturí siga teniendo UNA sola definición y no una copia.
