@@ -94,10 +94,46 @@ export function repoMemoria() {
       return { ...f }
     },
 
-    async cerrarFajo(_p, { id, estado, filas = null, error = null } = {}) {
+    async cerrarFajo(_p, { id, estado, filas = null, error = null, desde = null } = {}) {
       const f = fajos.get(id)
-      if (!f) return null
+      if (!f || (desde && f.estado !== desde)) return null
       Object.assign(f, { estado, filas, error, cerrado_at: new Date() })
+      return { ...f }
+    },
+
+    /** Igual que la tabla: sólo desde `confirmado`, cuenta el intento y fija el turno siguiente. */
+    async programarReintento(_p, { id, error = null, esperaMin = 1 } = {}) {
+      api._chequear('programarReintento')
+      const f = fajos.get(id)
+      if (!f || f.estado !== ESTADO.CONFIRMADO) return null
+      Object.assign(f, {
+        estado: ESTADO.REINTENTO, error, intentos: (f.intentos ?? 0) + 1,
+        proximo_intento_at: new Date(api._ahora.getTime() + esperaMin * 60_000), ultimo_at: api._ahora,
+      })
+      return { ...f }
+    },
+
+    async fajosParaReintentar(_p, { limite = 10 } = {}) {
+      return [...fajos.values()]
+        .filter((f) => f.estado === ESTADO.REINTENTO && (!f.proximo_intento_at || f.proximo_intento_at <= api._ahora))
+        .slice(0, limite).map((f) => ({ ...f }))
+    },
+
+    async rescatarConfirmadosColgados(_p, { minutos = 15 } = {}) {
+      const out = []
+      for (const f of fajos.values()) {
+        if (f.estado !== ESTADO.CONFIRMADO || !(f.intentos > 0)) continue
+        if ((api._ahora.getTime() - new Date(f.ultimo_at ?? f.creado_at ?? 0).getTime()) / 60_000 < minutos) continue
+        f.estado = ESTADO.REINTENTO; f.proximo_intento_at = api._ahora
+        out.push(f.id)
+      }
+      return out
+    },
+
+    async tomarParaReintentar(_p, { id } = {}) {
+      const f = fajos.get(id)
+      if (!f || f.estado !== ESTADO.REINTENTO) return null
+      f.estado = ESTADO.CONFIRMADO
       return { ...f }
     },
 
@@ -119,15 +155,48 @@ export function repoMemoria() {
       const out = []
       for (const f of filas) {
         if (!f?.clave || cargados.has(f.clave)) continue
-        cargados.set(f.clave, { clave: f.clave, fila: f.fila ?? null, hoja: f.hoja ?? 'Compras', post_id: f.postId ?? null, creado_at: new Date() })
+        cargados.set(f.clave, { clave: f.clave, fila: f.fila ?? null, hoja: f.hoja ?? 'Compras', post_id: f.postId ?? null, fajo_id: f.fajoId ?? null, creado_at: api._ahora })
         out.push(f.clave)
       }
       return out
     },
 
-    async reservarClaves(_p, filas = []) {
+    /**
+     * Igual que la tabla: lo que no se pudo insertar se RESCATA si la reserva no tiene fila y ya
+     * está rancia. Sin esto el doble daría verde sobre el defecto del 15/09 —ocho reservas
+     * huérfanas bloqueando el gasto para siempre— que es justo lo que hay que impedir.
+     */
+    async reservarClaves(_p, filas = [], { rescatarDesdeMin = 15 } = {}) {
       api._chequear('reservarClaves')
-      return api.registrarCargados(_p, filas.map((f) => ({ ...f, fila: null })))
+      const nuevas = await api.registrarCargados(_p, filas.map((f) => ({ ...f, fila: null })))
+      const rescatadas = []
+      for (const f of filas) {
+        if (!f?.clave || nuevas.includes(f.clave)) continue
+        const c = cargados.get(f.clave)
+        if (!c || c.fila != null) continue
+        const edadMin = (api._ahora.getTime() - new Date(c.creado_at).getTime()) / 60_000
+        if (edadMin < rescatarDesdeMin) continue
+        Object.assign(c, { fajo_id: f.fajoId ?? c.fajo_id, post_id: f.postId ?? c.post_id, creado_at: api._ahora })
+        rescatadas.push(f.clave)
+      }
+      return [...nuevas, ...rescatadas]
+    },
+
+    async rescatarReservasRancias(_p, claves = [], { minutos = 15 } = {}) {
+      const out = []
+      for (const k of claves) {
+        const c = cargados.get(k)
+        if (!c || c.fila != null) continue
+        if ((api._ahora.getTime() - new Date(c.creado_at).getTime()) / 60_000 < minutos) continue
+        c.creado_at = api._ahora
+        out.push(k)
+      }
+      return out
+    },
+
+    async reservasRancias(_p, { minutos = 15 } = {}) {
+      return [...cargados.values()]
+        .filter((c) => c.fila == null && (api._ahora.getTime() - new Date(c.creado_at).getTime()) / 60_000 >= minutos)
     },
 
     async anotarFilas(_p, filas = []) {

@@ -23,6 +23,8 @@ import { crearLog } from '../../../communication-service/src/index.mjs'
 import { SesionesPostgres, crearVencedorPeriodico, VENCER_INTERVALO_MS_DEFAULT } from './asistencia-sesion.mjs'
 import { crearEntregador, ENTREGA_INTERVALO_MS_DEFAULT } from './asistente/entrega-recordatorios.mjs'
 import { crearVigiaDeFajosMudos, VIGIA_INTERVALO_MS_DEFAULT } from './comprobantes/vigia-mudos.mjs'
+import { crearReintentoDeFajos, REINTENTO_INTERVALO_MS_DEFAULT } from './comprobantes/reintento.mjs'
+import { googleDelOs } from '../lib/google-os.mjs'
 import { alPerderLaConexion, query, withTx } from '../lib/db.mjs'
 import { crearLatido, esConexionPerdida, SALIDA_CONEXION_PERDIDA } from '../lib/conexion-perdida.mjs'
 
@@ -37,6 +39,7 @@ const RECORDATORIOS_MS = Number(process.env.COMM_WORKER_RECORDATORIOS_MS ?? ENTR
 // Ver `comprobantes/vigia-mudos.mjs`: un fajo mudo no tiene error, ni dead-letter, ni fila — es
 // invisible para todos los controles a la vez, y adentro hay plata sin registrar.
 const MUDOS_MS = Number(process.env.COMM_WORKER_MUDOS_MS ?? VIGIA_INTERVALO_MS_DEFAULT)
+const REINTENTO_MS = Number(process.env.COMM_WORKER_REINTENTO_MS ?? REINTENTO_INTERVALO_MS_DEFAULT)
 // EL LATIDO — cuánto silencio se tolera antes de salir con error y dejar que systemd
 // reinicie. Incidente del 10/09/2026: este worker quedó 23 h colgado en un `await` que
 // nunca se resolvió (Supabase reinició, el socket quedó medio abierto y `pg` no tenía
@@ -49,7 +52,7 @@ const log = crearLog()
 let parar = false
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-async function tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos) {
+async function tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos, reintentarComprobantes) {
   await con.recuperarLeasesWorkFabric()
   await con.recuperarLeasesComm()
   // Barrido de formularios de asistencia abandonados. Tiene su PROPIO intervalo (este loop
@@ -62,6 +65,9 @@ async function tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos) {
   // Las cargas de comprobantes que quedaron abiertas y calladas. Mismo criterio que los dos de
   // arriba: intervalo propio, no suma a `trabajo` y no propaga error.
   await vigilarMudos()
+  // Los fajos que Google dejó sin cargar (5xx antes de escribir). Mismo criterio: intervalo propio,
+  // no suma a `trabajo`, no propaga error. Corre el cargador de verdad y contesta en el hilo.
+  await reintentarComprobantes()
   const inbox = await con.procesarInbox({ lote: 20 })
   const wf = await con.procesarWorkFabric({ lote: 20 })
   const outbox = await con.procesarOutbox({ lote: 20 })
@@ -138,6 +144,19 @@ async function main() {
     }),
     intervaloMs: MUDOS_MS, log,
   })
+  // El reintento de las cargas de comprobantes que Google dejó sin escribir (15/09/2026). Vive acá por
+  // la misma razón que el vigía: es el único proceso con el pool, el cliente de Mattermost y la
+  // credencial de Google. La respuesta va AL HILO del post original, como cualquier respuesta.
+  const reintentarComprobantes = crearReintentoDeFajos({
+    port: { query, withTx },
+    publicar: ({ channelId, rootPostId, texto }) => con.cliente.crearPost({
+      channel_id: channelId, message: texto, ...(rootPostId ? { root_id: rootPostId } : {}),
+    }),
+    // El cliente de Google entra PEREZOSO y sólo para el auditor y el espejo de `escribirFajo` (el
+    // cargador arma el suyo). Si no se puede construir, la carga corre igual y sin auditor.
+    google: () => { try { return googleDelOs({ log }) } catch { return null } },
+    intervaloMs: REINTENTO_MS, log,
+  })
   // El latido: si pasan LATIDO_MS sin un tick completo, el proceso sale con error. Es la
   // única red que cubre un cuelgue cuya causa no conocemos todavía — no necesita clasificar
   // nada, sólo notar el silencio. Va armado ANTES del primer tick.
@@ -152,13 +171,13 @@ async function main() {
     else log.error('pool: error inesperado (no es corte de conexión)', { error: String(err?.message ?? err) })
   })
   log.info('worker-comunicacion arrancado', {
-    vencer_sesiones_ms: VENCER_MS, recordatorios_ms: RECORDATORIOS_MS, fajos_mudos_ms: MUDOS_MS,
+    vencer_sesiones_ms: VENCER_MS, recordatorios_ms: RECORDATORIOS_MS, fajos_mudos_ms: MUDOS_MS, reintento_fajos_ms: REINTENTO_MS,
     latido_ms: latido.toleranciaMs,
   })
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => { log.info('shutdown pedido', { señal: s }); parar = true })
 
   const { salida } = await correrBucle({
-    tick: () => tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos), latido,
+    tick: () => tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos, reintentarComprobantes), latido,
   })
   if (salida !== 0) return // el latido ya hizo process.exit con su log
   latido.desarmar()
