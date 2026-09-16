@@ -1,16 +1,19 @@
-// 22 · PROVEEDORES v2 — el patrón de sección aplicado a la sección con más trabajo encima.
+// 22 · PROVEEDORES v2 — TRES de las cuatro secciones de Compras.
 //
-// ═══ EL ORDEN DE LA PANTALLA ES EL ARGUMENTO ═══
+// ═══ ESTA PANTALLA YA NO ES UN ÁREA: ES PARTE DE COMPRAS (dueño, 16/09/2026) ═══
 //
-// Criterio 1 del patrón: la primera línea de contenido muestra TRABAJO, no un maestro. Lo primero
-// que ve quien entra no es la lista de proveedores —que casi nunca hay que tocar— sino los dos
-// frentes que bloquean plata: los proveedores sin CUIT y los nombres de Compras sin resolver.
-// Debajo, las dos sub-vistas de nivel 3 con la lista que corresponda.
+// «Quiero que pongas todo el módulo proveedores dentro de "compras" como sección». Lo que cambió es
+// DÓNDE CUELGA y cómo se navega: la ruta, las lecturas, los paneles y las escrituras siguen siendo
+// las mismas. La cabecera que dibuja —`seccionesDeCompras`— es la MISMA fila que dibuja la pestaña
+// Compras, y por eso las tres sub-vistas que esta pantalla tenía subieron a hermanas de Compras en
+// vez de quedar colgando de una sección «Proveedores»: eso habría sido un cuarto nivel de
+// navegación. El porqué completo está en `services/seccionesDeCompras.ts`.
 //
-//   MAESTRO   quién es un proveedor, con el CUIT como identidad.
-//   RESOLVER  los nombres que Compras trae sueltos y todavía no son nadie.
+//   PROVEEDORES        quién es un proveedor, con el CUIT como identidad.  (`?vista=` vacío)
+//   A QUIÉN LE DEBO    lo impago y cuándo vence.                           (`?vista=deuda`)
+//   NOMBRES SIN RESOLVER  los textos que Compras trae y todavía no son nadie. (`?vista=resolver`)
 //
-// La segunda es la que de verdad evita el duplicado: sin un lugar donde decir «este texto es este
+// La tercera es la que de verdad evita el duplicado: sin un lugar donde decir «este texto es este
 // proveedor», el maestro se llena de variantes del mismo nombre y nadie sabe cuál es la buena.
 //
 // ═══ LAS LECTURAS: CUATRO CONSULTAS EN PARALELO, NINGUNA POR FILA ═══
@@ -261,7 +264,8 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
           urgente: empuja la lista —que es a lo que se entra— fuera de la primera pantalla.
 
           NO SE PERDIÓ NINGÚN CAMINO: «Sin CUIT» sigue siendo un recorte de la lista y «Nombres sin
-          resolver» sigue siendo una sub-vista con su contador. */}
+          resolver» pasó a ser una SECCIÓN de Compras con su contador — un clic más cerca que antes,
+          no más lejos. */}
 
       <CabeceraSeccion
         // LA MISMA FILA, EL MISMO NOMBRE PARA QUIEN PRUEBA: es la cabecera de Compras, se

@@ -105,7 +105,7 @@ test('las rutas retiradas de la navegación SIGUEN respondiendo', async ({ page 
   }
 })
 
-test('Administración tiene sus SIETE destinos, y ni uno de otro nivel', async ({ page }) => {
+test('Administración tiene sus TRES destinos, y Compras tiene sus cuatro secciones', async ({ page }) => {
   test.setTimeout(120000)
   await entrarComo(page, EMAIL, PASSWORD)
   await page.goto('/administracion')
@@ -117,23 +117,24 @@ test('Administración tiene sus SIETE destinos, y ni uno de otro nivel', async (
   await expect(page.getByRole('heading', { name: 'Clientes y obras en ejecución', level: 1 })).toBeVisible()
   await expect(page.getByText('Lo que pide trabajo')).toHaveCount(0)
 
-  // ═══ EL CONTRATO NUEVO (00 · Home Navegación v2, zip del 25/08/2026) ═══
+  // ═══ EL CONTRATO DE HOY (dueño, 16/09/2026) ═══
   //
-  // Siete destinos en tres grupos: `Trabajo · | Clientes · Personal · Proveedores · | Compras ·
-  // Base maestra · Documentos`. Pendientes y Asistencia se absorbieron en Trabajo; Presupuestos
-  // subió a la barra de la aplicación y Usuarios bajó al menú de la cuenta.
-  for (const t of ['ir-trabajo', 'ir-clientes', 'ir-personas', 'ir-proveedores', 'ir-compras',
-    'ir-base-maestra', 'ir-documentos']) {
+  // TRES destinos en dos grupos: `Clientes · Personal | Compras`. Del contrato de agosto —siete
+  // destinos en tres grupos— ya no queda ninguno de los que se fueron: Trabajo, Base maestra y
+  // Documentos salieron con el handoff v4 (04/09) y Proveedores se metió ADENTRO de Compras como
+  // sección el 16/09. Pendientes, Asistencia y Proveedores encienden la solapa que los reclama;
+  // Presupuestos subió a la barra de la aplicación y Usuarios bajó al menú de la cuenta.
+  for (const t of ['ir-clientes', 'ir-personas', 'ir-compras']) {
     await expect(page.getByTestId(t), `falta el destino ${t}`).toBeVisible()
   }
-  for (const t of ['ir-obras', 'ir-pedidos', 'ir-herramientas', 'ir-movimientos', 'ir-pendientes',
-    'ir-asistencia', 'ir-presupuestos']) {
+  for (const t of ['ir-trabajo', 'ir-base-maestra', 'ir-documentos', 'ir-proveedores', 'ir-obras',
+    'ir-pedidos', 'ir-herramientas', 'ir-movimientos', 'ir-pendientes', 'ir-asistencia',
+    'ir-presupuestos']) {
     await expect(page.getByTestId(t), `${t} volvió a ofrecerse en la barra del área`).toHaveCount(0)
   }
   const barra = page.getByTestId('nav-admin-secciones')
   await expect(barra).toBeVisible()
-  await expect(barra.getByRole('link')).toHaveCount(7)
-  // Dos filos, uno por cambio de grupo. Sin ellos son siete tablas en fila otra vez.
+  await expect(barra.getByRole('link')).toHaveCount(3)
   // SIN FILO ENTRE GRUPOS (dueño, 16/09/2026: «no quiero ese separador»).
   await expect(barra.getByTestId('filo-grupo')).toHaveCount(0)
 
@@ -147,29 +148,57 @@ test('Administración tiene sus SIETE destinos, y ni uno de otro nivel', async (
   await page.waitForURL(/\/clientes/)
   await expect(page.getByTestId('clientes-tabla')).toBeVisible()
 
-  // La barra dice DÓNDE ESTOY PARADO. Sin esto, siete destinos se ven iguales desde adentro.
+  // La barra dice DÓNDE ESTOY PARADO. Sin esto, tres destinos se ven iguales desde adentro.
   await page.goto('/administracion/personas')
-  await expect(page.getByTestId('nav-admin-secciones').getByRole('link', { name: 'Personal' }))
-    .toHaveAttribute('aria-current', 'page')
-  await expect(page.getByTestId('nav-admin-secciones').getByRole('link', { name: 'Proveedores' }))
-    .not.toHaveAttribute('aria-current', 'page')
+  await expect(barra.getByRole('link', { name: 'Personal' })).toHaveAttribute('aria-current', 'page')
+  await expect(barra.getByRole('link', { name: 'Compras' })).not.toHaveAttribute('aria-current', 'page')
 
-  // Y LO QUE «TRABAJO» ABSORBIÓ SIGUE ENCENDIENDO SU SOLAPA: sin esto, entrar a Pendientes apaga la
-  // barra entera y la pantalla deja de decir dónde está parado el que la mira.
-  {
-    const res = await page.goto('/administracion/pendientes')
-    expect(res?.status(), '/administracion/pendientes dejó de responder').toBeLessThan(400)
-    await expect(page.getByTestId('nav-admin-secciones').getByRole('link', { name: 'Trabajo' }))
+  // Y LO QUE COMPRAS ABSORBIÓ SIGUE ENCENDIENDO SU SOLAPA: sin esto, entrar a Pendientes o a
+  // Proveedores apaga la barra entera y la pantalla deja de decir dónde está parado el que la mira.
+  for (const ruta of ['/administracion/pendientes', '/administracion/proveedores',
+    '/administracion/proveedores?vista=deuda', '/administracion/proveedores?vista=resolver']) {
+    const res = await page.goto(ruta)
+    expect(res?.status(), `${ruta} dejó de responder`).toBeLessThan(400)
+    await expect(barra.getByRole('link', { name: 'Compras' }), `${ruta} no enciende Compras`)
       .toHaveAttribute('aria-current', 'page')
   }
 
+  // ═══ LAS CUATRO SECCIONES DE COMPRAS SON UNA SOLA FILA, Y ES LA MISMA DESDE LAS DOS PANTALLAS ═══
+  //
+  // Es la mudanza del 16/09 mirada desde el navegador: `seccionesDeCompras.ts` garantiza la lista,
+  // pero que las DOS páginas la dibujen igual sólo se ve acá.
+  for (const ruta of ['/administracion/compras', '/administracion/proveedores']) {
+    await page.goto(ruta)
+    const secciones = page.getByTestId('vistas-compras')
+    await expect(secciones, `${ruta} perdió la fila de secciones`).toBeVisible()
+    for (const rotulo of ['Compras', 'Proveedores', 'A quién le debo', 'Nombres sin resolver']) {
+      await expect(secciones.getByRole('link', { name: new RegExp(`^${rotulo}`) }),
+        `${ruta} perdió la sección ${rotulo}`).toBeVisible()
+    }
+  }
+
+  // LA FICHA DE UN PROVEEDOR NO LLEVA LA FILA DE SECCIONES: serían TRES niveles a la vista —área,
+  // secciones y las solapas de la entidad—, que es lo que prohíbe el handoff. Dice dónde está
+  // parado con la miga, y la miga nombra el área y vuelve a la lista.
+  await page.goto('/administracion/proveedores')
+  await page.getByTestId('tabla-proveedores').getByRole('link').first().click()
+  await page.waitForURL(/\/administracion\/proveedores\/[^/?]+/)
+  await expect(page.getByTestId('vistas-compras')).toHaveCount(0)
+  await expect(page.getByTestId('migas')).toContainText('Compras')
+  await expect(page.getByTestId('migas')).toContainText('Proveedores')
+  await page.getByTestId('volver').click()
+  await page.waitForURL(/\/administracion\/proveedores(\?|$)/)
+
   // CORRECCIONES DE ASISTENCIA ES DE SEGUNDO NIVEL (19c v2) y por eso NO lleva la barra del área:
-  // con ella habría tres niveles de navegación a la vista, que es lo que prohíbe el handoff. Dice
-  // dónde está parado con la miga, y la miga vuelve a Trabajo.
+  // con ella habría tres niveles de navegación a la vista. Dice dónde está parado con la miga.
   {
     const res = await page.goto('/administracion/asistencia')
     expect(res?.status(), '/administracion/asistencia dejó de responder').toBeLessThan(400)
     await expect(page.getByTestId('nav-admin-secciones')).toHaveCount(0)
+    // SIGUE DICIENDO «Trabajo», que es un destino que la barra ya no tiene desde el handoff v4
+    // (04/09/2026). Es una etiqueta VIEJA en `asistencia/page.tsx`, no un defecto de este test: se
+    // afirma lo que la pantalla dice hoy para no fijar un verde falso. Queda declarado como
+    // pendiente de decidir a quién cuelga esa miga ahora que «Trabajo» no existe.
     await expect(page.getByTestId('migas')).toContainText('Trabajo')
   }
 })
