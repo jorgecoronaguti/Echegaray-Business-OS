@@ -4,8 +4,9 @@
 //
 // Dueño, 14/09/2026: *«realmente no se entiende nada el cuadro de liq de hs, vamos a rehacer»*. El panel
 // repite la fila en vertical y dice DE DÓNDE sale cada eslabón: el blanco (recibo del estudio o
-// estimado), el negro (horas que el recibo no paga × $/h negro), el total, el adelanto, lo transferido y
-// el efectivo. Debajo, el historial del $/h y lo laboral que tenía «Horas».
+// estimado), el negro (horas que el recibo no paga × $/h negro), lo PAGADO de cada lado y lo que falta
+// (15/09/2026: los mismos saldos que el cuadro, de `pagoDeLaQuincena.ts`; el panel no hace una segunda
+// cuenta). Debajo, el historial del $/h y lo laboral que tenía «Horas».
 //
 // Oficina, liquidaciones finales y la quincena cerrada no tienen blanco + negro: muestran la cadena de
 // siempre (`CadenaSinModelo`), con el acuerdo 50/50 donde lo hay.
@@ -29,6 +30,7 @@ import { rotuloCategoria } from './CeldaTarifa'
 import { tituloDeJornales } from './estadoDelPago'
 import { ALTO_LIQ } from '../solapas/tabla'
 import { cierreDeLaFila, type EntradaDeHistorial } from '../../../services/cuadroDeJornales'
+import { avisoDeExcedente } from '../../../services/pagoDeLaQuincena'
 import type { CampoEditable } from '../../../services/liquidacionOverrides'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import type { DetalleLaboral } from '../../../services/detalleLaboral'
@@ -86,7 +88,7 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
   )
 }
 
-/** BLANCO (con su origen) · NEGRO · TOTAL · − adelanto · − transferido · = efectivo. */
+/** BLANCO (con su origen) · NEGRO · pagado y saldo por lado · TOTAL · a pagar hoy. */
 function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
   const l = fila.linea
   const s = l.sueldo!
@@ -95,7 +97,7 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
   return (
     <section data-testid="panel-cadena">
       <Rotulo>{`Blanco · ${s.estado === 'recibo' ? 'recibo' : 'estimado'}`}</Rotulo>
-      {/* EL ORDEN DE LA FILA Y DE JORNALES: blanco · negro · adelantos · total efectivo · total quincena. */}
+      {/* EL MISMO ORDEN QUE LA FILA DEL CUADRO: blanco · negro · pagado y saldo · total. */}
       <Renglon rotulo="Hs recibo" nota={origenDelBlanco(s)}>
         <Leida valor={s.horasBlanco} unidad="horas" apagada={est} />
       </Renglon>
@@ -124,21 +126,50 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
         <Escribible campo="negro" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
 
+      <PagadoYSaldo fila={fila} quincena={quincena} camposEditables={camposEditables} />
+
       <div style={{ height: 16 }} />
-      <Renglon rotulo="Adelanto banco / embargos">
-        <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
-      </Renglon>
-      <Renglon rotulo="Adelanto efectivo">
-        <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
-      </Renglon>
-      <Renglon rotulo="Total efectivo" fuerte
-        nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : 'cobra total − banco − adelantos'} alerta={cierre?.cierra === false}>
-        <Escribible campo="enEfectivo" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
-      </Renglon>
-      <Renglon rotulo="Cobra total" nota={est ? 'banco + negro · blanco estimado' : 'banco + negro'} fuerte>
+      <Renglon rotulo="Cobra total" fuerte
+        nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : (est ? 'banco + negro · blanco estimado' : 'banco + negro')}
+        alerta={cierre?.cierra === false}>
         <Escribible campo="cobra" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
+      <Renglon rotulo="Pagado" nota="banco + efectivo"><Leida valor={l.pago.pagado} /></Renglon>
+      <Renglon rotulo="A pagar hoy" fuerte
+        nota={l.pago.aPagarEfectivo == null ? 'sin saldo que afirmar' : `efectivo ${pesos(l.pago.aPagarEfectivo)} · banco ${pesos(l.pago.aPagarBanco)}`}>
+        <Leida valor={l.pago.saldoTotal} />
+      </Renglon>
     </section>
+  )
+}
+
+/**
+ * LO PAGADO DE CADA LADO Y LO QUE FALTA (dueño, 15/09/2026). Las mismas celdas que el cuadro: «Pagado» se
+ * escribe, «Saldo» se lee. Sin la resta «cobra − banco − adelantos» de antes: trataba al adelanto como
+ * un descuento y no como un pago, y con un adelanto mayor que el negro dejaba un número negativo sin decir que
+ * el exceso se descuenta del banco. El saldo negativo SIGUE a la vista —en ámbar y con su aviso— porque es la
+ * evidencia de que alguien cobró de más por ese canal.
+ */
+function PagadoYSaldo({ fila, quincena, camposEditables }: PropsDeCadena) {
+  const p = fila.linea.pago
+  const aviso = avisoDeExcedente(p) ?? undefined
+  return (
+    <>
+      <div style={{ height: 16 }} />
+      <Rotulo>Pagado y saldo</Rotulo>
+      <Renglon rotulo="Pagado banco" nota={fila.linea.manual.pagadoBanco ? undefined : 'adelantos por banco y embargos'}>
+        <Escribible campo="pagadoBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+      </Renglon>
+      <Renglon rotulo="Saldo banco" nota={p.excedente?.lado === 'banco' ? aviso : undefined} alerta={p.excedente?.lado === 'banco'}>
+        <Leida valor={p.saldoBanco} />
+      </Renglon>
+      <Renglon rotulo="Pagado efectivo" nota={fila.linea.manual.pagadoEfectivo ? undefined : 'adelantos en efectivo'}>
+        <Escribible campo="pagadoEfectivo" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+      </Renglon>
+      <Renglon rotulo="Saldo efectivo" nota={p.excedente?.lado === 'efectivo' ? aviso : undefined} alerta={p.excedente?.lado === 'efectivo'}>
+        <Leida valor={p.saldoEfectivo} />
+      </Renglon>
+    </>
   )
 }
 

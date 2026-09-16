@@ -101,6 +101,28 @@ test('EL ENCABEZADO SE PEGA ARRIBA Y LA CAJA NO LE ROBA EL ANCLAJE', () => {
   assert.equal((cuerpo.match(/translateX\(\$\{corrimiento\}px\)/g) ?? []).length, 2, 'los dos renglones de la columna fija')
 })
 
+// EL PANEL DICE LO MISMO QUE EL CUADRO (16/09/2026). Después de rehacer el cuadro, el panel por persona seguía
+// mostrando «Total efectivo = cobra total − banco − adelantos» con una celda `enEfectivo` que el cuadro ya no lee:
+// dos respuestas a «cuánto le falta cobrar en mano», y la segunda era la resta que el dueño calificó de «pésimo».
+// MUTACIÓN: volver a poner esa fila, o sacar las celdas Pagado del panel → rojo.
+test('EL PANEL DE LA PERSONA MUESTRA PAGADO Y SALDO POR LADO, NO «TOTAL EFECTIVO»', () => {
+  const PANEL = fuente('./PanelDeLaPersona.tsx')
+  const cadena = PANEL.slice(PANEL.indexOf('function CadenaBlancoNegro('), PANEL.indexOf('function CadenaSinModelo('))
+  for (const muerta of ['Total efectivo', 'cobra total − banco − adelantos', 'campo="enEfectivo"', 'Adelanto efectivo', 'Adelanto banco / embargos']) {
+    assert.ok(!cadena.includes(muerta), `«${muerta}» sigue en la cadena blanco + negro del panel`)
+  }
+  const orden = ['campo="porBanco"', 'campo="negro"', '<PagadoYSaldo', 'campo="cobra"', 'rotulo="Pagado"', 'rotulo="A pagar hoy"']
+    .map((x) => cadena.indexOf(x))
+  assert.ok(orden.every((i) => i > 0), 'están todos los renglones')
+  assert.deepEqual([...orden].sort((a, b) => a - b), orden, 'en el orden del cuadro: blanco · negro · pagado · total')
+  // LAS MISMAS CELDAS QUE EL CUADRO, y el saldo se LEE: nadie escribe un saldo.
+  for (const campo of ['pagadoBanco', 'pagadoEfectivo']) assert.match(cadena, new RegExp(`<Escribible campo="${campo}"`))
+  assert.match(cadena, /<Leida valor=\{p\.saldoBanco\}/)
+  assert.match(cadena, /<Leida valor=\{p\.saldoEfectivo\}/)
+  assert.match(cadena, /avisoDeExcedente\(p\)/, 'el saldo negativo dice adónde va el exceso')
+  assert.match(cadena, /aPagarEfectivo == null \? 'sin saldo que afirmar'/, 'NULL no es cero tampoco en el panel')
+})
+
 test('LA FRASE NO QUEDA ESCRITA EN EL CUADRO, EL PIE, EL PANEL NI CAJA', () => {
   for (const rel of ['../GrillaEspejoQuincena.tsx', './CeldasDelEspejo.tsx', './CeldasBlancoNegro.tsx', './PanelDeLaPersona.tsx', '../solapas/caja-nomina.tsx', '../solapas/cierre.tsx']) {
     const texto = fuente(rel)
