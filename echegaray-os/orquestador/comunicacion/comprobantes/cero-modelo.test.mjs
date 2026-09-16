@@ -62,6 +62,9 @@ test('el ÚNICO archivo del módulo que nombra la API del modelo es el que lee l
     // y el matcheo de lo escrito a mano. Los tres tienen que seguir siendo aritmética y texto — la
     // única llamada a un modelo la hace el `leer` que se le INYECTA, nunca un import suyo.
     path.join(AQUI, 'flujo.mjs'),
+    // El reintento de los fajos que Google dejó sin cargar (15/09/2026): corre SOLO, desde un timer
+    // del worker y sin nadie mirando. Un modelo ahí sería una llamada por minuto que nadie pidió.
+    path.join(AQUI, 'reintento.mjs'),
   ]
   const modulos = new Set()
   for (const e of entradas) for (const m of arbolDeImports(e)) modulos.add(m)

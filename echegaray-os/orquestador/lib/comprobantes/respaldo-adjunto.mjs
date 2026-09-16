@@ -157,10 +157,118 @@ export async function respaldarFajoCargado(dep, { fajo, items = [], filas = [] }
   return r
 }
 
+// ═══ LO QUE NO SE PUDO GUARDAR NO SE PIERDE: SE REINTENTA (15/09/2026) ═══
+//
+// EL DEFECTO. `respaldarFajoCargado` devuelve `omitido: 'sin Mattermost: no puedo bajar los
+// archivos'` cuando el escritor corre sin `MM_BASE_URL`/`MM_BOT_TOKEN` —el cargador desde la
+// terminal, el worker de la pantalla 24, cualquier reintento fuera del bot—. Eso salía como un
+// renglón en el aviso y ahí terminaba: la fila quedaba en Compras y en la app sin papel, y nadie
+// volvía a intentarlo nunca. El único que recuperaba esos archivos era un script manual corrido a
+// mano el 05/09.
+//
+// QUÉ PENDIENTE SE ANOTA: NINGUNO. No hace falta una tabla nueva y por eso no se crea: el pendiente
+// ya está escrito en `comunicacion.comprobante_fajos` —los `items` con sus `origen.fileId` y las
+// `filas` que les tocaron— y lo que falta es justamente la fila de `public.compra_adjunto`. El
+// pendiente es la DIFERENCIA entre las dos, calculada cada vez. Una tabla de pendientes sería una
+// tercera verdad que puede quedar desincronizada de las otras dos; esto no puede.
+
+/**
+ * Los archivos de fajos YA CARGADOS que todavía no tienen su fila en `compra_adjunto`. Puro.
+ *
+ * Sólo cuenta lo que quedó CARGADO (tiene fila o clave): un adjunto de un comprobante que nunca
+ * entró a Compras no es un respaldo faltante, es un comprobante que no se cargó — y eso lo vigila
+ * `vigilancia.mjs`, no esto.
+ *
+ * @param {Array<{id:string, items:object[], filas:object[], post_ids:string[]}>} fajos
+ * @param {Set<string>} yaGuardados  `origen_file_id` que ya están en `compra_adjunto`
+ */
+export function pendientesDeFajos(fajos = [], yaGuardados = new Set()) {
+  const out = []
+  for (const f of fajos ?? []) {
+    const items = Array.isArray(f?.items) ? f.items : []
+    const filas = Array.isArray(f?.filas) ? f.filas : []
+    for (const a of archivosDelFajo({ fajo: f, items, filas })) {
+      if (!a.file_id || yaGuardados.has(a.file_id)) continue
+      if (!a.fila && !a.clave) continue
+      out.push({ ...a, fajo_id: f?.id ?? null })
+    }
+  }
+  return out
+}
+
+/**
+ * La misma diferencia, contra Postgres. Sólo lectura: no anota nada, no sube nada.
+ * @param {{query:Function}} dep
+ */
+export async function respaldosPendientes(dep, { limite = 200, dias = 60 } = {}) {
+  if (typeof dep?.query !== 'function') return []
+  const f = await dep.query(
+    `select id, post_ids, items, filas from comunicacion.comprobante_fajos
+      where filas is not null and creado_at > now() - make_interval(days => $1)
+      order by creado_at desc limit $2`, [dias, limite])
+  const candidatos = pendientesDeFajos(f?.rows ?? [])
+  if (!candidatos.length) return []
+  const ids = [...new Set(candidatos.map((c) => c.file_id))]
+  const g = await dep.query('select origen_file_id from public.compra_adjunto where origen_file_id = any($1)', [ids])
+  const ya = new Set((g?.rows ?? []).map((r) => r.origen_file_id))
+  return candidatos.filter((c) => !ya.has(c.file_id))
+}
+
+/**
+ * La repesca: baja y guarda lo que quedó pendiente. Nunca lanza — corre colgada de un timer.
+ * @param {{bajar:Function, subir?:Function, query:Function}} dep
+ */
+export async function reintentarRespaldos(dep, { limite = 20, dias = 60 } = {}) {
+  const r = { pendientes: 0, guardados: 0, fallidos: [] }
+  if (typeof dep?.bajar !== 'function' || typeof dep?.query !== 'function') return { ...r, omitido: 'sin Mattermost o sin Postgres' }
+  let pend
+  try {
+    pend = await respaldosPendientes(dep, { dias })
+  } catch (e) {
+    return { ...r, omitido: `no pude mirar los pendientes: ${String(e?.message ?? e).slice(0, 120)}` }
+  }
+  r.pendientes = pend.length
+  for (const a of pend.slice(0, limite)) {
+    try {
+      const x = await respaldarArchivo(dep, a, { vinculado_por: 'repesca' })
+      if (x.ok) r.guardados++
+      else r.fallidos.push({ nombre: a.nombre ?? a.file_id, motivo: x.motivo })
+    } catch (e) {
+      r.fallidos.push({ nombre: a.nombre ?? a.file_id, motivo: String(e?.message ?? e).slice(0, 160) })
+    }
+  }
+  return r
+}
+
+/** Cada cuánto barre la repesca. Diez minutos: no es urgente, pero tampoco puede ser «algún día». */
+export const REPESCA_INTERVALO_MS_DEFAULT = 10 * 60_000
+
+/**
+ * La repesca con su propio intervalo, para colgarla del tick del worker —que es el único proceso que
+ * tiene a la vez el pool de la base y el cliente de Mattermost—. Mismo patrón que el vigía de fajos
+ * mudos: no suma a `trabajo` y nunca propaga error.
+ */
+export function crearRepescaDeRespaldos({ bajar, query, subir, intervaloMs = REPESCA_INTERVALO_MS_DEFAULT, log = null, ahora = () => Date.now() } = {}) {
+  let proximo = 0
+  return async function repescar() {
+    const t = ahora()
+    if (t < proximo) return null
+    proximo = t + intervaloMs
+    try {
+      const r = await reintentarRespaldos({ bajar, query, subir })
+      if (r.guardados || r.fallidos.length) log?.info?.('comprobantes: repesca de respaldos', r)
+      return r
+    } catch (e) {
+      log?.warn?.('comprobantes: la repesca de respaldos falló', { detalle: String(e?.message ?? e).slice(0, 200) })
+      return null
+    }
+  }
+}
+
 /** El renglón que se le dice al dueño. `null` cuando no hay nada que decir. */
 export function avisoDeRespaldo(r) {
   if (!r) return null
-  if (r.omitido) return `⚠ No guardé los archivos en la app: ${r.omitido}.`
+  if (r.omitido) return `⚠ No guardé los archivos en la app: ${r.omitido}. Quedan pendientes y los reintento solo.`
   if (!r.fallidos?.length) return null
   const lista = r.fallidos.slice(0, 5).map((f) => `${f.nombre} (${f.motivo})`).join(' · ')
   return `⚠ ${r.fallidos.length} archivo(s) no quedaron en la app: ${lista}. La fila en Compras sí está.`

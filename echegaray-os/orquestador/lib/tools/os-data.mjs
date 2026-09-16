@@ -114,7 +114,7 @@ export function osDataTools() {
       schema: {
         name: 'costos_obras',
         description:
-          'Costo real acumulado de TODAS las obras (rollup del eje canónico sobre los comprobantes), ordenado de mayor a menor, más los buckets de indirectos/estructura (Administracion, Taller, F931, UOCRA…) y excluidos. USALO para "¿cómo venimos por obra?", "¿dónde se va la plata?", "ranking de costos por obra". Números REALES, 0 inventado. No requiere parámetros.',
+          'Costo real acumulado de TODAS las obras, imputado por la columna «Obra» de cada fila de Compras (nunca por el texto del cliente), ordenado de mayor a menor. Además: `estructura` (lo que va a Administración o Taller y no es costo de ninguna obra) y `sin_obra` (plata de un cliente que todavía nadie imputó a una de sus obras: es trabajo pendiente, NO se reparte). USALO para "¿cómo venimos por obra?", "¿dónde se va la plata?", "ranking de costos por obra". Números REALES, 0 inventado. No requiere parámetros.',
         input_schema: { type: 'object', properties: {} },
       },
       async run() {

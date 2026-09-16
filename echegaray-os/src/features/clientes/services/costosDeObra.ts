@@ -22,10 +22,17 @@
 // mano de obra sale desde 20260915T0800 de la definición única `costo_mo_quincena`: recibo del
 // estudio (costo total empleador) + parte en negro, repartidos por horas, quincena por quincena. Este
 // archivo convierte, da formato y decide qué dice cada hueco.
+//
+// ═══ «A LA FECHA» NO INCLUYE LAS CUOTAS POR VENCER (dueño, 15/09/2026: «has inventado costos») ═══
+//
+// Desde 20260915T2320 cada comprobante entra por lo que Compras dice de él: Pagado → entero; con
+// vencimiento posterior a hoy → sólo lo pagado, y el resto es POR VENCER. La celda dibuja lo a la
+// fecha y, debajo, «+ $ X por vencer» en texto secundario: ni se suma ni se esconde.
 
 // LAS RUTAS VAN RELATIVAS Y CON EXTENSIÓN: el alias `@/` lo resuelve el bundler, no `node --test`.
 import { plata } from '../../../shared/utils/format.ts'
 import { diaMesISO } from '../../../shared/utils/fecha.ts'
+import { porVencerDeMateriales } from './porVencer.ts'
 
 /** Una persona cuyas horas no se pudieron valorizar en una quincena. */
 export interface FaltaDatoDeObra {
@@ -43,6 +50,9 @@ export interface SubcontratoDeObra {
   comprobante: string | null
   fecha: string | null
   total: number
+  /** Lo que de este comprobante entra a la fecha (20260915T2320). `null` = RPC anterior: es `total`. */
+  aLaFecha: number | null
+  porVencer: number | null
   /** Siempre 'proveedor': rubro «Subcontratista» marcado (la marca por familia se retiró el 14/09/2026). */
   motivo: 'proveedor'
 }
@@ -77,8 +87,12 @@ export interface CostoDeObra {
   /** `false` = la RLS de recibos y tarifas (`liquida_sueldos()`) no deja leerlos. Es «no puedo», no
    *  «falta cargarlas», y la celda lo dibuja distinto. */
   puedeVerTarifas: boolean
-  /** Compras asignadas a la obra con fecha POSTERIOR al corte: no son costo a la fecha, se nombran. */
+  /** Σ de lo POR VENCER (cuotas con vencimiento posterior al corte) de materiales y subcontratos: no es
+   *  costo a la fecha, se nombra. Antes de 20260915T2320 era lo comprado con fecha posterior al corte. */
   comprometidoFuturo?: number | null
+  /** La parte de `comprometidoFuturo` de cada columna: es lo que la celda escribe debajo del importe. */
+  materialesPorVencer: number | null
+  subcontratosPorVencer: number | null
   /** ISO `YYYY-MM-DD` del corte con el que la base sumó. `null` = RPC anterior a 20260913T1550. */
   corte?: string | null
 }
@@ -125,6 +139,7 @@ function subcontratosDe(v: unknown): SubcontratoDeObra[] {
     return [{
       proveedor: texto(r.proveedor), comprobante: texto(r.comprobante),
       fecha: texto(r.fecha)?.slice(0, 10) ?? null, total, motivo: 'proveedor',
+      aLaFecha: num(r.a_la_fecha), porVencer: num(r.por_vencer),
     }]
   })
 }
@@ -163,6 +178,8 @@ export function armarCostosPorObra(
       selladoHasta: texto(r.sellado_hasta)?.slice(0, 10) ?? null,
       puedeVerTarifas: r.puede_ver_tarifas !== false,
       comprometidoFuturo: num(r.comprometido_futuro),
+      materialesPorVencer: num(r.materiales_por_vencer),
+      subcontratosPorVencer: num(r.subcontratos_por_vencer),
       corte: texto(r.corte)?.slice(0, 10) ?? null,
     })
   }
@@ -174,9 +191,9 @@ export function textoMateriales(c: CostoDeObra | null | undefined): string {
   return plata(c?.materiales ?? null)
 }
 
-/** «+ $ 1.200.000 comprometido a futuro», o nada. Lo que tiene fecha posterior al corte no se suma. */
+/** «+ $ 1.200.000 por vencer, que no entra», o nada. Lo que vence después del corte no se suma. */
 function fraseFuturo(v: number | null | undefined): string {
-  return v ? ` + ${plata(v)} comprometido a futuro, que no entra.` : ''
+  return v ? ` + ${plata(v)} por vencer, que no entra.` : ''
 }
 
 const aLaFecha = (corte: string | null | undefined): string =>
@@ -195,7 +212,7 @@ export function tituloMateriales(c: CostoDeObra | null | undefined): string | nu
   let t = `${partes.join(' · ')}. No entran nómina, cargas, ARCA ni financiero.`
   // LOS SUBCONTRATOS NO DESAPARECEN AL EXCLUIRLOS: tienen su columna, y el title de materiales lo dice.
   if (c.subcontratos != null) t += ` Sin los ${plata(c.subcontratos)} de subcontratos, que van en su columna.`
-  return t + fraseFuturo(c.comprometidoFuturo)
+  return t + fraseFuturo(porVencerDeMateriales(c))
 }
 
 /** SUBCONTRATOS: el importe o «—». */
@@ -203,10 +220,10 @@ export function textoSubcontratos(c: CostoDeObra | null | undefined): string {
   return plata(c?.subcontratos ?? null)
 }
 
-/** Una línea por comprobante: proveedor · comprobante · fecha · importe. */
+/** Una línea por comprobante: proveedor · comprobante · fecha · lo que entra a la fecha. */
 export function lineaDeSubcontrato(s: SubcontratoDeObra): string {
   return `${s.proveedor ?? 'sin proveedor'}${s.comprobante ? ` · ${s.comprobante}` : ''}${s.fecha ? ` · ${diaMesISO(s.fecha)}` : ''}`
-    + ` · ${plata(s.total)}`
+    + ` · ${plata(s.aLaFecha ?? s.total)}`
 }
 
 const MAX_LINEAS = 8
@@ -219,6 +236,7 @@ export function tituloSubcontratos(c: CostoDeObra | null | undefined): string | 
   const resto = c.subcontratosDetalle.length - lineas.length
   return `Subcontratos${aLaFecha(c.corte)}: ${c.nSubcontratos} ${c.nSubcontratos === 1 ? 'comprobante' : 'comprobantes'}. `
     + `${lineas.join('; ')}${resto > 0 ? `; y ${resto} más` : ''}. ${REGLA_SUBCONTRATO} No están en Materiales ni en Mano de obra.`
+    + fraseFuturo(c.subcontratosPorVencer)
 }
 
 /** Lo mismo para la fila «sin obra asignada» del cliente. */
@@ -319,7 +337,10 @@ export interface GastoSinObra {
   nSubcontratos: number
   subcontratosDetalle: SubcontratoDeObra[]
   nComprobantes: number
+  /** Σ de lo por vencer de la fila, y su parte por columna (20260915T2320). */
   comprometidoFuturo: number | null
+  materialesPorVencer: number | null
+  subcontratosPorVencer: number | null
   /** Los detalles (columna K) más grandes: es lo que permite cargar el alias que falta. */
   detalles: { detalle: string; total: number }[]
   corte: string | null
@@ -346,6 +367,7 @@ export function armarGastosSinObra(filas: unknown[] | null | undefined): Map<str
     m.set(clienteId, {
       clienteId, materiales: num(r.materiales), subcontratos: num(r.subcontratos),
       nComprobantes: entero(r.n_comprobantes), comprometidoFuturo: num(r.comprometido_futuro),
+      materialesPorVencer: num(r.materiales_por_vencer), subcontratosPorVencer: num(r.subcontratos_por_vencer),
       nSubcontratos: entero(r.n_subcontratos), subcontratosDetalle: subcontratosDe(r.subcontratos_detalle),
       detalles, corte: texto(r.corte)?.slice(0, 10) ?? null,
     })

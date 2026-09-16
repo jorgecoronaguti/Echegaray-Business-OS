@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-15 ~15:20 (−03) · main = producción (306cfbea)_
+_actualizado: 2026-09-15 ~22:35 (−03) · main = producción (9ac7c1d8)_
 
 ## 1. OBJETIVO GENERAL
 
@@ -55,6 +55,29 @@ Echegaray Construcciones. XSAS es la capa de inteligencia operativa. Claude Code
 - Regla nueva del dueño: «a la fecha» = pagado + vencido; cuotas por vencer aparte (agente panel/T2320).
 - Agentes en curso: costo por obra_id (T2300), panel detalle + regla por vencer (T2320), tardanza en asistencia de escritorio,
   comprobantes reintento 5xx + fajo persistido (T2330), auditoría MO/MA/SUB por obra (script + informe + .pg.test).
+
+
+### 4d. Tarde-noche del 15/09
+- Blanco estimado con el $/h del último recibo real (d87098c2; memoria `blanco-categoria-del-recibo-negro-plataforma`).
+- Panel de detalle por rubro en la ficha del cliente + `costo_de_obra_filas` + regla «a la fecha = pagado + vencido, por vencer
+  aparte» (89dfed2c, T2320 aplicada; caché de fichas borrada). Efecto: 19,5 M pasan de «a la fecha» a «por vencer».
+- Tardanza en Plantel de escritorio (8a078d5c). Worker de cola de Obra con huella de respaldo (306cfbea).
+- Agentes (opus) en curso, worktrees en /home/jorge/echegaray-os/app/wt-*: liquidación pagado real + fórmulas + encabezado
+  fijo (T2340), legajo $/h, costo por obra_id + Proveedores (T2300), anotación→obra, comprobantes 5xx + fajo (T2330),
+  auditoría MO/MA/SUB. Límites: fable semanal hasta 00:00; sonnet sesión hasta 19:00.
+
+
+### 4e. Noche del 15/09 (todo desplegado y verificado en la base)
+- Comprobantes que no se pierden (c3a4d5a5, T2330 aplicada, worker y ws reiniciados).
+- Legajo con $/h negro / recibo / básico (0fb8ac32 + cosmética 1cfa30b7; QA OK con Agüero, Quiroga S., Maldonado).
+- Auditoría MO/MA/SUB (439d709d): script `auditar-costo-por-obra.mjs`, informe docs/auditorias/2026-09-15; 230 hallazgos:
+  vista vieja (corregido en T2300), $75 M «Sin obra» ($13,4 M de subcontratistas), MO por cliente vs MA por sub-obra.
+- Costo por obra por obra_id (675377cb, T2300 aplicada; `obra_costo_real`, RPC escribe costos_obra+asignación,
+  Proveedores con ObraEnLinea, «Sin obra» canónicas) + NC restan (7b400e84): OB-0006 45.245.366 = pestaña.
+- Cargador con lo manuscrito (9ac7c1d8): `anotacion-a-obra.mjs`, «Sin obra – CLIENTE» se escribe con cliente seguro,
+  repesca de respaldos cada 10 min (3 pendientes viejos dan 404 en Mattermost: archivos borrados; falta un «rendirse»).
+- Agente en curso: Liquidación rehecha (pagado real, saldos, fórmulas, encabezado fijo; T2340). QA Proveedores/obra corriendo.
+- Nota: Agüero tarifa 01/09 volvió a 5.974 («corrección de la quincena»), antes 6.979; preguntado al dueño.
 
 ## 5. EN CURSO
 

@@ -3,6 +3,10 @@ import assert from 'node:assert/strict'
 import { escribirYVerificar, prepararPlan } from './cargar-comprobantes-compras.mjs'
 import { colIndice } from '../lib/carga-comprobantes.mjs'
 import { indexarCompras } from '../lib/comprobantes/compras-vivas.mjs'
+import { destinosDeObra } from '../lib/comprobantes/obra-y-destino.mjs'
+import { perfilesDeImputacion } from '../lib/imputacion-aprendida.mjs'
+import { MARCA_A_MANO } from '../lib/comprobantes/lectura.mjs'
+import { ALIAS, CLIENTE_ALIAS, OBRAS, CASOS_15_09 } from '../lib/comprobantes/anotacion-a-obra.fixture.mjs'
 
 // ═══ EL LOG NO PUEDE FELICITAR SIN HABER ESCRITO (03/08) ═══
 //
@@ -371,4 +375,98 @@ test('un comprobante rechazado NO da de alta a su proveedor', async () => {
   }], { lista: ['DUPEC'] })
   assert.equal(r.plan.length, 0, 'el comprobante no se puede cargar')
   assert.equal(r.altas.altas.length, 0, 'y entonces no deja una ficha de proveedor que nadie pidió')
+})
+
+// ═══ LO ESCRITO A MANO MANDA SOBRE EL HISTORIAL (15/09/2026, fajo dc2d0273) ═══
+//
+// LO MEDIDO. Ocho tickets del canal, con la anotación transcripta en `anotacion_manuscrita` y
+// copiada al concepto (`· a mano: "…"`). Las ocho filas entraron con la columna «Obra» VACÍA, sin
+// Unidad de Negocio, y con el historial del proveedor proponiendo «LA ESTRELLA» a confirmar. El
+// dueño: «no está leyendo bien… ni lo escrito a mano y no está ubicando bien en las obras».
+//
+// Estos tests fijan el orden: si `completarDesdeAnotacion` se saca de `prepararPlan`, o si vuelve a
+// correr DESPUÉS del historial, el primero se pone rojo.
+
+const CATALOGOS_REALES = { alias: ALIAS, canonicas: OBRAS, clienteAlias: CLIENTE_ALIAS }
+// Los rótulos son los REALES de la columna J (los que hoy tiene `compra_sheet`): el de Quattropani
+// es el largo, y por eso el cliente canónico «QUATTROPANI» no matchea por texto.
+const LISTAS = { obras: ['LA ESTRELLA', 'San Francisco', 'MESSINA', 'Quattropani - Melisa García SAS', 'Taller', 'Administracion'], unidades: ['Civil', 'Estructura', 'Mantenimiento'] }
+const COL = { unidad: 'I', obra: 'J', detalle: 'K', obraFila: 'L', proveedor: 'E', fecha: 'C', numero: 'H', concepto: 'M', neto: 'N', iva: 'O' }
+
+/** El historial que proponía «LA ESTRELLA» para este proveedor: seis cargas, todas a esa obra. */
+const HISTORIAL_ESTRELLA = perfilesDeImputacion(
+  Array.from({ length: 6 }, () => ({ proveedor: 'Corralon Progreso', obra_texto: 'LA ESTRELLA', unidad_negocio: 'Civil', detalle: 'Galpón 9', concepto: 'materiales' })),
+)
+
+const tique = (anotacion) => ({
+  proveedor: 'Corralon Progreso', fecha: '12/09/2026', numero: '0003-00001234', total: 121000, iva: 21000,
+  concepto: `Cemento y hierro ${MARCA_A_MANO} "${anotacion}"`,
+})
+
+async function planCon(anotacion, { perfiles = HISTORIAL_ESTRELLA } = {}) {
+  const r = await prepararPlan([tique(anotacion)], {
+    lista: ['Corralon Progreso'], listas: LISTAS, col: COL, perfiles,
+    destinos: destinosDeObra(CATALOGOS_REALES),
+  })
+  assert.equal(r.plan.length, 1, r.rechazos.map((x) => x.problemas.join(', ')).join(' · '))
+  return r.plan[0]
+}
+
+test('EL DEFECTO: la obra escrita a mano no llegaba a la columna «Obra» — ahora llega, y con ella la Unidad y el Detalle', async () => {
+  const p = await planCon('Estrella Filtraciones OFICINA Y FÁB. · c/c')
+  assert.equal(p.obra.valor, 'OB-0006 · LE - OFICINA Y FÁBRICA DE PALITOS')
+  assert.equal(p.obra.via, 'anotacion', 'no es «elegida por una persona»: la leyó un modelo de una foto')
+  assert.equal(p.cols.unidad, 'Civil')
+  assert.equal(p.cols.obraJ, 'LA ESTRELLA')
+  assert.equal(p.cols.detalle, 'OFICINA Y FÁBRICA DE PALITOS')
+  // Y la fila que se va a escribir las lleva de verdad, no sólo el informe.
+  assert.equal(p.valores.L, 'OB-0006 · LE - OFICINA Y FÁBRICA DE PALITOS')
+  assert.equal(p.valores.I, 'Civil')
+})
+
+test('la anotación le gana al historial: «LA ESTRELLA» con n=6 no pisa un «QUATTROPANI» escrito a mano', async () => {
+  const p = await planCon('QUATTROPANI')
+  assert.equal(p.obra.valor, 'OB-0008 · QP - SALÓN COMERCIAL', 'la columna Obra NO depende del desplegable de la J')
+  // La J se escribe con el rótulo EXACTO del desplegable, que no es el cliente canónico: el puente
+  // es `cliente_alias`. Y el historial no la puede llenar con el cliente de otra obra.
+  assert.equal(p.cols.obraJ, 'Quattropani - Melisa García SAS')
+  assert.notEqual(p.cols.obraJ, 'LA ESTRELLA', 'el historial no puede pisar lo que dice el papel')
+  assert.equal(p.cols.detalle, 'SALÓN COMERCIAL', 'ni el detalle de la obra de otro cliente')
+})
+
+test('si el rótulo del cliente no está en el desplegable, la J queda VACÍA — nunca con el cliente de otra obra', async () => {
+  const r = await prepararPlan([tique('QUATTROPANI')], {
+    lista: ['Corralon Progreso'], col: COL, perfiles: HISTORIAL_ESTRELLA, destinos: destinosDeObra(CATALOGOS_REALES),
+    listas: { obras: ['LA ESTRELLA'], unidades: ['Civil'] },
+  })
+  const p = r.plan[0]
+  assert.equal(p.obra.valor, 'OB-0008 · QP - SALÓN COMERCIAL')
+  assert.equal(p.cols.obraJ, null, 'dos clientes en la misma fila es peor que una celda vacía')
+})
+
+test('sin nada escrito a mano, el historial sigue funcionando exactamente como antes', async () => {
+  const p = await planCon('')
+  assert.equal(p.cols.obraJ, 'LA ESTRELLA', 'lo firme del historial se sigue aplicando')
+  assert.equal(p.aplicado.obra.n, 6)
+  assert.equal(p.obra.valor, null, 'pero el historial NO decide la columna Obra')
+  assert.match(p.obra.porque, /historial/)
+})
+
+test('los ocho del fajo dc2d0273, por el camino real del cargador', async () => {
+  for (const c of CASOS_15_09) {
+    const p = await planCon(c.anotacion)
+    assert.equal(String(p.obra.valor).split(' · ')[0], c.codigo, `«${c.anotacion}» → ${p.obra.valor} (${p.obra.porque})`)
+    assert.equal(p.cols.unidad, c.unidad, `«${c.anotacion}»: Unidad de Negocio`)
+    if (c.detalle) assert.equal(p.cols.detalle, c.detalle, `«${c.anotacion}»: Detalle`)
+    assert.ok(p.valores.L, 'la columna Obra se escribe, no se propone')
+  }
+})
+
+test('sin catálogo de obras no se inventa nada: la fila entra igual y se dice por qué', async () => {
+  const r = await prepararPlan([tique('SF Pisos Industriales')], {
+    lista: ['Corralon Progreso'], listas: LISTAS, col: COL, perfiles: HISTORIAL_ESTRELLA, destinos: null,
+  })
+  assert.equal(r.plan.length, 1, 'no poder proponer la obra no es motivo para no cargar el gasto')
+  assert.equal(r.plan[0].obra.valor, null)
+  assert.match(r.plan[0].obra.porque, /sin catálogo/)
 })

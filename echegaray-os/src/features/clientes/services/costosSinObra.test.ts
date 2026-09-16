@@ -55,16 +55,16 @@ test('la fila sin obra suma subcontratos y su title nombra los detalles, sin rep
   assert.match(t, /\(columna K vacía\) \$16\.136\.863 · Trabajo al tanto \$4\.030\.000/)
   assert.match(t, /No se reparten/)
   assert.match(t, /\$865\.000 de subcontratos/)
-  assert.match(t, /\+ \$1\.200 comprometido a futuro, que no entra/)
+  assert.match(t, /\+ \$1\.200 por vencer, que no entra/)
 })
 
-test('materiales dice su corte y nombra lo comprometido a futuro sin sumarlo', () => {
-  const [c] = armarCostosPorObra([{ ...SF_OBRAS[0], comprometido_futuro: 500000 }])!.values()
+test('materiales dice su corte y nombra lo por vencer sin sumarlo', () => {
+  const [c] = armarCostosPorObra([{ ...SF_OBRAS[0], materiales_por_vencer: 500000, comprometido_futuro: 500000 }])!.values()
   const t = tituloMateriales(c)!
   assert.match(t, /Compras asignadas a la obra al 13\/09/)
-  assert.match(t, /\+ \$500\.000 comprometido a futuro, que no entra/)
+  assert.match(t, /\+ \$500\.000 por vencer, que no entra/)
   assert.equal(c.materiales, 22301886, 'lo futuro no se suma al costo a la fecha')
   // Una obra con SÓLO compras a futuro igual explica su celda «—».
   const [f] = armarCostosPorObra([{ obra_id: 'x', materiales: null, comprometido_futuro: 10, puede_ver_tarifas: true }])!.values()
-  assert.match(tituloMateriales(f)!, /comprometido a futuro/)
+  assert.match(tituloMateriales(f)!, /por vencer/)
 })
