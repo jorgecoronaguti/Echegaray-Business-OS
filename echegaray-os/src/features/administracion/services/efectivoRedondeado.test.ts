@@ -54,11 +54,10 @@ test('las pantallas usan la misma celda con el sugerido, y la celda decide con l
   // EL DEFECTO QUE ATRAPA: la celda guardando lo que muestra sin preguntar si alguien lo tocó.
   assert.match(CELDAS, /const a = accionDelRedondeo\(\{ texto, guardado: valor, sugerido: mostrado\.sugeridoAhora \}\)/)
   assert.match(CELDAS, /sugerido: efectivo \$\{pesos\(enEfectivo\)\} redondeado a miles/)
-  // CAMBIÓ EL 16/09/2026 (QA): la columna «Efect. red. ✎» salió del cuadro de la Quincena. El redondeo se
-  // escribe sólo en el cuadro clásico; la Quincena lo SUMA en el pie con las filas visibles y no lo dibuja
-  // por fila. MUTACIÓN: volver a poner la celda en la grilla → rojo.
-  assert.ok(!/<CeldaRedondeo/.test(fuente('../components/liquidacion/GrillaEspejoQuincena.tsx')),
-    'la Quincena volvió a dibujar la celda del redondeo por fila')
+  // EL SUGERIDO SE REDONDEA SOBRE LO QUE SE ENTREGA HOY (`pago.aPagarEfectivo`), no sobre el viejo «Total efectivo».
+  // La columna «Efect. red. ✎» está en el cuadro de la Quincena porque la pidió el dueño (16/09/2026).
+  assert.match(fuente('../components/liquidacion/GrillaEspejoQuincena.tsx'),
+    /enEfectivo=\{l\.pago\.aPagarEfectivo \?\? l\.enEfectivo\}/, 'la Quincena redondea lo que se entrega hoy')
   assert.match(fuente('../components/liquidacion/CuadroLiquidacion.tsx'),
     /enEfectivo=\{(l|linea)\.enEfectivo\}/, 'el cuadro clásico sigue con su cadena')
   assert.match(fuente('../components/liquidacion/GrillaEspejoQuincena.tsx'), /sumaDelRedondeo\(visibles\.map/)

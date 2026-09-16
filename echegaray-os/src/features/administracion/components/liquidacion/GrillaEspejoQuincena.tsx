@@ -38,6 +38,7 @@ import {
   CeldaPagadoTotal, CeldaSaldo, CeldaTotal,
 } from './cuadro/CeldasBlancoNegro'
 import { CeldaTarifa, rotuloCategoria } from './cuadro/CeldaTarifa'
+import { CeldaRedondeo } from './CeldasDeLiquidacion'
 import { PanelDeLaPersona } from './cuadro/PanelDeLaPersona'
 import { MarcaDePago } from './cuadro/MarcaDePago'
 import { filaPagada } from './cuadro/marcaDePago'
@@ -103,9 +104,9 @@ const PLATA = [
   // PRESENTISMO (dueño, 15/09/2026): la parte del cobra que una sola tardanza hace perder. Va después del
   // negro porque de ahí sale el descuento (el neto es del estudio). No es una columna de JORNALES.
   { clave: 'presentismo', rotulo: 'Presentismo', px: 112 },
-  // SIN «Efect. red. ✎» (QA, 16/09/2026): el redondeo de los billetes no entra en ninguna cuenta de la fila y
-  // en el cuadro era una columna editable más entre Presentismo y Total. Se sigue viendo sumado en el pie
-  // («Efectivo redondeado») y se sigue escribiendo en el cuadro clásico (`CuadroLiquidacion`).
+  // «EFECT. RED. ✎» VUELVE (dueño, 16/09/2026: «¿por qué quitaste la columna de efectivo redondeado que te había
+  // solicitado?»). Un pulido la había sacado del cuadro; la pidió el dueño y no se quita: es lo que cuenta en billetes.
+  { clave: 'efectivoRedondeado', rotulo: 'Efect. red. ✎', px: 108 },
   { clave: 'total', rotulo: 'Total', px: 124 },
   { clave: 'pagado', rotulo: 'Pagado', px: 112 },
   { clave: 'saldo', rotulo: 'Saldo', px: 120 },
@@ -261,7 +262,7 @@ export function GrillaEspejoQuincena({
             </div>
           ))}
 
-          <Total columnas={columnas} dias={dias} totales={totales} />
+          <Total columnas={columnas} dias={dias} totales={totales} redondeo={redondeo} />
         </div>
       </CintaHorizontal>
       <PieDelEspejo totales={totales} redondeo={redondeo} />
@@ -428,6 +429,11 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
         </>
       )}
       <CeldaPresentismo fila={fila} />
+      {/* EL REDONDEO SIGUE SIENDO DEL DUEÑO: los billetes que entrega en mano. No entra en ninguna cuenta. */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado} enEfectivo={l.pago.aPagarEfectivo ?? l.enEfectivo}
+          quincena={quincena} grupo={fila.grupo} bloqueada={fila.cerrada} ancho={100} />
+      </div>
       <CeldaTotal fila={fila} edicion={{ quincena, camposEditables }} />
       <CeldaPagadoTotal fila={fila} />
       <CeldaSaldo fila={fila} lado="total" />
@@ -436,8 +442,10 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
 }
 
 /** La fila de total: suma las filas VISIBLES, columna por columna de plata. Cierra igual que cada fila. */
-function Total({ columnas, dias, totales }: {
+function Total({ columnas, dias, totales, redondeo }: {
   columnas: string; dias: readonly string[]; totales: TotalesDelEspejo
+  /** Suma de lo que muestra la columna del redondeo en las filas visibles (guardado o sugerido). */
+  redondeo: number
 }) {
   const cierre = cierreDeTotales(totales)
   const noCierra = cierre?.cierra === false
@@ -467,6 +475,7 @@ function Total({ columnas, dias, totales }: {
         title={totales.presentismoPerdido > 0 ? `${totales.presentismoPerdidos} perdieron el presentismo` : 'nadie perdió el presentismo'}>
         {totales.presentismoPerdido > 0 ? `−${pesos(totales.presentismoPerdido)}` : '·'}
       </div>
+      <Leida valor={redondeo > 0 ? redondeo : null} testid="espejo-total-redondeo" />
       <div data-testid="espejo-total-cobra" style={{ textAlign: 'right', whiteSpace: 'nowrap', color: noCierra ? V.neg : V.tinta }}
         title={noCierra ? `No cierra por ${pesos(cierre?.diferencia ?? null)}` : undefined}>{pesos(totales.cobra)}</div>
       <Leida valor={totales.pago.pagado} testid="espejo-total-pagado" />

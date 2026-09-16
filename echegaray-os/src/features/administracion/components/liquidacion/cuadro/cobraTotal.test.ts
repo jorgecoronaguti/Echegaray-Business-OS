@@ -26,12 +26,11 @@ const ORDEN_DEL_CUADRO = [
   'Horas',
   'Hs recibo', '$/h cat.', 'Banco', 'Pagado', 'Saldo',
   'Hs', '$/h negro', 'Importe', 'Pagado', 'Saldo',
-  'Presentismo', 'Total', 'Pagado', 'Saldo',
+  'Presentismo', 'Efect. red.', 'Total', 'Pagado', 'Saldo',
 ]
 
-// «EFECT. RED. ✎» SALIÓ DEL CUADRO (QA, 16/09/2026): el redondeo de los billetes no entra en ninguna cuenta de la
-// fila. Sigue en el pie («Efectivo redondeado») y en el cuadro clásico. MUTACIÓN: volver a ponerla → rojo.
-test('EL ENCABEZADO: Persona · días · Horas · BLANCO(5) · NEGRO(5) · presentismo · total · pagado · saldo', () => {
+// «EFECT. RED. ✎» VUELVE AL CUADRO (dueño, 16/09/2026: la pidió él). MUTACIÓN: sacarla → rojo.
+test('EL ENCABEZADO: Persona · días · Horas · BLANCO(5) · NEGRO(5) · presentismo · redondeo · total · pagado · saldo', () => {
   const plata = GRILLA.slice(GRILLA.indexOf('const PLATA'), GRILLA.indexOf('const ANCHO_DE_BANDA'))
   const columnas = [...plata.matchAll(/clave: '([a-zA-Z]+)', rotulo: '([^']+)'(?:, px: \d+)?(?:, banda: '([a-z]+)')?/g)]
     .map((m) => ({ clave: m[1], rotulo: m[2].replace(' ✎', ''), banda: m[3] ?? null }))
@@ -56,11 +55,12 @@ test('EL ENCABEZADO: Persona · días · Horas · BLANCO(5) · NEGRO(5) · prese
   const fila = GRILLA.slice(GRILLA.indexOf('function Fila('), GRILLA.indexOf('function Total('))
   const orden = ['<CeldaDeDia', '<CeldaHorasPagas', '<CeldaHorasBlanco', '<CeldaHoraCategoria', '<CeldaNeto',
     'campo="pagadoBanco"', 'lado="banco"', '<CeldaHorasNegro', '<CeldaImporteNegro', 'campo="pagadoEfectivo"',
-    'lado="efectivo"', '<CeldaPresentismo', '<CeldaTotal', '<CeldaPagadoTotal', 'lado="total"']
+    'lado="efectivo"', '<CeldaPresentismo', '<CeldaRedondeo', '<CeldaTotal', '<CeldaPagadoTotal', 'lado="total"']
     .map((x) => fila.indexOf(x))
   assert.ok(orden.every((i) => i > 0), 'están todas las celdas')
   assert.deepEqual([...orden].sort((a, b) => a - b), orden, 'en el orden pedido')
-  assert.ok(!/CeldaRedondeo|espejo-total-redondeo|clave: 'efectivoRedondeado'/.test(GRILLA), 'volvió la columna «Efect. red.» al cuadro')
+  assert.match(GRILLA, /clave: 'efectivoRedondeado'/, 'la columna «Efect. red.» está en el cuadro (dueño)')
+  assert.match(GRILLA, /espejo-total-redondeo/, 'y la fila de total la suma')
   assert.match(GRILLA, /cifra\('Efectivo redondeado'/, 'el pie la sigue sumando')
 })
 
