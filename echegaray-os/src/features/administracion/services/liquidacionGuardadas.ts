@@ -39,6 +39,8 @@ export type LineaGuardada = {
   formulas?: unknown
   presentismo?: number | string | null
   presentismo_perdido?: string | null
+  /** La marca «pagada» (20260916T1300): cuándo. `null`/ausente = sin marcar. */
+  pagada_en?: string | null
 }
 
 interface CabeceraGuardada {
@@ -112,6 +114,8 @@ export function leerGuardadas(data: unknown): {
   importesCargados: Map<string, number>
   /** La foto del presentismo que dejó el sello, por persona. Sólo la cuadro cerrada la muestra. */
   presentismosSellados: Map<string, PresentismoDeLinea>
+  /** Cuándo se marcó «pagada» cada línea (dueño, 16/09/2026). Sólo las marcadas. */
+  pagadas: Map<string, string>
 } {
   const filas = (data ?? []) as CabeceraGuardada[]
   const estados: Record<string, EstadoDeLaQuincena> = {}
@@ -120,6 +124,7 @@ export function leerGuardadas(data: unknown): {
   const formulas = new Map<string, Partial<Record<CampoEditable, string>>>()
   const importesCargados = new Map<string, number>()
   const presentismosSellados = new Map<string, PresentismoDeLinea>()
+  const pagadas = new Map<string, string>()
   for (const f of filas) {
     estados[f.grupo] = {
       id: f.id,
@@ -135,9 +140,10 @@ export function leerGuardadas(data: unknown): {
       if (f.grupo === 'oficina' && numero(l.cobra) > 0) importesCargados.set(l.persona_id, numero(l.cobra))
       const sellado = presentismoSellado(l)
       if (sellado) presentismosSellados.set(l.persona_id, sellado)
+      if (typeof l.pagada_en === 'string' && l.pagada_en) pagadas.set(l.persona_id, l.pagada_en)
     }
   }
-  return { estados, redondeos, overrides, formulas, importesCargados, presentismosSellados }
+  return { estados, redondeos, overrides, formulas, importesCargados, presentismosSellados, pagadas }
 }
 
 /** La foto sellada, como la publica la línea. Sin importe no hay foto (no regía o no había categoría). */

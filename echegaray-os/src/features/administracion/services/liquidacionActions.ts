@@ -33,6 +33,7 @@ import { CAMPOS_EDITABLES, COLUMNA_DE, rechazoDelValorDeCelda, type CampoEditabl
 import { siguientesFormulas } from './liquidacionGuardadas'
 import { LARGO_MAXIMO_DE_FORMULA, leerCeldaNumerica } from '@/shared/lib/formulaEsAR'
 import { validarMotivoDeReapertura } from './liquidacionCierre'
+import { getLiquidacionDeLaQuincena } from './liquidacionQuincenaService'
 import { escribirRedondeo } from './efectivoRedondeado'
 
 const RUTA = '/administracion/personas'
@@ -393,3 +394,117 @@ export async function guardarCeldaLiquidacion(entrada: unknown): Promise<Resulta
 // EL $/HORA SE MUDÓ A `tarifaDeLaQuincenaActions.ts` (14/09/2026). Acá hacía upsert con `desde` = hoy
 // y borraba la fila al vaciar la celda, mientras la celda nueva insertaba con `desde` = inicio de la
 // quincena: dos formas de escribir el mismo dato. Ahora hay una sola regla (`planDeTarifa`).
+
+// ═══ LA MARCA «PAGADA» (dueño, 16/09/2026) ═══
+//
+// Textual: *«necesito marcar como "pagado" ya a la gente y que marque un poco el color distinto en liq hs»*.
+//
+// Marcar a alguien como pagado hace DOS cosas, y las dos por el mismo camino que un pago tecleado: completa
+// `pagado_banco` y `pagado_efectivo` con lo que faltaba de cada lado —los saldos COMPENSADOS que publica
+// `pagoDeLaQuincena.ts`, así se le pagó el 100 % por un lado o repartido— y sella la línea con fecha y autor. Lo
+// que había antes en esas dos celdas, con sus cuentas, se guarda en `pagada_antes`: deshacer la marca lo devuelve
+// tal cual, no a cero.
+
+const pagadaSchema = ventanaSchema.extend({
+  persona_id: z.string().uuid(),
+  pagada: z.boolean(),
+})
+
+const MIGRACION_PAGADA = '20260916T1300_liquidacion_linea_pagada.sql'
+
+const r2 = (n: number): number => Math.round(n * 100) / 100
+
+type AntesDeLaMarca = {
+  pagado_banco: number | null
+  pagado_efectivo: number | null
+  formulas: Partial<Record<'pagadoBanco' | 'pagadoEfectivo', string>>
+}
+
+/** Las cuentas de la fila sin las dos de pago. */
+function sinCuentasDePago(formulas: unknown): Record<string, string> {
+  const base = (formulas && typeof formulas === 'object' && !Array.isArray(formulas) ? formulas : {}) as Record<string, unknown>
+  const salida: Record<string, string> = {}
+  for (const [k, v] of Object.entries(base)) if (k !== 'pagadoBanco' && k !== 'pagadoEfectivo' && typeof v === 'string') salida[k] = v
+  return salida
+}
+
+export async function marcarLineaPagada(entrada: unknown): Promise<ResultadoLiquidacion> {
+  const parsed = pagadaSchema.safeParse(entrada)
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+  const { persona_id: personaId, pagada, ...v } = parsed.data
+
+  const supabase = await createClient()
+  const permiso = await puedeLiquidar(supabase)
+  if (!permiso.ok) return { ok: false, error: permiso.error }
+  const cab = await cabecera(supabase, v)
+  if ('error' in cab) return { ok: false, error: cab.error }
+  // LA QUINCENA CERRADA ES UNA FOTO: ni se marca ni se desmarca.
+  if (cab.estado === 'cerrada') return { ok: false, error: 'La quincena está cerrada: no se edita.' }
+
+  const admin = createAdminClient()
+  const hoy = await admin.from('liquidacion_linea')
+    .select('pagado_banco, pagado_efectivo, formulas, pagada_en, pagada_antes')
+    .eq('liquidacion_id', cab.id).eq('persona_id', personaId).maybeSingle()
+  if (hoy.error) {
+    const falta = hoy.error.code === '42703' || /column .* does not exist/i.test(hoy.error.message)
+    return { ok: false, error: falta ? `Falta aplicar la migración ${MIGRACION_PAGADA}. No guardé nada.` : hoy.error.message }
+  }
+  const fila = (hoy.data ?? null) as {
+    pagado_banco: number | string | null; pagado_efectivo: number | string | null; formulas: unknown
+    pagada_en: string | null; pagada_antes: AntesDeLaMarca | null
+  } | null
+  const num = (x: number | string | null | undefined): number | null => (x == null ? null : Number(x))
+
+  let aEscribir: Record<string, unknown>
+  if (!pagada) {
+    if (!fila?.pagada_en) return { ok: true, mensaje: 'No estaba marcada como pagada.' }
+    const antes = fila.pagada_antes
+    aEscribir = {
+      liquidacion_id: cab.id, persona_id: personaId,
+      pagado_banco: num(antes?.pagado_banco), pagado_efectivo: num(antes?.pagado_efectivo),
+      formulas: { ...sinCuentasDePago(fila.formulas), ...(antes?.formulas ?? {}) },
+      pagada_en: null, pagada_por: null, pagada_antes: null,
+    }
+  } else {
+    if (fila?.pagada_en) return { ok: true, mensaje: 'Ya estaba marcada como pagada.' }
+    // LA LÍNEA COMO LA VE LA PANTALLA: el mismo cálculo (`aplicarOverrides` + `pagoDeLaLinea`), no una segunda cuenta.
+    const liq = await getLiquidacionDeLaQuincena(supabase, { desde: v.desde, hasta: v.hasta })
+    const linea = liq.cuadros.find((c) => c.grupo === v.grupo)?.lineas.find((l) => l.personaId === personaId)
+    if (!linea) return { ok: false, error: 'No encuentro la línea de esta persona en la quincena.' }
+    const { data: sesion } = await supabase.auth.getUser()
+    if (!sesion.user) return { ok: false, error: 'Sin sesión.' }
+    const p = linea.pago
+    const antes: AntesDeLaMarca = {
+      pagado_banco: num(fila?.pagado_banco), pagado_efectivo: num(fila?.pagado_efectivo),
+      formulas: {
+        ...(linea.formulas.pagadoBanco ? { pagadoBanco: linea.formulas.pagadoBanco } : {}),
+        ...(linea.formulas.pagadoEfectivo ? { pagadoEfectivo: linea.formulas.pagadoEfectivo } : {}),
+      },
+    }
+    aEscribir = {
+      liquidacion_id: cab.id, persona_id: personaId,
+      // LO QUE FALTABA DE CADA LADO SE DA POR PAGADO. El saldo compensado ya descontó el exceso del otro lado; un
+      // saldo negativo (cobró de más) no se «paga»: queda como está y la marca sólo sella.
+      pagado_banco: r2(linea.pagadoBanco + Math.max(0, p.saldoBanco ?? 0)),
+      pagado_efectivo: r2(linea.pagadoEfectivo + Math.max(0, p.saldoEfectivo ?? 0)),
+      formulas: sinCuentasDePago(fila?.formulas),
+      pagada_en: new Date().toISOString(), pagada_por: sesion.user.id, pagada_antes: antes,
+    }
+  }
+
+  const { data, error } = await admin.from('liquidacion_linea')
+    .upsert(aEscribir, { onConflict: 'liquidacion_id,persona_id' })
+    .select('pagada_en, pagado_banco, pagado_efectivo')
+  if (error) return { ok: false, error: error.message }
+  const leida = ((data ?? []) as { pagada_en: string | null; pagado_banco: unknown; pagado_efectivo: unknown }[])[0]
+  if (!leida) return { ok: false, error: 'La base no guardó la fila.' }
+  // LA EVIDENCIA ES EL DATO LEÍDO EN SU DESTINO: la marca tiene que haber quedado (o haberse ido).
+  if ((leida.pagada_en != null) !== pagada) return { ok: false, error: 'La base no registró la marca.' }
+  if (num(leida.pagado_banco as number | string | null) !== aEscribir.pagado_banco
+    || num(leida.pagado_efectivo as number | string | null) !== aEscribir.pagado_efectivo) {
+    return { ok: false, error: 'La base guardó otro pagado que el que mandé.' }
+  }
+
+  revalidatePath(RUTA)
+  return { ok: true, mensaje: pagada ? 'Marcada como pagada.' : 'Marca de pago deshecha.' }
+}

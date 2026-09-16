@@ -151,6 +151,12 @@ export interface LineaConOverrides extends LineaLiquidada {
    * el número, como en el Sheet. Vacío = ninguna celda de esta fila se escribió con `=`.
    */
   formulas: Partial<Record<CampoEditable, string>>
+  /**
+   * CUÁNDO SE MARCÓ «PAGADA» (dueño, 16/09/2026: «marcar como pagado ya a la gente y que marque un poco el color
+   * distinto»). Es un sello, no un cálculo: lo pone `marcarLineaPagada` y lo lee la fila para pintarse. `null` o
+   * ausente = sin marcar. Lo completa `getLiquidacionDeLaQuincena` desde `liquidacion_linea.pagada_en`.
+   */
+  pagadaEn?: string | null
 }
 
 export type OrigenDeCelda = 'calculado' | 'jornales' | 'manual'

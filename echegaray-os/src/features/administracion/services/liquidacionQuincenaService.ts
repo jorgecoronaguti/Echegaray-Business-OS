@@ -242,7 +242,7 @@ export async function getLiquidacionDeLaQuincena(
         subcontratoId: deSubcontrato.get(r.id) ?? null,
       }))
 
-  const { estados, redondeos, overrides, formulas, importesCargados, presentismosSellados } = leerGuardadas(guardadas.data)
+  const { estados, redondeos, overrides, formulas, importesCargados, presentismosSellados, pagadas } = leerGuardadas(guardadas.data)
   const camposEditables = camposGuardables(guardadas.columnas)
   const hayColumnasPresentismo = COLUMNAS_PRESENTISMO.every((c) => guardadas.columnas.includes(c))
   const hayColumnaDeFormulas = guardadas.columnas.includes('formulas')
@@ -348,13 +348,15 @@ export async function getLiquidacionDeLaQuincena(
         // EL PRESENTISMO DE UNA QUINCENA CERRADA ES EL SELLADO: se muestra lo que se pagó, no se recalcula.
         // LO PAGADO VIAJA TAMBIÉN EN LA CERRADA: es el registro de una plata que salió, no un override del
         // cálculo. Sin esto, cerrar la quincena borraría de la pantalla el pago que alguien registró.
-        ? c.lineas.map((l) => sinOverrides(l, presentismosSellados.get(l.personaId) ?? null, overrides.get(l.personaId) ?? {}))
+        ? c.lineas.map((l) => conMarcaDePago(
+          sinOverrides(l, presentismosSellados.get(l.personaId) ?? null, overrides.get(l.personaId) ?? {}), pagadas,
+        ))
         // LA PRECEDENCIA VIVE EN `aplicarOverrides` Y NO ACÁ: manual > JORNALES > calculado, una sola
         // vez y con sus diez tests. Acá sólo se le entrega la fuente.
-        : c.lineas.map((l) => aplicarOverrides(
+        : c.lineas.map((l) => conMarcaDePago(aplicarOverrides(
           l, overrides.get(l.personaId) ?? {}, c.grupo, espejo.cadenaPorPersona.get(l.personaId) ?? null,
           blancoDe(c.grupo, l), presentismoDe(c.grupo, l), formulas.get(l.personaId) ?? {},
-        )),
+        ), pagadas)),
     })),
     camposEditables,
     espejo,
@@ -378,6 +380,12 @@ const COLUMNAS_MANUALES = [
 // `cobra` viaja SÓLO para el importe cargado de Oficina sin neto mensual (`importesCargados`).
 const COLUMNAS_LINEA = ['persona_id', 'efectivo_redondeado', 'cobra'] as const
 
+/** LA MARCA «PAGADA» VIAJA EN LA LÍNEA, abierta o cerrada: es el registro de que se pagó, no un override. */
+const conMarcaDePago = (l: LineaConOverrides, pagadas: ReadonlyMap<string, string>): LineaConOverrides => {
+  const pagadaEn = pagadas.get(l.personaId) ?? null
+  return pagadaEn ? { ...l, pagadaEn } : l
+}
+
 /** Las correcciones del blanco, si la migración `20260915T0100` ya se aplicó. */
 const COLUMNAS_BLANCO = ['horas_recibo_manual', 'valor_hora_recibo_manual'] as const
 
@@ -393,9 +401,13 @@ const COLUMNAS_PRESENTISMO = ['presentismo', 'presentismo_perdido'] as const
 /** Lo pagado de verdad y las cuentas de las celdas, si la migración `20260915T2340` ya se aplicó. */
 const COLUMNAS_PAGADO = ['pagado_banco', 'pagado_efectivo', 'formulas'] as const
 
+/** La marca «pagada» de la línea, si la migración `20260916T1300` ya se aplicó. */
+const COLUMNAS_PAGADA = ['pagada_en'] as const
+
 /** Los grupos que dependen de una migración, del más viejo al más nuevo. */
 const GRUPOS_OPCIONALES: readonly (readonly string[])[] = [
   COLUMNAS_MANUALES, COLUMNAS_BLANCO, COLUMNAS_NEGRO, COLUMNAS_HORAS, COLUMNAS_PRESENTISMO, COLUMNAS_PAGADO,
+  COLUMNAS_PAGADA,
 ]
 
 /**
