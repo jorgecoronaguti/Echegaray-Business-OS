@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-15 ~22:35 (−03) · main = producción (9ac7c1d8)_
+_actualizado: 2026-09-16 ~01:40 (−03) · main = producción (e17fd215)_
 
 ## 1. OBJETIVO GENERAL
 
@@ -78,6 +78,18 @@ Echegaray Construcciones. XSAS es la capa de inteligencia operativa. Claude Code
   repesca de respaldos cada 10 min (3 pendientes viejos dan 404 en Mattermost: archivos borrados; falta un «rendirse»).
 - Agente en curso: Liquidación rehecha (pagado real, saldos, fórmulas, encabezado fijo; T2340). QA Proveedores/obra corriendo.
 - Nota: Agüero tarifa 01/09 volvió a 5.974 («corrección de la quincena»), antes 6.979; preguntado al dueño.
+
+
+### 4f. Madrugada del 16/09
+- Liquidación rehecha desplegada (e17fd215, T2340 aplicada): Pagado/Saldo por lado, exceso al otro lado, fórmulas «=», encabezado
+  y Persona fijos. QA visual corriendo.
+- Decisiones del dueño aplicadas por RPC: 08/09 Tello J.A. y Zogbe presentes; f.806 K «Galpones»; subcontratistas SF → OB-0005,
+  Gerson LE → OB-0006, Tello LE → OB-0006, Tello ME → OB-0019, Á. Fernández ME → OB-0017; regla por fecha (única obra activa)
+  repartió 184 «Sin obra» ($59,8 M: 123 OB-0005, 48 OB-0006, 12 OB-0017, 1 OB-0020) — LE galpón 7/8, cierre y mampostería
+  SIN FECHAS → todo LE fue a OB-0006 (rehacer si el dueño da fechas). Scratch: `scratchpad/sin-obra-regla.mjs`.
+- **CRONOLOGÍA ROTA (queja 16/09)**: `echegaray-jornales-registros` pisó 543 registros (15/09 08:00) + 150 (16/09 07:00).
+  Timer DETENIDO (`systemctl --user stop echegaray-jornales-registros.timer`) hasta que el agente restaure 01–15/09 y 16–31/08 y
+  cambie la regla (JORNALES sólo completa). Volver a arrancarlo después del merge.
 
 ## 5. EN CURSO
 
