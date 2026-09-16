@@ -1,0 +1,12 @@
+[Unit]
+Description=Echegaray OS — impuestos a Postgres cada 2 h
+
+[Timer]
+# A los :35 de las horas pares: lejos de los syncs de la hora en punto y del Flujo de Caja (:50). Las
+# fuentes cambian a lo sumo unas veces por día (una DDJJ nueva, un extracto importado).
+OnCalendar=*-*-* 00/2:35:00
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target
