@@ -64,9 +64,9 @@ const PENDIENTE: { clave: FiltroCompras; tono: 'warn' | 'neg'; texto: (n: number
 // El color vive en la cifra y en el borde, no en el rótulo entero: cuatro bandas ámbar seguidas se
 // leen como una alarma general y no se llega a leer CUÁL. Mismo criterio que `BarraAtencion` del
 // home de Administración — y los mismos tokens, para que no se separen el día que se corrija uno.
-const TONO: Record<'warn' | 'neg', { caja: string; cifra: string }> = {
-  warn: { caja: 'border-warn/25 bg-warn-soft hover:border-warn/50', cifra: 'text-warn' },
-  neg: { caja: 'border-neg/25 bg-neg-soft hover:border-neg/50', cifra: 'text-neg' },
+const TONO: Record<'warn' | 'neg', { caja: string }> = {
+  warn: { caja: 'border-warn/25 bg-warn-soft hover:border-warn/50' },
+  neg: { caja: 'border-neg/25 bg-neg-soft hover:border-neg/50' },
 }
 
 /** Las seis vistas de la pantalla, como pastillas. Siempre las seis: es el índice, no la alarma. */
@@ -123,7 +123,15 @@ export function AtencionCompras({
           data-testid={`atencion-${p.clave}`}
           className={`inline-flex items-baseline gap-2 rounded-md border px-3 py-1.5 transition-colors ${TONO[p.tono].caja}`}
         >
-          <Num className={`text-[13px] font-semibold ${TONO[p.tono].cifra}`}>
+          {/* El tono va escrito en las dos ramas, no interpolado: una clase armada en tiempo de
+              ejecución no se puede verificar contra el escaneo de Tailwind ni contra el linter. */}
+          <Num
+            className={
+              p.tono === 'warn'
+                ? 'text-[13px] font-semibold text-warn'
+                : 'text-[13px] font-semibold text-neg'
+            }
+          >
             {conteos[p.clave].toLocaleString('es-AR')}
           </Num>
           <span className="text-[12px] text-ink-soft">{p.texto(conteos[p.clave])}</span>
