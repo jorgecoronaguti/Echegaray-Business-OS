@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-16 ~13:30 (−03) · main = producción (03ea3cfd)_
+_actualizado: 2026-09-16 ~14:20 (−03) · main = producción (b0ff2da3)_
 
 ## 0. HOY 16/09 (mañana) — lo que entró y lo que sigue
 
@@ -20,12 +20,16 @@ Tarde (hasta 03ea3cfd, todo en producción y mirado): Proveedores como sección 
 Liquidación: Recibo/Plataforma con $/h bajo el nombre (`categoriasDeLaFila.ts`), negro 1ª sep = JORNALES col W (4 tarifas
 corregidas en `persona_tarifa` con rastro), Persona ensanchable (`anchoDePersona.ts`, `--liq-persona`, localStorage),
 escala UOCRA sin enlace, «Efect. red. ✎» restaurada (la pidió el dueño; memoria `lo-pedido-por-el-dueno-no-se-quita`).
-Abierto: agente en `wt-pagos` (rama feat/compras-pagos-bidireccional, 4 commits: núcleo puro de pagos, cola app→Sheet
-generalizada con `columna`, sync que no pisa la cola, acciones + comprobante de pago adjunto; migración
-20260916T1700_compra_cambio_columna.sql SIN aplicar; falta UI Compras/Proveedores y verificación) · Castillo: $/h blanco manual
-5.399 (15/09 19:11) vs plataforma 6.348, decide el dueño · «cargando pegado» sin reproducir (falta pantalla/botón) ·
-`tests/liquidacion-fidelidad.spec.ts:228` desactualizado · console.error WebSocket realtime tras revalidate · sin timer
-`_UOCRA_RAW`→`uocra_escala`. Worktrees viejos limpiados con `higiene-worktrees.mjs --ejecutar` (ramas conservadas).
+Cierre (hasta b0ff2da3): cartel «Cargando…» corregido (clic en botón dentro de fila-enlace; memoria
+`cartel-cargando-clic-en-boton-dentro-de-enlace`) · tirador de Persona visible · PAGOS DE COMPRAS mergeados: migraciones
+20260916T1700 (cola con tipo/celdas/previo) y 20260916T1800 (comprobante de pago; bucket comprobantes 25 MB; función
+compra_pago_comprobante_registrar con 6 args — se corrigió la firma del grant) APLICADAS; timers compras-obra-cola y
+compras-sync reiniciados; cola en seco vacía. Sin pago real registrado todavía: se le pidió al dueño que haga el primero y
+se mira la cola + la celda del Sheet. Fuera de alcance declarado: control de pago en Proveedores › «A quién le debo»
+(sólo lectura) y tercer pago parcial. QA visual del panel de pago en curso (agente).
+Abierto menor: Castillo $/h blanco manual 5.399 (el dueño dijo «dejalo así») · `tests/liquidacion-fidelidad.spec.ts:228`
+desactualizado · console.error WebSocket realtime tras revalidate · sin timer `_UOCRA_RAW`→`uocra_escala` ·
+`npm run build`/`orq:test` completos no corridos hoy (Postgres se reinició dos veces por suites en paralelo).
 
 ## 1. OBJETIVO GENERAL
 
