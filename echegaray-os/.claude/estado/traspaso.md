@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-15 ~15:20 (−03) · main = producción (306cfbea)_
+_actualizado: 2026-09-15 ~17:45 (−03) · main = producción (89dfed2c)_
 
 ## 1. OBJETIVO GENERAL
 
@@ -55,6 +55,16 @@ Echegaray Construcciones. XSAS es la capa de inteligencia operativa. Claude Code
 - Regla nueva del dueño: «a la fecha» = pagado + vencido; cuotas por vencer aparte (agente panel/T2320).
 - Agentes en curso: costo por obra_id (T2300), panel detalle + regla por vencer (T2320), tardanza en asistencia de escritorio,
   comprobantes reintento 5xx + fajo persistido (T2330), auditoría MO/MA/SUB por obra (script + informe + .pg.test).
+
+
+### 4d. Tarde-noche del 15/09
+- Blanco estimado con el $/h del último recibo real (d87098c2; memoria `blanco-categoria-del-recibo-negro-plataforma`).
+- Panel de detalle por rubro en la ficha del cliente + `costo_de_obra_filas` + regla «a la fecha = pagado + vencido, por vencer
+  aparte» (89dfed2c, T2320 aplicada; caché de fichas borrada). Efecto: 19,5 M pasan de «a la fecha» a «por vencer».
+- Tardanza en Plantel de escritorio (8a078d5c). Worker de cola de Obra con huella de respaldo (306cfbea).
+- Agentes (opus) en curso, worktrees en /home/jorge/echegaray-os/app/wt-*: liquidación pagado real + fórmulas + encabezado
+  fijo (T2340), legajo $/h, costo por obra_id + Proveedores (T2300), anotación→obra, comprobantes 5xx + fajo (T2330),
+  auditoría MO/MA/SUB. Límites: fable semanal hasta 00:00; sonnet sesión hasta 19:00.
 
 ## 5. EN CURSO
 
