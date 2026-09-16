@@ -348,14 +348,16 @@ export async function guardarCeldaLiquidacion(entrada: unknown): Promise<Resulta
   if ('error' in guardable) return { ok: false, error: guardable.error }
   const { columna } = guardable
 
-  // ¿ESTA BASE PUEDE GUARDAR LA CUENTA? Se le pregunta a ella, no a `migrations/` (20260915T2340).
-  const hayFormulas = !(await admin.from('liquidacion_linea').select('formulas').limit(1)).error
-  // LA FILA DE HOY, UNA SOLA VEZ: sirve para el deshacer (`esperado`) y para no pisar las cuentas de las OTRAS
-  // celdas al escribir ésta. Dos lecturas serían dos viajes por tecla.
-  const hoy = (hayFormulas || esperado !== undefined)
-    ? (await admin.from('liquidacion_linea').select(hayFormulas ? `${columna}, formulas` : columna)
-      .eq('liquidacion_id', cab.id).eq('persona_id', personaId).maybeSingle()).data as Record<string, unknown> | null
-    : null
+  // LA FILA DE HOY, UNA SOLA LECTURA, Y ES TAMBIÉN LA SONDA DE `formulas`: sirve para el deshacer
+  // (`esperado`) y para no pisar las cuentas de las OTRAS celdas al escribir ésta. Si la base todavía no tiene
+  // la columna (20260915T2340 sin aplicar) contesta 42703 y se relee sin ella: se le pregunta a la base, no a
+  // `migrations/`. Una sonda aparte sería un viaje más por tecla.
+  const pedir = (columnas: string) => admin.from('liquidacion_linea').select(columnas)
+    .eq('liquidacion_id', cab.id).eq('persona_id', personaId).maybeSingle()
+  let conFormulas = await pedir(`${columna}, formulas`)
+  const hayFormulas = !conFormulas.error
+  if (!hayFormulas) conFormulas = await pedir(columna)
+  const hoy = conFormulas.data as Record<string, unknown> | null
   // DESHACER NO PISA LO QUE CAMBIÓ (Cmd+Z, 15/09/2026): con `esperado`, se escribe sólo si la celda sigue igual.
   if (esperado !== undefined && !mismoValor(hoy?.[columna], esperado)) {
     return { ok: false, error: MENSAJE_CONFLICTO }
