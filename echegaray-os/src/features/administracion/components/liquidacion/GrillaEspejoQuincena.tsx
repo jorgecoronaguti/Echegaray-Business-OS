@@ -29,7 +29,7 @@
 // Las cifras son las de `getLiquidacionDeLaQuincena` (con `sueldoBlancoNegro` y `pagoDeLaQuincena`) y el
 // cierre lo comprueba `cierreDeLaFila`. Este archivo decide anchos, colores y dónde va cada campo.
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { RotuloDeGrupo } from '../RotuloDeGrupo'
 import { CeldaDeDia, CeldaHorasPagas, CeldaPresentismo, Leida } from './cuadro/CeldasDelEspejo'
@@ -42,6 +42,7 @@ import { PanelDeLaPersona } from './cuadro/PanelDeLaPersona'
 import { MarcaDePago } from './cuadro/MarcaDePago'
 import { filaPagada } from './cuadro/marcaDePago'
 import { categoriasDeLaFila } from './cuadro/categoriasDeLaFila'
+import { anchoArrastrado, anchoRecordado, CLAVE_ANCHO_PERSONA } from './cuadro/anchoDePersona'
 import { horas as nHoras, pesos } from './formato'
 import { CintaHorizontal } from '@/shared/components/v2/CintaHorizontal'
 import { ALTO_LIQ, CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, MONO, fondoDeColumnaFija } from './solapas/tabla'
@@ -189,6 +190,44 @@ export function GrillaEspejoQuincena({
   // columna salió del cuadro el 16/09/2026 (ver `PLATA`).
   const redondeo = sumaDelRedondeo(visibles.map((f) => f.linea))
   const ancho = anchoDe(dias.length)
+  // ═══ EL ANCHO DE PERSONA SE ARRASTRA (dueño, 16/09/2026: «permitime hacer más ancha la columna») ═══
+  //
+  // La medida se aplica IMPERATIVAMENTE a la variable CSS `--liq-persona` de las dos cajas de la cinta (cabecera y
+  // tabla): no es estado de React —el servidor no sabe qué recordó este navegador y un estado hidrataría distinto—,
+  // es el DOM sincronizado con lo recordado y con el arrastre. Doble clic en el tirador vuelve al ancho por corte.
+  const cajaCabecera = useRef<HTMLDivElement | null>(null)
+  const cajaTabla = useRef<HTMLDivElement | null>(null)
+  const aplicarAncho = (w: number | null) => {
+    for (const caja of [cajaCabecera.current, cajaTabla.current]) {
+      if (!caja) continue
+      if (w == null) caja.style.removeProperty('--liq-persona')
+      else caja.style.setProperty('--liq-persona', `${w}px`)
+    }
+  }
+  useEffect(() => { aplicarAncho(anchoRecordado((k) => window.localStorage.getItem(k))) }, [])
+  const arrastre = useRef<{ x0: number; w0: number; w: number } | null>(null)
+  const empezarArrastre = (e: React.PointerEvent<HTMLElement>) => {
+    const celda = e.currentTarget.parentElement
+    if (!celda) return
+    const w0 = celda.getBoundingClientRect().width - CANAL_SCROLL
+    arrastre.current = { x0: e.clientX, w0, w: w0 }
+    e.currentTarget.setPointerCapture(e.pointerId)
+    e.preventDefault()
+  }
+  const moverArrastre = (e: React.PointerEvent<HTMLElement>) => {
+    if (!arrastre.current) return
+    arrastre.current.w = anchoArrastrado(arrastre.current.w0, e.clientX - arrastre.current.x0)
+    aplicarAncho(arrastre.current.w)
+  }
+  const soltarArrastre = (e: React.PointerEvent<HTMLElement>) => {
+    if (!arrastre.current) return
+    const w = arrastre.current.w
+    arrastre.current = null
+    e.currentTarget.releasePointerCapture(e.pointerId)
+    try { window.localStorage.setItem(CLAVE_ANCHO_PERSONA, String(w)) } catch { /* sin storage: vale hasta recargar */ }
+  }
+  const restablecer = () => { aplicarAncho(null); try { window.localStorage.removeItem(CLAVE_ANCHO_PERSONA) } catch { /* sin storage */ } }
+  const tirador = { onPointerDown: empezarArrastre, onPointerMove: moverArrastre, onPointerUp: soltarArrastre, onPointerCancel: soltarArrastre, onDoubleClick: restablecer }
   return (
     // `overflow: clip` Y NO `hidden`: los dos recortan las esquinas redondeadas, pero `hidden` CREA UN
     // CONTENEDOR DE SCROLL y `position: sticky` se ancla al scrollport más cercano — el encabezado pegajoso
@@ -204,12 +243,12 @@ export function GrillaEspejoQuincena({
         testid="espejo-cinta"
         marcoPropio={{ ...MARCO_SCROLL, padding: `16px ${CANAL_SCROLL}px 0` }}
         cabecera={(corrimiento) => (
-          <div className={VARIABLE_PERSONA} style={{ minWidth: ancho, padding: `8px ${CANAL_SCROLL}px 0`, background: fondoDeColumnaFija() }}>
-            <Encabezado columnas={columnas} dias={dias} sellada={visibles.some((f) => f.cerrada)} corrimiento={corrimiento} />
+          <div ref={cajaCabecera} className={VARIABLE_PERSONA} style={{ minWidth: ancho, padding: `8px ${CANAL_SCROLL}px 0`, background: fondoDeColumnaFija() }}>
+            <Encabezado columnas={columnas} dias={dias} sellada={visibles.some((f) => f.cerrada)} corrimiento={corrimiento} tirador={tirador} />
           </div>
         )}
       >
-        <div data-testid="espejo-tabla" className={VARIABLE_PERSONA} style={{ minWidth: ancho, display: 'flex', flexDirection: 'column' }}>
+        <div ref={cajaTabla} data-testid="espejo-tabla" className={VARIABLE_PERSONA} style={{ minWidth: ancho, display: 'flex', flexDirection: 'column' }}>
           {secciones.map((sec, i) => (
             <div key={sec.clave} data-testid={`espejo-seccion-${sec.clave}`}>
               <RotuloDeGrupo texto={sec.rotulo} primero={i === 0} />
@@ -240,10 +279,12 @@ export function GrillaEspejoQuincena({
 }
 
 /** Dos niveles: arriba las bandas BLANCO · recibo y NEGRO; abajo el rótulo de cada columna. */
-function Encabezado({ columnas, dias, sellada, corrimiento = 0 }: {
+function Encabezado({ columnas, dias, sellada, corrimiento = 0, tirador }: {
   columnas: string; dias: readonly string[]; sellada: boolean
   /** Cuánto se desplazó la tabla. El rótulo «Persona» se contra-desplaza para no despegarse de su columna. */
   corrimiento?: number
+  /** Los manejadores del tirador que ensancha Persona. Sin él, la cabecera no se arrastra (sellada, pruebas). */
+  tirador?: Pick<React.HTMLAttributes<HTMLElement>, 'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onPointerCancel' | 'onDoubleClick'>
 }) {
   const mono = { fontFamily: MONO, fontSize: '9.5px', letterSpacing: '.04em', textTransform: 'uppercase' as const }
   const banda = (inicio: number, texto: string, testid: string) => (
@@ -271,7 +312,25 @@ function Encabezado({ columnas, dias, sellada, corrimiento = 0 }: {
       <div style={{
         ...COLUMNA_FIJA, position: 'relative', gridColumn: 1, gridRow: '1 / span 2', alignSelf: 'stretch',
         display: 'flex', alignItems: 'end', transform: `translateX(${corrimiento}px)`,
-      }}>Persona</div>
+      }}>
+        Persona
+        {/* EL TIRADOR: el borde derecho de la celda. Arrastrar ensancha o angosta la columna; doble clic la devuelve
+            al ancho por defecto. Es un control, no un adorno: `role=separator` con su rótulo. */}
+        {tirador && (
+          <div
+            data-testid="ancho-persona"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Ancho de la columna Persona: arrastrar para cambiar, doble clic para restablecer"
+            title="Arrastrá para ensanchar · doble clic: ancho por defecto"
+            className="group"
+            style={{ position: 'absolute', top: 0, right: -4, width: 9, height: '100%', cursor: 'col-resize', touchAction: 'none', zIndex: 2 }}
+            {...tirador}
+          >
+            <div className="h-full w-px bg-line-strong group-hover:bg-ink" style={{ margin: '0 auto' }} />
+          </div>
+        )}
+      </div>
       {banda(inicioDe('blanco', dias.length), 'Blanco · recibo', 'banda-blanco')}
       {banda(inicioDe('negro', dias.length), 'Negro', 'banda-negro')}
       {dias.map((f, i) => <div key={f} style={{ gridColumn: 2 + i, gridRow: 2, textAlign: 'center' }} title={f}>{rotuloDia(f)}</div>)}

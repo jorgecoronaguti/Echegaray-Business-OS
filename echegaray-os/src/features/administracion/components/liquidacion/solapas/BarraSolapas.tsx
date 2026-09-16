@@ -48,7 +48,7 @@ export function BarraSolapas({ activa, hrefDe, escala }: {
       {/* LA ESCALA VA PEGADA A «MÁS», A LA DERECHA, SIEMPRE: es el dato de referencia de toda la pantalla. */}
       {escala !== undefined && (
         <span style={{ marginLeft: 'auto', minWidth: 0, display: 'inline-flex', alignItems: 'center' }}>
-          <EscalaVigente escala={escala} href={hrefDe('costo')} />
+          <EscalaVigente escala={escala} />
         </span>
       )}
       <details data-testid="liquidacion-mas" style={{ marginLeft: escala === undefined ? 'auto' : 0, position: 'relative' }}>
