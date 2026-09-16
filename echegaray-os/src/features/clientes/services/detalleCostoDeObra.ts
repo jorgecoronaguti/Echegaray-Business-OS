@@ -107,7 +107,8 @@ function num(v: unknown): number | null {
 }
 
 function texto(v: unknown): string | null {
-  return typeof v === 'string' && v !== '' ? v.slice(0, 160) : null
+  // 400 y no 160: el concepto de una cuota de Tello mide 160 y el title perdía «(vence dd/mm/aaaa)» (QA 15/09).
+  return typeof v === 'string' && v !== '' ? v.slice(0, 400) : null
 }
 
 function dia(v: unknown): string | null {

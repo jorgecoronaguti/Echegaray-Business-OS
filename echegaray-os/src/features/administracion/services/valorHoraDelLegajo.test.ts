@@ -120,7 +120,7 @@ test('la escala firmada se llama piso; el CCT que nadie firmó, no', () => {
   }))
   assert.equal(firmado.piso.rotulo, 'piso UOCRA')
   assert.equal(firmado.piso.valor, '$6.348')
-  assert.equal(firmado.piso.detalle, 'oficial')
+  assert.equal(firmado.piso.detalle, 'Oficial') // la clave de la base se muestra legible, no cruda (QA 15/09)
 
   const referencia = rotuloDeValorHora(entrada({
     piso: { valorHora: 6348, desde: '2026-08-01', fuente: 'uocra_escala · CCT 76/75', origen: 'cct' },

@@ -36,6 +36,7 @@
 // RUTAS RELATIVAS CON EXTENSIÓN en los imports de valor: `node --test` no conoce el alias `@/`.
 import { pesos } from '../components/liquidacion/formato.ts'
 import { diaMesAnioCompletoISO } from '../../../shared/utils/fecha.ts'
+import { categoriaVisible } from './vocabularioPersona.ts'
 
 /** Una fila de `persona_tarifa` de esta persona. `valorHora` XOR `netoMensual` (CHECK de la base). */
 export interface TarifaDelLegajo {
@@ -230,7 +231,8 @@ function datoRecibo(e: EntradaDelRotulo): DatoDelRotulo {
 
 /** EL BÁSICO DE CONVENIO DE SU CATEGORÍA. Se llama «piso» sólo si la escala está firmada. */
 function datoPiso(e: EntradaDelRotulo): DatoDelRotulo {
-  const categoria = e.categoria?.trim() || null
+  // «Oficial especializado», no «oficial_especializado»: la clave de la base no se muestra cruda (QA 15/09).
+  const categoria = categoriaVisible(e.categoria ?? null, null) ?? (e.categoria?.trim() || null)
   if (!e.piso) {
     return dato({
       rotulo: 'piso de convenio', falta: 'sin escala cargada', tono: 'falta',
