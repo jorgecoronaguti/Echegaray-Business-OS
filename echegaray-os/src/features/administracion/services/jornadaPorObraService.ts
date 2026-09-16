@@ -12,7 +12,9 @@
 import { marcaDeBaja, plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
 import { leerPlantelDeLaQuincena, personaDelDirectorio } from './plantelDeLaQuincenaService.ts'
 import { leerPresenciasDeLaQuincena, leerSubcontratoDePersonas, subcontratoPorPersona } from './lecturasCompartidasDeQuincena.ts'
-import { quincenaDe } from './quincena.ts'
+import { diasDeLaQuincenaSinDomingos, quincenaDe } from './quincena.ts'
+import { getCertificadosDeLicencia } from '../../documentos/services/certificadosDeLicenciaService.ts'
+import { certificadosPorPersonaYDia } from '../../documentos/services/certificadoDeLicencia.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getAsignaciones } from '../../obras/services/personalService.ts'
 import type { AsignacionVigente, FilaJornada, OtraCargaDelDia } from './jornadaPorObra.ts'
@@ -175,6 +177,8 @@ export interface DatosQuincenaPorObra {
   obras: Record<string, ObraRotulo>
   /** Las marcas de tardanza por `persona_id|fecha` (`claveDeTardanza`). */
   tardanzas: Record<string, { llegoTarde: boolean; salioAntes: boolean }>
+  /** Los certificados médicos por `persona_id|fecha`: el nombre del archivo que respalda la licencia. */
+  certificados: Record<string, string>
   /** Las obras en estado `activa`. Sólo esas se pueden marcar y sólo esas se reclaman. */
   obrasActivas: string[]
   /** `personas.puesto` por id. Vacío cuando la lectura no se pudo hacer — ver `puestosDe`. */
@@ -196,7 +200,7 @@ export async function getNoLaborables(
 export async function getQuincenaPorObra(
   supabase: SupabaseClient, desde: string, hasta: string,
 ): Promise<{ data: DatosQuincenaPorObra | null; error: string | null }> {
-  const [asignaciones, registros, obras, noLaborables, plantel, presencias] = await Promise.all([
+  const [asignaciones, registros, obras, noLaborables, plantel, presencias, certificados] = await Promise.all([
     getAsignaciones(supabase),
     // `notas` viaja porque ahí está la CLAVE DEL MOTIVO (`enfermedad`, `falta`…): es lo que
     // convierte una casilla «L» muda en una que dice de qué licencia se trata.
@@ -222,6 +226,9 @@ export async function getQuincenaPorObra(
     // editor la corrija. Misma lectura memoizada que Liquidación. Un error acá no tumba la grilla: se
     // dibuja sin marcas (una marca que no se ve no descuenta nada por sí sola; la liquidación la lee aparte).
     leerPresenciasDeLaQuincena(supabase, desde, hasta),
+    // EL CLIP DE LA LICENCIA (16/09/2026): los certificados médicos del legajo que tocan la ventana. Un
+    // error acá tampoco tumba la grilla: se dibuja sin clips, que es como estaba antes.
+    getCertificadosDeLicencia(supabase, { desde, hasta }),
   ])
   if (asignaciones.error) return { data: null, error: asignaciones.error }
   // SIN PLANTEL NO SE DIBUJA UNA GRILLA ADIVINADA: se dice qué falló.
@@ -330,6 +337,7 @@ export async function getQuincenaPorObra(
           claveDeTardanza(p.persona_id, String(p.fecha).slice(0, 10)),
           { llegoTarde: p.llego_tarde === true, salioAntes: p.salio_antes === true },
         ])),
+      certificados: certificadosPorPersonaYDia(certificados.data, diasDeLaQuincenaSinDomingos(quincenaDe(desde))),
       noLaborables,
       obras: rotulos,
       // Las obras que se pueden marcar. Lo que quedó fuera sigue mostrando sus horas —existen— pero

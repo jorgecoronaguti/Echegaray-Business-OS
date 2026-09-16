@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { decidirCeldaDia, tituloDeTardanza, type EntradaCeldaDia, type TonoPresencia } from './celdaDia'
+import { decidirCeldaDia, tituloDeCertificado, tituloDeTardanza, type EntradaCeldaDia, type TonoPresencia } from './celdaDia'
 
 // LA CELDA DE UN DÍA — dos capas apiladas en 44 × 44 px. Qué va en cada capa lo decide
 // `decidirCeldaDia` (celdaDia.ts, con sus tests); acá sólo se pinta.
@@ -74,6 +74,7 @@ export function CeldaDia({
       data-sin-cargar={capas.abajo.sinCargar ? 'si' : undefined}
       data-conflicto={conflicto ? 'si' : undefined}
       data-tardanza={tituloDeTardanza(entrada.tardanza) ? 'si' : undefined}
+      data-certificado={tituloDeCertificado(entrada) ? 'si' : undefined}
       title={(conflicto && tituloConflicto) || capas.titulo || undefined}
       className={`relative inline-flex h-11 w-11 flex-col items-center justify-center rounded-control border ${
         conflicto
@@ -104,6 +105,17 @@ export function CeldaDia({
         >
           ▲
         </span>
+      )}
+      {/* EL CERTIFICADO: un clip chico abajo a la derecha, en tinta apagada —no es un estado, es
+          «hay papel»—. El nombre del archivo va al `title` de la celda. */}
+      {tituloDeCertificado(entrada) && (
+        <svg
+          data-capa="certificado" aria-label={tituloDeCertificado(entrada)}
+          className="pointer-events-none absolute bottom-[2px] right-[3px] h-[9px] w-[9px] text-muted"
+          viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"
+        >
+          <path d="M10.5 5.5 6 10a1.5 1.5 0 0 0 2.1 2.1l5-5a3 3 0 0 0-4.2-4.2l-5.5 5.5a4.5 4.5 0 0 0 6.4 6.4L13 11.6" />
+        </svg>
       )}
       {children ?? (
         <span

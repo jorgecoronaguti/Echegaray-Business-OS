@@ -34,6 +34,7 @@ import {
   quincenaDe, type Quincena,
 } from './quincena.ts'
 import type { ImputacionHH } from '../types/index.ts'
+import { certificadoDelDia, type CertificadoVigente } from '../../documentos/services/certificadoDeLicencia.ts'
 
 export type EstadoDia =
   | 'trabajado' | 'presente' | 'ausencia' | 'licencia' | 'no_laborable' | 'sin_registrar' | 'futuro'
@@ -61,6 +62,8 @@ export interface DiaDeQuincena {
   /** El jefe declaró que no vino y el día tiene horas cargadas. Se MUESTRA: la ficha no elige cuál
    *  de las dos afirmaciones es la buena, porque una de las dos se liquida. */
   conflicto: boolean
+  /** El certificado médico que respalda este día de licencia (nombre del archivo). `null` = sin papel. */
+  certificado: string | null
 }
 
 const redondear = (n: number): number => Math.round(n * 100) / 100
@@ -96,9 +99,12 @@ export function diasDeLaQuincena(
     /** Lo declarado en `asistencia_dia` para esa persona en la ventana. Vacío = nadie declaró nada
      *  y la franja se comporta exactamente como antes del 08/09/2026. */
     presencia?: readonly { fecha: string; estado: PresenciaDeclarada; motivo: string | null }[]
+    /** Los certificados médicos del legajo que tocan la quincena. Vacío = ningún día lleva clip. */
+    certificados?: readonly CertificadoVigente[]
   },
 ): DiaDeQuincena[] {
   const feriados = new Set(opciones.feriados ?? [])
+  const certificados = opciones.certificados ?? []
   const declaradaDe = new Map((opciones.presencia ?? []).map((p) => [p.fecha, p]))
   return diasDeLaQuincenaSinDomingos(q).map((fecha) => {
     const delDia = filas.filter((f) => f.fecha === fecha)
@@ -141,6 +147,8 @@ export function diasDeLaQuincena(
       motivo: c.entrada.presencia === 'ausente' || c.entrada.presencia === 'licencia' ? motivo : null,
       presencia: c.entrada.presencia,
       conflicto: c.conflicto,
+      // EL CLIP SÓLO SOBRE UNA LICENCIA: el papel respalda un día que el jefe declaró, no lo crea.
+      certificado: c.entrada.presencia === 'licencia' ? certificadoDelDia(certificados, fecha)?.nombre ?? null : null,
     }
   })
 }

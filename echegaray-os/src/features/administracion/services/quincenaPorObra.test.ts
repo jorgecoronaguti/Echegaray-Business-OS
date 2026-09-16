@@ -802,3 +802,27 @@ test('sin filtro, o con una obra que ya está entre los chips, la lista no cambi
 test('el token de «sin obra» se dibuja con el rótulo largo, que es el que comparan los chips', () => {
   assert.deepEqual(chipsConElegida([], OBRA_SIN), [{ rotulo: SIN_OBRA, personas: 0 }])
 })
+
+// ═══ EL CLIP DEL CERTIFICADO EN LA GRILLA (16/09/2026) ═══
+//
+// EL DEFECTO QUE ATRAPA: el mapa `persona|día` viene de `entidad_documento` y la grilla lo pega a la
+// celda sin mirar qué es el día. Un certificado del 7 al 9 sobre una AUSENCIA del 8 (faltó, sin
+// avisar) no la vuelve licencia ni la respalda: el clip sólo va sobre la L.
+test('EL CERTIFICADO SE PEGA A LA LICENCIA Y NO A LA AUSENCIA, aunque el rango la cubra', () => {
+  const filas = armarQuincenaPorObra({
+    asignaciones: [], personas: QUIROGA, obras: OBRAS, dias: DIAS, hoy: HOY,
+    registros: [
+      reg('q1', null, L, 9, 'licencia', 'enfermedad'),
+      reg('q1', null, M, 0, 'ausencia', 'falta'),
+      reg('q1', MAMPO, X, 9),
+    ],
+    certificados: { [`q1|${L}`]: 'cert.pdf', [`q1|${M}`]: 'cert.pdf', [`q1|${X}`]: 'cert.pdf' },
+  })
+  const celda = (f: string) => filas[0].celdas.find((c) => c.fecha === f)!
+  assert.equal(celda(L).estado, 'licencia')
+  assert.equal(celda(L).certificado, 'cert.pdf', 'licencia cubierta: clip')
+  assert.equal(celda(M).estado, 'ausente')
+  assert.equal(celda(M).certificado, null, 'una falta no se respalda con un certificado')
+  assert.equal(celda(X).estado, 'horas')
+  assert.equal(celda(X).certificado ?? null, null, 'un día trabajado tampoco')
+})

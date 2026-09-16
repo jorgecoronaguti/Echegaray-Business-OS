@@ -60,6 +60,7 @@ function entradaDe(d: DiaDeQuincena): EntradaCeldaDia {
     horas: d.horas,
     dia: d.estado === 'no_laborable' ? 'no_laborable' : d.estado === 'futuro' ? 'futuro' : 'habil',
     motivo: d.motivo,
+    certificado: d.certificado,
   }
 }
 

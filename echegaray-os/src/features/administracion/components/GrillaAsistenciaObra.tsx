@@ -152,6 +152,7 @@ function entradaDe(c: CeldaObra): EntradaCeldaDia {
       : 'habil',
     motivo: c.motivo,
     tardanza: c.tardanza ?? null,
+    certificado: c.certificado ?? null,
   }
 }
 

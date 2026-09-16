@@ -78,6 +78,8 @@ export interface CeldaObra {
   motivo: string | null
   /** La marca del jefe (`asistencia_dia`, 15/09/2026): llegó tarde / salió antes. Sólo en un día trabajado. */
   tardanza?: { llegoTarde: boolean; salioAntes: boolean } | null
+  /** El certificado médico del legajo que respalda esta licencia (16/09/2026): nombre del archivo. */
+  certificado?: string | null
 }
 
 /** Una asignación viva EN ALGÚN PUNTO de la quincena, a una obra ACTIVA. El servicio ya filtró las
@@ -237,6 +239,8 @@ export interface EntradaQuincenaObra {
   puestos?: Record<string, string | null>
   /** Las marcas de tardanza por `persona_id|fecha` (`asistencia_dia`). Ausente = ninguna. */
   tardanzas?: Record<string, { llegoTarde: boolean; salioAntes: boolean }>
+  /** Los certificados médicos por `persona_id|fecha` (`entidad_documento`): el nombre del archivo. Ausente = ninguno. */
+  certificados?: Record<string, string>
   /** Hoy, para no reclamar un día que todavía no terminó. */
   hoy: string
 }
@@ -271,6 +275,7 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
     const celdas = e.dias.map((fecha) => celdaDe({
       fecha,
       tardanza: e.tardanzas?.[claveDeTardanza(p.persona_id, fecha)] ?? null,
+      certificado: e.certificados?.[claveDeTardanza(p.persona_id, fecha)] ?? null,
       registros: suyos.filter((r) => r.fecha === fecha),
       obras: e.obras,
       esNoLaborable: noLaborables.has(fecha),
@@ -518,9 +523,10 @@ function clienteDe(
   return mejor.obra.cliente?.trim() || mejor.obra.nombre.trim() || null
 }
 
-function celdaDe({ fecha, registros, obras, esNoLaborable, hayDatoEseDia, futuro, esHoy, tardanza }: {
+function celdaDe({ fecha, registros, obras, esNoLaborable, hayDatoEseDia, futuro, esHoy, tardanza, certificado }: {
   fecha: string
   tardanza?: CeldaObra['tardanza']
+  certificado?: string | null
   registros: RegistroQuincena[]
   obras: Record<string, ObraRotulo>
   esNoLaborable: boolean
@@ -558,6 +564,8 @@ function celdaDe({ fecha, registros, obras, esNoLaborable, hayDatoEseDia, futuro
       // una falta sin avisar —las que la base exigía cargar— y a la liquidación diciendo 0.
       horas: redondear(dia.horas),
       motivo: motivoDelDia(registros),
+      // El clip sólo sobre la licencia: en una ausencia el papel no respalda nada.
+      certificado: licencia ? certificado ?? null : null,
     }
   }
   // EL FUTURO SE PREGUNTA PRIMERO. Al revés, el sábado 12 —que todavía no llegó— salía con el «—»

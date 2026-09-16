@@ -249,3 +249,27 @@ test('sin declaraciones la franja se comporta EXACTAMENTE como antes de leer `as
   assert.equal(dia(dias, '2026-09-08').conflicto, false)
   assert.deepEqual(dias, diasDeLaQuincena(filas, Q1, { hoy: '2026-09-09', presencia: [] }))
 })
+
+// ═══ EL CLIP DEL CERTIFICADO (16/09/2026) ═══
+//
+// EL DEFECTO QUE ATRAPA: colgar el clip de cualquier día que el rango del certificado toque. Un
+// certificado del 7 al 9 no respalda el martes 8 si ese día la persona TRABAJÓ: el papel respalda
+// la licencia declarada, no crea una. Y sin certificado, el día de licencia sigue siendo licencia.
+test('EL CERTIFICADO SÓLO MARCA EL DÍA DE LICENCIA QUE CAE EN SU RANGO — nunca un día trabajado', () => {
+  const certificados = [{ desde: '2026-09-07', hasta: '2026-09-09', nombre: 'certificado-quiroga.pdf' }]
+  const dias = diasDeLaQuincena(
+    [
+      r({ fecha: '2026-09-07', horas: 9, tipo_hora: 'licencia', notas: 'enfermedad', obra_canonica_id: null, obra_nombre: null }),
+      r({ fecha: '2026-09-08', horas: 9 }),
+      r({ fecha: '2026-09-10', horas: 9, tipo_hora: 'licencia', notas: 'enfermedad', obra_canonica_id: null, obra_nombre: null }),
+    ],
+    Q1, { hoy: '2026-09-15', certificados },
+  )
+  assert.equal(dia(dias, '2026-09-07').estado, 'licencia')
+  assert.equal(dia(dias, '2026-09-07').certificado, 'certificado-quiroga.pdf', 'licencia dentro del rango: clip')
+  assert.equal(dia(dias, '2026-09-08').certificado, null, 'trabajó: el papel no respalda nada')
+  assert.equal(dia(dias, '2026-09-10').estado, 'licencia')
+  assert.equal(dia(dias, '2026-09-10').certificado, null, 'licencia FUERA del rango: sin clip, sigue siendo licencia')
+  // Sin la opción, la franja se comporta como antes del 16/09.
+  assert.equal(dia(diasDeLaQuincena([], Q1, { hoy: '2026-09-15' }), '2026-09-07').certificado, null)
+})
