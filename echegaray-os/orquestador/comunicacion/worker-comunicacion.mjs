@@ -23,6 +23,8 @@ import { crearLog } from '../../../communication-service/src/index.mjs'
 import { SesionesPostgres, crearVencedorPeriodico, VENCER_INTERVALO_MS_DEFAULT } from './asistencia-sesion.mjs'
 import { crearEntregador, ENTREGA_INTERVALO_MS_DEFAULT } from './asistente/entrega-recordatorios.mjs'
 import { crearVigiaDeFajosMudos, VIGIA_INTERVALO_MS_DEFAULT } from './comprobantes/vigia-mudos.mjs'
+import { crearRepescaDeRespaldos, REPESCA_INTERVALO_MS_DEFAULT } from '../lib/comprobantes/respaldo-adjunto.mjs'
+import { bajarAdjunto } from './comprobantes/flujo.mjs'
 import { alPerderLaConexion, query, withTx } from '../lib/db.mjs'
 import { crearLatido, esConexionPerdida, SALIDA_CONEXION_PERDIDA } from '../lib/conexion-perdida.mjs'
 
@@ -37,6 +39,10 @@ const RECORDATORIOS_MS = Number(process.env.COMM_WORKER_RECORDATORIOS_MS ?? ENTR
 // Ver `comprobantes/vigia-mudos.mjs`: un fajo mudo no tiene error, ni dead-letter, ni fila — es
 // invisible para todos los controles a la vez, y adentro hay plata sin registrar.
 const MUDOS_MS = Number(process.env.COMM_WORKER_MUDOS_MS ?? VIGIA_INTERVALO_MS_DEFAULT)
+// Cada cuánto se reintentan los papeles que quedaron sin guardar en la app. Ver
+// `lib/comprobantes/respaldo-adjunto.mjs`: el escritor que corre sin cliente de Mattermost omite el
+// respaldo, y hasta el 15/09/2026 esa omisión no la reintentaba nadie.
+const REPESCA_MS = Number(process.env.COMM_WORKER_REPESCA_MS ?? REPESCA_INTERVALO_MS_DEFAULT)
 // EL LATIDO — cuánto silencio se tolera antes de salir con error y dejar que systemd
 // reinicie. Incidente del 10/09/2026: este worker quedó 23 h colgado en un `await` que
 // nunca se resolvió (Supabase reinició, el socket quedó medio abierto y `pg` no tenía
@@ -49,7 +55,7 @@ const log = crearLog()
 let parar = false
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-async function tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos) {
+async function tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos, repescarRespaldos) {
   await con.recuperarLeasesWorkFabric()
   await con.recuperarLeasesComm()
   // Barrido de formularios de asistencia abandonados. Tiene su PROPIO intervalo (este loop
@@ -62,6 +68,9 @@ async function tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos) {
   // Las cargas de comprobantes que quedaron abiertas y calladas. Mismo criterio que los dos de
   // arriba: intervalo propio, no suma a `trabajo` y no propaga error.
   await vigilarMudos()
+  // Y los papeles que quedaron sin guardar en la app. Mismo criterio que los tres de arriba:
+  // intervalo propio, no suma a `trabajo` y no propaga error.
+  await repescarRespaldos()
   const inbox = await con.procesarInbox({ lote: 20 })
   const wf = await con.procesarWorkFabric({ lote: 20 })
   const outbox = await con.procesarOutbox({ lote: 20 })
@@ -138,6 +147,14 @@ async function main() {
     }),
     intervaloMs: MUDOS_MS, log,
   })
+  // La repesca del papel vive acá por la misma razón que los otros tres: es el único proceso que
+  // tiene a la vez el pool de la base y el cliente de Mattermost. Baja SIN convertir (`preparar`
+  // identidad), igual que el respaldo del bot: lo que se guarda es el archivo tal como lo mandaron.
+  const repescarRespaldos = crearRepescaDeRespaldos({
+    query: (...a) => query(...a),
+    bajar: (fileId) => bajarAdjunto(con.cliente, fileId, { preparar: async (x) => ({ ok: true, ...x }) }),
+    intervaloMs: REPESCA_MS, log,
+  })
   // El latido: si pasan LATIDO_MS sin un tick completo, el proceso sale con error. Es la
   // única red que cubre un cuelgue cuya causa no conocemos todavía — no necesita clasificar
   // nada, sólo notar el silencio. Va armado ANTES del primer tick.
@@ -152,13 +169,13 @@ async function main() {
     else log.error('pool: error inesperado (no es corte de conexión)', { error: String(err?.message ?? err) })
   })
   log.info('worker-comunicacion arrancado', {
-    vencer_sesiones_ms: VENCER_MS, recordatorios_ms: RECORDATORIOS_MS, fajos_mudos_ms: MUDOS_MS,
+    vencer_sesiones_ms: VENCER_MS, recordatorios_ms: RECORDATORIOS_MS, fajos_mudos_ms: MUDOS_MS, repesca_ms: REPESCA_MS,
     latido_ms: latido.toleranciaMs,
   })
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => { log.info('shutdown pedido', { señal: s }); parar = true })
 
   const { salida } = await correrBucle({
-    tick: () => tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos), latido,
+    tick: () => tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos, repescarRespaldos), latido,
   })
   if (salida !== 0) return // el latido ya hizo process.exit con su log
   latido.desarmar()
