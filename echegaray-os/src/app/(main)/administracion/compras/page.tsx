@@ -76,6 +76,7 @@ import {
 import { PieCompras, TablaComprasSheet } from '@/features/administracion/components/TablaComprasSheet'
 import { PanelCompraSheet } from '@/features/administracion/components/PanelCompraSheet'
 import { pagosEnCola } from '@/features/administracion/services/comprasPagoActions'
+import { comprobantesDePago } from '@/features/administracion/services/comprobanteDePagoActions'
 import { estadoEnSheet } from '@/features/administracion/services/pagoDeCompra'
 import { AdjuntosSueltos } from '@/features/administracion/components/AdjuntosSueltos'
 import { FiltrosSheet } from '@/features/administracion/components/FiltrosSheet'
@@ -283,6 +284,7 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
   // EN QUÉ PUNTO DEL VIAJE AL SHEET ESTÁ EL PAGO DE LA FILA ABIERTA. Se pide SÓLO para esa fila: la
   // leyenda se lee en el panel, y traer la cola de las 900 sería un viaje por un dato que no se ve.
   const pagosCola = filaAbierta ? await pagosEnCola([filaAbierta.fila]) : new Map()
+  const papelesDePago = filaAbierta ? await comprobantesDePago([filaAbierta.fila]) : null
   // EL RECORTE. Las 947 filas juntas medían 43.871px de alto; el tope las deja en ~9.000 y el
   // enlace directo manda sobre el tope (ver `recorteDeLista`). Los totales del pie miran LO QUE SE
   // DIBUJA —el rótulo del canvas dice «Total de lo que hay en pantalla»—, a diferencia de los
@@ -456,6 +458,7 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                   fila={filaAbierta}
                   pagoEnSheet={estadoEnSheet(pagosCola.get(filaAbierta.fila))}
                   pagoMotivo={pagosCola.get(filaAbierta.fila)?.motivo ?? null}
+                  comprobantesDePago={papelesDePago?.ok ? papelesDePago.dato.get(filaAbierta.fila) ?? [] : []}
                   obraEditable={celdasObra.disponible}
                   opcionesObra={opcionesObra}
                   identidad={identidades.data.get(claveIdentidad(filaAbierta.proveedor, filaAbierta.cuit))}

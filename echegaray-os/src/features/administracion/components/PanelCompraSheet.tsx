@@ -36,6 +36,8 @@ import type { EstadoEnSheet } from '../services/pagoDeCompra'
 import { ConfirmarIdentidad } from './ConfirmarIdentidad'
 import { EditorObraDeCompra } from './EditorObraDeCompra'
 import { PagoDeCompra } from './PagoDeCompra'
+import { ComprobantesDePago } from './ComprobantesDePago'
+import type { ComprobanteDePago } from '../services/comprobanteDePagoActions'
 
 const esImagen = (a: Adjunto) => a.media_type?.startsWith('image/')
 
@@ -107,7 +109,7 @@ function Papel({ a }: { a: Adjunto }) {
  */
 export function PanelCompraSheet({
   fila, cerrarHref, hrefsFiltro, identidad, obraEditable = false, opcionesObra = [],
-  pagoEnSheet = 'sin_pedido', pagoMotivo = null,
+  pagoEnSheet = 'sin_pedido', pagoMotivo = null, comprobantesDePago = [],
 }: {
   fila: FilaConPapel
   cerrarHref: string
@@ -119,6 +121,8 @@ export function PanelCompraSheet({
   /** En qué punto del viaje al Sheet está el último pago pedido desde la app. */
   pagoEnSheet?: EstadoEnSheet
   pagoMotivo?: string | null
+  /** Los papeles que prueban los pagos de esta fila. Vacío = todavía no se subió ninguno. */
+  comprobantesDePago?: ComprobanteDePago[]
 }) {
   const reclamo = reclamoDe(fila)
   return (
@@ -215,6 +219,7 @@ export function PanelCompraSheet({
           que se decide se decide DESPUÉS de haber leído lo que hay. */}
       <EditorObraDeCompra fila={fila.fila} celda={fila.obra?.celda ?? null} opciones={opcionesObra} editable={obraEditable} />
       <PagoDeCompra fila={fila.fila} compra={fila} enSheet={pagoEnSheet} motivo={pagoMotivo} />
+      <ComprobantesDePago lista={comprobantesDePago} />
       <AccionesCompra clave={fila.clave} filaCompras={fila.fila} />
     </PanelFilo>
   )
