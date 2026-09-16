@@ -21,19 +21,21 @@
 //
 // LA FALTA INJUSTIFICADA NO SE INVENTA ACÁ: sale del catálogo único de motivos
 // (`orquestador/lib/asistencia-motivos.mjs`, 16 motivos, el mismo que usa el bot desde julio). Pierden el
-// presentismo SÓLO los dos motivos imputables al trabajador —faltó sin avisar y faltó con aviso: avisar
-// no justifica—. No lo pierden las licencias (enfermedad, accidente, accidente in itinere, vacaciones,
-// licencia especial, suspensión) ni lo que NO depende del trabajador (lluvia, obra parada sin material o
-// sin frente, paro gremial, franco/feriado).
+// presentismo los motivos imputables al trabajador: faltó sin avisar, faltó con aviso (avisar no
+// justifica), SUSPENSIÓN y PERMISO —estos dos agregados por el dueño el 16/09/2026—. No lo pierden las
+// licencias con respaldo (enfermedad, accidente, accidente in itinere, vacaciones, licencia especial)
+// ni lo que NO depende del trabajador (lluvia, obra parada sin material o sin frente, paro gremial,
+// franco/feriado).
+//
+// OJO CON LA SUSPENSIÓN: se guarda con estado `licencia` y igual descuenta. «¿Se paga el día?» y
+// «¿pierde el premio?» son dos preguntas distintas; el motivo se mira ANTES que el estado.
 //
 // ═══ UNA AUSENCIA SIN MOTIVO NO DESCUENTA SOLA: SE REVISA ═══
 //
 // Un día marcado «no vino» sin motivo cargado —o con «Otro», que no dice nada— no es una falta
 // injustificada probada. Quitar plata con un dato ambiguo es fabricar la afirmación que el dueño pidió
 // NO hacer automáticamente. Esos días salen en estado `a_revisar`: el presentismo se mantiene, la
-// pantalla dice qué día falta clasificar, y Administración lo resuelve cargando el motivo. «Permiso»
-// queda del lado que no descuenta hasta que el dueño lo defina (sigue marcado `revisar` en el catálogo,
-// junto con lluvia y obra parada).
+// pantalla dice qué día falta clasificar, y Administración lo resuelve cargando el motivo.
 //
 // ═══ CUÁNDO NO RIGE ═══
 //
@@ -59,10 +61,18 @@ export const PRESENTISMO_PCT = 0.2
 export const PARTE_EN_BLANCO = 0.5
 
 /**
- * LOS DOS MOTIVOS QUE HACEN PERDER EL PRESENTISMO. Son los imputables al trabajador. Las claves salen del
- * catálogo único: escribir los strings a mano acá sería la segunda lista que el OS prohíbe.
+ * LOS MOTIVOS QUE HACEN PERDER EL PRESENTISMO: los imputables al trabajador. Las claves salen del
+ * catálogo único; escribir los strings a mano acá sería la segunda lista que el OS prohíbe.
+ *
+ * SUSPENSIÓN Y PERMISO ENTRARON EL 16/09/2026 por decisión del dueño. No es un detalle de
+ * clasificación: la suspensión figura como LICENCIA en `motivoDeAusencia.ts` —porque tiene respaldo
+ * documental y eso decide si el día SE PAGA—, y aun así hace perder el presentismo. Son dos preguntas
+ * distintas sobre el mismo día: «¿se le paga la jornada?» la contesta el tipo de motivo; «¿pierde el
+ * premio de asistencia?» la contesta esta lista. Por eso la regla vive acá y no se deriva de aquélla.
  */
-export const MOTIVOS_QUE_PIERDEN: readonly string[] = [MOTIVO.FALTA, MOTIVO.FALTA_CON_AVISO]
+export const MOTIVOS_QUE_PIERDEN: readonly string[] = [
+  MOTIVO.FALTA, MOTIVO.FALTA_CON_AVISO, MOTIVO.SUSPENSION, MOTIVO.PERMISO,
+]
 
 /** Un motivo que no dice nada: no prueba una falta injustificada, pero deja el día sin clasificar. */
 export const MOTIVOS_SIN_CLASIFICAR: readonly string[] = [MOTIVO.OTRO]
@@ -163,8 +173,11 @@ export function fechasPerdidas(tardanzas: readonly TardanzaDelDia[]): string[] {
  * empresa lo reconoció.
  */
 export function efectoDeLaAusencia(a: AusenciaDelDia): 'pierde' | 'revisar' | 'no-afecta' {
-  if (a.estado === 'licencia') return 'no-afecta'
+  // EL MOTIVO SE MIRA ANTES QUE EL ESTADO (16/09/2026). Una suspensión se guarda con estado
+  // `licencia` —la empresa la reconoce y la documenta— y aun así pierde el presentismo. Si el estado
+  // se evaluara primero, la decisión del dueño no llegaría nunca a aplicarse.
   if (a.motivo != null && MOTIVOS_QUE_PIERDEN.includes(a.motivo)) return 'pierde'
+  if (a.estado === 'licencia') return 'no-afecta'
   if (a.motivo == null || MOTIVOS_SIN_CLASIFICAR.includes(a.motivo)) return 'revisar'
   return 'no-afecta'
 }

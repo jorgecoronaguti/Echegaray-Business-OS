@@ -155,7 +155,7 @@ test('una falta injustificada pierde el presentismo entero, igual que una tardan
 })
 
 test('una LICENCIA no pierde el presentismo: enfermedad, accidente, vacaciones, licencia especial', () => {
-  for (const motivo of ['enfermedad', 'accidente', 'accidente_in_itinere', 'vacaciones', 'licencia_especial', 'suspension']) {
+  for (const motivo of ['enfermedad', 'accidente', 'accidente_in_itinere', 'vacaciones', 'licencia_especial']) {
     const p = presentismoDeLinea({ ...BASE, ausencias: [{ fecha: '2026-09-18', estado: 'licencia', motivo }] }, 105)
     assert.equal(p.estado, 'aplica', `${motivo} NO puede descontar`)
     assert.equal(cobraConPresentismo(627000, p), 627000, 'no se le puede tocar la plata')
@@ -226,4 +226,35 @@ test('el pie cuenta cuántos quedaron a revisar, sin mezclarlos con los perdidos
   assert.equal(t.aRevisar, 1)
   assert.equal(t.perdido, 66654, 'sólo se descuenta el probado')
   assert.equal(t.enJuego, 66654 * 3)
+})
+
+// ═══ SUSPENSIÓN Y PERMISO DESCUENTAN (dueño, 16/09/2026) ═══
+//
+// 12. Que la suspensión deje de descontar porque está guardada como `licencia`. Es el defecto sutil:
+//     el estado se mira DESPUÉS del motivo, y si alguien invierte el orden la decisión no se aplica
+//     y nadie lo nota — la persona cobra un premio que el dueño decidió que no le corresponde.
+
+test('la SUSPENSIÓN pierde el presentismo aunque esté guardada como licencia', () => {
+  // Así la guarda la app: `motivoDeAusencia.ts` la lista entre las licencias porque tiene respaldo
+  // documental, y eso decide si se PAGA el día. El premio de asistencia es otra pregunta.
+  const p = presentismoDeLinea({ ...BASE, ausencias: [{ fecha: '2026-09-18', estado: 'licencia', motivo: 'suspension' }] }, 105)
+  assert.equal(p.estado, 'perdido', 'MUTACIÓN: el estado se evaluó antes que el motivo')
+  assert.equal(cobraConPresentismo(627000, p), 560346)
+})
+
+test('el PERMISO pierde el presentismo', () => {
+  const p = presentismoDeLinea({ ...BASE, ausencias: [falta('2026-09-18', 'permiso')] }, 105)
+  assert.equal(p.estado, 'perdido')
+  assert.equal(p.causas[0].causa, 'falta')
+})
+
+test('lo que NO cambió: las licencias con respaldo siguen sin descontar', () => {
+  for (const motivo of ['enfermedad', 'accidente', 'accidente_in_itinere', 'vacaciones', 'licencia_especial']) {
+    const p = presentismoDeLinea({ ...BASE, ausencias: [{ fecha: '2026-09-18', estado: 'licencia', motivo }] }, 105)
+    assert.equal(p.estado, 'aplica', `${motivo} NO puede descontar`)
+  }
+  // Y lo que no depende del trabajador tampoco.
+  for (const motivo of ['lluvia', 'sin_tarea', 'paro', 'franco']) {
+    assert.equal(presentismoDeLinea({ ...BASE, ausencias: [falta('2026-09-18', motivo)] }, 105).estado, 'aplica')
+  }
 })
