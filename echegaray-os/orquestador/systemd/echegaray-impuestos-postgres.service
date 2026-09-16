@@ -1,0 +1,20 @@
+[Unit]
+Description=Echegaray OS — impuestos a Postgres (DDJJ IVA/IIBB, F931, ARCA, banco, Compras, Cobranzas → impuesto_obligacion / impuesto_pago)
+Documentation=file:///home/jorge/echegaray-os/produccion/echegaray-os/orquestador/scripts/impuestos-a-postgres.mjs
+After=network-online.target
+Wants=network-online.target
+# Si el checkout de producción todavía no tiene el script, systemd saltea la corrida (condición no
+# cumplida ≠ fallo) en vez de fallar cada 2 h.
+ConditionPathExists=/home/jorge/echegaray-os/produccion/echegaray-os/orquestador/scripts/impuestos-a-postgres.mjs
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
+# DATABASE_URL y la cuenta de servicio de Google viven acá. El script abre Google con scopes de sólo
+# lectura: no escribe el Sheet aunque corra desde producción.
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+ExecStartPre=-/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/produccion-al-dia.mjs
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/impuestos-a-postgres.mjs --aplicar
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=10min

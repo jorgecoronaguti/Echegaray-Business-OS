@@ -1,8 +1,8 @@
-// LAS TABLAS QUE AVISAN CUANDO CAMBIAN — espejo de la migración 20260915T2100.
+// LAS TABLAS QUE AVISAN CUANDO CAMBIAN — espejo de las migraciones marcadas (20260915T2100, 20260916T2010).
 //
 // Una pantalla declara de qué tablas depende (`<RefrescarEnVivo tablas={[...]} />`) y el tipo sólo
 // acepta tablas de esta lista. Declarar una tabla sin trigger compilaría y la pantalla nunca se
-// actualizaría: un «en vivo» que miente. `tablas.test.ts` compara esta lista con la del SQL.
+// actualizaría: un «en vivo» que miente. `planDeRefresco.test.ts` compara esta lista con la de las migraciones.
 
 export const TABLAS_CON_AVISO = [
   'analisis', 'analisis_linea', 'asistencia_dia', 'asistencia_marca',
@@ -13,7 +13,10 @@ export const TABLAS_CON_AVISO = [
   'compra_adjunto', 'comprobante_entrada', 'comprobantes_arca',
   'convenio_escala', 'costo_hora_alicuota', 'cotizacion_partida', 'cotizaciones',
   'cuadrilla', 'cuadrilla_integrante', 'documentacion_legajo', 'documento_presentacion',
-  'esquema_pago', 'ficha_cliente_cache', 'herramientas', 'liquidacion_linea', 'liquidacion_quincena', 'liquidacion_reapertura',
+  'esquema_pago', 'ficha_cliente_cache', 'herramientas',
+  // Impuestos: migración 20260916T2010 (el sincronizador hace upsert, no borra y reinserta).
+  'impuesto_obligacion', 'impuesto_pago', 'impuesto_sincronizacion',
+  'liquidacion_linea', 'liquidacion_quincena', 'liquidacion_reapertura',
   'movimientos_herramienta', 'obra_actividad', 'obra_actividad_nota', 'obra_actividad_paso',
   'obra_adjunto_cliente', 'obra_asignacion', 'obra_canonica', 'obra_dependencia', 'obra_documento',
   'obra_ejecucion', 'obra_ejecucion_equipo', 'obra_restriccion', 'pago_informado', 'pedidos_materiales',

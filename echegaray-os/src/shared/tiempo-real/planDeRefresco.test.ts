@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   CONFIG_DE_REFRESCO as CFG, EDICION_INACTIVA_MS, ESTADO_INICIAL, decidir, hayEdicionEnCurso, momentoDeRefresco, registrarAviso,
@@ -73,14 +74,21 @@ test('edición en curso: campo con foco o celda marcada; un botón o el body no 
   assert.equal(hayEdicionEnCurso({ activo: { tagName: 'BODY' }, celdaMarcada: true }), true)
 })
 
-test('la lista del navegador es EXACTAMENTE la de la migración: ninguna pantalla espera un aviso que no existe', () => {
-  const sql = readFileSync(fileURLToPath(new URL(
-    '../../../supabase/migrations/20260915T2100_tiempo_real_aviso_por_sentencia.sql', import.meta.url)), 'utf8')
-  const tramo = sql.split('-- TABLAS-CON-AVISO:inicio')[1]?.split('-- TABLAS-CON-AVISO:fin')[0]
-  assert.ok(tramo, 'la migración perdió las marcas de la lista')
-  const delSql = [...tramo.matchAll(/'([a-z_0-9]+)'/g)].map((m) => m[1]).sort()
+test('la lista del navegador es EXACTAMENTE la de las migraciones: ninguna pantalla espera un aviso que no existe', () => {
+  // TODAS las migraciones con las marcas, no sólo la primera: la pantalla de impuestos (20260916T2010)
+  // agregó sus tablas en un archivo propio. Leyendo sólo 20260915T2100, declarar una tabla en `tablas.ts`
+  // sin su trigger volvería a compilar y el «en vivo» mentiría.
+  const dir = fileURLToPath(new URL('../../../supabase/migrations/', import.meta.url))
+  const marcadas = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()
+    .map((f) => readFileSync(join(dir, f), 'utf8'))
+    .filter((sql) => sql.includes('-- TABLAS-CON-AVISO:inicio'))
+  assert.ok(marcadas.length >= 2, 'se perdieron las marcas de la lista en las migraciones')
+  const delSql = marcadas.flatMap((sql) => {
+    const tramo = sql.split('-- TABLAS-CON-AVISO:inicio')[1]?.split('-- TABLAS-CON-AVISO:fin')[0] ?? ''
+    return [...tramo.matchAll(/'([a-z_0-9]+)'/g)].map((m) => m[1])
+  }).sort()
   assert.deepEqual([...TABLAS_CON_AVISO].sort(), delSql)
-  assert.equal(new Set(delSql).size, delSql.length, 'tabla repetida en la migración')
+  assert.equal(new Set(delSql).size, delSql.length, 'tabla repetida en las migraciones')
 })
 
 test('un foco OLVIDADO en un campo deja de frenar el refresco; quien está tecleando sigue protegido (16/09/2026)', () => {
