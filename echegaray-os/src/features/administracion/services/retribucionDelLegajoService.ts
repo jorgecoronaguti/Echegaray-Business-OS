@@ -9,8 +9,11 @@
 // recortada acá sería una segunda respuesta a «cuánto cobra». Es la lectura más cara del legajo y por
 // eso corre SÓLO en su solapa, nunca en el resumen.
 //
-// DE A TRES: dieciocho quincenas en paralelo son más de doscientas consultas de golpe sobre una base
-// que ya se cayó tres veces por carga (13/09/2026). En serie serían dieciocho viajes de un segundo.
+// DE A SEIS: dieciocho quincenas en paralelo son más de doscientas consultas de golpe sobre una base
+// que ya se cayó tres veces por carga (13/09/2026); en serie serían dieciocho viajes de un segundo.
+// Medido el 16/09/2026 en `next dev` contra la base real: de a tres, 4,8–11 s de código de aplicación;
+// de a seis, la mitad. Sigue siendo la pantalla más lenta del legajo — el día que pese, el camino es una
+// lectura por persona DENTRO de `liquidacionQuincenaService`, no una copia recortada acá.
 //
 // ═══ SIN PERMISO NO SE VIAJA ═══
 //
@@ -27,7 +30,7 @@ import {
   armarRetribucion, quincenasDelAnio, type QuincenaRetribuida, type ReciboDelBlanco, type RetribucionDelLegajo,
 } from './retribucionDelLegajo.ts'
 
-const EN_PARALELO = 3
+const EN_PARALELO = 6
 
 const numero = (v: unknown): number | null =>
   v == null || !Number.isFinite(Number(v)) ? null : Number(v)
