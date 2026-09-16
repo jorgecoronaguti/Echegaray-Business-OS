@@ -228,3 +228,24 @@ export function conEstadoDePago(obligaciones = [], pagos = []) {
     ? { ...o, estado: 'pagado' }
     : o))
 }
+
+/**
+ * EL IMPUESTO AL CHEQUE Y SELLOS COMO OBLIGACIÓN DEL MES. No tienen DDJJ: el banco los retiene en el
+ * momento, así que lo devengado ES lo debitado. Se registran para que el cuadro por período los muestre
+ * junto al resto, ya pagados, con el banco como única fuente — y sólo desde donde llega el extracto
+ * importado: un mes sin extracto no aparece, no aparece en cero.
+ */
+export function obligacionesDeDebitosBancarios(pagos = [], { datosAl = null } = {}) {
+  const acc = new Map()
+  for (const p of pagos) {
+    if (p.fuente !== 'banco' || p.tipo !== 'debito_bancario' || !['impuesto_cheque', 'sellos'].includes(p.impuesto)) continue
+    const k = `${p.impuesto}|${p.periodo}|${p.concepto}`
+    acc.set(k, { impuesto: p.impuesto, periodo: p.periodo, concepto: p.concepto, total: (acc.get(k)?.total ?? 0) + p.importe })
+  }
+  return [...acc.values()].map((x) => ({
+    impuesto: x.impuesto, periodo: x.periodo, concepto: x.concepto, fuente: 'calculo', lector: 'banco', estado: 'pagado',
+    vencimiento: null, vencimiento_confianza: null, determinado: c2(x.total), base_imponible: null, creditos: null,
+    saldo_favor_anterior: null, a_pagar: c2(Math.max(0, x.total)), saldo_a_favor: null, presentada_el: null, comprobante: null,
+    documento: 'banco_movimientos', datos_al: datosAl, detalle: { suma_de_debitos: true },
+  }))
+}

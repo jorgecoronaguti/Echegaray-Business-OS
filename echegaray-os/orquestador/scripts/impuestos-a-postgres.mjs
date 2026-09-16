@@ -31,6 +31,7 @@ import {
 } from '../lib/impuestos-registro.mjs'
 import {
   pagosDelBanco, pagosDeCompras, pagosDeCobranzas, sinPagosRepetidos, creditosPorPeriodo, conEstadoDePago,
+  obligacionesDeDebitosBancarios,
 } from '../lib/impuestos-registro-pagos.mjs'
 import { planDeEscritura, lectoresEfectivos, CLAVE } from '../lib/impuestos-escritura.mjs'
 
@@ -86,6 +87,7 @@ export function construir(f) {
   ])
   const libro = libroPorPeriodo(f.arca ?? [])
   const arcaAl = iso((f.arca ?? []).reduce((m, r) => (r.fecha_emision > m ? r.fecha_emision : m), null))
+  const bancoAl = iso((f.banco ?? []).reduce((m, r) => (r.fecha > m ? r.fecha : m), null))
   const obligaciones = conEstadoDePago([
     ...obligacionesIvaDDJJ(f.ddjjIva ?? []),
     ...obligacionesIibbDDJJ(f.ddjjIibb ?? []),
@@ -93,8 +95,18 @@ export function construir(f) {
     ...obligacionesIvaCalculadas({ libro, ddjjs: f.ddjjIva ?? [], creditos: creditosPorPeriodo(pagos, 'iva'), datosAl: arcaAl }),
     ...obligacionesIibbEstimadas({ libro, ddjjs: f.ddjjIibb ?? [], creditos: creditosPorPeriodo(pagos, 'iibb'), datosAl: arcaAl }),
     ...deCompras.obligaciones,
+    ...obligacionesDeDebitosBancarios(pagos, { datosAl: bancoAl }),
   ], pagos)
-  return { obligaciones, pagos, arcaAl }
+  // HASTA DÓNDE LLEGA CADA FUENTE — lo que la pantalla publica como frescura. Una DDJJ cubre hasta el
+  // fin de su período; ARCA y el banco, hasta su último movimiento. No es la hora de la corrida.
+  const hasta = (lista) => lista.map((o) => o.datos_al).filter(Boolean).sort().at(-1) ?? null
+  const datosAl = {
+    arca: arcaAl, banco: bancoAl,
+    ddjj_iva_pdf: hasta(obligaciones.filter((o) => o.lector === 'ddjj_iva_pdf')),
+    ddjj_iibb_pdf: hasta(obligaciones.filter((o) => o.lector === 'ddjj_iibb_pdf')),
+    f931_raw: hasta(obligaciones.filter((o) => o.lector === 'f931_raw')),
+  }
+  return { obligaciones, pagos, arcaAl, datosAl }
 }
 
 function informar({ obligaciones, pagos, arcaAl }, estado) {
@@ -136,7 +148,8 @@ async function upsert(cx, tabla, cols, conflicto, filas) {
 }
 
 async function escribir(construido, estado) {
-  const lectores = lectoresEfectivos(estado)
+  const lectores = Object.fromEntries(Object.entries(lectoresEfectivos(estado))
+    .map(([l, e]) => [l, { ...e, datos_al: construido.datosAl[l] ?? null }]))
   const ex = async (sql) => (await query(sql)).rows
   const oblEx = (await ex('select impuesto, periodo, concepto, fuente, lector from public.impuesto_obligacion')).map((o) => ({ clave: CLAVE.obligacion(o), lector: o.lector }))
   const pagEx = (await ex('select fuente, referencia, lector from public.impuesto_pago')).map((p) => ({ clave: CLAVE.pago(p), lector: p.lector }))

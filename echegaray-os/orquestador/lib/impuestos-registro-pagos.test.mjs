@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   pagosDelBanco, pagosDeCompras, pagosDeCobranzas, sinPagosRepetidos, creditosPorPeriodo, conEstadoDePago,
-  periodoF931PorImporte, fechaISO,
+  periodoF931PorImporte, fechaISO, obligacionesDeDebitosBancarios,
 } from './impuestos-registro-pagos.mjs'
 
 const F931 = new Map([['2026-07', 8235741.96], ['2026-08', 8331697.69]])
@@ -93,4 +93,15 @@ test('fechaISO entiende las tres formas y no inventa', () => {
   assert.equal(fechaISO(46272), '2026-09-07', 'serial de Sheets (lectura sin formato)')
   assert.equal(fechaISO(5), null)
   assert.equal(fechaISO('septiembre'), null)
+})
+
+test('impuesto al cheque: la obligación del mes es la suma neta de lo debitado, anulaciones incluidas', () => {
+  const pagos = pagosDelBanco([
+    mov({ id: 8, fecha: '2026-08-03', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -600 }),
+    mov({ id: 9, fecha: '2026-08-04', concepto: 'Anul imp ley 25.413 debito 0,6%', importe: 100 }),
+    mov({ id: 10, fecha: '2026-08-05', concepto: 'Iva percepcion rg 2408', importe: -50 }),
+  ])
+  const [o, ...resto] = obligacionesDeDebitosBancarios(pagos, { datosAl: '2026-09-14' })
+  assert.equal(resto.length, 0, 'una percepción no es un impuesto al cheque')
+  assert.deepEqual([o.impuesto, o.periodo, o.a_pagar, o.estado], ['impuesto_cheque', '2026-08', 500, 'pagado'])
 })
