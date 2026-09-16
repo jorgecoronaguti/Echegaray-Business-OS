@@ -7,6 +7,26 @@
  *
  * EGRESO: ningún ejecutor remoto recibe un fragmento que no pasó por `revisarEgreso()`.
  * No es una convención: `ejecutorHF` lo llama él mismo y tira si no pasa.
+ *
+ * ⚠ DIVERGENCIA DECLARADA, PENDIENTE DE DECISIÓN DEL DUEÑO ⚠
+ * ──────────────────────────────────────────────────────────
+ * La regla del repo es que TODA llamada remota a Hugging Face pasa por el adapter
+ * `lib/ml/hf-inferencia.mjs` y por ningún otro lado — la regla existe porque una vez una captura
+ * con datos de clientes reales se fue a un proveedor sin pasar por ahí. **`ejecutorHF` NO pasa
+ * por ese adapter: hace su propio `fetch`.** No es un descuido, y tampoco es una exención:
+ *
+ *   · `hfInferencia()` está hecho para las capacidades del PRODUCTO (embed, classify, transcribe)
+ *     y consulta `puedeSalir(dominio, …)` con la taxonomía de dominios del ERP («banco», «nómina»).
+ *     Un fragmento de código fuente no es ninguno de esos dominios.
+ *   · Lo que el desarrollo necesita es otro control: escaneo POR FRAGMENTO, que el adapter no hace.
+ *
+ * Así que hoy hay DOS puertas a HF en vez de una, y eso es exactamente la clase de cosa que la
+ * regla quería evitar. Se deja escrito acá y no se resuelve solo. Las dos salidas posibles:
+ *   (a) agregar a `hfInferencia()` una capacidad 'editCode' que acepte el escáner de fragmentos, y
+ *       que el dev-router pase por ahí — una sola puerta, que es lo que la regla pide; o
+ *   (b) que el dueño sancione esta segunda puerta por escrito, con su propio escáner.
+ * Mientras no se decida, el riesgo es REAL: un control nuevo que se agregue al adapter no protege
+ * a este camino. Lo único que lo protege hoy es `revisarEgreso()` y sus 17 tests.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
