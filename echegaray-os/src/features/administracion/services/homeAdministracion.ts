@@ -230,7 +230,7 @@ export function armarConteosDeAtencion(json: unknown): ConteosAtencion {
 // LA BARRA DE DESTINOS — lo puro, para poder probarlo sin base
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-// LOS TRES DESTINOS QUE QUEDARON. `base-maestra`, `documentos` y `trabajo` salieron de la barra en
+// LOS DESTINOS CON CONTADOR. `base-maestra`, `documentos` y `trabajo` salieron de la barra en
 // la v4, y `proveedores` el 16/09/2026 al volverse una sección de Compras (ver `areasAdmin.ts` y
 // `seccionesDeCompras.ts`). Por eso salieron de acá: una entrada para una solapa que no se dibuja
 // hace creer que el contador se sigue mostrando en algún lado.

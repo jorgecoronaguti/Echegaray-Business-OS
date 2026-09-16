@@ -10,13 +10,13 @@ import { RUTAS_SOLO_ECONOMIA, puedeVerRuta } from '../../auth/types/areas.ts'
 // dibuje para quien el middleware va a rebotar, y —sobre todo— que la barra se apague adentro de
 // las rutas que perdieron su solapa (Pendientes, Asistencia y ahora Proveedores).
 
-test('son TRES destinos en DOS grupos: Proveedores se fue adentro de Compras', () => {
+test('son CUATRO destinos en DOS grupos: Proveedores se fue adentro de Compras, Impuestos se sumó', () => {
   // El dueño lo pidió el 16/09/2026: «poné todo el módulo proveedores dentro de compras como
   // sección». Si vuelve a aparecer en la barra, hay DOS puertas al mismo módulo y la sección de
   // Compras deja de ser la única respuesta a dónde vive Proveedores.
   assert.deepEqual(
     DESTINOS.map((d) => d.titulo),
-    ['Clientes', 'Personal', 'Compras'],
+    ['Clientes', 'Personal', 'Compras', 'Impuestos'],
   )
   assert.equal(DESTINOS.some((d) => d.clave === 'proveedores'), false)
   assert.deepEqual([...new Set(DESTINOS.map((d) => d.grupo))], ['quien', 'registro'])
@@ -33,7 +33,7 @@ test('«Trabajo», «Base maestra» y «Documentos» ya no son destinos', () => 
 
 test('el filo va SÓLO donde cambia el grupo, y sobre la lista ya filtrada por rol', () => {
   const todas = [...DESTINOS]
-  assert.deepEqual(todas.map((_, i) => hayFiloAntes(todas, i)), [false, false, true])
+  assert.deepEqual(todas.map((_, i) => hayFiloAntes(todas, i)), [false, false, true, false])
 
   // El filo se calcula sobre la lista YA filtrada: nunca puede quedar uno abriendo la barra, que
   // es lo que pasaría el día que un destino sea sólo de quien ve economía y el cálculo mire la
@@ -92,6 +92,15 @@ test('TODO Proveedores enciende Compras: la lista, sus dos colas y cada ficha', 
   assert.equal(areaActiva('/administracion/proveedores/abc-123?vista=documentos'), 'compras')
 })
 
+test('Impuestos es plata de la empresa: el jefe de obra no ve la solapa, Dirección y Administración sí (16/09/2026)', () => {
+  // Si alguien la saca de RUTAS_SOLO_ECONOMIA, el jefe ve una solapa cuya base (ve_economia) le
+  // devuelve cero filas: una pantalla que diría «nada que pagar» cuando lo que pasa es que no puede ver.
+  assert.equal(puedeVerRuta('jefe_obra', '/administracion/impuestos'), false)
+  assert.ok(destinosVisibles('direccion').some((d) => d.clave === 'impuestos'))
+  assert.ok(destinosVisibles('administracion').some((d) => d.clave === 'impuestos'))
+  assert.equal(areaActiva('/administracion/impuestos'), 'impuestos')
+})
+
 test('cada sección se enciende en sus subrutas y no en las de al lado', () => {
   assert.equal(areaActiva('/administracion/personas'), 'personas')
   assert.equal(areaActiva('/administracion/personas/juan-perez'), 'personas')
@@ -113,7 +122,7 @@ test('lo que ya no es un destino no enciende ninguna solapa', () => {
   assert.equal(areaActiva('/administracion/usuarios'), null)
   assert.equal(areaActiva('/presupuestos'), null)
   assert.equal(areaActiva('/obras'), null)
-  assert.equal(DESTINOS.length, 3)
+  assert.equal(DESTINOS.length, 4)
 })
 
 test('las dos pantallas del portal se retiraron: ya no encienden nada', () => {

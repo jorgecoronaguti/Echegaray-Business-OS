@@ -56,6 +56,8 @@ export const TABLAS_DE = {
   cuadrillas: unir(['cuadrilla', 'cuadrilla_integrante', 'personas'], HH_Y_ASISTENCIA),
   asistencia: unir(HH_Y_ASISTENCIA, ['personas']),
   compras: unir(['compra_adjunto', 'comprobante_entrada', 'comprobantes_arca'], PROVEEDOR),
+  /** Impuestos: lo que escribe el sincronizador (`impuestos-a-postgres.mjs`). */
+  impuestos: unir(['impuesto_obligacion', 'impuesto_pago', 'impuesto_sincronizacion']),
   proveedores: unir(PROVEEDOR, ['subcontrato_documento', 'comprobantes_arca']),
   obras: unir(OBRA, ['clientes', 'certificados', 'subcontrato']),
   gantt: ['obra_canonica', 'obra_actividad', 'obra_ejecucion', 'obra_restriccion'],

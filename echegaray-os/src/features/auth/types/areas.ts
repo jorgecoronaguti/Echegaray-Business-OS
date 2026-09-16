@@ -162,6 +162,9 @@ export const RUTAS_SOLO_ECONOMIA = [
   // `ve_economia()`— y esta lista es lo que hace que el jefe de obra ni siquiera vea la solapa.
   // Sin ella la pantalla sería más ancha que la base: un botón que lleva a «no hay nada».
   '/presupuestos',
+  // `/administracion/impuestos` entra el 16/09/2026 con la pantalla: IVA, IIBB, F931, saldos a favor.
+  // Las tablas ya lo cierran con `ve_economia()` (20260916T2000); esto evita la solapa que lleva a nada.
+  '/administracion/impuestos',
   // `/documentos` entra el 21/08/2026 con la vista transversal del archivo. Las tres carpetas raíz
   // del índice de Drive son `administracion`, `archivo-fiscal` y `libro-sueldos`: la lista incluye
   // presupuestos de clientes, declaraciones juradas y libros de sueldos.

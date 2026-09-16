@@ -1,4 +1,4 @@
-// LOS TRES DESTINOS DE ADMINISTRACIÓN — la barra de nivel 2, en un solo lugar.
+// LOS DESTINOS DE ADMINISTRACIÓN — la barra de nivel 2, en un solo lugar.
 //
 // ═══ PROVEEDORES SE FUE ADENTRO DE COMPRAS (dueño, 16/09/2026) ═══
 //
@@ -103,6 +103,10 @@ export const DESTINOS: readonly Destino[] = [
     clave: 'compras', titulo: 'Compras', href: '/administracion/compras', grupo: 'registro',
     absorbe: ['/administracion/pendientes', '/administracion/proveedores'],
   },
+  // IMPUESTOS (dueño, 16/09/2026). Registro, igual que Compras. SÍ entra en `RUTAS_SOLO_ECONOMIA`: el
+  // impuesto de la empresa es plata de la empresa, no el costo de una obra, y la base lo cierra con
+  // `ve_economia()`. Por eso el jefe de obra no ve esta solapa.
+  { clave: 'impuestos', titulo: 'Impuestos', href: '/administracion/impuestos', grupo: 'registro' },
 ] as const
 
 /**
