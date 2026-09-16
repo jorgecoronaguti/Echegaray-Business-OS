@@ -31,6 +31,8 @@ import { tituloDeJornales } from './estadoDelPago'
 import { ALTO_LIQ } from '../solapas/tabla'
 import { cierreDeLaFila, type EntradaDeHistorial } from '../../../services/cuadroDeJornales'
 import { avisoDeExcedente } from '../../../services/pagoDeLaQuincena'
+import { fechasCortas, PRESENTISMO_PCT } from '../../../services/presentismo'
+import { motivosDePerdida } from './CeldasDelEspejo'
 import type { CampoEditable } from '../../../services/liquidacionOverrides'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import type { DetalleLaboral } from '../../../services/detalleLaboral'
@@ -126,6 +128,8 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
         <Escribible campo="negro" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
 
+      <PresentismoDelPanel fila={fila} />
+
       <PagadoYSaldo fila={fila} quincena={quincena} camposEditables={camposEditables} />
 
       <div style={{ height: 16 }} />
@@ -140,6 +144,57 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
         <Leida valor={l.pago.saldoTotal} />
       </Renglon>
     </section>
+  )
+}
+
+
+/**
+ * EL PRESENTISMO, CONCEPTO POR CONCEPTO (dueño, 16/09/2026): *«mostrar por empleado: Base presentismo
+ * (50 % blanco) · % 20 · Presentismo $ · Estado (Cumple / Perdido) · motivo si lo perdió»*.
+ *
+ * LA BASE ES LA MITAD EN BLANCO Y SE DICE EN LA PANTALLA, no sólo en un tooltip: es la pregunta que el
+ * dueño hizo dos veces (sobre qué corre el 20 %). El 50 % en efectivo no entra, y el renglón lo aclara.
+ * Nada se calcula acá: los cuatro números salen de `presentismo.ts`, que es donde vive la regla.
+ */
+function PresentismoDelPanel({ fila }: { fila: FilaDelEspejo }) {
+  const p = fila.linea.presentismo
+  if (!p || p.estado === 'no_rige') return null
+  const testid = `panel-presentismo-${fila.personaId}`
+  if (p.estado === 'sin_categoria') {
+    return (
+      <>
+        <div style={{ height: 16 }} />
+        <Rotulo>Presentismo</Rotulo>
+        <Renglon rotulo="Estado" nota="sin categoría en el legajo: no hay básico con qué calcularlo">
+          <span data-testid={testid} style={{ fontSize: '12px', color: V.apagado }}>sin categoría</span>
+        </Renglon>
+      </>
+    )
+  }
+  const estado = p.estado === 'perdido' ? 'Perdido' : p.estado === 'a_revisar' ? 'A revisar' : 'Cumple'
+  const color = p.estado === 'perdido' ? V.warn : p.estado === 'a_revisar' ? V.warn : V.tinta
+  return (
+    <>
+      <div style={{ height: 16 }} />
+      <Rotulo>Presentismo</Rotulo>
+      <Renglon rotulo="Base presentismo" nota="50 % en blanco · el 50 % en efectivo no entra en la base">
+        <Leida valor={p.base} />
+      </Renglon>
+      <Renglon rotulo="%" nota="art. 52 CCT 76/75">
+        <span style={{ fontSize: '12.5px', color: V.tinta }}>{`${Math.round(PRESENTISMO_PCT * 100)} %`}</span>
+      </Renglon>
+      <Renglon rotulo="Presentismo" fuerte
+        nota={p.estado === 'perdido' ? 'se descuenta del cobra' : undefined} alerta={p.estado === 'perdido'}>
+        <Leida valor={p.importe} />
+      </Renglon>
+      <Renglon rotulo="Estado"
+        nota={p.estado === 'perdido' ? motivosDePerdida(p)
+          : p.estado === 'a_revisar' ? `no vino ${fechasCortas(p.aRevisar)} y nadie cargó el motivo: hasta que se cargue no se descuenta`
+          : 'sin faltas injustificadas, tardanzas ni retiros'}
+        alerta={p.estado !== 'aplica'}>
+        <span data-testid={testid} data-estado={p.estado} style={{ fontSize: '12.5px', fontWeight: 600, color }}>{estado}</span>
+      </Renglon>
+    </>
   )
 }
 
