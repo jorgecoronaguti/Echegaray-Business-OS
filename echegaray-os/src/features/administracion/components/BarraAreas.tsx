@@ -3,7 +3,7 @@
 // LA BARRA DE NIVEL 2 DE ADMINISTRACIÓN — siete destinos en tres grupos (00 · Home Navegación v2).
 //
 // Porte literal del `.dc.html`: banda blanca con filo inferior, ítems de 12,5px con `padding:10px
-// 11px`, contador mono de 10,5px pegado al nombre, y entre grupos un FILO de 1×15px — no una caja,
+// 11px`, contador mono de 10,5px pegado al nombre, y entre grupos SIN filo (dueño, 16/09/2026: «no quiero ese separador») — no una caja,
 // no un título de grupo, no un espacio más grande. Lo que separa es el cambio de naturaleza:
 // trabajo · con quién · qué se consulta.
 //
@@ -23,7 +23,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { C } from '@/shared/components/canon'
-import { areaActiva, hayFiloAntes, type AreaAdmin } from '../services/areasAdmin'
+import { areaActiva, type AreaAdmin } from '../services/areasAdmin'
 
 /** El degradado que avisa que la barra sigue. 26px es el ancho de media letra: insinúa, no tapa. */
 const VELO = 26
@@ -112,13 +112,6 @@ export function BarraAreas({ areas }: { areas: AreaAdmin[] }) {
           const esActiva = a.clave === activa
           return (
             <Fragment key={a.clave}>
-              {hayFiloAntes(areas, i) && (
-                <span
-                  aria-hidden
-                  data-testid="filo-grupo"
-                  style={{ alignSelf: 'center', width: 1, height: 15, background: C.linea, margin: '0 9px' }}
-                />
-              )}
               <Link
                 href={a.href}
                 // `prefetch={false}`: apuntan a rutas `force-dynamic` donde el prefetch dispara un
