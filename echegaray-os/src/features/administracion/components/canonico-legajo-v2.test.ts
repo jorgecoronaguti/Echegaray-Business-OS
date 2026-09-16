@@ -70,8 +70,24 @@ test('la ficha nunca PUBLICA que los papeles estén «al día»', () => {
   assert.doesNotMatch(src, /tonoIndicador/, 'el indicador verde del aside anterior no puede volver')
 })
 
-test('la retribución se declara ausente por la vista, no como campo sin cargar', () => {
-  assert.match(codigoPagina(), /falta: 'no llega a esta pantalla'/)
+// LA RETRIBUCIÓN YA NO ESTÁ AUSENTE (dueño, 15/09/2026: «quiero ver a primer golpe de vista cuánto
+// se le está pagando por hora»). Sale de `persona_tarifa` y no de `persona_legajo`, que sigue sin
+// publicar la columna. El control cambia de objeto: antes cuidaba que la ausencia se declarara; ahora
+// cuida que el número esté arriba y que no se dibuje a partir de una lectura que la RLS negó.
+test('el $/h que se paga está arriba del todo, antes de los avisos y de la tira de cifras', () => {
+  const src = codigoPagina()
+  assert.match(src, /<ValorHoraDelLegajo/)
+  assert.doesNotMatch(src, /falta: 'no llega a esta pantalla'/, 'la retribución ya llega: el cartel viejo miente')
+  const tira = src.indexOf('<ValorHoraDelLegajo')
+  assert.ok(tira > 0 && tira < src.indexOf('<CifrasDeFicha'), 'el $/h va ANTES de la tira de cifras')
+  assert.ok(tira < src.indexOf('<AvisoDeFicha'), 'el $/h va ANTES de los avisos')
+})
+
+test('el $/h no se dibuja a partir de una lectura que la RLS negó', () => {
+  const src = codigoPagina()
+  // `liquida_sueldos()` excluye al jefe de obra, que abre este legajo, y devuelve cero filas SIN
+  // error: sin pasarle el permiso, «no puedo ver» se dibujaría igual que «nadie lo cargó».
+  assert.match(src, /puedeVer: liquidaSueldos\(rolActor\)/)
 })
 
 test('el estado sale de `en_la_empresa` y no de la fecha de egreso', () => {

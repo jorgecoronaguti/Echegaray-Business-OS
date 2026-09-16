@@ -98,6 +98,10 @@ export function ValorHoraDelLegajo({ rotulo, error, testid = 'valor-hora-legajo'
           <ol
             style={{
               margin: '8px 0 0', padding: 0, listStyle: 'none',
+              // CEÑIDO A LO QUE MIDE LA LISTA. Sin esto el `<ol>` ocupa el bloque entero y el filo
+              // de 1px de cada fila cruza los 1.260px de la pantalla para separar tres renglones de
+              // 300: el único filo que cruza el ancho completo en el v2 es el de las solapas.
+              width: 'fit-content', maxWidth: '100%',
               display: 'flex', flexDirection: 'column',
             }}
           >
