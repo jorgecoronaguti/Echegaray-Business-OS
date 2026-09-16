@@ -56,3 +56,13 @@ test('filaConciliada: la exacta gana, la cercana rescata, y el empate no se adiv
   const conEmpate = [...filas, { fila: 950, clave: 'p:santa clara srl|0021-00078128', proveedor: 'Santa Clara SRL' }]
   assert.equal(filaConciliada('c:33538492219|0021-00078128', conEmpate, { proveedor: 'Santa Clara SRL' }), null)
 })
+
+test('UNA SIGLA CON PUNTOS Y LA MISMA SIGLA PEGADA SON EL MISMO PROVEEDOR (fila 972, 16/09/2026)', () => {
+  assert.equal(mismoComprobante('c:30718327845|0001-00000246', 'p:bdh srl|0001-00000246',
+    { proveedorA: 'B.D.H. S. R. L.', proveedorB: 'BDH SRL' }), true)
+  assert.equal(mismoComprobante('c:30718327845|0001-00000246', 'p:bdh srl|0001-00000246',
+    { proveedorA: 'B.D.H. S.R.L.' }), true, 'sin proveedorB manda la identidad de la clave p:')
+  // OTRO PROVEEDOR CON EL MISMO NÚMERO SIGUE SIN EMPATAR.
+  assert.equal(mismoComprobante('c:30718327845|0001-00000246', 'p:dhb srl|0001-00000246',
+    { proveedorA: 'B.D.H. S. R. L.', proveedorB: 'DHB SRL' }), false)
+})
