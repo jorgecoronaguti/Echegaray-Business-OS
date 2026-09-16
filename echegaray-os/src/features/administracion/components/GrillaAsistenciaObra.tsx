@@ -215,6 +215,8 @@ export function GrillaAsistenciaObra({
    *  para decidir qué día está en curso — no es un dato nuevo, es el mismo que baja una capa más. */
   hoy: string
 }) {
+  // LA QUINCENA EN CURSO (o futura) muestra la obra de HOY; una pasada, dónde estuvo (dueño, 16/09/2026).
+  const enCurso = hoy <= (dias[dias.length - 1] ?? hoy)
   const [borradores, setBorradores] = useState<Record<string, string>>({})
   const [errores, setErrores] = useState<Record<string, string>>({})
   const [corrigiendo, setCorrigiendo] = useState<string | null>(null)
@@ -451,9 +453,10 @@ export function GrillaAsistenciaObra({
           <thead>
             <tr style={{ borderBottom: `1px solid ${V.lineaFuerte}` }}>
               <Rotulo pegada corrimiento={corrimiento}>Persona</Rotulo>
-              {/* «ACTUAL» porque la obra de una persona cambia con el tiempo: acá se ve la de hoy; la de
-                  cada día queda guardada en su marca y se lee en la cronología de la persona (ficha → Horas). */}
-              <Rotulo>Obra actual</Rotulo>
+              {/* «ACTUAL» en la quincena en curso: la obra de hoy, editable. En una quincena PASADA la columna
+                  dice dónde estuvo esa quincena (dueño, 16/09/2026: «"obra actual" no lee bien cuando buscás
+                  quincenas anteriores»); cada día conserva su obra en su marca. */}
+              <Rotulo>{enCurso ? 'Obra actual' : 'Obra en la quincena'}</Rotulo>
               {etiquetas.map((e, i) => (
                 <Rotulo key={dias[i]} centro tenue={columnasTenues[i]} titulo={titulos[i]}>{e}</Rotulo>
               ))}
@@ -536,7 +539,7 @@ export function GrillaAsistenciaObra({
                     abre la nueva. No pide rol, ni cuadrilla, ni actividad, ni fechas — eso es lo
                     que hacía la asignación imposible de entender. Lo que no se pregunta tiene un
                     valor honesto: rol «integrante» y desde hoy. */}
-                {puedeCambiarObra ? (
+                {puedeCambiarObra && fila.obraEsDeHoy ? (
                   <select
                     data-testid="select-obra-actual"
                     aria-label={`Obra actual de ${fila.persona.nombre}`}
@@ -563,7 +566,18 @@ export function GrillaAsistenciaObra({
                     ))}
                   </select>
                 ) : (
-                  <span>{fila.rotuloObra}</span>
+                  // EN UNA QUINCENA PASADA: texto, con las demás obras de la ventana al lado y el detalle en el title.
+                  <span
+                    data-testid="obra-de-la-quincena"
+                    title={fila.obrasDeLaQuincena.length > 0
+                      ? fila.obrasDeLaQuincena.map((o) => `${o.nombre}: ${o.horas} h`).join(' · ')
+                      : undefined}
+                  >
+                    {fila.rotuloObra}
+                    {fila.obrasDeLaQuincena.length > 1 && (
+                      <span style={{ marginLeft: 6, fontSize: '11px', color: V.apagado }}>{`+${fila.obrasDeLaQuincena.length - 1}`}</span>
+                    )}
+                  </span>
                 )}
                 {/* EL PIE ES LA TERCERA PISTA DEL GRID Y VA ENTERO EN UN SOLO HIJO: si cada línea
                     fuera hija del grid se abrirían pistas implícitas y el select dejaría de estar
