@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-15 ~17:45 (−03) · main = producción (89dfed2c)_
+_actualizado: 2026-09-15 ~22:30 (−03) · main = producción (7b400e84)_
 
 ## 1. OBJETIVO GENERAL
 
@@ -65,6 +65,17 @@ Echegaray Construcciones. XSAS es la capa de inteligencia operativa. Claude Code
 - Agentes (opus) en curso, worktrees en /home/jorge/echegaray-os/app/wt-*: liquidación pagado real + fórmulas + encabezado
   fijo (T2340), legajo $/h, costo por obra_id + Proveedores (T2300), anotación→obra, comprobantes 5xx + fajo (T2330),
   auditoría MO/MA/SUB. Límites: fable semanal hasta 00:00; sonnet sesión hasta 19:00.
+
+
+### 4e. Noche del 15/09 (todo desplegado y verificado en la base)
+- Comprobantes que no se pierden (c3a4d5a5, T2330 aplicada, worker y ws reiniciados).
+- Legajo con $/h negro / recibo / básico (0fb8ac32 + cosmética 1cfa30b7; QA OK con Agüero, Quiroga S., Maldonado).
+- Auditoría MO/MA/SUB (439d709d): script `auditar-costo-por-obra.mjs`, informe docs/auditorias/2026-09-15; 230 hallazgos:
+  vista vieja (corregido en T2300), $75 M «Sin obra» ($13,4 M de subcontratistas), MO por cliente vs MA por sub-obra.
+- Costo por obra por obra_id (675377cb, T2300 aplicada; `obra_costo_real`, RPC escribe costos_obra+asignación,
+  Proveedores con ObraEnLinea, «Sin obra» canónicas) + NC restan (7b400e84): OB-0006 45.245.366 = pestaña.
+- Agentes en curso: Liquidación rehecha (pagado real, saldos, fórmulas, encabezado fijo; T2340) y cargador con lo manuscrito.
+- Nota: Agüero tarifa 01/09 volvió a 5.974 («corrección de la quincena»), antes 6.979; preguntado al dueño.
 
 ## 5. EN CURSO
 
