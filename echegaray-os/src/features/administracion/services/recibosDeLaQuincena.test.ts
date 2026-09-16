@@ -17,6 +17,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { CONCEPTO_DEL_GIRO, girosDe } from './liquidacionCuadros.ts'
+import { pagoDeLaLinea } from './pagoDeLaQuincena.ts'
 import {
   archivosDeLaQuincena, avisoDeRecibos, filasDeRecibos, recibosFueraDelCuadro, totalesDeRecibos, type LineaParaRecibo,
 } from './recibosDeLaQuincena.ts'
@@ -153,7 +154,9 @@ const lineaCompleta = (personaId: string, l: Partial<LineaConOverrides>): LineaC
   cobra: 400000, adelanto: 0, yaTransferido: 0, porBanco: 0, enEfectivo: 400000, total: 400000,
   efectivoRedondeado: null, sinTarifa: false, reciboNeto: null, blancoAcuerdo: 200000,
   efectivoAcuerdo: 200000, reciboSinGiro: false, origenTarifa: 'test',
-  manual: {}, origen: {}, discrepancia: {}, ...l,
+  manual: {}, origen: {}, discrepancia: {}, pagadoBanco: 0, pagadoEfectivo: 0, formulas: {}, ...l,
+  // `pago` SE ARMA DESPUÉS DEL SPREAD: sale de lo que quedó en la línea, como en producción.
+  pago: pagoDeLaLinea({ banco: l.porBanco ?? 0, negro: l.cobra === null ? null : (l.cobra ?? 400000) - (l.porBanco ?? 0) }),
 } as unknown as LineaConOverrides)
 
 test('el pie de Recibos por banco es EL MISMO número que el pie del cuadro de la quincena', () => {

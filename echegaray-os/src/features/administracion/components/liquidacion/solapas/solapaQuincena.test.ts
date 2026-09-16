@@ -77,10 +77,14 @@ test('SIN COLUMNA «PLANILLA»: el cotejo va en el sello y en el panel, no en el
 // el banco editable, el 50/50 (fuera del modelo) ni el historial.
 // CAMBIÓ OTRA VEZ EL 14/09/2026: el orden de JORNALES pone los días ADELANTE y la plata después, con los
 // adelantos antes del total efectivo y el total quincena al final. Se sigue protegiendo el orden completo.
-test('LOS DÍAS VAN PRIMERO Y DESPUÉS LA PLATA EN EL ORDEN DE JORNALES', () => {
-  assert.deepEqual(clavesDe('const PLATA', 'const GAP'),
-    // `presentismo` (15/09/2026) después del negro: de ahí sale el descuento.
-    ['horas', 'hsBlanco', 'horaCategoria', 'neto', 'hsNegro', 'horaNegro', 'negro', 'presentismo', 'yaTransferido', 'adelanto', 'enEfectivo', 'efectivoRedondeado', 'total'])
+test('LOS DÍAS VAN PRIMERO Y DESPUÉS LA PLATA, CON PAGADO Y SALDO EN CADA LADO', () => {
+  assert.deepEqual(clavesDe('const PLATA', 'const ANCHO_DE_BANDA'),
+    // `presentismo` (15/09/2026) después del negro: de ahí sale el descuento. `pagado*`/`saldo*` (15/09/2026,
+    // «necesito al lado de banco y negro lo que se le ha pagado efectivamente»): cada lado dice cuánto
+    // corresponde, cuánto se pagó y cuánto falta, y la fila cierra con Total · Pagado · Saldo.
+    ['horas', 'hsBlanco', 'horaCategoria', 'neto', 'pagadoBanco', 'saldoBanco',
+      'hsNegro', 'horaNegro', 'negro', 'pagadoEfectivo', 'saldoEfectivo',
+      'presentismo', 'efectivoRedondeado', 'total', 'pagado', 'saldo'])
   assert.match(GRILLA, /minmax\(200px,1fr\) repeat\(\$\{nDias\},\$\{DIA\}px\) \$\{PLATA/, 'los días van antes que la plata')
   assert.match(PANEL, /campo="porBanco"/)
   assert.match(PANEL, /Acuerdo 50\/50/)
@@ -98,7 +102,11 @@ test('SIN COLUMNAS DE HORAS EXTRA NI «NORMALES» (dueño, 14/09: «las columnas
   // `totales.total` salió del cuadro el 14/09/2026 junto con la columna del importe pendiente.
   // `totales.porBanco` → `totales.netoBandas` (QA, 14/09/2026): el pie muestra el neto de las bandas, sin los
   // mensuales, para que Neto + Negro + Sueldos mensuales = Total cierre exacto. Caja sigue leyendo porBanco.
-  for (const t of ['totales.cobra', 'totales.adelanto', 'totales.yaTransferido', 'totales.horasPagas', 'totales.netoBandas', 'totales.mensuales', 'totales.enEfectivo']) {
+  // CAMBIÓ EL 15/09/2026: `totales.adelanto`, `totales.yaTransferido` y `totales.enEfectivo` salieron del pie
+  // junto con sus columnas (un adelanto es un PAGO, no un descuento). Los reemplazan los de `totales.pago`.
+  for (const t of ['totales.cobra', 'totales.horasPagas', 'totales.netoBandas', 'totales.mensuales',
+    'p.pagadoBanco', 'p.saldoBanco', 'p.pagadoEfectivo', 'p.saldoEfectivo', 'p.pagado', 'p.saldoTotal',
+    'p.aPagarEfectivo', 'p.aPagarBanco']) {
     assert.ok(codigo.includes(t), `el pie sigue mostrando ${t}`)
   }
 })
@@ -110,13 +118,18 @@ test('NETO (BANCO) Y EFECTIVO DICEN CÓMO SE PAGA, SE MARCAN CUANDO LA FILA NO C
   const ESTADO = fuente('../cuadro/estadoDelPago.ts')
   const BN = fuente('../cuadro/CeldasBlancoNegro.tsx')
   assert.match(BN, /pesos\(l\.porBanco\)/)
-  assert.match(BN, /pesos\(l\.enEfectivo\)/)
+  // `pesos(l.enEfectivo)` SALIÓ el 15/09/2026 con la columna «Total efectivo». Lo que dice cuánto se entrega
+  // hoy es el saldo del lado negro, con el exceso del banco ya descontado.
+  assert.match(BN, /p\.saldoEfectivo/)
   assert.match(BN, /sin neto/)
   assert.match(ESTADO, /const cierre = cierreDeLaFila\(l\)/)
   assert.match(GRILLA, /const cierre = cierreDeTotales\(totales\)/)
-  for (const r of ['Banco', 'Negro', 'Adelanto banco / embargos', 'Adelanto efectivo', 'Total efectivo', 'Efectivo redondeado', 'Cobra total']) {
+  for (const r of ['Banco', 'Pagado banco', 'Saldo banco', 'Negro', 'Pagado efectivo', 'Saldo efectivo',
+    'Efectivo redondeado', 'Total', 'Pagado', 'Saldo']) {
     assert.match(GRILLA, new RegExp(`cifra\\('${r}'`), `el pie publica ${r}`)
   }
+  // Y LA LÍNEA QUE CONTESTA LA PREGUNTA DEL DÍA DE PAGO.
+  assert.match(GRILLA, /A pagar hoy: /)
   assert.match(GRILLA, /totales\.negro/)
   assert.match(GRILLA, /totales\.sinNeto/)
 })

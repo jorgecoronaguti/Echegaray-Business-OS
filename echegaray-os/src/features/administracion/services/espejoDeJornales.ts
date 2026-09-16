@@ -31,6 +31,7 @@ import { ordenarComoPersonal } from './ordenDePersonal.ts'
 import { horasPorTipo, sumarHorasPorTipo, type HorasPorTipo } from './cuadroDeJornales.ts'
 import { coeficienteDeLaFila } from './liquidacionDeAusencias.ts'
 import { negroDeLaFila } from './sueldoBlancoNegro.ts'
+import { totalesDePago, type TotalesDePago } from './pagoDeLaQuincena.ts'
 import { marcaDeBaja } from './liquidacionPlantelActivo.ts'
 
 const r2 = (n: number): number => Math.round(n * 100) / 100
@@ -328,6 +329,14 @@ export interface TotalesDelEspejo {
    * también las de quien no tiene tarifa: trabajó igual. `horas` sigue sumando sólo las liquidadas.
    */
   horasPagas: number
+  /**
+   * LO PAGADO Y LO QUE FALTA, columna por columna (dueño, 15/09/2026).
+   *
+   * SÓLO LAS FILAS DE LAS BANDAS. Un sueldo mensual no se reparte entre banco y efectivo —el dueño todavía no
+   * definió la regla— así que su fila no dibuja ninguna de esas columnas; sumarlo acá daría un pie que afirma
+   * un reparto que la pantalla no muestra. Los mensuales siguen en `mensuales`.
+   */
+  pago: TotalesDePago
 }
 
 /**
@@ -351,7 +360,9 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
     // igual que el filtro y el buscador. Quien no tiene tarifa SÍ suma horas: trabajó igual.
     horasPorTipo: sumarHorasPorTipo(filas),
     horasPagas: 0,
+    pago: totalesDePago([]),
   }
+  const deLasBandas: FilaDelEspejo['linea']['pago'][] = []
   for (const f of filas) {
     const l = f.linea
     // ANTES DEL `continue` DE «SIN TARIFA»: quien no tiene tarifa no suma plata, pero sus horas pagas
@@ -376,7 +387,7 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
     // sueldo fijo sumaba al Total sin estar en Neto ni en Negro, y el pie no cerraba por 3.600.000.
     // POR MODALIDAD: el jefe sin neto cargado cobra por mes igual (`cobroMensual.ts`) y no va en las bandas.
     if (l.modalidad === 'mensual') t.mensuales += l.cobra
-    else { t.netoBandas += l.porBanco; t.negro += negroDeLaFila(l) ?? 0 }
+    else { t.netoBandas += l.porBanco; t.negro += negroDeLaFila(l) ?? 0; deLasBandas.push(l.pago) }
     t.adelanto += l.adelanto
     t.yaTransferido += l.yaTransferido
     t.porBanco += l.porBanco
@@ -387,6 +398,7 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
     'horasDeDiferencia', 'horasPagas', 'negro', 'netoBandas', 'mensuales', 'presentismoEnJuego', 'presentismoPerdido'] as const) {
     t[k] = r2(t[k])
   }
+  t.pago = totalesDePago(deLasBandas)
   return t
 }
 

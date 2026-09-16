@@ -34,7 +34,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { CAMPO } from './Controles'
-import { indiceDeLaSiguiente, leerNumeroEsAR } from '../../lib/numeroEsAR'
+import { indiceDeLaSiguiente } from '../../lib/numeroEsAR'
+import { leerCeldaNumerica } from '../../lib/formulaEsAR'
 import { useCeldaViva, useGuardadoDeshacible } from '../deshacer/DeshacerProvider'
 import {
   alConfirmarGuardado, alLlegarDelServidor, hayQueGuardar, valorVigente, type EstadoInline,
@@ -70,6 +71,7 @@ export function InlineEdit({
   ancho = 'w-full',
   alineado = 'left',
   deshacer,
+  expresion = null,
 }: {
   /** Lo guardado hoy. `null` es ausencia y se dibuja con `falta`, nunca como 0. */
   valor: string | number | null
@@ -97,6 +99,12 @@ export function InlineEdit({
   alineado?: 'left' | 'right' | 'center'
   /** CMD/CTRL+Z (15/09/2026): cómo deshacer esta celda cuando el valor dibujado no alcanza. */
   deshacer?: DeshacerDeCelda
+  /**
+   * LA CUENTA GUARDADA DE ESTA CELDA (dueño, 15/09/2026: «tiene que poder calcular dentro de las celdas, como
+   * hace sheet»). En reposo se dibuja el VALOR —es lo que se paga—; al abrir el campo aparece la CUENTA, que es
+   * lo que hay que corregir. Sólo con `tipo='numero'`.
+   */
+  expresion?: string | null
 }) {
   const original = valor === null ? '' : String(valor)
   // UNA FECHA SE LEE EN es-AR Y SE EDITA EN ISO. El `<input type=date>` exige AAAA-MM-DD, pero
@@ -127,6 +135,13 @@ export function InlineEdit({
     setEstado(siguiente)
     setBorrador(valorVigente(siguiente))
   }
+  // LA CUENTA SIGUE AL VALOR: cuando el servidor trae otra, la celda la adopta salvo mientras alguien escribe.
+  const [cuenta, setCuenta] = useState<string | null>(expresion)
+  const [cuentaDelServidor, setCuentaDelServidor] = useState<string | null>(expresion)
+  if (!editando && expresion !== cuentaDelServidor) {
+    setCuentaDelServidor(expresion)
+    setCuenta(expresion)
+  }
 
   // LO QUE LA CELDA DIBUJA: lo confirmado por la acción hasta que el servidor lo repita (regla 7).
   const vigente = valorVigente(estado)
@@ -143,28 +158,39 @@ export function InlineEdit({
   })
   useCeldaViva(clave, {
     actual: deshacer?.verificaServidor ? undefined : () => valorVigente(estadoRef.current),
-    aplicar: (v) => { setEstado((e) => alConfirmarGuardado(e, v)); setBorrador(v) },
+    // DESHACER DEVUELVE UN VALOR, NO UNA CUENTA: la expresión que explicaba el número deshecho ya no lo
+    // explica, así que se borra. El servidor hace lo mismo (`siguientesFormulas` con expresión nula).
+    aplicar: (v) => { setEstado((e) => alConfirmarGuardado(e, v)); setBorrador(v); setCuenta(null) },
   })
 
   async function confirmar(crudo: string, luego?: () => void) {
     if (confirmando.current) return
     let v = crudo
-    // UN NÚMERO SE LEE EN es-AR («266.000», «$ 266.000», «8,5»). Lo que no es número no se guarda: el campo
-    // queda abierto con «número inválido».
+    // LO QUE VIAJA A LA ACCIÓN: la CUENTA si la hay, el número si no. El servidor la vuelve a leer con el
+    // mismo lector y guarda las dos cosas; acá el estado se queda con el VALOR, que es lo que la celda dibuja.
+    let aGuardar = crudo
+    let nuevaCuenta: string | null = null
+    // UN NÚMERO SE LEE EN es-AR («266.000», «$ 266.000», «8,5») y una cuenta empieza con `=`. Lo que no es
+    // ninguna de las dos no se guarda: el campo queda abierto con el motivo.
     if (tipo === 'numero') {
-      const leido = leerNumeroEsAR(crudo)
-      if (!leido.ok) { setError('número inválido'); return }
+      const leido = leerCeldaNumerica(crudo)
+      if (!leido.ok) { setError(leido.error); return }
       v = leido.valor == null ? '' : String(leido.valor)
+      nuevaCuenta = leido.expresion
+      aGuardar = leido.expresion ?? v
     }
-    if (!hayQueGuardar(estado, v)) { setEditando(false); setError(null); luego?.(); return }
+    // UNA CUENTA DISTINTA SE GUARDA AUNQUE DÉ EL MISMO NÚMERO: «=9*105» y «945» valen lo mismo y no explican
+    // lo mismo. Sin esto, corregir la cuenta y no el resultado no guardaría nada.
+    if (!hayQueGuardar(estado, v) && nuevaCuenta === cuenta) { setEditando(false); setError(null); luego?.(); return }
     confirmando.current = true
     setGuardando(true)
-    const r = await guardarDeshacible(v)
+    const r = await guardarDeshacible(aGuardar)
     setGuardando(false)
     setEditando(false)
     confirmando.current = false
     if (r.ok) {
       setEstado(alConfirmarGuardado(estado, v))
+      setCuenta(nuevaCuenta)
       setError(null)
       setRecienGuardado(true)
       setTimeout(() => setRecienGuardado(false), 1500)
@@ -221,8 +247,12 @@ export function InlineEdit({
           // debajo empujaría la fila y la tabla entera bailaría en cada corrección.
           aria-busy={enVuelo || guardando}
           data-pendiente={enVuelo ? '1' : undefined}
-          title={enVuelo ? 'Guardado. La pantalla termina de actualizarse en unos segundos.' : undefined}
-          onClick={() => { setEditando(true); setError(null); requestAnimationFrame(() => ref.current?.select()) }}
+          data-formula={cuenta ? '1' : undefined}
+          title={enVuelo
+            ? 'Guardado. La pantalla termina de actualizarse en unos segundos.'
+            : (cuenta ? `${cuenta} → ${mostrar ? mostrar(vigente) : vigente}` : undefined)}
+          // ABRIR LA CELDA MUESTRA LA CUENTA, NO EL RESULTADO: es lo que hay que corregir (como en el Sheet).
+          onClick={() => { setEditando(true); setBorrador(cuenta ?? vigente); setError(null); requestAnimationFrame(() => ref.current?.select()) }}
           // EDITABLE A LA VISTA, SIN RUIDO: subrayado punteado suave, cursor de texto y 32 px de alto (toque a 390).
           className={`${ancho} min-h-8 cursor-text rounded-control border border-transparent px-1.5 py-0.5 text-left hover:border-line-strong ${
             alineado === 'right' ? 'text-right font-mono tabular-nums'
@@ -279,7 +309,7 @@ export function InlineEdit({
           }
           // ESCAPE DEVUELVE EL ORIGINAL. Sin esto, la única salida de una edición empezada por error
           // es guardarla.
-          if (e.key === 'Escape') { e.preventDefault(); cancelado.current = true; setError(null); setBorrador(vigente); setEditando(false) }
+          if (e.key === 'Escape') { e.preventDefault(); cancelado.current = true; setError(null); setBorrador(cuenta ?? vigente); setEditando(false) }
         }}
         // EL MISMO ANCHO QUE LA CELDA EN REPOSO (`ancho`) Y 32 PX DE ALTO: la fila no salta al abrirla.
         className={`${CAMPO} ${ancho} !h-8 min-h-8 !px-1.5 !text-[12.5px] ${alineado === 'right' ? 'text-right font-mono tabular-nums' : alineado === 'center' ? 'text-center font-mono tabular-nums' : ''}`}

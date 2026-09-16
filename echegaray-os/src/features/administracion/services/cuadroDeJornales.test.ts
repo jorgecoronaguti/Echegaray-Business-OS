@@ -14,6 +14,7 @@ import {
 } from './cuadroDeJornales.ts'
 import { filasDelEspejo, totalesDelEspejo, type DatosDelEspejo } from './espejoDeJornales.ts'
 import { quincenaDe } from './quincena.ts'
+import { pagoDeLaLinea } from './pagoDeLaQuincena.ts'
 import type { LineaConOverrides } from './liquidacionOverrides.ts'
 
 test('horasPorTipo separa normales, extra 50 y extra 100; ausencia y licencia no son trabajadas', () => {
@@ -77,6 +78,10 @@ const linea = (personaId: string): LineaConOverrides => ({
   efectivoRedondeado: null, sinTarifa: false, reciboNeto: null, blancoAcuerdo: null,
   efectivoAcuerdo: null, reciboSinGiro: false, origenTarifa: 'test',
   manual: {}, origen: {}, discrepancia: {},
+  // `pago` NO ES OPCIONAL EN LA LÍNEA REAL (15/09/2026): el pie suma sus columnas. Se arma con la misma
+  // función que arma la de producción para que el fixture no invente otra respuesta.
+  pagadoBanco: 0, pagadoEfectivo: 0, formulas: {},
+  pago: pagoDeLaLinea({ banco: 0, negro: 85000 }),
 } as unknown as LineaConOverrides)
 
 test('el espejo trae alta, categoría y horas por tipo; el total por tipo recorta con las filas recibidas', () => {
