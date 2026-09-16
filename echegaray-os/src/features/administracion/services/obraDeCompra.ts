@@ -97,9 +97,26 @@ export interface ObraParaOpciones {
   fusionada_en: string | null
 }
 
+/** Espejo de `rotuloSinObra` de `orquestador/lib/obra-destino.mjs`. El test lo compara contra él. */
+export const rotuloSinObra = (cliente: string): string => `Sin obra – ${cliente}`
+
 /**
  * LAS OPCIONES DEL DESPLEGABLE, en el orden del Sheet: fijas, obras con código, «Sin obra – X».
  * «Sin obra – X» sólo para el cliente con más de una obra viva: con una sola no hay nada que decidir.
+ *
+ * ═══ EL CLIENTE SE AGRUPA CANÓNICO, Y EN MAYÚSCULAS (15/09/2026) ═══
+ *
+ * `cliente_texto` es texto de planilla: hoy conviven «MESSINA» (6 obras vivas) y «Messina» (4). El
+ * desplegable los ofrecía como DOS opciones distintas, y son el mismo cliente: quien imputaba elegía
+ * una u otra sin saber que decidía nada. Se agrupa por el texto en MAYÚSCULAS —el MISMO criterio con
+ * el que `public.obra_celda_resolver` valida la celda y cuenta las obras vivas del cliente— y se
+ * ofrece una sola opción, también en mayúsculas, como el cliente canónico que escribe el sync.
+ *
+ * LO QUE ESTO NO RESUELVE, declarado: los alias de `cliente_alias` («Javier Sanchez» → SAN
+ * FRANCISCO). Esa tabla no tiene grant para `authenticated`, así que la app no puede leerla; el sync
+ * sí la usa. La consecuencia es que el sync puede agrupar DOS grafías que la app deja separadas —
+ * nunca al revés—, y toda opción que la app ofrece la aceptan igual `validarValorDeObra` y
+ * `obra_celda_resolver`, que es lo que importa. El test lo fija.
  */
 export function opcionesDeObra(obras: ObraParaOpciones[], codigos: Map<string, string>): string[] {
   const fijas = FIJOS.map((f) => rotuloDeObra({ codigo: f.codigo, nombre: f.nombre }))
@@ -111,10 +128,10 @@ export function opcionesDeObra(obras: ObraParaOpciones[], codigos: Map<string, s
     .map((o) => rotuloDeObra({ codigo: o.codigo, nombre: o.nombre }))
   const porCliente = new Map<string, number>()
   for (const o of vivas) {
-    const c = o.cliente_texto?.trim()
+    const c = o.cliente_texto?.trim().toUpperCase()
     if (c) porCliente.set(c, (porCliente.get(c) ?? 0) + 1)
   }
-  const sinObra = [...porCliente].filter(([, n]) => n > 1).map(([c]) => `Sin obra – ${c}`).sort()
+  const sinObra = [...porCliente].filter(([, n]) => n > 1).map(([c]) => rotuloSinObra(c)).sort()
   return [...fijas, ...conCodigo, ...sinObra]
 }
 
