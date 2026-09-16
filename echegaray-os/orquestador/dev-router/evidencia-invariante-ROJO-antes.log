@@ -1,0 +1,82 @@
+XXX
+
+Failed tests:
+
+✖ el spec no espera NINGÚN rótulo que el cuadro ya no dibuja (4.064681ms)
+  AssertionError [ERR_ASSERTION]: el spec espera rótulos que el componente ya no dibuja: Adelanto banco / embargos · Adelanto efectivo · Total efectivo · Cobra total · Adelanto banco
+  + actual - expected
+  
+  + [
+  +   'Adelanto banco / embargos',
+  +   'Adelanto efectivo',
+  +   'Total efectivo',
+  +   'Cobra total',
+  +   'Adelanto banco'
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/wt-dev-router/echegaray-os/src/features/administracion/components/liquidacion/cuadro/e2eAlDia.test.mjs:67:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.start (node:internal/test_runner/test:1191:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'Adelanto banco / embargos', 'Adelanto efectivo', 'Total efectivo', 'Cobra total', 'Adelanto banco' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+✖ el spec no se olvida de NINGUNA columna del cuadro (0.796516ms)
+  AssertionError [ERR_ASSERTION]: columnas que el cuadro dibuja y el spec no verifica: Pagado · Saldo · Hs · Presentismo · Total · Saldo red.
+  + actual - expected
+  
+  + [
+  +   'Pagado',
+  +   'Saldo',
+  +   'Hs',
+  +   'Presentismo',
+  +   'Total',
+  +   'Saldo red.'
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/wt-dev-router/echegaray-os/src/features/administracion/components/liquidacion/cuadro/e2eAlDia.test.mjs:74:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'Pagado', 'Saldo', 'Hs', 'Presentismo', 'Total', 'Saldo red.' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+✖ las aserciones de orden comparan columnas que existen (si no, comparan contra -1 y mienten) (0.644589ms)
+  AssertionError [ERR_ASSERTION]: i('…') sobre rótulos inexistentes devuelve -1 y la comparación no prueba nada: Adelanto banco · Total efectivo · Cobra total
+  + actual - expected
+  
+  + [
+  +   'Adelanto banco',
+  +   'Total efectivo',
+  +   'Cobra total'
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/wt-dev-router/echegaray-os/src/features/administracion/components/liquidacion/cuadro/e2eAlDia.test.mjs:81:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'Adelanto banco', 'Total efectivo', 'Cobra total' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

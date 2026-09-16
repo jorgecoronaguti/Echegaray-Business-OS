@@ -72,3 +72,20 @@ export function planEstandar(cwd, { archivosTest = [], archivosLint = [], conTyp
   if (archivosLint.length) plan.push(() => lint(cwd, archivosLint))
   return plan
 }
+
+/**
+ * SINTAXIS DE UN .ts SIN node_modules.
+ *
+ * Node 24 hace strip de tipos nativo, así que ejecutar el archivo distingue lo que importa:
+ * si el archivo está roto sale `SyntaxError`; si está sano y sólo le faltan sus dependencias
+ * sale `ERR_MODULE_NOT_FOUND`. Es un typecheck pobre —no verifica TIPOS— y por eso no se
+ * presenta como typecheck: verifica que el archivo siga siendo código válido.
+ * Cuando hay node_modules, el que manda es `typecheck()`.
+ */
+export async function sintaxisTS(cwd, archivo) {
+  const t0 = Date.now()
+  const r = await correr('node', [archivo], { cwd, nombre: `sintaxis(${archivo})`, timeoutMs: 60_000 })
+  const roto = /SyntaxError|TypeError: Unexpected|Unexpected token/.test(r.cola)
+  return { nombre: `sintaxis(${archivo})`, verde: !roto, codigo: roto ? 1 : 0, ms: Date.now() - t0,
+    comando: `node ${archivo}`, cola: roto ? r.cola : 'sin SyntaxError (las dependencias faltantes no cuentan)' }
+}
