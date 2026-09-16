@@ -74,3 +74,20 @@ test('UNA CUENTA INVÁLIDA NO SE GUARDA', () => {
   assert.equal(r.ok, false)
   assert.equal(leerCeldaNumerica('hola').ok, false)
 })
+
+test('UNA CUENTA SIN `=` SE EVALÚA IGUAL Y SE GUARDA CON EL `=` (dueño, 16/09/2026)', () => {
+  assert.deepEqual(leerCeldaNumerica('1000+2000'), { ok: true, valor: 3000, expresion: '=1000+2000' })
+  assert.deepEqual(leerCeldaNumerica('3000 - 500'), { ok: true, valor: 2500, expresion: '=3000 - 500' })
+  assert.deepEqual(leerCeldaNumerica('100x2'), { ok: true, valor: 200, expresion: '=100x2' })
+  assert.deepEqual(leerCeldaNumerica('(100+50)/2'), { ok: true, valor: 75, expresion: '=(100+50)/2' })
+  assert.deepEqual(leerCeldaNumerica('340.909,09 + 197.272,73'), { ok: true, valor: 538181.82, expresion: '=340.909,09 + 197.272,73' })
+  // UN NÚMERO SUELTO SIGUE SIENDO UN NÚMERO, SIN CUENTA: «-500» y «266.000» no se convierten en fórmula.
+  assert.deepEqual(leerCeldaNumerica('266.000'), { ok: true, valor: 266000, expresion: null })
+  assert.deepEqual(leerCeldaNumerica('-500'), { ok: true, valor: -500, expresion: null })
+  // LO QUE NO ES NI NÚMERO NI CUENTA SE RECHAZA DICIENDO CÓMO SE ESCRIBE UNA CUENTA.
+  const r = leerCeldaNumerica('hola')
+  assert.equal(r.ok, false)
+  assert.match((r as { error: string }).error, /1000\+2000/)
+  const m = leerCeldaNumerica('1000+')
+  assert.equal(m.ok, false)
+})

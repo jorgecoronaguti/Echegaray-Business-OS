@@ -174,6 +174,19 @@ export function leerCeldaNumerica(texto: string): LecturaDeCelda {
     return r.ok ? { ok: true, valor: r.valor, expresion: crudo } : r
   }
   const n = leerNumeroEsAR(crudo)
-  if (!n.ok) return { ok: false, error: 'número inválido' }
-  return { ok: true, valor: n.valor, expresion: null }
+  if (n.ok) return { ok: true, valor: n.valor, expresion: null }
+  // UNA CUENTA SIN `=` TAMBIÉN ES UNA CUENTA (dueño, 16/09/2026: «las celdas no funcionan como suma o resta»).
+  // Él escribe «1000+2000» como en la calculadora y la celda le contestaba «número inválido» sin decirle que
+  // faltaba el `=`. Si lo tecleado tiene un operador entre números, se evalúa igual y se guarda con el `=`
+  // adelante para que al reabrir la celda se vea la cuenta, como si la hubiera escrito con `=`.
+  if (pareceCuenta(crudo)) {
+    const r = evaluarFormulaEsAR(crudo)
+    return r.ok ? { ok: true, valor: r.valor, expresion: `=${crudo}` } : r
+  }
+  return { ok: false, error: 'no es un número ni una cuenta (por ejemplo 1000+2000)' }
+}
+
+/** Hay un operador de la gramática DESPUÉS de algún dígito: «1000+2000», «3000 - 500», «100x2», «(100+50)/2». */
+export function pareceCuenta(texto: string): boolean {
+  return /\d[\s\d.,)]*[+\-−*×x\/÷]/i.test(texto) || /^[(\s]*[+\-−]?[\d.,]+[\s\d.,]*\)/.test(texto)
 }
