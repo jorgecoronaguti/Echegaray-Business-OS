@@ -195,3 +195,15 @@ test('la lectura ALTERNATIVA resuelve cuando la literal no: el papel dice una so
   assert.equal(codigoDe(resultado.valor), 'OB-0022')
   assert.match(resultado.porque, /alternativa/)
 })
+
+test('el cliente se escribe aunque la obra no se sepa: la J es el cliente, la L queda con su motivo', () => {
+  // El caso real del fajo dc2d0273 #4: «Messino D. Ivan». El modelo declaró en `dudas` que la segunda
+  // palabra no se leía. MESSINA está fuera de discusión; cuál de sus obras, no.
+  const c = { anotacion: 'Messino D. Ivan' }
+  const { aplicado, resultado } = completarDesdeAnotacion(c, CATALOGO, { listas: { obras: ['MESSINA'], unidades: ['Civil'] } })
+  assert.deepEqual(aplicado, ['obra'])
+  assert.equal(c.obra, 'MESSINA')
+  assert.equal(c.obraFila, undefined, 'elegir entre cinco obras no es tolerar una abreviatura: es adivinar')
+  assert.equal(resultado.valor, 'Sin obra – MESSINA')
+  assert.ok(resultado.confianza < UMBRAL)
+})

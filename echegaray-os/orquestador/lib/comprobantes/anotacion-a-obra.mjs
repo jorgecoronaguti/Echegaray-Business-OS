@@ -427,13 +427,22 @@ export function completarDesdeAnotacion(comprobante, catalogo, o = {}) {
     const porTexto = anotacionAObra(texto, catalogo)
     if (porTexto.confianza > r.confianza || !anotacion) r = { ...porTexto, porque: `${porTexto.porque} (en el mensaje)` }
   }
-  if (r.confianza < umbral || !r.valor) return { aplicado: [], resultado: r, anotacion }
   const aplicado = []
   const poner = (campo, dim, valor) => {
     if (!valor || String(c[campo] ?? '').trim()) return
     c[campo] = valor
     c[`${dim}Via`] = 'anotacion'
     aplicado.push(dim)
+  }
+  // ═══ EL CLIENTE SE SABE AUNQUE LA OBRA NO ═══
+  //
+  // «Messino D. Ivan» (fajo dc2d0273 #4, la segunda palabra ilegible y el modelo lo declaró) nombra a
+  // MESSINA sin ninguna duda; lo que no dice es cuál de sus obras. La J es el cliente: se escribe. La
+  // columna «Obra» queda vacía a propósito, con su motivo, porque elegir entre cinco obras no es
+  // tolerar una abreviatura: es adivinar.
+  if (r.confianza < umbral || !r.valor) {
+    poner('obra', 'obra', jDelCliente(r.cliente, listas?.obras, indiceDe(catalogo)?.clienteAlias))
+    return { aplicado, resultado: r, anotacion }
   }
   poner('obraFila', 'obraFila', r.valor)
   // EL PORQUÉ VIAJA CON EL VALOR. `obraParaLaColumna` lo imprime tal cual: sin él, el informe del
