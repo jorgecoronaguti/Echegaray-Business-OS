@@ -74,6 +74,19 @@ export interface CompraSheet {
   // que no ocurrieron. No está en `COLUMNAS` ni en este tipo para que ese error no compile, y
   // `canonico-compras-v4.test.ts` se pone rojo si vuelve.
   monto_pagado: number | null
+  // ═══ LOS DOS TRAMOS DE PAGO, Y LO QUE NO ESTÁ (16/09/2026) ═══
+  //
+  // `Monto Pagado` es el tramo 1 y `Monto Parcial 2` el tramo 2; `Fecha prevista de pago 2` es la
+  // fecha del segundo. `Total o Parcial` dice si lo pagado cubrió el comprobante entero.
+  //
+  // `monto_parcial_1` NO ESTÁ Y ES A PROPÓSITO. Su nombre promete un tramo y no lo es: en 716 de sus
+  // 717 celdas con contenido es la fórmula `=T-O`, o sea el saldo que queda después del primero, con
+  // signo negativo (medido el 18/08/2026 leyendo FÓRMULAS, no valores — ver `deuda-por-tramos.mjs`).
+  // La primera pantalla que lo sume como un pago va a duplicar la deuda: ya pasó, $30.167.844 contra
+  // $15.083.922, el doble exacto.
+  monto_parcial_2: number | null
+  pago_total_o_parcial: string | null
+  fecha_prevista_2: string | null
   saldo_pendiente: number | null
   cuit: string | null
   anulada: boolean
@@ -105,6 +118,7 @@ const COLUMNAS = [
   'fila', 'sheet_id', 'clave', 'fecha', 'proveedor', 'tipo', 'comprobante', 'concepto',
   'detalle_obra', 'obra_texto', 'unidad_negocio', 'categoria', 'importe', 'iva', 'total',
   'estado', 'estado_pago', 'tipo_pago', 'modalidad', 'fecha_prevista', 'tramo_vencimiento', 'monto_pagado',
+  'monto_parcial_2', 'pago_total_o_parcial', 'fecha_prevista_2',
   'saldo_pendiente', 'cuit', 'anulada',
 ].join(', ')
 

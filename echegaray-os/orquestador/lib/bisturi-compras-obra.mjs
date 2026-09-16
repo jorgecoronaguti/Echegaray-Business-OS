@@ -43,22 +43,27 @@ import { validarValorDeObra } from './obra-destino.mjs'
 /** Lo que la celda dice, para comparar. Vacía y de espacios son lo mismo: no hay obra. */
 export const normalizarCelda = (v) => String(v ?? '').trim()
 
-const rechazar = (motivo, detalle) => ({ accion: 'rechazar', motivo, detalle })
-const diferir = (motivo, detalle) => ({ accion: 'diferir', motivo, detalle })
+export const rechazar = (motivo, detalle) => ({ accion: 'rechazar', motivo, detalle })
+export const diferir = (motivo, detalle) => ({ accion: 'diferir', motivo, detalle })
 
 /**
  * Resuelve el layout contra la fila de rótulos VIVA. Cualquier duda difiere: escribir en una columna
  * elegida a ciegas es imputar plata a una obra que nadie decidió.
+ *
+ * EXPORTADA desde el 16/09/2026 para que el bisturí de PAGOS use el mismo contrato de columnas. Ahí
+ * `obra_celda` no hace falta, así que `exigirObra` lo hace opcional — lo demás es idéntico, y tiene
+ * que serlo: dos lecturas del layout de la misma pestaña serían dos layouts.
+ *
  * @returns {{idx?:Record<string,number>, decision?:object}}
  */
-function resolverLayout(encabezado) {
+export function resolverLayout(encabezado, { exigirObra = true } = {}) {
   let idx
   try {
     idx = contratoDeColumnas(encabezado ?? [])
   } catch (e) {
     return { decision: diferir('layout_ambiguo', e.message) }
   }
-  if (idx.obra_celda === undefined) {
+  if (exigirObra && idx.obra_celda === undefined) {
     return { decision: diferir('sin_columna_obra', 'Compras no tiene la columna «Obra» en la fila de rótulos: no escribo en otra') }
   }
   return { idx }
@@ -92,8 +97,14 @@ export function compararRespaldo(compra, respaldo, fila) {
   return null
 }
 
-/** ¿Es la misma compra que la pantalla vio? `null` si sí; si no, el rechazo. */
-function verificarHuella(compra, cambio, respaldo) {
+/**
+ * ¿Es la misma compra que la pantalla vio? `null` si sí; si no, el rechazo.
+ *
+ * EXPORTADA desde el 16/09/2026: el bisturí de PAGOS prueba la identidad de la fila EXACTAMENTE
+ * igual. Una segunda definición de «esta fila sigue siendo esta compra» sería la puerta por la que un
+ * pago aterriza en la factura de otro proveedor.
+ */
+export function verificarHuella(compra, cambio, respaldo) {
   const esperada = cambio?.clave ?? null
   if (esperada) {
     const real = claveDeCompra(compra)
