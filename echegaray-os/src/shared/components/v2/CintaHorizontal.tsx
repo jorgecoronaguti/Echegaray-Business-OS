@@ -41,13 +41,66 @@
 //
 // `overflow: clip` en el envoltorio y no `hidden`: `hidden` también crea contenedor de scroll y
 // volvería a robarle el anclaje al `sticky` que está en ese mismo elemento.
+//
+// ═══ Y SI EL STICKY IGUAL NO LA SOSTIENE, SE MIDE Y SE FIJA (16/09/2026) ═══
+//
+// El dueño, en Chrome sobre Mac, ve la fila «Persona + días» irse con la página. `sticky` depende de la
+// cadena entera de ancestros y de cosas que este archivo no controla; en vez de afirmar que anda, el
+// componente MIDE en cada scroll dónde quedó la cabecera. Si el envoltorio ya pasó bajo el header y la
+// cabecera se fue con él, el sticky falló: de ahí en más la cabecera va `position: fixed` bajo el header,
+// con el borde y el ancho del envoltorio, y un espaciador de su alto ocupa su lugar para que la tabla no
+// salte. La decisión es pura y está probada en `cabeceraFija.ts`; acá sólo se cablea.
 
-import { useCallback, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { ALTO_HEADER_APP } from './patron'
+import { elStickyFallo, mismoModo, modoDeCabecera, type ModoDeCabecera } from './cabeceraFija'
 
 /** El envoltorio de los rótulos: pegado bajo el header de la app y recortado sin volverse scroller. */
 const CABECERA_PEGAJOSA: CSSProperties = {
   position: 'sticky', top: ALTO_HEADER_APP, zIndex: 4, overflow: 'clip',
+}
+
+/**
+ * EL MEDIDOR DEL STICKY. Escucha el scroll en captura —así ve también el de un ancestro que scrollee por su
+ * cuenta, que es justo el caso en que el sticky se pierde—, el `resize` y el tamaño del envoltorio. Con el
+ * sticky caído queda latcheado: una vez que falló, no se le vuelve a creer.
+ */
+function useCabeceraFija(activa: boolean) {
+  const envoltorio = useRef<HTMLDivElement>(null)
+  const cabecera = useRef<HTMLDivElement>(null)
+  const stickyRoto = useRef(false)
+  const [modo, setModo] = useState<ModoDeCabecera>({ modo: 'flujo' })
+  const [altoCabecera, setAltoCabecera] = useState(0)
+  useEffect(() => {
+    if (!activa) return
+    const medir = () => {
+      const env = envoltorio.current?.getBoundingClientRect()
+      const cab = cabecera.current?.getBoundingClientRect()
+      if (!env || !cab) return
+      const m = { envoltorio: env, cabecera: { top: cab.top, height: cab.height }, techo: ALTO_HEADER_APP }
+      if (!stickyRoto.current && elStickyFallo(m)) stickyRoto.current = true
+      const siguiente = modoDeCabecera(m, stickyRoto.current)
+      setAltoCabecera((a) => (a === cab.height ? a : cab.height))
+      setModo((actual) => (mismoModo(actual, siguiente) ? actual : siguiente))
+    }
+    medir()
+    window.addEventListener('scroll', medir, { capture: true, passive: true })
+    window.addEventListener('resize', medir)
+    const observador = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(medir)
+    if (envoltorio.current) observador?.observe(envoltorio.current)
+    return () => {
+      window.removeEventListener('scroll', medir, { capture: true })
+      window.removeEventListener('resize', medir)
+      observador?.disconnect()
+    }
+  }, [activa])
+  return { refEnvoltorio: envoltorio, refCabecera: cabecera, modo, altoCabecera }
+}
+
+/** El estilo de la cabecera según lo medido: el `sticky` de siempre, o fija donde el sticky no llegó. */
+function estiloDeCabecera(modo: ModoDeCabecera): CSSProperties {
+  if (modo.modo === 'flujo') return CABECERA_PEGAJOSA
+  return { position: 'fixed', top: modo.top, left: modo.left, width: modo.width, zIndex: 4, overflow: 'clip' }
 }
 
 export function CintaHorizontal(
@@ -85,14 +138,21 @@ export function CintaHorizontal(
   // El `ref` mide al MONTAR: un estado que arranca en `false` y sólo se actualiza al scrollear nunca
   // le mostraría la sombra a quien todavía no scrolleó, que es justo a quien hay que avisarle.
   const montar = useCallback((el: HTMLDivElement | null) => { medir(el) }, [medir])
+  const { refEnvoltorio, refCabecera, modo, altoCabecera } = useCabeceraFija(cabecera != null)
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div ref={refEnvoltorio} style={{ position: 'relative' }}>
+      {/* EL ESPACIADOR: con la cabecera fija, ocupa su lugar en el flujo para que la tabla no suba de golpe. */}
+      {cabecera && modo.modo === 'fija' && (
+        <div aria-hidden style={{ height: altoCabecera }} data-testid={testid ? `${testid}-espaciador` : undefined} />
+      )}
       {cabecera && (
         <div
-          style={CABECERA_PEGAJOSA}
+          ref={refCabecera}
+          style={estiloDeCabecera(modo)}
           className="bg-canvas"
           data-testid={testid ? `${testid}-cabecera` : undefined}
+          data-modo={modo.modo}
         >
           {/* El fondo opaco es obligatorio: sin él las filas se leen ENCIMA de los rótulos al pasar
               por debajo. Va en el envoltorio y no acá para que cubra todo el ancho visible aunque la
