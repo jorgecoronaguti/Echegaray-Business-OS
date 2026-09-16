@@ -4,9 +4,9 @@
 --
 -- «A la derecha, cada vez que haga click en Materiales, HH, Mano de obra o Subcontratos, que me salga
 -- en ese menú discriminado lo que está considerando.» Y el mismo día, sobre OB-0011 PISOS
--- INDUSTRIALES: «has inventado costos». Subcontratos decía $20.084.000 y en Compras está claro qué
--- está pagado y qué por vencer: Pedro Tello tiene la 806 pagada, la 880 pagada, las 881–883 pendientes
--- con pago parcial y vencimiento 18/09, 25/09 y 02/10, y seis cuotas 956–961 sin un peso pagado.
+-- INDUSTRIALES: «has inventado costos». Subcontratos sumaba entera cada cuota de Pedro Tello, y en
+-- Compras está claro qué está pagado y qué por vencer: la 880 pagada, las 881–883 pendientes con pago
+-- parcial y vencimiento 18/09, 25/09 y 02/10, y seis cuotas 956–961 sin un peso pagado.
 --
 -- ═══ LA REGLA «A LA FECHA», POR COMPROBANTE ═══
 --
@@ -16,10 +16,11 @@
 --                                                            total). El resto es POR VENCER.
 --   · lo demás (vencido, o sin fecha prevista)             → el total.
 --
--- Para OB-0011 hoy: a la fecha 7.220.000 (4.200.000 + 1.800.000 + 538.181,82 + 340.909,09 +
--- 340.909,09) y por vencer 12.864.000; la suma sigue siendo 20.084.000. `comprometido_futuro` pasa a
--- ser la suma de lo por vencer: la regla vieja «fecha del comprobante > hoy» queda adentro como caso
--- particular.
+-- Para OB-0011 el 15/09/2026, con lo cargado ese día: a la fecha 1.967.272,73 (la 880 entera más los
+-- 197.272,73 pagados de la 881) y el resto, 12.666.727,27, por vencer. NINGÚN IMPORTE DE ACÁ ES UN
+-- CONTRATO: Compras cambia a diario —esas cuotas se recargaron dos veces el mismo 15/09—, y lo que se
+-- verifica es la REGLA, no el número. `comprometido_futuro` pasa a ser la suma de lo por vencer: la
+-- regla vieja «fecha del comprobante > hoy» queda adentro como caso particular.
 --
 -- ═══ UNA SOLA REGLA DE FILAS ═══
 --
@@ -320,11 +321,16 @@ as $function$
         left join public.personas pe on pe.id = m.persona_id)
     when p_rubro = 'hh' then (
       -- LAS HORAS POR PERSONA SON LAS DE `hh_de_obra` (la pantalla completa `?hh=`): ninguna suma nueva.
+      -- Y SE DICE SI SON DE LA CACHÉ: `ficha_cliente_cache_leer` sirve hasta 10 minutos de antigüedad,
+      -- mientras la columna HH de la tabla (`obra_plan_vs_real.hh_real`) se calcula en vivo. Con una
+      -- carga de horas reciente los dos números difieren sin que nada esté mal, y el panel tiene que
+      -- poder decir «esto es de hace 4 minutos» en vez de acusar un descuadre que no existe.
       select case when t.j is null then null::jsonb else jsonb_build_object(
                'obra_id', p_obra, 'rubro', 'hh', 'corte', current_date,
                'total', (select sum((x ->> 'hh')::numeric) from jsonb_array_elements(coalesce(t.j -> 'por_persona', '[]'::jsonb)) x),
                'n', jsonb_array_length(coalesce(t.j -> 'por_persona', '[]'::jsonb)),
                'desde', t.j -> 'desde', 'hasta', t.j -> 'hasta',
+               'cache_calculado_en', t.j -> 'cache_calculado_en',
                'filas', coalesce(t.j -> 'por_persona', '[]'::jsonb)) end
         from (select public.hh_de_obra(p_obra, null) as j) t)
     else null::jsonb

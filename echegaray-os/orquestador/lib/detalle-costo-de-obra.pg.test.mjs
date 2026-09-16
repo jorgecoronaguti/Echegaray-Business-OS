@@ -28,7 +28,8 @@ const MIGRACION = join(import.meta.dirname, '..', '..', 'supabase/migrations', A
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
 
 const n = (x) => (x == null ? null : Number(x))
-const igual = (a, b, msg) => assert.ok(Math.abs((a ?? 0) - (b ?? 0)) < 0.005 && (a == null) === (b == null), `${msg}: ${a} ≠ ${b}`)
+const cierra = (a, b) => Math.abs((a ?? 0) - (b ?? 0)) < 0.005 && (a == null) === (b == null)
+const igual = (a, b, msg) => assert.ok(cierra(a, b), `${msg}: ${a} ≠ ${b}`)
 
 /** LA REGLA «A LA FECHA», escrita aparte de la migración, sobre las columnas crudas. */
 function aLaFecha(f) {
@@ -92,6 +93,18 @@ test('el detalle de cada celda cierra con la celda y lo por vencer no entra a la
       }
     })
 
+    // LAS HORAS SE COMPARAN CONTRA LA CUENTA EN VIVO, NO CONTRA LA CACHÉ.
+    // `hh_de_obra` —que es lo que el panel muestra, igual que la pantalla `?hh=`— sirve hasta 10 minutos
+    // de antigüedad desde `ficha_cliente_cache`, mientras la columna HH sale de `obra_plan_vs_real`, que
+    // se calcula siempre. El 15/09/2026 este test dio rojo con «195 ≠ 186» y a los diez minutos verde:
+    // no había defecto, había caché. Lo que se afirma entonces es lo que SÍ es invariante —que las dos
+    // cuentas son la misma— y el detalle se exige igual a la celda sólo cuando no vino de la caché.
+    const HH = `select d ->> 'total' as total, d -> 'cache_calculado_en' is not null as de_cache,
+                       (select sum((x ->> 'hh')::numeric)
+                          from jsonb_array_elements(coalesce(public.hh_de_obra_en_vivo($1, null) -> 'por_persona', '[]'::jsonb)) x) as en_vivo,
+                       (select hh_real from public.obra_plan_vs_real where obra_id = $1) as celda
+                  from public.detalle_costo_de_obra($1, 'hh') d`
+
     await t.test('2 · la celda y el detalle son el mismo número: materiales, subcontratos, mano de obra y HH', async () => {
       const celdas = await q(`
         select x ->> 'obra_id' as obra_id, x ->> 'materiales' as materiales, x ->> 'subcontratos' as subcontratos,
@@ -104,8 +117,7 @@ test('el detalle de cada celda cierra con la celda y lo por vencer no entra a la
           uno(`select d ->> 'total' as total, d ->> 'por_vencer' as pv, d ->> 'n' as n from public.detalle_costo_de_obra($1, 'materiales') d`, [k.obra_id]),
           uno(`select d ->> 'total' as total, d ->> 'por_vencer' as pv, d ->> 'n' as n from public.detalle_costo_de_obra($1, 'subcontratos') d`, [k.obra_id]),
           uno(`select d ->> 'total' as total from public.detalle_costo_de_obra($1, 'mano_obra') d`, [k.obra_id]),
-          uno(`select d ->> 'total' as total, (select hh_real from public.obra_plan_vs_real where obra_id = $1) as celda
-                 from public.detalle_costo_de_obra($1, 'hh') d`, [k.obra_id]),
+          uno(HH, [k.obra_id]),
         ])
         igual(n(m.total), n(k.materiales) ?? 0, `materiales de ${k.obra_id}`)
         igual(n(s.total), n(k.subcontratos) ?? 0, `subcontratos de ${k.obra_id}`)
@@ -115,7 +127,14 @@ test('el detalle de cada celda cierra con la celda y lo por vencer no entra a la
         assert.equal(Number(m.n), Number(k.n_comprobantes ?? 0), `n comprobantes de ${k.obra_id}`)
         assert.equal(Number(s.n), Number(k.n_subcontratos ?? 0), `n subcontratos de ${k.obra_id}`)
         igual(n(mo.total), n(k.mano_obra), `mano de obra de ${k.obra_id}`)
-        if (h) igual(n(h.total), n(h.celda), `HH de ${k.obra_id}`)
+        if (h) {
+          // LA MISMA CUENTA: el resumen por persona del panel y la columna HH de la tabla.
+          igual(n(h.en_vivo), n(h.celda), `HH en vivo de ${k.obra_id}`)
+          if (!h.de_cache) igual(n(h.total), n(h.celda), `HH de ${k.obra_id}`)
+          else if (!cierra(n(h.total), n(h.celda))) {
+            t.diagnostic(`HH de ${k.obra_id}: el detalle viene de la caché (${h.total}) y la celda ya es ${h.celda}; el panel lo declara.`)
+          }
+        }
       }
     })
 
