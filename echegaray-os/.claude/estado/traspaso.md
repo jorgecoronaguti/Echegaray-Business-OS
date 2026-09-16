@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-16 ~01:40 (−03) · main = producción (e17fd215)_
+_actualizado: 2026-09-16 ~03:10 (−03) · main = producción (39ccb076)_
 
 ## 1. OBJETIVO GENERAL
 
@@ -81,15 +81,17 @@ Echegaray Construcciones. XSAS es la capa de inteligencia operativa. Claude Code
 
 
 ### 4f. Madrugada del 16/09
-- Liquidación rehecha desplegada (e17fd215, T2340 aplicada): Pagado/Saldo por lado, exceso al otro lado, fórmulas «=», encabezado
-  y Persona fijos. QA visual corriendo.
+- Liquidación rehecha desplegada (e17fd215, T2340 aplicada; 39ccb076 sin columna Saldo fija). Falta: Efect. red. fuera, Pagado
+  abre vacío, encabezado fijo robusto + spec Playwright (agente). Legajo → sección Retribución 2026 (agente).
 - Decisiones del dueño aplicadas por RPC: 08/09 Tello J.A. y Zogbe presentes; f.806 K «Galpones»; subcontratistas SF → OB-0005,
   Gerson LE → OB-0006, Tello LE → OB-0006, Tello ME → OB-0019, Á. Fernández ME → OB-0017; regla por fecha (única obra activa)
   repartió 184 «Sin obra» ($59,8 M: 123 OB-0005, 48 OB-0006, 12 OB-0017, 1 OB-0020) — LE galpón 7/8, cierre y mampostería
   SIN FECHAS → todo LE fue a OB-0006 (rehacer si el dueño da fechas). Scratch: `scratchpad/sin-obra-regla.mjs`.
 - **CRONOLOGÍA ROTA (queja 16/09)**: `echegaray-jornales-registros` pisó 543 registros (15/09 08:00) + 150 (16/09 07:00).
-  Timer DETENIDO (`systemctl --user stop echegaray-jornales-registros.timer`) hasta que el agente restaure 01–15/09 y 16–31/08 y
-  cambie la regla (JORNALES sólo completa). Volver a arrancarlo después del merge.
+  Causa: `echegaray-asistencia-obra` (obra del día del jefe) vs `echegaray-jornales-registros` (obra del rótulo) se pisaban 4×/día.
+  RESUELTO (972dc73f): ancla de ASISTENCIA en `registros_hh.notas`, toda fila `web:*` gana, conflicto declarado, 8 filas de 01–15/09
+  restauradas (`restaurar-hh-desde-web.mjs`), timer JORNALES reactivado. 2 conflictos de licencia quedan como la app.
+  Pendiente: asignar «día siguiente» (crea tramos de 1 día), licencia que se arrastra, encabezado fijo en Horas.
 
 ## 5. EN CURSO
 
