@@ -25,7 +25,7 @@ import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { plata } from '@/shared/utils/format'
 import {
-  aPagarProximos, frescura, NOMBRE_FUENTE, NOMBRE_IMPUESTO, porPeriodo, rotuloPeriodo, saldosAFavor, ddmm,
+  aPagarProximos, frescura, hoyAR, NOMBRE_FUENTE, NOMBRE_IMPUESTO, porPeriodo, rotuloPeriodo, saldosAFavor, ddmm,
 } from '@/features/administracion/services/impuestos'
 import { getPosicion, getSinImputar, getUltimaSincronizacion } from '@/features/administracion/services/impuestosService'
 import {
@@ -51,7 +51,7 @@ export default async function ImpuestosPage() {
 
   // El reloj entra una sola vez, acá: las reglas de `impuestos.ts` son puras y se prueban sin esperar.
   const ahora = new Date()
-  const hoy = ahora.toISOString().slice(0, 10)
+  const hoy = hoyAR(ahora)
   const proximos = aPagarProximos(posicion.data, hoy)
   const saldos = saldosAFavor(posicion.data)
   const fr = frescura(sinc.data, ahora)
