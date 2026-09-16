@@ -104,6 +104,11 @@ export interface LiquidacionDeLaQuincena {
    * los escribe sólo si están: sin la migración, la foto sale sin presentismo y no rompe el cierre.
    */
   hayColumnasPresentismo: boolean
+  /**
+   * `liquidacion_linea.formulas` EXISTE (20260915T2340). Sin ella una celda escrita con `=` guarda el NÚMERO que
+   * dio y pierde la cuenta: la pantalla lo dice en vez de fingir que la guardó.
+   */
+  hayColumnaDeFormulas: boolean
   /** `false` mientras `recibo_sueldo_linea` no exista: el neto sale de `nomina_recibo_neto`. */
   hayRecibosDeSueldo: boolean
   /** Cada fuente que no se pudo leer, con su mensaje. Vacío = se leyó todo. */
@@ -237,9 +242,10 @@ export async function getLiquidacionDeLaQuincena(
         subcontratoId: deSubcontrato.get(r.id) ?? null,
       }))
 
-  const { estados, redondeos, overrides, importesCargados, presentismosSellados } = leerGuardadas(guardadas.data)
+  const { estados, redondeos, overrides, formulas, importesCargados, presentismosSellados } = leerGuardadas(guardadas.data)
   const camposEditables = camposGuardables(guardadas.columnas)
   const hayColumnasPresentismo = COLUMNAS_PRESENTISMO.every((c) => guardadas.columnas.includes(c))
+  const hayColumnaDeFormulas = guardadas.columnas.includes('formulas')
 
   // ═══ SÓLO QUIENES ESTÁN ACTIVOS ESTA QUINCENA ═══
   //
@@ -330,6 +336,7 @@ export async function getLiquidacionDeLaQuincena(
     plantel: activas.map((p) => p.id),
     hayRecibosDeSueldo: exposicion.hayRecibosDeSueldo,
     hayColumnasPresentismo,
+    hayColumnaDeFormulas,
     horas,
     // LA QUINCENA CERRADA NO SE PISA. Sus cifras son la foto del cierre y no admiten override: si
     // se aplicaran acá, una celda escrita después del cierre cambiaría el registro de lo que ya se
@@ -344,7 +351,7 @@ export async function getLiquidacionDeLaQuincena(
         // vez y con sus diez tests. Acá sólo se le entrega la fuente.
         : c.lineas.map((l) => aplicarOverrides(
           l, overrides.get(l.personaId) ?? {}, c.grupo, espejo.cadenaPorPersona.get(l.personaId) ?? null,
-          blancoDe(c.grupo, l), presentismoDe(c.grupo, l),
+          blancoDe(c.grupo, l), presentismoDe(c.grupo, l), formulas.get(l.personaId) ?? {},
         )),
     })),
     camposEditables,
@@ -381,9 +388,12 @@ const COLUMNAS_HORAS = ['horas_manual', 'horas_negro_manual'] as const
 /** La foto del presentismo, si la migración `20260915T2220` ya se aplicó. */
 const COLUMNAS_PRESENTISMO = ['presentismo', 'presentismo_perdido'] as const
 
+/** Lo pagado de verdad y las cuentas de las celdas, si la migración `20260915T2340` ya se aplicó. */
+const COLUMNAS_PAGADO = ['pagado_banco', 'pagado_efectivo', 'formulas'] as const
+
 /** Los grupos que dependen de una migración, del más viejo al más nuevo. */
 const GRUPOS_OPCIONALES: readonly (readonly string[])[] = [
-  COLUMNAS_MANUALES, COLUMNAS_BLANCO, COLUMNAS_NEGRO, COLUMNAS_HORAS, COLUMNAS_PRESENTISMO,
+  COLUMNAS_MANUALES, COLUMNAS_BLANCO, COLUMNAS_NEGRO, COLUMNAS_HORAS, COLUMNAS_PRESENTISMO, COLUMNAS_PAGADO,
 ]
 
 /**

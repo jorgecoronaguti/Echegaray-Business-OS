@@ -69,6 +69,36 @@ test('VACÍO NO ES CERO: la celda vacía viaja como «» y la acción la traduce
   assert.doesNotMatch(cuerpo, /\|\| 0/)
 })
 
+// ═══ LA CELDA QUE CALCULA (dueño, 15/09/2026) ═══
+
+test('LA CUENTA SE LEE CON EL MISMO LECTOR QUE EL NAVEGADOR, Y UNA INVÁLIDA NO SE GUARDA', () => {
+  const cuerpo = cuerpoDe('guardarCeldaLiquidacion')
+  // EL DEFECTO QUE ATRAPA: un `Number(valor)` en el servidor. «=9*105» daría NaN y la celda se guardaría
+  // vacía —o peor, en 0— sin que nadie se entere; o un segundo parser daría otro número que el de la pantalla.
+  assert.match(cuerpo, /leerCeldaNumerica\(/)
+  assert.match(cuerpo, /if \(!escrito\.ok\) return \{ ok: false, error: escrito\.error \}/)
+  assert.ok(
+    cuerpo.indexOf('leerCeldaNumerica(') < cuerpo.indexOf('createAdminClient()'),
+    'lo tecleado se valida antes de tomar la clave de servicio',
+  )
+})
+
+test('LA CUENTA SE GUARDA AL LADO DEL NÚMERO, NO EN SU LUGAR', () => {
+  const cuerpo = cuerpoDe('guardarCeldaLiquidacion')
+  // EL DEFECTO QUE ATRAPA: escribir la expresión en la columna numérica, o pisar `formulas` entero con
+  // `{ [campo]: expresion }` y borrar las cuentas de las otras celdas de la fila.
+  assert.match(cuerpo, /\[columna\]: nuevo/)
+  assert.match(cuerpo, /siguientesFormulas\(hoy\?\.formulas, campo, escrito\.expresion\)/)
+})
+
+test('SIN LA COLUMNA `formulas` LA LIMITACIÓN SE DICE, NO SE FINGE', () => {
+  const cuerpo = cuerpoDe('guardarCeldaLiquidacion')
+  // EL DEFECTO QUE ATRAPA: devolver «Guardado.» cuando la cuenta se perdió. Quien la escribió creería que
+  // al reabrir la celda va a ver su expresión, y va a ver un número pelado.
+  assert.match(cuerpo, /escrito\.expresion != null && !hayFormulas/)
+  assert.match(cuerpo, /La cuenta NO se guardó/)
+})
+
 test('EL $/HORA NO SE ESCRIBE EN OFICINA: le borraría el neto mensual acordado', () => {
   // EL DEFECTO QUE ATRAPA: `persona_tarifa` acepta `valor_hora` O `neto_mensual` (CHECK «una sola
   // forma»). Un $/h escrito sobre Maldonado o Nievas convertiría $1.800.000 mensuales en una tarifa

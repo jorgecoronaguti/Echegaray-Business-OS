@@ -30,6 +30,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { permisoDeLiquidacion, type PermisoLiquidacion } from './liquidacionPermiso'
 import { CAMPOS_EDITABLES, COLUMNA_DE, rechazoDelValorDeCelda, type CampoEditable } from './liquidacionOverrides'
+import { siguientesFormulas } from './liquidacionGuardadas'
+import { LARGO_MAXIMO_DE_FORMULA, leerCeldaNumerica } from '@/shared/lib/formulaEsAR'
 import { validarMotivoDeReapertura } from './liquidacionCierre'
 import { escribirRedondeo } from './efectivoRedondeado'
 
@@ -280,9 +282,12 @@ export async function reabrirQuincena(entrada: unknown): Promise<ResultadoLiquid
 const celdaSchema = ventanaSchema.extend({
   persona_id: z.string().uuid(),
   campo: z.enum(CAMPOS_EDITABLES),
+  // LO TECLEADO, TAL CUAL: un número o una CUENTA que empieza con `=` (dueño, 15/09/2026: «tiene que poder
+  // calcular dentro de las celdas, como hace sheet»). Lo lee `leerCeldaNumerica`, el MISMO lector que usa la
+  // celda en el navegador: dos parsers darían dos resultados para el mismo texto, y el que decide es éste.
   // VACÍO BORRA EL OVERRIDE Y VUELVE EL CÁLCULO. Un 0 NO es vacío: «no le doy nada por banco» es
   // una afirmación del dueño y se guarda como 0.
-  valor: z.union([z.literal(''), z.coerce.number().finite()]),
+  valor: z.union([z.number().finite(), z.string().max(LARGO_MAXIMO_DE_FORMULA)]),
   // DESHACER (Cmd+Z): lo que debería haber hoy. Si la celda cambió, no se pisa.
   esperado: z.union([z.literal(''), z.coerce.number().finite()]).optional(),
 })
@@ -296,7 +301,9 @@ async function columnaGuardable(
   if (sonda.error) {
     return {
       error: `La columna «${columna}» no existe todavía: falta aplicar la migración `
-        + (campo === 'horas' || campo === 'horasNegro'
+        + (campo === 'pagadoBanco' || campo === 'pagadoEfectivo'
+          ? '20260915T2340_liquidacion_pagado_real.sql. No guardé nada.'
+          : campo === 'horas' || campo === 'horasNegro'
           ? '20260915T0510_liquidacion_horas_manual.sql. No guardé nada.'
           : campo === 'negro'
           ? '20260915T0300_liquidacion_negro_manual.sql. No guardé nada.'
@@ -316,7 +323,12 @@ async function columnaGuardable(
 export async function guardarCeldaLiquidacion(entrada: unknown): Promise<ResultadoLiquidacion> {
   const parsed = celdaSchema.safeParse(entrada)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
-  const { persona_id: personaId, campo, valor, esperado, ...v } = parsed.data
+  const { persona_id: personaId, campo, valor: tecleado, esperado, ...v } = parsed.data
+  // UNA CUENTA QUE NO SE ENTIENDE NO SE GUARDA, Y SE DICE POR QUÉ. Guardar el texto crudo dejaría una celda que
+  // no es un número; guardar un 0 liquidaría a alguien en cero por un tipeo.
+  const escrito = leerCeldaNumerica(typeof tecleado === 'number' ? String(tecleado) : tecleado)
+  if (!escrito.ok) return { ok: false, error: escrito.error }
+  const valor = escrito.valor == null ? '' as const : escrito.valor
   const rechazo = rechazoDelValorDeCelda(campo, valor)
   if (rechazo) return { ok: false, error: rechazo }
 
@@ -336,18 +348,24 @@ export async function guardarCeldaLiquidacion(entrada: unknown): Promise<Resulta
   if ('error' in guardable) return { ok: false, error: guardable.error }
   const { columna } = guardable
 
+  // ¿ESTA BASE PUEDE GUARDAR LA CUENTA? Se le pregunta a ella, no a `migrations/` (20260915T2340).
+  const hayFormulas = !(await admin.from('liquidacion_linea').select('formulas').limit(1)).error
+  // LA FILA DE HOY, UNA SOLA VEZ: sirve para el deshacer (`esperado`) y para no pisar las cuentas de las OTRAS
+  // celdas al escribir ésta. Dos lecturas serían dos viajes por tecla.
+  const hoy = (hayFormulas || esperado !== undefined)
+    ? (await admin.from('liquidacion_linea').select(hayFormulas ? `${columna}, formulas` : columna)
+      .eq('liquidacion_id', cab.id).eq('persona_id', personaId).maybeSingle()).data as Record<string, unknown> | null
+    : null
   // DESHACER NO PISA LO QUE CAMBIÓ (Cmd+Z, 15/09/2026): con `esperado`, se escribe sólo si la celda sigue igual.
-  if (esperado !== undefined) {
-    const { data: hoy } = await admin.from('liquidacion_linea').select(columna)
-      .eq('liquidacion_id', cab.id).eq('persona_id', personaId).maybeSingle()
-    if (!mismoValor((hoy as Record<string, unknown> | null)?.[columna], esperado)) return { ok: false, error: MENSAJE_CONFLICTO }
+  if (esperado !== undefined && !mismoValor(hoy?.[columna], esperado)) {
+    return { ok: false, error: MENSAJE_CONFLICTO }
   }
   const nuevo = valor === '' ? null : valor
+  const aEscribir: Record<string, unknown> = { liquidacion_id: cab.id, persona_id: personaId, [columna]: nuevo }
+  // LA CUENTA VIAJA AL LADO DEL NÚMERO, NUNCA EN SU LUGAR: lo que se paga es el número.
+  if (hayFormulas) aEscribir.formulas = siguientesFormulas(hoy?.formulas, campo, escrito.expresion)
   const { data, error } = await admin.from('liquidacion_linea')
-    .upsert(
-      { liquidacion_id: cab.id, persona_id: personaId, [columna]: nuevo },
-      { onConflict: 'liquidacion_id,persona_id' },
-    )
+    .upsert(aEscribir, { onConflict: 'liquidacion_id,persona_id' })
     // LA FILA ENTERA, no sólo la columna escrita: el nombre de la columna es dinámico y un
     // `select` armado con una plantilla deja de estar tipado.
     .select()
@@ -362,6 +380,11 @@ export async function guardarCeldaLiquidacion(entrada: unknown): Promise<Resulta
   }
 
   revalidatePath(RUTA)
+  // LA LIMITACIÓN SE DICE EN EL MOMENTO. Sin la columna `formulas` el número se guardó bien y la cuenta se
+  // perdió: callarlo haría creer que la celda va a reabrirse con la expresión, y no va a pasar.
+  if (escrito.expresion != null && !hayFormulas) {
+    return { ok: true, mensaje: `Guardé ${escrito.valor}. La cuenta NO se guardó: falta aplicar la migración 20260915T2340_liquidacion_pagado_real.sql.` }
+  }
   return { ok: true, mensaje: nuevo == null ? 'Vuelve el cálculo.' : 'Guardado.' }
 }
 
