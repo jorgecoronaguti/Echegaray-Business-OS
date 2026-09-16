@@ -1,10 +1,11 @@
 'use client'
 
-import { Fragment, useCallback, useRef, useState, useTransition } from 'react'
+import { Fragment, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { useDeshacer } from '@/shared/components/deshacer/DeshacerProvider'
 import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
+import { CintaHorizontal } from '@/shared/components/v2/CintaHorizontal'
 import { hs, leerCeldaDeHoras } from '../services/jornadaPorObra'
 import { escribirCeldaDeHoras } from './asistencia/escrituraDeCeldaDeHoras'
 import type { CeldaObra, FilaQuincena } from '../services/quincenaPorObra'
@@ -75,6 +76,44 @@ const ANCHO_PERSONA = 320
 // a la izquierda. El fondo es OBLIGATORIO y no cosmético: sin él las celdas de los días pasan por
 // debajo y se leen los dos textos encimados.
 const PEGADA: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 2 }
+
+// ═══ LAS COLUMNAS SE DECLARAN UNA VEZ Y LAS DOS TABLAS LAS COMPARTEN (dueño, 16/09/2026) ═══
+//
+// *«Dejame fijas siempre las filas donde salen "persona" y los días uno por uno»*. Los rótulos
+// quedan pegados a la ventana y la columna Persona al borde izquierdo: el mismo mecanismo que
+// Liquidación estrenó el 15/09 (`CintaHorizontal`): la cabecera vive AFUERA del elemento que
+// scrollea —adentro, `sticky` se ancla a la cinta y nunca a la página— y se corre con él.
+//
+// Dos tablas separadas sólo se alinean si sus columnas NO dependen del contenido: por eso
+// `table-layout: fixed` y un `<colgroup>` compartido. Persona y Obra van en px por pantalla (una
+// variable CSS que cambia con el breakpoint: 390 px no puede regalarle 320 al nombre), los días
+// se reparten el resto en partes iguales y nunca por debajo de los 44 px de `CeldaDia` más su
+// aire, y la tabla sigue ocupando el 100% en escritorio —el dueño rechazó la tabla al ancho del
+// contenido: *«están corridos los valores»*— con un mínimo que en el teléfono la hace scrollear.
+const ANCHO_DIA = 48
+const ANCHO_HORAS = 64
+const ANCHO_CORRECCION = 56
+const VARIABLES_DE_COLUMNAS = '[--gao-persona:168px] sm:[--gao-persona:320px] [--gao-obra:152px] sm:[--gao-obra:200px]'
+
+function estiloDeTabla(dias: number, conCorreccion: boolean): React.CSSProperties {
+  const fijas = ANCHO_HORAS + (conCorreccion ? ANCHO_CORRECCION : 0) + dias * ANCHO_DIA
+  return {
+    width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '13px',
+    minWidth: `calc(var(--gao-persona) + var(--gao-obra) + ${fijas}px)`,
+  }
+}
+
+function Columnas({ dias, conCorreccion }: { dias: number; conCorreccion: boolean }) {
+  return (
+    <colgroup>
+      <col style={{ width: 'var(--gao-persona)' }} />
+      <col style={{ width: 'var(--gao-obra)' }} />
+      {Array.from({ length: dias }, (_, i) => <col key={i} />)}
+      <col style={{ width: ANCHO_HORAS }} />
+      {conCorreccion && <col style={{ width: ANCHO_CORRECCION }} />}
+    </colgroup>
+  )
+}
 
 /** `2026-09-10` → `jue 10/09`. El día de la semana es con lo que se planifica; una fecha sola
  *  obliga a ir a buscar el calendario. Se arma en UTC para no correr el día por la zona. */
@@ -389,27 +428,8 @@ export function GrillaAsistenciaObra({
   // —el panel ve el dato recién releído—; la copia sólo entra cuando la fila desapareció, y ahí lo
   // que muestra es su último estado conocido, que es todo lo que queda de ella. Un efecto que
   // sincronizara la copia en cada render encadenaría renders por nada.
-  // ═══ EL INDICIO DE QUE LA TABLA SIGUE ═══
-  //
-  // Una tabla que se desplaza de costado sin decirlo se lee como una tabla que termina donde
-  // termina la pantalla: en el teléfono la quincena parecía tener cinco días. La sombra del borde
-  // derecho aparece sólo cuando queda contenido y se apaga al llegar al final, que es la única
-  // forma de que signifique algo.
-  const cinta = useRef<HTMLDivElement | null>(null)
-  const [quedaALaDerecha, setQuedaALaDerecha] = useState(false)
-  const medir = useCallback((el: HTMLDivElement | null) => {
-    if (!el) return
-    // Un píxel de tolerancia: con zoom o pantallas fraccionarias `scrollLeft` es decimal y la
-    // igualdad exacta dejaría la sombra encendida para siempre en el final del recorrido.
-    setQuedaALaDerecha(el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
-  }, [])
-  // El `ref` mide al montar: un estado que arranca en `false` y sólo se actualiza al scrollear
-  // nunca mostraría la sombra a quien todavía no scrolleó, que es justo a quien hay que avisarle.
-  const montarCinta = useCallback((el: HTMLDivElement | null) => {
-    cinta.current = el
-    medir(el)
-  }, [medir])
-
+  // EL INDICIO DE QUE LA TABLA SIGUE (la sombra del borde derecho) y la cabecera pegada a la ventana
+  // los lleva `CintaHorizontal`: un solo medidor de `scrollLeft` para las dos cosas.
   const viva = puedeCorregir ? (filas.find((f) => f.clave === corrigiendo) ?? null) : null
   const abierta = corrigiendo === null
     ? null
@@ -421,23 +441,30 @@ export function GrillaAsistenciaObra({
         derecha desde 1024px: las quince columnas y el total siguen a la vista mientras se corrige,
         que es justo lo que hay que mirar. Abajo de 1024 el panel va entero encima — no hay ancho
         para dos zonas y reservar 400px dejaría la tabla en 0. */}
-    <div className={abierta ? 'lg:pr-[400px]' : undefined} style={{ position: 'relative' }}>
-    <div ref={montarCinta} onScroll={(e) => medir(e.currentTarget)} style={{ overflowX: 'auto' }}
-      data-testid="cinta-grilla">
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }} data-testid="grilla-asistencia">
-        <thead>
-          <tr style={{ borderBottom: `1px solid ${V.lineaFuerte}` }}>
-            <Rotulo ancho="34%" pegada>Persona</Rotulo>
-            {/* «ACTUAL» porque la obra de una persona cambia con el tiempo: acá se ve la de hoy; la de
-                cada día queda guardada en su marca y se lee en la cronología de la persona (ficha → Horas). */}
-            <Rotulo ancho="18%">Obra actual</Rotulo>
-            {etiquetas.map((e, i) => (
-              <Rotulo key={dias[i]} centro tenue={columnasTenues[i]} titulo={titulos[i]}>{e}</Rotulo>
-            ))}
-            <Rotulo derecha>Horas</Rotulo>
-            {puedeCorregir && <Rotulo />}
-          </tr>
-        </thead>
+    <div className={`${VARIABLES_DE_COLUMNAS}${abierta ? ' lg:pr-[400px]' : ''}`} style={{ position: 'relative' }}>
+    <CintaHorizontal
+      testid="cinta-grilla"
+      cabecera={(corrimiento) => (
+        <table style={estiloDeTabla(dias.length, puedeCorregir)} data-testid="grilla-asistencia-cabecera">
+          <Columnas dias={dias.length} conCorreccion={puedeCorregir} />
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${V.lineaFuerte}` }}>
+              <Rotulo pegada corrimiento={corrimiento}>Persona</Rotulo>
+              {/* «ACTUAL» porque la obra de una persona cambia con el tiempo: acá se ve la de hoy; la de
+                  cada día queda guardada en su marca y se lee en la cronología de la persona (ficha → Horas). */}
+              <Rotulo>Obra actual</Rotulo>
+              {etiquetas.map((e, i) => (
+                <Rotulo key={dias[i]} centro tenue={columnasTenues[i]} titulo={titulos[i]}>{e}</Rotulo>
+              ))}
+              <Rotulo derecha>Horas</Rotulo>
+              {puedeCorregir && <Rotulo />}
+            </tr>
+          </thead>
+        </table>
+      )}
+    >
+      <table style={estiloDeTabla(dias.length, puedeCorregir)} data-testid="grilla-asistencia">
+        <Columnas dias={dias.length} conCorreccion={puedeCorregir} />
         <tbody>
           {agruparPorRolOrganizacional(filas, (f) => f.esJefe).map((grupo, iGrupo, grupos) => (
           <Fragment key={grupo.clave}>
@@ -880,16 +907,7 @@ export function GrillaAsistenciaObra({
           </tr>
         </tbody>
       </table>
-    </div>
-    {/* FUERA DEL ELEMENTO QUE SCROLLEA: adentro se arrastraría con el contenido y la sombra
-        terminaría en el medio de la tabla. `pointer-events-none` para que no coma clics. */}
-    {quedaALaDerecha && (
-      <div aria-hidden data-testid="hay-mas-grilla"
-        // `from-line-strong` Y NO `from-ink/15`: en este Tailwind los colores son `var(--os-…)` planos
-        // y el modificador de opacidad se DESCARTA — la clase no genera ninguna regla y la sombra no
-        // existiría. Verificado sobre el CSS compilado.
-        className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-line-strong to-transparent" />
-    )}
+    </CintaHorizontal>
     </div>
 
     {/* FUERA DEL CONTENEDOR CON `overflow-x`. Un `position: fixed` adentro de un elemento que
@@ -964,16 +982,19 @@ function FilaDeGrupo({ rotulo, horas, dias, conCorreccion, primero }: {
   )
 }
 
-function Rotulo({ children, ancho, centro, derecha, tenue, titulo, pegada }: {
-  children?: React.ReactNode; ancho?: string; centro?: boolean; derecha?: boolean
+function Rotulo({ children, centro, derecha, tenue, titulo, pegada, corrimiento = 0 }: {
+  children?: React.ReactNode; centro?: boolean; derecha?: boolean
   tenue?: boolean; titulo?: string
-  /** Se queda a la izquierda cuando la tabla se corre: ver `PEGADA`. */
+  /** Se queda a la izquierda cuando la tabla se corre, como la columna Persona de abajo. */
   pegada?: boolean
+  /** Cuánto scrolleó la cinta. La cabecera vive AFUERA del scrollport y se mueve por `transform`,
+   *  así que `sticky` no tiene a qué anclarse: el rótulo pegado se contra-desplaza con este número
+   *  (el mismo truco que `GrillaEspejoQuincena`). Sin él, «Persona» se va y sus nombres se quedan. */
+  corrimiento?: number
 }) {
   return (
     <th title={titulo} className={pegada ? 'bg-canvas' : undefined} style={{
-      ...(pegada ? PEGADA : null),
-      width: ancho,
+      ...(pegada ? { ...PEGADA, transform: `translateX(${corrimiento}px)` } : null),
       padding: '0 2px 8px',
       textAlign: derecha ? 'right' : centro ? 'center' : 'left',
       fontSize: '11px', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase',

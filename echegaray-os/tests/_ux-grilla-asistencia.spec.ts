@@ -115,7 +115,7 @@ for (const [ancho, alto] of [[390, 844], [768, 1024]] as const) {
     // ── 2 · HAY MÁS TABLA Y SE DICE ──────────────────────────────────────────
     const hayMas = await cinta.evaluate((el) => el.scrollWidth > el.clientWidth + 1)
     expect(hayMas, `en ${ancho} px la tabla tiene que seguir a la derecha`).toBe(true)
-    await expect(page.getByTestId('hay-mas-grilla')).toBeVisible()
+    await expect(page.getByTestId('cinta-grilla-hay-mas')).toBeVisible()
 
     // ── 3 · LA COLUMNA PERSONA SE QUEDA ──────────────────────────────────────
     const nombre = page.getByTestId('link-ficha-persona').first()
@@ -130,7 +130,7 @@ for (const [ancho, alto] of [[390, 844], [768, 1024]] as const) {
 
     // ── 4 · EL INDICIO SE APAGA EN EL FINAL ──────────────────────────────────
     // Una sombra que queda encendida siempre deja de significar «hay más».
-    await expect(page.getByTestId('hay-mas-grilla')).toHaveCount(0)
+    await expect(page.getByTestId('cinta-grilla-hay-mas')).toHaveCount(0)
 
     // ── 5 · Y EL CONTROL PUEDE DAR ROJO ──────────────────────────────────────
     // Una medición que pasa igual con y sin la corrección no mide nada: se le saca el `sticky` a la
