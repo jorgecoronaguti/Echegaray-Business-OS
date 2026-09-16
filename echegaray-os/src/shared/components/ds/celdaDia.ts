@@ -44,6 +44,9 @@ export interface EntradaCeldaDia {
   motivo?: string | null
   /** La marca del jefe (`asistencia_dia.llego_tarde/salio_antes`, 15/09/2026). Pierde el presentismo de la quincena. */
   tardanza?: { llegoTarde: boolean; salioAntes: boolean } | null
+  /** El certificado médico del legajo que respalda este día de licencia (16/09/2026): su nombre de
+   *  archivo. Sólo tiene sentido con `presencia: 'licencia'`; en cualquier otra se ignora. */
+  certificado?: string | null
 }
 
 export type TonoPresencia = 'pos' | 'neg' | 'neutro' | 'ninguno'
@@ -143,12 +146,17 @@ export function decidirCeldaDia(e: EntradaCeldaDia): CapasCeldaDia {
   return {
     arriba: { ...arriba, centrado },
     abajo,
-    titulo: [arriba.titulo, conHoras ? AVISO_AUSENCIA_CON_HORAS : abajo.titulo, tituloDeTardanza(e.tardanza)]
+    titulo: [arriba.titulo, conHoras ? AVISO_AUSENCIA_CON_HORAS : abajo.titulo, tituloDeTardanza(e.tardanza), tituloDeCertificado(e)]
       .filter(Boolean).join(' · '),
   }
 }
 
 /** «llegó tarde y salió antes: pierde el presentismo». Vacío sin marca. */
+/** El clip sólo existe sobre una licencia: un certificado en un día trabajado no respalda nada. */
+export function tituloDeCertificado(e: Pick<EntradaCeldaDia, 'presencia' | 'certificado'>): string {
+  return e.presencia === 'licencia' && e.certificado ? `certificado: ${e.certificado}` : ''
+}
+
 export function tituloDeTardanza(t: EntradaCeldaDia['tardanza']): string {
   if (!t || (!t.llegoTarde && !t.salioAntes)) return ''
   const partes = [t.llegoTarde ? 'llegó tarde' : null, t.salioAntes ? 'salió antes' : null].filter(Boolean)

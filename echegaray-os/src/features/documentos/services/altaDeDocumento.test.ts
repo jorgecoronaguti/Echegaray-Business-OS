@@ -93,7 +93,7 @@ const MIGRACION = readFileSync(`${MIGRACIONES}20260910T2320_entidad_documento.sq
 // EL CHECK VIGENTE ES EL DE LA ÚLTIMA MIGRACIÓN QUE LO DEFINE, no el de la que creó la tabla: el
 // 16/09 el legajo sumó seis categorías con un `drop constraint` + `add constraint`. Leer sólo el
 // archivo original haría pasar una lista que la base ya no tiene.
-const CHECK_VIGENTE = readdirSync(MIGRACIONES)
+const CHECK_VIGENTE: string | undefined = readdirSync(MIGRACIONES)
   .filter((f) => f.endsWith('.sql')).sort()
   .map((f) => readFileSync(`${MIGRACIONES}${f}`, 'utf8'))
   .filter((sql) => sql.includes('entidad_documento_categoria_del_tipo check'))
@@ -104,7 +104,7 @@ test('el CHECK de la base nombra exactamente las mismas categorías que la app',
   for (const [tipo, cats] of Object.entries(CATEGORIAS_POR_TIPO)) {
     // La rama del CHECK, no un comentario que nombre al tipo: la migración del 16/09 explica en
     // prosa lo que hace y esa prosa dice «entidad_tipo = 'persona'» antes que el CHECK.
-    const linea = CHECK_VIGENTE.split('\n')
+    const linea: string | undefined = (CHECK_VIGENTE ?? '').split('\n')
       .find((l) => l.includes(`entidad_tipo = '${tipo}'`) && l.includes('categoria in ('))
     assert.ok(linea, `la migración no tiene la rama del CHECK para «${tipo}»`)
     for (const c of cats) {

@@ -25,6 +25,7 @@ import {
   CATEGORIAS_POR_TIPO, MAX_BYTES, ROTULO_CATEGORIA, archivoEntra,
   type Categoria, type TipoEntidad,
 } from '../services/subidaDeDocumento'
+import { revisarRango } from '../services/certificadoDeLicencia'
 import { subirDocumentos } from '../services/subidaAlBucket'
 
 const TOPE_MB = MAX_BYTES / (1024 * 1024)
@@ -45,6 +46,7 @@ export function SubirDocumento({
   const [archivos, setArchivos] = useState<File[]>([])
   const [categoria, setCategoria] = useState<Categoria>(categorias[0])
   const [descripcion, setDescripcion] = useState('')
+  const [fechas, setFechas] = useState<Fechas>({ documento: '', desde: '', hasta: '' })
   const [rechazo, setRechazo] = useState<string | null>(null)
   const [mensaje, setMensaje] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -59,14 +61,26 @@ export function SubirDocumento({
     setRechazo(malos.length ? malos.map((m) => (m.r.ok ? '' : m.r.error)).join(' · ') : null)
   }
 
+  const esCertificado = tipo === 'persona' && categoria === 'certificado_medico'
+
   async function enviar() {
     if (!archivos.length || subiendo) return
+    // EL RANGO SE REVISA ANTES DE QUE EL ARCHIVO VIAJE: un certificado sin «hasta» rebotaría en la
+    // acción con el archivo ya en el bucket, que es basura que nadie apunta. La misma pregunta que
+    // hace el servidor, hecha primero acá.
+    const rango = revisarRango(esCertificado ? fechas.desde : '', esCertificado ? fechas.hasta : '')
+    if (!rango.ok) { setError(rango.error); return }
+    if (esCertificado && !rango.desde) { setError('El certificado médico necesita desde y hasta: son los días que respalda.'); return }
     setSubiendo(true); setMensaje(null); setError(null)
-    const r = await subirDocumentos(archivos, { tipo, entidadId, categoria, descripcion })
+    const r = await subirDocumentos(archivos, {
+      tipo, entidadId, categoria, descripcion,
+      fechaDocumento: fechas.documento,
+      licenciaDesde: rango.desde ?? undefined, licenciaHasta: rango.hasta ?? undefined,
+    })
     setSubiendo(false)
     setMensaje(r.mensaje); setError(r.error)
     if (r.resultados.some((x) => x.ok)) {
-      setArchivos([]); setDescripcion('')
+      setArchivos([]); setDescripcion(''); setFechas({ documento: '', desde: '', hasta: '' })
       // La ficha vuelve a leer: el papel recién subido tiene que aparecer en la lista de abajo sin
       // que nadie recargue a mano.
       router.refresh()
@@ -83,7 +97,7 @@ export function SubirDocumento({
       </div>
 
       {abierto && (
-        <div className="mt-2 rounded-card border border-[#E4E2DC] p-3" data-testid={`${testid}-panel`}>
+        <div className="mt-2 rounded-card border border-line p-3" data-testid={`${testid}-panel`}>
           <div className="flex flex-wrap items-end gap-3">
             <label className="text-[12px] text-muted">
               <span className="mb-1 block text-[10px] uppercase tracking-[0.06em] text-faint">Archivo</span>
@@ -98,17 +112,20 @@ export function SubirDocumento({
               <select
                 value={categoria} data-testid={`${testid}-categoria`}
                 onChange={(e) => setCategoria(e.target.value as Categoria)}
-                className="rounded-[6px] border border-[#E4E2DC] px-2 py-[5px] text-[12.5px]"
+                className="rounded-[6px] border border-line px-2 py-[5px] text-[12.5px]"
               >
                 {categorias.map((c) => <option key={c} value={c}>{ROTULO_CATEGORIA[c]}</option>)}
               </select>
             </label>
+            {tipo === 'persona' && (
+              <CamposDeFechas fechas={fechas} onChange={setFechas} certificado={esCertificado} testid={testid} />
+            )}
             <label className="grow text-[12px] text-muted">
               <span className="mb-1 block text-[10px] uppercase tracking-[0.06em] text-faint">Descripción (opcional)</span>
               <input
                 value={descripcion} onChange={(e) => setDescripcion(e.target.value)} maxLength={400}
                 data-testid={`${testid}-descripcion`}
-                className="w-full rounded-[6px] border border-[#E4E2DC] px-2 py-[5px] text-[12.5px]"
+                className="w-full rounded-[6px] border border-line px-2 py-[5px] text-[12.5px]"
               />
             </label>
             <Boton onClick={enviar} variante="primaria" data-testid={`${testid}-enviar`}>
@@ -119,6 +136,7 @@ export function SubirDocumento({
           <p className="mt-2 text-[11.5px] text-faint">
             PDF, imágenes y planillas, hasta {TOPE_MB} MB por archivo. El papel queda en el OS y se
             copia a la carpeta de Drive de la ficha.
+            {esCertificado && ' El certificado se cruza con la licencia declarada y dice qué días cubre.'}
           </p>
 
           {rechazo && <div className="mt-2"><Aviso tono="warn" testid={`${testid}-rechazo`}>{rechazo}</Aviso></div>}
@@ -127,5 +145,41 @@ export function SubirDocumento({
         </div>
       )}
     </div>
+  )
+}
+
+interface Fechas { documento: string; desde: string; hasta: string }
+
+const CAMPO = 'rounded-[6px] border border-line px-2 py-[5px] text-[12.5px]'
+
+/**
+ * LAS FECHAS DEL PAPEL DEL LEGAJO. «Fecha del documento» es la que dice el papel (la del examen, la
+ * del telegrama), no la de hoy; se pide en todas las categorías y es opcional. Desde/hasta aparecen
+ * SÓLO para el certificado médico, donde son obligatorias: son los días que el papel respalda.
+ */
+function CamposDeFechas({
+  fechas, onChange, certificado, testid,
+}: {
+  fechas: Fechas
+  onChange: (f: Fechas) => void
+  certificado: boolean
+  testid: string
+}) {
+  const campo = (k: keyof Fechas, rotulo: string, requerido = false) => (
+    <label className="text-[12px] text-muted">
+      <span className="mb-1 block text-[10px] uppercase tracking-[0.06em] text-faint">{rotulo}</span>
+      <input
+        type="date" value={fechas[k]} required={requerido} data-testid={`${testid}-${k}`}
+        onChange={(e) => onChange({ ...fechas, [k]: e.target.value })}
+        className={CAMPO}
+      />
+    </label>
+  )
+  return (
+    <>
+      {campo('documento', 'Fecha del documento')}
+      {certificado && campo('desde', 'Licencia desde', true)}
+      {certificado && campo('hasta', 'Licencia hasta', true)}
+    </>
   )
 }

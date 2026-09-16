@@ -11,6 +11,13 @@
 //   · la lectura falló            → se dice, no se dibuja una lista vacía.
 //   · no hay papeles              → eso sí es un cero, y recién acá significa «no hay».
 //
+// ═══ LA FILA ES DENSA: FECHA · PARA QUÉ · DOCUMENTO · TAMAÑO · QUIÉN · DRIVE ═══
+//
+// La fecha que se lee primero es la DEL PAPEL (`fecha_documento`) y, si no se cargó, la de la
+// subida: un examen médico de marzo subido en septiembre es de marzo. El certificado médico dice
+// debajo qué días respalda y cuántos de esos días el jefe declaró como licencia: cero también se
+// escribe, porque cero es «falta la marca del jefe», no «no pasó nada».
+//
 // ═══ LA COPIA A DRIVE SE MUESTRA POR FILA ═══
 //
 // El papel entra al OS y se encola para la carpeta de Drive de la ficha. Mientras el consumidor del
@@ -19,9 +26,12 @@
 
 import { Aviso, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import { IconoAbrir } from '@/shared/components/iconos'
+import { urlDeDrive } from '@/features/obras/services/driveUrl'
+import { diaMesAnioISO } from '@/shared/utils/fecha'
 import { fechaDeArchivo, tamano } from '../services/carpetaDeEntidad'
 import { ROTULO_CATEGORIA, type TipoEntidad } from '../services/subidaDeDocumento'
-import type { Subidos } from '../services/documentosSubidosService'
+import { fraseDeCobertura } from '../services/certificadoDeLicencia'
+import type { DocumentoSubido, Subidos } from '../services/documentosSubidosService'
 import { SubirDocumento } from './SubirDocumento'
 
 /** Qué se le dice a la persona de la copia a Drive. */
@@ -33,12 +43,14 @@ const DRIVE: Record<string, string> = {
 }
 
 export function DocumentosSubidos({
-  datos, tipo, entidadId, testid = 'documentos-subidos',
+  datos, tipo, entidadId, testid = 'documentos-subidos', carpetaDrive = null,
 }: {
   datos: Subidos
   tipo: TipoEntidad
   entidadId: string
   testid?: string
+  /** La carpeta de Drive de la ficha, para el enlace discreto. `null` = no hay carpeta. */
+  carpetaDrive?: string | null
 }) {
   if (datos.pendienteDeMigracion) {
     return (
@@ -63,49 +75,78 @@ export function DocumentosSubidos({
         <Vacio>Todavía no se subió ningún documento desde la plataforma.</Vacio>
       )}
       {datos.filas.length > 0 && (
-        <Tabla testid={`${testid}-tabla`} minWidth={640}>
+        <Tabla testid={`${testid}-tabla`} minWidth={720}>
           <THead>
-            <Th>Documento</Th>
+            <Th>Fecha</Th>
             <Th>Para qué sirve</Th>
-            <Th>Cargado</Th>
-            <Th>Drive</Th>
+            <Th>Documento</Th>
             <Th num>Tamaño</Th>
+            <Th>Quién</Th>
+            <Th>Drive</Th>
           </THead>
           <tbody>
-            {datos.filas.map((f) => (
-              <Tr key={f.id} compacta>
-                <Td fuerte>
-                  {/* SIN FIRMA NO HAY ENLACE, y no se dibuja uno muerto: un `href` vacío se ve igual
-                      que uno bueno hasta que alguien lo aprieta. */}
-                  {f.url
-                    ? (
-                        <a href={f.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 hover:text-ink">
-                          {f.nombre_archivo}
-                          <IconoAbrir />
-                        </a>
-                      )
-                    : <span title="No se pudo firmar el enlace">{f.nombre_archivo}</span>}
-                  {f.descripcion && <span className="ml-2 text-[11.5px] text-faint">{f.descripcion}</span>}
-                </Td>
-                <Td>{ROTULO_CATEGORIA[f.categoria] ?? f.categoria}</Td>
-                <Td>{fechaDeArchivo(f.creado_en)}</Td>
-                <Td>
-                  <span className={f.drive_estado === 'copiado' ? '' : 'text-muted'}>
-                    {DRIVE[f.drive_estado] ?? f.drive_estado}
-                  </span>
-                </Td>
-                <Td num>{tamano(f.tamano_bytes)}</Td>
-              </Tr>
-            ))}
+            {datos.filas.map((f) => <Fila key={f.id} f={f} />)}
           </tbody>
         </Tabla>
       )}
-      {datos.filas.some((f) => f.drive_estado === 'pendiente') && (
-        <p className="mt-2 text-[11.5px] text-faint" data-testid={`${testid}-cola`}>
-          La copia a la carpeta de Drive queda encolada. El papel ya está guardado en el OS: lo que
-          falta es el proceso que lo sube a Drive y compara la huella del archivo en el destino.
-        </p>
-      )}
+      <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        {datos.filas.some((f) => f.drive_estado === 'pendiente')
+          ? (
+              <p className="text-[11.5px] text-faint" data-testid={`${testid}-cola`}>
+                La copia a la carpeta de Drive queda encolada: el papel ya está guardado en el OS.
+              </p>
+            )
+          : <span />}
+        {carpetaDrive && (
+          <a
+            href={urlDeDrive(carpetaDrive, 'carpeta')} target="_blank" rel="noreferrer"
+            className="text-[12px] text-muted transition-colors hover:text-ink" data-testid={`${testid}-carpeta`}
+          >Carpeta en Drive →</a>
+        )}
+      </div>
     </div>
+  )
+}
+
+function Fila({ f }: { f: DocumentoSubido }) {
+  const certificado = f.licencia_desde && f.licencia_hasta
+  return (
+    <Tr compacta>
+      {/* LA FECHA DEL PAPEL, y si no se cargó, la de la subida. Se distinguen por el tono: la
+          segunda es un dato de auditoría que suple al que falta, no el mismo dato. */}
+      <Td>
+        {f.fecha_documento
+          ? <span className="font-mono tabular-nums">{diaMesAnioISO(f.fecha_documento)}</span>
+          : <span className="font-mono tabular-nums text-muted" title="Fecha de la subida: el papel no tiene fecha cargada">{fechaDeArchivo(f.creado_en)}</span>}
+      </Td>
+      <Td>{ROTULO_CATEGORIA[f.categoria] ?? f.categoria}</Td>
+      <Td fuerte>
+        {/* SIN FIRMA NO HAY ENLACE, y no se dibuja uno muerto: un `href` vacío se ve igual que uno
+            bueno hasta que alguien lo aprieta. */}
+        {f.url
+          ? (
+              <a href={f.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 hover:text-ink">
+                {f.nombre_archivo}
+                <IconoAbrir />
+              </a>
+            )
+          : <span title="No se pudo firmar el enlace">{f.nombre_archivo}</span>}
+        {f.descripcion && <span className="ml-2 text-[11.5px] font-normal text-faint">{f.descripcion}</span>}
+        {certificado && (
+          <span className="block text-[11.5px] font-normal text-muted" data-testid="cobertura-certificado">
+            {diaMesAnioISO(f.licencia_desde as string)} → {diaMesAnioISO(f.licencia_hasta as string)}
+            {' · '}
+            {f.cubre === null ? 'sin cruzar con la licencia declarada' : fraseDeCobertura(f.cubre)}
+          </span>
+        )}
+      </Td>
+      <Td num>{tamano(f.tamano_bytes)}</Td>
+      <Td>{f.subido_por_nombre ?? <span className="text-faint">—</span>}</Td>
+      <Td>
+        <span className={f.drive_estado === 'copiado' ? '' : 'text-muted'}>
+          {DRIVE[f.drive_estado] ?? f.drive_estado}
+        </span>
+      </Td>
+    </Tr>
   )
 }

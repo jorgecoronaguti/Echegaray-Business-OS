@@ -75,6 +75,7 @@ import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/auth
 import { BloqueAsignacion, BloqueDocumentos, BloqueHoras } from '@/features/administracion/components/BloquesFicha'
 import { getArchivosDeEntidad } from '@/features/documentos/services/carpetaDeEntidadService'
 import { getDocumentosSubidos } from '@/features/documentos/services/documentosSubidosService'
+import { getCertificadosDeLicencia } from '@/features/documentos/services/certificadosDeLicenciaService'
 import { ArchivosDeDrive } from '@/features/documentos/components/ArchivosDeDrive'
 import { DocumentosSubidos } from '@/features/documentos/components/DocumentosSubidos'
 import { BloqueAuditoria } from '@/features/administracion/components/BloqueAuditoria'
@@ -247,7 +248,7 @@ export default async function FichaPersonaPage({
   const obraDeLasHoras = resumenDelPeriodo(filasHH, quincena.desde, quincena.hasta)
     .obras.find((o) => o.clave !== '—') ?? null
   const obraDeLaJornada = obraDeLasHoras?.clave ?? vigente?.obra_id ?? null
-  const [feriados, obraVigente, catalogoObras, presencia] = vista === 'resumen'
+  const [feriados, obraVigente, catalogoObras, presencia, certificados] = vista === 'resumen'
     ? await Promise.all([
         getNoLaborables(supabase, quincena.desde, quincena.hasta),
         obraDeLaJornada ? getObraDeLaJornada(supabase, obraDeLaJornada) : Promise.resolve(null),
@@ -259,12 +260,15 @@ export default async function FichaPersonaPage({
         // dibujaba sólo `registros_hh`: el día marcado ausente y todavía sin horas cargadas se veía
         // «sin registrar», que es el gris de «nadie cargó» y dice otra cosa completamente distinta.
         getPresenciaDePersona(supabase, id, quincena.desde, quincena.hasta),
+        // EL CLIP DE LA LICENCIA (16/09/2026): los certificados médicos del legajo que tocan la
+        // quincena. Sólo en el resumen, que es donde se dibuja la franja.
+        getCertificadosDeLicencia(supabase, { desde: quincena.desde, hasta: quincena.hasta }, id),
       ])
-    : [[], null, {}, null]
+    : [[], null, {}, null, { data: [], error: null }]
   // UNA LECTURA QUE FALLÓ NO ES UNA QUINCENA SIN DECLARACIONES: `data` en `null` deja la franja
   // como estaba antes de esta lectura, y el error viaja al aviso de arriba con el resto.
   const dias = diasDeLaQuincena(filasHH, quincena, {
-    feriados, hoy, presencia: presencia?.data ?? [],
+    feriados, hoy, presencia: presencia?.data ?? [], certificados: certificados.data,
   })
   // HH POR OBRA DEL AÑO: es lo que el canónico pone a la derecha de «Obras donde trabajó». Un mapa,
   // porque la lista se arma con las ASIGNACIONES —que son el hecho de haber estado— y las horas sólo
@@ -561,6 +565,18 @@ export default async function FichaPersonaPage({
 
           {vista === 'documentos' && (
             <div data-testid="bloque-documentos">
+              {/* PRIMERO LO QUE SE SUBE DESDE ACÁ. El dueño (16/09/2026) subió un certificado a Drive
+                  «porque nunca me hiciste ninguna forma de subir documentos»: la forma existía, tercera
+                  en esta solapa, debajo de los papeles tipificados y del enlace a Drive. Lo que se
+                  carga va arriba; lo que se espeja, después. */}
+              {subidos && (
+                <div className="mb-8">
+                  <DocumentosSubidos
+                    datos={subidos} tipo="persona" entidadId={id} testid="persona-documentos-subidos"
+                    carpetaDrive={persona.drive_folder_id}
+                  />
+                </div>
+              )}
               <BloqueDocumentos
                 documentos={documentos?.data ?? []}
                 desvincular={desvincularDocumento.bind(null, id)}
@@ -568,11 +584,6 @@ export default async function FichaPersonaPage({
                 carpetaDrive={persona.drive_folder_id}
               />
               <AltaDocumento vincular={vincularDocumento.bind(null, id)} />
-              {subidos && (
-                <div className="mt-8">
-                  <DocumentosSubidos datos={subidos} tipo="persona" entidadId={id} testid="persona-documentos-subidos" />
-                </div>
-              )}
               {archivosDrive && (
                 <div className="mt-8">
                   <ArchivosDeDrive

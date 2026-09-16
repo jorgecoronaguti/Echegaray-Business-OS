@@ -253,3 +253,14 @@ test('en un día futuro o no laborable la combinación no inventa nada', () => {
   const feriado = combinarCeldaDia(f({ dia: 'no_laborable' }))
   assert.equal(decidirCeldaDia(feriado.entrada).abajo.texto, '—')
 })
+
+// EL CLIP (16/09/2026): el certificado va al título SÓLO sobre una licencia. Si se revierte la
+// guarda, un DNI mal categorizado como certificado aparecería «respaldando» un día trabajado.
+test('el certificado entra al título de la celda sólo cuando el día es licencia', () => {
+  const con = decidirCeldaDia({ presencia: 'licencia', horas: null, dia: 'habil', motivo: 'Enfermedad', certificado: 'c.pdf' })
+  assert.match(con.titulo, /certificado: c\.pdf/)
+  const sin = decidirCeldaDia({ presencia: 'licencia', horas: null, dia: 'habil', motivo: 'Enfermedad' })
+  assert.doesNotMatch(sin.titulo, /certificado/)
+  const trabajado = decidirCeldaDia({ presencia: 'ficho', horas: 8, dia: 'habil', certificado: 'c.pdf' })
+  assert.doesNotMatch(trabajado.titulo, /certificado/)
+})

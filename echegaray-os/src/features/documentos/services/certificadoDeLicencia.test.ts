@@ -42,7 +42,7 @@ test('el timestamp de la base se recorta al día antes de comparar', () => {
 // EL CONTRATO CON EL CATÁLOGO: si alguien renombra `accidente_in_itinere`, el cruce dejaría de
 // cubrir accidentes en silencio.
 test('los motivos que piden certificado existen en el catálogo de asistencia', () => {
-  const claves = new Set(CATALOGO.map((m: { clave: string }) => m.clave))
+  const claves = new Set((CATALOGO as readonly { clave: string }[]).map((m) => m.clave))
   for (const m of MOTIVOS_CON_CERTIFICADO) assert.ok(claves.has(m), `«${m}» no está en el catálogo`)
   assert.equal(pideCertificado('vacaciones'), false)
   assert.equal(pideCertificado(null), false)

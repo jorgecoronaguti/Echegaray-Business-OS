@@ -20,8 +20,14 @@ import { traducirError } from '@/features/administracion/services/documentosProv
 import {
   BUCKET_POR_TIPO, CATEGORIAS_POR_TIPO, MAX_BYTES, TIPOS_ENTIDAD, revisarAlta, type TipoEntidad,
 } from './subidaDeDocumento'
+import { diasCubiertos } from './certificadoDeLicencia'
 
-export type Resultado = { ok: true; id: string } | { ok: false; error: string }
+export type Resultado =
+  /** `cubre`: sólo en un certificado médico — cuántos días de licencia declarada respalda. */
+  | { ok: true; id: string; cubre: number | null }
+  | { ok: false; error: string }
+
+const FECHA = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional()
 
 /** Todas las categorías de las cuatro entidades. El corte por tipo lo hace `esCategoriaDe`. */
 const TODAS = [...new Set(Object.values(CATEGORIAS_POR_TIPO).flat())] as [string, ...string[]]
@@ -35,6 +41,9 @@ const Alta = z.object({
   tamanoBytes: z.number().int().positive().max(MAX_BYTES),
   categoria: z.enum(TODAS),
   descripcion: z.string().trim().max(400).nullable().optional(),
+  fechaDocumento: FECHA,
+  licenciaDesde: FECHA,
+  licenciaHasta: FECHA,
 })
 export type AltaDeDocumento = z.infer<typeof Alta>
 
@@ -66,6 +75,9 @@ export async function registrarDocumentoDeEntidad(entrada: AltaDeDocumento): Pro
       categoria: d.categoria,
       descripcion: d.descripcion?.trim() || null,
       subido_por: user.id,
+      fecha_documento: d.fechaDocumento || null,
+      licencia_desde: control.licencia?.desde ?? null,
+      licencia_hasta: control.licencia?.hasta ?? null,
     })
     .select('id')
     .single()
@@ -74,7 +86,20 @@ export async function registrarDocumentoDeEntidad(entrada: AltaDeDocumento): Pro
 
   // La ficha tiene que mostrarlo sin que nadie recargue a mano.
   revalidatePath(RUTA[d.tipo](d.entidadId))
-  return { ok: true, id: String(data.id) }
+  return { ok: true, id: String(data.id), cubre: control.licencia ? await cobertura(d.entidadId, control.licencia) : null }
+}
+
+/**
+ * CUÁNTOS DÍAS DE LICENCIA DECLARADA RESPALDA EL CERTIFICADO QUE ACABA DE ENTRAR. Se lee
+ * `asistencia_dia` —lo que el jefe declaró—, nunca se escribe: el certificado no crea la licencia.
+ * Una lectura que falla devuelve `null`, que la pantalla muestra como «no pude cruzarlo», no como 0.
+ */
+async function cobertura(personaId: string, l: { desde: string; hasta: string }): Promise<number | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('asistencia_dia').select('fecha, estado, motivo')
+    .eq('persona_id', personaId).gte('fecha', l.desde).lte('fecha', l.hasta)
+  if (error) return null
+  return diasCubiertos((data ?? []) as { fecha: string; estado: string; motivo: string | null }[], l.desde, l.hasta).length
 }
 
 /** Qué pantalla vuelve a dibujarse. Un mapa y no un template: cada ficha tiene su forma de URL. */

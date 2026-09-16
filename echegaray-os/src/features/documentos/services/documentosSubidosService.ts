@@ -17,6 +17,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { BUCKET_POR_TIPO, type Categoria, type TipoEntidad } from './subidaDeDocumento'
+import { diasCubiertos, type DiaDeclarado } from './certificadoDeLicencia'
 
 /** Diez minutos. El mismo que ya usan los papeles del proveedor. */
 const VIGENCIA = 600
@@ -33,6 +34,15 @@ export interface DocumentoSubido {
   drive_file_id: string | null
   /** La URL firmada para abrirlo. `null` = no se pudo firmar, y NO es «no existe el archivo». */
   url: string | null
+  /** Quién lo subió, por nombre. `null` = sin perfil legible, no «nadie». */
+  subido_por_nombre: string | null
+  /** La fecha que dice el papel (16/09/2026). `null` en lo subido antes o sin cargar. */
+  fecha_documento: string | null
+  /** Sólo certificado médico: el rango que respalda. */
+  licencia_desde: string | null
+  licencia_hasta: string | null
+  /** Sólo certificado médico: días de licencia declarada que cubre. `null` = no se pudo cruzar. */
+  cubre: number | null
 }
 
 export interface Subidos {
@@ -42,7 +52,9 @@ export interface Subidos {
   error: string | null
 }
 
-const COLUMNAS = 'id, nombre_archivo, tipo_mime, tamano_bytes, categoria, descripcion, creado_en, storage_path, drive_estado, drive_file_id'
+const COLUMNAS = 'id, nombre_archivo, tipo_mime, tamano_bytes, categoria, descripcion, creado_en, storage_path, drive_estado, drive_file_id, subido_por, fecha_documento, licencia_desde, licencia_hasta'
+
+type FilaCruda = Omit<DocumentoSubido, 'url' | 'subido_por_nombre' | 'cubre'> & { storage_path: string; subido_por: string }
 
 export async function getDocumentosSubidos(
   supabase: SupabaseClient,
@@ -65,19 +77,62 @@ export async function getDocumentosSubidos(
     return { filas: [], pendienteDeMigracion: falta, error: falta ? null : error.message }
   }
 
-  const filas = (data ?? []) as (Omit<DocumentoSubido, 'url'> & { storage_path: string })[]
+  const filas = (data ?? []) as unknown as FilaCruda[]
   if (filas.length === 0) return { filas: [], pendienteDeMigracion: false, error: null }
 
   // UNA SOLA LLAMADA PARA TODAS LAS FIRMAS. Una por fila serían veinte viajes a Storage para dibujar
-  // una tabla de veinte renglones.
-  const { data: firmas } = await supabase.storage
-    .from(BUCKET_POR_TIPO[tipo])
-    .createSignedUrls(filas.map((f) => f.storage_path), VIGENCIA)
+  // una tabla de veinte renglones. Los nombres y la cobertura van en paralelo: son tres lecturas
+  // independientes y ninguna espera a la otra.
+  const [{ data: firmas }, nombres, cubiertos] = await Promise.all([
+    supabase.storage.from(BUCKET_POR_TIPO[tipo]).createSignedUrls(filas.map((f) => f.storage_path), VIGENCIA),
+    nombresDeQuienesSubieron(supabase, filas),
+    tipo === 'persona' ? coberturaDeCertificados(supabase, entidadId, filas) : new Map<string, number>(),
+  ])
   const porRuta = new Map((firmas ?? []).map((f) => [f.path ?? '', f.signedUrl ?? null]))
 
   return {
-    filas: filas.map(({ storage_path, ...f }) => ({ ...f, url: porRuta.get(storage_path) ?? null })),
+    filas: filas.map(({ storage_path, subido_por, ...f }) => ({
+      ...f,
+      url: porRuta.get(storage_path) ?? null,
+      subido_por_nombre: nombres.get(subido_por) ?? null,
+      cubre: cubiertos.get(f.id) ?? null,
+    })),
     pendienteDeMigracion: false,
     error: null,
   }
+}
+
+/** El mismo cruce que hace la ficha del proveedor: `perfiles` por uid. Sin perfil, sin nombre. */
+async function nombresDeQuienesSubieron(
+  supabase: SupabaseClient, filas: readonly FilaCruda[],
+): Promise<Map<string, string>> {
+  const nombres = new Map<string, string>()
+  const uids = [...new Set(filas.map((f) => f.subido_por).filter(Boolean))]
+  if (!uids.length) return nombres
+  const { data } = await supabase.from('perfiles').select('id, nombre').in('id', uids)
+  for (const p of data ?? []) if (p.nombre) nombres.set(String(p.id), String(p.nombre))
+  return nombres
+}
+
+/**
+ * CUÁNTOS DÍAS DE LICENCIA DECLARADA RESPALDA CADA CERTIFICADO. Una sola lectura de `asistencia_dia`
+ * sobre la ventana que abarca todos los certificados de la persona, y el cruce en memoria: son
+ * pocos papeles y pocas filas. Si la lectura falla no hay mapa, y la ficha dice «sin cruzar» — no 0.
+ */
+async function coberturaDeCertificados(
+  supabase: SupabaseClient, personaId: string, filas: readonly FilaCruda[],
+): Promise<Map<string, number>> {
+  const certificados = filas.filter((f) => f.licencia_desde && f.licencia_hasta)
+  const salida = new Map<string, number>()
+  if (!certificados.length) return salida
+  const desde = certificados.map((c) => c.licencia_desde as string).sort()[0]
+  const hasta = certificados.map((c) => c.licencia_hasta as string).sort().at(-1) as string
+  const { data, error } = await supabase.from('asistencia_dia').select('fecha, estado, motivo')
+    .eq('persona_id', personaId).gte('fecha', desde).lte('fecha', hasta)
+  if (error) return salida
+  const declarados = (data ?? []) as DiaDeclarado[]
+  for (const c of certificados) {
+    salida.set(c.id, diasCubiertos(declarados, c.licencia_desde as string, c.licencia_hasta as string).length)
+  }
+  return salida
 }

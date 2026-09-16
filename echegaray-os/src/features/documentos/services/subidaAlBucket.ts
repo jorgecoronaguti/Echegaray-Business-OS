@@ -13,6 +13,7 @@
 import { createClient } from '@/lib/supabase/client'
 import { traducirError } from '@/features/administracion/services/documentosProveedor'
 import { registrarDocumentoDeEntidad } from './subidaActions'
+import { fraseDeCobertura } from './certificadoDeLicencia'
 import {
   BUCKET_POR_TIPO, archivoEntra, rutaDeObjeto, type Categoria, type TipoEntidad,
 } from './subidaDeDocumento'
@@ -22,12 +23,19 @@ export interface Destino {
   entidadId: string
   categoria: Categoria
   descripcion: string
+  /** La fecha que dice el papel. Vacío = no se cargó. */
+  fechaDocumento?: string
+  /** Sólo en un certificado médico: los días que respalda. */
+  licenciaDesde?: string
+  licenciaHasta?: string
 }
 
 export interface ResultadoDeArchivo {
   nombre: string
   ok: boolean
   error: string | null
+  /** Certificado médico: días de licencia declarada que respalda. `null` = no aplica o no se pudo cruzar. */
+  cubre?: number | null
 }
 
 export interface Reparto {
@@ -83,10 +91,15 @@ export async function subirDocumentos(archivos: readonly File[], destino: Destin
       tamanoBytes: archivo.size,
       categoria: destino.categoria,
       descripcion: destino.descripcion.trim() || null,
+      fechaDocumento: destino.fechaDocumento || null,
+      licenciaDesde: destino.licenciaDesde || null,
+      licenciaHasta: destino.licenciaHasta || null,
     })
     // SIN FILA NO HAY DOCUMENTO: el archivo está en el bucket pero la ficha no lo va a listar nunca.
     // Decir «subido» sería archivar un papel donde nadie lo va a encontrar.
-    resultados.push({ nombre: archivo.name, ok: alta.ok, error: alta.ok ? null : alta.error })
+    resultados.push({
+      nombre: archivo.name, ok: alta.ok, error: alta.ok ? null : alta.error, cubre: alta.ok ? alta.cubre : null,
+    })
   }
 
   return cerrar(resultados)
@@ -101,9 +114,15 @@ export async function subirDocumentos(archivos: readonly File[], destino: Destin
 export function cerrar(resultados: ResultadoDeArchivo[]): Reparto {
   const entraron = resultados.filter((r) => r.ok).length
   const fallaron = resultados.filter((r) => !r.ok)
+  // EL CERTIFICADO DICE QUÉ CUBRE EN EL MISMO ACTO: «guardado» solo dejaría a quien lo subió sin
+  // saber si el jefe marcó la licencia. Cero también se dice — es la señal de que falta la marca.
+  const cobertura = resultados
+    .filter((r) => r.ok && typeof r.cubre === 'number')
+    .map((r) => `«${r.nombre}» ${fraseDeCobertura(r.cubre as number)}`)
+  const guardado = entraron ? (entraron === 1 ? 'Documento guardado.' : `${entraron} documentos guardados.`) : null
   return {
     resultados,
-    mensaje: entraron ? (entraron === 1 ? 'Documento guardado.' : `${entraron} documentos guardados.`) : null,
+    mensaje: guardado ? [guardado, ...cobertura].join(' ') : null,
     error: fallaron.length
       ? `No ${fallaron.length === 1 ? 'entró' : 'entraron'}: ${fallaron.map((f) => `«${f.nombre}» — ${f.error}`).join(' · ')}`
       : null,
