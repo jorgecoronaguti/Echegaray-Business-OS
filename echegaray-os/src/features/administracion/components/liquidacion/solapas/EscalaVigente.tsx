@@ -6,14 +6,13 @@
 // quedan sólo el convenio y el mes; los valores vuelven desde 768 px. Sin escala cargada, lo dice en `warn`: el
 // dato que falta es un problema, no un adorno. Server Component: no hay estado ni JavaScript.
 
-import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
 import type { EscalaVigente as Escala } from '../../../services/escalaUocra'
 
 const pesos = (n: number): string => `$${Math.round(n).toLocaleString('es-AR')}`
 const dia = (iso: string | null): string => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '—')
 
-export function EscalaVigente({ escala, href }: { escala: Escala | null; href: string }) {
+export function EscalaVigente({ escala }: { escala: Escala | null }) {
   if (!escala) {
     return (
       <span data-testid="escala-uocra" data-estado="sin-cargar" style={{ fontSize: '12px', color: V.warn, whiteSpace: 'nowrap' }}>
@@ -29,13 +28,13 @@ export function EscalaVigente({ escala, href }: { escala: Escala | null; href: s
     sereno ? `${sereno.categoria}: ${pesos(sereno.valor)}/mes` : null,
     escala.fuente ? `Fuente: ${escala.fuente}` : null,
     `En la base desde ${dia(escala.cargadoEn)}`,
-    'Abrir Costo y convenio',
   ].filter(Boolean).join('\n')
   return (
-    <Link href={href} prefetch={false} data-testid="escala-uocra" data-estado="vigente" data-desde={escala.desde} title={titulo}
+    // SIN ENLACE (dueño, 16/09/2026: «hacer clic te lleva a cualquier lado»): es un dato de referencia, se lee y ya.
+    <span data-testid="escala-uocra" data-estado="vigente" data-desde={escala.desde} title={titulo}
       style={{
         display: 'inline-flex', alignItems: 'baseline', gap: 10, minWidth: 0,
-        fontSize: '12px', color: V.apagado, textDecoration: 'none', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
+        fontSize: '12px', color: V.apagado, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', cursor: 'default',
       }}>
       <span style={{ color: V.tintaSuave, fontWeight: 600 }}>{`UOCRA ${escala.cct} · ${escala.rige}`}</span>
       {/* SIN `display` EN LÍNEA: un style pisa al `hidden` de la clase y los valores se veían a 390 px (medido 16/09). */}
@@ -48,6 +47,6 @@ export function EscalaVigente({ escala, href }: { escala: Escala | null; href: s
         ))}
         <span style={{ color: V.tenue }}>$/h</span>
       </span>
-    </Link>
+    </span>
   )
 }
