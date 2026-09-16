@@ -1,6 +1,7 @@
 'use client'
 
 import { useActionState, useState } from 'react'
+import { useEstadoDelServidor } from '@/shared/tiempo-real/useEstadoDelServidor'
 import { C, HOVER_CANVAS, HOVER_MARCA, R, pct } from '@/shared/components/movil/tokens'
 import { Icono } from '@/shared/components/movil/Iconos'
 import {
@@ -56,8 +57,9 @@ export function FormularioAvance({
   const metodo = (actividad.metodo_avance ?? 'manual') as Metodo
   const control = controlDe(metodo)
 
-  const [marcados, setMarcados] = useState<Set<string>>(
-    () => new Set(pasos.filter((p) => p.hecho_en).map((p) => p.id)))
+  // Los pasos hechos son dato guardado: si la compu tilda uno, el teléfono lo tiene que ver tildado.
+  const [marcados, setMarcados] = useEstadoDelServidor<Set<string>>(
+    new Set(pasos.filter((p) => p.hecho_en).map((p) => p.id)))
   const [objetivo, setObjetivo] = useState<number | null>(null)
   const [cantidad, setCantidad] = useState(0)
   const [criterio, setCriterio] = useState('')

@@ -69,7 +69,17 @@ export function CantidadEditable({
     return (
       <button
         type="button"
-        onClick={() => { alEntrar.current = texto; setEditando(true) }}
+        onClick={() => {
+          // SE ENTRA CON LO GUARDADO, NO CON LO ÚLTIMO QUE SE TIPEÓ ACÁ. En reposo la celda muestra la
+          // prop; si otro usuario la cambió, `texto` sigue con la copia vieja y editar arrancaría del
+          // número que ya no está. Tomarlo al entrar —y no con un hook que adopta en cualquier
+          // momento— es lo que evita pisar lo que se está escribiendo. Mientras el propio guardado
+          // todavía no volvió del servidor, la prop es la vieja y lo último escrito es lo vigente.
+          const guardado = guardando ? texto : String(cantidad)
+          alEntrar.current = guardado
+          setTexto(guardado)
+          setEditando(true)
+        }}
         data-testid={`cantidad-${lineaId}`}
         title={error ?? `Editar la cantidad · crea una versión nueva del análisis`}
         className={`w-full rounded-control px-1 py-[3px] text-right font-mono text-[11.5px] tabular-nums transition-colors hover:bg-surface-quiet ${

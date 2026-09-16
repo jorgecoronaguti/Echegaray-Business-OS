@@ -26,6 +26,7 @@
 // las dos puntas —«anterior 65 %» y «ahora 74 %»— para que se vea qué se está por escribir.
 
 import { useState } from 'react'
+import { useEstadoDelServidor } from '@/shared/tiempo-real/useEstadoDelServidor'
 import { FormAccion } from '@/shared/components/ui'
 import { IconoFoto, IconoProblema } from '@/shared/components/iconos'
 import { avancePorCantidad, hhProyectadas, proyeccionExcedida } from '../services/avance'
@@ -60,12 +61,16 @@ export function FormAvance({
   /** `panel`: sin título propio y en una sola columna, para un cajón de ~412px. */
   variante?: 'pagina' | 'panel'
 }) {
-  const [metodo, setMetodo] = useState<MetodoRegistrable>(metodoInicial(nodo))
-  const [tildados, setTildados] = useState<ReadonlySet<string>>(
-    () => new Set(pasos.filter((p) => p.hecho_en).map((p) => p.id)),
+  // LO QUE MUESTRA LO GUARDADO SIGUE A LO GUARDADO. Si otro registra el avance desde el teléfono,
+  // el tiempo real relee la página y estos campos adoptan el valor nuevo: quedarse con la copia del
+  // montaje haría que el acumulado que se escribe acá se reste contra un anterior que ya no es.
+  // El criterio no: es texto de quien firma, no un dato que otro pueda haber cambiado.
+  const [metodo, setMetodo] = useEstadoDelServidor<MetodoRegistrable>(metodoInicial(nodo))
+  const [tildados, setTildados] = useEstadoDelServidor<ReadonlySet<string>>(
+    new Set(pasos.filter((p) => p.hecho_en).map((p) => p.id)),
   )
-  const [acumulada, setAcumulada] = useState(String(nodo.cantidad_ejecutada ?? ''))
-  const [declarado, setDeclarado] = useState(String(nodo.avance_pct ?? 0))
+  const [acumulada, setAcumulada] = useEstadoDelServidor(String(nodo.cantidad_ejecutada ?? ''))
+  const [declarado, setDeclarado] = useEstadoDelServidor(String(nodo.avance_pct ?? 0))
   const [criterio, setCriterio] = useState('')
 
   // UN CONTENEDOR NO SE MIDE, SE AGREGA: la base lo rechaza con un trigger. La guarda vive ACÁ y
