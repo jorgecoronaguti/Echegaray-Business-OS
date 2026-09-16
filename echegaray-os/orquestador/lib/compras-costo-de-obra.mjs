@@ -13,7 +13,11 @@ export function esCostoDeObra(c) {
   if (!c?.obra_texto) return false
   if (String(c.estado ?? '').trim().toUpperCase() === 'ELIMINADO') return false
   if (c.anulada) return false
-  const total = c.total ?? c.importe
-  return Number(total) > 0
+  const total = Number(c.total ?? c.importe)
+  // UNA NOTA DE CRÉDITO RESTA (15/09/2026). Con `> 0` las nueve filas negativas de Compras (NC de Corralón,
+  // Hormiserv, Herrajes, Ductos, DUPEC) no llegaban a `costos_obra` y la obra quedaba sobrevaluada: LE Galpón 9
+  // mostraba +$686.070 y LE Oficina +$113.207 contra la pestaña. El dueño pidió el costo «al centavo»: un total
+  // distinto de cero es costo, con su signo. El cero sigue siendo la marca de ELIMINADO, no una ausencia.
+  return Number.isFinite(total) && total !== 0
 }
 

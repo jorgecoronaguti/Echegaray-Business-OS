@@ -17,3 +17,8 @@ test('una compra normal con total entra; sin obra o anulada no', () => {
   assert.equal(esCostoDeObra({ obra_texto: '', total: 540000, estado: 'Pagado' }), false)
   assert.equal(esCostoDeObra({ obra_texto: 'Messina', total: 540000, estado: 'Pagado', anulada: true }), false)
 })
+
+test('una nota de crédito (total negativo) ES costo de obra, con su signo — mutación: volver a `> 0`', () => {
+  assert.equal(esCostoDeObra({ obra_texto: 'La Estrella', estado: 'Pagado', anulada: false, total: -686070, importe: -686070 }), true)
+  assert.equal(esCostoDeObra({ obra_texto: 'La Estrella', estado: 'ELIMINADO', anulada: false, total: 0, importe: 5000 }), false)
+})
