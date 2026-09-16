@@ -65,10 +65,14 @@ test('PAGADO DE MÁS: se marca en ámbar, el pie lo suma y NO se netea a cero', 
   // El dueño rechazó esa columna con todas las letras: *«no considera adelantos en efectivo y resta del
   // efectivo total»*. El control equivalente —y el que dice qué pasa con la plata— es el saldo.
   const pago = pagoDeLaLinea({ banco: 96443.74, negro: 123750, pagadoEfectivo: 140000 })
-  assert.equal(pago.saldoEfectivo, -16250, 'MUTACIÓN: netear a cero borraría que cobró de más')
-  assert.equal(avisoDeExcedente(pago), 'pagado de más: pasa al otro lado (se descuenta del banco)')
+  // 16/09: el saldo POR LADO va compensado (pagado el 100 % por un lado → los dos en 0); lo cobrado de más de un
+  // lado se publica en el bruto y en el title, y se descuenta del otro lado. Ámbar sólo si en TOTAL cobró de más.
+  assert.equal(pago.saldoEfectivoBruto, -16250, 'MUTACIÓN: netear el bruto borraría que cobró de más por ese lado')
+  assert.equal(pago.saldoEfectivo, 0)
+  assert.equal(avisoDeExcedente(pago), 'pagado de más por efectivo: $16.250 se descuentan del banco')
   assert.equal(pago.aPagarEfectivo, 0)
   assert.equal(pago.aPagarBanco, 80193.74, 'los 16.250 de más salen del banco, no se pierden')
+  assert.equal(pago.saldoBanco, 80193.74)
   // EL REDONDEADO SUGERIDO NUNCA ES NEGATIVO.
   assert.equal(efectivoSugerido(-16250), null)
   assert.deepEqual(efectivoMostrado({ efectivoRedondeado: null, enEfectivo: -16250 }), { valor: null, sugerido: false, sugeridoAhora: null })
@@ -85,7 +89,8 @@ test('PAGADO DE MÁS: se marca en ámbar, el pie lo suma y NO se netea a cero', 
     fila({ banco: 96443.74, negro: 123750, pagadoEfectivo: 140000 }),
     fila({ banco: 96443.74, negro: 182094 }),
   ])
-  assert.equal(t.pago.saldoEfectivo, 165844, 'MUTACIÓN: sumar 0 en vez del negativo daría 182.094')
+  assert.equal(t.pago.saldoEfectivo, 182094, 'el pie suma saldos compensados: la fila pagada de más aporta 0 al efectivo')
+  assert.equal(t.pago.saldoBanco, 80193.74 + 96443.74, 'y su exceso ya está descontado del banco')
   assert.equal(t.pago.pagadoEfectivo, 140000)
   // Y LA CELDA USA LA REGLA, EN ÁMBAR.
   const CELDAS = readFileSync(new URL('../components/liquidacion/cuadro/CeldasBlancoNegro.tsx', import.meta.url), 'utf8')
