@@ -41,6 +41,7 @@ import { CeldaTarifa, rotuloCategoria } from './cuadro/CeldaTarifa'
 import { PanelDeLaPersona } from './cuadro/PanelDeLaPersona'
 import { MarcaDePago } from './cuadro/MarcaDePago'
 import { filaPagada } from './cuadro/marcaDePago'
+import { categoriasDeLaFila } from './cuadro/categoriasDeLaFila'
 import { horas as nHoras, pesos } from './formato'
 import { CintaHorizontal } from '@/shared/components/v2/CintaHorizontal'
 import { ALTO_LIQ, CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, MONO, fondoDeColumnaFija } from './solapas/tabla'
@@ -130,7 +131,7 @@ const DIA = 36
 // tapados debajo del nombre. La medida vive en una variable CSS que cambia por punto de corte —150 px angosto, 200 px
 // desde `md`—, igual que `--gao-persona` en la grilla de Horas; el ancho mínimo de la tabla se calcula con la misma
 // variable para que el `1fr` no la devuelva a 200.
-const VARIABLE_PERSONA = '[--liq-persona:150px] md:[--liq-persona:200px]'
+const VARIABLE_PERSONA = '[--liq-persona:170px] md:[--liq-persona:250px]'
 
 // LOS DÍAS ADELANTE, COMO EN LA PLANILLA: Persona · días · plata.
 const columnasDe = (nDias: number): string =>
@@ -300,19 +301,37 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
       <div style={{ ...COLUMNA_FIJA, background: fondoDeColumnaFija(fondo) }}>
         {/* EL NOMBRE OCUPA EL RENGLÓN ENTERO; la marca va en el segundo renglón, al lado de la categoría (QA, 16/09/2026:
             «✓ Pagada 16/09» al lado del nombre lo truncaba a «ZOGBE RAM…»). */}
-        <button type="button" onClick={abrir} data-testid={`espejo-nombre-${fila.personaId}`} title={`${fila.nombre} · abrir el detalle`}
+        <button type="button" onClick={abrir} data-testid={`espejo-nombre-${fila.personaId}`} title={`${fila.nombre} · ${corta(fila.alta)} · abrir el detalle`}
           style={{
             display: 'block', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left',
             color: V.tinta, font: 'inherit', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{fila.nombre}</button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ flex: 1, minWidth: 0, fontSize: '11px', color: V.apagado, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {`${fila.categoria ? rotuloCategoria(fila.categoria) : 'sin categoría'} · ${corta(fila.alta)}`}
-            {/* QUIEN YA NO ESTÁ NUNCA DESAPARECE DE SU QUINCENA (dueño, 14/09/2026): marca chica y apagada. */}
-            {fila.baja && (
-              <span data-testid={`baja-${fila.personaId}`} title={fila.baja.titulo} style={{ marginLeft: 6, color: V.tenue }}>{fila.baja.texto}</span>
-            )}
-          </div>
+          {/* LAS DOS CATEGORÍAS CON SU $/H (dueño, 16/09/2026): la del recibo, que paga el blanco, y la de plataforma,
+              que paga el negro. Un renglón cada una; el period del recibo y el veredicto van en el title. La fecha de alta
+              pasó al title del nombre y al panel. */}
+          {(() => {
+            const s = l.sueldo
+            const c = categoriasDeLaFila({
+              plataforma: fila.categoria ? rotuloCategoria(fila.categoria) : null,
+              pisoPlataforma: s?.pisoCategoria ?? null,
+              categoriaRecibo: s?.categoriaRecibo, valorHoraRecibo: s?.valorHoraCategoria, periodoRecibo: s?.periodoRecibo,
+              estado: s?.estado ?? null,
+            })
+            return (
+              <div data-testid={`categorias-${fila.personaId}`} data-coinciden={c.coinciden ? '1' : '0'} title={c.titulo}
+                style={{ flex: 1, minWidth: 0, fontSize: '11px', lineHeight: '13px', color: V.apagado }}>
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.recibo}</div>
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: c.coinciden ? V.apagado : V.tintaSuave }}>
+                  {c.plataforma}
+                  {/* QUIEN YA NO ESTÁ NUNCA DESAPARECE DE SU QUINCENA (dueño, 14/09/2026): marca chica y apagada. */}
+                  {fila.baja && (
+                    <span data-testid={`baja-${fila.personaId}`} title={fila.baja.titulo} style={{ marginLeft: 6, color: V.tenue }}>{fila.baja.texto}</span>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
           {/* UN CLIC Y ESTÁ PAGADA (dueño, 16/09/2026). Sólo donde la base ya tiene la marca (`camposEditables` trae
               las celdas de pago cuando 20260915T2340 está; la marca es de 20260916T1300 y la acción avisa si falta). */}
           {camposEditables.includes('pagadoBanco') && (
