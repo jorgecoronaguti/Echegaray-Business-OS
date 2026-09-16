@@ -50,13 +50,58 @@ test('cambiar de obra cierra la anterior AYER y abre la nueva HOY', () => {
   assert.equal(plan.acuse, 'Desde hoy en SALÓN COMERCIAL · antes PISOS INDUSTRIALES.')
 })
 
-test('el cierre nunca queda antes del comienzo: la asignación creada hoy cierra hoy', () => {
+// ═══ EL DEFECTO DEL 16/09/2026: CUATRO CAMBIOS EN NUEVE MINUTOS, CUATRO TRAMOS DE UN DÍA ═══
+//
+// Hasta ese día la asignación creada hoy y reemplazada hoy se cerraba con `hasta = desde`. GONZALEZ
+// TOBARES quedó con le-comedor 16..16, messina 16..16, le-comedor 16..16, messina 16..16 y messina
+// abierta desde el 16: la regla del día («la más corta gana») no decidía entre cuatro de un día, la
+// grilla desempataba por horas y le mostraba al dueño la obra vieja, y él volvía a cambiarla.
+test('la asignación creada hoy y reemplazada hoy SE BORRA: no queda un tramo de un día', () => {
   const plan = planDeCambioDeObra({
     abiertas: [{ id: 'a1', obra_id: pisos.obra_id, nombre: pisos.nombre, desde: HOY }],
     destino: salon, hoy: HOY,
   })
-  assert.deepEqual(plan.cerrar, [{ id: 'a1', hasta: HOY }])
+  assert.deepEqual(plan.borrar, ['a1'])
+  assert.deepEqual(plan.cerrar, [], 'cerrarla con hasta = desde es el residuo que rompía las lecturas')
   assert.deepEqual(plan.abrir, { obra_id: 'salon-comercial', desde: HOY })
+  assert.equal(plan.acuse, 'Desde hoy en SALÓN COMERCIAL · reemplaza PISOS INDUSTRIALES.')
+})
+
+test('cuatro cambios seguidos el mismo día dejan UNA sola fila: el plan del último borra todo lo de hoy', () => {
+  // Lo que había en la base del 16/09 antes del arreglo, con el abierto incluido.
+  const plan = planDeCambioDeObra({
+    abiertas: [
+      { id: 'hoy-1', obra_id: pisos.obra_id, nombre: pisos.nombre, desde: HOY },
+      { id: 'hoy-2', obra_id: salon.id, nombre: salon.nombre, desde: HOY },
+    ],
+    destino: { id: pisos.obra_id, nombre: pisos.nombre }, hoy: HOY,
+  })
+  assert.deepEqual(plan.borrar, ['hoy-2'], 'la de otra obra creada hoy se borra')
+  assert.deepEqual(plan.cerrar, [], 'nada se cierra: ninguna tenía un día antes de hoy')
+  assert.equal(plan.abrir, null, 'la de la obra destino creada hoy se conserva, no se abre otra')
+  assert.equal(plan.acuse, 'Ya estaba en PISOS INDUSTRIALES · reemplaza SALÓN COMERCIAL.')
+})
+
+test('un pase programado al que el cambio de hoy le pasa por encima se borra, no queda de un día', () => {
+  const plan = planDeCambioDeObra({
+    abiertas: [
+      { id: 'a1', obra_id: pisos.obra_id, nombre: pisos.nombre, desde: '2026-08-01' },
+      { id: 'futuro', obra_id: 'quattropani', nombre: 'QUATTROPANI', desde: MANANA },
+    ],
+    destino: salon, hoy: HOY,
+  })
+  assert.deepEqual(plan.cerrar, [{ id: 'a1', hasta: AYER }], 'la que tiene historia se cierra ayer')
+  assert.deepEqual(plan.borrar, ['futuro'], 'cerrarla mañana..mañana dejaba un tramo de un día en el futuro')
+  assert.equal(plan.acuse, 'Desde hoy en SALÓN COMERCIAL · antes PISOS INDUSTRIALES · reemplaza QUATTROPANI.')
+})
+
+test('MUTACIÓN: la abierta SIN desde nunca se borra — siempre tuvo días antes del corte', () => {
+  const plan = planDeCambioDeObra({
+    abiertas: [{ id: 'a1', obra_id: pisos.obra_id, nombre: pisos.nombre, desde: null }],
+    destino: salon, hoy: HOY,
+  })
+  assert.deepEqual(plan.borrar, [])
+  assert.deepEqual(plan.cerrar, [{ id: 'a1', hasta: AYER }])
 })
 
 test('elegir la misma obra no escribe nada', () => {
@@ -168,11 +213,11 @@ test('«Sin obra» cierra TODAS las abiertas, no la última', () => {
     ],
     destino: null, hoy: HOY,
   })
-  assert.deepEqual(plan.cerrar, [
-    { id: 'a1', hasta: AYER }, { id: 'a2', hasta: AYER }, { id: 'a3', hasta: HOY },
-  ])
+  assert.deepEqual(plan.cerrar, [{ id: 'a1', hasta: AYER }, { id: 'a2', hasta: AYER }])
+  // La creada HOY no se cierra hoy..hoy: se borra (16/09/2026). Sigue siendo «todas», no «la última».
+  assert.deepEqual(plan.borrar, ['a3'])
   assert.equal(plan.abrir, null)
-  assert.equal(plan.acuse, 'Desde hoy sin obra · antes PISOS INDUSTRIALES, GALPÓN 9, SALÓN COMERCIAL.')
+  assert.equal(plan.acuse, 'Desde hoy sin obra · antes PISOS INDUSTRIALES, GALPÓN 9 · reemplaza SALÓN COMERCIAL.')
 })
 
 // EL PLAN NO PUEDE DEPENDER DEL ORDEN EN QUE POSTGREST DEVOLVIÓ LAS FILAS. La lectura no lleva
