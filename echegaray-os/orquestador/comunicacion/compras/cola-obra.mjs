@@ -40,7 +40,9 @@
 //
 // Todo entra inyectado (`port`, `google`): se prueba con dobles, sin Postgres ni Google.
 import { planificarObra, relecturaConfirma } from '../../lib/bisturi-compras-obra.mjs'
+import { planificarPago, relecturaConfirmaPago } from '../../lib/bisturi-compras-pago.mjs'
 import { planificarObraCobranza } from '../../lib/bisturi-cobranzas-obra.mjs'
+import { contratoDeColumnas, filaACompra } from '../../lib/compras-fila.mjs'
 import { rangoEncabezado, rangoFilas } from '../../lib/columnas-por-encabezado.mjs'
 import { normAlias } from '../../lib/jornales-a-registros-hh.mjs'
 
@@ -113,6 +115,9 @@ const leerFila = async (google, fileId, pestana, fila) =>
 /** De qué pestaña es el cambio. Sin columna (cola anterior a T2210) es Compras. */
 export const pestanaDe = (cambio) => (cambio?.pestana === 'Cobranzas' ? 'Cobranzas' : 'Compras')
 
+/** ¿Es un pago? Sin columna `tipo` (cola anterior a T1700 del 16/09) todo cambio es de Obra. */
+export const esPago = (cambio) => cambio?.tipo === 'pago'
+
 const PLANIFICADOR = Object.freeze({ Compras: planificarObra, Cobranzas: planificarObraCobranza })
 
 /**
@@ -155,11 +160,15 @@ export async function decidir({ port, google, fileId, cambio, encabezado, obras,
   const fila = await leerFila(google, fileId, pestana, Number(cambio.fila))
   // Sólo Compras y sólo sin clave: con comprobante la identidad ya viene en el cambio.
   const respaldo = pestana === 'Compras' && !cambio.clave ? await leerRespaldo(port, cambio) : null
-  const plan = PLANIFICADOR[pestana]({
-    cambio, encabezado, fila, respaldo,
-    obras: obras ?? await leerObras(port), clienteAlias: clienteAlias ?? await leerClienteAlias(port),
-  })
-  return { ...plan, actor, pestana }
+  // UN PAGO NO NECESITA EL CATÁLOGO DE OBRAS y no se lo pide: la aritmética ya la resolvió la app y
+  // acá sólo se prueba que la fila siga siendo la misma compra y que las celdas no hayan cambiado.
+  const plan = esPago(cambio)
+    ? planificarPago({ cambio, encabezado, fila, respaldo })
+    : PLANIFICADOR[pestana]({
+      cambio, encabezado, fila, respaldo,
+      obras: obras ?? await leerObras(port), clienteAlias: clienteAlias ?? await leerClienteAlias(port),
+    })
+  return { ...plan, actor, pestana, esPago: esPago(cambio) }
 }
 
 /** Sólo lectura: cuántos cambios quedaron `rechazado` por `sin_huella` (los que hoy se pueden reintentar). */
@@ -207,6 +216,60 @@ const cerrar = (port, id, { estado, motivo, leido }) => port.query(
   [id, estado, motivo ?? null, leido ?? null],
 )
 
+/**
+ * LAS CELDAS DE UN PAGO, EN UN SOLO `batchUpdateValues`, Y LA FILA RELEÍDA ENTERA.
+ *
+ * De a una, entre la primera escritura y la última la fila diría «Estado = Pagado» con «Monto
+ * Pagado» todavía en cero, y el sync —que corre cada diez minutos— puede fotografiar justo eso. La
+ * relectura es de la FILA, no de cada celda: una lectura en vez de cuatro, y con el mismo camino de
+ * normalización (`filaACompra`) con el que el bisturí las comparó antes de escribir.
+ */
+async function escribirPagoYReleer({ port, google, fileId, cambio, plan }) {
+  const rangos = plan.celdas.map((c) => ({ range: c.celda, values: [[c.escribir]] }))
+  const r = await google.batchUpdateValues(fileId, rangos, {
+    confirmacion: {
+      actor: plan.actor,
+      motivo: `pago de la fila ${cambio.fila} de Compras registrado en la app por ${plan.actor} (cambio ${cambio.id})`,
+    },
+  })
+  const frenado = await frenoOCandado({ port, cambio, r, celda: plan.celdas.map((c) => c.celda).join(', ') })
+  if (frenado) return frenado
+  const fila = await leerFila(google, fileId, 'Compras', Number(cambio.fila)).catch(() => null)
+  const encabezado = fila ? await leerEncabezado(google, fileId, 'Compras').catch(() => null) : null
+  if (!fila || !encabezado) {
+    const agotado = cambio.intentos >= MAX_INTENTOS
+    await marcar(port, cambio.id, agotado ? 'error' : 'pendiente',
+      `las celdas de pago se escribieron pero no pude releer la fila ${cambio.fila}: sin evidencia no se cierra`)
+    return 'error'
+  }
+  const compra = filaACompra(fila, contratoDeColumnas(encabezado), Number(cambio.fila))
+  const v = relecturaConfirmaPago(compra, plan.celdas)
+  const leido = plan.celdas.map((c) => `${c.rotulo}=${c.escribir}`).join(' · ')
+  if (!v.ok) {
+    await cerrar(port, cambio.id, { estado: 'error', motivo: `relectura distinta: ${v.detalle}`, leido })
+    return 'error'
+  }
+  await cerrar(port, cambio.id, { estado: 'aplicado', motivo: `${plan.celdas.length} celda(s) de pago escritas por ${plan.actor}${plan.nota ? ` · ${plan.nota}` : ''}`, leido })
+  return 'aplicado'
+}
+
+/**
+ * El freno de mano y el candado, para los dos caminos de escritura. Devuelve el estado final o null.
+ * Vaciar una celda con dato lo frena no-borrar, y eso no se levanta solo: se vacía a mano.
+ */
+async function frenoOCandado({ port, cambio, r, celda, vacia = false }) {
+  if (r?.congelado) { await diferir(port, cambio.id, 'el freno de mano de Sheets está puesto'); return 'diferido' }
+  if (r?.protegido) {
+    if (r.noBorrar && vacia) {
+      await cerrar(port, cambio.id, { estado: 'rechazado', motivo: `no-borrar no deja vaciar ${celda} desde un worker: se vacía a mano en el Sheet` })
+      return 'rechazado'
+    }
+    await diferir(port, cambio.id, `pestaña protegida: ${r.motivo ?? 'candado'}`)
+    return 'diferido'
+  }
+  return null
+}
+
 /** Escribe la celda del plan, con el freno levantado por quien pidió. Devuelve el estado final. */
 async function escribirYReleer({ port, google, fileId, cambio, plan }) {
   const r = await google.batchUpdateValues(
@@ -214,16 +277,8 @@ async function escribirYReleer({ port, google, fileId, cambio, plan }) {
     [{ range: plan.celda, values: [[plan.valor]] }],
     { confirmacion: { actor: plan.actor, motivo: `obra de la fila de ${plan.pestana} elegida en la app por ${plan.actor} (cambio ${cambio.id})` } },
   )
-  if (r?.congelado) { await diferir(port, cambio.id, 'el freno de mano de Sheets está puesto'); return 'diferido' }
-  if (r?.protegido) {
-    // Vaciar una celda con dato lo frena no-borrar, y eso no se levanta solo: se vacía a mano.
-    if (r.noBorrar && plan.valor === '') {
-      await cerrar(port, cambio.id, { estado: 'rechazado', motivo: `no-borrar no deja vaciar ${plan.celda} desde un worker: se vacía a mano en el Sheet` })
-      return 'rechazado'
-    }
-    await diferir(port, cambio.id, `pestaña protegida: ${r.motivo ?? 'candado'}`)
-    return 'diferido'
-  }
+  const frenado = await frenoOCandado({ port, cambio, r, celda: plan.celda, vacia: plan.valor === '' })
+  if (frenado) return frenado
   // La escritura YA ocurrió: si no se puede releer, no se finge el cierre. Vuelve a la cola, y la vuelta
   // siguiente la cierra por `ya_aplicado` con la celda leída como evidencia.
   const vuelta = await google.readSheetValues(fileId, plan.celda).catch(() => null)
@@ -259,7 +314,9 @@ export async function aplicarCambio({ port, google, fileId, cambio, encabezado, 
     await cerrar(port, cambio.id, { estado: 'aplicado', motivo: 'la celda ya decía lo pedido: no se volvió a escribir', leido: plan.actual })
     return 'aplicado'
   }
-  return escribirYReleer({ port, google, fileId, cambio, plan })
+  return plan.esPago
+    ? escribirPagoYReleer({ port, google, fileId, cambio, plan })
+    : escribirYReleer({ port, google, fileId, cambio, plan })
 }
 
 /** Qué haría con cada pendiente, sin tomar ninguno, sin escribir el Sheet y sin tocar la base. */
