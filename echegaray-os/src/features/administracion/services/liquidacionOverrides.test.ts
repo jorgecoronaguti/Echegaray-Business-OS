@@ -219,7 +219,8 @@ test('UN PAGO ESCRITO A MANO LE GANA AL ADELANTO CALCULADO, Y SE MARCA', () => {
   assert.equal(r.pagadoEfectivo, 140_000)
   assert.equal(r.manual.pagadoEfectivo, true)
   assert.equal(r.origen.pagadoEfectivo, 'manual')
-  assert.equal(r.pago.saldoEfectivo, -70_000)
+  assert.equal(r.pago.saldoEfectivoBruto, -70_000)
+  assert.equal(r.pago.saldoEfectivo, 0, 'compensado (dueño 16/09)')
   assert.equal(r.pago.aPagarEfectivo, 0)
   assert.equal(r.pago.aPagarBanco, 0, 'el exceso del efectivo se come los 10.000 que faltaban por banco')
   assert.equal(r.pago.saldoTotal, -60_000, 'y el resto queda como cobrado de más, a la vista')
@@ -251,7 +252,7 @@ test('LA QUINCENA CERRADA CONSERVA EL PAGO REGISTRADO — y no lo marca como esc
   // que al reabrir haría aparecer como «manual» un número que no escribió nadie.
   const r = sinOverrides(linea, null, { pagadoBanco: 94_795.5 })
   assert.equal(r.pagadoBanco, 94_795.5)
-  assert.equal(r.pago.saldoBanco, linea.porBanco - 94_795.5)
+  assert.equal(r.pago.saldoBancoBruto, linea.porBanco - 94_795.5)
   assert.equal(r.manual.pagadoBanco, false, 'la fila cerrada no dibuja marcas: es una foto')
   assert.equal(r.origen.pagadoBanco, 'calculado')
   // Sin registro, vuelven los adelantos de la foto.
