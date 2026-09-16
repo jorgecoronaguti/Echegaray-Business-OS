@@ -19,6 +19,13 @@
 // de la base se muestra TAL CUAL — un «no se pudo» genérico esconde justamente el caso que importa,
 // que es la celda pisada por otra persona mientras esta pantalla estaba abierta.
 //
+// ═══ EL MISMO CONTROL EN LA FICHA DEL PROVEEDOR (15/09/2026) ═══
+//
+// La lista de compras de un proveedor lo usa igual. Lo único que cambia es qué pantalla hay que
+// refrescar después de guardar: `revalidarProveedor` lleva el id de la ficha abierta. Sin eso, el
+// cambio se guarda pero la fila vuelve a dibujarse con lo viejo hasta que alguien recargue — y una
+// pantalla que muestra lo viejo después de un ✓ es la pantalla desmintiendo su propio acuse.
+//
 // ═══ LO QUE ESTE CONTROL NO PROMETE ═══
 //
 // Que la celda del Sheet ya diga eso. Queda guardada en el OS y encolada; el worker la escribe. El
@@ -33,7 +40,7 @@ import { asignarObraDeCompra } from '../services/obraDeCompraActions'
 const NINGUNA = ''
 
 export function ObraEnLinea({
-  fila, celda, rotulo, opciones, editable, inferida, cuerpo,
+  fila, celda, rotulo, opciones, editable, inferida, cuerpo, revalidarProveedor,
 }: {
   fila: number
   /** El texto de la celda «Obra» tal cual está en la base. Es el `esperado` del control optimista. */
@@ -47,6 +54,8 @@ export function ObraEnLinea({
   inferida: boolean
   /** El cuerpo de la fila, para que el control no invente su propia tipografía. */
   cuerpo: string
+  /** El proveedor cuya ficha hay que refrescar además de Compras. La acción sólo acepta un uuid. */
+  revalidarProveedor?: string
 }) {
   const [valor, setValor] = useState(celda ?? NINGUNA)
   const [guardado, setGuardado] = useState<string | null>(null)
@@ -71,7 +80,7 @@ export function ObraEnLinea({
     setError(null)
     setGuardado(null)
     empezar(async () => {
-      const r = await asignarObraDeCompra(fila, nuevo, guardado ?? celda ?? '')
+      const r = await asignarObraDeCompra(fila, nuevo, guardado ?? celda ?? '', revalidarProveedor)
       if (!r.ok) {
         // Vuelve a lo que había: dejar en pantalla una obra que la base rechazó es la pantalla
         // afirmando un cambio que no ocurrió.

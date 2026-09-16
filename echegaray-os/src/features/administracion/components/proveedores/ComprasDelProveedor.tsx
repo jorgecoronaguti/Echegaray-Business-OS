@@ -7,6 +7,9 @@
 // nombre resuelto si la compra no trae CUIT) y con la columna del papel a la derecha. La solapa
 // «Comprobantes» que la duplicaba salió, y con ella la cara «Papeles».
 //
+// Desde el 15/09/2026 la columna Obra es el MISMO desplegable de Compras: quien revisa las facturas
+// de un proveedor las imputa acá, sin cambiar de pantalla.
+//
 // ═══ A 390px SCROLLEA ADENTRO ═══
 //
 // Seis columnas no entran en un teléfono y ninguna sobra. La caja hace `overflow-x: auto` con ancho
@@ -31,16 +34,18 @@ const PAPEL: { clave: FiltroPapel; etiqueta: string }[] = [
   { clave: 'sin', etiqueta: 'Sin comprobante' },
 ]
 
-export function ComprasDelProveedor({ proveedorId, lectura, filtros, anioActual }: {
+export function ComprasDelProveedor({ proveedorId, lectura, filtros, anioActual, opcionesObra }: {
   proveedorId: string
   lectura: ServiceResult<ComprasConPapel>
   filtros: FiltrosComprobantes
   anioActual: number
+  /** El MISMO desplegable que Compras. Vacío ⇒ la obra se ve pero no se elige. */
+  opcionesObra: string[]
 }) {
   if (lectura.error !== null) {
     return <Aviso tono="neg" titulo="No pude leer las compras de este proveedor">{lectura.error}</Aviso>
   }
-  const { filas, truncado, papelesSinLeer } = lectura.data
+  const { filas, truncado, papelesSinLeer, obraEditable } = lectura.data
   // «Compras» es la cara por defecto: su URL no lleva `vista`.
   const base = `/administracion/proveedores/${proveedorId}`
   const url = (cambio: { anio?: AnioFiltro; papel?: FiltroPapel }) => {
@@ -99,7 +104,13 @@ export function ComprasDelProveedor({ proveedorId, lectura, filtros, anioActual 
             <RotuloCol>Comprobante</RotuloCol>
           </div>
           {visibles.map((c) => (
-            <FilaComprobanteProveedor key={`${c.fila}-${c.clave ?? ''}`} c={c} papelesSinLeer={papelesSinLeer} />
+            <FilaComprobanteProveedor
+              key={`${c.fila}-${c.clave ?? ''}`} c={c} papelesSinLeer={papelesSinLeer}
+              proveedorId={proveedorId} opcionesObra={opcionesObra}
+              // SIN OPCIONES NO SE EDITA: un desplegable vacío deja elegir «sin imputar» y nada más,
+              // que es una forma de borrar la obra sin poder ponerle otra.
+              obraEditable={obraEditable && opcionesObra.length > 0}
+            />
           ))}
         </div>
       </div>

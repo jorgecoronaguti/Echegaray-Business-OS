@@ -20,6 +20,7 @@
 
 import { useState } from 'react'
 import { AccionesCompra } from '../AccionesCompra'
+import { ObraEnLinea } from '../ObraEnLinea'
 import { urlDelAdjunto } from '../../services/comprasAdjuntoActions'
 import { accionDeFila } from '../../services/comprobantesProveedor'
 import { pastillaDe } from '../../services/comprasSheet'
@@ -28,7 +29,14 @@ import { fechaCortaConAnio, pesos } from '@/shared/components/canon/formato'
 import { ALTO_V2, CAJA_CONTENIDO, V } from '@/shared/components/v2/patron'
 import { COLS_COMPROBANTES } from './columnasComprobantes'
 
-export function FilaComprobanteProveedor({ c, papelesSinLeer }: { c: CompraConPapel; papelesSinLeer: boolean }) {
+export function FilaComprobanteProveedor({ c, papelesSinLeer, proveedorId, opcionesObra, obraEditable }: {
+  c: CompraConPapel
+  papelesSinLeer: boolean
+  /** Para revalidar ESTA ficha cuando se cambia la obra: el cambio se ve donde se hizo. */
+  proveedorId: string
+  opcionesObra: string[]
+  obraEditable: boolean
+}) {
   const [abierta, setAbierta] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [abriendo, setAbriendo] = useState(false)
@@ -75,21 +83,33 @@ export function FilaComprobanteProveedor({ c, papelesSinLeer }: { c: CompraConPa
           </span>
         </span>
 
-        {/* ═══ LA COLUMNA OBRA DICE A QUÉ OBRA LLEGÓ EL GASTO, NO QUÉ DICE EL PAPEL ═══
+        {/* ═══ LA OBRA SE CAMBIA ACÁ, CON EL MISMO CONTROL QUE COMPRAS ═══
 
-            Acá se dibujaba `obra_texto` a secas: la columna Cliente/Asignación del Sheet, texto que
-            escribe una persona («Quattropani», «Mamposteria»). Dos clientes pueden escribir lo
-            mismo y ninguna de las dos cadenas identifica una obra. Cuando la base SÍ sabe a cuál
-            llegó (`compra_obra_asignada`), manda el rótulo canónico «OB-0008 · NOMBRE», el mismo
-            que muestra la pantalla de Compras sobre esa misma fila.
+            Acá se dibujaba `obra_texto` a secas —la columna Cliente/Asignación del Sheet, texto que
+            escribe una persona («Quattropani», «Mamposteria»)— y después un rótulo de sólo lectura.
+            Pero el dueño mira las compras POR PROVEEDOR cuando revisa una factura, y mandarlo a otra
+            pantalla a imputarla es el paso que hace que quede sin imputar.
 
-            La fila es de alto fijo, así que no se apilan las dos líneas como en Compras: el texto
-            del papel viaja en el `title`, que es donde se va a buscar el detalle y no la identidad.
+            Es `ObraEnLinea`, el MISMO componente de Compras: entra por la única puerta
+            (`compra_obra_asignar`), así que la regla de qué obra es válida, el control optimista y
+            la cola del Sheet no tienen una segunda versión acá. El texto del papel viaja en el
+            `title` de la fila, que es donde se busca el detalle y no la identidad.
 
-            EL FILO ROJO SIGUE ATADO A `obra_texto` y no al rótulo: si `compra_obra_asignada` no se
-            pudiera leer, atarlo al rótulo pintaría de rojo la ficha entera y anunciaría un desvío
-            que no existe. Una guarda que falla cerrada sobre un dato que no pudo leer miente. */}
-        <ObraDeLaCompra texto={c.obra_texto} rotulo={c.obra_rotulo} />
+            EL FILO ROJO SIGUE ATADO A `obra_texto` y no al rótulo: si la obra no se pudiera leer,
+            atarlo al rótulo pintaría de rojo la ficha entera y anunciaría un desvío que no existe.
+            Una guarda que falla cerrada sobre un dato que no pudo leer miente. */}
+        <span className="flex min-w-0 items-center" data-testid="obra-de-la-compra" title={c.obra_texto?.trim() ? `El papel dice «${c.obra_texto.trim()}»` : undefined}>
+          <ObraEnLinea
+            fila={c.fila}
+            celda={c.obra.celda}
+            rotulo={c.obra.rotulo}
+            inferida={c.obra.origen === 'inferida'}
+            opciones={opcionesObra}
+            editable={obraEditable}
+            cuerpo="12px"
+            revalidarProveedor={proveedorId}
+          />
+        </span>
 
         {/* SIN IMPORTE NO ES $ 0. */}
         <span className="font-mono tabular-nums" style={{ fontSize: '12px', textAlign: 'right', color: c.total === null ? V.warn : V.tinta }}>
@@ -139,37 +159,5 @@ export function FilaComprobanteProveedor({ c, papelesSinLeer }: { c: CompraConPa
         </div>
       )}
     </div>
-  )
-}
-
-/**
- * A QUÉ OBRA LLEGÓ EL GASTO, EN UNA LÍNEA.
- *
- * Tres estados y ninguno se disfraza del otro:
- *   · con rótulo canónico  → «OB-0008 · QP - SALÓN COMERCIAL», lo que dice `obra_canonica`.
- *   · con texto y sin obra → el texto del papel en ámbar: el gasto NO llegó a ninguna obra porque
- *                            ese rótulo no está en el diccionario. Es trabajo pendiente, no un dato
- *                            completo, y pintarlo igual que una obra resuelta lo escondería.
- *   · sin texto            → «sin obra imputada» en rojo, igual que antes.
- */
-function ObraDeLaCompra({ texto, rotulo }: { texto: string | null; rotulo: string | null }) {
-  const papel = texto?.trim() ?? ''
-  if (rotulo) {
-    return (
-      <span className="truncate" style={{ fontSize: '12px', color: V.tintaSuave }} data-testid="obra-rotulo-proveedor" title={papel ? `El papel dice «${papel}»` : undefined}>
-        {rotulo}
-      </span>
-    )
-  }
-  if (!papel) {
-    return <span className="truncate" style={{ fontSize: '12px', color: V.neg }}>sin obra imputada</span>
-  }
-  return (
-    <span
-      className="truncate" style={{ fontSize: '12px', color: V.warn }} data-testid="obra-sin-resolver"
-      title="Es lo que dice el papel. Ninguna obra del diccionario corresponde a ese rótulo, así que el gasto no llega a ninguna: se resuelve declarando el alias."
-    >
-      {papel}
-    </span>
   )
 }
