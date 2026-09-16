@@ -26,10 +26,12 @@ const ORDEN_DEL_CUADRO = [
   'Horas',
   'Hs recibo', '$/h cat.', 'Banco', 'Pagado', 'Saldo',
   'Hs', '$/h negro', 'Importe', 'Pagado', 'Saldo',
-  'Presentismo', 'Efect. red.', 'Total', 'Pagado', 'Saldo',
+  'Presentismo', 'Total', 'Pagado', 'Saldo',
 ]
 
-test('EL ENCABEZADO: Persona · días · Horas · BLANCO(5) · NEGRO(5) · presentismo · redondeo · total · pagado · saldo', () => {
+// «EFECT. RED. ✎» SALIÓ DEL CUADRO (QA, 16/09/2026): el redondeo de los billetes no entra en ninguna cuenta de la
+// fila. Sigue en el pie («Efectivo redondeado») y en el cuadro clásico. MUTACIÓN: volver a ponerla → rojo.
+test('EL ENCABEZADO: Persona · días · Horas · BLANCO(5) · NEGRO(5) · presentismo · total · pagado · saldo', () => {
   const plata = GRILLA.slice(GRILLA.indexOf('const PLATA'), GRILLA.indexOf('const ANCHO_DE_BANDA'))
   const columnas = [...plata.matchAll(/clave: '([a-zA-Z]+)', rotulo: '([^']+)'(?:, px: \d+)?(?:, banda: '([a-z]+)')?/g)]
     .map((m) => ({ clave: m[1], rotulo: m[2].replace(' ✎', ''), banda: m[3] ?? null }))
@@ -54,10 +56,12 @@ test('EL ENCABEZADO: Persona · días · Horas · BLANCO(5) · NEGRO(5) · prese
   const fila = GRILLA.slice(GRILLA.indexOf('function Fila('), GRILLA.indexOf('function Total('))
   const orden = ['<CeldaDeDia', '<CeldaHorasPagas', '<CeldaHorasBlanco', '<CeldaHoraCategoria', '<CeldaNeto',
     'campo="pagadoBanco"', 'lado="banco"', '<CeldaHorasNegro', '<CeldaImporteNegro', 'campo="pagadoEfectivo"',
-    'lado="efectivo"', '<CeldaPresentismo', '<CeldaRedondeo', '<CeldaTotal', '<CeldaPagadoTotal', 'lado="total"']
+    'lado="efectivo"', '<CeldaPresentismo', '<CeldaTotal', '<CeldaPagadoTotal', 'lado="total"']
     .map((x) => fila.indexOf(x))
   assert.ok(orden.every((i) => i > 0), 'están todas las celdas')
   assert.deepEqual([...orden].sort((a, b) => a - b), orden, 'en el orden pedido')
+  assert.ok(!/CeldaRedondeo|espejo-total-redondeo|clave: 'efectivoRedondeado'/.test(GRILLA), 'volvió la columna «Efect. red.» al cuadro')
+  assert.match(GRILLA, /cifra\('Efectivo redondeado'/, 'el pie la sigue sumando')
 })
 
 // «NECESITO Q EN ALGUNA COLUMNA DE LIQ HS ME DIGA CUANTO COBRA EN TOTAL» (dueño, 14/09/2026) sigue vigente: el
@@ -101,7 +105,12 @@ test('EL ENCABEZADO SE PEGA ARRIBA Y LA CAJA NO LE ROBA EL ANCLAJE', () => {
   // el rótulo se contra-desplaza con el mismo corrimiento. MUTACIÓN: sacarlo → el rótulo se va y los nombres
   // se quedan, que es la versión de encabezado del defecto de «números sin dueño».
   assert.match(cuerpo, /transform: `translateX\(\$\{corrimiento\}px\)`/)
-  assert.equal((cuerpo.match(/translateX\(\$\{corrimiento\}px\)/g) ?? []).length, 2, 'los dos renglones de la columna fija')
+  // UNA SOLA CELDA PARA LOS DOS RENGLONES (QA, 16/09/2026): eran dos y la de abajo medía 18 px fijos; con «HS
+  // RECIBO» envuelto el renglón 2 es más alto y por la franja de arriba asomaba «S RECIBO» bajo «Persona».
+  // MUTACIÓN: volver a dos celdas, o a una altura fija, → rojo.
+  assert.equal((cuerpo.match(/translateX\(\$\{corrimiento\}px\)/g) ?? []).length, 1, 'una sola celda fija que cubre los dos renglones')
+  assert.match(cuerpo, /gridRow: '1 \/ span 2', alignSelf: 'stretch'/, 'la celda Persona cubre los dos renglones estirada')
+  assert.ok(!/height: ALTO_LIQ\.encabezado/.test(cuerpo), 'MUTACIÓN: una altura fija deja pasar el rótulo envuelto')
 })
 
 // EL PANEL DICE LO MISMO QUE EL CUADRO (16/09/2026). Después de rehacer el cuadro, el panel por persona seguía

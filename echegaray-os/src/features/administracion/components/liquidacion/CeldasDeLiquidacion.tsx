@@ -201,6 +201,9 @@ export function CeldaEditable({
         etiqueta={`${campo} de ${personaId}`}
         testid={`celda-${campo}-${personaId}`}
         expresion={expresion}
+        // EL «—» ABRE VACÍO (QA, 16/09/2026): donde el 0 se dibuja como ausencia y nadie lo escribió, el campo no
+        // trae un «0» que haya que borrar antes de teclear. Un 0 manual sí se abre como 0.
+        abrirVacio={ceroEsVacio && !manual}
         // UNA CUENTA SE MUESTRA COMO CUENTA. Lo pide el aviso de deshacer, que recibe lo que viajó a la acción:
         // `Number('=9*105')` es NaN y el aviso diría «$NaN» sobre una celda que se guardó bien.
         mostrar={(v) => (typeof v === 'string' && v.startsWith('=') ? v : formato(Number(v)))}

@@ -38,8 +38,10 @@ test('EL CAMPO COMPARTIDO: texto con teclado decimal, parser es-AR, error inline
   // (dueño: «tiene que poder calcular dentro de las celdas, como hace sheet»). Sigue siendo UN solo lector.
   assert.match(c, /leerCeldaNumerica\(/)
   assert.match(c, /setError\(leido\.error\)/, 'lo que no es número ni cuenta no se guarda y dice por qué')
-  // Y LA CUENTA SE VE AL ABRIR LA CELDA, NO EN REPOSO: en reposo va el valor, que es lo que se paga.
-  assert.match(c, /setBorrador\(cuenta \?\? vigente\)/)
+  // Y LA CUENTA SE VE AL ABRIR LA CELDA, NO EN REPOSO: en reposo va el valor, que es lo que se paga. Desde el
+  // 16/09/2026 lo decide `textoAlAbrir` (pura): la cuenta si la hay, y vacío sobre un cero derivado.
+  assert.match(c, /setBorrador\(textoAlAbrir\(estado, cuenta, \{ ceroAbreVacio: abrirVacio \}\)\)/)
+  assert.match(fuente('./CeldasDeLiquidacion.tsx'), /abrirVacio=\{ceroEsVacio && !manual\}/, 'el «—» abre vacío; un 0 manual no')
   assert.match(c, /\$\{cuenta\} → \$\{mostrar \? mostrar\(vigente\) : vigente\}/)
   assert.match(c, /e\.key === 'Tab'/)
   assert.match(c, /indiceDeLaSiguiente\(/)

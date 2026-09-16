@@ -61,6 +61,33 @@ export function alConfirmarGuardado(e: EstadoInline, v: string): EstadoInline {
  * corregida volvería a mandar el mismo valor y ensuciaría el historial con una corrección que no
  * cambió nada. Y volver al valor original mientras hay un pendiente SÍ es un cambio.
  */
-export function hayQueGuardar(e: EstadoInline, v: string): boolean {
+export function hayQueGuardar(e: EstadoInline, v: string, opciones: OpcionesDeApertura = {}): boolean {
+  // EL CAMPO SE ABRIÓ VACÍO SOBRE UN CERO DERIVADO (abajo): salir sin escribir no es «borrar el cero», es no
+  // haber dicho nada. Sin esta rama, cada Pagado que se abre y se cierra mandaría un NULL de más al servidor.
+  if (opciones.ceroAbreVacio && v === '' && esCero(valorVigente(e))) return false
   return v !== valorVigente(e)
+}
+
+/**
+ * CÓMO SE ABRE EL CAMPO (QA, 16/09/2026).
+ *
+ * `ceroAbreVacio`: el valor en reposo se dibuja «—» cuando es 0 y nadie lo escribió (`ceroEsVacio` de
+ * `CeldaEditable`, sin marca manual). Abrirlo con un «0» adentro obligaba a borrarlo antes de teclear el
+ * importe —la queja: «la celda Pagado abre con 0 en vez de vacío»—. Un 0 ESCRITO A MANO sigue abriéndose
+ * como 0: ése sí es una afirmación y se tiene que ver.
+ */
+export interface OpcionesDeApertura {
+  ceroAbreVacio?: boolean
+}
+
+/** ¿Este texto es un cero numérico? `''` no lo es: el vacío es ausencia, no cero. */
+export function esCero(v: string): boolean {
+  return v.trim() !== '' && Number(v.trim().replace(',', '.')) === 0
+}
+
+/** El texto con el que se abre el campo: la cuenta si la hay; si no, el valor —o vacío sobre un cero derivado—. */
+export function textoAlAbrir(e: EstadoInline, cuenta: string | null, opciones: OpcionesDeApertura = {}): string {
+  if (cuenta != null) return cuenta
+  const v = valorVigente(e)
+  return opciones.ceroAbreVacio && esCero(v) ? '' : v
 }
