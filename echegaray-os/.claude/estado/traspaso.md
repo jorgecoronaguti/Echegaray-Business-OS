@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-15 ~22:30 (−03) · main = producción (7b400e84)_
+_actualizado: 2026-09-15 ~22:35 (−03) · main = producción (9ac7c1d8)_
 
 ## 1. OBJETIVO GENERAL
 
@@ -74,7 +74,9 @@ Echegaray Construcciones. XSAS es la capa de inteligencia operativa. Claude Code
   vista vieja (corregido en T2300), $75 M «Sin obra» ($13,4 M de subcontratistas), MO por cliente vs MA por sub-obra.
 - Costo por obra por obra_id (675377cb, T2300 aplicada; `obra_costo_real`, RPC escribe costos_obra+asignación,
   Proveedores con ObraEnLinea, «Sin obra» canónicas) + NC restan (7b400e84): OB-0006 45.245.366 = pestaña.
-- Agentes en curso: Liquidación rehecha (pagado real, saldos, fórmulas, encabezado fijo; T2340) y cargador con lo manuscrito.
+- Cargador con lo manuscrito (9ac7c1d8): `anotacion-a-obra.mjs`, «Sin obra – CLIENTE» se escribe con cliente seguro,
+  repesca de respaldos cada 10 min (3 pendientes viejos dan 404 en Mattermost: archivos borrados; falta un «rendirse»).
+- Agente en curso: Liquidación rehecha (pagado real, saldos, fórmulas, encabezado fijo; T2340). QA Proveedores/obra corriendo.
 - Nota: Agüero tarifa 01/09 volvió a 5.974 («corrección de la quincena»), antes 6.979; preguntado al dueño.
 
 ## 5. EN CURSO
