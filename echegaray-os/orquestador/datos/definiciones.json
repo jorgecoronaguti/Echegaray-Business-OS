@@ -207,86 +207,9 @@
           "hasta": "H4"
         },
         {
-          "archivo": "orquestador/lib/cobranzas-contrato.mjs",
-          "porque": "DEFINE el rango y las columnas de la pestaña: es el contrato de lectura que usa el sync. La fuente del Sheet la lee alguien, y es éste."
-        },
-        {
-          "archivo": "orquestador/lib/cobranzas-replica.mjs",
-          "porque": "Réplica de la pestaña a Postgres: es el productor de `public.cobranzas`."
-        },
-        {
-          "archivo": "orquestador/lib/cobranzas-cuadre-vivo.mjs",
-          "porque": "Cuadra la réplica contra el Sheet vivo: para controlar la copia hay que leer el original."
-        },
-        {
-          "archivo": "orquestador/scripts/repasar-cobranzas-y-caja.mjs",
-          "porque": "Control sobre el Sheet: valida la pestaña que el dueño edita, incluidos los COBRADOS con fecha futura que dieron origen a `es_cobrada`."
-        },
-        {
-          "archivo": "orquestador/scripts/portal-sembrar.mjs",
-          "porque": "Sync del portal: convierte filas de Cobranzas en certificados del cliente. Es el productor de `certificado_cliente`."
-        },
-        {
-          "archivo": "orquestador/scripts/cobranzas-san-francisco-anticipos.mjs",
-          "porque": "ESCRIBE en la pestaña (bisturí sobre filas declaradas por el dueño): un generador es dueño de lo que escribe."
-        },
-        {
           "archivo": "orquestador/scripts/proveedores-materiales-pestana.mjs",
           "porque": "Generador de una pestaña del Sheet que necesita el saldo del cliente; escribe en el mismo libro.",
           "hasta": "H2"
-        },
-        {
-          "archivo": "orquestador/scripts/libro-movimientos-pestana.mjs",
-          "porque": "Generador de _MOVIMIENTOS: arma el libro leyendo las pestañas del propio archivo.",
-          "hasta": "H2"
-        },
-        {
-          "archivo": "orquestador/scripts/impuestos-pestana.mjs",
-          "porque": "Lee `Cobranzas!A5:Q` para el Libro IVA Ventas: uno de los cinco lectores que tratan los dólares como pesos. Lo unifica el hito H2.",
-          "hasta": "H2"
-        },
-        {
-          "archivo": "orquestador/lib/impuestos-fuentes.mjs",
-          "porque": "Ídem, del lado de las fuentes del cuadro impositivo.",
-          "hasta": "H2"
-        },
-        {
-          "archivo": "orquestador/scripts/cruce-banco.mjs",
-          "porque": "Cruza los cobros del Sheet contra el extracto: lee el rango por debajo de la columna de moneda.",
-          "hasta": "H2"
-        },
-        {
-          "archivo": "orquestador/scripts/fechas-vs-extracto.mjs",
-          "porque": "Ídem, comparando fechas de cobro contra el banco.",
-          "hasta": "H2"
-        },
-        {
-          "archivo": "orquestador/lib/calendario-financiero.mjs",
-          "porque": "Arma el calendario leyendo `Cobranzas!A5:R2000` directo, en lugar de `obligacion_resumen` y la réplica.",
-          "hasta": "H2"
-        },
-        {
-          "archivo": "orquestador/lib/cash-briefing.mjs",
-          "porque": "El briefing de caja lee el mismo rango para el detalle de cobros próximos.",
-          "hasta": "H2"
-        },
-        {
-          "archivo": "scripts/sync-calendario.mjs",
-          "porque": "Sync del calendario financiero: mismo rango, misma deuda.",
-          "hasta": "H2"
-        },
-        {
-          "archivo": "src/features/flujo-caja/services/calendarioReader.ts",
-          "porque": "La pantalla del calendario lee los rangos del Sheet en vez de Postgres. Es la misma deuda del lado web.",
-          "hasta": "H2"
-        },
-        {
-          "archivo": "orquestador/scripts/auditar-cobertura-cash-flow.mjs",
-          "porque": "Auditoría de cobertura: mide qué pestañas del Sheet están cubiertas, así que tiene que leerlas."
-        },
-        {
-          "archivo": "orquestador/scripts/caja-conectividad.mjs",
-          "porque": "Control de conectividad entre pestañas del Sheet: su objeto de estudio es el archivo."
         },
         {
           "archivo": "src/app/portal/(dentro)/datosObra.ts",
