@@ -26,6 +26,9 @@ export function MarcaDePago({ personaId, grupo, quincena, pagadaEn, cerrada }: {
 }) {
   const [pendiente, empezar] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  // LO QUE PASÓ CON LA QUINCENA al marcar al último: «cerrada» o «NO cerré: …». Un «Marcada como pagada» a secas no se
+  // repite, ya lo dice la fila verde.
+  const [aviso, setAviso] = useState<string | null>(null)
   const pagada = pagadaEn != null
   const testid = `marca-pagada-${personaId}`
 
@@ -38,7 +41,8 @@ export function MarcaDePago({ personaId, grupo, quincena, pagadaEn, cerrada }: {
   const alternar = () => empezar(async () => {
     setError(null)
     const r = await marcarLineaPagada({ ...quincena, grupo, persona_id: personaId, pagada: !pagada })
-    if (!r.ok) setError(r.error)
+    if (!r.ok) { setError(r.error); return }
+    setAviso(/Todos pagados|todos pagados/.test(r.mensaje) ? r.mensaje : null)
   })
 
   return (
@@ -69,6 +73,12 @@ export function MarcaDePago({ personaId, grupo, quincena, pagadaEn, cerrada }: {
         {pagada ? `✓ Pagada ${diaDelSello(pagadaEn)}` : 'Pagar'}
       </button>
       {error && <span role="alert" data-testid={`${testid}-error`} className="max-w-40 text-right text-[10.5px] text-neg">{error}</span>}
+      {aviso && (
+        <span role="status" data-testid={`${testid}-aviso`}
+          className={`max-w-56 whitespace-normal text-right text-[10.5px] ${/NO cerré|falló/.test(aviso) ? 'text-warn' : 'text-pos'}`}>
+          {aviso}
+        </span>
+      )}
     </span>
   )
 }
