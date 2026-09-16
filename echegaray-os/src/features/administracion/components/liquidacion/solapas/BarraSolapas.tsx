@@ -12,10 +12,14 @@
 import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
 import { SOLAPAS, SOLAPA_POR_DEFECTO, type ClaveDeSolapa } from './index'
+import { EscalaVigente } from './EscalaVigente'
+import type { EscalaVigente as Escala } from '../../../services/escalaUocra'
 
-export function BarraSolapas({ activa, hrefDe }: {
+export function BarraSolapas({ activa, hrefDe, escala }: {
   activa: ClaveDeSolapa
   hrefDe: (solapa: ClaveDeSolapa) => string
+  /** LA ESCALA UOCRA QUE RIGE HOY, al lado de «Más» (dueño, 16/09/2026). `undefined` = esta pantalla no la leyó. */
+  escala?: Escala | null
 }) {
   const principal = SOLAPAS.find((s) => s.clave === SOLAPA_POR_DEFECTO)!
   const resto = SOLAPAS.filter((s) => s.clave !== SOLAPA_POR_DEFECTO && s.Componente)
@@ -41,7 +45,13 @@ export function BarraSolapas({ activa, hrefDe }: {
         )}
       {otra && <span data-testid="solapa-activa" style={activo}>{otra.titulo}</span>}
 
-      <details data-testid="liquidacion-mas" style={{ marginLeft: 'auto', position: 'relative' }}>
+      {/* LA ESCALA VA PEGADA A «MÁS», A LA DERECHA, SIEMPRE: es el dato de referencia de toda la pantalla. */}
+      {escala !== undefined && (
+        <span style={{ marginLeft: 'auto', minWidth: 0, display: 'inline-flex', alignItems: 'center' }}>
+          <EscalaVigente escala={escala} href={hrefDe('costo')} />
+        </span>
+      )}
+      <details data-testid="liquidacion-mas" style={{ marginLeft: escala === undefined ? 'auto' : 0, position: 'relative' }}>
         <summary style={{
           cursor: 'pointer', listStyle: 'none', padding: '4px 10px', borderRadius: 6,
           border: `1px solid ${V.lineaFuerte}`, color: V.tintaSuave, fontSize: '12.5px',

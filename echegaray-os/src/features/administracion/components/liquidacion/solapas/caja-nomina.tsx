@@ -5,7 +5,7 @@ import { alicuotasVigentes, multiplicadorDeCosto, proyectarQuincena } from '../.
 import { getAlicuotas, getJornalesDelSheet, getPersonasProyectables, getValorHoraVigente } from '../../../services/costoLecturas'
 import { horasEsperadasDeQuincena } from '../../../services/liquidacionQuincena'
 import { leerCuadroDeLaQuincena } from '../../../services/cuadroDeLaQuincenaService'
-import { totalesDelEspejo } from '../../../services/espejoDeJornales'
+import { totalesDelEspejo, type TotalesDelEspejo } from '../../../services/espejoDeJornales'
 import { proyeccionDeQuincena } from '../../../services/proyeccionDeMasa'
 import { correrQuincena, esFechaISO, quincenaDe, rotuloQuincena, type Quincena } from '../../../services/quincena'
 import { horas as nHoras, pesos } from '../formato'
@@ -64,7 +64,7 @@ export async function SolapaCaja({ quincenaPedida, hoy }: PropsDeSolapa) {
         // vale para quien sigue la cadena de siempre (Oficina, finales).
         sinGiro={cuadro.filas.filter((f) => f.linea.reciboSinGiro && f.linea.sueldo == null).map((f) => f.nombre)}
         sinActividad={cuadro.liquidacion.sinActividad.length} />
-      <Cotejo total={totales.total} quincena={quincena} delSheet={jornales.fila} />
+      <Cotejo total={totales.cobra} quincena={quincena} delSheet={jornales.fila} />
       <Proyeccion quincena={quincena} enCurso={enCurso} siguientes={siguientes} personas={personas.length} />
     </section>
   )
@@ -72,20 +72,29 @@ export async function SolapaCaja({ quincenaPedida, hoy }: PropsDeSolapa) {
 
 function Totales({ quincena, totales, sinGiro, sinActividad }: {
   quincena: Quincena
-  totales: { porBanco: number; enEfectivo: number; total: number; sinTarifa: number; sinNeto: number }
+  totales: TotalesDelEspejo
   sinGiro: readonly string[]
   sinActividad: number
 }) {
   const aviso = { fontSize: '12px', color: V.warn } as const
+  const p = totales.pago
   return (
     <div data-testid="caja-totales" style={{
       display: 'flex', alignItems: 'baseline', gap: 24, flexWrap: 'wrap', padding: '4px 0 12px', marginBottom: 22,
       borderBottom: `1px solid ${V.linea}`, fontSize: '13px', fontVariantNumeric: 'tabular-nums',
     }}>
       <span style={{ fontSize: '14.5px', fontWeight: 600, color: V.tinta }}>{rotuloQuincena(quincena)}</span>
-      <Cifra testid="por-banco" rotulo="Por banco (lote)" valor={totales.porBanco} />
-      <Cifra testid="efectivo-viernes" rotulo="En efectivo (sobres)" valor={totales.enEfectivo} />
-      <Cifra testid="total-quincena" rotulo="Banco + efectivo" valor={totales.total} />
+      {/* LOS MISMOS NÚMEROS QUE EL PIE DE LA QUINCENA (QA, 16/09/2026): antes esta línea sumaba banco + efectivo SIN
+          los sueldos mensuales y se llamaba «total», $424.795 menos que el cuadro. Banco + negro + mensuales = total. */}
+      <Cifra testid="por-banco" rotulo="Banco" valor={totales.netoBandas} />
+      <Cifra testid="efectivo-viernes" rotulo="Negro (efectivo)" valor={totales.negro} />
+      {totales.mensuales > 0 && <Cifra testid="caja-mensuales" rotulo="Sueldos mensuales" valor={totales.mensuales} />}
+      <Cifra testid="total-quincena" rotulo="Total quincena" valor={totales.cobra} fuerte />
+      <Cifra testid="caja-pagado" rotulo="Pagado" valor={p.pagado} />
+      <Cifra testid="caja-saldo" rotulo="Falta pagar" valor={p.saldoTotal ?? 0} fuerte />
+      <span data-testid="caja-a-pagar" style={{ color: V.apagado }}>
+        {'a pagar hoy: '}<strong style={{ color: V.tinta }}>{`efectivo ${pesos(p.aPagarEfectivo)} · banco ${pesos(p.aPagarBanco)}`}</strong>
+      </span>
       {totales.sinTarifa > 0 && <span style={aviso}>{`${totales.sinTarifa} sin retribución: no suman`}</span>}
       {/* EL MISMO CONTEO QUE EL PIE DE LA QUINCENA: sin neto del blanco no hay total que sumar. */}
       {totales.sinNeto > 0 && <span data-testid="caja-sin-neto" style={aviso}>{`${totales.sinNeto} sin neto: no suman`}</span>}
@@ -119,11 +128,12 @@ function Cotejo({ total, quincena, delSheet }: {
       <div className="overflow-x-auto" style={{ marginBottom: 24 }}>
         <table style={{ ...tabla, minWidth: 420, maxWidth: 720 }}>
           <tbody>
-            <Renglon testid="cf-os" rotulo="Este módulo (banco + efectivo)" valor={pesos(total || null)} />
+            <Renglon testid="cf-os" rotulo="Este módulo (total quincena)" valor={pesos(total || null)} />
+            {/* UN ESPEJO VIEJO NO MUESTRA SU CIFRA (QA, 16/09/2026): «$1,04» al lado de $10 M era un número sin sentido. */}
             <Renglon testid="cf-sheet" rotulo={`Sheet · línea Jornales${delSheet ? ` (${delSheet.estado})` : ''}`}
-              valor={delSheet?.total == null ? 'sin espejo' : pesos(delSheet.total)}
+              valor={delSheet?.total == null || !espejoUtil ? 'sin espejo de esta quincena' : pesos(delSheet.total)}
               nota={delSheet?.sincronizadoEn
-                ? `espejo del ${delSheet.sincronizadoEn}${espejoUtil ? '' : ' — anterior a esta quincena: no la proyecta'}`
+                ? (espejoUtil ? `espejo del ${delSheet.sincronizadoEn}` : `el último espejo es del ${delSheet.sincronizadoEn}, anterior a esta quincena`)
                 : 'no hay fila del Sheet para esta ventana'} />
             {difiere && delSheet?.total != null && (
               <Renglon testid="cf-diferencia" fuerte rotulo="Diferencia" valor={pesos(delSheet.total - total)}
@@ -196,9 +206,9 @@ const th = {
 }
 const celda = { padding: '0 8px', height: ALTO_LIQ.fila, textAlign: 'right' as const, fontSize: '13px', whiteSpace: 'nowrap' as const }
 
-function Cifra({ rotulo, valor, testid }: { rotulo: string; valor: number; testid: string }) {
+function Cifra({ rotulo, valor, testid, fuerte }: { rotulo: string; valor: number; testid: string; fuerte?: boolean }) {
   return (
-    <span data-testid={testid}>
+    <span data-testid={testid} style={fuerte ? { fontSize: '14px' } : undefined}>
       <span style={{ color: V.apagado }}>{`${rotulo} `}</span>
       <strong style={{ color: V.tinta }}>{pesos(valor)}</strong>
     </span>

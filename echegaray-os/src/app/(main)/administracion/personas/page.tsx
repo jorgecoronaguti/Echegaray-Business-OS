@@ -47,6 +47,7 @@ import { NotaBloque, V } from '@/shared/components/v2/patron'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { BloqueAsistenciaQuincena } from '@/features/administracion/components/BloqueAsistenciaQuincena'
 import { BarraSolapas } from '@/features/administracion/components/liquidacion/solapas/BarraSolapas'
+import { escalaUocraVigente } from '@/features/administracion/services/escalaUocraService'
 import { solapaDe } from '@/features/administracion/components/liquidacion/solapas'
 import { BloqueAsistenciaDia } from '@/features/administracion/components/asistencia/BloqueAsistenciaDia'
 import { CamposAlta } from '@/features/administracion/components/FormularioPersona'
@@ -300,6 +301,8 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   if (enLiquidacion) {
     const solapa = solapaDe(sp.solapa)
     const Contenido = solapa.Componente
+    // LA ESCALA UOCRA QUE RIGE HOY va en la barra de todas las secciones (dueño, 16/09/2026). Una lectura chica.
+    const escala = await escalaUocraVigente(supabase, hoy)
     return (
       <Marco>
         <NavAdministracion />
@@ -313,6 +316,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             <BarraSolapas
               activa={solapa.clave}
               hrefDe={(clave) => hrefSolapa(sp, { solapa: clave })}
+              escala={escala}
             />
             <div style={{ paddingTop: 10 }}>
               {/* `solapaDe` ya resolvió las claves viejas (`pagos`, `horas`, `convenios`, `recibos`) a
