@@ -68,15 +68,25 @@ export interface PagoDeLaLinea {
   pagadoBanco: number
   pagadoEfectivo: number
   pagado: number
+  /**
+   * LO QUE FALTA PAGAR POR ESE LADO, YA COMPENSADO (dueño, 16/09/2026: «si digo que se le pagó el 100 % por
+   * efectivo o por transferencia me marca que debo de un lado y del otro»): el exceso de un lado se descuenta
+   * del otro antes de mostrar nada. Pagado todo por un lado → los dos saldos en 0.
+   */
   saldoBanco: number | null
   saldoEfectivo: number | null
+  /** El saldo crudo de cada lado (banco − pagado banco; negro − pagado efectivo), antes de compensar. */
+  saldoBancoBruto: number | null
+  saldoEfectivoBruto: number | null
   saldoTotal: number | null
   /** Lo que hay que entregar en mano HOY, con el exceso del banco ya descontado. `null` sin modelo. */
   aPagarEfectivo: number | null
   /** Lo que hay que girar HOY, con el exceso del efectivo ya descontado. `null` sin modelo. */
   aPagarBanco: number | null
-  /** Un lado cobrado de más. `null` = ninguno. La pantalla lo pinta en ámbar con su explicación. */
+  /** Cobró de más EN TOTAL (pagado > banco + negro). `null` = no. La pantalla lo pinta en ámbar con su explicación. */
   excedente: { lado: 'banco' | 'efectivo'; importe: number } | null
+  /** Un lado pagado de más cuyo exceso se descontó del otro. `null` = nada que absorber. Es informativo, no ámbar. */
+  absorbido: { lado: 'banco' | 'efectivo'; importe: number } | null
 }
 
 /**
@@ -88,34 +98,48 @@ export function pagoDeLaLinea(e: EntradaDePago): PagoDeLaLinea {
   const pagadoBanco = r2(suma(e.pagadoBanco))
   const pagadoEfectivo = r2(suma(e.pagadoEfectivo))
   const pagado = r2(pagadoBanco + pagadoEfectivo)
-  const saldoBanco = banco == null ? null : r2(banco - pagadoBanco)
-  const saldoEfectivo = negro == null ? null : r2(negro - pagadoEfectivo)
+  const saldoBancoBruto = banco == null ? null : r2(banco - pagadoBanco)
+  const saldoEfectivoBruto = negro == null ? null : r2(negro - pagadoEfectivo)
   const total = banco == null || negro == null ? null : r2(banco + negro)
   const saldoTotal = total == null ? null : r2(total - pagado)
-  const completo = saldoBanco != null && saldoEfectivo != null
+  const completo = saldoBancoBruto != null && saldoEfectivoBruto != null
+  // LA COMPENSACIÓN: el exceso de un lado baja el saldo del otro. Con los dos lados, lo que se muestra por lado
+  // es lo que falta pagar por ahí HOY; sin uno de los dos (sin modelo), el bruto es lo único que se puede decir.
+  const saldoBanco = completo ? Math.max(0, r2(saldoBancoBruto + Math.min(0, saldoEfectivoBruto))) : saldoBancoBruto
+  const saldoEfectivo = completo ? Math.max(0, r2(saldoEfectivoBruto + Math.min(0, saldoBancoBruto))) : saldoEfectivoBruto
   return {
-    banco, negro, total, pagadoBanco, pagadoEfectivo, pagado, saldoBanco, saldoEfectivo, saldoTotal,
-    aPagarEfectivo: completo ? Math.max(0, r2(saldoEfectivo + Math.min(0, saldoBanco))) : null,
-    aPagarBanco: completo ? Math.max(0, r2(saldoBanco + Math.min(0, saldoEfectivo))) : null,
-    excedente: excedenteDe(saldoBanco, saldoEfectivo),
+    banco, negro, total, pagadoBanco, pagadoEfectivo, pagado, saldoBanco, saldoEfectivo, saldoBancoBruto, saldoEfectivoBruto, saldoTotal,
+    aPagarEfectivo: completo ? saldoEfectivo : null,
+    aPagarBanco: completo ? saldoBanco : null,
+    excedente: excedenteDe(saldoTotal, saldoBancoBruto, saldoEfectivoBruto),
+    absorbido: absorbidoDe(saldoTotal, saldoBancoBruto, saldoEfectivoBruto),
   }
 }
 
-/** Qué lado quedó cobrado de más y por cuánto. El más negativo manda: el otro lo absorbe. */
-function excedenteDe(saldoBanco: number | null, saldoEfectivo: number | null): PagoDeLaLinea['excedente'] {
+/** Cobró de más EN TOTAL: el importe es lo que sobra sobre banco + negro, del lado que más se pasó. */
+function excedenteDe(saldoTotal: number | null, saldoBanco: number | null, saldoEfectivo: number | null): PagoDeLaLinea['excedente'] {
+  if (saldoTotal == null || saldoTotal >= 0) return null
   const banco = saldoBanco != null && saldoBanco < 0 ? -saldoBanco : 0
   const efectivo = saldoEfectivo != null && saldoEfectivo < 0 ? -saldoEfectivo : 0
-  if (banco === 0 && efectivo === 0) return null
-  return banco >= efectivo
-    ? { lado: 'banco', importe: r2(banco) }
-    : { lado: 'efectivo', importe: r2(efectivo) }
+  return { lado: banco >= efectivo ? 'banco' : 'efectivo', importe: r2(-saldoTotal) }
+}
+
+/** Un lado pagado de más que el otro absorbió entero (el total no se pasó). Informativo. */
+function absorbidoDe(saldoTotal: number | null, saldoBanco: number | null, saldoEfectivo: number | null): PagoDeLaLinea['absorbido'] {
+  if (saldoTotal == null || saldoTotal < 0) return null
+  if (saldoBanco != null && saldoBanco < 0) return { lado: 'banco', importe: r2(-saldoBanco) }
+  if (saldoEfectivo != null && saldoEfectivo < 0) return { lado: 'efectivo', importe: r2(-saldoEfectivo) }
+  return null
 }
 
 /** El `title` de un saldo negativo. Dice lo que pasa con la plata, no «negativo». */
-export function avisoDeExcedente(p: Pick<PagoDeLaLinea, 'excedente'>): string | null {
-  if (!p.excedente) return null
-  const otro = p.excedente.lado === 'banco' ? 'del efectivo' : 'del banco'
-  return `pagado de más: pasa al otro lado (se descuenta ${otro})`
+export function avisoDeExcedente(p: Pick<PagoDeLaLinea, 'excedente' | 'absorbido'>): string | null {
+  if (p.excedente) return `cobró de más: $${p.excedente.importe.toLocaleString('es-AR')} por encima de banco + negro`
+  if (p.absorbido) {
+    const otro = p.absorbido.lado === 'banco' ? 'del efectivo' : 'del banco'
+    return `pagado de más por ${p.absorbido.lado}: $${p.absorbido.importe.toLocaleString('es-AR')} se descuentan ${otro}`
+  }
+  return null
 }
 
 export interface TotalesDePago {
