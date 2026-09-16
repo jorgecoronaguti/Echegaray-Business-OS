@@ -288,26 +288,28 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
     // `data-fila-edicion`: Tab en una celda pasa a la siguiente editable de ESTA fila (`InlineEdit`).
     <div data-testid={`espejo-fila-${fila.personaId}`} data-fila-edicion="" data-pagada={fondo ? '1' : undefined}
       style={{ ...filaGrid(columnas, ALTO_LIQ.filaAlta), background: fondo }}>
-      <div style={{ ...COLUMNA_FIJA, background: fondoDeColumnaFija(fondo), display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <button type="button" onClick={abrir} data-testid={`espejo-nombre-${fila.personaId}`} title={`${fila.nombre} · abrir el detalle`}
-            style={{
-              display: 'block', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left',
-              color: V.tinta, font: 'inherit', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>{fila.nombre}</button>
-          <div style={{ fontSize: '11px', color: V.apagado, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div style={{ ...COLUMNA_FIJA, background: fondoDeColumnaFija(fondo) }}>
+        {/* EL NOMBRE OCUPA EL RENGLÓN ENTERO; la marca va en el segundo renglón, al lado de la categoría (QA, 16/09/2026:
+            «✓ Pagada 16/09» al lado del nombre lo truncaba a «ZOGBE RAM…»). */}
+        <button type="button" onClick={abrir} data-testid={`espejo-nombre-${fila.personaId}`} title={`${fila.nombre} · abrir el detalle`}
+          style={{
+            display: 'block', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left',
+            color: V.tinta, font: 'inherit', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{fila.nombre}</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0, fontSize: '11px', color: V.apagado, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {`${fila.categoria ? rotuloCategoria(fila.categoria) : 'sin categoría'} · ${corta(fila.alta)}`}
             {/* QUIEN YA NO ESTÁ NUNCA DESAPARECE DE SU QUINCENA (dueño, 14/09/2026): marca chica y apagada. */}
             {fila.baja && (
               <span data-testid={`baja-${fila.personaId}`} title={fila.baja.titulo} style={{ marginLeft: 6, color: V.tenue }}>{fila.baja.texto}</span>
             )}
           </div>
+          {/* UN CLIC Y ESTÁ PAGADA (dueño, 16/09/2026). Sólo donde la base ya tiene la marca (`camposEditables` trae
+              las celdas de pago cuando 20260915T2340 está; la marca es de 20260916T1300 y la acción avisa si falta). */}
+          {camposEditables.includes('pagadoBanco') && (
+            <MarcaDePago personaId={fila.personaId} grupo={fila.grupo} quincena={quincena} pagadaEn={l.pagadaEn} cerrada={fila.cerrada} />
+          )}
         </div>
-        {/* UN CLIC Y ESTÁ PAGADA (dueño, 16/09/2026). Sólo donde la base ya tiene la marca (`camposEditables` trae
-            las celdas de pago cuando 20260915T2340 está; la marca es de 20260916T1300 y la acción avisa si falta). */}
-        {camposEditables.includes('pagadoBanco') && (
-          <MarcaDePago personaId={fila.personaId} grupo={fila.grupo} quincena={quincena} pagadaEn={l.pagadaEn} cerrada={fila.cerrada} />
-        )}
       </div>
       {fila.celdas.map((c) => <CeldaDeDia key={c.fecha} celda={c} personaId={fila.personaId} nombre={fila.nombre} />)}
       <CeldaHorasPagas fila={fila} edicion={{ quincena, camposEditables }} />

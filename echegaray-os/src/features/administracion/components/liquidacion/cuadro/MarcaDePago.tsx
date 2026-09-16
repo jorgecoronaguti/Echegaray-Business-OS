@@ -12,7 +12,6 @@
 // Mientras tanto el botón se apaga (pendiente) y no acepta otro clic.
 
 import { useState, useTransition } from 'react'
-import { V } from '@/shared/components/v2/patron'
 import { marcarLineaPagada } from '../../../services/liquidacionActions'
 import { diaDelSello } from './marcaDePago'
 import type { GrupoLiquidacion } from '../../../services/liquidacionQuincena'
@@ -32,7 +31,7 @@ export function MarcaDePago({ personaId, grupo, quincena, pagadaEn, cerrada }: {
 
   if (cerrada) {
     return pagada
-      ? <span data-testid={testid} data-pagada="1" style={{ ...SELLO, color: V.pos }}>{`✓ Pagada ${diaDelSello(pagadaEn)}`}</span>
+      ? <span data-testid={testid} data-pagada="1" className="whitespace-nowrap text-[11px] font-semibold leading-4 text-pos">{`✓ Pagada ${diaDelSello(pagadaEn)}`}</span>
       : null
   }
 
@@ -43,7 +42,10 @@ export function MarcaDePago({ personaId, grupo, quincena, pagadaEn, cerrada }: {
   })
 
   return (
-    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+    <span className="inline-flex flex-col items-end gap-0.5">
+      {/* CLASES, NO `style`, PARA TODO LO QUE CAMBIA CON EL PUNTERO (QA, 16/09/2026: sin hover; 20 px de alto en el
+          teléfono). Alto de control del OS (34 px; 44 en el teléfono), hover claro, foco visible. Los colores son los
+          tokens del sistema: `pos` / `pos-soft` para la marca, `line-strong` / `muted` para el botón en reposo. */}
       <button
         type="button"
         onClick={alternar}
@@ -55,20 +57,19 @@ export function MarcaDePago({ personaId, grupo, quincena, pagadaEn, cerrada }: {
         title={pagada
           ? `Pagada el ${diaDelSello(pagadaEn)} · clic para deshacer (vuelven los pagados de antes)`
           : 'Marcar como pagada: lo que falta de cada lado pasa a Pagado y los saldos quedan en 0'}
-        style={{
-          ...SELLO,
-          padding: '1px 8px', borderRadius: 999, cursor: pendiente ? 'progress' : 'pointer',
-          border: `1px solid ${pagada ? V.pos : V.lineaFuerte}`,
-          background: pagada ? V.posSuave : 'transparent',
-          color: pagada ? V.pos : V.apagado,
-          opacity: pendiente ? 0.6 : 1,
-        }}
+        className={[
+          'h-control max-[767px]:h-11 rounded-full border px-2.5 text-[11px] font-semibold leading-none whitespace-nowrap',
+          'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
+          'disabled:cursor-progress disabled:opacity-60',
+          pagada
+            ? 'border-pos bg-pos-soft text-pos hover:border-ink'
+            : 'border-line-strong bg-transparent text-muted hover:bg-surface-quiet hover:border-ink hover:text-ink',
+        ].join(' ')}
       >
         {pagada ? `✓ Pagada ${diaDelSello(pagadaEn)}` : 'Pagar'}
       </button>
-      {error && <span role="alert" data-testid={`${testid}-error`} style={{ fontSize: '10.5px', color: V.neg, whiteSpace: 'normal', maxWidth: 160, textAlign: 'right' }}>{error}</span>}
+      {error && <span role="alert" data-testid={`${testid}-error`} className="max-w-40 text-right text-[10.5px] text-neg">{error}</span>}
     </span>
   )
 }
 
-const SELLO: React.CSSProperties = { font: 'inherit', fontSize: '11px', lineHeight: '16px', whiteSpace: 'nowrap', fontWeight: 600 }
