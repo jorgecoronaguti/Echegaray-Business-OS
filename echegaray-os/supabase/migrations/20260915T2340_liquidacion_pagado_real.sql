@@ -17,6 +17,14 @@
 -- se compone el sueldo—. `pagado_banco` y `pagado_efectivo` arrancan CALCULADAS desde los adelantos (el valor
 -- inicial es lo que ya se entregó) y se corrigen a mano cuando alguien registra un pago más.
 --
+-- ═══ EL CIERRE NO LAS SELLA, Y ES A PROPÓSITO ═══
+--
+-- `cerrarQuincena` escribe la foto de lo calculado (`horas`, `cobra`, `por_banco`, …). Estas dos NO entran:
+-- su valor por defecto se deriva de los adelantos, que después de cerrar ya son historia estable, así que
+-- sellarlas escribiría un número en una columna que significa «alguien lo registró» y al reabrir la quincena
+-- aparecerían como escritas a mano por nadie — el defecto exacto que `horas_manual` existe para evitar
+-- (20260915T0510). La quincena cerrada las LEE: el pago que alguien registró no puede desaparecer al cerrar.
+--
 -- ═══ LOS SALDOS NO SE PERSISTEN ═══
 --
 -- saldo = corresponde − pagado, y «corresponde» se recalcula en cada lectura (el neto del recibo puede llegar

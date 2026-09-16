@@ -370,12 +370,23 @@ function descontarDelNegro(s: SueldoBlancoNegro, p: PresentismoDeLinea | null): 
  * Ninguna celda pisada: la fila calculada, con las marcas en falso. Para cuadros cerrados o sin líneas
  * guardadas. `sellado` es la foto del presentismo que el cierre dejó en `liquidacion_linea`: en una
  * quincena cerrada no se recalcula, se muestra la que se pagó.
+ *
+ * ═══ LO PAGADO SÍ VIAJA, Y NO ES UNA EXCEPCIÓN A R6 ═══
+ *
+ * `pagado_banco` y `pagado_efectivo` no son un override del CÁLCULO: son el registro de una plata que salió.
+ * Si no se leyeran acá, al cerrar la quincena desaparecería la corrección de quien registró el pago y el cuadro
+ * cerrado diría que se le pagó otra cosa que la que se le pagó. La fila sigue siendo de sólo lectura —la puerta
+ * es `fila.cerrada`— y el cierre NO los escribe: se derivan de los adelantos, que ya son historia estable, así
+ * que sellarlos haría que al reabrir la quincena aparecieran como escritos a mano por nadie (el defecto que
+ * `horas_manual` existe para evitar).
  */
-export function sinOverrides(base: LineaLiquidada, sellado: PresentismoDeLinea | null = null): LineaConOverrides {
-  // EN LA FOTO SELLADA LO PAGADO SON LOS ADELANTOS DE LA FOTO. La quincena cerrada no admite override (R6): si
-  // `pagado_banco` se aplicara acá, una celda escrita después del cierre cambiaría el registro de lo que se pagó.
-  const pagadoBanco = base.yaTransferido
-  const pagadoEfectivo = base.adelanto
+export function sinOverrides(
+  base: LineaLiquidada, sellado: PresentismoDeLinea | null = null, ov: OverridesDeLinea = {},
+): LineaConOverrides {
+  const registrado = (v: number | null | undefined): number | null =>
+    v != null && Number.isFinite(v) ? redondear2(v) : null
+  const pagadoBanco = registrado(ov.pagadoBanco) ?? base.yaTransferido
+  const pagadoEfectivo = registrado(ov.pagadoEfectivo) ?? base.adelanto
   return {
     ...base, manual: { ...SIN_MARCAS }, origen: { ...TODO_CALCULADO }, discrepancia: {},
     referenciaJornales: null, sueldo: null, presentismo: sellado, sinNeto: false, horasRecibo: null, valorHoraRecibo: null,

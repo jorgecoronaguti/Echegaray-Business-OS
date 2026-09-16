@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { aplicarOverrides, camposGuardables, sinOverrides } from './liquidacionOverrides.ts'
 import { liquidarLinea, type EntradaDeLinea } from './liquidacionQuincena.ts'
 
@@ -242,4 +243,24 @@ test('LA CUENTA ESCRITA CON `=` VIAJA CON LA LÍNEA', () => {
     { pagadoEfectivo: '=100000+40000' })
   assert.deepEqual(r.formulas, { pagadoEfectivo: '=100000+40000' })
   assert.equal(r.pagadoEfectivo, 140_000, 'lo que se paga es el VALOR; la cuenta sólo lo explica')
+})
+
+test('LA QUINCENA CERRADA CONSERVA EL PAGO REGISTRADO — y no lo marca como escrito a mano', () => {
+  // EL DEFECTO QUE ATRAPA: cerrar la quincena y que el cuadro vuelva a decir que se le pagó el adelanto
+  // calculado, borrando de la pantalla el pago que alguien registró. Y el de la vuelta: sellar esa columna,
+  // que al reabrir haría aparecer como «manual» un número que no escribió nadie.
+  const r = sinOverrides(linea, null, { pagadoBanco: 94_795.5 })
+  assert.equal(r.pagadoBanco, 94_795.5)
+  assert.equal(r.pago.saldoBanco, linea.porBanco - 94_795.5)
+  assert.equal(r.manual.pagadoBanco, false, 'la fila cerrada no dibuja marcas: es una foto')
+  assert.equal(r.origen.pagadoBanco, 'calculado')
+  // Sin registro, vuelven los adelantos de la foto.
+  assert.equal(sinOverrides(linea).pagadoBanco, linea.yaTransferido)
+})
+
+test('EL CIERRE NO ESCRIBE LAS COLUMNAS DE PAGO', () => {
+  // EL DEFECTO QUE ATRAPA: agregarlas a la foto de `escribirFoto`. Es el mismo que `horas_manual` ya pagó.
+  const CIERRE = readFileSync(new URL('./liquidacionCierreActions.ts', import.meta.url), 'utf8')
+  const foto = CIERRE.slice(CIERRE.indexOf('async function escribirFoto('), CIERRE.indexOf('function fotoDelPresentismo('))
+  assert.ok(!/pagado_banco|pagado_efectivo/.test(foto), 'la foto del cierre no sella lo pagado')
 })
