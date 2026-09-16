@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-16 ~10:20 (−03) · main = producción (2bb161fb)_
+_actualizado: 2026-09-16 ~11:40 (−03) · main = producción (0245acea)_
 
 ## 0. HOY 16/09 (mañana) — lo que entró y lo que sigue
 
@@ -12,10 +12,14 @@ cargados: Carlos Samuel 14–15/09, Juan Guillermo 07–09/09 ×2 — estaban en
 totales del pie · escala UOCRA vigente al lado de «Más» (ago-2026; SNR junio cargada) · cargador desde Drive lee nombre_completo ·
 17 excepciones «cobrado» viejas fuera. Postgres se reinició 08:53 y 08:57 por suites completas de agentes: PROHIBIDO
 `orq:test` completo mientras el dueño trabaja.
-Abierto: agente en `wt-proveedores` (rama feat/proveedores-deuda: tabla «a quién le debo, cuánto y cuándo» + panel derecho;
-migración 20260916T1500 si la escribe, la aplico yo) · QA visual del Pagar pulido pendiente de mirar · `tests/liquidacion-fidelidad.spec.ts:228`
-desactualizado · console.error WebSocket realtime tras revalidate (visto en QA) · no hay timer que replique `_UOCRA_RAW` a
-`uocra_escala` (hoy manual vía `os.sincronizar_nomina`).
+Después (hasta 0245acea, todo en producción y mirado con navegador): Horas «Obra en la quincena» en quincenas pasadas
+(`quincenaPorObra.ts`, 3 tests) · Proveedores «A quién le debo» (`?vista=deuda`, panel derecho, coteja con `proveedor_deuda`) ·
+Plantel filtro por obra (`?obra=<id>`, `FiltroDeObraEnPlantel.tsx`, `recorteDeObra.ts`, `enlaceDeVista.ts`) · barra sin filo entre
+grupos · $/h cat. del blanco verificado = recibo Q2-08 para los 16 con recibo (Castillo sin recibo aún).
+Abierto: agente en `wt-prov-compras` (rama feat/proveedores-en-compras: Proveedores como sección de Compras; redirects de rutas
+viejas) · «cargando pegado» que reporta el dueño: no reproducido (páginas 1–3 s, Pagar 1,4 s); falta que diga pantalla/botón ·
+`tests/liquidacion-fidelidad.spec.ts:228` desactualizado · console.error WebSocket realtime tras revalidate · sin timer que
+replique `_UOCRA_RAW` a `uocra_escala`.
 
 ## 1. OBJETIVO GENERAL
 
