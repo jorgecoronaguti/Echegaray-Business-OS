@@ -225,15 +225,15 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     await expect(page.getByTestId('banda-blanco')).toHaveText(/blanco · recibo/i)
     await expect(page.getByTestId('banda-negro')).toHaveText(/negro/i)
     // El orden de la pestaña «Obreros 26» de JORNALES (dueño, 14/09/2026), sin «Cliente · Obra».
-    for (const c of ['Persona', 'Horas', 'Hs recibo', '$/h cat.', 'Banco', '$/h negro', 'Importe', 'Adelanto banco / embargos', 'Adelanto efectivo', 'Total efectivo', 'Efect. red.', 'Cobra total']) {
+    for (const c of ['Persona', 'Horas', 'Hs recibo', '$/h cat.', 'Banco', 'Pagado', 'Saldo', 'Hs', '$/h negro', 'Importe', 'Pagado', 'Saldo', 'Presentismo', 'Efect. red.', 'Total', 'Pagado', 'Saldo', 'Saldo red.']) {
       await expect(tabla).toContainText(c)
     }
     const rotulos = await tabla.locator(':scope > div').allTextContents()
     const i = (t: string) => rotulos.findIndex((r) => r.includes(t))
     expect(i('Banco'), 'el blanco va antes que el negro').toBeLessThan(i('$/h negro'))
-    expect(i('Importe'), 'el negro va antes que los adelantos').toBeLessThan(i('Adelanto banco'))
-    expect(i('Total efectivo'), 'cobra total va al final').toBeLessThan(i('Cobra total'))
-    for (const p of ['Banco', 'Negro', 'Adelanto banco / embargos', 'Adelanto efectivo', 'Total efectivo', 'Efectivo redondeado', 'Cobra total']) {
+    expect(i('Importe'), 'el negro va antes que el presentismo').toBeLessThan(i('Presentismo'))
+    expect(i('Presentismo'), 'presentismo va antes que el total').toBeLessThan(i('Total'))
+    for (const p of ['Banco', 'Pagado banco', 'Saldo banco', 'Negro', 'Pagado efectivo', 'Saldo efectivo', 'Presentismo en juego', 'Efectivo redondeado', 'Total', 'Pagado', 'Saldo', 'Saldo redondeado']) {
       await expect(page.getByTestId('espejo-pie')).toContainText(p)
     }
 

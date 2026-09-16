@@ -41,6 +41,12 @@ const DOMINIOS_CONFIDENTIAL = new Set([
 const DOMINIOS_INTERNAL = new Set([
   'actividades', 'wbs', 'partidas', 'unidades', 'rubros', 'materiales-catalogo',
   'consultas', 'intenciones', 'documentacion-tecnica',
+  // 'codigo' (16/09/2026): el FUENTE del OS que el Development Router manda a un modelo para que lo
+  // edite. Es interno —no hay plata, ni personas, ni credenciales en un componente de React—, pero
+  // el fuente PUEDE tener un CUIT o un mail pegado adentro. Por eso INTERNAL no alcanza sola: quien
+  // manda código pasa además por `revisarEgreso()`, que escanea FRAGMENTO POR FRAGMENTO y bloquea.
+  // Clasificarlo acá es lo que permite que haya UNA sola puerta a HF en vez de dos.
+  'codigo',
 ])
 
 /** La sensibilidad de un dominio del OS. Lo que no está declarado es CONFIDENTIAL: el default es el
