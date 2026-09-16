@@ -440,7 +440,11 @@ export function completarDesdeAnotacion(comprobante, catalogo, o = {}) {
   // MESSINA sin ninguna duda; lo que no dice es cuál de sus obras. La J es el cliente: se escribe. La
   // columna «Obra» queda vacía a propósito, con su motivo, porque elegir entre cinco obras no es
   // tolerar una abreviatura: es adivinar.
-  if (r.confianza < umbral || !r.valor) {
+  // «Sin obra – CLIENTE» SÍ SE ESCRIBE cuando el cliente es seguro (dueño, 15/09: «no dejes columnas sin
+  // completar»). Es el mismo valor que el relleno del 15/09 puso en 214 filas con su acuerdo: dice «de este
+  // cliente, sin obra concreta», y la obra concreta la elige él desde el desplegable de Compras.
+  const sinObraSeguro = typeof r.valor === 'string' && r.valor.startsWith('Sin obra – ') && r.confianza >= 0.5
+  if ((r.confianza < umbral && !sinObraSeguro) || !r.valor) {
     poner('obra', 'obra', jDelCliente(r.cliente, listas?.obras, indiceDe(catalogo)?.clienteAlias))
     return { aplicado, resultado: r, anotacion }
   }

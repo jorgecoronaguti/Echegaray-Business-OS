@@ -201,9 +201,18 @@ test('el cliente se escribe aunque la obra no se sepa: la J es el cliente, la L 
   // palabra no se leía. MESSINA está fuera de discusión; cuál de sus obras, no.
   const c = { anotacion: 'Messino D. Ivan' }
   const { aplicado, resultado } = completarDesdeAnotacion(c, CATALOGO, { listas: { obras: ['MESSINA'], unidades: ['Civil'] } })
-  assert.deepEqual(aplicado, ['obra'])
+  // Dueño 15/09: «no dejes columnas sin completar» → la L se escribe «Sin obra – MESSINA» (de este cliente,
+  // sin obra concreta), que es lo que el desplegable ofrece y lo que el relleno del 15/09 puso con su acuerdo.
+  assert.deepEqual(aplicado, ['obraFila', 'obra'])
   assert.equal(c.obra, 'MESSINA')
-  assert.equal(c.obraFila, undefined, 'elegir entre cinco obras no es tolerar una abreviatura: es adivinar')
+  assert.equal(c.obraFila, 'Sin obra – MESSINA', 'elegir entre cinco obras sigue siendo adivinar: la L dice el cliente y nada más')
   assert.equal(resultado.valor, 'Sin obra – MESSINA')
-  assert.ok(resultado.confianza < UMBRAL)
+  assert.ok(resultado.confianza < UMBRAL && resultado.confianza >= 0.5)
+})
+
+test('«Messino D. Ivan»: el cliente es seguro y la obra no → L = «Sin obra – MESSINA» (dueño 15/09: columnas completas)', () => {
+  const c = { anotacion: 'Messino D. Ivan' }
+  const r = completarDesdeAnotacion(c, CATALOGO)
+  assert.equal(c.obraFila, 'Sin obra – MESSINA')
+  assert.ok(r.resultado.confianza >= 0.5)
 })
