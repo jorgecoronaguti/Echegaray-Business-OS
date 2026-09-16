@@ -33,6 +33,7 @@
 import { readFileSync } from 'node:fs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
+import { esTransitorio } from '../lib/google-transitorio.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { matchProveedor, valoresInput, aFechaAR, discrepanciaNeto, verificarEscritura, colIndice, filaModeloDeFormulas } from '../lib/carga-comprobantes.mjs'
 import { faltantesDe, puedeCargarse, POLITICA } from '../lib/comprobantes/faltantes.mjs'
@@ -72,7 +73,30 @@ const fileArg = (process.argv.find((a) => a.startsWith('--file=')) || '').split(
 
 /** Marca que delimita la línea de resultado. Todo lo demás de stdout es para una persona. */
 const MARCA_JSON = '##ORQ-JSON##'
-const emitir = (o) => { if (JSON_OUT) console.log(MARCA_JSON + JSON.stringify(o)) }
+/**
+ * EN QUÉ FASE ESTÁ LA CORRIDA (15/09/2026). Viaja en cada línea JSON para que el que llama sepa qué
+ * significa una falla: `lectura` = no se tocó el Sheet, se puede repetir tal cual; `escritura` = la
+ * pestaña puede haber quedado a medias, NO se reintenta solo; `verificacion` = las filas ya entraron.
+ * Nació el día en que un 504 de Google al leer los rótulos se contestó como «revisá Compras antes
+ * de reintentar» sobre un Sheet que no se había tocado.
+ */
+export const FASE = Object.freeze({ LECTURA: 'lectura', ESCRITURA: 'escritura', VERIFICACION: 'verificacion' })
+let fase = FASE.LECTURA
+const emitir = (o) => { if (JSON_OUT) console.log(MARCA_JSON + JSON.stringify({ fase, ...o })) }
+
+/** La línea JSON de una corrida que murió por excepción. Pura, para poder probarla sin Google. */
+export function resultadoDeExcepcion(e, enFase = fase) {
+  return {
+    ok: false,
+    motivo: 'excepcion',
+    fase: enFase,
+    transitorio: esTransitorio(e),
+    // `escritas` es lo que el bot usa para saber si es SEGURO que no se escribió: el 0 sólo se afirma
+    // cuando la excepción cayó antes de tocar la pestaña. A mitad de la escritura no se sabe, y se dice.
+    escritas: enFase === FASE.LECTURA ? 0 : null,
+    detalle: String(e?.message ?? e).slice(0, 300),
+  }
+}
 
 // El índice de columna sale de `colIndice`, no de una copia local: la verificación de la escritura
 // usa la misma función, y dos definiciones de "qué número de columna es la M" es exactamente cómo
@@ -627,6 +651,9 @@ async function main() {
     await closePool(); return
   }
 
+  // ═══ DESDE ACÁ SE TOCA EL SHEET ═══ Todo lo de arriba fue leer; lo que falle de acá en adelante
+  // puede haber dejado algo escrito y no se reintenta solo (ver `FASE`).
+  fase = FASE.ESCRITURA
   // Grilla: tiene que alcanzar ANTES de escribir, o el batch falla entero.
   if ((hoja.rows ?? 0) < hasta + 5) {
     await google.spreadsheetBatchUpdate(ID, [{ updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: hasta + 20 } }, fields: 'gridProperties.rowCount' } }])
@@ -735,6 +762,7 @@ async function main() {
   // propaga sola por fórmula a cuatro pestañas del Flujo de Fondos. El bot ya releía y lo controlaba
   // con `aritmetica()` de `verificacion.mjs`; este camino no. Se usa LA MISMA función: una capacidad,
   // una fuente — si algún día cambia la tolerancia, cambia para los dos o no cambia.
+  fase = FASE.VERIFICACION
   const check = await google.readSheetGrid(ID, rangoFilas('Compras', desde, hasta))
   const { errores, sinRubro, noCierran } = revisarFilasEscritas(check.filas, { desde, ind: indicesDeRevision(encabezado) })
   console.log(`\n✔ Escritas y VERIFICADAS en el destino ${plan.length} fila(s) (${desde}..${hasta}). ${errores ? `⚠ ${errores} con #ERROR — revisar.` : 'Sin #ERROR.'}`)
@@ -780,5 +808,13 @@ async function main() {
 // Sólo corre si se lo invoca como comando: importarlo desde un test NO dispara main() —que toca Google,
 // la base y el Sheet real—, así el test puede ejercitar la escritura verificada con un cliente falso.
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((e) => { console.error(e); process.exitCode = 1 })
+  main().catch(async (e) => {
+    console.error(e)
+    // LA MUERTE POR EXCEPCIÓN TAMBIÉN SE INFORMA POR EL CONTRATO JSON (15/09/2026). Sin esta línea el
+    // bot sólo veía stderr y no podía distinguir «Google no contestó antes de leer» de «se cortó a
+    // mitad de la escritura»: trataba las dos igual y mandaba al dueño a revisar Compras por nada.
+    emitir(resultadoDeExcepcion(e))
+    process.exitCode = 1
+    await closePool().catch(() => {})
+  })
 }

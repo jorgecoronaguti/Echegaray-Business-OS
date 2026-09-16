@@ -38,6 +38,7 @@ export const PARTE_VACIA = Object.freeze({
   ilegibles: [],  // {nombre, motivo}
   sinImputar: [], // {fila, proveedor, campos:[...]}
   trabados: [],   // {nombre, motivo} — no se pudo cargar y NO se pregunta nada
+  reintentando: 0, // leídos y guardados: Google no contestó al cargarlos y el worker lo reintenta solo
   avisos: [],     // texto suelto: lo que rompió y hay que decir sí o sí
 })
 
@@ -62,6 +63,7 @@ export function sumarPartes(a, b) {
     ilegibles: [...(x.ilegibles ?? []), ...(y.ilegibles ?? [])],
     sinImputar: [...(x.sinImputar ?? []), ...(y.sinImputar ?? [])],
     trabados: [...(x.trabados ?? []), ...(y.trabados ?? [])],
+    reintentando: (x.reintentando ?? 0) + (y.reintentando ?? 0),
     // EL MISMO AVISO DOS VECES NO ES DOS PROBLEMAS (31/08). Los avisos de `vigilancia.mjs` son un
     // barrido GLOBAL del registro contra Compras: cada post de la tanda vuelve a mirar lo mismo y
     // vuelve a decir lo mismo. Publicado tal cual salía «⚠ 1 fila(s) del registro apuntan a otra
@@ -162,6 +164,11 @@ export function textoTanda(p = {}, { enVuelo = 0 } = {}) {
   if (a.cargados > 0) {
     const plata = a.suma ? ` — total ${enPesos(a.suma)}` : ''
     l.push(`✔ **Listo, terminé.** Cargué **${a.cargados} ${plural(a.cargados, 'comprobante', 'comprobantes')}** en Compras${plata}.`)
+  } else if (a.reintentando > 0) {
+    // ═══ NO ES «NO CARGUÉ NINGUNO» (15/09/2026) ═══ Los leí y los tengo guardados: lo que falló fue
+    // Google al ir a escribir, y eso se reintenta solo. Decir «terminé, no cargué ninguno» era pedirle
+    // al dueño que mandara las ocho fotos de nuevo por un 504 que no era suyo.
+    l.push(`⏳ **Leí ${a.reintentando === 1 ? 'el comprobante' : `los ${a.reintentando} comprobantes`}, pero Google Sheets no respondió al ir a cargarlos.** Lo reintento solo — no hace falta que los mandes de nuevo. Te aviso acá cuando queden cargados.`)
   } else if (a.recibidos > 0) {
     l.push(`✔ **Terminé, pero no cargué ninguno** de los ${a.recibidos} que mandaste.`)
   } else {
@@ -195,6 +202,7 @@ export function textoTanda(p = {}, { enVuelo = 0 } = {}) {
     l.push(`ℹ ${a.sinImputar.length} ${plural(a.sinImputar.length, 'quedó', 'quedaron')} sin imputar en Compras${donde}${que}.`)
   }
 
-  for (const av of a.avisos) l.push(`⚠ ${av}`)
+  // El aviso del reintento ya es el primer renglón cuando hay reintento: no se repite abajo.
+  for (const av of a.avisos) if (!(a.reintentando > 0 && /lo reintento solo/i.test(av))) l.push(`⚠ ${av}`)
   return l.join('\n')
 }

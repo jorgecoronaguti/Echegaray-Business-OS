@@ -47,6 +47,8 @@ import { bajarAdjunto } from './flujo.mjs'
 // `main()`. Importarlo acá no abre una conexión ni pide una credencial.
 import { auditar as auditarCompras } from '../../scripts/auditar-comprobantes-cargados.mjs'
 import { dispararEspejo, avisoDeEspejo } from './espejo.mjs'
+import { esperasDelCargador } from '../../lib/google-transitorio.mjs'
+import { esperaDeReintentoMin, TEXTO_REINTENTO } from '../../lib/comprobantes/reintento.mjs'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 export const RUTA_CARGADOR = resolve(AQUI, '../../scripts/cargar-comprobantes-compras.mjs')
@@ -146,8 +148,43 @@ export function itemsQueEntran(items = []) {
   return items.filter(estaCompleto)
 }
 
-/** Corre el cargador y devuelve su línea JSON. Inyectable para poder probar sin Google ni Postgres. */
-export async function correrCargador({ fajo, dry = ENSAYO(), actor = null, spawnImpl = spawn, cwd = resolve(AQUI, '../../..'), env = process.env } = {}) {
+/**
+ * ¿Esta corrida se puede repetir TAL CUAL sin riesgo de duplicar un gasto? Sólo si el cargador dijo
+ * las tres cosas: que murió en fase `lectura` (no tocó el Sheet), que la falla es pasajera de Google
+ * (5xx/429/red) y que escribió 0 filas. Cualquier otra cosa —un rótulo que falta, un candado, un
+ * corte a mitad de la escritura— NO se reintenta sola: se dice.
+ */
+export function seReintentaTalCual(r) {
+  return r?.ok !== true && r?.datos?.fase === 'lectura' && r?.datos?.transitorio === true && r?.datos?.escritas === 0
+}
+
+const dormir = (ms) => new Promise((res) => setTimeout(res, ms))
+
+/** La línea JSON de una corrida, rescatada de entre la prosa del cargador. */
+function leerResultado(r) {
+  const linea = String(r.stdout ?? '').split('\n').reverse().find((l) => l.startsWith(MARCA_JSON))
+  if (!linea) {
+    return { ok: false, error: r.code === 0 ? 'el cargador no devolvió resultado' : (recorte(r.stderr) || `el cargador salió con código ${r.code}`), salida: r }
+  }
+  const datos = JSON.parse(linea.slice(MARCA_JSON.length))
+  return { ok: datos.ok === true, datos, salida: r }
+}
+
+/**
+ * Corre el cargador y devuelve su línea JSON. Inyectable para poder probar sin Google ni Postgres.
+ *
+ * ═══ EL REINTENTO EN PROCESO (15/09/2026) ═══
+ *
+ * Si el cargador murió LEYENDO (rótulos, catálogo, filas existentes) por una falla pasajera de Google,
+ * se vuelve a correr con el mismo `fajo.json` después de cada espera de `esperas` — el archivo se
+ * escribe una vez y se borra al final, no por corrida. Las esperas son cortas a propósito (segundos):
+ * el tick del worker tiene un latido de 5 minutos. Lo que no entra acá lo reintenta el worker desde
+ * la base, en minutos (`reintento.mjs`). Devuelve `intentos` para que el que llama lo diga.
+ */
+export async function correrCargador({
+  fajo, dry = ENSAYO(), actor = null, spawnImpl = spawn, cwd = resolve(AQUI, '../../..'), env = process.env,
+  esperas = esperasDelCargador(env), esperar = dormir, log = null,
+} = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'orq-fajo-'))
   const ruta = join(dir, 'fajo.json')
   await writeFile(ruta, JSON.stringify(fajo, null, 2), 'utf8')
@@ -168,13 +205,14 @@ export async function correrCargador({ fajo, dry = ENSAYO(), actor = null, spawn
     // log que miente, y el rastro es la única razón por la que esta puerta es admisible.
     : { ...env, ORQ_SHEETS_DESCONGELAR: `carga de comprobante mandado al chat por ${actor}` }
   try {
-    const r = await unaCorrida(spawnImpl, args, { cwd, env: entorno })
-    const linea = String(r.stdout ?? '').split('\n').reverse().find((l) => l.startsWith(MARCA_JSON))
-    if (!linea) {
-      return { ok: false, error: r.code === 0 ? 'el cargador no devolvió resultado' : (recorte(r.stderr) || `el cargador salió con código ${r.code}`), salida: r }
+    for (let intentos = 1; ; intentos++) {
+      const r = leerResultado(await unaCorrida(spawnImpl, args, { cwd, env: entorno }))
+      if (r.ok || !seReintentaTalCual(r) || intentos > esperas.length) return { ...r, intentos }
+      log?.warn?.('comprobantes: el cargador no pudo ni leer el Sheet (falla pasajera de Google); lo reintento', {
+        intento: intentos, espera_ms: esperas[intentos - 1], detalle: recorte(r.datos?.detalle),
+      })
+      await esperar(esperas[intentos - 1])
     }
-    const datos = JSON.parse(linea.slice(MARCA_JSON.length))
-    return { ok: datos.ok === true, datos, salida: r }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }
@@ -315,12 +353,44 @@ export async function escribirFajo(d, fajo) {
   const yaEstaban = aReservar.filter((f) => !reservadas.includes(f.clave))
   const entran = items.filter((it, k) => reservadas.includes(aReservar[k].clave))
   if (!entran.length) {
-    await repo.cerrarFajo(port, { id: fajo.id, estado: ESTADO.CARGADO, filas: [] })
     // DÓNDE están, no sólo que están. Se pregunta a la tabla —la reserva no trae la fila— porque
     // "ya estaba cargado" sin decir dónde no se puede verificar, y todo lo que no se puede verificar
     // termina siendo una afirmación que nadie chequea.
     const ya = await repo.yaCargados(port, yaEstaban.map((f) => f.clave))
     const donde = [...ya.values()].map((r) => r?.fila).filter((f) => f != null)
+    // ═══ «YA ESTABAN CARGADOS» SIN UNA SOLA FILA ES UNA MENTIRA (15/09/2026) ═══
+    //
+    // Ninguna de las claves volvió de la reserva Y ninguna tiene fila: no están cargados, están
+    // RESERVADOS por una corrida que todavía no terminó (o que murió hace menos de
+    // `RESERVA_RANCIA_MIN`). Eso fue exactamente lo que contestó el bot cuando se re-encoló el
+    // evento del 15/09: «ya estaban cargados», con Compras intacta y el gasto sin registrar.
+    // No se cierra nada: el fajo queda para reintentar y se dice la verdad. Cuando vuelva a correr,
+    // las reservas ya estarán rancias y `reservarClaves` se las quedará.
+    if (!donde.length) {
+      const programado = typeof repo.programarReintento === 'function'
+        ? await repo.programarReintento(port, {
+          id: fajo.id, error: 'las claves están reservadas por otra corrida que no terminó', esperaMin: esperaDeReintentoMin((Number(fajo.intentos) || 0) + 1),
+        }).catch(() => null)
+        : null
+      log?.warn?.('comprobantes: todas las claves reservadas y ninguna con fila', { fajo: fajo.id, claves: yaEstaban.length, programado: !!programado })
+      if (programado) {
+        return {
+          estado: ESTADO.REINTENTO,
+          reintento: { intentos: programado.intentos, proximo: programado.proximo_intento_at },
+          avisos: [TEXTO_REINTENTO.aviso],
+          texto: TEXTO_REINTENTO.texto(items.length, { detalle: 'otra corrida los tenía tomados' }),
+        }
+      }
+      // Sin la migración: se reabre, que es lo que hacía siempre ante una carga que no ocurrió. Lo
+      // que NO se hace nunca más es cerrarlo como CARGADO sin una fila que lo respalde.
+      await repo.reabrirFajo(port, { id: fajo.id, error: 'claves reservadas sin fila: la carga no ocurrió' })
+      return {
+        estado: ESTADO.ERROR,
+        avisos: ['No los cargué: las claves quedaron tomadas por una carga anterior que no terminó. Mandalos de nuevo en un rato.'],
+        texto: 'No los cargué: las claves quedaron tomadas por una carga anterior que no terminó. **No se escribió nada en Compras.** Mandalos de nuevo en un rato.',
+      }
+    }
+    await repo.cerrarFajo(port, { id: fajo.id, estado: ESTADO.CARGADO, filas: [] })
     return {
       estado: ESTADO.CARGADO,
       yaEstaban: yaEstaban.length,
@@ -333,7 +403,7 @@ export async function escribirFajo(d, fajo) {
   // 3) Correr el cargador.
   let r
   try {
-    r = await correr({ fajo: aFajoJson(entran), actor: quienConfirmo })
+    r = await correr({ fajo: aFajoJson(entran), actor: quienConfirmo, log })
   } catch (e) {
     r = { ok: false, error: String(e?.message ?? e).slice(0, 200) }
   }
@@ -359,7 +429,16 @@ export async function escribirFajo(d, fajo) {
     // lo declara es la pestaña VIVA, que es más fuerte que la tabla de reservas—, así que el fajo se
     // cierra CARGADO y se sueltan las reservas: la fila que vale es la que ya está en Compras.
     if (seguroQueNo && r.datos?.motivo === 'ya_cargados') {
-      await repo.soltarReservas(port, reservadas)
+      // LA FILA QUE EL CARGADOR ENCONTRÓ SE ANOTA ANTES DE SOLTAR NADA (15/09/2026). `duplicados`
+      // trae `i` y `fila`: es la fila VIVA de Compras. Si la reserva de esta corrida se suelta sin
+      // anotarla, el registro se queda sin saber dónde está un gasto que sí existe — y desde que
+      // `reservarClaves` rescata reservas rancias, este camino se pisa mucho más seguido.
+      const filaDeDuplicado = new Map((r.datos?.duplicados ?? []).map((x) => [x.i, x.fila]))
+      const anotables = entran
+        .map((it, k) => ({ ...filaDeRegistro(it, fajo), fila: filaDeDuplicado.get(k) ?? null }))
+        .filter((f) => f.fila != null)
+      if (anotables.length) await repo.anotarFilas(port, anotables)
+      await repo.soltarReservas(port, reservadas.filter((c) => !anotables.some((f) => f.clave === c)))
       await repo.cerrarFajo(port, { id: fajo.id, estado: ESTADO.CARGADO, filas: [] })
       const yaEnCompras = await repo.yaCargados(port, yaEstaban.map((f) => f.clave))
       const donde = [
@@ -375,6 +454,40 @@ export async function escribirFajo(d, fajo) {
           ? `Estos comprobantes ya estaban cargados (fila${donde.length > 1 ? 's' : ''} ${donde.join(', ')} de Compras). No los dupliqué.`
           : 'Estos comprobantes ya estaban cargados. No los dupliqué.',
       }
+    }
+    // ═══ GOOGLE NO CONTESTÓ ANTES DE LEER: EL FAJO ESPERA, NO SE TIRA (15/09/2026) ═══
+    //
+    // Ocho fotos leídas, y el cargador muerto con un 504 al leer los rótulos de Compras. Acá abajo
+    // eso era «No pude cargarlos … Revisá Compras antes de reintentar» sobre un Sheet que no se había
+    // tocado, el fajo reabierto para que alguien lo mandara de nuevo, y las ocho lecturas de visión a
+    // la basura. El dueño ya lo había pedido «muchas veces»: eso no puede ser así.
+    //
+    // Las condiciones son estrictas a propósito (`seReintentaTalCual`): fase lectura, falla pasajera
+    // y 0 escritas. Se sueltan las reservas —no hay nada que proteger, no se escribió— y el fajo pasa
+    // a `reintento` CON sus ítems: el worker lo vuelve a intentar solo (`reintento.mjs`) y recién
+    // entonces contesta «cargué N» en este mismo hilo. Sin la migración aplicada, `programarReintento`
+    // lanza y se cae al camino de siempre: el código anda antes y después de aplicarla.
+    if (seguroQueNo && seReintentaTalCual(r)) {
+      await repo.soltarReservas(port, reservadas)
+      const programado = typeof repo.programarReintento === 'function'
+        ? await repo.programarReintento(port, {
+          id: fajo.id,
+          error: recorte(r.datos?.detalle ?? r.error),
+          esperaMin: esperaDeReintentoMin((Number(fajo.intentos) || 0) + 1),
+        }).catch((e) => { log?.warn?.('comprobantes: no pude programar el reintento (¿falta la migración 20260915T2330?)', { detalle: recorte(e?.message) }); return null })
+        : null
+      if (programado) {
+        log?.warn?.('comprobantes: Google no contestó antes de escribir; el fajo queda para reintentar', {
+          fajo: fajo.id, intento: programado.intentos, proximo: programado.proximo_intento_at, corridas: r.intentos ?? 1, detalle: recorte(r.datos?.detalle),
+        })
+        return {
+          estado: ESTADO.REINTENTO,
+          reintento: { intentos: programado.intentos, proximo: programado.proximo_intento_at },
+          avisos: [TEXTO_REINTENTO.aviso],
+          texto: TEXTO_REINTENTO.texto(entran.length, { detalle: recorte(r.datos?.detalle).slice(0, 80) || null }),
+        }
+      }
+      // La reserva ya se soltó; el camino viejo de abajo no la vuelve a soltar (`soltarReservas` es idempotente igual).
     }
     if (seguroQueNo) await repo.soltarReservas(port, reservadas)
     await repo.reabrirFajo(port, { id: fajo.id, error: recorte(r.error ?? r.datos?.detalle) })

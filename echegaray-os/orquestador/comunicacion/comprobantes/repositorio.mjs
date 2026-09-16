@@ -174,6 +174,64 @@ export async function cerrarFajo(port, { id, estado, filas = null, error = null,
 }
 
 /** Vuelve un fajo confirmado a abierto: la escritura falló antes de escribir nada. */
+/**
+ * GOOGLE NO CONTESTÓ ANTES DE ESCRIBIR: el fajo queda en `reintento` con sus lecturas, cuenta el
+ * intento y anota cuándo volver a probar (15/09/2026). Compare-and-set desde `confirmado`, que es
+ * el estado en que `escribirFajo` lo recibe. Si la migración `20260915T2330` no está aplicada,
+ * lanza (columna o check ausentes) y el que llama cae al camino viejo: reabrir.
+ */
+export async function programarReintento(port, { id, error = null, esperaMin = 1 } = {}) {
+  const { rows } = await port.query(
+    `update comunicacion.comprobante_fajos
+        set estado = $2, error = $3, intentos = coalesce(intentos, 0) + 1,
+            proximo_intento_at = now() + make_interval(mins => $4::int), ultimo_at = now()
+      where id = $1 and estado = $5 returning *`,
+    [id, ESTADO.REINTENTO, error, Math.max(0, Math.round(Number(esperaMin) || 0)), ESTADO.CONFIRMADO])
+  return rows[0] ?? null
+}
+
+/** Los fajos cuyo turno de reintento ya llegó, del más viejo al más nuevo. */
+export async function fajosParaReintentar(port, { limite = 10 } = {}) {
+  const { rows } = await port.query(
+    `select * from comunicacion.comprobante_fajos
+      where estado = $1 and (proximo_intento_at is null or proximo_intento_at <= now())
+      order by proximo_intento_at asc nulls first, ultimo_at asc limit $2`,
+    [ESTADO.REINTENTO, limite])
+  return rows
+}
+
+/**
+ * EL FAJO QUE SE TOMÓ PARA REINTENTAR Y NADIE TERMINÓ DE ESCRIBIR (15/09/2026).
+ *
+ * `tomarParaReintentar` lo deja en `confirmado`. Si el worker muere ahí —systemd lo reinicia, la VM
+ * se satura, el latido lo mata— el fajo queda en un estado que NADIE barre: el vigía de mudos sólo
+ * mira `abierto`, y el reintento sólo mira `reintento`. Sería exactamente el defecto que este
+ * trabajo cierra, con otro disfraz: un fajo con plata adentro que no está en ninguna cola.
+ *
+ * Se rescatan sólo los que ya pasaron por acá (`intentos > 0`) y llevan colgados más que cualquier
+ * corrida viva posible (el cargador se corta a los 180 s y se repite dos veces). Un `confirmado`
+ * normal, el de alguien que acaba de apretar Confirmar, no se toca.
+ */
+export async function rescatarConfirmadosColgados(port, { minutos = 15 } = {}) {
+  const { rows } = await port.query(
+    `update comunicacion.comprobante_fajos
+        set estado = $1, proximo_intento_at = now()
+      where estado = $2 and coalesce(intentos, 0) > 0
+        and ultimo_at < now() - make_interval(mins => $3::int)
+      returning id`,
+    [ESTADO.REINTENTO, ESTADO.CONFIRMADO, Math.max(1, Math.round(Number(minutos) || 15))])
+  return rows.map((r) => r.id)
+}
+
+/** COMPARE-AND-SET `reintento` → `confirmado`: dos workers no reintentan el mismo fajo a la vez. */
+export async function tomarParaReintentar(port, { id } = {}) {
+  const { rows } = await port.query(
+    `update comunicacion.comprobante_fajos set estado = $2, ultimo_at = now()
+      where id = $1 and estado = $3 returning *`,
+    [id, ESTADO.CONFIRMADO, ESTADO.REINTENTO])
+  return rows[0] ?? null
+}
+
 export async function reabrirFajo(port, { id, error = null } = {}) {
   const { rows } = await port.query(
     `update comunicacion.comprobante_fajos set estado = $2, error = $3, ultimo_at = now()
@@ -294,10 +352,72 @@ export async function nombresPorCuit(port) {
  * cambia de signo: en el peor caso queda una reserva sin fila, que se puede ver y limpiar, en vez de
  * un gasto duplicado en el Flujo de Fondos. Se prefiere el error que se nota.
  *
+ * ═══ UNA RESERVA HUÉRFANA NO PUEDE BLOQUEAR EL GASTO PARA SIEMPRE (15/09/2026) ═══
+ *
+ * Esa ventana tenía un precio que se cobró el 15/09: el cargador murió con un 504 de Google ANTES de
+ * escribir, las ocho reservas quedaron con `fila` en null y nadie las soltó. Re-encolar el evento
+ * volvía a pedirlas, `on conflict do nothing` no devolvía ninguna, y `escribirFajo` contestaba
+ * «Estos comprobantes ya estaban cargados. No los dupliqué.» sobre un Sheet donde no había una sola
+ * fila. El gasto quedaba imposible de cargar por el chat hasta que alguien borrara las reservas a
+ * mano —que es lo que hubo que hacer—.
+ *
+ * Ahora una reserva SIN FILA más vieja que `rescatarDesdeMin` se considera LIBRE y esta llamada se
+ * la queda (compare-and-set en el mismo UPDATE: dos corridas no se la pueden quedar las dos).
+ *
+ * POR QUÉ ES SEGURO, que es lo único que importa acá: el rescate no afirma que el comprobante no
+ * está en Compras — lo afirma la PESTAÑA VIVA, que el cargador relee en cada corrida y contra la que
+ * deduplica (`duplicados`). Si el comprobante sí estaba, esta corrida no lo escribe dos veces: el
+ * cargador lo declara duplicado y `escribirFajo` le anota la fila que ya tenía. La reserva rescatada
+ * termina diciendo la verdad en los dos casos.
+ *
+ * Y el umbral es holgado a propósito: el cargador se corta solo a los 180 s y se reintenta en proceso
+ * dos veces, así que una corrida viva no puede pasar de ~10 min. Quince minutos es «ya no hay nadie
+ * escribiendo esto».
+ *
  * @returns {Promise<string[]>} las claves reservadas por ESTA llamada (las que ya estaban, no)
  */
-export async function reservarClaves(port, filas = []) {
-  return registrarCargados(port, filas.map((f) => ({ ...f, fila: null })))
+export const RESERVA_RANCIA_MIN = Number(process.env.ORQ_RESERVA_RANCIA_MIN || 15)
+
+export async function reservarClaves(port, filas = [], { rescatarDesdeMin = RESERVA_RANCIA_MIN } = {}) {
+  const nuevas = await registrarCargados(port, filas.map((f) => ({ ...f, fila: null })))
+  const faltan = filas.map((f) => f?.clave).filter((c) => c && !nuevas.includes(c))
+  if (!faltan.length || !(rescatarDesdeMin >= 0)) return nuevas
+  return [...nuevas, ...await rescatarReservasRancias(port, faltan, { minutos: rescatarDesdeMin, filas })]
+}
+
+/**
+ * Se queda con las reservas SIN FILA que quedaron colgadas de una corrida que ya no existe. Nunca
+ * toca una fila con `fila` puesta: eso es un gasto registrado, y borrarlo sería abrir la puerta al
+ * duplicado. Devuelve las claves que esta llamada se quedó.
+ */
+export async function rescatarReservasRancias(port, claves = [], { minutos = RESERVA_RANCIA_MIN, filas = [] } = {}) {
+  const lista = [...new Set(claves.filter(Boolean))]
+  if (!lista.length) return []
+  const porClave = new Map(filas.filter((f) => f?.clave).map((f) => [f.clave, f]))
+  const rescatadas = []
+  for (const clave of lista) {
+    const f = porClave.get(clave) ?? {}
+    const { rows } = await port.query(
+      `update comunicacion.comprobantes_cargados
+          set fajo_id = coalesce($2, fajo_id), post_id = coalesce($3, post_id), creado_at = now()
+        where clave = $1 and fila is null
+          and creado_at < now() - make_interval(mins => $4::int)
+        returning clave`,
+      [clave, f.fajoId ?? null, f.postId ?? null, Math.max(0, Math.round(Number(minutos) || 0))])
+    if (rows.length) rescatadas.push(rows[0].clave)
+  }
+  return rescatadas
+}
+
+/** Las reservas sin fila que llevan colgadas más de `minutos`. Para mirar, no para decidir. */
+export async function reservasRancias(port, { minutos = RESERVA_RANCIA_MIN, limite = 100 } = {}) {
+  const { rows } = await port.query(
+    `select clave, proveedor, numero, total::float8 as total, fajo_id, post_id, creado_at
+       from comunicacion.comprobantes_cargados
+      where fila is null and creado_at < now() - make_interval(mins => $1::int)
+      order by creado_at asc limit $2`,
+    [Math.max(0, Math.round(Number(minutos) || 0)), limite])
+  return rows
 }
 
 /** Completa el número de fila de las claves ya reservadas. */

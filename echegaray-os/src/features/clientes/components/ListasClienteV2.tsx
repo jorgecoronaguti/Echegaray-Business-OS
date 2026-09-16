@@ -66,6 +66,9 @@ import { baseContractualDe } from '@/features/clientes/services/economiaObras'
 import type { PapelesDelCliente } from '../services/papelesCliente'
 import { OrdenesDeLaObra } from './OrdenesDeLaObra'
 import { CeldaHH } from './CeldaHH'
+import { AbrirDetalle, PorVencer } from './CeldaCosto'
+import { porVencerDeMateriales, textoPorVencer } from '../services/porVencer'
+import type { Rubro } from '../services/detalleCostoDeObra'
 
 // ═══ LA GRILLA: DOS ANCHOS Y UN SCROLLER, Y CADA NÚMERO SALE DE UNA CUENTA ═══
 //
@@ -168,7 +171,7 @@ const SANGRIA = 16
 /** TRABAJO · INICIO · HH · MATERIALES · MANO DE OBRA · CONTRATADO · [acciones]. */
 export function ObrasDelCliente({
   obras, veEconomia, vacio, economia = null, papeles = null, titulo, hrefTrabajo,
-  horas = null, costos = null, hrefDesgloseHH,
+  horas = null, costos = null, hrefDesgloseHH, hrefDetalle,
 }: {
   obras: ObraPanel[]
   /** Adónde va la fila: el detalle del trabajo DENTRO del CRM. Sin esto, al ERP — que es de donde
@@ -202,6 +205,9 @@ export function ObrasDelCliente({
    *  número se dibuja igual y no navega — una tabla que no puede explicar su número sigue siendo
    *  mejor que ninguna. */
   hrefDesgloseHH?: (obraId: string) => string
+  /** Adónde lleva cada celda de costo: el panel con lo que la compone (dueño, 15/09/2026). Con esto,
+   *  el número de HH abre el resumen por persona y desde ahí se va a la grilla por día. */
+  hrefDetalle?: (obraId: string, rubro: Rubro) => string
 }) {
   return (
     // ═══ A 400px LA TABLA RUEDA DENTRO DE SU CAJA, Y LA PÁGINA NO SE MUEVE ═══
@@ -350,7 +356,8 @@ export function ObrasDelCliente({
               <CeldaHH
                 texto={textoHH(hhDeLaObra)}
                 ayuda={tituloHH(hhDeLaObra) ?? AYUDA_HH}
-                href={hhDeLaObra?.hhReal != null && hrefDesgloseHH ? hrefDesgloseHH(o.obra_id) : null}
+                href={hhDeLaObra?.hhReal == null ? null
+                  : hrefDetalle ? hrefDetalle(o.obra_id, 'hh') : hrefDesgloseHH ? hrefDesgloseHH(o.obra_id) : null}
               />
             )}
           </span>
@@ -364,23 +371,39 @@ export function ObrasDelCliente({
 
               SÓLO QUIEN VE ECONOMÍA VE COSTO. Es la misma puerta que el contratado: un rol sin
               economía no ve el precio de venta, y mucho menos el costo. */}
-          <span
-            data-testid="materiales-obra-cliente"
-            title={tituloMateriales(costoDeLaObra) ?? AYUDA_MATERIALES}
-            className="truncate font-mono tabular-nums"
-            style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right' }}
-          >
-            {costos === null || !veEconomia ? '' : textoMateriales(costoDeLaObra)}
+          {/* EL NÚMERO ABRE SU DETALLE (dueño, 15/09/2026) y, debajo, lo POR VENCER en texto secundario:
+              cuotas con vencimiento posterior a hoy, que no entran a la fecha y tampoco se esconden. */}
+          <span className="grid justify-items-end" style={{ minWidth: 0 }}>
+            <span
+              data-testid="materiales-obra-cliente"
+              title={tituloMateriales(costoDeLaObra) ?? AYUDA_MATERIALES}
+              className="truncate font-mono tabular-nums"
+              style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right', maxWidth: '100%' }}
+            >
+              {costos === null || !veEconomia ? '' : (
+                <AbrirDetalle href={hrefDetalle && costoDeLaObra ? hrefDetalle(o.obra_id, 'materiales') : null} etiqueta="Ver qué compone los materiales de este trabajo">
+                  {textoMateriales(costoDeLaObra)}
+                </AbrirDetalle>
+              )}
+            </span>
+            {costos !== null && veEconomia && <PorVencer texto={textoPorVencer(porVencerDeMateriales(costoDeLaObra))} />}
           </span>
 
           {/* SUBCONTRATOS (dueño, 14/09/2026): su columna, delegada en costosDeObra como las otras dos. */}
-          <span
-            data-testid="subcontratos-obra-cliente"
-            title={tituloSubcontratos(costoDeLaObra) ?? AYUDA_SUBCONTRATOS}
-            className="truncate font-mono tabular-nums"
-            style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right' }}
-          >
-            {costos === null || !veEconomia ? '' : textoSubcontratos(costoDeLaObra)}
+          <span className="grid justify-items-end" style={{ minWidth: 0 }}>
+            <span
+              data-testid="subcontratos-obra-cliente"
+              title={tituloSubcontratos(costoDeLaObra) ?? AYUDA_SUBCONTRATOS}
+              className="truncate font-mono tabular-nums"
+              style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right', maxWidth: '100%' }}
+            >
+              {costos === null || !veEconomia ? '' : (
+                <AbrirDetalle href={hrefDetalle && costoDeLaObra ? hrefDetalle(o.obra_id, 'subcontratos') : null} etiqueta="Ver qué compone los subcontratos de este trabajo">
+                  {textoSubcontratos(costoDeLaObra)}
+                </AbrirDetalle>
+              )}
+            </span>
+            {costos !== null && veEconomia && <PorVencer texto={textoPorVencer(costoDeLaObra?.subcontratosPorVencer)} />}
           </span>
 
           {/* ÁMBAR = RECLAMA TRABAJO, y acá el trabajo es cargar un dato que existe: las alícuotas de
@@ -395,7 +418,11 @@ export function ObrasDelCliente({
               color: manoObra.parcial ? V.warn : V.tintaSuave,
             }}
           >
-            {costos === null || !veEconomia ? '' : manoObra.texto}
+            {costos === null || !veEconomia ? '' : (
+              <AbrirDetalle href={hrefDetalle && costoDeLaObra?.manoObra != null ? hrefDetalle(o.obra_id, 'mo') : null} etiqueta="Ver la mano de obra de este trabajo, persona por quincena">
+                {manoObra.texto}
+              </AbrirDetalle>
+            )}
             {/* ESTIMADO ≠ REAL: sin recibo del estudio todavía (20260915T0800). */}
             {costos !== null && veEconomia && manoObra.estimado && (
               <span data-testid="mano-obra-estimada" style={{ marginLeft: 4, fontSize: '10.5px', color: V.tenue }}>est.</span>
