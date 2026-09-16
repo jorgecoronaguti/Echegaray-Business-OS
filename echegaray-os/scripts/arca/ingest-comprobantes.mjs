@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Ingiere los comprobantes ARCA extraídos (out/comprobantes-<t>-*.json) a la tabla
-// public.comprobantes_arca del OS. Idempotente: on conflict (tipo_libro,cae,numero).
+// public.comprobantes_arca del OS. Idempotente: on conflict (tipo_libro,cae,numero) con CAE, y por la
+// identidad tipo+emisor+punto de venta+número sin CAE (tiques 81/112: NULL no choca, ver 20260916T1900).
 // Parsea números en formato es_AR ("1.234,50" -> 1234.50; "" -> 0).
 //   node scripts/arca/ingest-comprobantes.mjs                 # todos los out/*.json
 //   node scripts/arca/ingest-comprobantes.mjs out/comprobantes-R-01062026-30062026.json
@@ -8,6 +9,7 @@ import { readFileSync, readdirSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { query, closePool } from '../../orquestador/lib/db.mjs'
+import { conflictoIngesta, caeNormalizado } from '../../orquestador/lib/arca-duplicados.mjs'
 
 const DIR = dirname(fileURLToPath(import.meta.url))
 const OUT = join(DIR, 'out')
@@ -34,17 +36,18 @@ async function ingestFile(file) {
       if (iva || neto) alic[a.replace(',', '.')] = { neto, iva }
     }
     const fecha = c['Fecha de Emisión'] || null
+    const cae = caeNormalizado(c['Cód. Autorización'])
     await query(
       `insert into public.comprobantes_arca
         (tipo_libro, fecha_emision, tipo_comprobante, punto_venta, numero, cae, emisor_cuit, emisor_nombre,
          receptor_cuit, moneda, neto_gravado, neto_no_gravado, exento, total_iva, otros_tributos, imp_total,
          iva_por_alicuota, periodo, origen)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'afipsdk')
-       on conflict (tipo_libro, cae, numero) do update set
+       on conflict ${conflictoIngesta(cae)} do update set
          imp_total=excluded.imp_total, total_iva=excluded.total_iva, neto_gravado=excluded.neto_gravado,
          iva_por_alicuota=excluded.iva_por_alicuota`,
       [tipo, fecha, c['Tipo de Comprobante'] || null, c['Punto de Venta'] || null,
-       c['Número Desde'] || null, c['Cód. Autorización'] || null, c['Nro. Doc. Emisor'] || null,
+       c['Número Desde'] || null, cae, c['Nro. Doc. Emisor'] || null,
        c['Denominación Emisor'] || null, c['Nro. Doc. Receptor'] || null, c['Moneda'] || '$',
        num(c['Imp. Neto Gravado Total']), num(c['Imp. Neto No Gravado']), num(c['Imp. Op. Exentas']),
        num(c['Total IVA']), num(c['Otros Tributos']), num(c['Imp. Total']),
