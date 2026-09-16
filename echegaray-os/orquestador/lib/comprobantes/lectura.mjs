@@ -394,6 +394,10 @@ export function normalizar_lectura(crudo = {}) {
       formaPago: textoODefault(crudo.forma_pago),
       concepto: textoODefault(crudo.concepto),
       anotacion: textoODefault(crudo.anotacion_manuscrita),
+      // LA OTRA LECTURA POSIBLE DE LA MISMA TINTA (15/09/2026). «Messino» y «Messina» son la misma
+      // mano; cuál de las dos es se resuelve contra el catálogo de obras, no adivinándolo mientras se
+      // mira la foto. Viaja aparte para no ensuciar la transcripción literal, que es la evidencia.
+      anotacionAlt: textoODefault(crudo.anotacion_alternativa),
       // ═══ EL ARCHIVO TRAÍA MÁS DE UN COMPROBANTE (13/08) ═══
       //
       // Un adjunto produce UN ítem: dos tickets sobre la mesa en la misma foto, o un PDF con cinco

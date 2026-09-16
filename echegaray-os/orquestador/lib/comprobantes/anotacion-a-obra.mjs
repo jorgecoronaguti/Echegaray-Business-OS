@@ -413,6 +413,14 @@ export function completarDesdeAnotacion(comprobante, catalogo, o = {}) {
   const c = comprobante ?? {}
   const anotacion = anotacionDelComprobante(c)
   let r = anotacionAObra(anotacion, catalogo)
+  // LA OTRA LECTURA DE LA MISMA TINTA. El modelo la declara cuando dudó («Messino» / «Messina»): si
+  // la literal no resuelve y la alternativa sí, resuelve la alternativa — el papel dice una sola
+  // cosa y quien elige cuál es el catálogo de obras, no el que mira la foto.
+  const alt = String(c.anotacionAlt ?? '').trim()
+  if (r.confianza < umbral && alt) {
+    const porAlt = anotacionAObra(alt, catalogo)
+    if (porAlt.confianza > r.confianza) r = { ...porAlt, porque: `${porAlt.porque} (lectura alternativa)` }
+  }
   // EL TEXTO DEL CHAT ES LA SEGUNDA FUENTE, NUNCA LA PRIMERA. Mandar la foto con «SF pisos» al lado
   // es la forma más común de decir la obra; el papel manda igual si dijo algo.
   if (r.confianza < umbral && texto) {

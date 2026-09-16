@@ -10,6 +10,7 @@ import {
 import { CATALOGO, CASOS_15_09 } from './anotacion-a-obra.fixture.mjs'
 import { MARCA_A_MANO } from './lectura.mjs'
 import { validarValorDeObra } from '../obra-destino.mjs'
+import { armarItem } from './item.mjs'
 
 const codigoDe = (valor) => String(valor ?? '').split(' · ')[0]
 
@@ -156,4 +157,41 @@ test('el índice se puede armar una vez y reusar, y acepta los catálogos crudos
   assert.equal(codigoDe(anotacionAObra('QUATTROPANI', idx).valor), 'OB-0008')
   assert.equal(codigoDe(anotacionAObra('QUATTROPANI', { canonicas: CATALOGO.obras, clienteAlias: CATALOGO.clienteAlias, alias: CATALOGO.alias }).valor), 'OB-0008')
   assert.equal(nombreSinPrefijo('SF - PISOS INDUSTRIALES'), 'PISOS INDUSTRIALES')
+})
+
+test('el ítem del CHAT también llega a la obra: mismo resolutor, misma respuesta que el cargador', () => {
+  // El bot y el cargador tienen que decidir lo MISMO sobre el mismo papel; si no, el comprobante
+  // queda imputado según por dónde entró. Acá se prueba el camino del chat, sin Mattermost.
+  const it = armarItem({
+    lectura: {
+      emisor: 'Corralon Progreso', letra: 'A', numero: '0003-00001234', fecha: '12/09/2026',
+      neto_gravado: '100.000,00', iva_21: '21.000,00', total: '121.000,00',
+      anotacion_manuscrita: 'Messino Dilucion', anotacion_alternativa: null,
+    },
+    listas: { proveedores: ['Corralon Progreso'], obras: ['MESSINA'], unidades: ['Civil'], categorias: ['B'] },
+    destinos: { indice: indiceDeAnotacion(CATALOGO) },
+  })
+  assert.equal(it.comprobante.obraFila, 'OB-0022 · ME - PLAYÓN DILUCIÓN DE ÁCIDO')
+  assert.equal(it.comprobante.obra, 'MESSINA')
+  assert.equal(it.comprobante.unidad, 'Civil')
+  assert.equal(it.comprobante.detalleObra, 'PLAYÓN DILUCIÓN DE ÁCIDO')
+  // La J la había resuelto ya el matcheo contra el desplegable: sale del comprobante igual, y esa
+  // vía no se pisa. Lo que la anotación agrega es la columna «Obra», que antes no existía.
+  assert.equal(it.comprobante.obraVia, 'comprobante')
+  assert.equal(it.comprobante.obraFilaVia, 'anotacion')
+})
+
+test('sin catálogo, el ítem del chat se arma exactamente como antes', () => {
+  const it = armarItem({
+    lectura: { emisor: 'Corralon Progreso', numero: '0003-00001234', fecha: '12/09/2026', total: '121.000,00', anotacion_manuscrita: 'Messino Dilucion' },
+    listas: { proveedores: ['Corralon Progreso'], obras: ['MESSINA'] },
+  })
+  assert.equal(it.comprobante.obraFila, undefined)
+})
+
+test('la lectura ALTERNATIVA resuelve cuando la literal no: el papel dice una sola cosa', () => {
+  const c = { anotacion: 'Meschno Dilucion', anotacionAlt: 'Messino Dilucion' }
+  const { resultado } = completarDesdeAnotacion(c, CATALOGO, {})
+  assert.equal(codigoDe(resultado.valor), 'OB-0022')
+  assert.match(resultado.porque, /alternativa/)
 })
