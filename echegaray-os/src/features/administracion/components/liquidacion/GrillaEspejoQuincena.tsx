@@ -124,12 +124,21 @@ const GAP = 8
  */
 const DIA = 36
 
+// ═══ LA COLUMNA PERSONA MIDE DISTINTO EN EL TELÉFONO (dueño, 16/09/2026: «roto el diseño en liq hs») ═══
+//
+// Con 200 px fijos más el canal de 20, la celda pegajosa se comía 220 de los 390 px del teléfono y los días quedaban
+// tapados debajo del nombre. La medida vive en una variable CSS que cambia por punto de corte —150 px angosto, 200 px
+// desde `md`—, igual que `--gao-persona` en la grilla de Horas; el ancho mínimo de la tabla se calcula con la misma
+// variable para que el `1fr` no la devuelva a 200.
+const VARIABLE_PERSONA = '[--liq-persona:150px] md:[--liq-persona:200px]'
+
 // LOS DÍAS ADELANTE, COMO EN LA PLANILLA: Persona · días · plata.
 const columnasDe = (nDias: number): string =>
-  `minmax(200px,1fr) repeat(${nDias},${DIA}px) ${PLATA.map((c) => `${c.px}px`).join(' ')}`
+  `minmax(var(--liq-persona,200px),1fr) repeat(${nDias},${DIA}px) ${PLATA.map((c) => `${c.px}px`).join(' ')}`
 
-const anchoDe = (nDias: number): number =>
-  200 + nDias * DIA + PLATA.reduce((s, c) => s + c.px, 0) + (nDias + PLATA.length) * GAP
+/** El ancho mínimo de la tabla: la columna Persona (variable) más todo lo demás (fijo). */
+const anchoDe = (nDias: number): string =>
+  `calc(var(--liq-persona,200px) + ${nDias * DIA + PLATA.reduce((s, c) => s + c.px, 0) + (nDias + PLATA.length) * GAP}px)`
 
 /** Cuántas columnas ocupan las dos bandas: la celda de un mensual las cubre enteras. */
 const ANCHO_DE_LAS_BANDAS = PLATA.filter((c) => 'banda' in c).length
@@ -194,12 +203,12 @@ export function GrillaEspejoQuincena({
         testid="espejo-cinta"
         marcoPropio={{ ...MARCO_SCROLL, padding: `16px ${CANAL_SCROLL}px 0` }}
         cabecera={(corrimiento) => (
-          <div style={{ minWidth: ancho, padding: `8px ${CANAL_SCROLL}px 0`, background: fondoDeColumnaFija() }}>
+          <div className={VARIABLE_PERSONA} style={{ minWidth: ancho, padding: `8px ${CANAL_SCROLL}px 0`, background: fondoDeColumnaFija() }}>
             <Encabezado columnas={columnas} dias={dias} sellada={visibles.some((f) => f.cerrada)} corrimiento={corrimiento} />
           </div>
         )}
       >
-        <div data-testid="espejo-tabla" style={{ minWidth: ancho, display: 'flex', flexDirection: 'column' }}>
+        <div data-testid="espejo-tabla" className={VARIABLE_PERSONA} style={{ minWidth: ancho, display: 'flex', flexDirection: 'column' }}>
           {secciones.map((sec, i) => (
             <div key={sec.clave} data-testid={`espejo-seccion-${sec.clave}`}>
               <RotuloDeGrupo texto={sec.rotulo} primero={i === 0} />

@@ -33,7 +33,10 @@ import { CAMPOS_EDITABLES, COLUMNA_DE, rechazoDelValorDeCelda, type CampoEditabl
 import { siguientesFormulas } from './liquidacionGuardadas'
 import { LARGO_MAXIMO_DE_FORMULA, leerCeldaNumerica } from '@/shared/lib/formulaEsAR'
 import { validarMotivoDeReapertura } from './liquidacionCierre'
-import { getLiquidacionDeLaQuincena } from './liquidacionQuincenaService'
+import { leerCuadroDeLaQuincena } from './cuadroDeLaQuincenaService'
+import { pendientesPorPersona } from './grillaHorasQuincena'
+import { avisoDeAutocierre, decisionDeAutocierre, type LineaCongelada } from './autocierreDeQuincena'
+import { hoyEnObra } from '@/features/jefe/services/contexto'
 import { escribirRedondeo } from './efectivoRedondeado'
 
 const RUTA = '/administracion/personas'
@@ -178,9 +181,25 @@ export async function cerrarQuincena(entrada: unknown): Promise<ResultadoLiquida
   if ('error' in cab) return { ok: false, error: cab.error }
   if (cab.estado === 'cerrada') return { ok: false, error: 'Esa quincena ya estaba cerrada.' }
 
+  const r = await congelar(supabase, cab.id, lineas)
+  if (!r.ok) return r
+  revalidatePath(RUTA)
+  return {
+    ok: true,
+    mensaje: `Quincena cerrada: ${lineas.length} línea(s) congeladas. No se marcó ningún pago.`,
+  }
+}
+
+/**
+ * LA FOTO Y EL SELLO, con la sesión de quien cierra (la RLS manda). Lo comparten el botón «Cerrar quincena» y el
+ * cierre solo de `marcarLineaPagada` (dueño, 16/09/2026: «cuando se marcan todos pagados que se cierre sola»).
+ */
+async function congelar(
+  supabase: Awaited<ReturnType<typeof createClient>>, liquidacionId: string, lineas: readonly LineaCongelada[],
+): Promise<ResultadoLiquidacion> {
   const escritas = await supabase.from('liquidacion_linea')
     .upsert(
-      lineas.map((l) => ({ ...l, liquidacion_id: cab.id, actualizado_en: new Date().toISOString() })),
+      lineas.map((l) => ({ ...l, liquidacion_id: liquidacionId, actualizado_en: new Date().toISOString() })),
       { onConflict: 'liquidacion_id,persona_id' },
     )
     .select('persona_id')
@@ -193,15 +212,10 @@ export async function cerrarQuincena(entrada: unknown): Promise<ResultadoLiquida
   // rechazaría las propias líneas del cierre y la quincena quedaría cerrada y vacía.
   const cierre = await supabase.from('liquidacion_quincena')
     .update({ estado: 'cerrada', cerrada_en: new Date().toISOString() })
-    .eq('id', cab.id).select('id, estado')
+    .eq('id', liquidacionId).select('id, estado')
   if (cierre.error) return { ok: false, error: cierre.error.message }
   if ((cierre.data ?? []).length === 0) return { ok: false, error: 'La base no marcó el cierre (permiso).' }
-
-  revalidatePath(RUTA)
-  return {
-    ok: true,
-    mensaje: `Quincena cerrada: ${lineas.length} línea(s) congeladas. No se marcó ningún pago.`,
-  }
+  return { ok: true, mensaje: 'cerrada' }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -456,6 +470,9 @@ export async function marcarLineaPagada(entrada: unknown): Promise<ResultadoLiqu
   const num = (x: number | string | null | undefined): number | null => (x == null ? null : Number(x))
 
   let aEscribir: Record<string, unknown>
+  let cuadro: Awaited<ReturnType<typeof leerCuadroDeLaQuincena>> | null = null
+  let lineasDelGrupo: Awaited<ReturnType<typeof leerCuadroDeLaQuincena>>['liquidacion']['cuadros'][number]['lineas'] = []
+  let hoyISO = ''
   if (!pagada) {
     if (!fila?.pagada_en) return { ok: true, mensaje: 'No estaba marcada como pagada.' }
     const antes = fila.pagada_antes
@@ -468,8 +485,12 @@ export async function marcarLineaPagada(entrada: unknown): Promise<ResultadoLiqu
   } else {
     if (fila?.pagada_en) return { ok: true, mensaje: 'Ya estaba marcada como pagada.' }
     // LA LÍNEA COMO LA VE LA PANTALLA: el mismo cálculo (`aplicarOverrides` + `pagoDeLaLinea`), no una segunda cuenta.
-    const liq = await getLiquidacionDeLaQuincena(supabase, { desde: v.desde, hasta: v.hasta })
-    const linea = liq.cuadros.find((c) => c.grupo === v.grupo)?.lineas.find((l) => l.personaId === personaId)
+    // Se lee el cuadro ENTERO (líneas y grilla) porque, si con ésta quedan todos pagados, la quincena se cierra sola
+    // con la misma traba que el botón «Cerrar quincena» (`decisionDeAutocierre`).
+    hoyISO = hoyEnObra()
+    cuadro = await leerCuadroDeLaQuincena(supabase, { desde: v.desde, hasta: v.hasta }, hoyISO)
+    lineasDelGrupo = cuadro.liquidacion.cuadros.find((c) => c.grupo === v.grupo)?.lineas ?? []
+    const linea = lineasDelGrupo.find((l) => l.personaId === personaId)
     if (!linea) return { ok: false, error: 'No encuentro la línea de esta persona en la quincena.' }
     const { data: sesion } = await supabase.auth.getUser()
     if (!sesion.user) return { ok: false, error: 'Sin sesión.' }
@@ -505,6 +526,22 @@ export async function marcarLineaPagada(entrada: unknown): Promise<ResultadoLiqu
     return { ok: false, error: 'La base guardó otro pagado que el que mandé.' }
   }
 
+  if (!pagada || !cuadro) {
+    revalidatePath(RUTA)
+    return { ok: true, mensaje: pagada ? 'Marcada como pagada.' : 'Marca de pago deshecha.' }
+  }
+
+  // ═══ CON EL ÚLTIMO PAGADO, LA QUINCENA SE CIERRA SOLA (dueño, 16/09/2026) ═══
+  //
+  // Sólo el grupo de esta persona, sólo si nada traba el sello (ausencias sin motivo, sin tarifa, no cierra), y con la
+  // misma foto que congela el botón. Si algo traba, la marca queda y el mensaje dice qué falta: cerrar igual
+  // congelaría ceros que mañana valen una jornada.
+  const decision = decisionDeAutocierre({ lineas: lineasDelGrupo, personaId, porPersona: pendientesPorPersona(cuadro.grilla, hoyISO) })
+  let cerrada: { ok: true; lineas: number } | { ok: false; error: string } | null = null
+  if (decision.todasPagadas && decision.pendientes.length === 0) {
+    const r = await congelar(supabase, cab.id, decision.foto)
+    cerrada = r.ok ? { ok: true, lineas: decision.foto.length } : { ok: false, error: r.error }
+  }
   revalidatePath(RUTA)
-  return { ok: true, mensaje: pagada ? 'Marcada como pagada.' : 'Marca de pago deshecha.' }
+  return { ok: true, mensaje: avisoDeAutocierre(decision, cerrada) }
 }

@@ -1,18 +1,21 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-16 ~09:45 (−03) · main = producción (e60061cf)_
+_actualizado: 2026-09-16 ~10:20 (−03) · main = producción (2bb161fb)_
 
 ## 0. HOY 16/09 (mañana) — lo que entró y lo que sigue
 
-Entró a main y producción: 477b6547 cuentas sin «=» · e796f107 conciliación «B.D.H. S. R. L.»=«BDH SRL» (fila 972 con su PDF) ·
-e72cdc4b pulido Liquidación (Persona 2 renglones, Efect. red. fuera, Pagado abre vacío, cabecera fija con respaldo fixed +
-spec) · 019638ae Horas (asignar día siguiente ya no apila tramos; limpiados 13; grilla con cabecera fija) · 9184f20a legajo
-Retribución · 787060a9 dos rojos · 976358a8 marca PAGADA (migración 20260916T1300 aplicada) · e60061cf documentos del legajo
-(migración 20260916T0100 aplicada; falta cargar los 2 certificados de Drive con `legajo-documento-desde-drive.mjs`).
-Postgres se reinició 08:53 y 08:57 por suites completas de agentes: PROHIBIDO `orq:test` completo mientras el dueño trabaja.
-Abierto: worktree `wt-mas` (rama feat/liq-mas-y-escala: escala UOCRA al lado de «Más», commiteada, sin merge; falta QA y
-rehacer las secciones del «Más» según el QA en curso) · QA de la marca Pagar en curso · `definiciones.json` «cobrado» test
-viejo en rojo (orquestador) · `tests/liquidacion-fidelidad.spec.ts:228` desactualizado · SNR junio 2026 cargada en uocra_escala.
+Entró a main y producción: cuentas sin «=» · conciliación «B.D.H.»=«BDH» (fila 972 con PDF) · Liquidación pulida (cabecera fija
+con respaldo, Pagado abre vacío, Efect. red. fuera) · Horas (asignar día siguiente sin tramos de 1 día; 13 limpiados; cabecera
+fija) · legajo Retribución · marca PAGADA (mig. 20260916T1300) con hover/alto 34-44/marca en 2º renglón · CIERRE SOLO al marcar
+el último pagado (misma traba que Cerrar: `decisionDeAutocierre`) · documentos del legajo (mig. 20260916T0100; 3 certificados
+cargados: Carlos Samuel 14–15/09, Juan Guillermo 07–09/09 ×2 — estaban en la carpeta Drive de Emiliano) · «Más»: Caja con los
+totales del pie · escala UOCRA vigente al lado de «Más» (ago-2026; SNR junio cargada) · cargador desde Drive lee nombre_completo ·
+17 excepciones «cobrado» viejas fuera. Postgres se reinició 08:53 y 08:57 por suites completas de agentes: PROHIBIDO
+`orq:test` completo mientras el dueño trabaja.
+Abierto: agente en `wt-proveedores` (rama feat/proveedores-deuda: tabla «a quién le debo, cuánto y cuándo» + panel derecho;
+migración 20260916T1500 si la escribe, la aplico yo) · QA visual del Pagar pulido pendiente de mirar · `tests/liquidacion-fidelidad.spec.ts:228`
+desactualizado · console.error WebSocket realtime tras revalidate (visto en QA) · no hay timer que replique `_UOCRA_RAW` a
+`uocra_escala` (hoy manual vía `os.sincronizar_nomina`).
 
 ## 1. OBJETIVO GENERAL
 
