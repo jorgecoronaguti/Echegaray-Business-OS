@@ -104,7 +104,11 @@ test('si la lectura falla, las pastillas van SIN número — nunca en cero', () 
     },
   } as unknown as SupabaseClient
   return getConteosDeFiltro(roto).then((c) => {
-    assert.deepEqual(c, { plantel: null, en_obra: null, sin_asignar: null, inactivos: null })
+    assert.deepEqual(c.conteos, { plantel: null, en_obra: null, sin_asignar: null, inactivos: null })
+    // Y SIN FILAS NO SE DIBUJA NINGÚN CHIP DE OBRA (16/09/2026): la misma lectura alimenta el recorte
+    // por obra del Plantel, y una obra dibujada a partir de una consulta que falló es una obra que
+    // nadie comprobó que exista.
+    assert.deepEqual(c.filas, [])
   })
 })
 

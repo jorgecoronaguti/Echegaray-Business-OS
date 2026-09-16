@@ -32,22 +32,41 @@ export interface OpcionFiltro {
   cuenta?: number | null
 }
 
-export function FiltrosSuaves({ opciones, conteo, testid = 'filtros' }: {
+export function FiltrosSuaves({ opciones, conteo, rotulo, testid = 'filtros' }: {
   opciones: OpcionFiltro[]
   /**
-   * `{ n, total }`. Se dibuja siempre: el mockup lo escribe aunque no filtre nada (`22v2:399`).
+   * `{ n, total }`. La fila que recorta la población lo escribe SIEMPRE, aunque no filtre nada
+   * (`22v2:399`); `undefined` es para la segunda fila de filtros — ver abajo.
    *
    * `sustantivo` DICE DE QUÉ SON ESOS DOS NÚMEROS. «5/5» solo es una cifra sin rótulo, y el dueño
    * ya marcó ese defecto en la cabecera de Clientes («un 5 suelto pegado a $ 251.494.283»). Es
    * opcional porque las otras seis pantallas que usan este control todavía lo escriben pelado: se
    * les agrega cuando cada una se toque, no de prepo desde acá — cambiar siete pantallas en un
    * cambio que el dueño pidió para una es cómo se rompe lo que ya funcionaba.
+   *
+   * ═══ `undefined` = ESTA FILA NO LLEVA CONTEO (16/09/2026) ═══
+   *
+   * Una pantalla con dos filas de filtros no puede escribir el mismo par de números dos veces: el
+   * segundo repetido deja de decir cuánto se está viendo y pasa a ser ruido que hay que descartar. El
+   * conteo lo escribe la fila de arriba, que es la que dice cuánta población quedó a la vista.
    */
-  conteo: { n: number; total: number; sustantivo?: string }
+  conteo?: { n: number; total: number; sustantivo?: string }
+  /**
+   * QUÉ EJE CORTA ESTA FILA («Obra»). Sólo hace falta cuando hay MÁS DE UNA fila de filtros: dos
+   * hileras de pastillas idénticas se leen como una sola lista de opciones excluyentes, y ahí elegir
+   * una obra parece apagar «Plantel». Una palabra apagada al principio del renglón lo resuelve sin
+   * agregar una caja ni un párrafo.
+   */
+  rotulo?: string
   testid?: string
 }) {
   return (
     <div data-testid={testid} style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: 10, flexWrap: 'wrap' }}>
+      {rotulo && (
+        <span style={{ fontSize: '11.5px', color: V.tenue, marginRight: 3 }} data-testid={`${testid}-rotulo`}>
+          {rotulo}
+        </span>
+      )}
       {opciones.map((o) => (
         <Link
           key={o.clave}
@@ -80,13 +99,15 @@ export function FiltrosSuaves({ opciones, conteo, testid = 'filtros' }: {
           )}
         </Link>
       ))}
-      <span
-        className="font-mono tabular-nums"
-        style={{ marginLeft: 'auto', fontSize: '11.5px', color: V.lupa }}
-        data-testid={`${testid}-conteo`}
-      >
-        {conteo.n}/{conteo.total}{conteo.sustantivo ? ` ${conteo.sustantivo}` : ''}
-      </span>
+      {conteo && (
+        <span
+          className="font-mono tabular-nums"
+          style={{ marginLeft: 'auto', fontSize: '11.5px', color: V.lupa }}
+          data-testid={`${testid}-conteo`}
+        >
+          {conteo.n}/{conteo.total}{conteo.sustantivo ? ` ${conteo.sustantivo}` : ''}
+        </span>
+      )}
     </div>
   )
 }
