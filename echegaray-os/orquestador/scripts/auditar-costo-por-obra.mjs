@@ -30,6 +30,7 @@ import { PESTANAS, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import * as Q from '../lib/auditoria-costo-por-obra-sql.mjs'
 import { mayores, pesos, resumen, totalesPorDestino } from '../lib/auditoria-costo-por-obra.mjs'
 import * as H from '../lib/auditoria-costo-por-obra-hallazgos.mjs'
+import * as M from '../lib/auditoria-costo-por-obra-mo.mjs'
 
 const arg = (n, d = null) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d }
 const JSON_OUT = process.argv.includes('--json')
@@ -109,11 +110,18 @@ async function comoDireccion(db, base) {
       from q cross join lateral public.costo_mo_quincena(q.desde, $1) x
      where x.obra_canonica_id is not null and x.estado <> 'falta_dato'
      group by 1`, [ids])
+  // `hh_de_obra` es la que llama la pantalla de HH y tiene la MISMA guarda de rol: de a una obra,
+  // porque no acepta arreglo. 26 llamadas dentro de la misma transacción, todas de lectura.
+  const hh = new Map()
+  for (const o of base.obras) {
+    const { rows: [r] } = await db.query('select public.hh_de_obra($1, $2) j', [o.id, '2020-01-01'])
+    if (r?.j) hh.set(o.id, r.j)
+  }
   const { rows: [{ rol }] } = await db.query('select public.current_rol() rol')
   return {
     rpc: new Map((j ?? []).map((r) => [r.obra_id, r])),
     sinObra: new Map((k ?? []).map((r) => [r.cliente_id, r])),
-    mo: new Map(mo.map((r) => [r.obra_id, r])), uid, rol,
+    mo: new Map(mo.map((r) => [r.obra_id, r])), hh, uid, rol,
   }
 }
 
@@ -137,14 +145,15 @@ function auditar({ filasSheet, base, direccion, hoy }) {
     ...H.subcontratistaSinObra(base.filas),
     ...H.duplicados(base.filas),
     ...H.subcontratoSinRespaldo(base.subcontratos),
-    ...H.moRpcVsQuincenas(base.obras, direccion.rpc, direccion.mo),
-    ...H.hallazgosDeHH({ porObra: base.hh, despuesDelCierre: base.cierre, enObraFusionada: base.fusionada }, porId),
+    ...M.moRpcVsQuincenas(base.obras, direccion.rpc, direccion.mo),
+    ...M.hallazgosDeHH({ porObra: base.hh, despuesDelCierre: base.cierre, enObraFusionada: base.fusionada }, porId),
     ...H.porVencerDiscrepa(base.obras, base.filas, direccion.rpc, hoy),
     ...H.pagadoTotalNoCoincide(base.filas),
     ...H.filaSinDestino(base.filas),
     ...H.reglaMuerta(base.destinos),
-    ...H.nivelesDistintos(base.obras, direccion.rpc, direccion.mo),
+    ...M.nivelesDistintos(base.obras, direccion.rpc, direccion.mo),
     ...H.costoEnElCajon(base.clientes, direccion.sinObra),
+    ...M.hhDeObraVsLasQueCuestan(base.obras, direccion.hh, base.hh),
   ]
 }
 

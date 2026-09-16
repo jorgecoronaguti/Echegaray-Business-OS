@@ -13,6 +13,7 @@ import {
   conciliacionSinObra, motivoDeExclusion, puenteDeObra, reglaMuerta,
   espejoDesfasado, rpcVsRecuento, subcontratoSinRespaldo,
 } from './auditoria-costo-por-obra-hallazgos.mjs'
+import { hhDeObraVsLasQueCuestan, nivelesDistintos } from './auditoria-costo-por-obra-mo.mjs'
 
 const HOY = '2026-09-16'
 const fila = (o) => ({ fila: 1, total: 0, estado: 'Pagado', anulada: false, obra_celda: 'OB-0005 · SF - X', obra_texto: 'San Francisco', asignada_obra: 'san-francisco', ...o })
@@ -186,4 +187,30 @@ test('el resumen suma valor absoluto: una nota de crédito de −686.070 no comp
   assert.equal(r[0].importe, 1372140)
   assert.equal(r[0].n, 2)
   assert.equal(r.find((x) => x.tipo === 'u').n, 1, 'un hallazgo sin importe se cuenta igual')
+})
+
+test('MO y MA en niveles distintos: la obra paraguas tiene horas y la sub-obra tiene materiales', () => {
+  const obras = [{ id: 'paraguas', codigo: 'OB-0003' }, { id: 'sub', codigo: 'OB-0068' }, { id: 'sana', codigo: 'OB-0008' }]
+  const app = new Map([
+    ['paraguas', { materiales: 0, subcontratos: 0, mano_obra: 22963937 }],
+    ['sub', { materiales: 18289159, subcontratos: 0, mano_obra: null }],
+    ['sana', { materiales: 37188800, subcontratos: 2080000, mano_obra: 4415882 }],
+  ])
+  const mo = new Map([['paraguas', { horas: 3381.5 }], ['sana', { horas: 565 }]])
+  const r = nivelesDistintos(obras, app, mo)
+  assert.deepEqual(r.map((x) => [x.tipo, x.obra]), [['mo_sin_materiales', 'OB-0003'], ['materiales_sin_mo', 'OB-0068']])
+  assert.ok(!r.some((x) => x.obra === 'OB-0008'), 'una obra con las dos mitades no es un hallazgo')
+})
+
+test('hh_de_obra recorta la ventana y costo_mo_quincena no — las horas que se pagan y no se muestran', () => {
+  const obras = [{ id: 'sf', codigo: 'OB-0005' }, { id: 'qp', codigo: 'OB-0008' }]
+  const hh = new Map([
+    ['sf', { desde: '2026-01-05', hasta: '2026-08-15', periodos: [{ hh: 11721 }] }],
+    ['qp', { desde: '2026-08-17', hasta: '2026-09-15', periodos: [{ hh: 228 }, { hh: 337 }] }],
+  ])
+  const porObra = [{ obra_id: 'sf', horas_que_cuentan: 12117 }, { obra_id: 'qp', horas_que_cuentan: 565 }]
+  const r = hhDeObraVsLasQueCuestan(obras, hh, porObra)
+  assert.equal(r.length, 1)
+  assert.equal(r[0].obra, 'OB-0005')
+  assert.match(r[0].detalle, /11721 h .* son 12117/)
 })

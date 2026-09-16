@@ -125,8 +125,9 @@ motor de suma no está fallando**. Lo que falla es la IMPUTACIÓN y la DEFINICI�
 | `hh_de_jefe_en_obra` | 4 | — |
 | `hh_despues_del_cierre` | 2 | — |
 | `hh_sin_obra` | 1 | — |
+| `hh_de_obra_recorta_la_ventana` | 1 | — |
 | `mo_falta_dato` | 1 | — |
-| **Total** | **229** | |
+| **Total** | **230** | |
 
 ---
 
@@ -302,6 +303,7 @@ estructura.
 | `hh_de_jefe_en_obra` | 1.628,5 h (OB-0005) · 1.229 h (OB-0003) · 98 h (OB-0008) · 98 h (OB-0011) de jefes de obra cargadas en la obra. La regla del 14/09 manda su costo entero a Estructura: **la pantalla de HH muestra horas que no cuestan a la obra y no lo dice** |
 | `hh_despues_del_cierre` | OB-0023 SF - MAMPOSTERÍA: 156 h entre el 03 y el 14/09 con fin declarado el 02/09. OB-0005: 53 h entre el 31/08 y el 07/09 con fin el 28/08. O la obra no está cerrada, o las horas son de otra |
 | `mo_falta_dato` | OB-0071: 8 h de 1 persona sin tarifa. Su costo va como `null` y **la MO de la obra queda subvaluada sin decirlo en pantalla** |
+| `hh_de_obra_recorta_la_ventana` | OB-0005: `hh_de_obra()` —la RPC que llama la pantalla de HH— publica **11.721 h** entre el 05/01 y el 15/08, y las horas que cuestan a la obra son **12.117**. La pantalla acota la ventana al período declarado de la obra; `costo_mo_quincena` no. **396 h que se pagan y no se muestran**, y cualquier $/h que alguien saque dividiendo una por la otra sale mal |
 | `hh_en_obra_fusionada` | **0** — las dos obras fusionadas no tienen horas colgando |
 
 ---
@@ -316,6 +318,7 @@ estructura.
 | 4 | Un proveedor con rubro «Subcontratista» **no puede** quedar en «Sin obra»: la carga lo rechaza | misma capa de carga | las 15 filas por $13.444.000 |
 | 5 | Al guardar la columna L, avisar si K/M/J nombran otra obra (la regla de `otraObraNombrada`) | capa de carga | el caso «Galpón 5» |
 | 6 | La pantalla de HH tiene que decir que las horas de jefe **no** cuestan a la obra | `src/features/obras/` | 3.053,5 h que parecen costo y no lo son |
+| 6b | `hh_de_obra()` y `costo_mo_quincena()` tienen que usar la misma ventana | migración | las 396 h de OB-0005 que se pagan y no se muestran |
 | 7 | Cuando `horas_sin_tarifa > 0`, la pantalla debe declarar que la MO está incompleta | `src/features/obras/` | `mo_falta_dato` silencioso |
 | 8 | Correr `auditar-costo-por-obra.mjs` con el timer diario y avisar por Mattermost si aparece un hallazgo nuevo | `orquestador/` | todo lo demás |
 
