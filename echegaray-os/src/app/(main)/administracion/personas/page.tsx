@@ -53,9 +53,14 @@ import { BloqueAsistenciaDia } from '@/features/administracion/components/asiste
 import { CamposAlta } from '@/features/administracion/components/FormularioPersona'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { TablaPersonas, type PulsoDelPlantel } from '@/features/administracion/components/TablaPersonas'
+import { FiltroDeObraEnPlantel } from '@/features/administracion/components/FiltroDeObraEnPlantel'
 import {
   FILTROS, getConteosDeFiltro, getDirectorio, type FiltroPersonal,
 } from '@/features/administracion/services/personasService'
+import {
+  filtrarPorObra, obraSobreviveAlCorte, obrasDelCorte, sinObraDelCorte,
+} from '@/features/administracion/services/recorteDeObra'
+import { enlaceConservando } from '@/features/administracion/services/enlaceDeVista'
 import { crearPersona } from '@/features/administracion/services/personasActions'
 import {
   asistenciaHoyPorPersona, hayControlDeVencimientos, hhPorPersona, marcasPorPersona, mesCorriente,
@@ -80,7 +85,18 @@ const RUTA = '/administracion/personas'
 
 type Busqueda = {
   q?: string; f?: string; nueva?: string; vista?: string; quincena?: string; modo?: string
-  obra?: string; dia?: string
+  /**
+   * `?obra=` SIGNIFICA COSAS DISTINTAS EN CADA SOLAPA, y por eso NUNCA cruza de una a otra:
+   *
+   *   Plantel  el ID de la obra (`quattropani`), que es la clave de `persona_directorio`.
+   *   Horas    el RÓTULO del chip de la grilla («ME - BSA») o, en la carga del día, el id o el nombre.
+   *
+   * Las tres solapas se enlazan entre sí con la URL escrita desde cero (`armarHref({})`,
+   * `hrefAsistencia`, `hrefLiquidacion`): pasarle a la grilla de Horas un id crudo la dejaría vacía
+   * con un slug en el cartel, que es exactamente el defecto que ya se pagó volviendo del modo día.
+   */
+  obra?: string
+  dia?: string
   /** Las siete solapas de Liquidación (`solapas/index.ts`). Default `quincena`. */
   /** Los recortes de Liquidación: qué pendiente se mira (`SolapaHoras`) y qué grupo (`SolapaQuincena`). */
   solapa?: string; pendiente?: string; grupo?: string
@@ -88,14 +104,20 @@ type Busqueda = {
   buscar?: string
 }
 
-function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): string {
-  const params = new URLSearchParams()
-  if (base.q) params.set('q', base.q)
-  const f = filtro ?? base.f
-  if (f && f !== 'plantel') params.set('f', f)
-  if (nueva) params.set('nueva', '1')
-  const qs = params.toString()
-  return `${RUTA}${qs ? `?${qs}` : ''}`
+/**
+ * UN ENLACE DENTRO DE LA VISTA PLANTEL, conservando lo que ya estaba puesto.
+ *
+ * LA REGLA ES LA MISMA QUE LA DE LAS OTRAS DOS SOLAPAS y por eso no se vuelve a escribir acá: vive en
+ * `enlaceConservando`. Lo propio del Plantel es QUÉ conserva —el texto buscado, la pastilla y la obra—
+ * y que `f=plantel` no se escribe nunca: es el corte por defecto y ensuciaría cada enlace compartido.
+ *
+ * `nueva` NO se conserva: el panel de alta es un estado de esta pantalla, no un recorte. Moverse a
+ * otro filtro con el formulario abierto arrastraba un panel que nadie volvió a pedir.
+ */
+function armarHref(base: Busqueda, cambios: Record<string, string | undefined> = {}): string {
+  const sinDefecto = (f?: string) => (f === 'plantel' ? undefined : f)
+  const ajustados = 'f' in cambios ? { ...cambios, f: sinDefecto(cambios.f) } : cambios
+  return enlaceConservando(RUTA, {}, { q: base.q, f: sinDefecto(base.f), obra: base.obra }, ajustados)
 }
 
 /** La solapa Asistencia y su quincena. Va aparte de `armarHref` porque no lleva ni filtro ni alta:
@@ -168,7 +190,11 @@ function vistasDe(activa: 'personal' | 'asistencia' | 'liquidacion', quincena: s
 }
 
 /** Qué decir cuando no hay ninguna fila: una línea, y que diga qué hacer. */
-function vacioDe(filtro: FiltroPersonal, q?: string) {
+function vacioDe(filtro: FiltroPersonal, q?: string, obra?: string) {
+  // EL RECORTE POR OBRA SE NOMBRA PRIMERO porque es el que más probablemente esté vaciando la lista
+  // sin que se note: la pastilla dice «Plantel 17» arriba de una tabla vacía y la obra elegida está
+  // en la fila de abajo. Sin esta línea, la respuesta correcta —sacar el recorte— no está a la vista.
+  if (obra) return 'Nadie de este corte está en la obra elegida. «Todas» vuelve a la lista entera.'
   if (filtro === 'sin_asignar') return 'Todo el plantel está asignado a una obra.'
   if (filtro === 'en_obra') return 'Nadie tiene una asignación vigente. Se asigna desde la solapa Personal de la obra.'
   if (filtro === 'inactivos') return 'Nadie egresó del plantel.'
@@ -190,7 +216,7 @@ async function leerTodo(
   const { desde, hasta } = mesCorriente(hoy)
   const conPulso = filtro !== 'inactivos'
   const quincena = quincenaDe(hoy)
-  const [listado, marcas, hh, papeles, presencia, conteos, tardanzasQuincena] = await Promise.all([
+  const [listado, marcas, hh, papeles, presencia, padron, tardanzasQuincena] = await Promise.all([
     getDirectorio(supabase, filtro, q),
     conPulso ? getMarcasDeHoy(supabase, hoy) : null,
     conPulso ? getHHDelMes(supabase, desde, hasta) : null,
@@ -208,7 +234,13 @@ async function leerTodo(
     // aplicada — no una segunda consulta a `asistencia_dia` con otro criterio.
     conPulso ? leerPresenciasDeLaQuincena(supabase, quincena.desde, quincena.hasta) : null,
   ])
-  return { listado, marcas, hh, papeles, presencia, conteos, tardanzasQuincena, quincena }
+  // EL PADRÓN VIAJA ENTERO Y SE USA DOS VECES: los números de las pastillas y los chips de obra salen
+  // de la MISMA lectura. Dos consultas podrían contestar distinto si alguien mueve a una persona
+  // entre las dos, y entonces el chip diría 5 arriba de cuatro filas.
+  return {
+    listado, marcas, hh, papeles, presencia, tardanzasQuincena, quincena,
+    conteos: padron.conteos, filasDelPadron: padron.filas,
+  }
 }
 
 /** Las tres lecturas agrupadas por persona. Cada fuente que falló apaga SU columna y deja el resto
@@ -408,7 +440,9 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
     )
   }
 
-  const { listado, marcas, hh, papeles, presencia, conteos, tardanzasQuincena, quincena } = await leerTodo(supabase, filtro, sp.q, hoy)
+  const {
+    listado, marcas, hh, papeles, presencia, conteos, filasDelPadron, tardanzasQuincena, quincena,
+  } = await leerTodo(supabase, filtro, sp.q, hoy)
 
   // EL ERROR DE LA BASE SE MUESTRA, NO SE PINTA COMO LISTA VACÍA. Una tabla en blanco porque la RLS
   // rechazó la consulta es indistinguible de una tabla en blanco porque no hay personas, y la
@@ -425,7 +459,18 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
     )
   }
 
-  const personas = listado.data ?? []
+  // ═══ EL RECORTE POR OBRA (dueño, 16/09/2026) ═══
+  //
+  // *«necesito filtros por obra en la sección de plantel donde marco asistencias, tardanzas etc.»*.
+  //
+  // Se recorta DESPUÉS de leer y con la misma regla que cuenta los chips (`recorteDeObra.ts`), no con
+  // un `eq()` más en la consulta: así el número del chip y la cantidad de filas no pueden discrepar.
+  // El parámetro es el id de la obra —que ya es el slug que viaja en la URL de toda la app—, así el
+  // enlace se comparte por mensaje, sobrevive a recargar y no muestra un nombre que puede cambiar.
+  const obraElegida = sp.obra?.trim() || undefined
+  const personas = filtrarPorObra(listado.data ?? [], obraElegida)
+  const chipsDeObra = obrasDelCorte(filasDelPadron, filtro, obraElegida)
+  const sinObra = sinObraDelCorte(filasDelPadron, filtro)
   const pulso = armarPulso(marcas, hh, papeles, presencia, tardanzasQuincena, quincena, hoy)
   const abierta = sp.nueva === '1'
   // EL PERFIL YA ESTÁ EN MEMORIA: `getPerfilActual` memoiza por usuario (`recordar`), así que esto
@@ -465,10 +510,17 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             accion: RUTA,
             q: sp.q,
             placeholder: 'Buscar persona',
-            oculto: { f: filtro === 'plantel' ? undefined : filtro },
+            // LA OBRA VIAJA CON EL BUSCADOR. Un formulario manda SÓLO lo que declara: sin este
+            // campo, escribir un nombre borraba el recorte por obra y la búsqueda contestaba sobre
+            // el plantel entero. Es el mismo defecto que ya se pagó en la solapa Horas.
+            oculto: { f: filtro === 'plantel' ? undefined : filtro, obra: obraElegida },
             testid: 'buscar-persona',
           }}
-          alta={{ href: armarHref(sp, filtro, !abierta), etiqueta: abierta ? 'Cancelar' : 'Nueva persona', testid: 'nueva-persona' }}
+          alta={{
+            href: armarHref(sp, { f: filtro, nueva: abierta ? undefined : '1' }),
+            etiqueta: abierta ? 'Cancelar' : 'Nueva persona',
+            testid: 'nueva-persona',
+          }}
           filtros={
             // NAVEGACIÓN, NO ACCIONES: «En obra ahora» y «Cuadrillas» son otras dos distancias de la
             // misma pregunta y viven DENTRO de Personal, no como secciones nuevas. Por eso van en
@@ -489,7 +541,9 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
                 opciones={FILTROS.map((f) => ({
                   clave: f.valor,
                   etiqueta: f.etiqueta,
-                  href: armarHref(sp, f.valor),
+                  // LA OBRA ELEGIDA VIAJA AL OTRO CORTE, SALVO DONDE SE CONTRADICE. La regla —y por
+                  // qué «Sin asignar» es la única excepción— está en `obraSobreviveAlCorte`.
+                  href: armarHref(sp, obraSobreviveAlCorte(f.valor) ? { f: f.valor } : { f: f.valor, obra: undefined }),
                   activo: f.valor === filtro,
                   // LA POBLACIÓN DEL CORTE, NO LA PÁGINA. Son los cuatro `count` de la base, que no
                   // se mueven al escribir en el buscador: el recorte promete cuántas filas hay del
@@ -499,11 +553,21 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
                 }))}
               />
 
+              {/* LA SEGUNDA FILA DE FILTROS: el recorte por obra (dueño, 16/09/2026). Por qué es este
+                  control y no el chip con borde de la solapa Horas, en el propio componente. */}
+              <FiltroDeObraEnPlantel
+                chips={chipsDeObra}
+                sinObra={sinObra}
+                elegida={obraElegida}
+                filtro={filtro}
+                hrefDe={(cambios) => armarHref(sp, cambios)}
+              />
+
               <TablaPersonas
                 personas={personas}
                 conBaja={filtro === 'inactivos'}
                 pulso={pulso}
-                vacio={vacioDe(filtro, sp.q)}
+                vacio={vacioDe(filtro, sp.q, obraElegida)}
                 // ═══ EL BOTÓN «PRESENTE» DE LA COLUMNA HOY (dueño, 09/09/2026) ═══
                 //
                 // *«marcar que la persona está en el trabajo, a través de los usuarios admin / jefe
@@ -534,7 +598,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
               <PanelEdicion
                 titulo="Nueva persona"
                 accion={crearPersona}
-                cerrarHref={armarHref(sp, filtro)}
+                cerrarHref={armarHref(sp, { f: filtro })}
                 enviar="Crear"
                 testid="panel-alta-persona"
                 ayuda="DNI, CUIL, teléfono y retribución se cargan en el legajo, no en el listado."

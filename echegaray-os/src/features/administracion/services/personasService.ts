@@ -128,23 +128,59 @@ export async function getDirectorio(
  * igual, sin las filas). El umbral es de orden de magnitud, no de decenas — a 74 filas un `count` por
  * pastilla es pagar cuatro viajes para ahorrar 3 kB.
  *
+ * ═══ LAS MISMAS FILAS ALIMENTAN EL RECORTE POR OBRA (16/09/2026) ═══
+ *
+ * El filtro por obra del Plantel necesita exactamente estas filas —quién sigue en la empresa y en qué
+ * obra está— para decir cuántas personas tiene cada obra. Pedirlas de nuevo sería un segundo viaje
+ * para traer lo que ya está en memoria; y, peor, dos lecturas distintas pueden contestar cosas
+ * distintas si alguien mueve a una persona entre las dos. El chip dice 5 y se ven 5 porque el número
+ * y la lista salen de la MISMA lectura.
+ *
  * Y SE ACEPTA QUE LAS CUATRO FALLAN JUNTAS: antes cada `count` podía fallar solo y apagaba SU
  * pastilla. Ahora un error apaga las cuatro. La garantía que importa no cambia: `null` = no se pudo
  * contar y la pastilla va sin número, NUNCA 0 — «Inactivos 0» afirma que nadie egresó nunca.
  */
 export async function getConteosDeFiltro(
   supabase: SupabaseClient,
-): Promise<Record<FiltroPersonal, number | null>> {
+): Promise<{ conteos: Record<FiltroPersonal, number | null>; filas: FilaDeConteo[] }> {
   const { data, error } = await supabase
-    .from('persona_directorio').select('en_la_empresa, obra_actual_id')
-  if (error) return { plantel: null, en_obra: null, sin_asignar: null, inactivos: null }
-  return contarPorFiltro((data ?? []) as unknown as FilaDeConteo[])
+    .from('persona_directorio').select('en_la_empresa, obra_actual_id, obra_actual')
+  // SIN FILAS NO HAY CHIPS DE OBRA, y eso es lo correcto: un recorte dibujado sobre una lectura que
+  // falló prometería obras que nadie comprobó que existan.
+  if (error) return {
+    conteos: { plantel: null, en_obra: null, sin_asignar: null, inactivos: null },
+    filas: [],
+  }
+  const filas = (data ?? []) as unknown as FilaDeConteo[]
+  return { conteos: contarPorFiltro(filas), filas }
 }
 
-/** Lo mínimo que hace falta para contar: quién sigue en la empresa y si tiene obra asignada. */
+/** Lo mínimo que hace falta para contar: quién sigue en la empresa y en qué obra está. */
 export interface FilaDeConteo {
   en_la_empresa: boolean | null
   obra_actual_id: string | null
+  /** El NOMBRE de la obra, para rotular su chip. Ausente = no se leyó; una obra que no se puede
+   *  nombrar no se dibuja (un slug en pantalla es lo que el dueño pidió no ver nunca). */
+  obra_actual?: string | null
+}
+
+/**
+ * ¿ESTA PERSONA ESTÁ EN ESTE CORTE? La definición de las cuatro pastillas, UNA SOLA VEZ.
+ *
+ * La usan el contador (`contarPorFiltro`) y el recorte por obra (`recorteDeObra.ts`). Escrita dos
+ * veces, el día que «Plantel» cambie de criterio los chips de obra seguirían contando con el viejo y
+ * la pantalla mostraría «QP · SALÓN COMERCIAL 5» arriba de cuatro filas.
+ *
+ * `en_la_empresa` se compara contra `true` y contra `false`, nunca por verdad/falsedad: una fila en
+ * NULL no pertenece a NINGÚN corte, que es lo que hacían los `eq()` de PostgREST que esto reemplazó.
+ */
+export function perteneceAlCorte(fila: FilaDeConteo, filtro: FiltroPersonal): boolean {
+  const sinObra = fila.obra_actual_id === null || fila.obra_actual_id === undefined
+  if (filtro === 'inactivos') return fila.en_la_empresa === false
+  if (fila.en_la_empresa !== true) return false
+  if (filtro === 'en_obra') return !sinObra
+  if (filtro === 'sin_asignar') return sinObra
+  return true
 }
 
 /**
@@ -152,25 +188,19 @@ export interface FilaDeConteo {
  * contra casos que la base real hoy no tiene — y en particular el que más importa: una fila con
  * `en_la_empresa` en NULL.
  *
- * `en_la_empresa` se compara contra `true` y contra `false`, nunca por verdad/falsedad: los `eq()` de
- * PostgREST que esto reemplaza dejaban una fila NULL AFUERA de las dos pastillas, y contarla como
- * inactiva acá habría cambiado un número de la pantalla sin que nadie lo decidiera.
+ * El criterio de cada corte NO se escribe acá: es `perteneceAlCorte`, el mismo que usa el recorte por
+ * obra. Los `eq()` de PostgREST que esto reemplazó dejaban una fila con `en_la_empresa` en NULL
+ * AFUERA de las dos pastillas, y contarla como inactiva habría cambiado un número de la pantalla sin
+ * que nadie lo decidiera — por eso la regla se prueba una vez y la usan los dos.
  */
 export function contarPorFiltro(filas: FilaDeConteo[]): Record<FiltroPersonal, number | null> {
-  let plantel = 0
-  let enObra = 0
-  let sinAsignar = 0
-  let inactivos = 0
-  for (const f of filas) {
-    if (f.en_la_empresa === true) {
-      plantel += 1
-      if (f.obra_actual_id === null || f.obra_actual_id === undefined) sinAsignar += 1
-      else enObra += 1
-    } else if (f.en_la_empresa === false) {
-      inactivos += 1
-    }
+  const cuenta = (filtro: FiltroPersonal) => filas.filter((f) => perteneceAlCorte(f, filtro)).length
+  return {
+    plantel: cuenta('plantel'),
+    en_obra: cuenta('en_obra'),
+    sin_asignar: cuenta('sin_asignar'),
+    inactivos: cuenta('inactivos'),
   }
-  return { plantel, en_obra: enObra, sin_asignar: sinAsignar, inactivos }
 }
 
 export async function getPersona(supabase: SupabaseClient, id: string): Promise<ServiceResult<Persona | null>> {

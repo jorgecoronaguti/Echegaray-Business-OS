@@ -22,6 +22,8 @@
 // dos como enlaces visibles, así que nadie queda encerrado en la vista equivocada por culpa de un
 // navegador que no manda las pistas.
 
+import { enlaceConservando } from './enlaceDeVista.ts'
+
 export type ModoAsistencia = 'dia' | 'quincena'
 
 /** El `sec-ch-ua-mobile` de los navegadores basados en Chromium: `?1` teléfono, `?0` escritorio. */
@@ -87,13 +89,10 @@ export function hrefDeAsistencia(
   base: EstadoAsistencia,
   cambios: Record<string, string | undefined> = {},
 ): string {
-  const actual: Record<string, string | undefined> = {
+  // LA REGLA NO VIVE ACÁ: vive en `enlaceConservando`, que es la misma que usan el Plantel y
+  // Liquidación. Lo propio de esta vista es QUÉ conserva —estas cuatro claves, en este orden—, y eso
+  // es lo único que este archivo tiene que saber.
+  return enlaceConservando(ruta, { vista: 'asistencia' }, {
     quincena: base.quincena, q: base.q, modo: base.modo, obra: base.obra,
-  }
-  const params = new URLSearchParams({ vista: 'asistencia' })
-  for (const [clave, valor] of Object.entries({ ...actual, ...cambios })) {
-    // UN VALOR VACÍO NO ES UN PARÁMETRO. `?q=` en la URL no filtra nada y ensucia lo que se comparte.
-    if (valor) params.set(clave, valor)
-  }
-  return `${ruta}?${params.toString()}`
+  }, cambios)
 }
