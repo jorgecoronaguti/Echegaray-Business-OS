@@ -386,3 +386,61 @@ test('el barrido tiene su propio intervalo y nunca propaga un error', async () =
   t += 60_001
   assert.ok(await reintentar() !== null)
 })
+
+// ── 6. LO QUE EL DOBLE NO PUEDE PROBAR, Y CÓMO SE TAPA ─────────────────────────────────────
+//
+// Todo lo de arriba corre contra `repoMemoria`. Es rápido y no necesita Postgres, pero un doble que
+// se aparte de la tabla dejaría estos tests en verde mientras producción hace otra cosa. Los dos
+// tests que siguen no reemplazan una prueba contra Postgres —eso pide `PG_TEST_URL` y queda
+// declarado como límite—, pero sí ponen en rojo las dos formas en que esto se rompe de verdad:
+// que el doble y la tabla dejen de tener las mismas funciones, y que una consulta pierda la
+// condición que la hace segura.
+
+test('el doble implementa TODO lo que el repositorio real expone (salvo lo declarado)', async () => {
+  const real = await import('./repositorio.mjs')
+  // Lo que el doble no finge a propósito: son consultas de apoyo (informativas o de catálogo) que
+  // ningún test de escritura ejercita. Si alguien suma una función NUEVA al repositorio y no al
+  // doble, este test se pone rojo y hay que decidirlo — no pasar de largo.
+  const NO_DOBLADAS = ['acumuladoDeLaTanda', 'candidatasArca', 'fajosSinAviso', 'nombresPorCuit', 'reservasRancias', 'rescatarReservasRancias', 'tablasListas']
+  const faltan = Object.keys(real)
+    .filter((k) => typeof real[k] === 'function' && !NO_DOBLADAS.includes(k))
+    .filter((k) => typeof repoMemoria()[k] !== 'function')
+  assert.deepEqual(faltan, [], 'el doble se quedó atrás del repositorio real')
+})
+
+test('las consultas del reintento llevan puesta la condición que las hace seguras', async () => {
+  // MUTACIÓN QUE LO MATA: sacar `and estado = $5` de `programarReintento`, `and fila is null` del
+  // rescate de reservas, o `intentos > 0` del rescate de colgados. Cualquiera de las tres convierte
+  // una operación condicional en un pisotón — y con plata adentro.
+  const real = await import('./repositorio.mjs')
+  const sql = []
+  const port = { query: async (q) => { sql.push(q.replace(/\s+/g, ' ')); return { rows: [], rowCount: 0 } } }
+
+  await real.programarReintento(port, { id: 'x', esperaMin: 1 })
+  assert.match(sql.at(-1), /where id = \$1 and estado = \$5/, 'compare-and-set desde `confirmado`')
+  assert.match(sql.at(-1), /intentos = coalesce\(intentos, 0\) \+ 1/)
+
+  await real.tomarParaReintentar(port, { id: 'x' })
+  assert.match(sql.at(-1), /where id = \$1 and estado = \$3/, 'dos workers no pueden tomar el mismo fajo')
+
+  await real.rescatarReservasRancias(port, ['c:1'], { minutos: 15 })
+  assert.match(sql.at(-1), /and fila is null/, 'jamás se toca una reserva que ya tiene fila')
+  assert.match(sql.at(-1), /creado_at < now\(\) - make_interval/)
+
+  await real.rescatarConfirmadosColgados(port, {})
+  assert.match(sql.at(-1), /coalesce\(intentos, 0\) > 0/, 'sólo los que ya pasaron por el reintento')
+  assert.match(sql.at(-1), /ultimo_at < now\(\) - make_interval/)
+
+  await real.soltarReservas(port, ['c:1'])
+  assert.match(sql.at(-1), /delete from .* where clave = any\(\$1\) and fila is null/)
+})
+
+test('la migración declara el estado nuevo y no reparte un solo grant', () => {
+  // El código anda antes y después de aplicarla, pero si se aplica a medias —columnas sí, check no—
+  // `programarReintento` fallaría en producción por el check y nadie lo sabría hasta el próximo 504.
+  const sql = fs.readFileSync(path.join(AQUI, '../../../supabase/migrations/20260915T2330_fajo_reintentable.sql'), 'utf8')
+  assert.match(sql, /add column if not exists intentos/)
+  assert.match(sql, /add column if not exists proximo_intento_at/)
+  assert.match(sql, /check \(estado in \([^)]*'reintento'\)\)/)
+  assert.doesNotMatch(sql, /grant\s+.*\b(authenticated|anon)\b/i, 'el schema comunicacion no se expone a la web')
+})
