@@ -84,7 +84,18 @@ const RUTA = '/administracion/personas'
 
 type Busqueda = {
   q?: string; f?: string; nueva?: string; vista?: string; quincena?: string; modo?: string
-  obra?: string; dia?: string
+  /**
+   * `?obra=` SIGNIFICA COSAS DISTINTAS EN CADA SOLAPA, y por eso NUNCA cruza de una a otra:
+   *
+   *   Plantel  el ID de la obra (`quattropani`), que es la clave de `persona_directorio`.
+   *   Horas    el RÓTULO del chip de la grilla («ME - BSA») o, en la carga del día, el id o el nombre.
+   *
+   * Las tres solapas se enlazan entre sí con la URL escrita desde cero (`armarHref({})`,
+   * `hrefAsistencia`, `hrefLiquidacion`): pasarle a la grilla de Horas un id crudo la dejaría vacía
+   * con un slug en el cartel, que es exactamente el defecto que ya se pagó volviendo del modo día.
+   */
+  obra?: string
+  dia?: string
   /** Las siete solapas de Liquidación (`solapas/index.ts`). Default `quincena`. */
   /** Los recortes de Liquidación: qué pendiente se mira (`SolapaHoras`) y qué grupo (`SolapaQuincena`). */
   solapa?: string; pendiente?: string; grupo?: string
