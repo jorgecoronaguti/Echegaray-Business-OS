@@ -353,12 +353,44 @@ export async function escribirFajo(d, fajo) {
   const yaEstaban = aReservar.filter((f) => !reservadas.includes(f.clave))
   const entran = items.filter((it, k) => reservadas.includes(aReservar[k].clave))
   if (!entran.length) {
-    await repo.cerrarFajo(port, { id: fajo.id, estado: ESTADO.CARGADO, filas: [] })
     // DÓNDE están, no sólo que están. Se pregunta a la tabla —la reserva no trae la fila— porque
     // "ya estaba cargado" sin decir dónde no se puede verificar, y todo lo que no se puede verificar
     // termina siendo una afirmación que nadie chequea.
     const ya = await repo.yaCargados(port, yaEstaban.map((f) => f.clave))
     const donde = [...ya.values()].map((r) => r?.fila).filter((f) => f != null)
+    // ═══ «YA ESTABAN CARGADOS» SIN UNA SOLA FILA ES UNA MENTIRA (15/09/2026) ═══
+    //
+    // Ninguna de las claves volvió de la reserva Y ninguna tiene fila: no están cargados, están
+    // RESERVADOS por una corrida que todavía no terminó (o que murió hace menos de
+    // `RESERVA_RANCIA_MIN`). Eso fue exactamente lo que contestó el bot cuando se re-encoló el
+    // evento del 15/09: «ya estaban cargados», con Compras intacta y el gasto sin registrar.
+    // No se cierra nada: el fajo queda para reintentar y se dice la verdad. Cuando vuelva a correr,
+    // las reservas ya estarán rancias y `reservarClaves` se las quedará.
+    if (!donde.length) {
+      const programado = typeof repo.programarReintento === 'function'
+        ? await repo.programarReintento(port, {
+          id: fajo.id, error: 'las claves están reservadas por otra corrida que no terminó', esperaMin: esperaDeReintentoMin((Number(fajo.intentos) || 0) + 1),
+        }).catch(() => null)
+        : null
+      log?.warn?.('comprobantes: todas las claves reservadas y ninguna con fila', { fajo: fajo.id, claves: yaEstaban.length, programado: !!programado })
+      if (programado) {
+        return {
+          estado: ESTADO.REINTENTO,
+          reintento: { intentos: programado.intentos, proximo: programado.proximo_intento_at },
+          avisos: [TEXTO_REINTENTO.aviso],
+          texto: TEXTO_REINTENTO.texto(items.length, { detalle: 'otra corrida los tenía tomados' }),
+        }
+      }
+      // Sin la migración: se reabre, que es lo que hacía siempre ante una carga que no ocurrió. Lo
+      // que NO se hace nunca más es cerrarlo como CARGADO sin una fila que lo respalde.
+      await repo.reabrirFajo(port, { id: fajo.id, error: 'claves reservadas sin fila: la carga no ocurrió' })
+      return {
+        estado: ESTADO.ERROR,
+        avisos: ['No los cargué: las claves quedaron tomadas por una carga anterior que no terminó. Mandalos de nuevo en un rato.'],
+        texto: 'No los cargué: las claves quedaron tomadas por una carga anterior que no terminó. **No se escribió nada en Compras.** Mandalos de nuevo en un rato.',
+      }
+    }
+    await repo.cerrarFajo(port, { id: fajo.id, estado: ESTADO.CARGADO, filas: [] })
     return {
       estado: ESTADO.CARGADO,
       yaEstaban: yaEstaban.length,
@@ -397,7 +429,16 @@ export async function escribirFajo(d, fajo) {
     // lo declara es la pestaña VIVA, que es más fuerte que la tabla de reservas—, así que el fajo se
     // cierra CARGADO y se sueltan las reservas: la fila que vale es la que ya está en Compras.
     if (seguroQueNo && r.datos?.motivo === 'ya_cargados') {
-      await repo.soltarReservas(port, reservadas)
+      // LA FILA QUE EL CARGADOR ENCONTRÓ SE ANOTA ANTES DE SOLTAR NADA (15/09/2026). `duplicados`
+      // trae `i` y `fila`: es la fila VIVA de Compras. Si la reserva de esta corrida se suelta sin
+      // anotarla, el registro se queda sin saber dónde está un gasto que sí existe — y desde que
+      // `reservarClaves` rescata reservas rancias, este camino se pisa mucho más seguido.
+      const filaDeDuplicado = new Map((r.datos?.duplicados ?? []).map((x) => [x.i, x.fila]))
+      const anotables = entran
+        .map((it, k) => ({ ...filaDeRegistro(it, fajo), fila: filaDeDuplicado.get(k) ?? null }))
+        .filter((f) => f.fila != null)
+      if (anotables.length) await repo.anotarFilas(port, anotables)
+      await repo.soltarReservas(port, reservadas.filter((c) => !anotables.some((f) => f.clave === c)))
       await repo.cerrarFajo(port, { id: fajo.id, estado: ESTADO.CARGADO, filas: [] })
       const yaEnCompras = await repo.yaCargados(port, yaEstaban.map((f) => f.clave))
       const donde = [
