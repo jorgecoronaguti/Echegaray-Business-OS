@@ -5,7 +5,8 @@
 
 import { CAMPOS_EDITABLES, type CampoEditable, type OverridesDeLinea } from './liquidacionOverrides.ts'
 import type { PresenciaDeQuincena } from './liquidacionQuincena.ts'
-import type { PresentismoDeLinea, TardanzaDelDia } from './presentismo.ts'
+import { PRESENTISMO_PCT } from './presentismo.ts'
+import type { AusenciaDelDia, PresentismoDeLinea, TardanzaDelDia } from './presentismo.ts'
 
 export interface EstadoDeLaQuincena {
   id: string | null
@@ -150,7 +151,32 @@ export function leerGuardadas(data: unknown): {
 function presentismoSellado(l: LineaGuardada): PresentismoDeLinea | null {
   if (l.presentismo == null) return null
   const perdido = (l.presentismo_perdido ?? '').split(',').map((x) => x.trim()).filter(Boolean)
-  return { estado: perdido.length > 0 ? 'perdido' : 'aplica', importe: numero(l.presentismo), perdido, basico: null, categoria: null }
+  const importe = numero(l.presentismo)
+  // LA BASE DE UNA FOTO VIEJA SE DERIVA, NO SE INVENTA: el sello guarda el importe y las fechas, y el
+  // importe ES el 20 % de la base. `base = importe ÷ 0,2` es la misma cuenta al revés, exacta.
+  // LAS CAUSAS NO SE PUEDEN RECONSTRUIR: la columna sellada guarda la fecha, no si fue tardanza, retiro o
+  // falta. Van vacías y la pantalla cae en las fechas; afirmar una causa que nadie guardó sería inventarla.
+  const base = importe > 0 ? Math.round((importe / PRESENTISMO_PCT) * 100) / 100 : null
+  return {
+    estado: perdido.length > 0 ? 'perdido' : 'aplica', importe, base, perdido,
+    causas: [], aRevisar: [], basico: null, categoria: null,
+  }
+}
+
+/**
+ * LOS DÍAS NO TRABAJADOS de la quincena, por persona, con su motivo (dueño, 16/09/2026: el presentismo
+ * también se pierde por falta injustificada). Sale de las MISMAS presencias que ya se leyeron para las
+ * tardanzas: ninguna consulta nueva, ningún segundo origen del mismo hecho.
+ */
+export function ausenciasPorPersona(presencias: unknown): Map<string, AusenciaDelDia[]> {
+  const out = new Map<string, AusenciaDelDia[]>()
+  for (const p of (presencias ?? []) as (PresenciaDeQuincena & { persona_id: string })[]) {
+    if (p.estado !== 'ausente' && p.estado !== 'licencia') continue
+    const lista = out.get(p.persona_id) ?? []
+    lista.push({ fecha: String(p.fecha).slice(0, 10), estado: p.estado, motivo: p.motivo ?? null })
+    out.set(p.persona_id, lista)
+  }
+  return out
 }
 
 /** Las marcas de tardanza de la quincena, por persona. `fechasCortas` las rotula; acá van ISO. */

@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   cobraConPresentismo, fechasCortas, importeDePresentismo, presentismoDeLinea, totalesDePresentismo,
-  PRESENTISMO_DESDE, type EntradaDePresentismo,
+  PRESENTISMO_DESDE, PRESENTISMO_PCT, PARTE_EN_BLANCO, type EntradaDePresentismo,
 } from './presentismo.ts'
 
 // LOS DEFECTOS QUE ESTOS TESTS ATRAPAN (cada uno pone en rojo una mutación de la regla):
@@ -109,4 +109,121 @@ test('el pie: en juego suma a todos los que lo tienen; perdido sólo a quienes l
   assert.equal(t.perdido, 63480)
   assert.equal(t.perdidos, 1)
   assert.equal(t.sinCategoria, 1)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA FALTA INJUSTIFICADA TAMBIÉN LO HACE PERDER (dueño, 16/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// *«Si tiene falta injustificada, tardanza o retiro anticipado durante la quincena → presentismo = $0»*
+// y *«las novedades justificadas/excepciones UOCRA … no tratarse automáticamente como falta
+// injustificada»*. Los defectos que estos tests atrapan:
+//
+//  7. Que una falta injustificada NO descuente (era el hueco: hasta hoy sólo miraba tardanzas).
+//  8. Que una LICENCIA (enfermedad, accidente, vacaciones…) descuente: sería quitarle plata a quien
+//     tiene derecho, y es exactamente lo que el dueño pidió no hacer automáticamente.
+//  9. Que la lluvia, la obra parada o el paro descuenten: no dependen del trabajador.
+// 10. Que un día sin motivo cargado descuente solo: no hay falta injustificada probada.
+// 11. Que la base deje de ser el 50 % en blanco y se calcule sobre el jornal entero (el doble) o
+//     sobre el 50 % en efectivo.
+
+const BASE: EntradaDePresentismo = {
+  categoria: 'oficial', basico: 6348, tardanzas: [], ausencias: [], quincenaDesde: '2026-09-16',
+  modalidad: 'hora', esJefe: false, cerrada: false,
+}
+const falta = (fecha: string, motivo: string | null) =>
+  ({ fecha, estado: 'ausente' as const, motivo })
+
+test('LA BASE ES EL 50 % EN BLANCO: 105 h × 6.348 × 50 % = 333.270, y el 20 % de eso es el presentismo', () => {
+  const p = presentismoDeLinea(BASE, 105)
+  assert.equal(p.base, 333270, 'MUTACIÓN: la base se calculó sobre el jornal entero o sobre el efectivo')
+  assert.equal(p.importe, 66654)
+  // LA CADENA COMPLETA, COMO LA PIDIÓ EL DUEÑO: (básico quincenal × 50 %) × 20 %.
+  assert.equal(Math.round(p.base! * PRESENTISMO_PCT * 100) / 100, p.importe)
+  assert.equal(PARTE_EN_BLANCO, 0.5)
+})
+
+test('una falta injustificada pierde el presentismo entero, igual que una tardanza', () => {
+  for (const motivo of ['falta', 'falta_con_aviso']) {
+    const p = presentismoDeLinea({ ...BASE, ausencias: [falta('2026-09-18', motivo)] }, 105)
+    assert.equal(p.estado, 'perdido', `${motivo} tendría que perderlo`)
+    assert.equal(p.importe, 66654, 'el importe se sigue diciendo: es lo que se descuenta')
+    assert.deepEqual(p.perdido, ['2026-09-18'])
+    assert.equal(p.causas[0].causa, 'falta')
+    assert.equal(cobraConPresentismo(627000, p), 560346)
+  }
+})
+
+test('una LICENCIA no pierde el presentismo: enfermedad, accidente, vacaciones, licencia especial', () => {
+  for (const motivo of ['enfermedad', 'accidente', 'accidente_in_itinere', 'vacaciones', 'licencia_especial', 'suspension']) {
+    const p = presentismoDeLinea({ ...BASE, ausencias: [{ fecha: '2026-09-18', estado: 'licencia', motivo }] }, 105)
+    assert.equal(p.estado, 'aplica', `${motivo} NO puede descontar`)
+    assert.equal(cobraConPresentismo(627000, p), 627000, 'no se le puede tocar la plata')
+  }
+})
+
+test('lo que no depende del trabajador no descuenta: lluvia, obra parada, paro, franco', () => {
+  for (const motivo of ['lluvia', 'sin_tarea', 'paro', 'franco']) {
+    const p = presentismoDeLinea({ ...BASE, ausencias: [falta('2026-09-18', motivo)] }, 105)
+    assert.equal(p.estado, 'aplica', `${motivo} no es una falta injustificada`)
+  }
+})
+
+test('un día sin motivo o con «Otro» NO descuenta solo: queda a revisar', () => {
+  for (const motivo of [null, 'otro']) {
+    const p = presentismoDeLinea({ ...BASE, ausencias: [falta('2026-09-18', motivo)] }, 105)
+    assert.equal(p.estado, 'a_revisar', 'MUTACIÓN: descontó con un dato que nadie cargó')
+    assert.deepEqual(p.aRevisar, ['2026-09-18'])
+    assert.equal(cobraConPresentismo(627000, p), 627000, 'no se descuenta hasta que se clasifique')
+    assert.deepEqual(p.causas, [])
+  }
+})
+
+test('una causa probada gana sobre un día sin clasificar', () => {
+  const p = presentismoDeLinea({
+    ...BASE,
+    tardanzas: [{ fecha: '2026-09-17', llegoTarde: true, salioAntes: false }],
+    ausencias: [falta('2026-09-21', null)],
+  }, 105)
+  assert.equal(p.estado, 'perdido', 'la tardanza del 17 lo pierde aunque el 21 esté sin clasificar')
+  assert.deepEqual(p.aRevisar, ['2026-09-21'], 'y el día sin clasificar se sigue diciendo')
+})
+
+test('las causas se dicen con fecha y motivo, ordenadas: es el «motivo si lo perdió» de la pantalla', () => {
+  const p = presentismoDeLinea({
+    ...BASE,
+    tardanzas: [{ fecha: '2026-09-22', llegoTarde: true, salioAntes: true }],
+    ausencias: [falta('2026-09-18', 'falta')],
+  }, 105)
+  assert.deepEqual(p.causas.map((c) => `${c.fecha} ${c.causa}`),
+    ['2026-09-18 falta', '2026-09-22 retiro', '2026-09-22 tardanza'])
+  assert.equal(p.causas[0].etiqueta, 'Faltó sin avisar', 'la etiqueta sale del catálogo único')
+  assert.deepEqual(p.perdido, ['2026-09-18', '2026-09-22'], 'un día con dos marcas es UN día perdido')
+})
+
+test('NO SE TOCAN LAS QUINCENAS ANTERIORES: la falta de una quincena vieja no descuenta nada', () => {
+  const p = presentismoDeLinea(
+    { ...BASE, quincenaDesde: '2026-09-01', ausencias: [falta('2026-09-05', 'falta')] }, 105)
+  assert.equal(p.estado, 'no_rige')
+  assert.equal(p.importe, null)
+  assert.deepEqual(p.causas, [], 'ni siquiera se listan causas: la regla no rige')
+  assert.equal(cobraConPresentismo(627000, p), 627000)
+})
+
+test('jefes y mensuales siguen afuera aunque falten', () => {
+  const conFalta = { ...BASE, ausencias: [falta('2026-09-18', 'falta')] }
+  assert.equal(presentismoDeLinea({ ...conFalta, esJefe: true }, 105).estado, 'no_rige')
+  assert.equal(presentismoDeLinea({ ...conFalta, modalidad: 'mensual' }, 105).estado, 'no_rige')
+})
+
+test('el pie cuenta cuántos quedaron a revisar, sin mezclarlos con los perdidos', () => {
+  const t = totalesDePresentismo([
+    { presentismo: presentismoDeLinea({ ...BASE, ausencias: [falta('2026-09-18', 'falta')] }, 105) },
+    { presentismo: presentismoDeLinea({ ...BASE, ausencias: [falta('2026-09-18', null)] }, 105) },
+    { presentismo: presentismoDeLinea(BASE, 105) },
+  ])
+  assert.equal(t.perdidos, 1)
+  assert.equal(t.aRevisar, 1)
+  assert.equal(t.perdido, 66654, 'sólo se descuenta el probado')
+  assert.equal(t.enJuego, 66654 * 3)
 })

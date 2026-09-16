@@ -20,7 +20,7 @@ import type { EdicionDelBlanco } from './CeldasBlancoNegro'
 import type { CeldaDelEspejo, FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { guardarHorasDeLaCelda } from '../../../services/horasDeLaCeldaActions'
 import { tituloDeExtras } from '../../../services/liquidacionQuincena'
-import { fechasCortas } from '../../../services/presentismo'
+import { fechasCortas, type PresentismoDeLinea } from '../../../services/presentismo'
 
 /**
  * LA CELDA DE UN DÍA. Es la que reemplaza al Sheet: se teclea el número y se va.
@@ -51,19 +51,39 @@ export function CeldaPresentismo({ fila }: { fila: FilaDelEspejo }) {
   if (p.estado === 'sin_horas' || p.importe == null) {
     return <div data-testid={testid} title="Sin horas: no hay presentismo que calcular" style={{ textAlign: 'right', color: V.tenue }}>·</div>
   }
-  const cuenta = `20 % × (${fila.linea.horas ?? 0} h ÷ 2) × ${pesos(p.basico)}/h (${p.categoria ?? 'categoría'})`
+  // LA CUENTA COMPLETA, COMO LA PIDIÓ EL DUEÑO (16/09/2026): base (50 % en blanco) × 20 %. El 50 % en
+  // efectivo NO entra en la base, y el `title` lo dice para que nadie lo dude mirando la pantalla.
+  const cuenta = `Base ${pesos(p.base)} (${fila.linea.horas ?? 0} h × ${pesos(p.basico)}/h × 50 % en blanco`
+    + `${p.categoria ? `, ${p.categoria}` : ''}) × 20 % = ${pesos(p.importe)}`
   if (p.estado === 'perdido') {
     return (
-      <div data-testid={testid} data-presentismo="perdido" title={`${cuenta} = ${pesos(p.importe)} · perdido por ${fechasCortas(p.perdido)}: se descuenta del negro`}
+      <div data-testid={testid} data-presentismo="perdido" title={`${cuenta} · PERDIDO: ${motivosDePerdida(p)} · se descuenta del negro`}
         style={{ textAlign: 'right', whiteSpace: 'nowrap', color: V.warn, fontWeight: 500 }}>
         perdido {fechasCortas(p.perdido)}
       </div>
     )
   }
+  // A REVISAR: cobra el presentismo, pero hay días que nadie clasificó. Se dice en la celda, porque si
+  // se resuelven como falta injustificada esa plata se va — y quien liquida tiene que verlo ANTES de pagar.
+  if (p.estado === 'a_revisar') {
+    return (
+      <div data-testid={testid} data-presentismo="a-revisar"
+        title={`${cuenta} · sin clasificar: ${fechasCortas(p.aRevisar)}. No vino y nadie cargó el motivo: hasta que se cargue NO se descuenta.`}
+        style={{ textAlign: 'right', whiteSpace: 'nowrap', color: V.tintaSuave }}>
+        {pesos(p.importe)} <span style={{ color: V.warn, fontWeight: 600 }} aria-hidden>•</span>
+      </div>
+    )
+  }
   return (
-    <div data-testid={testid} data-presentismo="aplica" title={`${cuenta}. Es parte del cobra: sin tardanzas cobra lo de siempre.`}
+    <div data-testid={testid} data-presentismo="aplica" title={`${cuenta}. Es parte del cobra: cumple y cobra lo de siempre.`}
       style={{ textAlign: 'right', whiteSpace: 'nowrap', color: V.tintaSuave }}>{pesos(p.importe)}</div>
   )
+}
+
+/** «18/09 Faltó sin avisar · 22/09 Llegó tarde». La foto vieja no guardó causas: quedan las fechas. */
+export function motivosDePerdida(p: PresentismoDeLinea): string {
+  if (p.causas.length === 0) return fechasCortas(p.perdido)
+  return p.causas.map((c) => `${c.fecha.slice(8, 10)}/${c.fecha.slice(5, 7)} ${c.etiqueta}`).join(' · ')
 }
 
 /** El glifo de tardanza sobre un día trabajado: ▲ ámbar chico, con el detalle en el `title`. */
