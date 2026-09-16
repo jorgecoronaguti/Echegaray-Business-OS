@@ -27,14 +27,8 @@ const sinComentarios = (texto: string) => texto
   })
   .join('\n')
 
-/** Sólo la segunda fila de filtros: desde su `testid` hasta la tabla. */
-function bloqueDeObra(): string {
-  const src = sinComentarios(pagina())
-  const desde = src.indexOf('testid="filtro-obra"')
-  const hasta = src.indexOf('<TablaPersonas', desde)
-  assert.ok(desde > 0 && hasta > desde, 'no está la fila de filtros por obra en la pantalla de Plantel')
-  return src.slice(desde, hasta)
-}
+/** La fila de filtros por obra: su propio componente. */
+const bloqueDeObra = () => sinComentarios(readFileSync(join(DIR, 'FiltroDeObraEnPlantel.tsx'), 'utf8'))
 
 test('la fila de obra usa el control compartido de la pantalla, no una pastilla propia', () => {
   // ═══ EL DEFECTO QUE ATRAPA ═══
@@ -42,10 +36,10 @@ test('la fila de obra usa el control compartido de la pantalla, no una pastilla 
   // Un chip nuevo dibujado a mano —con su borde, su radio y su color— mete un segundo lenguaje visual
   // en la misma pantalla para el mismo gesto. El v2 le sacó el borde a este control justo para no
   // volver a dibujar la caja que la tabla acaba de perder (`FiltrosSuaves.tsx`).
-  const src = sinComentarios(pagina())
-  assert.match(src, /<FiltrosSuaves\s+testid="filtro-obra"/,
-    'la fila de obra dejó de usar FiltrosSuaves')
   const bloque = bloqueDeObra()
+  assert.match(bloque, /<FiltrosSuaves\s+testid="filtro-obra"/, 'la fila de obra dejó de usar FiltrosSuaves')
+  // Y LA PANTALLA LA DIBUJA: un componente que nadie monta es una fila que no existe.
+  assert.match(sinComentarios(pagina()), /<FiltroDeObraEnPlantel/)
   assert.doesNotMatch(bloque, /#[0-9A-Fa-f]{3,8}\b/, 'apareció un color suelto: los colores salen de los tokens')
   assert.doesNotMatch(bloque, /borderRadius|border:|background:/, 'la fila se puso a dibujar su propia pastilla')
   // NI UN DESPLEGABLE: con cinco obras, un `select` esconde detrás de un clic lo que se mira ANTES de
@@ -62,12 +56,13 @@ test('el recorte vive en la URL: cada enlace sale de la regla, ninguno se arma a
   const bloque = bloqueDeObra()
   assert.doesNotMatch(bloque, /onClick|useState|'use client'/)
   const enlaces = bloque.match(/href:/g) ?? []
-  const porLaRegla = bloque.match(/href: armarHref\(sp, \{/g) ?? []
+  const porLaRegla = bloque.match(/href: hrefDe\(\{/g) ?? []
   assert.ok(enlaces.length >= 3, 'la fila se quedó sin enlaces')
   assert.equal(porLaRegla.length, enlaces.length,
-    'un enlace de la fila de obra se arma por fuera de `armarHref`: ése es el que va a perder el recorte')
-  // Y `armarHref` NO VUELVE A ESCRIBIR LA REGLA: la comparte con las otras dos solapas de la pantalla.
+    'un enlace de la fila de obra se arma por fuera de la regla: ése es el que va a perder el recorte')
   const src = sinComentarios(pagina())
+  assert.match(src, /hrefDe=\{\(cambios\) => armarHref\(sp, cambios\)\}/)
+  // Y `armarHref` NO VUELVE A ESCRIBIR LA REGLA: la comparte con las otras dos solapas de la pantalla.
   assert.match(src, /function armarHref[\s\S]{0,400}?return enlaceConservando\(RUTA/)
   assert.doesNotMatch(src.slice(src.indexOf('function armarHref'), src.indexOf('const hrefAsistencia')),
     /new URLSearchParams/, 'el enlace del Plantel volvió a armar la URL por su cuenta')

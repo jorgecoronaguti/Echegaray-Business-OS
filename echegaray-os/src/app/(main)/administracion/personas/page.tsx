@@ -53,6 +53,7 @@ import { BloqueAsistenciaDia } from '@/features/administracion/components/asiste
 import { CamposAlta } from '@/features/administracion/components/FormularioPersona'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { TablaPersonas, type PulsoDelPlantel } from '@/features/administracion/components/TablaPersonas'
+import { FiltroDeObraEnPlantel } from '@/features/administracion/components/FiltroDeObraEnPlantel'
 import {
   FILTROS, getConteosDeFiltro, getDirectorio, type FiltroPersonal,
 } from '@/features/administracion/services/personasService'
@@ -552,60 +553,15 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
                 }))}
               />
 
-              {/* ═══ LA SEGUNDA FILA: EL RECORTE POR OBRA (dueño, 16/09/2026) ═══
-
-                  MISMO CONTROL QUE LA FILA DE ARRIBA, A PROPÓSITO. La alternativa era el chip con
-                  borde de la solapa Horas —`ChipsDeObra`, pastilla redondeada con línea alrededor—,
-                  y se descartó: el v2 le sacó el borde justo a este control para no volver a dibujar
-                  la caja que la tabla acaba de perder. Dos formas distintas de pastilla en la misma
-                  pantalla serían dos lenguajes para un mismo gesto.
-
-                  UN SELECT TAMPOCO: con cinco obras, un desplegable esconde detrás de un clic la
-                  información que el chip ya publica —cuánta gente hay en cada una—, que es
-                  justamente lo que se mira antes de elegir.
-
-                  NO SE DIBUJA SI NO HAY NADA QUE ELEGIR. En «Inactivos» ninguna persona tiene obra
-                  vigente (57 de 57 el 16/09/2026): la fila sería un «Todas» solitario ocupando un
-                  renglón para no ofrecer ninguna opción. */}
-              {(chipsDeObra.length > 0 || sinObra !== null) && (
-                <FiltrosSuaves
-                  testid="filtro-obra"
-                  rotulo="Obra"
-                  opciones={[
-                    {
-                      clave: 'todas',
-                      etiqueta: 'Todas',
-                      href: armarHref(sp, { obra: undefined }),
-                      // «SIN ASIGNAR» ES UN RECORTE POR OBRA, aunque viva en la fila de arriba: con
-                      // esa pastilla puesta, «Todas» mentiría diciendo que no hay ninguno.
-                      activo: !obraElegida && filtro !== 'sin_asignar',
-                    },
-                    ...chipsDeObra.map((o) => ({
-                      clave: o.clave,
-                      // EL NOMBRE DE LA OBRA, SIN EL CÓDIGO INTERNO: es el mismo texto que la celda
-                      // OBRA escribe en cada fila. Un «OB-0012 · » delante de cinco chips gasta la
-                      // mitad del renglón repitiendo lo que no distingue una obra de otra acá.
-                      etiqueta: o.etiqueta,
-                      // CLIC EN LA OBRA YA ACTIVA LA APAGA. Sin esto, el único camino de vuelta al
-                      // plantel entero sería borrar el parámetro a mano en la barra de direcciones.
-                      href: armarHref(sp, { obra: o.clave === obraElegida ? undefined : o.clave }),
-                      activo: o.clave === obraElegida,
-                      cuenta: o.cuenta,
-                    })),
-                    // «SIN OBRA» ES EL RECORTE QUE YA EXISTE, NO UNO NUEVO: su enlace es la pastilla
-                    // «Sin asignar» de la fila de arriba y su número sale del mismo corte. Dos
-                    // controles con el mismo significado y distinto nombre se contradicen el día que
-                    // uno cambie de criterio. Ver `sinObraDelCorte`.
-                    ...(sinObra !== null ? [{
-                      clave: 'sin-obra',
-                      etiqueta: 'Sin obra',
-                      href: armarHref(sp, { f: 'sin_asignar', obra: undefined }),
-                      activo: filtro === 'sin_asignar' && !obraElegida,
-                      cuenta: sinObra,
-                    }] : []),
-                  ]}
-                />
-              )}
+              {/* LA SEGUNDA FILA DE FILTROS: el recorte por obra (dueño, 16/09/2026). Por qué es este
+                  control y no el chip con borde de la solapa Horas, en el propio componente. */}
+              <FiltroDeObraEnPlantel
+                chips={chipsDeObra}
+                sinObra={sinObra}
+                elegida={obraElegida}
+                filtro={filtro}
+                hrefDe={(cambios) => armarHref(sp, cambios)}
+              />
 
               <TablaPersonas
                 personas={personas}
