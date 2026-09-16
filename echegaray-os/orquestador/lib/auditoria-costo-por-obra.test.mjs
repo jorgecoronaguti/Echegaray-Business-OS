@@ -7,7 +7,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   aLaFecha, dia, diferencia, duplicadosProbables, huellaDeObra, norm,
-  otraObraNombrada, parseObraCelda, resumen, totalesPorDestino,
+  esPlanDeCuotas, otraObraNombrada, parseObraCelda, resumen, totalesPorDestino,
 } from './auditoria-costo-por-obra.mjs'
 import {
   conciliacionSinObra, motivoDeExclusion, puenteDeObra, reglaMuerta,
@@ -96,6 +96,22 @@ test('el duplicado con el MISMO número de comprobante se marca distinto del que
   assert.equal(d[0].mismo_comprobante, true)
   assert.equal(d[0].importe_en_riesgo, 1000, 'dos filas de 1000 ponen 1000 en riesgo, no 2000')
   assert.equal(d.find((x) => x.total === 500).mismo_comprobante, false)
+})
+
+test('seis cuotas semanales del mismo monto NO son un duplicado — la alarma falsa de $8,4 M', () => {
+  // PEDRO TELLO: $6.450.400 en seis filas iguales, misma fecha de factura, pagos semanales y el
+  // N° de comprobante VACÍO en las seis. «Vacío = vacío» las daba por el mismo comprobante.
+  const cuotas = [0, 1, 2, 3, 4, 5].map((i) => fila({
+    fila: 950 + i, total: 1075066.67, proveedor: 'PEDRO TELLO', fecha: '2026-09-11',
+    comprobante: null, fecha_prevista: `2026-09-${18 + i}`,
+  }))
+  assert.equal(esPlanDeCuotas(cuotas), true)
+  assert.deepEqual(duplicadosProbables(cuotas), [])
+  // Dos filas iguales que vencen EL MISMO DÍA siguen siendo candidatas.
+  const repetidas = cuotas.slice(0, 2).map((f) => ({ ...f, fecha_prevista: '2026-09-18' }))
+  assert.equal(duplicadosProbables(repetidas).length, 1)
+  assert.equal(duplicadosProbables(repetidas)[0].mismo_comprobante, false,
+    'comprobante vacío en las dos no es «el mismo comprobante»')
 })
 
 test('la atribución del motivo: una regla declarada le gana a un defecto sobre la misma fila', () => {

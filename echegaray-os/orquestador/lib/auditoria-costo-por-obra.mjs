@@ -183,6 +183,17 @@ export function huellaDeObra(nombre) {
  *
  * No afirma que sean duplicados —dos remitos del mismo día por el mismo monto existen— sino que
  * nadie los miró. Por eso la salida trae las filas, no una conclusión.
+ *
+ * ═══ LO QUE NO ES UN DUPLICADO: UN PLAN DE CUOTAS ═══
+ *
+ * PEDRO TELLO factura $6.450.400 y se carga como SEIS filas de $1.075.066,67 con la misma fecha de
+ * factura y fechas de pago semanales. La primera versión de este detector llamó «duplicado con el
+ * mismo N° de comprobante» a esas seis filas —y a las cinco de Pedro Fredes— por $8,4 M, porque el
+ * comprobante estaba VACÍO en las seis y «vacío = vacío» daba igualdad. Dos alarmas falsas de ese
+ * tamaño alcanzan para que nadie vuelva a mirar la lista.
+ *
+ * Una cuota se distingue por su fecha de pago: si todas las filas del grupo vencen en días distintos
+ * es un plan, no una repetición. Un duplicado real repite también el día en que se paga.
  */
 export function duplicadosProbables(filas) {
   const por = new Map()
@@ -193,16 +204,24 @@ export function duplicadosProbables(filas) {
     por.get(k).push(f)
   }
   return [...por.values()]
-    .filter((g) => g.length > 1)
+    .filter((g) => g.length > 1 && !esPlanDeCuotas(g))
     // Mismo comprobante repetido en dos filas es MÁS grave que dos comprobantes distintos: se marca.
     .map((g) => ({
       fecha: dia(g[0].fecha), proveedor: g[0].proveedor, total: pesos(g[0].total),
       filas: g.map((f) => f.fila), comprobantes: [...new Set(g.map((f) => f.comprobante ?? '—'))],
-      mismo_comprobante: new Set(g.map((f) => String(f.comprobante ?? ''))).size === 1,
+      mismo_comprobante: g.every((f) => String(f.comprobante ?? '').trim())
+        && new Set(g.map((f) => String(f.comprobante).trim())).size === 1,
       obras: [...new Set(g.map((f) => parseObraCelda(f.obra_celda).clave))],
       importe_en_riesgo: pesos(pesos(g[0].total) * (g.length - 1)),
     }))
     .sort((a, b) => b.importe_en_riesgo - a.importe_en_riesgo)
+}
+
+/** Filas del mismo monto que vencen todas en días distintos: es un plan de pago, no una repetición. */
+export function esPlanDeCuotas(grupo) {
+  const vencimientos = grupo.map((f) => dia(f.fecha_prevista) ?? dia(f.fecha_caja))
+  if (vencimientos.some((v) => v === null)) return false
+  return new Set(vencimientos).size === grupo.length
 }
 
 /** Agrupa hallazgos por tipo con su cuenta y su importe — el resumen que abre el informe. */

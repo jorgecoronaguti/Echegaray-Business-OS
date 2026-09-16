@@ -143,6 +143,8 @@ function auditar({ filasSheet, base, direccion, hoy }) {
     ...H.pagadoTotalNoCoincide(base.filas),
     ...H.filaSinDestino(base.filas),
     ...H.reglaMuerta(base.destinos),
+    ...H.nivelesDistintos(base.obras, direccion.rpc, direccion.mo),
+    ...H.costoEnElCajon(base.clientes, direccion.sinObra),
   ]
 }
 

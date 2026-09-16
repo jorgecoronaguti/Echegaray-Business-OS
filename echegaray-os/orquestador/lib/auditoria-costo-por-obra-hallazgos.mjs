@@ -469,3 +469,63 @@ export function reglaMuerta(destinos, esperados = ['estructura_admin', 'estructu
       + 'hoy el único filtro efectivo de estructura es `unidad_negocio`, y una unidad vacía pasa',
   })]
 }
+
+/**
+ * 20 · MO Y MA NO VIVEN EN EL MISMO NIVEL DE OBRA, Y ASÍ NINGÚN MARGEN POR OBRA ES USABLE.
+ *
+ * Las horas llegan por el alias de JORNALES, que nombra al CLIENTE («SAN FRANCISCO»), y caen en la
+ * obra paraguas. Los materiales llegan por la columna L de Compras, que nombra la sub-obra
+ * («SF - PISOS INDUSTRIALES»). Resultado: la obra paraguas publica 12.117 h y $40.000 de materiales,
+ * y la sub-obra publica materiales y casi ninguna hora. Las dos cifras son correctas por separado y
+ * la resta entre ellas no significa nada.
+ */
+export function nivelesDistintos(obras, app, mo, umbral = 1_000_000) {
+  const out = []
+  for (const o of obras) {
+    const a = app.get(o.id)
+    const materia = num(a?.materiales) + num(a?.subcontratos)
+    const manoObra = num(a?.mano_obra)
+    const horas = num(mo.get(o.id)?.horas)
+    if (manoObra > umbral && materia <= umbral) {
+      out.push(h('mo_sin_materiales', {
+        obra: o.codigo, importe: manoObra,
+        detalle: `${horas} h y ${manoObra} de mano de obra contra ${materia} de materiales y subcontratos`,
+        causa: 'las horas entran por el alias de JORNALES (que nombra al cliente) y los materiales por la columna L (que nombra la sub-obra)',
+        correccion: 'imputar las horas a la sub-obra, o consolidar el margen a nivel cliente; hoy el margen por obra no se puede leer',
+      }))
+      continue
+    }
+    if (materia > umbral && manoObra === 0 && horas === 0) {
+      out.push(h('materiales_sin_mo', {
+        obra: o.codigo, importe: materia,
+        detalle: `${materia} de materiales y subcontratos sin una sola hora imputada`,
+        causa: 'la obra recibió compras pero sus horas quedaron en la obra paraguas del cliente',
+        correccion: 'la misma: decidir a qué nivel se mide la obra y llevar las dos mitades ahí',
+      }))
+    }
+  }
+  return out
+}
+
+/**
+ * 21 · LA PLATA QUE NUNCA LLEGA A UNA OBRA: el cajón «Sin obra – CLIENTE».
+ *
+ * No es un error del sistema —la app lo publica aparte, con su nombre— pero es costo real de obra
+ * esperando que alguien diga de cuál. Mientras esté ahí, el costo de TODAS las obras de ese cliente
+ * está subvaluado y ningún margen por obra cierra.
+ */
+export function costoEnElCajon(clientes, sinObra, umbral = 0) {
+  const out = []
+  for (const c of clientes) {
+    const a = sinObra.get(c.cliente_id)
+    const total = num(a?.materiales) + num(a?.subcontratos)
+    if (total <= umbral) continue
+    out.push(h('costo_sin_obra_asignada', {
+      obra: `Sin obra – ${c.cliente_canonico}`, importe: total,
+      detalle: `${total} en ${num(a?.n_comprobantes)} comprobante(s) del cliente sin obra en la columna L`,
+      causa: 'la fila se cargó con el cliente en J y la columna L quedó en «Sin obra»',
+      correccion: 'imputar cada comprobante a su obra; es el desvío más grande y el más barato de cerrar',
+    }))
+  }
+  return out
+}
