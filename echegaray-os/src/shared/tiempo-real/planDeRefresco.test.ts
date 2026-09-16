@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
-  CONFIG_DE_REFRESCO as CFG, ESTADO_INICIAL, decidir, hayEdicionEnCurso, momentoDeRefresco, registrarAviso,
+  CONFIG_DE_REFRESCO as CFG, EDICION_INACTIVA_MS, ESTADO_INICIAL, decidir, hayEdicionEnCurso, momentoDeRefresco, registrarAviso,
   tablaQueImporta, trasRefrescar,
 } from './planDeRefresco.ts'
 import { TABLAS_CON_AVISO } from './tablas.ts'
@@ -81,4 +81,13 @@ test('la lista del navegador es EXACTAMENTE la de la migración: ninguna pantall
   const delSql = [...tramo.matchAll(/'([a-z_0-9]+)'/g)].map((m) => m[1]).sort()
   assert.deepEqual([...TABLAS_CON_AVISO].sort(), delSql)
   assert.equal(new Set(delSql).size, delSql.length, 'tabla repetida en la migración')
+})
+
+test('un foco OLVIDADO en un campo deja de frenar el refresco; quien está tecleando sigue protegido (16/09/2026)', () => {
+  const input = { tagName: 'INPUT' }
+  // Medido en producción: con el cursor quieto en un buscador la pantalla no se refrescaba nunca.
+  assert.equal(hayEdicionEnCurso({ activo: input, celdaMarcada: false, msDesdeUltimaTecla: EDICION_INACTIVA_MS }), false)
+  assert.equal(hayEdicionEnCurso({ activo: input, celdaMarcada: false, msDesdeUltimaTecla: EDICION_INACTIVA_MS - 1 }), true)
+  // La celda declarada en edición (un menú abierto) frena siempre, haya tecla o no.
+  assert.equal(hayEdicionEnCurso({ activo: { tagName: 'BODY' }, celdaMarcada: true, msDesdeUltimaTecla: 10 * EDICION_INACTIVA_MS }), true)
 })

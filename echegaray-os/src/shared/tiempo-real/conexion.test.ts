@@ -40,7 +40,7 @@ test('sesión sin permiso: el rechazo CIERRA el canal y la misma sesión no lo v
   conexion.alCambiarSesion('jwt-campo')
   conexion.alCambiarSesion('jwt-campo')
   assert.equal(aperturas.length, 1)
-  assert.deepEqual(estados, ['CHANNEL_ERROR'], 'el CLOSED del canal que se cortó no llega al motor')
+  assert.deepEqual(estados, ['CHANNEL_ERROR', 'RECHAZADO'], 'el CLOSED del canal que se cortó no llega al motor')
 })
 
 test('errores transitorios: el canal queda abierto para que supabase-js siga reintentando', () => {
@@ -98,4 +98,15 @@ test('sin sesión no se abre nada; cerrar sesión corta; detenido ignora sesione
   assert.equal(ultima().cerrada, true)
   conexion.alCambiarSesion('jwt-3')
   assert.equal(aperturas.length, 2)
+})
+
+test('el rechazo se le informa al motor como RECHAZADO, para que el latido no insista', () => {
+  const { estados, conexion, ultima } = mundo()
+  conexion.alCambiarSesion('jwt-campo')
+  ultima().alEstado('CHANNEL_ERROR', RECHAZO)
+  assert.ok(estados.includes('RECHAZADO'))
+  const { estados: e2, conexion: c2, ultima: u2 } = mundo()
+  c2.alCambiarSesion('jwt')
+  u2().alEstado('CHANNEL_ERROR', new Error('socket closed: 1006'))
+  assert.ok(!e2.includes('RECHAZADO'), 'una caída de red no es un rechazo')
 })

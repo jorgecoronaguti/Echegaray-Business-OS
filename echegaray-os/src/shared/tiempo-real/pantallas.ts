@@ -71,4 +71,18 @@ export const TABLAS_DE = {
   herramientas: ['herramientas', 'movimientos_herramienta', 'obra_canonica'],
   /** Las pantallas del jefe de obra (`/obra/...`). */
   jefe: unir(OBRA, HH_Y_ASISTENCIA, ['personas', 'cuadrilla', 'cuadrilla_integrante']),
+  // LAS QUE HABÍAN QUEDADO AFUERA (16/09/2026). Dueño: «lo que marco en el celular no se actualiza en la
+  // computadora… tiene que ser de ida y vuelta, en tiempo real y multiusuario». `/campo` es justo la
+  // carga desde el teléfono y no tenía ni el proveedor.
+  /** `/campo`: asistencia, parte e impedimento desde el teléfono. */
+  campo: unir(OBRA, HH_Y_ASISTENCIA, ['personas', 'cuadrilla', 'cuadrilla_integrante']),
+  /** Pendientes de Administración: junta Personal, Compras, Obras y Clientes. */
+  pendientes: unir(PERSONAS, HH_Y_ASISTENCIA, LIQUIDACION, OBRA, PROVEEDOR, CLIENTE,
+    ['compra_adjunto', 'comprobante_entrada', 'comprobantes_arca', 'pedidos_materiales', 'herramientas']),
+  usuarios: ['personas', 'usuario_obra', 'obra_canonica'],
+  documentos: ['asistencia_dia', 'cliente_documento', 'documentacion_legajo', 'obra_documento'],
+  integraciones: ['herramientas', 'movimientos_herramienta', 'pedidos_materiales', 'obra_actividad', 'obra_canonica'],
+  /** Mi cuenta: mis horas, mi legajo, mis obras. */
+  miCuenta: unir(PERSONAS, HH_Y_ASISTENCIA, OBRA, ['liquidacion_linea', 'liquidacion_quincena']),
+  reportes: ['registros_hh'],
 } as const satisfies Record<string, Lista>

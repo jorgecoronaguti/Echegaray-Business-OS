@@ -97,14 +97,26 @@ export function trasRefrescar(e: EstadoDeRefresco, ahora: number): EstadoDeRefre
   return { primerAviso: null, ultimoAviso: null, desfase: 0, ultimoRefresco: ahora }
 }
 
-/** Hay edición en curso si el foco está en un campo editable o si alguna celda se declaró en edición. */
+/**
+ * UN CAMPO CON FOCO QUE NADIE TOCA NO ES UNA EDICIÓN (16/09/2026). Medido en producción: la regla
+ * «foco en un input = no refrescar» dejaba la pantalla congelada para siempre con el cursor olvidado en
+ * un buscador, y el dueño marcaba en el celular sin verlo en la compu. Se protege a quien está
+ * ESCRIBIENDO: pasados estos milisegundos desde la última tecla, el foco solo ya no frena.
+ */
+export const EDICION_INACTIVA_MS = 15_000
+
+/** Hay edición en curso si alguna celda se declaró en edición, o si el foco está en un campo editable
+ *  y la última tecla fue hace menos de `EDICION_INACTIVA_MS` (sin dato de tecla, cuenta el foco). */
 export function hayEdicionEnCurso(p: {
   activo: { tagName?: string; isContentEditable?: boolean } | null | undefined
   celdaMarcada: boolean
+  msDesdeUltimaTecla?: number
 }): boolean {
+  if (p.celdaMarcada) return true
   // EL MISMO CRITERIO QUE CMD/CTRL+Z: lo que el deshacer considera «el navegador está editando texto» es
   // exactamente lo que no se puede mover debajo del cursor.
-  return p.celdaMarcada || destinoEditable(p.activo)
+  if (!destinoEditable(p.activo)) return false
+  return p.msDesdeUltimaTecla == null || p.msDesdeUltimaTecla < EDICION_INACTIVA_MS
 }
 
 /** Selector de la marca opcional para celdas que editan sin tener el foco en un campo (un menú abierto). */

@@ -13,7 +13,9 @@
 // El cuándo lo decide `planDeRefresco.ts` (silencio, espera máxima, intervalo mínimo, desfase) y el
 // cableado `motor.ts`. Acá sólo se pegan los eventos del navegador:
 //   · `focusout` → quizá terminó la edición que frenaba un refresco.
-//   · `visibilitychange` → volvió la pestaña.
+//   · `visibilitychange` → volvió la pestaña; tras una ausencia larga refresca aunque no haya aviso.
+//   · `keydown`/`input` → la última tecla: un foco quieto deja de frenar (`EDICION_INACTIVA_MS`).
+//   · un latido cada 30 s → sólo con el canal caído, refresca (`motor.ts`).
 //   · el estado del canal → una reconexión refresca una vez.
 //   · la sesión → cuándo abrir; un rechazo de autorización corta sin reintentar (`conexion.ts`).
 //
@@ -25,7 +27,7 @@ import { useRouter } from 'next/navigation'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { SELECTOR_EN_EDICION, hayEdicionEnCurso } from './planDeRefresco'
-import { crearMotor, type MotorDeTiempoReal } from './motor'
+import { LATIDO_SIN_CANAL_MS, crearMotor, type MotorDeTiempoReal } from './motor'
 import { crearConexion, type AlEstado, type Apertura } from './conexion'
 import type { TablaConAviso } from './tablas'
 
@@ -33,11 +35,15 @@ export const TOPICO_DE_CAMBIOS = 'os:cambios'
 
 const ContextoTiempoReal = createContext<MotorDeTiempoReal | null>(null)
 
+// La última tecla de la pestaña: un foco olvidado en un buscador no frena el refresco para siempre.
+let ultimaTecla = 0
+
 function entornoDelNavegador() {
   return {
     editando: hayEdicionEnCurso({
       activo: document.activeElement,
       celdaMarcada: document.querySelector(SELECTOR_EN_EDICION) != null,
+      msDesdeUltimaTecla: Date.now() - ultimaTecla,
     }),
     oculta: document.visibilityState === 'hidden',
   }
@@ -97,13 +103,29 @@ export function ProveedorTiempoReal({ children }: { children: ReactNode }) {
     // En `focusout` el foco todavía no llegó al campo siguiente: se mira en la vuelta siguiente del
     // bucle, así pasar de una celda a otra con Tab no cuenta como «dejó de editar».
     const alSalirDelFoco = () => { setTimeout(motor.alPoderRefrescar, 0) }
+    const alTeclear = () => { ultimaTecla = Date.now() }
+    let ocultaDesde: number | null = document.visibilityState === 'hidden' ? Date.now() : null
+    const alCambiarVisibilidad = () => {
+      if (document.visibilityState === 'hidden') { ocultaDesde ??= Date.now(); return }
+      const ms = ocultaDesde == null ? 0 : Date.now() - ocultaDesde
+      ocultaDesde = null
+      motor.alVolverAVerse(ms)
+    }
+    const latido = setInterval(() => {
+      if (document.visibilityState === 'visible') motor.alLatido()
+    }, LATIDO_SIN_CANAL_MS)
     document.addEventListener('focusout', alSalirDelFoco)
-    document.addEventListener('visibilitychange', motor.alPoderRefrescar)
+    document.addEventListener('keydown', alTeclear, true)
+    document.addEventListener('input', alTeclear, true)
+    document.addEventListener('visibilitychange', alCambiarVisibilidad)
 
     return () => {
       subscription.unsubscribe()
+      clearInterval(latido)
       document.removeEventListener('focusout', alSalirDelFoco)
-      document.removeEventListener('visibilitychange', motor.alPoderRefrescar)
+      document.removeEventListener('keydown', alTeclear, true)
+      document.removeEventListener('input', alTeclear, true)
+      document.removeEventListener('visibilitychange', alCambiarVisibilidad)
       motor.detener()
       conexion.detener()
     }

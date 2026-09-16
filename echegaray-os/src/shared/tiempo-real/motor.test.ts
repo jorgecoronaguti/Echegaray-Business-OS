@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { CONFIG_DE_REFRESCO as CFG } from './planDeRefresco.ts'
-import { REVISAR_DIFERIDO_MS, crearMotor } from './motor.ts'
+import { AUSENCIA_QUE_REFRESCA_MS, REVISAR_DIFERIDO_MS, crearMotor } from './motor.ts'
 
 /** Un mundo falso: reloj manual, temporizadores que corren al avanzar, foco y pestaña que se mueven a mano. */
 function mundo() {
@@ -128,5 +128,50 @@ test('detenido (se desmontó el marco) no refresca lo que quedó programado', ()
   motor.alAviso(HH)
   motor.detener()
   avanzar(60_000)
+  assert.equal(m.refrescos, 0)
+})
+
+// ── LA RED DE SEGURIDAD (16/09/2026): el aviso que se perdió con el teléfono apagado ─────────────
+
+test('volver a ver la pestaña tras una ausencia larga refresca aunque no haya llegado aviso', () => {
+  const { m, motor, avanzar } = mundo()
+  motor.registrar(['asistencia_dia'])
+  motor.alVolverAVerse(AUSENCIA_QUE_REFRESCA_MS - 1)
+  avanzar(10_000)
+  assert.equal(m.refrescos, 0, 'un vistazo corto no relee la página')
+  motor.alVolverAVerse(AUSENCIA_QUE_REFRESCA_MS)
+  avanzar(CFG.silencioMs)
+  assert.equal(m.refrescos, 1)
+})
+
+test('una pantalla sin tablas declaradas no refresca al volver', () => {
+  const { m, motor, avanzar } = mundo()
+  motor.alVolverAVerse(10 * AUSENCIA_QUE_REFRESCA_MS)
+  avanzar(10_000)
+  assert.equal(m.refrescos, 0)
+})
+
+test('el latido refresca SÓLO con el canal caído, y deja de hacerlo cuando vuelve', () => {
+  const { m, motor, avanzar } = mundo()
+  motor.registrar(['asistencia_dia'])
+  motor.alEstadoDelCanal('SUBSCRIBED')
+  motor.alLatido(); avanzar(10_000)
+  assert.equal(m.refrescos, 0, 'con el canal vivo el latido no consulta nada')
+  motor.alEstadoDelCanal('TIMED_OUT')
+  motor.alLatido(); avanzar(10_000)
+  assert.equal(m.refrescos, 1)
+  motor.alEstadoDelCanal('SUBSCRIBED') // la re-suscripción refresca una vez, como siempre
+  avanzar(10_000)
+  assert.equal(m.refrescos, 2)
+  motor.alLatido(); avanzar(10_000)
+  assert.equal(m.refrescos, 2)
+})
+
+test('una sesión RECHAZADA no refresca con el latido: no es una caída, es falta de permiso', () => {
+  const { m, motor, avanzar } = mundo()
+  motor.registrar(['asistencia_dia'])
+  motor.alEstadoDelCanal('CHANNEL_ERROR')
+  motor.alEstadoDelCanal('RECHAZADO')
+  motor.alLatido(); avanzar(10_000)
   assert.equal(m.refrescos, 0)
 })
