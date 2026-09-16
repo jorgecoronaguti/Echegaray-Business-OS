@@ -11,7 +11,7 @@
 //
 // ═══ QUÉ DICE EL MOCKUP Y EN QUÉ SE APARTA ESTO ═══
 //
-// El `20 v2` dibuja cuatro: Asistencia · Papeles · Obras · Recibos. Acá hay seis, y las diferencias
+// El `20 v2` dibuja cuatro: Asistencia · Papeles · Obras · Recibos. Acá hay siete, y las diferencias
 // son deliberadas:
 //
 //   ASIGNACIONES y HORAS son la versión completa de lo que el mockup llama «Obras» y «Asistencia».
@@ -28,8 +28,13 @@
 // NINGUNA VISTA SE RENOMBRÓ: los valores de `?v=` que ya circulan siguen valiendo, así que no hace
 // falta ningún redirect y ningún enlace guardado se rompe.
 
+//   RETRIBUCIÓN (dueño, 16/09/2026) es la cara de la plata: $/h vigentes, lo liquidado y lo pagado
+//   quincena por quincena en el año, y el historial de $/h negro y blanco. Tiene su propio control de
+//   acceso —`liquidaSueldos`, el mismo que cierra la Liquidación— porque el jefe de obra abre el legajo
+//   y no ve sueldos.
+
 export const VISTAS_FICHA = [
-  'resumen', 'asignaciones', 'horas', 'documentos', 'usuario', 'auditoria',
+  'resumen', 'asignaciones', 'horas', 'retribucion', 'documentos', 'usuario', 'auditoria',
 ] as const
 export type VistaFicha = (typeof VISTAS_FICHA)[number]
 
@@ -37,6 +42,7 @@ export const LABEL_FICHA: Record<VistaFicha, string> = {
   resumen: 'Resumen',
   asignaciones: 'Asignaciones',
   horas: 'Horas',
+  retribucion: 'Retribución',
   documentos: 'Documentos',
   usuario: 'Usuario y permisos',
   auditoria: 'Auditoría',

@@ -89,6 +89,8 @@ import { veLaCuentaDeOtro } from '@/features/administracion/services/accesoPerso
 import { liquidaSueldos } from '@/features/auth/types/areas'
 import { getValorHoraDelLegajo } from '@/features/administracion/services/valorHoraDelLegajoService'
 import { ValorHoraDelLegajo } from '@/features/administracion/components/ValorHoraDelLegajo'
+import { getRetribucionDelLegajo } from '@/features/administracion/services/retribucionDelLegajoService'
+import { RetribucionDelLegajo } from '@/features/administracion/components/RetribucionDelLegajo'
 import { puedeAnotar, veAnotaciones } from '@/features/administracion/services/anotacionesPersona'
 import { getAnotaciones } from '@/features/administracion/services/anotacionesService'
 import { crearAnotacion } from '@/features/administracion/services/anotacionesActions'
@@ -151,6 +153,8 @@ export default async function FichaPersonaPage({
   ])
   const rolActor = (await getPerfilActual(supabase, actor?.id)).data?.rol ?? null
   const veLaCuenta = veLaCuentaDeOtro(rolActor)
+  // LA PUERTA DE LA PLATA: la misma que cierra la Liquidación. La cerradura sigue siendo la policy.
+  const liquida = liquidaSueldos(rolActor)
   // NO EXISTE y NO PUEDO LEER son dos cosas distintas: confundirlas manda a buscar un defecto de
   // permisos detrás de un 404, que ya costó media jornada en este repo.
   if (error) {
@@ -185,10 +189,17 @@ export default async function FichaPersonaPage({
       // LA PUERTA, NO LA CERRADURA: la policy `liquida_sueldos()` cierra las tres tablas igual. Esto
       // evita el viaje y —lo que importa— deja decir «sin permiso» en vez de «sin dato», que es lo
       // que la RLS sola no puede distinguir: devuelve cero filas y ningún error.
-      puedeVer: liquidaSueldos(rolActor),
+      puedeVer: liquida,
       hoy,
     }),
   ])
+  // LA RETRIBUCIÓN DEL AÑO SÓLO EN SU SOLAPA Y SÓLO CON PERMISO: es la lectura más cara del legajo
+  // —le pregunta a la Liquidación quincena por quincena— y no se paga en las otras seis vistas.
+  const retribucion = vista === 'retribucion' && liquida
+    ? await getRetribucionDelLegajo(supabase, {
+      personaId: id, cuil: persona.cuil ?? null, puedeVer: true, anio: Number(hoy.slice(0, 4)), hoy,
+    })
+    : null
   // LAS HH TAMBIÉN EN EL RESUMEN, desde el canónico 20: la tira de métricas publica HH del mes y del
   // año, y el bloque de arriba dibuja la semana. La consulta filtra por `persona_id`, así que es la
   // de UNA persona y no la tabla entera; las otras cuatro solapas siguen sin pagarla.
@@ -426,7 +437,10 @@ export default async function FichaPersonaPage({
           avisos y de la tira de cifras porque es la primera pregunta que se le hace a un legajo y
           hasta hoy no se contestaba acá: había que abrir Liquidación, elegir la quincena y buscar
           a la persona en la grilla. */}
-      <ValorHoraDelLegajo rotulo={valorHora.rotulo} error={valorHora.error} />
+      <ValorHoraDelLegajo
+        rotulo={valorHora.rotulo} error={valorHora.error}
+        hrefRetribucion={liquida ? href('retribucion') : null}
+      />
 
       {!egresada && !vigente && (
         <AvisoDeFicha verbo="Asignar obra" href="/obras" testid="aviso-sin-obra">
@@ -449,7 +463,7 @@ export default async function FichaPersonaPage({
       <SolapasDeFicha
         testid="nav-ficha-persona"
         solapas={VISTAS_FICHA
-          .filter((v) => veLaCuenta || v !== 'usuario')
+          .filter((v) => (veLaCuenta || v !== 'usuario') && (liquida || v !== 'retribucion'))
           .map((v) => ({
             clave: v,
             titulo: LABEL_FICHA[v],
@@ -557,6 +571,24 @@ export default async function FichaPersonaPage({
                 hrefPeriodo={(p) => `${base}?${new URLSearchParams({ v: 'horas', p })}`}
               />
             </div>
+          )}
+
+          {/* MISMA REGLA QUE «USUARIO»: la solapa se esconde Y se cierra. Un `?v=retribucion` escrito a
+              mano por el jefe de obra dice «sin permiso», no una tabla vacía que parecería «sin datos». */}
+          {vista === 'retribucion' && !liquida && (
+            <div data-testid="retribucion-sin-permiso">
+              <Aviso tono="info" titulo="Esta solapa es de Dirección y Administración">
+                Lo que se le paga a cada persona se ve donde se liquida. Sin permiso para liquidar
+                sueldos no hay retribución que mostrar: no es que no esté cargada.
+              </Aviso>
+            </div>
+          )}
+
+          {vista === 'retribucion' && retribucion && (
+            <RetribucionDelLegajo
+              r={retribucion} rotulo={valorHora.rotulo}
+              hrefLiquidacion="/administracion/personas?vista=liquidacion&quincena="
+            />
           )}
 
           {vista === 'documentos' && (
