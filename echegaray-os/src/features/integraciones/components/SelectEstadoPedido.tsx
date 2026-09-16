@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useEstadoDelServidor } from '@/shared/tiempo-real/useEstadoDelServidor'
 import { Estado } from '@/shared/components/ds'
 import { lecturaPedido } from '../services/estados'
 import { setEstadoPedidoAction } from '../services/pedidosActions'
@@ -20,7 +21,7 @@ import type { PedidoGlobal } from '../services/operacionGlobalService'
 const OFRECIDOS = ['PENDIENTE', 'PEDIDO', 'ENTREGADO'] as const
 
 export function SelectEstadoPedido({ p }: { p: PedidoGlobal }) {
-  const [estado, setEstado] = useState(p.estado)
+  const [estado, setEstado] = useEstadoDelServidor(p.estado)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const l = lecturaPedido(estado)

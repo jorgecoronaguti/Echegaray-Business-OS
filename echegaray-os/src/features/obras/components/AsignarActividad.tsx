@@ -9,7 +9,7 @@
 // EL BOTÓN APARECE SÓLO CUANDO EL VALOR CAMBIÓ. Un guardado que se dispara con el `onChange` del
 // desplegable escribe cada vez que alguien lo recorre con el teclado.
 
-import { useState } from 'react'
+import { useEstadoDelServidor } from '@/shared/tiempo-real/useEstadoDelServidor'
 import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
 import type { Actividad } from '../types'
 
@@ -19,7 +19,7 @@ export function AsignarActividad({ driveFileId, actual, actividades, asignar }: 
   actividades: Actividad[]
   asignar: (driveFileId: string, actividadId: string) => Promise<ResultadoAccion>
 }) {
-  const [valor, setValor] = useState(actual ?? '')
+  const [valor, setValor] = useEstadoDelServidor(actual ?? '')
   return (
     <div className="flex items-center gap-1.5" data-testid="asignar-actividad">
       <select
