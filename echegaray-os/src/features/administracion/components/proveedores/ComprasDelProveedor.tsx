@@ -104,9 +104,8 @@ export function ComprasDelProveedor({ proveedorId, lectura, filtros, anioActual,
             <RotuloCol>Comprobante</RotuloCol>
           </div>
           {visibles.map((c) => (
-            <FilaComprobanteProveedor
-              key={`${c.fila}-${c.clave ?? ''}`} c={c} papelesSinLeer={papelesSinLeer}
-              proveedorId={proveedorId} opcionesObra={opcionesObra}
+            <FilaComprobanteProveedor key={`${c.fila}-${c.clave ?? ''}`} c={c}
+              papelesSinLeer={papelesSinLeer} proveedorId={proveedorId} opcionesObra={opcionesObra}
               // SIN OPCIONES NO SE EDITA: un desplegable vacío deja elegir «sin imputar» y nada más,
               // que es una forma de borrar la obra sin poder ponerle otra.
               obraEditable={obraEditable && opcionesObra.length > 0}
