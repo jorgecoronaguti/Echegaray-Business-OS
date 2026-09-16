@@ -150,6 +150,9 @@ export function rotuloQuincena(q: Quincena): string {
  * subtotal de tres días afirma que la quincena entera sumó eso. La cabecera se reusa y los números
  * los pone quien sabe qué se está viendo.
  */
+/** `septiembre` — el nombre del mes de una fecha ISO, en minúscula, como lo escribe la cabecera. */
+export const nombreDelMes = (fecha: string): string => MESES[Number(fecha.slice(5, 7)) - 1]
+
 export function cabeceraQuincena(q: Quincena): string {
   const mes = MESES[Number(q.desde.slice(5, 7)) - 1]
   return `${Number(q.desde.slice(8, 10)) === 1 ? '1ª' : '2ª'} quincena de ${mes}`
