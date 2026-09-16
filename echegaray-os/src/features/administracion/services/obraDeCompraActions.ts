@@ -21,14 +21,19 @@ const Pedido = z.object({
   // Vacío = sacar la obra elegida (la fila vuelve a la inferencia).
   valor: z.string().trim().max(200).refine((v) => v === '' || FORMA_VALOR_OBRA.test(v), 'no es una opción del desplegable de Obra'),
   esperado: z.string().trim().max(200),
+  // LA RUTA A REFRESCAR NO LA ELIGE QUIEN LLAMA: llega un uuid y acá se arma la ruta. Aceptar una
+  // ruta cruda desde el cliente sería dejar que la pantalla decida qué caché del servidor invalidar.
+  proveedorId: z.string().uuid().nullish(),
 })
 
 /** ¿La base todavía no tiene la RPC? PostgREST responde PGRST202 cuando la función no existe. */
 const faltaLaRpc = (e: { code?: string; message?: string }) =>
   e.code === 'PGRST202' || /compra_obra_asignar/.test(e.message ?? '')
 
-export async function asignarObraDeCompra(fila: number, valor: string, esperado: string): Promise<ResultadoObra> {
-  const p = Pedido.safeParse({ fila, valor, esperado })
+export async function asignarObraDeCompra(
+  fila: number, valor: string, esperado: string, proveedorId?: string | null,
+): Promise<ResultadoObra> {
+  const p = Pedido.safeParse({ fila, valor, esperado, proveedorId })
   if (!p.success) return { ok: false, error: p.error.issues[0]?.message ?? 'Pedido inválido.' }
 
   const supabase = await createClient()
@@ -46,5 +51,8 @@ export async function asignarObraDeCompra(fila: number, valor: string, esperado:
   const r = data as { ok?: boolean; error?: string } | null
   if (!r?.ok) return { ok: false, error: r?.error ?? 'La base rechazó el cambio.' }
   revalidatePath(RUTA)
+  // La MISMA fila se ve en la ficha del proveedor. Si sólo se revalidara Compras, la pantalla donde
+  // se hizo el cambio seguiría mostrando la obra vieja debajo de su propio ✓.
+  if (p.data.proveedorId) revalidatePath(`/administracion/proveedores/${p.data.proveedorId}`)
   return { ok: true }
 }

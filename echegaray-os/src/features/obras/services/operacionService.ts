@@ -16,12 +16,16 @@
 //
 // ═══ EL PUENTE, QUE ES EL PROBLEMA REAL DE ESTA PANTALLA ═══
 //
-// Ninguna de las cuatro tablas guarda `obra_id` canónico:
+// TRES de las cuatro tablas no guardan `obra_id` canónico:
 //
 //   · `pedidos_materiales.obra_texto`        el nombre tal como lo escribe el campo
-//   · `costos_obra.obra_texto`               el nombre tal como lo escribe el Sheet
 //   · `herramientas.ubicacion_actual`        ALMACEN / TALLER / <obra>
 //   · `movimientos_herramienta.destino`      la ubicación destino
+//
+// La cuarta SÍ: `costos_obra.obra_id` es la columna «Obra» que cada fila de Compras trae desde el
+// 14/09/2026, y desde el 15/09 las compras se filtran por ahí y no por el puente. El texto que se
+// usaba (`obra_texto`) es la columna J del Sheet, que dice el CLIENTE: la ficha de cualquier obra de
+// La Estrella se traía las compras de las cinco.
 //
 // (`pedidos_materiales.obra_id` SÍ existe, pero apunta a `public.obras` LEGACY —las cuatro obras
 // pausadas que hacían que la web dijera "0 obras activas". Usarlo devolvería el universo
@@ -203,6 +207,15 @@ export async function getMovimientosObra(
 /**
  * Las compras. Con `obraId`, además del detalle trae el total que declara `obra_costo_real`.
  *
+ * ═══ LA ÚNICA LISTA QUE NO PASA POR `obra_alias` (15/09/2026) ═══
+ *
+ * Las otras tres listas de Operación resuelven un texto libre porque no tienen otra cosa
+ * (`ubicacion_actual`, `destino`, `obra_texto` del pedido). Las compras SÍ la tienen desde que cada
+ * fila del Sheet trae su columna «Obra»: `costos_obra.obra_id`. Seguir resolviendo el texto acá era
+ * leer la columna J —que dice el CLIENTE— y traerse las compras de las cinco obras de La Estrella a
+ * cualquiera de ellas, que es el mismo defecto que tenía `obra_costo_real`. El filtro se hace en la
+ * base, así que la ficha no trae 900 filas para descartar 870.
+ *
  * EL TOTAL NO SE SUMA ACÁ. Sale de la vista, que es la fuente única del costo real por obra y la
  * que ya consume `obra_panel`: dos cálculos del mismo número es el defecto que obligó a crear esa
  * vista. Lo que sí se hace es CONTROLAR que el detalle llegue a ese total — un control contra un
@@ -210,25 +223,25 @@ export async function getMovimientosObra(
  */
 export async function getComprasObra(
   supabase: SupabaseClient,
-  idx: IndiceObras,
   obraId?: string,
 ): Promise<ServiceResult<ComprasObra>> {
-  const { data, error } = await supabase
+  const consulta = supabase
     .from('costos_obra')
-    .select('id, fecha, proveedor, concepto, comprobante, total, obra_texto')
+    .select('id, fecha, proveedor, concepto, comprobante, total, obra_id')
     .order('fecha', { ascending: false, nullsFirst: false })
+  const { data, error } = await (obraId ? consulta.eq('obra_id', obraId) : consulta)
   if (error) return { data: null, error: error.message }
 
-  const filas: CompraObra[] = imputar(data ?? [], idx, (c) => c.obra_texto as string | null, obraId)
-    .map((c) => ({
-      id: c.id as string,
-      obra_canonica_id: c.obra_canonica_id,
-      fecha: (c.fecha as string | null) ?? null,
-      proveedor: (c.proveedor as string | null) ?? null,
-      concepto: (c.concepto as string | null) ?? null,
-      comprobante: (c.comprobante as string | null) ?? null,
-      total: c.total == null ? null : Number(c.total),
-    }))
+  const filas: CompraObra[] = (data ?? []).map((c) => ({
+    id: c.id as string,
+    // `obra_id` null = la fila no está imputada a ninguna obra. No se la cuelga de ninguna.
+    obra_canonica_id: (c.obra_id as string | null) ?? null,
+    fecha: (c.fecha as string | null) ?? null,
+    proveedor: (c.proveedor as string | null) ?? null,
+    concepto: (c.concepto as string | null) ?? null,
+    comprobante: (c.comprobante as string | null) ?? null,
+    total: c.total == null ? null : Number(c.total),
+  }))
 
   if (!obraId) return { data: { filas, total: null, nComprobantes: null, completo: true }, error: null }
 
@@ -269,7 +282,7 @@ export async function getOperacion(
 
   const [pedidos, compras, herramientas, movimientos] = await Promise.all([
     getPedidos(supabase, idx, obraId),
-    getComprasObra(supabase, idx, obraId),
+    getComprasObra(supabase, obraId),
     getHerramientasObra(supabase, idx, obraId),
     getMovimientosObra(supabase, idx, obraId),
   ])

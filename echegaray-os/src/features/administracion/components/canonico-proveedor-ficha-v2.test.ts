@@ -96,7 +96,14 @@ test('la lista de compras y las cifras leen proveedor_compra, no la cadena de co
 test('un comprobante sin importe no vale $ 0 y uno sin obra no se dibuja neutro', () => {
   const src = sinComentarios(fuente('proveedores/FilaComprobanteProveedor.tsx'))
   assert.match(src, /c\.total === null \? 'sin importe'/)
-  assert.match(src, /sin obra imputada/)
+  // CAMBIO DE CONTRATO (15/09/2026): la obra la dibuja `ObraEnLinea`, el MISMO control de Compras,
+  // que para una fila sin obra dice «sin imputar» en rojo. El texto propio de esta fila —«sin obra
+  // imputada»— salió con el componente local: dos redacciones para el mismo estado en dos pantallas
+  // es la clase de diferencia que hace dudar de si son el mismo dato.
+  const control = sinComentarios(fuente('ObraEnLinea.tsx'))
+  assert.match(src, /<ObraEnLinea/, 'la fila dejó de usar el control de obra de Compras')
+  assert.match(control, /'sin imputar'/, 'el control dejó de decir que la fila no tiene obra')
+  assert.match(control, /color: rotulo \? V\.tintaSuave : V\.neg/, 'una fila sin obra dejó de dibujarse en rojo')
   // El filo de un comprobante sin obra es ROJO: el gasto ya ocurrió y no le pesa a ninguna obra.
   assert.match(src, /inset 2px 0 0 \$\{V\.neg\}/)
 })
