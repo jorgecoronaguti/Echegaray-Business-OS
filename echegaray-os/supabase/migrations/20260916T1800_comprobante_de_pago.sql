@@ -156,9 +156,9 @@ exception
 end;
 $$;
 
-revoke all on function public.compra_pago_comprobante_registrar(integer, uuid, text, text, bigint) from public, anon;
-grant execute on function public.compra_pago_comprobante_registrar(integer, uuid, text, text, bigint) to authenticated;
+revoke all on function public.compra_pago_comprobante_registrar(integer, uuid, text, text, text, bigint) from public, anon;
+grant execute on function public.compra_pago_comprobante_registrar(integer, uuid, text, text, text, bigint) to authenticated;
 
-comment on function public.compra_pago_comprobante_registrar(integer, uuid, text, text, bigint) is
+comment on function public.compra_pago_comprobante_registrar(integer, uuid, text, text, text, bigint) is
   'Registra el comprobante de un PAGO de una fila de Compras (bucket comprobantes, prefijo pagos/<fila>/). '
   'Anota siempre quién y cuándo. La inserción directa en compra_adjunto sigue sin estar concedida.';
