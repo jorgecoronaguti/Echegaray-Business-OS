@@ -7,16 +7,17 @@
 // cifras que ya vive dos bloques más abajo (`CifrasDeFicha`): la jerarquía la dan el tamaño y el
 // espacio, no un borde.
 //
-// ═══ Y POR QUÉ EL HISTORIAL ES UN `<details>` ═══
+// ═══ Y POR QUÉ EL HISTORIAL YA NO ESTÁ ACÁ ═══
 //
-// *«no párrafos explicativos permanentes»*: el historial de tarifas interesa una vez cada tanto y
-// clavarlo debajo del número lo convierte en ruido permanente. Un `<details>` nativo lo despliega
-// sin una línea de JavaScript —esto es un componente de servidor— y no mueve nada de lo que está
-// arriba: lo que se abre, se abre hacia abajo.
+// Hasta el 16/09/2026 se desplegaba debajo en un `<details>`. El dueño: *«quiero que sea una SECCIÓN»*.
+// Ahora vive en la solapa Retribución (`RetribucionDelLegajo.tsx`), con lo liquidado y lo pagado del
+// año; esta tira es el RESUMEN y sólo enlaza. El enlace se dibuja únicamente cuando el que mira puede
+// entrar: ofrecerle la solapa al jefe de obra sería mandarlo a una pantalla que le dice «sin permiso».
 //
 // LA REGLA NO ESTÁ ACÁ: este archivo pinta lo que `valorHoraDelLegajo.ts` ya armó. Ni una cuenta,
 // ni un formato de moneda, ni una decisión sobre qué decir cuando falta un dato.
 
+import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
 import type { DatoDelRotulo, RotuloValorHora } from '../services/valorHoraDelLegajo'
 
@@ -26,8 +27,11 @@ const testidDe = (rotulo: string): string =>
   rotulo.normalize('NFD').replace(/[̀-ͯ]/g, '')
     .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 
-/** Un número de la tira: rótulo en versalitas, el valor a 19px mono, y el detalle chico debajo. */
-function Dato({ d }: { d: DatoDelRotulo }) {
+/**
+ * Un número de la tira: rótulo en versalitas, el valor a 19px mono, y el detalle chico debajo.
+ * Se exporta porque la sección Retribución escribe sus cifras del año con el mismo dibujo.
+ */
+export function DatoDelValorHora({ d }: { d: DatoDelRotulo }) {
   const hay = d.valor !== null
   return (
     <div
@@ -67,9 +71,11 @@ function Dato({ d }: { d: DatoDelRotulo }) {
  * `error` es lo que NO se pudo leer. Va debajo y en su color: una lectura que falló no puede
  * dibujarse como un dato ausente, que diría que nadie lo cargó.
  */
-export function ValorHoraDelLegajo({ rotulo, error, testid = 'valor-hora-legajo' }: {
+export function ValorHoraDelLegajo({ rotulo, error, hrefRetribucion = null, testid = 'valor-hora-legajo' }: {
   rotulo: RotuloValorHora
   error?: string | null
+  /** La solapa Retribución. `null` = el que mira no puede entrar, y no se le ofrece. */
+  hrefRetribucion?: string | null
   testid?: string
 }) {
   return (
@@ -80,49 +86,19 @@ export function ValorHoraDelLegajo({ rotulo, error, testid = 'valor-hora-legajo'
           flexWrap: 'wrap', rowGap: 14,
         }}
       >
-        <Dato d={rotulo.pactado} />
-        <Dato d={rotulo.recibo} />
-        <Dato d={rotulo.piso} />
+        <DatoDelValorHora d={rotulo.pactado} />
+        <DatoDelValorHora d={rotulo.recibo} />
+        <DatoDelValorHora d={rotulo.piso} />
       </div>
 
-      {rotulo.hayHistorial && (
-        <details data-testid="vh-historial" style={{ marginTop: 10 }}>
-          <summary
-            style={{
-              fontSize: '11px', color: V.apagado, cursor: 'pointer',
-              width: 'fit-content', listStyle: 'revert',
-            }}
-          >
-            historial
-          </summary>
-          <ol
-            style={{
-              margin: '8px 0 0', padding: 0, listStyle: 'none',
-              // CEÑIDO A LO QUE MIDE LA LISTA. Sin esto el `<ol>` ocupa el bloque entero y el filo
-              // de 1px de cada fila cruza los 1.260px de la pantalla para separar tres renglones de
-              // 300: el único filo que cruza el ancho completo en el v2 es el de las solapas.
-              width: 'fit-content', maxWidth: '100%',
-              display: 'flex', flexDirection: 'column',
-            }}
-          >
-            {rotulo.historial.map((f) => (
-              <li
-                key={f.desde}
-                title={f.origen ? `origen: ${f.origen}` : undefined}
-                style={{
-                  display: 'flex', alignItems: 'baseline', gap: 16, padding: '5px 0',
-                  borderTop: `1px solid ${V.lineaFila}`, fontSize: '12px',
-                }}
-              >
-                <span className="font-mono tabular-nums" style={{ color: V.tenue, minWidth: 78 }}>{f.desde}</span>
-                <span className="font-mono tabular-nums" style={{ color: V.tinta, fontWeight: 600 }}>{f.valor}</span>
-                {/* SIN VARIACIÓN NO SE ESCRIBE UN 0 %: la primera tarifa no subió ni bajó, no tenía
-                    contra qué. */}
-                {f.variacion && <span style={{ color: V.apagado }}>{f.variacion}</span>}
-              </li>
-            ))}
-          </ol>
-        </details>
+      {hrefRetribucion && (
+        <Link
+          href={hrefRetribucion}
+          data-testid="vh-ver-retribucion"
+          style={{ display: 'inline-block', marginTop: 10, fontSize: '11px', color: V.apagado, textDecoration: 'underline' }}
+        >
+          historial de $/h y pagos del año
+        </Link>
       )}
 
       {error && (

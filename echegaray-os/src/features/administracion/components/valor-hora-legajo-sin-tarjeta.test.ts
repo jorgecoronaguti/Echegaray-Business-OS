@@ -47,10 +47,12 @@ test('el amarillo de marca no se usa como estado', () => {
   assert.match(fuente, /warn: V\.warn/)
 })
 
-test('el historial se despliega sin una línea de JavaScript', () => {
-  // `<details>` nativo: este es un componente de SERVIDOR y un `useState` acá obligaría a marcarlo
-  // `'use client'`, que arrastraría al legajo entero al navegador.
-  assert.match(fuente, /<details/)
+test('el historial ya no se despliega acá: la tira enlaza a la sección Retribución', () => {
+  // Dueño, 16/09/2026: «quiero que sea una SECCIÓN». Un `<details>` que vuelva sería el historial
+  // duplicado —uno bajo el nombre y otro en la solapa— y el que se corrija en un lado mentiría en el otro.
+  assert.doesNotMatch(fuente, /<details/)
+  assert.match(fuente, /data-testid="vh-ver-retribucion"/)
+  // Sigue siendo un componente de SERVIDOR: un `useState` acá arrastraría al legajo entero al navegador.
   assert.doesNotMatch(fuente, /'use client'|useState|onClick/)
 })
 

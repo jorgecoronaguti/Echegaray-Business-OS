@@ -87,7 +87,18 @@ test('el $/h no se dibuja a partir de una lectura que la RLS negó', () => {
   const src = codigoPagina()
   // `liquida_sueldos()` excluye al jefe de obra, que abre este legajo, y devuelve cero filas SIN
   // error: sin pasarle el permiso, «no puedo ver» se dibujaría igual que «nadie lo cargó».
-  assert.match(src, /puedeVer: liquidaSueldos\(rolActor\)/)
+  assert.match(src, /const liquida = liquidaSueldos\(rolActor\)/)
+  assert.match(src, /puedeVer: liquida,/)
+})
+
+test('la solapa Retribución se esconde Y se cierra sin permiso, y su lectura no corre en otra vista', () => {
+  const src = codigoPagina()
+  // Esconder el tab y leer igual dejaría los sueldos en el HTML para el que sepa mirar la respuesta.
+  assert.match(src, /liquida \|\| v !== 'retribucion'/, 'la solapa no se ofrece a quien no liquida sueldos')
+  assert.match(src, /vista === 'retribucion' && !liquida/, '`?v=retribucion` a mano dice «sin permiso»')
+  assert.match(src, /vista === 'retribucion' && liquida\s*\?\s*await getRetribucionDelLegajo/, 'la lectura cara sólo en su solapa y con permiso')
+  // La tira de arriba enlaza a la sección sólo para quien puede entrar.
+  assert.match(src, /hrefRetribucion=\{liquida \? href\('retribucion'\) : null\}/)
 })
 
 test('el estado sale de `en_la_empresa` y no de la fecha de egreso', () => {
