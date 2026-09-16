@@ -26,7 +26,7 @@ import { hh as fmtHH, plata } from '@/shared/utils/format'
 import { diaMesISO } from '@/shared/utils/fecha'
 import { etiquetaDeBloque } from '../services/desgloseHH'
 import {
-  ROTULO_RUBRO, cierraConLaCelda, sumaDeFilas,
+  ROTULO_RUBRO, avisoDeCotejo, sumaDeFilas,
   type ComprobanteDeDetalle, type DetalleCosto, type PersonaDeHH, type QuincenaDePersona, type Rubro,
 } from '../services/detalleCostoDeObra'
 
@@ -75,7 +75,7 @@ export function PanelDetalleCosto({
       {(detalle?.rubro === 'materiales' || detalle?.rubro === 'subcontratos') && (
         <ListaComprobantes filas={detalle.filas} corte={detalle.corte} base={hrefComprasBase} />
       )}
-      {detalle && <Cotejo rubro={rubro} total={sumaDeFilas(detalle)} celda={celda} />}
+      {detalle && <Cotejo detalle={detalle} total={sumaDeFilas(detalle)} celda={celda} />}
     </Drawer>
   )
 }
@@ -247,12 +247,17 @@ function ListaHH({ filas, href }: { filas: PersonaDeHH[]; href: string | null })
 
 // ═══ EL COTEJO CONTRA LA CELDA ═══
 
-function Cotejo({ rubro, total, celda }: { rubro: Rubro; total: number | null; celda: number | null }) {
-  if (cierraConLaCelda(total, celda)) return null
-  const f = (n: number | null) => (rubro === 'hh' ? `${fmtHH(n) ?? '—'} h` : n == null ? '—' : plata(n))
+function Cotejo({ detalle, total, celda }: { detalle: DetalleCosto; total: number | null; celda: number | null }) {
+  // QUÉ SE DICE Y SI ES UN PROBLEMA LO DECIDE EL SERVICIO (`avisoDeCotejo`), que se puede testear sin
+  // navegador. Acá sólo se elige el color: ámbar es problema; una caché de minutos es texto secundario.
+  const aviso = avisoDeCotejo(detalle, total, celda, new Date())
+  if (!aviso) return null
   return (
-    <p data-testid="detalle-no-cierra" style={{ fontSize: '11.5px', color: V.warn, paddingTop: 8 }}>
-      {`No cierra con la celda: la celda dice ${f(celda)} y estas filas suman ${f(total)}.`}
+    <p
+      data-testid={aviso.problema ? 'detalle-no-cierra' : 'detalle-de-cache'}
+      style={{ fontSize: '11.5px', color: aviso.problema ? V.warn : V.tenue, paddingTop: 8 }}
+    >
+      {aviso.texto}
     </p>
   )
 }

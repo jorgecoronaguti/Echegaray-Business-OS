@@ -18,6 +18,8 @@ import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { ROTULO_MANO_OBRA, ROTULO_MATERIALES, ROTULO_SUBCONTRATOS, type CostoDeObra, type GastoSinObra } from './costosDeObra.ts'
 import type { HorasDeObra } from './horasDeObra.ts'
+import { frescuraDeLaFicha } from './frescuraFicha.ts'
+import { hh as fmtHH, plata } from '../../../shared/utils/format.ts'
 
 /** El parámetro `rubro` de la URL. Entrada de usuario: se valida, y lo que no valida no abre nada. */
 export const RUBROS = ['materiales', 'subcontratos', 'mo', 'hh'] as const
@@ -92,7 +94,11 @@ export type DetalleCosto =
     rubro: 'mo'; total: number | null; horas: number | null; horasSinTarifa: number | null
     puedeVerTarifas: boolean; filas: QuincenaDePersona[]
   })
-  | (DetalleBase & { rubro: 'hh'; total: number | null; desde: string | null; hasta: string | null; filas: PersonaDeHH[] })
+  | (DetalleBase & {
+    rubro: 'hh'; total: number | null; desde: string | null; hasta: string | null; filas: PersonaDeHH[]
+    /** Cuándo se calculó el desglose, si vino de `ficha_cliente_cache`. `null` = se calculó recién. */
+    cacheCalculadoEn: string | null
+  })
 
 function num(v: unknown): number | null {
   if (v == null || v === '') return null
@@ -164,7 +170,10 @@ export function armarDetalleCosto(j: unknown): DetalleCosto | null {
         puedeVerTarifas: r.puede_ver_tarifas !== false, filas: quincenasDe(r.filas),
       }
     case 'hh':
-      return { ...base, rubro: 'hh', total: num(r.total), desde: dia(r.desde), hasta: dia(r.hasta), filas: personasDe(r.filas) }
+      return {
+        ...base, rubro: 'hh', total: num(r.total), desde: dia(r.desde), hasta: dia(r.hasta),
+        filas: personasDe(r.filas), cacheCalculadoEn: texto(r.cache_calculado_en),
+      }
     default:
       return null
   }
@@ -189,6 +198,26 @@ export function sumaDeFilas(d: DetalleCosto): number | null {
 export function cierraConLaCelda(total: number | null, celda: number | null): boolean {
   if (total == null || celda == null) return total == null && celda == null
   return Math.abs(total - celda) < 0.005
+}
+
+/**
+ * QUÉ DICE EL PIE CUANDO EL PANEL NO CIERRA CON LA CELDA. `null` = cierra, y no se escribe nada.
+ *
+ * ÁMBAR ES PARA UN PROBLEMA, Y UNA CACHÉ NO LO ES. El desglose de HH es el mismo que el de la pantalla
+ * `?hh=`, y ésa se sirve de `ficha_cliente_cache` con hasta 10 minutos de antigüedad, mientras la
+ * columna HH de la tabla se calcula en vivo: con horas cargadas recién, los dos números difieren sin
+ * que nada esté mal (15/09/2026: el panel decía 195 h y la columna 186 h). Decirlo en ámbar sería
+ * inventar un descuadre; se dice de cuándo es el desglose, en texto secundario, y se acabó.
+ */
+export function avisoDeCotejo(
+  d: DetalleCosto, total: number | null, celda: number | null, ahora: Date,
+): { texto: string; problema: boolean } | null {
+  if (cierraConLaCelda(total, celda)) return null
+  const f = (n: number | null) => (d.rubro === 'hh' ? `${fmtHH(n) ?? '—'} h` : n == null ? '—' : plata(n))
+  const frescura = d.rubro === 'hh' ? frescuraDeLaFicha(d.cacheCalculadoEn, ahora) : null
+  return frescura
+    ? { texto: `Desglose con ${frescura}; la columna ya dice ${f(celda)}.`, problema: false }
+    : { texto: `No cierra con la celda: la celda dice ${f(celda)} y estas filas suman ${f(total)}.`, problema: true }
 }
 
 /**

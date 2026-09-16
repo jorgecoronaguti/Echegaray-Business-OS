@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  armarDetalleCosto, cierraConLaCelda, esRubroSinObra, leerRubro, sumaDeFilas,
+  armarDetalleCosto, avisoDeCotejo, cierraConLaCelda, esRubroSinObra, leerRubro, sumaDeFilas,
 } from './detalleCostoDeObra.ts'
 import { armarCostosPorObra, tituloMateriales, tituloSubcontratos } from './costosDeObra.ts'
 import { porVencerDeMateriales, textoPorVencer } from './porVencer.ts'
@@ -112,6 +112,45 @@ test('hh: una persona por fila, y la suma es la de la celda', () => {
   assert.equal(d.filas[0].dias, 6)
   assert.equal(d.desde, '2026-09-08')
 })
+
+test('hh de la caché: el pie dice de cuándo es el desglose, y no acusa un descuadre que no existe', () => {
+  // EL CASO MEDIDO EL 15/09/2026: el panel decía 195 h y la columna HH 186 h. No había defecto de
+  // cálculo —`hh_de_obra` sirve hasta 10 minutos de `ficha_cliente_cache` y la columna se calcula en
+  // vivo—, y pintarlo en ámbar habría mandado a buscar un descuadre inexistente.
+  const ahora = new Date('2026-09-15T18:04:00Z')
+  const conCache = armarDetalleCosto({
+    rubro: 'hh', corte: '2026-09-15', total: '195.00', n: 1, cache_calculado_en: '2026-09-15T18:00:00Z',
+    filas: [{ persona_id: 'x', nombre: 'OCHOA EDUARDO ARIEL', hh: 195, dias: 20, primera: '2026-08-16', ultima: '2026-09-15' }],
+  })
+  assert.ok(conCache && conCache.rubro === 'hh')
+  assert.equal(conCache.cacheCalculadoEn, '2026-09-15T18:00:00Z')
+  const deCache = avisoDeCotejo(conCache, sumaDeFilas(conCache), 186, ahora)
+  assert.deepEqual(deCache, { texto: 'Desglose con datos de hace 4 min; la columna ya dice 186 h.', problema: false })
+
+  // EN VIVO Y SIN CERRAR SÍ ES UN PROBLEMA, y se sigue diciendo con las dos cifras.
+  const enVivo = armarDetalleCosto({ ...vistaHH(195), cache_calculado_en: null })
+  assert.ok(enVivo)
+  const descuadre = avisoDeCotejo(enVivo, sumaDeFilas(enVivo), 186, ahora)
+  assert.equal(descuadre?.problema, true)
+  assert.match(descuadre?.texto ?? '', /^No cierra con la celda: la celda dice 186 h y estas filas suman 195 h\.$/)
+
+  // Y CUANDO CIERRA NO SE ESCRIBE NADA, venga de donde venga.
+  assert.equal(avisoDeCotejo(conCache, 195, 195, ahora), null)
+  assert.equal(avisoDeCotejo(enVivo, 195, 195, ahora), null)
+
+  // LA CACHÉ NO TAPA EL DESCUADRE DE LA PLATA: materiales no tiene caché, y un peso de diferencia es ámbar.
+  const materiales = armarDetalleCosto(SUBCONTRATOS_OB11)
+  assert.ok(materiales)
+  assert.equal(avisoDeCotejo(materiales, sumaDeFilas(materiales), 20084000, ahora)?.problema, true)
+})
+
+/** Un detalle de HH de una sola persona con las horas que se le pidan. */
+function vistaHH(horas: number) {
+  return {
+    rubro: 'hh', corte: '2026-09-15', total: String(horas), n: 1,
+    filas: [{ persona_id: 'x', nombre: 'OCHOA EDUARDO ARIEL', hh: horas, dias: 20, primera: '2026-08-16', ultima: '2026-09-15' }],
+  }
+}
 
 test('sin permiso o con un rubro desconocido el detalle es null, no vacío', () => {
   assert.equal(armarDetalleCosto(null), null)
