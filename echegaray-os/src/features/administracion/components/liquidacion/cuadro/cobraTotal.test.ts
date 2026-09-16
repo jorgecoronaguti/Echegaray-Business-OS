@@ -61,9 +61,11 @@ test('EL ENCABEZADO: Persona · días · Horas · BLANCO(5) · NEGRO(5) · prese
 })
 
 // «NECESITO Q EN ALGUNA COLUMNA DE LIQ HS ME DIGA CUANTO COBRA EN TOTAL» (dueño, 14/09/2026) sigue vigente: el
-// TOTAL está. Lo que cambió el 15/09 es cuál queda FIJA a la derecha: con la caja en la mano, el número que
-// decide es cuánto FALTA pagarle. MUTACIÓN: sacar la columna fija o volver a fijar el total → rojo.
-test('TOTAL EN EL CUADRO Y EN EL PIE; EL SALDO FIJO A LA DERECHA', () => {
+// TOTAL está y el SALDO cierra la fila. Y NINGUNA COLUMNA QUEDA PEGADA A LA DERECHA (dueño, 16/09/2026, textual:
+// «está mal la columna de "saldo" en liq de hs porque esa queda fija, y la que has dejado tirada al último a la
+// derecha sí se mueve como saldo: has hecho mal eso, rehacer urgente»). El saldo `sticky right` del 15/09 se leía
+// como una columna distinta de la que se movía. MUTACIÓN: volver a pegar una columna a la derecha → rojo.
+test('TOTAL EN EL CUADRO Y EN EL PIE; NINGUNA COLUMNA PEGADA A LA DERECHA', () => {
   const PANEL = fuente('./PanelDeLaPersona.tsx')
   assert.match(GRILLA, /clave: 'total', rotulo: 'Total'/)
   assert.match(GRILLA, /clave: 'saldo', rotulo: 'Saldo'/)
@@ -71,11 +73,12 @@ test('TOTAL EN EL CUADRO Y EN EL PIE; EL SALDO FIJO A LA DERECHA', () => {
   assert.match(GRILLA, /cifra\('Saldo', p\.saldoTotal/)
   assert.equal((PANEL.match(/rotulo="Cobra total"/g) ?? []).length, 2, 'las dos cadenas del panel')
   assert.ok(!/Total quincena/.test(GRILLA + PANEL), 'no queda el rótulo viejo')
-  assert.match(GRILLA, /position: 'sticky', right: -CANAL_SCROLL/)
-  // LA MISMA COLUMNA FIJA EN EL ENCABEZADO, EN CADA FILA Y EN EL TOTAL.
-  assert.equal((GRILLA.match(/\.\.\.COLUMNA_SALDO/g) ?? []).length, 3)
+  assert.ok(!/right: -CANAL_SCROLL|COLUMNA_SALDO|CLASE_SALDO/.test(GRILLA), 'volvió una columna pegada a la derecha')
+  // LA ÚNICA `sticky` DE LA GRILLA ES LA DE PERSONA (`COLUMNA_FIJA`, importada): acá no se declara ninguna.
+  assert.ok(!/position: 'sticky'/.test(GRILLA), 'la grilla declara un sticky propio: sólo Persona (tabla.tsx) es fija')
+  // EL SALDO TOTAL ES UNA CELDA COMÚN, la última de la fila y del total.
   const fila = GRILLA.slice(GRILLA.indexOf('function Fila('), GRILLA.indexOf('function Total('))
-  assert.match(fila, /style=\{\{ \.\.\.COLUMNA_SALDO[^}]*\}\}>\s*<CeldaSaldo fila=\{fila\} lado="total" \/>/)
+  assert.match(fila, /<CeldaPagadoTotal fila=\{fila\} \/>\s*<CeldaSaldo fila=\{fila\} lado="total" \/>\s*<\/div>/)
 })
 
 // EL ENCABEZADO FIJO (dueño, 15/09/2026: «quiero eso fijo en liq hs», con captura del cuadro desplazado).

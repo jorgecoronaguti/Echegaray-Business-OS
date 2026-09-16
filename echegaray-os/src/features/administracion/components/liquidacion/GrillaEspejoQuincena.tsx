@@ -79,8 +79,8 @@ const corta = (iso: string | null): string =>
  *   «Total efectivo»             era cobra − adelantos − banco: una resta que no contestaba «¿cuánto le
  *                                entrego hoy?» cuando el adelanto superaba el negro. Ahora es SALDO, y el
  *                                exceso de un lado se descuenta del otro (`pagoDeLaQuincena.ts`).
- *   «Cobra total»                se llama TOTAL y sigue siendo `l.cobra`. El número que decide pasó a ser el
- *                                SALDO, y por eso es el que queda fijo a la derecha.
+ *   «Cobra total»                se llama TOTAL y sigue siendo `l.cobra`. El número que decide es el SALDO,
+ *                                la última columna: se mueve con la cinta, no queda pegada (16/09).
  *
  * Sin «Cliente · Obra» (dueño, 14/09: «esa columna no te pedi en liq hs»). `banda` agrupa el encabezado.
  */
@@ -113,20 +113,13 @@ const ANCHO_DE_BANDA = 5
 const GAP = 8
 
 /**
- * EL SALDO FIJO A LA DERECHA. Hasta el 15/09/2026 acá vivía «Cobra total» (dueño, 14/09: «necesito q en alguna
- * columna de liq hs me diga cuanto cobra en total»); el total sigue estando, dos columnas antes, pero el número
- * que decide con la caja en la mano es CUÁNTO FALTA PAGARLE. Es la espejo de `COLUMNA_FIJA`: frena en el borde
- * del recorte (`right: -CANAL_SCROLL`), fondo opaco y un filo izquierdo con el token de línea.
+ * NINGUNA COLUMNA PEGADA A LA DERECHA (dueño, 16/09/2026, textual: «está mal la columna de "saldo" en liq de hs
+ * porque esa queda fija, y la que has dejado tirada al último a la derecha sí se mueve como saldo: has hecho mal
+ * eso, rehacer urgente»). Hasta hoy el Saldo total iba `sticky right` como espejo de `COLUMNA_FIJA`; leído con la
+ * cinta desplazada, tapaba el Saldo del blanco y se confundía con él. Total · Pagado · Saldo son columnas comunes
+ * al final de la cinta y se mueven con ella, como en el Sheet. Lo único fijo: el encabezado arriba y Persona a la
+ * izquierda.
  */
-export const COLUMNA_SALDO: React.CSSProperties = {
-  position: 'sticky', right: -CANAL_SCROLL, marginRight: -CANAL_SCROLL, paddingRight: CANAL_SCROLL, paddingLeft: GAP,
-  zIndex: 1, background: fondoDeColumnaFija(), borderLeft: `1px solid ${V.linea}`, fontWeight: 600,
-}
-/**
- * POR DEBAJO DE 560 PX NO QUEDA FIJA: a 390 px Persona (200) y Saldo (120) fijas dejaban ~20 px para lo del
- * medio. La clase `!important` gana sobre el `style` en línea.
- */
-export const CLASE_SALDO = 'max-[559px]:!static max-[559px]:!border-l-0'
 const DIA = 36
 
 // LOS DÍAS ADELANTE, COMO EN LA PLANILLA: Persona · días · plata.
@@ -262,9 +255,7 @@ function Encabezado({ columnas, dias, sellada, corrimiento = 0 }: {
       <div style={{ ...COLUMNA_FIJA, gridColumn: 1, gridRow: 2, height: ALTO_LIQ.encabezado - 16, display: 'flex', alignItems: 'end', transform: `translateX(${corrimiento}px)` }}>Persona</div>
       {dias.map((f, i) => <div key={f} style={{ gridColumn: 2 + i, gridRow: 2, textAlign: 'center' }} title={f}>{rotuloDia(f)}</div>)}
       {PLATA.map((c, i) => (
-        <div key={c.clave} data-testid={c.clave === 'saldo' ? 'encabezado-saldo' : undefined}
-          className={c.clave === 'saldo' ? CLASE_SALDO : undefined}
-          style={{ gridColumn: 2 + dias.length + i, gridRow: 2, textAlign: 'right', ...(c.clave === 'saldo' ? { ...COLUMNA_SALDO, color: V.tinta, alignSelf: 'stretch', display: 'flex', alignItems: 'end', justifyContent: 'flex-end' } : null) }}>{c.rotulo}</div>
+        <div key={c.clave} style={{ gridColumn: 2 + dias.length + i, gridRow: 2, textAlign: 'right' }}>{c.rotulo}</div>
       ))}
     </div>
   )
@@ -333,9 +324,7 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
       </div>
       <CeldaTotal fila={fila} edicion={{ quincena, camposEditables }} />
       <CeldaPagadoTotal fila={fila} />
-      <div className={CLASE_SALDO} style={{ ...COLUMNA_SALDO, alignSelf: 'stretch', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-        <CeldaSaldo fila={fila} lado="total" />
-      </div>
+      <CeldaSaldo fila={fila} lado="total" />
     </div>
   )
 }
@@ -378,8 +367,8 @@ function Total({ columnas, dias, totales, redondeo }: {
       <div data-testid="espejo-total-cobra" style={{ textAlign: 'right', whiteSpace: 'nowrap', color: noCierra ? V.neg : V.tinta }}
         title={noCierra ? `No cierra por ${pesos(cierre?.diferencia ?? null)}` : undefined}>{pesos(totales.cobra)}</div>
       <Leida valor={totales.pago.pagado} testid="espejo-total-pagado" />
-      <div data-testid="espejo-total-saldo" className={CLASE_SALDO}
-        style={{ ...COLUMNA_SALDO, textAlign: 'right', fontSize: '14px', whiteSpace: 'nowrap', alignSelf: 'stretch', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', color: totales.pago.saldoTotal < 0 ? V.warn : V.tinta }}>{pesos(totales.pago.saldoTotal)}</div>
+      <div data-testid="espejo-total-saldo"
+        style={{ textAlign: 'right', fontSize: '14px', whiteSpace: 'nowrap', color: totales.pago.saldoTotal < 0 ? V.warn : V.tinta }}>{pesos(totales.pago.saldoTotal)}</div>
     </div>
   )
 }
