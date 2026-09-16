@@ -63,6 +63,7 @@ import { Aviso, Ayuda, BuscadorURL, Num } from '@/shared/components/ds'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
 import { C, FranjaCartera, PAGINA } from '@/shared/components/canon'
 import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
+import { seccionesDeCompras } from '@/features/administracion/services/seccionesDeCompras'
 import { NotaBloque } from '@/shared/components/v2/patron'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { FiltrosCompras } from '@/features/administracion/components/EstadosDeControl'
@@ -303,9 +304,14 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
           oculto: { f: filtro === 'todo' ? undefined : filtro },
           testid: 'buscar-compra',
         }}
-        vistas={[{
-          clave: 'compras', titulo: 'Compras', cuenta: todas.length, activa: true, href: RUTA,
-        }]}
+        // LAS CUATRO SECCIONES DE COMPRAS, de `seccionesDeCompras.ts` (dueño, 16/09/2026: «poné todo
+        // el módulo proveedores dentro de compras como sección»). La lista y su orden viven en un
+        // solo lugar — acá y en `proveedores/page.tsx`— para que no puedan divergir.
+        //
+        // SÓLO SE PASA EL NÚMERO QUE ESTA PANTALLA YA LEYÓ. Los otros tres están en Postgres y
+        // contarlos desde acá serían tres viajes más por carga para imprimir tres números que no
+        // deciden nada en esta vista; `null` no se dibuja, y no se dibuja como 0.
+        vistas={seccionesDeCompras('compras', { compras: todas.length })}
         filtros={(
           // EL CONTROL CONTRA ARCA NO DESAPARECE: es otra pregunta y tiene su puerta.
           <Link href={`${RUTA}?f=arca`} data-testid="ir-control-arca" className="text-[12px] text-faint underline underline-offset-2">

@@ -3,17 +3,22 @@ import assert from 'node:assert/strict'
 import { areaActiva, DESTINOS, destinosVisibles, hayFiloAntes } from './areasAdmin.ts'
 import { RUTAS_SOLO_ECONOMIA, puedeVerRuta } from '../../auth/types/areas.ts'
 
-// LA BARRA DE NIVEL 2 — cuatro destinos en dos grupos (handoff CRM / Administración v4).
+// LA BARRA DE NIVEL 2 — TRES destinos en dos grupos, desde que Proveedores se fue adentro de
+// Compras (dueño, 16/09/2026).
 //
 // Lo que estas pruebas impiden: que la barra vuelva a ser diez tablas en fila, que un destino se
 // dibuje para quien el middleware va a rebotar, y —sobre todo— que la barra se apague adentro de
-// las dos colas que perdieron su solapa (Pendientes y Asistencia).
+// las rutas que perdieron su solapa (Pendientes, Asistencia y ahora Proveedores).
 
-test('son CUATRO destinos en DOS grupos, en el orden del handoff v4', () => {
+test('son TRES destinos en DOS grupos: Proveedores se fue adentro de Compras', () => {
+  // El dueño lo pidió el 16/09/2026: «poné todo el módulo proveedores dentro de compras como
+  // sección». Si vuelve a aparecer en la barra, hay DOS puertas al mismo módulo y la sección de
+  // Compras deja de ser la única respuesta a dónde vive Proveedores.
   assert.deepEqual(
     DESTINOS.map((d) => d.titulo),
-    ['Clientes', 'Personal', 'Proveedores', 'Compras'],
+    ['Clientes', 'Personal', 'Compras'],
   )
+  assert.equal(DESTINOS.some((d) => d.clave === 'proveedores'), false)
   assert.deepEqual([...new Set(DESTINOS.map((d) => d.grupo))], ['quien', 'registro'])
 })
 
@@ -28,7 +33,7 @@ test('«Trabajo», «Base maestra» y «Documentos» ya no son destinos', () => 
 
 test('el filo va SÓLO donde cambia el grupo, y sobre la lista ya filtrada por rol', () => {
   const todas = [...DESTINOS]
-  assert.deepEqual(todas.map((_, i) => hayFiloAntes(todas, i)), [false, false, false, true])
+  assert.deepEqual(todas.map((_, i) => hayFiloAntes(todas, i)), [false, false, true])
 
   // El filo se calcula sobre la lista YA filtrada: nunca puede quedar uno abriendo la barra, que
   // es lo que pasaría el día que un destino sea sólo de quien ve economía y el cálculo mire la
@@ -38,12 +43,13 @@ test('el filo va SÓLO donde cambia el grupo, y sobre la lista ya filtrada por r
   }
 })
 
-test('el jefe de obra ve los cuatro: ninguno es precio', () => {
+test('el jefe de obra ve los tres: ninguno es precio', () => {
   // Una compra es COSTO, no PRECIO. Lo que el jefe no ve es cuánto se vendió la obra, y eso no está
-  // en ninguna de estas cuatro pantallas.
+  // en ninguna de estas tres pantallas. Proveedores no salió de su alcance: entró a Compras, y que
+  // siga viéndolo lo comprueba `seccionesDeCompras.test.ts` sobre las cuatro secciones.
   assert.deepEqual(
     destinosVisibles('jefe_obra').map((d) => d.clave),
-    ['clientes', 'personas', 'proveedores', 'compras'],
+    ['clientes', 'personas', 'compras'],
   )
 })
 
@@ -67,7 +73,7 @@ test('la barra y la puerta usan el MISMO portero', () => {
 
 // ═══ DÓNDE ESTOY PARADO ═══
 
-test('las dos colas que perdieron su solapa encienden la sección que las reclama', () => {
+test('lo que perdió su solapa enciende la sección que lo reclama', () => {
   // ÉSTE es el defecto que la reducción puede introducir: Pendientes y Asistencia eran de
   // «Trabajo», y sin la absorción la barra se apaga entera al entrar en ellas — la pantalla deja de
   // decir dónde está parado el que la mira.
@@ -76,10 +82,19 @@ test('las dos colas que perdieron su solapa encienden la sección que las reclam
   assert.equal(areaActiva('/administracion/asistencia'), 'personas')
 })
 
+test('TODO Proveedores enciende Compras: la lista, sus dos colas y cada ficha', () => {
+  // Es la mudanza del 16/09/2026 mirada desde la barra. Sin la absorción, entrar a un proveedor
+  // dejaría las tres solapas apagadas y nadie sabría de qué módulo salió esa pantalla.
+  assert.equal(areaActiva('/administracion/proveedores'), 'compras')
+  assert.equal(areaActiva('/administracion/proveedores?vista=resolver'), 'compras')
+  assert.equal(areaActiva('/administracion/proveedores?vista=deuda'), 'compras')
+  assert.equal(areaActiva('/administracion/proveedores/abc-123'), 'compras')
+  assert.equal(areaActiva('/administracion/proveedores/abc-123?vista=documentos'), 'compras')
+})
+
 test('cada sección se enciende en sus subrutas y no en las de al lado', () => {
   assert.equal(areaActiva('/administracion/personas'), 'personas')
   assert.equal(areaActiva('/administracion/personas/juan-perez'), 'personas')
-  assert.equal(areaActiva('/administracion/proveedores?vista=resolver'), 'proveedores')
   assert.equal(areaActiva('/administracion/compras'), 'compras')
 })
 
@@ -98,7 +113,7 @@ test('lo que ya no es un destino no enciende ninguna solapa', () => {
   assert.equal(areaActiva('/administracion/usuarios'), null)
   assert.equal(areaActiva('/presupuestos'), null)
   assert.equal(areaActiva('/obras'), null)
-  assert.equal(DESTINOS.length, 4)
+  assert.equal(DESTINOS.length, 3)
 })
 
 test('las dos pantallas del portal se retiraron: ya no encienden nada', () => {

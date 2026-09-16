@@ -230,13 +230,16 @@ export function armarConteosDeAtencion(json: unknown): ConteosAtencion {
 // LA BARRA DE DESTINOS — lo puro, para poder probarlo sin base
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-// LOS CUATRO DESTINOS DE LA v4. `base-maestra`, `documentos` y `trabajo` salieron de la barra
-// (ver `areasAdmin.ts`) y por eso salieron de acá: una entrada para una solapa que no se dibuja
+// LOS TRES DESTINOS QUE QUEDARON. `base-maestra`, `documentos` y `trabajo` salieron de la barra en
+// la v4, y `proveedores` el 16/09/2026 al volverse una sección de Compras (ver `areasAdmin.ts` y
+// `seccionesDeCompras.ts`). Por eso salieron de acá: una entrada para una solapa que no se dibuja
 // hace creer que el contador se sigue mostrando en algún lado.
+//
+// `c.proveedores` NO desaparece del tipo: lo sigue usando el libro mayor de la entrada, donde
+// Proveedores es un MAESTRO (`entradaService.maestrosDe`) y no un destino de la barra.
 const CUENTA: Record<string, (c: ConteosHome) => number | null> = {
   clientes: (c) => c.clientes,
   personas: (c) => c.personas,
-  proveedores: (c) => c.proveedores,
   compras: (c) => c.compras,
 }
 

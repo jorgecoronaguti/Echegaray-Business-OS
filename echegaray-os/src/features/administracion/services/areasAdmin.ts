@@ -1,9 +1,25 @@
-// LOS CUATRO DESTINOS DE ADMINISTRACIÓN — la barra de nivel 2, en un solo lugar.
+// LOS TRES DESTINOS DE ADMINISTRACIÓN — la barra de nivel 2, en un solo lugar.
 //
-// ═══ QUÉ CAMBIÓ (handoff CRM / Administración v4, 04/09/2026) ═══
+// ═══ PROVEEDORES SE FUE ADENTRO DE COMPRAS (dueño, 16/09/2026) ═══
 //
-// La barra queda en **Clientes · Personal · Proveedores | Compras**, y eso saca tres destinos que
-// estaban en la v2. El motivo no es que sobre lugar: es que ninguno de los tres respondía una
+// «Quiero que pongas todo el módulo proveedores dentro de "compras" como sección». La barra queda en
+// **Clientes · Personal | Compras** y Proveedores pasa a ser una SECCIÓN de Compras, con el mismo
+// patrón que Personal (Plantel · Horas · Liquidación): la lista de secciones vive en
+// `seccionesDeCompras.ts` y la dibuja `CabeceraSeccion`.
+//
+// NO ES UN DESTINO MENOS: es el mismo destino un nivel más adentro, y con el nivel 3 plano —
+// Compras · Proveedores · A quién le debo · Nombres sin resolver— la deuda y la cola de nombres
+// pasan de dos clics a uno. Por eso `/administracion/proveedores` entra en el `absorbe` de Compras:
+// una pantalla en la que la barra se apaga entera deja de decir dónde está parado el que la mira.
+//
+// LA RUTA NO SE MOVIÓ. `/administracion/proveedores`, `?vista=deuda` y `/administracion/proveedores/
+// <id>` siguen siendo las mismas: el porqué está en `seccionesDeCompras.ts` (diez `revalidatePath`
+// que fallan en silencio, los enlaces que el bot ya mandó por Mattermost, ocho specs).
+//
+// ═══ QUÉ CAMBIÓ ANTES (handoff CRM / Administración v4, 04/09/2026) ═══
+//
+// La barra había quedado en **Clientes · Personal · Proveedores | Compras**, y eso sacó tres
+// destinos que estaban en la v2. El motivo no es que sobre lugar: es que ninguno de los tres respondía una
 // pregunta que no respondiera ya la sección de al lado.
 //
 //   · TRABAJO enumeraba lo que cada sección ya reclama en sus propias filas. Un destino que sólo
@@ -75,13 +91,17 @@ export const DESTINOS: readonly Destino[] = [
     clave: 'personas', titulo: 'Personal', href: '/administracion/personas', grupo: 'quien',
     absorbe: ['/administracion/asistencia'],
   },
-  { clave: 'proveedores', titulo: 'Proveedores', href: '/administracion/proveedores', grupo: 'quien' },
-  // El libro de compras. NO entra en `RUTAS_SOLO_ECONOMIA`: una compra es COSTO, no PRECIO, y el
-  // jefe de obra ve el costo de su obra (19/08).
-  // Absorbe Pendientes de imputación: la fila sin obra que se resuelve ahí es una fila de Compras.
+  // El libro de compras, y desde el 16/09/2026 TODO el módulo de proveedores adentro. NO entra en
+  // `RUTAS_SOLO_ECONOMIA`: una compra es COSTO, no PRECIO, y el jefe de obra ve el costo de su obra
+  // (19/08) — lo mismo vale para el proveedor al que se le compró.
+  //
+  // Absorbe tres rutas, y las tres por el mismo criterio: son trabajo SOBRE Compras.
+  //   · `/administracion/pendientes`  la fila sin obra que se resuelve ahí es una fila de Compras;
+  //   · `/administracion/proveedores` la sección Proveedores y sus dos colas (`?vista=deuda`,
+  //     `?vista=resolver`), más la ficha de cada proveedor, que es una subruta suya.
   {
     clave: 'compras', titulo: 'Compras', href: '/administracion/compras', grupo: 'registro',
-    absorbe: ['/administracion/pendientes'],
+    absorbe: ['/administracion/pendientes', '/administracion/proveedores'],
   },
 ] as const
 
@@ -115,9 +135,10 @@ export function hayFiloAntes(destinos: readonly Destino[], i: number): boolean {
  * (se fue a Presupuestos) y `/documentos` (se erradicó como destino). Las cuatro pantallas siguen
  * abriéndose por su ruta; lo que no hacen es encender una solapa que no existe.
  *
- * `absorbe` se mira en TODOS los destinos: Asistencia enciende Personal y Pendientes enciende
- * Compras. Hasta el 26/08/2026 el campo estaba declarado para cualquiera y leído para uno solo, y
- * ese era el defecto que apagaba la barra entera dentro del cronograma.
+ * `absorbe` se mira en TODOS los destinos: Asistencia enciende Personal, y Pendientes, Proveedores
+ * y la ficha de un proveedor encienden Compras. Hasta el 26/08/2026 el campo estaba declarado para
+ * cualquiera y leído para uno solo, y ese era el defecto que apagaba la barra entera dentro del
+ * cronograma.
  *
  * Ya no hace falta el caso exacto que protegía a «Trabajo»: `/administracion` no es el `href` de
  * ningún destino, así que dejó de ser prefijo de todos.

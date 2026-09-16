@@ -25,11 +25,17 @@ const CLICKS = [
   // Nivel 2 — la barra del área.
   { testid: 'ir-clientes', espera: /\/clientes/ },
   { testid: 'ir-personas', espera: /\/administracion\/personas/ },
-  { testid: 'ir-proveedores', espera: /\/administracion\/proveedores/ },
   { testid: 'ir-compras', espera: /\/administracion\/compras/ },
   // Nivel 3 — las sub-vistas de Personal.
   { testid: 'vista-asistencia', espera: /vista=asistencia/, desde: '/administracion/personas' },
   { testid: 'vista-personal', espera: /\/administracion\/personas/ },
+  // Nivel 3 — las secciones de Compras (dueño, 16/09/2026). `ir-proveedores` salió de la barra del
+  // área: Proveedores es una sección y se llega por acá. Es el camino que más se usa y era el que
+  // más caro sería que recargara el documento entero.
+  { testid: 'vista-proveedores', espera: /\/administracion\/proveedores/, desde: '/administracion/compras' },
+  { testid: 'vista-deuda', espera: /vista=deuda/ },
+  { testid: 'vista-resolver', espera: /vista=resolver/ },
+  { testid: 'vista-compras', espera: /\/administracion\/compras/ },
   // Un control de navegación que NO es una solapa: «Limpiar filtros» de Compras. Es el mismo
   // gesto —cambiar lo que la pantalla muestra— y hasta hoy era un `<a href>` crudo, o sea el
   // navegador tirando el documento entero y volviéndolo a pedir.
