@@ -29,6 +29,7 @@ import {
   archivoAceptable, extensionDeNombre, type ArchivoElegible,
 } from '../../administracion/services/documentosProveedor.ts'
 import { TIPOS_ENTIDAD, type TipoEntidad } from './carpetaDeEntidad.ts'
+import { revisarRango } from './certificadoDeLicencia.ts'
 
 export { TIPOS_ENTIDAD }
 export type { TipoEntidad }
@@ -44,7 +45,12 @@ export const CATEGORIAS_POR_TIPO = {
   obra: ['plano', 'certificado', 'acta', 'foto', 'otro'],
   cliente: ['factura', 'orden_compra', 'orden_pago', 'contrato', 'otro'],
   proveedor: ['factura', 'remito', 'presupuesto', 'otro'],
-  persona: ['dni', 'alta_arca', 'libreta_ieric', 'constancia', 'otro'],
+  // LAS DEL LEGAJO LAS NOMBRÓ EL DUEÑO EL 16/09/2026: certificado de licencia, DNI, alta IERIC,
+  // examen médico (HM), constancia de EPP, telegramas, contrato. Las cuatro del 10/09 se conservan.
+  persona: [
+    'certificado_medico', 'dni', 'alta_ieric', 'alta_arca', 'libreta_ieric', 'examen_medico', 'epp',
+    'telegrama', 'contrato', 'constancia', 'otro',
+  ],
 } as const satisfies Record<TipoEntidad, readonly string[]>
 
 export type CategoriaDe<T extends TipoEntidad> = (typeof CATEGORIAS_POR_TIPO)[T][number]
@@ -56,6 +62,8 @@ export const ROTULO_CATEGORIA: Record<Categoria, string> = {
   factura: 'Factura', orden_compra: 'Orden de compra', orden_pago: 'Orden de pago', contrato: 'Contrato',
   remito: 'Remito', presupuesto: 'Presupuesto',
   dni: 'DNI', alta_arca: 'Alta en ARCA', libreta_ieric: 'Libreta IERIC', constancia: 'Constancia',
+  certificado_medico: 'Certificado médico', alta_ieric: 'Alta IERIC', examen_medico: 'Examen médico',
+  epp: 'Constancia de EPP', telegrama: 'Telegrama',
   otro: 'Otro',
 }
 
@@ -170,9 +178,12 @@ export function esRutaDe(ruta: string, uid: string, tipo: TipoEntidad, entidadId
  * La policy de la base hace las mismas preguntas. Ahí está la cerradura; acá está la frase.
  */
 export function revisarAlta(
-  d: { tipo: TipoEntidad; entidadId: string; categoria: string; storagePath: string },
+  d: {
+    tipo: TipoEntidad; entidadId: string; categoria: string; storagePath: string
+    licenciaDesde?: string | null; licenciaHasta?: string | null
+  },
   uid: string,
-): { ok: true } | { ok: false; error: string } {
+): { ok: true; licencia: { desde: string; hasta: string } | null } | { ok: false; error: string } {
   if (!(CATEGORIAS_POR_TIPO[d.tipo] as readonly string[]).includes(d.categoria)) {
     return { ok: false, error: `«${d.categoria}» no es una categoría de ${d.tipo}.` }
   }
@@ -180,5 +191,17 @@ export function revisarAlta(
   if (!esRutaDe(d.storagePath, uid, d.tipo, d.entidadId)) {
     return { ok: false, error: 'Ese archivo no corresponde a esta ficha.' }
   }
-  return { ok: true }
+  // EL RANGO SÓLO EXISTE EN UN CERTIFICADO MÉDICO, y ahí es obligatorio: un certificado sin días no
+  // respalda ninguna licencia, y un DNI con días es un dato que nadie sabe leer. Es lo mismo que
+  // exige el CHECK `entidad_documento_licencia_solo_certificado`.
+  const esCertificado = d.tipo === 'persona' && d.categoria === 'certificado_medico'
+  const rango = revisarRango(d.licenciaDesde, d.licenciaHasta)
+  if (!rango.ok) return rango
+  if (esCertificado && !rango.desde) {
+    return { ok: false, error: 'El certificado médico necesita desde y hasta: son los días que respalda.' }
+  }
+  if (!esCertificado && rango.desde) {
+    return { ok: false, error: 'Sólo un certificado médico lleva desde y hasta.' }
+  }
+  return { ok: true, licencia: rango.desde && rango.hasta ? { desde: rango.desde, hasta: rango.hasta } : null }
 }

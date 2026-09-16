@@ -7,7 +7,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { CATEGORIAS_POR_TIPO, MAX_BYTES, revisarAlta, rutaDeObjeto } from './subidaDeDocumento.ts'
 
@@ -56,6 +56,24 @@ test('una categoría de otra entidad no entra: un plano no existe en un proveedo
   assert.match(r.error, /categor/i)
 })
 
+// EL RANGO DEL CERTIFICADO. Sin desde/hasta el papel no respalda ningún día; en cualquier otra
+// categoría el rango es un dato que nadie sabe leer. Es lo que cierra el CHECK
+// `entidad_documento_licencia_solo_certificado`; acá está la frase.
+test('el certificado médico exige desde/hasta y ninguna otra categoría los admite', () => {
+  const base = { tipo: 'persona' as const, entidadId: AID, storagePath: ruta(UID, 'persona', AID) }
+  const sin = revisarAlta({ ...base, categoria: 'certificado_medico' }, UID)
+  assert.equal(sin.ok, false)
+  assert.match(sin.ok ? '' : sin.error, /desde y hasta/)
+  const con = revisarAlta({ ...base, categoria: 'certificado_medico', licenciaDesde: '2026-09-08', licenciaHasta: '2026-09-12' }, UID)
+  assert.deepEqual(con, { ok: true, licencia: { desde: '2026-09-08', hasta: '2026-09-12' } })
+  const dni = revisarAlta({ ...base, categoria: 'dni', licenciaDesde: '2026-09-08', licenciaHasta: '2026-09-12' }, UID)
+  assert.equal(dni.ok, false)
+  assert.match(dni.ok ? '' : dni.error, /Sólo un certificado/)
+  const alReves = revisarAlta({ ...base, categoria: 'certificado_medico', licenciaDesde: '2026-09-12', licenciaHasta: '2026-09-08' }, UID)
+  assert.equal(alReves.ok, false)
+  assert.deepEqual(revisarAlta({ ...base, categoria: 'dni' }, UID), { ok: true, licencia: null })
+})
+
 test('un id que no tiene la forma de la entidad se rechaza antes de escribir', () => {
   const r = revisarAlta(
     { tipo: 'persona', entidadId: 'messina-bsa', categoria: 'dni', storagePath: `${UID}/persona/messina-bsa/x.pdf` },
@@ -69,14 +87,25 @@ test('un id que no tiene la forma de la entidad se rechaza antes de escribir', (
 //
 // La app valida y la base también. Si las dos listas se separan —alguien agrega una categoría en el
 // `.ts` y no en el CHECK— el alta se rompe recién en producción, con un error de constraint.
-const MIGRACION = readFileSync(
-  fileURLToPath(new URL('../../../../supabase/migrations/20260910T2320_entidad_documento.sql', import.meta.url)),
-  'utf8',
-)
+const MIGRACIONES = fileURLToPath(new URL('../../../../supabase/migrations/', import.meta.url))
+const MIGRACION = readFileSync(`${MIGRACIONES}20260910T2320_entidad_documento.sql`, 'utf8')
+
+// EL CHECK VIGENTE ES EL DE LA ÚLTIMA MIGRACIÓN QUE LO DEFINE, no el de la que creó la tabla: el
+// 16/09 el legajo sumó seis categorías con un `drop constraint` + `add constraint`. Leer sólo el
+// archivo original haría pasar una lista que la base ya no tiene.
+const CHECK_VIGENTE = readdirSync(MIGRACIONES)
+  .filter((f) => f.endsWith('.sql')).sort()
+  .map((f) => readFileSync(`${MIGRACIONES}${f}`, 'utf8'))
+  .filter((sql) => sql.includes('entidad_documento_categoria_del_tipo check'))
+  .at(-1)
 
 test('el CHECK de la base nombra exactamente las mismas categorías que la app', () => {
+  assert.ok(CHECK_VIGENTE, 'ninguna migración define entidad_documento_categoria_del_tipo')
   for (const [tipo, cats] of Object.entries(CATEGORIAS_POR_TIPO)) {
-    const linea = MIGRACION.split('\n').find((l) => l.includes(`entidad_tipo = '${tipo}'`))
+    // La rama del CHECK, no un comentario que nombre al tipo: la migración del 16/09 explica en
+    // prosa lo que hace y esa prosa dice «entidad_tipo = 'persona'» antes que el CHECK.
+    const linea = CHECK_VIGENTE.split('\n')
+      .find((l) => l.includes(`entidad_tipo = '${tipo}'`) && l.includes('categoria in ('))
     assert.ok(linea, `la migración no tiene la rama del CHECK para «${tipo}»`)
     for (const c of cats) {
       assert.ok(linea.includes(`'${c}'`), `el CHECK de «${tipo}» no acepta «${c}»`)
