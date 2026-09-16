@@ -134,7 +134,8 @@ test('Administración tiene sus SIETE destinos, y ni uno de otro nivel', async (
   await expect(barra).toBeVisible()
   await expect(barra.getByRole('link')).toHaveCount(7)
   // Dos filos, uno por cambio de grupo. Sin ellos son siete tablas en fila otra vez.
-  await expect(barra.getByTestId('filo-grupo')).toHaveCount(2)
+  // SIN FILO ENTRE GRUPOS (dueño, 16/09/2026: «no quiero ese separador»).
+  await expect(barra.getByTestId('filo-grupo')).toHaveCount(0)
 
   // USUARIOS NO DESAPARECIÓ: se entra por el menú de la cuenta, y la ruta responde igual.
   await page.getByTestId('avatar-usuario').click()
