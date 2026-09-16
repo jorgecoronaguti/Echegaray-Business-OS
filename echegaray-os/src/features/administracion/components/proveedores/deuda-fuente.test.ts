@@ -104,6 +104,18 @@ test('a 390px la tabla suelta columnas en vez de empujar la página a un scroll 
   const src = tabla()
   assert.match(src, /max-\[1199px\]:grid-cols-\[/)
   assert.match(src, /const SOLO_ANCHO = 'max-\[1199px\]:hidden'/)
+  // ═══ EL DEFECTO QUE ESTO ATRAPA, MEDIDO EL 16/09/2026 ═══
+  //
+  // La grilla angosta declara DOS pistas y la fila dibujaba CUATRO celdas: las dos sobrantes caían a
+  // un segundo renglón y la tabla se leía como dos tablas encimadas. La cuenta tiene que cerrar: las
+  // celdas que NO llevan `SOLO_ANCHO` son exactamente las que la grilla angosta tiene pistas para.
+  const pistasAngosta = (src.match(/max-\[1199px\]:grid-cols-\[([^\]]+)\]/)?.[1] ?? '').split('_').length
+  assert.equal(pistasAngosta, 2, 'cambió la grilla angosta: revisar cuántas celdas sobreviven')
+  assert.match(src, /const SOLO_ANGOSTO = 'min-\[1200px\]:hidden'/)
+  // Vencido y Por vencer se sueltan, y su dato baja a un renglón bajo el nombre: no se pierde.
+  assert.match(src, /\$\{SOLO_ANCHO\}`\}>\s*<Importe[\s\S]{0,200}testid="deuda-vencido"/)
+  assert.match(src, /\$\{SOLO_ANCHO\}`\}>\s*<Importe[\s\S]{0,200}testid="deuda-por-vencer"/)
+  assert.match(src, /testid="deuda-desglose-angosto"/)
   // El display de esas celdas va POR CLASE: un `style` inline le gana a la media query y el rótulo
   // se queda dibujado sobre una columna que ya no existe.
   assert.doesNotMatch(src, /SOLO_ANCHO[\s\S]{0,80}style=\{\{ display:/)

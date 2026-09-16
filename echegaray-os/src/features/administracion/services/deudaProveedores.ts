@@ -339,6 +339,35 @@ export function detalleDeProveedor(lineas: LineaDeuda[], fila: DeudaDeProveedor)
 }
 
 /**
+ * LA CUOTA, ADELANTE — «pago 2 de 4 · Hormigonado 2.144 m² × $4.400…».
+ *
+ * ═══ EL DEFECTO, VISTO EN LA PANTALLA EL 16/09/2026 ═══
+ *
+ * Las nueve líneas de Pedro Tello se dibujaban idénticas: «SF - PISOS INDUSTRIALES / Hormigonado
+ * 2.144 m² × $4.400 = $9.433.600 · a c…». Lo único que las distingue —«pago 2 de 4», «cuota 1 de
+ * 6»— vive al FINAL del concepto que escribe Compras, y es justo lo que el recorte se come. Nueve
+ * renglones iguales con nueve importes distintos no se pueden auditar: parecen un dato repetido.
+ *
+ * Es la misma trampa que ya pagó el panel de costos del CRM (15/09/2026) y se resuelve igual: el
+ * tramo que identifica la cuota va PRIMERO, y el concepto entero queda en el `title`. No se inventa
+ * nada ni se acorta el texto — se reordena.
+ *
+ * Devuelve `null` cuando el concepto no nombra una cuota: la mayoría de las compras no lo hacen.
+ */
+export function etiquetaDeCuota(concepto: string | null): string | null {
+  return concepto?.match(/\b(cuota|pago)\s+\d+\s+de\s+\d+/i)?.[0] ?? null
+}
+
+/** El concepto con su cuota adelante, si la tiene. Sin cuota devuelve el concepto tal cual. */
+export function conceptoConCuotaAdelante(concepto: string | null): string | null {
+  const cuota = etiquetaDeCuota(concepto)
+  if (!cuota || !concepto) return concepto
+  const resto = concepto.replace(cuota, '').replace(/\s*·\s*$/, '').replace(/^\s*·\s*/, '')
+    .replace(/\s*·\s*·\s*/g, ' · ').trim()
+  return resto ? `${cuota} · ${resto}` : cuota
+}
+
+/**
  * EL COTEJO CONTRA LA DEFINICIÓN CANÓNICA (`public.proveedor_deuda`).
  *
  * Un control no se valida contra la información que produce: el total de esta tabla se suma de las

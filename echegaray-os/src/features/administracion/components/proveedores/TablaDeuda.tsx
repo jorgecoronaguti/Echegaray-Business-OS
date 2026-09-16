@@ -34,16 +34,25 @@ import {
   ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, HOVER_FILA, RotuloCol, V,
 } from '@/shared/components/v2/patron'
 import { plataCentavos } from '@/shared/utils/format'
-import { diaMesAnioISO } from '@/shared/utils/fecha'
+import { diaMesAnioISO, diaMesISO } from '@/shared/utils/fecha'
 import type { DeudaDeProveedor, TotalesDeuda } from '../../services/deudaProveedores'
 
 /** La grilla, literal porque Tailwind no compila un valor armado en runtime. */
 const COLS
-  = 'grid-cols-[minmax(220px,1.6fr)_150px_170px_160px_110px_150px]'
+  = 'grid-cols-[minmax(220px,1.1fr)_150px_170px_160px_110px_minmax(150px,1fr)]'
   + ' max-[1199px]:grid-cols-[minmax(150px,1.4fr)_minmax(0,1fr)]'
 const GAP = 16
 /** Lo que se suelta en angosto. Va POR CLASE: un `display` inline le gana a la media query. */
 const SOLO_ANCHO = 'max-[1199px]:hidden'
+/**
+ * LO QUE SÓLO EXISTE EN ANGOSTO.
+ *
+ * A 390px la grilla es de DOS pistas, así que sólo pueden quedar DOS celdas por fila: con cuatro,
+ * las sobrantes caen a un segundo renglón y la tabla se lee como dos tablas encimadas — medido el
+ * 16/09/2026 en la primera pasada de QA. En angosto sobreviven PROVEEDOR y TOTAL, y el desglose
+ * vencido / por vencer baja a un renglón bajo el nombre: la misma información, una lectura sola.
+ */
+const SOLO_ANGOSTO = 'min-[1200px]:hidden'
 const MONO = 'font-mono tabular-nums'
 
 export function TablaDeuda({ filas, totales, hoy, seleccionada, hrefDe }: {
@@ -65,12 +74,16 @@ export function TablaDeuda({ filas, totales, hoy, seleccionada, hrefDe }: {
     <div data-testid="tabla-deuda">
       <div className={`grid ${COLS}`} style={{ ...ENCABEZADO, gap: GAP }}>
         <RotuloCol>Proveedor</RotuloCol>
-        <RotuloCol derecha titulo={`Saldo con fecha prevista de pago anterior o igual al ${diaMesAnioISO(hoy)}.`}>
-          Vencido
-        </RotuloCol>
-        <RotuloCol derecha titulo="Saldo comprometido con fecha posterior a hoy. Todavía no se debe.">
-          Por vencer
-        </RotuloCol>
+        <span className={`grid ${SOLO_ANCHO}`}>
+          <RotuloCol derecha titulo={`Saldo con fecha prevista de pago anterior o igual al ${diaMesAnioISO(hoy)}.`}>
+            Vencido
+          </RotuloCol>
+        </span>
+        <span className={`grid ${SOLO_ANCHO}`}>
+          <RotuloCol derecha titulo="Saldo comprometido con fecha posterior a hoy. Todavía no se debe.">
+            Por vencer
+          </RotuloCol>
+        </span>
         <RotuloCol derecha titulo="Todo el saldo pendiente de la pestaña Compras, sin anuladas.">
           Total adeudado
         </RotuloCol>
@@ -123,16 +136,37 @@ function FilaDeuda({ f, elegida, href }: { f: DeudaDeProveedor; elegida: boolean
             sin ficha de proveedor
           </span>
         )}
+        {/* EL DESGLOSE EN ANGOSTO. A 390px las columnas Vencido y Por vencer no caben, y el dato que
+            hacen falta —cuánto ya venció y desde cuándo— no se puede perder: baja acá, en una línea. */}
+        <span
+          data-testid="deuda-desglose-angosto"
+          className={`${MONO} ${SOLO_ANGOSTO} truncate`}
+          title={vencida
+            ? `${plataCentavos(f.vencido)} vencidos desde el ${diaMesAnioISO(f.masViejaVencida)}`
+            : `El primer vencimiento es el ${diaMesAnioISO(f.proximoVencimiento)}`}
+          style={{ fontSize: '11px', lineHeight: '13px', color: vencida ? V.warn : V.tenue }}
+        >
+          {/* CORTO A PROPÓSITO: a 390px la celda mide ~150px y «$81.000,00 vencido desde 14/09/26»
+              se cortaba en «desde 1…». El año no aporta en una deuda viva; la fecha entera vive en
+              el `title` y en la columna de escritorio. */}
+          {vencida
+            ? `${plataCentavos(f.vencido)} vencido · ${diaMesISO(f.masViejaVencida)}`
+            : `vence ${diaMesISO(f.proximoVencimiento)}`}
+        </span>
       </span>
 
-      <Importe
-        valor={f.vencido} fecha={f.masViejaVencida} rotuloFecha="desde"
-        color={vencida ? V.warn : V.tenue} peso={vencida ? 600 : 400} testid="deuda-vencido"
-      />
-      <Importe
-        valor={f.porVencer} fecha={f.proximoVencimiento} rotuloFecha="desde"
-        color={V.tintaSuave} peso={400} testid="deuda-por-vencer"
-      />
+      <span className={`grid ${SOLO_ANCHO}`}>
+        <Importe
+          valor={f.vencido} fecha={f.masViejaVencida} rotuloFecha="desde"
+          color={vencida ? V.warn : V.tenue} peso={vencida ? 600 : 400} testid="deuda-vencido"
+        />
+      </span>
+      <span className={`grid ${SOLO_ANCHO}`}>
+        <Importe
+          valor={f.porVencer} fecha={f.proximoVencimiento} rotuloFecha="desde"
+          color={V.tintaSuave} peso={400} testid="deuda-por-vencer"
+        />
+      </span>
 
       <span style={{ display: 'grid', justifyItems: 'end', minWidth: 0 }}>
         <span className={MONO} data-testid="deuda-total" style={{ fontSize: '13.5px', fontWeight: 600, color: V.tinta }}>
@@ -200,10 +234,10 @@ function Pie({ totales }: { totales: TotalesDeuda }) {
       <span style={{ fontSize: '12px', fontWeight: 600, color: V.tinta }}>
         {`${totales.proveedores} ${totales.proveedores === 1 ? 'proveedor' : 'proveedores'}`}
       </span>
-      <span className={MONO} style={{ fontSize: '13px', fontWeight: 600, color: totales.vencido > 0 ? V.warn : V.tenue, textAlign: 'right' }}>
+      <span className={`${MONO} ${SOLO_ANCHO}`} style={{ fontSize: '13px', fontWeight: 600, color: totales.vencido > 0 ? V.warn : V.tenue, textAlign: 'right' }}>
         {totales.vencido > 0 ? plataCentavos(totales.vencido) : '—'}
       </span>
-      <span className={MONO} style={{ fontSize: '13px', color: V.tintaSuave, textAlign: 'right' }}>
+      <span className={`${MONO} ${SOLO_ANCHO}`} style={{ fontSize: '13px', color: V.tintaSuave, textAlign: 'right' }}>
         {plataCentavos(totales.porVencer)}
       </span>
       <span className={MONO} style={{ fontSize: '13.5px', fontWeight: 600, color: V.tinta, textAlign: 'right' }}>

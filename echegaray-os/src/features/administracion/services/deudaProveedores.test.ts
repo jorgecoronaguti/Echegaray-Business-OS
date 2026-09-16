@@ -1,8 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  centavos, cotejoDeDeuda, detalleDeProveedor, deudaPorProveedor, estadoDeVencimiento,
-  lineasDeDeuda, totalesDeuda, type CompraConSaldo, type ProveedorResuelto,
+  centavos, conceptoConCuotaAdelante, cotejoDeDeuda, detalleDeProveedor, deudaPorProveedor,
+  estadoDeVencimiento, etiquetaDeCuota, lineasDeDeuda, totalesDeuda,
+  type CompraConSaldo, type ProveedorResuelto,
 } from './deudaProveedores.ts'
 
 // LO QUE ESTOS TESTS ATRAPAN, defecto por defecto:
@@ -254,4 +255,35 @@ test('el cotejo calla cuando cierran y habla cuando no', () => {
   assert.equal(cotejoDeDeuda(filas[0], 1000.5), null)
   assert.equal(cotejoDeDeuda(filas[0], null), null, 'sin fila canónica no hay descuadre que declarar')
   assert.match(cotejoDeDeuda(filas[0], 900) ?? '', /difieren en 100,?\.?50/)
+})
+
+// ═══ LA CUOTA ADELANTE ═══
+//
+// Defecto visto en la pantalla el 16/09/2026: las nueve líneas de Pedro Tello se dibujaban idénticas
+// porque lo único que las distingue —«pago 2 de 4»— vive al final de un concepto que el recorte
+// corta. Nueve renglones iguales con nueve importes distintos no se pueden auditar.
+
+test('la cuota se reconoce al final del concepto y pasa adelante', () => {
+  const c = 'Hormigonado 2.144 m² × $4.400 = $9.433.600 · a cuenta $1.250.000 · pago 2 de 4 (vence 18/09/2026)'
+  assert.equal(etiquetaDeCuota(c), 'pago 2 de 4')
+  assert.match(conceptoConCuotaAdelante(c) ?? '', /^pago 2 de 4 · Hormigonado/)
+  // No se pierde nada del texto original: sólo se mueve el tramo.
+  assert.match(conceptoConCuotaAdelante(c) ?? '', /a cuenta \$1\.250\.000/)
+  assert.match(conceptoConCuotaAdelante(c) ?? '', /\(vence 18\/09\/2026\)/)
+})
+
+test('«cuota N de M» también, y dos conceptos distintos dejan de verse iguales', () => {
+  const a = 'Hormigonado pisos industriales · resto 1.466 m² × $4.400 · cuota 1 de 6 (vence 18/09/2026)'
+  const b = 'Hormigonado pisos industriales · resto 1.466 m² × $4.400 · cuota 4 de 6 (vence 09/10/2026)'
+  const [ra, rb] = [conceptoConCuotaAdelante(a), conceptoConCuotaAdelante(b)]
+  assert.match(ra ?? '', /^cuota 1 de 6 · /)
+  assert.match(rb ?? '', /^cuota 4 de 6 · /)
+  // LO QUE ESTE TEST PROTEGE: los primeros 40 caracteres —lo único que la celda muestra— difieren.
+  assert.notEqual(ra?.slice(0, 40), rb?.slice(0, 40))
+})
+
+test('un concepto sin cuota vuelve tal cual, y un concepto vacío no se inventa', () => {
+  assert.equal(etiquetaDeCuota('Thinner sello oro 1L'), null)
+  assert.equal(conceptoConCuotaAdelante('Thinner sello oro 1L'), 'Thinner sello oro 1L')
+  assert.equal(conceptoConCuotaAdelante(null), null)
 })

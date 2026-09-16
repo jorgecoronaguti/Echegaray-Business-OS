@@ -261,7 +261,10 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
       <CabeceraSeccion
         testid="vistas-proveedores"
         espacioPanel={panelAbierto}
-        alta={{ href: armarHref({}, { p: 'nuevo' }), etiqueta: 'Nuevo proveedor', testid: 'nuevo-proveedor' }}
+        // NINGUNA ACCIÓN PRIMARIA EN «A QUIÉN LE DEBO»: dar de alta un proveedor no es lo que se va a
+        // hacer mirando lo que se debe, y el botón quedaba además debajo del panel —que mide 460px y
+        // no los 392 que la cabecera reserva—. Una sola acción primaria por pantalla, o ninguna.
+        alta={esDeuda ? undefined : { href: armarHref({}, { p: 'nuevo' }), etiqueta: 'Nuevo proveedor', testid: 'nuevo-proveedor' }}
         // LA DEUDA NO SE BUSCA: son los proveedores a los que se les debe algo hoy —siete el
         // 16/09/2026—, y un campo de búsqueda sobre siete filas ordenadas por urgencia sólo le saca
         // una línea a la única tabla que importa en esa vista.

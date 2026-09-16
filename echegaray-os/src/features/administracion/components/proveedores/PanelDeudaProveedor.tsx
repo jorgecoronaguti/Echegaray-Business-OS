@@ -37,6 +37,7 @@ import { Drawer } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { plataCentavos } from '@/shared/utils/format'
 import { diaMesAnioISO, diaMesISO } from '@/shared/utils/fecha'
+import { conceptoConCuotaAdelante } from '../../services/deudaProveedores'
 import type { DetalleDeuda, LineaDeuda } from '../../services/deudaProveedores'
 
 const MONO = 'font-mono tabular-nums'
@@ -147,7 +148,8 @@ function Linea({ l, obras, base, problema }: {
   // cuando existe: seis líneas del mismo concepto largo se ven idénticas si el recorte se come el
   // «2 de 2» del final — es la trampa que ya pagó el panel de costos del CRM.
   const encabezado = [l.comprobante, obra ?? 'sin obra'].filter(Boolean).join(' · ')
-  const detalle = [l.cuota ? `cuota ${l.cuota}` : null, l.concepto].filter(Boolean).join(' · ')
+  const detalle = [l.cuota ? `cuota ${l.cuota}` : null, conceptoConCuotaAdelante(l.concepto)]
+    .filter(Boolean).join(' · ')
   const pagadoParcial = l.pagado > 0 && l.total != null && l.pagado < l.total
   return (
     <Link
@@ -171,7 +173,15 @@ function Linea({ l, obras, base, problema }: {
       <span style={{ display: 'grid', minWidth: 0 }}>
         <span className="truncate" style={{ fontSize: '12px', fontWeight: 500, color: V.tinta }}>{encabezado}</span>
         {detalle && (
-          <span className="truncate" title={detalle} style={{ fontSize: '11px', color: V.apagado }}>{detalle}</span>
+          <span
+            className="truncate"
+            // EL TEXTO ENTERO, EN EL ORDEN ORIGINAL: lo de arriba está reordenado para que se
+            // distinga de un vistazo, y acá se puede leer lo que Compras escribió.
+            title={[l.comprobante, l.concepto].filter(Boolean).join(' · ')}
+            style={{ fontSize: '11px', color: V.apagado }}
+          >
+            {detalle}
+          </span>
         )}
         {/* EL PAGO PARCIAL SE DICE: sin esto, un saldo menor que el total se lee como un error de
             carga en vez de como lo que es — una entrega a cuenta ya hecha. */}
