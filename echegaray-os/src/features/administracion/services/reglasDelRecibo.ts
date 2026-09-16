@@ -38,6 +38,8 @@ export interface ReciboParaReglas {
   persona: string | null
   periodo: string
   valorHora: number | null
+  /** La categoría impresa en ese recibo («OFICIAL», «AYUDANTE»…). Viaja para poder decir de qué categoría es el $/h. */
+  categoria?: string | null
   horasNormales: number | null
   horasFeriado: number | null
   horasOtras: number | null

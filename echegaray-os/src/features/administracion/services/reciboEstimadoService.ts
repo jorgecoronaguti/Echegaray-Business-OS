@@ -38,7 +38,7 @@ export async function leerFeriadosDeLaQuincena(
 export function reciboParaReglas(r: ReciboDeSueldo, conceptos: readonly ConceptoDeRecibo[]): ReciboParaReglas {
   const normales = r.horasNormales ?? null, feriado = r.horasFeriado ?? null
   return {
-    persona: r.cuil, periodo: r.periodo, valorHora: r.valorHora, horasNormales: normales, horasFeriado: feriado,
+    persona: r.cuil, periodo: r.periodo, valorHora: r.valorHora, categoria: r.categoria ?? null, horasNormales: normales, horasFeriado: feriado,
     horasOtras: r.horasBlanco == null ? null : Math.max(0, r2(r.horasBlanco - (normales ?? 0) - (feriado ?? 0))),
     conceptos,
   }

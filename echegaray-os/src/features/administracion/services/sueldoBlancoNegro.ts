@@ -115,6 +115,13 @@ export interface SueldoBlancoNegro {
   valorHoraCategoria: number | null
   /** El piso vigente de la categoría. Contra él se compara el $/h del recibo real (`marcaDeCategoria`). */
   pisoCategoria: number | null
+  /**
+   * LA CATEGORÍA Y EL PERÍODO DEL RECIBO que manda en el blanco (dueño, 16/09/2026: «indicame la categoría que dice
+   * el recibo y la que sale en la plataforma, con su monto por hora en cada caso»). Con recibo del período, ése;
+   * estimado, el último recibo real del que salió el $/h. `null` = nunca tuvo recibo: el $/h es el piso de plataforma.
+   */
+  categoriaRecibo?: string | null
+  periodoRecibo?: string | null
   bruto: number | null
   neto: number | null
   /** De dónde salió el neto: a mano, el recibo, `nomina_recibo_neto`, el recibo estimado por conceptos, o la mediana. */
@@ -155,7 +162,7 @@ const num = (v: number | null | undefined): number | null => (v == null || !Numb
 
 type Blanco = Pick<SueldoBlancoNegro,
   'estado' | 'horasBlanco' | 'valorHoraCategoria' | 'bruto' | 'neto' | 'origenNeto' | 'proporcion' | 'driveFileId'
-  | 'reciboEstimado' | 'conceptosReales' | 'totalesReales'>
+  | 'reciboEstimado' | 'conceptosReales' | 'totalesReales' | 'categoriaRecibo' | 'periodoRecibo'>
 
 /** El recibo estimado de la entrada, con las horas o el $/h escritos a mano si los hay. */
 /**
@@ -166,6 +173,11 @@ type Blanco = Pick<SueldoBlancoNegro,
  * El piso de la categoría de plataforma queda de respaldo sólo para quien no tiene ningún recibo real anterior.
  */
 export function valorHoraDelUltimoRecibo(e: EntradaDeSueldo): number | null {
+  return num(ultimoReciboReal(e)?.valorHora)
+}
+
+/** El último recibo real anterior al período, con $/h: el que le presta el $/h y la categoría al blanco estimado. */
+function ultimoReciboReal(e: EntradaDeSueldo): { periodo: string; valorHora: number | null; categoria?: string | null } | null {
   const est = e.estimacion
   if (!est?.persona) return null
   const tope = periodoOrdenable(est.base.periodo)
@@ -173,7 +185,7 @@ export function valorHoraDelUltimoRecibo(e: EntradaDeSueldo): number | null {
     .filter((r) => r.persona === est.persona && r.valorHora != null && r.valorHora > 0)
     .filter((r) => { const o = periodoOrdenable(r.periodo); return o !== '' && o < tope })
     .sort((a, b) => (periodoOrdenable(a.periodo) < periodoOrdenable(b.periodo) ? 1 : -1))
-  return num(propios[0]?.valorHora)
+  return propios[0] ?? null
 }
 
 function estimadoDe(e: EntradaDeSueldo, horasRecibo: number | null = null, valorHoraRecibo: number | null = null): ReciboEstimado | null {
@@ -199,17 +211,22 @@ function blancoDe(e: EntradaDeSueldo): Blanco {
   if (r && num(r.horasBlanco) != null) {
     return {
       estado: 'recibo', horasBlanco: r.horasBlanco, valorHoraCategoria: num(r.valorHora),
+      categoriaRecibo: r.categoria ?? null, periodoRecibo: r.periodo,
       bruto: num(r.bruto), neto: num(r.neto), origenNeto: num(r.neto) == null ? null : 'recibo',
       proporcion: null, driveFileId: r.driveFileId, reciboEstimado: estimadoDe(e), conceptosReales: conceptosRealesDe(e),
       totalesReales: { haberes: num(r.bruto), descuentos: num(r.descuentos), neto: num(r.neto) },
     }
   }
   // El $/h del blanco estimado: el de su último recibo real; el piso de plataforma sólo si nunca tuvo recibo.
-  const piso = valorHoraDelUltimoRecibo(e) ?? num(e.pisoCategoria)
+  const ultimo = ultimoReciboReal(e)
+  const piso = num(ultimo?.valorHora) ?? num(e.pisoCategoria)
   const estimado = estimadoDe(e)
   const horasBlanco = estimado ? r2(estimado.horasNormales + estimado.horasFeriado) : e.horas == null ? null : r2(e.horas / 2)
   const bruto = estimado?.remunerativo ?? (horasBlanco == null || piso == null ? null : r2(horasBlanco * piso))
-  const base = { estado: 'estimado' as const, horasBlanco, valorHoraCategoria: piso, bruto, reciboEstimado: estimado, conceptosReales: null, totalesReales: null }
+  const base = {
+    estado: 'estimado' as const, horasBlanco, valorHoraCategoria: piso, bruto, reciboEstimado: estimado, conceptosReales: null, totalesReales: null,
+    categoriaRecibo: ultimo?.categoria ?? null, periodoRecibo: ultimo?.periodo ?? null,
+  }
   // Un recibo sin horas todavía trae un neto real: vale lo mismo que el de nómina.
   const netoReal = num(r?.neto) ?? num(e.netoDeNomina)
   if (netoReal != null) {
