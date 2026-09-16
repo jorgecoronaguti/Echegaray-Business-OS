@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { SECCIONES_COMPRAS } from '../services/seccionesDeCompras.ts'
 
 // ═══ EL CANÓNICO «22 · PROVEEDORES v2», VERIFICADO CONTRA EL FUENTE ═══
 //
@@ -82,7 +83,14 @@ test('la banda de señales NO vuelve: lo que falta se lee en la fila y en su rec
   assert.equal(src.includes('<TrabajoDeSeccion'), false, 'volvió la banda de señales')
   assert.ok(src.indexOf('<CabeceraSeccion') > 0, 'la pantalla abre por sus sub-vistas')
   assert.match(src, /etiqueta: 'Sin CUIT'/, 'se fue la banda y no quedó el recorte que la reemplaza')
-  assert.match(src, /titulo: 'Nombres sin resolver'/, 'la cola de nombres perdió su sub-vista')
+  // LA COLA SIGUE SIENDO UNA SECCIÓN, PERO EL RÓTULO YA NO SE ESCRIBE ACÁ (16/09/2026). Desde que
+  // Proveedores es una sección de Compras, las cuatro secciones viven en `seccionesDeCompras.ts` y
+  // las dibujan las dos pantallas. Buscar el literal en este archivo volvería a pedir que la lista
+  // esté escrita dos veces, que es lo que la mudanza vino a evitar: se comprueba que la pantalla usa
+  // la lista compartida, y que la lista compartida tiene la cola.
+  assert.match(src, /seccionesDeCompras\(/, 'la pantalla dejó de usar la fila de secciones compartida')
+  assert.ok(SECCIONES_COMPRAS.some((x) => x.titulo === 'Nombres sin resolver'),
+    'la cola de nombres perdió su sección')
 })
 
 // ── CRITERIO 2 · QUÉ BLOQUEA + VERBO, Y EL VERBO FUNCIONA EN EL LUGAR ────────────────────────────
@@ -120,7 +128,10 @@ test('el recorte de «Sin CUIT» se alimenta de la LECTURA, no de un literal', (
   // banda; lo que quedó vigilando es la lectura que hoy alimenta el recorte y su contador.
   const src = codigoPagina()
   assert.match(src, /contarProveedores\(supabase, \{ activo: 'activos', sinCuit: true \}\)/)
-  assert.match(src, /cuenta: pendientes\.error \? null : cola\.length/, 'el contador de la cola se cableó')
+  // El conteo viaja como `resolver:` dentro de `seccionesDeCompras` desde el 16/09/2026; lo que se
+  // vigila es lo mismo: que salga de la LECTURA y que un error deje la sección sin número, nunca en
+  // 0 —«Nombres sin resolver 0» afirma que no queda ninguno—.
+  assert.match(src, /resolver: pendientes\.error \? null : cola\.length/, 'el contador de la cola se cableó')
 })
 
 test('TODOS los recortes dicen su población, no sólo el que reemplazó a la banda', () => {
