@@ -48,7 +48,7 @@ async function main() {
   const { rows: usuarios } = await query('select id from auth.users where lower(email) = lower($1) limit 1', [p.como])
   if (!usuarios[0]) return salir(`No hay usuario con email ${p.como}: --como tiene que ser una cuenta del OS.`)
   const uid = usuarios[0].id
-  const { rows: personas } = await query('select id, nombre, drive_folder_id from public.personas where id = $1', [p.persona])
+  const { rows: personas } = await query('select id, nombre_completo as nombre, drive_folder_id from public.personas where id = $1', [p.persona])
   if (!personas[0]) return salir(`No existe la persona ${p.persona}.`)
   const persona = personas[0]
 
