@@ -42,6 +42,9 @@ export interface ConexionAlCanal {
 // `Error` juntando los valores de la respuesta del join (`reason`), así que el texto llega entero.
 const TEXTO_DE_RECHAZO = /unauthorized|permission/i
 
+/** Estado propio (no de supabase-js) que se le pasa al motor cuando el servidor negó el tópico. */
+export const ESTADO_RECHAZADO = 'RECHAZADO'
+
 /** ¿El servidor dijo que esta sesión no puede leer el tópico? Un error de transporte no lo es. */
 export function esRechazoDeAutorizacion(estado: string, error?: unknown): boolean {
   if (estado !== 'CHANNEL_ERROR' || !(error instanceof Error)) return false
@@ -70,6 +73,9 @@ export function crearConexion(dep: DependenciasDeConexion): ConexionAlCanal {
       if (mia !== generacion) return
       dep.alEstado(estado)
       if (!esRechazoDeAutorizacion(estado, error)) return
+      // El motor tiene que saber que esto no es una caída de red: sin canal por falta de permiso, el
+      // latido no refresca (sería golpear la base cada 30 s por una pantalla que no es de tiempo real).
+      dep.alEstado(ESTADO_RECHAZADO)
       if (apertura) cerrar()
       else rechazadaAlAbrir = true // el rechazo llegó antes de que `abrir` devolviera
     })
