@@ -85,7 +85,10 @@ test('LOS DÍAS VAN PRIMERO Y DESPUÉS LA PLATA, CON PAGADO Y SALDO EN CADA LADO
     // corresponde, cuánto se pagó y cuánto falta, y la fila cierra con Total · Pagado · Saldo.
     ['horas', 'hsBlanco', 'horaCategoria', 'neto', 'pagadoBanco', 'saldoBanco',
       'hsNegro', 'horaNegro', 'negro', 'pagadoEfectivo', 'saldoEfectivo',
-      'presentismo', 'efectivoRedondeado', 'total', 'pagado', 'saldo'])
+      'presentismo', 'efectivoRedondeado', 'total', 'pagado', 'saldo',
+      // `saldoRedondeado` (16/09/2026, dueño): el saldo al $1.000 como si todo saliera en billetes. Derivada
+      // del Saldo de al lado: se lee, no se edita ni se guarda.
+      'saldoRedondeado'])
   assert.match(GRILLA, /minmax\(var\(--liq-persona,200px\),1fr\) repeat\(\$\{nDias\},\$\{DIA\}px\) \$\{PLATA/, 'los días van antes que la plata')
   assert.match(PANEL, /campo="porBanco"/)
   assert.match(PANEL, /Acuerdo 50\/50/)
@@ -126,7 +129,7 @@ test('NETO (BANCO) Y EFECTIVO DICEN CÓMO SE PAGA, SE MARCAN CUANDO LA FILA NO C
   assert.match(ESTADO, /const cierre = cierreDeLaFila\(l\)/)
   assert.match(GRILLA, /const cierre = cierreDeTotales\(totales\)/)
   for (const r of ['Banco', 'Pagado banco', 'Saldo banco', 'Negro', 'Pagado efectivo', 'Saldo efectivo',
-    'Efectivo redondeado', 'Total', 'Pagado', 'Saldo']) {
+    'Efectivo redondeado', 'Total', 'Pagado', 'Saldo', 'Saldo redondeado']) {
     assert.match(GRILLA, new RegExp(`cifra\\('${r}'`), `el pie publica ${r}`)
   }
   // Y LA LÍNEA QUE CONTESTA LA PREGUNTA DEL DÍA DE PAGO.

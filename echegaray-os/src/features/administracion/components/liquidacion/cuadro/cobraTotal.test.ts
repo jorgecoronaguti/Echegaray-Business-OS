@@ -26,7 +26,7 @@ const ORDEN_DEL_CUADRO = [
   'Horas',
   'Hs recibo', '$/h cat.', 'Banco', 'Pagado', 'Saldo',
   'Hs', '$/h negro', 'Importe', 'Pagado', 'Saldo',
-  'Presentismo', 'Efect. red.', 'Total', 'Pagado', 'Saldo',
+  'Presentismo', 'Efect. red.', 'Total', 'Pagado', 'Saldo', 'Saldo red.',
 ]
 
 // «EFECT. RED. ✎» VUELVE AL CUADRO (dueño, 16/09/2026: la pidió él). MUTACIÓN: sacarla → rojo.
@@ -55,7 +55,8 @@ test('EL ENCABEZADO: Persona · días · Horas · BLANCO(5) · NEGRO(5) · prese
   const fila = GRILLA.slice(GRILLA.indexOf('function Fila('), GRILLA.indexOf('function Total('))
   const orden = ['<CeldaDeDia', '<CeldaHorasPagas', '<CeldaHorasBlanco', '<CeldaHoraCategoria', '<CeldaNeto',
     'campo="pagadoBanco"', 'lado="banco"', '<CeldaHorasNegro', '<CeldaImporteNegro', 'campo="pagadoEfectivo"',
-    'lado="efectivo"', '<CeldaPresentismo', '<CeldaRedondeo', '<CeldaTotal', '<CeldaPagadoTotal', 'lado="total"']
+    'lado="efectivo"', '<CeldaPresentismo', '<CeldaRedondeo', '<CeldaTotal', '<CeldaPagadoTotal', 'lado="total"',
+    '<CeldaSaldoRedondeado']
     .map((x) => fila.indexOf(x))
   assert.ok(orden.every((i) => i > 0), 'están todas las celdas')
   assert.deepEqual([...orden].sort((a, b) => a - b), orden, 'en el orden pedido')
@@ -82,7 +83,34 @@ test('TOTAL EN EL CUADRO Y EN EL PIE; NINGUNA COLUMNA PEGADA A LA DERECHA', () =
   assert.ok(!/position: 'sticky'/.test(GRILLA), 'la grilla declara un sticky propio: sólo Persona (tabla.tsx) es fija')
   // EL SALDO TOTAL ES UNA CELDA COMÚN, la última de la fila y del total.
   const fila = GRILLA.slice(GRILLA.indexOf('function Fila('), GRILLA.indexOf('function Total('))
-  assert.match(fila, /<CeldaPagadoTotal fila=\{fila\} \/>\s*<CeldaSaldo fila=\{fila\} lado="total" \/>\s*<\/div>/)
+  assert.match(fila, /<CeldaPagadoTotal fila=\{fila\} \/>\s*<CeldaSaldo fila=\{fila\} lado="total" \/>\s*<CeldaSaldoRedondeado fila=\{fila\} \/>\s*<\/div>/)
+})
+
+// ═══ «SALDO RED.» — LO QUE RESTA PAGAR, SI SALIERA TODO EN BILLETES (dueño, 16/09/2026) ═══
+//
+// *«dame una columna más al lado de saldo en donde diga saldo redondeado como si lo que resta pagar se pagara en
+// efectivo»*. Va PEGADA A SALDO y sale de él. Lo que este test protege —y las mutaciones que lo ponen en rojo—:
+// que la columna esté al lado de Saldo y no en cualquier lado; que NO sea editable ni se guarde (sería una
+// segunda «Efect. red.», que es otra cosa y sí la decide el dueño); y que el total sume saldos ya redondeados.
+test('SALDO RED. VA AL LADO DE SALDO, SE DERIVA DE ÉL, NO SE EDITA NI SE GUARDA', () => {
+  const plata = GRILLA.slice(GRILLA.indexOf('const PLATA'), GRILLA.indexOf('const ANCHO_DE_BANDA'))
+  const claves = [...plata.matchAll(/clave: '([a-zA-Z]+)'/g)].map((m) => m[1])
+  assert.equal(claves[claves.indexOf('saldoRedondeado') - 1], 'saldo', 'MUTACIÓN: separarla del Saldo')
+  assert.equal(claves[claves.length - 1], 'saldoRedondeado', 'cierra la fila')
+  // EL RÓTULO SIN «✎»: la de al lado, «Efect. red. ✎», sí se escribe. Confundirlas es el defecto a evitar.
+  assert.match(plata, /clave: 'saldoRedondeado', rotulo: 'Saldo red\.'/)
+  assert.ok(!/clave: 'saldoRedondeado', rotulo: '[^']*✎/.test(plata), 'MUTACIÓN: no es editable')
+  // SALE DEL SALDO TOTAL, no de `enEfectivo` ni del redondeo guardado del dueño.
+  const celda = CELDAS.slice(CELDAS.indexOf('export function CeldaSaldoRedondeado('), CELDAS.indexOf('export function CeldaPagadoTotal('))
+  assert.match(celda, /fila\.linea\.pago\.saldoTotal/)
+  assert.ok(!/efectivoRedondeado|enEfectivo/.test(celda), 'MUTACIÓN: se mezcló con la columna que edita el dueño')
+  assert.ok(!/Escribible|onBlur|upsert/.test(celda), 'MUTACIÓN: se volvió escribible')
+  // EL SALDO EXACTO SIGUE VISIBLE en el título: dos cifras casi iguales sin explicación se leen como un error.
+  assert.match(celda, /Saldo exacto \$\{pesos\(saldo\)\}/)
+  // EL TOTAL DE LA COLUMNA Y EL PIE: suma de redondeados uno por uno (`sumaDelSaldoRedondeado`), no de la suma.
+  assert.match(GRILLA, /sumaDelSaldoRedondeado\(visibles\.map\(\(f\) => f\.linea\.pago\.saldoTotal\)\)/)
+  assert.match(GRILLA, /espejo-total-saldo-redondeado/)
+  assert.match(GRILLA, /cifra\('Saldo redondeado'/)
 })
 
 // EL ENCABEZADO FIJO (dueño, 15/09/2026: «quiero eso fijo en liq hs», con captura del cuadro desplazado).
@@ -149,7 +177,7 @@ test('EL TOTAL SE PINTA DE ROJO SÓLO SI LA FILA NO CIERRA; EL ESTIMADO SE VE AP
   assert.match(cuerpo, /estadoDelPago\(l\)/)
   assert.match(cuerpo, /e\.noCierra \? V\.neg/)
   // Y EL ÁMBAR DEL SALDO NEGATIVO: no es un error de la fila, es plata que pasa al otro lado.
-  const saldo = CELDAS.slice(CELDAS.indexOf('export function CeldaSaldo('), CELDAS.indexOf('export function CeldaPagadoTotal('))
+  const saldo = CELDAS.slice(CELDAS.indexOf('export function CeldaSaldo('), CELDAS.indexOf('export function CeldaSaldoRedondeado('))
   assert.match(saldo, /negativo \? V\.warn : V\.tinta/)
   assert.match(saldo, /avisoDeExcedente\(p\)/)
   assert.ok(!/Math\.max\(0,/.test(saldo), 'MUTACIÓN: netear el saldo a cero escondería que cobró de más')

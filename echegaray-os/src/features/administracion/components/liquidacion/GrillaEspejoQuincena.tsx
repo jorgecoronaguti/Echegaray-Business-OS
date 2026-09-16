@@ -35,7 +35,7 @@ import { RotuloDeGrupo } from '../RotuloDeGrupo'
 import { CeldaDeDia, CeldaHorasPagas, CeldaPresentismo, Leida } from './cuadro/CeldasDelEspejo'
 import {
   CeldaHoraCategoria, CeldaHorasBlanco, CeldaHorasNegro, CeldaImporteNegro, CeldaNeto, CeldaPagado,
-  CeldaPagadoTotal, CeldaSaldo, CeldaTotal,
+  CeldaPagadoTotal, CeldaSaldo, CeldaSaldoRedondeado, CeldaTotal,
 } from './cuadro/CeldasBlancoNegro'
 import { CeldaTarifa, rotuloCategoria } from './cuadro/CeldaTarifa'
 import { CeldaRedondeo } from './CeldasDeLiquidacion'
@@ -50,7 +50,7 @@ import { ALTO_LIQ, CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, MONO, fondoDeColumn
 import type { CampoEditable } from '../../services/liquidacionOverrides'
 import type { FilaDelEspejo, TotalesDelEspejo } from '../../services/espejoDeJornales'
 import { cierreDeTotales, type EntradaDeHistorial } from '../../services/cuadroDeJornales'
-import { sumaDelRedondeo } from '../../services/efectivoRedondeado'
+import { sumaDelRedondeo, sumaDelSaldoRedondeado } from '../../services/efectivoRedondeado'
 import { rotuloDelMensual } from '../../services/cobroMensual'
 import type { DetalleLaboral } from '../../services/detalleLaboral'
 
@@ -110,6 +110,10 @@ const PLATA = [
   { clave: 'total', rotulo: 'Total', px: 124 },
   { clave: 'pagado', rotulo: 'Pagado', px: 112 },
   { clave: 'saldo', rotulo: 'Saldo', px: 120 },
+  // «SALDO RED.» (dueño, 16/09/2026): *«dame una columna más al lado de saldo en donde diga saldo redondeado
+  // como si lo que resta pagar se pagara en efectivo»*. Derivada del Saldo de al lado, al $1.000: no se edita,
+  // no se guarda y no entra en ninguna cuenta. Distinta de «Efect. red.», que redondea el lado negro.
+  { clave: 'saldoRedondeado', rotulo: 'Saldo red.', px: 120 },
 ] as const
 
 /** Cuántas columnas cubre cada banda. Blanco y negro tienen las mismas cinco: se leen en paralelo. */
@@ -190,6 +194,9 @@ export function GrillaEspejoQuincena({
   // EL PIE DEL REDONDEO SUMA LO QUE SE VE: las mismas filas del recorte, guardado o sugerido. Sólo el pie: la
   // columna salió del cuadro el 16/09/2026 (ver `PLATA`).
   const redondeo = sumaDelRedondeo(visibles.map((f) => f.linea))
+  // EL TOTAL DE «SALDO RED.» SUMA SALDOS YA REDONDEADOS UNO POR UNO, no redondea la suma: lo que sale en
+  // billetes es la suma de los sobres, y tres saldos de $400 no son un billete de $1.000.
+  const saldoRed = sumaDelSaldoRedondeado(visibles.map((f) => f.linea.pago.saldoTotal))
   const ancho = anchoDe(dias.length)
   // ═══ EL ANCHO DE PERSONA SE ARRASTRA (dueño, 16/09/2026: «permitime hacer más ancha la columna») ═══
   //
@@ -262,10 +269,10 @@ export function GrillaEspejoQuincena({
             </div>
           ))}
 
-          <Total columnas={columnas} dias={dias} totales={totales} redondeo={redondeo} />
+          <Total columnas={columnas} dias={dias} totales={totales} redondeo={redondeo} saldoRed={saldoRed} />
         </div>
       </CintaHorizontal>
-      <PieDelEspejo totales={totales} redondeo={redondeo} />
+      <PieDelEspejo totales={totales} redondeo={redondeo} saldoRed={saldoRed} />
       {/* `key` = LA PERSONA. Sin la clave, abrir a otra persona reutiliza el mismo árbol y cada celda
           editable conserva lo tecleado para la anterior (dueño, 11/09/2026: «si cambiás de persona la
           hora se cambia»). */}
@@ -439,15 +446,18 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
       <CeldaTotal fila={fila} edicion={{ quincena, camposEditables }} />
       <CeldaPagadoTotal fila={fila} />
       <CeldaSaldo fila={fila} lado="total" />
+      <CeldaSaldoRedondeado fila={fila} />
     </div>
   )
 }
 
 /** La fila de total: suma las filas VISIBLES, columna por columna de plata. Cierra igual que cada fila. */
-function Total({ columnas, dias, totales, redondeo }: {
+function Total({ columnas, dias, totales, redondeo, saldoRed }: {
   columnas: string; dias: readonly string[]; totales: TotalesDelEspejo
   /** Suma de lo que muestra la columna del redondeo en las filas visibles (guardado o sugerido). */
   redondeo: number
+  /** Suma de los saldos redondeados de las filas visibles: lo que saldría hoy en billetes. */
+  saldoRed: number
 }) {
   const cierre = cierreDeTotales(totales)
   const noCierra = cierre?.cierra === false
@@ -483,6 +493,7 @@ function Total({ columnas, dias, totales, redondeo }: {
       <Leida valor={totales.pago.pagado} testid="espejo-total-pagado" />
       <div data-testid="espejo-total-saldo"
         style={{ textAlign: 'right', fontSize: '14px', whiteSpace: 'nowrap', color: totales.pago.saldoTotal < 0 ? V.warn : V.tinta }}>{pesos(totales.pago.saldoTotal)}</div>
+      <Leida valor={saldoRed > 0 ? saldoRed : null} testid="espejo-total-saldo-redondeado" />
     </div>
   )
 }
@@ -499,7 +510,7 @@ function SaldoTotal({ valor, testid }: { valor: number; testid: string }) {
  * EL PIE: los totales de cada columna de plata —lo que va al lote del banco, lo del negro, los sobres— y lo
  * que el total no pudo sumar. Recorta con el filtro, porque sale de los mismos totales.
  */
-function PieDelEspejo({ totales, redondeo }: { totales: TotalesDelEspejo; redondeo: number }) {
+function PieDelEspejo({ totales, redondeo, saldoRed }: { totales: TotalesDelEspejo; redondeo: number; saldoRed: number }) {
   const cierre = cierreDeTotales(totales)
   const p = totales.pago
   const avisos: string[] = []
@@ -538,6 +549,7 @@ function PieDelEspejo({ totales, redondeo }: { totales: TotalesDelEspejo; redond
       {cifra('Total', totales.cobra, 'pie-total')}
       {cifra('Pagado', p.pagado, 'pie-pagado')}
       {cifra('Saldo', p.saldoTotal, 'pie-saldo')}
+      {cifra('Saldo redondeado', saldoRed > 0 ? saldoRed : null, 'pie-saldo-redondeado')}
       {/* LA LÍNEA QUE CONTESTA LA PREGUNTA DEL DÍA DE PAGO: con la caja en la mano, cuánto sale por cada canal.
           El exceso de un lado ya está descontado del otro, así que estas dos SUMAN el saldo y no más. */}
       <span data-testid="pie-a-pagar" style={{ fontWeight: 600 }}>

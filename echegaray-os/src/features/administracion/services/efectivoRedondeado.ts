@@ -133,3 +133,37 @@ export async function escribirRedondeo(
 export function sumaDelRedondeo(filas: readonly { efectivoRedondeado: number | null; enEfectivo: number | null }[]): number {
   return filas.reduce((s, f) => s + (efectivoMostrado(f).valor ?? 0), 0)
 }
+
+// ═══ SALDO REDONDEADO — LO QUE RESTA PAGAR, SI SALIERA TODO EN BILLETES (dueño, 16/09/2026) ═══
+//
+// *«dame una columna más al lado de saldo en donde diga saldo redondeado como si lo que resta pagar se
+// pagara en efectivo»*. No es la columna «Efect. red.»: aquélla redondea lo que corresponde por el lado
+// negro y el dueño la edita; ésta es DERIVADA del saldo total —cuánto falta pagarle, sin importar por qué
+// canal— llevado al mismo paso de $1.000 con que se cuentan los billetes.
+//
+// NO SE GUARDA Y NO ENTRA EN NINGUNA CUENTA: es lectura. El saldo real sigue siendo el de al lado, y la
+// diferencia entre los dos se dice en el `title` para que nadie crea que el cuadro perdió o regaló plata.
+
+export interface SaldoRedondeado {
+  /** El saldo al $1.000 más cercano. `null` cuando no hay saldo que afirmar o no hay nada que entregar. */
+  valor: number | null
+  /** Redondeado − saldo: lo que se entrega de más (positivo) o de menos (negativo). 0 cuando cae justo. */
+  diferencia: number
+}
+
+/**
+ * El saldo llevado al paso del redondeo. Devuelve `null` con saldo nulo (sin negro no hay saldo que
+ * afirmar), con saldo ≤ 0 (no hay nada que entregar: cero, o pagado de más, que es una devolución y no se
+ * redondea) y cuando el redondeo da cero (un saldo de $400 no se entrega como $0: se entrega o no se entrega).
+ */
+export function saldoRedondeado(saldo: number | null | undefined): SaldoRedondeado {
+  if (saldo == null || !Number.isFinite(saldo) || saldo <= 0) return { valor: null, diferencia: 0 }
+  const valor = Math.round(saldo / PASO_DEL_REDONDEO) * PASO_DEL_REDONDEO
+  if (valor <= 0) return { valor: null, diferencia: 0 }
+  return { valor, diferencia: Math.round((valor - saldo) * 100) / 100 }
+}
+
+/** El pie de la columna: la suma de los saldos YA redondeados uno por uno, que es lo que sale en billetes. */
+export function sumaDelSaldoRedondeado(saldos: readonly (number | null | undefined)[]): number {
+  return saldos.reduce<number>((s, v) => s + (saldoRedondeado(v).valor ?? 0), 0)
+}
