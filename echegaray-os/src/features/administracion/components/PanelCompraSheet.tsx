@@ -32,8 +32,10 @@ import { COLOR_PROP, propiedadesDe, reclamoDe } from '../services/panelCompraShe
 import { urlDelAdjunto } from '../services/comprasAdjuntoActions'
 import type { Adjunto, FilaConPapel } from '../services/comprasSheetService'
 import { estaReconocido, type IdentidadResuelta } from '../services/identidadProveedorService'
+import type { EstadoEnSheet } from '../services/pagoDeCompra'
 import { ConfirmarIdentidad } from './ConfirmarIdentidad'
 import { EditorObraDeCompra } from './EditorObraDeCompra'
+import { PagoDeCompra } from './PagoDeCompra'
 
 const esImagen = (a: Adjunto) => a.media_type?.startsWith('image/')
 
@@ -105,6 +107,7 @@ function Papel({ a }: { a: Adjunto }) {
  */
 export function PanelCompraSheet({
   fila, cerrarHref, hrefsFiltro, identidad, obraEditable = false, opcionesObra = [],
+  pagoEnSheet = 'sin_pedido', pagoMotivo = null,
 }: {
   fila: FilaConPapel
   cerrarHref: string
@@ -113,6 +116,9 @@ export function PanelCompraSheet({
   /** La base tiene la columna Obra (migración 20260915T0700): se puede elegir. */
   obraEditable?: boolean
   opcionesObra?: string[]
+  /** En qué punto del viaje al Sheet está el último pago pedido desde la app. */
+  pagoEnSheet?: EstadoEnSheet
+  pagoMotivo?: string | null
 }) {
   const reclamo = reclamoDe(fila)
   return (
@@ -208,6 +214,7 @@ export function PanelCompraSheet({
       {/* EL PIE DE ACCIONES DEL HANDOFF v4. Va último, después de las propiedades y del papel: lo
           que se decide se decide DESPUÉS de haber leído lo que hay. */}
       <EditorObraDeCompra fila={fila.fila} celda={fila.obra?.celda ?? null} opciones={opcionesObra} editable={obraEditable} />
+      <PagoDeCompra fila={fila.fila} compra={fila} enSheet={pagoEnSheet} motivo={pagoMotivo} />
       <AccionesCompra clave={fila.clave} filaCompras={fila.fila} />
     </PanelFilo>
   )

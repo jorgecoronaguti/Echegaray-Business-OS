@@ -60,6 +60,9 @@ export function propiedadesDe(f: FilaConPapel): Prop[] {
       v: f.fecha_prevista ? new Date(f.fecha_prevista).toLocaleDateString('es-AR') : 'sin fecha prevista',
       tono: f.fecha_prevista ? undefined : 'apagado',
     },
+    // LOS DOS TRAMOS DE PAGO, tal como los registra la pestaña. Una sola línea y sólo cuando hay algo
+    // que decir: una fila sin pagar no gana un renglón que diga «—».
+    ...tramosDePago(f),
     {
       k: 'Deuda parcial',
       v: (deuda != null && deuda > 0 ? pesos(deuda) : null) ?? 'sin deuda',
@@ -67,6 +70,27 @@ export function propiedadesDe(f: FilaConPapel): Prop[] {
     },
     { k: 'Origen', v: `pestaña Compras · fila ${f.fila}`, tono: 'apagado' },
   ]
+}
+
+/**
+ * LO QUE YA SE PAGÓ, EN LOS DOS TRAMOS DE LA PESTAÑA.
+ *
+ * `Monto Parcial 1` no aparece y no es un olvido: es la fórmula `=T-O` —el saldo que queda después
+ * del primer tramo, negativo— y mostrarlo como un pago haría que la pantalla cuente la misma plata
+ * dos veces. El segundo tramo se nombra con su fecha porque sin ella «$1.300.000» no dice cuándo.
+ */
+export function tramosDePago(f: FilaConPapel): Prop[] {
+  const out: Prop[] = []
+  const t1 = f.monto_pagado ?? 0
+  const t2 = f.monto_parcial_2 ?? 0
+  if (t1 <= 0 && t2 <= 0) return out
+  const forma = f.pago_total_o_parcial?.trim()
+  if (t1 > 0) out.push({ k: 'Pagado', v: `${pesos(t1)}${forma ? ` · ${forma}` : ''}`, tono: 'ok' })
+  if (t2 > 0) {
+    const cuando = f.fecha_prevista_2 ? new Date(f.fecha_prevista_2).toLocaleDateString('es-AR') : null
+    out.push({ k: '2.º tramo', v: `${pesos(t2)}${cuando ? ` · ${cuando}` : ''}`, tono: 'ok' })
+  }
+  return out
 }
 
 /**

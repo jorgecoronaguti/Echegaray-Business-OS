@@ -20,13 +20,14 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+// Un archivo `'use server'` sólo puede exportar funciones asíncronas: la lista de medios vive en el
+// módulo puro de al lado, que además la prueba.
+import { MEDIOS_DE_PAGO } from './pagoDeCompra'
 import {
   planDePago, planDeDeshacerCompleto,
 } from '../../../../orquestador/lib/pagos-de-compra.mjs'
 
 const RUTA = '/administracion/compras'
-/** Los seis del desplegable estricto de «Tipo pago» (`carga-comprobantes.mjs · TIPOS_PAGO`). */
-export const MEDIOS_DE_PAGO = ['Efectivo', 'Transferencia', 'Débito', 'Tarjeta Crédito', 'Echeq', 'Cheque'] as const
 
 export type ResultadoPago = { ok: true; pendiente: true; cambioId: string | null } | { ok: false; error: string }
 
@@ -132,6 +133,30 @@ async function encolar(
   if (!r?.ok) return { ok: false, error: r?.error ?? 'La base rechazó el pago.' }
   refrescar(proveedorId)
   return { ok: true, pendiente: true, cambioId: r.cambio_id ?? null }
+}
+
+/**
+ * EN QUÉ PUNTO DEL VIAJE ESTÁ EL ÚLTIMO PAGO DE CADA FILA.
+ *
+ * Es lo que le permite a la pantalla decir «pendiente de Sheet» o «✓ en Sheet» en vez de afirmar un
+ * efecto que todavía no ocurrió. Se lee del mismo lugar donde vive el pedido: la cola.
+ */
+export async function pagosEnCola(filas: number[]): Promise<Map<number, { estado: string; motivo: string | null }>> {
+  const v = z.array(z.number().int().min(4)).max(3000).safeParse(filas)
+  if (!v.success || !v.data.length) return new Map()
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('compra_obra_cambio')
+    .select('fila, estado, motivo, creado_at')
+    .eq('tipo', 'pago').in('fila', v.data)
+    .order('creado_at', { ascending: false })
+  // Sin la migración la columna `tipo` no existe: la pantalla se dibuja sin leyendas, no rota.
+  if (error) return new Map()
+  const out = new Map<number, { estado: string; motivo: string | null }>()
+  for (const f of (data ?? []) as { fila: number; estado: string; motivo: string | null }[]) {
+    if (!out.has(f.fila)) out.set(f.fila, { estado: f.estado, motivo: f.motivo })
+  }
+  return out
 }
 
 const Deshacer = z.object({ fila: z.number().int().min(4), proveedorId: z.string().uuid().nullish() })
