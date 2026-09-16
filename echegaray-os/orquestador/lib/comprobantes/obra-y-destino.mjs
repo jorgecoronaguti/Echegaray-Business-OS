@@ -36,6 +36,7 @@
 import { normAlias } from '../jornales-a-registros-hh.mjs'
 import { asignadorDeCompras } from '../compras-obra-asignada.mjs'
 import { DESTINO, FIJOS, catalogoDeDestinos, resolverCeldaObra, rotuloDeObra, unidadIncoherente } from '../obra-destino.mjs'
+import { indiceDeAnotacion } from './anotacion-a-obra.mjs'
 import { REGLAS, rubroDeCaja } from '../rubro-caja.mjs'
 
 export const PESTANA_COMPRAS = 'Compras'
@@ -68,6 +69,9 @@ export function destinosDeObra({ alias = new Map(), canonicas = [], clienteAlias
   return {
     asignar: asignadorDeCompras({ alias, canonicas, clienteAlias }),
     cat: catalogoDeDestinos({ obras: canonicas, clienteAlias }),
+    // El índice de lo escrito a mano se arma UNA vez con la corrida, igual que los otros dos: por
+    // comprobante costaría recorrer el catálogo entero por cada palabra de cada anotación.
+    indice: indiceDeAnotacion({ obras: canonicas, clienteAlias, alias }),
     porId: new Map(canonicas.map((o) => [o.id, o])),
   }
 }
@@ -103,7 +107,13 @@ export function obraParaLaColumna(c = {}, destinos = null) {
   if (elegida) {
     const x = resolverCeldaObra(elegida, destinos.cat)
     if (x.error) return nada(x.error)
-    r = { valor: elegida, obra_id: x.obra_id, destino: x.destino, via: 'elegida', porque: 'elegida por una persona' }
+    // DE DÓNDE SALIÓ ESE VALOR. Hasta el 15/09 la única vía posible era una persona eligiendo en el
+    // chat; desde que lo escrito a mano resuelve la obra (`anotacion-a-obra.mjs`) también llega por
+    // ahí, y decir «elegida por una persona» de algo que leyó un modelo sería presentar una lectura
+    // como una decisión — la Regla de Oro #2 con otra ropa.
+    const via = c.obraFilaVia === 'anotacion' ? 'anotacion' : 'elegida'
+    const porque = via === 'anotacion' ? (c.obraFilaPorque ?? 'lo escrito a mano') : 'elegida por una persona'
+    r = { valor: elegida, obra_id: x.obra_id, destino: x.destino, via, porque }
   } else {
     const deHistorial = ['obra', 'detalle'].filter((d) => c[`${d}Via`] === 'historial')
     if (deHistorial.length) {

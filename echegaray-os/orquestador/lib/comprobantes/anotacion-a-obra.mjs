@@ -179,6 +179,7 @@ export function indiceDeAnotacion({ obras = [], clienteAlias = new Map(), alias 
     esIndice: true,
     fichas,
     clientes,
+    clienteAlias,
     porCodigo: new Map(vivas.map((o) => [String(o.codigo).toUpperCase(), o])),
     porAlias: new Map([...alias].map(([a, id]) => [a, fichas.find((f) => f.obra.id === id)?.obra ?? null])),
   }
@@ -427,7 +428,10 @@ export function completarDesdeAnotacion(comprobante, catalogo, o = {}) {
     aplicado.push(dim)
   }
   poner('obraFila', 'obraFila', r.valor)
-  poner('obra', 'obra', deLaLista(r.cliente, listas?.obras))
+  // EL PORQUÉ VIAJA CON EL VALOR. `obraParaLaColumna` lo imprime tal cual: sin él, el informe del
+  // cargador diría «elegida por una persona» de algo que salió de una foto.
+  if (c.obraFilaVia === 'anotacion') c.obraFilaPorque = r.porque
+  poner('obra', 'obra', jDelCliente(r.cliente, listas?.obras, indiceDe(catalogo)?.clienteAlias))
   poner('unidad', 'unidad', deLaLista(r.unidad, listas?.unidades))
   poner(campoDetalle, 'detalle', r.detalle)
   return { aplicado, resultado: r, anotacion }
@@ -438,4 +442,19 @@ export function deLaLista(valor, lista) {
   const v = normalizar(valor)
   if (!v || !Array.isArray(lista)) return null
   return lista.find((x) => normalizar(x) === v) ?? null
+}
+
+/**
+ * LA J («Cliente / Asignación») DE ESTE CLIENTE, CON EL RÓTULO EXACTO DEL DESPLEGABLE.
+ *
+ * El cliente canónico y el rótulo del desplegable no son el mismo texto: el catálogo dice
+ * «QUATTROPANI» y la columna J dice «Quattropani - Melisa García SAS». Comparar los dos como texto
+ * deja la J vacía… y entonces el historial la llena con el cliente de OTRA obra, que es exactamente
+ * la fila incoherente que este arreglo evita (L de una obra, J de otro cliente). El puente es
+ * `cliente_alias`, el MISMO mapa con el que el sync decide de quién es cada fila.
+ */
+export function jDelCliente(cliente, lista, clienteAlias = null) {
+  const exacto = deLaLista(cliente, lista)
+  if (exacto || !cliente || !Array.isArray(lista) || !clienteAlias) return exacto
+  return lista.find((x) => clienteAlias.get(normAlias(x)) === cliente) ?? null
 }

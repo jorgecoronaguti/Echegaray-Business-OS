@@ -82,32 +82,41 @@ function poner(c, dim, campo, valor) {
  *   `sugerencia`: lo que la lib contestó, incluido lo que NO se aplicó — es con lo que el mensaje
  *   pregunta sin preguntar en blanco.
  */
-export function completarUno(comprobante, perfiles = null, { campoDetalle = 'detalleObra' } = {}) {
+export function completarUno(comprobante, perfiles = null, { campoDetalle = 'detalleObra', salvo = [] } = {}) {
   const c = comprobante ?? {}
   if (!perfiles?.por_proveedor || !c.proveedor) return { aplicado: {}, sugerencia: null }
+  // ═══ LO QUE OTRA FUENTE YA DECIDIÓ NO SE COMPLETA CON UN PROMEDIO (15/09/2026) ═══
+  //
+  // `salvo` son las dimensiones que quedan fuera del alcance del historial en ESTA llamada. Existe
+  // porque «vacía» y «sin decidir» dejaron de ser lo mismo: cuando lo escrito a mano resolvió la
+  // obra, la J puede quedar vacía igual (el rótulo del cliente no está en el desplegable) y el
+  // historial la llenaba con el cliente de OTRA obra. La fila salía con la columna «Obra» de
+  // Quattropani y la J de La Estrella: dos clientes en la misma fila, cada cruce del Sheet contando
+  // una cosa distinta. La sugerencia se sigue devolviendo entera; lo que no se hace es escribirla.
+  const vedada = (d) => salvo.includes(d)
   const base = { proveedor: c.proveedor, concepto: c.concepto, monto: c.total ?? c.neto }
   let s = sugerirImputacion({ ...base, obra: c.obra }, perfiles)
   const aplicado = {}
 
-  if (!yaTiene(c, CAMPO.obra) && firme(s.obra)) {
+  if (!vedada('obra') && !yaTiene(c, CAMPO.obra) && firme(s.obra)) {
     poner(c, 'obra', CAMPO.obra, s.obra.sugerido)
     aplicado.obra = { n: s.obra.n, share: s.obra.share }
     // EL DETALLE CUELGA DE LA OBRA. Con la obra recién resuelta hay que volver a preguntar, o se
     // estaría ofreciendo el detalle más frecuente de OTRA obra.
     s = sugerirImputacion({ ...base, obra: c.obra }, perfiles)
   }
-  if (!yaTiene(c, campoDetalle) && firme(s.detalle)) {
+  if (!vedada('detalle') && !yaTiene(c, campoDetalle) && firme(s.detalle)) {
     poner(c, 'detalle', campoDetalle, s.detalle.sugerido)
     aplicado.detalle = { n: s.detalle.n, share: s.detalle.share, obra: s.detalle.obra ?? c.obra ?? null }
   }
-  if (!yaTiene(c, CAMPO.unidad) && firme(s.unidad)) {
+  if (!vedada('unidad') && !yaTiene(c, CAMPO.unidad) && firme(s.unidad)) {
     poner(c, 'unidad', CAMPO.unidad, s.unidad.sugerido)
     aplicado.unidad = { n: s.unidad.n, share: s.unidad.share }
   }
   // LA CATEGORÍA (columna B) QUEDABA VACÍA EN TODA FILA QUE CARGÓ EL BOT (04/08). Depende del
   // proveedor y de casi nada más —un corralón siempre es la misma categoría—, así que es la dimensión
   // que el historial resuelve mejor. Mismos umbrales que las otras tres.
-  if (!yaTiene(c, CAMPO.categoria) && firme(s.categoria)) {
+  if (!vedada('categoria') && !yaTiene(c, CAMPO.categoria) && firme(s.categoria)) {
     poner(c, 'categoria', CAMPO.categoria, s.categoria.sugerido)
     aplicado.categoria = { n: s.categoria.n, share: s.categoria.share }
   }
