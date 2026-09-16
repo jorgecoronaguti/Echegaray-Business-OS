@@ -33,6 +33,7 @@
 // lo que el principio de cierre prohíbe.
 
 import { useState, useTransition } from 'react'
+import { useEstadoDelServidor } from '@/shared/tiempo-real/useEstadoDelServidor'
 import { V } from '@/shared/components/v2/patron'
 import { asignarObraDeCompra } from '../services/obraDeCompraActions'
 
@@ -57,7 +58,8 @@ export function ObraEnLinea({
   /** El proveedor cuya ficha hay que refrescar además de Compras. La acción sólo acepta un uuid. */
   revalidarProveedor?: string
 }) {
-  const [valor, setValor] = useState(celda ?? NINGUNA)
+  // La obra la puede cambiar otro usuario: se adopta al releer (tiempo real, 16/09/2026).
+  const [valor, setValor] = useEstadoDelServidor(celda ?? NINGUNA)
   const [guardado, setGuardado] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pendiente, empezar] = useTransition()

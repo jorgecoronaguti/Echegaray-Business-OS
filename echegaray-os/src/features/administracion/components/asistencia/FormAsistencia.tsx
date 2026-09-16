@@ -1,10 +1,11 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
+import { fusionarConElServidor, huellaDe } from '@/shared/tiempo-real/estadoDelServidor'
 import { Aviso, Boton, ErrorCampo, Nulo } from '@/shared/components/ds'
 import {
   ausenciasSinJornada, avisoDeFaltantes, casillasIniciales, estadoDeCasilla, hs, loQueViaja, personasAVaciar,
-  ponerLaJornada, resumenJornada, sumarPersonasNuevas,
+  ponerLaJornada, resumenJornada,
 } from '@/features/administracion/services/jornadaPorObra'
 import type {
   CasillaJornada, FilaJornada, OtraCargaDelDia,
@@ -67,19 +68,20 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas, pres
   const [casillas, setCasillas] = useState<Record<string, CasillaJornada>>(() => casillasIniciales(filas))
   const [resultado, setResultado] = useState<{ ok: boolean; texto: string } | null>(null)
 
-  // ═══ CUANDO LA CUADRILLA CAMBIA SIN RECARGAR LA PANTALLA (08/09/2026) ═══
+  // ═══ CUANDO LA PANTALLA CAMBIA SIN RECARGARSE (08/09/2026 · 16/09/2026) ═══
   //
   // «Traer a alguien a esta obra» hace `router.refresh()`: el servidor manda una fila más y este
   // componente no se vuelve a montar, así que el inicializador de `useState` NO corre y el recién
-  // llegado se quedaba sin casilla. Se dibujaba bien —vacío, que es lo correcto— y «poner la
-  // jornada a los que faltan» lo salteaba, porque ese botón recorre las casillas y no las filas.
-  // Es el ajuste de estado por cambio de props que documenta React; la regla y su prueba están en
-  // `sumarPersonasNuevas`, y la clave es la lista de personas, no un contador.
-  const clave = filas.map((f) => f.persona.persona_id).join('|')
-  const [claveVista, setClaveVista] = useState(clave)
-  if (clave !== claveVista) {
-    setClaveVista(clave)
-    setCasillas((prev) => sumarPersonasNuevas(prev, filas))
+  // llegado se quedaba sin casilla. Desde el 16/09 pasa lo mismo con lo que OTRO usuario guarda
+  // (tiempo real, teléfono ↔ compu): las horas que cargó se tienen que ver acá. Se fusiona por fila con
+  // `fusionarConElServidor`: lo tocado y no guardado se respeta, lo intacto adopta lo guardado.
+  const base = useMemo(() => casillasIniciales(filas), [filas])
+  const huellaBase = huellaDe(base)
+  const [baseVista, setBaseVista] = useState(() => ({ huella: huellaBase, base }))
+  if (huellaBase !== baseVista.huella) {
+    const anterior = baseVista.base
+    setBaseVista({ huella: huellaBase, base })
+    setCasillas((prev) => fusionarConElServidor(prev, anterior, base))
   }
 
   const [pendiente, arrancar] = useTransition()

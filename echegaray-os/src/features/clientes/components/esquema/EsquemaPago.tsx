@@ -18,6 +18,7 @@
 // ve en cada clic.
 
 import { useState } from 'react'
+import { useEstadoDelServidor } from '@/shared/tiempo-real/useEstadoDelServidor'
 import type { ResultadoAccion } from '@/shared/components/ui/FormAccion'
 import { C, MONO } from '../canon/tokens'
 import { Ico, P } from '../canon/Iconos'
@@ -75,7 +76,9 @@ export function EsquemaPago({ esquema, hoy, clienteId, editarPago, publicarEsque
   editarPago: (pagoId: string, cambio: CambioPago) => Promise<ResultadoAccion>
   publicarEsquema: (entrada: { clienteId: string }) => Promise<ResultadoAccion>
 }) {
-  const [pagos, setPagos] = useState<PagoEsquema[]>(esquema?.pagos ?? [])
+  // Los pagos son la copia optimista de lo guardado: adoptan lo que traiga el servidor cuando cambia
+  // (otro usuario movió una fecha), y mientras tanto muestran lo que esta persona acaba de tocar.
+  const [pagos, setPagos] = useEstadoDelServidor<PagoEsquema[]>(esquema?.pagos ?? [])
   const [vista, setVista] = useState<'listado' | 'calendario'>('listado')
   const [elegido, setElegido] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)

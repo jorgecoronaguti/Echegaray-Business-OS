@@ -22,9 +22,12 @@
 // Filtrar una derivación arregla UNA vista. Filtrar el ORIGEN arregla todas las que existen hoy y las
 // que se escriban mañana. Es la misma regla que el resto del archivo: una capacidad, una fuente.
 //
-// El duplicado entra en `comprobantes_arca` —la réplica recibe el mismo comprobante en más de una
-// descarga del libro y no tiene clave única que lo impida—. El arreglo de fondo es del importador;
-// hasta que llegue, acá se deja de mostrar el defecto de una fuente como si fuera dato.
+// El duplicado entraba en `comprobantes_arca`: su clave única es (tipo_libro, cae, numero) y los tiques
+// sin CAE (tipos 81/112) traen `cae` NULL, que no choca en un índice único. Cada re-ingesta los volvía
+// a insertar — 131 filas de más al 16/09/2026. El arreglo de fondo ya está en el origen:
+// 20260916T1900 borró las copias y creó un índice único parcial para los sin CAE, y la ingesta apunta
+// su `on conflict` a él con `conflictoIngesta` (abajo). Este filtro queda para los lectores que no
+// pasan por la tabla ya limpia.
 //
 // ═══ LA CLAVE: TIPO + EMISOR + PUNTO DE VENTA + NÚMERO + IMPORTE ═══
 //
@@ -84,3 +87,27 @@ export function sinComprobantesRepetidos(libro = [], opts = {}) {
     return true
   })
 }
+
+/**
+ * El destino del `on conflict` con el que la ingesta escribe un comprobante en `comprobantes_arca`.
+ *
+ * POR QUÉ DOS: un comprobante con CAE se identifica por (tipo_libro, cae, numero), la clave única de
+ * siempre. Uno SIN CAE no puede usarla —NULL no choca con NULL, y así entraron 131 copias—, y va
+ * contra el índice parcial `comprobantes_arca_sin_cae_identidad` (20260916T1900). Postgres sólo
+ * infiere un índice parcial si el `on conflict` repite su `where`: sin él, el insert revienta con
+ * «no unique or exclusion constraint matching».
+ *
+ * Un CAE vacío o con espacios cuenta como ausente: la ingesta lo guarda como NULL.
+ *
+ * @param {unknown} cae
+ * @returns {string} fragmento SQL para `on conflict <esto> do update ...`
+ */
+export function conflictoIngesta(cae) {
+  const tiene = cae != null && String(cae).trim() !== ''
+  return tiene
+    ? '(tipo_libro, cae, numero)'
+    : '(tipo_libro, tipo_comprobante, emisor_cuit, punto_venta, numero) where cae is null'
+}
+
+/** El CAE tal como se guarda: vacío → NULL, para que `conflictoIngesta` y la fila digan lo mismo. */
+export const caeNormalizado = (cae) => (cae != null && String(cae).trim() !== '' ? String(cae).trim() : null)

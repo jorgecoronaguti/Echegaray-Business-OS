@@ -1,10 +1,11 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
+import { fusionarConElServidor, huellaDe } from '@/shared/tiempo-real/estadoDelServidor'
 import { Aviso, Boton, Nulo } from '@/shared/components/ds'
 import {
   acusePresencia, avisoSinMarcar, casillasDePresencia, estadoSegunMotivo, loQueViajaPresencia,
-  marcarTodosPresentes, personasAMarcar, resumenPresencia, sumarPersonasNuevasPresencia,
+  marcarTodosPresentes, personasAMarcar, resumenPresencia,
 } from '@/features/administracion/services/presenciaDelDia'
 import type {
   CasillaPresencia, EstadoPresencia, PresenciaGuardada,
@@ -71,15 +72,18 @@ export function FormPresencia({ obraId, obraNombre, fecha, filas, guardadas, onG
   const [resultado, setResultado] = useState<{ ok: boolean; texto: string } | null>(null)
   const [pendiente, arrancar] = useTransition()
 
-  // LA CUADRILLA CAMBIA SIN RECARGAR LA PANTALLA: «Traer a alguien a esta obra» hace
-  // `router.refresh()` y este componente no se vuelve a montar, así que el inicializador de
-  // `useState` NO corre y el recién llegado se quedaba sin casilla. Misma forma y mismo motivo que
-  // en `FormAsistencia`; la regla y su prueba están en `sumarPersonasNuevasPresencia`.
-  const clave = ids.join('|')
-  const [claveVista, setClaveVista] = useState(clave)
-  if (clave !== claveVista) {
-    setClaveVista(clave)
-    setCasillas((prev) => sumarPersonasNuevasPresencia(prev, ids))
+  // LO QUE CAMBIA SIN RECARGAR LA PANTALLA: «Traer a alguien a esta obra» (una fila más) y, desde el
+  // 16/09/2026, lo que OTRO usuario guardó mientras esta pantalla estaba abierta (tiempo real: el
+  // teléfono y la compu se ven entre sí). El componente no se vuelve a montar, así que el inicializador
+  // de `useState` no corre: se fusiona por fila. Lo que esta persona tocó y no guardó se respeta; lo
+  // intacto adopta lo guardado. La regla y su prueba: `fusionarConElServidor`.
+  const base = useMemo(() => casillasDePresencia(ids, guardadas), [ids, guardadas])
+  const huellaBase = huellaDe(base)
+  const [baseVista, setBaseVista] = useState(() => ({ huella: huellaBase, base }))
+  if (huellaBase !== baseVista.huella) {
+    const anterior = baseVista.base
+    setBaseVista({ huella: huellaBase, base })
+    setCasillas((prev) => fusionarConElServidor(prev, anterior, base))
   }
 
   const motivos = useMemo(() => motivosDeDiaNoTrabajado(), [])
