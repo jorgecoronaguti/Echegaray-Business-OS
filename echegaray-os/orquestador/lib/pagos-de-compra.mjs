@@ -85,6 +85,21 @@ export const ESCRIBIBLES = Object.freeze(new Set(
     .map((c) => c.rotulo),
 ))
 
+/**
+ * Rótulo de la columna → la clave con la que la fila viaja en `compra_sheet` y en `filaACompra`.
+ *
+ * Vive acá y no en el bisturí porque la usan los dos lados del viaje: el que arma el plan y el que lo
+ * aplica. Dos mapas serían dos opiniones sobre qué columna es «Monto Pagado».
+ */
+export const CLAVE_POR_ROTULO = Object.freeze({
+  [ROTULOS_PAGO.tipoPago]: 'tipo_pago',
+  [ROTULOS_PAGO.totalParcial]: 'pago_total_o_parcial',
+  [ROTULOS_PAGO.pagado]: 'monto_pagado',
+  [ROTULOS_PAGO.fechaPrevista2]: 'fecha_prevista_2',
+  [ROTULOS_PAGO.parcial2]: 'monto_parcial_2',
+  [ROTULOS_PAGO.estado]: 'estado',
+})
+
 /** La especie de cada celda que un pago escribe: decide cómo se manda y cómo se relee. */
 export const ESPECIE_PAGO = Object.freeze({
   [ROTULOS_PAGO.tipoPago]: 'texto',
@@ -329,6 +344,38 @@ export function planDeDeshacer(celdas = []) {
   }
   if (!reponer.length) return error('no hay ninguna celda que se pueda devolver a su valor anterior')
   return { celdas: reponer, sinDeshacer }
+}
+
+/** Una fila con las celdas aplicadas encima. No muta la de entrada. */
+export function aplicarCeldasDePago(compra = {}, celdas = []) {
+  const out = { ...compra }
+  for (const c of celdas ?? []) {
+    const k = CLAVE_POR_ROTULO[c?.rotulo]
+    if (k) out[k] = c.valor
+  }
+  return out
+}
+
+/**
+ * DESHACER COMPLETO: las celdas a reponer Y cómo queda la fila, con lo que no se pudo declarado.
+ *
+ * Es lo que la acción del servidor necesita para llamar a la RPC: el plan inverso solo no alcanza,
+ * porque la base verifica los INVARIANTES contra la proyección y hay que decirle cómo va a quedar.
+ * Y la proyección NO es `previo`: las celdas que antes estaban vacías no se pueden devolver desde un
+ * worker, así que la fila queda parecida a antes, no idéntica. Se calcula lo que de verdad va a
+ * quedar en vez de prometer lo que se querría.
+ */
+export function planDeDeshacerCompleto({ compra, celdas, hoy } = {}) {
+  const inverso = planDeDeshacer(celdas)
+  if (inverso.error) return inverso
+  const despues = aplicarCeldasDePago(compra, inverso.celdas)
+  despues.estado = estadoCalculado(despues)
+  const yaEsta = inverso.celdas.find((c) => c.rotulo === ROTULOS_PAGO.estado)
+  if (yaEsta) yaEsta.valor = despues.estado
+  else if (txt(despues.estado) !== txt(compra?.estado)) {
+    inverso.celdas.push(celda(ROTULOS_PAGO.estado, despues.estado, compra?.estado))
+  }
+  return { celdas: inverso.celdas, sinDeshacer: inverso.sinDeshacer, proyeccion: proyectar(despues, hoy, compra) }
 }
 
 /**

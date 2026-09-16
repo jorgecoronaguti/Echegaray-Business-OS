@@ -40,17 +40,11 @@ import { letra } from './compras-columnas.mjs'
 import { COMPRAS, columnasDe } from './columnas-por-encabezado.mjs'
 import { PRIMERA_FILA, filaACompra, pesos } from './compras-fila.mjs'
 import { diferir, rechazar, resolverLayout, verificarHuella } from './bisturi-compras-obra.mjs'
-import { ESPECIE_PAGO, ROTULOS_PAGO, paraElSheet } from './pagos-de-compra.mjs'
+import { CLAVE_POR_ROTULO, ESPECIE_PAGO, ROTULOS_PAGO, paraElSheet } from './pagos-de-compra.mjs'
 
-/** Rótulo de la columna → la clave con la que `filaACompra` la devuelve ya normalizada. */
-export const CLAVE_POR_ROTULO = Object.freeze({
-  [ROTULOS_PAGO.tipoPago]: 'tipo_pago',
-  [ROTULOS_PAGO.totalParcial]: 'pago_total_o_parcial',
-  [ROTULOS_PAGO.pagado]: 'monto_pagado',
-  [ROTULOS_PAGO.fechaPrevista2]: 'fecha_prevista_2',
-  [ROTULOS_PAGO.parcial2]: 'monto_parcial_2',
-  [ROTULOS_PAGO.estado]: 'estado',
-})
+// El mapa rótulo→clave vive en el núcleo (lo usan los dos lados del viaje) y se re-exporta acá para
+// que quien ya lo importaba del bisturí siga teniendo UNA sola definición y no una copia.
+export { CLAVE_POR_ROTULO }
 
 /** Las columnas de pago, para `columnasDe`. Mismo pedido que `COMPRAS`, acotado a las seis. */
 export const PEDIDO_COLUMNAS = Object.freeze({
