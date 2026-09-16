@@ -171,8 +171,17 @@ function PresentismoDelPanel({ fila }: { fila: FilaDelEspejo }) {
       </>
     )
   }
-  const estado = p.estado === 'perdido' ? 'Perdido' : p.estado === 'a_revisar' ? 'A revisar' : 'Cumple'
-  const color = p.estado === 'perdido' ? V.warn : p.estado === 'a_revisar' ? V.warn : V.tinta
+  // ═══ «CUMPLE» ES UNA AFIRMACIÓN, Y SIN HORAS NO SE PUEDE HACER (QA, 16/09/2026) ═══
+  //
+  // El defecto que esto corrige: `sin_horas` caía en el `else` y la pantalla decía «Cumple · sin faltas
+  // injustificadas, tardanzas ni retiros» sobre alguien que todavía no tiene NINGUNA jornada cargada. No
+  // es que cumplió: es que no hay dato. Pasa todos los días 16 de cada quincena mientras se cargan las
+  // horas —el día del QA eran 2 de 15 obreros— y un jefe de obra lo lee como un visto bueno.
+  const estado = p.estado === 'perdido' ? 'Perdido'
+    : p.estado === 'a_revisar' ? 'A revisar'
+    : p.estado === 'sin_horas' ? 'Sin horas'
+    : 'Cumple'
+  const color = p.estado === 'aplica' ? V.tinta : p.estado === 'sin_horas' ? V.apagado : V.warn
   return (
     <>
       <div style={{ height: 16 }} />
@@ -190,8 +199,9 @@ function PresentismoDelPanel({ fila }: { fila: FilaDelEspejo }) {
       <Renglon rotulo="Estado"
         nota={p.estado === 'perdido' ? motivosDePerdida(p)
           : p.estado === 'a_revisar' ? `no vino ${fechasCortas(p.aRevisar)} y nadie cargó el motivo: hasta que se cargue no se descuenta`
+          : p.estado === 'sin_horas' ? 'sin horas cargadas en la quincena: todavía no hay presentismo que calcular'
           : 'sin faltas injustificadas, tardanzas ni retiros'}
-        alerta={p.estado !== 'aplica'}>
+        alerta={p.estado !== 'aplica' && p.estado !== 'sin_horas'}>
         <span data-testid={testid} data-estado={p.estado} style={{ fontSize: '12.5px', fontWeight: 600, color }}>{estado}</span>
       </Renglon>
     </>
