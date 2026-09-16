@@ -56,8 +56,7 @@ test('LAS SECCIONES DE LA BARRA TIENEN SU PANTALLA', () => {
 test('LA GRILLA ESCRIBE CON LAS ACCIONES QUE YA EXISTEN, NO CON UNA COPIA', () => {
   assert.match(CELDAS, /guardarHorasDeLaCelda\.bind\(null, personaId, celda\.fecha\)/)
   assert.match(CELDAS, /from '\.\.\/CeldasDeLiquidacion'/)
-  // «Efect. red.» salió de la grilla el 16/09/2026: el redondeo se escribe en el cuadro clásico y se suma en el pie.
-  assert.ok(!/CeldaRedondeo/.test(GRILLA), 'la grilla de la quincena ya no escribe el redondeo')
+  assert.match(GRILLA, /CeldaRedondeo/, 'la grilla escribe el redondeo con la celda que ya existe (dueño, 16/09)')
   assert.match(GRILLA, /sumaDelRedondeo\(/)
   for (const c of COMPONENTES) {
     assert.ok(!/from '@supabase/.test(c), 'los componentes no hablan con la base: reciben filas armadas')
@@ -83,11 +82,10 @@ test('LOS DÍAS VAN PRIMERO Y DESPUÉS LA PLATA, CON PAGADO Y SALDO EN CADA LADO
   assert.deepEqual(clavesDe('const PLATA', 'const ANCHO_DE_BANDA'),
     // `presentismo` (15/09/2026) después del negro: de ahí sale el descuento. `pagado*`/`saldo*` (15/09/2026,
     // «necesito al lado de banco y negro lo que se le ha pagado efectivamente»): cada lado dice cuánto
-    // corresponde, cuánto se pagó y cuánto falta, y la fila cierra con Total · Pagado · Saldo. Sin
-    // `efectivoRedondeado` (QA, 16/09/2026): el redondeo va al pie y al cuadro clásico, no a esta fila.
+    // corresponde, cuánto se pagó y cuánto falta, y la fila cierra con Total · Pagado · Saldo.
     ['horas', 'hsBlanco', 'horaCategoria', 'neto', 'pagadoBanco', 'saldoBanco',
       'hsNegro', 'horaNegro', 'negro', 'pagadoEfectivo', 'saldoEfectivo',
-      'presentismo', 'total', 'pagado', 'saldo'])
+      'presentismo', 'efectivoRedondeado', 'total', 'pagado', 'saldo'])
   assert.match(GRILLA, /minmax\(var\(--liq-persona,200px\),1fr\) repeat\(\$\{nDias\},\$\{DIA\}px\) \$\{PLATA/, 'los días van antes que la plata')
   assert.match(PANEL, /campo="porBanco"/)
   assert.match(PANEL, /Acuerdo 50\/50/)
