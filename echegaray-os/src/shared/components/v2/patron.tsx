@@ -308,3 +308,13 @@ export function PanelFilo({ children, testid }: { children: ReactNode; testid?: 
  * pantalla no entendería de dónde salieron.
  */
 export const CAJA_CONTENIDO = 'box-content'
+
+/**
+ * EL HOVER DE UNA FILA DE LISTA (`V.hover`), como clase.
+ *
+ * Un pseudo-estado no existe como propiedad de `style={{…}}`, así que va por clase de Tailwind con
+ * valor arbitrario — y Tailwind sólo genera las clases que puede LEER en el fuente: el valor tiene
+ * que estar ESCRITO, no interpolado desde `V.hover`. Por eso se declara acá, pegado a la paleta que
+ * lo define, en vez de repetirse literal en cada tabla.
+ */
+export const HOVER_FILA = 'hover:bg-[#F2F1ED]'

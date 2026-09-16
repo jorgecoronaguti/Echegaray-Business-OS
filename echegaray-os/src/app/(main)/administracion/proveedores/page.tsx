@@ -37,6 +37,8 @@ import { NavAdministracion } from '@/features/administracion/components/NavAdmin
 import { NombresResueltos, TablaNombres } from '@/features/administracion/components/TablaNombres'
 import { PanelNombre } from '@/features/administracion/components/PanelNombre'
 import { PanelProveedor } from '@/features/administracion/components/PanelProveedor'
+import { PanelDeudaProveedor } from '@/features/administracion/components/proveedores/PanelDeudaProveedor'
+import { TablaDeuda } from '@/features/administracion/components/proveedores/TablaDeuda'
 import { TablaProveedores } from '@/features/administracion/components/TablaProveedores'
 import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
@@ -51,6 +53,8 @@ import {
   resumirCompras, type FiltroActivo,
 } from '@/features/administracion/services/proveedoresService'
 import { estadoDePapeles } from '@/features/administracion/services/papelesProveedor'
+import { getDeuda } from '@/features/administracion/services/deudaProveedoresService'
+import { cotejoDeDeuda, detalleDeProveedor, totalesDeuda } from '@/features/administracion/services/deudaProveedores'
 import { getDocumentosDelProveedor } from '@/features/administracion/services/documentosProveedorService'
 import {
   archivarProveedor, crearProveedor, crearYVincular, deshacerResolucion,
@@ -69,6 +73,8 @@ type Busqueda = {
   /** Los dos criterios del 07/09: el rubro EFECTIVO (declarado o deducido) y si debe algo. */
   rubro?: string
   deuda?: string
+  /** La clave del proveedor cuyo detalle de deuda está abierto. Uuid del maestro, o `txt:<NOMBRE>`. */
+  d?: string
 }
 
 const ACTIVOS: FiltroActivo[] = ['activos', 'archivados', 'todos']
@@ -77,7 +83,7 @@ const RUTA = '/administracion/proveedores'
 function armarHref(base: Busqueda, cambios: Partial<Busqueda> = {}): string {
   const v = { ...base, ...cambios }
   const params = new URLSearchParams()
-  for (const k of ['q', 'activo', 'vista', 'p', 'n', 'cuit', 'tipo', 'editcuit', 'rubro', 'deuda'] as const) {
+  for (const k of ['q', 'activo', 'vista', 'p', 'n', 'cuit', 'tipo', 'editcuit', 'rubro', 'deuda', 'd'] as const) {
     if (v[k]) params.set(k, v[k] as string)
   }
   const qs = params.toString()
@@ -86,8 +92,12 @@ function armarHref(base: Busqueda, cambios: Partial<Busqueda> = {}): string {
 
 export default async function ProveedoresPage({ searchParams }: { searchParams: Promise<Busqueda> }) {
   const sp = await searchParams
-  const vista = sp.vista === 'resolver' ? 'resolver' : 'maestro'
+  // TRES SUB-VISTAS DE NIVEL 3. «Deuda» es nueva (dueño, 16/09/2026) y NO es la de entrada: cambiar
+  // el destino por defecto de la sección le movería el piso a quien entra a buscar una ficha. Va
+  // segunda, entre el maestro y la cola de nombres, porque es lo que se mira para decidir un pago.
+  const vista = sp.vista === 'resolver' ? 'resolver' : sp.vista === 'deuda' ? 'deuda' : 'maestro'
   const maestro = vista === 'maestro'
+  const esDeuda = vista === 'deuda'
   const activo = (ACTIVOS.find((a) => a === sp.activo) ?? 'activos') as FiltroActivo
   // En la cola sólo se ofrecen proveedores ACTIVOS para vincular: uno archivado salió de la cartera
   // justamente para dejar de recibir imputaciones.
@@ -98,7 +108,7 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
 
   const [
     listado, sinCuit, pendientes, resolucion, subcontratistas, resueltos, nActivos, nArchivados,
-    nTodos, papelesLeidos, deudas, documentos,
+    nTodos, papelesLeidos, deudas, documentos, deuda,
   ] = await Promise.all([
     getProveedores(supabase, { activo: activoLeido }),
     // LA SEÑAL NO DEPENDE DE LO QUE ESTOY MIRANDO. Cuenta siempre sobre los ACTIVOS, con el mismo
@@ -137,6 +147,9 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
     // papeles: una por panel abierto, ninguna por fila. El servicio valida la forma del id, así que
     // `?p=nuevo` no llega a Postgres.
     sp.p ? getDocumentosDelProveedor(supabase, sp.p) : null,
+    // «A QUIÉN LE DEBO», SÓLO EN SU VISTA. Son cuatro consultas sobre las ~42 filas con saldo vivo,
+    // y ninguna por fila: cargarlas también en el maestro pagaría el viaje para nadie.
+    esDeuda ? getDeuda(supabase) : null,
   ])
 
   if (listado.error) {
@@ -195,7 +208,21 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
   const papeles = estadoDePapeles(papelesLeidos, compras)
 
   const nombreAbierto = sp.n ? cola.find((n) => n.nombre_norm === sp.n) : undefined
-  const panelAbierto = maestro ? (abrirAlta || seleccionado !== null) : nombreAbierto !== undefined
+
+  // ═══ LA DEUDA: LA TABLA, EL PIE Y LA FILA ABIERTA ═══
+  //
+  // El pie se suma de las filas que la tabla dibuja (`totalesDeuda`), no de una segunda consulta: un
+  // total que llegara por otro camino podría no cerrar con lo que está arriba de él.
+  //
+  // `sp.d` es la clave de la fila abierta y viaja en la URL: el panel se comparte por chat y se
+  // cierra con el botón de atrás, igual que el detalle de costo del CRM. Una clave que no está en la
+  // tabla —porque esa compra se pagó entre dos cargas— simplemente no abre nada.
+  const deudaLeida = deuda?.data ?? null
+  const filaDeuda = deudaLeida && sp.d ? deudaLeida.filas.find((f) => f.clave === sp.d) : undefined
+  const detalleDeuda = deudaLeida && filaDeuda ? detalleDeProveedor(deudaLeida.lineas, filaDeuda) : null
+  const panelAbierto = maestro
+    ? (abrirAlta || seleccionado !== null)
+    : esDeuda ? detalleDeuda !== null : nombreAbierto !== undefined
 
   return (
     <Marco>
@@ -234,23 +261,42 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
       <CabeceraSeccion
         testid="vistas-proveedores"
         espacioPanel={panelAbierto}
-        alta={{ href: armarHref({}, { p: 'nuevo' }), etiqueta: 'Nuevo proveedor', testid: 'nuevo-proveedor' }}
-        buscador={{
-          accion: RUTA,
-          q: sp.q,
-          placeholder: maestro ? 'Buscar proveedor' : 'Buscar nombre',
-          oculto: { activo: sp.activo, vista: sp.vista, cuit: sp.cuit, tipo: sp.tipo, p: sp.p, n: sp.n },
-          testid: 'buscar-proveedor',
-        }}
+        // NINGUNA ACCIÓN PRIMARIA EN «A QUIÉN LE DEBO»: dar de alta un proveedor no es lo que se va a
+        // hacer mirando lo que se debe, y el botón quedaba además debajo del panel —que mide 460px y
+        // no los 392 que la cabecera reserva—. Una sola acción primaria por pantalla, o ninguna.
+        alta={esDeuda ? undefined : { href: armarHref({}, { p: 'nuevo' }), etiqueta: 'Nuevo proveedor', testid: 'nuevo-proveedor' }}
+        // LA DEUDA NO SE BUSCA: son los proveedores a los que se les debe algo hoy —siete el
+        // 16/09/2026—, y un campo de búsqueda sobre siete filas ordenadas por urgencia sólo le saca
+        // una línea a la única tabla que importa en esa vista.
+        buscador={esDeuda
+          ? undefined
+          : {
+              accion: RUTA,
+              q: sp.q,
+              placeholder: maestro ? 'Buscar proveedor' : 'Buscar nombre',
+              oculto: { activo: sp.activo, vista: sp.vista, cuit: sp.cuit, tipo: sp.tipo, p: sp.p, n: sp.n },
+              testid: 'buscar-proveedor',
+            }}
         vistas={[
           {
             clave: 'maestro', titulo: 'Proveedores', cuenta: porFiltro.length, activa: maestro,
-            href: armarHref(sp, { vista: undefined, n: undefined, q: undefined }),
+            href: armarHref(sp, { vista: undefined, n: undefined, q: undefined, d: undefined }),
+          },
+          {
+            // LA CUENTA ES CUÁNTOS PROVEEDORES SE DEBE, no cuánto: un peso al lado de un conteo de
+            // fichas en la misma línea son dos unidades distintas leyéndose como una.
+            clave: 'deuda', titulo: 'A quién le debo',
+            // DESDE LA VISTA, LOS QUE LA TABLA DIBUJA; desde afuera, los de `proveedor_deuda` —que
+            // es la definición canónica pero sólo cuenta los textos ya vinculados a una ficha—. Los
+            // dos números pueden diferir cuando hay deuda a nombre de un texto sin resolver, y esa
+            // diferencia es un dato: hay plata a pagar sin acreedor identificado.
+            cuenta: deudaLeida?.filas.length ?? deudas?.size ?? null, activa: esDeuda,
+            href: armarHref(sp, { vista: 'deuda', p: undefined, n: undefined, q: undefined, editcuit: undefined }),
           },
           {
             clave: 'resolver', titulo: 'Nombres sin resolver', cuenta: pendientes.error ? null : cola.length,
-            activa: !maestro,
-            href: armarHref(sp, { vista: 'resolver', p: undefined, q: undefined, editcuit: undefined }),
+            activa: vista === 'resolver',
+            href: armarHref(sp, { vista: 'resolver', p: undefined, q: undefined, editcuit: undefined, d: undefined }),
           },
         ]}
       />
@@ -355,7 +401,40 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                     </NotaBloque>
                   </>
                 )
-              : pendientes.error
+              : esDeuda
+                ? (
+                    deuda?.error || !deudaLeida
+                      ? (
+                          <div data-testid="deuda-error">
+                            <Aviso tono="neg" titulo="No pude leer lo que se debe">{deuda?.error ?? 'Sin datos.'}</Aviso>
+                          </div>
+                        )
+                      : (
+                          <>
+                            <TablaDeuda
+                              filas={deudaLeida.filas}
+                              totales={totalesDeuda(deudaLeida.filas)}
+                              hoy={deudaLeida.hoy}
+                              seleccionada={sp.d}
+                              hrefDe={(clave) => armarHref(sp, { vista: 'deuda', d: clave })}
+                            />
+                            {deudaLeida.truncado && (
+                              <p style={{ marginTop: 10, fontSize: '12px', color: V.warn }} data-testid="deuda-truncada">
+                                Hay más compras con saldo de las que esta pantalla puede leer de una vez: lo de
+                                abajo NO es toda la deuda.
+                              </p>
+                            )}
+                            <NotaBloque testid="nota-deuda">
+                              Sale de la pestaña Compras: se debe lo que su columna de saldo declara sin pagar, sin
+                              las anuladas. Vencido es lo que tenía fecha prevista de pago hasta hoy; por vencer, lo
+                              posterior — está comprometido, no exigible. Una compra sin fecha prevista se debe
+                              igual y viaja aparte: no se cuenta como vencida. Corregir una fecha, un pago o un
+                              estado se hace en Compras, que es de donde sale cada línea.
+                            </NotaBloque>
+                          </>
+                        )
+                  )
+                : pendientes.error
                 ? (
                     <div data-testid="cola-error">
                       <Aviso tono="neg" titulo="No pude leer los nombres de Compras">{pendientes.error}</Aviso>
@@ -396,7 +475,22 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
               cerrarHref={armarHref(sp, { p: undefined, editcuit: undefined })}
             />
           )}
-          {!maestro && nombreAbierto && (
+          {esDeuda && detalleDeuda && deudaLeida && (
+            <PanelDeudaProveedor
+              detalle={detalleDeuda}
+              obras={deudaLeida.obras}
+              hoy={deudaLeida.hoy}
+              // EL COTEJO CONTRA `public.proveedor_deuda`, que suma el mismo campo por otro camino en
+              // Postgres. Si no cierran, el panel lo dice en vez de elegir un número.
+              aviso={filaDeuda ? cotejoDeDeuda(filaDeuda, deudaLeida.canonica.get(filaDeuda.proveedorId ?? '') ?? null) : null}
+              cerrarHref={armarHref(sp, { d: undefined })}
+              fichaHref={detalleDeuda.proveedorId
+                ? armarHref({}, { p: detalleDeuda.proveedorId })
+                : null}
+              hrefComprasBase="/administracion/compras?s="
+            />
+          )}
+          {vista === 'resolver' && nombreAbierto && (
             <PanelNombre
               nombre={nombreAbierto}
               candidatos={todos}
