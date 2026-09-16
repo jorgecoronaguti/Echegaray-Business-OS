@@ -452,9 +452,19 @@ function personasDe(
  * contradecía a la base y desmentía el gesto que el dueño acababa de hacer.
  *
  * Las horas de la quincena NO deciden dónde está hoy una persona: dicen dónde estuvo. El orden es
- * `hasta` vigente hoy · el `desde` MÁS RECIENTE · y sólo con el mismo `desde` —dos frentes abiertos
- * el mismo día, donde la base no tiene con qué elegir— desempatan las horas, y después el nombre
- * para que el rótulo no baile entre dos recargas.
+ * `hasta` vigente hoy · el `desde` MÁS RECIENTE · el tramo ABIERTO antes que el que ya tiene fin ·
+ * y sólo con el mismo `desde` y los dos abiertos —dos frentes abiertos el mismo día, donde la base
+ * no tiene con qué elegir— desempatan las horas, y después el nombre para que el rótulo no baile
+ * entre dos recargas.
+ *
+ * ═══ EL ABIERTO GANA (16/09/2026) ═══
+ *
+ * El dueño movió a GONZALEZ TOBARES a Messina desde la grilla; la base cerró la fila de le-comedor
+ * de ese mismo día con `hasta = hoy` y abrió Messina con el mismo `desde`. Empate de `desde`, y el
+ * desempate por horas —18 hs en le-comedor de los días anteriores, 0 en Messina— devolvía le-comedor:
+ * la grilla desmentía el gesto y el dueño lo repetía, cuatro veces. Un tramo con `hasta` puesto es
+ * una decisión ya tomada de que la persona se va; el abierto es donde queda. Es la misma regla que
+ * `papelesDeTramos` en `planDeObraActual.ts`: el panel y la grilla no pueden decir obras distintas.
  */
 function obraActivaDe(
   asignaciones: TramoAsignado[],
@@ -476,8 +486,10 @@ function obraActivaDe(
       horas.set(r.obra_id, (horas.get(r.obra_id) ?? 0) + numero(r.horas))
     }
   }
+  const conFin = (t: TramoAsignado): number => (t.hasta === null ? 0 : 1)
   const ganador = [...rotulables].sort((a, b) =>
     (b.tramo.desde ?? '').localeCompare(a.tramo.desde ?? '')
+    || conFin(a.tramo) - conFin(b.tramo)
     || (horas.get(b.obra.id) ?? 0) - (horas.get(a.obra.id) ?? 0)
     || a.obra.nombre.localeCompare(b.obra.nombre, 'es'))[0]
   return { obra: ganador.obra, elegible: ganador.tramo.elegible }

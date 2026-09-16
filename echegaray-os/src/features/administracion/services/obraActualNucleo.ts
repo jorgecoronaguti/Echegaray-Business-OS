@@ -37,6 +37,7 @@ interface TablaLike {
   select(columnas: string): LecturaLike
   update(valores: Fila): EscrituraLike
   insert(fila: Fila): EscrituraLike
+  delete(): EscrituraLike
 }
 
 interface LecturaLike {
@@ -127,6 +128,24 @@ export async function cambiarObraActualCon(
 
   const plan = planDeCambioDeObra({ abiertas: abiertas.data, destino: obra.destino, hoy, desde, hasta })
   if (plan.sinCambio) return { ok: true, mensaje: plan.acuse }
+
+  // LO QUE SE BORRA VA PRIMERO, y es un `delete` y no un `update` con `hasta = desde`: la fila que
+  // se creó hoy y se reemplaza hoy no tuvo ni un día. Cerrarla dejaba un tramo de un día con el
+  // mismo `desde` que el nuevo, y con eso ni la grilla ni el importador sabían cuál manda (16/09/2026).
+  // `.eq('persona_id')` y `.select()` por lo mismo que en el cierre: nunca la fila de otro, y la
+  // evidencia es del efecto.
+  for (const id of plan.borrar) {
+    const { data, error } = await supabase.from('obra_asignacion')
+      .delete().eq('id', id).eq('persona_id', personaId).select('id')
+    if (error) return { ok: false, error: `No pude sacar la asignación que empezaba hoy: ${error.message}` }
+    if ((data ?? []).length === 0) {
+      return {
+        ok: false,
+        error: 'No pude sacar la asignación que empezaba hoy: la base no borró ninguna fila. '
+          + 'Puede ser un permiso — no se abrió ninguna asignación nueva.',
+      }
+    }
+  }
 
   for (const c of plan.cerrar) {
     // EL `eq('persona_id')` NO SOBRA: sin él un id copiado de otra ficha cerraría la asignación de

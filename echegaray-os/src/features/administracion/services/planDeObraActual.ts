@@ -18,11 +18,18 @@
 // serían vigentes hoy y la grilla tendría que elegir una por horas — el cambio se vería a medias.
 // Con `hasta = ayer` el día de hoy tiene una sola obra.
 //
-// ═══ SALVO QUE LA ANTERIOR HAYA EMPEZADO HOY ═══
+// ═══ SALVO QUE LA ANTERIOR NO HAYA TENIDO NI UN DÍA ANTES DEL CORTE: ÉSA SE BORRA ═══
 //
-// Corregir en el momento una asignación recién creada dejaría `hasta` ANTES de `desde`: un período
-// que afirma que la persona trabajó menos que ningún día. Ahí `hasta = desde`, que es lo único
-// cierto — estuvo asignada ese día. No se borra: alguien la creó y eso es historia.
+// Hasta el 16/09/2026 una asignación creada hoy y reemplazada hoy se cerraba con `hasta = desde`:
+// un tramo de UN día. El dueño cambió cuatro veces la obra de GONZALEZ TOBARES entre las 07:55 y las
+// 08:04 —porque la grilla no le mostraba lo que acababa de elegir— y quedaron cuatro tramos de un día
+// sobre el 16/09, todos con el mismo `desde` que el abierto. Ese residuo no es historia: es el rastro
+// de una corrección, y ROMPE tres lecturas a la vez: la regla del día (`asignacion-del-dia.mjs`:
+// «la más corta gana») ya no decide entre dos tramos de un día, la obra actual de la grilla
+// desempataba por horas y volvía a la obra vieja, y el importador de JORNALES caía en «varias
+// asignaciones». Un tramo que se corta el mismo día en que empieza no tuvo ningún día de vigencia:
+// se borra, como se borra un pase programado que se cancela. Las horas que se hayan cargado ese día
+// llevan su propia `obra_canonica_id` y no dependen de la fila.
 
 // ═══ QUIÉN PUEDE MOVER A ALGUIEN DE OBRA (dueño, 08/09/2026 — segunda decisión del día) ═══
 //
@@ -68,6 +75,13 @@ export interface CierreDeAsignacion {
 
 export interface PlanDeObraActual {
   cerrar: CierreDeAsignacion[]
+  /**
+   * Las abiertas que se BORRAN porque empiezan el día del corte o después: la creada hoy y
+   * reemplazada hoy, o un pase programado al que este cambio le pasa por encima. Cerrarlas dejaría
+   * tramos de un día que ninguna lectura sabe desempatar (16/09/2026). Nunca lleva una fila con
+   * historia: ésas van en `cerrar`.
+   */
+  borrar: string[]
   /**
    * La obra que se abre. `null` cuando el destino es «Sin obra» o ya estaba abierta.
    *
@@ -120,6 +134,12 @@ function cierreDe(a: AsignacionAbierta, corte: string): string {
   const vispera = diaAnterior(corte)
   return a.desde && a.desde > vispera ? a.desde : vispera
 }
+
+/** ¿El tramo empieza el día del corte o después? Entonces no tiene ni un día que conservar y el plan
+ *  lo BORRA en vez de cerrarlo (ver «salvo que la anterior no haya tenido ni un día»). Una fila sin
+ *  `desde` siempre tuvo días antes: se cierra. */
+const sinDiasAntesDe = (a: AsignacionAbierta, corte: string): boolean =>
+  a.desde !== null && a.desde >= corte
 
 /**
  * Hasta cuándo se puede programar un pase. Sesenta días.
@@ -231,7 +251,10 @@ export function planDeCambioDeObra({ abiertas, destino, hoy, desde = hoy, hasta 
     seConserva = seConserva ? masVieja(seConserva, a) : a
   }
   const sobran = abiertas.filter((a) => a.id !== seConserva?.id)
-  const cerrar = sobran.map((a) => ({ id: a.id, hasta: cierreDe(a, desde) }))
+  const conHistoria = sobran.filter((a) => !sinDiasAntesDe(a, desde))
+  const vacias = sobran.filter((a) => sinDiasAntesDe(a, desde))
+  const cerrar = conHistoria.map((a) => ({ id: a.id, hasta: cierreDe(a, desde) }))
+  const borrar = vacias.map((a) => a.id)
   const abrir = destino && !seConserva
     ? { obra_id: destino.id, desde, ...(hasta ? { hasta } : {}) }
     : null
@@ -243,15 +266,15 @@ export function planDeCambioDeObra({ abiertas, destino, hoy, desde = hoy, hasta 
     ? { obra_id: vuelve.obra_id, desde: diaSiguiente(hasta as string) }
     : null
 
-  if (cerrar.length === 0 && !abrir) {
+  if (cerrar.length === 0 && borrar.length === 0 && !abrir) {
     return {
-      cerrar, abrir, reabrir: null, sinCambio: true,
+      cerrar, borrar, abrir, reabrir: null, sinCambio: true,
       acuse: destino ? `Ya estaba en ${destino.nombre}.` : 'Ya estaba sin obra.',
     }
   }
   return {
-    cerrar, abrir, reabrir, sinCambio: false,
-    acuse: acuseDe({ destino, seConserva, cerradas: sobran, hoy, desde, hasta, vuelve }),
+    cerrar, borrar, abrir, reabrir, sinCambio: false,
+    acuse: acuseDe({ destino, seConserva, cerradas: conHistoria, borradas: vacias, hoy, desde, hasta, vuelve }),
   }
 }
 
@@ -260,18 +283,25 @@ export function planDeCambioDeObra({ abiertas, destino, hoy, desde = hoy, hasta 
  *
  *  Cuando la persona YA estaba en el destino y lo único que se hace es cerrar las otras abiertas,
  *  el acuse no puede decir «desde hoy»: no empezó hoy, y lo que hay para contar es la limpieza. */
-function acuseDe({ destino, seConserva, cerradas, hoy, desde, hasta, vuelve }: {
+function acuseDe({ destino, seConserva, cerradas, borradas, hoy, desde, hasta, vuelve }: {
   destino: { id: string; nombre: string } | null
   seConserva: AsignacionAbierta | null
   cerradas: AsignacionAbierta[]
+  /** Las que se borran por no haber tenido ni un día. Se nombran aparte: no son un «antes». */
+  borradas: AsignacionAbierta[]
   hoy: string
   desde: string
   hasta: string | null
   vuelve: AsignacionAbierta | null
 }): string {
   const nombres = cerradas.map((a) => a.nombre).join(', ')
+  // «REEMPLAZA» Y NO «ANTES»: la persona nunca estuvo un día entero en la que se borra. Decir «antes
+  // LE COMEDOR» de un tramo que duró ocho minutos manda a buscar horas donde no las hay.
+  const reemplazo = borradas.length > 0 ? ` · reemplaza ${borradas.map((a) => a.nombre).join(', ')}` : ''
   if (destino && seConserva) {
-    return `Ya estaba en ${destino.nombre} · se ${cerradas.length === 1 ? 'cerró' : 'cerraron'} ${nombres}.`
+    const cierre = cerradas.length > 0
+      ? ` · se ${cerradas.length === 1 ? 'cerró' : 'cerraron'} ${nombres}` : ''
+    return `Ya estaba en ${destino.nombre}${cierre}${reemplazo}.`
   }
   // EL ACUSE DICE LA FECHA REAL, NO «desde hoy» SIEMPRE. Un pase programado que acusa «desde hoy»
   // le hace creer a quien lo programó que la persona ya se movió, y el gesto siguiente es ir a
@@ -283,11 +313,11 @@ function acuseDe({ destino, seConserva, cerradas, hoy, desde, hasta, vuelve }: {
       : `Desde el ${fechaCorta(desde)}`
   const cabeza = destino ? `${cuando} en ${destino.nombre}` : `${cuando} sin obra`
   const regreso = vuelve && vuelve.obra_id !== destino?.id ? ` · vuelve a ${vuelve.nombre}` : ''
-  if (cerradas.length === 0) return `${cabeza}${regreso}.`
+  if (cerradas.length === 0) return `${cabeza}${regreso}${reemplazo}.`
   // CON REGRESO NO SE ESCRIBE EL «antes»: son la misma obra dicha dos veces, y «antes San Francisco
   // · vuelve a San Francisco» hace dudar de si son dos obras distintas.
-  if (regreso) return `${cabeza}${regreso}.`
-  return `${cabeza} · antes ${nombres}.`
+  if (regreso) return `${cabeza}${regreso}${reemplazo}.`
+  return `${cabeza} · antes ${nombres}${reemplazo}.`
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════

@@ -32,7 +32,7 @@ const AYER = '2026-09-07'
 const PERSONA = '11111111-1111-4111-8111-111111111111'
 
 type Fila = Record<string, unknown>
-interface Toque { tabla: string; verbo: 'select' | 'update' | 'insert'; valores?: Fila }
+interface Toque { tabla: string; verbo: 'select' | 'update' | 'insert' | 'delete'; valores?: Fila }
 
 interface Contenido {
   persona_plantel?: Fila[]
@@ -83,6 +83,14 @@ function baseFalsa(contenido: Contenido) {
             select: async () => ({
               data: Array.from({ length: filasUpdate }, (_, i) => ({ id: `u${i}` })), error: null,
             }),
+          }
+          return escritura
+        },
+        delete: () => {
+          toques.push({ tabla, verbo: 'delete' })
+          const escritura = {
+            eq: () => escritura,
+            select: async () => ({ data: [{ id: 'borrada' }], error: null }),
           }
           return escritura
         },
@@ -144,6 +152,26 @@ test('el JEFE DE OBRA escribe: cierra ayer y abre hoy, igual que Administración
   const escrituras = toques.filter((t) => t.tabla === 'obra_asignacion' && t.verbo !== 'select')
   assert.deepEqual(escrituras.map((t) => t.verbo), ['update', 'insert'])
   assert.deepEqual(escrituras[0].valores, { hasta: AYER })
+})
+
+test('cambiar de obra por segunda vez EL MISMO DÍA borra la de hoy: un delete y un insert, ningún update', async () => {
+  // EL DEFECTO QUE ATRAPA (16/09/2026): la puerta cerraba la fila creada hoy con `hasta = hoy` y
+  // cada cambio del día apilaba un tramo de un día. Si alguien vuelve a mandar el plan de «borrar»
+  // por `update`, este test lo ve: el verbo tiene que ser `delete` y no puede haber ningún `update`.
+  const { supabase, toques } = baseCompleta([
+    { id: 'de-hoy', obra_id: 'pisos-industriales', desde: HOY, hasta: null },
+  ])
+  const r = await cambiarObraActualCon(
+    { supabase, perfil: { rol: 'direccion' }, hoy: HOY },
+    { persona_id: PERSONA, obra_id: 'salon-comercial' },
+  )
+  assert.equal(r.ok, true, r.ok === false ? r.error : '')
+  const escrituras = toques.filter((t) => t.tabla === 'obra_asignacion' && t.verbo !== 'select')
+  assert.deepEqual(escrituras.map((t) => t.verbo), ['delete', 'insert'])
+  assert.deepEqual(escrituras[1].valores,
+    { obra_id: 'salon-comercial', persona_id: PERSONA, rol: 'integrante', desde: HOY })
+  // El catálogo falso no tiene PISOS: el acuse cae al id, que es lo que hace el núcleo sin nombre.
+  assert.equal(r.ok && r.mensaje, 'Desde hoy en SALÓN COMERCIAL · reemplaza pisos-industriales.')
 })
 
 test('sin perfil (rol null) tampoco se mueve a nadie de obra', async () => {

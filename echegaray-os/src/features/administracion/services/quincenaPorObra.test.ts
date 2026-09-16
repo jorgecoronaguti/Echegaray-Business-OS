@@ -94,6 +94,23 @@ test('con dos vigentes DEL MISMO DÍA manda la de más horas — es el ÚLTIMO d
   assert.equal(filas[0].obraPorDefecto?.id, MAMPO, 'y es la que recibe lo que se escriba')
 })
 
+// ═══ 16/09/2026: EL ABIERTO GANA SOBRE EL QUE CIERRA ESE MISMO DÍA, AUNQUE TENGA MENOS HORAS ═══
+//
+// GONZALEZ TOBARES: le-comedor 16..16 (cerrada al cambiar) y messina 16..null, mismo `desde`; 18 hs
+// en le-comedor de los días anteriores, 0 en messina. La grilla mostraba le-comedor y el dueño volvía
+// a elegir messina — cuatro veces. MUTACIÓN: sacar el desempate por `hasta` devuelve le-comedor.
+test('con el mismo desde, el tramo ABIERTO es la obra actual aunque el cerrado tenga más horas', () => {
+  const filas = armar({
+    asignaciones: [
+      asig('p1', 'Perez Juan', PISOS, null, HOY, HOY),
+      asig('p1', 'Perez Juan', MAMPO, null, HOY, null),
+    ],
+    registros: [reg('p1', PISOS, L, 9), reg('p1', PISOS, M, 9)],
+  })
+  assert.equal(filas[0].rotuloObra, 'MAMPOSTERÍA')
+  assert.equal(filas[0].obraPorDefecto?.id, MAMPO, 'y es la que recibe lo que se escriba')
+})
+
 // ═══ EL DEFECTO DEL 08/09/2026: «EMPIEZO A PONER BIEN LA OBRA QUE ESTÁN Y SE ROMPE» ═══
 //
 // El dueño movió a ALANIZ EMANUEL de PISOS INDUSTRIALES a Quattropani – SALÓN COMERCIAL. La base le
