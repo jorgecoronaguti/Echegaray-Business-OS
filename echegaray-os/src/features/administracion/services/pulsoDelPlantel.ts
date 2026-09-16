@@ -1,7 +1,7 @@
 // EL PULSO DEL DÍA DEL PLANTEL — Design 23/08/2026, pantalla 19.
 //
 // El canónico no dibuja un directorio: dibuja el estado del plantel HOY. Tres columnas nuevas
-// (HOY · HH MES · PAPELES) y unos banners arriba con lo que hay que mirar antes de bajar la vista a
+// (HOY · HH QUINCENA · PAPELES) y unos banners arriba con lo que hay que mirar antes de bajar la vista a
 // la tabla. Esta es la lógica pura de las tres; las consultas viven en `pulsoDelPlantelService.ts`.
 //
 // ═══ TRES FUENTES DISTINTAS, TRES SILENCIOS DISTINTOS ═══
@@ -14,9 +14,9 @@
 //              horas son una capa APARTE: «sin marcar · 9 h» es una fila normal. Ver el bloque de
 //              abajo — la columna dejó de hablar de fichaje el 08/09/2026.
 //              (Es la misma regla que ya sostiene `asistenciaDelDia.ts`, escrita una sola vez.)
-//   · HH MES   sin imputaciones es SIN HH, no 0 horas. Las 19 filas legacy de `registros_hh` vienen
+//   · HH QUINC sin imputaciones es SIN HH, no 0 horas. Las 19 filas legacy de `registros_hh` vienen
 //              del Sheet de JORNALES sin `persona_id`: existen, tienen horas, y no se sabe de quién
-//              son. Rotularlas como 0 le atribuiría a alguien un mes sin trabajar.
+//              son. Rotularlas como 0 le atribuiría a alguien una quincena sin trabajar.
 //   · PAPELES  sin filas en `documentacion_legajo` es SIN LEGAJO CARGADO, no «al día». Es la
 //              diferencia entre un legajo revisado y uno que nadie abrió nunca.
 //
@@ -30,7 +30,7 @@ import { estadoDe } from '../../mi-cuenta/services/documentos.ts'
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import type { PresenciaGuardada } from './presenciaDelDia.ts'
 import { PRESENTISMO_DESDE } from './presentismo.ts'
-import { cabeceraQuincena, type Quincena } from './quincena.ts'
+import { cabeceraQuincena, quincenaDe, type Quincena } from './quincena.ts'
 
 // ── HOY ─────────────────────────────────────────────────────────────────────────────────────────
 
@@ -107,14 +107,14 @@ export function marcasPorPersona(marcas: MarcaDeHoy[]): Map<string, MarcaDeHoy> 
 export const SIN_MARCAR: ClasificacionDelDia = clasificar([])
 
 /**
- * La asistencia de HOY por persona, a partir de las mismas filas del mes que alimentan HH MES.
+ * La asistencia de HOY por persona, a partir de las mismas filas que alimentan HH QUINCENA.
  *
- * No se pide una consulta nueva: `mesCorriente` ya cierra la ventana en el día de hoy, así que las
+ * No se pide una consulta nueva: `quincenaCorriente` ya cierra la ventana en el día de hoy, así que las
  * filas de hoy vienen en esa lectura. Quien no aparece en el Map no tiene nada cargado, y eso lo
  * dice `SIN_CARGAR` en la fila — un estado en el Map para las 62 personas sería inventar filas.
  */
 export function asistenciaHoyPorPersona(
-  filas: FilaHHDelMes[], hoy: string, presencia: readonly PresenciaGuardada[] = [],
+  filas: FilaHH[], hoy: string, presencia: readonly PresenciaGuardada[] = [],
 ): Map<string, ClasificacionDelDia> {
   const porPersona = new Map<string, { horas: number; tipo_hora: string; notas: string | null }[]>()
   for (const f of filas) {
@@ -320,24 +320,33 @@ export function pieDeTardanzas({ conMarca, quincena }: { conMarca: number | null
   return `${leyenda} · ${cuenta}${rige}`
 }
 
-// ── HH DEL MES ──────────────────────────────────────────────────────────────────────────────────
+// ── HH DE LA QUINCENA ───────────────────────────────────────────────────────────────────────────
 
 /** Una fila de `registros_hh` acotada a lo que deciden estas dos columnas. */
-export interface FilaHHDelMes {
+export interface FilaHH {
   persona_id: string | null
   fecha: string | null
   horas: number
   tipo_hora: string
-  /** El motivo de la ausencia o la licencia. Opcional porque HH DEL MES no lo mira: sólo lo lee la
+  /** El motivo de la ausencia o la licencia. Opcional porque HH QUINCENA no lo mira: sólo lo lee la
    *  columna HOY, que sí tiene que poder decir POR QUÉ alguien no está. */
   notas?: string | null
 }
 
-/** Del 1 al día de hoy. El mes corriente se cierra en HOY y no a fin de mes: sumar hasta el 31
- *  incluiría imputaciones futuras —que las hay, cargadas por adelantado— y el número dejaría de
- *  contestar «cuánto lleva trabajado». */
-export function mesCorriente(hoy: string): { desde: string; hasta: string } {
-  return { desde: `${hoy.slice(0, 7)}-01`, hasta: hoy }
+/**
+ * Del primer día de la quincena en curso al día de hoy (dueño, 16/09/2026: *«la columna hh mes, sea
+ * hh quincena»*). Los jornales se pagan por quincena, así que un acumulado del mes no cierra contra
+ * nada que se liquide: el 20 mezclaba una quincena ya pagada con la que está corriendo.
+ *
+ * EL CORTE NO SE REESCRIBE ACÁ: sale de `quincenaDe`, el mismo que usan la grilla de Horas y la
+ * liquidación. Un «día <= 15» propio discreparía de ellas el día que alguien toque una sola.
+ *
+ * Y SE CIERRA EN HOY, no en el 15 ni a fin de mes, por la misma razón que la ventana del mes que
+ * reemplaza: hay imputaciones cargadas por adelantado, y sumarlas dejaría de contestar «cuánto
+ * lleva trabajado». `hoy` es la fecha de obra (−03) que resuelve quien llama.
+ */
+export function quincenaCorriente(hoy: string): { desde: string; hasta: string } {
+  return { desde: quincenaDe(hoy).desde, hasta: hoy }
 }
 
 /**
@@ -347,7 +356,7 @@ export function mesCorriente(hoy: string): { desde: string; hasta: string } {
  * La persona sin ninguna fila NO aparece en el Map. Ver el encabezado: eso es «sin HH», no 0.
  */
 export function hhPorPersona(
-  filas: FilaHHDelMes[], desde: string, hasta: string,
+  filas: FilaHH[], desde: string, hasta: string,
 ): Map<string, number> {
   const m = new Map<string, number>()
   for (const f of filas) {

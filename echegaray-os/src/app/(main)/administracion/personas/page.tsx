@@ -63,11 +63,11 @@ import {
 import { enlaceConservando } from '@/features/administracion/services/enlaceDeVista'
 import { crearPersona } from '@/features/administracion/services/personasActions'
 import {
-  asistenciaHoyPorPersona, hayControlDeVencimientos, hhPorPersona, marcasPorPersona, mesCorriente,
-  papelesPorPersona, personasConTardanza, pieDeTardanzas, tardanzasDeHoy,
+  asistenciaHoyPorPersona, hayControlDeVencimientos, hhPorPersona, marcasPorPersona,
+  papelesPorPersona, personasConTardanza, pieDeTardanzas, quincenaCorriente, tardanzasDeHoy,
 } from '@/features/administracion/services/pulsoDelPlantel'
 import {
-  getHHDelMes, getMarcasDeHoy, getPapelesDelPlantel,
+  getHHDeLaQuincena, getMarcasDeHoy, getPapelesDelPlantel,
 } from '@/features/administracion/services/pulsoDelPlantelService'
 import { getPresenciaDelDia } from '@/features/administracion/services/presenciaDelDiaService'
 import { leerPresenciasDeLaQuincena } from '@/features/administracion/services/lecturasCompartidasDeQuincena'
@@ -213,13 +213,13 @@ async function leerTodo(
   supabase: Awaited<ReturnType<typeof createClient>>,
   filtro: FiltroPersonal, q: string | undefined, hoy: string,
 ) {
-  const { desde, hasta } = mesCorriente(hoy)
+  const { desde, hasta } = quincenaCorriente(hoy)
   const conPulso = filtro !== 'inactivos'
   const quincena = quincenaDe(hoy)
   const [listado, marcas, hh, papeles, presencia, padron, tardanzasQuincena] = await Promise.all([
     getDirectorio(supabase, filtro, q),
     conPulso ? getMarcasDeHoy(supabase, hoy) : null,
-    conPulso ? getHHDelMes(supabase, desde, hasta) : null,
+    conPulso ? getHHDeLaQuincena(supabase, desde, hasta) : null,
     conPulso ? getPapelesDelPlantel(supabase) : null,
     // LA PRESENCIA DECLARADA DE HOY (`asistencia_dia`, 08/09/2026). Sin esta lectura la columna HOY
     // sólo conocía horas, y a quien el jefe marcó presente a las 7:30 lo escribía «sin cargar».
@@ -247,7 +247,7 @@ async function leerTodo(
  *  de la pantalla en pie: el listado no depende de ninguna de las tres. */
 function armarPulso(
   marcas: Awaited<ReturnType<typeof getMarcasDeHoy>> | null,
-  hh: Awaited<ReturnType<typeof getHHDelMes>> | null,
+  hh: Awaited<ReturnType<typeof getHHDeLaQuincena>> | null,
   papeles: Awaited<ReturnType<typeof getPapelesDelPlantel>> | null,
   presencia: Awaited<ReturnType<typeof getPresenciaDelDia>> | null,
   tardanzasQuincena: Awaited<ReturnType<typeof leerPresenciasDeLaQuincena>> | null,
@@ -255,7 +255,7 @@ function armarPulso(
   hoy: string,
 ): PulsoDelPlantel | undefined {
   if (!marcas || !hh || !papeles || !presencia) return undefined
-  const { desde, hasta } = mesCorriente(hoy)
+  const { desde, hasta } = quincenaCorriente(hoy)
   return {
     marcas: marcasPorPersona(marcas.data),
     // LA MARCA DE HOY SALE DE LA MISMA LECTURA QUE LA COLUMNA HOY (`asistencia_dia` de hoy): ni una
@@ -266,7 +266,7 @@ function armarPulso(
       conMarca: tardanzasQuincena && !tardanzasQuincena.error ? personasConTardanza(tardanzasQuincena.data ?? []) : null,
       quincena,
     }),
-    // LA MISMA LECTURA CONTESTA LAS DOS PREGUNTAS: la ventana del mes cierra en hoy, así que las
+    // LA MISMA LECTURA CONTESTA LAS DOS PREGUNTAS: la ventana de la quincena cierra en hoy, así que las
     // filas de hoy ya vinieron. Una consulta aparte por la columna HOY sería un sexto viaje para
     // traer un subconjunto de lo que está en memoria.
     asistencia: asistenciaHoyPorPersona(hh.data, hoy, presencia.data ?? []),

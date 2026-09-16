@@ -9,8 +9,8 @@ import test from 'node:test'
 import type { ClasificacionDelDia } from './asistenciaDelDia.ts'
 import {
   SIN_MARCAR, asistenciaHoyPorPersona, estadoHoy, hayControlDeVencimientos, hayMarcaDeHoy,
-  hhPorPersona, horasVisibles, marcasPorPersona, mesCorriente, ofertaDeMarcar, papelesPorPersona,
-  personasConTardanza, pieDeTardanzas, rotuloDePapeles, rotuloHoy, tardanzasDeHoy,
+  hhPorPersona, horasVisibles, marcasPorPersona, ofertaDeMarcar, papelesPorPersona,
+  personasConTardanza, pieDeTardanzas, quincenaCorriente, rotuloDePapeles, rotuloHoy, tardanzasDeHoy,
 } from './pulsoDelPlantel.ts'
 
 const HOY = '2026-08-24'
@@ -181,7 +181,7 @@ test('el ● de presencia sólo lo prende una marca REAL', () => {
   assert.equal(hayMarcaDeHoy({ persona_id: 'a', estado: 'cerrada' }), true)
 })
 
-// ── HH DEL MES ──────────────────────────────────────────────────────────────────────────────────
+// ── HH DE LA QUINCENA ───────────────────────────────────────────────────────────────────────────
 
 test('la persona sin imputaciones NO aparece en el Map: «sin HH» no es 0', () => {
   const hh = hhPorPersona(
@@ -213,14 +213,35 @@ test('las filas legacy sin persona_id no se le atribuyen a nadie', () => {
   assert.deepEqual([...hh.entries()], [['a', 8]])
 })
 
-test('la ventana del mes se cierra HOY, no a fin de mes', () => {
-  assert.deepEqual(mesCorriente('2026-08-24'), { desde: '2026-08-01', hasta: '2026-08-24' })
-  // Una imputación cargada por adelantado no cuenta como trabajada todavía.
-  const hh = hhPorPersona([
-    { persona_id: 'a', fecha: '2026-08-31', horas: 8, tipo_hora: 'normal' },
-    { persona_id: 'a', fecha: '2026-07-31', horas: 8, tipo_hora: 'normal' },
-  ], '2026-08-01', HOY)
-  assert.equal(hh.has('a'), false)
+test('la ventana es la QUINCENA en curso y se cierra HOY (dueño, 16/09/2026)', () => {
+  // LOS BORDES SON EL DEFECTO POSIBLE: el 15 todavía es la primera quincena, el 16 ya es la segunda,
+  // y la segunda termina el último día del mes —30, 31 o 28— sin que nadie lo escriba a mano.
+  assert.deepEqual(quincenaCorriente('2026-09-01'), { desde: '2026-09-01', hasta: '2026-09-01' })
+  assert.deepEqual(quincenaCorriente('2026-09-15'), { desde: '2026-09-01', hasta: '2026-09-15' })
+  assert.deepEqual(quincenaCorriente('2026-09-16'), { desde: '2026-09-16', hasta: '2026-09-16' })
+  assert.deepEqual(quincenaCorriente('2026-09-30'), { desde: '2026-09-16', hasta: '2026-09-30' })
+  assert.deepEqual(quincenaCorriente('2026-08-31'), { desde: '2026-08-16', hasta: '2026-08-31' })
+  assert.deepEqual(quincenaCorriente('2027-02-28'), { desde: '2027-02-16', hasta: '2027-02-28' })
+})
+
+test('HH quincena no arrastra la quincena ya liquidada ni lo cargado por adelantado', () => {
+  // ES EL PEDIDO: con la ventana del mes, el 16 la columna seguía sumando del 1 al 15 — horas de una
+  // quincena que ya se pagó. Revertir a `desde = día 1` pone esta prueba en rojo.
+  const filas = [
+    { persona_id: 'a', fecha: '2026-09-15', horas: 9, tipo_hora: 'normal' },
+    { persona_id: 'a', fecha: '2026-09-16', horas: 8, tipo_hora: 'normal' },
+    { persona_id: 'a', fecha: '2026-09-17', horas: 8, tipo_hora: 'normal' },
+    { persona_id: 'b', fecha: '2026-09-15', horas: 9, tipo_hora: 'normal' },
+  ]
+  const el16 = quincenaCorriente('2026-09-16')
+  const hh16 = hhPorPersona(filas, el16.desde, el16.hasta)
+  assert.equal(hh16.get('a'), 8)
+  // Quien sólo trabajó en la quincena anterior es «sin HH» en ésta, no 0.
+  assert.equal(hh16.has('b'), false)
+  const el15 = quincenaCorriente('2026-09-15')
+  const hh15 = hhPorPersona(filas, el15.desde, el15.hasta)
+  assert.equal(hh15.get('a'), 9)
+  assert.equal(hh15.get('b'), 9)
 })
 
 test('las horas se escriben en es-AR', () => {

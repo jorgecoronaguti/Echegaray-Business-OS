@@ -116,7 +116,7 @@ test('la columna HOY no vuelve a decir «sin fichar» sobre todo el plantel', ()
   assert.doesNotMatch(tabla, /sin fichar|no fich|Fichados/i, 'la columna volvió a hablar de fichaje')
   assert.doesNotMatch(tabla, /HOY_LABEL|estadoHoy\(/, 'volvió el vocabulario del fichaje a la celda')
   // Dueño, 08/09/2026 (tarde): «no mezclemos eso de presente con las hs al lado, no sirve». La celda
-  // HOY dice SÓLO la presencia; la cantidad tiene su columna (HH MES). Revertir devuelve la capa.
+  // HOY dice SÓLO la presencia; la cantidad tiene su columna (HH QUINCENA). Revertir devuelve la capa.
   assert.doesNotMatch(tabla, /data-capa="horas"/, 'la columna HOY volvió a pegar las horas al lado de la presencia')
   // Y lo que dibuja sale de la MISMA regla que `/administracion/personas/en-obra`: `clasificar()`
   // vía `rotuloHoy`. Una segunda copia del `if` sería una segunda definición de «ausencia».
@@ -192,7 +192,7 @@ test('la lista tiene las SIETE columnas (handoff v4 sin Papeles, más Legajo y A
   // rótulo escrito como hijo directo o como literal del ternario. Lo que se exige es que ESTÉ.
   // «Categoría» y no «Puesto» desde el 07/09/2026: el campo guarda la categoría de convenio, que
   // es la que decide la tarifa. Es el rótulo que pidió el dueño.
-  for (const c of ['Persona', 'Categoría', 'Obra', 'Hoy', 'HH mes', 'Legajo', 'Alta']) {
+  for (const c of ['Persona', 'Categoría', 'Obra', 'Hoy', 'HH quinc.', 'Legajo', 'Alta']) {
     assert.ok(src.includes(`>${c}<`) || src.includes(`'${c}'`), `falta el rótulo ${c}`)
   }
   // Seis rótulos y seis celdas. Se cuentan sobre el cuerpo de la fila para que el encabezado no
@@ -204,7 +204,7 @@ test('la lista tiene las SIETE columnas (handoff v4 sin Papeles, más Legajo y A
   // volvieron falsas de golpe, sin que la fila hubiera perdido ninguna celda. `fila-persona` es lo
   // que el test dice medir y no cambia con la forma de iterar.
   const cuerpo = src.slice(src.indexOf('data-testid="fila-persona"'))
-  for (const celda of ['abrir-persona', 'categoria-persona', 'sin asignar', 'hoy-persona', 'hh-mes', 'legajo-persona', 'alta-persona']) {
+  for (const celda of ['abrir-persona', 'categoria-persona', 'sin asignar', 'hoy-persona', 'hh-quincena', 'legajo-persona', 'alta-persona']) {
     assert.ok(cuerpo.includes(celda), `la fila perdió la celda ${celda}`)
   }
 })

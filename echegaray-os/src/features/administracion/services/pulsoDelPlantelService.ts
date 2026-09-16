@@ -16,7 +16,7 @@
 // indistinguible de un día en que nadie fichó, y la diferencia entre las dos es todo.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { FilaHHDelMes, MarcaDeHoy, PapelDeLegajo } from './pulsoDelPlantel'
+import type { FilaHH, MarcaDeHoy, PapelDeLegajo } from './pulsoDelPlantel'
 
 /** Lo que una de las tres lecturas devuelve: las filas, o el motivo por el que no hay filas.
  *  `data` nunca es `null` con `error` nulo — quien lo consume no tiene que elegir un default. */
@@ -51,18 +51,18 @@ export async function getMarcasDeHoy(
 }
 
 /**
- * Las imputaciones de horas del mes corriente, de todo el plantel, en una consulta.
+ * Las imputaciones de horas de la quincena en curso, de todo el plantel, en una consulta.
  *
- * Se piden todas las filas de la ventana y se agrupa en memoria: `registros_hh` del mes son cientos
- * de filas, no miles, y un `group by` por PostgREST exigiría una vista nueva —una segunda definición
- * de «horas del mes» al lado de la que ya usa la ficha—.
+ * Se piden todas las filas de la ventana y se agrupa en memoria: `registros_hh` de una quincena son
+ * cientos de filas, no miles, y un `group by` por PostgREST exigiría una vista nueva —una segunda
+ * definición de «horas de la quincena» al lado de la que ya usan la ficha y la grilla—.
  *
  * Las filas legacy sin `persona_id` vienen igual y `hhPorPersona` las descarta: no se sabe de quién
  * son, y repartirlas por parecido de nombre inventaría horas con dueño.
  */
-export async function getHHDelMes(
+export async function getHHDeLaQuincena(
   supabase: SupabaseClient, desde: string, hasta: string,
-): Promise<Lectura<FilaHHDelMes>> {
+): Promise<Lectura<FilaHH>> {
   const { data, error } = await supabase
     // `notas` viaja porque la columna HOY dice POR QUÉ alguien no está («A · carpeta médica»).
     // Es el mismo motivo que ya lee la ficha del día; sin él la celda tendría una «A» muda.
@@ -71,7 +71,7 @@ export async function getHHDelMes(
   if (error) return vacia(error.message)
   // `horas` es numeric: PostgREST lo manda como TEXTO. Sin este Number, la suma concatenaría.
   return {
-    data: ((data ?? []) as unknown as FilaHHDelMes[]).map((f) => ({ ...f, horas: Number(f.horas) })),
+    data: ((data ?? []) as unknown as FilaHH[]).map((f) => ({ ...f, horas: Number(f.horas) })),
     error: null,
   }
 }

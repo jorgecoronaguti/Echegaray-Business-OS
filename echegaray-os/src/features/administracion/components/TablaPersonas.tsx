@@ -2,7 +2,7 @@
 //
 // `design_handoff_crm_v4/pantallas/Administración v4 · Pantallas.dc.html`, bloque «1 · PERSONAL»:
 //   `minmax(220px,1.5fr) minmax(150px,1fr) 130px 110px 90px 130px`, gap 16
-//   PERSONA · PUESTO · OBRA · HOY · HH MES · PAPELES
+//   PERSONA · PUESTO · OBRA · HOY · HH MES · PAPELES  (HH MES pasó a HH QUINCENA el 16/09/2026)
 //
 // ═══ QUÉ CAMBIÓ RESPECTO DEL PORTE DE AGOSTO (05/09/2026) ═══
 //
@@ -107,7 +107,7 @@ export interface PulsoDelPlantel {
  * LA GRILLA DEL HANDOFF v4, carácter por carácter. Literal porque Tailwind no compila una clase
  * armada en runtime.
  *
- * En angosto se sueltan PUESTO, HOY, HH MES y PAPELES y quedan PERSONA · OBRA: el déficit de ancho
+ * En angosto se sueltan PUESTO, HOY, HH QUINCENA y PAPELES y quedan PERSONA · OBRA: el déficit de ancho
  * NUNCA cae sobre el nombre, que es lo único que identifica una fila, ni sobre la obra, que es la
  * pregunta que la lista contesta. El oficio se sigue leyendo en el legajo.
  */
@@ -192,7 +192,7 @@ export function TablaPersonas({
           : (
               <>
                 <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Hoy</RotuloCol></span>
-                <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>HH mes</RotuloCol></span>
+                <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>HH quinc.</RotuloCol></span>
                 <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Legajo</RotuloCol></span>
                 <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Alta</RotuloCol></span>
               </>
@@ -340,14 +340,15 @@ export function TablaPersonas({
                     </span>
 
                     {/* LA PERSONA SIN IMPUTACIONES DICE «SIN HH», NO 0: un 0 acá afirmaría que no
-                        trabajó en todo el mes. */}
+                        trabajó en toda la quincena. La ventana es la quincena EN CURSO hasta hoy
+                        (dueño, 16/09/2026): es el período que se liquida, el mes no cierra contra nada. */}
                     <span
                       className={`font-mono tabular-nums ${SOLO_ANCHO}`}
                       style={{
                         fontSize: '12px', textAlign: 'right',
                         color: pulso?.hhDisponible && pulso.hh.has(p.id) ? V.tinta : V.lupa,
                       }}
-                      data-testid="hh-mes"
+                      data-testid="hh-quincena"
                     >
                       {!pulso?.hhDisponible
                         ? 'sin lectura'
@@ -446,7 +447,7 @@ function CeldaHoy({ clasificacion, ficho }: { clasificacion: ClasificacionDelDia
         {r.texto}
       </span>
       {/* LAS HORAS NO VAN ACÁ. Dueño, 08/09/2026: «no mezclemos eso de presente con las hs al lado, no
-          sirve». La columna HOY dice sólo la presencia; la cantidad ya tiene su columna (HH MES) y su
+          sirve». La columna HOY dice sólo la presencia; la cantidad ya tiene su columna (HH QUINCENA) y su
           pantalla (Asistencia). */}
     </>
   )
