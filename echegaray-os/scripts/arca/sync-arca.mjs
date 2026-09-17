@@ -26,7 +26,8 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { presupuesto, registrarConsumo, credencialAceptada, leerCredenciales } from '../../orquestador/lib/afipsdk-presupuesto.mjs'
+import { presupuesto, registrarConsumo, credencialAceptada, leerCredenciales, leerUso } from '../../orquestador/lib/afipsdk-presupuesto.mjs'
+import { tocaHoy, esPrioritario, ultimaBajadaDe } from '../../orquestador/lib/arca-sync-ritmo.mjs'
 import {
   motivoDeFalla, archivoDescargado, decidirFrescura, codigoDeSalida, resumenDeCorrida, consumioCuota,
 } from '../../orquestador/lib/arca-sync-resultado.mjs'
@@ -68,6 +69,16 @@ async function main() {
     projectId: credenciales.projectId,
   })
   console.log(`[arca-sync] cuota ${cuota.ventana} [fuente: ${cuota.fuente}]: ${cuota.motivo}`)
+
+  // ── 1b. EL RITMO (17/09/2026): el timer corre todos los días; sólo gasta el día que conviene ──────
+  // Sólo con ORQ_ARCA_RITMO=1 (lo pone el servicio del timer). Una corrida manual del dueño no pasa
+  // por acá. Un día prioritario sin cuota NO se salta en silencio: sigue y falla fuerte abajo.
+  if (process.env.ORQ_ARCA_RITMO === '1') {
+    const hoyISO = hoy.toISOString().slice(0, 10)
+    const ritmo = tocaHoy({ hoy: hoyISO, disponible: cuota.disponible, fuente: cuota.fuente, ventana: cuota.ventana, ultimaBajada: ultimaBajadaDe(await leerUso()) })
+    console.log(`[arca-sync] ritmo: ${ritmo.toca ? 'CORRE' : 'hoy no'} — ${ritmo.motivo}`)
+    if (!ritmo.toca && !esPrioritario(hoyISO)) process.exit(0)
+  }
   if (!cuota.ok) { console.error('[arca-sync] NO descargo: no hay cuota suficiente.'); process.exit(1) }
 
   // ── 2. ¿SIRVE LA CREDENCIAL? Mismo verbo y mismo endpoint que la descarga; cuerpo vacío ───────
