@@ -50,8 +50,12 @@ export interface Gasto {
   horas: number | null
   /** Horas que tienen costo detrás: el divisor honesto del $/hora. */
   horasValorizadas: number | null
-  /** Una parte de la mano de obra es estimación (quincena sin recibo): se dice. */
-  manoObraEstimada: boolean
+  /**
+   * La parte de `manoObra` que es ESTIMACIÓN (quincenas sin recibo del estudio: horas × tarifa).
+   * El 17/09/2026 era el 77 % de la mano de obra de la cartera: una cifra que no la dice se lee como
+   * medida (auditoría, D2). `null` = ninguna parte estimada o sin mano de obra.
+   */
+  manoObraEstimada: number | null
 }
 
 export interface ObraAnalitica {
@@ -111,8 +115,20 @@ export function gastoDe(c: CostoDeObra | null | undefined): Gasto {
     total: c ? suma(c.manoObra, c.subcontratos, c.materiales) : null,
     horas: horas && horas > 0 ? horas : null,
     horasValorizadas: c?.horasValorizadas && c.horasValorizadas > 0 ? c.horasValorizadas : null,
-    manoObraEstimada: (c?.manoObraEstimada ?? 0) > 0,
+    manoObraEstimada: c?.manoObraEstimada && c.manoObraEstimada > 0 ? c.manoObraEstimada : null,
   }
+}
+
+/** Qué fracción de la mano de obra es estimada (0–1), o `null` sin mano de obra. */
+export function proporcionEstimada(g: Pick<Gasto, 'manoObra' | 'manoObraEstimada'>): number | null {
+  if (!g.manoObra || g.manoObra <= 0) return null
+  return Math.min(1, (g.manoObra ? (g.manoObraEstimada ?? 0) / g.manoObra : 0))
+}
+
+/** «62 % estimada», o `null` si no hay nada estimado: el rótulo que acompaña a toda cifra de mano de obra. */
+export function rotuloEstimada(g: Pick<Gasto, 'manoObra' | 'manoObraEstimada'>): string | null {
+  const p = proporcionEstimada(g)
+  return p != null && p > 0 ? `${Math.max(1, Math.round(p * 100))} % estimada` : null
 }
 
 /** El precio y, si no hay, la palabra. */

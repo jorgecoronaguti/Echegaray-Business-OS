@@ -6,8 +6,8 @@
 import Link from 'next/link'
 import { aUrl, type Filtros } from '../services/filtros'
 import { horasTexto, millones, pctConSigno, pctEntero, porHora } from '../services/formato'
-import type { ObraAnalitica } from '../services/obras'
-import { cifrasGastoPorObra, costoPorHora, ordenar, textoComposicion, UMBRAL_HORA_CARA, type Orden } from '../services/agregados'
+import { rotuloEstimada, type ObraAnalitica } from '../services/obras'
+import { cifrasGastoPorObra, costoPorHora, ordenar, porHoraMedido, textoComposicion, UMBRAL_HORA_CARA, type Orden } from '../services/agregados'
 import { Ausente, Cifras, Subtitulo, Titulo, Valor } from './Piezas'
 
 export function VistaObra({ obras, filtros, periodo }: { obras: ObraAnalitica[]; filtros: Filtros; periodo: string }) {
@@ -86,7 +86,7 @@ export function VistaObra({ obras, filtros, periodo }: { obras: ObraAnalitica[];
           <tbody>
             {ordenar(obras, orden).map((o) => {
               const pct = o.precio && o.gasto.total != null ? o.gasto.total / o.precio : null
-              const ph = o.gasto.manoObra && o.gasto.horasValorizadas ? o.gasto.manoObra / o.gasto.horasValorizadas : null
+              const ph = porHoraMedido(o)
               return (
                 <tr key={o.id} className="h-fila border-b border-line-hairline text-right">
                   <td className="max-w-64 truncate text-left text-ink">{o.nombre}</td>
@@ -94,7 +94,7 @@ export function VistaObra({ obras, filtros, periodo }: { obras: ObraAnalitica[];
                   <td><Valor v={millones(o.precio)} falta={o.ausencia ?? 'sin precio'} /></td>
                   <td className={pct != null && pct > 1 ? 'text-neg' : ''}><Valor v={pctEntero(pct)} falta="—" /></td>
                   <td><Valor v={horasTexto(o.gasto.horas)} falta="sin horas" /></td>
-                  <td><Valor v={porHora(ph)} falta="—" /></td>
+                  <td><Valor v={porHora(ph)} falta={rotuloEstimada(o.gasto) && o.gasto.horasValorizadas ? 'no medido' : '—'} /></td>
                   <td className="pl-4 text-left text-xs text-muted"><Valor v={textoComposicion(o)} falta="—" /></td>
                 </tr>
               )
@@ -107,7 +107,7 @@ export function VistaObra({ obras, filtros, periodo }: { obras: ObraAnalitica[];
 }
 
 export function VistaHora({ obras, periodo }: { obras: ObraAnalitica[]; periodo: string }) {
-  const { empresa, puntos } = costoPorHora(obras)
+  const { empresa, puntos, noMedidas } = costoPorHora(obras)
   // EL EJE ARRANCA CERCA DEL MÁS BARATO, NO EN CERO: las obras difieren en ±10 % y desde cero se apilaban
   // en el último décimo. Y llega hasta la línea de +20 %, para que la línea ámbar nunca quede afuera.
   const piso = Math.min(...puntos.map((p) => p.porHora), empresa ?? Infinity) * 0.9
@@ -118,14 +118,14 @@ export function VistaHora({ obras, periodo }: { obras: ObraAnalitica[]; periodo:
   return (
     <>
       <Titulo titulo="Costo por hora"
-        linea={`${puntos.length} obras con mano de obra y horas · ${periodo} · es costo de la hora, no productividad · las horas de jefe van a Estructura`} />
+        linea={`${puntos.length} obras con mano de obra con recibo y horas · ${periodo} · es costo de la hora, no productividad · las horas de jefe van a Estructura`} />
       <Cifras cifras={[
         { rotulo: 'Empresa', valor: porHora(empresa), falta: 'sin horas' },
         { rotulo: 'Obras medidas', valor: String(puntos.length) },
         { rotulo: `Más de ${pctEntero(UMBRAL_HORA_CARA)} sobre la empresa`, valor: String(puntos.filter((p) => p.contraEmpresa > UMBRAL_HORA_CARA).length) },
-        { rotulo: 'Sin horas o sin mano de obra', valor: String(obras.length - puntos.length) },
+        { rotulo: 'No medidas: mano de obra estimada', valor: String(noMedidas.length), tono: noMedidas.length ? 'warn' : undefined },
       ]} />
-      {empresa == null ? <Ausente>sin horas valorizadas en el período</Ausente> : (
+      {empresa == null ? <p className="mb-8"><Ausente>sin mano de obra con recibo en el período: no hay $/hora medido</Ausente></p> : (
         <div className="relative mb-8 border-b border-line sm:ml-40">
           <div className="absolute inset-y-0 border-l border-accent" style={{ left: x(empresa) }} />
           <div className="absolute inset-y-0 border-l border-dashed border-warn" style={{ left: x(empresa * (1 + UMBRAL_HORA_CARA)) }} />
@@ -154,6 +154,19 @@ export function VistaHora({ obras, periodo }: { obras: ObraAnalitica[]; periodo:
           </li>
         ))}
       </ul>
+      {noMedidas.length ? (
+        <>
+          <Subtitulo derecha="la estimación es horas × tarifa: dividirla por las horas devuelve la tarifa">No medidas</Subtitulo>
+          <ul className="text-sm tabular-nums">
+            {noMedidas.map((o) => (
+              <li key={o.id} className="flex h-fila items-center gap-3 border-b border-line-hairline">
+                <span className="min-w-0 flex-1 truncate text-ink">{o.nombre}</span>
+                <Ausente>mano de obra {rotuloEstimada(o.gasto)}</Ausente>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
     </>
   )
 }

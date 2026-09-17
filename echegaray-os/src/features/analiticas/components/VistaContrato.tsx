@@ -6,8 +6,8 @@
 import Link from 'next/link'
 import { aUrl, type Filtros } from '../services/filtros'
 import { horasTexto, millones, pctEntero } from '../services/formato'
-import type { ObraAnalitica } from '../services/obras'
-import { anillosDeCliente, celda, ITEMS, porCliente, type Celda, type Item } from '../services/agregados'
+import { rotuloEstimada, type ObraAnalitica } from '../services/obras'
+import { anillosDeCliente, celda, ITEMS, manoObraDe, porCliente, type Celda, type Item } from '../services/agregados'
 import { Anillo, Ausente, Subtitulo, Titulo } from './Piezas'
 
 const FONDO: Record<NonNullable<Celda['tono']>, string> = {
@@ -27,6 +27,7 @@ export function VistaContrato({ obras, sinObra, filtros }: {
     return <Titulo titulo="Contrato y gasto" linea="Ninguna obra con estos filtros." />
   }
   const anillos = anillosDeCliente(actual.obras)
+  const estimadaCliente = rotuloEstimada(manoObraDe(actual.obras))
   return (
     <>
       <Titulo titulo="Contrato y gasto"
@@ -54,6 +55,7 @@ export function VistaContrato({ obras, sinObra, filtros }: {
               <div className="text-sm tabular-nums">
                 <p className="font-medium text-ink">{rotulo}</p>
                 <p className="text-muted">{texto(a.item, a.gastado) ?? <Ausente>{a.item === 'horas' ? 'sin horas' : 'ninguno'}</Ausente>}</p>
+                {a.item === 'manoObra' && estimadaCliente ? <p className="text-xs text-faint">{estimadaCliente}</p> : null}
                 <p className="text-xs text-faint">
                   {a.cotizado != null ? `de ${millones(a.cotizado)}` : a.item === 'subcontratos' ? 'no es venta' : a.item === 'horas' ? 'sin previsión' : 'sin cotizado'}
                 </p>
@@ -72,7 +74,7 @@ export function VistaContrato({ obras, sinObra, filtros }: {
             {actual.obras.map((o) => (
               <tr key={o.id}>
                 <td className="max-w-56 truncate pr-2 text-ink">{o.nombre}</td>
-                {ITEMS.map((i) => <CeldaMatriz key={i.clave} c={celda(o, i.clave)} item={i.clave} />)}
+                {ITEMS.map((i) => <CeldaMatriz key={i.clave} c={celda(o, i.clave)} item={i.clave} estimada={i.clave === 'manoObra' ? rotuloEstimada(o.gasto) : null} />)}
               </tr>
             ))}
             <tr>
@@ -88,13 +90,14 @@ export function VistaContrato({ obras, sinObra, filtros }: {
   )
 }
 
-function CeldaMatriz({ c, item }: { c: Celda; item: Item }) {
+function CeldaMatriz({ c, item, estimada }: { c: Celda; item: Item; estimada: string | null }) {
   const excedido = c.tono === 4
   const fondo = c.tono == null ? '' : FONDO[c.tono]
   const vacio = item === 'horas' ? 'sin horas' : 'ninguno'
   return (
     <td className={`h-14 rounded-control px-3 text-center align-middle ${fondo} ${excedido ? 'border border-neg text-neg' : 'text-ink'}`}>
       <span className="block">{texto(item, c.gastado) ?? <Ausente>{vacio}</Ausente>}</span>
+      {estimada ? <span className="block text-xs text-faint">{estimada}</span> : null}
       <span className={`block text-xs ${excedido ? 'text-neg' : 'text-faint'}`}>
         {c.pct != null ? `${pctEntero(c.pct)} del cotizado` : c.cotizado != null ? `de ${millones(c.cotizado)}` : c.cotizadoAusente}
       </span>

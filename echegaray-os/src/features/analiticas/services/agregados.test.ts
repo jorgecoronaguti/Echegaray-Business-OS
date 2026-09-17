@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { armarCostosPorObra } from '../../clientes/services/costosDeObra.ts'
 import { armarEconomiaDeObras } from '../../clientes/services/economiaObras.ts'
 import { armarObra } from './obras.ts'
-import { celda, cifrasGastoPorObra, cifrasResumen, composicion, costoPorHora, ordenar, porCliente, textoComposicion, tonoDe } from './agregados.ts'
+import { porHoraMedido, manoObraDe, celda, cifrasGastoPorObra, cifrasResumen, composicion, costoPorHora, ordenar, porCliente, textoComposicion, tonoDe } from './agregados.ts'
 
 const obra = (id: string, cliente: string, e: Record<string, unknown>, c: Record<string, unknown> | null) =>
   armarObra(
@@ -83,4 +83,27 @@ test('gasto por obra: cifras y orden con los huecos al final, nunca como cero', 
   assert.deepEqual(cifrasGastoPorObra([pasada, sinMov, sinPrecio]), { conAmbas: 1, gastanSinPrecio: 1, conPrecioSinMovimiento: 1, excedidas: 1 })
   assert.deepEqual(ordenar([sinMov, sinPrecio, pasada], 'pct').map((o) => o.id), ['a', 'b', 'c'])
   assert.deepEqual(ordenar([sinMov, sinPrecio, pasada], 'gastado').map((o) => o.id), ['a', 'c', 'b'])
+})
+
+test('D2 · la mano de obra estimada se dice: proporción y rótulo, por obra y sumada', async () => {
+  const { proporcionEstimada, rotuloEstimada } = await import('./obras.ts')
+  const a = obra('a', 'me', {}, { mano_obra: 1000, mano_obra_estimada: 770, mano_obra_real: 230, horas_valorizadas: 10 })
+  const b = obra('b', 'me', {}, { mano_obra: 1000, mano_obra_real: 1000, horas_valorizadas: 10 })
+  assert.equal(a.gasto.manoObraEstimada, 770)
+  assert.equal(proporcionEstimada(a.gasto), 0.77)
+  assert.equal(rotuloEstimada(a.gasto), '77 % estimada')
+  assert.equal(rotuloEstimada(b.gasto), null)
+  assert.equal(rotuloEstimada(manoObraDe([a, b])), '39 % estimada')
+  assert.equal(textoComposicion(a), 'MO 100 % (77 % estimada) · sub 0 % · mat 0 %')
+})
+
+test('D2 · $/hora con mano de obra estimada NO es medición: no es punto, no entra a la empresa, la tabla no lo publica', () => {
+  const estimada = obra('a', 'me', {}, { mano_obra: 9000, mano_obra_estimada: 9000, horas_valorizadas: 1 })
+  const real = obra('b', 'me', {}, { mano_obra: 1000, mano_obra_real: 1000, horas_valorizadas: 10 })
+  const r = costoPorHora([estimada, real])
+  assert.deepEqual(r.puntos.map((p) => p.obra.id), ['b'])
+  assert.equal(r.empresa, 100, 'la tarifa de vuelta no contamina la cifra de la empresa')
+  assert.deepEqual(r.noMedidas.map((o) => o.id), ['a'])
+  assert.equal(porHoraMedido(estimada), null)
+  assert.equal(porHoraMedido(real), 100)
 })

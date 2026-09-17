@@ -4,7 +4,7 @@
 // entran a ningún ratio POR OBRA: repartirlos sería decidir a qué obra fue una compra que Compras no
 // supo decir. Y un ratio sin sus dos patas no se publica: `queda` sólo existe con contrato Y gasto,
 // `$/hora` sólo con mano de obra imputada Y horas.
-import type { ObraAnalitica } from './obras.ts'
+import { rotuloEstimada, type ObraAnalitica } from './obras.ts'
 
 const sumaNula = (xs: (number | null)[]): number | null =>
   xs.every((x) => x == null) ? null : xs.reduce<number>((a, x) => a + (x ?? 0), 0)
@@ -71,12 +71,21 @@ export function composicion(obras: ObraAnalitica[]): { manoObra: number; subcont
   return t > 0 ? { manoObra: mo / t, subcontratos: sub / t, materiales: mat / t } : null
 }
 
-/** «MO 62 % · sub 8 % · mat 30 %», o `null` sin gasto. */
+/** La mano de obra de varias obras sumada, con su parte estimada: para rotular un total. */
+export function manoObraDe(obras: ObraAnalitica[]): { manoObra: number | null; manoObraEstimada: number | null } {
+  const con = obras.filter((o) => o.gasto.manoObra != null)
+  if (!con.length) return { manoObra: null, manoObraEstimada: null }
+  const est = con.reduce((a, o) => a + (o.gasto.manoObraEstimada ?? 0), 0)
+  return { manoObra: con.reduce((a, o) => a + (o.gasto.manoObra ?? 0), 0), manoObraEstimada: est > 0 ? est : null }
+}
+
+/** «MO 62 % (80 % estimada) · sub 8 % · mat 30 %», o `null` sin gasto. */
 export function textoComposicion(o: ObraAnalitica): string | null {
   const c = composicion([o])
   if (!c) return null
   const p = (x: number) => `${Math.round(x * 100)} %`
-  return `MO ${p(c.manoObra)} · sub ${p(c.subcontratos)} · mat ${p(c.materiales)}`
+  const est = rotuloEstimada(o.gasto)
+  return `MO ${p(c.manoObra)}${est ? ` (${est})` : ''} · sub ${p(c.subcontratos)} · mat ${p(c.materiales)}`
 }
 
 export const masGastan = (obras: ObraAnalitica[], n = 8): ObraAnalitica[] =>
@@ -143,20 +152,31 @@ export const UMBRAL_HORA_CARA = 0.2
 export interface PuntoHora { obra: ObraAnalitica; porHora: number; contraEmpresa: number }
 
 /**
- * $/HORA = mano de obra imputada ÷ horas valorizadas, SÓLO con las dos. Es COSTO de la hora, no
- * productividad: una obra cara por hora puede ser la que más avanzó por hora. La empresa es el
- * cociente de las sumas —no el promedio de cocientes—, para que una obra de 10 h no pese como una de 3.000.
+ * $/HORA = mano de obra imputada ÷ horas valorizadas, SÓLO con las dos y SÓLO si la mano de obra es
+ * toda con recibo. Es COSTO de la hora, no productividad. La empresa es el cociente de las sumas —no
+ * el promedio de cocientes—, para que una obra de 10 h no pese como una de 3.000.
+ *
+ * UNA MANO DE OBRA ESTIMADA NO MIDE NADA (auditoría 17/09/2026, D2): la estimación ES horas × tarifa,
+ * así que dividirla por las horas devuelve la tarifa. Esas obras salen en `noMedidas`, con su parte
+ * estimada, y no entran ni a los puntos ni a la línea de la empresa.
  */
-export function costoPorHora(obras: ObraAnalitica[]): { empresa: number | null; puntos: PuntoHora[] } {
+export function costoPorHora(obras: ObraAnalitica[]): { empresa: number | null; puntos: PuntoHora[]; noMedidas: ObraAnalitica[] } {
   const con = obras.filter((o) => (o.gasto.manoObra ?? 0) > 0 && (o.gasto.horasValorizadas ?? 0) > 0)
-  const mo = con.reduce((a, o) => a + (o.gasto.manoObra ?? 0), 0)
-  const h = con.reduce((a, o) => a + (o.gasto.horasValorizadas ?? 0), 0)
+  const medidas = con.filter((o) => (o.gasto.manoObraEstimada ?? 0) <= 0)
+  const mo = medidas.reduce((a, o) => a + (o.gasto.manoObra ?? 0), 0)
+  const h = medidas.reduce((a, o) => a + (o.gasto.horasValorizadas ?? 0), 0)
   const empresa = h > 0 ? mo / h : null
-  const puntos = con.map((o) => {
+  const puntos = medidas.map((o) => {
     const porHora = (o.gasto.manoObra ?? 0) / (o.gasto.horasValorizadas ?? 1)
     return { obra: o, porHora, contraEmpresa: empresa ? porHora / empresa - 1 : 0 }
   })
-  return { empresa, puntos: puntos.sort((a, b) => b.porHora - a.porHora) }
+  return { empresa, puntos: puntos.sort((a, b) => b.porHora - a.porHora), noMedidas: con.filter((o) => !medidas.includes(o)) }
+}
+
+/** El $/hora de UNA obra para la tabla: `null` si falta una pata o si la mano de obra tiene parte estimada. */
+export function porHoraMedido(o: ObraAnalitica): number | null {
+  if (!o.gasto.manoObra || !o.gasto.horasValorizadas || (o.gasto.manoObraEstimada ?? 0) > 0) return null
+  return o.gasto.manoObra / o.gasto.horasValorizadas
 }
 
 // ─── Gasto por obra ─────────────────────────────────────────────────────────────────────────────
@@ -182,7 +202,7 @@ export function ordenar(obras: ObraAnalitica[], orden: Orden): ObraAnalitica[] {
     if (orden === 'contrato') return o.precio
     if (orden === 'pct') return o.precio && o.gasto.total != null ? o.gasto.total / o.precio : null
     if (orden === 'horas') return o.gasto.horas
-    return o.gasto.manoObra && o.gasto.horasValorizadas ? o.gasto.manoObra / o.gasto.horasValorizadas : null
+    return porHoraMedido(o)
   }
   return [...obras].sort((a, b) => {
     const x = v(a)

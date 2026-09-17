@@ -2,8 +2,8 @@
 import Link from 'next/link'
 import { aUrl, type Filtros } from '../services/filtros'
 import { millones, pctEntero, horasTexto } from '../services/formato'
-import { agruparPorSemaforo, fraseDeObra, ORDEN_GRUPOS, type Grupo, type ObraAnalitica } from '../services/obras'
-import { cifrasResumen, composicion, masGastan, porCliente } from '../services/agregados'
+import { agruparPorSemaforo, fraseDeObra, ORDEN_GRUPOS, rotuloEstimada, type Grupo, type ObraAnalitica } from '../services/obras'
+import { cifrasResumen, composicion, manoObraDe, masGastan, porCliente } from '../services/agregados'
 import { Anillo, Ausente, Cifras, Subtitulo, Titulo, Valor } from './Piezas'
 
 const TONO_GRUPO: Record<Grupo, 'neg' | 'warn' | 'pos' | 'dato'> = {
@@ -60,6 +60,7 @@ function AnilloDeObra({ o }: { o: ObraAnalitica }) {
         </p>
       )}
       {segunda ? <p className="text-xs tabular-nums text-faint">{segunda}</p> : null}
+      {rotuloEstimada(o.gasto) ? <p className="text-xs tabular-nums text-faint">mano de obra {rotuloEstimada(o.gasto)}</p> : null}
       <p className={`mt-1 text-xs ${o.grupo === 'pasadas' ? 'text-neg' : sinPres ? 'text-faint' : 'text-muted'}`}>{fraseDeObra(o)}</p>
     </li>
   )
@@ -81,9 +82,10 @@ export function VistaResumen({ obras, sinObra, filtros }: {
   const clientes = porCliente(obras, sinObra)
   const top = masGastan(obras)
   const comp = composicion(obras)
+  const estimada = rotuloEstimada(manoObraDe(obras))
   return (
     <>
-      <Titulo titulo="Resumen" linea={`${obras.length} obras de ${clientes.length} clientes · acumulado a la fecha`} />
+      <Titulo titulo="Resumen" linea={`${obras.length} obras de ${clientes.length} clientes · acumulado a la fecha${estimada ? ` · mano de obra ${estimada}` : ''}`} />
       <Cifras cifras={[
         { rotulo: 'Contratado con papel', valor: millones(c.contratadoConPapel) },
         { rotulo: 'Gastado en obras', valor: millones(c.gastadoEnObras), falta: 'sin movimiento' },
@@ -136,7 +138,10 @@ export function VistaResumen({ obras, sinObra, filtros }: {
           {comp ? (
             <dl className="grid grid-cols-3 text-center">
               {[['Mano de obra', comp.manoObra], ['Subcontratos', comp.subcontratos], ['Materiales', comp.materiales]].map(([r, v]) => (
-                <div key={r as string}><dd className="text-2xl font-semibold tabular-nums text-ink">{pctEntero(v as number)}</dd><dt className="text-xs text-faint">{r}</dt></div>
+                <div key={r as string}>
+                  <dd className="text-2xl font-semibold tabular-nums text-ink">{pctEntero(v as number)}</dd>
+                  <dt className="text-xs text-faint">{r}{r === 'Mano de obra' && estimada ? ` · ${estimada}` : ''}</dt>
+                </div>
               ))}
             </dl>
           ) : <Ausente>sin movimiento</Ausente>}
