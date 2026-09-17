@@ -25,7 +25,7 @@ import {
 export interface OpcionObra { id: string; nombre: string; cliente: string; estado: 'curso' | 'terminada' | 'sinIniciar' }
 
 const PASA: Record<EstadoObra, (e: OpcionObra['estado']) => boolean> = {
-  curso: (e) => e === 'curso', terminadas: (e) => e === 'terminada', sinIniciar: (e) => e === 'sinIniciar', todas: () => true,
+  curso: (e) => e !== 'terminada', terminadas: (e) => e === 'terminada', sinIniciar: (e) => e === 'sinIniciar', todas: () => true,
 }
 
 const Flecha = () => (
