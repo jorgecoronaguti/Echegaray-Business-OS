@@ -8,15 +8,8 @@
 // que se le ha pagado efectivamente y que vaya restando al total o incrementando en el otro llegado el caso;
 // así no sirve, rehacer»* (15/09). La fila se lee en el orden en que se arma y se paga el sueldo:
 //
-//   Persona │ HORAS: días · Horas │ RECIBO BLANCO: Hs · $/h cat. · Banco ✎ · Pagado ✎ · Saldo │
-//   RECIBO NEGRO: Hs ✎ · $/h negro ✎ · Importe ✎ · Pagado ✎ · Saldo │
-//   RESTO DEL CÁLCULO: Presentismo · Efect. red. · Total · Pagado · Saldo · Saldo red.
-//
-// ═══ CUATRO BLOQUES A LA VISTA (dueño, 17/09/2026) ═══
-//
-// *«necesito que se distinga la sección de hs, recibo blanco, recibo negro y el resto de cálculo»*. Cada bloque
-// lleva su rótulo arriba, un fondo tenue de token que baja hasta el total (`BloqueDeColumnas`) y su grupo en el
-// pie. Qué columna va en qué bloque lo dice `cuadro/bloquesDelCuadro.ts`; ninguna columna se quitó.
+//   Persona · días · Horas │ BLANCO · recibo: Hs · $/h cat. · Banco ✎ · Pagado ✎ · Saldo │
+//   NEGRO: Hs ✎ · $/h negro ✎ · Importe ✎ · Pagado ✎ · Saldo │ Presentismo · Total · Pagado · Saldo
 //
 // ═══ DOS BANDAS SIMÉTRICAS Y NO DIEZ COLUMNAS SUELTAS ═══
 //
@@ -54,9 +47,6 @@ import { anchoArrastrado, anchoRecordado, CLAVE_ANCHO_PERSONA } from './cuadro/a
 import { horas as nHoras, pesos } from './formato'
 import { CintaHorizontal } from '@/shared/components/v2/CintaHorizontal'
 import { ALTO_LIQ, CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, MONO, fondoDeColumnaFija } from './solapas/tabla'
-import { BLOQUES, GAP, PLATA, anchoDe, anchoDelBloque, columnasDe, tramosDeBloques, type ClaveDeBloque } from './cuadro/bloquesDelCuadro'
-import { BloqueDeColumnas } from './cuadro/BloqueDeColumnas'
-import { PieDelEspejo } from './cuadro/PieDelEspejo'
 import type { CampoEditable } from '../../services/liquidacionOverrides'
 import type { FilaDelEspejo, TotalesDelEspejo } from '../../services/espejoDeJornales'
 import { cierreDeTotales, type EntradaDeHistorial } from '../../services/cuadroDeJornales'
@@ -76,18 +66,71 @@ function rotuloDia(fecha: string): string {
 const corta = (iso: string | null): string =>
   iso == null ? 'alta sin cargar' : `alta ${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`
 
-// LAS COLUMNAS, SU ANCHO Y SU BLOQUE viven en `cuadro/bloquesDelCuadro.ts` (17/09/2026). La historia de cada una
-// —las cuatro que se fueron el 15/09, «Efect. red.» y «Saldo red.» del 16/09— está sobre `PLATA`, allá.
-//
-// Sin «Cliente · Obra» (dueño, 14/09: «esa columna no te pedi en liq hs»).
+/**
+ * LAS COLUMNAS DE LA PLATA — DOS LADOS SIMÉTRICOS Y UN TOTAL (dueño, 15/09/2026).
+ *
+ * *«necesito al lado de banco y negro lo que se le ha pagado efectivamente y que vaya restando al total o
+ * incrementando en el otro llegado el caso; así no sirve, rehacer»*. Las dos bandas pasan a tener las MISMAS
+ * cinco columnas —cuánto, cuánto se pagó, cuánto falta— y al final la fila cierra con Total · Pagado · Saldo.
+ *
+ * ═══ LAS CUATRO COLUMNAS QUE SE FUERON, Y POR QUÉ ═══
+ *
+ *   «Adelanto banco / embargos»  ahora es PAGADO del lado blanco: un giro ya hecho no es un descuento del
+ *                                sueldo, es plata entregada.
+ *   «Adelanto efectivo»          ahora es PAGADO del lado negro. Era la queja textual: *«no considera
+ *                                adelantos en efectivo y resta del efectivo total»*.
+ *   «Total efectivo»             era cobra − adelantos − banco: una resta que no contestaba «¿cuánto le
+ *                                entrego hoy?» cuando el adelanto superaba el negro. Ahora es SALDO, y el
+ *                                exceso de un lado se descuenta del otro (`pagoDeLaQuincena.ts`).
+ *   «Cobra total»                se llama TOTAL y sigue siendo `l.cobra`. El número que decide es el SALDO,
+ *                                la última columna: se mueve con la cinta, no queda pegada (16/09).
+ *
+ * Sin «Cliente · Obra» (dueño, 14/09: «esa columna no te pedi en liq hs»). `banda` agrupa el encabezado.
+ */
+const PLATA = [
+  // 72 Y 64: Horas y Hs negro se escriben (15/09/2026) y el campo con la marca «manual» no entra en 56 y 48.
+  { clave: 'horas', rotulo: 'Horas ✎', px: 72 },
+  { clave: 'hsBlanco', rotulo: 'Hs recibo ✎', px: 72, banda: 'blanco' },
+  { clave: 'horaCategoria', rotulo: '$/h cat. ✎', px: 96, banda: 'blanco' },
+  { clave: 'neto', rotulo: 'Banco ✎', px: 124, banda: 'blanco' },
+  { clave: 'pagadoBanco', rotulo: 'Pagado ✎', px: 112, banda: 'blanco' },
+  { clave: 'saldoBanco', rotulo: 'Saldo', px: 112, banda: 'blanco' },
+  { clave: 'hsNegro', rotulo: 'Hs ✎', px: 64, banda: 'negro' },
+  // 120: el botón del $/h con el «+8%» al lado. La marca del básico se mudó al $/h de categoría.
+  { clave: 'horaNegro', rotulo: '$/h negro ✎', px: 120, banda: 'negro' },
+  { clave: 'negro', rotulo: 'Importe ✎', px: 104, banda: 'negro' },
+  { clave: 'pagadoEfectivo', rotulo: 'Pagado ✎', px: 112, banda: 'negro' },
+  { clave: 'saldoEfectivo', rotulo: 'Saldo', px: 112, banda: 'negro' },
+  // PRESENTISMO (dueño, 15/09/2026): la parte del cobra que una sola tardanza hace perder. Va después del
+  // negro porque de ahí sale el descuento (el neto es del estudio). No es una columna de JORNALES.
+  { clave: 'presentismo', rotulo: 'Presentismo', px: 112 },
+  // «EFECT. RED. ✎» VUELVE (dueño, 16/09/2026: «¿por qué quitaste la columna de efectivo redondeado que te había
+  // solicitado?»). Un pulido la había sacado del cuadro; la pidió el dueño y no se quita: es lo que cuenta en billetes.
+  { clave: 'efectivoRedondeado', rotulo: 'Efect. red. ✎', px: 108 },
+  { clave: 'total', rotulo: 'Total', px: 124 },
+  { clave: 'pagado', rotulo: 'Pagado', px: 112 },
+  { clave: 'saldo', rotulo: 'Saldo', px: 120 },
+  // «SALDO RED.» (dueño, 16/09/2026): *«dame una columna más al lado de saldo en donde diga saldo redondeado
+  // como si lo que resta pagar se pagara en efectivo»*. Derivada del Saldo de al lado, al $1.000: no se edita,
+  // no se guarda y no entra en ninguna cuenta. Distinta de «Efect. red.», que redondea el lado negro.
+  { clave: 'saldoRedondeado', rotulo: 'Saldo red.', px: 120 },
+] as const
 
-// NINGUNA COLUMNA PEGADA A LA DERECHA (dueño, 16/09/2026, textual: «está mal la columna de "saldo" en liq de hs
-// porque esa queda fija, y la que has dejado tirada al último a la derecha sí se mueve como saldo: has hecho mal
-// eso, rehacer urgente»). Hasta hoy el Saldo total iba `sticky right` como espejo de `COLUMNA_FIJA`; leído con la
-// cinta desplazada, tapaba el Saldo del blanco y se confundía con él. Total · Pagado · Saldo son columnas comunes
-// al final de la cinta y se mueven con ella, como en el Sheet. Lo único fijo: el encabezado arriba y Persona a la
-// izquierda.
-//
+/** Cuántas columnas cubre cada banda. Blanco y negro tienen las mismas cinco: se leen en paralelo. */
+const ANCHO_DE_BANDA = 5
+
+const GAP = 8
+
+/**
+ * NINGUNA COLUMNA PEGADA A LA DERECHA (dueño, 16/09/2026, textual: «está mal la columna de "saldo" en liq de hs
+ * porque esa queda fija, y la que has dejado tirada al último a la derecha sí se mueve como saldo: has hecho mal
+ * eso, rehacer urgente»). Hasta hoy el Saldo total iba `sticky right` como espejo de `COLUMNA_FIJA`; leído con la
+ * cinta desplazada, tapaba el Saldo del blanco y se confundía con él. Total · Pagado · Saldo son columnas comunes
+ * al final de la cinta y se mueven con ella, como en el Sheet. Lo único fijo: el encabezado arriba y Persona a la
+ * izquierda.
+ */
+const DIA = 36
+
 // ═══ LA COLUMNA PERSONA MIDE DISTINTO EN EL TELÉFONO (dueño, 16/09/2026: «roto el diseño en liq hs») ═══
 //
 // Con 200 px fijos más el canal de 20, la celda pegajosa se comía 220 de los 390 px del teléfono y los días quedaban
@@ -96,11 +139,20 @@ const corta = (iso: string | null): string =>
 // variable para que el `1fr` no la devuelva a 200.
 const VARIABLE_PERSONA = '[--liq-persona:170px] md:[--liq-persona:250px]'
 
-/** Cuántas columnas cruza la celda de un mensual: los dos recibos por horas. */
-const ANCHO_DE_LAS_BANDAS = anchoDelBloque('blanco', 0) + anchoDelBloque('negro', 0)
+// LOS DÍAS ADELANTE, COMO EN LA PLANILLA: Persona · días · plata.
+const columnasDe = (nDias: number): string =>
+  `minmax(var(--liq-persona,200px),1fr) repeat(${nDias},${DIA}px) ${PLATA.map((c) => `${c.px}px`).join(' ')}`
 
-/** El fondo de un bloque, del único lugar donde se declara. */
-const fondoDe = (clave: ClaveDeBloque): string | undefined => BLOQUES.find((b) => b.clave === clave)?.fondo
+/** El ancho mínimo de la tabla: la columna Persona (variable) más todo lo demás (fijo). */
+const anchoDe = (nDias: number): string =>
+  `calc(var(--liq-persona,200px) + ${nDias * DIA + PLATA.reduce((s, c) => s + c.px, 0) + (nDias + PLATA.length) * GAP}px)`
+
+/** Cuántas columnas ocupan las dos bandas: la celda de un mensual las cubre enteras. */
+const ANCHO_DE_LAS_BANDAS = PLATA.filter((c) => 'banda' in c).length
+
+/** Dónde empieza cada banda en la grilla (1 = Persona, después los días). */
+const inicioDe = (banda: 'blanco' | 'negro', nDias: number): number =>
+  2 + nDias + PLATA.findIndex((c) => 'banda' in c && c.banda === banda)
 
 const filaGrid = (columnas: string, alto: number): React.CSSProperties => ({
   display: 'grid', gridTemplateColumns: columnas, gap: GAP, minHeight: alto,
@@ -243,10 +295,19 @@ function Encabezado({ columnas, dias, sellada, corrimiento = 0, tirador }: {
   tirador?: Pick<React.HTMLAttributes<HTMLElement>, 'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onPointerCancel' | 'onDoubleClick'>
 }) {
   const mono = { fontFamily: MONO, fontSize: '9.5px', letterSpacing: '.04em', textTransform: 'uppercase' as const }
+  const banda = (inicio: number, texto: string, testid: string) => (
+    <div data-testid={testid} style={{
+      gridColumn: `${inicio} / span ${ANCHO_DE_BANDA}`, gridRow: 1, borderBottom: `1px solid ${V.grafito}`, paddingBottom: 4,
+      color: V.tinta, fontWeight: 600, ...mono,
+    }}>{texto}{sellada && (
+      // LA FOTO SELLADA NO SE RECALCULA: el negro es total − neto del recibo (`negroDeLaFila`).
+      <span data-testid={`${testid}-sellada`} style={{ marginLeft: 8, fontWeight: 400, color: V.apagado, textTransform: 'none' }}>sellada</span>
+    )}</div>
+  )
   return (
     <div data-testid="espejo-encabezado" style={{
       display: 'grid', gridTemplateColumns: columnas, columnGap: GAP, rowGap: 4, alignItems: 'end',
-      borderBottom: `1px solid ${V.linea}`, color: V.tenue, ...mono,
+      paddingBottom: 8, borderBottom: `1px solid ${V.linea}`, color: V.tenue, ...mono,
     }}>
       {/* «PERSONA» NO SE VA CON EL SCROLL, igual que los nombres de abajo. Acá no puede ser `sticky` —este
           envoltorio no es un scrollport y el movimiento es un `transform`—: se contra-desplaza, y por eso
@@ -258,7 +319,7 @@ function Encabezado({ columnas, dias, sellada, corrimiento = 0, tirador }: {
           sea cual sea el alto que tomen los rótulos. */}
       <div style={{
         ...COLUMNA_FIJA, position: 'relative', gridColumn: 1, gridRow: '1 / span 2', alignSelf: 'stretch',
-        display: 'flex', alignItems: 'end', paddingBottom: 8, transform: `translateX(${corrimiento}px)`,
+        display: 'flex', alignItems: 'end', transform: `translateX(${corrimiento}px)`,
       }}>
         Persona
         {/* EL TIRADOR: el borde derecho de la celda. Arrastrar ensancha o angosta la columna; doble clic la devuelve
@@ -280,24 +341,11 @@ function Encabezado({ columnas, dias, sellada, corrimiento = 0, tirador }: {
           </div>
         )}
       </div>
-      {/* LOS CUATRO BLOQUES, CADA UNO CON SU RÓTULO ARRIBA Y SUS COLUMNAS ABAJO. Cada bloque es UNA caja que cubre
-          los dos renglones (`subgrid` en filas y columnas): el fondo baja desde el rótulo hasta el filo del
-          encabezado, y sigue en cada fila con la misma caja. «sellada» va en los dos recibos, que son los que la
-          foto no recalcula (el negro es total − neto del recibo, `negroDeLaFila`). */}
-      {tramosDeBloques(dias.length).map((t) => (
-        <BloqueDeColumnas key={t.clave} fondo={t.fondo} columna={`${t.inicio} / span ${t.span}`} fila="1 / span 2" filas
-          estilo={{ alignItems: 'end', paddingTop: 4, paddingBottom: 8 }}>
-          <div data-testid={`banda-${t.clave}`} style={{
-            gridColumn: '1 / -1', gridRow: 1, borderBottom: `1px solid ${V.grafito}`, paddingBottom: 4,
-            color: V.tinta, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>{t.rotulo}{sellada && (t.clave === 'blanco' || t.clave === 'negro') && (
-            <span data-testid={`banda-${t.clave}-sellada`} style={{ marginLeft: 8, fontWeight: 400, color: V.apagado, textTransform: 'none' }}>sellada</span>
-          )}</div>
-          {t.clave === 'horas' && dias.map((f) => <div key={f} style={{ gridRow: 2, textAlign: 'center' }} title={f}>{rotuloDia(f)}</div>)}
-          {PLATA.filter((c) => c.bloque === t.clave).map((c) => (
-            <div key={c.clave} style={{ gridRow: 2, textAlign: 'right' }}>{c.rotulo}</div>
-          ))}
-        </BloqueDeColumnas>
+      {banda(inicioDe('blanco', dias.length), 'Blanco · recibo', 'banda-blanco')}
+      {banda(inicioDe('negro', dias.length), 'Negro', 'banda-negro')}
+      {dias.map((f, i) => <div key={f} style={{ gridColumn: 2 + i, gridRow: 2, textAlign: 'center' }} title={f}>{rotuloDia(f)}</div>)}
+      {PLATA.map((c, i) => (
+        <div key={c.clave} style={{ gridColumn: 2 + dias.length + i, gridRow: 2, textAlign: 'right' }}>{c.rotulo}</div>
       ))}
     </div>
   )
@@ -360,58 +408,45 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
           )}
         </div>
       </div>
-      <BloqueDeColumnas fondo={fondoDe('horas')} columna={`span ${anchoDelBloque('horas', fila.celdas.length)}`}>
-        {fila.celdas.map((c) => <CeldaDeDia key={c.fecha} celda={c} personaId={fila.personaId} nombre={fila.nombre} />)}
-        <CeldaHorasPagas fila={fila} edicion={{ quincena, camposEditables }} />
-      </BloqueDeColumnas>
+      {fila.celdas.map((c) => <CeldaDeDia key={c.fecha} celda={c} personaId={fila.personaId} nombre={fila.nombre} />)}
+      <CeldaHorasPagas fila={fila} edicion={{ quincena, camposEditables }} />
       {l.modalidad === 'mensual' ? (
         // POR MODALIDAD, NO POR NETO: el jefe sin neto cargado cobra por mes igual (dueño, 15/09/2026).
-        // UN MENSUAL NO VA EN LOS RECIBOS POR HORAS (QA, 14/09/2026): su sueldo fijo en «$/h negro» sumaba al Total
-        // sin estar en Neto ni en Negro. Una celda propia cruza los dos bloques; los dos fondos siguen debajo para
-        // que la columna no se corte en su fila. Su neto mensual se sigue editando acá, y el pie lo suma en
-        // «Sueldos mensuales».
-        <BloqueDeColumnas fondo={undefined} columna={`span ${ANCHO_DE_LAS_BANDAS}`}>
-          <div aria-hidden style={{ gridColumn: `1 / span ${anchoDelBloque('blanco', 0)}`, gridRow: 1, alignSelf: 'stretch', margin: '0 -3px', background: fondoDe('blanco') }} />
-          <div aria-hidden style={{ gridColumn: `${anchoDelBloque('blanco', 0) + 1} / span ${anchoDelBloque('negro', 0)}`, gridRow: 1, alignSelf: 'stretch', margin: '0 -3px', background: fondoDe('negro') }} />
-          <div data-testid={`mensual-${fila.personaId}`} style={{
-            gridColumn: '1 / -1', gridRow: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8,
-          }}>
-            <span data-testid={`rotulo-mensual-${fila.personaId}`} style={{ fontSize: '11px', color: V.apagado }}>{rotuloDelMensual(l) ?? 'mensual'}</span>
-            <CeldaTarifa fila={fila} quincena={quincena} pct={pct} />
-          </div>
-        </BloqueDeColumnas>
+        // UN MENSUAL NO VA EN LAS BANDAS (QA, 14/09/2026): su sueldo fijo en «$/h negro» sumaba al Total
+        // sin estar en Neto ni en Negro. Una celda propia ocupa las seis columnas; su neto mensual se
+        // sigue editando acá, y el pie lo suma en «Sueldos mensuales».
+        <div data-testid={`mensual-${fila.personaId}`} style={{
+          gridColumn: `span ${ANCHO_DE_LAS_BANDAS}`, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8,
+        }}>
+          <span data-testid={`rotulo-mensual-${fila.personaId}`} style={{ fontSize: '11px', color: V.apagado }}>{rotuloDelMensual(l) ?? 'mensual'}</span>
+          <CeldaTarifa fila={fila} quincena={quincena} pct={pct} />
+        </div>
       ) : (
         <>
           {/* TODO SE ESCRIBE EN LA ABIERTA (dueño, 14 y 15/09/2026): Hs recibo, $/h cat., Neto, Hs negro e Importe.
               Lo que no está escrito sigue derivado de lo que sí. */}
-          <BloqueDeColumnas fondo={fondoDe('blanco')} columna={`span ${anchoDelBloque('blanco', 0)}`}>
-            <CeldaHorasBlanco fila={fila} edicion={{ quincena, camposEditables }} />
-            <CeldaHoraCategoria fila={fila} edicion={{ quincena, camposEditables }} />
-            <CeldaNeto fila={fila} edicion={{ quincena, camposEditables }} />
-            <CeldaPagado campo="pagadoBanco" fila={fila} edicion={{ quincena, camposEditables }} />
-            <CeldaSaldo fila={fila} lado="banco" />
-          </BloqueDeColumnas>
-          <BloqueDeColumnas fondo={fondoDe('negro')} columna={`span ${anchoDelBloque('negro', 0)}`}>
-            <CeldaHorasNegro fila={fila} edicion={{ quincena, camposEditables }} />
-            <CeldaTarifa fila={fila} quincena={quincena} pct={pct} />
-            <CeldaImporteNegro fila={fila} edicion={{ quincena, camposEditables }} />
-            <CeldaPagado campo="pagadoEfectivo" fila={fila} edicion={{ quincena, camposEditables }} />
-            <CeldaSaldo fila={fila} lado="efectivo" />
-          </BloqueDeColumnas>
+          <CeldaHorasBlanco fila={fila} edicion={{ quincena, camposEditables }} />
+          <CeldaHoraCategoria fila={fila} edicion={{ quincena, camposEditables }} />
+          <CeldaNeto fila={fila} edicion={{ quincena, camposEditables }} />
+          <CeldaPagado campo="pagadoBanco" fila={fila} edicion={{ quincena, camposEditables }} />
+          <CeldaSaldo fila={fila} lado="banco" />
+          <CeldaHorasNegro fila={fila} edicion={{ quincena, camposEditables }} />
+          <CeldaTarifa fila={fila} quincena={quincena} pct={pct} />
+          <CeldaImporteNegro fila={fila} edicion={{ quincena, camposEditables }} />
+          <CeldaPagado campo="pagadoEfectivo" fila={fila} edicion={{ quincena, camposEditables }} />
+          <CeldaSaldo fila={fila} lado="efectivo" />
         </>
       )}
-      <BloqueDeColumnas fondo={fondoDe('resto')} columna={`span ${anchoDelBloque('resto', 0)}`}>
-        <CeldaPresentismo fila={fila} />
-        {/* EL REDONDEO SIGUE SIENDO DEL DUEÑO: los billetes que entrega en mano. No entra en ninguna cuenta. */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado} enEfectivo={l.pago.aPagarEfectivo ?? l.enEfectivo}
-            quincena={quincena} grupo={fila.grupo} bloqueada={fila.cerrada} ancho={100} />
-        </div>
-        <CeldaTotal fila={fila} edicion={{ quincena, camposEditables }} />
-        <CeldaPagadoTotal fila={fila} />
-        <CeldaSaldo fila={fila} lado="total" />
-        <CeldaSaldoRedondeado fila={fila} />
-      </BloqueDeColumnas>
+      <CeldaPresentismo fila={fila} />
+      {/* EL REDONDEO SIGUE SIENDO DEL DUEÑO: los billetes que entrega en mano. No entra en ninguna cuenta. */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado} enEfectivo={l.pago.aPagarEfectivo ?? l.enEfectivo}
+          quincena={quincena} grupo={fila.grupo} bloqueada={fila.cerrada} ancho={100} />
+      </div>
+      <CeldaTotal fila={fila} edicion={{ quincena, camposEditables }} />
+      <CeldaPagadoTotal fila={fila} />
+      <CeldaSaldo fila={fila} lado="total" />
+      <CeldaSaldoRedondeado fila={fila} />
     </div>
   )
 }
@@ -431,43 +466,34 @@ function Total({ columnas, dias, totales, redondeo, saldoRed }: {
       ...filaGrid(columnas, ALTO_LIQ.filaAlta), borderBottom: 'none', borderTop: `1px solid ${V.grafito}`, fontWeight: 600,
     }}>
       <div style={COLUMNA_FIJA}>{totales.personas} persona{totales.personas === 1 ? '' : 's'}</div>
-      {/* CADA TOTAL DEBAJO DE SU BLOQUE, con el mismo fondo: el total de un recibo se lee dentro de ese recibo. */}
-      <BloqueDeColumnas fondo={fondoDe('horas')} columna={`span ${anchoDelBloque('horas', dias.length)}`}>
-        {dias.map((f, i) => (
-          <div key={f} style={{ textAlign: 'center', color: totales.porDia[i] == null ? V.tenue : V.tinta }}>
-            {totales.porDia[i] == null ? '·' : nHoras(totales.porDia[i])}
-          </div>
-        ))}
-        <Leida valor={totales.horasPagas} unidad="horas" testid="espejo-total-hs" />
-      </BloqueDeColumnas>
-      <BloqueDeColumnas fondo={fondoDe('blanco')} columna={`span ${anchoDelBloque('blanco', 0)}`}>
-        <div />
-        <div />
-        <Leida valor={totales.netoBandas} testid="espejo-total-neto" />
-        <Leida valor={totales.pago.pagadoBanco} testid="espejo-total-pagado-banco" />
-        <SaldoTotal valor={totales.pago.saldoBanco} testid="espejo-total-saldo-banco" />
-      </BloqueDeColumnas>
-      <BloqueDeColumnas fondo={fondoDe('negro')} columna={`span ${anchoDelBloque('negro', 0)}`}>
-        <div />
-        <div />
-        <Leida valor={totales.negro} testid="espejo-total-negro" />
-        <Leida valor={totales.pago.pagadoEfectivo} testid="espejo-total-pagado-efectivo" />
-        <SaldoTotal valor={totales.pago.saldoEfectivo} testid="espejo-total-saldo-efectivo" />
-      </BloqueDeColumnas>
-      <BloqueDeColumnas fondo={fondoDe('resto')} columna={`span ${anchoDelBloque('resto', 0)}`}>
-        {/* EL TOTAL DE LA COLUMNA ES LO PERDIDO, en ámbar: es lo que cambió la plata. Lo en juego va al pie. */}
-        <div data-testid="espejo-total-presentismo" style={{ textAlign: 'right', whiteSpace: 'nowrap', color: totales.presentismoPerdido > 0 ? V.warn : V.tenue }}
-          title={totales.presentismoPerdido > 0 ? `${totales.presentismoPerdidos} perdieron el presentismo` : 'nadie perdió el presentismo'}>
-          {totales.presentismoPerdido > 0 ? `−${pesos(totales.presentismoPerdido)}` : '·'}
+      {dias.map((f, i) => (
+        <div key={f} style={{ textAlign: 'center', color: totales.porDia[i] == null ? V.tenue : V.tinta }}>
+          {totales.porDia[i] == null ? '·' : nHoras(totales.porDia[i])}
         </div>
-        <Leida valor={redondeo > 0 ? redondeo : null} testid="espejo-total-redondeo" />
-        <div data-testid="espejo-total-cobra" style={{ textAlign: 'right', whiteSpace: 'nowrap', color: noCierra ? V.neg : V.tinta }}
-          title={noCierra ? `No cierra por ${pesos(cierre?.diferencia ?? null)}` : undefined}>{pesos(totales.cobra)}</div>
-        <Leida valor={totales.pago.pagado} testid="espejo-total-pagado" />
-        <div data-testid="espejo-total-saldo"
-          style={{ textAlign: 'right', fontSize: '14px', whiteSpace: 'nowrap', color: totales.pago.saldoTotal < 0 ? V.warn : V.tinta }}>{pesos(totales.pago.saldoTotal)}</div>
-        <Leida valor={saldoRed > 0 ? saldoRed : null} testid="espejo-total-saldo-redondeado" />
-      </BloqueDeColumnas>
+      ))}
+      <Leida valor={totales.horasPagas} unidad="horas" testid="espejo-total-hs" />
+      <div />
+      <div />
+      <Leida valor={totales.netoBandas} testid="espejo-total-neto" />
+      <Leida valor={totales.pago.pagadoBanco} testid="espejo-total-pagado-banco" />
+      <SaldoTotal valor={totales.pago.saldoBanco} testid="espejo-total-saldo-banco" />
+      <div />
+      <div />
+      <Leida valor={totales.negro} testid="espejo-total-negro" />
+      <Leida valor={totales.pago.pagadoEfectivo} testid="espejo-total-pagado-efectivo" />
+      <SaldoTotal valor={totales.pago.saldoEfectivo} testid="espejo-total-saldo-efectivo" />
+      {/* EL TOTAL DE LA COLUMNA ES LO PERDIDO, en ámbar: es lo que cambió la plata. Lo en juego va al pie. */}
+      <div data-testid="espejo-total-presentismo" style={{ textAlign: 'right', whiteSpace: 'nowrap', color: totales.presentismoPerdido > 0 ? V.warn : V.tenue }}
+        title={totales.presentismoPerdido > 0 ? `${totales.presentismoPerdidos} perdieron el presentismo` : 'nadie perdió el presentismo'}>
+        {totales.presentismoPerdido > 0 ? `−${pesos(totales.presentismoPerdido)}` : '·'}
+      </div>
+      <Leida valor={redondeo > 0 ? redondeo : null} testid="espejo-total-redondeo" />
+      <div data-testid="espejo-total-cobra" style={{ textAlign: 'right', whiteSpace: 'nowrap', color: noCierra ? V.neg : V.tinta }}
+        title={noCierra ? `No cierra por ${pesos(cierre?.diferencia ?? null)}` : undefined}>{pesos(totales.cobra)}</div>
+      <Leida valor={totales.pago.pagado} testid="espejo-total-pagado" />
+      <div data-testid="espejo-total-saldo"
+        style={{ textAlign: 'right', fontSize: '14px', whiteSpace: 'nowrap', color: totales.pago.saldoTotal < 0 ? V.warn : V.tinta }}>{pesos(totales.pago.saldoTotal)}</div>
+      <Leida valor={saldoRed > 0 ? saldoRed : null} testid="espejo-total-saldo-redondeado" />
     </div>
   )
 }
@@ -477,5 +503,62 @@ function SaldoTotal({ valor, testid }: { valor: number; testid: string }) {
   return (
     <div data-testid={testid} style={{ textAlign: 'right', whiteSpace: 'nowrap', color: valor < 0 ? V.warn : V.tinta }}
       title={valor < 0 ? 'pagado de más por este canal: se descuenta del otro' : undefined}>{pesos(valor)}</div>
+  )
+}
+
+/**
+ * EL PIE: los totales de cada columna de plata —lo que va al lote del banco, lo del negro, los sobres— y lo
+ * que el total no pudo sumar. Recorta con el filtro, porque sale de los mismos totales.
+ */
+function PieDelEspejo({ totales, redondeo, saldoRed }: { totales: TotalesDelEspejo; redondeo: number; saldoRed: number }) {
+  const cierre = cierreDeTotales(totales)
+  const p = totales.pago
+  const avisos: string[] = []
+  if (cierre?.cierra === false) avisos.push(`el total no cierra por ${pesos(cierre.diferencia)}`)
+  // LO QUE EL PIE NO PUDO SUMAR SE CUENTA, no se omite: un saldo que parece completo y le falta gente manda a
+  // pagar de menos. Los sueldos mensuales quedan fuera del reparto banco/efectivo y por eso van aparte.
+  if (p.sinSaldo > 0) avisos.push(`${p.sinSaldo} sin saldo: no se pudo afirmar cuánto falta`)
+  if (totales.sinNeto > 0) avisos.push(`${totales.sinNeto} sin neto: sin recibo previo, no suman`)
+  if (totales.sinTarifa > 0) avisos.push(`${totales.sinTarifa} sin retribución cargada (no suman a la plata)`)
+  if (totales.estimados > 0) avisos.push(`${totales.estimados} con blanco estimado`)
+  const cifra = (rotulo: string, valor: number | null, testid: string) => (
+    <span data-testid={testid}><span style={{ color: V.apagado }}>{`${rotulo} `}</span><strong>{pesos(valor)}</strong></span>
+  )
+  return (
+    <div data-testid="espejo-pie" style={{
+      display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 16, rowGap: 4, padding: '12px 20px 16px',
+      fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
+    }}>
+      {/* EL MISMO ORDEN QUE LAS COLUMNAS. BANCO + NEGRO + SUELDOS MENSUALES = TOTAL QUINCENA, exacto. */}
+      {cifra('Banco', totales.netoBandas, 'pie-neto')}
+      {cifra('Pagado banco', p.pagadoBanco, 'pie-pagado-banco')}
+      {cifra('Saldo banco', p.saldoBanco, 'pie-saldo-banco')}
+      {cifra('Negro', totales.negro, 'pie-negro')}
+      {cifra('Pagado efectivo', p.pagadoEfectivo, 'pie-pagado-efectivo')}
+      {cifra('Saldo efectivo', p.saldoEfectivo, 'pie-saldo-efectivo')}
+      {totales.mensuales > 0 && cifra('Sueldos mensuales', totales.mensuales, 'pie-mensuales')}
+      {/* PRESENTISMO: lo que está en juego en las filas visibles y lo que se perdió. Se dicen los dos porque el
+          dueño decide con los dos: cuánto pesa la regla y cuánto costó esta quincena. */}
+      {cifra('Presentismo en juego', totales.presentismoEnJuego, 'pie-presentismo')}
+      {totales.presentismoPerdidos > 0 && (
+        <span data-testid="pie-presentismo-perdido" style={{ color: V.warn }}>
+          <span>{`Presentismo perdido (${totales.presentismoPerdidos}) `}</span><strong>{`−${pesos(totales.presentismoPerdido)}`}</strong>
+        </span>
+      )}
+      {cifra('Efectivo redondeado', redondeo > 0 ? redondeo : null, 'pie-redondeo')}
+      {cifra('Total', totales.cobra, 'pie-total')}
+      {cifra('Pagado', p.pagado, 'pie-pagado')}
+      {cifra('Saldo', p.saldoTotal, 'pie-saldo')}
+      {cifra('Saldo redondeado', saldoRed > 0 ? saldoRed : null, 'pie-saldo-redondeado')}
+      {/* LA LÍNEA QUE CONTESTA LA PREGUNTA DEL DÍA DE PAGO: con la caja en la mano, cuánto sale por cada canal.
+          El exceso de un lado ya está descontado del otro, así que estas dos SUMAN el saldo y no más. */}
+      <span data-testid="pie-a-pagar" style={{ fontWeight: 600 }}>
+        <span style={{ color: V.apagado }}>A pagar hoy: </span>
+        {`efectivo ${pesos(p.aPagarEfectivo)} · banco ${pesos(p.aPagarBanco)}`}
+      </span>
+      {avisos.length > 0 && (
+        <span style={{ fontSize: '11.5px', color: cierre?.cierra === false ? V.neg : V.apagado }}>{avisos.join(' · ')}</span>
+      )}
+    </div>
   )
 }

@@ -34,19 +34,11 @@ import { fechasCortas, type PresentismoDeLinea } from '../../../services/present
 /**
  * LA CELDA DE PRESENTISMO (dueño, 15/09/2026). El importe cuando aplica; «perdido dd/mm» en ámbar cuando
  * una marca lo hizo perder; «sin categoría» apagado cuando el legajo no dice qué básico usar (0 y sin
- * pendiente); «no aplica · mensual» a quien cobra por mes; «—» fuera del modelo (finales, quincena anterior al 16/09).
+ * pendiente); «—» fuera del modelo (Oficina, finales, quincena anterior al 16/09).
  */
 export function CeldaPresentismo({ fila }: { fila: FilaDelEspejo }) {
   const p = fila.linea.presentismo
   const testid = `presentismo-${fila.personaId}`
-  // QUIEN COBRA POR MES NO LLEVA PRESENTISMO (dueño, 17/09/2026) y la celda lo dice, apagado: «—» se leía igual
-  // que «todavía no rige» y obligaba a abrir el panel para saber si a un jefe le faltaba algo.
-  if (p?.estado === 'no_aplica') {
-    return (
-      <div data-testid={testid} data-presentismo="no-aplica" title="Cobra por mes: el presentismo es del convenio de obreros y no le corresponde"
-        style={{ textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11px', color: V.apagado }}>{`no aplica · ${p.motivoNoAplica ?? 'mensual'}`}</div>
-    )
-  }
   if (!p || p.estado === 'no_rige') {
     return <div data-testid={testid} style={{ textAlign: 'right', color: V.lineaFuerte }}>—</div>
   }

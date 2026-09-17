@@ -15,13 +15,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { PLATA, columnasDe } from '../cuadro/bloquesDelCuadro.ts'
 
 const fuente = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8')
 const INDICE = fuente('./index.ts')
 const GRILLA = fuente('../GrillaEspejoQuincena.tsx')
-// EL PIE SALIÓ A SU ARCHIVO EL 17/09/2026 (agrupado por bloque): lo que se decía del pie se busca en los dos.
-const PIE = fuente('../cuadro/PieDelEspejo.tsx')
 const CELDAS = fuente('../cuadro/CeldasDelEspejo.tsx')
 const TARIFA = fuente('../cuadro/CeldaTarifa.tsx')
 const HISTORIAL = fuente('../cuadro/HistorialDeTarifa.tsx')
@@ -39,6 +36,8 @@ const sinComentarios = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace
 const REGISTRO = INDICE.slice(INDICE.indexOf('export const SOLAPAS'))
 const claves = (): string[] =>
   [...REGISTRO.matchAll(/\{ clave: '([a-z]+)', titulo:/g)].map((m) => m[1])
+const clavesDe = (desde: string, hasta: string): string[] =>
+  [...GRILLA.slice(GRILLA.indexOf(desde), GRILLA.indexOf(hasta)).matchAll(/clave: '([a-zA-Z0-9]+)'/g)].map((m) => m[1])
 
 test('«QUINCENA» ES LA PRIMERA DE LA BARRA Y LA QUE ABRE POR DEFECTO', () => {
   assert.equal(claves()[0], 'quincena')
@@ -80,8 +79,7 @@ test('SIN COLUMNA «PLANILLA»: el cotejo va en el sello y en el panel, no en el
 // CAMBIÓ OTRA VEZ EL 14/09/2026: el orden de JORNALES pone los días ADELANTE y la plata después, con los
 // adelantos antes del total efectivo y el total quincena al final. Se sigue protegiendo el orden completo.
 test('LOS DÍAS VAN PRIMERO Y DESPUÉS LA PLATA, CON PAGADO Y SALDO EN CADA LADO', () => {
-  // LA LISTA VIVE EN `bloquesDelCuadro.ts` DESDE EL 17/09/2026 (cuatro bloques): se lee de ahí, ejecutada.
-  assert.deepEqual(PLATA.map((c) => c.clave),
+  assert.deepEqual(clavesDe('const PLATA', 'const ANCHO_DE_BANDA'),
     // `presentismo` (15/09/2026) después del negro: de ahí sale el descuento. `pagado*`/`saldo*` (15/09/2026,
     // «necesito al lado de banco y negro lo que se le ha pagado efectivamente»): cada lado dice cuánto
     // corresponde, cuánto se pagó y cuánto falta, y la fila cierra con Total · Pagado · Saldo.
@@ -91,7 +89,7 @@ test('LOS DÍAS VAN PRIMERO Y DESPUÉS LA PLATA, CON PAGADO Y SALDO EN CADA LADO
       // `saldoRedondeado` (16/09/2026, dueño): el saldo al $1.000 como si todo saliera en billetes. Derivada
       // del Saldo de al lado: se lee, no se edita ni se guarda.
       'saldoRedondeado'])
-  assert.match(columnasDe(3), /^minmax\(var\(--liq-persona,200px\),1fr\) repeat\(3,36px\) 72px /, 'los días van antes que la plata')
+  assert.match(GRILLA, /minmax\(var\(--liq-persona,200px\),1fr\) repeat\(\$\{nDias\},\$\{DIA\}px\) \$\{PLATA/, 'los días van antes que la plata')
   assert.match(PANEL, /campo="porBanco"/)
   assert.match(PANEL, /Acuerdo 50\/50/)
   assert.match(PANEL, /<HistorialDeTarifa/)
@@ -100,7 +98,7 @@ test('LOS DÍAS VAN PRIMERO Y DESPUÉS LA PLATA, CON PAGADO Y SALDO EN CADA LADO
 })
 
 test('SIN COLUMNAS DE HORAS EXTRA NI «NORMALES» (dueño, 14/09: «las columnas de hs extra quitarlas»)', () => {
-  const codigo = sinComentarios(GRILLA + PIE)
+  const codigo = sinComentarios(GRILLA)
   // EL DEFECTO QUE ATRAPA: las tres columnas de cantidades. «Normales» sin las extras repetía a medias
   // «Hs pagas», así que sale con ellas.
   assert.ok(!/extra50|extra100|Ext\. 50|Ext\. 100|Hs norm\.|CANTIDADES/.test(codigo), 'sin columnas de extras ni normales')
@@ -130,16 +128,14 @@ test('NETO (BANCO) Y EFECTIVO DICEN CÓMO SE PAGA, SE MARCAN CUANDO LA FILA NO C
   assert.match(BN, /sin neto/)
   assert.match(ESTADO, /const cierre = cierreDeLaFila\(l\)/)
   assert.match(GRILLA, /const cierre = cierreDeTotales\(totales\)/)
-  assert.match(PIE, /const cierre = cierreDeTotales\(totales\)/)
   for (const r of ['Banco', 'Pagado banco', 'Saldo banco', 'Negro', 'Pagado efectivo', 'Saldo efectivo',
     'Efectivo redondeado', 'Total', 'Pagado', 'Saldo', 'Saldo redondeado']) {
-    assert.match(PIE, new RegExp(`cifra\\('${r}'`), `el pie publica ${r}`)
+    assert.match(GRILLA, new RegExp(`cifra\\('${r}'`), `el pie publica ${r}`)
   }
   // Y LA LÍNEA QUE CONTESTA LA PREGUNTA DEL DÍA DE PAGO.
-  assert.match(PIE, /A pagar hoy: /)
+  assert.match(GRILLA, /A pagar hoy: /)
   assert.match(GRILLA, /totales\.negro/)
-  assert.match(PIE, /totales\.sinNeto/)
-  assert.match(GRILLA, /<PieDelEspejo totales=\{totales\}/, 'y la grilla lo monta')
+  assert.match(GRILLA, /totales\.sinNeto/)
 })
 
 test('LA VISTA NO RECALCULA LA CADENA DE PAGO NI LAS HORAS', () => {

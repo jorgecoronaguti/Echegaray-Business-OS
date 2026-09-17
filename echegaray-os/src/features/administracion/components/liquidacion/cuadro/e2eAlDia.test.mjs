@@ -26,27 +26,19 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const leer = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8')
-// DESDE EL 17/09/2026 las columnas viven en `bloquesDelCuadro.ts` (cuatro bloques) y el pie en `PieDelEspejo.tsx`.
-const BLOQUES = leer('./bloquesDelCuadro.ts')
-const PIE = leer('./PieDelEspejo.tsx')
+const GRILLA = leer('../GrillaEspejoQuincena.tsx')
 const SPEC = leer('../../../../../../tests/liquidacion-fidelidad.spec.ts')
 
 /** Los rótulos de las columnas, del propio `PLATA`. El ✎ es un adorno de edición, no parte del nombre. */
 function rotulosDelCuadro() {
-  const plata = BLOQUES.slice(BLOQUES.indexOf('export const PLATA'), BLOQUES.indexOf('] as const'))
+  const plata = GRILLA.slice(GRILLA.indexOf('const PLATA'), GRILLA.indexOf('const ANCHO_DE_BANDA'))
   const rs = [...plata.matchAll(/rotulo: '([^']+)'/g)].map((m) => m[1].replace(' ✎', '').trim())
   assert.ok(rs.length >= 10, `se esperaban las columnas del cuadro, se leyeron ${rs.length}`)
   return rs
 }
 
 /** Lo que el pie sabe dibujar, de las llamadas a `cifra(…)`. */
-const rotulosDelPie = () => [...PIE.matchAll(/cifra\('([^']+)'/g)].map((m) => m[1])
-
-/** Los rótulos de los cuatro bloques (`BLOQUES`), que el encabezado dibuja arriba de sus columnas. */
-function rotulosDeBloques() {
-  const bloques = BLOQUES.slice(BLOQUES.indexOf('export const BLOQUES'), BLOQUES.indexOf('export const PLATA'))
-  return [...bloques.matchAll(/rotulo: '([^']+)'/g)].map((m) => m[1])
-}
+const rotulosDelPie = () => [...GRILLA.matchAll(/cifra\('([^']+)'/g)].map((m) => m[1])
 
 /** El bloque del spec que enumera el encabezado y el pie del cuadro. */
 function bloqueDelCuadro() {
@@ -69,7 +61,7 @@ function literalesDelSpec() {
 const FUERA_DE_PLATA = ['Persona', 'Días', 'Dias']
 
 test('el spec no espera NINGÚN rótulo que el cuadro ya no dibuja', () => {
-  const legales = new Set([...rotulosDelCuadro(), ...rotulosDelPie(), ...FUERA_DE_PLATA, ...rotulosDeBloques()])
+  const legales = new Set([...rotulosDelCuadro(), ...rotulosDelPie(), ...FUERA_DE_PLATA, 'Blanco · recibo', 'Negro'])
   const { todos } = literalesDelSpec()
   const fantasmas = todos.filter((t) => ![...legales].some((l) => l === t || l.startsWith(t)))
   assert.deepEqual(fantasmas, [], `el spec espera rótulos que el componente ya no dibuja: ${fantasmas.join(' · ')}`)
