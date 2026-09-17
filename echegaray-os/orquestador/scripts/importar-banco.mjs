@@ -193,9 +193,27 @@ async function cerrarElDia(movimientos, saldosDeclarados, origen) {
   }
 }
 
+/** El esquema ya tiene la última migración de la lista (la clave con fecha) y la columna de retención. */
+async function esquemaAlDia(q = query) {
+  const { rows: [r] } = await q(`select
+      to_regclass('public.banco_movimientos_ref_importe_fecha_unico') is not null
+      and exists (select 1 from information_schema.columns where table_schema = 'public'
+        and table_name = 'banco_movimientos' and column_name = 'acreditacion_pendiente') as al_dia`)
+  return Boolean(r?.al_dia)
+}
+
 async function main() {
   // ── 1. La tabla, y la semilla ──
-  if (!DRY) {
+  // ═══ LAS MIGRACIONES SÓLO SE APLICAN SI EL ESQUEMA NO ESTÁ AL DÍA (17/09/2026) ═══
+  //
+  // Re-aplicarlas en cada corrida dejó de ser idempotente el 14/09: la segunda y la tercera crean con
+  // `if not exists` el índice único (cuenta, referencia, importe), y desde que la base guarda el
+  // re-débito del echeq 308 (misma referencia e importe, 10/09 y 11/09) ese índice NO SE PUEDE CREAR.
+  // El importador moría en el paso 1 —"could not create unique index banco_movimientos_ref_importe_unico"—
+  // antes de leer una sola línea, y el extracto del 17/09 no entraba. Ordenar la lista (b339be3c) no
+  // alcanzaba: la que falla corre antes que la que borra ese índice. El esquema final se reconoce por
+  // sus dos últimas piezas; si están, no hay nada que migrar.
+  if (!DRY && !(await esquemaAlDia())) {
     for (const m of MIGRACIONES) await query(readFileSync(m, 'utf8'))
     console.log('✓ public.banco_movimientos lista (con `referencia` y su índice único)')
   }
