@@ -46,7 +46,7 @@ import {
   insertarMovimientos, marcarAcreditacionPendiente, acreditarPendientes,
   guardarSaldoDeclarado, recalcularSaldosDelDia,
 } from '../lib/banco-escribir.mjs'
-import { cerrarDia, explicacionPendientes } from '../lib/banco-acreditacion.mjs'
+import { cerrarDia, explicacionPendientes, retenidosQueExplicaElPie } from '../lib/banco-acreditacion.mjs'
 import { MOVIMIENTOS, MOVIMIENTOS_DIA, CUENTA, ORIGEN } from '../lib/banco-santander.mjs'
 import { registrarIngesta, FUENTES_INGESTA } from '../lib/registrar-sincronizacion.mjs'
 
@@ -180,7 +180,17 @@ async function cerrarElDia(movimientos, saldosDeclarados, origen) {
     for (const m of cierre.pendientes) console.log(`     ${m.fecha} · ${String(m.concepto).slice(0, 46)} · ${$(m.importe)}`)
   }
   console.log(`   cadena del día: ${$(cierre.saldoCalculado)} → ${cierre.cierra ? 'CIERRA ✓' : `NO CIERRA (dif ${$(cierre.diferencia)})`}`)
-  if (cierre.hallazgo) console.log(`   ⚠ HALLAZGO: ${cierre.hallazgo}`)
+  // ═══ LO QUE EL BANCO IMPRIME CON SALDO Y DEJA FUERA DEL PIE (17/09/2026) ═══
+  // El eCheq 8767 (canje 24 hs, $9.426.000) vino con saldo corrido y el pie no lo contaba. Si UNA sola
+  // combinación de depósitos de eCheq recientes explica la diferencia al centavo, se marcan retenidos
+  // ANTES de `marcasDeRetencion`: así `acreditarPendientes` no los libera y `marcarAcreditacionPendiente`
+  // descuenta su importe de los saldos posteriores. Ver lib/banco-acreditacion.mjs.
+  const porElPie = retenidosQueExplicaElPie(movimientos, pie.saldo, pie.fecha)
+  if (porElPie.length) {
+    for (const m of porElPie) m.acreditacionPendiente = true
+    console.log(`   el pie EXCLUYE ${porElPie.length} depósito(s) que el banco imprimió con saldo — se marcan por acreditar:`)
+    for (const m of porElPie) console.log(`     ${m.fecha} · ${String(m.concepto).slice(0, 46)} · ${$(m.importe)} · ref ${m.referencia}`)
+  } else if (cierre.hallazgo) console.log(`   ⚠ HALLAZGO: ${cierre.hallazgo}`)
   if (DRY) { console.log('   — dry: no escribí el saldo declarado ni las marcas'); return }
 
   const guardado = await guardarSaldoDeclarado({ query }, pie, origen)

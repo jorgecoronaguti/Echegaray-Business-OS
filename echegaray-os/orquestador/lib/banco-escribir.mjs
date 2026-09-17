@@ -124,12 +124,29 @@ export async function marcarAcreditacionPendiente(port, movs = [], { cuenta = CU
   for (const m of movs.filter((x) => x?.acreditacionPendiente)) {
     const [ref, imp] = porReferencia(m)
     if (ref === null) continue // sin referencia no hay identidad: no se toca una fila por parecido
-    const { rowCount } = await port.query(
+    const r = await port.query(
       `update public.banco_movimientos
           set acreditacion_pendiente = true, saldo_despues = null
-        where cuenta = $1 and referencia = $2 and importe = $3 and acreditacion_pendiente is not true`,
+        where cuenta = $1 and referencia = $2 and importe = $3 and acreditacion_pendiente is not true
+        returning id, fecha`,
       [cuenta, ref, imp])
-    n += rowCount ?? 0
+    n += r?.rowCount ?? 0
+    // ═══ SI EL BANCO LE HABÍA IMPRESO SALDO, LOS SALDOS DE DESPUÉS LO INCLUYEN (17/09/2026) ═══
+    //
+    // El retenido de 48 hs llega SIN saldo y la cadena ya lo excluye. El que marca el PIE
+    // (`retenidosQueExplicaElPie`: el eCheq 8767 en canje 24 hs) llegó CON saldo, y cada saldo posterior
+    // —del banco o del back-fill— lo arrastra. Anular sólo su celda dejaba la cadena en $42.813.734 con el
+    // banco declarando $33.387.734. Se descuenta de las filas posteriores UNA vez: sólo en la transición
+    // (el `where ... is not true` de arriba), así reimportar el mismo CSV no lo resta de nuevo.
+    if (m.saldo !== null && m.saldo !== undefined) {
+      for (const fila of r?.rows ?? []) {
+        await port.query(
+          `update public.banco_movimientos
+              set saldo_despues = saldo_despues - $4
+            where cuenta = $1 and saldo_despues is not null and (fecha, id) > ($2::date, $3::bigint)`,
+          [cuenta, fila.fecha, fila.id, imp])
+      }
+    }
   }
   return n
 }

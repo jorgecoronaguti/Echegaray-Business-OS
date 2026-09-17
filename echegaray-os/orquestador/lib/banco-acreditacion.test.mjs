@@ -163,3 +163,48 @@ test('el dry-run del núcleo devuelve el pie y el cierre del día', () => {
   assert.equal(d.cierre.cierra, true)
   assert.equal(d.cierre.pendientes.length, 2)
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL PIE MARCA LO QUE EL CONCEPTO NO PUEDE (17/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+import { retenidosQueExplicaElPie } from './banco-acreditacion.mjs'
+
+/** El extracto real del 17/09, reducido a lo que la regla mira. */
+const DEL_17 = () => [
+  { fecha: '2026-09-16', concepto: 'Transferencia recibida - De manufacturas quimicas', importe: 85342.81, saldo: 33578306.19, referencia: '98112194' },
+  { fecha: '2026-09-16', concepto: 'Deposito echeq canje interno 24hs', importe: 9426000, saldo: 43004306.19, referencia: '000009212' },
+  { fecha: '2026-09-16', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -16966.54, saldo: 42987339.65, referencia: '9213' },
+  { fecha: '2026-09-16', concepto: 'Impuesto ley 25.413 credito 0,6%', importe: -57068.06, saldo: 42930271.59, referencia: '9214' },
+  { fecha: '2026-09-17', concepto: 'Compra con tarjeta de debito', importe: -91400, saldo: null, referencia: '12813951' },
+  { fecha: '2026-09-17', concepto: 'Iva percepcion rg 2408', importe: -608.17, saldo: null, referencia: '9218' },
+  { fecha: '2026-09-17', concepto: 'Iva 21% reg de transfisc ley27743', importe: -4257.17, saldo: null, referencia: '9217' },
+  { fecha: '2026-09-17', concepto: 'Comision compensacion cheques cfu', importe: -20272.25, saldo: null, referencia: '9216' },
+  { fecha: '2026-09-17', concepto: 'Deposito e-cheq 48hs presencia bsr', importe: 2896036.13, saldo: null, referencia: '000009215' },
+]
+const PIE_17 = 33387734
+
+test('17/09: el pie excluye el canje 24 hs que vino con saldo — y sólo ése', () => {
+  const movs = DEL_17()
+  const r = retenidosQueExplicaElPie(movs, PIE_17, '2026-09-17')
+  assert.equal(r.length, 1)
+  assert.equal(r[0].referencia, '000009212')
+  assert.equal(r[0], movs[1], 'devuelve la misma fila, para marcarla en el array del importador')
+})
+
+test('el control puede dar rojo: sin el pie que lo excluye, no marca nada', () => {
+  assert.deepEqual(retenidosQueExplicaElPie(DEL_17(), PIE_17 + 9426000, '2026-09-17'), [], 'la cadena cierra')
+  assert.deepEqual(retenidosQueExplicaElPie(DEL_17(), null, '2026-09-17'), [], 'sin pie no hay con qué contrastar')
+  assert.deepEqual(retenidosQueExplicaElPie(DEL_17(), PIE_17 + 1000, '2026-09-17'), [], 'una diferencia que ningún depósito explica')
+})
+
+test('no adivina: si dos combinaciones explican la diferencia, no marca ninguna', () => {
+  const movs = DEL_17()
+  movs.splice(2, 0, { fecha: '2026-09-16', concepto: 'Deposito echeq canje interno 24hs', importe: 9426000, saldo: 52430306.19, referencia: 'X' })
+  assert.deepEqual(retenidosQueExplicaElPie(movs, PIE_17 + 9426000, '2026-09-17'), [])
+})
+
+test('sólo depósitos de eCheq recientes: ni una transferencia ni un depósito viejo', () => {
+  const transf = DEL_17().map((m) => (m.referencia === '000009212' ? { ...m, concepto: 'Transferencia recibida' } : m))
+  assert.deepEqual(retenidosQueExplicaElPie(transf, PIE_17, '2026-09-17'), [])
+  assert.deepEqual(retenidosQueExplicaElPie(DEL_17(), PIE_17, '2026-09-25'), [], 'fuera de la ventana de días')
+})

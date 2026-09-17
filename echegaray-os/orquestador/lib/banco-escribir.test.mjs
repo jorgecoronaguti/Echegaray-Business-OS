@@ -140,3 +140,54 @@ test('el importador actualiza las marcas TAMBIÉN cuando el extracto no trae el 
   assert.match(fn[0], /marcarAcreditacionPendiente/)
   assert.match(fn[0], /acreditarPendientes/)
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL RETENIDO QUE EL BANCO IMPRIMIÓ CON SALDO (17/09/2026 · eCheq 8767, canje 24 hs, $9.426.000)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('marcar un retenido que TENÍA saldo descuenta su importe de los saldos posteriores', async () => {
+  const p = puerto()
+  const n = await marcarAcreditacionPendiente({ query: p.query }, [
+    { fecha: '2026-09-16', concepto: 'Deposito echeq canje interno 24hs', importe: 9426000, saldo: 43004306.19,
+      referencia: '000009212', acreditacionPendiente: true },
+  ])
+  assert.equal(n, 1)
+  const u = p.sql.filter((x) => /^update/i.test(x.texto))
+  assert.equal(u.length, 2, 'la marca y el corrimiento de la cadena')
+  assert.match(u[0].texto, /returning id, fecha/)
+  assert.match(u[1].texto, /saldo_despues = saldo_despues - \$4/)
+  assert.match(u[1].texto, /\(fecha, id\) > \(\$2::date, \$3::bigint\)/, 'sólo las filas POSTERIORES')
+  assert.equal(u[1].params[3], 9426000)
+})
+
+test('reimportar no lo resta dos veces: sin transición no hay corrimiento', async () => {
+  const sql = []
+  const port = { async query(texto, params) { sql.push({ texto, params }); return { rows: [], rowCount: 0 } } }
+  await marcarAcreditacionPendiente(port, [
+    { fecha: '2026-09-16', concepto: 'Deposito echeq canje interno 24hs', importe: 9426000, saldo: 43004306.19,
+      referencia: '9212', acreditacionPendiente: true },
+  ])
+  assert.equal(sql.length, 1, 'la marca ya estaba puesta: ninguna fila se corre')
+})
+
+test('el retenido de 48 hs SIN saldo no corre la cadena: nunca estuvo adentro', async () => {
+  const p = puerto()
+  await marcarAcreditacionPendiente({ query: p.query }, [
+    { fecha: '2026-09-17', concepto: 'Deposito e-cheq 48hs presencia bsr', importe: 2896036.13, saldo: null,
+      referencia: '9215', acreditacionPendiente: true },
+  ])
+  assert.equal(p.sql.filter((x) => /^update/i.test(x.texto)).length, 1)
+})
+
+test('el importador marca lo que explica el pie ANTES de actualizar las marcas', async () => {
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../scripts/importar-banco.mjs', import.meta.url), 'utf8')
+  const codigo = src.split(/\r?\n/).filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')
+  const fn = /async function cerrarElDia\([\s\S]*?\n\}/.exec(codigo)
+  assert.ok(fn, 'no encontré cerrarElDia')
+  const iPie = fn[0].indexOf('retenidosQueExplicaElPie(movimientos')
+  const iMarcas = fn[0].lastIndexOf('marcasDeRetencion(movimientos)')
+  assert.ok(iPie > 0, 'la regla del pie tiene que correr')
+  assert.ok(iPie < iMarcas, 'después, acreditarPendientes lo liberaría con el saldo del CSV')
+  assert.match(fn[0], /m\.acreditacionPendiente = true/)
+})

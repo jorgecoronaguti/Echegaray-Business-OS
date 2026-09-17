@@ -140,3 +140,52 @@ export function explicacionPendientes(pendientes = []) {
   const $ = total.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   return `pendiente de acreditación $${$}: ${pendientes.length} depósito(s) que el banco lista y todavía no acredita`
 }
+
+/** Un depósito de eCheq, sea cual sea el circuito (48 hs, otras plazas, canje interno 24 hs, misma plaza). */
+export const PATRON_DEPOSITO_ECHEQ = /dep[oó]sito\s+e-?cheq/i
+
+const DIA_MS = 86400000
+const diasEntre = (a, b) => Math.round((Date.parse(`${String(b).slice(0, 10)}T00:00:00Z`) - Date.parse(`${String(a).slice(0, 10)}T00:00:00Z`)) / DIA_MS)
+
+/**
+ * NÚCLEO PURO: los depósitos de eCheq que el banco imprime CON saldo corrido pero deja FUERA del pie.
+ *
+ * ═══ POR QUÉ EXISTE (17/09/2026) ═══
+ *
+ * El extracto del 17/09 trajo «Deposito echeq canje interno 24hs $9.426.000,00» del 16/09 con saldo
+ * corrido ($43.004.306,19) —así que `esAcreditacionPendiente` no lo marca—, y el pie decía «Saldo al
+ * 17/09/2026 33.387.734,00»: la cadena daba $42.813.734,00. La diferencia era EXACTAMENTE ese depósito.
+ * El dueño: «está por acreditarse, marcalo». El concepto solo no alcanza —el mismo «canje interno 24hs»
+ * acreditó en el día el 04/08— así que la marca la pone el PIE, no el texto:
+ *
+ *   1. la cadena del día NO cierra y sobra plata (diferencia > 0),
+ *   2. candidatos: créditos de depósito de eCheq CON saldo del banco, de hasta `dias` antes del pie,
+ *   3. UNA sola combinación de candidatos suma la diferencia al centavo. Si hay dos, no se adivina.
+ *
+ * Idempotente: reimportar el mismo CSV vuelve a dar el mismo conjunto. Cuando el banco acredita, el pie
+ * siguiente ya lo incluye, la diferencia desaparece, no se marca y `acreditarPendientes` copia el saldo.
+ *
+ * @param {{fecha?:string, concepto?:string, importe:number|string, saldo?:number|null}[]} movimientos
+ * @param {number|null} saldoDeclarado el del pie
+ * @param {string|null} fechaPie AAAA-MM-DD del pie
+ * @returns {object[]} los movimientos (las mismas referencias del array) a marcar; [] si no hay o es ambiguo
+ */
+export function retenidosQueExplicaElPie(movimientos = [], saldoDeclarado = null, fechaPie = null, { tolerancia = 0.5, dias = 4, maximo = 12 } = {}) {
+  if (saldoDeclarado == null || !fechaPie) return []
+  const cierre = cerrarDia(movimientos, saldoDeclarado, { tolerancia })
+  if (cierre.cierra !== false || !(cierre.diferencia > tolerancia)) return []
+  const candidatos = movimientos.filter((m) => m && !m.acreditacionPendiente && !esAcreditacionPendiente(m)
+    && m.saldo !== null && m.saldo !== undefined && Number(m.importe) > 0
+    && PATRON_DEPOSITO_ECHEQ.test(String(m.concepto ?? ''))
+    && m.fecha && diasEntre(m.fecha, fechaPie) >= 0 && diasEntre(m.fecha, fechaPie) <= dias)
+  if (!candidatos.length || candidatos.length > maximo) return []
+  const encontrados = []
+  for (let mask = 1; mask < (1 << candidatos.length); mask++) {
+    let suma = 0
+    for (let i = 0; i < candidatos.length; i++) if (mask & (1 << i)) suma += Number(candidatos[i].importe)
+    if (Math.abs(redondo(suma) - cierre.diferencia) <= tolerancia) encontrados.push(mask)
+    if (encontrados.length > 1) return []
+  }
+  if (encontrados.length !== 1) return []
+  return candidatos.filter((_, i) => encontrados[0] & (1 << i))
+}
