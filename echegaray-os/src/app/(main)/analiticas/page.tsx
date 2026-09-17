@@ -60,6 +60,6 @@ function Vista({ filtros, d, periodo }: {
     case 'nomina': return <VistaNomina filas={d.nomina} quincenas={d.quincenas} personas={d.personas} rango={d.rango} periodo={periodo} hoy={d.hoy} />
     case 'cobranza': return <VistaCobranza cuenta={d.cuentaCorriente} documentos={d.documentos} hoy={d.hoy} periodo={periodo} />
     default: return <VistaResumen obras={d.obras} sinObra={d.sinObra} filtros={filtros} neto={d.netoDeIva}
-      comprobantesSinObra={d.sinObraDetalle.size ? [...d.sinObraDetalle.values()].reduce((a, g) => a + g.nComprobantes, 0) : null} />
+      comprobantesPorCliente={d.sinObraDetalle.size ? new Map([...d.sinObraDetalle.entries()].map(([id, g]) => [id, g.nComprobantes])) : null} />
   }
 }

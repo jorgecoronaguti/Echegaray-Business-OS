@@ -30,6 +30,16 @@ export interface CifrasResumen {
   obrasSinPresupuesto: number
 }
 
+/**
+ * LOS CAJONES DE LOS CLIENTES QUE LA VISTA MUESTRA. `sin_obra` llega de toda la base; si se suma
+ * entero, la tarjeta «sin obra asignada» publica plata de un cliente que no tiene ninguna fila y las
+ * filas no cierran con las cifras de arriba (auditoría 17/09/2026).
+ */
+export function cajonesDeLosClientes<T>(cajones: ReadonlyMap<string, T>, obras: ObraAnalitica[]): Map<string, T> {
+  const visibles = new Set(obras.map((o) => o.clienteId))
+  return new Map([...cajones.entries()].filter(([id]) => visibles.has(id)))
+}
+
 export function cifrasResumen(obras: ObraAnalitica[], sinObra: ReadonlyMap<string, number | null>): CifrasResumen {
   const conPres = obras.filter((o) => o.presupuesto != null)
   const presupuestado = sumaNula(conPres.map((o) => o.presupuesto))

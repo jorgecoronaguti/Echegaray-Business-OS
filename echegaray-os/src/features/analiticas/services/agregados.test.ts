@@ -4,7 +4,7 @@ import { armarCostosPorObra } from '../../clientes/services/costosDeObra.ts'
 import { armarEconomiaDeObras } from '../../clientes/services/economiaObras.ts'
 import { armarObra } from './obras.ts'
 import { presupuestoDe } from './presupuesto.fixture.ts'
-import { celda, cifrasResumen, composicionDelGasto, controlPorObra, costoPorHora, manoObraDe, obrasQueMasConsumen, porHoraMedido, resumenPorCliente } from './agregados.ts'
+import { cajonesDeLosClientes, celda, cifrasResumen, composicionDelGasto, controlPorObra, costoPorHora, manoObraDe, obrasQueMasConsumen, porHoraMedido, resumenPorCliente } from './agregados.ts'
 import { rotuloEstimada } from './obras.ts'
 
 type Pres = Partial<Record<'MO' | 'CS' | 'MA' | 'SC', number>>
@@ -132,4 +132,17 @@ test('de qué está hecho el gasto: empresa y clientes a 100 %, sin el cajón; l
   assert.deepEqual(mix.map((m) => [m.nombre, m.total]), [['Empresa', 15], ['c2', 5], ['c1', 10]], 'los clientes en el orden de la lista por cliente (c2 primero por su cajón)')
   assert.deepEqual(obrasQueMasConsumen([z, b, a]).map((o) => o.id), ['a', 'b'])
   assert.equal(obrasQueMasConsumen([a, b], 1).length, 1)
+})
+
+test('el cajón de un cliente que la vista no muestra no entra a la tarjeta ni a las filas (auditoría 17/09/2026)', () => {
+  const a = obra('a', 'visible', {}, { materiales: 10e6 }, { MA: 12e6 })
+  const cajones = new Map([['visible', 1e6], ['invisible', 0.09e6]])
+  const filtrados = cajonesDeLosClientes(cajones, [a])
+  assert.deepEqual([...filtrados.keys()], ['visible'])
+  const r = cifrasResumen([a], filtrados)
+  const filas = resumenPorCliente([a], filtrados)
+  assert.equal(r.sinObraAsignada, 1e6, 'la tarjeta no suma el cajón de un cliente sin filas')
+  assert.equal(filas.reduce((x, c) => x + (c.total ?? 0), 0), (r.consumoTotal ?? 0) + (r.sinObraAsignada ?? 0),
+    'las filas suman exactamente consumido + sin obra asignada')
+  assert.equal(cifrasResumen([a], cajones).sinObraAsignada, 1.09e6, 'sin filtrar, la tarjeta publicaría plata que ninguna fila muestra')
 })

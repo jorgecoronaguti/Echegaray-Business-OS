@@ -9,23 +9,26 @@ import Link from 'next/link'
 import { aUrl, type Filtros } from '../services/filtros'
 import { horasTexto, millones, pctEntero } from '../services/formato'
 import {
-  cifrasResumen, composicionDelGasto, INCLUIDO_EN_MATERIALES, manoObraDe, obrasQueMasConsumen, resumenPorCliente,
+  cajonesDeLosClientes, cifrasResumen, composicionDelGasto, INCLUIDO_EN_MATERIALES, manoObraDe, obrasQueMasConsumen, resumenPorCliente,
   type Composicion, type FilaDeCliente,
 } from '../services/agregados'
 import { rotuloEstimada, type ObraAnalitica } from '../services/obras'
 import { ancho, Cabecera, LEYENDA_GASTO, Seccion } from './Piezas'
 
-export function VistaResumen({ obras, sinObra, comprobantesSinObra, filtros, neto }: {
+export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, neto }: {
   obras: ObraAnalitica[]
   sinObra: Map<string, number | null>
-  /** Cuántos comprobantes hay en los cajones sin obra. `null` = no se pudo leer. */
-  comprobantesSinObra: number | null
+  /** Comprobantes de cada cajón sin obra, por cliente. `null` = no se pudo leer. */
+  comprobantesPorCliente: Map<string, number> | null
   filtros: Filtros
   /** `true` = la base publica el consumo neto de IVA (20260917T1900). */
   neto: boolean
 }) {
-  const r = cifrasResumen(obras, sinObra)
-  const clientes = resumenPorCliente(obras, sinObra)
+  // Sólo los cajones de los clientes que la vista muestra: si no, la tarjeta no cierra con las filas.
+  const cajones = cajonesDeLosClientes(sinObra, obras)
+  const r = cifrasResumen(obras, cajones)
+  const clientes = resumenPorCliente(obras, cajones)
+  const comprobantes = comprobantesPorCliente ? [...cajonesDeLosClientes(comprobantesPorCliente, obras).values()].reduce((a, n) => a + n, 0) : null
   const conPres = obras.filter((o) => o.presupuesto != null)
   const sinPres = obras.filter((o) => o.presupuesto == null)
   const estimados = conPres.filter((o) => o.presupuestoEstimado).length
@@ -45,7 +48,7 @@ export function VistaResumen({ obras, sinObra, comprobantesSinObra, filtros, net
           { rotulo: neto ? 'consumido en obras, sin IVA' : 'consumido en obras, con IVA', valor: millones(total), falta: 'sin movimiento',
             nota: total ? `mano de obra ${pctEntero(mo / total)} · materiales ${pctEntero(mat / total)}` : undefined },
           { rotulo: 'sin obra asignada', valor: millones(r.sinObraAsignada), falta: 'ninguno', tono: r.sinObraAsignada ? 'warn' : undefined,
-            nota: comprobantesSinObra != null ? `${comprobantesSinObra} comprobantes sin obra` : undefined },
+            nota: comprobantes != null && comprobantes > 0 ? `${comprobantes} comprobantes sin obra` : undefined },
           { rotulo: 'horas en obra', valor: horasTexto(horas), falta: 'sin horas',
             nota: `${conHoras} ${conHoras === 1 ? 'obra carga' : 'obras cargan'} horas` },
           { rotulo: 'obras sin presupuesto', valor: `${sinPres.length} de ${obras.length}`, tono: sinPres.length ? 'warn' : undefined,
@@ -174,8 +177,8 @@ function Mezcla({ m, empresa }: { m: Composicion; empresa: boolean }) {
 // ─── Lo que la base no puede afirmar ────────────────────────────────────────────────────────────
 //
 // Sólo los huecos que hoy existen. Sin nombres de tablas en pantalla (regla del diseño): la línea de
-// abajo dice qué lo destraba, en palabras. «Productividad»: las horas se cargan por semana y obra
-// (`registros_hh.fecha_inicio_semana`), sin actividad.
+// abajo dice qué lo destraba, en palabras. «Productividad»: las horas se cargan por día y por obra
+// (`registros_hh.fecha`), y sólo una fila de 2026 tiene actividad (auditoría 17/09/2026).
 
 function Huecos({ obras, sinPres }: { obras: ObraAnalitica[]; sinPres: ObraAnalitica[] }) {
   const est = rotuloEstimada(manoObraDe(obras))
@@ -183,7 +186,7 @@ function Huecos({ obras, sinPres }: { obras: ObraAnalitica[]; sinPres: ObraAnali
     est ? { que: 'Mano de obra real', porque: `El ${est.replace(' estimada', '')} de la mano de obra consumida es estimada: quincenas sin recibo del estudio, horas × tarifa.`, destraba: 'los recibos del estudio' } : null,
     sinPres.length ? { que: 'Consumo contra presupuesto', porque: sinPres.map((o) => `${o.nombre}: ${o.motivoPresupuesto ?? 'sin cotización aprobada'}`).join(' · '), destraba: 'cargar el costo cotizado' } : null,
     { que: 'Subcontratos contra presupuesto', porque: `La cotización no los separa: van ${INCLUIDO_EN_MATERIALES.replace('incluido ', '')} y se miden junto con materiales.`, destraba: 'una partida propia en la cotización' },
-    { que: 'Productividad', porque: 'Las horas entran por semana y por obra; no bajan a la actividad.', destraba: 'horas por actividad' },
+    { que: 'Productividad', porque: 'Las horas entran por día y por obra; no bajan a la actividad.', destraba: 'horas por actividad' },
   ].filter((h): h is { que: string; porque: string; destraba: string } => h != null)
   return (
     <section className="grid gap-4 pt-9 lg:grid-cols-[180px_minmax(0,1fr)] lg:gap-6">
