@@ -17,7 +17,7 @@ import { CASHFLOW_ID } from '../lib/cash-briefing.mjs'
 import { closePool } from '../lib/db.mjs'
 import { aplicarNota } from '../comunicacion/compras/cola-nota.mjs'
 import { vueltaDeSonda } from '../lib/sonda-flujo-caja.mjs'
-import { rescatarNotas } from '../lib/proveedores-notas-rescate.mjs'
+import { antesDeEscribirLaColumna, rescatarNotas } from '../lib/proveedores-notas-rescate.mjs'
 import { anteriorAJson, anteriorDeJson } from '../lib/proveedores-notas-hoja.mjs'
 
 const g = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
@@ -92,6 +92,17 @@ try {
   const r2 = await aplicarNota({ port: db2, google: g, fileId: ID, pedido: { ...pedido, id: 'prueba-2', clave: 'hormiserv', proveedor: 'Hormiserv', nota_anterior: 'lo que la app vio', nota_nueva: 'PISARÍA' } })
   log('WORKER conflicto →', r2, JSON.stringify(db2.cierres.at(-1)))
   log('D Hormiserv sigue', JSON.stringify((await g.readSheetValues(ID, celdaH))?.[0]))
+
+  // 6 · R3: la app BORRA la nota que el dueño escribió a mano en Hormiserv. Vacía la C y repone la fórmula.
+  const r6 = await aplicarNota({ port: dbS, google: g, fileId: ID, pedido: { ...pedido, id: 'prueba-3', clave: 'hormiserv', proveedor: 'Hormiserv', nota_anterior: 'PRUEBA OS: lo escribió el dueño', nota_nueva: '' } })
+  log('R3 WORKER borrar →', r6, JSON.stringify(dbS.cierres.at(-1)))
+  log('R3 AUX Hormiserv', JSON.stringify(await leerAux(/hormiserv/i)), '· D (fórmula)', JSON.stringify((await g.readSheetValues(ID, celdaH, { render: 'FORMULA' }))?.[0]), '· D (se ve)', JSON.stringify((await g.readSheetValues(ID, celdaH))?.[0] ?? []), '· base', JSON.stringify(dbS.notas.get('hormiserv') ?? '(borrada)'))
+
+  // 7 · R1: el dueño escribe a mano en la D de Pedro Fredes y corre la puerta del pipeline (antes de reponer la fórmula).
+  const fF = 18 + (await leerD()).findIndex(([n]) => /pedro fredes/i.test(n))
+  await g.batchUpdateValues(ID, [{ range: 'Proveedores!D' + fF, values: [['PRUEBA OS: rescate del pipeline']] }], { confirmacion: { actor: 'Prueba OS (copia)', motivo: 'simular edición a mano antes del pipeline' } })
+  await antesDeEscribirLaColumna({ google: g, fileId: ID, query: dbS.query, anterior: anteriorDeJson(estado?.notas ?? null), log })
+  log('R1 base Pedro Fredes', JSON.stringify(dbS.notas.get('pedro fredes')), '· AUX', JSON.stringify(await leerAux(/pedro fredes/i)))
 
   // 5 · GUARDA CENTRAL: escribir sin confirmación nominal y sin espejo.
   const sinConf = await g.batchUpdateValues(ID, [{ range: "'_PROVEEDORES_OS'!C2", values: [['PRUEBA sin confirmacion']] }], {})
