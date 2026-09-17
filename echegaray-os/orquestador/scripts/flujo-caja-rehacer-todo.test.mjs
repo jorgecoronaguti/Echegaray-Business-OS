@@ -168,3 +168,56 @@ test('anchosRaros compara contra el ancho del generador, no contra un 96 tipeado
   const tocada = [...sanas]; tocada[5] = 140
   assert.deepEqual(anchosRaros(tocada, 13), [{ i: 5, px: 140 }], 'una columna que alguien ensanchó sigue saliendo')
 })
+
+// ═══ EL CORTE DEL PIPELINE, PROBADO (17/09/2026) ═══
+// Lo que se afirma es QUÉ PASOS SE LLEGAN A CORRER. Sin el `break` de `recorrerPasos`, estos dan rojo.
+const PASOS_DE_PRUEBA = [
+  ['rubro-caja-sheet.mjs', 'rubro'],
+  ['freno-derrames-compras.mjs', 'freno'],
+  ['libro-movimientos-pestana.mjs', 'libro', ['_MOVIMIENTOS']],
+  ['caja-pestana.mjs', 'CAJA', ['CAJA']],
+  ['cash-flow-vistas.mjs', 'vistas', ['Cash Flow Semanal']],
+]
+const falla = (code) => Object.assign(new Error(`salió con ${code}`), { code, stderr: '✗✗ algo' })
+
+async function recorrer(fallas) {
+  const { recorrerPasos } = await import('./flujo-caja-rehacer-todo.mjs')
+  const fallados = []
+  const r = await recorrerPasos(PASOS_DE_PRUEBA, {
+    correr: async ({ script }) => { if (script in fallas) throw falla(fallas[script]) },
+    alFallar: ({ script, freno }) => { fallados.push(script); return freno.frena ? `frenó ${script}` : null },
+    log: () => {},
+  })
+  return { ...r, fallados }
+}
+
+test('FRENO DE DERRAMES: si falla, no corre NINGÚN paso de abajo', async () => {
+  const r = await recorrer({ 'freno-derrames-compras.mjs': 1 })
+  assert.deepEqual(r.corridos, ['rubro-caja-sheet.mjs', 'freno-derrames-compras.mjs'])
+  assert.deepEqual(r.frenado, { script: 'freno-derrames-compras.mjs', motivo: 'frenó freno-derrames-compras.mjs', faltan: 3 })
+})
+
+test('LIBRO CON SALIDA 3 (caída contra la vigente): CAJA y los Cash Flow no corren', async () => {
+  const r = await recorrer({ 'libro-movimientos-pestana.mjs': 3 })
+  assert.deepEqual(r.corridos, ['rubro-caja-sheet.mjs', 'freno-derrames-compras.mjs', 'libro-movimientos-pestana.mjs'])
+  assert.equal(r.frenado?.script, 'libro-movimientos-pestana.mjs')
+})
+
+test('LIBRO CON OTRO ERROR (salida 1): falla como siempre y lo de abajo corre con el _MOVIMIENTOS anterior', async () => {
+  const r = await recorrer({ 'libro-movimientos-pestana.mjs': 1 })
+  assert.equal(r.frenado, null)
+  assert.deepEqual(r.fallados, ['libro-movimientos-pestana.mjs'])
+  assert.deepEqual(r.corridos, PASOS_DE_PRUEBA.map((p) => p[0]))
+})
+
+test('un paso común que falla no detiene la corrida, aunque salga con 3', async () => {
+  const r = await recorrer({ 'rubro-caja-sheet.mjs': 3 })
+  assert.equal(r.frenado, null)
+  assert.equal(r.corridos.length, PASOS_DE_PRUEBA.length)
+})
+
+test('decisionDeFreno: toma la salida del proceso hijo y cuenta los pasos que quedan', async () => {
+  const { decisionDeFreno } = await import('./flujo-caja-rehacer-todo.mjs')
+  assert.deepEqual(decisionDeFreno(PASOS_DE_PRUEBA, 2, falla(3)), { frena: true, codigo: 3, faltan: 2 })
+  assert.deepEqual(decisionDeFreno(PASOS_DE_PRUEBA, 2, new Error('sin code')), { frena: false, codigo: null, faltan: 2 })
+})

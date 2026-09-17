@@ -92,6 +92,7 @@ import { ubicarRegistro } from './cheques-emitidos-tablero.mjs'
 // EL PLAN DE EGRESOS DE OBRA VIVE EN POSTGRES DESDE EL 07/09/2026 (ver el bloque que lo lee).
 import { query } from '../lib/db.mjs'
 import { avisoDeCaida, corridaVigente, evaluarContraVigente } from '../lib/libro-caida.mjs'
+import { CODIGO_FRENO } from '../lib/flujo-caja-pasos.mjs'
 import { pathToFileURL } from 'node:url'
 import { realpathSync } from 'node:fs'
 import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
@@ -740,7 +741,7 @@ async function main() {
   const caida = evaluarContraVigente({ movimientos: consolidado.length, neto: sumar(consolidado, {}).total }, vigente,
     { aceptada: process.env.ORQ_LIBRO_CAIDA_ACEPTADA })
   for (const l of avisoDeCaida(caida, { donde: '_MOVIMIENTOS' })) (caida.frena ? console.error : console.log)(l)
-  if (caida.frena) { process.exitCode = 1; return }
+  if (caida.frena) { process.exitCode = CODIGO_FRENO; return }
   if (DRY) { console.log('\n--dry: no escribí nada.'); return }
   await escribirYVerificar(google, consolidado, colEstadoCompras, colsVivas)
 }

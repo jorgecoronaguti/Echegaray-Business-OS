@@ -137,6 +137,49 @@ export function sumarRespetadas(stdout, acc = new Map()) {
 }
 
 /**
+ * ¿La falla de este paso detiene la corrida? PURA. `error` es el de execFile: su `code` es la salida del
+ * proceso hijo. La regla por script vive en `FRENOS` (lib/flujo-caja-pasos.mjs).
+ * @returns {{frena:boolean, codigo:number|null, faltan:number}}
+ */
+export function decisionDeFreno(pasos, indice, error) {
+  const codigo = Number.isInteger(error?.code) ? error.code : null
+  const script = pasos[indice]?.[0]
+  return { frena: frenaElPipeline(script, codigo), codigo, faltan: Math.max(0, pasos.length - indice - 1) }
+}
+
+/**
+ * EL RECORRIDO DE LOS PASOS, CON EL CORTE. Se sacó de `main()` el 17/09/2026: el `break` que detiene la
+ * corrida no tenía ningún test y borrarlo no daba rojo. Todo lo que toca el mundo (ejecutar, loguear,
+ * acumular) entra inyectado; lo que se prueba es QUÉ PASOS SE LLEGAN A CORRER.
+ *
+ * @param {Array<[string, string, string[]?, string[]?]>} pasos
+ * @param {{correr:Function, alFallar:Function, bloqueado?:Function, alSaltear?:Function, dry?:boolean, log?:Function}} o
+ *   `alFallar` devuelve el motivo del freno (texto) cuando la decisión fue frenar.
+ * @returns {Promise<{corridos:string[], frenado:null|{script:string, motivo:string, faltan:number}}>}
+ */
+export async function recorrerPasos(pasos, { correr, alFallar, bloqueado = () => false, alSaltear = () => {}, dry = false, log = console.log }) {
+  const corridos = []
+  let frenado = null
+  for (let n = 0; n < pasos.length; n++) {
+    const [script, que, pestañas = [], args = []] = pasos[n]
+    if (bloqueado(pestañas)) { alSaltear({ script, pestañas }); continue }
+    if (dry) { log(`(dry) ${script.padEnd(26)} ${que}`); continue }
+    corridos.push(script)
+    try {
+      await correr({ script, que, pestañas, args })
+    } catch (error) {
+      const freno = decisionDeFreno(pasos, n, error)
+      const motivo = await alFallar({ script, que, error, freno })
+      if (freno.frena) {
+        frenado = { script, motivo: motivo ?? `salida ${freno.codigo}`, faltan: freno.faltan }
+        break
+      }
+    }
+  }
+  return { corridos, frenado }
+}
+
+/**
  * ═══ LAS COLUMNAS DE PERÍODO MIDEN LO QUE DICE EL GENERADOR (17/09/2026) ═══
  * El control exigía 96px tipeado y el generador (`ANCHOS.tiempo` en cash-flow-piel-matriz) escribe 95:
  * en cada corrida publicaba 65 columnas «tocadas por alguien» que nadie tocó. Un control que contradice
@@ -409,48 +452,46 @@ async function main() {
     }
   } catch (e) { console.log(`· pre-pasada de firma/reconciliación no disponible (${e.message}) — sigue el candado por paso\n`) }
 
-  let frenado = null
-  for (const [script, que, pestañas = [], args = []] of PASOS) {
-    const inicio = Date.now()
-    if (pasoTotalmenteBloqueado(pestañas, bloqueadas)) {
+  // EL RECORRIDO ES `recorrerPasos` (exportada y probada): ahí vive la decisión de detener la corrida.
+  const { frenado } = await recorrerPasos(PASOS, {
+    bloqueado: (pestañas) => pasoTotalmenteBloqueado(pestañas, bloqueadas),
+    alSaltear: ({ script, pestañas }) => {
       saltados.push({ script, pestañas })
       console.log(`🔒 ${script.padEnd(26)} salteado — ${pestañas.join(', ')} bajo tu control`)
-      continue
-    }
-    if (DRY) { console.log(`(dry) ${script.padEnd(26)} ${que}`); continue }
-    try {
+    },
+    dry: DRY,
+    correr: async ({ script, que, args }) => {
+      const inicio = Date.now()
       // process.execPath, NO 'node': bajo systemd el PATH no incluye el node de nvm y los hijos
       // fallaban con ENOENT. Así siempre usa el mismo intérprete que está corriendo este script.
       // ARGUMENTOS POR PASO (01/08). Un generador que sabe escribir en dos destinos —el de prueba y
-      // el real— necesita que el pipeline le diga cuál. Sin esto, "Cheques Recibidos" quedaba en manos
-      // del generador viejo y el nuevo sólo corría a mano.
+      // el real— necesita que el pipeline le diga cuál.
       const { stdout } = await ejecutar(process.execPath, [path.join(AQUI, script), ...args], {
         env: process.env,
         maxBuffer: 8 * 1024 * 1024,
         timeout: 5 * 60 * 1000,
       })
       // Se mira la salida, no sólo el código de salida: varios scripts avisan de celdas en error o de
-      // un control que no cierra SIN fallar. Eso también hay que reportarlo.
-      // LAS DOS MARCAS: la corrida imprime la vigente (`▲`) y todavía quedan logs con la publicada.
-      // Buscar sólo una dejaría fuera del resumen del pipeline la mitad de los avisos, en silencio.
+      // un control que no cierra SIN fallar. LAS DOS MARCAS (`▲` vigente y la publicada).
       sumarRespetadas(stdout, respetadas)
       const conAlerta = stdout.split('\n').filter((l) => MARCA_ALERTA.test(l))
       const alerta = conAlerta.length ? conAlerta.join(' · ') : null
       ok.push({ script, que, seg: ((Date.now() - inicio) / 1000).toFixed(1), alerta })
       console.log(`✓ ${script.padEnd(26)} ${((Date.now() - inicio) / 1000).toFixed(1)}s  ${que}`)
       if (alerta) console.log(`   ⚠ ${alerta.slice(0, 220)}`)
-    } catch (e) {
-      const porQue = motivoDeFalla(e)
+    },
+    alFallar: ({ script, que, error, freno }) => {
+      const porQue = motivoDeFalla(error)
       ;(esReporte(script) ? reportes : fallaron).push({ script, que, error: porQue })
       console.error(`✗ ${script.padEnd(26)} ${que}\n   ${porQue}`)
-      if (frenaElPipeline(script)) {
-        frenado = { script, porQue, faltan: PASOS.length - PASOS.findIndex((p) => p[0] === script) - 1 }
-        console.error(`⛔ FRENO de ${script}: el pipeline se detiene — ${frenado.faltan} paso(s) sin correr, ninguna pestaña de abajo se reescribe.`)
-        for (const l of String(e?.stderr ?? '').split('\n').filter((x) => /✗✗|⛔/.test(x)).slice(0, 12)) console.error(`   ${l.trim()}`)
-        break
+      if (freno.frena) {
+        console.error(`⛔ FRENO de ${script} (salida ${freno.codigo}): el pipeline se detiene — ${freno.faltan} paso(s) sin correr, ninguna pestaña de abajo se reescribe.`)
+        for (const l of String(error?.stderr ?? '').split('\n').filter((x) => /✗✗|⛔/.test(x)).slice(0, 12)) console.error(`   ${l.trim()}`)
+        return porQue
       }
-    }
-  }
+      return null
+    },
+  })
 
   if (DRY) return
   if (!frenado) await verificarPresentacion(bloqueadas)
@@ -484,7 +525,7 @@ async function main() {
     process.exitCode = 1
   }
   if (frenado) {
-    console.log(`\n⛔ FRENADO por ${frenado.script}: ${frenado.porQue}`)
+    console.log(`\n⛔ FRENADO por ${frenado.script}: ${frenado.motivo}`)
     process.exitCode = 2
   }
 }

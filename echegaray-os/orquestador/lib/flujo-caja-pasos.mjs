@@ -7,6 +7,19 @@
 // el agente entero, la lista vive en su propio archivo.
 //
 // EL ORDEN NO ES COSMÉTICO: cada paso lee lo que escribió el anterior.
+//
+// ═══ LOS FRENOS (17/09/2026) — QUÉ DETIENE LA CORRIDA ENTERA ═══
+//
+// Por regla, un paso que falla NO detiene a los demás: cada pestaña es independiente y el resto se
+// sigue rehaciendo con lo que ya estaba escrito. Hay dos excepciones, declaradas en `FRENOS`:
+//
+//   · `freno-derrames-compras.mjs` — detiene TODO lo que sigue, con cualquier salida ≠0. Todo lo de
+//     abajo (Proveedores, el libro, CAJA, los Cash Flow, flujo_*) depende de las ARRAYFORMULA de
+//     Compras: con una columna derivada rota no hay paso siguiente que escriba un número verdadero.
+//   · `libro-movimientos-pestana.mjs` — detiene lo que sigue SÓLO cuando sale con CODIGO_FRENO (3),
+//     que es su forma de decir «el libro cae de golpe contra la corrida vigente y no lo escribo»
+//     (lib/libro-caida.mjs). Cualquier otro error del libro es una falla común: el paso queda en rojo
+//     y CAJA y los Cash Flow corren sobre el `_MOVIMIENTOS` anterior, como siempre.
 
 // El nombre de la pestaña se IMPORTA de su generador: escrito a mano acá, el día que cambie queda
 // una entrada que no corresponde a ninguna pestaña y el censo de dueños la reporta como huérfana.
@@ -721,13 +734,28 @@ export const REPORTES = new Set([
 /** NÚCLEO PURO: ¿este paso es de presentación/auditoría (su ≠0 es un reporte, no un fallo de datos)? */
 export function esReporte(script) { return REPORTES.has(script) }
 
+/** El código con el que un paso dice «frené a propósito», distinto de «me rompí» (1). */
+export const CODIGO_FRENO = 3
+
 /**
- * LOS PASOS QUE DETIENEN EL PIPELINE CUANDO FALLAN. Un paso común que falla deja correr a los demás
- * (cada pestaña es independiente); un freno no, porque lo que viene después escribiría sobre un dato
- * roto. Ver `freno-derrames-compras.mjs`.
+ * LOS PASOS QUE DETIENEN EL PIPELINE, Y CON QUÉ SALIDA. Ver la cabecera de este archivo.
+ *   · 'siempre'     — cualquier salida ≠0 corta la corrida.
+ *   · CODIGO_FRENO  — corta SÓLO si el paso sale con ese código; otro error se comporta como un paso
+ *                     común (falla y los demás corren con lo que ya estaba escrito).
  */
-// `libro-movimientos-pestana.mjs` es freno desde el 17/09: se niega a escribir un libro que cae de golpe
-// contra la corrida vigente, y lo que sigue (CAJA, los Cash Flow, flujo_*) no puede correr sobre el viejo
-// como si fuera el de hoy. Ver lib/libro-caida.mjs.
-export const FRENOS = new Set(['freno-derrames-compras.mjs', 'libro-movimientos-pestana.mjs'])
-export function frenaElPipeline(script) { return FRENOS.has(script) }
+export const FRENOS = new Map([
+  ['freno-derrames-compras.mjs', 'siempre'],
+  ['libro-movimientos-pestana.mjs', CODIGO_FRENO],
+])
+
+/**
+ * ¿Esta falla detiene el pipeline? PURA.
+ * @param {string} script
+ * @param {number|string|null|undefined} codigo  el código de salida del proceso hijo (`e.code` de execFile)
+ */
+export function frenaElPipeline(script, codigo) {
+  const regla = FRENOS.get(script)
+  if (regla === undefined) return false
+  if (regla === 'siempre') return true
+  return Number(codigo) === regla
+}

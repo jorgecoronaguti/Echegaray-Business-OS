@@ -66,7 +66,7 @@ describe('los dos escritores consultan el freno ANTES de escribir', () => {
     const s = src('libro-movimientos-pestana.mjs')
     const i = s.indexOf('evaluarContraVigente(')
     assert.ok(i > 0 && i < s.indexOf('await escribirYVerificar('), 'el libro escribe antes de mirar la caída')
-    assert.match(s.slice(i, s.indexOf('await escribirYVerificar(')), /if \(caida\.frena\) \{ process\.exitCode = 1; return \}/)
+    assert.match(s.slice(i, s.indexOf('await escribirYVerificar(')), /if \(caida\.frena\) \{ process\.exitCode = CODIGO_FRENO; return \}/)
   })
   it('sync-flujo-fondos: evalúa antes de abrir la corrida vigente', () => {
     const s = src('sync-flujo-fondos.mjs')
