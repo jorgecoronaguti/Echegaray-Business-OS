@@ -78,9 +78,6 @@ import { diaDeCarga } from '@/features/administracion/services/diaDeJornada'
 import { hrefDeAsistencia, modoDeAsistencia } from '@/features/administracion/services/vistaDeAsistencia'
 import { puedeCambiarObraActual } from '@/features/administracion/services/planDeObraActual'
 import { getPerfilActual } from '@/features/auth/services/authService'
-import { RetribucionDelPlantel } from '@/features/administracion/components/RetribucionDelPlantel'
-import { getRetribucionDelPlantel } from '@/features/administracion/services/retribucionDelPlantelService'
-import { medidaDe } from '@/features/administracion/services/retribucionDelPlantel'
 import { esAdministracion, liquidaSueldos, veEconomia } from '@/features/auth/types/areas'
 
 export const dynamic = 'force-dynamic'
@@ -142,14 +139,6 @@ const hrefAsistenciaCon = (base: Busqueda, cambios: Record<string, string | unde
 const hrefLiquidacion = (quincena?: string): string =>
   `${RUTA}?vista=liquidacion${quincena ? `&quincena=${quincena}` : ''}`
 
-/** La solapa Retribución. No arrastra la quincena: mira el año entero. */
-const hrefRetribucion = (p: { anio?: string; medida?: string } = {}): string => {
-  const params = new URLSearchParams({ vista: 'retribucion' })
-  if (p.anio) params.set('anio', p.anio)
-  if (p.medida && p.medida !== 'pagado') params.set('medida', p.medida)
-  return `${RUTA}?${params.toString()}`
-}
-
 /**
  * UN ENLACE DENTRO DE LIQUIDACIÓN, conservando lo que ya estaba puesto.
  *
@@ -192,14 +181,12 @@ const hrefDia = (p: { obra?: string | null; dia?: string | null }): string => {
  * `veLaPlata` decide si Liquidación se dibuja. No es el permiso —ése es `ve_economia()` en la
  * base—: es no ofrecer una puerta que va a rebotar.
  */
-function vistasDe(activa: 'personal' | 'asistencia' | 'retribucion' | 'liquidacion', quincena: string | undefined, veLaPlata: boolean) {
+function vistasDe(activa: 'personal' | 'asistencia' | 'liquidacion', quincena: string | undefined, veLaPlata: boolean) {
   const vistas = [
     { clave: 'personal', titulo: 'Plantel', cuenta: null, activa: activa === 'personal', href: armarHref({}) },
     { clave: 'asistencia', titulo: 'Horas', cuenta: null, activa: activa === 'asistencia', href: hrefAsistencia(quincena) },
   ]
-  // RETRIBUCIÓN ENTRE HORAS Y LIQUIDACIÓN (dueño, 17/09/2026), con la misma puerta que Liquidación.
   if (veLaPlata) {
-    vistas.push({ clave: 'retribucion', titulo: 'Retribución', cuenta: null, activa: activa === 'retribucion', href: hrefRetribucion() })
     vistas.push({ clave: 'liquidacion', titulo: 'Liquidación', cuenta: null, activa: activa === 'liquidacion', href: hrefLiquidacion(quincena) })
   }
   return vistas
@@ -345,40 +332,6 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   // arma la consulta que la RLS iba a devolver vacía. Esto es la puerta; la cerradura es
   // `public.liquida_sueldos()` en la policy, que también corta una llamada directa a PostgREST.
   if (enLiquidacion && !liquida) notFound()
-  if (sp.vista === 'retribucion' && !liquida) notFound()
-
-  if (sp.vista === 'retribucion') {
-    const anioHoy = Number(hoy.slice(0, 4))
-    const pedido = Number(sp.anio)
-    // DESDE 2026: antes no hay Liquidación en el OS, y un año sin quincenas sería una tabla vacía.
-    const anio = Number.isInteger(pedido) && pedido >= 2026 && pedido <= anioHoy ? pedido : anioHoy
-    const medida = medidaDe(sp.medida)
-    const datos = await getRetribucionDelPlantel(supabase, { puedeVer: true, anio, hoy, medida })
-    const anios = Array.from({ length: anioHoy - 2026 + 1 }, (_, i) => 2026 + i)
-    return (
-      <Marco>
-        <NavAdministracion />
-        <div style={{ lineHeight: 'normal' }}>
-          <CabeceraSeccion
-            testid="vistas-personal"
-            espacioPanel={false}
-            vistas={vistasDe('retribucion', sp.quincena, veLaPlata)}
-          />
-          <div style={{ padding: '0 20px 24px' }}>
-            <RetribucionDelPlantel
-              d={datos}
-              hrefMedida={{
-                pagado: hrefRetribucion({ anio: sp.anio }),
-                liquidado: hrefRetribucion({ anio: sp.anio, medida: 'liquidado' }),
-              }}
-              hrefAnios={anios.map((a) => ({ anio: a, href: hrefRetribucion({ anio: String(a), medida }) }))}
-            />
-          </div>
-        </div>
-      </Marco>
-    )
-  }
-
   if (enLiquidacion) {
     const solapa = solapaDe(sp.solapa)
     const Contenido = solapa.Componente
