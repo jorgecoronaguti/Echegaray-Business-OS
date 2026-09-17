@@ -67,7 +67,9 @@ export function MarcaDePago({ personaId, grupo, quincena, pagadaEn, cerrada }: {
           'disabled:cursor-progress disabled:opacity-60',
           pagada
             ? 'border-pos bg-pos-soft text-pos hover:border-ink'
-            : 'border-line-strong bg-transparent text-muted hover:bg-surface-quiet hover:border-ink hover:text-ink',
+            // LA CÁPSULA QUEDA —un clic y está pagada— pero con la línea suave (limpieza 17/09/2026): quince bordes
+            // fuertes, uno por fila, eran la columna más ruidosa. Al pasar el puntero vuelve el borde de tinta.
+            : 'border-line bg-transparent text-muted hover:bg-surface-quiet hover:border-ink hover:text-ink',
         ].join(' ')}
       >
         {pagada ? `✓ Pagada ${diaDelSello(pagadaEn)}` : 'Pagar'}
