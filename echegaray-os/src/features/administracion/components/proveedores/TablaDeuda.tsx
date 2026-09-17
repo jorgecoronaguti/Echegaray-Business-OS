@@ -36,6 +36,7 @@ import {
 import { plataCentavos } from '@/shared/utils/format'
 import { diaMesAnioISO, diaMesISO } from '@/shared/utils/fecha'
 import type { DeudaDeProveedor, TotalesDeuda } from '../../services/deudaProveedores'
+import type { NotaDeProveedor } from '../../services/notasDeDeuda'
 
 /** La grilla, literal porque Tailwind no compila un valor armado en runtime. */
 const COLS
@@ -55,8 +56,10 @@ const SOLO_ANCHO = 'max-[1199px]:hidden'
 const SOLO_ANGOSTO = 'min-[1200px]:hidden'
 const MONO = 'font-mono tabular-nums'
 
-export function TablaDeuda({ filas, totales, hoy, seleccionada, hrefDe }: {
+export function TablaDeuda({ filas, totales, hoy, notas, seleccionada, hrefDe }: {
   filas: DeudaDeProveedor[]
+  /** Clave de la fila → su nota «Qué hacer» del Sheet. */
+  notas?: Map<string, NotaDeProveedor>
   totales: TotalesDeuda
   /** El día contra el que se decidió qué venció. Se declara: mañana la misma fila dice otra cosa. */
   hoy: string
@@ -100,7 +103,7 @@ export function TablaDeuda({ filas, totales, hoy, seleccionada, hrefDe }: {
       </div>
 
       {filas.map((f) => (
-        <FilaDeuda key={f.clave} f={f} elegida={f.clave === seleccionada} href={hrefDe(f.clave)} />
+        <FilaDeuda key={f.clave} f={f} nota={notas?.get(f.clave)} elegida={f.clave === seleccionada} href={hrefDe(f.clave)} />
       ))}
 
       <Pie totales={totales} />
@@ -108,7 +111,9 @@ export function TablaDeuda({ filas, totales, hoy, seleccionada, hrefDe }: {
   )
 }
 
-function FilaDeuda({ f, elegida, href }: { f: DeudaDeProveedor; elegida: boolean; href: string }) {
+function FilaDeuda({ f, nota, elegida, href }: {
+  f: DeudaDeProveedor; nota?: NotaDeProveedor; elegida: boolean; href: string
+}) {
   const vencida = f.vencido > 0
   return (
     <Link
@@ -134,6 +139,17 @@ function FilaDeuda({ f, elegida, href }: { f: DeudaDeProveedor; elegida: boolean
         {!f.proveedorId && (
           <span data-testid="deuda-sin-ficha" style={{ fontSize: '11px', color: V.warn }}>
             sin ficha de proveedor
+          </span>
+        )}
+        {/* «QUÉ HACER», LA NOTA DEL SHEET, bajo el nombre y en una línea: es la instrucción que decide
+            a quién pagar, y en el Sheet va al lado del proveedor. Entera en el `title` y en el panel. */}
+        {(nota?.pendiente ?? nota?.nota) && (
+          <span
+            data-testid="deuda-nota" className="truncate" title={nota?.pendiente ?? nota?.nota}
+            style={{ fontSize: '11.5px', lineHeight: '14px', color: V.tintaSuave, fontStyle: 'italic' }}
+          >
+            {nota?.pendiente ?? nota?.nota}
+            {nota?.pendiente !== null && nota?.pendiente !== undefined && <span style={{ fontStyle: 'normal', color: V.tenue }}> · esperando al Sheet</span>}
           </span>
         )}
         {/* EL DESGLOSE EN ANGOSTO. A 390px las columnas Vencido y Por vencer no caben, y el dato que

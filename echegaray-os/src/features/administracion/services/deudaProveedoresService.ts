@@ -1,4 +1,4 @@
-// LA LECTURA DE «A QUIÉN LE DEBO» — cuatro consultas, ninguna por fila.
+// LA LECTURA DE «A QUIÉN LE DEBO» — seis consultas, ninguna por fila.
 //
 // La regla vive en `deudaProveedores.ts` y se prueba sin base. Acá sólo se juntan las piezas:
 //
@@ -11,6 +11,8 @@
 //                                repartiría la deuda de un proveedor entre dos fichas.
 //   `proveedor_deuda`            el TOTAL canónico por proveedor, sólo para cotejar. No es la
 //                                fuente de la tabla: no sabe separar vencido de por vencer.
+//   `proveedor_notas` + cola      la nota «Qué hacer» de cada proveedor y lo pedido que espera al
+//                                Sheet (`notasDeDeuda.ts`).
 //   `obra_panel`                 el nombre de la obra. `obra_canonica` no es legible por
 //                                `authenticated` y `obra_celda` trae el rótulo CON el código
 //                                interno («OB-0007 · LE - GALPÓN 9»), que el dueño pidió no ver.
@@ -24,6 +26,7 @@ import {
   deudaPorProveedor, hoyISO, lineasDeDeuda,
   type CompraConSaldo, type DeudaDeProveedor, type LineaDeuda, type ProveedorResuelto,
 } from './deudaProveedores.ts'
+import { notasDeLaDeuda, type NotaDeProveedor, type NotaGuardada, type PedidoDeNota } from './notasDeDeuda.ts'
 
 /** Techo de filas con saldo. Si se alcanza, la pantalla lo dice en vez de publicar una deuda corta. */
 export const TOPE_DEUDA = 500
@@ -39,6 +42,8 @@ export interface DeudaLeida {
   hoy: string
   /** `true` = hay más filas con saldo de las que se leyeron. */
   truncado: boolean
+  /** Clave de la fila → su nota «Qué hacer». Vacío = no se pudo leer (o la migración 20260917T1400 no está). */
+  notas: Map<string, NotaDeProveedor>
 }
 
 const COLUMNAS = [
@@ -50,13 +55,18 @@ const COLUMNAS = [
 export async function getDeuda(
   supabase: SupabaseClient, hoy: string = hoyISO(),
 ): Promise<ServiceResult<DeudaLeida>> {
-  const [compras, resueltos, canon] = await Promise.all([
+  const [compras, resueltos, canon, notasLeidas, pedidos] = await Promise.all([
     supabase.from('compra_sheet').select(COLUMNAS)
       .gt('saldo_pendiente', 0).not('anulada', 'is', true)
       .order('fecha_prevista', { ascending: true, nullsFirst: false })
       .limit(TOPE_DEUDA + 1),
     supabase.from('proveedor_nombre_resuelto').select('nombre_norm, proveedor_id, proveedor_nombre, estado'),
     supabase.from('proveedor_deuda').select('proveedor_id, deuda'),
+    // LAS NOTAS Y SU COLA, en el mismo viaje. Si fallan (sin grant hasta 20260917T1400/T1410), la deuda
+    // se dibuja igual y sin notas: una lectura accesoria no esconde lo que se debe.
+    supabase.from('proveedor_notas').select('clave, nota, actualizado_en'),
+    supabase.from('proveedor_nota_cambio').select('clave, nota_nueva, estado, motivo, creado_at')
+      .order('creado_at', { ascending: false }).limit(200),
   ])
   if (compras.error) return { data: null, error: compras.error.message }
 
@@ -80,7 +90,12 @@ export async function getDeuda(
     if (f.proveedor_id) canonica.set(f.proveedor_id, Number(f.deuda ?? 0))
   }
 
-  return { data: { filas, lineas, obras: await nombresDeLasObras(supabase, lineas), canonica, hoy, truncado }, error: null }
+  const notas = notasDeLaDeuda({
+    filas, lineas, compras: visibles,
+    notas: notasLeidas.error ? [] : (notasLeidas.data ?? []) as unknown as NotaGuardada[],
+    pedidos: pedidos.error ? [] : (pedidos.data ?? []) as unknown as PedidoDeNota[],
+  })
+  return { data: { filas, lineas, obras: await nombresDeLasObras(supabase, lineas), canonica, hoy, truncado, notas }, error: null }
 }
 
 /**

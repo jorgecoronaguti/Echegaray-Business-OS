@@ -432,6 +432,7 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                               filas={deudaLeida.filas}
                               totales={totalesDeuda(deudaLeida.filas)}
                               hoy={deudaLeida.hoy}
+                              notas={deudaLeida.notas}
                               seleccionada={sp.d}
                               hrefDe={(clave) => armarHref(sp, { vista: 'deuda', d: clave })}
                             />
@@ -495,6 +496,7 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
           {esDeuda && detalleDeuda && deudaLeida && (
             <PanelDeudaProveedor
               detalle={detalleDeuda}
+              nota={deudaLeida.notas.get(detalleDeuda.clave) ?? null}
               obras={deudaLeida.obras}
               hoy={deudaLeida.hoy}
               // EL COTEJO CONTRA `public.proveedor_deuda`, que suma el mismo campo por otro camino en
