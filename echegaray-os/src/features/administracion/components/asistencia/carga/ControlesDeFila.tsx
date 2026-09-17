@@ -14,7 +14,7 @@ import { useRouter } from 'next/navigation'
 import { guardarJornada } from '@/features/administracion/services/jornadaPorObraActions'
 import { cambiarObraActual } from '@/features/administracion/services/obraActualActions'
 import { hs } from '@/features/administracion/services/jornadaPorObra'
-import { entradaDeMover, envioDeHoras, puedeMoverDeObraEl } from '@/features/administracion/services/cargaDeAsistencia'
+import { DESTINO_SIN_OBRA, entradaDeMover, envioDeHoras, puedeMoverDeObraEl } from '@/features/administracion/services/cargaDeAsistencia'
 import { PlanDeObraPanel } from '../../PlanDeObraPanel'
 
 // `pos` sólo para el estado positivo, `neg` sólo para el problema, ámbar para la tardanza (regla del
@@ -176,11 +176,12 @@ export function MoverDeObra({ persona, obraActual, fecha, hoy, obras, rotuloDia 
             aria-label={`Obra a la que va ${persona.nombre}`}
             className={`${ALTO} min-w-0 flex-1 rounded-control border border-line bg-surface px-2 text-[13px] text-ink md:flex-none`}
           >
-            <option value="">{obraActual ? 'Sin obra' : 'Elegí la obra'}</option>
+            <option value="" disabled>Elegí la obra</option>
             {obras.filter((o) => o.id !== obraActual).map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+            {obraActual && <option value={DESTINO_SIN_OBRA}>Sin obra (cierra la asignación)</option>}
           </select>
           <button
-            type="button" onClick={mover} disabled={pendiente || (!obraActual && !destino)} data-testid="confirmar-mover"
+            type="button" onClick={mover} disabled={pendiente || !destino} data-testid="confirmar-mover"
             className={`${ALTO} rounded-control border border-ink bg-ink px-3 text-[13px] text-canvas disabled:opacity-50`}
           >
             {fecha === hoy ? 'Mover desde hoy' : `Mover desde el ${rotuloDia}`}

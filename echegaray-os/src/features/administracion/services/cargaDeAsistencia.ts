@@ -277,11 +277,16 @@ export function puedeCorregirElDia({ rol, fecha, hoy }: { rol: string | null | u
  * futuro va con `desde` y sin `hasta` —el pase programado de siempre (M3)—; `null` si el día es pasado.
  */
 export function entradaDeMover({ personaId, destino, fecha, hoy }: {
-  personaId: string; destino: string | null; fecha: string; hoy: string
+  personaId: string; destino: string; fecha: string; hoy: string
 }): { persona_id: string; obra_id: string | null; desde?: string } | null {
-  if (!puedeMoverDeObraEl(fecha, hoy)) return null
-  return { persona_id: personaId, obra_id: destino || null, ...(fecha === hoy ? {} : { desde: fecha }) }
+  // SIN ELEGIR NO SE MUEVE. «Sin obra» es un destino que CIERRA la asignación: si fuera el valor por
+  // defecto del desplegable, un toque apurado en «Mover» dejaría a alguien sin obra desde hoy.
+  if (!destino || !puedeMoverDeObraEl(fecha, hoy)) return null
+  return { persona_id: personaId, obra_id: destino === DESTINO_SIN_OBRA ? null : destino, ...(fecha === hoy ? {} : { desde: fecha }) }
 }
+
+/** El valor del desplegable que elige «Sin obra» a propósito. No es un id de obra posible. */
+export const DESTINO_SIN_OBRA = '__sin_obra__'
 
 /**
  * LO QUE VIAJA A `guardarJornada` AL SALIR DE UNA CASILLA DE HORAS. `nada` cuando no cambió o cuando se

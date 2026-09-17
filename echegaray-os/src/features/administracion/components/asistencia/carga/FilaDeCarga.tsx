@@ -60,7 +60,7 @@ export function FilaDeCarga({ fila, casilla, estado, fecha, hoy, rotuloDia, obra
       className="flex flex-col gap-2 border-b border-line py-3 md:flex-row md:items-start md:gap-4"
       data-testid="fila-carga" data-persona={persona.id} data-estado={casilla.estado ?? 'sin_marcar'}
     >
-      <div className="min-w-0 md:w-72 md:shrink-0">
+      <div className="min-w-0 md:w-[344px] md:shrink-0">
         <p className="truncate text-[15px] text-ink md:text-[14px]">{persona.nombre}</p>
         <p className="truncate text-[12px] text-muted">
           {[persona.categoria, persona.esJefe ? 'mensual · sin presentismo' : null].filter(Boolean).join(' · ') || '—'}

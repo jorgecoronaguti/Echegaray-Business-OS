@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { casillaTrasToque, marcaDeLaCasilla } from './presenciaDelDia.ts'
 import {
-  entradaDeMover, envioDeHoras, hrefCorregirEnHoras, muestraTardanza, queSePuedeElDia,
+  DESTINO_SIN_OBRA, entradaDeMover, envioDeHoras, hrefCorregirEnHoras, muestraTardanza, queSePuedeElDia,
   agruparPorObra, armarCargaDelDia, filtrarCarga, hrefCargaDeAsistencia, limiteDelJefe,
   MARCAR_JEFES_Y_MENSUALES, NOMBRE_SIN_OBRA, OBRA_SIN_OBRA, obraDelDiaDePersona, puedeCorregirElDia,
   puedeMoverDeObraEl, resumenDeCarga, seListaParaMarcar, tienePresentismo,
@@ -139,7 +139,8 @@ test('tocar «Llegó tarde» sobre sin marcar escribe presente con la marca; vol
 test('mover hoy viaja SIN desde; un día futuro es un pase programado con desde; un día pasado no viaja', () => {
   assert.deepEqual(entradaDeMover({ personaId: 'juan', destino: 'sf', fecha: FECHA, hoy: FECHA }), { persona_id: 'juan', obra_id: 'sf' })
   assert.deepEqual(entradaDeMover({ personaId: 'juan', destino: 'sf', fecha: '2026-09-21', hoy: FECHA }), { persona_id: 'juan', obra_id: 'sf', desde: '2026-09-21' })
-  assert.deepEqual(entradaDeMover({ personaId: 'juan', destino: '', fecha: FECHA, hoy: FECHA }), { persona_id: 'juan', obra_id: null }, '«Sin obra» es un destino válido')
+  assert.deepEqual(entradaDeMover({ personaId: 'juan', destino: DESTINO_SIN_OBRA, fecha: FECHA, hoy: FECHA }), { persona_id: 'juan', obra_id: null }, '«Sin obra» elegido a propósito es un destino válido')
+  assert.equal(entradaDeMover({ personaId: 'juan', destino: '', fecha: FECHA, hoy: FECHA }), null, 'sin elegir no se mueve: el vacío no puede cerrar la asignación')
   assert.equal(entradaDeMover({ personaId: 'juan', destino: 'sf', fecha: '2026-09-16', hoy: FECHA }), null)
 })
 
