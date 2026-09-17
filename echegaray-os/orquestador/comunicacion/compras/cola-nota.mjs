@@ -32,6 +32,7 @@ import { claveProv, borrarNotas, guardarNotas } from '../../lib/proveedor-notas.
 import { observarCuadro, RANGO_PROVEEDORES } from '../../lib/proveedores-notas-hoja.mjs'
 import { AUX, formulaNota } from '../../lib/proveedores-notas-columna.mjs'
 import { COL_PROVEEDOR, colNota, letra } from '../../lib/proveedores-cuadro-a.mjs'
+import { escribirEnLaAuxiliar } from '../../lib/auxiliar-notas-escritura.mjs'
 
 export const LEASE_MIN = 10
 export const MAX_INTENTOS = 3
@@ -85,7 +86,9 @@ function mirarProveedores(observacion, pedido) {
     if (f.tipo === 'texto' && f.texto !== pedido.nota_anterior) {
       return { error: conflicto(`«Qué hacer» de ${f.proveedor} (fila ${f.fila}) dice «${f.texto}», escrito a mano después del pedido`) }
     }
-    if (f.tipo === 'vacia' && pedido.nota_anterior) {
+    // Vacía sin fórmula y la app pide VACIARLA: el Sheet ya dice lo pedido, no es un conflicto. Es el caso del
+    // borrado masivo retenido: el dueño vació varias en el Sheet y confirma desde la app.
+    if (f.tipo === 'vacia' && pedido.nota_anterior && pedido.nota_nueva) {
       return { error: conflicto(`«Qué hacer» de ${f.proveedor} (fila ${f.fila}) está vacía sin fórmula: la nota se borró en el Sheet`) }
     }
   }
@@ -137,8 +140,12 @@ export async function decidirNota({ port, google, fileId, pedido }) {
     const { fila } = enAux.filas[0]
     celdas.push({ celda: `'${AUX}'!A${fila}`, escribir: pedido.proveedor }, { celda: `'${AUX}'!C${fila}`, escribir: pedido.nota_nueva })
   }
+  // Un vaciado de la auxiliar no va por valores (no-borrar lo frena): se separa para `escribirEnLaAuxiliar`.
+  const esVaciado = (c) => c.escribir === '' && c.celda.startsWith(`'${AUX}'!C`)
   return {
     accion: celdas.length ? 'escribir' : 'ya_aplicado', actor, celdas,
+    valores: celdas.filter((c) => !esVaciado(c)),
+    vaciar: celdas.filter(esVaciado).map((c) => Number(c.celda.match(/(\d+)$/)[1])),
     filasAux: enAux.filas.map((x) => x.fila), filasProveedores: prov.mias.map((f) => f.fila),
   }
 }
@@ -212,18 +219,17 @@ export async function aplicarNota({ port, google, fileId, pedido, pipelineCorrie
     if (await pipelineCorriendo()) { await diferir(port, pedido.id, 'el pipeline del Flujo de Caja está escribiendo: espero a que termine'); return 'diferido' }
     const movida = await filaQueSeMovio({ google, fileId, plan, pedido })
     if (movida) { await diferir(port, pedido.id, `fila movida: ${movida}`); return 'diferido' }
-    const r = await google.batchUpdateValues(fileId, plan.celdas.map((c) => ({ range: c.celda, values: [[c.escribir]] })), {
+    const r = !plan.valores.length ? {} : await google.batchUpdateValues(fileId, plan.valores.map((c) => ({ range: c.celda, values: [[c.escribir]] })), {
       confirmacion: { actor: plan.actor, motivo: `nota «Qué hacer» de ${pedido.proveedor} editada en la app por ${plan.actor} (pedido ${pedido.id})` },
     })
     if (r?.congelado) { await diferir(port, pedido.id, 'el freno de mano de Sheets está puesto'); return 'diferido' }
-    if (r?.protegido) {
-      if (r.noBorrar && !pedido.nota_nueva) {
-        await cerrar(port, pedido.id, { estado: 'rechazado', motivo: 'no-borrar no deja vaciar la nota desde un worker: se borra a mano en el Sheet' })
-        return 'rechazado'
-      }
-      await diferir(port, pedido.id, `pestaña protegida: ${r.motivo ?? 'candado'}`)
-      return 'diferido'
-    }
+    if (r?.protegido) { await diferir(port, pedido.id, `pestaña protegida: ${r.motivo ?? 'candado'}`); return 'diferido' }
+  }
+  if (plan.accion === 'escribir' && plan.vaciar.length) {
+    // VACIAR LA C DE LA AUXILIAR (R3): `batchUpdateValues` no deja escribir '' sobre contenido (no-borrar).
+    // Se vacía como la vacía su dueño, con la fila confirmada antes y releída después. Ver auxiliar-notas-escritura.mjs.
+    const w = await escribirEnLaAuxiliar({ google, fileId, plan: plan.vaciar.map((fila) => ({ fila, clave: pedido.clave, proveedor: null, nota: '', agrega: false })) })
+    if (w.estado !== 'escrito') { await diferir(port, pedido.id, `vaciar la auxiliar: ${w.estado}: ${w.detalle}`); return 'diferido' }
   }
   const vuelta = await releer({ google, fileId, plan, pedido })
   if (!vuelta.ok) {

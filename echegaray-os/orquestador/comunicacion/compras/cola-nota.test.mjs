@@ -4,6 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { aplicarNota, procesarColaNotas } from './cola-nota.mjs'
 import { formulaNota } from '../../lib/proveedores-notas-columna.mjs'
+import { readFileSync } from 'node:fs'
 
 const F = (n) => `=IF($A${n}="";"";IFERROR(VLOOKUP($A${n};'_PROVEEDORES_OS'!$A:$C;3;FALSE);""))`
 
@@ -11,7 +12,7 @@ const F = (n) => `=IF($A${n}="";"";IFERROR(VLOOKUP($A${n};'_PROVEEDORES_OS'!$A:$
  * Un Flujo de Caja en memoria: la D de Proveedores muestra la auxiliar por búsqueda, como en el archivo.
  * `dAMano` pisa la fórmula de la D de un proveedor con un texto (o '' para vaciarla).
  */
-function sheetFalso({ aux, proveedores = ['Hormiserv', 'Robles'], dAMano = {}, congelado = false, protegido = false, noAterriza = false, sinFormulas = false, alReleerA = null }) {
+function sheetFalso({ aux, proveedores = ['Hormiserv', 'Robles'], dAMano = {}, congelado = false, protegido = false, noAterriza = false, sinFormulas = false, alReleerA = null, alReleerFila = null, aDeProveedores = null }) {
   const escrituras = []
   const auxF = aux.map((f) => [...f])
   const celdaD = new Map(proveedores.map((p, i) => [18 + i, dAMano[p] ?? (sinFormulas ? '' : F(18 + i))]))
@@ -36,13 +37,27 @@ function sheetFalso({ aux, proveedores = ['Hormiserv', 'Robles'], dAMano = {}, c
       let m = rango.match(/^Proveedores!D(\d+)$/)
       if (m) return [[mostrar(Number(m[1]))]]
       m = rango.match(/^Proveedores!A(\d+)$/)
-      if (m) return [[proveedores[Number(m[1]) - 18] ?? '']]
+      if (m) return [[aDeProveedores?.(Number(m[1])) ?? proveedores[Number(m[1]) - 18] ?? '']]
       m = rango.match(/_PROVEEDORES_OS'!A(\d+)$/)
       if (m) { alReleerA?.(auxF); return [[auxF[Number(m[1]) - 1]?.[0] ?? '']] }
       m = rango.match(/_PROVEEDORES_OS'!A(\d+):C\d+$/)
       if (m && rango.includes('A1:C600')) return auxF
-      if (m) return [auxF[Number(m[1]) - 1] ?? []]
+      if (m) { alReleerFila?.(auxF); return [auxF[Number(m[1]) - 1] ?? []] }
+      m = rango.match(/_PROVEEDORES_OS'!C(\d+)$/)
+      if (m) return [[auxF[Number(m[1]) - 1]?.[2] ?? '']]
       throw new Error(`rango inesperado ${rango}`)
+    },
+    async getSheetMeta() { return [{ title: '_PROVEEDORES_OS', sheetId: 9 }] },
+    async spreadsheetBatchUpdate(_id, reqs, { espejo }) {
+      assert.equal(espejo, true, 'la auxiliar se vacía como la vacía su dueño')
+      if (congelado) return { congelado: true }
+      for (const q of reqs) {
+        const u = q.updateCells
+        const v = u.rows[0].values[0].userEnteredValue?.stringValue ?? ''
+        escrituras.push([`updateCells ${u.range.startColumnIndex === 0 ? 'A' : 'C'}${u.range.startRowIndex + 1}`, v])
+        const f = (auxF[u.range.startRowIndex] ??= ['', '', '']); f[u.range.startColumnIndex] = v
+      }
+      return {}
     },
     async batchUpdateValues(_id, data, { confirmacion }) {
       if (congelado) return { congelado: true }
@@ -212,4 +227,56 @@ test('B2 · la auxiliar se reordenó entre leer y escribir: la fila ya es de otr
   assert.equal(await aplicarNota({ port, google, fileId: 'x', pedido: pedido() }), 'diferido')
   assert.deepEqual(google.escrituras, [])
   assert.match(port.cierres.at(-1).motivo, /ahora es de «Robles»/)
+})
+
+test('R3 · BORRAR DESDE LA APP: vacía la C de la auxiliar (no por valores), repone la fórmula y borra en la base', async () => {
+  // El dueño vació la D a mano (borrado masivo retenido) y confirma desde la app: no es conflicto.
+  const google = sheetFalso({ aux: AUX, dAMano: { Hormiserv: '' } })
+  const port = baseFalsa({ nota: 'esperar al cobrador' })
+  assert.equal(await aplicarNota({ port, google, fileId: 'x', pedido: pedido({ nota_nueva: '' }) }), 'aplicado')
+  assert.deepEqual(google.escrituras, [['Proveedores!D18', formulaNota(18, 'A')], ['updateCells C3', '']])
+  assert.equal(port.notas.has('hormiserv'), false)
+})
+
+test('R3 · vaciar con la fila de la auxiliar movida: difiere, no vacía y la base no cambia', async () => {
+  let veces = 0
+  const google = sheetFalso({ aux: AUX, alReleerA: () => {}, alReleerFila: (a) => { if (++veces > 0) a[2] = ['Robles', '', 'otra'] } })
+  const port = baseFalsa({ nota: 'esperar al cobrador' })
+  assert.equal(await aplicarNota({ port, google, fileId: 'x', pedido: pedido({ nota_nueva: '' }) }), 'diferido')
+  assert.equal(google.escrituras.some(([r]) => r.startsWith('updateCells')), false)
+  assert.equal(port.notas.get('hormiserv'), 'esperar al cobrador')
+})
+
+test('X1 · la fila libre donde se iba a agregar el proveedor se ocupó antes de escribir: difiere', async () => {
+  const google = sheetFalso({ aux: AUX, proveedores: ['Robles', 'Nuevo SRL'], alReleerFila: (a) => { a[3] = ['Otro SRL', '', ''] } })
+  const port = baseFalsa({ nota: undefined })
+  const r = await aplicarNota({ port, google, fileId: 'x', pedido: pedido({ clave: 'nuevo srl', proveedor: 'Nuevo SRL', nota_anterior: '', nota_nueva: 'pedir CUIT' }) })
+  assert.equal(r, 'diferido')
+  assert.deepEqual(google.escrituras, [])
+  assert.match(port.cierres.at(-1).motivo, /ya no está vacía/)
+})
+
+test('X3 · la dinámica movió al proveedor antes de reponer la fórmula en la D: difiere', async () => {
+  const aux = AUX.map((f) => [...f]); aux[2][2] = 'nota de antes del lunes'
+  const google = sheetFalso({ aux, dAMano: { Hormiserv: 'esperar al cobrador' }, aDeProveedores: (n) => (n === 18 ? 'Robles' : null) })
+  const port = baseFalsa({ nota: 'esperar al cobrador' })
+  assert.equal(await aplicarNota({ port, google, fileId: 'x', pedido: pedido() }), 'diferido')
+  assert.deepEqual(google.escrituras, [])
+  assert.match(port.cierres.at(-1).motivo, /fila 18 de Proveedores ahora es de «Robles»/)
+})
+
+/** El cableado del script del worker: se lee el fuente, porque el script corre `main()` al importarlo. */
+const SCRIPT = readFileSync(new URL('../../scripts/compras-obra-cola.mjs', import.meta.url), 'utf8')
+
+test('X8 · el script del worker le pasa pipelineCorriendo a la cola de notas', () => {
+  assert.match(SCRIPT, /procesarColaNotas\(\{[^}]*\bpipelineCorriendo\b[^}]*\}\)/)
+  assert.match(SCRIPT, /async function pipelineCorriendo\(\)[\s\S]*?'echegaray-flujo-caja\.service'/)
+})
+
+test('X9 · contra una copia, el script NO procesa la cola de Compras · Cobranzas', () => {
+  const main = SCRIPT.slice(SCRIPT.indexOf('async function main('))
+  const corte = main.indexOf('if (ARCHIVO !== CASHFLOW_ID) {')
+  const compras = main.indexOf('procesarCola({')
+  assert.ok(corte > 0 && compras > corte, 'el corte por archivo de prueba tiene que ir antes de la cola de Compras')
+  assert.match(main.slice(corte, compras), /return\s*\n\s*\}/, 'y cortar con return')
 })
