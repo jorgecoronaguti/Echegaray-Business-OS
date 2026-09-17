@@ -1,6 +1,5 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import type { CertificadoCliente } from '../../clientes/types/cobranzas.ts'
 import { caja, cifrasCobranza, cobranza, destinoDe, legajos, leerEgresos, nomina, seisMesesReales, ubicarCirculos, ZONAS_COBRANZA, zonaDeTramo } from './empresa.ts'
 
 test('caja: a una obra, estructura por rama y sin destino; los meses separan las dos líneas', () => {
@@ -78,22 +77,19 @@ test('D4 · saldo y antigüedad de la MISMA fila: el tramo más viejo con plata,
   assert.deepEqual(cifrasCobranza(filas), { porCobrar: 200, masDe60: 50, alDia: 130 })
 })
 
-const doc = (x: Partial<CertificadoCliente>): CertificadoCliente => ({
-  id: '1', cliente_id: 'c1', obra_id: null, obra_nombre: null, numero: 'C1', factura: null, periodo_desde: null,
-  periodo_hasta: null, avance_periodo: null, monto: 100, reparo: null, emitido_at: '2026-07-01', vence: null,
-  estado: 'emitido', observacion: null, ...x,
-} as CertificadoCliente)
 const filaCC = { cliente_id: 'c1', nombre_comercial: 'Messina', saldo: '100', vencido: '0', aging_por_vencer: '100' }
+const doc = (x: Record<string, unknown>) => ({ id: '1', cliente_id: 'c1', estado: 'Pendiente', total_bruto: '100', fecha_emision: '2026-07-01', ...x })
 
 test('D10 · la acción del día es la de planDeCobranza: documentos sólo a más de 30 días NO dicen «Programar aviso»', () => {
   // Vence en 45 días: la ficha no lo avisa todavía. La regla vieja («por vencer → aviso») sí lo decía.
-  const lejos = cobranza([filaCC], [doc({ vence: '2026-11-01' })], '2026-09-17')
+  const lejos = cobranza([filaCC], [doc({ fecha_cobro: '2026-11-01' })], '2026-09-17')
   assert.equal(lejos[0].verbo, null)
-  // Vencido hace 45 días según Cobranzas: recordatorio, igual que la ficha.
-  const vencido = cobranza([filaCC], [doc({ vence: '2026-08-03', estado: 'vencido' })], '2026-09-17')
+  assert.equal(lejos[0].evaluado, true)
+  // Pendiente vencido hace 45 días: recordatorio, igual que la ficha.
+  const vencido = cobranza([filaCC], [doc({ fecha_cobro: '2026-08-03' })], '2026-09-17')
   assert.equal(vencido[0].verbo, 'Enviar recordatorio')
   // Vence en 10 días: aviso.
-  assert.equal(cobranza([filaCC], [doc({ vence: '2026-09-27' })], '2026-09-17')[0].verbo, 'Programar aviso')
+  assert.equal(cobranza([filaCC], [doc({ fecha_cobro: '2026-09-27' })], '2026-09-17')[0].verbo, 'Programar aviso')
   // Los documentos no cambian saldo ni antigüedad: esos siguen siendo de la cuenta corriente.
   assert.equal(vencido[0].saldo, 100)
   assert.equal(vencido[0].tramo, 'por_vencer')
@@ -115,4 +111,27 @@ test('D9 · «por vencer» tiene su zona antes del cero y nunca cae dentro de 1�
   assert.ok(c3.x > d30.desde && c3.x < d30.hasta)
   const [a, b] = c.filter((k) => k.clienteId !== 'c3')
   assert.notEqual(a.y, b.y, 'dos clientes del mismo tramo no se enciman')
+})
+
+// D10 (tercera vuelta): la acción del día sale de los documentos de COBRANZAS, no de certificado_cliente.
+const fila = (cliente: string, nombre: string, saldo: string) =>
+  ({ cliente_id: cliente, nombre_comercial: nombre, saldo, vencido: '0', aging_por_vencer: saldo })
+
+test('D10 (a) · saldo sin certificado y un documento de Cobranzas que vence mañana → «Programar aviso»', () => {
+  const [sf] = cobranza([fila('sf', 'San Francisco', '26600000')], [
+    { id: 'x1', cliente_id: 'sf', estado: 'Pendiente', fecha_cobro: '2026-09-18', fecha_emision: '2026-08-18', total_bruto: '26600000' },
+  ], '2026-09-17')
+  assert.equal(sf.verbo, 'Programar aviso')
+  assert.equal(sf.evaluado, true)
+})
+
+test('D10 (b) · los documentos de un cliente no se cruzan al otro; sin documentos se dice «no evaluado»', () => {
+  const filas = cobranza([fila('sf', 'San Francisco', '200'), fila('le', 'La Estrella', '100')], [
+    { id: 'x1', cliente_id: 'sf', estado: 'Pendiente', fecha_cobro: '2026-09-18', total_bruto: '200' },
+  ], '2026-09-17')
+  const sf = filas.find((f) => f.clienteId === 'sf')!
+  const le = filas.find((f) => f.clienteId === 'le')!
+  assert.equal(sf.verbo, 'Programar aviso')
+  assert.equal(le.verbo, null, 'el aviso de San Francisco no puede aparecer en La Estrella')
+  assert.equal(le.evaluado, false, 'sin documentos legibles no es «nada pendiente»: no se evaluó')
 })

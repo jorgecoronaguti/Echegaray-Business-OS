@@ -4,7 +4,6 @@
 // `obra_economia_cartera`, `egreso_por_area` y `nomina_por_mes` ya filtran por rol. Cada lectura que
 // falla vuelve `null` —no una lista vacía—: «no pude leer» y «no hay nada» se dibujan distinto.
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { CertificadoCliente } from '@/features/clientes/types/cobranzas'
 import { armarCostosPorObra, armarGastosSinObra } from '@/features/clientes/services/costosDeObra'
 import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
 import { rangoParaVista, type Filtros } from './filtros'
@@ -24,8 +23,8 @@ export interface DatosAnaliticas {
   nomina: unknown[] | null
   quincenas: unknown[] | null
   personas: unknown[] | null
-  /** Los documentos de cada cliente: SÓLO para la acción del día (`planDeCobranza`), no para saldo ni antigüedad. */
-  documentos: CertificadoCliente[] | null
+  /** Las filas de deuda de `public.cobranzas`: SÓLO para la acción del día (`planDeCobranza`). */
+  documentos: unknown[] | null
   /** `false` = la puerta de la base contestó null: sin permiso económico. */
   legible: boolean
 }
@@ -73,10 +72,21 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     f.vista === 'nomina' ? supabase.from('nomina_por_mes').select('mes, costo_nomina, cargas_sociales, es_estimacion') : null,
     f.vista === 'nomina' ? supabase.from('jornales_quincena').select('desde, estado') : null,
     f.vista === 'nomina' ? supabase.from('personas').select('en_la_empresa, categoria').eq('es_prueba', false) : null,
-    // LA ACCIÓN DEL DÍA SE DECIDE POR DOCUMENTO, con la regla de la ficha (D10). No se recorta por período:
-    // un documento emitido antes del rango puede vencer hoy.
+    // LA ACCIÓN DEL DÍA SE DECIDE POR DOCUMENTO DE COBRANZAS (D10), la misma fuente del saldo y con el
+    // mismo recorte por emisión que la cuenta corriente. Paginado: Cobranzas pasa las 1.000 filas.
+    // SÓLO COLUMNAS CON GRANT: `authenticated` no lee `id`, `numero_comprobante` ni `concepto` de
+    // `cobranzas`, y pedir una sola columna sin permiso hace fallar la consulta entera (la primera
+    // versión dejó a los cinco clientes en «no evaluado»). Sin `id`, el orden va por todas las columnas
+    // leídas, que es lo que hace estable la paginación (ver `paginar.ts`).
     f.vista === 'cobranza'
-      ? supabase.from('certificado_cliente').select('id, cliente_id, obra_id, numero, factura, periodo_desde, periodo_hasta, avance_periodo, monto, reparo, emitido_at, vence, estado, observacion').neq('estado', 'cobrado')
+      ? leerPaginado((a, b) => {
+        let q = supabase.from('cobranzas')
+          .select('cliente_id, estado, fecha_cobro, fecha_emision, total_bruto, obra_id')
+          .in('estado', ['Pendiente', 'Facturado']).not('cliente_id', 'is', null)
+        if (rango.desde) q = q.gte('fecha_emision', rango.desde)
+        if (rango.hasta) q = q.lte('fecha_emision', rango.hasta)
+        return q.order('cliente_id').order('fecha_cobro').order('fecha_emision').order('total_bruto').order('estado').order('obra_id').range(a, b)
+      })
       : null,
   ])
   return {
@@ -86,7 +96,7 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     nomina: nomina?.data ?? null,
     quincenas: quincenas?.data ?? null,
     personas: personas?.data ?? null,
-    documentos: (documentos?.data ?? null) as CertificadoCliente[] | null,
+    documentos: documentos ?? null,
     legible: raiz != null,
   }
 }

@@ -4,7 +4,8 @@
 // `cuenta_corriente_de_clientes`). Ninguna inventa un dato para completar el
 // gráfico: una estimación se marca como tal, y un cliente sin certificado no se ubica en la línea
 // de antigüedad —no hay fecha de la que medirla—.
-import type { CertificadoCliente, CuentaCorriente } from '../../clientes/types/cobranzas.ts'
+import type { CuentaCorriente } from '../../clientes/types/cobranzas.ts'
+import { documentosDeCobranzas } from '../../clientes/services/documentoDeCobranza.ts'
 import { bandasAntiguedad, planDeCobranza, type ClaveBanda } from '../../clientes/services/reglasCobranza.ts'
 
 const n = (v: unknown): number | null => {
@@ -161,7 +162,10 @@ export interface FilaCobranza {
   tramo: ClaveBanda | null
   rotuloTramo: string | null
   estado: EstadoCobro
+  /** La acción del día según `planDeCobranza`; `null` = nada pendiente hoy (si `evaluado`). */
   verbo: string | null
+  /** `false` = el cliente no tiene documentos legibles en Cobranzas: la acción NO se evaluó. */
+  evaluado: boolean
 }
 
 /**
@@ -204,11 +208,16 @@ export function ubicarCirculos(filas: FilaCobranza[]): Circulo[] {
 
 /**
  * LA COBRANZA POR CLIENTE. Saldo y antigüedad: la fila de cuenta corriente. La acción del día: el
- * MISMO `planDeCobranza` de la ficha del cliente, sobre sus documentos (auditoría 17/09/2026, D10).
- * Escribir acá «vencido → recordatorio, por vencer → aviso» era una segunda definición de la regla, y
- * decía «Programar aviso» para un documento que la ficha no avisa (vence en más de 30 días o ya pasó).
+ * MISMO `planDeCobranza` de la ficha, sobre los documentos de `public.cobranzas` de ESE cliente —la
+ * fuente del saldo—, adaptados por `documentosDeCobranzas` (auditoría 17/09/2026, D10).
+ *
+ * Primero se escribió acá una regla propia (segunda definición). Después se leyó `certificado_cliente`,
+ * que es un subconjunto: San Francisco, con 7 documentos en Cobranzas y 0 certificados y $ 26,6 M que
+ * vencían al día siguiente, decía «nada pendiente hoy». Sin documentos legibles la acción no se evaluó,
+ * y eso se dice (`evaluado: false`), no se dibuja como «nada pendiente».
  */
-export function cobranza(cuenta: unknown[], documentos: CertificadoCliente[] = [], hoy = ''): FilaCobranza[] {
+export function cobranza(cuenta: unknown[], filasCobranzas: unknown[] | null = null, hoy = ''): FilaCobranza[] {
+  const docs = documentosDeCobranzas(filasCobranzas ?? [], hoy)
   return cuenta.flatMap((f): FilaCobranza[] => {
     const r = f as Record<string, unknown>
     const saldo = n(r.saldo) ?? 0
@@ -220,13 +229,14 @@ export function cobranza(cuenta: unknown[], documentos: CertificadoCliente[] = [
     const conPlata = bandasAntiguedad(fila).filter((b) => b.monto > 0)
     const viejo = conPlata.at(-1) ?? null
     const vencido = n(r.vencido) ?? 0
-    const docs = documentos.filter((d) => d.cliente_id === r.cliente_id)
+    const propios = docs.filter((d) => d.cliente_id === r.cliente_id)
     return [{
       clienteId: r.cliente_id, nombre: String(r.nombre_comercial ?? ''), saldo, vencido,
       porVencer: fila.aging_por_vencer, masDe60: fila.aging_61_90 + fila.aging_mas_90,
       tramo: viejo?.clave ?? null, rotuloTramo: viejo?.rotulo ?? null,
       estado: vencido > 0 ? 'vencido' : 'alDia',
-      verbo: planDeCobranza(docs, hoy)[0]?.rotulo ?? null,
+      verbo: propios.length ? (planDeCobranza(propios, hoy)[0]?.rotulo ?? null) : null,
+      evaluado: propios.length > 0,
     }]
   }).sort((a, b) => b.saldo - a.saldo)
 }

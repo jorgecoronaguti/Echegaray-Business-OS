@@ -1,7 +1,6 @@
 // CAJA, NÓMINA Y COBRANZA — las tres lecturas de la empresa.
 import type { ReactNode } from 'react'
 import { millones, pctConSigno, pctEntero } from '../services/formato'
-import type { CertificadoCliente } from '@/features/clientes/types/cobranzas'
 import { caja, cifrasCobranza, cobranza, legajos, MES_BASE, nomina, leerEgresos, seisMesesReales, ubicarCirculos, ZONAS_COBRANZA } from '../services/empresa'
 import { Ausente, Cifras, SinLectura, Subtitulo, Titulo } from './Piezas'
 
@@ -139,7 +138,8 @@ export function VistaNomina({ filas, quincenas, personas, rango, periodo }: {
 
 export function VistaCobranza({ cuenta, documentos, hoy, periodo, gastado }: {
   cuenta: unknown[] | null
-  documentos: CertificadoCliente[] | null
+  /** Filas de `public.cobranzas` (deuda): de acá sale la acción del día. `null` = no se pudieron leer. */
+  documentos: unknown[] | null
   hoy: string
   periodo: string
   gastado: number | null
@@ -193,7 +193,7 @@ export function VistaCobranza({ cuenta, documentos, hoy, periodo, gastado }: {
                 <td className="text-left text-ink">{f.nombre}</td>
                 <td className={f.estado === 'vencido' ? 'text-neg' : 'text-ink'}>{millones(f.saldo)}</td>
                 <td>{f.rotuloTramo ?? <Ausente>sin vencimiento</Ausente>}</td>
-                <td className="pl-6 text-left">{f.verbo ?? <Ausente>nada pendiente hoy</Ausente>}</td>
+                <td className="pl-6 text-left">{f.verbo ?? <Ausente>{documentos == null ? 'no se pudo leer Cobranzas' : f.evaluado ? 'nada pendiente hoy' : 'sin documentos: no evaluado'}</Ausente>}</td>
               </tr>
             ))}
           </tbody>
