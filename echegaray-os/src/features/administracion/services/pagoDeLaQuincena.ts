@@ -116,6 +116,28 @@ export function pagoDeLaLinea(e: EntradaDePago): PagoDeLaLinea {
   }
 }
 
+/**
+ * EL MES DE UN MENSUAL (dueño, 17/09/2026: «cobran mensual»). Un jefe de Oficina cobra UN importe por mes y no tiene
+ * reparto blanco + negro que afirmar —el banco gira los recibos del mes juntos y el resto sale en mano—, así que no hay
+ * saldo POR LADO: sólo lo liquidado del mes contra lo pagado del mes. Los lados quedan `null` (no suman a banco ni a
+ * negro en el pie) y el total y el saldo sí. Sin importe liquidado, `null`: nunca cero.
+ */
+export function pagoDelMes(e: { liquidado: number | null; pagadoBanco: number; pagadoEfectivo: number }): PagoDeLaLinea {
+  const pagadoBanco = r2(suma(e.pagadoBanco))
+  const pagadoEfectivo = r2(suma(e.pagadoEfectivo))
+  const pagado = r2(pagadoBanco + pagadoEfectivo)
+  const total = e.liquidado == null || !Number.isFinite(e.liquidado) ? null : r2(e.liquidado)
+  const saldoTotal = total == null ? null : r2(total - pagado)
+  return {
+    banco: null, negro: null, total, pagadoBanco, pagadoEfectivo, pagado,
+    saldoBanco: null, saldoEfectivo: null, saldoBancoBruto: null, saldoEfectivoBruto: null, saldoTotal,
+    aPagarEfectivo: null, aPagarBanco: null,
+    excedente: saldoTotal != null && saldoTotal < 0
+      ? { lado: pagadoBanco >= pagadoEfectivo ? 'banco' : 'efectivo', importe: r2(-saldoTotal) } : null,
+    absorbido: null,
+  }
+}
+
 /** Cobró de más EN TOTAL: el importe es lo que sobra sobre banco + negro, del lado que más se pasó. */
 function excedenteDe(saldoTotal: number | null, saldoBanco: number | null, saldoEfectivo: number | null): PagoDeLaLinea['excedente'] {
   if (saldoTotal == null || saldoTotal >= 0) return null

@@ -254,6 +254,20 @@ export function pagadoDeLaPlanilla(base, dePlanilla = []) {
   if (base.pagado_banco != null || base.pagado_efectivo != null || base.pagada_en != null) {
     return { motivo: 'pago ya registrado en la app' }
   }
+  const c = cadenaDeLaPlanilla(base, dePlanilla)
+  if (c.motivo) return c
+  // UN LADO NEGATIVO NO ES UN PAGO DE ESTA QUINCENA: «EFECTIVO −$358.000» dice que el banco giró más de lo que la
+  // quincena cobra (Oficina, 2ª de julio: $1.365.000 contra $1.007.000). Para quien cobra por hora no se afirma; para
+  // un mensual el mes lo explica (`pagadoMensualDeLaPlanilla`).
+  if (c.pagado_banco < 0 || c.pagado_efectivo < 0) {
+    return { motivo: `un lado negativo (banco ${c.pagado_banco}, efectivo ${c.pagado_efectivo}): el giro no es sólo esta quincena` }
+  }
+  return c
+}
+
+/** La cadena de la planilla como pago, sin mirar lo registrado ni el signo. */
+function cadenaDeLaPlanilla(base, dePlanilla = []) {
+  if (!base) return { motivo: 'sin línea en la base' }
   const validas = dePlanilla.filter((l) => !l.motivo)
   if (validas.length === 0) return { motivo: dePlanilla.length ? `la planilla la excluye (${dePlanilla[0].motivo})` : 'la planilla no la trae' }
   if (validas.length > 1) return { motivo: `la planilla la trae ${validas.length} veces` }
@@ -270,23 +284,87 @@ export function pagadoDeLaPlanilla(base, dePlanilla = []) {
   if (!iguales(pagadoBanco + pagadoEfectivo, p.cobra)) {
     return { motivo: `la cadena no cierra: banco ${pagadoBanco} + efectivo ${pagadoEfectivo} ≠ cobra ${p.cobra}` }
   }
-  // UN LADO NEGATIVO NO ES UN PAGO: «EFECTIVO −$358.000» dice que el banco giró más de lo que la quincena cobra
-  // (Oficina, 2ª de julio: $1.365.000 contra $1.007.000 — probablemente el SAC). Afirmar un pago negativo sería
-  // inventar qué fue esa plata; lo decide una persona.
-  if (pagadoBanco < 0 || pagadoEfectivo < 0) {
-    return { motivo: `un lado negativo (banco ${pagadoBanco}, efectivo ${pagadoEfectivo}): el giro no es sólo esta quincena` }
-  }
   return { pagado_banco: pagadoBanco, pagado_efectivo: pagadoEfectivo }
+}
+
+// ═══ LOS MENSUALES SE AFIRMAN POR MES (dueño, 17/09/2026) ═══
+//
+// Textual: *«cobran mensual, esto ya lo sabés»*. Los jefes de Oficina cobran UN sueldo por mes; hasta agosto JORNALES
+// los anotaba por hora en dos bloques, y el banco gira los dos recibos juntos en la 2ª quincena. Medido el 17/09/2026:
+// julio, Maldonado y Nievas, extracto del 31/07 = $1.365.843,84 = recibo Q1-07 $661.065,29 + Q2-07 $704.778,55; enero,
+// Maldonado, $1.113.592 = Q1-01 $554.979,40 + Q2-01 $558.612,81. NO es aguinaldo: es el blanco del mes entero. Por eso la
+// 2ª trae «EFECTIVO −$358.000»: es el efectivo de la 1ª que el banco ya cubrió.
+//
+// LA REGLA: la cadena de cada quincena se valida igual que por quincena (misma línea que la planilla, cierra con
+// cobra); el signo se mira sobre el MES. Si el mes da los dos lados ≥ 0, lo pagado del mes es banco + efectivo de sus
+// quincenas, y como `liquidacion_linea` no admite un pagado negativo (CHECK), el negativo de un lado se descuenta del
+// mismo lado de las otras quincenas del mes, de la más vieja a la más nueva. La suma del mes —lo único que la solapa
+// Retribución lee de un mensual— es exactamente la de la planilla; el reparto entre las dos quincenas es una
+// convención y se declara en `observacion`.
+
+const centavos = (n) => Math.round(Number(n) * 100)
+
+/** Los negativos de un lado se descuentan de los positivos del mismo lado, en orden. La suma no cambia. */
+function netear(valores) {
+  const c = valores.map(centavos)
+  let deficit = -c.filter((v) => v < 0).reduce((a, v) => a + v, 0)
+  return c.map((v) => Math.max(0, v)).map((v) => {
+    const toma = Math.min(v, deficit)
+    deficit -= toma
+    return (v - toma) / 100
+  })
+}
+
+/**
+ * @param {Array<{base: object, dePlanilla: object[]}>} delMes  las quincenas del MES de una persona mensual, de la más vieja
+ *        a la más nueva (sólo las que tienen línea en la base)
+ * @returns {Array<{pagado_banco:number, pagado_efectivo:number} | {motivo:string}>} una por quincena, mismo orden
+ */
+export function pagadoMensualDeLaPlanilla(delMes = []) {
+  const cadenas = delMes.map(({ base, dePlanilla }) => cadenaDeLaPlanilla(base, dePlanilla))
+  const rota = cadenas.findIndex((c) => c.motivo)
+  if (rota >= 0) {
+    return cadenas.map((c, i) => ({ motivo: i === rota ? c.motivo : `el mes no se puede afirmar: otra quincena ${cadenas[rota].motivo}` }))
+  }
+  const banco = cadenas.reduce((a, c) => a + centavos(c.pagado_banco), 0) / 100
+  const efectivo = cadenas.reduce((a, c) => a + centavos(c.pagado_efectivo), 0) / 100
+  if (banco < 0 || efectivo < 0) {
+    return cadenas.map(() => ({ motivo: `el mes da un lado negativo (banco ${banco}, efectivo ${efectivo}): no se afirma` }))
+  }
+  const b = netear(cadenas.map((c) => c.pagado_banco))
+  const e = netear(cadenas.map((c) => c.pagado_efectivo))
+  return cadenas.map((_, i) => ({ pagado_banco: b[i], pagado_efectivo: e[i] }))
+}
+
+/**
+ * ¿Qué hay hoy en lo pagado de la línea frente a lo que se va a escribir?
+ *   vacio       nada registrado → se completa
+ *   igual       ya es lo esperado → silencio
+ *   cadena      es la cadena cruda de ESTA quincena (la escribió `--completar-pagado` por quincena) → se rehace
+ *   registrado  otra cifra, o la línea marcada pagada → es de una persona: no se toca
+ */
+export function estadoDelPagado(base, esperado) {
+  if (base.pagada_en != null) return 'registrado'
+  if (base.pagado_banco == null && base.pagado_efectivo == null) return 'vacio'
+  if (iguales(base.pagado_banco, esperado.pagado_banco) && iguales(base.pagado_efectivo, esperado.pagado_efectivo)) return 'igual'
+  return pagadoEsLaCadena(base) ? 'cadena' : 'registrado'
 }
 
 /** La frase que queda en `liquidacion_quincena.observacion`: de dónde salió lo pagado. Idempotente. */
 export const MARCA_PAGADO_JORNALES = 'Pagado completado desde JORNALES (sheet:jornales)'
 
-export function observacionConPagado(observacion, lineas, fecha) {
-  const previa = (observacion ?? '').trim()
-  if (previa.includes(MARCA_PAGADO_JORNALES)) return previa
-  const frase = `${MARCA_PAGADO_JORNALES} el ${fecha} en ${lineas} línea(s): banco = ADELANTO BANCO + BANCO, efectivo = ADELANTO + EFECTIVO.`
-  return previa ? `${previa} ${frase}` : frase
+export const MARCA_PAGADO_MENSUAL = 'Mensuales: lo pagado se afirma por MES'
+
+export function observacionConPagado(observacion, lineas, fecha, { mensual = false } = {}) {
+  let previa = (observacion ?? '').trim()
+  if (!previa.includes(MARCA_PAGADO_JORNALES)) {
+    const frase = `${MARCA_PAGADO_JORNALES} el ${fecha} en ${lineas} línea(s): banco = ADELANTO BANCO + BANCO, efectivo = ADELANTO + EFECTIVO.`
+    previa = previa ? `${previa} ${frase}` : frase
+  }
+  if (mensual && !previa.includes(MARCA_PAGADO_MENSUAL)) {
+    previa = `${previa} ${MARCA_PAGADO_MENSUAL} (${fecha}): el banco gira los recibos del mes juntos; el negativo de un lado en una quincena se descuenta del mismo lado de la otra quincena del mes.`
+  }
+  return previa
 }
 
 /** ¿Lo pagado de la línea es EXACTAMENTE la cadena de la planilla con la que se cargó? Entonces salió de acá. */

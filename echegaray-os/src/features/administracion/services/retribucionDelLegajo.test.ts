@@ -26,13 +26,13 @@ const porHora = (o: {
   horas: number; valorHora: number; banco: number | null; negro: number | null
   pagadoBanco?: number; pagadoEfectivo?: number; estimado?: boolean; sinNeto?: boolean
 }): LineaRetribuida => ({
-  modalidad: 'hora', horas: o.horas, valorHora: o.valorHora, netoMensual: null, sinTarifa: false, sinNeto: o.sinNeto === true,
+  modalidad: 'hora', horas: o.horas, valorHora: o.valorHora, netoMensual: null, cobra: null, sinTarifa: false, sinNeto: o.sinNeto === true,
   sueldo: { estado: o.estimado ? 'estimado' : 'recibo' },
   pago: pagoDeLaLinea({ banco: o.banco, negro: o.negro, pagadoBanco: o.pagadoBanco, pagadoEfectivo: o.pagadoEfectivo }),
 })
 
 const mensual = (neto: number, pagadoBanco: number): LineaRetribuida => ({
-  modalidad: 'mensual', horas: 90, valorHora: null, netoMensual: neto, sinTarifa: false, sinNeto: false, sueldo: null,
+  modalidad: 'mensual', horas: 90, valorHora: null, netoMensual: neto, cobra: neto, sinTarifa: false, sinNeto: false, sueldo: null,
   pago: pagoDeLaLinea({ banco: neto, negro: 0, pagadoBanco }),
 })
 
@@ -195,4 +195,58 @@ test('el historial del blanco ordena por período real y dice la variación', ()
   assert.equal(h[2].variacion, '+20,0 % vs 5.000')
   assert.equal(h[3].variacion, null)
   assert.equal(h[3].categoria, 'Medio oficial')
+})
+
+// ═══ LOS MENSUALES POR MES EN TODO 2026 (dueño, 17/09/2026: «cobran mensual» · «la solapa no lo muestra antes de septiembre») ═══
+//
+// Lo que la Liquidación publica de un jefe de Oficina: `modalidad` mensual, `negro` null (fuera del modelo blanco + negro),
+// así que `pago.total` es null y la fila decía «sin total» todo el año. Antes de septiembre no hay neto mensual:
+// JORNALES los anotaba por hora y el COBRA de cada quincena es el importe de la planilla.
+const jefe = (o: { cobra: number | null; neto?: number | null; pagadoBanco?: number; pagadoEfectivo?: number; horas?: number }): LineaRetribuida => ({
+  modalidad: 'mensual', horas: o.horas ?? 90, valorHora: null, netoMensual: o.neto ?? null, cobra: o.cobra,
+  sinTarifa: false, sinNeto: false, sueldo: null,
+  pago: pagoDeLaLinea({ banco: 0, negro: null, pagadoBanco: o.pagadoBanco, pagadoEfectivo: o.pagadoEfectivo }),
+})
+
+test('mensual sin neto (JORNALES por hora): lo liquidado del mes es la suma de sus quincenas y lo pagado también', () => {
+  // Maldonado, julio 2026: 796.400 + 1.007.000; banco 1.365.000 (los dos recibos) + efectivo 438.400.
+  const filas = filasDeRetribucion([
+    { quincena: q('2026-07-01'), estado: 'cerrada', linea: jefe({ cobra: 796400, pagadoEfectivo: 438400, horas: 88 }) },
+    { quincena: q('2026-07-16'), estado: 'cerrada', linea: jefe({ cobra: 1007000, pagadoBanco: 1365000, horas: 106 }) },
+  ])
+  assert.equal(filas.length, 1)
+  assert.equal(filas[0].periodo, 'Julio')
+  assert.equal(filas[0].mensual, true)
+  assert.equal(filas[0].horas, 194)
+  assert.equal(filas[0].pago?.total, 1803400)
+  assert.equal(filas[0].pago?.pagado, 1803400)
+  assert.equal(filas[0].pago?.pagadoBanco, 1365000)
+  assert.equal(filas[0].pago?.saldoTotal, 0)
+  assert.equal(filas[0].sinImporte, 0)
+  const t = totalesDeRetribucion(filas)
+  assert.equal(t.total, 1803400)
+  assert.equal(t.saldo, 0)
+  assert.equal(t.sinSaldo, 0)
+})
+
+test('mensual con neto: el neto una vez por mes aunque las líneas reales no traigan negro', () => {
+  const filas = filasDeRetribucion([
+    { quincena: q('2026-09-01'), estado: 'abierta', linea: jefe({ cobra: 1800000, neto: 1800000, pagadoBanco: 663000 }) },
+    { quincena: q('2026-09-16'), estado: 'abierta', linea: jefe({ cobra: 1800000, neto: 1800000 }) },
+  ])
+  assert.equal(filas[0].pago?.total, 1800000)
+  assert.equal(filas[0].pago?.saldoTotal, 1137000)
+})
+
+test('mensual con una quincena sin importe: se suma lo que hay y la fila dice cuántas faltan; sin ninguna, sin total', () => {
+  const agosto = filasDeRetribucion([
+    { quincena: q('2026-08-01'), estado: 'cerrada', linea: jefe({ cobra: 398200, pagadoEfectivo: 398200 }) },
+    { quincena: q('2026-08-16'), estado: 'abierta', linea: jefe({ cobra: null }) },
+  ])
+  assert.equal(agosto[0].pago?.total, 398200)
+  assert.equal(agosto[0].sinImporte, 1)
+  assert.equal(totalesDeRetribucion(agosto).sinImporte, 1)
+  const vacio = filasDeRetribucion([{ quincena: q('2026-08-16'), estado: 'abierta', linea: jefe({ cobra: null, pagadoBanco: 5 }) }])
+  assert.equal(vacio[0].pago?.total, null)
+  assert.equal(totalesDeRetribucion(vacio).pagado, 5)
 })

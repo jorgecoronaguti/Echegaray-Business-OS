@@ -24,13 +24,13 @@ const rotulo = rotuloDeValorHora({ puedeVer: true, tarifas: [], recibo: null, pi
 const porHora = (personaId: string, nombre: string, o: {
   banco: number | null; negro: number | null; pagadoBanco?: number; pagadoEfectivo?: number; sinNeto?: boolean
 }): LineaDelCuadro => ({
-  personaId, nombre, modalidad: 'hora', horas: 80, valorHora: 6000, netoMensual: null, sinTarifa: false,
+  personaId, nombre, modalidad: 'hora', horas: 80, valorHora: 6000, netoMensual: null, cobra: null, sinTarifa: false,
   sinNeto: o.sinNeto === true, sueldo: { estado: 'recibo' },
   pago: pagoDeLaLinea({ banco: o.banco, negro: o.negro, pagadoBanco: o.pagadoBanco, pagadoEfectivo: o.pagadoEfectivo }),
 })
 
 const mensual = (personaId: string, nombre: string, neto: number, pagadoBanco: number): LineaDelCuadro => ({
-  personaId, nombre, modalidad: 'mensual', horas: 90, valorHora: null, netoMensual: neto, sinTarifa: false,
+  personaId, nombre, modalidad: 'mensual', horas: 90, valorHora: null, netoMensual: neto, cobra: neto, sinTarifa: false,
   sinNeto: false, sueldo: null, pago: pagoDeLaLinea({ banco: neto, negro: 0, pagadoBanco }),
 })
 
@@ -133,4 +133,18 @@ test('sin permiso no se arma ninguna fila; la medida desconocida es «pagado»',
   assert.deepEqual([d.puedeVer, d.filas, d.errores], [false, [], []])
   assert.equal(medidaDe('liquidado'), 'liquidado')
   assert.equal(medidaDe('cualquiera'), 'pagado')
+})
+
+test('el mensual antes de septiembre: la celda «liquidado» del mes es la suma de sus quincenas, no «sin total»', () => {
+  const jefe = (cobra: number, pagadoEfectivo: number): LineaDelCuadro => ({
+    personaId: 'j', nombre: 'Jefe', modalidad: 'mensual', horas: 90, valorHora: null, netoMensual: null, cobra,
+    sinTarifa: false, sinNeto: false, sueldo: null, pago: pagoDeLaLinea({ banco: 0, negro: null, pagadoEfectivo }),
+  })
+  const lecturas = [leida('2026-07-01', [], [jefe(796400, 438400)]), leida('2026-07-16', [], [jefe(1007000, 0)])]
+  const d = armarRetribucionDelPlantel({
+    puedeVer: true, anio: 2026, medida: 'liquidado', lecturas, errores: [],
+    personas: [{ personaId: 'j', nombre: 'Jefe', cuil: null }], recibosDe: () => [], rotuloDe: () => rotulo,
+  })
+  assert.deepEqual(d.filas[0].celdas.map((c) => [c.span, c.valor, c.motivo]), [[2, 1803400, null], [0, 1803400, null]])
+  assert.equal(d.filas[0].total, 1803400)
 })

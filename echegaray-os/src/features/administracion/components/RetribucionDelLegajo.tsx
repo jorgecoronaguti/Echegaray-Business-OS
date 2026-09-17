@@ -97,7 +97,11 @@ function FilaDelAnio({ f, hrefLiquidacion }: { f: FilaDeRetribucion; hrefLiquida
             {pesos(p.banco)}{f.bancoEstimado && <span style={{ marginLeft: 4, fontSize: '11px', color: V.tenue }}>est.</span>}
           </Celda>
         )}
-      <Celda fuerte title={f.sinNeto ? 'sin neto no se afirma el total' : undefined}>{f.sinNeto ? '—' : pesos(p.total)}</Celda>
+      <Celda fuerte tono={f.sinImporte > 0 ? V.warn : undefined} title={f.sinNeto ? 'sin neto no se afirma el total'
+        : f.sinImporte > 0 ? `${f.sinImporte} quincena(s) del mes sin importe cargado: lo liquidado está incompleto`
+          : f.mensual ? 'lo liquidado del mes: el neto mensual, o la suma de sus quincenas si no había neto' : undefined}>
+        {f.sinNeto ? '—' : pesos(p.total)}{f.sinImporte > 0 && <span style={{ marginLeft: 4, fontSize: '11px' }}>incompl.</span>}
+      </Celda>
       <Celda title={`banco ${pesos(p.pagadoBanco)} · efectivo ${pesos(p.pagadoEfectivo)}`}>{pesos(p.pagado)}</Celda>
       <Celda fuerte tono={negativo ? V.warn : undefined} title={avisoDeExcedente(p) ?? undefined}>
         {f.sinNeto ? '—' : pesos(p.saldoTotal)}
@@ -215,9 +219,10 @@ export function RetribucionDelLegajo({ r, rotulo, hrefLiquidacion, testid = 'blo
 
       <TablaDelAnio r={r} hrefLiquidacion={hrefLiquidacion} />
 
-      {(r.totales.sinSaldo > 0 || r.totales.sinNeto > 0) && (
+      {(r.totales.sinSaldo > 0 || r.totales.sinNeto > 0 || r.totales.sinImporte > 0) && (
         <p data-testid="retribucion-nota" style={{ margin: '-16px 0 0', fontSize: '11px', color: V.apagado }}>
           {r.totales.sinNeto > 0 && `${r.totales.sinNeto} sin neto afirmado: su banco y su total no están en el pie. `}
+          {r.totales.sinImporte > 0 && `${r.totales.sinImporte} quincena(s) de un mensual sin importe cargado: lo liquidado de su mes está incompleto. `}
           {r.totales.sinSaldo > 0 && `${r.totales.sinSaldo} sin saldo que afirmar, fuera de la suma de negro, blanco y total.`}
         </p>
       )}

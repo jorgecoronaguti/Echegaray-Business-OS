@@ -59,6 +59,7 @@ import { emparejarPersona, indicePersonas } from '../lib/jornales-a-registros-hh
 import {
   excluidasParaBase, HOJAS_LIQUIDACION, motivoParaSaltear, observacionConPagado, observacionDeCarga, pagadoDeLaPlanilla,
   observacionDeRecarga, pagadoEsLaCadena, pagadoTrasRecarga, planDeHoja, separarSalteadas, sqlLineaEditada,
+  estadoDelPagado, pagadoMensualDeLaPlanilla,
 } from '../lib/liquidacion-jornales-plan.mjs'
 
 const JORNALES_ID = '1s0KlEURR5Udi7vvy-BmeqAi83lMRyqSCSsRjpiO5aXk'
@@ -229,6 +230,11 @@ async function completarPagado(planes, estados) {
   const planDe = new Map(planes.map(({ h, plan }) => [h.grupo, plan]))
   const aEscribir = []
   const salteadas = []
+  const deLaPlanilla = (q, b) => (q?.lineas ?? []).filter((l) => l.persona_id === b.persona_id).map((l) => ({
+    ...l, motivo: q.control.excluidas.find((e) => e.fila === l.fila)?.motivo ?? null,
+  }))
+  // ═══ OFICINA COBRA POR MES (dueño, 17/09/2026): sus quincenas se afirman juntas, por persona y mes ═══
+  const porMes = new Map()
   for (const b of lineas) {
     const plan = planDe.get(b.grupo)
     if (!plan) continue
@@ -237,37 +243,58 @@ async function completarPagado(planes, estados) {
     const motivoQ = b.estado !== 'cerrada' ? `quincena ${b.estado}`
       : q?.enCurso ? 'quincena en curso'
         : motivoParaSaltear(estados.get(`${b.grupo}|${b.desde}|${b.hasta}`))
+    if (b.grupo === 'oficina') {
+      const k = `${b.persona_id}|${b.desde.slice(0, 7)}`
+      porMes.set(k, [...(porMes.get(k) ?? []), { b, q, quien, motivoQ }])
+      continue
+    }
     if (motivoQ) { salteadas.push(`${quien}: ${motivoQ}`); continue }
-    const r = pagadoDeLaPlanilla(b, (q?.lineas ?? []).filter((l) => l.persona_id === b.persona_id).map((l) => ({
-      ...l, motivo: q.control.excluidas.some((e) => e.fila === l.fila) ? (q.control.excluidas.find((e) => e.fila === l.fila).motivo) : null,
-    })))
+    const r = pagadoDeLaPlanilla(b, deLaPlanilla(q, b))
     // YA COMPLETADO DESDE ESTA MISMA CADENA: silencio. Cualquier otro pago registrado se DICE: puede ser de una persona
     // o de una cadena vieja que alguien tiene que mirar.
     if (r.motivo) { if (!(r.motivo === 'pago ya registrado en la app' && pagadoEsLaCadena(b))) salteadas.push(`${quien}: ${r.motivo}`); continue }
-    aEscribir.push({ b, ...r })
+    aEscribir.push({ b, ...r, estado: 'vacio' })
+  }
+  for (const mes of porMes.values()) {
+    const cortada = mes.find((x) => x.motivoQ)
+    if (cortada) { for (const x of mes) salteadas.push(`${x.quien}: mes de un mensual con ${cortada.b.desde} ${cortada.motivoQ}`); continue }
+    const r = pagadoMensualDeLaPlanilla(mes.map((x) => ({ base: x.b, dePlanilla: deLaPlanilla(x.q, x.b) })))
+    const estadosMes = mes.map((x, i) => (r[i].motivo ? null : estadoDelPagado(x.b, r[i])))
+    const registrada = estadosMes.indexOf('registrado')
+    for (const [i, x] of mes.entries()) {
+      if (r[i].motivo) { salteadas.push(`${x.quien}: ${r[i].motivo}`); continue }
+      // UNA QUINCENA DEL MES CON UN PAGO DE UNA PERSONA: el mes entero queda como está (el reparto sería sobre su cifra).
+      if (registrada >= 0) { salteadas.push(`${x.quien}: mes de un mensual con un pago registrado en la app (${mes[registrada].b.desde})`); continue }
+      if (estadosMes[i] === 'igual') continue
+      aEscribir.push({ b: x.b, ...r[i], estado: estadosMes[i], mensual: true })
+    }
   }
   console.log(`\nLO PAGADO QUE FALTA, DESDE JORNALES (${aEscribir.length} línea/s):`)
   console.log('grupo    quincena    persona                             banco        efectivo')
-  for (const { b, pagado_banco: pb, pagado_efectivo: pe } of aEscribir) {
-    console.log(`${b.grupo.padEnd(8)} ${b.desde}  ${b.nombre_completo.slice(0, 34).padEnd(34)} ${ars(pb).padStart(12)} ${ars(pe).padStart(12)}`)
+  for (const { b, pagado_banco: pb, pagado_efectivo: pe, estado, mensual } of aEscribir) {
+    const antes = estado === 'cadena' ? `  (rehace ${ars(b.pagado_banco)} + ${ars(b.pagado_efectivo)} de la cadena por quincena)` : ''
+    console.log(`${b.grupo.padEnd(8)} ${b.desde}  ${b.nombre_completo.slice(0, 34).padEnd(34)} ${ars(pb).padStart(12)} ${ars(pe).padStart(12)}${mensual ? '  por mes' : ''}${antes}`)
   }
   if (salteadas.length) { console.log(`\nNO SE COMPLETAN (${salteadas.length}):`); for (const s of salteadas) console.log(`   · ${s}`) }
   if (!APLICAR) return console.log('\n(sin --aplicar: no escribí nada)')
   const fecha = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/San_Juan' })
   const porQuincena = new Map()
   for (const x of aEscribir) {
-    // SÓLO SI SIGUE VACÍA: entre el ensayo y esta escritura alguien pudo registrar el pago en la app.
+    // SÓLO SI SIGUE COMO SE LEYÓ: vacía, o con la cadena cruda que se rehace. Entre el ensayo y esta escritura alguien
+    // pudo registrar el pago en la app.
     const { rowCount } = await query(
       `update public.liquidacion_linea set pagado_banco = $3, pagado_efectivo = $4, actualizado_en = now()
-        where liquidacion_id = $1 and persona_id = $2
-          and pagado_banco is null and pagado_efectivo is null and pagada_en is null`,
-      [x.b.liquidacion_id, x.b.persona_id, x.pagado_banco, x.pagado_efectivo],
+        where liquidacion_id = $1 and persona_id = $2 and pagada_en is null
+          and ((pagado_banco is null and pagado_efectivo is null)
+            or ($5::boolean and pagado_banco = $6::numeric and pagado_efectivo = $7::numeric))`,
+      [x.b.liquidacion_id, x.b.persona_id, x.pagado_banco, x.pagado_efectivo,
+        x.estado === 'cadena', x.b.pagado_banco ?? 0, x.b.pagado_efectivo ?? 0],
     )
-    if (rowCount === 1) porQuincena.set(x.b.liquidacion_id, [x.b, (porQuincena.get(x.b.liquidacion_id)?.[1] ?? 0) + 1])
+    if (rowCount === 1) porQuincena.set(x.b.liquidacion_id, [x.b, (porQuincena.get(x.b.liquidacion_id)?.[1] ?? 0) + 1, (porQuincena.get(x.b.liquidacion_id)?.[2] ?? false) || x.mensual === true])
     else console.log(`   ⚠ ${x.b.desde} ${x.b.nombre_completo}: no se escribió (alguien la registró en el medio)`)
   }
-  for (const [id, [b, n]] of porQuincena) {
-    await query('update public.liquidacion_quincena set observacion = $2 where id = $1', [id, observacionConPagado(b.observacion, n, fecha)])
+  for (const [id, [b, n, mensual]] of porQuincena) {
+    await query('update public.liquidacion_quincena set observacion = $2 where id = $1', [id, observacionConPagado(b.observacion, n, fecha, { mensual })])
   }
   // LA EVIDENCIA ES LO LEÍDO EN LA BASE, no el rowCount.
   const { rows: leido } = await query(

@@ -316,3 +316,51 @@ test('recarga: la observación nueva conserva la frase de lo pagado', () => {
   assert.equal(observacionDeRecarga('nueva', 'vieja sin marca'), 'nueva')
   assert.equal(observacionDeRecarga(r, r), r)
 })
+
+// ═══ LOS MENSUALES SE AFIRMAN POR MES (dueño, 17/09/2026: «cobran mensual, esto ya lo sabés») ═══
+import { pagadoMensualDeLaPlanilla, estadoDelPagado, observacionConPagado as obsConPagado, MARCA_PAGADO_MENSUAL } from './liquidacion-jornales-plan.mjs'
+
+// Oficina 26, julio, Maldonado: la 1ª sin banco; en la 2ª el banco giró los DOS recibos del mes (661.065,29 + 704.778,55
+// en el extracto del 31/07) y la planilla escribe EFECTIVO −358.000.
+const julio1 = { base: baseLinea({ horas: 88, valor_hora: 9050, cobra: 796400, por_banco: 0, en_efectivo: 796400 }),
+  dePlanilla: [filaPlanilla({ horas: 88, valorHora: 9050, cobra: 796400, porBanco: 0, enEfectivo: 796400 })] }
+const julio2 = { base: baseLinea({ horas: 106, valor_hora: 9500, cobra: 1007000, por_banco: 1365000, en_efectivo: -358000 }),
+  dePlanilla: [filaPlanilla({ horas: 106, valorHora: 9500, cobra: 1007000, porBanco: 1365000, enEfectivo: -358000 })] }
+
+test('mensual: el efectivo negativo de una quincena se compensa con el del mes; el mes suma lo liquidado', () => {
+  const r = pagadoMensualDeLaPlanilla([julio1, julio2])
+  assert.deepEqual(r, [{ pagado_banco: 0, pagado_efectivo: 438400 }, { pagado_banco: 1365000, pagado_efectivo: 0 }])
+  const banco = r.reduce((a, x) => a + x.pagado_banco, 0)
+  const efectivo = r.reduce((a, x) => a + x.pagado_efectivo, 0)
+  assert.equal(banco + efectivo, 796400 + 1007000)
+})
+
+test('mensual: una quincena sola, o un mes sin negativos, da la misma cadena que por quincena', () => {
+  assert.deepEqual(pagadoMensualDeLaPlanilla([julio1]), [{ pagado_banco: 0, pagado_efectivo: 796400 }])
+  assert.deepEqual(pagadoMensualDeLaPlanilla([{ base: baseLinea(), dePlanilla: [filaPlanilla()] }]),
+    [pagadoDeLaPlanilla(baseLinea(), [filaPlanilla()])])
+})
+
+test('mensual: si el MES da un lado negativo, o una quincena no se puede afirmar, no se escribe ninguna', () => {
+  const sola = pagadoMensualDeLaPlanilla([julio2])
+  assert.match(sola[0].motivo, /negativo/)
+  const rota = pagadoMensualDeLaPlanilla([{ ...julio1, base: baseLinea({ ...julio1.base, horas: 80 }) }, julio2])
+  assert.match(rota[0].motivo, /difiere.*horas/)
+  assert.match(rota[1].motivo, /el mes no se puede afirmar/)
+  assert.deepEqual(pagadoMensualDeLaPlanilla([]), [])
+})
+
+test('estadoDelPagado: vacío, ya igual, la cadena vieja (se rehace) y lo registrado por una persona (no se toca)', () => {
+  const esperado = { pagado_banco: 0, pagado_efectivo: 438400 }
+  assert.equal(estadoDelPagado(julio1.base, esperado), 'vacio')
+  assert.equal(estadoDelPagado({ ...julio1.base, ...esperado }, esperado), 'igual')
+  assert.equal(estadoDelPagado({ ...julio1.base, pagado_banco: 0, pagado_efectivo: 796400 }, esperado), 'cadena')
+  assert.equal(estadoDelPagado({ ...julio1.base, pagado_banco: 0, pagado_efectivo: 500000 }, esperado), 'registrado')
+  assert.equal(estadoDelPagado({ ...julio1.base, pagado_banco: 0, pagado_efectivo: 796400, pagada_en: '2026-08-01' }, esperado), 'registrado')
+})
+
+test('observación mensual: dice que se afirmó por mes, una sola vez', () => {
+  const una = obsConPagado('Cargada desde JORNALES.', 1, '17/09/2026', { mensual: true })
+  assert.ok(una.includes(MARCA_PAGADO_MENSUAL))
+  assert.equal(obsConPagado(una, 1, '18/09/2026', { mensual: true }), una)
+})

@@ -23,15 +23,18 @@
 // recibo de $184.576 que el sello no tomó». Y una fila con `sinNeto` no escribe banco $0: escribe que
 // falta el neto, que es lo que la Liquidación afirma de ella.
 //
-// ═══ EL MENSUAL SE LEE POR MES, Y CÓMO ═══
+// ═══ EL MENSUAL SE LEE POR MES, EN TODO EL AÑO (dueño, 15/09 y 17/09/2026: «cobran mensual») ═══
 //
-// La Liquidación arma a Oficina quincena por quincena con el neto mensual ENTERO en cada una
-// (`cobraDe`): dos filas de $1.800.000 en un mes son el mismo sueldo visto dos veces, no $3.600.000. El
-// dueño pidió «mes para mensuales», y la lectura coherente es: el importe del mes es el de la ÚLTIMA
-// quincena que lo tiene —la más nueva ya sabe lo que la anterior sabía— y lo PAGADO se suma, porque un
-// adelanto de la 1ª y el saldo de la 2ª son dos platas distintas que salieron. El saldo sale de la misma
-// función que usa el cuadro (`pagoDeLaLinea`). Es una INFERENCIA de presentación, declarada acá y
-// pendiente de que el dueño la confirme; no cambia ninguna cifra de la Liquidación.
+// Lo LIQUIDADO del mes tiene dos fuentes y ninguna se inventa:
+//   · con neto mensual (`persona_tarifa`, desde septiembre): la Liquidación publica el neto ENTERO en cada
+//     quincena (`cobraDe`); dos filas de $1.800.000 son el mismo sueldo visto dos veces. Va el de la ÚLTIMA.
+//   · sin neto (hasta agosto JORNALES los anotaba por hora): el COBRA de cada quincena es el importe de la
+//     planilla y el mes es la SUMA (julio, Maldonado: 796.400 + 1.007.000 = 1.803.400, que es lo que la
+//     planilla escribe al pie del mes). Una quincena sin importe no suma cero: la fila la cuenta en `sinImporte`.
+// Lo PAGADO del mes es banco + efectivo de sus quincenas: el banco gira los dos recibos juntos en la 2ª y el
+// efectivo sale donde salga; por eso no hay saldo por lado, sólo liquidado contra pagado (`pagoDelMes`).
+// La Liquidación no publica negro para un mensual y `pago.total` le daba null: la fila decía «sin total» todo
+// el año. No cambia ninguna cifra de la Liquidación: es cómo se lee el mes.
 //
 // ═══ SIN PERMISO NO ES SIN DATO ═══
 //
@@ -40,7 +43,7 @@
 //
 // Puro: sin base, sin React. Se prueba en `retribucionDelLegajo.test.ts`.
 
-import { pagoDeLaLinea, totalesDePago, type PagoDeLaLinea } from './pagoDeLaQuincena.ts'
+import { pagoDelMes, totalesDePago, type PagoDeLaLinea } from './pagoDeLaQuincena.ts'
 import { cabeceraQuincena, correrQuincena, nombreDelMes, quincenaDe, type Quincena } from './quincena.ts'
 import type { ModalidadDeLiquidacion } from './liquidacionQuincena.ts'
 import type { EstadoDelBlanco } from './sueldoBlancoNegro.ts'
@@ -57,6 +60,8 @@ export interface ReciboDelBlanco extends ReciboDelLegajo {
 /** Lo que esta sección lee de una `LineaConOverrides` de la Liquidación. Ninguna cuenta se repite acá. */
 export interface LineaRetribuida {
   modalidad: ModalidadDeLiquidacion
+  /** COBRA de la quincena. Para un mensual sin neto es el importe de la planilla; `null` = no hay importe. */
+  cobra: number | null
   horas: number | null
   /** Hay $/h y horas pero el blanco no tiene neto: la Liquidación no afirma el total. */
   sinNeto: boolean
@@ -105,6 +110,8 @@ export interface FilaDeRetribucion {
   sinNeto: boolean
   /** El neto del recibo REAL de este período, si el estudio lo cargó. Referencia, no la cifra de la fila. */
   reciboReal: number | null
+  /** Mensual: quincenas del mes con línea y sin importe (no suman a lo liquidado y se dice). 0 en el resto. */
+  sinImporte: number
   pago: PagoDeLaLinea | null
 }
 
@@ -121,6 +128,8 @@ export interface TotalesDeRetribucion {
   sinSaldo: number
   /** Filas cuyo banco la Liquidación no pudo afirmar (`sinNeto`): su total está incompleto. */
   sinNeto: number
+  /** Quincenas de mensuales sin importe liquidado: lo liquidado de su mes está incompleto. */
+  sinImporte: number
   /** Cuántas filas tienen línea de la Liquidación. */
   liquidadas: number
 }
@@ -195,18 +204,24 @@ const filaDeQuincena = (q: QuincenaRetribuida, netos: NetoPorPeriodo): FilaDeRet
   bancoEstimado: q.linea?.sueldo?.estado === 'estimado' && !q.linea.sinNeto && q.linea.pago.banco != null,
   sinNeto: q.linea?.sinNeto ?? false,
   reciboReal: q.linea ? netos.get(periodoDeRecibo(q.quincena)) ?? null : null,
+  sinImporte: 0,
   pago: q.linea?.pago ?? null,
 })
 
-/** UN MES DE UN MENSUAL EN UNA FILA: el importe de la última quincena, lo pagado de las dos. */
+/** UN MES DE UN MENSUAL EN UNA FILA: lo liquidado del mes (neto una vez, o la suma sin neto) y lo pagado de las dos. */
 function filaDelMes(mes: readonly QuincenaRetribuida[]): FilaDeRetribucion {
-  const conLinea = mes.filter((q) => q.linea)
-  const ultima = conLinea[conLinea.length - 1] as QuincenaRetribuida & { linea: LineaRetribuida }
-  const pago = pagoDeLaLinea({
-    banco: ultima.linea.pago.banco,
-    negro: ultima.linea.pago.negro,
-    pagadoBanco: conLinea.reduce((a, q) => a + (q.linea?.pago.pagadoBanco ?? 0), 0),
-    pagadoEfectivo: conLinea.reduce((a, q) => a + (q.linea?.pago.pagadoEfectivo ?? 0), 0),
+  const conLinea = mes.filter((q): q is QuincenaRetribuida & { linea: LineaRetribuida } => q.linea != null)
+  const ultima = conLinea[conLinea.length - 1]
+  const conNeto = conLinea.filter((q) => q.linea.netoMensual != null)
+  const sinNetoDelMes = conLinea.filter((q) => q.linea.netoMensual == null)
+  const sinImporte = sinNetoDelMes.filter((q) => q.linea.cobra == null || !Number.isFinite(q.linea.cobra)).length
+  const liquidado = conNeto.length > 0
+    ? conNeto[conNeto.length - 1].linea.netoMensual
+    : suma(sinNetoDelMes.map((q) => q.linea.cobra))
+  const pago = pagoDelMes({
+    liquidado,
+    pagadoBanco: conLinea.reduce((a, q) => a + q.linea.pago.pagadoBanco, 0),
+    pagadoEfectivo: conLinea.reduce((a, q) => a + q.linea.pago.pagadoEfectivo, 0),
   })
   const nombre = nombreDelMes(mes[0].quincena.desde)
   return {
@@ -214,12 +229,13 @@ function filaDelMes(mes: readonly QuincenaRetribuida[]): FilaDeRetribucion {
     periodo: nombre.charAt(0).toUpperCase() + nombre.slice(1),
     estado: conLinea.every((q) => q.estado === 'cerrada') ? 'cerrada' : 'abierta',
     mensual: true,
-    horas: suma(conLinea.map((q) => q.linea?.horas ?? null)),
+    horas: suma(conLinea.map((q) => q.linea.horas)),
     tarifa: ultima.linea.netoMensual,
     sinTarifa: ultima.linea.sinTarifa,
-    bancoEstimado: ultima.linea.sueldo?.estado === 'estimado' && !ultima.linea.sinNeto && pago.banco != null,
-    sinNeto: ultima.linea.sinNeto,
+    bancoEstimado: false,
+    sinNeto: false,
     reciboReal: null,
+    sinImporte: conNeto.length > 0 ? 0 : sinImporte,
     pago,
   }
 }
@@ -259,6 +275,7 @@ export function totalesDeRetribucion(filas: readonly FilaDeRetribucion[]): Total
     pagadoBanco: t.pagadoBanco, pagadoEfectivo: t.pagadoEfectivo, pagado: t.pagado,
     saldo: t.saldoTotal, sinSaldo: t.sinSaldo, liquidadas: conPago.length,
     sinNeto: conPago.filter((f) => f.sinNeto).length,
+    sinImporte: conPago.reduce((a, f) => a + f.sinImporte, 0),
   }
 }
 
@@ -279,9 +296,10 @@ export function cifrasDelAnio(anio: number, t: TotalesDeRetribucion): CifraDelAn
     nada ? { rotulo, valor: null, falta: 'sin liquidaciones', titulo } : { rotulo, valor, titulo }
   const fuera = t.sinSaldo > 0 ? ` (${t.sinSaldo} sin saldo que afirmar, fuera de la suma)` : ''
   const sinNeto = t.sinNeto > 0 ? ` ${t.sinNeto} quincena(s) sin neto afirmado: el banco de ésas no está.` : ''
+  const sinImporte = t.sinImporte > 0 ? ` ${t.sinImporte} quincena(s) de un mensual sin importe cargado: su mes está incompleto.` : ''
   return [
     cifra(`liquidado ${anio}`, pesos(t.total),
-      `banco + negro de cada quincena del año, como lo publica la Liquidación${fuera}.${sinNeto}`),
+      `banco + negro de cada quincena del año, como lo publica la Liquidación; un mensual, lo liquidado de cada mes${fuera}.${sinNeto}${sinImporte}`),
     cifra(`consta pagado ${anio}`, pesos(t.pagado),
       `banco ${pesos(t.pagadoBanco)} + efectivo ${pesos(t.pagadoEfectivo)}: lo que la base tiene como pagado (adelantos, giros y lo registrado en la Liquidación). No es lo liquidado: es lo que consta.`),
     cifra(`negro ${anio}`, pesos(t.negro), `Lo que el recibo no paga, sumado sobre las quincenas del año${fuera}.`),
