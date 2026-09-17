@@ -46,7 +46,7 @@ export function GraficoResumen({ filas, hoy }: { filas: PosicionImpuesto[]; hoy:
   return (
     <GraficoMensual
       testid="grafico-resumen" titulo="Impuestos pagados y por pagar, por mes de vencimiento"
-      columnas={columnas} leyenda={leyenda} escala={escalaDe(columnas)}
+      columnas={columnas} leyenda={leyenda} escala={escalaDe(columnas)} angosto={{ atras: 5, adelante: 2 }}
     />
   )
 }

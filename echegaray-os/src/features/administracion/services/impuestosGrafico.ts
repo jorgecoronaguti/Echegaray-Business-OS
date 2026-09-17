@@ -47,7 +47,7 @@ export interface MesDePago { mes: string; actual: boolean; capas: Capa[]; pagado
  */
 export function porMesDePago(filas: PosicionImpuesto[], hoy: string, atras = 11, adelante = 2): MesDePago[] {
   const actual = hoy.slice(0, 7)
-  return ventana(hoy, atras, adelante).map((mes) => {
+  return recortarInicio(ventana(hoy, atras, adelante).map((mes) => {
     const delMes = filas.filter((f) => (f.vencimiento ?? f.periodo).slice(0, 7) === mes)
     const capas = SERIES.map((vista): Capa => {
       const propias = delMes.filter((f) => vistaDe(f) === vista)
@@ -65,7 +65,18 @@ export function porMesDePago(filas: PosicionImpuesto[], hoy: string, atras = 11,
       pagado: capas.reduce((s, c) => s + c.pagado, 0),
       falta: capas.reduce((s, c) => s + c.falta, 0),
     }
-  })
+  }))
+}
+
+/**
+ * LA VENTANA ARRANCA EN EL PRIMER MES CON DATOS. Con la base empezando en ene-26, oct-25 a dic-25 eran
+ * tres columnas vacías que le robaban ancho a las que sí dicen algo. Sólo se recorta el PRINCIPIO: un
+ * mes vacío en el medio es un dato (no hubo nada) y el mes actual y los próximos no se tocan nunca.
+ */
+export function recortarInicio(meses: MesDePago[]) {
+  const conDato = (m: MesDePago) => m.pagado > 0 || m.falta > 0 || m.capas.some((c) => c.sinImporte > 0)
+  const primero = meses.findIndex((m) => conDato(m) || m.actual)
+  return primero <= 0 ? meses : meses.slice(primero)
 }
 
 export interface Periodo { mes: string; actual: boolean; determinado: number | null; pagado: number; aFavor: number | null; estimado: boolean }

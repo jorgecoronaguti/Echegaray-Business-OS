@@ -39,9 +39,9 @@ const rgb = (c: ColorSerie, a = 1) => `rgb(var(--os-serie-${c}-rgb) / ${a})`
 const LINEA = 'rgb(var(--os-ink-soft-rgb))'
 const M = { izq: 48, der: 8, arriba: 8, abajo: 24 }
 
-function useAncho(inicial: number) {
+function useAncho() {
   const ref = useRef<HTMLDivElement>(null)
-  const [ancho, setAncho] = useState(inicial)
+  const [ancho, setAncho] = useState<number | null>(null)
   useEffect(() => {
     const el = ref.current
     if (!el) return
@@ -86,18 +86,35 @@ function Rayas({ id, color }: { id: string; color: ColorSerie }) {
   )
 }
 
-export function GraficoMensual({ columnas, leyenda, titulo, testid, escala: esc, alto = 200 }: {
+export function GraficoMensual({ columnas: todas, leyenda, titulo, testid, escala: esc, alto = 200, angosto }: {
   columnas: ColumnaGrafico[]; leyenda: EntradaLeyenda[]; titulo: string; testid: string
+  /**
+   * En pantalla angosta (< 640 px) sólo estos meses alrededor del actual (resumen: los últimos 6 contando
+   * el actual, y los 2 próximos): 14 columnas a 390 px eran
+   * 17 px de área táctil cada una; 8 columnas son ~40. La escala no cambia (viene del servidor): la
+   * misma barra mide lo mismo en la computadora y en el teléfono.
+   */
+  angosto?: { atras: number; adelante: number }
   /** Viene del servidor (`escala` de `services/impuestosGrafico.ts`): la regla vive una vez y se prueba. */
   escala: { desde: number; hasta: number; marcas: number[] }
   alto?: number
 }) {
-  // Se arranca ANGOSTO y se agranda al medir. Arrancar en 720 hacía que el teléfono emulado midiera la
-  // página a 740 px antes de hidratar y se quedara con ese ancho (medido: scrollWidth 740 a 390).
-  const { ref, ancho } = useAncho(300)
+  // HASTA MEDIR NO SE DIBUJA: se reserva el alto y nada más. Arrancar en 720 hacía que el teléfono
+  // midiera la página a 740 px (scrollWidth 740 a 390); arrancar en 300 dejaba el gráfico de la
+  // computadora recortado a 8 meses durante los segundos que tarda en hidratar.
+  const medido = useAncho()
+  const { ref } = medido
+  const ancho = medido.ancho ?? 0
   const uid = useId().replace(/:/g, '')
+  const iActual = todas.findIndex((c) => c.actual)
+  const columnas = angosto && medido.ancho !== null && ancho < 640 && iActual >= 0
+    ? todas.slice(Math.max(0, iActual - angosto.atras), iActual + angosto.adelante + 1)
+    : todas
   const inicial = Math.max(0, columnas.findIndex((c) => c.actual))
-  const [sel, setSel] = useState(inicial)
+  const [elegido, setElegido] = useState<string | null>(null)
+  // Se guarda la CLAVE del mes y no el índice: al pasar de 14 a 8 columnas el índice apuntaría a otro mes.
+  const sel = Math.max(0, elegido === null ? inicial : columnas.findIndex((c) => c.clave === elegido))
+  const setSel = (i: number) => setElegido(columnas[i]?.clave ?? null)
 
   const plotW = Math.max(ancho - M.izq - M.der, 10)
   const plotH = alto - M.arriba - M.abajo
@@ -114,6 +131,7 @@ export function GraficoMensual({ columnas, leyenda, titulo, testid, escala: esc,
   return (
     <figure data-testid={testid} className="m-0">
       <div ref={ref} className="w-full min-w-0 overflow-hidden">
+        {medido.ancho === null ? <div style={{ height: alto }} aria-hidden /> : (
         <svg width={ancho} height={alto} role="img" aria-label={titulo} className="block overflow-visible">
           <defs>{colores.map((c) => <Rayas key={c} id={`${uid}-r${c}`} color={c} />)}</defs>
           {esc.marcas.map((m) => (
@@ -166,6 +184,7 @@ export function GraficoMensual({ columnas, leyenda, titulo, testid, escala: esc,
             </g>
           )}
         </svg>
+        )}
       </div>
       <figcaption className="mt-3 flex flex-col gap-2">
         <Leyenda entradas={leyenda} />

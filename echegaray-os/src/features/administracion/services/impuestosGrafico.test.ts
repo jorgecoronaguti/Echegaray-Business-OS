@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { PosicionImpuesto } from './impuestos.ts'
-import { escala, etiquetaMes, porMesDePago, porPeriodoDeImpuesto, ventana } from './impuestosGrafico.ts'
+import { escala, etiquetaMes, porMesDePago, recortarInicio, porPeriodoDeImpuesto, ventana } from './impuestosGrafico.ts'
 
 const fila = (x: Partial<PosicionImpuesto>): PosicionImpuesto => ({
   impuesto: 'iva', periodo: '2026-08', concepto: 'ddjj', fuente: 'ddjj_contador', estado: 'presentado',
@@ -76,4 +76,18 @@ test('la escala arranca en cero, cubre el máximo con escalones redondos y baja 
   assert.ok(n.desde < 0 && n.desde <= -6735708)
   assert.ok(n.marcas.includes(0))
   assert.deepEqual(escala(0, 0).marcas.slice(0, 1), [0])
+})
+
+test('el resumen arranca en el primer mes con datos: sin columnas vacías al principio, las del medio quedan', () => {
+  const m = porMesDePago([
+    fila({ impuesto: 'cargas_sociales', periodo: '2025-12', vencimiento: '2026-01-10', estado: 'pagado', pagado: 4582692, pendiente: 0 }),
+    fila({ impuesto: 'cargas_sociales', periodo: '2026-02', vencimiento: '2026-03-10', estado: 'pagado', pagado: 5142045, pendiente: 0 }),
+  ], HOY)
+  assert.equal(m[0].mes, '2026-01', 'oct-25 a dic-25 vacíos no se dibujan')
+  assert.equal(m.at(-1)!.mes, '2026-11', 'los dos próximos siguen')
+  assert.ok(m.some((x) => x.mes === '2026-02' && x.pagado === 0), 'un mes vacío en el medio es dato y queda')
+  assert.equal(porMesDePago([fila({ impuesto: 'iva', periodo: '2024-01', vencimiento: '2024-02-20', estado: 'pagado', pagado: 9, pendiente: 0 })], HOY).length, 3, 'sin datos en la ventana: desde el mes actual')
+  const lleno = porMesDePago([fila({ impuesto: 'iva', periodo: '2025-09', vencimiento: '2025-10-20', estado: 'pagado', pagado: 9, pendiente: 0 })], HOY)
+  assert.equal(lleno.length, 14, 'máximo 12 meses atrás aunque haya datos más viejos')
+  assert.deepEqual(recortarInicio([]), [])
 })
