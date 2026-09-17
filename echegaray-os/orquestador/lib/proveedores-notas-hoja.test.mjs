@@ -89,3 +89,19 @@ test(`más de ${TOPE_BORRADOS} borrados en una lectura se retienen`, () => {
   assert.deepEqual(r.borrar, [])
   assert.deepEqual(r.retenidos.sort(), ['a1', 'b2', 'c3'])
 })
+
+test('PRIMERA LECTURA: un texto igual a la nota de OTRO proveedor no se le guarda al de al lado', () => {
+  // Sin lectura anterior: en la fila de Hormiserv hay un texto que es, palabra por palabra, la nota de Robles.
+  const obs = observarCuadro(hoja(['Hormiserv', 'Robles'], (p) => (p === 'Hormiserv' ? 'cheque a 30' : null)))
+  const r = edicionesDelDueno({ observacion: obs, anterior: null, enBase: base([['robles', 'cheque a 30']]) })
+  assert.deepEqual(r.guardar, [])
+  assert.equal(r.desplazadas.length, 1)
+})
+
+test('UN BORRADO ES DEL MISMO PROVEEDOR: la fila era de otro en la lectura anterior → no se borra nada', () => {
+  // Lectura anterior: fila 18 = Robles con fórmula. Ahora fila 18 = Hormiserv, vacía sin fórmula.
+  const antes = edicionesDelDueno({ observacion: observarCuadro(hoja(['Robles', 'Hormiserv'])), enBase: base([]) }).siguiente
+  const obs = observarCuadro(hoja(['Hormiserv', 'Robles'], (p) => (p === 'Hormiserv' ? '' : null)))
+  const r = edicionesDelDueno({ observacion: obs, anterior: antes, enBase: base([['hormiserv', 'esperar'], ['robles', 'cheque']]) })
+  assert.deepEqual(r.borrar, [])
+})

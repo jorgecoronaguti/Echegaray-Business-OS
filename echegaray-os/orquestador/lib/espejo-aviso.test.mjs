@@ -59,3 +59,8 @@ test('el SQL ignora los sellos y no acepta nombres inyectables', () => {
   assert.match(sql, /pg_temp\.compra_sheet_antes/)
   assert.throws(() => sqlDelConteo({ antes: 'a; drop table x', despues: 'b', clave: 'fila' }), /no es un nombre/)
 })
+
+test('los sellos se restan de LOS DOS lados de la comparación', () => {
+  const sql = sqlDelConteo({ antes: 'pg_temp.a', despues: 'public.compra_sheet', clave: 'fila' })
+  assert.equal(sql.match(/to_jsonb\(t\) - array\[/g)?.length, 2, 'un lado sin restar los sellos cuenta cada corrida como cambio')
+})
