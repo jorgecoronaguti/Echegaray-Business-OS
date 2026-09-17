@@ -149,3 +149,22 @@ test('informeRespetadas: no dice nada cuando no se respetó nada', () => {
   assert.match(lineas[0], /2 celda\(s\) tuya\(s\) respetada\(s\) en esta corrida/)
   assert.match(lineas[1], /· CAJA: 2 \(A1, B2\)/)
 })
+
+// ═══ LOS DOS AVISOS FALSOS DEL VERIFICADOR DE LOS CASH FLOW (17/09/2026) ═══
+test('uriDelAtajo lee el enlace donde Sheets lo guarda: la celda LEÍDA de Cash Flow Mensual A3 el 17/09', async () => {
+  const { uriDelAtajo } = await import('./flujo-caja-rehacer-todo.mjs')
+  const leida = { formattedValue: 'Mes actual: J  ·  Septiembre 2026', userEnteredFormat: { textFormat: { link: { uri: '#gid=212425236&range=J7' } } }, hyperlink: '#gid=212425236&range=J7' }
+  assert.equal(uriDelAtajo(leida), '#gid=212425236&range=J7')
+  assert.equal(uriDelAtajo({ userEnteredFormat: leida.userEnteredFormat }), '#gid=212425236&range=J7')
+  assert.equal(uriDelAtajo({ textFormatRuns: [{ format: { link: { uri: '#gid=1&range=A1' } } }] }), '#gid=1&range=A1')
+  assert.equal(uriDelAtajo({ formattedValue: 'Semana actual: AM  ·  14/09' }), '', 'sin enlace sigue siendo sin enlace: el control puede dar rojo')
+})
+
+test('anchosRaros compara contra el ancho del generador, no contra un 96 tipeado', async () => {
+  const { anchosRaros } = await import('./flujo-caja-rehacer-todo.mjs')
+  const { ANCHOS } = await import('../lib/cash-flow-piel-matriz.mjs')
+  const sanas = [260, ...Array(12).fill(ANCHOS.tiempo), 110]
+  assert.deepEqual(anchosRaros(sanas, 13), [])
+  const tocada = [...sanas]; tocada[5] = 140
+  assert.deepEqual(anchosRaros(tocada, 13), [{ i: 5, px: 140 }], 'una columna que alguien ensanchó sigue saliendo')
+})

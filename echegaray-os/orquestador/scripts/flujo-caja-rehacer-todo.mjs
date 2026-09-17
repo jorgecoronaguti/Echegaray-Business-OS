@@ -44,6 +44,7 @@ import { FILA, ROTULO_HOY } from '../lib/cash-flow-matriz.mjs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { MARCA_ALERTA } from '../lib/glifos.mjs'
+import { ANCHOS } from '../lib/cash-flow-piel-matriz.mjs'
 
 const ejecutar = promisify(execFile)
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
@@ -135,6 +136,30 @@ export function sumarRespetadas(stdout, acc = new Map()) {
   return acc
 }
 
+/**
+ * ═══ LAS COLUMNAS DE PERÍODO MIDEN LO QUE DICE EL GENERADOR (17/09/2026) ═══
+ * El control exigía 96px tipeado y el generador (`ANCHOS.tiempo` en cash-flow-piel-matriz) escribe 95:
+ * en cada corrida publicaba 65 columnas «tocadas por alguien» que nadie tocó. Un control que contradice
+ * al generador no detecta nada — sólo enseña a ignorar el aviso. PURA.
+ * @returns {Array<{i:number, px:number}>} índice base 0 de la columna y su ancho
+ */
+export function anchosRaros(anchos = [], hasta, esperado = ANCHOS.tiempo) {
+  return anchos.slice(1, hasta).map((px, k) => ({ i: k + 1, px })).filter((c) => c.px !== esperado)
+}
+
+/**
+ * ═══ EL ENLACE DEL ATAJO, DONDE SHEETS LO GUARDA (17/09/2026) ═══
+ * Un enlace que cubre la celda entera Sheets lo pliega en `userEnteredFormat.textFormat.link` y lo expone
+ * en `hyperlink`, con `textFormatRuns` VACÍO (medido y escrito en cash-flow-piel-matriz.mjs el 08/09).
+ * Este verificador leía sólo `textFormatRuns` y decía «la celda no tiene enlace» sobre un atajo sano. PURA.
+ */
+export function uriDelAtajo(celda = {}) {
+  return String(celda?.hyperlink
+    ?? celda?.userEnteredFormat?.textFormat?.link?.uri
+    ?? (celda?.textFormatRuns ?? []).map((r) => r?.format?.link?.uri).find(Boolean)
+    ?? '')
+}
+
 /** El párrafo de cierre. Devuelve [] cuando no se respetó nada: no se dice lo que no pasó.
  *  Sólo va a `console.log` (línea de abajo, en el llamador) — nunca a una celda del Sheet. El
  *  nombre `L` no es cosmético: es la convención que ya usa `lib/alias-pendientes.mjs` para que el
@@ -185,10 +210,10 @@ async function verificarPresentacion(bloqueadas = new Set()) {
     if (bloqueadas.has(pestaña)) { console.log(`   🔒 ${pestaña}: bajo tu control, no la verifico ni la toco.`); continue }
     const w = await google.getColumnWidths(ID, pestaña).catch(() => [])
     // Las columnas de período tienen que medir todas lo mismo. Una distinta = alguien la tocó.
-    const raras = w.slice(1, hasta).map((px, i) => ({ col: letra(i + 1), px })).filter((c) => c.px !== 96)
+    const raras = anchosRaros(w, hasta).map((c) => ({ col: letra(c.i), px: c.px }))
     if (raras.length) {
       hubo = true
-      console.log(`   ⚠ ${pestaña}: columnas de período con ancho distinto de 96px → ${raras.map((c) => `${c.col}=${c.px}`).join(' ')}`)
+      console.log(`   ⚠ ${pestaña}: columnas de período con ancho distinto de ${ANCHOS.tiempo}px → ${raras.map((c) => `${c.col}=${c.px}`).join(' ')}`)
     }
   }
   // EL HIPERVÍNCULO "IR A LA SEMANA DE HOY" TAMBIÉN SE PRUEBA.
@@ -232,10 +257,10 @@ async function verificarPresentacion(bloqueadas = new Set()) {
     let texto = ''
     try {
       const g = await google.getGridData(ID, `${pestaña}!${celdaAtajo}`,
-        'sheets(data(rowData(values(formattedValue,textFormatRuns(format(link(uri)))))))')
+        'sheets(data(rowData(values(formattedValue,hyperlink,userEnteredFormat(textFormat(link(uri))),textFormatRuns(format(link(uri)))))))')
       const celda = g?.sheets?.[0]?.data?.[0]?.rowData?.[0]?.values?.[0] ?? {}
       texto = String(celda.formattedValue ?? '')
-      uri = String((celda.textFormatRuns ?? []).map((r) => r?.format?.link?.uri).find(Boolean) ?? '')
+      uri = uriDelAtajo(celda)
     } catch (e) {
       console.log(`   ⚠ no pude verificar el atajo de ${pestaña} (${String(e.message).slice(0, 80)}) — sigo con el resto`)
       continue
@@ -259,7 +284,7 @@ async function verificarPresentacion(bloqueadas = new Set()) {
       console.log(`   ⚠ ${pestaña}: el atajo "IR A HOY" (${celdaAtajo}) apunta a un destino inválido — ${porQue}`)
     }
   }
-  if (!hubo) console.log('   ✓ geometría: las columnas de período miden todas 96px en las dos pestañas')
+  if (!hubo) console.log(`   ✓ geometría: las columnas de período miden todas ${ANCHOS.tiempo}px en las dos pestañas`)
 }
 
 async function main() {
