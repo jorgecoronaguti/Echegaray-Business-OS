@@ -8,6 +8,7 @@ import { armarCostosPorObra, armarGastosSinObra } from '@/features/clientes/serv
 import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
 import type { CertificadoCliente } from '@/features/clientes/types/cobranzas'
 import { rangoParaVista, type Filtros } from './filtros'
+import { leerPaginado } from './paginar'
 import { armarObra, costoObjetivoValido, pasaEstado, sinObraDe, type ObraAnalitica, type ObraPanel } from './obras'
 
 export interface DatosAnaliticas {
@@ -62,7 +63,12 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     return r
   }
   const [egresos, nomina, quincenas, personas, certificados] = await Promise.all([
-    f.vista === 'caja' ? conRango(supabase.from('egreso_por_area').select('area, grupo, total, fecha'), 'fecha') : null,
+    // PAGINADO (D6): la vista pasa las 1.000 filas y PostgREST corta ahí sin error.
+    f.vista === 'caja'
+      ? leerPaginado((a, b) => conRango(supabase.from('egreso_por_area').select('area, grupo, total, fecha'), 'fecha')
+        .order('fecha').order('area').order('grupo').order('total').range(a, b))
+        .then((data) => ({ data }))
+      : null,
     f.vista === 'nomina' ? supabase.from('nomina_por_mes').select('mes, costo_nomina, cargas_sociales, es_estimacion') : null,
     f.vista === 'nomina' ? supabase.from('jornales_quincena').select('desde, estado') : null,
     f.vista === 'nomina' ? supabase.from('personas').select('en_la_empresa, categoria').eq('es_prueba', false) : null,
