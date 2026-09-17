@@ -108,10 +108,13 @@ export function VistaObra({ obras, filtros, periodo }: { obras: ObraAnalitica[];
 
 export function VistaHora({ obras, periodo }: { obras: ObraAnalitica[]; periodo: string }) {
   const { empresa, puntos } = costoPorHora(obras)
-  const tope = Math.max(1, ...puntos.map((p) => p.porHora)) * 1.1
+  // EL EJE ARRANCA CERCA DEL MÁS BARATO, NO EN CERO: las obras difieren en ±10 % y desde cero se apilaban
+  // en el último décimo. Y llega hasta la línea de +20 %, para que la línea ámbar nunca quede afuera.
+  const piso = Math.min(...puntos.map((p) => p.porHora), empresa ?? Infinity) * 0.9
+  const tope = Math.max(...puntos.map((p) => p.porHora), (empresa ?? 0) * (1 + UMBRAL_HORA_CARA)) * 1.03
   const porCliente = new Map<string, typeof puntos>()
   for (const p of puntos) porCliente.set(p.obra.clienteNombre, [...(porCliente.get(p.obra.clienteNombre) ?? []), p])
-  const x = (v: number) => `${(v / tope) * 100}%`
+  const x = (v: number) => `${((v - piso) / (tope - piso)) * 100}%`
   return (
     <>
       <Titulo titulo="Costo por hora"

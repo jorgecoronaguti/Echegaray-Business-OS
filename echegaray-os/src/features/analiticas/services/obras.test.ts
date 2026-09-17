@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { armarCostosPorObra } from '../../clientes/services/costosDeObra.ts'
 import { armarEconomiaDeObras } from '../../clientes/services/economiaObras.ts'
-import { agruparPorSemaforo, armarObra, estadoDe, fraseDeObra, grupoDe, pasaEstado, precioDe, type ObraPanel } from './obras.ts'
+import { agruparPorSemaforo, armarObra, costoObjetivoValido, estadoDe, fraseDeObra, grupoDe, pasaEstado, precioDe, type ObraPanel } from './obras.ts'
 
 // Las filas se construyen con las MISMAS funciones de producción que convierten la respuesta de la base.
 const panel = (id: string, extra: Partial<ObraPanel> = {}): ObraPanel => ({
@@ -80,4 +80,10 @@ test('los grupos salen en el orden del semáforo y la más pasada primero', () =
   const g = agruparPorSemaforo([a, b])
   assert.deepEqual([...g.keys()], ['pasadas', 'cerca', 'dentro', 'sinPresupuesto'])
   assert.deepEqual(g.get('pasadas')?.map((o) => o.id), ['b', 'a'])
+})
+
+test('un pedazo de presupuesto convertido no es el costo objetivo de la obra (Quattropani, 2 partidas)', () => {
+  assert.equal(costoObjetivoValido(1766784.47, 'partidas congeladas convertidas a esta obra (2)'), null)
+  assert.equal(costoObjetivoValido(132944255, 'costo directo del presupuesto v1 (aprobado)'), 132944255)
+  assert.equal(costoObjetivoValido(0, 'costo directo del presupuesto v1 (aprobado)'), null)
 })

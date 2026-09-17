@@ -8,7 +8,7 @@ import { armarCostosPorObra, armarGastosSinObra } from '@/features/clientes/serv
 import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
 import type { CertificadoCliente } from '@/features/clientes/types/cobranzas'
 import { rangoParaVista, type Filtros } from './filtros'
-import { armarObra, pasaEstado, sinObraDe, type ObraAnalitica, type ObraPanel } from './obras'
+import { armarObra, costoObjetivoValido, pasaEstado, sinObraDe, type ObraAnalitica, type ObraPanel } from './obras'
 
 export interface DatosAnaliticas {
   hoy: string
@@ -38,13 +38,13 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
   const [panel, economia, objetivo, costos] = await Promise.all([
     supabase.from('obra_panel').select('obra_id, nombre, cliente_id, cliente_slug, cliente_nombre, estado, n_comprobantes, avance_pct'),
     getEconomiaDeObras(supabase),
-    supabase.from('obra_economia').select('obra_id, costo_objetivo'),
+    supabase.from('obra_economia').select('obra_id, costo_objetivo, costo_objetivo_origen'),
     supabase.rpc('analiticas_costos', { p_desde: rango.desde, p_hasta: rango.hasta, p_obras: null }),
   ])
   const raiz = (costos.data ?? null) as Record<string, unknown> | null
   const porObra = armarCostosPorObra(Array.isArray(raiz?.obras) ? raiz.obras : null)
   const sinObraCruda = armarGastosSinObra(Array.isArray(raiz?.sin_obra) ? raiz.sin_obra : null)
-  const objetivos = new Map((objetivo.data ?? []).map((r) => [String(r.obra_id), numero(r.costo_objetivo)]))
+  const objetivos = new Map((objetivo.data ?? []).map((r) => [String(r.obra_id), costoObjetivoValido(numero(r.costo_objetivo), r.costo_objetivo_origen)]))
   const cartera = ((panel.data ?? []) as ObraPanel[])
     .map((p) => armarObra({ ...p, n_comprobantes: numero(p.n_comprobantes), avance_pct: numero(p.avance_pct) },
       economia?.get(p.obra_id), porObra?.get(p.obra_id), objetivos.get(p.obra_id) ?? null))

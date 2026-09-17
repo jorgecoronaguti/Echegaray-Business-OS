@@ -180,6 +180,19 @@ export function agruparPorSemaforo(obras: ObraAnalitica[]): Map<Grupo, ObraAnali
   return m
 }
 
+/**
+ * ¿ES UN COSTO OBJETIVO DE LA OBRA ENTERA? Sólo el costo directo de un presupuesto APROBADO lo es.
+ *
+ * `obra_economia` también publica como `costo_objetivo` la suma de «partidas congeladas convertidas a
+ * esta obra»: en Quattropani son 2 partidas por $ 1,77 M contra un contrato de $ 139 M, y el semáforo
+ * la daba «pasada al 2.544 %». Un pedazo de presupuesto no es el presupuesto: medir contra él
+ * fabrica un desvío. Hasta que la conversión cubra la obra, manda el contrato.
+ */
+export function costoObjetivoValido(valor: number | null, origen: string | null | undefined): number | null {
+  if (valor == null || valor <= 0) return null
+  return /^costo directo del presupuesto .*aprobado/i.test(origen ?? '') ? valor : null
+}
+
 /** El total de lo sin obra de un cliente (materiales + subcontratos). Nunca se reparte entre obras. */
 export function sinObraDe(g: GastoSinObra | null | undefined): number | null {
   if (!g) return null

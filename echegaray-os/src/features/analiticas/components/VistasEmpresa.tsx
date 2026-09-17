@@ -31,7 +31,8 @@ function Lineas({ meses, series, arriba }: {
       </div>
       <div className="relative mt-1 h-4 text-xs text-faint">
         {meses.map((m, i) => (
-          <span key={m} className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${x(i)}%` }}>{rotuloMes(m)}</span>
+          // Los extremos se alinean hacia adentro: centrados, el primero y el último salían del ancho de la página.
+          <span key={m} className={`absolute whitespace-nowrap ${i === 0 && meses.length > 1 ? '' : i === meses.length - 1 && meses.length > 1 ? '-translate-x-full' : '-translate-x-1/2'}`} style={{ left: `${x(i)}%` }}>{rotuloMes(m)}</span>
         ))}
       </div>
     </div>

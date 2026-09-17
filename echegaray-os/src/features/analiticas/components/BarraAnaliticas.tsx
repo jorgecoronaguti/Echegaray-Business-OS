@@ -13,6 +13,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   aUrl, apartado, cuantosApartados, DEFECTO, ESTADOS, leerPeriodo, PRESETS, razonNoAplica, rotuloPeriodo, VISTAS,
   type Control, type EstadoObra, type Filtros,
@@ -58,7 +59,9 @@ export function BarraAnaliticas({ filtros, obras }: { filtros: Filtros; obras: O
           {n > 0 ? <span className="absolute right-1 top-1.5 flex size-4 items-center justify-center rounded-full bg-marca text-xs font-semibold text-ink">{n}</span> : null}
         </button>
       </div>
-      {hoja ? <HojaFiltros filtros={filtros} obras={obras} cerrar={() => setHoja(false)} ir={(f) => { setHoja(false); ir(f) }} /> : null}
+      {/* LA HOJA VA AL BODY: adentro de esta barra `sticky` queda atrapada en su contexto de apilado y el
+          header global (z-30) le pasaba por encima, tapando «Restablecer» (captura 390, 17/09/2026). */}
+      {hoja ? createPortal(<HojaFiltros filtros={filtros} obras={obras} cerrar={() => setHoja(false)} ir={(f) => { setHoja(false); ir(f) }} />, document.body) : null}
     </div>
   )
 }
@@ -79,7 +82,7 @@ function Boton({ rotulo, valor, control, filtros, alternar, abierto }: {
   return (
     <button type="button" onClick={alternar} aria-expanded={abierto} data-testid={`filtro-${control}`}
       className={`flex h-9 items-center gap-1 rounded-control border px-3 text-sm ${fuera ? 'border-marca bg-marca text-ink' : 'border-line text-ink hover:border-line-strong'}`}>
-      <span className="text-muted">{rotulo} ·</span> <span className="max-w-40 truncate font-medium">{valor}</span>
+      <span className={fuera ? 'text-ink' : 'text-muted'}>{rotulo} ·</span> <span className="max-w-40 truncate font-medium">{valor}</span>
       <svg viewBox="0 0 12 12" className="size-3" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden><path d="M3 4.5 6 7.5 9 4.5" /></svg>
     </button>
   )
@@ -197,7 +200,7 @@ function HojaFiltros({ filtros, obras, cerrar, ir }: { filtros: Filtros; obras: 
     )
   }
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-surface lg:hidden" role="dialog" aria-label="Filtros">
+    <div className="fixed inset-0 z-50 flex flex-col bg-surface lg:hidden" role="dialog" aria-label="Filtros">
       <div className="flex h-12 items-center justify-between border-b border-line px-4">
         <span className="text-sm font-semibold text-ink">Filtros</span>
         <button type="button" onClick={() => setBorrador({ ...borrador, periodo: DEFECTO.periodo, estado: DEFECTO.estado, obras: [] })}
