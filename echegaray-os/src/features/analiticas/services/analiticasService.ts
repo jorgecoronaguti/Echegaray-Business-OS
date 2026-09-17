@@ -8,7 +8,9 @@ import { armarCostosPorObra, armarGastosSinObra } from '@/features/clientes/serv
 import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
 import { rangoParaVista, type Filtros } from './filtros'
 import { leerPaginado } from './paginar'
-import { armarObra, costoObjetivoValido, pasaEstado, sinObraDe, type ObraAnalitica, type ObraPanel } from './obras'
+import { armarObra, pasaEstado, sinObraDe, type ObraAnalitica, type ObraPanel } from './obras'
+import { leerPresupuestos, presupuestoPorObra } from './presupuesto'
+import { leerConsumoMensual, ritmoPorObra, type Ritmo } from './consumo'
 
 export interface DatosAnaliticas {
   hoy: string
@@ -25,6 +27,10 @@ export interface DatosAnaliticas {
   personas: unknown[] | null
   /** Las filas de deuda de `public.cobranzas`: SÓLO para la acción del día (`planDeCobranza`). */
   documentos: unknown[] | null
+  /** Por qué no hay presupuesto (`null` si lo hay). */
+  motivoPresupuesto: string | null
+  /** El ritmo de consumo por obra; `null` = no se leyó (vista que no lo usa, o la base no lo publica). */
+  ritmos: Map<string, Ritmo> | null
   /** `false` = la puerta de la base contestó null: sin permiso económico. */
   legible: boolean
 }
@@ -37,19 +43,24 @@ const numero = (v: unknown): number | null => (v == null || v === '' || !Number.
 export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): Promise<DatosAnaliticas> {
   const hoy = hoySanJuan()
   const rango = rangoParaVista(f, hoy)
-  const [panel, economia, objetivo, costos] = await Promise.all([
+  // EL RITMO SÓLO DONDE SE MUESTRA: la consulta mensual recorre las quincenas como `analiticas_costos`
+  // (≈ 2,6 s medidos el 17/09/2026) y la base está justa. Pedirla en cada vista duplicaría la carga.
+  const conRitmo = f.vista === 'obra' || f.vista === 'contrato'
+  const [panel, economia, costos, presupuestos, consumo] = await Promise.all([
     supabase.from('obra_panel').select('obra_id, nombre, cliente_id, cliente_slug, cliente_nombre, estado, n_comprobantes, avance_pct'),
     getEconomiaDeObras(supabase),
-    supabase.from('obra_economia').select('obra_id, costo_objetivo, costo_objetivo_origen'),
     supabase.rpc('analiticas_costos', { p_desde: rango.desde, p_hasta: rango.hasta, p_obras: null }),
+    leerPresupuestos(),
+    conRitmo ? supabase.rpc('analiticas_consumo_mensual', { p_obras: null }) : null,
   ])
   const raiz = (costos.data ?? null) as Record<string, unknown> | null
   const porObra = armarCostosPorObra(Array.isArray(raiz?.obras) ? raiz.obras : null)
   const sinObraCruda = armarGastosSinObra(Array.isArray(raiz?.sin_obra) ? raiz.sin_obra : null)
-  const objetivos = new Map((objetivo.data ?? []).map((r) => [String(r.obra_id), costoObjetivoValido(numero(r.costo_objetivo), r.costo_objetivo_origen)]))
+  const presupuestoDe = presupuestoPorObra(presupuestos.filas)
+  const mensual = consumo && !consumo.error ? leerConsumoMensual(consumo.data) : null
   const cartera = ((panel.data ?? []) as ObraPanel[])
     .map((p) => armarObra({ ...p, n_comprobantes: numero(p.n_comprobantes), avance_pct: numero(p.avance_pct) },
-      economia?.get(p.obra_id), porObra?.get(p.obra_id), objetivos.get(p.obra_id) ?? null))
+      economia?.get(p.obra_id), porObra?.get(p.obra_id), presupuestoDe.get(p.obra_id) ?? null))
     .filter((o): o is ObraAnalitica => o != null)
   const elegidas = new Set(f.obras)
   const obras = cartera.filter((o) => pasaEstado(o.estado, f.estado) && (elegidas.size === 0 || elegidas.has(o.id)))
@@ -97,6 +108,8 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     quincenas: quincenas?.data ?? null,
     personas: personas?.data ?? null,
     documentos: documentos ?? null,
+    motivoPresupuesto: presupuestos.motivo,
+    ritmos: mensual ? ritmoPorObra(mensual, hoy) : null,
     legible: raiz != null,
   }
 }

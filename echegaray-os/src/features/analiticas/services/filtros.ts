@@ -8,8 +8,8 @@
 //
 // ═══ QUÉ FILTRO APLICA A QUÉ VISTA ═══
 //
-// Resumen, Contrato y gasto, Estado del gasto y Gasto por obra son ACUMULADOS: el semáforo contra el contrato no
-// tiene sentido con medio contrato gastado «en agosto». Nómina y Cobranza son de la empresa, no de
+// Resumen, Presupuesto y gasto y Gasto por obra son ACUMULADOS: el semáforo contra el presupuesto no
+// tiene sentido con medio presupuesto gastado «en agosto». Nómina y Cobranza son de la empresa, no de
 // una obra. El control que no aplica se APAGA con su razón —nunca se esconde—: si desapareciera, el
 // dueño no sabría si el número que mira está filtrado o no.
 //
@@ -17,9 +17,8 @@
 import { z } from 'zod'
 
 export const VISTAS = [
-  { clave: 'estado', rotulo: 'Estado del gasto' },
   { clave: 'resumen', rotulo: 'Resumen' },
-  { clave: 'contrato', rotulo: 'Contrato y gasto' },
+  { clave: 'contrato', rotulo: 'Presupuesto y gasto' },
   { clave: 'obra', rotulo: 'Gasto por obra' },
   { clave: 'hora', rotulo: 'Costo por hora' },
   { clave: 'caja', rotulo: 'Caja' },
@@ -59,7 +58,7 @@ export const ESTADOS: { clave: EstadoObra; rotulo: string }[] = [
 ]
 
 export const DEFECTO: Filtros = {
-  vista: 'estado', periodo: { tipo: 'preset', preset: 'inicio' }, estado: 'curso', obras: [], cliente: null, orden: null,
+  vista: 'resumen', periodo: { tipo: 'preset', preset: 'inicio' }, estado: 'curso', obras: [], cliente: null, orden: null,
 }
 
 const FECHA = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((s) => {
@@ -91,7 +90,7 @@ export function leerFiltros(params: Params): Filtros {
   const estado = ESTADO.safeParse(uno(params.estado))
   const obras = (uno(params.obras) ?? '').split(',').filter((s) => SLUG.safeParse(s).success)
   const cliente = SLUG.safeParse(uno(params.cliente))
-  const orden = z.enum(['gastado', 'contrato', 'pct', 'horas', 'hora']).safeParse(uno(params.orden))
+  const orden = z.enum(['gastado', 'presupuesto', 'pct', 'horas', 'ritmo']).safeParse(uno(params.orden))
   return {
     vista: vista.success ? vista.data : DEFECTO.vista,
     periodo: leerPeriodo(uno(params.periodo)),
@@ -131,15 +130,15 @@ export function apartado(f: Filtros, c: Control): boolean {
 export const cuantosApartados = (f: Filtros): number =>
   (['periodo', 'estado', 'obras'] as const).filter((c) => apartado(f, c)).length
 
-// GASTO POR OBRA TAMBIÉN (auditoría 17/09/2026, D3): su plano y su «% del contrato» ponen el gasto contra
-// el contrato ENTERO; con el gasto de un mes contra el precio de toda la obra, el % no significa nada.
-const ACUMULADAS: ReadonlySet<Vista> = new Set(['estado', 'resumen', 'contrato', 'obra'])
+// GASTO POR OBRA TAMBIÉN (auditoría 17/09/2026, D3): su «% del presupuesto» pone el gasto contra el
+// presupuesto ENTERO; con el gasto de un mes contra el de toda la obra, el % no significa nada.
+const ACUMULADAS: ReadonlySet<Vista> = new Set(['resumen', 'contrato', 'obra'])
 const DE_EMPRESA: ReadonlySet<Vista> = new Set(['nomina', 'cobranza'])
 
 /** POR QUÉ un control no aplica en una vista, o `null` si aplica. La razón va al `title` del control. */
 export function razonNoAplica(vista: Vista, c: Control): string | null {
   if (c === 'periodo' && ACUMULADAS.has(vista)) {
-    return 'Esta vista compara lo gastado contra el contrato: es acumulada a la fecha.'
+    return 'Esta vista compara lo gastado contra el presupuesto: es acumulada a la fecha.'
   }
   if (c !== 'periodo' && DE_EMPRESA.has(vista)) {
     return vista === 'nomina' ? 'La nómina es de la empresa: no se abre por obra.' : 'La cobranza es por cliente: no se abre por obra.'

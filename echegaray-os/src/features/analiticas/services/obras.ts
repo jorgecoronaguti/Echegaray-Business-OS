@@ -1,26 +1,25 @@
-// CADA OBRA DE LA CARTERA, CON SUS DOS PATAS: LO QUE SE PACTÓ Y LO QUE SE GASTÓ.
+// CADA OBRA DE LA CARTERA, CON SUS DOS PATAS: LO QUE SE PRESUPUESTÓ Y LO QUE SE CONSUMIÓ.
 //
 // ═══ LA REGLA QUE ESTE ARCHIVO DEFIENDE ═══
 //
-// Ninguna cifra sin sus dos patas, y ninguna ausencia dibujada como cero. Una obra sin contrato no
-// está «al 0 %»: está «sin precio». Una obra que no gastó nada no está «dentro»: está «sin movimiento
-// todavía». El semáforo sólo pinta lo que puede medir.
+// Ninguna cifra sin sus dos patas, y ninguna ausencia dibujada como cero. Una obra sin presupuesto no
+// está «al 0 %»: está «sin presupuesto cargado». Una obra que no gastó nada no está «dentro»: está «sin
+// movimiento todavía». El semáforo sólo pinta lo que puede medir.
 //
 // ═══ QUÉ ES «PRESUPUESTO» ACÁ ═══
 //
-// 1. `costo_objetivo` (el costo directo aprobado) cuando existe: es contra lo que se decide gastar.
-//    El contrato queda como segunda referencia.
-// 2. Si no, el contrato con papel (`obra_contrato`: mano de obra + materiales valuados hoy).
-// 3. Si no, el precio que OBRAS o el formulario declaran para la obra — NUNCA la suma viva de
-//    Cobranzas: sube cada vez que se factura, así que medir el gasto contra ella da siempre «dentro».
+// El COSTO previsto por rubro que publica `presupuesto.ts` (una sola fuente: las cotizaciones internas
+// con cita de celda). NUNCA el contrato: el contrato es el precio de venta, y medir el gasto contra él
+// esconde el margen en el «queda» (dueño, 17/09/2026). El contrato —y el precio que OBRAS o el
+// formulario declaran, nunca la suma viva de Cobranzas— se sigue leyendo, como referencia al lado.
 //
-// Los números no se calculan acá: los traen `obra_economia_cartera`, `obra_economia` y
-// `analiticas_costos` (que es `costo_de_obras_a_la_fecha` con rango). Este archivo decide qué dice
-// cada hueco y en qué grupo cae cada obra.
+// Los números no se calculan acá: los traen `obra_economia_cartera`, `analiticas_costos` y el lector
+// de presupuestos. Este archivo decide qué dice cada hueco y en qué grupo cae cada obra.
 import type { CostoDeObra, GastoSinObra } from '../../clientes/services/costosDeObra.ts'
 import type { EconomiaDeObra } from '../../clientes/services/economiaObras.ts'
 import type { EstadoObra } from './filtros.ts'
 import { millones } from './formato.ts'
+import { SIN_PRESUPUESTO, type PresupuestoArmado, type Rubro } from './presupuesto.ts'
 
 /** La fila de `obra_panel` que el módulo usa. */
 export interface ObraPanel {
@@ -75,11 +74,13 @@ export interface ObraAnalitica {
     materialesDelCliente: boolean
     cita: string | null
   }
-  /** El precio contra el que se mide. `null` → `ausencia` dice por qué. */
+  /** El precio de venta, SÓLO como referencia. `null` → `ausencia` dice por qué. */
   precio: number | null
   ausencia: AusenciaPrecio | null
-  costoObjetivo: number | null
+  /** El costo presupuestado total, contra el que se mide. `null` = sin presupuesto cargado. */
   presupuesto: number | null
+  /** El presupuesto por rubro; `null` = la obra no tiene presupuesto. */
+  presupuestoRubros: Record<Rubro, number | null> | null
   gasto: Gasto
   /** gastado ÷ presupuesto. `null` sin presupuesto. */
   avanceGasto: number | null
@@ -152,12 +153,12 @@ export function grupoDe(presupuesto: number | null, total: number | null): Grupo
 }
 
 export function armarObra(
-  p: ObraPanel, e: EconomiaDeObra | null | undefined, c: CostoDeObra | null | undefined, costoObjetivo: number | null,
+  p: ObraPanel, e: EconomiaDeObra | null | undefined, c: CostoDeObra | null | undefined, armado: PresupuestoArmado | null,
 ): ObraAnalitica | null {
   if (!p.cliente_id || !p.cliente_slug) return null
   const { precio, ausencia } = precioDe(e)
   const gasto = gastoDe(c)
-  const presupuesto = costoObjetivo ?? precio
+  const presupuesto = armado && armado.total > 0 ? armado.total : null
   return {
     id: p.obra_id, nombre: p.nombre, clienteId: p.cliente_id, clienteSlug: p.cliente_slug,
     clienteNombre: p.cliente_nombre ?? p.cliente_slug, estado: estadoDe(p),
@@ -169,15 +170,15 @@ export function armarObra(
       materialesDelCliente: e?.contrato_materiales === 0 && e.contrato_cita != null,
       cita: e?.contrato_cita ?? null,
     },
-    precio, ausencia, costoObjetivo, presupuesto, gasto,
+    precio, ausencia, presupuesto, presupuestoRubros: presupuesto != null && armado ? { ...armado.porRubro } : null, gasto,
     avanceGasto: presupuesto && gasto.total != null ? gasto.total / presupuesto : null,
     grupo: grupoDe(presupuesto, gasto.total),
   }
 }
 
-/** La frase del anillo: se pasó, le quedan, sin movimiento o qué falta cargar. */
+/** La frase de la obra: se pasó, le quedan, sin movimiento o qué falta cargar. */
 export function fraseDeObra(o: Pick<ObraAnalitica, 'presupuesto' | 'gasto' | 'grupo'>): string {
-  if (o.presupuesto == null) return 'cargar el contrato para poder comparar'
+  if (o.presupuesto == null) return SIN_PRESUPUESTO
   if (o.gasto.total == null || o.gasto.total <= 0) return 'sin movimiento todavía'
   const d = o.gasto.total - o.presupuesto
   return d > 0 ? `se pasó ${millones(d)}` : `le quedan ${millones(-d)}`
@@ -204,7 +205,8 @@ export function agruparPorSemaforo(obras: ObraAnalitica[]): Map<Grupo, ObraAnali
  * `obra_economia` también publica como `costo_objetivo` la suma de «partidas congeladas convertidas a
  * esta obra»: en Quattropani son 2 partidas por $ 1,77 M contra un contrato de $ 139 M, y el semáforo
  * la daba «pasada al 2.544 %». Un pedazo de presupuesto no es el presupuesto: medir contra él
- * fabrica un desvío. Hasta que la conversión cubra la obra, manda el contrato.
+ * fabrica un desvío. Queda para cuando el presupuesto se conecte (`presupuesto.ts`): un `costo_objetivo`
+ * parcial no puede entrar como presupuesto de la obra.
  */
 export function costoObjetivoValido(valor: number | null, origen: string | null | undefined): number | null {
   if (valor == null || valor <= 0) return null

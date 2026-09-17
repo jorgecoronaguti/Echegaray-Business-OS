@@ -4,7 +4,7 @@ import { aUrl, apartado, cuantosApartados, leerFiltros, rangoDe, rangoParaVista,
 
 test('sin parámetros son los defectos, y la URL de los defectos es la ruta pelada', () => {
   const f = leerFiltros({})
-  assert.equal(f.vista, 'estado')
+  assert.equal(f.vista, 'resumen')
   assert.equal(f.estado, 'curso')
   assert.deepEqual(f.obras, [])
   assert.equal(aUrl(f), '/analiticas')
@@ -24,7 +24,9 @@ test('lo que la URL trae mal no llega a la base: fecha imposible, rango invertid
   assert.deepEqual(leerFiltros({ periodo: '2026-02-30..2026-03-01' }).periodo, { tipo: 'preset', preset: 'inicio' })
   assert.deepEqual(leerFiltros({ periodo: '2026-09-01..2026-08-01' }).periodo, { tipo: 'preset', preset: 'inicio' })
   assert.deepEqual(leerFiltros({ obras: "x';drop table obras;--,quattropani" }).obras, ['quattropani'])
-  assert.equal(leerFiltros({ vista: 'margen' }).vista, 'estado')
+  assert.equal(leerFiltros({ vista: 'margen' }).vista, 'resumen')
+  // «Estado del gasto» se retiró (dueño, 17/09/2026): un link viejo abre Resumen, no un error.
+  assert.equal(leerFiltros({ vista: 'estado' }).vista, 'resumen')
 })
 
 test('cliente y orden son de su vista: no viajan a otra', () => {
