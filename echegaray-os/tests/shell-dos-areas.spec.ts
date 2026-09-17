@@ -18,7 +18,7 @@ const PASSWORD = 'TestPassword123!'
 /** Los seis grupos del header viejo. Ninguno puede volver a la navegación. */
 const CATEGORIAS_VIEJAS = ['01 · Obras', 'OS', 'Finanzas', 'Reportes', 'Conexiones']
 
-test('la navegación tiene TRES solapas y ninguna categoría interna del OS', async ({ page }) => {
+test('la navegación tiene CUATRO solapas y ninguna categoría interna del OS', async ({ page }) => {
   test.setTimeout(120000)
   await entrarComo(page, EMAIL, PASSWORD)
   await page.goto('/obras')
@@ -202,6 +202,25 @@ test('Administración tiene sus TRES destinos, y Compras tiene sus cuatro seccio
     // afirma lo que la pantalla dice hoy para no fijar un verde falso. Queda declarado como
     // pendiente de decidir a quién cuelga esa miga ahora que «Trabajo» no existe.
     await expect(page.getByTestId('migas')).toContainText('Trabajo')
+  }
+})
+
+// A 390 LA SOLAPA ACTIVA SE VE (auditoría 17/09/2026, D7). La barra de nivel 1 se desliza en el
+// teléfono y Analíticas, la cuarta, quedaba del otro lado del borde. Se mide la caja de la solapa
+// activa contra la de la barra: sin el desplazamiento del header, esto da rojo en /analiticas.
+test('en el teléfono la solapa activa queda dentro de la barra', async ({ page }) => {
+  test.setTimeout(120000)
+  await entrarComo(page, EMAIL, PASSWORD)
+  await page.setViewportSize({ width: 390, height: 780 })
+  const nav = page.getByTestId('nav-areas')
+  for (const [ruta, clave] of [['/analiticas', 'analiticas'], ['/obras', 'obras']] as const) {
+    await page.goto(ruta)
+    const solapa = nav.getByTestId(`nav-${clave}`)
+    await expect(solapa).toHaveAttribute('aria-current', 'page')
+    await expect.poll(async () => {
+      const [b, s] = await Promise.all([nav.boundingBox(), solapa.boundingBox()])
+      return !!b && !!s && s.x >= b.x - 1 && s.x + s.width <= b.x + b.width + 1
+    }, { message: `${ruta}: la solapa activa quedó fuera de la barra` }).toBe(true)
   }
 })
 

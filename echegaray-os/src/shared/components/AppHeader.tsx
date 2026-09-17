@@ -7,6 +7,7 @@ import { solapaActiva, type SolapaNav } from '@/features/auth/types/navegacion'
 import { BuscadorGlobal } from './BuscadorGlobal'
 import { Novedades } from './Novedades'
 import { iniciales } from './iniciales'
+import { scrollParaMostrar } from './desplazarSolapa'
 
 // EL HEADER DEL ERP — UNA LÍNEA, DOS ÁREAS, Y NADA MÁS.
 //
@@ -63,6 +64,17 @@ export function AppHeader({
   // expresión regular en un componente de cliente, o sea una regla de navegación que `node --test`
   // no podía mirar. Fue exactamente la que se rompió el 24/08.
   const activa = solapaActiva(pathname, solapas)
+  // LA SOLAPA ACTIVA SE VE (auditoría 17/09/2026, D7): a 390 la barra se desliza y la cuarta solapa
+  // quedaba fuera. Se corre SÓLO la barra —nunca la página— y sólo si la activa no se ve entera.
+  const barra = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const nav = barra.current
+    const el = nav?.querySelector<HTMLElement>('[aria-current="page"]')
+    if (!nav || !el) return
+    const izquierda = el.getBoundingClientRect().left - nav.getBoundingClientRect().left + nav.scrollLeft
+    const nuevo = scrollParaMostrar({ ancho: nav.clientWidth, scroll: nav.scrollLeft, izquierda, anchoSolapa: el.offsetWidth })
+    if (nuevo != null) nav.scrollLeft = nuevo
+  }, [activa])
 
   return (
     // UNA SOLA LÍNEA, 44px CONTANDO EL HAIRLINE (medido del mockup 00: padding 9px + isotipo 24 + hairline). El alto vive en el `<header>` y no en el div de
@@ -123,7 +135,7 @@ export function AppHeader({
             «Presupuestos» quedaba tapado por el icono de búsqueda. `barra-corrible` (globals.css)
             hace que la caja recorte y se corra por dentro. A 1280 y 1440 el contenido entra y
             `overflow-x: auto` no dibuja ni recorta nada: la geometría de escritorio no se toca. */}
-        <nav className="barra-corrible flex h-full min-w-0 items-stretch" data-testid="nav-areas">
+        <nav ref={barra} className="barra-corrible flex h-full min-w-0 items-stretch" data-testid="nav-areas">
           {solapas.length === 1 ? (
             <span className="flex h-full items-center px-3 text-[13px] font-medium text-muted">{solapas[0].label}</span>
           ) : (
