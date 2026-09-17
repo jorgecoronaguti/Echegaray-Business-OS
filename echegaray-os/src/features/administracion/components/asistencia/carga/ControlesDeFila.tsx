@@ -13,8 +13,8 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { guardarJornada } from '@/features/administracion/services/jornadaPorObraActions'
 import { cambiarObraActual } from '@/features/administracion/services/obraActualActions'
-import { hs, leerCeldaDeHoras } from '@/features/administracion/services/jornadaPorObra'
-import { puedeMoverDeObraEl } from '@/features/administracion/services/cargaDeAsistencia'
+import { hs } from '@/features/administracion/services/jornadaPorObra'
+import { entradaDeMover, envioDeHoras, puedeMoverDeObraEl } from '@/features/administracion/services/cargaDeAsistencia'
 import { PlanDeObraPanel } from '../../PlanDeObraPanel'
 
 // `pos` sólo para el estado positivo, `neg` sólo para el problema, ámbar para la tardanza (regla del
@@ -88,17 +88,14 @@ export function HorasDeObra({ personaId, nombre, obraId, obraNombre, fecha, hora
   const [, arrancar] = useTransition()
 
   const confirmar = () => {
-    if (borrador.texto.trim() === servidor) return
-    const lectura = leerCeldaDeHoras(borrador.texto)
-    if (lectura.accion === 'error') { setEstado({ tipo: 'error', texto: lectura.error }); return }
-    if (lectura.accion === 'vaciar' && horas === null) return
-    const entrada = lectura.accion === 'vaciar'
-      ? { obra_id: obraId, fecha, vaciar: [personaId] }
-      : { obra_id: obraId, fecha, marcas: [{ persona_id: personaId, estado: 'presente' as const, horas: lectura.horas }] }
+    const envio = envioDeHoras({ personaId, obraId, fecha, antes: horas, texto: borrador.texto })
+    if (envio.tipo === 'nada') return
+    if (envio.tipo === 'error') { setEstado({ tipo: 'error', texto: envio.error }); return }
+    const texto = borrador.texto.trim()
     setEstado({ tipo: 'guardando' })
     arrancar(async () => {
-      const r = await guardarJornada(entrada)
-      if (r.ok) { setEstado({ tipo: 'ok', texto: r.aviso }); setBorrador({ base: borrador.texto.trim(), texto: borrador.texto.trim() }); router.refresh() }
+      const r = await guardarJornada(envio.entrada)
+      if (r.ok) { setEstado({ tipo: 'ok', texto: r.aviso }); setBorrador({ base: texto, texto }); router.refresh() }
       else setEstado({ tipo: 'error', texto: r.error })
     })
   }
@@ -148,11 +145,11 @@ export function MoverDeObra({ persona, obraActual, fecha, hoy, obras, rotuloDia 
   const sePuede = puedeMoverDeObraEl(fecha, hoy)
 
   const mover = () => {
+    const entrada = entradaDeMover({ personaId: persona.id, destino, fecha, hoy })
+    if (!entrada) return
     setEstado({ tipo: 'guardando' })
     arrancar(async () => {
-      // HOY VA SIN `desde`: la acción usa su propio hoy, y mandar el del navegador a las 23:55 de otra
-      // zona rebotaría con «no se puede programar hacia atrás».
-      const r = await cambiarObraActual({ persona_id: persona.id, obra_id: destino || null, ...(fecha === hoy ? {} : { desde: fecha }) })
+      const r = await cambiarObraActual(entrada)
       if (r.ok) { setEstado({ tipo: 'ok', texto: r.mensaje }); setAbierto(false); router.refresh() }
       else setEstado({ tipo: 'error', texto: r.error })
     })

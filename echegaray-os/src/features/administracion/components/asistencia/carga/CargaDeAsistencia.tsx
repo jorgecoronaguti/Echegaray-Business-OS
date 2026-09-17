@@ -33,8 +33,10 @@ type Casillas = Record<string, CasillaPresencia>
 const casillasDe = (filas: readonly Fila[]): Casillas =>
   Object.fromEntries(filas.map((f) => [f.persona.id, f.casilla]))
 
-export function CargaDeAsistencia({ filas, obraFiltro, fecha, hoy, rotuloDia, obras, nombres, cierre, permiso, puedeMover }: {
+export function CargaDeAsistencia({ filas, obraFiltro, fecha, hoy, rotuloDia, obras, nombres, cierre, permiso, puedeMover, certificados }: {
   filas: Fila[]
+  /** `persona_id` → nombre del certificado médico que cubre el día. */
+  certificados: Record<string, string>
   obraFiltro: string | null
   fecha: string
   hoy: string
@@ -104,7 +106,7 @@ export function CargaDeAsistencia({ filas, obraFiltro, fecha, hoy, rotuloDia, ob
   return (
     <div data-testid="carga-de-asistencia">
       <div className="flex flex-col gap-3 pb-3 md:flex-row md:items-center md:justify-between">
-        <p className="text-[13px] text-ink" data-testid="resumen-del-dia">
+        <p className="flex flex-wrap gap-x-1 gap-y-0.5 text-[13px] text-ink" data-testid="resumen-del-dia">
           <Cifra n={resumen.presentes} rotulo="presentes" clase="text-pos" />
           <Cifra n={resumen.ausentes} rotulo="ausentes" clase={resumen.ausentes > 0 ? 'text-neg' : 'text-muted'} />
           <Cifra n={resumen.licencias} rotulo="licencia" clase="text-muted" />
@@ -147,7 +149,7 @@ export function CargaDeAsistencia({ filas, obraFiltro, fecha, hoy, rotuloDia, ob
               <FilaDeCarga
                 key={f.persona.id} fila={f} casilla={casillas[f.persona.id] ?? f.casilla} estado={estados[f.persona.id] ?? null}
                 fecha={fecha} hoy={hoy} rotuloDia={rotuloDia} obras={obras} nombres={nombres}
-                soloLectura={soloLectura} puedeMover={puedeMover} onToque={onToque}
+                soloLectura={soloLectura} puedeMover={puedeMover} certificado={certificados[f.persona.id] ?? null} onToque={onToque}
               />
             ))}
           </ul>

@@ -19,6 +19,8 @@
 import type { CasillaPresencia, EstadoPresencia } from './presenciaDelDia.ts'
 import { validarProgramacion } from './planDeObraActual.ts'
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
+import { leerCeldaDeHoras } from './jornadaPorObra.ts'
+import { hrefDeAsistencia } from './vistaDeAsistencia.ts'
 import { obraDeLaAsignacionDelDia } from '../../../../orquestador/lib/asignacion-del-dia.mjs'
 
 export const RUTA_CARGA_ASISTENCIA = '/administracion/personas/asistencia'
@@ -44,6 +46,12 @@ export interface PersonaDeLaCarga {
 
 export const seListaParaMarcar = (p: Pick<PersonaDeLaCarga, 'esJefe'>): boolean =>
   MARCAR_JEFES_Y_MENSUALES || !p.esJefe
+
+/** Los botones de tardanza: sólo a quien tiene presentismo y sólo sobre «sin marcar» o «Está» —tocarlos
+ *  declara presente (17/09/2026)—. Sobre «No vino» o «Licencia» serían una contradicción que el CHECK
+ *  `asistencia_dia_tardanza_solo_presente` rechaza. */
+export const muestraTardanza = (p: Pick<PersonaDeLaCarga, 'esJefe'>, estado: EstadoPresencia | null): boolean =>
+  tienePresentismo(p) && (estado === null || estado === 'presente')
 
 /** Quien cobra por mes no tiene presentismo: la tardanza no le cambia un peso, y ofrecerla invita a
  *  cargar una marca que después la liquidación ignora sin decirlo. */
@@ -262,6 +270,47 @@ export function puedeCorregirElDia({ rol, fecha, hoy }: { rol: string | null | u
   if (fecha >= limiteDelJefe(hoy)) return { ok: true }
   return { ok: false, porque: `Más de ${DIAS_HABILES_ATRAS_JEFE} días hábiles atrás: lo corrige Administración.` }
 }
+
+/**
+ * LO QUE VIAJA A `cambiarObraActual` AL MOVER DESDE ESTA PANTALLA. Hoy va SIN `desde`: la acción usa
+ * su propio hoy, y mandar el de la página a medianoche haría rebotar el pase con «hacia atrás». Un día
+ * futuro va con `desde` y sin `hasta` —el pase programado de siempre (M3)—; `null` si el día es pasado.
+ */
+export function entradaDeMover({ personaId, destino, fecha, hoy }: {
+  personaId: string; destino: string | null; fecha: string; hoy: string
+}): { persona_id: string; obra_id: string | null; desde?: string } | null {
+  if (!puedeMoverDeObraEl(fecha, hoy)) return null
+  return { persona_id: personaId, obra_id: destino || null, ...(fecha === hoy ? {} : { desde: fecha }) }
+}
+
+/**
+ * LO QUE VIAJA A `guardarJornada` AL SALIR DE UNA CASILLA DE HORAS. `nada` cuando no cambió o cuando se
+ * vació una casilla que ya estaba vacía: un blur no puede ser una escritura.
+ */
+export type EnvioDeHoras =
+  | { tipo: 'nada' }
+  | { tipo: 'error'; error: string }
+  | { tipo: 'guardar'; entrada: { obra_id: string; fecha: string; vaciar: string[] } | { obra_id: string; fecha: string; marcas: { persona_id: string; estado: 'presente'; horas: number }[] } }
+
+export function envioDeHoras({ personaId, obraId, fecha, antes, texto }: {
+  personaId: string; obraId: string; fecha: string; antes: number | null; texto: string
+}): EnvioDeHoras {
+  const lectura = leerCeldaDeHoras(texto)
+  if (lectura.accion === 'error') return { tipo: 'error', error: lectura.error }
+  if (lectura.accion === 'vaciar') {
+    return antes === null ? { tipo: 'nada' } : { tipo: 'guardar', entrada: { obra_id: obraId, fecha, vaciar: [personaId] } }
+  }
+  if (lectura.horas === antes) return { tipo: 'nada' }
+  return { tipo: 'guardar', entrada: { obra_id: obraId, fecha, marcas: [{ persona_id: personaId, estado: 'presente', horas: lectura.horas }] } }
+}
+
+/**
+ * LA SALIDA A LA CORRECCIÓN COMPLETA (D5–D7, H3): tramo de licencia, «sin novedad», mover sólo la jornada.
+ * Eso ya lo hace el panel de la grilla con `corregirJornada`; reimplementarlo acá sería la segunda
+ * definición de la acción más delicada de Horas. Se abre la quincena de ese día, buscando a la persona.
+ */
+export const hrefCorregirEnHoras = (fecha: string, nombre: string): string =>
+  hrefDeAsistencia('/administracion/personas', {}, { quincena: fecha, q: nombre, modo: 'quincena' })
 
 /** El enlace a esta pantalla desde Plantel y Horas. `hoy` no se escribe: es el día por defecto. */
 export function hrefCargaDeAsistencia({ dia, obra, hoy }: { dia?: string | null; obra?: string | null; hoy?: string }): string {

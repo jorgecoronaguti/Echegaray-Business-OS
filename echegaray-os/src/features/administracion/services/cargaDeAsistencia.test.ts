@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { casillaTrasToque, marcaDeLaCasilla } from './presenciaDelDia.ts'
 import {
+  entradaDeMover, envioDeHoras, hrefCorregirEnHoras, muestraTardanza,
   agruparPorObra, armarCargaDelDia, filtrarCarga, hrefCargaDeAsistencia, limiteDelJefe,
   MARCAR_JEFES_Y_MENSUALES, NOMBRE_SIN_OBRA, OBRA_SIN_OBRA, obraDelDiaDePersona, puedeCorregirElDia,
   puedeMoverDeObraEl, resumenDeCarga, seListaParaMarcar, tienePresentismo,
@@ -112,4 +114,53 @@ test('mover de obra: desde hoy en adelante sí, hacia atrás no (misma regla que
 test('el enlace no escribe el día de hoy y conserva la obra', () => {
   assert.equal(hrefCargaDeAsistencia({ dia: FECHA, hoy: FECHA }), '/administracion/personas/asistencia')
   assert.equal(hrefCargaDeAsistencia({ dia: '2026-09-16', obra: 'sf', hoy: FECHA }), '/administracion/personas/asistencia?dia=2026-09-16&obra=sf')
+})
+
+// ── C3 · TARDANZA (plata: una marca pierde el presentismo de la quincena) ──────────────────────────
+
+test('la tardanza se ofrece sobre «sin marcar» y «Está», nunca sobre ausente/licencia ni a un mensual', () => {
+  assert.equal(muestraTardanza(juan, null), true)
+  assert.equal(muestraTardanza(juan, 'presente'), true)
+  assert.equal(muestraTardanza(juan, 'ausente'), false)
+  assert.equal(muestraTardanza(juan, 'licencia'), false)
+  assert.equal(muestraTardanza(jefa, 'presente'), false, 'un mensual no tiene presentismo que perder')
+})
+
+test('tocar «Llegó tarde» sobre sin marcar escribe presente con la marca; volver a tocar la saca en false', () => {
+  const tarde = casillaTrasToque({ estado: null, motivo: null }, { tipo: 'tardanza', marca: 'llego_tarde' })
+  assert.deepEqual(marcaDeLaCasilla('juan', tarde), { persona_id: 'juan', estado: 'presente', motivo: null, llego_tarde: true, salio_antes: false })
+  const sin = casillaTrasToque(tarde, { tipo: 'tardanza', marca: 'llego_tarde' })
+  assert.deepEqual(marcaDeLaCasilla('juan', sin), { persona_id: 'juan', estado: 'presente', motivo: null, llego_tarde: false, salio_antes: false },
+    'sacar la tardanza tiene que viajar como false: omitirla dejaría la marca vieja guardada')
+})
+
+// ── M1 / M3 · MOVER HOY Y PASE PROGRAMADO ─────────────────────────────────────────────────────────
+
+test('mover hoy viaja SIN desde; un día futuro es un pase programado con desde; un día pasado no viaja', () => {
+  assert.deepEqual(entradaDeMover({ personaId: 'juan', destino: 'sf', fecha: FECHA, hoy: FECHA }), { persona_id: 'juan', obra_id: 'sf' })
+  assert.deepEqual(entradaDeMover({ personaId: 'juan', destino: 'sf', fecha: '2026-09-21', hoy: FECHA }), { persona_id: 'juan', obra_id: 'sf', desde: '2026-09-21' })
+  assert.deepEqual(entradaDeMover({ personaId: 'juan', destino: '', fecha: FECHA, hoy: FECHA }), { persona_id: 'juan', obra_id: null }, '«Sin obra» es un destino válido')
+  assert.equal(entradaDeMover({ personaId: 'juan', destino: 'sf', fecha: '2026-09-16', hoy: FECHA }), null)
+})
+
+// ── H1 / H6 · HORAS DE UNA CASILLA ────────────────────────────────────────────────────────────────
+
+test('casilla de horas: igual no escribe, vacío sobre vacío no escribe, vacío sobre horas vacía, cero es error', () => {
+  const base = { personaId: 'juan', obraId: 'q', fecha: FECHA }
+  assert.deepEqual(envioDeHoras({ ...base, antes: 9, texto: '9' }), { tipo: 'nada' })
+  assert.deepEqual(envioDeHoras({ ...base, antes: null, texto: ' ' }), { tipo: 'nada' })
+  assert.deepEqual(envioDeHoras({ ...base, antes: 9, texto: '' }), { tipo: 'guardar', entrada: { obra_id: 'q', fecha: FECHA, vaciar: ['juan'] } })
+  assert.deepEqual(envioDeHoras({ ...base, antes: 9, texto: '5,5' }),
+    { tipo: 'guardar', entrada: { obra_id: 'q', fecha: FECHA, marcas: [{ persona_id: 'juan', estado: 'presente', horas: 5.5 }] } })
+  assert.equal(envioDeHoras({ ...base, antes: null, texto: '0' }).tipo, 'error')
+})
+
+test('la corrección completa se abre en la quincena de ese día, buscando a la persona', () => {
+  const href = hrefCorregirEnHoras(FECHA, 'Juan Pérez')
+  const u = new URL(href, 'http://x')
+  assert.equal(u.pathname, '/administracion/personas')
+  assert.equal(u.searchParams.get('vista'), 'asistencia')
+  assert.equal(u.searchParams.get('modo'), 'quincena')
+  assert.equal(u.searchParams.get('quincena'), FECHA)
+  assert.equal(u.searchParams.get('q'), 'Juan Pérez')
 })

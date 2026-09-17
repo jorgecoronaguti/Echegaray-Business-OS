@@ -132,7 +132,7 @@ export default async function CargarAsistenciaPage({ searchParams }: {
         <CargaDeAsistencia
           filas={filas} obraFiltro={obraFiltro} fecha={fecha} hoy={hoy} rotuloDia={rotuloDelDia(fecha)}
           obras={activas} nombres={nombres} cierre={d.cierre}
-          permiso={puedeCorregirElDia({ rol, fecha, hoy })} puedeMover={puedeMover}
+          permiso={puedeCorregirElDia({ rol, fecha, hoy })} puedeMover={puedeMover} certificados={d.certificados}
         />
         {obraParaTraer && (
           <TraerALaObra

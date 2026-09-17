@@ -15,6 +15,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { quincenaCerrada } from './quincenaCerradaService.ts'
 import { esJefeDeObra } from './vocabularioPersona.ts'
+import { getCertificadosDeLicencia } from '../../documentos/services/certificadosDeLicenciaService.ts'
+import { certificadosPorPersonaYDia } from '../../documentos/services/certificadoDeLicencia.ts'
 import type {
   AsignacionDelDia, HoraDelDiaConObra, PersonaDeLaCarga, PresenciaDelDiaConObra,
 } from './cargaDeAsistencia.ts'
@@ -30,6 +32,8 @@ export interface DatosDeLaCarga {
   obras: ObraDeLaCarga[]
   /** El texto de `quincenaCerrada`, o `null` si el día se puede escribir. */
   cierre: string | null
+  /** `persona_id` → certificado médico que cubre el día (L2). Se muestra; no crea ninguna licencia. */
+  certificados: Record<string, string>
   /** Lo que no se pudo leer y no impide dibujar la pantalla. */
   avisos: string[]
 }
@@ -68,7 +72,7 @@ async function leerPresencias(
 export async function getCargaDelDia(
   supabase: SupabaseClient, fecha: string,
 ): Promise<{ data: DatosDeLaCarga | null; error: string | null }> {
-  const [plantel, presencias, horas, asignaciones, obras, cierre] = await Promise.all([
+  const [plantel, presencias, horas, asignaciones, obras, cierre, certificados] = await Promise.all([
     // EL PLANTEL ES `en_la_empresa`, no la fecha de egreso — mismo criterio que la solapa Plantel.
     supabase.from('persona_directorio').select('id, nombre_completo, categoria, puesto')
       .eq('en_la_empresa', true).order('nombre_completo'),
@@ -78,6 +82,7 @@ export async function getCargaDelDia(
     supabase.from('obra_asignacion').select('persona_id, obra_id, desde, hasta'),
     supabase.from('obra_canonica').select('id, nombre, estado').order('nombre'),
     quincenaCerrada(supabase, fecha),
+    getCertificadosDeLicencia(supabase, { desde: fecha, hasta: fecha }),
   ])
   if (plantel.error) return { data: null, error: `No pude leer el plantel: ${plantel.error.message}` }
   if (presencias.error) return { data: null, error: `No pude leer la presencia del día: ${presencias.error}` }
@@ -85,6 +90,7 @@ export async function getCargaDelDia(
 
   const avisos: string[] = []
   if (asignaciones.error) avisos.push(`No pude leer las asignaciones: quien no tiene marca ni horas aparece «Sin obra». (${asignaciones.error.message})`)
+  if (certificados.error) avisos.push(`No pude leer los certificados médicos del día. (${certificados.error})`)
   if (obras.error) avisos.push(`No pude leer las obras: los grupos muestran el id. (${obras.error.message})`)
 
   return {
@@ -103,6 +109,8 @@ export async function getCargaDelDia(
       obras: ((obras.data ?? []) as { id: string; nombre: string; estado: string | null }[])
         .map((o) => ({ id: o.id, nombre: o.nombre, activa: o.estado === 'activa' })),
       cierre,
+      certificados: Object.fromEntries(Object.entries(certificadosPorPersonaYDia(certificados.data, [fecha]))
+        .map(([clave, nombre]) => [clave.split('|')[0], nombre])),
       avisos,
     },
     error: null,

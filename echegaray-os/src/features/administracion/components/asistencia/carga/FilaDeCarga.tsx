@@ -16,7 +16,8 @@
 
 import { useState } from 'react'
 import type { CasillaPresencia, EstadoPresencia, ToqueDePresencia } from '@/features/administracion/services/presenciaDelDia'
-import { tienePresentismo, type FilaDeCarga as Fila } from '@/features/administracion/services/cargaDeAsistencia'
+import Link from 'next/link'
+import { hrefCorregirEnHoras, muestraTardanza, type FilaDeCarga as Fila } from '@/features/administracion/services/cargaDeAsistencia'
 import { motivosDeDiaNoTrabajado } from '@/features/administracion/services/motivoDeAusencia'
 import { jornadaPorDefecto } from '@/features/administracion/services/jornadaPorDefecto'
 import {
@@ -26,8 +27,10 @@ import {
 
 const MOTIVOS = motivosDeDiaNoTrabajado()
 
-export function FilaDeCarga({ fila, casilla, estado, fecha, hoy, rotuloDia, obras, nombres, soloLectura, puedeMover, onToque }: {
+export function FilaDeCarga({ fila, casilla, estado, fecha, hoy, rotuloDia, obras, nombres, soloLectura, puedeMover, certificado, onToque }: {
   fila: Fila
+  /** El certificado médico que cubre ese día (L2): se muestra, no crea ninguna licencia. */
+  certificado: string | null
   casilla: CasillaPresencia
   estado: EstadoDeGuardado
   fecha: string
@@ -60,6 +63,11 @@ export function FilaDeCarga({ fila, casilla, estado, fecha, hoy, rotuloDia, obra
         <p className="truncate text-[12px] text-muted">
           {[persona.categoria, persona.esJefe ? 'mensual · sin presentismo' : null].filter(Boolean).join(' · ') || '—'}
         </p>
+        {certificado && (
+          <p className="truncate text-[12px] text-muted" data-testid="certificado-del-dia" title={certificado}>
+            Certificado: {certificado}
+          </p>
+        )}
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -71,6 +79,9 @@ export function FilaDeCarga({ fila, casilla, estado, fecha, hoy, rotuloDia, obra
           <SinObra fila={fila} fecha={fecha} hoy={hoy} obras={obras} puedeMover={puedeMover} rotuloDia={rotuloDia} onElegir={setObraElegida} />
         ) : (
           <>
+            {/* EN ANGOSTO, UNA LÍNEA POR PREGUNTA; EN ANCHO, TODO EN LA MISMA LÍNEA: la fila de 1440 px con
+                los botones en dos renglones duplicaba el alto de la lista sin agregar nada. */}
+            <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:gap-4">
             <div className="flex gap-2" role="group" aria-label={`Presencia de ${persona.nombre}`}>
               <BotonMarca testid="esta" rotulo="Está" activo={casilla.estado === 'presente'} tono="pos" onClick={() => tocarEstado('presente')} aria={`${persona.nombre} está`} />
               <BotonMarca testid="no-vino" rotulo="No vino" activo={casilla.estado === 'ausente'} tono="neg" onClick={() => tocarEstado('ausente')} aria={`${persona.nombre} no vino`} />
@@ -78,12 +89,13 @@ export function FilaDeCarga({ fila, casilla, estado, fecha, hoy, rotuloDia, obra
             </div>
             {/* LA TARDANZA, VISIBLE SOBRE «SIN MARCAR» Y «ESTÁ»: tocarla declara presente (17/09/2026).
                 Quien cobra por mes no la ve: no tiene presentismo que perder (decisión 2). */}
-            {!noVino && tienePresentismo(persona) && (
+            {muestraTardanza(persona, casilla.estado) && (
               <div className="flex gap-2" role="group" aria-label={`Tardanza de ${persona.nombre}`}>
                 <BotonMarca testid="llego-tarde" rotulo="Llegó tarde" activo={casilla.llego_tarde === true} tono="warn" onClick={() => toque({ tipo: 'tardanza', marca: 'llego_tarde' })} aria={`${persona.nombre} llegó tarde`} />
                 <BotonMarca testid="salio-antes" rotulo="Salió antes" activo={casilla.salio_antes === true} tono="warn" onClick={() => toque({ tipo: 'tardanza', marca: 'salio_antes' })} aria={`${persona.nombre} salió antes`} />
               </div>
             )}
+            </div>
             {noVino && (
               <select
                 aria-label={`Por qué no vino ${persona.nombre}`} data-testid="motivo" value={casilla.motivo ?? ''}
@@ -103,11 +115,18 @@ export function FilaDeCarga({ fila, casilla, estado, fecha, hoy, rotuloDia, obra
         <Horas fila={fila} obraId={obraId} fecha={fecha} obras={obras} nombres={nombres} deshabilitado={soloLectura !== null} />
       )}
 
-      {puedeMover && fila.obraId && !soloLectura && (
-        <div className="md:w-56 md:shrink-0">
+      <div className="flex flex-col gap-1 md:w-56 md:shrink-0">
+        {puedeMover && fila.obraId && !soloLectura && (
           <MoverDeObra persona={persona} obraActual={fila.obraId} fecha={fecha} hoy={hoy} obras={obras} rotuloDia={rotuloDia} />
-        </div>
-      )}
+        )}
+        {/* TRAMO DE LICENCIA, «SIN NOVEDAD», MOVER SÓLO LA JORNADA: el panel de la grilla (`corregirJornada`). */}
+        <Link
+          prefetch={false} href={hrefCorregirEnHoras(fecha, persona.nombre)} data-testid="corregir-en-horas"
+          className={`${ALTO} inline-flex items-center px-1 text-[12px] text-muted underline hover:text-ink`}
+        >
+          Corregir el día en Horas
+        </Link>
+      </div>
     </li>
   )
 }
