@@ -12,6 +12,8 @@
 //   arca                           `public.comprobantes_arca`, deduplicado antes de sumar
 //   banco                          `public.banco_movimientos`
 //   compras                        `public.compra_sheet` (la réplica de la pestaña Compras)
+//   vep_pdf                        comprobantes de VEP en `<archivo fiscal>/<año>/931` — imputan por documento
+//   ddjj_ganancias_pdf             la DDJJ anual de Ganancias (F.713) de la carpeta BALANCES
 //
 // Google se abre con scopes de SÓLO LECTURA: que este script no escriba el Sheet no depende de un `if`,
 // depende del token. Tampoco corre ningún generador ni toca `comprobantes_arca`.
@@ -22,12 +24,13 @@
 import { makeGoogleClient, READONLY_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, withTx, closePool } from '../lib/db.mjs'
-import { leerIVA, leerIIBB, COLUMNAS_FUENTES } from '../lib/impuestos-fuentes.mjs'
+import { leerIVA, leerIIBB, leerVepsF931, leerDDJJGanancias, COLUMNAS_FUENTES } from '../lib/impuestos-fuentes.mjs'
+import { imputarPorVep, imputarDeclaradas } from '../lib/impuestos-vep.mjs'
 import { leerColumnasCobranzas } from '../lib/cobranzas-columnas.mjs'
 import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import {
   obligacionesIvaDDJJ, obligacionesIibbDDJJ, obligacionesF931, libroPorPeriodo,
-  obligacionesIvaCalculadas, obligacionesIibbEstimadas,
+  obligacionesIvaCalculadas, obligacionesIibbEstimadas, obligacionesGananciasDDJJ,
 } from '../lib/impuestos-registro.mjs'
 import {
   pagosDelBanco, pagosDeCompras, pagosDeCobranzas, sinPagosRepetidos, creditosPorPeriodo, conEstadoDePago,
@@ -57,6 +60,8 @@ export async function leerFuentes(google) {
   const estado = {}
   const ddjjIva = await leer(estado, 'ddjj_iva_pdf', () => leerIVA(google))
   const ddjjIibb = await leer(estado, 'ddjj_iibb_pdf', () => leerIIBB(google))
+  const ddjjGanancias = await leer(estado, 'ddjj_ganancias_pdf', () => leerDDJJGanancias(google))
+  const veps = await leer(estado, 'vep_pdf', () => leerVepsF931(google))
   const f931 = await leer(estado, 'f931_raw', () => google.readSheetValues(ID, '_F931_RAW!A4:F', { render: 'UNFORMATTED_VALUE' }))
   const cobranzas = await leer(estado, 'cobranzas', async () => {
     const cols = await leerColumnasCobranzas(google, ID, [...COLUMNAS_FUENTES, 'comprobante'])
@@ -72,7 +77,7 @@ export async function leerFuentes(google) {
        from public.compra_sheet where proveedor ~* '^\\s*(arca|afip)\\s*$'`)).rows)
   // LOS DOS CÁLCULOS NO LEEN NADA PROPIO: su fuente es ARCA, y su suerte la deciden sus insumos (DEPENDE).
   for (const l of ['arca_iva', 'arca_iibb']) estado[l] = estado.arca?.ok ? { ok: true, leidas: estado.arca.leidas } : { ok: false, error: 'arca no leyó' }
-  return { estado, ddjjIva, ddjjIibb, f931, cobranzas, arca, banco, compras }
+  return { estado, ddjjIva, ddjjIibb, ddjjGanancias, veps, f931, cobranzas, arca, banco, compras }
 }
 
 /** Las filas de las dos tablas, a partir de lo leído. Sin E/S. */
@@ -80,17 +85,20 @@ export function construir(f) {
   const oblF931 = obligacionesF931(f.f931 ?? [])
   const totalesF931 = new Map(oblF931.map((o) => [o.periodo, o.determinado]))
   const deCompras = pagosDeCompras(f.compras ?? [], { f931: totalesF931 })
-  const pagos = sinPagosRepetidos([
+  // LA IMPUTACIÓN SUBE DE FUERZA EN ESTE ORDEN: importe (dentro de pagosDelBanco/Compras) → el comprobante
+  // del VEP (documento) → lo que declaró el dueño, sólo para lo que siguió sin imputar.
+  const pagos = imputarDeclaradas(imputarPorVep(sinPagosRepetidos([
     ...pagosDelBanco(f.banco ?? [], { f931: totalesF931, cuotasPlan: deCompras.cuotasPlan }),
     ...deCompras.pagos,
     ...(f.cobranzas ? pagosDeCobranzas(f.cobranzas.filas, f.cobranzas.cols) : []),
-  ])
+  ]), f.veps ?? []))
   const libro = libroPorPeriodo(f.arca ?? [])
   const arcaAl = iso((f.arca ?? []).reduce((m, r) => (r.fecha_emision > m ? r.fecha_emision : m), null))
   const bancoAl = iso((f.banco ?? []).reduce((m, r) => (r.fecha > m ? r.fecha : m), null))
   const obligaciones = conEstadoDePago([
     ...obligacionesIvaDDJJ(f.ddjjIva ?? []),
     ...obligacionesIibbDDJJ(f.ddjjIibb ?? []),
+    ...obligacionesGananciasDDJJ(f.ddjjGanancias ?? []),
     ...oblF931,
     ...obligacionesIvaCalculadas({ libro, ddjjs: f.ddjjIva ?? [], creditos: creditosPorPeriodo(pagos, 'iva'), datosAl: arcaAl }),
     ...obligacionesIibbEstimadas({ libro, ddjjs: f.ddjjIibb ?? [], creditos: creditosPorPeriodo(pagos, 'iibb'), datosAl: arcaAl }),
@@ -104,6 +112,7 @@ export function construir(f) {
     arca: arcaAl, banco: bancoAl,
     ddjj_iva_pdf: hasta(obligaciones.filter((o) => o.lector === 'ddjj_iva_pdf')),
     ddjj_iibb_pdf: hasta(obligaciones.filter((o) => o.lector === 'ddjj_iibb_pdf')),
+    ddjj_ganancias_pdf: hasta(obligaciones.filter((o) => o.lector === 'ddjj_ganancias_pdf')),
     f931_raw: hasta(obligaciones.filter((o) => o.lector === 'f931_raw')),
   }
   return { obligaciones, pagos, arcaAl, datosAl }

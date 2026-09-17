@@ -22,7 +22,7 @@
  * corrida no la ve, es que el PDF no se pudo leer (el lector de Drive avisa por consola y sigue, no
  * falla), no que se despresentó. Una rectificativa llega con el mismo período y la pisa el upsert.
  */
-export const NUNCA_BORRA = Object.freeze(['ddjj_iva_pdf', 'ddjj_iibb_pdf', 'f931_raw'])
+export const NUNCA_BORRA = Object.freeze(['ddjj_iva_pdf', 'ddjj_iibb_pdf', 'ddjj_ganancias_pdf', 'f931_raw'])
 
 /** La clave natural de cada tabla. Es la misma `unique` de la migración 20260916T2000. */
 export const CLAVE = {
@@ -89,8 +89,9 @@ export function planDeEscritura({ tabla, lectores = {}, nuevas = [], existentes 
 export const DEPENDE = Object.freeze({
   arca_iva: ['arca', 'ddjj_iva_pdf', 'cobranzas', 'banco'],
   arca_iibb: ['arca', 'ddjj_iibb_pdf', 'cobranzas'],
-  banco: ['f931_raw', 'compras'],
-  compras: ['f931_raw'],
+  // Sin los comprobantes de VEP, el VEP parcial de junio vuelve a «sin imputar» y pisaría su imputación.
+  banco: ['f931_raw', 'compras', 'vep_pdf'],
+  compras: ['f931_raw', 'vep_pdf'],
 })
 
 /** El estado de cada lector con el fallo de sus insumos propagado. PURA. */
