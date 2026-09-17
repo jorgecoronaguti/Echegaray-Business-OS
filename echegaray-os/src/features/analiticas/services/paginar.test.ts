@@ -32,3 +32,11 @@ test('D6 · justo 1.000 filas pide una página más para saber que terminó', as
 test('D6 · si falla una página, null: no se publica un total a medias', async () => {
   assert.equal(await leerPaginado(servidor(2350, 1000).pedir), null)
 })
+
+test('tope de páginas: una vista que nunca termina devuelve null, no un total cortado', async () => {
+  let pedidos = 0
+  const infinito: PedirPagina = async (desde, hasta) => { pedidos++; return { data: Array.from({ length: hasta - desde + 1 }, () => 1), error: null } }
+  assert.equal(await leerPaginado(infinito), null)
+  assert.equal(pedidos, 100, 'corta en 100 páginas')
+  assert.equal(await leerPaginado(infinito, 10, 3), null)
+})
