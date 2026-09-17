@@ -83,3 +83,13 @@ describe('conGuiones', () => {
     assert.equal(conGuiones(null), '')
   })
 })
+
+it('la nota llega a TODAS las grafías del mismo proveedor: el VLOOKUP devuelve la primera (Pedro Tello, 17/09/2026)', () => {
+  const filas = filasDeLaAuxiliar({
+    proveedores: [{ nombre: 'Pedro Tello', cuit: '20123456789' }],
+    notas: [{ proveedor: 'PEDRO TELLO', nota: 'viernes 31' }],
+  })
+  const tello = filas.filter((f) => f[0].toLowerCase() === 'pedro tello')
+  assert.equal(tello.length, 2)
+  assert.deepEqual(tello.map((f) => f[2]), ['viernes 31', 'viernes 31'])
+})

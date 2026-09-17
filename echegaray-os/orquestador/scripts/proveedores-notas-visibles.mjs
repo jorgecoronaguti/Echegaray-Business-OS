@@ -33,6 +33,8 @@
 //   node orquestador/scripts/proveedores-notas-visibles.mjs --aplicar  → escribe y verifica
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
+import { antesDeEscribirLaColumna } from '../lib/proveedores-notas-rescate.mjs'
+import { anteriorDeLaSonda } from '../lib/sonda-estado.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query } from '../lib/db.mjs'
 import { geometriaDeLaSeccion } from '../lib/proveedores-pivot-seccion1.mjs'
@@ -111,6 +113,13 @@ async function main() {
     + ` · el detalle ("${subtituloDetalle()}") empieza en la ${iSub + 1}`)
   if (hasta - desde < 1) throw new Error('el cuadro no tiene filas entre sus rótulos y el detalle: no escribo')
   if (!APLICAR) { console.log('\n(sin --aplicar: no se escribió nada)'); return }
+
+  // ═══ LO QUE EL DUEÑO ESCRIBIÓ EN «QUÉ HACER» SE RESCATA ANTES DE TOCAR LA COLUMNA (17/09/2026) ═══
+  //
+  // Esta corrida reescribe la fórmula de la D con `espejo: true`, que saltea la guarda central: un texto a mano en
+  // la D se perdía sin aviso. Se lee y se guarda en `proveedor_notas` primero; si no se puede, o si la
+  // pestaña muestra algo que no se puede atribuir, tira y no se escribe nada. Ver lib/proveedores-notas-rescate.mjs.
+  await antesDeEscribirLaColumna({ google, fileId: ID, query: query, anterior: await anteriorDeLaSonda(ID), log: (x) => console.log(x) })
 
   const meta = await google.getSheetMeta(ID)
   const hoja = meta.find((s) => s.title === PESTAÑA)

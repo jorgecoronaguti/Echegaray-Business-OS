@@ -7,7 +7,7 @@ import {
   CONFIG_DE_REFRESCO as CFG, EDICION_INACTIVA_MS, ESTADO_INICIAL, decidir, hayEdicionEnCurso, momentoDeRefresco, registrarAviso,
   tablaQueImporta, trasRefrescar,
 } from './planDeRefresco.ts'
-import { TABLAS_CON_AVISO } from './tablas.ts'
+import { TABLAS_AVISADAS_POR_SINCRONIZADOR, TABLAS_CON_AVISO } from './tablas.ts'
 
 const LIBRE = { editando: false, oculta: false }
 const TABLAS = new Set(['registros_hh', 'liquidacion_linea'])
@@ -89,6 +89,17 @@ test('la lista del navegador es EXACTAMENTE la de las migraciones: ninguna panta
   }).sort()
   assert.deepEqual([...TABLAS_CON_AVISO].sort(), delSql)
   assert.equal(new Set(delSql).size, delSql.length, 'tabla repetida en las migraciones')
+})
+
+test('una tabla avisada por su sincronizador: el script la avisa de verdad y NO tiene trigger', () => {
+  const raiz = fileURLToPath(new URL('../../../', import.meta.url))
+  const conTrigger = new Set<string>(TABLAS_CON_AVISO)
+  for (const [tabla, script] of Object.entries(TABLAS_AVISADAS_POR_SINCRONIZADOR)) {
+    assert.equal(conTrigger.has(tabla), false, `${tabla} con trigger avisaría en cada corrida del sync`)
+    const fuente = readFileSync(join(raiz, script), 'utf8')
+    // Que el script importe el aviso no alcanza: tiene que llamarlo sobre ESA tabla.
+    assert.match(fuente, new RegExp(`avisarSiCambio\\(db, \\{ tabla: 'public\\.${tabla}'`), `${script} no avisa ${tabla}`)
+  }
 })
 
 test('un foco OLVIDADO en un campo deja de frenar el refresco; quien está tecleando sigue protegido (16/09/2026)', () => {

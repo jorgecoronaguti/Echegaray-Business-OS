@@ -48,12 +48,13 @@ scripts · 14 timers en producción.
 |---|---|---|
 | saldo bancario | `_BANCO_RAW` (réplica del extracto) | pegar un número a mano |
 | lo que se debe / se cobra | el libro `_MOVIMIENTOS` | recalcular en cada vista |
-| compras | pestaña `Compras` → espejo `public.compra_sheet` (timer 1 h) | escribir Postgres y esperar que suba |
+| compras | pestaña `Compras` → espejo `public.compra_sheet` (sonda de versión de Drive cada 1 min + timer 10 min; avisa en vivo sólo si cambió, `lib/espejo-aviso.mjs`) | escribir Postgres y esperar que suba |
 | un papel que se SUBE al legajo desde la ficha (certificado médico, DNI, alta IERIC, examen médico, EPP, telegrama, contrato) | `public.entidad_documento` tipo `persona` + bucket privado `documentos-legajo` (NO hay `persona_documento`: es la misma tabla de las cuatro fichas, 20260910T2320 + 20260916T0100) · reglas puras `src/features/documentos/services/subidaDeDocumento.ts` · el certificado médico lleva `licencia_desde/hasta` y se cruza con `asistencia_dia` en `certificadoDeLicencia.ts` («cubre N días», clip en la celda) · un papel que YA está en Drive entra con `orquestador/scripts/legajo-documento-desde-drive.mjs --file <id> --persona <uuid> --como <email>` (ensayo por defecto, `--aplicar`) | crear otra tabla de documentos por entidad; inventar la licencia desde el certificado: el jefe la declara, el papel la respalda |
 | los papeles de cada persona (activa o inactiva) | Drive `1. ACTIVOS` / `2. INACTIVOS` → espejo `public.documentacion_legajo` con `scripts/legajos-sincronizar.mjs --aplicar` (timer `echegaray-espejo-legajos` cada 6 h; unidades en `orquestador/systemd/`, se instalan copiándolas a `~/.config/systemd/user/` + `daemon-reload` + `enable --now`; constancia en `documento_espejo_corrida` ámbito `legajos`) | recorrer otro bucket de la raíz como si fuera de personas; borrar una fila porque el archivo no está: se marca `ausente_en_drive` |
 | el catálogo de TODO el Drive (qué archivo existe y dónde) | `public.drive_index` (4.232 filas) ← `scripts/indexar-drive.mjs` (timer `echegaray-drive-index` cada 6 h) + reglas puras en `orquestador/lib/drive-indice.mjs`; raíces por defecto `administracion` + `archivo-fiscal` (`libro-sueldos` NO está: sus 132 filas están congeladas desde que alguien corrió con `ORQ_DRIVE_INDEX_ROOTS` a mano) | BORRAR una fila porque la corrida no la vio: desde el 10/09/2026 se MARCA `ausente_en_drive` y sólo si su carpeta padre se listó ENTERA (`planDeAusencia`). La papelera se indexa con `trashed`, no desaparece |
 | la pestaña «Materiales» del Flujo de Caja | `orquestador/scripts/materiales-pestana.mjs` (dueño desde el 09/09/2026; reusa `costo-materiales`, `materiales-por-obra`, `control-arca-bloque`) | tocar `proveedores-materiales-pestana.mjs`, que está RETIRADO |
 | proveedores | `public.proveedores`, identidad por **CUIT** | crear por nombre parecido |
+| la nota «Qué hacer» de un proveedor | `public.proveedor_notas` por `claveProv` de la grafía de Compras · Sheet→base: la sonda lee la D de Proveedores por la FORMA de la celda (`lib/proveedores-notas-hoja.mjs`) · app→Sheet: `proveedor_nota_pedir` + `comunicacion/compras/cola-nota.mjs` escribe la C de `_PROVEEDORES_OS` | escribir la nota en la fila de la D: la dinámica se reordena |
 | los papeles de un proveedor | dos tablas distintas: `proveedor_papel` (vista) DERIVA los comprobantes de sus compras · `public.proveedor_documento` + bucket privado `proveedores-documentos` guarda lo que se SUBE contra la ficha (contrato, seguro, habilitación, audiovisual; cara «Documentos», baja lógica, sonda `scripts/proveedor-documentos-sonda.mjs --escribir`) | mezclarlas: dar de baja un contrato no es borrar una factura |
 | efectivo | el arqueo sellado + movimientos posteriores | inferir del Sheet |
 | costo proyectado de una obra | `public.obra_egreso_proyectado` (materiales + mano de obra, una fila cada uno) | volver a estampar el número en la celda: la C de OBRAS lo SUMA de `_OBRAS_RAW` |
@@ -82,7 +83,8 @@ node scripts/higiene-worktrees.mjs [--ejecutar]
 | `echegaray-comunicacion-ws` | el bot @os por WebSocket |
 | `echegaray-comunicacion-worker` | cola de tareas + vigía de fajos mudos (5 min) |
 | `echegaray-flujo-caja.timer` | regenera el Sheet |
-| `echegaray-compras-sync.timer` | Compras → `compra_sheet` (1 h) |
+| `echegaray-compras-sync.timer` | Compras → `compra_sheet` (10 min, red de seguridad) |
+| `echegaray-sonda-flujo-caja.timer` | versión de Drive cada 1 min → sync Compras + notas «Qué hacer» de Proveedores (`lib/sonda-flujo-caja.mjs`) |
 | `echegaray-comprobantes-web.timer` | cola de comprobantes de la web (1 min) |
 
 **Los servicios de comunicación y el gateway XSAS NO corren desde el árbol principal** (verificado

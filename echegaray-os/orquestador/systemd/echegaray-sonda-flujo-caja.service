@@ -1,0 +1,30 @@
+# LA SONDA DEL FLUJO DE CAJA: ¿cambió el archivo? → sync de Compras + notas «Qué hacer» de Proveedores.
+# La lógica y el porqué, en `orquestador/lib/sonda-flujo-caja.mjs`.
+#
+# NO ESCRIBE EL SHEET: abre Google con alcance de sólo lectura. Escribe `public.proveedor_notas` y el
+# estado de la última versión atendida en ~/.local/state/echegaray-os/sonda-flujo-caja.json.
+#
+# NO INSTALADA. Se instala copiándola a ~/.config/systemd/user/ junto con su .timer, `daemon-reload` y
+# `enable --now echegaray-sonda-flujo-caja.timer`. Antes: desplegar el código en producción (esta
+# unidad corre desde ese checkout). La migración de RLS de `proveedor_notas` no es requisito: la sonda
+# escribe por DATABASE_URL.
+[Unit]
+Description=Echegaray OS - Sonda del Flujo de Caja (version de Drive -> sync Compras + notas Proveedores)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
+Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/sonda-flujo-caja.mjs
+# Una vuelta sin cambios es medio segundo. Con cambios espera al sync (2,8 s medidos, su unidad corta a
+# los 3 min) y lee Proveedores dos veces: 240 s cubre el peor caso sin cortar al sync por la mitad.
+TimeoutStartSec=240
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sonda-flujo-caja
+
+[Install]
+WantedBy=default.target

@@ -40,6 +40,7 @@ import { asignadorConColumnaObra, asignadorDeCompras, catalogosDeAsignacion, pla
 import { aplicarCambiosPendientes, catalogoDeDestinos, proyectarObraDeFila } from '../lib/obra-destino.mjs'
 import { superponerPagosPendientes } from '../lib/pagos-pendientes.mjs'
 import { planDeReconciliacion, proveedorPorArchivo } from '../lib/comprobantes/reconciliar-adjuntos.mjs'
+import { avisarSiCambio, fotografiar, lineaDeAviso } from '../lib/espejo-aviso.mjs'
 
 const DRY = process.argv.includes('--dry')
 
@@ -353,6 +354,7 @@ async function main() {
   let enCostos = 0
   let plan = null
   let asignacion = null
+  let aviso = null
   try {
     enCostos = await withTx(async (db) => {
       // ═══ DOS CORRIDAS NO SE PISAN (08/09/2026) ═══
@@ -365,7 +367,11 @@ async function main() {
       // serializa —la segunda espera y arranca cuando la primera ya commiteó— y se suelta solo en
       // el commit o el rollback: no hay forma de dejarlo tomado.
       await db.query("select pg_advisory_xact_lock(hashtext('sync-compras'))")
+      // EL AVISO EN VIVO, SÓLO SI EL CONTENIDO CAMBIÓ (17/09/2026). La foto va DESPUÉS del lock: tomada
+      // antes, compararía contra lo que la corrida concurrente ya reemplazó. Ver lib/espejo-aviso.mjs.
+      await fotografiar(db, 'public.compra_sheet')
       await escribirEspejo(db, compras, obraPorFila)
+      aviso = await avisarSiCambio(db, { tabla: 'public.compra_sheet', clave: 'fila' })
       const n = await escribirCostosObra(db, compras, obraPorFila)
       asignacion = await escribirAsignacion(db, compras, asignar)
       plan = await reconciliarAdjuntos(db, compras)
@@ -376,6 +382,7 @@ async function main() {
     await closePool(); process.exit(1)
   }
   console.log(`compra_obra_asignada: ${resumenDeAsignacion(asignacion ?? [])}`)
+  if (aviso) console.log(lineaDeAviso(aviso))
 
   await query(
     `insert into public.integraciones (slug, nombre, estado, salud, ultimo_sync, notas)

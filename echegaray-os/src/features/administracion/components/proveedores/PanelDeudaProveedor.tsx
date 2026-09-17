@@ -11,6 +11,11 @@
 // empujar nada a un scroll lateral. Un segundo panel propio habría sido un tercer comportamiento
 // para el mismo gesto.
 //
+// ═══ LO ÚNICO QUE SE EDITA ACÁ ES «QUÉ HACER» (17/09/2026) ═══
+//
+// La nota es del proveedor, no de una compra: no tiene fila en Compras donde corregirse. Viaja al Sheet
+// por su cola (`NotaQueHacer`). Todo lo demás se sigue corrigiendo en Compras.
+//
 // ═══ CADA LÍNEA LLEVA A SU FILA EN COMPRAS ═══
 //
 // `/administracion/compras?s=<fila>` es el mismo destino que usa el CRM: Compras es donde se corrige
@@ -39,6 +44,8 @@ import { plataCentavos } from '@/shared/utils/format'
 import { diaMesAnioISO, diaMesISO } from '@/shared/utils/fecha'
 import { conceptoConCuotaAdelante } from '../../services/deudaProveedores'
 import type { DetalleDeuda, LineaDeuda } from '../../services/deudaProveedores'
+import type { NotaDeProveedor } from '../../services/notasDeDeuda'
+import { NotaQueHacer } from './NotaQueHacer'
 
 const MONO = 'font-mono tabular-nums'
 const COLS = '44px minmax(0,1fr) 96px'
@@ -50,8 +57,10 @@ const CABEZA = {
   fontSize: '10px', letterSpacing: '.06em', textTransform: 'uppercase', color: V.tenue,
 } as const
 
-export function PanelDeudaProveedor({ detalle, obras, hoy, aviso, cerrarHref, fichaHref, hrefComprasBase }: {
+export function PanelDeudaProveedor({ detalle, nota, obras, hoy, aviso, cerrarHref, fichaHref, hrefComprasBase }: {
   detalle: DetalleDeuda
+  /** `null` = no hay nota que mostrar (sin grafía de Compras o sin lectura de notas). */
+  nota: NotaDeProveedor | null
   /** `obra_id` → nombre de la obra, SIN el código interno. Un id que no está se dibuja «—». */
   obras: Map<string, string>
   hoy: string
@@ -74,6 +83,8 @@ export function PanelDeudaProveedor({ detalle, obras, hoy, aviso, cerrarHref, fi
       onCerrar={() => router.push(cerrarHref)}
       testid="panel-deuda-proveedor"
     >
+      {/* La `key` reinicia el campo cuando el Sheet trae otra nota o el pedido se resuelve. */}
+      {nota && <NotaQueHacer key={`${nota.claveNota}|${nota.nota}|${nota.pendiente ?? ''}`} nota={nota} />}
       {vencidas.length > 0 && <Bloque titulo="Vencido" lineas={vencidas} total={detalle.vencido} obras={obras} base={hrefComprasBase} problema />}
       {porVencer.length > 0 && <Bloque titulo="Por vencer" lineas={porVencer} total={detalle.porVencer} obras={obras} base={hrefComprasBase} />}
       {sinFecha.length > 0 && <Bloque titulo="Sin fecha prevista" lineas={sinFecha} total={detalle.sinFecha} obras={obras} base={hrefComprasBase} problema />}
