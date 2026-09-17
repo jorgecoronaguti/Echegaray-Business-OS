@@ -60,7 +60,9 @@ export const TABLAS_DE = {
   /** Impuestos: lo que escribe el sincronizador (`impuestos-a-postgres.mjs`). */
   impuestos: unir(['impuesto_obligacion', 'impuesto_pago', 'impuesto_sincronizacion']),
   /** «A quién le debo» sale de `compra_sheet`: sin ella, un pago marcado en el Sheet no llegaba en vivo. */
-  proveedores: unir(PROVEEDOR, ['subcontrato_documento', 'comprobantes_arca', 'compra_sheet']),
+  proveedores: unir(PROVEEDOR, [
+    'subcontrato_documento', 'comprobantes_arca', 'compra_sheet', 'proveedor_notas', 'proveedor_nota_cambio',
+  ]),
   obras: unir(OBRA, ['clientes', 'certificados', 'subcontrato']),
   gantt: ['obra_canonica', 'obra_actividad', 'obra_ejecucion', 'obra_restriccion'],
   fichaObra: unir(OBRA, [
