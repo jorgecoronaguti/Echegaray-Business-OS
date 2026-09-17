@@ -58,7 +58,7 @@ function Vista({ filtros, d, periodo }: {
     case 'obra': return <VistaObra obras={d.obras} filtros={filtros} ritmos={d.ritmos} />
     case 'hora': return <VistaHora obras={d.obras} periodo={periodo} />
     case 'caja': return <VistaCaja egresos={d.egresos} periodo={periodo} />
-    case 'nomina': return <VistaNomina filas={d.nomina} quincenas={d.quincenas} personas={d.personas} rango={d.rango} periodo={periodo} />
+    case 'nomina': return <VistaNomina filas={d.nomina} quincenas={d.quincenas} personas={d.personas} rango={d.rango} periodo={periodo} hoy={d.hoy} />
     case 'cobranza': return (
       <VistaCobranza cuenta={d.cuentaCorriente} documentos={d.documentos} hoy={d.hoy} periodo={periodo}
         gastado={cifrasResumen(d.cartera, d.sinObra).gastadoEnObras} />

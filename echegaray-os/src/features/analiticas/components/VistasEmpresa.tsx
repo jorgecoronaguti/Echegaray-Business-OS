@@ -78,15 +78,18 @@ export function VistaCaja({ egresos, periodo }: { egresos: unknown[] | null; per
   )
 }
 
-export function VistaNomina({ filas, quincenas, personas, rango, periodo }: {
+export function VistaNomina({ filas, quincenas, personas, rango, periodo, hoy }: {
   filas: unknown[] | null
   quincenas: unknown[] | null
   personas: unknown[] | null
   rango: { desde: string | null; hasta: string | null }
   periodo: string
+  hoy: string
 }) {
   if (!filas) return <SinLectura que="la nómina" />
-  const { base, meses } = nomina(filas, rango, quincenas ?? [])
+  const { base, meses: todos } = nomina(filas, rango, quincenas ?? [])
+  // LOS MESES QUE VIENEN NO SON NÓMINA: `nomina_por_mes` proyecta hasta diciembre. Se dibuja hasta hoy.
+  const meses = todos.filter((m) => m.mes <= hoy.slice(0, 7))
   const ultimo = meses.filter((m) => m.estado === 'real').at(-1)
   const seis = seisMesesReales(meses)
   const incompletos = meses.filter((m) => m.estado !== 'real').length

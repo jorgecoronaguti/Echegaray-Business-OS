@@ -133,7 +133,9 @@ function Rubro({ c, escala, grande = false }: { c: CeldaVista; escala: number; g
           {c.gastado != null ? fmt(c.gastado) : <span className="font-normal">{c.gastadoAusente ?? (esHH ? 'sin horas' : '—')}</span>}
         </div>
       </div>
-      {grande ? <LecturaRubro c={c} /> : c.estimada ? <div className="pl-[60px] text-[10.5px] text-faint">{c.estimada}</div> : null}
+      {grande ? <LecturaRubro c={c} /> : null}
+      {/* LA MANO DE OBRA ESTIMADA SE DICE; en las filas la línea existe en todos los rubros para que no se desalineen. */}
+      {!grande || c.estimada ? <div className="h-3.5 truncate pl-[60px] text-[10.5px] text-faint">{c.estimada ?? '\u00a0'}</div> : null}
     </div>
   )
 }
@@ -146,6 +148,6 @@ function LecturaRubro({ c }: { c: CeldaVista }) {
   if (l?.tipo === 'excedido') { texto = `excedido en ${millones(l.monto)}`; color = 'text-neg' }
   if (l?.tipo === 'sinMovimiento') texto = 'sin movimiento'
   if (l?.tipo === 'sinPresupuesto') { texto = 'gasto sin presupuesto'; color = 'text-warn' }
-  const partes = [texto, c.estimada].filter(Boolean)
-  return <div className={`truncate pl-[60px] text-[11.5px] ${color}`}>{partes.join(' · ') || ' '}</div>
+
+  return <div className={`truncate pl-[60px] text-[11.5px] ${color}`}>{texto ?? '\u00a0'}</div>
 }
