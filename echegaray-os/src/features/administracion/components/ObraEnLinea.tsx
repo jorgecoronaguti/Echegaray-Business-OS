@@ -26,14 +26,25 @@
 // cambio se guarda pero la fila vuelve a dibujarse con lo viejo hasta que alguien recargue — y una
 // pantalla que muestra lo viejo después de un ✓ es la pantalla desmintiendo su propio acuse.
 //
+// ═══ CMD/CTRL+Z Y CMD/CTRL+SHIFT+Z (dueño, 17/09/2026) ═══
+//
+// Cada elección pasa por `useGuardadoDeshacible`, la MISMA pila que `InlineEdit`. Deshacer vuelve a
+// llamar a `asignarObraDeCompra` con la obra anterior y con `esperado` = la que acaba de quedar: si
+// otra persona la movió en el medio, la base rechaza y el aviso lo dice, en vez de pisarla.
+//
+// LO QUE EL DESHACER NO DESHACE ACÁ: la escritura ENCOLADA de la celda del Sheet. Deshacer encola
+// otra escritura con la obra anterior — el worker termina escribiendo lo correcto, pero la cola
+// queda con los dos pasos. Es el precio de que el Sheet no lo escriba la app.
+//
 // ═══ LO QUE ESTE CONTROL NO PROMETE ═══
 //
 // Que la celda del Sheet ya diga eso. Queda guardada en el OS y encolada; el worker la escribe. El
 // acuse dice «guardada», no «en el Sheet»: afirmar el efecto que todavía no ocurrió es exactamente
 // lo que el principio de cierre prohíbe.
 
-import { useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { useEstadoDelServidor } from '@/shared/tiempo-real/useEstadoDelServidor'
+import { useCeldaViva, useGuardadoDeshacible } from '@/shared/components/deshacer/DeshacerProvider'
 import { V } from '@/shared/components/v2/patron'
 import { asignarObraDeCompra } from '../services/obraDeCompraActions'
 
@@ -64,6 +75,35 @@ export function ObraEnLinea({
   const [error, setError] = useState<string | null>(null)
   const [pendiente, empezar] = useTransition()
 
+  // LO QUE LA BASE TIENE HOY según esta pantalla: es el `esperado` de la próxima escritura. Se lee de una
+  // referencia y no del estado porque el deshacer lo consulta fuera del render.
+  const enBase = useRef(celda ?? NINGUNA)
+  const valorRef = useRef(valor)
+  useEffect(() => {
+    enBase.current = guardado ?? celda ?? NINGUNA
+    valorRef.current = valor
+  })
+  const clave = `obra-de-la-compra-${fila}`
+
+  async function escribir(nuevo: string, esperado?: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    const r = await asignarObraDeCompra(fila, nuevo, esperado ?? enBase.current, revalidarProveedor)
+    if (!r.ok) return { ok: false, error: r.error }
+    setGuardado(nuevo)
+    return { ok: true }
+  }
+
+  const guardarDeshacible = useGuardadoDeshacible({
+    clave,
+    rotulo: `Obra de la fila ${fila}`,
+    valorAnterior: valor,
+    guardar: (v, contexto) => escribir(v, contexto?.esperado),
+    formato: (v) => (v === NINGUNA ? 'sin imputar' : v),
+  })
+
+  useCeldaViva(clave, { actual: () => valorRef.current, aplicar: (v) => setValor(v) })
+
+  // TODOS LOS HOOKS ANTES DE ESTE CORTE: React los cuenta por orden, y un `return` en el medio
+  // cambiaría ese orden entre un render y el siguiente.
   if (!editable) {
     return (
       <span className="truncate" style={{ fontSize: cuerpo, color: rotulo ? V.tintaSuave : V.neg }}>
@@ -82,15 +122,13 @@ export function ObraEnLinea({
     setError(null)
     setGuardado(null)
     empezar(async () => {
-      const r = await asignarObraDeCompra(fila, nuevo, guardado ?? celda ?? '', revalidarProveedor)
+      const r = await guardarDeshacible(nuevo)
       if (!r.ok) {
         // Vuelve a lo que había: dejar en pantalla una obra que la base rechazó es la pantalla
         // afirmando un cambio que no ocurrió.
         setValor(anterior)
         setError(r.error)
-        return
       }
-      setGuardado(nuevo)
     })
   }
 

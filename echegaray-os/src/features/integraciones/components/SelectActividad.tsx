@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CAMPO } from '@/shared/components/ds'
+import { useCeldaViva, useGuardadoDeshacible } from '@/shared/components/deshacer/DeshacerProvider'
 import type { ActividadOpcion } from '../services/operacionGlobalService'
 import type { ActionState } from '../services/pedidosActions'
 
@@ -13,6 +14,13 @@ import type { ActionState } from '../services/pedidosActions'
 //
 // ES OPCIONAL Y SE VE QUE LO ES: «sin asignar» en `faint`, no un hueco. La obra sigue siendo el eje
 // del pedido; esto contesta «¿qué está esperando esta actividad?» cuando alguien lo sabe.
+//
+// ═══ CMD/CTRL+Z Y CMD/CTRL+SHIFT+Z (dueño, 17/09/2026) ═══
+//
+// La elección se apila en la MISMA pila de la plataforma (`useGuardadoDeshacible`). Deshacer vuelve a
+// llamar a `alElegir` con la actividad anterior: es la misma escritura, no un camino aparte. `clave` es
+// obligatoria porque el deshacer necesita distinguir una fila de las otras treinta — con el `testid`
+// compartido, Cmd+Z habría restaurado el pedido equivocado.
 //
 // ═══ UNA ASIGNACIÓN QUE NO ESTÁ EN LA LISTA NO SE PISA EN SILENCIO ═══
 //
@@ -26,30 +34,58 @@ export function SelectActividad({
   actividades,
   alElegir,
   testid = 'pedido-actividad',
+  clave,
+  rotulo = 'Actividad del pedido',
 }: {
   valor: string | null
   actividades: ActividadOpcion[]
   alElegir: (actividadId: string) => Promise<ActionState>
   testid?: string
+  /** Qué fila es, para el deshacer. Sin esto todas las filas comparten paso y se restaura la que no es. */
+  clave: string
+  /** Cómo se nombra en el aviso: «Actividad del pedido 1042». */
+  rotulo?: string
 }) {
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [elegida, setElegida] = useState(valor ?? '')
+  const elegidaRef = useRef(elegida)
+  useEffect(() => { elegidaRef.current = elegida })
   const huerfana = Boolean(valor) && !actividades.some((a) => a.id === valor)
+
+  const nombre = (id: string) => {
+    if (id === '') return 'sin asignar'
+    const a = actividades.find((x) => x.id === id)
+    return a ? (a.codigo ? `${a.codigo} · ${a.nombre}` : a.nombre) : 'actividad fuera de la lista'
+  }
+
+  const guardarDeshacible = useGuardadoDeshacible({
+    clave, rotulo, valorAnterior: elegida, formato: nombre,
+    guardar: async (v) => {
+      const r = await alElegir(v)
+      return r.error ? { ok: false as const, error: r.error } : { ok: true as const }
+    },
+  })
+
+  useCeldaViva(clave, { actual: () => elegidaRef.current, aplicar: (v) => setElegida(v) })
 
   return (
     <span className="flex min-w-0 flex-col gap-0.5">
       <select
-        defaultValue={valor ?? ''}
+        value={elegida}
         disabled={guardando}
         data-testid={testid}
         aria-label="Para la actividad"
         className={`${CAMPO} h-[30px] max-w-[220px] border-line px-1.5 py-0 text-[12.5px] text-muted max-lg:h-control-movil`}
         onChange={async (e) => {
+          const anterior = elegida
+          const nuevo = e.target.value
+          setElegida(nuevo)
           setGuardando(true)
           setError(null)
-          const r = await alElegir(e.target.value)
+          const r = await guardarDeshacible(nuevo)
           setGuardando(false)
-          setError(r.error)
+          if (!r.ok) { setElegida(anterior); setError(r.error) }
         }}
       >
         <option value="">sin asignar</option>
