@@ -146,3 +146,16 @@ test('sin la migración de la cola, el worker no hace nada', async () => {
   const port = { query: async () => ({ rows: [{ hay: false }] }) }
   assert.deepEqual(await procesarColaNotas({ port, google: {}, dry: false }), { sinCola: true })
 })
+
+test('dos grafías en la auxiliar (Pedro Tello / PEDRO TELLO): se escriben las dos; si difieren, no se pisa', async () => {
+  const aux = [['Proveedor', 'CUIT', 'Qué hacer'], ['Hormiserv', '', 'esperar al cobrador'], ['HORMISERV', '', 'esperar al cobrador']]
+  const google = sheetFalso({ aux })
+  const port = baseFalsa({ nota: 'esperar al cobrador' })
+  assert.equal(await aplicarNota({ port, google, fileId: 'x', pedido: pedido() }), 'aplicado')
+  assert.deepEqual(google.escrituras.map(([r]) => r), ["'_PROVEEDORES_OS'!C2", "'_PROVEEDORES_OS'!C3"])
+
+  const hoy = [['Proveedor', 'CUIT', 'Qué hacer'], ['Hormiserv', '', ''], ['HORMISERV', '', 'esperar al cobrador']]
+  const g2 = sheetFalso({ aux: hoy })
+  assert.equal(await aplicarNota({ port: baseFalsa({ nota: 'esperar al cobrador' }), google: g2, fileId: 'x', pedido: pedido() }), 'rechazado')
+  assert.deepEqual(g2.escrituras, [])
+})

@@ -27,6 +27,8 @@
 // repetida en la mayoría de las filas deja de informar y corre el ojo hacia la columna que menos
 // decide.
 
+import { claveProv } from './proveedor-notas.mjs'
+
 /** El contrato de la auxiliar: qué dice cada columna. Las fórmulas que la leen dependen del ORDEN. */
 export const ENCABEZADOS_AUX = Object.freeze(['Proveedor', 'CUIT', 'Qué hacer'])
 
@@ -53,9 +55,17 @@ export function filasDeLaAuxiliar({ proveedores = [], notas = [] } = {}) {
   const porNombre = new Map(notas
     .map((n) => [String(n?.proveedor ?? '').trim(), String(n?.nota ?? '').trim()])
     .filter(([nombre, nota]) => nombre && nota))
+  // ═══ LA NOTA VA EN TODAS LAS GRAFÍAS DEL MISMO PROVEEDOR (17/09/2026) ═══
+  //
+  // Medido en el archivo: «Pedro Tello» (del maestro, sin nota) quedó en la fila 76 y «PEDRO TELLO» (la
+  // grafía de Compras, con «viernes 31») en la 77. El VLOOKUP de «Qué hacer» no distingue mayúsculas y
+  // devuelve la PRIMERA: la pestaña mostraba vacío sobre una nota que existe, y la app —que la busca
+  // por `claveProv`— la mostraba. Dos versiones del mismo dato. No se fusionan las filas: el VLOOKUP sí
+  // distingue tildes, y cada grafía tiene que seguir encontrándose; se repite la nota en cada una.
+  const porClave = new Map([...porNombre].map(([nombre, nota]) => [claveProv(nombre), nota]))
   const cuits = new Map(proveedores
     .map((p) => [String(p?.nombre ?? '').trim(), p?.cuit])
     .filter(([nombre]) => nombre))
   const nombres = [...new Set([...cuits.keys(), ...porNombre.keys()])].sort((a, b) => a.localeCompare(b, 'es'))
-  return [[...ENCABEZADOS_AUX], ...nombres.map((n) => [n, conGuiones(cuits.get(n)), porNombre.get(n) ?? ''])]
+  return [[...ENCABEZADOS_AUX], ...nombres.map((n) => [n, conGuiones(cuits.get(n)), porNombre.get(n) ?? porClave.get(claveProv(n)) ?? ''])]
 }

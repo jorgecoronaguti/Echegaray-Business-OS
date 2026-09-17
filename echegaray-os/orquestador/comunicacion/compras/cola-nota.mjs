@@ -95,12 +95,16 @@ function mirarProveedores(observacion, pedido) {
   return { mias, reponer, editadaAMano: aMano.length > 0 }
 }
 
-/** La fila del proveedor en la auxiliar (base 1), o la primera vacía para agregarlo. */
+/**
+ * Las filas del proveedor en la auxiliar (base 1) —TODAS sus grafías: el VLOOKUP lee la primera y
+ * `filasDeLaAuxiliar` repite la nota en cada una—, o la primera fila vacía para agregarlo.
+ */
 function mirarAuxiliar(aux, clave) {
-  const i = aux.findIndex((f, k) => k > 0 && claveProv(f?.[0]) === clave)
-  if (i > 0) return { fila: i + 1, actual: T(aux[i]?.[2]), existe: true }
+  const filas = aux.map((f, k) => ({ fila: k + 1, nombre: f?.[0], actual: T(f?.[2]) }))
+    .filter((x) => x.fila > 1 && claveProv(x.nombre) === clave)
+  if (filas.length) return { filas, existe: true }
   const libre = aux.findIndex((f, k) => k > 0 && !T(f?.[0]) && !T(f?.[2]))
-  return { fila: libre > 0 ? libre + 1 : Math.max(aux.length, 1) + 1, actual: '', existe: false }
+  return { filas: [{ fila: libre > 0 ? libre + 1 : Math.max(aux.length, 1) + 1, actual: '' }], existe: false }
 }
 
 /** LA DECISIÓN, sin efectos: la usan la corrida real y la corrida en seco. */
@@ -122,17 +126,20 @@ export async function decidirNota({ port, google, fileId, pedido }) {
   if (prov.error) return prov.error
 
   const enAux = mirarAuxiliar(aux ?? [], pedido.clave)
-  if (enAux.existe && enAux.actual !== pedido.nota_anterior && !prov.editadaAMano) {
-    return conflicto(`la auxiliar ${AUX} (fila ${enAux.fila}) dice «${enAux.actual || '(vacía)'}» y la app vio «${pedido.nota_anterior || '(vacía)'}»`)
+  const distinta = enAux.existe && enAux.filas.find((x) => x.actual !== pedido.nota_anterior)
+  if (distinta && !prov.editadaAMano) {
+    return conflicto(`la auxiliar ${AUX} (fila ${distinta.fila}) dice «${distinta.actual || '(vacía)'}» y la app vio «${pedido.nota_anterior || '(vacía)'}»`)
   }
   const celdas = [...prov.reponer.map(({ celda, escribir }) => ({ celda, escribir }))]
-  if (enAux.existe && enAux.actual !== pedido.nota_nueva) celdas.push({ celda: `'${AUX}'!C${enAux.fila}`, escribir: pedido.nota_nueva })
-  if (!enAux.existe && pedido.nota_nueva) {
-    celdas.push({ celda: `'${AUX}'!A${enAux.fila}`, escribir: pedido.proveedor }, { celda: `'${AUX}'!C${enAux.fila}`, escribir: pedido.nota_nueva })
+  if (enAux.existe) {
+    for (const x of enAux.filas) if (x.actual !== pedido.nota_nueva) celdas.push({ celda: `'${AUX}'!C${x.fila}`, escribir: pedido.nota_nueva })
+  } else if (pedido.nota_nueva) {
+    const { fila } = enAux.filas[0]
+    celdas.push({ celda: `'${AUX}'!A${fila}`, escribir: pedido.proveedor }, { celda: `'${AUX}'!C${fila}`, escribir: pedido.nota_nueva })
   }
   return {
     accion: celdas.length ? 'escribir' : 'ya_aplicado', actor, celdas,
-    filaAux: enAux.fila, filasProveedores: prov.mias.map((f) => f.fila),
+    filasAux: enAux.filas.map((x) => x.fila), filasProveedores: prov.mias.map((f) => f.fila),
   }
 }
 
@@ -153,15 +160,19 @@ async function asentarEnBase(port, fileId, pedido) {
 
 /** Relee la auxiliar y la D del proveedor: la escritura es buena cuando el Sheet MUESTRA la nota. */
 async function releer({ google, fileId, plan, pedido }) {
-  const aux = await google.readSheetValues(fileId, `'${AUX}'!A${plan.filaAux}:C${plan.filaAux}`, { render: 'FORMATTED_VALUE' })
-  const enAux = T(aux?.[0]?.[2])
+  const enAux = []
+  for (const fila of plan.filasAux) {
+    const aux = await google.readSheetValues(fileId, `'${AUX}'!A${fila}:C${fila}`, { render: 'FORMATTED_VALUE' })
+    enAux.push(T(aux?.[0]?.[2]))
+  }
   const vistas = []
   for (const fila of plan.filasProveedores) {
     const v = await google.readSheetValues(fileId, `Proveedores!${letra(colNota())}${fila}`, { render: 'FORMATTED_VALUE' })
     vistas.push(T(v?.[0]?.[0]))
   }
-  const ok = enAux === pedido.nota_nueva && vistas.every((v) => v === pedido.nota_nueva)
-  return { ok, leido: `${AUX} C${plan.filaAux}=«${enAux}»${vistas.length ? ` · Proveedores D=«${vistas.join('» «')}»` : ''}` }
+  const ok = [...enAux, ...vistas].every((v) => v === pedido.nota_nueva)
+  const auxLeido = plan.filasAux.map((f, i) => `C${f}=«${enAux[i]}»`).join(' ')
+  return { ok, leido: `${AUX} ${auxLeido}${vistas.length ? ` · Proveedores D=«${vistas.join('» «')}»` : ''}` }
 }
 
 /** APLICA UN PEDIDO. Verificar → escribir → releer → recién ahí la base. */
