@@ -345,7 +345,7 @@ function BloqueDelPanel({ bloque, detalle, children }: { bloque: ClaveDeBloque; 
   const b = BLOQUES.find((x) => x.clave === bloque)
   return (
     <div data-testid={`panel-bloque-${bloque}`} style={{
-      background: b?.fondo, borderTop: `1px solid ${V.grafito}`, borderRadius: '0 0 6px 6px', padding: '8px 12px 4px',
+      background: b?.fondo, borderTop: `1px solid ${V.grafito}`, borderRadius: 6, padding: '8px 12px 4px',
     }}>
       <Rotulo>{detalle ? `${b?.rotulo ?? bloque} · ${detalle}` : (b?.rotulo ?? bloque)}</Rotulo>
       {children}

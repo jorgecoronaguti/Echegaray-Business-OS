@@ -32,7 +32,7 @@ function cifra(rotulo: string, valor: number | null, testid: string, texto?: str
 function Grupo({ bloque, children }: { bloque: ClaveDeBloque; children: ReactNode }) {
   return (
     <section data-testid={`pie-bloque-${bloque}`} style={{
-      display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 12px 12px', borderRadius: '0 0 6px 6px',
+      display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 12px 12px', borderRadius: 6,
       background: fondoDe(bloque), borderTop: `1px solid ${V.grafito}`,
     }}>
       <div style={{ fontFamily: MONO, fontSize: '9.5px', letterSpacing: '.04em', textTransform: 'uppercase', color: V.tinta, fontWeight: 600, paddingBottom: 4 }}>
