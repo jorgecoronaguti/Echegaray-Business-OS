@@ -11,7 +11,7 @@ import { ancho, Cabecera, ENCABEZADO, rotuloMes, Seccion, SinLectura } from './P
 const veces = (x: number | null) => (x == null ? null : `${x.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ×`)
 
 /** Columnas mensuales con el valor arriba y el mes abajo; `partes` se apilan de arriba hacia abajo. */
-function Columnas({ meses }: { meses: { mes: string; valor: string | null; color?: string; partes: { alto: number; clase: string }[]; nota?: string }[] }) {
+export function Columnas({ meses }: { meses: { mes: string; valor: string | null; color?: string; partes: { alto: number; clase: string }[]; nota?: string }[] }) {
   const cruza = new Set(meses.map((m) => m.mes.slice(0, 4))).size > 1
   return (
     <div className="grid h-[220px] items-end gap-2 lg:gap-4" style={{ gridTemplateColumns: `repeat(${Math.max(meses.length, 1)}, minmax(0, 1fr))` }}>
@@ -141,13 +141,12 @@ const TONO_BANDA: Record<ClaveBanda, { fondo: string; texto: string }> = {
   d90: { fondo: 'bg-neg', texto: 'text-neg' },
 }
 
-export function VistaCobranza({ cuenta, documentos, hoy, periodo, gastado }: {
+export function VistaCobranza({ cuenta, documentos, hoy, periodo }: {
   cuenta: unknown[] | null
   /** Filas de `public.cobranzas` (deuda): de acá sale la acción del día. `null` = no se pudieron leer. */
   documentos: unknown[] | null
   hoy: string
   periodo: string
-  gastado: number | null
 }) {
   if (!cuenta) return <SinLectura que="la cuenta corriente" />
   const filas = cobranza(cuenta, documentos ?? [], hoy)
@@ -161,7 +160,6 @@ export function VistaCobranza({ cuenta, documentos, hoy, periodo, gastado }: {
           { rotulo: 'por cobrar', valor: millones(c.porCobrar) },
           { rotulo: 'a más de 60 días', valor: c.masDe60 > 0 ? millones(c.masDe60) : null, falta: 'ninguno', tono: 'neg' },
           { rotulo: 'al día', valor: c.alDia > 0 ? millones(c.alDia) : null, falta: 'ninguno', tono: 'pos' },
-          { rotulo: 'contra lo gastado en obra', valor: gastado ? veces(c.porCobrar / gastado) : null, falta: '—', nota: 'por cobrar por cada peso imputado' },
         ]} />
       <Seccion titulo="Antigüedad de lo que se debe">
         {bandas.length ? (

@@ -1,6 +1,6 @@
 'use client'
 
-// EL NIVEL 2 DE ANALÍTICAS: las siete vistas a la izquierda y los tres filtros a la derecha.
+// EL NIVEL 2 DE ANALÍTICAS: las cinco vistas a la izquierda y los tres filtros a la derecha.
 //
 // Medidas del diseño aprobado (v6): fila de 38 px sobre #FAFAF8, solapa activa con regla grafito,
 // filtros como texto compacto `Rótulo Valor ▾` que sólo se pintan de amarillo cuando se apartan del
@@ -53,7 +53,7 @@ export function BarraAnaliticas({ filtros, obras }: { filtros: Filtros; obras: O
             return (
               <Link key={v.clave} prefetch={false} href={aUrl({ ...filtros, vista: v.clave })}
                 aria-current={activa ? 'page' : undefined} data-testid={`vista-${v.clave}`}
-                className={`flex shrink-0 items-center whitespace-nowrap px-[11px] text-[12.5px] ${v.clave === 'hora' ? 'mr-3.5' : ''} ${activa ? 'font-medium text-ink shadow-[inset_0_-2px_0_rgb(var(--os-accent-rgb))]' : 'text-muted hover:text-ink'}`}>
+                className={`flex shrink-0 items-center whitespace-nowrap px-[11px] text-[12.5px] ${v.clave === 'obras' ? 'mr-3.5' : ''} ${activa ? 'font-medium text-ink shadow-[inset_0_-2px_0_rgb(var(--os-accent-rgb))]' : 'text-muted hover:text-ink'}`}>
                 {v.rotulo}
               </Link>
             )

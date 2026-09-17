@@ -55,6 +55,8 @@ export interface CabeceraDePresupuesto {
   motivo: string | null
   fuente: string
   estimado: boolean
+  /** Horas hombre que estimó la cotización. `null` = no las estimó o no son confiables. */
+  hh: number | null
 }
 
 export interface LecturaPresupuestos {
@@ -90,6 +92,7 @@ const CABECERA = z.object({
   costo_directo_presupuestado: NUM.nullable(),
   costo_pendiente_motivo: z.string().nullable(),
   fuente_legacy: z.string().nullable(),
+  hh_estimada: NUM.nullable().optional(),
 })
 
 const PARTIDA = z.object({
@@ -118,6 +121,7 @@ export function leerPresupuestos(presupuestos: unknown[] | null, partidas: unkno
     return [{
       obraId: x.obra_canonica_id, costoTotal: x.costo_directo_presupuestado ?? null,
       motivo: x.costo_directo_presupuestado == null ? motivo : null, fuente, estimado: esInferencia(fuente),
+      hh: x.hh_estimada != null && x.hh_estimada > 0 ? x.hh_estimada : null,
     }]
   })
   const filas = (partidas ?? []).flatMap((c): PresupuestoDeObra[] => {
@@ -142,6 +146,7 @@ export interface PresupuestoArmado {
   motivo: string | null
   estimado: boolean
   fuente: string
+  hh: number | null
 }
 
 /** Cabeceras y partidas juntas por obra. Una obra sin cabecera aprobada NO está en el mapa. */
@@ -150,7 +155,7 @@ export function presupuestoPorObra(lectura: Pick<LecturaPresupuestos, 'cabeceras
   for (const c of lectura.cabeceras) {
     m.set(c.obraId, {
       porRubro: { manoObra: null, materiales: null, subcontratos: null, otros: null }, estimados: [],
-      costoTotal: c.costoTotal, motivo: c.motivo, estimado: c.estimado, fuente: c.fuente,
+      costoTotal: c.costoTotal, motivo: c.motivo, estimado: c.estimado, fuente: c.fuente, hh: c.hh,
     })
   }
   for (const f of lectura.filas) {

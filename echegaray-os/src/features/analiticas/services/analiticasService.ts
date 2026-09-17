@@ -8,9 +8,9 @@ import { armarCostosPorObra, armarGastosSinObra, type GastoSinObra } from '@/fea
 import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
 import { rangoParaVista, type Filtros } from './filtros'
 import { leerPaginado } from './paginar'
-import { armarObra, pasaEstado, sinObraDe, type ObraAnalitica, type ObraPanel } from './obras'
+import { armarObra, elegirObra, pasaEstado, sinObraDe, type ObraAnalitica, type ObraPanel } from './obras'
 import { leerPresupuestos, presupuestoPorObra } from './presupuesto'
-import { leerConsumoMensual, ritmoPorObra, type Ritmo } from './consumo'
+import { leerConsumoMensual, ritmoPorObra, type MesDeConsumo, type Ritmo } from './consumo'
 
 export interface DatosAnaliticas {
   hoy: string
@@ -31,8 +31,12 @@ export interface DatosAnaliticas {
   documentos: unknown[] | null
   /** Por qué no hay presupuesto (`null` si lo hay). */
   motivoPresupuesto: string | null
-  /** El ritmo de consumo por obra; `null` = no se leyó (vista que no lo usa, o la base no lo publica). */
-  ritmos: Map<string, Ritmo> | null
+  /** La obra de la vista Obras (la pedida si pasa los filtros; si no, la que más consumió). */
+  obraElegida: ObraAnalitica | null
+  /** Su consumo mes a mes; `null` = no se leyó (otra vista, o la base todavía no lo publica). */
+  consumoMensual: MesDeConsumo[] | null
+  /** Su ritmo; `null` = no se leyó. */
+  ritmo: Ritmo | null
   /** `false` = la puerta de la base contestó null: sin permiso económico. */
   legible: boolean
 }
@@ -45,18 +49,14 @@ const numero = (v: unknown): number | null => (v == null || v === '' || !Number.
 export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): Promise<DatosAnaliticas> {
   const hoy = hoySanJuan()
   const rango = rangoParaVista(f, hoy)
-  // EL RITMO SÓLO DONDE SE MUESTRA: la consulta mensual recorre las quincenas como `analiticas_costos`
-  // (≈ 2,6 s medidos el 17/09/2026) y la base está justa. Pedirla en cada vista duplicaría la carga.
-  const conRitmo = f.vista === 'obra' || f.vista === 'contrato'
-  const [panel, economia, costos, presupuestos, consumo] = await Promise.all([
+  const [panel, economia, costos, presupuestos] = await Promise.all([
     supabase.from('obra_panel').select('obra_id, nombre, cliente_id, cliente_slug, cliente_nombre, estado, n_comprobantes, avance_pct'),
     getEconomiaDeObras(supabase),
     supabase.rpc('analiticas_costos', { p_desde: rango.desde, p_hasta: rango.hasta, p_obras: null }),
     // SÓLO EL APROBADO: 'reemplazado' y 'cotizado' no son presupuesto vigente (migración 20260917T1700).
     supabase.from('presupuestos')
-      .select('id, obra_canonica_id, estado, costo_directo_presupuestado, costo_pendiente_motivo, fuente_legacy')
+      .select('id, obra_canonica_id, estado, costo_directo_presupuestado, costo_pendiente_motivo, fuente_legacy, hh_estimada')
       .eq('estado', 'aprobado').not('obra_canonica_id', 'is', null),
-    conRitmo ? supabase.rpc('analiticas_consumo_mensual', { p_obras: null }) : null,
   ])
   const raiz = (costos.data ?? null) as Record<string, unknown> | null
   const porObra = armarCostosPorObra(Array.isArray(raiz?.obras) ? raiz.obras : null)
@@ -68,13 +68,17 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     : null
   const lecturaPresupuestos = leerPresupuestos(aprobados, partidas && !partidas.error ? (partidas.data ?? []) : null)
   const presupuestoDe = presupuestoPorObra(lecturaPresupuestos)
-  const mensual = consumo && !consumo.error ? leerConsumoMensual(consumo.data) : null
   const cartera = ((panel.data ?? []) as ObraPanel[])
     .map((p) => armarObra({ ...p, n_comprobantes: numero(p.n_comprobantes), avance_pct: numero(p.avance_pct) },
       economia?.get(p.obra_id), porObra?.get(p.obra_id), presupuestoDe.get(p.obra_id) ?? null))
     .filter((o): o is ObraAnalitica => o != null)
   const elegidas = new Set(f.obras)
   const obras = cartera.filter((o) => pasaEstado(o.estado, f.estado) && (elegidas.size === 0 || elegidas.has(o.id)))
+  // EL CONSUMO MES A MES, SÓLO DE LA OBRA ELEGIDA: la consulta de toda la cartera tardó 2,6 s el
+  // 17/09/2026 (recorre las quincenas como `analiticas_costos`) y la base está justa.
+  const obraElegida = f.vista === 'obras' ? elegirObra(obras, f.obra) : null
+  const consumo = obraElegida ? await supabase.rpc('analiticas_consumo_mensual', { p_obras: [obraElegida.id] }) : null
+  const mensual = consumo && !consumo.error ? leerConsumoMensual(consumo.data) : null
   // LO SIN OBRA ES DEL CLIENTE: se recorta por período y NUNCA por obra.
   const sinObra = new Map([...(sinObraCruda ?? new Map()).entries()].map(([k, g]) => [k, sinObraDe(g)]))
 
@@ -120,7 +124,8 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     personas: personas?.data ?? null,
     documentos: documentos ?? null,
     motivoPresupuesto: lecturaPresupuestos.motivo,
-    ritmos: mensual ? ritmoPorObra(mensual, hoy) : null,
+    obraElegida, consumoMensual: mensual,
+    ritmo: mensual && obraElegida ? (ritmoPorObra(mensual, hoy).get(obraElegida.id) ?? { porMes: null, ventana: [], conEstimada: false }) : null,
     legible: raiz != null,
   }
 }

@@ -92,6 +92,10 @@ export interface ObraAnalitica {
   /** Rubros cuyo presupuesto es INFERENCIA; `estimado` = la cabecera lo es. */
   rubrosEstimados: Rubro[]
   presupuestoEstimado: boolean
+  /** Horas hombre de la cotización aprobada. `null` = sin previsión. */
+  hhPresupuestadas: number | null
+  /** La cita de la cotización aprobada (archivo, drive, celda). */
+  fuentePresupuesto: string | null
   gasto: Gasto
   /** consumoComparable ÷ presupuesto. `null` sin las dos patas. */
   avanceGasto: number | null
@@ -189,6 +193,8 @@ export function armarObra(
     presupuestoRubros: armado ? { ...armado.porRubro } : null,
     rubrosEstimados: armado?.estimados ?? [],
     presupuestoEstimado: armado?.estimado ?? false,
+    hhPresupuestadas: armado?.hh ?? null,
+    fuentePresupuesto: armado?.fuente || null,
     avanceGasto: presupuesto && consumoComparable != null ? consumoComparable / presupuesto : null,
     grupo: grupoDe(presupuesto, consumoComparable),
   }
@@ -209,6 +215,13 @@ export const ORDEN_GRUPOS: { clave: Grupo; rotulo: string }[] = [
   { clave: 'sinMovimiento', rotulo: 'Sin movimiento' },
   { clave: 'sinPresupuesto', rotulo: 'Sin presupuesto' },
 ]
+
+/** LA OBRA DE LA VISTA OBRAS: la pedida si pasa los filtros; si no, la que más consumió. */
+export function elegirObra(obras: ObraAnalitica[], pedida: string | null): ObraAnalitica | null {
+  return obras.find((o) => o.id === pedida)
+    ?? [...obras].sort((a, b) => (b.gasto.total ?? 0) - (a.gasto.total ?? 0) || a.nombre.localeCompare(b.nombre))[0]
+    ?? null
+}
 
 export function agruparPorSemaforo(obras: ObraAnalitica[]): Map<Grupo, ObraAnalitica[]> {
   const m = new Map<Grupo, ObraAnalitica[]>(ORDEN_GRUPOS.map((g) => [g.clave, []]))

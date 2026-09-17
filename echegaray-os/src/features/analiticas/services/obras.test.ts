@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { armarCostosPorObra } from '../../clientes/services/costosDeObra.ts'
 import { armarEconomiaDeObras } from '../../clientes/services/economiaObras.ts'
-import { agruparPorSemaforo, armarObra, costoObjetivoValido, estadoDe, fraseDeObra, grupoDe, pasaEstado, precioDe, type ObraPanel } from './obras.ts'
+import { agruparPorSemaforo, armarObra, elegirObra, costoObjetivoValido, estadoDe, fraseDeObra, grupoDe, pasaEstado, precioDe, type ObraPanel } from './obras.ts'
 import { presupuestoDe } from './presupuesto.fixture.ts'
 
 // Las filas se construyen con las MISMAS funciones de producción que convierten la respuesta de la base.
@@ -95,4 +95,13 @@ test('un pedazo de presupuesto convertido no es el costo objetivo de la obra (Qu
   assert.equal(costoObjetivoValido(1766784.47, 'partidas congeladas convertidas a esta obra (2)'), null)
   assert.equal(costoObjetivoValido(132944255, 'costo directo del presupuesto v1 (aprobado)'), 132944255)
   assert.equal(costoObjetivoValido(0, 'costo directo del presupuesto v1 (aprobado)'), null)
+})
+
+test('la obra de la vista Obras: la pedida si pasa los filtros; si no, la que más consumió', () => {
+  const a = armarObra(panel('a'), null, costo({ materiales: 1e6 }), null)!
+  const b = armarObra(panel('b'), null, costo({ materiales: 9e6 }), null)!
+  assert.equal(elegirObra([a, b], 'a')?.id, 'a')
+  assert.equal(elegirObra([a, b], 'no-esta-en-el-filtro')?.id, 'b')
+  assert.equal(elegirObra([a, b], null)?.id, 'b')
+  assert.equal(elegirObra([], 'a'), null)
 })

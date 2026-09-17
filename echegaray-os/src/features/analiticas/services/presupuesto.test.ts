@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { leerPresupuestos, presupuestoPorObra, rubroDeCodigo } from './presupuesto.ts'
 import { presupuestoDe } from './presupuesto.fixture.ts'
 import { armarObra } from './obras.ts'
-import { celda, totalesPorRubro } from './agregados.ts'
+import { celda } from './agregados.ts'
 import { armarCostosPorObra } from '../../clientes/services/costosDeObra.ts'
 
 const cab = (obra: string, extra: Record<string, unknown> = {}) => ({
@@ -46,14 +46,6 @@ test('RUBRO CONTRA RUBRO: una obra que sólo cotizó MO+CS no mide sus materiale
   assert.equal(celda(o, 'materiales').cotizadoAusente, 'sin presupuesto de este rubro')
   assert.deepEqual(celda(o, 'materiales').lectura, { tipo: 'sinPresupuesto', monto: null })
   assert.deepEqual(celda(o, 'manoObra').lectura, { tipo: 'queda', monto: 9e6 })
-})
-
-test('el total del cliente por rubro no suma el gasto de obras que no presupuestaron ese rubro', () => {
-  const q = obra('q', { materiales: 37e6 }, presupuestoDe('q', [['MO', 10e6]]))
-  const p = obra('p', { materiales: 3e6 }, presupuestoDe('p', [['MA', 4e6]]))
-  const mat = totalesPorRubro([q, p]).find((x) => x.item === 'materiales')!
-  assert.equal(mat.gastado, 40e6, 'lo gastado se muestra entero')
-  assert.deepEqual(mat.lectura, { tipo: 'queda', monto: 1e6 }, 'pero se compara sólo lo de la obra que presupuestó materiales')
 })
 
 test('INFERENCIA se rotula «estimado» por rubro; «otros» presupuestado no tiene consumo con qué compararse', () => {

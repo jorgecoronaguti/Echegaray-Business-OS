@@ -1,20 +1,36 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { aUrl, apartado, cuantosApartados, leerFiltros, rangoDe, rangoParaVista, razonNoAplica } from './filtros.ts'
+import { aUrl, apartado, cuantosApartados, leerFiltros, rangoDe, rangoParaVista, razonNoAplica, redireccionDe, VISTAS } from './filtros.ts'
 
-test('sin parámetros son los defectos, y la URL de los defectos es la ruta pelada', () => {
+test('sin parámetros abre Resumen, y la URL de los defectos es la ruta pelada', () => {
   const f = leerFiltros({})
   assert.equal(f.vista, 'resumen')
   assert.equal(f.estado, 'curso')
   assert.deepEqual(f.obras, [])
   assert.equal(aUrl(f), '/analiticas')
   assert.equal(cuantosApartados(f), 0)
+  assert.equal(redireccionDe({}), null)
+})
+
+test('las cinco vistas, en el orden que confirmó el dueño', () => {
+  assert.deepEqual(VISTAS.map((v) => v.rotulo), ['Resumen', 'Obras', 'Caja', 'Nómina', 'Cobranza'])
+})
+
+test('las vistas retiradas redirigen: las de una obra a Obras, «Estado del gasto» e inválidas a Resumen', () => {
+  for (const v of ['contrato', 'obra', 'hora']) {
+    assert.equal(leerFiltros({ vista: v }).vista, 'obras')
+    assert.equal(redireccionDe({ vista: v }), '/analiticas?vista=obras')
+  }
+  assert.equal(leerFiltros({ vista: 'estado' }).vista, 'resumen')
+  assert.equal(redireccionDe({ vista: 'estado', estado: 'todas' }), '/analiticas?estado=todas')
+  assert.equal(redireccionDe({ vista: 'margen' }), '/analiticas')
+  assert.equal(redireccionDe({ vista: 'caja' }), null, 'una vista vigente no redirige')
 })
 
 test('la URL sólo lleva lo que se aparta del defecto, y vuelve a leerse igual', () => {
-  const f = leerFiltros({ vista: 'obra', periodo: '2026-08-01..2026-08-31', estado: 'todas', obras: 'quattropani,le-comedor', orden: 'pct' })
+  const f = leerFiltros({ vista: 'obras', periodo: '2026-08-01..2026-08-31', estado: 'todas', obras: 'quattropani,le-comedor', obra: 'quattropani' })
   const url = aUrl(f)
-  assert.equal(url, '/analiticas?vista=obra&orden=pct&periodo=2026-08-01..2026-08-31&estado=todas&obras=quattropani,le-comedor')
+  assert.equal(url, '/analiticas?vista=obras&obra=quattropani&periodo=2026-08-01..2026-08-31&estado=todas&obras=quattropani,le-comedor')
   const again = leerFiltros(Object.fromEntries(new URL(url, 'http://x').searchParams))
   assert.deepEqual(again, f)
   assert.equal(cuantosApartados(f), 3)
@@ -24,14 +40,11 @@ test('lo que la URL trae mal no llega a la base: fecha imposible, rango invertid
   assert.deepEqual(leerFiltros({ periodo: '2026-02-30..2026-03-01' }).periodo, { tipo: 'preset', preset: 'inicio' })
   assert.deepEqual(leerFiltros({ periodo: '2026-09-01..2026-08-01' }).periodo, { tipo: 'preset', preset: 'inicio' })
   assert.deepEqual(leerFiltros({ obras: "x';drop table obras;--,quattropani" }).obras, ['quattropani'])
-  assert.equal(leerFiltros({ vista: 'margen' }).vista, 'resumen')
-  // «Estado del gasto» se retiró (dueño, 17/09/2026): un link viejo abre Resumen, no un error.
-  assert.equal(leerFiltros({ vista: 'estado' }).vista, 'resumen')
+  assert.equal(leerFiltros({ obra: "x';--" }).obra, null)
 })
 
-test('cliente y orden son de su vista: no viajan a otra', () => {
-  const f = leerFiltros({ vista: 'caja', cliente: 'messina', orden: 'pct' })
-  assert.equal(aUrl(f), '/analiticas?vista=caja')
+test('la obra elegida es de la vista Obras: no viaja a otra', () => {
+  assert.equal(aUrl(leerFiltros({ vista: 'caja', obra: 'quattropani' })), '/analiticas?vista=caja')
 })
 
 test('los presets son el período en curso hasta hoy, inclusive', () => {
@@ -42,20 +55,18 @@ test('los presets son el período en curso hasta hoy, inclusive', () => {
   assert.deepEqual(rangoDe({ tipo: 'preset', preset: 'inicio' }, '2026-09-17'), { desde: null, hasta: null })
 })
 
-test('las vistas acumuladas NO mandan el período a la base aunque esté puesto', () => {
+test('Resumen y Obras son acumuladas: el período no viaja a la base aunque esté puesto', () => {
   const f = leerFiltros({ vista: 'resumen', periodo: 'mes' })
   assert.deepEqual(rangoParaVista(f, '2026-09-17'), { desde: null, hasta: null })
   assert.ok(razonNoAplica('resumen', 'periodo'))
-  assert.ok(razonNoAplica('contrato', 'periodo'))
-  // D3: Gasto por obra compara contra el contrato entero — el período de un mes no puede viajar.
-  assert.ok(razonNoAplica('obra', 'periodo'))
-  assert.deepEqual(rangoParaVista({ ...f, vista: 'obra' }, '2026-09-17'), { desde: null, hasta: null })
-  assert.equal(razonNoAplica('hora', 'periodo'), null)
-  assert.deepEqual(rangoParaVista({ ...f, vista: 'hora' }, '2026-09-17'), { desde: '2026-09-01', hasta: '2026-09-17' })
+  assert.ok(razonNoAplica('obras', 'periodo'))
+  assert.deepEqual(rangoParaVista({ ...f, vista: 'obras' }, '2026-09-17'), { desde: null, hasta: null })
+  assert.equal(razonNoAplica('caja', 'periodo'), null)
+  assert.deepEqual(rangoParaVista({ ...f, vista: 'caja' }, '2026-09-17'), { desde: '2026-09-01', hasta: '2026-09-17' })
 })
 
-test('estado y obras no aplican a Nómina ni a Cobranza; el período sí', () => {
-  for (const v of ['nomina', 'cobranza'] as const) {
+test('estado y obras no aplican a Caja, Nómina ni Cobranza; el período sí', () => {
+  for (const v of ['caja', 'nomina', 'cobranza'] as const) {
     assert.ok(razonNoAplica(v, 'estado'))
     assert.ok(razonNoAplica(v, 'obras'))
     assert.equal(razonNoAplica(v, 'periodo'), null)
