@@ -9,11 +9,18 @@
 // permiso, o por ancho— para que se guarde `null` encima de un dato que nadie tocó. Ese defecto ya
 // borró notas de estado en Herramientas; acá borraría el cómputo al corregir una unidad.
 //
-// ═══ NO SE GUARDA SI NO CAMBIÓ ═══
+// ═══ NO SE GUARDA SI NO CAMBIÓ — Y CONTRA QUÉ SE COMPARA ═══
 //
 // `onBlur` se dispara al salir del campo aunque no se haya tocado una tecla: navegar la tabla con
-// el tabulador dispararía una escritura por celda. Se compara contra el valor inicial y sólo se
-// manda si es distinto.
+// el tabulador dispararía una escritura por celda. Se compara contra lo VIGENTE (`hayQueGuardar` de
+// `ds/inlineEdit.ts`, la misma regla pura y probada que usa `InlineEdit`), que es lo guardado y no
+// lo tecleado. QA del 17/09/2026: comparar contra el texto del campo hace que NUNCA se guarde nada,
+// porque para cuando llega el `blur` el texto del campo ya es el nuevo. Se vio en el navegador: el
+// código quedaba escrito en pantalla y después de recargar volvía vacío.
+//
+// Y por eso el valor guardado le gana a la prop hasta que el servidor la repite: `revalidatePath`
+// tarda, y hasta entonces la prop sigue trayendo lo viejo. Sin esto, la celda vuelve sola a lo de
+// antes tres segundos después de guardar — que es la misma trampa que ya se pagó en Liquidación.
 //
 // ═══ EL VACÍO SE PUEDE ESCRIBIR A PROPÓSITO ═══
 //
@@ -35,6 +42,9 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { useCeldaViva, useGuardadoDeshacible } from '@/shared/components/deshacer/DeshacerProvider'
+import {
+  alConfirmarGuardado, alLlegarDelServidor, hayQueGuardar, valorVigente, type EstadoInline,
+} from '@/shared/components/ds/inlineEdit'
 import { editarCampoPartida } from '../services/actionsPartida'
 import { INICIAL } from '../services/accion'
 
@@ -81,23 +91,25 @@ export function CeldaEditable({
 }) {
   const [pendiente, empezar] = useTransition()
   const [error, setError] = useState<string | null>(INICIAL.error)
-  // LO QUE LA CELDA MUESTRA. Empieza en la prop y la vuelve a adoptar cuando el servidor trae otra
-  // cosa, salvo mientras alguien escribe: pisarle el texto a mitad de una corrección es perder su
-  // trabajo. Antes era `defaultValue` (no controlado), pero el deshacer necesita poder ESCRIBIR el
-  // valor restaurado en la celda sin esperar los segundos del `revalidatePath`.
-  const [texto, setTexto] = useState(valor)
-  const [delServidor, setDelServidor] = useState(valor)
+  // LO QUE LA CELDA MUESTRA. El texto del campo (`borrador`) y lo guardado (`estado`) son dos cosas
+  // distintas: sin esa distinción no se puede decidir si hay algo que escribir. Antes era
+  // `defaultValue` (no controlado), pero el deshacer necesita poder ESCRIBIR el valor restaurado en
+  // la celda sin esperar los segundos del `revalidatePath`.
+  const [borrador, setBorrador] = useState(valor)
+  const [estado, setEstado] = useState<EstadoInline>({ delServidor: valor, pendiente: null })
   const [editando, setEditando] = useState(false)
-  if (!editando && valor !== delServidor) {
-    setDelServidor(valor)
-    setTexto(valor)
+  if (!editando && valor !== estado.delServidor) {
+    const siguiente = alLlegarDelServidor(estado, valor)
+    setEstado(siguiente)
+    setBorrador(valorVigente(siguiente))
   }
+  const vigente = valorVigente(estado)
 
   const clave = testid ?? `partida-${partidaId}-${campo}`
-  // LO QUE LA CELDA MUESTRA, LEÍBLE FUERA DEL RENDER: el deshacer consulta el valor visible cuando la
-  // persona teclea Cmd+Z, que es mucho después de este render.
-  const textoRef = useRef(texto)
-  useEffect(() => { textoRef.current = texto })
+  // LO GUARDADO, LEÍBLE FUERA DEL RENDER: el deshacer consulta el valor de la celda cuando la persona
+  // teclea Cmd+Z, que es mucho después de este render.
+  const estadoRef = useRef(estado)
+  useEffect(() => { estadoRef.current = estado })
 
   async function escribir(v: string): Promise<{ ok: true } | { ok: false; error: string }> {
     const fd = new FormData()
@@ -112,23 +124,24 @@ export function CeldaEditable({
   const guardarDeshacible = useGuardadoDeshacible({
     clave,
     rotulo: rotuloFila ? `${ROTULO[campo]} de ${rotuloFila}` : ROTULO[campo],
-    valorAnterior: texto,
+    valorAnterior: vigente,
     guardar: escribir,
     formato: (x) => (x === '' ? placeholder : x),
   })
 
-  useCeldaViva(clave, { actual: () => textoRef.current, aplicar: (v) => { setTexto(v); setDelServidor(v) } })
+  useCeldaViva(clave, {
+    actual: () => valorVigente(estadoRef.current),
+    aplicar: (v) => { setEstado((e) => alConfirmarGuardado(e, v)); setBorrador(v) },
+  })
 
   function guardar(v: string) {
-    if (v === texto) return
-    const anterior = texto
-    setTexto(v)
+    if (!hayQueGuardar(estado, v)) return
     empezar(async () => {
       const r = await guardarDeshacible(v)
-      if (r.ok) { setError(null); return }
+      if (r.ok) { setEstado((e) => alConfirmarGuardado(e, v)); setError(null); return }
       // EL RECHAZO DE LA BASE DEVUELVE LA CELDA A LO QUE HABÍA: dejar en pantalla un valor que no
       // entró es la pantalla afirmando un cambio que no ocurrió.
-      setTexto(anterior)
+      setBorrador(valorVigente(estadoRef.current))
       setError(r.error)
     })
   }
@@ -137,14 +150,14 @@ export function CeldaEditable({
     <div className="min-w-0">
       <input
         name="valor"
-        value={texto}
+        value={borrador}
         disabled={deshabilitada || pendiente}
         placeholder={placeholder}
         inputMode={mono ? 'decimal' : undefined}
         aria-label={campo}
-        title={texto || undefined}
+        title={borrador || undefined}
         data-testid={testid}
-        onChange={(e) => setTexto(e.target.value)}
+        onChange={(e) => setBorrador(e.target.value)}
         onFocus={() => setEditando(true)}
         onBlur={(e) => { setEditando(false); guardar(e.target.value) }}
         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}

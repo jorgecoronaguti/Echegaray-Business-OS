@@ -23,11 +23,17 @@
 //
 // EL DESPLEGABLE PASÓ A SER CONTROLADO. Antes era `key={valor}` + `defaultValue`, que conserva en el
 // DOM lo que la persona eligió hasta que la base responde. El deshacer necesita poder ESCRIBIR el rol
-// restaurado en el desplegable sin esperar la relectura, y eso un campo no controlado no lo permite:
-// el estado local arranca en la prop y la vuelve a adoptar cuando el servidor trae otra cosa.
+// restaurado en el desplegable sin esperar la relectura, y eso un campo no controlado no lo permite.
+//
+// LO GUARDADO LE GANA A LA PROP HASTA QUE EL SERVIDOR LA REPITE (`EstadoInline` de `ds/inlineEdit.ts`,
+// la misma regla pura y probada que usa `InlineEdit`). QA en el navegador, 17/09/2026: sin esto, un
+// Cmd+Shift+Z escribía «contrato» en la base —se comprobó recargando— pero la pantalla volvía a
+// «sin clasificar» un segundo después, porque el `revalidatePath` del paso anterior llegaba tarde con
+// el valor viejo. La pantalla desmintiendo lo que acababa de hacer es peor que no hacerlo.
 
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { useCeldaViva, useGuardadoDeshacible } from '@/shared/components/deshacer/DeshacerProvider'
+import { alConfirmarGuardado, alLlegarDelServidor, valorVigente, type EstadoInline } from '@/shared/components/ds/inlineEdit'
 import type { ResultadoAccion } from '@/shared/components/ui'
 
 export function SelectRolDocumento({
@@ -42,13 +48,13 @@ export function SelectRolDocumento({
   /** Cómo se nombra en el aviso: «Rol de contrato-quattropani.pdf». */
   rotulo: string
 }) {
-  const [estado, setEstado] = useState<ResultadoAccion | null>(null)
+  const [acuse, setAcuse] = useState<ResultadoAccion | null>(null)
   const [pendiente, empezar] = useTransition()
-  const [rol, setRol] = useState(valor ?? '')
-  const [delServidor, setDelServidor] = useState(valor ?? '')
-  if ((valor ?? '') !== delServidor) { setDelServidor(valor ?? ''); setRol(valor ?? '') }
-  const rolRef = useRef(rol)
-  useEffect(() => { rolRef.current = rol })
+  const [estado, setEstadoInline] = useState<EstadoInline>({ delServidor: valor ?? '', pendiente: null })
+  if ((valor ?? '') !== estado.delServidor) setEstadoInline(alLlegarDelServidor(estado, valor ?? ''))
+  const rol = valorVigente(estado)
+  const estadoRef = useRef(estado)
+  useEffect(() => { estadoRef.current = estado })
   // Un rol cargado antes de que existiera el vocabulario cerrado no se puede perder de vista: se
   // agrega como opción para que el desplegable muestre lo que hay de verdad.
   const lista = rol && !opciones.includes(rol) ? [rol, ...opciones] : opciones
@@ -64,7 +70,10 @@ export function SelectRolDocumento({
     },
   })
 
-  useCeldaViva(clave, { actual: () => rolRef.current, aplicar: (v) => { setRol(v); setDelServidor(v) } })
+  useCeldaViva(clave, {
+    actual: () => valorVigente(estadoRef.current),
+    aplicar: (v) => setEstadoInline((e) => alConfirmarGuardado(e, v)),
+  })
 
   // OCUPA SU CELDA Y SE ENCOGE CON ELLA. Con ancho intrínseco, a 390px el desplegable sobresalía de
   // la columna y el recorte le cortaba la flecha: parecía roto.
@@ -75,15 +84,14 @@ export function SelectRolDocumento({
         disabled={pendiente}
         data-testid={testid}
         onChange={(e) => {
-          const anterior = rol
           const nuevo = e.target.value
-          setRol(nuevo)
+          setEstadoInline((x) => alConfirmarGuardado(x, nuevo))
           empezar(async () => {
             const r = await guardarDeshacible(nuevo)
-            setEstado(r.ok ? { ok: true } : { ok: false, error: r.error })
+            setAcuse(r.ok ? { ok: true } : { ok: false, error: r.error })
             // El rechazo devuelve el desplegable a lo que había: dejarlo en un rol que la base no
             // aceptó es la pantalla afirmando una clasificación que no existe.
-            if (!r.ok) setRol(anterior)
+            if (!r.ok) setEstadoInline((x) => ({ delServidor: x.delServidor, pendiente: null }))
           })
         }}
         // «SIN CLASIFICAR» VA EN ÁMBAR también cuando el desplegable es editable: un archivo sin
@@ -97,9 +105,9 @@ export function SelectRolDocumento({
         <option value="">sin clasificar</option>
         {lista.map((r) => <option key={r} value={r}>{r}</option>)}
       </select>
-      {estado?.ok === true && <span className="text-[11px] text-pos">guardado</span>}
-      {estado?.ok === false && (
-        <span data-testid={testid ? `${testid}-error` : undefined} className="text-[11px] text-neg">{estado.error}</span>
+      {acuse?.ok === true && <span className="text-[11px] text-pos">guardado</span>}
+      {acuse?.ok === false && (
+        <span data-testid={testid ? `${testid}-error` : undefined} className="text-[11px] text-neg">{acuse.error}</span>
       )}
     </span>
   )
