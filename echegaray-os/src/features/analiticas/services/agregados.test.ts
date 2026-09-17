@@ -4,7 +4,7 @@ import { armarCostosPorObra } from '../../clientes/services/costosDeObra.ts'
 import { armarEconomiaDeObras } from '../../clientes/services/economiaObras.ts'
 import { armarObra } from './obras.ts'
 import { presupuestoDe } from './presupuesto.fixture.ts'
-import { agruparPorCliente, celda, notaDeConsumido, cifrasResumen, controlPorObra, costoPorHora, manoObraDe, porHoraMedido } from './agregados.ts'
+import { cajonesDeLosClientes, celda, cifrasResumen, composicionDelGasto, controlPorObra, costoPorHora, manoObraDe, obrasQueMasConsumen, porHoraMedido, resumenPorCliente } from './agregados.ts'
 import { rotuloEstimada } from './obras.ts'
 
 type Pres = Partial<Record<'MO' | 'CS' | 'MA' | 'SC', number>>
@@ -103,52 +103,46 @@ test('D2 · $/hora con mano de obra estimada NO es medición: no es punto, no en
   assert.equal(porHoraMedido(real), 100)
 })
 
-test('Resumen en el ORDEN DE CLIENTES: clientes por obras activas y nombre; obras por orden y nombre, adicional debajo; el excedido no reordena', () => {
-  const conPanel = (o: ReturnType<typeof obra>, extra: Partial<typeof o>) => ({ ...o, ...extra })
-  const arcor = obra('ar1', 'arcor', {}, { materiales: 999 }, { MA: 10 })
-  const azufre = conPanel(obra('azufre', 'messina', {}, null, { MA: 100 }), { nombre: 'ME - PLAYÓN DE AZUFRE', orden: 100 })
-  const muro = conPanel(obra('muro', 'messina', {}, null, { MA: 5 }), { nombre: 'ME - ADICIONAL TERCER MURO', orden: 100, padreId: 'azufre' })
-  const bsa = conPanel(obra('bsa', 'messina', {}, { materiales: 12 }, { MA: 10 }), { nombre: 'ME - BSA', orden: 100 })
-  const primera = conPanel(obra('primera', 'messina', {}, { materiales: 1 }, { MA: 10 }), { nombre: 'ZZ', orden: 1 })
-  const quattro = obra('q1', 'quattropani', {}, { materiales: 500 })
-  const g = agruparPorCliente([arcor, azufre, muro, bsa, primera, quattro])
-  assert.deepEqual(g.map((x) => x.clienteId), ['messina', 'arcor', 'quattropani'], 'messina tiene 4 activas; arcor y quattropani 1, por nombre')
-  assert.deepEqual(g[0].obras.map((f) => f.obra.id), ['primera', 'bsa', 'azufre', 'muro'], 'orden 1 primero; después por nombre; el adicional debajo de su obra')
-  assert.deepEqual(g[0].obras.map((f) => f.nivel), [0, 0, 0, 1])
-  assert.equal(g[0].excedidas, 1, 'BSA excedida: se cuenta, no sube')
-  assert.equal(g[0].presupuestado, 125)
-  assert.equal(g[0].consumido, 13)
-  const sinMov = g[0].obras.find((f) => f.obra.id === 'azufre')!
-  assert.equal(sinMov.queda, 100, 'activa sin consumo: queda todo el presupuesto')
-  assert.equal(sinMov.consumido, null)
-  assert.equal(g[1].presupuestado, 10)
-  assert.equal(g[2].presupuestado, null, 'sin presupuesto: null, no cero')
-  assert.equal(g.flatMap((x) => x.obras).length, 6, 'ninguna obra se pierde ni se repite')
+test('Resumen por cliente (diseño v6): del que más consumió al que menos; la barra suma el cajón sin obra; el queda sólo con presupuesto y sin el cajón', () => {
+  const q = obra('q', 'qp', {}, { mano_obra: 30e6, materiales: 37e6 }, { MO: 20e6, CS: 19e6 })
+  const p = obra('p', 'me', {}, { materiales: 3e6, subcontratos: 1e6 }, { MA: 10e6 })
+  const s = obra('s', 'me', {}, { materiales: 2e6 })
+  const x = obra('x', 'ar', {}, { materiales: 1e6 }, { MA: 0.5e6 })
+  const y = obra('y', 'zz', {}, { materiales: 0.2e6 })
+  const f = resumenPorCliente([p, s, y, x, q], new Map([['me', 5e6]]))
+  assert.deepEqual(f.map((c) => c.clienteId), ['qp', 'me', 'ar', 'zz'])
+  const me = f[1]
+  assert.equal(me.total, 11e6, 'obras 6 + sin obra 5')
+  assert.equal(me.sinObra, 5e6)
+  assert.deepEqual(me.lectura, { tipo: 'queda', monto: 6e6, conPresupuesto: 1, obras: 2 }, 'MA 10 − (materiales 3 + subcontratos 1); ni la obra sin presupuesto ni el cajón')
+  assert.equal(me.obraPrincipal, 'p')
+  assert.deepEqual(f[0].lectura, { tipo: 'queda', monto: 9e6, conPresupuesto: 1, obras: 1 }, 'MO+CS 39 contra mano de obra 30; los materiales sin MA no entran')
+  assert.deepEqual(f[2].lectura, { tipo: 'excedido', monto: 0.5e6, conPresupuesto: 1, obras: 1 })
+  assert.deepEqual(f[3].lectura, { tipo: 'sinPresupuesto' })
+  assert.equal(f[3].presupuestado, null, 'sin presupuesto: null, nunca cero')
+  assert.equal(f[3].horas, null, 'sin horas: null')
 })
 
-test('Resumen: las obras activas se cuentan en toda la cartera, aunque el filtro muestre menos', () => {
-  const a = obra('a', 'aaa', {}, { materiales: 1 })
-  const b1 = obra('b1', 'bbb', {}, { materiales: 1 })
-  const b2 = obra('b2', 'bbb', {}, { materiales: 1 })
-  assert.deepEqual(agruparPorCliente([a, b1], [a, b1, b2]).map((x) => x.clienteId), ['bbb', 'aaa'])
+test('de qué está hecho el gasto: empresa y clientes a 100 %, sin el cajón; las obras que más consumen, sin las que no consumieron', () => {
+  const a = obra('a', 'c1', {}, { mano_obra: 6, materiales: 4 })
+  const b = obra('b', 'c2', {}, { subcontratos: 5 })
+  const z = obra('z', 'c2', {}, null)
+  const clientes = resumenPorCliente([a, b, z], new Map([['c2', 100]]))
+  const mix = composicionDelGasto([a, b, z], clientes)
+  assert.deepEqual(mix.map((m) => [m.nombre, m.total]), [['Empresa', 15], ['c2', 5], ['c1', 10]], 'los clientes en el orden de la lista por cliente (c2 primero por su cajón)')
+  assert.deepEqual(obrasQueMasConsumen([z, b, a]).map((o) => o.id), ['a', 'b'])
+  assert.equal(obrasQueMasConsumen([a, b], 1).length, 1)
 })
 
-test('el consumido de arriba es la suma de la columna CONSUMIDO de la tabla, con lo que no tiene presupuesto', () => {
-  const obras = [
-    obra('q', 'qp', {}, { mano_obra: 30e6, materiales: 37e6 }, { MO: 20e6, CS: 19e6 }),
-    obra('p', 'me', {}, { materiales: 3e6, subcontratos: 1e6 }, { MA: 4e6 }),
-    obra('s', 'me', {}, { materiales: 2e6 }),
-  ]
-  const r = cifrasResumen(obras, new Map([['me', 5e6]]))
-  const tabla = agruparPorCliente(obras).reduce((a, g) => a + (g.consumoTotal ?? 0), 0)
-  assert.equal(r.consumoTotal, tabla)
-  assert.equal(r.consumoTotal, 73e6)
-  assert.equal(r.consumoTotal, (r.consumido ?? 0) + (r.consumoSinPresupuesto ?? 0), 'comparable + sin presupuesto = total')
-})
-
-test('lo sin presupuesto se dice una sola vez, en la línea de consumido, abreviado', () => {
-  assert.equal(notaDeConsumido({ consumoSinPresupuesto: 12.58e6, obrasSinPresupuesto: 1 }, true, '62 % estimada'),
-    'neto de IVA · $ 12,58 M sin presupuesto (1 obra y rubros sin cotizar) · mano de obra 62 % estimada')
-  assert.equal(notaDeConsumido({ consumoSinPresupuesto: 5e5, obrasSinPresupuesto: 0 }, true, null), 'neto de IVA · $ 0,50 M sin presupuesto (rubros sin cotizar)')
-  assert.equal(notaDeConsumido({ consumoSinPresupuesto: 0, obrasSinPresupuesto: 0 }, false, null), 'con IVA: la base todavía no publica el neto')
+test('el cajón de un cliente que la vista no muestra no entra a la tarjeta ni a las filas (auditoría 17/09/2026)', () => {
+  const a = obra('a', 'visible', {}, { materiales: 10e6 }, { MA: 12e6 })
+  const cajones = new Map([['visible', 1e6], ['invisible', 0.09e6]])
+  const filtrados = cajonesDeLosClientes(cajones, [a])
+  assert.deepEqual([...filtrados.keys()], ['visible'])
+  const r = cifrasResumen([a], filtrados)
+  const filas = resumenPorCliente([a], filtrados)
+  assert.equal(r.sinObraAsignada, 1e6, 'la tarjeta no suma el cajón de un cliente sin filas')
+  assert.equal(filas.reduce((x, c) => x + (c.total ?? 0), 0), (r.consumoTotal ?? 0) + (r.sinObraAsignada ?? 0),
+    'las filas suman exactamente consumido + sin obra asignada')
+  assert.equal(cifrasResumen([a], cajones).sinObraAsignada, 1.09e6, 'sin filtrar, la tarjeta publicaría plata que ninguna fila muestra')
 })
