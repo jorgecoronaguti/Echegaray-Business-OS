@@ -169,7 +169,9 @@ test('el pipeline LLAMA a la guardia, y antes de tocar el archivo', () => {
   assert.ok(iGuardia > 0, 'flujo-caja-rehacer-todo.mjs no llama a la guardia: el control vuelve a no correr nunca')
   // Antes del candado, del snapshot, de la firma y del bucle que lanza los generadores: todo eso lee
   // o escribe el archivo. Una guardia que llega tarde ya dejó que se tocara la pestaña.
-  for (const marca of ['pestana-bloqueada.mjs', 'sheet-snapshot.mjs', 'firma-tab.mjs', 'for (const [script,']) {
+  // El bucle salió de main() el 17/09/2026 (`recorrerPasos`, para poder probar el corte): la marca es
+  // ahora su llamada, que es donde empiezan a correr los generadores.
+  for (const marca of ['pestana-bloqueada.mjs', 'sheet-snapshot.mjs', 'firma-tab.mjs', 'await recorrerPasos(PASOS']) {
     const i = cuerpo.indexOf(marca)
     assert.ok(i > 0 && iGuardia < i, `la guardia corre DESPUÉS de "${marca}": el archivo ya se tocó`)
   }
