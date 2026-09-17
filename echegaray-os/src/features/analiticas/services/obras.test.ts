@@ -41,14 +41,16 @@ test('el contrato con papel manda sobre el contratado, y costo_objetivo manda so
   assert.equal(fraseDeObra(con), 'se pasó $ 5,00 M')
 })
 
-test('umbrales del semáforo: >100 % pasada, ≥80 % cerca, <80 % dentro, sin gasto dentro «sin movimiento»', () => {
+test('umbrales del semáforo: >100 % pasada, ≥80 % cerca, <80 % dentro, sin gasto va a «sin movimiento» y NO a dentro', () => {
   assert.equal(grupoDe(100, 100.01), 'pasadas')
   assert.equal(grupoDe(100, 100), 'cerca')
   assert.equal(grupoDe(100, 80), 'cerca')
   assert.equal(grupoDe(100, 79.99), 'dentro')
-  assert.equal(grupoDe(100, null), 'dentro')
+  assert.equal(grupoDe(100, null), 'sinMovimiento')
+  assert.equal(grupoDe(100, 0), 'sinMovimiento')
   const o = armarObra(panel('x'), eco({ contratado: 10e6, origen: 'oc-pesos' }), null, null)!
   assert.equal(fraseDeObra(o), 'sin movimiento todavía')
+  assert.equal(o.grupo, 'sinMovimiento')
   assert.equal(o.gasto.total, null, 'sin fila de costo el gasto es null, no 0')
 })
 
@@ -78,7 +80,7 @@ test('los grupos salen en el orden del semáforo y la más pasada primero', () =
   const a = armarObra(panel('a'), e, costo({ materiales: 11e6 }), null)!
   const b = armarObra(panel('b'), e, costo({ materiales: 15e6 }), null)!
   const g = agruparPorSemaforo([a, b])
-  assert.deepEqual([...g.keys()], ['pasadas', 'cerca', 'dentro', 'sinPresupuesto'])
+  assert.deepEqual([...g.keys()], ['pasadas', 'cerca', 'dentro', 'sinMovimiento', 'sinPresupuesto'])
   assert.deepEqual(g.get('pasadas')?.map((o) => o.id), ['b', 'a'])
 })
 

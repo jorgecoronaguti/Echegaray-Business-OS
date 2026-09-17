@@ -7,10 +7,10 @@ import { cifrasResumen, composicion, masGastan, porCliente } from '../services/a
 import { Anillo, Ausente, Cifras, Subtitulo, Titulo, Valor } from './Piezas'
 
 const TONO_GRUPO: Record<Grupo, 'neg' | 'warn' | 'pos' | 'dato'> = {
-  pasadas: 'neg', cerca: 'warn', dentro: 'pos', sinPresupuesto: 'dato',
+  pasadas: 'neg', cerca: 'warn', dentro: 'pos', sinMovimiento: 'dato', sinPresupuesto: 'dato',
 }
 const TEXTO_GRUPO: Record<Grupo, string> = {
-  pasadas: 'text-neg', cerca: 'text-warn', dentro: 'text-pos', sinPresupuesto: 'text-faint',
+  pasadas: 'text-neg', cerca: 'text-warn', dentro: 'text-pos', sinMovimiento: 'text-faint', sinPresupuesto: 'text-faint',
 }
 
 export function VistaEstado({ obras }: { obras: ObraAnalitica[] }) {
@@ -20,7 +20,7 @@ export function VistaEstado({ obras }: { obras: ObraAnalitica[] }) {
     <>
       <Titulo titulo="Estado del gasto"
         linea={`${obras.length} obras · gastado contra presupuesto, a la fecha · cerca del límite desde el 80 %`} />
-      <dl className="mb-8 grid grid-cols-2 border-y border-line lg:grid-cols-4">
+      <dl className="mb-8 grid grid-cols-2 border-y border-line lg:grid-cols-5">
         {ORDEN_GRUPOS.map((g) => (
           <div key={g.clave} className="border-line py-4 pr-4 odd:border-r lg:border-r lg:px-4 lg:first:pl-0 lg:last:border-r-0">
             <dt className="text-xs text-faint">{g.rotulo}</dt>

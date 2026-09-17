@@ -35,7 +35,7 @@ export interface ObraPanel {
 }
 
 export type EstadoDeObra = 'curso' | 'terminada' | 'sinIniciar'
-export type Grupo = 'pasadas' | 'cerca' | 'dentro' | 'sinPresupuesto'
+export type Grupo = 'pasadas' | 'cerca' | 'dentro' | 'sinMovimiento' | 'sinPresupuesto'
 
 /** Por qué no hay precio, con la palabra que lo dice. */
 export type AusenciaPrecio = 'sin precio' | 'sin valuar'
@@ -129,7 +129,8 @@ export function precioDe(e: EconomiaDeObra | null | undefined): { precio: number
 
 export function grupoDe(presupuesto: number | null, total: number | null): Grupo {
   if (presupuesto == null) return 'sinPresupuesto'
-  if (total == null || total <= 0) return 'dentro'
+  // SIN GASTO NO ESTÁ «DENTRO»: no hay nada medido contra el presupuesto (auditoría 17/09/2026, D5).
+  if (total == null || total <= 0) return 'sinMovimiento'
   const r = total / presupuesto
   return r > 1 ? 'pasadas' : r >= UMBRAL_CERCA ? 'cerca' : 'dentro'
 }
@@ -170,6 +171,7 @@ export const ORDEN_GRUPOS: { clave: Grupo; rotulo: string }[] = [
   { clave: 'pasadas', rotulo: 'Pasadas' },
   { clave: 'cerca', rotulo: 'Cerca del límite' },
   { clave: 'dentro', rotulo: 'Dentro' },
+  { clave: 'sinMovimiento', rotulo: 'Sin movimiento' },
   { clave: 'sinPresupuesto', rotulo: 'Sin presupuesto' },
 ]
 
