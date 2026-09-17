@@ -23,7 +23,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getLiquidacionDeLaQuincena } from './liquidacionQuincenaService.ts'
-import { estadoDelCuadro } from './estadoDelCuadro.ts'
+import { quincenaDeLaPersona } from './retribucionDelPlantel.ts'
 import { cuilNormalizado } from './cuil.ts'
 import { rotuloQuincena, type Quincena } from './quincena.ts'
 import {
@@ -54,12 +54,8 @@ async function leerQuincena(
 ): Promise<{ fila: QuincenaRetribuida; errores: string[] }> {
   const liq = await getLiquidacionDeLaQuincena(supabase, q)
   const errores = liq.errores.map((e) => `${e.que}: ${e.error}`)
-  for (const c of liq.cuadros) {
-    const linea = c.lineas.find((l) => l.personaId === personaId)
-    if (!linea) continue
-    return { fila: { quincena: q, estado: estadoDelCuadro(liq.estados, c.grupo).estado, linea }, errores }
-  }
-  return { fila: { quincena: q, estado: null, linea: null }, errores }
+  // La regla de «su línea» vive en `retribucionDelPlantel.ts`: la solapa del plantel la usa igual.
+  return { fila: quincenaDeLaPersona({ quincena: q, cuadros: liq.cuadros, estados: liq.estados }, personaId), errores }
 }
 
 /** Todas las quincenas, de a `EN_PARALELO`. Una que falla entera se dice como error y queda fuera del plantel. */

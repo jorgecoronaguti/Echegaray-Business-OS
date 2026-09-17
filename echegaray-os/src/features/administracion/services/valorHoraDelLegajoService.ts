@@ -66,13 +66,7 @@ export async function getValorHoraDelLegajo(
     supabase.from('recibo_sueldo_linea')
       .select('periodo, categoria, valor_hora')
       .or(cuil ? `persona_id.eq.${p.personaId},cuil.eq.${cuil}` : `persona_id.eq.${p.personaId}`),
-    supabase.from('convenio_escala').select('convenio, categoria, desde, valor_hora, fuente').lte('desde', p.hoy),
-    // La escala del CCT que el OS ya tiene. NO es el piso de nadie hasta que alguien la firme: el
-    // rótulo la nombra distinto (ver `valorHoraDelLegajo.ts`).
-    supabase.from('uocra_escala')
-      .select('categoria, basico_hora, vigencia_desde, cct, fuente')
-      .eq('zona', 'A').lte('vigencia_desde', p.hoy)
-      .order('vigencia_desde', { ascending: false }).limit(40),
+    ...leerEscalasDelPiso(supabase, p.hoy),
   ])
 
   const fallas: string[] = []
@@ -98,7 +92,20 @@ export async function getValorHoraDelLegajo(
   }
 }
 
-function filasDeTarifa(data: unknown): TarifaDelLegajo[] {
+/** Las dos escalas del piso, una vez. La solapa Retribución del plantel las pide igual para todos. */
+export function leerEscalasDelPiso(supabase: SupabaseClient, hoy: string) {
+  return [
+    supabase.from('convenio_escala').select('convenio, categoria, desde, valor_hora, fuente').lte('desde', hoy),
+    // La escala del CCT que el OS ya tiene. NO es el piso de nadie hasta que alguien la firme: el
+    // rótulo la nombra distinto (ver `valorHoraDelLegajo.ts`).
+    supabase.from('uocra_escala')
+      .select('categoria, basico_hora, vigencia_desde, cct, fuente')
+      .eq('zona', 'A').lte('vigencia_desde', hoy)
+      .order('vigencia_desde', { ascending: false }).limit(40),
+  ] as const
+}
+
+export function filasDeTarifa(data: unknown): TarifaDelLegajo[] {
   return ((data ?? []) as Record<string, unknown>[]).map((f) => ({
     desde: String(f.desde ?? '').slice(0, 10),
     valorHora: numero(f.valor_hora),
@@ -112,7 +119,7 @@ function filasDeTarifa(data: unknown): TarifaDelLegajo[] {
  * liquidación— y no por el texto crudo: `Q2-08/2026` es MENOR que `Q1-09/2026` y con `>` de string
  * sería al revés. Sin `valor_hora` la línea no sirve acá: lo que se muestra es el $/h.
  */
-function ultimoReciboDe(data: unknown): ReciboDelLegajo | null {
+export function ultimoReciboDe(data: unknown): ReciboDelLegajo | null {
   let mejor: ReciboDelLegajo | null = null
   for (const f of (data ?? []) as Record<string, unknown>[]) {
     const periodo = String(f.periodo ?? '')
@@ -132,7 +139,7 @@ function ultimoReciboDe(data: unknown): ReciboDelLegajo | null {
  * supuesto («todos los obreros son UOCRA») y escribirla de nuevo acá daría dos respuestas a la
  * misma pregunta. Las horas esperadas van en 0 porque acá no se cotiza regularizar a nadie.
  */
-function pisoDe(escalaData: unknown, cctData: unknown, p: PersonaDelRotulo): PisoDelLegajo | null {
+export function pisoDe(escalaData: unknown, cctData: unknown, p: PersonaDelRotulo): PisoDelLegajo | null {
   const escalas: FilaEscala[] = ((escalaData ?? []) as Record<string, unknown>[]).map((e) => ({
     convenio: String(e.convenio ?? ''), categoria: String(e.categoria ?? ''),
     desde: String(e.desde ?? '').slice(0, 10), valorHora: Number(e.valor_hora),
