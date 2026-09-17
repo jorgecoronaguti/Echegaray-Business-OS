@@ -8,9 +8,9 @@
 // que es parte de él se escribe debajo como parte: «de eso, cargas sociales…», «de eso, vencido…».
 import Link from 'next/link'
 import { plata } from '@/shared/utils/format'
-import { ddmm, rotuloPeriodo, type frescura, type PosicionImpuesto } from '../../services/impuestos'
-import { FUENTE_LLANA, NOMBRE_LLANO, nombreLlano, periodoCorto, TITULO_VISTA, type decision, type porImpuesto, type Vista } from '../../services/impuestosVista'
-import { Vence } from './piezas'
+import { ddmm, type frescura, type PosicionImpuesto } from '../../services/impuestos'
+import { nombreLlano, TITULO_VISTA, type decision, type porImpuesto, type Vista } from '../../services/impuestosVista'
+import { MarcaEstimado, SaldoAFavor, Vence } from './piezas'
 import { SolapaVisible } from './SolapaVisible'
 
 type Frescura = ReturnType<typeof frescura>
@@ -96,6 +96,13 @@ function Total({ d }: { d: DatosDecision }) {
             de eso, vencido sin pago: <span className="font-mono tabular-nums">{plata(d.vencido.total)}</span> ({d.vencido.cantidad})
           </li>
         )}
+        {d.todoEstimado
+          ? <li data-metrica="Estimado">todo estimado: ninguno está declarado todavía</li>
+          : d.estimado.cantidad > 0 && (
+            <li data-metrica="Estimado">
+              de eso, estimado: <span className="font-mono tabular-nums text-ink">{plata(d.estimado.total)}</span>
+            </li>
+          )}
         {d.cargas.cantidad > 0 && (
           <li data-metrica="Cargas sociales en 30 días">
             de eso, cargas sociales: <span className="font-mono tabular-nums text-ink">{plata(d.cargas.total)}</span>
@@ -128,26 +135,15 @@ export function Decision({ d, saldos, otrosAFavor, sinIdentificar, rutaSinIdenti
         {p ? (
           <>
             <div className="font-medium">{nombreLlano(p)}</div>
-            <div className="mt-0.5 font-mono text-[15px] tabular-nums">{p.pendiente === null ? 'sin importe' : plata(p.pendiente)}</div>
+            <div className="mt-0.5"><span className="font-mono text-[15px] tabular-nums">{p.pendiente === null ? 'sin importe' : plata(p.pendiente)}</span><MarcaEstimado estado={p.estado} /></div>
             <div className="mt-0.5"><Vence fecha={p.vencimiento} confianza={p.vencimiento_confianza} dias={p.dias} /></div>
           </>
         ) : <span className="text-muted">Nada vence en los próximos 30 días.</span>}
       </Dato>
       <Dato rotulo="A favor en el fisco" metrica="A favor">
         <ul className="flex flex-col gap-1">
-          {saldos.map((s) => (
-            <li key={s.impuesto} data-metrica={`${NOMBRE_LLANO[s.impuesto]} a favor`} className="flex flex-wrap items-baseline gap-x-2">
-              <span>{NOMBRE_LLANO[s.impuesto]}</span>
-              <span className="font-mono tabular-nums">{plata(s.saldo_a_favor)}</span>
-              <span className="text-[12px] text-faint">{rotuloPeriodo(s.periodo)} · {FUENTE_LLANA[s.fuente]}</span>
-            </li>
-          ))}
-          {otrosAFavor.map((s) => (
-            <li key={`${s.impuesto}-${s.periodo}-${s.concepto}`} data-metrica={`${NOMBRE_LLANO[s.impuesto]} a favor`} className="flex flex-wrap items-baseline gap-x-2">
-              <span>{NOMBRE_LLANO[s.impuesto]}</span>
-              <span className="font-mono tabular-nums">{plata(s.saldo_a_favor)}</span>
-              <span className="text-[12px] text-faint">{periodoCorto(s)} · {FUENTE_LLANA[s.fuente]}</span>
-            </li>
+          {[...saldos, ...otrosAFavor].map((s) => (
+            <li key={`${s.impuesto}-${s.periodo}-${s.concepto}`}><SaldoAFavor s={s} conNombre /></li>
           ))}
           {!saldos.length && !otrosAFavor.length && <li className="text-muted">Sin saldo a favor.</li>}
           {sinIdentificar.cantidad > 0 && (
@@ -187,22 +183,17 @@ export function CifrasDeImpuesto({ r }: { r: FilaResumen }) {
         {r.proximo ? (
           <>
             <div className="font-medium">{nombreLlano(r.proximo)}</div>
-            <div className="mt-0.5 font-mono text-[15px] tabular-nums">{r.proximo.pendiente === null ? 'sin importe' : plata(r.proximo.pendiente)}</div>
+            <div className="mt-0.5"><span className="font-mono text-[15px] tabular-nums">{r.proximo.pendiente === null ? 'sin importe' : plata(r.proximo.pendiente)}</span><MarcaEstimado estado={r.proximo.estado} /></div>
             <div className="mt-0.5"><Vence fecha={r.proximo.vencimiento} confianza={r.proximo.vencimiento_confianza} dias={r.proximo.dias} /></div>
           </>
         ) : <span className="text-muted">Nada vence en los próximos 30 días.</span>}
       </Dato>
       <Dato rotulo="A favor" metrica="A favor">
-        {r.aFavor.length ? r.aFavor.map((s) => (
-          <div key={s.impuesto} className="flex flex-wrap items-baseline gap-x-2">
-            {r.aFavor.length > 1 && <span>{NOMBRE_LLANO[s.impuesto]}</span>}
-            <span className="font-mono text-[15px] tabular-nums">{plata(s.saldo_a_favor)}</span>
-            <span className="text-[12px] text-faint">{rotuloPeriodo(s.periodo)} · {FUENTE_LLANA[s.fuente]}</span>
-          </div>
-        )) : r.otroAFavor ? (
-          <div className="flex flex-wrap items-baseline gap-x-2">
-            <span className="font-mono text-[15px] tabular-nums">{plata(r.otroAFavor.saldo_a_favor)}</span>
-            <span className="text-[12px] text-faint">{periodoCorto(r.otroAFavor)} · {FUENTE_LLANA[r.otroAFavor.fuente]}</span>
+        {r.aFavor.length || r.otroAFavor ? (
+          <div className="flex flex-col gap-1">
+            {[...r.aFavor, ...(r.otroAFavor ? [r.otroAFavor] : [])].map((s) => (
+              <SaldoAFavor key={`${s.impuesto}-${s.periodo}-${s.concepto}`} s={s} conNombre={r.aFavor.length > 1} grande />
+            ))}
           </div>
         ) : <span className="text-muted">Sin saldo a favor.</span>}
       </Dato>

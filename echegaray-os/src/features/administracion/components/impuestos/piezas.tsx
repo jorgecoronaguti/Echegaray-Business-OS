@@ -6,7 +6,7 @@
 import type { ReactNode } from 'react'
 import { plata } from '@/shared/utils/format'
 import { ddmm, type PosicionImpuesto } from '../../services/impuestos'
-import { enDias, FUENTE_LLANA, type Tono } from '../../services/impuestosVista'
+import { enDias, FUENTE_LLANA, NOMBRE_LLANO, rotuloSaldo, type Tono } from '../../services/impuestosVista'
 
 export const TONO: Record<Tono, string> = { neg: 'text-neg', warn: 'text-warn', pos: 'text-faint', neutro: 'text-muted' }
 
@@ -67,6 +67,28 @@ export const Origen = ({ f }: { f: Pick<PosicionImpuesto, 'fuente' | 'datos_al'>
     {FUENTE_LLANA[f.fuente]}{f.datos_al ? ` al ${ddmm(f.datos_al)}` : ''}
   </span>
 )
+
+/**
+ * UN SALDO A FAVOR, CON SU PESO SEGÚN EL ESTADO. El de declaración jurada va en tinta y con peso; el
+ * estimado va apagado y dice «estimado» antes del período: es un cálculo del OS sobre un mes sin
+ * declarar y no se puede usar para decidir igual que uno declarado.
+ */
+export function SaldoAFavor({ s, conNombre = false, grande = false }: {
+  s: PosicionImpuesto; conNombre?: boolean; grande?: boolean
+}) {
+  const r = rotuloSaldo(s)
+  return (
+    <span data-metrica={`${NOMBRE_LLANO[s.impuesto]} a favor`} data-estimado={r.estimado ? '' : undefined} className="inline-flex flex-wrap items-baseline gap-x-2">
+      {conNombre && <span className={r.estimado ? 'text-muted' : 'text-ink'}>{NOMBRE_LLANO[s.impuesto]}</span>}
+      <span className={`font-mono tabular-nums ${grande ? 'text-[15px]' : ''} ${r.estimado ? 'text-muted' : 'font-medium text-ink'}`}>{plata(s.saldo_a_favor)}</span>
+      <span className="text-[12px] text-faint">{r.texto}</span>
+    </span>
+  )
+}
+
+/** «estimado» al lado de un importe cuyo estado en la base es estimado. */
+export const MarcaEstimado = ({ estado }: { estado: PosicionImpuesto['estado'] }) =>
+  estado === 'estimado' ? <span className="ml-1.5 text-[12px] text-muted" data-estimado="">estimado</span> : null
 
 /** Vacío de una línea. Dice qué significa, no por qué técnicamente. */
 export const Vacio = ({ children, testid }: { children: ReactNode; testid?: string }) => (

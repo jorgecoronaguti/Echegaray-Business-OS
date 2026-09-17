@@ -27,7 +27,7 @@ const ROTULO: Record<Columna, { corto: string; ayuda: string }> = {
 }
 
 const valor = (f: PosicionImpuesto, c: Columna): ReactNode =>
-  c === 'pagado' ? (f.pagado ? plata(f.pagado) : <span className="text-faint">—</span>) : <Importe n={f[c]} falta="—" />
+  c === 'pagado' ? (f.pagado ? plata(f.pagado) : <span className="text-faint">—</span>) : <Importe n={f[c]} falta="sin dato" />
 
 const TH = 'h-8 px-3 text-[12px] font-normal text-faint first:pl-0 last:pr-0'
 const TD = 'h-10 px-3 text-[13px] first:pl-0 last:pr-0'
@@ -75,7 +75,7 @@ function ListaAngosta({ filas, cols, conImpuesto }: { filas: PosicionImpuesto[];
             className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-b border-line-hairline py-3 text-[13px]">
             <span className="font-medium text-ink">{conImpuesto ? `${NOMBRE_LLANO[f.impuesto]} · ` : ''}{periodoCorto(f)}</span>
             <span className="text-right text-ink">
-              {cols.includes('a_pagar') ? <><span className="text-[12px] text-faint">A pagar </span><Importe n={f.a_pagar} falta="—" /></> : null}
+              {cols.includes('a_pagar') ? <><span className="text-[12px] text-faint">A pagar </span><Importe n={f.a_pagar} falta="sin dato" /></> : null}
             </span>
             <EstadoTexto tono={e.tono} clave={f.estado}>{e.texto}</EstadoTexto>
             <span className="text-right text-[12px] text-muted"><Vence fecha={f.vencimiento} confianza={f.vencimiento_confianza} /></span>

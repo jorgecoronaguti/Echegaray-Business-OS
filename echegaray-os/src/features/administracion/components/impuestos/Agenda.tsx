@@ -11,9 +11,9 @@ import Link from 'next/link'
 import { plata } from '@/shared/utils/format'
 import { rotuloPeriodo, type Vencimiento } from '../../services/impuestos'
 import {
-  agenda, estadoLlano, FUENTE_LLANA, nombreLlano, periodoCorto, TITULO_URGENCIA, type porImpuesto,
+  agenda, estadoLlano, nombreLlano, TITULO_URGENCIA, type porImpuesto,
 } from '../../services/impuestosVista'
-import { EstadoTexto, Importe, Origen, Vacio, Vence } from './piezas'
+import { EstadoTexto, Importe, MarcaEstimado, Origen, SaldoAFavor, Vacio, Vence } from './piezas'
 
 const FILA = 'grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-b border-line-hairline py-3 text-[13px] md:grid-cols-[256px_minmax(0,1fr)_140px_180px_200px] md:items-baseline md:gap-y-0 md:py-2.5'
 
@@ -96,26 +96,16 @@ export function PorImpuesto({ filas, ruta }: { filas: FilaResumen[]; ruta: strin
               <span className="col-span-2 text-muted md:col-span-1">
                 {r.vencidas > 0 && <span className="mr-2 text-neg">{r.vencidas} vencido{r.vencidas > 1 ? 's' : ''}</span>}
                 {r.proximo
-                  ? <><span className="block">{nombreLlano(r.proximo)}</span><Vence fecha={r.proximo.vencimiento} confianza={r.proximo.vencimiento_confianza} dias={r.proximo.dias} /></>
+                  ? <><span className="block">{nombreLlano(r.proximo)}<MarcaEstimado estado={r.proximo.estado} /></span><Vence fecha={r.proximo.vencimiento} confianza={r.proximo.vencimiento_confianza} dias={r.proximo.dias} /></>
                   : r.vencidas ? null : <span className="text-faint">nada en 30 días</span>}
               </span>
               <span className="col-span-2 text-muted md:col-span-1">
-                {r.aFavor.length
-                  ? r.aFavor.map((s) => (
-                    <span key={s.impuesto}>
-                      <span className="md:hidden">A favor </span>
-                      <span className="font-mono tabular-nums text-ink">{plata(s.saldo_a_favor)}</span>
-                      <span className="text-[12px] text-faint"> {rotuloPeriodo(s.periodo)} · {FUENTE_LLANA[s.fuente]}</span>
+                {r.aFavor.length || r.otroAFavor
+                  ? [...r.aFavor, ...(r.otroAFavor ? [r.otroAFavor] : [])].map((s) => (
+                    <span key={`${s.impuesto}-${s.periodo}-${s.concepto}`} className="block">
+                      <span className="md:hidden">A favor </span><SaldoAFavor s={s} />
                     </span>
                   ))
-                  : r.otroAFavor
-                    ? (
-                      <span>
-                        <span className="md:hidden">A favor </span>
-                        <span className="font-mono tabular-nums text-ink">{plata(r.otroAFavor.saldo_a_favor)}</span>
-                        <span className="text-[12px] text-faint"> {periodoCorto(r.otroAFavor)} · {FUENTE_LLANA[r.otroAFavor.fuente]}</span>
-                      </span>
-                    )
                     : <span className="hidden text-faint md:inline">—</span>}
               </span>
               <span className="col-span-2 text-[12px] text-faint md:col-span-1">

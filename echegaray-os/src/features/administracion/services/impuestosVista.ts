@@ -90,7 +90,9 @@ export type Tono = 'neg' | 'warn' | 'pos' | 'neutro'
  * con saldo, la pantalla dice pagado (la regla es del sincronizador, no de acá).
  */
 export function estadoLlano(f: Pick<PosicionImpuesto, 'estado' | 'pendiente' | 'detalle'> & { concepto?: string }, dias?: number): { tono: Tono; texto: string } {
-  if (dias !== undefined && dias < 0) return { tono: 'neg', texto: 'Vencido sin pago' }
+  // Vencido Y estimado son dos hechos distintos y se dicen los dos: que ya pasó la fecha no vuelve
+  // declarado un importe que el OS calculó.
+  if (dias !== undefined && dias < 0) return { tono: 'neg', texto: f.estado === 'estimado' ? 'Vencido sin pago · estimado' : 'Vencido sin pago' }
   if (f.estado === 'pagado') return { tono: 'pos', texto: 'Pagado' }
   // «sin declarar» es de la declaración mensual; una cuota de plan no se declara: su importe se estima.
   if (f.estado === 'estimado' && f.concepto && cuotaDePlan(f.concepto)) return { tono: 'neutro', texto: 'Estimado' }
@@ -152,6 +154,7 @@ export function decision(filas: PosicionImpuesto[], hoy: string) {
   const p = aPagarProximos(filas, hoy)
   const vencidas = p.lista.filter((f) => f.dias < 0)
   const cargas = p.lista.filter((f) => f.impuesto === 'cargas_sociales')
+  const estimadas = p.lista.filter((f) => f.estado === 'estimado')
   return {
     lista: p.lista,
     total: p.total,
@@ -159,8 +162,32 @@ export function decision(filas: PosicionImpuesto[], hoy: string) {
     sinImporte: p.sinImporte,
     vencido: { total: vencidas.reduce((s, f) => s + (f.pendiente ?? 0), 0), cantidad: vencidas.length },
     cargas: { total: cargas.reduce((s, f) => s + (f.pendiente ?? 0), 0), cantidad: cargas.length },
+    /**
+     * Cuánto del total es ESTIMADO (estado de la base, no fuente): un mes sin declarar o una cuota con
+     * importe calculado. Se dice arriba —«de eso, estimado» o «todo estimado»— para que no se lea como
+     * deuda declarada.
+     */
+    estimado: { total: estimadas.reduce((s, f) => s + (f.pendiente ?? 0), 0), cantidad: estimadas.length },
+    todoEstimado: p.lista.length > 0 && estimadas.length === p.lista.length,
     proximo: p.lista.find((f) => f.dias >= 0) ?? null,
   }
+}
+
+/**
+ * EL RÓTULO DE UN SALDO A FAVOR. Lo decide el ESTADO: un saldo `estimado` es un cálculo del OS sobre
+ * un mes que el contador todavía no declaró (el IVA a favor de agosto con la DDJJ al 31/07), y no
+ * puede pesar lo mismo que uno de declaración jurada. La fuente se agrega después, como origen.
+ */
+export function rotuloSaldo(s: Pick<PosicionImpuesto, 'estado' | 'periodo' | 'concepto' | 'fuente'>) {
+  const estimado = s.estado === 'estimado'
+  return { estimado, texto: `${estimado ? 'estimado · ' : ''}${periodoCorto(s)} · ${FUENTE_LLANA[s.fuente]}` }
+}
+
+const saldoAnual = (filas: PosicionImpuesto[]) => {
+  const ultima = filas
+    .filter((f) => f.concepto !== 'ddjj' && /ddjj/i.test(f.concepto) && !f.detalle?.parcial)
+    .sort((a, b) => b.periodo.localeCompare(a.periodo))[0]
+  return ultima && (ultima.saldo_a_favor ?? 0) > 0 ? ultima : null
 }
 
 /** Falta pagar, sin ventana: toda obligación no pagada con saldo (o saldo desconocido). */
@@ -178,6 +205,7 @@ export function porImpuesto(filas: PosicionImpuesto[], hoy: string) {
     .map((vista) => {
       const propias = filas.filter((f) => IMPUESTOS_DE_VISTA[vista].includes(f.impuesto))
       const pendientes = propias.filter(faltaPagar)
+      const aFavor = saldos.filter((s) => IMPUESTOS_DE_VISTA[vista].includes(s.impuesto))
       return {
         vista,
         titulo: TITULO_VISTA[vista],
@@ -188,15 +216,14 @@ export function porImpuesto(filas: PosicionImpuesto[], hoy: string) {
         estimados: pendientes.filter((f) => f.estado === 'estimado').length,
         vencidas: proximos.filter((f) => f.dias < 0 && IMPUESTOS_DE_VISTA[vista].includes(f.impuesto)).length,
         proximo: proximos.find((f) => f.dias >= 0 && IMPUESTOS_DE_VISTA[vista].includes(f.impuesto)) ?? null,
-        aFavor: saldos.filter((s) => IMPUESTOS_DE_VISTA[vista].includes(s.impuesto)),
+        aFavor,
         /**
-         * El saldo a favor que `saldosAFavor` no mira porque no es la declaración mensual —la DDJJ
-         * anual de Ganancias—. No redefine nada: es el valor guardado en la fila más nueva con saldo,
-         * y la pantalla lo muestra con su concepto para que no se confunda con el mensual.
+         * El saldo a favor de la declaración ANUAL (Ganancias), que `saldosAFavor` no mira porque sólo
+         * lee la mensual. Se toma la DDJJ anual MÁS NUEVA y, si su saldo es 0 o no está, no hay saldo:
+         * mostrar el de una anual vieja sería publicar un crédito que la última declaración ya consumió.
+         * Sólo cuando el impuesto no tiene saldo mensual: dos cifras «a favor» para lo mismo confunden.
          */
-        otroAFavor: propias
-          .filter((f) => f.concepto !== 'ddjj' && (f.saldo_a_favor ?? 0) > 0 && !f.detalle?.parcial)
-          .sort((a, b) => b.periodo.localeCompare(a.periodo))[0] ?? null,
+        otroAFavor: aFavor.length ? null : saldoAnual(propias),
         ultimoPeriodo: propias.reduce<string | null>((u, f) => (u === null || f.periodo > u ? f.periodo : u), null),
       }
     })
