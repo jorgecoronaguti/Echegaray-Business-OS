@@ -98,7 +98,7 @@ async function main() {
     resultados.push(r)
     // Una creación rechazada por AfipSDK no gastó nada: contarla le sacaría corridas al mes por un
     // error ajeno. Ver `consumioCuota`.
-    if (consumioCuota(r)) await registrarConsumo({ cantidad: 1, detalle: `mis-comprobantes ${tipo} ${desde}–${hasta}` })
+    if (consumioCuota(r)) await registrarConsumo({ cantidad: 1, fecha: fechaLocal(), detalle: `mis-comprobantes ${tipo} ${desde}–${hasta}` })
   }
   for (const linea of resumenDeCorrida(resultados)) console.log(`[arca-sync] ${linea}`)
 

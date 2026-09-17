@@ -79,3 +79,11 @@ test('un día prioritario SIN cuota avisa para fallar fuerte; un día común sin
   assert.equal(tocaHoy({ ...base, hoy: '2026-10-01', disponible: 0, ventana: V_SEP }).prioritarioSinCuota, true)
   assert.equal(tocaHoy({ ...base, hoy: '2026-09-25', disponible: 0, ventana: V_SEP }).prioritarioSinCuota, false)
 })
+
+test('ya bajado hoy y sin cuota: no es alarma; una bajada de ANOCHE no tapa el prioritario de hoy', () => {
+  const r = tocaHoy({ ...base, hoy: '2026-10-01', disponible: 0, ventana: V_SEP, ultimaBajada: '2026-10-01' })
+  assert.equal(r.toca, false)
+  assert.ok(!r.prioritarioSinCuota)
+  // manual el 30/09 a las 22:00 anotada con fecha local = 2026-09-30 → el 01/10 corre
+  assert.equal(tocaHoy({ ...base, hoy: '2026-10-01', disponible: 2, ventana: V_SEP, ultimaBajada: '2026-09-30' }).toca, true)
+})

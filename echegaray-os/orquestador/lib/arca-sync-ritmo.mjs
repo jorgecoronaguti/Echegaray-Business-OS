@@ -78,13 +78,13 @@ export function proximoPrioritario(hoy, dias = DIAS_PRIORITARIOS) {
 export function tocaHoy({ hoy, disponible, fuente, ventana, ultimaBajada = null, dias = DIAS_PRIORITARIOS }) {
   const corridas = Math.floor(Math.max(0, Number(disponible) || 0) / POR_CORRIDA)
   const dia = fechaUTC(hoy).getUTCDate()
+  // Una segunda invocación el mismo día (catch-up de Persistent=true, un reinicio) no vuelve a gastar
+  // ni grita falta de cuota. El registro se anota con fechaLocal() (sync-arca), la misma fecha que acá.
+  const yaBajoHoy = ultimaBajada && String(ultimaBajada).slice(0, 10) === String(hoy).slice(0, 10)
+  if (dias.includes(dia) && yaBajoHoy) return { toca: false, motivo: `día prioritario (${dia}) pero ya se bajó hoy` }
   // Un día prioritario sin cuota NO se calla: `prioritarioSinCuota` le dice al script que siga y falle fuerte.
   if (corridas < 1) return { toca: false, prioritarioSinCuota: dias.includes(dia), motivo: `no queda cuota para una corrida (${disponible} disponible(s))` }
   if (dias.includes(dia)) {
-    // Una segunda invocación el mismo día (catch-up de Persistent=true, un reinicio) no vuelve a gastar.
-    if (ultimaBajada && String(ultimaBajada).slice(0, 10) === String(hoy).slice(0, 10)) {
-      return { toca: false, motivo: `día prioritario (${dia}) pero ya se bajó hoy` }
-    }
     return { toca: true, motivo: `día prioritario (${dia}) con ${corridas} corrida(s) disponible(s)` }
   }
 
