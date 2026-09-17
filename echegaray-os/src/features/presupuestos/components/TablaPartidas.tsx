@@ -361,24 +361,24 @@ function FilaPartida({
           <span style={{ width: 6, flexShrink: 0 }} />
         )}
         <CeldaEditable partidaId={p.partida_id} cotizacionId={cotizacionId} campo="codigo"
-          valor={p.codigo ?? ''} mono ancho="w-[58px]" placeholder="s/c"
+          valor={p.codigo ?? ''} mono ancho="w-[58px]" placeholder="s/c" rotuloFila={p.descripcion}
           deshabilitada={congelado} testid={`codigo-${p.partida_id}`} />
         <CeldaEditable partidaId={p.partida_id} cotizacionId={cotizacionId} campo="descripcion"
-          valor={p.descripcion} deshabilitada={congelado} testid={`descripcion-${p.partida_id}`} />
+          valor={p.descripcion} rotuloFila={p.descripcion} deshabilitada={congelado} testid={`descripcion-${p.partida_id}`} />
 </div>
 
       <CeldaEditable partidaId={p.partida_id} cotizacionId={cotizacionId} campo="unidad"
-        valor={p.unidad ?? ''} ancho="w-[38px]" placeholder="un." deshabilitada={congelado} />
+        valor={p.unidad ?? ''} ancho="w-[38px]" placeholder="un." rotuloFila={p.descripcion} deshabilitada={congelado} />
 
       <CeldaEditable partidaId={p.partida_id} cotizacionId={cotizacionId} campo="cantidad"
         valor={p.cantidad === null ? '' : String(p.cantidad).replace('.', ',')} alineacion="derecha"
-        mono ancho="w-full" deshabilitada={congelado} testid={`cantidad-${p.partida_id}`} />
+        mono ancho="w-full" rotuloFila={p.descripcion} deshabilitada={congelado} testid={`cantidad-${p.partida_id}`} />
 
       {/* HS/UN. es el esfuerzo. Escribirlo acá GANA sobre el del análisis: el `coalesce` de la vista
           prefiere el de la partida. Sube las HH y el plazo; NO cambia el costo. */}
       <CeldaEditable partidaId={p.partida_id} cotizacionId={cotizacionId} campo="hs_unitarias"
         valor={p.hs_unitarias === null ? '' : rendimiento(p.hs_unitarias)!} alineacion="derecha"
-        mono ancho="w-full" placeholder="sin dato" deshabilitada={congelado}
+        mono ancho="w-full" placeholder="sin dato" rotuloFila={p.descripcion} deshabilitada={congelado}
         testid={`hs-${p.partida_id}`} />
 
       {/* «—» Y NO «sin cargar»: la ausencia se ve igual y no compite con el dato de al lado. El

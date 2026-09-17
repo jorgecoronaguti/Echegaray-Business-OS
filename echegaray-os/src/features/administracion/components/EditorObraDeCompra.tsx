@@ -11,9 +11,16 @@
 //
 // Sin la migración 20260915T0700 no hay RPC ni columnas: el control no se dibuja como si anduviera,
 // dice por qué no está.
+//
+// ═══ CMD/CTRL+Z Y CMD/CTRL+SHIFT+Z (dueño, 17/09/2026) ═══
+//
+// El guardado pasa por `useGuardadoDeshacible` —la misma pila que `InlineEdit` y que la fila
+// (`ObraEnLinea`)—, y deshacer vuelve a llamar a la acción con `esperado`, así no pisa a nadie. Lo que
+// NO se deshace es la escritura ya encolada del Sheet: se encola otra con la obra anterior.
 
-import { useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { useEstadoDelServidor } from '@/shared/tiempo-real/useEstadoDelServidor'
+import { useCeldaViva, useGuardadoDeshacible } from '@/shared/components/deshacer/DeshacerProvider'
 import { C } from '@/shared/components/canon'
 import { asignarObraDeCompra } from '../services/obraDeCompraActions'
 
@@ -30,7 +37,33 @@ export function EditorObraDeCompra({
   const [error, setError] = useState<string | null>(null)
   const [hecho, setHecho] = useState(false)
   const [pendiente, empezar] = useTransition()
+  // LO QUE LA BASE TIENE HOY según este panel: el `esperado` de la próxima escritura, y el valor al que
+  // vuelve un Cmd+Z.
+  const [enBase, setEnBase] = useState(celda ?? '')
+  const enBaseRef = useRef(enBase)
+  const valorRef = useRef(valor)
+  useEffect(() => { enBaseRef.current = enBase; valorRef.current = valor })
+  const clave = `obra-de-la-compra-${fila}`
 
+  async function escribir(nuevo: string, esperado?: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    const r = await asignarObraDeCompra(fila, nuevo, esperado ?? enBaseRef.current)
+    if (!r.ok) return { ok: false, error: r.error }
+    setEnBase(nuevo)
+    return { ok: true }
+  }
+
+  const guardarDeshacible = useGuardadoDeshacible({
+    clave,
+    rotulo: `Obra de la fila ${fila}`,
+    valorAnterior: enBase,
+    guardar: (v, contexto) => escribir(v, contexto?.esperado),
+    formato: (v) => (v === '' ? 'sin elegir' : v),
+  })
+
+  useCeldaViva(clave, { actual: () => valorRef.current, aplicar: (v) => setValor(v) })
+
+  // TODOS LOS HOOKS ANTES DE ESTE CORTE: React los cuenta por orden, y un `return` en el medio
+  // cambiaría ese orden entre un render y el siguiente.
   if (!editable) {
     return (
       <p style={{ fontSize: 11.5, color: C.tenue, paddingTop: 14, textWrap: 'pretty' }} data-testid="obra-compra-no-editable">
@@ -48,7 +81,7 @@ export function EditorObraDeCompra({
     setError(null)
     setHecho(false)
     empezar(async () => {
-      const r = await asignarObraDeCompra(fila, valor, celda ?? '')
+      const r = await guardarDeshacible(valor)
       if (!r.ok) { setError(r.error); return }
       setHecho(true)
     })
@@ -71,7 +104,7 @@ export function EditorObraDeCompra({
         <button
           type="button"
           onClick={guardar}
-          disabled={pendiente || valor === (celda ?? '')}
+          disabled={pendiente || valor === enBase}
           data-testid="obra-compra-guardar"
           style={{
             border: `1px solid ${C.linea}`, borderRadius: 6, padding: '2px 10px', background: C.superficie,

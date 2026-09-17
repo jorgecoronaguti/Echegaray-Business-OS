@@ -9,8 +9,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  LIMITE_DE_PASOS, MENSAJE_CONFLICTO, apilar, atajoDeDeshacer, destinoEditable, hayConflicto, pilaVacia, quitarPaso,
-  sinPasosDeOtraRuta, textoDelAviso, tomarParaDeshacer, tomarParaRehacer, type PasoDeEdicion,
+  LIMITE_DE_PASOS, MENSAJE_CONFLICTO, apilar, atajoDeDeshacer, destinoEditable, esTecladoMac, hayConflicto, pilaVacia,
+  quitarPaso, sinPasosDeOtraRuta, textoDelAtajoDeRehacer, textoDelAviso, tomarParaDeshacer, tomarParaRehacer,
+  type PasoDeEdicion,
 } from './pilaDeDeshacer.ts'
 
 const RUTA = '/administracion/personas?vista=liquidacion&quincena=2026-09-01'
@@ -83,4 +84,30 @@ test('EL ATAJO: Cmd+Z o Ctrl+Z deshace, Shift o Ctrl+Y rehace, y NUNCA dentro de
 test('EL AVISO DICE QUÉ CAMBIÓ', () => {
   assert.equal(textoDelAviso('deshacer', paso(0)), 'Deshecho: Banco de Rosales $250.000 → $230.240')
   assert.equal(textoDelAviso('rehacer', paso(0)), 'Rehecho: Banco de Rosales $230.240 → $250.000')
+})
+
+// ═══ DUEÑO, 17/09/2026: «así como está el deshacer cmd+z … tiene que estar el rehacer en toda la plataforma» ═══
+
+test('CMD+Y TAMBIÉN REHACE (antes sólo Ctrl+Y, y en la Mac no pasaba nada)', () => {
+  const tecla = (e: Partial<Parameters<typeof atajoDeDeshacer>[0]>) =>
+    atajoDeDeshacer({ key: 'z', metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, enEditable: false, ...e })
+  // MUTACIÓN QUE LO PONE ROJO: volver a `k === 'y' && e.ctrlKey && !e.metaKey`.
+  assert.equal(tecla({ key: 'y', metaKey: true }), 'rehacer')
+  assert.equal(tecla({ key: 'Y', metaKey: true }), 'rehacer')
+  assert.equal(tecla({ key: 'y', ctrlKey: true }), 'rehacer')
+  // CMD+A NO SE TOCA: es «seleccionar todo» y robarlo es inaceptable (pedido explícito).
+  assert.equal(tecla({ key: 'a', metaKey: true }), null)
+  assert.equal(tecla({ key: 'a', ctrlKey: true }), null)
+  // Y sin modificador la «y» sigue siendo una letra.
+  assert.equal(tecla({ key: 'y' }), null)
+})
+
+test('EL ATAJO DE REHACER SE PUEDE ESCRIBIR EN PANTALLA, CON EL TECLADO DE QUIEN MIRA', () => {
+  // Nadie sabía que rehacer era Cmd+Shift+Z: el aviso tiene que decirlo.
+  assert.equal(textoDelAtajoDeRehacer(true), '\u2318\u21e7Z')
+  assert.equal(textoDelAtajoDeRehacer(false), 'Ctrl+Shift+Z')
+  assert.equal(esTecladoMac('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'), true)
+  assert.equal(esTecladoMac('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)'), true)
+  assert.equal(esTecladoMac('Mozilla/5.0 (Windows NT 10.0; Win64; x64)'), false)
+  assert.equal(esTecladoMac(undefined), false)
 })

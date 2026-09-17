@@ -38,7 +38,8 @@
 
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCeldaViva, useGuardadoDeshacible } from '@/shared/components/deshacer/DeshacerProvider'
 import { Aviso, Buscador, CAMPO, Estado, FilaTotal, Nulo, SubTabs, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import { IconoBloqueo, IconoCompra, IconoDinero, IconoHerramienta } from '@/shared/components/iconos'
 import { AvisoDeLectura } from '@/shared/components/estado'
@@ -139,6 +140,8 @@ function Pedidos({
                 <SelectActividad
                   actividades={elegibles}
                   valor={p.actividad_id}
+                  clave={`actividad-del-pedido-${p.id_pedido}`}
+                  rotulo={`Actividad del pedido ${p.id_pedido}`}
                   alElegir={(id) => asignar!(p.id_pedido, id)}
                 />
               </Td>
@@ -151,29 +154,58 @@ function Pedidos({
 }
 
 /** El selector guarda al elegir: un botón «guardar» por fila en una lista de treinta pedidos es
- *  treinta clics de más para un dato que es un solo campo. */
+ *  treinta clics de más para un dato que es un solo campo.
+ *
+ *  CMD/CTRL+Z Y CMD/CTRL+SHIFT+Z (dueño, 17/09/2026): cada elección se apila en la pila de la
+ *  plataforma y deshacer llama a la MISMA acción con la actividad anterior. La `clave` lleva el id
+ *  del pedido: sin eso las treinta filas comparten paso y Cmd+Z reasigna la que no es. */
 function SelectActividad({
-  actividades, valor, alElegir,
+  actividades, valor, alElegir, clave, rotulo,
 }: {
   actividades: Actividad[]
   valor: string | null
   alElegir: (actividadId: string) => Promise<ResultadoAccion>
+  clave: string
+  rotulo: string
 }) {
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [elegida, setElegida] = useState(valor ?? '')
+  const elegidaRef = useRef(elegida)
+  useEffect(() => { elegidaRef.current = elegida })
+
+  const nombre = (id: string) => {
+    if (id === '') return 'sin asignar'
+    const a = actividades.find((x) => x.id === id)
+    return a ? `${a.rubro ? `${a.rubro} · ` : ''}${a.nombre}` : 'actividad fuera de la lista'
+  }
+
+  const guardarDeshacible = useGuardadoDeshacible({
+    clave, rotulo, valorAnterior: elegida, formato: nombre,
+    guardar: async (v) => {
+      const r = await alElegir(v)
+      return r.ok ? { ok: true as const } : { ok: false as const, error: r.error }
+    },
+  })
+
+  useCeldaViva(clave, { actual: () => elegidaRef.current, aplicar: (v) => setElegida(v) })
+
   return (
     <span className="flex flex-col gap-0.5">
       <select
-        defaultValue={valor ?? ''}
+        value={elegida}
         disabled={guardando}
         data-testid="pedido-actividad"
         aria-label="Para la actividad"
         className={`${CAMPO} h-[30px] max-w-[220px] border-line px-1.5 py-0 text-[12px] text-muted`}
         onChange={async (e) => {
+          const anterior = elegida
+          const nuevo = e.target.value
+          setElegida(nuevo)
           setGuardando(true)
           setError(null)
-          const r = await alElegir(e.target.value)
-          if (!r.ok) setError(r.error ?? 'No se pudo guardar.')
+          const r = await guardarDeshacible(nuevo)
+          if (!r.ok) { setElegida(anterior); setError(r.error) }
           setGuardando(false)
         }}
       >
