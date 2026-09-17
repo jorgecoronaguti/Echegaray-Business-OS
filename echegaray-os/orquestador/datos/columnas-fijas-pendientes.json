@@ -22,12 +22,36 @@
       "mapas": 0,
       "indices": 12
     },
+    "orquestador/lib/cash-flow-conciliacion.mjs": {
+      "grupo": "offsets-fosil-sin-traducir",
+      "estado": "pendiente",
+      "letras": 0,
+      "mapas": 0,
+      "indices": 0,
+      "offsets": 3
+    },
     "orquestador/lib/cash-flow-mapa.mjs": {
       "grupo": "lectores",
       "estado": "pendiente",
       "letras": 0,
       "mapas": 0,
       "indices": 1
+    },
+    "orquestador/lib/cheques-desde-registro.mjs": {
+      "grupo": "offsets-otra-pestana",
+      "estado": "otra-pestana",
+      "letras": 0,
+      "mapas": 0,
+      "indices": 0,
+      "offsets": 3
+    },
+    "orquestador/lib/cheques-emitidos-sync.mjs": {
+      "grupo": "offsets-otra-pestana",
+      "estado": "otra-pestana",
+      "letras": 0,
+      "mapas": 0,
+      "indices": 0,
+      "offsets": 3
     },
     "orquestador/lib/cobranzas-en-cashflow.mjs": {
       "grupo": "cobranzas",
@@ -43,12 +67,36 @@
       "mapas": 0,
       "indices": 1
     },
+    "orquestador/lib/compras-doble-conteo.mjs": {
+      "grupo": "offsets-fosil-sin-traducir",
+      "estado": "pendiente",
+      "letras": 0,
+      "mapas": 0,
+      "indices": 0,
+      "offsets": 3
+    },
     "orquestador/lib/compras-valores.mjs": {
       "grupo": "lectores",
       "estado": "pendiente",
       "letras": 0,
       "mapas": 0,
       "indices": 1
+    },
+    "orquestador/lib/comprobantes/auditoria.mjs": {
+      "grupo": "offsets-grilla-propia",
+      "estado": "revisar",
+      "letras": 0,
+      "mapas": 0,
+      "indices": 0,
+      "offsets": 7
+    },
+    "orquestador/lib/comprobantes/compras-vivas.mjs": {
+      "grupo": "offsets-grilla-propia",
+      "estado": "revisar",
+      "letras": 0,
+      "mapas": 0,
+      "indices": 0,
+      "offsets": 5
     },
     "orquestador/lib/conciliacion-por-naturaleza.mjs": {
       "grupo": "lectores",
@@ -57,12 +105,36 @@
       "mapas": 5,
       "indices": 0
     },
+    "orquestador/lib/conciliar-pagos-proveedores.mjs": {
+      "grupo": "offsets-fosil-sin-traducir",
+      "estado": "pendiente",
+      "letras": 0,
+      "mapas": 0,
+      "indices": 0,
+      "offsets": 6
+    },
     "orquestador/lib/cruce-cheque-factura.mjs": {
       "grupo": "lectores",
       "estado": "pendiente",
       "letras": 0,
       "mapas": 0,
       "indices": 7
+    },
+    "orquestador/lib/deuda-por-tramos.mjs": {
+      "grupo": "offsets-layout-referencia-2508",
+      "estado": "traducido-por-el-consumidor",
+      "letras": 0,
+      "mapas": 0,
+      "indices": 0,
+      "offsets": 8
+    },
+    "orquestador/lib/deuda-viva-pivot.mjs": {
+      "grupo": "offsets-fosil-sin-consumidores",
+      "estado": "pendiente",
+      "letras": 0,
+      "mapas": 0,
+      "indices": 0,
+      "offsets": 4
     },
     "orquestador/lib/estructura-filas.mjs": {
       "grupo": "lectores",
@@ -232,6 +304,14 @@
       "mapas": 0,
       "indices": 3
     },
+    "orquestador/scripts/compras-marcar-eliminado.mjs": {
+      "grupo": "offsets-fosil-sin-traducir",
+      "estado": "pendiente",
+      "letras": 0,
+      "mapas": 0,
+      "indices": 0,
+      "offsets": 5
+    },
     "orquestador/scripts/compras-parcial-cero.mjs": {
       "grupo": "generadores-compras",
       "estado": "pendiente",
@@ -287,6 +367,14 @@
       "letras": 0,
       "mapas": 0,
       "indices": 4
+    },
+    "orquestador/scripts/deuda-evidencia-pago.mjs": {
+      "grupo": "offsets-otra-pestana",
+      "estado": "otra-pestana",
+      "letras": 0,
+      "mapas": 0,
+      "indices": 0,
+      "offsets": 3
     },
     "orquestador/scripts/estructura-pestana.mjs": {
       "grupo": "generadores-compras",
@@ -377,7 +465,8 @@
       "estado": "retirado",
       "letras": 51,
       "mapas": 0,
-      "indices": 26
+      "indices": 26,
+      "offsets": 11
     },
     "orquestador/scripts/recurrentes-pestana.mjs": {
       "grupo": "generadores-compras",
