@@ -37,6 +37,14 @@ export interface SolapaNav {
 const PRESUPUESTOS: SolapaNav = { clave: 'presupuestos', label: 'Presupuestos', href: '/presupuestos' }
 
 /**
+ * ANALÍTICAS, CUARTO DESTINO (dueño, 17/09/2026 · «Analíticas v6»). Tampoco es un nivel de usuario: es
+ * la lectura económica de la cartera entera —gasto contra contrato, caja, nómina, cobranza— y por eso
+ * la ve sólo quien ve economía. La ruta está en `RUTAS_SOLO_ECONOMIA` y la base cierra la puerta
+ * (`analiticas_costos` devuelve null sin `ve_economia()`): la solapa no es la cerradura.
+ */
+const ANALITICAS: SolapaNav = { clave: 'analiticas', label: 'Analíticas', href: '/analiticas' }
+
+/**
  * LAS SOLAPAS QUE ESTE ROL VE, en el orden del mockup.
  *
  * El nivel Obras ve una sola y por eso su navegación no dibuja una barra de un elemento: dibuja el
@@ -44,7 +52,8 @@ const PRESUPUESTOS: SolapaNav = { clave: 'presupuestos', label: 'Presupuestos', 
  */
 export function solapasDeNav(rol: Rol | null | undefined): SolapaNav[] {
   const areas = areasDe(rol).map((a) => ({ clave: a, label: AREA_LABEL[a], href: AREA_HREF[a] }))
-  return puedeVerRuta(rol, PRESUPUESTOS.href) ? [...areas, PRESUPUESTOS] : areas
+  const destinos = [PRESUPUESTOS, ANALITICAS].filter((d) => puedeVerRuta(rol, d.href))
+  return [...areas, ...destinos]
 }
 
 /**
@@ -94,6 +103,7 @@ export function destinoDeLaHome(rol: Rol | null | undefined): string {
 export function solapaActiva(pathname: string, solapas: SolapaNav[]): string | null {
   if (solapas.length === 1) return solapas[0].clave
   if (/^\/presupuestos(\/|$)/.test(pathname)) return 'presupuestos'
+  if (/^\/analiticas(\/|$)/.test(pathname)) return 'analiticas'
   if (/^\/(administracion|clientes|documentos)(\/|$)/.test(pathname)) return 'administracion'
   if (/^\/(obras|obra|integraciones|campo|hoy|mi-trabajo|mi-informacion)(\/|$)/.test(pathname)) {
     return 'obras'

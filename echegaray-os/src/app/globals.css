@@ -92,6 +92,16 @@
      texto claro encima. Existe como token para que nadie tenga que volver a decidirlo. */
   --os-on-marca: #1f1f1e;
 
+  /* ═══ LA TINTA DE LOS GRÁFICOS DE ANALÍTICAS (dueño, 17/09/2026) ═══
+     Un gráfico necesita separar la REFERENCIA (lo cotizado, el contrato: una línea fina que no
+     compite) de lo que pasó (lo gastado, en grafito = --os-accent), y los tres componentes del
+     gasto entre sí. Ninguno de los tokens de texto sirve: --os-faint (#91918b) como línea de
+     referencia pesa casi lo mismo que el dato, y lo «sin obra asignada» tiene que leerse como un
+     cajón aparte sin usar --os-warn, que significa problema. Subcontratos es --os-muted. */
+  --os-dato-referencia: #c8c7c1; /* cotizado / contrato: trazo fino */
+  --os-dato-materiales: #b0afa9; /* materiales, y el control que no aplica */
+  --os-dato-sin-obra: #e0b900; /* el cajón «sin obra asignada»: marca apagada, nunca estado */
+
   /* ═══ LOS MISMOS COLORES, EN CANALES SUELTOS ═══
      No son colores nuevos: son EXACTAMENTE los de arriba escritos como «R G B» para que Tailwind
      pueda componerlos con una opacidad. `text-ink/60` o `from-ink/15` sobre un color declarado
@@ -126,6 +136,9 @@
   --os-warn-soft-rgb: 253 240 228;
   --os-info-rgb: 23 92 211;
   --os-info-soft-rgb: 233 240 253;
+  --os-dato-referencia-rgb: 200 199 193;
+  --os-dato-materiales-rgb: 176 175 169;
+  --os-dato-sin-obra-rgb: 224 185 0;
 
   /* ═══ LAS ALTURAS DEL SISTEMA (design/system/tokens.css) ═══
      Las medidas que hacen que la tabla, el Gantt y el panel se alineen entre sí. Viven acá y se

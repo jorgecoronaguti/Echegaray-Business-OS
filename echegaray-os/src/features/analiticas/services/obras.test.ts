@@ -1,0 +1,83 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { armarCostosPorObra } from '../../clientes/services/costosDeObra.ts'
+import { armarEconomiaDeObras } from '../../clientes/services/economiaObras.ts'
+import { agruparPorSemaforo, armarObra, estadoDe, fraseDeObra, grupoDe, pasaEstado, precioDe, type ObraPanel } from './obras.ts'
+
+// Las filas se construyen con las MISMAS funciones de producción que convierten la respuesta de la base.
+const panel = (id: string, extra: Partial<ObraPanel> = {}): ObraPanel => ({
+  obra_id: id, nombre: id.toUpperCase(), cliente_id: 'c1', cliente_slug: 'messina', cliente_nombre: 'Messina',
+  estado: 'activa', n_comprobantes: 3, avance_pct: null, ...extra,
+})
+const eco = (fila: Record<string, unknown>) => armarEconomiaDeObras([{ obra_canonica_id: 'x', ...fila }]).get('x')
+const costo = (fila: Record<string, unknown>) => armarCostosPorObra([{ obra_id: 'x', ...fila }])?.get('x')
+
+test('una obra sin contrato va a «Sin presupuesto», nunca a «Dentro» al 0 %', () => {
+  const o = armarObra(panel('x'), eco({ origen: null }), costo({ materiales: 5e6 }), null)
+  assert.equal(o?.grupo, 'sinPresupuesto')
+  assert.equal(o?.avanceGasto, null)
+  assert.equal(fraseDeObra(o!), 'cargar el contrato para poder comparar')
+})
+
+test('la suma viva de Cobranzas NO es un precio: medir contra ella da siempre «dentro»', () => {
+  assert.deepEqual(precioDe(eco({ contratado: 17704199, origen: 'suma-viva' })), { precio: null, ausencia: 'sin precio' })
+  assert.deepEqual(precioDe(eco({ contratado: 5008661, origen: 'formulario' })), { precio: 5008661, ausencia: null })
+})
+
+test('una pata en dólares sin valuar se dice «sin valuar», no «sin precio»', () => {
+  assert.deepEqual(precioDe(eco({ contrato_mano_obra_usd: 63000, contrato_mano_obra: null, contrato_total: null, origen: 'oc-usd-x-tc' })),
+    { precio: null, ausencia: 'sin valuar' })
+})
+
+test('el contrato con papel manda sobre el contratado, y costo_objetivo manda sobre los dos', () => {
+  const e = eco({ contratado: 1, origen: 'oc-pesos', contrato_total: 100e6, contrato_mano_obra: 100e6, contrato_materiales: 0, contrato_cita: 'OC 1' })
+  const sin = armarObra(panel('x'), e, costo({ materiales: 85e6 }), null)!
+  assert.equal(sin.presupuesto, 100e6)
+  assert.equal(sin.grupo, 'cerca')
+  assert.equal(sin.contrato.materialesDelCliente, true)
+  const con = armarObra(panel('x'), e, costo({ materiales: 85e6 }), 80e6)!
+  assert.equal(con.presupuesto, 80e6)
+  assert.equal(con.grupo, 'pasadas')
+  assert.equal(fraseDeObra(con), 'se pasó $ 5,00 M')
+})
+
+test('umbrales del semáforo: >100 % pasada, ≥80 % cerca, <80 % dentro, sin gasto dentro «sin movimiento»', () => {
+  assert.equal(grupoDe(100, 100.01), 'pasadas')
+  assert.equal(grupoDe(100, 100), 'cerca')
+  assert.equal(grupoDe(100, 80), 'cerca')
+  assert.equal(grupoDe(100, 79.99), 'dentro')
+  assert.equal(grupoDe(100, null), 'dentro')
+  const o = armarObra(panel('x'), eco({ contratado: 10e6, origen: 'oc-pesos' }), null, null)!
+  assert.equal(fraseDeObra(o), 'sin movimiento todavía')
+  assert.equal(o.gasto.total, null, 'sin fila de costo el gasto es null, no 0')
+})
+
+test('el gasto suma mano de obra, subcontratos y materiales; las horas no son plata', () => {
+  const o = armarObra(panel('x'), eco({ contratado: 10e6, origen: 'oc-pesos' }),
+    costo({ mano_obra: 2e6, subcontratos: 1e6, materiales: 3e6, horas_valorizadas: 400, horas_sin_tarifa: 100 }), null)!
+  assert.equal(o.gasto.total, 6e6)
+  assert.equal(o.gasto.horas, 500)
+  assert.equal(o.gasto.horasValorizadas, 400)
+  assert.equal(fraseDeObra(o), 'le quedan $ 4,00 M')
+})
+
+test('una obra sin cliente (prueba, galpones sin dueño) no entra a la cartera', () => {
+  assert.equal(armarObra(panel('x', { cliente_id: null, cliente_slug: null }), null, null, null), null)
+})
+
+test('estado de obra: cerrada = terminada; activa sin comprobantes ni avance = sin iniciar', () => {
+  assert.equal(estadoDe({ estado: 'cerrada', n_comprobantes: 0, avance_pct: null }), 'terminada')
+  assert.equal(estadoDe({ estado: 'activa', n_comprobantes: 0, avance_pct: null }), 'sinIniciar')
+  assert.equal(estadoDe({ estado: 'activa', n_comprobantes: 0, avance_pct: 10 }), 'curso')
+  assert.equal(pasaEstado('sinIniciar', 'curso'), false)
+  assert.equal(pasaEstado('terminada', 'todas'), true)
+})
+
+test('los grupos salen en el orden del semáforo y la más pasada primero', () => {
+  const e = eco({ contratado: 10e6, origen: 'oc-pesos' })
+  const a = armarObra(panel('a'), e, costo({ materiales: 11e6 }), null)!
+  const b = armarObra(panel('b'), e, costo({ materiales: 15e6 }), null)!
+  const g = agruparPorSemaforo([a, b])
+  assert.deepEqual([...g.keys()], ['pasadas', 'cerca', 'dentro', 'sinPresupuesto'])
+  assert.deepEqual(g.get('pasadas')?.map((o) => o.id), ['b', 'a'])
+})

@@ -14,9 +14,9 @@ const claves = (rol: Parameters<typeof solapasDeNav>[0]) => solapasDeNav(rol).ma
 const activa = (ruta: string, rol: Parameters<typeof solapasDeNav>[0] = 'direccion') =>
   solapaActiva(ruta, solapasDeNav(rol))
 
-test('Administración ve TRES solapas: Presupuestos subió a nivel 1', () => {
-  assert.deepEqual(claves('direccion'), ['administracion', 'obras', 'presupuestos'])
-  assert.deepEqual(claves('administracion'), ['administracion', 'obras', 'presupuestos'])
+test('Administración ve CUATRO solapas: Presupuestos subió a nivel 1 y Analíticas es el cuarto destino (17/09/2026)', () => {
+  assert.deepEqual(claves('direccion'), ['administracion', 'obras', 'presupuestos', 'analiticas'])
+  assert.deepEqual(claves('administracion'), ['administracion', 'obras', 'presupuestos', 'analiticas'])
 })
 
 test('el jefe de obra NO ve Presupuestos: un presupuesto ES precio', () => {
@@ -30,6 +30,8 @@ test('el jefe de obra NO ve Presupuestos: un presupuesto ES precio', () => {
 test('cada ruta de primer nivel dice dónde estás', () => {
   assert.equal(activa('/presupuestos'), 'presupuestos')
   assert.equal(activa('/presupuestos/casa-luna/partida/3'), 'presupuestos')
+  assert.equal(activa('/analiticas'), 'analiticas')
+  assert.equal(activa('/analiticas-2025'), null)
   // LO QUE NO CAMBIA de la corrección del 24/08: estas tres siguen pintando Administración.
   assert.equal(activa('/documentos'), 'administracion')
   assert.equal(activa('/clientes/la-estrella'), 'administracion')

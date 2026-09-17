@@ -65,6 +65,13 @@ const config: Config = {
           DEFAULT: 'rgb(var(--os-info-rgb) / <alpha-value>)',
           soft: 'rgb(var(--os-info-soft-rgb) / <alpha-value>)',
         },
+        // LA TINTA DE LOS GRÁFICOS DE ANALÍTICAS: referencia fina, materiales y el cajón sin obra.
+        // El porqué de cada uno, en globals.css. `cajon` es lo «sin obra asignada».
+        dato: {
+          referencia: 'rgb(var(--os-dato-referencia-rgb) / <alpha-value>)',
+          materiales: 'rgb(var(--os-dato-materiales-rgb) / <alpha-value>)',
+          cajon: 'rgb(var(--os-dato-sin-obra-rgb) / <alpha-value>)',
+        },
       },
       // EL ÚNICO MOVIMIENTO DEL SISTEMA VISUAL: la barra que dice que el servidor está trabajando.
       // Va acá y no en un `style` suelto porque un color o una animación que aparece en un

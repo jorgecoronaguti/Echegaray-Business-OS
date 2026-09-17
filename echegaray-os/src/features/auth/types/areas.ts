@@ -165,6 +165,9 @@ export const RUTAS_SOLO_ECONOMIA = [
   // `/administracion/impuestos` entra el 16/09/2026 con la pantalla: IVA, IIBB, F931, saldos a favor.
   // Las tablas ya lo cierran con `ve_economia()` (20260916T2000); esto evita la solapa que lleva a nada.
   '/administracion/impuestos',
+  // `/analiticas` entra el 17/09/2026 con el módulo: gasto contra contrato, caja, nómina y cobranza de
+  // toda la cartera. La puerta de datos (`analiticas_costos`) ya devuelve null sin `ve_economia()`.
+  '/analiticas',
   // `/documentos` entra el 21/08/2026 con la vista transversal del archivo. Las tres carpetas raíz
   // del índice de Drive son `administracion`, `archivo-fiscal` y `libro-sueldos`: la lista incluye
   // presupuestos de clientes, declaraciones juradas y libros de sueldos.
