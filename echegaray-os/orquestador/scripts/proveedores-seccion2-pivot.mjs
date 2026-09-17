@@ -26,7 +26,8 @@ import { COLCHON_FINAL, filaDelSiguienteTitulo, filasNoVacias, sobranteDeColchon
 import { cortePorConcentracion, escalones, nombresVisibles, UMBRAL } from '../lib/proveedores-concentracion.mjs'
 import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
 import { leerCuerpoDeDinamica, leerParaDecidirBorrado } from '../lib/proveedores-lectura-dinamica.mjs'
-import { esTituloDeSeccion, SECCIONES_DINAMICAS } from '../lib/proveedores-titulos.mjs'
+import { SECCIONES_DINAMICAS } from '../lib/proveedores-titulos.mjs'
+import { geometriaDeConcentracion } from '../lib/proveedores-seccion2-geometria.mjs'
 import { requestsDeRotulos, rotulosQueNoEntran } from '../lib/proveedores-rotulos.mjs'
 import { columnasDeCompras, filasDelPie, referencias } from '../lib/proveedores-seccion2-pie.mjs'
 import { PESTANAS, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
@@ -67,46 +68,8 @@ const pivot = (fuente, idx, visibles) => ({
   valueLayout: 'HORIZONTAL',
 })
 
-/**
- * Dónde empieza y termina la sección 2, por su TÍTULO — nunca por su propia salida anterior.
- *
- * El límite de abajo es LA SECCIÓN SIGUIENTE, sea la que sea. Estaba anclado a `/^3 ·/` y un día
- * dejó de existir: el generador del bloque de texto renumeró y la pestaña quedó 1, 2, 7, 5. El
- * número de la sección de al lado no es mío y se mueve; que abajo empiece OTRA sección, sí.
- */
-function geometria(filas) {
-  const t = (i) => String((filas[i] ?? [])[0] ?? '').trim()
-  // POR EL TÍTULO, NO POR EL NÚMERO. El límite de abajo ya había aprendido esto; el ancla de arriba
-  // seguía en `/^2 ·/` y se rompió el día que "QUÉ SALE CADA DÍA" se intercaló y esta sección pasó a
-  // ser la 3: `no encontré la fila de rótulos de la sección 2`. El número sale del orden y no es
-  // suyo; el texto sí, y `esTituloDeSeccion` reconoce además los nombres anteriores.
-  const i2 = filas.findIndex((_, i) => esTituloDeSeccion(t(i), 'cuentaCorriente'))
-  if (i2 < 0) throw new Error('no encontré el título de la sección de concentración por proveedor')
-  // ═══ CUANDO ES LA ÚLTIMA SECCIÓN, EL LÍMITE ES EL FIN DE LA PESTAÑA (19/08/2026) ═══
-  //
-  // Este paso falló en TODAS las corridas del pipeline del día con `no encontré la sección que sigue
-  // a la 2: sin límite no escribo`, y no había nada roto: la sección de concentración por proveedor
-  // quedó ÚLTIMA en la pestaña, así que no hay ninguna que le siga. Exigir un título abajo era exigir
-  // una vecina que la geometría no obliga a tener.
-  //
-  // El fail-closed original sigue siendo correcto y no se afloja: sin límite NO se escribe, porque
-  // pasarse de largo pisa la sección de al lado. Lo que cambia es de dónde sale el límite cuando no
-  // hay vecina — de la última fila con contenido de la pestaña, que es exactamente hasta dónde llega
-  // esta sección cuando es la última. Sigue siendo un borde REAL leído del archivo, no un número.
-  //
-  // Si ni siquiera hay contenido debajo del título, ahí sí se aborta: una sección sin una sola fila
-  // no es una sección última, es una lectura que salió mal.
-  let filaLimite = filaDelSiguienteTitulo(filas, i2 + 1)
-  if (!filaLimite) {
-    const ultima = ultimaConDato(filas, { desde: i2 + 2, hasta: filas.length + 1 })
-    if (!ultima) throw new Error('la sección de concentración por proveedor es la última y no tiene ni una fila debajo: no escribo')
-    filaLimite = ultima + 1
-    console.log(`  es la última sección de la pestaña: el límite es el fin del contenido, fila ${ultima}`)
-  }
-  const iCab = filas.findIndex((_, i) => i > i2 && i < filaLimite - 1 && /PROVEEDOR/i.test(t(i)))
-  if (iCab < 0) throw new Error('no encontré la fila de rótulos de la sección 2')
-  return { filaRotulos: iCab + 1, filaLimite }
-}
+/** Dónde empieza y termina la sección: por su título y la geometría declarada. Ver la lib. */
+const geometria = (filas) => geometriaDeConcentracion(filas, { log: console.log })
 
 /** El formato de una columna del bloque, declarado en cada corrida: una dinámica no trae ninguno. */
 const fmt = (sid, desde, hasta, col, numberFormat, align) => ({ repeatCell: {
