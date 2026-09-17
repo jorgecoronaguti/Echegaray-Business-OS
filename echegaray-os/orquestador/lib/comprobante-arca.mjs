@@ -36,8 +36,12 @@ export const NOTAS_DE_CREDITO = new Set([
   '8',    // Nota de Crédito B
   '13',   // Nota de Crédito C
   '21',   // Nota de Crédito E (exportación)
-  '41',   // Nota de Crédito T
+  '38',   // Notas de crédito o documentos equivalentes RG 1415
+  '43',   // Nota de Crédito Liquidación Única Comercial Impositiva B
+  '44',   // Nota de Crédito Liquidación Única Comercial Impositiva C
+  '48',   // Nota de Crédito Liquidación Única Comercial Impositiva A
   '53',   // Nota de Crédito M
+  '90',   // Otros comprobantes — documentos exceptuados — notas de crédito
   '110',  // Tique Nota de Crédito
   '112',  // Tique Nota de Crédito A
   '113',  // Tique Nota de Crédito B
@@ -48,10 +52,24 @@ export const NOTAS_DE_CREDITO = new Set([
   '213',  // Nota de Crédito FCE MiPyME C
 ])
 
-/** Códigos que SUMAN: facturas, tiques, notas de débito y comprobantes de crédito electrónico. */
+/**
+ * Códigos que SUMAN: facturas, tiques, notas de débito, liquidaciones y comprobantes de crédito
+ * electrónico.
+ *
+ * AMPLIADA EL 17/09/2026 contra la tabla oficial de ARCA
+ * (https://www.afip.gob.ar/fe/documentos/TABLACOMPROBANTES.xls). El disparador: la liquidación
+ * mensual del Banco Santander llega como código 63 («Liquidaciones A») y quedaba sin signo, así que
+ * su IVA no entraba al crédito fiscal del Sheet. En la misma revisión el '41' salió de las notas de
+ * crédito: en la tabla oficial es «Otros comprobantes C que cumplan con la RG 1415», no una NC.
+ * Siguen SIN signo, a propósito, los que no son un comprobante de IVA de compra/venta corriente
+ * (remitos 88/91, 99 «otros que no cumplen RG 1415», granos 33/331/332, sector pesquero 23–26,
+ * bienes usados 30/49): si aparecen, se avisa en vez de adivinar.
+ */
 export const SUMAN = new Set([
-  '1', '2', '6', '7', '11', '12', '19', '20', '39', '40', '51', '52',
-  '81', '82', '83', '109', '111', '118',
+  '1', '2', '4', '5', '6', '7', '9', '10', '11', '12', '15', '16', '17', '18', '19', '20',
+  '27', '28', '29', '34', '35', '36', '37', '39', '40', '41', '45', '46', '47',
+  '51', '52', '54', '55', '56', '57', '58', '59', '60', '61', '63', '64', '66',
+  '81', '82', '83', '109', '111', '115', '116', '117', '118',
   '201', '202', '206', '207', '211', '212',
 ])
 
@@ -66,6 +84,8 @@ export const NOMBRE = {
   113: 'Tique Nota de Crédito B', 114: 'Tique Nota de Crédito C',
   201: 'Factura de Crédito Electrónica MiPyME A', 202: 'Nota de Débito FCE MiPyME A',
   203: 'Nota de Crédito FCE MiPyME A',
+  60: 'Cuenta de Venta y Líquido Producto A', 61: 'Cuenta de Venta y Líquido Producto B',
+  63: 'Liquidación A', 64: 'Liquidación B', 66: 'Despacho de Importación',
 }
 
 /**

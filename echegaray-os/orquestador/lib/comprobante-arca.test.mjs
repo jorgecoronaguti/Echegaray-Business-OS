@@ -67,3 +67,38 @@ test('esNotaDeCredito no dice que sí ante un desconocido', () => {
   assert.equal(esNotaDeCredito('999'), false)
   assert.equal(esNotaDeCredito('3'), true)
 })
+
+// ═══ LIQUIDACIONES Y DEMÁS CÓDIGOS DE LA TABLA OFICIAL (17/09/2026) ═══
+//
+// El Banco Santander emite su liquidación mensual de gastos como código 63 («Liquidaciones A»). No
+// estaba en la tabla: `signo` daba null, la columna Signo de _ARCA_RAW quedaba vacía y el cuadro de
+// IVA NO contaba ese crédito fiscal (agosto 83.872, julio 71.858). Fuente de los códigos: tabla oficial
+// de ARCA https://www.afip.gob.ar/fe/documentos/TABLACOMPROBANTES.xls (leída el 17/09/2026).
+test('código 63 (Liquidación A, la del banco) SUMA y su IVA entra al crédito', () => {
+  assert.equal(signo('63'), 1)
+  assert.equal(nombreTipo('63'), 'Liquidación A')
+  const r = sumar([
+    { tipo_comprobante: '63', total_iva: 83872.07 },
+    { tipo_comprobante: '1', total_iva: 1000 },
+  ], 'total_iva')
+  assert.equal(r.desconocidos.length, 0)
+  assert.equal(Math.round(r.neto * 100) / 100, 84872.07)
+})
+
+test('liquidaciones, cuentas de venta, recibos, despacho y notas de débito SUMAN', () => {
+  for (const t of ['4', '9', '15', '17', '18', '27', '28', '29', '37', '45', '46', '47', '58', '59', '60', '61', '63', '64', '66', '115', '116', '117']) {
+    assert.equal(signo(t), 1, `el código ${t} suma`)
+  }
+})
+
+test('las notas de crédito de liquidación y documentos equivalentes RESTAN', () => {
+  for (const t of ['38', '43', '44', '48', '90']) assert.equal(signo(t), -1, `el código ${t} resta`)
+})
+
+test('41 es «Otros comprobantes C RG 1415» en la tabla oficial, no una nota de crédito', () => {
+  assert.equal(signo('41'), 1)
+})
+
+test('lo que no es un comprobante de IVA sigue sin adivinarse', () => {
+  for (const t of ['91', '99', '88', '331']) assert.equal(signo(t), null, `el código ${t} no se adivina`)
+})
