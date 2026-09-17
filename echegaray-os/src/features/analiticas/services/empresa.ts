@@ -4,8 +4,8 @@
 // `cuenta_corriente_de_clientes`). Ninguna inventa un dato para completar el
 // gráfico: una estimación se marca como tal, y un cliente sin certificado no se ubica en la línea
 // de antigüedad —no hay fecha de la que medirla—.
-import type { CuentaCorriente } from '../../clientes/types/cobranzas.ts'
-import { bandasAntiguedad, type ClaveBanda } from '../../clientes/services/reglasCobranza.ts'
+import type { CertificadoCliente, CuentaCorriente } from '../../clientes/types/cobranzas.ts'
+import { bandasAntiguedad, planDeCobranza, type ClaveBanda } from '../../clientes/services/reglasCobranza.ts'
 
 const n = (v: unknown): number | null => {
   if (v == null || v === '') return null
@@ -164,12 +164,51 @@ export interface FilaCobranza {
   verbo: string | null
 }
 
-/** La posición en la línea (0–1) del tramo: «por vencer» en el borde, cada tramo en el centro de su zona. */
-export const POSICION_TRAMO: Record<ClaveBanda, number> = {
-  por_vencer: 0.02, d1_30: 0.125, d31_60: 0.375, d61_90: 0.625, d90: 0.875,
+/**
+ * LAS ZONAS DE LA LÍNEA DE ANTIGÜEDAD. «Por vencer» tiene la SUYA, antes del cero: dibujada dentro de
+ * «0–30 días» se leía como vencida hace pocos días (auditoría 17/09/2026, D9). Cinco zonas del mismo
+ * ancho, en el orden de los tramos de `bandasAntiguedad`.
+ */
+export const ZONAS_COBRANZA: { clave: ClaveBanda; rotulo: string }[] = [
+  { clave: 'por_vencer', rotulo: 'Por vencer' },
+  { clave: 'd1_30', rotulo: '1–30 días' },
+  { clave: 'd31_60', rotulo: '31–60' },
+  { clave: 'd61_90', rotulo: '61–90' },
+  { clave: 'd90', rotulo: '+90' },
+]
+
+/** Dónde empieza y termina (0–1) la zona de un tramo. */
+export function zonaDeTramo(t: ClaveBanda): { desde: number; hasta: number } {
+  const i = ZONAS_COBRANZA.findIndex((z) => z.clave === t)
+  return { desde: i / ZONAS_COBRANZA.length, hasta: (i + 1) / ZONAS_COBRANZA.length }
 }
 
-export function cobranza(cuenta: unknown[]): FilaCobranza[] {
+export interface Circulo { clienteId: string; nombre: string; x: number; y: number }
+
+/**
+ * DÓNDE VA CADA CÍRCULO. X: el centro de la zona de su tramo. Y: un carril por cliente dentro del
+ * tramo, para que dos clientes del mismo tramo no se encimen (hoy los cinco están «por vencer»).
+ * Los carriles se reparten entre 0,15 y 0,85 del alto; con un solo cliente va al medio.
+ */
+export function ubicarCirculos(filas: FilaCobranza[]): Circulo[] {
+  const porTramo = new Map<ClaveBanda, FilaCobranza[]>()
+  for (const f of filas) if (f.tramo) porTramo.set(f.tramo, [...(porTramo.get(f.tramo) ?? []), f])
+  return [...porTramo.entries()].flatMap(([t, lista]) => {
+    const z = zonaDeTramo(t)
+    return lista.map((f, i) => ({
+      clienteId: f.clienteId, nombre: f.nombre, x: (z.desde + z.hasta) / 2,
+      y: lista.length === 1 ? 0.5 : 0.15 + (0.7 * i) / (lista.length - 1),
+    }))
+  })
+}
+
+/**
+ * LA COBRANZA POR CLIENTE. Saldo y antigüedad: la fila de cuenta corriente. La acción del día: el
+ * MISMO `planDeCobranza` de la ficha del cliente, sobre sus documentos (auditoría 17/09/2026, D10).
+ * Escribir acá «vencido → recordatorio, por vencer → aviso» era una segunda definición de la regla, y
+ * decía «Programar aviso» para un documento que la ficha no avisa (vence en más de 30 días o ya pasó).
+ */
+export function cobranza(cuenta: unknown[], documentos: CertificadoCliente[] = [], hoy = ''): FilaCobranza[] {
   return cuenta.flatMap((f): FilaCobranza[] => {
     const r = f as Record<string, unknown>
     const saldo = n(r.saldo) ?? 0
@@ -181,13 +220,13 @@ export function cobranza(cuenta: unknown[]): FilaCobranza[] {
     const conPlata = bandasAntiguedad(fila).filter((b) => b.monto > 0)
     const viejo = conPlata.at(-1) ?? null
     const vencido = n(r.vencido) ?? 0
+    const docs = documentos.filter((d) => d.cliente_id === r.cliente_id)
     return [{
       clienteId: r.cliente_id, nombre: String(r.nombre_comercial ?? ''), saldo, vencido,
       porVencer: fila.aging_por_vencer, masDe60: fila.aging_61_90 + fila.aging_mas_90,
       tramo: viejo?.clave ?? null, rotuloTramo: viejo?.rotulo ?? null,
       estado: vencido > 0 ? 'vencido' : 'alDia',
-      // EL VERBO SALE DE LA MISMA FILA: vencido pide recordatorio; sólo por vencer, un aviso.
-      verbo: vencido > 0 ? 'Enviar recordatorio' : fila.aging_por_vencer > 0 ? 'Programar aviso' : null,
+      verbo: planDeCobranza(docs, hoy)[0]?.rotulo ?? null,
     }]
   }).sort((a, b) => b.saldo - a.saldo)
 }

@@ -4,6 +4,7 @@
 // `obra_economia_cartera`, `egreso_por_area` y `nomina_por_mes` ya filtran por rol. Cada lectura que
 // falla vuelve `null` —no una lista vacía—: «no pude leer» y «no hay nada» se dibujan distinto.
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { CertificadoCliente } from '@/features/clientes/types/cobranzas'
 import { armarCostosPorObra, armarGastosSinObra } from '@/features/clientes/services/costosDeObra'
 import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
 import { rangoParaVista, type Filtros } from './filtros'
@@ -23,6 +24,8 @@ export interface DatosAnaliticas {
   nomina: unknown[] | null
   quincenas: unknown[] | null
   personas: unknown[] | null
+  /** Los documentos de cada cliente: SÓLO para la acción del día (`planDeCobranza`), no para saldo ni antigüedad. */
+  documentos: CertificadoCliente[] | null
   /** `false` = la puerta de la base contestó null: sin permiso económico. */
   legible: boolean
 }
@@ -60,7 +63,7 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     if (rango.hasta) r = r.lte(col, rango.hasta)
     return r
   }
-  const [egresos, nomina, quincenas, personas] = await Promise.all([
+  const [egresos, nomina, quincenas, personas, documentos] = await Promise.all([
     // PAGINADO (D6): la vista pasa las 1.000 filas y PostgREST corta ahí sin error.
     f.vista === 'caja'
       ? leerPaginado((a, b) => conRango(supabase.from('egreso_por_area').select('area, grupo, total, fecha'), 'fecha')
@@ -70,6 +73,11 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     f.vista === 'nomina' ? supabase.from('nomina_por_mes').select('mes, costo_nomina, cargas_sociales, es_estimacion') : null,
     f.vista === 'nomina' ? supabase.from('jornales_quincena').select('desde, estado') : null,
     f.vista === 'nomina' ? supabase.from('personas').select('en_la_empresa, categoria').eq('es_prueba', false) : null,
+    // LA ACCIÓN DEL DÍA SE DECIDE POR DOCUMENTO, con la regla de la ficha (D10). No se recorta por período:
+    // un documento emitido antes del rango puede vencer hoy.
+    f.vista === 'cobranza'
+      ? supabase.from('certificado_cliente').select('id, cliente_id, obra_id, numero, factura, periodo_desde, periodo_hasta, avance_periodo, monto, reparo, emitido_at, vence, estado, observacion').neq('estado', 'cobrado')
+      : null,
   ])
   return {
     hoy, rango, cartera, obras, sinObra,
@@ -78,6 +86,7 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     nomina: nomina?.data ?? null,
     quincenas: quincenas?.data ?? null,
     personas: personas?.data ?? null,
+    documentos: (documentos?.data ?? null) as CertificadoCliente[] | null,
     legible: raiz != null,
   }
 }

@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { caja, cifrasCobranza, cobranza, destinoDe, legajos, leerEgresos, nomina, seisMesesReales } from './empresa.ts'
+import type { CertificadoCliente } from '../../clientes/types/cobranzas.ts'
+import { caja, cifrasCobranza, cobranza, destinoDe, legajos, leerEgresos, nomina, seisMesesReales, ubicarCirculos, ZONAS_COBRANZA, zonaDeTramo } from './empresa.ts'
 
 test('caja: a una obra, estructura por rama y sin destino; los meses separan las dos líneas', () => {
   const e = leerEgresos([
@@ -71,11 +72,47 @@ test('D4 · saldo y antigüedad de la MISMA fila: el tramo más viejo con plata,
   ])
   assert.equal(filas.length, 3, 'saldo cero no es cliente por cobrar')
   assert.equal(filas[0].tramo, 'por_vencer')
-  assert.equal(filas[0].verbo, 'Programar aviso')
   assert.equal(filas[1].tramo, 'd61_90')
   assert.equal(filas[1].estado, 'vencido')
-  assert.equal(filas[1].verbo, 'Enviar recordatorio')
   assert.equal(filas[2].tramo, null, 'saldo sin fecha de cobro: no se inventa una antigüedad')
   assert.deepEqual(cifrasCobranza(filas), { porCobrar: 200, masDe60: 50, alDia: 130 })
-  assert.equal(cobranza.length, 1, 'la cobranza recibe UNA fuente: la fila de cuenta corriente')
+})
+
+const doc = (x: Partial<CertificadoCliente>): CertificadoCliente => ({
+  id: '1', cliente_id: 'c1', obra_id: null, obra_nombre: null, numero: 'C1', factura: null, periodo_desde: null,
+  periodo_hasta: null, avance_periodo: null, monto: 100, reparo: null, emitido_at: '2026-07-01', vence: null,
+  estado: 'emitido', observacion: null, ...x,
+} as CertificadoCliente)
+const filaCC = { cliente_id: 'c1', nombre_comercial: 'Messina', saldo: '100', vencido: '0', aging_por_vencer: '100' }
+
+test('D10 · la acción del día es la de planDeCobranza: documentos sólo a más de 30 días NO dicen «Programar aviso»', () => {
+  // Vence en 45 días: la ficha no lo avisa todavía. La regla vieja («por vencer → aviso») sí lo decía.
+  const lejos = cobranza([filaCC], [doc({ vence: '2026-11-01' })], '2026-09-17')
+  assert.equal(lejos[0].verbo, null)
+  // Vencido hace 45 días según Cobranzas: recordatorio, igual que la ficha.
+  const vencido = cobranza([filaCC], [doc({ vence: '2026-08-03', estado: 'vencido' })], '2026-09-17')
+  assert.equal(vencido[0].verbo, 'Enviar recordatorio')
+  // Vence en 10 días: aviso.
+  assert.equal(cobranza([filaCC], [doc({ vence: '2026-09-27' })], '2026-09-17')[0].verbo, 'Programar aviso')
+  // Los documentos no cambian saldo ni antigüedad: esos siguen siendo de la cuenta corriente.
+  assert.equal(vencido[0].saldo, 100)
+  assert.equal(vencido[0].tramo, 'por_vencer')
+})
+
+test('D9 · «por vencer» tiene su zona antes del cero y nunca cae dentro de 1–30 días', () => {
+  assert.equal(ZONAS_COBRANZA[0].clave, 'por_vencer')
+  assert.equal(ZONAS_COBRANZA[0].rotulo, 'Por vencer')
+  const pv = zonaDeTramo('por_vencer')
+  const d30 = zonaDeTramo('d1_30')
+  assert.ok(pv.hasta <= d30.desde, 'la zona por vencer termina antes de que empiece 1–30')
+  const filas = cobranza([
+    filaCC, { ...filaCC, cliente_id: 'c2', nombre_comercial: 'SF', saldo: '90' },
+    { cliente_id: 'c3', nombre_comercial: 'AR', saldo: '50', vencido: '50', aging_1_30: '50' },
+  ])
+  const c = ubicarCirculos(filas)
+  for (const x of c.filter((k) => k.clienteId !== 'c3')) assert.ok(x.x > pv.desde && x.x < pv.hasta, 'por vencer dibujado fuera de su zona')
+  const c3 = c.find((k) => k.clienteId === 'c3')!
+  assert.ok(c3.x > d30.desde && c3.x < d30.hasta)
+  const [a, b] = c.filter((k) => k.clienteId !== 'c3')
+  assert.notEqual(a.y, b.y, 'dos clientes del mismo tramo no se enciman')
 })

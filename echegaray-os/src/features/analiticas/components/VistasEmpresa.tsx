@@ -1,7 +1,8 @@
 // CAJA, NÓMINA Y COBRANZA — las tres lecturas de la empresa.
 import type { ReactNode } from 'react'
 import { millones, pctConSigno, pctEntero } from '../services/formato'
-import { caja, cifrasCobranza, cobranza, legajos, MES_BASE, nomina, leerEgresos, POSICION_TRAMO, seisMesesReales } from '../services/empresa'
+import type { CertificadoCliente } from '@/features/clientes/types/cobranzas'
+import { caja, cifrasCobranza, cobranza, legajos, MES_BASE, nomina, leerEgresos, seisMesesReales, ubicarCirculos, ZONAS_COBRANZA } from '../services/empresa'
 import { Ausente, Cifras, SinLectura, Subtitulo, Titulo } from './Piezas'
 
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
@@ -136,17 +137,18 @@ export function VistaNomina({ filas, quincenas, personas, rango, periodo }: {
   )
 }
 
-const ZONAS = ['0–30 días', '31–60', '61–90', '+90']
-
-export function VistaCobranza({ cuenta, periodo, gastado }: {
+export function VistaCobranza({ cuenta, documentos, hoy, periodo, gastado }: {
   cuenta: unknown[] | null
+  documentos: CertificadoCliente[] | null
+  hoy: string
   periodo: string
   gastado: number | null
 }) {
   if (!cuenta) return <><Titulo titulo="Cobranza" linea={periodo} /><SinLectura que="la cuenta corriente" /></>
-  const filas = cobranza(cuenta)
+  const filas = cobranza(cuenta, documentos ?? [], hoy)
   const c = cifrasCobranza(filas)
   const maxSaldo = Math.max(1, ...filas.map((f) => f.saldo))
+  const saldoDe = new Map(filas.map((f) => [f.clienteId, f]))
   return (
     <>
       <Titulo titulo="Cobranza" linea={`${filas.length} clientes con saldo · ${periodo} por emisión · antigüedad por el vencimiento de Cobranzas`} />
@@ -156,16 +158,24 @@ export function VistaCobranza({ cuenta, periodo, gastado }: {
         { rotulo: 'Al día', valor: millones(c.alDia), tono: c.alDia > 0 ? 'pos' : undefined },
         { rotulo: 'Contra lo gastado', valor: gastado ? pctEntero(c.porCobrar / gastado) : null, falta: '—' },
       ]} />
-      <div className="relative mb-8 h-40">
-        <div className="absolute inset-0 grid grid-cols-4 border-y border-line">
-          {ZONAS.map((z, i) => <div key={z} className={`border-line pt-1 text-xs text-faint ${i ? 'border-l' : ''} pl-2`}>{z}</div>)}
+      <div className="relative mb-8 h-56">
+        <div className="absolute inset-0 grid grid-cols-5 border-y border-line">
+          {ZONAS_COBRANZA.map((z, i) => (
+            <div key={z.clave} className={`border-line pl-2 pt-1 text-xs ${i ? 'border-l' : ''} ${i === 0 ? 'bg-surface-quiet text-muted' : 'text-faint'}`}>{z.rotulo}</div>
+          ))}
         </div>
-        {filas.filter((f) => f.tramo != null).map((f) => {
-          const size = 12 + 36 * Math.sqrt(f.saldo / maxSaldo)
+        {ubicarCirculos(filas).map((k) => {
+          const f = saldoDe.get(k.clienteId)
+          if (!f) return null
+          const size = 10 + 26 * Math.sqrt(f.saldo / maxSaldo)
           return (
-            <span key={f.clienteId} title={`${f.nombre}: ${millones(f.saldo)} · ${f.rotuloTramo}`}
-              className={`absolute top-1/2 -translate-y-1/2 rounded-full border-2 ${f.tramo === 'por_vencer' ? '' : '-translate-x-1/2'} ${f.estado === 'vencido' ? 'border-neg bg-neg-soft' : 'border-pos bg-pos-soft'}`}
-              style={{ left: `${POSICION_TRAMO[f.tramo ?? 'por_vencer'] * 100}%`, width: size, height: size }} />
+            <div key={k.clienteId} title={`${f.nombre}: ${millones(f.saldo)} · ${f.rotuloTramo}`}
+              className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1"
+              style={{ left: `${k.x * 100}%`, top: `${8 + k.y * 84}%` }}>
+              <span className={`shrink-0 rounded-full border-2 ${f.estado === 'vencido' ? 'border-neg bg-neg-soft' : 'border-pos bg-pos-soft'}`}
+                style={{ width: size, height: size }} />
+              <span className="hidden max-w-24 truncate text-xs text-muted sm:inline">{f.nombre}</span>
+            </div>
           )
         })}
       </div>
