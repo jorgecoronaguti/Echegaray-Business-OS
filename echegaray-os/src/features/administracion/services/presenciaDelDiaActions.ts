@@ -55,6 +55,7 @@ import { hayTardanza, rotuloTardanza, sinTardanzasNuevas } from './tardanza'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { puedeCambiarObraActual } from './planDeObraActual'
 import { quincenaCerrada } from './quincenaCerradaService'
+import { acuseDeQuita, jornadaAQuitarConElPresente, QUITAR_JORNADA_POR_DEFECTO_AL_QUITAR } from './quitaDePresente'
 
 // EL MOTIVO SE VALIDA CONTRA EL CATÁLOGO, NO CONTRA UNA LISTA DE ESTA PANTALLA. `esMotivo` mira
 // `orquestador/lib/asistencia-motivos.mjs`, que es lo que usa el bot desde julio. Y una presencia
@@ -290,13 +291,18 @@ function mezclar(
 // y así se ve en la imagen. Te dije que asistencia es distinto a horas trabajadas»*.
 //
 // LO QUE ESTA ACCIÓN NO HACE ES LA MITAD DE SU DEFINICIÓN: no escribe «ausente» —sin registrar no
-// es ausente— y no toca `registros_hh`. Las horas que ya se imputaron a una obra son un hecho
-// aparte, y borrarlas por haber sacado una marca sería exactamente la deducción que la regla E del
-// 08/09 prohíbe, sólo que al revés.
+// es ausente— y no borra horas que alguien cargó. Las horas que una persona imputó a una obra son un
+// hecho aparte, y borrarlas por haber sacado una marca sería la deducción que la regla E del 08/09
+// prohíbe, sólo que al revés.
+//
+// LA EXCEPCIÓN (17/09/2026, decisión 3 del dueño): con `quitar_jornada_por_defecto`, la jornada POR
+// DEFECTO que el propio presente escribió y nadie tocó se retira con él. Ver `quitaDePresente.ts`.
 
 const quitaSchema = z.object({
   persona_id: z.string().uuid('No sé a quién le quitás la marca'),
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elegí el día'),
+  /** Decisión 3 (17/09/2026). `false` por defecto: Plantel y la carga vieja siguen igual en este hito. */
+  quitar_jornada_por_defecto: z.boolean().default(false),
 })
 
 export type ResultadoQuita = { ok: true; mensaje: string } | { ok: false; error: string }
@@ -318,10 +324,41 @@ export async function quitarPresencia(entrada: unknown): Promise<ResultadoQuita>
   const r = await quitarPresenciaDelDia(supabase, parsed.data.persona_id, parsed.data.fecha)
   if (r.error !== null) return { ok: false, error: r.error }
 
+  // DECISIÓN 3 (17/09/2026): la jornada que el presente escribió se va con él, si quien llama lo pide.
+  // La regla, el flag para apagarla y lo que nunca se borra, en `quitaDePresente.ts`.
+  const jornada = parsed.data.quitar_jornada_por_defecto
+    ? await quitarJornadaPorDefecto(supabase, parsed.data.persona_id, parsed.data.fecha)
+    : null
+
   revalidatePath('/administracion/personas')
   revalidatePath('/administracion/personas/en-obra')
   revalidatePath('/campo/asistencia')
-  return { ok: true, mensaje: 'Marca quitada: el día quedó sin marcar. Las horas cargadas no se tocaron.' }
+  return {
+    ok: true,
+    mensaje: jornada ? acuseDeQuita(jornada) : 'Marca quitada: el día quedó sin marcar. Las horas cargadas no se tocaron.',
+  }
+}
+
+/** La marca ya se quitó cuando esto corre: cualquier fallo se dice en el acuse, nunca como error. */
+async function quitarJornadaPorDefecto(
+  supabase: Awaited<ReturnType<typeof createClient>>, personaId: string, fecha: string,
+): Promise<{ retiradas: number; noSePudo: string | null }> {
+  if (!QUITAR_JORNADA_POR_DEFECTO_AL_QUITAR) return { retiradas: 0, noSePudo: null }
+  const leidas = await supabase.from('registros_hh')
+    .select('id, persona_id, tipo_hora, fuente_legacy, actualizado_por')
+    .eq('persona_id', personaId).eq('fecha', fecha)
+  if (leidas.error) return { retiradas: 0, noSePudo: leidas.error.message }
+  const ids = jornadaAQuitarConElPresente((leidas.data ?? []) as HoraDelDia[], personaId)
+  if (ids.length === 0) return { retiradas: 0, noSePudo: null }
+  // LO SELLADO NO SE TOCA: en una quincena cerrada la marca se quita y la hora liquidada queda.
+  const cierre = await quincenaCerrada(supabase, fecha)
+  if (cierre !== null) return { retiradas: 0, noSePudo: cierre }
+  // LAS DOS CERRADURAS DEL BORRADO VAN TAMBIÉN EN EL WHERE: si entre la lectura y este `delete` alguien
+  // editó la fila, deja de ser «por defecto que nadie miró» y la base no la borra.
+  const { data, error } = await supabase.from('registros_hh').delete()
+    .in('id', ids).eq('fuente_legacy', FUENTE_HORAS_POR_DEFECTO).is('actualizado_por', null).select('id')
+  if (error) return { retiradas: 0, noSePudo: error.message }
+  return { retiradas: (data ?? []).length, noSePudo: null }
 }
 
 // ═══ MARCAR LA TARDANZA DESDE LA GRILLA (Personal → Horas) — 15/09/2026 ═══

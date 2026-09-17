@@ -54,6 +54,7 @@ import { CamposAlta } from '@/features/administracion/components/FormularioPerso
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { TablaPersonas, type PulsoDelPlantel } from '@/features/administracion/components/TablaPersonas'
 import { FiltroDeObraEnPlantel } from '@/features/administracion/components/FiltroDeObraEnPlantel'
+import { EnlaceCargarAsistencia } from '@/features/administracion/components/asistencia/carga/EnlaceCargarAsistencia'
 import {
   FILTROS, getConteosDeFiltro, getDirectorio, type FiltroPersonal,
 } from '@/features/administracion/services/personasService'
@@ -375,6 +376,9 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             testid="vistas-personal"
             espacioPanel={false}
             vistas={vistasDe('asistencia', sp.quincena, veLaPlata)}
+            // LA CARGA ÚNICA (17/09/2026), el mismo botón que en Plantel. SIN la obra: acá `?obra=` es el
+            // RÓTULO del chip de la grilla (o el id en modo día), y la pantalla nueva recorta por id.
+            filtros={<EnlaceCargarAsistencia testid="ir-a-cargar-asistencia-horas" />}
             // EL BUSCADOR ES DE LA GRILLA. En la carga del día el bloque muestra UNA obra y su
             // gente —seis o siete nombres en una pantalla de 390px—: buscar ahí no filtra nada y
             // le come una línea entera a la única vista que se usa parado en la obra.
@@ -526,6 +530,9 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             // misma pregunta y viven DENTRO de Personal, no como secciones nuevas. Por eso van en
             // texto discreto y la única primaria amarilla de la pantalla es el alta.
             <>
+              {/* LA CARGA ÚNICA (17/09/2026). Con la obra del recorte: el `?obra=` de Plantel es el id,
+                  que es lo mismo que entiende la pantalla nueva. */}
+              <EnlaceCargarAsistencia obra={obraElegida} testid="ir-a-cargar-asistencia-plantel" />
               <NavDiscreta href="/administracion/personas/en-obra" testid="ir-en-obra" icono="persona">En obra ahora</NavDiscreta>
               <NavDiscreta href="/administracion/personas/cuadrillas" testid="ir-cuadrillas" icono="cuadrilla">Cuadrillas</NavDiscreta>
             </>
