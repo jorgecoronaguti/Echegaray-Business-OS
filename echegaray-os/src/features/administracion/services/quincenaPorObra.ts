@@ -186,6 +186,9 @@ export interface FilaQuincena {
   reclama: string[]
   /** Jefe de obra según `personas.puesto`. Es lo que parte la grilla en dos secciones. */
   esJefe: boolean
+  /** `persona_directorio.categoria`, la clave tal cual. `null` = sin cargar, que no es una categoría
+   *  vacía: es el cajón «Sin categoría» del recorte. */
+  categoria: string | null
 }
 
 const numero = (v: unknown): number => {
@@ -245,6 +248,13 @@ export interface EntradaQuincenaObra {
    * estaba antes de este cambio.
    */
   puestos?: Record<string, string | null>
+  /**
+   * `persona_directorio.categoria` por id — lo que recorta la grilla por categoría (dueño,
+   * 17/09/2026). AUSENTE NO ES «NADIE TIENE CATEGORÍA», ES «NO SE PUDO MIRAR»: sin el mapa, todas
+   * las filas caen en «Sin categoría» y la fila de pastillas ofrece ese único cajón, que es lo
+   * honesto — nunca una categoría inventada.
+   */
+  categorias?: Record<string, string | null>
   /** Las marcas de tardanza por `persona_id|fecha` (`asistencia_dia`). Ausente = ninguna. */
   tardanzas?: Record<string, { llegoTarde: boolean; salioAntes: boolean }>
   /** Los certificados médicos por `persona_id|fecha` (`entidad_documento`): el nombre del archivo. Ausente = ninguno. */
@@ -332,6 +342,9 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
         : null,
       reclama: celdas.filter((c) => c.estado === 'sin_marcar').map((c) => c.fecha),
       esJefe: esJefeDeObra(e.puestos?.[p.persona_id] ?? null),
+      // LA CATEGORÍA DEL LEGAJO, TAL CUAL ESTÁ CARGADA. No se muestra en la celda: la usa el recorte
+      // por categoría, que la lee con la misma regla que el Plantel (`recorteDeCategoria.ts`).
+      categoria: e.categorias?.[p.persona_id] ?? null,
     }
   })
 }
