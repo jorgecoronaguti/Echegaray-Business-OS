@@ -225,7 +225,9 @@ test('BAJA con el TOTAL de la planilla mal: si Hs × $/h cierra exacto con lo pa
 })
 
 // ── Lo pagado desde JORNALES (dueño, 17/09/2026): sólo huecos, sólo sobre la línea idéntica ──────────
-import { pagadoDeLaPlanilla, observacionConPagado, MARCA_PAGADO_JORNALES } from './liquidacion-jornales-plan.mjs'
+import {
+  pagadoDeLaPlanilla, observacionConPagado, MARCA_PAGADO_JORNALES, pagadoTrasRecarga, observacionDeRecarga, pagadoEsLaCadena,
+} from './liquidacion-jornales-plan.mjs'
 
 const baseLinea = (x = {}) => ({
   horas: 97, valor_hora: 4500, cobra: 436500, adelanto: 0, ya_transferido: 0, por_banco: 260000, en_efectivo: 176500,
@@ -278,4 +280,39 @@ test('observación: agrega la marca una sola vez y conserva lo que había', () =
   assert.ok(una.startsWith('Cargada desde JORNALES. ') && una.includes(MARCA_PAGADO_JORNALES) && una.includes('14 línea(s)'))
   assert.equal(observacionConPagado(una, 3, '18/09/2026'), una)
   assert.ok(observacionConPagado(null, 1, 'x').startsWith(MARCA_PAGADO_JORNALES))
+})
+
+test('recarga: completar → la planilla cambia → recargar rehace lo pagado con la cadena nueva, y se vuelve a ver', () => {
+  const r = pagadoDeLaPlanilla(baseLinea(), [filaPlanilla()])
+  const completada = baseLinea(r)
+  assert.ok(pagadoEsLaCadena(completada))
+  const nueva = { cobra: 450000, adelanto: 50000, yaTransferido: 0, porBanco: 260000, enEfectivo: 140000 }
+  const tras = pagadoTrasRecarga(completada, nueva)
+  assert.deepEqual(tras, { pagado_banco: 260000, pagado_efectivo: 190000 })
+  const recargada = baseLinea({ cobra: 450000, adelanto: 50000, en_efectivo: 140000, ...tras })
+  assert.ok(pagadoEsLaCadena(recargada))
+  assert.match(pagadoDeLaPlanilla(recargada, [filaPlanilla({ cobra: 450000, adelanto: 50000, enEfectivo: 140000 })]).motivo, /ya registrado/)
+})
+
+test('recarga: lo pagado que NO es la cadena, o la línea marcada pagada, se conserva', () => {
+  const nueva = { cobra: 450000, adelanto: 0, yaTransferido: 0, porBanco: 260000, enEfectivo: 190000 }
+  assert.deepEqual(pagadoTrasRecarga(baseLinea({ pagado_banco: 100000, pagado_efectivo: 0 }), nueva), { pagado_banco: 100000, pagado_efectivo: 0 })
+  assert.deepEqual(pagadoTrasRecarga(baseLinea({ pagado_banco: 260000, pagado_efectivo: 176500, pagada_en: '2026-09-16' }), nueva),
+    { pagado_banco: 260000, pagado_efectivo: 176500 })
+  assert.deepEqual(pagadoTrasRecarga(baseLinea(), nueva), { pagado_banco: null, pagado_efectivo: null })
+  assert.deepEqual(pagadoTrasRecarga(null, nueva), { pagado_banco: null, pagado_efectivo: null })
+})
+
+test('recarga: si la cadena nueva no se puede afirmar, lo pagado vuelve a vacío', () => {
+  const completada = baseLinea({ pagado_banco: 260000, pagado_efectivo: 176500 })
+  assert.deepEqual(pagadoTrasRecarga(completada, { cobra: 1007000, adelanto: 0, yaTransferido: 0, porBanco: 1365000, enEfectivo: -358000 }),
+    { pagado_banco: null, pagado_efectivo: null })
+})
+
+test('recarga: la observación nueva conserva la frase de lo pagado', () => {
+  const previa = observacionConPagado('Cargada desde JORNALES \'Obreros 26\'. Entró completa.', 14, '17/09/2026')
+  const r = observacionDeRecarga('Cargada desde JORNALES \'Obreros 26\'. 1 fila BAJA.', previa)
+  assert.ok(r.startsWith('Cargada desde JORNALES \'Obreros 26\'. 1 fila BAJA. ') && r.includes(MARCA_PAGADO_JORNALES))
+  assert.equal(observacionDeRecarga('nueva', 'vieja sin marca'), 'nueva')
+  assert.equal(observacionDeRecarga(r, r), r)
 })

@@ -288,3 +288,38 @@ export function observacionConPagado(observacion, lineas, fecha) {
   const frase = `${MARCA_PAGADO_JORNALES} el ${fecha} en ${lineas} línea(s): banco = ADELANTO BANCO + BANCO, efectivo = ADELANTO + EFECTIVO.`
   return previa ? `${previa} ${frase}` : frase
 }
+
+/** ¿Lo pagado de la línea es EXACTAMENTE la cadena de la planilla con la que se cargó? Entonces salió de acá. */
+export function pagadoEsLaCadena(l) {
+  if (!l || l.pagado_banco == null || l.pagado_efectivo == null) return false
+  return iguales(l.pagado_banco, Number(l.ya_transferido) + Number(l.por_banco))
+    && iguales(l.pagado_efectivo, Number(l.adelanto) + Number(l.en_efectivo))
+}
+
+/**
+ * AL RECARGAR UNA QUINCENA CERRADA DESDE JORNALES (auditoría 17/09/2026): lo pagado que salió de la cadena vieja
+ * se rehace con la nueva; lo que no es la cadena (o una línea marcada pagada) es de una persona y se conserva.
+ * Si la cadena nueva no se puede afirmar como pago (lado negativo, no cierra), vuelve a vacío: «sin dato».
+ *
+ * @param {object|null} previa  la línea de la base ANTES de la recarga (snake_case)
+ * @param {{cobra:number|null, adelanto:number|null, yaTransferido:number|null, porBanco:number|null, enEfectivo:number|null}} nueva
+ * @returns {{pagado_banco:number|null, pagado_efectivo:number|null}}
+ */
+export function pagadoTrasRecarga(previa, nueva) {
+  if (!previa) return { pagado_banco: null, pagado_efectivo: null }
+  const conservar = { pagado_banco: previa.pagado_banco ?? null, pagado_efectivo: previa.pagado_efectivo ?? null }
+  if (previa.pagada_en != null || !pagadoEsLaCadena(previa)) return conservar
+  const banco = redondear2(Number(nueva.yaTransferido) + Number(nueva.porBanco))
+  const efectivo = redondear2(Number(nueva.adelanto) + Number(nueva.enEfectivo))
+  if (!Number.isFinite(banco) || !Number.isFinite(efectivo) || banco < 0 || efectivo < 0 || !iguales(banco + efectivo, nueva.cobra)) {
+    return { pagado_banco: null, pagado_efectivo: null }
+  }
+  return { pagado_banco: banco, pagado_efectivo: efectivo }
+}
+
+/** La observación de una recarga conserva la frase de lo pagado, que es el único registro de su fuente. */
+export function observacionDeRecarga(nueva, previa) {
+  const i = (previa ?? '').indexOf(MARCA_PAGADO_JORNALES)
+  if (i < 0 || (nueva ?? '').includes(MARCA_PAGADO_JORNALES)) return nueva
+  return `${nueva} ${previa.slice(i)}`.trim()
+}

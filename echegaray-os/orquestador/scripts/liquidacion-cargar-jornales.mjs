@@ -58,7 +58,7 @@ import { claveNombre, resolverPersona } from '../lib/liquidacion-jornales.mjs'
 import { emparejarPersona, indicePersonas } from '../lib/jornales-a-registros-hh.mjs'
 import {
   excluidasParaBase, HOJAS_LIQUIDACION, motivoParaSaltear, observacionConPagado, observacionDeCarga, pagadoDeLaPlanilla,
-  planDeHoja, separarSalteadas, sqlLineaEditada,
+  observacionDeRecarga, pagadoEsLaCadena, pagadoTrasRecarga, planDeHoja, separarSalteadas, sqlLineaEditada,
 } from '../lib/liquidacion-jornales-plan.mjs'
 
 const JORNALES_ID = '1s0KlEURR5Udi7vvy-BmeqAi83lMRyqSCSsRjpiO5aXk'
@@ -169,13 +169,25 @@ async function escribir(h, aCargar) {
        returning id`, [q.desde, q.hasta, h.grupo],
     )
     const id = rows[0].id
+    // LO PAGADO QUE SALIÓ DE LA CADENA VIEJA SE REHACE CON LA NUEVA, Y SU FUENTE NO SE PIERDE (`--completar-pagado`).
+    const { rows: previas } = await query(
+      `select l.persona_id, l.adelanto::float8 adelanto, l.ya_transferido::float8 ya_transferido, l.por_banco::float8 por_banco,
+              l.en_efectivo::float8 en_efectivo, l.pagado_banco::float8 pagado_banco, l.pagado_efectivo::float8 pagado_efectivo,
+              l.pagada_en::text pagada_en, q.observacion
+         from public.liquidacion_quincena q left join public.liquidacion_linea l on l.liquidacion_id = q.id
+        where q.id = $1`, [id],
+    )
+    const previaDe = new Map(previas.filter((r) => r.persona_id).map((r) => [r.persona_id, r]))
     // EL FALTANTE SE ESCRIBE SIEMPRE, TAMBIÉN CUANDO ES CERO: NULL significaría «nadie lo midió».
     await query(
       `update public.liquidacion_quincena set monto_excluido = $2, excluidas = $3::jsonb, observacion = $4
         where id = $1`,
-      [id, redondear2(q.control.montoExcluido), JSON.stringify(excluidasParaBase(q.control)), observacionDeCarga(h.hoja, q.control)],
+      [id, redondear2(q.control.montoExcluido), JSON.stringify(excluidasParaBase(q.control)),
+        observacionDeRecarga(observacionDeCarga(h.hoja, q.control), previas[0]?.observacion ?? null)],
     )
     for (const l of q.control.cargables) {
+      const previa = previaDe.get(l.persona_id) ?? null
+      const pagado = pagadoTrasRecarga(previa, l)
       await query(
         `insert into public.liquidacion_linea
            (liquidacion_id, persona_id, horas, valor_hora, cobra, adelanto, ya_transferido,
@@ -188,6 +200,12 @@ async function escribir(h, aCargar) {
            en_efectivo = excluded.en_efectivo, total = excluded.total, actualizado_en = now()`,
         [id, l.persona_id, l.horas, l.valorHora, l.cobra, l.adelanto, l.yaTransferido, l.porBanco, l.enEfectivo, l.total],
       )
+      if (previa && pagadoEsLaCadena(previa) && previa.pagada_en == null) {
+        await query(
+          'update public.liquidacion_linea set pagado_banco = $3, pagado_efectivo = $4 where liquidacion_id = $1 and persona_id = $2',
+          [id, l.persona_id, pagado.pagado_banco, pagado.pagado_efectivo],
+        )
+      }
     }
     const falta = q.control.montoExcluido ? `  ⚠ AFUERA ${ars(q.control.montoExcluido)}` : ''
     console.log(`   ✔ ${h.grupo} ${q.desde}..${q.hasta}  ${q.control.cargables.length} línea(s)  ${ars(q.control.totalCargable)}${falta}`)
@@ -223,7 +241,9 @@ async function completarPagado(planes, estados) {
     const r = pagadoDeLaPlanilla(b, (q?.lineas ?? []).filter((l) => l.persona_id === b.persona_id).map((l) => ({
       ...l, motivo: q.control.excluidas.some((e) => e.fila === l.fila) ? (q.control.excluidas.find((e) => e.fila === l.fila).motivo) : null,
     })))
-    if (r.motivo) { if (r.motivo !== 'pago ya registrado en la app') salteadas.push(`${quien}: ${r.motivo}`); continue }
+    // YA COMPLETADO DESDE ESTA MISMA CADENA: silencio. Cualquier otro pago registrado se DICE: puede ser de una persona
+    // o de una cadena vieja que alguien tiene que mirar.
+    if (r.motivo) { if (!(r.motivo === 'pago ya registrado en la app' && pagadoEsLaCadena(b))) salteadas.push(`${quien}: ${r.motivo}`); continue }
     aEscribir.push({ b, ...r })
   }
   console.log(`\nLO PAGADO QUE FALTA, DESDE JORNALES (${aEscribir.length} línea/s):`)
