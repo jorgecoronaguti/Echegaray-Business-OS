@@ -129,6 +129,14 @@ export const PASOS = [
   ['proveedores-aging-columna.mjs', 'Compras «Tramo de vencimiento (OS)» — el aging que lee el encabezado', [], ['--aplicar']],
   ['proveedores-cuenta-corriente.mjs', 'Compras «CUIT (OS)» + la auxiliar _PROVEEDORES_OS — el origen del CUIT de la sección 2', ['_PROVEEDORES_OS'], ['--aplicar']],
   // ['proveedores-materiales-pestana.mjs', …] — RETIRADO, ver PASOS_RETIRADOS al pie.
+  // ═══ EL FRENO DE LOS DERRAMES (17/09/2026) ═══
+  //
+  // Todo lo de arriba ancla las ARRAYFORMULA de Compras; todo lo de abajo las LEE para escribir
+  // Proveedores, el libro, CAJA y los Cash Flow. Un valor pegado en AE962 dejó «Fecha de caja» en
+  // #REF! y la corrida publicó los dos Cash Flow sin egresos de Compras, con un ⚠ en el log. Si este
+  // paso sale ≠0 el pipeline se DETIENE (ver FRENOS): mejor la foto de la corrida anterior que un
+  // número falso con cara de actual.
+  ['freno-derrames-compras.mjs', 'FRENO · las ARRAYFORMULA de Compras derraman sin error ni celdas pegadas', []],
   // ANTES DE LAS DOS DINÁMICAS: los títulos "1 · …" y "2 · …" son su ANCLA y no los reponía nadie.
   // Si el dueño borra esa celda, los dos pasos que siguen fallan cerrado —correcto— y la pestaña se
   // congela en silencio. Escribe UNA celda y sólo si está vacía; ver lib/proveedores-titulos.mjs.
@@ -712,3 +720,11 @@ export const REPORTES = new Set([
 
 /** NÚCLEO PURO: ¿este paso es de presentación/auditoría (su ≠0 es un reporte, no un fallo de datos)? */
 export function esReporte(script) { return REPORTES.has(script) }
+
+/**
+ * LOS PASOS QUE DETIENEN EL PIPELINE CUANDO FALLAN. Un paso común que falla deja correr a los demás
+ * (cada pestaña es independiente); un freno no, porque lo que viene después escribiría sobre un dato
+ * roto. Ver `freno-derrames-compras.mjs`.
+ */
+export const FRENOS = new Set(['freno-derrames-compras.mjs'])
+export function frenaElPipeline(script) { return FRENOS.has(script) }

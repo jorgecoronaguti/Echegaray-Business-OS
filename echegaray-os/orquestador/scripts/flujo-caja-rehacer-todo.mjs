@@ -33,11 +33,12 @@
 //   node orquestador/scripts/flujo-caja-rehacer-todo.mjs [--dry]
 //   ORQ_PIPELINE_SIN_GUARDIA="motivo con sustancia" node …   ← saltea la guardia y lo deja en el log
 //
-// Códigos de salida: 0 todo bien · 1 algún paso falló (los demás corrieron) · 2 la guardia abortó.
+// Códigos de salida: 0 todo bien · 1 algún paso falló (los demás corrieron) · 2 la guardia abortó o un
+// FRENO detuvo la corrida (ver FRENOS en lib/flujo-caja-pasos.mjs).
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { PASOS, esReporte } from '../lib/flujo-caja-pasos.mjs'
+import { PASOS, esReporte, frenaElPipeline } from '../lib/flujo-caja-pasos.mjs'
 import { guardiaDeGeneradores } from '../lib/guardia-generadores.mjs'
 import { FILA, ROTULO_HOY } from '../lib/cash-flow-matriz.mjs'
 import { fileURLToPath } from 'node:url'
@@ -383,6 +384,7 @@ async function main() {
     }
   } catch (e) { console.log(`· pre-pasada de firma/reconciliación no disponible (${e.message}) — sigue el candado por paso\n`) }
 
+  let frenado = null
   for (const [script, que, pestañas = [], args = []] of PASOS) {
     const inicio = Date.now()
     if (pasoTotalmenteBloqueado(pestañas, bloqueadas)) {
@@ -416,11 +418,17 @@ async function main() {
       const porQue = motivoDeFalla(e)
       ;(esReporte(script) ? reportes : fallaron).push({ script, que, error: porQue })
       console.error(`✗ ${script.padEnd(26)} ${que}\n   ${porQue}`)
+      if (frenaElPipeline(script)) {
+        frenado = { script, porQue, faltan: PASOS.length - PASOS.findIndex((p) => p[0] === script) - 1 }
+        console.error(`⛔ FRENO de ${script}: el pipeline se detiene — ${frenado.faltan} paso(s) sin correr, ninguna pestaña de abajo se reescribe.`)
+        for (const l of String(e?.stderr ?? '').split('\n').filter((x) => /✗✗|⛔/.test(x)).slice(0, 12)) console.error(`   ${l.trim()}`)
+        break
+      }
     }
   }
 
   if (DRY) return
-  await verificarPresentacion(bloqueadas)
+  if (!frenado) await verificarPresentacion(bloqueadas)
 
   for (const linea of informeRespetadas(respetadas)) console.log(linea)
 
@@ -449,6 +457,10 @@ async function main() {
     console.log(`\n${fallaron.length} FALLARON:`)
     for (const r of fallaron) console.log(`  · ${r.script}: ${r.error}`)
     process.exitCode = 1
+  }
+  if (frenado) {
+    console.log(`\n⛔ FRENADO por ${frenado.script}: ${frenado.porQue}`)
+    process.exitCode = 2
   }
 }
 

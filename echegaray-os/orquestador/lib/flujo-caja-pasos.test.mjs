@@ -403,3 +403,25 @@ test('el verificador de CAJA corre después del último paso que escribe el Shee
 test('caja-graficos-verificar NO es un reporte: su rojo tiene que voltear la corrida', () => {
   assert.equal(esReporte('caja-graficos-verificar.mjs'), false)
 })
+
+// ═══ EL FRENO DE LOS DERRAMES DE COMPRAS (17/09/2026) ═══
+test('el freno de derrames es un FRENO, no un reporte: si falla, el pipeline se detiene', async () => {
+  const { FRENOS, frenaElPipeline } = await import('./flujo-caja-pasos.mjs')
+  assert.ok(frenaElPipeline('freno-derrames-compras.mjs'))
+  assert.ok(!esReporte('freno-derrames-compras.mjs'), 'un freno clasificado como reporte no detiene nada')
+  for (const f of FRENOS) assert.ok(PASOS.some((p) => p[0] === f), `${f} está en FRENOS y no es un paso`)
+})
+
+test('el freno corre DESPUÉS de anclar las derivadas de Compras y ANTES de todo lo que escribe Proveedores, el libro, CAJA o los Cash Flow', () => {
+  const pos = (s) => PASOS.findIndex((p) => p[0] === s)
+  const freno = pos('freno-derrames-compras.mjs')
+  assert.ok(freno > 0, 'el freno no está en el pipeline')
+  for (const s of ['rubro-caja-sheet.mjs', 'compras-saldo-pendiente.mjs', 'proveedores-aging-columna.mjs', 'proveedores-cuenta-corriente.mjs']) {
+    assert.ok(pos(s) >= 0 && pos(s) < freno, `${s} ancla una derivada de Compras y corre después del freno`)
+  }
+  const destino = /^(Proveedores|CAJA|_MOVIMIENTOS|_CAJA_ANEXO|Cash Flow Semanal|Cash Flow Mensual)$/
+  const escritores = PASOS.map((p, i) => ({ s: p[0], i, t: p[2] ?? [] }))
+    .filter(({ s, t }) => t.some((x) => destino.test(x)) || /^(proveedores-(?!aging-columna|cuenta-corriente)|caja-|cash-flow-|libro-movimientos)/.test(s))
+  assert.ok(escritores.length >= 5, 'no encontré los escritores de las cuatro pestañas: el test perdió el blanco')
+  for (const { s, i } of escritores) assert.ok(i > freno, `${s} escribe una pestaña protegida y corre ANTES del freno`)
+})
