@@ -18,7 +18,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { veEconomia } from '@/features/auth/types/areas'
-import { Aviso, Franja, type Metrica } from '@/shared/components/ds'
+import { Aviso } from '@/shared/components/ds'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
 import { C } from '@/shared/components/canon'
 import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
@@ -31,6 +31,8 @@ import { getPosicion, getSinImputar, getUltimaSincronizacion } from '@/features/
 import {
   Bloque, TablaPeriodos, TablaSinImputar, TablaVencimientos,
 } from '@/features/administracion/components/impuestos/TablasImpuestos'
+import { Cifras, SeccionCargasSociales, type Cifra } from '@/features/administracion/components/impuestos/CargasSociales'
+import { cargasSociales } from '@/features/administracion/services/impuestosCargas'
 
 export const dynamic = 'force-dynamic'
 
@@ -58,7 +60,11 @@ export default async function ImpuestosPage() {
   const pagosSinImputar = sinImputar.data ?? []
   const totalSinImputar = pagosSinImputar.reduce((s, p) => s + p.importe, 0)
 
-  const metricas: Metrica[] = [
+  const cargas = cargasSociales(posicion.data, hoy)
+
+  // ARRIBA LO QUE SE DECIDE, ABAJO EL DESGLOSE (limpieza 17/09/2026). Las mismas cuatro cifras de la
+  // franja, más «Cargas sociales en 30 días»; el naranja queda para lo vencido, no para cualquier deuda.
+  const principales: Cifra[] = [
     {
       etiqueta: 'A pagar en 30 días',
       valor: plata(proximos.total),
@@ -67,9 +73,12 @@ export default async function ImpuestosPage() {
         proximos.vencidos ? `${proximos.vencidos} vencido${proximos.vencidos > 1 ? 's' : ''}` : null,
         proximos.sinImporte ? `${proximos.sinImporte} sin importe` : null,
       ].filter(Boolean).join(' · '),
-      tono: proximos.vencidos ? 'neg' : proximos.total > 0 ? 'warn' : undefined,
+      tono: proximos.vencidos ? 'neg' : undefined,
     },
-    ...saldos.map((s): Metrica => ({
+    { etiqueta: 'Cargas sociales en 30 días', valor: plata(cargas.proximos.total), contexto: `${cargas.proximos.lista.length} venc.` },
+  ]
+  const desglose: Cifra[] = [
+    ...saldos.map((s): Cifra => ({
       etiqueta: `${NOMBRE_IMPUESTO[s.impuesto]} a favor`,
       valor: plata(s.saldo_a_favor),
       contexto: `${rotuloPeriodo(s.periodo)} · ${NOMBRE_FUENTE[s.fuente]}`,
@@ -95,11 +104,13 @@ export default async function ImpuestosPage() {
             {fr.horasDesdeSincronizacion === null ? 'sin sincronizar' : `sincronizado hace ${Math.max(0, Math.round(fr.horasDesdeSincronizacion))} h`}
           </span>
         </p>
-        <Franja testid="impuestos-franja" metricas={metricas} />
+        <Cifras testid="impuestos-franja" principales={principales} desglose={desglose} />
 
         <Bloque testid="bloque-vencimientos" titulo="A pagar en los próximos 30 días" cuenta={proximos.lista.length}>
           <TablaVencimientos lista={proximos.lista} />
         </Bloque>
+
+        <SeccionCargasSociales c={cargas} />
 
         <Bloque testid="bloque-periodos" titulo="Por período" cuenta={posicion.data.length}>
           <TablaPeriodos filas={porPeriodo(posicion.data)} />

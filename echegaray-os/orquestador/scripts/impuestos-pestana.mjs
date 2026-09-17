@@ -61,6 +61,7 @@ import { asegurarParametros } from './jornales-pestana.mjs'
 import { NOMBRES_CARGAS } from '../lib/libro-extractores-cargas.mjs'
 import { planesDePago } from '../lib/cargas-planes.mjs'
 import { elLayoutCambio, invalidarHuellasDeFormato } from '../lib/huella-formato-layout.mjs'
+import { bloqueCargasSociales, leerPosicionCargas, rotuloCarga, marcaCarga } from '../lib/impuestos-cargas-bloque.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Impuestos y Financieros'
@@ -70,9 +71,7 @@ const AÑO = 2026
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 const hoyISO = () => new Date().toISOString().slice(0, 10)
 
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-// LAS LÍNEAS DEL CASH FLOW DE LAS QUE SALE LA PROYECCIÓN DE IVA
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// ═══ LAS LÍNEAS DEL CASH FLOW DE LAS QUE SALE LA PROYECCIÓN DE IVA ═══
 //
 // SE UBICAN POR SU RÓTULO, NUNCA POR SU FILA. Escribir 'Cash Flow Mensual'!I$24 acá es fabricar un
 // rango fosilizado: el cash flow se regenera entero y una fila insertada arriba convierte esa
@@ -114,13 +113,12 @@ const LINEAS_CREDITO = [
   'Servicios recurrentes',
 ]
 
-
 /**
  * LA GRILLA ENTERA. Primero la cabecera, después se RESERVA el espacio de la posición, se escribe el
  * detalle —que es quien sabe en qué fila queda cada total— y recién entonces se llena la posición con
  * referencias. Ni un número pegado arriba.
  */
-export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy, cob }) {
+export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy, cob, cargas }) {
   const G = crearGrilla(anio)
   G.push([PESTAÑA])  // tipeado aparte decía «Impuestos y financiero»: dos nombres para la misma pestaña
   // LA FRESCURA, POR FUENTE Y COMPACTA. Una sola fecha está prohibida acá: esta pestaña cruza fuentes
@@ -161,9 +159,8 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy, cob
   // El cuadro de planes se retiró: vive en «Cargas Sociales». Desde el 09/09/2026 tampoco queda la
   // fila mensual de la cuota — era la misma serie de aquella pestaña, publicada dos veces.
   const deuda = bloqueDeudaFinanciera(G, { anio, C })
-  // NADA DEBAJO DEL ÚLTIMO BLOQUE. La sección 6 («Supuestos y huecos») se eliminó entera y su
-  // parámetro —la alícuota de IVA— vive en «Parámetros». El porqué de cada hueco, en
-  // `lib/impuestos-bloques.mjs`, al pie del archivo.
+  // La 6 es lo que falta pagar de cargas sociales, desde Postgres (17/09/2026); la vieja 6 sigue eliminada.
+  const cs = cargas ? bloqueCargasSociales(G, { filas: cargas, n: 6 }) : null
 
   // ── LA POSICIÓN, RECIÉN AHORA ──────────────────────────────────────────────────────────────────
   const calCrudo = obligacionesDelCalendario({
@@ -228,6 +225,7 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy, cob
     // De dónde sale cada mes del cuadro 4. Se devuelve para poder EXHIBIRLO: un cuadro que cambió de
     // fuente sin decirlo es la forma más barata de que nadie lo revise.
     origenIva: iva.porOrigen,
+    cargas: cs,
   }
 }
 
@@ -370,6 +368,7 @@ async function main() {
   // SÓLO PARA SABER QUÉ MESES TIENEN CUOTA — es lo que el calendario del hero necesita para poner la
   // obligación en su ventana. El IMPORTE lo publica «Cargas Sociales» por `CARGAS_MES_PLANES`.
   const planes = await planesDePago(AÑO)
+  const cargas = await leerPosicionCargas(query) // sin .catch: ver lib/impuestos-cargas-bloque.mjs
   const cabCompras = await leerEncabezadoCompras(google, ID)
   const { col: C, faltan } = resolverColumnas(cabCompras, {
     total: 'Total', concepto: 'Concepto', fecha: 'Fecha de caja', rubro: 'Rubro de caja', fechaPrev: 'Fecha prevista de pago (día)', detalle: 'Detalles / Obra',
@@ -377,7 +376,7 @@ async function main() {
   if (faltan.length) { console.error(`⚠ faltan columnas en Compras: ${faltan.join(', ')} — no escribo con referencias inventadas`); process.exit(1) }
   console.log(`  Compras por encabezado: Total=${C.total} · Concepto=${C.concepto} · Rubro=${C.rubro} · Fecha prevista=${C.fechaPrev}`)
 
-  const g = grilla({ anio: AÑO, C, planes, iibb, ivaOficial, proy, arca, hoy, cob })
+  const g = grilla({ anio: AÑO, C, planes, iibb, ivaOficial, proy, arca, hoy, cob, cargas })
   if (ret.sospechosas.length) {
     console.error(`  ⚠ ${ret.sospechosas.length} retención(es) con alícuota que no encaja con ningún régimen — NO se computaron:`)
     for (const x of ret.sospechosas) console.error(`     fila ${x.fila} ${x.cliente}: ${x.regimen} ${Math.round(x.monto).toLocaleString('es-AR')} = ${(x.alicuota * 100).toFixed(2)}%`)
@@ -401,6 +400,7 @@ async function main() {
     }
     // La forma la impone `cargas-planes.mjs`, el lector que quedó: `n` cuotas, `saldo` lo que falta.
     for (const p of planes) console.log(`  ${p.nombre.padEnd(30)} ${p.n} cuota(s) · ${p.pagadas} pagada(s) · total ${Math.round(p.total).toLocaleString('es-AR')} · saldo ${Math.round(p.saldo).toLocaleString('es-AR')}`)
+    for (const f of g.cargas.pendientes) console.log(`  [cargas] ${rotuloCarga(f).padEnd(40)} ${f.pendiente === null ? 'sin importe' : f.pendiente.toLocaleString('es-AR')} · vence ${f.vencimiento ?? '—'} · ${marcaCarga(f) || 'firme'}`)
     informarCalendario(g, hoy)
     informarProyeccion(proy)
     const est = await verificarContrato(google, g)
