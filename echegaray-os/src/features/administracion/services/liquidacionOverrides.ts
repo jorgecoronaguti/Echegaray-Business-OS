@@ -31,7 +31,7 @@
 import type { GrupoLiquidacion, LineaLiquidada } from './liquidacionQuincena.ts'
 import { repartoDelAcuerdo } from './liquidacionAcuerdo.ts'
 import { sueldoBlancoNegro, type EntradaDeBlanco, type SueldoBlancoNegro } from './sueldoBlancoNegro.ts'
-import { cobraConPresentismo, presentismoDeLinea, type EntradaDePresentismo, type PresentismoDeLinea } from './presentismo.ts'
+import { cobraConPresentismo, presentismoDeLinea, presentismoNoAplica, type EntradaDePresentismo, type PresentismoDeLinea } from './presentismo.ts'
 import { negroDeLaFila } from './sueldoBlancoNegro.ts'
 import { pagoDeLaLinea, type PagoDeLaLinea } from './pagoDeLaQuincena.ts'
 
@@ -275,7 +275,11 @@ export function aplicarOverrides(
     ? sueldoBlancoNegro({ ...blanco!, horas, horasEquivalentes, valorHoraNegro: base.valorHora, manual: manualDelBlanco })
     : null
   // EL PRESENTISMO SE EVALÚA CON LAS HORAS QUE QUEDARON, y sólo en obreros: la regla dice quién queda afuera.
-  const presentismo = entradaPresentismo && grupo === 'obreros' ? presentismoDeLinea(entradaPresentismo, horas) : null
+  // QUIEN COBRA POR MES NO LLEVA PRESENTISMO Y LA LÍNEA LO DICE (dueño, 17/09/2026): Oficina no arma entrada,
+  // así que sin esto su celda quedaba en «—», que se lee igual que «no rige todavía».
+  const presentismo = entradaPresentismo && grupo === 'obreros'
+    ? presentismoDeLinea(entradaPresentismo, horas)
+    : base.modalidad === 'mensual' ? presentismoNoAplica() : null
   // UN NEGRO ESCRITO A MANO NO SE DESCUENTA: manual gana, como en todas las celdas. El presentismo se
   // publica igual —la marca existe— y quien escribió el importe lo ve al lado.
   const sueldo = sinDescuento && descontarDelNegro(sinDescuento, manual.negro ? null : presentismo)

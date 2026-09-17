@@ -183,10 +183,11 @@ test('un COBRA escrito a mano gana también sobre el presentismo (manual > todo)
   assert.equal(r.presentismo?.estado, 'perdido')
 })
 
-test('fuera de obreros no hay presentismo aunque se le pase la entrada', () => {
+test('fuera de obreros no hay presentismo aunque se le pase la entrada: el mensual sale «no aplica», sin importe', () => {
   const oficina = liquidarLinea({ ...entrada, tarifa: { valorHora: null, netoMensual: 1_800_000, desde: '2026-09-01', origen: 'x' } }, 'oficina', null)
   const r = aplicarOverrides(oficina, {}, 'oficina', null, null, CON_MARCA)
-  assert.equal(r.presentismo, null)
+  assert.equal(r.presentismo?.estado, 'no_aplica')
+  assert.equal(r.presentismo?.importe, null)
   assert.equal(r.cobra, 1_800_000)
 })
 
@@ -264,4 +265,27 @@ test('EL CIERRE NO ESCRIBE LAS COLUMNAS DE PAGO', () => {
   const CIERRE = readFileSync(new URL('./liquidacionCierreActions.ts', import.meta.url), 'utf8')
   const foto = CIERRE.slice(CIERRE.indexOf('async function escribirFoto('), CIERRE.indexOf('function fotoDelPresentismo('))
   assert.ok(!/pagado_banco|pagado_efectivo/.test(foto), 'la foto del cierre no sella lo pagado')
+})
+
+// ═══ EL MENSUAL NO LLEVA PRESENTISMO EN LA CADENA (dueño, 17/09/2026) ═══ Atrapa: que Oficina salga con
+// presentismo `null` (la celda no distingue «no le corresponde» de «no rige»), o que el «no aplica» mueva un peso.
+test('oficina mensual → presentismo no_aplica · mensual, y cobra, efectivo y total no se mueven', () => {
+  const ofi = liquidarLinea({
+    ...entrada, horas: null, reciboNeto: null, giroEnElLote: false,
+    tarifa: { valorHora: null, netoMensual: 1_800_000, desde: '2026-09-01', origen: 'manual' },
+  }, 'oficina', null)
+  const r = aplicarOverrides(ofi, {}, 'oficina')
+  assert.equal(r.presentismo?.estado, 'no_aplica')
+  assert.equal(r.presentismo?.motivoNoAplica, 'mensual')
+  assert.equal(r.presentismo?.importe, null)
+  assert.equal(r.cobra, 1_800_000)
+  assert.equal(r.enEfectivo, ofi.enEfectivo)
+  assert.equal(r.total, ofi.total)
+})
+
+test('el jornalero sigue igual: obreros con marca pierde, y una final no inventa «no aplica»', () => {
+  const r = aplicarOverrides(linea, {}, 'obreros', null, null, CON_MARCA)
+  assert.equal(r.presentismo?.estado, 'perdido')
+  const fin = liquidarLinea({ ...entrada }, 'final', null)
+  assert.equal(aplicarOverrides(fin, {}, 'final').presentismo, null)
 })

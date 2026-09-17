@@ -222,13 +222,17 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
 
     const tabla = page.getByTestId('espejo-encabezado')
     // Dueño, 14/09/2026: blanco (recibo) + negro. Dos bandas rotuladas arriba y las columnas debajo.
-    await expect(page.getByTestId('banda-blanco')).toHaveText(/blanco · recibo/i)
-    await expect(page.getByTestId('banda-negro')).toHaveText(/negro/i)
+    // Dueño, 17/09/2026: «que se distinga la sección de hs, recibo blanco, recibo negro y el resto de cálculo» — cuatro.
+    await expect(page.getByTestId('banda-horas')).toHaveText(/horas/i)
+    await expect(page.getByTestId('banda-blanco')).toHaveText(/recibo blanco/i)
+    await expect(page.getByTestId('banda-negro')).toHaveText(/recibo negro/i)
+    await expect(page.getByTestId('banda-resto')).toHaveText(/resto del cálculo/i)
     // El orden de la pestaña «Obreros 26» de JORNALES (dueño, 14/09/2026), sin «Cliente · Obra».
     for (const c of ['Persona', 'Horas', 'Hs recibo', '$/h cat.', 'Banco', 'Pagado', 'Saldo', 'Hs', '$/h negro', 'Importe', 'Pagado', 'Saldo', 'Presentismo', 'Efect. red.', 'Total', 'Pagado', 'Saldo', 'Saldo red.']) {
       await expect(tabla).toContainText(c)
     }
-    const rotulos = await tabla.locator(':scope > div').allTextContents()
+    // Un rótulo por elemento: desde el 17/09 cada bloque es una caja con sus rótulos adentro (`data-bloque`).
+    const rotulos = await tabla.locator('[data-bloque] > div').allTextContents()
     const i = (t: string) => rotulos.findIndex((r) => r.includes(t))
     expect(i('Banco'), 'el blanco va antes que el negro').toBeLessThan(i('$/h negro'))
     expect(i('Importe'), 'el negro va antes que el presentismo').toBeLessThan(i('Presentismo'))

@@ -10,10 +10,12 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { estadoDelPago, tituloDeJornales } from './estadoDelPago.ts'
+import { BLOQUES, PLATA, columnasDe, tramosDeBloques } from './bloquesDelCuadro.ts'
 
 const fuente = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8')
 const GRILLA = fuente('../GrillaEspejoQuincena.tsx')
 const CELDAS = fuente('./CeldasBlancoNegro.tsx')
+const PIE = fuente('./PieDelEspejo.tsx')
 
 // CAMBIÓ EL 15/09/2026 (dueño, textual: «necesito al lado de banco y negro lo que se le ha pagado efectivamente
 // y que vaya restando al total o incrementando en el otro llegado el caso; así no sirve, rehacer — pésimo: no
@@ -30,27 +32,26 @@ const ORDEN_DEL_CUADRO = [
 ]
 
 // «EFECT. RED. ✎» VUELVE AL CUADRO (dueño, 16/09/2026: la pidió él). MUTACIÓN: sacarla → rojo.
-test('EL ENCABEZADO: Persona · días · Horas · BLANCO(5) · NEGRO(5) · presentismo · redondeo · total · pagado · saldo', () => {
-  const plata = GRILLA.slice(GRILLA.indexOf('const PLATA'), GRILLA.indexOf('const ANCHO_DE_BANDA'))
-  const columnas = [...plata.matchAll(/clave: '([a-zA-Z]+)', rotulo: '([^']+)'(?:, px: \d+)?(?:, banda: '([a-z]+)')?/g)]
-    .map((m) => ({ clave: m[1], rotulo: m[2].replace(' ✎', ''), banda: m[3] ?? null }))
+test('EL ENCABEZADO: Persona · HORAS · RECIBO BLANCO(5) · RECIBO NEGRO(5) · RESTO DEL CÁLCULO', () => {
+  // DESDE EL 17/09/2026 LA LISTA SE EJECUTA, no se lee con una regex: vive en `bloquesDelCuadro.ts`.
+  const columnas = PLATA.map((c) => ({ clave: c.clave, rotulo: c.rotulo.replace(' ✎', ''), bloque: c.bloque }))
+  const plata = PLATA.map((c) => c.rotulo).join('|')
   assert.deepEqual(columnas.map((c) => c.rotulo), ORDEN_DEL_CUADRO, 'el orden exacto, sin Cliente · Obra')
   // LAS DOS BANDAS SON SIMÉTRICAS: se leen en paralelo, y por eso la de arriba puede no repetir la leyenda.
-  assert.deepEqual(columnas.filter((c) => c.banda === 'blanco').map((c) => c.rotulo),
+  assert.deepEqual(columnas.filter((c) => c.bloque === 'blanco').map((c) => c.rotulo),
     ['Hs recibo', '$/h cat.', 'Banco', 'Pagado', 'Saldo'])
-  assert.deepEqual(columnas.filter((c) => c.banda === 'negro').map((c) => c.rotulo),
+  assert.deepEqual(columnas.filter((c) => c.bloque === 'negro').map((c) => c.rotulo),
     ['Hs', '$/h negro', 'Importe', 'Pagado', 'Saldo'])
-  assert.match(GRILLA, /const ANCHO_DE_BANDA = 5/, 'MUTACIÓN: la banda sigue cubriendo 3 columnas y se desalinea')
   assert.ok(!/Cliente|Obra'/.test(plata), 'no vuelve la columna Cliente · Obra')
   // LAS COLUMNAS QUE EL DUEÑO SACÓ NO VUELVEN.
   for (const muerta of ['Adelanto banco / embargos', 'Adelanto efectivo', 'Total efectivo', 'Cobra total']) {
     assert.ok(!plata.includes(muerta), `«${muerta}» volvió al encabezado`)
   }
   // LOS DÍAS ADELANTE: la plantilla pone los días antes que la plata, y el encabezado también.
-  assert.match(GRILLA, /`minmax\(var\(--liq-persona,200px\),1fr\) repeat\(\$\{nDias\},\$\{DIA\}px\) \$\{PLATA\.map/,
-    'MUTACIÓN: la plata antes que los días')
-  assert.match(GRILLA, /gridColumn: 2 \+ dias\.length \+ i, gridRow: 2/)
-  assert.match(GRILLA, /'Blanco · recibo'/)
+  assert.match(columnasDe(2), /^minmax\(var\(--liq-persona,200px\),1fr\) repeat\(2,36px\) /, 'MUTACIÓN: la plata antes que los días')
+  // EL ENCABEZADO DIBUJA CADA BLOQUE CON SUS COLUMNAS, en el renglón 2 y del mismo `PLATA`.
+  assert.match(GRILLA, /PLATA\.filter\(\(c\) => c\.bloque === t\.clave\)/)
+  assert.deepEqual(BLOQUES.map((b) => b.rotulo), ['Horas', 'Recibo blanco', 'Recibo negro · plataforma', 'Resto del cálculo'])
   // Y LA FILA DIBUJA EN ESE ORDEN.
   const fila = GRILLA.slice(GRILLA.indexOf('function Fila('), GRILLA.indexOf('function Total('))
   const orden = ['<CeldaDeDia', '<CeldaHorasPagas', '<CeldaHorasBlanco', '<CeldaHoraCategoria', '<CeldaNeto',
@@ -60,9 +61,9 @@ test('EL ENCABEZADO: Persona · días · Horas · BLANCO(5) · NEGRO(5) · prese
     .map((x) => fila.indexOf(x))
   assert.ok(orden.every((i) => i > 0), 'están todas las celdas')
   assert.deepEqual([...orden].sort((a, b) => a - b), orden, 'en el orden pedido')
-  assert.match(GRILLA, /clave: 'efectivoRedondeado'/, 'la columna «Efect. red.» está en el cuadro (dueño)')
+  assert.ok(PLATA.some((c) => c.clave === 'efectivoRedondeado'), 'la columna «Efect. red.» está en el cuadro (dueño)')
   assert.match(GRILLA, /espejo-total-redondeo/, 'y la fila de total la suma')
-  assert.match(GRILLA, /cifra\('Efectivo redondeado'/, 'el pie la sigue sumando')
+  assert.match(PIE, /cifra\('Efectivo redondeado'/, 'el pie la sigue sumando')
 })
 
 // «NECESITO Q EN ALGUNA COLUMNA DE LIQ HS ME DIGA CUANTO COBRA EN TOTAL» (dueño, 14/09/2026) sigue vigente: el
@@ -72,10 +73,10 @@ test('EL ENCABEZADO: Persona · días · Horas · BLANCO(5) · NEGRO(5) · prese
 // como una columna distinta de la que se movía. MUTACIÓN: volver a pegar una columna a la derecha → rojo.
 test('TOTAL EN EL CUADRO Y EN EL PIE; NINGUNA COLUMNA PEGADA A LA DERECHA', () => {
   const PANEL = fuente('./PanelDeLaPersona.tsx')
-  assert.match(GRILLA, /clave: 'total', rotulo: 'Total'/)
-  assert.match(GRILLA, /clave: 'saldo', rotulo: 'Saldo'/)
-  assert.match(GRILLA, /cifra\('Total', totales\.cobra/)
-  assert.match(GRILLA, /cifra\('Saldo', p\.saldoTotal/)
+  assert.ok(PLATA.some((c) => c.clave === 'total' && c.rotulo === 'Total'))
+  assert.ok(PLATA.some((c) => c.clave === 'saldo' && c.rotulo === 'Saldo'))
+  assert.match(PIE, /cifra\('Total', totales\.cobra/)
+  assert.match(PIE, /cifra\('Saldo', p\.saldoTotal/)
   assert.equal((PANEL.match(/rotulo="Cobra total"/g) ?? []).length, 2, 'las dos cadenas del panel')
   assert.ok(!/Total quincena/.test(GRILLA + PANEL), 'no queda el rótulo viejo')
   assert.ok(!/right: -CANAL_SCROLL|COLUMNA_SALDO|CLASE_SALDO/.test(GRILLA), 'volvió una columna pegada a la derecha')
@@ -83,7 +84,7 @@ test('TOTAL EN EL CUADRO Y EN EL PIE; NINGUNA COLUMNA PEGADA A LA DERECHA', () =
   assert.ok(!/position: 'sticky'/.test(GRILLA), 'la grilla declara un sticky propio: sólo Persona (tabla.tsx) es fija')
   // EL SALDO TOTAL ES UNA CELDA COMÚN, la última de la fila y del total.
   const fila = GRILLA.slice(GRILLA.indexOf('function Fila('), GRILLA.indexOf('function Total('))
-  assert.match(fila, /<CeldaPagadoTotal fila=\{fila\} \/>\s*<CeldaSaldo fila=\{fila\} lado="total" \/>\s*<CeldaSaldoRedondeado fila=\{fila\} \/>\s*<\/div>/)
+  assert.match(fila, /<CeldaPagadoTotal fila=\{fila\} \/>\s*<CeldaSaldo fila=\{fila\} lado="total" \/>\s*<CeldaSaldoRedondeado fila=\{fila\} \/>\s*<\/BloqueDeColumnas>\s*<\/div>/)
 })
 
 // ═══ «SALDO RED.» — LO QUE RESTA PAGAR, SI SALIERA TODO EN BILLETES (dueño, 16/09/2026) ═══
@@ -93,13 +94,13 @@ test('TOTAL EN EL CUADRO Y EN EL PIE; NINGUNA COLUMNA PEGADA A LA DERECHA', () =
 // que la columna esté al lado de Saldo y no en cualquier lado; que NO sea editable ni se guarde (sería una
 // segunda «Efect. red.», que es otra cosa y sí la decide el dueño); y que el total sume saldos ya redondeados.
 test('SALDO RED. VA AL LADO DE SALDO, SE DERIVA DE ÉL, NO SE EDITA NI SE GUARDA', () => {
-  const plata = GRILLA.slice(GRILLA.indexOf('const PLATA'), GRILLA.indexOf('const ANCHO_DE_BANDA'))
-  const claves = [...plata.matchAll(/clave: '([a-zA-Z]+)'/g)].map((m) => m[1])
+  const claves: string[] = PLATA.map((c) => c.clave)
   assert.equal(claves[claves.indexOf('saldoRedondeado') - 1], 'saldo', 'MUTACIÓN: separarla del Saldo')
   assert.equal(claves[claves.length - 1], 'saldoRedondeado', 'cierra la fila')
   // EL RÓTULO SIN «✎»: la de al lado, «Efect. red. ✎», sí se escribe. Confundirlas es el defecto a evitar.
-  assert.match(plata, /clave: 'saldoRedondeado', rotulo: 'Saldo red\.'/)
-  assert.ok(!/clave: 'saldoRedondeado', rotulo: '[^']*✎/.test(plata), 'MUTACIÓN: no es editable')
+  const saldoRed = PLATA.find((c) => c.clave === 'saldoRedondeado')
+  assert.equal(saldoRed?.rotulo, 'Saldo red.')
+  assert.ok(!saldoRed?.rotulo.includes('✎'), 'MUTACIÓN: no es editable')
   // SALE DEL SALDO TOTAL, no de `enEfectivo` ni del redondeo guardado del dueño.
   const celda = CELDAS.slice(CELDAS.indexOf('export function CeldaSaldoRedondeado('), CELDAS.indexOf('export function CeldaPagadoTotal('))
   assert.match(celda, /fila\.linea\.pago\.saldoTotal/)
@@ -110,7 +111,7 @@ test('SALDO RED. VA AL LADO DE SALDO, SE DERIVA DE ÉL, NO SE EDITA NI SE GUARDA
   // EL TOTAL DE LA COLUMNA Y EL PIE: suma de redondeados uno por uno (`sumaDelSaldoRedondeado`), no de la suma.
   assert.match(GRILLA, /sumaDelSaldoRedondeado\(visibles\.map\(\(f\) => f\.linea\.pago\.saldoTotal\)\)/)
   assert.match(GRILLA, /espejo-total-saldo-redondeado/)
-  assert.match(GRILLA, /cifra\('Saldo redondeado'/)
+  assert.match(PIE, /cifra\('Saldo redondeado'/)
 })
 
 // EL ENCABEZADO FIJO (dueño, 15/09/2026: «quiero eso fijo en liq hs», con captura del cuadro desplazado).
@@ -151,10 +152,12 @@ test('EL PANEL DE LA PERSONA MUESTRA PAGADO Y SALDO POR LADO, NO «TOTAL EFECTIV
   for (const muerta of ['Total efectivo', 'cobra total − banco − adelantos', 'campo="enEfectivo"', 'Adelanto efectivo', 'Adelanto banco / embargos']) {
     assert.ok(!cadena.includes(muerta), `«${muerta}» sigue en la cadena blanco + negro del panel`)
   }
-  const orden = ['campo="porBanco"', 'campo="negro"', '<PagadoYSaldo', 'campo="cobra"', 'rotulo="Pagado"', 'rotulo="A pagar hoy"']
+  // CAMBIÓ EL 17/09/2026 (cuatro bloques): lo pagado y el saldo de cada lado viven DENTRO de su recibo, como en la fila.
+  const orden = ['bloque="horas"', 'campo="porBanco"', '<PagadoYSaldo lado="banco"', 'campo="negro"', '<PagadoYSaldo lado="efectivo"',
+    'bloque="resto"', 'campo="cobra"', 'rotulo="Pagado"', 'rotulo="A pagar hoy"']
     .map((x) => cadena.indexOf(x))
   assert.ok(orden.every((i) => i > 0), 'están todos los renglones')
-  assert.deepEqual([...orden].sort((a, b) => a - b), orden, 'en el orden del cuadro: blanco · negro · pagado · total')
+  assert.deepEqual([...orden].sort((a, b) => a - b), orden, 'en el orden del cuadro: horas · blanco · negro · resto')
   // LAS MISMAS CELDAS QUE EL CUADRO, y el saldo se LEE: nadie escribe un saldo.
   for (const campo of ['pagadoBanco', 'pagadoEfectivo']) assert.match(cadena, new RegExp(`<Escribible campo="${campo}"`))
   assert.match(cadena, /<Leida valor=\{p\.saldoBanco\}/)
@@ -207,4 +210,26 @@ test('JORNALES VA ENTERO EN EL TITLE Y NO MANDA: horas, cobra, banco y efectivo'
     'JORNALES (referencia): 94 h · cobra $552.156 · banco $250.000 · efectivo $121.915,88',
   )
   assert.equal(tituloDeJornales({ referenciaJornales: null }), null)
+})
+
+// ═══ LOS CUATRO BLOQUES (dueño, 17/09/2026: «que se distinga la sección de hs, recibo blanco, recibo negro y el resto
+// de cálculo») ═══ Atrapa: una columna que se queda sin bloque o en dos, un bloque que se superpone o deja un hueco
+// en la grilla (el fondo quedaría corrido de sus columnas), dos bloques vecinos con el mismo fondo (no se
+// distinguirían), un color que no sale de un token, y —regla del dueño— que alguna columna pedida desaparezca.
+test('CADA COLUMNA EN UN SOLO BLOQUE, LOS BLOQUES CUBREN LA GRILLA SIN HUECOS Y NINGUNA COLUMNA SE QUITÓ', () => {
+  for (const c of PLATA) assert.ok(BLOQUES.some((b) => b.clave === c.bloque), `${c.clave} sin bloque`)
+  const dias = 15
+  const tramos = tramosDeBloques(dias)
+  assert.equal(tramos[0].inicio, 2, 'el primer bloque empieza después de Persona')
+  for (let i = 1; i < tramos.length; i++) assert.equal(tramos[i].inicio, tramos[i - 1].inicio + tramos[i - 1].span, `hueco o solape antes de ${tramos[i].clave}`)
+  const pistas = columnasDe(dias).split(' ').length - 1 + dias - 1 // `repeat(15,36px)` cuenta como una
+  assert.equal(tramos.reduce((s, t) => s + t.span, 0), pistas, 'los bloques cubren todas las columnas menos Persona')
+  assert.deepEqual(tramos.map((t) => t.span), [dias + 1, 5, 5, 6])
+  for (let i = 1; i < BLOQUES.length; i++) assert.notEqual(BLOQUES[i].fondo, BLOQUES[i - 1].fondo, 'dos vecinos con el mismo fondo')
+  for (const b of BLOQUES) if (b.fondo) assert.match(b.fondo, /^rgb\(var\(--os-[a-z-]+-rgb\) \/ 0?\.\d+\)$/, 'el fondo sale de un token con alfa')
+  // LO PEDIDO POR EL DUEÑO NO SE QUITA: las diecisiete columnas, incluidas las que ya volvieron una vez.
+  for (const clave of ['efectivoRedondeado', 'saldoRedondeado', 'presentismo', 'pagadoBanco', 'pagadoEfectivo', 'saldoBanco', 'saldoEfectivo', 'total', 'pagado', 'saldo']) {
+    assert.ok(PLATA.some((c) => c.clave === clave), `se quitó «${clave}»`)
+  }
+  assert.equal(PLATA.length, 17)
 })

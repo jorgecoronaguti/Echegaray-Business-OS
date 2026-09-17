@@ -16,7 +16,14 @@
 // `PanelDePersona` se despliega DEBAJO de la grilla y empuja la fila que se está mirando fuera de la
 // pantalla. Éste flota encima (`Drawer`) y el cuadro no se mueve.
 //
-// Ni una cuenta nueva: las cifras son las de la línea; el cierre, `cierreDeLaFila`.
+// ═══ LOS MISMOS CUATRO BLOQUES QUE EL CUADRO (dueño, 17/09/2026) ═══
+//
+// Horas · Recibo blanco · Recibo negro · Resto del cálculo, con el mismo rótulo y el mismo fondo de
+// `bloquesDelCuadro.ts`. Lo pagado y el saldo de cada lado viven dentro de su recibo, como en la fila; el resto
+// (presentismo, billetes redondeados, total, pagado, a pagar hoy) cierra abajo.
+//
+// Ni una cuenta nueva: las cifras son las de la línea; el cierre, `cierreDeLaFila`; los redondeos,
+// `efectivoRedondeado.ts`.
 
 import Link from 'next/link'
 import type { ReactNode } from 'react'
@@ -38,6 +45,8 @@ import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import type { DetalleLaboral } from '../../../services/detalleLaboral'
 import { DetalleLaboralDeLaPersona } from './DetalleLaboralDeLaPersona'
 import { ReciboPorConceptos } from './ReciboPorConceptos'
+import { BLOQUES, type ClaveDeBloque } from './bloquesDelCuadro'
+import { efectivoMostrado, saldoRedondeado } from '../../../services/efectivoRedondeado'
 
 const MONO = "'IBM Plex Mono', monospace"
 const corta = (iso: string | null): string =>
@@ -90,63 +99,93 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
   )
 }
 
-/** BLANCO (con su origen) · NEGRO · pagado y saldo por lado · TOTAL · a pagar hoy. */
+/** HORAS · RECIBO BLANCO (con su origen, pagado y saldo) · RECIBO NEGRO (ídem) · RESTO: presentismo, total, a pagar hoy. */
 function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
   const l = fila.linea
   const s = l.sueldo!
   const cierre = cierreDeLaFila(l)
   const est = s.estado === 'estimado'
   return (
-    <section data-testid="panel-cadena">
-      <Rotulo>{`Blanco · ${s.estado === 'recibo' ? 'recibo' : 'estimado'}`}</Rotulo>
-      {/* EL MISMO ORDEN QUE LA FILA DEL CUADRO: blanco · negro · pagado y saldo · total. */}
-      <Renglon rotulo="Hs recibo" nota={origenDelBlanco(s)}>
-        <Leida valor={s.horasBlanco} unidad="horas" apagada={est} />
-      </Renglon>
-      <Renglon rotulo="$/h cat."><Leida valor={s.valorHoraCategoria} apagada={est} /></Renglon>
-      <Renglon rotulo="Bruto"><Leida valor={s.bruto} apagada={est} /></Renglon>
-      <Renglon rotulo="Banco" nota={s.driveFileId ? undefined : (s.neto == null ? 'sin neto' : undefined)}>
-        {s.driveFileId && (
-          <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid="panel-recibo-pdf"
-            style={{ fontSize: '11.5px', color: V.apagado, marginRight: 8 }}>recibo ↗</a>
-        )}
-        <Escribible campo="porBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
-      </Renglon>
-      {/* EL RECIBO CONCEPTO POR CONCEPTO (dueño, 14/09/2026): el estimado cuyo neto es el Banco preliminar, o el real
-          contra el estimado cuando llegó el del estudio. */}
-      <div style={{ height: 12 }} />
-      <ReciboPorConceptos s={s} />
+    <section data-testid="panel-cadena" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* EL MISMO ORDEN QUE LA FILA DEL CUADRO: horas · blanco · negro · resto del cálculo. */}
+      <BloqueDelPanel bloque="horas">
+        <Renglon rotulo="Horas" nota="las de la quincena: las que se pagan">
+          <Leida valor={l.horas} unidad="horas" />
+        </Renglon>
+      </BloqueDelPanel>
 
-      <div style={{ height: 16 }} />
-      <Rotulo>Negro</Rotulo>
-      <Renglon rotulo="Hs"
-        nota={s.reciboExcedeHoras ? 'el recibo paga más horas que las cargadas' : 'las que el recibo no paga'} alerta={s.reciboExcedeHoras}>
-        <Leida valor={s.horasNegro} unidad="horas" />
-      </Renglon>
-      <Renglon rotulo="$/h negro"><Leida valor={s.valorHoraNegro} /></Renglon>
-      <Renglon rotulo="Importe">
-        <Escribible campo="negro" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
-      </Renglon>
+      <BloqueDelPanel bloque="blanco" detalle={s.estado === 'recibo' ? 'recibo' : 'estimado'}>
+        <Renglon rotulo="Hs recibo" nota={origenDelBlanco(s)}>
+          <Leida valor={s.horasBlanco} unidad="horas" apagada={est} />
+        </Renglon>
+        <Renglon rotulo="$/h cat."><Leida valor={s.valorHoraCategoria} apagada={est} /></Renglon>
+        <Renglon rotulo="Bruto"><Leida valor={s.bruto} apagada={est} /></Renglon>
+        <Renglon rotulo="Banco" nota={s.driveFileId ? undefined : (s.neto == null ? 'sin neto' : undefined)}>
+          {s.driveFileId && (
+            <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid="panel-recibo-pdf"
+              style={{ fontSize: '11.5px', color: V.apagado, marginRight: 8 }}>recibo ↗</a>
+          )}
+          <Escribible campo="porBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+        </Renglon>
+        {/* EL RECIBO CONCEPTO POR CONCEPTO (dueño, 14/09/2026): el estimado cuyo neto es el Banco preliminar, o el real
+            contra el estimado cuando llegó el del estudio. */}
+        <div style={{ height: 8 }} />
+        <ReciboPorConceptos s={s} />
+        <div style={{ height: 8 }} />
+        <PagadoYSaldo lado="banco" fila={fila} quincena={quincena} camposEditables={camposEditables} />
+      </BloqueDelPanel>
 
-      <PresentismoDelPanel fila={fila} />
+      <BloqueDelPanel bloque="negro">
+        <Renglon rotulo="Hs"
+          nota={s.reciboExcedeHoras ? 'el recibo paga más horas que las cargadas' : 'las que el recibo no paga'} alerta={s.reciboExcedeHoras}>
+          <Leida valor={s.horasNegro} unidad="horas" />
+        </Renglon>
+        <Renglon rotulo="$/h negro"><Leida valor={s.valorHoraNegro} /></Renglon>
+        <Renglon rotulo="Importe">
+          <Escribible campo="negro" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+        </Renglon>
+        <PagadoYSaldo lado="efectivo" fila={fila} quincena={quincena} camposEditables={camposEditables} />
+      </BloqueDelPanel>
 
-      <PagadoYSaldo fila={fila} quincena={quincena} camposEditables={camposEditables} />
-
-      <div style={{ height: 16 }} />
-      <Renglon rotulo="Cobra total" fuerte
-        nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : (est ? 'banco + negro · blanco estimado' : 'banco + negro')}
-        alerta={cierre?.cierra === false}>
-        <Escribible campo="cobra" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
-      </Renglon>
-      <Renglon rotulo="Pagado" nota="banco + efectivo"><Leida valor={l.pago.pagado} /></Renglon>
-      <Renglon rotulo="A pagar hoy" fuerte
-        nota={l.pago.aPagarEfectivo == null ? 'sin saldo que afirmar' : `efectivo ${pesos(l.pago.aPagarEfectivo)} · banco ${pesos(l.pago.aPagarBanco)}`}>
-        <Leida valor={l.pago.saldoTotal} />
-      </Renglon>
+      <BloqueDelPanel bloque="resto">
+        <PresentismoDelPanel fila={fila} />
+        <EfectivoRedondeadoDelPanel fila={fila} />
+        <Renglon rotulo="Cobra total" fuerte
+          nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : (est ? 'banco + negro · blanco estimado' : 'banco + negro')}
+          alerta={cierre?.cierra === false}>
+          <Escribible campo="cobra" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+        </Renglon>
+        <Renglon rotulo="Pagado" nota="banco + efectivo"><Leida valor={l.pago.pagado} /></Renglon>
+        <Renglon rotulo="A pagar hoy" fuerte
+          nota={l.pago.aPagarEfectivo == null ? 'sin saldo que afirmar' : `efectivo ${pesos(l.pago.aPagarEfectivo)} · banco ${pesos(l.pago.aPagarBanco)}`}>
+          <Leida valor={l.pago.saldoTotal} />
+        </Renglon>
+        <SaldoRedondeadoDelPanel fila={fila} />
+      </BloqueDelPanel>
     </section>
   )
 }
 
+/** «Efect. red.»: el guardado por el dueño, o el sugerido (lo que se entrega hoy al $1.000). Se escribe en el cuadro. */
+function EfectivoRedondeadoDelPanel({ fila }: { fila: FilaDelEspejo }) {
+  const l = fila.linea
+  const m = efectivoMostrado({ efectivoRedondeado: l.efectivoRedondeado, enEfectivo: l.pago.aPagarEfectivo ?? l.enEfectivo })
+  return (
+    <Renglon rotulo="Efect. red." nota={m.sugerido ? 'sugerido: el efectivo de hoy al $1.000 · se escribe en el cuadro' : 'lo que cuenta en billetes'}>
+      <Leida valor={m.valor} apagada={m.sugerido} testid={`panel-efectivo-redondeado-${fila.personaId}`} />
+    </Renglon>
+  )
+}
+
+/** «Saldo red.»: lo que falta pagar si saliera todo en billetes. Derivado del saldo; no se escribe. */
+function SaldoRedondeadoDelPanel({ fila }: { fila: FilaDelEspejo }) {
+  const r = saldoRedondeado(fila.linea.pago.saldoTotal)
+  return (
+    <Renglon rotulo="Saldo red." nota="el saldo en billetes de $1.000">
+      <Leida valor={r.valor} testid={`panel-saldo-redondeado-${fila.personaId}`} />
+    </Renglon>
+  )
+}
 
 /**
  * EL PRESENTISMO, CONCEPTO POR CONCEPTO (dueño, 16/09/2026): *«mostrar por empleado: Base presentismo
@@ -158,17 +197,21 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
  */
 function PresentismoDelPanel({ fila }: { fila: FilaDelEspejo }) {
   const p = fila.linea.presentismo
-  if (!p || p.estado === 'no_rige') return null
   const testid = `panel-presentismo-${fila.personaId}`
+  // EL MENSUAL NO LLEVA PRESENTISMO (dueño, 17/09/2026): se dice, apagado, en vez de callar.
+  if (p?.estado === 'no_aplica') {
+    return (
+      <Renglon rotulo="Presentismo" nota="cobra por mes: el presentismo es del convenio de obreros">
+        <span data-testid={testid} data-estado={p.estado} style={{ fontSize: '12px', color: V.apagado }}>{`no aplica · ${p.motivoNoAplica ?? 'mensual'}`}</span>
+      </Renglon>
+    )
+  }
+  if (!p || p.estado === 'no_rige') return null
   if (p.estado === 'sin_categoria') {
     return (
-      <>
-        <div style={{ height: 16 }} />
-        <Rotulo>Presentismo</Rotulo>
-        <Renglon rotulo="Estado" nota="sin categoría en el legajo: no hay básico con qué calcularlo">
-          <span data-testid={testid} style={{ fontSize: '12px', color: V.apagado }}>sin categoría</span>
-        </Renglon>
-      </>
+      <Renglon rotulo="Presentismo" nota="sin categoría en el legajo: no hay básico con qué calcularlo">
+        <span data-testid={testid} style={{ fontSize: '12px', color: V.apagado }}>sin categoría</span>
+      </Renglon>
     )
   }
   // ═══ «CUMPLE» ES UNA AFIRMACIÓN, Y SIN HORAS NO SE PUEDE HACER (QA, 16/09/2026) ═══
@@ -184,8 +227,6 @@ function PresentismoDelPanel({ fila }: { fila: FilaDelEspejo }) {
   const color = p.estado === 'aplica' ? V.tinta : p.estado === 'sin_horas' ? V.apagado : V.warn
   return (
     <>
-      <div style={{ height: 16 }} />
-      <Rotulo>Presentismo</Rotulo>
       <Renglon rotulo="Base presentismo" nota="50 % en blanco · el 50 % en efectivo no entra en la base">
         <Leida valor={p.base} />
       </Renglon>
@@ -209,25 +250,29 @@ function PresentismoDelPanel({ fila }: { fila: FilaDelEspejo }) {
 }
 
 /**
- * LO PAGADO DE CADA LADO Y LO QUE FALTA (dueño, 15/09/2026). Las mismas celdas que el cuadro: «Pagado» se
+ * LO PAGADO DE CADA LADO Y LO QUE FALTA (dueño, 15/09/2026). Desde el 17/09 cada lado va dentro de su recibo. Las mismas celdas que el cuadro: «Pagado» se
  * escribe, «Saldo» se lee. Sin la resta «cobra − banco − adelantos» de antes: trataba al adelanto como
  * un descuento y no como un pago, y con un adelanto mayor que el negro dejaba un número negativo sin decir que
  * el exceso se descuenta del banco. El saldo negativo SIGUE a la vista —en ámbar y con su aviso— porque es la
  * evidencia de que alguien cobró de más por ese canal.
  */
-function PagadoYSaldo({ fila, quincena, camposEditables }: PropsDeCadena) {
+function PagadoYSaldo({ lado, fila, quincena, camposEditables }: PropsDeCadena & { lado: 'banco' | 'efectivo' }) {
   const p = fila.linea.pago
   const aviso = avisoDeExcedente(p) ?? undefined
+  if (lado === 'banco') {
+    return (
+      <>
+        <Renglon rotulo="Pagado banco" nota={fila.linea.manual.pagadoBanco ? undefined : 'adelantos por banco y embargos'}>
+          <Escribible campo="pagadoBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+        </Renglon>
+        <Renglon rotulo="Saldo banco" nota={p.excedente?.lado === 'banco' ? aviso : undefined} alerta={p.excedente?.lado === 'banco'}>
+          <Leida valor={p.saldoBanco} />
+        </Renglon>
+      </>
+    )
+  }
   return (
     <>
-      <div style={{ height: 16 }} />
-      <Rotulo>Pagado y saldo</Rotulo>
-      <Renglon rotulo="Pagado banco" nota={fila.linea.manual.pagadoBanco ? undefined : 'adelantos por banco y embargos'}>
-        <Escribible campo="pagadoBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
-      </Renglon>
-      <Renglon rotulo="Saldo banco" nota={p.excedente?.lado === 'banco' ? aviso : undefined} alerta={p.excedente?.lado === 'banco'}>
-        <Leida valor={p.saldoBanco} />
-      </Renglon>
       <Renglon rotulo="Pagado efectivo" nota={fila.linea.manual.pagadoEfectivo ? undefined : 'adelantos en efectivo'}>
         <Escribible campo="pagadoEfectivo" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
@@ -238,48 +283,79 @@ function PagadoYSaldo({ fila, quincena, camposEditables }: PropsDeCadena) {
   )
 }
 
-/** La cadena de siempre: Oficina, finales y la quincena cerrada (la foto sellada no se recalcula). */
+/**
+ * La cadena de siempre: Oficina, finales y la quincena cerrada (la foto sellada no se recalcula). En los mismos
+ * cuatro bloques: la aritmética «cobra − adelanto − ya transferido = banco + efectivo» queda entera en el resto del
+ * cálculo, y cada recibo muestra su parte.
+ */
 function CadenaSinModelo({ fila, quincena, camposEditables }: PropsDeCadena) {
   const l = fila.linea
   const cierre = cierreDeLaFila(l)
   const esHora = l.netoMensual == null
   return (
-    <section data-testid="panel-cadena">
-      <Rotulo>Esta quincena</Rotulo>
-      <Renglon rotulo="Cobra total" nota={esHora ? `${nHoras(l.horas)} h pagas × ${pesos(l.valorHora)}/h` : 'neto mensual'}>
-        <Leida valor={l.cobra} medio origen={l.origen.cobra} />
-      </Renglon>
-      <Renglon rotulo="− Adelanto">
-        <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
-      </Renglon>
-      <Renglon rotulo="− Ya transferido">
-        <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
-      </Renglon>
-      <Renglon rotulo="= Banco + efectivo" fuerte
-        nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : undefined} alerta={cierre?.cierra === false}>
-        <Leida valor={l.total} medio origen={l.origen.total} />
-      </Renglon>
-      <Renglon rotulo="Neto (banco)" nota={l.reciboSinGiro ? 'recibo sin giro en el extracto' : undefined}>
-        <Escribible campo="porBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
-      </Renglon>
-      <Renglon rotulo="Efectivo">
-        <Leida valor={l.enEfectivo} origen={l.origen.enEfectivo} />
-      </Renglon>
-      {l.blancoAcuerdo != null && (
-        <Renglon rotulo="Acuerdo 50/50" nota="lo acordado; el banco manda lo que dice el recibo">
-          <span style={{ fontSize: '12px', color: V.apagado }}>{`banco ${pesos(l.blancoAcuerdo)} · efectivo ${pesos(l.efectivoAcuerdo)}`}</span>
+    <section data-testid="panel-cadena" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <BloqueDelPanel bloque="horas">
+        <Renglon rotulo="Horas" nota={esHora ? `× ${pesos(l.valorHora)}/h` : 'cobra por mes: las horas no mueven el sueldo'}>
+          <Leida valor={l.horas} unidad="horas" />
         </Renglon>
-      )}
-      {l.reciboNeto != null && (
-        <Renglon rotulo="Recibo del estudio"><span>{pesos(l.reciboNeto)}</span></Renglon>
-      )}
+      </BloqueDelPanel>
+      <BloqueDelPanel bloque="blanco">
+        <Renglon rotulo="Neto (banco)" nota={l.reciboSinGiro ? 'recibo sin giro en el extracto' : undefined}>
+          <Escribible campo="porBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+        </Renglon>
+        {l.reciboNeto != null && (
+          <Renglon rotulo="Recibo del estudio"><span>{pesos(l.reciboNeto)}</span></Renglon>
+        )}
+      </BloqueDelPanel>
+      <BloqueDelPanel bloque="negro">
+        <Renglon rotulo="Efectivo">
+          <Leida valor={l.enEfectivo} origen={l.origen.enEfectivo} />
+        </Renglon>
+      </BloqueDelPanel>
+      <BloqueDelPanel bloque="resto">
+        <Renglon rotulo="Cobra total" nota={esHora ? `${nHoras(l.horas)} h pagas × ${pesos(l.valorHora)}/h` : 'neto mensual'}>
+          <Leida valor={l.cobra} medio origen={l.origen.cobra} />
+        </Renglon>
+        <Renglon rotulo="− Adelanto">
+          <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+        </Renglon>
+        <Renglon rotulo="− Ya transferido">
+          <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+        </Renglon>
+        <Renglon rotulo="= Banco + efectivo" fuerte
+          nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : undefined} alerta={cierre?.cierra === false}>
+          <Leida valor={l.total} medio origen={l.origen.total} />
+        </Renglon>
+        {l.blancoAcuerdo != null && (
+          <Renglon rotulo="Acuerdo 50/50" nota="lo acordado; el banco manda lo que dice el recibo">
+            <span style={{ fontSize: '12px', color: V.apagado }}>{`banco ${pesos(l.blancoAcuerdo)} · efectivo ${pesos(l.efectivoAcuerdo)}`}</span>
+          </Renglon>
+        )}
+        <PresentismoDelPanel fila={fila} />
+      </BloqueDelPanel>
     </section>
+  )
+}
+
+/**
+ * UN BLOQUE DEL PANEL: el rótulo y el fondo del bloque del cuadro (`BLOQUES`), para que quien abre el panel desde
+ * una columna tenga la misma referencia visual. Filo de grafito arriba, como la banda del encabezado; sin sombra.
+ */
+function BloqueDelPanel({ bloque, detalle, children }: { bloque: ClaveDeBloque; detalle?: string; children: ReactNode }) {
+  const b = BLOQUES.find((x) => x.clave === bloque)
+  return (
+    <div data-testid={`panel-bloque-${bloque}`} style={{
+      background: b?.fondo, borderTop: `1px solid ${V.grafito}`, borderRadius: 6, padding: '8px 12px 4px',
+    }}>
+      <Rotulo>{detalle ? `${b?.rotulo ?? bloque} · ${detalle}` : (b?.rotulo ?? bloque)}</Rotulo>
+      {children}
+    </div>
   )
 }
 
 function Rotulo({ children }: { children: ReactNode }) {
   return (
-    <div style={{ fontFamily: MONO, fontSize: '9.5px', letterSpacing: '.06em', color: V.tenue, textTransform: 'uppercase', paddingBottom: 8 }}>
+    <div style={{ fontFamily: MONO, fontSize: '9.5px', letterSpacing: '.06em', color: V.tinta, fontWeight: 600, textTransform: 'uppercase', paddingBottom: 8 }}>
       {children}
     </div>
   )

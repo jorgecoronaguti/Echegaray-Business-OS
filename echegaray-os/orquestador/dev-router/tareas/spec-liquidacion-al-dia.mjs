@@ -20,7 +20,9 @@ import { tramo } from '../contexto.mjs'
 import { tests, sintaxisTS, diff } from '../verificar.mjs'
 
 const SPEC = 'tests/liquidacion-fidelidad.spec.ts'
-const GRILLA = 'src/features/administracion/components/liquidacion/GrillaEspejoQuincena.tsx'
+// DESDE EL 17/09/2026 las columnas (`PLATA`) viven en `bloquesDelCuadro.ts` y el pie en `PieDelEspejo.tsx`.
+const GRILLA = 'src/features/administracion/components/liquidacion/cuadro/bloquesDelCuadro.ts'
+const PIE = 'src/features/administracion/components/liquidacion/cuadro/PieDelEspejo.tsx'
 const INVARIANTE = 'src/features/administracion/components/liquidacion/cuadro/e2eAlDia.test.mjs'
 
 const ANCLA_INICIO = "    const tabla = page.getByTestId('espejo-encabezado')"
@@ -38,10 +40,10 @@ export function bloqueActual(raiz) {
 /** CONTEXTO MÍNIMO: el tramo de `PLATA`, los rótulos del pie y el bloque a corregir. Nada más. */
 export function contextoDeLaTarea(raiz) {
   const grilla = readFileSync(path.join(raiz, GRILLA), 'utf8')
-  const iPlata = grilla.slice(0, grilla.indexOf('const PLATA')).split('\n').length
-  const iFin = grilla.slice(0, grilla.indexOf('const ANCHO_DE_BANDA')).split('\n').length
+  const iPlata = grilla.slice(0, grilla.indexOf('export const PLATA')).split('\n').length
+  const iFin = grilla.slice(0, grilla.indexOf('] as const')).split('\n').length + 1
   const plata = tramo(raiz, GRILLA, { desde: iPlata, hasta: iFin })
-  const pie = [...grilla.matchAll(/cifra\('([^']+)'/g)].map((m) => m[1])
+  const pie = [...readFileSync(path.join(raiz, PIE), 'utf8').matchAll(/cifra\('([^']+)'/g)].map((m) => m[1])
   const { bloque } = bloqueActual(raiz)
   return {
     fragmentos: [

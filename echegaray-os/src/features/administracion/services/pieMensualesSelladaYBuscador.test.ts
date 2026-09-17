@@ -73,8 +73,9 @@ test('LA GRILLA: el mensual ocupa las bandas en una celda propia y el pie tiene 
   const g = fuente('../components/liquidacion/GrillaEspejoQuincena.tsx')
   // POR MODALIDAD DESDE EL 15/09/2026: el jefe sin neto cargado también cobra por mes (`cobroMensual.ts`).
   assert.match(g, /l\.modalidad === 'mensual' \? \(/)
-  assert.match(g, /gridColumn: `span \$\{ANCHO_DE_LAS_BANDAS\}`/)
-  assert.match(g, /cifra\('Sueldos mensuales', totales\.mensuales/)
+  assert.match(g, /columna=\{`span \$\{ANCHO_DE_LAS_BANDAS\}`\}/)
+  assert.match(g, /const ANCHO_DE_LAS_BANDAS = anchoDelBloque\('blanco', 0\) \+ anchoDelBloque\('negro', 0\)/)
+  assert.match(fuente('../components/liquidacion/cuadro/PieDelEspejo.tsx'), /cifra\('Sueldos mensuales', totales\.mensuales/)
   assert.match(g, /<Leida valor=\{totales\.netoBandas\} testid="espejo-total-neto" \/>/)
 })
 
