@@ -41,6 +41,7 @@ import {
   libroDesdeLaPestana, filasDeMovimiento, filasDePeriodo, filasDeAsimetria,
   firmaDelLibro, resumenDeCorrida, fechaDeSerial, iso, corridasAPodar, CORRIDAS_CON_DETALLE,
 } from '../lib/flujo-persistencia.mjs'
+import { avisoDeCaida, corridaVigente, evaluarContraVigente } from '../lib/libro-caida.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
@@ -246,6 +247,13 @@ async function main() {
     console.log(`\n✓ el libro no cambió desde la corrida vigente (${yaEsta[0].id}): no creo una foto nueva.`)
     return
   }
+
+  // ═══ LA SEGUNDA DEFENSA (17/09/2026) ═══
+  // El libro ya frena solo antes de escribirse, pero este paso también se corre suelto. Una foto que
+  // cae de 1.306 a 435 movimientos NO se marca vigente: la web la mostraría como la verdad de hoy.
+  const caida = evaluarContraVigente(resumen, await corridaVigente(query), { aceptada: process.env.ORQ_LIBRO_CAIDA_ACEPTADA })
+  for (const l of avisoDeCaida(caida, { donde: 'flujo_corrida' })) (caida.frena ? console.error : console.log)(l)
+  if (caida.frena) { process.exitCode = 1; return }
 
   const { corridaId, control } = await withTx(async (cli) => {
     const id = await abrirCorrida(cli, { firma, corte, resumen })

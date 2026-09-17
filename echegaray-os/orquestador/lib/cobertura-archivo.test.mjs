@@ -267,3 +267,9 @@ test('LA FRONTERA NO ES UN HUECO: la nómina de diciembre que se paga en enero s
   assert.equal(soloFrontera.ok, true, 'la frontera sola NO puede dejar el control rojo para siempre')
   assert.equal(soloFrontera.frontera, 9_000_000, 'pero sigue publicada con su monto')
 })
+
+test('el prendario (datos/prestamo-prendario.json) está declarado sin censo — el ⛔ del 15/09 al 17/09', async () => {
+  const { PESTANA_PRENDARIO } = await import('./libro-extractores-banco-obligaciones.mjs')
+  assert.deepEqual(origenesSinDeclarar([mov({ origen: PESTANA_PRENDARIO })]), [])
+  assert.ok(SIN_CENSO_DE_FILA.find((s) => s.pestana === PESTANA_PRENDARIO)?.porque.length > 40, 'declarado sin motivo no es declarado')
+})

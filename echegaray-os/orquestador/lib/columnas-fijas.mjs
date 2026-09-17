@@ -15,6 +15,11 @@
 //               que el primer detector no puede ver porque la letra no está al lado del `!`.
 //   · indices — `f[14]`, `r?.[28]` en un archivo que nombra la pestaña. Heurístico: una fila leída de
 //               OTRA pestaña también se indexa así. Por eso el test no exige cero: exige no crecer.
+//   · offsets — tres o más claves de columna de Compras con un ENTERO (`{ proveedor: 4, total: 14,
+//               comercial: 35 }`), nombre o no la pestaña el archivo. Agregado el 17/09/2026: así vivía
+//               el corte de Proveedores en `proveedores-concentracion.mjs`, que no dice «Compras» en
+//               ningún lado e indexaba `f?.[OFF.total]` — ni letra, ni mapa, ni índice literal. Leyó
+//               «IVA» como Total durante tres días y la sección de concentración listó un proveedor.
 //
 // NO detecta una letra calculada con aritmética (`letra(12)`) ni un rango armado en otra función: el
 // inventario del 14/09 lo midió aparte y está en la lista con su grupo.
@@ -30,6 +35,10 @@ const RE_LETRA = /'?(?:Compras|Cobranzas|02_Cobranzas)'?!\$?[A-Z]{1,2}\$?\d*/g
 const RE_NOMBRA = /['"`](?:Compras|Cobranzas|02_Cobranzas)['"`]|(?:Compras|Cobranzas)!/
 const RE_MAPA = /\b\w+\s*:\s*'[A-Z]{1,2}'/g
 const RE_INDICE = /\b(?:f|r|fila|row|crudo)\??\.?\[\s*\d{1,2}\s*\]/g
+/** Las claves con las que el OS nombra columnas de Compras (las de `COMPRAS` en columnas-por-encabezado). */
+const CLAVES_COMPRAS = 'proveedor|total|comercial|iva|importe|rubro|fechaCaja|pagado|parcial1|parcial2|tipoPago|cuit|saldo|tramo|repetido|familia|concepto|comprobante|unidad|cliente|categoria'
+const RE_OBJETO = /\{[^{}]*\}/g
+const RE_OFFSET = new RegExp(`\\b(?:${CLAVES_COMPRAS})\\s*:\\s*\\d{1,2}\\s*(?=[,}])`, 'g')
 
 /** El código sin comentarios. Naive a propósito: descarta bloques `/* *\/` y las líneas `//`. */
 export function sinComentarios(fuente) {
@@ -42,9 +51,11 @@ export function sinComentarios(fuente) {
 export function detectar(fuente) {
   const cod = sinComentarios(fuente)
   const letras = (cod.match(RE_LETRA) ?? []).length
-  if (!RE_NOMBRA.test(cod)) return { letras, mapas: 0, indices: 0 }
+  const offsets = (cod.match(RE_OBJETO) ?? [])
+    .map((o) => (o.match(RE_OFFSET) ?? []).length).filter((n) => n >= 3).reduce((a, n) => a + n, 0)
+  if (!RE_NOMBRA.test(cod)) return { letras, mapas: 0, indices: 0, offsets }
   const mapas = (cod.match(RE_MAPA) ?? []).length
-  return { letras, mapas: mapas >= 3 ? mapas : 0, indices: (cod.match(RE_INDICE) ?? []).length }
+  return { letras, mapas: mapas >= 3 ? mapas : 0, indices: (cod.match(RE_INDICE) ?? []).length, offsets }
 }
 
 function* archivos(dir, base) {
@@ -66,7 +77,7 @@ export function escanear(raiz) {
     if (!existe) continue
     for (const rel of archivos(join(raiz, r), raiz)) {
       const d = detectar(readFileSync(join(raiz, rel), 'utf8'))
-      if (d.letras || d.mapas || d.indices) out[rel] = d
+      if (d.letras || d.mapas || d.indices || d.offsets) out[rel] = d
     }
   }
   return out
@@ -80,7 +91,8 @@ export function escanear(raiz) {
 export function compararConPendientes(vivo, pendientes) {
   const nuevos = Object.keys(vivo).filter((f) => !pendientes[f])
   const crecieron = Object.entries(vivo).filter(([f, d]) => pendientes[f]
-    && (d.letras > pendientes[f].letras || d.mapas > pendientes[f].mapas || d.indices > pendientes[f].indices)).map(([f]) => f)
+    && (d.letras > pendientes[f].letras || d.mapas > pendientes[f].mapas || d.indices > pendientes[f].indices
+    || (d.offsets ?? 0) > (pendientes[f].offsets ?? 0))).map(([f]) => f)
   const limpios = Object.keys(pendientes).filter((f) => !vivo[f])
   return { nuevos, crecieron, limpios }
 }

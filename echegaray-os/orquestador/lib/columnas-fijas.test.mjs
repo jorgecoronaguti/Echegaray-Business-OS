@@ -54,3 +54,25 @@ test('los migrados el 14/09 tienen CERO letras y CERO mapas de letras de Compras
     assert.equal(d.letras + d.mapas, 0, `${f}: ${JSON.stringify(d)}`)
   }
 })
+
+// ═══ EL FÓSIL QUE NINGUNA DE LAS TRES CATEGORÍAS VEÍA (17/09/2026) ═══
+// `proveedores-concentracion.mjs` indexaba Compras con `OFF = { proveedor: 4, total: 14, comercial: 35 }`
+// y `f?.[OFF.total]`: no nombra la pestaña, no tiene letras ni índices literales. Pasó el guardián del
+// 14/09 limpio y leyó «IVA» como Total hasta que el control del pie dio $340.446.038 de diferencia.
+test('offsets: el mapa de índices con claves de Compras se ve aunque el archivo no nombre la pestaña', () => {
+  assert.equal(detectar('export const OFF = Object.freeze({ proveedor: 4, total: 14, comercial: 35, cuit: 38 })').offsets, 4)
+  assert.equal(detectar('const COL = { fechaComprobante: 2, proveedor: 4, total: 14 }').offsets, 0, 'dos claves de Compras no alcanzan')
+  assert.equal(detectar('const x = { total: 0, proveedor: 1 }').offsets, 0, 'dos claves son un acumulador, no un layout')
+  assert.equal(detectar('// { proveedor: 4, total: 14, comercial: 35 }\nconst a = 1').offsets, 0, 'un comentario no es código')
+  assert.equal(detectar('const r = { proveedor: p, total: t + 14, comercial: c }').offsets, 0)
+})
+
+test('offsets: el lib de concentración de Proveedores quedó sin offsets (y el de antes del arreglo los tenía)', () => {
+  const vivo = detectar(readFileSync(join(RAIZ, 'orquestador/lib/proveedores-concentracion.mjs'), 'utf8'))
+  assert.equal(vivo.offsets, 0, JSON.stringify(vivo))
+  const fosil = "/** Offsets dentro de la grilla de Compras (que arranca en A). */\nexport const OFF = Object.freeze({ proveedor: 4, total: 14, comercial: 35, cuit: 38 })\nconst esComercial = (f) => String(f?.[OFF.comercial] ?? '').trim() === '1'"
+  assert.ok(detectar(fosil).offsets >= 3, 'el detector tiene que dar rojo con el fósil del 17/09')
+  const { crecieron } = compararConPendientes({ 'x.mjs': { letras: 0, mapas: 0, indices: 0, offsets: 4 } },
+    { 'x.mjs': { letras: 0, mapas: 0, indices: 0 } })
+  assert.deepEqual(crecieron, ['x.mjs'], 'un pendiente viejo sin el campo offsets que suma uno, creció')
+})

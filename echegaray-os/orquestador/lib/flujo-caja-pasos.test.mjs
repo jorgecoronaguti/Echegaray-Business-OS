@@ -403,3 +403,55 @@ test('el verificador de CAJA corre después del último paso que escribe el Shee
 test('caja-graficos-verificar NO es un reporte: su rojo tiene que voltear la corrida', () => {
   assert.equal(esReporte('caja-graficos-verificar.mjs'), false)
 })
+
+// ═══ EL FRENO DE LOS DERRAMES DE COMPRAS (17/09/2026) ═══
+test('el freno de derrames es un FRENO, no un reporte: si falla, el pipeline se detiene', async () => {
+  const { FRENOS, frenaElPipeline } = await import('./flujo-caja-pasos.mjs')
+  assert.ok(frenaElPipeline('freno-derrames-compras.mjs'))
+  assert.ok(!esReporte('freno-derrames-compras.mjs'), 'un freno clasificado como reporte no detiene nada')
+  for (const f of FRENOS.keys()) assert.ok(PASOS.some((p) => p[0] === f), `${f} está en FRENOS y no es un paso`)
+})
+
+test('el freno corre DESPUÉS de anclar las derivadas de Compras y ANTES de todo lo que escribe Proveedores, el libro, CAJA o los Cash Flow', () => {
+  const pos = (s) => PASOS.findIndex((p) => p[0] === s)
+  const freno = pos('freno-derrames-compras.mjs')
+  assert.ok(freno > 0, 'el freno no está en el pipeline')
+  for (const s of ['rubro-caja-sheet.mjs', 'compras-saldo-pendiente.mjs', 'proveedores-aging-columna.mjs', 'proveedores-cuenta-corriente.mjs']) {
+    assert.ok(pos(s) >= 0 && pos(s) < freno, `${s} ancla una derivada de Compras y corre después del freno`)
+  }
+  const destino = /^(Proveedores|CAJA|_MOVIMIENTOS|_CAJA_ANEXO|Cash Flow Semanal|Cash Flow Mensual)$/
+  const escritores = PASOS.map((p, i) => ({ s: p[0], i, t: p[2] ?? [] }))
+    .filter(({ s, t }) => t.some((x) => destino.test(x)) || /^(proveedores-(?!aging-columna|cuenta-corriente)|caja-|cash-flow-|libro-movimientos)/.test(s))
+  assert.ok(escritores.length >= 5, 'no encontré los escritores de las cuatro pestañas: el test perdió el blanco')
+  for (const { s, i } of escritores) assert.ok(i > freno, `${s} escribe una pestaña protegida y corre ANTES del freno`)
+})
+
+test('el LIBRO es FRENO: si se niega a escribir, CAJA, los Cash Flow y flujo_* no corren sobre el viejo', async () => {
+  const { frenaElPipeline } = await import('./flujo-caja-pasos.mjs')
+  assert.ok(frenaElPipeline('libro-movimientos-pestana.mjs', 3))
+  const pos = (s) => PASOS.findIndex((p) => p[0] === s)
+  for (const s of ['caja-pestana.mjs', 'cash-flow-vistas.mjs', 'sync-flujo-fondos.mjs']) {
+    assert.ok(pos(s) > pos('libro-movimientos-pestana.mjs'), `${s} corre antes del libro: el freno no lo protege`)
+  }
+})
+
+// ═══ EL ALCANCE DE CADA FRENO (decisión del 17/09/2026) ═══
+test('el freno de derrames corta con CUALQUIER salida ≠0: todo lo de abajo depende de Compras', async () => {
+  const { frenaElPipeline } = await import('./flujo-caja-pasos.mjs')
+  for (const c of [1, 2, 3, null]) assert.equal(frenaElPipeline('freno-derrames-compras.mjs', c), true, `salida ${c}`)
+})
+
+test('el libro corta SÓLO con CODIGO_FRENO (3): otro error suyo es una falla común y el pipeline sigue', async () => {
+  const { frenaElPipeline, CODIGO_FRENO } = await import('./flujo-caja-pasos.mjs')
+  assert.equal(CODIGO_FRENO, 3)
+  assert.equal(frenaElPipeline('libro-movimientos-pestana.mjs', 3), true)
+  for (const c of [1, 2, null, 'ETIMEDOUT']) assert.equal(frenaElPipeline('libro-movimientos-pestana.mjs', c), false, `salida ${c}`)
+  assert.equal(frenaElPipeline('caja-pestana.mjs', 3), false, 'un paso que no es freno no corta aunque salga con 3')
+})
+
+test('la cabecera declara los dos frenos y su alcance', () => {
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'flujo-caja-pasos.mjs'), 'utf8')
+  const cabecera = src.slice(0, src.indexOf('export const PASOS'))
+  assert.match(cabecera, /freno-derrames-compras\.mjs[\s\S]*detiene TODO lo que sigue/)
+  assert.match(cabecera, /libro-movimientos-pestana\.mjs[\s\S]*SÓLO cuando sale con CODIGO_FRENO \(3\)/)
+})

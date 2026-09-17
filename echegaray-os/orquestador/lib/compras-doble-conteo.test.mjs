@@ -5,7 +5,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   aISO, aNumero, debitosCompatibles, evaluarCompra, auditarDobleConteo, comprasDeLaGrilla,
-  nombreCorrobora, COL,
+  nombreCorrobora, columnasDelControl,
 } from './compras-doble-conteo.mjs'
 
 const CORTE = '2026-08-13'
@@ -156,6 +156,36 @@ test('auditarDobleConteo suma por motivo y ordena por monto', () => {
   assert.equal(r.montoEfectivo, 426219.42)
 })
 
+/** La fila 3 de Compras LEÍDA el 17/09/2026, con «Obra» en L. */
+const ENCABEZADO = ['ID', 'Categoría', 'Fecha factura', 'Fecha factura (mes)', 'Proveedor', 'Modalidad', 'Tipo', 'N° Comprobante',
+  'Unidad de Negocio', 'Cliente / Asignación', 'Detalles / Obra', 'Obra', 'Concepto', 'Importe', 'IVA', 'Total', 'Tipo pago',
+  'Fecha prevista de pago (día)', 'Fecha prevista de pago (mes)', 'Total o Parcial', 'Monto Pagado', 'Monto Parcial 1',
+  'Fecha prevista de pago 2', 'Monto Parcial 2', 'Estado', 'Tipo de Costo', 'Estado pago', 'Estado Carga', 'Rubro de caja',
+  'Rubro de caja', 'Fecha de caja', 'Familia de material', 'Sub-rubro de estructura', 'Orden de pago (OS)', 'Orden de pago (OS)',
+  'Orden sin fecha (OS)', '¿Proveedor comercial? (OS)', '¿Comprobante repetido? (OS)', 'Saldo pendiente (OS)', 'CUIT (OS)',
+  'Tramo de vencimiento (OS)']
+const COL = columnasDelControl(ENCABEZADO)
+
+test('las columnas salen del rótulo: con «Obra» insertada, Total es P(15) y Fecha de caja AE(30)', () => {
+  assert.deepEqual(COL, { fechaComprobante: 2, proveedor: 4, total: 15, medioPago: 16, estado: 24, fechaCaja: 30 })
+})
+
+test('EL FÓSIL DEL 14/09: leída con los índices viejos, la fila real da otro importe y otro medio de pago', () => {
+  const fila = Array(41).fill('')
+  Object.assign(fila, { 2: '12/8/2026', 4: 'Trielec', 14: 382757.08, 15: 2205400.34, 16: 'Débito', 23: 0, 24: 'Pagado', 29: 'Materiales Civil', 30: '15/8/2026' })
+  const viejo = { fechaComprobante: 2, proveedor: 4, total: 14, medioPago: 15, estado: 23, fechaCaja: 29 }
+  const [bien] = comprasDeLaGrilla([fila], 844, COL)
+  const [mal] = comprasDeLaGrilla([fila], 844, viejo)
+  assert.equal(bien.importe, 2205400.34)
+  assert.equal(bien.medioPago, 'Débito')
+  assert.notEqual(mal.importe, bien.importe, 'la fixture tiene que discriminar el layout viejo')
+})
+
+test('sin columnas resueltas no hay control a ciegas; un rótulo que falta aborta con su nombre', () => {
+  assert.throws(() => comprasDeLaGrilla([[]], 4), /faltan columnas resueltas/)
+  assert.throws(() => columnasDelControl(ENCABEZADO.map((r) => (r === 'Tipo pago' ? 'Medio' : r))), /Tipo pago/)
+})
+
 test('comprasDeLaGrilla lee la fila 844 real tal cual la devuelve la API', () => {
   const fila844 = []
   fila844[COL.fechaComprobante] = '12/8/2026'
@@ -164,7 +194,7 @@ test('comprasDeLaGrilla lee la fila 844 real tal cual la devuelve la API', () =>
   fila844[COL.medioPago] = 'Débito'
   fila844[COL.estado] = 'Pagado'
   fila844[COL.fechaCaja] = '15/8/2026'
-  const [c] = comprasDeLaGrilla([fila844], 844)
+  const [c] = comprasDeLaGrilla([fila844], 844, COL)
   assert.deepEqual(c, {
     fila: 844, proveedor: 'Trielec', importe: 2205400.34, medioPago: 'Débito',
     estado: 'Pagado', fechaCaja: '2026-08-15', fechaComprobante: '2026-08-12',
@@ -172,5 +202,5 @@ test('comprasDeLaGrilla lee la fila 844 real tal cual la devuelve la API', () =>
 })
 
 test('una fila sin importe no entra al control (las filas vacías del final de Compras)', () => {
-  assert.equal(comprasDeLaGrilla([[], ['', '', '', 'dic-99']], 846).length, 0)
+  assert.equal(comprasDeLaGrilla([[], ['', '', '', 'dic-99']], 846, COL).length, 0)
 })

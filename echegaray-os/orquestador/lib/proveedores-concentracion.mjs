@@ -27,8 +27,25 @@
 // EL UMBRAL ES UN PARÁMETRO DECLARADO, no un número enterrado: `escalones()` imprime la tabla de
 // arriba en cada corrida en seco, así que moverlo es una decisión con evidencia y no una corazonada.
 
-/** Offsets dentro de la grilla de Compras (que arranca en A). */
-export const OFF = Object.freeze({ proveedor: 4, total: 14, comercial: 35, cuit: 38 })
+// ═══ LAS COLUMNAS LAS DA EL ENCABEZADO, NUNCA UN OFFSET (17/09/2026) ═══
+//
+// Acá vivía un objeto de offsets fijos { proveedor: 4, total: 14, comercial: 35, cuit: 38 }. El 14/09
+// se insertó «Obra» en Compras L y todo lo de la derecha se corrió una columna: el corte siguió leyendo
+// «IVA» como Total y «Orden sin fecha (OS)» como ¿comercial?. El TOTAL del pie (SUMIFS por encabezado)
+// decía $340.854.882, el corte $408.845, y como el corte es quien elige qué proveedores lista la
+// dinámica, Proveedores mostró UN proveedor y «Resto (126)» por $331M. `proveedores-cuenta-corriente.mjs`
+// ya se había migrado; éste no. Ahora el índice es obligatorio y sale de `columnasDeCompras`
+// (lib/proveedores-seccion2-pie.mjs): sin índice no hay respaldo posicional, hay error.
+
+const CLAVES = ['proveedor', 'total', 'comercial']
+
+function exigirIndices(idx) {
+  const faltan = CLAVES.filter((k) => !Number.isInteger(idx?.[k]) || idx[k] < 0)
+  if (faltan.length) {
+    throw new Error(`proveedores-concentracion: faltan los índices de Compras por encabezado (${faltan.join(', ')}) — no se adivina una columna`)
+  }
+  return idx
+}
 
 /** Cuánto del gasto tiene que quedar VISIBLE. Ver la tabla de la cabecera. */
 export const UMBRAL = 0.95
@@ -36,7 +53,6 @@ export const UMBRAL = 0.95
 /** Los umbrales que se muestran en seco para poder discutir el corte con números. */
 export const ESCALONES = Object.freeze([0.8, 0.9, 0.95, 0.98])
 
-const esComercial = (f) => String(f?.[OFF.comercial] ?? '').trim() === '1'
 
 /**
  * EL GASTO POR PROVEEDOR, DE MAYOR A MENOR.
@@ -49,16 +65,18 @@ const esComercial = (f) => String(f?.[OFF.comercial] ?? '').trim() === '1'
  * puede filtrar por "el vacío") y por eso cae siempre en el resto — donde la plata se conserva.
  *
  * @param {Array<Array<any>>} filas  la grilla de Compras desde la primera fila de datos
+ * @param {{proveedor:number, total:number, comercial:number}} idx  índices base 0, por encabezado
  * @returns {Array<{proveedor:string, total:number, comprobantes:number}>}
  */
-export function gastoPorProveedor(filas = []) {
+export function gastoPorProveedor(filas = [], idx) {
+  const { proveedor, total, comercial } = exigirIndices(idx)
   const cuenta = new Map()
   for (const f of filas) {
-    if (!esComercial(f)) continue
-    const crudo = String(f?.[OFF.proveedor] ?? '')
+    if (String(f?.[comercial] ?? '').trim() !== '1') continue
+    const crudo = String(f?.[proveedor] ?? '')
     const p = crudo.trim()
     const a = cuenta.get(p) ?? { proveedor: p, total: 0, comprobantes: 0, variantes: new Set() }
-    a.total += Number(f?.[OFF.total]) || 0
+    a.total += Number(f?.[total]) || 0
     a.comprobantes += p === '' ? 0 : 1 // COUNTA de la dinámica cuenta el proveedor, no la fila
     if (p !== '') a.variantes.add(crudo)
     cuenta.set(p, a)
@@ -77,10 +95,10 @@ export function gastoPorProveedor(filas = []) {
  * nombre vacío no se puede declarar en `visibleValues`. Sale reportado aparte para que se vea.
  *
  * @param {Array<Array<any>>} filas   la grilla de Compras
- * @param {{umbral?:number}} opciones
+ * @param {{umbral?:number, idx:{proveedor:number, total:number, comercial:number}}} opciones
  */
-export function cortePorConcentracion(filas = [], { umbral = UMBRAL } = {}) {
-  const orden = gastoPorProveedor(filas)
+export function cortePorConcentracion(filas = [], { umbral = UMBRAL, idx } = {}) {
+  const orden = gastoPorProveedor(filas, idx)
   const total = orden.reduce((a, p) => a + p.total, 0)
   const comprobantes = orden.reduce((a, p) => a + p.comprobantes, 0)
   const listados = []
@@ -113,9 +131,9 @@ export function cortePorConcentracion(filas = [], { umbral = UMBRAL } = {}) {
  *
  * Se imprime en cada corrida en seco. Mover el umbral no es una opinión: es mirar esta tabla.
  */
-export function escalones(filas = [], umbrales = ESCALONES) {
+export function escalones(filas = [], idx, umbrales = ESCALONES) {
   return umbrales.map((u) => {
-    const c = cortePorConcentracion(filas, { umbral: u })
+    const c = cortePorConcentracion(filas, { umbral: u, idx })
     return { umbral: u, listados: c.listados.length, restoN: c.resto.cantidad, restoTotal: c.resto.total }
   })
 }
