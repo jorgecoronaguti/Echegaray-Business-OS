@@ -65,7 +65,7 @@ import type { PersonaEnDirectorio } from '../types'
 import { agruparPorRolOrganizacional, categoriaVisible, esJefeDeObra } from '../services/vocabularioPersona'
 import { RotuloDeGrupo } from './RotuloDeGrupo'
 import {
-  SIN_MARCAR, hayMarcaDeHoy, horasVisibles, ofertaDeMarcar, rotuloHoy,
+  SIN_MARCAR, hayMarcaDeHoy, horasVisibles, rotuloHoy,
   type EstadoDePapeles, type MarcaDeHoy, type TardanzaDeHoy,
 } from '../services/pulsoDelPlantel'
 import type { ClasificacionDelDia } from '../services/asistenciaDelDia'

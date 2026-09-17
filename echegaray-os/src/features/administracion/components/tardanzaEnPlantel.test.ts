@@ -57,28 +57,16 @@ test('la marca puesta se ve con el ▲ ámbar y se explica en el title; el contr
   assert.doesNotMatch(src, /#[0-9A-Fa-f]{6}/)
 })
 
-test('en el Plantel la tardanza se ofrece sobre un presente y, desde el 17/09, directo sobre «sin marcar» con obra', () => {
+test('el Plantel ya NO carga asistencia: ni acciones de hoy ni tardanza en la tabla (dueño, 17/09/2026)', () => {
   // ═══ EL DEFECTO QUE ATRAPA ═══
   //
-  // Ofrecer «tarde» sobre «sin marcar» declararía presente a alguien que nadie miró (llegar tarde es
-  // haber venido), y sobre una ausencia la base lo rechaza. La oferta es la MISMA que la de quitar
-  // —`ofertaDeMarcar` devuelve 'quitar' sólo sobre `presente`—, no una tercera regla.
+  // *«es una funcionalidad cruzada y errada… una sola experiencia de uso para ingresar a carga de
+  // asistencia»*. Marcar presente o tardanza vive en la solapa Asistencia (`CargaDeAsistencia`). Si
+  // vuelven los botones al Plantel, hay otra vez dos puertas con dos reglas para la misma escritura.
   const src = sinComentarios(fuente('TablaPersonas.tsx'))
-  const usos = src.match(/<MarcaTardanzaHoy/g) ?? []
-  assert.equal(usos.length, 2)
-  assert.match(src, /oferta === 'quitar' && \(\s*<MarcaTardanzaHoy/)
-  // DUEÑO, 17/09/2026: «en la computadora no puedo marcar tardanzas». Sobre «sin marcar» CON obra
-  // (`boton`) la tardanza va directa y declara presente en esa obra; nunca sobre ausencia ni sin obra.
-  assert.match(src, /oferta === 'boton' && \(\s*<MarcaTardanzaHoy[\s\S]{0,400}obraSinMarcar=\{p\.obra_actual_id as string\}/)
-  assert.doesNotMatch(src, /oferta === 'sin_obra' && \(\s*<MarcaTardanzaHoy/)
-  // UNA SOLA DEFINICIÓN DE LAS ACCIONES (`AccionesHoy`) Y DOS LUGARES (17/09/2026): la columna HOY en
-  // escritorio y el bloque táctil debajo del nombre en el teléfono. Quitar el del teléfono deja otra
-  // vez sin forma de marcar asistencia debajo de 1250 px.
-  const lugares = src.match(/<AccionesHoy p=\{p\} oferta=\{oferta\} fecha=\{marcar\.fecha\} inicial=\{pulso\?\.tardanzas\.get\(p\.id\)\}/g) ?? []
-  assert.equal(lugares.length, 2, 'las acciones de hoy tienen que estar en escritorio y en el teléfono')
-  assert.match(src, /data-testid="hoy-persona-movil"[\s\S]{0,400}<AccionesHoy[^>]*tactil \/>/)
-  // La columna HOY creció para que los cuatro controles entren en una línea.
-  assert.match(src, /_130px_260px_90px_70px_90px\]/)
+  assert.doesNotMatch(src, /<AccionesHoy|function AccionesHoy/, 'volvieron las acciones de hoy al Plantel')
+  assert.doesNotMatch(src, /<MarcaTardanzaHoy|<BotonPresenteHoy|<BotonQuitarPresente/, 'volvió un control de carga al Plantel')
+  assert.doesNotMatch(src, /ofertaDeMarcar\(/, 'el Plantel volvió a decidir qué ofrecer para marcar')
 })
 
 test('el pie de la tabla dice la leyenda del ▲ y cuenta la quincena con la lectura compartida', () => {
