@@ -62,12 +62,12 @@ export async function leerPosicionCargas(query) {
  * sección no desaparece, porque «no hay nada» también es una respuesta.
  */
 export function bloqueCargasSociales(G, { filas, n }) {
-  G.push([seccion(n, TITULO_CARGAS)])
+  const fSeccion = G.push([seccion(n, TITULO_CARGAS)])
   const pend = pendientesDeCargas(filas)
   if (!pend.length) {
-    G.lista('Nada pendiente', [], ORIGEN)
+    const f = G.lista('Nada pendiente', [], ORIGEN)
     G.blanco()
-    return { fTotal: null, pendientes: pend }
+    return { fTotal: null, pendientes: pend, indivisible: { desde: fSeccion, hasta: f } }
   }
   const d0 = G.n() + 1
   for (const f of pend) {
@@ -75,5 +75,9 @@ export function bloqueCargasSociales(G, { filas, n }) {
   }
   const fTotal = G.lista(rotuloTotal('Cargas sociales pendientes'), [`=SUM(B${d0}:B${G.n()})`], 'Suma de las filas de arriba.')
   G.blanco()
-  return { fTotal, pendientes: pend }
+  // INDIVISIBLE (17/09/2026): el importe se copia de la base en cada corrida, así que estas filas
+  // aterrizan sobre coordenadas donde un layout viejo dejó huellas activas. Sin la declaración,
+  // `aplicarHuella` leía «huella mía + celda vacía» como «la vaciaste vos», suprimía rótulo, importe
+  // y vencimiento, y el «⇒» sumaba dos celdas vacías. Ver `enBloqueIndivisible`.
+  return { fTotal, pendientes: pend, indivisible: { desde: fSeccion, hasta: fTotal } }
 }

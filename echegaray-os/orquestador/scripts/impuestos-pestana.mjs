@@ -225,7 +225,7 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy, cob
     // De dónde sale cada mes del cuadro 4. Se devuelve para poder EXHIBIRLO: un cuadro que cambió de
     // fuente sin decirlo es la forma más barata de que nadie lo revise.
     origenIva: iva.porOrigen,
-    cargas: cs,
+    cargas: cs, indivisibles: cs ? [cs.indivisible] : [], // la sección 6 no se da por vaciada de a pedazos
   }
 }
 
@@ -464,7 +464,7 @@ async function main() {
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
   g.filas = gridFinal
   vaciarColumnaDeProsa(g.filas, ANCHO - 1)
-  const escritura = await escribirPreservando(google, ID, PESTAÑA, g.filas, { respetar: false, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  const escritura = await escribirPreservando(google, ID, PESTAÑA, g.filas, { respetar: false, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO), indivisibles: g.indivisibles })
   // SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07). Una pestaña que no se escribió no
   // cambió de forma: su formato y sus nombres son los de su última escritura y así tienen que quedar.
   const salteada = Boolean(escritura?.bloqueada || escritura?.editadaPorHumano)

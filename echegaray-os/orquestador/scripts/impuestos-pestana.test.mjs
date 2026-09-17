@@ -614,3 +614,37 @@ test('con el bloque de cargas sociales la pestaña cumple patrón, diseño y con
   const mal = auditarDiseno(g.filas.map((f) => (f || []).map((c) => (c === VACIO ? '' : c))), { pestana: 'Impuestos y Financieros' })
   assert.deepEqual(mal, [], mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n'))
 })
+
+// ═══ LAS FILAS DE CARGAS SALÍAN VACÍAS EN LA ESCRITURA REAL (17/09/2026) ═══
+//
+// Medido en el archivo vivo: el --dry informaba F931 sep-26 y la cuota 3/3, pero tras escribir las
+// filas 45 y 46 quedaban vacías con el «⇒» debajo. `sheet_huella_celda` tenía, en esas coordenadas,
+// huellas ACTIVAS de un layout anterior al 09/09 («Concepto» + `'ene-26…` en la 45, «Prendario Ford
+// XLS · Santander — cuota» + SUMIFS en la 46) sobre celdas vacías: `aplicarHuella` lo leyó como «vos
+// vaciaste la celda», las suprimió y las marcó `borrada_en`. Un borrado que nadie hizo, y el total de
+// la sección publicando la suma de dos celdas vacías. El remedio ya escrito para eso es declarar el
+// bloque indivisible: la fila de control no se publica sin sus insumos.
+test('las filas de cargas se escriben aunque la huella vieja de esas coordenadas diga «vaciada»', async () => {
+  const { aplicarHuella, huellasDeEscritura, claveCelda } = await import('../lib/huella-celda.mjs')
+  const { fusionar } = await import('../lib/preservar-anotaciones.mjs')
+  const { preservarNoVacias } = await import('../lib/no-borrar.mjs')
+  const g = armar({ cargas: CARGAS })
+  const r = rotulos(g)
+  const fSec = r.indexOf('6 · CARGAS SOCIALES A PAGAR') + 1
+  const [f1, f2, fTot] = [fSec + 1, fSec + 2, fSec + 3]
+  // El layout viejo: esas dos filas eran otra cosa, y así quedaron selladas.
+  const viejo = g.filas.map((f, i) => (i === f1 - 1 ? ['Concepto', "'ene-26", "'feb-26", "'mar-26"]
+    : i === f2 - 1 ? ['Prendario Ford XLS · Santander — cuota', '=SUMIFS(Compras!$O$4:$O;Compras!$AB$4:$AB;"Financiero")', '=SUMIFS(Compras!$O$4:$O;Compras!$AB$4:$AB;"Financiero")']
+      : f))
+  const huellas = new Map(huellasDeEscritura(viejo).map((h) => [claveCelda(h.fila, h.col), { forma: h.forma, huella: h.huella, borrada: false }]))
+  // Lo que hay hoy en la pestaña: la sección y el total, y las dos filas del medio vacías.
+  const hoy = g.filas.map((f, i) => (i === f1 - 1 || i === f2 - 1 ? [] : f.map((c) => (c === VACIO ? '' : c))))
+  assert.ok(Array.isArray(g.indivisibles), 'la grilla declara sus bloques indivisibles')
+  const { grid, alineacion, suprimidas } = aplicarHuella(g.filas, hoy, huellas, { indivisibles: g.indivisibles })
+  assert.equal(alineacion.alineada, true, alineacion.motivo)
+  assert.deepEqual(suprimidas.filter((s) => s.filaHoy >= fSec && s.filaHoy <= fTot), [], 'nadie vació esas celdas')
+  const enPestana = preservarNoVacias(hoy, fusionar(grid, hoy)).values
+  assert.deepEqual(enPestana[f1 - 1].slice(0, 3), ['F931 sep-26', 8166095.05, 'vence 10/10'])
+  assert.deepEqual(enPestana[f2 - 1].slice(0, 3), ['Cuota 3/3 · Plan F931 W303094', 2494875.65, 'vence 16/10'])
+  assert.equal(enPestana[fTot - 1][1], `=SUM(B${f1}:B${f2})`)
+})
