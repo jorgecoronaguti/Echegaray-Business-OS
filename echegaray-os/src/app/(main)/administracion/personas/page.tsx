@@ -54,13 +54,17 @@ import { CamposAlta } from '@/features/administracion/components/FormularioPerso
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { TablaPersonas, type PulsoDelPlantel } from '@/features/administracion/components/TablaPersonas'
 import { FiltroDeObraEnPlantel } from '@/features/administracion/components/FiltroDeObraEnPlantel'
+import { FiltroDeCategoria } from '@/features/administracion/components/FiltroDeCategoria'
 import { EnlaceCargarAsistencia } from '@/features/administracion/components/asistencia/carga/EnlaceCargarAsistencia'
 import {
-  FILTROS, getConteosDeFiltro, getDirectorio, type FiltroPersonal,
+  FILTROS, getConteosDeFiltro, getDirectorio, perteneceAlCorte, type FiltroPersonal,
 } from '@/features/administracion/services/personasService'
 import {
   filtrarPorObra, obraSobreviveAlCorte, obrasDelCorte, sinObraDelCorte,
 } from '@/features/administracion/services/recorteDeObra'
+import {
+  categoriasDelCorte, etiquetaDeLaElegida, filtrarPorCategoria,
+} from '@/features/administracion/services/recorteDeCategoria'
 import { enlaceConservando } from '@/features/administracion/services/enlaceDeVista'
 import { crearPersona } from '@/features/administracion/services/personasActions'
 import {
@@ -97,6 +101,16 @@ type Busqueda = {
    * con un slug en el cartel, que es exactamente el defecto que ya se pagó volviendo del modo día.
    */
   obra?: string
+  /**
+   * `?categoria=` SIGNIFICA LO MISMO EN LAS TRES SOLAPAS, y por eso SÍ cruza de una a otra.
+   *
+   * Es la clave de la categoría del legajo (`oficial`, `medio_oficial`) más los dos cajones que no
+   * son una categoría: `sin-categoria` y `fuera-de-convenio` (`recorteDeCategoria.ts`). A diferencia
+   * de `?obra=` —que en el Plantel es un id y en Horas el rótulo de un chip—, acá el valor sale del
+   * mismo campo del mismo legajo en las tres, así que llevarlo de una solapa a otra no promete un
+   * recorte distinto del que ocurre.
+   */
+  categoria?: string
   dia?: string
   /** Las siete solapas de Liquidación (`solapas/index.ts`). Default `quincena`. */
   /** Los recortes de Liquidación: qué pendiente se mira (`SolapaHoras`) y qué grupo (`SolapaQuincena`). */
@@ -120,14 +134,24 @@ type Busqueda = {
 function armarHref(base: Busqueda, cambios: Record<string, string | undefined> = {}): string {
   const sinDefecto = (f?: string) => (f === 'plantel' ? undefined : f)
   const ajustados = 'f' in cambios ? { ...cambios, f: sinDefecto(cambios.f) } : cambios
-  return enlaceConservando(RUTA, {}, { q: base.q, f: sinDefecto(base.f), obra: base.obra }, ajustados)
+  return enlaceConservando(
+    RUTA, {},
+    // LA CATEGORÍA VA ÚLTIMA Y NO ANTES: el orden de estas claves ES el orden de la URL, y las de
+    // esta pantalla se comparan literales en sus tests y se comparten por mensaje. Agregarla al final
+    // deja idénticos todos los enlaces que no la llevan puesta.
+    { q: base.q, f: sinDefecto(base.f), obra: base.obra, categoria: base.categoria },
+    ajustados,
+  )
 }
 
 /** La solapa Asistencia y su quincena. Va aparte de `armarHref` porque no lleva ni filtro ni alta:
  *  arrastrar `f=sin_asignar` a una grilla que no filtra por eso prometería un recorte que no ocurre.
- *  El valor es CUALQUIER día de la quincena; el bloque la resuelve. */
-const hrefAsistencia = (quincena?: string): string =>
-  `${RUTA}?vista=asistencia${quincena ? `&quincena=${quincena}` : ''}`
+ *  El valor es CUALQUIER día de la quincena; el bloque la resuelve.
+ *
+ *  LA CATEGORÍA SÍ VIAJA: las tres solapas la recortan con la misma regla y con la misma palabra, así
+ *  que perderla al cambiar de solapa obligaría a volver a ponerla tres veces por vuelta. */
+const hrefAsistencia = (quincena?: string, categoria?: string): string =>
+  `${RUTA}?vista=asistencia${quincena ? `&quincena=${quincena}` : ''}${categoria ? `&categoria=${categoria}` : ''}`
 
 /** Un enlace DENTRO de Asistencia, conservando quincena, texto, modo y obra — ver
  *  `hrefDeAsistencia`, que es donde vive la regla y donde está su test. */
@@ -136,8 +160,8 @@ const hrefAsistenciaCon = (base: Busqueda, cambios: Record<string, string | unde
 
 /** La solapa Liquidación, con la misma convención de quincena que Asistencia: cualquier día de la
  *  ventana sirve y el bloque la resuelve. */
-const hrefLiquidacion = (quincena?: string): string =>
-  `${RUTA}?vista=liquidacion${quincena ? `&quincena=${quincena}` : ''}`
+const hrefLiquidacion = (quincena?: string, categoria?: string): string =>
+  `${RUTA}?vista=liquidacion${quincena ? `&quincena=${quincena}` : ''}${categoria ? `&categoria=${categoria}` : ''}`
 
 /**
  * UN ENLACE DENTRO DE LIQUIDACIÓN, conservando lo que ya estaba puesto.
@@ -151,6 +175,8 @@ function hrefSolapa(base: Busqueda, cambios: Record<string, string | undefined>)
   const actual: Record<string, string | undefined> = {
     solapa: base.solapa, quincena: base.quincena, pendiente: base.pendiente, grupo: base.grupo,
     buscar: base.buscar,
+    // LA CATEGORÍA SOBREVIVE AL CAMBIO DE SECCIÓN, como la quincena: son dos ejes del mismo recorte.
+    categoria: base.categoria,
   }
   const params = new URLSearchParams({ vista: 'liquidacion' })
   for (const [k, v] of Object.entries({ ...actual, ...cambios })) {
@@ -181,19 +207,28 @@ const hrefDia = (p: { obra?: string | null; dia?: string | null }): string => {
  * `veLaPlata` decide si Liquidación se dibuja. No es el permiso —ése es `ve_economia()` en la
  * base—: es no ofrecer una puerta que va a rebotar.
  */
-function vistasDe(activa: 'personal' | 'asistencia' | 'liquidacion', quincena: string | undefined, veLaPlata: boolean) {
+function vistasDe(
+  activa: 'personal' | 'asistencia' | 'liquidacion', quincena: string | undefined, veLaPlata: boolean,
+  /** El recorte por categoría puesto. Viaja a las tres: si no, cambiar de solapa lo tiraría, que es
+   *  el defecto que ya se pagó con la obra y con el buscador (`vistaDeAsistencia.ts`). */
+  categoria?: string,
+) {
   const vistas = [
-    { clave: 'personal', titulo: 'Plantel', cuenta: null, activa: activa === 'personal', href: armarHref({}) },
-    { clave: 'asistencia', titulo: 'Horas', cuenta: null, activa: activa === 'asistencia', href: hrefAsistencia(quincena) },
+    { clave: 'personal', titulo: 'Plantel', cuenta: null, activa: activa === 'personal', href: armarHref({ categoria }) },
+    { clave: 'asistencia', titulo: 'Horas', cuenta: null, activa: activa === 'asistencia', href: hrefAsistencia(quincena, categoria) },
   ]
   if (veLaPlata) {
-    vistas.push({ clave: 'liquidacion', titulo: 'Liquidación', cuenta: null, activa: activa === 'liquidacion', href: hrefLiquidacion(quincena) })
+    vistas.push({ clave: 'liquidacion', titulo: 'Liquidación', cuenta: null, activa: activa === 'liquidacion', href: hrefLiquidacion(quincena, categoria) })
   }
   return vistas
 }
 
 /** Qué decir cuando no hay ninguna fila: una línea, y que diga qué hacer. */
-function vacioDe(filtro: FiltroPersonal, q?: string, obra?: string) {
+function vacioDe(filtro: FiltroPersonal, q?: string, obra?: string, categoria?: string) {
+  // LA CATEGORÍA SE NOMBRA ANTES QUE LA OBRA porque es el recorte más nuevo y el que más
+  // probablemente esté vaciando la lista sin que se note: la pastilla activa está en la tercera fila
+  // de controles, y una tabla vacía sin explicación se lee como «no hay nadie», que es otra cosa.
+  if (categoria) return `Nadie de este corte es «${etiquetaDeLaElegida(categoria)}». «Todas» vuelve a la lista entera.`
   // EL RECORTE POR OBRA SE NOMBRA PRIMERO porque es el que más probablemente esté vaciando la lista
   // sin que se note: la pastilla dice «Plantel 17» arriba de una tabla vacía y la obra elegida está
   // en la fila de abajo. Sin esta línea, la respuesta correcta —sacar el recorte— no está a la vista.
@@ -344,7 +379,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           <CabeceraSeccion
             testid="vistas-personal"
             espacioPanel={false}
-            vistas={vistasDe('liquidacion', sp.quincena, veLaPlata)}
+            vistas={vistasDe('liquidacion', sp.quincena, veLaPlata, sp.categoria)}
           />
           <div style={{ padding: '0 20px 24px' }}>
             <BarraSolapas
@@ -358,7 +393,9 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
               <Contenido
                 quincenaPedida={sp.quincena}
                 hoy={hoy}
-                parametros={{ pendiente: sp.pendiente, grupo: sp.grupo, buscar: sp.buscar }}
+                parametros={{
+                  pendiente: sp.pendiente, grupo: sp.grupo, buscar: sp.buscar, categoria: sp.categoria,
+                }}
                 hrefDe={(cambios) => hrefSolapa(sp, cambios)}
               />
             </div>
@@ -376,7 +413,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           <CabeceraSeccion
             testid="vistas-personal"
             espacioPanel={false}
-            vistas={vistasDe('asistencia', sp.quincena, veLaPlata)}
+            vistas={vistasDe('asistencia', sp.quincena, veLaPlata, sp.categoria)}
             // LA CARGA ÚNICA (17/09/2026), el mismo botón que en Plantel. SIN la obra: acá `?obra=` es el
             // RÓTULO del chip de la grilla (o el id en modo día), y la pantalla nueva recorta por id.
             filtros={<EnlaceCargarAsistencia testid="ir-a-cargar-asistencia-horas" />}
@@ -409,9 +446,12 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           ) : (
             <div style={{ padding: '10px 20px 24px' }}>
               <BloqueAsistenciaQuincena
-                quincenaPedida={sp.quincena} hoy={hoy} q={sp.q} obra={sp.obra}
+                quincenaPedida={sp.quincena} hoy={hoy} q={sp.q} obra={sp.obra} categoria={sp.categoria}
                 hrefDe={(quincena) => hrefAsistenciaCon(sp, { quincena })}
                 hrefObra={(obra) => hrefAsistenciaCon(sp, { obra })}
+                // LA MISMA REGLA DE ENLACE QUE EL RESTO DE LA SOLAPA: un `undefined` borra el
+                // parámetro, así se apaga el recorte con el mismo enlace que lo prendió.
+                hrefCategoria={(cambios) => hrefAsistenciaCon(sp, cambios)}
                 // ESTA PANTALLA YA ES DE ADMINISTRACIÓN: quien llega acá pasó el portero del área.
                 // El `true` no es un permiso, es la afirmación de dónde vive el botón; la policy de
                 // `registros_hh` y la de `obra_asignacion` son las que rechazan de verdad.
@@ -473,9 +513,25 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   // El parámetro es el id de la obra —que ya es el slug que viaja en la URL de toda la app—, así el
   // enlace se comparte por mensaje, sobrevive a recargar y no muestra un nombre que puede cambiar.
   const obraElegida = sp.obra?.trim() || undefined
-  const personas = filtrarPorObra(listado.data ?? [], obraElegida)
+  // ═══ EL RECORTE POR CATEGORÍA (dueño, 17/09/2026) ═══
+  //
+  // *«necesito en todo el módulo personal, filtro por categoría de empleados»*.
+  //
+  // Se aplica DESPUÉS del de obra y sobre lo ya leído, con la misma regla que cuenta las pastillas
+  // (`recorteDeCategoria.ts`). El orden entre los dos no cambia el resultado —son dos condiciones
+  // que se cumplen o no—, pero escribirlo en cadena deja una sola lectura de qué recorta a qué.
+  const categoriaElegida = sp.categoria?.trim() || undefined
+  const personas = filtrarPorCategoria(
+    filtrarPorObra(listado.data ?? [], obraElegida), categoriaElegida,
+  )
   const chipsDeObra = obrasDelCorte(filasDelPadron, filtro, obraElegida)
   const sinObra = sinObraDelCorte(filasDelPadron, filtro)
+  // LAS PASTILLAS DE CATEGORÍA CUENTAN LA POBLACIÓN DEL CORTE, no la página: la misma regla que la
+  // fila de arriba y que los chips de obra. No se mueven al escribir en el buscador ni al elegir una
+  // obra — una pastilla que al activarse pone a las demás en cero deja de ser un filtro.
+  const chipsDeCategoria = categoriasDelCorte(
+    filasDelPadron.filter((f) => perteneceAlCorte(f, filtro)), categoriaElegida,
+  )
   const pulso = armarPulso(marcas, hh, papeles, presencia, tardanzasQuincena, quincena, hoy)
   const abierta = sp.nueva === '1'
   // EL PERFIL YA ESTÁ EN MEMORIA: `getPerfilActual` memoiza por usuario (`recordar`), así que esto
@@ -509,7 +565,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
         <CabeceraSeccion
           testid="vistas-personal"
           espacioPanel={abierta}
-          vistas={vistasDe('personal', undefined, veLaPlata)
+          vistas={vistasDe('personal', undefined, veLaPlata, sp.categoria)
             .map((v) => (v.clave === 'personal' ? { ...v, cuenta: conteos.plantel } : v))}
           buscador={{
             accion: RUTA,
@@ -518,7 +574,11 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             // LA OBRA VIAJA CON EL BUSCADOR. Un formulario manda SÓLO lo que declara: sin este
             // campo, escribir un nombre borraba el recorte por obra y la búsqueda contestaba sobre
             // el plantel entero. Es el mismo defecto que ya se pagó en la solapa Horas.
-            oculto: { f: filtro === 'plantel' ? undefined : filtro, obra: obraElegida },
+            // LA CATEGORÍA VIAJA CON EL BUSCADOR POR LO MISMO QUE LA OBRA: un formulario manda SÓLO
+            // lo que declara, y sin este campo escribir un nombre borraba el recorte puesto.
+            oculto: {
+              f: filtro === 'plantel' ? undefined : filtro, obra: obraElegida, categoria: categoriaElegida,
+            },
             testid: 'buscar-persona',
           }}
           alta={{
@@ -571,11 +631,21 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
                 hrefDe={(cambios) => armarHref(sp, cambios)}
               />
 
+              {/* LA TERCERA FILA: el recorte por categoría (dueño, 17/09/2026). El mismo control y el
+                  mismo comportamiento que en Horas y en Liquidación — vive en `FiltroDeCategoria`.
+                  SIN CONTEO: lo escribe la fila de los cortes, que ya dice cuánta población quedó a la
+                  vista (su `n` es el de esta lista, con los tres recortes aplicados). */}
+              <FiltroDeCategoria
+                chips={chipsDeCategoria}
+                elegida={categoriaElegida}
+                hrefDe={(cambios) => armarHref(sp, cambios)}
+              />
+
               <TablaPersonas
                 personas={personas}
                 conBaja={filtro === 'inactivos'}
                 pulso={pulso}
-                vacio={vacioDe(filtro, sp.q, obraElegida)}
+                vacio={vacioDe(filtro, sp.q, obraElegida, categoriaElegida)}
                 // ═══ EL BOTÓN «PRESENTE» DE LA COLUMNA HOY (dueño, 09/09/2026) ═══
                 //
                 // *«marcar que la persona está en el trabajo, a través de los usuarios admin / jefe

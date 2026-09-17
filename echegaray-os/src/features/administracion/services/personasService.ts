@@ -144,7 +144,11 @@ export async function getConteosDeFiltro(
   supabase: SupabaseClient,
 ): Promise<{ conteos: Record<FiltroPersonal, number | null>; filas: FilaDeConteo[] }> {
   const { data, error } = await supabase
-    .from('persona_directorio').select('en_la_empresa, obra_actual_id, obra_actual')
+    // LA CATEGORÍA Y EL PUESTO VIAJAN EN LA MISMA LECTURA (17/09/2026), por el mismo motivo que la
+    // obra: las pastillas del recorte por categoría tienen que contar sobre el padrón que ya está en
+    // memoria. Dos columnas más en una consulta de 74 filas; una segunda consulta podría contestar
+    // distinto si alguien corrige una categoría entre las dos.
+    .from('persona_directorio').select('en_la_empresa, obra_actual_id, obra_actual, categoria, puesto')
   // SIN FILAS NO HAY CHIPS DE OBRA, y eso es lo correcto: un recorte dibujado sobre una lectura que
   // falló prometería obras que nadie comprobó que existan.
   if (error) return {
@@ -162,6 +166,12 @@ export interface FilaDeConteo {
   /** El NOMBRE de la obra, para rotular su chip. Ausente = no se leyó; una obra que no se puede
    *  nombrar no se dibuja (un slug en pantalla es lo que el dueño pidió no ver nunca). */
   obra_actual?: string | null
+  /** La categoría del legajo, para contar las pastillas del recorte por categoría. Ausente = no se
+   *  leyó, y entonces esa fila cuenta como «sin categoría», que es lo que la pantalla puede afirmar. */
+  categoria?: string | null
+  /** El puesto, por lo mismo: es lo que dice quién es jefe de obra y quién lleva una categoría
+   *  disfrazada en texto libre (`vocabularioPersona.ts`). */
+  puesto?: string | null
 }
 
 /**
