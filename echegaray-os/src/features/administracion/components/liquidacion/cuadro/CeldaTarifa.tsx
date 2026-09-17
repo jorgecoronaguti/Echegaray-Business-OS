@@ -104,7 +104,8 @@ export function CeldaTarifa({ fila, quincena, pct, sinValor = 'sin tarifa' }: {
         <button type="button" data-testid={`tarifa-${fila.personaId}`} aria-label={`Cambiar el valor de ${fila.nombre}`}
           onClick={() => { setError(null); setTexto(actual == null ? '' : String(actual)) }}
           style={{
-            minHeight: 32, padding: '0 6px', border: `1px solid ${error ? V.neg : V.lineaFuerte}`, borderRadius: 4,
+            // MISMO MARCO SUAVE QUE EL RESTO DE LAS CELDAS ESCRIBIBLES (limpieza 17/09/2026). El error sigue en rojo.
+            minHeight: 32, padding: '0 6px', border: `1px solid ${error ? V.neg : V.linea}`, borderRadius: 4,
             background: '#FFFFFF', color: actual == null ? V.tenue : V.tinta, cursor: 'text',
             fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
           }}>{actual == null ? sinValor : pesos(actual)}</button>
