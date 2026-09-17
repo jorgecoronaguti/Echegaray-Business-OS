@@ -39,6 +39,8 @@ export interface DatosAnaliticas {
   ritmo: Ritmo | null
   /** Comprobantes de cada obra tomados al total por no discriminar IVA. Vacío = la base todavía no publica el neto. */
   sinIvaDiscriminado: Map<string, number>
+  /** `true` = el costo que llegó es neto de IVA (la base lo marca obra por obra). */
+  netoDeIva: boolean
   /** `false` = la puerta de la base contestó null: sin permiso económico. */
   legible: boolean
 }
@@ -130,6 +132,7 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
       ? (ritmoPorObra(mensual, hoy, obraElegida.presupuesto != null ? rubrosComparables(obraElegida.presupuestoRubros) : undefined).get(obraElegida.id)
         ?? { porMes: null, ventana: [], conEstimada: false })
       : null,
+    netoDeIva: (Array.isArray(raiz?.obras) ? raiz.obras : []).some((x: unknown) => (x as Record<string, unknown> | null)?.neto_de_iva === true),
     sinIvaDiscriminado: new Map((Array.isArray(raiz?.obras) ? raiz.obras : []).flatMap((x: unknown) => {
       const r = (x ?? {}) as Record<string, unknown>
       return typeof r.obra_id === 'string' && r.neto_de_iva === true ? [[r.obra_id, Number(r.n_sin_iva_discriminado ?? 0)] as [string, number]] : []

@@ -4,7 +4,7 @@ import { armarCostosPorObra } from '../../clientes/services/costosDeObra.ts'
 import { armarEconomiaDeObras } from '../../clientes/services/economiaObras.ts'
 import { armarObra } from './obras.ts'
 import { presupuestoDe } from './presupuesto.fixture.ts'
-import { celda, cifrasResumen, controlPorObra, costoPorHora, manoObraDe, porHoraMedido } from './agregados.ts'
+import { agruparPorCliente, celda, cifrasResumen, controlPorObra, costoPorHora, manoObraDe, porHoraMedido } from './agregados.ts'
 import { rotuloEstimada } from './obras.ts'
 
 type Pres = Partial<Record<'MO' | 'CS' | 'MA' | 'SC', number>>
@@ -101,4 +101,21 @@ test('D2 · $/hora con mano de obra estimada NO es medición: no es punto, no en
   assert.deepEqual(r.noMedidas.map((o) => o.id), ['a'])
   assert.equal(porHoraMedido(estimada), null)
   assert.equal(porHoraMedido(real), 100)
+})
+
+test('Resumen como el CRM: cliente con sus obras; primero lo excedido, después lo que más consumió', () => {
+  const chica = obra('a1', 'arcor', {}, { materiales: 1 }, { MA: 10 })
+  const grande = obra('m1', 'messina', {}, { materiales: 50 }, { MA: 100 })
+  const pasada = obra('m2', 'messina', {}, { materiales: 12 }, { MA: 10 })
+  const enorme = obra('q1', 'quattropani', {}, { materiales: 500 })
+  const g = agruparPorCliente([chica, grande, pasada, enorme])
+  assert.deepEqual(g.map((x) => x.clienteId), ['messina', 'quattropani', 'arcor'], 'messina tiene una excedida; después por consumo')
+  assert.deepEqual(g[0].obras.map((f) => f.obra.id), ['m2', 'm1'], 'la excedida primero aunque consuma menos')
+  assert.equal(g[0].presupuestado, 110)
+  assert.equal(g[0].consumido, 62)
+  assert.equal(g[0].queda, 48)
+  assert.equal(g[0].excedidas, 1)
+  assert.equal(g[1].presupuestado, null, 'sin presupuesto: null, no cero')
+  assert.equal(g[1].pct, null)
+  assert.equal(g.flatMap((x) => x.obras).length, 4, 'ninguna obra se pierde ni se repite')
 })

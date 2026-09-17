@@ -73,6 +73,55 @@ export function controlPorObra(obras: ObraAnalitica[]): ControlDeObra[] {
   })
 }
 
+export interface GrupoDeCliente {
+  clienteId: string
+  nombre: string
+  presupuestado: number | null
+  /** Consumido en los rubros presupuestados de sus obras. */
+  consumido: number | null
+  queda: number | null
+  pct: number | null
+  /** Todo lo consumido por sus obras (con lo que no tiene presupuesto). */
+  consumoTotal: number | null
+  /** Obras que gastaron más que su presupuesto. */
+  excedidas: number
+  obras: ControlDeObra[]
+}
+
+/** Lo que pide atención primero: excedida; después, lo que más consumió. */
+const atencion = (excedida: boolean, consumo: number | null) => [excedida ? 0 : 1, -(consumo ?? -1)] as const
+const porAtencion = <T>(clave: (x: T) => readonly [number, number]) => (a: T, b: T) => {
+  const [x, y] = [clave(a), clave(b)]
+  return x[0] - y[0] || x[1] - y[1]
+}
+
+/**
+ * EL RESUMEN AGRUPADO COMO EL CRM (dueño, 17/09/2026: «más similar a Administración → Clientes»): el
+ * cliente con sus totales y, debajo, sus obras. El CRM ordena por cantidad de obras y nombre porque
+ * lista trabajos; acá la pregunta es de control, así que el equivalente es lo que pide atención:
+ * primero el cliente con alguna obra excedida, después el que más consumió; dentro, igual con sus obras.
+ */
+export function agruparPorCliente(obras: ObraAnalitica[]): GrupoDeCliente[] {
+  const m = new Map<string, ObraAnalitica[]>()
+  for (const o of obras) m.set(o.clienteId, [...(m.get(o.clienteId) ?? []), o])
+  const grupos = [...m.values()].map((lista): GrupoDeCliente => {
+    const filas = controlPorObra(lista)
+      .sort(porAtencion((f) => atencion(f.pct != null && f.pct > 1, f.obra.gasto.total)))
+    const conPres = filas.filter((f) => f.presupuesto != null)
+    const presupuestado = sumaNula(conPres.map((f) => f.presupuesto))
+    const consumido = sumaNula(conPres.map((f) => f.consumido))
+    return {
+      clienteId: lista[0].clienteId, nombre: lista[0].clienteNombre, presupuestado, consumido,
+      queda: presupuestado != null ? presupuestado - (consumido ?? 0) : null,
+      pct: presupuestado ? (consumido ?? 0) / presupuestado : null,
+      consumoTotal: sumaNula(lista.map((o) => o.gasto.total)),
+      excedidas: filas.filter((f) => f.pct != null && f.pct > 1).length,
+      obras: filas,
+    }
+  })
+  return grupos.sort(porAtencion((g) => atencion(g.excedidas > 0, g.consumoTotal)))
+}
+
 /** La mano de obra de varias obras sumada, con su parte estimada: para rotular un total. */
 export function manoObraDe(obras: ObraAnalitica[]): { manoObra: number | null; manoObraEstimada: number | null } {
   const con = obras.filter((o) => o.gasto.manoObra != null)
