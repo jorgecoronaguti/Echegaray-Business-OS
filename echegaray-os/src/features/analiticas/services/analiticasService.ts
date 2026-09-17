@@ -8,7 +8,7 @@ import { armarCostosPorObra, armarGastosSinObra, type GastoSinObra } from '@/fea
 import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
 import { rangoParaVista, type Filtros } from './filtros'
 import { leerPaginado } from './paginar'
-import { armarObra, elegirObra, pasaEstado, sinObraDe, type ObraAnalitica, type ObraPanel } from './obras'
+import { armarObra, elegirObra, pasaEstado, rubrosComparables, sinObraDe, type ObraAnalitica, type ObraPanel } from './obras'
 import { leerPresupuestos, presupuestoPorObra } from './presupuesto'
 import { leerConsumoMensual, ritmoPorObra, type MesDeConsumo, type Ritmo } from './consumo'
 
@@ -37,6 +37,8 @@ export interface DatosAnaliticas {
   consumoMensual: MesDeConsumo[] | null
   /** Su ritmo; `null` = no se leyó. */
   ritmo: Ritmo | null
+  /** Comprobantes de cada obra tomados al total por no discriminar IVA. Vacío = la base todavía no publica el neto. */
+  sinIvaDiscriminado: Map<string, number>
   /** `false` = la puerta de la base contestó null: sin permiso económico. */
   legible: boolean
 }
@@ -99,19 +101,17 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     f.vista === 'nomina' ? supabase.from('jornales_quincena').select('desde, estado') : null,
     f.vista === 'nomina' ? supabase.from('personas').select('en_la_empresa, categoria').eq('es_prueba', false) : null,
     // LA ACCIÓN DEL DÍA SE DECIDE POR DOCUMENTO DE COBRANZAS (D10), la misma fuente del saldo y con el
-    // mismo recorte por emisión que la cuenta corriente. Paginado: Cobranzas pasa las 1.000 filas.
-    // SÓLO COLUMNAS CON GRANT: `authenticated` no lee `id`, `numero_comprobante` ni `concepto` de
-    // `cobranzas`, y pedir una sola columna sin permiso hace fallar la consulta entera (la primera
-    // versión dejó a los cinco clientes en «no evaluado»). Sin `id`, el orden va por todas las columnas
-    // leídas, que es lo que hace estable la paginación (ver `paginar.ts`).
+    // mismo recorte por emisión que la cuenta corriente. Se lee de `cliente_cobranza`, la vista canónica
+    // fila por fila (DEFINICIONES: «cobrado»): `public.cobranzas` es la réplica cruda y no se lee desde la
+    // app. Paginado por `cobranza_id`, que es único: Cobranzas pasa las 1.000 filas.
     f.vista === 'cobranza'
       ? leerPaginado((a, b) => {
-        let q = supabase.from('cobranzas')
-          .select('cliente_id, estado, fecha_cobro, fecha_emision, total_bruto, obra_id')
+        let q = supabase.from('cliente_cobranza')
+          .select('cobranza_id, cliente_id, estado, fecha_cobro, fecha_emision, total_bruto, obra_id, numero_comprobante, factura, concepto')
           .in('estado', ['Pendiente', 'Facturado']).not('cliente_id', 'is', null)
         if (rango.desde) q = q.gte('fecha_emision', rango.desde)
         if (rango.hasta) q = q.lte('fecha_emision', rango.hasta)
-        return q.order('cliente_id').order('fecha_cobro').order('fecha_emision').order('total_bruto').order('estado').order('obra_id').range(a, b)
+        return q.order('cobranza_id').range(a, b)
       })
       : null,
   ])
@@ -125,7 +125,15 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     documentos: documentos ?? null,
     motivoPresupuesto: lecturaPresupuestos.motivo,
     obraElegida, consumoMensual: mensual,
-    ritmo: mensual && obraElegida ? (ritmoPorObra(mensual, hoy).get(obraElegida.id) ?? { porMes: null, ventana: [], conEstimada: false }) : null,
+    // EL RITMO DEL «ALCANZA» ES DE LOS MISMOS RUBROS QUE EL «QUEDA»: sin presupuesto, todo lo consumido.
+    ritmo: mensual && obraElegida
+      ? (ritmoPorObra(mensual, hoy, obraElegida.presupuesto != null ? rubrosComparables(obraElegida.presupuestoRubros) : undefined).get(obraElegida.id)
+        ?? { porMes: null, ventana: [], conEstimada: false })
+      : null,
+    sinIvaDiscriminado: new Map((Array.isArray(raiz?.obras) ? raiz.obras : []).flatMap((x: unknown) => {
+      const r = (x ?? {}) as Record<string, unknown>
+      return typeof r.obra_id === 'string' && r.neto_de_iva === true ? [[r.obra_id, Number(r.n_sin_iva_discriminado ?? 0)] as [string, number]] : []
+    })),
     legible: raiz != null,
   }
 }

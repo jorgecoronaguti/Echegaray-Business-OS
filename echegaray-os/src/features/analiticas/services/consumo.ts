@@ -62,10 +62,13 @@ export interface Ritmo {
   conEstimada: boolean
 }
 
-const totalDe = (f: MesDeConsumo): number => (f.materiales ?? 0) + (f.subcontratos ?? 0) + (f.manoObra ?? 0)
+type RubroDeConsumo = 'manoObra' | 'materiales' | 'subcontratos'
+const TODOS: RubroDeConsumo[] = ['manoObra', 'materiales', 'subcontratos']
+const totalDe = (f: MesDeConsumo, rubros: RubroDeConsumo[]): number => rubros.reduce((a, k) => a + (f[k] ?? 0), 0)
 
 /** El ritmo de cada obra que tiene alguna fila. Una obra que no está en el mapa no tiene consumo. */
-export function ritmoPorObra(filas: MesDeConsumo[], hoyISO: string): Map<string, Ritmo> {
+/** `rubros`: los que cuenta el ritmo. Para el «alcanza», los mismos que el «queda» (`rubrosComparables`). */
+export function ritmoPorObra(filas: MesDeConsumo[], hoyISO: string, rubros: RubroDeConsumo[] = TODOS): Map<string, Ritmo> {
   const ventana = mesesCerrados(hoyISO)
   const dentro = new Set(ventana)
   const m = new Map<string, { suma: number; hay: boolean; est: boolean; primero: string | null }>()
@@ -73,10 +76,10 @@ export function ritmoPorObra(filas: MesDeConsumo[], hoyISO: string): Map<string,
     const a = m.get(f.obraId) ?? { suma: 0, hay: false, est: false, primero: null }
     if (f.mes != null && (a.primero == null || f.mes < a.primero)) a.primero = f.mes
     if (f.mes != null && dentro.has(f.mes)) {
-      const t = totalDe(f)
+      const t = totalDe(f, rubros)
       if (t > 0) a.hay = true
       a.suma += t
-      if ((f.manoObraEstimada ?? 0) > 0) a.est = true
+      if (rubros.includes('manoObra') && (f.manoObraEstimada ?? 0) > 0) a.est = true
     }
     m.set(f.obraId, a)
   }

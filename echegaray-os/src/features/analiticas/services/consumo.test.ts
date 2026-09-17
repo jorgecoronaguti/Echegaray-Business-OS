@@ -46,3 +46,17 @@ test('meses para agotar: sólo con las dos patas; pasada = 0', () => {
   assert.equal(mesesParaAgotar(90, null), null)
   assert.equal(mesesParaAgotar(90, 0), null)
 })
+
+test('«alcanza» con los mismos rubros que el «queda»: entrepiso sólo cotizó MO, su ritmo no cuenta materiales', async () => {
+  const { rubrosComparables } = await import('./obras.ts')
+  const f = leerConsumoMensual([
+    fila('entrepiso-y-escalera', '2026-08-01', { mano_obra: 30, materiales: 900, subcontratos: 60 }),
+    fila('entrepiso-y-escalera', '2026-07-01', { mano_obra: 30 }),
+    fila('entrepiso-y-escalera', '2026-06-01', { mano_obra: 30 }),
+  ])!
+  const soloMO = rubrosComparables({ manoObra: 3829741.63, materiales: null, subcontratos: null, otros: null })
+  assert.deepEqual(soloMO, ['manoObra'])
+  assert.equal(ritmoPorObra(f, '2026-09-17', soloMO).get('entrepiso-y-escalera')?.porMes, 30)
+  assert.equal(ritmoPorObra(f, '2026-09-17').get('entrepiso-y-escalera')?.porMes, 350, 'sin rubros, todo lo consumido: (990 + 30 + 30) ÷ 3')
+  assert.deepEqual(rubrosComparables({ manoObra: 1, materiales: 1, subcontratos: null, otros: null }), ['manoObra', 'materiales', 'subcontratos'])
+})

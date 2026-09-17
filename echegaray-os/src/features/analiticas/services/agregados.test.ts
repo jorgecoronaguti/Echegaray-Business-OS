@@ -69,8 +69,8 @@ test('rubros: «otros» sin consumo registrado; HH contra las horas de la cotiza
 })
 
 test('rubros: con presupuesto y sin gasto es «sin movimiento», no «queda todo»', () => {
-  const a = obra('a', 'me', {}, null, { MA: 5e6 })
-  assert.deepEqual(celda(a, 'materiales').lectura, { tipo: 'sinMovimiento', monto: null })
+  const a = obra('a', 'me', {}, null, { MO: 5e6 })
+  assert.deepEqual(celda(a, 'manoObra').lectura, { tipo: 'sinMovimiento', monto: null })
 })
 
 test('D2 · la mano de obra estimada se dice por rubro y sumada', () => {

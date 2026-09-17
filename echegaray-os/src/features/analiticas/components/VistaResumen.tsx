@@ -4,9 +4,9 @@
 // gráfico por obra, presupuestado contra consumido. Estilo del diseño v6: cabecera de 180 px, cifras de
 // 28 px, barra fina gris para lo presupuestado y gruesa grafito para lo consumido.
 //
-// Se compara RUBRO CONTRA RUBRO (ver `presupuesto.ts`): la barra grafito es lo consumido en los rubros
-// presupuestados; lo que se consumió sin presupuesto con qué compararse va a continuación, en ámbar,
-// porque es lo que reclama. Nunca se suma al «queda».
+// La barra de consumo se apila en MANO DE OBRA, MATERIALES y SUBCONTRATOS (dueño, 17/09/2026: subcontratos
+// se ve aparte), con los colores del diseño. El % y el «queda» comparan RUBRO CONTRA RUBRO (ver
+// `presupuesto.ts`); lo consumido sin presupuesto con qué compararse se dice aparte, en ámbar.
 import Link from 'next/link'
 import { aUrl, type Filtros } from '../services/filtros'
 import { millones, pctEntero } from '../services/formato'
@@ -40,12 +40,12 @@ export function VistaResumen({ obras, sinObra, filtros }: {
           { rotulo: 'sin obra asignada', valor: millones(r.sinObraAsignada), falta: 'ninguno', tono: 'muted', nota: 'no se reparte entre obras' },
         ]} />
       <Seccion titulo="Presupuestado contra consumido, por obra"
-        aclaracion="la barra fina es lo presupuestado; la gruesa, lo consumido en esos rubros. Tocá una obra para verla rubro por rubro."
+        aclaracion="la barra fina es lo presupuestado; la gruesa, todo lo consumido por rubro. Tocá una obra para verla rubro por rubro."
         leyenda={[
           { color: 'bg-dato-referencia', rotulo: 'presupuestado' },
-          { color: 'bg-accent', rotulo: 'consumido' },
-          { color: 'bg-neg', rotulo: 'consumido de más' },
-          { color: 'bg-warn', rotulo: 'consumido sin presupuesto' },
+          { color: 'bg-accent', rotulo: 'mano de obra' },
+          { color: 'bg-dato-materiales', rotulo: 'materiales' },
+          { color: 'bg-muted', rotulo: 'subcontratos' },
         ]}>
         <Grafico filas={filas} filtros={filtros} />
       </Seccion>
@@ -55,7 +55,7 @@ export function VistaResumen({ obras, sinObra, filtros }: {
 }
 
 function Grafico({ filas, filtros }: { filas: ControlDeObra[]; filtros: Filtros }) {
-  const escala = Math.max(1, ...filas.map((f) => Math.max(f.presupuesto ?? 0, (f.consumido ?? 0) + f.sinPresupuesto)))
+  const escala = Math.max(1, ...filas.map((f) => Math.max(f.presupuesto ?? 0, f.obra.gasto.total ?? 0)))
   if (!filas.length) return <p className="text-sm text-faint">Ninguna obra con estos filtros.</p>
   return (
     <div className="flex flex-col">
@@ -67,9 +67,8 @@ function Grafico({ filas, filtros }: { filas: ControlDeObra[]; filtros: Filtros 
 function FilaObra({ f, escala, href }: { f: ControlDeObra; escala: number; href: string }) {
   const o = f.obra
   const pasada = f.pct != null && f.pct > 1
-  // DENTRO DEL PRESUPUESTO en grafito y LO EXCEDIDO en rojo: la barra dice dónde terminó el presupuesto.
-  const dentro = f.consumido != null && f.presupuesto != null ? Math.min(f.consumido, f.presupuesto) : 0
-  const exceso = f.consumido != null && f.presupuesto != null ? Math.max(0, f.consumido - f.presupuesto) : 0
+  const g = o.gasto
+  const total = g.total ?? 0
   return (
     <Link href={href} prefetch={false} data-testid={`resumen-obra-${o.id}`}
       className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-5 gap-y-2 border-b border-line py-3.5 hover:bg-surface-quiet lg:grid-cols-[220px_minmax(0,1fr)_90px_190px] lg:items-center">
@@ -84,10 +83,11 @@ function FilaObra({ f, escala, href }: { f: ControlDeObra; escala: number; href:
           ) : <span className="truncate text-[11px] text-warn">{o.motivoPresupuesto}</span>}
         </div>
         <div className="flex h-3.5 items-center gap-2">
-          <div className="flex h-3.5 overflow-hidden rounded-[2px]" style={{ width: ancho(dentro + exceso + f.sinPresupuesto, escala) }}>
-            <div className="bg-accent" style={{ width: ancho(dentro, dentro + exceso + f.sinPresupuesto) }} />
-            <div className="bg-neg" style={{ width: ancho(exceso, dentro + exceso + f.sinPresupuesto) }} />
-            <div className="bg-warn" style={{ width: ancho(f.sinPresupuesto, dentro + exceso + f.sinPresupuesto) }} />
+          <div className="flex h-3.5 overflow-hidden rounded-[2px]" style={{ width: ancho(total, escala) }}
+            title={`mano de obra ${millones(g.manoObra) ?? '—'} · materiales ${millones(g.materiales) ?? '—'} · subcontratos ${millones(g.subcontratos) ?? '—'}`}>
+            <div className="bg-accent" style={{ width: ancho(g.manoObra, total) }} />
+            <div className="bg-dato-materiales" style={{ width: ancho(g.materiales, total) }} />
+            <div className="bg-muted" style={{ width: ancho(g.subcontratos, total) }} />
           </div>
           <span className="whitespace-nowrap text-xs font-semibold text-ink">
             {f.consumido != null ? millones(f.consumido) : null}

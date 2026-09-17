@@ -5,21 +5,24 @@
 // barras cotizado/gastado del diseño v6), de «Gasto por obra» (el % y la composición) y de «Costo por
 // hora» ($/h medido contra la empresa). No repite las cifras generales: ésas son del Resumen.
 import Link from 'next/link'
+import { Fragment } from 'react'
 import { aUrl, type Filtros } from '../services/filtros'
 import { horasTexto, millones, pctConSigno, pctEntero, porHora } from '../services/formato'
-import { celda, costoPorHora, itemsDe, porHoraMedido, UMBRAL_HORA_CARA, type Celda, type Item } from '../services/agregados'
+import { celda, costoPorHora, INCLUIDO_EN_MATERIALES, ITEMS, porHoraMedido, quedaMaterialesYSubcontratos, UMBRAL_HORA_CARA, type Celda, type Item } from '../services/agregados'
 import { mesesParaAgotar, type MesDeConsumo, type Ritmo } from '../services/consumo'
 import { rotuloEstimada, type ObraAnalitica } from '../services/obras'
 import { SIN_PRESUPUESTO_RUBRO } from '../services/presupuesto'
 import { ancho, Cabecera, Seccion } from './Piezas'
 import { Columnas } from './VistasEmpresa'
 
-export function VistaObras({ obras, obra, filtros, consumo, ritmo }: {
+export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva }: {
   obras: ObraAnalitica[]
   obra: ObraAnalitica | null
   filtros: Filtros
   consumo: MesDeConsumo[] | null
   ritmo: Ritmo | null
+  /** Comprobantes tomados al total por no discriminar IVA; `null` = la base todavía no publica el neto. */
+  sinIva: number | null
 }) {
   if (!obra) return <p className="mt-9 text-sm text-muted">Ninguna obra con estos filtros.</p>
   const queda = obra.presupuesto != null ? obra.presupuesto - (obra.consumoComparable ?? 0) : null
@@ -36,9 +39,16 @@ export function VistaObras({ obras, obra, filtros, consumo, ritmo }: {
           { rotulo: 'ritmo por mes', valor: ritmo?.porMes != null ? millones(ritmo.porMes) : null, falta: consumo == null ? 'sin publicar' : 'sin consumo reciente',
             nota: ritmo?.porMes != null ? `últimos 3 meses cerrados${ritmo.conEstimada ? ' · con mano de obra estimada' : ''}${meses != null ? ` · alcanza ${meses === 0 ? '0 meses' : `${meses.toLocaleString('es-AR', { maximumFractionDigits: 1 })} meses`}` : ''}` : undefined },
         ]} />
-      <Seccion titulo="Rubro contra rubro" aclaracion="mano de obra contra mano de obra y cargas cotizadas; materiales y subcontratos contra los materiales cotizados, que en la plantilla los incluyen. Lo que no se cotizó aparte no se compara.">
+      <Seccion titulo="Rubro contra rubro" aclaracion="mano de obra contra mano de obra y cargas cotizadas. La cotización incluye los subcontratos dentro de materiales: lo que queda de los dos se dice una sola vez.">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5" data-testid="rubros">
-          {itemsDe(obra).map((i) => <Rubro key={i.clave} item={i.clave} rotulo={i.rotulo} c={celda(obra, i.clave)} />)}
+          {/* EL QUEDA COMBINADO VA JUSTO DESPUÉS DE SUBCONTRATOS: en el teléfono se lee debajo de los dos; en
+              la computadora se ubica explícito debajo de sus dos columnas. */}
+          {ITEMS.map((i) => (
+            <Fragment key={i.clave}>
+              <Rubro item={i.clave} rotulo={i.rotulo} c={celda(obra, i.clave)} />
+              {i.clave === 'subcontratos' ? <><QuedaCombinado obra={obra} /><NotaIva sinIva={sinIva} /></> : null}
+            </Fragment>
+          ))}
         </div>
       </Seccion>
       <Seccion titulo="Consumo por mes" filo
@@ -88,6 +98,32 @@ function Rubro({ item, rotulo, c }: { item: Item; rotulo: string; c: Celda }) {
   )
 }
 
+/** DEBAJO DE MATERIALES: con qué base se midió lo consumido. Un número con IVA no se compara con un presupuesto sin IVA. */
+function NotaIva({ sinIva }: { sinIva: number | null }) {
+  return (
+    <p data-testid="nota-iva" className="text-[10.5px] text-faint sm:col-span-2 lg:col-start-2 lg:row-start-3">
+      {sinIva == null ? 'consumo con IVA: la base todavía no publica el neto'
+        : `neto de IVA · ${sinIva} ${sinIva === 1 ? 'comprobante' : 'comprobantes'} sin IVA discriminado tomados al total`}
+    </p>
+  )
+}
+
+/** Debajo de Materiales y Subcontratos: lo que queda de los dos juntos contra MA. */
+function QuedaCombinado({ obra }: { obra: ObraAnalitica }) {
+  const q = quedaMaterialesYSubcontratos(obra)
+  if (!q) return null
+  const excedido = q.lectura?.tipo === 'excedido'
+  const texto = q.lectura?.tipo === 'queda' ? `${millones(q.lectura.monto)} · ${pctEntero(q.pct)} consumido`
+    : excedido ? `excedido en ${millones(q.lectura?.monto)}` : 'sin movimiento'
+  return (
+    <div data-testid="queda-materiales-subcontratos"
+      className="flex items-baseline justify-between gap-3 border-t border-line pt-2 sm:col-span-2 lg:col-start-2 lg:row-start-2">
+      <span className="text-[11.5px] text-faint">queda materiales y subcontratos</span>
+      <span className={`text-[12.5px] font-semibold tabular-nums ${excedido ? 'text-neg' : 'text-ink'}`}>{texto}</span>
+    </div>
+  )
+}
+
 function Par({ rotulo, ancho: w, barra, valor, color, fuerte = false, titulo }: {
   rotulo: string; ancho: string; barra: string; valor: string | null; color: string; fuerte?: boolean; titulo?: string
 }) {
@@ -104,7 +140,7 @@ function LecturaRubro({ c, item }: { c: Celda; item: Item }) {
   const l = c.lectura
   const fmt = item === 'horas' ? horasTexto : millones
   // EL MOTIVO LARGO VA UNA VEZ, en la cabecera; en cada rubro, la palabra corta.
-  const corto = c.cotizadoAusente === SIN_PRESUPUESTO_RUBRO ? SIN_PRESUPUESTO_RUBRO : 'sin presupuesto'
+  const corto = c.cotizadoAusente === SIN_PRESUPUESTO_RUBRO || c.cotizadoAusente === INCLUIDO_EN_MATERIALES ? c.cotizadoAusente : 'sin presupuesto'
   const TEXTO: Record<NonNullable<Celda['lectura']>['tipo'], [string, string]> = {
     queda: [`queda ${fmt(l?.monto)} · ${pctEntero(c.pct)} consumido`, 'text-muted'],
     excedido: [`excedido en ${fmt(l?.monto)}`, 'text-neg'],

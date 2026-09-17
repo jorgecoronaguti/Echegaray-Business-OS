@@ -114,11 +114,10 @@ export function VistaNomina({ filas, quincenas, personas, rango, periodo, hoy }:
           }
         })} />
       </Seccion>
-      <div className="mt-8 grid grid-cols-2 gap-6 border-t border-line pb-9 pt-6 lg:grid-cols-[180px_repeat(3,minmax(0,1fr))]">
+      <div className="mt-8 grid grid-cols-2 gap-6 border-t border-line pb-9 pt-6 lg:grid-cols-[180px_repeat(2,minmax(0,1fr))]">
         <div className="col-span-2 pt-1 text-[11.5px] leading-normal text-muted lg:col-span-1">lo que la nómina no puede decir hoy</div>
         <Hueco valor={l ? `${l.sinCategoria} de ${l.plantel}` : null} texto="legajos sin categoría · sin categoría no hay jornal" tenue />
         <Hueco valor={String(incompletos)} texto="meses sin liquidar del todo · no entran a la suba" />
-        <Hueco valor={null} falta="sin repartir" texto="la nómina no se reparte a obra" tenue />
       </div>
     </>
   )

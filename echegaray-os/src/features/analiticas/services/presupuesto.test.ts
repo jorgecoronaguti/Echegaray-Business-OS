@@ -77,16 +77,34 @@ test('estimado lo dice la partida: una cabecera con INFERENCIA en los gastos gen
   assert.equal(sinPartidas.estimado, true)
 })
 
-test('MA incluye subcontratos: con MA se comparan materiales + subcontratos en una sola fila; sin MA, separados y sin presupuesto', async () => {
-  const { itemsDe } = await import('./agregados.ts')
-  const con = obra('c', { materiales: 6e6, subcontratos: 2e6, mano_obra: 1e6 }, presupuestoDe('c', [['MA', 10e6], ['MO', 5e6]]))
-  assert.equal(con.consumoComparable, 9e6, 'MO 1 + materiales 6 + subcontratos 2')
-  assert.deepEqual(itemsDe(con).map((i) => i.rotulo), ['Mano de obra', 'Materiales y subcontratos', 'Otros', 'Horas hombre'])
-  assert.equal(celda(con, 'materiales').gastado, 8e6)
-  assert.deepEqual(celda(con, 'materiales').lectura, { tipo: 'queda', monto: 2e6 })
+test('TRES RUBROS SEPARADOS: materiales y subcontratos se ven aparte; el queda contra MA es uno solo', async () => {
+  const { ITEMS, quedaMaterialesYSubcontratos } = await import('./agregados.ts')
+  assert.deepEqual(ITEMS.map((i) => i.rotulo), ['Mano de obra', 'Materiales', 'Subcontratos', 'Otros', 'Horas hombre'])
+  const con = obra('c', { materiales: 9e6, subcontratos: 3e6, mano_obra: 1e6 }, presupuestoDe('c', [['MA', 10e6], ['MO', 5e6]]))
+  assert.equal(con.consumoComparable, 13e6, 'MO 1 + materiales 9 + subcontratos 3')
+  const mat = celda(con, 'materiales')
+  assert.equal(mat.gastado, 9e6, 'materiales solos')
+  assert.equal(mat.cotizado, 10e6)
+  assert.equal(mat.lectura, null, 'sin queda propio: 9 contra 10 diría «queda» y los subcontratos lo pasan')
+  const sub = celda(con, 'subcontratos')
+  assert.equal(sub.gastado, 3e6)
+  assert.equal(sub.cotizadoAusente, 'incluido en materiales de la cotización')
+  assert.equal(sub.lectura, null)
+  assert.deepEqual(quedaMaterialesYSubcontratos(con)?.lectura, { tipo: 'excedido', monto: 2e6 }, 'MA 10 − (9 + 3)')
   const sin = obra('s', { materiales: 6e6, subcontratos: 2e6, mano_obra: 1e6 }, presupuestoDe('s', [['MO', 5e6]]))
   assert.equal(sin.consumoComparable, 1e6)
-  assert.deepEqual(itemsDe(sin).map((i) => i.clave), ['manoObra', 'materiales', 'subcontratos', 'otros', 'horas'])
+  assert.equal(quedaMaterialesYSubcontratos(sin), null)
+  assert.equal(celda(sin, 'materiales').cotizadoAusente, 'sin presupuesto de este rubro')
   assert.equal(celda(sin, 'subcontratos').cotizadoAusente, 'sin presupuesto de este rubro')
-  assert.equal(celda(sin, 'materiales').gastado, 6e6)
+})
+
+test('Quattropani: el fondo de materiales (44.110.169,31 sin IVA) contra materiales + subcontratos NETOS', async () => {
+  const { quedaMaterialesYSubcontratos } = await import('./agregados.ts')
+  // Neto leído el 17/09/2026: 14 F A con IVA discriminado → importe (30.878.408,49); 5 comprobantes de
+  // Pedro Fredes sin tipo → total (2.080.000). Con IVA daba 37.188.800,09 de materiales.
+  const q = obra('quattropani', { materiales: 30878408.49, subcontratos: 2080000, mano_obra: 5.67e6 },
+    presupuestoDe('quattropani', [['MO', 20115544.67], ['CS', 19477367.58], ['MA', 44110169.31]]))
+  const c = quedaMaterialesYSubcontratos(q)!
+  assert.equal(c.cotizado, 44110169.31)
+  assert.deepEqual(c.lectura, { tipo: 'queda', monto: 44110169.31 - 30878408.49 - 2080000 })
 })

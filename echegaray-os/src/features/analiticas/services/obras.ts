@@ -104,6 +104,18 @@ export interface ObraAnalitica {
 
 export const UMBRAL_CERCA = 0.8
 
+/**
+ * LOS RUBROS DE CONSUMO QUE SE MIDEN CONTRA EL PRESUPUESTO. MO+CS cotizado → mano de obra. MA de la
+ * plantilla = materiales + equipos + fletes + SUBCONTRATOS (no los separa) → materiales Y subcontratos
+ * (decisión 17/09/2026). Lo usan el «queda» y el ritmo del «alcanza»: los dos miden lo mismo.
+ */
+export function rubrosComparables(porRubro: Record<Rubro, number | null> | null): ('manoObra' | 'materiales' | 'subcontratos')[] {
+  const out: ('manoObra' | 'materiales' | 'subcontratos')[] = []
+  if ((porRubro?.manoObra ?? 0) > 0) out.push('manoObra')
+  if ((porRubro?.materiales ?? 0) > 0) out.push('materiales', 'subcontratos')
+  return out
+}
+
 const ORIGEN_SUMA_VIVA = 'suma-viva'
 
 export function estadoDe(p: Pick<ObraPanel, 'estado' | 'n_comprobantes' | 'avance_pct'>): EstadoDeObra {
@@ -175,11 +187,7 @@ export function armarObra(
   const gasto = gastoDe(c)
   const comparables = RUBROS_COMPARABLES.filter((k) => (armado?.porRubro[k] ?? 0) > 0)
   const presupuesto = comparables.length ? comparables.reduce((a, k) => a + (armado?.porRubro[k] ?? 0), 0) : null
-  // MA DE LA PLANTILLA = materiales + equipos + fletes + SUBCONTRATOS (no los separa): con MA, lo que se
-  // compara contra él es materiales Y subcontratos consumidos (decisión 17/09/2026).
-  const consumoComparable = comparables.length
-    ? suma(...comparables.flatMap((k) => (k === 'materiales' ? [gasto.materiales, gasto.subcontratos] : [gasto.manoObra])))
-    : null
+  const consumoComparable = comparables.length ? suma(...rubrosComparables(armado?.porRubro ?? null).map((k) => gasto[k])) : null
   return {
     id: p.obra_id, nombre: p.nombre, clienteId: p.cliente_id, clienteSlug: p.cliente_slug,
     clienteNombre: p.cliente_nombre ?? p.cliente_slug, estado: estadoDe(p),

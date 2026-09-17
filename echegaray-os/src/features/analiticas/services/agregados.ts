@@ -92,13 +92,22 @@ export const ITEMS: { clave: Item; rotulo: string }[] = [
   { clave: 'horas', rotulo: 'Horas hombre' },
 ]
 
-/** ¿La obra cotizó MA? Entonces materiales y subcontratos son UNA fila contra MA. */
+/** ¿La obra cotizó MA (materiales, equipos, fletes Y subcontratos: la plantilla no los separa)? */
 export const conMA = (o: ObraAnalitica): boolean => (o.presupuestoRubros?.materiales ?? null) != null
 
-/** Los rubros de UNA obra: con MA, «Materiales y subcontratos» en una sola fila; sin MA, separados. */
-export function itemsDe(o: ObraAnalitica): { clave: Item; rotulo: string }[] {
-  if (!conMA(o)) return ITEMS
-  return ITEMS.filter((i) => i.clave !== 'subcontratos').map((i) => (i.clave === 'materiales' ? { ...i, rotulo: 'Materiales y subcontratos' } : i))
+export const INCLUIDO_EN_MATERIALES = 'incluido en materiales de la cotización'
+
+/**
+ * EL QUEDA DE MATERIALES Y SUBCONTRATOS, UNA SOLA VEZ (dueño, 17/09/2026: subcontratos se ve aparte).
+ * Los rubros se muestran separados, pero el presupuesto no separa subcontratos: MA los incluye. Medir
+ * materiales solos contra MA daría un excedido falso, y repartir MA sería inventar. Por eso lo que queda
+ * se calcula MA − (materiales + subcontratos) y se dice debajo de los dos. `null` sin MA.
+ */
+export function quedaMaterialesYSubcontratos(o: ObraAnalitica): { cotizado: number; consumido: number | null; pct: number | null; lectura: Celda['lectura'] } | null {
+  const ma = o.presupuestoRubros?.materiales ?? null
+  if (ma == null) return null
+  const consumido = sumaNula([o.gasto.materiales, o.gasto.subcontratos])
+  return { cotizado: ma, consumido, pct: ma > 0 && consumido != null ? consumido / ma : null, lectura: lecturaDe(ma, consumido) }
 }
 
 export interface Celda {
@@ -133,10 +142,16 @@ export function celda(o: ObraAnalitica, item: Item): Celda {
       pct: hh != null && o.gasto.horas != null ? o.gasto.horas / hh : null, lectura: hh == null ? null : lecturaDe(hh, o.gasto.horas), consumoEstimado: null,
     }
   }
-  const g = item === 'otros' ? null
-    : item === 'materiales' && conMA(o) ? sumaNula([o.gasto.materiales, o.gasto.subcontratos])
-      : o.gasto[item]
+  const g = item === 'otros' ? null : o.gasto[item]
   const cot = o.presupuestoRubros?.[item] ?? null
+  // CON MA, materiales y subcontratos no se leen por separado: su queda es uno solo (arriba).
+  if ((item === 'materiales' || item === 'subcontratos') && conMA(o)) {
+    return {
+      gastado: g, gastadoAusente: null, estimado: o.rubrosEstimados.includes('materiales'),
+      cotizado: item === 'materiales' ? cot : null, cotizadoAusente: item === 'subcontratos' ? INCLUIDO_EN_MATERIALES : null,
+      pct: null, lectura: null, consumoEstimado: null,
+    }
+  }
   // SIN PRESUPUESTO APROBADO se dice el motivo de la obra; CON presupuesto y sin este rubro, que el
   // rubro no se cotizó aparte (Quattropani: sólo MO+CS; subcontratos van dentro de MA en la plantilla).
   const desglosado = Object.values(o.presupuestoRubros ?? {}).some((v) => v != null)

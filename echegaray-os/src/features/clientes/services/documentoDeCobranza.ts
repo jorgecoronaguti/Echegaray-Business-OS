@@ -41,7 +41,7 @@ export function documentosDeCobranzas(filas: unknown[], hoy: string): Certificad
     const vence = dia(r.fecha_cobro)
     const vencido = estado?.toLowerCase() === 'pendiente' && vence != null && vence < hoy
     return [{
-      id: String(r.id ?? ''), cliente_id: clienteId, obra_id: null, obra_nombre: texto(r.obra_cliente),
+      id: String(r.id ?? r.cobranza_id ?? ''), cliente_id: clienteId, obra_id: null, obra_nombre: texto(r.obra_cliente),
       numero: texto(r.numero_comprobante) ?? texto(r.factura) ?? texto(r.concepto) ?? 'sin número',
       factura: texto(r.factura), periodo_desde: null, periodo_hasta: null, avance_periodo: null,
       monto, reparo: null, emitido_at: dia(r.fecha_emision), vence,
