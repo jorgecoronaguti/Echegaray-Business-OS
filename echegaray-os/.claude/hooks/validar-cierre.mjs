@@ -120,17 +120,37 @@ export function esRojoDelAmbiente(salida) {
   return /deadlock detected|40P01|ECONNREFUSED|ETIMEDOUT|too many clients/i.test(String(salida ?? ''))
 }
 
-/** Corre un comando y devuelve {ok, salida}. Nunca tira. */
+/**
+ * EL PORTERO DE RECURSOS (scripts/recursos/ecos). Este hook corre en CADA cierre de CADA agente y de
+ * CADA sesión, en su propio worktree. El 17/09 varios agentes cerraron a la vez y cada uno lanzó su
+ * `tsc`, su suite y su eslint: la VM se quedó sin memoria y sin swap. Desde entonces las validaciones
+ * pasan por el portero, que las hace de a una y espera si no hay lugar. Si el portero global no está
+ * instalado en esta máquina, se instala acá: es el hook que más se ejecuta, y por eso es el lugar
+ * donde la política llega sola a cualquier máquina que corra este código.
+ */
+function portero(base) {
+  const global = join(process.env.HOME || '', '.echegaray-os', 'bin', 'ecos')
+  const local = join(base, 'scripts', 'recursos', 'ecos')
+  if (!existsSync(global) && existsSync(join(base, 'scripts', 'recursos', 'instalar.sh'))) {
+    try { execFileSync('bash', [join(base, 'scripts', 'recursos', 'instalar.sh')], { stdio: 'ignore', timeout: 30000 }) } catch { /* sin portero global se usa el del repo */ }
+  }
+  return [global, local].find((p) => existsSync(p)) || null
+}
+
+/** Corre un comando y devuelve {ok, salida, sinRecursos}. Nunca tira. */
 function correr(cmd, args, base) {
+  const eco = portero(base)
+  const [bin, argv] = eco ? [eco, ['validacion', '--', cmd, ...args]] : [cmd, args]
   try {
     // EL TOPE INTERNO TIENE QUE SER MENOR QUE EL DEL HOOK, NO AL REVÉS. Con 300 s acá y 420 s en
     // `settings.json`, una suite lenta moría por este `timeout`, `correr()` devolvía `ok:false` y el
     // cierre se bloqueaba por un ROJO FALSO — un test que nunca falló. Hoy: 600 s acá, 900 s allá.
-    execFileSync(cmd, args, { cwd: base, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 600000 })
+    // La espera en la cola del portero se acota a 4 minutos para que quede margen de correr lo suyo.
+    execFileSync(bin, argv, { cwd: base, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 600000, env: { ...process.env, ECOS_ESPERA_MAX: '240' } })
     return { ok: true, salida: '' }
   } catch (e) {
     const txt = `${e.stdout ?? ''}${e.stderr ?? ''}`.trim()
-    return { ok: false, salida: txt.split('\n').slice(-25).join('\n') }
+    return { ok: false, sinRecursos: e.status === 75, salida: txt.split('\n').slice(-25).join('\n') }
   }
 }
 
@@ -172,21 +192,28 @@ async function main() {
   const hayOrq = codigo.some((f) => f.startsWith(join(BASE, 'orquestador') + sep))
   const hayTs = codigo.some((f) => /\.tsx?$/.test(f))
   const fallas = []
+  const sinRecursos = []
 
-  if (hayOrq) {
-    const r = correr('npm', ['run', 'orq:test'], BASE)
-    if (!r.ok) fallas.push(`✗ npm run orq:test\n${r.salida}`)
+  // Cada validación es un turno del portero. Si la VM no tiene lugar y el turno no llega a tiempo, la
+  // validación NO corrió: se dice así, con esas palabras, y se vuelve a intentar en el próximo cierre.
+  // Lo que no se hace es fingir que pasó.
+  const validar = (nombre, cmd, args) => {
+    const r = correr(cmd, args, BASE)
+    if (r.ok) return
+    if (r.sinRecursos) sinRecursos.push(nombre)
+    else fallas.push(`✗ ${nombre}\n${r.salida}`)
   }
-  if (hayTs) {
-    const r = correr('npm', ['run', 'typecheck'], BASE)
-    if (!r.ok) fallas.push(`✗ npm run typecheck\n${r.salida}`)
-  }
-  if (codigo.length) {
-    // eslint SÓLO sobre lo cambiado: sobre el proyecto entero son varios segundos que no aportan nada
-    // nuevo sobre archivos que nadie tocó. `--max-warnings` no se fuerza: este repo tiene 38 warnings
-    // preexistentes y bloquear por ellos sería castigar a quien no los creó.
-    const r = correr('npx', ['eslint', ...codigo], BASE)
-    if (!r.ok) fallas.push(`✗ eslint (archivos cambiados)\n${r.salida}`)
+  if (hayOrq) validar('npm run orq:test', 'npm', ['run', 'orq:test'])
+  if (hayTs) validar('npm run typecheck', 'npm', ['run', 'typecheck'])
+  // eslint SÓLO sobre lo cambiado: sobre el proyecto entero son varios segundos que no aportan nada
+  // nuevo sobre archivos que nadie tocó. `--max-warnings` no se fuerza: este repo tiene 38 warnings
+  // preexistentes y bloquear por ellos sería castigar a quien no los creó.
+  if (codigo.length) validar('eslint (archivos cambiados)', 'npx', ['eslint', ...codigo])
+
+  if (sinRecursos.length && !fallas.length) {
+    guardarHuella({ ok: false, huella: h, detalle: `sin recursos para: ${sinRecursos.join(', ')}`, cuando: new Date().toISOString() })
+    pasar(`⚠ Validaciones NO corridas por falta de recursos en la VM (esperaron su turno 4 minutos): ${sinRecursos.join(', ')}. `
+      + 'El cambio NO está validado. Se reintenta en el próximo cierre; mirá `ecos estado` para ver qué ocupa la máquina.')
   }
   if (sql.length) {
     // Una migración no se APLICA acá — eso toca datos productivos. Sólo se verifica que no esté vacía.

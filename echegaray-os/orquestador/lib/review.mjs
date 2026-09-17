@@ -15,6 +15,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { readFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { changedFiles } from './workspace.mjs'
 import { decide } from './policy.mjs'
@@ -101,9 +102,15 @@ async function definitionOfDone(ws, files, expected) {
   return { ok: missing.length === 0, detail: missing.length ? `faltan señales: ${missing.join(', ')}` : 'ok' }
 }
 
+// Los gates pesados (typecheck, lint, build) pasan por el portero de recursos de la VM: este worker
+// corre 24x7 y no puede lanzar un `tsc` encima de lo que ya tiene la máquina. Si el portero no está
+// instalado (otra máquina), se corre pelado — el gate no se pierde, se pierde el cupo.
+const PORTERO = [path.join(process.env.HOME || '', '.echegaray-os', 'bin', 'ecos'), path.resolve('scripts/recursos/ecos')].find((p) => existsSync(p))
+
 async function runGate(cwd, cmd, args) {
   try {
-    const { stdout, stderr } = await exec(cmd, args, { cwd, maxBuffer: 10 * 1024 * 1024 })
+    const [bin, argv] = PORTERO ? [PORTERO, ['validacion', '--', cmd, ...args]] : [cmd, args]
+    const { stdout, stderr } = await exec(bin, argv, { cwd, maxBuffer: 10 * 1024 * 1024 })
     return { ok: true, output: stdout + stderr }
   } catch (err) {
     return { ok: false, output: String(err.stdout || '') + String(err.stderr || err.message) }
