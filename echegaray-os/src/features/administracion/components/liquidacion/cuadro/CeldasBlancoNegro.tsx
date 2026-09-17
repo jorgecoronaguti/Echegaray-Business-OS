@@ -20,7 +20,7 @@ import { IconoDeAviso, MarcaDeOrigen } from '../CeldasDeLiquidacion'
 import { Escribible } from './CeldasDelEspejo'
 import type { CampoEditable } from '../../../services/liquidacionOverrides'
 import { horas as nHoras, pesos } from '../formato'
-import { estadoDelPago, tituloDeJornales } from './estadoDelPago'
+import { estadoDelPago, motivoSinCobra, tituloDeJornales } from './estadoDelPago'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { marcaDeCategoria, negroDeLaFila, tituloDelNetoEstimado, type SueldoBlancoNegro } from '../../../services/sueldoBlancoNegro'
 import { avisoDeExcedente, type PagoDeLaLinea } from '../../../services/pagoDeLaQuincena'
@@ -232,8 +232,7 @@ export function CeldaTotal({ fila, edicion }: { fila: FilaDelEspejo; edicion?: E
     )
   }
   if (l.cobra == null) {
-    // UN MENSUAL SIN IMPORTE NO ESTÁ «SIN TARIFA» (dueño, 15/09/2026: «los jefes cobran por mes, no preguntes más»).
-    const porque = l.modalidad === 'mensual' ? 'importe no cargado' : l.sinNeto ? 'sin neto' : 'sin tarifa'
+    const porque = motivoSinCobra(l)
     return (
       <div data-testid={`total-${fila.personaId}`} style={{ ...DERECHA, color: V.tenue }}
         title={[l.sinNeto ? 'Sin neto del blanco: no hay total que afirmar.' : 'Sin retribución cargada.', jornales].filter(Boolean).join(' · ')}>
