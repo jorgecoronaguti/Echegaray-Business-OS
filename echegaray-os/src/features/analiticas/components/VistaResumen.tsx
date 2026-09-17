@@ -10,7 +10,7 @@
 import Link from 'next/link'
 import { aUrl, type Filtros } from '../services/filtros'
 import { millones, pctEntero } from '../services/formato'
-import { agruparPorCliente, cifrasResumen, manoObraDe, type FilaControl, type GrupoDeCliente } from '../services/agregados'
+import { agruparPorCliente, cifrasResumen, manoObraDe, notaDeConsumido, type FilaControl, type GrupoDeCliente } from '../services/agregados'
 import { IconoCliente, IconoObra } from '@/shared/components/iconos'
 import { ALTO_V2, RotuloCol } from '@/shared/components/v2/patron'
 import { rotuloEstimada, type ObraAnalitica } from '../services/obras'
@@ -39,11 +39,9 @@ export function VistaResumen({ obras, cartera, sinObra, filtros, neto }: {
             nota: r.contrato != null ? `contrato ${millones(r.contrato)} · referencia` : undefined },
           // CONSUMIDO ES EL TOTAL, la misma cifra que suma la tabla: el dueño la suma a ojo y tiene que cerrar.
           { rotulo: 'consumido', valor: millones(r.consumoTotal), falta: 'sin movimiento',
-            nota: `${neto ? 'neto de IVA' : 'con IVA: la base todavía no publica el neto'}${r.consumoSinPresupuesto ? ` · ${millones(r.consumoSinPresupuesto)} sin presupuesto` : ''}${est ? ` · mano de obra ${est}` : ''}` },
+            nota: notaDeConsumido(r, neto, est) },
           { rotulo: excedido ? 'excedido' : 'queda', valor: r.queda != null ? millones(Math.abs(r.queda)) : null, falta: '—', tono: excedido ? 'neg' : undefined,
             nota: r.presupuestado ? `${pctEntero((r.consumido ?? 0) / r.presupuestado)} de lo presupuestado` : undefined },
-          { rotulo: 'consumido sin presupuesto', valor: r.consumoSinPresupuesto ? millones(r.consumoSinPresupuesto) : null, falta: 'ninguno', tono: 'warn',
-            nota: r.obrasSinPresupuesto ? `${r.obrasSinPresupuesto} ${r.obrasSinPresupuesto === 1 ? 'obra' : 'obras'} sin presupuesto y rubros no cotizados` : 'rubros no cotizados' },
           { rotulo: 'sin obra asignada', valor: millones(r.sinObraAsignada), falta: 'ninguno', tono: 'muted', nota: 'no se reparte entre obras' },
         ]} />
       <Seccion titulo="Presupuestado contra consumido, por cliente y obra"

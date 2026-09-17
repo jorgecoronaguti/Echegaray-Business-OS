@@ -4,7 +4,7 @@ import { armarCostosPorObra } from '../../clientes/services/costosDeObra.ts'
 import { armarEconomiaDeObras } from '../../clientes/services/economiaObras.ts'
 import { armarObra } from './obras.ts'
 import { presupuestoDe } from './presupuesto.fixture.ts'
-import { agruparPorCliente, celda, cifrasResumen, controlPorObra, costoPorHora, manoObraDe, porHoraMedido } from './agregados.ts'
+import { agruparPorCliente, celda, notaDeConsumido, cifrasResumen, controlPorObra, costoPorHora, manoObraDe, porHoraMedido } from './agregados.ts'
 import { rotuloEstimada } from './obras.ts'
 
 type Pres = Partial<Record<'MO' | 'CS' | 'MA' | 'SC', number>>
@@ -144,4 +144,11 @@ test('el consumido de arriba es la suma de la columna CONSUMIDO de la tabla, con
   assert.equal(r.consumoTotal, tabla)
   assert.equal(r.consumoTotal, 73e6)
   assert.equal(r.consumoTotal, (r.consumido ?? 0) + (r.consumoSinPresupuesto ?? 0), 'comparable + sin presupuesto = total')
+})
+
+test('lo sin presupuesto se dice una sola vez, en la línea de consumido, abreviado', () => {
+  assert.equal(notaDeConsumido({ consumoSinPresupuesto: 12.58e6, obrasSinPresupuesto: 1 }, true, '62 % estimada'),
+    'neto de IVA · $ 12,58 M sin presupuesto (1 obra y rubros sin cotizar) · mano de obra 62 % estimada')
+  assert.equal(notaDeConsumido({ consumoSinPresupuesto: 5e5, obrasSinPresupuesto: 0 }, true, null), 'neto de IVA · $ 0,50 M sin presupuesto (rubros sin cotizar)')
+  assert.equal(notaDeConsumido({ consumoSinPresupuesto: 0, obrasSinPresupuesto: 0 }, false, null), 'con IVA: la base todavía no publica el neto')
 })

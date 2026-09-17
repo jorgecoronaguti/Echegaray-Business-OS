@@ -5,6 +5,7 @@
 // dos patas no se publica: `queda` sólo existe con presupuesto Y consumo del MISMO rubro, `$/hora` sólo
 // con mano de obra imputada Y horas. El contrato viaja como referencia, nunca como presupuesto.
 import { rotuloEstimada, type ObraAnalitica } from './obras.ts'
+import { millones } from './formato.ts'
 import { jerarquiaDeObras } from '../../clientes/services/obrasAdicionales.ts'
 import { SIN_PRESUPUESTO, SIN_PRESUPUESTO_RUBRO, type Rubro } from './presupuesto.ts'
 
@@ -45,6 +46,20 @@ export function cifrasResumen(obras: ObraAnalitica[], sinObra: ReadonlyMap<strin
     sinObraAsignada: sumaNula([...sinObra.values()]),
     obrasSinPresupuesto: obras.length - conPres.length,
   }
+}
+
+/**
+ * LA LÍNEA CHICA DEBAJO DE «CONSUMIDO». Lo sin presupuesto se dice UNA vez, acá: la tarjeta aparte
+ * repetía la cifra y el dueño se quejó de los datos repetidos (17/09/2026).
+ */
+export function notaDeConsumido(r: Pick<CifrasResumen, 'consumoSinPresupuesto' | 'obrasSinPresupuesto'>, neto: boolean, estimada: string | null): string {
+  const partes = [neto ? 'neto de IVA' : 'con IVA: la base todavía no publica el neto']
+  if (r.consumoSinPresupuesto && r.consumoSinPresupuesto > 0) {
+    const quien = r.obrasSinPresupuesto ? `${r.obrasSinPresupuesto} ${r.obrasSinPresupuesto === 1 ? 'obra' : 'obras'} y rubros sin cotizar` : 'rubros sin cotizar'
+    partes.push(`${millones(r.consumoSinPresupuesto)} sin presupuesto (${quien})`)
+  }
+  if (estimada) partes.push(`mano de obra ${estimada}`)
+  return partes.join(' · ')
 }
 
 export interface ControlDeObra {

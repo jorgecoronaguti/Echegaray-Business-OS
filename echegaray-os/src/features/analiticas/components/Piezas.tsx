@@ -61,7 +61,7 @@ export function Cabecera({ titulo, detalle, cifras, repartidas = false, derecha 
         <p className="text-xs leading-[1.45] text-muted tabular-nums">{detalle}</p>
       </div>
       <div className={repartidas
-        ? 'grid grid-cols-2 items-end gap-x-6 gap-y-5 lg:grid-cols-5 lg:gap-6'
+        ? `grid grid-cols-2 items-end gap-x-6 gap-y-5 lg:gap-6 ${cifras.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-5'}`
         : 'grid grid-cols-2 items-end gap-x-6 gap-y-5 lg:flex lg:flex-nowrap lg:gap-x-10 xl:gap-x-14'}>
         {cifras.map((c) => <UnaCifra key={c.rotulo} c={c} />)}
       </div>
