@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { tocaHoy, prioritariosEntre, ultimaBajadaDe, finDeVentana } from './arca-sync-ritmo.mjs'
+import { tocaHoy, prioritariosEntre, ultimaBajadaDe, finDeVentana, fechaLocal } from './arca-sync-ritmo.mjs'
 
 const DIAS = [1, 11, 18]
 const V_SEP = '2026-09-10→2026-10-10'
@@ -55,4 +55,27 @@ test('auxiliares', () => {
   assert.deepEqual(prioritariosEntre('2026-09-17', '2026-10-10', DIAS), ['2026-09-18', '2026-10-01'])
   assert.equal(ultimaBajadaDe({ eventos: [{ fecha: '2026-09-17' }, { fecha: '2026-08-24' }] }), '2026-09-17')
   assert.equal(ultimaBajadaDe({}), null)
+})
+
+test('la fecha del ritmo es la LOCAL: el 30/09 a las 22:00 en San Juan no es el 01/10', () => {
+  const noche = new Date('2026-10-01T01:00:00Z') // 30/09 22:00 en UTC−3
+  const tz = process.env.TZ
+  process.env.TZ = 'America/Argentina/San_Juan'
+  try {
+    assert.equal(fechaLocal(noche), '2026-09-30')
+  } finally {
+    if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz
+  }
+  assert.equal(tocaHoy({ ...base, hoy: '2026-09-30', disponible: 2, ventana: V_SEP, ultimaBajada: '2026-09-18' }).toca, false)
+})
+
+test('un día prioritario no gasta dos veces el mismo día, y eso NO es una falla', () => {
+  const r = tocaHoy({ ...base, hoy: '2026-09-18', disponible: 4, ventana: V_SEP, ultimaBajada: '2026-09-18' })
+  assert.equal(r.toca, false)
+  assert.ok(!r.prioritarioSinCuota)
+})
+
+test('un día prioritario SIN cuota avisa para fallar fuerte; un día común sin cuota sale callado', () => {
+  assert.equal(tocaHoy({ ...base, hoy: '2026-10-01', disponible: 0, ventana: V_SEP }).prioritarioSinCuota, true)
+  assert.equal(tocaHoy({ ...base, hoy: '2026-09-25', disponible: 0, ventana: V_SEP }).prioritarioSinCuota, false)
 })

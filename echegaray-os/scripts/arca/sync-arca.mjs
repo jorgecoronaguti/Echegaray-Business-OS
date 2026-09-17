@@ -27,7 +27,7 @@ import { promisify } from 'node:util'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { presupuesto, registrarConsumo, credencialAceptada, leerCredenciales, leerUso } from '../../orquestador/lib/afipsdk-presupuesto.mjs'
-import { tocaHoy, esPrioritario, ultimaBajadaDe } from '../../orquestador/lib/arca-sync-ritmo.mjs'
+import { tocaHoy, ultimaBajadaDe, fechaLocal } from '../../orquestador/lib/arca-sync-ritmo.mjs'
 import {
   motivoDeFalla, archivoDescargado, decidirFrescura, codigoDeSalida, resumenDeCorrida, consumioCuota,
 } from '../../orquestador/lib/arca-sync-resultado.mjs'
@@ -74,10 +74,13 @@ async function main() {
   // Sólo con ORQ_ARCA_RITMO=1 (lo pone el servicio del timer). Una corrida manual del dueño no pasa
   // por acá. Un día prioritario sin cuota NO se salta en silencio: sigue y falla fuerte abajo.
   if (process.env.ORQ_ARCA_RITMO === '1') {
-    const hoyISO = hoy.toISOString().slice(0, 10)
-    const ritmo = tocaHoy({ hoy: hoyISO, disponible: cuota.disponible, fuente: cuota.fuente, ventana: cuota.ventana, ultimaBajada: ultimaBajadaDe(await leerUso()) })
+    const hoyISO = fechaLocal(hoy)
+    // Registro de uso ilegible: sin saber cuándo fue la última bajada no se gasta una extra, pero un
+    // día prioritario tampoco se bloquea por eso — la cuota la sigue diciendo el proveedor.
+    const uso = await leerUso().catch((e) => { console.warn(`[arca-sync] ritmo: ${e.message}`); return null })
+    const ritmo = tocaHoy({ hoy: hoyISO, disponible: cuota.disponible, fuente: uso ? cuota.fuente : 'sin-registro', ventana: cuota.ventana, ultimaBajada: uso ? ultimaBajadaDe(uso) : null })
     console.log(`[arca-sync] ritmo: ${ritmo.toca ? 'CORRE' : 'hoy no'} — ${ritmo.motivo}`)
-    if (!ritmo.toca && !esPrioritario(hoyISO)) process.exit(0)
+    if (!ritmo.toca && !ritmo.prioritarioSinCuota) process.exit(0)
   }
   if (!cuota.ok) { console.error('[arca-sync] NO descargo: no hay cuota suficiente.'); process.exit(1) }
 

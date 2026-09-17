@@ -31,6 +31,16 @@ const fechaUTC = (iso) => new Date(`${String(iso).slice(0, 10)}T00:00:00Z`)
 const iso = (d) => d.toISOString().slice(0, 10)
 const diasEntre = (a, b) => Math.round((fechaUTC(b) - fechaUTC(a)) / DIA)
 
+/**
+ * La fecha CIVIL local (la VM está en hora de San Juan) de un instante. NO `toISOString()`: entre las
+ * 21:00 y las 23:59 eso devuelve el día siguiente, y un catch-up nocturno del timer gastaría la corrida
+ * del 01 el 30 a la noche (hallazgo de la auditoría, 17/09/2026). Es la misma fecha que usa `hasta`.
+ */
+export function fechaLocal(instante = new Date()) {
+  const dd = (n) => String(n).padStart(2, '0')
+  return `${instante.getFullYear()}-${dd(instante.getMonth() + 1)}-${dd(instante.getDate())}`
+}
+
 /** ¿Es hoy un día prioritario? */
 export const esPrioritario = (hoy, dias = DIAS_PRIORITARIOS) => dias.includes(fechaUTC(hoy).getUTCDate())
 
@@ -63,13 +73,20 @@ export function proximoPrioritario(hoy, dias = DIAS_PRIORITARIOS) {
  *
  * @param {{hoy:string, disponible:number, fuente:string, ventana:string, ultimaBajada?:string|null, dias?:number[]}} p
  *        `disponible` es el de `presupuesto` (límite − reserva − usadas), ANTES de gastar hoy.
- * @returns {{toca:boolean, motivo:string}}
+ * @returns {{toca:boolean, motivo:string, prioritarioSinCuota?:boolean}}
  */
 export function tocaHoy({ hoy, disponible, fuente, ventana, ultimaBajada = null, dias = DIAS_PRIORITARIOS }) {
   const corridas = Math.floor(Math.max(0, Number(disponible) || 0) / POR_CORRIDA)
   const dia = fechaUTC(hoy).getUTCDate()
-  if (corridas < 1) return { toca: false, motivo: `no queda cuota para una corrida (${disponible} disponible(s))` }
-  if (dias.includes(dia)) return { toca: true, motivo: `día prioritario (${dia}) con ${corridas} corrida(s) disponible(s)` }
+  // Un día prioritario sin cuota NO se calla: `prioritarioSinCuota` le dice al script que siga y falle fuerte.
+  if (corridas < 1) return { toca: false, prioritarioSinCuota: dias.includes(dia), motivo: `no queda cuota para una corrida (${disponible} disponible(s))` }
+  if (dias.includes(dia)) {
+    // Una segunda invocación el mismo día (catch-up de Persistent=true, un reinicio) no vuelve a gastar.
+    if (ultimaBajada && String(ultimaBajada).slice(0, 10) === String(hoy).slice(0, 10)) {
+      return { toca: false, motivo: `día prioritario (${dia}) pero ya se bajó hoy` }
+    }
+    return { toca: true, motivo: `día prioritario (${dia}) con ${corridas} corrida(s) disponible(s)` }
+  }
 
   const fin = finDeVentana(ventana)
   if (fuente !== 'proveedor' || !fin) {
