@@ -1,204 +1,201 @@
-// CAJA, NÓMINA Y COBRANZA — las tres lecturas de la empresa.
-import type { ReactNode } from 'react'
+// CAJA, NÓMINA Y COBRANZA — las tres lecturas de la empresa, al final del módulo.
+//
+// Diseño v6: columnas mensuales (caja apilada obra/estructura; nómina con la suba sobre marzo en
+// ámbar), barras por área, la banda de antigüedad apilada y la tabla de clientes con el verbo del día.
+// Lo que el diseño trae escrito a mano (3.053,5 h, 396 h, «27 de 30») sale acá de los datos o no sale.
 import { millones, pctConSigno, pctEntero } from '../services/formato'
-import { caja, cifrasCobranza, cobranza, legajos, MES_BASE, nomina, leerEgresos, seisMesesReales, ubicarCirculos, ZONAS_COBRANZA } from '../services/empresa'
-import { Ausente, Cifras, SinLectura, Subtitulo, Titulo } from './Piezas'
+import { bandasDeCobranza, caja, cifrasCobranza, cobranza, legajos, leerEgresos, MES_BASE, nomina, seisMesesReales, type FilaCobranza } from '../services/empresa'
+import type { ClaveBanda } from '../../clientes/services/reglasCobranza'
+import { ancho, Cabecera, ENCABEZADO, rotuloMes, Seccion, SinLectura } from './Piezas'
 
-const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
-const rotuloMes = (m: string) => `${MESES[Number(m.slice(5, 7)) - 1]} ${m.slice(2, 4)}`
+const veces = (x: number | null) => (x == null ? null : `${x.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ×`)
 
-/** Una polilínea en un viewBox 0–100 con los rótulos de mes debajo, en HTML. */
-function Lineas({ meses, series, arriba }: {
-  meses: string[]
-  series: { valores: (number | null)[]; clase: string; punteada?: boolean }[]
-  arriba?: ReactNode
-}) {
-  const tope = Math.max(1, ...series.flatMap((s) => s.valores.map((v) => v ?? 0))) * 1.1
-  const x = (i: number) => (meses.length === 1 ? 50 : (i / (meses.length - 1)) * 100)
-  const y = (v: number) => 100 - (v / tope) * 100
+/** Columnas mensuales con el valor arriba y el mes abajo; `partes` se apilan de arriba hacia abajo. */
+export function Columnas({ meses }: { meses: { mes: string; valor: string | null; color?: string; partes: { alto: number; clase: string }[]; nota?: string }[] }) {
+  const cruza = new Set(meses.map((m) => m.mes.slice(0, 4))).size > 1
   return (
-    <div className="mb-8">
-      {arriba}
-      <div className="relative h-48 border-b border-line">
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full overflow-visible" aria-hidden>
-          {series.map((s, k) => {
-            const puntos = s.valores.map((v, i) => (v == null ? null : `${x(i)},${y(v)}`)).filter(Boolean).join(' ')
-            return <polyline key={k} points={puntos} fill="none" className={s.clase} strokeWidth="2"
-              vectorEffect="non-scaling-stroke" strokeDasharray={s.punteada ? '4 4' : undefined} />
-          })}
-        </svg>
-      </div>
-      <div className="relative mt-1 h-4 text-xs text-faint">
-        {meses.map((m, i) => (
-          // Los extremos se alinean hacia adentro: centrados, el primero y el último salían del ancho de la página.
-          <span key={m} className={`absolute whitespace-nowrap ${i === 0 && meses.length > 1 ? '' : i === meses.length - 1 && meses.length > 1 ? '-translate-x-full' : '-translate-x-1/2'}`} style={{ left: `${x(i)}%` }}>{rotuloMes(m)}</span>
-        ))}
-      </div>
+    <div className="grid h-[220px] items-end gap-2 lg:gap-4" style={{ gridTemplateColumns: `repeat(${Math.max(meses.length, 1)}, minmax(0, 1fr))` }}>
+      {meses.map((m) => (
+        <div key={m.mes} className="flex h-full min-w-0 flex-col items-center justify-end gap-2">
+          <div className={`whitespace-nowrap text-[11px] font-semibold lg:text-[12.5px] ${m.valor == null ? 'font-normal text-faint' : m.color ?? 'text-ink'}`}>{m.valor ?? m.nota}</div>
+          <div className="flex w-full max-w-[120px] flex-col overflow-hidden rounded-t-[2px]">
+            {m.partes.map((p, i) => <div key={i} className={p.clase} style={{ height: `${Math.max(0, p.alto)}px` }} />)}
+          </div>
+          <div className="text-[11px] text-faint">{rotuloMes(m.mes, cruza)}</div>
+        </div>
+      ))}
     </div>
   )
 }
 
 export function VistaCaja({ egresos, periodo }: { egresos: unknown[] | null; periodo: string }) {
-  if (!egresos) return <><Titulo titulo="Caja" linea={periodo} /><SinLectura que="los egresos" /></>
+  if (!egresos) return <SinLectura que="los egresos" />
   const c = caja(leerEgresos(egresos))
-  const parte = (v: number) => (c.salio > 0 ? pctEntero(v / c.salio) : null)
+  const max = Math.max(1, ...c.meses.map((m) => m.aObra + m.estructura))
+  const areas = [
+    { area: 'Obra', monto: c.aObra, tono: 'bg-accent', color: 'text-ink', nota: 'imputado a una obra concreta' },
+    ...c.ramas.map((r) => ({ area: r.rotulo, monto: r.total, tono: 'bg-dato-referencia', color: 'text-muted', nota: '' })),
+    ...(c.nSinDestino ? [{ area: 'Sin clasificar', monto: c.sinDestino, tono: 'bg-warn', color: 'text-warn', nota: `${c.nSinDestino} filas sin área · esperan destino` }] : []),
+  ]
+  const maxArea = Math.max(1, ...areas.map((a) => a.monto))
   return (
     <>
-      <Titulo titulo="Caja" linea={`${egresos.length} egresos · ${periodo} · por fecha del egreso`} />
-      <Cifras cifras={[
-        { rotulo: 'Salió', valor: millones(c.salio) },
-        { rotulo: 'A una obra', valor: millones(c.aObra) },
-        { rotulo: 'Estructura', valor: millones(c.estructura) },
-        { rotulo: 'Sin destino', valor: c.nSinDestino ? millones(c.sinDestino) : null, falta: 'ninguno', tono: c.nSinDestino ? 'warn' : undefined },
-        { rotulo: 'Estructura por peso de obra', valor: c.estructuraPorPesoDeObra == null ? null : `$ ${c.estructuraPorPesoDeObra.toLocaleString('es-AR', { maximumFractionDigits: 2 })}`, falta: '—' },
-      ]} />
-      <Lineas meses={c.meses.map((m) => m.mes)}
-        arriba={<p className="mb-2 flex gap-4 text-xs text-muted"><span><span className="mr-1 inline-block h-0.5 w-4 bg-accent align-middle" />A una obra</span><span><span className="mr-1 inline-block h-0.5 w-4 bg-dato-materiales align-middle" />Estructura</span></p>}
-        series={[
-          { valores: c.meses.map((m) => m.aObra), clase: 'stroke-accent' },
-          { valores: c.meses.map((m) => m.estructura), clase: 'stroke-dato-materiales' },
-        ]} />
-      <Subtitulo derecha="% de lo que salió">De dónde salió</Subtitulo>
-      <ul className="text-sm tabular-nums">
-        <Rama rotulo="Salió" v={millones(c.salio)} p="100 %" nivel={0} />
-        <Rama rotulo="A una obra" v={millones(c.aObra)} p={parte(c.aObra)} nivel={1} />
-        <Rama rotulo="Estructura" v={millones(c.estructura)} p={parte(c.estructura)} nivel={1} />
-        {c.ramas.map((r) => <Rama key={r.rotulo} rotulo={r.rotulo} v={millones(r.total)} p={parte(r.total)} nivel={2} />)}
-        <Rama rotulo="Sin destino" v={c.nSinDestino ? millones(c.sinDestino) : null} p={c.nSinDestino ? parte(c.sinDestino) : null} nivel={1} />
-      </ul>
-      <div className="mt-6">
-        <button type="button" disabled title="La imputación de un egreso sin área todavía no tiene pantalla: se corrige en Compras."
-          className="h-11 rounded-control bg-marca px-4 text-sm font-medium text-ink disabled:cursor-not-allowed disabled:opacity-50">
-          Imputar las {c.nSinDestino} filas sin destino
-        </button>
-      </div>
+      <Cabecera titulo="Caja" detalle={`${periodo} · a dónde fue la plata`}
+        cifras={[
+          { rotulo: 'salió', valor: millones(c.salio) },
+          { rotulo: 'a una obra', valor: millones(c.aObra) },
+          { rotulo: 'estructura', valor: millones(c.estructura), tono: 'muted' },
+          { rotulo: 'sin destino', valor: c.nSinDestino ? millones(c.sinDestino) : null, falta: 'ninguno', tono: 'warn' },
+          { rotulo: 'estructura por peso de obra', valor: veces(c.estructuraPorPesoDeObra), falta: '—' },
+        ]}
+        derecha={c.nSinDestino ? (
+          // SIN PANTALLA DE IMPUTACIÓN TODAVÍA: el botón del diseño se muestra, apagado y con la razón.
+          <button type="button" disabled title="La imputación de un egreso sin área todavía no tiene pantalla: se corrige en Compras."
+            className="h-11 whitespace-nowrap rounded-control bg-marca px-4 text-[12.5px] font-semibold text-accent disabled:cursor-not-allowed disabled:opacity-60 lg:h-[34px]">
+            Imputar las {c.nSinDestino} filas sin destino
+          </button>
+        ) : undefined} />
+      <Seccion titulo="Lo que salió, por mes" leyenda={[{ color: 'bg-accent', rotulo: 'a una obra' }, { color: 'bg-dato-referencia', rotulo: 'estructura' }]}>
+        <Columnas meses={c.meses.map((m) => ({
+          mes: m.mes, valor: millones(m.aObra + m.estructura),
+          partes: [{ alto: (m.estructura / max) * 170, clase: 'bg-dato-referencia' }, { alto: (m.aObra / max) * 170, clase: 'bg-accent' }],
+        }))} />
+      </Seccion>
+      <Seccion titulo="Por área" aclaracion="parte de lo que salió" filo>
+        <div className="flex flex-col pb-9">
+          {areas.map((a) => (
+            <div key={a.area} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-1.5 border-b border-line py-2.5 hover:bg-surface-quiet lg:h-12 lg:grid-cols-[150px_minmax(0,1fr)_96px_64px_260px] lg:gap-6 lg:py-0">
+              <div className={`text-[13px] font-medium ${a.color}`}>{a.area}</div>
+              <div className="col-span-3 row-start-2 h-3 lg:col-span-1 lg:row-auto"><div className={`h-full rounded-[2px] ${a.tono}`} style={{ width: ancho(a.monto, maxArea) }} /></div>
+              <div className={`text-right text-[13px] font-semibold ${a.color}`}>{millones(a.monto)}</div>
+              <div className="text-right text-[11.5px] text-faint">{c.salio > 0 ? pctEntero(a.monto / c.salio) : '—'}</div>
+              <div className="hidden truncate text-[11.5px] text-muted lg:block">{a.nota}</div>
+            </div>
+          ))}
+        </div>
+      </Seccion>
     </>
   )
 }
 
-function Rama({ rotulo, v, p, nivel }: { rotulo: string; v: string | null; p: string | null; nivel: 0 | 1 | 2 }) {
-  const sangria = ['', 'pl-6', 'pl-12'][nivel]
-  return (
-    <li className={`flex h-10 items-center gap-3 border-b border-line-hairline ${sangria}`}>
-      <span className={`min-w-0 flex-1 truncate ${nivel === 0 ? 'font-semibold text-ink' : nivel === 1 ? 'text-ink' : 'text-muted'}`}>{rotulo}</span>
-      <span className="text-ink">{v ?? <Ausente>ninguno</Ausente>}</span>
-      <span className="w-14 text-right text-faint">{p ?? '—'}</span>
-    </li>
-  )
-}
-
-export function VistaNomina({ filas, quincenas, personas, rango, periodo }: {
+export function VistaNomina({ filas, quincenas, personas, rango, periodo, hoy }: {
   filas: unknown[] | null
   quincenas: unknown[] | null
   personas: unknown[] | null
   rango: { desde: string | null; hasta: string | null }
   periodo: string
+  hoy: string
 }) {
-  if (!filas) return <><Titulo titulo="Nómina" linea={periodo} /><SinLectura que="la nómina" /></>
-  const { base, meses } = nomina(filas, rango, quincenas ?? [])
-  const reales = meses.filter((m) => m.estado === 'real')
-  const ultimo = reales.at(-1)
+  if (!filas) return <SinLectura que="la nómina" />
+  const { base, meses: todos } = nomina(filas, rango, quincenas ?? [])
+  // LOS MESES QUE VIENEN NO SON NÓMINA: `nomina_por_mes` proyecta hasta diciembre. Se dibuja hasta hoy.
+  const meses = todos.filter((m) => m.mes <= hoy.slice(0, 7))
+  const ultimo = meses.filter((m) => m.estado === 'real').at(-1)
   const seis = seisMesesReales(meses)
-  const incompletos = meses.filter((m) => m.estado === 'incompleto').length
+  const incompletos = meses.filter((m) => m.estado !== 'real').length
   const l = personas ? legajos(personas) : null
+  const max = Math.max(1, ...meses.map((m) => (m.estado === 'real' ? m.costo ?? 0 : 0)))
   return (
     <>
-      <Titulo titulo="Nómina" linea={`${reales.length} meses liquidados${incompletos ? ` · ${incompletos} incompleto${incompletos === 1 ? '' : 's'}` : ''} · ${periodo} · base ${rotuloMes(MES_BASE)} · jornales más cargas sociales`} />
-      <Cifras cifras={[
-        { rotulo: seis && seis.meses < 6 ? `Últimos ${seis.meses} meses reales` : 'Últimos seis meses', valor: seis ? millones(seis.total) : null },
-        { rotulo: ultimo ? `${rotuloMes(ultimo.mes)} contra ${rotuloMes(MES_BASE)}` : 'Último contra base', valor: pctConSigno(ultimo?.contraBase), falta: '—' },
-        { rotulo: 'Plantel', valor: l ? String(l.plantel) : null },
-        { rotulo: 'Sin repartir', valor: null, falta: 'sin registrar' },
-      ]} />
-      <Lineas meses={reales.map((m) => m.mes)}
-        arriba={<p className="mb-2 text-xs text-muted">Costo mensual · la punteada es {rotuloMes(MES_BASE)} ({millones(base) ?? 'sin registrar'})</p>}
-        series={[
-          { valores: reales.map(() => base), clase: 'stroke-dato-referencia', punteada: true },
-          { valores: reales.map((m) => m.costo), clase: 'stroke-accent' },
+      <Cabecera titulo="Nómina" detalle={`${periodo} · sueldos y cargas`}
+        cifras={[
+          { rotulo: seis && seis.meses < 6 ? `últimos ${seis.meses} meses liquidados` : 'seis meses', valor: seis ? millones(seis.total) : null },
+          { rotulo: ultimo ? `${rotuloMes(ultimo.mes)} contra ${rotuloMes(MES_BASE)}` : `contra ${rotuloMes(MES_BASE)}`, valor: pctConSigno(ultimo?.contraBase), falta: '—', tono: (ultimo?.contraBase ?? 0) > 0 ? 'warn' : undefined },
+          { rotulo: 'plantel', valor: l ? String(l.plantel) : null, nota: 'por pertenencia, no por fecha de egreso' },
+          { rotulo: 'repartido a obra', valor: null, falta: 'sin repartir' },
         ]} />
-      <ul className="mb-8 grid grid-cols-3 gap-x-6 text-sm tabular-nums sm:grid-cols-6">
-        {meses.map((m) => (
-          <li key={m.mes} className="border-b border-line-hairline py-2">
-            <span className="block text-xs text-faint">{rotuloMes(m.mes)}</span>
-            {m.estado === 'estimacion' ? <Ausente>estimación</Ausente> : m.estado === 'incompleto' ? <Ausente>incompleto · {millones(m.costo) ?? '—'}</Ausente> : <span className={(m.contraBase ?? 0) > 0.12 ? 'text-warn' : 'text-ink'}>{pctConSigno(m.contraBase) ?? '—'}</span>}
-          </li>
-        ))}
-      </ul>
-      <Subtitulo derecha={l ? `${l.conCategoria} con categoría · ${l.sinCategoria} sin categoría` : undefined}>Legajos</Subtitulo>
-      {l ? (
-        <div className="flex max-w-md flex-wrap gap-1" aria-label={`${l.plantel} legajos`}>
-          {Array.from({ length: l.plantel }, (_, i) => (
-            <span key={i} className={`size-4 rounded-sm ${i < l.conCategoria ? 'bg-accent' : 'border border-warn'}`} />
-          ))}
-        </div>
-      ) : <SinLectura que="los legajos" />}
+      <Seccion titulo="Costo de la nómina, por mes" aclaracion={base != null ? `en ámbar, lo que subió sobre ${rotuloMes(MES_BASE)} (${millones(base)})` : `sin ${rotuloMes(MES_BASE)} liquidado no hay base`} arriba="pt-8">
+        <Columnas meses={meses.map((m) => {
+          if (m.estado !== 'real' || m.costo == null) return { mes: m.mes, valor: null, nota: m.estado === 'estimacion' ? 'estimación' : 'incompleto', partes: [] }
+          const sube = base != null ? Math.max(0, m.costo - base) : 0
+          return {
+            mes: m.mes, valor: millones(m.costo), color: (m.contraBase ?? 0) > 0.2 ? 'text-warn' : undefined,
+            partes: [{ alto: (sube / max) * 170, clase: 'bg-warn' }, { alto: ((m.costo - sube) / max) * 170, clase: 'bg-accent' }],
+          }
+        })} />
+      </Seccion>
+      <div className="mt-8 grid grid-cols-2 gap-6 border-t border-line pb-9 pt-6 lg:grid-cols-[180px_repeat(3,minmax(0,1fr))]">
+        <div className="col-span-2 pt-1 text-[11.5px] leading-normal text-muted lg:col-span-1">lo que la nómina no puede decir hoy</div>
+        <Hueco valor={l ? `${l.sinCategoria} de ${l.plantel}` : null} texto="legajos sin categoría · sin categoría no hay jornal" tenue />
+        <Hueco valor={String(incompletos)} texto="meses sin liquidar del todo · no entran a la suba" />
+        <Hueco valor={null} falta="sin repartir" texto="la nómina no se reparte a obra" tenue />
+      </div>
     </>
   )
 }
 
-export function VistaCobranza({ cuenta, documentos, hoy, periodo, gastado }: {
+function Hueco({ valor, falta = 'sin registrar', texto, tenue = false }: { valor: string | null; falta?: string; texto: string; tenue?: boolean }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className={`text-[22px] font-semibold leading-none tracking-[-0.02em] tabular-nums ${valor == null || tenue ? 'text-faint' : 'text-ink'}`}>{valor ?? falta}</div>
+      <div className="text-[11.5px] text-muted">{texto}</div>
+    </div>
+  )
+}
+
+const TONO_BANDA: Record<ClaveBanda, { fondo: string; texto: string }> = {
+  por_vencer: { fondo: 'bg-pos', texto: 'text-pos' },
+  d1_30: { fondo: 'bg-warn', texto: 'text-warn' },
+  d31_60: { fondo: 'bg-warn', texto: 'text-warn' },
+  d61_90: { fondo: 'bg-dato-mora', texto: 'text-dato-mora' },
+  d90: { fondo: 'bg-neg', texto: 'text-neg' },
+}
+
+export function VistaCobranza({ cuenta, documentos, hoy, periodo }: {
   cuenta: unknown[] | null
   /** Filas de `public.cobranzas` (deuda): de acá sale la acción del día. `null` = no se pudieron leer. */
   documentos: unknown[] | null
   hoy: string
   periodo: string
-  gastado: number | null
 }) {
-  if (!cuenta) return <><Titulo titulo="Cobranza" linea={periodo} /><SinLectura que="la cuenta corriente" /></>
+  if (!cuenta) return <SinLectura que="la cuenta corriente" />
   const filas = cobranza(cuenta, documentos ?? [], hoy)
   const c = cifrasCobranza(filas)
+  const bandas = bandasDeCobranza(cuenta).filter((b) => b.monto > 0)
   const maxSaldo = Math.max(1, ...filas.map((f) => f.saldo))
-  const saldoDe = new Map(filas.map((f) => [f.clienteId, f]))
   return (
     <>
-      <Titulo titulo="Cobranza" linea={`${filas.length} clientes con saldo · ${periodo} por emisión · antigüedad por el vencimiento de Cobranzas`} />
-      <Cifras cifras={[
-        { rotulo: 'Por cobrar', valor: millones(c.porCobrar) },
-        { rotulo: 'A más de 60 días', valor: c.masDe60 > 0 ? millones(c.masDe60) : null, falta: 'ninguno', tono: c.masDe60 > 0 ? 'neg' : undefined },
-        { rotulo: 'Al día', valor: millones(c.alDia), tono: c.alDia > 0 ? 'pos' : undefined },
-        { rotulo: 'Contra lo gastado', valor: gastado ? pctEntero(c.porCobrar / gastado) : null, falta: '—' },
-      ]} />
-      <div className="relative mb-8 h-56">
-        <div className="absolute inset-0 grid grid-cols-5 border-y border-line">
-          {ZONAS_COBRANZA.map((z, i) => (
-            <div key={z.clave} className={`border-line pl-2 pt-1 text-xs ${i ? 'border-l' : ''} ${i === 0 ? 'bg-surface-quiet text-muted' : 'text-faint'}`}>{z.rotulo}</div>
-          ))}
-        </div>
-        {ubicarCirculos(filas).map((k) => {
-          const f = saldoDe.get(k.clienteId)
-          if (!f) return null
-          const size = 10 + 26 * Math.sqrt(f.saldo / maxSaldo)
-          return (
-            <div key={k.clienteId} title={`${f.nombre}: ${millones(f.saldo)} · ${f.rotuloTramo}`}
-              className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1"
-              style={{ left: `${k.x * 100}%`, top: `${8 + k.y * 84}%` }}>
-              <span className={`shrink-0 rounded-full border-2 ${f.estado === 'vencido' ? 'border-neg bg-neg-soft' : 'border-pos bg-pos-soft'}`}
-                style={{ width: size, height: size }} />
-              <span className="hidden max-w-24 truncate text-xs text-muted sm:inline">{f.nombre}</span>
-            </div>
-          )
-        })}
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[560px] text-sm tabular-nums">
-          <thead className="text-xs text-faint">
-            <tr className="border-b border-line-strong text-right">
-              <th className="py-2 text-left font-normal">Cliente</th><th className="font-normal">Saldo</th>
-              <th className="font-normal">Antigüedad</th><th className="pl-6 text-left font-normal">Hoy</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filas.map((f) => (
-              <tr key={f.clienteId} className="h-fila border-b border-line-hairline text-right">
-                <td className="text-left text-ink">{f.nombre}</td>
-                <td className={f.estado === 'vencido' ? 'text-neg' : 'text-ink'}>{millones(f.saldo)}</td>
-                <td>{f.rotuloTramo ?? <Ausente>sin vencimiento</Ausente>}</td>
-                <td className="pl-6 text-left">{f.verbo ?? <Ausente>{documentos == null ? 'no se pudo leer Cobranzas' : f.evaluado ? 'nada pendiente hoy' : 'sin documentos: no evaluado'}</Ausente>}</td>
-              </tr>
+      <Cabecera titulo="Cobranza" detalle={`${periodo} · emitido y no cobrado`}
+        cifras={[
+          { rotulo: 'por cobrar', valor: millones(c.porCobrar) },
+          { rotulo: 'a más de 60 días', valor: c.masDe60 > 0 ? millones(c.masDe60) : null, falta: 'ninguno', tono: 'neg' },
+          { rotulo: 'al día', valor: c.alDia > 0 ? millones(c.alDia) : null, falta: 'ninguno', tono: 'pos' },
+        ]} />
+      <Seccion titulo="Antigüedad de lo que se debe">
+        {bandas.length ? (
+          <div className="flex h-9 overflow-hidden rounded-[2px] bg-line">
+            {bandas.map((b) => (
+              <div key={b.clave} title={`${b.rotulo}: ${millones(b.monto)}`} style={{ width: ancho(b.monto, c.porCobrar) }}
+                className={`flex items-center justify-center gap-2 overflow-hidden whitespace-nowrap border-r border-surface text-[11.5px] text-surface last:border-r-0 ${TONO_BANDA[b.clave].fondo}`}>
+                <span className="font-semibold">{millones(b.monto)}</span><span className="opacity-85">{b.rotulo}</span>
+              </div>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        ) : <p className="text-sm text-faint">nada por cobrar</p>}
+      </Seccion>
+      <Seccion titulo="Por cliente" filo>
+        <div className="flex flex-col pb-9">
+          <div className={`hidden h-9 items-center gap-6 border-b border-line lg:grid lg:grid-cols-[150px_minmax(0,1fr)_96px_150px_170px] ${ENCABEZADO}`}>
+            <div>Cliente</div><div /><div className="text-right">Saldo</div><div>Antigüedad</div><div>Hoy</div>
+          </div>
+          {filas.map((f) => <FilaCliente key={f.clienteId} f={f} max={maxSaldo} documentos={documentos} />)}
+        </div>
+      </Seccion>
     </>
+  )
+}
+
+function FilaCliente({ f, max, documentos }: { f: FilaCobranza; max: number; documentos: unknown[] | null }) {
+  const tono = f.tramo ? TONO_BANDA[f.tramo] : { fondo: 'bg-dato-referencia', texto: 'text-faint' }
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 border-b border-line py-2.5 hover:bg-surface-quiet lg:h-[52px] lg:grid-cols-[150px_minmax(0,1fr)_96px_150px_170px] lg:gap-6 lg:py-0">
+      <div className="truncate text-[13px] font-medium text-ink">{f.nombre}</div>
+      <div className="col-span-2 row-start-2 h-3 lg:col-span-1 lg:row-auto"><div className={`h-full rounded-[2px] ${tono.fondo}`} style={{ width: ancho(f.saldo, max) }} /></div>
+      <div className={`whitespace-nowrap text-right text-[13px] font-semibold ${f.estado === 'vencido' ? 'text-neg' : 'text-ink'}`}>{millones(f.saldo)}</div>
+      <div className={`text-xs ${tono.texto}`}>{f.rotuloTramo ?? 'sin vencimiento'}</div>
+      <div className="text-right text-xs text-ink-soft lg:text-left">
+        {f.verbo ?? <span className="text-faint">{documentos == null ? 'no se pudo leer Cobranzas' : f.evaluado ? '—' : 'no evaluado'}</span>}
+      </div>
+    </div>
   )
 }

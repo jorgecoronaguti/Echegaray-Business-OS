@@ -114,6 +114,7 @@
   --os-dato-referencia: #c8c7c1; /* cotizado / contrato: trazo fino */
   --os-dato-materiales: #b0afa9; /* materiales, y el control que no aplica */
   --os-dato-sin-obra: #e0b900; /* el cajón «sin obra asignada»: marca apagada, nunca estado */
+  --os-dato-mora-media: #c4482b; /* cobranza vencida 31–90 días: entre el ámbar que reclama y el rojo de +90 */
 
   /* ═══ LOS MISMOS COLORES, EN CANALES SUELTOS ═══
      No son colores nuevos: son EXACTAMENTE los de arriba escritos como «R G B» para que Tailwind
@@ -152,6 +153,7 @@
   --os-dato-referencia-rgb: 200 199 193;
   --os-dato-materiales-rgb: 176 175 169;
   --os-dato-sin-obra-rgb: 224 185 0;
+  --os-dato-mora-media-rgb: 196 72 43;
   --os-serie-1-rgb: 42 120 214;
   --os-serie-2-rgb: 27 175 122;
   --os-serie-3-rgb: 74 58 167;

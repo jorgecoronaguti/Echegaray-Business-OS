@@ -8,20 +8,19 @@
 //
 // ═══ QUÉ FILTRO APLICA A QUÉ VISTA ═══
 //
-// Resumen, Contrato y gasto, Estado del gasto y Gasto por obra son ACUMULADOS: el semáforo contra el contrato no
-// tiene sentido con medio contrato gastado «en agosto». Nómina y Cobranza son de la empresa, no de
+// Resumen y Obras son ACUMULADOS: el presupuesto contra lo consumido no tiene sentido con medio
+// presupuesto gastado «en agosto». Nómina y Cobranza son de la empresa, no de
 // una obra. El control que no aplica se APAGA con su razón —nunca se esconde—: si desapareciera, el
 // dueño no sabría si el número que mira está filtrado o no.
 //
 // Rutas relativas con extensión: `node --test` no resuelve el alias `@/`.
 import { z } from 'zod'
 
+// LAS CINCO VISTAS (dueño, 17/09/2026: «pedí primero Resumen; hay datos que se repiten en todas,
+// hacer más fácil»). Contrato y gasto, Gasto por obra y Costo por hora se fundieron en Obras.
 export const VISTAS = [
-  { clave: 'estado', rotulo: 'Estado del gasto' },
   { clave: 'resumen', rotulo: 'Resumen' },
-  { clave: 'contrato', rotulo: 'Contrato y gasto' },
-  { clave: 'obra', rotulo: 'Gasto por obra' },
-  { clave: 'hora', rotulo: 'Costo por hora' },
+  { clave: 'obras', rotulo: 'Obras' },
   { clave: 'caja', rotulo: 'Caja' },
   { clave: 'nomina', rotulo: 'Nómina' },
   { clave: 'cobranza', rotulo: 'Cobranza' },
@@ -40,8 +39,16 @@ export interface Filtros {
   estado: EstadoObra
   /** Vacío = todas las obras del estado. */
   obras: string[]
-  cliente: string | null
-  orden: string | null
+  /** La obra elegida en la vista Obras. `null` = la que más consumió. */
+  obra: string | null
+}
+
+/**
+ * LAS VISTAS RETIRADAS SIGUEN ABRIENDO ALGO: un link viejo pegado en el chat no puede dar un error.
+ * Lo que era de una obra va a Obras; «Estado del gasto» era el semáforo de la cartera y va a Resumen.
+ */
+export const VISTAS_RETIRADAS: Readonly<Record<string, Vista>> = {
+  contrato: 'obras', obra: 'obras', hora: 'obras', estado: 'resumen',
 }
 
 export const PRESETS: { clave: Preset; rotulo: string }[] = [
@@ -59,7 +66,7 @@ export const ESTADOS: { clave: EstadoObra; rotulo: string }[] = [
 ]
 
 export const DEFECTO: Filtros = {
-  vista: 'estado', periodo: { tipo: 'preset', preset: 'inicio' }, estado: 'curso', obras: [], cliente: null, orden: null,
+  vista: 'resumen', periodo: { tipo: 'preset', preset: 'inicio' }, estado: 'curso', obras: [], obra: null,
 }
 
 const FECHA = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((s) => {
@@ -87,18 +94,17 @@ export function leerPeriodo(crudo: string | undefined): Periodo {
 }
 
 export function leerFiltros(params: Params): Filtros {
-  const vista = VISTA.safeParse(uno(params.vista))
+  const crudo = uno(params.vista)
+  const vista = VISTA.safeParse(crudo != null && crudo in VISTAS_RETIRADAS ? VISTAS_RETIRADAS[crudo] : crudo)
   const estado = ESTADO.safeParse(uno(params.estado))
   const obras = (uno(params.obras) ?? '').split(',').filter((s) => SLUG.safeParse(s).success)
-  const cliente = SLUG.safeParse(uno(params.cliente))
-  const orden = z.enum(['gastado', 'contrato', 'pct', 'horas', 'hora']).safeParse(uno(params.orden))
+  const obra = SLUG.safeParse(uno(params.obra))
   return {
     vista: vista.success ? vista.data : DEFECTO.vista,
     periodo: leerPeriodo(uno(params.periodo)),
     estado: estado.success ? estado.data : DEFECTO.estado,
     obras: [...new Set(obras)],
-    cliente: cliente.success ? cliente.data : null,
-    orden: orden.success ? orden.data : null,
+    obra: obra.success ? obra.data : null,
   }
 }
 
@@ -106,14 +112,13 @@ const textoPeriodo = (p: Periodo): string => (p.tipo === 'preset' ? p.preset : `
 const esDefectoPeriodo = (p: Periodo): boolean => p.tipo === 'preset' && p.preset === 'inicio'
 
 /**
- * LA URL DE UNOS FILTROS: sólo lo que se aparta del defecto. `cliente` y `orden` son de UNA vista y no
- * viajan a las otras: el cliente elegido en Contrato y gasto no tiene significado en Caja.
+ * LA URL DE UNOS FILTROS: sólo lo que se aparta del defecto. `obra` es de la vista Obras y no viaja
+ * a las otras: la obra elegida no tiene significado en Caja.
  */
 export function aUrl(f: Filtros): string {
   const q = new URLSearchParams()
   if (f.vista !== DEFECTO.vista) q.set('vista', f.vista)
-  if (f.cliente && f.vista === 'contrato') q.set('cliente', f.cliente)
-  if (f.orden && f.vista === 'obra') q.set('orden', f.orden)
+  if (f.obra && f.vista === 'obras') q.set('obra', f.obra)
   if (!esDefectoPeriodo(f.periodo)) q.set('periodo', textoPeriodo(f.periodo))
   if (f.estado !== DEFECTO.estado) q.set('estado', f.estado)
   if (f.obras.length) q.set('obras', f.obras.join(','))
@@ -131,15 +136,15 @@ export function apartado(f: Filtros, c: Control): boolean {
 export const cuantosApartados = (f: Filtros): number =>
   (['periodo', 'estado', 'obras'] as const).filter((c) => apartado(f, c)).length
 
-// GASTO POR OBRA TAMBIÉN (auditoría 17/09/2026, D3): su plano y su «% del contrato» ponen el gasto contra
-// el contrato ENTERO; con el gasto de un mes contra el precio de toda la obra, el % no significa nada.
-const ACUMULADAS: ReadonlySet<Vista> = new Set(['estado', 'resumen', 'contrato', 'obra'])
+// OBRAS TAMBIÉN (auditoría 17/09/2026, D3): su «% del presupuesto» pone el gasto contra el presupuesto
+// ENTERO; con el gasto de un mes contra el de toda la obra, el % no significa nada.
+const ACUMULADAS: ReadonlySet<Vista> = new Set(['resumen', 'obras'])
 const DE_EMPRESA: ReadonlySet<Vista> = new Set(['nomina', 'cobranza'])
 
 /** POR QUÉ un control no aplica en una vista, o `null` si aplica. La razón va al `title` del control. */
 export function razonNoAplica(vista: Vista, c: Control): string | null {
   if (c === 'periodo' && ACUMULADAS.has(vista)) {
-    return 'Esta vista compara lo gastado contra el contrato: es acumulada a la fecha.'
+    return 'Esta vista compara lo gastado contra el presupuesto: es acumulada a la fecha.'
   }
   if (c !== 'periodo' && DE_EMPRESA.has(vista)) {
     return vista === 'nomina' ? 'La nómina es de la empresa: no se abre por obra.' : 'La cobranza es por cliente: no se abre por obra.'
@@ -180,4 +185,14 @@ const ddmm = (s: string): string => `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slic
 export function rotuloPeriodo(p: Periodo): string {
   if (p.tipo === 'rango') return `${ddmm(p.desde)} – ${ddmm(p.hasta)}`
   return PRESETS.find((x) => x.clave === p.preset)?.rotulo ?? ''
+}
+
+/**
+ * ¿HAY QUE REDIRIGIR? Sí cuando la URL trae una vista retirada o que no existe: la página responde con
+ * la URL normalizada (`aUrl`), así la barra de direcciones dice la vista que se está mirando.
+ */
+export function redireccionDe(params: Params): string | null {
+  const crudo = uno(params.vista)
+  if (crudo == null || VISTA.safeParse(crudo).success) return null
+  return aUrl(leerFiltros(params))
 }

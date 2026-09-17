@@ -4,11 +4,13 @@
 // `obra_economia_cartera`, `egreso_por_area` y `nomina_por_mes` ya filtran por rol. Cada lectura que
 // falla vuelve `null` —no una lista vacía—: «no pude leer» y «no hay nada» se dibujan distinto.
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { armarCostosPorObra, armarGastosSinObra } from '@/features/clientes/services/costosDeObra'
+import { armarCostosPorObra, armarGastosSinObra, type GastoSinObra } from '@/features/clientes/services/costosDeObra'
 import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
 import { rangoParaVista, type Filtros } from './filtros'
 import { leerPaginado } from './paginar'
-import { armarObra, costoObjetivoValido, pasaEstado, sinObraDe, type ObraAnalitica, type ObraPanel } from './obras'
+import { armarObra, elegirObra, pasaEstado, sinObraDe, type ObraAnalitica, type ObraPanel } from './obras'
+import { leerPresupuestos, presupuestoPorObra } from './presupuesto'
+import { leerConsumoMensual, ritmoPorObra, type MesDeConsumo, type Ritmo } from './consumo'
 
 export interface DatosAnaliticas {
   hoy: string
@@ -18,6 +20,8 @@ export interface DatosAnaliticas {
   /** Las que pasan Estado y Obras. */
   obras: ObraAnalitica[]
   sinObra: Map<string, number | null>
+  /** Lo sin obra de cada cliente con su apertura (materiales, subcontratos, comprobantes). */
+  sinObraDetalle: Map<string, GastoSinObra>
   cuentaCorriente: unknown[] | null
   egresos: unknown[] | null
   nomina: unknown[] | null
@@ -25,6 +29,14 @@ export interface DatosAnaliticas {
   personas: unknown[] | null
   /** Las filas de deuda de `public.cobranzas`: SÓLO para la acción del día (`planDeCobranza`). */
   documentos: unknown[] | null
+  /** Por qué no hay presupuesto (`null` si lo hay). */
+  motivoPresupuesto: string | null
+  /** La obra de la vista Obras (la pedida si pasa los filtros; si no, la que más consumió). */
+  obraElegida: ObraAnalitica | null
+  /** Su consumo mes a mes; `null` = no se leyó (otra vista, o la base todavía no lo publica). */
+  consumoMensual: MesDeConsumo[] | null
+  /** Su ritmo; `null` = no se leyó. */
+  ritmo: Ritmo | null
   /** `false` = la puerta de la base contestó null: sin permiso económico. */
   legible: boolean
 }
@@ -37,22 +49,36 @@ const numero = (v: unknown): number | null => (v == null || v === '' || !Number.
 export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): Promise<DatosAnaliticas> {
   const hoy = hoySanJuan()
   const rango = rangoParaVista(f, hoy)
-  const [panel, economia, objetivo, costos] = await Promise.all([
+  const [panel, economia, costos, presupuestos] = await Promise.all([
     supabase.from('obra_panel').select('obra_id, nombre, cliente_id, cliente_slug, cliente_nombre, estado, n_comprobantes, avance_pct'),
     getEconomiaDeObras(supabase),
-    supabase.from('obra_economia').select('obra_id, costo_objetivo, costo_objetivo_origen'),
     supabase.rpc('analiticas_costos', { p_desde: rango.desde, p_hasta: rango.hasta, p_obras: null }),
+    // SÓLO EL APROBADO: 'reemplazado' y 'cotizado' no son presupuesto vigente (migración 20260917T1700).
+    supabase.from('presupuestos')
+      .select('id, obra_canonica_id, estado, costo_directo_presupuestado, costo_pendiente_motivo, fuente_legacy, hh_estimada')
+      .eq('estado', 'aprobado').not('obra_canonica_id', 'is', null),
   ])
   const raiz = (costos.data ?? null) as Record<string, unknown> | null
   const porObra = armarCostosPorObra(Array.isArray(raiz?.obras) ? raiz.obras : null)
   const sinObraCruda = armarGastosSinObra(Array.isArray(raiz?.sin_obra) ? raiz.sin_obra : null)
-  const objetivos = new Map((objetivo.data ?? []).map((r) => [String(r.obra_id), costoObjetivoValido(numero(r.costo_objetivo), r.costo_objetivo_origen)]))
+  const aprobados = presupuestos.error ? null : (presupuestos.data ?? [])
+  const partidas = aprobados?.length
+    ? await supabase.from('partidas_presupuesto').select('presupuesto_id, codigo, descripcion, monto')
+      .in('presupuesto_id', aprobados.map((x) => String(x.id)))
+    : null
+  const lecturaPresupuestos = leerPresupuestos(aprobados, partidas && !partidas.error ? (partidas.data ?? []) : null)
+  const presupuestoDe = presupuestoPorObra(lecturaPresupuestos)
   const cartera = ((panel.data ?? []) as ObraPanel[])
     .map((p) => armarObra({ ...p, n_comprobantes: numero(p.n_comprobantes), avance_pct: numero(p.avance_pct) },
-      economia?.get(p.obra_id), porObra?.get(p.obra_id), objetivos.get(p.obra_id) ?? null))
+      economia?.get(p.obra_id), porObra?.get(p.obra_id), presupuestoDe.get(p.obra_id) ?? null))
     .filter((o): o is ObraAnalitica => o != null)
   const elegidas = new Set(f.obras)
   const obras = cartera.filter((o) => pasaEstado(o.estado, f.estado) && (elegidas.size === 0 || elegidas.has(o.id)))
+  // EL CONSUMO MES A MES, SÓLO DE LA OBRA ELEGIDA: la consulta de toda la cartera tardó 2,6 s el
+  // 17/09/2026 (recorre las quincenas como `analiticas_costos`) y la base está justa.
+  const obraElegida = f.vista === 'obras' ? elegirObra(obras, f.obra) : null
+  const consumo = obraElegida ? await supabase.rpc('analiticas_consumo_mensual', { p_obras: [obraElegida.id] }) : null
+  const mensual = consumo && !consumo.error ? leerConsumoMensual(consumo.data) : null
   // LO SIN OBRA ES DEL CLIENTE: se recorta por período y NUNCA por obra.
   const sinObra = new Map([...(sinObraCruda ?? new Map()).entries()].map(([k, g]) => [k, sinObraDe(g)]))
 
@@ -90,13 +116,16 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
       : null,
   ])
   return {
-    hoy, rango, cartera, obras, sinObra,
+    hoy, rango, cartera, obras, sinObra, sinObraDetalle: sinObraCruda ?? new Map(),
     cuentaCorriente: Array.isArray(raiz?.cuenta_corriente) ? raiz.cuenta_corriente : null,
     egresos: egresos?.data ?? null,
     nomina: nomina?.data ?? null,
     quincenas: quincenas?.data ?? null,
     personas: personas?.data ?? null,
     documentos: documentos ?? null,
+    motivoPresupuesto: lecturaPresupuestos.motivo,
+    obraElegida, consumoMensual: mensual,
+    ritmo: mensual && obraElegida ? (ritmoPorObra(mensual, hoy).get(obraElegida.id) ?? { porMes: null, ventana: [], conEstimada: false }) : null,
     legible: raiz != null,
   }
 }

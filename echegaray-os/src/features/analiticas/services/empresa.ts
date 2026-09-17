@@ -248,3 +248,22 @@ export function cifrasCobranza(filas: FilaCobranza[]): { porCobrar: number; masD
     alDia: filas.reduce((a, f) => a + f.porVencer, 0),
   }
 }
+
+/**
+ * LA BANDA DE ANTIGÜEDAD DE LA EMPRESA: Σ por tramo de las MISMAS filas de cuenta corriente que dan el
+ * saldo, con los tramos de `bandasAntiguedad`. Suma lo que suma `cobranza` —clientes con saldo—, así la
+ * banda y la cifra «por cobrar» nunca difieren.
+ */
+export function bandasDeCobranza(cuenta: unknown[]): { clave: ClaveBanda; rotulo: string; monto: number }[] {
+  const tot = new Map<ClaveBanda, number>()
+  for (const f of cuenta) {
+    const r = f as Record<string, unknown>
+    if ((n(r.saldo) ?? 0) <= 0 || typeof r.cliente_id !== 'string') continue
+    const fila = {
+      aging_por_vencer: n(r.aging_por_vencer) ?? 0, aging_1_30: n(r.aging_1_30) ?? 0, aging_31_60: n(r.aging_31_60) ?? 0,
+      aging_61_90: n(r.aging_61_90) ?? 0, aging_mas_90: n(r.aging_mas_90) ?? 0,
+    } as CuentaCorriente
+    for (const b of bandasAntiguedad(fila)) tot.set(b.clave, (tot.get(b.clave) ?? 0) + b.monto)
+  }
+  return ZONAS_COBRANZA.map((z) => ({ clave: z.clave, rotulo: z.rotulo, monto: tot.get(z.clave) ?? 0 }))
+}
