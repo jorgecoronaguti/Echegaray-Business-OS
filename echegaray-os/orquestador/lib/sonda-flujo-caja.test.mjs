@@ -1,6 +1,7 @@
 // La decisión «sincronizar o no» de la sonda, y que nunca relance ni martille.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { decidirSonda, estadoTras, marcaDe, MAX_FALLOS, vueltaDeSonda } from './sonda-flujo-caja.mjs'
 
 test('misma versión: no sincroniza', () => {
@@ -83,4 +84,17 @@ test('lectura de notas salteada (el pipeline arrancó en el medio): la versión 
   const r = await vueltaDeSonda(d)
   assert.equal(r.omitida, true)
   assert.equal(d.guardado(), null, 'el estado no se toca: la vuelta siguiente vuelve a mirar')
+})
+
+/** El cableado del script de la sonda: se lee el fuente, porque el script corre `main()` al importarlo. */
+const SCRIPT = readFileSync(new URL('../scripts/sonda-flujo-caja.mjs', import.meta.url), 'utf8')
+
+test('X6 · en el script, una lectura salteada por el pipeline devuelve omitida (no atiende la versión)', () => {
+  assert.match(SCRIPT, /if \(await unidadCorriendo\(UNIDAD_PIPELINE\)\) \{\s*return \{ omitida: true,/)
+  assert.doesNotMatch(SCRIPT, /UNIDAD_PIPELINE\)\) \{\s*return \{ notas:/)
+})
+
+test('X7 · el script le pasa pipelineCorriendo a vueltaDeSonda', () => {
+  const vuelta = SCRIPT.slice(SCRIPT.indexOf('await vueltaDeSonda({'))
+  assert.match(vuelta.slice(0, vuelta.indexOf('})')), /pipelineCorriendo: \(\) => unidadCorriendo\(UNIDAD_PIPELINE\)/)
 })
