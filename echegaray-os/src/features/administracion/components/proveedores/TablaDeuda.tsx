@@ -152,6 +152,13 @@ function FilaDeuda({ f, nota, elegida, href }: {
             {nota?.pendiente !== null && nota?.pendiente !== undefined && <span style={{ fontStyle: 'normal', color: V.tenue }}> · esperando al Sheet</span>}
           </span>
         )}
+        {/* UN CONFLICTO CON EL SHEET SE VE EN LA FILA, no sólo al abrir el panel: puede ser una nota que
+            el dueño borró y el OS no borró porque fueron varias a la vez. */}
+        {nota?.rechazo && (
+          <span data-testid="deuda-nota-conflicto" className="truncate" title={nota.rechazo} style={{ fontSize: '11px', lineHeight: '13px', color: V.warn }}>
+            conflicto con el Sheet
+          </span>
+        )}
         {/* EL DESGLOSE EN ANGOSTO. A 390px las columnas Vencido y Por vencer no caben, y el dato que
             hacen falta —cuánto ya venció y desde cuándo— no se puede perder: baja acá, en una línea. */}
         <span

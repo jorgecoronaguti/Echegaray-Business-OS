@@ -50,6 +50,10 @@ create table if not exists public.proveedor_nota_cambio (
   motivo            text,
   intentos          integer not null default 0,
   leido_de_vuelta   text,
+  -- app = un pedido de la app. sheet = una constancia de la sonda o del pipeline: borrados que el Sheet
+  -- muestra y no se aplicaron (más de dos a la vez). Se crea ya `rechazado`: no hay nada que escribir,
+  -- hay algo que la app tiene que mostrar como conflicto.
+  origen            text not null default 'app' check (origen in ('app', 'sheet')),
   pedido_por        uuid,
   pedido_por_nombre text,
   creado_at         timestamptz not null default now(),
@@ -73,8 +77,10 @@ revoke insert, update, delete, truncate on public.proveedor_nota_cambio from aut
 grant select on public.proveedor_nota_cambio to authenticated;
 
 comment on table public.proveedor_nota_cambio is
-  'Pedidos de la app para cambiar la nota «Qué hacer» de un proveedor. Los consume compras-obra-cola.mjs, '
-  'que la escribe en la auxiliar _PROVEEDORES_OS con guarda de huella; ante un conflicto gana el Sheet.';
+  'Pedidos de la app para cambiar la nota «Qué hacer» de un proveedor, y constancias de borrados retenidos del Sheet '
+  '(origen sheet). Los pedidos los consume compras-obra-cola.mjs: compara la nota vigente en la base, la D de '
+  'Proveedores y la C de _PROVEEDORES_OS contra lo que la app vio, relee la A de la fila antes de escribir y, '
+  'ante un conflicto, gana el Sheet.';
 
 create or replace function public.proveedor_nota_pedir(
   p_proveedor text, p_clave text, p_nota text, p_anterior text

@@ -20,6 +20,8 @@ import type { CompraConSaldo, DeudaDeProveedor, LineaDeuda } from './deudaProvee
 export interface NotaGuardada { clave: string; nota: string; actualizado_en: string | null }
 export interface PedidoDeNota {
   clave: string; nota_nueva: string; estado: string; motivo: string | null; creado_at: string
+  /** app = pedido desde la pantalla · sheet = borrados retenidos que la sonda o el pipeline dejaron constancia. */
+  origen?: 'app' | 'sheet' | null
 }
 
 export interface NotaDeProveedor {
@@ -30,7 +32,7 @@ export interface NotaDeProveedor {
   nota: string
   /** Lo pedido desde la app que todavía no llegó al Sheet. */
   pendiente: string | null
-  /** El último pedido que el Sheet contradijo, con su motivo, si es posterior a la nota vigente. */
+  /** El conflicto con el Sheet más nuevo —pedido rechazado o borrado retenido—, si es posterior a la nota. */
   rechazo: string | null
 }
 
@@ -46,6 +48,12 @@ function grafiasPorClave(compras: CompraConSaldo[], lineas: LineaDeuda[]): Map<s
     saldos.set(l.clave, m)
   }
   return new Map([...saldos].map(([k, m]) => [k, [...m].sort((a, b) => b[1] - a[1]).map(([t]) => t)]))
+}
+
+/** Un pedido de la app «no se guardó»; una constancia del Sheet no es un pedido: se dice lo que pasó allá. */
+function textoDelRechazo(p: PedidoDeNota): string {
+  const motivo = p.motivo ?? 'no se pudo escribir en el Sheet'
+  return p.origen === 'sheet' ? motivo : `No se guardó: ${motivo}`
 }
 
 export function notasDeLaDeuda({ filas, lineas, compras, notas, pedidos }: {
@@ -71,7 +79,7 @@ export function notasDeLaDeuda({ filas, lineas, compras, notas, pedidos }: {
     salida.set(f.clave, {
       proveedorSheet, claveNota, nota: guardada?.nota ?? '',
       pendiente: vivo ? p.nota_nueva : null,
-      rechazo: p && posterior && (p.estado === 'rechazado' || p.estado === 'error') ? (p.motivo ?? 'no se pudo escribir en el Sheet') : null,
+      rechazo: p && posterior && (p.estado === 'rechazado' || p.estado === 'error') ? textoDelRechazo(p) : null,
     })
   }
   return salida

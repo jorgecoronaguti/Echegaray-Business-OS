@@ -36,5 +36,15 @@ test('un pedido vivo se muestra aparte y NO reemplaza la nota vigente; un rechaz
   const viejo = notasDeLaDeuda({ ...base, pedidos: [{ clave: 'hormiserv', nota_nueva: 'b', estado: 'rechazado', motivo: 'conflicto', creado_at: '2026-09-16T00:00:00Z' }] })
   assert.equal(viejo.get('h')?.rechazo, null)
   const nuevo = notasDeLaDeuda({ ...base, pedidos: [{ clave: 'hormiserv', nota_nueva: 'b', estado: 'rechazado', motivo: 'conflicto: gana el Sheet', creado_at: '2026-09-17T13:00:00Z' }] })
-  assert.equal(nuevo.get('h')?.rechazo, 'conflicto: gana el Sheet')
+  assert.equal(nuevo.get('h')?.rechazo, 'No se guardó: conflicto: gana el Sheet')
+})
+
+test('un borrado retenido del Sheet se muestra como conflicto, sin «No se guardó»', () => {
+  const r = notasDeLaDeuda({
+    filas: [fila('h')], compras: [compra(1, 'Hormiserv')], lineas: [linea('h', 1, 1)],
+    notas: [{ clave: 'hormiserv', nota: 'a', actualizado_en: '2026-09-17T12:00:00Z' }],
+    pedidos: [{ clave: 'hormiserv', nota_nueva: '', estado: 'rechazado', motivo: 'conflicto: en el Sheet la nota aparece borrada', creado_at: '2026-09-17T13:00:00Z', origen: 'sheet' }],
+  })
+  assert.equal(r.get('h')?.rechazo, 'conflicto: en el Sheet la nota aparece borrada')
+  assert.equal(r.get('h')?.nota, 'a', 'la nota NO se borró')
 })

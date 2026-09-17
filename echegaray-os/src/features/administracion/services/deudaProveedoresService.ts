@@ -65,7 +65,7 @@ export async function getDeuda(
     // LAS NOTAS Y SU COLA, en el mismo viaje. Si fallan (sin grant hasta 20260917T1400/T1410), la deuda
     // se dibuja igual y sin notas: una lectura accesoria no esconde lo que se debe.
     supabase.from('proveedor_notas').select('clave, nota, actualizado_en'),
-    supabase.from('proveedor_nota_cambio').select('clave, nota_nueva, estado, motivo, creado_at')
+    supabase.from('proveedor_nota_cambio').select('clave, nota_nueva, estado, motivo, creado_at, origen')
       .order('creado_at', { ascending: false }).limit(200),
   ])
   if (compras.error) return { data: null, error: compras.error.message }

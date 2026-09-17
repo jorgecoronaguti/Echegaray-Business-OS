@@ -63,7 +63,7 @@ export function NotaQueHacer({ nota }: { nota: NotaDeProveedor }) {
       </div>
       {(error ?? nota.rechazo) && (
         <p data-testid="nota-conflicto" style={{ fontSize: '11.5px', color: V.warn, marginTop: 4 }}>
-          {error ?? `No se guardó: ${nota.rechazo}`}
+          {error ?? nota.rechazo}
         </p>
       )}
     </div>
