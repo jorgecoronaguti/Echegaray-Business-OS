@@ -11,6 +11,10 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { ResumenDeCarga } from '@/features/administracion/services/cargaDeAsistencia'
 
+/** «jueves 17 de septiembre» → «jueves 17 sep»: en la barra de la compu el rótulo largo empujaba el
+ *  resumen a dos renglones (captura del 17/09/2026). */
+const diaCorto = (rotulo: string): string => rotulo.replace(/ de (\p{L}{3})\p{L}*$/u, ' $1')
+
 export interface OpcionDeObra { clave: string; etiqueta: string; cuenta?: number; href: string; activo: boolean }
 
 export function BarraDelDia({ rotuloDia, esHoy, hrefAyer, hrefManana, hrefHoy, opciones, q, onBuscar, resumen, sinMarcar, puedeMarcar, onMarcar }: {
@@ -26,7 +30,7 @@ export function BarraDelDia({ rotuloDia, esHoy, hrefAyer, hrefManana, hrefHoy, o
       <div className="grid h-11 grid-cols-[44px_1fr_44px] items-center rounded-card border border-line bg-surface md:flex md:h-9 md:rounded-control md:px-1" data-testid="elegir-dia">
         <Link prefetch={false} href={hrefAyer} aria-label="Día anterior" data-testid="dia-anterior" className="flex h-11 items-center justify-center text-[18px] text-muted hover:text-ink md:h-7 md:w-7 md:text-[14px]">‹</Link>
         <span className="text-center text-[14px] font-medium text-ink md:px-2 md:text-[13px]" data-testid="rotulo-dia">
-          {rotuloDia}{esHoy ? ' · hoy' : ''}
+          <span className="md:hidden">{rotuloDia}</span><span className="hidden md:inline">{diaCorto(rotuloDia)}</span>{esHoy ? ' · hoy' : ''}
         </span>
         <Link prefetch={false} href={hrefManana} aria-label="Día siguiente" data-testid="dia-siguiente" className="flex h-11 items-center justify-center text-[18px] text-muted hover:text-ink md:h-7 md:w-7 md:text-[14px]">›</Link>
       </div>
@@ -70,7 +74,7 @@ function Resumen({ resumen: r }: { resumen: ResumenDeCarga }) {
     <span className="whitespace-nowrap"><span className={`font-semibold tabular-nums ${n > 0 ? clase : 'text-muted'}`}>{n}</span> {rotulo}</span>
   )
   return (
-    <p className="flex flex-wrap gap-x-1 text-[12.5px] text-muted md:flex-1 md:justify-end md:text-[13px]" data-testid="resumen-del-dia">
+    <p className="flex flex-wrap gap-x-1 text-[12.5px] text-muted md:min-w-0 md:flex-1 md:flex-nowrap md:justify-end md:text-[13px]" data-testid="resumen-del-dia">
       {cifra(r.presentes, r.presentes === 1 ? 'presente' : 'presentes', 'text-pos')}<span className="text-faint">·</span>
       {cifra(r.ausentes, r.ausentes === 1 ? 'ausente' : 'ausentes', 'text-neg')}<span className="text-faint">·</span>
       {cifra(r.licencias, 'licencia', 'text-ink')}<span className="text-faint">·</span>
