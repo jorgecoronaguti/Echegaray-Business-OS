@@ -86,7 +86,7 @@ function Rayas({ id, color }: { id: string; color: ColorSerie }) {
   )
 }
 
-export function GraficoMensual({ columnas: todas, leyenda, titulo, testid, escala: esc, alto = 200, angosto }: {
+export function GraficoMensual({ columnas: todas, leyenda, titulo, testid, escala: esc, alto = 200, angosto, nota }: {
   columnas: ColumnaGrafico[]; leyenda: EntradaLeyenda[]; titulo: string; testid: string
   /**
    * En pantalla angosta (< 640 px) sólo estos meses alrededor del actual (resumen: los últimos 6 contando
@@ -95,6 +95,8 @@ export function GraficoMensual({ columnas: todas, leyenda, titulo, testid, escal
    * misma barra mide lo mismo en la computadora y en el teléfono.
    */
   angosto?: { atras: number; adelante: number }
+  /** Un rótulo chico bajo el eje: qué criterio de mes usa el gráfico («por mes de vencimiento»). */
+  nota?: string
   /** Viene del servidor (`escala` de `services/impuestosGrafico.ts`): la regla vive una vez y se prueba. */
   escala: { desde: number; hasta: number; marcas: number[] }
   alto?: number
@@ -187,6 +189,7 @@ export function GraficoMensual({ columnas: todas, leyenda, titulo, testid, escal
         )}
       </div>
       <figcaption className="mt-3 flex flex-col gap-2">
+        {nota && <p data-testid={`${testid}-nota`} className="text-[12px] text-faint">{nota}</p>}
         <Leyenda entradas={leyenda} />
         <div aria-live="polite" data-testid={`${testid}-detalle`} className="min-h-[44px] text-[13px]">
           {elegida && (
