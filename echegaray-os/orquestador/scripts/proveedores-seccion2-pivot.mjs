@@ -131,10 +131,10 @@ const celdas = (valores) => ({ values: valores.map((c) => {
   return { userEnteredValue: String(c).startsWith('=') ? { formulaValue: String(c) } : { stringValue: String(c) } }
 }) })
 
-function informarCorte(corte, filas) {
+function informarCorte(corte, filas, idx) {
   console.log(`COMERCIALES ${corte.listados.length + corte.resto.cantidad} proveedores · COMPRADO ${plata(corte.total)}`)
   console.log('dónde cortar (acumulado del gasto):')
-  for (const e of escalones(filas)) {
+  for (const e of escalones(filas, idx)) {
     const marca = e.umbral === UMBRAL ? '←' : ' '
     console.log(`  ${(e.umbral * 100).toFixed(0).padStart(3)}%  lista ${String(e.listados).padStart(3)}`
       + ` · resto ${String(e.restoN).padStart(3)} por ${plata(e.restoTotal).padStart(14)} ${marca}`)
@@ -154,8 +154,8 @@ async function main() {
   const idx = columnasDeCompras(cabecera)
   const R = referencias(idx)
   const compras = lecturaCompras.slice(1)
-  const corte = cortePorConcentracion(compras ?? [], { umbral: UMBRAL })
-  informarCorte(corte, compras ?? [])
+  const corte = cortePorConcentracion(compras ?? [], { umbral: UMBRAL, idx })
+  informarCorte(corte, compras ?? [], idx)
 
   const visible = await google.readSheetValues(ID, `${PESTAÑA}!A1:R300`, { render: 'FORMATTED_VALUE' })
   const geo = geometria(visible)

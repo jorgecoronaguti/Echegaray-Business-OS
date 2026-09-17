@@ -1,15 +1,30 @@
 import { strict as assert } from 'node:assert'
 import { describe, it } from 'node:test'
 import {
-  cortePorConcentracion, escalones, gastoPorProveedor, nombresVisibles, OFF, UMBRAL,
+  cortePorConcentracion as cortar, escalones, gastoPorProveedor, nombresVisibles, UMBRAL,
 } from './proveedores-concentracion.mjs'
+import { columnasDeCompras } from './proveedores-seccion2-pie.mjs'
 
-/** Una fila de Compras con lo mínimo que mira el corte. */
+/**
+ * La fila 3 de Compras con el layout LEÍDO del archivo el 17/09/2026 (después de insertar «Obra» en L):
+ * Proveedor E(4), IVA O(14), Total P(15), Orden sin fecha (OS) AJ(35), ¿Proveedor comercial? (OS) AK(36),
+ * Saldo pendiente (OS) AM(38), CUIT (OS) AN(39). Sólo los rótulos que importan; el resto, vacío.
+ */
+const CABECERA = (() => {
+  const c = Array.from({ length: 40 }, () => '')
+  Object.assign(c, { 4: 'Proveedor', 11: 'Obra', 14: 'IVA', 15: 'Total', 35: 'Orden sin fecha (OS)',
+    36: '¿Proveedor comercial? (OS)', 38: 'Saldo pendiente (OS)', 39: 'CUIT (OS)' })
+  return c
+})()
+const IDX = columnasDeCompras(CABECERA)
+const cortePorConcentracion = (filas, o = {}) => cortar(filas, { idx: IDX, ...o })
+
+/** Una fila de Compras con lo mínimo que mira el corte, en las columnas que dice el encabezado. */
 const fila = (proveedor, total, comercial = '1') => {
-  const f = []
-  f[OFF.proveedor] = proveedor
-  f[OFF.total] = total
-  f[OFF.comercial] = comercial
+  const f = Array.from({ length: 40 }, () => '')
+  f[IDX.proveedor] = proveedor
+  f[IDX.total] = total
+  f[IDX.comercial] = comercial
   return f
 }
 
@@ -24,7 +39,7 @@ const archivo = () => [
 
 describe('gastoPorProveedor', () => {
   it('suma las facturas del mismo proveedor y ordena de mayor a menor', () => {
-    const g = gastoPorProveedor(archivo())
+    const g = gastoPorProveedor(archivo(), IDX)
     assert.equal(g[0].proveedor, 'Alumetal')
     assert.equal(g[0].total, 10000)
     assert.equal(g[0].comprobantes, 2)
@@ -32,13 +47,13 @@ describe('gastoPorProveedor', () => {
   })
 
   it('no cuenta lo que no es comercial', () => {
-    const g = gastoPorProveedor([fila('Alumetal', 100), fila('Sueldos', 999, '0')])
+    const g = gastoPorProveedor([fila('Alumetal', 100), fila('Sueldos', 999, '0')], IDX)
     assert.equal(g.length, 1)
     assert.equal(g[0].total, 100)
   })
 
   it('el mismo proveedor con y sin espacio es UNO, y guarda las dos grafías', () => {
-    const g = gastoPorProveedor([fila('AGUERO ', 100), fila('AGUERO', 50)])
+    const g = gastoPorProveedor([fila('AGUERO ', 100), fila('AGUERO', 50)], IDX)
     assert.equal(g.length, 1, 'el espacio no crea un proveedor nuevo')
     assert.equal(g[0].total, 150)
     assert.deepEqual([...g[0].variantes].sort(), ['AGUERO', 'AGUERO '])
@@ -108,10 +123,49 @@ describe('cortePorConcentracion', () => {
 
 describe('escalones', () => {
   it('cada umbral más alto lista más proveedores y deja menos resto', () => {
-    const e = escalones(archivo())
+    const e = escalones(archivo(), IDX)
     for (let i = 1; i < e.length; i++) {
       assert.ok(e[i].listados >= e[i - 1].listados, 'un umbral mayor no puede listar menos')
       assert.ok(e[i].restoTotal <= e[i - 1].restoTotal, 'un umbral mayor no puede dejar más resto')
     }
+  })
+})
+
+describe('las columnas salen del encabezado (el fósil del 17/09/2026)', () => {
+  // La corrida de las 10:50 del 17/09 cortó con los offsets de antes de «Obra»: Total leído en «IVA» y
+  // ¿comercial? en «Orden sin fecha (OS)». Corte $408.845 contra un TOTAL de $340.854.882: la dinámica
+  // listó un proveedor y mandó 126 al resto. Estas filas reproducen esa forma: en las columnas viejas
+  // hay un IVA y un número de orden, que es lo que el fósil sumaba.
+  const conBasuraEnLasViejas = () => archivo().map((f, i) => {
+    f[14] = Math.round(Number(f[IDX.total]) * 0.21) // «IVA»: lo que el fósil tomaba por Total
+    f[35] = i === 0 ? 1 : i + 2 // «Orden sin fecha (OS)»: lo que el fósil tomaba por ¿comercial?
+    return f
+  })
+
+  it('EL DEFECTO: el total del corte es el de la columna Total por encabezado, al peso', () => {
+    const filas = conBasuraEnLasViejas()
+    const esperado = filas.reduce((a, f) => a + (String(f[IDX.comercial]) === '1' ? Number(f[IDX.total]) : 0), 0)
+    const c = cortePorConcentracion(filas)
+    assert.equal(c.total, esperado)
+    assert.equal(c.listados.length + c.resto.cantidad, 44, 'todos los comerciales cuentan, ninguno se pierde')
+  })
+
+  it('la fixture DISCRIMINA: leyendo las columnas viejas el corte da otro total y lista uno solo', () => {
+    // Si esto dejara de cumplirse, el test de arriba pasaría también con el fósil puesto.
+    const viejo = { proveedor: 4, total: 14, comercial: 35 }
+    const c = cortar(conBasuraEnLasViejas(), { idx: viejo })
+    assert.notEqual(c.total, cortePorConcentracion(conBasuraEnLasViejas()).total)
+    assert.equal(c.listados.length, 1)
+  })
+
+  it('sin índices no hay respaldo posicional: es un error con nombre', () => {
+    assert.throws(() => cortar(archivo()), /índices de Compras por encabezado/)
+    assert.throws(() => gastoPorProveedor(archivo()), /proveedor, total, comercial/)
+    assert.throws(() => cortar(archivo(), { idx: { proveedor: 4, total: 15 } }), /comercial/)
+  })
+
+  it('el encabezado sin la columna comercial no se adivina', () => {
+    const sin = CABECERA.map((c) => (c === '¿Proveedor comercial? (OS)' ? '' : c))
+    assert.throws(() => columnasDeCompras(sin), /¿Proveedor comercial\? \(OS\)/)
   })
 })
