@@ -81,8 +81,12 @@ export function hayConflicto(actual: string | undefined, esperado: string): bool
 }
 
 /**
- * EL ATAJO. Cmd/Ctrl+Z deshace; Cmd/Ctrl+Shift+Z y Ctrl+Y rehacen. Con el foco dentro de un input, un textarea,
+ * EL ATAJO. Cmd/Ctrl+Z deshace; Cmd/Ctrl+Shift+Z y Cmd/Ctrl+Y rehacen. Con el foco dentro de un input, un textarea,
  * un select o un contenido editable, NO se intercepta: ahí deshace el texto el navegador.
+ *
+ * `Y` TAMBIÉN CON CMD (dueño, 17/09/2026: *«tiene que estar el rehacer en toda la plataforma»*). Hasta hoy `Cmd+Y`
+ * caía al navegador y no rehacía nada; quien viene de Windows lo teclea igual en la Mac. `Cmd+A` NO se toca: es
+ * «seleccionar todo» y robarlo rompe algo que todo el mundo usa.
  */
 export function atajoDeDeshacer(e: {
   key: string; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean; enEditable: boolean
@@ -90,8 +94,22 @@ export function atajoDeDeshacer(e: {
   if (e.enEditable || e.altKey || !(e.metaKey || e.ctrlKey)) return null
   const k = e.key.toLowerCase()
   if (k === 'z') return e.shiftKey ? 'rehacer' : 'deshacer'
-  if (k === 'y' && e.ctrlKey && !e.metaKey) return 'rehacer'
+  if (k === 'y') return 'rehacer'
   return null
+}
+
+/**
+ * CÓMO SE TECLEA REHACER, PARA ESCRIBIRLO EN EL AVISO. Dueño, 17/09/2026: el botón «Rehacer» ya estaba y nadie
+ * sabía que además hay un atajo. Un atajo que no se dice no existe, así que el aviso lo dice cada vez que se
+ * deshace algo — con el teclado de quien está mirando, no con el del que programó.
+ */
+export function textoDelAtajoDeRehacer(esMac: boolean): string {
+  return esMac ? '\u2318\u21e7Z' : 'Ctrl+Shift+Z'
+}
+
+/** ¿Teclado de Mac? Se mira el userAgent/plataforma; fuera del navegador, no. */
+export function esTecladoMac(plataforma: string | undefined): boolean {
+  return /mac|iphone|ipad|ipod/i.test(plataforma ?? '')
 }
 
 export function destinoEditable(el: { tagName?: string; isContentEditable?: boolean } | null | undefined): boolean {

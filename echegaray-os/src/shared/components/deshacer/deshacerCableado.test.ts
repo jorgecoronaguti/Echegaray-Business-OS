@@ -82,3 +82,94 @@ test('EL SERVIDOR NO PISA LO QUE CAMBIÓ DESDE LA EDICIÓN', () => {
   assert.equal((a.match(/esperado: z\.union\(\[z\.literal\(''\), z\.coerce\.number\(\)\.finite\(\)\]\)\.optional\(\)/g) ?? []).length, 2)
   assert.ok((a.match(/MENSAJE_CONFLICTO/g) ?? []).length >= 3, 'celda y redondeo verifican con el mismo mensaje')
 })
+
+// ═══ 17/09/2026 — LAS SUPERFICIES QUE NO SON `InlineEdit` ═══
+//
+// Dueño: *«así como está el deshacer cmd+z (que tiene que estar en toda la plataforma) tiene que estar el
+// rehacer en toda la plataforma»*. Hasta hoy sólo registraban paso las pantallas que editan con `InlineEdit`
+// o con `useDeshacer`: en Presupuestos, Compras, Clientes → Documentos y Pedidos de Materiales, Cmd+Z no
+// hacía nada y el dueño creía que sí. Cada una de estas celdas escribe UN campo, sabe su valor anterior y
+// puede volver a llamar a su propia acción: son las que se pueden ofrecer con honestidad.
+//
+// MUTACIÓN QUE LO PONE ROJO: que cualquiera de estas celdas vuelva a llamar a su acción directo.
+
+const CELDAS_CABLEADAS: Array<{ archivo: string; accionDirecta: RegExp; que: string }> = [
+  {
+    archivo: 'features/presupuestos/components/CeldaEditable.tsx',
+    // La acción se llama UNA sola vez, dentro de `escribir`, que es lo que recibe el hook. Un segundo
+    // `editarCampoPartida(` en el archivo sería el `onBlur` guardando por su cuenta otra vez.
+    accionDirecta: /editarCampoPartida\([\s\S]*editarCampoPartida\(/,
+    que: 'Presupuestos → partidas (código, descripción, unidad, cantidad, hs/un.)',
+  },
+  {
+    archivo: 'features/administracion/components/ObraEnLinea.tsx',
+    accionDirecta: /asignarObraDeCompra\([\s\S]*asignarObraDeCompra\(/,
+    que: 'Compras y ficha del proveedor → la obra de la fila',
+  },
+  {
+    archivo: 'features/administracion/components/EditorObraDeCompra.tsx',
+    accionDirecta: /asignarObraDeCompra\([\s\S]*asignarObraDeCompra\(/,
+    que: 'Compras → panel de la compra, la obra',
+  },
+  {
+    archivo: 'features/integraciones/components/SelectEstadoPedido.tsx',
+    accionDirecta: /setEstadoPedidoAction\([\s\S]*setEstadoPedidoAction\(/,
+    que: 'Pedidos de materiales → el estado del pedido',
+  },
+  {
+    archivo: 'features/integraciones/components/SelectActividad.tsx',
+    accionDirecta: /alElegir\(v\)[\s\S]*await alElegir\(/,
+    que: 'Pedidos de materiales → la actividad del pedido',
+  },
+  {
+    archivo: 'features/obras/components/TabOperacion.tsx',
+    accionDirecta: /await alElegir\(e\.target\.value\)/,
+    que: 'Obra → Operación → la actividad del pedido',
+  },
+  {
+    archivo: 'features/clientes/components/SelectRolDocumento.tsx',
+    accionDirecta: /startTransition\(\(\) => ejecutar\(form\)\)/,
+    que: 'Clientes → Documentos, el rol del archivo',
+  },
+]
+
+test('CADA SUPERFICIE NUEVA GUARDA POR LA PILA COMPARTIDA, NO POR UNA SEGUNDA IMPLEMENTACIÓN', () => {
+  for (const { archivo, accionDirecta, que } of CELDAS_CABLEADAS) {
+    const f = leer(archivo)
+    assert.match(f, /useGuardadoDeshacible\(\{/, `${que}: no apila el paso`)
+    assert.match(f, /useCeldaViva\(/, `${que}: sin celda viva, el deshacer no ve el conflicto ni pinta el valor`)
+    assert.match(f, /await guardarDeshacible\(/, `${que}: no guarda por el hook`)
+    assert.ok(!accionDirecta.test(f), `${que}: MUTACIÓN — llamar a la acción directo saltea la pila`)
+    // La pila es una sola: nadie importa su propio proveedor ni su propia pila.
+    assert.match(f, /from '@\/shared\/components\/deshacer\/DeshacerProvider'/, `${que}: usa otro deshacer`)
+  }
+})
+
+test('CADA FILA TIENE SU PROPIA CLAVE: CMD+Z NO RESTAURA LA FILA DE AL LADO', () => {
+  // Una lista de 214 documentos con una sola clave compartida haría que el deshacer pise el archivo
+  // equivocado — el paso se busca por `clave`, no por posición.
+  const rol = leer('features/clientes/components/SelectRolDocumento.tsx')
+  assert.match(rol, /clave: string/, 'la clave es obligatoria, no derivada del testid compartido')
+  assert.match(leer('features/clientes/components/BloqueDocumentos.tsx'), /clave=\{`rol-del-documento-\$\{d\.drive_file_id\}`\}/)
+  assert.match(leer('features/integraciones/components/PedidosGlobal.tsx'), /clave=\{`actividad-del-pedido-\$\{p\.id_pedido\}`\}/)
+  assert.match(leer('features/obras/components/TabOperacion.tsx'), /clave=\{`actividad-del-pedido-\$\{p\.id_pedido\}`\}/)
+  assert.match(leer('features/administracion/components/ObraEnLinea.tsx'), /const clave = `obra-de-la-compra-\$\{fila\}`/)
+  assert.match(leer('features/presupuestos/components/CeldaEditable.tsx'), /const clave = testid \?\? `partida-\$\{partidaId\}-\$\{campo\}`/)
+})
+
+test('LA OBRA DE UNA COMPRA SE DESHACE CON `esperado`: NO PISA A QUIEN LA MOVIÓ EN EL MEDIO', () => {
+  for (const archivo of [
+    'features/administracion/components/ObraEnLinea.tsx',
+    'features/administracion/components/EditorObraDeCompra.tsx',
+  ]) {
+    const f = leer(archivo)
+    assert.match(f, /guardar: \(v, contexto\) => escribir\(v, contexto\?\.esperado\)/, `${archivo}: ignora el esperado`)
+  }
+})
+
+test('EL AVISO DICE CÓMO SE TECLEA REHACER (antes sólo estaba el botón, y nadie sabía el atajo)', () => {
+  const d = leer('shared/components/deshacer/DeshacerProvider.tsx')
+  assert.match(d, /textoDelAtajoDeRehacer\(/, 'MUTACIÓN: sacar la tecla del aviso')
+  // El texto sale del teclado de quien mira: el componente pinta la variable, no una cadena clavada.
+  assert.match(d, /data-testid="aviso-deshacer-atajo"[^>]*>\{atajoRehacer\}<\/kbd>/)
+})

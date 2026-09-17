@@ -8,7 +8,8 @@
 //
 //   · Cmd/Ctrl+Z con el foco FUERA de un input deshace el último guardado, con la MISMA acción del servidor.
 //   · Dentro de un input, un textarea o un select no se intercepta: deshace el texto el navegador.
-//   · Cmd/Ctrl+Shift+Z y Ctrl+Y rehacen. El aviso dura 4 s y ofrece «Rehacer».
+//   · Cmd/Ctrl+Shift+Z y Cmd/Ctrl+Y rehacen. El aviso dura 4 s, ofrece «Rehacer» Y DICE LA TECLA (dueño,
+//     17/09/2026: el botón ya estaba y nadie sabía que existía el atajo).
 //   · Al cambiar de path se descartan los pasos de otras pantallas; al deshacer se mira la ruta completa (con la
 //     quincena o el filtro): lo que no está en pantalla no se toca.
 //
@@ -18,8 +19,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import {
-  MENSAJE_CONFLICTO, apilar, atajoDeDeshacer, destinoEditable, hayConflicto, pilaVacia, quitarPaso, sinPasosDeOtraRuta,
-  textoDelAviso, tomarParaDeshacer, tomarParaRehacer, type AccionDeDeshacer, type PasoDeEdicion, type PilaDeDeshacer,
+  MENSAJE_CONFLICTO, apilar, atajoDeDeshacer, destinoEditable, esTecladoMac, hayConflicto, pilaVacia, quitarPaso,
+  sinPasosDeOtraRuta, textoDelAtajoDeRehacer, textoDelAviso, tomarParaDeshacer, tomarParaRehacer,
+  type AccionDeDeshacer, type PasoDeEdicion, type PilaDeDeshacer,
 } from '@/shared/lib/pilaDeDeshacer'
 
 export type ResultadoReversible = { ok: true } | { ok: false; error: string }
@@ -50,6 +52,11 @@ export function DeshacerProvider({ children }: { children: ReactNode }) {
   const contador = useRef(0)
   const [aviso, setAviso] = useState<{ texto: string; rehacer: boolean; id: number } | null>(null)
   const pathname = usePathname()
+  // SE MIRA UNA VEZ, AL MONTAR, CON UN INICIALIZADOR PEREZOSO: `navigator` no existe en el servidor. No hay
+  // riesgo de hidratación porque el aviso no se dibuja hasta que alguien deshace algo — o sea, mucho
+  // después de que el HTML del servidor y el del cliente se compararon.
+  const [atajoRehacer] = useState(() =>
+    textoDelAtajoDeRehacer(typeof navigator === 'undefined' ? false : esTecladoMac(navigator.userAgent)))
 
   const cambiarPila = useCallback((siguiente: PilaDeDeshacer) => {
     pilaRef.current = siguiente
@@ -146,7 +153,12 @@ export function DeshacerProvider({ children }: { children: ReactNode }) {
           className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-control bg-ink px-3 py-2 text-[12.5px] text-white">
           <span>{aviso.texto}</span>
           {aviso.rehacer && (
-            <button type="button" onClick={() => void ejecutar('rehacer')} className="font-semibold underline underline-offset-2">Rehacer</button>
+            <>
+              <button type="button" onClick={() => void ejecutar('rehacer')} className="font-semibold underline underline-offset-2">Rehacer</button>
+              {/* LA TECLA, AL LADO DEL BOTÓN: es la única manera de que alguien la aprenda. En `white/60` para que
+                  no compita con la acción — se lee, no se toca. */}
+              <kbd data-testid="aviso-deshacer-atajo" className="font-mono text-[11px] text-white/60">{atajoRehacer}</kbd>
+            </>
           )}
         </div>
       )}

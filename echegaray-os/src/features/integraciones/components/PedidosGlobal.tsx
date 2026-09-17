@@ -216,6 +216,8 @@ function FilaPedido({
           <SelectActividad
             valor={p.actividad_id}
             actividades={actividades}
+            clave={`actividad-del-pedido-${p.id_pedido}`}
+            rotulo={`Actividad del pedido ${p.id_pedido}`}
             alElegir={(actividadId) => asignarActividad(p.id_pedido, p.obra_canonica_id as string, actividadId)}
           />
         ) : (
