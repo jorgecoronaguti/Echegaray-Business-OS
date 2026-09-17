@@ -13,17 +13,16 @@
 import { loadConfig } from '../lib/config.mjs'
 import { makeGoogleClient } from '../lib/google.mjs'
 import { describirHallazgos, diagnosticarDerrames, FILA_ANCLA } from '../lib/compras-derrames.mjs'
-import { PESTANAS } from '../lib/columnas-por-encabezado.mjs'
+import { rangoEncabezado, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const LECTURA = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: LECTURA })
-  const fe = PESTANAS.Compras.filaEncabezado
-  const encabezado = (await google.readSheetValues(ID, `Compras!A${fe}:ZZ${fe}`, { render: 'FORMATTED_VALUE' }))?.[0] ?? []
-  const formulas = await google.readSheetValues(ID, `Compras!A${FILA_ANCLA}:ZZ`, { render: 'FORMULA' }) ?? []
-  const valores = await google.readSheetValues(ID, `Compras!A${FILA_ANCLA}:ZZ${FILA_ANCLA}`, { render: 'FORMATTED_VALUE' }) ?? []
+  const encabezado = (await google.readSheetValues(ID, rangoEncabezado('Compras'), { render: 'FORMATTED_VALUE' }))?.[0] ?? []
+  const formulas = await google.readSheetValues(ID, rangoFilas('Compras', FILA_ANCLA), { render: 'FORMULA' }) ?? []
+  const valores = await google.readSheetValues(ID, rangoFilas('Compras', FILA_ANCLA, FILA_ANCLA), { render: 'FORMATTED_VALUE' }) ?? []
   const hallazgos = diagnosticarDerrames({ encabezado, formulas, valores })
   if (!hallazgos.length) {
     console.log(`✓ las columnas ARRAYFORMULA de Compras derraman limpias (${formulas.length} filas leídas)`)

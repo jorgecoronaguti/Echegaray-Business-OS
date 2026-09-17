@@ -67,14 +67,6 @@
       "mapas": 0,
       "indices": 1
     },
-    "orquestador/lib/compras-doble-conteo.mjs": {
-      "grupo": "offsets-fosil-sin-traducir",
-      "estado": "pendiente",
-      "letras": 0,
-      "mapas": 0,
-      "indices": 0,
-      "offsets": 3
-    },
     "orquestador/lib/compras-valores.mjs": {
       "grupo": "lectores",
       "estado": "pendiente",

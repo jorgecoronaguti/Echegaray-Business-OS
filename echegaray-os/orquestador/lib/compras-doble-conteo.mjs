@@ -41,6 +41,7 @@
 // control que corrige solo sobre una coincidencia probable ya duplicó $2,1M en este repo.
 //
 // NO ESCRIBE NADA. Devuelve el diagnóstico; la fila de Compras es del dueño.
+import { COMPRAS, columnasDe } from './columnas-por-encabezado.mjs'
 
 /** Los medios de pago que `formulaComprasPagadasPosteriores` resta del banco. Fuera de esta lista,
  *  una compra posterior al corte NO toca la disponibilidad bancaria y no hay doble conteo posible. */
@@ -226,15 +227,36 @@ export function auditarDobleConteo(compras = [], debitos = [], { corte } = {}) {
   }
 }
 
-/** Índices (0-based) de las columnas de Compras que este control lee. Se verifican con el encabezado. */
-export const COL = { fechaComprobante: 2, proveedor: 4, total: 14, medioPago: 15, estado: 23, fechaCaja: 29 }
+// ═══ LAS COLUMNAS SALEN DEL RÓTULO (17/09/2026) ═══
+//
+// Acá vivía `COL = { fechaComprobante: 2, proveedor: 4, total: 14, medioPago: 15, estado: 23, fechaCaja: 29 }`
+// y el script abortaba si el encabezado no coincidía. Con «Obra» insertada en Compras L (14/09) las
+// cuatro columnas de la derecha se corrieron y el control abortó en TODAS las corridas desde entonces:
+// una guarda correcta que dejó al auditor muerto tres días. La guarda no se pierde: `columnasDe` falla
+// con el nombre del rótulo que falta.
+
+/** Los rótulos de Compras que este control lee. */
+export const ROTULOS = Object.freeze({
+  fechaComprobante: COMPRAS.fecha, proveedor: COMPRAS.proveedor, total: COMPRAS.total,
+  medioPago: COMPRAS.tipoPago, estado: COMPRAS.estado, fechaCaja: COMPRAS.fechaCaja,
+})
+
+/** Índices base 0 por rótulo contra la fila de encabezado viva. Falla con los rótulos que faltan. */
+export function columnasDelControl(encabezado = []) {
+  const cols = columnasDe(encabezado, ROTULOS, 'Compras')
+  return Object.fromEntries(Object.entries(cols).map(([k, c]) => [k, c.indice]))
+}
 
 /**
  * NÚCLEO PURO: las filas de Compras que se pueden auditar, desde la grilla cruda.
  * @param {unknown[][]} grid filas desde `primeraFila`
  * @param {number} primeraFila número de fila física de grid[0]
+ * @param {Record<keyof ROTULOS, number>} col  de `columnasDelControl`
  */
-export function comprasDeLaGrilla(grid = [], primeraFila = 4) {
+export function comprasDeLaGrilla(grid = [], primeraFila = 4, col) {
+  const faltan = Object.keys(ROTULOS).filter((k) => !Number.isInteger(col?.[k]))
+  if (faltan.length) throw new Error(`comprasDeLaGrilla: faltan columnas resueltas por rótulo (${faltan.join(', ')})`)
+  const COL = col
   const out = []
   grid.forEach((r, i) => {
     const importe = aNumero(r?.[COL.total])

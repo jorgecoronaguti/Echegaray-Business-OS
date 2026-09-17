@@ -13,10 +13,10 @@
 //
 //   node orquestador/scripts/auditar-doble-conteo-compras.mjs
 
-import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
+import { makeGoogleClient } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
-import { auditarDobleConteo, comprasDeLaGrilla, COL } from '../lib/compras-doble-conteo.mjs'
+import { auditarDobleConteo, columnasDelControl, comprasDeLaGrilla } from '../lib/compras-doble-conteo.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTANA = 'Compras'
@@ -24,43 +24,23 @@ const FILA_ENCABEZADO = 3
 const PRIMERA = FILA_ENCABEZADO + 1
 const $ = (n) => `$${Number(n ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-/** Los rótulos que tienen que estar donde `COL` dice, o el control estaría leyendo otra columna. */
-const ESPERADO = {
-  [COL.fechaComprobante]: /fecha factura$/i,
-  [COL.proveedor]: /^proveedor$/i,
-  [COL.total]: /^total$/i,
-  [COL.medioPago]: /^tipo pago$/i,
-  [COL.estado]: /^estado$/i,
-  [COL.fechaCaja]: /^fecha de caja$/i,
-}
-
-/** NÚCLEO PURO: ¿el encabezado sigue siendo el que `COL` asume? Devuelve los problemas. */
-export function verificarEncabezado(fila = []) {
-  const problemas = []
-  for (const [i, re] of Object.entries(ESPERADO)) {
-    const visto = String(fila?.[Number(i)] ?? '').trim()
-    if (!re.test(visto)) problemas.push(`índice ${i} dice "${visto || '∅'}" y se esperaba ${re}`)
-  }
-  return problemas
-}
-
 async function main() {
-  const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-  const encab = (await google.readSheetValues(ID, `${PESTANA}!A${FILA_ENCABEZADO}:AJ${FILA_ENCABEZADO}`))[0] ?? []
-  // SI EL DUEÑO MOVIÓ UNA COLUMNA, ABORTA. Leer el "Tipo pago" de la columna de al lado no da error:
-  // da un informe que absuelve filas culpables y acusa filas sanas. Misma defensa que el sync de cheques.
-  const problemas = verificarEncabezado(encab)
-  if (problemas.length) {
-    console.error(`ABORTA: el encabezado de "${PESTANA}" (fila ${FILA_ENCABEZADO}) no es el que este control asume:`)
-    problemas.forEach((p) => console.error(`   ${p}`))
+  // Sin scopes: nace de sólo lectura. Este control no escribe una celda.
+  const google = makeGoogleClient({ config: loadConfig() })
+  const encab = (await google.readSheetValues(ID, `${PESTANA}!A${FILA_ENCABEZADO}:ZZ${FILA_ENCABEZADO}`))[0] ?? []
+  // LAS COLUMNAS POR RÓTULO. Leer el "Tipo pago" de la columna de al lado no da error: da un informe que
+  // absuelve filas culpables y acusa filas sanas. Si falta un rótulo, aborta con su nombre.
+  let col
+  try { col = columnasDelControl(encab) } catch (e) {
+    console.error(`ABORTA: el encabezado de "${PESTANA}" (fila ${FILA_ENCABEZADO}) no tiene lo que este control lee:\n   ${e.message}`)
     process.exitCode = 1
     return
   }
 
   // UNFORMATTED_VALUE: la Fecha de caja viene mixta (serie y texto) y el total como número. Pedir el
   // valor formateado obligaría a des-formatear plata, que es donde se pierden los centavos.
-  const grid = await google.readSheetValues(ID, `${PESTANA}!A${PRIMERA}:AJ2000`, { render: 'UNFORMATTED_VALUE' })
-  const compras = comprasDeLaGrilla(grid, PRIMERA)
+  const grid = await google.readSheetValues(ID, `${PESTANA}!A${PRIMERA}:ZZ2000`, { render: 'UNFORMATTED_VALUE' })
+  const compras = comprasDeLaGrilla(grid, PRIMERA, col)
 
   const { rows: debitos } = await query(
     `select fecha::text, concepto, importe::float8, referencia
@@ -96,6 +76,9 @@ async function main() {
   if (hallazgos.length) process.exitCode = 1
 }
 
-main()
-  .catch((e) => { console.error(`Falló: ${String(e?.message ?? e)}`); process.exitCode = 1 })
-  .finally(() => closePool?.())
+// Importar este archivo no puede lanzar el control (ni abrir el pool de la base).
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main()
+    .catch((e) => { console.error(`Falló: ${String(e?.message ?? e)}`); process.exitCode = 1 })
+    .finally(() => closePool?.())
+}
