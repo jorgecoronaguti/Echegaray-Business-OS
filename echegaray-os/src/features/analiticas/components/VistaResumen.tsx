@@ -1,189 +1,202 @@
-// RESUMEN — la única vista con cifras generales: cuánto se presupuestó, cuánto se consumió, cuánto queda.
+// RESUMEN — la vista «global» del diseño Analíticas v6, copiada fiel.
 //
-// Estructura confirmada por el dueño (17/09/2026): las cifras de las obras que pasan los filtros y un
-// gráfico por obra, presupuestado contra consumido. Estilo del diseño v6: cabecera de 180 px, cifras de
-// 28 px, barra fina gris para lo presupuestado y gruesa grafito para lo consumido.
-//
-// La barra de consumo se apila en MANO DE OBRA, MATERIALES y SUBCONTRATOS (dueño, 17/09/2026: subcontratos
-// se ve aparte), con los colores del diseño. El % y el «queda» comparan RUBRO CONTRA RUBRO (ver
-// `presupuesto.ts`); lo consumido sin presupuesto con qué compararse se dice aparte, en ámbar.
+// Dueño, 17/09/2026: «respetá el diseño que te pasé, no inventes» (la versión con el orden de Clientes
+// quedó descartada). Lo mismo que el diseño y en su orden: cinco cifras · Por cliente (barra fina de
+// lo presupuestado, gruesa de lo consumido apilada en mano de obra, subcontratos, materiales y sin obra
+// asignada; horas; lo que queda) · De qué está hecho el gasto · Las obras que más gastan · Lo que la
+// base no puede afirmar. Donde el diseño decía «contratado» va PRESUPUESTADO: es lo que se controla.
 import Link from 'next/link'
 import { aUrl, type Filtros } from '../services/filtros'
-import { millones, pctEntero } from '../services/formato'
-import { agruparPorCliente, cifrasResumen, manoObraDe, notaDeConsumido, type FilaControl, type GrupoDeCliente } from '../services/agregados'
-import { IconoCliente, IconoObra } from '@/shared/components/iconos'
-import { ALTO_V2, RotuloCol } from '@/shared/components/v2/patron'
+import { horasTexto, millones, pctEntero } from '../services/formato'
+import {
+  cifrasResumen, composicionDelGasto, INCLUIDO_EN_MATERIALES, manoObraDe, obrasQueMasConsumen, resumenPorCliente,
+  type Composicion, type FilaDeCliente,
+} from '../services/agregados'
 import { rotuloEstimada, type ObraAnalitica } from '../services/obras'
-import { ancho, Cabecera, Seccion } from './Piezas'
+import { ancho, Cabecera, LEYENDA_GASTO, Seccion } from './Piezas'
 
-export function VistaResumen({ obras, cartera, sinObra, filtros, neto }: {
+export function VistaResumen({ obras, sinObra, comprobantesSinObra, filtros, neto }: {
   obras: ObraAnalitica[]
-  /** Toda la cartera, sin filtro: cuántas obras activas tiene cada cliente, como en Clientes. */
-  cartera: ObraAnalitica[]
   sinObra: Map<string, number | null>
+  /** Cuántos comprobantes hay en los cajones sin obra. `null` = no se pudo leer. */
+  comprobantesSinObra: number | null
   filtros: Filtros
   /** `true` = la base publica el consumo neto de IVA (20260917T1900). */
   neto: boolean
 }) {
   const r = cifrasResumen(obras, sinObra)
-  const grupos = agruparPorCliente(obras, cartera)
-  const est = rotuloEstimada(manoObraDe(obras))
-  const conPres = obras.length - r.obrasSinPresupuesto
-  const excedido = r.queda != null && r.queda < 0
+  const clientes = resumenPorCliente(obras, sinObra)
+  const conPres = obras.filter((o) => o.presupuesto != null)
+  const sinPres = obras.filter((o) => o.presupuesto == null)
+  const estimados = conPres.filter((o) => o.presupuestoEstimado).length
+  const consumidoSinPres = sinPres.reduce((a, o) => a + (o.gasto.total ?? 0), 0)
+  const mo = obras.reduce((a, o) => a + (o.gasto.manoObra ?? 0), 0)
+  const mat = obras.reduce((a, o) => a + (o.gasto.materiales ?? 0), 0)
+  const horas = obras.reduce<number | null>((a, o) => (o.gasto.horas == null ? a : (a ?? 0) + o.gasto.horas), null)
+  const conHoras = obras.filter((o) => (o.gasto.horas ?? 0) > 0).length
+  const total = r.consumoTotal
   return (
     <>
       <Cabecera titulo="Resumen" repartidas
-        detalle={`${obras.length} obras · ${conPres} con presupuesto · acumulado a la fecha`}
+        detalle={`${clientes.length} ${clientes.length === 1 ? 'cliente' : 'clientes'} · ${obras.length} obras · ${conPres.length} con presupuesto`}
         cifras={[
-          { rotulo: 'presupuestado', valor: millones(r.presupuestado), falta: 'sin presupuesto cargado',
-            nota: r.contrato != null ? `contrato ${millones(r.contrato)} · referencia` : undefined },
-          // CONSUMIDO ES EL TOTAL, la misma cifra que suma la tabla: el dueño la suma a ojo y tiene que cerrar.
-          { rotulo: 'consumido', valor: millones(r.consumoTotal), falta: 'sin movimiento',
-            nota: notaDeConsumido(r, neto, est) },
-          { rotulo: excedido ? 'excedido' : 'queda', valor: r.queda != null ? millones(Math.abs(r.queda)) : null, falta: '—', tono: excedido ? 'neg' : undefined,
-            nota: r.presupuestado ? `${pctEntero((r.consumido ?? 0) / r.presupuestado)} de lo presupuestado` : undefined },
-          { rotulo: 'sin obra asignada', valor: millones(r.sinObraAsignada), falta: 'ninguno', tono: 'muted', nota: 'no se reparte entre obras' },
+          { rotulo: 'presupuestado', valor: millones(r.presupuestado), falta: 'sin presupuesto',
+            nota: `${conPres.length} ${conPres.length === 1 ? 'obra' : 'obras'}${estimados ? ` · ${estimados} ${estimados === 1 ? 'estimado' : 'estimados'}` : ''}` },
+          { rotulo: neto ? 'consumido en obras, sin IVA' : 'consumido en obras, con IVA', valor: millones(total), falta: 'sin movimiento',
+            nota: total ? `mano de obra ${pctEntero(mo / total)} · materiales ${pctEntero(mat / total)}` : undefined },
+          { rotulo: 'sin obra asignada', valor: millones(r.sinObraAsignada), falta: 'ninguno', tono: r.sinObraAsignada ? 'warn' : undefined,
+            nota: comprobantesSinObra != null ? `${comprobantesSinObra} comprobantes sin obra` : undefined },
+          { rotulo: 'horas en obra', valor: horasTexto(horas), falta: 'sin horas',
+            nota: `${conHoras} ${conHoras === 1 ? 'obra carga' : 'obras cargan'} horas` },
+          { rotulo: 'obras sin presupuesto', valor: `${sinPres.length} de ${obras.length}`, tono: sinPres.length ? 'warn' : undefined,
+            nota: sinPres.length && consumidoSinPres > 0 ? `${millones(consumidoSinPres)} consumidos` : undefined },
         ]} />
-      <Seccion titulo="Presupuestado contra consumido, por cliente y obra"
-        aclaracion="en el mismo orden que Clientes: cada cliente con sus obras debajo. Lo consumido es neto de IVA; el % y lo que queda comparan rubro contra rubro. En rojo, lo excedido."
-        leyenda={VARIANTE === 'apilada' ? [
-          { color: 'bg-accent', rotulo: 'mano de obra' },
-          { color: 'bg-dato-materiales', rotulo: 'materiales' },
-          { color: 'bg-muted', rotulo: 'subcontratos' },
-        ] : undefined}>
-        <Grafico grupos={grupos} filtros={filtros} />
+
+      <Seccion titulo="Por cliente" leyenda={[...LEYENDA_GASTO, { color: 'bg-dato-cajon', rotulo: 'sin obra asignada' }]}>
+        <PorCliente clientes={clientes} filtros={filtros} />
       </Seccion>
-      <div className="pb-9" />
+
+      <DeQueYObras obras={obras} clientes={clientes} filtros={filtros} />
+
+      <Huecos obras={obras} sinPres={sinPres} />
+      <div className="pb-7" />
     </>
   )
 }
 
-/** Probadas las dos a 1440 (17/09/2026): la barra fina del «Avance de cobro» de Clientes se lee mejor. */
-const VARIANTE: 'avance' | 'apilada' = 'avance'
+// ─── Por cliente ────────────────────────────────────────────────────────────────────────────────
 
-// LAS COLUMNAS DE CLIENTES: el nombre ancho a la izquierda y las cifras a la derecha, con los mismos
-// rótulos en mayúsculas. Por debajo de 1024 px se sueltan las columnas y las cifras pasan a una línea,
-// como hace Clientes en el teléfono.
-const COLS = 'grid grid-cols-[minmax(0,1fr)_auto] gap-x-3.5 lg:grid-cols-[minmax(200px,1.6fr)_repeat(5,minmax(0,1fr))_130px_minmax(0,1fr)] lg:items-center'
-
-function Grafico({ grupos, filtros }: { grupos: GrupoDeCliente[]; filtros: Filtros }) {
-  if (!grupos.length) return <p className="text-sm text-faint">Ninguna obra con estos filtros.</p>
+function PorCliente({ clientes, filtros }: { clientes: FilaDeCliente[]; filtros: Filtros }) {
+  if (!clientes.length) return <p className="text-sm text-faint">Ninguna obra con estos filtros.</p>
+  const escala = Math.max(...clientes.map((c) => Math.max(c.presupuestado ?? 0, c.total ?? 0)), 1)
   return (
     <div className="flex flex-col" data-testid="resumen-por-cliente">
-      <div className={`border-b border-line-strong ${COLS}`} style={{ height: ALTO_V2.encabezado }}>
-        <RotuloCol>Cliente · obra</RotuloCol>
-        <span className="grid lg:hidden"><RotuloCol derecha>Queda</RotuloCol></span>
-        {['Presupuestado', 'Mano de obra', 'Materiales', 'Subcontratos', 'Consumido', '%', 'Queda'].map((r) => (
-          <span key={r} className="hidden lg:grid"><RotuloCol derecha titulo={r === 'Consumido' ? 'Neto de IVA: mano de obra + materiales + subcontratos.' : undefined}>{r}</RotuloCol></span>
-        ))}
-      </div>
-      {grupos.map((g) => (
-        <div key={g.clienteId} data-testid="resumen-cliente">
-          <FilaCliente g={g} />
-          {g.obras.map((f) => <FilaObra key={f.obra.id} f={f} href={aUrl({ ...filtros, vista: 'obras', obra: f.obra.id })} />)}
-        </div>
+      {clientes.map((c) => (
+        <Link key={c.clienteId} href={aUrl({ ...filtros, vista: 'obras', obra: c.obraPrincipal })} prefetch={false}
+          data-testid="resumen-cliente"
+          className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-5 gap-y-2 border-b border-line py-3.5 hover:bg-surface-quiet lg:grid-cols-[130px_minmax(0,1fr)_110px_150px]">
+          <div className="flex min-w-0 flex-col gap-[3px]">
+            <div className="truncate text-[13.5px] font-medium text-ink">{c.nombre}</div>
+            <div className="text-[11.5px] text-faint">
+              {c.obras} {c.obras === 1 ? 'obra' : 'obras'}{c.conPresupuesto ? ` · ${c.conPresupuesto} ${c.conPresupuesto === 1 ? 'cotizada' : 'cotizadas'}` : ''}
+              <span className="lg:hidden"> · {c.horas != null ? horasTexto(c.horas) : 'sin horas'}</span>
+            </div>
+          </div>
+          <div className="col-span-2 row-start-2 flex min-w-0 flex-col gap-[5px] lg:col-span-1 lg:col-start-2 lg:row-start-1">
+            <div className="flex h-2.5 items-center gap-2">
+              {c.presupuestado != null ? <div className="h-1.5 rounded-[2px] bg-dato-referencia" style={{ width: ancho(c.presupuestado, escala) }} /> : null}
+              <div className={`whitespace-nowrap text-[11px] tabular-nums ${c.presupuestado != null ? 'text-muted' : 'text-warn'}`}>
+                {c.presupuestado != null ? millones(c.presupuestado) : 'sin presupuesto'}
+              </div>
+            </div>
+            <div className="flex h-3.5 items-center gap-2">
+              <div className="flex h-3.5 overflow-hidden rounded-[2px]" style={{ width: ancho(c.total, escala) }}>
+                <div className="bg-accent" style={{ width: ancho(c.manoObra, c.total) }} />
+                <div className="bg-muted" style={{ width: ancho(c.subcontratos, c.total) }} />
+                <div className="bg-dato-materiales" style={{ width: ancho(c.materiales, c.total) }} />
+                <div className="bg-dato-cajon" style={{ width: ancho(c.sinObra, c.total) }} />
+              </div>
+              <div className="whitespace-nowrap text-xs font-semibold tabular-nums text-ink">{millones(c.total) ?? <span className="font-normal text-faint">sin movimiento</span>}</div>
+            </div>
+          </div>
+          <div className="hidden flex-col gap-[3px] text-right lg:flex">
+            <div className={`text-[12.5px] font-medium tabular-nums ${c.horas != null ? 'text-ink' : 'text-faint'}`}>{c.horas != null ? horasTexto(c.horas) : 'sin horas'}</div>
+            <div className="text-[11px] text-faint">horas</div>
+          </div>
+          <Lectura c={c} />
+        </Link>
       ))}
     </div>
   )
 }
 
-const tonoPct = (pct: number | null) => (pct == null ? 'text-faint' : pct > 1 ? 'text-neg' : pct >= 0.8 ? 'text-warn' : 'text-ink')
-const Plata = ({ v, fuerte = false, clase = '' }: { v: number | null; fuerte?: boolean; clase?: string }) => (
-  <span className={`hidden text-right text-[12px] tabular-nums lg:block ${v == null ? 'text-faint' : fuerte ? 'font-semibold text-ink' : 'text-ink'} ${clase}`}>{v == null ? '—' : millones(v)}</span>
-)
-
-/** EL % COMO EL «AVANCE DE COBRO» DE CLIENTES: barra fina y el número a la derecha. */
-function Porcentaje({ pct, g, parcial = false }: { pct: number | null; g?: { manoObra: number | null; materiales: number | null; subcontratos: number | null; total: number | null }; parcial?: boolean }) {
+function Lectura({ c }: { c: FilaDeCliente }) {
+  const l = c.lectura
+  const [valor, nota, tono] = l.tipo === 'sinPresupuesto'
+    ? ['sin presupuesto', 'ninguna cotización aprobada', 'text-warn']
+    : [l.tipo === 'excedido' ? `excedido ${millones(l.monto)}` : millones(l.monto),
+      l.conPresupuesto < l.obras ? `${l.tipo === 'excedido' ? 'en' : 'queda, en'} ${l.conPresupuesto === 1 ? 'la cotizada' : `las ${l.conPresupuesto} cotizadas`}` : l.tipo === 'excedido' ? 'sobre el presupuesto' : 'queda del presupuesto',
+      l.tipo === 'excedido' ? 'text-neg' : 'text-ink']
   return (
-    <span className="flex flex-col items-end">
-    <span className="flex items-center justify-end gap-2">
-      {VARIANTE === 'avance' ? (
-        <span className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-line lg:block">
-          <span className={`block h-full ${pct != null && pct > 1 ? 'bg-neg' : 'bg-accent'}`} style={{ width: pct == null ? '0%' : ancho(pct, 1) }} />
-        </span>
-      ) : g ? (
-        <span className="hidden h-2 w-16 overflow-hidden rounded-[2px] lg:flex">
-          <span className="bg-accent" style={{ width: ancho(g.manoObra, g.total) }} />
-          <span className="bg-dato-materiales" style={{ width: ancho(g.materiales, g.total) }} />
-          <span className="bg-muted" style={{ width: ancho(g.subcontratos, g.total) }} />
-        </span>
-      ) : null}
-      <span className={`w-11 text-right text-[12.5px] font-semibold tabular-nums ${tonoPct(pct)}`}>{pct != null ? pctEntero(pct) : '—'}</span>
-    </span>
-    {/* EL % NO SALE DEL CONSUMIDO DE LA FILA cuando parte no tiene presupuesto: se dice sobre qué es. */}
-    {parcial && pct != null ? <span className="text-[10px] text-faint">sobre lo presupuestado</span> : null}
-    </span>
-  )
-}
-
-const quedaTexto = (q: number | null) => (q == null ? 'sin comparar' : q < 0 ? `excedido ${millones(-q)}` : millones(q))
-const quedaTono = (q: number | null) => (q == null ? 'text-faint' : q < 0 ? 'text-neg' : 'text-ink')
-
-/** Las cifras en una línea, debajo del nombre, cuando las columnas no entran (teléfono). */
-function LineaAngosta({ pres, mo, mat, sub, cons, pct, sangria }: { pres: number | null; mo: number | null; mat: number | null; sub: number | null; cons: number | null; pct: number | null; sangria: number }) {
-  const m = (v: number | null) => (v == null ? '—' : millones(v))
-  return (
-    <span className="col-span-2 flex flex-wrap gap-x-1.5 text-[11px] tabular-nums text-muted lg:hidden" style={{ paddingLeft: sangria }}>
-      <span>Presup. <b className="font-medium text-ink">{m(pres)}</b></span>·<span>MO <b className="font-medium text-ink">{m(mo)}</b></span>·
-      <span>Mat. <b className="font-medium text-ink">{m(mat)}</b></span>·<span>Sub. <b className="font-medium text-ink">{m(sub)}</b></span>·
-      <span>Consumido <b className="font-medium text-ink">{m(cons)}</b></span>·<span className={tonoPct(pct)}>{pct != null ? pctEntero(pct) : '—'}</span>
-    </span>
-  )
-}
-
-/** EL ENCABEZADO DEL CLIENTE, como la fila maestra de Clientes: la suma de sus obras en cada columna. */
-function FilaCliente({ g }: { g: GrupoDeCliente }) {
-  return (
-    <div className={`${COLS} gap-y-1 border-b border-line py-2 lg:py-0`} style={{ minHeight: ALTO_V2.cliente }}>
-      <span className="flex min-w-0 items-center gap-2.5">
-        <IconoCliente className="h-[15px] w-[15px] shrink-0 text-faint" />
-        <span className="flex min-w-0 flex-col gap-px">
-          <span className="truncate text-[12.5px] font-semibold text-ink">{g.nombre}</span>
-          <span className="truncate text-[11px] text-faint">
-            {g.obras.length} {g.obras.length === 1 ? 'obra' : 'obras'}
-            {g.excedidas ? <span className="text-neg"> · {g.excedidas} excedida{g.excedidas === 1 ? '' : 's'}</span> : null}
-          </span>
-        </span>
-      </span>
-      <span className={`text-right text-[12.5px] font-semibold tabular-nums lg:hidden ${quedaTono(g.queda)}`}>{quedaTexto(g.queda)}</span>
-      <Plata v={g.presupuestado} /><Plata v={g.manoObra} /><Plata v={g.materiales} /><Plata v={g.subcontratos} />
-      <Plata v={g.consumoTotal} fuerte />
-      <span className="hidden lg:block"><Porcentaje pct={g.pct} g={{ ...g, total: g.consumoTotal }} parcial={g.consumoTotal != null && Math.abs(g.consumoTotal - (g.consumido ?? 0)) > 1} /></span>
-      <span className={`hidden text-right text-[12px] font-semibold tabular-nums lg:block ${quedaTono(g.queda)}`}>{quedaTexto(g.queda)}</span>
-      <LineaAngosta pres={g.presupuestado} mo={g.manoObra} mat={g.materiales} sub={g.subcontratos} cons={g.consumoTotal} pct={g.pct} sangria={25} />
+    <div className="flex flex-col gap-[3px] text-right">
+      <div className={`text-[12.5px] font-medium tabular-nums ${tono}`}>{valor}</div>
+      <div className="text-[11px] text-faint">{nota}</div>
     </div>
   )
 }
 
-/** LA OBRA COLGADA DE SU CLIENTE, con la sangría y el ícono de la hija de Clientes; el adicional, un paso más. */
-function FilaObra({ f, href }: { f: FilaControl; href: string }) {
-  const o = f.obra
-  const g = o.gasto
-  const sangria = f.nivel ? 38 : 14
-  const excedida = f.pct != null && f.pct > 1
+// ─── De qué está hecho el gasto · Las obras que más gastan ──────────────────────────────────────
+
+function DeQueYObras({ obras, clientes, filtros }: { obras: ObraAnalitica[]; clientes: FilaDeCliente[]; filtros: Filtros }) {
+  const mix = composicionDelGasto(obras, clientes)
+  const top = obrasQueMasConsumen(obras)
+  const max = top[0]?.gasto.total ?? 1
   return (
-    <Link href={href} prefetch={false} data-testid={`resumen-obra-${o.id}`} data-excedida={excedida ? '' : undefined}
-      className={`${COLS} gap-y-1 border-b border-hairline py-2 hover:bg-surface-quiet lg:py-0`} style={{ minHeight: ALTO_V2.hija }}>
-      <span className="flex min-w-0 items-center gap-2.5" style={{ paddingLeft: sangria }}>
-        <IconoObra className="h-[13px] w-[13px] shrink-0 text-faint" />
-        <span className="flex min-w-0 flex-col gap-px">
-          <span className={`truncate text-[12px] ${excedida ? 'text-neg' : 'text-ink-soft'}`}>
-            {o.nombre}{f.esAdicional ? <span className="ml-2 font-mono text-[10.5px] uppercase tracking-[.06em] text-faint">adicional</span> : null}
-          </span>
-          {f.presupuesto == null ? <span className="truncate text-[10.5px] text-warn">{o.motivoPresupuesto}</span>
-            : o.presupuestoEstimado ? <span className="text-[10.5px] text-faint">presupuesto estimado</span> : null}
-        </span>
-      </span>
-      <span className={`text-right text-[12px] font-medium tabular-nums lg:hidden ${quedaTono(f.queda)}`}>{quedaTexto(f.queda)}</span>
-      <Plata v={f.presupuesto} /><Plata v={g.manoObra} /><Plata v={g.materiales} /><Plata v={g.subcontratos} />
-      <span className="hidden flex-col items-end lg:flex">
-        <span className={`text-[12px] tabular-nums ${g.total == null ? 'text-faint' : 'font-semibold text-ink'}`}>{g.total == null ? '—' : millones(g.total)}</span>
-        {f.consumido != null && g.total != null && Math.abs(g.total - f.consumido) > 1
-          ? <span className="text-[10.5px] text-warn" title="Lo que no tiene presupuesto con qué compararse no entra al % ni a lo que queda.">{millones(g.total - f.consumido)} sin presupuesto</span> : null}
-      </span>
-      <span className="hidden lg:block"><Porcentaje pct={f.pct} g={{ ...g, total: g.total }} parcial={f.sinPresupuesto > 1} /></span>
-      <span className={`hidden text-right text-[12px] tabular-nums lg:block ${quedaTono(f.queda)}`}>{quedaTexto(f.queda)}</span>
-      <LineaAngosta pres={f.presupuesto} mo={g.manoObra} mat={g.materiales} sub={g.subcontratos} cons={g.total} pct={f.pct} sangria={sangria + 23} />
-    </Link>
+    <section className="grid gap-x-10 gap-y-6 pt-9 lg:grid-cols-[180px_minmax(0,1fr)_minmax(0,1fr)]">
+      <h2 className="pt-0.5 text-[13px] font-semibold text-ink">De qué está hecho el gasto</h2>
+      <div className="flex flex-col gap-3">
+        {mix.map((m, i) => <Mezcla key={m.nombre} m={m} empresa={i === 0} />)}
+      </div>
+      <div className="flex min-w-0 flex-col">
+        <h2 className="mb-3.5 text-[13px] font-semibold text-ink">Las obras que más gastan</h2>
+        {top.map((o, i) => (
+          <Link key={o.id} href={aUrl({ ...filtros, vista: 'obras', obra: o.id })} prefetch={false}
+            className="grid h-[34px] grid-cols-[22px_minmax(0,1fr)_48px_76px] items-center gap-2.5 sm:grid-cols-[22px_minmax(0,1fr)_minmax(0,120px)_84px] sm:gap-3 border-b border-line hover:bg-surface-quiet">
+            <div className="font-mono text-[11px] text-faint">{String(i + 1).padStart(2, '0')}</div>
+            <div className="flex min-w-0 flex-col gap-px">
+              <div className="truncate text-[12.5px] font-medium text-ink">{o.nombre}</div>
+              <div className="truncate text-[10.5px] text-faint">{o.clienteNombre} · {o.presupuesto != null ? millones(o.presupuesto) : 'sin presupuesto'}</div>
+            </div>
+            <div className={`h-2 rounded-[2px] ${o.presupuesto == null ? 'bg-warn' : 'bg-accent'}`} style={{ width: ancho(o.gasto.total, max) }} />
+            <div className="text-right text-[12.5px] font-semibold tabular-nums text-ink">{millones(o.gasto.total)}</div>
+          </Link>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function Mezcla({ m, empresa }: { m: Composicion; empresa: boolean }) {
+  const pct = (v: number) => Math.round((v / m.total) * 100)
+  const rot = (v: number) => (pct(v) >= 8 ? `${pct(v)} %` : '')
+  return (
+    <div className="grid grid-cols-[110px_minmax(0,1fr)] items-center gap-3.5">
+      <div className={`truncate text-xs ${empresa ? 'font-semibold text-ink' : 'text-muted'}`}>{m.nombre}</div>
+      <div className={`flex overflow-hidden rounded-[2px] bg-line text-[10.5px] tabular-nums ${empresa ? 'h-7' : 'h-[18px]'}`}>
+        <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-accent text-white" style={{ width: ancho(m.manoObra, m.total) }}>{rot(m.manoObra)}</div>
+        <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-muted text-white" style={{ width: ancho(m.subcontratos, m.total) }}>{rot(m.subcontratos)}</div>
+        <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-dato-materiales text-ink" style={{ width: ancho(m.materiales, m.total) }}>{rot(m.materiales)}</div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Lo que la base no puede afirmar ────────────────────────────────────────────────────────────
+//
+// Sólo los huecos que hoy existen. Sin nombres de tablas en pantalla (regla del diseño): la línea de
+// abajo dice qué lo destraba, en palabras. «Productividad»: las horas se cargan por semana y obra
+// (`registros_hh.fecha_inicio_semana`), sin actividad.
+
+function Huecos({ obras, sinPres }: { obras: ObraAnalitica[]; sinPres: ObraAnalitica[] }) {
+  const est = rotuloEstimada(manoObraDe(obras))
+  const huecos = [
+    est ? { que: 'Mano de obra real', porque: `El ${est.replace(' estimada', '')} de la mano de obra consumida es estimada: quincenas sin recibo del estudio, horas × tarifa.`, destraba: 'los recibos del estudio' } : null,
+    sinPres.length ? { que: 'Consumo contra presupuesto', porque: sinPres.map((o) => `${o.nombre}: ${o.motivoPresupuesto ?? 'sin cotización aprobada'}`).join(' · '), destraba: 'cargar el costo cotizado' } : null,
+    { que: 'Subcontratos contra presupuesto', porque: `La cotización no los separa: van ${INCLUIDO_EN_MATERIALES.replace('incluido ', '')} y se miden junto con materiales.`, destraba: 'una partida propia en la cotización' },
+    { que: 'Productividad', porque: 'Las horas entran por semana y por obra; no bajan a la actividad.', destraba: 'horas por actividad' },
+  ].filter((h): h is { que: string; porque: string; destraba: string } => h != null)
+  return (
+    <section className="grid gap-4 pt-9 lg:grid-cols-[180px_minmax(0,1fr)] lg:gap-6">
+      <h2 className="pt-0.5 text-[13px] font-semibold text-ink">Lo que la base no puede afirmar</h2>
+      <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+        {huecos.map((h) => (
+          <div key={h.que} className="flex flex-col gap-1.5 border-t border-line pt-3">
+            <div className="text-[13px] font-medium text-ink">{h.que}</div>
+            <div className="text-[11.5px] leading-normal text-muted">{h.porque}</div>
+            <div className="font-mono text-[11px] text-faint">{h.destraba}</div>
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }

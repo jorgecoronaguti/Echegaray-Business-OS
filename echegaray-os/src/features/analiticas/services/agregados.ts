@@ -5,8 +5,6 @@
 // dos patas no se publica: `queda` sólo existe con presupuesto Y consumo del MISMO rubro, `$/hora` sólo
 // con mano de obra imputada Y horas. El contrato viaja como referencia, nunca como presupuesto.
 import { rotuloEstimada, type ObraAnalitica } from './obras.ts'
-import { millones } from './formato.ts'
-import { jerarquiaDeObras } from '../../clientes/services/obrasAdicionales.ts'
 import { SIN_PRESUPUESTO, SIN_PRESUPUESTO_RUBRO, type Rubro } from './presupuesto.ts'
 
 const sumaNula = (xs: (number | null)[]): number | null =>
@@ -48,20 +46,6 @@ export function cifrasResumen(obras: ObraAnalitica[], sinObra: ReadonlyMap<strin
   }
 }
 
-/**
- * LA LÍNEA CHICA DEBAJO DE «CONSUMIDO». Lo sin presupuesto se dice UNA vez, acá: la tarjeta aparte
- * repetía la cifra y el dueño se quejó de los datos repetidos (17/09/2026).
- */
-export function notaDeConsumido(r: Pick<CifrasResumen, 'consumoSinPresupuesto' | 'obrasSinPresupuesto'>, neto: boolean, estimada: string | null): string {
-  const partes = [neto ? 'neto de IVA' : 'con IVA: la base todavía no publica el neto']
-  if (r.consumoSinPresupuesto && r.consumoSinPresupuesto > 0) {
-    const quien = r.obrasSinPresupuesto ? `${r.obrasSinPresupuesto} ${r.obrasSinPresupuesto === 1 ? 'obra' : 'obras'} y rubros sin cotizar` : 'rubros sin cotizar'
-    partes.push(`${millones(r.consumoSinPresupuesto)} sin presupuesto (${quien})`)
-  }
-  if (estimada) partes.push(`mano de obra ${estimada}`)
-  return partes.join(' · ')
-}
-
 export interface ControlDeObra {
   obra: ObraAnalitica
   presupuesto: number | null
@@ -91,71 +75,82 @@ export function controlPorObra(obras: ObraAnalitica[]): ControlDeObra[] {
   })
 }
 
-export interface FilaControl extends ControlDeObra {
-  /** `0` = obra mayor · `1` = adicional debajo de su obra (la misma jerarquía que Clientes). */
-  nivel: 0 | 1
-  esAdicional: boolean
-}
+// ─── Resumen: la forma del diseño v6 ────────────────────────────────────────────────────────────
+//
+// Dueño, 17/09/2026: «respetá el diseño que te pasé, no inventes». El Resumen es el de Analíticas v6
+// (vista «global»): cinco cifras, una fila por cliente con la barra fina de lo presupuestado y la gruesa
+// de lo consumido apilada por rubro y sin obra, de qué está hecho el gasto, las obras que más consumen y
+// lo que la base no puede afirmar. Donde el diseño decía «contratado» va PRESUPUESTADO: es lo que el
+// dueño pidió controlar.
 
-export interface GrupoDeCliente {
+export type LecturaCliente =
+  | { tipo: 'queda' | 'excedido'; monto: number; conPresupuesto: number; obras: number }
+  | { tipo: 'sinPresupuesto' }
+
+export interface FilaDeCliente {
   clienteId: string
   nombre: string
-  /** Obras activas del cliente en toda la cartera: la primera clave del orden de Clientes. */
-  nActivas: number
+  obras: number
+  conPresupuesto: number
   presupuestado: number | null
-  /** Consumido en los rubros presupuestados de sus obras. */
-  consumido: number | null
-  queda: number | null
-  pct: number | null
   manoObra: number | null
-  materiales: number | null
   subcontratos: number | null
-  /** Todo lo consumido por sus obras (la suma de las tres columnas). */
-  consumoTotal: number | null
-  /** Obras que gastaron más que su presupuesto: se marcan, no reordenan. */
-  excedidas: number
-  obras: FilaControl[]
+  materiales: number | null
+  /** El cajón del cliente: consumo que Compras no pudo poner en una obra. Se dibuja, no se reparte. */
+  sinObra: number | null
+  /** Obras + sin obra: el largo de la barra gruesa. */
+  total: number | null
+  horas: number | null
+  lectura: LecturaCliente
+  /** La obra que más consumió: adonde abre la fila. */
+  obraPrincipal: string
 }
 
-const porNombre = (a: string, b: string) => a.localeCompare(b, 'es')
-
 /**
- * EL RESUMEN EN EL ORDEN DE CLIENTES (dueño, 17/09/2026: «más similar a Administración → Clientes»):
- * el dueño tiene que encontrar cada cliente y cada obra en el MISMO lugar que en Clientes. Clientes
- * ordena por cantidad de obras activas (de más a menos) y nombre (`clientesService`); sus obras por
- * `orden` y nombre, con el adicional debajo de su obra (`jerarquiaDeObras`). El excedido se marca en
- * rojo, no cambia el orden.
- *
- * `cartera` = todas las obras (sin filtro): de ahí sale cuántas activas tiene cada cliente, como en
- * Clientes, aunque el filtro muestre menos.
+ * UNA FILA POR CLIENTE, de la que más consumió a la que menos. Lo que queda compara lo presupuestado
+ * contra lo consumido EN LOS MISMOS RUBROS de las obras con presupuesto (ver `cifrasResumen`): el cajón
+ * sin obra y las obras sin presupuesto se ven en la barra pero no entran al queda.
  */
-export function agruparPorCliente(obras: ObraAnalitica[], cartera: ObraAnalitica[] = obras): GrupoDeCliente[] {
-  const activas = new Map<string, number>()
-  for (const o of cartera) if (o.estado !== 'terminada') activas.set(o.clienteId, (activas.get(o.clienteId) ?? 0) + 1)
+export function resumenPorCliente(obras: ObraAnalitica[], sinObra: ReadonlyMap<string, number | null>): FilaDeCliente[] {
   const m = new Map<string, ObraAnalitica[]>()
   for (const o of obras) m.set(o.clienteId, [...(m.get(o.clienteId) ?? []), o])
-  const grupos = [...m.values()].map((lista): GrupoDeCliente => {
-    const ordenadas = [...lista].sort((a, b) => (a.orden ?? Infinity) - (b.orden ?? Infinity) || porNombre(a.nombre, b.nombre))
-    const control = new Map(controlPorObra(lista).map((f) => [f.obra.id, f]))
-    const filas = jerarquiaDeObras(ordenadas.map((o) => ({ ...o, obra_id: o.id, obra_padre_id: o.padreId })))
-      .map((f): FilaControl => ({ ...(control.get(f.obra.obra_id) as ControlDeObra), nivel: f.nivel, esAdicional: f.esAdicional }))
-    const conPres = filas.filter((f) => f.presupuesto != null)
-    const presupuestado = sumaNula(conPres.map((f) => f.presupuesto))
-    const consumido = sumaNula(conPres.map((f) => f.consumido))
+  return [...m.values()].map((lista): FilaDeCliente => {
+    const conPres = lista.filter((o) => o.presupuesto != null)
+    const presupuestado = sumaNula(conPres.map((o) => o.presupuesto))
+    const manoObra = sumaNula(lista.map((o) => o.gasto.manoObra))
+    const subcontratos = sumaNula(lista.map((o) => o.gasto.subcontratos))
+    const materiales = sumaNula(lista.map((o) => o.gasto.materiales))
+    const so = sinObra.get(lista[0].clienteId) ?? null
+    const queda = presupuestado != null ? presupuestado - (sumaNula(conPres.map((o) => o.consumoComparable)) ?? 0) : null
     return {
-      clienteId: lista[0].clienteId, nombre: lista[0].clienteNombre, nActivas: activas.get(lista[0].clienteId) ?? 0,
-      presupuestado, consumido,
-      queda: presupuestado != null ? presupuestado - (consumido ?? 0) : null,
-      pct: presupuestado ? (consumido ?? 0) / presupuestado : null,
-      manoObra: sumaNula(lista.map((o) => o.gasto.manoObra)),
-      materiales: sumaNula(lista.map((o) => o.gasto.materiales)),
-      subcontratos: sumaNula(lista.map((o) => o.gasto.subcontratos)),
-      consumoTotal: sumaNula(lista.map((o) => o.gasto.total)),
-      excedidas: filas.filter((f) => f.pct != null && f.pct > 1).length,
-      obras: filas,
+      clienteId: lista[0].clienteId, nombre: lista[0].clienteNombre, obras: lista.length, conPresupuesto: conPres.length,
+      presupuestado, manoObra, subcontratos, materiales, sinObra: so,
+      total: sumaNula([manoObra, subcontratos, materiales, so]),
+      horas: sumaNula(lista.map((o) => o.gasto.horas)),
+      lectura: queda == null ? { tipo: 'sinPresupuesto' }
+        : { tipo: queda < 0 ? 'excedido' : 'queda', monto: Math.abs(queda), conPresupuesto: conPres.length, obras: lista.length },
+      obraPrincipal: [...lista].sort((a, b) => (b.gasto.total ?? 0) - (a.gasto.total ?? 0))[0].id,
     }
-  })
-  return grupos.sort((a, b) => b.nActivas - a.nActivas || porNombre(a.nombre, b.nombre))
+  }).sort((a, b) => (b.total ?? 0) - (a.total ?? 0) || a.nombre.localeCompare(b.nombre, 'es'))
+}
+
+export interface Composicion { nombre: string; manoObra: number; subcontratos: number; materiales: number; total: number }
+
+/** DE QUÉ ESTÁ HECHO EL GASTO: la empresa y cada cliente con consumo, a 100 %. Sin el cajón sin obra. */
+export function composicionDelGasto(obras: ObraAnalitica[], clientes: FilaDeCliente[]): Composicion[] {
+  const de = (nombre: string, lista: ObraAnalitica[]): Composicion => {
+    const mo = lista.reduce((a, o) => a + (o.gasto.manoObra ?? 0), 0)
+    const sub = lista.reduce((a, o) => a + (o.gasto.subcontratos ?? 0), 0)
+    const mat = lista.reduce((a, o) => a + (o.gasto.materiales ?? 0), 0)
+    return { nombre, manoObra: mo, subcontratos: sub, materiales: mat, total: mo + sub + mat }
+  }
+  return [de('Empresa', obras), ...clientes.map((c) => de(c.nombre, obras.filter((o) => o.clienteId === c.clienteId)))]
+    .filter((x) => x.total > 0)
+}
+
+/** LAS OBRAS QUE MÁS CONSUMEN: las `n` primeras por consumido; las que no consumieron no entran. */
+export function obrasQueMasConsumen(obras: ObraAnalitica[], n = 8): ObraAnalitica[] {
+  return obras.filter((o) => (o.gasto.total ?? 0) > 0).sort((a, b) => (b.gasto.total ?? 0) - (a.gasto.total ?? 0)).slice(0, n)
 }
 
 /** La mano de obra de varias obras sumada, con su parte estimada: para rotular un total. */
