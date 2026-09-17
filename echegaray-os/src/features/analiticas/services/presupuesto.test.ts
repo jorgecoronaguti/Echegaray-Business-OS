@@ -65,3 +65,14 @@ test('una partida negativa, sin cabecera aprobada o con monto no numérico no en
   ])
   assert.deepEqual(l.filas.map((f) => [f.rubro, f.monto]), [['manoObra', 10]])
 })
+
+test('estimado lo dice la partida: una cabecera con INFERENCIA en los gastos generales no vuelve estimada la MO de celdas (Quattropani)', () => {
+  const q = presupuestoDe('q', [['MO', 20e6, 'Mano de obra · Presupuesto!O'], ['CS', 19e6, 'Cargas · Presupuesto!Q']], { fuente_legacy: 'Cotizacion Final.xlsm · INFERENCIA: GG = 25%' })!
+  assert.equal(q.estimado, false)
+  assert.deepEqual(q.estimados, [])
+  const p = presupuestoDe('p', [['MO', 1e6, 'Piso · Mano de obra · INFERENCIA'], ['MA', 1e6, 'Piso · Materiales']], { fuente_legacy: 'INFERENCIA · PISO' })!
+  assert.equal(p.estimado, true)
+  assert.deepEqual(p.estimados, ['manoObra'])
+  const sinPartidas = presupuestoDe('s', [], { costo_directo_presupuestado: 5, fuente_legacy: 'INFERENCIA total' })!
+  assert.equal(sinPartidas.estimado, true)
+})

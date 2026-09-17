@@ -10,6 +10,7 @@ import { horasTexto, millones, pctConSigno, pctEntero, porHora } from '../servic
 import { celda, costoPorHora, ITEMS, porHoraMedido, UMBRAL_HORA_CARA, type Celda, type Item } from '../services/agregados'
 import { mesesParaAgotar, type MesDeConsumo, type Ritmo } from '../services/consumo'
 import { rotuloEstimada, type ObraAnalitica } from '../services/obras'
+import { SIN_PRESUPUESTO_RUBRO } from '../services/presupuesto'
 import { ancho, Cabecera, Seccion } from './Piezas'
 import { Columnas } from './VistasEmpresa'
 
@@ -29,7 +30,7 @@ export function VistaObras({ obras, obra, filtros, consumo, ritmo }: {
       <Cabecera titulo={obra.nombre}
         detalle={<>{obra.clienteNombre}{obra.precio != null ? ` · contrato ${millones(obra.precio)} (referencia)` : ''}{obra.presupuestoEstimado ? ' · presupuesto estimado' : ''}</>}
         cifras={[
-          { rotulo: 'presupuestado', valor: millones(obra.presupuesto), falta: obra.motivoPresupuesto ?? 'sin presupuesto cargado', nota: obra.presupuesto != null ? 'mano de obra y materiales cotizados' : undefined },
+          { rotulo: 'presupuestado', valor: millones(obra.presupuesto), falta: 'sin presupuesto', nota: obra.presupuesto != null ? 'mano de obra y materiales cotizados' : (obra.motivoPresupuesto ?? undefined) },
           { rotulo: 'consumido', valor: millones(obra.presupuesto != null ? obra.consumoComparable : obra.gasto.total), falta: 'sin movimiento', nota: obra.presupuesto != null ? 'en esos rubros' : undefined },
           { rotulo: queda != null && queda < 0 ? 'excedido' : 'queda', valor: queda != null ? millones(Math.abs(queda)) : null, falta: '—', tono: queda != null && queda < 0 ? 'neg' : undefined, nota: obra.avanceGasto != null ? `${pctEntero(obra.avanceGasto)} consumido` : undefined },
           { rotulo: 'ritmo por mes', valor: ritmo?.porMes != null ? millones(ritmo.porMes) : null, falta: consumo == null ? 'sin publicar' : 'sin consumo reciente',
@@ -78,7 +79,7 @@ function Rubro({ item, c }: { item: Item; c: Celda }) {
     <div className="flex min-w-0 flex-col gap-2.5" data-testid={`rubro-${item}`}>
       <div className="text-[13px] font-semibold text-ink">{ITEMS.find((i) => i.clave === item)?.rotulo}</div>
       <Par rotulo="cotizado" ancho={ancho(c.cotizado, escala)} barra="bg-dato-referencia"
-        valor={c.cotizado != null ? `${fmt(c.cotizado)}${c.estimado ? ' est.' : ''}` : c.cotizadoAusente} color={c.cotizado != null ? 'text-ink' : 'text-faint'} titulo={c.cotizadoAusente ?? undefined} />
+        valor={c.cotizado != null ? `${fmt(c.cotizado)}${c.estimado ? ' est.' : ''}` : '—'} color={c.cotizado != null ? 'text-ink' : 'text-faint'} titulo={c.cotizadoAusente ?? undefined} />
       <Par rotulo="consumido" ancho={ancho(c.gastado, escala)} barra={tono}
         valor={c.gastado != null ? fmt(c.gastado) : (c.gastadoAusente ?? (item === 'horas' ? 'sin horas' : '—'))} color={gColor} fuerte />
       <LecturaRubro c={c} item={item} />
@@ -102,15 +103,18 @@ function Par({ rotulo, ancho: w, barra, valor, color, fuerte = false, titulo }: 
 function LecturaRubro({ c, item }: { c: Celda; item: Item }) {
   const l = c.lectura
   const fmt = item === 'horas' ? horasTexto : millones
+  // EL MOTIVO LARGO VA UNA VEZ, en la cabecera; en cada rubro, la palabra corta.
+  const corto = c.cotizadoAusente === SIN_PRESUPUESTO_RUBRO ? SIN_PRESUPUESTO_RUBRO : 'sin presupuesto'
   const TEXTO: Record<NonNullable<Celda['lectura']>['tipo'], [string, string]> = {
     queda: [`queda ${fmt(l?.monto)} · ${pctEntero(c.pct)} consumido`, 'text-muted'],
     excedido: [`excedido en ${fmt(l?.monto)}`, 'text-neg'],
     sinMovimiento: ['sin movimiento', 'text-muted'],
-    sinPresupuesto: ['consumo sin presupuesto', 'text-warn'],
+    sinPresupuesto: [`consumo ${corto}`, 'text-warn'],
     sinConsumo: ['sin consumo registrado con qué comparar', 'text-faint'],
   }
-  const [texto, color] = l ? TEXTO[l.tipo] : [' ', 'text-muted']
-  return <div className={`truncate pl-[68px] text-[11.5px] ${color}`}>{texto}</div>
+  // SIN LECTURA Y SIN COTIZADO se dice por qué no hay cotizado: la palabra no entra en la columna del número.
+  const [texto, color] = l ? TEXTO[l.tipo] : c.cotizado == null && c.cotizadoAusente ? [item === 'horas' ? c.cotizadoAusente : corto, 'text-faint'] : [' ', 'text-muted']
+  return <div className={`min-h-[34px] pl-[68px] text-[11.5px] leading-snug ${color}`}>{texto}</div>
 }
 
 function ConsumoMensual({ consumo }: { consumo: MesDeConsumo[] | null }) {

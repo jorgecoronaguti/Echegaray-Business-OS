@@ -130,7 +130,9 @@ export function leerPresupuestos(presupuestos: unknown[] | null, partidas: unkno
     if (!r.success || !obra || r.data.monto < 0) return []
     return [{
       obraId: obra.obraId, rubro: rubroDeCodigo(r.data.codigo), monto: r.data.monto,
-      fuente: r.data.descripcion ?? obra.fuente, estimado: esInferencia(r.data.descripcion) || esInferencia(obra.fuente),
+      // ESTIMADO ES LA PARTIDA QUE LO DICE: Quattropani escribe INFERENCIA en la cabecera por sus gastos
+      // generales, pero su MO y sus cargas salen de celdas.
+      fuente: r.data.descripcion ?? obra.fuente, estimado: esInferencia(r.data.descripcion),
     }]
   })
   return { cabeceras, filas, motivo: cabeceras.length ? null : SIN_PRESUPUESTO }
@@ -164,5 +166,8 @@ export function presupuestoPorObra(lectura: Pick<LecturaPresupuestos, 'cabeceras
     p.porRubro[f.rubro] = (p.porRubro[f.rubro] ?? 0) + f.monto
     if (f.estimado && !p.estimados.includes(f.rubro)) p.estimados.push(f.rubro)
   }
+  // SIN PARTIDAS, la cabecera decide; CON partidas, lo estimado es lo que marcan ellas.
+  const conPartidas = new Set(lectura.filas.map((f) => f.obraId))
+  for (const [id, p] of m) p.estimado = conPartidas.has(id) ? p.estimados.length > 0 : p.estimado
   return m
 }

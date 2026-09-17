@@ -36,7 +36,7 @@ export function VistaResumen({ obras, sinObra, filtros }: {
           { rotulo: excedido ? 'excedido' : 'queda', valor: r.queda != null ? millones(Math.abs(r.queda)) : null, falta: '—', tono: excedido ? 'neg' : undefined,
             nota: r.presupuestado ? `${pctEntero((r.consumido ?? 0) / r.presupuestado)} consumido` : undefined },
           { rotulo: 'consumido sin presupuesto', valor: r.consumoSinPresupuesto ? millones(r.consumoSinPresupuesto) : null, falta: 'ninguno', tono: 'warn',
-            nota: r.obrasSinPresupuesto ? `${r.obrasSinPresupuesto} obras sin presupuesto y rubros no cotizados` : 'rubros no cotizados' },
+            nota: r.obrasSinPresupuesto ? `${r.obrasSinPresupuesto} ${r.obrasSinPresupuesto === 1 ? 'obra' : 'obras'} sin presupuesto y rubros no cotizados` : 'rubros no cotizados' },
           { rotulo: 'sin obra asignada', valor: millones(r.sinObraAsignada), falta: 'ninguno', tono: 'muted', nota: 'no se reparte entre obras' },
         ]} />
       <Seccion titulo="Presupuestado contra consumido, por obra"
