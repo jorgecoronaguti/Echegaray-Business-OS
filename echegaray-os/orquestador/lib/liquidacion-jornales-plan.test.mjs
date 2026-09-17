@@ -223,3 +223,59 @@ test('BAJA con el TOTAL de la planilla mal: si Hs × $/h cierra exacto con lo pa
   const r = planDeHoja({ grid: casi, anio: 2026, hoy: HOY, resolver, incluirBajas: true }).quincenas[0].control
   assert.deepEqual(r.excluidas.map((l) => l.motivo), ['sin_persona', 'baja_ilegible'])
 })
+
+// ── Lo pagado desde JORNALES (dueño, 17/09/2026): sólo huecos, sólo sobre la línea idéntica ──────────
+import { pagadoDeLaPlanilla, observacionConPagado, MARCA_PAGADO_JORNALES } from './liquidacion-jornales-plan.mjs'
+
+const baseLinea = (x = {}) => ({
+  horas: 97, valor_hora: 4500, cobra: 436500, adelanto: 0, ya_transferido: 0, por_banco: 260000, en_efectivo: 176500,
+  pagado_banco: null, pagado_efectivo: null, pagada_en: null, ...x,
+})
+const filaPlanilla = (x = {}) => ({
+  horas: 97, valorHora: 4500, cobra: 436500, adelanto: 0, yaTransferido: 0, porBanco: 260000, enEfectivo: 176500, motivo: null, ...x,
+})
+
+test('pagado: banco = ya transferido + por banco; efectivo = adelanto + en efectivo', () => {
+  assert.deepEqual(pagadoDeLaPlanilla(baseLinea(), [filaPlanilla()]), { pagado_banco: 260000, pagado_efectivo: 176500 })
+  const b = baseLinea({ cobra: 674190, adelanto: 0, ya_transferido: 200000, por_banco: 230240.12, en_efectivo: 243949.88, horas: 99, valor_hora: 6810 })
+  const s = filaPlanilla({ cobra: 674190, yaTransferido: 200000, porBanco: 230240.12, enEfectivo: 243949.88, horas: 99, valorHora: 6810 })
+  assert.deepEqual(pagadoDeLaPlanilla(b, [s]), { pagado_banco: 430240.12, pagado_efectivo: 243949.88 })
+})
+
+test('pagado: lo registrado en la app NO se pisa (banco, efectivo o la marca pagada)', () => {
+  for (const x of [{ pagado_banco: 0 }, { pagado_efectivo: 5 }, { pagada_en: '2026-09-16' }]) {
+    assert.match(pagadoDeLaPlanilla(baseLinea(x), [filaPlanilla()]).motivo, /ya registrado/)
+  }
+})
+
+test('pagado: si la base difiere de la planilla no se completa', () => {
+  const r = pagadoDeLaPlanilla(baseLinea({ horas: 96 }), [filaPlanilla()])
+  assert.match(r.motivo, /difiere.*horas/)
+  assert.match(pagadoDeLaPlanilla(baseLinea(), [filaPlanilla({ porBanco: 0, enEfectivo: 436500 })]).motivo, /por banco, en efectivo/)
+  assert.match(pagadoDeLaPlanilla(baseLinea({ adelanto: null }), [filaPlanilla()]).motivo, /adelanto/)
+})
+
+test('pagado: sin fila, fila excluida o repetida → sin dato, nunca un cero', () => {
+  assert.match(pagadoDeLaPlanilla(baseLinea(), []).motivo, /no la trae/)
+  assert.match(pagadoDeLaPlanilla(baseLinea(), [filaPlanilla({ motivo: 'baja' })]).motivo, /excluye \(baja\)/)
+  assert.match(pagadoDeLaPlanilla(baseLinea(), [filaPlanilla(), filaPlanilla()]).motivo, /2 veces/)
+  assert.match(pagadoDeLaPlanilla(null, [filaPlanilla()]).motivo, /sin línea/)
+})
+
+test('pagado: una cadena que no suma lo que cobra no se afirma', () => {
+  const b = baseLinea({ cobra: 500000 })
+  assert.match(pagadoDeLaPlanilla(b, [filaPlanilla({ cobra: 500000 })]).motivo, /no cierra/)
+})
+
+test('pagado: un lado negativo (banco que trae más que la quincena) no se afirma', () => {
+  const b = baseLinea({ horas: 106, valor_hora: 9500, cobra: 1007000, por_banco: 1365000, en_efectivo: -358000 })
+  const s = filaPlanilla({ horas: 106, valorHora: 9500, cobra: 1007000, porBanco: 1365000, enEfectivo: -358000 })
+  assert.match(pagadoDeLaPlanilla(b, [s]).motivo, /negativo/)
+})
+
+test('observación: agrega la marca una sola vez y conserva lo que había', () => {
+  const una = observacionConPagado('Cargada desde JORNALES.', 14, '17/09/2026')
+  assert.ok(una.startsWith('Cargada desde JORNALES. ') && una.includes(MARCA_PAGADO_JORNALES) && una.includes('14 línea(s)'))
+  assert.equal(observacionConPagado(una, 3, '18/09/2026'), una)
+  assert.ok(observacionConPagado(null, 1, 'x').startsWith(MARCA_PAGADO_JORNALES))
+})

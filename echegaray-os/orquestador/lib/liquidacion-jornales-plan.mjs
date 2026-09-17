@@ -217,3 +217,74 @@ export function sqlLineaEditada(columnas = [], alias = 'l') {
   if (!cols.length) throw new Error('liquidacion_linea sin columnas editables en information_schema: no puedo saber qué tocó una persona, NO cargo nada')
   return `(${cols.map((c) => `${alias}.${c} is not null`).join(' or ')})`
 }
+
+// ═══ LO PAGADO DE CADA QUINCENA CERRADA, DESDE LA MISMA PLANILLA QUE LA CARGÓ (dueño, 17/09/2026) ═══
+//
+// Textual: *«revisando el historial de $/h y pagos del año hay información incompleta de los miembros del
+// plantel que podés completar sacando del Sheet JORNALES»*. Medido ese día: las 272 líneas cerradas de 2026
+// coinciden peso por peso con la planilla, pero `pagado_banco` y `pagado_efectivo` están vacíos en TODAS, así
+// que la sección Retribución del legajo dice «consta pagado $0» sobre quincenas que el dueño pagó y registró.
+//
+// LA CADENA DE LA PLANILLA ES EL PAGO: ADELANTO (efectivo) + ADELANTO BANCO/EMBARGOS + BANCO + EFECTIVO = lo
+// que cobró. Banco = ya transferido + por banco; efectivo = adelanto + en efectivo.
+//
+// SÓLO COMPLETA HUECOS, Y SÓLO SOBRE UNA LÍNEA QUE ES LA MISMA QUE LA PLANILLA:
+//   · `pagado_banco`, `pagado_efectivo` o `pagada_en` escritos → es de una persona, no se toca.
+//   · La línea de la base y la de la planilla difieren en horas, $/h o cualquier importe → la base ya dice
+//     otra cosa que la planilla y decide una persona: no se completa sobre una cadena que no es la sellada.
+//   · La planilla no trae la fila, la trae dos veces, o la trae excluida (BAJA, superpuesta) → sin dato.
+//   · La cadena no suma lo que cobra, o un lado da negativo → no se afirma un pago que no cierra.
+
+const TOLERANCIA_PESOS = 1
+
+const iguales = (a, b) => a != null && b != null && Number.isFinite(Number(a)) && Number.isFinite(Number(b))
+  && Math.abs(Number(a) - Number(b)) < TOLERANCIA_PESOS
+
+/**
+ * @param {{horas:number|null, valor_hora:number|null, cobra:number|null, adelanto:number|null, ya_transferido:number|null,
+ *          por_banco:number|null, en_efectivo:number|null, pagado_banco:number|null, pagado_efectivo:number|null,
+ *          pagada_en:string|null}} base  la línea de `liquidacion_linea`
+ * @param {Array<{horas:number|null, valorHora:number|null, cobra:number|null, adelanto:number|null, yaTransferido:number|null,
+ *          porBanco:number|null, enEfectivo:number|null, motivo:string|null}>} dePlanilla  las filas de la planilla de ESA
+ *          persona en ESA quincena
+ * @returns {{pagado_banco:number, pagado_efectivo:number} | {motivo:string}}
+ */
+export function pagadoDeLaPlanilla(base, dePlanilla = []) {
+  if (!base) return { motivo: 'sin línea en la base' }
+  if (base.pagado_banco != null || base.pagado_efectivo != null || base.pagada_en != null) {
+    return { motivo: 'pago ya registrado en la app' }
+  }
+  const validas = dePlanilla.filter((l) => !l.motivo)
+  if (validas.length === 0) return { motivo: dePlanilla.length ? `la planilla la excluye (${dePlanilla[0].motivo})` : 'la planilla no la trae' }
+  if (validas.length > 1) return { motivo: `la planilla la trae ${validas.length} veces` }
+  const p = validas[0]
+  const pares = [
+    ['horas', base.horas, p.horas], ['$/h', base.valor_hora, p.valorHora], ['cobra', base.cobra, p.cobra],
+    ['adelanto', base.adelanto, p.adelanto], ['ya transferido', base.ya_transferido, p.yaTransferido],
+    ['por banco', base.por_banco, p.porBanco], ['en efectivo', base.en_efectivo, p.enEfectivo],
+  ]
+  const distintos = pares.filter(([, b, s]) => !iguales(b, s)).map(([n]) => n)
+  if (distintos.length) return { motivo: `la base difiere de la planilla en ${distintos.join(', ')}` }
+  const pagadoBanco = redondear2(Number(p.yaTransferido) + Number(p.porBanco))
+  const pagadoEfectivo = redondear2(Number(p.adelanto) + Number(p.enEfectivo))
+  if (!iguales(pagadoBanco + pagadoEfectivo, p.cobra)) {
+    return { motivo: `la cadena no cierra: banco ${pagadoBanco} + efectivo ${pagadoEfectivo} ≠ cobra ${p.cobra}` }
+  }
+  // UN LADO NEGATIVO NO ES UN PAGO: «EFECTIVO −$358.000» dice que el banco giró más de lo que la quincena cobra
+  // (Oficina, 2ª de julio: $1.365.000 contra $1.007.000 — probablemente el SAC). Afirmar un pago negativo sería
+  // inventar qué fue esa plata; lo decide una persona.
+  if (pagadoBanco < 0 || pagadoEfectivo < 0) {
+    return { motivo: `un lado negativo (banco ${pagadoBanco}, efectivo ${pagadoEfectivo}): el giro no es sólo esta quincena` }
+  }
+  return { pagado_banco: pagadoBanco, pagado_efectivo: pagadoEfectivo }
+}
+
+/** La frase que queda en `liquidacion_quincena.observacion`: de dónde salió lo pagado. Idempotente. */
+export const MARCA_PAGADO_JORNALES = 'Pagado completado desde JORNALES (sheet:jornales)'
+
+export function observacionConPagado(observacion, lineas, fecha) {
+  const previa = (observacion ?? '').trim()
+  if (previa.includes(MARCA_PAGADO_JORNALES)) return previa
+  const frase = `${MARCA_PAGADO_JORNALES} el ${fecha} en ${lineas} línea(s): banco = ADELANTO BANCO + BANCO, efectivo = ADELANTO + EFECTIVO.`
+  return previa ? `${previa} ${frase}` : frase
+}

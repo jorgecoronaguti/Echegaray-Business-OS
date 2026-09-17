@@ -4,6 +4,16 @@
 //   node orquestador/scripts/liquidacion-cargar-jornales.mjs                  → dry: muestra y no escribe
 //   node orquestador/scripts/liquidacion-cargar-jornales.mjs --aplicar        → escribe Postgres
 //   ... --anio 2026 --hoy 2026-09-09 --hoja "Oficina 26" --incluir-bajas
+//   node orquestador/scripts/liquidacion-cargar-jornales.mjs --completar-pagado             → dry: lo pagado que falta
+//   node orquestador/scripts/liquidacion-cargar-jornales.mjs --completar-pagado --aplicar   → sólo `pagado_*` vacíos
+//
+// ═══ --completar-pagado (dueño, 17/09/2026) ═══
+//
+// No carga quincenas: completa `pagado_banco` / `pagado_efectivo` de las líneas CERRADAS de personas en la empresa
+// que la app dejó vacías, con la cadena de pago de la misma planilla. La regla (sólo huecos, sólo sobre la línea
+// idéntica a la planilla) está en `pagadoDeLaPlanilla` (lib, probada). Nunca toca una quincena en curso, abierta,
+// reabierta, cerrada por una persona o sellada; nunca escribe otra columna de la línea. La fuente queda en
+// `liquidacion_quincena.observacion` («Pagado completado desde JORNALES (sheet:jornales)»).
 //
 // Pedido del dueño, 09/09/2026: «dejar cargados todos los datos de liquidación de horas de las
 // quincenas pasadas del 2026, según lo indica el Sheet JORNALES». Y el 15/09/2026: «está mal lo
@@ -47,7 +57,8 @@ import { CUIL_POR_PERSONA_DE_PLANILLA } from '../lib/nomina-banco-recibo.mjs'
 import { claveNombre, resolverPersona } from '../lib/liquidacion-jornales.mjs'
 import { emparejarPersona, indicePersonas } from '../lib/jornales-a-registros-hh.mjs'
 import {
-  excluidasParaBase, HOJAS_LIQUIDACION, observacionDeCarga, planDeHoja, separarSalteadas, sqlLineaEditada,
+  excluidasParaBase, HOJAS_LIQUIDACION, motivoParaSaltear, observacionConPagado, observacionDeCarga, pagadoDeLaPlanilla,
+  planDeHoja, separarSalteadas, sqlLineaEditada,
 } from '../lib/liquidacion-jornales-plan.mjs'
 
 const JORNALES_ID = '1s0KlEURR5Udi7vvy-BmeqAi83lMRyqSCSsRjpiO5aXk'
@@ -55,6 +66,7 @@ const JORNALES_ID = '1s0KlEURR5Udi7vvy-BmeqAi83lMRyqSCSsRjpiO5aXk'
 const arg = (n) => (process.argv.includes(n) ? process.argv[process.argv.indexOf(n) + 1] : null)
 const APLICAR = process.argv.includes('--aplicar')
 const INCLUIR_BAJAS = process.argv.includes('--incluir-bajas')
+const COMPLETAR_PAGADO = process.argv.includes('--completar-pagado')
 const ANIO = Number(arg('--anio') ?? 2026)
 const HOY = arg('--hoy') ? new Date(`${arg('--hoy')}T12:00:00Z`) : new Date()
 const SOLO_HOJA = arg('--hoja')
@@ -182,6 +194,70 @@ async function escribir(h, aCargar) {
   }
 }
 
+/** `--completar-pagado`: lo pagado de las líneas cerradas que la app dejó vacío, desde la cadena de la planilla. */
+async function completarPagado(planes, estados) {
+  const { rows: lineas } = await query(
+    `select q.id liquidacion_id, q.grupo, q.desde::text, q.hasta::text, q.estado, q.observacion, l.persona_id, p.nombre_completo,
+            l.horas::float8 horas, l.valor_hora::float8 valor_hora, l.cobra::float8 cobra, l.adelanto::float8 adelanto,
+            l.ya_transferido::float8 ya_transferido, l.por_banco::float8 por_banco, l.en_efectivo::float8 en_efectivo,
+            l.pagado_banco::float8 pagado_banco, l.pagado_efectivo::float8 pagado_efectivo, l.pagada_en::text pagada_en
+       from public.liquidacion_linea l
+       join public.liquidacion_quincena q on q.id = l.liquidacion_id
+       join public.personas p on p.id = l.persona_id
+      where p.en_la_empresa and not coalesce(p.es_prueba, false)
+        and q.desde >= make_date($1::int, 1, 1) and q.desde < make_date($1::int + 1, 1, 1)
+      order by q.grupo, q.desde, p.nombre_completo`, [ANIO],
+  )
+  const planDe = new Map(planes.map(({ h, plan }) => [h.grupo, plan]))
+  const aEscribir = []
+  const salteadas = []
+  for (const b of lineas) {
+    const plan = planDe.get(b.grupo)
+    if (!plan) continue
+    const q = plan.quincenas.find((x) => x.desde === b.desde && x.hasta === b.hasta)
+    const quien = `${b.grupo} ${b.desde} ${b.nombre_completo}`
+    const motivoQ = b.estado !== 'cerrada' ? `quincena ${b.estado}`
+      : q?.enCurso ? 'quincena en curso'
+        : motivoParaSaltear(estados.get(`${b.grupo}|${b.desde}|${b.hasta}`))
+    if (motivoQ) { salteadas.push(`${quien}: ${motivoQ}`); continue }
+    const r = pagadoDeLaPlanilla(b, (q?.lineas ?? []).filter((l) => l.persona_id === b.persona_id).map((l) => ({
+      ...l, motivo: q.control.excluidas.some((e) => e.fila === l.fila) ? (q.control.excluidas.find((e) => e.fila === l.fila).motivo) : null,
+    })))
+    if (r.motivo) { if (r.motivo !== 'pago ya registrado en la app') salteadas.push(`${quien}: ${r.motivo}`); continue }
+    aEscribir.push({ b, ...r })
+  }
+  console.log(`\nLO PAGADO QUE FALTA, DESDE JORNALES (${aEscribir.length} línea/s):`)
+  console.log('grupo    quincena    persona                             banco        efectivo')
+  for (const { b, pagado_banco: pb, pagado_efectivo: pe } of aEscribir) {
+    console.log(`${b.grupo.padEnd(8)} ${b.desde}  ${b.nombre_completo.slice(0, 34).padEnd(34)} ${ars(pb).padStart(12)} ${ars(pe).padStart(12)}`)
+  }
+  if (salteadas.length) { console.log(`\nNO SE COMPLETAN (${salteadas.length}):`); for (const s of salteadas) console.log(`   · ${s}`) }
+  if (!APLICAR) return console.log('\n(sin --aplicar: no escribí nada)')
+  const fecha = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/San_Juan' })
+  const porQuincena = new Map()
+  for (const x of aEscribir) {
+    // SÓLO SI SIGUE VACÍA: entre el ensayo y esta escritura alguien pudo registrar el pago en la app.
+    const { rowCount } = await query(
+      `update public.liquidacion_linea set pagado_banco = $3, pagado_efectivo = $4, actualizado_en = now()
+        where liquidacion_id = $1 and persona_id = $2
+          and pagado_banco is null and pagado_efectivo is null and pagada_en is null`,
+      [x.b.liquidacion_id, x.b.persona_id, x.pagado_banco, x.pagado_efectivo],
+    )
+    if (rowCount === 1) porQuincena.set(x.b.liquidacion_id, [x.b, (porQuincena.get(x.b.liquidacion_id)?.[1] ?? 0) + 1])
+    else console.log(`   ⚠ ${x.b.desde} ${x.b.nombre_completo}: no se escribió (alguien la registró en el medio)`)
+  }
+  for (const [id, [b, n]] of porQuincena) {
+    await query('update public.liquidacion_quincena set observacion = $2 where id = $1', [id, observacionConPagado(b.observacion, n, fecha)])
+  }
+  // LA EVIDENCIA ES LO LEÍDO EN LA BASE, no el rowCount.
+  const { rows: leido } = await query(
+    `select count(*)::int n, coalesce(sum(l.pagado_banco + l.pagado_efectivo), 0)::float8 total
+       from public.liquidacion_linea l join public.liquidacion_quincena q on q.id = l.liquidacion_id
+      where q.id = any($1::uuid[]) and l.pagado_banco is not null`, [[...porQuincena.keys()]],
+  )
+  console.log(`\n✔ releído: ${leido[0].n} línea(s) con pagado en ${porQuincena.size} quincena(s) · ${ars(leido[0].total)}`)
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig() })
   const ctx = await contextoDePersonas()
@@ -212,8 +288,9 @@ async function main() {
     const plan = await planear(google, h, ctx)
     const aCargar = imprimirTabla(h, plan, existentes, estados)
     imprimirDetalle(h, plan, ctx)
-    planes.push({ h, aCargar })
+    planes.push({ h, aCargar, plan })
   }
+  if (COMPLETAR_PAGADO) return completarPagado(planes, estados)
   console.log('\nRESUMEN')
   for (const { h, aCargar } of planes) {
     const afuera = aCargar.reduce((a, q) => a + q.control.montoExcluido, 0)
