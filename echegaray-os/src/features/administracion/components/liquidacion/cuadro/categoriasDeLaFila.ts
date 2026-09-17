@@ -17,6 +17,12 @@ export interface EntradaDeCategorias {
   periodoRecibo: string | null | undefined
   /** `recibo` = el del período; `estimado` = el $/h viene del último recibo real; sin recibo = nunca tuvo. */
   estado: 'recibo' | 'estimado' | null
+  /**
+   * LA FOTO DE UNA QUINCENA CERRADA. `null` en la abierta. Una cerrada no tiene modelo blanco+negro —no se recalcula
+   * sobre algo ya pagado— y por eso decía «Recibo: sin recibo todavía · —/h» para gente a la que se le liquidaron
+   * horas × $/h. Con el sello dice su $/h y de cuándo es.
+   */
+  sello?: { valorHora: number | null; pisoDesde: string | null; hasta: string } | null
 }
 
 export interface CategoriasDeLaFila {
@@ -29,6 +35,10 @@ export interface CategoriasDeLaFila {
 
 const pesos = (n: number | null | undefined): string =>
   n == null ? '—' : `$${Math.round(n).toLocaleString('es-AR')}`
+
+/** `2026-06-15` → `15/06/2026`. La fecha va en el `title`: sin ella, un valor viejo se lee como el de hoy. */
+const dia = (iso: string | null | undefined): string =>
+  iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : 'esa fecha'
 
 /** «OFICIAL ESPECIALIZADO» → «Oficial especializado». */
 export const legible = (s: string | null | undefined): string | null => {
@@ -50,6 +60,25 @@ export function categoriasDeLaFila(e: EntradaDeCategorias): CategoriasDeLaFila {
   const catRecibo = legible(e.categoriaRecibo)
   const hayRecibo = e.estado != null && (catRecibo != null || e.valorHoraRecibo != null) && e.periodoRecibo != null
   if (!hayRecibo) {
+    // ═══ UNA QUINCENA CERRADA DICE SU $/H (dueño, 17/09/2026) ═══
+    //
+    // No hay recibo que mostrar —la cerrada no vuelve a estimar el blanco— pero sí hay un $/h: el que se usó para
+    // liquidarla. Decir «sin recibo todavía · —/h» sobre una quincena ya pagada esconde un dato que existe. Se dice
+    // con su fecha, para que nadie lo lea como el valor de hoy.
+    if (e.sello && e.sello.valorHora != null) {
+      return {
+        // «$/h de la quincena · $5.400/h» repetía la unidad. Se dice como el hecho que es: ya se pagó a ese valor.
+        recibo: `Se liquidó a ${pesos(e.sello.valorHora)}/h`,
+        plataforma,
+        titulo: [
+          `Quincena CERRADA: ${pesos(e.sello.valorHora)}/h es la tarifa con la que se liquidó, tomada al ${dia(e.sello.hasta)}. No es la de hoy.`,
+          `Piso del convenio para ${plat} a esa fecha: ${pesos(e.pisoPlataforma)}/h${e.sello.pisoDesde ? ` (rige desde el ${dia(e.sello.pisoDesde)})` : ''}.`,
+          // LA CATEGORÍA NO SE SELLA: `liquidacion_linea.categoria_sellada` está vacío en toda la base.
+          `La categoría no quedó sellada al cerrar: «${plat}» es la del legajo de HOY.`,
+        ].join('\n'),
+        coinciden: e.pisoPlataforma != null && Math.round(e.sello.valorHora) === Math.round(e.pisoPlataforma),
+      }
+    }
     return {
       recibo: 'Recibo: sin recibo todavía',
       plataforma,

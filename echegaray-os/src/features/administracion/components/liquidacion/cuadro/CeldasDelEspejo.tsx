@@ -132,7 +132,9 @@ export function CeldaDeDia({ celda, personaId, nombre }: {
         textAlign: 'center', color: celda.horas == null ? V.lineaFuerte : V.apagado, position: 'relative',
       }}>
         <MarcaDeTardanza celda={celda} />
-        {celda.horas == null ? '·' : nHoras(celda.horas)}
+        {/* DÍA SIN HORAS = CELDA EN BLANCO (limpieza 17/09/2026). Un «·» por día vacío eran ~200 puntos en pantalla y
+            el ojo los leía como un dato. Sigue sin ser un 0: no hay nada escrito. */}
+        {celda.horas == null ? '' : nHoras(celda.horas)}
       </div>
     )
   }
@@ -143,7 +145,7 @@ export function CeldaDeDia({ celda, personaId, nombre }: {
       <InlineEdit
         valor={celda.horas ?? null}
         tipo="numero"
-        falta="·"
+        falta=""
         ancho="w-[56px] sin-spinner"
         alineado="center"
         etiqueta={`Horas de ${nombre} el ${celda.fecha}`}
@@ -211,7 +213,10 @@ export function Escribible({ campo, fila, quincena, camposEditables, ancho, clas
       <span style={{
         width: ancho, minHeight: 32, maxWidth: '100%', overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-        border: soloLectura ? 'none' : `1px solid ${V.lineaFuerte}`, borderRadius: 4, padding: '0 4px',
+        // EL MARCO DE LA CELDA ESCRIBIBLE, EN LA LÍNEA SUAVE (limpieza 17/09/2026): con `lineaFuerte` eran cien cajas
+        // que competían con los números que contienen. Sigue habiendo marco —se ve cuál se escribe y cuál no—, más
+        // callado; al enfocar, el campo de adentro pone su propio borde de tinta.
+        border: soloLectura ? 'none' : `1px solid ${V.linea}`, borderRadius: 4, padding: '0 4px',
         color: valor == null || valor === 0 ? V.lineaFuerte : V.tinta,
       }}>
         <CeldaEditable
