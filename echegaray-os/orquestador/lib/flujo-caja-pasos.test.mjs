@@ -425,3 +425,12 @@ test('el freno corre DESPUÉS de anclar las derivadas de Compras y ANTES de todo
   assert.ok(escritores.length >= 5, 'no encontré los escritores de las cuatro pestañas: el test perdió el blanco')
   for (const { s, i } of escritores) assert.ok(i > freno, `${s} escribe una pestaña protegida y corre ANTES del freno`)
 })
+
+test('el LIBRO es FRENO: si se niega a escribir, CAJA, los Cash Flow y flujo_* no corren sobre el viejo', async () => {
+  const { frenaElPipeline } = await import('./flujo-caja-pasos.mjs')
+  assert.ok(frenaElPipeline('libro-movimientos-pestana.mjs'))
+  const pos = (s) => PASOS.findIndex((p) => p[0] === s)
+  for (const s of ['caja-pestana.mjs', 'cash-flow-vistas.mjs', 'sync-flujo-fondos.mjs']) {
+    assert.ok(pos(s) > pos('libro-movimientos-pestana.mjs'), `${s} corre antes del libro: el freno no lo protege`)
+  }
+})

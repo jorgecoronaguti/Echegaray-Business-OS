@@ -91,6 +91,7 @@ import { leerTipoCambio, RANGO_TC } from '../lib/tipo-cambio.mjs'
 import { ubicarRegistro } from './cheques-emitidos-tablero.mjs'
 // EL PLAN DE EGRESOS DE OBRA VIVE EN POSTGRES DESDE EL 07/09/2026 (ver el bloque que lo lee).
 import { query } from '../lib/db.mjs'
+import { avisoDeCaida, corridaVigente, evaluarContraVigente } from '../lib/libro-caida.mjs'
 import { pathToFileURL } from 'node:url'
 import { realpathSync } from 'node:fs'
 import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
@@ -731,6 +732,15 @@ async function main() {
     + `como fórmula contra Compras!${colEstadoCompras} · ${pesos(sumar(vivas, {}).total)} `
     + '— pasan solas a REAL cuando la fila dice "Pagado"')
 
+  // ═══ EL LIBRO QUE SE CAE DE GOLPE NO SE ESCRIBE (17/09/2026) ═══
+  // 435 movimientos contra 1.306 y el neto de −$8M a +$419M: se escribió igual y lo publicaron CAJA, los
+  // Cash Flow y la web. Contra la corrida vigente, ANTES de tocar la pestaña. Ver lib/libro-caida.mjs.
+  // Sin la vigente (base caída) no se puede afirmar que no se cayó: falla cerrado.
+  const vigente = await corridaVigente(query)
+  const caida = evaluarContraVigente({ movimientos: consolidado.length, neto: sumar(consolidado, {}).total }, vigente,
+    { aceptada: process.env.ORQ_LIBRO_CAIDA_ACEPTADA })
+  for (const l of avisoDeCaida(caida, { donde: '_MOVIMIENTOS' })) (caida.frena ? console.error : console.log)(l)
+  if (caida.frena) { process.exitCode = 1; return }
   if (DRY) { console.log('\n--dry: no escribí nada.'); return }
   await escribirYVerificar(google, consolidado, colEstadoCompras, colsVivas)
 }

@@ -726,5 +726,8 @@ export function esReporte(script) { return REPORTES.has(script) }
  * (cada pestaña es independiente); un freno no, porque lo que viene después escribiría sobre un dato
  * roto. Ver `freno-derrames-compras.mjs`.
  */
-export const FRENOS = new Set(['freno-derrames-compras.mjs'])
+// `libro-movimientos-pestana.mjs` es freno desde el 17/09: se niega a escribir un libro que cae de golpe
+// contra la corrida vigente, y lo que sigue (CAJA, los Cash Flow, flujo_*) no puede correr sobre el viejo
+// como si fuera el de hoy. Ver lib/libro-caida.mjs.
+export const FRENOS = new Set(['freno-derrames-compras.mjs', 'libro-movimientos-pestana.mjs'])
 export function frenaElPipeline(script) { return FRENOS.has(script) }
