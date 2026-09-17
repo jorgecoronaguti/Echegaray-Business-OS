@@ -36,7 +36,7 @@ export const montoAR = (s) => {
  * @param {string} texto texto plano del PDF
  * @returns {{periodo:string|null, actividades:Array, base_total:number, impuesto_determinado:number,
  *            retenciones:number, saldo_favor_anterior:number, a_ingresar:number, a_favor:boolean,
- *            fecha_presentacion:string|null, nro_control:string|null}}
+ *            fecha_presentacion:string|null, nro_control:string|null, fecha_vencimiento:string|null}}
  */
 export function parsearDDJJ(texto = '') {
   const t = String(texto)
@@ -73,6 +73,11 @@ export function parsearDDJJ(texto = '') {
     a_favor: /A favor del Contribuyente/i.test(t),
     fecha_presentacion: buscar(/Fecha Present\.:\s*(\d{2}\/\d{2}\/\d{4})/),
     nro_control: buscar(/N° DE CONTROL\s*\n?\s*(\d{6,})/),
+    // EL VENCIMIENTO QUE IMPRIME RENTAS. El formulario tiene los rótulos «Fecha Vto.:» y «Fecha Pago
+    // Declarada:» y UNA sola fecha debajo, que es la que codifica el código de barras (…2609210… en
+    // agosto 2026). Medido 17/09/2026: julio imprime 20/08/2026, agosto 21/09/2026 — las dos iguales al
+    // vencimiento que el contador publica en su agenda (Thomson Reuters Integra, terminación 3).
+    fecha_vencimiento: buscar(/Fecha Pago Declarada:\s*(?:Impuesto\s*)?(\d{2}\/\d{2}\/\d{4})/),
   }
 }
 

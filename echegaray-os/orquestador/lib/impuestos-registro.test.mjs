@@ -106,3 +106,11 @@ test('finDeMes no corre la fecha por zona horaria', () => {
   assert.equal(finDeMes('2026-02'), '2026-02-28')
   assert.equal(finDeMes('2026-12'), '2026-12-31')
 })
+
+test('IIBB: el vencimiento impreso en la DDJJ manda y queda verificado (agosto vence 21/09, no 16/09)', () => {
+  const [ago] = obligacionesIibbDDJJ([{ ...IIBB_AGO, fecha_vencimiento: '21/09/2026' }])
+  assert.equal(ago.vencimiento, '2026-09-21')
+  assert.equal(ago.vencimiento_confianza, 'verificado')
+  const [sinFecha] = obligacionesIibbDDJJ([IIBB_AGO])
+  assert.equal(sinFecha.vencimiento_confianza, 'supuesto', 'sin fecha impresa sigue la regla, y dice que es supuesta')
+})
