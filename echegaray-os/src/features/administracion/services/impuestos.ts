@@ -38,6 +38,8 @@ export interface PagoSinImputar {
   importe: number
   descripcion: string | null
   fuente: string
+  /** vep · debito_automatico · debito_bancario · retencion · percepcion (check de la tabla). */
+  tipo: string | null
 }
 
 export interface LectorSincronizado { ok: boolean; error?: string; datos_al?: string | null }

@@ -89,12 +89,28 @@ export type Tono = 'neg' | 'warn' | 'pos' | 'neutro'
  * declaró—, y por eso va neutro. `estado` es el de la base, sin reinterpretar: si la base dice pagado
  * con saldo, la pantalla dice pagado (la regla es del sincronizador, no de acá).
  */
-export function estadoLlano(f: Pick<PosicionImpuesto, 'estado' | 'pendiente' | 'detalle'>, dias?: number): { tono: Tono; texto: string } {
+export function estadoLlano(f: Pick<PosicionImpuesto, 'estado' | 'pendiente' | 'detalle'> & { concepto?: string }, dias?: number): { tono: Tono; texto: string } {
   if (dias !== undefined && dias < 0) return { tono: 'neg', texto: 'Vencido sin pago' }
   if (f.estado === 'pagado') return { tono: 'pos', texto: 'Pagado' }
+  // «sin declarar» es de la declaración mensual; una cuota de plan no se declara: su importe se estima.
+  if (f.estado === 'estimado' && f.concepto && cuotaDePlan(f.concepto)) return { tono: 'neutro', texto: 'Estimado' }
   if (f.estado === 'estimado') return { tono: 'neutro', texto: f.detalle?.parcial ? 'Estimado · mes en curso' : 'Estimado, sin declarar' }
   if ((f.pendiente ?? 0) > 0) return { tono: 'warn', texto: 'Declarado, falta pagar' }
   return { tono: 'neutro', texto: 'Declarado' }
+}
+
+// ═══ LAS COLUMNAS DEL DETALLE ═══
+
+export type Columna = 'determinado' | 'creditos' | 'a_pagar' | 'pagado' | 'saldo_a_favor'
+
+/**
+ * Las columnas de importe en las que al menos una fila tiene dato. `pagado` 0 cuenta como vacío: la
+ * base lo guarda en 0 y no en null. Una columna entera de «—» (créditos del F931, a favor del cheque)
+ * no se dibuja; si mañana una fila la trae, aparece sola.
+ */
+export function columnasConDato(filas: Pick<PosicionImpuesto, Columna>[]): Columna[] {
+  const tiene = (c: Columna) => filas.some((f) => (c === 'pagado' ? f.pagado > 0 : f[c] !== null))
+  return (['determinado', 'creditos', 'a_pagar', 'pagado', 'saldo_a_favor'] as const).filter(tiene)
 }
 
 // ═══ LA AGENDA ═══

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { PosicionImpuesto } from './impuestos.ts'
-import { agenda, decision, enDias, estadoLlano, nombreLlano, porImpuesto, urgenciaDe, vistaDe } from './impuestosVista.ts'
+import { agenda, columnasConDato, decision, enDias, estadoLlano, nombreLlano, porImpuesto, urgenciaDe, vistaDe } from './impuestosVista.ts'
 
 const fila = (x: Partial<PosicionImpuesto>): PosicionImpuesto => ({
   impuesto: 'iva', periodo: '2026-08', concepto: 'ddjj', fuente: 'ddjj_contador', estado: 'presentado',
@@ -64,6 +64,7 @@ test('el estado se dice como lo diría quien paga, y el color sólo va donde hay
   assert.deepEqual(estadoLlano(fila({ pendiente: 0 })), { tono: 'neutro', texto: 'Declarado' })
   assert.deepEqual(estadoLlano(fila({ estado: 'estimado', pendiente: 5 })), { tono: 'neutro', texto: 'Estimado, sin declarar' })
   assert.equal(estadoLlano(fila({ estado: 'estimado', detalle: { parcial: true } })).texto, 'Estimado · mes en curso')
+  assert.equal(estadoLlano(fila({ estado: 'estimado', concepto: 'Plan F931 W303094 · cuota 3/3' })).texto, 'Estimado', 'una cuota no se declara')
   assert.deepEqual(estadoLlano(fila({ estado: 'pagado', pendiente: 0 })), { tono: 'pos', texto: 'Pagado' })
 })
 
@@ -72,6 +73,11 @@ test('los nombres: la cuota se nombra por su plan, no por el período financiado
   assert.equal(nombreLlano({ impuesto: 'iibb', periodo: '2026-09', concepto: 'ddjj' }), 'Ingresos Brutos San Juan · septiembre 2026')
   assert.equal(nombreLlano({ impuesto: 'ganancias', periodo: '2026-04', concepto: 'anticipo' }), 'Ganancias · abril 2026 · anticipo')
   assert.deepEqual([enDias(0), enDias(1), enDias(23), enDias(-1), enDias(-3)], ['vence hoy', 'vence mañana', 'en 23 días', 'venció ayer', 'venció hace 3 días'])
+})
+
+test('las columnas vacías no se dibujan; pagado en 0 cuenta como vacío', () => {
+  assert.deepEqual(columnasConDato([fila({ determinado: 5, a_pagar: 5 }), fila({ determinado: 1, a_pagar: 0, pagado: 0 })]), ['determinado', 'a_pagar'])
+  assert.deepEqual(columnasConDato([fila({ creditos: 0, pagado: 3, saldo_a_favor: 0 })]), ['creditos', 'pagado', 'saldo_a_favor'], 'un cero real es dato')
 })
 
 test('?ver= es entrada del usuario: lo desconocido abre el resumen', () => {

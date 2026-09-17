@@ -1,146 +1,127 @@
-// LOS BLOQUES DE LA PANTALLA DE IMPUESTOS. Server Components puros: ningún handler, ningún estado.
-// Qué fila entra en cada bloque lo decide `services/impuestos.ts`; acá sólo se dibuja.
+// EL DETALLE MES POR MES Y LOS PAGOS SIN IDENTIFICAR. Server Components puros.
+// Qué fila entra lo decide `services/impuestos.ts`; acá sólo se dibuja.
 //
-// SIN RUIDO (limpieza 17/09/2026, mismo criterio que Liquidación): el estado es TEXTO, no pastilla —60
-// cápsulas iguales no dejaban ver el único «vencido»—; sólo se colorea lo que pide acción. Los
-// encabezados van en caja normal. Mismas columnas, mismos testids, mismo `data-estado`.
+// ═══ SÓLO LAS COLUMNAS QUE TIENEN ALGO ═══
 //
-// NULL SE ESCRIBE COMO AUSENCIA. Un IVA cuyo a pagar no se conoce dice «sin dato», no «$0»: cero es
-// «no hay que pagar» y es una afirmación que el OS no puede hacer.
+// La tabla vieja tenía nueve columnas para todos los impuestos, y en el F931 o el impuesto al cheque
+// «Créditos» y «A favor» eran una columna entera de «—». Acá cada vista muestra las columnas en las que
+// al menos una fila tiene dato; la que no tiene nada no se dibuja. Ningún dato se pierde: si mañana una
+// fila trae créditos, la columna aparece.
+//
+// ═══ EN EL TELÉFONO NO ES TABLA ═══
+//
+// A 390 px nueve columnas obligaban a deslizar de costado. Cada período es un renglón: período e
+// importe a pagar arriba, estado y pagado al medio, el resto abajo en chico.
 import type { ReactNode } from 'react'
-import { Nulo, Num, Tabla, Td, Th as ThDs, THead, Tr, Vacio, type TonoEstado } from '@/shared/components/ds'
 import { plata } from '@/shared/utils/format'
-import {
-  ddmm, NOMBRE_FUENTE, NOMBRE_IMPUESTO, rotuloPeriodo,
-  type PagoSinImputar, type PosicionImpuesto, type Vencimiento,
-} from '../../services/impuestos'
-import { cuotaDePlan } from '../../services/impuestosCargas'
+import { ddmm, type PagoSinImputar, type PosicionImpuesto } from '../../services/impuestos'
+import { columnasConDato, estadoLlano, NOMBRE_LLANO, periodoCorto, type Columna } from '../../services/impuestosVista'
+import { EstadoTexto, Importe, Origen, Vacio, Vence } from './piezas'
 
-const importe = (n: number | null, falta = 'sin dato') => (n === null ? <Nulo>{falta}</Nulo> : <Num>{plata(n)}</Num>)
-
-/**
- * El rótulo de una obligación: impuesto, período y —si no es la DDJJ— el concepto. La cuota de un plan
- * se nombra por el plan («Cuota 3/3 · Plan F931 W303094»): «F931 jun-26 · Plan F931 …» repetía el F931.
- */
-export const nombreObligacion = (f: Pick<PosicionImpuesto, 'impuesto' | 'periodo' | 'concepto'>) => {
-  const c = cuotaDePlan(f.concepto)
-  if (c) return `Cuota ${c.n}/${c.de} · ${c.plan}`
-  return `${NOMBRE_IMPUESTO[f.impuesto]} ${rotuloPeriodo(f.periodo)}${f.concepto === 'ddjj' ? '' : ` · ${f.concepto}`}`
+const ROTULO: Record<Columna, { corto: string; ayuda: string }> = {
+  determinado: { corto: 'Impuesto del período', ayuda: 'El impuesto del período según la declaración o el cálculo' },
+  creditos: { corto: 'Créditos', ayuda: 'Lo que se descuenta del impuesto del período, según la declaración o el cálculo' },
+  a_pagar: { corto: 'A pagar', ayuda: 'Lo que la declaración o el cálculo deja para pagar' },
+  pagado: { corto: 'Pagado', ayuda: 'VEP y débitos del banco imputados a esta obligación' },
+  saldo_a_favor: { corto: 'A favor', ayuda: 'Saldo a favor que deja el período' },
 }
 
-/** El encabezado en caja normal: 10px versalita espaciada en tres tablas seguidas era la mitad del ruido. */
-export const Th = ({ children, num }: { children?: ReactNode; num?: boolean }) => (
-  <ThDs num={num}><span className="text-[11px] normal-case tracking-normal">{children}</span></ThDs>
-)
+const valor = (f: PosicionImpuesto, c: Columna): ReactNode =>
+  c === 'pagado' ? (f.pagado ? plata(f.pagado) : <span className="text-faint">—</span>) : <Importe n={f[c]} falta="—" />
 
-const TONO_TEXTO: Record<TonoEstado, string> = { neg: 'text-neg', warn: 'text-warn', pos: 'text-faint', curso: 'text-muted', pendiente: 'text-muted', nulo: 'text-faint' }
+const TH = 'h-8 px-3 text-[12px] font-normal text-faint first:pl-0 last:pr-0'
+const TD = 'h-10 px-3 text-[13px] first:pl-0 last:pr-0'
 
-/** El estado como palabra. Conserva `data-testid="estado"` y `data-estado`: los tests leen eso, no el color. */
-export function EstadoTexto({ tono, clave, children }: { tono: TonoEstado; clave?: string; children: ReactNode }) {
-  return <span data-testid="estado" data-estado={clave} className={`whitespace-nowrap text-[12px] ${TONO_TEXTO[tono]}`}>{children}</span>
-}
-
-export function estadoDe(f: PosicionImpuesto, dias?: number): { tono: TonoEstado; texto: string } {
-  if (dias !== undefined && dias < 0) return { tono: 'neg', texto: 'vencido' }
-  if (f.estado === 'pagado') return { tono: 'pos', texto: 'pagado' }
-  if (f.estado === 'estimado') return { tono: 'pendiente', texto: f.detalle?.parcial ? 'estimado · parcial' : 'estimado' }
-  if ((f.pendiente ?? 0) > 0) return { tono: 'warn', texto: 'presentada · a pagar' }
-  return { tono: 'pendiente', texto: 'presentada' }
-}
-
-/** «DDJJ · 31/08»: de dónde sale el número y hasta cuándo llega esa fuente. */
-const fuenteDe = (f: PosicionImpuesto) => (
-  <span className="whitespace-nowrap text-[12px] text-faint">
-    {NOMBRE_FUENTE[f.fuente]}{f.datos_al ? ` · ${ddmm(f.datos_al)}` : ''}
-  </span>
-)
-
-export function Bloque({ titulo, cuenta, children, testid }: { titulo: string; cuenta?: ReactNode; children: ReactNode; testid: string }) {
+/** La tabla de la computadora. */
+function TablaAncha({ filas, cols, conImpuesto }: { filas: PosicionImpuesto[]; cols: Columna[]; conImpuesto: boolean }) {
   return (
-    <section data-testid={testid} className="mt-6">
-      <div className="mb-2 flex items-baseline gap-2">
-        <h2 className="text-[13px] font-semibold text-ink">{titulo}</h2>
-        {cuenta !== undefined && <span className="text-[12px] text-faint">{cuenta}</span>}
-      </div>
-      {children}
-    </section>
-  )
-}
-
-export function TablaVencimientos({ lista }: { lista: Vencimiento[] }) {
-  if (!lista.length) return <Vacio>Nada pendiente con vencimiento en los próximos 30 días.</Vacio>
-  return (
-    <Tabla testid="impuestos-vencimientos" minWidth={520}>
-      <THead>
-        <Th>Vence</Th><Th>Obligación</Th><Th num>Pendiente</Th><Th>Estado</Th><Th>Fuente</Th>
-      </THead>
-      <tbody>
-        {lista.map((f) => {
-          const e = estadoDe(f, f.dias)
-          return (
-            <Tr key={`${f.impuesto}-${f.periodo}-${f.concepto}`} compacta>
-              <Td>
-                <Num>{ddmm(f.vencimiento)}</Num>
-                {f.vencimiento_confianza === 'supuesto' && <span className="ml-1 text-[11px] text-faint" title="Fecha supuesta: la DGR no publica una tabla verificable">supuesto</span>}
-              </Td>
-              <Td fuerte>{nombreObligacion(f)}</Td>
-              <Td num>{f.pendiente === null ? <Nulo>sin importe</Nulo> : plata(f.pendiente)}</Td>
-              <Td><EstadoTexto tono={e.tono} clave={f.estado}>{e.texto}</EstadoTexto></Td>
-              <Td>{fuenteDe(f)}</Td>
-            </Tr>
-          )
-        })}
-      </tbody>
-    </Tabla>
-  )
-}
-
-export function TablaPeriodos({ filas }: { filas: PosicionImpuesto[] }) {
-  if (!filas.length) return <Vacio>El sincronizador todavía no escribió ninguna obligación.</Vacio>
-  return (
-    <Tabla testid="impuestos-periodos" minWidth={880}>
-      <THead>
-        <Th>Período</Th><Th>Impuesto</Th><Th num>Determinado</Th><Th num>Créditos</Th><Th num>A pagar</Th>
-        <Th num>Pagado</Th><Th num>A favor</Th><Th>Estado</Th><Th>Fuente</Th>
-      </THead>
+    <table className="hidden w-full border-collapse text-left md:table">
+      <thead>
+        <tr className="border-y border-line">
+          <th className={TH}>Período</th>
+          {conImpuesto && <th className={TH}>Impuesto</th>}
+          {cols.map((c) => <th key={c} className={`${TH} text-right`} title={ROTULO[c].ayuda}>{ROTULO[c].corto}</th>)}
+          <th className={TH}>Vence</th><th className={TH}>Estado</th><th className={TH}>De dónde sale</th>
+        </tr>
+      </thead>
       <tbody>
         {filas.map((f) => {
-          const e = estadoDe(f)
+          const e = estadoLlano(f)
           return (
-            <Tr key={`${f.impuesto}-${f.periodo}-${f.concepto}`} compacta data-impuesto={f.impuesto} data-periodo={f.periodo}>
-              <Td><Num>{rotuloPeriodo(f.periodo)}</Num></Td>
-              <Td fuerte>{NOMBRE_IMPUESTO[f.impuesto]}{f.concepto === 'ddjj' ? '' : <span className="text-faint"> · {f.concepto}</span>}</Td>
-              <Td num>{importe(f.determinado)}</Td>
-              <Td num>{importe(f.creditos, '—')}</Td>
-              <Td num>{importe(f.a_pagar)}</Td>
-              <Td num>{f.pagado ? plata(f.pagado) : <Nulo>—</Nulo>}</Td>
-              <Td num>{importe(f.saldo_a_favor, '—')}</Td>
-              <Td><EstadoTexto tono={e.tono} clave={f.estado}>{e.texto}</EstadoTexto></Td>
-              <Td>{fuenteDe(f)}</Td>
-            </Tr>
+            <tr key={`${f.impuesto}-${f.periodo}-${f.concepto}`} data-impuesto={f.impuesto} data-periodo={f.periodo} className="border-b border-line-hairline">
+              <td className={`${TD} text-ink`}>{periodoCorto(f)}</td>
+              {conImpuesto && <td className={`${TD} text-ink`}>{NOMBRE_LLANO[f.impuesto]}</td>}
+              {cols.map((c) => <td key={c} className={`${TD} text-right font-mono tabular-nums text-ink`}>{valor(f, c)}</td>)}
+              <td className={TD}><Vence fecha={f.vencimiento} confianza={f.vencimiento_confianza} /></td>
+              <td className={TD}><EstadoTexto tono={e.tono} clave={f.estado}>{e.texto}</EstadoTexto></td>
+              <td className={TD}><Origen f={f} /></td>
+            </tr>
           )
         })}
       </tbody>
-    </Tabla>
+    </table>
   )
 }
 
+/** Los renglones del teléfono: lo que se paga arriba, el resto abajo y en chico. */
+function ListaAngosta({ filas, cols, conImpuesto }: { filas: PosicionImpuesto[]; cols: Columna[]; conImpuesto: boolean }) {
+  const resto = cols.filter((c) => c !== 'a_pagar')
+  return (
+    <ul className="border-t border-line md:hidden">
+      {filas.map((f) => {
+        const e = estadoLlano(f)
+        return (
+          <li key={`${f.impuesto}-${f.periodo}-${f.concepto}`} data-impuesto={f.impuesto} data-periodo={f.periodo}
+            className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-b border-line-hairline py-3 text-[13px]">
+            <span className="font-medium text-ink">{conImpuesto ? `${NOMBRE_LLANO[f.impuesto]} · ` : ''}{periodoCorto(f)}</span>
+            <span className="text-right text-ink">
+              {cols.includes('a_pagar') ? <Importe n={f.a_pagar} falta="—" /> : null}
+            </span>
+            <EstadoTexto tono={e.tono} clave={f.estado}>{e.texto}</EstadoTexto>
+            <span className="text-right text-[12px] text-muted"><Vence fecha={f.vencimiento} confianza={f.vencimiento_confianza} /></span>
+            <span className="col-span-2 flex flex-wrap gap-x-3 text-[12px] text-muted">
+              {resto.map((c) => <span key={c}>{ROTULO[c].corto} <span className="font-mono tabular-nums text-ink-soft">{valor(f, c)}</span></span>)}
+              <Origen f={f} />
+            </span>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+/** Período × impuesto. `conImpuesto` agrega la columna cuando la vista junta varios (Otros, Historial). */
+export function MesAMes({ filas, testid, conImpuesto = false, vacio }: {
+  filas: PosicionImpuesto[]; testid: string; conImpuesto?: boolean; vacio: string
+}) {
+  if (!filas.length) return <Vacio>{vacio}</Vacio>
+  const cols = columnasConDato(filas)
+  return (
+    <div data-testid={testid}>
+      <TablaAncha filas={filas} cols={cols} conImpuesto={conImpuesto} />
+      <ListaAngosta filas={filas} cols={cols} conImpuesto={conImpuesto} />
+    </div>
+  )
+}
+
+const COMO: Record<string, string> = {
+  vep: 'VEP', debito_automatico: 'débito automático', debito_bancario: 'débito del banco', retencion: 'retención', percepcion: 'percepción',
+}
+
+/** Los pagos al fisco que salieron pero no se sabe a qué impuesto van. */
 export function TablaSinImputar({ pagos }: { pagos: PagoSinImputar[] }) {
   return (
-    <Tabla testid="impuestos-sin-imputar" minWidth={520}>
-      <THead>
-        <Th>Fecha</Th><Th num>Importe</Th><Th>Movimiento</Th><Th>Fuente</Th>
-      </THead>
-      <tbody>
-        {pagos.map((p, i) => (
-          <Tr key={`${p.fecha}-${i}`} compacta>
-            <Td><Num>{ddmm(p.fecha)}</Num></Td>
-            <Td num>{plata(p.importe)}</Td>
-            <Td><span className="block max-w-[420px] truncate">{p.descripcion ?? '—'}</span></Td>
-            <Td><span className="text-[12px] text-faint">{p.fuente}</span></Td>
-          </Tr>
-        ))}
-      </tbody>
-    </Tabla>
+    <ul data-testid="impuestos-sin-imputar" className="border-t border-line">
+      {pagos.map((p, i) => (
+        <li key={`${p.fecha}-${i}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-b border-line-hairline py-3 text-[13px] md:grid-cols-[88px_140px_minmax(0,1fr)_200px] md:items-baseline md:py-2.5">
+          <span className="order-3 font-mono tabular-nums text-muted md:order-none">{ddmm(p.fecha)}</span>
+          <span className="order-2 text-right font-mono tabular-nums text-ink md:order-none">{plata(p.importe)}</span>
+          <span className="order-1 min-w-0 break-words text-ink md:order-none">{p.descripcion ?? 'sin descripción'}</span>
+          <span className="order-4 text-right text-[12px] text-faint md:order-none md:text-left">
+            {p.tipo ? `${COMO[p.tipo] ?? p.tipo} · ` : ''}{p.fuente === 'banco' ? 'extracto del banco' : p.fuente === 'compras' ? 'cargado en Compras' : p.fuente}
+          </span>
+        </li>
+      ))}
+    </ul>
   )
 }
