@@ -7,8 +7,8 @@
 // Dueño: «es espantosa, inentendible y así no tiene uso alguno». Era una sola columna de 4.125 px con
 // cinco tablas, dos cifras que se leían como sumables y el vocabulario del sincronizador. Ahora:
 // arriba la decisión (cuánto, cuándo, qué venció), la agenda por urgencia y una fila por impuesto;
-// cada impuesto en su solapa (`?ver=`) y todo lo que había en «Todo el historial». Nada se quitó: el
-// inventario función → lugar nuevo está en el mensaje del commit.
+// cada impuesto en su solapa (`?ver=`) y todo lo que había en «Todo el historial». Nada se quitó:
+// cada dato, estado y testid de la versión anterior quedó reubicado, no borrado.
 //
 // ═══ QUIÉN LA VE ═══
 //
