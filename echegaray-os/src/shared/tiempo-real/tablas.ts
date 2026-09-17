@@ -26,4 +26,19 @@ export const TABLAS_CON_AVISO = [
   'subcontrato_alcance', 'subcontrato_aporte', 'subcontrato_documento', 'tarea_tipo', 'usuario_obra',
 ] as const
 
-export type TablaConAviso = (typeof TABLAS_CON_AVISO)[number]
+/**
+ * LAS QUE AVISA SU SINCRONIZADOR, NO UN TRIGGER (17/09/2026).
+ *
+ * `compra_sheet` se borra y se reinserta entera en cada corrida: un trigger avisaría siempre. Avisa
+ * `sync-compras.mjs`, comparando la tabla antes y después dentro de su transacción y mandando el mismo
+ * `{tabla, op}` al mismo tópico sólo si algo cambió (`orquestador/lib/espejo-aviso.mjs`). La llave es el
+ * script que manda el aviso: `planDeRefresco.test.ts` comprueba que lo haga, y que la tabla NO tenga
+ * trigger — con los dos, avisaría en cada corrida.
+ */
+export const TABLAS_AVISADAS_POR_SINCRONIZADOR = {
+  compra_sheet: 'orquestador/scripts/sync-compras.mjs',
+} as const
+
+export type TablaConAviso =
+  | (typeof TABLAS_CON_AVISO)[number]
+  | keyof typeof TABLAS_AVISADAS_POR_SINCRONIZADOR

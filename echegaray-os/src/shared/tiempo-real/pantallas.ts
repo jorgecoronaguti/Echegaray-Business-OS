@@ -55,10 +55,12 @@ export const TABLAS_DE = {
   legajo: unir(PERSONAS, HH_Y_ASISTENCIA, ['liquidacion_linea', 'liquidacion_quincena']),
   cuadrillas: unir(['cuadrilla', 'cuadrilla_integrante', 'personas'], HH_Y_ASISTENCIA),
   asistencia: unir(HH_Y_ASISTENCIA, ['personas']),
-  compras: unir(['compra_adjunto', 'comprobante_entrada', 'comprobantes_arca'], PROVEEDOR),
+  // `compra_sheet` la avisa sync-compras sólo cuando el Sheet cambió de verdad (17/09/2026).
+  compras: unir(['compra_sheet', 'compra_adjunto', 'comprobante_entrada', 'comprobantes_arca'], PROVEEDOR),
   /** Impuestos: lo que escribe el sincronizador (`impuestos-a-postgres.mjs`). */
   impuestos: unir(['impuesto_obligacion', 'impuesto_pago', 'impuesto_sincronizacion']),
-  proveedores: unir(PROVEEDOR, ['subcontrato_documento', 'comprobantes_arca']),
+  /** «A quién le debo» sale de `compra_sheet`: sin ella, un pago marcado en el Sheet no llegaba en vivo. */
+  proveedores: unir(PROVEEDOR, ['subcontrato_documento', 'comprobantes_arca', 'compra_sheet']),
   obras: unir(OBRA, ['clientes', 'certificados', 'subcontrato']),
   gantt: ['obra_canonica', 'obra_actividad', 'obra_ejecucion', 'obra_restriccion'],
   fichaObra: unir(OBRA, [
