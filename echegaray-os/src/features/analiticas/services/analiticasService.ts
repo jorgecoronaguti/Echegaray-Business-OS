@@ -52,13 +52,22 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     supabase.from('obra_panel').select('obra_id, nombre, cliente_id, cliente_slug, cliente_nombre, estado, n_comprobantes, avance_pct'),
     getEconomiaDeObras(supabase),
     supabase.rpc('analiticas_costos', { p_desde: rango.desde, p_hasta: rango.hasta, p_obras: null }),
-    leerPresupuestos(),
+    // SÓLO EL APROBADO: 'reemplazado' y 'cotizado' no son presupuesto vigente (migración 20260917T1700).
+    supabase.from('presupuestos')
+      .select('id, obra_canonica_id, estado, costo_directo_presupuestado, costo_pendiente_motivo, fuente_legacy')
+      .eq('estado', 'aprobado').not('obra_canonica_id', 'is', null),
     conRitmo ? supabase.rpc('analiticas_consumo_mensual', { p_obras: null }) : null,
   ])
   const raiz = (costos.data ?? null) as Record<string, unknown> | null
   const porObra = armarCostosPorObra(Array.isArray(raiz?.obras) ? raiz.obras : null)
   const sinObraCruda = armarGastosSinObra(Array.isArray(raiz?.sin_obra) ? raiz.sin_obra : null)
-  const presupuestoDe = presupuestoPorObra(presupuestos.filas)
+  const aprobados = presupuestos.error ? null : (presupuestos.data ?? [])
+  const partidas = aprobados?.length
+    ? await supabase.from('partidas_presupuesto').select('presupuesto_id, codigo, descripcion, monto')
+      .in('presupuesto_id', aprobados.map((x) => String(x.id)))
+    : null
+  const lecturaPresupuestos = leerPresupuestos(aprobados, partidas && !partidas.error ? (partidas.data ?? []) : null)
+  const presupuestoDe = presupuestoPorObra(lecturaPresupuestos)
   const mensual = consumo && !consumo.error ? leerConsumoMensual(consumo.data) : null
   const cartera = ((panel.data ?? []) as ObraPanel[])
     .map((p) => armarObra({ ...p, n_comprobantes: numero(p.n_comprobantes), avance_pct: numero(p.avance_pct) },
@@ -110,7 +119,7 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     quincenas: quincenas?.data ?? null,
     personas: personas?.data ?? null,
     documentos: documentos ?? null,
-    motivoPresupuesto: presupuestos.motivo,
+    motivoPresupuesto: lecturaPresupuestos.motivo,
     ritmos: mensual ? ritmoPorObra(mensual, hoy) : null,
     legible: raiz != null,
   }

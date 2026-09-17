@@ -6,7 +6,7 @@
 // `$/hora` sólo con mano de obra imputada Y horas. El contrato viaja como referencia, nunca como
 // presupuesto (ver `obras.ts`).
 import { rotuloEstimada, type ObraAnalitica } from './obras.ts'
-import type { Rubro } from './presupuesto.ts'
+import { SIN_PRESUPUESTO, SIN_PRESUPUESTO_RUBRO, type Rubro } from './presupuesto.ts'
 import type { Ritmo } from './consumo.ts'
 
 const sumaNula = (xs: (number | null)[]): number | null =>
@@ -18,11 +18,11 @@ export interface FilaCliente {
   nombre: string
   obras: ObraAnalitica[]
   gastado: number | null
-  /** Σ del presupuesto de sus obras; `null` = ninguna tiene presupuesto. */
+  /** Σ del presupuesto comparable de sus obras; `null` = ninguna tiene presupuesto. */
   presupuestado: number | null
   /** Σ del precio de venta: referencia. */
   contratado: number | null
-  /** presupuestado − gastado de las obras que tienen LAS DOS patas. */
+  /** presupuestado − consumido, rubro contra rubro, de las obras que tienen LAS DOS patas. */
   queda: number | null
   nConPresupuesto: number
   nConPrecio: number
@@ -38,7 +38,7 @@ export function porCliente(obras: ObraAnalitica[], sinObra: ReadonlyMap<string, 
   const m = new Map<string, ObraAnalitica[]>()
   for (const o of obras) m.set(o.clienteId, [...(m.get(o.clienteId) ?? []), o])
   const filas = [...m.entries()].map(([clienteId, lista]): FilaCliente => {
-    const conDos = lista.filter((o) => o.presupuesto != null && o.gasto.total != null)
+    const conDos = lista.filter((o) => o.presupuesto != null && o.consumoComparable != null)
     const so = sinObra.get(clienteId) ?? null
     const gastado = sumaNula([...lista.map((o) => o.gasto.total), so])
     const suma = (k: 'manoObra' | 'subcontratos' | 'materiales') => lista.reduce((x, o) => x + (o.gasto[k] ?? 0), 0)
@@ -46,7 +46,7 @@ export function porCliente(obras: ObraAnalitica[], sinObra: ReadonlyMap<string, 
       clienteId, slug: lista[0].clienteSlug, nombre: lista[0].clienteNombre, obras: lista, gastado,
       presupuestado: sumaNula(lista.map((o) => o.presupuesto)),
       contratado: sumaNula(lista.map((o) => o.precio)),
-      queda: conDos.length ? conDos.reduce((x, o) => x + (o.presupuesto ?? 0) - (o.gasto.total ?? 0), 0) : null,
+      queda: conDos.length ? conDos.reduce((x, o) => x + (o.presupuesto ?? 0) - (o.consumoComparable ?? 0), 0) : null,
       nConPresupuesto: lista.filter((o) => o.presupuesto != null).length,
       nConPrecio: lista.filter((o) => o.precio != null).length,
       horas: sumaNula(lista.map((o) => o.gasto.horas)),
@@ -63,6 +63,9 @@ export function porCliente(obras: ObraAnalitica[], sinObra: ReadonlyMap<string, 
 }
 
 export interface CifrasResumen {
+  /** Σ del costo cotizado total de las cotizaciones aprobadas. */
+  costoCotizado: number | null
+  /** Σ de lo comparable (MO+CS y MA): lo que se mide contra el gasto. */
   presupuestado: number | null
   contratadoConPapel: number | null
   gastadoEnObras: number | null
@@ -77,6 +80,7 @@ export interface CifrasResumen {
 export function cifrasResumen(obras: ObraAnalitica[], sinObra: ReadonlyMap<string, number | null>): CifrasResumen {
   const sinPres = obras.filter((o) => o.presupuesto == null)
   return {
+    costoCotizado: sumaNula(obras.map((o) => o.costoCotizado)),
     presupuestado: sumaNula(obras.map((o) => o.presupuesto)),
     contratadoConPapel: sumaNula(obras.filter((o) => o.contrato.conPapel).map((o) => o.contrato.total)),
     gastadoEnObras: sumaNula(obras.map((o) => o.gasto.total)),
@@ -133,12 +137,14 @@ export interface Celda {
   gastado: number | null
   /** Por qué no hay gastado: «otros» no tiene fuente de consumo. */
   gastadoAusente: 'sin registrar' | null
+  /** `true` = el presupuesto de este rubro es INFERENCIA. */
+  estimado: boolean
   cotizado: number | null
   /** La palabra de lo cotizado cuando no hay número. */
-  cotizadoAusente: 'sin presupuesto' | 'sin previsión' | null
+  cotizadoAusente: string | null
   /** gastado ÷ cotizado; `null` sin las dos patas. */
   pct: number | null
-  lectura: { tipo: 'queda' | 'excedido' | 'sinMovimiento' | 'sinPresupuesto'; monto: number | null } | null
+  lectura: { tipo: 'queda' | 'excedido' | 'sinMovimiento' | 'sinPresupuesto' | 'sinConsumo'; monto: number | null } | null
 }
 
 /** Una celda armada con sus dos patas: lo que queda, lo excedido o por qué no se puede decir. */
@@ -150,15 +156,19 @@ export function lecturaDe(cotizado: number | null, gastado: number | null): Celd
 
 export function celda(o: ObraAnalitica, item: Item): Celda {
   if (item === 'horas') {
-    return { gastado: o.gasto.horas, gastadoAusente: null, cotizado: null, cotizadoAusente: 'sin previsión', pct: null, lectura: null }
+    return { gastado: o.gasto.horas, gastadoAusente: null, estimado: false, cotizado: null, cotizadoAusente: 'sin previsión', pct: null, lectura: null }
   }
   const g = item === 'otros' ? null : o.gasto[item]
   const cot = o.presupuestoRubros?.[item] ?? null
+  // SIN PRESUPUESTO APROBADO se dice el motivo de la obra; CON presupuesto y sin este rubro, que el
+  // rubro no se cotizó aparte (Quattropani: sólo MO+CS; subcontratos van dentro de MA en la plantilla).
+  const desglosado = Object.values(o.presupuestoRubros ?? {}).some((v) => v != null)
+  const ausente = cot != null ? null : desglosado ? SIN_PRESUPUESTO_RUBRO : (o.motivoPresupuesto ?? SIN_PRESUPUESTO)
   return {
-    gastado: g, gastadoAusente: item === 'otros' ? 'sin registrar' : null,
-    cotizado: cot, cotizadoAusente: cot == null ? 'sin presupuesto' : null,
+    gastado: g, gastadoAusente: item === 'otros' ? 'sin registrar' : null, estimado: o.rubrosEstimados.includes(item),
+    cotizado: cot, cotizadoAusente: ausente,
     pct: cot != null && cot > 0 && g != null ? g / cot : null,
-    lectura: lecturaDe(cot, g),
+    lectura: item === 'otros' && cot != null ? { tipo: 'sinConsumo', monto: null } : lecturaDe(cot, g),
   }
 }
 
@@ -168,11 +178,16 @@ export function totalesPorRubro(obras: ObraAnalitica[]): (Celda & { item: Item }
     const celdas = obras.map((o) => celda(o, clave))
     const gastado = sumaNula(celdas.map((x) => x.gastado))
     const cotizado = sumaNula(celdas.map((x) => x.cotizado))
+    // EL TOTAL DEL CLIENTE COMPARA SÓLO LO COMPARABLE: el gastado de un rubro suma únicamente las obras
+    // que lo presupuestaron. Sumar el material de Quattropani (sin presupuesto de materiales) contra el
+    // de otra obra que sí lo tiene daría un excedido que no existe.
+    const conCot = celdas.filter((x) => x.cotizado != null)
+    const gastadoComparable = conCot.length ? sumaNula(conCot.map((x) => x.gastado)) : null
     return {
-      item: clave, gastado, gastadoAusente: clave === 'otros' ? 'sin registrar' : null,
-      cotizado, cotizadoAusente: cotizado == null ? (clave === 'horas' ? 'sin previsión' : 'sin presupuesto') : null,
-      pct: cotizado != null && cotizado > 0 && gastado != null ? gastado / cotizado : null,
-      lectura: clave === 'horas' ? null : lecturaDe(cotizado, gastado),
+      item: clave, gastado, gastadoAusente: clave === 'otros' ? 'sin registrar' : null, estimado: celdas.some((x) => x.estimado),
+      cotizado, cotizadoAusente: cotizado == null ? (clave === 'horas' ? 'sin previsión' : SIN_PRESUPUESTO_RUBRO) : null,
+      pct: cotizado != null && cotizado > 0 && gastadoComparable != null ? gastadoComparable / cotizado : null,
+      lectura: clave === 'horas' ? null : clave === 'otros' && cotizado != null ? { tipo: 'sinConsumo', monto: null } : lecturaDe(cotizado, cotizado != null ? gastadoComparable : gastado),
     }
   })
 }
@@ -225,9 +240,9 @@ export interface CifrasGastoPorObra {
 export function cifrasGastoPorObra(obras: ObraAnalitica[]): CifrasGastoPorObra {
   const gasta = (o: ObraAnalitica) => (o.gasto.total ?? 0) > 0
   return {
-    conAmbas: obras.filter((o) => o.presupuesto != null && gasta(o)).length,
+    conAmbas: obras.filter((o) => o.presupuesto != null && (o.consumoComparable ?? 0) > 0).length,
     gastanSinPresupuesto: obras.filter((o) => o.presupuesto == null && gasta(o)).length,
-    conPresupuestoSinMovimiento: obras.filter((o) => o.presupuesto != null && !gasta(o)).length,
+    conPresupuestoSinMovimiento: obras.filter((o) => o.presupuesto != null && !((o.consumoComparable ?? 0) > 0)).length,
     cerca: obras.filter((o) => o.grupo === 'cerca').length,
     excedidas: obras.filter((o) => o.grupo === 'pasadas').length,
   }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { armarCostosPorObra } from '../../clientes/services/costosDeObra.ts'
 import { armarEconomiaDeObras } from '../../clientes/services/economiaObras.ts'
 import { agruparPorSemaforo, armarObra, costoObjetivoValido, estadoDe, fraseDeObra, grupoDe, pasaEstado, precioDe, type ObraPanel } from './obras.ts'
-import { presupuestoPorObra, type PresupuestoDeObra } from './presupuesto.ts'
+import { presupuestoDe } from './presupuesto.fixture.ts'
 
 // Las filas se construyen con las MISMAS funciones de producción que convierten la respuesta de la base.
 const panel = (id: string, extra: Partial<ObraPanel> = {}): ObraPanel => ({
@@ -12,9 +12,6 @@ const panel = (id: string, extra: Partial<ObraPanel> = {}): ObraPanel => ({
 })
 const eco = (fila: Record<string, unknown>) => armarEconomiaDeObras([{ obra_canonica_id: 'x', ...fila }]).get('x')
 const costo = (fila: Record<string, unknown>) => armarCostosPorObra([{ obra_id: 'x', ...fila }])?.get('x')
-// Un presupuesto armado con la MISMA función que usa el servicio.
-const pres = (filas: Omit<PresupuestoDeObra, 'obraId' | 'fuente'>[]) =>
-  presupuestoPorObra(filas.map((f) => ({ ...f, obraId: 'x', fuente: 'cotizacion.xlsm!H12' }))).get('x') ?? null
 
 test('una obra sin presupuesto va a «Sin presupuesto», nunca a «Dentro» al 0 %', () => {
   const o = armarObra(panel('x'), eco({ origen: null }), costo({ materiales: 5e6 }), null)
@@ -44,7 +41,7 @@ test('una pata en dólares sin valuar se dice «sin valuar», no «sin precio»'
 
 test('con presupuesto por rubro se mide contra su total, aunque el contrato sea mayor', () => {
   const e = eco({ contratado: 1, origen: 'oc-pesos', contrato_total: 100e6, contrato_mano_obra: 100e6, contrato_materiales: 0, contrato_cita: 'OC 1' })
-  const con = armarObra(panel('x'), e, costo({ materiales: 85e6 }), pres([{ rubro: 'materiales', monto: 50e6 }, { rubro: 'manoObra', monto: 30e6 }]))!
+  const con = armarObra(panel('x'), e, costo({ materiales: 85e6 }), presupuestoDe('x', [['MA', 50e6], ['MO', 20e6], ['CS', 10e6]]))!
   assert.equal(con.presupuesto, 80e6)
   assert.equal(con.grupo, 'pasadas')
   assert.equal(fraseDeObra(con), 'se pasó $ 5,00 M')
@@ -58,7 +55,7 @@ test('umbrales del semáforo: >100 % pasada, ≥80 % cerca, <80 % dentro, sin ga
   assert.equal(grupoDe(100, 79.99), 'dentro')
   assert.equal(grupoDe(100, null), 'sinMovimiento')
   assert.equal(grupoDe(100, 0), 'sinMovimiento')
-  const o = armarObra(panel('x'), eco({ contratado: 10e6, origen: 'oc-pesos' }), null, pres([{ rubro: 'materiales', monto: 10e6 }]))!
+  const o = armarObra(panel('x'), eco({ contratado: 10e6, origen: 'oc-pesos' }), null, presupuestoDe('x', [['MA', 10e6]]))!
   assert.equal(fraseDeObra(o), 'sin movimiento todavía')
   assert.equal(o.grupo, 'sinMovimiento')
   assert.equal(o.gasto.total, null, 'sin fila de costo el gasto es null, no 0')
@@ -66,11 +63,11 @@ test('umbrales del semáforo: >100 % pasada, ≥80 % cerca, <80 % dentro, sin ga
 
 test('el gasto suma mano de obra, subcontratos y materiales; las horas no son plata', () => {
   const o = armarObra(panel('x'), eco({ contratado: 10e6, origen: 'oc-pesos' }),
-    costo({ mano_obra: 2e6, subcontratos: 1e6, materiales: 3e6, horas_valorizadas: 400, horas_sin_tarifa: 100 }), pres([{ rubro: 'otros', monto: 10e6 }]))!
+    costo({ mano_obra: 2e6, subcontratos: 1e6, materiales: 3e6, horas_valorizadas: 400, horas_sin_tarifa: 100 }), presupuestoDe('x', [['MA', 10e6]]))!
   assert.equal(o.gasto.total, 6e6)
   assert.equal(o.gasto.horas, 500)
   assert.equal(o.gasto.horasValorizadas, 400)
-  assert.equal(fraseDeObra(o), 'le quedan $ 4,00 M')
+  assert.equal(fraseDeObra(o), 'le quedan $ 7,00 M', 'materiales contra MA: 10 − 3')
 })
 
 test('una obra sin cliente (prueba, galpones sin dueño) no entra a la cartera', () => {
@@ -87,8 +84,8 @@ test('estado de obra: cerrada = terminada; activa sin comprobantes ni avance = s
 
 test('los grupos salen en el orden del semáforo y la más pasada primero', () => {
   const e = eco({ contratado: 10e6, origen: 'oc-pesos' })
-  const a = armarObra(panel('a'), e, costo({ materiales: 11e6 }), pres([{ rubro: 'materiales', monto: 10e6 }]))!
-  const b = armarObra(panel('b'), e, costo({ materiales: 15e6 }), pres([{ rubro: 'materiales', monto: 10e6 }]))!
+  const a = armarObra(panel('a'), e, costo({ materiales: 11e6 }), presupuestoDe('a', [['MA', 10e6]]))!
+  const b = armarObra(panel('b'), e, costo({ materiales: 15e6 }), presupuestoDe('b', [['MA', 10e6]]))!
   const g = agruparPorSemaforo([a, b])
   assert.deepEqual([...g.keys()], ['pasadas', 'cerca', 'dentro', 'sinMovimiento', 'sinPresupuesto'])
   assert.deepEqual(g.get('pasadas')?.map((o) => o.id), ['b', 'a'])

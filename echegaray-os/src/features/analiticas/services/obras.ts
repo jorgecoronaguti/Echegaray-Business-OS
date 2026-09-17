@@ -8,8 +8,10 @@
 //
 // ═══ QUÉ ES «PRESUPUESTO» ACÁ ═══
 //
-// El COSTO previsto por rubro que publica `presupuesto.ts` (una sola fuente: las cotizaciones internas
-// con cita de celda). NUNCA el contrato: el contrato es el precio de venta, y medir el gasto contra él
+// El COSTO previsto por rubro que publica `presupuesto.ts` (una sola fuente: el presupuesto aprobado
+// de `presupuestos`, con cita de celda), comparado RUBRO CONTRA RUBRO: `presupuesto` es la suma de los
+// rubros que tienen consumo con el que compararse (mano de obra y materiales), y `consumoComparable`
+// lo gastado en ESOS rubros. Una obra que sólo cotizó MO+CS no se mide con sus materiales adentro. NUNCA el contrato: el contrato es el precio de venta, y medir el gasto contra él
 // esconde el margen en el «queda» (dueño, 17/09/2026). El contrato —y el precio que OBRAS o el
 // formulario declaran, nunca la suma viva de Cobranzas— se sigue leyendo, como referencia al lado.
 //
@@ -19,7 +21,7 @@ import type { CostoDeObra, GastoSinObra } from '../../clientes/services/costosDe
 import type { EconomiaDeObra } from '../../clientes/services/economiaObras.ts'
 import type { EstadoObra } from './filtros.ts'
 import { millones } from './formato.ts'
-import { SIN_PRESUPUESTO, type PresupuestoArmado, type Rubro } from './presupuesto.ts'
+import { RUBROS_COMPARABLES, SIN_PRESUPUESTO, type PresupuestoArmado, type Rubro } from './presupuesto.ts'
 
 /** La fila de `obra_panel` que el módulo usa. */
 export interface ObraPanel {
@@ -77,12 +79,21 @@ export interface ObraAnalitica {
   /** El precio de venta, SÓLO como referencia. `null` → `ausencia` dice por qué. */
   precio: number | null
   ausencia: AusenciaPrecio | null
-  /** El costo presupuestado total, contra el que se mide. `null` = sin presupuesto cargado. */
+  /** Σ del presupuesto de los rubros comparables: contra esto se mide. `null` = nada que comparar. */
   presupuesto: number | null
-  /** El presupuesto por rubro; `null` = la obra no tiene presupuesto. */
+  /** Lo gastado en los rubros que tienen presupuesto comparable. */
+  consumoComparable: number | null
+  /** El costo cotizado total de la cotización aprobada (todos los rubros). Para mostrar, no para medir. */
+  costoCotizado: number | null
+  /** Por qué no hay presupuesto: el motivo de la base, o `sin presupuesto cargado`. `null` si hay. */
+  motivoPresupuesto: string | null
+  /** El presupuesto por rubro; `null` = la obra no tiene presupuesto aprobado. */
   presupuestoRubros: Record<Rubro, number | null> | null
+  /** Rubros cuyo presupuesto es INFERENCIA; `estimado` = la cabecera lo es. */
+  rubrosEstimados: Rubro[]
+  presupuestoEstimado: boolean
   gasto: Gasto
-  /** gastado ÷ presupuesto. `null` sin presupuesto. */
+  /** consumoComparable ÷ presupuesto. `null` sin las dos patas. */
   avanceGasto: number | null
   grupo: Grupo
 }
@@ -158,7 +169,9 @@ export function armarObra(
   if (!p.cliente_id || !p.cliente_slug) return null
   const { precio, ausencia } = precioDe(e)
   const gasto = gastoDe(c)
-  const presupuesto = armado && armado.total > 0 ? armado.total : null
+  const comparables = RUBROS_COMPARABLES.filter((k) => (armado?.porRubro[k] ?? 0) > 0)
+  const presupuesto = comparables.length ? comparables.reduce((a, k) => a + (armado?.porRubro[k] ?? 0), 0) : null
+  const consumoComparable = comparables.length ? suma(...comparables.map((k) => gasto[k as 'manoObra' | 'materiales'])) : null
   return {
     id: p.obra_id, nombre: p.nombre, clienteId: p.cliente_id, clienteSlug: p.cliente_slug,
     clienteNombre: p.cliente_nombre ?? p.cliente_slug, estado: estadoDe(p),
@@ -170,17 +183,22 @@ export function armarObra(
       materialesDelCliente: e?.contrato_materiales === 0 && e.contrato_cita != null,
       cita: e?.contrato_cita ?? null,
     },
-    precio, ausencia, presupuesto, presupuestoRubros: presupuesto != null && armado ? { ...armado.porRubro } : null, gasto,
-    avanceGasto: presupuesto && gasto.total != null ? gasto.total / presupuesto : null,
-    grupo: grupoDe(presupuesto, gasto.total),
+    precio, ausencia, presupuesto, consumoComparable, gasto,
+    costoCotizado: armado?.costoTotal ?? null,
+    motivoPresupuesto: presupuesto != null ? null : armado?.motivo ?? (armado ? 'presupuesto sin desglose por rubro' : SIN_PRESUPUESTO),
+    presupuestoRubros: armado ? { ...armado.porRubro } : null,
+    rubrosEstimados: armado?.estimados ?? [],
+    presupuestoEstimado: armado?.estimado ?? false,
+    avanceGasto: presupuesto && consumoComparable != null ? consumoComparable / presupuesto : null,
+    grupo: grupoDe(presupuesto, consumoComparable),
   }
 }
 
 /** La frase de la obra: se pasó, le quedan, sin movimiento o qué falta cargar. */
-export function fraseDeObra(o: Pick<ObraAnalitica, 'presupuesto' | 'gasto' | 'grupo'>): string {
-  if (o.presupuesto == null) return SIN_PRESUPUESTO
-  if (o.gasto.total == null || o.gasto.total <= 0) return 'sin movimiento todavía'
-  const d = o.gasto.total - o.presupuesto
+export function fraseDeObra(o: Pick<ObraAnalitica, 'presupuesto' | 'consumoComparable' | 'motivoPresupuesto' | 'grupo'>): string {
+  if (o.presupuesto == null) return o.motivoPresupuesto ?? SIN_PRESUPUESTO
+  if (o.consumoComparable == null || o.consumoComparable <= 0) return 'sin movimiento todavía'
+  const d = o.consumoComparable - o.presupuesto
   return d > 0 ? `se pasó ${millones(d)}` : `le quedan ${millones(-d)}`
 }
 

@@ -3,20 +3,20 @@ import assert from 'node:assert/strict'
 import { armarCostosPorObra } from '../../clientes/services/costosDeObra.ts'
 import { armarEconomiaDeObras } from '../../clientes/services/economiaObras.ts'
 import { armarObra } from './obras.ts'
-import { presupuestoPorObra, type Rubro } from './presupuesto.ts'
+import { presupuestoDe } from './presupuesto.fixture.ts'
 import { porHoraMedido, manoObraDe, celda, cifrasGastoPorObra, cifrasResumen, composicion, costoPorHora, ordenar, porCliente, textoComposicion, totalesPorRubro } from './agregados.ts'
 
-type Pres = Partial<Record<Rubro, number>>
+type Pres = Partial<Record<'MO' | 'CS' | 'MA' | 'SC', number>>
 const obra = (id: string, cliente: string, e: Record<string, unknown>, c: Record<string, unknown> | null, p: Pres | null = null) =>
   armarObra(
     { obra_id: id, nombre: id, cliente_id: cliente, cliente_slug: cliente, cliente_nombre: cliente, estado: 'activa', n_comprobantes: 1, avance_pct: null },
     armarEconomiaDeObras([{ obra_canonica_id: id, ...e }]).get(id),
     c ? armarCostosPorObra([{ obra_id: id, ...c }])?.get(id) : null,
-    p ? presupuestoPorObra(Object.entries(p).map(([rubro, monto]) => ({ obraId: id, rubro: rubro as Rubro, monto: monto ?? 0, fuente: 'cot.xlsm!B2' }))).get(id) ?? null : null,
+    p ? presupuestoDe(id, Object.entries(p).map(([c, m]) => [c, m ?? 0] as [string, number])) : null,
   )!
 
 test('lo sin obra suma al gasto del cliente pero NO a ninguna obra ni al «queda»', () => {
-  const a = obra('a', 'me', {}, { materiales: 4e6 }, { materiales: 10e6 })
+  const a = obra('a', 'me', {}, { materiales: 4e6 }, { MA: 10e6 })
   const [f] = porCliente([a], new Map([['me', 3e6]]))
   assert.equal(f.gastado, 7e6)
   assert.equal(f.queda, 6e6, 'queda = presupuesto − gasto de las obras, sin el cajón sin obra')
@@ -35,7 +35,7 @@ test('«queda» sale del presupuesto, NUNCA del contrato: con contrato y sin pre
 })
 
 test('cifras del resumen: presupuestado sólo con presupuesto; contrato con papel aparte; sin presupuesto se cuenta con su gasto', () => {
-  const conPapel = obra('a', 'me', { contratado: 10e6, origen: 'oc-pesos', contrato_total: 10e6, contrato_mano_obra: 10e6, contrato_fuente: 'oc' }, { materiales: 1e6 }, { materiales: 8e6 })
+  const conPapel = obra('a', 'me', { contratado: 10e6, origen: 'oc-pesos', contrato_total: 10e6, contrato_mano_obra: 10e6, contrato_fuente: 'oc' }, { materiales: 1e6 }, { MA: 8e6 })
   const formulario = obra('b', 'me', { contratado: 5e6, origen: 'formulario' }, null)
   const sinNada = obra('c', 'me', { origen: null }, { materiales: 2e6, horas_valorizadas: 5 })
   const r = cifrasResumen([conPapel, formulario, sinNada], new Map([['me', null]]))
@@ -56,11 +56,11 @@ test('composición: tres partes que suman 1, o null sin gasto', () => {
 })
 
 test('rubros: «otros» no tiene consumo registrado; HH «sin previsión»; sin presupuesto se dice por rubro', () => {
-  const a = obra('a', 'me', {}, { mano_obra: 12e6, materiales: 1e6, horas_valorizadas: 10 }, { manoObra: 10e6 })
+  const a = obra('a', 'me', {}, { mano_obra: 12e6, materiales: 1e6, horas_valorizadas: 10 }, { MO: 10e6 })
   assert.equal(celda(a, 'otros').gastadoAusente, 'sin registrar')
   assert.equal(celda(a, 'otros').gastado, null)
   assert.equal(celda(a, 'horas').cotizadoAusente, 'sin previsión')
-  assert.equal(celda(a, 'materiales').cotizadoAusente, 'sin presupuesto')
+  assert.equal(celda(a, 'materiales').cotizadoAusente, 'sin presupuesto de este rubro')
   assert.deepEqual(celda(a, 'materiales').lectura, { tipo: 'sinPresupuesto', monto: null })
   const mo = celda(a, 'manoObra')
   assert.equal(mo.pct, 1.2)
@@ -68,19 +68,19 @@ test('rubros: «otros» no tiene consumo registrado; HH «sin previsión»; sin 
 })
 
 test('rubros: con presupuesto y sin gasto es «sin movimiento», no «queda todo»', () => {
-  const a = obra('a', 'me', {}, null, { subcontratos: 5e6 })
-  assert.deepEqual(celda(a, 'subcontratos').lectura, { tipo: 'sinMovimiento', monto: null })
+  const a = obra('a', 'me', {}, null, { MA: 5e6 })
+  assert.deepEqual(celda(a, 'materiales').lectura, { tipo: 'sinMovimiento', monto: null })
 })
 
 test('totales del cliente por rubro: Σ de las obras, y el cotizado null si ninguna lo tiene', () => {
-  const a = obra('a', 'me', {}, { materiales: 3e6 }, { materiales: 4e6 })
+  const a = obra('a', 'me', {}, { materiales: 3e6 }, { MA: 4e6 })
   const b = obra('b', 'me', {}, { materiales: 2e6 })
   const t = totalesPorRubro([a, b])
   const mat = t.find((x) => x.item === 'materiales')!
   assert.equal(mat.gastado, 5e6)
   assert.equal(mat.cotizado, 4e6)
-  assert.deepEqual(mat.lectura, { tipo: 'excedido', monto: 1e6 })
-  assert.equal(t.find((x) => x.item === 'subcontratos')!.cotizadoAusente, 'sin presupuesto')
+  assert.deepEqual(mat.lectura, { tipo: 'queda', monto: 1e6 }, 'b no presupuestó materiales: su gasto no entra a la comparación')
+  assert.equal(t.find((x) => x.item === 'subcontratos')!.cotizadoAusente, 'sin presupuesto de este rubro')
 })
 
 test('$/hora: sólo con MO y horas; la empresa es cociente de sumas, no promedio de cocientes', () => {
@@ -95,9 +95,9 @@ test('$/hora: sólo con MO y horas; la empresa es cociente de sumas, no promedio
 })
 
 test('gasto por obra: cifras contra el presupuesto y orden con los huecos al final, nunca como cero', () => {
-  const pasada = obra('a', 'me', {}, { materiales: 20 }, { materiales: 10 })
-  const cerca = obra('d', 'me', {}, { materiales: 9 }, { materiales: 10 })
-  const sinMov = obra('b', 'me', {}, null, { materiales: 10 })
+  const pasada = obra('a', 'me', {}, { materiales: 20 }, { MA: 10 })
+  const cerca = obra('d', 'me', {}, { materiales: 9 }, { MA: 10 })
+  const sinMov = obra('b', 'me', {}, null, { MA: 10 })
   const sinPres = obra('c', 'me', { contratado: 100, origen: 'oc-pesos' }, { materiales: 5 })
   assert.deepEqual(cifrasGastoPorObra([pasada, cerca, sinMov, sinPres]),
     { conAmbas: 2, gastanSinPresupuesto: 1, conPresupuestoSinMovimiento: 1, cerca: 1, excedidas: 1 })
