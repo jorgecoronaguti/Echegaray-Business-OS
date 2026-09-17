@@ -1056,6 +1056,12 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     async getMeta(fileId) {
       return apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=${METADATA_MINIMA.join(',')}&supportsAllDrives=true`)
     },
+    /** LA MARCA DE CAMBIO DE UN ARCHIVO, en la llamada más barata que tiene Drive (17/09/2026).
+     *  `version` sube con CUALQUIER edición; `headRevisionId` no existe en archivos nativos de Google
+     *  (Sheets, Docs), así que no sirve para un Sheet. `modifiedTime` va de respaldo. */
+    async getVersion(fileId) {
+      return apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=version,modifiedTime,headRevisionId&supportsAllDrives=true`)
+    },
     /** Los BYTES crudos de un archivo. Ya se usaban por dentro (Excel, PDF, imágenes) pero no
      *  estaban expuestos, así que reenviar un archivo tal cual —a un mail, al chat— obligaba a
      *  parsearlo y volver a armarlo. Un PDF que hay que entregar se entrega, no se reconstruye.

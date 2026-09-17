@@ -1,0 +1,17 @@
+[Unit]
+# CADA MINUTO DESDE QUE TERMINÓ LA VUELTA ANTERIOR (OnUnitInactiveSec), no cada minuto de reloj: dos
+# vueltas no se enciman nunca, y una vuelta larga (un sync lento) no acumula disparos detrás.
+# AccuracySec al segundo: el default de systemd convertiría este minuto en dos, y el objetivo del
+# dueño es ≤ 1 minuto entre el Sheet y la app.
+Description=Echegaray OS - Sonda del Flujo de Caja (cada minuto)
+
+[Timer]
+OnBootSec=90s
+OnUnitInactiveSec=60s
+AccuracySec=1s
+# NO Persistent: lo perdido mientras la máquina estuvo apagada lo atiende la primera vuelta (la versión
+# de Drive ya será otra).
+Unit=echegaray-sonda-flujo-caja.service
+
+[Install]
+WantedBy=timers.target
