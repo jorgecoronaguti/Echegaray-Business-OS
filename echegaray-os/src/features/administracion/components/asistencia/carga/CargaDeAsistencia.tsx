@@ -23,7 +23,7 @@ import {
 } from '@/features/administracion/services/presenciaDelDia'
 import { guardarPresencia, quitarPresencia } from '@/features/administracion/services/presenciaDelDiaActions'
 import {
-  agruparPorObra, filtrarCarga, resumenDeCarga, type FilaDeCarga as Fila, type GrupoDeCarga, type PermisoDelDia,
+  agruparPorObra, filtrarCarga, queSePuedeElDia, resumenDeCarga, type FilaDeCarga as Fila, type GrupoDeCarga, type PermisoDelDia,
 } from '@/features/administracion/services/cargaDeAsistencia'
 import { FilaDeCarga } from './FilaDeCarga'
 import { ALTO, type EstadoDeGuardado, type ObraElegible } from './ControlesDeFila'
@@ -64,9 +64,8 @@ export function CargaDeAsistencia({ filas, obraFiltro, fecha, hoy, rotuloDia, ob
   const visibles = filtrarCarga(filas, { obra: obraFiltro, q })
   const grupos = agruparPorObra(visibles, nombres)
   const resumen = resumenDeCarga(visibles.map((f) => casillas[f.persona.id] ?? f.casilla))
-  // UNA SOLA RAZÓN DE SÓLO LECTURA POR DÍA: la quincena cerrada gana sobre el permiso porque ni
-  // Administración la puede tocar sin reabrirla.
-  const soloLectura = cierre ?? (permiso.ok ? null : permiso.porque)
+  const sePuede = queSePuedeElDia({ permiso, cierre })
+  const soloLectura = sePuede.marcar ? null : sePuede.motivo
 
   const marcarEstado = (id: string, e: EstadoDeGuardado) => setEstados((prev) => ({ ...prev, [id]: e }))
 
@@ -120,7 +119,7 @@ export function CargaDeAsistencia({ filas, obraFiltro, fecha, hoy, rotuloDia, ob
         />
       </div>
 
-      {soloLectura && <div className="pb-3"><Aviso tono="info" testid="dia-solo-lectura">{soloLectura}</Aviso></div>}
+      {sePuede.motivo && <div className="pb-3"><Aviso tono="info" testid="dia-solo-lectura">{sePuede.motivo}</Aviso></div>}
       {acuse && <div className="pb-3"><Aviso tono={acuse.ok ? 'info' : 'neg'} testid="acuse-carga">{acuse.texto}</Aviso></div>}
 
       {grupos.length === 0 && (
@@ -149,7 +148,7 @@ export function CargaDeAsistencia({ filas, obraFiltro, fecha, hoy, rotuloDia, ob
               <FilaDeCarga
                 key={f.persona.id} fila={f} casilla={casillas[f.persona.id] ?? f.casilla} estado={estados[f.persona.id] ?? null}
                 fecha={fecha} hoy={hoy} rotuloDia={rotuloDia} obras={obras} nombres={nombres}
-                soloLectura={soloLectura} puedeMover={puedeMover} certificado={certificados[f.persona.id] ?? null} onToque={onToque}
+                soloLectura={soloLectura} tardanzaYHoras={sePuede.tardanza} puedeMover={puedeMover} certificado={certificados[f.persona.id] ?? null} onToque={onToque}
               />
             ))}
           </ul>

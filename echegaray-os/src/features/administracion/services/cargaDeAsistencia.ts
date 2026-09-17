@@ -312,6 +312,21 @@ export function envioDeHoras({ personaId, obraId, fecha, antes, texto }: {
 export const hrefCorregirEnHoras = (fecha: string, nombre: string): string =>
   hrefDeAsistencia('/administracion/personas', {}, { quincena: fecha, q: nombre, modo: 'quincena' })
 
+/**
+ * QUÉ SE PUEDE TOCAR ESE DÍA. La quincena cerrada NO es sólo lectura: `guardarPresencia` sigue
+ * guardando la presencia (es un hecho del día) y descarta tardanza y horas, que cambiarían una
+ * liquidación pagada (D1, Q1). Ofrecer esos dos botones sería prometer una escritura que la acción
+ * rechaza; apagar también la presencia sería quitar una capacidad que ya existe.
+ * El permiso del día (decisión 5), en cambio, apaga todo: `motivo` dice por qué.
+ */
+export function queSePuedeElDia({ permiso, cierre }: { permiso: PermisoDelDia; cierre: string | null }): {
+  marcar: boolean; tardanza: boolean; horas: boolean; motivo: string | null
+} {
+  if (!permiso.ok) return { marcar: false, tardanza: false, horas: false, motivo: permiso.porque }
+  if (cierre) return { marcar: true, tardanza: false, horas: false, motivo: `${cierre} La presencia se sigue marcando; horas y tardanza no.` }
+  return { marcar: true, tardanza: true, horas: true, motivo: null }
+}
+
 /** El enlace a esta pantalla desde Plantel y Horas. `hoy` no se escribe: es el día por defecto. */
 export function hrefCargaDeAsistencia({ dia, obra, hoy }: { dia?: string | null; obra?: string | null; hoy?: string }): string {
   const p = new URLSearchParams()

@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { casillaTrasToque, marcaDeLaCasilla } from './presenciaDelDia.ts'
 import {
-  entradaDeMover, envioDeHoras, hrefCorregirEnHoras, muestraTardanza,
+  entradaDeMover, envioDeHoras, hrefCorregirEnHoras, muestraTardanza, queSePuedeElDia,
   agruparPorObra, armarCargaDelDia, filtrarCarga, hrefCargaDeAsistencia, limiteDelJefe,
   MARCAR_JEFES_Y_MENSUALES, NOMBRE_SIN_OBRA, OBRA_SIN_OBRA, obraDelDiaDePersona, puedeCorregirElDia,
   puedeMoverDeObraEl, resumenDeCarga, seListaParaMarcar, tienePresentismo,
@@ -163,4 +163,15 @@ test('la corrección completa se abre en la quincena de ese día, buscando a la 
   assert.equal(u.searchParams.get('modo'), 'quincena')
   assert.equal(u.searchParams.get('quincena'), FECHA)
   assert.equal(u.searchParams.get('q'), 'Juan Pérez')
+})
+
+// ── Q1 · QUINCENA CERRADA ──────────────────────────────────────────────────────────────────────────
+
+test('quincena cerrada: la presencia se sigue marcando, tardanza y horas no; sin permiso no se toca nada', () => {
+  const cierre = 'La quincena 1–15/09 está cerrada.'
+  assert.deepEqual(queSePuedeElDia({ permiso: { ok: true }, cierre }),
+    { marcar: true, tardanza: false, horas: false, motivo: `${cierre} La presencia se sigue marcando; horas y tardanza no.` })
+  assert.deepEqual(queSePuedeElDia({ permiso: { ok: true }, cierre: null }), { marcar: true, tardanza: true, horas: true, motivo: null })
+  assert.equal(queSePuedeElDia({ permiso: { ok: false, porque: 'x' }, cierre: null }).marcar, false)
+  assert.equal(queSePuedeElDia({ permiso: { ok: false, porque: 'x' }, cierre }).motivo, 'x', 'el permiso gana: sin él no hay nada que marcar')
 })

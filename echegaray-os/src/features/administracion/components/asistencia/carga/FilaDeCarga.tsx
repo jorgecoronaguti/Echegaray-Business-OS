@@ -27,7 +27,9 @@ import {
 
 const MOTIVOS = motivosDeDiaNoTrabajado()
 
-export function FilaDeCarga({ fila, casilla, estado, fecha, hoy, rotuloDia, obras, nombres, soloLectura, puedeMover, certificado, onToque }: {
+export function FilaDeCarga({ fila, casilla, estado, fecha, hoy, rotuloDia, obras, nombres, soloLectura, tardanzaYHoras, puedeMover, certificado, onToque }: {
+  /** `false` en una quincena cerrada: la presencia se marca, la tardanza y las horas no (`queSePuedeElDia`). */
+  tardanzaYHoras: boolean
   fila: Fila
   /** El certificado médico que cubre ese día (L2): se muestra, no crea ninguna licencia. */
   certificado: string | null
@@ -104,7 +106,7 @@ export function FilaDeCarga({ fila, casilla, estado, fecha, hoy, rotuloDia, obra
             </div>
             {/* LA TARDANZA, VISIBLE SOBRE «SIN MARCAR» Y «ESTÁ»: tocarla declara presente (17/09/2026).
                 Quien cobra por mes no la ve: no tiene presentismo que perder (decisión 2). */}
-            {muestraTardanza(persona, casilla.estado) && (
+            {tardanzaYHoras && muestraTardanza(persona, casilla.estado) && (
               <div className="flex gap-2" role="group" aria-label={`Tardanza de ${persona.nombre}`}>
                 <BotonMarca testid="llego-tarde" rotulo="Llegó tarde" activo={casilla.llego_tarde === true} tono="warn" onClick={() => toque({ tipo: 'tardanza', marca: 'llego_tarde' })} aria={`${persona.nombre} llegó tarde`} />
                 <BotonMarca testid="salio-antes" rotulo="Salió antes" activo={casilla.salio_antes === true} tono="warn" onClick={() => toque({ tipo: 'tardanza', marca: 'salio_antes' })} aria={`${persona.nombre} salió antes`} />
@@ -127,7 +129,7 @@ export function FilaDeCarga({ fila, casilla, estado, fecha, hoy, rotuloDia, obra
       </div>
 
       {casilla.estado === 'presente' && obraId && (
-        <Horas fila={fila} obraId={obraId} fecha={fecha} obras={obras} nombres={nombres} deshabilitado={soloLectura !== null} />
+        <Horas fila={fila} obraId={obraId} fecha={fecha} obras={obras} nombres={nombres} deshabilitado={soloLectura !== null || !tardanzaYHoras} />
       )}
 
     </li>
