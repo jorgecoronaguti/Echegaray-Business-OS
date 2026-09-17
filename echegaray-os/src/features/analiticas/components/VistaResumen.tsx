@@ -51,11 +51,17 @@ export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, 
             nota: comprobantes != null && comprobantes > 0 ? `${comprobantes} comprobantes sin obra` : undefined },
           { rotulo: 'horas en obra', valor: horasTexto(horas), falta: 'sin horas',
             nota: `${conHoras} ${conHoras === 1 ? 'obra carga' : 'obras cargan'} horas` },
+          // CUÁL ES LA OBRA (dueño, 17/09/2026): con una sola, no decir el nombre obliga a ir a buscarlo.
           { rotulo: 'obras sin presupuesto', valor: `${sinPres.length} de ${obras.length}`, tono: sinPres.length ? 'warn' : undefined,
-            nota: sinPres.length && consumidoSinPres > 0 ? `${millones(consumidoSinPres)} consumidos` : undefined },
+            nota: sinPres.length
+              ? `${sinPres.length === 1 ? sinPres[0].nombre : `${sinPres.length} obras`}${consumidoSinPres > 0 ? ` · ${millones(consumidoSinPres)} consumidos` : ''}`
+              : undefined },
         ]} />
 
-      <Seccion titulo="Por cliente" leyenda={[...LEYENDA_GASTO, { color: 'bg-dato-cajon', rotulo: 'sin obra asignada' }]}>
+      {/* LAS DOS BARRAS NO SE EXPLICABAN EN NINGUNA PARTE (dueño, 17/09/2026): la leyenda de colores dice
+          de qué está hecha la gruesa, pero nada decía qué es la fina. */}
+      <Seccion titulo="Por cliente" aclaracion="la barra fina de arriba es lo presupuestado; la gruesa de abajo, lo consumido"
+        leyenda={[...LEYENDA_GASTO, { color: 'bg-dato-cajon', rotulo: 'sin obra asignada' }]}>
         <PorCliente clientes={clientes} filtros={filtros} />
       </Seccion>
 
