@@ -67,7 +67,7 @@ test('el gasto suma mano de obra, subcontratos y materiales; las horas no son pl
   assert.equal(o.gasto.total, 6e6)
   assert.equal(o.gasto.horas, 500)
   assert.equal(o.gasto.horasValorizadas, 400)
-  assert.equal(fraseDeObra(o), 'le quedan $ 7,00 M', 'materiales contra MA: 10 − 3')
+  assert.equal(fraseDeObra(o), 'le quedan $ 6,00 M', 'MA contra materiales + subcontratos: 10 − 3 − 1')
 })
 
 test('una obra sin cliente (prueba, galpones sin dueño) no entra a la cartera', () => {

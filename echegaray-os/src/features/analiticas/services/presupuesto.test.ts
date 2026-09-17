@@ -76,3 +76,17 @@ test('estimado lo dice la partida: una cabecera con INFERENCIA en los gastos gen
   const sinPartidas = presupuestoDe('s', [], { costo_directo_presupuestado: 5, fuente_legacy: 'INFERENCIA total' })!
   assert.equal(sinPartidas.estimado, true)
 })
+
+test('MA incluye subcontratos: con MA se comparan materiales + subcontratos en una sola fila; sin MA, separados y sin presupuesto', async () => {
+  const { itemsDe } = await import('./agregados.ts')
+  const con = obra('c', { materiales: 6e6, subcontratos: 2e6, mano_obra: 1e6 }, presupuestoDe('c', [['MA', 10e6], ['MO', 5e6]]))
+  assert.equal(con.consumoComparable, 9e6, 'MO 1 + materiales 6 + subcontratos 2')
+  assert.deepEqual(itemsDe(con).map((i) => i.rotulo), ['Mano de obra', 'Materiales y subcontratos', 'Otros', 'Horas hombre'])
+  assert.equal(celda(con, 'materiales').gastado, 8e6)
+  assert.deepEqual(celda(con, 'materiales').lectura, { tipo: 'queda', monto: 2e6 })
+  const sin = obra('s', { materiales: 6e6, subcontratos: 2e6, mano_obra: 1e6 }, presupuestoDe('s', [['MO', 5e6]]))
+  assert.equal(sin.consumoComparable, 1e6)
+  assert.deepEqual(itemsDe(sin).map((i) => i.clave), ['manoObra', 'materiales', 'subcontratos', 'otros', 'horas'])
+  assert.equal(celda(sin, 'subcontratos').cotizadoAusente, 'sin presupuesto de este rubro')
+  assert.equal(celda(sin, 'materiales').gastado, 6e6)
+})

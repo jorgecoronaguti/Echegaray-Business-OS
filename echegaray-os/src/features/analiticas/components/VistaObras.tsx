@@ -7,7 +7,7 @@
 import Link from 'next/link'
 import { aUrl, type Filtros } from '../services/filtros'
 import { horasTexto, millones, pctConSigno, pctEntero, porHora } from '../services/formato'
-import { celda, costoPorHora, ITEMS, porHoraMedido, UMBRAL_HORA_CARA, type Celda, type Item } from '../services/agregados'
+import { celda, costoPorHora, itemsDe, porHoraMedido, UMBRAL_HORA_CARA, type Celda, type Item } from '../services/agregados'
 import { mesesParaAgotar, type MesDeConsumo, type Ritmo } from '../services/consumo'
 import { rotuloEstimada, type ObraAnalitica } from '../services/obras'
 import { SIN_PRESUPUESTO_RUBRO } from '../services/presupuesto'
@@ -36,9 +36,9 @@ export function VistaObras({ obras, obra, filtros, consumo, ritmo }: {
           { rotulo: 'ritmo por mes', valor: ritmo?.porMes != null ? millones(ritmo.porMes) : null, falta: consumo == null ? 'sin publicar' : 'sin consumo reciente',
             nota: ritmo?.porMes != null ? `últimos 3 meses cerrados${ritmo.conEstimada ? ' · con mano de obra estimada' : ''}${meses != null ? ` · alcanza ${meses === 0 ? '0 meses' : `${meses.toLocaleString('es-AR', { maximumFractionDigits: 1 })} meses`}` : ''}` : undefined },
         ]} />
-      <Seccion titulo="Rubro contra rubro" aclaracion="mano de obra contra mano de obra y cargas cotizadas; materiales contra materiales. Lo que no se cotizó aparte no se compara.">
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5">
-          {ITEMS.map((i) => <Rubro key={i.clave} item={i.clave} c={celda(obra, i.clave)} />)}
+      <Seccion titulo="Rubro contra rubro" aclaracion="mano de obra contra mano de obra y cargas cotizadas; materiales y subcontratos contra los materiales cotizados, que en la plantilla los incluyen. Lo que no se cotizó aparte no se compara.">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5" data-testid="rubros">
+          {itemsDe(obra).map((i) => <Rubro key={i.clave} item={i.clave} rotulo={i.rotulo} c={celda(obra, i.clave)} />)}
         </div>
       </Seccion>
       <Seccion titulo="Consumo por mes" filo
@@ -68,7 +68,7 @@ function Selector({ obras, elegida, filtros }: { obras: ObraAnalitica[]; elegida
 }
 
 /** Un rubro: la barra fina de lo cotizado, la gruesa de lo consumido, y qué queda. Medidas del diseño v6. */
-function Rubro({ item, c }: { item: Item; c: Celda }) {
+function Rubro({ item, rotulo, c }: { item: Item; rotulo: string; c: Celda }) {
   const fmt = item === 'horas' ? horasTexto : millones
   const escala = Math.max(c.cotizado ?? 0, c.gastado ?? 0)
   const excedido = c.lectura?.tipo === 'excedido'
@@ -77,7 +77,7 @@ function Rubro({ item, c }: { item: Item; c: Celda }) {
   const gColor = c.gastado == null ? 'text-faint' : excedido ? 'text-neg' : sinPres ? 'text-warn' : 'text-ink'
   return (
     <div className="flex min-w-0 flex-col gap-2.5" data-testid={`rubro-${item}`}>
-      <div className="text-[13px] font-semibold text-ink">{ITEMS.find((i) => i.clave === item)?.rotulo}</div>
+      <div className="text-[13px] font-semibold text-ink">{rotulo}</div>
       <Par rotulo="cotizado" ancho={ancho(c.cotizado, escala)} barra="bg-dato-referencia"
         valor={c.cotizado != null ? `${fmt(c.cotizado)}${c.estimado ? ' est.' : ''}` : '—'} color={c.cotizado != null ? 'text-ink' : 'text-faint'} titulo={c.cotizadoAusente ?? undefined} />
       <Par rotulo="consumido" ancho={ancho(c.gastado, escala)} barra={tono}

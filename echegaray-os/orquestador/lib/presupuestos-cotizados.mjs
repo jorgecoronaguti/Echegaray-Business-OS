@@ -41,10 +41,16 @@ export const PRESUPUESTOS = [
   {
     obra: 'quattropani', version: 1, estado: 'aprobado', fecha: '2026-07-27',
     venta: 92452500.00, moneda: { original: 'USD', monto: 63000, tipoCambio: 1467.5, origen: 'tipo de cambio del archivo: Cotizacion Final.xlsm OFERTA!G42 = 1.467,5 (no es el vigente)' },
-    costoDirecto: 39592912.25, costoIndirecto: 9898228.06, margen: 10888050.87, hh: null, inferencia: true,
+    // COSTO DIRECTO = MO + CS de la cotización + el FONDO DE MATERIALES del contrato (decisión 17/09/2026):
+    // la oferta es sólo MO; los materiales se presupuestaron en el contrato como fondo administrado.
+    // GG y beneficio siguen calculados sobre MO+CS, como en el archivo: no se recalculan sobre el fondo.
+    costoDirecto: 83703081.56, costoIndirecto: 9898228.06, margen: 10888050.87, hh: null, inferencia: true,
     fuente: 'Cotizacion Final.xlsm drive 19rYSz2s1oFs0DIHyEFh9qV_bY0ZwTNKC · venta OFERTA!F43 = USD 63.000 (= Cotizacion APROBADA.pdf drive 1FYfhFF3sHTSA2TcFq5GNFOhnmIY2Tw-F, 27/07/2026) · oferta sólo MO: costo = MO Presupuesto!O10:O43 + CS Presupuesto!Q10:Q43 · INFERENCIA: GG = 25% (Presupuesto!E56) × (MO+CS); beneficio = 22% (Presupuesto!E60) × (costo+GG); venta ARS = USD × OFERTA!G42',
     notas: 'Materiales por fondo administrado ($ 44.110.169,31, contrato) fuera de la oferta de MO. HH no confiables en el archivo: no se cargan. El .xlsm fue modificado el 05/09/2026, después de la aprobación; los USD de OFERTA!F14:F41 están tipeados.',
-    partidas: [p('MO', 'Mano de obra · Presupuesto!O (Σ ítems)', 20115544.67), p('CS', 'Cargas sociales · Presupuesto!Q (Σ ítems)', 19477367.58)],
+    partidas: [
+      p('MO', 'Mano de obra · Presupuesto!O (Σ ítems)', 20115544.67), p('CS', 'Cargas sociales · Presupuesto!Q (Σ ítems)', 19477367.58),
+      p('MA', 'obra_contrato: fondo de materiales del contrato · CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx drive 1glixkTWr5HDDKdzsniqoBJLZias5DLn9 cláusula 4', 44110169.31),
+    ],
   },
   {
     obra: 'le-comedor', version: 1, estado: 'aprobado', fecha: '2025-12-15',

@@ -92,6 +92,15 @@ export const ITEMS: { clave: Item; rotulo: string }[] = [
   { clave: 'horas', rotulo: 'Horas hombre' },
 ]
 
+/** ¿La obra cotizó MA? Entonces materiales y subcontratos son UNA fila contra MA. */
+export const conMA = (o: ObraAnalitica): boolean => (o.presupuestoRubros?.materiales ?? null) != null
+
+/** Los rubros de UNA obra: con MA, «Materiales y subcontratos» en una sola fila; sin MA, separados. */
+export function itemsDe(o: ObraAnalitica): { clave: Item; rotulo: string }[] {
+  if (!conMA(o)) return ITEMS
+  return ITEMS.filter((i) => i.clave !== 'subcontratos').map((i) => (i.clave === 'materiales' ? { ...i, rotulo: 'Materiales y subcontratos' } : i))
+}
+
 export interface Celda {
   /** Lo gastado (pesos, u horas en HH). `null` = no hay registro. */
   gastado: number | null
@@ -124,7 +133,9 @@ export function celda(o: ObraAnalitica, item: Item): Celda {
       pct: hh != null && o.gasto.horas != null ? o.gasto.horas / hh : null, lectura: hh == null ? null : lecturaDe(hh, o.gasto.horas), consumoEstimado: null,
     }
   }
-  const g = item === 'otros' ? null : o.gasto[item]
+  const g = item === 'otros' ? null
+    : item === 'materiales' && conMA(o) ? sumaNula([o.gasto.materiales, o.gasto.subcontratos])
+      : o.gasto[item]
   const cot = o.presupuestoRubros?.[item] ?? null
   // SIN PRESUPUESTO APROBADO se dice el motivo de la obra; CON presupuesto y sin este rubro, que el
   // rubro no se cotizó aparte (Quattropani: sólo MO+CS; subcontratos van dentro de MA en la plantilla).

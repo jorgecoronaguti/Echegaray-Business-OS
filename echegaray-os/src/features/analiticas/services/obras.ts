@@ -175,7 +175,11 @@ export function armarObra(
   const gasto = gastoDe(c)
   const comparables = RUBROS_COMPARABLES.filter((k) => (armado?.porRubro[k] ?? 0) > 0)
   const presupuesto = comparables.length ? comparables.reduce((a, k) => a + (armado?.porRubro[k] ?? 0), 0) : null
-  const consumoComparable = comparables.length ? suma(...comparables.map((k) => gasto[k as 'manoObra' | 'materiales'])) : null
+  // MA DE LA PLANTILLA = materiales + equipos + fletes + SUBCONTRATOS (no los separa): con MA, lo que se
+  // compara contra él es materiales Y subcontratos consumidos (decisión 17/09/2026).
+  const consumoComparable = comparables.length
+    ? suma(...comparables.flatMap((k) => (k === 'materiales' ? [gasto.materiales, gasto.subcontratos] : [gasto.manoObra])))
+    : null
   return {
     id: p.obra_id, nombre: p.nombre, clienteId: p.cliente_id, clienteSlug: p.cliente_slug,
     clienteNombre: p.cliente_nombre ?? p.cliente_slug, estado: estadoDe(p),

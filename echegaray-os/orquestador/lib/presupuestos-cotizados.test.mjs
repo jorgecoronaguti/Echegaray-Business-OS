@@ -21,7 +21,7 @@ test('las 10 obras activas tienen exactamente un presupuesto aprobado', () => {
 
 test('costo directo por obra: los números de la tabla verificada contra las .xlsm', () => {
   const esperado = {
-    quattropani: 39592912.25, 'le-comedor': 81963999.15, 'messina-bsa': null,
+    quattropani: 83703081.56, 'le-comedor': 81963999.15, 'messina-bsa': null,
     'messina-playon-azufre': 49916328.35, 'messina-playon-dilucion-acido': 8926448.57,
     'messina-pisos-120-rampa': 4649300.16, 'messina-adicional-tercer-muro': 5183571.40,
     'instalacion-electrica': 24573563.58, 'pisos-industriales': 32406752.00, 'entrepiso-y-escalera': 3829741.63,
@@ -137,4 +137,14 @@ test('documentos: una fila por (obra, drive id), sólo obras activas, y cada .xl
 test('corrección de obra_contrato: los ids difieren sólo en el último carácter', () => {
   assert.equal(CORRECCION_CONTRATO.idRoto.slice(0, -1), CORRECCION_CONTRATO.idReal.slice(0, -1))
   assert.notEqual(CORRECCION_CONTRATO.idRoto, CORRECCION_CONTRATO.idReal)
+})
+
+test('quattropani: el fondo de materiales del contrato es su partida MA, con la cita del contrato; entrepiso no tiene (materiales del cliente)', () => {
+  const q = PRESUPUESTOS.find((x) => x.obra === 'quattropani' && x.estado === 'aprobado')
+  const ma = q.partidas.find((x) => x.codigo === 'MA')
+  assert.equal(ma.monto, 44110169.31)
+  assert.match(ma.descripcion, /^obra_contrato: fondo de materiales del contrato/)
+  assert.equal(problemasDelConjunto().length, 0)
+  const e = PRESUPUESTOS.find((x) => x.obra === 'entrepiso-y-escalera' && x.estado === 'aprobado')
+  assert.equal(e.partidas.some((x) => x.codigo === 'MA'), false)
 })
