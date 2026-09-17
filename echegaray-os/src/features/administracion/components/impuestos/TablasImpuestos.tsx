@@ -1,23 +1,46 @@
 // LOS BLOQUES DE LA PANTALLA DE IMPUESTOS. Server Components puros: ningún handler, ningún estado.
 // Qué fila entra en cada bloque lo decide `services/impuestos.ts`; acá sólo se dibuja.
 //
+// SIN RUIDO (limpieza 17/09/2026, mismo criterio que Liquidación): el estado es TEXTO, no pastilla —60
+// cápsulas iguales no dejaban ver el único «vencido»—; sólo se colorea lo que pide acción. Los
+// encabezados van en caja normal. Mismas columnas, mismos testids, mismo `data-estado`.
+//
 // NULL SE ESCRIBE COMO AUSENCIA. Un IVA cuyo a pagar no se conoce dice «sin dato», no «$0»: cero es
 // «no hay que pagar» y es una afirmación que el OS no puede hacer.
 import type { ReactNode } from 'react'
-import { Estado, Nulo, Num, Tabla, Td, Th, THead, Tr, Vacio, type TonoEstado } from '@/shared/components/ds'
+import { Nulo, Num, Tabla, Td, Th as ThDs, THead, Tr, Vacio, type TonoEstado } from '@/shared/components/ds'
 import { plata } from '@/shared/utils/format'
 import {
   ddmm, NOMBRE_FUENTE, NOMBRE_IMPUESTO, rotuloPeriodo,
   type PagoSinImputar, type PosicionImpuesto, type Vencimiento,
 } from '../../services/impuestos'
+import { cuotaDePlan } from '../../services/impuestosCargas'
 
 const importe = (n: number | null, falta = 'sin dato') => (n === null ? <Nulo>{falta}</Nulo> : <Num>{plata(n)}</Num>)
 
-/** El rótulo de una obligación: impuesto, período y —si no es la DDJJ— el concepto. */
-export const nombreObligacion = (f: Pick<PosicionImpuesto, 'impuesto' | 'periodo' | 'concepto'>) =>
-  `${NOMBRE_IMPUESTO[f.impuesto]} ${rotuloPeriodo(f.periodo)}${f.concepto === 'ddjj' ? '' : ` · ${f.concepto}`}`
+/**
+ * El rótulo de una obligación: impuesto, período y —si no es la DDJJ— el concepto. La cuota de un plan
+ * se nombra por el plan («Cuota 3/3 · Plan F931 W303094»): «F931 jun-26 · Plan F931 …» repetía el F931.
+ */
+export const nombreObligacion = (f: Pick<PosicionImpuesto, 'impuesto' | 'periodo' | 'concepto'>) => {
+  const c = cuotaDePlan(f.concepto)
+  if (c) return `Cuota ${c.n}/${c.de} · ${c.plan}`
+  return `${NOMBRE_IMPUESTO[f.impuesto]} ${rotuloPeriodo(f.periodo)}${f.concepto === 'ddjj' ? '' : ` · ${f.concepto}`}`
+}
 
-function estadoDe(f: PosicionImpuesto, dias?: number): { tono: TonoEstado; texto: string } {
+/** El encabezado en caja normal: 10px versalita espaciada en tres tablas seguidas era la mitad del ruido. */
+export const Th = ({ children, num }: { children?: ReactNode; num?: boolean }) => (
+  <ThDs num={num}><span className="text-[11px] normal-case tracking-normal">{children}</span></ThDs>
+)
+
+const TONO_TEXTO: Record<TonoEstado, string> = { neg: 'text-neg', warn: 'text-warn', pos: 'text-faint', curso: 'text-muted', pendiente: 'text-muted', nulo: 'text-faint' }
+
+/** El estado como palabra. Conserva `data-testid="estado"` y `data-estado`: los tests leen eso, no el color. */
+export function EstadoTexto({ tono, clave, children }: { tono: TonoEstado; clave?: string; children: ReactNode }) {
+  return <span data-testid="estado" data-estado={clave} className={`whitespace-nowrap text-[12px] ${TONO_TEXTO[tono]}`}>{children}</span>
+}
+
+export function estadoDe(f: PosicionImpuesto, dias?: number): { tono: TonoEstado; texto: string } {
   if (dias !== undefined && dias < 0) return { tono: 'neg', texto: 'vencido' }
   if (f.estado === 'pagado') return { tono: 'pos', texto: 'pagado' }
   if (f.estado === 'estimado') return { tono: 'pendiente', texto: f.detalle?.parcial ? 'estimado · parcial' : 'estimado' }
@@ -62,7 +85,7 @@ export function TablaVencimientos({ lista }: { lista: Vencimiento[] }) {
               </Td>
               <Td fuerte>{nombreObligacion(f)}</Td>
               <Td num>{f.pendiente === null ? <Nulo>sin importe</Nulo> : plata(f.pendiente)}</Td>
-              <Td><Estado tono={e.tono} clave={f.estado}>{e.texto}</Estado></Td>
+              <Td><EstadoTexto tono={e.tono} clave={f.estado}>{e.texto}</EstadoTexto></Td>
               <Td>{fuenteDe(f)}</Td>
             </Tr>
           )
@@ -92,7 +115,7 @@ export function TablaPeriodos({ filas }: { filas: PosicionImpuesto[] }) {
               <Td num>{importe(f.a_pagar)}</Td>
               <Td num>{f.pagado ? plata(f.pagado) : <Nulo>—</Nulo>}</Td>
               <Td num>{importe(f.saldo_a_favor, '—')}</Td>
-              <Td><Estado tono={e.tono} clave={f.estado}>{e.texto}</Estado></Td>
+              <Td><EstadoTexto tono={e.tono} clave={f.estado}>{e.texto}</EstadoTexto></Td>
               <Td>{fuenteDe(f)}</Td>
             </Tr>
           )

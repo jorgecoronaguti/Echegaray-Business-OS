@@ -590,3 +590,27 @@ test('la pestaña cumple el CONTRATO DE DISEÑO entero en la grilla que el gener
   const mal = auditarDiseno(filas, { pestana: 'Impuestos y Financieros' })
   assert.deepEqual(mal, [], mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n'))
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// 6 · CARGAS SOCIALES A PAGAR (17/09/2026) — desde Postgres, sin romper la gramática ni el contrato
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+const CARGAS = [
+  { impuesto: 'cargas_sociales', periodo: '2026-09', concepto: 'ddjj', fuente: 'calculo', estado: 'estimado', vencimiento: '2026-10-10', vencimiento_confianza: 'supuesto', determinado: 8166095.05, creditos: null, a_pagar: 8166095.05, saldo_a_favor: null, pagado: 0, pendiente: 8166095.05, datos_al: null, detalle: null },
+  { impuesto: 'cargas_sociales', periodo: '2026-06', concepto: 'Plan F931 W303094 · cuota 3/3', fuente: 'manual', estado: 'estimado', vencimiento: '2026-10-16', vencimiento_confianza: 'supuesto', determinado: 2494875.65, creditos: null, a_pagar: 2494875.65, saldo_a_favor: null, pagado: 0, pendiente: 2494875.65, datos_al: null, detalle: null },
+  { impuesto: 'cargas_sociales', periodo: '2026-08', concepto: 'ddjj', fuente: 'ddjj_contador', estado: 'pagado', vencimiento: '2026-09-10', vencimiento_confianza: 'supuesto', determinado: 8331697.69, creditos: null, a_pagar: 8331697.69, saldo_a_favor: null, pagado: 8331697.69, pendiente: 0, datos_al: null, detalle: null },
+]
+
+test('con el bloque de cargas sociales la pestaña cumple patrón, diseño y contrato, y el bloque va al final', () => {
+  const g = armar({ cargas: CARGAS })
+  assert.deepEqual(auditarPatron(comoSeVe(g)), [])
+  assert.ok(contratoDeRotulos(g.filas, CALENDARIO_IMPUESTOS.rotulos).ok)
+  const sin = armar()
+  assert.deepEqual(g.filas.slice(0, sin.filas.length), sin.filas, 'el bloque no corre ni una fila de lo que ya estaba')
+  const r = rotulos(g)
+  const i = r.indexOf('6 · CARGAS SOCIALES A PAGAR')
+  assert.deepEqual(r.slice(i + 1, i + 4), ['F931 sep-26', 'Cuota 3/3 · Plan F931 W303094', '⇒ Cargas sociales pendientes'])
+  vaciarColumnaDeProsa(g.filas, ANCHO_PESTANA - 1)
+  const mal = auditarDiseno(g.filas.map((f) => (f || []).map((c) => (c === VACIO ? '' : c))), { pestana: 'Impuestos y Financieros' })
+  assert.deepEqual(mal, [], mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n'))
+})
