@@ -9,7 +9,7 @@
 import Link from 'next/link'
 import { plata } from '@/shared/utils/format'
 import { ddmm, rotuloPeriodo, type frescura, type PosicionImpuesto } from '../../services/impuestos'
-import { FUENTE_LLANA, NOMBRE_LLANO, nombreLlano, TITULO_VISTA, type decision, type porImpuesto, type Vista } from '../../services/impuestosVista'
+import { FUENTE_LLANA, NOMBRE_LLANO, nombreLlano, periodoCorto, TITULO_VISTA, type decision, type porImpuesto, type Vista } from '../../services/impuestosVista'
 import { Vence } from './piezas'
 import { SolapaVisible } from './SolapaVisible'
 
@@ -112,9 +112,11 @@ function Total({ d }: { d: DatosDecision }) {
  * el total, lo próximo que vence, y lo que hay a favor o sin identificar (lo que puede bajar lo que
  * se paga).
  */
-export function Decision({ d, saldos, sinIdentificar, rutaSinIdentificar }: {
+export function Decision({ d, saldos, otrosAFavor, sinIdentificar, rutaSinIdentificar }: {
   d: DatosDecision
   saldos: PosicionImpuesto[]
+  /** Saldos que no son de la declaración mensual (DDJJ anual de Ganancias), con su concepto. */
+  otrosAFavor: PosicionImpuesto[]
   sinIdentificar: { total: number; cantidad: number }
   rutaSinIdentificar: string
 }) {
@@ -140,7 +142,14 @@ export function Decision({ d, saldos, sinIdentificar, rutaSinIdentificar }: {
               <span className="text-[12px] text-faint">{rotuloPeriodo(s.periodo)} · {FUENTE_LLANA[s.fuente]}</span>
             </li>
           ))}
-          {!saldos.length && <li className="text-muted">Sin saldo a favor declarado.</li>}
+          {otrosAFavor.map((s) => (
+            <li key={`${s.impuesto}-${s.periodo}-${s.concepto}`} data-metrica={`${NOMBRE_LLANO[s.impuesto]} a favor`} className="flex flex-wrap items-baseline gap-x-2">
+              <span>{NOMBRE_LLANO[s.impuesto]}</span>
+              <span className="font-mono tabular-nums">{plata(s.saldo_a_favor)}</span>
+              <span className="text-[12px] text-faint">{periodoCorto(s)} · {FUENTE_LLANA[s.fuente]}</span>
+            </li>
+          ))}
+          {!saldos.length && !otrosAFavor.length && <li className="text-muted">Sin saldo a favor.</li>}
           {sinIdentificar.cantidad > 0 && (
             <li data-metrica="Pagos sin imputar" className="mt-1">
               <Link prefetch={false} href={rutaSinIdentificar} className="inline-flex min-h-[44px] items-center text-warn underline-offset-2 hover:underline lg:min-h-0">
@@ -190,7 +199,12 @@ export function CifrasDeImpuesto({ r }: { r: FilaResumen }) {
             <span className="font-mono text-[15px] tabular-nums">{plata(s.saldo_a_favor)}</span>
             <span className="text-[12px] text-faint">{rotuloPeriodo(s.periodo)} · {FUENTE_LLANA[s.fuente]}</span>
           </div>
-        )) : <span className="text-muted">Sin saldo a favor declarado.</span>}
+        )) : r.otroAFavor ? (
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <span className="font-mono text-[15px] tabular-nums">{plata(r.otroAFavor.saldo_a_favor)}</span>
+            <span className="text-[12px] text-faint">{periodoCorto(r.otroAFavor)} · {FUENTE_LLANA[r.otroAFavor.fuente]}</span>
+          </div>
+        ) : <span className="text-muted">Sin saldo a favor.</span>}
       </Dato>
     </div>
   )

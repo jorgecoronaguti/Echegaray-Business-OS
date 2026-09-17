@@ -111,6 +111,7 @@ function Resumen({ filas, pagos, hoy, resumen }: { filas: PosicionImpuesto[]; pa
       <Decision
         d={d}
         saldos={saldosAFavor(filas)}
+        otrosAFavor={resumen.flatMap((r) => (r.otroAFavor ? [r.otroAFavor] : []))}
         sinIdentificar={{ total: pagos.reduce((s, p) => s + p.importe, 0), cantidad: pagos.length }}
         rutaSinIdentificar={`#${ANCLA_SIN_IDENTIFICAR}`}
       />

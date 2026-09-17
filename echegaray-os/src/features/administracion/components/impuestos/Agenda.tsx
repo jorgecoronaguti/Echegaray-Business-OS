@@ -11,7 +11,7 @@ import Link from 'next/link'
 import { plata } from '@/shared/utils/format'
 import { rotuloPeriodo, type Vencimiento } from '../../services/impuestos'
 import {
-  agenda, estadoLlano, FUENTE_LLANA, nombreLlano, TITULO_URGENCIA, type porImpuesto,
+  agenda, estadoLlano, FUENTE_LLANA, nombreLlano, periodoCorto, TITULO_URGENCIA, type porImpuesto,
 } from '../../services/impuestosVista'
 import { EstadoTexto, Importe, Origen, Vacio, Vence } from './piezas'
 
@@ -108,7 +108,15 @@ export function PorImpuesto({ filas, ruta }: { filas: FilaResumen[]; ruta: strin
                       <span className="text-[12px] text-faint"> {rotuloPeriodo(s.periodo)} · {FUENTE_LLANA[s.fuente]}</span>
                     </span>
                   ))
-                  : <span className="text-faint md:inline hidden">—</span>}
+                  : r.otroAFavor
+                    ? (
+                      <span>
+                        <span className="md:hidden">A favor </span>
+                        <span className="font-mono tabular-nums text-ink">{plata(r.otroAFavor.saldo_a_favor)}</span>
+                        <span className="text-[12px] text-faint"> {periodoCorto(r.otroAFavor)} · {FUENTE_LLANA[r.otroAFavor.fuente]}</span>
+                      </span>
+                    )
+                    : <span className="hidden text-faint md:inline">—</span>}
               </span>
               <span className="col-span-2 text-[12px] text-faint md:col-span-1">
                 {r.ultimoPeriodo ? <><span className="md:hidden">datos hasta </span>{rotuloPeriodo(r.ultimoPeriodo)}</> : '—'}

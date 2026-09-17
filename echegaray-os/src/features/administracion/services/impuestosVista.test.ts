@@ -56,6 +56,9 @@ test('por impuesto: falta pagar sin ventana, a favor del último cerrado, sólo 
   const iibb = r.find((x) => x.vista === 'iibb')!
   assert.equal(iibb.vencidas, 1)
   assert.equal(r.find((x) => x.vista === 'ganancias')!.faltaPagar, 0, 'lo pagado no falta pagar')
+  assert.equal(iva.otroAFavor, null)
+  const anual = porImpuesto([...PROD, fila({ impuesto: 'ganancias', periodo: '2025-10', concepto: 'ddjj anual', saldo_a_favor: 5726887 })], HOY)
+  assert.equal(anual.find((x) => x.vista === 'ganancias')!.otroAFavor?.saldo_a_favor, 5726887, 'la DDJJ anual no se esconde tras «sin saldo»')
 })
 
 test('el estado se dice como lo diría quien paga, y el color sólo va donde hay que actuar', () => {

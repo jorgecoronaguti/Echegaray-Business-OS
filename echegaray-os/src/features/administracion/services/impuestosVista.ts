@@ -189,6 +189,14 @@ export function porImpuesto(filas: PosicionImpuesto[], hoy: string) {
         vencidas: proximos.filter((f) => f.dias < 0 && IMPUESTOS_DE_VISTA[vista].includes(f.impuesto)).length,
         proximo: proximos.find((f) => f.dias >= 0 && IMPUESTOS_DE_VISTA[vista].includes(f.impuesto)) ?? null,
         aFavor: saldos.filter((s) => IMPUESTOS_DE_VISTA[vista].includes(s.impuesto)),
+        /**
+         * El saldo a favor que `saldosAFavor` no mira porque no es la declaración mensual —la DDJJ
+         * anual de Ganancias—. No redefine nada: es el valor guardado en la fila más nueva con saldo,
+         * y la pantalla lo muestra con su concepto para que no se confunda con el mensual.
+         */
+        otroAFavor: propias
+          .filter((f) => f.concepto !== 'ddjj' && (f.saldo_a_favor ?? 0) > 0 && !f.detalle?.parcial)
+          .sort((a, b) => b.periodo.localeCompare(a.periodo))[0] ?? null,
         ultimoPeriodo: propias.reduce<string | null>((u, f) => (u === null || f.periodo > u ? f.periodo : u), null),
       }
     })
