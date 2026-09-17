@@ -292,7 +292,7 @@ function MenuUsuario({
           {cargaAsistencia && (
             <Link
               prefetch={false}
-              href="/administracion/personas?vista=asistencia&modo=dia"
+              href="/administracion/personas/asistencia"
               role="menuitem"
               data-testid="ir-cargar-asistencia"
               onClick={() => setAbierto(false)}
