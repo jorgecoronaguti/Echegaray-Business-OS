@@ -45,7 +45,7 @@ test('LA PROYECCIÓN DE QUINCENAS FUTURAS SIGUE CON EL PLANTEL DE HOY', () => {
 
 test('EL CUADRO MARCA A QUIEN YA NO ESTÁ, SIN SACARLO', () => {
   assert.match(fuente('./espejoDeJornales.ts'), /baja: marcaDeBaja\(\{ enLaEmpresa: p\.enLaEmpresa !== false, fechaEgreso: p\.fechaEgreso \?\? null \}\)/)
-  assert.match(fuente('../components/liquidacion/GrillaEspejoQuincena.tsx'), /data-testid=\{`baja-\$\{fila\.personaId\}`\} title=\{fila\.baja\.titulo\}/)
+  assert.match(fuente('../components/liquidacion/cuadro/CeldaPersona.tsx'), /data-testid=\{`baja-\$\{fila\.personaId\}`\} title=\{fila\.baja\.titulo\}/)
 })
 
 test('HIDRATACIÓN: el `style` del redondeo no depende del estado; el sugerido y el error son atributos', () => {

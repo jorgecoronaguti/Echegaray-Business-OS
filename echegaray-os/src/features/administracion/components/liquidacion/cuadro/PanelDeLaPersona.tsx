@@ -37,6 +37,8 @@ import type { CampoEditable } from '../../../services/liquidacionOverrides'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import type { DetalleLaboral } from '../../../services/detalleLaboral'
 import { DetalleLaboralDeLaPersona } from './DetalleLaboralDeLaPersona'
+import { textoDelRecibo } from './FilasMensuales'
+import { asistenciaDeReferencia, pagoDelMensual, tipoDeLiquidacion } from '../../../services/liquidacionPorTipo'
 import { ReciboPorConceptos } from './ReciboPorConceptos'
 
 const MONO = "'IBM Plex Mono', monospace"
@@ -67,9 +69,12 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
       pie={<Link href={`/administracion/personas/${fila.personaId}`} prefetch={false} style={{ fontSize: '12.5px', color: V.tinta }}>Ver el legajo completo</Link>}
     >
       <div style={{ padding: '16px 16px 24px', display: 'flex', flexDirection: 'column', gap: 24 }}>
-        {fila.linea.sueldo
-          ? <CadenaBlancoNegro fila={fila} quincena={quincena} camposEditables={camposEditables} />
-          : <CadenaSinModelo fila={fila} quincena={quincena} camposEditables={camposEditables} />}
+        {/* LA MISMA SEPARACIÓN QUE EL CUADRO (dueño, 17/09/2026): el mensual no se lee con la cadena por hora. */}
+        {tipoDeLiquidacion(fila) === 'mensual'
+          ? <CadenaMensual fila={fila} quincena={quincena} camposEditables={camposEditables} />
+          : fila.linea.sueldo
+            ? <CadenaBlancoNegro fila={fila} quincena={quincena} camposEditables={camposEditables} />
+            : <CadenaSinModelo fila={fila} quincena={quincena} camposEditables={camposEditables} />}
 
         {/* SIN AVISO DE «SIN HORAS CARGADAS / NO SE PAGAN»: desde el 14/09/2026 los días completados por
             la app cuentan y se pagan (dueño). */}
@@ -158,7 +163,7 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
  */
 function PresentismoDelPanel({ fila }: { fila: FilaDelEspejo }) {
   const p = fila.linea.presentismo
-  if (!p || p.estado === 'no_rige') return null
+  if (!p || p.estado === 'no_rige' || p.estado === 'no_aplica') return null
   const testid = `panel-presentismo-${fila.personaId}`
   if (p.estado === 'sin_categoria') {
     return (
@@ -238,7 +243,67 @@ function PagadoYSaldo({ fila, quincena, camposEditables }: PropsDeCadena) {
   )
 }
 
-/** La cadena de siempre: Oficina, finales y la quincena cerrada (la foto sellada no se recalcula). */
+/**
+ * EL MENSUAL, EN EL ORDEN DE SU CUADRO: sueldo del mes · recibo blanco (banco, pagado, saldo) · efectivo fuera del
+ * recibo (importe, pagado, saldo) · presentismo «no aplica» · total, pagado y saldo. Sin recibo, los lados dicen «falta
+ * recibo» y el saldo total se afirma igual (`pagoDelMensual`). La asistencia va como referencia: no se paga por ella.
+ */
+function CadenaMensual({ fila, quincena, camposEditables }: PropsDeCadena) {
+  const l = fila.linea
+  const p = pagoDelMensual(l)
+  const a = asistenciaDeReferencia(fila)
+  const recibo = textoDelRecibo(p, l.reciboSinGiro)
+  const cierre = cierreDeLaFila(l)
+  const faltaRecibo = 'falta recibo: sin él no se sabe cuánto va por banco'
+  return (
+    <section data-testid="panel-cadena" data-tipo="mensual">
+      <Rotulo>{`Sueldo mensual · ${l.esJefe ? 'jefe de obra' : 'mensual'}`}</Rotulo>
+      <Renglon rotulo="Sueldo del mes" nota={l.netoMensual != null ? (l.origenTarifa ?? undefined) : (l.cobra == null ? 'importe no cargado' : `importe ${l.origenTarifa ?? 'cargado'}`)}
+        alerta={l.cobra == null}>
+        <Leida valor={p.sueldo} medio />
+      </Renglon>
+      <Renglon rotulo="Asistencia" nota="referencia: un mensual no cobra por hora">
+        <span style={{ fontSize: '12px', color: V.apagado }}>{`${a.dias} días · ${nHoras(a.horas)} h${a.ausencias ? ` · ${a.ausencias} A` : ''}${a.licencias ? ` · ${a.licencias} L` : ''}`}</span>
+      </Renglon>
+
+      <div style={{ height: 16 }} />
+      <Rotulo>Recibo blanco · banco</Rotulo>
+      <Renglon rotulo="Banco" nota={recibo.titulo}>
+        <span data-testid="panel-mensual-banco" style={{ fontSize: '12.5px', color: p.banco == null ? V.tenue : V.tinta }}>{recibo.texto}</span>
+      </Renglon>
+      <Renglon rotulo="Pagado banco">
+        <Escribible campo="pagadoBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+      </Renglon>
+      <Renglon rotulo="Saldo banco" nota={p.saldoBanco == null ? faltaRecibo : undefined}><Leida valor={p.saldoBanco} /></Renglon>
+
+      <div style={{ height: 16 }} />
+      <Rotulo>Efectivo · fuera del recibo</Rotulo>
+      <Renglon rotulo="Importe" nota={p.negro == null ? faltaRecibo : 'sueldo − recibo'}><Leida valor={p.negro} /></Renglon>
+      <Renglon rotulo="Pagado efectivo">
+        <Escribible campo="pagadoEfectivo" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+      </Renglon>
+      <Renglon rotulo="Saldo efectivo" nota={p.saldoEfectivo == null ? faltaRecibo : undefined}><Leida valor={p.saldoEfectivo} /></Renglon>
+
+      <div style={{ height: 16 }} />
+      <Rotulo>Presentismo</Rotulo>
+      <Renglon rotulo="Estado" nota="cobra por mes: el presentismo es del convenio de obreros">
+        <span data-testid={`panel-presentismo-${fila.personaId}`} data-estado="no_aplica" style={{ fontSize: '12.5px', color: V.apagado }}>No aplica · mensual</span>
+      </Renglon>
+
+      <div style={{ height: 16 }} />
+      <Renglon rotulo="Cobra total" fuerte
+        nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : 'el sueldo del mes'} alerta={cierre?.cierra === false}>
+        <Escribible campo="cobra" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+      </Renglon>
+      <Renglon rotulo="Pagado" nota="banco + efectivo"><Leida valor={p.pagado} /></Renglon>
+      <Renglon rotulo="Saldo" fuerte nota={p.aPagarEfectivo == null ? 'sin recibo: sin reparto por canal' : `efectivo ${pesos(p.aPagarEfectivo)} · banco ${pesos(p.aPagarBanco)}`}>
+        <Leida valor={p.saldoTotal} />
+      </Renglon>
+    </section>
+  )
+}
+
+/** La cadena de siempre: finales y la quincena cerrada de jornaleros (la foto sellada no se recalcula). */
 function CadenaSinModelo({ fila, quincena, camposEditables }: PropsDeCadena) {
   const l = fila.linea
   const cierre = cierreDeLaFila(l)

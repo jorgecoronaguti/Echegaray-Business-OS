@@ -28,7 +28,13 @@ const VISTA = fuente('./quincena.tsx')
 const ACCION = fuente('../../../services/tarifaDeLaQuincenaActions.ts')
 // Las celdas de blanco + negro (14/09/2026) entran a las mismas guardas: sin base y sin recalcular.
 const CELDAS_BN = fuente('../cuadro/CeldasBlancoNegro.tsx')
-const COMPONENTES = [GRILLA, CELDAS, CELDAS_BN, TARIFA, HISTORIAL, PANEL, FILTROS]
+// Desde el 17/09/2026 el cuadro son dos (jornaleros y mensuales) y sus piezas entran a las mismas guardas.
+const TABLA = fuente('../cuadro/TablaDeBloques.tsx')
+const JORNALEROS = fuente('../cuadro/FilasJornaleros.tsx')
+const MENSUALES = fuente('../cuadro/FilasMensuales.tsx')
+const PIE = fuente('../cuadro/PieDeLaQuincena.tsx')
+const COLUMNAS = fuente('../cuadro/columnasDelCuadro.ts')
+const COMPONENTES = [GRILLA, CELDAS, CELDAS_BN, TARIFA, HISTORIAL, PANEL, FILTROS, TABLA, JORNALEROS, MENSUALES, PIE]
 
 /** El código sin comentarios: una cabecera que EXPLICA la regla no puede hacer pasar el test. */
 const sinComentarios = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
@@ -37,7 +43,7 @@ const REGISTRO = INDICE.slice(INDICE.indexOf('export const SOLAPAS'))
 const claves = (): string[] =>
   [...REGISTRO.matchAll(/\{ clave: '([a-z]+)', titulo:/g)].map((m) => m[1])
 const clavesDe = (desde: string, hasta: string): string[] =>
-  [...GRILLA.slice(GRILLA.indexOf(desde), GRILLA.indexOf(hasta)).matchAll(/clave: '([a-zA-Z0-9]+)'/g)].map((m) => m[1])
+  [...COLUMNAS.slice(COLUMNAS.indexOf('  columnas: [', COLUMNAS.indexOf(desde)), COLUMNAS.indexOf(hasta)).matchAll(/clave: '([a-zA-Z0-9]+)', rotulo/g)].map((m) => m[1])
 
 test('«QUINCENA» ES LA PRIMERA DE LA BARRA Y LA QUE ABRE POR DEFECTO', () => {
   assert.equal(claves()[0], 'quincena')
@@ -56,8 +62,7 @@ test('LAS SECCIONES DE LA BARRA TIENEN SU PANTALLA', () => {
 test('LA GRILLA ESCRIBE CON LAS ACCIONES QUE YA EXISTEN, NO CON UNA COPIA', () => {
   assert.match(CELDAS, /guardarHorasDeLaCelda\.bind\(null, personaId, celda\.fecha\)/)
   assert.match(CELDAS, /from '\.\.\/CeldasDeLiquidacion'/)
-  assert.match(GRILLA, /CeldaRedondeo/, 'la grilla escribe el redondeo con la celda que ya existe (dueño, 16/09)')
-  assert.match(GRILLA, /sumaDelRedondeo\(/)
+  for (const f of [JORNALEROS, MENSUALES]) assert.match(f, /<CeldaRedondeo /, 'los dos cuadros escriben el redondeo con la celda que ya existe (dueño, 16/09)')
   for (const c of COMPONENTES) {
     assert.ok(!/from '@supabase/.test(c), 'los componentes no hablan con la base: reciben filas armadas')
     assert.ok(!/\.update\(|\.insert\(|\.upsert\(/.test(c), 'ni una escritura suelta dentro de un componente')
@@ -65,7 +70,7 @@ test('LA GRILLA ESCRIBE CON LAS ACCIONES QUE YA EXISTEN, NO CON UNA COPIA', () =
 })
 
 test('SIN COLUMNA «PLANILLA»: el cotejo va en el sello y en el panel, no en el cuadro (dueño, 14/09)', () => {
-  for (const c of [GRILLA, CELDAS]) {
+  for (const c of [GRILLA, CELDAS, JORNALEROS, MENSUALES, COLUMNAS]) {
     const codigo = sinComentarios(c)
     assert.ok(!/clave: 'planilla'|ChipDeCotejo|rotulo: 'Planilla'/.test(codigo), 'no vuelve la columna Planilla')
   }
@@ -79,7 +84,7 @@ test('SIN COLUMNA «PLANILLA»: el cotejo va en el sello y en el panel, no en el
 // CAMBIÓ OTRA VEZ EL 14/09/2026: el orden de JORNALES pone los días ADELANTE y la plata después, con los
 // adelantos antes del total efectivo y el total quincena al final. Se sigue protegiendo el orden completo.
 test('LOS DÍAS VAN PRIMERO Y DESPUÉS LA PLATA, CON PAGADO Y SALDO EN CADA LADO', () => {
-  assert.deepEqual(clavesDe('const PLATA', 'const ANCHO_DE_BANDA'),
+  assert.deepEqual(clavesDe('export const CUADRO_JORNALEROS', 'export const CUADRO_MENSUALES'),
     // `presentismo` (15/09/2026) después del negro: de ahí sale el descuento. `pagado*`/`saldo*` (15/09/2026,
     // «necesito al lado de banco y negro lo que se le ha pagado efectivamente»): cada lado dice cuánto
     // corresponde, cuánto se pagó y cuánto falta, y la fila cierra con Total · Pagado · Saldo.
@@ -89,28 +94,25 @@ test('LOS DÍAS VAN PRIMERO Y DESPUÉS LA PLATA, CON PAGADO Y SALDO EN CADA LADO
       // `saldoRedondeado` (16/09/2026, dueño): el saldo al $1.000 como si todo saliera en billetes. Derivada
       // del Saldo de al lado: se lee, no se edita ni se guarda.
       'saldoRedondeado'])
-  assert.match(GRILLA, /minmax\(var\(--liq-persona,200px\),1fr\) repeat\(\$\{nDias\},\$\{DIA\}px\) \$\{PLATA/, 'los días van antes que la plata')
+  assert.match(COLUMNAS, /1fr\)\$\{dias > 0 \? ` repeat\(\$\{dias\},\$\{DIA\}px\)` : ''\} \$\{d\.columnas/, 'los días van antes que la plata')
   assert.match(PANEL, /campo="porBanco"/)
   assert.match(PANEL, /Acuerdo 50\/50/)
   assert.match(PANEL, /<HistorialDeTarifa/)
   assert.match(PANEL, /<CadenaBlancoNegro/)
+  assert.match(PANEL, /<CadenaMensual/, 'el panel separa al mensual igual que el cuadro')
   assert.match(GRILLA, /<PanelDeLaPersona/)
 })
 
 test('SIN COLUMNAS DE HORAS EXTRA NI «NORMALES» (dueño, 14/09: «las columnas de hs extra quitarlas»)', () => {
-  const codigo = sinComentarios(GRILLA)
+  const codigo = sinComentarios(GRILLA + COLUMNAS + JORNALEROS + MENSUALES + PIE)
   // EL DEFECTO QUE ATRAPA: las tres columnas de cantidades. «Normales» sin las extras repetía a medias
   // «Hs pagas», así que sale con ellas.
   assert.ok(!/extra50|extra100|Ext\. 50|Ext\. 100|Hs norm\.|CANTIDADES/.test(codigo), 'sin columnas de extras ni normales')
-  // LAS CUENTAS NO CAMBIAN: el pie sigue publicando las mismas cifras de plata y las horas pagas.
-  // `totales.total` salió del cuadro el 14/09/2026 junto con la columna del importe pendiente.
-  // `totales.porBanco` → `totales.netoBandas` (QA, 14/09/2026): el pie muestra el neto de las bandas, sin los
-  // mensuales, para que Neto + Negro + Sueldos mensuales = Total cierre exacto. Caja sigue leyendo porBanco.
-  // CAMBIÓ EL 15/09/2026: `totales.adelanto`, `totales.yaTransferido` y `totales.enEfectivo` salieron del pie
-  // junto con sus columnas (un adelanto es un PAGO, no un descuento). Los reemplazan los de `totales.pago`.
-  for (const t of ['totales.cobra', 'totales.horasPagas', 'totales.netoBandas', 'totales.mensuales',
-    'p.pagadoBanco', 'p.saldoBanco', 'p.pagadoEfectivo', 'p.saldoEfectivo', 'p.pagado', 'p.saldoTotal',
-    'p.aPagarEfectivo', 'p.aPagarBanco']) {
+  // LAS CUENTAS NO CAMBIAN: el resumen de jornaleros publica las mismas cifras de plata y las horas pagas. Desde el
+  // 17/09/2026 los mensuales tienen su propio resumen (`t.sueldo`), fuera del de jornaleros.
+  for (const t of ['t.cobra', 't.horasPagas', 't.netoBandas', 't.negro', 't.sueldo',
+    't.pago.pagadoBanco', 't.pago.saldoBanco', 't.pago.pagadoEfectivo', 't.pago.saldoEfectivo', 't.pago.pagado', 't.pago.saldoTotal',
+    't.pago.aPagarEfectivo', 't.pago.aPagarBanco']) {
     assert.ok(codigo.includes(t), `el pie sigue mostrando ${t}`)
   }
 })
@@ -127,15 +129,17 @@ test('NETO (BANCO) Y EFECTIVO DICEN CÓMO SE PAGA, SE MARCAN CUANDO LA FILA NO C
   assert.match(BN, /p\.saldoEfectivo/)
   assert.match(BN, /sin neto/)
   assert.match(ESTADO, /const cierre = cierreDeLaFila\(l\)/)
-  assert.match(GRILLA, /const cierre = cierreDeTotales\(totales\)/)
+  assert.match(PIE, /const cierre = cierreDeTotales\(t\)/)
+  assert.match(JORNALEROS, /const cierre = cierreDeTotales\(t\)/)
   for (const r of ['Banco', 'Pagado banco', 'Saldo banco', 'Negro', 'Pagado efectivo', 'Saldo efectivo',
     'Efectivo redondeado', 'Total', 'Pagado', 'Saldo', 'Saldo redondeado']) {
-    assert.match(GRILLA, new RegExp(`cifra\\('${r}'`), `el pie publica ${r}`)
+    assert.match(PIE, new RegExp(`rotulo="${r}"`), `el pie publica ${r}`)
   }
-  // Y LA LÍNEA QUE CONTESTA LA PREGUNTA DEL DÍA DE PAGO.
-  assert.match(GRILLA, /A pagar hoy: /)
-  assert.match(GRILLA, /totales\.negro/)
-  assert.match(GRILLA, /totales\.sinNeto/)
+  // Y LA LÍNEA QUE CONTESTA LA PREGUNTA DEL DÍA DE PAGO, y el total general que dice si cierra.
+  assert.match(PIE, /rotulo="A pagar hoy:"/)
+  assert.match(PIE, /t\.sinNeto/)
+  assert.match(PIE, /el total cierra: total − pagado = saldo/)
+  assert.match(PIE, /no cierra por \$\{pesos\(g\.descuadre\)\}: \$\{g\.causas/)
 })
 
 test('LA VISTA NO RECALCULA LA CADENA DE PAGO NI LAS HORAS', () => {

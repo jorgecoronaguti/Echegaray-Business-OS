@@ -105,5 +105,5 @@ test('EN EL ESPEJO, EL JEFE SIN NETO VA EN «SUELDOS MENSUALES», NO EN LAS BAND
   assert.equal(t.netoBandas, 0)
   assert.equal(t.negro, 0)
   assert.equal(negroDeLaFila(l), null)
-  assert.match(fuente('../components/liquidacion/GrillaEspejoQuincena.tsx'), /\{rotuloDelMensual\(l\) \?\? 'mensual'\}/)
+  assert.match(fuente('../components/liquidacion/cuadro/FilasMensuales.tsx'), /\{rotuloDelMensual\(l\) \?\? 'mensual'\}/)
 })

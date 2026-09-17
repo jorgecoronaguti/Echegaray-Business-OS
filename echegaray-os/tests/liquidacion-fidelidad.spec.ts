@@ -92,10 +92,11 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     await page.screenshot({ path: `${SALIDA}/app-1-quincena.png`, fullPage: true })
 
     // EL ENCABEZADO DE COLUMNA: el rótulo se apoya sobre la línea, no flota en el medio.
+    // DESDE EL 17/09/2026 SON DOS RENGLONES: el bloque (Horas · Recibo blanco · Recibo negro · Resto) y la columna.
     const cabecera = page.getByTestId('espejo-encabezado')
     const alto = (await cabecera.boundingBox())!.height
-    expect(alto, 'encabezado de columna').toBeGreaterThanOrEqual(30)
-    expect(alto, 'encabezado de columna').toBeLessThanOrEqual(36)
+    expect(alto, 'encabezado de bloque + columna').toBeGreaterThanOrEqual(56)
+    expect(alto, 'encabezado de bloque + columna').toBeLessThanOrEqual(72)
     // `end` y `flex-end` son el mismo alineado: el navegador devuelve la palabra que se escribió.
     expect(await cabecera.evaluate((n) => getComputedStyle(n).alignItems)).toMatch(/^(flex-)?end$/)
 
@@ -221,9 +222,12 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     await page.screenshot({ path: `${SALIDA}/app-4-cadena.png`, fullPage: true })
 
     const tabla = page.getByTestId('espejo-encabezado')
-    // Dueño, 14/09/2026: blanco (recibo) + negro. Dos bandas rotuladas arriba y las columnas debajo.
-    await expect(page.getByTestId('banda-blanco')).toHaveText(/blanco · recibo/i)
-    await expect(page.getByTestId('banda-negro')).toHaveText(/negro/i)
+    // Dueño, 14/09/2026: blanco (recibo) + negro; 17/09/2026: cuatro bloques rotulados — horas, recibo blanco,
+    // recibo negro y resto del cálculo — y los mensuales en su propio cuadro.
+    await expect(page.getByTestId('banda-horas')).toHaveText(/horas/i)
+    await expect(page.getByTestId('banda-blanco')).toHaveText(/recibo blanco/i)
+    await expect(page.getByTestId('banda-negro')).toHaveText(/recibo negro/i)
+    await expect(page.getByTestId('banda-resto')).toHaveText(/resto del cálculo/i)
     // El orden de la pestaña «Obreros 26» de JORNALES (dueño, 14/09/2026), sin «Cliente · Obra».
     for (const c of ['Persona', 'Horas', 'Hs recibo', '$/h cat.', 'Banco', 'Pagado', 'Saldo', 'Hs', '$/h negro', 'Importe', 'Pagado', 'Saldo', 'Presentismo', 'Efect. red.', 'Total', 'Pagado', 'Saldo', 'Saldo red.']) {
       await expect(tabla).toContainText(c)

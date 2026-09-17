@@ -123,9 +123,10 @@ test('LAS CELDAS: Horas y Hs negro se escriben en la abierta, con el aviso ámba
   assert.match(e, /no coincide con los días: \$\{nHoras\(dias\)\} h/)
   const b = fuente('../components/liquidacion/cuadro/CeldasBlancoNegro.tsx')
   assert.match(b, /<Escribible campo="horasNegro" unidad="horas"/)
-  const g = fuente('../components/liquidacion/GrillaEspejoQuincena.tsx')
-  assert.match(g, /<CeldaHorasPagas fila=\{fila\} edicion=\{\{ quincena, camposEditables \}\} \/>/)
-  assert.match(g, /<CeldaHorasNegro fila=\{fila\} edicion=\{\{ quincena, camposEditables \}\} \/>/)
+  const g = fuente('../components/liquidacion/cuadro/FilasJornaleros.tsx')
+  assert.match(g, /<CeldaHorasPagas fila=\{fila\} edicion=\{edicion\} \/>/)
+  assert.match(g, /<CeldaHorasNegro fila=\{fila\} edicion=\{edicion\} \/>/)
+  assert.match(fuente('../components/liquidacion/GrillaEspejoQuincena.tsx'), /const edicion = \{ quincena, camposEditables \}/)
 })
 
 test('LA MIGRACIÓN: dos columnas nullable, CHECK >= 0, y sin GRANT de UPDATE a authenticated', () => {

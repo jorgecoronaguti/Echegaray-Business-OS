@@ -15,7 +15,7 @@
  * para que separarse duela.
  *
  * PUEDE DAR ROJO, Y SE LO VIO DAR ROJO: contra el estado del repo al 16/09/2026 fallaba con los
- * cuatro rótulos retirados y los seis que faltaban. MUTACIÓN: sacar cualquier rótulo de `PLATA`
+ * cuatro rótulos retirados y los seis que faltaban. MUTACIÓN: sacar cualquier rótulo de `CUADRO_JORNALEROS`
  * y este test se pone en rojo sin tocar el spec.
  *
  * LO QUE ESTE CONTROL NO PRUEBA: que el E2E pase en un navegador. Eso necesita la app viva y
@@ -26,19 +26,27 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const leer = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8')
-const GRILLA = leer('../GrillaEspejoQuincena.tsx')
+// DESDE EL 17/09/2026 las columnas del cuadro de jornaleros viven en `columnasDelCuadro.ts` y el pie en `PieDeLaQuincena.tsx`.
+const COLUMNAS = leer('./columnasDelCuadro.ts')
+const PIE = leer('./PieDeLaQuincena.tsx')
 const SPEC = leer('../../../../../../tests/liquidacion-fidelidad.spec.ts')
 
-/** Los rótulos de las columnas, del propio `PLATA`. El ✎ es un adorno de edición, no parte del nombre. */
+/** Los rótulos de las columnas de jornaleros (`CUADRO_JORNALEROS`). El ✎ es un adorno de edición, no parte del nombre. */
 function rotulosDelCuadro() {
-  const plata = GRILLA.slice(GRILLA.indexOf('const PLATA'), GRILLA.indexOf('const ANCHO_DE_BANDA'))
+  const plata = COLUMNAS.slice(COLUMNAS.indexOf('  columnas: [', COLUMNAS.indexOf('export const CUADRO_JORNALEROS')), COLUMNAS.indexOf('export const CUADRO_MENSUALES'))
   const rs = [...plata.matchAll(/rotulo: '([^']+)'/g)].map((m) => m[1].replace(' ✎', '').trim())
   assert.ok(rs.length >= 10, `se esperaban las columnas del cuadro, se leyeron ${rs.length}`)
   return rs
 }
 
-/** Lo que el pie sabe dibujar, de las llamadas a `cifra(…)`. */
-const rotulosDelPie = () => [...GRILLA.matchAll(/cifra\('([^']+)'/g)].map((m) => m[1])
+/** Lo que el pie sabe dibujar, de los `rotulo="…"` de sus cifras. */
+const rotulosDelPie = () => [...PIE.matchAll(/rotulo="([^"]+)"/g)].map((m) => m[1])
+
+/** Los rótulos de los bloques de jornaleros («Recibo blanco», «Recibo negro · plataforma»…). */
+const rotulosDeBloques = () => {
+  const b = COLUMNAS.slice(COLUMNAS.indexOf('export const CUADRO_JORNALEROS'), COLUMNAS.indexOf('  columnas: [', COLUMNAS.indexOf('export const CUADRO_JORNALEROS')))
+  return [...b.matchAll(/rotulo: '([^']+)'/g)].map((m) => m[1])
+}
 
 /** El bloque del spec que enumera el encabezado y el pie del cuadro. */
 function bloqueDelCuadro() {
@@ -61,7 +69,7 @@ function literalesDelSpec() {
 const FUERA_DE_PLATA = ['Persona', 'Días', 'Dias']
 
 test('el spec no espera NINGÚN rótulo que el cuadro ya no dibuja', () => {
-  const legales = new Set([...rotulosDelCuadro(), ...rotulosDelPie(), ...FUERA_DE_PLATA, 'Blanco · recibo', 'Negro'])
+  const legales = new Set([...rotulosDelCuadro(), ...rotulosDelPie(), ...rotulosDeBloques(), ...FUERA_DE_PLATA])
   const { todos } = literalesDelSpec()
   const fantasmas = todos.filter((t) => ![...legales].some((l) => l === t || l.startsWith(t)))
   assert.deepEqual(fantasmas, [], `el spec espera rótulos que el componente ya no dibuja: ${fantasmas.join(' · ')}`)

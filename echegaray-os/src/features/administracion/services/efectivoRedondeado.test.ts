@@ -57,11 +57,14 @@ test('las pantallas usan la misma celda con el sugerido, y la celda decide con l
   assert.match(CELDAS, /sugerido: efectivo \$\{pesos\(enEfectivo\)\} redondeado a miles/)
   // EL SUGERIDO SE REDONDEA SOBRE LO QUE SE ENTREGA HOY (`pago.aPagarEfectivo`), no sobre el viejo «Total efectivo».
   // La columna «Efect. red. ✎» está en el cuadro de la Quincena porque la pidió el dueño (16/09/2026).
-  assert.match(fuente('../components/liquidacion/GrillaEspejoQuincena.tsx'),
-    /enEfectivo=\{l\.pago\.aPagarEfectivo \?\? l\.enEfectivo\}/, 'la Quincena redondea lo que se entrega hoy')
+  // DESDE EL 17/09/2026 la celda y el pie usan la MISMA función (`efectivoDelRedondeo`): antes la celda redondeaba
+  // `aPagarEfectivo` y el pie `enEfectivo`, y al mensual sin recibo le sugería el sueldo entero en billetes.
+  for (const f of ['FilasJornaleros.tsx', 'FilasMensuales.tsx']) {
+    assert.match(fuente(`../components/liquidacion/cuadro/${f}`), /enEfectivo=\{efectivoDelRedondeo\(fila\)\}/, `${f} redondea lo que se entrega hoy`)
+  }
   assert.match(fuente('../components/liquidacion/CuadroLiquidacion.tsx'),
     /enEfectivo=\{(l|linea)\.enEfectivo\}/, 'el cuadro clásico sigue con su cadena')
-  assert.match(fuente('../components/liquidacion/GrillaEspejoQuincena.tsx'), /sumaDelRedondeo\(visibles\.map/)
+  assert.match(fuente('./liquidacionPorTipo.ts'), /efectivoMostrado\(\{ efectivoRedondeado: f\.linea\.efectivoRedondeado, enEfectivo: efectivoDelRedondeo\(f\) \}\)/)
 })
 
 test('el pie de la columna suma lo que muestran las filas: guardado o sugerido', () => {
