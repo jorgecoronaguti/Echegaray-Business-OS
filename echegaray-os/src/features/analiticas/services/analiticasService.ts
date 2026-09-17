@@ -21,6 +21,7 @@ export interface DatosAnaliticas {
   cuentaCorriente: unknown[] | null
   egresos: unknown[] | null
   nomina: unknown[] | null
+  quincenas: unknown[] | null
   personas: unknown[] | null
   certificados: CertificadoCliente[] | null
   /** `false` = la puerta de la base contestó null: sin permiso económico. */
@@ -60,9 +61,10 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     if (rango.hasta) r = r.lte(col, rango.hasta)
     return r
   }
-  const [egresos, nomina, personas, certificados] = await Promise.all([
+  const [egresos, nomina, quincenas, personas, certificados] = await Promise.all([
     f.vista === 'caja' ? conRango(supabase.from('egreso_por_area').select('area, grupo, total, fecha'), 'fecha') : null,
-    f.vista === 'nomina' ? supabase.from('nomina_por_mes').select('mes, costo_nomina, es_estimacion') : null,
+    f.vista === 'nomina' ? supabase.from('nomina_por_mes').select('mes, costo_nomina, cargas_sociales, es_estimacion') : null,
+    f.vista === 'nomina' ? supabase.from('jornales_quincena').select('desde, estado') : null,
     f.vista === 'nomina' ? supabase.from('personas').select('en_la_empresa, categoria').eq('es_prueba', false) : null,
     f.vista === 'cobranza'
       ? conRango(supabase.from('certificado_cliente').select('id, cliente_id, obra_id, numero, factura, periodo_desde, periodo_hasta, avance_periodo, monto, reparo, emitido_at, vence, estado, observacion'), 'emitido_at')
@@ -73,6 +75,7 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     cuentaCorriente: Array.isArray(raiz?.cuenta_corriente) ? raiz.cuenta_corriente : null,
     egresos: egresos?.data ?? null,
     nomina: nomina?.data ?? null,
+    quincenas: quincenas?.data ?? null,
     personas: personas?.data ?? null,
     certificados: (certificados?.data ?? null) as CertificadoCliente[] | null,
     legible: raiz != null,

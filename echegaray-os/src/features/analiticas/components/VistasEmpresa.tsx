@@ -2,7 +2,7 @@
 import type { ReactNode } from 'react'
 import type { CertificadoCliente } from '@/features/clientes/types/cobranzas'
 import { millones, pctConSigno, pctEntero } from '../services/formato'
-import { caja, cifrasCobranza, cobranza, legajos, MES_BASE, nomina, leerEgresos, zonaDe } from '../services/empresa'
+import { caja, cifrasCobranza, cobranza, legajos, MES_BASE, nomina, leerEgresos, seisMesesReales, zonaDe } from '../services/empresa'
 import { Ausente, Cifras, SinLectura, Subtitulo, Titulo } from './Piezas'
 
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
@@ -88,23 +88,25 @@ function Rama({ rotulo, v, p, nivel }: { rotulo: string; v: string | null; p: st
   )
 }
 
-export function VistaNomina({ filas, personas, rango, periodo }: {
+export function VistaNomina({ filas, quincenas, personas, rango, periodo }: {
   filas: unknown[] | null
+  quincenas: unknown[] | null
   personas: unknown[] | null
   rango: { desde: string | null; hasta: string | null }
   periodo: string
 }) {
   if (!filas) return <><Titulo titulo="Nómina" linea={periodo} /><SinLectura que="la nómina" /></>
-  const { base, meses } = nomina(filas, rango)
-  const reales = meses.filter((m) => !m.estimacion)
+  const { base, meses } = nomina(filas, rango, quincenas ?? [])
+  const reales = meses.filter((m) => m.estado === 'real')
   const ultimo = reales.at(-1)
-  const seis = reales.slice(-6).reduce((a, m) => a + (m.costo ?? 0), 0)
+  const seis = seisMesesReales(meses)
+  const incompletos = meses.filter((m) => m.estado === 'incompleto').length
   const l = personas ? legajos(personas) : null
   return (
     <>
-      <Titulo titulo="Nómina" linea={`${reales.length} meses liquidados · ${periodo} · base ${rotuloMes(MES_BASE)} · jornales más cargas sociales`} />
+      <Titulo titulo="Nómina" linea={`${reales.length} meses liquidados${incompletos ? ` · ${incompletos} incompleto${incompletos === 1 ? '' : 's'}` : ''} · ${periodo} · base ${rotuloMes(MES_BASE)} · jornales más cargas sociales`} />
       <Cifras cifras={[
-        { rotulo: 'Últimos seis meses', valor: reales.length ? millones(seis) : null },
+        { rotulo: seis && seis.meses < 6 ? `Últimos ${seis.meses} meses reales` : 'Últimos seis meses', valor: seis ? millones(seis.total) : null },
         { rotulo: ultimo ? `${rotuloMes(ultimo.mes)} contra ${rotuloMes(MES_BASE)}` : 'Último contra base', valor: pctConSigno(ultimo?.contraBase), falta: '—' },
         { rotulo: 'Plantel', valor: l ? String(l.plantel) : null },
         { rotulo: 'Sin repartir', valor: null, falta: 'sin registrar' },
@@ -119,7 +121,7 @@ export function VistaNomina({ filas, personas, rango, periodo }: {
         {meses.map((m) => (
           <li key={m.mes} className="border-b border-line-hairline py-2">
             <span className="block text-xs text-faint">{rotuloMes(m.mes)}</span>
-            {m.estimacion ? <Ausente>estimación</Ausente> : <span className={(m.contraBase ?? 0) > 0.12 ? 'text-warn' : 'text-ink'}>{pctConSigno(m.contraBase) ?? '—'}</span>}
+            {m.estado === 'estimacion' ? <Ausente>estimación</Ausente> : m.estado === 'incompleto' ? <Ausente>incompleto · {millones(m.costo) ?? '—'}</Ausente> : <span className={(m.contraBase ?? 0) > 0.12 ? 'text-warn' : 'text-ink'}>{pctConSigno(m.contraBase) ?? '—'}</span>}
           </li>
         ))}
       </ul>

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { CertificadoCliente } from '../../clientes/types/cobranzas.ts'
-import { caja, cifrasCobranza, cobranza, destinoDe, legajos, leerEgresos, nomina, zonaDe } from './empresa.ts'
+import { caja, cifrasCobranza, cobranza, destinoDe, legajos, leerEgresos, nomina, seisMesesReales, zonaDe } from './empresa.ts'
 
 test('caja: a una obra, estructura por rama y sin destino; los meses separan las dos líneas', () => {
   const e = leerEgresos([
@@ -24,18 +24,36 @@ test('caja: a una obra, estructura por rama y sin destino; los meses separan las
 
 test('nómina: el mes estimado no se grafica como pesos (la vista publica un factor 2,04)', () => {
   const filas = [
-    { mes: '2026-03-01', costo_nomina: '20000000', es_estimacion: false },
-    { mes: '2026-06-01', costo_nomina: '30000000', es_estimacion: false },
-    { mes: '2026-08-01', costo_nomina: '2.04', es_estimacion: true },
+    { mes: '2026-03-01', costo_nomina: '20000000', cargas_sociales: '5000000', es_estimacion: false },
+    { mes: '2026-06-01', costo_nomina: '30000000', cargas_sociales: '9000000', es_estimacion: false },
+    { mes: '2026-08-01', costo_nomina: '2.04', cargas_sociales: '0', es_estimacion: true },
   ]
   const r = nomina(filas, { desde: null, hasta: null })
   assert.equal(r.base, 20e6)
   assert.equal(r.meses[1].contraBase, 0.5)
   assert.equal(r.meses[2].costo, null)
-  assert.equal(r.meses[2].estimacion, true)
+  assert.equal(r.meses[2].estado, 'estimacion')
   const soloJunio = nomina(filas, { desde: '2026-06-01', hasta: '2026-06-30' })
   assert.equal(soloJunio.meses.length, 1)
   assert.equal(soloJunio.base, 20e6, 'la base es marzo aunque el rango no la incluya')
+})
+
+test('D1 · julio con cargas en 0 o una quincena en curso es INCOMPLETO: no varía ni suma a los seis meses', () => {
+  const filas = [
+    { mes: '2026-03-01', costo_nomina: '21760799', cargas_sociales: '5000000', es_estimacion: false },
+    { mes: '2026-06-01', costo_nomina: '30728205', cargas_sociales: '11950855', es_estimacion: false },
+    { mes: '2026-07-01', costo_nomina: '15014221', cargas_sociales: '0', es_estimacion: false },
+    { mes: '2026-05-01', costo_nomina: '27673370', cargas_sociales: '8974570', es_estimacion: false },
+  ]
+  const quincenas = [{ desde: '2026-05-16', estado: 'en_curso' }, { desde: '2026-07-01', estado: 'cerrada' }]
+  const r = nomina(filas, { desde: null, hasta: null }, quincenas)
+  const julio = r.meses.find((m) => m.mes === '2026-07')!
+  assert.equal(julio.estado, 'incompleto', 'cargas en 0')
+  assert.equal(julio.contraBase, null, 'un mes incompleto no da «−31 %»')
+  const mayo = r.meses.find((m) => m.mes === '2026-05')!
+  assert.equal(mayo.estado, 'incompleto', 'quincena en curso')
+  assert.equal(mayo.contraBase, null)
+  assert.deepEqual(seisMesesReales(r.meses), { total: 21760799 + 30728205, meses: 2 })
 })
 
 test('legajos por pertenencia: en_la_empresa manda, no la fecha de egreso', () => {
