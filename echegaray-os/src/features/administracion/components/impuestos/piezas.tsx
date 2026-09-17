@@ -25,6 +25,25 @@ export function Seccion({ titulo, resumen, children, testid, id }: {
   )
 }
 
+/**
+ * UNA SECCIÓN PLEGADA: el detalle que se consulta, no el que se decide. `<details>` nativo: se abre con
+ * un toque, sin JavaScript, fila de 44 px. Nada de lo que hay adentro se quitó: está a un toque.
+ */
+export function Plegada({ titulo, resumen, children, testid, abierta = false }: {
+  titulo: string; resumen?: ReactNode; children: ReactNode; testid: string; abierta?: boolean
+}) {
+  return (
+    <details data-testid={testid} open={abierta} className="group mt-8">
+      <summary className="flex min-h-[44px] cursor-pointer list-none flex-wrap items-center gap-x-3 text-[15px] font-semibold text-ink [&::-webkit-details-marker]:hidden">
+        <span aria-hidden className="inline-block w-2 text-faint transition-transform group-open:rotate-90">›</span>
+        {titulo}
+        {resumen !== undefined && <span className="text-[12px] font-normal text-muted">{resumen}</span>}
+      </summary>
+      <div className="pt-2">{children}</div>
+    </details>
+  )
+}
+
 /** El estado como palabra. `data-testid="estado"` y `data-estado` (el de la base) se conservan. */
 export function EstadoTexto({ tono, clave, children }: { tono: Tono; clave?: string; children: ReactNode }) {
   return <span data-testid="estado" data-estado={clave} className={`text-[12px] ${TONO[tono]}`}>{children}</span>

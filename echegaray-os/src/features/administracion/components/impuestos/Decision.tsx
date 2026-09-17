@@ -1,11 +1,12 @@
-// LO DE ARRIBA DE LA PANTALLA DE IMPUESTOS: si los datos sirven hoy, en qué vista está parado, y la
-// respuesta a «cuánto tengo que pagar, cuándo, y qué está atrasado». Server Components.
+// LO DE ARRIBA DE LA PANTALLA DE IMPUESTOS: el número que se decide, de cuándo son los datos, las
+// solapas y los avisos de una línea. Server Components.
 //
-// ═══ «DE ESO» Y NO «AL LADO» ═══
+// ═══ UN NÚMERO, Y LO QUE ES PARTE DE ÉL EN CHICO ═══
 //
-// La versión anterior ponía «A pagar en 30 días $11,5 M» y «Cargas sociales en 30 días $10,7 M» como
-// dos cifras hermanas del mismo tamaño. Se leían como $22 M. Acá hay UN número grande —el total— y lo
-// que es parte de él se escribe debajo como parte: «de eso, cargas sociales…», «de eso, vencido…».
+// Dueño, 17/09/2026: «más sencillo, claro, minimalista». La primera versión rehecha tenía tres
+// columnas de cifras arriba; ahora hay UN número —a pagar en 30 días— y debajo, en una línea chica,
+// cuánto de eso es estimado. Lo vencido, si hay, también: es lo único que ya cuesta intereses.
+// Lo que salió de acá (a favor, próximo, sin identificar) está en las solapas y en el historial.
 import Link from 'next/link'
 import { plata } from '@/shared/utils/format'
 import { ddmm, type frescura, type PosicionImpuesto } from '../../services/impuestos'
@@ -15,8 +16,9 @@ import { SolapaVisible } from './SolapaVisible'
 
 type Frescura = ReturnType<typeof frescura>
 type DatosDecision = ReturnType<typeof decision>
+type FilaResumen = ReturnType<typeof porImpuesto>[number]
 
-/** Hasta cuándo llega cada fuente. Lo viejo o lo que falló se dice con palabras, no con un ▲. */
+/** La línea completa de fuentes: vive en «Todo el historial». Lo viejo o fallido se dice con palabras. */
 export function LineaFrescura({ fr }: { fr: Frescura }) {
   const horas = fr.horasDesdeSincronizacion
   return (
@@ -35,16 +37,34 @@ export function LineaFrescura({ fr }: { fr: Frescura }) {
   )
 }
 
+/**
+ * «datos al 16/09»: la fecha de ARCA, que es la fuente diaria. Si alguna fuente está vieja o falló,
+ * lo dice en la misma línea y lleva al historial, donde está el detalle por fuente.
+ */
+export function DatosAl({ fr, rutaHistorial }: { fr: Frescura; rutaHistorial: string }) {
+  const arca = fr.fuentes.find((f) => f.nombre === 'ARCA')
+  const problemas = fr.fuentes.filter((f) => f.fallo || f.vieja).length + (fr.sincronizacionVieja ? 1 : 0)
+  return (
+    <p data-testid="impuestos-datos-al" className="text-[12px] text-faint">
+      datos al {arca?.al ? ddmm(arca.al) : 'sin fecha'}
+      {problemas > 0 && (
+        <> · <Link prefetch={false} href={rutaHistorial} className="text-warn underline-offset-2 hover:underline">
+          {problemas === 1 ? '1 fuente desactualizada' : `${problemas} fuentes desactualizadas`}
+        </Link></>
+      )}
+    </p>
+  )
+}
+
 export interface Solapa { vista: Vista; cuenta?: number; alerta?: boolean }
 
 /**
- * LAS SOLAPAS. Texto subrayado —el nivel 3 de `CabeceraSeccion`—, no una tercera barra con fondo. En
- * el teléfono miden 44 px de alto y la fila se desliza DENTRO de sí misma: la página no se corre.
- * Son enlaces (`?ver=`): se comparten, el botón atrás vuelve, y no mandan JavaScript al teléfono.
+ * LAS SOLAPAS. Texto subrayado, sin fondo. En el teléfono miden 44 px y la fila se desliza DENTRO de
+ * sí misma. Son enlaces (`?ver=`): se comparten y el botón atrás vuelve.
  */
 export function Solapas({ solapas, activa, ruta }: { solapas: Solapa[]; activa: Vista; ruta: string }) {
   return (
-    <nav aria-label="Vistas de impuestos" data-testid="impuestos-solapas" className="relative -mx-5 overflow-x-auto border-b border-line px-5">
+    <nav aria-label="Vistas de impuestos" data-testid="impuestos-solapas" className="relative -mx-5 overflow-x-auto border-b border-line-hairline px-5">
       <ul className="flex min-w-max gap-1">
         {solapas.map((s) => {
           const on = s.vista === activa
@@ -60,9 +80,7 @@ export function Solapas({ solapas, activa, ruta }: { solapas: Solapa[]; activa: 
                 }`}
               >
                 {TITULO_VISTA[s.vista]}
-                {s.cuenta ? (
-                  <span className={`font-mono text-[11px] tabular-nums ${s.alerta ? 'text-neg' : 'text-faint'}`}>{s.cuenta}</span>
-                ) : null}
+                {s.cuenta ? <span className={`font-mono text-[11px] tabular-nums ${s.alerta ? 'text-neg' : 'text-faint'}`}>{s.cuenta}</span> : null}
               </Link>
             </li>
           )
@@ -73,130 +91,73 @@ export function Solapas({ solapas, activa, ruta }: { solapas: Solapa[]; activa: 
   )
 }
 
-/** Una cifra chica con su rótulo arriba. `data-metrica` queda para quien la lea desde un test. */
-const Dato = ({ rotulo, children, metrica }: { rotulo: string; children: React.ReactNode; metrica: string }) => (
-  <div data-metrica={metrica} className="min-w-0">
-    <div className="text-[12px] text-muted">{rotulo}</div>
-    <div className="mt-1 text-[13px] text-ink">{children}</div>
-  </div>
-)
-
-/** El número grande y lo que es parte de él. */
-function Total({ d }: { d: DatosDecision }) {
+/** EL NÚMERO. `data-metrica` y el testid `impuestos-franja` se conservan. */
+export function NumeroClave({ d }: { d: DatosDecision }) {
   return (
-    <div data-metrica="A pagar en 30 días" className="min-w-0">
-      <div className="text-[13px] text-muted">A pagar en los próximos 30 días</div>
-      <div className="mt-1 font-mono text-[32px] font-semibold leading-none tabular-nums text-ink">
-        {plata(d.total)}
-      </div>
-      <ul className="mt-2 flex flex-col gap-0.5 text-[13px] text-muted">
-        <li>{d.cantidad === 1 ? '1 vencimiento' : `${d.cantidad} vencimientos`}</li>
-        {d.vencido.cantidad > 0 && (
-          <li data-metrica="Vencido" className="text-neg">
-            de eso, vencido sin pago: <span className="font-mono tabular-nums">{plata(d.vencido.total)}</span> ({d.vencido.cantidad})
-          </li>
-        )}
+    <div data-testid="impuestos-franja" data-metrica="A pagar en 30 días">
+      <div className="text-[13px] text-muted">A pagar en 30 días</div>
+      <div className="mt-1 font-mono text-[40px] font-semibold leading-none tabular-nums text-ink">{plata(d.total)}</div>
+      <p className="mt-2 flex flex-wrap gap-x-3 text-[13px] text-muted">
         {d.todoEstimado
-          ? <li data-metrica="Estimado">todo estimado: ninguno está declarado todavía</li>
-          : d.estimado.cantidad > 0 && (
-            <li data-metrica="Estimado">
-              de eso, estimado: <span className="font-mono tabular-nums text-ink">{plata(d.estimado.total)}</span>
-            </li>
-          )}
-        {d.cargas.cantidad > 0 && (
-          <li data-metrica="Cargas sociales en 30 días">
-            de eso, cargas sociales: <span className="font-mono tabular-nums text-ink">{plata(d.cargas.total)}</span>
-          </li>
+          ? <span data-metrica="Estimado">todo estimado</span>
+          : d.estimado.cantidad > 0 && <span data-metrica="Estimado">de eso, estimado <span className="font-mono tabular-nums">{plata(d.estimado.total)}</span></span>}
+        {d.vencido.cantidad > 0 && (
+          <span data-metrica="Vencido" className="text-neg">vencido sin pago <span className="font-mono tabular-nums">{plata(d.vencido.total)}</span></span>
         )}
-        {d.sinImporte > 0 && <li className="text-warn">{d.sinImporte} sin importe conocido: no están sumados</li>}
-      </ul>
+        {d.sinImporte > 0 && <span className="text-warn">{d.sinImporte} sin importe, no sumado</span>}
+      </p>
     </div>
   )
 }
 
-/**
- * LA RESPUESTA DE ARRIBA. Tres columnas en la computadora, una debajo de la otra en el teléfono:
- * el total, lo próximo que vence, y lo que hay a favor o sin identificar (lo que puede bajar lo que
- * se paga).
- */
-export function Decision({ d, saldos, otrosAFavor, sinIdentificar, rutaSinIdentificar }: {
-  d: DatosDecision
-  saldos: PosicionImpuesto[]
-  /** Saldos que no son de la declaración mensual (DDJJ anual de Ganancias), con su concepto. */
-  otrosAFavor: PosicionImpuesto[]
-  sinIdentificar: { total: number; cantidad: number }
-  rutaSinIdentificar: string
-}) {
-  const p = d.proximo
+/** El aviso de una línea de los pagos sin identificar; el detalle está en el historial. */
+export function AvisoSinIdentificar({ total, cantidad, ruta }: { total: number; cantidad: number; ruta: string }) {
+  if (!cantidad) return null
   return (
-    <div data-testid="impuestos-franja" className="mt-6 grid gap-6 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] md:gap-8">
-      <Total d={d} />
-      <Dato rotulo="Lo próximo que vence" metrica="Próximo vencimiento">
-        {p ? (
-          <>
-            <div className="font-medium">{nombreLlano(p)}</div>
-            <div className="mt-0.5"><span className="font-mono text-[15px] tabular-nums">{p.pendiente === null ? 'sin importe' : plata(p.pendiente)}</span><MarcaEstimado estado={p.estado} /></div>
-            <div className="mt-0.5"><Vence fecha={p.vencimiento} confianza={p.vencimiento_confianza} dias={p.dias} /></div>
-          </>
-        ) : <span className="text-muted">Nada vence en los próximos 30 días.</span>}
-      </Dato>
-      <Dato rotulo="A favor en el fisco" metrica="A favor">
-        <ul className="flex flex-col gap-1">
-          {[...saldos, ...otrosAFavor].map((s) => (
-            <li key={`${s.impuesto}-${s.periodo}-${s.concepto}`}><SaldoAFavor s={s} conNombre /></li>
-          ))}
-          {!saldos.length && !otrosAFavor.length && <li className="text-muted">Sin saldo a favor.</li>}
-          {sinIdentificar.cantidad > 0 && (
-            <li data-metrica="Pagos sin imputar" className="mt-1">
-              <Link prefetch={false} href={rutaSinIdentificar} className="inline-flex min-h-[44px] items-center text-warn underline-offset-2 hover:underline lg:min-h-0">
-                {sinIdentificar.cantidad === 1 ? '1 pago' : `${sinIdentificar.cantidad} pagos`} al fisco sin identificar · {plata(sinIdentificar.total)}
-              </Link>
-            </li>
-          )}
-        </ul>
-      </Dato>
-    </div>
+    <p data-testid="aviso-sin-identificar" data-metrica="Pagos sin imputar" className="text-[13px]">
+      <Link prefetch={false} href={ruta} className="inline-flex min-h-[44px] items-center text-warn underline-offset-2 hover:underline lg:min-h-0">
+        {cantidad === 1 ? '1 pago' : `${cantidad} pagos`} al fisco sin identificar · {plata(total)} ›
+      </Link>
+    </p>
   )
 }
 
-type FilaResumen = ReturnType<typeof porImpuesto>[number]
-
 /**
- * LO DE ARRIBA DE UNA SOLAPA DE IMPUESTO: cuánto falta pagar, lo próximo y lo que hay a favor. Es la
- * misma fila del resumen, dicha en grande para quien entró directo a ese impuesto.
+ * EL NÚMERO DE UNA SOLAPA: cuánto falta pagar de ese impuesto, y en líneas chicas lo próximo que vence
+ * y lo que hay a favor (estimado apagado, declarado en tinta).
  */
 export function CifrasDeImpuesto({ r }: { r: FilaResumen }) {
+  const saldos = [...r.aFavor, ...(r.otroAFavor ? [r.otroAFavor] : [])]
   return (
-    <div data-testid={`cifras-${r.vista}`} className="mt-6 grid gap-6 md:grid-cols-3 md:gap-8">
-      <div data-metrica="Falta pagar" className="min-w-0">
-        <div className="text-[13px] text-muted">Falta pagar</div>
-        <div className="mt-1 font-mono text-[28px] font-semibold leading-none tabular-nums text-ink">{plata(r.faltaPagar)}</div>
-        <div className="mt-2 text-[13px] text-muted">
-          {[
-            r.vencidas ? <span key="v" className="text-neg">{r.vencidas} vencido{r.vencidas > 1 ? 's' : ''} sin pago</span> : null,
-            r.estimados ? <span key="e">{r.estimados} estimado{r.estimados > 1 ? "s" : ""}</span> : null,
-            r.sinImporte ? <span key="s" className="text-warn">{r.sinImporte} sin importe, no sumado</span> : null,
-          ].filter(Boolean).map((x, i) => <span key={i}>{i ? ' · ' : ''}{x}</span>)}
-        </div>
-      </div>
-      <Dato rotulo="Lo próximo que vence" metrica="Próximo vencimiento">
-        {r.proximo ? (
-          <>
-            <div className="font-medium">{nombreLlano(r.proximo)}</div>
-            <div className="mt-0.5"><span className="font-mono text-[15px] tabular-nums">{r.proximo.pendiente === null ? 'sin importe' : plata(r.proximo.pendiente)}</span><MarcaEstimado estado={r.proximo.estado} /></div>
-            <div className="mt-0.5"><Vence fecha={r.proximo.vencimiento} confianza={r.proximo.vencimiento_confianza} dias={r.proximo.dias} /></div>
-          </>
-        ) : <span className="text-muted">Nada vence en los próximos 30 días.</span>}
-      </Dato>
-      <Dato rotulo="A favor" metrica="A favor">
-        {r.aFavor.length || r.otroAFavor ? (
-          <div className="flex flex-col gap-1">
-            {[...r.aFavor, ...(r.otroAFavor ? [r.otroAFavor] : [])].map((s) => (
-              <SaldoAFavor key={`${s.impuesto}-${s.periodo}-${s.concepto}`} s={s} conNombre={r.aFavor.length > 1} grande />
-            ))}
-          </div>
-        ) : <span className="text-muted">Sin saldo a favor.</span>}
-      </Dato>
+    <div data-testid={`cifras-${r.vista}`} data-metrica="Falta pagar">
+      <div className="text-[13px] text-muted">Falta pagar</div>
+      <div className="mt-1 font-mono text-[40px] font-semibold leading-none tabular-nums text-ink">{plata(r.faltaPagar)}</div>
+      <ul className="mt-3 flex flex-col gap-1 text-[13px] text-muted">
+        {(r.vencidas > 0 || r.estimados > 0 || r.sinImporte > 0) && (
+          <li className="flex flex-wrap gap-x-3">
+            {r.vencidas > 0 && <span className="text-neg">{r.vencidas} vencido{r.vencidas > 1 ? 's' : ''} sin pago</span>}
+            {r.estimados > 0 && <span>{r.estimados} estimado{r.estimados > 1 ? 's' : ''}</span>}
+            {r.sinImporte > 0 && <span className="text-warn">{r.sinImporte} sin importe, no sumado</span>}
+          </li>
+        )}
+        <li data-metrica="Próximo vencimiento" className="flex flex-wrap items-baseline gap-x-2">
+          <span>Próximo:</span>
+          {r.proximo ? (
+            <>
+              <span className="text-ink">{nombreLlano(r.proximo)}</span>
+              <span className="font-mono tabular-nums text-ink">{r.proximo.pendiente === null ? 'sin importe' : plata(r.proximo.pendiente)}</span>
+              <MarcaEstimado estado={r.proximo.estado} />
+              <Vence fecha={r.proximo.vencimiento} confianza={r.proximo.vencimiento_confianza} dias={r.proximo.dias} />
+            </>
+          ) : <span>nada vence en 30 días</span>}
+        </li>
+        <li data-metrica="A favor" className="flex flex-wrap items-baseline gap-x-2">
+          <span>A favor:</span>
+          {saldos.length
+            ? saldos.map((s: PosicionImpuesto) => <SaldoAFavor key={`${s.impuesto}-${s.periodo}-${s.concepto}`} s={s} conNombre={saldos.length > 1} />)
+            : <span>sin saldo a favor</span>}
+        </li>
+      </ul>
     </div>
   )
 }

@@ -101,6 +101,18 @@ export function estadoLlano(f: Pick<PosicionImpuesto, 'estado' | 'pendiente' | '
   return { tono: 'neutro', texto: 'Declarado' }
 }
 
+/**
+ * EL ESTADO EN UNA PALABRA, para la lista corta del resumen. Vencido y estimado siguen diciéndose
+ * juntos: son dos hechos. El color es el mismo de `estadoLlano`.
+ */
+export function estadoCorto(f: Pick<PosicionImpuesto, 'estado' | 'pendiente' | 'detalle'> & { concepto?: string }, dias?: number): { tono: Tono; texto: string } {
+  const largo = estadoLlano(f, dias)
+  if (dias !== undefined && dias < 0) return { tono: largo.tono, texto: f.estado === 'estimado' ? 'Vencido · estimado' : 'Vencido' }
+  if (f.estado === 'pagado') return { tono: largo.tono, texto: 'Pagado' }
+  if (f.estado === 'estimado') return { tono: largo.tono, texto: 'Estimado' }
+  return { tono: largo.tono, texto: (f.pendiente ?? 0) > 0 ? 'A pagar' : 'Declarado' }
+}
+
 // ═══ LAS COLUMNAS DEL DETALLE ═══
 
 export type Columna = 'determinado' | 'creditos' | 'a_pagar' | 'pagado' | 'saldo_a_favor'

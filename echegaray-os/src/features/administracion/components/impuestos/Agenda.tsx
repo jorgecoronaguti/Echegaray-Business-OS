@@ -1,21 +1,55 @@
-// LA AGENDA DE VENCIMIENTOS Y EL RESUMEN POR IMPUESTO. Server Components.
+// LOS VENCIMIENTOS. Server Components.
 //
-// ═══ UNA FILA QUE SIRVE EN LAS DOS PANTALLAS ═══
-//
-// En la computadora cada vencimiento es una fila de cinco columnas alineadas (fecha, qué, cuánto,
-// estado, origen). En el teléfono la misma fila se reacomoda en tres renglones —qué y cuánto arriba,
-// cuándo y estado en el medio, origen abajo— con `order`, sin duplicar el marcado: una tabla de cinco
-// columnas a 390 px obligaba a deslizar de costado para ver el importe, que es lo único que se vino a
-// mirar.
+// Dos formas del mismo dato: la LISTA CORTA del resumen (máximo cinco renglones: fecha, qué, cuánto,
+// estado en una palabra) y la AGENDA COMPLETA partida por urgencia, que vive en «Todo el historial».
+// Ninguna es tabla: a 390 px una tabla de cinco columnas obligaba a deslizar de costado para ver el
+// importe, y en la computadora la misma fila se alinea en columnas con `grid`.
 import Link from 'next/link'
 import { plata } from '@/shared/utils/format'
-import { rotuloPeriodo, type Vencimiento } from '../../services/impuestos'
-import {
-  agenda, estadoLlano, nombreLlano, TITULO_URGENCIA, type porImpuesto,
-} from '../../services/impuestosVista'
-import { EstadoTexto, Importe, MarcaEstimado, Origen, SaldoAFavor, Vacio, Vence } from './piezas'
+import { ddmm, type Vencimiento } from '../../services/impuestos'
+import { agenda, enDias, estadoCorto, estadoLlano, nombreLlano, TITULO_URGENCIA } from '../../services/impuestosVista'
+import { EstadoTexto, Importe, Origen, TONO, Vacio, Vence } from './piezas'
 
-const FILA = 'grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-b border-line-hairline py-3 text-[13px] md:grid-cols-[256px_minmax(0,1fr)_140px_180px_200px] md:items-baseline md:gap-y-0 md:py-2.5'
+const CORTA = 'grid grid-cols-[92px_minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-0.5 py-3 text-[14px] md:grid-cols-[120px_minmax(0,1fr)_160px_150px] md:py-2.5'
+
+/** LA LISTA CORTA. Fecha y «en n días» en la primera columna; el estado debajo del importe en el teléfono. */
+export function ProximosCortos({ lista, max = 5, verTodos, vacio, testid = 'impuestos-vencimientos' }: {
+  lista: Vencimiento[]; max?: number; verTodos?: string; vacio: string; testid?: string
+}) {
+  if (!lista.length) return <p data-testid="vacio" className="py-3 text-[14px] text-muted">{vacio}</p>
+  return (
+    <div data-testid={testid}>
+      <ul>
+        {lista.slice(0, max).map((f) => {
+          const e = estadoCorto(f, f.dias)
+          return (
+            <li key={`${f.impuesto}-${f.periodo}-${f.concepto}`} className={CORTA} data-impuesto={f.impuesto} data-periodo={f.periodo}>
+              <span className="flex flex-col">
+                <span className="font-mono tabular-nums text-ink">{ddmm(f.vencimiento)}</span>
+                <span className={`text-[12px] ${f.dias < 0 ? 'text-neg' : 'text-faint'}`}>{enDias(f.dias)}</span>
+                {f.vencimiento_confianza === 'supuesto' && (
+                  <span className="text-[12px] text-faint" data-supuesto="" title="Fecha estimada: el organismo no publica una tabla que el OS pueda verificar">fecha estimada</span>
+                )}
+              </span>
+              <span className="min-w-0 text-ink">{nombreLlano(f)}</span>
+              <span className="flex flex-col items-end md:contents">
+                <span className="text-right font-mono tabular-nums text-ink"><Importe n={f.pendiente} /></span>
+                <span className={`text-right text-[12px] md:text-left md:text-[13px] ${TONO[e.tono]}`} data-testid="estado" data-estado={f.estado}>{e.texto}</span>
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+      {verTodos && lista.length > max && (
+        <Link prefetch={false} href={verTodos} className="inline-flex min-h-[44px] items-center text-[13px] text-muted hover:text-ink">
+          Ver los {lista.length} vencimientos ›
+        </Link>
+      )}
+    </div>
+  )
+}
+
+const FILA = 'grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-b border-line-hairline py-3 text-[13px] md:grid-cols-[256px_minmax(0,1fr)_140px_200px_200px] md:items-baseline md:gap-y-0 md:py-2.5'
 
 function FilaVencimiento({ f }: { f: Vencimiento }) {
   const e = estadoLlano(f, f.dias)
@@ -30,22 +64,11 @@ function FilaVencimiento({ f }: { f: Vencimiento }) {
   )
 }
 
-/** Los rótulos de columna, sólo en la computadora: en el teléfono cada dato se entiende por su lugar. */
-const Encabezado = () => (
-  <div aria-hidden className="hidden h-8 items-center border-b border-line text-[12px] text-faint md:grid md:grid-cols-[256px_minmax(0,1fr)_140px_180px_200px] md:gap-x-3">
-    <span>Vence</span><span>Qué</span><span className="text-right">Cuánto</span><span>Estado</span><span>De dónde sale</span>
-  </div>
-)
-
-/**
- * LA AGENDA: vencido, esta semana, dentro de 30 días. Cada grupo con su subtotal. El vencido va primero
- * y en rojo porque es lo único de la pantalla que ya costó algo (intereses).
- */
-export function Agenda({ lista, vacio, testid = 'impuestos-vencimientos' }: { lista: Vencimiento[]; vacio: string; testid?: string }) {
+/** LA AGENDA COMPLETA: vencido, esta semana, dentro de 30 días, cada grupo con su subtotal y el origen. */
+export function Agenda({ lista, vacio, testid = 'impuestos-agenda' }: { lista: Vencimiento[]; vacio: string; testid?: string }) {
   if (!lista.length) return <Vacio>{vacio}</Vacio>
   return (
     <div data-testid={testid}>
-      <Encabezado />
       {agenda(lista).map((g) => (
         <div key={g.urgencia} data-urgencia={g.urgencia} className="mt-3 first-of-type:mt-0">
           <h3 className={`flex flex-wrap items-baseline gap-x-2 border-b border-line py-2 text-[12px] font-semibold ${g.urgencia === 'vencido' ? 'text-neg' : 'text-ink'}`}>
@@ -56,65 +79,6 @@ export function Agenda({ lista, vacio, testid = 'impuestos-vencimientos' }: { li
           <ul>{g.filas.map((f) => <FilaVencimiento key={`${f.impuesto}-${f.periodo}-${f.concepto}`} f={f} />)}</ul>
         </div>
       ))}
-    </div>
-  )
-}
-
-type FilaResumen = ReturnType<typeof porImpuesto>[number]
-
-const COLS_RESUMEN = 'md:grid-cols-[180px_160px_minmax(0,1fr)_minmax(0,1fr)_120px]'
-
-/**
- * UNA FILA POR IMPUESTO: cuánto falta pagar (sin ventana), lo próximo que vence, cuánto hay a favor y
- * hasta qué mes hay datos. La fila entera es el enlace a su solapa: en el teléfono, 44 px o más.
- */
-export function PorImpuesto({ filas, ruta }: { filas: FilaResumen[]; ruta: string }) {
-  return (
-    <div data-testid="impuestos-por-impuesto">
-      <div aria-hidden className={`hidden h-8 items-center gap-x-3 border-b border-line text-[12px] text-faint md:grid ${COLS_RESUMEN}`}>
-        <span>Impuesto</span><span className="text-right">Falta pagar</span><span>Lo próximo</span><span>A favor</span><span>Datos hasta</span>
-      </div>
-      <ul>
-        {filas.map((r) => (
-          <li key={r.vista} data-vista={r.vista}>
-            <Link
-              prefetch={false}
-              href={`${ruta}?ver=${r.vista}`}
-              className={`grid min-h-[44px] grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-b border-line-hairline py-3 text-[13px] hover:bg-surface-quiet md:items-baseline md:gap-y-0 md:py-2.5 ${COLS_RESUMEN}`}
-            >
-              <span className="font-medium text-ink">
-                {r.titulo} <span aria-hidden className="text-faint">›</span>
-              </span>
-              <span className="text-right">
-                <span className="font-mono tabular-nums text-ink">{plata(r.faltaPagar)}</span>
-                {(r.estimados > 0 || r.sinImporte > 0) && (
-                  <span className="block text-[12px] text-faint">
-                    {[r.estimados ? `${r.estimados} estimado${r.estimados > 1 ? 's' : ''}` : null, r.sinImporte ? `${r.sinImporte} sin importe` : null].filter(Boolean).join(' · ')}
-                  </span>
-                )}
-              </span>
-              <span className="col-span-2 text-muted md:col-span-1">
-                {r.vencidas > 0 && <span className="mr-2 text-neg">{r.vencidas} vencido{r.vencidas > 1 ? 's' : ''}</span>}
-                {r.proximo
-                  ? <><span className="block">{nombreLlano(r.proximo)}<MarcaEstimado estado={r.proximo.estado} /></span><Vence fecha={r.proximo.vencimiento} confianza={r.proximo.vencimiento_confianza} dias={r.proximo.dias} /></>
-                  : r.vencidas ? null : <span className="text-faint">nada en 30 días</span>}
-              </span>
-              <span className="col-span-2 text-muted md:col-span-1">
-                {r.aFavor.length || r.otroAFavor
-                  ? [...r.aFavor, ...(r.otroAFavor ? [r.otroAFavor] : [])].map((s) => (
-                    <span key={`${s.impuesto}-${s.periodo}-${s.concepto}`} className="block">
-                      <span className="md:hidden">A favor </span><SaldoAFavor s={s} />
-                    </span>
-                  ))
-                    : <span className="hidden text-faint md:inline">—</span>}
-              </span>
-              <span className="col-span-2 text-[12px] text-faint md:col-span-1">
-                {r.ultimoPeriodo ? <><span className="md:hidden">datos hasta </span>{rotuloPeriodo(r.ultimoPeriodo)}</> : '—'}
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
     </div>
   )
 }

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { PosicionImpuesto } from './impuestos.ts'
-import { agenda, columnasConDato, decision, rotuloSaldo, enDias, estadoLlano, nombreLlano, porImpuesto, urgenciaDe, vistaDe } from './impuestosVista.ts'
+import { agenda, columnasConDato, decision, estadoCorto, rotuloSaldo, enDias, estadoLlano, nombreLlano, porImpuesto, urgenciaDe, vistaDe } from './impuestosVista.ts'
 
 const fila = (x: Partial<PosicionImpuesto>): PosicionImpuesto => ({
   impuesto: 'iva', periodo: '2026-08', concepto: 'ddjj', fuente: 'ddjj_contador', estado: 'presentado',
@@ -99,6 +99,14 @@ test('el estado se dice como lo diría quien paga, y el color sólo va donde hay
   assert.equal(estadoLlano(fila({ estado: 'estimado', detalle: { parcial: true } })).texto, 'Estimado · mes en curso')
   assert.equal(estadoLlano(fila({ estado: 'estimado', concepto: 'Plan F931 W303094 · cuota 3/3' })).texto, 'Estimado', 'una cuota no se declara')
   assert.deepEqual(estadoLlano(fila({ estado: 'pagado', pendiente: 0 })), { tono: 'pos', texto: 'Pagado' })
+})
+
+test('el estado en una palabra conserva las dos marcas y el color del largo', () => {
+  assert.deepEqual(estadoCorto(fila({ estado: 'estimado', pendiente: 5 }), -1), { tono: 'neg', texto: 'Vencido · estimado' })
+  assert.deepEqual(estadoCorto(fila({ pendiente: 5 }), -1), { tono: 'neg', texto: 'Vencido' })
+  assert.deepEqual(estadoCorto(fila({ estado: 'estimado', pendiente: 5 }), 3), { tono: 'neutro', texto: 'Estimado' })
+  assert.deepEqual(estadoCorto(fila({ pendiente: 5 }), 3), { tono: 'warn', texto: 'A pagar' })
+  assert.deepEqual(estadoCorto(fila({ pendiente: 0 })), { tono: 'neutro', texto: 'Declarado' })
 })
 
 test('los nombres: la cuota se nombra por su plan, no por el período financiado', () => {

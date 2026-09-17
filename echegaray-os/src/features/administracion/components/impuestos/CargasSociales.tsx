@@ -11,7 +11,7 @@ import { plata } from '@/shared/utils/format'
 import type { PosicionImpuesto } from '../../services/impuestos'
 import type { cargasSociales, CuotaPlan, PlanDePago } from '../../services/impuestosCargas'
 import { estadoLlano, periodoCorto } from '../../services/impuestosVista'
-import { EstadoTexto, Importe, Origen, Seccion, Vacio, Vence } from './piezas'
+import { EstadoTexto, Importe, Origen, Plegada, Vacio, Vence } from './piezas'
 
 type Cargas = ReturnType<typeof cargasSociales>
 
@@ -109,16 +109,17 @@ function Planes({ planes }: { planes: PlanDePago[] }) {
   )
 }
 
-/** La vista entera: lo que falta pagar, el F931 mes por mes y los planes. La agenda la pone la página. */
+/** El detalle de la solapa: el F931 mes por mes y los planes, plegados. Planes abiertos si alguno debe. */
 export function SeccionCargasSociales({ c }: { c: Cargas }) {
+  const debe = c.planes.some((p) => p.saldo > 0 || p.sinImporte > 0)
   return (
     <div data-testid="bloque-cargas-sociales">
-      <Seccion testid="cargas-f931-seccion" titulo="F931 mes por mes" resumen={`falta pagar entre F931 y planes: ${plata(c.pendienteTotal)}${c.pendienteSinImporte ? ` + ${c.pendienteSinImporte} sin importe` : ''}`}>
+      <Plegada testid="cargas-f931-seccion" titulo="F931 mes por mes" resumen={`falta pagar entre F931 y planes: ${plata(c.pendienteTotal)}${c.pendienteSinImporte ? ` + ${c.pendienteSinImporte} sin importe` : ''}`}>
         <TablaF931 filas={c.periodos} />
-      </Seccion>
-      <Seccion testid="cargas-planes-seccion" titulo="Planes de pago" resumen={`${c.planes.length} plan${c.planes.length === 1 ? '' : 'es'}`}>
+      </Plegada>
+      <Plegada testid="cargas-planes-seccion" titulo="Planes de pago" resumen={`${c.planes.length} plan${c.planes.length === 1 ? '' : 'es'}`} abierta={debe}>
         <Planes planes={c.planes} />
-      </Seccion>
+      </Plegada>
     </div>
   )
 }
