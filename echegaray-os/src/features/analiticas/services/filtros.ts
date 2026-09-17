@@ -8,7 +8,7 @@
 //
 // ═══ QUÉ FILTRO APLICA A QUÉ VISTA ═══
 //
-// Resumen, Contrato y gasto y Estado del gasto son ACUMULADOS: el semáforo contra el contrato no
+// Resumen, Contrato y gasto, Estado del gasto y Gasto por obra son ACUMULADOS: el semáforo contra el contrato no
 // tiene sentido con medio contrato gastado «en agosto». Nómina y Cobranza son de la empresa, no de
 // una obra. El control que no aplica se APAGA con su razón —nunca se esconde—: si desapareciera, el
 // dueño no sabría si el número que mira está filtrado o no.
@@ -131,7 +131,9 @@ export function apartado(f: Filtros, c: Control): boolean {
 export const cuantosApartados = (f: Filtros): number =>
   (['periodo', 'estado', 'obras'] as const).filter((c) => apartado(f, c)).length
 
-const ACUMULADAS: ReadonlySet<Vista> = new Set(['estado', 'resumen', 'contrato'])
+// GASTO POR OBRA TAMBIÉN (auditoría 17/09/2026, D3): su plano y su «% del contrato» ponen el gasto contra
+// el contrato ENTERO; con el gasto de un mes contra el precio de toda la obra, el % no significa nada.
+const ACUMULADAS: ReadonlySet<Vista> = new Set(['estado', 'resumen', 'contrato', 'obra'])
 const DE_EMPRESA: ReadonlySet<Vista> = new Set(['nomina', 'cobranza'])
 
 /** POR QUÉ un control no aplica en una vista, o `null` si aplica. La razón va al `title` del control. */

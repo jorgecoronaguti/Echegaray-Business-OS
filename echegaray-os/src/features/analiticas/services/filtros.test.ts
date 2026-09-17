@@ -45,8 +45,11 @@ test('las vistas acumuladas NO mandan el período a la base aunque esté puesto'
   assert.deepEqual(rangoParaVista(f, '2026-09-17'), { desde: null, hasta: null })
   assert.ok(razonNoAplica('resumen', 'periodo'))
   assert.ok(razonNoAplica('contrato', 'periodo'))
-  assert.equal(razonNoAplica('obra', 'periodo'), null)
-  assert.deepEqual(rangoParaVista({ ...f, vista: 'obra' }, '2026-09-17'), { desde: '2026-09-01', hasta: '2026-09-17' })
+  // D3: Gasto por obra compara contra el contrato entero — el período de un mes no puede viajar.
+  assert.ok(razonNoAplica('obra', 'periodo'))
+  assert.deepEqual(rangoParaVista({ ...f, vista: 'obra' }, '2026-09-17'), { desde: null, hasta: null })
+  assert.equal(razonNoAplica('hora', 'periodo'), null)
+  assert.deepEqual(rangoParaVista({ ...f, vista: 'hora' }, '2026-09-17'), { desde: '2026-09-01', hasta: '2026-09-17' })
 })
 
 test('estado y obras no aplican a Nómina ni a Cobranza; el período sí', () => {
