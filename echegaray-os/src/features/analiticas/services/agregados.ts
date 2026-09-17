@@ -5,6 +5,7 @@
 // dos patas no se publica: `queda` sólo existe con presupuesto Y consumo del MISMO rubro, `$/hora` sólo
 // con mano de obra imputada Y horas. El contrato viaja como referencia, nunca como presupuesto.
 import { rotuloEstimada, type ObraAnalitica } from './obras.ts'
+import { jerarquiaDeObras } from '../../clientes/services/obrasAdicionales.ts'
 import { SIN_PRESUPUESTO, SIN_PRESUPUESTO_RUBRO, type Rubro } from './presupuesto.ts'
 
 const sumaNula = (xs: (number | null)[]): number | null =>
@@ -73,53 +74,71 @@ export function controlPorObra(obras: ObraAnalitica[]): ControlDeObra[] {
   })
 }
 
+export interface FilaControl extends ControlDeObra {
+  /** `0` = obra mayor · `1` = adicional debajo de su obra (la misma jerarquía que Clientes). */
+  nivel: 0 | 1
+  esAdicional: boolean
+}
+
 export interface GrupoDeCliente {
   clienteId: string
   nombre: string
+  /** Obras activas del cliente en toda la cartera: la primera clave del orden de Clientes. */
+  nActivas: number
   presupuestado: number | null
   /** Consumido en los rubros presupuestados de sus obras. */
   consumido: number | null
   queda: number | null
   pct: number | null
-  /** Todo lo consumido por sus obras (con lo que no tiene presupuesto). */
+  manoObra: number | null
+  materiales: number | null
+  subcontratos: number | null
+  /** Todo lo consumido por sus obras (la suma de las tres columnas). */
   consumoTotal: number | null
-  /** Obras que gastaron más que su presupuesto. */
+  /** Obras que gastaron más que su presupuesto: se marcan, no reordenan. */
   excedidas: number
-  obras: ControlDeObra[]
+  obras: FilaControl[]
 }
 
-/** Lo que pide atención primero: excedida; después, lo que más consumió. */
-const atencion = (excedida: boolean, consumo: number | null) => [excedida ? 0 : 1, -(consumo ?? -1)] as const
-const porAtencion = <T>(clave: (x: T) => readonly [number, number]) => (a: T, b: T) => {
-  const [x, y] = [clave(a), clave(b)]
-  return x[0] - y[0] || x[1] - y[1]
-}
+const porNombre = (a: string, b: string) => a.localeCompare(b, 'es')
 
 /**
- * EL RESUMEN AGRUPADO COMO EL CRM (dueño, 17/09/2026: «más similar a Administración → Clientes»): el
- * cliente con sus totales y, debajo, sus obras. El CRM ordena por cantidad de obras y nombre porque
- * lista trabajos; acá la pregunta es de control, así que el equivalente es lo que pide atención:
- * primero el cliente con alguna obra excedida, después el que más consumió; dentro, igual con sus obras.
+ * EL RESUMEN EN EL ORDEN DE CLIENTES (dueño, 17/09/2026: «más similar a Administración → Clientes»):
+ * el dueño tiene que encontrar cada cliente y cada obra en el MISMO lugar que en Clientes. Clientes
+ * ordena por cantidad de obras activas (de más a menos) y nombre (`clientesService`); sus obras por
+ * `orden` y nombre, con el adicional debajo de su obra (`jerarquiaDeObras`). El excedido se marca en
+ * rojo, no cambia el orden.
+ *
+ * `cartera` = todas las obras (sin filtro): de ahí sale cuántas activas tiene cada cliente, como en
+ * Clientes, aunque el filtro muestre menos.
  */
-export function agruparPorCliente(obras: ObraAnalitica[]): GrupoDeCliente[] {
+export function agruparPorCliente(obras: ObraAnalitica[], cartera: ObraAnalitica[] = obras): GrupoDeCliente[] {
+  const activas = new Map<string, number>()
+  for (const o of cartera) if (o.estado !== 'terminada') activas.set(o.clienteId, (activas.get(o.clienteId) ?? 0) + 1)
   const m = new Map<string, ObraAnalitica[]>()
   for (const o of obras) m.set(o.clienteId, [...(m.get(o.clienteId) ?? []), o])
   const grupos = [...m.values()].map((lista): GrupoDeCliente => {
-    const filas = controlPorObra(lista)
-      .sort(porAtencion((f) => atencion(f.pct != null && f.pct > 1, f.obra.gasto.total)))
+    const ordenadas = [...lista].sort((a, b) => (a.orden ?? Infinity) - (b.orden ?? Infinity) || porNombre(a.nombre, b.nombre))
+    const control = new Map(controlPorObra(lista).map((f) => [f.obra.id, f]))
+    const filas = jerarquiaDeObras(ordenadas.map((o) => ({ ...o, obra_id: o.id, obra_padre_id: o.padreId })))
+      .map((f): FilaControl => ({ ...(control.get(f.obra.obra_id) as ControlDeObra), nivel: f.nivel, esAdicional: f.esAdicional }))
     const conPres = filas.filter((f) => f.presupuesto != null)
     const presupuestado = sumaNula(conPres.map((f) => f.presupuesto))
     const consumido = sumaNula(conPres.map((f) => f.consumido))
     return {
-      clienteId: lista[0].clienteId, nombre: lista[0].clienteNombre, presupuestado, consumido,
+      clienteId: lista[0].clienteId, nombre: lista[0].clienteNombre, nActivas: activas.get(lista[0].clienteId) ?? 0,
+      presupuestado, consumido,
       queda: presupuestado != null ? presupuestado - (consumido ?? 0) : null,
       pct: presupuestado ? (consumido ?? 0) / presupuestado : null,
+      manoObra: sumaNula(lista.map((o) => o.gasto.manoObra)),
+      materiales: sumaNula(lista.map((o) => o.gasto.materiales)),
+      subcontratos: sumaNula(lista.map((o) => o.gasto.subcontratos)),
       consumoTotal: sumaNula(lista.map((o) => o.gasto.total)),
       excedidas: filas.filter((f) => f.pct != null && f.pct > 1).length,
       obras: filas,
     }
   })
-  return grupos.sort(porAtencion((g) => atencion(g.excedidas > 0, g.consumoTotal)))
+  return grupos.sort((a, b) => b.nActivas - a.nActivas || porNombre(a.nombre, b.nombre))
 }
 
 /** La mano de obra de varias obras sumada, con su parte estimada: para rotular un total. */

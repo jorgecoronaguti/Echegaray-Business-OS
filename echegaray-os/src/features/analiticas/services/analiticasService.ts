@@ -54,7 +54,7 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
   const hoy = hoySanJuan()
   const rango = rangoParaVista(f, hoy)
   const [panel, economia, costos, presupuestos] = await Promise.all([
-    supabase.from('obra_panel').select('obra_id, nombre, cliente_id, cliente_slug, cliente_nombre, estado, n_comprobantes, avance_pct'),
+    supabase.from('obra_panel').select('obra_id, nombre, cliente_id, cliente_slug, cliente_nombre, estado, n_comprobantes, avance_pct, orden, obra_padre_id'),
     getEconomiaDeObras(supabase),
     supabase.rpc('analiticas_costos', { p_desde: rango.desde, p_hasta: rango.hasta, p_obras: null }),
     // SÓLO EL APROBADO: 'reemplazado' y 'cotizado' no son presupuesto vigente (migración 20260917T1700).

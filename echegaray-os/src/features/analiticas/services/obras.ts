@@ -33,6 +33,10 @@ export interface ObraPanel {
   estado: string | null
   n_comprobantes: number | null
   avance_pct: number | null
+  /** El orden manual de la obra, el mismo que usa Clientes. */
+  orden?: number | null
+  /** La obra mayor de la que es adicional. */
+  obra_padre_id?: string | null
 }
 
 export type EstadoDeObra = 'curso' | 'terminada' | 'sinIniciar'
@@ -62,6 +66,8 @@ export interface Gasto {
 export interface ObraAnalitica {
   id: string
   nombre: string
+  orden: number | null
+  padreId: string | null
   clienteId: string
   clienteSlug: string
   clienteNombre: string
@@ -125,10 +131,14 @@ export function estadoDe(p: Pick<ObraPanel, 'estado' | 'n_comprobantes' | 'avanc
   return (p.n_comprobantes ?? 0) === 0 && (p.avance_pct ?? 0) === 0 ? 'sinIniciar' : 'curso'
 }
 
+/**
+ * «EN CURSO» ES LO ACTIVO, COMO EN CLIENTES (dueño, 17/09/2026): incluye las activas que todavía no
+ * consumieron (Playón de azufre, Adicional tercer muro). «Sin iniciar» sigue existiendo como recorte.
+ */
 export function pasaEstado(e: EstadoDeObra, filtro: EstadoObra): boolean {
   if (filtro === 'todas') return true
   if (filtro === 'terminadas') return e === 'terminada'
-  return filtro === 'sinIniciar' ? e === 'sinIniciar' : e === 'curso'
+  return filtro === 'sinIniciar' ? e === 'sinIniciar' : e !== 'terminada'
 }
 
 const suma = (...xs: (number | null)[]): number | null =>
@@ -190,6 +200,7 @@ export function armarObra(
   const consumoComparable = comparables.length ? suma(...rubrosComparables(armado?.porRubro ?? null).map((k) => gasto[k])) : null
   return {
     id: p.obra_id, nombre: p.nombre, clienteId: p.cliente_id, clienteSlug: p.cliente_slug,
+    orden: p.orden ?? null, padreId: p.obra_padre_id ?? null,
     clienteNombre: p.cliente_nombre ?? p.cliente_slug, estado: estadoDe(p),
     contrato: {
       manoObra: e?.contrato_mano_obra ?? null,

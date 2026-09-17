@@ -78,7 +78,9 @@ test('estado de obra: cerrada = terminada; activa sin comprobantes ni avance = s
   assert.equal(estadoDe({ estado: 'cerrada', n_comprobantes: 0, avance_pct: null }), 'terminada')
   assert.equal(estadoDe({ estado: 'activa', n_comprobantes: 0, avance_pct: null }), 'sinIniciar')
   assert.equal(estadoDe({ estado: 'activa', n_comprobantes: 0, avance_pct: 10 }), 'curso')
-  assert.equal(pasaEstado('sinIniciar', 'curso'), false)
+  assert.equal(pasaEstado('sinIniciar', 'curso'), true, '«En curso» es lo activo, como en Clientes: incluye lo que todavía no consumió')
+  assert.equal(pasaEstado('terminada', 'curso'), false)
+  assert.equal(pasaEstado('curso', 'sinIniciar'), false)
   assert.equal(pasaEstado('terminada', 'todas'), true)
 })
 
