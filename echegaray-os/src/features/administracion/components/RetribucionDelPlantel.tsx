@@ -116,7 +116,8 @@ export function RetribucionDelPlantel({ d, hrefMedida, hrefAnios }: {
         <input
           type="search" value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar persona"
           aria-label="Buscar persona" data-testid="retribucion-plantel-buscar"
-          style={{ fontSize: '12.5px', padding: '6px 10px', border: `1px solid ${V.linea}`, borderRadius: 6, minWidth: 200, color: V.tinta }}
+          // CON CLASES Y NO CON `style`: el estilo en línea de este campo no hidrataba (medido en `next dev`).
+          className="min-w-[200px] rounded-control border border-line bg-surface px-2.5 py-1.5 text-[12.5px] text-ink"
         />
         <div style={{ display: 'flex', gap: 4 }} role="group" aria-label="Qué se muestra">
           <Opcion href={hrefMedida.pagado} activa={d.medida === 'pagado'} testid="retribucion-medida-pagado">Pagado</Opcion>
