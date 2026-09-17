@@ -81,7 +81,7 @@ function Fila({ fila, dia, acciones }: { fila: FilaDeCarga; dia: DiaDeLaCarga; a
       <CeldaHoras fila={fila} obraId={obraId} dia={dia} presente={casilla.estado === 'presente'} />
       <div className="flex items-center justify-end gap-2">
         <MarcaDeGuardado estado={acciones.guardadoDe(persona.id)} />
-        <button type="button" onClick={() => acciones.abrir(persona.id)} aria-label={`Abrir el día de ${persona.nombre}`} data-testid="abrir-detalle" className="h-[30px] px-2 text-[12px] text-muted hover:text-ink">
+        <button type="button" onClick={() => acciones.abrir(persona.id)} aria-label={`Abrir el día de ${persona.nombre}`} data-testid="abrir-detalle" className="h-[44px] md:h-[30px] px-2 text-[12px] text-muted hover:text-ink">
           Detalle ›
         </button>
       </div>
