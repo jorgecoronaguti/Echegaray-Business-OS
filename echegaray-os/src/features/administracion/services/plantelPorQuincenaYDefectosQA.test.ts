@@ -53,8 +53,7 @@ test('HIDRATACIÓN: el `style` del redondeo no depende del estado; el sugerido y
   const campo = c.slice(c.indexOf('export function CeldaRedondeo('))
   assert.match(campo, /style=\{estiloDelRedondeo\(ancho\)\}/)
   assert.match(campo, /data-sugerido=\{gris \? '1' : '0'\}/)
-  // Las clases siguen siendo UNA cadena estática: el sugerido y el error cambian por atributo, nunca por estado.
-  assert.match(campo, /className="[^"$`{}]*text-ink [^"$`{}]*data-\[sugerido='1'\]:text-muted data-\[error='1'\]:border-neg"/)
+  assert.match(campo, /className="border border-line text-ink data-\[sugerido='1'\]:text-muted data-\[error='1'\]:border-neg"/)
   assert.ok(!/color: gris \?|error \? V\.neg : V\.linea/.test(sinComentarios(campo)), 'ningún estilo armado según el estado')
   assert.match(fuente('../components/liquidacion/cuadro/FiltrosDelEspejo.tsx'), /style=\{ESTILO_BUSCADOR\}/)
 })

@@ -132,7 +132,7 @@ export function CeldaDeDia({ celda, personaId, nombre }: {
         textAlign: 'center', color: celda.horas == null ? V.lineaFuerte : V.apagado, position: 'relative',
       }}>
         <MarcaDeTardanza celda={celda} />
-        {celda.horas == null ? '' : nHoras(celda.horas)}
+        {celda.horas == null ? '·' : nHoras(celda.horas)}
       </div>
     )
   }
@@ -143,9 +143,7 @@ export function CeldaDeDia({ celda, personaId, nombre }: {
       <InlineEdit
         valor={celda.horas ?? null}
         tipo="numero"
-        // DÍA VACÍO = CELDA EN BLANCO (limpieza 17/09/2026): un «·» por día sin cargar eran 200 puntos en pantalla. Sigue
-        // sin ser un 0, y la celda se ve al pasar el puntero o con Tab.
-        falta=""
+        falta="·"
         ancho="w-[56px] sin-spinner"
         alineado="center"
         etiqueta={`Horas de ${nombre} el ${celda.fecha}`}
@@ -213,9 +211,7 @@ export function Escribible({ campo, fila, quincena, camposEditables, ancho, clas
       <span style={{
         width: ancho, minHeight: 32, maxWidth: '100%', overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-        // SIN MARCO FIJO (limpieza 17/09/2026): una caja con borde en cada celda escribible convertía el cuadro en un
-        // formulario. La celda de adentro (`InlineEdit`) ya se ve escribible: subrayado punteado, borde al pasar, foco.
-        padding: '0 4px',
+        border: soloLectura ? 'none' : `1px solid ${V.lineaFuerte}`, borderRadius: 4, padding: '0 4px',
         color: valor == null || valor === 0 ? V.lineaFuerte : V.tinta,
       }}>
         <CeldaEditable

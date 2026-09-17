@@ -20,7 +20,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { CintaHorizontal } from '@/shared/components/v2/CintaHorizontal'
-import { CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, fondoDeColumnaFija } from '../solapas/tabla'
+import { CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, MONO, fondoDeColumnaFija } from '../solapas/tabla'
 import {
   anchoDe, bloqueEnVista, columnasDe, corrimientoDelRotulo, desplazamientoHasta, tramosDeBloques, DIA,
   type DefinicionDeCuadro, type TonoDeBloque, type TramoDeBloque,
@@ -32,15 +32,7 @@ import type { Tirador } from './useAnchoDePersona'
 export const VARIABLE_PERSONA = '[--liq-persona:170px] md:[--liq-persona:250px]'
 
 /** El fondo de cada tono, de los tokens del tema: canvas y superficie hundida. Clases estáticas, no hex. */
-// LIMPIEZA 17/09/2026 («mucho ruido visual»): el gris hundido y el canvas alternados se leían como franjas. Queda un solo
-// tinte, el más claro del tema, en los bloques que antes eran hundidos; el corte entre bloques lo sigue haciendo el aire.
-export const CLASE_DE_TONO: Record<TonoDeBloque, string> = { ninguno: '', claro: '', hundido: 'bg-canvas' }
-
-/**
- * EL ✎ SIGUE EN LA DEFINICIÓN (`columnasDelCuadro.ts`: dice qué columna se escribe, y los tests lo leen) pero no se
- * dibuja: repetido en once rótulos era ruido, y la celda ya se ve editable al pasar el puntero o enfocarla.
- */
-export const rotuloVisible = (rotulo: string): string => rotulo.replace(/\s*✎$/, '')
+export const CLASE_DE_TONO: Record<TonoDeBloque, string> = { ninguno: '', claro: 'bg-canvas', hundido: 'bg-surface-sunken' }
 
 const DIAS_CORTOS = ['D', 'L', 'M', 'M', 'J', 'V', 'S'] as const
 function rotuloDia(fecha: string): string {
@@ -147,15 +139,14 @@ function Saltos({ testid, cinta: idCinta, tramos, corrimiento }: { testid: strin
     <div ref={propio} data-testid={`${testid}-saltos`} style={{
       display: 'flex', alignItems: 'center', gap: 4, padding: '4px 0 8px', transform: `translateX(${corrimiento}px)`, width: 'max-content',
     }}>
-      <span style={{ fontSize: '11px', color: V.tenue, marginRight: 4 }}>Ir a</span>
+      <span style={{ fontFamily: MONO, fontSize: '9.5px', letterSpacing: '.04em', textTransform: 'uppercase', color: V.tenue, marginRight: 4 }}>Ir a</span>
       {tramos.map((t, i) => (
         <button key={t.clave} type="button" onClick={(e) => ir(e, t, i)} data-testid={`${testid}-salto-${t.clave}`}
           aria-current={enVista === t.clave ? 'true' : undefined}
           className={[
-            // SIN CÁPSULAS: un salto es navegación secundaria. Texto, y el bloque en vista con el fondo más suave.
-            'h-7 max-[767px]:h-9 rounded-control px-2 text-[11.5px] leading-none whitespace-nowrap transition-colors',
+            'h-7 max-[767px]:h-9 rounded-full border px-3 text-[11.5px] leading-none whitespace-nowrap transition-colors',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
-            enVista === t.clave ? 'bg-surface-quiet text-ink font-semibold' : 'text-muted hover:text-ink',
+            enVista === t.clave ? 'border-ink text-ink font-semibold' : 'border-line-strong text-muted hover:border-ink hover:text-ink',
           ].join(' ')}><span className="md:hidden">{t.corto}</span><span className="hidden md:inline">{t.rotulo}</span></button>
       ))}
     </div>
@@ -167,12 +158,11 @@ function Encabezado({ columnas, definicion, dias, tramos, sellada, corrimiento, 
   columnas: string; definicion: DefinicionDeCuadro; dias: readonly string[]; tramos: readonly TramoDeBloque[]
   sellada: boolean; corrimiento: number; tirador: Tirador; testid: string; banda: (clave: string) => string
 }) {
-  // RÓTULOS EN CAJA NORMAL (limpieza 17/09/2026): treinta rótulos en monoespaciada mayúscula competían con los números.
-  const rotulo = { fontSize: '11px', lineHeight: '14px' }
+  const mono = { fontFamily: MONO, fontSize: '9.5px', letterSpacing: '.04em', textTransform: 'uppercase' as const }
   return (
     <div data-testid={testid} data-encabezado="" style={{
       display: 'grid', gridTemplateColumns: columnas, columnGap: 8, gridTemplateRows: 'auto auto', alignItems: 'end',
-      borderBottom: `1px solid ${V.lineaFuerte}`, color: V.tenue, ...rotulo,
+      borderBottom: `1px solid ${V.grafito}`, color: V.tenue, ...mono,
     }}>
       {/* «PERSONA» NO SE VA CON EL SCROLL: se contra-desplaza (acá no hay scrollport que ancle un sticky). Una sola
           celda para los dos renglones, estirada, para que tape todo lo que pasa por debajo. */}
@@ -194,14 +184,14 @@ function Encabezado({ columnas, definicion, dias, tramos, sellada, corrimiento, 
       {tramos.map((t) => (
         <div key={t.clave} data-testid={banda(t.clave)} className={CLASE_DE_TONO[t.tono]} style={{
           gridColumn: `${t.inicio} / span ${t.span}`, gridRow: '1 / span 2', alignSelf: 'stretch', marginInline: -2,
-          borderTop: `1px solid ${V.linea}`, overflow: 'clip',
+          borderTop: `2px solid ${t.tono === 'ninguno' ? V.lineaFuerte : V.grafito}`, overflow: 'clip',
         }}>
           <div style={{
-            display: 'inline-flex', alignItems: 'baseline', gap: 8, padding: '8px 4px 0', color: V.tintaSuave, fontWeight: 600,
+            display: 'inline-flex', alignItems: 'baseline', gap: 8, padding: '6px 4px 0', color: V.tinta, fontWeight: 600,
             whiteSpace: 'nowrap', transform: `translateX(${corrimientoDelRotulo(corrimiento, t)}px)`,
           }}>
             {t.rotulo}
-            {sellada && <span style={{ fontWeight: 400, color: V.apagado }}>sellada</span>}
+            {sellada && <span style={{ fontWeight: 400, color: V.apagado, textTransform: 'none' }}>sellada</span>}
           </div>
         </div>
       ))}
@@ -209,7 +199,7 @@ function Encabezado({ columnas, definicion, dias, tramos, sellada, corrimiento, 
         <div key={f} title={f} style={{ gridColumn: 2 + i, gridRow: 2, textAlign: 'center', padding: '28px 0 8px', minWidth: DIA }}>{rotuloDia(f)}</div>
       ))}
       {definicion.columnas.map((c, i) => (
-        <div key={c.clave} style={{ gridColumn: 2 + dias.length + i, gridRow: 2, textAlign: 'right', padding: '28px 0 8px' }}>{rotuloVisible(c.rotulo)}</div>
+        <div key={c.clave} style={{ gridColumn: 2 + dias.length + i, gridRow: 2, textAlign: 'right', padding: '28px 0 8px' }}>{c.rotulo}</div>
       ))}
     </div>
   )

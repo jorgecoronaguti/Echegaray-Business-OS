@@ -55,10 +55,8 @@ export function FilaJornalero({ fila, columnas, edicion, pct, abrir }: {
       <CeldaPersona fila={fila} fondo={fondo} quincena={quincena} camposEditables={edicion.camposEditables} abrir={abrir}
         detalle={(
           <div data-testid={`categorias-${fila.personaId}`} data-coinciden={c.coinciden ? '1' : '0'} title={c.titulo}>
-            {/* LOS DOS RENGLONES QUEDAN (los pidió el dueño el 16/09) pero en segundo plano: tenues; la plataforma se
-                oscurece sólo cuando NO coincide con el recibo, que es lo único que hay que mirar. */}
-            <RenglonDelDetalle tono={V.tenue}>{c.recibo}</RenglonDelDetalle>
-            <RenglonDelDetalle tono={c.coinciden ? V.tenue : V.apagado}>{c.plataforma}</RenglonDelDetalle>
+            <RenglonDelDetalle>{c.recibo}</RenglonDelDetalle>
+            <RenglonDelDetalle tono={c.coinciden ? V.apagado : V.tintaSuave}>{c.plataforma}</RenglonDelDetalle>
           </div>
         )} />
       {fila.celdas.map((d) => <CeldaDeDia key={d.fecha} celda={d} personaId={fila.personaId} nombre={fila.nombre} />)}
@@ -98,7 +96,7 @@ export function TotalJornaleros({ columnas, dias, t }: { columnas: string; dias:
     <div data-testid="espejo-total" style={{ ...filaGrid(columnas, ALTO_LIQ.filaAlta), borderBottom: 'none', borderTop: `1px solid ${V.grafito}`, fontWeight: 600 }}>
       <div style={{ ...COLUMNA_FIJA, ...PERSONA_ESTIRADA }}>{`${t.personas} jornalero${t.personas === 1 ? '' : 's'}`}</div>
       {dias.map((f, i) => (
-        <div key={f} style={{ textAlign: 'center', color: V.tinta }}>{t.porDia[i] == null ? '' : nHoras(t.porDia[i])}</div>
+        <div key={f} style={{ textAlign: 'center', color: t.porDia[i] == null ? V.tenue : V.tinta }}>{t.porDia[i] == null ? '·' : nHoras(t.porDia[i])}</div>
       ))}
       <Leida valor={t.horasPagas} unidad="horas" testid="espejo-total-hs" />
       <div /><div />

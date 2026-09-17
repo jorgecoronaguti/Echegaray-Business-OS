@@ -67,9 +67,7 @@ export function MarcaDePago({ personaId, grupo, quincena, pagadaEn, cerrada }: {
           'disabled:cursor-progress disabled:opacity-60',
           pagada
             ? 'border-pos bg-pos-soft text-pos hover:border-ink'
-            // «PAGAR» EN REPOSO ES TEXTO (limpieza 17/09/2026): quince cápsulas con borde, una por fila, eran la columna
-            // más ruidosa del cuadro. Sigue a un clic, con el mismo alto de toque; el borde aparece al pasar el puntero.
-            : 'border-transparent bg-transparent text-muted hover:bg-surface-quiet hover:border-line-strong hover:text-ink',
+            : 'border-line-strong bg-transparent text-muted hover:bg-surface-quiet hover:border-ink hover:text-ink',
         ].join(' ')}
       >
         {pagada ? `✓ Pagada ${diaDelSello(pagadaEn)}` : 'Pagar'}

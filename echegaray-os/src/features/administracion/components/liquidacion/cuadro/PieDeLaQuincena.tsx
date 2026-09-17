@@ -16,26 +16,17 @@ import { CANAL_SCROLL } from '../solapas/tabla'
 import { cierreDeTotales } from '../../../services/cuadroDeJornales'
 import type { TotalGeneral, TotalesDeJornaleros, TotalesDeMensuales } from '../../../services/liquidacionPorTipo'
 
-// ═══ DOS RENGLONES: LO QUE SE DECIDE Y EL DESGLOSE (limpieza 17/09/2026) ═══
-//
-// Quince cifras en negrita, todas iguales, no dejaban ver cuánto falta pagar. Arriba quedan Total · Pagado · Saldo · A
-// pagar hoy y los avisos; abajo, más chico y tenue, el desglose por canal. No se quitó ninguna cifra ni su testid.
 const Cifra = ({ rotulo, valor, testid, tono }: { rotulo: string; valor: ReactNode; testid: string; tono?: string }) => (
   <span data-testid={testid} style={{ whiteSpace: 'nowrap', color: tono }}>
-    <span style={{ color: tono ?? V.tenue }}>{`${rotulo} `}</span><span style={{ fontWeight: 500 }}>{valor}</span>
+    <span style={{ color: tono ?? V.apagado }}>{`${rotulo} `}</span><strong>{valor}</strong>
   </span>
 )
 
 const Tira = ({ children, testid }: { children: ReactNode; testid: string }) => (
   <div data-testid={testid} style={{
-    display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 16, rowGap: 4, flexBasis: '100%',
-    fontSize: '12.5px', fontVariantNumeric: 'tabular-nums', color: V.tinta,
+    display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 16, rowGap: 4,
+    fontSize: '12px', fontVariantNumeric: 'tabular-nums', color: V.tinta,
   }}>{children}</div>
-)
-
-/** El desglose va en su propio renglón, debajo del que decide, dentro del mismo resumen. */
-const Desglose = ({ children }: { children: ReactNode }) => (
-  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 16, rowGap: 4, flexBasis: '100%', fontSize: '11.5px', color: V.apagado }}>{children}</div>
 )
 
 const Aviso = ({ children, tono }: { children: ReactNode; tono: string }) => (
@@ -52,13 +43,6 @@ export function ResumenJornaleros({ t }: { t: TotalesDeJornaleros }) {
   if (t.estimados > 0) avisos.push(`${t.estimados} con blanco estimado`)
   return (
     <Tira testid="espejo-pie">
-      <Cifra rotulo="Total" valor={pesos(t.cobra)} testid="pie-total" />
-      <Cifra rotulo="Pagado" valor={pesos(t.pago.pagado)} testid="pie-pagado" />
-      <Cifra rotulo="Saldo" valor={pesos(t.pago.saldoTotal)} testid="pie-saldo" />
-      {/* LA LÍNEA DEL DÍA DE PAGO: el exceso de un lado ya está descontado del otro, así que suman el saldo y no más. */}
-      <Cifra rotulo="A pagar hoy:" valor={`efectivo ${pesos(t.pago.aPagarEfectivo)} · banco ${pesos(t.pago.aPagarBanco)}`} testid="pie-a-pagar" />
-      {avisos.length > 0 && <Aviso tono={cierre?.cierra === false ? V.neg : V.apagado}>{avisos.join(' · ')}</Aviso>}
-      <Desglose>
       <Cifra rotulo="Horas" valor={nHoras(t.horasPagas)} testid="pie-horas" />
       <Cifra rotulo="Banco" valor={pesos(t.netoBandas)} testid="pie-neto" />
       <Cifra rotulo="Pagado banco" valor={pesos(t.pago.pagadoBanco)} testid="pie-pagado-banco" />
@@ -71,8 +55,13 @@ export function ResumenJornaleros({ t }: { t: TotalesDeJornaleros }) {
         <Cifra rotulo={`perdido (${t.presentismoPerdidos})`} valor={`−${pesos(t.presentismoPerdido)}`} testid="pie-presentismo-perdido" tono={V.warn} />
       )}
       <Cifra rotulo="Efectivo redondeado" valor={pesos(t.redondeo > 0 ? t.redondeo : null)} testid="pie-redondeo" />
+      <Cifra rotulo="Total" valor={pesos(t.cobra)} testid="pie-total" />
+      <Cifra rotulo="Pagado" valor={pesos(t.pago.pagado)} testid="pie-pagado" />
+      <Cifra rotulo="Saldo" valor={pesos(t.pago.saldoTotal)} testid="pie-saldo" />
       <Cifra rotulo="Saldo redondeado" valor={pesos(t.saldoRedondeado > 0 ? t.saldoRedondeado : null)} testid="pie-saldo-redondeado" />
-      </Desglose>
+      {/* LA LÍNEA DEL DÍA DE PAGO: el exceso de un lado ya está descontado del otro, así que suman el saldo y no más. */}
+      <Cifra rotulo="A pagar hoy:" valor={`efectivo ${pesos(t.pago.aPagarEfectivo)} · banco ${pesos(t.pago.aPagarBanco)}`} testid="pie-a-pagar" />
+      {avisos.length > 0 && <Aviso tono={cierre?.cierra === false ? V.neg : V.apagado}>{avisos.join(' · ')}</Aviso>}
     </Tira>
   )
 }
@@ -85,14 +74,12 @@ export function ResumenMensuales({ t }: { t: TotalesDeMensuales }) {
   return (
     <Tira testid="pie-mensuales">
       <Cifra rotulo="Sueldos del mes" valor={pesos(t.sueldo)} testid="pie-mensuales-sueldo" />
-      <Cifra rotulo="Pagado" valor={pesos(t.pagado)} testid="pie-mensuales-pagado" />
-      <Cifra rotulo="Saldo" valor={pesos(t.saldoTotal)} testid="pie-mensuales-saldo" />
-      {avisos.length > 0 && <Aviso tono={t.noCierran > 0 ? V.neg : V.apagado}>{avisos.join(' · ')}</Aviso>}
-      <Desglose>
       <Cifra rotulo="Banco" valor={t.sinRecibo === t.personas - t.sinSueldo ? 'falta recibo' : pesos(t.banco)} testid="pie-mensuales-banco" />
       <Cifra rotulo="Efectivo" valor={t.sinRecibo === t.personas - t.sinSueldo ? 'falta recibo' : pesos(t.efectivo)} testid="pie-mensuales-efectivo" />
+      <Cifra rotulo="Pagado" valor={pesos(t.pagado)} testid="pie-mensuales-pagado" />
+      <Cifra rotulo="Saldo" valor={pesos(t.saldoTotal)} testid="pie-mensuales-saldo" />
       <Cifra rotulo="Saldo red." valor={pesos(t.saldoRedondeado > 0 ? t.saldoRedondeado : null)} testid="pie-mensuales-saldo-redondeado" />
-      </Desglose>
+      {avisos.length > 0 && <Aviso tono={t.noCierran > 0 ? V.neg : V.apagado}>{avisos.join(' · ')}</Aviso>}
     </Tira>
   )
 }
