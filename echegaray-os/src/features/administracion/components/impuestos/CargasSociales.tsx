@@ -15,25 +15,29 @@ import { EstadoTexto, Importe, Origen, Seccion, Vacio, Vence } from './piezas'
 
 type Cargas = ReturnType<typeof cargasSociales>
 
-const FILA = 'grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-b border-line-hairline py-3 text-[13px] md:grid-cols-[120px_150px_150px_150px_minmax(0,1fr)_180px_180px] md:items-baseline md:py-2.5'
+const FILA = 'grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-b border-line-hairline py-3 text-[13px] md:grid-cols-[120px_150px_150px_150px_220px_200px_minmax(0,1fr)] md:items-baseline md:py-2.5'
 
 function FilaF931({ f }: { f: PosicionImpuesto }) {
   const e = estadoLlano(f)
   return (
     <li className={FILA} data-periodo={f.periodo}>
       <span className="order-1 font-medium text-ink md:order-none md:font-normal">{periodoCorto(f)}</span>
-      <span className="order-5 col-span-2 text-[12px] text-muted md:order-none md:col-span-1 md:text-right md:text-[13px] md:text-ink">
-        <span className="md:hidden">Del mes </span><Importe n={f.determinado} falta="sin dato" />
-      </span>
-      <span className="order-6 col-span-2 text-[12px] text-muted md:order-none md:col-span-1 md:text-right md:text-[13px] md:text-ink">
-        <span className="md:hidden">Pagado </span>{f.pagado ? <span className="font-mono tabular-nums">{plata(f.pagado)}</span> : <span className="text-faint">—</span>}
+      {/* En el teléfono «Del mes» y «Pagado» comparten un renglón; en la computadora `md:contents`
+          los devuelve a sus dos columnas sin duplicar el marcado. */}
+      <span className="order-5 flex flex-wrap gap-x-3 text-[12px] text-muted md:contents">
+        <span className="md:text-right md:text-[13px] md:text-ink">
+          <span className="md:hidden">Del mes </span><Importe n={f.determinado} falta="sin dato" />
+        </span>
+        <span className="md:text-right md:text-[13px] md:text-ink">
+          <span className="md:hidden">Pagado </span>{f.pagado ? <span className="font-mono tabular-nums">{plata(f.pagado)}</span> : <span className="text-faint">—</span>}
+        </span>
       </span>
       <span className="order-2 text-right text-ink md:order-none">
         {f.pendiente === 0 ? <span className="text-faint">—</span> : <Importe n={f.pendiente} />}
       </span>
       <span className="order-4 text-right text-[12px] md:order-none md:text-left md:text-[13px]"><Vence fecha={f.vencimiento} confianza={f.vencimiento_confianza} /></span>
       <span className="order-3 md:order-none"><EstadoTexto tono={e.tono} clave={f.estado}>{e.texto}</EstadoTexto></span>
-      <span className="order-7 col-span-2 md:order-none md:col-span-1"><Origen f={f} /></span>
+      <span className="order-6 text-right md:order-none md:text-left"><Origen f={f} /></span>
     </li>
   )
 }
@@ -42,7 +46,7 @@ function TablaF931({ filas }: { filas: PosicionImpuesto[] }) {
   if (!filas.length) return <Vacio>Todavía no hay ningún F931 cargado.</Vacio>
   return (
     <div data-testid="cargas-f931">
-      <div aria-hidden className="hidden h-8 items-center gap-x-3 border-y border-line text-[12px] text-faint md:grid md:grid-cols-[120px_150px_150px_150px_minmax(0,1fr)_180px_180px]">
+      <div aria-hidden className="hidden h-8 items-center gap-x-3 border-y border-line text-[12px] text-faint md:grid md:grid-cols-[120px_150px_150px_150px_220px_200px_minmax(0,1fr)]">
         <span>Mes</span><span className="text-right">Del mes</span><span className="text-right">Pagado</span><span className="text-right">Falta pagar</span>
         <span>Vence</span><span>Estado</span><span>De dónde sale</span>
       </div>
@@ -109,7 +113,7 @@ function Planes({ planes }: { planes: PlanDePago[] }) {
 export function SeccionCargasSociales({ c }: { c: Cargas }) {
   return (
     <div data-testid="bloque-cargas-sociales">
-      <Seccion testid="cargas-f931-seccion" titulo="F931 mes por mes" resumen={`falta pagar en total ${plata(c.pendienteTotal)}${c.pendienteSinImporte ? ` + ${c.pendienteSinImporte} sin importe` : ''}`}>
+      <Seccion testid="cargas-f931-seccion" titulo="F931 mes por mes" resumen={`falta pagar entre F931 y planes: ${plata(c.pendienteTotal)}${c.pendienteSinImporte ? ` + ${c.pendienteSinImporte} sin importe` : ''}`}>
         <TablaF931 filas={c.periodos} />
       </Seccion>
       <Seccion testid="cargas-planes-seccion" titulo="Planes de pago" resumen={`${c.planes.length} plan${c.planes.length === 1 ? '' : 'es'}`}>

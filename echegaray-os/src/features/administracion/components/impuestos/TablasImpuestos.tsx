@@ -75,7 +75,7 @@ function ListaAngosta({ filas, cols, conImpuesto }: { filas: PosicionImpuesto[];
             className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-b border-line-hairline py-3 text-[13px]">
             <span className="font-medium text-ink">{conImpuesto ? `${NOMBRE_LLANO[f.impuesto]} · ` : ''}{periodoCorto(f)}</span>
             <span className="text-right text-ink">
-              {cols.includes('a_pagar') ? <Importe n={f.a_pagar} falta="—" /> : null}
+              {cols.includes('a_pagar') ? <><span className="text-[12px] text-faint">A pagar </span><Importe n={f.a_pagar} falta="—" /></> : null}
             </span>
             <EstadoTexto tono={e.tono} clave={f.estado}>{e.texto}</EstadoTexto>
             <span className="text-right text-[12px] text-muted"><Vence fecha={f.vencimiento} confianza={f.vencimiento_confianza} /></span>

@@ -11,6 +11,7 @@ import { plata } from '@/shared/utils/format'
 import { ddmm, rotuloPeriodo, type frescura, type PosicionImpuesto } from '../../services/impuestos'
 import { FUENTE_LLANA, NOMBRE_LLANO, nombreLlano, TITULO_VISTA, type decision, type porImpuesto, type Vista } from '../../services/impuestosVista'
 import { Vence } from './piezas'
+import { SolapaVisible } from './SolapaVisible'
 
 type Frescura = ReturnType<typeof frescura>
 type DatosDecision = ReturnType<typeof decision>
@@ -43,7 +44,7 @@ export interface Solapa { vista: Vista; cuenta?: number; alerta?: boolean }
  */
 export function Solapas({ solapas, activa, ruta }: { solapas: Solapa[]; activa: Vista; ruta: string }) {
   return (
-    <nav aria-label="Vistas de impuestos" data-testid="impuestos-solapas" className="-mx-5 overflow-x-auto border-b border-line px-5">
+    <nav aria-label="Vistas de impuestos" data-testid="impuestos-solapas" className="relative -mx-5 overflow-x-auto border-b border-line px-5">
       <ul className="flex min-w-max gap-1">
         {solapas.map((s) => {
           const on = s.vista === activa
@@ -67,6 +68,7 @@ export function Solapas({ solapas, activa, ruta }: { solapas: Solapa[]; activa: 
           )
         })}
       </ul>
+      <SolapaVisible activa={activa} />
     </nav>
   )
 }
@@ -167,7 +169,7 @@ export function CifrasDeImpuesto({ r }: { r: FilaResumen }) {
         <div className="mt-2 text-[13px] text-muted">
           {[
             r.vencidas ? <span key="v" className="text-neg">{r.vencidas} vencido{r.vencidas > 1 ? 's' : ''} sin pago</span> : null,
-            r.estimados ? <span key="e">{r.estimados} estimado{r.estimados > 1 ? 's' : ''}, sin declarar</span> : null,
+            r.estimados ? <span key="e">{r.estimados} estimado{r.estimados > 1 ? "s" : ""}</span> : null,
             r.sinImporte ? <span key="s" className="text-warn">{r.sinImporte} sin importe, no sumado</span> : null,
           ].filter(Boolean).map((x, i) => <span key={i}>{i ? ' · ' : ''}{x}</span>)}
         </div>
