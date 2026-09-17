@@ -1,11 +1,11 @@
 // CAJA, NÓMINA Y COBRANZA: LO QUE NO ES DE UNA OBRA SINO DE LA EMPRESA.
 //
 // Tres lecturas puras sobre filas ya leídas (`egreso_por_area`, `nomina_por_mes`, `personas`,
-// `cuenta_corriente_de_clientes`, `certificado_cliente`). Ninguna inventa un dato para completar el
+// `cuenta_corriente_de_clientes`). Ninguna inventa un dato para completar el
 // gráfico: una estimación se marca como tal, y un cliente sin certificado no se ubica en la línea
 // de antigüedad —no hay fecha de la que medirla—.
-import type { CertificadoCliente } from '../../clientes/types/cobranzas.ts'
-import { planDeCobranza } from '../../clientes/services/reglasCobranza.ts'
+import type { CuentaCorriente } from '../../clientes/types/cobranzas.ts'
+import { bandasAntiguedad, type ClaveBanda } from '../../clientes/services/reglasCobranza.ts'
 
 const n = (v: unknown): number | null => {
   if (v == null || v === '') return null
@@ -141,6 +141,13 @@ export function legajos(filas: unknown[]): Legajos {
 }
 
 // ─── Cobranza ───────────────────────────────────────────────────────────────────────────────────
+//
+// UNA SOLA FUENTE POR CLIENTE: la fila de `cuenta_corriente_de_clientes` (la misma que publica
+// `cliente_cuenta_corriente`). El saldo y la antigüedad salen de los MISMOS documentos de Cobranzas,
+// por sus tramos `aging_*`. Antes el saldo salía de ahí y la antigüedad de `certificado_cliente`, que es
+// un subconjunto: un cliente podía tener saldo sin antigüedad o una antigüedad de documentos que no
+// estaban en el saldo (auditoría 17/09/2026, D4). Los tramos los arma `bandasAntiguedad`, la función
+// que ya usa la ficha del cliente.
 
 export type EstadoCobro = 'vencido' | 'alDia'
 export interface FilaCobranza {
@@ -148,32 +155,39 @@ export interface FilaCobranza {
   nombre: string
   saldo: number
   vencido: number
-  /** Días desde la emisión del documento pendiente más viejo. `null` = sin certificado: no se ubica. */
-  dias: number | null
+  porVencer: number
+  masDe60: number
+  /** El tramo más viejo con plata. `null` = saldo sin fecha de cobro: no entra en ningún tramo. */
+  tramo: ClaveBanda | null
+  rotuloTramo: string | null
   estado: EstadoCobro
   verbo: string | null
 }
 
-const diasEntre = (desde: string, hasta: string): number =>
-  Math.round((Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde.slice(0, 10)}T00:00:00Z`)) / 86_400_000)
-
-export function zonaDe(dias: number): 0 | 1 | 2 | 3 {
-  return dias <= 30 ? 0 : dias <= 60 ? 1 : dias <= 90 ? 2 : 3
+/** La posición en la línea (0–1) del tramo: «por vencer» en el borde, cada tramo en el centro de su zona. */
+export const POSICION_TRAMO: Record<ClaveBanda, number> = {
+  por_vencer: 0.02, d1_30: 0.125, d31_60: 0.375, d61_90: 0.625, d90: 0.875,
 }
 
-export function cobranza(cuenta: unknown[], certificados: CertificadoCliente[], hoy: string): FilaCobranza[] {
+export function cobranza(cuenta: unknown[]): FilaCobranza[] {
   return cuenta.flatMap((f): FilaCobranza[] => {
     const r = f as Record<string, unknown>
     const saldo = n(r.saldo) ?? 0
     if (saldo <= 0 || typeof r.cliente_id !== 'string') return []
-    const docs = certificados.filter((d) => d.cliente_id === r.cliente_id && d.estado !== 'cobrado')
-    const emisiones = docs.map((d) => d.emitido_at).filter((x): x is string => x != null).sort()
+    const fila = {
+      aging_por_vencer: n(r.aging_por_vencer) ?? 0, aging_1_30: n(r.aging_1_30) ?? 0, aging_31_60: n(r.aging_31_60) ?? 0,
+      aging_61_90: n(r.aging_61_90) ?? 0, aging_mas_90: n(r.aging_mas_90) ?? 0,
+    } as CuentaCorriente
+    const conPlata = bandasAntiguedad(fila).filter((b) => b.monto > 0)
+    const viejo = conPlata.at(-1) ?? null
     const vencido = n(r.vencido) ?? 0
     return [{
       clienteId: r.cliente_id, nombre: String(r.nombre_comercial ?? ''), saldo, vencido,
-      dias: emisiones.length ? Math.max(0, diasEntre(emisiones[0], hoy)) : null,
+      porVencer: fila.aging_por_vencer, masDe60: fila.aging_61_90 + fila.aging_mas_90,
+      tramo: viejo?.clave ?? null, rotuloTramo: viejo?.rotulo ?? null,
       estado: vencido > 0 ? 'vencido' : 'alDia',
-      verbo: planDeCobranza(docs, hoy)[0]?.rotulo ?? null,
+      // EL VERBO SALE DE LA MISMA FILA: vencido pide recordatorio; sólo por vencer, un aviso.
+      verbo: vencido > 0 ? 'Enviar recordatorio' : fila.aging_por_vencer > 0 ? 'Programar aviso' : null,
     }]
   }).sort((a, b) => b.saldo - a.saldo)
 }
@@ -181,7 +195,7 @@ export function cobranza(cuenta: unknown[], certificados: CertificadoCliente[], 
 export function cifrasCobranza(filas: FilaCobranza[]): { porCobrar: number; masDe60: number; alDia: number } {
   return {
     porCobrar: filas.reduce((a, f) => a + f.saldo, 0),
-    masDe60: filas.filter((f) => (f.dias ?? 0) > 60).reduce((a, f) => a + f.saldo, 0),
-    alDia: filas.filter((f) => f.estado === 'alDia').reduce((a, f) => a + f.saldo, 0),
+    masDe60: filas.reduce((a, f) => a + f.masDe60, 0),
+    alDia: filas.reduce((a, f) => a + f.porVencer, 0),
   }
 }

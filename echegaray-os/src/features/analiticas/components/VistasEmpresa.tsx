@@ -1,8 +1,7 @@
 // CAJA, NÓMINA Y COBRANZA — las tres lecturas de la empresa.
 import type { ReactNode } from 'react'
-import type { CertificadoCliente } from '@/features/clientes/types/cobranzas'
 import { millones, pctConSigno, pctEntero } from '../services/formato'
-import { caja, cifrasCobranza, cobranza, legajos, MES_BASE, nomina, leerEgresos, seisMesesReales, zonaDe } from '../services/empresa'
+import { caja, cifrasCobranza, cobranza, legajos, MES_BASE, nomina, leerEgresos, POSICION_TRAMO, seisMesesReales } from '../services/empresa'
 import { Ausente, Cifras, SinLectura, Subtitulo, Titulo } from './Piezas'
 
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
@@ -139,24 +138,21 @@ export function VistaNomina({ filas, quincenas, personas, rango, periodo }: {
 
 const ZONAS = ['0–30 días', '31–60', '61–90', '+90']
 
-export function VistaCobranza({ cuenta, certificados, hoy, periodo, gastado }: {
+export function VistaCobranza({ cuenta, periodo, gastado }: {
   cuenta: unknown[] | null
-  certificados: CertificadoCliente[] | null
-  hoy: string
   periodo: string
   gastado: number | null
 }) {
-  if (!cuenta || !certificados) return <><Titulo titulo="Cobranza" linea={periodo} /><SinLectura que="la cuenta corriente" /></>
-  const filas = cobranza(cuenta, certificados, hoy)
+  if (!cuenta) return <><Titulo titulo="Cobranza" linea={periodo} /><SinLectura que="la cuenta corriente" /></>
+  const filas = cobranza(cuenta)
   const c = cifrasCobranza(filas)
   const maxSaldo = Math.max(1, ...filas.map((f) => f.saldo))
-  const ubicables = filas.filter((f) => f.dias != null)
   return (
     <>
-      <Titulo titulo="Cobranza" linea={`${filas.length} clientes con saldo · ${periodo} por emisión · antigüedad desde la emisión del certificado`} />
+      <Titulo titulo="Cobranza" linea={`${filas.length} clientes con saldo · ${periodo} por emisión · antigüedad por el vencimiento de Cobranzas`} />
       <Cifras cifras={[
         { rotulo: 'Por cobrar', valor: millones(c.porCobrar) },
-        { rotulo: 'A más de 60 días', valor: millones(c.masDe60), tono: c.masDe60 > 0 ? 'warn' : undefined },
+        { rotulo: 'A más de 60 días', valor: c.masDe60 > 0 ? millones(c.masDe60) : null, falta: 'ninguno', tono: c.masDe60 > 0 ? 'neg' : undefined },
         { rotulo: 'Al día', valor: millones(c.alDia), tono: c.alDia > 0 ? 'pos' : undefined },
         { rotulo: 'Contra lo gastado', valor: gastado ? pctEntero(c.porCobrar / gastado) : null, falta: '—' },
       ]} />
@@ -164,15 +160,12 @@ export function VistaCobranza({ cuenta, certificados, hoy, periodo, gastado }: {
         <div className="absolute inset-0 grid grid-cols-4 border-y border-line">
           {ZONAS.map((z, i) => <div key={z} className={`border-line pt-1 text-xs text-faint ${i ? 'border-l' : ''} pl-2`}>{z}</div>)}
         </div>
-        {ubicables.map((f) => {
-          const d = f.dias ?? 0
-          const zona = zonaDe(d)
-          const dentro = zona === 3 ? Math.min(1, (d - 90) / 90) : (d - [0, 31, 61][zona]) / 30
+        {filas.filter((f) => f.tramo != null).map((f) => {
           const size = 12 + 36 * Math.sqrt(f.saldo / maxSaldo)
           return (
-            <span key={f.clienteId} title={`${f.nombre}: ${millones(f.saldo)} · ${d} días`}
-              className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 ${f.estado === 'vencido' ? 'border-neg bg-neg-soft' : 'border-pos bg-pos-soft'}`}
-              style={{ left: `${((zona + Math.max(0, dentro)) / 4) * 100}%`, width: size, height: size }} />
+            <span key={f.clienteId} title={`${f.nombre}: ${millones(f.saldo)} · ${f.rotuloTramo}`}
+              className={`absolute top-1/2 -translate-y-1/2 rounded-full border-2 ${f.tramo === 'por_vencer' ? '' : '-translate-x-1/2'} ${f.estado === 'vencido' ? 'border-neg bg-neg-soft' : 'border-pos bg-pos-soft'}`}
+              style={{ left: `${POSICION_TRAMO[f.tramo ?? 'por_vencer'] * 100}%`, width: size, height: size }} />
           )
         })}
       </div>
@@ -189,7 +182,7 @@ export function VistaCobranza({ cuenta, certificados, hoy, periodo, gastado }: {
               <tr key={f.clienteId} className="h-fila border-b border-line-hairline text-right">
                 <td className="text-left text-ink">{f.nombre}</td>
                 <td className={f.estado === 'vencido' ? 'text-neg' : 'text-ink'}>{millones(f.saldo)}</td>
-                <td>{f.dias == null ? <Ausente>sin certificado</Ausente> : `${f.dias} días`}</td>
+                <td>{f.rotuloTramo ?? <Ausente>sin vencimiento</Ausente>}</td>
                 <td className="pl-6 text-left">{f.verbo ?? <Ausente>nada pendiente hoy</Ausente>}</td>
               </tr>
             ))}

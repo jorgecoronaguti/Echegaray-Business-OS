@@ -6,7 +6,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { armarCostosPorObra, armarGastosSinObra } from '@/features/clientes/services/costosDeObra'
 import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
-import type { CertificadoCliente } from '@/features/clientes/types/cobranzas'
 import { rangoParaVista, type Filtros } from './filtros'
 import { leerPaginado } from './paginar'
 import { armarObra, costoObjetivoValido, pasaEstado, sinObraDe, type ObraAnalitica, type ObraPanel } from './obras'
@@ -24,7 +23,6 @@ export interface DatosAnaliticas {
   nomina: unknown[] | null
   quincenas: unknown[] | null
   personas: unknown[] | null
-  certificados: CertificadoCliente[] | null
   /** `false` = la puerta de la base contestó null: sin permiso económico. */
   legible: boolean
 }
@@ -62,7 +60,7 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     if (rango.hasta) r = r.lte(col, rango.hasta)
     return r
   }
-  const [egresos, nomina, quincenas, personas, certificados] = await Promise.all([
+  const [egresos, nomina, quincenas, personas] = await Promise.all([
     // PAGINADO (D6): la vista pasa las 1.000 filas y PostgREST corta ahí sin error.
     f.vista === 'caja'
       ? leerPaginado((a, b) => conRango(supabase.from('egreso_por_area').select('area, grupo, total, fecha'), 'fecha')
@@ -72,9 +70,6 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     f.vista === 'nomina' ? supabase.from('nomina_por_mes').select('mes, costo_nomina, cargas_sociales, es_estimacion') : null,
     f.vista === 'nomina' ? supabase.from('jornales_quincena').select('desde, estado') : null,
     f.vista === 'nomina' ? supabase.from('personas').select('en_la_empresa, categoria').eq('es_prueba', false) : null,
-    f.vista === 'cobranza'
-      ? conRango(supabase.from('certificado_cliente').select('id, cliente_id, obra_id, numero, factura, periodo_desde, periodo_hasta, avance_periodo, monto, reparo, emitido_at, vence, estado, observacion'), 'emitido_at')
-      : null,
   ])
   return {
     hoy, rango, cartera, obras, sinObra,
@@ -83,7 +78,6 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     nomina: nomina?.data ?? null,
     quincenas: quincenas?.data ?? null,
     personas: personas?.data ?? null,
-    certificados: (certificados?.data ?? null) as CertificadoCliente[] | null,
     legible: raiz != null,
   }
 }

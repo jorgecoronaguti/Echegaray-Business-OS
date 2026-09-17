@@ -1,7 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import type { CertificadoCliente } from '../../clientes/types/cobranzas.ts'
-import { caja, cifrasCobranza, cobranza, destinoDe, legajos, leerEgresos, nomina, seisMesesReales, zonaDe } from './empresa.ts'
+import { caja, cifrasCobranza, cobranza, destinoDe, legajos, leerEgresos, nomina, seisMesesReales } from './empresa.ts'
 
 test('caja: a una obra, estructura por rama y sin destino; los meses separan las dos líneas', () => {
   const e = leerEgresos([
@@ -63,23 +62,20 @@ test('legajos por pertenencia: en_la_empresa manda, no la fecha de egreso', () =
   ]), { plantel: 2, conCategoria: 1, sinCategoria: 1 })
 })
 
-const cert = (x: Partial<CertificadoCliente>): CertificadoCliente => ({
-  id: '1', cliente_id: 'c1', obra_id: null, obra_nombre: null, numero: 'C1', factura: null, periodo_desde: null,
-  periodo_hasta: null, avance_periodo: null, monto: 100, reparo: null, emitido_at: '2026-07-01', vence: '2026-09-30',
-  estado: 'emitido', observacion: null, ...x,
-} as CertificadoCliente)
-
-test('cobranza: antigüedad desde la emisión del documento pendiente más viejo; sin certificado no se ubica', () => {
+test('D4 · saldo y antigüedad de la MISMA fila: el tramo más viejo con plata, sin mirar certificados', () => {
   const filas = cobranza([
-    { cliente_id: 'c1', nombre_comercial: 'Messina', saldo: '100', vencido: '0' },
-    { cliente_id: 'c2', nombre_comercial: 'SF', saldo: '50', vencido: '50' },
-    { cliente_id: 'c3', nombre_comercial: 'Cero', saldo: '0', vencido: '0' },
-  ], [cert({ emitido_at: '2026-08-01' }), cert({ id: '2', emitido_at: '2026-07-01' }), cert({ id: '3', emitido_at: '2026-01-01', estado: 'cobrado' })], '2026-09-17')
-  assert.equal(filas.length, 2, 'saldo cero no es cliente por cobrar')
-  assert.equal(filas[0].dias, 78)
-  assert.equal(filas[0].estado, 'alDia')
-  assert.equal(filas[1].dias, null)
+    { cliente_id: 'c1', nombre_comercial: 'Messina', saldo: '100', vencido: '0', aging_por_vencer: '100', aging_1_30: '0', aging_31_60: '0', aging_61_90: '0', aging_mas_90: '0' },
+    { cliente_id: 'c2', nombre_comercial: 'SF', saldo: '80', vencido: '50', aging_por_vencer: '30', aging_1_30: '0', aging_31_60: '0', aging_61_90: '50', aging_mas_90: '0' },
+    { cliente_id: 'c3', nombre_comercial: 'Sin fecha', saldo: '20', vencido: '0', aging_por_vencer: '0', aging_1_30: '0', aging_31_60: '0', aging_61_90: '0', aging_mas_90: '0' },
+    { cliente_id: 'c4', nombre_comercial: 'Cero', saldo: '0', vencido: '0' },
+  ])
+  assert.equal(filas.length, 3, 'saldo cero no es cliente por cobrar')
+  assert.equal(filas[0].tramo, 'por_vencer')
+  assert.equal(filas[0].verbo, 'Programar aviso')
+  assert.equal(filas[1].tramo, 'd61_90')
   assert.equal(filas[1].estado, 'vencido')
-  assert.deepEqual(cifrasCobranza(filas), { porCobrar: 150, masDe60: 100, alDia: 100 })
-  assert.deepEqual([0, 30, 31, 60, 61, 90, 91].map(zonaDe), [0, 0, 1, 1, 2, 2, 3])
+  assert.equal(filas[1].verbo, 'Enviar recordatorio')
+  assert.equal(filas[2].tramo, null, 'saldo sin fecha de cobro: no se inventa una antigüedad')
+  assert.deepEqual(cifrasCobranza(filas), { porCobrar: 200, masDe60: 50, alDia: 130 })
+  assert.equal(cobranza.length, 1, 'la cobranza recibe UNA fuente: la fila de cuenta corriente')
 })

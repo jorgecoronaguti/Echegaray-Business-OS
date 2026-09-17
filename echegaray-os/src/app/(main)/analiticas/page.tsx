@@ -56,7 +56,7 @@ function Vista({ filtros, d, periodo }: {
     case 'caja': return <VistaCaja egresos={d.egresos} periodo={periodo} />
     case 'nomina': return <VistaNomina filas={d.nomina} quincenas={d.quincenas} personas={d.personas} rango={d.rango} periodo={periodo} />
     case 'cobranza': return (
-      <VistaCobranza cuenta={d.cuentaCorriente} certificados={d.certificados} hoy={d.hoy} periodo={periodo}
+      <VistaCobranza cuenta={d.cuentaCorriente} periodo={periodo}
         gastado={cifrasResumen(d.cartera, d.sinObra).gastadoEnObras} />
     )
     default: return <VistaEstado obras={d.obras} />
