@@ -87,4 +87,7 @@ export const TABLAS_DE = {
   /** Mi cuenta: mis horas, mi legajo, mis obras. */
   miCuenta: unir(PERSONAS, HH_Y_ASISTENCIA, OBRA, ['liquidacion_linea', 'liquidacion_quincena']),
   reportes: ['registros_hh'],
+  /** Analíticas: obras y su contrato, horas, certificados y plantel. Compras y Cobranzas llegan por el
+   *  timer del Sheet, que reescribe `obra_canonica` y la caché de la ficha: con eso alcanza para refrescar. */
+  analiticas: ['obra_canonica', 'registros_hh', 'certificado_cliente', 'clientes', 'personas', 'ficha_cliente_cache'],
 } as const satisfies Record<string, Lista>
