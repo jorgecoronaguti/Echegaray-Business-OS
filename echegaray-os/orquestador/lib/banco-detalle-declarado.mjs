@@ -100,19 +100,31 @@ export function esRetenida({ importe, saldo } = {}) {
 }
 
 /**
- * NÚCLEO PURO: el saldo del banco que CAJA puede gastar — el DECLARADO menos lo retenido.
+ * NÚCLEO PURO: el saldo del banco que CAJA puede gastar — el ÚLTIMO saldo corrido de la réplica, TAL CUAL.
  *
- * `formulaUltimoSaldo` devuelve el último saldo corrido de la réplica, que es el que el banco declara
- * (`banco-raw-pestana` lo pisa sobre la última fila cuando la cadena del día no cierra). Ese número
- * INCLUYE los depósitos retenidos —medido: declarado $41.561.209,16, retenido $38.572.526,23,
- * disponible real $2.988.682,93— así que la resta no es una precaución: es la diferencia entre lo que
- * se puede pagar y lo que no.
+ * ═══ NO SE LE RESTA LO RETENIDO: YA ESTÁ AFUERA (17/09/2026) ═══
+ *
+ * Hasta el 17/09 esta fórmula era `último saldo − SUMIFS(importe; saldo vacío)`, sobre la premisa del
+ * 11/09 de que el último saldo INCLUÍA los depósitos retenidos. No los incluye, por construcción:
+ *
+ *   · el importador no los mete en la cadena (`banco-importar.mjs` los saltea en el back-fill),
+ *   · `completarCadenaDelDia` tampoco (les deja el saldo en null y no arrastra su importe),
+ *   · y el pie del extracto —«Saldo al DD/MM»— es el DISPONIBLE: medido el 17/09, $33.387.734,00 con
+ *     el eCheq 6526 ($2.896.036,13) afuera.
+ *
+ * Restarlo otra vez lo descontaba DOS veces. Medido el 17/09 en el archivo vivo: la cadena terminaba
+ * en $42.813.734,00, lo retenido era $2.896.036,13 y CAJA publicaba $39.917.698 — ni el saldo de la
+ * cadena ni el del banco. Orden del dueño: «ok corregí».
+ *
+ * Un depósito que el banco imprime CON saldo corrido pero excluye del pie (el eCheq 8767 en canje 24 hs,
+ * $9.426.000, 16/09) se marca en la base y se descuenta de los saldos posteriores al marcarlo
+ * (`retenidosQueExplicaElPie` + `marcarAcreditacionPendiente`): así la cadena sigue sin incluirlo y esta
+ * fórmula no necesita saber nada de retenciones.
  *
  * @returns {string} fórmula con `=`, separador es-AR
  */
-export function formulaSaldoDisponibleBanco({ hoja = DEP.hoja, saldo = COL_SALDO, desde = DEP.desde, importe = DEP.importe } = {}) {
-  const declarado = formulaUltimoSaldo(hoja, saldo, desde).slice(1)
-  return `=${declarado}-${expresionRetenido({ importe, saldo })}`
+export function formulaSaldoDisponibleBanco({ hoja = DEP.hoja, saldo = COL_SALDO, desde = DEP.desde } = {}) {
+  return formulaUltimoSaldo(hoja, saldo, desde)
 }
 
 /**
@@ -122,6 +134,9 @@ export function formulaSaldoDisponibleBanco({ hoja = DEP.hoja, saldo = COL_SALDO
 export function expresionDiferencia(opts = {}) {
   // ═══ LOS DOS LADOS TIENEN QUE EXCLUIR LO RETENIDO, O EL CONTROL MIDE PERAS CONTRA MANZANAS ═══
   //
+  // Desde el 17/09 el lado «disponible» es el último saldo pelado, que ya lo excluye por construcción
+  // (ver `formulaSaldoDisponibleBanco`); el detalle lo sigue restando porque SUM(C) sí lo incluye.
+  //
   // Medido el 11/09/2026: el detalle ya restaba lo retenido (arriba) y el declarado NO, así que esta
   // línea publicaba **$38.572.526,23** de hueco y lo rotulaba «el faltante es anterior al 28/5/2026,
   // y no hay extracto para cerrarlo» — una causa falsa para una plata que estaba perfectamente
@@ -130,7 +145,7 @@ export function expresionDiferencia(opts = {}) {
   // `formulaSaldoDisponibleBanco` es la MISMA expresión que ahora consume CAJA: si un día cambia la
   // forma de tomar «el último» o la marca de retención, este control cambia con ella en vez de quedar
   // midiendo contra otra cosa. Con los dos lados netos, el hueco que queda es el hueco de verdad.
-  const disponible = formulaSaldoDisponibleBanco({ saldo: opts.saldo ?? COL_SALDO, importe: opts.importe ?? DEP.importe }).slice(1)
+  const disponible = formulaSaldoDisponibleBanco({ saldo: opts.saldo ?? COL_SALDO }).slice(1)
   return `${disponible}-(${expresionDetalle(opts)})`
 }
 
@@ -184,8 +199,8 @@ export function filaRetenidoPorElBanco(tolerancia = 1) {
     // La fecha del depósito retenido más NUEVO: es la que dice desde cuándo se está esperando.
     `=IF(ROUND(${ret};2)<${tolerancia};"";MAXIFS(${rango(DEP.fecha)};${D};""))`,
     'Suma de los movimientos de _BANCO_RAW con la celda "Saldo después" VACÍA — la marca con la que el '
-    + 'banco los lista sin acreditar. SE RESTA del saldo de «Santander · cta cte ARS» de CAJA: un eCheq '
-    + 'retenido 48 hs no paga un cheque mañana (Cash Flow percibido). Vuelve solo cuando el extracto '
-    + 'siguiente trae su saldo corrido.',
+    + 'banco los lista sin acreditar. YA ESTÁ FUERA del saldo de «Santander · cta cte ARS» de CAJA (la cadena '
+    + 'no los incluye, así que no se vuelve a restar): un eCheq retenido no paga un cheque mañana (Cash Flow '
+    + 'percibido). Vuelve solo cuando el extracto siguiente trae su saldo corrido.',
   ]
 }

@@ -254,15 +254,12 @@ export function grilla(cargado, refs) {
       : celdaFechaDelEfectivo(ANEXO.conteoArsDia, ANEXO.ultimoEfectivoDia))
     if (c.arqueo === DESDE_CAJA.arqueoArsFecha) fArqArs = f
     if (c.arqueo === DESDE_CAJA.arqueoUsdFecha) fArqUsd = f
-    // ═══ EL SALDO DEL BANCO QUE CAJA PUEDE GASTAR ES EL DECLARADO MENOS LO RETENIDO (11/09/2026) ═══
+    // ═══ EL SALDO DEL BANCO QUE CAJA PUEDE GASTAR (11/09 → corregido 17/09/2026) ═══
     //
-    // Era `formulaUltimoSaldo` pelado — el último saldo corrido de la réplica, que es el que el banco
-    // DECLARA e incluye los depósitos que todavía no acreditó. Medido ese día: declarado
-    // $41.561.209,16, retenido $38.572.526,23, disponible real $2.988.682,93. CAJA publicaba los
-    // $41,5M enteros como «CAJA DISPONIBLE», y como el cierre de los dos Cash Flow se ancla en la caja
-    // de hoy, el cierre del 31/12 saltó de $61,3M a $91,9M de una corrida a la otra sin que hubiera
-    // entrado un peso nuevo. Regla de oro del dueño: el Cash Flow es PERCIBIDO — un eCheq retenido 48
-    // hs no paga un cheque mañana. La definición vive UNA vez, en `formulaSaldoDisponibleBanco`.
+    // El 11/09 se le restó lo retenido al último saldo, creyendo que lo incluía. No lo incluye: la cadena
+    // de `_BANCO_RAW` ya deja afuera los depósitos no acreditados, así que la resta los descontaba dos
+    // veces (17/09: $39.917.698 publicados contra $33.387.734 del banco con el 8767 marcado). La
+    // definición vive UNA vez, en `formulaSaldoDisponibleBanco`.
     const origen = c.banco === 'saldoPesos' && refs.bancoRaw ? formulaSaldoDisponibleBanco({ hoja: refs.bancoRaw })
       : c.banco === 'cartera' ? formulaCartera()
         : c.banco ? saldoDeBanco(c)

@@ -21,9 +21,15 @@ import {
 import { evaluarFormula } from './evaluar-formula-sheet.mjs'
 import { DEP } from './caja-posterior-al-corte.mjs'
 
-const DECLARADO = 41561209.16
-const RETENIDO = 38572526.23
-const DISPONIBLE = 2988682.93 // = DECLARADO − RETENIDO, el saldo que se puede gastar
+// ═══ Y LA CORRECCIÓN DEL 17/09/2026 ═══
+//
+// La premisa del 11/09 —«el último saldo INCLUYE lo retenido»— era falsa: la cadena de `_BANCO_RAW`
+// nunca lo incluye (el importador y `completarCadenaDelDia` lo saltean). CAJA restaba lo retenido DOS
+// veces. Medido en el archivo vivo el 17/09: cadena $42.813.734,00, retenido (6526) $2.896.036,13,
+// CAJA $39.917.698. El banco declaraba $33.387.734,00 — con el 8767 ($9.426.000, canje 24 hs) todavía
+// sin acreditar. Estos números son los de ese día.
+const BANCO_DECLARA = 33387734
+const RETENIDO = 12322036.13 // 2.896.036,13 + 9.426.000: 6526 (48 hs) + 8767 (canje 24 hs, marcado por el pie)
 
 /**
  * `_BANCO_RAW` como está viva, reducida a lo que estas fórmulas miran: A fecha · C importe · D saldo.
@@ -40,68 +46,55 @@ function replica(movs) {
   return hoja
 }
 
-/** El caso vivo del 11/09: la cadena termina en $3.584.941,27 y el declarado pisa la última fila. */
+/** El 17/09 ya con el 8767 marcado: la cadena NO los incluye y termina en lo que declara el banco. */
 const VIVO = [
-  { fecha: 46170, importe: 1000000, saldo: 1000000 },
-  { fecha: 46275, importe: 2584941.27, saldo: 3584941.27 },
-  { fecha: 46275, importe: 19286263.115, retenido: true },
-  { fecha: 46275, importe: 19286263.115, retenido: true },
-  // La última fila lleva el DECLARADO: lo pisa `completarCadenaDelDia` cuando la cadena no cierra.
-  { fecha: 46275, importe: 0.01, saldo: DECLARADO },
+  { fecha: 46280, importe: 85342.81, saldo: 33578306.19 },
+  { fecha: 46280, importe: 9426000, retenido: true }, // 8767
+  { fecha: 46280, importe: -16966.54, saldo: 33561339.65 },
+  { fecha: 46280, importe: -57068.06, saldo: 33504271.59 },
+  { fecha: 46281, importe: 2896036.13, retenido: true }, // 6526
+  { fecha: 46281, importe: -116537.59, saldo: BANCO_DECLARA },
 ]
 
 const ev = (formula, movs = VIVO) => evaluarFormula(formula, { hoja: replica(movs), hojas: { _BANCO_RAW: replica(movs) } })
 
-test('lo retenido se mide con la celda de saldo VACÍA, y son los $38.572.526,23', () => {
+test('lo retenido se mide con la celda de saldo VACÍA: los dos eCheq del 16 y 17/09', () => {
   assert.equal(Math.round(ev(`=${expresionRetenido()}`) * 100) / 100, RETENIDO)
 })
 
-test('EL EFECTO: el saldo que CAJA consume es el DECLARADO menos lo retenido', () => {
-  assert.equal(Math.round(ev(formulaSaldoDisponibleBanco()) * 100) / 100, DISPONIBLE)
+test('EL EFECTO: CAJA publica el último saldo de la cadena, que es lo que declara el banco', () => {
+  assert.equal(Math.round(ev(formulaSaldoDisponibleBanco()) * 100) / 100, BANCO_DECLARA)
 })
 
-test('EL CONTROL PUEDE DAR ROJO: sin la resta, CAJA publica los $41.561.209,16 enteros', () => {
-  // La mutación es la fórmula anterior — `formulaUltimoSaldo` pelado, sin restar nada.
-  const antes = formulaSaldoDisponibleBanco().split('-' + expresionRetenido())[0]
-  assert.equal(Math.round(ev(antes) * 100) / 100, DECLARADO)
-  assert.notEqual(Math.round(ev(antes) * 100) / 100, DISPONIBLE,
-    'si las dos dieran lo mismo, este test no estaría midiendo nada')
+test('EL CONTROL PUEDE DAR ROJO: la fórmula del 11/09 volvía a restar lo retenido', () => {
+  // La mutación es exactamente la fórmula vieja que estaba viva en CAJA!B9.
+  const vieja = `${formulaSaldoDisponibleBanco()}-${expresionRetenido()}`
+  const dio = Math.round(ev(vieja) * 100) / 100
+  assert.equal(dio, Math.round((BANCO_DECLARA - RETENIDO) * 100) / 100)
+  assert.notEqual(dio, BANCO_DECLARA, 'si las dos dieran lo mismo, este test no estaría midiendo nada')
+  assert.ok(!formulaSaldoDisponibleBanco().includes('SUMIFS'), 'la fórmula de CAJA no resta nada')
 })
 
 test('EL CIERRE VUELVE SOLO cuando el banco acredita: nadie toca una celda', () => {
-  // El extracto siguiente trae el depósito con su saldo corrido: `acreditarPendientes` lo copia y la
-  // celda deja de estar vacía. No cambia ni una fórmula.
-  const acreditado = VIVO.map((m) => (m.retenido ? { ...m, retenido: false, saldo: DECLARADO } : m))
+  // El extracto siguiente trae el depósito con su saldo corrido y la última fila ya lo incluye.
+  const acreditado = [
+    ...VIVO.map((m) => (m.retenido ? { ...m, retenido: false, saldo: 1 } : m)).slice(0, -1),
+    { fecha: 46282, importe: 0, saldo: 45709770.13 },
+  ]
   assert.equal(Math.round(ev(`=${expresionRetenido()}`, acreditado) * 100) / 100, 0)
-  assert.equal(Math.round(ev(formulaSaldoDisponibleBanco(), acreditado) * 100) / 100, DECLARADO)
+  assert.equal(Math.round(ev(formulaSaldoDisponibleBanco(), acreditado) * 100) / 100, 45709770.13)
 })
 
-test('sin nada retenido el saldo no se mueve: la resta no puede cobrar peaje', () => {
+test('sin nada retenido el saldo no se mueve', () => {
   const limpio = [{ fecha: 46275, importe: 5000, saldo: 5000 }]
   assert.equal(ev(`=${expresionRetenido()}`, limpio), 0)
   assert.equal(ev(formulaSaldoDisponibleBanco(), limpio), 5000)
 })
 
-test('el hueco del detalle deja de acusar como faltante lo que era la retención', () => {
-  // ANTES el control comparaba el declarado (CON lo retenido) contra el detalle (SIN lo retenido), así
-  // que publicaba los $38.572.526,23 enteros como hueco y los rotulaba «el faltante es anterior al
-  // 28/5/2026, y no hay extracto para cerrarlo» — una causa falsa para una plata perfectamente
-  // identificada dos filas más arriba. Ése es el número que el dueño vio y no pudo explicar.
-  const antes = Math.round(ev(`=${expresionRetenido()}+${expresionDiferencia()}`) * 100) / 100
-  const ahora = Math.round(ev(`=${expresionDiferencia()}`) * 100) / 100
-  // $37.976.267,88 es, al centavo, el número que el archivo vivo publicaba el 11/09 en la nota de
-  // `_BANCO_RAW` («la cadena del día difiere $37.976.267,89 y esa diferencia todavía no está
-  // explicada»). Esta réplica reproduce el caso real, no un caso de laboratorio.
-  assert.equal(antes, 37976267.88, 'el control viejo denunciaba el declarado contra el detalle neto')
-  assert.equal(Math.round((antes - ahora) * 100) / 100, RETENIDO,
-    'y todo lo que se corrigió es, exactamente, lo retenido')
-  // Y AHORA denuncia el hueco de verdad: en esta réplica, la cadena del día reconstruye $3.584.941,28
-  // y el declarado neto de la retención es $2.988.682,93. Los $596.258,35 que quedan SIGUEN sin
-  // explicar, y tienen que seguir gritando: taparlos con la retención era el defecto.
-  assert.equal(ahora, -596258.35)
-  assert.ok(Math.abs(ahora) < Math.abs(antes) / 50, 'el hueco declarado tiene que encogerse, no mudarse')
-  // El detalle sigue excluyendo lo retenido, que es lo correcto de su lado.
-  assert.equal(Math.round(ev(`=${expresionDetalle()}`) * 100) / 100, 3584941.28)
+test('el hueco del detalle cierra en cero cuando la cadena es coherente', () => {
+  // inicial = 33.578.306,19 − 85.342,81; Σ C incluye lo retenido y el detalle lo resta: da el declarado.
+  assert.equal(Math.round(ev(`=${expresionDiferencia()}`) * 100) / 100, 0)
+  assert.equal(Math.round(ev(`=${expresionDetalle()}`) * 100) / 100, BANCO_DECLARA)
 })
 
 test('la fila del anexo dice el número y la fecha desde cuándo se espera', () => {
@@ -109,8 +102,8 @@ test('la fila del anexo dice el número y la fecha desde cuándo se espera', () 
   assert.equal(moneda, 'ARS')
   assert.match(ev(rotulo), /^⏳ Retenido por el banco/)
   assert.equal(Math.round(ev(importe) * 100) / 100, RETENIDO)
-  assert.equal(ev(fecha), 46275, 'la fecha del retenido más nuevo')
-  assert.match(origen, /SE RESTA/, 'la fila declara que se resta: si no, se lee como informativa')
+  assert.equal(ev(fecha), 46281, 'la fecha del retenido más nuevo')
+  assert.match(origen, /YA ESTÁ FUERA/, 'la fila declara que ya está fuera del saldo: restarlo de nuevo fue el defecto del 17/09')
   assert.match(origen, /Saldo después/, 'y dice cuál es la marca')
 })
 
@@ -122,10 +115,10 @@ test('y se APAGA sola cuando no hay nada retenido — un aviso que queda puesto 
   assert.equal(ev(fecha, limpio), '')
 })
 
-test('UNA SOLA DEFINICIÓN: el detalle y CAJA restan la MISMA expresión', () => {
+test('UNA SOLA DEFINICIÓN: el detalle resta la marca y CAJA no la vuelve a restar', () => {
   assert.ok(expresionDetalle().includes(expresionRetenido()),
     'dos copias de la marca darían dos saldos del mismo banco')
-  assert.ok(formulaSaldoDisponibleBanco().includes(expresionRetenido()))
+  assert.ok(!formulaSaldoDisponibleBanco().includes(expresionRetenido()))
   assert.ok(expresionDiferencia().includes(expresionRetenido()))
   assert.equal(COL_SALDO, 'D')
 })
