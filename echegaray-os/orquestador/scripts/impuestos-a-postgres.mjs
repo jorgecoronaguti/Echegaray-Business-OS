@@ -37,6 +37,7 @@ import {
   obligacionesDeDebitosBancarios,
 } from '../lib/impuestos-registro-pagos.mjs'
 import { planDeEscritura, lectoresEfectivos, CLAVE } from '../lib/impuestos-escritura.mjs'
+import { conPlanesF931, conVencimientoF931, estimacionesF931 } from '../lib/impuestos-planes-f931.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const APLICAR = process.argv.includes('--aplicar')
@@ -77,7 +78,10 @@ export async function leerFuentes(google) {
        from public.compra_sheet where proveedor ~* '^\\s*(arca|afip)\\s*$'`)).rows)
   // LOS DOS CÁLCULOS NO LEEN NADA PROPIO: su fuente es ARCA, y su suerte la deciden sus insumos (DEPENDE).
   for (const l of ['arca_iva', 'arca_iibb']) estado[l] = estado.arca?.ok ? { ok: true, leidas: estado.arca.leidas } : { ok: false, error: 'arca no leyó' }
-  return { estado, ddjjIva, ddjjIibb, ddjjGanancias, veps, f931, cobranzas, arca, banco, compras }
+  // Los planes no leen nada propio: su cronograma son las filas de Compras y sus pagos, el extracto.
+  estado.planes_f931 = estado.compras?.ok ? { ok: true, leidas: estado.compras.leidas } : { ok: false, error: 'compras no leyó' }
+  const cargas = await leer(estado, 'cargas_pestana', () => google.readSheetValues(ID, "'Cargas Sociales'!A1:N120", { render: 'UNFORMATTED_VALUE' }))
+  return { estado, ddjjIva, ddjjIibb, ddjjGanancias, veps, f931, cobranzas, arca, banco, compras, cargas }
 }
 
 /** Las filas de las dos tablas, a partir de lo leído. Sin E/S. */
@@ -87,7 +91,7 @@ export function construir(f) {
   const deCompras = pagosDeCompras(f.compras ?? [], { f931: totalesF931 })
   // LA IMPUTACIÓN SUBE DE FUERZA EN ESTE ORDEN: importe (dentro de pagosDelBanco/Compras) → el comprobante
   // del VEP (documento) → lo que declaró el dueño, sólo para lo que siguió sin imputar.
-  const pagos = imputarDeclaradas(imputarPorVep(sinPagosRepetidos([
+  const pagosSinPlan = imputarDeclaradas(imputarPorVep(sinPagosRepetidos([
     ...pagosDelBanco(f.banco ?? [], { f931: totalesF931, cuotasPlan: deCompras.cuotasPlan }),
     ...deCompras.pagos,
     ...(f.cobranzas ? pagosDeCobranzas(f.cobranzas.filas, f.cobranzas.cols) : []),
@@ -95,11 +99,19 @@ export function construir(f) {
   const libro = libroPorPeriodo(f.arca ?? [])
   const arcaAl = iso((f.arca ?? []).reduce((m, r) => (r.fecha_emision > m ? r.fecha_emision : m), null))
   const bancoAl = iso((f.banco ?? []).reduce((m, r) => (r.fecha > m ? r.fecha : m), null))
+  // Los débitos de cuota se atan a su cuota ANTES de calcular créditos y estados: una cuota es un pago de
+  // F931, y el período que el plan financia deja de figurar pendiente por el saldo que ya está en cuotas.
+  const planes = conPlanesF931({ compras: f.compras ?? [], pagos: pagosSinPlan, obligaciones: oblF931,
+    pagosCompletos: f.estado ? Boolean(f.estado.banco?.ok && f.estado.compras?.ok) : Boolean(f.banco && f.compras) })
+  const pagos = planes.pagos
+  const hoyMes = (f.hoy ?? new Date().toISOString()).slice(0, 7)
+  const estimadas = estimacionesF931(f.cargas ?? [], { declarados: oblF931.map((o) => o.periodo), hasta: hoyMes })
   const obligaciones = conEstadoDePago([
+    ...conVencimientoF931(planes.obligaciones),
+    ...estimadas,
     ...obligacionesIvaDDJJ(f.ddjjIva ?? []),
     ...obligacionesIibbDDJJ(f.ddjjIibb ?? []),
     ...obligacionesGananciasDDJJ(f.ddjjGanancias ?? []),
-    ...oblF931,
     ...obligacionesIvaCalculadas({ libro, ddjjs: f.ddjjIva ?? [], creditos: creditosPorPeriodo(pagos, 'iva'), datosAl: arcaAl }),
     ...obligacionesIibbEstimadas({ libro, ddjjs: f.ddjjIibb ?? [], creditos: creditosPorPeriodo(pagos, 'iibb'), datosAl: arcaAl }),
     ...deCompras.obligaciones,
