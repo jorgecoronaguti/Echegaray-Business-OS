@@ -77,6 +77,22 @@ if (CLAVES.length !== COLUMNAS.length) throw new Error(`arca-raw: ${CLAVES.lengt
 export const COL = Object.freeze(Object.fromEntries(CLAVES.map((k, i) => [k, letra(i)])))
 export const FILA0 = 4   // la primera fila de datos
 
+/**
+ * HASTA QUÉ FILA SE MIRA LA COLA: hasta el FINAL REAL de la hoja, nunca menos que lo que necesita la
+ * corrida.
+ *
+ * EL DEFECTO QUE CIERRA (17/09/2026, medido en la hoja viva). El tope era `datos + FILA0 + 20`. Con
+ * 684 comprobantes eso es la fila 708, y la hoja tenía 62 duplicados de una corrida vieja en las
+ * filas 709–770, detrás de un bloque vacío 688–708. La lectura terminaba justo antes: la cola "medida"
+ * daba cero y los duplicados seguían sumando IVA (agosto: débito $9,29M en el Sheet contra $7,19M
+ * reales). El tope corto sirve en una pestaña de contenido —debajo puede haber algo del dueño—, pero
+ * `_ARCA_RAW` es un espejo `_`: no hay nada de nadie que proteger y todo lo que está escrito ahí lo
+ * escribió este generador. Lo que se lee es CONTENIDO (`ultimaFilaConDato`), no se rellena a ciegas.
+ */
+export function topeDeCola({ filasHoja = 0, filasNecesarias }) {
+  return Math.max(Number(filasHoja) || 0, filasNecesarias)
+}
+
 /** NÚCLEO PURO: una fila de la réplica a partir de un comprobante. */
 export function fila(c) {
   const s = signo(c.tipo_comprobante)
@@ -152,7 +168,7 @@ async function main() {
   // que se borra de la base. Sin esto las filas de más abajo sobreviven y el libro de IVA del Sheet
   // sigue mostrando un comprobante que ARCA ya no tiene — y de este espejo cuelgan las fórmulas de
   // "Impuestos y financiero". Un espejo con cola miente igual que un cuadro con cola.
-  const cola = await conColaMedidaLeida(google, ID, PESTAÑA, gridRaw, { ancho: COLUMNAS.length, tope: filasNecesarias })
+  const cola = await conColaMedidaLeida(google, ID, PESTAÑA, gridRaw, { ancho: COLUMNAS.length, tope: topeDeCola({ filasHoja: hoja.rows, filasNecesarias }) })
   if (avisoDeCola(cola, PESTAÑA)) console.log(avisoDeCola(cola, PESTAÑA))
   const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, cola.filas, { respetar: false, espejo: true /* espejo de una fuente externa (ARCA): copia byte a byte, sin candado ni firma ni Regla 0 — no hay nada del dueño que proteger, y respetar congelaría el nombre de un campo de ARCA si cambiara */, anchoHoja: Math.max(COLUMNAS.length, hoja.cols ?? COLUMNAS.length) })
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)

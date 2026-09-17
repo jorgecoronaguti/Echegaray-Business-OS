@@ -1,5 +1,5 @@
 [Unit]
-Description=Echegaray OS - Sync ARCA semanal (lunes 03:00) — el plan free da 10 automatizaciones/mes
+Description=Echegaray OS - Sync ARCA: timer diario 03:00, el script decide si gasta cuota (plan free: 10 automatizaciones/ventana)
 
 [Timer]
 # SEMANAL, Y LA FRECUENCIA LA DECIDE EL PLAN (31/07).
@@ -45,7 +45,17 @@ Description=Echegaray OS - Sync ARCA semanal (lunes 03:00) — el plan free da 1
 # Son 3 corridas = 6 automatizaciones por ventana, con 4 de margen para una corrida manual del dueño
 # —el doble de la reserva que el presupuesto ya exige—. El guardián de cuota sigue siendo el que
 # manda: si no alcanza, el script se niega antes de gastar.
-OnCalendar=*-*-01,11,18 03:00:00
+# ═══ DIARIO, Y EL QUE DECIDE ES EL SCRIPT (17/09/2026) ═══
+#
+# El dueño pidió bajada diaria (IVA con un día de atraso como máximo). Con el plan free no entra
+# (~60 automatizaciones/mes contra 10). Hasta decidir un plan pago, el timer corre TODOS los días y
+# orquestador/lib/arca-sync-ritmo.mjs (activado por ORQ_ARCA_RITMO=1 en el .service) gasta sólo:
+#   · los días prioritarios 01 · 11 · 18 si hay cuota, y
+#   · UNA corrida extra si sobra después de guardar una para cada prioritario que queda en la ventana,
+#     a ≥7 días de la última bajada y ≥4 del próximo prioritario (en la práctica, ~el 25).
+# Los demás días el script sale 0 sin gastar ni probar la credencial (la consulta de cuota es gratis).
+# Con un plan pago alcanza con ORQ_ARCA_DIAS_PRIORIDAD o sacar ORQ_ARCA_RITMO: el timer ya es diario.
+OnCalendar=*-*-* 03:00:00
 Persistent=true
 
 [Install]

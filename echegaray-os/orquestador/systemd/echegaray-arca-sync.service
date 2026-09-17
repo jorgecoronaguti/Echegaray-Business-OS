@@ -1,5 +1,5 @@
 [Unit]
-Description=Echegaray OS - Sync mensual comprobantes ARCA -> Supabase
+Description=Echegaray OS - Sync comprobantes ARCA -> Supabase (ritmo según cuota)
 After=network-online.target
 Wants=network-online.target
 
@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
 EnvironmentFile=%h/.config/echegaray-orq/worker.env
+Environment=ORQ_ARCA_RITMO=1
 ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node scripts/arca/sync-arca.mjs
 StandardOutput=journal
 StandardError=journal

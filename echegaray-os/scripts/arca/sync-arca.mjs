@@ -26,7 +26,8 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { presupuesto, registrarConsumo, credencialAceptada, leerCredenciales } from '../../orquestador/lib/afipsdk-presupuesto.mjs'
+import { presupuesto, registrarConsumo, credencialAceptada, leerCredenciales, leerUso } from '../../orquestador/lib/afipsdk-presupuesto.mjs'
+import { tocaHoy, ultimaBajadaDe, fechaLocal } from '../../orquestador/lib/arca-sync-ritmo.mjs'
 import {
   motivoDeFalla, archivoDescargado, decidirFrescura, codigoDeSalida, resumenDeCorrida, consumioCuota,
 } from '../../orquestador/lib/arca-sync-resultado.mjs'
@@ -68,6 +69,19 @@ async function main() {
     projectId: credenciales.projectId,
   })
   console.log(`[arca-sync] cuota ${cuota.ventana} [fuente: ${cuota.fuente}]: ${cuota.motivo}`)
+
+  // ── 1b. EL RITMO (17/09/2026): el timer corre todos los días; sólo gasta el día que conviene ──────
+  // Sólo con ORQ_ARCA_RITMO=1 (lo pone el servicio del timer). Una corrida manual del dueño no pasa
+  // por acá. Un día prioritario sin cuota NO se salta en silencio: sigue y falla fuerte abajo.
+  if (process.env.ORQ_ARCA_RITMO === '1') {
+    const hoyISO = fechaLocal(hoy)
+    // Registro de uso ilegible: sin saber cuándo fue la última bajada no se gasta una extra, pero un
+    // día prioritario tampoco se bloquea por eso — la cuota la sigue diciendo el proveedor.
+    const uso = await leerUso().catch((e) => { console.warn(`[arca-sync] ritmo: ${e.message}`); return null })
+    const ritmo = tocaHoy({ hoy: hoyISO, disponible: cuota.disponible, fuente: uso ? cuota.fuente : 'sin-registro', ventana: cuota.ventana, ultimaBajada: uso ? ultimaBajadaDe(uso) : null })
+    console.log(`[arca-sync] ritmo: ${ritmo.toca ? 'CORRE' : 'hoy no'} — ${ritmo.motivo}`)
+    if (!ritmo.toca && !ritmo.prioritarioSinCuota) process.exit(0)
+  }
   if (!cuota.ok) { console.error('[arca-sync] NO descargo: no hay cuota suficiente.'); process.exit(1) }
 
   // ── 2. ¿SIRVE LA CREDENCIAL? Mismo verbo y mismo endpoint que la descarga; cuerpo vacío ───────
@@ -84,7 +98,7 @@ async function main() {
     resultados.push(r)
     // Una creación rechazada por AfipSDK no gastó nada: contarla le sacaría corridas al mes por un
     // error ajeno. Ver `consumioCuota`.
-    if (consumioCuota(r)) await registrarConsumo({ cantidad: 1, detalle: `mis-comprobantes ${tipo} ${desde}–${hasta}` })
+    if (consumioCuota(r)) await registrarConsumo({ cantidad: 1, fecha: fechaLocal(), detalle: `mis-comprobantes ${tipo} ${desde}–${hasta}` })
   }
   for (const linea of resumenDeCorrida(resultados)) console.log(`[arca-sync] ${linea}`)
 

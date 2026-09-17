@@ -20,6 +20,12 @@ const MIGRACION = fileURLToPath(
   new URL('../../supabase/migrations/20260821T5500_el_duplicado_posible_y_el_estado_de_control.sql', import.meta.url),
 )
 
+/** La tabla de códigos ampliada el 17/09/2026: se aplica adentro de la transaccion (rollback) para que
+ *  la paridad JS↔SQL se pruebe contra la versión del repo, esté o no aplicada ya en la base. */
+const MIGRACION_SIGNO = fileURLToPath(
+  new URL('../../supabase/migrations/20260917T1100_comprobante_signo_tabla_oficial_arca.sql', import.meta.url),
+)
+
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
 
 /** Un CUIT que no existe en el libro real: la vista cruza contra TODA la tabla, así que sin un
@@ -41,6 +47,7 @@ test('posible duplicado y estado de control — contra la base real', { skip: !h
     // objeto está vivo, se afirma contra el esquema real; si no (base nueva), se aplica.
     const vivo = await c.query("select to_regclass('public.comprobante_posible_duplicado') as v")
     if (!vivo.rows[0].v) await c.query(await readFile(MIGRACION, 'utf8'))
+    await c.query(await readFile(MIGRACION_SIGNO, 'utf8'))
 
     /** Siembra un comprobante del libro de compras y devuelve su id. */
     const sembrar = async ({ tipo, pv, nro, fecha, total = 1284600, cuit = CUIT }) =>
@@ -153,8 +160,8 @@ test('posible duplicado y estado de control — contra la base real', { skip: !h
         assert.equal(Number(enLaBase), signo(codigo), `el código ${codigo} tiene distinto signo en la base y en JS`)
       }
       // Un código que ninguno de los dos conoce da NULL en los dos: «no sé» no se convierte en +1.
-      assert.equal((await uno(`select public.comprobante_signo('63') as s`)).s, null)
-      assert.equal(signo('63'), null)
+      assert.equal((await uno(`select public.comprobante_signo('99') as s`)).s, null)
+      assert.equal(signo('99'), null)
 
       // El NOMBRE también: la web no puede importar este módulo, así que lee el nombre de la base.
       // Dos tablas de códigos que nadie compara terminan diciendo cosas distintas del mismo papel.
@@ -162,7 +169,7 @@ test('posible duplicado y estado de control — contra la base real', { skip: !h
         const enLaBase = (await uno(`select public.comprobante_nombre_tipo($1) as n`, [codigo])).n
         assert.equal(enLaBase, nombreTipo(codigo), `el código ${codigo} se llama distinto en la base y en JS`)
       }
-      assert.equal((await uno(`select public.comprobante_nombre_tipo('63') as n`)).n, nombreTipo('63'))
+      assert.equal((await uno(`select public.comprobante_nombre_tipo('99') as n`)).n, nombreTipo('99'))
     })
 
     await t.test('10 · el libro de compras que lee la pantalla: sólo recibidos, con el papel traducido', async () => {
