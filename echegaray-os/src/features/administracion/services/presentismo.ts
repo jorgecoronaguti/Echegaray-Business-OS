@@ -41,7 +41,9 @@
 //
 //   · Antes de la quincena 16–30/09/2026 (`PRESENTISMO_DESDE`): lo sellado no se toca, y una quincena
 //     abierta anterior tampoco cambia de reglas a mitad de camino.
-//   · Los jefes de obra y quien cobra por mes: el presentismo es del convenio de obreros.
+//   · Los jefes de obra y quien cobra por mes NO son «no rige»: son `no_aplica` con motivo `mensual`
+//     (dueño, 17/09/2026: «el presentismo no aplica a mensuales»). «Todavía no rige» y «a esta persona no
+//     le corresponde nunca» son dos afirmaciones distintas, y la celda tiene que poder decir la segunda.
 //   · Un cuadro cerrado: es una foto (R6) y su presentismo es el que quedó sellado, no éste.
 //   · Sin categoría en el legajo o sin básico cargado: se dice «sin categoría» y NO se inventa un
 //     importe ni queda como pendiente del cierre (dueño: «sin categoría, 0, sin pendiente»).
@@ -106,8 +108,13 @@ export type EstadoPresentismo =
   | 'sin_horas'
   /** Rige, no hay causa probada de pérdida, pero quedan días sin clasificar: no se descuenta todavía. */
   | 'a_revisar'
-  /** No rige: jefe, mensual, quincena anterior al 16/09/2026 o cuadro cerrado. */
+  /** No rige: quincena anterior al 16/09/2026 o cuadro cerrado. */
   | 'no_rige'
+  /** No corresponde a esta persona: cobra por mes (jefe de obra u otro mensual). Sin importe, no suma, sin pendiente. */
+  | 'no_aplica'
+
+/** Por qué no aplica. Hoy hay un solo motivo: el premio es del convenio de obreros, que cobran por hora. */
+export type MotivoNoAplica = 'mensual'
 
 /** Por qué un día hizo perder el presentismo. La pantalla lo muestra textual. */
 export interface CausaDePerdida {
@@ -134,6 +141,8 @@ export interface PresentismoDeLinea {
   aRevisar: string[]
   basico: number | null
   categoria: string | null
+  /** Sólo con `estado === 'no_aplica'`: por qué. La celda lo dice textual («no aplica · mensual»). */
+  motivoNoAplica?: MotivoNoAplica
 }
 
 /** Lo que la cadena de pago sabe de la persona ANTES de conocer sus horas finales. */
@@ -152,6 +161,22 @@ export interface EntradaDePresentismo {
 }
 
 const r2 = (n: number): number => Math.round(n * 100) / 100
+
+/** ¿Cobra por mes? Jefe de obra o modalidad mensual: el mismo corte que `cobraPorMes` ya resolvió en la línea. */
+export const esMensual = (e: Pick<EntradaDePresentismo, 'modalidad' | 'esJefe'>): boolean =>
+  e.modalidad === 'mensual' || e.esJefe
+
+/**
+ * EL PRESENTISMO DE QUIEN COBRA POR MES: no aplica, sin importe ni base, sin causas ni días a revisar. Una falta de
+ * un mensual no le descuenta un premio que no tiene. La usa también la cadena de pago para las líneas de Oficina,
+ * que no arman entrada de presentismo.
+ */
+export function presentismoNoAplica(e: { categoria?: string | null; basico?: number | null } = {}): PresentismoDeLinea {
+  return {
+    estado: 'no_aplica', motivoNoAplica: 'mensual', importe: null, base: null,
+    perdido: [], causas: [], aRevisar: [], basico: e.basico ?? null, categoria: e.categoria ?? null,
+  }
+}
 
 export function rigePresentismo(e: Pick<EntradaDePresentismo, 'quincenaDesde' | 'modalidad' | 'esJefe' | 'cerrada'>): boolean {
   return e.quincenaDesde >= PRESENTISMO_DESDE && e.modalidad === 'hora' && !e.esJefe && !e.cerrada
@@ -182,9 +207,15 @@ export function efectoDeLaAusencia(a: AusenciaDelDia): 'pierde' | 'revisar' | 'n
   return 'no-afecta'
 }
 
-/** LA BASE: básico quincenal × 50 %. Sobre esto corre el 20 %, y NUNCA sobre el 50 % en efectivo. */
+/**
+ * LA BASE: básico quincenal × 50 %. Sobre esto corre el 20 %, y NUNCA sobre el 50 % en efectivo.
+ *
+ * CERO HORAS NO SON UNA BASE DE $0 (QA, 17/09/2026). El 16/09 Quiroga Sebastián tenía una A y ninguna hora: la base
+ * daba 0, el estado «perdido» y el pie publicaba «Presentismo perdido (1) −$0», una pérdida que no le costó nada a
+ * nadie. Sin horas todavía no hay presentismo que calcular: `sin_horas`, y la causa sigue a la vista en la celda.
+ */
 export function baseDePresentismo(horas: number | null, basico: number | null): number | null {
-  if (horas == null || !Number.isFinite(horas) || basico == null || !(basico > 0)) return null
+  if (horas == null || !Number.isFinite(horas) || !(horas > 0) || basico == null || !(basico > 0)) return null
   return r2(horas * basico * PARTE_EN_BLANCO)
 }
 
@@ -224,6 +255,9 @@ export function presentismoDeLinea(e: EntradaDePresentismo, horas: number | null
   const perdido = [...new Set(causas.map((c) => c.fecha))].sort()
   const aRevisar = diasARevisar(ausencias)
   const comun = { basico: e.basico, categoria: e.categoria, causas, perdido, aRevisar }
+  // EL CUADRO CERRADO VA PRIMERO: es una foto y su presentismo es el sellado. Después, quien cobra por mes: no aplica
+  // aunque la quincena sea anterior a la regla, porque no le corresponde nunca.
+  if (!e.cerrada && esMensual(e)) return presentismoNoAplica(e)
   if (!rigePresentismo(e)) {
     return { ...comun, estado: 'no_rige', importe: null, base: null, causas: [], perdido: [], aRevisar: [] }
   }

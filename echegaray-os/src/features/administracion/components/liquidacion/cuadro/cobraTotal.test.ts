@@ -12,7 +12,14 @@ import { readFileSync } from 'node:fs'
 import { estadoDelPago, tituloDeJornales } from './estadoDelPago.ts'
 
 const fuente = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8')
+// DESDE EL 17/09/2026 EL CUADRO SON DOS (jornaleros y mensuales): las columnas viven en `columnasDelCuadro.ts`
+// (con su propio test), las filas en `FilasJornaleros.tsx` / `FilasMensuales.tsx` y el encabezado en `TablaDeBloques.tsx`.
 const GRILLA = fuente('../GrillaEspejoQuincena.tsx')
+const TABLA = fuente('./TablaDeBloques.tsx')
+const JORNALEROS = fuente('./FilasJornaleros.tsx')
+const MENSUALES = fuente('./FilasMensuales.tsx')
+const COLUMNAS = fuente('./columnasDelCuadro.ts')
+const PIE = fuente('./PieDeLaQuincena.tsx')
 const CELDAS = fuente('./CeldasBlancoNegro.tsx')
 
 // CAMBIÓ EL 15/09/2026 (dueño, textual: «necesito al lado de banco y negro lo que se le ha pagado efectivamente
@@ -31,28 +38,20 @@ const ORDEN_DEL_CUADRO = [
 
 // «EFECT. RED. ✎» VUELVE AL CUADRO (dueño, 16/09/2026: la pidió él). MUTACIÓN: sacarla → rojo.
 test('EL ENCABEZADO: Persona · días · Horas · BLANCO(5) · NEGRO(5) · presentismo · redondeo · total · pagado · saldo', () => {
-  const plata = GRILLA.slice(GRILLA.indexOf('const PLATA'), GRILLA.indexOf('const ANCHO_DE_BANDA'))
-  const columnas = [...plata.matchAll(/clave: '([a-zA-Z]+)', rotulo: '([^']+)'(?:, px: \d+)?(?:, banda: '([a-z]+)')?/g)]
-    .map((m) => ({ clave: m[1], rotulo: m[2].replace(' ✎', ''), banda: m[3] ?? null }))
+  const jornaleros = COLUMNAS.slice(COLUMNAS.indexOf('export const CUADRO_JORNALEROS'), COLUMNAS.indexOf('export const CUADRO_MENSUALES'))
+  const columnas = [...jornaleros.matchAll(/clave: '([a-zA-Z]+)', rotulo: '([^']+)', px: \d+, bloque: '([a-z]+)'/g)]
+    .map((m) => ({ clave: m[1], rotulo: m[2].replace(' ✎', ''), bloque: m[3] }))
   assert.deepEqual(columnas.map((c) => c.rotulo), ORDEN_DEL_CUADRO, 'el orden exacto, sin Cliente · Obra')
-  // LAS DOS BANDAS SON SIMÉTRICAS: se leen en paralelo, y por eso la de arriba puede no repetir la leyenda.
-  assert.deepEqual(columnas.filter((c) => c.banda === 'blanco').map((c) => c.rotulo),
-    ['Hs recibo', '$/h cat.', 'Banco', 'Pagado', 'Saldo'])
-  assert.deepEqual(columnas.filter((c) => c.banda === 'negro').map((c) => c.rotulo),
-    ['Hs', '$/h negro', 'Importe', 'Pagado', 'Saldo'])
-  assert.match(GRILLA, /const ANCHO_DE_BANDA = 5/, 'MUTACIÓN: la banda sigue cubriendo 3 columnas y se desalinea')
-  assert.ok(!/Cliente|Obra'/.test(plata), 'no vuelve la columna Cliente · Obra')
-  // LAS COLUMNAS QUE EL DUEÑO SACÓ NO VUELVEN.
+  assert.ok(!/Cliente|Obra'/.test(jornaleros), 'no vuelve la columna Cliente · Obra')
   for (const muerta of ['Adelanto banco / embargos', 'Adelanto efectivo', 'Total efectivo', 'Cobra total']) {
-    assert.ok(!plata.includes(muerta), `«${muerta}» volvió al encabezado`)
+    assert.ok(!jornaleros.includes(muerta), `«${muerta}» volvió al encabezado`)
   }
-  // LOS DÍAS ADELANTE: la plantilla pone los días antes que la plata, y el encabezado también.
-  assert.match(GRILLA, /`minmax\(var\(--liq-persona,200px\),1fr\) repeat\(\$\{nDias\},\$\{DIA\}px\) \$\{PLATA\.map/,
+  // LOS DÍAS ADELANTE: Persona · días · plata.
+  assert.match(COLUMNAS, /minmax\(var\(--liq-persona,200px\),1fr\)\$\{dias > 0 \? ` repeat\(\$\{dias\},\$\{DIA\}px\)` : ''\} \$\{d\.columnas\.map/,
     'MUTACIÓN: la plata antes que los días')
-  assert.match(GRILLA, /gridColumn: 2 \+ dias\.length \+ i, gridRow: 2/)
-  assert.match(GRILLA, /'Blanco · recibo'/)
+  assert.match(TABLA, /gridColumn: 2 \+ dias\.length \+ i, gridRow: 2/)
   // Y LA FILA DIBUJA EN ESE ORDEN.
-  const fila = GRILLA.slice(GRILLA.indexOf('function Fila('), GRILLA.indexOf('function Total('))
+  const fila = JORNALEROS.slice(JORNALEROS.indexOf('export function FilaJornalero('), JORNALEROS.indexOf('export function TotalJornaleros('))
   const orden = ['<CeldaDeDia', '<CeldaHorasPagas', '<CeldaHorasBlanco', '<CeldaHoraCategoria', '<CeldaNeto',
     'campo="pagadoBanco"', 'lado="banco"', '<CeldaHorasNegro', '<CeldaImporteNegro', 'campo="pagadoEfectivo"',
     'lado="efectivo"', '<CeldaPresentismo', '<CeldaRedondeo', '<CeldaTotal', '<CeldaPagadoTotal', 'lado="total"',
@@ -60,9 +59,8 @@ test('EL ENCABEZADO: Persona · días · Horas · BLANCO(5) · NEGRO(5) · prese
     .map((x) => fila.indexOf(x))
   assert.ok(orden.every((i) => i > 0), 'están todas las celdas')
   assert.deepEqual([...orden].sort((a, b) => a - b), orden, 'en el orden pedido')
-  assert.match(GRILLA, /clave: 'efectivoRedondeado'/, 'la columna «Efect. red.» está en el cuadro (dueño)')
-  assert.match(GRILLA, /espejo-total-redondeo/, 'y la fila de total la suma')
-  assert.match(GRILLA, /cifra\('Efectivo redondeado'/, 'el pie la sigue sumando')
+  assert.match(JORNALEROS, /espejo-total-redondeo/, 'la fila de total suma «Efect. red.»')
+  assert.match(PIE, /rotulo="Efectivo redondeado"/, 'el pie la sigue sumando')
 })
 
 // «NECESITO Q EN ALGUNA COLUMNA DE LIQ HS ME DIGA CUANTO COBRA EN TOTAL» (dueño, 14/09/2026) sigue vigente: el
@@ -72,18 +70,20 @@ test('EL ENCABEZADO: Persona · días · Horas · BLANCO(5) · NEGRO(5) · prese
 // como una columna distinta de la que se movía. MUTACIÓN: volver a pegar una columna a la derecha → rojo.
 test('TOTAL EN EL CUADRO Y EN EL PIE; NINGUNA COLUMNA PEGADA A LA DERECHA', () => {
   const PANEL = fuente('./PanelDeLaPersona.tsx')
-  assert.match(GRILLA, /clave: 'total', rotulo: 'Total'/)
-  assert.match(GRILLA, /clave: 'saldo', rotulo: 'Saldo'/)
-  assert.match(GRILLA, /cifra\('Total', totales\.cobra/)
-  assert.match(GRILLA, /cifra\('Saldo', p\.saldoTotal/)
-  assert.equal((PANEL.match(/rotulo="Cobra total"/g) ?? []).length, 2, 'las dos cadenas del panel')
-  assert.ok(!/Total quincena/.test(GRILLA + PANEL), 'no queda el rótulo viejo')
-  assert.ok(!/right: -CANAL_SCROLL|COLUMNA_SALDO|CLASE_SALDO/.test(GRILLA), 'volvió una columna pegada a la derecha')
-  // LA ÚNICA `sticky` DE LA GRILLA ES LA DE PERSONA (`COLUMNA_FIJA`, importada): acá no se declara ninguna.
-  assert.ok(!/position: 'sticky'/.test(GRILLA), 'la grilla declara un sticky propio: sólo Persona (tabla.tsx) es fija')
-  // EL SALDO TOTAL ES UNA CELDA COMÚN, la última de la fila y del total.
-  const fila = GRILLA.slice(GRILLA.indexOf('function Fila('), GRILLA.indexOf('function Total('))
-  assert.match(fila, /<CeldaPagadoTotal fila=\{fila\} \/>\s*<CeldaSaldo fila=\{fila\} lado="total" \/>\s*<CeldaSaldoRedondeado fila=\{fila\} \/>\s*<\/div>/)
+  assert.match(COLUMNAS, /clave: 'total', rotulo: 'Total'/)
+  assert.match(COLUMNAS, /clave: 'saldo', rotulo: 'Saldo'/)
+  assert.match(PIE, /rotulo="Total" valor=\{pesos\(t\.cobra\)\}/)
+  assert.match(PIE, /rotulo="Saldo" valor=\{pesos\(t\.pago\.saldoTotal\)\}/)
+  // Las tres cadenas del panel: blanco + negro, mensual y sin modelo.
+  assert.equal((PANEL.match(/rotulo="Cobra total"/g) ?? []).length, 3, 'las tres cadenas del panel')
+  const todo = GRILLA + TABLA + JORNALEROS + MENSUALES
+  assert.ok(!/Total quincena/.test(todo + PANEL), 'no queda el rótulo viejo')
+  assert.ok(!/right: -CANAL_SCROLL|COLUMNA_SALDO|CLASE_SALDO/.test(todo), 'volvió una columna pegada a la derecha')
+  // LA ÚNICA `sticky` ES LA DE PERSONA (`COLUMNA_FIJA`, importada): acá no se declara ninguna.
+  assert.ok(!/position: 'sticky'/.test(todo), 'se declaró un sticky propio: sólo Persona (tabla.tsx) es fija')
+  // EL SALDO TOTAL ES UNA CELDA COMÚN, la última de la fila, en los dos cuadros.
+  assert.match(JORNALEROS, /<CeldaPagadoTotal fila=\{fila\} \/>\s*<CeldaSaldo fila=\{fila\} lado="total" \/>\s*<CeldaSaldoRedondeado fila=\{fila\} \/>\s*<\/div>/)
+  assert.match(MENSUALES, /<CeldaSaldo fila=\{fila\} lado="total" pago=\{p\}[^>]*\/>\s*<CeldaSaldoRedondeado fila=\{fila\} pago=\{p\} \/>\s*<\/div>/)
 })
 
 // ═══ «SALDO RED.» — LO QUE RESTA PAGAR, SI SALIERA TODO EN BILLETES (dueño, 16/09/2026) ═══
@@ -93,52 +93,46 @@ test('TOTAL EN EL CUADRO Y EN EL PIE; NINGUNA COLUMNA PEGADA A LA DERECHA', () =
 // que la columna esté al lado de Saldo y no en cualquier lado; que NO sea editable ni se guarde (sería una
 // segunda «Efect. red.», que es otra cosa y sí la decide el dueño); y que el total sume saldos ya redondeados.
 test('SALDO RED. VA AL LADO DE SALDO, SE DERIVA DE ÉL, NO SE EDITA NI SE GUARDA', () => {
-  const plata = GRILLA.slice(GRILLA.indexOf('const PLATA'), GRILLA.indexOf('const ANCHO_DE_BANDA'))
-  const claves = [...plata.matchAll(/clave: '([a-zA-Z]+)'/g)].map((m) => m[1])
-  assert.equal(claves[claves.indexOf('saldoRedondeado') - 1], 'saldo', 'MUTACIÓN: separarla del Saldo')
-  assert.equal(claves[claves.length - 1], 'saldoRedondeado', 'cierra la fila')
-  // EL RÓTULO SIN «✎»: la de al lado, «Efect. red. ✎», sí se escribe. Confundirlas es el defecto a evitar.
-  assert.match(plata, /clave: 'saldoRedondeado', rotulo: 'Saldo red\.'/)
-  assert.ok(!/clave: 'saldoRedondeado', rotulo: '[^']*✎/.test(plata), 'MUTACIÓN: no es editable')
-  // SALE DEL SALDO TOTAL, no de `enEfectivo` ni del redondeo guardado del dueño.
+  for (const cuadro of ['CUADRO_JORNALEROS', 'CUADRO_MENSUALES']) {
+    const i = COLUMNAS.indexOf(`export const ${cuadro}`)
+    const plata = COLUMNAS.slice(i, COLUMNAS.indexOf('\n}\n', i))
+    const claves = [...plata.matchAll(/clave: '([a-zA-Z]+)', rotulo/g)].map((m) => m[1])
+    assert.equal(claves[claves.indexOf('saldoRedondeado') - 1], 'saldo', 'MUTACIÓN: separarla del Saldo')
+    assert.equal(claves[claves.length - 1], 'saldoRedondeado', 'cierra la fila')
+    assert.match(plata, /clave: 'saldoRedondeado', rotulo: 'Saldo red\.'/)
+    assert.ok(!/clave: 'saldoRedondeado', rotulo: '[^']*✎/.test(plata), 'MUTACIÓN: no es editable')
+  }
+  // SALE DEL SALDO TOTAL (de la línea o del pago del mensual), no de `enEfectivo` ni del redondeo del dueño.
   const celda = CELDAS.slice(CELDAS.indexOf('export function CeldaSaldoRedondeado('), CELDAS.indexOf('export function CeldaPagadoTotal('))
-  assert.match(celda, /fila\.linea\.pago\.saldoTotal/)
+  assert.match(celda, /\(pago \?\? fila\.linea\.pago\)\.saldoTotal/)
   assert.ok(!/efectivoRedondeado|enEfectivo/.test(celda), 'MUTACIÓN: se mezcló con la columna que edita el dueño')
   assert.ok(!/Escribible|onBlur|upsert/.test(celda), 'MUTACIÓN: se volvió escribible')
-  // EL SALDO EXACTO SIGUE VISIBLE en el título: dos cifras casi iguales sin explicación se leen como un error.
   assert.match(celda, /Saldo exacto \$\{pesos\(saldo\)\}/)
-  // EL TOTAL DE LA COLUMNA Y EL PIE: suma de redondeados uno por uno (`sumaDelSaldoRedondeado`), no de la suma.
-  assert.match(GRILLA, /sumaDelSaldoRedondeado\(visibles\.map\(\(f\) => f\.linea\.pago\.saldoTotal\)\)/)
-  assert.match(GRILLA, /espejo-total-saldo-redondeado/)
-  assert.match(GRILLA, /cifra\('Saldo redondeado'/)
+  // EL TOTAL: suma de redondeados uno por uno, no el redondeo de la suma (`liquidacionPorTipo.ts`).
+  assert.match(JORNALEROS, /espejo-total-saldo-redondeado/)
+  assert.match(PIE, /rotulo="Saldo red\."/)
 })
 
 // EL ENCABEZADO FIJO (dueño, 15/09/2026: «quiero eso fijo en liq hs», con captura del cuadro desplazado).
 test('EL ENCABEZADO SE PEGA ARRIBA Y LA CAJA NO LE ROBA EL ANCLAJE', () => {
-  // EL DEFECTO QUE ATRAPA, y es de especificación y no de navegador: `sticky` se ancla al scrollport MÁS
-  // CERCANO. Con los rótulos ADENTRO del div que scrollea de costado, ese scrollport es la propia tabla —que
-  // no se desplaza en vertical— y la cabecera se va con la página. Y con `overflow: hidden` en la caja del
-  // cuadro, el scrollport pasa a ser la caja y vuelve a pasar lo mismo.
-  assert.match(GRILLA, /<CintaHorizontal/, 'los rótulos viven afuera del scroller')
-  assert.match(GRILLA, /cabecera=\{\(/)
-  assert.match(GRILLA, /marcoPropio=\{\{ \.\.\.MARCO_SCROLL/, 'el canal de 20 px de la columna fija se conserva')
+  // EL DEFECTO QUE ATRAPA: `sticky` se ancla al scrollport MÁS CERCANO. Con los rótulos ADENTRO del div que scrollea
+  // de costado, la cabecera se va con la página; con `overflow: hidden` en la caja, lo mismo.
+  assert.match(TABLA, /<CintaHorizontal/, 'los rótulos viven afuera del scroller')
+  assert.match(TABLA, /cabecera=\{\(corrimiento\) =>/)
+  assert.match(TABLA, /marcoPropio=\{\{ \.\.\.MARCO_SCROLL/, 'el canal de 20 px de la columna fija se conserva')
   assert.ok(!/borderRadius: 10, overflow: 'hidden'/.test(GRILLA), 'MUTACIÓN: `hidden` crea scrollport y mata el sticky')
   assert.match(GRILLA, /borderRadius: 10, overflow: 'clip'/)
-  // LAS DOS BANDAS SE PEGAN JUNTAS: son UN encabezado de dos renglones, no dos elementos.
-  const cuerpo = GRILLA.slice(GRILLA.indexOf('function Encabezado('), GRILLA.indexOf('function Fila('))
-  assert.match(cuerpo, /gridRow: 1/, 'la banda es el renglón 1 de la misma grilla')
-  assert.match(cuerpo, /gridRow: 2/, 'y los rótulos el 2')
-  assert.equal((GRILLA.match(/<Encabezado /g) ?? []).length, 1, 'un solo encabezado, dentro de la cabecera pegajosa')
-  // Y «PERSONA» NO SE DESPEGA DE SU COLUMNA: adentro del envoltorio pegajoso `sticky` no ancla nada, así que
-  // el rótulo se contra-desplaza con el mismo corrimiento. MUTACIÓN: sacarlo → el rótulo se va y los nombres
-  // se quedan, que es la versión de encabezado del defecto de «números sin dueño».
+  const cuerpo = TABLA.slice(TABLA.indexOf('function Encabezado('))
+  assert.match(cuerpo, /gridRow: '1 \/ span 2', alignSelf: 'stretch', marginInline/, 'el bloque cubre los dos renglones')
+  assert.match(cuerpo, /gridRow: 2/, 'y los rótulos de columna el 2')
+  assert.equal((TABLA.match(/<Encabezado /g) ?? []).length, 1, 'un solo encabezado, dentro de la cabecera pegajosa')
+  // «PERSONA» NO SE DESPEGA DE SU COLUMNA: se contra-desplaza con el mismo corrimiento, en UNA celda para los dos
+  // renglones, estirada. Y con `left: 0`: el `left: -20` de `COLUMNA_FIJA` con `relative` la corría 20 px (17/09).
+  assert.match(cuerpo, /\.\.\.COLUMNA_FIJA, position: 'relative', left: 0, gridColumn: 1, gridRow: '1 \/ span 2', alignSelf: 'stretch'/)
   assert.match(cuerpo, /transform: `translateX\(\$\{corrimiento\}px\)`/)
-  // UNA SOLA CELDA PARA LOS DOS RENGLONES (QA, 16/09/2026): eran dos y la de abajo medía 18 px fijos; con «HS
-  // RECIBO» envuelto el renglón 2 es más alto y por la franja de arriba asomaba «S RECIBO» bajo «Persona».
-  // MUTACIÓN: volver a dos celdas, o a una altura fija, → rojo.
-  assert.equal((cuerpo.match(/translateX\(\$\{corrimiento\}px\)/g) ?? []).length, 1, 'una sola celda fija que cubre los dos renglones')
-  assert.match(cuerpo, /gridRow: '1 \/ span 2', alignSelf: 'stretch'/, 'la celda Persona cubre los dos renglones estirada')
   assert.ok(!/height: ALTO_LIQ\.encabezado/.test(cuerpo), 'MUTACIÓN: una altura fija deja pasar el rótulo envuelto')
+  // Los rótulos de bloque siguen a la vista al desplazar.
+  assert.match(cuerpo, /corrimientoDelRotulo\(corrimiento, t\)/)
 })
 
 // EL PANEL DICE LO MISMO QUE EL CUADRO (16/09/2026). Después de rehacer el cuadro, el panel por persona seguía

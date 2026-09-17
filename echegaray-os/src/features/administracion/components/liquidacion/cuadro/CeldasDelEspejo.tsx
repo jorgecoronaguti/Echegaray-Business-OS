@@ -39,6 +39,13 @@ import { fechasCortas, type PresentismoDeLinea } from '../../../services/present
 export function CeldaPresentismo({ fila }: { fila: FilaDelEspejo }) {
   const p = fila.linea.presentismo
   const testid = `presentismo-${fila.personaId}`
+  // NO APLICA · MENSUAL (dueño, 17/09/2026). Se dice textual: «—» se lee igual que «todavía no rige».
+  if (p?.estado === 'no_aplica' || fila.linea.modalidad === 'mensual') {
+    return (
+      <div data-testid={testid} data-presentismo="no-aplica" title="Cobra por mes: el presentismo es del convenio de obreros, no suma ni descuenta."
+        style={{ textAlign: 'right', fontSize: '11px', lineHeight: '13px', color: V.apagado }}>no aplica · mensual</div>
+    )
+  }
   if (!p || p.estado === 'no_rige') {
     return <div data-testid={testid} style={{ textAlign: 'right', color: V.lineaFuerte }}>—</div>
   }
@@ -49,6 +56,14 @@ export function CeldaPresentismo({ fila }: { fila: FilaDelEspejo }) {
     )
   }
   if (p.estado === 'sin_horas' || p.importe == null) {
+    // SIN HORAS PERO CON UNA FALTA O TARDANZA YA CARGADA: se dice, sin importe (QA, 17/09/2026: el pie publicaba
+    // «Presentismo perdido (1) −$0»). Cuando haya horas, el estado pasa a «perdido» con su importe.
+    if (p.perdido.length > 0) {
+      return (
+        <div data-testid={testid} data-presentismo="sin-horas-con-causa" title={`Sin horas todavía: no hay importe. ${motivosDePerdida(p)}`}
+          style={{ textAlign: 'right', fontSize: '11px', lineHeight: '13px', color: V.warn }}>sin horas · {fechasCortas(p.perdido)}</div>
+      )
+    }
     return <div data-testid={testid} title="Sin horas: no hay presentismo que calcular" style={{ textAlign: 'right', color: V.tenue }}>·</div>
   }
   // LA CUENTA COMPLETA, COMO LA PIDIÓ EL DUEÑO (16/09/2026): base (50 % en blanco) × 20 %. El 50 % en

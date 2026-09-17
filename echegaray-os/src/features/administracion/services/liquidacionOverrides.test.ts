@@ -183,11 +183,18 @@ test('un COBRA escrito a mano gana también sobre el presentismo (manual > todo)
   assert.equal(r.presentismo?.estado, 'perdido')
 })
 
-test('fuera de obreros no hay presentismo aunque se le pase la entrada', () => {
+// CAMBIÓ EL 17/09/2026 (dueño: el presentismo no aplica a mensuales). Antes Oficina salía `null`, que la celda
+// dibujaba «—» igual que «todavía no rige». MUTACIÓN: volver a `null`, o descontarle el importe → rojo.
+test('Oficina (mensual) no lleva presentismo: «no aplica · mensual», aunque tenga marcas, y el cobra no se toca', () => {
   const oficina = liquidarLinea({ ...entrada, tarifa: { valorHora: null, netoMensual: 1_800_000, desde: '2026-09-01', origen: 'x' } }, 'oficina', null)
   const r = aplicarOverrides(oficina, {}, 'oficina', null, null, CON_MARCA)
-  assert.equal(r.presentismo, null)
+  assert.equal(r.presentismo?.estado, 'no_aplica')
+  assert.equal(r.presentismo?.motivoNoAplica, 'mensual')
+  assert.equal(r.presentismo?.importe, null)
   assert.equal(r.cobra, 1_800_000)
+  assert.equal(r.total, oficina.total, 'la cadena de pago queda igual')
+  // LA QUINCENA CERRADA NO SE RECALCULA: el sello manda, aunque sea de un mensual.
+  assert.equal(sinOverrides(oficina).presentismo, null)
 })
 
 test('sin entrada (llamador viejo) la línea sigue igual que siempre', () => {

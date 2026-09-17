@@ -35,11 +35,13 @@ function importeTecleado(texto: string): number | null {
 
 const conSigno = (p: number): string => `${p > 0 ? '+' : ''}${p.toLocaleString('es-AR')}%`
 
-export function CeldaTarifa({ fila, quincena, pct }: {
+export function CeldaTarifa({ fila, quincena, pct, sinValor = 'sin tarifa' }: {
   fila: FilaDelEspejo
   quincena: { desde: string; hasta: string }
   /** % contra el valor anterior, sólo cuando el valor vigente empieza en esta quincena. */
   pct: number | null
+  /** Qué dice el botón sin valor. Un jefe mensual no está «sin tarifa»: le falta el sueldo cargado. */
+  sinValor?: string
 }) {
   const l = fila.linea
   const forma = formaEditable(fila.grupo)
@@ -105,7 +107,7 @@ export function CeldaTarifa({ fila, quincena, pct }: {
             minHeight: 32, padding: '0 6px', border: `1px solid ${error ? V.neg : V.lineaFuerte}`, borderRadius: 4,
             background: '#FFFFFF', color: actual == null ? V.tenue : V.tinta, cursor: 'text',
             fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
-          }}>{actual == null ? 'sin tarifa' : pesos(actual)}</button>
+          }}>{actual == null ? sinValor : pesos(actual)}</button>
       ) : (
         <span style={{ color: V.apagado }}>{actual == null ? '—' : pesos(actual)}</span>
       )}

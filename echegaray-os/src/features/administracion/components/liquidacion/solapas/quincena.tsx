@@ -130,7 +130,6 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
       <GrillaEspejoQuincena
         dias={dias}
         secciones={secciones}
-        totales={totales}
         quincena={{ desde: quincena.desde, hasta: quincena.hasta }}
         camposEditables={liquidacion.camposEditables}
         historiales={historiales}

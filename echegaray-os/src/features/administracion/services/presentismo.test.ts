@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   cobraConPresentismo, fechasCortas, importeDePresentismo, presentismoDeLinea, totalesDePresentismo,
   PRESENTISMO_DESDE, PRESENTISMO_PCT, PARTE_EN_BLANCO, type EntradaDePresentismo,
+  presentismoNoAplica,
 } from './presentismo.ts'
 
 // LOS DEFECTOS QUE ESTOS TESTS ATRAPAN (cada uno pone en rojo una mutación de la regla):
@@ -74,8 +75,8 @@ test('no rige antes de la quincena 16–30/09/2026: la 01–15/09 no descuenta a
 
 test('los jefes y quien cobra por mes quedan afuera; un cuadro cerrado también (lo sellado no se toca)', () => {
   const marcada = { ...AGUERO, tardanzas: [{ fecha: '2026-09-17', llegoTarde: true, salioAntes: false }] }
-  assert.equal(presentismoDeLinea({ ...marcada, esJefe: true }, 105).estado, 'no_rige')
-  assert.equal(presentismoDeLinea({ ...marcada, modalidad: 'mensual' }, 105).estado, 'no_rige')
+  assert.equal(presentismoDeLinea({ ...marcada, esJefe: true }, 105).estado, 'no_aplica')
+  assert.equal(presentismoDeLinea({ ...marcada, modalidad: 'mensual' }, 105).estado, 'no_aplica')
   const cerrada = presentismoDeLinea({ ...marcada, cerrada: true }, 105)
   assert.equal(cerrada.estado, 'no_rige')
   assert.equal(cobraConPresentismo(627000, cerrada), 627000)
@@ -212,8 +213,8 @@ test('NO SE TOCAN LAS QUINCENAS ANTERIORES: la falta de una quincena vieja no de
 
 test('jefes y mensuales siguen afuera aunque falten', () => {
   const conFalta = { ...BASE, ausencias: [falta('2026-09-18', 'falta')] }
-  assert.equal(presentismoDeLinea({ ...conFalta, esJefe: true }, 105).estado, 'no_rige')
-  assert.equal(presentismoDeLinea({ ...conFalta, modalidad: 'mensual' }, 105).estado, 'no_rige')
+  assert.equal(presentismoDeLinea({ ...conFalta, esJefe: true }, 105).estado, 'no_aplica')
+  assert.equal(presentismoDeLinea({ ...conFalta, modalidad: 'mensual' }, 105).estado, 'no_aplica')
 })
 
 test('el pie cuenta cuántos quedaron a revisar, sin mezclarlos con los perdidos', () => {
@@ -257,4 +258,56 @@ test('lo que NO cambió: las licencias con respaldo siguen sin descontar', () =>
   for (const motivo of ['lluvia', 'sin_tarea', 'paro', 'franco']) {
     assert.equal(presentismoDeLinea({ ...BASE, ausencias: [falta('2026-09-18', motivo)] }, 105).estado, 'aplica')
   }
+})
+
+// ═══ EL MENSUAL NO LLEVA PRESENTISMO (dueño, 17/09/2026) ═══ Atrapa: que un mensual o un jefe con marcas salga
+// «aplica» o «perdido» (le descontaría un premio que no tiene), que su importe entre en lo que está en juego, y que
+// el cambio arrastre al jornalero, que tiene que seguir exactamente igual.
+
+test('mensual → no aplica · mensual: sin importe, sin base, sin causas y no toca el cobra', () => {
+  const marcas = {
+    tardanzas: [{ fecha: '2026-09-17', llegoTarde: true, salioAntes: false }],
+    ausencias: [{ fecha: '2026-09-18', estado: 'ausente' as const, motivo: 'falta' }],
+  }
+  for (const quien of [{ modalidad: 'mensual' as const, esJefe: false }, { modalidad: 'mensual' as const, esJefe: true }, { modalidad: 'hora' as const, esJefe: true }]) {
+    const p = presentismoDeLinea({ ...AGUERO, ...marcas, ...quien }, 105)
+    assert.equal(p.estado, 'no_aplica', JSON.stringify(quien))
+    assert.equal(p.motivoNoAplica, 'mensual')
+    assert.equal(p.importe, null)
+    assert.equal(p.base, null)
+    assert.deepEqual([p.causas, p.perdido, p.aRevisar], [[], [], []])
+    assert.equal(cobraConPresentismo(1_800_000, p), 1_800_000)
+  }
+  // Antes de la regla también: al mensual no le corresponde nunca, no «todavía».
+  assert.equal(presentismoDeLinea({ ...AGUERO, modalidad: 'mensual', quincenaDesde: '2026-09-01' }, 105).estado, 'no_aplica')
+})
+
+test('el mensual no suma a lo que está en juego ni a lo perdido; el jornalero de al lado sigue igual', () => {
+  const tarde = [{ fecha: '2026-09-17', llegoTarde: true, salioAntes: false }]
+  const jornalero = presentismoDeLinea({ ...AGUERO, tardanzas: tarde }, 105)
+  assert.equal(jornalero.estado, 'perdido')
+  assert.equal(jornalero.importe, 66654)
+  const t = totalesDePresentismo([
+    { presentismo: jornalero },
+    { presentismo: presentismoDeLinea({ ...AGUERO, modalidad: 'mensual', tardanzas: tarde }, 105) },
+    { presentismo: presentismoNoAplica() },
+  ])
+  assert.deepEqual(t, { enJuego: 66654, perdido: 66654, perdidos: 1, sinCategoria: 0, aRevisar: 0 })
+})
+
+test('un cuadro cerrado sigue siendo foto aunque sea de un mensual: no se reescribe como no_aplica', () => {
+  assert.equal(presentismoDeLinea({ ...AGUERO, modalidad: 'mensual', cerrada: true }, 105).estado, 'no_rige')
+})
+
+// «PRESENTISMO PERDIDO (1) −$0» (captura del 17/09/2026, quincena 16–30/09): una falta con cero horas cargadas daba
+// base 0, estado «perdido» y una línea del pie que contaba una pérdida de nada. MUTACIÓN: volver a aceptar 0 horas
+// como base → rojo.
+test('cero horas no es una base de $0: sin_horas, no cuenta como perdido, y la causa queda a la vista', () => {
+  const conFalta = { ...AGUERO, ausencias: [{ fecha: '2026-09-16', estado: 'ausente' as const, motivo: 'falta' }] }
+  const p = presentismoDeLinea(conFalta, 0)
+  assert.equal(p.estado, 'sin_horas')
+  assert.equal(p.importe, null)
+  assert.deepEqual(p.perdido, ['2026-09-16'], 'la falta no se esconde')
+  assert.equal(importeDePresentismo(0, 6348), null)
+  assert.deepEqual(totalesDePresentismo([{ presentismo: p }]), { enJuego: 0, perdido: 0, perdidos: 0, sinCategoria: 0, aRevisar: 0 })
 })

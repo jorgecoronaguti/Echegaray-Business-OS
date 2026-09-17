@@ -23,7 +23,7 @@ import { horas as nHoras, pesos } from '../formato'
 import { estadoDelPago, tituloDeJornales } from './estadoDelPago'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { marcaDeCategoria, negroDeLaFila, tituloDelNetoEstimado, type SueldoBlancoNegro } from '../../../services/sueldoBlancoNegro'
-import { avisoDeExcedente } from '../../../services/pagoDeLaQuincena'
+import { avisoDeExcedente, type PagoDeLaLinea } from '../../../services/pagoDeLaQuincena'
 import { saldoRedondeado } from '../../../services/efectivoRedondeado'
 
 const DERECHA: CSSProperties = { textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden' }
@@ -232,7 +232,8 @@ export function CeldaTotal({ fila, edicion }: { fila: FilaDelEspejo; edicion?: E
     )
   }
   if (l.cobra == null) {
-    const porque = l.sinNeto ? 'sin neto' : 'sin tarifa'
+    // UN MENSUAL SIN IMPORTE NO ESTÁ «SIN TARIFA» (dueño, 15/09/2026: «los jefes cobran por mes, no preguntes más»).
+    const porque = l.modalidad === 'mensual' ? 'importe no cargado' : l.sinNeto ? 'sin neto' : 'sin tarifa'
     return (
       <div data-testid={`total-${fila.personaId}`} style={{ ...DERECHA, color: V.tenue }}
         title={[l.sinNeto ? 'Sin neto del blanco: no hay total que afirmar.' : 'Sin retribución cargada.', jornales].filter(Boolean).join(' · ')}>
@@ -290,13 +291,20 @@ export function CeldaPagado({ campo, fila, edicion }: {
  * ÁMBAR CON SIGNO CUANDO ES NEGATIVO, y el `title` dice qué pasa con esa plata: no es un error de la fila, es
  * alguien que cobró de más por un canal y se le descuenta del otro. Netearlo a cero borraría el dato.
  */
-export function CeldaSaldo({ fila, lado }: { fila: FilaDelEspejo; lado: 'banco' | 'efectivo' | 'total' }) {
-  const p = fila.linea.pago
+export function CeldaSaldo({ fila, lado, pago, sinDato }: {
+  fila: FilaDelEspejo; lado: 'banco' | 'efectivo' | 'total'
+  /** El pago que se muestra. Por defecto el de la línea; el cuadro de mensuales pasa `pagoDelMensual`. */
+  pago?: PagoDeLaLinea
+  /** Qué se dice cuando no hay saldo que afirmar. Por defecto «—» con el motivo en el `title`. */
+  sinDato?: { texto: string; titulo: string }
+}) {
+  const p = pago ?? fila.linea.pago
   const valor = lado === 'banco' ? p.saldoBanco : lado === 'efectivo' ? p.saldoEfectivo : p.saldoTotal
   const testid = `saldo-${lado}-${fila.personaId}`
   if (valor == null) {
     return (
-      <div data-testid={testid} title="Sin negro del período: no hay saldo que afirmar." style={{ ...DERECHA, color: V.tenue }}>—</div>
+      <div data-testid={testid} title={sinDato?.titulo ?? 'Sin negro del período: no hay saldo que afirmar.'}
+        style={{ ...DERECHA, color: V.tenue, fontSize: sinDato ? '11px' : undefined }}>{sinDato?.texto ?? '—'}</div>
     )
   }
   const negativo = valor < 0
@@ -322,8 +330,8 @@ export function CeldaSaldo({ fila, lado }: { fila: FilaDelEspejo; lado: 'banco' 
  * El `title` dice siempre el saldo exacto y cuánto se entrega de más o de menos: sin eso, dos números casi
  * iguales uno al lado del otro se leen como una diferencia que el cuadro perdió.
  */
-export function CeldaSaldoRedondeado({ fila }: { fila: FilaDelEspejo }) {
-  const saldo = fila.linea.pago.saldoTotal
+export function CeldaSaldoRedondeado({ fila, pago }: { fila: FilaDelEspejo; pago?: PagoDeLaLinea }) {
+  const saldo = (pago ?? fila.linea.pago).saldoTotal
   const r = saldoRedondeado(saldo)
   const testid = `saldo-redondeado-${fila.personaId}`
   if (r.valor == null) {
@@ -343,8 +351,8 @@ export function CeldaSaldoRedondeado({ fila }: { fila: FilaDelEspejo }) {
 }
 
 /** PAGADO TOTAL — la suma de los dos canales. No se escribe: se escriben los lados. */
-export function CeldaPagadoTotal({ fila }: { fila: FilaDelEspejo }) {
-  const p = fila.linea.pago
+export function CeldaPagadoTotal({ fila, pago }: { fila: FilaDelEspejo; pago?: PagoDeLaLinea }) {
+  const p = pago ?? fila.linea.pago
   return (
     <div data-testid={`pagado-total-${fila.personaId}`}
       title={`por banco ${pesos(p.pagadoBanco)} + en efectivo ${pesos(p.pagadoEfectivo)}`}

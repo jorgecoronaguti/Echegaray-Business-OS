@@ -66,16 +66,21 @@ test('LA QUINCENA CERRADA EXPLICA LA PLATA: negro = total sellado − neto, en l
   // La celda lo dice.
   const CELDAS = fuente('../components/liquidacion/cuadro/CeldasBlancoNegro.tsx')
   assert.match(CELDAS, /foto sellada: total − neto del recibo/)
-  assert.match(fuente('../components/liquidacion/GrillaEspejoQuincena.tsx'), /sellada=\{visibles\.some\(\(f\) => f\.cerrada\)\}/)
+  assert.match(fuente('../components/liquidacion/GrillaEspejoQuincena.tsx'), /const sellada = visibles\.some\(\(f\) => f\.cerrada\)/)
 })
 
-test('LA GRILLA: el mensual ocupa las bandas en una celda propia y el pie tiene «Sueldos mensuales»', () => {
+// CAMBIÓ EL 17/09/2026 (dueño: «no contempló cuestiones de los dos tipos de empleados, rehacer»). El mensual ya no
+// ocupa las bandas de la grilla por hora: tiene su propio cuadro con su subtotal, y el pie de jornaleros no lo suma.
+// MUTACIÓN: volver a dibujar los mensuales con `FilaJornalero`, o sumar sus sueldos en el pie de jornaleros → rojo.
+test('LA GRILLA: el mensual va en su propio cuadro y su subtotal no se mezcla con el de jornaleros', () => {
   const g = fuente('../components/liquidacion/GrillaEspejoQuincena.tsx')
-  // POR MODALIDAD DESDE EL 15/09/2026: el jefe sin neto cargado también cobra por mes (`cobroMensual.ts`).
-  assert.match(g, /l\.modalidad === 'mensual' \? \(/)
-  assert.match(g, /gridColumn: `span \$\{ANCHO_DE_LAS_BANDAS\}`/)
-  assert.match(g, /cifra\('Sueldos mensuales', totales\.mensuales/)
-  assert.match(g, /<Leida valor=\{totales\.netoBandas\} testid="espejo-total-neto" \/>/)
+  assert.match(g, /const \{ jornaleros, mensuales \} = separarPorTipo\(visibles\)/)
+  assert.match(g, /const tJ = totalesDeJornaleros\(jornaleros\)/)
+  assert.match(g, /const tM = totalesDeMensuales\(mensuales\)/)
+  assert.match(g, /tipo === 'mensual' \? <FilaMensual/)
+  const pie = fuente('../components/liquidacion/cuadro/PieDeLaQuincena.tsx')
+  assert.match(pie, /rotulo="Sueldos del mes" valor=\{pesos\(t\.sueldo\)\}/)
+  assert.match(fuente('../components/liquidacion/cuadro/FilasJornaleros.tsx'), /<Leida valor=\{t\.netoBandas\} testid="espejo-total-neto" \/>/)
 })
 
 test('LOS JEFES MUESTRAN SUS HORAS: la columna Horas de un mensual no es «—»', () => {

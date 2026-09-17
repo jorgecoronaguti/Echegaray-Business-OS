@@ -11,7 +11,6 @@ import { readFileSync } from 'node:fs'
 import { diaDelSello, filaPagada } from './marcaDePago.ts'
 
 const AQUI = new URL('.', import.meta.url)
-const GRILLA = readFileSync(new URL('../GrillaEspejoQuincena.tsx', AQUI), 'utf8')
 const MARCA = readFileSync(new URL('./MarcaDePago.tsx', AQUI), 'utf8')
 
 test('LA FILA PAGADA ES LA QUE TIENE SELLO VÁLIDO', () => {
@@ -28,12 +27,17 @@ test('EL SELLO DICE EL DÍA, dd/mm, Y NO SE ROMPE CON BASURA', () => {
   assert.equal(diaDelSello('no es fecha'), '')
 })
 
-test('LA GRILLA PINTA LA FILA Y LA CELDA FIJA CON EL MISMO COLOR, Y DIBUJA EL BOTÓN', () => {
-  assert.match(GRILLA, /const fondo = filaPagada\(l\.pagadaEn\) \? V\.posSuave : undefined/, 'el color es el token de estado positivo y lo decide filaPagada')
-  assert.match(GRILLA, /\.\.\.filaGrid\(columnas, ALTO_LIQ\.filaAlta\), background: fondo/, 'la fila entera lleva el fondo')
-  assert.match(GRILLA, /\.\.\.COLUMNA_FIJA, background: fondoDeColumnaFija\(fondo\)/, 'la celda fija repite el fondo OPACO')
-  assert.match(GRILLA, /<MarcaDePago personaId=\{fila\.personaId\} grupo=\{fila\.grupo\} quincena=\{quincena\} pagadaEn=\{l\.pagadaEn\} cerrada=\{fila\.cerrada\}/)
-  assert.match(GRILLA, /data-pagada=\{fondo \? '1' : undefined\}/, 'la fila se puede medir desde un E2E')
+test('LA GRILLA PINTA LA FILA Y LA CELDA FIJA CON EL MISMO COLOR, Y DIBUJA EL BOTÓN, EN LOS DOS CUADROS', () => {
+  const PERSONA = readFileSync(new URL('./CeldaPersona.tsx', import.meta.url), 'utf8')
+  for (const nombre of ['./FilasJornaleros.tsx', './FilasMensuales.tsx']) {
+    const f = readFileSync(new URL(nombre, import.meta.url), 'utf8')
+    assert.match(f, /const fondo = filaPagada\(l\.pagadaEn\) \? V\.posSuave : undefined/, `${nombre}: el color lo decide filaPagada`)
+    assert.match(f, /\.\.\.filaGrid\(columnas, ALTO_LIQ\.filaAlta\), background: fondo/, `${nombre}: la fila entera lleva el fondo`)
+    assert.match(f, /<CeldaPersona fila=\{fila\} fondo=\{fondo\}/, `${nombre}: la celda fija recibe el color`)
+    assert.match(f, /data-pagada=\{fondo \? '1' : undefined\}/, 'la fila se puede medir desde un E2E')
+  }
+  assert.match(PERSONA, /\.\.\.COLUMNA_FIJA, \.\.\.PERSONA_ESTIRADA, background: fondoDeColumnaFija\(fondo\)/, 'la celda fija repite el fondo OPACO')
+  assert.match(PERSONA, /<MarcaDePago personaId=\{fila\.personaId\} grupo=\{fila\.grupo\} quincena=\{quincena\} pagadaEn=\{fila\.linea\.pagadaEn\} cerrada=\{fila\.cerrada\}/)
 })
 
 test('EL BOTÓN LLAMA A LA ACCIÓN DEL SERVIDOR CON LA VENTANA, EL GRUPO Y LA PERSONA; SIN HEX SUELTO', () => {
