@@ -4,7 +4,7 @@
 // `obra_economia_cartera`, `egreso_por_area` y `nomina_por_mes` ya filtran por rol. Cada lectura que
 // falla vuelve `null` —no una lista vacía—: «no pude leer» y «no hay nada» se dibujan distinto.
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { armarCostosPorObra, armarGastosSinObra } from '@/features/clientes/services/costosDeObra'
+import { armarCostosPorObra, armarGastosSinObra, type GastoSinObra } from '@/features/clientes/services/costosDeObra'
 import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
 import { rangoParaVista, type Filtros } from './filtros'
 import { leerPaginado } from './paginar'
@@ -20,6 +20,8 @@ export interface DatosAnaliticas {
   /** Las que pasan Estado y Obras. */
   obras: ObraAnalitica[]
   sinObra: Map<string, number | null>
+  /** Lo sin obra de cada cliente con su apertura (materiales, subcontratos, comprobantes). */
+  sinObraDetalle: Map<string, GastoSinObra>
   cuentaCorriente: unknown[] | null
   egresos: unknown[] | null
   nomina: unknown[] | null
@@ -101,7 +103,7 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
       : null,
   ])
   return {
-    hoy, rango, cartera, obras, sinObra,
+    hoy, rango, cartera, obras, sinObra, sinObraDetalle: sinObraCruda ?? new Map(),
     cuentaCorriente: Array.isArray(raiz?.cuenta_corriente) ? raiz.cuenta_corriente : null,
     egresos: egresos?.data ?? null,
     nomina: nomina?.data ?? null,

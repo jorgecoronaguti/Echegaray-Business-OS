@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { caja, cifrasCobranza, cobranza, destinoDe, legajos, leerEgresos, nomina, seisMesesReales, ubicarCirculos, ZONAS_COBRANZA, zonaDeTramo } from './empresa.ts'
+import { bandasDeCobranza, caja, cifrasCobranza, cobranza, destinoDe, legajos, leerEgresos, nomina, seisMesesReales, ubicarCirculos, ZONAS_COBRANZA, zonaDeTramo } from './empresa.ts'
 
 test('caja: a una obra, estructura por rama y sin destino; los meses separan las dos líneas', () => {
   const e = leerEgresos([
@@ -134,4 +134,15 @@ test('D10 (b) · los documentos de un cliente no se cruzan al otro; sin document
   assert.equal(sf.verbo, 'Programar aviso')
   assert.equal(le.verbo, null, 'el aviso de San Francisco no puede aparecer en La Estrella')
   assert.equal(le.evaluado, false, 'sin documentos legibles no es «nada pendiente»: no se evaluó')
+})
+
+test('la banda de antigüedad de la empresa suma las mismas filas que el «por cobrar»: sin saldo no entra', () => {
+  const cuenta = [
+    { cliente_id: 'c1', saldo: '100', aging_por_vencer: '100', aging_1_30: '0', aging_31_60: '0', aging_61_90: '0', aging_mas_90: '0' },
+    { cliente_id: 'c2', saldo: '80', aging_por_vencer: '30', aging_1_30: '0', aging_31_60: '0', aging_61_90: '50', aging_mas_90: '0' },
+    { cliente_id: 'c3', saldo: '0', aging_por_vencer: '999', aging_1_30: '0', aging_31_60: '0', aging_61_90: '0', aging_mas_90: '0' },
+  ]
+  const b = bandasDeCobranza(cuenta)
+  assert.deepEqual(b.map((x) => [x.clave, x.monto]), [['por_vencer', 130], ['d1_30', 0], ['d31_60', 0], ['d61_90', 50], ['d90', 0]])
+  assert.equal(b.reduce((a, x) => a + x.monto, 0), cifrasCobranza(cobranza(cuenta)).porCobrar)
 })

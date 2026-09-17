@@ -1,4 +1,8 @@
-// ANALÍTICAS — ocho vistas sobre la misma cartera, con los filtros en la URL.
+// ANALÍTICAS — siete vistas sobre la misma cartera, con los filtros en la URL.
+//
+// El eje del módulo es presupuestado contra consumido (dueño, 17/09/2026): Resumen, Presupuesto y
+// gasto y Gasto por obra primero; Costo por hora, Caja, Nómina y Cobranza después. El diseño que
+// manda es «Analíticas v6».
 //
 // ═══ LA PUERTA SE CIERRA EN EL SERVIDOR, Y LA CERRADURA ESTÁ EN LA BASE ═══
 //
@@ -14,9 +18,10 @@ import { getDatosAnaliticas } from '@/features/analiticas/services/analiticasSer
 import { cifrasResumen } from '@/features/analiticas/services/agregados'
 import { BarraAnaliticas } from '@/features/analiticas/components/BarraAnaliticas'
 import { SinLectura } from '@/features/analiticas/components/Piezas'
-import { VistaEstado, VistaResumen } from '@/features/analiticas/components/VistasCartera'
+import { VistaResumen } from '@/features/analiticas/components/VistaResumen'
 import { VistaContrato } from '@/features/analiticas/components/VistaContrato'
-import { VistaHora, VistaObra } from '@/features/analiticas/components/VistasObra'
+import { VistaObra } from '@/features/analiticas/components/VistaObra'
+import { VistaHora } from '@/features/analiticas/components/VistaHora'
 import { VistaCaja, VistaCobranza, VistaNomina } from '@/features/analiticas/components/VistasEmpresa'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
 
@@ -30,13 +35,13 @@ export default async function AnaliticasPage({ searchParams }: { searchParams: P
 
   const d = await getDatosAnaliticas(supabase, filtros)
   const periodo = razonNoAplica(filtros.vista, 'periodo') ? 'acumulado a la fecha' : rotuloPeriodo(filtros.periodo).toLowerCase()
-  const opciones = d.cartera.map((o) => ({ id: o.id, nombre: o.nombre, estado: o.estado }))
+  const opciones = d.cartera.map((o) => ({ id: o.id, nombre: o.nombre, cliente: o.clienteNombre, estado: o.estado }))
 
   return (
     <>
       <SelloDatoBueno />
       <BarraAnaliticas filtros={filtros} obras={opciones} />
-      <div className="px-4 py-6 sm:px-6 lg:px-10">
+      <div className="px-4 lg:px-10">
         {!d.legible ? <SinLectura que="el gasto de las obras" /> : <Vista filtros={filtros} d={d} periodo={periodo} />}
       </div>
     </>
@@ -49,9 +54,8 @@ function Vista({ filtros, d, periodo }: {
   periodo: string
 }) {
   switch (filtros.vista) {
-    case 'resumen': return <VistaResumen obras={d.obras} sinObra={d.sinObra} filtros={filtros} />
-    case 'contrato': return <VistaContrato obras={d.obras} sinObra={d.sinObra} filtros={filtros} />
-    case 'obra': return <VistaObra obras={d.obras} filtros={filtros} periodo={periodo} />
+    case 'contrato': return <VistaContrato obras={d.obras} sinObraDetalle={d.sinObraDetalle} filtros={filtros} ritmos={d.ritmos} />
+    case 'obra': return <VistaObra obras={d.obras} filtros={filtros} ritmos={d.ritmos} />
     case 'hora': return <VistaHora obras={d.obras} periodo={periodo} />
     case 'caja': return <VistaCaja egresos={d.egresos} periodo={periodo} />
     case 'nomina': return <VistaNomina filas={d.nomina} quincenas={d.quincenas} personas={d.personas} rango={d.rango} periodo={periodo} />
@@ -59,6 +63,6 @@ function Vista({ filtros, d, periodo }: {
       <VistaCobranza cuenta={d.cuentaCorriente} documentos={d.documentos} hoy={d.hoy} periodo={periodo}
         gastado={cifrasResumen(d.cartera, d.sinObra).gastadoEnObras} />
     )
-    default: return <VistaEstado obras={d.obras} />
+    default: return <VistaResumen obras={d.obras} sinObra={d.sinObra} sinObraDetalle={d.sinObraDetalle} filtros={filtros} motivoPresupuesto={d.motivoPresupuesto} />
   }
 }
