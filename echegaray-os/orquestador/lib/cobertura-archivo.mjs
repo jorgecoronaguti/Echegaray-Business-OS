@@ -43,6 +43,7 @@
 // control en verde. Eso lo tiene que medir un control de importe, que hoy no existe.
 //
 // NÚCLEO PURO: no toca la red, no lee el Sheet, no sabe de Google.
+import { PESTANA_PRENDARIO } from './libro-extractores-banco-obligaciones.mjs'
 
 /** Serial de Sheets (base 30/12/1899) de una fecha UTC. */
 export const serialDe = (anio, mes, dia) =>
@@ -471,6 +472,11 @@ export const SIN_CENSO_DE_FILA = Object.freeze([
   { pestana: 'Cheques Emitidos', porque: 'por diseño sólo emite los cheques SIN factura cargada — el que tiene factura viaja por Compras. Un censo de filas marcaría como hueco cada cheque correctamente excluido.' },
   { pestana: 'Tarjeta de Credito', porque: 'mismo criterio anti-doble-conteo que Cheques Emitidos: sólo la cuota sin factura cargada.' },
   { pestana: '_BANCO_RAW', porque: 'el extracto NO emite movimientos de caja salvo los cargos sin factura; el saldo del banco ya contiene el resto. Censarlo entero pediría duplicar $9,9M.' },
+  // EL PRENDARIO SE MUDÓ A UN ARCHIVO DE DATOS (11/09/2026, commit 568a65c0) y este control lo reportó
+  // como origen sin declarar en todas las corridas desde el 15/09: el mismo agujero que dejó
+  // `obra_egreso_proyectado`. El nombre sale de PESTANA_PRENDARIO, no se tipea: si el libro lo renombra,
+  // el test da rojo en vez de que el control vuelva a quedar ciego.
+  { pestana: PESTANA_PRENDARIO, porque: 'es el CRONOGRAMA de cuotas del préstamo prendario (orquestador/datos), no una pestaña de registro: emite sólo las cuotas FUTURAS; la cuota pagada la prueba el extracto del banco. Censar sus filas censaría el plan contra sí mismo.' },
   { pestana: '_CHEQUES_RAW', porque: 'sólo emite los valores de terceros EN CARTERA; el depositado ya entró por Cobranzas y el endosado no va a entrar nunca.' },
 ])
 
