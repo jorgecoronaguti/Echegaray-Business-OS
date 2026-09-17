@@ -103,11 +103,11 @@ export function CeldaTarifa({ fila, quincena, pct, sinValor = 'sin tarifa' }: {
       ) : editable ? (
         <button type="button" data-testid={`tarifa-${fila.personaId}`} aria-label={`Cambiar el valor de ${fila.nombre}`}
           onClick={() => { setError(null); setTexto(actual == null ? '' : String(actual)) }}
-          style={{
-            minHeight: 32, padding: '0 6px', border: `1px solid ${error ? V.neg : V.lineaFuerte}`, borderRadius: 4,
-            background: '#FFFFFF', color: actual == null ? V.tenue : V.tinta, cursor: 'text',
-            fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
-          }}>{actual == null ? sinValor : pesos(actual)}</button>
+          // IGUAL QUE EL RESTO DE LAS CELDAS ESCRIBIBLES (limpieza 17/09/2026): sin caja en reposo, subrayado punteado,
+          // borde al pasar y anillo de foco. El error sigue pintando el borde en rojo, fijo.
+          data-error={error ? '1' : undefined}
+          className="min-h-8 cursor-text rounded-control border border-transparent bg-transparent px-1.5 font-mono text-[12.5px] tabular-nums underline decoration-line-strong decoration-dotted underline-offset-4 hover:border-line-strong focus-visible:border-ink focus-visible:outline-none data-[error='1']:border-neg"
+          style={{ color: actual == null ? V.tenue : V.tinta }}>{actual == null ? sinValor : pesos(actual)}</button>
       ) : (
         <span style={{ color: V.apagado }}>{actual == null ? '—' : pesos(actual)}</span>
       )}

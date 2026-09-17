@@ -266,7 +266,8 @@ const ESTILOS_DEL_REDONDEO = new Map<number, CSSProperties>()
 export function estiloDelRedondeo(ancho: number): CSSProperties {
   let e = ESTILOS_DEL_REDONDEO.get(ancho)
   if (!e) {
-    e = { width: ancho, minHeight: 32, textAlign: 'right', fontSize: '12.5px', padding: '3px 6px', borderRadius: 4, background: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }
+    // SIN FONDO EN LÍNEA: lo pone la clase, que puede cambiar con el foco (limpieza 17/09/2026).
+    e = { width: ancho, minHeight: 32, textAlign: 'right', fontSize: '12.5px', padding: '3px 6px', borderRadius: 4, fontVariantNumeric: 'tabular-nums' }
     ESTILOS_DEL_REDONDEO.set(ancho, e)
   }
   return e
@@ -407,7 +408,9 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
       // EL ESTILO ES UN OBJETO FIJO POR ANCHO, IGUAL EN EL SERVIDOR Y EN EL NAVEGADOR (QA, 14/09/2026: warning
       // de hidratación al buscar «rosales» con navegación del lado del cliente). El sugerido y el error no
       // arman otro `style`: van como atributos y los pinta la clase con los tokens.
-      className="border border-line text-ink data-[sugerido='1']:text-muted data-[error='1']:border-neg"
+      // EN REPOSO, SÓLO UNA RAYA ABAJO (limpieza 17/09/2026): el campo con caja blanca en cada fila era ruido. Al pasar el
+      // puntero vuelve el borde; con el foco, borde de tinta y fondo de campo. El error sigue en rojo, fijo.
+      className="border border-transparent border-b-line bg-transparent text-ink hover:border-line-strong focus:border-ink focus:bg-surface focus:outline-none data-[sugerido='1']:text-muted data-[error='1']:border-neg"
       style={estiloDelRedondeo(ancho)}
     />
     {error && ((enEdicion || errorReciente) ? <span role="alert" data-testid={`redondeo-error-${personaId}`} style={ERROR_DEL_REDONDEO}>{error}</span>

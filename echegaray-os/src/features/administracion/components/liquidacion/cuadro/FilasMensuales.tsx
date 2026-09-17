@@ -59,8 +59,8 @@ export function FilaMensual({ fila, columnas, edicion, pct, abrir }: {
       <CeldaPersona fila={fila} fondo={fondo} quincena={quincena} camposEditables={edicion.camposEditables} abrir={abrir}
         detalle={(
           <div data-testid={`categorias-${fila.personaId}`}>
-            <RenglonDelDetalle tono={V.tintaSuave}>{`${l.esJefe ? 'Jefe de obra' : 'Mensual'} · cobra por mes`}</RenglonDelDetalle>
-            <RenglonDelDetalle titulo={recibo.titulo}>{p.banco == null ? 'Recibo: sin recibo todavía' : `Recibo: ${recibo.texto}`}</RenglonDelDetalle>
+            <RenglonDelDetalle tono={V.apagado}>{`${l.esJefe ? 'Jefe de obra' : 'Mensual'} · cobra por mes`}</RenglonDelDetalle>
+            <RenglonDelDetalle tono={V.tenue} titulo={recibo.titulo}>{p.banco == null ? 'Recibo: sin recibo todavía' : `Recibo: ${recibo.texto}`}</RenglonDelDetalle>
           </div>
         )} />
       {/* SUELDO. La asistencia es referencia: no cobra por ella. */}
