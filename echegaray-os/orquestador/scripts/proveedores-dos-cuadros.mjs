@@ -44,6 +44,9 @@
 //   node orquestador/scripts/proveedores-dos-cuadros.mjs --aplicar  → escribe y verifica
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
+import { antesDeEscribirLaColumna } from '../lib/proveedores-notas-rescate.mjs'
+import { anteriorDeLaSonda } from '../lib/sonda-estado.mjs'
+import { closePool, query as consultar } from '../lib/db.mjs'
 import { abortaPorGeometria } from '../lib/propiedad-estructura.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { diferenciasDeHuella, huellaProtegida } from '../lib/proveedores-bloque-vivo.mjs'
@@ -168,6 +171,15 @@ async function main() {
   const faltan = plan.necesita > plan.disponibles ? plan.necesita - plan.disponibles + COLCHON : 0
   if (faltan) console.log(`⚠ se insertan ${faltan} fila(s) antes de la sección 2 (fila ${geo.filaLimite})`)
   if (!APLICAR) { console.log('\n(sin --aplicar: no se escribió nada)'); return }
+
+  // ═══ LO QUE EL DUEÑO ESCRIBIÓ EN «QUÉ HACER» SE RESCATA ANTES DE TOCAR LA COLUMNA (17/09/2026) ═══
+  //
+  // Esta corrida vacía A:G con `espejo: true`, que saltea la guarda central: un texto a mano en
+  // la D se perdía sin aviso. Se lee y se guarda en `proveedor_notas` primero; si no se puede, o si la
+  // pestaña muestra algo que no se puede atribuir, tira y no se escribe nada. Ver lib/proveedores-notas-rescate.mjs.
+  await antesDeEscribirLaColumna({ google, fileId: ID, query: consultar, anterior: await anteriorDeLaSonda(ID), log: (x) => console.log(x) })
+  // Esta corrida no vuelve a usar la base: el pool abierto no puede dejar el proceso colgado al final.
+  await closePool()
 
   const meta = await google.getSheetMeta(ID)
   const sheetId = meta.find((s) => s.title === PESTAÑA)?.sheetId

@@ -11,28 +11,28 @@
 //   node orquestador/scripts/sonda-flujo-caja.mjs           # una vuelta
 //   node orquestador/scripts/sonda-flujo-caja.mjs --seco    # dice qué haría: no lanza el sync, no toca la
 //                                                           # base ni el estado (sí lee Drive y el Sheet)
+//   --archivo=<id> (o ORQ_CASHFLOW_ID)                      # otro archivo: una COPIA para probar. No lanza
+//                                                           # el sync de producción y usa su propio estado.
 import { execFile } from 'node:child_process'
-import { mkdir, readFile, writeFile, rename } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { makeGoogleClient, READONLY_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { closePool } from '../lib/db.mjs'
+import { closePool, query } from '../lib/db.mjs'
 import { CASHFLOW_ID } from '../lib/cash-briefing.mjs'
-import { borrarNotas, guardarNotas, leerNotas } from '../lib/proveedor-notas.mjs'
-import {
-  anteriorAJson, anteriorDeJson, edicionesDelDueno, observarCuadro, RANGO_PROVEEDORES,
-} from '../lib/proveedores-notas-hoja.mjs'
+import { anteriorAJson, anteriorDeJson } from '../lib/proveedores-notas-hoja.mjs'
+import { rescatarNotas } from '../lib/proveedores-notas-rescate.mjs'
+import { guardarEstado, leerEstado, rutaDelEstado } from '../lib/sonda-estado.mjs'
 import { vueltaDeSonda } from '../lib/sonda-flujo-caja.mjs'
 
 const correr = promisify(execFile)
 const SECO = process.argv.includes('--seco')
+/** `--archivo=<id>` u `ORQ_CASHFLOW_ID`: para probar contra una COPIA del Flujo de Caja. */
+const ARCHIVO = process.argv.find((a) => a.startsWith('--archivo='))?.slice('--archivo='.length)
+  || process.env.ORQ_CASHFLOW_ID || CASHFLOW_ID
+const ES_EL_REAL = ARCHIVO === CASHFLOW_ID
 const UNIDAD_SYNC = 'echegaray-compras-sync.service'
 const UNIDAD_PIPELINE = 'echegaray-flujo-caja.service'
-// FUERA DEL REPO: producción corre desde otro checkout y el estado no es código.
-const ESTADO = process.env.ORQ_SONDA_ESTADO
-  || join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'echegaray-os', 'sonda-flujo-caja.json')
+const ESTADO = rutaDelEstado(ARCHIVO)
 
 /** `activating` es un oneshot corriendo. Sin systemd de usuario, no hay nada corriendo que esperar. */
 async function unidadCorriendo(unidad) {
@@ -42,19 +42,9 @@ async function unidadCorriendo(unidad) {
   } catch { return false }
 }
 
-async function leerEstado() {
-  try { return JSON.parse(await readFile(ESTADO, 'utf8')) } catch { return null }
-}
-
-/** Escritura atómica: un corte a mitad de camino no deja un JSON roto que parezca «primera lectura». */
-async function guardarEstado(e) {
-  if (SECO) return
-  await mkdir(dirname(ESTADO), { recursive: true })
-  await writeFile(`${ESTADO}.tmp`, JSON.stringify(e))
-  await rename(`${ESTADO}.tmp`, ESTADO)
-}
-
 async function sincronizarCompras() {
+  // El sync lee SIEMPRE el Flujo de Caja real: contra una copia, lanzarlo no probaría nada.
+  if (!ES_EL_REAL) { console.log(`archivo de prueba ${ARCHIVO}: no lanzo el sync de Compras de producción`); return }
   if (SECO) { console.log(`[seco] lanzaría systemctl --user start ${UNIDAD_SYNC}`); return }
   // Bloqueante a propósito: si falla, la versión no se da por atendida (ver lib/sonda-flujo-caja.mjs).
   await correr('systemctl', ['--user', 'start', UNIDAD_SYNC], { timeout: 200_000 })
@@ -63,27 +53,18 @@ async function sincronizarCompras() {
 function notasDesde(google) {
   return async (anteriorJson) => {
     if (await unidadCorriendo(UNIDAD_PIPELINE)) {
-      return { notas: anteriorJson, linea: 'notas: el pipeline del Flujo de Caja está corriendo — no leo «Qué hacer» a mitad de camino' }
+      return { omitida: true, linea: 'notas: el pipeline arrancó en el medio — no leo «Qué hacer» y la versión queda sin atender' }
     }
-    const [visible, formulas] = await Promise.all([
-      google.readSheetValues(CASHFLOW_ID, RANGO_PROVEEDORES, { render: 'FORMATTED_VALUE' }),
-      google.readSheetValues(CASHFLOW_ID, RANGO_PROVEEDORES, { render: 'FORMULA' }),
-    ])
-    const r = edicionesDelDueno({
-      observacion: observarCuadro({ visible: visible ?? [], formulas: formulas ?? [] }),
-      anterior: anteriorDeJson(anteriorJson),
-      enBase: await leerNotas(CASHFLOW_ID),
-    })
+    const r = await rescatarNotas({ google, fileId: ARCHIVO, query, anterior: anteriorDeJson(anteriorJson), escribir: !SECO })
     if (r.sinEvidencia) return { notas: anteriorJson, linea: `notas: ${r.sinEvidencia}` }
-    if (!SECO) {
-      await guardarNotas(CASHFLOW_ID, r.guardar)
-      await borrarNotas(CASHFLOW_ID, r.borrar)
-    }
     const partes = [
       `${r.guardar.length} guardada(s)${r.guardar.length ? ` (${r.guardar.map((g) => g.proveedor).join(', ')})` : ''}`,
       `${r.borrar.length} borrada(s)${r.borrar.length ? ` (${r.borrar.join(', ')})` : ''}`,
     ]
-    if (r.retenidos.length) partes.push(`⚠ ${r.retenidos.length} borrado(s) RETENIDO(S) por exceder el tope: ${r.retenidos.join(', ')}`)
+    if (r.retenidos.length) {
+      partes.push(`⚠ ${r.retenidos.length} borrado(s) RETENIDO(S): ${r.retenidos.join(', ')} — `
+        + (r.constancias === null ? 'sin la cola (20260917T1410) quedan sólo en este log' : `${r.constancias} constancia(s) nueva(s) en la app`))
+    }
     if (r.desplazadas.length) partes.push(`${r.desplazadas.length} texto(s) movido(s) por la dinámica, no guardado(s): ${r.desplazadas.map((x) => `fila ${x.fila}`).join(', ')}`)
     return { notas: anteriorAJson(r.siguiente), linea: `${SECO ? '[seco] ' : ''}notas del Sheet: ${partes.join(' · ')}` }
   }
@@ -92,10 +73,11 @@ function notasDesde(google) {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: READONLY_SCOPES })
   const r = await vueltaDeSonda({
-    leerVersion: () => google.getVersion(CASHFLOW_ID),
-    leerEstado,
-    guardarEstado,
+    leerVersion: () => google.getVersion(ARCHIVO),
+    leerEstado: () => leerEstado(ESTADO),
+    guardarEstado: (e) => (SECO ? undefined : guardarEstado(ESTADO, e)),
     syncCorriendo: () => unidadCorriendo(UNIDAD_SYNC),
+    pipelineCorriendo: () => unidadCorriendo(UNIDAD_PIPELINE),
     sincronizarCompras,
     sincronizarNotas: notasDesde(google),
     log: (s) => console.log(s),

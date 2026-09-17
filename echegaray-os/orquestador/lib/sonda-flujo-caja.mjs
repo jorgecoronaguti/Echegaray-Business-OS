@@ -36,12 +36,16 @@ export function marcaDe(meta) {
 
 /**
  * ¿SINCRONIZAR O NO?
- * @param {{marca:string, estado:{marca?:string, fallos?:number}|null, syncCorriendo:boolean}} o
+ * @param {{marca:string, estado:{marca?:string, fallos?:number}|null, syncCorriendo:boolean, pipelineCorriendo?:boolean}} o
  * @returns {{accion:'nada'|'esperar'|'sincronizar', motivo:string}}
  */
-export function decidirSonda({ marca, estado, syncCorriendo }) {
+export function decidirSonda({ marca, estado, syncCorriendo, pipelineCorriendo = false }) {
   if (estado?.marca === marca) return { accion: 'nada', motivo: `versión ${marca} ya atendida` }
   if (syncCorriendo) return { accion: 'esperar', motivo: `versión ${marca} nueva, pero hay un sync corriendo: no lo relanzo` }
+  // EL PIPELINE REESCRIBE PESTAÑAS DURANTE MINUTOS y cada escritura sube la versión: sincronizar ahí
+  // sería un sync de Compras por minuto sobre un archivo a medio escribir. Se espera a que termine; la
+  // versión queda sin atender y la primera vuelta después lo hace una sola vez.
+  if (pipelineCorriendo) return { accion: 'esperar', motivo: `versión ${marca} nueva, pero el pipeline del Flujo de Caja está escribiendo: espero a que termine` }
   return { accion: 'sincronizar', motivo: estado?.marca ? `versión ${estado.marca} → ${marca}` : `primera lectura (versión ${marca})` }
 }
 
@@ -70,7 +74,8 @@ export async function vueltaDeSonda(d) {
   const log = d.log ?? (() => {})
   const marca = marcaDe(await d.leerVersion())
   const estado = await d.leerEstado()
-  const decision = decidirSonda({ marca, estado, syncCorriendo: await d.syncCorriendo() })
+  const pipelineCorriendo = d.pipelineCorriendo ? await d.pipelineCorriendo() : false
+  const decision = decidirSonda({ marca, estado, syncCorriendo: await d.syncCorriendo(), pipelineCorriendo })
   log(`sonda: ${decision.accion} — ${decision.motivo}`)
   if (decision.accion !== 'sincronizar') return decision
   let ok = true
@@ -78,8 +83,11 @@ export async function vueltaDeSonda(d) {
   try {
     await d.sincronizarCompras()
     const r = await d.sincronizarNotas(estado?.notas ?? null)
-    notas = r.notas
     log(r.linea)
+    // UNA LECTURA SALTEADA NO ATIENDE LA VERSIÓN (auditoría 17/09): si el pipeline arrancó en el medio,
+    // las ediciones del dueño de esta versión todavía no se leyeron. No cuenta como fallo ni toca el estado.
+    if (r.omitida) return { ...decision, ok: false, omitida: true }
+    notas = r.notas
   } catch (e) {
     ok = false
     log(`sonda: falló (${e.message}) — la versión ${marca} queda sin atender`)

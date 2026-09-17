@@ -67,3 +67,20 @@ test('vuelta que falla: no lee notas y la versión queda para la vuelta siguient
   assert.deepEqual(d.llamadas, ['compras'])
   assert.equal(d.guardado().marca, '9')
 })
+
+test('con el pipeline escribiendo: espera, no lanza el sync de Compras y no atiende la versión', async () => {
+  assert.equal(decidirSonda({ marca: '11', estado: { marca: '10' }, syncCorriendo: false, pipelineCorriendo: true }).accion, 'esperar')
+  const d = deps()
+  d.pipelineCorriendo = async () => true
+  await vueltaDeSonda(d)
+  assert.deepEqual(d.llamadas, [])
+  assert.equal(d.guardado(), null)
+})
+
+test('lectura de notas salteada (el pipeline arrancó en el medio): la versión NO queda atendida', async () => {
+  const d = deps()
+  d.sincronizarNotas = async () => ({ omitida: true, linea: 'pipeline' })
+  const r = await vueltaDeSonda(d)
+  assert.equal(r.omitida, true)
+  assert.equal(d.guardado(), null, 'el estado no se toca: la vuelta siguiente vuelve a mirar')
+})
