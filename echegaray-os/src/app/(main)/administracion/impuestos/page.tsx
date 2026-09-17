@@ -1,20 +1,21 @@
-// IMPUESTOS — qué se debe al fisco, cuándo vence, cuánto está inmovilizado a favor y de dónde sale cada
-// número (dueño, 16/09/2026: «tener siempre registrado IVA, Ganancias, Ingresos Brutos y demás
-// impuestos, todo bien en Supabase y llevado a app.ecsas.com.ar»).
+// IMPUESTOS — qué se debe al fisco, cuándo vence, qué está atrasado y cuánta plata hay a favor
+// (dueño, 16/09/2026: «tener siempre registrado IVA, Ganancias, Ingresos Brutos y demás impuestos, todo
+// bien en Supabase y llevado a app.ecsas.com.ar»).
 //
-// ═══ QUÉ DECISIÓN CAMBIA ═══
+// ═══ REHECHA EL 17/09/2026, DOS VECES ═══
 //
-// Qué pagar en los próximos 30 días (y qué quedó vencido sin pago registrado), cuánta plata está a
-// favor en el fisco, y si los números se pueden usar hoy: una fuente vieja se ve arriba, antes que el
-// número que produjo.
+// Dueño: «es espantosa, inentendible y así no tiene uso alguno». Era una sola columna de 4.125 px con
+// cinco tablas. La primera versión rehecha no le alcanzó: «necesito que sea más sencillo, claro,
+// minimalista y con gráficos». Ahora el resumen tiene TRES cosas —el número a pagar en 30 días, un
+// gráfico de barras por mes y los próximos cinco vencimientos—; cada impuesto tiene su solapa con su
+// gráfico, su número y la tabla plegada; lo demás (fuentes, agenda completa, todos los períodos, pagos
+// sin identificar) está en «Todo el historial». Nada se quitó: se reubicó.
 //
 // ═══ QUIÉN LA VE ═══
 //
 // `veEconomia()` —Dirección y Administración—, igual que la RLS de las tablas (`ve_economia()`,
-// 20260916T2000). El jefe de obra entra a Administración pero no a esta ruta: el impuesto de la
-// empresa es plata de la empresa, no costo de su obra. La ruta está en `RUTAS_SOLO_ECONOMIA`.
-//
-// La fuente es `impuesto_posicion`; esta página no calcula ningún impuesto.
+// 20260916T2000). La ruta está en `RUTAS_SOLO_ECONOMIA`. La fuente es `impuesto_posicion`; esta
+// página no calcula ningún impuesto. El tiempo real vive en el layout (`RefrescarEnVivo`).
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { veEconomia } from '@/features/auth/types/areas'
@@ -24,21 +25,32 @@ import { C } from '@/shared/components/canon'
 import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { plata } from '@/shared/utils/format'
-import {
-  aPagarProximos, frescura, hoyAR, NOMBRE_FUENTE, NOMBRE_IMPUESTO, porPeriodo, rotuloPeriodo, saldosAFavor, ddmm,
-} from '@/features/administracion/services/impuestos'
+import { frescura, hoyAR, porPeriodo, type PagoSinImputar, type PosicionImpuesto } from '@/features/administracion/services/impuestos'
 import { getPosicion, getSinImputar, getUltimaSincronizacion } from '@/features/administracion/services/impuestosService'
-import {
-  Bloque, TablaPeriodos, TablaSinImputar, TablaVencimientos,
-} from '@/features/administracion/components/impuestos/TablasImpuestos'
-import { Cifras, SeccionCargasSociales, type Cifra } from '@/features/administracion/components/impuestos/CargasSociales'
 import { cargasSociales } from '@/features/administracion/services/impuestosCargas'
+import {
+  decision, IMPUESTOS_DE_VISTA, porImpuesto, TITULO_VISTA, vistaDe, type VistaImpuesto,
+} from '@/features/administracion/services/impuestosVista'
+import {
+  AvisoSinIdentificar, CifrasDeImpuesto, DatosAl, LineaFrescura, NumeroClave, Solapas, type Solapa,
+} from '@/features/administracion/components/impuestos/Decision'
+import { Agenda, ProximosCortos } from '@/features/administracion/components/impuestos/Agenda'
+import { GraficoImpuesto, GraficoResumen } from '@/features/administracion/components/impuestos/graficos'
+import { MesAMes, TablaSinImputar } from '@/features/administracion/components/impuestos/TablasImpuestos'
+import { SeccionCargasSociales } from '@/features/administracion/components/impuestos/CargasSociales'
+import { Plegada, Seccion } from '@/features/administracion/components/impuestos/piezas'
 
 export const dynamic = 'force-dynamic'
 
 const RUTA = '/administracion/impuestos'
+const HISTORIAL = `${RUTA}?ver=historial`
+const ANCLA_SIN_IDENTIFICAR = 'sin-identificar'
 
-export default async function ImpuestosPage() {
+type Resumen = ReturnType<typeof porImpuesto>
+interface Datos { filas: PosicionImpuesto[]; pagos: PagoSinImputar[]; hoy: string; resumen: Resumen; fr: ReturnType<typeof frescura> }
+
+export default async function ImpuestosPage({ searchParams }: { searchParams: Promise<{ ver?: string | string[] }> }) {
+  const vista = vistaDe((await searchParams).ver)
   const supabase = await createClient()
   const [perfil, posicion, sinImputar, sinc] = await Promise.all([
     getPerfilActual(supabase), getPosicion(supabase), getSinImputar(supabase), getUltimaSincronizacion(supabase),
@@ -51,39 +63,14 @@ export default async function ImpuestosPage() {
     return <Marco><div data-testid="impuestos-error"><Aviso tono="neg" titulo="No pude leer los impuestos">{error}</Aviso></div></Marco>
   }
 
-  // El reloj entra una sola vez, acá: las reglas de `impuestos.ts` son puras y se prueban sin esperar.
+  // El reloj entra una sola vez, acá: las reglas de los servicios son puras y se prueban sin esperar.
   const ahora = new Date()
   const hoy = hoyAR(ahora)
-  const proximos = aPagarProximos(posicion.data, hoy)
-  const saldos = saldosAFavor(posicion.data)
-  const fr = frescura(sinc.data, ahora)
-  const pagosSinImputar = sinImputar.data ?? []
-  const totalSinImputar = pagosSinImputar.reduce((s, p) => s + p.importe, 0)
-
-  const cargas = cargasSociales(posicion.data, hoy)
-
-  // ARRIBA LO QUE SE DECIDE, ABAJO EL DESGLOSE (limpieza 17/09/2026). Las mismas cuatro cifras de la
-  // franja, más «Cargas sociales en 30 días»; el naranja queda para lo vencido, no para cualquier deuda.
-  const principales: Cifra[] = [
-    {
-      etiqueta: 'A pagar en 30 días',
-      valor: plata(proximos.total),
-      contexto: [
-        `${proximos.lista.length} venc.`,
-        proximos.vencidos ? `${proximos.vencidos} vencido${proximos.vencidos > 1 ? 's' : ''}` : null,
-        proximos.sinImporte ? `${proximos.sinImporte} sin importe` : null,
-      ].filter(Boolean).join(' · '),
-      tono: proximos.vencidos ? 'neg' : undefined,
-    },
-    { etiqueta: 'Cargas sociales en 30 días', valor: plata(cargas.proximos.total), contexto: `${cargas.proximos.lista.length} venc.` },
-  ]
-  const desglose: Cifra[] = [
-    ...saldos.map((s): Cifra => ({
-      etiqueta: `${NOMBRE_IMPUESTO[s.impuesto]} a favor`,
-      valor: plata(s.saldo_a_favor),
-      contexto: `${rotuloPeriodo(s.periodo)} · ${NOMBRE_FUENTE[s.fuente]}`,
-    })),
-    { etiqueta: 'Pagos sin imputar', valor: plata(totalSinImputar), contexto: `${pagosSinImputar.length} mov.` },
+  const datos: Datos = { filas: posicion.data, pagos: sinImputar.data ?? [], hoy, resumen: porImpuesto(posicion.data, hoy), fr: frescura(sinc.data, ahora) }
+  const solapas: Solapa[] = [
+    { vista: 'resumen' },
+    ...datos.resumen.map((r) => ({ vista: r.vista, cuenta: r.vencidas || undefined, alerta: r.vencidas > 0 })),
+    { vista: 'historial' },
   ]
 
   return (
@@ -93,36 +80,79 @@ export default async function ImpuestosPage() {
         espacioPanel={false}
         vistas={[{ clave: 'impuestos', titulo: 'Impuestos', cuenta: null, activa: true, href: RUTA }]}
       />
-      <div style={{ padding: '0 20px 24px' }}>
-        <p data-testid="impuestos-frescura" className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-faint">
-          {fr.fuentes.map((f) => (
-            <span key={f.nombre} data-vieja={f.vieja ? '' : undefined} className={f.fallo ? 'text-neg' : f.vieja ? 'text-warn' : ''}>
-              {f.nombre} al {ddmm(f.al)}{f.fallo ? ' · no leyó' : f.vieja ? ' ▲' : ''}
-            </span>
-          ))}
-          <span className={fr.sincronizacionVieja ? 'text-warn' : ''}>
-            {fr.horasDesdeSincronizacion === null ? 'sin sincronizar' : `sincronizado hace ${Math.max(0, Math.round(fr.horasDesdeSincronizacion))} h`}
-          </span>
-        </p>
-        <Cifras testid="impuestos-franja" principales={principales} desglose={desglose} />
-
-        <Bloque testid="bloque-vencimientos" titulo="A pagar en los próximos 30 días" cuenta={proximos.lista.length}>
-          <TablaVencimientos lista={proximos.lista} />
-        </Bloque>
-
-        <SeccionCargasSociales c={cargas} />
-
-        <Bloque testid="bloque-periodos" titulo="Por período" cuenta={posicion.data.length}>
-          <TablaPeriodos filas={porPeriodo(posicion.data)} />
-        </Bloque>
-
-        {pagosSinImputar.length > 0 && (
-          <Bloque testid="bloque-sin-imputar" titulo="Pagos al fisco sin imputar" cuenta={pagosSinImputar.length}>
-            <TablaSinImputar pagos={pagosSinImputar} />
-          </Bloque>
-        )}
+      <div className="px-5 pb-16 pt-1">
+        <DatosAl fr={datos.fr} rutaHistorial={HISTORIAL} />
+        <div className="mt-3"><Solapas solapas={solapas} activa={vista} ruta={RUTA} /></div>
+        {vista === 'resumen' ? <Resumen d={datos} />
+          : vista === 'historial' ? <Historial d={datos} />
+            : <DeUnImpuesto vista={vista} d={datos} />}
       </div>
     </Marco>
+  )
+}
+
+/** EL RESUMEN: el número, el gráfico, cinco vencimientos. Y una línea si hay pagos sin identificar. */
+function Resumen({ d }: { d: Datos }) {
+  const dec = decision(d.filas, d.hoy)
+  return (
+    <>
+      <div className="mt-8"><NumeroClave d={dec} /></div>
+      <div className="mt-10"><GraficoResumen filas={d.filas} hoy={d.hoy} /></div>
+      <Seccion testid="bloque-vencimientos" titulo="Próximos vencimientos">
+        <ProximosCortos lista={dec.lista} verTodos={HISTORIAL} vacio="Nada vence en los próximos 30 días." />
+      </Seccion>
+      <div className="mt-4">
+        <AvisoSinIdentificar total={d.pagos.reduce((s, p) => s + p.importe, 0)} cantidad={d.pagos.length} ruta={`${HISTORIAL}#${ANCLA_SIN_IDENTIFICAR}`} />
+      </div>
+    </>
+  )
+}
+
+/** UNA SOLAPA: número, gráfico del impuesto, sus vencimientos y la tabla plegada. */
+function DeUnImpuesto({ vista, d }: { vista: VistaImpuesto; d: Datos }) {
+  const propias = d.filas.filter((f) => IMPUESTOS_DE_VISTA[vista].includes(f.impuesto))
+  const r = d.resumen.find((x) => x.vista === vista)
+  const proximos = decision(propias, d.hoy)
+  return (
+    <>
+      {r && <div className="mt-8"><CifrasDeImpuesto r={r} /></div>}
+      <div className="mt-10"><GraficoImpuesto filas={d.filas} vista={vista} hoy={d.hoy} /></div>
+      {proximos.cantidad > 0 && (
+        <Seccion testid="bloque-vencimientos" titulo="Próximos vencimientos" resumen={plata(proximos.total)}>
+          <ProximosCortos lista={proximos.lista} max={10} vacio="" testid={vista === 'cargas' ? 'cargas-proximos' : 'impuestos-vencimientos'} />
+        </Seccion>
+      )}
+      {vista === 'cargas'
+        ? <SeccionCargasSociales c={cargasSociales(d.filas, d.hoy)} />
+        : (
+          <Plegada testid="bloque-periodos" titulo="Mes por mes" resumen={`${propias.length} registros`}>
+            <MesAMes testid="impuestos-periodos" filas={porPeriodo(propias)} conImpuesto={vista === 'otros'} vacio={`Todavía no hay nada de ${TITULO_VISTA[vista]} cargado.`} />
+          </Plegada>
+        )}
+    </>
+  )
+}
+
+/** TODO EL HISTORIAL: las fuentes, la agenda completa, todos los períodos y los pagos sin identificar. */
+function Historial({ d }: { d: Datos }) {
+  const dec = decision(d.filas, d.hoy)
+  const total = d.pagos.reduce((s, p) => s + p.importe, 0)
+  return (
+    <>
+      <div className="mt-6"><LineaFrescura fr={d.fr} /></div>
+      <Seccion testid="bloque-agenda" titulo="Vencimientos de los próximos 30 días" resumen={dec.vencido.cantidad ? 'incluye lo vencido de los últimos 45 días' : undefined}>
+        <Agenda lista={dec.lista} vacio="Nada pendiente con vencimiento en los próximos 30 días." />
+      </Seccion>
+      {d.pagos.length > 0 && (
+        <Seccion testid="bloque-sin-imputar" id={ANCLA_SIN_IDENTIFICAR} titulo="Pagos al fisco sin identificar"
+          resumen={`${d.pagos.length} · ${plata(total)} · falta saber a qué impuesto corresponden`}>
+          <TablaSinImputar pagos={d.pagos} />
+        </Seccion>
+      )}
+      <Seccion testid="bloque-periodos" titulo="Todos los impuestos, mes por mes" resumen={`${d.filas.length} registros`}>
+        <MesAMes testid="impuestos-periodos" filas={porPeriodo(d.filas)} conImpuesto vacio="Todavía no hay ningún impuesto cargado." />
+      </Seccion>
+    </>
   )
 }
 
