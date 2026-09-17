@@ -175,12 +175,43 @@ async function releer({ google, fileId, plan, pedido }) {
   return { ok, leido: `${AUX} ${auxLeido}${vistas.length ? ` · Proveedores D=«${vistas.join('» «')}»` : ''}` }
 }
 
+/**
+ * JUSTO ANTES DE ESCRIBIR, CADA FILA SIGUE SIENDO LA DEL PROVEEDOR (auditoría 17/09/2026).
+ *
+ * Entre la lectura de `decidirNota` y la escritura pasan segundos, y `proveedores-cuenta-corriente`
+ * reescribe la auxiliar entera ordenada: la fila 77 de hace un momento puede ser hoy de otro proveedor.
+ * Se relee la A de cada fila que se va a tocar. Una fila que se agrega tiene que seguir vacía.
+ * @returns {Promise<string|null>} el motivo para diferir, o null si todo coincide
+ */
+async function filaQueSeMovio({ google, fileId, plan, pedido }) {
+  for (const c of plan.celdas) {
+    const m = c.celda.match(/^(?:'([^']+)'|([^!]+))!([A-Z])(\d+)$/)
+    const pestana = m[1] ?? m[2]
+    const fila = Number(m[4])
+    const agrega = pestana === AUX && m[3] === 'A'
+    if (agrega) {
+      const v = await google.readSheetValues(fileId, `'${AUX}'!A${fila}:C${fila}`, { render: 'FORMATTED_VALUE' })
+      if ((v?.[0] ?? []).some((x) => T(x))) return `la fila ${fila} de ${AUX} ya no está vacía`
+      continue
+    }
+    if (pestana === AUX && plan.celdas.some((o) => o.celda === `'${AUX}'!A${fila}`)) continue
+    const rango = pestana === AUX ? `'${AUX}'!A${fila}` : `Proveedores!${letra(COL_PROVEEDOR)}${fila}`
+    const v = await google.readSheetValues(fileId, rango, { render: 'FORMATTED_VALUE' })
+    if (claveProv(v?.[0]?.[0]) !== pedido.clave) return `la fila ${fila} de ${pestana} ahora es de «${T(v?.[0]?.[0]) || '(vacía)'}»`
+  }
+  return null
+}
+
 /** APLICA UN PEDIDO. Verificar → escribir → releer → recién ahí la base. */
-export async function aplicarNota({ port, google, fileId, pedido }) {
+export async function aplicarNota({ port, google, fileId, pedido, pipelineCorriendo = async () => false }) {
   const plan = await decidirNota({ port, google, fileId, pedido })
   if (plan.accion === 'rechazar') { await cerrar(port, pedido.id, { estado: 'rechazado', motivo: `${plan.motivo}: ${plan.detalle}` }); return 'rechazado' }
   if (plan.accion === 'diferir') { await diferir(port, pedido.id, `${plan.motivo}: ${plan.detalle}`); return 'diferido' }
   if (plan.accion === 'escribir') {
+    // EL PIPELINE REESCRIBE LA AUXILIAR Y LA D MIENTRAS CORRE: escribir ahí es escribir en filas que se mueven.
+    if (await pipelineCorriendo()) { await diferir(port, pedido.id, 'el pipeline del Flujo de Caja está escribiendo: espero a que termine'); return 'diferido' }
+    const movida = await filaQueSeMovio({ google, fileId, plan, pedido })
+    if (movida) { await diferir(port, pedido.id, `fila movida: ${movida}`); return 'diferido' }
     const r = await google.batchUpdateValues(fileId, plan.celdas.map((c) => ({ range: c.celda, values: [[c.escribir]] })), {
       confirmacion: { actor: plan.actor, motivo: `nota «Qué hacer» de ${pedido.proveedor} editada en la app por ${plan.actor} (pedido ${pedido.id})` },
     })
@@ -205,7 +236,7 @@ export async function aplicarNota({ port, google, fileId, pedido }) {
 }
 
 /** Vacía la cola, o con `dry` sólo dice qué haría (sin tomar ni escribir nada). */
-export async function procesarColaNotas({ port, google, fileId = null, max = 20, dry = true } = {}) {
+export async function procesarColaNotas({ port, google, fileId = null, max = 20, dry = true, pipelineCorriendo } = {}) {
   if (!await hayCola(port)) return { sinCola: true }
   const id = fileId ?? await idDelCashflow()
   if (dry) {
@@ -220,7 +251,7 @@ export async function procesarColaNotas({ port, google, fileId = null, max = 20,
     if (!pedido) break
     let estado
     try {
-      estado = await aplicarNota({ port, google, fileId: id, pedido })
+      estado = await aplicarNota({ port, google, fileId: id, pedido, pipelineCorriendo })
     } catch (e) {
       estado = 'error'
       const agotado = pedido.intentos >= MAX_INTENTOS

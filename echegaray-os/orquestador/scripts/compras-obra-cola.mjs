@@ -23,6 +23,22 @@ import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { contarSinHuella, procesarCola, reencolarSinHuella } from '../comunicacion/compras/cola-obra.mjs'
 import { procesarColaNotas } from '../comunicacion/compras/cola-nota.mjs'
+import { CASHFLOW_ID } from '../lib/cash-briefing.mjs'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+
+const correr = promisify(execFile)
+/** `--archivo=<id>` u `ORQ_CASHFLOW_ID`: la COPIA contra la que se prueba la cola de notas. */
+const ARCHIVO = process.argv.find((a) => a.startsWith('--archivo='))?.slice('--archivo='.length)
+  || process.env.ORQ_CASHFLOW_ID || CASHFLOW_ID
+
+/** ¿Está escribiendo el pipeline? Sin systemd de usuario, no. */
+async function pipelineCorriendo() {
+  try {
+    const { stdout } = await correr('systemctl', ['--user', 'show', '-p', 'ActiveState', '--value', 'echegaray-flujo-caja.service'])
+    return ['activating', 'active', 'reloading', 'deactivating'].includes(stdout.trim())
+  } catch { return false }
+}
 
 function reportarSeco(plan) {
   console.log(`cola de Compras · Cobranzas (Obra y pagos) EN SECO: ${plan.length} pendiente(s) · nada se escribió`)
@@ -50,7 +66,7 @@ async function reintentarSinHuella(port, aplicar) {
 
 /** La cola hermana de notas. Un fallo acá no oculta lo que la cola de Compras ya reportó. */
 async function notas(port, google, aplicar) {
-  const n = await procesarColaNotas({ port, google, dry: !aplicar })
+  const n = await procesarColaNotas({ port, google, fileId: ARCHIVO, dry: !aplicar, pipelineCorriendo })
   if (n.sinCola) { console.log('cola de notas «Qué hacer»: migración 20260917T1410 sin aplicar — la salteo'); return }
   if (n.dry) {
     console.log(`cola de notas «Qué hacer» EN SECO: ${n.plan.length} pendiente(s) · nada se escribió`)
@@ -66,6 +82,14 @@ async function main() {
   const port = { query: (sql, params) => query(sql, params) }
   const google = makeGoogleClient({ config: loadConfig(), scopes: aplicar ? WRITE_SCOPES : READONLY_SCOPES })
   if (process.argv.includes('--reintentar-sin-huella')) await reintentarSinHuella(port, aplicar)
+  // CONTRA UNA COPIA, LA COLA DE COMPRAS NO SE TOCA: sus pedidos son de la base real y marcarlos
+  // `aplicado` por escribirlos en una copia los perdería para siempre.
+  if (ARCHIVO !== CASHFLOW_ID) {
+    console.log(`archivo de prueba ${ARCHIVO}: sólo la cola de notas; la de Compras · Cobranzas no se toca`)
+    await notas(port, google, aplicar)
+    await closePool()
+    return
+  }
   const c = await procesarCola({ port, google, dry: !aplicar })
   if (c.dry) reportarSeco(c.plan)
   // Se reporta SIEMPRE, incluso el cero: un worker que calla es indistinguible de uno roto.

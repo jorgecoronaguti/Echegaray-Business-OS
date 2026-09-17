@@ -11,11 +11,11 @@ const F = (n) => `=IF($A${n}="";"";IFERROR(VLOOKUP($A${n};'_PROVEEDORES_OS'!$A:$
  * Un Flujo de Caja en memoria: la D de Proveedores muestra la auxiliar por búsqueda, como en el archivo.
  * `dAMano` pisa la fórmula de la D de un proveedor con un texto (o '' para vaciarla).
  */
-function sheetFalso({ aux, proveedores = ['Hormiserv', 'Robles'], dAMano = {}, congelado = false }) {
+function sheetFalso({ aux, proveedores = ['Hormiserv', 'Robles'], dAMano = {}, congelado = false, protegido = false, noAterriza = false, sinFormulas = false, alReleerA = null }) {
   const escrituras = []
   const auxF = aux.map((f) => [...f])
-  const celdaD = new Map(proveedores.map((p, i) => [18 + i, dAMano[p] ?? F(18 + i)]))
-  for (let n = 18 + proveedores.length; n <= 22; n++) celdaD.set(n, F(n))
+  const celdaD = new Map(proveedores.map((p, i) => [18 + i, dAMano[p] ?? (sinFormulas ? '' : F(18 + i))]))
+  for (let n = 18 + proveedores.length; n <= 22; n++) celdaD.set(n, sinFormulas ? '' : F(n))
   const buscar = (p) => T(auxF.find((f, k) => k > 0 && T(f[0]).toLowerCase() === T(p).toLowerCase())?.[2])
   const mostrar = (n) => {
     const f = celdaD.get(n)
@@ -32,9 +32,13 @@ function sheetFalso({ aux, proveedores = ['Hormiserv', 'Robles'], dAMano = {}, c
   return {
     escrituras, auxF,
     async readSheetValues(_id, rango, { render } = {}) {
-      if (rango.startsWith('Proveedores!A1')) return hoja(render)
+      if (rango === 'Proveedores!A1:R220') return hoja(render)
       let m = rango.match(/^Proveedores!D(\d+)$/)
       if (m) return [[mostrar(Number(m[1]))]]
+      m = rango.match(/^Proveedores!A(\d+)$/)
+      if (m) return [[proveedores[Number(m[1]) - 18] ?? '']]
+      m = rango.match(/_PROVEEDORES_OS'!A(\d+)$/)
+      if (m) { alReleerA?.(auxF); return [[auxF[Number(m[1]) - 1]?.[0] ?? '']] }
       m = rango.match(/_PROVEEDORES_OS'!A(\d+):C\d+$/)
       if (m && rango.includes('A1:C600')) return auxF
       if (m) return [auxF[Number(m[1]) - 1] ?? []]
@@ -42,7 +46,9 @@ function sheetFalso({ aux, proveedores = ['Hormiserv', 'Robles'], dAMano = {}, c
     },
     async batchUpdateValues(_id, data, { confirmacion }) {
       if (congelado) return { congelado: true }
+      if (protegido) return { protegido: true, motivo: 'candado' }
       assert.ok(confirmacion?.actor, 'sin nombre no se escribe')
+      if (noAterriza) { escrituras.push(...data.map((d) => [d.range, d.values[0][0]])); return {} }
       for (const d of data) {
         escrituras.push([d.range, d.values[0][0]])
         const m = d.range.match(/_PROVEEDORES_OS'!([AC])(\d+)$/)
@@ -57,13 +63,13 @@ function sheetFalso({ aux, proveedores = ['Hormiserv', 'Robles'], dAMano = {}, c
 const T = (v) => String(v ?? '').trim()
 
 /** Una base de mentira: la nota guardada, el perfil y lo que se cierra. */
-function baseFalsa({ nota }) {
+function baseFalsa({ nota, sinNombre = false }) {
   const notas = new Map(nota === undefined ? [] : [['hormiserv', nota]])
   const cierres = []
   return {
     notas, cierres,
     async query(sql, params = []) {
-      if (sql.includes('from public.perfiles')) return { rows: [{ nombre: 'Jorge Corona' }] }
+      if (sql.includes('from public.perfiles')) return { rows: sinNombre ? [] : [{ nombre: 'Jorge Corona' }] }
       if (sql.includes('select nota from public.proveedor_notas')) return { rows: notas.has(params[0]) ? [{ nota: notas.get(params[0]) }] : [] }
       if (sql.includes('insert into public.proveedor_notas')) { notas.set(params[2], params[3]); return { rows: [] } }
       if (sql.includes('delete from public.proveedor_notas')) { for (const c of params[1]) notas.delete(c); return { rows: [] } }
@@ -158,4 +164,52 @@ test('dos grafías en la auxiliar (Pedro Tello / PEDRO TELLO): se escriben las d
   const g2 = sheetFalso({ aux: hoy })
   assert.equal(await aplicarNota({ port: baseFalsa({ nota: 'esperar al cobrador' }), google: g2, fileId: 'x', pedido: pedido() }), 'rechazado')
   assert.deepEqual(g2.escrituras, [])
+})
+
+test('SIN PERSONA no se escribe: se rechaza y el Sheet no se toca', async () => {
+  const google = sheetFalso({ aux: AUX })
+  const port = baseFalsa({ nota: 'esperar al cobrador', sinNombre: true })
+  assert.equal(await aplicarNota({ port, google, fileId: 'x', pedido: pedido({ pedido_por: 'u-sin-perfil', pedido_por_nombre: null }) }), 'rechazado')
+  assert.deepEqual(google.escrituras, [])
+  assert.match(port.cierres.at(-1).motivo, /sin_actor/)
+})
+
+test('LA ESCRITURA NO ATERRIZÓ: la relectura lo detecta, cierra en error y la base NO cambia', async () => {
+  const google = sheetFalso({ aux: AUX, noAterriza: true })
+  const port = baseFalsa({ nota: 'esperar al cobrador' })
+  assert.equal(await aplicarNota({ port, google, fileId: 'x', pedido: pedido() }), 'error')
+  assert.equal(port.notas.get('hormiserv'), 'esperar al cobrador', 'la base sigue al Sheet, nunca al revés')
+  assert.match(port.cierres.at(-1).motivo, /relectura distinta/)
+})
+
+test('PESTAÑA PROTEGIDA: difiere y la base no cambia', async () => {
+  const google = sheetFalso({ aux: AUX, protegido: true })
+  const port = baseFalsa({ nota: 'esperar al cobrador' })
+  assert.equal(await aplicarNota({ port, google, fileId: 'x', pedido: pedido() }), 'diferido')
+  assert.equal(port.notas.get('hormiserv'), 'esperar al cobrador')
+  assert.match(port.cierres.at(-1).motivo, /protegida/)
+})
+
+test('CUADRO SIN FÓRMULAS (generador a mitad de camino): difiere, no rechaza ni escribe', async () => {
+  const google = sheetFalso({ aux: AUX, sinFormulas: true })
+  const port = baseFalsa({ nota: 'esperar al cobrador' })
+  assert.equal(await aplicarNota({ port, google, fileId: 'x', pedido: pedido() }), 'diferido')
+  assert.deepEqual(google.escrituras, [])
+})
+
+test('B2 · con el pipeline escribiendo no se escribe: difiere', async () => {
+  const google = sheetFalso({ aux: AUX })
+  const port = baseFalsa({ nota: 'esperar al cobrador' })
+  assert.equal(await aplicarNota({ port, google, fileId: 'x', pedido: pedido(), pipelineCorriendo: async () => true }), 'diferido')
+  assert.deepEqual(google.escrituras, [])
+  assert.equal(port.notas.get('hormiserv'), 'esperar al cobrador')
+})
+
+test('B2 · la auxiliar se reordenó entre leer y escribir: la fila ya es de otro, difiere y no pisa', async () => {
+  // cuenta-corriente reescribe la auxiliar: en la fila 3 ahora está «Robles».
+  const google = sheetFalso({ aux: AUX, alReleerA: (auxF) => { auxF[2] = ['Robles', '30-3', 'no es prioridad'] } })
+  const port = baseFalsa({ nota: 'esperar al cobrador' })
+  assert.equal(await aplicarNota({ port, google, fileId: 'x', pedido: pedido() }), 'diferido')
+  assert.deepEqual(google.escrituras, [])
+  assert.match(port.cierres.at(-1).motivo, /ahora es de «Robles»/)
 })
