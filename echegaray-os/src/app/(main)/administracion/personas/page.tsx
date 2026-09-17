@@ -76,7 +76,6 @@ import { quincenaDe } from '@/features/administracion/services/quincena'
 import { hoyEnObra } from '@/features/jefe/services/contexto'
 import { diaDeCarga } from '@/features/administracion/services/diaDeJornada'
 import { hrefDeAsistencia, modoDeAsistencia } from '@/features/administracion/services/vistaDeAsistencia'
-import { hrefCargaDeAsistencia } from '@/features/administracion/services/cargaDeAsistencia'
 import { puedeCambiarObraActual } from '@/features/administracion/services/planDeObraActual'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion, liquidaSueldos, veEconomia } from '@/features/auth/types/areas'
@@ -377,9 +376,9 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             testid="vistas-personal"
             espacioPanel={false}
             vistas={vistasDe('asistencia', sp.quincena, veLaPlata)}
-            // LA CARGA ÚNICA (17/09/2026), como la acción de la solapa. SIN la obra: acá `?obra=` es el
+            // LA CARGA ÚNICA (17/09/2026), el mismo botón que en Plantel. SIN la obra: acá `?obra=` es el
             // RÓTULO del chip de la grilla (o el id en modo día), y la pantalla nueva recorta por id.
-            alta={{ href: hrefCargaDeAsistencia({}), etiqueta: 'Cargar asistencia', testid: 'ir-a-cargar-asistencia-horas' }}
+            filtros={<EnlaceCargarAsistencia testid="ir-a-cargar-asistencia-horas" />}
             // EL BUSCADOR ES DE LA GRILLA. En la carga del día el bloque muestra UNA obra y su
             // gente —seis o siete nombres en una pantalla de 390px—: buscar ahí no filtra nada y
             // le come una línea entera a la única vista que se usa parado en la obra.

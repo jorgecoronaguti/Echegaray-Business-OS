@@ -156,23 +156,21 @@ export function MoverDeObra({ persona, obraActual, fecha, hoy, obras, rotuloDia 
   }
 
   return (
-    <div className="flex flex-col gap-2" data-testid="mover-de-obra">
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button" onClick={() => setAbierto((a) => !a)} aria-expanded={abierto} data-testid="abrir-mover"
-          className={`${ALTO} rounded-control border border-line px-3 text-[12.5px] text-ink hover:border-line-strong`}
-        >
-          {obraActual ? 'Mover de obra' : 'Asignar a obra'}
-        </button>
-        <button
-          type="button" onClick={() => setPlan(true)} data-testid="abrir-plan-obra"
-          className={`${ALTO} rounded-control px-2 text-[12.5px] text-muted underline hover:text-ink`}
-        >
-          Planificar días siguientes
-        </button>
-      </div>
+    <div className="contents" data-testid="mover-de-obra">
+      <button
+        type="button" onClick={() => setAbierto((a) => !a)} aria-expanded={abierto} data-testid="abrir-mover"
+        className={`${ALTO} inline-flex items-center text-[12px] text-ink underline hover:text-ink-soft`}
+      >
+        {obraActual ? 'Mover de obra' : 'Asignar a obra'}
+      </button>
+      <button
+        type="button" onClick={() => setPlan(true)} data-testid="abrir-plan-obra"
+        className={`${ALTO} inline-flex items-center text-[12px] text-muted underline hover:text-ink`}
+      >
+        Planificar días siguientes
+      </button>
       {abierto && (sePuede ? (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 py-1">
           <select
             value={destino} onChange={(e) => setDestino(e.target.value)} data-testid="destino-mover"
             aria-label={`Obra a la que va ${persona.nombre}`}
@@ -189,11 +187,11 @@ export function MoverDeObra({ persona, obraActual, fecha, hoy, obras, rotuloDia 
           </button>
         </div>
       ) : (
-        <p className="text-[12px] text-muted" data-testid="mover-dia-pasado">
+        <p className="w-full text-[12px] text-muted" data-testid="mover-dia-pasado">
           Un día pasado no se mueve de obra: se corrige la jornada desde Horas.
         </p>
       ))}
-      <LineaDeGuardado estado={estado} testid="estado-mover" />
+      <div className="w-full"><LineaDeGuardado estado={estado} testid="estado-mover" /></div>
       {plan && <PlanDeObraPanel persona={persona} obras={obras} hoy={hoy} onCerrar={() => setPlan(false)} />}
     </div>
   )

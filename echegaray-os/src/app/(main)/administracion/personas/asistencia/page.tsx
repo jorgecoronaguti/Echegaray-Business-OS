@@ -39,6 +39,7 @@ import {
 import { ElegirDia } from '@/features/administracion/components/asistencia/ElegirDia'
 import { TraerALaObra } from '@/features/administracion/components/asistencia/TraerALaObra'
 import { CargaDeAsistencia } from '@/features/administracion/components/asistencia/carga/CargaDeAsistencia'
+import { ObraEnTelefono } from '@/features/administracion/components/asistencia/carga/ObraEnTelefono'
 
 export const dynamic = 'force-dynamic'
 
@@ -108,6 +109,14 @@ export default async function CargarAsistenciaPage({ searchParams }: {
   const chips = [...conteo.keys()].filter((k) => k !== OBRA_SIN_OBRA)
     .sort((a, b) => (nombres[a] ?? a).localeCompare(nombres[b] ?? b, 'es'))
 
+  const opcionesDeObra = [
+    { clave: 'todas', etiqueta: 'Todas las obras', href: hrefCargaDeAsistencia({ dia: fecha, hoy }), activo: !obraFiltro },
+    ...chips.map((id) => ({ clave: id, etiqueta: nombres[id] ?? id, cuenta: conteo.get(id), href: hrefCargaDeAsistencia({ dia: fecha, obra: id, hoy }), activo: obraFiltro === id })),
+    ...(conteo.has(OBRA_SIN_OBRA)
+      ? [{ clave: OBRA_SIN_OBRA, etiqueta: NOMBRE_SIN_OBRA, cuenta: conteo.get(OBRA_SIN_OBRA), href: hrefCargaDeAsistencia({ dia: fecha, obra: OBRA_SIN_OBRA, hoy }), activo: obraFiltro === OBRA_SIN_OBRA }]
+      : []),
+  ]
+
   // TRAER A ALGUIEN, SÓLO CON UNA OBRA ELEGIDA Y SÓLO HOY: `TraerALaObra` mueve desde HOY, y con
   // «Todas» no hay a qué obra traerlo. Para otro día está «Mover de obra» en la fila.
   const obraParaTraer = obraFiltro && obraFiltro !== OBRA_SIN_OBRA && fecha === hoy && puedeMover && nombres[obraFiltro]
@@ -118,17 +127,14 @@ export default async function CargarAsistenciaPage({ searchParams }: {
       {cabecera}
       <div className="px-4 pb-8 md:px-5">
         {d.avisos.map((a) => <div key={a} className="pb-2"><Aviso tono="info">{a}</Aviso></div>)}
-        <FiltrosSuaves
-          testid="filtro-obra-carga" rotulo="Obra"
-          conteo={{ n: obraFiltro ? (conteo.get(obraFiltro) ?? 0) : filas.length, total: filas.length, sustantivo: 'personas' }}
-          opciones={[
-            { clave: 'todas', etiqueta: 'Todas', href: hrefCargaDeAsistencia({ dia: fecha, hoy }), activo: !obraFiltro },
-            ...chips.map((id) => ({ clave: id, etiqueta: nombres[id] ?? id, cuenta: conteo.get(id), href: hrefCargaDeAsistencia({ dia: fecha, obra: id, hoy }), activo: obraFiltro === id })),
-            ...(conteo.has(OBRA_SIN_OBRA)
-              ? [{ clave: OBRA_SIN_OBRA, etiqueta: NOMBRE_SIN_OBRA, cuenta: conteo.get(OBRA_SIN_OBRA), href: hrefCargaDeAsistencia({ dia: fecha, obra: OBRA_SIN_OBRA, hoy }), activo: obraFiltro === OBRA_SIN_OBRA }]
-              : []),
-          ]}
-        />
+        <ObraEnTelefono opciones={opcionesDeObra} />
+        <div className="hidden md:block">
+          <FiltrosSuaves
+            testid="filtro-obra-carga" rotulo="Obra"
+            conteo={{ n: obraFiltro ? (conteo.get(obraFiltro) ?? 0) : filas.length, total: filas.length, sustantivo: 'personas' }}
+            opciones={opcionesDeObra}
+          />
+        </div>
         <CargaDeAsistencia
           filas={filas} obraFiltro={obraFiltro} fecha={fecha} hoy={hoy} rotuloDia={rotuloDelDia(fecha)}
           obras={activas} nombres={nombres} cierre={d.cierre}

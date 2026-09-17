@@ -58,11 +58,26 @@ export function FilaDeCarga({ fila, casilla, estado, fecha, hoy, rotuloDia, obra
       className="flex flex-col gap-2 border-b border-line py-3 md:flex-row md:items-start md:gap-4"
       data-testid="fila-carga" data-persona={persona.id} data-estado={casilla.estado ?? 'sin_marcar'}
     >
-      <div className="min-w-0 md:w-56 md:shrink-0">
+      <div className="min-w-0 md:w-72 md:shrink-0">
         <p className="truncate text-[15px] text-ink md:text-[14px]">{persona.nombre}</p>
         <p className="truncate text-[12px] text-muted">
           {[persona.categoria, persona.esJefe ? 'mensual · sin presentismo' : null].filter(Boolean).join(' · ') || '—'}
         </p>
+        {/* LAS ACCIONES SOBRE LA PERSONA, DEBAJO DEL NOMBRE Y EN TEXTO: mover, planificar y corregir son la
+            excepción del día, no el gesto de todas las mañanas. Como botones en su propia columna le
+            sumaban tres renglones a cada fila de 1440 px (medido en la captura del 17/09/2026). */}
+        <div className="mt-1 flex flex-wrap items-center gap-x-3">
+          {puedeMover && fila.obraId && !soloLectura && (
+            <MoverDeObra persona={persona} obraActual={fila.obraId} fecha={fecha} hoy={hoy} obras={obras} rotuloDia={rotuloDia} />
+          )}
+          {/* TRAMO DE LICENCIA, «SIN NOVEDAD», MOVER SÓLO LA JORNADA: el panel de la grilla (`corregirJornada`). */}
+          <Link
+            prefetch={false} href={hrefCorregirEnHoras(fecha, persona.nombre)} data-testid="corregir-en-horas"
+            className={`${ALTO} inline-flex items-center text-[12px] text-muted underline hover:text-ink`}
+          >
+            Corregir en Horas
+          </Link>
+        </div>
         {certificado && (
           <p className="truncate text-[12px] text-muted" data-testid="certificado-del-dia" title={certificado}>
             Certificado: {certificado}
@@ -115,18 +130,6 @@ export function FilaDeCarga({ fila, casilla, estado, fecha, hoy, rotuloDia, obra
         <Horas fila={fila} obraId={obraId} fecha={fecha} obras={obras} nombres={nombres} deshabilitado={soloLectura !== null} />
       )}
 
-      <div className="flex flex-col gap-1 md:w-56 md:shrink-0">
-        {puedeMover && fila.obraId && !soloLectura && (
-          <MoverDeObra persona={persona} obraActual={fila.obraId} fecha={fecha} hoy={hoy} obras={obras} rotuloDia={rotuloDia} />
-        )}
-        {/* TRAMO DE LICENCIA, «SIN NOVEDAD», MOVER SÓLO LA JORNADA: el panel de la grilla (`corregirJornada`). */}
-        <Link
-          prefetch={false} href={hrefCorregirEnHoras(fecha, persona.nombre)} data-testid="corregir-en-horas"
-          className={`${ALTO} inline-flex items-center px-1 text-[12px] text-muted underline hover:text-ink`}
-        >
-          Corregir el día en Horas
-        </Link>
-      </div>
     </li>
   )
 }
