@@ -20,7 +20,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { CintaHorizontal } from '@/shared/components/v2/CintaHorizontal'
-import { CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, MONO, fondoDeColumnaFija } from '../solapas/tabla'
+import { CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, fondoDeColumnaFija } from '../solapas/tabla'
 import {
   anchoDe, bloqueEnVista, columnasDe, corrimientoDelRotulo, desplazamientoHasta, tramosDeBloques, DIA,
   type DefinicionDeCuadro, type TonoDeBloque, type TramoDeBloque,
@@ -139,7 +139,7 @@ function Saltos({ testid, cinta: idCinta, tramos, corrimiento }: { testid: strin
     <div ref={propio} data-testid={`${testid}-saltos`} style={{
       display: 'flex', alignItems: 'center', gap: 4, padding: '4px 0 8px', transform: `translateX(${corrimiento}px)`, width: 'max-content',
     }}>
-      <span style={{ fontFamily: MONO, fontSize: '9.5px', letterSpacing: '.04em', textTransform: 'uppercase', color: V.tenue, marginRight: 4 }}>Ir a</span>
+      <span style={{ fontSize: '11px', color: V.tenue, marginRight: 4 }}>Ir a</span>
       {tramos.map((t, i) => (
         <button key={t.clave} type="button" onClick={(e) => ir(e, t, i)} data-testid={`${testid}-salto-${t.clave}`}
           aria-current={enVista === t.clave ? 'true' : undefined}
@@ -158,7 +158,8 @@ function Encabezado({ columnas, definicion, dias, tramos, sellada, corrimiento, 
   columnas: string; definicion: DefinicionDeCuadro; dias: readonly string[]; tramos: readonly TramoDeBloque[]
   sellada: boolean; corrimiento: number; tirador: Tirador; testid: string; banda: (clave: string) => string
 }) {
-  const mono = { fontFamily: MONO, fontSize: '9.5px', letterSpacing: '.04em', textTransform: 'uppercase' as const }
+  // AJUSTE MÍNIMO (dueño, 17/09/2026: «sólo ajustes mínimos»): rótulos en caja normal, sin monoespaciada mayúscula.
+  const mono = { fontSize: '11px', lineHeight: '14px' }
   return (
     <div data-testid={testid} data-encabezado="" style={{
       display: 'grid', gridTemplateColumns: columnas, columnGap: 8, gridTemplateRows: 'auto auto', alignItems: 'end',
