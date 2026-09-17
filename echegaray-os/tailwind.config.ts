@@ -73,6 +73,14 @@ const config: Config = {
           cajon: 'rgb(var(--os-dato-sin-obra-rgb) / <alpha-value>)',
           mora: 'rgb(var(--os-dato-mora-media-rgb) / <alpha-value>)',
         },
+        // Series de gráfico: identidad, nunca estado. Ver el porqué y la validación en globals.css.
+        serie: {
+          1: 'rgb(var(--os-serie-1-rgb) / <alpha-value>)',
+          2: 'rgb(var(--os-serie-2-rgb) / <alpha-value>)',
+          3: 'rgb(var(--os-serie-3-rgb) / <alpha-value>)',
+          4: 'rgb(var(--os-serie-4-rgb) / <alpha-value>)',
+          5: 'rgb(var(--os-serie-5-rgb) / <alpha-value>)',
+        },
       },
       // EL ÚNICO MOVIMIENTO DEL SISTEMA VISUAL: la barra que dice que el servidor está trabajando.
       // Va acá y no en un `style` suelto porque un color o una animación que aparece en un

@@ -1,141 +1,125 @@
-// LA SECCIÓN «CARGAS SOCIALES» Y LA FILA DE CIFRAS DE LA PANTALLA DE IMPUESTOS. Server Components.
+// LA VISTA «CARGAS SOCIALES»: el F931 mes por mes y los planes de pago con sus cuotas. Server Components.
 // Qué fila entra lo decide `services/impuestosCargas.ts` —la misma regla que escribe el bloque de la
 // pestaña «Impuestos y Financieros»—; acá sólo se dibuja.
 //
-// «ESTIMADO» Y «SUPUESTO» SE DICEN BAJITO. El F931 del mes en curso es un cálculo y la fecha de los
-// vencimientos de la seguridad social no está verificada: se marca en gris al lado del número, no con
-// un color de alarma, porque no es un problema — es el grado de certeza del dato.
-import type { ReactNode } from 'react'
-import { Nulo, Num, Tabla, Td, THead, Tr, Vacio } from '@/shared/components/ds'
+// ═══ LOS PLANES TERMINADOS NO SE BORRAN: SE PLIEGAN ═══
+//
+// Dos planes cancelados con seis cuotas cada uno eran catorce renglones de «pagada» entre el F931 y lo
+// que falta pagar. Siguen estando —son historia de deuda y la pidieron—, dentro de un `<details>`
+// nativo: se abre con un toque, sin JavaScript, y el que busca lo encuentra en el mismo lugar.
 import { plata } from '@/shared/utils/format'
-import { ddmm, rotuloPeriodo, type PosicionImpuesto } from '../../services/impuestos'
-import type { cargasSociales, PlanDePago } from '../../services/impuestosCargas'
-import { Bloque, EstadoTexto, estadoDe, nombreObligacion, Th } from './TablasImpuestos'
+import type { PosicionImpuesto } from '../../services/impuestos'
+import type { cargasSociales, CuotaPlan, PlanDePago } from '../../services/impuestosCargas'
+import { estadoLlano, periodoCorto } from '../../services/impuestosVista'
+import { EstadoTexto, Importe, Origen, Plegada, Vacio, Vence } from './piezas'
 
 type Cargas = ReturnType<typeof cargasSociales>
 
-const Marca = ({ children }: { children: ReactNode }) => <span className="ml-1 text-[11px] text-faint">{children}</span>
+const FILA = 'grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-b border-line-hairline py-3 text-[13px] md:grid-cols-[120px_150px_150px_150px_220px_200px_minmax(0,1fr)] md:items-baseline md:py-2.5'
 
-const Vence = ({ fecha, confianza }: { fecha: string | null; confianza: PosicionImpuesto['vencimiento_confianza'] }) => (
-  <>
-    <Num>{ddmm(fecha)}</Num>
-    {confianza === 'supuesto' && <Marca>supuesto</Marca>}
-  </>
-)
-
-const pesos = (n: number | null, falta = 'sin dato') => (n === null ? <Nulo>{falta}</Nulo> : plata(n))
-
-export interface Cifra { etiqueta: string; valor: string; contexto?: string; tono?: 'neg' | 'warn' }
-
-/**
- * LA FILA DE CIFRAS: lo que se decide arriba —cuánto hay que pagar en 30 días y cuánto de eso es
- * cargas sociales—, el resto abajo, chico y gris. Reemplaza a la `Franja` (una tarjeta con cuatro
- * celdas del mismo peso). Conserva el testid y un `data-metrica` por cifra.
- */
-export function Cifras({ principales, desglose, testid }: { principales: Cifra[]; desglose: Cifra[]; testid: string }) {
-  const tono = { neg: 'text-neg', warn: 'text-warn' } as const
+function FilaF931({ f }: { f: PosicionImpuesto }) {
+  const e = estadoLlano(f)
   return (
-    <div data-testid={testid} className="flex flex-col gap-1">
-      <div className="flex flex-wrap items-baseline gap-x-8 gap-y-1">
-        {principales.map((c) => (
-          <div key={c.etiqueta} data-metrica={c.etiqueta} className="flex flex-wrap items-baseline gap-x-2">
-            <span className="text-[12px] text-muted">{c.etiqueta}</span>
-            <span className={`font-mono text-[20px] font-semibold tabular-nums ${c.tono ? tono[c.tono] : 'text-ink'}`}>{c.valor}</span>
-            {c.contexto && <span className="text-[12px] text-faint">{c.contexto}</span>}
-          </div>
-        ))}
-      </div>
-      <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-[12px] text-faint">
-        {desglose.map((c) => (
-          <span key={c.etiqueta} data-metrica={c.etiqueta}>
-            {c.etiqueta} <span className="font-mono tabular-nums text-muted">{c.valor}</span>{c.contexto ? ` · ${c.contexto}` : ''}
-          </span>
-        ))}
-      </div>
-    </div>
+    <li className={FILA} data-periodo={f.periodo}>
+      <span className="order-1 font-medium text-ink md:order-none md:font-normal">{periodoCorto(f)}</span>
+      {/* En el teléfono «Del mes» y «Pagado» comparten un renglón; en la computadora `md:contents`
+          los devuelve a sus dos columnas sin duplicar el marcado. */}
+      <span className="order-5 flex flex-wrap gap-x-3 text-[12px] text-muted md:contents">
+        <span className="md:text-right md:text-[13px] md:text-ink">
+          <span className="md:hidden">Del mes </span><Importe n={f.determinado} falta="sin dato" />
+        </span>
+        <span className="md:text-right md:text-[13px] md:text-ink">
+          <span className="md:hidden">Pagado </span>{f.pagado ? <span className="font-mono tabular-nums">{plata(f.pagado)}</span> : <span className="text-faint">—</span>}
+        </span>
+      </span>
+      <span className="order-2 text-right text-ink md:order-none">
+        {f.pendiente === 0 ? <span className="text-faint">—</span> : <Importe n={f.pendiente} />}
+      </span>
+      <span className="order-4 text-right text-[12px] md:order-none md:text-left md:text-[13px]"><Vence fecha={f.vencimiento} confianza={f.vencimiento_confianza} /></span>
+      <span className="order-3 md:order-none"><EstadoTexto tono={e.tono} clave={f.estado}>{e.texto}</EstadoTexto></span>
+      <span className="order-6 text-right md:order-none md:text-left"><Origen f={f} /></span>
+    </li>
   )
 }
 
 function TablaF931({ filas }: { filas: PosicionImpuesto[] }) {
-  if (!filas.length) return <Vacio>El sincronizador todavía no escribió ningún F931.</Vacio>
+  if (!filas.length) return <Vacio>Todavía no hay ningún F931 cargado.</Vacio>
   return (
-    <Tabla testid="cargas-f931" minWidth={640}>
-      <THead>
-        <Th>Período</Th><Th num>Determinado</Th><Th num>Pagado</Th><Th num>Pendiente</Th><Th>Vence</Th><Th>Estado</Th>
-      </THead>
-      <tbody>
-        {filas.map((f) => {
-          const e = estadoDe(f)
-          return (
-            <Tr key={`${f.periodo}-${f.concepto}`} compacta data-periodo={f.periodo}>
-              <Td><Num>{rotuloPeriodo(f.periodo)}</Num>{f.concepto !== 'ddjj' && <Marca>{f.concepto}</Marca>}</Td>
-              <Td num>{pesos(f.determinado)}</Td>
-              <Td num>{f.pagado ? plata(f.pagado) : <Nulo>—</Nulo>}</Td>
-              <Td num>{f.pendiente === 0 ? <Nulo>—</Nulo> : pesos(f.pendiente, 'sin importe')}</Td>
-              <Td><Vence fecha={f.vencimiento} confianza={f.vencimiento_confianza} /></Td>
-              <Td><EstadoTexto tono={e.tono} clave={f.estado}>{e.texto}</EstadoTexto></Td>
-            </Tr>
-          )
-        })}
-      </tbody>
-    </Tabla>
+    <div data-testid="cargas-f931">
+      <div aria-hidden className="hidden h-8 items-center gap-x-3 border-y border-line text-[12px] text-faint md:grid md:grid-cols-[120px_150px_150px_150px_220px_200px_minmax(0,1fr)]">
+        <span>Mes</span><span className="text-right">Del mes</span><span className="text-right">Pagado</span><span className="text-right">Falta pagar</span>
+        <span>Vence</span><span>Estado</span><span>De dónde sale</span>
+      </div>
+      <ul className="border-t border-line md:border-t-0">{filas.map((f) => <FilaF931 key={`${f.periodo}-${f.concepto}`} f={f} />)}</ul>
+    </div>
   )
 }
 
-function TablaPlanes({ planes }: { planes: PlanDePago[] }) {
+function Cuota({ plan, q }: { plan: string; q: CuotaPlan }) {
+  return (
+    <li data-cuota={`${q.n}/${q.de}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-b border-line-hairline py-2.5 pl-3 text-[13px] md:grid-cols-[160px_150px_minmax(0,1fr)_200px] md:items-baseline">
+      <span className="text-muted" title={plan}>Cuota {q.n} de {q.de}</span>
+      <span className="text-right text-ink"><Importe n={q.importe} falta="sin dato" /></span>
+      <span className="text-[12px] text-muted md:text-[13px]"><Vence fecha={q.vencimiento} confianza={q.confianza} /></span>
+      <span className="text-right md:text-left">
+        <EstadoTexto tono={q.pagada ? 'pos' : 'warn'} clave={q.pagada ? 'pagada' : 'pendiente'}>
+          {q.pagada ? 'Pagada' : q.estado === 'estimado' ? 'Falta pagar · importe estimado' : 'Falta pagar'}
+        </EstadoTexto>
+      </span>
+    </li>
+  )
+}
+
+function Plan({ p }: { p: PlanDePago }) {
+  const abierto = p.saldo > 0 || p.sinImporte > 0
+  return (
+    <div data-plan={p.nombre} className="mt-3 first:mt-0">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line py-2 text-[13px]">
+        <span className="font-semibold text-ink">{p.nombre}</span>
+        <span className="text-muted">{p.pagadas} de {p.cuotas.length} cuotas pagadas</span>
+        <span className="ml-auto">
+          {abierto
+            ? <span className="text-warn">falta <span className="font-mono tabular-nums">{plata(p.saldo)}</span>{p.sinImporte ? ` + ${p.sinImporte} sin importe` : ''}</span>
+            : <span className="text-faint">terminado</span>}
+        </span>
+      </div>
+      <ul>{p.cuotas.map((q) => <Cuota key={q.n} plan={p.nombre} q={q} />)}</ul>
+    </div>
+  )
+}
+
+function Planes({ planes }: { planes: PlanDePago[] }) {
   if (!planes.length) return <Vacio>No hay planes de pago de F931 registrados.</Vacio>
+  const abiertos = planes.filter((p) => p.saldo > 0 || p.sinImporte > 0)
+  const terminados = planes.filter((p) => !abiertos.includes(p))
   return (
-    <Tabla testid="cargas-planes" minWidth={560}>
-      <THead>
-        <Th>Plan · cuota</Th><Th num>Importe</Th><Th>Vence</Th><Th>Estado</Th>
-      </THead>
-      <tbody>
-        {planes.map((p) => [
-          <Tr key={p.nombre} compacta data-plan={p.nombre}>
-            <Td fuerte>{p.nombre}</Td>
-            <Td num>{p.saldo > 0 ? plata(p.saldo) : <Nulo>—</Nulo>}</Td>
-            <Td><span className="text-[12px] text-faint">{p.pagadas}/{p.cuotas.length} pagadas</span></Td>
-            <Td>{p.saldo > 0 || p.sinImporte > 0 ? <span className="text-[12px] text-muted">saldo</span> : <span className="text-[12px] text-faint">cancelado</span>}</Td>
-          </Tr>,
-          ...p.cuotas.map((q) => (
-            <Tr key={`${p.nombre}-${q.n}`} compacta data-cuota={`${q.n}/${q.de}`}>
-              <Td><span className="pl-3 text-muted">cuota {q.n}/{q.de}</span></Td>
-              <Td num>{pesos(q.importe)}</Td>
-              <Td><Vence fecha={q.vencimiento} confianza={q.confianza} /></Td>
-              <Td>
-                <EstadoTexto tono={q.pagada ? 'pos' : 'warn'} clave={q.pagada ? 'pagada' : 'pendiente'}>{q.pagada ? 'pagada' : 'pendiente'}</EstadoTexto>
-                {!q.pagada && q.estado === 'estimado' && <Marca>estimado</Marca>}
-              </Td>
-            </Tr>
-          )),
-        ])}
-      </tbody>
-    </Tabla>
+    <div data-testid="cargas-planes">
+      {abiertos.map((p) => <Plan key={p.nombre} p={p} />)}
+      {!abiertos.length && <Vacio>Ningún plan con cuotas por pagar.</Vacio>}
+      {terminados.length > 0 && (
+        <details className="group mt-3" data-testid="cargas-planes-terminados">
+          <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 text-[13px] text-muted hover:text-ink">
+            <span aria-hidden className="inline-block transition-transform group-open:rotate-90">›</span>
+            Planes terminados ({terminados.length})
+          </summary>
+          {terminados.map((p) => <Plan key={p.nombre} p={p} />)}
+        </details>
+      )}
+    </div>
   )
 }
 
-/** La sección entera: a pagar en 30 días, el F931 por período y los planes con sus cuotas. */
+/** El detalle de la solapa: el F931 mes por mes y los planes, plegados. Planes abiertos si alguno debe. */
 export function SeccionCargasSociales({ c }: { c: Cargas }) {
+  const debe = c.planes.some((p) => p.saldo > 0 || p.sinImporte > 0)
   return (
-    <Bloque testid="bloque-cargas-sociales" titulo="Cargas sociales" cuenta={`a pagar en 30 días ${plata(c.proximos.total)} · pendiente total ${plata(c.pendienteTotal)}`}>
-      {c.proximos.lista.length ? (
-        <ul data-testid="cargas-proximos" className="mb-4 flex flex-col gap-1 text-[13px]">
-          {c.proximos.lista.map((f) => (
-            <li key={`${f.periodo}-${f.concepto}`} className="flex flex-wrap items-baseline gap-x-3">
-              <span className="w-14 text-muted"><Num>{ddmm(f.vencimiento)}</Num></span>
-              <span className="min-w-[220px] text-ink">{nombreObligacion(f)}</span>
-              <span className="font-mono tabular-nums text-ink">{pesos(f.pendiente, 'sin importe')}</span>
-              {f.estado === 'estimado' && <Marca>estimado</Marca>}
-              {f.vencimiento_confianza === 'supuesto' && <Marca>vence supuesto</Marca>}
-              {f.dias < 0 && <span className="text-[12px] text-neg">vencido</span>}
-            </li>
-          ))}
-        </ul>
-      ) : <Vacio>Nada de cargas sociales con vencimiento en los próximos 30 días.</Vacio>}
-      <h3 className="mb-1 mt-4 text-[12px] font-medium text-muted">F931 por período</h3>
-      <TablaF931 filas={c.periodos} />
-      <h3 className="mb-1 mt-4 text-[12px] font-medium text-muted">Planes de pago</h3>
-      <TablaPlanes planes={c.planes} />
-    </Bloque>
+    <div data-testid="bloque-cargas-sociales">
+      <Plegada testid="cargas-f931-seccion" titulo="F931 mes por mes" resumen={`falta pagar entre F931 y planes: ${plata(c.pendienteTotal)}${c.pendienteSinImporte ? ` + ${c.pendienteSinImporte} sin importe` : ''}`}>
+        <TablaF931 filas={c.periodos} />
+      </Plegada>
+      <Plegada testid="cargas-planes-seccion" titulo="Planes de pago" resumen={`${c.planes.length} plan${c.planes.length === 1 ? '' : 'es'}`} abierta={debe}>
+        <Planes planes={c.planes} />
+      </Plegada>
+    </div>
   )
 }

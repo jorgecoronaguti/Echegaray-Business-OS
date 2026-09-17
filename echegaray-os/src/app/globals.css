@@ -88,6 +88,19 @@
   --os-info-soft: #e9f0fd;
   --os-focus: #2f6df6; /* anillo de foco accesible */
 
+  /* ═══ LAS SERIES DE LOS GRÁFICOS (impuestos, 17/09/2026) ═══
+     Identidad de una serie, NUNCA estado: por eso no reusan pos/neg/warn/info ni el amarillo de la
+     marca. Orden de apilado fijo IVA → IIBB → Cargas → Ganancias → Otros, validado con el script de
+     la skill dataviz sobre --os-canvas: separación daltónica entre vecinos ≥ 9,2 y visión normal
+     ≥ 17,2 (ΔE OKLab×100). «Otros» es un gris a propósito: es el cajón de lo que no tiene color
+     propio. Contraste < 3:1 en aqua, magenta y gris: por eso el gráfico lleva leyenda y valor al
+     tocar, y la tabla existe debajo. */
+  --os-serie-1: #2a78d6;
+  --os-serie-2: #1baf7a;
+  --os-serie-3: #4a3aa7;
+  --os-serie-4: #e87ba4;
+  --os-serie-5: #c3c2bd;
+
   /* Texto SOBRE el amarillo. Es siempre el grafito: #FDC900 da 1,6:1 sobre blanco y no admite
      texto claro encima. Existe como token para que nadie tenga que volver a decidirlo. */
   --os-on-marca: #1f1f1e;
@@ -141,6 +154,11 @@
   --os-dato-materiales-rgb: 176 175 169;
   --os-dato-sin-obra-rgb: 224 185 0;
   --os-dato-mora-media-rgb: 196 72 43;
+  --os-serie-1-rgb: 42 120 214;
+  --os-serie-2-rgb: 27 175 122;
+  --os-serie-3-rgb: 74 58 167;
+  --os-serie-4-rgb: 232 123 164;
+  --os-serie-5-rgb: 195 194 189;
 
   /* ═══ LAS ALTURAS DEL SISTEMA (design/system/tokens.css) ═══
      Las medidas que hacen que la tabla, el Gantt y el panel se alineen entre sí. Viven acá y se

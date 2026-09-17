@@ -26,7 +26,7 @@ export async function getPosicion(supabase: SupabaseClient): Promise<Resultado<P
 export async function getSinImputar(supabase: SupabaseClient): Promise<Resultado<PagoSinImputar[]>> {
   const { data, error } = await supabase
     .from('impuesto_pago')
-    .select('fecha, importe, descripcion, fuente')
+    .select('fecha, importe, descripcion, fuente, tipo')
     .eq('imputacion', 'sin_imputar')
     .order('fecha', { ascending: false })
   if (error) return { data: null, error: error.message }
