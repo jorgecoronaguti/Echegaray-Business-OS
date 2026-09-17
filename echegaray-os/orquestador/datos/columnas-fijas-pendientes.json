@@ -142,6 +142,15 @@
       "mapas": 0,
       "indices": 1
     },
+    "orquestador/lib/impuestos-planes-f931.mjs": {
+      "grupo": "indices-otra-pestana",
+      "estado": "otra-pestana",
+      "motivo": "los 2 índices son f?.[0]: la columna A (rótulos) de «Cargas Sociales», buscada por texto («⇒ Subtotal F931», «Concepto»). No es una columna de Compras/Cobranzas; revisado el 17/09/2026.",
+      "letras": 0,
+      "mapas": 0,
+      "indices": 2,
+      "offsets": 0
+    },
     "orquestador/lib/libro-extractores.mjs": {
       "grupo": "lectores",
       "estado": "pendiente",
