@@ -45,9 +45,11 @@ export function FilaJornalero({ fila, columnas, edicion, pct, abrir }: {
   const fondo = filaPagada(l.pagadaEn) ? V.posSuave : undefined
   const s = l.sueldo
   // LAS DOS CATEGORÍAS CON SU $/H (dueño, 16/09/2026): la del recibo paga el blanco; la de plataforma, el negro.
+  // EL PISO SALE DEL MODELO EN LA ABIERTA Y DEL SELLO EN LA CERRADA: el mismo número, la misma fecha (`q.hasta`).
   const c = categoriasDeLaFila({
-    plataforma: fila.categoria ? rotuloCategoria(fila.categoria) : null, pisoPlataforma: s?.pisoCategoria ?? null,
+    plataforma: fila.categoria ? rotuloCategoria(fila.categoria) : null, pisoPlataforma: s?.pisoCategoria ?? l.sello?.piso ?? null,
     categoriaRecibo: s?.categoriaRecibo, valorHoraRecibo: s?.valorHoraCategoria, periodoRecibo: s?.periodoRecibo, estado: s?.estado ?? null,
+    sello: l.sello,
   })
   return (
     // `data-fila-edicion`: Tab en una celda pasa a la siguiente editable de ESTA fila (`InlineEdit`).
