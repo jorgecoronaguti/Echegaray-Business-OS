@@ -76,13 +76,8 @@ test('el recorte por obra NO cruza a las otras solapas: el mismo parámetro, otr
   // filtro. Las tres solapas se enlazan con la URL escrita desde cero, y así tiene que quedar.
   const src = sinComentarios(pagina())
   const barra = src.slice(src.indexOf('function vistasDe'), src.indexOf('function vacioDe'))
-  // UNA PUERTA (17/09/2026): las solapas de Personal se definen UNA vez, en `solapasDePersonal`, y la
-  // del Plantel arranca en la ruta desnuda —sin `?obra=` de ninguna otra vista—.
-  assert.match(barra, /solapasDePersonal\(activa, veLaPlata\)/, 'la barra dejó de usar la definición única de las solapas')
+  assert.match(barra, /href: armarHref\(\{\}\)/, 'la solapa Plantel dejó de arrancar limpia')
   assert.doesNotMatch(barra, /obra/, 'una solapa se puso a arrastrar el recorte por obra de otra vista')
-  const solapas = sinComentarios(readFileSync(join(DIR, 'asistencia/carga/SolapasDeAsistencia.tsx'), 'utf8'))
-  assert.match(solapas, /titulo: 'Plantel', cuenta: null, activa: activa === 'personal', href: RUTA_PERSONAL \}/, 'la solapa Plantel dejó de arrancar limpia')
-  assert.match(solapas, /titulo: 'Asistencia', cuenta: null, activa: activa === 'asistencia', href: hrefCargaDeAsistencia\(\{\}\) \}/)
 })
 
 test('el buscador manda la obra puesta: escribir un nombre no borra el recorte', () => {
