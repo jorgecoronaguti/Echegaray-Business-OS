@@ -46,7 +46,12 @@ const esLocal = BASE.includes('localhost')
 
 export default defineConfig({
   testDir: './tests',
-  fullyParallel: true,
+  // UN SOLO WORKER, A PROPÓSITO (17/09). Sin `workers`, Playwright abre un Chromium por núcleo: cuatro
+  // navegadores de ~600 MB más el `next dev` de ~2 GB, en una VM de 7 GB que además corre el OS
+  // productivo. Ese día la máquina se quedó sin RAM ni swap. El navegador es un cupo de `ecos`
+  // (scripts/recursos/), y el cupo es de uno.
+  workers: 1,
+  fullyParallel: false,
   reporter: [['list']],
   use: {
     baseURL: BASE,
@@ -55,6 +60,7 @@ export default defineConfig({
   ...(esLocal
     ? {
         webServer: {
+          // `npm run dev` ya pasa por el portero (ecos next); dentro de `ecos e2e` no vuelve a pedir turno.
           command: `npm run dev -- --port ${PORT}`,
           url: BASE,
           // Con puerto propio NUNCA se reusa: reusar es exactamente lo que hizo que la suite midiera

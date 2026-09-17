@@ -95,6 +95,11 @@ Dentro del worktree:
 - Los hooks del proyecto aplican igual: `.claude/settings.json` se hereda en el worktree, así que el
   chequeo de sintaxis y el **hook de cierre** corren también ahí. Un agente no puede terminar con las
   validaciones en rojo.
+- **Recursos de la VM**: por más agentes que haya, corre UNA validación pesada, UN `next dev` y UN
+  navegador a la vez en toda la máquina (`scripts/recursos/ecos`). Los agentes que cierran al mismo
+  tiempo hacen cola y esperan su turno; no se lanzan encima. Un agente que quiere levantar el servidor
+  o correr Playwright lo pide con `ecos next -- …` / `ecos e2e -- …`, y el hook de Bash frena cualquier
+  forma pelada.
 
 Las tareas **dependientes** arrancan sólo cuando su dependencia está `COMPLETADA` y su resultado está
 disponible en una base coherente.
@@ -132,7 +137,8 @@ corrieron, riesgos**. Y queda pendiente de revisión.
 
 Cuando el dueño lo ordene —nunca antes— la integración es: revisar los resultados → elegir ramas →
 integrar en el orden del DAG → resolver conflictos → correr la validación consolidada
-(`npm run orq:test && npm run typecheck && npx eslint .`) → recién ahí limpiar los worktrees ya
+(`npm run orq:test && npm run typecheck && npm run lint` — los tres pasan por el portero de recursos y
+corren de a uno; nunca en paralelo entre agentes) → recién ahí limpiar los worktrees ya
 integrados con `git worktree remove`.
 
 Al final, `backlog.mjs pendientes` sale con código 1 si queda algo sin cerrar. Si sale 1, el backlog
