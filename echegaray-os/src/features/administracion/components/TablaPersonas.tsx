@@ -68,6 +68,9 @@ import {
   SIN_MARCAR, hayMarcaDeHoy, horasVisibles, ofertaDeMarcar, rotuloHoy,
   type EstadoDePapeles, type MarcaDeHoy, type TardanzaDeHoy,
 } from '../services/pulsoDelPlantel'
+import { BotonPresenteHoy } from './BotonPresenteHoy'
+import { BotonQuitarPresente } from './BotonQuitarPresente'
+import { MarcaTardanzaHoy } from './MarcaTardanzaHoy'
 import type { ClasificacionDelDia } from '../services/asistenciaDelDia'
 import type { RotuloHoy } from '../services/pulsoDelPlantel'
 
@@ -208,8 +211,18 @@ export function TablaPersonas({
           : null
         const ficho = Boolean(conPulso && pulso?.hoyDisponible && hayMarcaDeHoy(pulso.marcas.get(p.id)))
         const categoria = categoriaVisible(p.categoria, p.puesto)
-        // LA CARGA NO VIVE ACÁ (dueño, 17/09/2026): Plantel muestra el estado de hoy; se marca en la solapa
-        // Asistencia, la misma pantalla en compu y teléfono.
+        // QUÉ OFRECE LA CELDA HOY. La regla vive en `ofertaDeMarcar` —quién, sobre qué estado y con
+        // qué obra— y acá sólo se dibuja. Sin `asistencia` no hay oferta: cuando la lectura del día
+        // falló, la columna dice «sin lectura» y un botón encima estaría marcando a ciegas.
+        const oferta = asistencia && marcar
+          ? ofertaDeMarcar({
+              puedeMarcar: true,
+              presencia: asistencia.presencia,
+              obraId: p.obra_actual_id,
+              esJefe: esJefeDeObra(p.puesto),
+              enLaEmpresa: p.en_la_empresa,
+            })
+          : 'nada'
         return (
           <Link
             key={p.id}
@@ -285,6 +298,7 @@ export function TablaPersonas({
                       {asistencia
                         ? <CeldaHoy clasificacion={asistencia} ficho={ficho} />
                         : <span style={{ fontSize: '12px', color: V.lupa }}>sin lectura</span>}
+                      {marcar && <AccionesHoy p={p} oferta={oferta} fecha={marcar.fecha} inicial={pulso?.tardanzas.get(p.id)} />}
                     </span>
 
                     {/* LA PERSONA SIN IMPUTACIONES DICE «SIN HH», NO 0: un 0 acá afirmaría que no
@@ -325,6 +339,7 @@ export function TablaPersonas({
                       {asistencia
                         ? <CeldaHoy clasificacion={asistencia} ficho={ficho} />
                         : <span style={{ fontSize: '12px', color: V.lupa }}>sin lectura</span>}
+                      {marcar && <AccionesHoy p={p} oferta={oferta} fecha={marcar.fecha} inicial={pulso?.tardanzas.get(p.id)} tactil />}
                       <span className="ml-auto font-mono tabular-nums" style={{ fontSize: '12px', color: V.tintaSuave }} data-testid="hh-quincena-movil">
                         {!pulso?.hhDisponible ? '' : pulso.hh.has(p.id) ? `${horasVisibles(pulso.hh.get(p.id) ?? 0)} quinc.` : 'sin HH'}
                       </span>
@@ -424,4 +439,72 @@ function fechaCorta(iso: string | null): string | null {
   if (!iso) return null
   const [a, m, d] = iso.slice(0, 10).split('-')
   return `${d}/${m}/${a.slice(2)}`
+}
+
+/** LAS ACCIONES DE HOY — presente · quitar · tarde · salió antes. Una sola definición para la columna HOY
+ *  (escritorio) y el bloque de debajo del nombre (teléfono): dos copias del `if` serían dos reglas. */
+function AccionesHoy({ p, oferta, fecha, inicial, tactil = false }: {
+  p: { id: string; nombre_completo: string; obra_actual_id: string | null }
+  oferta: string
+  fecha: string
+  inicial?: TardanzaDeHoy
+  tactil?: boolean
+}) {
+  return (
+    <>
+                      {/* LA ACCIÓN VA DESPUÉS DEL ESTADO, NUNCA EN SU LUGAR: la celda sigue diciendo
+                          «sin marcar», y al lado ofrece resolverlo. */}
+                      {oferta === 'boton' && (
+                        <BotonPresenteHoy
+                          personaId={p.id}
+                          nombre={oracion(p.nombre_completo)}
+                          obraId={p.obra_actual_id as string}
+                          fecha={fecha}
+                          tactil={tactil}
+                        />
+                      )}
+                      {/* TARDE DIRECTO SOBRE «SIN MARCAR» (dueño, 17/09/2026): un toque declara presente con la
+                          marca. Antes había que marcar «Presente» primero y la tardanza no aparecía. */}
+                      {oferta === 'boton' && (
+                        <MarcaTardanzaHoy
+                          personaId={p.id}
+                          nombre={oracion(p.nombre_completo)}
+                          fecha={fecha}
+                          tactil={tactil}
+                          obraSinMarcar={p.obra_actual_id as string}
+                        />
+                      )}
+                      {/* DESHACER VIVE DONDE SE HIZO (dueño, 10/09/2026). El estado se dice
+                          primero y la acción va al lado, apagada: «● presente · quitar». */}
+                      {oferta === 'quitar' && (
+                        <BotonQuitarPresente
+                          personaId={p.id}
+                          nombre={oracion(p.nombre_completo)}
+                          fecha={fecha}
+                          tactil={tactil}
+                        />
+                      )}
+                      {/* LA TARDANZA, SÓLO SOBRE UN PRESENTE (dueño, 15/09/2026): «tarde · salió
+                          antes» al lado de «quitar», con el mismo peso. Sobre «sin marcar» no hay
+                          nada que haya pasado tarde, y sobre una ausencia el CHECK de la base lo
+                          rechaza: la oferta es la misma que la de quitar, no una tercera regla. */}
+                      {oferta === 'quitar' && (
+                        <MarcaTardanzaHoy
+                          personaId={p.id}
+                          nombre={oracion(p.nombre_completo)}
+                          fecha={fecha}
+                          tactil={tactil}
+                          inicial={inicial}
+                        />
+                      )}
+                      {/* SIN OBRA NO HAY BOTÓN, Y SE DICE POR QUÉ. Dos palabras apagadas: sin ellas
+                          la fila parecería la única a la que «no le anda» el botón. Marcar presente
+                          imputa la jornada a una obra, y acá no hay ninguna que sea la correcta. */}
+                      {oferta === 'sin_obra' && (
+                        <span style={{ fontSize: '11.5px', color: V.tenue, flexShrink: 0 }} data-testid="sin-obra-para-marcar">
+                          sin obra
+                        </span>
+                      )}
+    </>
+  )
 }

@@ -22,13 +22,10 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
-import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
-import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
-import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
-import { ModoDeAsistencia, solapasDePersonal } from '@/features/administracion/components/asistencia/carga/SolapasDeAsistencia'
+import { esAdministracion } from '@/features/auth/types/areas'
 import { Aviso } from '@/shared/components/ds'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
-import { PantallaV2 } from '@/shared/components/v2/segundoNivel'
+import { Migas, PantallaV2 } from '@/shared/components/v2/segundoNivel'
 import { hoyEnObra } from '@/features/jefe/services/contexto'
 import { correrDia, diaDeCarga, rotuloDelDia, TOKEN_DIA } from '@/features/administracion/services/diaDeJornada'
 import { jornadaPorDefecto } from '@/features/administracion/services/jornadaPorDefecto'
@@ -63,14 +60,7 @@ export default async function CargarAsistenciaPage({ searchParams }: {
 
   const cabecera = (
     <>
-      {/* LA SOLAPA ASISTENCIA DE PERSONAL (17/09/2026): la misma barra que Plantel y Liquidación, en compu y
-          teléfono, con Día · Quincena. Ésta es la cara Día. */}
-      <NavAdministracion />
-      <CabeceraSeccion
-        testid="vistas-personal" espacioPanel={false}
-        vistas={solapasDePersonal('asistencia', veEconomia(rol))}
-        filtros={<ModoDeAsistencia activo="dia" obra={obraFiltro} dia={fecha} />}
-      />
+      <Migas volverA="/administracion/personas" padre="Personal" actual="Cargar asistencia" />
       <div className="px-4 pb-2 pt-3 md:px-5">
         <h1 className="text-[18px] font-semibold tracking-[-0.01em] text-ink">Asistencia del día</h1>
         <p className="mt-0.5 text-[12.5px] text-muted" data-testid="jornada-del-dia">

@@ -1,7 +1,5 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { esAdministracion } from '@/features/auth/types/areas'
-import { hrefCargaDeAsistencia } from '@/features/administracion/services/cargaDeAsistencia'
 import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual, getPerfilActual } from '@/features/auth/services/authService'
 import { Aviso } from '@/shared/components/ds'
@@ -41,12 +39,6 @@ export default async function AsistenciaCampoPage({ searchParams }: {
   const user = await getUsuarioActual(supabase)
   if (!user) redirect('/login')
   const perfil = await getPerfilActual(supabase)
-  // UNA SOLA CARGA (dueño, 17/09/2026): Dirección, Administración y jefe de obra cargan en Personal >
-  // Asistencia, la misma pantalla en compu y teléfono. Esta ruta queda para el rol `campo`.
-  if (esAdministracion(perfil.data?.rol)) {
-    const sp0 = await searchParams
-    redirect(hrefCargaDeAsistencia({ obra: sp0.obra, dia: sp0.dia }))
-  }
 
   if (!puedeCargarParte(perfil.data?.rol)) {
     return (

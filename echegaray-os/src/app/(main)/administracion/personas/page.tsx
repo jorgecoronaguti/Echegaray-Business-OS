@@ -35,7 +35,7 @@
 //   tocada, y esa pantalla ya existe. DECLARADO COMO PENDIENTE, no como hecho.
 
 import { headers } from 'next/headers'
-import { notFound, redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { Aviso } from '@/shared/components/ds'
@@ -55,8 +55,6 @@ import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { TablaPersonas, type PulsoDelPlantel } from '@/features/administracion/components/TablaPersonas'
 import { FiltroDeObraEnPlantel } from '@/features/administracion/components/FiltroDeObraEnPlantel'
 import { EnlaceCargarAsistencia } from '@/features/administracion/components/asistencia/carga/EnlaceCargarAsistencia'
-import { ModoDeAsistencia, solapasDePersonal } from '@/features/administracion/components/asistencia/carga/SolapasDeAsistencia'
-import { hrefCargaDeAsistencia } from '@/features/administracion/services/cargaDeAsistencia'
 import {
   FILTROS, getConteosDeFiltro, getDirectorio, type FiltroPersonal,
 } from '@/features/administracion/services/personasService'
@@ -123,6 +121,12 @@ function armarHref(base: Busqueda, cambios: Record<string, string | undefined> =
   return enlaceConservando(RUTA, {}, { q: base.q, f: sinDefecto(base.f), obra: base.obra }, ajustados)
 }
 
+/** La solapa Asistencia y su quincena. Va aparte de `armarHref` porque no lleva ni filtro ni alta:
+ *  arrastrar `f=sin_asignar` a una grilla que no filtra por eso prometería un recorte que no ocurre.
+ *  El valor es CUALQUIER día de la quincena; el bloque la resuelve. */
+const hrefAsistencia = (quincena?: string): string =>
+  `${RUTA}?vista=asistencia${quincena ? `&quincena=${quincena}` : ''}`
+
 /** Un enlace DENTRO de Asistencia, conservando quincena, texto, modo y obra — ver
  *  `hrefDeAsistencia`, que es donde vive la regla y donde está su test. */
 const hrefAsistenciaCon = (base: Busqueda, cambios: Record<string, string | undefined>): string =>
@@ -176,10 +180,14 @@ const hrefDia = (p: { obra?: string | null; dia?: string | null }): string => {
  * base—: es no ofrecer una puerta que va a rebotar.
  */
 function vistasDe(activa: 'personal' | 'asistencia' | 'liquidacion', quincena: string | undefined, veLaPlata: boolean) {
-  // UNA PUERTA (17/09/2026): la solapa se llama Asistencia y abre la carga del DÍA, en compu y teléfono.
-  // La quincena de la liquidación viaja igual que antes.
-  return solapasDePersonal(activa, veLaPlata).map((v) =>
-    v.clave === 'liquidacion' ? { ...v, href: hrefLiquidacion(quincena) } : v)
+  const vistas = [
+    { clave: 'personal', titulo: 'Plantel', cuenta: null, activa: activa === 'personal', href: armarHref({}) },
+    { clave: 'asistencia', titulo: 'Horas', cuenta: null, activa: activa === 'asistencia', href: hrefAsistencia(quincena) },
+  ]
+  if (veLaPlata) {
+    vistas.push({ clave: 'liquidacion', titulo: 'Liquidación', cuenta: null, activa: activa === 'liquidacion', href: hrefLiquidacion(quincena) })
+  }
+  return vistas
 }
 
 /** Qué decir cuando no hay ninguna fila: una línea, y que diga qué hacer. */
@@ -359,12 +367,6 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
     )
   }
 
-  // LA CARGA DEL DÍA VIVE EN UNA SOLA PANTALLA (17/09/2026). El modo día de esta solapa —el que abría el
-  // teléfono— redirige ahí con la misma obra y el mismo día; la quincena sigue acá.
-  if (enAsistencia && modo === 'dia') {
-    redirect(hrefCargaDeAsistencia({ obra: sp.obra, dia: sp.dia }))
-  }
-
   if (enAsistencia) {
     return (
       <Marco>
@@ -376,7 +378,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             vistas={vistasDe('asistencia', sp.quincena, veLaPlata)}
             // LA CARGA ÚNICA (17/09/2026), el mismo botón que en Plantel. SIN la obra: acá `?obra=` es el
             // RÓTULO del chip de la grilla (o el id en modo día), y la pantalla nueva recorta por id.
-            filtros={<ModoDeAsistencia activo="quincena" />}
+            filtros={<EnlaceCargarAsistencia testid="ir-a-cargar-asistencia-horas" />}
             // EL BUSCADOR ES DE LA GRILLA. En la carga del día el bloque muestra UNA obra y su
             // gente —seis o siete nombres en una pantalla de 390px—: buscar ahí no filtra nada y
             // le come una línea entera a la única vista que se usa parado en la obra.
