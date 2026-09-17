@@ -30,7 +30,7 @@
 import { useState, useTransition } from 'react'
 import { useEstadoDelServidor } from '@/shared/tiempo-real/useEstadoDelServidor'
 import { V } from '@/shared/components/v2/patron'
-import { marcarTardanza } from '../services/presenciaDelDiaActions'
+import { guardarPresencia, marcarTardanza } from '../services/presenciaDelDiaActions'
 import type { TardanzaDeHoy } from '../services/pulsoDelPlantel'
 
 type Cual = 'llegoTarde' | 'salioAntes'
@@ -40,7 +40,7 @@ const ROTULO: Record<Cual, { corto: string; largo: string; testid: string }> = {
   salioAntes: { corto: 'salió antes', largo: 'Salió antes', testid: 'marcar-salio-antes' },
 }
 
-export function MarcaTardanzaHoy({ personaId, nombre, fecha, inicial, tactil = false }: {
+export function MarcaTardanzaHoy({ personaId, nombre, fecha, inicial, tactil = false, obraSinMarcar }: {
   personaId: string
   /** Sólo para el rótulo accesible: en la celda no entra repetir el nombre. */
   nombre: string
@@ -50,6 +50,11 @@ export function MarcaTardanzaHoy({ personaId, nombre, fecha, inicial, tactil = f
   inicial?: TardanzaDeHoy
   /** En el teléfono: objetivos de 40 px y rótulo largo (dueño, 17/09/2026). */
   tactil?: boolean
+  /** LA TARDANZA DIRECTA SOBRE «SIN MARCAR» (dueño, 17/09/2026: «en la computadora no puedo marcar
+   *  tardanzas»). Con la obra de hoy, «tarde» declara presente CON la marca y carga la jornada por
+   *  defecto, igual que «Presente» —llegar tarde es haber venido—. Sin esta prop, la persona ya estaba
+   *  presente y sólo se cambia la marca. */
+  obraSinMarcar?: string
 }) {
   // Lo guardado lo puede cambiar otro usuario desde el teléfono: se adopta al releer (16/09/2026).
   const [marca, setMarca] = useEstadoDelServidor<TardanzaDeHoy>(inicial ?? { llegoTarde: false, salioAntes: false })
@@ -61,9 +66,14 @@ export function MarcaTardanzaHoy({ personaId, nombre, fecha, inicial, tactil = f
     const siguiente = { ...marca, [cual]: !marca[cual] }
     setError(null)
     arrancar(async () => {
-      const r = await marcarTardanza({
-        persona_id: personaId, fecha, llego_tarde: siguiente.llegoTarde, salio_antes: siguiente.salioAntes,
-      })
+      const r = obraSinMarcar
+        ? await guardarPresencia({
+          obra_id: obraSinMarcar, fecha,
+          marcas: [{ persona_id: personaId, estado: 'presente', motivo: null, llego_tarde: siguiente.llegoTarde, salio_antes: siguiente.salioAntes }],
+        })
+        : await marcarTardanza({
+          persona_id: personaId, fecha, llego_tarde: siguiente.llegoTarde, salio_antes: siguiente.salioAntes,
+        })
       // EL ACUSE SALE DE LO QUE LA BASE DEVOLVIÓ: la acción compara la fila escrita con lo que mandó y
       // sólo responde `ok` si coinciden. Un rechazo de la policy o una quincena cerrada no pintan ámbar.
       if (r.ok) setMarca(siguiente)

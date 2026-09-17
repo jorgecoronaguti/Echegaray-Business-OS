@@ -132,7 +132,7 @@ const COLS
  * `fr` absorben la diferencia.
  */
 const COLS_MARCA
-  = 'grid-cols-[minmax(220px,1.5fr)_minmax(150px,1fr)_130px_230px_90px_70px_90px]'
+  = 'grid-cols-[minmax(220px,1.5fr)_minmax(150px,1fr)_130px_260px_90px_70px_90px]'
   + ' max-[1249px]:grid-cols-[minmax(200px,1.5fr)_minmax(0,1fr)]'
 /** En «Inactivos» no hay HOY ni HH que preguntarle a quien ya no está: la baja ocupa su lugar. */
 const COLS_BAJA
@@ -461,6 +461,17 @@ function AccionesHoy({ p, oferta, fecha, inicial, tactil = false }: {
                           obraId={p.obra_actual_id as string}
                           fecha={fecha}
                           tactil={tactil}
+                        />
+                      )}
+                      {/* TARDE DIRECTO SOBRE «SIN MARCAR» (dueño, 17/09/2026): un toque declara presente con la
+                          marca. Antes había que marcar «Presente» primero y la tardanza no aparecía. */}
+                      {oferta === 'boton' && (
+                        <MarcaTardanzaHoy
+                          personaId={p.id}
+                          nombre={oracion(p.nombre_completo)}
+                          fecha={fecha}
+                          tactil={tactil}
+                          obraSinMarcar={p.obra_actual_id as string}
                         />
                       )}
                       {/* DESHACER VIVE DONDE SE HIZO (dueño, 10/09/2026). El estado se dice
