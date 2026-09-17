@@ -48,7 +48,7 @@ test('el clic no navega al legajo: la fila entera es un enlace', () => {
 test('la marca puesta se ve con el ▲ ámbar y se explica en el title; el control es un toggle', () => {
   const src = sinComentarios(fuente('MarcaTardanzaHoy.tsx'))
   assert.match(src, /aria-pressed=\{activo\}/)
-  assert.match(src, /`▲ \$\{r\.corto\}`/)
+  assert.match(src, /`▲ \$\{tactil \? r\.largo : r\.corto\}`/)
   assert.match(src, /V\.warn/)
   assert.match(src, /pierde el presentismo de la quincena/)
   // NINGÚN HEX SUELTO: los colores salen de `V` o de un token de Tailwind.
@@ -64,8 +64,13 @@ test('en el Plantel la tardanza se ofrece SÓLO donde se ofrece quitar: sobre un
   const src = sinComentarios(fuente('TablaPersonas.tsx'))
   const usos = src.match(/<MarcaTardanzaHoy/g) ?? []
   assert.equal(usos.length, 1)
-  assert.match(src, /oferta === 'quitar' && marcar && \(\s*<MarcaTardanzaHoy/)
-  assert.match(src, /inicial=\{pulso\?\.tardanzas\.get\(p\.id\)\}/)
+  assert.match(src, /oferta === 'quitar' && \(\s*<MarcaTardanzaHoy/)
+  // UNA SOLA DEFINICIÓN DE LAS ACCIONES (`AccionesHoy`) Y DOS LUGARES (17/09/2026): la columna HOY en
+  // escritorio y el bloque táctil debajo del nombre en el teléfono. Quitar el del teléfono deja otra
+  // vez sin forma de marcar asistencia debajo de 1250 px.
+  const lugares = src.match(/<AccionesHoy p=\{p\} oferta=\{oferta\} fecha=\{marcar\.fecha\} inicial=\{pulso\?\.tardanzas\.get\(p\.id\)\}/g) ?? []
+  assert.equal(lugares.length, 2, 'las acciones de hoy tienen que estar en escritorio y en el teléfono')
+  assert.match(src, /data-testid="hoy-persona-movil"[\s\S]{0,400}<AccionesHoy[^>]*tactil \/>/)
   // La columna HOY creció para que los cuatro controles entren en una línea.
   assert.match(src, /_130px_230px_90px_70px_90px\]/)
 })

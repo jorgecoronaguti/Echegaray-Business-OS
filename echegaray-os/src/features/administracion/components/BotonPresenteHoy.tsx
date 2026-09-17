@@ -34,13 +34,15 @@ import { useState, useTransition } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { guardarPresencia } from '../services/presenciaDelDiaActions'
 
-export function BotonPresenteHoy({ personaId, nombre, obraId, fecha }: {
+export function BotonPresenteHoy({ personaId, nombre, obraId, fecha, tactil = false }: {
   personaId: string
   /** Sólo para el rótulo accesible: la celda no tiene lugar para repetir el nombre. */
   nombre: string
   /** La obra asignada HOY. Nunca llega vacía: sin obra la celda no dibuja este botón. */
   obraId: string
   fecha: string
+  /** En el teléfono: objetivo de 40 px para el pulgar (dueño, 17/09/2026). */
+  tactil?: boolean
 }) {
   const [listo, setListo] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -84,8 +86,8 @@ export function BotonPresenteHoy({ personaId, nombre, obraId, fecha }: {
       // el mensaje de la base no cabe en 150 px y sin él «no se pudo» no se puede arreglar.
       title={error ?? undefined}
       style={{
-        flexShrink: 0, height: 22, padding: '0 7px', borderRadius: 4, cursor: pendiente ? 'wait' : 'pointer',
-        fontSize: '11.5px', fontWeight: 500, lineHeight: 1, background: 'transparent',
+        flexShrink: 0, height: tactil ? 40 : 22, padding: tactil ? '0 16px' : '0 7px', borderRadius: tactil ? 6 : 4, cursor: pendiente ? 'wait' : 'pointer',
+        fontSize: tactil ? '13px' : '11.5px', fontWeight: 500, lineHeight: 1, background: 'transparent',
         // EL AMARILLO NO ES DE ESTA CELDA. La única primaria de la pantalla es «Nueva persona»;
         // diecisiete botones amarillos en una columna convertirían el acento de la marca en el
         // color del fondo. La acción se dice en grafito y el amarillo aparece SÓLO bajo el mouse,

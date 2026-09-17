@@ -22,13 +22,15 @@ import { useState, useTransition } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { quitarPresencia } from '../services/presenciaDelDiaActions'
 
-export function BotonQuitarPresente({ personaId, nombre, fecha }: {
+export function BotonQuitarPresente({ personaId, nombre, fecha, tactil = false }: {
   personaId: string
   /** Sólo para el rótulo accesible: en 150 px no entra repetir el nombre. */
   nombre: string
   /** El día que se está mirando. Lo manda el servidor: el reloj del navegador no decide qué día
    *  se está deshaciendo. */
   fecha: string
+  /** En el teléfono: objetivo de 40 px para el pulgar (dueño, 17/09/2026). */
+  tactil?: boolean
 }) {
   const [quitado, setQuitado] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -69,8 +71,9 @@ export function BotonQuitarPresente({ personaId, nombre, fecha }: {
       // pudo» no se puede arreglar — incluye el nombre de la migración cuando ése es el motivo.
       title={error ?? 'El día vuelve a «sin marcar». Las horas cargadas no se tocan.'}
       style={{
-        flexShrink: 0, background: 'transparent', border: 'none', padding: '0 2px',
-        fontSize: '11.5px', lineHeight: 1, cursor: pendiente ? 'wait' : 'pointer',
+        flexShrink: 0, background: 'transparent', border: tactil ? `1px solid ${V.lineaFuerte}` : 'none',
+        padding: tactil ? '0 14px' : '0 2px', height: tactil ? 40 : undefined, borderRadius: tactil ? 6 : undefined,
+        fontSize: tactil ? '13px' : '11.5px', lineHeight: 1, cursor: pendiente ? 'wait' : 'pointer',
         color: error ? V.neg : V.apagado,
       }}
       className={error ? undefined : 'hover:!text-[#30302F] underline-offset-2 hover:underline'}
