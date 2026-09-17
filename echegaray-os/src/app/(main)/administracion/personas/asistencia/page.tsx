@@ -19,7 +19,6 @@
 // cliente, que escribe sólo por las acciones que ya usan Plantel, Horas y `/campo/asistencia`.
 
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
@@ -27,22 +26,15 @@ import { NavAdministracion } from '@/features/administracion/components/NavAdmin
 import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
 import { ModoDeAsistencia, solapasDePersonal } from '@/features/administracion/components/asistencia/carga/SolapasDeAsistencia'
 import { Aviso } from '@/shared/components/ds'
-import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
 import { PantallaV2 } from '@/shared/components/v2/segundoNivel'
 import { hoyEnObra } from '@/features/jefe/services/contexto'
-import { correrDia, diaDeCarga, rotuloDelDia, TOKEN_DIA } from '@/features/administracion/services/diaDeJornada'
-import { jornadaPorDefecto } from '@/features/administracion/services/jornadaPorDefecto'
-import { hs } from '@/features/administracion/services/jornadaPorObra'
+import { correrDia, diaDeCarga, rotuloDelDia } from '@/features/administracion/services/diaDeJornada'
 import { puedeCambiarObraActual } from '@/features/administracion/services/planDeObraActual'
-import { candidatosParaTraer } from '@/features/administracion/services/traerALaObra'
 import { getCargaDelDia } from '@/features/administracion/services/cargaDeAsistenciaService'
 import {
   armarCargaDelDia, hrefCargaDeAsistencia, NOMBRE_SIN_OBRA, OBRA_SIN_OBRA, puedeCorregirElDia,
 } from '@/features/administracion/services/cargaDeAsistencia'
-import { ElegirDia } from '@/features/administracion/components/asistencia/ElegirDia'
-import { TraerALaObra } from '@/features/administracion/components/asistencia/TraerALaObra'
 import { CargaDeAsistencia } from '@/features/administracion/components/asistencia/carga/CargaDeAsistencia'
-import { ObraEnTelefono } from '@/features/administracion/components/asistencia/carga/ObraEnTelefono'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,29 +63,6 @@ export default async function CargarAsistenciaPage({ searchParams }: {
         vistas={solapasDePersonal('asistencia', veEconomia(rol))}
         filtros={<ModoDeAsistencia activo="dia" obra={obraFiltro} dia={fecha} />}
       />
-      <div className="px-4 pb-2 pt-3 md:px-5">
-        <h1 className="text-[18px] font-semibold tracking-[-0.01em] text-ink">Asistencia del día</h1>
-        <p className="mt-0.5 text-[12.5px] text-muted" data-testid="jornada-del-dia">
-          {jornadaPorDefecto(fecha) !== null
-            ? `Dar «Está» carga ${hs(jornadaPorDefecto(fecha) ?? 0)} h en la obra de la fila; se editan al lado.`
-            : 'Fin de semana: sin jornada por defecto, las horas se cargan a mano.'}
-        </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2 md:max-w-xl">
-          <div className="min-w-0 flex-1">
-            <ElegirDia
-              dia={fecha} rotulo={rotuloDelDia(fecha)}
-              hrefAyer={hrefCargaDeAsistencia({ dia: correrDia(fecha, -1), obra: obraFiltro, hoy })}
-              hrefManana={hrefCargaDeAsistencia({ dia: correrDia(fecha, 1), obra: obraFiltro, hoy })}
-              plantilla={hrefCargaDeAsistencia({ dia: TOKEN_DIA, obra: obraFiltro })}
-            />
-          </div>
-          {fecha !== hoy && (
-            <Link prefetch={false} href={hrefCargaDeAsistencia({ obra: obraFiltro })} data-testid="ir-a-hoy" className="inline-flex min-h-[44px] items-center px-2 text-[12.5px] text-muted underline hover:text-ink">
-              Hoy
-            </Link>
-          )}
-        </div>
-      </div>
     </>
   )
 
@@ -127,40 +96,21 @@ export default async function CargarAsistenciaPage({ searchParams }: {
       : []),
   ]
 
-  // TRAER A ALGUIEN, SÓLO CON UNA OBRA ELEGIDA Y SÓLO HOY: `TraerALaObra` mueve desde HOY, y con
-  // «Todas» no hay a qué obra traerlo. Para otro día está «Mover de obra» en la fila.
-  const obraParaTraer = obraFiltro && obraFiltro !== OBRA_SIN_OBRA && fecha === hoy && puedeMover && nombres[obraFiltro]
-    ? obraFiltro : null
-
   return (
     <PantallaV2 testid="pantalla-carga-asistencia">
       {cabecera}
-      <div className="px-4 pb-8 md:px-5">
-        {d.avisos.map((a) => <div key={a} className="pb-2"><Aviso tono="info">{a}</Aviso></div>)}
-        <ObraEnTelefono opciones={opcionesDeObra} />
-        <div className="hidden md:block">
-          <FiltrosSuaves
-            testid="filtro-obra-carga" rotulo="Obra"
-            conteo={{ n: obraFiltro ? (conteo.get(obraFiltro) ?? 0) : filas.length, total: filas.length, sustantivo: 'personas' }}
-            opciones={opcionesDeObra}
-          />
-        </div>
-        <CargaDeAsistencia
-          filas={filas} obraFiltro={obraFiltro} fecha={fecha} hoy={hoy} rotuloDia={rotuloDelDia(fecha)}
-          obras={activas} nombres={nombres} cierre={d.cierre}
-          permiso={puedeCorregirElDia({ rol, fecha, hoy })} puedeMover={puedeMover} certificados={d.certificados}
-        />
-        {obraParaTraer && (
-          <TraerALaObra
-            obraId={obraParaTraer} obraNombre={nombres[obraParaTraer]}
-            candidatos={candidatosParaTraer({
-              plantel: d.personas.map((p) => ({ id: p.id, nombre_completo: p.nombre })),
-              asignaciones: d.asignaciones, nombresDeObra: nombres, obraId: obraParaTraer, fecha,
-            })}
-            error={null}
-          />
-        )}
-      </div>
+      {/* LA BARRA, LA TABLA Y EL PANEL SON DEL CLIENTE: el rediseño aprobado el 17/09/2026. «Traer a alguien»
+          ya no es un bloque aparte: se mueve a cualquiera desde su panel, buscándolo en «Todas las obras». */}
+      {d.avisos.map((a) => <div key={a} className="px-4 pt-2 md:px-8"><Aviso tono="info">{a}</Aviso></div>)}
+      <CargaDeAsistencia
+        filas={filas} obraFiltro={obraFiltro} fecha={fecha} hoy={hoy} rotuloDia={rotuloDelDia(fecha)}
+        obras={activas} nombres={nombres} cierre={d.cierre}
+        permiso={puedeCorregirElDia({ rol, fecha, hoy })} puedeMover={puedeMover} certificados={d.certificados}
+        hrefAyer={hrefCargaDeAsistencia({ dia: correrDia(fecha, -1), obra: obraFiltro, hoy })}
+        hrefManana={hrefCargaDeAsistencia({ dia: correrDia(fecha, 1), obra: obraFiltro, hoy })}
+        hrefHoy={fecha !== hoy ? hrefCargaDeAsistencia({ obra: obraFiltro }) : null}
+        opcionesDeObra={opcionesDeObra}
+      />
     </PantallaV2>
   )
 }

@@ -340,3 +340,58 @@ export function hrefCargaDeAsistencia({ dia, obra, hoy }: { dia?: string | null;
   const qs = p.toString()
   return `${RUTA_CARGA_ASISTENCIA}${qs ? `?${qs}` : ''}`
 }
+
+// ═══ EL REDISEÑO APROBADO (dueño, 17/09/2026) ═══
+//
+// Una acción primaria por pantalla, el estado en un control segmentado y todo lo excepcional —mover,
+// planificar, motivo, repartir horas— en el panel de la persona. Las tres reglas de abajo son lo que
+// esa pantalla decide y no puede quedar escrito dos veces (compu y teléfono).
+
+/**
+ * «MARCAR PRESENTES · N SIN MARCAR»: a quién marca la acción primaria, agrupado por la obra donde se
+ * imputa. Sólo a quien estaba sin marcar —no pisa un «Ausente» ni una licencia— y sólo con obra: la
+ * jornada por defecto se imputa a esa obra, y sin obra habría que adivinarla.
+ */
+export function sinMarcarPorObra(
+  filas: readonly FilaDeCarga[], casillas: Readonly<Record<string, CasillaPresencia>>,
+  obraDe: (f: FilaDeCarga) => string | null,
+): { porObra: Map<string, string[]>; sinObra: number } {
+  const porObra = new Map<string, string[]>()
+  let sinObra = 0
+  for (const f of filas) {
+    if ((casillas[f.persona.id] ?? f.casilla).estado) continue
+    const obra = obraDe(f)
+    if (!obra) { sinObra += 1; continue }
+    porObra.set(obra, [...(porObra.get(obra) ?? []), f.persona.id])
+  }
+  return { porObra, sinObra }
+}
+
+/**
+ * EL BOTÓN GRANDE DEL TELÉFONO. Sin marcar: «Presente» y un toque lo marca. Con cualquier marca abre la
+ * ficha —nunca desmarca—: en la obra, con el pulgar, un toque de más no puede borrar un presente con sus
+ * horas. Quitarlo es un gesto deliberado dentro de la ficha.
+ */
+export function botonDelTelefono(c: CasillaPresencia): { rotulo: string; accion: 'marcar' | 'abrir'; tono: 'pos' | 'neg' | 'neutro' | 'vacio' } {
+  if (c.estado === 'presente') return { rotulo: '✓ Presente', accion: 'abrir', tono: 'pos' }
+  if (c.estado === 'ausente') return { rotulo: 'Ausente', accion: 'abrir', tono: 'neg' }
+  if (c.estado === 'licencia') return { rotulo: 'Licencia', accion: 'abrir', tono: 'neutro' }
+  return { rotulo: 'Presente', accion: 'marcar', tono: 'vacio' }
+}
+
+/**
+ * LO QUE VIAJA A `cambiarObraActual` DESDE EL PANEL: mover desde hoy o programar un pase desde un día
+ * futuro, con o sin día de vuelta. Desde hoy y sin vuelta va SIN `desde` —la acción usa su propio hoy, ver
+ * `entradaDeMover`—; con vuelta o desde un día futuro viajan las dos fechas. La validación es la misma
+ * de la acción (`validarProgramacion`): el panel no ofrece un pase que la base va a rechazar.
+ */
+export function entradaDePase({ personaId, destino, desde, hasta, hoy }: {
+  personaId: string; destino: string; desde: string; hasta: string | null; hoy: string
+}): { ok: true; entrada: { persona_id: string; obra_id: string | null; desde?: string; hasta?: string } } | { ok: false; error: string } {
+  if (!destino) return { ok: false, error: 'Elegí a qué obra va.' }
+  const problema = validarProgramacion({ hoy, desde, hasta })
+  if (problema) return { ok: false, error: problema }
+  const obra_id = destino === DESTINO_SIN_OBRA ? null : destino
+  if (desde === hoy && !hasta) return { ok: true, entrada: { persona_id: personaId, obra_id } }
+  return { ok: true, entrada: { persona_id: personaId, obra_id, desde, ...(hasta ? { hasta } : {}) } }
+}

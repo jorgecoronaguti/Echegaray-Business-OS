@@ -1,83 +1,122 @@
 'use client'
 
-// LOS CONTROLES DE UNA FILA DE LA CARGA ÚNICA — botón de marca, horas de una obra y mover de obra.
+// LOS CONTROLES DE LA CARGA DEL DÍA — estado, tardanza y horas. Una sola definición para la fila de la
+// compu, la lista del teléfono y el panel/ficha de la persona: dos versiones del mismo botón terminan
+// diciendo dos cosas distintas del mismo día.
 //
-// Cada uno llama a una acción que YA existía y que ya usan Plantel, Horas y `/campo/asistencia`: esta
-// pantalla no agrega ni una escritura. Lo que agrega es juntarlas en la misma fila, para que marcar,
-// corregir las horas y cambiar de obra no sean tres pantallas con tres modelos mentales.
-//
-// Objetivos táctiles de 44 px en angosto y 36 px desde `md`: la misma persona usa esto parada en la
-// obra con el teléfono y sentada en la oficina con el mouse.
+// Cada control llama a una acción que YA existía (`guardarPresencia`, `quitarPresencia`, `guardarJornada`):
+// esta pantalla no agrega ni una escritura.
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { guardarJornada } from '@/features/administracion/services/jornadaPorObraActions'
-import { cambiarObraActual } from '@/features/administracion/services/obraActualActions'
 import { hs } from '@/features/administracion/services/jornadaPorObra'
-import { DESTINO_SIN_OBRA, entradaDeMover, envioDeHoras, puedeMoverDeObraEl } from '@/features/administracion/services/cargaDeAsistencia'
-import { PlanDeObraPanel } from '../../PlanDeObraPanel'
-
-// `pos` sólo para el estado positivo, `neg` sólo para el problema, ámbar para la tardanza (regla del
-// dueño). Mismos tonos que `FormPresencia`: dos lenguajes para el mismo botón confundirían.
-const TONOS = {
-  pos: 'border-pos bg-pos-soft text-pos',
-  neg: 'border-neg bg-neg-soft text-neg',
-  neutro: 'border-line-strong bg-surface-sunken text-ink',
-  warn: 'border-warn bg-warn-soft text-warn',
-} as const
+import { envioDeHoras } from '@/features/administracion/services/cargaDeAsistencia'
+import type { CasillaPresencia, EstadoPresencia } from '@/features/administracion/services/presenciaDelDia'
 
 export const ALTO = 'min-h-[44px] md:min-h-[36px]'
 
-export function BotonMarca({ rotulo, activo, tono, onClick, testid, aria, deshabilitado }: {
-  rotulo: string
-  activo: boolean
-  tono: keyof typeof TONOS
-  onClick: () => void
-  testid: string
-  aria: string
-  deshabilitado?: boolean
-}) {
-  return (
-    <button
-      type="button" aria-label={aria} aria-pressed={activo} data-testid={testid}
-      onClick={onClick} disabled={deshabilitado}
-      className={`${ALTO} flex-1 rounded-control border px-2 text-[13px] font-medium transition-colors disabled:opacity-50 md:flex-none md:px-3 ${
-        activo ? TONOS[tono] : 'border-line bg-surface text-muted hover:text-ink'
-      }`}
-    >
-      {rotulo}
-    </button>
-  )
-}
-
 export type EstadoDeGuardado = { tipo: 'guardando' | 'ok' | 'error'; texto?: string } | null
+
+export interface ObraElegible { id: string; nombre: string }
 
 export function LineaDeGuardado({ estado, testid }: { estado: EstadoDeGuardado; testid: string }) {
   if (!estado) return null
   return (
-    <p
+    <span
       className={`text-[12px] ${estado.tipo === 'error' ? 'text-neg' : 'text-muted'}`}
       data-testid={testid} data-tipo={estado.tipo} role={estado.tipo === 'error' ? 'alert' : undefined}
     >
       {estado.tipo === 'guardando' ? 'guardando…' : estado.tipo === 'ok' ? (estado.texto ? `✓ ${estado.texto}` : '✓ guardado') : `No se guardó: ${estado.texto}`}
-    </p>
+    </span>
+  )
+}
+
+/** El indicador sutil de la fila: un glifo, con el texto entero en el `title`. El detalle está en el panel. */
+export function MarcaDeGuardado({ estado }: { estado: EstadoDeGuardado }) {
+  if (!estado) return null
+  const glifo = estado.tipo === 'guardando' ? '…' : estado.tipo === 'ok' ? '✓' : '!'
+  const titulo = estado.tipo === 'error' ? `No se guardó: ${estado.texto}` : estado.tipo === 'ok' ? 'guardado' : 'guardando…'
+  return (
+    <span
+      title={titulo} aria-label={titulo} data-testid="guardado-fila" data-tipo={estado.tipo}
+      className={`inline-block w-3 text-center text-[12px] ${estado.tipo === 'error' ? 'font-semibold text-neg' : 'text-faint'}`}
+    >
+      {glifo}
+    </span>
+  )
+}
+
+const ESTADOS: { e: EstadoPresencia; rotulo: string; activo: string }[] = [
+  { e: 'presente', rotulo: 'Presente', activo: 'bg-pos-soft text-pos font-medium' },
+  { e: 'ausente', rotulo: 'Ausente', activo: 'bg-neg-soft text-neg font-medium' },
+  { e: 'licencia', rotulo: 'Licencia', activo: 'bg-surface-sunken text-ink font-medium' },
+]
+
+/**
+ * PRESENTE · AUSENTE · LICENCIA como UN control segmentado: son respuestas excluyentes a la misma
+ * pregunta. Tocar el activo lo desmarca (`casillaTrasToque`). `grande` es el del panel y la ficha.
+ */
+export function EstadoSegmentado({ estado, nombre, onElegir, deshabilitado, grande = false }: {
+  estado: EstadoPresencia | null; nombre: string; onElegir: (e: EstadoPresencia) => void
+  deshabilitado?: boolean; grande?: boolean
+}) {
+  const alto = grande ? 'h-12 md:h-10 text-[14px] md:text-[13px]' : 'h-[30px] px-3 text-[12px]'
+  return (
+    <div
+      role="group" aria-label={`Estado de ${nombre}`} data-testid="estado-segmentado"
+      className={`${grande ? 'grid w-full grid-cols-3' : 'inline-flex w-max'} overflow-hidden rounded-control border border-line bg-surface`}
+    >
+      {ESTADOS.map(({ e, rotulo, activo }, i) => (
+        <button
+          key={e} type="button" disabled={deshabilitado} aria-pressed={estado === e} data-testid={`estado-${e}`}
+          aria-label={`${nombre}: ${rotulo}`} onClick={() => onElegir(e)}
+          className={`${alto} ${i > 0 ? 'border-l border-line' : ''} transition-colors disabled:opacity-50 ${
+            estado === e ? activo : 'text-muted hover:bg-surface-quiet hover:text-ink'
+          }`}
+        >
+          {rotulo}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+const TARDANZAS = [['llego_tarde', 'Llegó tarde'], ['salio_antes', 'Salió antes']] as const
+
+/** Llegó tarde · Salió antes. Activos sólo sobre presente o sin marcar —tocar declara presente—. */
+export function ChipsDeTardanza({ casilla, nombre, activos, onTocar, grande = false }: {
+  casilla: CasillaPresencia; nombre: string; activos: boolean
+  onTocar: (marca: 'llego_tarde' | 'salio_antes') => void; grande?: boolean
+}) {
+  const forma = grande ? 'h-11 md:h-8 rounded-control md:rounded-full px-3 text-[14px] md:text-[12px]' : 'h-7 rounded-full px-2.5 text-[12px]'
+  return (
+    <div className={grande ? 'grid grid-cols-2 gap-2 md:flex' : 'flex gap-2'} role="group" aria-label={`Tardanza de ${nombre}`}>
+      {TARDANZAS.map(([marca, rotulo]) => {
+        const on = casilla[marca] === true && casilla.estado === 'presente'
+        return (
+          <button
+            key={marca} type="button" disabled={!activos} aria-pressed={on} data-testid={marca.replace('_', '-')}
+            aria-label={`${nombre} ${rotulo.toLowerCase()}`} onClick={() => onTocar(marca)}
+            className={`${forma} border transition-colors disabled:opacity-40 ${on ? 'border-warn bg-warn-soft text-warn' : 'border-line bg-surface text-faint hover:text-ink'}`}
+          >
+            {on && grande ? `▲ ${rotulo}` : rotulo}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
 /**
  * LAS HORAS DE UNA PERSONA EN UNA OBRA, ESE DÍA. Guarda al salir del campo o con Enter, por
- * `guardarJornada` —la misma puerta que la carga del teléfono—: vacío es «sin horas» (se vacía), cero
- * es un error, y el número corrige. La jornada por defecto va como placeholder, nunca como valor.
+ * `guardarJornada`: vacío es «sin horas», cero es un error, el número corrige. La jornada por defecto
+ * va como placeholder, nunca como valor. `compacto` es la celda de la fila: sin rótulo y con el acuse
+ * reducido a un glifo.
  */
-export function HorasDeObra({ personaId, nombre, obraId, obraNombre, fecha, horas, sugerencia, deshabilitado }: {
-  personaId: string
-  nombre: string
-  obraId: string
-  obraNombre: string
-  fecha: string
-  horas: number | null
-  sugerencia: number | null
-  deshabilitado?: boolean
+export function HorasDeObra({ personaId, nombre, obraId, obraNombre, fecha, horas, sugerencia, deshabilitado, compacto = false }: {
+  personaId: string; nombre: string; obraId: string; obraNombre: string; fecha: string
+  horas: number | null; sugerencia: number | null; deshabilitado?: boolean; compacto?: boolean
 }) {
   const router = useRouter()
   const servidor = horas === null ? '' : hs(horas)
@@ -100,100 +139,28 @@ export function HorasDeObra({ personaId, nombre, obraId, obraNombre, fecha, hora
     })
   }
 
-  return (
-    <label className="flex flex-col gap-1" data-testid="horas-de-obra" data-obra={obraId}>
-      <span className="text-[11px] text-faint">{obraNombre}</span>
-      <input
-        inputMode="decimal" value={borrador.texto} disabled={deshabilitado}
-        placeholder={sugerencia === null ? 'h' : `${hs(sugerencia)} h`}
-        aria-label={`Horas de ${nombre} en ${obraNombre}`}
-        onChange={(e) => { setBorrador({ ...borrador, texto: e.target.value }); setEstado(null) }}
-        onBlur={confirmar}
-        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-        className={`${ALTO} w-20 rounded-control border border-line bg-surface px-2 text-right font-mono text-[14px] tabular-nums text-ink disabled:opacity-50`}
-      />
-      <LineaDeGuardado estado={estado} testid="estado-horas" />
-    </label>
+  const input = (
+    <input
+      inputMode="decimal" value={borrador.texto} disabled={deshabilitado}
+      placeholder={sugerencia === null ? '—' : hs(sugerencia)}
+      aria-label={`Horas de ${nombre} en ${obraNombre}`} data-testid="input-horas"
+      onChange={(e) => { setBorrador({ ...borrador, texto: e.target.value }); setEstado(null) }}
+      onBlur={confirmar}
+      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+      onClick={(e) => e.stopPropagation()}
+      className={`${compacto ? 'h-8 w-14' : 'h-11 w-24 md:h-9 md:w-[88px]'} rounded-control border px-2 text-right font-mono text-[13px] tabular-nums text-ink disabled:opacity-50 ${
+        estado?.tipo === 'error' ? 'border-neg' : compacto ? 'border-transparent bg-transparent hover:border-line focus:border-line focus:bg-surface' : 'border-line bg-surface'
+      }`}
+    />
   )
-}
-
-export interface ObraElegible { id: string; nombre: string }
-
-/**
- * MOVER A ALGUIEN DE OBRA (dueño, 17/09/2026: «falta contemplar mover gente de un lugar a otro por
- * mobile, asignar a días siguientes desde compu»).
- *
- * Desde el día que se está mirando —si es hoy o futuro— con `cambiarObraActual`, la misma acción del
- * desplegable de la grilla y de «Traer a alguien». Para planificar tramos (desde / hasta, cancelar un
- * pase) se abre `PlanDeObraPanel`, el panel que ya existe en la grilla. Hacia atrás no se ofrece: la
- * acción lo rechaza, y corregir un día pasado es la corrección de jornada de Horas.
- */
-export function MoverDeObra({ persona, obraActual, fecha, hoy, obras, rotuloDia }: {
-  persona: { id: string; nombre: string }
-  obraActual: string | null
-  fecha: string
-  hoy: string
-  obras: ObraElegible[]
-  rotuloDia: string
-}) {
-  const router = useRouter()
-  const [abierto, setAbierto] = useState(false)
-  const [plan, setPlan] = useState(false)
-  const [destino, setDestino] = useState('')
-  const [estado, setEstado] = useState<EstadoDeGuardado>(null)
-  const [pendiente, arrancar] = useTransition()
-  const sePuede = puedeMoverDeObraEl(fecha, hoy)
-
-  const mover = () => {
-    const entrada = entradaDeMover({ personaId: persona.id, destino, fecha, hoy })
-    if (!entrada) return
-    setEstado({ tipo: 'guardando' })
-    arrancar(async () => {
-      const r = await cambiarObraActual(entrada)
-      if (r.ok) { setEstado({ tipo: 'ok', texto: r.mensaje }); setAbierto(false); router.refresh() }
-      else setEstado({ tipo: 'error', texto: r.error })
-    })
+  if (compacto) {
+    return <span className="inline-flex items-center justify-end gap-1" data-testid="horas-de-obra" data-obra={obraId}>{input}<MarcaDeGuardado estado={estado} /></span>
   }
-
   return (
-    <div className="contents" data-testid="mover-de-obra">
-      <button
-        type="button" onClick={() => setAbierto((a) => !a)} aria-expanded={abierto} data-testid="abrir-mover"
-        className={`${ALTO} inline-flex items-center text-[12px] text-ink underline hover:text-ink-soft`}
-      >
-        {obraActual ? 'Mover de obra' : 'Asignar a obra'}
-      </button>
-      <button
-        type="button" onClick={() => setPlan(true)} data-testid="abrir-plan-obra"
-        className={`${ALTO} inline-flex items-center text-[12px] text-muted underline hover:text-ink`}
-      >
-        Planificar días siguientes
-      </button>
-      {abierto && (sePuede ? (
-        <div className="flex w-full flex-wrap items-center gap-2 py-1">
-          <select
-            value={destino} onChange={(e) => setDestino(e.target.value)} data-testid="destino-mover"
-            aria-label={`Obra a la que va ${persona.nombre}`}
-            className={`${ALTO} min-w-0 flex-1 rounded-control border border-line bg-surface px-2 text-[13px] text-ink md:flex-none`}
-          >
-            <option value="" disabled>Elegí la obra</option>
-            {obras.filter((o) => o.id !== obraActual).map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
-            {obraActual && <option value={DESTINO_SIN_OBRA}>Sin obra (cierra la asignación)</option>}
-          </select>
-          <button
-            type="button" onClick={mover} disabled={pendiente || !destino} data-testid="confirmar-mover"
-            className={`${ALTO} rounded-control border border-ink bg-ink px-3 text-[13px] text-canvas disabled:opacity-50`}
-          >
-            {fecha === hoy ? 'Mover desde hoy' : `Mover desde el ${rotuloDia}`}
-          </button>
-        </div>
-      ) : (
-        <p className="w-full text-[12px] text-muted" data-testid="mover-dia-pasado">
-          Un día pasado no se mueve de obra: se corrige la jornada desde Horas.
-        </p>
-      ))}
-      <div className="w-full"><LineaDeGuardado estado={estado} testid="estado-mover" /></div>
-      {plan && <PlanDeObraPanel persona={persona} obras={obras} hoy={hoy} onCerrar={() => setPlan(false)} />}
+    <div className="contents" data-testid="horas-de-obra" data-obra={obraId}>
+      <span className="text-[13px] text-ink md:text-[13px]">{obraNombre}</span>
+      {input}
+      {estado && <span className="col-span-2 -mt-1"><LineaDeGuardado estado={estado} testid="estado-horas" /></span>}
     </div>
   )
 }

@@ -1,18 +1,19 @@
 'use client'
 
-// LA CARGA ÚNICA DE ASISTENCIA — el cliente: resumen, buscador, grupos por obra y cada toque guardado.
+// LA CARGA DEL DÍA — el rediseño aprobado por el dueño el 17/09/2026: una barra con UNA acción primaria,
+// la tabla compacta por obra en la compu, la lista con un botón grande en el teléfono, y todo lo
+// excepcional (motivo, horas repartidas, mover de obra, pases) en el panel de la persona.
 //
-// ═══ CADA TOQUE SE GUARDA AL INSTANTE, CON LA MISMA REGLA QUE EL TELÉFONO ═══
+// ═══ CADA TOQUE SE GUARDA AL INSTANTE, CON LA MISMA REGLA QUE ANTES ═══
 //
 // `casillaTrasToque` decide la casilla y `marcaDeLaCasilla` qué se escribe; `guardarPresencia` y
-// `quitarPresencia` escriben. Es exactamente lo que hace `FormPresencia` desde el 17/09: si la base
-// rechaza, la casilla vuelve a como estaba y la fila dice por qué.
+// `quitarPresencia` escriben. Si la base rechaza, la casilla vuelve a como estaba y se dice por qué.
 //
 // ═══ TIEMPO REAL SIN PISAR LO QUE SE ESTÁ TOCANDO ═══
 //
 // El layout de Personal refresca la página cuando cambia `asistencia_dia`, `registros_hh` u
 // `obra_asignacion`. Las casillas se fusionan por persona con `fusionarConElServidor`: lo que otro
-// usuario guardó entra, lo que esta persona tocó y todavía no volvió del servidor se respeta.
+// usuario guardó entra, lo que acá se tocó y todavía no volvió del servidor se respeta.
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
@@ -23,32 +24,23 @@ import {
 } from '@/features/administracion/services/presenciaDelDia'
 import { guardarPresencia, quitarPresencia } from '@/features/administracion/services/presenciaDelDiaActions'
 import {
-  agruparPorObra, filtrarCarga, queSePuedeElDia, resumenDeCarga, type FilaDeCarga as Fila, type GrupoDeCarga, type PermisoDelDia,
+  agruparPorObra, filtrarCarga, queSePuedeElDia, resumenDeCarga, sinMarcarPorObra,
+  type FilaDeCarga as Fila, type GrupoDeCarga, type PermisoDelDia,
 } from '@/features/administracion/services/cargaDeAsistencia'
-import { FilaDeCarga } from './FilaDeCarga'
-import { ALTO, type EstadoDeGuardado, type ObraElegible } from './ControlesDeFila'
+import type { EstadoDeGuardado, ObraElegible } from './ControlesDeFila'
+import { BarraDelDia, type OpcionDeObra } from './BarraDelDia'
+import { TablaDelDia } from './TablaDelDia'
+import { ListaDelDia } from './ListaDelDia'
+import { PanelDeLaPersona } from './PanelDeLaPersona'
+import type { AccionesDeLaCarga, DiaDeLaCarga } from './tipos'
 
 type Casillas = Record<string, CasillaPresencia>
 
 const casillasDe = (filas: readonly Fila[]): Casillas =>
   Object.fromEntries(filas.map((f) => [f.persona.id, f.casilla]))
 
-export function CargaDeAsistencia({ filas, obraFiltro, fecha, hoy, rotuloDia, obras, nombres, cierre, permiso, puedeMover, certificados }: {
-  filas: Fila[]
-  /** `persona_id` → nombre del certificado médico que cubre el día. */
-  certificados: Record<string, string>
-  obraFiltro: string | null
-  fecha: string
-  hoy: string
-  rotuloDia: string
-  obras: ObraElegible[]
-  nombres: Record<string, string>
-  cierre: string | null
-  permiso: PermisoDelDia
-  puedeMover: boolean
-}) {
-  const router = useRouter()
-  const [q, setQ] = useState('')
+/** Las casillas locales, fusionadas con cada lectura nueva del servidor. */
+function useCasillas(filas: readonly Fila[]) {
   const base = useMemo(() => casillasDe(filas), [filas])
   const [casillas, setCasillas] = useState<Casillas>(base)
   const [vista, setVista] = useState(() => ({ huella: huellaDe(base), base }))
@@ -57,113 +49,105 @@ export function CargaDeAsistencia({ filas, obraFiltro, fecha, hoy, rotuloDia, ob
     setVista({ huella: huellaDe(base), base })
     setCasillas((prev) => fusionarConElServidor(prev, anterior, base))
   }
-  const [estados, setEstados] = useState<Record<string, EstadoDeGuardado>>({})
+  return [casillas, setCasillas] as const
+}
+
+export function CargaDeAsistencia(props: {
+  filas: Fila[]; obraFiltro: string | null; fecha: string; hoy: string; rotuloDia: string
+  obras: ObraElegible[]; nombres: Record<string, string>; cierre: string | null; permiso: PermisoDelDia
+  puedeMover: boolean; certificados: Record<string, string>
+  hrefAyer: string; hrefManana: string; hrefHoy: string | null; opcionesDeObra: OpcionDeObra[]
+}) {
+  const { filas, obraFiltro, fecha, nombres } = props
+  const router = useRouter()
+  const [q, setQ] = useState('')
+  const [casillas, setCasillas] = useCasillas(filas)
+  const [guardados, setGuardados] = useState<Record<string, EstadoDeGuardado>>({})
+  const [obrasElegidas, setObrasElegidas] = useState<Record<string, string>>({})
+  const [abierta, setAbierta] = useState<string | null>(null)
   const [acuse, setAcuse] = useState<{ ok: boolean; texto: string } | null>(null)
   const [, arrancar] = useTransition()
 
   const visibles = filtrarCarga(filas, { obra: obraFiltro, q })
   const grupos = agruparPorObra(visibles, nombres)
-  const resumen = resumenDeCarga(visibles.map((f) => casillas[f.persona.id] ?? f.casilla))
-  const sePuede = queSePuedeElDia({ permiso, cierre })
-  const soloLectura = sePuede.marcar ? null : sePuede.motivo
+  const casillaDe = (f: Fila) => casillas[f.persona.id] ?? f.casilla
+  const obraDe = (f: Fila) => f.obraId ?? obrasElegidas[f.persona.id] ?? null
+  const resumen = resumenDeCarga(visibles.map(casillaDe))
+  const sePuede = queSePuedeElDia({ permiso: props.permiso, cierre: props.cierre })
+  const dia: DiaDeLaCarga = {
+    fecha, hoy: props.hoy, rotuloDia: props.rotuloDia, obras: props.obras, nombres, sePuede,
+    puedeMover: props.puedeMover, certificados: props.certificados,
+  }
+  const guardar = (id: string, e: EstadoDeGuardado) => setGuardados((prev) => ({ ...prev, [id]: e }))
 
-  const marcarEstado = (id: string, e: EstadoDeGuardado) => setEstados((prev) => ({ ...prev, [id]: e }))
-
-  const onToque = (id: string, obraId: string, toque: ToqueDePresencia) => {
-    const antes = casillas[id] ?? { estado: null, motivo: null }
+  const tocar = (f: Fila, toque: ToqueDePresencia) => {
+    const id = f.persona.id
+    const obraId = obraDe(f)
+    if (!obraId || !sePuede.marcar) return
+    const antes = casillaDe(f)
     const despues = casillaTrasToque(antes, toque)
     const marca = marcaDeLaCasilla(id, despues)
     setAcuse(null)
     setCasillas((prev) => ({ ...prev, [id]: despues }))
-    marcarEstado(id, { tipo: 'guardando' })
+    guardar(id, { tipo: 'guardando' })
     arrancar(async () => {
       const r = marca
         ? await guardarPresencia({ obra_id: obraId, fecha, marcas: [marca] })
-        // DECISIÓN 3: en esta pantalla quitar el presente retira la jornada por defecto que nadie tocó.
+        // DECISIÓN 3: quitar el presente retira la jornada por defecto que nadie tocó.
         : antes.estado ? await quitarPresencia({ persona_id: id, fecha, quitar_jornada_por_defecto: true }) : { ok: true as const, mensaje: '' }
-      if (r.ok) { marcarEstado(id, { tipo: 'ok' }); router.refresh() }
-      else { setCasillas((prev) => ({ ...prev, [id]: antes })); marcarEstado(id, { tipo: 'error', texto: r.error }) }
+      if (r.ok) { guardar(id, { tipo: 'ok' }); router.refresh() }
+      else { setCasillas((prev) => ({ ...prev, [id]: antes })); guardar(id, { tipo: 'error', texto: r.error }) }
     })
   }
 
-  // «MARCAR A TODOS» DEL GRUPO: sólo a quien estaba sin marcar, en una escritura. No pisa un «No vino».
-  const marcarTodos = (g: GrupoDeCarga) => {
-    if (!g.obraId) return
-    const obraId = g.obraId
-    const sinMarcar = g.filas.filter((f) => !(casillas[f.persona.id] ?? f.casilla).estado).map((f) => f.persona.id)
-    if (sinMarcar.length === 0) { setAcuse({ ok: true, texto: `En ${g.nombre} ya estaban todos marcados.` }); return }
+  // «MARCAR PRESENTES»: sólo a quien estaba sin marcar, una escritura por obra. No pisa un «Ausente».
+  const marcarSinMarcar = (lista: readonly Fila[], rotulo: string) => {
+    const { porObra, sinObra } = sinMarcarPorObra(lista, casillas, obraDe)
+    if (porObra.size === 0) { setAcuse({ ok: true, texto: sinObra ? `${sinObra} sin obra: se asignan desde su detalle.` : `${rotulo}: ya estaban todos marcados.` }); return }
     const previas = casillas
-    setCasillas((prev) => ({ ...prev, ...Object.fromEntries(sinMarcar.map((id) => [id, { estado: 'presente' as const, motivo: null }])) }))
+    const ids = [...porObra.values()].flat()
+    setCasillas((prev) => ({ ...prev, ...Object.fromEntries(ids.map((id) => [id, { estado: 'presente' as const, motivo: null }])) }))
     arrancar(async () => {
-      const r = await guardarPresencia({ obra_id: obraId, fecha, marcas: sinMarcar.map((persona_id) => ({ persona_id, estado: 'presente', motivo: null })) })
-      setAcuse(r.ok ? { ok: true, texto: `${g.nombre}: ${r.mensaje}` } : { ok: false, texto: `${g.nombre}: ${r.error}` })
-      if (r.ok) router.refresh()
-      else setCasillas(previas)
+      const resultados = await Promise.all([...porObra.entries()].map(([obra_id, personas]) =>
+        guardarPresencia({ obra_id, fecha, marcas: personas.map((persona_id) => ({ persona_id, estado: 'presente' as const, motivo: null })) })))
+      const falla = resultados.find((r) => !r.ok)
+      if (falla && !falla.ok) { setCasillas(previas); setAcuse({ ok: false, texto: `${rotulo}: ${falla.error}` }); return }
+      setAcuse({ ok: true, texto: `${rotulo}: ${ids.length} marcados presentes.${sinObra ? ` ${sinObra} sin obra quedaron sin marcar.` : ''}` })
+      router.refresh()
     })
   }
+
+  const acciones: AccionesDeLaCarga = {
+    casillaDe, obraDe, tocar, guardadoDe: (id) => guardados[id] ?? null,
+    elegirObra: (id, obra) => setObrasElegidas((prev) => ({ ...prev, [id]: obra })),
+    abrir: setAbierta,
+    marcarGrupo: (g: GrupoDeCarga) => marcarSinMarcar(g.filas, g.nombre),
+  }
+  const filaAbierta = abierta ? filas.find((f) => f.persona.id === abierta) ?? null : null
+  const sinMarcar = resumen.sinMarcar
 
   return (
-    <div data-testid="carga-de-asistencia">
-      <div className="flex flex-col gap-3 pb-3 md:flex-row md:items-center md:justify-between">
-        <p className="flex flex-wrap gap-x-1 gap-y-0.5 text-[13px] text-ink" data-testid="resumen-del-dia">
-          <Cifra n={resumen.presentes} rotulo="presentes" clase="text-pos" />
-          <Cifra n={resumen.ausentes} rotulo="ausentes" clase={resumen.ausentes > 0 ? 'text-neg' : 'text-muted'} />
-          <Cifra n={resumen.licencias} rotulo="licencia" clase="text-muted" />
-          <Cifra n={resumen.sinMarcar} rotulo="sin marcar" clase={resumen.sinMarcar > 0 ? 'text-warn' : 'text-muted'} />
-          <Cifra n={resumen.conTardanza} rotulo="con tardanza" clase={resumen.conTardanza > 0 ? 'text-warn' : 'text-muted'} ultima />
-        </p>
-        <input
-          type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar persona o categoría"
-          aria-label="Buscar persona o categoría" data-testid="buscar-carga"
-          className={`${ALTO} w-full rounded-control border border-line bg-surface px-3 text-[16px] text-ink md:w-64 md:text-[13px]`}
-        />
-      </div>
-
-      {sePuede.motivo && <div className="pb-3"><Aviso tono="info" testid="dia-solo-lectura">{sePuede.motivo}</Aviso></div>}
-      {acuse && <div className="pb-3"><Aviso tono={acuse.ok ? 'info' : 'neg'} testid="acuse-carga">{acuse.texto}</Aviso></div>}
-
-      {grupos.length === 0 && (
-        <p className="border-t border-line py-6 text-center text-[13px] text-muted" data-testid="carga-vacia">
+    <div data-testid="carga-de-asistencia" className="pb-24 md:pb-8">
+      <BarraDelDia
+        rotuloDia={props.rotuloDia} esHoy={fecha === props.hoy} hrefAyer={props.hrefAyer} hrefManana={props.hrefManana} hrefHoy={props.hrefHoy}
+        opciones={props.opcionesDeObra} q={q} onBuscar={setQ} resumen={resumen}
+        sinMarcar={sinMarcar} puedeMarcar={sePuede.marcar} onMarcar={() => marcarSinMarcar(visibles, obraFiltro ? (nombres[obraFiltro] ?? 'La obra') : 'Todas las obras')}
+      />
+      {sePuede.motivo && <div className="px-4 pb-3 md:px-8"><Aviso tono="info" testid="dia-solo-lectura">{sePuede.motivo}</Aviso></div>}
+      {acuse && <div className="px-4 pb-3 md:px-8"><Aviso tono={acuse.ok ? 'info' : 'neg'} testid="acuse-carga">{acuse.texto}</Aviso></div>}
+      {grupos.length === 0 ? (
+        <p className="mx-4 border-t border-line py-6 text-center text-[13px] text-muted md:mx-8" data-testid="carga-vacia">
           {q ? `Nadie coincide con «${q}».` : 'Nadie del plantel en esta obra ese día.'}
         </p>
+      ) : (
+        <>
+          <div className="hidden md:block"><TablaDelDia grupos={grupos} dia={dia} acciones={acciones} /></div>
+          <div className="md:hidden"><ListaDelDia grupos={grupos} dia={dia} acciones={acciones} /></div>
+        </>
       )}
-
-      {grupos.map((g) => (
-        <section key={g.obraId ?? 'sin-obra'} className="pb-4" data-testid="grupo-obra" data-obra={g.obraId ?? 'sin-obra'}>
-          <div className="flex items-center justify-between gap-3 border-b border-line-strong pb-1">
-            <h2 className="min-w-0 truncate text-[13px] font-semibold uppercase tracking-[0.04em] text-ink">
-              {g.nombre} <span className="font-normal text-faint">· {g.filas.length}</span>
-            </h2>
-            {g.obraId && !soloLectura && (
-              <button
-                type="button" onClick={() => marcarTodos(g)} data-testid="marcar-todos-grupo"
-                className={`${ALTO} shrink-0 rounded-control px-2 text-[12.5px] text-ink underline hover:text-ink-soft`}
-              >
-                Marcar a todos presentes
-              </button>
-            )}
-          </div>
-          <ul>
-            {g.filas.map((f) => (
-              <FilaDeCarga
-                key={f.persona.id} fila={f} casilla={casillas[f.persona.id] ?? f.casilla} estado={estados[f.persona.id] ?? null}
-                fecha={fecha} hoy={hoy} rotuloDia={rotuloDia} obras={obras} nombres={nombres}
-                soloLectura={soloLectura} tardanzaYHoras={sePuede.tardanza} puedeMover={puedeMover} certificado={certificados[f.persona.id] ?? null} onToque={onToque}
-              />
-            ))}
-          </ul>
-        </section>
-      ))}
+      {filaAbierta && (
+        <PanelDeLaPersona key={filaAbierta.persona.id} fila={filaAbierta} dia={dia} acciones={acciones} onCerrar={() => setAbierta(null)} />
+      )}
     </div>
-  )
-}
-
-function Cifra({ n, rotulo, clase, ultima }: { n: number; rotulo: string; clase: string; ultima?: boolean }) {
-  return (
-    <span className="whitespace-nowrap">
-      <span className={`font-mono font-semibold tabular-nums ${clase}`}>{n}</span>
-      <span className="text-muted"> {rotulo}</span>
-      {!ultima && <span className="text-faint"> · </span>}
-    </span>
   )
 }
