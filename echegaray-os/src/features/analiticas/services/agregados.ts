@@ -4,6 +4,7 @@
 // OBRA: repartirlos sería decidir a qué obra fue una compra que Compras no supo decir. Un ratio sin sus
 // dos patas no se publica: `queda` sólo existe con presupuesto Y consumo del MISMO rubro, `$/hora` sólo
 // con mano de obra imputada Y horas. El contrato viaja como referencia, nunca como presupuesto.
+import { horasTexto, millones, pctEntero } from './formato.ts'
 import { rotuloEstimada, type ObraAnalitica } from './obras.ts'
 import { SIN_PRESUPUESTO, SIN_PRESUPUESTO_RUBRO, type Rubro } from './presupuesto.ts'
 
@@ -203,8 +204,11 @@ export function quedaMaterialesYSubcontratos(o: ObraAnalitica): { cotizado: numb
 export interface Celda {
   /** Lo gastado (pesos, u horas en HH). `null` = no hay registro. */
   gastado: number | null
-  /** Por qué no hay gastado: «otros» no tiene fuente de consumo. */
-  gastadoAusente: 'sin registrar' | null
+  /**
+   * Por qué no hay gastado: «otros» no tiene fuente de consumo — no es que alguien no cargó, es que el
+   * OS no lleva ese rubro por separado. Decía «sin registrar», que se leía como un olvido (17/09/2026).
+   */
+  gastadoAusente: 'no se carga aparte' | null
   /** `true` = el presupuesto de este rubro es INFERENCIA. */
   estimado: boolean
   cotizado: number | null
@@ -228,7 +232,8 @@ export function celda(o: ObraAnalitica, item: Item): Celda {
   if (item === 'horas') {
     const hh = o.hhPresupuestadas
     return {
-      gastado: o.gasto.horas, gastadoAusente: null, estimado: false, cotizado: hh, cotizadoAusente: hh == null ? 'sin previsión' : null,
+      // «sin previsión» se leía como un error de la pantalla; la cotización simplemente no previó horas.
+      gastado: o.gasto.horas, gastadoAusente: null, estimado: false, cotizado: hh, cotizadoAusente: hh == null ? 'la cotización no previó horas' : null,
       pct: hh != null && o.gasto.horas != null ? o.gasto.horas / hh : null, lectura: hh == null ? null : lecturaDe(hh, o.gasto.horas), consumoEstimado: null,
     }
   }
@@ -247,7 +252,7 @@ export function celda(o: ObraAnalitica, item: Item): Celda {
   const desglosado = Object.values(o.presupuestoRubros ?? {}).some((v) => v != null)
   const ausente = cot != null ? null : desglosado ? SIN_PRESUPUESTO_RUBRO : (o.motivoPresupuesto ?? SIN_PRESUPUESTO)
   return {
-    gastado: g, gastadoAusente: item === 'otros' ? 'sin registrar' : null, estimado: o.rubrosEstimados.includes(item),
+    gastado: g, gastadoAusente: item === 'otros' ? 'no se carga aparte' : null, estimado: o.rubrosEstimados.includes(item),
     cotizado: cot, cotizadoAusente: ausente,
     pct: cot != null && cot > 0 && g != null ? g / cot : null,
     lectura: item === 'otros' && cot != null ? { tipo: 'sinConsumo', monto: null } : lecturaDe(cot, g),
@@ -255,7 +260,39 @@ export function celda(o: ObraAnalitica, item: Item): Celda {
   }
 }
 
-// ─── Costo por hora ─────────────────────────────────────────────────────────────────────────────
+/**
+ * LA ÚLTIMA LÍNEA DE UN RUBRO: qué le pasó a ese rubro, dicho siempre y en el mismo lugar.
+ *
+ * Dueño, 17/09/2026: la lectura aparecía «solo en algunos». Tres de los cinco rubros quedaban mudos o
+ * contestaban con una palabra que se leía como un error del sistema («sin registrar», «sin previsión»).
+ * Acá ninguno queda sin cerrar: o dice qué queda, o dice dónde se dice, o dice por qué no se puede
+ * decir. Materiales y Subcontratos REMITEN al queda combinado porque la cotización no los separa (ver
+ * `quedaMaterialesYSubcontratos`): medir materiales solo contra MA daría un excedido falso.
+ *
+ * Nunca devuelve la cadena vacía. Eso es lo que prueba el test.
+ */
+export type TonoCierre = 'muted' | 'neg' | 'warn' | 'faint'
+
+export function cierreDeRubro(c: Celda, item: Item): { texto: string; tono: TonoCierre } {
+  const fmt = item === 'horas' ? horasTexto : millones
+  const l = c.lectura
+  // EL MOTIVO LARGO VA UNA VEZ, en la cabecera; en cada rubro, la palabra corta.
+  const corto = c.cotizadoAusente === SIN_PRESUPUESTO_RUBRO || c.cotizadoAusente === INCLUIDO_EN_MATERIALES ? c.cotizadoAusente : 'sin presupuesto'
+  if (l?.tipo === 'queda') return { texto: `queda ${fmt(l.monto)} · ${pctEntero(c.pct)} consumido`, tono: 'muted' }
+  if (l?.tipo === 'excedido') return { texto: `excedido en ${fmt(l.monto)}`, tono: 'neg' }
+  if (l?.tipo === 'sinMovimiento') return { texto: 'sin movimiento', tono: 'muted' }
+  if (l?.tipo === 'sinPresupuesto') return { texto: `consumo ${corto}`, tono: 'warn' }
+  if (l?.tipo === 'sinConsumo') return { texto: 'sin consumo registrado con qué comparar', tono: 'faint' }
+  if (item === 'materiales' && c.cotizado != null) return { texto: 'lo que queda se dice abajo, junto con subcontratos', tono: 'muted' }
+  if (item === 'subcontratos' && c.cotizadoAusente === INCLUIDO_EN_MATERIALES) return { texto: 'cotizado dentro de materiales · lo que queda se dice abajo', tono: 'muted' }
+  if (item === 'otros') return { texto: 'la cotización no abre este rubro', tono: 'faint' }
+  if (c.cotizado == null && c.cotizadoAusente) {
+    return { texto: c.cotizadoAusente === SIN_PRESUPUESTO_RUBRO ? 'este rubro no se cotizó aparte' : c.cotizadoAusente, tono: 'faint' }
+  }
+  return { texto: 'sin nada con qué compararlo', tono: 'faint' }
+}
+
+// ─── Costo por hora ─────────────────────────────────────────────────────────────────────
 
 export const UMBRAL_HORA_CARA = 0.2
 

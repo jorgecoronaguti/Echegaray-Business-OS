@@ -4,7 +4,7 @@ import { armarCostosPorObra } from '../../clientes/services/costosDeObra.ts'
 import { armarEconomiaDeObras } from '../../clientes/services/economiaObras.ts'
 import { armarObra } from './obras.ts'
 import { presupuestoDe } from './presupuesto.fixture.ts'
-import { cajonesDeLosClientes, celda, cifrasResumen, composicionDelGasto, controlPorObra, costoPorHora, manoObraDe, obrasQueMasConsumen, porHoraMedido, resumenPorCliente } from './agregados.ts'
+import { cajonesDeLosClientes, celda, cierreDeRubro, cifrasResumen, composicionDelGasto, controlPorObra, costoPorHora, ITEMS, manoObraDe, obrasQueMasConsumen, porHoraMedido, resumenPorCliente } from './agregados.ts'
 import { rotuloEstimada } from './obras.ts'
 
 type Pres = Partial<Record<'MO' | 'CS' | 'MA' | 'SC', number>>
@@ -54,9 +54,9 @@ test('gráfico por obra: la más consumida primero, las sin presupuesto al final
 
 test('rubros: «otros» sin consumo registrado; HH contra las horas de la cotización; sin presupuesto de este rubro', () => {
   const a = obra('a', 'me', {}, { mano_obra: 12e6, materiales: 1e6, horas_valorizadas: 90, horas_sin_tarifa: 10 }, { MO: 10e6, SC: 1e6 })
-  assert.equal(celda(a, 'otros').gastadoAusente, 'sin registrar')
+  assert.equal(celda(a, 'otros').gastadoAusente, 'no se carga aparte')
   assert.deepEqual(celda(a, 'otros').lectura, { tipo: 'sinConsumo', monto: null })
-  assert.equal(celda(a, 'horas').cotizadoAusente, 'sin previsión')
+  assert.equal(celda(a, 'horas').cotizadoAusente, 'la cotización no previó horas')
   assert.equal(celda(a, 'materiales').cotizadoAusente, 'sin presupuesto de este rubro')
   assert.deepEqual(celda(a, 'materiales').lectura, { tipo: 'sinPresupuesto', monto: null })
   const mo = celda(a, 'manoObra')
@@ -145,4 +145,34 @@ test('el cajón de un cliente que la vista no muestra no entra a la tarjeta ni a
   assert.equal(filas.reduce((x, c) => x + (c.total ?? 0), 0), (r.consumoTotal ?? 0) + (r.sinObraAsignada ?? 0),
     'las filas suman exactamente consumido + sin obra asignada')
   assert.equal(cifrasResumen([a], cajones).sinObraAsignada, 1.09e6, 'sin filtrar, la tarjeta publicaría plata que ninguna fila muestra')
+})
+
+// ─── La última línea de cada rubro (dueño, 17/09/2026: «que cada rubro cierre su lectura») ───────
+
+test('NINGÚN rubro queda mudo: los cinco cierran con una frase, con o sin presupuesto', () => {
+  // La obra real de la captura: cotizó MO+CS y MA, consumió de todo, no previó horas.
+  const conMA = obra('q', 'qp', {}, { mano_obra: 5.68e6, materiales: 30.88e6, subcontratos: 2.08e6, horas_valorizadas: 718 }, { MO: 20e6, CS: 19.59e6, MA: 44.11e6 })
+  for (const i of ITEMS) {
+    const { texto } = cierreDeRubro(celda(conMA, i.clave), i.clave)
+    assert.ok(texto.trim().length > 0, `el rubro ${i.clave} no dice nada`)
+  }
+  // Y sin NADA cotizado tampoco: una obra sin presupuesto no deja rubros en blanco.
+  const pelada = obra('s', 'me', {}, { materiales: 2e6 })
+  for (const i of ITEMS) {
+    const { texto } = cierreDeRubro(celda(pelada, i.clave), i.clave)
+    assert.ok(texto.trim().length > 0, `el rubro ${i.clave} sin presupuesto no dice nada`)
+  }
+})
+
+test('materiales y subcontratos remiten al queda combinado en vez de callarse', () => {
+  const o = obra('q', 'qp', {}, { materiales: 30.88e6, subcontratos: 2.08e6 }, { MO: 20e6, MA: 44.11e6 })
+  assert.match(cierreDeRubro(celda(o, 'materiales'), 'materiales').texto, /se dice abajo/)
+  assert.match(cierreDeRubro(celda(o, 'subcontratos'), 'subcontratos').texto, /cotizado dentro de materiales/)
+})
+
+test('una ausencia declarada no se lee como error: «otros» y las horas sin previsión', () => {
+  const o = obra('q', 'qp', {}, { mano_obra: 12e6, horas_valorizadas: 718 }, { MO: 10e6, CS: 1e6 })
+  assert.equal(celda(o, 'otros').gastadoAusente, 'no se carga aparte')
+  assert.equal(cierreDeRubro(celda(o, 'otros'), 'otros').texto, 'la cotización no abre este rubro')
+  assert.equal(cierreDeRubro(celda(o, 'horas'), 'horas').texto, 'la cotización no previó horas')
 })
