@@ -46,6 +46,9 @@ export const SIN_GENERADOR = {
   // Declarada el 02/09/2026: el censo la reportaba huérfana (53h sin firma) y nadie lo veía
   // porque no rompe ningún total. Su contenido cuadra contra nomina-banco-recibo (10=10 medido).
   SUBCONTRATISTAS: 'la carga una persona: subcontratistas y sus pagos. Sin script propio; cuadra contra nomina-banco-recibo.',
+  // Declarada el 17/09/2026: el censo de dueños daba ✗ por ella en cada corrida desde que nació (inserción
+  // de «Obra», 14/09) y el test de este archivo estaba en rojo. Tiene script, pero SIN timer a propósito.
+  _OBRAS_OS: 'la lista del desplegable «Obra» de Compras y Cobranzas: la escribe scripts/obras-lista-sheet.mjs --aplicar cuando cambia el catálogo de obras (alta, fusión, renombre). Sin timer a propósito: el catálogo cambia por una decisión, no por el paso del tiempo.',
   // NO ES UNA EXCEPCIÓN CÓMODA, ES UNA DEUDA DECLARADA: la escala del convenio cambia con cada
   // paritaria y hoy la réplica se carga a mano. Mientras siga así, el bloque de escala de Jornales
   // envejece en silencio cuando se firma un acuerdo nuevo.
