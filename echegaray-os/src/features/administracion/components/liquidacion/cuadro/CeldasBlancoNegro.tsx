@@ -27,6 +27,9 @@ import { avisoDeExcedente, type PagoDeLaLinea } from '../../../services/pagoDeLa
 import { saldoRedondeado } from '../../../services/efectivoRedondeado'
 
 const DERECHA: CSSProperties = { textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden' }
+
+/** `2026-06-15` → `15/06/2026`. Una cifra vieja sin su fecha se lee como la de hoy. */
+const diaDeLaFoto = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
 const ESTIMADO: CSSProperties = { color: V.apagado, fontStyle: 'italic' }
 
 export const urlDelRecibo = (id: string): string => `https://drive.google.com/file/d/${id}/view`
@@ -53,7 +56,9 @@ export function origenDelBlanco(s: SueldoBlancoNegro): string {
 function Celda({ s, valor, testid, titulo, children }: {
   s: SueldoBlancoNegro | null; valor: string; testid?: string; titulo?: string; children?: ReactNode
 }) {
-  if (!s) return <div style={{ ...DERECHA, color: V.tenue }}>—</div>
+  // EL TESTID VIAJA TAMBIÉN SIN MODELO: sin él, una quincena cerrada no se puede medir desde un E2E y el «—» de
+  // arriba vivió invisible hasta que lo vio el dueño (17/09/2026).
+  if (!s) return <div data-testid={testid} title={titulo} style={{ ...DERECHA, color: V.tenue }}>—</div>
   const est = s.estado === 'estimado'
   return (
     <div data-testid={testid} title={titulo ?? origenDelBlanco(s)} style={{ ...DERECHA, ...(est ? ESTIMADO : { color: V.tinta }) }}>
@@ -100,6 +105,18 @@ export function CeldaHorasBlanco({ fila, edicion }: { fila: FilaDelEspejo; edici
 export function CeldaHoraCategoria({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
   const s = fila.linea.sueldo
   const bajo = marcaDeCategoria(s)
+  // ═══ LA QUINCENA CERRADA TAMBIÉN TIENE $/H (dueño, 17/09/2026: «no salen los valores $/h … en las quincenas
+  // anteriores») ═══ Sin modelo blanco+negro esta celda decía «—» sobre una persona a la que se le liquidaron horas
+  // × $/h. El valor es el de ESA quincena (`SelloDeLaQuincena`), nunca el de hoy, y el `title` dice a qué fecha está
+  // tomado. Apagado, no en tinta plena: es una foto, no una celda que se pueda escribir.
+  const sello = fila.linea.sello
+  if (s == null && sello?.valorHora != null) {
+    return (
+      <div data-testid={`hora-categoria-${fila.personaId}`} data-sellado="1"
+        title={`Quincena cerrada: ${pesos(sello.valorHora)}/h es la tarifa con la que se liquidó, tomada al ${diaDeLaFoto(sello.hasta)}. No es la de hoy.`}
+        style={{ ...DERECHA, color: V.apagado }}>{pesos(sello.valorHora)}</div>
+    )
+  }
   if (seEscribe(fila, 'valorHoraRecibo', edicion)) {
     return (
       <div data-testid={`hora-categoria-${fila.personaId}`} data-bajo-el-piso={bajo ? '1' : undefined}

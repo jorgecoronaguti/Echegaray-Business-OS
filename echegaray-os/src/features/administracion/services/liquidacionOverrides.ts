@@ -70,6 +70,38 @@ export interface ReferenciaDeJornales {
   difiere: boolean
 }
 
+/**
+ * LA FOTO DE UNA QUINCENA CERRADA (dueño, 17/09/2026: «no salen los valores $/h de cada uno en las quincenas
+ * anteriores, revisar y rehacer»).
+ *
+ * ═══ QUÉ PASABA ═══
+ *
+ * Una quincena cerrada no se recalcula: se dibuja con `sinOverrides`, que deja `sueldo` en `null` a propósito —el
+ * modelo blanco+negro depende de recibos y estimaciones que NO pueden volver a correr sobre algo ya pagado—. Pero la
+ * pantalla leía el $/h SÓLO de ese modelo, así que la columna «$/h cat.» decía «—» y el detalle «Plataforma: Oficial
+ * · —/h» para gente a la que se le liquidaron horas × $/h. El dato existía; no había por dónde decirlo.
+ *
+ * ═══ QUÉ ES Y QUÉ NO ES ═══
+ *
+ * Los dos valores están tomados AL ÚLTIMO DÍA DE ESA QUINCENA, nunca a hoy: la tarifa sale de `persona_tarifa` filtrada
+ * por `desde <= q.hasta` y el piso, de `pisoVigente(escala, …, q.hasta)` —la misma escala histórica que usa Convenios—.
+ * NO es un recálculo: son dos números que la quincena cerrada ya tenía y que no tenían dónde mostrarse.
+ *
+ * LA CATEGORÍA NO SE SELLA. `liquidacion_linea.categoria_sellada` está vacío en TODA la base (verificado 17/09/2026:
+ * 0 de 0 en agosto, julio y junio), así que el nombre de la categoría que se muestra es el del legajo de HOY. Eso se
+ * dice en el `title`: si alguien recategorizó a una persona, el rótulo cambió aunque la quincena esté cerrada.
+ */
+export interface SelloDeLaQuincena {
+  /** El $/h con el que se liquidó esa quincena. `null` si la persona no cobraba por hora. */
+  valorHora: number | null
+  /** El piso del convenio para su categoría, vigente A ESA FECHA. `null` sin categoría o sin escala de ese mes. */
+  piso: number | null
+  /** Desde cuándo rige ese piso (ISO). Va en el `title`: sin él, el piso se leería como el de hoy. */
+  pisoDesde: string | null
+  /** El último día de la quincena: la fecha a la que están tomados los dos valores. */
+  hasta: string
+}
+
 export interface LineaConOverrides extends LineaLiquidada {
   /** Qué celdas de esta fila las escribió una persona. La pantalla las marca. */
   manual: Record<CampoEditable, boolean>
@@ -115,6 +147,8 @@ export interface LineaConOverrides extends LineaLiquidada {
    * `sueldo.neto`, salvo lo escrito a mano.
    */
   sueldo: SueldoBlancoNegro | null
+  /** La foto de la quincena cerrada: el $/h y el piso de ESA fecha. `null` en la abierta — ahí manda `sueldo`. */
+  sello: SelloDeLaQuincena | null
   /**
    * PRESENTISMO (dueño, 15/09/2026): la parte del cobra que se pierde con una sola tardanza. Se calcula
    * sobre las HORAS QUE QUEDARON (manuales o de la app) y se descuenta del cobra ANTES de la resta de
@@ -337,6 +371,8 @@ export function aplicarOverrides(
     discrepancia,
     referenciaJornales: grupo === 'obreros' ? referenciaDe(jornales, horas, cobra, conModelo) : null,
     sueldo,
+    // LA ABIERTA NO TIENE FOTO: sus $/h salen del modelo blanco+negro, que sí puede correr.
+    sello: null,
     presentismo,
     sinNeto: sueldo != null && sueldo.neto == null && !base.sinTarifa && origen.cobra === 'calculado',
     horasRecibo: sueldo?.horasBlanco ?? null,
@@ -392,6 +428,7 @@ function descontarDelNegro(s: SueldoBlancoNegro, p: PresentismoDeLinea | null): 
  */
 export function sinOverrides(
   base: LineaLiquidada, sellado: PresentismoDeLinea | null = null, ov: OverridesDeLinea = {},
+  sello: SelloDeLaQuincena | null = null,
 ): LineaConOverrides {
   const registrado = (v: number | null | undefined): number | null =>
     v != null && Number.isFinite(v) ? redondear2(v) : null
@@ -399,7 +436,9 @@ export function sinOverrides(
   const pagadoEfectivo = registrado(ov.pagadoEfectivo) ?? base.adelanto
   return {
     ...base, manual: { ...SIN_MARCAS }, origen: { ...TODO_CALCULADO }, discrepancia: {},
-    referenciaJornales: null, sueldo: null, presentismo: sellado, sinNeto: false, horasRecibo: null, valorHoraRecibo: null,
+    // `sueldo` SIGUE EN NULL A PROPÓSITO: el modelo blanco+negro no se recalcula sobre algo ya pagado. Lo que sí
+    // viaja es el sello, para que el $/h de esa quincena deje de ser «—».
+    referenciaJornales: null, sueldo: null, sello, presentismo: sellado, sinNeto: false, horasRecibo: null, valorHoraRecibo: null,
     negro: null, horasNegro: null, horasDeLosDias: base.horas,
     pagadoBanco, pagadoEfectivo, formulas: {},
     pago: pagoDeLaLinea({
