@@ -92,6 +92,9 @@ export const DEPENDE = Object.freeze({
   // Sin los comprobantes de VEP, el VEP parcial de junio vuelve a «sin imputar» y pisaría su imputación.
   banco: ['f931_raw', 'compras', 'vep_pdf'],
   compras: ['f931_raw', 'vep_pdf'],
+  // Una cuota sin el extracto parece impaga; el recorte del período financiado necesita todos los pagos.
+  planes_f931: ['compras', 'banco'],
+  cargas_pestana: ['f931_raw'],
 })
 
 /** El estado de cada lector con el fallo de sus insumos propagado. PURA. */
