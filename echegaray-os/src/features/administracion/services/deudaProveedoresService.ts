@@ -90,9 +90,11 @@ export async function getDeuda(
     if (f.proveedor_id) canonica.set(f.proveedor_id, Number(f.deuda ?? 0))
   }
 
-  const notas = notasDeLaDeuda({
+  // SIN LECTURA DE NOTAS NO HAY EDITOR: un campo vacío sobre una nota que no se pudo leer se lee como
+  // «no hay nota», y guardar encima sería pedir un cambio contra algo que nadie vio.
+  const notas = notasLeidas.error ? new Map() : notasDeLaDeuda({
     filas, lineas, compras: visibles,
-    notas: notasLeidas.error ? [] : (notasLeidas.data ?? []) as unknown as NotaGuardada[],
+    notas: (notasLeidas.data ?? []) as unknown as NotaGuardada[],
     pedidos: pedidos.error ? [] : (pedidos.data ?? []) as unknown as PedidoDeNota[],
   })
   return { data: { filas, lineas, obras: await nombresDeLasObras(supabase, lineas), canonica, hoy, truncado, notas }, error: null }
