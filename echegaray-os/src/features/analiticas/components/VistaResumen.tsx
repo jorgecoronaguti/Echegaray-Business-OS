@@ -37,10 +37,11 @@ export function VistaResumen({ obras, cartera, sinObra, filtros, neto }: {
         cifras={[
           { rotulo: 'presupuestado', valor: millones(r.presupuestado), falta: 'sin presupuesto cargado',
             nota: r.contrato != null ? `contrato ${millones(r.contrato)} · referencia` : undefined },
-          { rotulo: 'consumido', valor: millones(r.consumido), falta: 'sin movimiento',
-            nota: `${neto ? 'neto de IVA' : 'con IVA: la base todavía no publica el neto'}${est ? ` · mano de obra ${est}` : ''}` },
+          // CONSUMIDO ES EL TOTAL, la misma cifra que suma la tabla: el dueño la suma a ojo y tiene que cerrar.
+          { rotulo: 'consumido', valor: millones(r.consumoTotal), falta: 'sin movimiento',
+            nota: `${neto ? 'neto de IVA' : 'con IVA: la base todavía no publica el neto'}${r.consumoSinPresupuesto ? ` · ${millones(r.consumoSinPresupuesto)} sin presupuesto` : ''}${est ? ` · mano de obra ${est}` : ''}` },
           { rotulo: excedido ? 'excedido' : 'queda', valor: r.queda != null ? millones(Math.abs(r.queda)) : null, falta: '—', tono: excedido ? 'neg' : undefined,
-            nota: r.presupuestado ? `${pctEntero((r.consumido ?? 0) / r.presupuestado)} consumido` : undefined },
+            nota: r.presupuestado ? `${pctEntero((r.consumido ?? 0) / r.presupuestado)} de lo presupuestado` : undefined },
           { rotulo: 'consumido sin presupuesto', valor: r.consumoSinPresupuesto ? millones(r.consumoSinPresupuesto) : null, falta: 'ninguno', tono: 'warn',
             nota: r.obrasSinPresupuesto ? `${r.obrasSinPresupuesto} ${r.obrasSinPresupuesto === 1 ? 'obra' : 'obras'} sin presupuesto y rubros no cotizados` : 'rubros no cotizados' },
           { rotulo: 'sin obra asignada', valor: millones(r.sinObraAsignada), falta: 'ninguno', tono: 'muted', nota: 'no se reparte entre obras' },
@@ -94,8 +95,9 @@ const Plata = ({ v, fuerte = false, clase = '' }: { v: number | null; fuerte?: b
 )
 
 /** EL % COMO EL «AVANCE DE COBRO» DE CLIENTES: barra fina y el número a la derecha. */
-function Porcentaje({ pct, g }: { pct: number | null; g?: { manoObra: number | null; materiales: number | null; subcontratos: number | null; total: number | null } }) {
+function Porcentaje({ pct, g, parcial = false }: { pct: number | null; g?: { manoObra: number | null; materiales: number | null; subcontratos: number | null; total: number | null }; parcial?: boolean }) {
   return (
+    <span className="flex flex-col items-end">
     <span className="flex items-center justify-end gap-2">
       {VARIANTE === 'avance' ? (
         <span className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-line lg:block">
@@ -109,6 +111,9 @@ function Porcentaje({ pct, g }: { pct: number | null; g?: { manoObra: number | n
         </span>
       ) : null}
       <span className={`w-11 text-right text-[12.5px] font-semibold tabular-nums ${tonoPct(pct)}`}>{pct != null ? pctEntero(pct) : '—'}</span>
+    </span>
+    {/* EL % NO SALE DEL CONSUMIDO DE LA FILA cuando parte no tiene presupuesto: se dice sobre qué es. */}
+    {parcial && pct != null ? <span className="text-[10px] text-faint">sobre lo presupuestado</span> : null}
     </span>
   )
 }
@@ -145,7 +150,7 @@ function FilaCliente({ g }: { g: GrupoDeCliente }) {
       <span className={`text-right text-[12.5px] font-semibold tabular-nums lg:hidden ${quedaTono(g.queda)}`}>{quedaTexto(g.queda)}</span>
       <Plata v={g.presupuestado} /><Plata v={g.manoObra} /><Plata v={g.materiales} /><Plata v={g.subcontratos} />
       <Plata v={g.consumoTotal} fuerte />
-      <span className="hidden lg:block"><Porcentaje pct={g.pct} g={{ ...g, total: g.consumoTotal }} /></span>
+      <span className="hidden lg:block"><Porcentaje pct={g.pct} g={{ ...g, total: g.consumoTotal }} parcial={g.consumoTotal != null && Math.abs(g.consumoTotal - (g.consumido ?? 0)) > 1} /></span>
       <span className={`hidden text-right text-[12px] font-semibold tabular-nums lg:block ${quedaTono(g.queda)}`}>{quedaTexto(g.queda)}</span>
       <LineaAngosta pres={g.presupuestado} mo={g.manoObra} mat={g.materiales} sub={g.subcontratos} cons={g.consumoTotal} pct={g.pct} sangria={25} />
     </div>
@@ -178,7 +183,7 @@ function FilaObra({ f, href }: { f: FilaControl; href: string }) {
         {f.consumido != null && g.total != null && Math.abs(g.total - f.consumido) > 1
           ? <span className="text-[10.5px] text-warn" title="Lo que no tiene presupuesto con qué compararse no entra al % ni a lo que queda.">{millones(g.total - f.consumido)} sin presupuesto</span> : null}
       </span>
-      <span className="hidden lg:block"><Porcentaje pct={f.pct} g={{ ...g, total: g.total }} /></span>
+      <span className="hidden lg:block"><Porcentaje pct={f.pct} g={{ ...g, total: g.total }} parcial={f.sinPresupuesto > 1} /></span>
       <span className={`hidden text-right text-[12px] tabular-nums lg:block ${quedaTono(f.queda)}`}>{quedaTexto(f.queda)}</span>
       <LineaAngosta pres={f.presupuesto} mo={g.manoObra} mat={g.materiales} sub={g.subcontratos} cons={g.total} pct={f.pct} sangria={sangria + 23} />
     </Link>

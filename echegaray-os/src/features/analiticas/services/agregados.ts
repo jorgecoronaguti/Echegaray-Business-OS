@@ -20,6 +20,8 @@ export interface CifrasResumen {
   consumido: number | null
   /** presupuestado − consumido. `null` sin las dos patas. */
   queda: number | null
+  /** TODO lo consumido por las obras: la misma cifra que suma la columna CONSUMIDO de la tabla. */
+  consumoTotal: number | null
   /** Lo gastado en obras que no tiene presupuesto con qué compararse (obra o rubro sin presupuesto). */
   consumoSinPresupuesto: number | null
   /** Σ del costo cotizado total de las cotizaciones aprobadas (todos los rubros): referencia. */
@@ -35,7 +37,7 @@ export function cifrasResumen(obras: ObraAnalitica[], sinObra: ReadonlyMap<strin
   const consumido = sumaNula(conPres.map((o) => o.consumoComparable))
   const total = sumaNula(obras.map((o) => o.gasto.total))
   return {
-    presupuestado, consumido,
+    presupuestado, consumido, consumoTotal: total,
     queda: presupuestado != null ? presupuestado - (consumido ?? 0) : null,
     consumoSinPresupuesto: total != null ? total - (consumido ?? 0) : null,
     costoCotizado: sumaNula(obras.map((o) => o.costoCotizado)),

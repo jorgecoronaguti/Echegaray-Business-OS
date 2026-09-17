@@ -132,3 +132,16 @@ test('Resumen: las obras activas se cuentan en toda la cartera, aunque el filtro
   const b2 = obra('b2', 'bbb', {}, { materiales: 1 })
   assert.deepEqual(agruparPorCliente([a, b1], [a, b1, b2]).map((x) => x.clienteId), ['bbb', 'aaa'])
 })
+
+test('el consumido de arriba es la suma de la columna CONSUMIDO de la tabla, con lo que no tiene presupuesto', () => {
+  const obras = [
+    obra('q', 'qp', {}, { mano_obra: 30e6, materiales: 37e6 }, { MO: 20e6, CS: 19e6 }),
+    obra('p', 'me', {}, { materiales: 3e6, subcontratos: 1e6 }, { MA: 4e6 }),
+    obra('s', 'me', {}, { materiales: 2e6 }),
+  ]
+  const r = cifrasResumen(obras, new Map([['me', 5e6]]))
+  const tabla = agruparPorCliente(obras).reduce((a, g) => a + (g.consumoTotal ?? 0), 0)
+  assert.equal(r.consumoTotal, tabla)
+  assert.equal(r.consumoTotal, 73e6)
+  assert.equal(r.consumoTotal, (r.consumido ?? 0) + (r.consumoSinPresupuesto ?? 0), 'comparable + sin presupuesto = total')
+})
