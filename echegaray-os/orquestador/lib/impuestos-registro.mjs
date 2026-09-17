@@ -72,11 +72,17 @@ export function obligacionesIvaDDJJ(ddjjs = []) {
  * «-»; si algún mes traen importe, el a pagar sale de más y `detalle.a_pagar_calculado` lo avisa.
  */
 export function obligacionesIibbDDJJ(ddjjs = []) {
+  // EL VENCIMIENTO IMPRESO EN LA DDJJ MANDA SOBRE LA REGLA SUPUESTA. Agosto 2026: la regla daba 16/09 y la
+  // pantalla lo publicaba VENCIDO el 17/09; el formulario (y la agenda del contador) dicen 21/09/2026.
+  const vencimientoDeLaDDJJ = (d) => {
+    const impreso = isoDeAR(d.fecha_vencimiento)
+    return impreso ? { vencimiento: impreso, vencimiento_confianza: 'verificado' } : venc(vencimientoIibb(d.periodo))
+  }
   return ddjjs.filter((d) => periodoOk(d?.periodo)).map((d) => {
     const neto = (d.saldo_favor_anterior ?? 0) + (d.retenciones ?? 0) - (d.impuesto_determinado ?? 0)
     return {
       impuesto: 'iibb', periodo: d.periodo, concepto: 'ddjj', fuente: 'ddjj_contador', lector: 'ddjj_iibb_pdf',
-      estado: 'presentado', ...venc(vencimientoIibb(d.periodo)),
+      estado: 'presentado', ...vencimientoDeLaDDJJ(d),
       determinado: c2(d.impuesto_determinado), base_imponible: c2(d.base_total),
       creditos: c2(d.retenciones), saldo_favor_anterior: c2(d.saldo_favor_anterior),
       a_pagar: c2(Math.max(0, -neto)), saldo_a_favor: c2(Math.max(0, neto)),
@@ -85,6 +91,33 @@ export function obligacionesIibbDDJJ(ddjjs = []) {
       detalle: { alicuota: d.alicuota ?? null, a_pagar_calculado: true },
     }
   })
+}
+
+/**
+ * GANANCIAS SOCIEDADES · la DDJJ anual (F.713), una fila por ejercicio en el MES DE CIERRE.
+ *
+ * `creditos` es todo lo que el formulario aplica contra el determinado: anticipos cancelados con el
+ * impuesto al cheque, el cómputo del impuesto al cheque para cancelar la DDJJ, retenciones y percepciones
+ * y anticipos en efectivo. El a pagar es el «Total a pagar» del formulario (R6 d) y el saldo a favor su
+ * «Saldo a favor» (R5 af): se toman impresos, no recalculados — ARCA redondea $0,01 que no se paga.
+ * Sin vencimiento: ya está presentada y no deja nada que pagar; los ANTICIPOS del ejercicio siguiente
+ * no salen de este papel y no se inventan acá.
+ */
+export function obligacionesGananciasDDJJ(ddjjs = []) {
+  return ddjjs.filter((d) => periodoOk(d?.periodo) && d.determinado !== null).map((d) => ({
+    impuesto: 'ganancias', periodo: d.periodo, concepto: 'ddjj anual', fuente: 'ddjj_contador', lector: 'ddjj_ganancias_pdf',
+    estado: 'presentado', vencimiento: null, vencimiento_confianza: null,
+    determinado: c2(d.determinado), base_imponible: null,
+    creditos: c2((d.anticipos_credeb ?? 0) + (d.computo_credeb ?? 0) + (d.retenciones ?? 0) + (d.anticipos_efectivo ?? 0)),
+    saldo_favor_anterior: c2(d.saldo_favor_anterior), a_pagar: c2(d.total_a_pagar), saldo_a_favor: c2(d.saldo_a_favor),
+    presentada_el: isoDeAR(d.fecha_presentacion), comprobante: d.transaccion ?? null,
+    documento: d.fuente ?? null, datos_al: finDeMes(d.periodo),
+    detalle: {
+      periodo_fiscal: d.periodo_fiscal, mes_cierre: d.mes_cierre, anticipos_credeb: c2(d.anticipos_credeb),
+      computo_credeb: c2(d.computo_credeb), retenciones: c2(d.retenciones), anticipos_efectivo: c2(d.anticipos_efectivo),
+      drive_id: d.drive_id ?? null,
+    },
+  }))
 }
 
 /**

@@ -30,7 +30,7 @@
 import { useState, useTransition } from 'react'
 import { useEstadoDelServidor } from '@/shared/tiempo-real/useEstadoDelServidor'
 import { V } from '@/shared/components/v2/patron'
-import { marcarTardanza } from '../services/presenciaDelDiaActions'
+import { guardarPresencia, marcarTardanza } from '../services/presenciaDelDiaActions'
 import type { TardanzaDeHoy } from '../services/pulsoDelPlantel'
 
 type Cual = 'llegoTarde' | 'salioAntes'
@@ -40,7 +40,7 @@ const ROTULO: Record<Cual, { corto: string; largo: string; testid: string }> = {
   salioAntes: { corto: 'salió antes', largo: 'Salió antes', testid: 'marcar-salio-antes' },
 }
 
-export function MarcaTardanzaHoy({ personaId, nombre, fecha, inicial }: {
+export function MarcaTardanzaHoy({ personaId, nombre, fecha, inicial, tactil = false, obraSinMarcar }: {
   personaId: string
   /** Sólo para el rótulo accesible: en la celda no entra repetir el nombre. */
   nombre: string
@@ -48,6 +48,13 @@ export function MarcaTardanzaHoy({ personaId, nombre, fecha, inicial }: {
   fecha: string
   /** Lo guardado en `asistencia_dia` hoy. Sin marca llega `undefined`. */
   inicial?: TardanzaDeHoy
+  /** En el teléfono: objetivos de 40 px y rótulo largo (dueño, 17/09/2026). */
+  tactil?: boolean
+  /** LA TARDANZA DIRECTA SOBRE «SIN MARCAR» (dueño, 17/09/2026: «en la computadora no puedo marcar
+   *  tardanzas»). Con la obra de hoy, «tarde» declara presente CON la marca y carga la jornada por
+   *  defecto, igual que «Presente» —llegar tarde es haber venido—. Sin esta prop, la persona ya estaba
+   *  presente y sólo se cambia la marca. */
+  obraSinMarcar?: string
 }) {
   // Lo guardado lo puede cambiar otro usuario desde el teléfono: se adopta al releer (16/09/2026).
   const [marca, setMarca] = useEstadoDelServidor<TardanzaDeHoy>(inicial ?? { llegoTarde: false, salioAntes: false })
@@ -59,9 +66,14 @@ export function MarcaTardanzaHoy({ personaId, nombre, fecha, inicial }: {
     const siguiente = { ...marca, [cual]: !marca[cual] }
     setError(null)
     arrancar(async () => {
-      const r = await marcarTardanza({
-        persona_id: personaId, fecha, llego_tarde: siguiente.llegoTarde, salio_antes: siguiente.salioAntes,
-      })
+      const r = obraSinMarcar
+        ? await guardarPresencia({
+          obra_id: obraSinMarcar, fecha,
+          marcas: [{ persona_id: personaId, estado: 'presente', motivo: null, llego_tarde: siguiente.llegoTarde, salio_antes: siguiente.salioAntes }],
+        })
+        : await marcarTardanza({
+          persona_id: personaId, fecha, llego_tarde: siguiente.llegoTarde, salio_antes: siguiente.salioAntes,
+        })
       // EL ACUSE SALE DE LO QUE LA BASE DEVOLVIÓ: la acción compara la fila escrita con lo que mandó y
       // sólo responde `ok` si coinciden. Un rechazo de la policy o una quincena cerrada no pintan ámbar.
       if (r.ok) setMarca(siguiente)
@@ -74,7 +86,7 @@ export function MarcaTardanzaHoy({ personaId, nombre, fecha, inicial }: {
       role="group"
       aria-label={`Tardanza de ${nombre} hoy`}
       data-testid="marca-tardanza-hoy"
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: tactil ? 8 : 4, flexShrink: 0 }}
     >
       {(['llegoTarde', 'salioAntes'] as const).map((cual) => (
         <Toggle
@@ -84,6 +96,7 @@ export function MarcaTardanzaHoy({ personaId, nombre, fecha, inicial }: {
           pendiente={pendiente}
           error={error?.cual === cual ? error.mensaje : null}
           onClick={alternar(cual)}
+          tactil={tactil}
         />
       ))}
     </span>
@@ -91,8 +104,8 @@ export function MarcaTardanzaHoy({ personaId, nombre, fecha, inicial }: {
 }
 
 /** Apagado cuando no está; ámbar con ▲ cuando está. El detalle va al `title`: en la celda no entra. */
-function Toggle({ cual, activo, pendiente, error, onClick }: {
-  cual: Cual; activo: boolean; pendiente: boolean; error: string | null; onClick: (e: React.MouseEvent) => void
+function Toggle({ cual, activo, pendiente, error, onClick, tactil }: {
+  cual: Cual; activo: boolean; pendiente: boolean; error: string | null; onClick: (e: React.MouseEvent) => void; tactil: boolean
 }) {
   const r = ROTULO[cual]
   return (
@@ -109,8 +122,9 @@ function Toggle({ cual, activo, pendiente, error, onClick }: {
         ? `${r.largo}: pierde el presentismo de la quincena. Clic para quitar la marca.`
         : `Marcar que ${r.largo.toLowerCase()} hoy`)}
       style={{
-        flexShrink: 0, background: 'transparent', border: 'none', padding: '0 2px',
-        fontSize: '11.5px', lineHeight: 1, cursor: pendiente ? 'wait' : 'pointer', whiteSpace: 'nowrap',
+        flexShrink: 0, background: 'transparent', whiteSpace: 'nowrap', lineHeight: 1, cursor: pendiente ? 'wait' : 'pointer',
+        border: tactil ? `1px solid ${activo ? V.warn : V.lineaFuerte}` : 'none', padding: tactil ? '0 12px' : '0 2px',
+        height: tactil ? 40 : undefined, borderRadius: tactil ? 6 : undefined, fontSize: tactil ? '13px' : '11.5px',
         fontWeight: activo ? 600 : 400,
         color: error ? V.neg : activo ? V.warn : V.apagado,
       }}
@@ -118,7 +132,7 @@ function Toggle({ cual, activo, pendiente, error, onClick }: {
       // inline le gana a cualquier clase que no sea `!important`. Sin él el hover no pinta.
       className={error || activo ? undefined : 'hover:!text-ink underline-offset-2 hover:underline'}
     >
-      {pendiente ? '…' : error ? 'no se pudo' : activo ? `▲ ${r.corto}` : r.corto}
+      {pendiente ? '…' : error ? 'no se pudo' : activo ? `▲ ${tactil ? r.largo : r.corto}` : (tactil ? r.largo : r.corto)}
     </button>
   )
 }

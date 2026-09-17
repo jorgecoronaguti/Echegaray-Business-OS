@@ -21,5 +21,6 @@ test('la raíz es el archivo fiscal de la empresa, no una carpeta suelta', () =>
   // Si alguien vuelve a apuntar a una copia, este test no lo va a impedir — pero deja escrito cuál
   // es la carpeta buena, que es el dato que se perdió la vez pasada.
   assert.equal(ARCHIVO_FISCAL, '1-7RmmzQeJA2g2O7GqZi4o_WQtiTQLc7l')
-  assert.deepEqual(SUBCARPETA, { IIBB: 'IIBB', IVA: 'IVA' })
+  // 931: los comprobantes de VEP del F931 (lector vep_pdf del sincronizador de impuestos, 17/09/2026).
+  assert.deepEqual(SUBCARPETA, { IIBB: 'IIBB', IVA: 'IVA', F931: '931' })
 })

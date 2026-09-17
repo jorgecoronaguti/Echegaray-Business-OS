@@ -149,7 +149,9 @@ export function ProveedorTiempoReal({ children }: { children: ReactNode }) {
     const latido = setInterval(() => {
       if (document.visibilityState !== 'visible') return
       motor.alLatido()
-      if (++latidos % 2 === 0) void preguntarVersion()
+      // CADA 5 MINUTOS y al volver a la pestaña, no cada minuto (17/09/2026): cada pregunta es una
+      // invocación en Vercel, y con una pestaña abierta todo el día eran ~600 por día por pestaña.
+      if (++latidos % 10 === 0) void preguntarVersion()
       else recargarSiSePuede()
     }, LATIDO_SIN_CANAL_MS)
     void preguntarVersion()

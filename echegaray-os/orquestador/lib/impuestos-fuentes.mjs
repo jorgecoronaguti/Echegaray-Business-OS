@@ -7,6 +7,8 @@
 import * as E from './estilo-pestana.mjs'
 import { parsearDDJJ, alicuotaDeclarada } from './iibb-ddjj.mjs'
 import { parsearDJIVA } from './iva-ddjj.mjs'
+import { parsearVepPdf } from './impuestos-vep.mjs'
+import { parsearDDJJGanancias } from './ganancias-ddjj.mjs'
 import { parseMonto } from './cash-briefing.mjs'
 import { escribirPreservando } from './preservar-anotaciones.mjs'
 import { conColaMedidaLeida, avisoDeCola } from './cola-de-rango.mjs'
@@ -82,7 +84,7 @@ export const BANCO_RAW = '_BANCO_RAW'
 // corrida, y se leen el año en curso y el anterior (en enero el cuadro todavía necesita diciembre).
 export const ARCHIVO_FISCAL = '1-7RmmzQeJA2g2O7GqZi4o_WQtiTQLc7l'
 /** El nombre de la subcarpeta de cada régimen dentro de la carpeta del año. */
-export const SUBCARPETA = { IIBB: 'IIBB', IVA: 'IVA' }
+export const SUBCARPETA = { IIBB: 'IIBB', IVA: 'IVA', F931: '931' }
 
 /**
  * NÚCLEO PURO: los años que hay que mirar para cubrir el cuadro de un mes dado.
@@ -143,6 +145,52 @@ export async function leerIIBB(google) {
       // Un PDF que no se puede leer NO se rellena con ceros: se omite y se avisa.
       console.error(`  ⚠ no pude leer la DDJJ de ${periodo}: ${e.message}`)
     }
+  }
+  return out
+}
+
+/**
+ * LOS COMPROBANTES DE VEP DEL F931 — `<archivo fiscal>/<año>/931/*VEP*.pdf`, leídos con `parsearVepPdf`.
+ *
+ * A diferencia de las DDJJ, acá una carpeta que no aparece o un PDF que no se lee HACE FALLAR la lectura:
+ * el sincronizador imputa pagos con esto, y una lectura a medias devolvería a «sin imputar» un VEP que
+ * ayer estaba imputado por documento. Un PDF que no es comprobante (la captura del extracto que el
+ * contador guarda como «2026-08 pago vep») se descarta sin error: no es un VEP ilegible, no es un VEP.
+ */
+export async function leerVepsF931(google, hoy = new Date()) {
+  const raiz = await google.listFolder(ARCHIVO_FISCAL)
+  const anos = new Set(anosACubrir(hoy))
+  const carpetas = []
+  for (const f of raiz) {
+    if (!anos.has(String(f.name).trim())) continue
+    const sub = (await google.listFolder(f.id)).find((d) => String(d.name).trim() === SUBCARPETA.F931)
+    if (sub) carpetas.push(sub.id)
+  }
+  if (!carpetas.length) throw new Error(`no encontré la carpeta ${SUBCARPETA.F931} de ${[...anos].join('/')} en el archivo fiscal`)
+  const out = []
+  for (const id of carpetas) {
+    for (const f of (await google.listFolder(id)).filter((x) => /vep/i.test(x.name))) {
+      const pdf = await google.readPdfText(f.id, { maxChars: 4000 })
+      const v = parsearVepPdf(pdf?.text ?? '')
+      if (v) out.push({ ...v, archivo: f.name, drive_id: f.id })
+    }
+  }
+  return out
+}
+
+/**
+ * LA DDJJ ANUAL DE GANANCIAS (F.713). No vive en el archivo fiscal del contador sino en la carpeta de
+ * BALANCES de administración, junto a cada balance. Se toman los `ddjj ganancias AAAA.pdf` (no las
+ * «Copia de …»). Carpeta inalcanzable o PDF que no se deja leer: la lectura FALLA, no devuelve vacío.
+ */
+export const CARPETA_BALANCES = '1AULAyWQiS9ZR3-91ONBDtY2gA4i2tb4_'
+export async function leerDDJJGanancias(google) {
+  const archivos = (await google.listFolder(CARPETA_BALANCES)).filter((f) => /^ddjj ganancias \d{4}\.pdf$/i.test(String(f.name).trim()))
+  const out = []
+  for (const f of archivos) {
+    const d = parsearDDJJGanancias((await google.readPdfText(f.id, { maxChars: 12000 }))?.text ?? '')
+    if (!d) throw new Error(`«${f.name}» no se pudo leer como F.713`)
+    out.push({ ...d, fuente: f.name, drive_id: f.id })
   }
   return out
 }

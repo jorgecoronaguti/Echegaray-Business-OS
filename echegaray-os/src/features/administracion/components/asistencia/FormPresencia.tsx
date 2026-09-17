@@ -2,15 +2,15 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { fusionarConElServidor, huellaDe } from '@/shared/tiempo-real/estadoDelServidor'
-import { Aviso, Boton, Nulo } from '@/shared/components/ds'
+import { Aviso, Nulo } from '@/shared/components/ds'
 import {
-  acusePresencia, avisoSinMarcar, casillasDePresencia, estadoSegunMotivo, loQueViajaPresencia,
-  marcarTodosPresentes, personasAMarcar, resumenPresencia,
+  acusePresencia, avisoSinMarcar, casillaTrasToque, casillasDePresencia, loQueViajaPresencia,
+  marcaDeLaCasilla, marcarTodosPresentes, personasAMarcar, resumenPresencia, type ToqueDePresencia,
 } from '@/features/administracion/services/presenciaDelDia'
 import type {
   CasillaPresencia, EstadoPresencia, PresenciaGuardada,
 } from '@/features/administracion/services/presenciaDelDia'
-import { guardarPresencia } from '@/features/administracion/services/presenciaDelDiaActions'
+import { guardarPresencia, quitarPresencia } from '@/features/administracion/services/presenciaDelDiaActions'
 import { motivosDeDiaNoTrabajado } from '@/features/administracion/services/motivoDeAusencia'
 import { hayTardanza } from '@/features/administracion/services/tardanza'
 import { jornadaPorDefecto } from '@/features/administracion/services/jornadaPorDefecto'
@@ -95,44 +95,54 @@ export function FormPresencia({ obraId, obraNombre, fecha, filas, guardadas, onG
   const conTardanza = marcas.filter(hayTardanza).length
   const falta = avisoSinMarcar(resumen.sinMarcar)
 
-  const tocar = (id: string, boton: EstadoPresencia) => {
-    setResultado(null)
-    setCasillas((prev) => {
-      const antes = prev[id] ?? { estado: null, motivo: null }
-      // TOCAR DE NUEVO EL MISMO BOTÓN DESMARCA. Es lo que permite deshacer un toque equivocado sin
-      // que exista un cuarto botón «borrar»: en el teléfono, el error más común es el dedo.
-      if (antes.estado === boton) return { ...prev, [id]: { estado: null, motivo: null } }
-      // Una presencia no lleva motivo: el motivo viejo se descarta al pasar a «está».
-      return { ...prev, [id]: { estado: boton, motivo: boton === 'presente' ? null : antes.motivo } }
-    })
-  }
+  // ═══ CADA TOQUE SE GUARDA AL INSTANTE (dueño, 17/09/2026) ═══
+  //
+  // Antes se marcaba y después había que tocar «Guardar la presencia» al pie de la lista; desde el
+  // teléfono no se llegaba y no se grababa nada. Ahora cada toque escribe, la fila dice «guardando…» /
+  // «✓ guardado», y si la base rechaza, la casilla vuelve a como estaba y se dice por qué.
+  const [estadoFila, setEstadoFila] = useState<Record<string, { tipo: 'guardando' | 'ok' | 'error'; texto?: string }>>({})
 
-  // TOCAR DE NUEVO DESMARCA, igual que los tres botones de arriba. La marca vive en la casilla y viaja
-  // con «Está» (`loQueViajaPresencia` la descarta sobre un «no vino»).
-  const marcarTardanza = (id: string, marca: 'llego_tarde' | 'salio_antes') => {
+  const persistir = (id: string, toque: ToqueDePresencia) => {
+    const antes = casillas[id] ?? { estado: null, motivo: null }
+    const despues = casillaTrasToque(antes, toque)
     setResultado(null)
-    setCasillas((prev) => {
-      const antes = prev[id] ?? { estado: null, motivo: null }
-      return { ...prev, [id]: { ...antes, [marca]: antes[marca] !== true } }
-    })
-  }
-
-  const elegirMotivo = (id: string, boton: Exclude<EstadoPresencia, 'presente'>, motivo: string | null) => {
-    setResultado(null)
-    // EL MOTIVO DECIDE SI ES AUSENCIA O LICENCIA, no el botón que se tocó: «no vino → enfermedad»
-    // es una licencia. La clasificación es la del catálogo, la misma que usa el bot desde julio.
-    setCasillas((prev) => ({ ...prev, [id]: { estado: estadoSegunMotivo(boton, motivo), motivo } }))
-  }
-
-  const guardar = () => {
-    if (marcas.length === 0) {
-      setResultado({ ok: false, texto: 'No marcaste a nadie todavía. Tocá «Está» o «Marcar a todos».' })
-      return
-    }
+    setCasillas((prev) => ({ ...prev, [id]: despues }))
+    setEstadoFila((prev) => ({ ...prev, [id]: { tipo: 'guardando' } }))
+    const marca = marcaDeLaCasilla(id, despues)
     arrancar(async () => {
-      const r = await guardarPresencia({ obra_id: obraId, fecha, marcas })
+      const r = marca
+        ? await guardarPresencia({ obra_id: obraId, fecha, marcas: [marca] })
+        : antes.estado ? await quitarPresencia({ persona_id: id, fecha }) : { ok: true as const, mensaje: '' }
+      if (r.ok) {
+        setEstadoFila((prev) => ({ ...prev, [id]: { tipo: 'ok' } }))
+        if ('guardadas' in r) onGuardado?.(r.guardadas as PresenciaGuardada[])
+        else onGuardado?.(guardadas.filter((g) => g.persona_id !== id))
+      } else {
+        setCasillas((prev) => ({ ...prev, [id]: antes }))
+        setEstadoFila((prev) => ({ ...prev, [id]: { tipo: 'error', texto: r.error } }))
+      }
+    })
+  }
+
+  const tocar = (id: string, boton: EstadoPresencia) => persistir(id, { tipo: 'estado', boton })
+  const marcarTardanza = (id: string, marca: 'llego_tarde' | 'salio_antes') => persistir(id, { tipo: 'tardanza', marca })
+  const elegirMotivo = (id: string, boton: Exclude<EstadoPresencia, 'presente'>, motivo: string | null) =>
+    persistir(id, { tipo: 'motivo', boton, motivo })
+
+  // «MARCAR A TODOS» TAMBIÉN GUARDA EN EL ACTO: sólo a quien estaba sin marcar, en una escritura.
+  const marcarTodos = () => {
+    const nuevas = marcarTodosPresentes(casillas)
+    const aGuardar = loQueViajaPresencia(
+      Object.fromEntries(Object.entries(nuevas).filter(([id]) => !casillas[id]?.estado)),
+    )
+    if (aGuardar.length === 0) { setResultado({ ok: true, texto: 'Ya estaban todos marcados.' }); return }
+    const previas = casillas
+    setCasillas(nuevas)
+    arrancar(async () => {
+      const r = await guardarPresencia({ obra_id: obraId, fecha, marcas: aGuardar })
       setResultado(r.ok ? { ok: true, texto: r.mensaje } : { ok: false, texto: r.error })
       if (r.ok) onGuardado?.(r.guardadas)
+      else setCasillas(previas)
     })
   }
 
@@ -177,7 +187,7 @@ export function FormPresencia({ obraId, obraNombre, fecha, filas, guardadas, onG
       <div className="mb-3 flex items-center justify-between gap-3">
         <button
           type="button"
-          onClick={() => { setResultado(null); setCasillas((c) => marcarTodosPresentes(c)) }}
+          onClick={marcarTodos} disabled={pendiente}
           data-testid="marcar-todos-presentes"
           className="min-h-[44px] rounded-control border border-line px-3 text-[13px] text-ink hover:border-line-strong"
         >
@@ -225,8 +235,8 @@ export function FormPresencia({ obraId, obraNombre, fecha, filas, guardadas, onG
 
               {/* LA TARDANZA, SÓLO SOBRE «ESTÁ» (dueño, 15/09/2026): llegó tarde o se fue antes. Una sola
                   en la quincena pierde el presentismo entero (`presentismo.ts`), y por eso se dice al lado.
-                  Aparece recién después del primer toque: quien no vino no llegó tarde. */}
-              {c.estado === 'presente' && (
+                  Está a la vista desde el principio (17/09): marcar «llegó tarde» declara presente. Sobre «no vino» no aparece. */}
+              {!noVino && (
                 <div className="mt-2 flex gap-2" role="group" aria-label={`Tardanza de ${fila.persona.nombre}`}>
                   <BotonPresencia
                     testid="llego-tarde" rotulo="Llegó tarde" activo={c.llego_tarde === true} tono="warn"
@@ -259,6 +269,14 @@ export function FormPresencia({ obraId, obraNombre, fecha, filas, guardadas, onG
                   ))}
                 </select>
               )}
+              {estadoFila[id] && (
+                <p
+                  className={`mt-1 text-[12px] ${estadoFila[id].tipo === 'error' ? 'text-neg' : 'text-muted'}`}
+                  data-testid="estado-guardado-presencia" data-tipo={estadoFila[id].tipo}
+                >
+                  {estadoFila[id].tipo === 'guardando' ? 'guardando…' : estadoFila[id].tipo === 'ok' ? '✓ guardado' : `No se guardó: ${estadoFila[id].texto}`}
+                </p>
+              )}
             </li>
           )
         })}
@@ -278,14 +296,8 @@ export function FormPresencia({ obraId, obraNombre, fecha, filas, guardadas, onG
         {resultado && (
           <Aviso tono={resultado.ok ? 'info' : 'neg'} testid="acuse-presencia">{resultado.texto}</Aviso>
         )}
-        <Boton
-          type="button" variante="primaria" tamano="bloque"
-          disabled={pendiente} onClick={guardar} data-testid="guardar-presencia"
-        >
-          {pendiente ? 'Guardando…' : 'Guardar la presencia'}
-        </Boton>
         <p className="text-center text-[11px] text-faint">
-          <Nulo>Se guarda sólo lo marcado. A quien quede sin marcar no se le toca nada.</Nulo>
+          <Nulo>Cada toque se guarda en el acto. A quien quede sin marcar no se le toca nada.</Nulo>
         </p>
         {/* LO QUE SE ESCRIBE, DICHO ANTES DE ESCRIBIRLO. El fin de semana no tiene jornada por
             defecto y entonces esta línea no aparece: un aviso que promete horas que no se van a

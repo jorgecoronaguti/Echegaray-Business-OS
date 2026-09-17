@@ -66,3 +66,29 @@ test('un mes sin base imponible no rompe ni inventa alícuota', () => {
   const a = alicuotaDeclarada([{ actividades: [] }])
   assert.equal(a.alicuota, null, 'sin base no hay alícuota: null, no cero ni un supuesto')
 })
+
+// Recorte del PDF real de agosto 2026 (Drive 1b0RPRGPdQPW21y8kGnpe6oVTBOUhn8ha, presentado 15/09/2026).
+// Dos rótulos de fecha y UNA fecha: el vencimiento, que también va en el código de barras.
+const AGOSTO_CABECERA = `Periodo:
+Secuencia:
+Fecha Present.: 15/09/2026
+Cód. Acti.Descripción Tratam. Alícuota	Base Imponible
+Fecha Vto.:
+Inscripción: 30716304643
+Original
+2026-08 N° DDJJ:
+Fecha Pago Declarada:
+Impuesto
+21/09/2026
+N° DE CONTROL
+13200510681
+26220261320051068100432764902609210000000000000006`
+
+test('el vencimiento sale de la fecha que imprime Rentas, no de la presentación', () => {
+  const d = parsearDDJJ(AGOSTO_CABECERA)
+  assert.equal(d.fecha_vencimiento, '21/09/2026')
+  assert.equal(d.fecha_presentacion, '15/09/2026')
+  assert.equal(d.nro_control, '13200510681')
+  // Un formulario sin esa fecha no inventa una.
+  assert.equal(parsearDDJJ(JUNIO).fecha_vencimiento, null)
+})

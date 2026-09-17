@@ -500,3 +500,40 @@ export function acuseDeHorasPorDefecto(
   }
   return partes.length > 0 ? partes.join(' · ') : null
 }
+
+// ═══ CADA TOQUE SE GUARDA AL INSTANTE (dueño, 17/09/2026) ═══
+//
+// Medido en producción: la pantalla de campo pedía marcar y DESPUÉS tocar «Guardar la presencia», al
+// pie de la lista. El dueño marcaba desde el teléfono, no llegaba al botón, y no se grababa nada —ni una
+// fila en `asistencia_dia` en toda la tarde—. «No se refleja en la computadora» era eso. Ahora cada toque
+// es una escritura, y estas dos funciones deciden cuál.
+
+export type ToqueDePresencia =
+  | { tipo: 'estado'; boton: EstadoPresencia }
+  | { tipo: 'tardanza'; marca: 'llego_tarde' | 'salio_antes' }
+  | { tipo: 'motivo'; boton: Exclude<EstadoPresencia, 'presente'>; motivo: string | null }
+
+/** La casilla después del toque. Tocar de nuevo el estado marcado lo desmarca; marcar «llegó tarde» sobre
+ *  alguien sin marcar lo declara presente —llegar tarde es haber venido—. */
+export function casillaTrasToque(antes: CasillaPresencia, toque: ToqueDePresencia): CasillaPresencia {
+  if (toque.tipo === 'estado') {
+    if (antes.estado === toque.boton) return { estado: null, motivo: null }
+    if (toque.boton === 'presente') return { estado: 'presente', motivo: null, llego_tarde: antes.llego_tarde, salio_antes: antes.salio_antes }
+    return { estado: toque.boton, motivo: antes.estado === 'presente' ? null : antes.motivo }
+  }
+  if (toque.tipo === 'tardanza') {
+    const base = antes.estado === 'presente' ? antes : { estado: 'presente' as const, motivo: null }
+    return { ...base, [toque.marca]: antes.estado === 'presente' ? antes[toque.marca] !== true : true }
+  }
+  return { estado: estadoSegunMotivo(toque.boton, toque.motivo), motivo: toque.motivo }
+}
+
+/** Qué se escribe: la marca a guardar, o `null` si el día quedó sin marcar (hay que quitar la fila). */
+export function marcaDeLaCasilla(personaId: string, c: CasillaPresencia): MarcaPresencia | null {
+  if (!c.estado) return null
+  const m = loQueViajaPresencia({ [personaId]: c })[0]
+  if (!m) return null
+  // EN UN TOQUE SUELTO LA TARDANZA VIAJA SIEMPRE, también en `false`: sacar «llegó tarde» es una
+  // escritura, y omitir el campo dejaría la marca vieja guardada.
+  return m.estado === 'presente' ? { ...m, llego_tarde: c.llego_tarde === true, salio_antes: c.salio_antes === true } : m
+}

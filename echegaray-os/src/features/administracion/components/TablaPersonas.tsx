@@ -132,7 +132,7 @@ const COLS
  * `fr` absorben la diferencia.
  */
 const COLS_MARCA
-  = 'grid-cols-[minmax(220px,1.5fr)_minmax(150px,1fr)_130px_230px_90px_70px_90px]'
+  = 'grid-cols-[minmax(220px,1.5fr)_minmax(150px,1fr)_130px_260px_90px_70px_90px]'
   + ' max-[1249px]:grid-cols-[minmax(200px,1.5fr)_minmax(0,1fr)]'
 /** En «Inactivos» no hay HOY ni HH que preguntarle a quien ya no está: la baja ocupa su lugar. */
 const COLS_BAJA
@@ -230,7 +230,7 @@ export function TablaPersonas({
             prefetch={false}
             role="row"
             data-testid="fila-persona"
-            className={`grid items-center ${CAJA_CONTENIDO} ${cols} hover:bg-[#F2F1ED]`}
+            className={`grid items-center ${CAJA_CONTENIDO} ${cols} hover:bg-[#F2F1ED] max-[1249px]:!h-auto max-[1249px]:py-2`}
             style={{
               gap: conBaja ? 14 : GAP,
               height: ALTO_V2.fila,
@@ -298,45 +298,7 @@ export function TablaPersonas({
                       {asistencia
                         ? <CeldaHoy clasificacion={asistencia} ficho={ficho} />
                         : <span style={{ fontSize: '12px', color: V.lupa }}>sin lectura</span>}
-                      {/* LA ACCIÓN VA DESPUÉS DEL ESTADO, NUNCA EN SU LUGAR: la celda sigue diciendo
-                          «sin marcar», y al lado ofrece resolverlo. */}
-                      {oferta === 'boton' && marcar && (
-                        <BotonPresenteHoy
-                          personaId={p.id}
-                          nombre={oracion(p.nombre_completo)}
-                          obraId={p.obra_actual_id as string}
-                          fecha={marcar.fecha}
-                        />
-                      )}
-                      {/* DESHACER VIVE DONDE SE HIZO (dueño, 10/09/2026). El estado se dice
-                          primero y la acción va al lado, apagada: «● presente · quitar». */}
-                      {oferta === 'quitar' && marcar && (
-                        <BotonQuitarPresente
-                          personaId={p.id}
-                          nombre={oracion(p.nombre_completo)}
-                          fecha={marcar.fecha}
-                        />
-                      )}
-                      {/* LA TARDANZA, SÓLO SOBRE UN PRESENTE (dueño, 15/09/2026): «tarde · salió
-                          antes» al lado de «quitar», con el mismo peso. Sobre «sin marcar» no hay
-                          nada que haya pasado tarde, y sobre una ausencia el CHECK de la base lo
-                          rechaza: la oferta es la misma que la de quitar, no una tercera regla. */}
-                      {oferta === 'quitar' && marcar && (
-                        <MarcaTardanzaHoy
-                          personaId={p.id}
-                          nombre={oracion(p.nombre_completo)}
-                          fecha={marcar.fecha}
-                          inicial={pulso?.tardanzas.get(p.id)}
-                        />
-                      )}
-                      {/* SIN OBRA NO HAY BOTÓN, Y SE DICE POR QUÉ. Dos palabras apagadas: sin ellas
-                          la fila parecería la única a la que «no le anda» el botón. Marcar presente
-                          imputa la jornada a una obra, y acá no hay ninguna que sea la correcta. */}
-                      {oferta === 'sin_obra' && (
-                        <span style={{ fontSize: '11.5px', color: V.tenue, flexShrink: 0 }} data-testid="sin-obra-para-marcar">
-                          sin obra
-                        </span>
-                      )}
+                      {marcar && <AccionesHoy p={p} oferta={oferta} fecha={marcar.fecha} inicial={pulso?.tardanzas.get(p.id)} />}
                     </span>
 
                     {/* LA PERSONA SIN IMPUTACIONES DICE «SIN HH», NO 0: un 0 acá afirmaría que no
@@ -362,6 +324,25 @@ export function TablaPersonas({
                     </span>
                     <span className={`font-mono tabular-nums truncate ${SOLO_ANCHO}`} style={{ fontSize: '11.5px', color: p.fecha_ingreso ? V.apagado : V.tenue }} data-testid="alta-persona">
                       {fechaCorta(p.fecha_ingreso) ?? 'sin fecha de alta'}
+                    </span>
+                    {/* LA ASISTENCIA EN EL TELÉFONO (dueño, 17/09/2026): «tenés que rehacer la vista mobile para
+                        cargar la asistencia… no tiene en cuenta las tardanzas y era una funcionalidad que también
+                        estaba disponible para computadora». Debajo de 1250 px las columnas HOY y HH se soltaban y
+                        con ellas se iban presente · quitar · tarde · salió antes: en el teléfono, y en una
+                        notebook angosta, no había cómo marcar. Acá vuelven, debajo del nombre, con objetivos
+                        táctiles de 40 px. Son los MISMOS componentes y las mismas acciones que la columna HOY. */}
+                    <span
+                      className="col-span-full hidden flex-wrap items-center gap-2 max-[1249px]:flex"
+                      data-testid="hoy-persona-movil"
+                      data-estado={asistencia?.presencia}
+                    >
+                      {asistencia
+                        ? <CeldaHoy clasificacion={asistencia} ficho={ficho} />
+                        : <span style={{ fontSize: '12px', color: V.lupa }}>sin lectura</span>}
+                      {marcar && <AccionesHoy p={p} oferta={oferta} fecha={marcar.fecha} inicial={pulso?.tardanzas.get(p.id)} tactil />}
+                      <span className="ml-auto font-mono tabular-nums" style={{ fontSize: '12px', color: V.tintaSuave }} data-testid="hh-quincena-movil">
+                        {!pulso?.hhDisponible ? '' : pulso.hh.has(p.id) ? `${horasVisibles(pulso.hh.get(p.id) ?? 0)} quinc.` : 'sin HH'}
+                      </span>
                     </span>
                   </>
                 )}
@@ -458,4 +439,72 @@ function fechaCorta(iso: string | null): string | null {
   if (!iso) return null
   const [a, m, d] = iso.slice(0, 10).split('-')
   return `${d}/${m}/${a.slice(2)}`
+}
+
+/** LAS ACCIONES DE HOY — presente · quitar · tarde · salió antes. Una sola definición para la columna HOY
+ *  (escritorio) y el bloque de debajo del nombre (teléfono): dos copias del `if` serían dos reglas. */
+function AccionesHoy({ p, oferta, fecha, inicial, tactil = false }: {
+  p: { id: string; nombre_completo: string; obra_actual_id: string | null }
+  oferta: string
+  fecha: string
+  inicial?: TardanzaDeHoy
+  tactil?: boolean
+}) {
+  return (
+    <>
+                      {/* LA ACCIÓN VA DESPUÉS DEL ESTADO, NUNCA EN SU LUGAR: la celda sigue diciendo
+                          «sin marcar», y al lado ofrece resolverlo. */}
+                      {oferta === 'boton' && (
+                        <BotonPresenteHoy
+                          personaId={p.id}
+                          nombre={oracion(p.nombre_completo)}
+                          obraId={p.obra_actual_id as string}
+                          fecha={fecha}
+                          tactil={tactil}
+                        />
+                      )}
+                      {/* TARDE DIRECTO SOBRE «SIN MARCAR» (dueño, 17/09/2026): un toque declara presente con la
+                          marca. Antes había que marcar «Presente» primero y la tardanza no aparecía. */}
+                      {oferta === 'boton' && (
+                        <MarcaTardanzaHoy
+                          personaId={p.id}
+                          nombre={oracion(p.nombre_completo)}
+                          fecha={fecha}
+                          tactil={tactil}
+                          obraSinMarcar={p.obra_actual_id as string}
+                        />
+                      )}
+                      {/* DESHACER VIVE DONDE SE HIZO (dueño, 10/09/2026). El estado se dice
+                          primero y la acción va al lado, apagada: «● presente · quitar». */}
+                      {oferta === 'quitar' && (
+                        <BotonQuitarPresente
+                          personaId={p.id}
+                          nombre={oracion(p.nombre_completo)}
+                          fecha={fecha}
+                          tactil={tactil}
+                        />
+                      )}
+                      {/* LA TARDANZA, SÓLO SOBRE UN PRESENTE (dueño, 15/09/2026): «tarde · salió
+                          antes» al lado de «quitar», con el mismo peso. Sobre «sin marcar» no hay
+                          nada que haya pasado tarde, y sobre una ausencia el CHECK de la base lo
+                          rechaza: la oferta es la misma que la de quitar, no una tercera regla. */}
+                      {oferta === 'quitar' && (
+                        <MarcaTardanzaHoy
+                          personaId={p.id}
+                          nombre={oracion(p.nombre_completo)}
+                          fecha={fecha}
+                          tactil={tactil}
+                          inicial={inicial}
+                        />
+                      )}
+                      {/* SIN OBRA NO HAY BOTÓN, Y SE DICE POR QUÉ. Dos palabras apagadas: sin ellas
+                          la fila parecería la única a la que «no le anda» el botón. Marcar presente
+                          imputa la jornada a una obra, y acá no hay ninguna que sea la correcta. */}
+                      {oferta === 'sin_obra' && (
+                        <span style={{ fontSize: '11.5px', color: V.tenue, flexShrink: 0 }} data-testid="sin-obra-para-marcar">
+                          sin obra
+                        </span>
+                      )}
+    </>
+  )
 }
