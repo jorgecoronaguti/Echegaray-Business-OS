@@ -28,12 +28,14 @@ test('la navegación tiene TRES solapas y ninguna categoría interna del OS', as
   await expect(header.getByTestId('marca')).toContainText('ECHEGARAY')
 
   // Las dos áreas de usuario más Presupuestos, que subió a nivel 1 el 25/08 (00 v2) porque es
-  // comercial y no administración. Y ninguna más: el header viejo tenía diecisiete.
+  // comercial y no administración, y Analíticas, cuarto destino desde el 17/09/2026 (sólo con
+  // permiso económico). Y ninguna más: el header viejo tenía diecisiete.
   const nav = page.getByTestId('nav-areas')
   await expect(nav.getByTestId('nav-administracion')).toBeVisible()
   await expect(nav.getByTestId('nav-obras')).toBeVisible()
   await expect(nav.getByTestId('nav-presupuestos')).toBeVisible()
-  expect(await nav.getByRole('link').count(), 'la navegación tiene solapas de más').toBe(3)
+  await expect(nav.getByTestId('nav-analiticas')).toBeAttached()
+  expect(await nav.getByRole('link').count(), 'la navegación tiene solapas de más').toBe(4)
 
   // Ninguna categoría del header viejo sobrevive COMO DESTINO DE NAVEGACIÓN.
   //
