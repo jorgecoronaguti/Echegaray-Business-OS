@@ -29,7 +29,7 @@ export interface Bloque {
 export const BLOQUES: readonly Bloque[] = [
   { clave: 'horas', rotulo: 'Horas', fondo: undefined },
   { clave: 'blanco', rotulo: 'Recibo blanco', fondo: 'rgb(var(--os-surface-sunken-rgb) / 0.55)' },
-  { clave: 'negro', rotulo: 'Recibo negro · plataforma', fondo: 'rgb(var(--os-accent-rgb) / 0.075)' },
+  { clave: 'negro', rotulo: 'Recibo negro · plataforma', fondo: 'rgb(var(--os-accent-rgb) / 0.1)' },
   { clave: 'resto', rotulo: 'Resto del cálculo', fondo: undefined },
 ]
 
@@ -102,6 +102,31 @@ export function tramosDeBloques(nDias: number): TramoDeBloque[] {
     return tramo
   })
 }
+
+/**
+ * DÓNDE EMPIEZA UN BLOQUE Y CUÁNTO MIDE, EN PX, CONTADO DESDE EL BORDE DERECHO DE PERSONA. Persona mide una variable
+ * CSS (el dueño la arrastra) pero no importa: el rótulo que sigue al desplazamiento se mueve con
+ * `corrimiento − desde`, y Persona está a los dos lados de esa resta.
+ */
+export function geometriaDelBloque(clave: ClaveDeBloque, nDias: number): { desde: number; ancho: number } {
+  const anchos = [...Array.from({ length: nDias }, () => ({ bloque: 'horas' as ClaveDeBloque, px: DIA })), ...PLATA]
+  let desde = GAP
+  let ancho = 0
+  let visto = false
+  for (const c of anchos) {
+    if (c.bloque === clave) { ancho += (visto ? GAP : 0) + c.px; visto = true; continue }
+    if (!visto) desde += c.px + GAP
+  }
+  return { desde, ancho }
+}
+
+/**
+ * CUÁNTO SE CORRE EL RÓTULO DE UN BLOQUE para seguir a la vista mientras el bloque esté en pantalla (17/09/2026: al
+ * desplazar la cinta, «RECIBO BLANCO» se iba por la izquierda y quedaba una banda gris sin nombre). Nunca antes de
+ * su bloque (0) y nunca más allá de su ancho: la última posición la recorta CSS contra el ancho del propio rótulo.
+ */
+export const corrimientoDelRotulo = (corrimiento: number, g: { desde: number; ancho: number }): number =>
+  Math.max(0, Math.min(corrimiento - g.desde, g.ancho))
 
 // LOS DÍAS ADELANTE, COMO EN LA PLANILLA: Persona · días · plata.
 export const columnasDe = (nDias: number): string =>

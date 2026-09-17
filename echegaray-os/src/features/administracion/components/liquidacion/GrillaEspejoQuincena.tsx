@@ -54,7 +54,9 @@ import { anchoArrastrado, anchoRecordado, CLAVE_ANCHO_PERSONA } from './cuadro/a
 import { horas as nHoras, pesos } from './formato'
 import { CintaHorizontal } from '@/shared/components/v2/CintaHorizontal'
 import { ALTO_LIQ, CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, MONO, fondoDeColumnaFija } from './solapas/tabla'
-import { BLOQUES, GAP, PLATA, anchoDe, anchoDelBloque, columnasDe, tramosDeBloques, type ClaveDeBloque } from './cuadro/bloquesDelCuadro'
+import {
+  BLOQUES, GAP, PLATA, anchoDe, anchoDelBloque, columnasDe, corrimientoDelRotulo, geometriaDelBloque, tramosDeBloques, type ClaveDeBloque,
+} from './cuadro/bloquesDelCuadro'
 import { BloqueDeColumnas } from './cuadro/BloqueDeColumnas'
 import { PieDelEspejo } from './cuadro/PieDelEspejo'
 import type { CampoEditable } from '../../services/liquidacionOverrides'
@@ -98,6 +100,9 @@ const VARIABLE_PERSONA = '[--liq-persona:170px] md:[--liq-persona:250px]'
 
 /** Cuántas columnas cruza la celda de un mensual: los dos recibos por horas. */
 const ANCHO_DE_LAS_BANDAS = anchoDelBloque('blanco', 0) + anchoDelBloque('negro', 0)
+
+/** La celda fija ocupa el alto entero de su fila y centra su contenido: tapa lo que pasa por detrás. */
+const ESTIRADA: React.CSSProperties = { alignSelf: 'stretch', display: 'flex', flexDirection: 'column', justifyContent: 'center' }
 
 /** El fondo de un bloque, del único lugar donde se declara. */
 const fondoDe = (clave: ClaveDeBloque): string | undefined => BLOQUES.find((b) => b.clave === clave)?.fondo
@@ -289,10 +294,16 @@ function Encabezado({ columnas, dias, sellada, corrimiento = 0, tirador }: {
           estilo={{ alignItems: 'end', paddingTop: 4, paddingBottom: 8 }}>
           <div data-testid={`banda-${t.clave}`} style={{
             gridColumn: '1 / -1', gridRow: 1, borderBottom: `1px solid ${V.grafito}`, paddingBottom: 4,
-            color: V.tinta, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>{t.rotulo}{sellada && (t.clave === 'blanco' || t.clave === 'negro') && (
-            <span data-testid={`banda-${t.clave}-sellada`} style={{ marginLeft: 8, fontWeight: 400, color: V.apagado, textTransform: 'none' }}>sellada</span>
-          )}</div>
+            color: V.tinta, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden',
+          }}>
+            {/* EL RÓTULO ACOMPAÑA AL DESPLAZAMIENTO dentro de su bloque: `clamp` lo frena antes de salirse por la derecha. */}
+            <span style={{
+              display: 'inline-block',
+              transform: `translateX(clamp(0px, ${corrimientoDelRotulo(corrimiento, geometriaDelBloque(t.clave, dias.length))}px, calc(${geometriaDelBloque(t.clave, dias.length).ancho}px - 100%)))`,
+            }}>{t.rotulo}{sellada && (t.clave === 'blanco' || t.clave === 'negro') && (
+              <span data-testid={`banda-${t.clave}-sellada`} style={{ marginLeft: 8, fontWeight: 400, color: V.apagado, textTransform: 'none' }}>sellada</span>
+            )}</span>
+          </div>
           {t.clave === 'horas' && dias.map((f) => <div key={f} style={{ gridRow: 2, textAlign: 'center' }} title={f}>{rotuloDia(f)}</div>)}
           {PLATA.filter((c) => c.bloque === t.clave).map((c) => (
             <div key={c.clave} style={{ gridRow: 2, textAlign: 'right' }}>{c.rotulo}</div>
@@ -319,7 +330,9 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
     // `data-fila-edicion`: Tab en una celda pasa a la siguiente editable de ESTA fila (`InlineEdit`).
     <div data-testid={`espejo-fila-${fila.personaId}`} data-fila-edicion="" data-pagada={fondo ? '1' : undefined}
       style={{ ...filaGrid(columnas, ALTO_LIQ.filaAlta), background: fondo }}>
-      <div style={{ ...COLUMNA_FIJA, background: fondoDeColumnaFija(fondo) }}>
+      {/* ESTIRADA AL ALTO DE LA FILA (17/09/2026): con los bloques pintados, el aire arriba y abajo de una celda
+          centrada dejaba ver pasar los fondos por detrás del nombre al desplazar la cinta. */}
+      <div style={{ ...COLUMNA_FIJA, background: fondoDeColumnaFija(fondo), ...ESTIRADA }}>
         {/* EL NOMBRE OCUPA EL RENGLÓN ENTERO; la marca va en el segundo renglón, al lado de la categoría (QA, 16/09/2026:
             «✓ Pagada 16/09» al lado del nombre lo truncaba a «ZOGBE RAM…»). */}
         <button type="button" onClick={abrir} data-testid={`espejo-nombre-${fila.personaId}`} title={`${fila.nombre} · ${corta(fila.alta)} · abrir el detalle`}
@@ -430,7 +443,7 @@ function Total({ columnas, dias, totales, redondeo, saldoRed }: {
     <div data-testid="espejo-total" style={{
       ...filaGrid(columnas, ALTO_LIQ.filaAlta), borderBottom: 'none', borderTop: `1px solid ${V.grafito}`, fontWeight: 600,
     }}>
-      <div style={COLUMNA_FIJA}>{totales.personas} persona{totales.personas === 1 ? '' : 's'}</div>
+      <div style={{ ...COLUMNA_FIJA, ...ESTIRADA }}>{totales.personas} persona{totales.personas === 1 ? '' : 's'}</div>
       {/* CADA TOTAL DEBAJO DE SU BLOQUE, con el mismo fondo: el total de un recibo se lee dentro de ese recibo. */}
       <BloqueDeColumnas fondo={fondoDe('horas')} columna={`span ${anchoDelBloque('horas', dias.length)}`}>
         {dias.map((f, i) => (

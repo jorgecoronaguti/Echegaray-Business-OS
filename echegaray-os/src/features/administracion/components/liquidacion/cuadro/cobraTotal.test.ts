@@ -10,7 +10,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { estadoDelPago, tituloDeJornales } from './estadoDelPago.ts'
-import { BLOQUES, PLATA, columnasDe, tramosDeBloques } from './bloquesDelCuadro.ts'
+import { BLOQUES, PLATA, columnasDe, corrimientoDelRotulo, geometriaDelBloque, tramosDeBloques } from './bloquesDelCuadro.ts'
 
 const fuente = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8')
 const GRILLA = fuente('../GrillaEspejoQuincena.tsx')
@@ -232,4 +232,25 @@ test('CADA COLUMNA EN UN SOLO BLOQUE, LOS BLOQUES CUBREN LA GRILLA SIN HUECOS Y 
     assert.ok(PLATA.some((c) => c.clave === clave), `se quitó «${clave}»`)
   }
   assert.equal(PLATA.length, 17)
+})
+
+// EL RÓTULO DEL BLOQUE SIGUE A LA VISTA (QA, 17/09/2026): al desplazar la cinta, «RECIBO BLANCO» se iba por la izquierda
+// y quedaba una banda sin nombre. Atrapa: una geometría que no coincide con las columnas reales (el rótulo se correría
+// antes o después de su bloque) y un corrimiento que no se frena en los bordes.
+test('LA GEOMETRÍA DE CADA BLOQUE COINCIDE CON SUS COLUMNAS Y EL RÓTULO SE FRENA EN LOS BORDES', () => {
+  const dias = 15
+  const horas = geometriaDelBloque('horas', dias)
+  assert.deepEqual(horas, { desde: 8, ancho: 15 * 36 + 72 + 15 * 8 })
+  const blanco = geometriaDelBloque('blanco', dias)
+  assert.equal(blanco.desde, horas.desde + horas.ancho + 8, 'el blanco empieza un aire después de horas')
+  assert.equal(blanco.ancho, 72 + 96 + 124 + 112 + 112 + 4 * 8)
+  const negro = geometriaDelBloque('negro', dias)
+  assert.equal(negro.desde, blanco.desde + blanco.ancho + 8)
+  const resto = geometriaDelBloque('resto', dias)
+  assert.equal(resto.desde + resto.ancho, dias * 36 + PLATA.reduce((s, c) => s + c.px, 0) + (dias + PLATA.length) * 8,
+    'el último bloque termina donde termina la tabla')
+  assert.equal(corrimientoDelRotulo(0, blanco), 0, 'sin desplazar, el rótulo no se mueve')
+  assert.equal(corrimientoDelRotulo(blanco.desde - 50, blanco), 0, 'antes de su bloque, tampoco')
+  assert.equal(corrimientoDelRotulo(blanco.desde + 100, blanco), 100)
+  assert.equal(corrimientoDelRotulo(99_999, blanco), blanco.ancho, 'nunca más allá de su bloque')
 })
