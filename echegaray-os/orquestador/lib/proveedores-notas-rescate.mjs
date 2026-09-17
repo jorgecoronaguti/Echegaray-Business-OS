@@ -23,6 +23,7 @@
 
 import { borrarNotas, guardarNotas, leerNotas } from './proveedor-notas.mjs'
 import { edicionesDelDueno, observarCuadro, RANGO_PROVEEDORES } from './proveedores-notas-hoja.mjs'
+import { escribirEnLaAuxiliar, planDeAuxiliar, RANGO_AUX } from './auxiliar-notas-escritura.mjs'
 
 /** Lee la pestaña (valor y fórmula) y arma la evidencia. No escribe nada. */
 export async function leerEdiciones({ google, fileId, query, anterior }) {
@@ -54,7 +55,7 @@ export async function registrarRetenidos({ query, retenidos, enBase }) {
         where not exists (
           select 1 from public.proveedor_nota_cambio c
            where c.clave = $1 and c.origen = 'sheet'
-             and c.creado_at > coalesce((select max(n.actualizado_en) from public.proveedor_notas n where n.clave = $1), '-infinity'))
+             and c.creado_at >= coalesce((select max(n.actualizado_en) from public.proveedor_notas n where n.clave = $1), '-infinity'))
        returning id`,
       [clave, v?.proveedor ?? clave, v?.nota ?? '',
         `conflicto: en el Sheet la nota aparece borrada junto con ${retenidos.length - 1} más en la misma lectura. `
@@ -92,6 +93,20 @@ export async function antesDeEscribirLaColumna({ google, fileId, query, anterior
   if (r.retenidos.length) {
     throw new Error(`«Qué hacer» muestra ${r.retenidos.length} notas borradas a la vez (${r.retenidos.join(', ')}): quedan como conflicto `
       + 'en la app y NO repongo la fórmula encima. Frenado.')
+  }
+  // ═══ Y LA AUXILIAR QUEDA COMO LA BASE, ANTES DE REPONER LA FÓRMULA (R1, 17/09/2026) ═══
+  //
+  // `proveedores-cuenta-corriente` ya escribió la auxiliar desde la base en este pipeline, ANTES de este
+  // rescate. Sin esto la fórmula repuesta en la D busca la nota vieja y el dueño ve desaparecer lo que
+  // escribió hasta la corrida siguiente. Si no se puede escribir o no aterriza, frena: la D no se toca.
+  if (r.guardar.length || r.borrar.length) {
+    const aux = await google.readSheetValues(fileId, RANGO_AUX, { render: 'FORMATTED_VALUE' })
+    const w = await escribirEnLaAuxiliar({ google, fileId, plan: planDeAuxiliar({ aux: aux ?? [], guardar: r.guardar, borrar: r.borrar }) })
+    if (w.estado !== 'escrito') {
+      throw new Error(`«Qué hacer»: guardé en la base pero no pude llevarlo a la auxiliar (${w.estado}: ${w.detalle}). `
+        + 'No repongo la fórmula: mostraría la nota vieja. Frenado.')
+    }
+    log(`«Qué hacer» en la auxiliar: ${w.detalle}`)
   }
   log(`«Qué hacer» rescatado antes de escribir: ${r.guardar.length} guardada(s) · ${r.borrar.length} borrada(s)`
     + `${r.desplazadas.length ? ` · ${r.desplazadas.length} movida(s) por la dinámica` : ''}`)
