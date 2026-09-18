@@ -1,19 +1,30 @@
-// OBRAS — una obra elegida: cada rubro presupuestado contra consumido, a qué ritmo consume y cuánto
-// costó su hora.
+// OBRAS — una obra elegida: cada rubro presupuestado contra consumido, qué contiene cada uno, a qué
+// ritmo consume y cuánto costó su hora.
 //
 // Estructura confirmada por el dueño (17/09/2026): absorbe lo útil de «Contrato y gasto» (los pares de
 // barras cotizado/gastado del diseño v6), de «Gasto por obra» (el % y la composición) y de «Costo por
 // hora» ($/h medido contra la empresa). No repite las cifras generales: ésas son del Resumen.
+//
+// ═══ LOS CUATRO RUBROS, CADA UNO CON LO QUE CONTIENE (dueño, 18/09/2026) ═══
+//
+// Mano de obra · Materiales · Subcontratistas · Otros, los mismos en el presupuesto (leído del documento
+// de cotización) y en el gasto (Compras + quincenas), con la definición de una línea debajo del nombre y
+// un «qué contiene» que abre los insumos del documento y los grupos del gasto. Ya no hay un «queda
+// combinado» de materiales y subcontratos: el presupuesto los separa.
 import Link from 'next/link'
-import { Fragment } from 'react'
 import { aUrl, type Filtros } from '../services/filtros'
 import { horasTexto, millones, pctConSigno, pctEntero, porHora } from '../services/formato'
-import { celda, costoPorHora, INCLUIDO_EN_MATERIALES, ITEMS, porHoraMedido, quedaMaterialesYSubcontratos, UMBRAL_HORA_CARA, type Celda, type Item } from '../services/agregados'
+import { celda, cierreDeRubro, costoPorHora, definicionDe, ITEMS, porHoraMedido, UMBRAL_HORA_CARA, type Celda, type Item } from '../services/agregados'
 import { mesesParaAgotar, type MesDeConsumo, type Ritmo } from '../services/consumo'
 import { rotuloEstimada, type ObraAnalitica } from '../services/obras'
-import { SIN_PRESUPUESTO_RUBRO } from '../services/presupuesto'
-import { ancho, Cabecera, Seccion } from './Piezas'
+import { ancho, Cabecera, Seccion, TONO_TEXTO } from './Piezas'
+import { DetalleRubro } from './DetalleRubro'
 import { Columnas } from './VistasEmpresa'
+
+const ORIGEN_CONTRATO: Record<string, string> = {
+  contrato: 'según contrato', oc: 'según OC del cliente', 'oc-cliente': 'según OC del cliente', presupuesto: 'según cotización aprobada',
+  'oc-pesos': 'según OBRAS', 'oc-usd-x-tc': 'en U$S, al dólar de hoy', formulario: 'declarado en la obra', 'suma-viva': 'lo facturado hasta hoy, no es precio',
+}
 
 export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva }: {
   obras: ObraAnalitica[]
@@ -27,33 +38,37 @@ export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva }: {
   if (!obra) return <p className="mt-9 text-sm text-muted">Ninguna obra con estos filtros.</p>
   const queda = obra.presupuesto != null ? obra.presupuesto - (obra.consumoComparable ?? 0) : null
   const meses = mesesParaAgotar(queda, ritmo?.porMes ?? null)
+  const origen = obra.contrato.origen ? ORIGEN_CONTRATO[obra.contrato.origen] ?? obra.contrato.origen : null
+  const conPresupuesto = obra.presupuestoRubros ? ITEMS.filter((i) => i.clave !== 'horas' && (obra.presupuestoRubros?.[i.clave as Exclude<Item, 'horas'>] ?? null) != null).map((i) => i.rotulo.toLowerCase()) : []
   return (
     <>
       <Selector obras={obras} elegida={obra.id} filtros={filtros} />
       <Cabecera titulo={obra.nombre}
-        detalle={<>{obra.clienteNombre}{obra.precio != null ? ` · contrato ${millones(obra.precio)} (referencia)` : ''}{obra.presupuestoEstimado ? ' · presupuesto estimado' : ''}</>}
+        detalle={<>
+          {obra.clienteNombre}
+          {obra.precio != null ? ` · contratado ${millones(obra.precio)}${obra.precioEnDolares ? ' (en U$S)' : ''}${origen ? ` · ${origen}` : ''}` : obra.contrato.origen === 'suma-viva' ? ' · sin precio: lo que OBRAS tiene es lo facturado' : ' · sin precio'}
+          {obra.fuentePresupuesto ? ` · presupuesto: ${obra.fuentePresupuesto}` : ''}
+          {obra.presupuestoEstimado ? ' · presupuesto estimado' : ''}
+        </>}
         cifras={[
-          { rotulo: 'presupuestado', valor: millones(obra.presupuesto), falta: 'sin presupuesto', nota: obra.presupuesto != null ? 'mano de obra y materiales cotizados' : (obra.motivoPresupuesto ?? undefined) },
+          { rotulo: 'presupuestado', valor: millones(obra.presupuesto), falta: 'sin presupuesto',
+            nota: obra.presupuesto != null ? `${conPresupuesto.join(', ')} cotizados` : (obra.motivoPresupuesto ?? undefined) },
           { rotulo: 'consumido', valor: millones(obra.presupuesto != null ? obra.consumoComparable : obra.gasto.total), falta: 'sin movimiento', nota: obra.presupuesto != null ? 'en esos rubros' : undefined },
           { rotulo: queda != null && queda < 0 ? 'excedido' : 'queda', valor: queda != null ? millones(Math.abs(queda)) : null, falta: '—', tono: queda != null && queda < 0 ? 'neg' : undefined, nota: obra.avanceGasto != null ? `${pctEntero(obra.avanceGasto)} consumido` : undefined },
-          { rotulo: 'ritmo por mes', valor: ritmo?.porMes != null ? millones(ritmo.porMes) : null, falta: consumo == null ? 'sin publicar' : 'sin consumo reciente',
-            nota: ritmo?.porMes != null ? `últimos 3 meses cerrados${ritmo.conEstimada ? ' · con mano de obra estimada' : ''}${meses != null ? ` · alcanza ${meses === 0 ? '0 meses' : `${meses.toLocaleString('es-AR', { maximumFractionDigits: 1 })} meses`}` : ''}` : undefined },
+          // A QUÉ VELOCIDAD CONSUME Y CUÁNTO DURA LO QUE QUEDA, dicho en palabras: «ritmo por mes ·
+          // alcanza 2,9 meses» no decía ninguna de las dos cosas (dueño, 17/09/2026).
+          { rotulo: 'consume por mes', valor: ritmo?.porMes != null ? millones(ritmo.porMes) : null, falta: consumo == null ? 'sin publicar' : 'sin consumo reciente',
+            nota: ritmo?.porMes != null ? `a este ritmo viene consumiendo en los últimos 3 meses cerrados${ritmo.conEstimada ? ', con mano de obra estimada' : ''}${meses != null ? `; a ese ritmo lo que queda alcanza para ${meses === 0 ? '0 meses' : `${meses.toLocaleString('es-AR', { maximumFractionDigits: 1 })} meses`}` : ''}` : undefined },
         ]} />
-      <Seccion titulo="Rubro contra rubro" aclaracion="mano de obra contra mano de obra y cargas cotizadas. La cotización incluye los subcontratos dentro de materiales: lo que queda de los dos se dice una sola vez.">
+      <Seccion titulo="Rubro contra rubro" aclaracion="cada rubro del gasto contra el mismo rubro del presupuesto leído del documento de cotización. Debajo de cada uno, qué contiene.">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5" data-testid="rubros">
-          {/* EL QUEDA COMBINADO VA JUSTO DESPUÉS DE SUBCONTRATOS: en el teléfono se lee debajo de los dos; en
-              la computadora se ubica explícito debajo de sus dos columnas. */}
-          {ITEMS.map((i) => (
-            <Fragment key={i.clave}>
-              <Rubro item={i.clave} rotulo={i.rotulo} c={celda(obra, i.clave)} />
-              {i.clave === 'subcontratos' ? <><QuedaCombinado obra={obra} /><NotaIva sinIva={sinIva} /></> : null}
-            </Fragment>
-          ))}
+          {ITEMS.map((i) => <Rubro key={i.clave} obra={obra} item={i.clave} rotulo={i.rotulo} c={celda(obra, i.clave)} />)}
         </div>
+        <NotaIva sinIva={sinIva} />
       </Seccion>
       <Seccion titulo="Consumo por mes" filo
-        aclaracion="materiales y subcontratos por fecha del comprobante; mano de obra por la quincena en que empieza"
-        leyenda={[{ color: 'bg-accent', rotulo: 'mano de obra' }, { color: 'bg-muted', rotulo: 'subcontratos' }, { color: 'bg-dato-materiales', rotulo: 'materiales' }]}>
+        aclaracion="materiales, subcontratistas y otros por fecha del comprobante; mano de obra por la quincena en que empieza"
+        leyenda={[{ color: 'bg-accent', rotulo: 'mano de obra' }, { color: 'bg-muted', rotulo: 'subcontratistas' }, { color: 'bg-dato-materiales', rotulo: 'materiales' }, { color: 'bg-dato-otros', rotulo: 'otros' }]}>
         <ConsumoMensual consumo={consumo} />
       </Seccion>
       <Seccion titulo="Costo de la hora" filo arriba="">
@@ -77,50 +92,42 @@ function Selector({ obras, elegida, filtros }: { obras: ObraAnalitica[]; elegida
   )
 }
 
-/** Un rubro: la barra fina de lo cotizado, la gruesa de lo consumido, y qué queda. Medidas del diseño v6. */
-function Rubro({ item, rotulo, c }: { item: Item; rotulo: string; c: Celda }) {
+/** Un rubro: la definición, la barra fina de lo cotizado, la gruesa de lo consumido, qué queda y qué contiene. Medidas del diseño v6. */
+function Rubro({ obra, item, rotulo, c }: { obra: ObraAnalitica; item: Item; rotulo: string; c: Celda }) {
   const fmt = item === 'horas' ? horasTexto : millones
   const escala = Math.max(c.cotizado ?? 0, c.gastado ?? 0)
-  const excedido = c.lectura?.tipo === 'excedido'
+  const excedido = c.lectura?.tipo === 'excedido' || c.lectura?.tipo === 'noPrevisto'
   const sinPres = c.lectura?.tipo === 'sinPresupuesto'
   const tono = excedido ? 'bg-neg' : sinPres ? 'bg-warn' : 'bg-accent'
   const gColor = c.gastado == null ? 'text-faint' : excedido ? 'text-neg' : sinPres ? 'text-warn' : 'text-ink'
+  const definicion = definicionDe(item)
   return (
     <div className="flex min-w-0 flex-col gap-2.5" data-testid={`rubro-${item}`}>
       <div className="text-[13px] font-semibold text-ink">{rotulo}</div>
+      {definicion ? <p className="-mt-1 text-[10.5px] leading-snug text-faint" data-testid={`definicion-${item}`}>{definicion}</p> : null}
       <Par rotulo="cotizado" ancho={ancho(c.cotizado, escala)} barra="bg-dato-referencia"
         valor={c.cotizado != null ? `${fmt(c.cotizado)}${c.estimado ? ' est.' : ''}` : '—'} color={c.cotizado != null ? 'text-ink' : 'text-faint'} titulo={c.cotizadoAusente ?? undefined} />
       <Par rotulo="consumido" ancho={ancho(c.gastado, escala)} barra={tono}
-        valor={c.gastado != null ? fmt(c.gastado) : (c.gastadoAusente ?? (item === 'horas' ? 'sin horas' : '—'))} color={gColor} fuerte />
+        valor={c.gastado != null ? fmt(c.gastado) : (c.gastadoAusente ?? (item === 'horas' ? 'sin horas' : 'sin movimiento'))} color={gColor} fuerte />
       <LecturaRubro c={c} item={item} />
       {c.consumoEstimado ? <div className="pl-[68px] text-[10.5px] text-faint">{c.consumoEstimado}</div> : null}
+      {item !== 'horas' ? (
+        <DetalleRubro rotulo={rotulo} presupuesto={obra.presupuestoDetalle?.[item] ?? null} consumo={obra.consumoDetalle?.[item] ?? null} fuente={obra.fuentePresupuesto} />
+      ) : null}
     </div>
   )
 }
 
-/** DEBAJO DE MATERIALES: con qué base se midió lo consumido. Un número con IVA no se compara con un presupuesto sin IVA. */
+/**
+ * DEBAJO DE LOS RUBROS: con qué base se midió lo consumido. Un número con IVA no se compara con un
+ * presupuesto sin IVA. Empieza nombrando lo que corrige —«todo lo consumido»— (dueño, 17/09/2026).
+ */
 function NotaIva({ sinIva }: { sinIva: number | null }) {
   return (
-    <p data-testid="nota-iva" className="text-[10.5px] text-faint sm:col-span-2 lg:col-start-2 lg:row-start-3">
-      {sinIva == null ? 'consumo con IVA: la base todavía no publica el neto'
-        : `neto de IVA · ${sinIva} ${sinIva === 1 ? 'comprobante' : 'comprobantes'} sin IVA discriminado tomados al total`}
+    <p data-testid="nota-iva" className="mt-4 text-[10.5px] text-muted">
+      {sinIva == null ? 'todo lo consumido está medido con IVA: la base todavía no publica el neto'
+        : `todo lo consumido está medido neto de IVA · ${sinIva} ${sinIva === 1 ? 'comprobante no discrimina' : 'comprobantes no discriminan'} el IVA y ${sinIva === 1 ? 'se tomó' : 'se tomaron'} por el total`}
     </p>
-  )
-}
-
-/** Debajo de Materiales y Subcontratos: lo que queda de los dos juntos contra MA. */
-function QuedaCombinado({ obra }: { obra: ObraAnalitica }) {
-  const q = quedaMaterialesYSubcontratos(obra)
-  if (!q) return null
-  const excedido = q.lectura?.tipo === 'excedido'
-  const texto = q.lectura?.tipo === 'queda' ? `${millones(q.lectura.monto)} · ${pctEntero(q.pct)} consumido`
-    : excedido ? `excedido en ${millones(q.lectura?.monto)}` : 'sin movimiento'
-  return (
-    <div data-testid="queda-materiales-subcontratos"
-      className="flex items-baseline justify-between gap-3 border-t border-line pt-2 sm:col-span-2 lg:col-start-2 lg:row-start-2">
-      <span className="text-[11.5px] text-faint">queda materiales y subcontratos</span>
-      <span className={`text-[12.5px] font-semibold tabular-nums ${excedido ? 'text-neg' : 'text-ink'}`}>{texto}</span>
-    </div>
   )
 }
 
@@ -137,34 +144,23 @@ function Par({ rotulo, ancho: w, barra, valor, color, fuerte = false, titulo }: 
 }
 
 function LecturaRubro({ c, item }: { c: Celda; item: Item }) {
-  const l = c.lectura
-  const fmt = item === 'horas' ? horasTexto : millones
-  // EL MOTIVO LARGO VA UNA VEZ, en la cabecera; en cada rubro, la palabra corta.
-  const corto = c.cotizadoAusente === SIN_PRESUPUESTO_RUBRO || c.cotizadoAusente === INCLUIDO_EN_MATERIALES ? c.cotizadoAusente : 'sin presupuesto'
-  const TEXTO: Record<NonNullable<Celda['lectura']>['tipo'], [string, string]> = {
-    queda: [`queda ${fmt(l?.monto)} · ${pctEntero(c.pct)} consumido`, 'text-muted'],
-    excedido: [`excedido en ${fmt(l?.monto)}`, 'text-neg'],
-    sinMovimiento: ['sin movimiento', 'text-muted'],
-    sinPresupuesto: [`consumo ${corto}`, 'text-warn'],
-    sinConsumo: ['sin consumo registrado con qué comparar', 'text-faint'],
-  }
-  // SIN LECTURA Y SIN COTIZADO se dice por qué no hay cotizado: la palabra no entra en la columna del número.
-  const [texto, color] = l ? TEXTO[l.tipo] : c.cotizado == null && c.cotizadoAusente ? [item === 'horas' ? c.cotizadoAusente : corto, 'text-faint'] : [' ', 'text-muted']
-  return <div className={`min-h-[34px] pl-[68px] text-[11.5px] leading-snug ${color}`}>{texto}</div>
+  const { texto, tono } = cierreDeRubro(c, item)
+  return <div className={`min-h-[34px] pl-[68px] text-[11.5px] leading-snug ${TONO_TEXTO[tono]}`} data-testid={`lectura-${item}`}>{texto}</div>
 }
 
 function ConsumoMensual({ consumo }: { consumo: MesDeConsumo[] | null }) {
   if (consumo == null) return <p className="text-[12.5px] text-faint">El consumo mes a mes todavía no se publica en la base.</p>
   const conMes = consumo.filter((m): m is MesDeConsumo & { mes: string } => m.mes != null).slice(-12)
-  const sinFecha = consumo.filter((m) => m.mes == null).reduce((a, m) => a + (m.materiales ?? 0) + (m.subcontratos ?? 0), 0)
+  const sinFecha = consumo.filter((m) => m.mes == null).reduce((a, m) => a + (m.materiales ?? 0) + (m.subcontratos ?? 0) + (m.otros ?? 0), 0)
   if (!conMes.length) return <p className="text-[12.5px] text-faint">Sin consumo registrado.</p>
-  const total = (m: MesDeConsumo) => (m.manoObra ?? 0) + (m.subcontratos ?? 0) + (m.materiales ?? 0)
+  const total = (m: MesDeConsumo) => (m.manoObra ?? 0) + (m.subcontratos ?? 0) + (m.materiales ?? 0) + (m.otros ?? 0)
   const max = Math.max(1, ...conMes.map(total))
   return (
     <>
       <Columnas meses={conMes.map((m) => ({
         mes: m.mes, valor: millones(total(m)),
         partes: [
+          { alto: ((m.otros ?? 0) / max) * 170, clase: 'bg-dato-otros' },
           { alto: ((m.materiales ?? 0) / max) * 170, clase: 'bg-dato-materiales' },
           { alto: ((m.subcontratos ?? 0) / max) * 170, clase: 'bg-muted' },
           { alto: ((m.manoObra ?? 0) / max) * 170, clase: 'bg-accent' },

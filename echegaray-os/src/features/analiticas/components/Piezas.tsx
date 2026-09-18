@@ -108,10 +108,12 @@ export function Seccion({ titulo, aclaracion, leyenda, children, arriba = 'pt-7'
   )
 }
 
+/** LOS CUATRO RUBROS DEL GASTO, en el orden en que se apilan las barras (dueño, 18/09/2026: «otros» entra). */
 export const LEYENDA_GASTO = [
   { color: 'bg-accent', rotulo: 'mano de obra' },
-  { color: 'bg-muted', rotulo: 'subcontratos' },
+  { color: 'bg-muted', rotulo: 'subcontratistas' },
   { color: 'bg-dato-materiales', rotulo: 'materiales' },
+  { color: 'bg-dato-otros', rotulo: 'otros' },
 ]
 
 /** Sin datos legibles: la base no contestó para este rol, o la lectura falló. Se dice, no se dibuja en cero. */

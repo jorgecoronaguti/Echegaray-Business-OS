@@ -114,9 +114,10 @@ test('la ficha no dibuja el avance de obra, y en su pista va el COSTO', () => {
   // LAS DOS COLUMNAS QUE EL DUEÑO PIDIÓ EL 12/09/2026, con su fuente declarada en el `title`.
   assert.match(src, /<RotuloCol derecha>Materiales<\/RotuloCol>/)
   assert.match(src, /<RotuloCol derecha>Mano de obra<\/RotuloCol>/)
-  // VACÍO NO ES CERO NI «—»: sin permiso o en una cara que no los transporta, las dos celdas callan.
-  // Un «—» afirmaría que este trabajo no gastó nada, y puede llevar $ 154 M.
-  assert.equal((src.match(/costos === null \|\| !veEconomia \? '' :/g) ?? []).length, 3,
+  // VACÍO NO ES CERO NI «—»: sin permiso o en una cara que no los transporta, las celdas de costo callan.
+  // Un «—» afirmaría que este trabajo no gastó nada, y puede llevar $ 154 M. Son CUATRO desde el
+  // 18/09/2026: Materiales · Subcontratos · Otros · Mano de obra.
+  assert.equal((src.match(/costos === null \|\| !veEconomia \? '' :/g) ?? []).length, 4,
     'las celdas de costo tienen que callar cuando no se pudieron leer, y sólo verlas quien ve economía')
 })
 
@@ -353,7 +354,8 @@ test('en el teléfono la tabla de trabajos rueda dentro de su caja, y no empuja 
   // nada —la grilla se encoge igual— y el nombre vuelve a quedar en 48px («B..», «L..», «P..»).
   const plantillas = plantillasDeObras()
   const bloque = codigoListas().slice(codigoListas().indexOf('const COLS_OBRAS'))
-  assert.match(bloque.slice(0, bloque.indexOf('\n\n')), /max-\[559px\]:min-w-\[808px\]/,
+  // 928 = 180 del nombre + 664 de pistas + 84 de gaps, con Subcontratos y Otros (18/09/2026).
+  assert.match(bloque.slice(0, bloque.indexOf('\n\n')), /max-\[559px\]:min-w-\[928px\]/,
     'el scroller quedó sin piso: la grilla se encoge y el nombre deja de leerse')
   assert.ok(plantillas.size === 2, 'el corte de 559 volvió a declarar su propia plantilla de pistas')
 })

@@ -22,9 +22,10 @@ import Link from 'next/link'
 import { aUrl, type Filtros } from '../services/filtros'
 import { horasTexto, millones, pctEntero } from '../services/formato'
 import {
-  cajonesDeLosClientes, cifrasResumen, composicionDelGasto, contraContrato, contratoPorCliente, INCLUIDO_EN_MATERIALES, manoObraDe, obrasQueMasConsumen, resumenPorCliente,
-  type Composicion, type FilaContrato, type FilaDeCliente,
+  cajonesDeLosClientes, cifrasResumen, composicionDelGasto, contenidoPorRubro, contraContrato, contratoPorCliente, manoObraDe, obrasQueMasConsumen, resumenPorCliente,
+  type Composicion, type ContenidoDeRubro, type FilaContrato, type FilaDeCliente,
 } from '../services/agregados'
+import { importe } from './DetalleRubro'
 import { rotuloEstimada, type ObraAnalitica } from '../services/obras'
 import { ancho, Cabecera, Cifras, LEYENDA_GASTO, Seccion } from './Piezas'
 
@@ -48,6 +49,8 @@ export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, 
   const consumidoSinPres = sinPres.reduce((a, o) => a + (o.gasto.total ?? 0), 0)
   const mo = obras.reduce((a, o) => a + (o.gasto.manoObra ?? 0), 0)
   const mat = obras.reduce((a, o) => a + (o.gasto.materiales ?? 0), 0)
+  const sub = obras.reduce((a, o) => a + (o.gasto.subcontratos ?? 0), 0)
+  const otr = obras.reduce((a, o) => a + (o.gasto.otros ?? 0), 0)
   const horas = obras.reduce<number | null>((a, o) => (o.gasto.horas == null ? a : (a ?? 0) + o.gasto.horas), null)
   const conHoras = obras.filter((o) => (o.gasto.horas ?? 0) > 0).length
   const total = r.consumoTotal
@@ -63,7 +66,8 @@ export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, 
           { rotulo: 'presupuestado', valor: millones(r.presupuestado), falta: 'sin presupuesto',
             nota: `${conPres.length} ${conPres.length === 1 ? 'obra' : 'obras'}${estimados ? ` · ${estimados} ${estimados === 1 ? 'estimado' : 'estimados'}` : ''}` },
           { rotulo: neto ? 'consumido en obras, sin IVA' : 'consumido en obras, con IVA', valor: millones(total), falta: 'sin movimiento',
-            nota: total ? `mano de obra ${pctEntero(mo / total)} · materiales ${pctEntero(mat / total)}` : undefined },
+            // LOS CUATRO RUBROS, SIEMPRE LOS CUATRO (dueño, 18/09/2026): la cabecera suma lo mismo que la tabla.
+            nota: total ? `mano de obra ${pctEntero(mo / total)} · materiales ${pctEntero(mat / total)} · subcontratistas ${pctEntero(sub / total)} · otros ${pctEntero(otr / total)}` : undefined },
           { rotulo: 'sin obra asignada', valor: millones(r.sinObraAsignada), falta: 'ninguno', tono: r.sinObraAsignada ? 'warn' : undefined,
             nota: comprobantes != null && comprobantes > 0 ? `${comprobantes} comprobantes sin obra` : undefined },
           { rotulo: 'horas en obra', valor: horasTexto(horas), falta: 'sin horas',
@@ -104,6 +108,13 @@ export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, 
         aclaracion="por cliente · la barra fina de arriba es lo presupuestado (el costo previsto en la cotización); la gruesa de abajo, lo consumido"
         leyenda={[...LEYENDA_GASTO, { color: 'bg-dato-cajon', rotulo: 'sin obra asignada' }]}>
         <PorCliente clientes={clientes} filtros={filtros} />
+      </Seccion>
+
+      {/* QUÉ CONTIENE CADA RUBRO (dueño, 18/09/2026): la definición de una línea y, abierto, de qué está
+          hecho en el presupuesto (insumos del documento) y en el gasto (familias, proveedores, quincenas). */}
+      <Seccion titulo="Qué contiene cada rubro" filo
+        aclaracion="los mismos cuatro rubros en el presupuesto (leído del documento de cotización de cada obra) y en el gasto (Compras y quincenas). Cada uno se abre.">
+        <ContenidoRubros contenido={contenidoPorRubro(obras)} />
       </Seccion>
 
       <DeQueYObras obras={obras} clientes={clientes} filtros={filtros} />
@@ -148,6 +159,7 @@ function PorClienteContrato({ clientes, filtros }: { clientes: FilaContrato[]; f
                 <div className="bg-accent" style={{ width: ancho(c.manoObra, c.gastado) }} />
                 <div className="bg-muted" style={{ width: ancho(c.subcontratos, c.gastado) }} />
                 <div className="bg-dato-materiales" style={{ width: ancho(c.materiales, c.gastado) }} />
+                <div className="bg-dato-otros" style={{ width: ancho(c.otros, c.gastado) }} />
               </div>
               <div className="whitespace-nowrap text-xs font-semibold tabular-nums text-ink">
                 {millones(c.gastado) ?? <span className="font-normal text-faint">{c.conPrecio ? 'sin movimiento' : 'sin precio'}</span>}
@@ -210,6 +222,7 @@ function PorCliente({ clientes, filtros }: { clientes: FilaDeCliente[]; filtros:
                 <div className="bg-accent" style={{ width: ancho(c.manoObra, c.total) }} />
                 <div className="bg-muted" style={{ width: ancho(c.subcontratos, c.total) }} />
                 <div className="bg-dato-materiales" style={{ width: ancho(c.materiales, c.total) }} />
+                <div className="bg-dato-otros" style={{ width: ancho(c.otros, c.total) }} />
                 <div className="bg-dato-cajon" style={{ width: ancho(c.sinObra, c.total) }} />
               </div>
               <div className="whitespace-nowrap text-xs font-semibold tabular-nums text-ink">{millones(c.total) ?? <span className="font-normal text-faint">sin movimiento</span>}</div>
@@ -282,6 +295,7 @@ function Mezcla({ m, empresa }: { m: Composicion; empresa: boolean }) {
         <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-accent text-white" style={{ width: ancho(m.manoObra, m.total) }}>{rot(m.manoObra)}</div>
         <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-muted text-white" style={{ width: ancho(m.subcontratos, m.total) }}>{rot(m.subcontratos)}</div>
         <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-dato-materiales text-ink" style={{ width: ancho(m.materiales, m.total) }}>{rot(m.materiales)}</div>
+        <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-dato-otros text-ink" style={{ width: ancho(m.otros, m.total) }}>{rot(m.otros)}</div>
       </div>
     </div>
   )
@@ -296,6 +310,13 @@ function Mezcla({ m, empresa }: { m: Composicion; empresa: boolean }) {
 function Huecos({ obras, sinPres }: { obras: ObraAnalitica[]; sinPres: ObraAnalitica[] }) {
   const est = rotuloEstimada(manoObraDe(obras))
   const sinPrecio = obras.filter((o) => o.precio == null)
+  // OBRAS CON PRESUPUESTO A LAS QUE LES FALTA UN RUBRO, con el motivo del documento (recortado).
+  const sinRubro = obras.filter((o) => o.presupuestoRubros).flatMap((o) => {
+    const faltan = (Object.keys(o.presupuestoRubros ?? {}) as (keyof NonNullable<typeof o.presupuestoRubros>)[]).filter((k) => (o.presupuestoRubros?.[k] ?? null) == null)
+    if (!faltan.length) return []
+    const motivo = (o.presupuestoDetalle?.[faltan[0]]?.motivo ?? 'sin presupuesto de este rubro').split(';')[0].split(':')[0]
+    return [{ obra: o.nombre, rubros: faltan.map((k) => ({ manoObra: 'mano de obra', materiales: 'materiales', subcontratos: 'subcontratistas', otros: 'otros' })[k]), motivo }]
+  })
   const huecos = [
     // EL DISEÑO LO LLAMA «Margen por obra»: sin precio no hay contra qué medir lo gastado, y la obra queda afuera.
     sinPrecio.length ? {
@@ -305,7 +326,11 @@ function Huecos({ obras, sinPres }: { obras: ObraAnalitica[]; sinPres: ObraAnali
     } : null,
     est ? { que: 'Mano de obra real', porque: `El ${est.replace(' estimada', '')} de la mano de obra consumida es estimada: quincenas sin recibo del estudio, horas × tarifa.`, destraba: 'los recibos del estudio' } : null,
     sinPres.length ? { que: 'Consumo contra presupuesto', porque: sinPres.map((o) => `${o.nombre}: ${o.motivoPresupuesto ?? 'sin cotización aprobada'}`).join(' · '), destraba: 'cargar el costo cotizado' } : null,
-    { que: 'Subcontratos contra presupuesto', porque: `La cotización no los separa: van ${INCLUIDO_EN_MATERIALES.replace('incluido ', '')} y se miden junto con materiales.`, destraba: 'una partida propia en la cotización' },
+    sinRubro.length ? {
+      que: 'Rubros sin presupuesto',
+      porque: sinRubro.map((x) => `${x.obra}: ${x.rubros.join(', ')} (${x.motivo})`).join(' · '),
+      destraba: 'lo dice el documento: no se inventa un número',
+    } : null,
     { que: 'Productividad', porque: 'Las horas entran por día y por obra; no bajan a la actividad.', destraba: 'horas por actividad' },
   ].filter((h): h is { que: string; porque: string; destraba: string } => h != null)
   return (
@@ -321,5 +346,58 @@ function Huecos({ obras, sinPres }: { obras: ObraAnalitica[]; sinPres: ObraAnali
         ))}
       </div>
     </section>
+  )
+}
+
+// ─── Qué contiene cada rubro ────────────────────────────────────────────────────────────────────
+
+function ContenidoRubros({ contenido }: { contenido: ContenidoDeRubro[] }) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-2" data-testid="contenido-rubros">
+      {contenido.map((c) => (
+        <details key={c.rubro} className="group rounded-control border border-line" data-testid={`contenido-${c.rubro}`}>
+          <summary className="cursor-pointer list-none px-3.5 py-3">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-[13px] font-semibold text-ink"><span className="mr-1 inline-block text-faint transition-transform group-open:rotate-90">›</span>{c.rotulo}</span>
+              <span className="whitespace-nowrap text-[11.5px] tabular-nums text-muted">
+                presupuestado {millones(c.presupuestado) ?? <span className="text-faint">—</span>} · consumido {millones(c.consumido) ?? <span className="text-faint">—</span>}
+              </span>
+            </div>
+            <p className="mt-1 text-[11.5px] leading-snug text-muted">{c.definicion}</p>
+          </summary>
+          <div className="grid gap-4 border-t border-line px-3.5 py-3 text-[11.5px] leading-snug sm:grid-cols-2">
+            <div className="min-w-0">
+              <div className="mb-1 font-medium text-ink">En los presupuestos <span className="font-normal text-faint">· {c.obrasConPresupuesto} {c.obrasConPresupuesto === 1 ? 'obra' : 'obras'} lo cotizan</span></div>
+              {c.itemsPresupuesto.length ? (
+                <ul className="flex flex-col gap-px">
+                  {c.itemsPresupuesto.slice(0, 10).map((g) => (
+                    <li key={g.nombre} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 tabular-nums">
+                      <span className="truncate text-ink">{g.nombre}<span className="text-faint"> · {g.obras} {g.obras === 1 ? 'obra' : 'obras'}</span></span>
+                      <span className="whitespace-nowrap text-muted">{importe(g.monto)}</span>
+                    </li>
+                  ))}
+                  {c.itemsPresupuesto.length > 10 ? <li className="text-faint">y {c.itemsPresupuesto.length - 10} más</li> : null}
+                </ul>
+              ) : <p className="text-faint">{c.presupuestado == null ? 'ninguna obra tiene presupuesto de este rubro' : 'previsto en cero'}</p>}
+              {c.sinEsteRubro.length ? <p className="mt-2 text-faint">Sin presupuesto de este rubro: {c.sinEsteRubro.map((x) => x.nombre).join(', ')}.</p> : null}
+            </div>
+            <div className="min-w-0">
+              <div className="mb-1 font-medium text-ink">En el gasto</div>
+              {c.gruposConsumo.length ? (
+                <ul className="flex flex-col gap-px">
+                  {c.gruposConsumo.slice(0, 10).map((g) => (
+                    <li key={g.nombre} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 tabular-nums">
+                      <span className="truncate text-ink">{g.nombre}<span className="text-faint"> · {g.n}</span></span>
+                      <span className="whitespace-nowrap text-muted">{importe(g.monto)}</span>
+                    </li>
+                  ))}
+                  {c.gruposConsumo.length > 10 ? <li className="text-faint">y {c.gruposConsumo.length - 10} más</li> : null}
+                </ul>
+              ) : <p className="text-faint">{c.consumido == null ? 'sin movimiento' : 'sin detalle publicado'}</p>}
+            </div>
+          </div>
+        </details>
+      ))}
+    </div>
   )
 }

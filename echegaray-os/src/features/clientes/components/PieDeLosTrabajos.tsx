@@ -1,7 +1,7 @@
 // EL ACUMULADO DEL CLIENTE, EN EL PIE DE SU TABLA DE TRABAJOS.
 //
 // «Un acumulado HH del CLIENTE (suma de sus obras)» (dueño, 11/09/2026) y «los costos de obra
-// aparejados» (12/09/2026). Las tres cifras van acá y no en la fila de KPIs del titular por una
+// aparejados» (12/09/2026), en los cuatro rubros del 18/09/2026. Las cifras van acá y no en la fila de KPIs del titular por una
 // razón de verdad y no de diseño: `hh_obra` y `costo_obra` viajan SÓLO en la cara Obras —es la única
 // que las dibuja— y en las otras ocho la cifra tendría que decir «no la tengo», que a la velocidad
 // con que se lee una fila de KPIs se lee como un cero.
@@ -16,17 +16,24 @@
 
 import { V } from '@/shared/components/v2/patron'
 import { hh as formatoHH, plata } from '@/shared/utils/format'
-import { ROTULO_MANO_OBRA, ROTULO_MATERIALES, ROTULO_SUBCONTRATOS, type TotalesDelCliente } from '../services/costosDeObra'
+import { ROTULO_MANO_OBRA, ROTULO_MATERIALES, ROTULO_OTROS, ROTULO_SUBCONTRATOS, type TotalesDelCliente } from '../services/costosDeObra'
 
 const AYUDA_HH = 'Suma de las horas hombre de todos los trabajos de este cliente. Cada trabajo '
   + 'publica las suyas: un adicional no suma a su obra mayor, así que ninguna hora se cuenta dos veces.'
 
 const AYUDA_MATERIALES = 'Suma a la fecha de lo comprado para este cliente (pestaña Compras): lo '
   + 'asignado a cada trabajo MÁS los gastos sin obra asignada. Sin nómina, cargas, ARCA, financiero, '
-  + 'filas anuladas, subcontratos ni compras con fecha futura.'
+  + 'filas anuladas ni compras con fecha futura; sin subcontratos ni equipos, servicios, combustible y '
+  + 'fletes, que van en sus columnas.'
 
-const AYUDA_SUBCONTRATOS = 'Suma a la fecha de los subcontratos del cliente (proveedores marcados «Subcontratista»): '
-  + 'lo de cada trabajo MÁS lo sin obra asignada.'
+const AYUDA_SUBCONTRATOS = 'Suma a la fecha de los subcontratos del cliente (proveedores marcados «Subcontratista» '
+  + 'o familia «Subcontratos y mano de obra»): lo de cada trabajo MÁS lo sin obra asignada.'
+
+/** EL CUARTO RUBRO (dueño, 18/09/2026). Lo sin obra NO entra: `compras_sin_obra_de_clientes` no lo
+ *  abre, y sumar sólo lo de las obras y decir «más lo sin obra» sería mentir sobre la mitad. */
+const AYUDA_OTROS = 'Suma a la fecha de alquiler y traslado de equipos, servicios de obra (baño, contenedor, '
+  + 'agua), combustible, fletes y honorarios de todos sus trabajos. Hasta el 18/09/2026 iban dentro de '
+  + 'Materiales. Lo sin obra asignada no se abre por rubro y no entra acá.'
 
 /** Lo gastado y lo trabajado, sumado de las MISMAS filas que la tabla de arriba. */
 export function PieDeLosTrabajos({ hh, obras, costos }: {
@@ -69,6 +76,13 @@ export function PieDeLosTrabajos({ hh, obras, costos }: {
       <span data-testid="subcontratos-del-cliente" title={AYUDA_SUBCONTRATOS} style={LINEA}>
         <Rotulo texto={ROTULO_SUBCONTRATOS} />
         <Cifra texto={costos.legible ? plata(costos.subcontratos) : 'no puedo leerlos'} />
+      </span>
+
+      {/* OTROS, SUMADO DE LAS MISMAS FILAS QUE LA COLUMNA DE ARRIBA (`totalesDelCliente`, `t.otros`).
+          «—» = ningún trabajo tiene un comprobante de este rubro; «no puedo leerlos» = no se leyó. */}
+      <span data-testid="otros-del-cliente" title={AYUDA_OTROS} style={LINEA}>
+        <Rotulo texto={ROTULO_OTROS} />
+        <Cifra texto={costos.legible ? plata(costos.otros) : 'no puedo leerlos'} />
       </span>
 
       {/* LA MANO DE OBRA DICE SI EL TOTAL ESTÁ COMPLETO. Un total al que le faltan 12.500 horas

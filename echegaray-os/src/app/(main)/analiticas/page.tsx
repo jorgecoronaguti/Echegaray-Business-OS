@@ -21,6 +21,15 @@ import { VistaResumen } from '@/features/analiticas/components/VistaResumen'
 import { VistaObras } from '@/features/analiticas/components/VistaObras'
 import { VistaCaja, VistaCobranza, VistaNomina } from '@/features/analiticas/components/VistasEmpresa'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
+import { manoObraDe } from '@/features/analiticas/services/agregados'
+import { rotuloEstimada, type ObraAnalitica } from '@/features/analiticas/services/obras'
+
+/** La mano de obra imputada a obras en el período: la misma suma que Resumen, para que Nómina no la contradiga. */
+function manoObraEnObras(cartera: ObraAnalitica[]) {
+  const con = cartera.filter((o) => (o.gasto.manoObra ?? 0) > 0)
+  const t = manoObraDe(cartera)
+  return { manoObra: t.manoObra, estimada: rotuloEstimada(t), obras: con.length }
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -57,7 +66,8 @@ function Vista({ filtros, d, periodo }: {
     case 'obras': return <VistaObras obras={d.obras} obra={d.obraElegida} filtros={filtros} consumo={d.consumoMensual} ritmo={d.ritmo}
       sinIva={d.obraElegida && d.sinIvaDiscriminado.size ? (d.sinIvaDiscriminado.get(d.obraElegida.id) ?? 0) : null} />
     case 'caja': return <VistaCaja egresos={d.egresos} periodo={periodo} />
-    case 'nomina': return <VistaNomina filas={d.nomina} quincenas={d.quincenas} personas={d.personas} rango={d.rango} periodo={periodo} hoy={d.hoy} />
+    case 'nomina': return <VistaNomina filas={d.nomina} quincenas={d.quincenas} personas={d.personas} rango={d.rango} periodo={periodo} hoy={d.hoy}
+      enObras={d.legible ? manoObraEnObras(d.cartera) : null} />
     case 'cobranza': return <VistaCobranza cuenta={d.cuentaCorriente} documentos={d.documentos} hoy={d.hoy} periodo={periodo} />
     default: return <VistaResumen obras={d.obras} sinObra={d.sinObra} filtros={filtros} neto={d.netoDeIva}
       comprobantesPorCliente={d.sinObraDetalle.size ? new Map([...d.sinObraDetalle.entries()].map(([id, g]) => [id, g.nComprobantes])) : null} />
