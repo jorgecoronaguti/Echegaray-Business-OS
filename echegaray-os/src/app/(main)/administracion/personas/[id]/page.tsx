@@ -1,5 +1,29 @@
 // EL LEGAJO DE UNA PERSONA — ficha de entidad con seis solapas.
 //
+// ═══ LO QUE SE UNIFICÓ EL 18/09/2026 (dueño: «hay secciones que se pueden unificar») ═══
+//
+//   HORAS + ASIGNACIONES → «Horas y obras». Eran la misma pregunta partida en dos —dónde estuvo y
+//   cuánto trabajó— y el Resumen lo delataba con DOS enlaces a dos caras de lo mismo. `?v=asignaciones`
+//   sigue valiendo: lo traduce `vistaDe`. Nada se perdió; la cuenta de asignaciones que iba al lado
+//   de la solapa ahora va en el rótulo de su sección, donde además dice de QUÉ es el número.
+//
+//   UN SOLO LENGUAJE VISUAL. El Resumen dibujaba tres cajas redondeadas (`TarjetaFicha`) sobre una
+//   pantalla cuyo encabezado, cifras, retribución, horas y documentos son planos. Las tres pasaron a
+//   `SeccionDeFicha`: mismo rótulo, mismo filo, misma sangría que el resto. Ni un dato se fue con la
+//   caja — el título, la cuenta y el rango siguen en el rótulo de la sección.
+//
+//   EL AVISO DE PAPELES NOMBRA LO QUE FALTA. «Faltan 3 papeles» estaba dicho tres veces en la misma
+//   pantalla (cifra, aviso, encabezado de la solapa) y en ninguna decía CUÁLES: había que abrir la
+//   solapa igual. Ahora los nombra, y el salto deja de hacer falta. La cifra y el encabezado siguen.
+//
+//   EL AVISO DE «SIN OBRA» DICE DESDE CUÁNDO. El aviso y el botón amarillo llevaban los dos a
+//   `/obras` con el mismo verbo. El botón es la acción; el aviso aporta lo que el botón no puede.
+//
+//   LO QUE NO SE TOCÓ Y POR QUÉ. «Usuario y permisos» y «Auditoría» piden predicados DISTINTOS
+//   —`ve_economia()` y `es_administracion()`, y el jefe de obra entra a una y no a la otra—, así que
+//   fundirlas movería un permiso. «Retribución» es de quien liquida sueldos, por lo mismo. Y ni un
+//   número ni una regla de la retribución se modificó: sólo se la dejó donde estaba.
+//
 // ═══ POR QUÉ NO ESTÁ TODO A LA VISTA ═══
 //
 // El dueño: *"NO mostrar toda la información simultáneamente en 15 cards."* La ficha tiene
@@ -50,10 +74,10 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { BotonAccion } from '@/shared/components/ui'
 import { Aviso } from '@/shared/components/ds'
-import { V } from '@/shared/components/v2/patron'
+import { NotaBloque, V } from '@/shared/components/v2/patron'
 import {
   AccionPrimaria, AccionSecundaria, AvisoDeFicha, CifrasDeFicha, CostadoDeFicha, CuerpoDeFicha,
-  Migas, PastillaFilo, SolapasDeFicha, TituloDeFicha, type CifraDeFicha, PantallaV2,
+  Migas, PastillaFilo, SeccionDeFicha, SolapasDeFicha, TituloDeFicha, type CifraDeFicha, PantallaV2,
 } from '@/shared/components/v2/segundoNivel'
 import { CostadoLegajo, type DatoDeLegajo } from '@/features/administracion/components/CostadoLegajo'
 import { hhPorMes } from '@/features/administracion/services/hhPorMes'
@@ -82,10 +106,12 @@ import { BloqueAuditoria } from '@/features/administracion/components/BloqueAudi
 import { BloqueUsuario } from '@/features/administracion/components/BloqueUsuario'
 import { CamposIdentidad, CamposLaboral } from '@/features/administracion/components/FormularioPersona'
 import { AltaDocumento } from '@/features/administracion/components/FichaPartes'
-import { LABEL_FICHA, VISTAS_FICHA, type VistaFicha } from '@/features/administracion/services/vistasFicha'
+import { LABEL_FICHA, VISTAS_FICHA, vistaDe, type VistaFicha } from '@/features/administracion/services/vistasFicha'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { getAsignacionesDe, getDocumentos, getPersona } from '@/features/administracion/services/personasService'
-import { antiguedadEnAnios, papelesPendientes } from '@/features/administracion/services/fichaPersona'
+import {
+  antiguedadEnAnios, frasePendientes, papelesPendientes, pendientesDelLegajo,
+} from '@/features/administracion/services/fichaPersona'
 import { veLaCuentaDeOtro } from '@/features/administracion/services/accesoPersona'
 import { liquidaSueldos } from '@/features/auth/types/areas'
 import { getValorHoraDelLegajo } from '@/features/administracion/services/valorHoraDelLegajoService'
@@ -138,7 +164,10 @@ export default async function FichaPersonaPage({
   // El 404 amable ya existe: usarlo. (QA visual, 21/08/2026)
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) notFound()
   const sp = await searchParams
-  const vista = (VISTAS_FICHA.find((v) => v === sp.v) ?? 'resumen') as VistaFicha
+  // `vistaDe` y no un `find`: `?v=asignaciones` dejó de ser una solapa el 18/09/2026 y sigue
+  // circulando por specs, por el chat y por lo que alguien tenga en un favorito. Un `find` lo
+  // habría dejado caer en el Resumen sin decir nada; el alias lo lleva a la cara que lo absorbió.
+  const vista: VistaFicha = vistaDe(sp.v)
   const editar = sp.editar === 'identidad' || sp.editar === 'laboral' ? (sp.editar as GrupoEdicion) : null
   const base = `/administracion/personas/${id}`
   const href = (v: VistaFicha, e?: GrupoEdicion) =>
@@ -234,6 +263,15 @@ export default async function FichaPersonaPage({
   // HH: calcularlo en el navegador daría una antigüedad distinta a cada lado de la medianoche.
   const antiguedad = antiguedadEnAnios(persona.fecha_ingreso, hoy)
   const pendientes = papelesPendientes(papeles, persona.en_la_empresa)
+  // CUÁLES, NO SÓLO CUÁNTOS. El aviso los nombra: repetir por tercera vez el número obligaba a
+  // abrir la solapa Documentos para contestar la pregunta que el aviso decía estar contestando.
+  const nombresPendientes = pendientesDelLegajo(papeles, persona.en_la_empresa)
+  // DESDE CUÁNDO ESTÁ SIN OBRA. Sale de las asignaciones YA leídas —ni una consulta más—: la última
+  // que alguien cerró. El aviso y el botón amarillo llevaban los dos a `/obras` diciendo lo mismo;
+  // el botón es la acción, y esto es lo que el botón no puede decir.
+  const ultimaCerrada = (asignaciones?.data ?? [])
+    .filter((a) => a.hasta)
+    .sort((a, b) => ((a.hasta ?? '') < (b.hasta ?? '') ? 1 : -1))[0] ?? null
   const filasHH = horas?.data ?? []
   const periodo = esPeriodo(sp.p) ? sp.p : PERIODO_POR_DEFECTO
   const ventana = ventanaDe(periodo, hoy)
@@ -448,17 +486,27 @@ export default async function FichaPersonaPage({
 
       {!egresada && !vigente && (
         <AvisoDeFicha verbo="Asignar obra" href="/obras" testid="aviso-sin-obra">
-          Activo pero sin obra: no suma a la proyección de dotación de ninguna. Se asigna desde la
-          solapa Personal de la obra.
+          Activo pero sin obra: no suma a la proyección de dotación de ninguna.
+          {/* NUNCA TUVO y SE LE CERRÓ LA ÚLTIMA son dos situaciones distintas, y la primera dicha
+              sobre la segunda esconde que esto pasó hace tres días o hace ocho meses. */}
+          {ultimaCerrada?.hasta
+            ? ` Sin asignación desde el ${fecha(ultimaCerrada.hasta)}, cuando se cerró la de ${ultimaCerrada.obra_nombre ?? ultimaCerrada.obra_id}.`
+            : ' Nunca tuvo una asignación a obra cargada.'}
+          {' '}Se asigna desde la solapa Personal de la obra.
         </AvisoDeFicha>
       )}
       {vigente && pendientes > 0 && (
         <AvisoDeFicha verbo="Ver papeles" href={href('documentos')} testid="aviso-papeles">
-          {pendientes === 1
-            ? 'Falta un papel del legajo.'
-            : `Faltan ${pendientes} papeles del legajo.`}
-          {' '}Ninguno vence: `documento_legajo` no guarda fecha de vencimiento, así que lo que falta
-          es que estén, no que estén al día.
+          {pendientes === 1 ? 'Falta un papel del legajo' : `Faltan ${pendientes} papeles del legajo`}
+          {': '}
+          {/* LOS NOMBRES EN TINTA: son lo que hay que ir a buscar, y el resto del renglón es la
+              aclaración. Hasta cuatro; de ahí en más, cuántos quedan — una lista de doce empuja la
+              pantalla entera hacia abajo para decir algo que la solapa ya dice mejor. */}
+          <span style={{ color: V.tinta }} data-testid="papeles-faltantes">
+            {frasePendientes(nombresPendientes)}
+          </span>
+          {'. '}Ninguno vence: `documento_legajo` no guarda fecha de vencimiento, así que lo que
+          falta es que estén, no que estén al día.
         </AvisoDeFicha>
       )}
 
@@ -471,19 +519,22 @@ export default async function FichaPersonaPage({
           .map((v) => ({
             clave: v,
             titulo: LABEL_FICHA[v],
-            // Sólo el de las solapas cuyo número la página YA leyó. «Horas» no lo lleva a propósito:
-            // su fuente es `registros_hh` entera, y contarla para pintar un número al lado de una
-            // solapa que nadie abrió sería pagar la consulta cara en las seis vistas.
-            cuenta: v === 'asignaciones'
-              ? asignaciones?.data?.length ?? null
-              : v === 'documentos' ? papeles.length : null,
+            // Sólo el de las solapas cuyo número la página YA leyó. «Horas y obras» no lo lleva a
+            // propósito: su fuente es `registros_hh` entera, y contarla para pintar un número al
+            // lado de una solapa que nadie abrió sería pagar la consulta cara en las seis vistas.
+            // La cuenta de asignaciones —que vivía acá cuando eran solapa propia— no se perdió: va
+            // en el rótulo de su sección, donde además dice de qué es el número.
+            cuenta: v === 'documentos' ? papeles.length : null,
             activa: v === vista,
             href: href(v),
           }))}
       />
 
       <CuerpoDeFicha>
-        <div className="flex min-w-0 flex-1 flex-col gap-4">
+        {/* 28px ENTRE SECCIONES Y NO 16. Las tarjetas traían su propio borde, que era lo que
+            separaba un bloque del siguiente; sin caja, lo único que los separa es el aire, y con
+            16px el rótulo de una sección se lee como el pie de la anterior. */}
+        <div className="flex min-w-0 flex-1 flex-col gap-7">
           {fallo && <Aviso tono="neg">{fallo}</Aviso>}
           {/* LA PRESENCIA DECLARADA FALLA POR SU CUENTA Y NO TIRA LA FICHA: la franja queda con lo
               que sí se pudo leer —las horas— y se dice qué falta, en vez de dibujar un silencio. */}
@@ -527,7 +578,10 @@ export default async function FichaPersonaPage({
                 // fecha del navegador, un pase que arranca mañana se vería como vigente del otro
                 // lado de la medianoche.
                 programados={tramosProgramadosDe(asignaciones?.data ?? [], hoy, catalogoObras)}
-                hrefAsignaciones={href('asignaciones')}
+                // `?v=asignaciones` seguiría andando por el alias, pero el ancla es lo que hace que
+                // unificar dos solapas no se pague: el que llega cae en la sección, no arriba de una
+                // cara donde tiene que buscarla.
+                hrefAsignaciones={`${href('horas')}#asignaciones`}
               />
 
               {/* ANOTACIONES — debajo de «Obras en las que trabajó» porque es la pregunta que sigue:
@@ -545,36 +599,56 @@ export default async function FichaPersonaPage({
             </>
           )}
 
-          {vista === 'asignaciones' && (
-            <div data-testid="bloque-asignaciones">
-              <BloqueAsignacion
-                asignaciones={asignaciones?.data ?? []}
-                cerrar={cerrarAsignacionDePersona.bind(null, id)}
-              />
-              {/* LAS HH DEL AÑO POR OBRA acompañan al historial: es lo que el canónico pone al lado.
-                  Una obra sin horas imputadas NO publica un cero — se calla. */}
-              <p style={{ fontSize: '11px', lineHeight: 1.6, color: V.tenue, marginTop: 12, maxWidth: 720 }}>
-                La misma relación que muestra Obra → Personal.
-                {hhPorObra.size > 0 && ` Con horas imputadas este año en ${hhPorObra.size} ${hhPorObra.size === 1 ? 'obra' : 'obras'}.`}
-              </p>
-            </div>
-          )}
+          {/* ═══ UNA SOLA CARA PARA «DÓNDE ESTUVO Y CUÁNTO TRABAJÓ» (dueño, 18/09/2026) ═══
 
+              Eran dos solapas. Las horas no se entienden sin saber a qué obra estaba asignado quien
+              las hizo, y el historial de asignaciones no dice nada sin las horas que lo respaldan:
+              para cruzarlas había que ir y volver. El orden es el de la pregunta —primero lo que
+              pasó, después la relación contractual que lo sostiene—, y las dos leen lo que la
+              página ya tenía en memoria. */}
           {vista === 'horas' && (
-            <div data-testid="bloque-horas">
-              <BloqueHoras
-                periodo={rotulo(ventana)}
-                ventana={ventana}
-                horasPeriodo={resumen.trabajadas}
-                porTipo={resumen.porTipo}
-                porObra={resumen.obras}
-                porActividad={resumen.actividades}
-                registros={resumen.registros}
-                historial={filasHH}
-                periodoActivo={periodo}
-                hrefPeriodo={(p) => `${base}?${new URLSearchParams({ v: 'horas', p })}`}
-              />
-            </div>
+            <>
+              {/* SIN `derecha`, Y NO POR OLVIDO: el bloque de abajo ya publica la ventana en su
+                  propia cifra («Ventana · 16/09 a 30/09»). Repetirla en el rótulo de la sección la
+                  dejaba dicha dos veces a diez píxeles de distancia — que es el mismo defecto que
+                  esta pasada vino a corregir, cometido de nuevo. La de «Asistencia de la quincena»
+                  sí va en el rótulo porque ese bloque no la dice en ningún otro lado. */}
+              <SeccionDeFicha titulo="Horas imputadas" testid="seccion-horas">
+                <div data-testid="bloque-horas">
+                  <BloqueHoras
+                    periodo={rotulo(ventana)}
+                    ventana={ventana}
+                    horasPeriodo={resumen.trabajadas}
+                    porTipo={resumen.porTipo}
+                    porObra={resumen.obras}
+                    porActividad={resumen.actividades}
+                    registros={resumen.registros}
+                    historial={filasHH}
+                    periodoActivo={periodo}
+                    hrefPeriodo={(p) => `${base}?${new URLSearchParams({ v: 'horas', p })}`}
+                  />
+                </div>
+              </SeccionDeFicha>
+
+              <SeccionDeFicha
+                id="asignaciones" titulo="Asignaciones a obra" testid="seccion-asignaciones"
+                // EL NÚMERO QUE ESTABA AL LADO DE LA SOLAPA, ahora con el rótulo que dice de qué es.
+                cuenta={asignaciones?.data?.length ?? null}
+              >
+                <div data-testid="bloque-asignaciones">
+                  <BloqueAsignacion
+                    asignaciones={asignaciones?.data ?? []}
+                    cerrar={cerrarAsignacionDePersona.bind(null, id)}
+                  />
+                  {/* LAS HH DEL AÑO POR OBRA acompañan al historial: es lo que el canónico pone al
+                      lado. Una obra sin horas imputadas NO publica un cero — se calla. */}
+                  <NotaBloque>
+                    La misma relación que muestra Obra → Personal.
+                    {hhPorObra.size > 0 && ` Con horas imputadas este año en ${hhPorObra.size} ${hhPorObra.size === 1 ? 'obra' : 'obras'}.`}
+                  </NotaBloque>
+                </div>
+              </SeccionDeFicha>
+            </>
           )}
 
           {/* MISMA REGLA QUE «USUARIO»: la solapa se esconde Y se cierra. Un `?v=retribucion` escrito a
@@ -595,39 +669,53 @@ export default async function FichaPersonaPage({
             />
           )}
 
+          {/* ═══ CUATRO BLOQUES APILADOS SIN NOMBRE → CUATRO SECCIONES CON RÓTULO (18/09/2026) ═══
+
+              El orden no cambió y ninguno se fue. Lo que cambió es que ahora se sabe qué es cada
+              uno: subir un papel, los papeles que el legajo PIDE, vincular uno que ya está en Drive
+              y lo que hay en la carpeta. Eran cuatro listas pegadas separadas sólo por aire, y la
+              diferencia entre «el papel que falta» y «el archivo que está en la carpeta» —que es la
+              que decide si alguien tiene trabajo que hacer— había que deducirla del contenido. */}
           {vista === 'documentos' && (
-            <div data-testid="bloque-documentos">
+            <div className="flex min-w-0 flex-col gap-7" data-testid="bloque-documentos">
               {/* PRIMERO LO QUE SE SUBE DESDE ACÁ. El dueño (16/09/2026) subió un certificado a Drive
                   «porque nunca me hiciste ninguna forma de subir documentos»: la forma existía, tercera
                   en esta solapa, debajo de los papeles tipificados y del enlace a Drive. Lo que se
                   carga va arriba; lo que se espeja, después. */}
               {subidos && (
-                <div className="mb-8">
+                <SeccionDeFicha titulo="Subir un papel al legajo" testid="seccion-subir-documento">
                   <DocumentosSubidos
                     datos={subidos} tipo="persona" entidadId={id} testid="persona-documentos-subidos"
                     carpetaDrive={persona.drive_folder_id}
                   />
-                </div>
+                </SeccionDeFicha>
               )}
-              <BloqueDocumentos
-                documentos={documentos?.data ?? []}
-                desvincular={desvincularDocumento.bind(null, id)}
-                enLaEmpresa={persona.en_la_empresa}
-                carpetaDrive={persona.drive_folder_id}
-              />
-              <AltaDocumento vincular={vincularDocumento.bind(null, id)} />
+
+              <SeccionDeFicha
+                titulo="Papeles del legajo" testid="seccion-papeles-legajo"
+                cuenta={papeles.length}
+              >
+                <BloqueDocumentos
+                  documentos={documentos?.data ?? []}
+                  desvincular={desvincularDocumento.bind(null, id)}
+                  enLaEmpresa={persona.en_la_empresa}
+                  carpetaDrive={persona.drive_folder_id}
+                />
+                <AltaDocumento vincular={vincularDocumento.bind(null, id)} />
+                <NotaBloque>
+                  Vínculos a Drive: el archivo no se copia. Ninguno vence —`documento_legajo` no
+                  guarda fecha de vencimiento—, así que esta cara nunca dice «al día»: sería una
+                  afirmación sobre un control que nadie está haciendo.
+                </NotaBloque>
+              </SeccionDeFicha>
+
               {archivosDrive && (
-                <div className="mt-8">
+                <SeccionDeFicha titulo="En la carpeta de Drive" testid="seccion-archivos-drive">
                   <ArchivosDeDrive
                     datos={archivosDrive} tipo="persona" rol={rolActor} testid="persona-archivos-drive"
                   />
-                </div>
+                </SeccionDeFicha>
               )}
-              <p style={{ fontSize: '11px', lineHeight: 1.6, color: V.tenue, marginTop: 12, maxWidth: 720 }}>
-                Vínculos a Drive: el archivo no se copia. Ninguno vence —`documento_legajo` no guarda
-                fecha de vencimiento—, así que esta cara nunca dice «al día»: sería una afirmación
-                sobre un control que nadie está haciendo.
-              </p>
             </div>
           )}
 

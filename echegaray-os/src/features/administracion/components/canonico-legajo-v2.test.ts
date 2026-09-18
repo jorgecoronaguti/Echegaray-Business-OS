@@ -123,3 +123,41 @@ test('la solapa de la cuenta se esconde Y la cara se cierra', () => {
   assert.match(src, /veLaCuenta \|\| v !== 'usuario'/, 'la solapa no se ofrece')
   assert.match(src, /vista === 'usuario' && !veLaCuenta/, '`?v=usuario` a mano tampoco entra')
 })
+
+// ═══ LA UNIFICACIÓN DEL 18/09/2026 ═══
+//
+// El dueño: *«hay secciones que se pueden unificar y hacer mejor la UX»*. Lo que se unificó tiene
+// dos formas conocidas de deshacerse sin que nadie se entere: que vuelva la caja redondeada en una
+// de las tres secciones del Resumen, y que «Asignaciones» vuelva a ser un `if` propio. Las dos se
+// miden acá; el layout a 390px lo sigue firmando alguien que abrió el navegador.
+
+test('el legajo habla UN solo idioma visual: ninguna sección del Resumen vuelve a ser una tarjeta', () => {
+  for (const a of ['QuincenaDeAsistencia.tsx', 'ObrasDeLaPersona.tsx', 'AnotacionesDeLaPersona.tsx']) {
+    const src = sinComentarios(fuente(a))
+    assert.doesNotMatch(src, /TarjetaFicha/, `${a}: volvió la caja redondeada`)
+    assert.match(src, /<SeccionDeFicha/, `${a}: tiene que usar la sección plana del v2`)
+  }
+})
+
+test('«Horas y obras» es UNA cara con las dos secciones, y el enlace viejo sigue llegando', () => {
+  const src = codigoPagina()
+  assert.match(src, /<BloqueHoras/)
+  assert.match(src, /<BloqueAsignacion/)
+  assert.doesNotMatch(src, /vista === 'asignaciones'/, 'la cara propia se fundió: el `if` ya no existe')
+  // `?v=asignaciones` circula por cuatro specs y por lo que alguien tenga guardado: no puede caer
+  // en el Resumen sin decir nada.
+  assert.match(src, /vistaDe\(sp\.v\)/)
+})
+
+test('el aviso de papeles NOMBRA lo que falta en vez de repetir el número por tercera vez', () => {
+  const src = codigoPagina()
+  assert.match(src, /frasePendientes\(nombresPendientes\)/)
+  // Y la cifra de arriba y el encabezado de la solapa siguen: unificar es juntar, no borrar.
+  assert.match(src, /rotulo: 'Papeles pendientes'/)
+})
+
+test('el aviso de «sin obra» dice desde cuándo, que es lo único que el botón amarillo no puede decir', () => {
+  const src = codigoPagina()
+  assert.match(src, /const ultimaCerrada =/)
+  assert.match(src, /Nunca tuvo una asignación a obra cargada/, 'nunca tuvo y se le cerró la última no son lo mismo')
+})

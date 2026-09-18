@@ -77,3 +77,32 @@ export function papelesPendientes(documentos: DocumentoLegajo[], enLaEmpresa: bo
   const sinArchivo = documentos.filter((d) => estadoDocumento(d) !== 'cargado').length
   return sinArchivo + solicitadosDelLegajo(documentos, enLaEmpresa).length
 }
+
+/**
+ * CUÁLES son los papeles que piden trabajo, no cuántos. Dueño, 18/09/2026, sobre unificar secciones
+ * del legajo: el número «faltan 3 papeles» estaba dicho TRES veces en la misma pantalla —la tira de
+ * cifras, el aviso de arriba y el encabezado de la solapa Documentos— y en ninguna de las tres decía
+ * cuáles, así que para contestar la pregunta real había que abrir la solapa igual. Repetir un número
+ * no es informar: el aviso ahora los nombra y el salto deja de hacer falta.
+ *
+ * El orden es el del trabajo: primero lo que NI SIQUIERA EXISTE como fila (`solicitado`), después lo
+ * que alguien tildó y no se puede abrir (`sin_archivo`) — que es menos grave porque hay a quién
+ * preguntarle por el archivo.
+ *
+ * Los nombres salen de `tipo_documento` y no de `nombre`: «alta temprana» es lo que hay que ir a
+ * buscar; «Alta AFIP Juan 2024 (1).pdf» es cómo se llama el archivo de uno de ellos.
+ */
+export function pendientesDelLegajo(documentos: DocumentoLegajo[], enLaEmpresa: boolean): string[] {
+  const sinArchivo = documentos
+    .filter((d) => estadoDocumento(d) !== 'cargado')
+    .map((d) => (d.tipo_documento ?? d.nombre ?? 'documento').replace(/_/g, ' '))
+  return [...solicitadosDelLegajo(documentos, enLaEmpresa).map((t) => t.replace(/_/g, ' ')), ...sinArchivo]
+}
+
+/** La frase del aviso: hasta `tope` nombres y, si hay más, cuántos quedan. Nunca una lista de doce
+ *  que empuja el resto de la pantalla hacia abajo. */
+export function frasePendientes(pendientes: string[], tope = 4): string {
+  if (pendientes.length <= tope) return pendientes.join(' · ')
+  const resto = pendientes.length - tope
+  return `${pendientes.slice(0, tope).join(' · ')} y ${resto} más`
+}

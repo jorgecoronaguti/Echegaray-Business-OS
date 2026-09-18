@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  antiguedadEnAnios, estadoDocumento, papelesPendientes, solicitadosDelLegajo,
+  antiguedadEnAnios, estadoDocumento, frasePendientes, papelesPendientes, pendientesDelLegajo, solicitadosDelLegajo,
 } from './fichaPersona.ts'
 import type { DocumentoLegajo } from '../types/index.ts'
 
@@ -61,4 +61,26 @@ test('los pendientes cuentan lo tildado-sin-archivo Y lo que nunca llegó', () =
   assert.equal(papelesPendientes(docs, true), 3)
   // Cerrado: sólo lo que existe y no se puede abrir.
   assert.equal(papelesPendientes(docs, false), 1)
+})
+
+test('los pendientes se pueden NOMBRAR, y no sólo contar', () => {
+  const docs = [
+    doc({ tipo_documento: 'alta_temprana', drive_file_id: 'a' }),
+    doc({ tipo_documento: 'dni', presente: true }), // tildado, sin archivo: NO está
+  ]
+  const nombres = pendientesDelLegajo(docs, true)
+  // EL AVISO NO PUEDE NOMBRAR UNA CANTIDAD DISTINTA DE LA QUE CUENTA LA CIFRA de arriba: son el
+  // mismo hecho dicho dos veces en la misma pantalla, y el día que discrepen nadie sabrá cuál mirar.
+  assert.equal(nombres.length, papelesPendientes(docs, true))
+  assert.equal(nombres.at(-1), 'dni', 'lo tildado-sin-archivo va al final: hay a quién preguntarle')
+  assert.ok(!nombres.some((n) => n.includes('_')), 'el guion bajo es de la base, no de la pantalla')
+  // A quien ya no está no se le pide nada que no exista: sólo queda lo que no se puede abrir.
+  assert.deepEqual(pendientesDelLegajo(docs, false), ['dni'])
+})
+
+test('la frase corta en cuatro y dice cuántos quedan, nunca una lista de doce', () => {
+  assert.equal(frasePendientes([]), '')
+  assert.equal(frasePendientes(['dni', 'epp']), 'dni · epp')
+  assert.equal(frasePendientes(['a', 'b', 'c', 'd']), 'a · b · c · d')
+  assert.equal(frasePendientes(['a', 'b', 'c', 'd', 'e', 'f']), 'a · b · c · d y 2 más')
 })
