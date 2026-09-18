@@ -11,6 +11,7 @@
 // sí lleva `desde`, porque recalcular una quincena de marzo tiene que usar la tarifa de marzo —
 // `tarifaVigenteAl` en `liquidacionQuincena.ts` elige por fecha. El historial real de lo pagado lo
 // hacen las quincenas CERRADAS, que sellan el valor hora que usaron.
+import { leerNumeroEsAR } from '../../../shared/lib/numeroEsAR.ts'
 
 /** Lo que se escribe en el formulario de tarifa. Todo texto: viene de un `<input>`. */
 export interface TarifaEnBruto {
@@ -35,15 +36,20 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/
 
 /**
  * Un importe escrito a mano. `null` cuando la celda quedó vacía — NUNCA cero: una tarifa de $ 0
- * liquidaría a alguien en cero con la misma cara con la que muestra un importe correcto.
+ * liquidaría a alguien en cero con la misma cara con la que muestra un importe correcto. `'invalido'` cuando lo escrito
+ * no es un número.
+ *
+ * ═══ SE LEE EN ES-AR, CON EL LECTOR ÚNICO (18/09/2026) ═══
+ *
+ * Antes se borraban TODOS los puntos: «8.5» salía 85 y «150000.50» salía 15.000.050. Ahora el texto pasa por
+ * `leerNumeroEsAR` —el mismo de las celdas del cuadro—: «150.000» es miles, «8,5» y «8.5» son decimales, y lo que no es
+ * un número (o es ambiguo, como «1.5.0») se RECHAZA con su motivo en vez de quedarse con los dígitos sueltos.
  */
-function importeEscrito(v: string | number | null): number | null {
+function importeEscrito(v: string | number | null): number | null | 'invalido' {
   if (v == null) return null
-  if (typeof v === 'number') return Number.isFinite(v) ? v : null
-  const s = v.trim()
-  if (!s) return null
-  const n = Number(s.replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.'))
-  return Number.isFinite(n) ? n : null
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 'invalido'
+  const leido = leerNumeroEsAR(v)
+  return leido.ok ? leido.valor : 'invalido'
 }
 
 /**
@@ -53,8 +59,13 @@ function importeEscrito(v: string | number | null): number | null {
  * dónde salió: la pantalla escribe «$3.650 · acuerdo con el dueño 09/09» o no escribe el importe.
  */
 export function validarTarifa(bruto: TarifaEnBruto): ResultadoDeTarifa {
-  const valorHora = importeEscrito(bruto.valorHora)
-  const netoMensual = importeEscrito(bruto.netoMensual)
+  const vh = importeEscrito(bruto.valorHora)
+  const nm = importeEscrito(bruto.netoMensual)
+  if (vh === 'invalido' || nm === 'invalido') {
+    return { ok: false, error: 'El importe no es un número: escribilo como 5.400 o 5.400,50.' }
+  }
+  const valorHora = vh
+  const netoMensual = nm
   if (valorHora != null && netoMensual != null) {
     return { ok: false, error: 'Una tarifa es por hora O un neto mensual, nunca las dos: borrá una.' }
   }

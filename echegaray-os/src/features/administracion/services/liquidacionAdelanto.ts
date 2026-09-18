@@ -10,6 +10,7 @@
 //
 // Porque quien carga el movimiento sabe la fecha y el canal, que son datos; la clase es una
 // CONCLUSIÓN de esos dos. Dejarla a elección convierte la conciliación en criterio personal.
+import { leerNumeroEsAR } from '../../../shared/lib/numeroEsAR.ts'
 
 /** Los dos canales por los que puede salir la plata. Efectivo nunca es un giro. */
 export type CanalDeAdelanto = 'efectivo' | 'banco'
@@ -67,12 +68,19 @@ export type ResultadoDeAdelanto =
 const ISO = /^\d{4}-\d{2}-\d{2}$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-function importeEscrito(v: string | number): number | null {
-  if (typeof v === 'number') return Number.isFinite(v) ? v : null
-  const s = v.trim()
-  if (!s) return null
-  const n = Number(s.replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.'))
-  return Number.isFinite(n) ? n : null
+/**
+ * El importe del formulario. `null` = vacío; `'invalido'` = lo escrito no es un número.
+ *
+ * ═══ SE LEE EN ES-AR, CON EL LECTOR ÚNICO (18/09/2026) ═══
+ *
+ * Antes se borraban TODOS los puntos: «8.5» salía 85 y «150000.50» salía 15.000.050. Ahora el texto pasa por
+ * `leerNumeroEsAR` —el mismo de las celdas del cuadro—: «150.000» es miles, «8,5» y «8.5» son decimales, y lo que no es
+ * un número (o es ambiguo, como «1.5.0») se RECHAZA con su motivo en vez de quedarse con los dígitos sueltos.
+ */
+function importeEscrito(v: string | number): number | null | 'invalido' {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 'invalido'
+  const leido = leerNumeroEsAR(v)
+  return leido.ok ? leido.valor : 'invalido'
 }
 
 /**
@@ -90,6 +98,7 @@ export function validarAdelanto(bruto: AdelantoEnBruto): ResultadoDeAdelanto {
     return { ok: false, error: `El ${bruto.fecha} cae fuera de la quincena ${desde} a ${hasta}: se restaría del cobro equivocado.` }
   }
   const importe = importeEscrito(bruto.importe)
+  if (importe === 'invalido') return { ok: false, error: 'El importe no es un número: escribilo como 150.000 o 150.000,50.' }
   if (importe == null) return { ok: false, error: 'Escribí el importe.' }
   if (importe <= 0) return { ok: false, error: 'Un adelanto de $ 0 o negativo no es un adelanto.' }
   if (bruto.canal !== 'efectivo' && bruto.canal !== 'banco') {
