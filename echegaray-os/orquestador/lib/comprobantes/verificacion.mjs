@@ -22,18 +22,63 @@
 
 import { ubicarColumna } from '../columnas-por-encabezado.mjs'
 import { COMPRAS_2508 } from '../encabezados-referencia.mjs'
+import { letraDe } from './contrato-columnas.mjs'
 
 /** Las columnas de Compras que se releen, POR RÓTULO (desde el 14/09/2026 se inserta «Obra» en L). */
 const ROTULOS_RELEIDOS = Object.freeze({
   categoria: 'Categoría', fecha: 'Fecha factura', proveedor: 'Proveedor', comprobante: 'N° Comprobante',
   obra: 'Cliente / Asignación', concepto: 'Concepto', importe: 'Importe', iva: 'IVA', total: 'Total',
   tipoPago: 'Tipo pago', estado: 'Estado',
+  // Desde el 18/09/2026 se releen también las que una persona completa y la derivada del maestro:
+  // son las que el aviso de «qué quedó vacío» tiene que poder nombrar leyéndolas del DESTINO.
+  unidad: 'Unidad de Negocio', detalle: 'Detalles / Obra',
+  obraFila: Object.freeze({ rotulo: 'Obra', opcional: true }),
+  cuit: Object.freeze({ rotulo: 'CUIT (OS)', opcional: true }),
 })
 
-/** Offset desde A de cada columna releída, contra la fila de rótulos que se leyó. */
+/** Offset desde A de cada columna releída, contra la fila de rótulos que se leyó. Opcional ausente → null. */
 export function colVerificacion(encabezado) {
   return Object.freeze(Object.fromEntries(Object.entries(ROTULOS_RELEIDOS)
-    .map(([k, r]) => [k, ubicarColumna(encabezado, r, 'Compras').indice])))
+    .map(([k, r]) => { const c = ubicarColumna(encabezado, r, 'Compras'); return [k, c ? c.indice : null] })))
+}
+
+// ═══ LO QUE QUEDÓ VACÍO SE DICE LEYENDO LA FILA, NO LO QUE SE MANDÓ (18/09/2026) ═══
+//
+// El aviso «quedó con la imputación por completar» se armaba con `imputacionVacia(item)`: lo que el
+// bot CREÍA que iba vacío. Pero el cargador completa cosas después (la anotación a mano, el
+// historial, el CUIT) y también puede no escribir algo que el ítem traía. El aviso y la fila
+// discrepaban en los dos sentidos. Desde acá se nombra lo que la celda releída tiene en blanco, con
+// su letra VIVA, para que completar sea abrir Compras e ir a esa celda. La regla de la casa: la
+// evidencia es del efecto, no del intento.
+
+/** Las columnas que completa una persona en Compras, en el orden en que se nombran. */
+export const COMPLETABLES = Object.freeze([
+  ['proveedor', 'Proveedor'], ['categoria', 'Categoría'], ['unidad', 'Unidad de Negocio'],
+  ['obra', 'Cliente / Asignación'], ['detalle', 'Detalle'], ['obraFila', 'Obra'], ['tipoPago', 'Tipo pago'],
+])
+
+/** Nombre corto de cada columna completable, para los avisos. */
+export const NOMBRE_COMPLETABLE = Object.freeze(Object.fromEntries(COMPLETABLES))
+
+/**
+ * Por fila releída: qué columnas completables quedaron VACÍAS (con su letra viva) y qué derivadas
+ * del OS no resolvieron (`cuit` = «CUIT (OS)» vacía: el maestro no tiene el CUIT del proveedor).
+ * Las filas sin nada vacío no salen. `col` de cada fila es el de `colVerificacion(encabezado)`.
+ *
+ * @param {Array<{fila:number, valores:Array, col?:object}>} leidas
+ * @returns {Array<{fila:number, proveedor:string|null, campos:string[], letras:Record<string,string>, derivadas:string[]}>}
+ */
+export function sinCompletar(leidas = []) {
+  const out = []
+  for (const { fila, valores, col = colRef } of leidas) {
+    const vacia = (i) => i != null && String(valores?.[i] ?? '').trim() === ''
+    const campos = []; const letras = {}
+    for (const [k] of COMPLETABLES) if (vacia(col[k])) { campos.push(k); letras[k] = letraDe(col[k]) }
+    const derivadas = []
+    if (String(valores?.[col.proveedor] ?? '').trim() && vacia(col.cuit)) { derivadas.push('cuit'); letras.cuit = letraDe(col.cuit) }
+    if (campos.length || derivadas.length) out.push({ fila, proveedor: valores?.[col.proveedor] ?? null, campos, letras, derivadas })
+  }
+  return out
 }
 
 /** Contra el encabezado de REFERENCIA (25/08): sólo para quien no pasa el suyo (tests). */

@@ -133,7 +133,8 @@ export function parteDeEscritura(res = {}) {
 
 /** Cómo se llama cada columna de imputación cuando hay que nombrarla. Rótulos REALES de Compras. */
 const ROTULO = Object.freeze({
-  categoria: 'Categoría', unidad: 'Unidad de Negocio', obra: 'Obra', detalle: 'Detalle',
+  proveedor: 'Proveedor', categoria: 'Categoría', unidad: 'Unidad de Negocio', obra: 'Cliente / Asignación',
+  detalle: 'Detalle', obraFila: 'Obra', tipoPago: 'Tipo pago',
 })
 
 const enPesos = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`

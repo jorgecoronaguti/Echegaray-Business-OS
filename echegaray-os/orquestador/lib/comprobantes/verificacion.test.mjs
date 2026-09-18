@@ -86,3 +86,61 @@ test('el cierre dice que se releyó, y con hallazgos dice que NO se dé por buen
   const mal = [{ fila: 812, valores: fila({ importe: 100, iva: 21, total: 999 }) }]
   assert.match(cierre(mal), /No lo des por bueno/)
 })
+
+// ════════════════════════════════════════════════════════════════════════════
+// LO QUE QUEDÓ VACÍO SE NOMBRA LEYENDO LA FILA, CON SU LETRA VIVA (18/09/2026)
+// ════════════════════════════════════════════════════════════════════════════
+import { colVerificacion, sinCompletar, COMPLETABLES } from './verificacion.mjs'
+import { COMPRAS_1809 } from './encabezado-vivo-compras.mjs'
+
+/** Una fila de Compras contra el encabezado VIVO, por rótulo. */
+function filaViva(valores = {}) {
+  const f = Array(COMPRAS_1809.length).fill('')
+  for (const [rotulo, v] of Object.entries(valores)) {
+    const i = COMPRAS_1809.indexOf(rotulo)
+    if (i < 0) throw new Error(`rótulo desconocido «${rotulo}»`)
+    f[i] = v
+  }
+  return f
+}
+const COLV = colVerificacion(COMPRAS_1809)
+const BASE = { Proveedor: 'Neumagom', 'N° Comprobante': '0002-00004213', 'Fecha factura': 46000, Importe: 479338.84, IVA: 100661.16, Total: 580000, Categoría: 'B' }
+
+test('sinCompletar nombra las celdas vacías con la LETRA viva: Obra es L y Tipo pago es Q', () => {
+  const leidas = [{ fila: 981, col: COLV, valores: filaViva({ ...BASE, 'Unidad de Negocio': 'Estructura', 'Cliente / Asignación': 'Taller', 'Detalles / Obra': 'Neumático', 'CUIT (OS)': '30-69185382-5' }) }]
+  const [p] = sinCompletar(leidas)
+  assert.deepEqual(p.campos, ['obraFila', 'tipoPago'])
+  assert.deepEqual(p.letras, { obraFila: 'L', tipoPago: 'Q' })
+  assert.deepEqual(p.derivadas, [])
+  assert.equal(p.proveedor, 'Neumagom')
+})
+
+test('una fila completa no sale; una sin Unidad ni J ni K sale con las tres, en orden de columna', () => {
+  const completa = filaViva({ ...BASE, 'Unidad de Negocio': 'Estructura', 'Cliente / Asignación': 'Taller', 'Detalles / Obra': 'x', Obra: 'ES-TAL · Estructura – Taller', 'Tipo pago': 'Echeq', 'CUIT (OS)': '30-69185382-5' })
+  assert.deepEqual(sinCompletar([{ fila: 1, col: COLV, valores: completa }]), [])
+  const vacia = filaViva({ ...BASE, Obra: 'ES-TAL · Estructura – Taller', 'Tipo pago': 'Echeq', 'CUIT (OS)': 'x' })
+  assert.deepEqual(sinCompletar([{ fila: 2, col: COLV, valores: vacia }])[0].campos, ['unidad', 'obra', 'detalle'])
+})
+
+test('«CUIT (OS)» vacía es una DERIVADA, no una celda para completar en Compras: va aparte', () => {
+  const sinCuit = filaViva({ ...BASE, 'Unidad de Negocio': 'Estructura', 'Cliente / Asignación': 'Taller', 'Detalles / Obra': 'x', Obra: 'ES-TAL · Estructura – Taller', 'Tipo pago': 'Echeq' })
+  const [p] = sinCompletar([{ fila: 981, col: COLV, valores: sinCuit }])
+  assert.deepEqual(p.campos, [])
+  assert.deepEqual(p.derivadas, ['cuit'])
+  assert.equal(p.letras.cuit, 'AN')
+})
+
+test('contra un encabezado sin «Obra» ni «CUIT (OS)» (opcionales) no se reclama lo que la pestaña no tiene', () => {
+  const enc = COMPRAS_1809.filter((r) => r !== 'Obra' && r !== 'CUIT (OS)')
+  const col = colVerificacion(enc)
+  assert.equal(col.obraFila, null)
+  assert.equal(col.cuit, null)
+  const f = Array(enc.length).fill('')
+  f[enc.indexOf('Proveedor')] = 'X'; f[enc.indexOf('Unidad de Negocio')] = 'Civil'; f[enc.indexOf('Cliente / Asignación')] = 'MESSINA'
+  f[enc.indexOf('Detalles / Obra')] = 'k'; f[enc.indexOf('Tipo pago')] = 'Efectivo'; f[enc.indexOf('Categoría')] = 'B'
+  assert.deepEqual(sinCompletar([{ fila: 5, col, valores: f }]), [])
+})
+
+test('las completables son exactamente las que una persona tipea en Compras — Tipo de Costo y Estado Carga NO están', () => {
+  assert.deepEqual(COMPLETABLES.map(([k]) => k), ['proveedor', 'categoria', 'unidad', 'obra', 'detalle', 'obraFila', 'tipoPago'])
+})
