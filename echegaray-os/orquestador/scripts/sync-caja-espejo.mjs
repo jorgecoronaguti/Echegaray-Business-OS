@@ -9,8 +9,10 @@
 // cuando el archivo cambió, y su timer (`echegaray-caja-espejo.timer`, cada 10 min) es la red para lo
 // que cambia SIN edición: CAJA tiene TODAY() y GOOGLEFINANCE, que mueven números sin subir la versión.
 //
-// CUÁNTO PESA: 4 lecturas a Google (~1 s) y, si nada cambió, UN update de una fila. Una foto nueva es
-// un insert de ~15 KB. Nada de refrescos de vistas materializadas: la base ya se cayó por eso.
+// CUÁNTO PESA: 6 llamadas a Google por vuelta —la grilla de CAJA, los specs de los gráficos, la versión
+// de Drive, los rangos de los gráficos dos veces (con formato y sin formato) y el tipo de cambio— en dos
+// tandas paralelas (~1,5 s medidos el 18/09), y, si nada cambió, UN update de una fila. Una foto nueva
+// es un insert de ~30 KB. Nada de refrescos de vistas materializadas: la base ya se cayó por eso.
 //
 //   node orquestador/scripts/sync-caja-espejo.mjs          # lee y escribe la foto
 //   node orquestador/scripts/sync-caja-espejo.mjs --dry    # lee y muestra; no toca la base
