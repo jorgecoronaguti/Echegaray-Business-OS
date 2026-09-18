@@ -216,6 +216,47 @@ test('(a) LA EXCEPCIÓN ESTÁ DECLARADA SÓLO DONDE EL VACÍO VUELVE AL CALCULAD
   ]) assert.ok(!/vacioRestaurable/.test(leer(archivo)), `${archivo}: no puede deshacer a vacío`)
 })
 
+// ═══ 18/09/2026, SEGUNDA VUELTA DE LA AUDITORÍA: LA VENTANA ENTRE LEER Y ESCRIBIR ═══
+//
+// Verificar `esperado` con una lectura previa y escribir después deja pasar a dos personas que deshacen la
+// misma celda a la vez: las dos leen lo mismo, las dos pasan, la segunda pisa a la primera. La comparación
+// tiene que viajar DENTRO del `update` (`actualizarSiSigueIgual`, probada contra la base en
+// `shared/lib/escrituraCondicional.test.ts`).
+//
+// MUTACIÓN QUE LO PONE ROJO: que una acción vuelva a leer-comparar-escribir, o escriba con `.eq(clave)` a secas
+// habiendo recibido `esperado`.
+
+test('(b2) NINGUNA ACCIÓN COMPARA `esperado` FUERA DE LA ESCRITURA', () => {
+  const conEsperado = [
+    'features/obras/services/actionsEjecucion.ts',
+    'features/integraciones/services/pedidosActions.ts',
+    'features/presupuestos/services/actionsPartida.ts',
+    'features/clientes/services/actionsDocumentos.ts',
+  ]
+  for (const archivo of conEsperado) {
+    const f = leer(archivo)
+    assert.match(f, /actualizarSiSigueIgual\(/, `${archivo}: la comparación no va dentro del update`)
+    // `coincideConLoEsperado` es la regla en memoria: sirve para explicar y para los tests, no para proteger
+    // una escritura. Si vuelve a aparecer en una acción, volvió la ventana.
+    assert.ok(!/coincideConLoEsperado\(/.test(f),
+      `${archivo}: MUTACIÓN — comparar antes y escribir después deja pasar a dos que deshacen a la vez`)
+  }
+  // La primitiva exige el vacío con `is null` (la columna guarda NULL), no con `eq ''`.
+  const primitiva = leer('shared/lib/escrituraCondicional.ts')
+  assert.match(primitiva, /exigido === null \? escritura\.is\(campo, null\) : escritura\.eq\(campo, exigido\)/)
+  // Y decide por las filas que tocó, no por la ausencia de error: un update que no encuentra la fila no falla.
+  assert.match(primitiva, /update\(cambios, \{ count: 'exact' \}\)/)
+  assert.match(primitiva, /if \(\(count \?\? 0\) > 0\) return \{ estado: 'escrito' \}/)
+})
+
+test('(b3) COMPRAS NO USA LA PRIMITIVA, Y ESTÁ DICHO POR QUÉ: SU RPC YA COMPARA EN LA BASE', () => {
+  // Sin esta nota, el próximo que compare las cinco superficies va a creer que a Compras le falta el arreglo.
+  const accion = leer('features/administracion/services/obraDeCompraActions.ts')
+  assert.match(accion, /POR QUÉ ESTA NO USA `actualizarSiSigueIgual`/)
+  assert.match(accion, /p_esperado: p\.data\.esperado/)
+  assert.match(leer('features/administracion/components/ObraEnLinea.tsx'), /no pasa por `actualizarSiSigueIgual`/)
+})
+
 test('(b) CADA SUPERFICIE MANDA `esperado` AL DESHACER, Y SU ACCIÓN LO VERIFICA CONTRA LA BASE', () => {
   const superficies: Array<{ celda: string; mandaEsperado: RegExp; accion: string }> = [
     {
@@ -247,7 +288,7 @@ test('(b) CADA SUPERFICIE MANDA `esperado` AL DESHACER, Y SU ACCIÓN LO VERIFICA
   for (const { celda, mandaEsperado, accion } of superficies) {
     assert.match(leer(celda), mandaEsperado, `${celda}: el deshacer no manda lo que vio`)
     const a = leer(accion)
-    assert.match(a, /coincideConLoEsperado\(/, `${accion}: no compara contra la base`)
+    assert.match(a, /actualizarSiSigueIgual\(/, `${accion}: no compara contra la base dentro de la escritura`)
     assert.match(a, /MENSAJE_CONFLICTO/, `${accion}: no dice que la cambió otra persona`)
   }
   // Compras ya verificaba en la RPC (`p_esperado`): sigue.
@@ -282,8 +323,8 @@ test('(d) DESHACER EL ESTADO DE UN PEDIDO DEVUELVE EL `origen` QUE TENÍA', () =
   const a = leer('features/integraciones/services/pedidosActions.ts')
   // El origen sólo se honra junto con `esperado`, y sólo entre los dos que existen.
   assert.match(a, /origen: z\.enum\(ORIGENES\)\.optional\(\)/)
-  assert.match(a, /if \(formData\.has\('esperado'\)\) \{[\s\S]*origen = d\.data\.origen \?\? 'os'/)
-  assert.match(a, /\.update\(\{ estado, origen, updated_at/)
+  // El origen viaja en la MISMA escritura condicional que el estado: no se restaura sobre una fila que cambió.
+  assert.match(a, /if \(formData\.has\('esperado'\)\) \{[\s\S]*cambios: \{ estado, origen: d\.data\.origen \?\? 'os'/)
   // La fila trae el origen para poder devolverlo.
   assert.match(leer('features/integraciones/services/pedidosMaterialesService.ts'), /actividad_id, origen'\)/)
 })
