@@ -4,7 +4,7 @@
 // OBRA: repartirlos sería decidir a qué obra fue una compra que Compras no supo decir. Un ratio sin sus
 // dos patas no se publica: `queda` sólo existe con presupuesto Y consumo del MISMO rubro, `$/hora` sólo
 // con mano de obra imputada Y horas. El contrato viaja como referencia, nunca como presupuesto.
-import { rotuloEstimada, type ObraAnalitica } from './obras.ts'
+import { rotuloEstimada, type AusenciaPrecio, type ObraAnalitica } from './obras.ts'
 import { SIN_PRESUPUESTO, SIN_PRESUPUESTO_RUBRO, type Rubro } from './presupuesto.ts'
 
 const sumaNula = (xs: (number | null)[]): number | null =>
@@ -54,6 +54,78 @@ export function cifrasResumen(obras: ObraAnalitica[], sinObra: ReadonlyMap<strin
     sinObraAsignada: sumaNula([...sinObra.values()]),
     obrasSinPresupuesto: obras.length - conPres.length,
   }
+}
+
+// ─── Lo contratado contra lo gastado ────────────────────────────────────────────────────────────
+//
+// ═══ LA OTRA PREGUNTA, LA QUE EL DUEÑO PIDIÓ EL 17/09/2026 ═══
+//
+// «Lo que quiero es más claridad en la pestaña Resumen de lo contratado vs lo que se va gastando».
+// Es una lectura DISTINTA de presupuestado contra consumido y las dos se publican:
+//
+//   CONTRATADO − GASTADO   lo que el cliente se comprometió a pagar menos lo que costó hasta hoy.
+//   PRESUPUESTADO − CONSUMIDO   el costo previsto menos el costo incurrido: el desvío.
+//
+// Mezclarlas esconde una de las dos. Por eso viven en dos funciones y en dos secciones.
+//
+// ═══ LAS TRES REGLAS QUE ESTA CUENTA NO PUEDE ROMPER ═══
+//
+// 1. CONTRATADO ES EL PRECIO, NUNCA LO FACTURADO. Lo decide `precioDe` (obras.ts): el contrato
+//    desglosado, o el precio que OBRAS declara. La suma viva de Cobranzas NO es precio —el dueño ya
+//    rechazó una columna que la publicaba: Instalación Eléctrica vale $ 40 M y lleva $ 20 M
+//    facturados, y con lo facturado la obra aparentaba perder plata contra su costo.
+// 2. UNA OBRA SIN PRECIO NO SE RELLENA. Ni con su presupuesto ni con lo facturado: queda AFUERA de
+//    la cuenta, y lo que gastó se dice aparte. Un contratado que no incluye una obra no puede
+//    compararse contra un gastado que sí la incluye.
+// 3. EL QUEDA NO ES EL MARGEN FINAL. La obra está en curso: falta costo por incurrir. Es lo que
+//    queda del precio para cubrirlo. La pantalla lo dice con esas palabras.
+
+/** Una obra que no entra a la cuenta del contrato, con la palabra que dice por qué. */
+export interface ObraSinPrecio { id: string; nombre: string; ausencia: AusenciaPrecio; gasto: number | null }
+
+export interface ContraContrato {
+  /** Cuántas obras tienen precio contratado: las únicas de esta cuenta. */
+  conPrecio: number
+  /** Σ del precio de esas obras. `null` = ninguna lo tiene. */
+  contratado: number | null
+  /** Σ de lo gastado EN ESAS MISMAS obras. `null` = ninguna tiene precio. */
+  gastado: number | null
+  /** contratado − gastado: lo que queda del precio para el costo que falta. */
+  queda: number | null
+  /** gastado ÷ contratado. `null` sin las dos patas. */
+  pct: number | null
+  /** Las obras que quedaron afuera, con su palabra y lo que gastaron. */
+  sinPrecio: ObraSinPrecio[]
+  /** Σ de lo gastado por las obras sin precio: está afuera de la cuenta y se dice. */
+  gastadoSinPrecio: number | null
+}
+
+/** LO CONTRATADO CONTRA LO GASTADO, sólo con las obras que tienen precio (regla 2 de arriba). */
+export function contraContrato(obras: ObraAnalitica[]): ContraContrato {
+  const con = obras.filter((o) => o.precio != null)
+  const sin = obras.filter((o) => o.precio == null)
+  const contratado = sumaNula(con.map((o) => o.precio))
+  const gastado = con.length ? sumaNula(con.map((o) => o.gasto.total)) : null
+  return {
+    conPrecio: con.length, contratado, gastado,
+    queda: contratado != null ? contratado - (gastado ?? 0) : null,
+    pct: contratado != null && contratado > 0 && gastado != null ? gastado / contratado : null,
+    sinPrecio: sin.map((o) => ({ id: o.id, nombre: o.nombre, ausencia: o.ausencia ?? 'sin precio', gasto: o.gasto.total })),
+    gastadoSinPrecio: sin.length ? sumaNula(sin.map((o) => o.gasto.total)) : null,
+  }
+}
+
+export type FilaContrato = ContraContrato & { clienteId: string; nombre: string; obras: number; obraPrincipal: string }
+
+/** La misma cuenta, cliente por cliente, del que más contrató al que menos. */
+export function contratoPorCliente(obras: ObraAnalitica[]): FilaContrato[] {
+  const m = new Map<string, ObraAnalitica[]>()
+  for (const o of obras) m.set(o.clienteId, [...(m.get(o.clienteId) ?? []), o])
+  return [...m.values()].map((lista): FilaContrato => ({
+    ...contraContrato(lista),
+    clienteId: lista[0].clienteId, nombre: lista[0].clienteNombre, obras: lista.length,
+    obraPrincipal: [...lista].sort((a, b) => (b.gasto.total ?? 0) - (a.gasto.total ?? 0))[0].id,
+  })).sort((a, b) => (b.contratado ?? -1) - (a.contratado ?? -1) || a.nombre.localeCompare(b.nombre, 'es'))
 }
 
 export interface ControlDeObra {
