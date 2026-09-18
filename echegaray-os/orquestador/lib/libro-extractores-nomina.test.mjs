@@ -314,3 +314,105 @@ test('JORNALES: que el banco pruebe el MONTO no valida una fecha imposible (07/0
     assert.ok(m.fecha >= CIERRE_31, `${m.fecha}: ninguna parte se paga antes de que la quincena cierre`)
   }
 })
+
+// ── UN MES PAGADO EN PARTE (18/09/2026) ──────────────────────────────────────────────────────────
+//
+// El archivo vivo, tal cual: Oficina de agosto (fila 47) dice PAGADO $814.500 y el dueño escribió la
+// proyección del resto a mano, `=MAX(0;$C$46*MAX(1;B47)-N(C47))` = $2.792.300 (C46 = julio pagado,
+// $3.606.800; B47 vacío = sin escalón). El libro se quedaba con los $814.500: faltaban $2.792.300.
+import { pactadoDesdeFormula, pactadosDelBloque } from './libro-extractores-nomina.mjs'
+
+const CORTE_1809 = serialDe(2026, 9, 18)
+const PAGO_OFI_AGO = serialDe(2026, 9, 1)
+const F_OFI_AGO = '=MAX(0;$C$46*MAX(1;B47)-N(C47))'
+const F_DIR_AGO = '=IF(N($B$59)=0;"";IF(N(C69)>0;"";IF(E69<$E$59;"";$B$59*IFERROR(IF(ISNUMBER(B69);B69;1);1))))'
+/** La grilla de la pestaña con sólo las celdas que las fórmulas nombran. */
+function grilla(celdas) {
+  const g = []
+  for (const [ref, v] of Object.entries(celdas)) {
+    const [, col, fila] = ref.match(/^([A-Z]+)(\d+)$/)
+    const c = col.charCodeAt(0) - 65
+    g[Number(fila) - 1] ??= []
+    g[Number(fila) - 1][c] = v
+  }
+  return g
+}
+
+test('MES PARCIAL · Oficina agosto: aparecen los $2.792.300 que faltaban, y el mes suma lo pactado', () => {
+  const g = grilla({ C46: 3606800, B47: '' })
+  const pactado = pactadosDelBloque([F_OFI_AGO], g)
+  assert.deepEqual(pactado, [3606800], 'lo pactado es la base que la fórmula del dueño multiplica')
+  const avisos = []
+  const ms = deOficina({ pago: [PAGO_OFI_AGO], pagado: [814500], proyectado: [2792300], pactado },
+    CORTE_1809, { aviso: (m) => avisos.push(m) })
+  assert.equal(ms.length, 2)
+  const real = ms.find((m) => m.estado === 'REAL')
+  const resto = ms.find((m) => m.estado !== 'REAL')
+  assert.equal(real.importe, 814500)
+  assert.equal(resto.importe, 2792300, 'el resto del mes no puede desaparecer del Cash Flow')
+  assert.equal(resto.estado, 'VENCIDO', 'la fecha de pago (01/09) ya pasó y nadie lo marcó pagado')
+  assert.equal(resto.fecha, PAGO_OFI_AGO)
+  assert.notEqual(real.clave, resto.clave, 'dos renglones del mismo mes: sin clave propia uno desaparece')
+  assert.equal(ms.reduce((a, m) => a + m.importe, 0), 3606800)
+  assert.deepEqual(avisos, [], 'la proyección de la planilla coincide con el resto: nada que gritar')
+})
+
+test('MES PARCIAL · Dirección agosto con los tres pagos: la planilla apaga H69 y el resto igual queda', () => {
+  // Rodrigo $1.000.000 (09/09) + Corona $300.000 (11/09) + $500.000 (17/09) = $1.800.000 de $9.000.000.
+  // Con C69 > 0 la fórmula de H69 devuelve "": el texto de la fórmula sigue diciendo qué es lo pactado.
+  const g = grilla({ B59: 9000000, B69: '' })
+  const pactado = pactadosDelBloque([F_DIR_AGO], g)
+  assert.deepEqual(pactado, [9000000])
+  const ms = deDireccion({ pago: [serialDe(2026, 9, 17)], pagado: [1800000], proyectado: [''], pactado },
+    CORTE_1809, { aviso: () => {} })
+  assert.deepEqual(ms.map((m) => [m.estado, m.importe]), [['REAL', 1800000], ['VENCIDO', 7200000]])
+})
+
+test('MES PARCIAL · Dirección agosto hoy (sin pagos): sigue siendo UN renglón de $9.000.000 vencido', () => {
+  const pactado = pactadosDelBloque([F_DIR_AGO], grilla({ B59: 9000000 }))
+  const ms = deDireccion({ pago: [serialDe(2026, 9, 1)], pagado: [''], proyectado: [9000000], pactado },
+    CORTE_1809, { aviso: () => {} })
+  assert.deepEqual(ms.map((m) => [m.estado, m.importe]), [['VENCIDO', 9000000]])
+})
+
+test('MES PARCIAL · sin lo pactado NO se calcula el resto: se marca y se avisa', () => {
+  const avisos = []
+  const ms = deOficina({ pago: [PAGO_OFI_AGO], pagado: [814500], proyectado: [2792300], pactado: [null] },
+    CORTE_1809, { aviso: (m) => avisos.push(m) })
+  assert.equal(ms.length, 1, 'sin lo pactado el código no inventa un importe')
+  assert.equal(ms[0].importe, 814500)
+  assert.match(ms[0].concepto, /parcial sin lo pactado/)
+  assert.equal(avisos.length, 1)
+  assert.match(avisos[0], /NO trae lo pactado/)
+})
+
+test('MES PARCIAL · si la proyección de la planilla no cierra con el resto, vale el resto y se avisa', () => {
+  const avisos = []
+  const ms = deOficina({ pago: [PAGO_OFI_AGO], pagado: [814500], proyectado: [3606800], pactado: [3606800] },
+    CORTE_1809, { aviso: (m) => avisos.push(m) })
+  assert.deepEqual(ms.map((m) => m.importe), [814500, 2792300], 'sumar la proyección entera duplicaría el mes')
+  assert.match(avisos[0], /no cierra/)
+})
+
+test('MES PARCIAL · pagado completo o de más: no hay resto', () => {
+  const avisos = []
+  const lleno = deOficina({ pago: [PAGO_OFI_AGO], pagado: [3606800], proyectado: [''], pactado: [3606800] },
+    CORTE_1809, { aviso: (m) => avisos.push(m) })
+  assert.equal(lleno.length, 1)
+  const demas = deOficina({ pago: [PAGO_OFI_AGO], pagado: [4000000], proyectado: [''], pactado: [3606800] },
+    CORTE_1809, { aviso: (m) => avisos.push(m) })
+  assert.equal(demas.length, 1)
+  assert.match(avisos.at(-1), /más que lo pactado/)
+})
+
+test('pactadoDesdeFormula: sólo las dos formas conocidas; lo demás es null con su motivo', () => {
+  const v = (x) => (ref) => x[ref]
+  assert.equal(pactadoDesdeFormula('=$C$46*MAX(1;B48)', v({ C46: 3606800, B48: 1.05 })).pactado, 3787140)
+  assert.equal(pactadoDesdeFormula('=$C$46*MAX(1;B48)', v({ C46: 3606800, B48: 0.9 })).pactado, 3606800,
+    'MAX(1;…): un escalón menor a 1 no baja el sueldo')
+  assert.equal(pactadoDesdeFormula(F_DIR_AGO, v({ B59: 9000000, B69: 1.019 })).pactado, 9171000)
+  assert.equal(pactadoDesdeFormula('', v({})).pactado, null)
+  assert.equal(pactadoDesdeFormula(2792300, v({})).pactado, null, 'un número pegado no dice qué era lo pactado')
+  assert.equal(pactadoDesdeFormula('=C46*2', v({ C46: 1 })).pactado, null)
+  assert.match(pactadoDesdeFormula('=$C$46*MAX(1;B48)', v({ C46: '' })).motivo, /no tiene un importe/)
+})

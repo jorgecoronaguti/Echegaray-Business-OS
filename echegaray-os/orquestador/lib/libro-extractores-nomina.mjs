@@ -272,35 +272,50 @@ export function deJornalesQuincenas({ reales = {}, proyectadas = {} } = {}, cort
  * (`formulaOficina` / `formulaDireccion`, idénticas salvo el nombre del rango). Una sola función:
  * dos copias de esto se desincronizan la primera vez que alguien toque una.
  *
- * UN MES ESTÁ PAGADO O PROYECTADO, NUNCA LOS DOS. La planilla lo garantiza por construcción (la
- * proyección se apaga sola cuando la celda de pagado tiene plata). Si algún día se llenaran las dos, el
- * Sheet las SUMA y duplicaría el mes; acá gana el hecho y se avisa, que es lo que el comentario de
- * `formulaOficina` dice que tiene que pasar: *"el control de nómina lo grita en vez de duplicar"*.
+ * ═══ UN MES PUEDE ESTAR PAGADO EN PARTE (18/09/2026) ═══
+ *
+ * La regla vieja era «un mes está pagado o proyectado, nunca los dos», y ante las dos celdas llenas
+ * ganaba el pagado. Medido en vivo: Oficina de agosto dice PAGADO $814.500 y el dueño escribió a mano
+ * la proyección del resto, $2.792.300 (`=MAX(0;$C$46*MAX(1;B47)-N(C47))`). El libro se quedaba con los
+ * $814.500 y **los $2.792.300 que todavía se deben desaparecían del Cash Flow**. Y Dirección de agosto
+ * va a recibir tres pagos parciales ($1.800.000 de $9.000.000) con una planilla que apaga la
+ * proyección apenas el pagado es mayor que cero: sin esto, $7.200.000 se borraban igual.
+ *
+ * EL RESTO NO LO INVENTA EL CÓDIGO. Sale de dos celdas del Sheet: lo PACTADO del mes (`pactado`, que el
+ * lector arma con la celda base y el escalón que la propia fórmula de proyección de la fila nombra —ver
+ * `pactadoDesdeFormula`—) menos lo PAGADO. Si la fila no trae lo pactado, no se calcula nada: si además
+ * tiene las dos celdas llenas, se marca en el concepto y se avisa, y queda el comportamiento anterior.
+ *
+ * Lo pagado sigue su camino de siempre (`partirContraElExtracto`: REAL si la fecha ya pasó). El resto
+ * es un renglón aparte, con clave propia, VENCIDO si su fecha de pago ya pasó y PROYECTADO si no.
  */
-function deBloqueMensual({ pago, pagado, proyectado }, corte, { bloque, aviso, extracto }) {
-  const P = columna(pago); const G = columna(pagado); const Y = columna(proyectado)
+const MARCA_SIN_PACTADO = '▲ parcial sin lo pactado del mes'
+
+function deBloqueMensual({ pago, pagado, proyectado, pactado }, corte, { bloque, aviso, extracto }) {
+  const P = columna(pago); const G = columna(pagado); const Y = columna(proyectado); const K = columna(pactado)
   const out = []
   for (let i = 0; i < Math.max(P.length, G.length, Y.length); i++) {
     const fecha = num(P[i])
     const real = num(G[i])
     const proy = num(Y[i])
+    const pact = num(K[i])
     if (fecha === null) continue
-    if (real && proy) {
-      aviso(`libro-extractores-nomina(${bloque}): el renglón ${i + 1} tiene PAGADO ${real} y PROYECTADO ${proy} `
-        + 'a la vez. Vale el pagado (el hecho le gana a la proyección); el Sheet los sumaría y duplicaría el mes.')
-    }
-    const importe = real || proy
-    if (!importe) continue
     const comun = {
       signo: SALE,
-      importe,
       concepto: `${bloque} · ${isoDeSerial(fecha)}`,
       rubro: RUBRO_ADMINISTRACION,
       origen: { pestana: PESTANA_NOMINA, fila: filaDe(bloque, i) },
     }
     if (!real) {
-      out.push(movimiento({ ...comun, fecha, estado: estadoContraCorte('PROYECTADO', fecha, corte) }))
+      if (!proy) continue
+      out.push(movimiento({ ...comun, importe: proy, fecha, estado: estadoContraCorte('PROYECTADO', fecha, corte) }))
       continue
+    }
+    const sinPactado = proy && !(pact > 0)
+    if (sinPactado) {
+      aviso(`libro-extractores-nomina(${bloque}): el renglón ${i + 1} tiene PAGADO ${real} y PROYECTADO ${proy} `
+        + 'a la vez y NO trae lo pactado del mes: no calculo el resto. Vale el pagado y queda marcado; '
+        + 'el Sheet los sumaría y podría duplicar el mes.')
     }
     // ═══ "PAGADO" CON FECHA FUTURA NO ES "LA PLATA SALIÓ" (06/08) ═══
     //
@@ -312,9 +327,83 @@ function deBloqueMensual({ pago, pagado, proyectado }, corte, { bloque, aviso, e
     // La regla es la misma que `caja-canales.mjs` ya aplica a Compras y sale de ahí para que no
     // puedan discrepar: sin instrumento declarado —que es el caso de la nómina, la planilla no dice
     // cómo se pagó— un pago con fecha posterior al corte es un COMPROMISO, no un hecho.
-    out.push(...partirContraElExtracto({ ...comun, fecha, importe }, { corte, extracto, bloque, i, aviso }))
+    const base = { ...comun, fecha, importe: real,
+      concepto: sinPactado ? `${comun.concepto} · ${MARCA_SIN_PACTADO}` : comun.concepto }
+    out.push(...partirContraElExtracto(base, { corte, extracto, bloque, i, aviso }))
+    if (!(pact > 0)) continue
+    const resto = Math.round((pact - real) * 100) / 100
+    if (resto < 1) {
+      if (resto <= -1) {
+        aviso(`libro-extractores-nomina(${bloque}): el renglón ${i + 1} tiene PAGADO ${real}, más que lo `
+          + `pactado del mes (${pact}). No hay resto; revisar si el excedente es de otro mes.`)
+      }
+      continue
+    }
+    if (proy && Math.abs(proy - resto) >= 1) {
+      aviso(`libro-extractores-nomina(${bloque}): el renglón ${i + 1} proyecta ${proy} y el resto del mes es `
+        + `${resto} (pactado ${pact} − pagado ${real}). Vale el resto: la proyección de la planilla no cierra.`)
+    }
+    out.push(movimiento({
+      ...comun,
+      fecha,
+      importe: resto,
+      estado: estadoContraCorte('PROYECTADO', fecha, corte),
+      concepto: `${comun.concepto} · resto del mes (pactado ${pact} − pagado ${real})`,
+      origen: { ...comun.origen, fila: `${comun.origen.fila}:resto` },
+    }))
   }
   return out
+}
+
+/**
+ * NÚCLEO PURO: lo PACTADO de un mes, leído de la fórmula de proyección que la propia planilla escribió.
+ *
+ * La fila no tiene una celda «pactado»: lo pactado es lo que su fórmula de «Proyectado» multiplica.
+ *   Oficina:   `=$C$46*MAX(1;B48)`  o, en un mes parcial, `=MAX(0;$C$46*MAX(1;B47)-N(C47))`
+ *   Dirección: `=IF(…;$B$59*IFERROR(IF(ISNUMBER(B69);B69;1);1))`
+ * La fórmula conserva el texto aunque su valor dé "" (Dirección apaga la proyección cuando hay pagado),
+ * así que lo pactado se puede leer igual. Se reconocen SÓLO esas dos formas del escalón; cualquier otra
+ * devuelve null con su motivo — un pactado adivinado es un importe inventado.
+ *
+ * @param {string} formula el texto de la celda de Proyectado (render FORMULA)
+ * @param {(ref:string)=>unknown} valorDe el valor de una celda de la misma pestaña ("C46", "B47")
+ * @returns {{pactado:number|null, motivo:string}}
+ */
+export function pactadoDesdeFormula(formula, valorDe) {
+  const f = String(formula ?? '').replace(/\s+/g, '')
+  if (!f.startsWith('=')) return { pactado: null, motivo: 'la celda no tiene fórmula de proyección' }
+  const m = f.match(/\$([A-Z]{1,3})\$(\d+)\*(MAX\(1[;,]([A-Z]{1,3}\d+)\)|IFERROR\(IF\(ISNUMBER\(([A-Z]{1,3}\d+)\)[;,]\5[;,]1\)[;,]1\))/)
+  if (!m) return { pactado: null, motivo: 'la fórmula no tiene la forma «base × escalón» conocida' }
+  const base = num(valorDe(`${m[1]}${m[2]}`))
+  if (!(base > 0)) return { pactado: null, motivo: `la celda base ${m[1]}${m[2]} no tiene un importe` }
+  const escalon = num(valorDe(m[4] ?? m[5]))
+  const factor = m[4] ? Math.max(1, escalon ?? 1) : (escalon ?? 1)
+  return { pactado: Math.round(base * factor * 100) / 100, motivo: `${m[1]}${m[2]} × ${m[4] ?? m[5]}` }
+}
+
+/** "AB12" → [fila0, col0] sobre una grilla leída desde A1. */
+function coordenadas(ref) {
+  const m = String(ref).match(/^([A-Z]{1,3})(\d+)$/)
+  if (!m) return null
+  let col = 0
+  for (const c of m[1]) col = col * 26 + (c.charCodeAt(0) - 64)
+  return [Number(m[2]) - 1, col - 1]
+}
+
+/**
+ * NÚCLEO PURO: lo pactado de cada renglón de un bloque, desde las fórmulas de su columna Proyectado y
+ * la grilla de la pestaña leída desde A1 (valores sin formatear). Mismo largo que las fórmulas; null
+ * donde la fila no lo trae.
+ *
+ * @param {Array} formulas el rango `*_PROYECTADO` leído con render FORMULA
+ * @param {Array<Array>} grilla la pestaña desde A1, UNFORMATTED_VALUE
+ */
+export function pactadosDelBloque(formulas = [], grilla = []) {
+  const valorDe = (ref) => {
+    const c = coordenadas(ref)
+    return c ? grilla?.[c[0]]?.[c[1]] : undefined
+  }
+  return columna(formulas).map((f) => pactadoDesdeFormula(f, valorDe).pactado)
 }
 
 /**
