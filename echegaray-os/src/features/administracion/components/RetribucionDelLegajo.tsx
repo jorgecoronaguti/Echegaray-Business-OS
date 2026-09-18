@@ -24,6 +24,7 @@ import { V } from '@/shared/components/v2/patron'
 import { DatoDelValorHora } from './ValorHoraDelLegajo'
 import type { DatoDelRotulo, RotuloValorHora } from '../services/valorHoraDelLegajo'
 import type { CifraDelAnio, FilaDeRetribucion, RetribucionDelLegajo as Retribucion } from '../services/retribucionDelLegajo'
+import { MOTIVO_SIN_DESGLOSE, tituloDelPagado, tituloDelPagadoDelAnio } from '../services/retribucionDelLegajo'
 import { avisoDeExcedente } from '../services/pagoDeLaQuincena'
 import { horas, pesos } from './liquidacion/formato'
 
@@ -32,9 +33,9 @@ const COLUMNAS: readonly { rotulo: string; titulo: string }[] = [
   { rotulo: 'Horas', titulo: 'Las horas cargadas que tomó la Liquidación.' },
   { rotulo: '$/h negro', titulo: 'El $/h pactado vigente en esa quincena; para un mensual, el neto del mes.' },
   { rotulo: 'Negro', titulo: 'Lo que el recibo no paga.' },
-  { rotulo: 'Banco', titulo: 'El neto del recibo: real, o estimado y marcado «est.». En una quincena sellada, lo girado que vio el extracto.' },
+  { rotulo: 'Banco', titulo: 'El neto del recibo: real, o estimado y marcado «est.». En una quincena sellada, lo girado que vio el extracto. «Sin desglose» cuando nadie lo afirmó.' },
   { rotulo: 'Total', titulo: 'Banco + negro.' },
-  { rotulo: 'Pagado', titulo: 'Lo que consta pagado: adelantos, giros y lo registrado en la Liquidación (banco + efectivo).' },
+  { rotulo: 'Pagado', titulo: 'Lo que consta pagado: adelantos, giros y lo registrado en la Liquidación (banco + efectivo). Sin desglose cuando nadie afirmó el reparto.' },
   { rotulo: 'Saldo', titulo: 'Total − pagado. Negativo = cobró de más por un lado; pasa al otro.' },
 ]
 
@@ -92,17 +93,22 @@ function FilaDelAnio({ f, hrefLiquidacion }: { f: FilaDeRetribucion; hrefLiquida
       <Celda>{pesos(p.negro)}</Celda>
       {f.sinNeto
         ? <Celda tono={V.warn} title="La Liquidación no pudo afirmar el neto de esta quincena: no hay recibo ni estimado.">sin neto</Celda>
-        : (
-          <Celda title={referencia ?? (f.bancoEstimado ? 'neto estimado: todavía no hay recibo real de este período' : undefined)}>
-            {pesos(p.banco)}{f.bancoEstimado && <span style={{ marginLeft: 4, fontSize: '11px', color: V.tenue }}>est.</span>}
-          </Celda>
-        )}
+        : f.sinDesglose
+          // NULL NO ES CERO: el $0 de esta fila no lo midió nadie, y escribirlo diría que sí.
+          ? <Celda tono={V.tenue} title={`sin desglose: ${MOTIVO_SIN_DESGLOSE}`}>sin desglose</Celda>
+          : (
+            <Celda title={referencia ?? (f.bancoEstimado ? 'neto estimado: todavía no hay recibo real de este período' : undefined)}>
+              {pesos(p.banco)}{f.bancoEstimado && <span style={{ marginLeft: 4, fontSize: '11px', color: V.tenue }}>est.</span>}
+            </Celda>
+          )}
       <Celda fuerte tono={f.sinImporte > 0 ? V.warn : undefined} title={f.sinNeto ? 'sin neto no se afirma el total'
         : f.sinImporte > 0 ? `${f.sinImporte} quincena(s) del mes sin importe cargado: lo liquidado está incompleto`
           : f.mensual ? 'lo liquidado del mes: el neto mensual, o la suma de sus quincenas si no había neto' : undefined}>
         {f.sinNeto ? '—' : pesos(p.total)}{f.sinImporte > 0 && <span style={{ marginLeft: 4, fontSize: '11px' }}>incompl.</span>}
       </Celda>
-      <Celda title={`banco ${pesos(p.pagadoBanco)} · efectivo ${pesos(p.pagadoEfectivo)}`}>{pesos(p.pagado)}</Celda>
+      <Celda title={tituloDelPagado({ sinDesglose: f.sinDesglose, pago: p })}>
+        {pesos(p.pagado)}{f.sinDesglose && <span style={{ marginLeft: 4, fontSize: '11px', color: V.tenue }}>sin desglose</span>}
+      </Celda>
       <Celda fuerte tono={negativo ? V.warn : undefined} title={avisoDeExcedente(p) ?? undefined}>
         {f.sinNeto ? '—' : pesos(p.saldoTotal)}
       </Celda>
@@ -139,7 +145,7 @@ function TablaDelAnio({ r, hrefLiquidacion }: { r: Retribucion; hrefLiquidacion:
           <Celda fuerte>{pesos(t.negro)}</Celda>
           <Celda fuerte>{pesos(t.blanco)}</Celda>
           <Celda fuerte>{pesos(t.total)}</Celda>
-          <Celda fuerte title={`banco ${pesos(t.pagadoBanco)} · efectivo ${pesos(t.pagadoEfectivo)}`}>{pesos(t.pagado)}</Celda>
+          <Celda fuerte title={tituloDelPagadoDelAnio(t)}>{pesos(t.pagado)}</Celda>
           <Celda fuerte tono={t.saldo < 0 ? V.warn : undefined}>{pesos(t.saldo)}</Celda>
         </tr>
       </tbody>
@@ -219,9 +225,10 @@ export function RetribucionDelLegajo({ r, rotulo, hrefLiquidacion, testid = 'blo
 
       <TablaDelAnio r={r} hrefLiquidacion={hrefLiquidacion} />
 
-      {(r.totales.sinSaldo > 0 || r.totales.sinNeto > 0 || r.totales.sinImporte > 0) && (
+      {(r.totales.sinSaldo > 0 || r.totales.sinNeto > 0 || r.totales.sinImporte > 0 || r.totales.sinDesglose > 0) && (
         <p data-testid="retribucion-nota" style={{ margin: '-16px 0 0', fontSize: '11px', color: V.apagado }}>
           {r.totales.sinNeto > 0 && `${r.totales.sinNeto} sin neto afirmado: su banco y su total no están en el pie. `}
+          {r.totales.sinDesglose > 0 && `${r.totales.sinDesglose} sin desglose banco/efectivo (${pesos(r.totales.pagadoSinDesglose)}): ${MOTIVO_SIN_DESGLOSE}; su pagado cuenta entero, sin repartir. `}
           {r.totales.sinImporte > 0 && `${r.totales.sinImporte} quincena(s) de un mensual sin importe cargado: lo liquidado de su mes está incompleto. `}
           {r.totales.sinSaldo > 0 && `${r.totales.sinSaldo} sin saldo que afirmar, fuera de la suma de negro, blanco y total.`}
         </p>

@@ -73,6 +73,8 @@ export interface LineaRetribuida {
   sueldo: { estado: EstadoDelBlanco } | null
   /** Los saldos de la fila, calculados por `pagoDeLaQuincena.ts`. */
   pago: PagoDeLaLinea
+  /** Nadie afirmó cuánto fue por banco (`liquidacionOverrides.ts`): el $0 de banco de esta línea es un default, no un dato. */
+  sinDesglose: boolean
 }
 
 export interface QuincenaRetribuida {
@@ -108,6 +110,12 @@ export interface FilaDeRetribucion {
   bancoEstimado: boolean
   /** La Liquidación no pudo afirmar el neto: la celda del banco lo dice en vez de escribir $0. */
   sinNeto: boolean
+  /**
+   * NULL NO ES CERO (17/09/2026): nadie afirmó cuánto de lo pagado fue por banco. La celda del banco dice «sin
+   * desglose» y lo pagado se muestra entero, sin repartirlo en «banco $0 · efectivo todo». Un mes de un mensual
+   * queda sin desglose si alguna de sus quincenas lo está: el reparto del mes tendría un pedazo inventado.
+   */
+  sinDesglose: boolean
   /** El neto del recibo REAL de este período, si el estudio lo cargó. Referencia, no la cifra de la fila. */
   reciboReal: number | null
   /** Mensual: quincenas del mes con línea y sin importe (no suman a lo liquidado y se dice). 0 en el resto. */
@@ -120,8 +128,15 @@ export interface TotalesDeRetribucion {
   negro: number
   blanco: number
   total: number
+  /** Lo pagado por banco, SÓLO de las filas con desglose afirmado. `pagadoBanco + pagadoEfectivo + pagadoSinDesglose = pagado`. */
   pagadoBanco: number
+  /** Lo pagado en efectivo, SÓLO de las filas con desglose afirmado. */
   pagadoEfectivo: number
+  /** Lo pagado de las filas sin desglose: cuenta entero en `pagado` y no se reparte, porque nadie sabe cómo. */
+  pagadoSinDesglose: number
+  /** Cuántas filas no tienen desglose afirmado. */
+  sinDesglose: number
+  /** Lo pagado del año, entero: NO depende del desglose. */
   pagado: number
   saldo: number
   /** Filas con línea pero sin saldo que afirmar: no suman a negro/blanco/total y el pie lo dice. */
@@ -203,6 +218,7 @@ const filaDeQuincena = (q: QuincenaRetribuida, netos: NetoPorPeriodo): FilaDeRet
   sinTarifa: q.linea?.sinTarifa ?? false,
   bancoEstimado: q.linea?.sueldo?.estado === 'estimado' && !q.linea.sinNeto && q.linea.pago.banco != null,
   sinNeto: q.linea?.sinNeto ?? false,
+  sinDesglose: q.linea?.sinDesglose ?? false,
   reciboReal: q.linea ? netos.get(periodoDeRecibo(q.quincena)) ?? null : null,
   sinImporte: 0,
   pago: q.linea?.pago ?? null,
@@ -234,6 +250,7 @@ function filaDelMes(mes: readonly QuincenaRetribuida[]): FilaDeRetribucion {
     sinTarifa: ultima.linea.sinTarifa,
     bancoEstimado: false,
     sinNeto: false,
+    sinDesglose: conLinea.some((q) => q.linea.sinDesglose),
     reciboReal: null,
     sinImporte: conNeto.length > 0 ? 0 : sinImporte,
     pago,
@@ -265,18 +282,48 @@ export function filasDeRetribucion(
   return filas.reverse()
 }
 
-/** EL PIE: `totalesDePago` sobre las filas con línea —la misma suma que el cuadro de Pagos— más las horas. */
+/**
+ * EL PIE: `totalesDePago` sobre las filas con línea —la misma suma que el cuadro de Pagos— más las horas.
+ *
+ * EL REPARTO BANCO/EFECTIVO DEL AÑO SUMA SÓLO LAS FILAS QUE LO AFIRMAN. Una fila sin desglose lleva banco $0 por
+ * defecto; sumarla al efectivo diría «$8,5 M en mano» de plata que nadie repartió. Su pagado cuenta entero en
+ * `pagado` y aparte en `pagadoSinDesglose`. El cuadro de Pagos de Liquidación sigue sumando como siempre: esto es
+ * cómo el LEGAJO dice el reparto, no un cambio de la cuenta.
+ */
 export function totalesDeRetribucion(filas: readonly FilaDeRetribucion[]): TotalesDeRetribucion {
   const conPago = filas.filter((f): f is FilaDeRetribucion & { pago: PagoDeLaLinea } => f.pago != null)
   const t = totalesDePago(conPago.map((f) => f.pago))
+  const afirmadas = conPago.filter((f) => !f.sinDesglose)
+  const sinDesglose = conPago.filter((f) => f.sinDesglose)
   return {
     horas: suma(conPago.map((f) => f.horas)) ?? 0,
     negro: t.negro, blanco: t.banco, total: t.total,
-    pagadoBanco: t.pagadoBanco, pagadoEfectivo: t.pagadoEfectivo, pagado: t.pagado,
+    pagadoBanco: suma(afirmadas.map((f) => f.pago.pagadoBanco)) ?? 0,
+    pagadoEfectivo: suma(afirmadas.map((f) => f.pago.pagadoEfectivo)) ?? 0,
+    pagadoSinDesglose: suma(sinDesglose.map((f) => f.pago.pagado)) ?? 0,
+    sinDesglose: sinDesglose.length,
+    pagado: t.pagado,
     saldo: t.saldoTotal, sinSaldo: t.sinSaldo, liquidadas: conPago.length,
     sinNeto: conPago.filter((f) => f.sinNeto).length,
     sinImporte: conPago.reduce((a, f) => a + f.sinImporte, 0),
   }
+}
+
+/** Por qué una fila no reparte lo pagado. El texto entero, para el `title` y para la nota al pie. */
+export const MOTIVO_SIN_DESGLOSE =
+  'nadie afirmó cuánto fue por banco: la planilla no anotó BANCO en esa quincena y no hay recibo ni giro registrado'
+
+/** El `title` de la celda Pagado de una fila: el reparto si alguien lo afirmó; si no, que no lo hay. */
+export function tituloDelPagado(f: { sinDesglose: boolean; pago: PagoDeLaLinea }): string {
+  if (f.sinDesglose) return `${pesos(f.pago.pagado)} sin desglose banco/efectivo — ${MOTIVO_SIN_DESGLOSE}`
+  return `banco ${pesos(f.pago.pagadoBanco)} · efectivo ${pesos(f.pago.pagadoEfectivo)}`
+}
+
+/** El `title` del pagado del año: el reparto afirmado, y aparte lo que nadie repartió. */
+export function tituloDelPagadoDelAnio(t: TotalesDeRetribucion): string {
+  const base = `banco ${pesos(t.pagadoBanco)} · efectivo ${pesos(t.pagadoEfectivo)}`
+  if (t.sinDesglose === 0) return base
+  return `${base} · sin desglose ${pesos(t.pagadoSinDesglose)} (${t.sinDesglose} ${t.sinDesglose === 1 ? 'período' : 'períodos'})`
 }
 
 const horasTexto = (n: number): string => `${n.toLocaleString('es-AR', { maximumFractionDigits: 1 })} h`
@@ -297,11 +344,15 @@ export function cifrasDelAnio(anio: number, t: TotalesDeRetribucion): CifraDelAn
   const fuera = t.sinSaldo > 0 ? ` (${t.sinSaldo} sin saldo que afirmar, fuera de la suma)` : ''
   const sinNeto = t.sinNeto > 0 ? ` ${t.sinNeto} quincena(s) sin neto afirmado: el banco de ésas no está.` : ''
   const sinImporte = t.sinImporte > 0 ? ` ${t.sinImporte} quincena(s) de un mensual sin importe cargado: su mes está incompleto.` : ''
+  // EL REPARTO DEL AÑO NO SE INVENTA: lo que nadie repartió se dice aparte, con su motivo, y suma al total igual.
+  const reparto = t.sinDesglose > 0
+    ? `banco ${pesos(t.pagadoBanco)} + efectivo ${pesos(t.pagadoEfectivo)} + sin desglose ${pesos(t.pagadoSinDesglose)} (${t.sinDesglose} período(s) donde ${MOTIVO_SIN_DESGLOSE})`
+    : `banco ${pesos(t.pagadoBanco)} + efectivo ${pesos(t.pagadoEfectivo)}`
   return [
     cifra(`liquidado ${anio}`, pesos(t.total),
       `banco + negro de cada quincena del año, como lo publica la Liquidación; un mensual, lo liquidado de cada mes${fuera}.${sinNeto}${sinImporte}`),
     cifra(`consta pagado ${anio}`, pesos(t.pagado),
-      `banco ${pesos(t.pagadoBanco)} + efectivo ${pesos(t.pagadoEfectivo)}: lo que la base tiene como pagado (adelantos, giros y lo registrado en la Liquidación). No es lo liquidado: es lo que consta.`),
+      `${reparto}: lo que la base tiene como pagado (adelantos, giros y lo registrado en la Liquidación). No es lo liquidado: es lo que consta.`),
     cifra(`negro ${anio}`, pesos(t.negro), `Lo que el recibo no paga, sumado sobre las quincenas del año${fuera}.`),
     cifra(`blanco ${anio}`, pesos(t.blanco),
       `El neto del recibo (real o estimado) que tomó cada quincena${fuera}.${sinNeto} Las quincenas selladas antes del modelo blanco + negro traen sólo lo girado que vio el extracto.`),
