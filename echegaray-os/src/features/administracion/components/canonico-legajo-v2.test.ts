@@ -96,7 +96,13 @@ test('la solapa Retribución se esconde Y se cierra sin permiso, y su lectura no
   // Esconder el tab y leer igual dejaría los sueldos en el HTML para el que sepa mirar la respuesta.
   assert.match(src, /liquida \|\| v !== 'retribucion'/, 'la solapa no se ofrece a quien no liquida sueldos')
   assert.match(src, /vista === 'retribucion' && !liquida/, '`?v=retribucion` a mano dice «sin permiso»')
-  assert.match(src, /vista === 'retribucion' && liquida\s*\?\s*await getRetribucionDelLegajo/, 'la lectura cara sólo en su solapa y con permiso')
+  // Las dos lecturas caras —la Liquidación y lo acreditado por el banco— viajan en el mismo `Promise.all`
+  // y las dos cuelgan de la misma condición: ninguna corre fuera de su solapa ni sin permiso.
+  assert.match(
+    src,
+    /vista === 'retribucion' && liquida\s*\?\s*await Promise\.all\(\[\s*getRetribucionDelLegajo\([^\]]*getHaberesDelBanco\(/,
+    'la lectura cara sólo en su solapa y con permiso',
+  )
   // La tira de arriba enlaza a la sección sólo para quien puede entrar.
   assert.match(src, /hrefRetribucion=\{liquida \? href\('retribucion'\) : null\}/)
 })
