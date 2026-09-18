@@ -116,17 +116,43 @@ export function contraContrato(obras: ObraAnalitica[]): ContraContrato {
   }
 }
 
-export type FilaContrato = ContraContrato & { clienteId: string; nombre: string; obras: number; obraPrincipal: string }
+export type FilaContrato = ContraContrato & {
+  clienteId: string
+  nombre: string
+  obras: number
+  /** Lo gastado en las obras CON precio, abierto por rubro: la barra gruesa del diseño. */
+  manoObra: number | null
+  subcontratos: number | null
+  materiales: number | null
+  /** Cuántas de las obras con precio están contratadas en dólares (valuadas al tipo de cambio de hoy). */
+  enDolares: number
+  obraPrincipal: string
+}
 
-/** La misma cuenta, cliente por cliente, del que más contrató al que menos. */
+/**
+ * LA MISMA CUENTA, CLIENTE POR CLIENTE, en el orden de la lista de presupuestado (del que más gastó al
+ * que menos): las dos listas del Resumen se leen una debajo de la otra y un cliente tiene que estar en
+ * el mismo lugar en las dos.
+ */
 export function contratoPorCliente(obras: ObraAnalitica[]): FilaContrato[] {
   const m = new Map<string, ObraAnalitica[]>()
   for (const o of obras) m.set(o.clienteId, [...(m.get(o.clienteId) ?? []), o])
-  return [...m.values()].map((lista): FilaContrato => ({
-    ...contraContrato(lista),
-    clienteId: lista[0].clienteId, nombre: lista[0].clienteNombre, obras: lista.length,
-    obraPrincipal: [...lista].sort((a, b) => (b.gasto.total ?? 0) - (a.gasto.total ?? 0))[0].id,
-  })).sort((a, b) => (b.contratado ?? -1) - (a.contratado ?? -1) || a.nombre.localeCompare(b.nombre, 'es'))
+  return [...m.values()].map((lista): FilaContrato => {
+    const con = lista.filter((o) => o.precio != null)
+    return {
+      ...contraContrato(lista),
+      clienteId: lista[0].clienteId, nombre: lista[0].clienteNombre, obras: lista.length,
+      manoObra: sumaNula(con.map((o) => o.gasto.manoObra)),
+      subcontratos: sumaNula(con.map((o) => o.gasto.subcontratos)),
+      materiales: sumaNula(con.map((o) => o.gasto.materiales)),
+      enDolares: con.filter((o) => o.precioEnDolares).length,
+      obraPrincipal: [...lista].sort((a, b) => (b.gasto.total ?? 0) - (a.gasto.total ?? 0))[0].id,
+    }
+  }).sort((a, b) => {
+    const ga = a.obras ? (a.gastado ?? 0) + (a.gastadoSinPrecio ?? 0) : 0
+    const gb = b.obras ? (b.gastado ?? 0) + (b.gastadoSinPrecio ?? 0) : 0
+    return gb - ga || (b.contratado ?? -1) - (a.contratado ?? -1) || a.nombre.localeCompare(b.nombre, 'es')
+  })
 }
 
 export interface ControlDeObra {

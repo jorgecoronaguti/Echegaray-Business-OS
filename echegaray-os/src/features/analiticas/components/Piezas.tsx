@@ -30,7 +30,7 @@ export const TONO_TEXTO: Record<Tono, string> = { neg: 'text-neg', warn: 'text-w
 
 export interface Cifra { rotulo: string; valor: string | null; falta?: string; tono?: Tono; nota?: ReactNode }
 
-function UnaCifra({ c }: { c: Cifra }) {
+export function UnaCifra({ c }: { c: Cifra }) {
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <div className="text-[11px] text-faint">{c.rotulo}</div>
@@ -38,6 +38,15 @@ function UnaCifra({ c }: { c: Cifra }) {
         {c.valor ?? c.falta ?? 'sin registrar'}
       </div>
       {c.nota ? <div className="text-[11.5px] text-muted">{c.nota}</div> : null}
+    </div>
+  )
+}
+
+/** Una fila de cifras dentro de una sección (no en la cabecera): dos columnas en el teléfono, todas en una fila en escritorio. */
+export function Cifras({ cifras }: { cifras: Cifra[] }) {
+  return (
+    <div className={`grid grid-cols-2 items-end gap-x-6 gap-y-5 lg:gap-6 ${cifras.length === 3 ? 'lg:grid-cols-3' : cifras.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-5'}`}>
+      {cifras.map((c) => <UnaCifra key={c.rotulo} c={c} />)}
     </div>
   )
 }
