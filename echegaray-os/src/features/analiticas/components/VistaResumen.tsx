@@ -1,19 +1,32 @@
-// RESUMEN — la vista «global» del diseño Analíticas v6, copiada fiel.
+// RESUMEN — la vista «global» del diseño Analíticas v6, copiada fiel, con las DOS lecturas.
 //
 // Dueño, 17/09/2026: «respetá el diseño que te pasé, no inventes» (la versión con el orden de Clientes
-// quedó descartada). Lo mismo que el diseño y en su orden: cinco cifras · Por cliente (barra fina de
-// lo presupuestado, gruesa de lo consumido apilada en mano de obra, subcontratos, materiales y sin obra
-// asignada; horas; lo que queda) · De qué está hecho el gasto · Las obras que más gastan · Lo que la
-// base no puede afirmar. Donde el diseño decía «contratado» va PRESUPUESTADO: es lo que se controla.
+// quedó descartada). Lo mismo que el diseño y en su orden: cinco cifras · Por cliente (barra fina,
+// gruesa de lo gastado apilada en mano de obra, subcontratos, materiales y sin obra asignada; horas; lo
+// que queda) · De qué está hecho el gasto · Las obras que más gastan · Lo que la base no puede afirmar.
+//
+// ═══ DOS PREGUNTAS, DOS SECCIONES (dueño, 17/09/2026) ═══
+//
+// El diseño comparaba contra el CONTRATO. El dueño pidió controlar PRESUPUESTADO contra consumido, y
+// la barra fina pasó a ser el presupuesto. Después reclamó: «más claridad en Resumen de lo contratado
+// vs lo que se va gastando, no lo veo y no lo entiendo ahí». Las dos lecturas son legítimas y ninguna
+// tapa a la otra:
+//
+//   CONTRATADO contra GASTADO       el precio que el cliente paga menos el costo hasta hoy → lo que
+//                                   queda del contrato (no es el margen final: falta costo por incurrir).
+//   PRESUPUESTADO contra CONSUMIDO  el costo previsto menos el costo incurrido → el desvío.
+//
+// Cada una tiene su sección, con el mismo dibujo del diseño (fila por cliente, barra fina y gruesa) y
+// su propio título en palabras de obra. Lo que el dueño pidió no se quita: se mueve.
 import Link from 'next/link'
 import { aUrl, type Filtros } from '../services/filtros'
 import { horasTexto, millones, pctEntero } from '../services/formato'
 import {
-  cajonesDeLosClientes, cifrasResumen, composicionDelGasto, INCLUIDO_EN_MATERIALES, manoObraDe, obrasQueMasConsumen, resumenPorCliente,
-  type Composicion, type FilaDeCliente,
+  cajonesDeLosClientes, cifrasResumen, composicionDelGasto, contraContrato, contratoPorCliente, INCLUIDO_EN_MATERIALES, manoObraDe, obrasQueMasConsumen, resumenPorCliente,
+  type Composicion, type FilaContrato, type FilaDeCliente,
 } from '../services/agregados'
 import { rotuloEstimada, type ObraAnalitica } from '../services/obras'
-import { ancho, Cabecera, LEYENDA_GASTO, Seccion } from './Piezas'
+import { ancho, Cabecera, Cifras, LEYENDA_GASTO, Seccion } from './Piezas'
 
 export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, neto }: {
   obras: ObraAnalitica[]
@@ -38,6 +51,10 @@ export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, 
   const horas = obras.reduce<number | null>((a, o) => (o.gasto.horas == null ? a : (a ?? 0) + o.gasto.horas), null)
   const conHoras = obras.filter((o) => (o.gasto.horas ?? 0) > 0).length
   const total = r.consumoTotal
+  const cc = contraContrato(obras)
+  const clientesContrato = contratoPorCliente(obras)
+  const enDolares = obras.filter((o) => o.precioEnDolares).length
+  const sinPrecio = cc.sinPrecio
   return (
     <>
       <Cabecera titulo="Resumen" repartidas
@@ -51,11 +68,41 @@ export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, 
             nota: comprobantes != null && comprobantes > 0 ? `${comprobantes} comprobantes sin obra` : undefined },
           { rotulo: 'horas en obra', valor: horasTexto(horas), falta: 'sin horas',
             nota: `${conHoras} ${conHoras === 1 ? 'obra carga' : 'obras cargan'} horas` },
+          // CUÁL ES LA OBRA (dueño, 17/09/2026): con una sola, no decir el nombre obliga a ir a buscarlo.
           { rotulo: 'obras sin presupuesto', valor: `${sinPres.length} de ${obras.length}`, tono: sinPres.length ? 'warn' : undefined,
-            nota: sinPres.length && consumidoSinPres > 0 ? `${millones(consumidoSinPres)} consumidos` : undefined },
+            nota: sinPres.length
+              ? `${sinPres.length === 1 ? sinPres[0].nombre : `${sinPres.length} obras`}${consumidoSinPres > 0 ? ` · ${millones(consumidoSinPres)} consumidos` : ''}`
+              : undefined },
         ]} />
 
-      <Seccion titulo="Por cliente" leyenda={[...LEYENDA_GASTO, { color: 'bg-dato-cajon', rotulo: 'sin obra asignada' }]}>
+      {/* LO CONTRATADO CONTRA LO GASTADO (dueño, 17/09/2026): primero, porque es lo que no veía. Sólo las
+          obras con precio entran a la cuenta; lo que gastaron las otras se dice aparte, nunca se mezcla. */}
+      <Seccion titulo="Contratado contra gastado"
+        aclaracion="por cliente · la barra fina es lo contratado (el precio de la obra, no lo facturado); la gruesa, lo gastado en esas mismas obras"
+        leyenda={LEYENDA_GASTO}>
+        <div className="flex flex-col gap-6" data-testid="resumen-contrato">
+          <Cifras cifras={[
+            { rotulo: 'contratado', valor: millones(cc.contratado), falta: 'sin precio',
+              nota: `${cc.conPrecio} ${cc.conPrecio === 1 ? 'obra' : 'obras'} con precio${enDolares ? ` · ${enDolares} en U$S al dólar de hoy` : ''}` },
+            { rotulo: neto ? 'gastado en esas obras, sin IVA' : 'gastado en esas obras, con IVA', valor: millones(cc.gastado), falta: cc.conPrecio ? 'sin movimiento' : 'sin precio',
+              nota: cc.pct != null ? `${pctEntero(cc.pct)} de lo contratado` : undefined },
+            { rotulo: 'queda del contrato', valor: cc.queda != null && cc.queda < 0 ? `excedido ${millones(-cc.queda)}` : millones(cc.queda), falta: 'sin precio',
+              tono: cc.queda != null && cc.queda < 0 ? 'neg' : undefined,
+              nota: cc.queda != null ? 'para el costo que falta; no es el margen final' : undefined },
+            { rotulo: 'obras sin precio', valor: `${sinPrecio.length} de ${obras.length}`, tono: sinPrecio.length ? 'warn' : undefined,
+              nota: sinPrecio.length
+                ? `${sinPrecio.length === 1 ? sinPrecio[0].nombre : `${sinPrecio.length} obras`}${cc.gastadoSinPrecio ? ` · ${millones(cc.gastadoSinPrecio)} gastados sin contrato` : ''}`
+                : undefined },
+          ]} />
+          <PorClienteContrato clientes={clientesContrato} filtros={filtros} />
+        </div>
+      </Seccion>
+
+      {/* LAS DOS BARRAS NO SE EXPLICABAN EN NINGUNA PARTE (dueño, 17/09/2026): la leyenda de colores dice
+          de qué está hecha la gruesa, pero nada decía qué es la fina. */}
+      <Seccion titulo="Presupuestado contra consumido" filo
+        aclaracion="por cliente · la barra fina de arriba es lo presupuestado (el costo previsto en la cotización); la gruesa de abajo, lo consumido"
+        leyenda={[...LEYENDA_GASTO, { color: 'bg-dato-cajon', rotulo: 'sin obra asignada' }]}>
         <PorCliente clientes={clientes} filtros={filtros} />
       </Seccion>
 
@@ -67,7 +114,73 @@ export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, 
   )
 }
 
-// ─── Por cliente ────────────────────────────────────────────────────────────────────────────────
+// ─── Contratado contra gastado, por cliente ─────────────────────────────────────────────────────
+//
+// La fila del diseño v6 tal cual (nombre y obras · barra fina y gruesa · una columna · la lectura), con
+// el contrato en la barra fina. La tercera columna es el % gastado de lo contratado —las horas ya
+// están en la lista de abajo—; la lectura, lo que queda del contrato con las palabras del diseño.
+
+function PorClienteContrato({ clientes, filtros }: { clientes: FilaContrato[]; filtros: Filtros }) {
+  if (!clientes.length) return <p className="text-sm text-faint">Ninguna obra con estos filtros.</p>
+  const escala = Math.max(...clientes.map((c) => Math.max(c.contratado ?? 0, c.gastado ?? 0)), 1)
+  return (
+    <div className="flex flex-col border-t border-line" data-testid="resumen-contrato-por-cliente">
+      {clientes.map((c) => (
+        <Link key={c.clienteId} href={aUrl({ ...filtros, vista: 'obras', obra: c.obraPrincipal })} prefetch={false}
+          data-testid="resumen-contrato-cliente"
+          className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-5 gap-y-2 border-b border-line py-3.5 hover:bg-surface-quiet lg:grid-cols-[130px_minmax(0,1fr)_110px_150px]">
+          <div className="flex min-w-0 flex-col gap-[3px]">
+            <div className="truncate text-[13.5px] font-medium text-ink">{c.nombre}</div>
+            <div className="text-[11.5px] text-faint">
+              {c.obras} {c.obras === 1 ? 'obra' : 'obras'}{c.conPrecio ? ` · ${c.conPrecio} con precio` : ''}
+              <span className="lg:hidden"> · {c.pct != null ? `${pctEntero(c.pct)} gastado` : 'sin %'}</span>
+            </div>
+          </div>
+          <div className="col-span-2 row-start-2 flex min-w-0 flex-col gap-[5px] lg:col-span-1 lg:col-start-2 lg:row-start-1">
+            <div className="flex h-2.5 items-center gap-2">
+              {c.contratado != null ? <div className="h-1.5 rounded-[2px] bg-dato-referencia" style={{ width: ancho(c.contratado, escala) }} /> : null}
+              <div className={`whitespace-nowrap text-[11px] tabular-nums ${c.contratado != null ? 'text-muted' : 'text-warn'}`}>
+                {c.contratado != null ? `${millones(c.contratado)}${c.enDolares ? ' · en U$S' : ''}` : 'sin precio'}
+              </div>
+            </div>
+            <div className="flex h-3.5 items-center gap-2">
+              <div className="flex h-3.5 overflow-hidden rounded-[2px]" style={{ width: ancho(c.gastado, escala) }}>
+                <div className="bg-accent" style={{ width: ancho(c.manoObra, c.gastado) }} />
+                <div className="bg-muted" style={{ width: ancho(c.subcontratos, c.gastado) }} />
+                <div className="bg-dato-materiales" style={{ width: ancho(c.materiales, c.gastado) }} />
+              </div>
+              <div className="whitespace-nowrap text-xs font-semibold tabular-nums text-ink">
+                {millones(c.gastado) ?? <span className="font-normal text-faint">{c.conPrecio ? 'sin movimiento' : 'sin precio'}</span>}
+              </div>
+            </div>
+          </div>
+          <div className="hidden flex-col gap-[3px] text-right lg:flex">
+            <div className={`text-[12.5px] font-medium tabular-nums ${c.pct != null ? 'text-ink' : 'text-faint'}`}>{c.pct != null ? pctEntero(c.pct) : 'sin %'}</div>
+            <div className="text-[11px] text-faint">gastado</div>
+          </div>
+          <LecturaContrato c={c} />
+        </Link>
+      ))}
+    </div>
+  )
+}
+
+/** Lo que queda del contrato, con las palabras del diseño: «queda del contrato» · «queda, en las N con precio» · «sin precio». */
+function LecturaContrato({ c }: { c: FilaContrato }) {
+  const [valor, nota, tono] = c.contratado == null
+    ? ['sin precio', c.sinPrecio.some((o) => o.ausencia === 'sin valuar') ? 'una pata en dólares sin valuar' : 'ninguna obra tiene precio', 'text-warn']
+    : c.queda != null && c.queda < 0
+      ? [`excedido ${millones(-c.queda)}`, c.conPrecio < c.obras ? `en ${c.conPrecio === 1 ? 'la obra con precio' : `las ${c.conPrecio} con precio`}` : 'sobre el contrato', 'text-neg']
+      : [millones(c.queda), c.conPrecio < c.obras ? `queda, en ${c.conPrecio === 1 ? 'la obra con precio' : `las ${c.conPrecio} con precio`}` : 'queda del contrato', 'text-ink']
+  return (
+    <div className="flex flex-col gap-[3px] text-right">
+      <div className={`text-[12.5px] font-medium tabular-nums ${tono}`}>{valor}</div>
+      <div className="text-[11px] text-faint">{nota}</div>
+    </div>
+  )
+}
+
+// ─── Presupuestado contra consumido, por cliente ────────────────────────────────────────────────
 
 function PorCliente({ clientes, filtros }: { clientes: FilaDeCliente[]; filtros: Filtros }) {
   if (!clientes.length) return <p className="text-sm text-faint">Ninguna obra con estos filtros.</p>
@@ -182,7 +295,14 @@ function Mezcla({ m, empresa }: { m: Composicion; empresa: boolean }) {
 
 function Huecos({ obras, sinPres }: { obras: ObraAnalitica[]; sinPres: ObraAnalitica[] }) {
   const est = rotuloEstimada(manoObraDe(obras))
+  const sinPrecio = obras.filter((o) => o.precio == null)
   const huecos = [
+    // EL DISEÑO LO LLAMA «Margen por obra»: sin precio no hay contra qué medir lo gastado, y la obra queda afuera.
+    sinPrecio.length ? {
+      que: 'Gastado contra el contrato',
+      porque: `${sinPrecio.map((o) => `${o.nombre}: ${o.ausencia === 'sin valuar' ? 'contrato en dólares sin valuar' : 'sin precio declarado'}`).join(' · ')}. Su gasto no entra a la cuenta del contrato.`,
+      destraba: 'el precio de la obra o su contrato',
+    } : null,
     est ? { que: 'Mano de obra real', porque: `El ${est.replace(' estimada', '')} de la mano de obra consumida es estimada: quincenas sin recibo del estudio, horas × tarifa.`, destraba: 'los recibos del estudio' } : null,
     sinPres.length ? { que: 'Consumo contra presupuesto', porque: sinPres.map((o) => `${o.nombre}: ${o.motivoPresupuesto ?? 'sin cotización aprobada'}`).join(' · '), destraba: 'cargar el costo cotizado' } : null,
     { que: 'Subcontratos contra presupuesto', porque: `La cotización no los separa: van ${INCLUIDO_EN_MATERIALES.replace('incluido ', '')} y se miden junto con materiales.`, destraba: 'una partida propia en la cotización' },

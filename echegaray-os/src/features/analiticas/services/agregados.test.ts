@@ -4,7 +4,7 @@ import { armarCostosPorObra } from '../../clientes/services/costosDeObra.ts'
 import { armarEconomiaDeObras } from '../../clientes/services/economiaObras.ts'
 import { armarObra } from './obras.ts'
 import { presupuestoDe } from './presupuesto.fixture.ts'
-import { cajonesDeLosClientes, celda, cifrasResumen, composicionDelGasto, controlPorObra, costoPorHora, manoObraDe, obrasQueMasConsumen, porHoraMedido, resumenPorCliente } from './agregados.ts'
+import { cajonesDeLosClientes, celda, cierreDeRubro, cifrasResumen, composicionDelGasto, contraContrato, contratoPorCliente, controlPorObra, costoPorHora, ITEMS, manoObraDe, obrasQueMasConsumen, porHoraMedido, resumenPorCliente } from './agregados.ts'
 import { rotuloEstimada } from './obras.ts'
 
 type Pres = Partial<Record<'MO' | 'CS' | 'MA' | 'SC', number>>
@@ -54,9 +54,9 @@ test('gráfico por obra: la más consumida primero, las sin presupuesto al final
 
 test('rubros: «otros» sin consumo registrado; HH contra las horas de la cotización; sin presupuesto de este rubro', () => {
   const a = obra('a', 'me', {}, { mano_obra: 12e6, materiales: 1e6, horas_valorizadas: 90, horas_sin_tarifa: 10 }, { MO: 10e6, SC: 1e6 })
-  assert.equal(celda(a, 'otros').gastadoAusente, 'sin registrar')
+  assert.equal(celda(a, 'otros').gastadoAusente, 'no se carga aparte')
   assert.deepEqual(celda(a, 'otros').lectura, { tipo: 'sinConsumo', monto: null })
-  assert.equal(celda(a, 'horas').cotizadoAusente, 'sin previsión')
+  assert.equal(celda(a, 'horas').cotizadoAusente, 'la cotización no previó horas')
   assert.equal(celda(a, 'materiales').cotizadoAusente, 'sin presupuesto de este rubro')
   assert.deepEqual(celda(a, 'materiales').lectura, { tipo: 'sinPresupuesto', monto: null })
   const mo = celda(a, 'manoObra')
@@ -145,4 +145,94 @@ test('el cajón de un cliente que la vista no muestra no entra a la tarjeta ni a
   assert.equal(filas.reduce((x, c) => x + (c.total ?? 0), 0), (r.consumoTotal ?? 0) + (r.sinObraAsignada ?? 0),
     'las filas suman exactamente consumido + sin obra asignada')
   assert.equal(cifrasResumen([a], cajones).sinObraAsignada, 1.09e6, 'sin filtrar, la tarjeta publicaría plata que ninguna fila muestra')
+})
+
+// ─── La última línea de cada rubro (dueño, 17/09/2026: «que cada rubro cierre su lectura») ───────
+
+test('NINGÚN rubro queda mudo: los cinco cierran con una frase, con o sin presupuesto', () => {
+  // La obra real de la captura: cotizó MO+CS y MA, consumió de todo, no previó horas.
+  const conMA = obra('q', 'qp', {}, { mano_obra: 5.68e6, materiales: 30.88e6, subcontratos: 2.08e6, horas_valorizadas: 718 }, { MO: 20e6, CS: 19.59e6, MA: 44.11e6 })
+  for (const i of ITEMS) {
+    const { texto } = cierreDeRubro(celda(conMA, i.clave), i.clave)
+    assert.ok(texto.trim().length > 0, `el rubro ${i.clave} no dice nada`)
+  }
+  // Y sin NADA cotizado tampoco: una obra sin presupuesto no deja rubros en blanco.
+  const pelada = obra('s', 'me', {}, { materiales: 2e6 })
+  for (const i of ITEMS) {
+    const { texto } = cierreDeRubro(celda(pelada, i.clave), i.clave)
+    assert.ok(texto.trim().length > 0, `el rubro ${i.clave} sin presupuesto no dice nada`)
+  }
+})
+
+test('materiales y subcontratos remiten al queda combinado en vez de callarse', () => {
+  const o = obra('q', 'qp', {}, { materiales: 30.88e6, subcontratos: 2.08e6 }, { MO: 20e6, MA: 44.11e6 })
+  assert.match(cierreDeRubro(celda(o, 'materiales'), 'materiales').texto, /se dice abajo/)
+  assert.match(cierreDeRubro(celda(o, 'subcontratos'), 'subcontratos').texto, /cotizado dentro de materiales/)
+})
+
+test('una ausencia declarada no se lee como error: «otros» y las horas sin previsión', () => {
+  const o = obra('q', 'qp', {}, { mano_obra: 12e6, horas_valorizadas: 718 }, { MO: 10e6, CS: 1e6 })
+  assert.equal(celda(o, 'otros').gastadoAusente, 'no se carga aparte')
+  assert.equal(cierreDeRubro(celda(o, 'otros'), 'otros').texto, 'la cotización no abre este rubro')
+  assert.equal(cierreDeRubro(celda(o, 'horas'), 'horas').texto, 'la cotización no previó horas')
+})
+
+// ─── Lo contratado contra lo gastado (dueño, 17/09/2026: «más claridad de lo contratado vs lo que se va gastando») ───
+
+test('Contrato: lo contratado es el PRECIO (nunca la suma viva de lo facturado) y se compara sólo con lo gastado en esas mismas obras', () => {
+  // Instalación Eléctrica: vale $ 40 M, lleva $ 20 M facturados. El precio es 40, no 20.
+  const a = obra('a', 'me', { contratado: 40e6, origen: 'oc-pesos' }, { mano_obra: 5e6, materiales: 15e6 })
+  // BSA: OBRAS no tiene precio; `contratado` es la suma viva de Cobranzas → NO es precio: queda afuera.
+  const b = obra('b', 'me', { contratado: 17.7e6, origen: 'suma-viva' }, { materiales: 12e6 })
+  // Quattropani: U$S 63.000 valuados al TC de hoy; el contrato desglosado manda.
+  const q = obra('q', 'qp', { contratado: 95e6, contratado_usd: 63000, tipo_cambio: 1510, origen: 'oc-usd-x-tc', contrato_total: 139e6 }, { mano_obra: 30e6 })
+  const r = contraContrato([a, b, q])
+  assert.equal(r.conPrecio, 2)
+  assert.equal(r.contratado, 179e6, '40 + 139; la suma viva de b no entra')
+  assert.equal(r.gastado, 50e6, '20 de a + 30 de q; los 12 de b no entran porque b no tiene precio')
+  assert.equal(r.queda, 129e6)
+  assert.equal(r.pct, 50e6 / 179e6)
+  assert.deepEqual(r.sinPrecio, [{ id: 'b', nombre: 'b', ausencia: 'sin precio', gasto: 12e6 }])
+  assert.equal(r.gastadoSinPrecio, 12e6, 'lo que gastó la obra sin precio se dice aparte, no se mezcla')
+  assert.equal(q.precioEnDolares, true)
+  assert.equal(a.precioEnDolares, false)
+})
+
+test('Contrato: sin ninguna obra con precio no hay cuenta — null, nunca $ 0 ni 0 %', () => {
+  const b = obra('b', 'me', { contratado: 17.7e6, origen: 'suma-viva' }, { materiales: 12e6 })
+  const r = contraContrato([b])
+  assert.equal(r.conPrecio, 0)
+  assert.equal(r.contratado, null)
+  assert.equal(r.gastado, null)
+  assert.equal(r.queda, null)
+  assert.equal(r.pct, null)
+  assert.equal(r.gastadoSinPrecio, 12e6)
+})
+
+test('Contrato: una obra con precio y sin gasto queda todo; con más gasto que precio está excedida (queda negativo)', () => {
+  const quieta = obra('a', 'me', { contratado: 10e6, origen: 'oc-pesos' }, null)
+  assert.deepEqual([contraContrato([quieta]).gastado, contraContrato([quieta]).queda, contraContrato([quieta]).pct], [null, 10e6, null], 'sin movimiento: el % no existe')
+  const pasada = obra('p', 'me', { contratado: 10e6, origen: 'oc-pesos' }, { materiales: 12e6 })
+  assert.equal(contraContrato([pasada]).queda, -2e6)
+})
+
+test('Contrato por cliente: mismo orden que la lista de presupuestado (del que más gastó al que menos), el gasto por rubro es sólo de las obras con precio', () => {
+  const a = obra('a', 'me', { contratado: 40e6, origen: 'oc-pesos' }, { mano_obra: 5e6, materiales: 15e6 })
+  const b = obra('b', 'me', { contratado: 17.7e6, origen: 'suma-viva' }, { materiales: 12e6 })
+  const q = obra('q', 'qp', { contratado: 95e6, contratado_usd: 63000, tipo_cambio: 1510, origen: 'oc-usd-x-tc', contrato_total: 139e6 }, { mano_obra: 30e6 })
+  const f = contratoPorCliente([q, a, b])
+  assert.deepEqual(f.map((c) => c.clienteId), ['me', 'qp'], 'me gastó 32 (20 + 12), qp 30')
+  const me = f[0]
+  assert.equal(me.obras, 2)
+  assert.equal(me.conPrecio, 1)
+  assert.equal(me.contratado, 40e6)
+  assert.equal(me.gastado, 20e6)
+  assert.equal(me.queda, 20e6)
+  assert.equal(me.manoObra, 5e6)
+  assert.equal(me.materiales, 15e6, 'los 12 de b no están en la barra: b no tiene precio')
+  assert.equal(me.subcontratos, null)
+  assert.equal(me.enDolares, 0)
+  assert.equal(me.obraPrincipal, 'a')
+  assert.equal(f[1].enDolares, 1)
+  assert.equal(f[1].contratado, 139e6)
 })

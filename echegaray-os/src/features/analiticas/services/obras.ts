@@ -82,9 +82,15 @@ export interface ObraAnalitica {
     materialesDelCliente: boolean
     cita: string | null
   }
-  /** El precio de venta, SÓLO como referencia. `null` → `ausencia` dice por qué. */
+  /**
+   * EL PRECIO DE VENTA: lo que el cliente se comprometió a pagar. Nunca lo facturado (`precioDe`).
+   * Contra el presupuesto no se mide (arriba); contra lo gastado, sí: es la lectura del contrato
+   * que el dueño pidió el 17/09/2026 (`contraContrato`). `null` → `ausencia` dice por qué.
+   */
   precio: number | null
   ausencia: AusenciaPrecio | null
+  /** `true` = el contrato está en dólares y `precio` es su valuación al tipo de cambio de hoy. */
+  precioEnDolares: boolean
   /** Σ del presupuesto de los rubros comparables: contra esto se mide. `null` = nada que comparar. */
   presupuesto: number | null
   /** Lo gastado en los rubros que tienen presupuesto comparable. */
@@ -194,6 +200,7 @@ export function armarObra(
 ): ObraAnalitica | null {
   if (!p.cliente_id || !p.cliente_slug) return null
   const { precio, ausencia } = precioDe(e)
+  const precioEnDolares = precio != null && (e?.contratado_usd != null || e?.contrato_mano_obra_usd != null || e?.contrato_materiales_usd != null)
   const gasto = gastoDe(c)
   const comparables = RUBROS_COMPARABLES.filter((k) => (armado?.porRubro[k] ?? 0) > 0)
   const presupuesto = comparables.length ? comparables.reduce((a, k) => a + (armado?.porRubro[k] ?? 0), 0) : null
@@ -210,7 +217,7 @@ export function armarObra(
       materialesDelCliente: e?.contrato_materiales === 0 && e.contrato_cita != null,
       cita: e?.contrato_cita ?? null,
     },
-    precio, ausencia, presupuesto, consumoComparable, gasto,
+    precio, ausencia, precioEnDolares, presupuesto, consumoComparable, gasto,
     costoCotizado: armado?.costoTotal ?? null,
     motivoPresupuesto: presupuesto != null ? null : armado?.motivo ?? (armado ? 'presupuesto sin desglose por rubro' : SIN_PRESUPUESTO),
     presupuestoRubros: armado ? { ...armado.porRubro } : null,
