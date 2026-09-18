@@ -15,9 +15,17 @@ export type ClaveDeBloque = 'horas' | 'blanco' | 'negro' | 'resto' | 'sueldo' | 
 /** Cómo se pinta el fondo del bloque. El color sale de un token en la pantalla; acá sólo el tono. */
 export type TonoDeBloque = 'ninguno' | 'claro' | 'hundido'
 
-export interface Bloque { clave: ClaveDeBloque; rotulo: string; corto: string; tono: TonoDeBloque }
+export interface Bloque {
+  clave: ClaveDeBloque; rotulo: string; corto: string; tono: TonoDeBloque
+  /** El rótulo en una quincena CERRADA, cuando el de siempre afirmaría algo que la foto no es (18/09/2026). */
+  rotuloSellado?: string
+}
 
-export interface Columna { clave: string; rotulo: string; px: number; bloque: ClaveDeBloque }
+export interface Columna {
+  clave: string; rotulo: string; px: number; bloque: ClaveDeBloque
+  /** El rótulo en una quincena CERRADA (sin ✎: nada se escribe). Ver `Bloque.rotuloSellado`. */
+  rotuloSellado?: string
+}
 
 export interface DefinicionDeCuadro {
   bloques: readonly Bloque[]
@@ -78,14 +86,15 @@ export const CUADRO_JORNALEROS: DefinicionDeCuadro = {
 export const CUADRO_MENSUALES: DefinicionDeCuadro = {
   bloqueDeLosDias: null,
   bloques: [
-    { clave: 'sueldo', rotulo: 'Sueldo mensual', corto: 'Sueldo', tono: 'ninguno' },
+    // EN LA CERRADA NO HAY «SUELDO MENSUAL» (auditor, 18/09/2026): la foto es lo liquidado en ESA quincena.
+    { clave: 'sueldo', rotulo: 'Sueldo mensual', corto: 'Sueldo', tono: 'ninguno', rotuloSellado: 'Liquidado en la quincena' },
     { clave: 'blanco', rotulo: 'Recibo blanco', corto: 'Blanco', tono: 'claro' },
     { clave: 'efectivo', rotulo: 'Efectivo · fuera del recibo', corto: 'Efectivo', tono: 'hundido' },
     { clave: 'resto', rotulo: 'Resto del cálculo', corto: 'Resto', tono: 'ninguno' },
   ],
   columnas: [
-    { clave: 'asistencia', rotulo: 'Asistencia', px: 104, bloque: 'sueldo' },
-    { clave: 'sueldo', rotulo: 'Sueldo del mes ✎', px: 128, bloque: 'sueldo' },
+    { clave: 'asistencia', rotulo: 'Asistencia', px: 104, bloque: 'sueldo', rotuloSellado: 'Horas selladas' },
+    { clave: 'sueldo', rotulo: 'Sueldo del mes ✎', px: 128, bloque: 'sueldo', rotuloSellado: 'Importe' },
     { clave: 'banco', rotulo: 'Banco', px: 120, bloque: 'blanco' },
     { clave: 'pagadoBanco', rotulo: 'Pagado ✎', px: 112, bloque: 'blanco' },
     { clave: 'saldoBanco', rotulo: 'Saldo', px: 112, bloque: 'blanco' },

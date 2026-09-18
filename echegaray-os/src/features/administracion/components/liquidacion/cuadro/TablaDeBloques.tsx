@@ -209,7 +209,7 @@ function Encabezado({ columnas, definicion, dias, tramos, sellada, corrimiento, 
             display: 'inline-flex', alignItems: 'baseline', gap: 8, padding: '6px 4px 0', color: V.tinta, fontWeight: 600,
             whiteSpace: 'nowrap', transform: `translateX(${corrimientoDelRotulo(corrimiento, t)}px)`,
           }}>
-            {t.rotulo}
+            {sellada && t.rotuloSellado ? t.rotuloSellado : t.rotulo}
             {sellada && <span style={{ fontWeight: 400, color: V.apagado, textTransform: 'none' }}>sellada</span>}
           </div>
         </div>
@@ -218,7 +218,7 @@ function Encabezado({ columnas, definicion, dias, tramos, sellada, corrimiento, 
         <div key={f} title={f} style={{ gridColumn: 2 + i, gridRow: 2, textAlign: 'center', padding: '28px 0 8px', minWidth: DIA }}>{rotuloDia(f)}</div>
       ))}
       {definicion.columnas.map((c, i) => (
-        <div key={c.clave} style={{ gridColumn: 2 + dias.length + i, gridRow: 2, textAlign: 'right', padding: '28px 0 8px' }}><RotuloDeColumna rotulo={c.rotulo} /></div>
+        <div key={c.clave} style={{ gridColumn: 2 + dias.length + i, gridRow: 2, textAlign: 'right', padding: '28px 0 8px' }}><RotuloDeColumna rotulo={sellada && c.rotuloSellado ? c.rotuloSellado : c.rotulo} /></div>
       ))}
     </div>
   )

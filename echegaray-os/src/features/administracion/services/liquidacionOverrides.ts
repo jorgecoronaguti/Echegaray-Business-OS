@@ -505,7 +505,10 @@ export function sinOverrides(
   const sinDesglose = desgloseSinAfirmar({ escritoAMano: false, neto: null, reciboNeto: base.reciboNeto, jornales, pagadoBanco })
   // ¿ALGUIEN REGISTRÓ LO PAGADO? En una foto sellada (`sello` presente) sin registro no se afirma saldo: lo pagado que
   // se muestra son los adelantos de la foto —eso sí consta— y el resto no se da por debido ni por pagado.
-  const pagoSinRegistrar = sello != null && registrado(ov.pagadoBanco) == null && registrado(ov.pagadoEfectivo) == null
+  // SÓLO CON LÍNEA SELLADA: sin foto no hay pago que registrar, hay una fila sin línea (`sello.conLinea = false`), y eso
+  // se dice con su propio rótulo.
+  const pagoSinRegistrar = sello != null && sello.conLinea
+    && registrado(ov.pagadoBanco) == null && registrado(ov.pagadoEfectivo) == null
   return {
     ...base, manual: { ...SIN_MARCAS }, origen: { ...TODO_CALCULADO }, discrepancia: {},
     // `sueldo` SIGUE EN NULL A PROPÓSITO: el modelo blanco+negro no se recalcula sobre algo ya pagado. Lo que sí
