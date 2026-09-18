@@ -71,7 +71,99 @@ export function indicesRotulados(n: number, max = 8): number[] {
   const out: number[] = []
   for (let i = 0; i < n - 1; i += paso) out.push(i)
   // El penúltimo no puede pegarse al último: dos rótulos encimados no se leen.
-  if (out.length > 1 && n - 1 - out[out.length - 1] < paso / 2) out.pop()
+  if (out.length > 1 && n - 1 - out[out.length - 1] < paso * 0.7) out.pop()
   out.push(n - 1)
   return out
 }
+
+// ═══ FECHAS Y CELDAS COMO SE LEEN EN LA APP (auditoría 18/09/2026) ═══
+
+/** dd/mm/yy desde `2026-09-19` o desde `19/09/2026`; cualquier otro texto vuelve igual. */
+export function fechaCorta(s: string): string {
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s)
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1].slice(2)}`
+  const larga = /^(\d{1,2})\/(\d{1,2})\/\d{2}(\d{2})$/.exec(s.trim())
+  if (larga) return `${larga[1].padStart(2, '0')}/${larga[2].padStart(2, '0')}/${larga[3]}`
+  return s
+}
+
+/**
+ * LO QUE SE ESCRIBE EN UNA CELDA DE LAS TABLAS: el texto de la pestaña, salvo la fecha, que va en
+ * dd/mm/yy. VACÍA ES VACÍA: la pestaña escribe «—» cuando quiere decir cero; una celda sin nada no se
+ * rellena con un guión inventado.
+ */
+export function textoCelda(c: { texto: string; fecha?: string | null }): string {
+  if (c.fecha) return fechaCorta(c.fecha)
+  return fechaCorta(c.texto ?? '')
+}
+
+/** La ventana del período en dd/mm/yy, una sola vez: si el período ya ES la ventana (un rango a mano), no se repite. */
+export function rotuloVentana(periodo: string, rango: { desde: string | null; hasta: string | null }): string {
+  const { desde, hasta } = rango
+  const ventana = desde && hasta ? `${fechaCorta(desde)} – ${fechaCorta(hasta)}` : desde ? `desde el ${fechaCorta(desde)}` : hasta ? `hasta el ${fechaCorta(hasta)}` : 'desde el inicio'
+  return periodo.toLowerCase() === ventana.toLowerCase() ? ventana : `${periodo} · ${ventana}`
+}
+
+// ═══ LA DISPOSICIÓN DE UN COMBO: dos paneles y el pie, sin pisarse ═══
+
+export const GEOMETRIA = Object.freeze({
+  ANCHO: 720, IZQ: 64, DER: 12,
+  ALTO_BARRAS: 150, ALTO_LINEAS: 130,
+  /** Aire ENTRE los dos paneles: el rótulo del piso de las barras y el del techo de las líneas no se tocan. */
+  ENTRE: 34,
+  /** Aire arriba: la marca más alta lleva su rótulo por encima de la línea. */
+  TECHO: 10,
+  PIE: 22,
+  /** El rótulo de una marca del eje: 9 px de letra, dibujado con la base 3 px por debajo de la línea. */
+  LETRA: 9, BAJA: 3,
+})
+
+export interface Panel { arriba: number; abajo: number }
+export interface Disposicion { barras: Panel | null; lineas: Panel | null; separador: number | null; yPie: number; alto: number }
+
+/** Dónde va cada panel, la línea que los separa y el pie de fechas, en coordenadas del SVG. */
+export function disposicion(hayBarras: boolean, hayLineas: boolean): Disposicion {
+  const G = GEOMETRIA
+  let y = G.TECHO
+  const barras = hayBarras ? { arriba: y, abajo: y + G.ALTO_BARRAS } : null
+  if (barras) y = barras.abajo + (hayLineas ? G.ENTRE : 8)
+  const lineas = hayLineas ? { arriba: y, abajo: y + G.ALTO_LINEAS } : null
+  if (lineas) y = lineas.abajo + 8
+  const alto = y + G.PIE
+  return { barras, lineas, separador: barras && lineas ? barras.abajo + G.ENTRE / 2 : null, yPie: alto - G.PIE + 12, alto }
+}
+
+/** La franja vertical que ocupa el rótulo de una marca puesta en `y`: [arriba, abajo]. */
+export const franjaDeRotulo = (y: number): [number, number] => [y + GEOMETRIA.BAJA - GEOMETRIA.LETRA, y + GEOMETRIA.BAJA]
+
+/** Ancho aproximado de un rótulo del eje de días (letra de 9 px: ~5,4 px por carácter). */
+const anchoRotulo = (s: string) => s.length * GEOMETRIA.LETRA * 0.6
+
+/**
+ * LOS RÓTULOS DEL EJE DE DÍAS, en dd/mm/yy y sin pisarse: el reparto con más rótulos (hasta 12) en
+ * que ninguno toca al vecino, siempre el primero y el último.
+ */
+export interface RotuloDelEje { i: number; texto: string; x: number; ancla: 'start' | 'middle' | 'end'; desde: number; hasta: number }
+
+export function rotulosDelEje(dominio: string[]): RotuloDelEje[] {
+  const n = dominio.length
+  if (!n) return []
+  const textos = dominio.map(fechaCorta)
+  const colocar = (max: number): RotuloDelEje[] => indicesRotulados(n, max).map((i) => {
+    const x = xDe(i, n)
+    const w = anchoRotulo(textos[i])
+    // Los extremos se apoyan hacia adentro: el primero empieza en su punto, el último termina en el suyo.
+    const ancla = n > 2 && i === 0 ? 'start' : n > 2 && i === n - 1 ? 'end' : 'middle'
+    const desde = ancla === 'start' ? x : ancla === 'end' ? x - w : x - w / 2
+    return { i, texto: textos[i], x, ancla, desde, hasta: desde + w }
+  })
+  // De más a menos rótulos, el primer reparto en que ninguno toca al vecino (10 px de aire).
+  for (let max = Math.min(n, 12); max > 2; max--) {
+    const r = colocar(max)
+    if (r.every((x, k) => k === 0 || r[k - 1].hasta + 10 <= x.desde)) return r
+  }
+  return colocar(2)
+}
+
+/** La x del centro del punto `i` de un dominio de `n`. */
+export const xDe = (i: number, n: number) => GEOMETRIA.IZQ + ((i + 0.5) / n) * (GEOMETRIA.ANCHO - GEOMETRIA.IZQ - GEOMETRIA.DER)
