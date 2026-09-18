@@ -502,7 +502,24 @@ testConBotones('el DÍGITO DE MÁS se corrige contra ARCA, y ahí aparece el dup
   const it = repo._fajos.get(r.fajoId).items[0]
   assert.equal(it.comprobante.numero, '0004-00003642', 'el número bueno es el de ARCA')
   assert.equal(it.comprobante.numeroLeidoMal, '0004-00036542')
-  assert.equal(it.comprobante.cuit, '23369111574', 'el CUIT del emisor lo pone el padrón')
+  // ═══ EL CUIT YA NO SE PEGA POR ESTA VÍA (18/09/2026) ═══
+  //
+  // Hasta hoy acá se afirmaba `cuit === '23369111574'`: «el CUIT del emisor lo pone el padrón». Esta
+  // foto trae `cuit: null` a propósito —la factura tiene dos CUIT y el modelo no eligió— así que la
+  // conciliación es por FECHA + TOTAL, la vía que NO mira el emisor: `candidatasArca` trae las filas
+  // de ese día de cualquier empresa. Acá el emisor resultó ser el correcto porque las dos filas de
+  // ARCA del 30/07 son de Corralón, o sea por la fixture, no por la lógica. Con una factura ajena
+  // del mismo día y el mismo importe, el comprobante se llevaba el CUIT de otra empresa — y como el
+  // CUIT manda sobre el nombre en `matchProveedor`, la columna E del Sheet salía con el proveedor
+  // equivocado. Ver `emisorConfirmado` en `arca.mjs`.
+  //
+  // LO QUE SE PIERDE, DICHO: sin CUIT la clave de idempotencia baja de `c:<cuit>|<n°>` a
+  // `p:<proveedor>|<n°>`. Es más débil, pero sigue siendo una clave — y la barrera que importa acá
+  // es la que mira la pestaña VIVA, que abajo sigue encontrando la fila 802. Una clave más débil se
+  // recupera cuando la foto deja leer el CUIT; un proveedor equivocado en la columna E le parte la
+  // cuenta corriente a dos proveedores y nadie lo mira.
+  assert.equal(it.comprobante.cuit, null, 'esta vía encontró la FILA, no al emisor: no se afirma quién es')
+  assert.equal(it.arca.emisorCuit, '23369111574', 'el bloque de ARCA lo sigue mostrando, con su vía')
   assert.match(r.texto, /había leído \*\*0004-00036542\*\*/)
   assert.match(r.texto, /Ya está cargado\*\* — fila 802 de Compras/)
   assert.match(r.texto, /figura en ARCA \(PEREZ GARCIA MARISOL BIBIANA\)/)
