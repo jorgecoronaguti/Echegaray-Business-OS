@@ -81,9 +81,10 @@ function lineaDeLaFoto(
     horasEquivalentes: s.horas,
     extras: [],
     valorHora: s.valorHora,
-    // OFICINA NO TIENE COLUMNA DE NETO MENSUAL EN LA FOTO: el importe del mes es `cobra` (lo escribe `escribirFoto`).
-    // Se publica como el neto de esa quincena para que la celda «Sueldo del mes» muestre la foto y no «—».
-    netoMensual: modalidad === 'mensual' ? cobra : null,
+    // LA FOTO NO TIENE NETO MENSUAL, Y NO SE INVENTA (auditor, 18/09/2026). `cobra` es lo que se liquidó EN ESA
+    // QUINCENA —Maldonado 16–31/03: 105 h × $8.125 = $853.125, porque hasta agosto JORNALES liquidaba a los jefes por
+    // hora—, y publicarlo como neto mensual lo rotulaba «Cobra al mes» y «Sueldos del mes». El importe es `cobra`.
+    netoMensual: null,
     modalidad,
     cobra,
     adelanto: r2(s.adelanto),
@@ -117,6 +118,10 @@ function lineaSinFoto(viva: LineaLiquidada, efectivoRedondeado: number | null): 
     valorHora: null, netoMensual: null,
     cobra: null, adelanto: 0, yaTransferido: 0, porBanco: 0, enEfectivo: null, total: null,
     efectivoRedondeado,
+    // NI EL RECIBO DE HOY (auditor, 18/09/2026): Oficina 16–31/08 decía «sin línea sellada» y a la vez publicaba el
+    // recibo del estudio ($663.141,56 por jefe) como Banco y Saldo, porque `bancoDelMensual` caía al recibo. Sin foto,
+    // nada vivo se cuela: ni recibo, ni banco, ni saldo.
+    reciboNeto: null,
     sinTarifa: false, reciboSinGiro: false,
     blancoAcuerdo: null, efectivoAcuerdo: null,
     origenTarifa: null,
@@ -147,4 +152,24 @@ export function cuadroSellado(e: EntradaDelCuadroSellado): CuadroSellado {
     lineas.push(lineaSinFoto(v, e.redondeos.get(v.personaId) ?? null))
   }
   return { lineas: ordenarComoPersonal(lineas, (l) => l.nombre, (l) => l.esJefe), sinLinea }
+}
+
+/**
+ * LOS DÍAS DE UNA QUINCENA CERRADA NO SE DIBUJAN (auditor, 18/09/2026).
+ *
+ * `liquidacion_linea` sella el TOTAL de horas, no los días. Bajo el rótulo «Horas · sellada» la 1ª de junio mostraba
+ * la grilla VIVA —1.676,5 h en la fila de totales, el mismo número que hizo caer esta pantalla la primera vez— al lado
+ * de las 1.886,5 selladas; Agüero, una «A» roja y 17 h junto a sus 87 selladas. Lo cerrado muestra lo que se pagó, y
+ * de los días no quedó foto: se sacan.
+ *
+ *   · todos los cuadros con filas están cerrados → sin columnas de día (`dias = []`) y sin celdas.
+ *   · mezcla (un cuadro cerrado, otro abierto) → las columnas quedan para el abierto; las filas cerradas van en blanco.
+ */
+export function sinDiasVivos<C extends { fecha: string }, F extends { cerrada: boolean; celdas: C[] }>(
+  filas: readonly F[], dias: readonly string[], blanco: (c: C) => C,
+): { filas: F[]; dias: string[] } {
+  const cerradas = filas.filter((f) => f.cerrada)
+  if (cerradas.length === 0) return { filas: [...filas], dias: [...dias] }
+  if (cerradas.length === filas.length) return { filas: filas.map((f) => ({ ...f, celdas: [] })), dias: [] }
+  return { filas: filas.map((f) => (f.cerrada ? { ...f, celdas: f.celdas.map(blanco) } : f)), dias: [...dias] }
 }

@@ -20,6 +20,7 @@ import type { LineaConOverrides } from './liquidacionOverrides.ts'
 import type { GrupoLiquidacion } from './liquidacionQuincena.ts'
 import type { Quincena } from './quincena.ts'
 import { estadoDelCuadro } from './estadoDelCuadro.ts'
+import { sinDiasVivos } from './liquidacionSellada.ts'
 
 export interface CuadroDeLaQuincena {
   datos: DatosDeLaSolapaHoras
@@ -56,17 +57,19 @@ export async function leerCuadroDeLaQuincena(
   )
   // EL ESPEJO VIENE CON LA LIQUIDACIÓN: es la misma foto de la planilla que ya entró a la cadena.
   const { espejo } = liquidacion
-  const filas = filasDelEspejo({
+  // LOS DÍAS DE LO CERRADO NO SE DIBUJAN: la foto sella el total, no los días (`sinDiasVivos`).
+  const { filas, dias } = sinDiasVivos(filasDelEspejo({
     quincena, personas, registros: datos.registros, presencias: datos.presencias,
     lineas, cuadrosCerrados, hayEspejo: espejo.hay, hoy,
     horasDeLaPlanilla: espejo.horasPorPersona, diasDeLaPlanilla: espejo.diasPorPersona,
-  })
+  }), diasDelEspejo(quincena, diasConHorasDe(datos.registros)), (c) => ({
+    ...c, marca: 'sin-cargar' as const, horas: null, sinMotivo: false, tardanza: null, editable: false, registros: 0, registroId: null,
+  }))
   const grilla = filasDeGrilla({
     quincena, personas, registros: datos.registros, presencias: datos.presencias,
     personaDeRegistro: (r) => (r as unknown as { persona_id: string }).persona_id,
     personaDePresencia: (p) => (p as unknown as { persona_id: string }).persona_id,
     hoy,
   })
-  const dias = diasDelEspejo(quincena, diasConHorasDe(datos.registros))
   return { datos: { ...datos, personas }, liquidacion, tituloDe, cuadrosCerrados, filas, grilla, dias }
 }
