@@ -85,6 +85,31 @@ test('liquidación final sólo con fecha de egreso confirmada, pago posterior y 
   assert.match(r[3].evidencia, /anterior a su baja/)
 })
 
+test('D1: la final cuyo último bloque con BANCO no tiene acreditación propia queda a confirmar, con la fila nombrada', () => {
+  // Aguirre, 09/04: baja 31/03, el bloque 16–31/03 anota BANCO 383.347,94 y el banco nunca lo acreditó solo.
+  const r = clasificar({
+    acreditaciones: [A('20446335589', '2026-01-16', 100000), A('20446335589', '2026-04-09', 551429.04)],
+    personas: [P('ag', '20446335589', '2026-03-31')],
+    planilla: [J('ag', 'Obreros 26', '2026-01-05', '2026-01-15', 100000), J('ag', 'Obreros 26', '2026-03-16', '2026-03-31', 383347.94)],
+  })
+  const final = r[1]
+  assert.equal(final.clase, 'a_confirmar'); assert.equal(final.periodo_desde, null); assert.equal(final.confianza, null)
+  assert.match(final.evidencia, /2026-03-16–2026-03-31/); assert.match(final.evidencia, /383347\.94/); assert.match(final.evidencia, /sin acreditación propia/)
+  assert.equal(final.centavos, 55142904, 'el importe no se parte')
+
+  // Castro, 20/05: el último bloque con BANCO (04–16/05, 489.600) tiene su acreditación del 15/05 → final.
+  const [q, f] = clasificar({
+    acreditaciones: [A('20258303505', '2026-05-15', 489600), A('20258303505', '2026-05-20', 102917.10)],
+    personas: [P('ca', '20258303505', '2026-05-15')],
+    planilla: [J('ca', 'Obreros 26', '2026-05-04', '2026-05-16', 489600), J('ca', 'Obreros 26', '2026-05-18', '2026-05-30')],
+  })
+  assert.equal(q.clase, 'quincena'); assert.equal(f.clase, 'liquidacion_final'); assert.match(f.evidencia, /propia acreditación/)
+
+  // Sin ningún bloque con BANCO: final, y la evidencia lo dice.
+  const [s] = clasificar({ acreditaciones: [A('20317143665', '2026-01-16', 5190.74)], personas: [P('po', '20317143665', '2026-01-05')], planilla: [] })
+  assert.equal(s.clase, 'liquidacion_final'); assert.match(s.evidencia, /ningún bloque anterior/)
+})
+
 test('la coincidencia con la planilla gana a la final: el sueldo de enero de quien se fue el 28/01', () => {
   const [g] = clasificar({
     acreditaciones: [A('27432212950', '2026-02-05', 961729.11)],
@@ -114,6 +139,74 @@ test('por lote: figura en el bloque aunque la planilla anote otro banco; suelto 
   const co = r.find((x) => x.cuil === '20341935351')
   assert.equal(al.clase, 'quincena'); assert.equal(al.confianza, 'regla_fecha'); assert.match(al.evidencia, /317100/)
   assert.equal(co.clase, 'a_confirmar'); assert.match(co.evidencia, /no figura en el bloque/)
+})
+
+// ── LAS MUTACIONES QUE LA AUDITORÍA DEL 18/09/2026 ENCONTRÓ VIVAS ─────────────────────────────────
+test('mutación: «al peso» es menos de un peso, no mil (152.500 de la planilla NO explica 152.000 del banco)', () => {
+  const [x] = clasificar({
+    acreditaciones: [A('20111111111', '2026-01-16', 152000)],
+    personas: [P('a', '20111111111')],
+    planilla: [J('a', 'Obreros 26', '2026-01-05', '2026-01-15', 152500)],
+  })
+  assert.notEqual(x.confianza, 'coincide_planilla'); assert.equal(x.clase, 'a_confirmar')
+  const [y] = clasificar({
+    acreditaciones: [A('20111111111', '2026-02-05', 1113592.21)],
+    personas: [P('a', '20111111111')],
+    planilla: [J('a', 'Oficina 26', '2026-01-16', '2026-01-31', 1113592)],
+  })
+  assert.equal(y.confianza, 'coincide_planilla', 'la planilla redondea al peso: 21 centavos sí es «al peso»')
+})
+
+test('mutación: verificarTotal controla la CANTIDAD, no sólo la suma', () => {
+  const f = leerCertificadoCsv(CSV)
+  const v = verificarTotal(f, { totalCentavos: TOTAL_CERTIFICADO_2026_CENTAVOS, filas: 126 })
+  assert.equal(v.ok, false); assert.match(v.errores.join(' '), /hay 127 acreditaciones y el certificado tiene 126/)
+  // Una fila partida en dos mitades: la suma da igual y la cantidad no.
+  const partida = CSV.replace('Aguero Cristian Domingo;20294271067;2026-01-16;139000.00',
+    'Aguero Cristian Domingo;20294271067;2026-01-16;69500.00\nAguero Cristian Domingo;20294271067;2026-01-16;69500.00')
+  assert.notEqual(partida, CSV)
+  assert.throws(() => prepararCertificado(partida), /hay 128 acreditaciones/)
+})
+
+test('mutación: la acreditación lleva el persona_id de la persona hallada por CUIL', () => {
+  const [x] = clasificar({
+    acreditaciones: [A('20111111111', '2026-07-17', 252200)],
+    personas: [P('otra', '20222222222'), P('la-de-este-cuil', '20-11111111-1')],
+    planilla: [J('la-de-este-cuil', 'Obreros 26', '2026-07-01', '2026-07-15', 252200)],
+  })
+  assert.equal(x.persona_id, 'la-de-este-cuil')
+})
+
+test('mutación: un CUIL repetido en el padrón no elige una persona: sin persona_id y a confirmar', () => {
+  const [x] = clasificar({
+    acreditaciones: [A('20111111111', '2026-07-17', 252200)],
+    personas: [P('p1', '20111111111'), P('p2', '20-11111111-1')],
+    planilla: [J('p1', 'Obreros 26', '2026-07-01', '2026-07-15', 252200)],
+  })
+  assert.equal(x.persona_id, null); assert.equal(x.clase, 'a_confirmar'); assert.match(x.evidencia, /2 veces/)
+})
+
+test('mutación: la fecha del CSV se valida (mes 13, día 32, otro año, formato dd/mm)', () => {
+  const cab = 'nombre_banco;cuil;fecha;importe\n'
+  for (const fecha of ['2026-13-01', '2026-01-32', '2025-01-16', '16/01/2026', '2026-1-16']) {
+    assert.throws(() => leerCertificadoCsv(`${cab}X;20111111111;${fecha};1.00`), /fecha/, fecha)
+  }
+  assert.equal(leerCertificadoCsv(`${cab}X;20111111111;2026-01-16;1.00`)[0].fecha, '2026-01-16')
+})
+
+test('mutación: el lote cuenta jornaleros, no mensuales (4 obreros + 2 jefes el mismo día no es lote)', () => {
+  const obreros = Array.from({ length: 4 }, (_, i) => A(`2000000000${i}`, '2026-04-30', 300000))
+  const jefes = [A('20359232668', '2026-04-30', 1000000), A('20403679764', '2026-04-30', 1000000)]
+  const r = clasificar({
+    acreditaciones: [...obreros, ...jefes],
+    personas: [...loteP(4), P('m', '20359232668'), P('jp', '20403679764')],
+    planilla: [
+      ...Array.from({ length: 4 }, (_, i) => J(`l${i}`, 'Obreros 26', '2026-04-16', '2026-04-30')),
+      J('m', 'Oficina 26', '2026-04-16', '2026-04-30'), J('jp', 'Oficina 26', '2026-04-16', '2026-04-30'),
+    ],
+  })
+  for (const x of r.slice(0, 4)) { assert.equal(x.clase, 'a_confirmar'); assert.match(x.evidencia, /pago suelto \(4/) }
+  for (const x of r.slice(4)) assert.equal(x.clase, 'sueldo_mensual')
 })
 
 test('un CUIL que no está en el padrón se guarda sin persona y no se clasifica', () => {

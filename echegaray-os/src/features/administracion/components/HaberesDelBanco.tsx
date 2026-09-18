@@ -29,15 +29,19 @@ function Celda({ children, izquierda = false, fuerte = false, title, tono, testi
   )
 }
 
-function Comparado({ valor, cotejo, banco, testid }: { valor: number | null; cotejo: Cotejo; banco: number; testid: string }) {
+function Comparado({ valor, cotejo, banco, testid, estimado = false }: {
+  valor: number | null; cotejo: Cotejo; banco: number; testid: string; estimado?: boolean
+}) {
   const titulo = cotejo === 'coincide' ? 'coincide con el banco'
     : cotejo === 'difiere'
       ? (valor == null || valor === 0 ? `vacía: el banco acreditó ${pesos(banco)}`
         : `difiere del banco en ${pesos(Math.round((banco - valor) * 100) / 100)}`)
       : undefined
   return (
-    <Celda testid={testid} title={titulo} tono={cotejo === 'difiere' ? V.warn : undefined}>
+    <Celda testid={testid} title={estimado ? `${titulo ? titulo + ' · ' : ''}neto estimado: todavía no hay recibo real de este período` : titulo}
+      tono={cotejo === 'difiere' ? V.warn : undefined}>
       {valor == null || valor === 0 ? 'vacía' : pesos(valor)}
+      {estimado && <span data-testid="haberes-banco-liquidacion-est" style={{ marginLeft: 4, fontSize: '11px', color: V.tenue }}>est.</span>}
       {cotejo === 'coincide' && <span style={{ marginLeft: 4, fontSize: '11px', color: V.pos }}>=</span>}
       {cotejo === 'difiere' && <span style={{ marginLeft: 4, fontSize: '11px' }}>≠</span>}
     </Celda>
@@ -59,7 +63,7 @@ function FilaDelPeriodo({ x }: { x: PeriodoDelBanco }) {
       </Celda>
       <Celda fuerte testid="haberes-banco-importe">{x.acreditaciones.length ? pesos(x.banco) : '—'}</Celda>
       <Comparado testid="haberes-banco-planilla" valor={x.planilla} cotejo={x.contraPlanilla} banco={x.banco} />
-      <Comparado testid="haberes-banco-liquidacion" valor={x.liquidacion} cotejo={x.contraLiquidacion} banco={x.banco} />
+      <Comparado testid="haberes-banco-liquidacion" valor={x.liquidacion} cotejo={x.contraLiquidacion} banco={x.banco} estimado={x.liquidacionEstimada} />
       <Celda izquierda tono={x.difiere ? V.warn : V.tenue} testid="haberes-banco-estado">
         {x.difiere ? 'no coincide' : 'coincide'}
       </Celda>

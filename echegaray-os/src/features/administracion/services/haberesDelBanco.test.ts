@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { armarHaberesDelBanco, rotuloDelPeriodo, type AcreditacionDelBanco } from './haberesDelBanco.ts'
+import { alPeso, armarHaberesDelBanco, conLiquidacionEstimada, rotuloDelPeriodo, type AcreditacionDelBanco } from './haberesDelBanco.ts'
 
 // LOS DEFECTOS QUE ESTOS TESTS ATRAPAN:
 //  1. Que la final se sume a una quincena (regla del dueño: no se considera).
@@ -92,4 +92,42 @@ test('sin permiso no hay filas ni totales, y la bandera lo dice', () => {
 test('a confirmar no entra a ningún período', () => {
   const h = armarHaberesDelBanco({ puedeVer: true, anio: 2026, acreditaciones: [A('2026-08-13', 239790.94, 'a_confirmar', null, null, null)], planilla: [], liquidacion: [] })
   assert.equal(h.periodos.length, 0); assert.equal(h.aConfirmar.length, 1); assert.equal(h.totales.aConfirmar, 239790.94)
+})
+
+test('mutación: «al peso» en la pantalla es menos de un peso, no mil', () => {
+  assert.equal(alPeso(1113592.21, 1113592), true)
+  assert.equal(alPeso(152000, 152500), false)
+  assert.equal(alPeso(200000, 201000), false)
+  const h = armarHaberesDelBanco({
+    puedeVer: true, anio: 2026,
+    acreditaciones: [A('2026-01-16', 152000, 'quincena', '2026-01-01', '2026-01-15')],
+    planilla: [{ pestana: 'Obreros 26', quincenaDesde: '2026-01-05', quincenaHasta: '2026-01-15', porBanco: 152500, yaTransferido: null }],
+    liquidacion: [],
+  })
+  assert.equal(h.periodos[0].contraPlanilla, 'difiere')
+})
+
+test('la liquidación estimada se rotula: la quincena por su desde, el mes por cualquiera de sus quincenas', () => {
+  const h = armarHaberesDelBanco({
+    puedeVer: true, anio: 2026,
+    acreditaciones: [
+      A('2026-09-15', 200000, 'quincena', '2026-09-01', '2026-09-15', 'regla_fecha'),
+      A('2026-08-31', 215564.62, 'quincena', '2026-08-16', '2026-08-31'),
+    ],
+    planilla: [],
+    liquidacion: [{ desde: '2026-09-01', hasta: '2026-09-15', porBanco: 0, pagadoBanco: 249857.28 },
+      { desde: '2026-08-16', hasta: '2026-08-31', porBanco: 215564.62, pagadoBanco: 215564.62 }],
+    estimadas: ['2026-09-01'],
+  })
+  assert.deepEqual(h.periodos.map((x) => [x.desde, x.liquidacionEstimada]), [['2026-08-16', false], ['2026-09-01', true]])
+  const sinLiq = conLiquidacionEstimada({ ...h, periodos: h.periodos.map((x) => ({ ...x, liquidacion: null })) }, ['2026-09-01'])
+  assert.equal(sinLiq.periodos[1].liquidacionEstimada, false, 'sin cifra no hay nada que rotular')
+  const mes = armarHaberesDelBanco({
+    puedeVer: true, anio: 2026,
+    acreditaciones: [A('2026-07-31', 1365843.84, 'sueldo_mensual', '2026-07-01', '2026-07-31')],
+    planilla: [{ pestana: 'Oficina 26', quincenaDesde: '2026-07-16', quincenaHasta: '2026-07-31', porBanco: 1365000, yaTransferido: null }],
+    liquidacion: [{ desde: '2026-07-16', hasta: '2026-07-31', porBanco: 1365000, pagadoBanco: null }],
+    estimadas: ['2026-07-16'],
+  })
+  assert.equal(mes.periodos[0].liquidacionEstimada, true)
 })

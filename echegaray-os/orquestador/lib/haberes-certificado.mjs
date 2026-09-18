@@ -32,6 +32,11 @@
 //                      30 días, y ninguna de las reglas de arriba lo explica. Sin fecha de egreso NO es
 //                      final (Navarro, Contreras: `en_la_empresa = false` pero nadie anotó cuándo se fue).
 //                      Regla del dueño: las finales no se consideran — no suman a ninguna quincena.
+//                      Y UNA CONDICIÓN MÁS (auditoría, 18/09/2026): el ÚLTIMO bloque de la planilla en que
+//                      figura la persona antes del pago no puede tener un BANCO sin acreditación propia.
+//                      Si lo tiene, el pago puede estar cubriendo esa quincena más la final (Aguirre 09/04:
+//                      551.429,04 contra BANCO 383.347,94 de 16–31/03 que el banco nunca acreditó sola), y
+//                      partir el importe no es decisión del cargador: va «a_confirmar» con la fila nombrada.
 //   quincena (por lote) un jornalero que cobró en un lote de 5 o más acreditaciones de jornaleros del mismo
 //                      día, y que FIGURA en el bloque de esa quincena de la planilla, aunque el BANCO de la
 //                      planilla diga otro número o nada. Es la evidencia del 30/04 (Alaniz y Castro con los
@@ -201,7 +206,7 @@ export function clasificar({ acreditaciones, personas, planilla }) {
     lote.set(a.fecha, (lote.get(a.fecha) ?? 0) + 1)
   }
 
-  return acreditaciones.map((a) => {
+  const primera = acreditaciones.map((a) => {
     const ps = porCuil.get(a.cuil) ?? []
     if (ps.length !== 1) {
       return {
@@ -216,9 +221,11 @@ export function clasificar({ acreditaciones, personas, planilla }) {
     const egreso = p.fecha_egreso ? String(p.fecha_egreso).slice(0, 10) : null
     const dias = egreso ? diasEntre(egreso, a.fecha) : null
     const esFinal = egreso != null && dias > 0 && dias <= MAX_DIAS_FINAL
+    // Se marca final acá; la condición del bloque anterior se resuelve en la segunda pasada, cuando ya se
+    // sabe qué quincenas tienen acreditación propia.
     const final = () => ({
       ...base, clase: 'liquidacion_final', periodo_desde: null, periodo_hasta: null, confianza: 'baja_confirmada',
-      evidencia: `pago ${dias} día(s) después de la baja del ${egreso} (personas.fecha_egreso); ninguna fila de BANCO de la planilla lo explica`,
+      evidencia: `pago ${dias} día(s) después de la baja del ${egreso} (personas.fecha_egreso)`,
     })
 
     if (esMensual(p.id)) {
@@ -286,6 +293,35 @@ export function clasificar({ acreditaciones, personas, planilla }) {
     return {
       ...base, clase: 'a_confirmar', periodo_desde: null, periodo_hasta: null, confianza: null,
       evidencia: motivos.join('; '),
+    }
+  })
+
+  // ── SEGUNDA PASADA: la final contra el último bloque de la planilla ───────────────────────────────
+  //
+  // Una quincena tiene «acreditación propia» si otra fila de la MISMA persona quedó clasificada como
+  // quincena o adelanto de esa quincena calendario. Si el último bloque anterior al pago anota BANCO y
+  // nadie lo acreditó, el pago único puede incluirlo: no se afirma final ni se parte — se pregunta.
+  const conPeriodo = new Set(primera
+    .filter((r) => r.persona_id && (r.clase === 'quincena' || r.clase === 'adelanto_quincena'))
+    .map((r) => `${r.persona_id}|${r.periodo_desde}`))
+  return primera.map((r) => {
+    if (r.clase !== 'liquidacion_final') return r
+    // El último bloque anterior al pago (o del mismo día) en que la planilla ANOTA banco para la persona.
+    // Los bloques sin BANCO no dicen nada de este pago: se mira el último que sí afirma un giro.
+    const ultimo = (filasDe.get(r.persona_id) ?? [])
+      .filter((f) => f.pestana === PESTANA_OBREROS && String(f.quincena_hasta).slice(0, 10) <= r.fecha
+        && (aCent(f.por_banco) ?? 0) > 0)
+      .sort((x, y) => String(y.quincena_hasta).localeCompare(String(x.quincena_hasta)))[0]
+    if (!ultimo) return { ...r, evidencia: `${r.evidencia}; ningún bloque anterior de la planilla le anota BANCO` }
+    const desde = String(ultimo.quincena_desde).slice(0, 10)
+    const hasta = String(ultimo.quincena_hasta).slice(0, 10)
+    const banco = aCent(ultimo.por_banco)
+    if (conPeriodo.has(`${r.persona_id}|${quincenaDelBloque(desde).desde}`)) {
+      return { ...r, evidencia: `${r.evidencia}; el BANCO ${fmt(banco)} del último bloque (${desde}–${hasta}) tiene su propia acreditación` }
+    }
+    return {
+      ...r, clase: 'a_confirmar', periodo_desde: null, periodo_hasta: null, confianza: null,
+      evidencia: `${r.evidencia}, pero el último bloque de la planilla (${desde}–${hasta}) anota BANCO ${fmt(banco)} sin acreditación propia: el pago puede incluir esa quincena y la final. Partirlo es decisión del dueño`,
     }
   })
 }

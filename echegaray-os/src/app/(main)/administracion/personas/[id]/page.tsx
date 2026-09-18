@@ -94,6 +94,7 @@ import { getRetribucionDelLegajo } from '@/features/administracion/services/retr
 import { RetribucionDelLegajo } from '@/features/administracion/components/RetribucionDelLegajo'
 import { getHaberesDelBanco } from '@/features/administracion/services/haberesDelBancoService'
 import { HaberesDelBanco } from '@/features/administracion/components/HaberesDelBanco'
+import { conLiquidacionEstimada } from '@/features/administracion/services/haberesDelBanco'
 import { puedeAnotar, veAnotaciones } from '@/features/administracion/services/anotacionesPersona'
 import { getAnotaciones } from '@/features/administracion/services/anotacionesService'
 import { crearAnotacion } from '@/features/administracion/services/anotacionesActions'
@@ -200,7 +201,9 @@ export default async function FichaPersonaPage({
   // —le pregunta a la Liquidación quincena por quincena— y no se paga en las otras seis vistas.
   // LO QUE EL BANCO CERTIFICA QUE LE PAGÓ (dueño, 18/09/2026) va en la misma solapa, con la misma puerta y en
   // paralelo: no depende del plantel de ninguna quincena, así que un inactivo sin línea de liquidación lo ve igual.
-  const [retribucion, haberesBanco] = vista === 'retribucion' && liquida
+  // Las dos lecturas en paralelo; el bloque del banco recibe después qué quincenas tienen el neto ESTIMADO
+  // (lo sabe la Retribución) para rotular «est.» la cifra de la liquidación igual que la tabla de arriba.
+  const [retribucion, haberesBancoCrudo] = vista === 'retribucion' && liquida
     ? await Promise.all([
       getRetribucionDelLegajo(supabase, {
         personaId: id, cuil: persona.cuil ?? null, puedeVer: true, anio: Number(hoy.slice(0, 4)), hoy,
@@ -208,6 +211,9 @@ export default async function FichaPersonaPage({
       getHaberesDelBanco(supabase, { personaId: id, puedeVer: true, anio: Number(hoy.slice(0, 4)) }),
     ])
     : [null, null]
+  const haberesBanco = haberesBancoCrudo && retribucion
+    ? conLiquidacionEstimada(haberesBancoCrudo, retribucion.filas.filter((f) => f.bancoEstimado).map((f) => f.desde))
+    : haberesBancoCrudo
   // LAS HH TAMBIÉN EN EL RESUMEN, desde el canónico 20: la tira de métricas publica HH del mes y del
   // año, y el bloque de arriba dibuja la semana. La consulta filtra por `persona_id`, así que es la
   // de UNA persona y no la tabla entera; las otras cuatro solapas siguen sin pagarla.
