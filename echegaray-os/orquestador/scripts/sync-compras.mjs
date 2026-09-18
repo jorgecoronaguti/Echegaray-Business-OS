@@ -37,8 +37,8 @@ import { PRIMERA_FILA, claveDeCompra, contratoDeColumnas, filaACompra } from '..
 import { PESTANAS, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import { esCostoDeObra } from '../lib/compras-costo-de-obra.mjs'
 import { asignadorConColumnaObra, asignadorDeCompras, catalogosDeAsignacion, planDeAsignacion, VIA } from '../lib/compras-obra-asignada.mjs'
-import { aplicarCambiosPendientes, catalogoDeDestinos, proyectarObraDeFila } from '../lib/obra-destino.mjs'
-import { superponerPagosPendientes } from '../lib/pagos-pendientes.mjs'
+import { catalogoDeDestinos, proyectarObraDeFila } from '../lib/obra-destino.mjs'
+import { leerLoDecididoEnLaApp, mismoConjunto, superponerLoDecidido } from '../lib/compras-superposicion.mjs'
 import { planDeReconciliacion, proveedorPorArchivo } from '../lib/comprobantes/reconciliar-adjuntos.mjs'
 import { avisarSiCambio, fotografiar, lineaDeAviso } from '../lib/espejo-aviso.mjs'
 
@@ -68,36 +68,15 @@ async function hayObraPorFila(q) {
   return rows[0].n === CAMPOS_OBRA.length
 }
 
-/**
- * Los cambios de la app que el worker todavía no escribió en la columna Obra (Compras L).
- *
- * Desde 20260915T2210 la cola también lleva los de Cobranzas H (columna `pestana`): un cambio de la fila
- * 57 de Cobranzas NO es la fila 57 de Compras. Se filtra por `to_jsonb` y no por la columna a secas
- * porque este sync corre cada hora en producción y puede desplegarse antes de que la migración se
- * aplique: sin la columna, la consulta directa abortaría el sync entero; así, toda fila vieja es 'Compras'.
- */
-async function cambiosPendientes(q) {
-  const { rows } = await q(
-    `select distinct on (fila) fila, clave, valor_nuevo from public.compra_obra_cambio c
-      where estado in ('pendiente','procesando') and coalesce(to_jsonb(c) ->> 'pestana', 'Compras') = 'Compras'
-      order by fila, creado_at desc`)
-  return rows
-}
-
-/**
- * Los pagos que la app registró y el worker todavía no escribió en el Sheet.
- *
- * Se filtra por `to_jsonb` y no por la columna a secas por el mismo motivo que `cambiosPendientes`:
- * este sync corre cada diez minutos en producción y puede desplegarse antes de que la migración
- * 20260916T1700 se aplique. Sin la columna `tipo`, la consulta directa abortaría el sync entero.
- */
-async function pagosPendientes(q) {
-  const { rows } = await q(
-    `select id, fila, clave, celdas, previo from public.compra_obra_cambio c
-      where estado in ('pendiente','procesando') and coalesce(to_jsonb(c) ->> 'tipo', 'obra') = 'pago'
-      order by creado_at`)
-  return rows
-}
+// ═══ LO QUE LA APP DECIDIÓ Y EL SHEET TODAVÍA NO TIENE SE LEE ADENTRO DE LA TRANSACCIÓN (18/09/2026) ═══
+//
+// Antes se leían acá, sueltas, dos consultas (`cambiosPendientes`, `pagosPendientes`), ANTES de abrir
+// la transacción y sólo lo `pendiente`/`procesando`. Tres formas de pisar al dueño, todas medidas en
+// el código: la cola de pagos entraba a la superposición de OBRA (un pago en vuelo dejaba la obra en
+// «total»); un cambio que el worker aplicó mientras el sync leía el Sheet no estaba en ningún lado; y
+// un cambio creado entre esa lectura y el commit se perdía del espejo hasta la corrida siguiente.
+// La regla de qué cuenta vive en `lib/compras-superposicion.mjs`; acá sólo queda CUÁNDO se lee: con
+// el lock tomado, y una segunda vez después de escribir (ver `main`).
 
 /**
  * UN PEDIDO QUE EL SHEET YA CONTRADIJO NO PUEDE APLICARSE NUNCA MÁS: se cierra con el detalle adentro.
@@ -186,15 +165,25 @@ function insertPorLote(tabla, columnas, valoresDeFila, grupo, extraSql = '') {
   return { sql: `insert into ${tabla} (${columnas}) values ${tuplas.join(',')}`, params }
 }
 
-/** Reescribe el espejo entero dentro de una transacción. */
+/**
+ * Reescribe el espejo entero dentro de una transacción — POR UPSERT, NO POR `delete` + `insert` (18/09/2026).
+ *
+ * Las RPC de la app (`compra_obra_asignar`, `compra_pago_registrar`) hacen `select … from compra_sheet
+ * where fila = $1 for update` y, si no encuentran la fila, contestan «esa fila ya no está en Compras».
+ * Con `delete` + `insert`, durante los ~2 s de esta transacción la fila NO ESTÁ: una RPC que llega en ese
+ * momento espera el commit, vuelve a evaluar sobre una fila borrada y falla. Con upsert la fila existe
+ * siempre; la RPC espera el lock de fila, relee la versión recién escrita y sigue. Las filas que la
+ * pestaña ya no trae se borran aparte, por diferencia.
+ */
 async function escribirEspejo(db, compras, conObra) {
   const campos = conObra ? [...CAMPOS, ...CAMPOS_OBRA] : CAMPOS
   const cols = campos.join(', ')
-  await db.query('delete from public.compra_sheet')
+  const set = campos.filter((k) => k !== 'fila').map((k) => `${k} = excluded.${k}`).join(', ')
   for (const grupo of lotes(compras, LOTE)) {
     const { sql, params } = insertPorLote('public.compra_sheet', cols, (c) => campos.map((k) => c[k] ?? null), grupo)
-    await db.query(sql, params)
+    await db.query(`${sql} on conflict (fila) do update set ${set}, sincronizado_en = now()`, params)
   }
+  await db.query('delete from public.compra_sheet where not (fila = any($1::int[]))', [compras.map((c) => Number(c.fila))])
 }
 
 /**
@@ -306,43 +295,59 @@ async function reconciliarAdjuntos(db, compras) {
   return plan
 }
 
-async function main() {
-  const obraPorFila = await hayObraPorFila(query)
-  const catalogos = await catalogosDeAsignacion(query)
-  let compras = await leerPestana()
-  // LOS PAGOS PENDIENTES, ANTES QUE NADA: si el sync guardara la foto vieja, la pantalla mostraría el
-  // saldo de antes debajo de su propio ✓. Y si el Sheet los contradice, gana el Sheet y se declara.
-  const pagos = await pagosPendientes(query).catch(() => [])
-  if (pagos.length) {
-    const r = superponerPagosPendientes(compras, pagos)
-    compras = r.compras
-    console.log(`pagos en cola: ${pagos.length} · ${r.superpuestos} superpuesto(s) · ${r.conflictos.length} en conflicto`)
-    if (!DRY) await declararConflictos(query, r.conflictos)
-    else for (const c of r.conflictos) console.log(`  [dry] ⚠ pago de la fila ${c.fila} — ${c.detalle}`)
-  }
+/**
+ * Lo leído del Sheet más lo que la app decidió, con las obras proyectadas: la corrida lista para escribir.
+ * Es una función porque se ejecuta más de una vez por corrida (ver la segunda vuelta en `main`).
+ */
+function prepararCorrida(leidas, decidido, { obraPorFila, catalogos }) {
+  const s = superponerLoDecidido(leidas, { pagos: decidido.pagos, obras: obraPorFila ? decidido.obras : [] })
   let inconsistentes = []
   if (obraPorFila) {
-    compras = aplicarCambiosPendientes(compras, await cambiosPendientes(query))
-    inconsistentes = proyectarObras(compras, catalogoDeDestinos({ obras: catalogos.canonicas, clienteAlias: catalogos.clienteAlias }))
-    console.log(`columna Obra: ${compras.filter((c) => c.obra_celda).length} filas la traen · ${inconsistentes.length} inconsistentes`)
-    for (const m of inconsistentes.slice(0, 15)) console.log(`  ⚠ ${m}`)
+    inconsistentes = proyectarObras(s.compras, catalogoDeDestinos({ obras: catalogos.canonicas, clienteAlias: catalogos.clienteAlias }))
+  }
+  return { compras: s.compras, conflictos: s.conflictos, superpuestos: s.superpuestos, obras: s.obras, inconsistentes }
+}
+
+function contarCorrida(r, decidido, obraPorFila) {
+  if (decidido.pagos.length) {
+    console.log(`pagos en cola: ${decidido.pagos.length} · ${r.superpuestos} superpuesto(s) · ${r.conflictos.length} en conflicto`)
+  }
+  if (obraPorFila) {
+    console.log(`columna Obra: ${r.compras.filter((c) => c.obra_celda).length} filas la traen · ${r.obras} elegida(s) en la app sin bajar al Sheet · ${r.inconsistentes.length} inconsistentes`)
+    for (const m of r.inconsistentes.slice(0, 15)) console.log(`  ⚠ ${m}`)
   } else {
     console.log('columna Obra: migración 20260915T0700 sin aplicar — la ignoro y asigno como antes')
   }
+}
+
+/** Hasta cuántas veces se vuelve a leer la cola de la app dentro de la misma transacción. */
+const VUELTAS = 3
+
+async function main() {
+  const obraPorFila = await hayObraPorFila(query)
+  const catalogos = await catalogosDeAsignacion(query)
+  // EL INSTANTE EN QUE SE EMPIEZA A LEER EL SHEET. Todo cambio que el worker aplique desde acá puede
+  // no estar en lo leído: la superposición lo incluye (`cuentaParaSuperponer`).
+  const desde = new Date()
+  const leidas = await leerPestana()
   const asignar = asignadorDelSync(catalogos, obraPorFila)
   const { rows: [previo] } = await query('select count(*)::int n from public.compra_sheet')
-  if (previo.n && compras.length < previo.n * PISO) {
-    console.error(`CENTINELA: leí ${compras.length} filas y el espejo tiene ${previo.n}. `
+  if (previo.n && leidas.length < previo.n * PISO) {
+    console.error(`CENTINELA: leí ${leidas.length} filas y el espejo tiene ${previo.n}. `
       + 'Una caída así es una lectura fallida, no una pestaña vaciada. NO toco nada.')
     await closePool(); process.exit(1)
   }
 
-  const conClave = compras.filter((c) => c.clave).length
-  const anuladas = compras.filter((c) => c.anulada).length
+  const conClave = leidas.filter((c) => c.clave).length
+  const anuladas = leidas.filter((c) => c.anulada).length
   if (DRY) {
-    console.log(`[dry] ${compras.length} filas · ${conClave} con clave · ${anuladas} anuladas · `
+    const decidido = await leerLoDecididoEnLaApp(query, { desde })
+    const r = prepararCorrida(leidas, decidido, { obraPorFila, catalogos })
+    contarCorrida(r, decidido, obraPorFila)
+    for (const c of r.conflictos) console.log(`  [dry] ⚠ pago de la fila ${c.fila} — ${c.detalle}`)
+    console.log(`[dry] ${r.compras.length} filas · ${conClave} con clave · ${anuladas} anuladas · `
       + `espejo actual ${previo.n}. No escribo nada.`)
-    const plan = planDeAsignacion(compras, asignar)
+    const plan = planDeAsignacion(r.compras, asignar)
     console.log(`[dry] asignación: ${resumenDeAsignacion(plan)}`)
     await closePool(); return
   }
@@ -355,33 +360,56 @@ async function main() {
   let plan = null
   let asignacion = null
   let aviso = null
+  let compras = leidas
+  let vueltas = 0
   try {
     enCostos = await withTx(async (db) => {
+      const q = (sql, params) => db.query(sql, params)
       // ═══ DOS CORRIDAS NO SE PISAN (08/09/2026) ═══
       //
       // Desde que la carga por chat dispara el espejo apenas escribe en el Sheet, el timer y el
-      // disparo pueden solaparse. El `delete + insert` es atómico adentro de la transacción, pero
-      // dos transacciones concurrentes ven cada una el estado previo y las dos insertan: la segunda
-      // muere con `duplicate key value violates unique constraint "compra_sheet_pkey"` (es
-      // exactamente el error que apareció el 08/09 a las 15:13). El lock de transacción las
-      // serializa —la segunda espera y arranca cuando la primera ya commiteó— y se suelta solo en
-      // el commit o el rollback: no hay forma de dejarlo tomado.
+      // disparo pueden solaparse. Dos transacciones concurrentes ven cada una el estado previo y las
+      // dos escriben; la segunda moría con `duplicate key value violates unique constraint
+      // "compra_sheet_pkey"` (08/09 a las 15:13). El lock de transacción las serializa —la segunda
+      // espera y arranca cuando la primera ya commiteó— y se suelta solo en el commit o el rollback.
       await db.query("select pg_advisory_xact_lock(hashtext('sync-compras'))")
       // EL AVISO EN VIVO, SÓLO SI EL CONTENIDO CAMBIÓ (17/09/2026). La foto va DESPUÉS del lock: tomada
       // antes, compararía contra lo que la corrida concurrente ya reemplazó. Ver lib/espejo-aviso.mjs.
       await fotografiar(db, 'public.compra_sheet')
-      await escribirEspejo(db, compras, obraPorFila)
+      // ═══ LA SEGUNDA VUELTA (18/09/2026) ═══
+      //
+      // Lo que la app decidió se lee ACÁ, con el lock tomado, y se vuelve a leer después de escribir.
+      // Una RPC que commiteó entre la primera lectura y la escritura ya está en la segunda; una RPC
+      // que todavía no commiteó tiene que tomar `for update` sobre una fila que el upsert ya tocó,
+      // así que espera este commit y relee la versión nueva. Con eso no queda ventana en la que un
+      // sync deje el espejo sin lo que una persona acaba de elegir. Si la segunda lectura no trae nada
+      // nuevo —lo normal—, no se escribe dos veces.
+      let ids = null
+      let n = 0
+      for (let v = 0; v < VUELTAS; v++) {
+        const decidido = await leerLoDecididoEnLaApp(q, { desde })
+        if (ids && mismoConjunto(ids, decidido.ids)) break
+        ids = decidido.ids
+        vueltas += 1
+        const r = prepararCorrida(leidas, decidido, { obraPorFila, catalogos })
+        if (vueltas === 1) contarCorrida(r, decidido, obraPorFila)
+        else console.log(`vuelta ${vueltas}: la app decidió algo mientras se escribía (${decidido.ids.length} cambio(s) cuentan) — reescribo`)
+        compras = r.compras
+        // Si el Sheet contradice un pago pedido, gana el Sheet y se declara con el detalle adentro.
+        await declararConflictos(q, r.conflictos)
+        await escribirEspejo(db, compras, obraPorFila)
+        n = await escribirCostosObra(db, compras, obraPorFila)
+        asignacion = await escribirAsignacion(db, compras, asignar)
+        plan = await reconciliarAdjuntos(db, compras)
+      }
       aviso = await avisarSiCambio(db, { tabla: 'public.compra_sheet', clave: 'fila' })
-      const n = await escribirCostosObra(db, compras, obraPorFila)
-      asignacion = await escribirAsignacion(db, compras, asignar)
-      plan = await reconciliarAdjuntos(db, compras)
       return n
     })
   } catch (e) {
     console.error('sync falló, ROLLBACK:', e.message)
     await closePool(); process.exit(1)
   }
-  console.log(`compra_obra_asignada: ${resumenDeAsignacion(asignacion ?? [])}`)
+  console.log(`compra_obra_asignada: ${resumenDeAsignacion(asignacion ?? [])}${vueltas > 1 ? ` · ${vueltas} vueltas` : ''}`)
   if (aviso) console.log(lineaDeAviso(aviso))
 
   await query(

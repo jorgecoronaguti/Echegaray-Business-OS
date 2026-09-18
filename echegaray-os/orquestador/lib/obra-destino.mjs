@@ -206,7 +206,11 @@ export function proyectarObraDeFila(c, cat) {
  * el MISMO comprobante (misma clave): si alguien insertó una fila arriba, la fila N es otra compra.
  */
 export function aplicarCambiosPendientes(compras = [], cambios = []) {
-  const porFila = new Map(cambios.map((x) => [Number(x.fila), x]))
+  // SÓLO CAMBIOS DE OBRA. Desde 20260916T1700 la misma cola lleva pagos, cuyo `valor_nuevo` es la
+  // acción («total», «parcial», «deshacer»), no una obra: escribirlo acá dejaba la obra del dueño en
+  // «total» mientras el pago viajaba al Sheet (18/09/2026). Sin `tipo` = anterior a la migración = obra.
+  const deObra = cambios.filter((x) => String(x?.tipo ?? 'obra') === 'obra')
+  const porFila = new Map(deObra.map((x) => [Number(x.fila), x]))
   return compras.map((c) => {
     const x = porFila.get(Number(c.fila))
     if (!x || (x.clave ?? null) !== (c.clave ?? null)) return c
