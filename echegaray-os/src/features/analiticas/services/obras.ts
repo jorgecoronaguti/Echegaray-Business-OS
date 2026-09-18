@@ -49,7 +49,13 @@ export interface Gasto {
   manoObra: number | null
   subcontratos: number | null
   materiales: number | null
-  /** Σ de las tres. `null` = ninguna de las tres tiene dato: «sin movimiento». */
+  /**
+   * OTROS — PUENTE (18/09/2026): equipos, servicios de obra y combustible, que la base sacó de
+   * `materiales`. Sin este campo el consumido de la obra perdía esa plata. Lo reemplaza el diseño de
+   * los cuatro rubros de la rama `analiticas-contratado-vs-gastado`.
+   */
+  otros: number | null
+  /** Σ de las cuatro. `null` = ninguna tiene dato: «sin movimiento». */
   total: number | null
   /** Horas cargadas (valorizadas + sin valorizar). `null` = ninguna. */
   horas: number | null
@@ -113,12 +119,15 @@ export const UMBRAL_CERCA = 0.8
 /**
  * LOS RUBROS DE CONSUMO QUE SE MIDEN CONTRA EL PRESUPUESTO. MO+CS cotizado → mano de obra. MA de la
  * plantilla = materiales + equipos + fletes + SUBCONTRATOS (no los separa) → materiales Y subcontratos
- * (decisión 17/09/2026). Lo usan el «queda» y el ritmo del «alcanza»: los dos miden lo mismo.
+ * (decisión 17/09/2026) Y OTROS: equipos, servicios y combustible estaban dentro de materiales hasta el
+ * 18/09/2026 y la cotización los sigue poniendo en MA (EQ va con materiales). Sin «otros» acá, el queda
+ * contra MA subía solo el día que la base los separó. Lo usan el «queda» y el ritmo del «alcanza».
  */
-export function rubrosComparables(porRubro: Record<Rubro, number | null> | null): ('manoObra' | 'materiales' | 'subcontratos')[] {
-  const out: ('manoObra' | 'materiales' | 'subcontratos')[] = []
+export type RubroDeGasto = 'manoObra' | 'materiales' | 'subcontratos' | 'otros'
+export function rubrosComparables(porRubro: Record<Rubro, number | null> | null): RubroDeGasto[] {
+  const out: RubroDeGasto[] = []
   if ((porRubro?.manoObra ?? 0) > 0) out.push('manoObra')
-  if ((porRubro?.materiales ?? 0) > 0) out.push('materiales', 'subcontratos')
+  if ((porRubro?.materiales ?? 0) > 0) out.push('materiales', 'subcontratos', 'otros')
   return out
 }
 
@@ -150,7 +159,8 @@ export function gastoDe(c: CostoDeObra | null | undefined): Gasto {
     manoObra: c?.manoObra ?? null,
     subcontratos: c?.subcontratos ?? null,
     materiales: c?.materiales ?? null,
-    total: c ? suma(c.manoObra, c.subcontratos, c.materiales) : null,
+    otros: c?.otros ?? null,
+    total: c ? suma(c.manoObra, c.subcontratos, c.materiales, c.otros) : null,
     horas: horas && horas > 0 ? horas : null,
     horasValorizadas: c?.horasValorizadas && c.horasValorizadas > 0 ? c.horasValorizadas : null,
     manoObraEstimada: c?.manoObraEstimada && c.manoObraEstimada > 0 ? c.manoObraEstimada : null,

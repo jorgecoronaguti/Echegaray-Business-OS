@@ -19,9 +19,9 @@
 import { V } from '@/shared/components/v2/patron'
 import { plata } from '@/shared/utils/format'
 import {
-  textoManoObra, textoMateriales, textoSubcontratos, textoTotalManoObra, textoTotalMateriales,
-  textoTotalSubcontratos, tituloManoObra, tituloMateriales, tituloSubcontratos, totalesDelCliente,
-  type CostoDeObra, type GastoSinObra,
+  textoManoObra, textoMateriales, textoOtros, textoSubcontratos, textoTotalManoObra, textoTotalMateriales,
+  textoTotalOtros, textoTotalSubcontratos, tituloManoObra, tituloMateriales, tituloOtros, tituloSubcontratos,
+  totalesDelCliente, type CostoDeObra, type GastoSinObra,
 } from '../services/costosDeObra'
 import { SOLO_ANCHO, SOLO_ANGOSTO } from './CeldasDeCartera'
 
@@ -36,6 +36,9 @@ interface CostoDeFila {
   tituloMateriales: string | null
   subcontratos: string
   tituloSubcontratos: string | null
+  /** OTROS (puente 18/09/2026): equipos, servicios de obra y combustible, que la base sacó de Materiales. */
+  otros: string
+  tituloOtros: string | null
   manoObra: string
   manoObraParcial: boolean
   /** Una parte del importe es estimada: la celda dice «est.» (20260915T0800). */
@@ -45,7 +48,10 @@ interface CostoDeFila {
 
 function costoDeObra(costos: ReadonlyMap<string, CostoDeObra> | null, obraId: string): CostoDeFila {
   if (costos === null) {
-    return { estado: 'sin-leer', materiales: '', tituloMateriales: NO_PUEDO, subcontratos: '', tituloSubcontratos: NO_PUEDO, manoObra: '', manoObraParcial: false, manoObraEstimado: false, tituloManoObra: NO_PUEDO }
+    return {
+      estado: 'sin-leer', materiales: '', tituloMateriales: NO_PUEDO, subcontratos: '', tituloSubcontratos: NO_PUEDO,
+      otros: '', tituloOtros: NO_PUEDO, manoObra: '', manoObraParcial: false, manoObraEstimado: false, tituloManoObra: NO_PUEDO,
+    }
   }
   const c = costos.get(obraId) ?? null
   const mo = textoManoObra(c)
@@ -53,6 +59,7 @@ function costoDeObra(costos: ReadonlyMap<string, CostoDeObra> | null, obraId: st
   return {
     estado: 'a-la-fecha', materiales: textoMateriales(c), tituloMateriales: tituloMateriales(c),
     subcontratos: textoSubcontratos(c), tituloSubcontratos: tituloSubcontratos(c),
+    otros: textoOtros(c), tituloOtros: tituloOtros(c),
     manoObra: mo.texto, manoObraParcial: mo.parcial, manoObraEstimado: mo.estimado, tituloManoObra: tituloManoObra(c, null),
   }
 }
@@ -75,7 +82,8 @@ function costoDelCliente(
     ? NO_PUEDO
     : 'Suma a la fecha de lo comprado para todos sus trabajos, en curso y cerrados (Compras, columna K)'
       + (t.materialesSinObra != null ? `, incluidos ${plata(t.materialesSinObra)} sin obra asignada` : '')
-      + '. Sin nómina, cargas, ARCA, financiero ni compras con fecha futura.'
+      + '. Sin nómina, cargas, ARCA, financiero ni compras con fecha futura; sin subcontratos ni equipos, '
+      + 'servicios de obra y combustible, que van en sus columnas.'
   const tituloMo = !t.legible
     ? NO_PUEDO
     : 'Suma de la mano de obra propia de todos sus trabajos, en curso y cerrados: costo total empleador del recibo + parte en negro, repartidos por horas.'
@@ -86,9 +94,15 @@ function costoDelCliente(
     : 'Suma a la fecha de los subcontratos de todos sus trabajos: proveedores marcados «Subcontratista»'
       + (t.subcontratosSinObra != null ? `, incluidos ${plata(t.subcontratosSinObra)} sin obra asignada` : '')
       + '. No están en Materiales ni en Mano de obra.'
+  // LO SIN OBRA NO SE ABRE POR ESTE RUBRO: `compras_sin_obra_de_clientes` lo sigue sumando en Materiales.
+  const tituloOtr = !t.legible
+    ? NO_PUEDO
+    : 'Suma a la fecha de alquiler y traslado de equipos, servicios de obra y combustible de todos sus trabajos. '
+      + 'Hasta el 18/09/2026 iban dentro de Materiales. Lo sin obra asignada no se abre por este rubro: sigue en Materiales.'
   return {
     estado: t.legible ? 'a-la-fecha' : 'sin-leer', materiales: textoTotalMateriales(t), tituloMateriales: tituloMat,
     subcontratos: textoTotalSubcontratos(t), tituloSubcontratos: tituloSub,
+    otros: textoTotalOtros(t), tituloOtros: tituloOtr,
     manoObra: mo.texto, manoObraParcial: mo.parcial, manoObraEstimado: mo.estimado, tituloManoObra: tituloMo,
   }
 }
@@ -117,6 +131,7 @@ function Celdas({ f, sufijo }: { f: CostoDeFila; sufijo: 'obra' | 'cliente' }) {
     <>
       <Celda testid={`materiales-${sufijo}`} estado={f.estado} texto={f.materiales} parcial={false} titulo={f.tituloMateriales} />
       <Celda testid={`subcontratos-${sufijo}`} estado={f.estado} texto={f.subcontratos} parcial={false} titulo={f.tituloSubcontratos} />
+      <Celda testid={`otros-${sufijo}`} estado={f.estado} texto={f.otros} parcial={false} titulo={f.tituloOtros} />
       <Celda testid={`mano-obra-${sufijo}`} estado={f.estado} texto={f.manoObra} parcial={f.manoObraParcial} estimado={f.manoObraEstimado} titulo={f.tituloManoObra} />
     </>
   )
@@ -142,6 +157,8 @@ function LineaAngosta({ f, sufijo, sangria }: { f: CostoDeFila; sufijo: 'obra' |
       <span aria-hidden>·</span>
       <span>Sub.</span>{cifra(f.subcontratos, false, f.tituloSubcontratos)}
       <span aria-hidden>·</span>
+      <span>Otros</span>{cifra(f.otros, false, f.tituloOtros)}
+      <span aria-hidden>·</span>
       <span>MO</span>{cifra(f.manoObra, f.manoObraParcial, f.tituloManoObra)}{f.manoObraEstimado && <span style={{ color: V.tenue }}>est.</span>}
       <span>· a la fecha</span>
     </span>
@@ -155,7 +172,7 @@ export function CostoDeLaObra({ costos, obraId, veEconomia }: {
   obraId: string
   veEconomia: boolean
 }) {
-  if (!veEconomia) return <><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /></>
+  if (!veEconomia) return <><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /></>
   return <Celdas f={costoDeObra(costos, obraId)} sufijo="obra" />
 }
 
@@ -177,7 +194,7 @@ export function CostoDelCliente({ costos, sinObra, clienteId, obraIds, veEconomi
   obraIds: readonly string[]
   veEconomia: boolean
 }) {
-  if (!veEconomia) return <><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /></>
+  if (!veEconomia) return <><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /></>
   return <Celdas f={costoDelCliente(costos, sinObra, clienteId, obraIds)} sufijo="cliente" />
 }
 

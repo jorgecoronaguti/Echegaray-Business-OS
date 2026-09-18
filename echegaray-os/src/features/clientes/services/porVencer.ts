@@ -21,5 +21,7 @@ export function textoPorVencer(v: number | null | undefined): string | null {
 export function porVencerDeMateriales(c: CostoDeObra | null | undefined): number | null {
   if (!c) return null
   if (c.materialesPorVencer != null) return c.materialesPorVencer
-  return c.subcontratosPorVencer == null ? c.comprometidoFuturo ?? null : null
+  // DESDE 20260918 `comprometidoFuturo` también suma lo por vencer de «otros»: si la respuesta lo abre,
+  // el total ya está repartido y no es de materiales.
+  return c.subcontratosPorVencer == null && c.otrosPorVencer == null ? c.comprometidoFuturo ?? null : null
 }

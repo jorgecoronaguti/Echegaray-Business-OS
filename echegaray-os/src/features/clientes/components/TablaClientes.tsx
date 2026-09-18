@@ -53,8 +53,11 @@ import { consolidar, jerarquiaDeObras } from '../services/obrasAdicionales'
  * LAS CINCO COLUMNAS (11/09/2026). Literales porque Tailwind no compila una clase armada en
  * runtime, y en px porque una variante con otra unidad apaga TODOS los cortes del repositorio.
  */
+// OTROS (puente 18/09/2026) suma una pista de 130px + 14 de gap: a 1250px, donde estas pistas viven, el
+// nombre conserva 1250 − 20·2 − (150+130+130+130+140+210) − 6·14 = 236px. Por debajo, las cifras van a la
+// línea angosta.
 const COLS
-  = 'grid-cols-[minmax(0,2fr)_150px_130px_130px_140px_210px]'
+  = 'grid-cols-[minmax(0,2fr)_150px_130px_130px_130px_140px_210px]'
   + ' max-[1249px]:grid-cols-[minmax(200px,2fr)_150px_210px]'
   + ' max-[767px]:grid-cols-[minmax(0,2fr)_150px]'
 
@@ -65,6 +68,8 @@ const AYUDA_MATERIALES = 'Lo comprado a la fecha para cada trabajo (Compras, col
   + 'la suma más lo que no tiene obra asignada. No es lo presupuestado. «—» = ninguna compra.'
 const AYUDA_SUBCONTRATOS = 'Lo facturado por subcontratistas a la fecha (proveedores marcados «Subcontratista»). '
   + 'No está en Materiales ni en Mano de obra. «—» = ninguno.'
+const AYUDA_OTROS = 'Alquiler y traslado de equipos, servicios de obra (baño, contenedor, agua) y combustible '
+  + 'imputados a cada trabajo, a la fecha. Hasta el 18/09/2026 iban dentro de Materiales. «—» = ninguno.'
 const AYUDA_MANO_OBRA = 'La mano de obra propia a la fecha: costo total empleador del recibo + parte en negro, '
   + 'repartidos por horas («est.» = sin recibo todavía). No es lo presupuestado. «sin valorizar» = falta la tarifa de alguien.'
 const AYUDA_AVANCE = 'Cobrado NETO (lo que entró, sin IVA, criterio percibido) sobre el contrato NETO. '
@@ -153,6 +158,9 @@ export function TablaClientes({
           {veEconomia ? <RotuloACorte texto="Subcontratos" titulo={AYUDA_SUBCONTRATOS} /> : null}
         </span>
         <span className={`grid ${SOLO_ANCHO}`}>
+          {veEconomia ? <RotuloACorte texto="Otros" titulo={AYUDA_OTROS} /> : null}
+        </span>
+        <span className={`grid ${SOLO_ANCHO}`}>
           {veEconomia ? <RotuloACorte texto="Mano de obra" titulo={AYUDA_MANO_OBRA} /> : null}
         </span>
         <span className={`grid ${SOLO_TABLET}`}>
@@ -207,7 +215,7 @@ export function TablaClientes({
                   </span>
                 </>
               ) : (
-                <><span /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_TABLET} /></>
+                <><span /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_TABLET} /></>
               )}
               <CostoDelClienteAngosto costos={costos} sinObra={gastosSinObra} clienteId={c.cliente_id}
                 obraIds={idsDeTodasSusObras(obrasPorCliente, c)} veEconomia={veEconomia} />

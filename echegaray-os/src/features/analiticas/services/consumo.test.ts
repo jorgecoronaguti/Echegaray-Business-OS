@@ -58,5 +58,6 @@ test('«alcanza» con los mismos rubros que el «queda»: entrepiso sólo cotiz�
   assert.deepEqual(soloMO, ['manoObra'])
   assert.equal(ritmoPorObra(f, '2026-09-17', soloMO).get('entrepiso-y-escalera')?.porMes, 30)
   assert.equal(ritmoPorObra(f, '2026-09-17').get('entrepiso-y-escalera')?.porMes, 350, 'sin rubros, todo lo consumido: (990 + 30 + 30) ÷ 3')
-  assert.deepEqual(rubrosComparables({ manoObra: 1, materiales: 1, subcontratos: null, otros: null }), ['manoObra', 'materiales', 'subcontratos'])
+  // «otros» (equipos, servicios, combustible) va contra MA, como iba dentro de materiales hasta el 18/09/2026.
+  assert.deepEqual(rubrosComparables({ manoObra: 1, materiales: 1, subcontratos: null, otros: null }), ['manoObra', 'materiales', 'subcontratos', 'otros'])
 })

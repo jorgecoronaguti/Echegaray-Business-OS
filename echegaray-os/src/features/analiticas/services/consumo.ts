@@ -18,6 +18,8 @@ export interface MesDeConsumo {
   mes: string | null
   materiales: number | null
   subcontratos: number | null
+  /** Equipos, servicios de obra y combustible (puente 18/09/2026). `null` = RPC anterior o sin consumo. */
+  otros: number | null
   manoObra: number | null
   manoObraEstimada: number | null
 }
@@ -36,7 +38,7 @@ export function leerConsumoMensual(crudas: unknown): MesDeConsumo[] | null {
     if (typeof r.obra_id !== 'string' || !r.obra_id) return []
     const mes = typeof r.mes === 'string' && /^\d{4}-\d{2}/.test(r.mes) ? r.mes.slice(0, 7) : null
     return [{
-      obraId: r.obra_id, mes, materiales: num(r.materiales), subcontratos: num(r.subcontratos),
+      obraId: r.obra_id, mes, materiales: num(r.materiales), subcontratos: num(r.subcontratos), otros: num(r.otros),
       manoObra: num(r.mano_obra), manoObraEstimada: num(r.mano_obra_estimada),
     }]
   })
@@ -62,8 +64,8 @@ export interface Ritmo {
   conEstimada: boolean
 }
 
-type RubroDeConsumo = 'manoObra' | 'materiales' | 'subcontratos'
-const TODOS: RubroDeConsumo[] = ['manoObra', 'materiales', 'subcontratos']
+type RubroDeConsumo = 'manoObra' | 'materiales' | 'subcontratos' | 'otros'
+const TODOS: RubroDeConsumo[] = ['manoObra', 'materiales', 'subcontratos', 'otros']
 const totalDe = (f: MesDeConsumo, rubros: RubroDeConsumo[]): number => rubros.reduce((a, k) => a + (f[k] ?? 0), 0)
 
 /** El ritmo de cada obra que tiene alguna fila. Una obra que no está en el mapa no tiene consumo. */

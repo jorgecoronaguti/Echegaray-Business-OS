@@ -39,14 +39,14 @@ export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva }: {
           { rotulo: 'ritmo por mes', valor: ritmo?.porMes != null ? millones(ritmo.porMes) : null, falta: consumo == null ? 'sin publicar' : 'sin consumo reciente',
             nota: ritmo?.porMes != null ? `últimos 3 meses cerrados${ritmo.conEstimada ? ' · con mano de obra estimada' : ''}${meses != null ? ` · alcanza ${meses === 0 ? '0 meses' : `${meses.toLocaleString('es-AR', { maximumFractionDigits: 1 })} meses`}` : ''}` : undefined },
         ]} />
-      <Seccion titulo="Rubro contra rubro" aclaracion="mano de obra contra mano de obra y cargas cotizadas. La cotización incluye los subcontratos dentro de materiales: lo que queda de los dos se dice una sola vez.">
+      <Seccion titulo="Rubro contra rubro" aclaracion="mano de obra contra mano de obra y cargas cotizadas. La cotización incluye los subcontratos y los otros (equipos, servicios, combustible) dentro de materiales: lo que queda de los tres se dice una sola vez.">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5" data-testid="rubros">
           {/* EL QUEDA COMBINADO VA JUSTO DESPUÉS DE SUBCONTRATOS: en el teléfono se lee debajo de los dos; en
               la computadora se ubica explícito debajo de sus dos columnas. */}
           {ITEMS.map((i) => (
             <Fragment key={i.clave}>
               <Rubro item={i.clave} rotulo={i.rotulo} c={celda(obra, i.clave)} />
-              {i.clave === 'subcontratos' ? <><QuedaCombinado obra={obra} /><NotaIva sinIva={sinIva} /></> : null}
+              {i.clave === 'otros' ? <><QuedaCombinado obra={obra} /><NotaIva sinIva={sinIva} /></> : null}
             </Fragment>
           ))}
         </div>
@@ -108,7 +108,7 @@ function NotaIva({ sinIva }: { sinIva: number | null }) {
   )
 }
 
-/** Debajo de Materiales y Subcontratos: lo que queda de los dos juntos contra MA. */
+/** Debajo de Materiales, Subcontratos y Otros: lo que queda de los tres juntos contra MA. */
 function QuedaCombinado({ obra }: { obra: ObraAnalitica }) {
   const q = quedaMaterialesYSubcontratos(obra)
   if (!q) return null
@@ -117,8 +117,8 @@ function QuedaCombinado({ obra }: { obra: ObraAnalitica }) {
     : excedido ? `excedido en ${millones(q.lectura?.monto)}` : 'sin movimiento'
   return (
     <div data-testid="queda-materiales-subcontratos"
-      className="flex items-baseline justify-between gap-3 border-t border-line pt-2 sm:col-span-2 lg:col-start-2 lg:row-start-2">
-      <span className="text-[11.5px] text-faint">queda materiales y subcontratos</span>
+      className="flex items-baseline justify-between gap-3 border-t border-line pt-2 sm:col-span-2 lg:col-span-3 lg:col-start-2 lg:row-start-2">
+      <span className="text-[11.5px] text-faint">queda materiales, subcontratos y otros</span>
       <span className={`text-[12.5px] font-semibold tabular-nums ${excedido ? 'text-neg' : 'text-ink'}`}>{texto}</span>
     </div>
   )
@@ -156,16 +156,18 @@ function LecturaRubro({ c, item }: { c: Celda; item: Item }) {
 function ConsumoMensual({ consumo }: { consumo: MesDeConsumo[] | null }) {
   if (consumo == null) return <p className="text-[12.5px] text-faint">El consumo mes a mes todavía no se publica en la base.</p>
   const conMes = consumo.filter((m): m is MesDeConsumo & { mes: string } => m.mes != null).slice(-12)
-  const sinFecha = consumo.filter((m) => m.mes == null).reduce((a, m) => a + (m.materiales ?? 0) + (m.subcontratos ?? 0), 0)
+  const sinFecha = consumo.filter((m) => m.mes == null).reduce((a, m) => a + (m.materiales ?? 0) + (m.subcontratos ?? 0) + (m.otros ?? 0), 0)
   if (!conMes.length) return <p className="text-[12.5px] text-faint">Sin consumo registrado.</p>
-  const total = (m: MesDeConsumo) => (m.manoObra ?? 0) + (m.subcontratos ?? 0) + (m.materiales ?? 0)
+  const total = (m: MesDeConsumo) => (m.manoObra ?? 0) + (m.subcontratos ?? 0) + (m.materiales ?? 0) + (m.otros ?? 0)
   const max = Math.max(1, ...conMes.map(total))
   return (
     <>
       <Columnas meses={conMes.map((m) => ({
         mes: m.mes, valor: millones(total(m)),
         partes: [
-          { alto: ((m.materiales ?? 0) / max) * 170, clase: 'bg-dato-materiales' },
+          // PUENTE (18/09/2026): «otros» se dibuja dentro de materiales, como hasta ayer. Cómo se separa
+          // en pantalla lo decide el dueño; lo que no se puede es que la columna mida menos que el mes.
+          { alto: (((m.materiales ?? 0) + (m.otros ?? 0)) / max) * 170, clase: 'bg-dato-materiales' },
           { alto: ((m.subcontratos ?? 0) / max) * 170, clase: 'bg-muted' },
           { alto: ((m.manoObra ?? 0) / max) * 170, clase: 'bg-accent' },
         ],

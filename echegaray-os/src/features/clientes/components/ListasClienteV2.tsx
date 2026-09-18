@@ -57,8 +57,8 @@ import { MarcaAdicional } from './MarcaAdicional'
 import { consolidar, jerarquiaDeObras } from '../services/obrasAdicionales'
 import { inicioDeObra, textoHH, tituloHH, type HorasDeObra } from '../services/horasDeObra'
 import {
-  textoManoObra, textoMateriales, textoSubcontratos, tituloManoObra, tituloMateriales, tituloSubcontratos,
-  type CostoDeObra,
+  textoManoObra, textoMateriales, textoOtros, textoSubcontratos, tituloManoObra, tituloMateriales, tituloOtros,
+  tituloSubcontratos, type CostoDeObra,
 } from '../services/costosDeObra'
 import type { ObraPanel } from '@/features/obras/types'
 import type { EconomiaDeObra } from '../services/economiaObras'
@@ -103,14 +103,19 @@ import type { Rubro } from '../services/detalleCostoDeObra'
 // defiende es el del nombre. Las dos columnas de costo miden 112px porque «$154.248.233» —el
 // material de La Estrella, el mayor de la cartera— mide 86px en la mono de 12px: una cifra truncada
 // es una cifra falsa, y ya pasó con el cobrado en 80px (captura de producción, 10/09/2026 18:10).
+//
+// OTROS (puente 18/09/2026) agrega una cuarta columna de costo, y las cuatro bajan de 112 a 100px: con
+// 112 la demanda era 1068px contra los 1047 medidos a 1440 (captura del 18/09) y el nombre cedía hasta
+// cortar las OC a mitad de cifra. Con 100 las fijas suman 712, y el nombre conserva ≈ 207px a 1440.
+// «$154.248.233» sigue midiendo 86px: entra.
 export const COLS_OBRAS
-  = 'gap-[16px] grid-cols-[minmax(180px,2fr)_minmax(0,64px)_minmax(0,72px)_minmax(0,112px)_minmax(0,112px)_minmax(0,112px)_minmax(0,148px)_minmax(0,28px)]'
+  = 'gap-[16px] grid-cols-[minmax(180px,2fr)_minmax(0,64px)_minmax(0,72px)_minmax(0,100px)_minmax(0,100px)_minmax(0,100px)_minmax(0,100px)_minmax(0,148px)_minmax(0,28px)]'
   // Por debajo de 1200px se suelta el INICIO: de las columnas nuevas es la que menos decide —cuándo
   // arrancó no cambia lo que hay que hacer hoy— y el resto se queda, que es lo que el dueño pidió ver.
-  + ' max-[1199px]:gap-[12px] max-[1199px]:grid-cols-[minmax(0,1.4fr)_minmax(0,72px)_minmax(0,108px)_minmax(0,108px)_minmax(0,108px)_minmax(0,132px)_28px]'
-  // EL PISO DEL SCROLLER: 180 del nombre + 556 de pistas + 72 de gaps = 808 (con Subcontratos). Por
-  // debajo de eso la tabla rueda; el nombre nunca baja de 180px.
-  + ' max-[559px]:min-w-[808px]'
+  + ' max-[1199px]:gap-[12px] max-[1199px]:grid-cols-[minmax(0,1.4fr)_minmax(0,72px)_minmax(0,108px)_minmax(0,108px)_minmax(0,108px)_minmax(0,108px)_minmax(0,132px)_28px]'
+  // EL PISO DEL SCROLLER (corte de 1199): 180 del nombre + 664 de pistas + 84 de gaps = 928 (con
+  // Subcontratos y Otros). Por debajo de eso la tabla rueda; el nombre nunca baja de 180px.
+  + ' max-[559px]:min-w-[928px]'
 
 /** LA CELDA QUE SE SUELTA EN EL CORTE DE 1199, con su pista: el INICIO. El nombre viene de cuando
  *  acá se soltaba la economía de OBRAS (Costo MO, Costo mat., OP) y se conserva porque es el corte,
@@ -158,6 +163,10 @@ const AYUDA_MANO_OBRA = 'La mano de obra propia de este trabajo, con la MISMA de
 /** LOS SUBCONTRATOS, DISCRIMINADOS (dueño, 14/09/2026): ni material ni mano de obra propia. */
 const AYUDA_SUBCONTRATOS = 'Lo facturado por subcontratistas a este trabajo, a la fecha: proveedores marcados '
   + '«Subcontratista» en su ficha. No está en Materiales ni en Mano de obra.'
+
+/** OTROS (puente 18/09/2026): lo que la base sacó de Materiales, en su columna y nunca escondido. */
+const AYUDA_OTROS = 'Alquiler y traslado de equipos, servicios de obra (baño, contenedor, agua) y combustible '
+  + 'imputados a este trabajo, a la fecha. Hasta el 18/09/2026 iban dentro de Materiales.'
 
 /** La sangría del handoff (`dc.html:113`, `padding-left:16px`), que reemplaza los 13 del v2. */
 const SANGRIA = 16
@@ -239,6 +248,7 @@ export function ObrasDelCliente({
             Dos líneas y no «Materiales a la fecha» en una: en la pista de 112px se cortaba. */}
         <span className="grid" title={AYUDA_MATERIALES}><RotuloCol derecha>Materiales</RotuloCol><ALaFecha /></span>
         <span className="grid" title={AYUDA_SUBCONTRATOS}><RotuloCol derecha>Subcontratos</RotuloCol><ALaFecha /></span>
+        <span className="grid" title={AYUDA_OTROS}><RotuloCol derecha>Otros</RotuloCol><ALaFecha /></span>
         <span className="grid" title={AYUDA_MANO_OBRA}><RotuloCol derecha>Mano de obra</RotuloCol><ALaFecha /></span>
         <RotuloCol derecha>Contratado</RotuloCol>
         <span />
@@ -404,6 +414,20 @@ export function ObrasDelCliente({
               )}
             </span>
             {costos !== null && veEconomia && <PorVencer texto={textoPorVencer(costoDeLaObra?.subcontratosPorVencer)} />}
+          </span>
+
+          {/* OTROS (puente 18/09/2026). SIN ENLACE AL DETALLE: `detalle_costo_de_obra` todavía no abre
+              este rubro, y un botón a un panel vacío sería peor que el importe quieto. */}
+          <span className="grid justify-items-end" style={{ minWidth: 0 }}>
+            <span
+              data-testid="otros-obra-cliente"
+              title={tituloOtros(costoDeLaObra) ?? AYUDA_OTROS}
+              className="truncate font-mono tabular-nums"
+              style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right', maxWidth: '100%' }}
+            >
+              {costos === null || !veEconomia ? '' : textoOtros(costoDeLaObra)}
+            </span>
+            {costos !== null && veEconomia && <PorVencer texto={textoPorVencer(costoDeLaObra?.otrosPorVencer)} />}
           </span>
 
           {/* ÁMBAR = RECLAMA TRABAJO, y acá el trabajo es cargar un dato que existe: las alícuotas de

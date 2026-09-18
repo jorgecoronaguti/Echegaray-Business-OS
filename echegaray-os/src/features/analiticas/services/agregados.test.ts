@@ -4,7 +4,7 @@ import { armarCostosPorObra } from '../../clientes/services/costosDeObra.ts'
 import { armarEconomiaDeObras } from '../../clientes/services/economiaObras.ts'
 import { armarObra } from './obras.ts'
 import { presupuestoDe } from './presupuesto.fixture.ts'
-import { cajonesDeLosClientes, celda, cifrasResumen, composicionDelGasto, controlPorObra, costoPorHora, manoObraDe, obrasQueMasConsumen, porHoraMedido, resumenPorCliente } from './agregados.ts'
+import { cajonesDeLosClientes, celda, cifrasResumen, composicionDelGasto, controlPorObra, costoPorHora, manoObraDe, obrasQueMasConsumen, porHoraMedido, quedaMaterialesYSubcontratos, resumenPorCliente } from './agregados.ts'
 import { rotuloEstimada } from './obras.ts'
 
 type Pres = Partial<Record<'MO' | 'CS' | 'MA' | 'SC', number>>
@@ -54,8 +54,14 @@ test('gráfico por obra: la más consumida primero, las sin presupuesto al final
 
 test('rubros: «otros» sin consumo registrado; HH contra las horas de la cotización; sin presupuesto de este rubro', () => {
   const a = obra('a', 'me', {}, { mano_obra: 12e6, materiales: 1e6, horas_valorizadas: 90, horas_sin_tarifa: 10 }, { MO: 10e6, SC: 1e6 })
-  assert.equal(celda(a, 'otros').gastadoAusente, 'sin registrar')
+  // DESDE EL 18/09/2026 «otros» TIENE CONSUMO (equipos, servicios, combustible): sin comprobantes es «—», no
+  // «sin registrar»; y el «otros» presupuestado (códigos no reconocidos) sigue sin pareja con qué compararse.
+  assert.equal(celda(a, 'otros').gastadoAusente, null)
+  assert.equal(celda(a, 'otros').gastado, null)
   assert.deepEqual(celda(a, 'otros').lectura, { tipo: 'sinConsumo', monto: null })
+  const b = obra('b', 'me', {}, { otros: 5e5 }, { MO: 1e6 })
+  assert.equal(celda(b, 'otros').gastado, 5e5, 'el consumo «otros» se ve en su rubro')
+  assert.equal(b.gasto.total, 5e5, 'y entra al consumido total de la obra')
   assert.equal(celda(a, 'horas').cotizadoAusente, 'sin previsión')
   assert.equal(celda(a, 'materiales').cotizadoAusente, 'sin presupuesto de este rubro')
   assert.deepEqual(celda(a, 'materiales').lectura, { tipo: 'sinPresupuesto', monto: null })
@@ -145,4 +151,21 @@ test('el cajón de un cliente que la vista no muestra no entra a la tarjeta ni a
   assert.equal(filas.reduce((x, c) => x + (c.total ?? 0), 0), (r.consumoTotal ?? 0) + (r.sinObraAsignada ?? 0),
     'las filas suman exactamente consumido + sin obra asignada')
   assert.equal(cifrasResumen([a], cajones).sinObraAsignada, 1.09e6, 'sin filtrar, la tarjeta publicaría plata que ninguna fila muestra')
+})
+
+// ═══ OTROS — PUENTE DEL 18/09/2026 ═══
+// QUÉ DEFECTO ATRAPA: que el consumido de la obra y lo que queda contra MA pierdan la plata que la base
+// mandó a «otros». Equipos y combustible van en MA de la cotización, como iban en materiales hasta ayer.
+test('otros entra al consumido, al queda contra MA y al total del cliente', () => {
+  const p = obra('p', 'me', {}, { materiales: 1e6, subcontratos: 5e5, otros: 3e6 }, { MA: 4e6 })
+  assert.equal(p.gasto.total, 4.5e6)
+  assert.equal(p.consumoComparable, 4.5e6)
+  assert.equal(quedaMaterialesYSubcontratos(p)?.consumido, 4.5e6)
+  assert.equal(celda(p, 'otros').gastado, 3e6)
+  assert.equal(celda(p, 'otros').cotizadoAusente, 'incluido en materiales de la cotización')
+  const [fila] = resumenPorCliente([p], new Map())
+  assert.equal(fila.otros, 3e6)
+  assert.equal(fila.total, 4.5e6)
+  const [empresa] = composicionDelGasto([p], [fila])
+  assert.equal(empresa.total, 4.5e6)
 })

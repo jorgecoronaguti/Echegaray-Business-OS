@@ -106,6 +106,8 @@ export interface FilaDeCliente {
   manoObra: number | null
   subcontratos: number | null
   materiales: number | null
+  /** Equipos, servicios de obra y combustible (puente 18/09/2026). */
+  otros: number | null
   /** El cajón del cliente: consumo que Compras no pudo poner en una obra. Se dibuja, no se reparte. */
   sinObra: number | null
   /** Obras + sin obra: el largo de la barra gruesa. */
@@ -130,12 +132,13 @@ export function resumenPorCliente(obras: ObraAnalitica[], sinObra: ReadonlyMap<s
     const manoObra = sumaNula(lista.map((o) => o.gasto.manoObra))
     const subcontratos = sumaNula(lista.map((o) => o.gasto.subcontratos))
     const materiales = sumaNula(lista.map((o) => o.gasto.materiales))
+    const otros = sumaNula(lista.map((o) => o.gasto.otros))
     const so = sinObra.get(lista[0].clienteId) ?? null
     const queda = presupuestado != null ? presupuestado - (sumaNula(conPres.map((o) => o.consumoComparable)) ?? 0) : null
     return {
       clienteId: lista[0].clienteId, nombre: lista[0].clienteNombre, obras: lista.length, conPresupuesto: conPres.length,
-      presupuestado, manoObra, subcontratos, materiales, sinObra: so,
-      total: sumaNula([manoObra, subcontratos, materiales, so]),
+      presupuestado, manoObra, subcontratos, materiales, otros, sinObra: so,
+      total: sumaNula([manoObra, subcontratos, materiales, otros, so]),
       horas: sumaNula(lista.map((o) => o.gasto.horas)),
       lectura: queda == null ? { tipo: 'sinPresupuesto' }
         : { tipo: queda < 0 ? 'excedido' : 'queda', monto: Math.abs(queda), conPresupuesto: conPres.length, obras: lista.length },
@@ -144,7 +147,7 @@ export function resumenPorCliente(obras: ObraAnalitica[], sinObra: ReadonlyMap<s
   }).sort((a, b) => (b.total ?? 0) - (a.total ?? 0) || a.nombre.localeCompare(b.nombre, 'es'))
 }
 
-export interface Composicion { nombre: string; manoObra: number; subcontratos: number; materiales: number; total: number }
+export interface Composicion { nombre: string; manoObra: number; subcontratos: number; materiales: number; otros: number; total: number }
 
 /** DE QUÉ ESTÁ HECHO EL GASTO: la empresa y cada cliente con consumo, a 100 %. Sin el cajón sin obra. */
 export function composicionDelGasto(obras: ObraAnalitica[], clientes: FilaDeCliente[]): Composicion[] {
@@ -152,7 +155,8 @@ export function composicionDelGasto(obras: ObraAnalitica[], clientes: FilaDeClie
     const mo = lista.reduce((a, o) => a + (o.gasto.manoObra ?? 0), 0)
     const sub = lista.reduce((a, o) => a + (o.gasto.subcontratos ?? 0), 0)
     const mat = lista.reduce((a, o) => a + (o.gasto.materiales ?? 0), 0)
-    return { nombre, manoObra: mo, subcontratos: sub, materiales: mat, total: mo + sub + mat }
+    const otr = lista.reduce((a, o) => a + (o.gasto.otros ?? 0), 0)
+    return { nombre, manoObra: mo, subcontratos: sub, materiales: mat, otros: otr, total: mo + sub + mat + otr }
   }
   return [de('Empresa', obras), ...clientes.map((c) => de(c.nombre, obras.filter((o) => o.clienteId === c.clienteId)))]
     .filter((x) => x.total > 0)
@@ -196,14 +200,15 @@ export const INCLUIDO_EN_MATERIALES = 'incluido en materiales de la cotización'
 export function quedaMaterialesYSubcontratos(o: ObraAnalitica): { cotizado: number; consumido: number | null; pct: number | null; lectura: Celda['lectura'] } | null {
   const ma = o.presupuestoRubros?.materiales ?? null
   if (ma == null) return null
-  const consumido = sumaNula([o.gasto.materiales, o.gasto.subcontratos])
+  // OTROS ENTRA (puente 18/09/2026): equipos y combustible van en MA de la cotización, como iban en materiales.
+  const consumido = sumaNula([o.gasto.materiales, o.gasto.subcontratos, o.gasto.otros])
   return { cotizado: ma, consumido, pct: ma > 0 && consumido != null ? consumido / ma : null, lectura: lecturaDe(ma, consumido) }
 }
 
 export interface Celda {
   /** Lo gastado (pesos, u horas en HH). `null` = no hay registro. */
   gastado: number | null
-  /** Por qué no hay gastado: «otros» no tiene fuente de consumo. */
+  /** Por qué no hay gastado. Desde el 18/09/2026 «otros» tiene consumo y ya no se usa: queda por compatibilidad. */
   gastadoAusente: 'sin registrar' | null
   /** `true` = el presupuesto de este rubro es INFERENCIA. */
   estimado: boolean
@@ -232,13 +237,14 @@ export function celda(o: ObraAnalitica, item: Item): Celda {
       pct: hh != null && o.gasto.horas != null ? o.gasto.horas / hh : null, lectura: hh == null ? null : lecturaDe(hh, o.gasto.horas), consumoEstimado: null,
     }
   }
-  const g = item === 'otros' ? null : o.gasto[item]
+  const g = o.gasto[item]
   const cot = o.presupuestoRubros?.[item] ?? null
-  // CON MA, materiales y subcontratos no se leen por separado: su queda es uno solo (arriba).
-  if ((item === 'materiales' || item === 'subcontratos') && conMA(o)) {
+  // CON MA, materiales, subcontratos y otros no se leen por separado: su queda es uno solo (arriba).
+  if ((item === 'materiales' || item === 'subcontratos' || item === 'otros') && conMA(o)) {
+    const propio = item === 'materiales' || (item === 'otros' && cot != null)
     return {
       gastado: g, gastadoAusente: null, estimado: o.rubrosEstimados.includes('materiales'),
-      cotizado: item === 'materiales' ? cot : null, cotizadoAusente: item === 'subcontratos' ? INCLUIDO_EN_MATERIALES : null,
+      cotizado: propio ? cot : null, cotizadoAusente: propio ? null : INCLUIDO_EN_MATERIALES,
       pct: null, lectura: null, consumoEstimado: null,
     }
   }
@@ -247,9 +253,11 @@ export function celda(o: ObraAnalitica, item: Item): Celda {
   const desglosado = Object.values(o.presupuestoRubros ?? {}).some((v) => v != null)
   const ausente = cot != null ? null : desglosado ? SIN_PRESUPUESTO_RUBRO : (o.motivoPresupuesto ?? SIN_PRESUPUESTO)
   return {
-    gastado: g, gastadoAusente: item === 'otros' ? 'sin registrar' : null, estimado: o.rubrosEstimados.includes(item),
+    gastado: g, gastadoAusente: null, estimado: o.rubrosEstimados.includes(item),
     cotizado: cot, cotizadoAusente: ausente,
-    pct: cot != null && cot > 0 && g != null ? g / cot : null,
+    // EL «OTROS» PRESUPUESTADO SON CÓDIGOS DE PARTIDA QUE NO SE RECONOCEN (`rubroDeCodigo`): no es la pareja
+    // del consumo «otros» (equipos, servicios, combustible), y compararlos fabricaría un desvío.
+    pct: item !== 'otros' && cot != null && cot > 0 && g != null ? g / cot : null,
     lectura: item === 'otros' && cot != null ? { tipo: 'sinConsumo', monto: null } : lecturaDe(cot, g),
     consumoEstimado: item === 'manoObra' ? rotuloEstimada(o.gasto) : null,
   }

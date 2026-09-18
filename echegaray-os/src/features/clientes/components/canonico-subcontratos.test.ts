@@ -19,7 +19,9 @@ test('la cartera dibuja Subcontratos entre Materiales y Mano de obra, con su pis
   const i = (t: string) => src.indexOf(`texto="${t}"`)
   assert.ok(i('Materiales') > 0 && i('Materiales') < i('Subcontratos') && i('Subcontratos') < i('Mano de obra'),
     'el orden dejó de ser Materiales · Subcontratos · Mano de obra')
-  assert.match(src, /grid-cols-\[minmax\(0,2fr\)_150px_130px_130px_140px_210px\]/)
+  // OTROS (puente 18/09/2026) entre Subcontratos y Mano de obra, con su propia pista de 130px.
+  assert.ok(i('Subcontratos') < i('Otros') && i('Otros') < i('Mano de obra'), 'Otros no está entre Subcontratos y Mano de obra')
+  assert.match(src, /grid-cols-\[minmax\(0,2fr\)_150px_130px_130px_130px_140px_210px\]/)
 })
 
 test('la ficha dibuja Subcontratos entre Materiales y Mano de obra, y la celda delega', () => {

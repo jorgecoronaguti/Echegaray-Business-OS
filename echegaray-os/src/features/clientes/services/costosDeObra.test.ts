@@ -1,9 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  armarCostosPorObra, armarGastosSinObra, textoManoObra, textoMateriales, textoSubcontratos, textoTotalManoObra,
-  textoTotalSubcontratos, tituloManoObra, tituloMateriales, tituloSubcontratos, totalesDelCliente,
+  armarCostosPorObra, armarGastosSinObra, textoManoObra, textoMateriales, textoOtros, textoSubcontratos, textoTotalManoObra,
+  textoTotalSubcontratos, tituloManoObra, tituloMateriales, tituloOtros, tituloSubcontratos, totalesDelCliente,
 } from './costosDeObra.ts'
+import { porVencerDeMateriales } from './porVencer.ts'
 
 // ═══ QUÉ DEFECTOS ATRAPA ═══
 //
@@ -213,4 +214,33 @@ test('sin nada valorizado el pie dice null, no 0 — y sin costos tampoco', () =
   const vacio = totalesDelCliente(null, ['quattropani'])
   assert.equal(vacio.materiales, null)
   assert.equal(vacio.manoObra, null)
+})
+
+// ═══ OTROS — PUENTE DEL 18/09/2026 ═══
+//
+// QUÉ DEFECTO ATRAPA: que la plata que la base mandó al rubro «otros» desaparezca de la pantalla. La fila
+// es la de ME - PILÓN tal como la devolvió la base viva el 18/09/2026: `materiales` en null porque TODO
+// su material cayó en otros. Hasta este arreglo la ficha publicaba $325.000 sobre $3.501.501 gastados.
+test('otros: se lee, se dibuja en su columna, entra al total del cliente y un materiales null no se publica como cero', () => {
+  const m = armarCostosPorObra([{
+    obra_id: 'pilon', materiales: null, subcontratos: 325000, otros: 3176501.28, n_otros: 9, n_comprobantes: 0,
+    n_subcontratos: 1, otros_por_vencer: null, puede_ver_tarifas: false, corte: '2026-09-18',
+  }])!
+  const c = m.get('pilon')!
+  assert.equal(c.otros, 3176501.28)
+  assert.equal(c.nOtros, 9)
+  assert.equal(textoMateriales(c), '—', 'materiales null es «—», nunca «$0»')
+  assert.equal(textoOtros(c), '$3.176.501')
+  assert.match(tituloOtros(c)!, /9 comprobantes/)
+  const t = totalesDelCliente(m, ['pilon'])
+  assert.equal(t.otros, 3176501.28)
+  assert.equal(t.materiales, null)
+  assert.equal((t.materiales ?? 0) + (t.subcontratos ?? 0) + (t.otros ?? 0), 3501501.28, 'los rubros cierran contra lo gastado')
+  // UNA RPC ANTERIOR (sin la clave) no inventa un rubro.
+  assert.equal(armarCostosPorObra([{ obra_id: 'x', materiales: 10 }])!.get('x')!.otros, null)
+})
+
+test('otros: lo por vencer de otros no se atribuye a materiales', () => {
+  const c = armarCostosPorObra([{ obra_id: 'o', materiales: 100, otros: 50, otros_por_vencer: 20, comprometido_futuro: 20 }])!.get('o')!
+  assert.equal(porVencerDeMateriales(c), null)
 })

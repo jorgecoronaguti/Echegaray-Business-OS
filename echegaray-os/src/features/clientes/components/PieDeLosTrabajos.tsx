@@ -16,7 +16,7 @@
 
 import { V } from '@/shared/components/v2/patron'
 import { hh as formatoHH, plata } from '@/shared/utils/format'
-import { ROTULO_MANO_OBRA, ROTULO_MATERIALES, ROTULO_SUBCONTRATOS, type TotalesDelCliente } from '../services/costosDeObra'
+import { ROTULO_MANO_OBRA, ROTULO_MATERIALES, ROTULO_OTROS, ROTULO_SUBCONTRATOS, type TotalesDelCliente } from '../services/costosDeObra'
 
 const AYUDA_HH = 'Suma de las horas hombre de todos los trabajos de este cliente. Cada trabajo '
   + 'publica las suyas: un adicional no suma a su obra mayor, así que ninguna hora se cuenta dos veces.'
@@ -27,6 +27,10 @@ const AYUDA_MATERIALES = 'Suma a la fecha de lo comprado para este cliente (pest
 
 const AYUDA_SUBCONTRATOS = 'Suma a la fecha de los subcontratos del cliente (proveedores marcados «Subcontratista»): '
   + 'lo de cada trabajo MÁS lo sin obra asignada.'
+
+/** OTROS (puente 18/09/2026). Lo sin obra NO entra: la base no lo abre por este rubro y sigue en Materiales. */
+const AYUDA_OTROS = 'Suma a la fecha de alquiler y traslado de equipos, servicios de obra y combustible de todos sus '
+  + 'trabajos. Hasta el 18/09/2026 iban dentro de Materiales. Lo sin obra asignada sigue sumado en Materiales.'
 
 /** Lo gastado y lo trabajado, sumado de las MISMAS filas que la tabla de arriba. */
 export function PieDeLosTrabajos({ hh, obras, costos }: {
@@ -69,6 +73,11 @@ export function PieDeLosTrabajos({ hh, obras, costos }: {
       <span data-testid="subcontratos-del-cliente" title={AYUDA_SUBCONTRATOS} style={LINEA}>
         <Rotulo texto={ROTULO_SUBCONTRATOS} />
         <Cifra texto={costos.legible ? plata(costos.subcontratos) : 'no puedo leerlos'} />
+      </span>
+
+      <span data-testid="otros-del-cliente" title={AYUDA_OTROS} style={LINEA}>
+        <Rotulo texto={ROTULO_OTROS} />
+        <Cifra texto={costos.legible ? plata(costos.otros) : 'no puedo leerlos'} />
       </span>
 
       {/* LA MANO DE OBRA DICE SI EL TOTAL ESTÁ COMPLETO. Un total al que le faltan 12.500 horas
