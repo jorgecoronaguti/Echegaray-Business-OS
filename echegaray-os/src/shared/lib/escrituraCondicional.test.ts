@@ -1,173 +1,238 @@
-// LA VENTANA ENTRE LEER Y ESCRIBIR — el test que falla sin la escritura condicional.
+// LA ESCRITURA CONDICIONAL, MEDIDA CONTRA LA BASE REAL — no contra un modelo de Postgres escrito por nosotros.
 //
-// Auditoría del 18/09/2026, segunda vuelta: comparar `esperado` con una lectura previa y escribir después deja
-// una ventana. Dos personas que deshacen la misma celda en el mismo instante leen las dos lo mismo, las dos
-// pasan el control, y la segunda pisa a la primera. La comparación tiene que ir DENTRO del `update`.
+// ═══ POR QUÉ ESTE ARCHIVO SE REESCRIBIÓ (auditoría, 18/09/2026) ═══
 //
-// Este archivo prueba dos cosas distintas:
-//   1. PURO (siempre corre): que el filtro del `where` y la comparación en memoria son LA MISMA regla. Si
-//      divergen, un «123,5» contra 123.5 rechazaría un deshacer legítimo.
-//   2. CONTRA LA BASE (`E2E_ESCRIBE_EN_LA_BASE=si`): dos escrituras condicionales en paralelo sobre la misma
-//      celda, con el mismo `esperado`. Una gana, la otra recibe conflicto, y la celda queda con el valor de la
-//      que ganó. Crea y borra su propia fila `ZZ-TEST-CARRERA-*`.
+// D3: la versión anterior validaba el filtro del `where` contra `laBaseEncuentraLaFila`, una función que imitaba
+// a Postgres escrita acá mismo. Un control validado contra la información que produce no es un control: el
+// auditor corrió ese modelo con casos divergentes y 7 de 22 no coincidían con la base. Ahora cada caso se
+// escribe en una fila real y se le pregunta a la base.
+//
+// D4: los tests de base llevaban `skip` si no estaba `E2E_ESCRIBE_EN_LA_BASE`, y nada la setea: en la corrida
+// normal la protección quedaba cubierta sólo por regex sobre el texto, y el auditor escribió un mutante que las
+// pasaba y destruía la protección. Ahora CORREN SIEMPRE, y si no hay credenciales FALLAN diciéndolo. Un test que
+// se saltea en silencio no es un control.
+//
+// ESCRIBE EN LA BASE VIVA, sólo sobre filas propias de `pedidos_materiales` con id `ZZ-TEST-CARRERA-<corrida>-*`,
+// que borra por id —nunca con un `like` global, para no borrarle las filas a otra corrida en paralelo—.
 
-import { test } from 'node:test'
+import { test, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { coincideConLoEsperado, valorParaElFiltro, MENSAJE_CONFLICTO } from './pilaDeDeshacer.ts'
-import { actualizarSiSigueIgual } from './escrituraCondicional.ts'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { MENSAJE_CONFLICTO, coincideConLoEsperado, valorParaElFiltro } from './pilaDeDeshacer.ts'
+import { MENSAJE_SIN_CERTEZA, actualizarSiSigueIgual } from './escrituraCondicional.ts'
 
-// ═══ 1. LAS DOS REGLAS DE IGUALDAD SON LA MISMA ═══
+// ═══ 1. EL FILTRO, PURO ═══
 
-/** Lo que hace Postgres con el filtro que arma `valorParaElFiltro`: `is null`, o `=` (numérico o de texto). */
-function laBaseEncuentraLaFila(hoy: unknown, esperado: string, tipo: 'texto' | 'numero'): boolean {
-  const exigido = valorParaElFiltro(esperado, tipo)
-  if (typeof exigido === 'number' && !Number.isFinite(exigido)) return false
-  if (exigido === null) return hoy == null
-  if (hoy == null) return false
-  return typeof hoy === 'number' ? hoy === exigido : String(hoy) === String(exigido)
-}
-
-test('EL FILTRO DEL `where` Y LA COMPARACIÓN EN MEMORIA DECIDEN LO MISMO', () => {
-  const casos: Array<{ hoy: unknown; esperado: string; tipo: 'texto' | 'numero' }> = [
-    { hoy: null, esperado: '', tipo: 'texto' },
-    { hoy: undefined, esperado: '', tipo: 'texto' },
-    // El caso de la auditoría: la celda la cargó otra persona y la pantalla la vio vacía.
-    { hoy: 'act-X', esperado: '', tipo: 'texto' },
-    { hoy: null, esperado: 'act-X', tipo: 'texto' },
-    { hoy: 'act-X', esperado: 'act-X', tipo: 'texto' },
-    { hoy: 'act-X', esperado: 'act-Y', tipo: 'texto' },
-    { hoy: 'PENDIENTE', esperado: 'PENDIENTE', tipo: 'texto' },
-    // Números: la pantalla dibuja «123,5» y la base guarda 123.5.
-    { hoy: 123.5, esperado: '123,5', tipo: 'numero' },
-    { hoy: 34, esperado: '34,00', tipo: 'numero' },
-    { hoy: 123.5, esperado: '123', tipo: 'numero' },
-    { hoy: 0, esperado: '', tipo: 'numero' },
-    { hoy: null, esperado: '', tipo: 'numero' },
-    { hoy: 5, esperado: 'abc', tipo: 'numero' },
-  ]
-  for (const { hoy, esperado, tipo } of casos) {
-    assert.equal(
-      laBaseEncuentraLaFila(hoy, esperado, tipo),
-      coincideConLoEsperado(hoy, esperado),
-      `MUTACIÓN: el where y la comparación divergen en hoy=${JSON.stringify(hoy)} esperado=«${esperado}» (${tipo})`,
-    )
-  }
-})
-
-test('EL FILTRO: vacío es `is null`, el número es número, el texto es texto', () => {
+test('EL FILTRO: vacío es `is null`, el número se lee en es-AR, el texto va exacto', () => {
   assert.equal(valorParaElFiltro(''), null)
-  assert.equal(valorParaElFiltro('   '), null)
   assert.equal(valorParaElFiltro('act-X'), 'act-X')
-  assert.equal(valorParaElFiltro(' contrato '), 'contrato')
+  // Exacto: el esperado es el valor que vino de la base, no lo tecleado.
+  assert.equal(valorParaElFiltro(' contrato '), ' contrato ')
   assert.equal(valorParaElFiltro('123,5', 'numero'), 123.5)
-  assert.equal(valorParaElFiltro('34,00', 'numero'), 34)
-  // Un esperado que no es número: ninguna fila lo cumple, y la primitiva lo corta antes de tocar la base.
+  assert.equal(valorParaElFiltro('1.234,5', 'numero'), 1234.5, 'MUTACIÓN: el replace de una sola coma daba NaN')
+  assert.equal(valorParaElFiltro('$ 1.234,50', 'numero'), 1234.5)
   assert.ok(Number.isNaN(valorParaElFiltro('abc', 'numero') as number))
 })
 
-// ═══ 2. LA CARRERA, CONTRA LA BASE REAL ═══
+// ═══ 2. LA BASE ═══
 
-const ESCRIBE = process.env.E2E_ESCRIBE_EN_LA_BASE === 'si'
-const OBRA_TEXTO = 'ZZ-TEST-CARRERA'
+const CORRIDA = `ZZ-TEST-CARRERA-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+const creados: string[] = []
+let n = 0
 
-async function base() {
+async function credenciales() {
   const { loadEnvLocalInto } = await import('../../../scripts/lib/env-file.mjs')
   loadEnvLocalInto(process.env, new URL('../../../.env.local', import.meta.url).pathname)
-  const { createClient } = await import('@supabase/supabase-js')
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-    process.env.SUPABASE_SERVICE_ROLE_KEY as string,
-    { auth: { persistSession: false } },
-  )
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const srv = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  // RUIDOSO, NO SILENCIOSO: sin credenciales este archivo no prueba nada, y eso tiene que verse en rojo.
+  assert.ok(url && srv && anon,
+    'SIN CREDENCIALES DE SUPABASE (.env.local): la escritura condicional NO se probó contra la base. '
+    + 'Los tests puros solos no alcanzan — ver la cabecera de este archivo.')
+  return { url: url as string, srv: srv as string, anon: anon as string }
 }
 
-test('DOS DESHACER A LA VEZ SOBRE LA MISMA CELDA: UNO GANA, EL OTRO RECIBE CONFLICTO', { skip: !ESCRIBE && 'necesita la base: E2E_ESCRIBE_EN_LA_BASE=si' }, async () => {
-  const sb = await base()
-  const id = `ZZ-TEST-CARRERA-${Date.now()}`
-  const limpiar = async () => { await sb.from('pedidos_materiales').delete().like('id_pedido', 'ZZ-TEST-CARRERA-%') }
-  await limpiar()
-  const { error: eIns } = await sb.from('pedidos_materiales').insert({
-    id_pedido: id, obra_texto: OBRA_TEXTO, material: 'ZZ-TEST carrera de deshacer', cantidad: 1,
-    estado: 'PENDIENTE', fecha: new Date().toISOString().slice(0, 10), origen: 'appsheet_sheet',
-  })
-  assert.equal(eIns, null, 'no se pudo crear la fila de prueba')
+let servicio: SupabaseClient | null = null
+async function base(): Promise<SupabaseClient> {
+  if (servicio) return servicio
+  const { url, srv } = await credenciales()
+  const { createClient } = await import('@supabase/supabase-js')
+  servicio = createClient(url, srv, { auth: { persistSession: false } })
+  return servicio
+}
 
-  try {
-    // Las dos manos vieron PENDIENTE y quieren escribir cosas distintas, AL MISMO TIEMPO.
-    const escribir = (estado: string) => actualizarSiSigueIgual(sb, {
-      tabla: 'pedidos_materiales', donde: { id_pedido: id }, campo: 'estado', esperado: 'PENDIENTE',
-      cambios: { estado },
-    })
-    const [a, b] = await Promise.all([escribir('PEDIDO'), escribir('ENTREGADO')])
-
-    const estados = [a.estado, b.estado].sort()
-    assert.deepEqual(estados, ['conflicto', 'escrito'],
-      `MUTACIÓN: sin la comparación dentro del update las dos escriben. Resultados: ${JSON.stringify([a, b])}`)
-    const perdedor = a.estado === 'conflicto' ? a : b
-    assert.equal((perdedor as { error: string }).error, MENSAJE_CONFLICTO)
-
-    // LA EVIDENCIA ES DEL EFECTO: la celda quedó con el valor del que ganó, no con una mezcla ni con el último.
-    const { data } = await sb.from('pedidos_materiales').select('estado').eq('id_pedido', id).maybeSingle()
-    const gano = a.estado === 'escrito' ? 'PEDIDO' : 'ENTREGADO'
-    assert.equal(data?.estado, gano, 'la base no quedó con lo que escribió el que ganó')
-  } finally {
-    await limpiar()
+async function sesionDe(email?: string, password?: string): Promise<SupabaseClient> {
+  const { url, anon } = await credenciales()
+  const { createClient } = await import('@supabase/supabase-js')
+  const c = createClient(url, anon, { auth: { persistSession: false } })
+  if (email) {
+    const { error } = await c.auth.signInWithPassword({ email, password: password as string })
+    assert.equal(error, null, `no pude entrar como ${email}: ${error?.message}`)
   }
+  return c
+}
+
+/** Una fila de prueba propia. Se borra por id al terminar el archivo. */
+async function fila(extra: Record<string, unknown> = {}): Promise<string> {
+  const sb = await base()
+  const id = `${CORRIDA}-${++n}`
+  creados.push(id)
+  const { error } = await sb.from('pedidos_materiales').insert({
+    id_pedido: id, obra_texto: 'ZZ-TEST-CARRERA', material: 'ZZ-TEST', cantidad: 1,
+    estado: 'PENDIENTE', fecha: new Date().toISOString().slice(0, 10), origen: 'appsheet_sheet', ...extra,
+  })
+  assert.equal(error, null, `no pude crear la fila de prueba: ${error?.message}`)
+  return id
+}
+
+async function leer(id: string, campo: string): Promise<unknown> {
+  const { data } = await (await base()).from('pedidos_materiales').select(campo).eq('id_pedido', id).maybeSingle()
+  return (data as Record<string, unknown> | null)?.[campo]
+}
+
+after(async () => {
+  if (!servicio || creados.length === 0) return
+  await servicio.from('pedidos_materiales').delete().in('id_pedido', creados)
 })
 
-test('SOBRE UNA CELDA QUE YA CAMBIÓ NO SE ESCRIBE, Y SE DISTINGUE DE UNA FILA QUE NO EXISTE', { skip: !ESCRIBE && 'necesita la base: E2E_ESCRIBE_EN_LA_BASE=si' }, async () => {
+test('DOS DESHACER A LA VEZ SOBRE LA MISMA CELDA: UNO GANA, EL OTRO RECIBE CONFLICTO', async () => {
   const sb = await base()
-  const id = `ZZ-TEST-CARRERA-${Date.now()}-b`
-  const limpiar = async () => { await sb.from('pedidos_materiales').delete().like('id_pedido', 'ZZ-TEST-CARRERA-%') }
-  await limpiar()
-  await sb.from('pedidos_materiales').insert({
-    id_pedido: id, obra_texto: OBRA_TEXTO, material: 'ZZ-TEST celda ya cambiada', cantidad: 1,
-    estado: 'ENTREGADO', fecha: new Date().toISOString().slice(0, 10), origen: 'appsheet_sheet',
+  const id = await fila()
+  const escribir = (estado: string) => actualizarSiSigueIgual(sb, {
+    tabla: 'pedidos_materiales', donde: { id_pedido: id }, campo: 'estado', esperado: 'PENDIENTE', cambios: { estado },
   })
-  try {
-    // Quien deshace vio PENDIENTE, pero la base ya dice ENTREGADO.
+  const [a, b] = await Promise.all([escribir('PEDIDO'), escribir('ENTREGADO')])
+  assert.deepEqual([a.estado, b.estado].sort(), ['conflicto', 'escrito'],
+    `MUTACIÓN: sin la comparación dentro del update las dos escriben. Resultados: ${JSON.stringify([a, b])}`)
+  const perdedor = a.estado === 'conflicto' ? a : b
+  assert.equal((perdedor as { error: string }).error, MENSAJE_CONFLICTO)
+  // LA EVIDENCIA ES DEL EFECTO: la celda quedó con lo del que ganó.
+  assert.equal(await leer(id, 'estado'), a.estado === 'escrito' ? 'PEDIDO' : 'ENTREGADO')
+})
+
+test('DOS ALTAS A LA VEZ DE UNA FILA QUE NO EXISTÍA: LA CLAVE ÚNICA DEJA PASAR A UNA SOLA', async () => {
+  const sb = await base()
+  const id = `${CORRIDA}-${++n}-alta`
+  creados.push(id)
+  const alta = (material: string) => actualizarSiSigueIgual(sb, {
+    tabla: 'pedidos_materiales', donde: { id_pedido: id }, campo: 'material', esperado: '', cambios: { material },
+    crearSiFalta: {
+      id_pedido: id, obra_texto: 'ZZ-TEST-CARRERA', cantidad: 1, estado: 'PENDIENTE',
+      fecha: new Date().toISOString().slice(0, 10), origen: 'appsheet_sheet',
+    },
+  })
+  const [a, b] = await Promise.all([alta('ZZ-TEST uno'), alta('ZZ-TEST dos')])
+  assert.deepEqual([a.estado, b.estado].sort(), ['conflicto', 'escrito'],
+    `MUTACIÓN: un upsert en vez del alta pisaría sin preguntar. Resultados: ${JSON.stringify([a, b])}`)
+  assert.equal(await leer(id, 'material'), a.estado === 'escrito' ? 'ZZ-TEST uno' : 'ZZ-TEST dos')
+})
+
+test('LA CELDA VACÍA SE EXIGE CON `is null`: no se pisa lo que otro cargó mientras tanto', async () => {
+  const sb = await base()
+  const id = await fila({ material: 'ZZ-TEST cargado por otro' })
+  const r = await actualizarSiSigueIgual(sb, {
+    tabla: 'pedidos_materiales', donde: { id_pedido: id }, campo: 'material', esperado: '', cambios: { material: null },
+  })
+  assert.equal(r.estado, 'conflicto', 'MUTACIÓN: exigir el vacío con `eq ""` deja pasar')
+  assert.equal(await leer(id, 'material'), 'ZZ-TEST cargado por otro')
+})
+
+test('UNA FILA QUE NO EXISTE NO ES UN CONFLICTO', async () => {
+  const r = await actualizarSiSigueIgual(await base(), {
+    tabla: 'pedidos_materiales', donde: { id_pedido: `${CORRIDA}-no-existe` }, campo: 'estado',
+    esperado: 'PENDIENTE', cambios: { estado: 'PEDIDO' },
+  })
+  assert.equal(r.estado, 'no_existe')
+})
+
+// ═══ 3. D3, MEDIDO: EL FILTRO Y LA COMPARACIÓN EN MEMORIA, CONTRA LA BASE ═══
+//
+// No se afirma que las dos reglas sean idénticas: se afirman las tres propiedades que importan, y se miden.
+//   · SEGURIDAD: si la base escribió, la comparación en memoria también decía «coincide». Nunca escribe de más.
+//   · HONESTIDAD: si no escribió y la memoria dice «coincide», NO se contesta «la cambió otra persona».
+//   · VERDAD: si no escribió y la memoria dice «no coincide», es conflicto — y lo es de verdad.
+// Y una más, la que el auditor midió como defecto: un deshacer legítimo sobre un valor normal SE ESCRIBE.
+
+const CASOS_TEXTO: Array<[string | null, string]> = [
+  [null, ''], [null, 'contrato'], ['', ''], ['contrato', ''], ['contrato', 'contrato'],
+  ['contrato', 'Contrato'], [' contrato ', ' contrato '], [' contrato ', 'contrato'], ['contrato', ' contrato '],
+]
+const CASOS_NUMERO: Array<[number | null, string]> = [
+  [null, ''], [null, '0'], [0, ''], [0, '0'], [123.5, '123,5'], [123.5, '123'], [34, '34,00'],
+  [1234.5, '1.234,5'], [1234.5, '$ 1.234,50'], [1234.5, '1234.5'], [5, 'abc'],
+]
+
+test('D3: CADA CASO SE ESCRIBE EN LA BASE — nunca escribe de más, y nunca acusa en falso', async () => {
+  const sb = await base()
+  const falsos: string[] = []
+  const probar = async (campo: 'material' | 'cantidad', hoy: unknown, esperado: string, tipo: 'texto' | 'numero') => {
+    const id = await fila({ [campo]: hoy })
+    // Se reescribe el MISMO valor: si la escritura entra, la fila no cambia; lo que se mide es si entró.
+    const r = await actualizarSiSigueIgual(sb, {
+      tabla: 'pedidos_materiales', donde: { id_pedido: id }, campo, esperado, tipo, cambios: { [campo]: hoy },
+    })
+    const guardado = await leer(id, campo)
+    const enMemoria = coincideConLoEsperado(guardado, esperado)
+    const caso = `${campo}: base=${JSON.stringify(guardado)} esperado=${JSON.stringify(esperado)} → ${r.estado}`
+    if (r.estado === 'escrito') {
+      assert.ok(enMemoria, `SEGURIDAD rota, escribió de más — ${caso}`)
+    } else if (enMemoria) {
+      assert.equal(r.estado, 'sin_certeza', `HONESTIDAD rota, acusa en falso — ${caso}`)
+      assert.equal((r as { error: string }).error, MENSAJE_SIN_CERTEZA)
+      falsos.push(caso)
+    } else {
+      assert.equal(r.estado, 'conflicto', `VERDAD rota — ${caso}`)
+    }
+  }
+  for (const [hoy, esperado] of CASOS_TEXTO) await probar('material', hoy, esperado, 'texto')
+  for (const [hoy, esperado] of CASOS_NUMERO) await probar('cantidad', hoy, esperado, 'numero')
+  // EL ÚNICO CASO QUE NO ESCRIBE PUDIENDO: una cadena vacía guardada (no NULL). Ninguna de estas columnas lo
+  // tiene hoy; si aparece, se rechaza sin acusar a nadie. Cualquier otro caso acá es un deshacer legítimo que
+  // se está rechazando, y eso es un defecto.
+  assert.deepEqual(falsos, ['material: base="" esperado="" → sin_certeza'],
+    `deshaceres legítimos rechazados: ${JSON.stringify(falsos)}`)
+})
+
+test('D3: UN DESHACER LEGÍTIMO SOBRE UN NÚMERO CON MILES SE ESCRIBE (antes daba NaN y «otra persona»)', async () => {
+  const sb = await base()
+  const id = await fila({ cantidad: 1234.5 })
+  const r = await actualizarSiSigueIgual(sb, {
+    tabla: 'pedidos_materiales', donde: { id_pedido: id }, campo: 'cantidad', esperado: '1.234,5', tipo: 'numero',
+    cambios: { cantidad: 99 },
+  })
+  assert.equal(r.estado, 'escrito')
+  assert.equal(Number(await leer(id, 'cantidad')), 99)
+})
+
+// ═══ 4. RLS: CERO FILAS POR PERMISO NO ES «LA CAMBIÓ OTRA PERSONA» ═══
+//
+// Se miden tres sesiones reales —sin sesión, campo y jefe de obra— sobre una fila que NADIE cambió. No se
+// supone qué ve ni qué escribe cada rol: se registra. Lo que se afirma es lo que no puede pasar: que una
+// sesión que no escribió reciba «la cambió otra persona», o que la fila cambie sin que la escritura entrara.
+
+test('RLS: UNA SESIÓN QUE NO PUEDE ESCRIBIR NUNCA RECIBE «LA CAMBIÓ OTRA PERSONA»', async () => {
+  const { CAMPO, JEFE } = await import('../../../tests/util/identidades.ts')
+  const sesiones: Array<[string, SupabaseClient]> = [
+    ['sin sesión', await sesionDe()],
+    ['campo', await sesionDe(CAMPO.email, CAMPO.password)],
+    ['jefe de obra', await sesionDe(JEFE.email, JEFE.password)],
+  ]
+  const medido: string[] = []
+  for (const [quien, sb] of sesiones) {
+    const id = await fila({ estado: 'PENDIENTE' })
     const r = await actualizarSiSigueIgual(sb, {
       tabla: 'pedidos_materiales', donde: { id_pedido: id }, campo: 'estado', esperado: 'PENDIENTE',
       cambios: { estado: 'PEDIDO' },
     })
-    assert.equal(r.estado, 'conflicto')
-    const { data } = await sb.from('pedidos_materiales').select('estado').eq('id_pedido', id).maybeSingle()
-    assert.equal(data?.estado, 'ENTREGADO', 'no se pisó lo que había')
-
-    // La misma escritura sobre una fila que no existe se informa distinto: no es un conflicto, es una ausencia.
-    const sinFila = await actualizarSiSigueIgual(sb, {
-      tabla: 'pedidos_materiales', donde: { id_pedido: `${id}-no-existe` }, campo: 'estado', esperado: 'PENDIENTE',
-      cambios: { estado: 'PEDIDO' },
-    })
-    assert.equal(sinFila.estado, 'no_existe')
-  } finally {
-    await limpiar()
+    const despues = await leer(id, 'estado')
+    medido.push(`${quien}: ${r.estado}, la base quedó en ${despues}`)
+    // La fila no la cambió nadie: «conflicto» sería el OS afirmando algo falso.
+    assert.notEqual(r.estado, 'conflicto', `${quien} recibió «la cambió otra persona» sobre una fila intacta`)
+    if (r.estado === 'escrito') assert.equal(despues, 'PEDIDO', `${quien}: dijo escrito y la base no lo tiene`)
+    else assert.equal(despues, 'PENDIENTE', `${quien}: no escribió y la fila cambió igual`)
+    await sb.auth.signOut({ scope: 'local' }).catch(() => {})
   }
-})
-
-test('LA CELDA VACÍA SE EXIGE CON `is null`: no se pisa una actividad que otro cargó mientras tanto', { skip: !ESCRIBE && 'necesita la base: E2E_ESCRIBE_EN_LA_BASE=si' }, async () => {
-  const sb = await base()
-  const id = `ZZ-TEST-CARRERA-${Date.now()}-c`
-  const limpiar = async () => { await sb.from('pedidos_materiales').delete().like('id_pedido', 'ZZ-TEST-CARRERA-%') }
-  await limpiar()
-  const { data: act } = await sb.from('obra_actividad')
-    .select('id').eq('archivada', false).is('actividad_padre_id', null).neq('tipo', 'resumen').limit(1).maybeSingle()
-  assert.ok(act?.id, 'no hay ninguna actividad para la prueba')
-  await sb.from('pedidos_materiales').insert({
-    id_pedido: id, obra_texto: OBRA_TEXTO, material: 'ZZ-TEST vacío exigido', cantidad: 1,
-    estado: 'PENDIENTE', fecha: new Date().toISOString().slice(0, 10), origen: 'appsheet_sheet',
-    actividad_id: act!.id,
-  })
-  try {
-    // Quien escribe vio la celda VACÍA, pero otra persona ya le puso una actividad.
-    const r = await actualizarSiSigueIgual(sb, {
-      tabla: 'pedidos_materiales', donde: { id_pedido: id }, campo: 'actividad_id', esperado: '',
-      cambios: { actividad_id: null },
-    })
-    assert.equal(r.estado, 'conflicto', 'MUTACIÓN: exigir el vacío con `eq ""` en vez de `is null` deja pasar')
-    const { data } = await sb.from('pedidos_materiales').select('actividad_id').eq('id_pedido', id).maybeSingle()
-    assert.equal(data?.actividad_id, act!.id, 'la actividad del otro sigue ahí')
-  } finally {
-    await limpiar()
-  }
+  // Lo medido queda en la salida del test: es la evidencia de qué hace cada rol, no una suposición.
+  console.log(`RLS medido sobre pedidos_materiales.estado:\n  ${medido.join('\n  ')}`)
 })
