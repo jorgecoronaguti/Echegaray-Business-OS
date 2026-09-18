@@ -38,6 +38,7 @@ import { AVISO_CRITERIO, deltaHasta, elPorcentajeMueveElAvance } from './medicio
 import type { Metodo } from './medicion.ts'
 import { aplicarPlan, planDePasos } from './pasos.ts'
 import type { PasoDeLaTarea } from './pasos.ts'
+import { leerNumeroEsAR } from '@/shared/lib/numeroEsAR'
 
 const esquema = z.object({
   actividad_id: z.string().uuid('Elegí la tarea'),
@@ -50,11 +51,10 @@ const esquema = z.object({
   comentario: z.string().trim().max(500).optional(),
 })
 
+// «1.500» m² es mil quinientos, no 1,5: el lector de la casa (ver `presupuestos/services/actionsPartida.ts`).
 const numero = (v: string | undefined): number | null => {
-  const s = (v ?? '').trim().replace(',', '.')
-  if (!s) return null
-  const n = Number(s)
-  return Number.isFinite(n) ? n : null
+  const l = leerNumeroEsAR(v ?? '')
+  return l.ok ? l.valor : null
 }
 
 export async function registrarAvance(obraId: string, form: FormData): Promise<Resultado> {

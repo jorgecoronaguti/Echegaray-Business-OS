@@ -24,6 +24,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { aNumeroOpcional } from './numeroDePartida'
 import { MENSAJE_CONFLICTO } from '@/shared/lib/pilaDeDeshacer'
 import { actualizarSiSigueIgual } from '@/shared/lib/escrituraCondicional'
 // Ver `./accion`: un archivo `'use server'` no puede exportar una constante.
@@ -41,12 +42,8 @@ async function sb() {
 }
 
 /** Un número que llega vacío es «sin cargar» y se guarda NULL. Coma o punto, los dos entran. */
-function aNumeroOpcional(v: FormDataEntryValue | null): number | null | 'error' {
-  const t = String(v ?? '').trim()
-  if (t === '') return null
-  const n = Number(t.replace(',', '.'))
-  return Number.isFinite(n) && n >= 0 ? n : 'error'
-}
+// `aNumeroOpcional` vive en `numeroDePartida.ts`: un archivo `'use server'` sólo puede exportar funciones async,
+// y la regla tiene que poder probarse sin levantar el servidor.
 
 const altaSchema = z.object({
   cotizacion_id: z.string().uuid(),

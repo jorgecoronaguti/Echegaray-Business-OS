@@ -24,6 +24,7 @@ import { createClient } from '@/lib/supabase/server'
 import { controlDeCierre, controlDeFechas, type Frente } from './frentes'
 // Ver `./accion`: un archivo `'use server'` no puede exportar una constante.
 import type { EstadoAccion } from './accion'
+import { leerNumeroEsAR } from '@/shared/lib/numeroEsAR'
 
 
 const metodoSchema = z.enum(['cantidad', 'pasos', 'manual'])
@@ -52,7 +53,9 @@ function leerFrentes(form: FormData): { frentes: Frente[]; error: string | null 
   const frentes: Frente[] = []
   for (let i = 0; i < nombres.length; i += 1) {
     const nombre = nombres[i] || `Frente ${i + 1}`
-    const n = Number(cantidades[i].replace(',', '.'))
+    // «1.500» es mil quinientos: el mismo lector que la partida (ver `aNumeroOpcional`).
+    const l = leerNumeroEsAR(cantidades[i])
+    const n = l.ok && l.valor != null ? l.valor : NaN
     if (!Number.isFinite(n)) return { frentes: [], error: `El frente «${nombre}» no tiene una cantidad válida` }
 
     const fecha = fechaSchema.safeParse(inicios[i])

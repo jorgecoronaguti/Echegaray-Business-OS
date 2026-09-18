@@ -19,6 +19,7 @@ import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { versionarCantidad } from '../services/analisisActions'
 import { numero } from '../services/reglas'
+import { leerNumeroEsAR } from '@/shared/lib/numeroEsAR'
 
 export function CantidadEditable({
   tareaTipoId, analisisId, lineaId, cantidad, unidad,
@@ -40,9 +41,11 @@ export function CantidadEditable({
 
   function guardar() {
     setEditando(false)
-    const limpio = texto.trim().replace(',', '.')
-    if (limpio === alEntrar.current.trim().replace(',', '.')) return
-    const n = Number(limpio)
+    // «1.500» es mil quinientos (auditoría, 18/09/2026): el lector de la casa, no `replace(',', '.')`.
+    const l = leerNumeroEsAR(texto)
+    const antes = leerNumeroEsAR(alEntrar.current)
+    if (l.ok && antes.ok && l.valor === antes.valor) return
+    const n = l.ok && l.valor != null ? l.valor : NaN
     if (!Number.isFinite(n) || n < 0) {
       setError('Cantidad inválida')
       setTexto(alEntrar.current)

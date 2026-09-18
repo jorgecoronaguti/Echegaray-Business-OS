@@ -142,10 +142,26 @@ test('la cantidad tipeada con coma llega como número al servidor', () => {
   datos.set('avance_pct', '12')
   datos.set('comentario', 'muro norte, 2ª hilada')
   conDecimalesEnPunto(datos, ['cantidad', 'avance_pct'])
-  assert.equal(datos.get('cantidad'), '15.20')
+  // Viaja en forma canónica: lo que importa es el número que lee `z.coerce.number()`, no los ceros de la derecha.
+  assert.equal(Number(datos.get('cantidad')), 15.2)
   assert.equal(datos.get('avance_pct'), '12')
   // Y no toca el texto: una nota con comas es una nota, no un número.
   assert.equal(datos.get('comentario'), 'muro norte, 2ª hilada')
+})
+
+test('«1.500» EN EL PARTE ES MIL QUINIENTOS, NO 1,5 (auditoría, 18/09/2026)', () => {
+  // Antes sólo se cambiaba la coma: «1.500» m² llegaba al servidor como 1,5 — mil veces menos de avance.
+  const datos = new FormData()
+  datos.set('cantidad', '1.500')
+  datos.set('avance_pct', '12,5')
+  conDecimalesEnPunto(datos, ['cantidad', 'avance_pct'])
+  assert.equal(Number(datos.get('cantidad')), 1500, 'MUTACIÓN: volvió el replace de una sola coma')
+  assert.equal(Number(datos.get('avance_pct')), 12.5)
+  // Lo ilegible se deja tal cual: el esquema lo rechaza con su propio mensaje, no se inventa un número.
+  const raro = new FormData()
+  raro.set('cantidad', 'mucho')
+  conDecimalesEnPunto(raro, ['cantidad'])
+  assert.equal(raro.get('cantidad'), 'mucho')
 })
 
 test('el pendiente del desplegable no es negativo y sin objetivo dice «sin medición»', () => {
