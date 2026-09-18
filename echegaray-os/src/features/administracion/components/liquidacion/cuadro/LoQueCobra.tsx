@@ -36,7 +36,8 @@ export function LoQueCobra({ fila, pago }: {
 }) {
   const l = fila.linea
   const p = pago ?? l.pago
-  const porMes = l.modalidad === 'mensual'
+  // «COBRA AL MES» SÓLO EN LA ABIERTA (auditor, 18/09/2026): la foto de una cerrada es lo liquidado en ESA quincena.
+  const porMes = l.modalidad === 'mensual' && !fila.cerrada
   const saldo = p.saldoTotal
   return (
     <div data-testid={`cobro-${fila.personaId}`}
@@ -54,8 +55,19 @@ export function LoQueCobra({ fila, pago }: {
           {`${porMes ? 'Cobra al mes' : 'Cobra'} ${pesos(l.cobra)}`}
         </span>
       )}
-      <Menor rotulo="pagado" valor={pesos(p.pagado)} tono={p.pagado === 0 ? V.tenue : V.apagado} />
+      {/* SIN LÍNEA SELLADA NO HAY NADA QUE AFIRMAR, TAMPOCO «pagado $0». */}
+      {!(l.sello && !l.sello.conLinea) && <Menor rotulo="pagado" valor={pesos(p.pagado)} tono={p.pagado === 0 ? V.tenue : V.apagado} />}
       {saldo != null && <Menor rotulo="saldo" valor={pesos(saldo)} tono={saldo < 0 ? V.warn : V.apagado} />}
+      {/* LA CERRADA SIN SALDO DICE POR QUÉ (auditor, 18/09/2026): nadie registró lo pagado, o cobra por mes. Nunca un
+          saldo que nadie puede probar. */}
+      {saldo == null && l.sello?.conLinea && (
+        <span data-testid={`cobro-sin-saldo-${fila.personaId}`} style={{ whiteSpace: 'nowrap', color: V.tenue }}
+          title={l.pagoSinRegistrar
+            ? 'Quincena cerrada sin lo pagado registrado: no se da por debido ni por pagado.'
+            : 'Cobra por mes: el saldo es del mes, no de la quincena.'}>
+          {l.pagoSinRegistrar ? 'pago sin registrar' : 'saldo del mes'}
+        </span>
+      )}
     </div>
   )
 }

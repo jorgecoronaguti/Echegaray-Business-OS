@@ -79,10 +79,10 @@ export function GrillaEspejoQuincena({
   const { jornaleros, mensuales } = separarPorTipo(visibles)
   const tJ = totalesDeJornaleros(jornaleros)
   const tM = totalesDeMensuales(mensuales)
-  const general = totalGeneral(tJ, tM)
+  const sellada = visibles.some((f) => f.cerrada)
+  const general = totalGeneral(tJ, tM, sellada)
   const filaAbierta = abierta ? visibles.find((f) => f.personaId === abierta) : undefined
   const edicion = { quincena, camposEditables }
-  const sellada = visibles.some((f) => f.cerrada)
 
   const filasDe = (tipo: 'jornalero' | 'mensual', columnas: string) => {
     const suyas = seccionesDelTipo(secciones, tipo)
@@ -107,14 +107,14 @@ export function GrillaEspejoQuincena({
       {sello}
       {jornaleros.length > 0 && (
         <TablaDeBloques testid="cuadro-jornaleros" principal titulo={`Jornaleros · por hora · ${jornaleros.length}`}
-          resumen={<ResumenJornaleros t={tJ} />} definicion={CUADRO_JORNALEROS} dias={dias} sellada={sellada}
+          resumen={<ResumenJornaleros t={tJ} sellada={sellada} />} definicion={CUADRO_JORNALEROS} dias={dias} sellada={sellada}
           tirador={tirador} registrar={registrar}
           filas={(c) => filasDe('jornalero', c)}
           total={(c) => <TotalJornaleros columnas={c} dias={dias} t={tJ} />} />
       )}
       {mensuales.length > 0 && (
-        <TablaDeBloques testid="cuadro-mensuales" titulo={`Mensuales · sueldo del mes · ${mensuales.length}`}
-          resumen={<ResumenMensuales t={tM} />} definicion={CUADRO_MENSUALES} dias={dias} sellada={sellada}
+        <TablaDeBloques testid="cuadro-mensuales" titulo={sellada ? `Mensuales · lo liquidado en la quincena · ${mensuales.length}` : `Mensuales · sueldo del mes · ${mensuales.length}`}
+          resumen={<ResumenMensuales t={tM} sellada={sellada} />} definicion={CUADRO_MENSUALES} dias={dias} sellada={sellada}
           tirador={tirador} registrar={registrar}
           filas={(c) => filasDe('mensual', c)}
           total={(c) => <TotalMensuales columnas={c} t={tM} />} />
