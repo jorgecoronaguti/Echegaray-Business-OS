@@ -31,8 +31,12 @@
 //   · CON `esperado` COMPROBADO CONTRA UNA LECTURA FRESCA DEL SERVIDOR, no atómica: obra de la persona
 //     (`cambiarObraActual`), tarifa de la quincena (`registrarTarifaDesdeLaQuincena`) y horas del día cuando se
 //     escribe un número (`guardarJornada`). Sus escrituras no son un `update` de una columna —tramos de
-//     asignación, historial de tarifas, jornadas—, así que queda una ventana chica entre leer y escribir. Está
-//     dicho en cada una, y si no coincide dicen «no pude confirmar», no «la cambió otra persona».
+//     asignación, historial de tarifas, jornadas—, así que la comparación va antes de escribir.
+//     ESTO NO PROTEGE DOS ESCRITURAS SIMULTÁNEAS. Frena al deshacer que llega con una pantalla vieja; no a dos
+//     personas que escriben en el mismo instante. No es «una ventana chica»: el auditor midió 300–450 ms entre
+//     leer y escribir, y en `cambiarObraActual` 24 de 24 rondas simultáneas dejaron a la persona en DOS obras a
+//     la vez (defecto preexistente —dos movimientos hacia adelante hacen lo mismo—, anotado en
+//     `obraActualNucleo.ts`). Si no coincide dicen «no pude confirmar», no «la cambió otra persona».
 //   · EL VACIADO DE HORAS NO SE COMPRUEBA: `corregirJornada` no recibe `esperado`. Por eso esa celda NO está
 //     marcada `protegido`, y la pila nunca la manda a vaciar ni deshaciendo ni rehaciendo.
 //   · SIN COMPROBACIÓN DE SERVIDOR: los consumidores de `InlineEdit` que pasan un `guardar` de un solo argumento
