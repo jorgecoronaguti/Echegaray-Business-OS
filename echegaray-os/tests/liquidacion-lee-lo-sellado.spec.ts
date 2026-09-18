@@ -193,12 +193,14 @@ test.describe('Liquidación · la quincena cerrada muestra lo sellado', () => {
     expect(await page.locator('[data-testid^="espejo-fila-"][data-tipo="jornalero"]').count()).toBe(obreros.length)
     await expect(page.getByTestId('pie-horas')).toHaveText(`Horas ${horas(r2(obreros.reduce((a, s) => a + (s.horas ?? 0), 0)))}`)
     await expect(page.getByTestId('pie-total')).toHaveText(`Total ${pesos(r2(obreros.reduce((a, s) => a + s.cobra, 0)))}`)
+    // LOS MENSUALES CERRADOS NO SE ROTULAN «SUELDO DEL MES»: la foto es lo liquidado en la quincena. Se mira ANTES del
+    // recorte «Por quincena», que saca ese cuadro de la pantalla.
+    await expect(page.getByTestId('cuadro-mensuales')).not.toContainText('Sueldo del mes')
+    await expect(page.getByTestId('cuadro-mensuales')).toContainText('Liquidado en la quincena')
     // Y EL RECORTE POR CATEGORÍA SIGUE CERRANDO: con «Por quincena» el pie sigue siendo la suma de lo visible.
     await page.goto(`${RUTA}&quincena=2026-06-01&grupo=obreros`)
     await expect(page.getByTestId('espejo-total')).toBeVisible({ timeout: 60_000 })
     await expect(page.getByTestId('pie-total')).toHaveText(`Total ${pesos(r2(obreros.reduce((a, s) => a + s.cobra, 0)))}`)
-    await expect(page.getByTestId('cuadro-mensuales')).not.toContainText('Sueldo del mes')
-    await expect(page.getByTestId('cuadro-mensuales')).toContainText('Liquidado en la quincena')
     await page.screenshot({ path: `${SALIDA}/2026-06-01-completa.png`, fullPage: true })
     await page.getByTestId(`espejo-fila-${de('AGUERO').persona_id}`).scrollIntoViewIfNeeded()
     await page.screenshot({ path: `${SALIDA}/2026-06-01-aguero.png`, fullPage: false })
