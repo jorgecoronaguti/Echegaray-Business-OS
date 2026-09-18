@@ -348,8 +348,8 @@ export async function asignarActividadAPedido(
       tabla: 'pedidos_materiales', donde: { id_pedido: idPedido }, campo: 'actividad_id', esperado, cambios,
     })
     if (r.estado === 'conflicto') return { ok: false, error: MENSAJE_CONFLICTO }
-    if (r.estado === 'no_existe') return { ok: false, error: 'Ese pedido ya no existe.' }
-    if (r.estado === 'error') return { ok: false, error: r.error }
+    if (r.estado === 'no_existe') return { ok: false, error: 'Ese pedido ya no existe, o no lo ves.' }
+    if (r.estado !== 'escrito') return { ok: false, error: r.error }
   } else {
     const { error } = await supabase.from('pedidos_materiales').update(cambios).eq('id_pedido', idPedido)
     if (error) return { ok: false, error: error.message }

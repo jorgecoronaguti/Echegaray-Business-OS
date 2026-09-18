@@ -9,7 +9,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  LIMITE_DE_PASOS, MENSAJE_CONFLICTO, MENSAJE_SIN_ANTERIOR, apilar, atajoDeDeshacer, coincideConLoEsperado,
+  LIMITE_DE_PASOS, MENSAJE_CONFLICTO, MENSAJE_SIN_ANTERIOR, MENSAJE_SIN_RESGUARDO, apilar, atajoDeDeshacer, coincideConLoEsperado,
   destinoEditable, esTecladoMac, hayConflicto, motivoParaNoRestaurar, pilaVacia, quitarPaso, sinPasosDeOtraRuta,
   textoDelAtajoDeRehacer, textoDelAviso, tomarParaDeshacer, tomarParaRehacer, type PasoDeEdicion,
 } from './pilaDeDeshacer.ts'
@@ -77,9 +77,29 @@ test('DESHACER HACIA VACÍO SE RECHAZA: no había un valor anterior que restaura
   assert.equal(MENSAJE_SIN_ANTERIOR, 'no había un valor anterior que restaurar: no se deshizo')
   // Con un anterior real, se deshace.
   assert.equal(motivoParaNoRestaurar('deshacer', paso(2, { anterior: 'act-X', nuevo: 'act-Y' })), null)
-  // Rehacer un vaciado es repetir lo que esta persona hizo: no entra en la regla (viaja con `esperado`).
-  assert.equal(motivoParaNoRestaurar('rehacer', paso(3, { anterior: 'act-X', nuevo: '' })), null)
+  // Rehacer hacia un valor con contenido no toca la regla.
   assert.equal(motivoParaNoRestaurar('rehacer', sinAnterior), null)
+})
+
+// ═══ AUDITORÍA 18/09/2026 (D2): REHACER TAMBIÉN PUEDE VACIAR LO AJENO ═══
+//
+// Este test decía antes que rehacer un vaciado «no entra en la regla porque viaja con `esperado`». En nueve
+// superficies no viajaba. La cadena: celda de horas con X → alguien la vacía → Cmd+Z la bloquea → otra persona
+// escribe Z → Cmd+Y escribía el vacío sobre Z. Ahora rehacer hacia vacío sólo pasa donde el servidor comprueba.
+//
+// MUTACIÓN QUE LO PONE ROJO: volver a `if (accion === 'deshacer' && …)` sin mirar `protegido`.
+
+test('REHACER HACIA VACÍO SE RECHAZA SI LA SUPERFICIE NO MANDA `esperado`', () => {
+  const vaciado = paso(1, { anterior: '8', nuevo: '', anteriorTexto: '8', nuevoTexto: 'sin horas' })
+  assert.equal(motivoParaNoRestaurar('rehacer', vaciado), MENSAJE_SIN_RESGUARDO, 'sin protección, no se vacía a ciegas')
+  assert.equal(motivoParaNoRestaurar('rehacer', { ...vaciado, protegido: false }), MENSAJE_SIN_RESGUARDO)
+  // Donde el servidor comprueba `esperado`, rehacer el vaciado sólo cae sobre lo que esta persona dejó.
+  assert.equal(motivoParaNoRestaurar('rehacer', { ...vaciado, protegido: true }), null)
+  // Y `vacioRestaurable` sigue siendo la excepción: ahí el vacío no vacía, vuelve al calculado.
+  assert.equal(motivoParaNoRestaurar('rehacer', { ...vaciado, vacioRestaurable: true }), null)
+  // Deshacer hacia vacío se rechaza AUN protegido: no había valor anterior que restaurar.
+  const sinAnterior = paso(2, { anterior: '', nuevo: 'act-X' })
+  assert.equal(motivoParaNoRestaurar('deshacer', { ...sinAnterior, protegido: true }), MENSAJE_SIN_ANTERIOR)
 })
 
 test('LA EXCEPCIÓN ES DECLARADA: `vacioRestaurable` (el vacío vuelve al calculado, no vacía la celda)', () => {
@@ -104,9 +124,15 @@ test('LA COMPROBACIÓN DEL SERVIDOR: lo que hay hoy en la base contra lo que la 
   assert.equal(coincideConLoEsperado(123.5, '123'), false)
   assert.equal(coincideConLoEsperado(0, ''), false, 'un cero guardado no es un vacío')
   assert.equal(coincideConLoEsperado(5, 'abc'), false)
-  // Texto: sin espacios en las puntas, y sensible al contenido.
-  assert.equal(coincideConLoEsperado(' contrato ', 'contrato'), true)
+  // TEXTO: tal cual está en la base (auditoría D3, 18/09/2026). Antes se le sacaban los espacios a lo guardado
+  // y el `where` no: la memoria decía «coincide» y la base «no», y el OS contestaba «la cambió otra persona»
+  // sobre una celda que nadie tocó. Las dos reglas son ahora la misma.
+  assert.equal(coincideConLoEsperado(' contrato ', 'contrato'), false)
+  assert.equal(coincideConLoEsperado('contrato', 'contrato'), true)
   assert.equal(coincideConLoEsperado('contrato', 'Contrato'), false)
+  // NÚMEROS ES-AR: «1.234,5» es 1234.5. El `replace(',', '.')` de antes lo convertía en NaN.
+  assert.equal(coincideConLoEsperado(1234.5, '1.234,5'), true)
+  assert.equal(coincideConLoEsperado(1234.5, '$ 1.234,50'), true)
 })
 
 test('EL ATAJO: Cmd+Z o Ctrl+Z deshace, Shift o Ctrl+Y rehace, y NUNCA dentro de un input', () => {

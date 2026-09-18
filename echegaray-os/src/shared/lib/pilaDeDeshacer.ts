@@ -14,9 +14,26 @@
 // ═══ CONFLICTO ═══
 //
 // Si el valor que se ve ya no es el que se guardó (otra persona lo editó, o llegó otra lectura), no se pisa: se
-// avisa «la celda la cambió otra persona: no se deshizo» y el paso se descarta. TODA escritura de deshacer o
-// rehacer viaja con `esperado` (lo que esta persona vio) y el servidor hace la misma comprobación contra la
-// base: la pantalla puede estar atrasada, la base no.
+// avisa «la celda la cambió otra persona: no se deshizo» y el paso se descarta.
+//
+// ═══ QUÉ SUPERFICIES ESTÁN PROTEGIDAS POR EL SERVIDOR, Y CUÁLES NO (auditoría, 18/09/2026) ═══
+//
+// Acá decía que TODA escritura de deshacer viajaba con `esperado` y que el servidor comprobaba contra la base.
+// Era falso, y una afirmación más grande que lo protegido es peor que no afirmar nada: el auditor encontró
+// nueve superficies que registran pasos SIN `esperado`, y tres de ellas tampoco registraban `useCeldaViva`, así
+// que `hayConflicto` recibía `undefined` y no frenaba nada — ni pantalla ni servidor.
+//
+// Lo que hoy es cierto, celda por celda:
+//
+//   · CON `esperado` COMPROBADO DENTRO DE LA ESCRITURA (no hay ventana): actividad y estado del pedido, campo
+//     de partida, rol del documento (`actualizarSiSigueIgual`), obra de una compra (su RPC lo hace en la base)
+//     y las dos celdas de Liquidación.
+//   · CON `esperado` COMPROBADO CONTRA UNA LECTURA FRESCA DEL SERVIDOR, no atómica: horas del día, obra de la
+//     persona y tarifa de la quincena. La escritura de esas tres no es un `update` sobre una celda —son tramos
+//     de asignación y jornadas—, así que queda una ventana chica entre leer y escribir. Está dicho en cada una.
+//   · SIN COMPROBACIÓN DE SERVIDOR: el resto de los consumidores de `InlineEdit` que pasan un `guardar` de un
+//     solo argumento, y `FormularioParte`. Ahí frena sólo la celda viva (la pantalla), y por eso esos pasos
+//     NUNCA pueden escribir un vacío: ver `protegido` y `motivoParaNoRestaurar`.
 //
 // ═══ NUNCA SE VACÍA UNA CELDA (auditoría del 18/09/2026) ═══
 //
@@ -31,9 +48,13 @@
 // que la devuelve a un valor calculado (Liquidación: «sin corrección manual») y el servidor verifica
 // `esperado`. Ahí el vacío es un estado con contenido, no una celda borrada.
 
+import { leerNumeroEsAR } from './numeroEsAR.ts'
+
 export const LIMITE_DE_PASOS = 50
 export const MENSAJE_CONFLICTO = 'la celda la cambió otra persona: no se deshizo'
 export const MENSAJE_SIN_ANTERIOR = 'no había un valor anterior que restaurar: no se deshizo'
+/** Rehacer un vaciado en una celda que no avisa si otra mano la tocó: no se vacía a ciegas. */
+export const MENSAJE_SIN_RESGUARDO = 'esta celda no puede comprobar quién la cambió: no se vació'
 
 export interface PasoDeEdicion {
   id: string
@@ -53,6 +74,11 @@ export interface PasoDeEdicion {
    * Sin esto, deshacer hacia `''` se rechaza: sería vaciar la celda.
    */
   vacioRestaurable?: boolean
+  /**
+   * LA SUPERFICIE MANDA `esperado` Y EL SERVIDOR LO COMPRUEBA. Sin esto, la única guarda es la pantalla, que
+   * puede estar atrasada: entonces tampoco se REHACE hacia vacío (ver `motivoParaNoRestaurar`).
+   */
+  protegido?: boolean
 }
 
 export interface PilaDeDeshacer {
@@ -101,13 +127,24 @@ export function hayConflicto(actual: string | undefined, esperado: string): bool
 }
 
 /**
- * ¿POR QUÉ NO SE PUEDE RESTAURAR ESTE PASO? `null` = se puede. Deshacer hacia `''` sólo si la celda declaró que
- * el vacío es un valor (`vacioRestaurable`). Rehacer no entra en la regla: rehacer un vaciado es repetir lo que
- * esta misma persona hizo, con `esperado` = lo que ella acaba de restaurar.
+ * ¿POR QUÉ NO SE PUEDE ESCRIBIR EL DESTINO DE ESTE PASO? `null` = se puede.
+ *
+ * DESHACER hacia `''` no se escribe: no había valor anterior que restaurar, y si ese `''` venía de una pantalla
+ * atrasada el NULL borra lo que cargó otro.
+ *
+ * REHACER hacia `''` tampoco, MIENTRAS LA SUPERFICIE NO MANDE `esperado` (auditoría, 18/09/2026). La cadena que
+ * lo encontró: celda de horas con X → alguien la vacía → Cmd+Z la bloquea → otra persona escribe Z → Cmd+Y
+ * escribía el vacío encima de Z. En una superficie protegida sí se rehace: el servidor rechaza si la celda
+ * cambió, así que el vacío sólo cae sobre lo que esta misma persona dejó.
+ *
+ * La excepción de siempre es `vacioRestaurable`: ahí `''` no vacía la celda, la devuelve a su valor calculado.
  */
 export function motivoParaNoRestaurar(accion: AccionDeDeshacer, paso: PasoDeEdicion): string | null {
-  if (accion === 'deshacer' && paso.anterior === '' && !paso.vacioRestaurable) return MENSAJE_SIN_ANTERIOR
-  return null
+  if (paso.vacioRestaurable) return null
+  const destino = accion === 'deshacer' ? paso.anterior : paso.nuevo
+  if (destino !== '') return null
+  if (accion === 'deshacer') return MENSAJE_SIN_ANTERIOR
+  return paso.protegido ? null : MENSAJE_SIN_RESGUARDO
 }
 
 /**
@@ -122,17 +159,23 @@ export function motivoParaNoRestaurar(accion: AccionDeDeshacer, paso: PasoDeEdic
  * para explicar la regla.
  */
 export function coincideConLoEsperado(hoy: unknown, esperado: string): boolean {
-  const e = esperado.trim()
-  if (hoy == null) return e === ''
-  if (typeof hoy === 'number') {
-    const n = Number(e.replace(',', '.'))
-    return e !== '' && Number.isFinite(n) && n === hoy
-  }
-  return String(hoy).trim() === e
+  const exigido = valorParaElFiltro(esperado, typeof hoy === 'number' ? 'numero' : 'texto')
+  if (typeof exigido === 'number' && !Number.isFinite(exigido)) return false
+  // `''` y NULL son el mismo vacío. Un texto vacío guardado en la base (no debería haberlo, pero la regla no
+  // puede depender de eso) cuenta como vacío: el filtro del `where` lo busca con las dos formas.
+  if (exigido === null) return hoy == null || String(hoy) === ''
+  if (hoy == null) return false
+  return typeof hoy === 'number' ? hoy === exigido : String(hoy) === String(exigido)
 }
 
 /**
  * LA MISMA REGLA, PERO PARA EL `where` DE LA ESCRITURA — que es donde de verdad protege.
+ *
+ * EL FILTRO ES MÁS ESTRICTO QUE LA COMPARACIÓN EN MEMORIA, NUNCA AL REVÉS. El vacío se exige con `is null`
+ * porque así lo guardan estas columnas; si alguna tuviera una cadena vacía, el `update` no la encontraría y
+ * `coincideConLoEsperado` sí la daría por vacía. Esa asimetría es segura —jamás escribe de más— y lo único que
+ * hay que cuidar es el MENSAJE: cuando divergen, quien no escribió no puede decir «la cambió otra persona»
+ * (`actualizarSiSigueIgual` distingue los dos casos). Un test prueba las dos propiedades.
  *
  * Devuelve lo que hay que exigirle a la celda para que la escritura ocurra: `null` = «tiene que seguir vacía»
  * (se filtra con `is null`), un número para las columnas numéricas («123,5» → 123.5, y la base compara 123.50
@@ -145,8 +188,12 @@ export function coincideConLoEsperado(hoy: unknown, esperado: string): boolean {
 export function valorParaElFiltro(esperado: string, tipo: 'texto' | 'numero' = 'texto'): string | number | null {
   const e = esperado.trim()
   if (e === '') return null
-  if (tipo === 'numero') return Number(e.replace(',', '.'))
-  return e
+  if (tipo !== 'numero') return e
+  // `leerNumeroEsAR` Y NO `Number(replace(',', '.'))` (auditoría, 18/09/2026): ese replace cambia UNA sola coma
+  // y deja los puntos de miles, así que «1.234,5» daba NaN y la escritura se rechazaba con «la celda la cambió
+  // otra persona» — una afirmación falsa sobre un número que nadie tocó. Es el mismo lector que usa la celda.
+  const l = leerNumeroEsAR(e)
+  return l.ok && l.valor != null ? l.valor : NaN
 }
 
 /**

@@ -23,6 +23,7 @@
 // PostgREST a mano, no puede reescribir `cobra` ni `total`.
 
 import { MENSAJE_CONFLICTO } from '@/shared/lib/pilaDeDeshacer'
+import { actualizarSiSigueIgual } from '@/shared/lib/escrituraCondicional'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
@@ -37,7 +38,7 @@ import { leerCuadroDeLaQuincena } from './cuadroDeLaQuincenaService'
 import { pendientesPorPersona } from './grillaHorasQuincena'
 import { avisoDeAutocierre, decisionDeAutocierre, type LineaCongelada } from './autocierreDeQuincena'
 import { hoyEnObra } from '@/features/jefe/services/contexto'
-import { escribirRedondeo } from './efectivoRedondeado'
+import { escribirRedondeo, verificarGuardadoDelRedondeo } from './efectivoRedondeado'
 
 const RUTA = '/administracion/personas'
 
@@ -59,12 +60,10 @@ const redondeoSchema = ventanaSchema.extend({
 
 export type ResultadoLiquidacion = { ok: true; mensaje: string } | { ok: false; error: string }
 
-/** ¿Lo guardado hoy es lo esperado? `''` y NULL son «vacío»; los números se comparan como números. */
-function mismoValor(hoy: unknown, esperado: '' | number): boolean {
-  const a = hoy == null ? null : Number(hoy)
-  const b = esperado === '' ? null : Number(esperado)
-  return a === b
-}
+// LA IGUALDAD NO SE DEFINE ACÁ (auditoría, 18/09/2026). `mismoValor` era la TERCERA versión de «¿la celda sigue
+// siendo la que vi?» —una en la pila, otra en el filtro del `where`, ésta— y tres definiciones de lo mismo son
+// tres oportunidades de que una se corrija y las otras no. La única vive en `pilaDeDeshacer.ts` y la aplica
+// `actualizarSiSigueIgual`, dentro de la escritura.
 
 /**
  * LA PUERTA DEL SERVIDOR. Las dos escrituras la cruzan ANTES de tocar la base: rechazar después de
@@ -127,13 +126,31 @@ export async function guardarEfectivoRedondeado(entrada: unknown): Promise<Resul
   // sobre `efectivo_redondeado`: la base respondía 42501 en TODAS las filas, también las que ya existían. Abrir
   // UPDATE sobre las llaves a `authenticated` no se hace; la puerta es la de arriba —rol y quincena releída—.
   const admin = createAdminClient()
-  // DESHACER NO PISA LO QUE CAMBIÓ (Cmd+Z, 15/09/2026).
-  if (esperado !== undefined) {
-    const { data: hoy } = await admin.from('liquidacion_linea').select('efectivo_redondeado')
-      .eq('liquidacion_id', cab.id).eq('persona_id', personaId).maybeSingle()
-    if (!mismoValor((hoy as { efectivo_redondeado?: unknown } | null)?.efectivo_redondeado, esperado)) return { ok: false, error: MENSAJE_CONFLICTO }
-  }
   const valor = importe === '' ? null : importe
+  // DESHACER NO PISA LO QUE CAMBIÓ (Cmd+Z, 15/09/2026), Y LA COMPROBACIÓN VA DENTRO DE LA ESCRITURA
+  // (auditoría, 18/09/2026): acá se leía, se comparaba y después se hacía el upsert, así que dos personas
+  // deshaciendo el mismo redondeo a la vez pasaban las dos. Ésta es además la única celda de la plataforma que
+  // puede volver a vacío con Cmd+Z (`vacioRestaurable`), o sea justo donde una ventana cuesta más caro.
+  if (esperado !== undefined) {
+    const r = await actualizarSiSigueIgual(admin, {
+      tabla: 'liquidacion_linea',
+      donde: { liquidacion_id: cab.id, persona_id: personaId },
+      campo: 'efectivo_redondeado',
+      esperado: esperado === '' ? '' : String(esperado),
+      tipo: 'numero',
+      cambios: { efectivo_redondeado: valor },
+      crearSiFalta: { liquidacion_id: cab.id, persona_id: personaId },
+      seleccionar: 'persona_id, efectivo_redondeado',
+    })
+    if (r.estado === 'conflicto') return { ok: false, error: MENSAJE_CONFLICTO }
+    if (r.estado === 'no_existe') return { ok: false, error: 'Esa línea de liquidación ya no está.' }
+    if (r.estado !== 'escrito') return { ok: false, error: r.error }
+    // LA EVIDENCIA ES EL DATO LEÍDO EN SU DESTINO: la misma verificación de siempre, sobre lo que devolvió.
+    const verificado = verificarGuardadoDelRedondeo(r.filas as never, valor)
+    if (!verificado.ok) return verificado
+    revalidatePath(RUTA)
+    return { ok: true, mensaje: valor == null ? 'Vuelve el sugerido.' : 'Guardado.' }
+  }
   // UN 204 NO PRUEBA UNA ESCRITURA: `escribirRedondeo` relee la fila devuelta, y cero filas es error.
   const escrito = await escribirRedondeo(
     (fila) => admin.from('liquidacion_linea')
@@ -373,23 +390,47 @@ export async function guardarCeldaLiquidacion(entrada: unknown): Promise<Resulta
   const hayFormulas = !conFormulas.error
   if (!hayFormulas) conFormulas = await pedir(columna)
   const hoy = conFormulas.data as Record<string, unknown> | null
-  // DESHACER NO PISA LO QUE CAMBIÓ (Cmd+Z, 15/09/2026): con `esperado`, se escribe sólo si la celda sigue igual.
-  if (esperado !== undefined && !mismoValor(hoy?.[columna], esperado)) {
-    return { ok: false, error: MENSAJE_CONFLICTO }
-  }
   const nuevo = valor === '' ? null : valor
-  const aEscribir: Record<string, unknown> = { liquidacion_id: cab.id, persona_id: personaId, [columna]: nuevo }
+  const cambios: Record<string, unknown> = { [columna]: nuevo }
   // LA CUENTA VIAJA AL LADO DEL NÚMERO, NUNCA EN SU LUGAR: lo que se paga es el número.
-  if (hayFormulas) aEscribir.formulas = siguientesFormulas(hoy?.formulas, campo, escrito.expresion)
-  const { data, error } = await admin.from('liquidacion_linea')
-    .upsert(aEscribir, { onConflict: 'liquidacion_id,persona_id' })
-    // LA FILA ENTERA, no sólo la columna escrita: el nombre de la columna es dinámico y un
-    // `select` armado con una plantilla deja de estar tipado.
-    .select()
-  if (error) return { ok: false, error: error.message }
+  if (hayFormulas) cambios.formulas = siguientesFormulas(hoy?.formulas, campo, escrito.expresion)
+
+  let filas: Record<string, unknown>[]
+  if (esperado !== undefined) {
+    // DESHACER NO PISA LO QUE CAMBIÓ (Cmd+Z, 15/09/2026), Y LA COMPROBACIÓN VA DENTRO DE LA ESCRITURA
+    // (auditoría, 18/09/2026). Antes se comparaba la lectura de arriba y se hacía el upsert después: dos
+    // personas deshaciendo la misma celda a la vez pasaban las dos. Ésta es de las pocas celdas que pueden
+    // volver a vacío con Cmd+Z (`vacioRestaurable`: vacío = vuelve el cálculo), o sea donde la ventana costaba más.
+    //
+    // LO QUE QUEDA FUERA DE LA ESCRITURA ATÓMICA, dicho: `formulas` se arma con la lectura de arriba. Si en el
+    // medio otra persona cambió la cuenta de OTRA celda de la misma fila, esta escritura puede reponer la vieja.
+    // Protege a la celda que se deshace, no a sus vecinas.
+    const r = await actualizarSiSigueIgual(admin, {
+      tabla: 'liquidacion_linea',
+      donde: { liquidacion_id: cab.id, persona_id: personaId },
+      campo: columna,
+      esperado: esperado === '' ? '' : String(esperado),
+      tipo: 'numero',
+      cambios,
+      crearSiFalta: { liquidacion_id: cab.id, persona_id: personaId },
+      seleccionar: '*',
+    })
+    if (r.estado === 'conflicto') return { ok: false, error: MENSAJE_CONFLICTO }
+    if (r.estado === 'no_existe') return { ok: false, error: 'Esa línea de liquidación ya no está.' }
+    if (r.estado !== 'escrito') return { ok: false, error: r.error }
+    filas = r.filas
+  } else {
+    const { data, error } = await admin.from('liquidacion_linea')
+      .upsert({ liquidacion_id: cab.id, persona_id: personaId, ...cambios }, { onConflict: 'liquidacion_id,persona_id' })
+      // LA FILA ENTERA, no sólo la columna escrita: el nombre de la columna es dinámico y un
+      // `select` armado con una plantilla deja de estar tipado.
+      .select()
+    if (error) return { ok: false, error: error.message }
+    filas = (data ?? []) as unknown as Record<string, unknown>[]
+  }
   // LA EVIDENCIA ES EL DATO LEÍDO EN SU DESTINO. Cero filas devueltas es un rechazo en silencio, y
   // un valor distinto del escrito es un CHECK o un trigger que corrigió sin avisar.
-  const fila = ((data ?? []) as unknown as Record<string, unknown>[])[0]
+  const fila = filas[0]
   if (!fila) return { ok: false, error: 'La base no guardó la fila.' }
   const leido = fila[columna] == null ? null : Number(fila[columna])
   if (leido !== (nuevo == null ? null : Number(nuevo))) {

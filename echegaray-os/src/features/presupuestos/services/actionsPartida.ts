@@ -150,8 +150,8 @@ export async function editarCampoPartida(_prev: EstadoAccion, form: FormData): P
       cambios: { [campo]: valor },
     })
     if (r.estado === 'conflicto') return { error: MENSAJE_CONFLICTO }
-    if (r.estado === 'no_existe') return { error: 'Esa partida ya no existe.' }
-    if (r.estado === 'error') return { error: r.error }
+    if (r.estado === 'no_existe') return { error: 'Esa partida ya no existe, o no la ves.' }
+    if (r.estado !== 'escrito') return { error: r.error }
     if (cotizacion_id) revalidatePath(`${RAIZ}/${cotizacion_id}`, 'layout')
     return { error: null, ok: true }
   }
