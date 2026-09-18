@@ -32,6 +32,8 @@ const ARCHIVO = process.argv.find((a) => a.startsWith('--archivo='))?.slice('--a
 const ES_EL_REAL = ARCHIVO === CASHFLOW_ID
 const UNIDAD_SYNC = 'echegaray-compras-sync.service'
 const UNIDAD_PIPELINE = 'echegaray-flujo-caja.service'
+/** El espejo de CAJA (18/09/2026): `scripts/sync-caja-espejo.mjs`, sólo lee el Sheet. */
+const UNIDAD_CAJA = 'echegaray-caja-espejo.service'
 const ESTADO = rutaDelEstado(ARCHIVO)
 
 /** `activating` es un oneshot corriendo. Sin systemd de usuario, no hay nada corriendo que esperar. */
@@ -48,6 +50,13 @@ async function sincronizarCompras() {
   if (SECO) { console.log(`[seco] lanzaría systemctl --user start ${UNIDAD_SYNC}`); return }
   // Bloqueante a propósito: si falla, la versión no se da por atendida (ver lib/sonda-flujo-caja.mjs).
   await correr('systemctl', ['--user', 'start', UNIDAD_SYNC], { timeout: 200_000 })
+}
+
+/** SIN BLOQUEAR: la unidad tiene su propio timeout y no corre dos veces a la vez (oneshot). */
+async function sincronizarCaja() {
+  if (!ES_EL_REAL) return
+  if (SECO) { console.log(`[seco] lanzaría systemctl --user start --no-block ${UNIDAD_CAJA}`); return }
+  await correr('systemctl', ['--user', 'start', '--no-block', UNIDAD_CAJA], { timeout: 20_000 })
 }
 
 function notasDesde(google) {
@@ -79,6 +88,7 @@ async function main() {
     syncCorriendo: () => unidadCorriendo(UNIDAD_SYNC),
     pipelineCorriendo: () => unidadCorriendo(UNIDAD_PIPELINE),
     sincronizarCompras,
+    sincronizarCaja,
     sincronizarNotas: notasDesde(google),
     log: (s) => console.log(s),
   })
