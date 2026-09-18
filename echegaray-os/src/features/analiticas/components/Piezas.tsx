@@ -35,7 +35,7 @@ export function UnaCifra({ c }: { c: Cifra }) {
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <div className="text-[11px] text-faint">{c.rotulo}</div>
-      <div className={`text-[22px] font-semibold leading-[1.05] tracking-[-0.02em] tabular-nums lg:text-[28px] ${c.valor == null ? 'text-faint' : c.tono ? TONO_TEXTO[c.tono] : 'text-ink'}`}>
+      <div className={`whitespace-nowrap text-[22px] font-semibold leading-[1.05] tracking-[-0.02em] tabular-nums lg:text-[28px] ${c.valor == null ? 'text-faint' : c.tono ? TONO_TEXTO[c.tono] : 'text-ink'}`}>
         {c.valor ?? c.falta ?? 'sin registrar'}
       </div>
       {c.nota ? <div className="text-[11.5px] text-muted">{c.nota}</div> : null}
