@@ -5,8 +5,12 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
-  a1, armarGraficos, celda, decidirEscritura, leerCaja, leerPortada, leerSecciones, planDeGraficos, rangosDeGraficos, serialAIso,
+  a1, armarGraficos, celda, decidirEscritura, esError, leerCaja, leerPortada, leerSecciones, planDeGraficos, rangosDeGraficos, serialAIso,
 } from './caja-espejo.mjs'
+
+/** La grilla con UNA celda cambiada (fila y columna 0-based). `null` la vacía. */
+const con = (fila, col, cambio) => ({ filas: grid.filas.map((f, i) => (i === fila ? f.map((c, j) => (j === col ? (cambio === null ? null : { ...c, ...cambio }) : c)) : f)) })
+const filaDe = (rotulo) => grid.filas.findIndex((f) => f.some((c) => c?.valor === rotulo))
 
 const grid = JSON.parse(readFileSync(new URL('./caja-espejo.fixture.json', import.meta.url), 'utf8'))
 
@@ -129,4 +133,67 @@ test('los gráficos leen LOS MISMOS rangos que el gráfico de la pestaña, con e
   ])
   assert.equal(g.fila, 23)
   assert.throws(() => armarGraficos(plan, new Map()), /no volvió/)
+})
+
+// ═══ LO QUE AHORA TIRA (auditoría 18/09/2026: «leerCaja publica a medias») ═══
+
+test('R1 · «1 - DISTRIBUCIÓN» con guión ya no hace desaparecer la sección 1: tira', () => {
+  const f = filaDe('1 · DISTRIBUCIÓN POR CUENTAS   Extracto · al 18/09/2026')
+  assert.throws(() => leerCaja({ grid: con(f, 0, { valor: '1 - DISTRIBUCIÓN POR CUENTAS' }) }), /DISTRIBUCION POR CUENTAS/)
+})
+
+test('R2 · una sección esperada borrada (acciones) o una numeración salteada: tira', () => {
+  const f = filaDe('3 · ALERTAS CRÍTICAS')
+  assert.throws(() => leerCaja({ grid: con(f, 5, null) }), /ACCIONES/)
+  assert.throws(() => leerCaja({ grid: con(f, 5, { valor: '5 · ACCIONES RECOMENDADAS' }) }), /1\.\.N seguidas/)
+})
+
+test('R3 · una tabla que pierde su fila de encabezados: tira', () => {
+  const f = filaDe('Cuenta')
+  const sinEncabezados = { filas: grid.filas.map((fl, i) => (i === f ? fl.map((c, j) => (j < 4 ? null : c)) : fl)) }
+  assert.throws(() => leerCaja({ grid: sinEncabezados }), /DISTRIBUCIÓN POR CUENTAS.*encabezados/)
+})
+
+test('R4 · la fila de contexto de las tarjetas borrada: tira', () => {
+  const f = filaDe('CAJA DISPONIBLE') + 2
+  const sinContexto = { filas: grid.filas.map((fl, i) => (i === f ? fl.map(() => null) : fl)) }
+  assert.throws(() => leerCaja({ grid: sinContexto }), /sin su renglón de contexto/)
+  assert.throws(() => leerCaja({ grid: con(f, 6, null) }), /contexto \(CAJA INVERTIDA\)/)
+})
+
+test('R5 · un error de cálculo en cualquier celda publicada: tira, por errorValue y por texto', () => {
+  const tarjeta = filaDe('CAJA DISPONIBLE') + 1
+  assert.throws(() => leerCaja({ grid: con(tarjeta, 2, { error: 'REF', valor: '#REF!', numero: null }) }), /la portada.*REF/)
+  const cuenta = filaDe('Santander · cta cte USD')
+  assert.throws(() => leerCaja({ grid: con(cuenta, 2, { valor: '#VALUE!', numero: null }) }), /tabla «1 · DISTRIBUCIÓN.*#VALUE!/)
+  const alerta = filaDe('▲ Falta cargar $763.365 · manda cheques sin marca $763.365')
+  assert.throws(() => leerCaja({ grid: con(alerta, 0, { valor: '#N/A' }) }), /lista «3 · ALERTAS.*#N\/A/)
+  assert.equal(esError({ valor: '#DIV/0!' }), true)
+  assert.equal(esError({ valor: 'Efectivo en pesos' }), false)
+  assert.equal(esError({ valor: '', error: 'NAME' }), true)
+})
+
+test('R6 · una lista cuya primera fila trae dos celdas sigue siendo lista', () => {
+  const f = filaDe('▲ No cierra $123.198.145 · manda efectivo sin depositar $123.198.145')
+  const dos = { filas: grid.filas.map((fl, i) => (i === f ? fl.map((c, j) => (j === 1 ? { valor: 'segunda celda' } : c)) : fl)) }
+  const foto = leerCaja({ grid: dos })
+  assert.equal(foto.secciones[2].forma, 'lista')
+  assert.ok(foto.secciones[2].items.some((x) => x.texto === 'segunda celda'))
+})
+
+test('R7 · la huella es del contenido: una fila en blanco no la cambia; una celda de una sección o un valor de un gráfico, sí (M5)', () => {
+  const g = { id: '1', titulo: 't', subtitulo: '', tipo: 'LINE', apilado: null, fila: 53, dominio: ['a', 'b'], series: [{ nombre: 's', tipo: 'LINE', eje: null, punteada: false, valores: [1, 2] }] }
+  const base = leerCaja({ grid, graficos: [g], tipoCambioUsd: 1500 })
+  // Una fila en blanco arriba y otra entre los encabezados y la primera cuenta (entre el título y sus encabezados NO: eso es otra forma).
+  const conBlanco = { filas: [Array(10).fill(null), ...grid.filas.slice(0, 6), Array(10).fill(null), ...grid.filas.slice(6)] }
+  assert.equal(leerCaja({ grid: conBlanco, graficos: [g], tipoCambioUsd: 1500 }).huella, base.huella)
+  assert.equal(leerCaja({ grid, graficos: [{ ...g, fila: 99 }], tipoCambioUsd: 1500 }).huella, base.huella, 'la fila-ancla del gráfico no es contenido')
+  const cuenta = filaDe('Santander · cta cte ARS')
+  assert.notEqual(leerCaja({ grid: con(cuenta, 2, { valor: '44.278.170', numero: 44278170 }), graficos: [g], tipoCambioUsd: 1500 }).huella, base.huella)
+  const venc = filaDe('Esta semana')
+  assert.notEqual(leerCaja({ grid: con(venc, 7, { valor: '43.076.717', numero: 43076717 }), graficos: [g], tipoCambioUsd: 1500 }).huella, base.huella)
+  assert.notEqual(leerCaja({ grid, graficos: [{ ...g, series: [{ ...g.series[0], valores: [1, 3] }] }], tipoCambioUsd: 1500 }).huella, base.huella)
+  assert.notEqual(leerCaja({ grid, graficos: [g], tipoCambioUsd: 1501 }).huella, base.huella)
+  const alerta = filaDe('▲ Falta cargar $763.365 · manda cheques sin marca $763.365')
+  assert.notEqual(leerCaja({ grid: con(alerta, 0, { valor: '▲ Falta cargar $1' }), graficos: [g], tipoCambioUsd: 1500 }).huella, base.huella)
 })

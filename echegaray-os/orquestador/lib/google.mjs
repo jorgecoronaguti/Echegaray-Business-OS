@@ -925,6 +925,9 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         valor: c?.formattedValue ?? null,
         numero: c?.effectiveValue?.numberValue ?? null,
         formato: c?.userEnteredFormat?.numberFormat?.type ?? null,
+        // EL ERROR DE LA CELDA (`#REF!`, `#VALUE!`, `#N/A`…), como lo declara la API y no como texto: un
+        // espejo que publique «#REF!» con cara de dato es peor que uno que no publica (caja-espejo, 18/09).
+        error: c?.effectiveValue?.errorValue?.type ?? null,
         // DERRAMADA: tiene valor calculado pero NADIE escribió nada en ella — es el resultado de una
         // fórmula matricial vecina (IMPORTRANGE, ARRAYFORMULA, QUERY, IMPORTHTML). Sin esta marca,
         // auditar contaba cada celda derramada como "número escrito a mano": una IMPORTRANGE de 990
