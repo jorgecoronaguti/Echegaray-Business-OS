@@ -162,11 +162,18 @@ export function TabEconomia({
         )}
 
         <Bloque titulo="Costo" testid="economia-costo">
+          {/* EL COSTO OBJETIVO ES EL PRESUPUESTO LEÍDO DEL DOCUMENTO (18/09/2026), el mismo que Analíticas.
+              `obra_economia.costo_objetivo` publicado prefiere «partidas congeladas convertidas» ($ 1,77 M en
+              Quattropani: un pedazo, no el presupuesto); la migración que lo corrige (20260918T1540) se aplica
+              al publicar la rama. Hasta entonces la ficha muestra la lectura del documento y deja la de la
+              vista como respaldo, nunca las dos como si fueran lo mismo. */}
           <Linea
             concepto="Costo objetivo"
-            valor={e?.costo_objetivo == null ? null : plata(e.costo_objetivo)}
-            origen={e?.costo_objetivo_origen ?? 'Lo que se cotizó que iba a costar.'}
-            falta={falta('Sin presupuesto: no hay contra qué medir el gasto.')}
+            valor={rb?.presupuestado != null ? plata(rb.presupuestado) : e?.costo_objetivo == null ? null : plata(e.costo_objetivo)}
+            origen={rb?.presupuestado != null
+              ? `Costo directo del presupuesto leído por rubro de «${rb.fuente ?? 'documento'}»: la misma cifra que Analíticas.`
+              : (e?.costo_objetivo_origen ?? 'Lo que se cotizó que iba a costar.')}
+            falta={falta(rb?.motivo ?? 'Sin presupuesto: no hay contra qué medir el gasto.')}
           />
           <Linea
             concepto="Costo real a hoy"
