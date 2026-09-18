@@ -70,6 +70,8 @@ export function indicesRotulados(n: number, max = 8): number[] {
   const paso = Math.ceil((n - 1) / (max - 1))
   const out: number[] = []
   for (let i = 0; i < n - 1; i += paso) out.push(i)
+  // El penúltimo no puede pegarse al último: dos rótulos encimados no se leen.
+  if (out.length > 1 && n - 1 - out[out.length - 1] < paso / 2) out.pop()
   out.push(n - 1)
   return out
 }

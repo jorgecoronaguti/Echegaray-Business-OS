@@ -41,4 +41,5 @@ test('los rótulos del dominio se reparten: siempre el primero y el último, nun
   assert.equal(r[0], 0)
   assert.equal(r.at(-1), 59)
   assert.ok(r.length <= 9 && r.length >= 7)
+  assert.ok(r.at(-1)! - r.at(-2)! >= 4, `el último no se pega al anterior: ${r}`)
 })
