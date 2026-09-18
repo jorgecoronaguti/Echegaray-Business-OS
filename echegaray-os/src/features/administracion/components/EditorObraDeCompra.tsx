@@ -23,10 +23,23 @@ import { useEstadoDelServidor } from '@/shared/tiempo-real/useEstadoDelServidor'
 import { useCeldaViva, useGuardadoDeshacible } from '@/shared/components/deshacer/DeshacerProvider'
 import { C } from '@/shared/components/canon'
 import { asignarObraDeCompra } from '../services/obraDeCompraActions'
+import { type EstadoEnSheet, leyendaDeSheet, type Tono } from '../services/pagoDeCompra'
+
+// ═══ LA LEYENDA DEL VIAJE AL SHEET (18/09/2026) ═══
+//
+// El worker existe desde el 15/09 y relee, escribe y relee. Lo que faltaba era que la pantalla lo
+// dijera: «pendiente de Sheet», «✓ en Sheet» o el motivo por el que el Sheet no aceptó el cambio
+// (alguien tocó la celda mientras tanto, la fila ya era otra compra). Sin eso, un rechazo se veía
+// como una obra que desaparecía sola en el sync siguiente. Es la MISMA leyenda que la del pago.
+const TONO: Record<string, string> = { ok: '#1F7A3F', falta: '#B42318', apagado: C.apagado }
+const color = (t: Tono) => TONO[String(t)] ?? C.tinta
 
 export function EditorObraDeCompra({
-  fila, celda, opciones, editable,
+  fila, celda, opciones, editable, enSheet = 'sin_pedido', motivo = null,
 }: {
+  /** En qué punto del viaje al Sheet está la última obra pedida desde la app (leído de la cola). */
+  enSheet?: EstadoEnSheet
+  motivo?: string | null
   fila: number
   celda: string | null
   opciones: string[]
@@ -44,6 +57,8 @@ export function EditorObraDeCompra({
   const valorRef = useRef(valor)
   useEffect(() => { enBaseRef.current = enBase; valorRef.current = valor })
   const clave = `obra-de-la-compra-${fila}`
+  // Lo que la cola dice del último pedido de esta fila. `null` = nadie la tocó desde la app.
+  const leyenda = leyendaDeSheet(enSheet, motivo)
 
   async function escribir(nuevo: string, esperado?: string): Promise<{ ok: true } | { ok: false; error: string }> {
     const r = await asignarObraDeCompra(fila, nuevo, esperado ?? enBaseRef.current)
@@ -118,6 +133,11 @@ export function EditorObraDeCompra({
       {hecho && (
         <p style={{ fontSize: 11.5, color: C.apagado, paddingTop: 6 }} data-testid="obra-compra-guardada">
           Quedó guardada en el OS y en cola para el Sheet: el worker relee la fila y escribe la celda Obra sólo si sigue siendo la misma compra.
+        </p>
+      )}
+      {leyenda && !hecho && (
+        <p aria-live="polite" style={{ fontSize: 11, color: color(leyenda.tono), paddingTop: 6 }} data-testid="obra-en-sheet">
+          {leyenda.texto}
         </p>
       )}
     </div>

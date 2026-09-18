@@ -101,7 +101,7 @@ import { getEntradas } from '@/features/administracion/services/comprobanteEntra
 import { claveIdentidad, getIdentidades } from '@/features/administracion/services/identidadProveedorService'
 import { nombresDeObra } from '@/features/clientes/services/nombresDeObra'
 import {
-  getAsignaciones, getCeldasObra, getOpcionesDeObra, obrasDeLasCompras,
+  getAsignaciones, getCeldasObra, getOpcionesDeObra, obraEnCola, obrasDeLasCompras,
 } from '@/features/administracion/services/obraDeCompraService'
 
 export const dynamic = 'force-dynamic'
@@ -285,6 +285,9 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
   // EN QUÉ PUNTO DEL VIAJE AL SHEET ESTÁ EL PAGO DE LA FILA ABIERTA. Se pide SÓLO para esa fila: la
   // leyenda se lee en el panel, y traer la cola de las 900 sería un viaje por un dato que no se ve.
   const pagosCola = filaAbierta ? await pagosEnCola([filaAbierta.fila]) : new Map()
+  // Y LA OBRA, POR EL MISMO MOTIVO: sin esto, un pedido que el Sheet rechazó desaparecía en silencio
+  // en el sync siguiente (18/09/2026).
+  const obraCola = filaAbierta ? await obraEnCola(supabase, [filaAbierta.fila]) : new Map()
   const papelesDePago = filaAbierta ? await comprobantesDePago([filaAbierta.fila]) : null
   // EL RECORTE. Las 947 filas juntas medían 43.871px de alto; el tope las deja en ~9.000 y el
   // enlace directo manda sobre el tope (ver `recorteDeLista`). Los totales del pie miran LO QUE SE
@@ -464,6 +467,8 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                   fila={filaAbierta}
                   pagoEnSheet={estadoEnSheet(pagosCola.get(filaAbierta.fila))}
                   pagoMotivo={pagosCola.get(filaAbierta.fila)?.motivo ?? null}
+                  obraEnSheet={estadoEnSheet(obraCola.get(filaAbierta.fila))}
+                  obraMotivo={obraCola.get(filaAbierta.fila)?.motivo ?? null}
                   comprobantesDePago={papelesDePago?.ok ? papelesDePago.dato.get(filaAbierta.fila) ?? [] : []}
                   obraEditable={celdasObra.disponible}
                   opcionesObra={opcionesObra}

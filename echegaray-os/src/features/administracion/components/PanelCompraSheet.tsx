@@ -110,6 +110,7 @@ function Papel({ a }: { a: Adjunto }) {
 export function PanelCompraSheet({
   fila, cerrarHref, hrefsFiltro, identidad, obraEditable = false, opcionesObra = [],
   pagoEnSheet = 'sin_pedido', pagoMotivo = null, comprobantesDePago = [],
+  obraEnSheet = 'sin_pedido', obraMotivo = null,
 }: {
   fila: FilaConPapel
   cerrarHref: string
@@ -123,6 +124,9 @@ export function PanelCompraSheet({
   pagoMotivo?: string | null
   /** Los papeles que prueban los pagos de esta fila. Vacío = todavía no se subió ninguno. */
   comprobantesDePago?: ComprobanteDePago[]
+  /** En qué punto del viaje al Sheet está la última obra elegida desde la app para esta fila. */
+  obraEnSheet?: EstadoEnSheet
+  obraMotivo?: string | null
 }) {
   const reclamo = reclamoDe(fila)
   return (
@@ -217,7 +221,10 @@ export function PanelCompraSheet({
 
       {/* EL PIE DE ACCIONES DEL HANDOFF v4. Va último, después de las propiedades y del papel: lo
           que se decide se decide DESPUÉS de haber leído lo que hay. */}
-      <EditorObraDeCompra fila={fila.fila} celda={fila.obra?.celda ?? null} opciones={opcionesObra} editable={obraEditable} />
+      <EditorObraDeCompra
+        fila={fila.fila} celda={fila.obra?.celda ?? null} opciones={opcionesObra} editable={obraEditable}
+        enSheet={obraEnSheet} motivo={obraMotivo}
+      />
       <PagoDeCompra fila={fila.fila} compra={fila} enSheet={pagoEnSheet} motivo={pagoMotivo} />
       <ComprobantesDePago lista={comprobantesDePago} />
       <AccionesCompra clave={fila.clave} filaCompras={fila.fila} />
