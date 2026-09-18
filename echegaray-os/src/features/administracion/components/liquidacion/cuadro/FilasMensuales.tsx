@@ -54,8 +54,19 @@ export function FilaMensual({ fila, columnas, edicion, pct, abrir }: {
   const { quincena } = edicion
   const fondo = filaPagada(l.pagadaEn) ? V.posSuave : undefined
   const p = pagoDelMensual(l)
-  const recibo = textoDelRecibo(p, l.reciboSinGiro)
+  // SIN LÍNEA SELLADA, NI «sin recibo todavía» (eso es un pendiente): la fila dice que no tiene foto.
+  const recibo = fila.cerrada && p.banco == null
+    ? { texto: sinSello(l) ?? '—', titulo: 'Sin línea sellada en esta quincena cerrada.' }
+    : textoDelRecibo(p, l.reciboSinGiro)
   const a = asistenciaDeReferencia(fila)
+  // ═══ LA CERRADA ES LA FOTO DE LA QUINCENA (auditor, 18/09/2026) ═══ Ni días vivos (no se sellan), ni «sueldo del mes»
+  // (la foto es lo liquidado en la quincena), ni «falta recibo» (no hay nada pendiente de cargar en algo cerrado).
+  const cerrada = fila.cerrada
+  const sinSaldoCerrada = cerrada
+    ? (l.sello?.conLinea
+      ? { texto: 'saldo del mes', titulo: 'Cobra por mes: el saldo es del mes, no de la quincena. Lo pagado que consta se muestra al lado.' }
+      : { texto: 'sin línea sellada', titulo: 'La quincena está cerrada y esta persona no tiene línea sellada: nada de esta fila es dato sellado.' })
+    : null
   return (
     <div data-testid={`espejo-fila-${fila.personaId}`} data-tipo="mensual" data-fila-edicion="" data-pagada={fondo ? '1' : undefined}
       style={{ ...filaGrid(columnas, ALTO_LIQ.filaAlta), background: fondo }}>
@@ -72,34 +83,53 @@ export function FilaMensual({ fila, columnas, edicion, pct, abrir }: {
           </div>
         )} />
       {/* SUELDO. La asistencia es referencia: no cobra por ella. */}
-      <div data-testid={`asistencia-${fila.personaId}`} title="Referencia: un mensual no cobra por hora."
-        style={{ textAlign: 'right', fontSize: '11px', lineHeight: '13px', color: V.apagado }}>
-        <div>{`${a.dias} día${a.dias === 1 ? '' : 's'} · ${nHoras(a.horas)} h`}</div>
-        <div style={{ color: a.ausencias > 0 ? V.warn : V.tenue }}>
-          {a.ausencias + a.licencias === 0 ? 'sin ausencias' : [a.ausencias ? `${a.ausencias} A` : null, a.licencias ? `${a.licencias} L` : null].filter(Boolean).join(' · ')}
+      {cerrada ? (
+        <div data-testid={`asistencia-${fila.personaId}`} data-sellado="1" title="Horas selladas al cerrar la quincena. Los días no quedan en la foto."
+          style={{ textAlign: 'right', fontSize: '11px', lineHeight: '13px', color: V.apagado }}>
+          <div>{l.horas == null ? (sinSello(l) ?? '—') : `${nHoras(l.horas)} h selladas`}</div>
         </div>
-      </div>
-      <div data-testid={`sueldo-${fila.personaId}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-        <CeldaTarifa fila={fila} quincena={quincena} pct={pct} sinValor="cargar sueldo" />
-        {l.netoMensual == null && (
-          <span style={{ fontSize: '10.5px', color: l.cobra == null ? V.warn : V.apagado }}>
-            {/* EL RÓTULO ÚNICO DEL MENSUAL SIN NETO (`cobroMensual.ts`): «mensual · importe no cargado» o su origen. */}
-            {rotuloDelMensual(l) ?? 'mensual'}
-          </span>
-        )}
-      </div>
+      ) : (
+        <div data-testid={`asistencia-${fila.personaId}`} title="Referencia: un mensual no cobra por hora."
+          style={{ textAlign: 'right', fontSize: '11px', lineHeight: '13px', color: V.apagado }}>
+          <div>{`${a.dias} día${a.dias === 1 ? '' : 's'} · ${nHoras(a.horas)} h`}</div>
+          <div style={{ color: a.ausencias > 0 ? V.warn : V.tenue }}>
+            {a.ausencias + a.licencias === 0 ? 'sin ausencias' : [a.ausencias ? `${a.ausencias} A` : null, a.licencias ? `${a.licencias} L` : null].filter(Boolean).join(' · ')}
+          </div>
+        </div>
+      )}
+      {cerrada ? (
+        // LO LIQUIDADO EN LA QUINCENA, CON SU CUENTA SELLADA. No es un sueldo mensual y no se rotula como tal.
+        <div data-testid={`sueldo-${fila.personaId}`} data-sellado="1"
+          title={l.cobra == null ? 'Sin línea sellada en esta quincena cerrada.' : 'Lo liquidado en esta quincena, sellado al cerrarla. No es el sueldo del mes.'}
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', color: l.cobra == null ? V.tenue : V.apagado }}>
+          <span style={{ fontSize: l.cobra == null ? '11px' : undefined }}>{l.cobra == null ? (sinSello(l) ?? '—') : pesos(l.cobra)}</span>
+          {l.cobra != null && l.horas != null && l.valorHora != null && (
+            <span style={{ fontSize: '10.5px' }}>{`quincena · ${nHoras(l.horas)} h × ${pesos(l.valorHora)}`}</span>
+          )}
+        </div>
+      ) : (
+        <div data-testid={`sueldo-${fila.personaId}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+          <CeldaTarifa fila={fila} quincena={quincena} pct={pct} sinValor="cargar sueldo" />
+          {l.netoMensual == null && (
+            <span style={{ fontSize: '10.5px', color: l.cobra == null ? V.warn : V.apagado }}>
+              {/* EL RÓTULO ÚNICO DEL MENSUAL SIN NETO (`cobroMensual.ts`): «mensual · importe no cargado» o su origen. */}
+              {rotuloDelMensual(l) ?? 'mensual'}
+            </span>
+          )}
+        </div>
+      )}
       {/* RECIBO BLANCO: lo que va por banco. */}
       <div data-testid={`banco-mensual-${fila.personaId}`} title={recibo.titulo}
         style={{ ...DERECHA, color: p.banco == null ? V.tenue : V.tinta, fontSize: p.banco == null ? '11px' : undefined }}>{recibo.texto}</div>
       <CeldaPagado campo="pagadoBanco" fila={fila} edicion={edicion} />
-      <CeldaSaldo fila={fila} lado="banco" pago={p} sinDato={FALTA_RECIBO} />
+      <CeldaSaldo fila={fila} lado="banco" pago={p} sinDato={sinSaldoCerrada ?? FALTA_RECIBO} />
       {/* EFECTIVO: sueldo − recibo. */}
-      <div data-testid={`efectivo-mensual-${fila.personaId}`} title={p.negro == null ? FALTA_RECIBO.titulo : `sueldo ${pesos(p.sueldo)} − recibo ${pesos(p.banco)}`}
+      <div data-testid={`efectivo-mensual-${fila.personaId}`} title={p.negro == null ? (fila.cerrada ? recibo.titulo : FALTA_RECIBO.titulo) : `sueldo ${pesos(p.sueldo)} − recibo ${pesos(p.banco)}`}
         style={{ ...DERECHA, color: p.negro == null ? V.tenue : V.tinta, fontSize: p.negro == null ? '11px' : undefined }}>
-        {p.negro == null ? FALTA_RECIBO.texto : pesos(p.negro)}
+        {p.negro == null ? (fila.cerrada ? recibo.texto : FALTA_RECIBO.texto) : pesos(p.negro)}
       </div>
       <CeldaPagado campo="pagadoEfectivo" fila={fila} edicion={edicion} />
-      <CeldaSaldo fila={fila} lado="efectivo" pago={p} sinDato={FALTA_RECIBO} />
+      <CeldaSaldo fila={fila} lado="efectivo" pago={p} sinDato={sinSaldoCerrada ?? FALTA_RECIBO} />
       {/* RESTO DEL CÁLCULO. */}
       <CeldaPresentismo fila={fila} />
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -108,7 +138,7 @@ export function FilaMensual({ fila, columnas, edicion, pct, abrir }: {
       </div>
       <CeldaTotal fila={fila} edicion={edicion} />
       <CeldaPagadoTotal fila={fila} pago={p} />
-      <CeldaSaldo fila={fila} lado="total" pago={p} sinDato={{ texto: 'sin sueldo', titulo: 'Sin sueldo cargado no hay saldo que afirmar.' }} />
+      <CeldaSaldo fila={fila} lado="total" pago={p} sinDato={sinSaldoCerrada ?? { texto: 'sin sueldo', titulo: 'Sin sueldo cargado no hay saldo que afirmar.' }} />
       <CeldaSaldoRedondeado fila={fila} pago={p} />
     </div>
   )
