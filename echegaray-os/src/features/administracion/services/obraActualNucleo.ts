@@ -135,9 +135,26 @@ export async function cambiarObraActualCon(
   // alguien, que otro lo moviera después, y un Cmd+Z devolvía la obra vieja por encima. Ahora, si viene
   // `esperado`, la obra vigente hoy tiene que ser la que la grilla mostraba.
   //
-  // NO ES ATÓMICO, Y SE DICE: un cambio de obra cierra, borra e inserta tramos; no es un `update` al que se le
-  // pueda agregar la condición. Queda una ventana chica entre esta lectura y la escritura. Si no coincide, el
-  // mensaje no acusa a nadie: la grilla puede mostrar un tramo que el servidor lee distinto.
+  // NO ES ATÓMICO, Y NO PROTEGE DOS ESCRITURAS SIMULTÁNEAS: un cambio de obra cierra, borra e inserta tramos;
+  // no es un `update` al que se le pueda agregar la condición. Esto frena al deshacer que llega con la grilla
+  // vieja, nada más. Si no coincide, el mensaje no acusa a nadie: la grilla puede mostrar un tramo que el
+  // servidor lee distinto.
+  //
+  // ═══ DEFECTO ABIERTO, PREEXISTENTE: DOBLE ASIGNACIÓN SIMULTÁNEA (auditoría, 18/09/2026) ═══
+  //
+  // Medido por el auditor independiente: entre la lectura de `leerAbiertas` y las escrituras de abajo pasan
+  // 300–450 ms, y en 24 de 24 rondas de dos cambios simultáneos sobre la misma persona, la persona quedó con DOS
+  // asignaciones abiertas —en dos obras a la vez—. No lo introdujo el deshacer: dos movimientos hacia adelante
+  // hacen exactamente lo mismo. Las dos escrituras leen «tiene una abierta en A», las dos la cierran, y cada
+  // una inserta la suya. El costo es real: las horas de esa persona se imputan a dos obras.
+  //
+  // El arreglo NO es otra comprobación acá: sería otra lectura con la misma ventana. Tampoco es un índice único
+  // por persona sobre `hasta is null`: el diseño ADMITE dos tramos abiertos de la misma persona —el vigente y un
+  // pase programado con `desde` futuro—, y ese índice rompería los pases programados. El que ya existe,
+  // `obra_asignacion_una_vigente`, es por (obra, persona, actividad) y no ve dos obras distintas. El arreglo es
+  // hacer la operación entera en una función de Postgres que serialice por persona (`for update` sobre sus
+  // tramos, o un `pg_advisory_xact_lock` con su id), para que el segundo cambio lea lo que dejó el primero.
+  // Pendiente; no está hecho.
   if (parsed.data.esperado !== undefined) {
     const vigente = abiertas.data
       .filter((a) => !a.desde || a.desde <= hoy)
