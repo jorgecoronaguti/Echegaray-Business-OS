@@ -26,6 +26,7 @@ import { leerPaginado } from './paginar'
 import { armarObra, elegirObra, pasaEstado, rubrosComparables, sinObraDe, type ObraAnalitica, type ObraPanel } from './obras'
 import { leerEconomiaRubros } from './presupuesto'
 import { leerConsumoMensual, leerConsumoPorRubro, ritmoPorObra, type MesDeConsumo, type Ritmo } from './consumo'
+import { leerTipoCosto, type TipoCostoDeObra } from './tipoCosto'
 
 export interface DatosAnaliticas {
   hoy: string
@@ -60,6 +61,12 @@ export interface DatosAnaliticas {
   legible: boolean
   /** `false` = el detalle por rubro (`costo_de_obras_por_rubro`) no se pudo leer. */
   detalleLegible: boolean
+  /**
+   * EL COSTO POR TIPO DE COSTO (Directo · Indirecto), por obra y con el mismo período. `null` = no se
+   * pudo leer: hoy, porque `costo_de_obras_por_tipo_costo` (20260918T1530) todavía no está aplicada en
+   * producción. La pantalla lo dice; no se calcula por otra vía.
+   */
+  tipoCosto: Map<string, TipoCostoDeObra> | null
 }
 
 export const hoySanJuan = (): string =>
@@ -86,10 +93,14 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
   const economia = leerEconomiaRubros(rubros.error ? null : (rubros.data ?? []))
   const ids = ((panel.data ?? []) as ObraPanel[]).map((p) => p.obra_id)
   // EL DETALLE POR RUBRO, CON EL MISMO PERÍODO que el costo: una sola llamada para toda la cartera.
-  const detalle = ids.length && raiz != null
-    ? await supabase.rpc('costo_de_obras_por_rubro', { p_obras: ids, p_desde: rango.desde, p_hasta: rango.hasta, p_neto: true })
-    : null
+  const [detalle, tipo] = ids.length && raiz != null
+    ? await Promise.all([
+      supabase.rpc('costo_de_obras_por_rubro', { p_obras: ids, p_desde: rango.desde, p_hasta: rango.hasta, p_neto: true }),
+      supabase.rpc('costo_de_obras_por_tipo_costo', { p_obras: ids, p_desde: rango.desde, p_hasta: rango.hasta, p_neto: true }),
+    ])
+    : [null, null]
   const consumoPorRubro = detalle && !detalle.error ? leerConsumoPorRubro(detalle.data) : null
+  const tipoCosto = tipo && !tipo.error ? leerTipoCosto(tipo.data) : null
   const cartera = ((panel.data ?? []) as ObraPanel[])
     .map((p) => armarObra({ ...p, n_comprobantes: numero(p.n_comprobantes), avance_pct: numero(p.avance_pct) },
       economia.porObra.get(p.obra_id), porObra?.get(p.obra_id), consumoPorRubro?.get(p.obra_id) ?? null))
@@ -157,5 +168,6 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     })),
     legible: raiz != null,
     detalleLegible: consumoPorRubro != null,
+    tipoCosto,
   }
 }
