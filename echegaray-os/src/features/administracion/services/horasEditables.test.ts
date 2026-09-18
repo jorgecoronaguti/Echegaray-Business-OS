@@ -105,7 +105,12 @@ test('LECTURA: el override sale de `horas_manual`, nunca de la sellada; escalón
   const g = fuente('./liquidacionGuardadas.ts')
   assert.match(g, /horas: overrideDe\(l\.horas_manual\)/)
   assert.match(g, /horasNegro: overrideDe\(l\.horas_negro_manual\)/)
-  assert.ok(!/overrideDe\(l\.horas\)/.test(g), 'MUTACIÓN: la sellada vuelve como manual al reabrir')
+  // SÓLO EL CUERPO DE `overridesDeLinea`: desde el 18/09/2026 el archivo TAMBIÉN lee `l.horas`, pero para armar la
+  // FOTO SELLADA (`lineaSellada`, lo que muestra la quincena cerrada), que no es un override y no vuelve como
+  // «manual» al reabrir. Medir el archivo entero confundía las dos lecturas y dejaba de señalar la mutación real.
+  const overridesDeLinea = g.slice(g.indexOf('const overridesDeLinea ='), g.indexOf('export function formulasDeLinea'))
+  assert.ok(!/overrideDe\(l\.horas\)/.test(overridesDeLinea), 'MUTACIÓN: la sellada vuelve como manual al reabrir')
+  assert.match(g, /const lineaSellada = \(l: LineaGuardada\): LineaSelladaLeida/, 'la foto se lee aparte de los overrides')
   const s = fuente('./liquidacionQuincenaService.ts')
   assert.match(s, /'horas_manual', 'horas_negro_manual'/)
 })

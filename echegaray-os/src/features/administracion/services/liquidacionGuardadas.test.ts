@@ -66,3 +66,24 @@ test('LA FOTO DEL PRESENTISMO Y EL REDONDEO SIGUEN SALIENDO IGUAL', () => {
   assert.equal(presentismosSellados.get('p1')?.estado, 'perdido')
   assert.deepEqual(formulas.get('p1'), { negro: '=9*105' })
 })
+
+test('LA FOTO SELLADA VIAJA POR GRUPO, COLUMNA POR COLUMNA, Y UNA COLUMNA VACÍA ES NULL (18/09/2026)', () => {
+  const { lineasSelladas } = leerGuardadas([{
+    id: 'q1', grupo: 'obreros', estado: 'cerrada', cerrada_en: '2026-09-09',
+    liquidacion_linea: [
+      { persona_id: 'bazan', efectivo_redondeado: null, horas: '9.00', valor_hora: '4300.00', cobra: '38700.00', adelanto: '0.00', ya_transferido: '0.00', por_banco: '0.00', en_efectivo: '38700.00', total: '38700.00' },
+      { persona_id: 'vieja', efectivo_redondeado: null, horas: null, valor_hora: null, cobra: '250000.00', adelanto: '0.00', ya_transferido: '0.00', por_banco: '0.00', en_efectivo: '250000.00', total: '250000.00' },
+    ],
+  }, {
+    id: 'q2', grupo: 'oficina', estado: 'cerrada', cerrada_en: '2026-09-15',
+    liquidacion_linea: [{ persona_id: 'maldonado', efectivo_redondeado: null, horas: '105.00', valor_hora: '8125.00', cobra: '853125.00', adelanto: '0.00', ya_transferido: '0.00', por_banco: '0.00', en_efectivo: '853125.00', total: '853125.00' }],
+  }])
+  assert.deepEqual(lineasSelladas.get('obreros')?.[0], {
+    personaId: 'bazan', horas: 9, valorHora: 4300, cobra: 38700, adelanto: 0, yaTransferido: 0, porBanco: 0, enEfectivo: 38700, total: 38700,
+  })
+  const vieja = lineasSelladas.get('obreros')?.[1]
+  assert.equal(vieja?.horas, null, 'MUTACIÓN: una columna vacía leída como 0')
+  assert.equal(vieja?.valorHora, null)
+  assert.equal(vieja?.cobra, 250000)
+  assert.equal(lineasSelladas.get('oficina')?.[0].cobra, 853125)
+})
