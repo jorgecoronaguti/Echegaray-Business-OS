@@ -100,6 +100,7 @@ export function ObraEnLinea({
     valorAnterior: valor,
     guardar: (v, contexto) => escribir(v, contexto?.esperado),
     formato: (v) => (v === NINGUNA ? 'sin imputar' : v),
+    protegido: true,
   })
 
   useCeldaViva(clave, { actual: () => valorRef.current, aplicar: (v) => setValor(v) })

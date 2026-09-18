@@ -71,6 +71,11 @@ export function DeshacerProvider({ children }: { children: ReactNode }) {
   const cambiarPila = useCallback((siguiente: PilaDeDeshacer) => {
     pilaRef.current = siguiente
     setPila(siguiente)
+    // LA PODA VA CON LA PILA (auditoría D6, 18/09/2026): `revertires` sólo crecía. Cada revertir cierra sobre
+    // su celda, su fila y su acción, así que una tarde clasificando documentos dejaba cientos de clausuras
+    // vivas que ya no se podían usar. Si el paso no está en ninguna de las dos pilas, su revertir se va.
+    const vivos = new Set([...siguiente.deshacer, ...siguiente.rehacer].map((p) => p.id))
+    for (const id of revertires.current.keys()) if (!vivos.has(id)) revertires.current.delete(id)
   }, [])
 
   // OTRA PANTALLA: lo que se editó en otra ruta ya no se ve, y no se deshace a ciegas.
@@ -92,7 +97,13 @@ export function DeshacerProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(t)
   }, [aviso])
 
-  const ejecutar = useCallback(async (accion: AccionDeDeshacer) => {
+  // UNO A LA VEZ (auditoría D7, 18/09/2026). Con dos Cmd+Z seguidos, el segundo tomaba el paso previo mientras
+  // el primero seguía viajando: la celda todavía mostraba el valor intermedio, `hayConflicto` daba true y el paso
+  // se descartaba con «la celda la cambió otra persona» — una afirmación falsa sobre algo que hizo la misma
+  // persona. Mientras hay uno en vuelo, el atajo no toma otro: se ignora, no se encola.
+  const enVuelo = useRef(false)
+
+  const ejecutarUno = useCallback(async (accion: AccionDeDeshacer) => {
     const tomado = accion === 'deshacer' ? tomarParaDeshacer(pilaRef.current) : tomarParaRehacer(pilaRef.current)
     // PILA VACÍA: NO SE PINTA NADA (QA de producción, 15/09/2026: el aviso de pila vacía quedaba segundos en pantalla
     // después de un Ctrl+Z que no tenía nada que hacer).
@@ -132,6 +143,16 @@ export function DeshacerProvider({ children }: { children: ReactNode }) {
     for (const v of enPantalla) v.aplicar?.(destino)
     avisar(textoDelAviso(accion, paso), accion === 'deshacer')
   }, [avisar, cambiarPila])
+
+  const ejecutar = useCallback(async (accion: AccionDeDeshacer) => {
+    if (enVuelo.current) return
+    enVuelo.current = true
+    try {
+      await ejecutarUno(accion)
+    } finally {
+      enVuelo.current = false
+    }
+  }, [ejecutarUno])
 
   useEffect(() => {
     const alTeclear = (e: KeyboardEvent) => {
@@ -205,19 +226,24 @@ export function useGuardadoDeshacible<R extends { ok: boolean }>(opciones: {
   formato?: (valor: string) => string
   /** `''` no vacía la celda (vuelve al calculado) y el servidor verifica `esperado`. Sin esto, no se deshace a `''`. */
   vacioRestaurable?: boolean
+  /**
+   * `guardar` MANDA `contexto.esperado` Y LA ACCIÓN LO COMPRUEBA CONTRA LA BASE. Es una declaración, no se
+   * deduce: el hook no puede saber si la acción mira el contexto. Sin esto, el paso no rehace hacia vacío.
+   */
+  protegido?: boolean
 }): (nuevo: string) => Promise<R> {
   const api = useDeshacer()
   const ref = useRef(opciones)
   useEffect(() => { ref.current = opciones })
   return useCallback(async (nuevo: string) => {
-    const { clave, rotulo, valorAnterior, guardar, formato, vacioRestaurable } = ref.current
+    const { clave, rotulo, valorAnterior, guardar, formato, vacioRestaurable, protegido } = ref.current
     const r = await guardar(nuevo)
     if (r.ok && api) {
       const texto = (v: string) => (formato ? formato(v) : v)
       api.registrar(
         {
           clave, rotulo, anterior: valorAnterior, nuevo, anteriorTexto: texto(valorAnterior), nuevoTexto: texto(nuevo),
-          vacioRestaurable: vacioRestaurable === true,
+          vacioRestaurable: vacioRestaurable === true, protegido: protegido === true,
         },
         async (valor, esperado, accion) => {
           const x = await guardar(valor, { esperado, accion })

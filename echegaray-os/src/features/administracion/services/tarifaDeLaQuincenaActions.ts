@@ -36,6 +36,7 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { permisoDeLiquidacion } from './liquidacionPermiso'
 import { planDeTarifa, type TarifaExistente } from './liquidacionTarifa'
 import { formaEditable, pctDeAumento } from './cuadroDeJornales'
+import { MENSAJE_SIN_CONFIRMAR, coincideConLoEsperado } from '@/shared/lib/pilaDeDeshacer'
 
 const RUTA = '/administracion/personas'
 const ISO = /^\d{4}-\d{2}-\d{2}$/
@@ -48,6 +49,8 @@ const entradaSchema = z.object({
   grupo: z.enum(GRUPOS),
   forma: z.enum(['hora', 'mensual']),
   valor: z.coerce.number().positive('El importe tiene que ser mayor a cero.').finite(),
+  /** Deshacer (auditoría, 18/09/2026): la tarifa que la celda mostraba para esta quincena. */
+  esperado: z.string().optional(),
 })
 
 export type ResultadoTarifa = { ok: true; mensaje: string } | { ok: false; error: string }
@@ -109,6 +112,17 @@ async function escribirTarifa(e: z.infer<typeof entradaSchema>): Promise<Resulta
   if (previas.error) return { ok: false, error: `No pude leer las tarifas: ${previas.error.message}` }
   const existentes: TarifaExistente[] = ((previas.data ?? []) as { desde: string; valor_hora: unknown; neto_mensual: unknown }[])
     .map((t) => ({ desde: t.desde, valorHora: numeroONulo(t.valor_hora), netoMensual: numeroONulo(t.neto_mensual) }))
+
+  // ═══ DESHACER NO PISA OTRA CORRECCIÓN (auditoría, 18/09/2026) ═══
+  //
+  // La vigente para la quincena es la de `desde` más reciente que no la supera — la misma que dibuja la celda.
+  // Si viene `esperado` y la vigente es otra, no se escribe. NO ES ATÓMICO, y se dice: la escritura elige entre
+  // insertar y corregir según el historial, así que la condición no cabe en un solo `where`.
+  if (e.esperado !== undefined) {
+    const vigente = existentes.filter((t) => t.desde <= e.desde).sort((a, b) => b.desde.localeCompare(a.desde))[0]
+    const hoy = vigente ? (e.forma === 'hora' ? vigente.valorHora : vigente.netoMensual) : null
+    if (!coincideConLoEsperado(hoy, e.esperado)) return { ok: false, error: MENSAJE_SIN_CONFIRMAR }
+  }
 
   const plan = planDeTarifa({ existentes, desde: e.desde, forma: e.forma, valor: e.valor, estado })
   if (plan.accion === 'rechazar') return { ok: false, error: plan.error }

@@ -60,6 +60,7 @@ export function EditorObraDeCompra({
     valorAnterior: enBase,
     guardar: (v, contexto) => escribir(v, contexto?.esperado),
     formato: (v) => (v === '' ? 'sin elegir' : v),
+    protegido: true,
   })
 
   useCeldaViva(clave, { actual: () => valorRef.current, aplicar: (v) => setValor(v) })

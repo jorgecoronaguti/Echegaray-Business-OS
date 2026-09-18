@@ -73,7 +73,8 @@ test('LAS CELDAS PROPIAS DE LIQUIDACIÓN REGISTRAN SU GUARDADO', () => {
 
 test('HORAS: MOVER A ALGUIEN DE OBRA SE DESHACE CON LA MISMA ACCIÓN', () => {
   const g = leer('features/administracion/components/GrillaAsistenciaObra.tsx')
-  assert.match(g, /deshacer\?\.registrar\(\{[\s\S]{0,400}cambiarObraActual\(\{ persona_id: fila\.persona\.id, obra_id: v \|\| null \}\)/)
+  // Desde el 18/09/2026 con `esperado`: sin él, un Cmd+Z devolvía la obra vieja encima de quien la movió después.
+  assert.match(g, /deshacer\?\.registrar\(\{[\s\S]{0,700}cambiarObraActual\(\{ persona_id: fila\.persona\.id, obra_id: v \|\| null, esperado \}\)/)
   assert.match(g, /const anterior = mostrada\(fila\)/)
 })
 
@@ -332,4 +333,47 @@ test('(d) DESHACER EL ESTADO DE UN PEDIDO DEVUELVE EL `origen` QUE TENÍA', () =
 test('(e) UN `<select>` CON FOCO NO BLOQUEA EL ATAJO', () => {
   const l = leer('shared/lib/pilaDeDeshacer.ts')
   assert.ok(!/t === 'SELECT'/.test(l), 'MUTACIÓN: volver a tratar el select como editable')
+})
+
+// ═══ AUDITORÍA 18/09/2026, TERCERA VUELTA (D1): LA AFIRMACIÓN NO PUEDE SER MÁS GRANDE QUE LO PROTEGIDO ═══
+//
+// `pilaDeDeshacer.ts` decía que TODA escritura de deshacer viajaba con `esperado`. Nueve superficies no lo
+// mandaban. Ahora el texto nombra cuáles están protegidas y cuáles no; este test sostiene las dos mitades.
+//
+// MUTACIÓN QUE LO PONE ROJO: volver a escribir «TODA escritura … viaja con `esperado`», o sacarle el `esperado`
+// a una de las tres superficies que se cerraron.
+
+test('(D1) LA AFIRMACIÓN NOMBRA LO PROTEGIDO Y LO QUE NO, Y LAS TRES SUPERFICIES CERRADAS MANDAN `esperado`', () => {
+  const pila = leer('shared/lib/pilaDeDeshacer.ts')
+  assert.ok(!/TODA escritura de deshacer o\s*\/\/\s*rehacer viaja con `esperado`/.test(pila), 'MUTACIÓN: volvió la afirmación falsa')
+  // Las superficies SIN comprobación de servidor están nombradas, y existen: un nombre que ya no existe
+  // haría que el texto mintiera en silencio.
+  for (const n of ['EditorCeldaAsistencia', 'CeldasDelEspejo', 'FilaWbs', 'PanelTarea', 'CeldaCategoriaDocumento', 'PanelDocumento', 'FormularioParte']) {
+    assert.match(pila, new RegExp('`' + n + '`'), `la afirmación no nombra ${n}`)
+    assert.ok(archivos(SRC).some((p) => p.endsWith(`/${n}.tsx`)), `${n} ya no existe: la afirmación quedó vieja`)
+  }
+  // Horas, obra de la persona y tarifa: la vuelta viaja con `esperado` y el servidor lo compara.
+  const grilla = leer('features/administracion/components/GrillaAsistenciaObra.tsx')
+  assert.match(grilla, /escribirCeldaDeHoras\(\{ obraId, personaId: fila\.persona\.id, fecha, valor: v, esperado \}\)/)
+  assert.match(leer('features/administracion/services/jornadaPorObraActions.ts'), /coincideConLoEsperado\(horasHoy, esperado\)/)
+  assert.match(leer('features/administracion/services/obraActualNucleo.ts'), /coincideConLoEsperado\(vigente, parsed\.data\.esperado\)/)
+  assert.match(leer('features/administracion/components/liquidacion/cuadro/CeldaTarifa.tsx'), /forma: f, valor: n, esperado \}\)/)
+  assert.match(leer('features/administracion/services/tarifaDeLaQuincenaActions.ts'), /coincideConLoEsperado\(hoy, e\.esperado\)/)
+  // Las tres de lectura fresca NO acusan a nadie: el mensaje es el que siempre es cierto.
+  for (const a of ['features/administracion/services/jornadaPorObraActions.ts', 'features/administracion/services/obraActualNucleo.ts', 'features/administracion/services/tarifaDeLaQuincenaActions.ts']) {
+    assert.match(leer(a), /MENSAJE_SIN_CONFIRMAR/, `${a}: el conflicto por lectura fresca no puede decir «otra persona»`)
+  }
+})
+
+test('(D2) LA CELDA DE HORAS NO ESTÁ MARCADA `protegido`: SU VACIADO NO COMPARA, ASÍ QUE LA PILA NUNCA LA VACÍA', () => {
+  const g = leer('features/administracion/components/GrillaAsistenciaObra.tsx')
+  const registroDeHoras = g.slice(g.indexOf('const registrarDeshacerDeHoras'), g.indexOf('const registrarDeshacerDeHoras') + 900)
+  assert.ok(!/protegido/.test(registroDeHoras), 'MUTACIÓN: marcar protegida la celda de horas deja rehacer un vaciado sin comprobar')
+})
+
+test('(D6, D7) EL PROVEEDOR PODA LOS REVERTIRES Y NO TOMA UN SEGUNDO PASO CON UNO EN VUELO', () => {
+  const d = leer('shared/components/deshacer/DeshacerProvider.tsx')
+  assert.match(d, /for \(const id of revertires\.current\.keys\(\)\) if \(!vivos\.has\(id\)\) revertires\.current\.delete\(id\)/)
+  assert.match(d, /if \(enVuelo\.current\) return\n\s*enVuelo\.current = true/)
+  assert.match(d, /finally \{\n\s*enVuelo\.current = false/)
 })

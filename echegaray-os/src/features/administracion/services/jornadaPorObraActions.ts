@@ -27,6 +27,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { MENSAJE_SIN_CONFIRMAR, coincideConLoEsperado } from '@/shared/lib/pilaDeDeshacer'
 import { jornadaPorDefecto } from './jornadaPorDefecto'
 import { tipoDeMotivo } from './motivoDeAusencia'
 import { FUENTE_CORRECCION_HORAS } from './presenciaDelDia'
@@ -85,7 +86,7 @@ async function conEvidenciaDeHoras(
 export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada> {
   const parsed = envioSchema.safeParse(entrada)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
-  const { obra_id: obraId, fecha, marcas, vaciar } = parsed.data
+  const { obra_id: obraId, fecha, marcas, vaciar, esperado } = parsed.data
 
   const supabase = await createClient()
 
@@ -131,6 +132,23 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
     .order('id', { ascending: true })
   if (previos.error) return { ok: false, error: previos.error.message }
   const existentes = (previos.data ?? []) as FilaExistente[]
+
+  // ═══ DESHACER NO PISA LO QUE CAMBIÓ (auditoría, 18/09/2026) ═══
+  //
+  // Antes el deshacer de la grilla escribía sin mirar: si la oficina cargaba 9 mientras el jefe deshacía su 8,
+  // el 8 viejo le ganaba. Ahora, si viene `esperado`, se compara con la suma de horas que esta misma lectura
+  // trae para esa persona en esta obra ese día — que es lo que la celda dibuja.
+  //
+  // NO ES ATÓMICO, Y SE DICE: entre esta lectura y la escritura de abajo queda una ventana chica. La escritura
+  // de una jornada no es un `update` de una columna (inserta, corrige, borra y respeta la quincena cerrada), así
+  // que no se puede meter la condición en el `where` sin partir esas reglas. Y si no coincide, el mensaje no
+  // acusa a nadie: la suma puede diferir de lo dibujado por un redondeo sin que nadie haya tocado nada.
+  if (esperado !== undefined) {
+    if (marcas.length !== 1 || vaciar.length > 0) return { ok: false, error: 'El deshacer escribe una sola celda por vez.' }
+    const deLaPersona = existentes.filter((f) => f.persona_id === marcas[0].persona_id)
+    const horasHoy = deLaPersona.length ? deLaPersona.reduce((s, f) => s + Number(f.horas ?? 0), 0) : null
+    if (!coincideConLoEsperado(horasHoy, esperado)) return { ok: false, error: MENSAJE_SIN_CONFIRMAR }
+  }
 
   // LAS FILAS SIN OBRA DE ESAS PERSONAS ESE DÍA. Sin esta lectura no se puede saber si la ausencia
   // ya estaba registrada, y marcar «A» dos veces escribiría dos filas: la clave única de

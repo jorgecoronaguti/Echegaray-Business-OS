@@ -381,7 +381,7 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
           clave: `redondeo-${personaId}`, rotulo: 'Efectivo redondeado', anterior, nuevo,
           anteriorTexto: anterior === '' ? 'sugerido' : pesos(Number(anterior)), nuevoTexto: nuevo === '' ? 'sugerido' : pesos(Number(nuevo)),
           // `''` = vuelve al sugerido, no una celda vacía; y la acción verifica `esperado`.
-          vacioRestaurable: true,
+          vacioRestaurable: true, protegido: true,
         }, (v, esperado) => guardarEfectivoRedondeado({ ...quincena, grupo, persona_id: personaId, importe: v, esperado }))
       }
     })

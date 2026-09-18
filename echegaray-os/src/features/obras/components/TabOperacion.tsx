@@ -187,7 +187,7 @@ function SelectActividad({
   }
 
   const guardarDeshacible = useGuardadoDeshacible({
-    clave, rotulo, valorAnterior: elegida, formato: nombre,
+    clave, rotulo, valorAnterior: elegida, formato: nombre, protegido: true,
     guardar: async (v, contexto) => {
       const r = await alElegir(v, contexto?.esperado)
       return r.ok ? { ok: true as const } : { ok: false as const, error: r.error }

@@ -70,10 +70,12 @@ export function CeldaTarifa({ fila, quincena, pct, sinValor = 'sin tarifa' }: {
           clave: `tarifa-${fila.personaId}`, rotulo: `${f === 'mensual' ? 'Neto mensual' : '$/h negro'} de ${fila.nombre}`,
           anterior: actual == null ? '' : String(actual), nuevo: String(valor),
           anteriorTexto: pesos(actual), nuevoTexto: pesos(valor),
-        }, async (v) => {
+          protegido: true,
+        }, async (v, esperado) => {
           const n = Number(v)
           if (v === '' || !(n > 0)) return { ok: false, error: 'no había un valor anterior que restaurar' }
-          return registrarTarifaDesdeLaQuincena({ ...quincena, grupo: fila.grupo, persona_id: fila.personaId, forma: f, valor: n })
+          // CON `esperado` (auditoría, 18/09/2026): si otra persona corrigió la tarifa, no se pisa.
+          return registrarTarifaDesdeLaQuincena({ ...quincena, grupo: fila.grupo, persona_id: fila.personaId, forma: f, valor: n, esperado })
         })
       } else setError(r.error)
     })

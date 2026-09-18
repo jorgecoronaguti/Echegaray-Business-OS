@@ -28,12 +28,17 @@
 //   · CON `esperado` COMPROBADO DENTRO DE LA ESCRITURA (no hay ventana): actividad y estado del pedido, campo
 //     de partida, rol del documento (`actualizarSiSigueIgual`), obra de una compra (su RPC lo hace en la base)
 //     y las dos celdas de Liquidación.
-//   · CON `esperado` COMPROBADO CONTRA UNA LECTURA FRESCA DEL SERVIDOR, no atómica: horas del día, obra de la
-//     persona y tarifa de la quincena. La escritura de esas tres no es un `update` sobre una celda —son tramos
-//     de asignación y jornadas—, así que queda una ventana chica entre leer y escribir. Está dicho en cada una.
-//   · SIN COMPROBACIÓN DE SERVIDOR: el resto de los consumidores de `InlineEdit` que pasan un `guardar` de un
-//     solo argumento, y `FormularioParte`. Ahí frena sólo la celda viva (la pantalla), y por eso esos pasos
-//     NUNCA pueden escribir un vacío: ver `protegido` y `motivoParaNoRestaurar`.
+//   · CON `esperado` COMPROBADO CONTRA UNA LECTURA FRESCA DEL SERVIDOR, no atómica: obra de la persona
+//     (`cambiarObraActual`), tarifa de la quincena (`registrarTarifaDesdeLaQuincena`) y horas del día cuando se
+//     escribe un número (`guardarJornada`). Sus escrituras no son un `update` de una columna —tramos de
+//     asignación, historial de tarifas, jornadas—, así que queda una ventana chica entre leer y escribir. Está
+//     dicho en cada una, y si no coincide dicen «no pude confirmar», no «la cambió otra persona».
+//   · EL VACIADO DE HORAS NO SE COMPRUEBA: `corregirJornada` no recibe `esperado`. Por eso esa celda NO está
+//     marcada `protegido`, y la pila nunca la manda a vaciar ni deshaciendo ni rehaciendo.
+//   · SIN COMPROBACIÓN DE SERVIDOR: los consumidores de `InlineEdit` que pasan un `guardar` de un solo argumento
+//     (`EditorCeldaAsistencia`, `CeldasDelEspejo`, `FilaWbs`, `PanelTarea`, `CeldaCategoriaDocumento`,
+//     `PanelDocumento`) y `FormularioParte`. Ahí frena sólo la celda viva (la pantalla, que puede estar
+//     atrasada), y por eso esos pasos NUNCA escriben un vacío: ver `protegido` y `motivoParaNoRestaurar`.
 //
 // ═══ NUNCA SE VACÍA UNA CELDA (auditoría del 18/09/2026) ═══
 //
@@ -53,6 +58,13 @@ import { leerNumeroEsAR } from './numeroEsAR.ts'
 export const LIMITE_DE_PASOS = 50
 export const MENSAJE_CONFLICTO = 'la celda la cambió otra persona: no se deshizo'
 export const MENSAJE_SIN_ANTERIOR = 'no había un valor anterior que restaurar: no se deshizo'
+/**
+ * LO QUE SE DICE CUANDO LA COMPROBACIÓN ES UNA LECTURA FRESCA Y NO COINCIDE (horas, obra de la persona, tarifa).
+ * Ahí la lectura del servidor reconstruye lo que la celda muestra, y puede diferir por cálculo —un redondeo, un
+ * tramo— sin que nadie haya tocado nada. Decir «la cambió otra persona» sería afirmar lo que no se comprobó; esto
+ * es siempre cierto.
+ */
+export const MENSAJE_SIN_CONFIRMAR = 'no pude confirmar que la celda siga igual: no se deshizo. Recargá y fijate.'
 /** Rehacer un vaciado en una celda que no avisa si otra mano la tocó: no se vacía a ciegas. */
 export const MENSAJE_SIN_RESGUARDO = 'esta celda no puede comprobar quién la cambió: no se vació'
 

@@ -129,6 +129,7 @@ export function CeldaEditable({
     valorAnterior: vigente,
     guardar: escribir,
     formato: (x) => (x === '' ? placeholder : x),
+    protegido: true,
   })
 
   useCeldaViva(clave, {

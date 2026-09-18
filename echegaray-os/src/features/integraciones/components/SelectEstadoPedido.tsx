@@ -46,6 +46,7 @@ export function SelectEstadoPedido({ p }: { p: PedidoGlobal }) {
     rotulo: `Estado del pedido ${p.id_pedido}`,
     valorAnterior: estado ?? '',
     formato: (v) => lecturaPedido(v).label,
+    protegido: true,
     guardar: async (v, contexto) => {
       const fd = new FormData()
       fd.set('id_pedido', p.id_pedido)
