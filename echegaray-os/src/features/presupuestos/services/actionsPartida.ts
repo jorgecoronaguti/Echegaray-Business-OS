@@ -24,7 +24,8 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { MENSAJE_CONFLICTO, coincideConLoEsperado } from '@/shared/lib/pilaDeDeshacer'
+import { MENSAJE_CONFLICTO } from '@/shared/lib/pilaDeDeshacer'
+import { actualizarSiSigueIgual } from '@/shared/lib/escrituraCondicional'
 // Ver `./accion`: un archivo `'use server'` no puede exportar una constante.
 import type { EstadoAccion, Resultado } from './accion'
 
@@ -129,18 +130,30 @@ export async function editarCampoPartida(_prev: EstadoAccion, form: FormData): P
   // permiso económico, no el estado— así que el freno vive acá. Se verifica contra la base y no
   // contra lo que dice la pantalla: la misma acción entra por un formulario y mañana por el chat.
   const { data: cong } = await c.from('cotizacion_partida')
-    .select(`cotizacion_id, ${campo}, cotizaciones!inner(congelada_en)`).eq('id', partida_id).maybeSingle()
+    .select('cotizacion_id, cotizaciones!inner(congelada_en)').eq('id', partida_id).maybeSingle()
   const congelada = (cong as { cotizaciones?: { congelada_en?: string | null } } | null)?.cotizaciones?.congelada_en
   if (congelada) {
     return { error: 'Este presupuesto está congelado: para cambiarlo se crea una versión nueva.' }
   }
 
-  // DESHACER NO PISA LO QUE CAMBIÓ (18/09/2026): con `esperado` —lo que la celda mostraba— se escribe sólo
-  // si la base todavía tiene eso. Si otra persona corrigió la misma celda en el medio, se rechaza y se dice.
+  // DESHACER NO PISA LO QUE CAMBIÓ (18/09/2026): con `esperado` —lo que la celda mostraba— se escribe sólo si
+  // la base todavía tiene eso, y la comparación va DENTRO del update. Leerla antes y escribir después dejaría
+  // pasar a dos personas que deshacen la misma celda a la vez.
   const esperado = form.get('esperado')
   if (esperado !== null) {
-    const hoy = (cong as Record<string, unknown> | null)?.[campo]
-    if (!coincideConLoEsperado(hoy, String(esperado))) return { error: MENSAJE_CONFLICTO }
+    const r = await actualizarSiSigueIgual(c, {
+      tabla: 'cotizacion_partida',
+      donde: { id: partida_id },
+      campo,
+      esperado: String(esperado),
+      tipo: (CAMPOS_NUMERO as readonly string[]).includes(campo) ? 'numero' : 'texto',
+      cambios: { [campo]: valor },
+    })
+    if (r.estado === 'conflicto') return { error: MENSAJE_CONFLICTO }
+    if (r.estado === 'no_existe') return { error: 'Esa partida ya no existe.' }
+    if (r.estado === 'error') return { error: r.error }
+    if (cotizacion_id) revalidatePath(`${RAIZ}/${cotizacion_id}`, 'layout')
+    return { error: null, ok: true }
   }
 
   const { error: e } = await c.from('cotizacion_partida').update({ [campo]: valor }).eq('id', partida_id)
