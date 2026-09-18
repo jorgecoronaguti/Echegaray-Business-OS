@@ -416,3 +416,9 @@ test('pactadoDesdeFormula: sólo las dos formas conocidas; lo demás es null con
   assert.equal(pactadoDesdeFormula('=C46*2', v({ C46: 1 })).pactado, null)
   assert.match(pactadoDesdeFormula('=$C$46*MAX(1;B48)', v({ C46: '' })).motivo, /no tiene un importe/)
 })
+
+test('MES PARCIAL · lo pactado se lee también de la fórmula NUEVA de Proyectado (18/09, «total − pagado»)', () => {
+  const nueva = '=IF(N($B$59)=0;"";IF(E69<$E$59;"";IF($B$59*IFERROR(IF(ISNUMBER(B69);B69;1);1)-N(C69)<1;"";$B$59*IFERROR(IF(ISNUMBER(B69);B69;1);1)-N(C69))))'
+  assert.deepEqual(pactadosDelBloque([nueva], grilla({ B59: 9000000, B69: '' })), [9000000])
+  assert.deepEqual(pactadosDelBloque([nueva], grilla({ B59: 9000000, B69: 1.019 })), [9171000])
+})

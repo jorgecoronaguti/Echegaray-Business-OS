@@ -72,6 +72,7 @@
 
 import { expresionPagoDelMes } from './jornales-fecha-pago.mjs'
 import { COMPRAS, columnasDe, rangoEncabezado } from './columnas-por-encabezado.mjs'
+import { condicionesPagoNC, refsPagosNC, RUBROS_PAGOS_NC, periodoDe } from './pagos-no-compra.mjs'
 
 /** Las tres personas de Dirección. Definidas UNA vez: de acá salen el rótulo, el regex y el total. */
 export const NOMBRES_DIRECCION = ['Jorge Echegaray', 'Rodrigo Echegaray', 'Jorge Corona']
@@ -258,10 +259,25 @@ function condicionesPagoDelMes(r, mes, anio, nombres = NOMBRES_DIRECCION) {
   ]
 }
 
-/** NÚCLEO PURO: lo REALMENTE pagado a Dirección en un mes, según Compras. */
+/**
+ * NÚCLEO PURO: lo REALMENTE pagado a Dirección en un mes — según Compras Y según `_PAGOS_NO_COMPRA_RAW`.
+ *
+ * ═══ LA SEGUNDA FUENTE (18/09/2026) ═══
+ *
+ * El dueño, sobre los retiros parciales de agosto: *«ok, no en compras»*. Un retiro no tiene
+ * comprobante y no va al registro de facturas; va a la pestaña de pagos sin compra, con su fecha real
+ * de débito, su referencia bancaria y el PERÍODO que paga. Compras sigue sumando por lo que ya tiene
+ * (las tres filas de julio, 779–781): cambiar de fuente no puede borrar un mes que ya se pagó.
+ *
+ * El período es explícito —"2026-08"— y no se infiere de la fecha: el retiro de agosto se paga en
+ * septiembre, y un pago parcial puede caer en cualquier semana. La ventana por fecha es el criterio
+ * de Compras porque ahí no hay otra cosa; acá el dato lo dice.
+ */
 function formulaPagadoMes(r, mes, anio, nombres = NOMBRES_DIRECCION) {
   return `=SUMPRODUCT(${condicionesPagoDelMes(r, mes, anio, nombres).join('*')}`
     + `*IF(ISNUMBER(${r.importe});${r.importe};0))`
+    + `+SUMPRODUCT(${condicionesPagoNC(RUBROS_PAGOS_NC.direccion, periodoDe(anio, mes)).join('*')}`
+    + `*IF(ISNUMBER(${refsPagosNC.importe});${refsPagosNC.importe};0))`
 }
 
 /**
@@ -302,7 +318,12 @@ function formulaSePagaElDireccion(r, mes, anio, nombres = NOMBRES_DIRECCION) {
   // M+1, que es exactamente cuando sale el retiro. Medido: julio → WORKDAY(31/07;1) = lun 03/08, y el
   // banco pagó los honorarios el 03/08.
   const prevista = expresionPagoDelMes(anio, mes)
-  return `=IFERROR(MAX(FILTER(${r.fechaCaja};${condicionesPagoDelMes(r, mes, anio, nombres).join(';')}));${prevista})`
+  // LAS DOS FUENTES, Y EL MÁXIMO DE LAS DOS (18/09/2026): el mes se termina de pagar cuando salió el
+  // último peso, venga de Compras o de la pestaña de pagos sin compra. Cada FILTER cae a 0 si no
+  // encuentra nada, y si las dos dan 0 el mes todavía se debe: vale la prevista.
+  const deCompras = `IFERROR(MAX(FILTER(${r.fechaCaja};${condicionesPagoDelMes(r, mes, anio, nombres).join(';')}));0)`
+  const deNC = `IFERROR(MAX(FILTER(${refsPagosNC.fecha};${condicionesPagoNC(RUBROS_PAGOS_NC.direccion, periodoDe(anio, mes)).join(';')}));0)`
+  return `=IF(MAX(${deCompras};${deNC})>0;MAX(${deCompras};${deNC});${prevista})`
 }
 
 /**
@@ -351,8 +372,27 @@ export const formulaProyectadoMes = (celdaPago, celdaPagado, celdaTotal, celdaDe
   // segundo rompe el total. Sin factor usable se proyecta SIN ajuste, que es de menos y se ve.
   const factor = celdaFactor ? `IFERROR(IF(ISNUMBER(${celdaFactor});${celdaFactor};1);1)` : null
   const monto = factor ? `${celdaTotal}*${factor}` : celdaTotal
-  return `=IF(N(${celdaTotal})=0;"";IF(N(${celdaPagado})>0;"";IF(${celdaPago}<${celdaDesde};"";${monto})))`
+  // ═══ UN MES PAGADO EN PARTE PROYECTA EL RESTO, NO NADA (18/09/2026) ═══
+  //
+  // Era `IF(N(pagado)>0;"";monto)`: cualquier peso pagado apagaba el mes entero. Con tres pagos
+  // parciales de agosto ($1.800.000 de $9.000.000) la celda quedaba en blanco y $7.200.000 que se
+  // siguen debiendo desaparecían del Cash Flow sin un error. Ahora proyecta `monto − pagado`, que es
+  // la misma cuenta que hace Oficina (`MAX(0; ajustada − N(pagado))`), y se apaga sola —con ""— recién
+  // cuando no queda un peso. El libro lee lo pactado de esta misma fórmula (`pactadoDesdeFormula`):
+  // la forma «total × factor» se conserva tal cual.
+  const resto = `${monto}-N(${celdaPagado})`
+  return `=IF(N(${celdaTotal})=0;"";IF(${celdaPago}<${celdaDesde};"";IF(${resto}<1;"";${resto})))`
 }
+
+/**
+ * NÚCLEO PURO: el estado de un mes del bloque, deducido de sus dos celdas de plata.
+ *
+ * TRES ESTADOS, COMO OFICINA: «pagado» (hay pagado y no queda resto), «parcial» (hay pagado y queda
+ * resto) y «proyección» (nada pagado, hay resto). Vacío cuando no hay ni una cosa ni la otra. Sale
+ * de C y H, así que no puede contradecirlas.
+ */
+export const formulaEstadoMes = (celdaPagado, celdaProyectado) =>
+  `=IF(N(${celdaPagado})=0;IF(N(${celdaProyectado})>0;"proyección";"");IF(N(${celdaProyectado})>0;"parcial";"pagado"))`
 
 // ═══ LO QUE LEE EL CASH FLOW ═══
 //
