@@ -26,6 +26,7 @@ import { filaGrid, PERSONA_ESTIRADA } from './TablaDeBloques'
 import { SaldoTotal, type EdicionDeFila } from './FilasJornaleros'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { rotuloDelMensual } from '../../../services/cobroMensual'
+import { sinSello } from './estadoDelPago'
 import {
   asistenciaDeReferencia, efectivoDelRedondeo, pagoDelMensual, type PagoDelMensual, type TotalesDeMensuales,
 } from '../../../services/liquidacionPorTipo'
@@ -40,7 +41,8 @@ const DERECHA = { textAlign: 'right' as const, whiteSpace: 'nowrap' as const, ov
 /** «Recibo $663.141» / «sin recibo todavía», y de dónde sale. */
 export function textoDelRecibo(p: PagoDelMensual, reciboSinGiro: boolean): { texto: string; titulo: string } {
   if (p.banco == null) return { texto: 'sin recibo todavía', titulo: 'El estudio todavía no liquidó el recibo de esta quincena.' }
-  const origen = p.origenBanco === 'manual' ? 'escrito a mano' : p.origenBanco === 'giro' ? 'girado según el extracto'
+  const origen = p.origenBanco === 'sellado' ? 'por banco según la foto sellada al cerrar la quincena'
+    : p.origenBanco === 'manual' ? 'escrito a mano' : p.origenBanco === 'giro' ? 'girado según el extracto'
     : reciboSinGiro ? 'recibo del estudio · el extracto todavía no muestra el giro' : 'recibo del estudio'
   return { texto: pesos(p.banco), titulo: origen }
 }
@@ -63,7 +65,10 @@ export function FilaMensual({ fila, columnas, edicion, pct, abrir }: {
         detalle={(
           <div data-testid={`categorias-${fila.personaId}`}>
             <RenglonDelDetalle>{`${l.esJefe ? 'Jefe de obra' : 'Mensual'} · cobra por mes`}</RenglonDelDetalle>
-            <RenglonDelDetalle titulo={recibo.titulo}>{p.banco == null ? 'Recibo: sin recibo todavía' : `Recibo: ${recibo.texto}`}</RenglonDelDetalle>
+            <RenglonDelDetalle titulo={recibo.titulo}>
+              {/* LA CERRADA DICE «Banco», NO «Recibo»: lo sellado es lo girado, y un recibo del estudio no es un giro. */}
+              {p.banco == null ? (sinSello(l) ?? 'Recibo: sin recibo todavía') : `${p.origenBanco === 'sellado' ? 'Banco' : 'Recibo'}: ${recibo.texto}`}
+            </RenglonDelDetalle>
           </div>
         )} />
       {/* SUELDO. La asistencia es referencia: no cobra por ella. */}

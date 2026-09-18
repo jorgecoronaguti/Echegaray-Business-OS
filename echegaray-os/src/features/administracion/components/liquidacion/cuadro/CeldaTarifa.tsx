@@ -18,6 +18,7 @@ import { pesos } from '../formato'
 import { leerNumeroEsAR } from '@/shared/lib/numeroEsAR'
 import { useDeshacer } from '@/shared/components/deshacer/DeshacerProvider'
 import { formaEditable } from '../../../services/cuadroDeJornales'
+import { sinSello } from './estadoDelPago'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { registrarTarifaDesdeLaQuincena } from '../../../services/tarifaDeLaQuincenaActions'
 
@@ -112,7 +113,11 @@ export function CeldaTarifa({ fila, quincena, pct, sinValor = 'sin tarifa' }: {
       ) : (
         // EL MISMO TESTID QUE EL BOTÓN: en una quincena cerrada la celda no se escribe, pero el valor tiene que poder
         // medirse igual (17/09/2026: el «—» de las quincenas anteriores no lo veía ningún test porque no tenía testid).
-        <span data-testid={`tarifa-${fila.personaId}`} data-solo-lectura="1" style={{ color: V.apagado }}>{actual == null ? '—' : pesos(actual)}</span>
+        // SIN VALOR EN LA CERRADA SE DICE POR QUÉ (18/09/2026): «sin dato sellado» o «sin línea sellada», nunca la tarifa de hoy.
+        <span data-testid={`tarifa-${fila.personaId}`} data-solo-lectura="1" data-sin-sello={actual == null && sinSello(l) ? '1' : undefined}
+          style={{ color: actual == null ? V.tenue : V.apagado, fontSize: actual == null ? '11px' : undefined }}>
+          {actual == null ? (sinSello(l) ?? '—') : pesos(actual)}
+        </span>
       )}
       {/* UN 0% NO DICE NADA: aparece cuando el Sheet sembró la quincena con el mismo valor. */}
       {pct != null && pct !== 0 && texto == null && (

@@ -63,17 +63,22 @@ export function separarPorTipo<T extends { grupo: GrupoLiquidacion; linea: { mod
 }
 
 type LineaDelMensual = Pick<LineaConOverrides, 'cobra' | 'porBanco' | 'reciboNeto' | 'pagadoBanco' | 'pagadoEfectivo'>
-  & { manual: Pick<LineaConOverrides['manual'], 'porBanco'> }
+  & { manual: Pick<LineaConOverrides['manual'], 'porBanco'>; sello?: { conLinea: boolean } | null }
 
 export interface PagoDelMensual extends PagoDeLaLinea {
   /** El sueldo del mes (`cobra`: neto mensual, importe cargado o escrito a mano). `null` = no cargado. */
   sueldo: number | null
-  /** De dónde sale el banco: escrito a mano, el recibo del estudio, o el giro del extracto. `null` = sin recibo. */
-  origenBanco: 'manual' | 'recibo' | 'giro' | null
+  /** De dónde sale el banco: la foto sellada, escrito a mano, el recibo del estudio, o el giro del extracto. `null` = sin recibo. */
+  origenBanco: 'sellado' | 'manual' | 'recibo' | 'giro' | null
 }
 
-/** El banco de un mensual: lo escrito a mano manda; si no, el recibo liquidado (aunque no se haya girado todavía). */
+/**
+ * El banco de un mensual: en la quincena CERRADA es `por_banco` de la foto (18/09/2026: lo sellado manda, aunque
+ * `nomina_recibo_neto` tenga un recibo del período); en la abierta, lo escrito a mano; si no, el recibo liquidado
+ * (aunque no se haya girado todavía).
+ */
 function bancoDelMensual(l: LineaDelMensual): { banco: number | null; origen: PagoDelMensual['origenBanco'] } {
+  if (l.sello?.conLinea) return { banco: l.porBanco, origen: 'sellado' }
   if (l.manual.porBanco) return { banco: l.porBanco, origen: 'manual' }
   if (l.reciboNeto != null) return { banco: r2(l.reciboNeto), origen: 'recibo' }
   if (l.porBanco > 0) return { banco: l.porBanco, origen: 'giro' }
