@@ -101,6 +101,16 @@ test('y tampoco se colapsan dos proveedores DISTINTOS que compartan número, fec
   assert.equal(conCuit.items.length, 2)
 })
 
+test('sin identidad probada no se une: CUIT sin nombre en una foto, nombre sin CUIT en la otra', () => {
+  // Revisión independiente, 18/09/2026. Con la guarda «que no sea 'distinto'», este par daba
+  // 'desconocido' y se unía: si eran dos emisores, el segundo gasto desaparecía de la carga y le
+  // llegaba al dueño como «otra foto del mismo comprobante». La guarda exige ahora 'igual'.
+  const a = item({ proveedor: '', cuit: '30691853825' }, 'IMG_001.HEIC')
+  const b = item({ proveedor: 'Otra Empresa SA', cuit: null }, 'IMG_002.HEIC')
+  assert.equal(mismoComprobanteAunqueElNombreCambie(a, b).si, false)
+  assert.equal(colapsarRepetidos([a, b]).items.length, 2, 'los dos gastos tienen que llegar a la carga')
+})
+
 test('una NOTA DE CRÉDITO no se colapsa con la factura de su mismo número: la clase está en la huella', () => {
   // Comparten numeración y confundirlas ya costó $41,9M.
   const { items } = colapsarRepetidos([
