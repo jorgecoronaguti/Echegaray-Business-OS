@@ -14,9 +14,9 @@
 //     La regla es la MISMA del sync (`asignadorDeCompras`): si el cargador y el sync resolvieran
 //     distinto, la fila recién cargada cambiaría de obra en la hora siguiente.
 //   · J «Administración» / «Taller»                     → ES-ADM / ES-TAL.
-//   · J o K sacadas del HISTORIAL del proveedor         → nada. Un promedio de cargas anteriores es
-//     una sugerencia; la columna registra una decisión, y escribir la sugerencia ahí la convierte en
-//     decisión sin que nadie la haya tomado.
+//   · J o K sacadas del HISTORIAL del proveedor         → lo mismo que si vinieran del papel, SÓLO
+//     si el asignador resuelve una obra sin ambigüedad (18/09/2026; antes: nada). Va con la vía
+//     `historial` y la marca en el Concepto. Ver el bloque en `obraParaLaColumna`.
 //   · cliente con varias obras y K que no nombra ninguna → nada. «Sin obra – X» dice que el dueño
 //     DECIDIÓ que no va a ninguna; inferirlo de una K vacía es fabricar esa decisión.
 //   · obra sin código interno                            → nada: no es una opción del desplegable.
@@ -115,13 +115,29 @@ export function obraParaLaColumna(c = {}, destinos = null) {
     const porque = via === 'anotacion' ? (c.obraFilaPorque ?? 'lo escrito a mano') : 'elegida por una persona'
     r = { valor: elegida, obra_id: x.obra_id, destino: x.destino, via, porque }
   } else {
-    const deHistorial = ['obra', 'detalle'].filter((d) => c[`${d}Via`] === 'historial')
-    if (deHistorial.length) {
-      return nada(`la ${deHistorial.join(' y el ')} salió del historial del proveedor: la columna Obra la decide una persona`)
-    }
     if (!String(c.obra ?? '').trim()) return nada('el comprobante no dice obra')
     r = desdeJK(c, destinos)
     if (!r.valor) return r
+    // ═══ J/K DEL HISTORIAL SÍ ESCRIBEN LA OBRA, SI EL ASIGNADOR LA RESUELVE SOLA (18/09/2026) ═══
+    //
+    // Hasta hoy acá se devolvía `nada` apenas la J o la K venían del historial: «la columna Obra la
+    // decide una persona». El dueño reclamó el 17/09 que el cargador no completa las columnas, y
+    // la evidencia dice que esa cautela no protegía nada: el sync (`asignadorDeCompras`, el mismo
+    // que se usa acá) ya imputa el espejo `costos_obra` desde esa J/K una hora después, así que la
+    // «decisión» se tomaba igual —sólo que en la base y no en la celda, y la fila quedaba con L vacía
+    // para que el dueño tipeara lo que el OS ya había resuelto.
+    //
+    // Medido con holdout temporal sobre las 131 cargas del bot entre 18/08 y 17/09: cuando la J
+    // (papel o historial firme, n≥5 y ≥80%) y la K (papel o firme en esa J) resuelven a UNA obra
+    // por el asignador, la obra coincidió con la que el dueño puso en 10 de 10. Lo que NO resuelve
+    // —cliente con varias obras y K que no nombra ninguna: 40 de esas 131— sigue quedando vacío, y
+    // eso es lo que protege de imputar a la obra equivocada: la ambigüedad frena, el origen no.
+    //
+    // La vía queda declarada (`historial`) y la marca `[historial: obra]` ya va en el Concepto.
+    const deHistorial = ['obra', 'detalle'].filter((d) => c[`${d}Via`] === 'historial')
+    if (deHistorial.length) {
+      r = { ...r, via: 'historial', porque: `${r.porque} — ${deHistorial.map((d) => (d === 'obra' ? 'J' : 'K')).join(' y ')} del historial del proveedor` }
+    }
   }
   const choca = unidadIncoherente(c.unidad, r.destino)
   return choca ? nada(choca) : r

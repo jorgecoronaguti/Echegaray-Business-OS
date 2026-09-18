@@ -35,11 +35,33 @@ test('Administración → ES-ADM, Taller → ES-TAL', () => {
   assert.equal(obraParaLaColumna({ obra: 'Taller', unidad: 'Estructura' }, D).valor, 'ES-TAL · Estructura – Taller')
 })
 
-test('EL DEFECTO: una obra sacada del HISTORIAL no se escribe como decisión', () => {
+test('J/K del HISTORIAL escriben la obra cuando el asignador la resuelve sola — con la vía declarada (18/09)', () => {
+  // Hasta el 18/09 esto devolvía null «porque la columna Obra la decide una persona». El sync ya
+  // decidía lo mismo en el espejo; la celda quedaba vacía para que el dueño la tipeara. Medido:
+  // 10 de 10 coincidencias con lo que él puso, cuando J/K resuelven sin ambigüedad.
   const c = { obra: 'MESSINA', detalle: 'Planta de BSA', obraVia: 'historial' }
-  assert.equal(obraParaLaColumna(c, D).valor, null)
-  assert.equal(obraParaLaColumna({ ...c, obraVia: undefined, detalleVia: 'historial' }, D).valor, null)
-  assert.equal(obraParaLaColumna({ ...c, obraVia: 'anotacion' }, D).valor, 'OB-0007 · ME - PLANTA DE BSA', 'lo del papel sí')
+  const r = obraParaLaColumna(c, D)
+  assert.equal(r.valor, 'OB-0007 · ME - PLANTA DE BSA')
+  assert.equal(r.via, 'historial')
+  assert.match(r.porque, /J del historial del proveedor/)
+  const k = obraParaLaColumna({ ...c, obraVia: undefined, detalleVia: 'historial' }, D)
+  assert.equal(k.valor, 'OB-0007 · ME - PLANTA DE BSA')
+  assert.match(k.porque, /K del historial/)
+  const papel = obraParaLaColumna({ ...c, obraVia: 'anotacion' }, D)
+  assert.equal(papel.valor, 'OB-0007 · ME - PLANTA DE BSA')
+  assert.notEqual(papel.via, 'historial', 'lo del papel no se declara historial')
+})
+
+test('J del historial con un cliente de varias obras y K que no nombra ninguna → sigue vacía: la ambigüedad frena', () => {
+  const r = obraParaLaColumna({ obra: 'San Francisco', obraVia: 'historial', detalle: 'combustible', detalleVia: 'historial' }, D)
+  assert.equal(r.valor, null)
+  assert.match(r.porque, /SAN FRANCISCO/)
+})
+
+test('J «Taller» del historial → ES-TAL, el caso Neumagom/taller que el dueño completó a mano el 17/09', () => {
+  const r = obraParaLaColumna({ obra: 'Taller', obraVia: 'historial', unidad: 'Estructura', unidadVia: 'historial' }, D)
+  assert.equal(r.valor, 'ES-TAL · Estructura – Taller')
+  assert.equal(r.via, 'historial')
 })
 
 test('la obra que contradice la Unidad no se escribe, y se nombra', () => {

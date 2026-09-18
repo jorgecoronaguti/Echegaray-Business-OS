@@ -68,6 +68,8 @@ export const FILA_BASE = 4
 
 /** Posición de cada dato en la forma B..O (B = 0) que devuelve `comprasDelCargador`. */
 const EN = { categoria: 0, fecha: 1, proveedor: 3, tipo: 5, numero: 6, unidad: 7, obra: 8, detalle: 9, concepto: 10, total: 13 }
+/** Y las que vienen después de B..O, en el orden de `EXTRAS` de `compras-leidas.mjs`. */
+const EN_EXTRA = { obraFila: 14, tipoPago: 15 }
 
 /** Tolerancia de importe. Debajo de esto es el redondeo del comprobante, no otra compra. */
 const TOLERANCIA = 0.5
@@ -146,6 +148,10 @@ export function indexarCompras(filas = [], { cuitPorProveedor = null } = {}) {
       obra: String(r?.[EN.obra] ?? '').trim() || null,
       detalle: String(r?.[EN.detalle] ?? '').trim() || null,
       concepto: String(r?.[EN.concepto] ?? '').trim() || null,
+      // Las columnas que viajan DESPUÉS de B..O (`compras-leidas.mjs` → `EXTRAS`). Una fila de test
+      // con la forma B..O pelada no las trae y quedan null, que es «no se sabe», no un valor.
+      obraFila: String(r?.[EN_EXTRA.obraFila] ?? '').trim() || null,
+      tipoPago: String(r?.[EN_EXTRA.tipoPago] ?? '').trim() || null,
     }
     registros.push(reg)
     if (numero) empujar(porNumero, numero, reg)
@@ -616,5 +622,8 @@ function aHistoria(reg) {
     // La CATEGORÍA (columna B) viaja desde el 04/08: es la cuarta columna que toda fila cargada por
     // el bot dejaba vacía, y la aprende el mismo módulo que aprende las otras tres.
     categoria: reg.categoria,
+    // El TIPO DE PAGO (columna Q) viaja desde el 18/09/2026, en el ORDEN de la pestaña: la regla
+    // que lo propone mira las últimas cargas del proveedor, no un promedio de toda la historia.
+    tipo_pago: reg.tipoPago,
   }
 }
