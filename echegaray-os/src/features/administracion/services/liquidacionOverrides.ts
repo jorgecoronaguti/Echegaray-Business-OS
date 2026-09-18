@@ -83,17 +83,25 @@ export interface ReferenciaDeJornales {
  *
  * ═══ QUÉ ES Y QUÉ NO ES ═══
  *
- * Los dos valores están tomados AL ÚLTIMO DÍA DE ESA QUINCENA, nunca a hoy: la tarifa sale de `persona_tarifa` filtrada
- * por `desde <= q.hasta` y el piso, de `pisoVigente(escala, …, q.hasta)` —la misma escala histórica que usa Convenios—.
- * NO es un recálculo: son dos números que la quincena cerrada ya tenía y que no tenían dónde mostrarse.
+ * El $/h ES EL SELLADO: `liquidacion_linea.valor_hora` de esa quincena (desde el 18/09/2026). Hasta ese día salía de
+ * `persona_tarifa` con `desde <= q.hasta`, y eso NO es la foto: Bazán tiene una sola tarifa cargada ($4.000 desde
+ * enero) y la 2ª de marzo se cerró a $4.300 —la pantalla decía «se liquidó a $4.000/h» sobre plata ya entregada—. El
+ * piso sí se toma de la escala vigente a `q.hasta` (`pisoVigente`, la misma de Convenios): es el convenio de esa
+ * fecha, no un dato de la persona. NO es un recálculo: son dos números que la quincena cerrada ya tenía.
  *
  * LA CATEGORÍA NO SE SELLA. `liquidacion_linea.categoria_sellada` está vacío en TODA la base (verificado 17/09/2026:
  * 0 de 0 en agosto, julio y junio), así que el nombre de la categoría que se muestra es el del legajo de HOY. Eso se
  * dice en el `title`: si alguien recategorizó a una persona, el rótulo cambió aunque la quincena esté cerrada.
  */
 export interface SelloDeLaQuincena {
-  /** El $/h con el que se liquidó esa quincena. `null` si la persona no cobraba por hora. */
+  /** El $/h con el que se liquidó esa quincena (`liquidacion_linea.valor_hora`). `null` = no cobraba por hora, o la foto no lo tiene. */
   valorHora: number | null
+  /**
+   * `false` = esta persona NO tiene línea sellada en la quincena cerrada: ninguna cifra de su fila es dato sellado y
+   * la pantalla lo dice («sin línea sellada») en vez de dibujar el cálculo de hoy. Con `true`, una columna en `null`
+   * es «sin dato sellado» (quincena vieja con la foto incompleta).
+   */
+  conLinea: boolean
   /** El piso del convenio para su categoría, vigente A ESA FECHA. `null` sin categoría o sin escala de ese mes. */
   piso: number | null
   /** Desde cuándo rige ese piso (ISO). Va en el `title`: sin él, el piso se leería como el de hoy. */
