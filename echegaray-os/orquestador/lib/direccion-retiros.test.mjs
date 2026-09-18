@@ -2,8 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   NOMBRES_DIRECCION, DIA_PAGO_DEFAULT, PARAMETRO_DIA_PAGO, regexDireccion, esRetiro,
-  formulaProyectadoMes, formulaDireccion, retirosDeDireccion, columnasRetiros,
+  formulaProyectadoMes, formulaEstadoMes, formulaDireccion, retirosDeDireccion, columnasRetiros,
 } from './direccion-retiros.mjs'
+import { PESTANA_PAGOS_NC, RUBROS_PAGOS_NC } from './pagos-no-compra.mjs'
 import { COMPRAS_2508, COMPRAS_CON_OBRA } from './encabezados-referencia.mjs'
 import { formulaAdministracion, formulaOficina } from './cash-flow-lineas.mjs'
 import { sumarDiasHabiles, DESFASE_HABILES_DEFAULT } from './jornales-fecha-pago.mjs'
@@ -59,7 +60,24 @@ const predicado = (cond) => {
     const s = serial(Number(m[3]), Number(m[4]), Number(m[5]))
     return m[2] === '>=' ? (f) => f.caja >= s : (f) => f.caja < s
   }
+  // Las dos condiciones de la pestaña de pagos sin compra (18/09): rubro y período, explícitos.
+  m = cond.match(/^\('_PAGOS_NO_COMPRA_RAW'!\$C\$4:\$C="(.+)"\)$/)
+  if (m) { const rubro = m[1]; return (f) => f.rubro === rubro }
+  m = cond.match(/^\('_PAGOS_NO_COMPRA_RAW'!\$G\$4:\$G&""="(\d{4}-\d{2})"\)$/)
+  if (m) { const per = m[1]; return (f) => String(f.periodo) === per }
   throw new Error(`el evaluador del test no reconoce esta condición: ${cond}`)
+}
+const COL_NC_FECHA = "'_PAGOS_NO_COMPRA_RAW'!$A$4:$A"
+const COL_NC_IMPORTE = "'_PAGOS_NO_COMPRA_RAW'!$E$4:$E"
+/** `IFERROR(MAX(FILTER(rango;conds…));0)` → el máximo de las fechas de las filas que cumplen, o 0. */
+const evaluarMaxFiltro = (expr, rangoEsperado, filas) => {
+  const m = expr.match(/^IFERROR\(MAX\(FILTER\((.+)\)\);0\)$/)
+  assert.ok(m, `no es un IFERROR(MAX(FILTER(…));0): ${expr}`)
+  const [rango, ...conds] = args(m[1])
+  assert.equal(rango, rangoEsperado)
+  const preds = conds.map(predicado)
+  const fechas = filas.filter((f) => preds.every((p) => p(f))).map((f) => f.caja ?? f.fecha)
+  return fechas.length ? Math.max(...fechas) : 0
 }
 
 /**
@@ -70,29 +88,43 @@ const predicado = (cond) => {
  * que es la misma que cobran obra y oficina. Sin lotes en el fixture, la rama que aplica es la del
  * WORKDAY, y se calcula con la MISMA función que la fórmula imita (`sumarDiasHabiles`).
  */
-const evaluarSePagaEl = (formula, filas) => {
+const evaluarSePagaEl = (formula, filas, pagosNC = []) => {
+  // DESDE EL 18/09 SON DOS FUENTES: el máximo entre lo que pagó Compras y lo que pagó la pestaña de
+  // pagos sin compra; si las dos dan 0, la prevista de la nómina.
   const m = formula.match(
-    /^=IFERROR\(MAX\(FILTER\((.+?)\)\);IFERROR\(MIN\(FILTER\('_BANCO_RAW'.+?\)\);WORKDAY\(EOMONTH\(DATE\((\d+);(\d+);1\);0\);JORNALES_DESFASE_PAGO\)\)\)$/)
-  assert.ok(m, `la celda ya no es "el máximo de las fechas que pagaron el mes; si no hay, la de la nómina": ${formula}`)
-  const [rango, ...conds] = args(m[1])
-  assert.equal(rango, COL_AD, 'la fecha de un hecho sale de la fecha de caja de Compras')
-  const preds = conds.map(predicado)
-  const fechas = filas.filter((f) => preds.every((p) => p(f))).map((f) => f.caja)
-  if (fechas.length) return Math.max(...fechas)
-  const cierre = new Date(Number(m[2]), Number(m[3]), 0)
+    /^=IF\(MAX\((IFERROR\(MAX\(FILTER\('Compras'.+?\)\);0\));(IFERROR\(MAX\(FILTER\('_PAGOS_NO_COMPRA_RAW'.+?\)\);0\))\)>0;MAX\(\1;\2\);IFERROR\(MIN\(FILTER\('_BANCO_RAW'.+?\)\);WORKDAY\(EOMONTH\(DATE\((\d+);(\d+);1\);0\);JORNALES_DESFASE_PAGO\)\)\)$/)
+  assert.ok(m, `la celda ya no es "el máximo de las fechas que pagaron el mes (Compras o pagos sin compra); si no hay, la de la nómina": ${formula}`)
+  const deCompras = evaluarMaxFiltro(m[1], COL_AD, filas)
+  const deNC = evaluarMaxFiltro(m[2], COL_NC_FECHA, pagosNC)
+  if (Math.max(deCompras, deNC) > 0) return Math.max(deCompras, deNC)
+  const cierre = new Date(Number(m[3]), Number(m[4]), 0)
   const prevista = sumarDiasHabiles(cierre, DESFASE_HABILES_DEFAULT)
   return serial(prevista.getUTCFullYear(), prevista.getUTCMonth() + 1, prevista.getUTCDate())
 }
 
 /** Lo que rinde la celda "Pagado" del mismo mes, sobre las mismas filas. */
-const evaluarPagado = (formula, filas) => {
-  const m = formula.match(/^=SUMPRODUCT\((.+)\)$/)
-  assert.ok(m, `"Pagado" ya no es un SUMPRODUCT: ${formula}`)
-  const partes = args(m[1], '*')
-  assert.equal(partes.pop(), `IF(ISNUMBER(${COL_O});${COL_O};0)`, 'lo que se suma es el importe de Compras')
-  const preds = partes.map(predicado)
-  return filas.filter((f) => preds.every((p) => p(f))).reduce((a, f) => a + f.importe, 0)
+const evaluarPagado = (formula, filas, pagosNC = []) => {
+  const m = formula.match(/^=SUMPRODUCT\((.+)\)\+SUMPRODUCT\((.+)\)$/)
+  assert.ok(m, `"Pagado" ya no es SUMPRODUCT(Compras)+SUMPRODUCT(pagos sin compra): ${formula}`)
+  const sumar = (expr, colImporte, fajo) => {
+    const partes = args(expr, '*')
+    assert.equal(partes.pop(), `IF(ISNUMBER(${colImporte});${colImporte};0)`, `lo que se suma es el importe de ${colImporte}`)
+    const preds = partes.map(predicado)
+    return fajo.filter((f) => preds.every((p) => p(f))).reduce((a, f) => a + f.importe, 0)
+  }
+  return sumar(m[1], COL_O, filas) + sumar(m[2], COL_NC_IMPORTE, pagosNC)
 }
+
+// ═══ LOS TRES PAGOS PARCIALES DE AGOSTO (18/09, extracto Santander) — «ok, no en compras» ═══
+// Rodrigo $1.000.000 el 09/09; Ana Laura $300.000 el 11/09 y $500.000 el 17/09, que son el retiro de
+// Jorge Corona. Los tres pagan el período 2026-08. La cuarta fila es la trampa: un pago de otro rubro
+// en el mismo período, que no puede sumar en Dirección.
+const PAGOS_NC_AGOSTO = [
+  { fecha: serial(2026, 9, 9), rubro: RUBROS_PAGOS_NC.direccion, persona: 'Rodrigo Echegaray', importe: 1000000, periodo: '2026-08' },
+  { fecha: serial(2026, 9, 11), rubro: RUBROS_PAGOS_NC.direccion, persona: 'Jorge Corona', importe: 300000, periodo: '2026-08' },
+  { fecha: serial(2026, 9, 17), rubro: RUBROS_PAGOS_NC.direccion, persona: 'Jorge Corona', importe: 500000, periodo: '2026-08' },
+  { fecha: serial(2026, 9, 20), rubro: RUBROS_PAGOS_NC.sac, persona: '', importe: 999999, periodo: '2026-08' },
+]
 
 // ═══ LAS FILAS REALES QUE PAGARON JULIO (verificadas contra el extracto, 06/08) ═══
 // Dos débitos de $3.000.000 el 03/08 —uno a nombre de Ana Laura Echegaray, que es el retiro de Jorge
@@ -138,14 +170,22 @@ test('esRetiro coincide con el regex, incluidos los bordes', () => {
   assert.equal(esRetiro(null), false)
 })
 
-test('un mes PAGADO no se proyecta — la proyección se apaga sola', () => {
+test('un mes PAGADO ENTERO no se proyecta; uno pagado EN PARTE proyecta el resto (18/09)', () => {
   const f = formulaProyectadoMes('E60', 'C60', '$B$50', '$E$50')
-  // El orden importa: primero "no sé cuánto es", después "ya se pagó", después "todavía no corría".
-  assert.match(f, /IF\(N\(\$B\$50\)=0;""/)
-  assert.match(f, /IF\(N\(C60\)>0;""/)
-  assert.match(f, /IF\(E60<\$E\$50;""/)
-  // Y el ÚNICO camino que devuelve plata es el que pasa los tres filtros.
-  assert.ok(f.endsWith(';$B$50)))'), `la rama con plata no es la última: ${f}`)
+  // El orden importa: primero "no sé cuánto es", después "todavía no corría", y recién ahí la plata.
+  assert.match(f, /^=IF\(N\(\$B\$50\)=0;"";IF\(E60<\$E\$50;"";/)
+  // LO QUE CAMBIÓ: era `IF(N(C60)>0;""…)` —un peso pagado apagaba el mes entero— y con tres pagos
+  // parciales de agosto ($1.800.000 de $9.000.000) borraba $7.200.000 del Cash Flow. Ahora la rama con
+  // plata es «total − pagado», y se apaga sola sólo cuando no queda un peso.
+  assert.doesNotMatch(f, /IF\(N\(C60\)>0;""/)
+  assert.ok(f.endsWith(';IF($B$50-N(C60)<1;"";$B$50-N(C60))))'), `la rama con plata no es el resto del mes: ${f}`)
+})
+
+test('el estado de un mes sale de sus dos celdas de plata: pagado · parcial · proyección', () => {
+  const f = formulaEstadoMes('C69', 'H69')
+  assert.equal(f, '=IF(N(C69)=0;IF(N(H69)>0;"proyección";"");IF(N(H69)>0;"parcial";"pagado"))')
+  // Mismo vocabulario que el bloque de Oficina: «parcial» es el mes con pagado Y resto.
+  for (const estado of ['pagado', 'parcial', 'proyección']) assert.ok(f.includes(`"${estado}"`))
 })
 
 test('EL RETIRO PROYECTADO ESCALA POR LA PARITARIA, Y EL FACTOR SE VALIDA ANTES DE MULTIPLICAR', () => {
@@ -158,11 +198,11 @@ test('EL RETIRO PROYECTADO ESCALA POR LA PARITARIA, Y EL FACTOR SE VALIDA ANTES 
   // o #VALUE!. El 0 es la peor de las dos — borra el retiro del mes sin dar un solo error, que es
   // exactamente el modo de falla que este bloque existe para evitar. Sin factor usable, no se ajusta.
   assert.doesNotMatch(f, /\$B\$50\*G60/)
-  // Los tres apagados siguen intactos y en orden: el ajuste no puede encender un mes que no corresponde.
-  assert.match(f, /^=IF\(N\(\$B\$50\)=0;"";IF\(N\(C60\)>0;"";IF\(E60<\$E\$50;"";/)
+  // Los dos apagados siguen intactos y en orden: el ajuste no puede encender un mes que no corresponde.
+  assert.match(f, /^=IF\(N\(\$B\$50\)=0;"";IF\(E60<\$E\$50;"";/)
   // Y sin celda de factor la fórmula queda como estaba: un mes sin factor no se inventa uno.
   assert.equal(formulaProyectadoMes('E60', 'C60', '$B$50', '$E$50'),
-    '=IF(N($B$50)=0;"";IF(N(C60)>0;"";IF(E60<$E$50;"";$B$50)))')
+    '=IF(N($B$50)=0;"";IF(E60<$E$50;"";IF($B$50-N(C60)<1;"";$B$50-N(C60))))')
 })
 
 test('sin fecha de inicio cargada la proyección da CERO, no doce meses', () => {
@@ -170,7 +210,7 @@ test('sin fecha de inicio cargada la proyección da CERO, no doce meses', () => 
   // así que `E60 < ""` es VERDADERO y la fórmula devuelve "". Es el lado seguro del error: sin
   // evidencia de que el retiro exista, el cuadro no inventa $78.000.000 al año.
   const f = formulaProyectadoMes('E60', 'C60', '$B$50', '$E$50')
-  assert.match(f, /IF\(E60<\$E\$50;"";\$B\$50\)/)
+  assert.match(f, /IF\(E60<\$E\$50;"";IF\(\$B\$50-N\(C60\)<1;"";\$B\$50-N\(C60\)\)\)/)
 })
 
 test('lo pagado sale del ESTADO de la fila, no de que la fecha ya haya pasado', () => {
@@ -263,9 +303,24 @@ test('"Pagado" y "Se paga el" salen de UNA sola definición de las filas que pag
     assert.ok(pagado.includes(c), `"Pagado" no usa la condición compartida: ${c}`)
     assert.ok(cuando.includes(c), `"Se paga el" no usa la condición compartida: ${c}`)
   }
-  // Y ninguna de las dos agrega condiciones propias: mismo conteo de condiciones en las dos.
-  assert.equal(args(cuando.match(/FILTER\((.+?)\)\);IFERROR/)[1]).length - 1, conds.length)
-  assert.equal(args(pagado.match(/^=SUMPRODUCT\((.+)\)$/)[1], '*').length - 1, conds.length)
+  // Y ninguna de las dos agrega condiciones propias sobre Compras: mismo conteo en las dos.
+  assert.equal(args(cuando.match(/IFERROR\(MAX\(FILTER\((.+?)\)\);0\)/)[1]).length - 1, conds.length)
+  assert.equal(args(pagado.match(/^=SUMPRODUCT\((.+?)\)\+SUMPRODUCT/)[1], '*').length - 1, conds.length)
+})
+
+test('AGOSTO PARCIAL: los tres pagos sin compra suman $1.800.000 y fechan el mes al 17/09 (18/09)', () => {
+  // Compras no tiene nada de agosto pagado (la fila «🟢 Vigente» del fixture no cuenta); la pestaña de
+  // pagos sin compra tiene los tres. El SAC del mismo período NO entra: otro rubro.
+  assert.equal(evaluarPagado(formulaPagadoMes(8, 2026), COMPRAS_JULIO, PAGOS_NC_AGOSTO), 1800000)
+  assert.equal(evaluarSePagaEl(formulaSePagaElDireccion(8, 2026), COMPRAS_JULIO, PAGOS_NC_AGOSTO), serial(2026, 9, 17),
+    'el mes se fecha con el ÚLTIMO pago, venga de donde venga')
+  // Y julio no se mueve: sigue saliendo de Compras, $9.000.000 el 04/08.
+  assert.equal(evaluarPagado(formulaPagadoMes(7, 2026), COMPRAS_JULIO, PAGOS_NC_AGOSTO), 9000000)
+  assert.equal(evaluarSePagaEl(formulaSePagaElDireccion(7, 2026), COMPRAS_JULIO, PAGOS_NC_AGOSTO), 46238)
+  // Los pagos sin compra se eligen por RUBRO y PERÍODO explícitos, no por ventana de fecha.
+  const f = formulaPagadoMes(8, 2026)
+  assert.ok(f.includes(`'${PESTANA_PAGOS_NC}'!$C$4:$C="${RUBROS_PAGOS_NC.direccion}"`), f)
+  assert.ok(f.includes(`'${PESTANA_PAGOS_NC}'!$G$4:$G&""="2026-08"`), f)
 })
 
 test('EL DÍA 10 QUEDÓ RETIRADO: ninguna fórmula lo cita, y el parámetro lo declara', () => {
