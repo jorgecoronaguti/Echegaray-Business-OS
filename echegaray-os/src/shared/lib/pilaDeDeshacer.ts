@@ -198,9 +198,12 @@ export function coincideConLoEsperado(hoy: unknown, esperado: string): boolean {
  * «123,5» contra 123.5. Un test ata las dos funciones caso por caso.
  */
 export function valorParaElFiltro(esperado: string, tipo: 'texto' | 'numero' = 'texto'): string | number | null {
+  if (esperado === '') return null
+  // EL TEXTO SE COMPARA EXACTO, SIN RECORTAR (auditoría, 18/09/2026). `esperado` no es lo tecleado: es el valor
+  // que la celda tenía, tal como vino de la base. Recortarlo haría que una celda guardada como « contrato »
+  // no coincida consigo misma, y el deshacer diría «la cambió otra persona» sobre algo que nadie tocó.
+  if (tipo !== 'numero') return esperado
   const e = esperado.trim()
-  if (e === '') return null
-  if (tipo !== 'numero') return e
   // `leerNumeroEsAR` Y NO `Number(replace(',', '.'))` (auditoría, 18/09/2026): ese replace cambia UNA sola coma
   // y deja los puntos de miles, así que «1.234,5» daba NaN y la escritura se rechazaba con «la celda la cambió
   // otra persona» — una afirmación falsa sobre un número que nadie tocó. Es el mismo lector que usa la celda.
