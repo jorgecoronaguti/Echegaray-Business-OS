@@ -16,6 +16,15 @@
 // nombrando el rótulo que falta. Una columna nueva se agrega a `CAMPOS`/`CAMPOS_OBRA` del sync —o se
 // declara acá si a propósito no la escribe el espejo— y recién entonces la corrida sigue.
 
+// ═══ CON LA MIGRACIÓN DE OBRA A MEDIO APLICAR, ESTO DETIENE EL SYNC ═══
+//
+// `hayObraPorFila` exige las CUATRO columnas de `20260915T0700` para dar por aplicada la migración. Si
+// existieran sólo algunas —una migración cortada a la mitad—, daría `false`, el sync compararía contra
+// `CAMPOS` a secas y este freno encontraría las columnas de obra sin cubrir y ABORTARÍA, en vez de
+// degradar a modo legado como hace el resto del archivo. Es a propósito: escribir el espejo ignorando
+// una columna de obra que YA EXISTE la dejaría con el valor de la corrida anterior, que es justo lo que
+// esto existe para impedir. Una migración a medio aplicar se termina de aplicar; no se trabaja encima.
+//
 /**
  * Las columnas que el espejo NO escribe A PROPÓSITO y por eso no tienen que estar en `CAMPOS`.
  *

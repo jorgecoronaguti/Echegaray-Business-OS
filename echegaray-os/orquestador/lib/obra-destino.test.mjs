@@ -237,3 +237,87 @@ test('«Sin obra – X» vale como lo ofrece el desplegable: sin distinguir may�
   // Una sola obra viva del cliente: tampoco con el mapa.
   assert.match(validarValorDeObra('Sin obra – LA ESTRELLA', obras, clienteAlias) ?? 'PASÓ', /no es un cliente con más de una obra/)
 })
+
+// ═══ DOS CLICS SEGUIDOS SOBRE LA MISMA FILA (18/09/2026) ═══
+//
+// Elegir una obra y corregirla es conducta normal —201 filas de la base viva ya tuvieron más de un
+// cambio de obra— y nada lo impide: la RPC de obra, a diferencia de la de pagos, no exige que no haya
+// otro pedido en vuelo. La RPC compara `p_esperado` contra el ESPEJO, que ya tiene la primera, así que
+// el segundo pedido nace con `valor_anterior` = la primera obra, que el Sheet TODAVÍA NO TIENE.
+//
+// Con el último suelto, el segundo no encajaba contra la celda viva y el espejo quedaba SIN OBRA: la
+// pantalla desmintiendo los dos clics. La cadena se pliega y el espejo muestra la última elegida.
+
+/** Los dos pedidos que dejan dos clics seguidos sobre una fila cuya celda está vacía en el Sheet. */
+const dosClics = () => [
+  { fila: 10, clave: 'c:1|A', tipo: 'obra', valor_anterior: null, valor_nuevo: 'OB-0001 · PRIMERA', creado_at: '2026-09-18T12:00:00Z' },
+  { fila: 10, clave: 'c:1|A', tipo: 'obra', valor_anterior: 'OB-0001 · PRIMERA', valor_nuevo: 'OB-0002 · CORREGIDA', creado_at: '2026-09-18T12:00:20Z' },
+]
+
+test('dos cambios de obra encadenados: el espejo muestra la ÚLTIMA elegida, no «sin obra»', () => {
+  const compras = [{ fila: 10, clave: 'c:1|A', obra_celda: null }]
+  const r = aplicarCambiosPendientes(compras, dosClics())
+  assert.equal(r[0].obra_celda, 'OB-0002 · CORREGIDA')
+  assert.equal(compras[0].obra_celda, null, 'no muta la lectura')
+})
+
+test('la cadena se pliega contra el estado que la fila tenía en cada paso, aunque el worker haya bajado el primero', () => {
+  // El Sheet ya tiene la primera: el primer eslabón está aplicado y el segundo sigue encajando.
+  const conLaPrimera = [{ fila: 10, clave: 'c:1|A', obra_celda: 'OB-0001 · PRIMERA' }]
+  assert.equal(aplicarCambiosPendientes(conLaPrimera, dosClics())[0].obra_celda, 'OB-0002 · CORREGIDA')
+  // El Sheet ya tiene las dos: no hay nada que superponer y la fila ni se copia.
+  const conLasDos = [{ fila: 10, clave: 'c:1|A', obra_celda: 'OB-0002 · CORREGIDA' }]
+  const r = aplicarCambiosPendientes(conLasDos, dosClics())
+  assert.equal(r[0], conLasDos[0], 'sin nada que mover, la fila no se copia')
+})
+
+test('si el dueño editó el Sheet, la cadena entera se cae: ningún eslabón encaja y gana el Sheet', () => {
+  const editada = [{ fila: 10, clave: 'c:1|A', obra_celda: 'OB-0009 · LA DEL DUEÑO' }]
+  assert.equal(aplicarCambiosPendientes(editada, dosClics())[0].obra_celda, 'OB-0009 · LA DEL DUEÑO')
+})
+
+test('el ORDEN de la cadena es parte del contrato: plegarla al revés no da lo mismo', () => {
+  const compras = () => [{ fila: 10, clave: 'c:1|A', obra_celda: null }]
+  const alDerecho = aplicarCambiosPendientes(compras(), dosClics())[0].obra_celda
+  const alReves = aplicarCambiosPendientes(compras(), [...dosClics()].reverse())[0].obra_celda
+  assert.equal(alDerecho, 'OB-0002 · CORREGIDA')
+  assert.equal(alReves, 'OB-0001 · PRIMERA', 'al revés el segundo no encaja y queda el primero: por eso quien lee ordena por creado_at')
+  assert.notEqual(alDerecho, alReves)
+})
+
+test('una cadena de tres se pliega igual, y un eslabón que no encaja no corta la que sigue', () => {
+  const compras = [{ fila: 10, clave: 'c:1|A', obra_celda: null }]
+  const cadena = [
+    ...dosClics(),
+    // Un pedido de otra pantalla que esperaba una obra que nunca estuvo: no encaja y se saltea.
+    { fila: 10, clave: 'c:1|A', tipo: 'obra', valor_anterior: 'OB-0007 · OTRA', valor_nuevo: 'OB-0008 · NO', creado_at: '2026-09-18T12:00:30Z' },
+    { fila: 10, clave: 'c:1|A', tipo: 'obra', valor_anterior: 'OB-0002 · CORREGIDA', valor_nuevo: '', creado_at: '2026-09-18T12:00:40Z' },
+  ]
+  assert.equal(aplicarCambiosPendientes(compras, cadena)[0].obra_celda, null, 'el último vacía la celda que dejó la cadena')
+})
+
+test('en la cadena, un pago no es un eslabón y una fila que ya es otra compra tampoco', () => {
+  const compras = [{ fila: 10, clave: 'c:1|A', obra_celda: null }]
+  const cadena = [
+    dosClics()[0],
+    { fila: 10, clave: 'c:1|A', tipo: 'pago', valor_anterior: null, valor_nuevo: 'total', creado_at: '2026-09-18T12:00:10Z' },
+    // Alguien insertó una fila arriba: este pedido habla de otro comprobante.
+    { fila: 10, clave: 'c:9|Z', tipo: 'obra', valor_anterior: 'OB-0001 · PRIMERA', valor_nuevo: 'OB-0003 · AJENA', creado_at: '2026-09-18T12:00:30Z' },
+  ]
+  assert.equal(aplicarCambiosPendientes(compras, cadena)[0].obra_celda, 'OB-0001 · PRIMERA')
+})
+
+test('`valor_anterior` nulo es «la celda estaba vacía», no «no sé»: la decisión, fijada', () => {
+  // El caso mayoritario y el motivo de la decisión: la RPC lo escribe con `v_fila.obra_celda` desde la
+  // migración 20260915T0700, así que un nulo es una celda vacía (960 de las 1.161 filas de la cola).
+  const vacia = [{ fila: 10, clave: 'c:1|A', obra_celda: null }]
+  const pedido = [{ fila: 10, clave: 'c:1|A', valor_anterior: null, valor_nuevo: 'OB-0001 · x' }]
+  assert.equal(aplicarCambiosPendientes(vacia, pedido)[0].obra_celda, 'OB-0001 · x')
+  // Una celda en blanco del Sheet es lo mismo que un nulo: no se distingue «vacía» de «vacía».
+  const enBlanco = [{ fila: 10, clave: 'c:1|A', obra_celda: '   ' }]
+  assert.equal(aplicarCambiosPendientes(enBlanco, pedido)[0].obra_celda, 'OB-0001 · x')
+  // Y la consecuencia querida: sobre una celda CARGADA, un pedido sin `valor_anterior` no se superpone.
+  // Si algún día llegara uno por otra vía sin ese dato, cae del lado conservador: gana el Sheet.
+  const cargada = [{ fila: 10, clave: 'c:1|A', obra_celda: 'OB-0009 · LA DEL DUEÑO' }]
+  assert.equal(aplicarCambiosPendientes(cargada, pedido)[0].obra_celda, 'OB-0009 · LA DEL DUEÑO')
+})

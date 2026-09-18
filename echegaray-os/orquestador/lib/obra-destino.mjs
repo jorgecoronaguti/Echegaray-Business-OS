@@ -225,21 +225,62 @@ const celdaComparable = (v) => String(v ?? '').trim()
  *   · la celda dice lo pedido    → el worker ya escribió: no hay nada que superponer.
  *   · la celda dice `valor_anterior` → el pedido sigue en pie: se superpone.
  *   · la celda dice otra cosa    → alguien la editó: GANA EL SHEET y no se superpone.
+ *
+ * ═══ Y POR ESO LA CADENA SE PLIEGA, COMO LA DE PAGOS (18/09/2026) ═══
+ *
+ * Validar contra `valor_anterior` obliga a mirar TODOS los cambios de la fila, no sólo el último. Quien
+ * elige una obra y se da cuenta de que se equivocó elige otra: la RPC compara `p_esperado` contra el
+ * ESPEJO —que ya dice la primera—, así que pasa, y encola B con `valor_anterior` = la primera. Si acá
+ * llegara sólo B, su `valor_anterior` no coincidiría con la celda viva (el Sheet todavía dice lo de
+ * antes), no se superpondría nada y el espejo mostraría «sin obra»: la pantalla desmintiendo los dos
+ * clics que el dueño acaba de dar, y `compra_obra_asignada` volviendo a la inferencia por J y K.
+ * Medido sobre la base viva el 18/09/2026: 201 filas ya tuvieron más de un cambio de obra, así que no
+ * es un caso de laboratorio. Nada lo impide: a diferencia de los pagos (20260916T1700), la RPC de obra
+ * no exige que no haya otro pedido en vuelo, y la pantalla habilita Guardar de nuevo apenas responde.
+ *
+ * Se pliegan en ORDEN DE CREACIÓN, cada uno contra la fila con los anteriores encima —el estado que
+ * tenía cuando se pidió—, igual que `superponerPagosPendientes`. Un eslabón que no encaja no corta la
+ * cadena: se saltea y el siguiente se mide contra el mismo estado, que es exactamente lo que va a hacer
+ * el bisturí cuando tome cada pedido por separado.
+ *
+ * `cambios` tiene que venir en orden de creación: lo garantiza el `order by creado_at` de quien lee
+ * (`compras-superposicion.mjs`), y hay un test que lo ata.
+ *
+ * ═══ `valor_anterior` NULO ES «LA CELDA ESTABA VACÍA», NO «NO SÉ» ═══
+ *
+ * Es una decisión, no una omisión: `compra_obra_asignar` escribe esa columna con `v_fila.obra_celda`
+ * desde su PRIMERA versión (migración 20260915T0700), así que un nulo es una celda vacía y se compara
+ * como tal. Medido el 18/09 sobre las 1.161 filas de la cola: todas son `origen = 'app'`, y las 960 sin
+ * `valor_anterior` son las de filas que todavía no tenían obra. Si algún día apareciera un pedido por
+ * otra vía sin ese dato, cae solo del lado conservador —no se superpone sobre una celda cargada—, que
+ * es lo que se quiere: ante la duda, gana el Sheet.
  */
 export function aplicarCambiosPendientes(compras = [], cambios = []) {
   // SÓLO CAMBIOS DE OBRA. Desde 20260916T1700 la misma cola lleva pagos, cuyo `valor_nuevo` es la
   // acción («total», «parcial», «deshacer»), no una obra: escribirlo acá dejaba la obra del dueño en
   // «total» mientras el pago viajaba al Sheet (18/09/2026). Sin `tipo` = anterior a la migración = obra.
-  const deObra = cambios.filter((x) => String(x?.tipo ?? 'obra') === 'obra')
-  const porFila = new Map(deObra.map((x) => [Number(x.fila), x]))
+  const porFila = new Map()
+  for (const x of cambios) {
+    if (String(x?.tipo ?? 'obra') !== 'obra') continue
+    const k = Number(x?.fila)
+    if (!porFila.has(k)) porFila.set(k, [])
+    porFila.get(k).push(x)
+  }
   return compras.map((c) => {
-    const x = porFila.get(Number(c.fila))
-    if (!x || (x.clave ?? null) !== (c.clave ?? null)) return c
-    const actual = celdaComparable(c.obra_celda)
-    const pedido = celdaComparable(x.valor_nuevo)
-    if (actual === pedido) return c
-    if (actual !== celdaComparable(x.valor_anterior)) return c
-    return { ...c, obra_celda: pedido || null }
+    const cadena = porFila.get(Number(c.fila))
+    if (!cadena?.length) return c
+    let actual = celdaComparable(c.obra_celda)
+    let movida = false
+    for (const x of cadena) {
+      // Si alguien insertó una fila arriba, la fila N es otra compra y el pedido no habla de ella.
+      if ((x.clave ?? null) !== (c.clave ?? null)) continue
+      const pedido = celdaComparable(x.valor_nuevo)
+      if (actual === pedido) continue
+      if (actual !== celdaComparable(x.valor_anterior)) continue
+      actual = pedido
+      movida = true
+    }
+    return movida ? { ...c, obra_celda: actual || null } : c
   })
 }
 

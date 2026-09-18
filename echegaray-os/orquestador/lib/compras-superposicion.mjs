@@ -48,28 +48,32 @@ export function cuentaParaSuperponer(cambio, desde) {
 }
 
 /**
- * Reparte lo leído en las dos superposiciones, con la forma que cada función pura espera:
+ * Reparte lo leído en las dos superposiciones. LOS DOS LADOS LLEVAN LA CADENA ENTERA, en orden de
+ * creación, y por el mismo motivo: desde que cada pedido se valida contra el estado que la fila tenía
+ * cuando se pidió, el último suelto no alcanza para reconstruir ese estado.
  *
- *   · obras: el ÚLTIMO cambio de obra por fila. La celda es UNA y el pedido más nuevo la describe
- *     entera, así que plegar los anteriores no agregaría nada; y cada uno trae su `valor_anterior`,
- *     con el que `aplicarCambiosPendientes` decide si el Sheet todavía dice lo que la pantalla vio.
- *   · pagos: TODOS, en orden de creación, porque una fila tiene dos tramos y el segundo puede pedirse
- *     antes de que el primero baje al Sheet. `superponerPagosPendientes` los pliega en ese orden
- *     —cada uno contra la fila con los anteriores encima—; quedarse con uno solo perdía el primero y
+ *   · obras: la primera versión de esto entregaba el ÚLTIMO cambio por fila, con el argumento de que
+ *     «la celda es una y el pedido más nuevo la describe entera». Dejó de ser cierto al agregar la
+ *     validación por `valor_anterior`: dos clics seguidos (elegir una obra y corregirla) encolan A y
+ *     B, y B espera lo que dejó A, que el Sheet todavía no tiene. Entregar sólo B lo descartaba y el
+ *     espejo quedaba SIN OBRA. Ver `aplicarCambiosPendientes`, que las pliega.
+ *   · pagos: una fila tiene dos tramos y el segundo puede pedirse antes de que el primero baje al
+ *     Sheet. `superponerPagosPendientes` los pliega igual; quedarse con uno solo perdía el primero y
  *     hacía que el segundo se auto-rechazara por conflicto (18/09/2026).
+ *
+ * El orden lo pone la consulta (`order by creado_at`) y `filter` lo conserva. Un test lo ata: plegar
+ * una cadena en otro orden da otro resultado, así que el orden no es cosmética.
  */
 export function repartir(cambios = [], desde = null) {
   const cuentan = (cambios ?? []).filter((c) => cuentaParaSuperponer(c, desde))
-  const obras = new Map()
+  const obras = []
   const pagos = []
   for (const c of cuentan) {
-    if (tipoDe(c) === 'pago') { pagos.push(c); continue }
-    if (tipoDe(c) !== 'obra') continue
-    const previo = obras.get(Number(c.fila))
-    if (!previo || ms(c.creado_at) >= ms(previo.creado_at)) obras.set(Number(c.fila), c)
+    if (tipoDe(c) === 'pago') pagos.push(c)
+    else if (tipoDe(c) === 'obra') obras.push(c)
   }
   return {
-    obras: [...obras.values()],
+    obras,
     pagos,
     ids: cuentan.map((c) => String(c.id)).sort(),
   }
@@ -112,7 +116,11 @@ export async function leerLoDecididoEnLaApp(q, { desde }) {
 export function superponerLoDecidido(compras, { obras = [], pagos = [] } = {}, hoy = undefined) {
   const p = pagos.length ? superponerPagosPendientes(compras, pagos, hoy) : { compras, conflictos: [], superpuestos: 0 }
   const conObras = obras.length ? aplicarCambiosPendientes(p.compras, obras) : p.compras
-  return { compras: conObras, conflictos: p.conflictos, superpuestos: p.superpuestos, obras: obras.length }
+  // Se cuentan las FILAS que se movieron, no los pedidos que llegaron: con la cadena plegada, dos
+  // clics sobre la misma fila son un cambio en el espejo, y el log tiene que decir eso y no «2».
+  // `aplicarCambiosPendientes` devuelve la MISMA fila cuando no la tocó, así que alcanza la identidad.
+  const movidas = conObras.reduce((n, f, i) => n + (f === p.compras[i] ? 0 : 1), 0)
+  return { compras: conObras, conflictos: p.conflictos, superpuestos: p.superpuestos, obras: movidas }
 }
 
 /** ¿El conjunto de cambios que cuentan es el mismo? El sync lo usa para saber si hay que volver a escribir. */

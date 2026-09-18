@@ -47,14 +47,54 @@ test('un cambio aplicado durante la lectura del Sheet se superpone igual (antes 
   assert.equal(viejo.compras[0].obra_celda, 'Sin obra – LA ESTRELLA')
 })
 
-test('de dos cambios de obra de la misma fila gana el más nuevo; las filas sin `tipo` (anteriores a la migración) son de obra', () => {
+test('los dos cambios de obra de una fila viajan LOS DOS y en orden; las filas sin `tipo` (anteriores a la migración) son de obra', () => {
   const r = repartir([
     { id: 'a', fila: 10, estado: 'pendiente', valor_anterior: null, valor_nuevo: 'OB-0001 · x', creado_at: antes },
     { id: 'b', fila: 10, estado: 'pendiente', valor_anterior: 'OB-0001 · x', valor_nuevo: 'OB-0002 · y', creado_at: despues },
     { id: 'c', fila: 11, estado: 'pendiente', valor_anterior: null, valor_nuevo: 'OB-0003 · z', creado_at: antes, tipo: null },
   ], DESDE)
-  assert.deepEqual(r.obras.map((c) => [c.fila, c.valor_nuevo]), [[10, 'OB-0002 · y'], [11, 'OB-0003 · z']])
+  // Quedarse con el último (lo que hacía hasta el 18/09) descartaba `a`, y `b` espera lo que dejó `a`:
+  // el espejo terminaba SIN OBRA después de dos clics. La cadena entera llega y la pliega `obra-destino`.
+  assert.deepEqual(r.obras.map((c) => c.id), ['a', 'b', 'c'])
+  assert.deepEqual(r.obras.map((c) => [c.fila, c.valor_nuevo]),
+    [[10, 'OB-0001 · x'], [10, 'OB-0002 · y'], [11, 'OB-0003 · z']])
   assert.deepEqual(r.ids, ['a', 'b', 'c'])
+})
+
+test('la cadena de dos clics llega hasta el espejo: superponerLoDecidido la pliega y cuenta UNA fila movida', () => {
+  const compras = [{ fila: 10, clave: 'c:1|A', obra_celda: null }]
+  const cambios = [
+    { id: 'a', fila: 10, clave: 'c:1|A', tipo: 'obra', estado: 'pendiente', valor_anterior: null, valor_nuevo: 'OB-0001 · x', creado_at: antes },
+    { id: 'b', fila: 10, clave: 'c:1|A', tipo: 'obra', estado: 'pendiente', valor_anterior: 'OB-0001 · x', valor_nuevo: 'OB-0002 · y', creado_at: despues },
+  ]
+  const r = superponerLoDecidido(compras, repartir(cambios, DESDE))
+  assert.equal(r.compras[0].obra_celda, 'OB-0002 · y')
+  assert.equal(r.obras, 1, 'dos pedidos sobre la misma fila son UNA fila movida, y el log dice filas')
+})
+
+// ═══ EL ORDEN NO ES COSMÉTICA ═══
+//
+// Los dos plegados —obras y pagos— sólo son correctos si los pedidos llegan en orden de creación, y lo
+// único que lo garantiza es el `order by creado_at` de la consulta. Sin esta red, sacarlo o cambiarlo
+// por `creado_at desc` compilaría, pasaría todos los demás tests y rompería las dos cadenas en silencio.
+
+test('la consulta ordena por `creado_at` ascendente: de eso depende que las dos cadenas se plieguen bien', async () => {
+  let sql = ''
+  await leerLoDecididoEnLaApp(async (q) => { sql = q; return { rows: [] } }, { desde: DESDE })
+  assert.match(sql, /order by creado_at\s*$/, 'sin este orden, plegar una cadena da otro resultado')
+  assert.doesNotMatch(sql, /order by creado_at desc/)
+})
+
+test('repartir NO reordena: entrega los pedidos como se los dieron, en los dos lados', () => {
+  const cambios = [
+    { id: '1', fila: 7, tipo: 'pago', estado: 'pendiente', creado_at: antes },
+    { id: '2', fila: 7, tipo: 'obra', estado: 'pendiente', creado_at: antes },
+    { id: '3', fila: 7, tipo: 'pago', estado: 'pendiente', creado_at: despues },
+    { id: '4', fila: 7, tipo: 'obra', estado: 'pendiente', creado_at: despues },
+  ]
+  const r = repartir(cambios, DESDE)
+  assert.deepEqual(r.pagos.map((c) => c.id), ['1', '3'])
+  assert.deepEqual(r.obras.map((c) => c.id), ['2', '4'])
 })
 
 test('la lectura pide a la base sólo la pestaña Compras, lo pendiente y lo aplicado desde `desde`, y reparte', async () => {
