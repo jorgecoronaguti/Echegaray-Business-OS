@@ -152,3 +152,50 @@ test('el signo de una nota de crédito sobrevive a la corrección de importes', 
   assert.equal(c.total, -62000)
   assert.equal(c.iva, -10760.33)
 })
+
+// ════════════════════════════════════════════════════════════════════════════
+// «COINCIDE» NO ES «SÉ QUIÉN LA EMITIÓ» (18/09/2026) — ver `emisorConfirmado`
+// ════════════════════════════════════════════════════════════════════════════
+import { emisorConfirmado, VIAS_CON_EMISOR } from './arca.mjs'
+
+const bloque = (via, emisorCuit = '30691853825') => ({ estado: 'coincide', via, emisorCuit })
+
+test('EL DEFECTO: una coincidencia por fecha+total puede ser la factura de OTRO emisor — no confirma el CUIT', () => {
+  // `candidatasArca` trae todas las filas del libro de esa fecha, de cualquier emisor, y `resolver`
+  // nunca compara el emisor contra el proveedor leído. Con el CUIT ilegible en la foto y una única
+  // fila de otro emisor con la misma fecha y el mismo total, `emisorCuit` es ajeno.
+  assert.equal(emisorConfirmado(bloque(VIA.FECHA_TOTAL)), null)
+})
+
+test('las vías que SÍ identifican al emisor son las que usaron el CUIT o el CAE para encontrar la fila', () => {
+  assert.deepEqual([...VIAS_CON_EMISOR], [VIA.CAE, VIA.CUIT_FECHA_TOTAL, VIA.CUIT_NUMERO])
+  for (const via of VIAS_CON_EMISOR) assert.equal(emisorConfirmado(bloque(via)), '30691853825', via)
+})
+
+test('sin coincidencia, sin vía o con un CUIT que no son once dígitos no se confirma nada', () => {
+  assert.equal(emisorConfirmado({ estado: 'sin_registro', via: VIA.CAE, emisorCuit: '30691853825' }), null)
+  assert.equal(emisorConfirmado({ estado: 'no_verificado' }), null)
+  assert.equal(emisorConfirmado(bloque(VIA.CAE, '3069185')), null)
+  assert.equal(emisorConfirmado(bloque(VIA.CAE, null)), null)
+  assert.equal(emisorConfirmado(bloque(undefined)), null)
+  assert.equal(emisorConfirmado({}), null)
+  assert.equal(emisorConfirmado(), null)
+})
+
+test('el CUIT se normaliza a dígitos: el libro puede traerlo con guiones', () => {
+  assert.equal(emisorConfirmado(bloque(VIA.CUIT_NUMERO, '30-69185382-5')), '30691853825')
+})
+
+test('la vía débil sigue sirviendo para lo que describe el comprobante — sólo no para la identidad', () => {
+  // El bloque entero no cambia: `conciliarConArca` sigue devolviendo `coincide` por fecha+total y el
+  // número/total/fecha se siguen corrigiendo con él. Lo único que no se deriva de ahí es QUIÉN emitió.
+  const conciliacion = conciliarConArca(
+    { fecha: '16/09/2026', total: 580000 },
+    [{ emisor_cuit: '30111111117', emisor_nombre: 'OTRO SA', punto_venta: '2', numero: '4213', fecha_emision: '2026-09-16', imp_total: 580000 }],
+  )
+  assert.equal(conciliacion.estado, 'coincide')
+  assert.equal(conciliacion.via, VIA.FECHA_TOTAL)
+  assert.equal(conciliacion.numeroArca, '0002-00004213')
+  assert.equal(emisorConfirmado({ estado: conciliacion.estado, via: conciliacion.via, emisorCuit: conciliacion.emisorCuit }), null,
+    'el CUIT de OTRO SA no puede terminar en la ficha del proveedor que se está cargando')
+})

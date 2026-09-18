@@ -58,6 +58,41 @@ export const ESTADO_ARCA = Object.freeze({
   NO_VERIFICADO: 'no_verificado',
 })
 
+// ═══ QUÉ VÍAS IDENTIFICAN AL EMISOR, Y CUÁL NO (18/09/2026) ═══
+//
+// `estado: 'coincide'` dice que se encontró LA FILA del libro fiscal; no dice que se haya
+// identificado a QUIÉN la emitió. `VIA.FECHA_TOTAL` es la vía débil —se usa justamente cuando la
+// foto no dejó leer el CUIT— y `candidatasArca` trae todas las filas de esa fecha **de cualquier
+// emisor**; `resolver` no compara el emisor contra el proveedor leído. Entonces una foto sin CUIT
+// (o con el CUIT mal leído) que cae sobre una única fila de OTRO emisor con la misma fecha y el
+// mismo total devuelve `emisorCuit` ajeno con `estado: 'coincide'`.
+//
+// Para lo que sólo describe el comprobante (corregir el número, el total, la fecha) eso alcanza y
+// está declarado en `via`. Para afirmar la IDENTIDAD del proveedor —completar su CUIT en el maestro,
+// que es un dato maestro y parte su cuenta corriente si se equivoca— no alcanza: hace falta una vía
+// que haya usado el CUIT o el CAE para encontrar la fila.
+//
+// Medido el 18/09: hoy no hay dos comprobantes con la misma fecha y total en el libro, así que el
+// caso no se dio todavía. Pero la regla declarada («el CUIT que ARCA confirmó») no era la que
+// corría, y ésa es la diferencia que hay que cerrar antes de que la base crezca.
+
+/** Las vías que identifican al EMISOR, no sólo a la fila. `FECHA_TOTAL` no está: no mira el CUIT. */
+export const VIAS_CON_EMISOR = Object.freeze([VIA.CAE, VIA.CUIT_FECHA_TOTAL, VIA.CUIT_NUMERO])
+
+/**
+ * El CUIT del emisor SÓLO cuando la vía de la conciliación lo identifica. `null` en cualquier otro
+ * caso — incluida una coincidencia por fecha + total, que puede ser la factura de otro emisor.
+ *
+ * @param {{estado?:string, via?:string, emisorCuit?:string|null}} bloque  el bloque `arca` del ítem
+ * @returns {string|null} once dígitos, o null
+ */
+export function emisorConfirmado(bloque = {}) {
+  if (bloque?.estado !== ESTADO_ARCA.COINCIDE) return null
+  if (!VIAS_CON_EMISOR.includes(bloque?.via)) return null
+  const cuit = soloDigitos(bloque?.emisorCuit)
+  return cuit.length === 11 ? cuit : null
+}
+
 /** `{punto_venta:'4', numero:'3642'}` → `0004-00003642`. Es el formato de la columna H de Compras. */
 export function numeroDeArca(fila = {}) {
   const pv = soloDigitos(fila.punto_venta)
