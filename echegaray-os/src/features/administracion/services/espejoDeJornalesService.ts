@@ -123,10 +123,12 @@ const sumar = (a: number | null | undefined, b: number | null): number | null =>
 /**
  * EL BLOQUE DE LA PLANILLA QUE CUBRE ESTA QUINCENA.
  *
- * Se pide por la ventana EXACTA (`desde`/`hasta`) y no por solape: un bloque cuyo encabezado abarca
- * otras fechas es otra quincena, y compararlo contra ésta daría una diferencia que no existe. El
- * script escribe la ventana que leyó del encabezado (min/max de las fechas, que vienen
- * desordenadas), así que las dos puntas son las mismas que usa `quincenaDe`.
+ * EL BLOQUE ES EL QUE EMPIEZA DENTRO DE LA QUINCENA. Antes se pedía la ventana EXACTA (`desde` y `hasta`
+ * iguales a los de `quincenaDe`) y ocho de los treinta y dos bloques de 2026 no aparecían: el dueño escribe en
+ * el encabezado las fechas REALES del período (02/02..14/02, 18/05..30/05, 03/08..15/08, 04/05..16/05), no las
+ * del calendario. En esas quincenas la app no veía JORNALES —ni adelantos ni banco— y no lo decía (17/09/2026).
+ * Un bloque cuyo encabezado empieza en otra quincena sigue siendo otra quincena: el criterio no es solape, es
+ * el primer día. `orquestador/lib/jornales-banco-adelanto.mjs` usa la misma regla; los dos tienen que decir lo mismo.
  */
 export async function getEspejoDeLaPlanilla(
   supabase: SupabaseClient, q: Quincena,
@@ -134,7 +136,7 @@ export async function getEspejoDeLaPlanilla(
   const { data, error } = await supabase.from('jornales_bloque_persona')
     .select('pestana, bloque_fila1, persona_id, nombre_planilla, horas, horas_por_dia, '
       + 'cobra, adelanto, ya_transferido, por_banco, en_efectivo, leido_en')
-    .eq('quincena_desde', q.desde).eq('quincena_hasta', q.hasta)
+    .gte('quincena_desde', q.desde).lte('quincena_desde', q.hasta)
   if (error) {
     return sinTabla(error) ? VACIO : { ...VACIO, error: error.message }
   }
@@ -146,6 +148,10 @@ export async function getEspejoDeLaPlanilla(
   const diasPorPersona = new Map<string, Set<string>>()
   const sinPersona: string[] = []
   const bloques = new Map<string, { pestana: string; filaBloque: number; personas: number }>()
+  // LA COLUMNA BANCO DEL BLOQUE, ¿LA MIDIÓ ALGUIEN? Una celda vacía en un bloque donde otras filas tienen cifra es «a
+  // esta persona no le fue nada por banco»; un bloque con TODAS las celdas vacías es «nadie anotó el canal». Ocho
+  // bloques de 2026 son del segundo tipo, y la app publicaba su $0 como si fuera del primero (17/09/2026).
+  const bloquesConBanco = new Set(filas.filter((f) => f.por_banco != null).map((f) => `${f.pestana}|${f.bloque_fila1}`))
   let leidoEn: string | null = null
   for (const f of filas) {
     const clave = `${f.pestana}|${f.bloque_fila1}`
@@ -174,6 +180,7 @@ export async function getEspejoDeLaPlanilla(
       yaTransferido: sumar(previa.yaTransferido, num(f.ya_transferido)),
       porBanco: sumar(previa.porBanco, num(f.por_banco)),
       enEfectivo: sumar(previa.enEfectivo, num(f.en_efectivo)),
+      bancoMedido: previa.bancoMedido === true || bloquesConBanco.has(clave),
     })
   }
   return {

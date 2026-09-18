@@ -1,11 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  armarRetribucion, filasDeRetribucion, historialDelBlanco, quincenasDelAnio, totalesDeRetribucion,
-  type LineaRetribuida, type QuincenaRetribuida,
+  armarRetribucion, cifrasDelAnio, filasDeRetribucion, historialDelBlanco, quincenasDelAnio, tituloDelPagado,
+  tituloDelPagadoDelAnio, totalesDeRetribucion, type LineaRetribuida, type QuincenaRetribuida,
 } from './retribucionDelLegajo.ts'
 import { pagoDeLaLinea } from './pagoDeLaQuincena.ts'
 import { quincenaDe } from './quincena.ts'
+import { pesos } from '../components/liquidacion/formato.ts'
 
 // LOS DEFECTOS QUE ESTOS TESTS ATRAPAN:
 //
@@ -24,16 +25,16 @@ const q = (desde: string): QuincenaRetribuida['quincena'] => quincenaDe(desde)
 
 const porHora = (o: {
   horas: number; valorHora: number; banco: number | null; negro: number | null
-  pagadoBanco?: number; pagadoEfectivo?: number; estimado?: boolean; sinNeto?: boolean
+  pagadoBanco?: number; pagadoEfectivo?: number; estimado?: boolean; sinNeto?: boolean; sinDesglose?: boolean
 }): LineaRetribuida => ({
   modalidad: 'hora', horas: o.horas, valorHora: o.valorHora, netoMensual: null, cobra: null, sinTarifa: false, sinNeto: o.sinNeto === true,
-  sueldo: { estado: o.estimado ? 'estimado' : 'recibo' },
+  sueldo: { estado: o.estimado ? 'estimado' : 'recibo' }, sinDesglose: o.sinDesglose === true,
   pago: pagoDeLaLinea({ banco: o.banco, negro: o.negro, pagadoBanco: o.pagadoBanco, pagadoEfectivo: o.pagadoEfectivo }),
 })
 
 const mensual = (neto: number, pagadoBanco: number): LineaRetribuida => ({
   modalidad: 'mensual', horas: 90, valorHora: null, netoMensual: neto, cobra: neto, sinTarifa: false, sinNeto: false, sueldo: null,
-  pago: pagoDeLaLinea({ banco: neto, negro: 0, pagadoBanco }),
+  sinDesglose: false, pago: pagoDeLaLinea({ banco: neto, negro: 0, pagadoBanco }),
 })
 
 test('las quincenas del año llegan hasta la que contiene hoy, sin una de más', () => {
@@ -202,9 +203,11 @@ test('el historial del blanco ordena por período real y dice la variación', ()
 // Lo que la Liquidación publica de un jefe de Oficina: `modalidad` mensual, `negro` null (fuera del modelo blanco + negro),
 // así que `pago.total` es null y la fila decía «sin total» todo el año. Antes de septiembre no hay neto mensual:
 // JORNALES los anotaba por hora y el COBRA de cada quincena es el importe de la planilla.
-const jefe = (o: { cobra: number | null; neto?: number | null; pagadoBanco?: number; pagadoEfectivo?: number; horas?: number }): LineaRetribuida => ({
+const jefe = (o: {
+  cobra: number | null; neto?: number | null; pagadoBanco?: number; pagadoEfectivo?: number; horas?: number; sinDesglose?: boolean
+}): LineaRetribuida => ({
   modalidad: 'mensual', horas: o.horas ?? 90, valorHora: null, netoMensual: o.neto ?? null, cobra: o.cobra,
-  sinTarifa: false, sinNeto: false, sueldo: null,
+  sinTarifa: false, sinNeto: false, sueldo: null, sinDesglose: o.sinDesglose === true,
   pago: pagoDeLaLinea({ banco: 0, negro: null, pagadoBanco: o.pagadoBanco, pagadoEfectivo: o.pagadoEfectivo }),
 })
 
@@ -249,4 +252,57 @@ test('mensual con una quincena sin importe: se suma lo que hay y la fila dice cu
   const vacio = filasDeRetribucion([{ quincena: q('2026-08-16'), estado: 'abierta', linea: jefe({ cobra: null, pagadoBanco: 5 }) }])
   assert.equal(vacio[0].pago?.total, null)
   assert.equal(totalesDeRetribucion(vacio).pagado, 5)
+})
+
+// ═══ NULL NO ES CERO: «SIN DESGLOSE» (17/09/2026) ═══
+//
+// El dueño: «están mal todos los cobros por banco de los legajos». En ocho bloques de JORNALES de 2026 la columna
+// BANCO está vacía en todas sus filas; la app leía ese NULL como 0 y el legajo decía «banco $0 · efectivo todo» de plata
+// que nadie repartió. Lo pagado NO cambia: cambia cómo se dice el reparto, en la fila, en el pie y en las cifras.
+
+test('una quincena sin desglose no reparte lo pagado en «banco $0 / todo efectivo»; con BANCO = 0 medido, sí', () => {
+  // 2ª de mayo de 2026, Quiroga Sebastián: la planilla no anotó BANCO en todo el bloque; consta pagado $601.460.
+  // 1ª de julio: BANCO anotado ($253.400) y adelanto en mano ($320.000).
+  const filas = filasDeRetribucion([
+    { quincena: q('2026-05-16'), estado: 'cerrada', linea: porHora({ horas: 100, valorHora: 6000, banco: 0, negro: 601460, pagadoEfectivo: 601460, sinDesglose: true }) },
+    { quincena: q('2026-07-01'), estado: 'cerrada', linea: porHora({ horas: 100, valorHora: 6000, banco: 253400, negro: 320000, pagadoBanco: 253400, pagadoEfectivo: 320000 }) },
+  ])
+  const [julio, mayo] = filas
+  assert.equal(mayo.sinDesglose, true)
+  assert.equal(julio.sinDesglose, false)
+  assert.equal(mayo.pago?.pagado, 601460, 'lo pagado no cambia')
+  assert.match(tituloDelPagado({ sinDesglose: mayo.sinDesglose, pago: mayo.pago! }), /sin desglose/)
+  assert.doesNotMatch(tituloDelPagado({ sinDesglose: mayo.sinDesglose, pago: mayo.pago! }), /banco \$ ?0\b/)
+  assert.equal(tituloDelPagado({ sinDesglose: julio.sinDesglose, pago: julio.pago! }), `banco ${pesos(253400)} · efectivo ${pesos(320000)}`)
+
+  const t = totalesDeRetribucion(filas)
+  assert.equal(t.pagado, 601460 + 253400 + 320000, 'el pagado del año es el de siempre')
+  assert.equal(t.pagadoBanco, 253400, 'el banco del año suma sólo lo afirmado')
+  assert.equal(t.pagadoEfectivo, 320000, 'el efectivo del año no se lleva los $601.460 que nadie repartió')
+  assert.equal(t.pagadoSinDesglose, 601460)
+  assert.equal(t.sinDesglose, 1)
+  assert.equal(t.pagadoBanco + t.pagadoEfectivo + t.pagadoSinDesglose, t.pagado)
+  assert.match(tituloDelPagadoDelAnio(t), /sin desglose/)
+  const consta = cifrasDelAnio(2026, t).find((c) => c.rotulo.startsWith('consta pagado'))
+  assert.ok(consta?.titulo?.includes(`sin desglose ${pesos(601460)}`), consta?.titulo)
+
+  // LA MISMA FILA CON BANCO = 0 MEDIDO EN LA PLANILLA reparte: ese $0 es un dato.
+  const medido = filasDeRetribucion([
+    { quincena: q('2026-05-16'), estado: 'cerrada', linea: porHora({ horas: 100, valorHora: 6000, banco: 0, negro: 601460, pagadoEfectivo: 601460 }) },
+  ])
+  assert.equal(medido[0].sinDesglose, false)
+  const tm = totalesDeRetribucion(medido)
+  assert.deepEqual([tm.pagadoBanco, tm.pagadoEfectivo, tm.pagadoSinDesglose, tm.sinDesglose], [0, 601460, 0, 0])
+  assert.equal(tituloDelPagadoDelAnio(tm), `banco ${pesos(0)} · efectivo ${pesos(601460)}`)
+})
+
+test('un mes de un mensual queda sin desglose si alguna de sus quincenas lo está', () => {
+  const filas = filasDeRetribucion([
+    { quincena: q('2026-02-01'), estado: 'cerrada', linea: jefe({ cobra: 750000, pagadoEfectivo: 750000, sinDesglose: true }) },
+    { quincena: q('2026-02-16'), estado: 'cerrada', linea: jefe({ cobra: 750000, pagadoBanco: 750000 }) },
+  ])
+  assert.equal(filas.length, 1)
+  assert.equal(filas[0].sinDesglose, true)
+  const t = totalesDeRetribucion(filas)
+  assert.deepEqual([t.pagado, t.pagadoSinDesglose, t.pagadoBanco, t.pagadoEfectivo], [1500000, 1500000, 0, 0])
 })

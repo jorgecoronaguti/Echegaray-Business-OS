@@ -366,8 +366,10 @@ export async function getLiquidacionDeLaQuincena(
         // EL PRESENTISMO DE UNA QUINCENA CERRADA ES EL SELLADO: se muestra lo que se pagó, no se recalcula.
         // LO PAGADO VIAJA TAMBIÉN EN LA CERRADA: es el registro de una plata que salió, no un override del
         // cálculo. Sin esto, cerrar la quincena borraría de la pantalla el pago que alguien registró.
+        // EL ESPEJO VIAJA TAMBIÉN A LA CERRADA, pero no manda: sólo dice si la planilla midió el banco (`sinDesglose`).
         ? c.lineas.map((l) => conMarcaDePago(
-          sinOverrides(l, presentismosSellados.get(l.personaId) ?? null, overrides.get(l.personaId) ?? {}, selloDe(l)), pagadas,
+          sinOverrides(l, presentismosSellados.get(l.personaId) ?? null, overrides.get(l.personaId) ?? {}, selloDe(l),
+            espejo.cadenaPorPersona.get(l.personaId) ?? null), pagadas,
         ))
         // LA PRECEDENCIA VIVE EN `aplicarOverrides` Y NO ACÁ: manual > JORNALES > calculado, una sola
         // vez y con sus diez tests. Acá sólo se le entrega la fuente.
