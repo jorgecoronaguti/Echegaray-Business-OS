@@ -18,12 +18,16 @@ export function importe(n: number | null | undefined): string | null {
 const cantidad = (d: ItemPresupuestado): string | null =>
   d.cantidad != null && d.unidad ? `${d.cantidad.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${d.unidad}` : d.unidad ?? null
 
-export function DetalleRubro({ rotulo, presupuesto, consumo, fuente, abierto = false }: {
+export function DetalleRubro({ rotulo, definicion, presupuesto, consumo, fuente, consumido, abierto = false }: {
   rotulo: string
+  /** La definición de una línea del rubro; en la cabecera del panel, no arriba del número. */
+  definicion?: string | null
   presupuesto: RubroPresupuestado | null
   consumo: ConsumoRubro | null
   /** «Cotizacion Final.xlsm · 27/07/2026»: de dónde salió lo presupuestado. */
   fuente: string | null
+  /** Lo consumido del rubro, para la línea de cifras del encabezado. */
+  consumido?: number | null
   abierto?: boolean
 }) {
   const dentro = (presupuesto?.detalle ?? []).filter((d) => !d.fueraDeOferta)
@@ -32,10 +36,18 @@ export function DetalleRubro({ rotulo, presupuesto, consumo, fuente, abierto = f
   const fueraTotal = fuera.reduce((a, d) => a + d.importe, 0)
   return (
     <details open={abierto || undefined} className="group rounded-control border border-line bg-surface-quiet/40" data-testid={`detalle-${rotulo}`}>
-      <summary className="cursor-pointer list-none px-3 py-2 text-[11.5px] text-muted hover:text-ink">
-        <span className="mr-1 inline-block transition-transform group-open:rotate-90">›</span>qué contiene
+      <summary className="cursor-pointer list-none px-3.5 py-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-[13px] font-semibold text-ink">
+            <span className="mr-1 inline-block text-faint transition-transform group-open:rotate-90">›</span>{rotulo}
+          </span>
+          <span className="whitespace-nowrap text-[11.5px] tabular-nums text-muted">
+            cotizado {importe(presupuesto?.monto ?? null) ?? <span className="text-faint">—</span>} · consumido {importe(consumido ?? consumo?.monto ?? null) ?? <span className="text-faint">—</span>}
+          </span>
+        </div>
+        {definicion ? <p className="mt-1 text-[11.5px] leading-snug text-muted">{definicion}</p> : null}
       </summary>
-      <div className="grid gap-4 px-3 pb-3 text-[11.5px] leading-snug sm:grid-cols-2">
+      <div className="grid gap-4 border-t border-line px-3.5 py-3 text-[11.5px] leading-snug sm:grid-cols-2">
         <div className="min-w-0">
           <div className="mb-1 font-medium text-ink">En la cotización{fuente ? <span className="font-normal text-faint"> · {fuente}</span> : null}</div>
           {presupuesto?.monto == null ? (

@@ -62,9 +62,24 @@ export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva }: {
         ]} />
       <Seccion titulo="Rubro contra rubro" aclaracion="cada rubro del gasto contra el mismo rubro del presupuesto leído del documento de cotización. Debajo de cada uno, qué contiene.">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5" data-testid="rubros">
-          {ITEMS.map((i) => <Rubro key={i.clave} obra={obra} item={i.clave} rotulo={i.rotulo} c={celda(obra, i.clave)} />)}
+          {ITEMS.map((i) => <Rubro key={i.clave} item={i.clave} rotulo={i.rotulo} c={celda(obra, i.clave)} />)}
         </div>
         <NotaIva sinIva={sinIva} />
+      </Seccion>
+      {/* QUÉ CONTIENE CADA RUBRO, EN SU PROPIA SECCIÓN (18/09/2026). Adentro de la columna de 180 px del
+          rubro, el detalle salía truncado («Chapa, perfil…» → «C…») y no se podía leer: lo que el dueño
+          pidió ver era justamente eso. Acá entra a dos columnas, con el mismo dibujo que el Resumen. */}
+      <Seccion titulo="Qué contiene cada rubro" filo
+        aclaracion="a la izquierda, los insumos del documento de cotización; a la derecha, de dónde sale el gasto (familias de Compras, proveedores, quincenas)">
+        <div className="grid gap-4 lg:grid-cols-2" data-testid="contenido-rubros-obra">
+          {ITEMS.filter((i) => i.clave !== 'horas').map((i) => (
+            <DetalleRubro key={i.clave} rotulo={i.rotulo} definicion={definicionDe(i.clave)}
+              presupuesto={obra.presupuestoDetalle?.[i.clave as Exclude<Item, 'horas'>] ?? null}
+              consumo={obra.consumoDetalle?.[i.clave as Exclude<Item, 'horas'>] ?? null}
+              consumido={obra.gasto[i.clave as Exclude<Item, 'horas'>]}
+              fuente={obra.fuentePresupuesto} />
+          ))}
+        </div>
       </Seccion>
       <Seccion titulo="Consumo por mes" filo
         aclaracion="materiales, subcontratistas y otros por fecha del comprobante; mano de obra por la quincena en que empieza"
@@ -93,7 +108,7 @@ function Selector({ obras, elegida, filtros }: { obras: ObraAnalitica[]; elegida
 }
 
 /** Un rubro: la definición, la barra fina de lo cotizado, la gruesa de lo consumido, qué queda y qué contiene. Medidas del diseño v6. */
-function Rubro({ obra, item, rotulo, c }: { obra: ObraAnalitica; item: Item; rotulo: string; c: Celda }) {
+function Rubro({ item, rotulo, c }: { item: Item; rotulo: string; c: Celda }) {
   const fmt = item === 'horas' ? horasTexto : millones
   const escala = Math.max(c.cotizado ?? 0, c.gastado ?? 0)
   const excedido = c.lectura?.tipo === 'excedido' || c.lectura?.tipo === 'noPrevisto'
@@ -111,9 +126,6 @@ function Rubro({ obra, item, rotulo, c }: { obra: ObraAnalitica; item: Item; rot
         valor={c.gastado != null ? fmt(c.gastado) : (c.gastadoAusente ?? (item === 'horas' ? 'sin horas' : 'sin movimiento'))} color={gColor} fuerte />
       <LecturaRubro c={c} item={item} />
       {c.consumoEstimado ? <div className="pl-[68px] text-[10.5px] text-faint">{c.consumoEstimado}</div> : null}
-      {item !== 'horas' ? (
-        <DetalleRubro rotulo={rotulo} presupuesto={obra.presupuestoDetalle?.[item] ?? null} consumo={obra.consumoDetalle?.[item] ?? null} fuente={obra.fuentePresupuesto} />
-      ) : null}
     </div>
   )
 }

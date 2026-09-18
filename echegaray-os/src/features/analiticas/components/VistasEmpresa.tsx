@@ -118,10 +118,17 @@ export function VistaNomina({ filas, quincenas, personas, rango, periodo, hoy, e
           // QUÉ COMPARA: el costo del mes, no el plantel ni las horas.
           { rotulo: ultimo ? `costo de ${rotuloMes(ultimo.mes)} contra ${rotuloMes(MES_BASE)}` : `costo contra ${rotuloMes(MES_BASE)}`, valor: pctConSigno(ultimo?.contraBase), falta: '—', tono: (ultimo?.contraBase ?? 0) > 0 ? 'warn' : undefined },
           { rotulo: 'plantel', valor: l ? String(l.plantel) : null, nota: 'por pertenencia, no por fecha de egreso' },
-          // UNA SOLA VERDAD EN TODA LA PANTALLA (auditoría 18/09/2026): la mano de obra SÍ se imputa a las
-          // obras, por quincena (`costo_mo_quincena`), y es la misma cifra que Resumen y Obras publican.
+          // UNA SOLA VERDAD EN TODA LA PANTALLA (auditoría 18/09/2026): decía «ninguna obra carga todavía su
+          // parte de este costo» mientras Resumen publicaba «mano de obra 25 %». La mano de obra SÍ se
+          // imputa, por quincena (`costo_mo_quincena`), y sale de la misma fuente que Resumen y Obras.
+          //
+          // NO ES LA CIFRA DEL RESUMEN Y SE DICE POR QUÉ: Nómina es de la empresa —el filtro de obras y
+          // estado no le aplica (ver filtros.ts)—, así que suma TODAS las obras de la cartera; el Resumen
+          // muestra sólo las que el filtro deja. Escribir «la misma cifra que Resumen» sería falso.
           { rotulo: 'imputado a obras', valor: enObras ? millones(enObras.manoObra) : null, falta: enObras ? 'sin horas en obra' : 'no se leyó',
-            nota: enObras?.manoObra != null ? `${enObras.obras} ${enObras.obras === 1 ? 'obra' : 'obras'} por quincena, la misma cifra que Resumen${enObras.estimada ? ` · ${enObras.estimada}` : ''}` : undefined },
+            nota: enObras?.manoObra != null
+              ? `acumulado de las ${enObras.obras} obras de la cartera, por quincena${enObras.estimada ? ` · ${enObras.estimada}` : ''}. El Resumen muestra la parte de las obras que su filtro deja.`
+              : undefined },
         ]} />
       {/* LOS MESES SIN BARRA PARECEN UN ERROR DE DIBUJO (dueño, 17/09/2026). No lo son: todavía no hay
           costo cerrado que dibujar, y eso se dice acá —sólo cuando efectivamente hay meses así—. */}
