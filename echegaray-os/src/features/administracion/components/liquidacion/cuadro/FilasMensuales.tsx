@@ -147,25 +147,28 @@ export function FilaMensual({ fila, columnas, edicion, pct, abrir }: {
 /** El subtotal de mensuales. Lo que no suma (sin sueldo, sin recibo) se cuenta en el resumen, no como cero. */
 export function TotalMensuales({ columnas, t }: { columnas: string; t: TotalesDeMensuales }) {
   const vacia = <div />
+  // NADIE CON SUELDO (una cerrada sin líneas selladas de mensuales): el subtotal no es $0, es que no hay cifra.
+  const sinNada = t.personas > 0 && t.sinSueldo === t.personas
   // NADIE CON RECIBO: el subtotal de banco y efectivo no se afirma («—»), igual que en cada fila.
   const sinReparto = t.sinRecibo === t.personas - t.sinSueldo
   return (
     <div data-testid="mensuales-total" style={{ ...filaGrid(columnas, ALTO_LIQ.filaAlta), borderBottom: 'none', borderTop: `1px solid ${V.grafito}`, fontWeight: 600 }}>
       <div style={{ ...COLUMNA_FIJA, ...PERSONA_ESTIRADA }}>{`${t.personas} mensual${t.personas === 1 ? '' : 'es'}`}</div>
       {vacia}
-      <Leida valor={t.sueldo} testid="mensuales-total-sueldo" />
+      <Leida valor={sinNada ? null : t.sueldo} testid="mensuales-total-sueldo" />
       <Leida valor={sinReparto ? null : t.banco} testid="mensuales-total-banco" />
-      <Leida valor={t.pagadoBanco} testid="mensuales-total-pagado-banco" />
+      <Leida valor={sinNada ? null : t.pagadoBanco} testid="mensuales-total-pagado-banco" />
       {vacia}
       <Leida valor={sinReparto ? null : t.efectivo} testid="mensuales-total-efectivo" />
-      <Leida valor={t.pagadoEfectivo} testid="mensuales-total-pagado-efectivo" />
+      <Leida valor={sinNada ? null : t.pagadoEfectivo} testid="mensuales-total-pagado-efectivo" />
       {vacia}
       <div style={{ ...DERECHA, color: V.tenue, fontWeight: 400, fontSize: '11px' }}>no aplica</div>
       <Leida valor={t.redondeo > 0 ? t.redondeo : null} testid="mensuales-total-redondeo" />
       <div data-testid="mensuales-total-cobra" style={{ ...DERECHA, color: t.noCierran > 0 ? V.neg : V.tinta }}
-        title={t.noCierran > 0 ? `${t.noCierran} fila(s) no cierran por ${pesos(t.diferencia)}` : undefined}>{pesos(t.sueldo)}</div>
-      <Leida valor={t.pagado} testid="mensuales-total-pagado" />
-      <SaldoTotal valor={t.saldoTotal} testid="mensuales-total-saldo" />
+        title={t.noCierran > 0 ? `${t.noCierran} fila(s) no cierran por ${pesos(t.diferencia)}` : undefined}>{pesos(sinNada ? null : t.sueldo)}</div>
+      <Leida valor={sinNada ? null : t.pagado} testid="mensuales-total-pagado" />
+      {/* SIN NADA SELLADO NI SALDO: un «$0» de saldo diría «no se le debe nada», que nadie comprobó. */}
+      {sinNada ? <Leida valor={null} testid="mensuales-total-saldo" /> : <SaldoTotal valor={t.saldoTotal} testid="mensuales-total-saldo" />}
       <Leida valor={t.saldoRedondeado > 0 ? t.saldoRedondeado : null} testid="mensuales-total-saldo-redondeado" />
     </div>
   )
