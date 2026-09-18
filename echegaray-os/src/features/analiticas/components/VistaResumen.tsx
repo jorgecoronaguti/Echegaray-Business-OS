@@ -34,9 +34,8 @@ export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, 
   const estimados = conPres.filter((o) => o.presupuestoEstimado).length
   const consumidoSinPres = sinPres.reduce((a, o) => a + (o.gasto.total ?? 0), 0)
   const mo = obras.reduce((a, o) => a + (o.gasto.manoObra ?? 0), 0)
-  // PUENTE (18/09/2026): «otros» (equipos, servicios, combustible) salió de materiales en la base. Hasta
-  // que el dueño decida cómo se muestra, el Resumen lo dibuja donde estaba ayer: dentro de materiales.
-  const mat = obras.reduce((a, o) => a + (o.gasto.materiales ?? 0) + (o.gasto.otros ?? 0), 0)
+  const mat = obras.reduce((a, o) => a + (o.gasto.materiales ?? 0), 0)
+  const otr = obras.reduce((a, o) => a + (o.gasto.otros ?? 0), 0)
   const horas = obras.reduce<number | null>((a, o) => (o.gasto.horas == null ? a : (a ?? 0) + o.gasto.horas), null)
   const conHoras = obras.filter((o) => (o.gasto.horas ?? 0) > 0).length
   const total = r.consumoTotal
@@ -48,7 +47,7 @@ export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, 
           { rotulo: 'presupuestado', valor: millones(r.presupuestado), falta: 'sin presupuesto',
             nota: `${conPres.length} ${conPres.length === 1 ? 'obra' : 'obras'}${estimados ? ` · ${estimados} ${estimados === 1 ? 'estimado' : 'estimados'}` : ''}` },
           { rotulo: neto ? 'consumido en obras, sin IVA' : 'consumido en obras, con IVA', valor: millones(total), falta: 'sin movimiento',
-            nota: total ? `mano de obra ${pctEntero(mo / total)} · materiales ${pctEntero(mat / total)}` : undefined },
+            nota: total ? `mano de obra ${pctEntero(mo / total)} · materiales ${pctEntero(mat / total)}${otr ? ` · otros ${pctEntero(otr / total)}` : ''}` : undefined },
           { rotulo: 'sin obra asignada', valor: millones(r.sinObraAsignada), falta: 'ninguno', tono: r.sinObraAsignada ? 'warn' : undefined,
             nota: comprobantes != null && comprobantes > 0 ? `${comprobantes} comprobantes sin obra` : undefined },
           { rotulo: 'horas en obra', valor: horasTexto(horas), falta: 'sin horas',
@@ -68,9 +67,6 @@ export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, 
     </>
   )
 }
-
-/** Materiales + otros para la barra (puente 18/09/2026). `null` sólo si los dos faltan. */
-const sumaNula = (a: number | null, b: number | null): number | null => (a == null && b == null ? null : (a ?? 0) + (b ?? 0))
 
 // ─── Por cliente ────────────────────────────────────────────────────────────────────────────────
 
@@ -101,7 +97,8 @@ function PorCliente({ clientes, filtros }: { clientes: FilaDeCliente[]; filtros:
               <div className="flex h-3.5 overflow-hidden rounded-[2px]" style={{ width: ancho(c.total, escala) }}>
                 <div className="bg-accent" style={{ width: ancho(c.manoObra, c.total) }} />
                 <div className="bg-muted" style={{ width: ancho(c.subcontratos, c.total) }} />
-                <div className="bg-dato-materiales" style={{ width: ancho(sumaNula(c.materiales, c.otros), c.total) }} />
+                <div className="bg-dato-materiales" style={{ width: ancho(c.materiales, c.total) }} />
+                <div className="bg-dato-otros" data-testid="resumen-cliente-otros" data-monto={c.otros ?? ''} style={{ width: ancho(c.otros, c.total) }} />
                 <div className="bg-dato-cajon" style={{ width: ancho(c.sinObra, c.total) }} />
               </div>
               <div className="whitespace-nowrap text-xs font-semibold tabular-nums text-ink">{millones(c.total) ?? <span className="font-normal text-faint">sin movimiento</span>}</div>
@@ -173,7 +170,8 @@ function Mezcla({ m, empresa }: { m: Composicion; empresa: boolean }) {
       <div className={`flex overflow-hidden rounded-[2px] bg-line text-[10.5px] tabular-nums ${empresa ? 'h-7' : 'h-[18px]'}`}>
         <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-accent text-white" style={{ width: ancho(m.manoObra, m.total) }}>{rot(m.manoObra)}</div>
         <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-muted text-white" style={{ width: ancho(m.subcontratos, m.total) }}>{rot(m.subcontratos)}</div>
-        <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-dato-materiales text-ink" style={{ width: ancho(m.materiales + m.otros, m.total) }}>{rot(m.materiales + m.otros)}</div>
+        <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-dato-materiales text-ink" style={{ width: ancho(m.materiales, m.total) }}>{rot(m.materiales)}</div>
+        <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-dato-otros text-ink" style={{ width: ancho(m.otros, m.total) }}>{rot(m.otros)}</div>
       </div>
     </div>
   )

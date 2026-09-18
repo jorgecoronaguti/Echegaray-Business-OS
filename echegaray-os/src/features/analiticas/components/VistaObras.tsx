@@ -52,8 +52,8 @@ export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva }: {
         </div>
       </Seccion>
       <Seccion titulo="Consumo por mes" filo
-        aclaracion="materiales y subcontratos por fecha del comprobante; mano de obra por la quincena en que empieza"
-        leyenda={[{ color: 'bg-accent', rotulo: 'mano de obra' }, { color: 'bg-muted', rotulo: 'subcontratos' }, { color: 'bg-dato-materiales', rotulo: 'materiales' }]}>
+        aclaracion="materiales, subcontratos y otros por fecha del comprobante; mano de obra por la quincena en que empieza"
+        leyenda={[{ color: 'bg-accent', rotulo: 'mano de obra' }, { color: 'bg-muted', rotulo: 'subcontratos' }, { color: 'bg-dato-materiales', rotulo: 'materiales' }, { color: 'bg-dato-otros', rotulo: 'otros' }]}>
         <ConsumoMensual consumo={consumo} />
       </Seccion>
       <Seccion titulo="Costo de la hora" filo arriba="">
@@ -165,9 +165,8 @@ function ConsumoMensual({ consumo }: { consumo: MesDeConsumo[] | null }) {
       <Columnas meses={conMes.map((m) => ({
         mes: m.mes, valor: millones(total(m)),
         partes: [
-          // PUENTE (18/09/2026): «otros» se dibuja dentro de materiales, como hasta ayer. Cómo se separa
-          // en pantalla lo decide el dueño; lo que no se puede es que la columna mida menos que el mes.
-          { alto: (((m.materiales ?? 0) + (m.otros ?? 0)) / max) * 170, clase: 'bg-dato-materiales' },
+          { alto: ((m.otros ?? 0) / max) * 170, clase: 'bg-dato-otros' },
+          { alto: ((m.materiales ?? 0) / max) * 170, clase: 'bg-dato-materiales' },
           { alto: ((m.subcontratos ?? 0) / max) * 170, clase: 'bg-muted' },
           { alto: ((m.manoObra ?? 0) / max) * 170, clase: 'bg-accent' },
         ],

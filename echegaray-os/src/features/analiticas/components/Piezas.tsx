@@ -103,6 +103,8 @@ export const LEYENDA_GASTO = [
   { color: 'bg-accent', rotulo: 'mano de obra' },
   { color: 'bg-muted', rotulo: 'subcontratos' },
   { color: 'bg-dato-materiales', rotulo: 'materiales' },
+  // OTROS, RUBRO PROPIO (dueño, 18/09/2026: «columna propia en resumen analíticas»).
+  { color: 'bg-dato-otros', rotulo: 'otros' },
 ]
 
 /** Sin datos legibles: la base no contestó para este rol, o la lectura falló. Se dice, no se dibuja en cero. */
