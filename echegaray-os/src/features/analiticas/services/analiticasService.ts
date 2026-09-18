@@ -97,11 +97,11 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     return r
   }
   const [egresos, nomina, quincenas, personas, documentos, cajaSheet] = await Promise.all([
-    // LO QUE SALIÓ, POR FECHA DE CAJA (dueño, 18/09/2026: criterio percibido, filtrable por fechas). Lo
-    // pendiente viaja también —es deuda del período y se cuenta aparte—. PAGINADO (D6): 911 filas el 18/09.
+    // LO QUE SALIÓ, CADA PAGO EN SU FECHA (dueño, 18/09/2026: criterio percibido, filtrable por fechas). Lo
+    // pendiente y lo «Pagado» sin monto viajan también: se cuentan aparte. PAGINADO (D6): ~960 filas el 18/09.
     f.vista === 'caja'
-      ? leerPaginado((a, b) => conRango(supabase.from('caja_egreso_percibido').select('area, fecha_pago, total, estado'), 'fecha_pago')
-        .order('fecha_pago').order('area').order('estado').order('total').range(a, b))
+      ? leerPaginado((a, b) => conRango(supabase.from('caja_egreso_percibido').select('area, fecha_pago, monto, naturaleza, fila'), 'fecha_pago')
+        .order('fecha_pago').order('fila').order('naturaleza').order('monto').range(a, b))
         .then((data) => ({ data }))
       : null,
     f.vista === 'nomina' ? supabase.from('nomina_por_mes').select('mes, costo_nomina, cargas_sociales, es_estimacion') : null,

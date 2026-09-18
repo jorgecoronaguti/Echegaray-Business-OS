@@ -129,28 +129,32 @@ export function horaSanJuan(iso: string): string {
 
 export interface EgresosPercibidos {
   egresos: Egreso[]
-  /** Compras pagadas sin «Fecha de caja»: no se pueden ubicar en el tiempo y quedan afuera, declaradas. */
-  pagadosSinFecha: number
-  /** Deuda del período (estado Pendiente): no salió, no se marca. */
+  /** Pagos sin fecha (un «Monto Parcial 2» sin su fecha): no se pueden ubicar en un mes y quedan afuera, declarados. */
+  pagosSinFecha: { n: number; total: number }
+  /** Compras «Pagado» sin monto cargado en Compras: se listan con su total, no se suman como salida. */
+  sinDesglose: { n: number; total: number }
+  /** Deuda del período (saldo pendiente a su fecha prevista): no salió, no se marca. */
   pendientes: { n: number; total: number }
 }
 
 /**
- * LO QUE SALIÓ, POR FECHA DE CAJA. Filas de `caja_egreso_percibido`. Sólo lo PAGADO es egreso: lo
- * pendiente es deuda y se cuenta aparte. Lo pagado sin fecha de caja no entra a ningún mes.
+ * LO QUE SALIÓ, CADA PAGO EN SU FECHA. Filas de `caja_egreso_percibido`, ya recortadas por período en la
+ * base. Sólo `naturaleza = 'pago'` es egreso; `sin_desglose` y `pendiente` se cuentan aparte.
  */
 export function egresosPercibidos(filas: unknown[]): EgresosPercibidos {
-  const out: EgresosPercibidos = { egresos: [], pagadosSinFecha: 0, pendientes: { n: 0, total: 0 } }
+  const out: EgresosPercibidos = { egresos: [], pagosSinFecha: { n: 0, total: 0 }, sinDesglose: { n: 0, total: 0 }, pendientes: { n: 0, total: 0 } }
   for (const f of filas) {
     const r = f as Record<string, unknown>
-    const total = num(r.total)
-    if (total == null) continue
-    const pagado = String(r.estado ?? '').trim().toLowerCase() === 'pagado'
-    if (!pagado) { out.pendientes.n++; out.pendientes.total += total; continue }
+    const monto = num(r.monto)
+    if (monto == null) continue
+    const naturaleza = String(r.naturaleza ?? '')
+    if (naturaleza === 'pendiente') { out.pendientes.n++; out.pendientes.total += monto; continue }
+    if (naturaleza === 'sin_desglose') { out.sinDesglose.n++; out.sinDesglose.total += monto; continue }
+    if (naturaleza !== 'pago') continue
     const fecha = typeof r.fecha_pago === 'string' && r.fecha_pago.length >= 7 ? r.fecha_pago : null
-    if (!fecha) { out.pagadosSinFecha++; continue }
+    if (!fecha) { out.pagosSinFecha.n++; out.pagosSinFecha.total += monto; continue }
     const area = typeof r.area === 'string' ? r.area : null
-    out.egresos.push({ area, grupo: destinoDe(area), total, mes: fecha.slice(0, 7) })
+    out.egresos.push({ area, grupo: destinoDe(area), total: monto, mes: fecha.slice(0, 7) })
   }
   return out
 }

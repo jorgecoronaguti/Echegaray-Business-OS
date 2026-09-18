@@ -54,22 +54,26 @@ test('la hora se dice en San Juan', () => {
   assert.equal(horaSanJuan('no es fecha'), '')
 })
 
-test('lo percibido: sólo lo pagado con fecha de caja es egreso; lo pendiente es deuda; lo pagado sin fecha se declara', () => {
+test('lo percibido: cada pago en su fecha; sin desglose y pendiente se cuentan aparte; un pago sin fecha se declara', () => {
   const r = egresosPercibidos([
-    { area: 'obras', fecha_pago: '2026-08-03', total: '100', estado: 'Pagado' },
-    { area: 'personas', fecha_pago: '2026-09-10', total: 40, estado: 'Pagado' },
-    { area: null, fecha_pago: '2026-09-10', total: 5, estado: 'Pagado' },
-    { area: 'obras', fecha_pago: '2026-09-12', total: 70, estado: 'Pendiente' },
-    { area: 'obras', fecha_pago: null, total: 9, estado: 'Pagado' },
-    { area: 'obras', fecha_pago: '2026-09-12', total: null, estado: 'Pagado' },
+    { area: 'obras', fecha_pago: '2026-06-19', monto: '1000000', naturaleza: 'pago', estado: 'Pagado' },
+    { area: 'obras', fecha_pago: '2026-07-18', monto: 450000, naturaleza: 'pago', estado: 'Pagado' },
+    { area: 'personas', fecha_pago: '2026-09-10', monto: 40, naturaleza: 'pago', estado: 'Pagado' },
+    { area: null, fecha_pago: '2026-09-10', monto: 5, naturaleza: 'pago', estado: 'Pagado' },
+    { area: 'obras', fecha_pago: '2026-08-04', monto: 5124411.5, naturaleza: 'sin_desglose', estado: 'Pagado' },
+    { area: 'obras', fecha_pago: '2026-09-25', monto: 2137866.67, naturaleza: 'pendiente', estado: 'Pendiente' },
+    { area: 'obras', fecha_pago: null, monto: 9, naturaleza: 'pago', estado: 'Pagado' },
+    { area: 'obras', fecha_pago: '2026-09-12', monto: null, naturaleza: 'pago', estado: 'Pagado' },
+    { area: 'obras', fecha_pago: '2026-09-12', monto: 7, naturaleza: 'otra', estado: 'Pagado' },
   ])
-  assert.equal(r.egresos.length, 3)
-  assert.deepEqual(r.pendientes, { n: 1, total: 70 })
-  assert.equal(r.pagadosSinFecha, 1)
+  assert.equal(r.egresos.length, 4)
+  assert.deepEqual(r.egresos.map((e) => e.mes), ['2026-06', '2026-07', '2026-09', '2026-09'])
+  assert.deepEqual(r.sinDesglose, { n: 1, total: 5124411.5 })
+  assert.deepEqual(r.pendientes, { n: 1, total: 2137866.67 })
+  assert.deepEqual(r.pagosSinFecha, { n: 1, total: 9 })
   const c = caja(r.egresos)
-  assert.equal(c.salio, 145)
-  assert.equal(c.aObra, 100)
+  assert.equal(c.salio, 1450045)
+  assert.equal(c.aObra, 1450000)
   assert.equal(c.estructura, 40)
   assert.equal(c.nSinDestino, 1)
-  assert.deepEqual(c.meses.map((m) => m.mes), ['2026-08', '2026-09'])
 })
