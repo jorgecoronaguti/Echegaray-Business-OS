@@ -9,6 +9,25 @@ test('la ventana son los tres meses CERRADOS anteriores al de hoy, también cruz
   assert.deepEqual(mesesCerrados('2026-02-01'), ['2025-11', '2025-12', '2026-01'])
 })
 
+test('lo consumido por rubro: filas de `costo_de_obras_por_rubro` a un mapa por obra; el rubro sin fila queda null, no 0', async () => {
+  const { leerConsumoPorRubro } = await import('./consumo.ts')
+  assert.equal(leerConsumoPorRubro(null), null)
+  const m = leerConsumoPorRubro([
+    { obra_id: 'a', rubro: 'mano_obra', monto: '10', monto_estimado: '4', n: 2, detalle: [{ grupo: '01/08 a 15/08/26', n: 3, monto: 6, horas: 100, estimado: true, horas_sin_dato: null }] },
+    { obra_id: 'a', rubro: 'subcontratistas', monto: 5, n: 1, detalle: [{ grupo: 'Pedro Fredes', n: 1, monto: 5 }] },
+    { obra_id: 'a', rubro: 'inventado', monto: 5, n: 1, detalle: [] },
+    { obra_id: '', rubro: 'otros', monto: 5, n: 1, detalle: [] },
+  ])!
+  const a = m.get('a')!
+  assert.equal(a.manoObra?.monto, 10)
+  assert.equal(a.manoObra?.estimado, 4)
+  assert.equal(a.manoObra?.detalle[0].horas, 100)
+  assert.equal(a.subcontratos?.detalle[0].grupo, 'Pedro Fredes')
+  assert.equal(a.materiales, null)
+  assert.equal(a.otros, null)
+  assert.equal(m.size, 1)
+})
+
 test('no se pudo leer ≠ no hay consumo; filas sin obra se descartan; mes sin fecha queda null', () => {
   assert.equal(leerConsumoMensual(null), null)
   assert.deepEqual(leerConsumoMensual([]), [])
@@ -58,5 +77,5 @@ test('«alcanza» con los mismos rubros que el «queda»: entrepiso sólo cotiz�
   assert.deepEqual(soloMO, ['manoObra'])
   assert.equal(ritmoPorObra(f, '2026-09-17', soloMO).get('entrepiso-y-escalera')?.porMes, 30)
   assert.equal(ritmoPorObra(f, '2026-09-17').get('entrepiso-y-escalera')?.porMes, 350, 'sin rubros, todo lo consumido: (990 + 30 + 30) ÷ 3')
-  assert.deepEqual(rubrosComparables({ manoObra: 1, materiales: 1, subcontratos: null, otros: null }), ['manoObra', 'materiales', 'subcontratos'])
+  assert.deepEqual(rubrosComparables({ manoObra: 1, materiales: 1, subcontratos: null, otros: null }), ['manoObra', 'materiales'], 'cada rubro contra el suyo: subcontratistas sin presupuesto no entra')
 })

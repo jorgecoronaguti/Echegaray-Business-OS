@@ -37,6 +37,9 @@ test('el rubro de la URL se valida: los cuatro conocidos abren, cualquier otra c
   assert.equal(leerRubro('mo'), 'mo')
   assert.equal(leerRubro('hh'), 'hh')
   assert.equal(leerRubro('mano_obra'), null, 'el nombre SQL no es el de la URL')
+  // OTROS NO ABRE PANEL TODAVÍA (18/09/2026): `detalle_costo_de_obra` (20260915T2320) no conoce el rubro y
+  // contestaría `null`; la celda va sin enlace. Cuando la RPC lo publique, se agrega a `RUBROS` y este caso cambia.
+  assert.equal(leerRubro('otros'), null, 'la URL no puede abrir un detalle que la base no publica')
   assert.equal(leerRubro(''), null)
   assert.equal(leerRubro(undefined), null)
   assert.equal(leerRubro("'; drop table x; --"), null)

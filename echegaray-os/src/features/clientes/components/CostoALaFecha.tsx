@@ -97,6 +97,12 @@ export function FilaGastosSinObra({ gasto, columnas, sangria, visible, hrefDetal
         </span>
         <PorVencer texto={textoPorVencer(gasto?.subcontratosPorVencer)} />
       </span>
+      {/* OTROS: PISTA VACÍA, NO «—». `compras_sin_obra_de_clientes` sigue publicando materiales +
+          subcontratos (20260918T0900: «lo sin obra es un cajón que no se compara con ningún
+          presupuesto»), así que acá no hay dato que afirmar ni ausencia que dibujar. La pista existe
+          porque esta fila usa la MISMA grilla que la tabla: sin ella, Mano de obra y Contratado se
+          corren una columna a la izquierda. */}
+      <span />
       {/* MANO DE OBRA y CONTRATADO: las horas siempre tienen obra, y lo sin obra no tiene precio. */}
       <span />
       <span aria-hidden />

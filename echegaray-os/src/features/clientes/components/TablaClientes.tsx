@@ -11,8 +11,11 @@
 //                  si no, el precio que publica OBRAS. En dólares se dice la moneda del papel.
 //   MATERIALES     lo GASTADO A LA FECHA, no lo presupuestado (dueño, 13/09/2026): las compras
 //                  asignadas a cada trabajo; en el cliente, su suma más lo que no tiene obra.
-//   MANO DE OBRA   las horas propias valorizadas a la fecha, o «sin valorizar». Las dos salen de
-//                  `costo_obra` y las decide `costosDeObra.ts`, el mismo que la ficha.
+//   SUBCONTRATOS   lo facturado por terceros (14/09/2026), aparte de Materiales.
+//   OTROS          equipos, servicios de obra, combustible, fletes y honorarios (18/09/2026): hasta
+//                  ese día iban dentro de Materiales. Lo sin obra no se abre por este rubro.
+//   MANO DE OBRA   las horas propias valorizadas a la fecha, o «sin valorizar». Los cuatro salen de
+//                  `costo_obra` y los decide `costosDeObra.ts`, el mismo que la ficha.
 //   AVANCE DE COBRO  la barra: cobrado NETO sobre el contrato NETO, y debajo cuánto entró y cuánto
 //                  falta. Es la única barra de la fila: la del cliente publicaba una segunda y el
 //                  dueño la marcó.
@@ -53,8 +56,11 @@ import { consolidar, jerarquiaDeObras } from '../services/obrasAdicionales'
  * LAS CINCO COLUMNAS (11/09/2026). Literales porque Tailwind no compila una clase armada en
  * runtime, y en px porque una variante con otra unidad apaga TODOS los cortes del repositorio.
  */
+// LA CUARTA COLUMNA DE COSTO (Otros, 18/09/2026) suma 130px + 14 de gap: a 1250px, donde estas pistas
+// sobreviven, el nombre se queda con 1250 − 20·2 − (150+130+130+130+140+210) − 6·14 ≈ 236px, que
+// lee un cliente entero. Por debajo, las cuatro cifras van a la línea angosta.
 const COLS
-  = 'grid-cols-[minmax(0,2fr)_150px_130px_130px_140px_210px]'
+  = 'grid-cols-[minmax(0,2fr)_150px_130px_130px_130px_140px_210px]'
   + ' max-[1249px]:grid-cols-[minmax(200px,2fr)_150px_210px]'
   + ' max-[767px]:grid-cols-[minmax(0,2fr)_150px]'
 
@@ -62,9 +68,13 @@ const AYUDA_CONTRATADO = 'El total del contrato, NETO: mano de obra + materiales
   + 'desglosa; si no, el precio que publica la pestaña OBRAS. Los dólares se valúan al tipo de '
   + 'cambio de hoy.'
 const AYUDA_MATERIALES = 'Lo comprado a la fecha para cada trabajo (Compras, columna K); en el cliente, '
-  + 'la suma más lo que no tiene obra asignada. No es lo presupuestado. «—» = ninguna compra.'
-const AYUDA_SUBCONTRATOS = 'Lo facturado por subcontratistas a la fecha (proveedores marcados «Subcontratista»). '
-  + 'No está en Materiales ni en Mano de obra. «—» = ninguno.'
+  + 'la suma más lo que no tiene obra asignada. No es lo presupuestado. Sin subcontratos ni equipos, servicios, '
+  + 'combustible y fletes, que van en sus columnas. «—» = ninguna compra.'
+const AYUDA_SUBCONTRATOS = 'Lo facturado por subcontratistas a la fecha (proveedores marcados «Subcontratista» '
+  + 'o familia «Subcontratos y mano de obra»). No está en Materiales ni en Mano de obra. «—» = ninguno.'
+const AYUDA_OTROS = 'Alquiler y traslado de equipos, servicios de obra (baño, contenedor, agua), combustible, fletes y '
+  + 'honorarios imputados a cada trabajo, a la fecha. Hasta el 18/09/2026 iban dentro de Materiales. Lo sin obra '
+  + 'asignada no se abre por este rubro. «—» = ninguno.'
 const AYUDA_MANO_OBRA = 'La mano de obra propia a la fecha: costo total empleador del recibo + parte en negro, '
   + 'repartidos por horas («est.» = sin recibo todavía). No es lo presupuestado. «sin valorizar» = falta la tarifa de alguien.'
 const AYUDA_AVANCE = 'Cobrado NETO (lo que entró, sin IVA, criterio percibido) sobre el contrato NETO. '
@@ -153,6 +163,9 @@ export function TablaClientes({
           {veEconomia ? <RotuloACorte texto="Subcontratos" titulo={AYUDA_SUBCONTRATOS} /> : null}
         </span>
         <span className={`grid ${SOLO_ANCHO}`}>
+          {veEconomia ? <RotuloACorte texto="Otros" titulo={AYUDA_OTROS} /> : null}
+        </span>
+        <span className={`grid ${SOLO_ANCHO}`}>
           {veEconomia ? <RotuloACorte texto="Mano de obra" titulo={AYUDA_MANO_OBRA} /> : null}
         </span>
         <span className={`grid ${SOLO_TABLET}`}>
@@ -207,7 +220,10 @@ export function TablaClientes({
                   </span>
                 </>
               ) : (
-                <><span /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_TABLET} /></>
+                // UNA PISTA VACÍA POR CADA COLUMNA QUE NO VE: contratado, las cuatro de costo y el avance.
+                // Con menos celdas que pistas la fila no se rompe —quedan vacías al final—, pero la
+                // grilla deja de ser literal y el próximo que cuente pistas se equivoca.
+                <><span /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_TABLET} /></>
               )}
               <CostoDelClienteAngosto costos={costos} sinObra={gastosSinObra} clienteId={c.cliente_id}
                 obraIds={idsDeTodasSusObras(obrasPorCliente, c)} veEconomia={veEconomia} />

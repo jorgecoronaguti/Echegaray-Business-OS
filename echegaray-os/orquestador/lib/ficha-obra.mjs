@@ -29,7 +29,7 @@ export async function fichaObra(nombre) {
             coalesce(sum(case when tipo='pago' and estado='real' then monto else 0 end),0) pagado,
             coalesce(sum(case when tipo='pago' and estado='proyectado' then monto else 0 end),0) por_pagar,
             count(*)::int n
-       from public.movimientos_caja where obra_id = $1`, [obra.id])
+       from public.movimientos_caja where obra_id::text = $1`, [obra.id])
   const c = caja[0]
   if (Number(c.n)) {
     L.push('', '## Caja de la obra')

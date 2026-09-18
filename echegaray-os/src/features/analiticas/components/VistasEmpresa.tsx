@@ -44,9 +44,11 @@ export function VistaCaja({ egresos, periodo }: { egresos: unknown[] | null; per
   const maxArea = Math.max(1, ...areas.map((a) => a.monto))
   return (
     <>
-      <Cabecera titulo="Caja" detalle={`${periodo} · a dónde fue la plata`}
+      {/* LO QUE ES, DICHO (auditoría 18/09/2026): la fuente es `egreso_por_area` = egresos de Compras por
+          FECHA DEL COMPROBANTE. Es devengado, no lo pagado; no es un extracto de caja. */}
+      <Cabecera titulo="Caja" detalle={`${periodo} · egresos de Compras por fecha de comprobante, no lo pagado`}
         cifras={[
-          { rotulo: 'salió', valor: millones(c.salio) },
+          { rotulo: 'egresos de Compras', valor: millones(c.salio), nota: 'por fecha de comprobante (devengado); no incluye nómina ni lo pagado desde caja' },
           { rotulo: 'a una obra', valor: millones(c.aObra) },
           { rotulo: 'estructura', valor: millones(c.estructura), tono: 'muted' },
           { rotulo: 'sin destino', valor: c.nSinDestino ? millones(c.sinDestino) : null, falta: 'ninguno', tono: 'warn' },
@@ -62,7 +64,7 @@ export function VistaCaja({ egresos, periodo }: { egresos: unknown[] | null; per
         ) : undefined} />
       {/* EL GRÁFICO NO DECÍA DE QUÉ PERÍODO NI QUÉ ES UNA COLUMNA (dueño, 17/09/2026): lo dice la
           aclaración, que además queda pegada a la leyenda de colores. */}
-      <Seccion titulo="Lo que salió, por mes" aclaracion={`${periodo} · cada columna es todo lo que salió de caja ese mes`}
+      <Seccion titulo="Egresos de Compras, por mes" aclaracion={`${periodo} · cada columna son los comprobantes de Compras con fecha de ese mes, a obra o a estructura; no es lo que salió de caja${c.nSinDestino ? ' · lo sin destino no está en las columnas' : ''}`}
         leyenda={[{ color: 'bg-accent', rotulo: 'a una obra' }, { color: 'bg-dato-referencia', rotulo: 'estructura' }]}>
         <Columnas meses={c.meses.map((m) => ({
           mes: m.mes, valor: millones(m.aObra + m.estructura),
@@ -86,13 +88,15 @@ export function VistaCaja({ egresos, periodo }: { egresos: unknown[] | null; per
   )
 }
 
-export function VistaNomina({ filas, quincenas, personas, rango, periodo, hoy }: {
+export function VistaNomina({ filas, quincenas, personas, rango, periodo, hoy, enObras }: {
   filas: unknown[] | null
   quincenas: unknown[] | null
   personas: unknown[] | null
   rango: { desde: string | null; hasta: string | null }
   periodo: string
   hoy: string
+  /** La mano de obra imputada a obras en el período (la misma cifra que Resumen y Obras). `null` = no se leyó. */
+  enObras: { manoObra: number | null; estimada: string | null; obras: number } | null
 }) {
   if (!filas) return <SinLectura que="la nómina" />
   const { base, meses: todos } = nomina(filas, rango, quincenas ?? [])
@@ -114,8 +118,10 @@ export function VistaNomina({ filas, quincenas, personas, rango, periodo, hoy }:
           // QUÉ COMPARA: el costo del mes, no el plantel ni las horas.
           { rotulo: ultimo ? `costo de ${rotuloMes(ultimo.mes)} contra ${rotuloMes(MES_BASE)}` : `costo contra ${rotuloMes(MES_BASE)}`, valor: pctConSigno(ultimo?.contraBase), falta: '—', tono: (ultimo?.contraBase ?? 0) > 0 ? 'warn' : undefined },
           { rotulo: 'plantel', valor: l ? String(l.plantel) : null, nota: 'por pertenencia, no por fecha de egreso' },
-          // QUÉ SIGNIFICA «sin repartir» para el dueño: ninguna obra carga su parte de este costo.
-          { rotulo: 'repartido a obra', valor: null, falta: 'sin repartir', nota: 'ninguna obra carga todavía su parte de este costo' },
+          // UNA SOLA VERDAD EN TODA LA PANTALLA (auditoría 18/09/2026): la mano de obra SÍ se imputa a las
+          // obras, por quincena (`costo_mo_quincena`), y es la misma cifra que Resumen y Obras publican.
+          { rotulo: 'imputado a obras', valor: enObras ? millones(enObras.manoObra) : null, falta: enObras ? 'sin horas en obra' : 'no se leyó',
+            nota: enObras?.manoObra != null ? `${enObras.obras} ${enObras.obras === 1 ? 'obra' : 'obras'} por quincena, la misma cifra que Resumen${enObras.estimada ? ` · ${enObras.estimada}` : ''}` : undefined },
         ]} />
       {/* LOS MESES SIN BARRA PARECEN UN ERROR DE DIBUJO (dueño, 17/09/2026). No lo son: todavía no hay
           costo cerrado que dibujar, y eso se dice acá —sólo cuando efectivamente hay meses así—. */}
