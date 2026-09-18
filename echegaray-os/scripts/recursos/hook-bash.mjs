@@ -48,10 +48,47 @@ const ENVOLTORIOS = /^(?:[A-Z_][A-Z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+|timeout\s+(
 function sinHeredocs(texto) {
   return texto.replace(/<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?[^\n]*\n[\s\S]*?\n\s*\1\s*(?=\n|$)/g, '')
 }
+/**
+ * Parte el comando en tramos por los separadores de shell — PERO SÓLO LOS QUE ESTÁN FUERA DE COMILLAS.
+ *
+ * ANTES SE PARTÍA CON UN `split` A SECAS (18/09/2026). `grep -n "eslintConfig\|eslint" package.json`
+ * quedaba partido por el `|` de adentro de las comillas, y el segundo pedazo empezaba con `eslint"`:
+ * el hook frenaba una lectura inofensiva y pedía correrla por el portero. Es la misma familia que
+ * «texto que menciona comandos pesados no es un comando pesado», del lado del separador de tuberías en
+ * vez de los heredocs: lo que está entre comillas es UN ARGUMENTO, no un tramo de tubería. Lo sufrían
+ * todos los días los agentes, porque `grep "next dev"`, `rg "tsc --noEmit"` y `echo "npx playwright
+ * test"` son el pan de cada día de quien trabaja en este repositorio.
+ *
+ * LA PUERTA NO SE ABRE AL REVÉS: un comando pesado DESPUÉS de una tubería real (`cat x | npx tsc`)
+ * sigue siendo su propio tramo y se sigue frenando. Lo único que cambia es qué cuenta como separador.
+ *
+ * Una comilla sin cerrar no rompe nada: el resto del texto queda como un solo tramo y se evalúa igual.
+ */
+function partirFueraDeComillas(texto) {
+  const partes = []
+  let actual = '', comilla = ''
+  for (let i = 0; i < texto.length; i++) {
+    const ch = texto[i]
+    if (comilla) {
+      // Dentro de comillas dobles la barra escapa; dentro de simples, el shell la toma literal.
+      if (ch === '\\' && comilla === '"' && i + 1 < texto.length) { actual += ch + texto[++i]; continue }
+      if (ch === comilla) comilla = ''
+      actual += ch; continue
+    }
+    if (ch === '"' || ch === "'") { comilla = ch; actual += ch; continue }
+    if (ch === '\\' && i + 1 < texto.length) { actual += ch + texto[++i]; continue }  // `\|` escapado tampoco parte
+    if ((ch === '&' && texto[i + 1] === '&') || (ch === '|' && texto[i + 1] === '|')) { partes.push(actual); actual = ''; i++; continue }
+    if (ch === '|' || ch === ';' || ch === '\n' || ch === '(') { partes.push(actual); actual = ''; continue }
+    actual += ch
+  }
+  partes.push(actual)
+  return partes
+}
+
 // Los tramos: cada comando simple, más el interior de `bash -c "…"` / `sh -c '…'`.
 function tramos(texto) {
   const out = []
-  for (const t of sinHeredocs(texto).split(/&&|\|\||;|\||\n|\(/)) {
+  for (const t of partirFueraDeComillas(sinHeredocs(texto))) {
     const limpio = t.trim().replace(ENVOLTORIOS, '')
     if (!limpio) continue
     out.push(limpio)

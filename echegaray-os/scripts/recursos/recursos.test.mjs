@@ -31,6 +31,32 @@ test('texto que menciona comandos pesados no es un comando pesado', () => {
     assert.equal(frena(c), true, `debía frenar: ${c}`)
 })
 
+test('el separador de tuberías entre comillas es un argumento, no un tramo', () => {
+  // El caso que lo delató: el `\|` de una alternancia de grep partía el comando y el segundo pedazo
+  // empezaba con `eslint"`, así que el hook frenaba una lectura. Lo de abajo es lo que se escribe acá
+  // todos los días buscando en el propio repositorio.
+  for (const c of [
+    'grep -n "eslintConfig\\|eslint" package.json',
+    'grep "eslint" archivo',
+    "grep -rn 'next dev' src/",
+    'echo "npx playwright test"',
+    'rg "tsc --noEmit"',
+    'grep -rn "npm run build || npm run dev" docs/',
+    "rg 'playwright test;npx tsc' .",
+    'grep -n "(npx eslint .)" notas.md',
+    'grep -n "eslintConfig\\|eslint package.json',      // comilla sin cerrar: no puede tirar
+  ]) assert.equal(frena(c), false, `no debía frenar: ${c}`)
+
+  // Y la puerta no se abre al revés: lo pesado DESPUÉS de una tubería real se sigue frenando.
+  for (const c of [
+    'cat x | npx tsc',
+    'grep -rn "hola" src/ | npx eslint .',
+    'echo "buscando" && npx playwright test',
+    "grep 'x' f || npm run typecheck",
+    'cat "un archivo.txt" | npx tsc --noEmit',
+  ]) assert.equal(frena(c), true, `debía frenar: ${c}`)
+})
+
 test('un npm run cuyo script ya pasa por ecos no se frena en ESE directorio', () => {
   const raiz = join(AQUI, '..', '..') // el package.json de este proyecto ya está gobernado
   assert.equal(frena('npm run typecheck', raiz), false)

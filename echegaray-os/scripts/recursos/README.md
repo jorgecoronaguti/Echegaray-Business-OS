@@ -11,7 +11,7 @@ coordinaba. Resultado: 6,6 GiB usados, swap lleno, carga >60, VS Code Remote SSH
 | Pieza | Qué hace |
 |---|---|
 | `ecos <clase> -- <cmd>` | Toma un cupo (`flock`), mide RAM/swap/carga antes de abrir, encola FIFO si no hay lugar, corre el comando en un scope de systemd (`ecos.slice`) con techo de memoria y de swap, y al terminar/fallar/cancelar apaga el scope entero. |
-| `hook-bash.mjs` | `PreToolUse` de Bash (global y del proyecto): frena todo comando pesado que no pase por `ecos` y dice cómo lanzarlo. Cubre a Claude Code, agentes y los +100 worktrees viejos. |
+| `hook-bash.mjs` | `PreToolUse` de Bash (global y del proyecto): frena todo comando pesado que no pase por `ecos` y dice cómo lanzarlo. Cubre a Claude Code, agentes y los +100 worktrees viejos. Mira sólo el **arranque de cada tramo real** de la línea: lo que está entre comillas es un argumento, no un tramo, así que `grep -n "eslintConfig\|eslint" package.json` o `rg "tsc --noEmit"` pasan, y `cat x \| npx tsc` se frena. |
 | `barrer.mjs` | Apaga SOLO huérfanos: tareas cuyo `ecos` o cuya sesión murió, procesos de desarrollo adoptados por PID 1 o sin dueño vivo, o con el worktree borrado. Corre al cerrar sesión/agente, en emergencia y cada 5 min (`ecos-barrido.timer`). |
 | `estado.mjs` | `ecos estado`: memoria, swap, carga, cupos, cola, procesos de desarrollo vivos. |
 | `politica.env` | Los límites. La copia instalada (`~/.echegaray-os/recursos/`) manda. |
