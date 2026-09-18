@@ -79,7 +79,11 @@ export function rubroDeRecurso({ unidad = null, familia = null, division = null,
 //                por unidad de tarea, F costo, G total = E×F)
 //   Recursos     fila 4 encabezado · desde la 5: A código · B insumo · C unidad · G familia · H división
 
-export const ENCABEZADO_PRESUPUESTO = Object.freeze({ B: /^id$/i, C: /^tarea$/i, E: /^cant/i, G: /^coef/i, H: /^subtotal$/i, O: /^costo mo$/i, P: /^costo ma$/i, Q: /^costo cs$/i })
+export const ENCABEZADO_PRESUPUESTO = Object.freeze({ B: /^id$/i, C: /^tarea$/i, E: /^cant/i, G: /^coef/i, H: /^subtotal$/i })
+// COSTO MO / MA / CS NO TIENEN LETRA FIJA: en la cotización están en O/P/Q; en la planilla de «Horas Hombre»
+// (misma plantilla, sin las columnas de precio) están en J/K/L. Se buscan por su texto en la fila 7; si una
+// no está, es un problema (no se lee a ciegas).
+export const COSTOS_PRESUPUESTO = Object.freeze({ mo: /^costo mo$/i, ma: /^costo ma$/i, cs: /^costo cs$/i })
 export const ENCABEZADO_ANALISIS = Object.freeze({ A: /^cod ?t$/i, B: /^cod ?r$/i, D: /^un$/i, E: /^cantidad$/i, G: /^total$/i })
 export const ENCABEZADO_RECURSOS = Object.freeze({ A: /^codigo$/i, B: /^insumo$/i, C: /^unidad$/i, G: /^familia$/i, H: /^division$/i })
 
@@ -165,6 +169,15 @@ export function leerAnalisis(ws) {
 /** `Presupuesto` → los ítems con cantidad y subtotal, hasta «COSTO DIRECTO TOTAL». `filas` acota. */
 export function leerPresupuesto(ws, { filas = null } = {}) {
   const problemas = verificar(ws, 7, ENCABEZADO_PRESUPUESTO, 'Presupuesto')
+  const col = {}
+  const ancho = ws?.['!ref'] ? XLSX.utils.decode_range(ws['!ref']).e.c : 0
+  for (const [k, re] of Object.entries(COSTOS_PRESUPUESTO)) {
+    for (let c = 8; c <= ancho && !col[k]; c++) {
+      const l = XLSX.utils.encode_col(c)
+      if (re.test(texto(celda(ws, l, 7)) ?? '')) col[k] = l
+    }
+    if (!col[k]) problemas.push(`Presupuesto!fila 7 no tiene la columna «${re.source.replace(/[\^$]/g, '').toUpperCase()}»`)
+  }
   const items = []
   let fin = null
   const [desde, hasta] = filas ?? [8, ultimaFila(ws)]
@@ -180,7 +193,7 @@ export function leerPresupuesto(ws, { filas = null } = {}) {
       fila: f, rotulo: texto(celda(ws, 'A', f)), codigo, tarea: c || null, unidad: texto(celda(ws, 'D', f)),
       cantidad: numero(celda(ws, 'E', f)) ?? 0, costoUnitario: numero(celda(ws, 'F', f)), coef: numero(celda(ws, 'G', f)) ?? 1,
       subtotal: subtotal ?? 0, subtotalEnError: esError(h),
-      mo: numero(celda(ws, 'O', f)) ?? 0, ma: numero(celda(ws, 'P', f)) ?? 0, cs: numero(celda(ws, 'Q', f)) ?? 0,
+      mo: numero(celda(ws, col.mo, f)) ?? 0, ma: numero(celda(ws, col.ma, f)) ?? 0, cs: numero(celda(ws, col.cs, f)) ?? 0,
     })
   }
   if (fin === null) problemas.push('Presupuesto: no se encontró la fila «COSTO DIRECTO TOTAL»')
@@ -353,7 +366,21 @@ export const OBRAS = Object.freeze([
   { obra: 'messina-playon-dilucion-acido', fecha: '2026-08-28', libros: [{ drive: '1_1Si2IKXMBTgFdXYo1eXdz8ACbIOwRz-', nombre: 'Cotizacion.xlsm', parte: 'obra' }] },
   { obra: 'messina-adicional-tercer-muro', fecha: '2026-08-27', libros: [{ drive: '1MFtUGWLGVk_qnAeeapwdiz99xZ9AA8yV', nombre: 'ADICIONAL MURO.xlsm', parte: 'obra' }] },
   { obra: 'instalacion-electrica', fecha: '2026-07-21', libros: [{ drive: '1uXVe7ffIgYS5srgTwFtUGlRjYV9pR7Eu', nombre: 'Cotizacion Interna - Instalacion Electrica.xlsm', parte: 'obra' }] },
-  { obra: 'pisos-industriales', fecha: '2026-06-09', libros: [{ drive: '1iKAAbLs6vdk9jnzgRYS4Bo16g-1wrgdF', nombre: 'Cotizacion interna - Pisos Industriales.xlsm', parte: 'obra' }] },
+  // PISOS INDUSTRIALES: EL HORMIGONADO ES DE UN SUBCONTRATISTA (18/09/2026). La cotización vendida
+  // (1iKAAbLs6vdk9jnzgRYS4Bo16g-1wrgdF, Presupuesto!H53 = 32.406.752) modela los 3.610 m² de T1107.1 como
+  // «OFICIAL 0,9 hs/m²» con las cargas sociales anuladas (Análisis!E1017 = E1012*0): leída así era mano de obra
+  // propia y subcontratistas quedaba en 0. La planilla hermana «Horas Hombre - Pisos Industriales.xlsm» (misma
+  // carpeta, modificada el mismo 21/08) re-analiza la MISMA oferta —mismas tareas y cantidades— con el recurso
+  // PEDRO TELLO (M2, $4.300, fuente SUBCONTRATISTA) + 0,079 hs/m² de oficial propio: Presupuesto!H53 =
+  // 32.414.224,70 (0,02 % arriba de la vendida) e I53 = 1.083,6 horas. Se lee ésa. El subcontrato firmado
+  // (`subcontrato`: PEDRO TELLO, 3.610 m² × $4.400 = $15.884.000) es el gasto, no el presupuesto.
+  {
+    obra: 'pisos-industriales', fecha: '2026-06-09',
+    libros: [{
+      drive: '1qCcsSD2oe15d9JCP2-TqfGqyxRp48Ydb', nombre: 'Horas Hombre - Pisos Industriales.xlsm', parte: 'obra',
+      nota: 'misma oferta que Cotizacion interna - Pisos Industriales.xlsm drive 1iKAAbLs6vdk9jnzgRYS4Bo16g-1wrgdF, re-analizada con el subcontrato de PEDRO TELLO',
+    }],
+  },
   {
     obra: 'entrepiso-y-escalera', fecha: '2026-07-22',
     libros: [{ drive: '1nvMcrRwjfCBsedDI5IANuS18TsmKwnqB', nombre: 'Entrepiso y escalera.xlsm', parte: 'obra', filas: [10, 13], soloManoObra: true }],
@@ -363,6 +390,24 @@ export const OBRAS = Object.freeze([
     obra: 'messina-pisos-120-rampa', fecha: '2026-06-11', desdePartidas: true, estimado: true,
     fuente: { drive: '1cBQuKoPSYEtrnRDI8q72qy38PVQkdAV6', nombre: 'Cotizacion piso 120m2.xlsm' },
     cita: 'INFERENCIA: el .xlsm (drive 1cBQuKoPSYEtrnRDI8q72qy38PVQkdAV6) fue reescrito con 41,8 m² después del PDF (drive 1d-u515rso_v01m8csfy8-Df2g1-fR5Pz); se toman las partidas cargadas el 17/09/2026 (Presupuesto!O/P/Q escaladas a las cantidades del PDF, y la rampa de obras-datos.mjs). Sin detalle por insumo.',
+    // LAS HORAS: Análisis del .xlsm (hs por unidad, conservadas desde junio: los precios unitarios de los dos PDF
+    // son costo × 2,2056 × coeficiente) × las cantidades de los PDF vendidos. El coeficiente es el que reproduce
+    // el precio unitario del PDF: 3 en T1107.3 (Presupuesto!G15) y 0,7 en la rampa (T1101 y T1107.1).
+    horas: {
+      drive: '1cBQuKoPSYEtrnRDI8q72qy38PVQkdAV6', nombre: 'Cotizacion piso 120m2.xlsm',
+      cantidades: [
+        { codigo: 'T1142', cantidad: 60, coef: 1, cita: 'PDF piso 11/06 drive 1d-u515rso_v01m8csfy8-Df2g1-fR5Pz' },
+        { codigo: 'T1101', cantidad: 12, coef: 1, cita: 'PDF piso 11/06 drive 1d-u515rso_v01m8csfy8-Df2g1-fR5Pz' },
+        { codigo: 'T1126', cantidad: 8, coef: 1, cita: 'PDF piso 11/06 drive 1d-u515rso_v01m8csfy8-Df2g1-fR5Pz' },
+        { codigo: 'T1100', cantidad: 8, coef: 1, cita: 'PDF piso 11/06 drive 1d-u515rso_v01m8csfy8-Df2g1-fR5Pz' },
+        { codigo: 'T1107.1', cantidad: 120, coef: 1, cita: 'PDF piso 11/06 drive 1d-u515rso_v01m8csfy8-Df2g1-fR5Pz' },
+        { codigo: 'T1107.3', cantidad: 12.6, coef: 3, cita: 'PDF piso 11/06 drive 1d-u515rso_v01m8csfy8-Df2g1-fR5Pz' },
+        { codigo: 'T1101', cantidad: 14.4, coef: 0.7, cita: 'PDF rampa 19/08 drive 1QioaEfc-FDbareikGjc2W0TzJ8wPclWr' },
+        { codigo: 'T1100', cantidad: 8, coef: 1, cita: 'PDF rampa 19/08 drive 1QioaEfc-FDbareikGjc2W0TzJ8wPclWr' },
+        { codigo: 'T1107.1', cantidad: 41.8, coef: 0.7, cita: 'PDF rampa 19/08 drive 1QioaEfc-FDbareikGjc2W0TzJ8wPclWr' },
+        { codigo: 'T1107.3', cantidad: 8, coef: 3, cita: 'PDF rampa 19/08 drive 1QioaEfc-FDbareikGjc2W0TzJ8wPclWr' },
+      ],
+    },
   },
 ])
 
@@ -392,7 +437,7 @@ export function rubrosDeObra(cfg, explosiones) {
     controles.push(...explosion.controles.map((p) => `${libro.nombre}: ${p}`))
     const agg = agregarPorRubro(explosion.lineas, { parte: cfg.libros.length > 1 ? libro.parte : null })
     const filas = libro.filas ? `filas ${libro.filas[0]}–${libro.filas[1]}` : `filas 8–${(explosion.items.at(-1)?.fila ?? '?')}`
-    const cita = `${libro.nombre} drive ${libro.drive} · Presupuesto ${filas} abierto por Análisis`
+    const cita = `${libro.nombre} drive ${libro.drive} · Presupuesto ${filas} abierto por Análisis${libro.nota ? ` (${libro.nota})` : ''}`
     for (const r of RUBROS) {
       const b = rubros[r]
       b.cita.push(cita)
@@ -446,6 +491,39 @@ export function horasDelDocumento(explosiones) {
     }
   }
   return hay ? r2(h) : null
+}
+
+/**
+ * LAS HORAS DE UNA OBRA CUYA PLANILLA FUE REESCRITA (Pisos 120 m²): el Análisis conserva las horas por unidad
+ * de cada tarea; las cantidades vendidas están en otro documento (el PDF). Σ (hs de mano de obra propia por
+ * unidad × cantidad × coeficiente), con la misma convención que `explotarLibro` (un coeficiente < 100 escala la
+ * cantidad). Es un CÁLCULO sobre dos documentos, no una lectura directa: quien lo usa lo marca así.
+ * Una tarea que no está en el Análisis NO se completa con cero: `hh` queda null y `faltan` la nombra.
+ *
+ * @param {Map} tareas  `leerAnalisis(...).tareas`
+ * @param {Array<{codigo, cantidad, coef, cita}>} cantidades
+ * @returns {{hh: number|null, detalle: object[], faltan: string[]}}
+ */
+export function horasPorCantidades(tareas, cantidades) {
+  const detalle = []
+  const faltan = []
+  let hh = 0
+  for (const c of cantidades) {
+    const t = tareas.get(codigoNorm(c.codigo))
+    if (!t) { faltan.push(c.codigo); continue }
+    const coef = c.coef ?? 1
+    const factor = c.cantidad * (coef >= 100 ? 1 : coef)
+    let porUnidad = 0
+    for (const ins of t.insumos) {
+      if (!/^hs$/i.test((ins.unidad ?? '').trim()) || ins.cantidad == null) continue
+      if (rubroDeRecurso({ unidad: ins.unidad, nombre: ins.nombre }).rubro !== 'mano_obra') continue
+      porUnidad += ins.cantidad
+    }
+    const horas = r2(factor * porUnidad)
+    hh += horas
+    detalle.push({ codigo: t.codigo, tarea: t.descripcion, cantidad: c.cantidad, coef, hs_por_unidad: r2(porUnidad), horas, cita: c.cita })
+  }
+  return { hh: faltan.length ? null : r2(hh), detalle, faltan }
 }
 
 /** Los rubros de una obra `desdePartidas`: las partidas del presupuesto aprobado, mapeadas por código. */
