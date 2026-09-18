@@ -78,20 +78,55 @@ test('lo leen Dirección y Administración; jefe de obra, campo y anónimo no; n
     await assert.rejects(c.query("update public.caja_sheet_foto set huella = 'x'"), /permission denied/)
     await c.query('rollback to savepoint antes')
     await c.query('set local role anon')
-    await assert.rejects(c.query('select 1 from public.caja_sheet_foto'), /permission denied/)
+    for (const rel of ['public.caja_sheet_foto', 'public.caja_egreso_percibido']) {
+      await c.query('savepoint anon')
+      await assert.rejects(c.query(`select 1 from ${rel}`), /permission denied/)
+      await c.query('rollback to savepoint anon')
+    }
   })
 })
 
-test('lo percibido cruza cada compra del espejo con su fila de Compras (ninguna se pierde en el join)', { skip: !hayBase && 'sin base' }, async () => {
+test('lo percibido es lo PAGADO en su fecha: mes a mes cierra con Monto Pagado + Monto Parcial 2 de Compras (Δ 0), y lo sin desglose no se suma', { skip: !hayBase && 'sin base' }, async () => {
   await enEnsayo(async (c) => {
-    const { rows } = await c.query(`select
-      (select count(*) from public.costos_obra co join public.compra_sheet cs on co.referencia_externa = coalesce(cs.sheet_id, cs.fila)::text
-        where co.origen = 'compras_sheet' and not coalesce(cs.anulada, false))::int esperado,
-      (select count(*) from public.caja_egreso_percibido)::int vista,
-      (select count(*) from public.costos_obra co where co.origen = 'compras_sheet'
-        and not exists (select 1 from public.compra_sheet cs where co.referencia_externa = coalesce(cs.sheet_id, cs.fila)::text))::int huerfanas`)
-    assert.equal(rows[0].vista, rows[0].esperado)
-    assert.equal(rows[0].huerfanas, 0)
+    // COMO DIRECCIÓN: sin el bypass de `auth.uid() is null`, la vista no le contesta a nadie sin rol económico.
+    const ids = Object.fromEntries((await c.query('select distinct on (rol) rol, id from public.perfiles order by rol')).rows.map((r) => [r.rol, r.id]))
+    await como(c, ids.direccion)
+    // La vista contra la pestaña, por mes: la vista no puede decir un peso más ni menos que las dos celdas.
+    const { rows } = await c.query(`
+      with sheet as (
+        select to_char(cs.fecha_caja, 'YYYY-MM') mes, sum(cs.monto_pagado) monto from public.compra_sheet cs
+          join public.costos_obra co on co.referencia_externa = coalesce(cs.sheet_id, cs.fila)::text and co.origen = 'compras_sheet'
+         where not coalesce(cs.anulada, false) and coalesce(cs.monto_pagado, 0) <> 0 group by 1
+        union all
+        select to_char(cs.fecha_prevista_2, 'YYYY-MM'), sum(cs.monto_parcial_2) from public.compra_sheet cs
+          join public.costos_obra co on co.referencia_externa = coalesce(cs.sheet_id, cs.fila)::text and co.origen = 'compras_sheet'
+         where not coalesce(cs.anulada, false) and coalesce(cs.monto_parcial_2, 0) <> 0 group by 1
+      ), s as (select mes, sum(monto) monto from sheet group by 1),
+      v as (select to_char(fecha_pago, 'YYYY-MM') mes, sum(monto) filter (where naturaleza = 'pago') pago,
+                   sum(total) filter (where naturaleza = 'sin_desglose') sin_desglose, count(*) filter (where naturaleza = 'sin_desglose')::int n_sd,
+                   sum(monto) filter (where naturaleza = 'pendiente') pendiente
+              from public.caja_egreso_percibido group by 1)
+      select m.mes, s.monto::bigint sheet_pagado, v.pago::bigint vista_pago, (coalesce(v.pago,0) - coalesce(s.monto,0))::bigint delta,
+             v.sin_desglose::bigint sin_desglose, v.n_sd, v.pendiente::bigint pendiente
+        from (select mes from s union select mes from v) m
+        left join s on s.mes is not distinct from m.mes
+        left join v on v.mes is not distinct from m.mes order by 1`)
+    assert.ok(rows.length >= 9, `sólo ${rows.length} meses`)
+    console.log('Δ percibido por mes (sheet Monto Pagado+Parcial 2 vs vista pago):')
+    for (const r of rows) console.log(`  ${r.mes ?? 'sin fecha'}\tsheet ${r.sheet_pagado}\tvista ${r.vista_pago}\tΔ ${r.delta}\tsin desglose ${r.sin_desglose ?? 0} (${r.n_sd})\tpendiente ${r.pendiente ?? 0}`)
+    for (const r of rows) assert.equal(Number(r.delta), 0, `mes ${r.mes}`)
+    // Los casos de la auditoría: cada pago en su fecha, y lo «Pagado» sin monto no se asume.
+    const f = async (fila) => (await c.query('select naturaleza, fecha_pago::text f, monto::numeric::float8 m from public.caja_egreso_percibido where fila = $1 order by f', [fila])).rows
+    assert.deepEqual(await f(492), [{ naturaleza: 'pago', f: '2026-06-19', m: 1000000 }, { naturaleza: 'pago', f: '2026-07-18', m: 450000 }])
+    assert.deepEqual(await f(806), [{ naturaleza: 'pago', f: '2026-08-28', m: 2250000 }])
+    assert.deepEqual(await f(768), [{ naturaleza: 'sin_desglose', f: '2026-08-04', m: 5124411.5 }])
+    assert.deepEqual(await f(881), [{ naturaleza: 'pago', f: '2026-09-18', m: 197272.73 }, { naturaleza: 'pendiente', f: '2026-09-18', m: 1940593.94 }])
+    // Ninguna compra viva del espejo se pierde en el join, y la vista no trae filas de otra naturaleza.
+    const h = (await c.query(`select count(*)::int n from public.costos_obra co where co.origen = 'compras_sheet'
+      and not exists (select 1 from public.compra_sheet cs where co.referencia_externa = coalesce(cs.sheet_id, cs.fila)::text)`)).rows[0].n
+    assert.equal(h, 0)
+    const nat = (await c.query('select distinct naturaleza from public.caja_egreso_percibido order by 1')).rows.map((r) => r.naturaleza)
+    assert.deepEqual(nat, ['pago', 'pendiente', 'sin_desglose'])
   })
 })
 

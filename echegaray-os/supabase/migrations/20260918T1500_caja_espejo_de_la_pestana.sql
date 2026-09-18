@@ -25,9 +25,9 @@
 --   · `caja_sheet_sync` — UNA fila: el último intento y su error, para que la app diga «el espejo no
 --     pudo leer CAJA a las 14:05: …» en vez de mostrar una foto vieja con cara de actual.
 --   · `caja_sheet_vigente` — la última foto verificada.
---   · `caja_egreso_percibido` — lo PAGADO de Compras con su área y su FECHA DE CAJA (criterio
---     percibido), para el marcado obra / estructura / sin destino filtrable por fecha. No redefine el
---     área: la toma de `costos_obra.area`, la misma que usa `egreso_por_area`.
+--   · `caja_egreso_percibido` — lo PAGADO de Compras, cada pago en su fecha (criterio percibido), para
+--     el marcado obra / estructura / sin destino filtrable por fecha. No redefine el área: la toma de
+--     `costos_obra.area`, la misma que usa `egreso_por_area`. Ver el bloque de la vista.
 --
 -- ═══ QUIÉN LEE ═══
 --
@@ -79,22 +79,53 @@ create or replace view public.caja_sheet_vigente with (security_invoker = true) 
     from (select * from public.caja_sheet_foto order by verificada_en desc, id desc limit 1) f
     left join public.caja_sheet_sync s on s.id = 1;
 
+-- ═══ LO PAGADO, EN LA FECHA EN QUE SE PAGÓ (auditoría 18/09/2026) ═══
+--
+-- La primera versión publicaba el TOTAL de la factura en su «Fecha de caja»: agosto daba $82,1 M contra
+-- $68,0 M pagados (+20,6 %), una parcial entera caía en el mes del primer pago y una compra «Pagado» con
+-- Monto Pagado 0 sumaba $5,1 M que nadie afirmó haber pagado. Eso es devengado con otro nombre.
+--
+-- Lo que Compras AFIRMA que se pagó son dos celdas: «Monto Pagado» en la «Fecha de caja» (el primer
+-- pago) y «Monto Parcial 2» en «Fecha prevista de pago 2» (el segundo). Cada una es una fila `pago`.
+-- Una compra «Pagado» sin ninguna de las dos cargadas NO se asume pagada por su total: sale como
+-- `sin_desglose`, con su total, para que la pantalla la liste y alguien la complete en Compras.
+-- Lo que falta pagar (estado ≠ Pagado, «Saldo pendiente») sale como `pendiente` a su fecha prevista:
+-- es deuda del período, no salida. «Monto Parcial 1» no se lee: es fórmula (pagado − total).
+--
+-- El monto se publica como está en la celda, también cuando supera el total (combustible cargado con
+-- el pago bruto): es lo que la persona afirmó haber pagado, y corregirlo acá sería inventar.
 create or replace view public.caja_egreso_percibido with (security_invoker = true) as
-  select coalesce(c.area, 'sin_clasificar') as area,
-         cs.fecha_caja                      as fecha_pago,
-         c.total,
-         cs.estado,
-         c.proveedor,
-         c.obra_texto
-    from public.costos_obra c
-    join public.compra_sheet cs on c.referencia_externa = coalesce(cs.sheet_id, cs.fila)::text
-   where c.origen = 'compras_sheet'
-     and not coalesce(cs.anulada, false)
-     and ((select public.ve_economia()) or (select auth.uid()) is null);
+  with base as (
+    select cs.fila, coalesce(c.area, 'sin_clasificar') as area, c.total, c.proveedor, c.obra_texto, cs.estado,
+           cs.fecha_caja, cs.fecha_prevista_2, cs.monto_pagado, cs.monto_parcial_2, cs.saldo_pendiente
+      from public.costos_obra c
+      join public.compra_sheet cs on c.referencia_externa = coalesce(cs.sheet_id, cs.fila)::text
+     where c.origen = 'compras_sheet'
+       and not coalesce(cs.anulada, false)
+  ),
+  filas as (
+    select fila, 'pago'::text as naturaleza, fecha_caja as fecha_pago, monto_pagado as monto from base
+     where coalesce(monto_pagado, 0) <> 0
+    union all
+    select fila, 'pago', fecha_prevista_2, monto_parcial_2 from base
+     where coalesce(monto_parcial_2, 0) <> 0
+    union all
+    select fila, 'sin_desglose', fecha_caja, total from base
+     where estado = 'Pagado' and coalesce(monto_pagado, 0) = 0 and coalesce(monto_parcial_2, 0) = 0
+    union all
+    select fila, 'pendiente', fecha_caja, saldo_pendiente from base
+     where estado <> 'Pagado' and coalesce(saldo_pendiente, 0) <> 0
+  )
+  select b.area, f.fecha_pago, f.monto, f.naturaleza, b.estado, b.proveedor, b.obra_texto, b.fila, b.total
+    from filas f
+    join base b using (fila)
+   where (select public.ve_economia());
 
 comment on view public.caja_egreso_percibido is
-  'Lo que salió según Compras, por FECHA DE CAJA (percibido). estado=Pagado es lo salido; Pendiente es '
-  'deuda, no salida. Área = costos_obra.area (la misma de egreso_por_area). Dirección y Administración.';
+  'Lo PAGADO según Compras, en la fecha en que se pagó (percibido): naturaleza=pago (Monto Pagado en '
+  'Fecha de caja + Monto Parcial 2 en Fecha prevista 2), sin_desglose (Pagado sin monto cargado: se '
+  'lista, no se suma), pendiente (Saldo pendiente a su fecha prevista: deuda). Área = costos_obra.area. '
+  'Dirección y Administración.';
 
 alter table public.caja_sheet_foto enable row level security;
 alter table public.caja_sheet_sync enable row level security;
