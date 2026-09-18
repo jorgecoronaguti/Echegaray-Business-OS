@@ -37,6 +37,9 @@ import {
   RUBRO_GREMIALES,
 } from '../lib/libro-extractores.mjs'
 import { pagosGremialesDelBanco, explicarPago } from '../lib/cargas-pagos-banco.mjs'
+// Directo del módulo de nómina y no por el barril `libro-extractores.mjs`: ese archivo lo está tocando
+// otro trabajo en paralelo (18/09) y agregar una línea acá no le genera conflicto.
+import { pactadosDelBloque, PESTANA_NOMINA } from '../lib/libro-extractores-nomina.mjs'
 // ═══ LAS OBLIGACIONES QUE DEJARON DE TENER FILA EN COMPRAS (11/09/2026) ═══
 //
 // El dueño vacía de Compras todo lo que no sea Civil/Estructura/Mantenimiento. El F931 pagado, los
@@ -176,6 +179,26 @@ export async function extraerDeLasFuentes(google, corte) {
   // —el de las filas equivocadas— sin marcar un solo error.
   const leidos = await Promise.all(NOMBRES_NOMINA.map((n) => leer(n)))
   const R = Object.fromEntries(NOMBRES_NOMINA.map((n, i) => [n, leidos[i]]))
+
+  // ═══ LO PACTADO DE CADA MES DE OFICINA Y DIRECCIÓN (18/09/2026) ═══
+  //
+  // Un mes pagado en parte necesita saber cuánto era el mes entero para que el resto no desaparezca
+  // (ver `deBloqueMensual`). Lo pactado no tiene celda propia: es lo que la fórmula de «Proyectado» de
+  // cada fila multiplica (`$C$46*MAX(1;B47)`, `$B$59*…B69…`). Se leen esas fórmulas y la pestaña, y la
+  // lib resuelve las referencias. Lectura BLANDA: sin esto, un mes parcial vuelve al comportamiento
+  // anterior —vale el pagado, marcado y avisado—, que es incompleto y gritado, no silencioso.
+  let pactados = { oficina: null, direccion: null }
+  try {
+    const [fOfi, fDir, grilla] = await Promise.all([
+      google.readSheetValues(ID, 'OFICINA_PROYECTADO', { render: 'FORMULA' }),
+      google.readSheetValues(ID, 'DIRECCION_PROYECTADO', { render: 'FORMULA' }),
+      google.readSheetValues(ID, `'${PESTANA_NOMINA}'!A1:Z200`, { render: 'UNFORMATTED_VALUE' }),
+    ])
+    pactados = { oficina: pactadosDelBloque(fOfi, grilla), direccion: pactadosDelBloque(fDir, grilla) }
+  } catch (e) {
+    console.warn(`  ⚠ no pude leer lo pactado de Oficina/Dirección (${e.message}): un mes pagado en parte `
+      + 'queda con el pagado solo, marcado.')
+  }
 
   // ═══ LA CADENA DE CARGAS SOCIALES SE LEE OPCIONAL, Y ESO ES DELIBERADO ═══
   //
@@ -536,9 +559,11 @@ export async function extraerDeLasFuentes(google, corte) {
         },
         proyectadas: { pago: R.JORNALES_PROY_PAGO, hasta: R.JORNALES_PROY_HASTA, total: R.JORNALES_PROY_TOTAL },
       }, corte, { extracto, aviso: (m) => console.warn(`  ⚠ ${m}`) }),
-      Oficina: deOficina({ pago: R.OFICINA_PAGO, pagado: R.OFICINA_PAGADO, proyectado: R.OFICINA_PROYECTADO },
+      Oficina: deOficina({ pago: R.OFICINA_PAGO, pagado: R.OFICINA_PAGADO, proyectado: R.OFICINA_PROYECTADO,
+        pactado: pactados.oficina },
         corte, { extracto }),
-      Dirección: deDireccion({ pago: R.DIRECCION_PAGO, pagado: R.DIRECCION_PAGADO, proyectado: R.DIRECCION_PROYECTADO },
+      Dirección: deDireccion({ pago: R.DIRECCION_PAGO, pagado: R.DIRECCION_PAGADO, proyectado: R.DIRECCION_PROYECTADO,
+        pactado: pactados.direccion },
         corte, { extracto }),
       // LAS OBLIGACIONES QUE EL EXTRACTO PRUEBA Y COMPRAS YA NO LLEVA (prendario, gremiales, F931 y la
       // cuota de plan). No emite nada cuya fila siga viva en Compras: durante la transición el REAL
