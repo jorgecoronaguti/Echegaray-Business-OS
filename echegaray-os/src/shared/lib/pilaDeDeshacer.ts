@@ -14,11 +14,26 @@
 // ═══ CONFLICTO ═══
 //
 // Si el valor que se ve ya no es el que se guardó (otra persona lo editó, o llegó otra lectura), no se pisa: se
-// avisa «cambió desde tu edición, no se deshizo» y el paso se descarta. Donde la acción lo admite, el servidor
-// hace la misma comprobación con `esperado`.
+// avisa «la celda la cambió otra persona: no se deshizo» y el paso se descarta. TODA escritura de deshacer o
+// rehacer viaja con `esperado` (lo que esta persona vio) y el servidor hace la misma comprobación contra la
+// base: la pantalla puede estar atrasada, la base no.
+//
+// ═══ NUNCA SE VACÍA UNA CELDA (auditoría del 18/09/2026) ═══
+//
+// Regla de la casa: ninguna escritura puede vaciar una celda cargada por otra persona. Un paso cuyo valor
+// anterior es `''` no tiene nada que restaurar: deshacerlo escribiría NULL, y si ese `''` era una pantalla
+// atrasada —otra persona había cargado la celda y este control no lo había visto— el NULL borra lo ajeno. Se
+// vio en Pedidos: otra persona asignó la actividad X, el refresco llegó pero el select seguía en `''`, esta
+// persona eligió Y y Cmd+Z dejó la celda en NULL. Por eso deshacer hacia `''` se rechaza en la plataforma,
+// con el mismo aviso que ya tenía `CeldaTarifa`: «no había un valor anterior que restaurar».
+//
+// La única excepción es declarada por la celda (`vacioRestaurable`): cuando `''` NO deja la celda vacía sino
+// que la devuelve a un valor calculado (Liquidación: «sin corrección manual») y el servidor verifica
+// `esperado`. Ahí el vacío es un estado con contenido, no una celda borrada.
 
 export const LIMITE_DE_PASOS = 50
-export const MENSAJE_CONFLICTO = 'cambió desde tu edición, no se deshizo'
+export const MENSAJE_CONFLICTO = 'la celda la cambió otra persona: no se deshizo'
+export const MENSAJE_SIN_ANTERIOR = 'no había un valor anterior que restaurar: no se deshizo'
 
 export interface PasoDeEdicion {
   id: string
@@ -33,6 +48,11 @@ export interface PasoDeEdicion {
   nuevo: string
   anteriorTexto: string
   nuevoTexto: string
+  /**
+   * `''` es un valor con contenido para esta celda (vuelve al calculado) y el servidor verifica `esperado`.
+   * Sin esto, deshacer hacia `''` se rechaza: sería vaciar la celda.
+   */
+  vacioRestaurable?: boolean
 }
 
 export interface PilaDeDeshacer {
@@ -81,8 +101,35 @@ export function hayConflicto(actual: string | undefined, esperado: string): bool
 }
 
 /**
- * EL ATAJO. Cmd/Ctrl+Z deshace; Cmd/Ctrl+Shift+Z y Cmd/Ctrl+Y rehacen. Con el foco dentro de un input, un textarea,
- * un select o un contenido editable, NO se intercepta: ahí deshace el texto el navegador.
+ * ¿POR QUÉ NO SE PUEDE RESTAURAR ESTE PASO? `null` = se puede. Deshacer hacia `''` sólo si la celda declaró que
+ * el vacío es un valor (`vacioRestaurable`). Rehacer no entra en la regla: rehacer un vaciado es repetir lo que
+ * esta misma persona hizo, con `esperado` = lo que ella acaba de restaurar.
+ */
+export function motivoParaNoRestaurar(accion: AccionDeDeshacer, paso: PasoDeEdicion): string | null {
+  if (accion === 'deshacer' && paso.anterior === '' && !paso.vacioRestaurable) return MENSAJE_SIN_ANTERIOR
+  return null
+}
+
+/**
+ * LA COMPROBACIÓN DEL SERVIDOR: ¿lo que hay hoy en la base es lo que esta persona vio (`esperado`)? Una sola
+ * regla para todas las acciones que reciben `esperado`. NULL y `''` son el mismo vacío; un número se compara
+ * como número (la pantalla dibuja «123,5» y la base guarda 123.5); el texto, sin espacios en las puntas.
+ */
+export function coincideConLoEsperado(hoy: unknown, esperado: string): boolean {
+  const e = esperado.trim()
+  if (hoy == null) return e === ''
+  if (typeof hoy === 'number') {
+    const n = Number(e.replace(',', '.'))
+    return e !== '' && Number.isFinite(n) && n === hoy
+  }
+  return String(hoy).trim() === e
+}
+
+/**
+ * EL ATAJO. Cmd/Ctrl+Z deshace; Cmd/Ctrl+Shift+Z y Cmd/Ctrl+Y rehacen. Con el foco dentro de un input, un textarea
+ * o un contenido editable, NO se intercepta: ahí deshace el texto el navegador. Un `<select>` NO es editable
+ * (18/09/2026): el navegador no tiene nada que deshacer en un desplegable, y como el foco se queda en él después
+ * de elegir, Cmd+Z no hacía nada hasta clicar afuera.
  *
  * `Y` TAMBIÉN CON CMD (dueño, 17/09/2026: *«tiene que estar el rehacer en toda la plataforma»*). Hasta hoy `Cmd+Y`
  * caía al navegador y no rehacía nada; quien viene de Windows lo teclea igual en la Mac. `Cmd+A` NO se toca: es
@@ -115,7 +162,7 @@ export function esTecladoMac(plataforma: string | undefined): boolean {
 export function destinoEditable(el: { tagName?: string; isContentEditable?: boolean } | null | undefined): boolean {
   if (!el) return false
   const t = (el.tagName ?? '').toUpperCase()
-  return t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT' || el.isContentEditable === true
+  return t === 'INPUT' || t === 'TEXTAREA' || el.isContentEditable === true
 }
 
 /** «Deshecho: Banco de Rosales $250.000 → $230.240». */

@@ -9,9 +9,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  LIMITE_DE_PASOS, MENSAJE_CONFLICTO, apilar, atajoDeDeshacer, destinoEditable, esTecladoMac, hayConflicto, pilaVacia,
-  quitarPaso, sinPasosDeOtraRuta, textoDelAtajoDeRehacer, textoDelAviso, tomarParaDeshacer, tomarParaRehacer,
-  type PasoDeEdicion,
+  LIMITE_DE_PASOS, MENSAJE_CONFLICTO, MENSAJE_SIN_ANTERIOR, apilar, atajoDeDeshacer, coincideConLoEsperado,
+  destinoEditable, esTecladoMac, hayConflicto, motivoParaNoRestaurar, pilaVacia, quitarPaso, sinPasosDeOtraRuta,
+  textoDelAtajoDeRehacer, textoDelAviso, tomarParaDeshacer, tomarParaRehacer, type PasoDeEdicion,
 } from './pilaDeDeshacer.ts'
 
 const RUTA = '/administracion/personas?vista=liquidacion&quincena=2026-09-01'
@@ -59,7 +59,54 @@ test('CONFLICTO: si el valor que se ve no es el que se guardó, no se pisa', () 
   assert.equal(hayConflicto('250001', '250001'), false)
   assert.equal(hayConflicto('999', '250001'), true)
   assert.equal(hayConflicto(undefined, '250001'), false, 'sin celda viva decide el servidor')
-  assert.equal(MENSAJE_CONFLICTO, 'cambió desde tu edición, no se deshizo')
+  // El aviso dice QUIÉN: «otra persona». «cambió desde tu edición» no explicaba nada a quien lo leía.
+  assert.equal(MENSAJE_CONFLICTO, 'la celda la cambió otra persona: no se deshizo')
+})
+
+// ═══ AUDITORÍA 18/09/2026: NINGUNA ESCRITURA PUEDE VACIAR UNA CELDA CARGADA POR OTRA PERSONA ═══
+//
+// Pedidos: otra persona asignó X, el select no adoptó la prop y siguió en `''`, esta persona eligió Y y Cmd+Z
+// escribió NULL sobre la X. La regla vive acá, en la plataforma: deshacer hacia `''` no escribe, salvo que la
+// celda declare que el vacío es un valor con contenido (Liquidación: vuelve al calculado, servidor verifica).
+//
+// MUTACIÓN QUE LO PONE ROJO: que `motivoParaNoRestaurar` devuelva `null` con `anterior === ''`.
+
+test('DESHACER HACIA VACÍO SE RECHAZA: no había un valor anterior que restaurar', () => {
+  const sinAnterior = paso(1, { anterior: '', nuevo: 'act-X', anteriorTexto: 'sin asignar', nuevoTexto: 'Excavación' })
+  assert.equal(motivoParaNoRestaurar('deshacer', sinAnterior), MENSAJE_SIN_ANTERIOR)
+  assert.equal(MENSAJE_SIN_ANTERIOR, 'no había un valor anterior que restaurar: no se deshizo')
+  // Con un anterior real, se deshace.
+  assert.equal(motivoParaNoRestaurar('deshacer', paso(2, { anterior: 'act-X', nuevo: 'act-Y' })), null)
+  // Rehacer un vaciado es repetir lo que esta persona hizo: no entra en la regla (viaja con `esperado`).
+  assert.equal(motivoParaNoRestaurar('rehacer', paso(3, { anterior: 'act-X', nuevo: '' })), null)
+  assert.equal(motivoParaNoRestaurar('rehacer', sinAnterior), null)
+})
+
+test('LA EXCEPCIÓN ES DECLARADA: `vacioRestaurable` (el vacío vuelve al calculado, no vacía la celda)', () => {
+  const liquidacion = paso(1, { anterior: '', nuevo: '250000', vacioRestaurable: true })
+  assert.equal(motivoParaNoRestaurar('deshacer', liquidacion), null)
+  // `false` explícito vale lo mismo que ausente.
+  assert.equal(motivoParaNoRestaurar('deshacer', { ...liquidacion, vacioRestaurable: false }), MENSAJE_SIN_ANTERIOR)
+})
+
+test('LA COMPROBACIÓN DEL SERVIDOR: lo que hay hoy en la base contra lo que la pantalla vio', () => {
+  // NULL y `''` son el mismo vacío: una celda «sin asignar» que la pantalla vio vacía coincide.
+  assert.equal(coincideConLoEsperado(null, ''), true)
+  assert.equal(coincideConLoEsperado(undefined, ''), true)
+  // La celda la cargó otra persona y la pantalla la vio vacía: NO coincide. Es exactamente el caso de la auditoría.
+  assert.equal(coincideConLoEsperado('act-X', ''), false)
+  assert.equal(coincideConLoEsperado(null, 'act-X'), false)
+  assert.equal(coincideConLoEsperado('act-X', 'act-X'), true)
+  assert.equal(coincideConLoEsperado('act-X', 'act-Y'), false)
+  // Un número guardado se compara como número: la celda de Presupuestos dibuja «123,5» y la base tiene 123.5.
+  assert.equal(coincideConLoEsperado(123.5, '123,5'), true)
+  assert.equal(coincideConLoEsperado(34, '34,00'), true)
+  assert.equal(coincideConLoEsperado(123.5, '123'), false)
+  assert.equal(coincideConLoEsperado(0, ''), false, 'un cero guardado no es un vacío')
+  assert.equal(coincideConLoEsperado(5, 'abc'), false)
+  // Texto: sin espacios en las puntas, y sensible al contenido.
+  assert.equal(coincideConLoEsperado(' contrato ', 'contrato'), true)
+  assert.equal(coincideConLoEsperado('contrato', 'Contrato'), false)
 })
 
 test('EL ATAJO: Cmd+Z o Ctrl+Z deshace, Shift o Ctrl+Y rehace, y NUNCA dentro de un input', () => {
@@ -75,7 +122,10 @@ test('EL ATAJO: Cmd+Z o Ctrl+Z deshace, Shift o Ctrl+Y rehace, y NUNCA dentro de
   assert.equal(tecla({ key: 'x', metaKey: true }), null)
   assert.equal(destinoEditable({ tagName: 'INPUT' }), true)
   assert.equal(destinoEditable({ tagName: 'TEXTAREA' }), true)
-  assert.equal(destinoEditable({ tagName: 'SELECT' }), true)
+  // UN SELECT NO ES EDITABLE (18/09/2026): el foco queda en él después de elegir y el navegador no tiene texto que
+  // deshacer ahí. Con `true`, Cmd+Z no hacía nada hasta clicar afuera — lo encontró el auditor en Pedidos.
+  assert.equal(destinoEditable({ tagName: 'SELECT' }), false)
+  assert.equal(destinoEditable({ tagName: 'select' }), false)
   assert.equal(destinoEditable({ tagName: 'DIV', isContentEditable: true }), true)
   assert.equal(destinoEditable({ tagName: 'BUTTON' }), false)
   assert.equal(destinoEditable(null), false)
