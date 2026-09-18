@@ -157,13 +157,13 @@ export function TablaClientes({
         <RotuloCol derecha titulo={AYUDA_CONTRATADO}>{veEconomia ? 'Contratado' : ''}</RotuloCol>
         {/* «a la fecha» DEBAJO DEL NOMBRE, como en la ficha: el rótulo dice qué es el número. */}
         <span className={`grid ${SOLO_ANCHO}`}>
-          {veEconomia ? <RotuloACorte texto="Materiales" titulo={AYUDA_MATERIALES} /> : null}
+          {veEconomia ? <RotuloACorte texto="Materiales" titulo={AYUDA_MATERIALES} conIva /> : null}
         </span>
         <span className={`grid ${SOLO_ANCHO}`}>
-          {veEconomia ? <RotuloACorte texto="Subcontratos" titulo={AYUDA_SUBCONTRATOS} /> : null}
+          {veEconomia ? <RotuloACorte texto="Subcontratos" titulo={AYUDA_SUBCONTRATOS} conIva /> : null}
         </span>
         <span className={`grid ${SOLO_ANCHO}`}>
-          {veEconomia ? <RotuloACorte texto="Otros" titulo={AYUDA_OTROS} /> : null}
+          {veEconomia ? <RotuloACorte texto="Otros" titulo={AYUDA_OTROS} conIva /> : null}
         </span>
         <span className={`grid ${SOLO_ANCHO}`}>
           {veEconomia ? <RotuloACorte texto="Mano de obra" titulo={AYUDA_MANO_OBRA} /> : null}

@@ -249,9 +249,9 @@ export function ObrasDelCliente({
             corrido es «esto me costó, por esto lo vendí». */}
         {/* «A LA FECHA» DEBAJO DEL NOMBRE (dueño, 13/09/2026): lo gastado hasta hoy, no lo presupuestado.
             Dos líneas y no «Materiales a la fecha» en una: en la pista de 112px se cortaba. */}
-        <span className="grid" title={AYUDA_MATERIALES}><RotuloCol derecha>Materiales</RotuloCol><ALaFecha /></span>
-        <span className="grid" title={AYUDA_SUBCONTRATOS}><RotuloCol derecha>Subcontratos</RotuloCol><ALaFecha /></span>
-        <span className="grid" title={AYUDA_OTROS}><RotuloCol derecha>Otros</RotuloCol><ALaFecha /></span>
+        <span className="grid" title={AYUDA_MATERIALES}><RotuloCol derecha>Materiales</RotuloCol><ALaFecha conIva /></span>
+        <span className="grid" title={AYUDA_SUBCONTRATOS}><RotuloCol derecha>Subcontratos</RotuloCol><ALaFecha conIva /></span>
+        <span className="grid" title={AYUDA_OTROS}><RotuloCol derecha>Otros</RotuloCol><ALaFecha conIva /></span>
         <span className="grid" title={AYUDA_MANO_OBRA}><RotuloCol derecha>Mano de obra</RotuloCol><ALaFecha /></span>
         <RotuloCol derecha>Contratado</RotuloCol>
         <span />
@@ -420,12 +420,8 @@ export function ObrasDelCliente({
           </span>
 
           {/* OTROS (dueño, 18/09/2026): equipos, servicios, combustible, fletes y honorarios, que hasta hoy
-              iban dentro de Materiales. Delegada en costosDeObra como las otras tres.
-
-              SIN ENLACE AL DETALLE, A PROPÓSITO: `detalle_costo_de_obra` (20260915T2320) sólo abre
-              materiales · subcontratos · mano_obra · hh, y `RUBROS` lo refleja. Un botón que abriera un
-              panel «no puedo verlo» sería peor que el importe quieto; el día que la RPC publique el rubro
-              se agrega `'otros'` a `RUBROS` y acá un `AbrirDetalle`, y nada más. */}
+              iban dentro de Materiales. Delegada en costosDeObra como las otras tres, y abre su detalle
+              como ellas: `detalle_costo_de_obra_rubros` (20260918T1510) usa la misma regla que la celda. */}
           <span className="grid justify-items-end" style={{ minWidth: 0 }}>
             <span
               data-testid="otros-obra-cliente"
@@ -433,7 +429,11 @@ export function ObrasDelCliente({
               className="truncate font-mono tabular-nums"
               style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right', maxWidth: '100%' }}
             >
-              {costos === null || !veEconomia ? '' : textoOtros(costoDeLaObra)}
+              {costos === null || !veEconomia ? '' : (
+                <AbrirDetalle href={hrefDetalle && costoDeLaObra ? hrefDetalle(o.obra_id, 'otros') : null} etiqueta="Ver qué compone los otros costos de este trabajo">
+                  {textoOtros(costoDeLaObra)}
+                </AbrirDetalle>
+              )}
             </span>
             {costos !== null && veEconomia && <PorVencer texto={textoPorVencer(costoDeLaObra?.otrosPorVencer)} />}
           </span>
