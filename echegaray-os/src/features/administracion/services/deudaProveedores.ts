@@ -131,12 +131,33 @@ export interface TotalesDeuda {
   total: number
 }
 
-/** El detalle de UN proveedor, con sus tres subtotales. */
+/**
+ * LO QUE SE LE DEBE A UN PROVEEDOR POR UNA OBRA — el bloque del panel (dueño, 18/09/2026).
+ *
+ * `obraId === null` es el grupo «sin obra»: comprobantes con saldo que Compras todavía no imputó a
+ * ninguna obra. Existe como grupo propio, dicho como tal, y va ÚLTIMO: no es una obra más ni se
+ * reparte entre las otras.
+ */
+export interface DeudaPorObra {
+  obraId: string | null
+  /** Las líneas de esa obra, en el orden de pago: vencido de la más vieja, después por vencer, después sin fecha. */
+  lineas: LineaDeuda[]
+  /** Filas de Compras distintas: una fila partida en dos cuotas es UN comprobante. */
+  comprobantes: number
+  vencido: number
+  porVencer: number
+  sinFecha: number
+  total: number
+}
+
+/** El detalle de UN proveedor, con sus tres subtotales y sus comprobantes agrupados por obra. */
 export interface DetalleDeuda {
   clave: string
   nombre: string
   proveedorId: string | null
   lineas: LineaDeuda[]
+  /** Las mismas `lineas`, agrupadas por obra. Los subtotales de los grupos suman `total`. */
+  obras: DeudaPorObra[]
   vencido: number
   porVencer: number
   sinFecha: number
@@ -332,10 +353,59 @@ export function detalleDeProveedor(lineas: LineaDeuda[], fila: DeudaDeProveedor)
   const mias = lineas.filter((l) => l.clave === fila.clave).sort(porFecha)
   return {
     clave: fila.clave, nombre: fila.nombre, proveedorId: fila.proveedorId, lineas: mias,
+    obras: deudaPorObra(mias),
     vencido: sumar(mias, 'vencido'), porVencer: sumar(mias, 'por_vencer'),
     sinFecha: sumar(mias, 'sin_fecha'),
     total: centavos(mias.reduce((a, l) => a + l.saldo, 0)),
   }
+}
+
+/**
+ * LOS COMPROBANTES DE UN PROVEEDOR, POR OBRA.
+ *
+ * «Que primero salgan los comprobantes que estoy debiendo y en relación a las obras que esto
+ * incluyen» (dueño, 18/09/2026). El panel abría con la nota «Qué hacer» y después las líneas
+ * partidas por vencimiento; la obra era una palabra dentro de cada renglón. Lo que se debe se lee
+ * por obra —es la unidad económica de la constructora— y el vencimiento pasa a ser un atributo de
+ * cada comprobante y un subtotal por grupo, no el criterio de agrupación.
+ *
+ * ═══ EL ORDEN DE LAS OBRAS ES LA URGENCIA, COMO EL DE LA TABLA ═══
+ *
+ * Primero la obra con más plata VENCIDA; a igual vencido, la de más saldo; después el id como
+ * desempate estable. «Sin obra» (`obraId === null`) va SIEMPRE al final aunque sea la que más deba:
+ * no es una obra, es una imputación que falta, y un grupo sin nombre encabezando la lista se leería
+ * como la obra principal del proveedor.
+ *
+ * Dentro de cada obra las líneas conservan el orden de pago de `detalleDeProveedor` (vencido de la
+ * más vieja → por vencer → sin fecha). Los subtotales se suman al centavo de las mismas líneas: la
+ * suma de los grupos ES el total del detalle, y el test lo afirma.
+ */
+export function deudaPorObra(lineas: LineaDeuda[]): DeudaPorObra[] {
+  const grupos = new Map<string | null, DeudaPorObra & { filas: Set<number> }>()
+  for (const l of lineas) {
+    let g = grupos.get(l.obraId)
+    if (!g) {
+      g = { obraId: l.obraId, lineas: [], comprobantes: 0, vencido: 0, porVencer: 0, sinFecha: 0, total: 0, filas: new Set<number>() }
+      grupos.set(l.obraId, g)
+    }
+    g.lineas.push(l)
+    g.filas.add(l.fila)
+    if (l.estado === 'vencido') g.vencido = centavos(g.vencido + l.saldo)
+    else if (l.estado === 'por_vencer') g.porVencer = centavos(g.porVencer + l.saldo)
+    else g.sinFecha = centavos(g.sinFecha + l.saldo)
+    g.total = centavos(g.total + l.saldo)
+  }
+  return [...grupos.values()]
+    .map(({ filas, ...g }) => ({ ...g, comprobantes: filas.size, lineas: [...g.lineas].sort(porFecha) }))
+    .sort(porObraUrgente)
+}
+
+/** Sin obra al final; vencido desc → total desc → id. */
+function porObraUrgente(a: DeudaPorObra, b: DeudaPorObra): number {
+  if ((a.obraId === null) !== (b.obraId === null)) return a.obraId === null ? 1 : -1
+  if (a.vencido !== b.vencido) return b.vencido - a.vencido
+  if (a.total !== b.total) return b.total - a.total
+  return (a.obraId ?? '').localeCompare(b.obraId ?? '')
 }
 
 /**

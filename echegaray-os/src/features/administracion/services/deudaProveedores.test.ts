@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  centavos, conceptoConCuotaAdelante, cotejoDeDeuda, detalleDeProveedor, deudaPorProveedor,
+  centavos, conceptoConCuotaAdelante, cotejoDeDeuda, detalleDeProveedor, deudaPorObra, deudaPorProveedor,
   estadoDeVencimiento, etiquetaDeCuota, lineasDeDeuda, totalesDeuda,
   type CompraConSaldo, type ProveedorResuelto,
 } from './deudaProveedores.ts'
@@ -15,6 +15,8 @@ import {
 //  · Un texto marcado «no es proveedor» con fila propia → un acreedor inventado.
 //  · Sumas de float sin redondear → un pie que no cierra con las filas que lo componen.
 //  · Un orden que no pone primero lo vencido → la tabla deja de decir a quién pagar.
+//  · Un grupo por obra que no cierra con el total, o «sin obra» encabezando el panel → el detalle
+//    del proveedor dice una deuda por obra que no es la que se le debe.
 
 const HOY = '2026-09-16'
 
@@ -286,4 +288,87 @@ test('un concepto sin cuota vuelve tal cual, y un concepto vacío no se inventa'
   assert.equal(etiquetaDeCuota('Thinner sello oro 1L'), null)
   assert.equal(conceptoConCuotaAdelante('Thinner sello oro 1L'), 'Thinner sello oro 1L')
   assert.equal(conceptoConCuotaAdelante(null), null)
+})
+
+// ═══ LOS COMPROBANTES POR OBRA (dueño, 18/09/2026) ═══
+//
+// «Que primero salgan los comprobantes que estoy debiendo y en relación a las obras que esto
+// incluyen». El panel agrupa por obra; lo que se protege acá es que el agrupado no invente ni pierda
+// un peso y que el orden sea la urgencia, con «sin obra» siempre al final.
+
+test('el detalle agrupa las líneas por obra: primero la de más vencido, después por saldo, «sin obra» al final', () => {
+  const resueltos = resolver({ nombre_norm: 'CORRALON PROGRESO', proveedor_id: 'cp', proveedor_nombre: 'Corralón Progreso', estado: 'vinculado' })
+  const { lineas, filas } = armar([
+    // «sin obra» debe más que nadie y aun así va última.
+    compra({ fila: 1, saldo_pendiente: 900000, fecha_prevista: '2026-09-01', obra_id: null }),
+    // messina: nada vencido, saldo grande.
+    compra({ fila: 2, saldo_pendiente: 500000, fecha_prevista: '2026-10-15', obra_id: 'messina' }),
+    // le-comedor: $300 vencidos.
+    compra({ fila: 3, saldo_pendiente: 300, fecha_prevista: '2026-09-02', obra_id: 'le-comedor' }),
+    compra({ fila: 4, saldo_pendiente: 1000, fecha_prevista: '2026-09-30', obra_id: 'le-comedor' }),
+    // quattropani: $500 vencidos, menos saldo total que le-comedor pero MÁS vencido → va primera.
+    compra({ fila: 5, saldo_pendiente: 500, fecha_prevista: '2026-09-10', obra_id: 'quattropani' }),
+    // sin fecha en messina: suma al total de la obra sin contarse vencido.
+    compra({ fila: 6, saldo_pendiente: 7, fecha_prevista: null, obra_id: 'messina' }),
+  ], resueltos)
+  const d = detalleDeProveedor(lineas, filas[0])
+  assert.deepEqual(d.obras.map((o) => o.obraId), ['quattropani', 'le-comedor', 'messina', null])
+  assert.deepEqual(d.obras.map((o) => [o.vencido, o.porVencer, o.sinFecha, o.total]), [
+    [500, 0, 0, 500],
+    [300, 1000, 0, 1300],
+    [0, 500000, 7, 500007],
+    [900000, 0, 0, 900000],
+  ])
+  // Los subtotales por obra SON el total del detalle y el de la fila de la tabla: un solo número por tres caminos.
+  assert.equal(centavos(d.obras.reduce((a, o) => a + o.total, 0)), d.total)
+  assert.equal(d.total, filas[0].total)
+  assert.equal(centavos(d.obras.reduce((a, o) => a + o.vencido, 0)), d.vencido)
+  // Y ninguna línea se pierde ni se duplica al agrupar.
+  assert.equal(d.obras.reduce((a, o) => a + o.lineas.length, 0), d.lineas.length)
+})
+
+test('dentro de una obra las líneas van en orden de pago: vencido de la más vieja, por vencer, sin fecha', () => {
+  const { lineas } = armar([
+    compra({ fila: 1, saldo_pendiente: 100, fecha_prevista: '2026-09-30', obra_id: 'o' }),
+    compra({ fila: 2, saldo_pendiente: 100, fecha_prevista: null, obra_id: 'o' }),
+    compra({ fila: 3, saldo_pendiente: 100, fecha_prevista: '2026-09-02', obra_id: 'o' }),
+    compra({ fila: 4, saldo_pendiente: 100, fecha_prevista: '2026-09-10', obra_id: 'o' }),
+  ])
+  const [o] = deudaPorObra(lineas)
+  assert.deepEqual(o.lineas.map((l) => l.fila), [3, 4, 1, 2])
+})
+
+test('una fila partida en dos cuotas cuenta UN comprobante en su obra, y las dos cuotas quedan en el mismo grupo', () => {
+  const { lineas } = armar([compra({
+    fila: 7, saldo_pendiente: 1000, fecha_prevista: '2026-09-10', obra_id: 'o',
+    fecha_prevista_2: '2026-10-30', monto_parcial_2: 400,
+  })])
+  const obras = deudaPorObra(lineas)
+  assert.equal(obras.length, 1)
+  assert.equal(obras[0].comprobantes, 1)
+  assert.equal(obras[0].lineas.length, 2)
+  assert.equal(obras[0].vencido, 600)
+  assert.equal(obras[0].porVencer, 400)
+  assert.equal(obras[0].total, 1000)
+})
+
+test('los subtotales por obra cierran al centavo', () => {
+  const { lineas } = armar([
+    compra({ fila: 1, saldo_pendiente: 0.1, fecha_prevista: '2026-09-30', obra_id: 'o' }),
+    compra({ fila: 2, saldo_pendiente: 0.1, fecha_prevista: '2026-09-30', obra_id: 'o' }),
+    compra({ fila: 3, saldo_pendiente: 0.1, fecha_prevista: '2026-09-30', obra_id: 'o' }),
+  ])
+  assert.equal(deudaPorObra(lineas)[0].total, 0.3)
+})
+
+test('a igual vencido y saldo, el orden de las obras es estable por id', () => {
+  const { lineas } = armar([
+    compra({ fila: 1, saldo_pendiente: 100, fecha_prevista: '2026-09-30', obra_id: 'zeta' }),
+    compra({ fila: 2, saldo_pendiente: 100, fecha_prevista: '2026-09-30', obra_id: 'alfa' }),
+  ])
+  assert.deepEqual(deudaPorObra(lineas).map((o) => o.obraId), ['alfa', 'zeta'])
+})
+
+test('sin líneas no hay grupos: un proveedor sin deuda no tiene un bloque «sin obra» vacío', () => {
+  assert.deepEqual(deudaPorObra([]), [])
 })
