@@ -139,7 +139,7 @@ import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { JORNALES_FILE_ID } from '../lib/espejo-jornales.mjs'
 import { formulaSePagaEl, expresionPagoDelMes, PARAMETROS } from '../lib/jornales-fecha-pago.mjs'
 import {
-  NOMBRES_DIRECCION, formulaProyectadoMes, leerColumnasRetiros, retirosDeDireccion,
+  NOMBRES_DIRECCION, formulaProyectadoMes, formulaEstadoMes, leerColumnasRetiros, retirosDeDireccion,
 } from '../lib/direccion-retiros.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 import { quincenaConAumento } from '../lib/proyeccion-convenio.mjs'
@@ -956,8 +956,10 @@ export function grilla({
     // Oficina—. Y no hay carga que proteger: de los retiros no se registra el canal en ninguna parte,
     // así que la columna existe por simetría y va vacía hasta que exista una fuente. «Banco» sí
     // conserva `''`: nació como celda de carga del dueño y ahí sigue.
+    // «parcial» desde el 18/09: un mes con pagado Y resto (ver formulaEstadoMes). Antes con un peso
+    // pagado decía «pagado» y la proyección se apagaba: $7.200.000 de agosto invisibles.
     push([MESES[i], VACIO, formulaPagadoMes(i + 1, AÑO),
-      `=IF(N(C${r})>0;"pagado";IF(N(H${r})>0;"proyección";""))`,
+      formulaEstadoMes(`C${r}`, `H${r}`),
       formulaSePagaElDireccion(i + 1, AÑO), '', VACIO,
       formulaProyectadoMes(`E${r}`, `C${r}`, `$B$${fTotalMensual}`, `$E$${fTotalMensual}`, `B${r}`)])
   })
