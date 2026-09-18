@@ -9,11 +9,21 @@
 // el Sheet, y nada la repetía. Este archivo la congela: es `Compras!A3:BZ3` leído con
 // `readSheetValues` el 18/09/2026, textual, 41 rótulos.
 //
-// El test que lo usa (`contrato-columnas.test.mjs`) hace que la PRÓXIMA inserción de columna del
-// dueño rompa un test en vez de una carga: cuando la pestaña cambie, quien la cambie actualiza esta
-// constante y el test le dice qué letra se movió. `COMPRAS_CON_OBRA` (`encabezados-referencia.mjs`)
-// es el mismo layout CONSTRUIDO insertando «Obra» sobre el del 25/08; éste es el LEÍDO. Los dos
-// tienen que coincidir, y eso también lo fija el test.
+// ═══ QUÉ GARANTIZA ESTA CONSTANTE, Y QUÉ NO (dicho con precisión) ═══
+//
+// `contrato-columnas.test.mjs` corre en la suite normal y prueba COHERENCIA INTERNA: que el contrato
+// resuelva contra estos 41 rótulos, que cada clave del cargador caiga en la letra medida, y que este
+// layout LEÍDO coincida con `COMPRAS_CON_OBRA` (`encabezados-referencia.mjs`), que es el mismo layout
+// CONSTRUIDO insertando «Obra» sobre el del 25/08. Dos derivaciones independientes que tienen que dar
+// lo mismo. Eso atrapa al código que se separa del contrato — no al Sheet que se separa del código:
+// **ningún test de la suite lee la pestaña**, así que una columna que el dueño inserte mañana no
+// pone nada en rojo hasta que alguien la mida.
+//
+// Quien la mide es `encabezado-vivo-compras.vivo.test.mjs`: lee `Compras!A3:BZ3` por API (sólo
+// lectura) y la compara contra esta constante. No corre en la suite —requiere credenciales de Google
+// y tocar la red— y se pide a mano con `ORQ_TEST_SHEET_VIVO=1`. Es el único que puede decir que esto
+// sigue siendo cierto; correrlo antes de desplegar el bot es lo que convierte esta constante en una
+// medición vigente y no en una foto vieja.
 
 /** Compras!A3:BZ3, leído el 18/09/2026 (hora de San Juan). 41 rótulos, A→AO. */
 export const COMPRAS_1809 = Object.freeze([
