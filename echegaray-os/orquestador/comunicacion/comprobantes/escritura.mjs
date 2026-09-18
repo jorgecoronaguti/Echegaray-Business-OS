@@ -853,7 +853,9 @@ async function releerLoEscrito(d, filas) {
  * letras —el respaldo por intento, cuando no se pudo releer— se resuelven por RÓTULO contra la fila
  * de rótulos medida (`COMPRAS_1809`), no con un mapa escrito a mano: un mapa se queda viejo el día
  * que el dueño inserte una columna y nombra la letra de al lado, que es el defecto que el contrato
- * por rótulo vino a cerrar. Esa constante la ata al Sheet vivo un test (`contrato-columnas.test.mjs`).
+ * por rótulo vino a cerrar. Esa constante es la fila de rótulos MEDIDA el 18/09; la suite prueba que
+ * el contrato y el layout construido coinciden con ella, y `encabezado-vivo-compras.vivo.test.mjs`
+ * —opt-in, `ORQ_TEST_SHEET_VIVO=1`— es el que la compara contra la pestaña de verdad.
  */
 const LETRA_REF = letrasCompletables(COMPRAS_1809)
 const rotuloColumna = (c, letras = {}) => `${NOMBRE_COMPLETABLE[c] ?? c}${letras[c] ?? LETRA_REF[c] ? ` (${letras[c] ?? LETRA_REF[c]})` : ''}`
