@@ -23,6 +23,15 @@ export type LineaGuardada = {
   persona_id: string
   efectivo_redondeado: number | string | null
   cobra?: number | string | null
+  // ═══ LA FOTO SELLADA (18/09/2026) ═══ Las ocho columnas base de `liquidacion_linea` con las que se cerró la
+  // quincena. Son lo que la pantalla muestra de una quincena CERRADA: ni `registros_hh` ni `persona_tarifa` de hoy.
+  horas?: number | string | null
+  valor_hora?: number | string | null
+  adelanto?: number | string | null
+  ya_transferido?: number | string | null
+  por_banco?: number | string | null
+  en_efectivo?: number | string | null
+  total?: number | string | null
   horas_manual?: number | string | null
   horas_negro_manual?: number | string | null
   cobra_manual?: number | string | null
@@ -50,6 +59,29 @@ interface CabeceraGuardada {
   estado: string
   cerrada_en: string | null
   liquidacion_linea: LineaGuardada[] | null
+}
+
+/**
+ * UNA LÍNEA TAL COMO QUEDÓ SELLADA EN `liquidacion_linea`. `null` = la columna vino vacía (una quincena vieja):
+ * la pantalla dice «sin dato sellado» y no rellena con el cálculo de hoy.
+ *
+ * ═══ EL DEFECTO QUE ESTO CIERRA (auditor, 18/09/2026) ═══
+ *
+ * La quincena cerrada se dibujaba con `armarCuadros` sobre `registros_hh` y `persona_tarifa` VIVOS: Bazán, 16–31/03,
+ * sellado 9 h × $4.300 = $38.700, y la pantalla decía «se liquidó a $4.000/h · cobra $36.000» porque su única tarifa
+ * cargada es la de enero. La 1ª de junio sumaba $7.970.750 sobre $9.393.250 sellados. `COLUMNAS_LINEA` pedía sólo
+ * `persona_id, efectivo_redondeado, cobra`: la foto existía en la base y no se leía.
+ */
+export interface LineaSelladaLeida {
+  personaId: string
+  horas: number | null
+  valorHora: number | null
+  cobra: number | null
+  adelanto: number
+  yaTransferido: number
+  porBanco: number
+  enEfectivo: number | null
+  total: number | null
 }
 
 /** `null`/ausente = no hay override. Un 0 guardado SÍ es un override y tiene que sobrevivir acá. */
@@ -105,11 +137,29 @@ export function siguientesFormulas(
   return base
 }
 
+/** La foto sellada de una fila, columna por columna. Las NOT NULL DEFAULT 0 se leen como número; `horas` y `valor_hora`, tal cual. */
+const lineaSellada = (l: LineaGuardada): LineaSelladaLeida => ({
+  personaId: l.persona_id,
+  horas: overrideDe(l.horas),
+  valorHora: overrideDe(l.valor_hora),
+  cobra: overrideDe(l.cobra),
+  adelanto: numero(l.adelanto),
+  yaTransferido: numero(l.ya_transferido),
+  porBanco: numero(l.por_banco),
+  enEfectivo: overrideDe(l.en_efectivo),
+  total: overrideDe(l.total),
+})
+
 /** El estado de cada cuadro y el redondeo ya escrito. Sin cabecera guardada, la quincena está abierta. */
 export function leerGuardadas(data: unknown): {
   estados: Record<string, EstadoDeLaQuincena>
   redondeos: Map<string, number | null>
   overrides: Map<string, OverridesDeLinea>
+  /**
+   * LAS LÍNEAS SELLADAS DE CADA CABECERA, por grupo. El servicio las usa SÓLO para el cuadro cerrado: en la abierta
+   * la fila que crea el redondeo tiene `cobra = 0` por DEFAULT y no es una foto de nada.
+   */
+  lineasSelladas: Map<string, LineaSelladaLeida[]>
   /** Las cuentas escritas con `=`, por persona. La celda las muestra al abrirse. */
   formulas: Map<string, Partial<Record<CampoEditable, string>>>
   importesCargados: Map<string, number>
@@ -126,12 +176,14 @@ export function leerGuardadas(data: unknown): {
   const importesCargados = new Map<string, number>()
   const presentismosSellados = new Map<string, PresentismoDeLinea>()
   const pagadas = new Map<string, string>()
+  const lineasSelladas = new Map<string, LineaSelladaLeida[]>()
   for (const f of filas) {
     estados[f.grupo] = {
       id: f.id,
       estado: f.estado === 'cerrada' ? 'cerrada' : 'abierta',
       cerradaEn: f.cerrada_en,
     }
+    lineasSelladas.set(f.grupo, (f.liquidacion_linea ?? []).map(lineaSellada))
     for (const l of f.liquidacion_linea ?? []) {
       // NULL SE GUARDA COMO NULL. Un cero acá diría «no le doy nada en mano», que es una afirmación
       // que el dueño no hizo.
@@ -144,7 +196,7 @@ export function leerGuardadas(data: unknown): {
       if (typeof l.pagada_en === 'string' && l.pagada_en) pagadas.set(l.persona_id, l.pagada_en)
     }
   }
-  return { estados, redondeos, overrides, formulas, importesCargados, presentismosSellados, pagadas }
+  return { estados, redondeos, overrides, formulas, importesCargados, presentismosSellados, pagadas, lineasSelladas }
 }
 
 /** La foto sellada, como la publica la línea. Sin importe no hay foto (no regía o no había categoría). */
