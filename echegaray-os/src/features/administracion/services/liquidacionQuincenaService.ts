@@ -38,6 +38,7 @@ import { plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
 import { esJefeDeObra } from './vocabularioPersona.ts'
 import type { EntradaDePresentismo } from './presentismo.ts'
 import { leerGuardadas, ausenciasPorPersona, tardanzasPorPersona, type EstadoDeLaQuincena } from './liquidacionGuardadas.ts'
+import { cuadroSellado, type PersonaSellable } from './liquidacionSellada.ts'
 import {
   aplicarOverrides, camposGuardables, sinOverrides,
   type CampoEditable, type LineaConOverrides, type SelloDeLaQuincena,
@@ -242,7 +243,8 @@ export async function getLiquidacionDeLaQuincena(
         subcontratoId: deSubcontrato.get(r.id) ?? null,
       }))
 
-  const { estados, redondeos, overrides, formulas, importesCargados, presentismosSellados, pagadas } = leerGuardadas(guardadas.data)
+  const { estados, redondeos, overrides, formulas, importesCargados, presentismosSellados, pagadas, lineasSelladas } =
+    leerGuardadas(guardadas.data)
   const camposEditables = camposGuardables(guardadas.columnas)
   const hayColumnasPresentismo = COLUMNAS_PRESENTISMO.every((c) => guardadas.columnas.includes(c))
   const hayColumnaDeFormulas = guardadas.columnas.includes('formulas')
@@ -267,7 +269,7 @@ export async function getLiquidacionDeLaQuincena(
     conJornales: new Set(espejo.cadenaPorPersona.keys()),
   }, sesionDePrueba)
 
-  const cuadros = armarCuadros({
+  const vivos = armarCuadros({
       quincena: q,
       personas: activas.map((p) => ({ ...p, conActividad: conActividad.has(p.id) })),
       tarifas: (tarifas.data ?? []) as FilaTarifa[],
@@ -278,6 +280,36 @@ export async function getLiquidacionDeLaQuincena(
       redondeos,
       importesCargados,
   })
+
+  // ═══ LA QUINCENA CERRADA MUESTRA LO SELLADO, NO UN RECÁLCULO (dueño; auditor, 18/09/2026) ═══
+  //
+  // `armarCuadros` corre sobre `registros_hh` y `persona_tarifa` de HOY. Para un cuadro cerrado eso es la cifra
+  // equivocada: Bazán, 16–31/03, sellado 9 h × $4.300 = $38.700 y la pantalla decía $36.000 a $4.000/h; la 1ª de junio
+  // sumaba $7.970.750 sobre $9.393.250 sellados. La regla vive en `liquidacionSellada.ts`: cada cuadro cerrado se
+  // reemplaza por la foto de su cabecera, línea por línea; lo vivo aporta sólo identidad y el recibo del período.
+  // Un cuadro sin cabecera propia pero con la quincena cerrada (`estadoDelCuadro`) no tiene foto: sus filas quedan
+  // «sin línea sellada», nunca calculadas.
+  const directorioSellable = new Map<string, PersonaSellable>(personas.map((p) => [p.id, { id: p.id, nombre: p.nombre, esJefe: p.esJefe === true }]))
+  const selladosEnLaQuincena = new Set<string>()
+  for (const c of vivos) {
+    if (estadoDelCuadro(estados, c.grupo).estado !== 'cerrada') continue
+    for (const l of lineasSelladas.get(c.grupo) ?? []) selladosEnLaQuincena.add(l.personaId)
+  }
+  const sinLineaSellada = new Set<string>()
+  const cuadros = vivos.map((c) => {
+    if (estadoDelCuadro(estados, c.grupo).estado !== 'cerrada') return c
+    const foto = cuadroSellado({
+      grupo: c.grupo, selladas: lineasSelladas.get(c.grupo) ?? [], vivas: c.lineas,
+      personas: directorioSellable, selladosEnLaQuincena, redondeos,
+    })
+    for (const id of foto.sinLinea) sinLineaSellada.add(id)
+    // LOS PRESENTES SIN HORAS SON DE LO VIVO: en la foto no hay días. Se dejan en 0 para no publicar un pendiente
+    // sobre una quincena pagada.
+    return { ...c, lineas: foto.lineas, presentesSinHoras: 0 }
+  })
+  // EL PLANTEL INCLUYE A QUIEN TIENE LÍNEA SELLADA: `filasDelEspejo` sólo dibuja a quien está en él.
+  const plantelIds = new Set(activas.map((p) => p.id))
+  for (const id of selladosEnLaQuincena) plantelIds.add(id)
 
   // LA GRILLA SE ARMA UNA VEZ Y SÓLO PARA SUMAR. `filasDeGrilla` es la definición de cuánto vale cada
   // día —la misma que pinta la celda—, y la modalidad la decide el CUADRO en el que cayó cada
@@ -309,13 +341,14 @@ export async function getLiquidacionDeLaQuincena(
   // ═══ EL $/H DE UNA QUINCENA CERRADA (dueño, 17/09/2026: «no salen los valores $/h de cada uno en las quincenas
   // anteriores») ═══
   //
-  // `exponerAlPiso` ya corre con `q.hasta`, así que `pisoDe` es el piso de la escala que REGÍA ESA QUINCENA, no el de
-  // hoy; y `persona_tarifa` se lee con `desde <= q.hasta`, así que `l.valorHora` es la tarifa de esa fecha. Los dos
-  // números ya existían: lo único que faltaba era un lugar donde la línea cerrada pudiera llevarlos (`SelloDeLaQuincena`).
-  // No es un recálculo — la cerrada no se recalcula; es la foto, dicha con su fecha.
+  // `l` acá es la línea de la FOTO (`cuadroSellado`): `l.valorHora` es `liquidacion_linea.valor_hora`, no
+  // `persona_tarifa`. Hasta el 18/09/2026 se tomaba de la tarifa vigente a `q.hasta` y Bazán (una sola tarifa cargada,
+  // $4.000 desde enero; marzo cerrado a $4.300) decía «se liquidó a $4.000/h». `exponerAlPiso` corre con `q.hasta`, así
+  // que `pisoDe` es el piso de la escala que REGÍA ESA QUINCENA: es el convenio de esa fecha, no un dato de la persona.
   const pisoDesdeDe = new Map(exposicion.lineas.map((l) => [l.personaId, l.piso?.desde ?? null]))
   const selloDe = (l: { personaId: string; valorHora: number | null }): SelloDeLaQuincena => ({
     valorHora: l.valorHora,
+    conLinea: !sinLineaSellada.has(l.personaId),
     piso: pisoDe.get(l.personaId) ?? null,
     pisoDesde: pisoDesdeDe.get(l.personaId) ?? null,
     hasta: q.hasta,
@@ -351,7 +384,7 @@ export async function getLiquidacionDeLaQuincena(
   return {
     sinActividad: sinActividad.map((p) => ({ id: p.id, nombre: p.nombre })),
     exposicion,
-    plantel: activas.map((p) => p.id),
+    plantel: [...plantelIds],
     hayRecibosDeSueldo: exposicion.hayRecibosDeSueldo,
     hayColumnasPresentismo,
     hayColumnaDeFormulas,
@@ -396,9 +429,15 @@ const COLUMNAS_MANUALES = [
   'por_banco_manual', 'en_efectivo_manual', 'total_manual',
 ] as const
 
-// SIN `horas`: es la cifra sellada del cierre y no es un override (ver `COLUMNA_DE.horas`).
-// `cobra` viaja SÓLO para el importe cargado de Oficina sin neto mensual (`importesCargados`).
-const COLUMNAS_LINEA = ['persona_id', 'efectivo_redondeado', 'cobra'] as const
+// LAS OCHO COLUMNAS BASE DE LA FOTO VIAJAN (18/09/2026): `horas`, `valor_hora`, `cobra`, `adelanto`, `ya_transferido`,
+// `por_banco`, `en_efectivo`, `total` son lo que la quincena CERRADA muestra (`liquidacionSellada.ts`). Hasta hoy se
+// pedían sólo `persona_id, efectivo_redondeado, cobra` y la cerrada se recalculaba con los datos de hoy. Ninguna es un
+// override: `horas` sellada no vuelve como manual al reabrir (eso sigue siendo `horas_manual`, ver `COLUMNA_DE.horas`).
+// `cobra` además sirve para el importe cargado de Oficina en la ABIERTA (`importesCargados`).
+const COLUMNAS_LINEA = [
+  'persona_id', 'efectivo_redondeado', 'cobra', 'horas', 'valor_hora', 'adelanto', 'ya_transferido', 'por_banco',
+  'en_efectivo', 'total',
+] as const
 
 /** LA MARCA «PAGADA» VIAJA EN LA LÍNEA, abierta o cerrada: es el registro de que se pagó, no un override. */
 const conMarcaDePago = (l: LineaConOverrides, pagadas: ReadonlyMap<string, string>): LineaConOverrides => {
