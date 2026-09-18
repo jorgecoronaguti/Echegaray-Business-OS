@@ -42,29 +42,45 @@ const PESADOS = [
   { clase: 'e2e',        re: /^(npx\s+)?playwright\s+(test|screenshot|codegen)\b|^npm\s+run\s+(e2e|test:e2e)\b/ },
   { clase: 'validacion', re: /^(npx\s+)?tsc\b|^npm\s+run\s+(typecheck|lint|orq:test|test)\b|^(npx\s+)?eslint\b|^node\s+--test\b|^(npx\s+)?(vitest|jest)\b/ },
 ]
-const ENVOLTORIOS = /^(?:[A-Z_][A-Z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+|timeout\s+(?:-\S+\s+)*\d+[smh]?\s+|nohup\s+|env\s+|time\s+|nice\s+(?:-n\s*\d+\s+)?|ionice\s+\S+\s+|exec\s+)+/
+// `xargs` también es un envoltorio: `find … | xargs npx tsc` corre tsc, y sin quitarlo el tramo
+// empezaba con `xargs` y la expresión anclada no lo veía.
+const ENVOLTORIOS = /^(?:[A-Z_][A-Z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+|timeout\s+(?:-\S+\s+)*\d+[smh]?\s+|nohup\s+|env\s+|time\s+|nice\s+(?:-n\s*\d+\s+)?|ionice\s+\S+\s+|exec\s+|xargs\s+(?:-{1,2}\S+\s+)*)+/
 
 // Sin heredocs: su cuerpo es contenido de un archivo, no comandos.
 function sinHeredocs(texto) {
   return texto.replace(/<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?[^\n]*\n[\s\S]*?\n\s*\1\s*(?=\n|$)/g, '')
 }
+
 /**
- * Parte el comando en tramos por los separadores de shell — PERO SÓLO LOS QUE ESTÁN FUERA DE COMILLAS.
+ * Parte el comando en tramos por los separadores de shell que están FUERA DE COMILLAS.
  *
- * ANTES SE PARTÍA CON UN `split` A SECAS (18/09/2026). `grep -n "eslintConfig\|eslint" package.json`
- * quedaba partido por el `|` de adentro de las comillas, y el segundo pedazo empezaba con `eslint"`:
- * el hook frenaba una lectura inofensiva y pedía correrla por el portero. Es la misma familia que
- * «texto que menciona comandos pesados no es un comando pesado», del lado del separador de tuberías en
- * vez de los heredocs: lo que está entre comillas es UN ARGUMENTO, no un tramo de tubería. Lo sufrían
- * todos los días los agentes, porque `grep "next dev"`, `rg "tsc --noEmit"` y `echo "npx playwright
- * test"` son el pan de cada día de quien trabaja en este repositorio.
+ * ANTES SE PARTÍA CON UN `split` A SECAS. `grep -n "eslintConfig\|eslint" package.json` quedaba partido
+ * por el `|` de adentro de las comillas y el segundo pedazo empezaba con `eslint"`: el hook frenaba una
+ * lectura inofensiva. Lo que está entre comillas es UN ARGUMENTO, no un tramo de tubería.
  *
- * LA PUERTA NO SE ABRE AL REVÉS: un comando pesado DESPUÉS de una tubería real (`cat x | npx tsc`)
- * sigue siendo su propio tramo y se sigue frenando. Lo único que cambia es qué cuenta como separador.
+ * ═══ LA COMILLA SIN CERRAR (auditoría del 18/09/2026, primera versión NO INSTALABLE) ═══
  *
- * Una comilla sin cerrar no rompe nada: el resto del texto queda como un solo tramo y se evalúa igual.
+ * La primera versión de este partidor decía acá que «una comilla sin cerrar no rompe nada: el resto
+ * queda como un solo tramo y se evalúa igual». ERA FALSO, y la auditoría lo ejecutó:
+ *
+ *     echo hola  # no anduvo, don't
+ *     npx tsc --noEmit
+ *
+ * El apóstrofo de «don't» —en un comentario, que el shell ni mira— abría una comilla que nunca cerraba,
+ * se tragaba el salto de línea, y el resto quedaba como un tramo que EMPIEZA con texto inofensivo. Como
+ * las expresiones de PESADOS están ancladas con `^`, nada de lo que venía después se evaluaba nunca.
+ * Bash corría las dos líneas. Lo mismo con `$'no\'anduvo'; npx tsc` (la barra sí escapa en `$'…'`).
+ *
+ * POR ESO EL ANÁLISIS ES UNA ESCALERA, y cada escalón parte MÁS que el anterior — nunca menos:
+ *   1. comillas simples y dobles. Si todas cierran, vale: es el caso del falso positivo de grep.
+ *   2. si quedó una abierta, se reintenta tomando `'` como texto (el apóstrofo de prosa es la causa
+ *      habitual). Si así cierra todo, vale. Honra más separadores que el 1: es más estricto.
+ *   3. si ni así cierra, el análisis fino no es confiable para ESTE comando y se cae al particionado
+ *      ingenuo de siempre, que parte por todo separador sin mirar comillas.
+ * NO se usa la unión del ingenuo con el fino: el ingenuo es justamente el que fabrica el falso positivo
+ * de grep, y la unión lo devolvería. Sólo se cae al ingenuo cuando el fino no pudo cerrar sus comillas.
  */
-function partirFueraDeComillas(texto) {
+function escanear(texto, cuentaComillaSimple) {
   const partes = []
   let actual = '', comilla = ''
   for (let i = 0; i < texto.length; i++) {
@@ -75,26 +91,94 @@ function partirFueraDeComillas(texto) {
       if (ch === comilla) comilla = ''
       actual += ch; continue
     }
-    if (ch === '"' || ch === "'") { comilla = ch; actual += ch; continue }
-    if (ch === '\\' && i + 1 < texto.length) { actual += ch + texto[++i]; continue }  // `\|` escapado tampoco parte
+    if (ch === '"' || (ch === "'" && cuentaComillaSimple)) { comilla = ch; actual += ch; continue }
+    if (ch === '\\' && i + 1 < texto.length) { actual += ch + texto[++i]; continue }  // `\|` escapado no parte
     if ((ch === '&' && texto[i + 1] === '&') || (ch === '|' && texto[i + 1] === '|')) { partes.push(actual); actual = ''; i++; continue }
     if (ch === '|' || ch === ';' || ch === '\n' || ch === '(') { partes.push(actual); actual = ''; continue }
     actual += ch
   }
   partes.push(actual)
-  return partes
+  return { partes, abierta: comilla !== '' }
+}
+function partir(texto) {
+  let r = escanear(texto, true)
+  if (!r.abierta) return r.partes
+  r = escanear(texto, false)
+  if (!r.abierta) return r.partes
+  return texto.split(/&&|\|\||;|\||\n|\(/)
 }
 
-// Los tramos: cada comando simple, más el interior de `bash -c "…"` / `sh -c '…'`.
+/**
+ * Sustitución de comandos: `$(…)` y `` `…` `` se EJECUTAN aunque estén entre comillas dobles, así que
+ * `echo "$(npx tsc --noEmit)"` corre tsc. Se extrae su interior y se analiza como otro comando.
+ * `$((…))` es aritmética y se saltea. Entre comillas SIMPLES no hay sustitución (`grep 'usar `npx tsc`'`
+ * es texto) — pero sólo si las simples cierran: con un apóstrofo suelto se miran todas, que es lo
+ * conservador.
+ */
+function sustituciones(texto) {
+  const out = []
+  const simplesCierran = !escanear(texto, true).abierta
+  let doble = false
+  for (let i = 0; i < texto.length; i++) {
+    const ch = texto[i]
+    if (ch === '\\') { i++; continue }
+    if (ch === '"') { doble = !doble; continue }
+    if (ch === "'" && !doble && simplesCierran) {
+      const fin = texto.indexOf("'", i + 1)
+      if (fin < 0) break
+      i = fin; continue
+    }
+    if (ch === '`') {
+      const fin = texto.indexOf('`', i + 1)
+      if (fin < 0) break
+      out.push(texto.slice(i + 1, fin)); i = fin; continue
+    }
+    if (ch === '$' && texto[i + 1] === '(' && texto[i + 2] !== '(') {
+      let prof = 1, j = i + 2
+      while (j < texto.length && prof > 0) {
+        if (texto[j] === '\\') { j += 2; continue }
+        if (texto[j] === '(') prof++
+        else if (texto[j] === ')') prof--
+        j++
+      }
+      if (prof === 0) { out.push(texto.slice(i + 2, j - 1)); i = j - 1 }
+    }
+  }
+  return out
+}
+
+/**
+ * Comandos que llevan OTRO comando adentro como argumento, y se re-analizan:
+ *   `bash -c "…"`, `sh -c '…'`, `zsh -c …`   y   `eval "…"` / `eval …`.
+ * La comilla doble tolera comillas escapadas: `bash -c "echo \"corriendo\" && npm run typecheck"`
+ * se cortaba en la primera `\"` y el interior nunca se miraba.
+ *
+ * `ssh maquina "…"` NO se re-analiza, A PROPÓSITO: eso corre en otra máquina y no gasta los recursos
+ * de esta VM, que es lo único que este portero gobierna.
+ */
+const CON_INTERIOR = /^(?:(?:bash|sh|zsh)\s+(?:-\S+\s+)*-c|eval)\s+(?:"((?:[^"\\]|\\[\s\S])*)"|'([^']*)'|(\S[\s\S]*))$/
+
+// Los tramos: cada comando simple, más lo que va adentro de `bash -c`, `eval`, `$(…)` y backticks.
+//
+// AGUJEROS CONOCIDOS, que nadie debe leer como cubiertos: un comando guardado en una variable y
+// expandido (`C="npx tsc"; $C`), un here-string (`sh <<< "npx tsc"`), alias y funciones de shell,
+// `npx --yes tsc` y el binario llamado por ruta (`./node_modules/.bin/tsc`), y un script propio que
+// adentro lance lo pesado. El hook es la primera barrera, no la única: lo que se le escapa sigue sin
+// cupo, y lo ve `ecos estado` y lo limpia `barrer.mjs` si queda huérfano.
 function tramos(texto) {
   const out = []
-  for (const t of partirFueraDeComillas(sinHeredocs(texto))) {
+  const sinDocs = sinHeredocs(texto)
+  for (const t of partir(sinDocs)) {
     const limpio = t.trim().replace(ENVOLTORIOS, '')
     if (!limpio) continue
     out.push(limpio)
-    const c = limpio.match(/^(?:bash|sh|zsh)\s+(?:-\S+\s+)*-c\s+(?:"([^"]*)"|'([^']*)')/)
-    if (c) out.push(...tramos(c[1] ?? c[2] ?? ''))
+    const c = limpio.match(CON_INTERIOR)
+    if (c) {
+      const dentro = c[1] !== undefined ? c[1].replace(/\\(["\\$`])/g, '$1') : (c[2] ?? c[3] ?? '')
+      out.push(...tramos(dentro))
+    }
   }
+  for (const s of sustituciones(sinDocs)) out.push(...tramos(s))
   return out
 }
 

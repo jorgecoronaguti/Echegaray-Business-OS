@@ -114,6 +114,9 @@ for (const sub of ['cola']) {
 // sello queda: sin esta limpieza, `ecos estado` seguiría mostrando un dueño para un cupo que no tiene
 // ninguno, y la regla de prioridad de `ecos` le daría trato de retenedor a un muerto.
 // SE BORRA SÓLO CON CERTEZA: si `flock` no está o falla de otro modo, el sello se deja.
+// La sonda `flock -n` puede hacerle ver «ocupado» a un `ecos` que intenta tomar el cupo en ese mismo
+// instante (medido: ~0,1 % en operación normal, un ciclo de 3 s de demora). Acá el efecto inverso —ver
+// tomado un cupo libre— sólo hace NO borrar un sello: conservador.
 const dirSlots = join(DIR, 'slots')
 if (existsSync(dirSlots)) {
   for (const f of readdirSync(dirSlots).filter((x) => x.endsWith('.quien'))) {

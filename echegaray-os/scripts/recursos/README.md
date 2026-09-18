@@ -15,7 +15,7 @@ coordinaba. Resultado: 6,6 GiB usados, swap lleno, carga >60, VS Code Remote SSH
 | `barrer.mjs` | Apaga SOLO huérfanos: tareas cuyo `ecos` o cuya sesión murió, procesos de desarrollo adoptados por PID 1 o sin dueño vivo, o con el worktree borrado. Corre al cerrar sesión/agente, en emergencia y cada 5 min (`ecos-barrido.timer`). |
 | `estado.mjs` | `ecos estado`: memoria, swap, carga, cupos, cola, procesos de desarrollo vivos. |
 | `politica.env` | Los límites. La copia instalada (`~/.echegaray-os/recursos/`) manda. |
-| `instalar.sh` | Copia todo a `~/.echegaray-os/bin`, enlaza `~/bin/ecos`, fusiona los hooks globales en `~/.claude/settings.json`, habilita el timer. Idempotente; el hook de cierre lo corre solo si falta. |
+| `instalar.sh` | Copia todo a `~/.echegaray-os/bin`, enlaza `~/bin/ecos`, fusiona los hooks globales en `~/.claude/settings.json`, habilita el timer. Idempotente; el hook de cierre lo corre solo si falta. Con `ECOS_RAIZ` distinta de `~/.echegaray-os` sólo copia el portero ahí: no toca `~/bin/ecos`, `settings.json` ni el timer. |
 
 **Límites efectivos** (ver `politica.env`): 1 Next · 1 navegador · 1 validación pesada. Mínimo de
 memoria libre para arrancar: 1500 / 1100 / 1200 MB. Nada pesado arranca con swap > 55 % ni carga > 10.
@@ -76,4 +76,8 @@ recién cuando están todas las clases, y un sello sin candado se muestra como h
 
 **Cobertura:** `recursos.test.mjs` reproduce la espera circular, el sello que mentía, el diagnóstico con
 nombre propio, el cupo de un proceso muerto de golpe (SIGKILL), el ticket de un proceso muerto y cuatro
-pedidos simultáneos de la misma clase. Se corre con `ecos validacion -- node --test scripts/recursos/recursos.test.mjs`.
+pedidos simultáneos de la misma clase; del hook, el falso positivo del `|` entre comillas y los cinco
+casos de la auditoría (una comilla sin cerrar que apagaba el análisis del resto, `bash -c` con comillas
+escapadas, `eval`) más `$(…)`, backticks y `xargs`. Agujeros del hook que siguen abiertos, declarados en
+`hook-bash.mjs`: variable expandida, here-string, alias/funciones, `npx --yes tsc`, binario por ruta.
+Se corre con `ecos validacion -- node --test scripts/recursos/recursos.test.mjs`.

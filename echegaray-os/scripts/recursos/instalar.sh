@@ -12,19 +12,33 @@
 
 set -euo pipefail
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RAIZ="${ECOS_RAIZ:-$HOME/.echegaray-os}"
+RAIZ_REAL="$HOME/.echegaray-os"
+RAIZ="${ECOS_RAIZ:-$RAIZ_REAL}"
 BIN="$RAIZ/bin"; DIR="$RAIZ/recursos"
-mkdir -p "$BIN" "$DIR/slots" "$DIR/cola" "$DIR/registro" "$DIR/log" "$HOME/bin"
+# ═══ UNA RAÍZ DE PRUEBA NO TOCA LA MÁQUINA (auditoría del 18/09/2026) ═══
+# Antes `ECOS_RAIZ` sólo movía la copia: el enlace `~/bin/ecos`, los hooks de `~/.claude/settings.json`
+# y el timer de systemd se escribían SIEMPRE, apuntando a `$BIN`. Correr `ECOS_RAIZ=/tmp/x ./instalar.sh`
+# «para probar» duplicaba los hooks globales de todas las sesiones y repuntaba el barrido real al
+# directorio de prueba. Ahora, con una raíz que no es la real, se copia el portero ahí y se termina.
+ES_REAL=1; [ "$(readlink -m "$RAIZ")" = "$(readlink -m "$RAIZ_REAL")" ] || ES_REAL=0
+mkdir -p "$BIN" "$DIR/slots" "$DIR/cola" "$DIR/registro" "$DIR/log"
 
 # SE REEMPLAZA POR RENOMBRE, NO ESCRIBIENDO ENCIMA. `ecos` es un script de bash, y bash lo lee del
-# disco A MEDIDA QUE LO EJECUTA: pisar el archivo de un `ecos` que está esperando en la cola le hace
-# leer la mitad de la versión nueva desde el offset de la vieja. El renombre dentro del mismo
-# directorio es atómico y deja al proceso vivo con el inodo anterior, intacto hasta que termine.
+# disco a medida que lo ejecuta: escribir encima del archivo de un `ecos` que está esperando en la cola
+# le haría leer la versión nueva desde el offset de la vieja. El renombre dentro del mismo directorio es
+# atómico y deja al proceso vivo con el inodo anterior. DICHO CON PRECISIÓN: en ESTA máquina el
+# `install` es el de uutils y ya reemplazaba el inodo, así que la versión anterior no cortaba el piso
+# (lo midió la auditoría). Esto no arregló un defecto vivo: deja de depender de qué `install` haya.
 for f in ecos comun.mjs estado.mjs barrer.mjs hook-bash.mjs; do
   install -m 0755 "$AQUI/$f" "$BIN/.$f.nuevo" && mv -f "$BIN/.$f.nuevo" "$BIN/$f"
 done
 # La política instalada NO se pisa si ya existe: es el lugar donde el dueño ajusta límites.
 [ -f "$DIR/politica.env" ] || install -m 0644 "$AQUI/politica.env" "$DIR/politica.env"
+if [ "$ES_REAL" = 0 ]; then
+  echo "raíz de prueba $RAIZ: portero copiado en $BIN. NO se tocaron ~/bin/ecos, ~/.claude/settings.json ni el timer de systemd: son de la máquina."
+  exit 0
+fi
+mkdir -p "$HOME/bin"
 ln -sfn "$BIN/ecos" "$HOME/bin/ecos"
 
 # ── Hooks globales de Claude Code (se fusionan, no se pisan) ──

@@ -262,6 +262,14 @@ dueno_de_pid() { sed -n 's/.*"dueno":\([0-9]*\).*/\1/p' "$REGISTRO/$1.json" 2>/d
 # indefinido de `browser` o `validacion` (un `tsc --watch`, un navegador abierto a mano) podría
 # armarse un ciclo entre DOS sesiones distintas; eso esta regla no lo rompe sola, pero `diagnostico`
 # lo nombra como BLOQUEO MUTUO en vez de mentir «no hay recursos».
+#
+# QUÉ SIGNIFICA «MI PROPIA SESIÓN» EN ESTA MÁQUINA, MEDIDO (auditoría del 18/09/2026): `DUENO` es el
+# primer `claude` hacia arriba en la cadena de padres, y en esta VM hay UN solo proceso `claude` con
+# todos los agentes corriendo adentro. En la práctica `DUENO` es una constante de máquina, y la regla
+# se lee «no le cedo el turno a quien espera un cupo que retiene CUALQUIER agente». No es riesgo de
+# saturación —el cupo lo sigue imponiendo `flock`, y el ciclo del incidente se sigue cortando—; es
+# pérdida de equidad: un pedido puede adelantarse a uno más viejo que igual no podía arrancar. Medido
+# en unos 3 s (un ciclo de espera). Si algún día cada agente tiene su proceso, la regla se afina sola.
 mi_turno() {
   local t pid clases c comparte
   for t in $(ls -1 "$COLA" 2>/dev/null | sort); do

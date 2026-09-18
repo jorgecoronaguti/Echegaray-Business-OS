@@ -21,6 +21,11 @@ const gobernados = registros().filter((r) => vivo(r.pid))
 //
 // Ahora se le pregunta al candado (`flock -n`: si lo consigue, estaba libre) y el sello sólo aporta el
 // nombre. Un sello sin candado se muestra como HUÉRFANO en vez de como dueño.
+//
+// LA SONDA TIENE SU PROPIA CARRERA, Y SE DECLARA (auditoría del 18/09/2026): mientras `flock -n` tiene
+// el candado para mirarlo, un `ecos` que intenta tomarlo en ese instante recibe «ocupado». Con un
+// sondeador saturando, 1406 de 2891 intentos recibieron ese falso «ocupado»; en operación normal es
+// ~0,1 % y cuesta un ciclo de espera de 3 s. La sonda no roba el cupo (200 sondas medidas): lo demora.
 function estadoCandado(archivo) {
   if (!existsSync(archivo)) return 'libre'
   try { execFileSync('flock', ['-n', archivo, 'true'], { stdio: 'ignore' }); return 'libre' }

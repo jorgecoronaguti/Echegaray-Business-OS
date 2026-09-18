@@ -44,8 +44,12 @@ test('el separador de tuberías entre comillas es un argumento, no un tramo', ()
     'grep -rn "npm run build || npm run dev" docs/',
     "rg 'playwright test;npx tsc' .",
     'grep -n "(npx eslint .)" notas.md',
-    'grep -n "eslintConfig\\|eslint package.json',      // comilla sin cerrar: no puede tirar
   ]) assert.equal(frena(c), false, `no debía frenar: ${c}`)
+
+  // Una comilla DOBLE sin cerrar no tira, y cae al particionado conservador: frena. Es el precio
+  // aceptado —bash mismo rechaza esa línea— para que una comilla suelta no apague el análisis.
+  assert.doesNotThrow(() => hook('grep -n "eslintConfig\\|eslint package.json'))
+  assert.equal(frena('grep -n "eslintConfig\\|eslint package.json'), true)
 
   // Y la puerta no se abre al revés: lo pesado DESPUÉS de una tubería real se sigue frenando.
   for (const c of [
@@ -55,6 +59,36 @@ test('el separador de tuberías entre comillas es un argumento, no un tramo', ()
     "grep 'x' f || npm run typecheck",
     'cat "un archivo.txt" | npx tsc --noEmit',
   ]) assert.equal(frena(c), true, `debía frenar: ${c}`)
+})
+
+test('auditoría 18/09: una comilla sin cerrar no puede apagar el análisis del resto del comando', () => {
+  // Los cinco que la primera versión del partidor dejaba pasar y `main` frenaba (o que nunca se miraron).
+  for (const c of [
+    "echo hola  # no anduvo, don't\nnpx tsc --noEmit",           // el apóstrofo de un comentario
+    "$'no\\'anduvo'; npx tsc --noEmit",                            // la barra escapa en $'…'
+    'bash -c "echo \\"corriendo\\" && npm run typecheck"',          // comillas escapadas en bash -c
+    'eval "cd app; npm run typecheck"',                              // eval lleva un comando adentro
+    'eval "npx tsc"',
+  ]) assert.equal(frena(c), true, `debía frenar: ${JSON.stringify(c)}`)
+
+  // Agujeros que ya estaban en main, cerrados donde fue barato.
+  for (const c of [
+    'echo `npx tsc --noEmit`',
+    'echo "$(npx tsc --noEmit)"',
+    'X=$(npm run typecheck 2>&1)',
+    "find . -name '*.ts' | xargs npx tsc",
+    'find . | xargs -0 -n1 npx eslint',
+  ]) assert.equal(frena(c), true, `debía frenar: ${JSON.stringify(c)}`)
+
+  // Y lo ganado no se pierde: comillas balanceadas, texto entre simples, otra máquina.
+  for (const c of [
+    'grep -n "eslintConfig\\|eslint" package.json',
+    'grep -n "eslintConfig\\|eslint" package.json  # don\'t',   // apóstrofo suelto, pero las dobles cierran
+    "grep -n 'usar `npx tsc` acá' README.md",
+    "rg '$(npx tsc)' docs/",
+    'ssh vm "cd app; npm run typecheck"',                          // corre en OTRA máquina: no es de esta VM
+    'echo $((3 + 4))',
+  ]) assert.equal(frena(c), false, `no debía frenar: ${JSON.stringify(c)}`)
 })
 
 test('un npm run cuyo script ya pasa por ecos no se frena en ESE directorio', () => {
