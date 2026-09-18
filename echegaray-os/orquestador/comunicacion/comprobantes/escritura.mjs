@@ -36,7 +36,8 @@ import { estaCompleto, imputacionVacia, ESTADO } from '../../lib/comprobantes/fa
 import { identificar } from '../../lib/comprobantes/identidad.mjs'
 import { numeroCanonico, claveComprobante, conceptoConAnotacion, conceptoConProveedorLeido } from '../../lib/comprobantes/lectura.mjs'
 import * as repoReal from './repositorio.mjs'
-import { avisosDeVerificacion, cierre, COL as VCOL, colVerificacion, NOMBRE_COMPLETABLE, sinCompletar, tablaDeLoEscrito } from '../../lib/comprobantes/verificacion.mjs'
+import { avisosDeVerificacion, cierre, COL as VCOL, colVerificacion, filaEnBlanco, letrasCompletables, NOMBRE_COMPLETABLE, sinCompletar, tablaDeLoEscrito } from '../../lib/comprobantes/verificacion.mjs'
+import { COMPRAS_1809 } from '../../lib/comprobantes/encabezado-vivo-compras.mjs'
 import { rangoFilas } from '../../lib/columnas-por-encabezado.mjs'
 import { vigilar } from '../../lib/comprobantes/vigilancia.mjs'
 import { respaldarFajoCargado, avisoDeRespaldo } from '../../lib/comprobantes/respaldo-adjunto.mjs'
@@ -125,6 +126,9 @@ export function aFajoJson(items = []) {
       total: c.total,
       condicion: c.condicion ?? undefined,
       formaPago: c.formaPago ?? undefined,
+      // Lo que el papel decía de la forma de pago y el desplegable no acepta. No va a ninguna celda:
+      // viaja para que el cargador no la complete con el historial y para poder nombrarlo (18/09).
+      formaPagoLeida: c.formaPagoLeida ?? undefined,
       obra: c.obra ?? undefined,
       unidad: c.unidad ?? undefined,
       detalle: c.detalleObra ?? undefined,
@@ -578,6 +582,7 @@ export async function escribirFajo(d, fajo) {
       fila: fila.fila ?? null,
       campos,
       origen: 'intento',
+      pagoLeido: it.comprobante?.formaPagoLeida ?? null,
     }))
   let pendientes = porIntento
   // Lo que cargó de verdad, en plata. Es el número contra el que el dueño compara el fajo de papeles
@@ -845,9 +850,12 @@ async function releerLoEscrito(d, filas) {
 
 /**
  * Cómo se llama cada columna en el aviso: nombre + letra VIVA (`letras`, de la fila releída). Sin
- * letras —el respaldo por intento— van las de referencia de hoy, que son las mismas desde el 14/09.
+ * letras —el respaldo por intento, cuando no se pudo releer— se resuelven por RÓTULO contra la fila
+ * de rótulos medida (`COMPRAS_1809`), no con un mapa escrito a mano: un mapa se queda viejo el día
+ * que el dueño inserte una columna y nombra la letra de al lado, que es el defecto que el contrato
+ * por rótulo vino a cerrar. Esa constante la ata al Sheet vivo un test (`contrato-columnas.test.mjs`).
  */
-const LETRA_REF = Object.freeze({ proveedor: 'E', categoria: 'B', unidad: 'I', obra: 'J', detalle: 'K', obraFila: 'L', tipoPago: 'Q' })
+const LETRA_REF = letrasCompletables(COMPRAS_1809)
 const rotuloColumna = (c, letras = {}) => `${NOMBRE_COMPLETABLE[c] ?? c}${letras[c] ?? LETRA_REF[c] ? ` (${letras[c] ?? LETRA_REF[c]})` : ''}`
 
 /**
@@ -857,17 +865,19 @@ const rotuloColumna = (c, letras = {}) => `${NOMBRE_COMPLETABLE[c] ?? c}${letras
  */
 export function pendientesDesdeElDestino(leidas = [], entran = [], filas = [], porIntento = []) {
   const itemDe = new Map(entran.map((it, k) => [filas[k]?.fila, it]))
-  // UNA FILA RELEÍDA EN BLANCO NO ES «TODO VACÍO»: es que no se pudo releer ESA fila (el rango vino
-  // corto, o la escritura no entró — eso lo caza `verificarEscritura` en el cargador). Para ella vale
+  // UNA FILA RELEÍDA EN BLANCO NO ES «TODO VACÍO»: es que no se pudo releer ESA fila. Para ella vale
   // el respaldo por intento; decir «falta Proveedor, Categoría, …» sobre una fila que no se leyó
-  // sería afirmar sobre lo que no se miró.
-  const enBlanco = (x) => !String(x.valores?.[x.col?.proveedor] ?? '').trim() && !String(x.valores?.[x.col?.comprobante] ?? '').trim()
-  const noLeidas = new Set(leidas.filter(enBlanco).map((x) => x.fila))
+  // sería afirmar sobre lo que no se miró. El criterio vive en `filaEnBlanco` (verificacion.mjs).
+  const noLeidas = new Set(leidas.filter((x) => filaEnBlanco(x)).map((x) => x.fila))
   const delDestino = sinCompletar(leidas.filter((x) => !noLeidas.has(x.fila))).map((x) => {
     const c = itemDe.get(x.fila)?.comprobante ?? {}
     return {
       proveedor: c.proveedor ?? x.proveedor ?? null, total: c.total ?? null, fecha: c.fecha ?? null,
       fila: x.fila, campos: x.campos, letras: x.letras, derivadas: x.derivadas, origen: 'destino',
+      // LO QUE EL PAPEL DECÍA Y EL DESPLEGABLE NO ACEPTA. Una celda vacía con una causa conocida no
+      // es la misma celda vacía que una sin causa: «Tipo pago» en blanco porque el ticket decía
+      // «Mercado Pago» se completa sabiendo eso. Ver `pagoDelPapel` en `desplegables.mjs`.
+      pagoLeido: c.formaPagoLeida ?? null,
     }
   })
   return [...delDestino, ...porIntento.filter((p) => noLeidas.has(p.fila))].sort((a, b) => (a.fila ?? 0) - (b.fila ?? 0))
@@ -948,8 +958,19 @@ export function textoCargado(filas, yaEstaban, datos, { pendientes = [], suma = 
   // LAS CELDAS QUE QUEDARON VACÍAS, con la fila y la LETRA (18/09/2026: leídas del destino cuando se
   // pudo releer; si no, lo que iba vacío en lo mandado, y se dice cuál de las dos es).
   const conCeldas = pendientes.filter((p) => p.campos?.length)
-  const cuitsHechos = new Set((datos?.cuitsCompletados ?? []).map((c) => String(c?.nombre ?? '').trim().toLowerCase()))
-  const sinCuit = pendientes.filter((p) => p.derivadas?.includes('cuit') && !cuitsHechos.has(String(p.proveedor ?? '').trim().toLowerCase()))
+  // ═══ EL CUIT QUE ESTA MISMA CORRIDA RESOLVIÓ NO SE RECLAMA (18/09/2026) ═══
+  //
+  // «CUIT (OS)» se lee vacía en la fila recién escrita porque la ARRAYFORMULA mira la auxiliar
+  // `_PROVEEDORES_OS`, que se regenera después. Si el maestro ya tiene el CUIT —porque lo completó
+  // `cuit-maestro.mjs` o porque el proveedor se dio de ALTA con su CUIT en esta misma carga
+  // (`altasAplicadas`)— decir «el maestro no tiene el CUIT de X» es falso: lo tiene desde hace un
+  // segundo. Se cuentan las dos fuentes o el aviso miente justo en el caso que se acaba de arreglar.
+  const conCuitAhora = new Set([
+    ...(datos?.cuitsCompletados ?? []).map((c) => c?.nombre),
+    ...(datos?.altasAplicadas?.creados ?? []).map((c) => c?.nombre),
+    ...(datos?.altasAplicadas?.yaEstaban ?? []).map((c) => c?.nombre),
+  ].map((n) => String(n ?? '').trim().toLowerCase()).filter(Boolean))
+  const sinCuit = pendientes.filter((p) => p.derivadas?.includes('cuit') && !conCuitAhora.has(String(p.proveedor ?? '').trim().toLowerCase()))
   if (conCeldas.length) {
     const desde = conCeldas.some((p) => p.origen === 'intento') ? ' _(no pude releer la fila: es lo que mandé vacío)_' : ''
     l.push(conCeldas.length === 1
@@ -960,7 +981,11 @@ export function textoCargado(filas, yaEstaban, datos, { pendientes = [], suma = 
       // SE NOMBRA POR SU CONTENIDO, NO SÓLO POR LA FILA: «fila 846 (Clavero $172.002 del 09/08)». El
       // dueño reconoce el papel por el importe, no por el número de fila que todavía no vio.
       const quien = identificar({ comprobante: p }).texto
-      l.push(`· fila ${p.fila ?? '?'}${quien ? ` (${quien})` : ''} → falta ${cols}`)
+      // La causa, cuando se sabe: el papel SÍ decía una forma de pago, pero no es una del desplegable.
+      const porque = p.pagoLeido && p.campos.includes('tipoPago')
+        ? ` — el papel dice «${p.pagoLeido}», que no es una opción de «Tipo pago»`
+        : ''
+      l.push(`· fila ${p.fila ?? '?'}${quien ? ` (${quien})` : ''} → falta ${cols}${porque}`)
     }
     l.push('_No lo inventé: el comprobante no lo dice y el historial del proveedor no alcanzó para afirmarlo. Se completa en la celda._')
   }

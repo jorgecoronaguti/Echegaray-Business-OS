@@ -50,7 +50,8 @@ import { COMPRAS_2508 } from '../lib/encabezados-referencia.mjs'
 import { catalogosDeAsignacion } from '../lib/compras-obra-asignada.mjs'
 import { destinosDeObra, obraParaLaColumna, pestanaDelComprobante, PESTANA_COMPRAS } from '../lib/comprobantes/obra-y-destino.mjs'
 import { indiceDeCompras, buscarEnCompras, HALLAZGO } from '../lib/comprobantes/compras-vivas.mjs'
-import { conciliarConArca, aplicarArca, candidatasArca, ESTADO_ARCA } from '../lib/comprobantes/arca.mjs'
+import { conciliarConArca, aplicarArca, candidatasArca, emisorConfirmado, ESTADO_ARCA } from '../lib/comprobantes/arca.mjs'
+import { pagoDelPapel } from '../lib/comprobantes/desplegables.mjs'
 import { listasDeCompras, proveedoresPorCuit } from '../lib/comprobantes/listas.mjs'
 import { CAMINO, ampliarDesplegable, aplicarAltas, planDeAltas, requestValidacionProveedores, resolverNoMatcheado } from '../lib/alta-proveedor.mjs'
 
@@ -301,7 +302,7 @@ async function conciliar(cc, arcaDe) {
  *
  * @returns {Promise<{item:object, arca:object, prov:object, hallazgo:object|null}>}
  */
-export async function prepararUno(c = {}, { lista = [], porCuit = null, nombresPorCuit = null, indiceCompras = null, arcaDe = null, cargarIgual = false, conocidos = {} } = {}) {
+export async function prepararUno(c = {}, { lista = [], listas = null, porCuit = null, nombresPorCuit = null, indiceCompras = null, arcaDe = null, cargarIgual = false, conocidos = {} } = {}) {
   // EL CUIT MANDA SOBRE EL NOMBRE, igual que en el chat: la factura trae la razón social del padrón
   // y el desplegable el nombre de fantasía. Sin `porCuit` se comporta exactamente como antes.
   let prov = matchProveedor(c.proveedor, lista, { cuit: c.cuit, porCuit })
@@ -320,7 +321,16 @@ export async function prepararUno(c = {}, { lista = [], porCuit = null, nombresP
   const nombreCelda = alta?.nombreCanonico ?? prov.valor
   // La fecha se canoniza ANTES que nada: ARCA la exige en DD/MM/AAAA y el índice de Compras compara
   // contra ese mismo formato. Un "5/1/2026" sin normalizar no matchea nada y el duplicado pasa.
-  const cc = { ...c, proveedor: nombreCelda, fecha: aFechaAR(c.fecha) ?? c.fecha ?? null }
+  // LA FORMA DE PAGO DEL PAPEL SE SEPARA IGUAL QUE EN EL CHAT (18/09/2026). El `fajo.json` puede
+  // traer en `formaPago` un texto que el desplegable no acepta —«Mercado Pago», «30 DIAS FECHA
+  // FACTURA»—: ese texto no va a la celda (`valoresInput` ya lo filtra) pero tiene que frenar al
+  // historial y poder nombrarse. Sin esto, las dos vías resolvían el mismo papel distinto: el chat
+  // lo perdía en la lectura y le ponía la moda del proveedor; acá quedaba mudo. Ver `pagoDelPapel`.
+  const pagoPapel = pagoDelPapel(c.formaPago ?? c.formaPagoLeida, listas?.tiposPago)
+  const cc = {
+    ...c, proveedor: nombreCelda, fecha: aFechaAR(c.fecha) ?? c.fecha ?? null,
+    formaPago: pagoPapel.valor ?? undefined, formaPagoLeida: pagoPapel.leido ?? undefined,
+  }
   const arca = await conciliar(cc, arcaDe)
   const hallazgo = indiceCompras?.ok === false ? null : buscarEnCompras(cc, indiceCompras ?? {})
   const item = {
@@ -418,8 +428,10 @@ export async function prepararPlan(comprobantes = [], o = {}) {
       i, valores: valoresInput(cc, o.col), col: o.col ?? colDelCargador(CONTRATO), nuevo: prov.esNuevo, proveedor: prov.valor, sug, aplicado,
       obra, cuit: cuit.length === 11 ? cuit : null, pestana, rubro,
       // EL CUIT QUE ARCA CONFIRMÓ, para completar el maestro si a ese proveedor le falta (18/09).
-      // Sólo de un proveedor que YA existe (matcheó): el nuevo entra por `altas`. Ver `cuit-maestro.mjs`.
-      cuitConfirmado: !prov.esNuevo && bloque.estado === ESTADO_ARCA.COINCIDE && bloque.emisorCuit ? bloque.emisorCuit : null,
+      // Sólo de un proveedor que YA existe (matcheó): el nuevo entra por `altas`. Y sólo si la VÍA
+      // identificó al emisor: `coincide` por fecha+total puede ser la factura de otro. Ver
+      // `emisorConfirmado` en `arca.mjs` y `cuit-maestro.mjs`.
+      cuitConfirmado: prov.esNuevo ? null : emisorConfirmado(bloque),
       // LO QUE VA A QUEDAR EN LAS COLUMNAS QUE DECIDEN EL COSTO, para poder mirarlo en el `--dry`
       // sin abrir el Sheet: I Unidad, J Cliente/Asignación, K Detalle, y qué dijo la mano.
       cols: { unidad: cc.unidad ?? null, obraJ: cc.obra ?? null, detalle: cc.detalle ?? null },

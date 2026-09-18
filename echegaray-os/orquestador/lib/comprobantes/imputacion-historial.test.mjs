@@ -112,3 +112,45 @@ test('la historia viva trae «Tipo pago» leído por RÓTULO, después de B..O y
   const { historia } = indexarCompras(filas)
   assert.deepEqual(historia.map((h) => h.tipo_pago), ['Cheque', 'Echeq'])
 })
+
+// ════════════════════════════════════════════════════════════════════════════
+// EL PAPEL QUE NO ES OPCIÓN TAMBIÉN MANDA (18/09/2026)
+// ════════════════════════════════════════════════════════════════════════════
+import { pagoDelPapel } from './desplegables.mjs'
+
+test('EL DEFECTO: un ticket que dice «Mercado Pago» terminaba con Q = «Efectivo» del historial', () => {
+  // `item.mjs` descartaba en la lectura toda forma de pago fuera del desplegable (`formaPago = null`)
+  // y recién después corría `completarUno`: la celda quedaba vacía y el historial la llenaba. El
+  // historial pisando al papel, marcado `[historial: pago]` como si fuera una deducción legítima.
+  const perfiles = perfilesDeCompras(historiaDe('Kiosco', ['Efectivo', 'Efectivo', 'Efectivo', 'Efectivo', 'Efectivo']))
+  const c = { proveedor: 'Kiosco', concepto: 'x', total: 100, formaPagoLeida: 'Mercado Pago' }
+  const { aplicado } = completarUno(c, perfiles)
+  assert.equal(c.formaPago, undefined, 'el historial pisó lo que decía el papel')
+  assert.equal(c.pagoVia, undefined)
+  assert.equal(aplicado.pago, undefined)
+})
+
+test('`pagoDelPapel` es la puerta única: lo válido va a la celda, lo que no es opción viaja aparte', () => {
+  assert.deepEqual(pagoDelPapel('EFECTIVO'), { valor: 'Efectivo', leido: null }, 'la grafía no es otra respuesta')
+  assert.deepEqual(pagoDelPapel('Mercado Pago'), { valor: null, leido: 'Mercado Pago' })
+  assert.deepEqual(pagoDelPapel('30 DIAS FECHA FACTURA'), { valor: null, leido: '30 DIAS FECHA FACTURA' })
+  assert.deepEqual(pagoDelPapel(null), { valor: null, leido: null })
+  assert.deepEqual(pagoDelPapel('   '), { valor: null, leido: null })
+  // Contra el desplegable VIVO, no contra la lista de respaldo.
+  assert.deepEqual(pagoDelPapel('Echeq', ['Efectivo', 'Transferencia']), { valor: null, leido: 'Echeq' })
+})
+
+test('lo que el papel dice y el desplegable SÍ acepta sigue mandando, y no se marca como inferido', () => {
+  const perfiles = perfilesDeCompras(historiaDe('Kiosco', ['Efectivo', 'Efectivo', 'Efectivo', 'Efectivo', 'Efectivo']))
+  const c = { proveedor: 'Kiosco', concepto: 'x', total: 100, formaPago: 'Transferencia' }
+  completarUno(c, perfiles)
+  assert.equal(c.formaPago, 'Transferencia')
+  assert.equal(c.pagoVia, undefined)
+})
+
+test('el texto que no es opción NUNCA llega a la celda: el desplegable es estricto', () => {
+  const c = { proveedor: 'Kiosco', concepto: 'x', total: 100, fecha: '17/09/2026', formaPagoLeida: 'Mercado Pago' }
+  const v = valoresInput(c, colDelCargador(contratoContra(COMPRAS_1809)))
+  assert.equal(v.Q, undefined)
+  assert.equal(Object.values(v).includes('Mercado Pago'), false)
+})
