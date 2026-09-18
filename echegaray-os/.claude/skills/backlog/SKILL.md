@@ -1,6 +1,6 @@
 ---
 name: backlog
-description: Recibe un listado de tareas, analiza dependencias y conflictos, y las ejecuta en paralelo en worktrees aislados — una rama por tarea, sin abandonar ninguna a mitad de camino. Usalo cuando el dueño escriba /backlog seguido de una lista, o cuando entregue varias tareas juntas y pida ejecutarlas en paralelo.
+description: "Carga cuando el usuario escriba /backlog seguido de una lista de tareas, o cuando entregue varias tareas juntas pidiendo ejecución en paralelo. No usar para tareas secuenciales o dependientes que requieran orden específico."
 ---
 
 # Backlog paralelo en worktrees

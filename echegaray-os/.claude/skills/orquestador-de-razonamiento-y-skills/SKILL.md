@@ -1,6 +1,6 @@
 ---
 name: orquestador-de-razonamiento-y-skills
-description: "Capa meta obligatoria que gobierna cómo se razona y qué capacidades se activan antes de todo trabajo material en Echegaray Business OS: identificar el problema real, descubrir y activar el conjunto mínimo suficiente de skills, detectar gaps de conocimiento, investigar/crear/mejorar skills, integrar perspectivas en una sola recomendación, ejecutar sobre evidencia clasificada, validar y aprender. Activar SIEMPRE al inicio de cualquier análisis, decisión, edición de Sheet, conciliación, código o proceso — no es opcional ni decorativa. No contiene conocimiento de dominio: decide qué capacidades se necesitan y si existen."
+description: "Meta-cargador (~5 k tokens, arrastra otras skills): sólo cuando una decisión cruza varios dominios y no está claro cuáles aplican. No cargar para código, lectura, Sheets de un solo dominio ni «por las dudas»: cargar la skill concreta."
 allowed-tools: Read, Bash, Grep, Glob, WebSearch, WebFetch
 metadata:
   author: echegaray-os

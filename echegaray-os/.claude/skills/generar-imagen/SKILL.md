@@ -1,6 +1,6 @@
 ---
 name: generar-imagen
-description: Genera imágenes originales para Echegaray y las deja en Drive — pieza comercial, portada de informe, infografía, diagrama, concepto arquitectónico, render conceptual, imagen de apoyo para una lámina de Slides, comunicación interna. Activar cuando el dueño pida "hacé una imagen", "una portada para", "un render de cómo quedaría", "un esquema de", o cuando una propuesta o una presentación necesite una pieza visual que no existe. La DIRECCIÓN DE ARTE la decide el motor `orquestador/lib/imagen/`, no se pide por parámetro. LA REGLA QUE GOBIERNA TODO: lo que sale es IMAGEN GENERADA y nunca puede presentarse como foto real, plano, relevamiento ni evidencia de obra, aunque quien la pida lo pida así. NO usar para leer una imagen que ya existe (eso es lectura de Drive) ni para insertar el logo (el logo real lo compone Slides, un modelo lo falsificaría).
+description: "Genera imágenes originales para Echegaray y las guarda en Drive. Se activa cuando se pide «hacé una imagen«, «una portada para«, «un render de cómo quedaría«, «un esquema de«, o cuando una propuesta o presentación necesita una pieza visual inexistente. No usar para leer imágenes existentes ni insertar logos reales."
 metadata:
   type: technical
 ---

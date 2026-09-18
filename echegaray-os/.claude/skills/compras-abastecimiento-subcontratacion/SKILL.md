@@ -1,6 +1,6 @@
 ---
 name: compras-abastecimiento-subcontratacion
-description: "Criterio profesional de compras, abastecimiento y subcontratación: cómo evaluar un proveedor o subcontratista, qué cláusulas exigir, qué riesgos técnicos y legales considerar. Activar ante preguntas sobre elegir un proveedor, decidir subcontratar una tarea, o evaluar riesgo de un proveedor recurrente. No rehace la lógica operativa ya construida en features/compras (PRP-009) — aporta criterio de decisión, no el proceso transaccional."
+description: "Activar ante preguntas sobre elegir proveedores, decidir subcontratación o evaluar riesgos de proveedores recurrentes. No usar para rehacer lógica operativa ya definida en features/compras."
 allowed-tools: Read, Bash
 metadata:
   author: echegaray-os

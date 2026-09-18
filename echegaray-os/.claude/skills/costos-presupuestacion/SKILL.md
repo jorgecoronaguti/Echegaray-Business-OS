@@ -1,6 +1,6 @@
 ---
 name: costos-presupuestacion
-description: "Criterio técnico-económico de cómputo, presupuestación y análisis de costos de obra para Echegaray Construcciones. Activar ante preguntas sobre cotizar una obra, valorizar un adicional, analizar desvío de costo, o decidir margen mínimo aceptable. Aporta el criterio de insumo para presupuestar — no reemplaza ni duplica la lógica ya construida en features/presupuestos y control-economico del OS."
+description: "Criterio técnico-económico para presupuestación y análisis de costos de obra. Activar ante consultas sobre cotización, adicionales, desvíos de costo o márgenes mínimos. No usar para reemplazar la lógica de features/presupuestos y control-economico del OS."
 allowed-tools: Read, Bash, WebSearch
 metadata:
   author: echegaray-os

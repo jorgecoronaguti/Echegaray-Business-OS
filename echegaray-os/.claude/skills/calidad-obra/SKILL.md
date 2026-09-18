@@ -1,6 +1,6 @@
 ---
 name: calidad-obra
-description: "Criterio de control de calidad de obra: ensayos, tolerancias, no conformidades y su tratamiento. Activar ante preguntas sobre qué controles de calidad corresponden a una tarea, cómo tratar una no conformidad, o cumplimiento de especificaciones técnicas de cliente. Conecta con ingenieria-civil-construccion (especificación técnica) y derecho-construccion-contratos (si la no conformidad deriva en reclamo)."
+description: "Control de calidad en construcción: ensayos, tolerancias y tratamiento de no conformidades. Activar con preguntas sobre controles de calidad, tratamiento de no conformidades o cumplimiento de especificaciones técnicas. No usar para reclamos contractuales."
 allowed-tools: Read, Bash, WebSearch
 metadata:
   author: echegaray-os

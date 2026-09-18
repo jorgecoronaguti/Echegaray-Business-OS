@@ -1,6 +1,6 @@
 ---
 name: derecho-construccion-contratos
-description: "Criterio de derecho de la construcción y gestión contractual para Echegaray Construcciones: redacción y riesgo de contratos, exigibilidad de adicionales, reclamos, garantías y retenciones. Activar ante preguntas sobre aceptar un contrato, evaluar un pliego de cliente, decidir si un adicional es exigible, o responder un reclamo. No reemplaza asesoramiento legal formal — señala el riesgo y cuándo consultar un abogado real."
+description: "Dominio específico: derecho de la construcción y gestión contractual para Echegaray Construcciones. Activar ante preguntas sobre aceptar contratos, evaluar pliegos, exigibilidad de adicionales, reclamos, garantías o retenciones. No usar para asesoramiento legal formal."
 allowed-tools: Read, Bash, WebSearch, WebFetch
 metadata:
   author: echegaray-os

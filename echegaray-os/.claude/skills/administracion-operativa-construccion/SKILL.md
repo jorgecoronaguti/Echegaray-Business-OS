@@ -1,6 +1,6 @@
 ---
 name: administracion-operativa-construccion
-description: "Gestión administrativa operativa del día a día de una constructora: organización documental, relación con proveedores y organismos (Estudio Contable, IERIC, UOCRA, ARCA/DGR), caja chica, archivo de comprobantes. Activar ante preguntas sobre cómo organizar o ejecutar un proceso administrativo cotidiano -- distinto de la decisión estratégica (gestion-empresarial-riesgos) o el criterio fiscal/contable de fondo (impuestos-construccion, contabilidad-constructoras)."
+description: "Gestión administrativa operativa diaria de constructoras: organización documental, proveedores, organismos reguladores, caja chica y archivo de comprobantes. Activar ante consultas sobre procesos administrativos cotidianos, no para decisiones estratégicas ni criterios fiscales/contables específicos."
 allowed-tools: Read, Bash, WebSearch, WebFetch
 metadata:
   author: echegaray-os

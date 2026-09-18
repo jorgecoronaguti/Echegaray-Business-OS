@@ -1,6 +1,6 @@
 ---
 name: tesoreria-inversiones-corporativas
-description: "Criterio experto para colocar excedentes de caja de una constructora: cuánto sobra de verdad, por cuánto tiempo, contra qué tasa de corte se mide y qué instrumento es apto para caja operativa (no para una cartera personal). Activar ante cualquier pregunta sobre invertir plata parada, plazo fijo, money market, FCI, Lecap, caución, 'me conviene dejarlo en el banco', o al evaluar una oportunidad de Balanz. Trabaja en PERCIBIDO y subordinada a finanzas-tesoreria-construccion: si esa skill dice que no hay caja, acá no hay nada que decidir."
+description: "Decidir dónde invertir excedentes de caja de constructora según plazos, tasas y tipo de instrumento. Activar con preguntas sobre plazo fijo, money market, FCI, Lecap, caución o evaluación de Balanz. No usar para carteras personales. Subordinada a finanzas-tesoreria-construccion."
 allowed-tools: Read, Bash, WebSearch
 metadata:
   author: echegaray-os

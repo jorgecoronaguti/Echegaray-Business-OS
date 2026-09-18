@@ -1,6 +1,6 @@
 ---
 name: reportes-automaticos-y-comunicaciones
-description: "Generación y entrega de reportes automáticos configurables sobre cualquier dominio de Echegaray (dirección, obras, finanzas, cobranzas, pagos, acciones, riesgos, HH, proveedores, documentación) y su comunicación por el canal adecuado. Activar al crear/modificar un reporte, decidir su canal de entrega, agregar un tipo de reporte nuevo, o cuando se detecte una revisión manual recurrente que un reporte podría reemplazar. NO ejecuta envíos externos (email/WhatsApp/Telegram) sin configuración y autorización explícita — primero publicación dentro del OS."
+description: "Genera y entrega reportes automáticos sobre cualquier área de Echegaray al crear/modificar un reporte, decidir su canal de entrega, agregar un tipo nuevo o detectar revisiones manuales recurrentes. NO ejecuta envíos externos sin configuración y autorización previas."
 allowed-tools: Read, Bash, Grep, Glob
 metadata:
   author: echegaray-os

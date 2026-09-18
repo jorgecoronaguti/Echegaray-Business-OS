@@ -1,6 +1,6 @@
 ---
 name: equipos-flota-construccion
-description: "Criterio de gestión de equipos, vehículos y herramientas de una constructora: habilitaciones (RTO/VTV, seguro, patente), utilización y asignación por obra, mantenimiento, y costo real por equipo (operación, inmovilización, amortización). Activar ante preguntas sobre estado de la flota, si un vehículo puede circular/operar, costo de un equipo, o decisión de comprar/alquilar/reparar/dar de baja una unidad. Aporta el criterio de decisión; el costo de compra vs. alquiler lo cruza con finanzas-tesoreria-construccion y la compra en sí con compras-abastecimiento-subcontratacion."
+description: "Equipos y vehículos de la constructora: habilitaciones, asignación por obra, mantenimiento, costos y decisiones de compra, alquiler, reparación o baja. No usar para compras directas."
 allowed-tools: Read, Bash, WebSearch
 metadata:
   author: echegaray-os

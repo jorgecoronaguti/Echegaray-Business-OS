@@ -1,6 +1,6 @@
 ---
 name: orden-documental-dataroom
-description: "Mejor práctica de orden y arquitectura documental administrativa para una PYME constructora, informada por el estándar de data room para due diligence pero SIEMPRE simplificada para reducir complejidad. Activar ante cualquier decisión de cómo organizar, nombrar, migrar, indexar o auditar el repositorio documental de la empresa (carpeta administracion de Drive: societario, finanzas, impuestos, contabilidad, RRHH/legajos, obras, presupuestos, compras, clientes, vehículos, seguridad). No decide el criterio fiscal/contable/legal de fondo (eso lo deciden impuestos-construccion, contabilidad-constructoras, derecho-laboral-construccion) — decide la ARQUITECTURA y el ORDEN del archivo. Cruza con administracion-operativa-construccion (día a día), lectura-drive-documentos-multiformato (cómo leer) e integraciones-apis-sistemas-externos (cómo indexar)."
+description: "Activa al organizar, nombrar, migrar, indexar o auditar documentos administrativos de una constructora en Drive (societario, finanzas, impuestos, contabilidad, RRHH, obras, presupuestos, compras, clientes, vehículos, seguridad). No decide criterios fiscales, contables o legales."
 metadata:
   type: reference
 ---

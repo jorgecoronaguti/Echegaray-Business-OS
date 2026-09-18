@@ -1,6 +1,6 @@
 ---
 name: arquitectura-integracion-finanzas-obras
-description: "Guardiana de coherencia entre Flujo de Fondos (finanzas-tesoreria-construccion), P&L (contabilidad-constructoras), Avance de Obras (planificacion-produccion/direccion-obra), Supabase y el Business OS. Activar SIEMPRE que un cambio de fórmula, tabla o dato pueda calcularse en más de un sistema, antes de auditar los tres Sheets reales simultáneamente, o al decidir si un Sheet se mantiene/mejora/integra/reemplaza/retira frente al OS. No reemplaza a las skills de dominio — decide dónde vive cada cálculo y evita que existan cinco versiones distintas de la misma empresa."
+description: "Activa cuando hay cambios en fórmulas, tablas o datos que puedan calcularse en múltiples sistemas, antes de auditar simultáneamente los tres Sheets reales, o al decidir si un Sheet se mantiene/mejora/integra/reemplaza/retira frente al Business OS. No usar para reemplazar skills de dominio específico."
 allowed-tools: Read, Bash, WebSearch
 metadata:
   author: echegaray-os
