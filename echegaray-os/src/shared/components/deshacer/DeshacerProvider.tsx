@@ -7,7 +7,11 @@
 // vive en `src/shared/lib/pilaDeDeshacer.ts`; esto la conecta con el teclado, la pantalla y un aviso chico.
 //
 //   · Cmd/Ctrl+Z con el foco FUERA de un input deshace el último guardado, con la MISMA acción del servidor.
-//   · Dentro de un input, un textarea o un select no se intercepta: deshace el texto el navegador.
+//   · Dentro de un input, un textarea o un contenido editable no se intercepta: deshace el texto el navegador.
+//     Un `<select>` sí se intercepta: el foco se queda en él después de elegir y no tiene texto que deshacer.
+//   · NUNCA SE VACÍA UNA CELDA (18/09/2026): deshacer hacia `''` se rechaza salvo que la celda declare que el
+//     vacío es un valor con contenido (`vacioRestaurable`). Y toda escritura de deshacer/rehacer viaja con
+//     `esperado`: el servidor no escribe si la celda la cambió otra persona. La regla vive en `pilaDeDeshacer.ts`.
 //   · Cmd/Ctrl+Shift+Z y Cmd/Ctrl+Y rehacen. El aviso dura 4 s, ofrece «Rehacer» Y DICE LA TECLA (dueño,
 //     17/09/2026: el botón ya estaba y nadie sabía que existía el atajo).
 //   · Al cambiar de path se descartan los pasos de otras pantallas; al deshacer se mira la ruta completa (con la
@@ -19,15 +23,21 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import {
-  MENSAJE_CONFLICTO, apilar, atajoDeDeshacer, destinoEditable, esTecladoMac, hayConflicto, pilaVacia, quitarPaso,
-  sinPasosDeOtraRuta, textoDelAtajoDeRehacer, textoDelAviso, tomarParaDeshacer, tomarParaRehacer,
-  type AccionDeDeshacer, type PasoDeEdicion, type PilaDeDeshacer,
+  MENSAJE_CONFLICTO, apilar, atajoDeDeshacer, destinoEditable, esTecladoMac, hayConflicto, motivoParaNoRestaurar,
+  pilaVacia, quitarPaso, sinPasosDeOtraRuta, textoDelAtajoDeRehacer, textoDelAviso, tomarParaDeshacer,
+  tomarParaRehacer, type AccionDeDeshacer, type PasoDeEdicion, type PilaDeDeshacer,
 } from '@/shared/lib/pilaDeDeshacer'
 
 export type ResultadoReversible = { ok: true } | { ok: false; error: string }
 
+/** Lo que acompaña a una escritura de deshacer/rehacer: lo que debería haber hoy (para no pisar) y qué se hace. */
+export interface ContextoDeGuardado {
+  esperado?: string
+  accion?: AccionDeDeshacer
+}
+
 /** Vuelve a escribir `valor` con la misma acción. `esperado` es lo que debería haber hoy (para no pisar). */
-export type Revertir = (valor: string, esperado: string) => Promise<ResultadoReversible>
+export type Revertir = (valor: string, esperado: string, accion: AccionDeDeshacer) => Promise<ResultadoReversible>
 
 /** Una celda en pantalla: qué valor muestra hoy y cómo mostrar el deshecho sin esperar al servidor. */
 export interface CeldaViva {
@@ -104,9 +114,16 @@ export function DeshacerProvider({ children }: { children: ReactNode }) {
       avisar(MENSAJE_CONFLICTO, false)
       return
     }
+    // NO HABÍA UN VALOR ANTERIOR: no se escribe NULL sobre la celda. El paso se descarta y se dice por qué.
+    const motivo = motivoParaNoRestaurar(accion, paso)
+    if (motivo) {
+      cambiarPila(quitarPaso(tomado.pila, paso.id))
+      avisar(motivo, false)
+      return
+    }
     // SE MUEVE ANTES DE ESPERAR AL SERVIDOR: dos Cmd+Z seguidos no pueden tomar el mismo paso.
     cambiarPila(tomado.pila)
-    const r = await revertir(destino, esperado)
+    const r = await revertir(destino, esperado, accion)
     if (!r.ok) {
       cambiarPila(quitarPaso(pilaRef.current, paso.id))
       avisar(r.error === MENSAJE_CONFLICTO ? MENSAJE_CONFLICTO : `No se pudo deshacer: ${r.error}`, false)
@@ -173,27 +190,37 @@ export function useDeshacer(): ApiDeDeshacer | null {
 
 /**
  * ENVUELVE UN GUARDADO PARA QUE SE PUEDA DESHACER. Devuelve una función que guarda `nuevo` con la acción de siempre
- * y, si salió bien, apila { valor anterior → nuevo } con la forma de revertirlo (la misma acción, con `esperado`).
+ * y, si salió bien, apila { valor anterior → nuevo } con la forma de revertirlo: la misma acción, con `esperado`
+ * (lo que esta persona vio; el servidor rechaza si la celda cambió por otra mano) y con `accion`, para que la
+ * celda pueda restaurar lo que la ida tocó de más (Pedidos: el `origen`).
+ *
+ * `valorAnterior` TIENE QUE SER LO QUE LA BASE TIENE HOY según la pantalla, resincronizado con cada refresco
+ * (`useEstadoDelServidor` o `EstadoInline`): un `useState(inicial)` que no adopta la prop apila un anterior falso.
  */
 export function useGuardadoDeshacible<R extends { ok: boolean }>(opciones: {
   clave: string
   rotulo: string
   valorAnterior: string
-  guardar: (valor: string, contexto?: { esperado?: string }) => Promise<R>
+  guardar: (valor: string, contexto?: ContextoDeGuardado) => Promise<R>
   formato?: (valor: string) => string
+  /** `''` no vacía la celda (vuelve al calculado) y el servidor verifica `esperado`. Sin esto, no se deshace a `''`. */
+  vacioRestaurable?: boolean
 }): (nuevo: string) => Promise<R> {
   const api = useDeshacer()
   const ref = useRef(opciones)
   useEffect(() => { ref.current = opciones })
   return useCallback(async (nuevo: string) => {
-    const { clave, rotulo, valorAnterior, guardar, formato } = ref.current
+    const { clave, rotulo, valorAnterior, guardar, formato, vacioRestaurable } = ref.current
     const r = await guardar(nuevo)
     if (r.ok && api) {
       const texto = (v: string) => (formato ? formato(v) : v)
       api.registrar(
-        { clave, rotulo, anterior: valorAnterior, nuevo, anteriorTexto: texto(valorAnterior), nuevoTexto: texto(nuevo) },
-        async (valor, esperado) => {
-          const x = await guardar(valor, { esperado })
+        {
+          clave, rotulo, anterior: valorAnterior, nuevo, anteriorTexto: texto(valorAnterior), nuevoTexto: texto(nuevo),
+          vacioRestaurable: vacioRestaurable === true,
+        },
+        async (valor, esperado, accion) => {
+          const x = await guardar(valor, { esperado, accion })
           return x.ok ? { ok: true } : { ok: false, error: String((x as { error?: unknown }).error ?? 'no se pudo') }
         },
       )
