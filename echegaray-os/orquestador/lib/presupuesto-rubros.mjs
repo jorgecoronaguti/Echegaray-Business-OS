@@ -225,6 +225,13 @@ export function explotarLibro(wb, { filas = null, sinAnalisis = {} } = {}) {
   for (const it of P.items) {
     const tarea = it.codigo ? A.tareas.get(it.codigo) : null
     const factor = it.cantidad * it.coef
+    // UN COEFICIENTE DE 100 O MÁS ES UN TIPO DE CAMBIO, NO UNA CANTIDAD (auditoría 18/09, D6). La plantilla
+    // cotiza el alquiler del Bobcat en dólares y pone el dólar (1.450) en «COEF. AJUSTE»: multiplica el
+    // precio, no las horas. «OFICIAL ESPECIALIZADO - EN DOLARES» salía con 46.400 hs cuando el documento
+    // dice 32. El importe (cantidad × coeficiente × costo) no cambia; la cantidad no lleva el dólar.
+    // Un coeficiente chico (1,4 · 1,5 · 4 galpones) sí escala la cantidad, como lo usa la plantilla.
+    const esCambio = it.coef >= 100
+    const factorCantidad = esCambio ? it.cantidad : factor
     if (it.subtotalEnError) { controles.push(`Presupuesto!H${it.fila} en error: el ítem «${it.tarea}» no entra`); continue }
     if (!tarea || !tarea.insumos.length) {
       const decl = sinAnalisis[it.fila] ?? rubroPorDescripcion(it.tarea ?? it.rotulo)
@@ -249,7 +256,9 @@ export function explotarLibro(wb, { filas = null, sinAnalisis = {} } = {}) {
       porRubro[rubro] = (porRubro[rubro] ?? 0) + importe
       delItem.push({
         itemFila: it.fila, item: it.tarea, rotulo: it.rotulo, insumo: ins.nombre ?? rec?.nombre ?? ins.codigo, codigo: ins.codigo,
-        unidad, cantidad: r2(factor * (ins.cantidad ?? 0)), importe, rubro, porque, sinEvidencia: !!sinEvidencia,
+        unidad, cantidad: r2(factorCantidad * (ins.cantidad ?? 0)), importe, rubro,
+        porque: esCambio ? `${porque}; ítem cotizado en dólares (coeficiente ${it.coef} = tipo de cambio: multiplica el precio, no la cantidad)` : porque,
+        sinEvidencia: !!sinEvidencia,
         // LA OFERTA SÓLO MO (Presupuesto!R = O + Q) lleva adentro lo que la plantilla suma por unidad «hs» y
         // «hr» —incluidas las máquinas por hora, que su SUMIF cuenta como cargas—; el resto queda afuera.
         enOferta: /^h[sr]$/i.test((unidad ?? '').trim()),
@@ -420,7 +429,23 @@ export function rubrosDeObra(cfg, explosiones) {
     rubros.materiales.cita = `${m.cita} | ${rubros.materiales.cita}`
   }
   const costoDirecto = r2(RUBROS.reduce((a, r) => a + (rubros[r].monto ?? 0), 0))
-  return { rubros, costoDirecto, controles, problemas }
+  return { rubros, costoDirecto, controles, problemas, hh: horasDelDocumento(explosiones.map((x) => x.explosion)) }
+}
+
+/**
+ * LAS HORAS QUE IMPLICA EL COSTO COTIZADO (D6): Σ de las cantidades en «hs» de mano de obra —oficial,
+ * ayudante, oficial especializado—. Las cargas sociales van en «hr» y no son horas; tampoco las máquinas
+ * por hora («HR»). Con la cantidad ya corregida del tipo de cambio.
+ */
+export function horasDelDocumento(explosiones) {
+  let h = 0
+  let hay = false
+  for (const ex of explosiones) {
+    for (const l of ex.lineas) {
+      if (l.rubro === 'mano_obra' && /^hs$/i.test((l.unidad ?? '').trim()) && l.cantidad != null) { h += l.cantidad; hay = true }
+    }
+  }
+  return hay ? r2(h) : null
 }
 
 /** Los rubros de una obra `desdePartidas`: las partidas del presupuesto aprobado, mapeadas por código. */
