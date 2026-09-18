@@ -98,8 +98,8 @@ export async function setEstadoPedidoAction(_prev: ActionState, formData: FormDa
       cambios: { estado, origen: d.data.origen ?? 'os', updated_at: new Date().toISOString() },
     })
     if (r.estado === 'conflicto') return { error: MENSAJE_CONFLICTO }
-    if (r.estado === 'no_existe') return { error: 'Ese pedido ya no existe.' }
-    if (r.estado === 'error') return { error: r.error }
+    if (r.estado === 'no_existe') return { error: 'Ese pedido ya no existe, o no lo ves.' }
+    if (r.estado !== 'escrito') return { error: r.error }
     revalidatePath(PATH)
     return { error: null, ok: true }
   }

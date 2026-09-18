@@ -246,7 +246,7 @@ test('(b2) NINGUNA ACCIÓN COMPARA `esperado` FUERA DE LA ESCRITURA', () => {
   assert.match(primitiva, /exigido === null \? escritura\.is\(campo, null\) : escritura\.eq\(campo, exigido\)/)
   // Y decide por las filas que tocó, no por la ausencia de error: un update que no encuentra la fila no falla.
   assert.match(primitiva, /update\(cambios, \{ count: 'exact' \}\)/)
-  assert.match(primitiva, /if \(\(count \?\? 0\) > 0\) return \{ estado: 'escrito' \}/)
+  assert.match(primitiva, /if \(\(count \?\? 0\) > 0\) return \{ estado: 'escrito', filas:/)
 })
 
 test('(b3) COMPRAS NO USA LA PRIMITIVA, Y ESTÁ DICHO POR QUÉ: SU RPC YA COMPARA EN LA BASE', () => {

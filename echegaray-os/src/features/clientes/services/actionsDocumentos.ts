@@ -107,8 +107,8 @@ export async function clasificarDocumentoCliente(
       cambios: { rol: parsed.data || null },
     })
     if (r.estado === 'conflicto') return { ok: false, error: MENSAJE_CONFLICTO }
-    if (r.estado === 'no_existe') return { ok: false, error: 'Ese documento ya no está vinculado.' }
-    if (r.estado === 'error') return { ok: false, error: r.error }
+    if (r.estado === 'no_existe') return { ok: false, error: 'Ese documento ya no está vinculado, o no lo ves.' }
+    if (r.estado !== 'escrito') return { ok: false, error: r.error }
     await invalidarFichaCliente(supabase, clienteId)
     revalidatePath('/clientes', 'layout')
     return { ok: true }
