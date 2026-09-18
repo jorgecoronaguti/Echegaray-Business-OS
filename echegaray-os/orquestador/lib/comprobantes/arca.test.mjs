@@ -53,13 +53,22 @@ test('CUIT + fecha + total identifican la fila, y el número bueno es el de ARCA
   assert.equal(bloque.emisorNombre, 'PEREZ GARCIA MARISOL BIBIANA')
 })
 
-test('sin CUIT —la foto trae dos y el modelo no elige— fecha + total alcanzan', () => {
+test('sin CUIT —la foto trae dos y el modelo no elige— fecha + total alcanzan para la FILA, no para el emisor', () => {
+  // Hasta el 18/09 este test afirmaba además `c.cuit === '23369111574'`: «el CUIT del emisor sale del
+  // padrón, no de la foto». Es cierto para la fila que se encontró, y acá se cumple porque las filas
+  // de esta fixture son las dos REALES de Corralón Progreso — pero se cumplía por la fixture, no por
+  // la lógica. `candidatasArca` trae las filas del día de CUALQUIER emisor y esta vía no mira el
+  // CUIT: con una factura ajena del mismo día y el mismo importe, el comprobante se llevaba el CUIT
+  // de otra empresa, y de ahí a la columna E (el CUIT manda sobre el nombre en `matchProveedor`).
+  // Desde el 18/09 el CUIT sólo se escribe si la vía lo identificó (`emisorConfirmado`); lo que esta
+  // vía sí corrige —número, total, fecha— no cambió.
   const c = leido({ cuit: null })
   const r = conciliarConArca(c, ARCA)
   assert.equal(r.via, VIA.FECHA_TOTAL)
-  aplicarArca(c, r)
-  assert.equal(c.numero, '0004-00003642')
-  assert.equal(c.cuit, '23369111574', 'el CUIT del emisor sale del padrón, no de la foto')
+  const bloque = aplicarArca(c, r)
+  assert.equal(c.numero, '0004-00003642', 'la fila encontrada sigue corrigiendo el número')
+  assert.equal(c.cuit, null, 'pero no se afirma quién la emitió: esta vía no lo miró')
+  assert.equal(bloque.emisorCuit, '23369111574', 'el bloque lo muestra con su vía, para poder verlo')
 })
 
 test('el CAE manda sobre todo lo demás: identifica UNO en todo ARCA', () => {
@@ -198,4 +207,56 @@ test('la vía débil sigue sirviendo para lo que describe el comprobante — só
   assert.equal(conciliacion.numeroArca, '0002-00004213')
   assert.equal(emisorConfirmado({ estado: conciliacion.estado, via: conciliacion.via, emisorCuit: conciliacion.emisorCuit }), null,
     'el CUIT de OTRO SA no puede terminar en la ficha del proveedor que se está cargando')
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// Y EL CUIT TAMPOCO SE ESCRIBE EN EL COMPROBANTE SI LA VÍA NO SUPO QUIÉN ES
+// ════════════════════════════════════════════════════════════════════════════
+import { matchProveedor } from '../carga-comprobantes.mjs'
+
+/** Una factura de OTRA empresa, el mismo día y por el mismo importe que la que se está cargando. */
+const AJENA = Object.freeze({
+  emisor_cuit: '30111111117', emisor_nombre: 'OTRA SA', punto_venta: '2', numero: '4213',
+  fecha_emision: '2026-09-16', imp_total: 580000, total_iva: 100661.16, neto_gravado: 479338.84, cae: null,
+})
+
+test('EL DEFECTO: un papel sin CUIT conciliado por fecha+total se llevaba el CUIT del OTRO emisor', () => {
+  // El caso: la foto de Neumagom no dejó leer el CUIT. `candidatasArca` trae las filas del libro de
+  // ese día de cualquier emisor y sólo hay una que cierra por importe: la de OTRA SA.
+  const c = { proveedor: 'NEUMAGOM SAS', fecha: '16/09/2026', total: 580000, iva: 100661.16, neto: 479338.84 }
+  const conciliacion = conciliarConArca(c, [AJENA])
+  assert.equal(conciliacion.estado, ESTADO_ARCA.COINCIDE)
+  assert.equal(conciliacion.via, VIA.FECHA_TOTAL)
+  aplicarArca(c, conciliacion)
+  assert.equal(c.cuit, undefined, 'el CUIT de OTRA SA no puede quedar pegado al comprobante')
+})
+
+test('…y ese CUIT decidía el PROVEEDOR: `matchProveedor` lo hace mandar sobre el nombre', () => {
+  // Es lo que hacía caro al defecto: no quedaba en un campo interno, terminaba en la columna E.
+  const lista = ['NEUMAGOM SAS', 'OTRA SA']
+  const porCuit = { 30111111117: 'OTRA SA', 30691853825: 'NEUMAGOM SAS' }
+  // Con el CUIT ajeno pegado (el comportamiento viejo), la E resolvía al proveedor equivocado:
+  assert.equal(matchProveedor('NEUMAGOM SAS', lista, { cuit: '30111111117', porCuit }).valor, 'OTRA SA')
+  // Sin CUIT —lo que queda ahora— la identidad la resuelve el nombre, como antes de que ARCA opinara:
+  const c = { proveedor: 'NEUMAGOM SAS', fecha: '16/09/2026', total: 580000, iva: 100661.16, neto: 479338.84 }
+  aplicarArca(c, conciliarConArca(c, [AJENA]))
+  assert.equal(matchProveedor(c.proveedor, lista, { cuit: c.cuit, porCuit }).valor, 'NEUMAGOM SAS')
+})
+
+test('lo que la vía débil SÍ corrige no cambia: número, total y fecha siguen saliendo del libro', () => {
+  const c = { proveedor: 'NEUMAGOM SAS', fecha: '16/09/2026', numero: null, total: 580000, iva: 100661.16, neto: 479338.84 }
+  const bloque = aplicarArca(c, conciliarConArca(c, [AJENA]))
+  assert.equal(c.numero, '0002-00004213', 'el número del libro describe la FILA, no al emisor')
+  assert.equal(c.fechaVerificadaArca, true)
+  assert.equal(bloque.estado, ESTADO_ARCA.COINCIDE)
+  assert.equal(bloque.emisorCuit, '30111111117', 'el bloque lo sigue mostrando con su vía: es informativo')
+})
+
+test('con el CUIT en el papel la vía es fuerte y el padrón sí manda, como siempre', () => {
+  const propia = { ...AJENA, emisor_cuit: '30691853825', emisor_nombre: 'NEUMAGOM SAS' }
+  const c = { proveedor: 'Neumagom', cuit: '30691853825', fecha: '16/09/2026', total: 580000, iva: 100661.16, neto: 479338.84 }
+  const conciliacion = conciliarConArca(c, [propia])
+  assert.equal(conciliacion.via, VIA.CUIT_FECHA_TOTAL)
+  aplicarArca(c, conciliacion)
+  assert.equal(c.cuit, '30691853825')
 })

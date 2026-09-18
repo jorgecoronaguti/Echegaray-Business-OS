@@ -253,8 +253,24 @@ export function aplicarArca(comprobante = {}, conciliacion = {}) {
   } else if (!comprobante.numero && conciliacion.numeroArca) {
     comprobante.numero = conciliacion.numeroArca
   }
-  // El CUIT del emisor es del padrón, no de la foto: la foto trae dos CUIT y el modelo elige mal.
-  if (conciliacion.emisorCuit) comprobante.cuit = conciliacion.emisorCuit
+  // ═══ EL CUIT DEL EMISOR ES DEL PADRÓN — PERO SÓLO SI LA VÍA SUPO QUIÉN ES (18/09/2026) ═══
+  //
+  // La foto trae dos CUIT y el modelo elige mal: por eso el del padrón manda. Pero acá se escribía
+  // `conciliacion.emisorCuit` sin mirar `via`, y la vía `fecha+total` no identifica al emisor —
+  // existe justamente para cuando la foto NO dejó leer el CUIT, y `candidatasArca` trae las filas de
+  // esa fecha de CUALQUIER emisor—. Con un papel sin CUIT que cae sobre una única factura ajena del
+  // mismo día y el mismo importe, esta línea le ponía al comprobante el CUIT de otra empresa.
+  //
+  // Y ese CUIT no se queda quieto: `matchProveedor` lo hace MANDAR SOBRE EL NOMBRE («el CUIT resuelve
+  // QUIÉN es»), así que la columna E del Sheet terminaba con el proveedor equivocado —Neumagom
+  // cargado como «OTRA SA»— y la clave de idempotencia quedaba fuerte y FALSA (`c:<CUIT ajeno>|<n°>`).
+  // Es la misma raíz que `emisorConfirmado` ya cierra del lado del maestro de proveedores; acá faltaba.
+  //
+  // Sin CUIT confirmado el comprobante se queda con el que traía (o sin ninguno) y la identidad la
+  // sigue resolviendo el nombre, como antes de que ARCA opinara. Lo que la vía débil SÍ puede
+  // corregir —número, total, fecha— no cambia: eso describe la fila, no a quién la emitió.
+  const cuitDelPadron = emisorConfirmado({ estado: conciliacion.estado, via: conciliacion.via, emisorCuit: conciliacion.emisorCuit })
+  if (cuitDelPadron) comprobante.cuit = cuitDelPadron
   if (conciliacion.cae && !comprobante.cae) comprobante.cae = conciliacion.cae
   // LA FECHA DE EMISIÓN TAMBIÉN ES DEL PADRÓN. Un comprobante identificado por CAE puede traer la
   // fecha mal leída (el 05/12/2003 de Barcelo), y ahí el control de plausibilidad lo frena pidiendo un
