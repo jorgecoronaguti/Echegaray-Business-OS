@@ -36,6 +36,7 @@ import {
   nombresPorDefecto, repartirIgual, type Frente,
 } from '../services/frentes'
 import { cantidad as fCantidad, hh as fHH, rendimiento } from '../services/formato'
+import { leerNumeroEsAR } from '@/shared/lib/numeroEsAR'
 import { convertirPartida } from '../services/actionsConversion'
 import { INICIAL, type EstadoAccion } from '../services/accion'
 
@@ -60,6 +61,11 @@ export function ConfiguradorConversion({
   const [plantillaId, setPlantillaId] = useState('')
   const [n, setN] = useState(1)
   const [frentes, setFrentes] = useState<Frente[]>(() => repartoInicial(p.cantidad, 1))
+  // LO TECLEADO, APARTE DEL NÚMERO (auditoría, 18/09/2026). Antes cada tecla se convertía con
+  // `Number(replace(',', '.'))`: «1,» y «1.» se volvían 1 y el separador desaparecía, así que no se podía
+  // teclear ningún decimal, y pegar «1.500» guardaba 1,5 — mil veces menos. Ahora el campo muestra lo que se
+  // escribe y la cantidad cambia sólo cuando el texto es un número legible en es-AR.
+  const [borradores, setBorradores] = useState<Record<number, string>>({})
   const [metodoElegido, setMetodoElegido] = useState<MetodoMedicion | null>(null)
   const [estado, ejecutar, pendiente] = useActionState<EstadoAccion, FormData>(convertirPartida, INICIAL)
 
@@ -79,6 +85,7 @@ export function ConfiguradorConversion({
     const v = Math.min(MAX_FRENTES, Math.max(1, nuevo))
     setN(v)
     setFrentes(repartoInicial(p.cantidad, v))
+    setBorradores({})
   }
 
   function generar() {
@@ -206,9 +213,14 @@ export function ConfiguradorConversion({
                   className="min-w-0 rounded-control border border-line bg-surface px-2 py-1 text-[12.5px] text-ink"
                 />
                 <input
-                  value={String(f.cantidad).replace('.', ',')}
+                  value={borradores[i] ?? String(f.cantidad).replace('.', ',')}
                   inputMode="decimal"
-                  onChange={(e) => setFrentes(frentes.map((x, j) => (j === i ? { ...x, cantidad: Number(e.target.value.replace(',', '.')) } : x)))}
+                  onChange={(e) => {
+                    const texto = e.target.value
+                    setBorradores((b) => ({ ...b, [i]: texto }))
+                    const l = leerNumeroEsAR(texto)
+                    if (l.ok && l.valor != null) setFrentes(frentes.map((x, j) => (j === i ? { ...x, cantidad: l.valor as number } : x)))
+                  }}
                   aria-label={`Cantidad del frente ${i + 1}`}
                   data-testid={`frente-cantidad-${i}`}
                   className="min-w-0 rounded-control border border-line bg-surface px-2 py-1 text-right font-mono text-[12px] tabular-nums text-ink"

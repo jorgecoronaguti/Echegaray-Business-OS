@@ -25,6 +25,7 @@
 // sí pasó. Se avisa del archivo, no del pago.
 
 import { useState, useTransition } from 'react'
+import { leerNumeroEsAR } from '@/shared/lib/numeroEsAR'
 import { V } from '@/shared/components/v2/patron'
 import { plataCentavos } from '@/shared/utils/format'
 import { deshacerPagoDeCompra, registrarPagoDeCompra } from '../services/comprasPagoActions'
@@ -34,6 +35,9 @@ import {
   MEDIOS_DE_PAGO, type EstadoEnSheet, type PagoDeFila, frasePago, leyendaDeSheet, saldoDe,
   sePuedePagar, sinTramoLibre,
 } from '../services/pagoDeCompra'
+
+/** Lo tecleado como importe. Ilegible → NaN, y la acción lo rechaza con su mensaje. */
+const montoTecleado = (t: string): number => { const l = leerNumeroEsAR(t); return l.ok && l.valor != null ? l.valor : NaN }
 
 const TONO = { ok: V.pos, falta: V.warn, apagado: V.tenue, undefined: V.tinta } as const
 const color = (t: 'ok' | 'falta' | 'apagado' | undefined) => TONO[String(t) as keyof typeof TONO] ?? V.tinta
@@ -76,7 +80,8 @@ export function PagoDeCompra({ fila, compra, enSheet, motivo, proveedorId }: {
     empezar(async () => {
       const r = await registrarPagoDeCompra({
         fila, tipo, fecha,
-        monto: tipo === 'parcial' ? Number(String(monto).replace(',', '.')) : null,
+        // «1.500» son mil quinientos pesos, no $1,50 (auditoría, 18/09/2026): el lector de la casa.
+        monto: tipo === 'parcial' ? montoTecleado(String(monto)) : null,
         fechaResto: tipo === 'parcial' ? (fechaResto || null) : null,
         medio: (medio || null) as never,
         proveedorId: proveedorId ?? null,

@@ -10,6 +10,7 @@
 
 import type { Actividad, ParteEjecucion } from '../types/index.ts'
 import { pendienteDe } from './ejecucionService.ts'
+import { leerNumeroEsAR } from '../../../shared/lib/numeroEsAR.ts'
 
 /** Dos decimales SIEMPRE, como el mockup: «0,43 / 1,08 m³», «2,84 / 2,84 m³». Un «96» al lado de un
  *  «71,04» hace leer dos escalas distintas en la misma celda. */
@@ -138,9 +139,14 @@ export function faltaParaRegistrar(sel: Actividad | null, hayMedida: boolean): s
  * horas—: el criterio de qué es un número decimal es UNO en todo el parte.
  */
 export function conDecimalesEnPunto(datos: FormData, campos: readonly string[]): FormData {
+  // «1.500» ES MIL QUINIENTOS (auditoría, 18/09/2026): antes sólo se cambiaba la coma, y «1.500» llegaba a
+  // `z.coerce.number()` como 1,5. Se lee con el lector de la casa y viaja en forma canónica; lo que no se puede
+  // leer se deja tal cual, para que el esquema lo rechace con su mensaje.
   for (const campo of campos) {
     const v = datos.get(campo)
-    if (typeof v === 'string' && v.includes(',')) datos.set(campo, v.replace(',', '.'))
+    if (typeof v !== 'string' || v.trim() === '') continue
+    const l = leerNumeroEsAR(v)
+    if (l.ok && l.valor != null) datos.set(campo, String(l.valor))
   }
   return datos
 }
