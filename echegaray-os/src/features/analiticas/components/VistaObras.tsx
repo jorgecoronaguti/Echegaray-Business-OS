@@ -19,6 +19,9 @@ import { mesesParaAgotar, type MesDeConsumo, type Ritmo } from '../services/cons
 import { rotuloEstimada, type ObraAnalitica } from '../services/obras'
 import { ancho, Cabecera, Seccion, TONO_TEXTO } from './Piezas'
 import { DetalleRubro } from './DetalleRubro'
+import { ORDEN_RUBROS, porcionesDeRubros, RUBRO_COLOR, Torta } from './Torta'
+import { TipoCostoIndicador } from './VistaResumen'
+import type { TipoCostoDeObra } from '../services/tipoCosto'
 import { Columnas } from './VistasEmpresa'
 
 const ORIGEN_CONTRATO: Record<string, string> = {
@@ -26,8 +29,10 @@ const ORIGEN_CONTRATO: Record<string, string> = {
   'oc-pesos': 'según OBRAS', 'oc-usd-x-tc': 'en U$S, al dólar de hoy', formulario: 'declarado en la obra', 'suma-viva': 'lo facturado hasta hoy, no es precio',
 }
 
-export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva }: {
+export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva, tipoCosto }: {
   obras: ObraAnalitica[]
+  /** Directo contra indirecto de la obra elegida; `null` = la función de la base no está aplicada. */
+  tipoCosto: TipoCostoDeObra | null
   obra: ObraAnalitica | null
   filtros: Filtros
   consumo: MesDeConsumo[] | null
@@ -60,7 +65,20 @@ export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva }: {
           { rotulo: 'consume por mes', valor: ritmo?.porMes != null ? millones(ritmo.porMes) : null, falta: consumo == null ? 'sin publicar' : 'sin consumo reciente',
             nota: ritmo?.porMes != null ? `a este ritmo viene consumiendo en los últimos 3 meses cerrados${ritmo.conEstimada ? ', con mano de obra estimada' : ''}${meses != null ? `; a ese ritmo lo que queda alcanza para ${meses === 0 ? '0 meses' : `${meses.toLocaleString('es-AR', { maximumFractionDigits: 1 })} meses`}` : ''}` : undefined },
         ]} />
-      <Seccion titulo="Rubro contra rubro" aclaracion="cada rubro del gasto contra el mismo rubro del presupuesto leído del documento de cotización. Debajo de cada uno, qué contiene.">
+      {/* TORTA (dueño, 18/09/2026): de qué está hecho lo consumido de ESTA obra, 4 porciones, parte de un
+          total. Las barras de abajo comparan cotizado contra consumido rubro por rubro: eso sigue en barra. */}
+      <Seccion titulo="De qué está hecho lo consumido" aclaracion="los cuatro rubros de esta obra, sin IVA; el total es el consumido de la cabecera">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Torta testid="torta-obra" titulo={obra.nombre} total={obra.gasto.total}
+            {...porcionesDeRubros({ manoObra: obra.gasto.manoObra, materiales: obra.gasto.materiales, subcontratos: obra.gasto.subcontratos, otros: obra.gasto.otros })}
+            nota={rotuloEstimada(obra.gasto) ? `la mano de obra es ${rotuloEstimada(obra.gasto)}` : undefined} />
+          <div>
+            <div className="mb-2 text-[12.5px] font-medium text-ink">Directo contra indirecto</div>
+            <TipoCostoIndicador t={tipoCosto} />
+          </div>
+        </div>
+      </Seccion>
+      <Seccion titulo="Rubro contra rubro" filo aclaracion="cada rubro del gasto contra el mismo rubro del presupuesto leído del documento de cotización. Debajo de cada uno, qué contiene.">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5" data-testid="rubros">
           {ITEMS.map((i) => <Rubro key={i.clave} item={i.clave} rotulo={i.rotulo} c={celda(obra, i.clave)} />)}
         </div>
@@ -83,7 +101,7 @@ export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva }: {
       </Seccion>
       <Seccion titulo="Consumo por mes" filo
         aclaracion="materiales, subcontratistas y otros por fecha del comprobante; mano de obra por la quincena en que empieza"
-        leyenda={[{ color: 'bg-accent', rotulo: 'mano de obra' }, { color: 'bg-muted', rotulo: 'subcontratistas' }, { color: 'bg-dato-materiales', rotulo: 'materiales' }, { color: 'bg-dato-otros', rotulo: 'otros' }]}>
+        leyenda={ORDEN_RUBROS.map((k) => ({ color: RUBRO_COLOR[k].clase, rotulo: RUBRO_COLOR[k].rotulo }))}>
         <ConsumoMensual consumo={consumo} />
       </Seccion>
       <Seccion titulo="Costo de la hora" filo arriba="">
@@ -171,12 +189,8 @@ function ConsumoMensual({ consumo }: { consumo: MesDeConsumo[] | null }) {
     <>
       <Columnas meses={conMes.map((m) => ({
         mes: m.mes, valor: millones(total(m)),
-        partes: [
-          { alto: ((m.otros ?? 0) / max) * 170, clase: 'bg-dato-otros' },
-          { alto: ((m.materiales ?? 0) / max) * 170, clase: 'bg-dato-materiales' },
-          { alto: ((m.subcontratos ?? 0) / max) * 170, clase: 'bg-muted' },
-          { alto: ((m.manoObra ?? 0) / max) * 170, clase: 'bg-accent' },
-        ],
+        // COLUMNA, NO TORTA: es evolución en el tiempo. Apilada de arriba hacia abajo en el orden fijo invertido.
+        partes: [...ORDEN_RUBROS].reverse().map((k) => ({ alto: ((m[k] ?? 0) / max) * 170, clase: RUBRO_COLOR[k].clase })),
       }))} />
       {sinFecha > 0 ? <p className="mt-3 text-[11.5px] text-faint">{millones(sinFecha)} en comprobantes sin fecha: no tienen mes.</p> : null}
     </>

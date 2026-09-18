@@ -26,11 +26,15 @@ import {
   type Composicion, type ContenidoDeRubro, type FilaContrato, type FilaDeCliente,
 } from '../services/agregados'
 import { importe } from './DetalleRubro'
+import { ORDEN_RUBROS, porcionesDeRubros, RUBRO_COLOR, Torta } from './Torta'
+import { DEFINICION_TIPO_COSTO, tipoCostoDe, type TipoCostoDeObra } from '../services/tipoCosto'
 import { rotuloEstimada, type ObraAnalitica } from '../services/obras'
 import { ancho, Cabecera, Cifras, LEYENDA_GASTO, Seccion } from './Piezas'
 
-export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, neto }: {
+export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, neto, tipoCosto }: {
   obras: ObraAnalitica[]
+  /** Directo contra indirecto por obra; `null` = la función de la base todavía no está aplicada. */
+  tipoCosto: Map<string, TipoCostoDeObra> | null
   sinObra: Map<string, number | null>
   /** Comprobantes de cada cajón sin obra, por cliente. `null` = no se pudo leer. */
   comprobantesPorCliente: Map<string, number> | null
@@ -119,6 +123,11 @@ export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, 
 
       <DeQueYObras obras={obras} clientes={clientes} filtros={filtros} />
 
+      {/* DIRECTO CONTRA INDIRECTO (dueño, 18/09/2026). Dos porciones no son una torta: es un indicador. */}
+      <Seccion titulo="Directo contra indirecto" filo aclaracion="la columna Tipo de Costo de Compras, más la mano de obra propia (directa por definición), en las obras de la vista">
+        <TipoCostoIndicador t={tipoCostoDe(obras, tipoCosto)} />
+      </Seccion>
+
       <Huecos obras={obras} sinPres={sinPres} />
       <div className="pb-7" />
     </>
@@ -156,10 +165,8 @@ function PorClienteContrato({ clientes, filtros }: { clientes: FilaContrato[]; f
             </div>
             <div className="flex h-3.5 items-center gap-2">
               <div className="flex h-3.5 overflow-hidden rounded-[2px]" style={{ width: ancho(c.gastado, escala) }}>
-                <div className="bg-accent" style={{ width: ancho(c.manoObra, c.gastado) }} />
-                <div className="bg-muted" style={{ width: ancho(c.subcontratos, c.gastado) }} />
-                <div className="bg-dato-materiales" style={{ width: ancho(c.materiales, c.gastado) }} />
-                <div className="bg-dato-otros" style={{ width: ancho(c.otros, c.gastado) }} />
+                {/* BARRA, NO TORTA: compara clientes entre sí y contra su contrato; una torta perdería la comparación. */}
+                {ORDEN_RUBROS.map((k) => <div key={k} className={RUBRO_COLOR[k].clase} style={{ width: ancho(c[k], c.gastado) }} />)}
               </div>
               <div className="whitespace-nowrap text-xs font-semibold tabular-nums text-ink">
                 {millones(c.gastado) ?? <span className="font-normal text-faint">{c.conPrecio ? 'sin movimiento' : 'sin precio'}</span>}
@@ -219,10 +226,8 @@ function PorCliente({ clientes, filtros }: { clientes: FilaDeCliente[]; filtros:
             </div>
             <div className="flex h-3.5 items-center gap-2">
               <div className="flex h-3.5 overflow-hidden rounded-[2px]" style={{ width: ancho(c.total, escala) }}>
-                <div className="bg-accent" style={{ width: ancho(c.manoObra, c.total) }} />
-                <div className="bg-muted" style={{ width: ancho(c.subcontratos, c.total) }} />
-                <div className="bg-dato-materiales" style={{ width: ancho(c.materiales, c.total) }} />
-                <div className="bg-dato-otros" style={{ width: ancho(c.otros, c.total) }} />
+                {/* BARRA, NO TORTA: compara clientes entre sí y contra su presupuesto. */}
+                {ORDEN_RUBROS.map((k) => <div key={k} className={RUBRO_COLOR[k].clase} style={{ width: ancho(c[k], c.total) }} />)}
                 <div className="bg-dato-cajon" style={{ width: ancho(c.sinObra, c.total) }} />
               </div>
               <div className="whitespace-nowrap text-xs font-semibold tabular-nums text-ink">{millones(c.total) ?? <span className="font-normal text-faint">sin movimiento</span>}</div>
@@ -263,8 +268,18 @@ function DeQueYObras({ obras, clientes, filtros }: { obras: ObraAnalitica[]; cli
   return (
     <section className="grid gap-x-10 gap-y-6 pt-9 lg:grid-cols-[180px_minmax(0,1fr)_minmax(0,1fr)]">
       <h2 className="pt-0.5 text-[13px] font-semibold text-ink">De qué está hecho el gasto</h2>
-      <div className="flex flex-col gap-3">
-        {mix.map((m, i) => <Mezcla key={m.nombre} m={m} empresa={i === 0} />)}
+      <div className="flex flex-col gap-4">
+        {/* TORTA para la empresa (dueño, 18/09/2026): parte de un total de un vistazo, 4 porciones, con
+            su total en el centro. Los clientes SIGUEN en barra: ahí lo que se compara es un cliente
+            contra otro, y una torta por cliente no deja comparar. */}
+        {mix[0] ? (
+          <Torta testid="torta-gasto-empresa" titulo="Empresa" total={mix[0].total}
+            {...porcionesDeRubros({ manoObra: mix[0].manoObra, materiales: mix[0].materiales, subcontratos: mix[0].subcontratos, otros: mix[0].otros })}
+            nota="sin el cajón «sin obra asignada», que no es de ninguna obra" />
+        ) : null}
+        <div className="flex flex-col gap-3">
+          {mix.slice(1).map((m) => <Mezcla key={m.nombre} m={m} empresa={false} />)}
+        </div>
       </div>
       <div className="flex min-w-0 flex-col">
         <h2 className="mb-3.5 text-[13px] font-semibold text-ink">Las obras que más gastan</h2>
@@ -292,10 +307,9 @@ function Mezcla({ m, empresa }: { m: Composicion; empresa: boolean }) {
     <div className="grid grid-cols-[110px_minmax(0,1fr)] items-center gap-3.5">
       <div className={`truncate text-xs ${empresa ? 'font-semibold text-ink' : 'text-muted'}`}>{m.nombre}</div>
       <div className={`flex overflow-hidden rounded-[2px] bg-line text-[10.5px] tabular-nums ${empresa ? 'h-7' : 'h-[18px]'}`}>
-        <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-accent text-white" style={{ width: ancho(m.manoObra, m.total) }}>{rot(m.manoObra)}</div>
-        <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-muted text-white" style={{ width: ancho(m.subcontratos, m.total) }}>{rot(m.subcontratos)}</div>
-        <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-dato-materiales text-ink" style={{ width: ancho(m.materiales, m.total) }}>{rot(m.materiales)}</div>
-        <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-dato-otros text-ink" style={{ width: ancho(m.otros, m.total) }}>{rot(m.otros)}</div>
+        {ORDEN_RUBROS.map((k) => (
+          <div key={k} className={`flex items-center justify-center overflow-hidden whitespace-nowrap text-white ${RUBRO_COLOR[k].clase}`} style={{ width: ancho(m[k], m.total) }}>{rot(m[k])}</div>
+        ))}
       </div>
     </div>
   )
@@ -398,6 +412,38 @@ function ContenidoRubros({ contenido }: { contenido: ContenidoDeRubro[] }) {
           </div>
         </details>
       ))}
+    </div>
+  )
+}
+
+// ─── Directo contra indirecto ───────────────────────────────────────────────────────────────────
+//
+// NO ES UNA TORTA (regla de la guía de visualización): con dos porciones el gráfico no dice más que el
+// número. Se publica el número, el porcentaje y de dónde sale cada parte. «Estructura» con obra se dice
+// aparte y no entra al costo: no es una compra y está en mudanza fuera de Compras.
+
+export function TipoCostoIndicador({ t }: { t: TipoCostoDeObra | null }) {
+  if (!t) {
+    return (
+      <p className="text-[12.5px] text-faint" data-testid="tipo-costo-pendiente">
+        Pendiente: la función de la base que abre el Tipo de Costo por obra (migración 20260918T1530) todavía no está aplicada en producción. Hasta entonces no se calcula por otra vía.
+      </p>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-4" data-testid="tipo-costo">
+      <Cifras cifras={[
+        { rotulo: 'directo', valor: millones(t.directo), falta: 'sin movimiento', nota: t.pctDirecto != null ? `${pctEntero(t.pctDirecto)} del costo · incluye ${millones(t.manoObra) ?? '$ 0'} de mano de obra propia` : undefined },
+        { rotulo: 'indirecto', valor: millones(t.indirecto), falta: 'ninguno', nota: t.indirecto != null && t.enCosto ? `${pctEntero(t.indirecto / t.enCosto)} del costo` : 'compras de Administración y Taller imputadas a la obra' },
+        { rotulo: 'sin tipo de costo', valor: millones(t.sinTipo), falta: 'ninguna', tono: t.sinTipo ? 'warn' : undefined, nota: t.sinTipo ? 'compras sin la columna completada: no se asumen directas' : undefined },
+        { rotulo: 'estructura, en mudanza', valor: millones(t.estructuraEnMudanza), falta: 'ninguna', tono: t.estructuraEnMudanza ? 'warn' : undefined,
+          nota: t.estructuraEnMudanza ? 'no es compra ni entra al costo de la obra; hoy sigue dentro de los cuatro rubros hasta que se mude' : undefined },
+      ]} />
+      <div className="grid gap-x-8 gap-y-1 text-[11.5px] leading-snug text-muted sm:grid-cols-3">
+        {(Object.keys(DEFINICION_TIPO_COSTO) as (keyof typeof DEFINICION_TIPO_COSTO)[]).map((k) => (
+          <div key={k}><span className="font-medium text-ink">{k}</span> · {DEFINICION_TIPO_COSTO[k]}</div>
+        ))}
+      </div>
     </div>
   )
 }

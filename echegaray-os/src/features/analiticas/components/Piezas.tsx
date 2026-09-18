@@ -8,6 +8,7 @@
 // Sin cards y sin sombras: una cifra es un rótulo chico arriba y un número tabular abajo; las
 // secciones se separan con aire y un filo.
 import type { ReactNode } from 'react'
+import { ORDEN_RUBROS, RUBRO_COLOR } from './Torta'
 
 /** Ancho de una barra: `x` sobre la escala, recortado a 0–100 %. Una escala nula dibuja nada. */
 export const ancho = (x: number | null | undefined, escala: number | null | undefined): string =>
@@ -108,13 +109,8 @@ export function Seccion({ titulo, aclaracion, leyenda, children, arriba = 'pt-7'
   )
 }
 
-/** LOS CUATRO RUBROS DEL GASTO, en el orden en que se apilan las barras (dueño, 18/09/2026: «otros» entra). */
-export const LEYENDA_GASTO = [
-  { color: 'bg-accent', rotulo: 'mano de obra' },
-  { color: 'bg-muted', rotulo: 'subcontratistas' },
-  { color: 'bg-dato-materiales', rotulo: 'materiales' },
-  { color: 'bg-dato-otros', rotulo: 'otros' },
-]
+/** LOS CUATRO RUBROS DEL GASTO, en el orden fijo en que se apilan y se cortan, con su color fijo (Torta.tsx). */
+export const LEYENDA_GASTO = ORDEN_RUBROS.map((k) => ({ color: RUBRO_COLOR[k].clase, rotulo: RUBRO_COLOR[k].rotulo }))
 
 /** Sin datos legibles: la base no contestó para este rol, o la lectura falló. Se dice, no se dibuja en cero. */
 export function SinLectura({ que }: { que: string }) {
