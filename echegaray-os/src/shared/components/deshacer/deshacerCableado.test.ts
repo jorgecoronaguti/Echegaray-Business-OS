@@ -173,3 +173,122 @@ test('EL AVISO DICE CÓMO SE TECLEA REHACER (antes sólo estaba el botón, y nad
   // El texto sale del teclado de quien mira: el componente pinta la variable, no una cadena clavada.
   assert.match(d, /data-testid="aviso-deshacer-atajo"[^>]*>\{atajoRehacer\}<\/kbd>/)
 })
+
+// ═══ 18/09/2026 — AUDITORÍA: NINGUNA ESCRITURA PUEDE VACIAR UNA CELDA CARGADA POR OTRA PERSONA ═══
+//
+// Rechazado por el auditor independiente: en Pedidos, otra persona asignaba la actividad X, el refresco llegaba
+// pero el select seguía en `''` (`useState(valor)` no adopta la prop), esta persona elegía Y con anterior `''`
+// y Cmd+Z escribía `actividad_id: null` sobre la X ajena. Y ninguna de las cuatro superficies mandaba
+// `esperado` al servidor. La corrección es UNA regla en la plataforma, no cuatro parches:
+//   (a) deshacer hacia `''` se rechaza en el proveedor (`motivoParaNoRestaurar`), salvo `vacioRestaurable`;
+//   (b) toda vuelta viaja con `esperado` y cada acción lo verifica contra la BASE con `coincideConLoEsperado`;
+//   (c) los selects resincronizan con la prop (`useEstadoDelServidor` / `EstadoInline`);
+//   (d) el estado del pedido devuelve también el `origen`;
+//   (e) un `<select>` con foco no bloquea el atajo.
+//
+// MUTACIONES QUE LO PONEN ROJO: sacar la guardia del proveedor; una acción que ignore `esperado`; volver a
+// `useState(valor` en un select; que el origen no vuelva.
+
+test('(a) EL PROVEEDOR RECHAZA DESHACER HACIA VACÍO ANTES DE LLAMAR AL SERVIDOR', () => {
+  const d = leer('shared/components/deshacer/DeshacerProvider.tsx')
+  const guardia = d.indexOf('motivoParaNoRestaurar(accion, paso)')
+  assert.ok(guardia > 0, 'MUTACIÓN: sacar la guardia')
+  assert.ok(guardia < d.indexOf('await revertir(destino, esperado, accion)'), 'la guardia va ANTES de escribir')
+  // La vuelta lleva `esperado` y `accion`: lo que esta persona vio y qué está haciendo.
+  assert.match(d, /await guardar\(valor, \{ esperado, accion \}\)/)
+  assert.match(d, /vacioRestaurable: vacioRestaurable === true/)
+})
+
+test('(a) LA EXCEPCIÓN ESTÁ DECLARADA SÓLO DONDE EL VACÍO VUELVE AL CALCULADO Y EL SERVIDOR VERIFICA', () => {
+  const i = leer('shared/components/ds/InlineEdit.tsx')
+  assert.match(i, /vacioRestaurable: deshacer\?\.vacioRestaurable === true && deshacer\?\.verificaServidor === true/)
+  const celdas = leer('features/administracion/components/liquidacion/CeldasDeLiquidacion.tsx')
+  assert.equal((celdas.match(/vacioRestaurable: true/g) ?? []).length, 2, 'la celda editable y el redondeo de Liquidación')
+  // Ninguna de las cuatro superficies auditadas se declara excepción.
+  for (const archivo of [
+    'features/presupuestos/components/CeldaEditable.tsx',
+    'features/administracion/components/ObraEnLinea.tsx',
+    'features/administracion/components/EditorObraDeCompra.tsx',
+    'features/integraciones/components/SelectEstadoPedido.tsx',
+    'features/integraciones/components/SelectActividad.tsx',
+    'features/obras/components/TabOperacion.tsx',
+    'features/clientes/components/SelectRolDocumento.tsx',
+  ]) assert.ok(!/vacioRestaurable/.test(leer(archivo)), `${archivo}: no puede deshacer a vacío`)
+})
+
+test('(b) CADA SUPERFICIE MANDA `esperado` AL DESHACER, Y SU ACCIÓN LO VERIFICA CONTRA LA BASE', () => {
+  const superficies: Array<{ celda: string; mandaEsperado: RegExp; accion: string }> = [
+    {
+      celda: 'features/presupuestos/components/CeldaEditable.tsx',
+      mandaEsperado: /fd\.set\('esperado', contexto\.esperado\)/,
+      accion: 'features/presupuestos/services/actionsPartida.ts',
+    },
+    {
+      celda: 'features/clientes/components/SelectRolDocumento.tsx',
+      mandaEsperado: /form\.set\('esperado', contexto\.esperado\)/,
+      accion: 'features/clientes/services/actionsDocumentos.ts',
+    },
+    {
+      celda: 'features/integraciones/components/SelectEstadoPedido.tsx',
+      mandaEsperado: /fd\.set\('esperado', contexto\.esperado\)/,
+      accion: 'features/integraciones/services/pedidosActions.ts',
+    },
+    {
+      celda: 'features/integraciones/components/SelectActividad.tsx',
+      mandaEsperado: /alElegir\(v, contexto\?\.esperado\)/,
+      accion: 'features/obras/services/actionsEjecucion.ts',
+    },
+    {
+      celda: 'features/obras/components/TabOperacion.tsx',
+      mandaEsperado: /alElegir\(v, contexto\?\.esperado\)/,
+      accion: 'features/obras/services/actionsEjecucion.ts',
+    },
+  ]
+  for (const { celda, mandaEsperado, accion } of superficies) {
+    assert.match(leer(celda), mandaEsperado, `${celda}: el deshacer no manda lo que vio`)
+    const a = leer(accion)
+    assert.match(a, /coincideConLoEsperado\(/, `${accion}: no compara contra la base`)
+    assert.match(a, /MENSAJE_CONFLICTO/, `${accion}: no dice que la cambió otra persona`)
+  }
+  // Compras ya verificaba en la RPC (`p_esperado`): sigue.
+  assert.match(leer('features/administracion/services/obraDeCompraActions.ts'), /p_esperado: p\.data\.esperado/)
+  // La lista global pasa el esperado hasta la acción del servidor.
+  assert.match(leer('features/integraciones/components/PedidosGlobal.tsx'), /asignarActividad\(p\.id_pedido, p\.obra_canonica_id as string, actividadId, esperado\)/)
+  assert.match(leer('features/integraciones/services/pedidosActions.ts'), /asignarActividadAPedido\(parsed\.data\.obra_id, parsed\.data\.id_pedido, parsed\.data\.actividad_id, parsed\.data\.esperado\)/)
+})
+
+test('(c) LOS SELECTS RESINCRONIZAN CON LA PROP: ningún `useState(valor` que se tome una vez', () => {
+  for (const archivo of [
+    'features/integraciones/components/SelectActividad.tsx',
+    'features/obras/components/TabOperacion.tsx',
+    'features/integraciones/components/SelectEstadoPedido.tsx',
+    'features/administracion/components/ObraEnLinea.tsx',
+    'features/administracion/components/EditorObraDeCompra.tsx',
+  ]) {
+    const f = leer(archivo)
+    assert.match(f, /useEstadoDelServidor\(/, `${archivo}: no adopta lo que trae el servidor`)
+    // Se mira el CÓDIGO: el comentario que cuenta el defecto cita el `useState(valor` viejo a propósito.
+    const codigo = f.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')
+    assert.ok(!/useState\((valor|celda|p\.estado)/.test(codigo), `${archivo}: MUTACIÓN — un estado que se toma una vez apila un anterior falso`)
+  }
+  // Presupuestos y Documentos ya lo hacían con `EstadoInline` (la prop nueva le gana a lo guardado).
+  assert.match(leer('features/presupuestos/components/CeldaEditable.tsx'), /alLlegarDelServidor\(/)
+  assert.match(leer('features/clientes/components/SelectRolDocumento.tsx'), /alLlegarDelServidor\(/)
+})
+
+test('(d) DESHACER EL ESTADO DE UN PEDIDO DEVUELVE EL `origen` QUE TENÍA', () => {
+  const s = leer('features/integraciones/components/SelectEstadoPedido.tsx')
+  assert.match(s, /contexto\?\.accion === 'deshacer' && p\.origen\) fd\.set\('origen', p\.origen\)/)
+  const a = leer('features/integraciones/services/pedidosActions.ts')
+  // El origen sólo se honra junto con `esperado`, y sólo entre los dos que existen.
+  assert.match(a, /origen: z\.enum\(ORIGENES\)\.optional\(\)/)
+  assert.match(a, /if \(formData\.has\('esperado'\)\) \{[\s\S]*origen = d\.data\.origen \?\? 'os'/)
+  assert.match(a, /\.update\(\{ estado, origen, updated_at/)
+  // La fila trae el origen para poder devolverlo.
+  assert.match(leer('features/integraciones/services/pedidosMaterialesService.ts'), /actividad_id, origen'\)/)
+})
+
+test('(e) UN `<select>` CON FOCO NO BLOQUEA EL ATAJO', () => {
+  const l = leer('shared/lib/pilaDeDeshacer.ts')
+  assert.ok(!/t === 'SELECT'/.test(l), 'MUTACIÓN: volver a tratar el select como editable')
+})
