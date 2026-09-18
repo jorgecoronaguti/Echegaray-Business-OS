@@ -12,7 +12,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { leerColumnasRetiros } from '../lib/direccion-retiros.mjs'
-import { planMesParcial } from '../lib/direccion-mes-parcial-plan.mjs'
+import { planMesParcial, formaApi } from '../lib/direccion-mes-parcial-plan.mjs'
 import { tomarSnapshot } from '../lib/sheet-snapshot.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -50,7 +50,7 @@ async function main() {
   for (const c of cambios) {
     const j = c.celda.charCodeAt(0) - 65
     const leida = String(despues?.[0]?.[j] ?? '')
-    const bien = leida === c.nueva
+    const bien = formaApi(leida) === formaApi(c.nueva)
     ok &&= bien
     console.log(`  ${bien ? '✓' : '✗'} ${c.celda} ${bien ? 'quedó escrita' : 'NO coincide con lo escrito'} · valor: ${JSON.stringify(valores?.[0]?.[j])}`)
   }

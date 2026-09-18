@@ -17,6 +17,13 @@ import { formulaProyectadoMes, formulaEstadoMes, retirosDeDireccion } from './di
 
 export const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 const norm = (v) => String(v ?? '').trim().toLowerCase()
+/**
+ * NÚCLEO PURO: la fórmula como la devuelve la API, para compararla con la que se genera. Sheets guarda
+ * `Compras!` donde se escribió `'Compras'!` (quita las comillas cuando el nombre no las necesita) y las
+ * deja en `'_BANCO_RAW'!`. Sin esto, la celda viva nunca es «igual» a la generada y el bisturí escribe
+ * la misma fórmula en cada corrida.
+ */
+export const formaApi = (f) => String(f ?? '').replace(/'([A-Za-z0-9_]+)'!/g, '$1!')
 
 /**
  * NÚCLEO PURO: ubica el bloque y arma las cuatro celdas de un mes.
@@ -53,16 +60,16 @@ export function planMesParcial(formulas = [], cols, { mes, anio }) {
   }
   // LA PRUEBA DE PROPIEDAD: la forma con la que el generador escribió cada celda hasta hoy.
   const formaVieja = {
-    C: (f) => f.startsWith("=SUMPRODUCT(REGEXMATCH(LOWER('Compras'!"),
+    C: (f) => f.startsWith('=SUMPRODUCT(REGEXMATCH(LOWER(Compras!'),
     D: (f) => f.startsWith(`=IF(N(C${r})>0;"pagado";IF(N(H${r})>0;"proyección";""))`),
-    E: (f) => f.startsWith("=IFERROR(MAX(FILTER('Compras'!"),
+    E: (f) => f.startsWith('=IFERROR(MAX(FILTER(Compras!'),
     H: (f) => f.startsWith(`=IF(N($B$${fTotal})=0;"";IF(N(C${r})>0;"";IF(E${r}<$E$${fTotal};"";`),
   }
   const colIdx = { C: 2, D: 3, E: 4, H: 7 }
   const celdas = []
   for (const [col, nueva] of Object.entries(nuevas)) {
-    const actual = String(formulas[iFila]?.[colIdx[col]] ?? '')
-    const igual = actual === nueva
+    const actual = formaApi(formulas[iFila]?.[colIdx[col]])
+    const igual = actual === formaApi(nueva)
     if (!igual && !formaVieja[col](actual)) {
       return { ok: false, fila: r, motivo: `${col}${r} no tiene la fórmula del generador: la tomo como tuya y no la toco (${actual.slice(0, 60) || 'vacía'})` }
     }

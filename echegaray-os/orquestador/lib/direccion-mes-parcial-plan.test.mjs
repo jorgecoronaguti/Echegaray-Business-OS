@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { planMesParcial } from './direccion-mes-parcial-plan.mjs'
+import { planMesParcial, formaApi } from './direccion-mes-parcial-plan.mjs'
 import { columnasRetiros, formulaEstadoMes } from './direccion-retiros.mjs'
 import { COMPRAS_CON_OBRA } from './encabezados-referencia.mjs'
 
@@ -13,11 +13,11 @@ function pestana({ C69, D69, E69, H69 } = {}) {
   fila(55, ['Persona', 'Retiro mensual', '', '', 'Desde'])
   fila(59, ['⇒ Retiro mensual de Dirección', '=SUM($B$56:$B$58)', '', '', '=IFERROR(MIN(…))'])
   fila(61, ['Mes', 'Ajuste escalón', 'Pagado', 'Estado', 'Se paga el', 'Banco', 'Adelanto', 'Proyectado'])
-  fila(68, ['Julio', '', "=SUMPRODUCT(REGEXMATCH(LOWER('Compras'!$K$4:$K&\"\");…)", '=IF(N(C68)>0;"pagado";IF(N(H68)>0;"proyección";""))', "=IFERROR(MAX(FILTER('Compras'!$AE$4:$AE;…));…)", '', '', '=IF(N($B$59)=0;"";IF(N(C68)>0;"";IF(E68<$E$59;"";$B$59*IFERROR(IF(ISNUMBER(B68);B68;1);1))))'])
+  fila(68, ['Julio', '', '=SUMPRODUCT(REGEXMATCH(LOWER(Compras!$K$4:$K&"");…)', '=IF(N(C68)>0;"pagado";IF(N(H68)>0;"proyección";""))', '=IFERROR(MAX(FILTER(Compras!$AE$4:$AE;…));…)', '', '', '=IF(N($B$59)=0;"";IF(N(C68)>0;"";IF(E68<$E$59;"";$B$59*IFERROR(IF(ISNUMBER(B68);B68;1);1))))'])
   fila(69, ['Agosto', '',
-    C69 ?? "=SUMPRODUCT(REGEXMATCH(LOWER('Compras'!$K$4:$K&\"\");…)",
+    C69 ?? '=SUMPRODUCT(REGEXMATCH(LOWER(Compras!$K$4:$K&"");…)',
     D69 ?? '=IF(N(C69)>0;"pagado";IF(N(H69)>0;"proyección";""))',
-    E69 ?? "=IFERROR(MAX(FILTER('Compras'!$AE$4:$AE;…));…)", '', '',
+    E69 ?? '=IFERROR(MAX(FILTER(Compras!$AE$4:$AE;…));…)', '', '',
     H69 ?? '=IF(N($B$59)=0;"";IF(N(C69)>0;"";IF(E69<$E$59;"";$B$59*IFERROR(IF(ISNUMBER(B69);B69;1);1))))'])
   for (let i = 0; i < g.length; i++) g[i] ??= []
   return g
@@ -37,9 +37,12 @@ test('el plan ubica agosto por rótulo y cambia exactamente C, D, E y H de esa f
   assert.match(plan.celdas.find((c) => c.celda === 'E69').nueva, /^=IF\(MAX\(/)
 })
 
-test('idempotente: con las fórmulas nuevas ya puestas no hay nada que escribir', () => {
+test('idempotente: con las fórmulas nuevas ya puestas —como las devuelve la API— no hay nada que escribir', () => {
   const p1 = planMesParcial(pestana(), cols, { mes: 'Agosto', anio: 2026 })
-  const nuevas = Object.fromEntries(p1.celdas.map((c) => [c.celda, c.nueva]))
+  // Sheets guarda `Compras!` donde se escribió `'Compras'!` y conserva `'_PAGOS_NO_COMPRA_RAW'!`.
+  const nuevas = Object.fromEntries(p1.celdas.map((c) => [c.celda, formaApi(c.nueva)]))
+  assert.notEqual(nuevas.C69, p1.celdas[0].nueva, 'el fixture imita a la API: sin comillas en Compras')
+  assert.match(nuevas.C69, /\(_PAGOS_NO_COMPRA_RAW!\$C/, 'la comparación normaliza las comillas de los dos lados')
   const p2 = planMesParcial(pestana(nuevas), cols, { mes: 'Agosto', anio: 2026 })
   assert.ok(p2.ok)
   assert.ok(p2.celdas.every((c) => c.igual))
