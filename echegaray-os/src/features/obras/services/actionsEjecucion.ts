@@ -29,7 +29,8 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { MENSAJE_CONFLICTO, coincideConLoEsperado } from '@/shared/lib/pilaDeDeshacer'
+import { MENSAJE_CONFLICTO } from '@/shared/lib/pilaDeDeshacer'
+import { actualizarSiSigueIgual } from '@/shared/lib/escrituraCondicional'
 import type { Resultado } from './actions'
 import { imputarHHMasivo } from './actionsHH'
 import { leerReparto, totalDelReparto } from './repartoHH'
@@ -327,19 +328,13 @@ export async function medirEnLote(obraId: string, form: FormData): Promise<Resul
  *
  * `esperado` (deshacer, 18/09/2026): la actividad que la pantalla tenía como vigente. Si la base tiene
  * otra —la cambió otra persona—, no se escribe: la auditoría encontró un Cmd+Z que dejó en NULL una
- * actividad que otro había cargado. Se compara contra la BASE, no contra la pantalla que pide.
+ * actividad que otro había cargado. La comparación viaja DENTRO del `update` (`actualizarSiSigueIgual`):
+ * comparar antes y escribir después deja pasar a dos que deshacen a la vez.
  */
 export async function asignarActividadAPedido(
   obraId: string, idPedido: string, actividadId: string, esperado?: string,
 ): Promise<Resultado> {
   const supabase = await createClient()
-  if (esperado !== undefined) {
-    const { data: hoy, error: eLectura } = await supabase
-      .from('pedidos_materiales').select('actividad_id').eq('id_pedido', idPedido).maybeSingle()
-    if (eLectura) return { ok: false, error: eLectura.message }
-    if (!hoy) return { ok: false, error: 'Ese pedido ya no existe.' }
-    if (!coincideConLoEsperado(hoy.actividad_id, esperado)) return { ok: false, error: MENSAJE_CONFLICTO }
-  }
   if (actividadId) {
     // La actividad tiene que ser DE ESTA OBRA. Sin este chequeo, un id de otra obra colgaría el
     // pedido de un trabajo que nadie de acá puede ver.
@@ -347,9 +342,18 @@ export async function asignarActividadAPedido(
       .from('obra_actividad').select('id').eq('id', actividadId).eq('obra_id', obraId).maybeSingle()
     if (!act) return { ok: false, error: 'Esa actividad no es de esta obra.' }
   }
-  const { error } = await supabase.from('pedidos_materiales')
-    .update({ actividad_id: actividadId || null }).eq('id_pedido', idPedido)
-  if (error) return { ok: false, error: error.message }
+  const cambios = { actividad_id: actividadId || null }
+  if (esperado !== undefined) {
+    const r = await actualizarSiSigueIgual(supabase, {
+      tabla: 'pedidos_materiales', donde: { id_pedido: idPedido }, campo: 'actividad_id', esperado, cambios,
+    })
+    if (r.estado === 'conflicto') return { ok: false, error: MENSAJE_CONFLICTO }
+    if (r.estado === 'no_existe') return { ok: false, error: 'Ese pedido ya no existe.' }
+    if (r.estado === 'error') return { ok: false, error: r.error }
+  } else {
+    const { error } = await supabase.from('pedidos_materiales').update(cambios).eq('id_pedido', idPedido)
+    if (error) return { ok: false, error: error.message }
+  }
   revalidatePath(`/obras/${obraId}`)
   return { ok: true }
 }

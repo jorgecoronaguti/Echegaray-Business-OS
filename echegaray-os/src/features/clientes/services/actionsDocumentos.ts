@@ -21,7 +21,8 @@ import { revalidatePath } from 'next/cache'
 import { invalidarFichaCliente } from './invalidarFicha'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { MENSAJE_CONFLICTO, coincideConLoEsperado } from '@/shared/lib/pilaDeDeshacer'
+import { MENSAJE_CONFLICTO } from '@/shared/lib/pilaDeDeshacer'
+import { actualizarSiSigueIgual } from '@/shared/lib/escrituraCondicional'
 import { parsearReferenciaDrive } from '@/features/obras/services/driveUrl'
 import { ROLES_DOCUMENTO } from '../types'
 import type { Resultado } from './actions'
@@ -94,14 +95,23 @@ export async function clasificarDocumentoCliente(
   if (!parsed.success) return { ok: false, error: 'Ese no es uno de los tipos de documento' }
   const supabase = await createClient()
   // DESHACER NO PISA LO QUE CAMBIÓ (18/09/2026): con `esperado` —el rol que el desplegable mostraba— se escribe
-  // sólo si la base todavía tiene ese rol. Otra persona clasificó el mismo archivo en el medio → se rechaza.
+  // sólo si la base todavía tiene ese rol, y la comparación va DENTRO del update. Clasificar 214 archivos entre
+  // dos personas es justamente donde dos manos caen sobre la misma fila.
   const esperado = form.get('esperado')
   if (esperado !== null) {
-    const { data: hoy, error: eLectura } = await supabase.from('cliente_documento')
-      .select('rol').eq('cliente_id', clienteId).eq('drive_file_id', driveFileId).maybeSingle()
-    if (eLectura) return { ok: false, error: eLectura.message }
-    if (!hoy) return { ok: false, error: 'Ese documento ya no está vinculado.' }
-    if (!coincideConLoEsperado(hoy.rol, String(esperado))) return { ok: false, error: MENSAJE_CONFLICTO }
+    const r = await actualizarSiSigueIgual(supabase, {
+      tabla: 'cliente_documento',
+      donde: { cliente_id: clienteId, drive_file_id: driveFileId },
+      campo: 'rol',
+      esperado: String(esperado),
+      cambios: { rol: parsed.data || null },
+    })
+    if (r.estado === 'conflicto') return { ok: false, error: MENSAJE_CONFLICTO }
+    if (r.estado === 'no_existe') return { ok: false, error: 'Ese documento ya no está vinculado.' }
+    if (r.estado === 'error') return { ok: false, error: r.error }
+    await invalidarFichaCliente(supabase, clienteId)
+    revalidatePath('/clientes', 'layout')
+    return { ok: true }
   }
   const { error } = await supabase.from('cliente_documento')
     .update({ rol: parsed.data || null })

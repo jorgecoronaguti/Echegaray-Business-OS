@@ -111,9 +111,15 @@ export function motivoParaNoRestaurar(accion: AccionDeDeshacer, paso: PasoDeEdic
 }
 
 /**
- * LA COMPROBACIÓN DEL SERVIDOR: ¿lo que hay hoy en la base es lo que esta persona vio (`esperado`)? Una sola
- * regla para todas las acciones que reciben `esperado`. NULL y `''` son el mismo vacío; un número se compara
- * como número (la pantalla dibuja «123,5» y la base guarda 123.5); el texto, sin espacios en las puntas.
+ * LA COMPROBACIÓN, EN MEMORIA: ¿lo que hay hoy en la base es lo que esta persona vio (`esperado`)? NULL y `''`
+ * son el mismo vacío; un número se compara como número (la pantalla dibuja «123,5» y la base guarda 123.5);
+ * el texto, sin espacios en las puntas.
+ *
+ * ESTA FUNCIÓN NO ES LA QUE PROTEGE LA ESCRITURA. Comparar acá y escribir después deja una ventana entre las
+ * dos: dos personas que deshacen en el mismo instante leen lo mismo, las dos pasan, y la segunda pisa a la
+ * primera — que es el defecto que este archivo existe para impedir, con otro disfraz. La comparación efectiva
+ * viaja DENTRO del `update` (`valorParaElFiltro` + `actualizarSiSigueIgual`). Esto queda para las pruebas y
+ * para explicar la regla.
  */
 export function coincideConLoEsperado(hoy: unknown, esperado: string): boolean {
   const e = esperado.trim()
@@ -123,6 +129,24 @@ export function coincideConLoEsperado(hoy: unknown, esperado: string): boolean {
     return e !== '' && Number.isFinite(n) && n === hoy
   }
   return String(hoy).trim() === e
+}
+
+/**
+ * LA MISMA REGLA, PERO PARA EL `where` DE LA ESCRITURA — que es donde de verdad protege.
+ *
+ * Devuelve lo que hay que exigirle a la celda para que la escritura ocurra: `null` = «tiene que seguir vacía»
+ * (se filtra con `is null`), un número para las columnas numéricas («123,5» → 123.5, y la base compara 123.50
+ * como igual), o el texto tal cual. `NaN` = el esperado no es un número: ninguna fila puede cumplirlo, así que
+ * la escritura no se intenta y se responde conflicto.
+ *
+ * LA IGUALDAD TIENE QUE SER LA MISMA QUE `coincideConLoEsperado`, o se rechazarían cambios legítimos por un
+ * «123,5» contra 123.5. Un test ata las dos funciones caso por caso.
+ */
+export function valorParaElFiltro(esperado: string, tipo: 'texto' | 'numero' = 'texto'): string | number | null {
+  const e = esperado.trim()
+  if (e === '') return null
+  if (tipo === 'numero') return Number(e.replace(',', '.'))
+  return e
 }
 
 /**

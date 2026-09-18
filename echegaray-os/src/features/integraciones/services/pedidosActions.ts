@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { MENSAJE_CONFLICTO, coincideConLoEsperado } from '@/shared/lib/pilaDeDeshacer'
+import { MENSAJE_CONFLICTO } from '@/shared/lib/pilaDeDeshacer'
+import { actualizarSiSigueIgual } from '@/shared/lib/escrituraCondicional'
 import { asignarActividadAPedido } from '@/features/obras/services/actionsEjecucion'
 
 // Módulo NATIVO de Pedidos de Materiales (control desde la web, no desde el chat). Supabase
@@ -80,24 +81,31 @@ export async function setEstadoPedidoAction(_prev: ActionState, formData: FormDa
   const c = await client()
   if (!c.supabase) return { error: c.error! }
 
-  let origen: (typeof ORIGENES)[number] = 'os'
+  // Al editar en el OS, marcamos origen='os' para que el sync del Sheet no lo pise (y al deshacer, el que había).
   if (formData.has('esperado')) {
     const d = deshacerEstadoSchema.safeParse({
       esperado: String(formData.get('esperado') ?? '').trim().toUpperCase(),
       origen: formData.has('origen') ? String(formData.get('origen') ?? '').trim() : undefined,
     })
     if (!d.success) return { error: d.error.issues[0].message }
-    const { data: hoy, error: eLectura } = await c.supabase
-      .from('pedidos_materiales').select('estado').eq('id_pedido', id).maybeSingle()
-    if (eLectura) return { error: eLectura.message }
-    if (!hoy) return { error: 'Ese pedido ya no existe.' }
-    if (!coincideConLoEsperado(hoy.estado, d.data.esperado)) return { error: MENSAJE_CONFLICTO }
-    origen = d.data.origen ?? 'os'
+    // La comparación va DENTRO del update: dos personas deshaciendo el mismo estado a la vez no pueden pasar
+    // las dos. El `origen` viaja con ella, así que tampoco se restaura sobre una fila que ya cambió.
+    const r = await actualizarSiSigueIgual(c.supabase, {
+      tabla: 'pedidos_materiales',
+      donde: { id_pedido: id },
+      campo: 'estado',
+      esperado: d.data.esperado,
+      cambios: { estado, origen: d.data.origen ?? 'os', updated_at: new Date().toISOString() },
+    })
+    if (r.estado === 'conflicto') return { error: MENSAJE_CONFLICTO }
+    if (r.estado === 'no_existe') return { error: 'Ese pedido ya no existe.' }
+    if (r.estado === 'error') return { error: r.error }
+    revalidatePath(PATH)
+    return { error: null, ok: true }
   }
-  // Al editar en el OS, marcamos origen='os' para que el sync del Sheet no lo pise (y al deshacer, el que había).
   const { error } = await c.supabase
     .from('pedidos_materiales')
-    .update({ estado, origen, updated_at: new Date().toISOString() })
+    .update({ estado, origen: 'os', updated_at: new Date().toISOString() })
     .eq('id_pedido', id)
   if (error) return { error: error.message }
   revalidatePath(PATH)
