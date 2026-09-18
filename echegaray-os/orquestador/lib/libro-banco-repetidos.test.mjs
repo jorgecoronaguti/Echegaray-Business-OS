@@ -4,9 +4,7 @@ import assert from 'node:assert/strict'
 import { deBancoCargos } from './libro-extractores.mjs'
 import { deBancoObligaciones } from './libro-extractores-banco-obligaciones.mjs'
 import { deDepositosRetenidos } from './libro-extractores-retenidos.mjs'
-import * as respaldo from './libro-respaldo-banco.mjs'
-
-const { debitosDelExtracto } = respaldo
+import { debitosDelExtracto, referenciasDelExtracto } from './libro-respaldo-banco.mjs'
 import { pagosGremialesDelBanco } from './cargas-pagos-banco.mjs'
 import { deduplicar, movimiento, SALE } from './libro-movimientos.mjs'
 import { clasificarMovimiento } from './banco-santander.mjs'
@@ -91,7 +89,7 @@ test('la identidad es ESTABLE: dos corridas sobre el mismo extracto dan las mism
 })
 
 test('la PRIMERA ocurrencia conserva la clave de siempre; sólo la repetida lleva ordinal', () => {
-  const refs = respaldo.referenciasDelExtracto(BANCO)
+  const refs = referenciasDelExtracto(BANCO)
   const base = `${S('2026-09-10')}|${FCL}|-50784`
   assert.equal(refs.get(4), base, 'la fila que no se repite no cambia de clave: nada aguas abajo se mueve')
   assert.equal(refs.get(6), `${base}#2`, 'la segunda de $50.784 del mismo día es otra')

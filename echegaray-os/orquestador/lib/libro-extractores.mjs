@@ -60,7 +60,7 @@ import { columnasObligatorias } from './compras-columnas.mjs'
 // (este extractor y el cruce cheque↔factura) y tipearlos dos veces deja a uno leyendo índices viejos.
 import { columnasDeCompras, estaPagada, estaAnulada, esFacturaCargada, pendienteDeCompra, cuotasEnCheque, fechaDeCajaDeCompra } from './libro-extractores-compras.mjs'
 import { INSTRUMENTOS, colMesDelAnio } from './cash-flow-lineas.mjs'
-import { cubiertaPorResumen } from './libro-respaldo-banco.mjs'
+import { cubiertaPorResumen, referenciasDelExtracto } from './libro-respaldo-banco.mjs'
 // El default de `deChequesEmitidos` era un 20 escrito a mano y el registro se movió a la 27. El
 // llamador real (libro-movimientos-pestana) pasa el ancla viva; el default es para todos los demás.
 import { FILA_DATO0 as FILA_DATO0_CHEQUES } from './cheques-emitidos-geometria.mjs'
@@ -355,6 +355,9 @@ export function deChequesEmitidos(filas = [], { fila0 = FILA_DATO0_CHEQUES, colM
  */
 export function deBancoCargos(filas = [], { fila0 = 4 } = {}) {
   const out = []
+  // La identidad sale del extracto ENTERO, no de los cargos: dos comisiones idénticas del mismo día
+  // son dos cargos, y la misma fila tiene que dar la misma clave acá y en `deBancoObligaciones`.
+  const refs = referenciasDelExtracto(filas, { fila0 })
   for (let i = fila0 - 1; i < filas.length; i++) {
     const f = filas[i] ?? []
     const fecha = num(f[0])
@@ -372,7 +375,7 @@ export function deBancoCargos(filas = [], { fila0 = 4 } = {}) {
       rubro: 'Financiero',
       estado: 'REAL',
       instrumento: 'debito',
-      referenciaBanco: `${fecha}|${txt(f[1])}|${importe}`,
+      referenciaBanco: refs.get(i + 1),
       origen: { pestana: '_BANCO_RAW', fila: i + 1 },
     }))
   }

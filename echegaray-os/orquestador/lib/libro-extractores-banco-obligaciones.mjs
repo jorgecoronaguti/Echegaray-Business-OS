@@ -194,10 +194,12 @@ function movDeDebito(d, { rubro, concepto, contraparte }) {
     rubro,
     estado: 'REAL',
     instrumento: 'debito',
-    // El crudo de la celda C es NEGATIVO en un débito y `debitosDelExtracto` lo devuelve positivo:
-    // se reconstruye el signo para que la clave sea LA MISMA que armaría `deBancoCargos` sobre la
-    // misma fila. Dos claves distintas para el mismo débito lo dejarían entrar dos veces.
-    referenciaBanco: `${d.fecha}|${txt(d.concepto)}|${-d.importe}`,
+    // LA MISMA identidad que `deBancoCargos` le da a la misma fila: `debitosDelExtracto` la calcula
+    // sobre el extracto entero, con el ordinal que distingue dos débitos idénticos del mismo día
+    // (ver `referenciasDelExtracto`). Dos claves distintas para el mismo débito lo dejarían entrar dos
+    // veces; una clave para dos débitos se comería uno (las 15 del Fondo de Cese del 10/09 quedaban 6).
+    // El respaldo reconstruye el crudo —NEGATIVO en la celda C— para quien arme débitos a mano.
+    referenciaBanco: d.referencia ?? `${d.fecha}|${txt(d.concepto)}|${-d.importe}`,
     origen: { pestana: '_BANCO_RAW', fila: d.fila },
   })
 }
