@@ -20,7 +20,7 @@ import { IconoDeAviso, MarcaDeOrigen } from '../CeldasDeLiquidacion'
 import { Escribible } from './CeldasDelEspejo'
 import type { CampoEditable } from '../../../services/liquidacionOverrides'
 import { horas as nHoras, pesos } from '../formato'
-import { estadoDelPago, motivoSinCobra, tituloDeJornales } from './estadoDelPago'
+import { estadoDelPago, motivoSinCobra, sinSello, tituloDeJornales } from './estadoDelPago'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { marcaDeCategoria, negroDeLaFila, tituloDelNetoEstimado, type SueldoBlancoNegro } from '../../../services/sueldoBlancoNegro'
 import { avisoDeExcedente, type PagoDeLaLinea } from '../../../services/pagoDeLaQuincena'
@@ -113,8 +113,15 @@ export function CeldaHoraCategoria({ fila, edicion }: { fila: FilaDelEspejo; edi
   if (s == null && sello?.valorHora != null) {
     return (
       <div data-testid={`hora-categoria-${fila.personaId}`} data-sellado="1"
-        title={`Quincena cerrada: ${pesos(sello.valorHora)}/h es la tarifa con la que se liquidó, tomada al ${diaDeLaFoto(sello.hasta)}. No es la de hoy.`}
+        title={`Quincena cerrada: ${pesos(sello.valorHora)}/h es la tarifa con la que se liquidó (liquidacion_linea.valor_hora), tomada al ${diaDeLaFoto(sello.hasta)}. No es la de hoy.`}
         style={{ ...DERECHA, color: V.apagado }}>{pesos(sello.valorHora)}</div>
+    )
+  }
+  // LA CERRADA SIN $/H SELLADO LO DICE (18/09/2026): «—» se leía igual que «no cobra por hora».
+  if (s == null && sello != null) {
+    return (
+      <div data-testid={`hora-categoria-${fila.personaId}`} data-sin-sello="1" title="La quincena está cerrada y la foto no tiene el $/h. No se rellena con la tarifa de hoy."
+        style={{ ...DERECHA, fontSize: '11px', color: V.tenue }}>{sinSello(fila.linea)}</div>
     )
   }
   if (seEscribe(fila, 'valorHoraRecibo', edicion)) {
@@ -252,7 +259,8 @@ export function CeldaTotal({ fila, edicion }: { fila: FilaDelEspejo; edicion?: E
     const porque = motivoSinCobra(l)
     return (
       <div data-testid={`total-${fila.personaId}`} style={{ ...DERECHA, color: V.tenue }}
-        title={[l.sinNeto ? 'Sin neto del blanco: no hay total que afirmar.' : 'Sin retribución cargada.', jornales].filter(Boolean).join(' · ')}>
+        title={[sinSello(l) ? 'Quincena cerrada: la foto no tiene esta cifra y no se rellena con el cálculo de hoy.'
+          : l.sinNeto ? 'Sin neto del blanco: no hay total que afirmar.' : 'Sin retribución cargada.', jornales].filter(Boolean).join(' · ')}>
         {porque}
       </div>
     )

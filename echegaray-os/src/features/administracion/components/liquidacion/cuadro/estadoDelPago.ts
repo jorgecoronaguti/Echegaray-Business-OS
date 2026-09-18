@@ -14,8 +14,18 @@ import type { ReferenciaDeJornales } from '../../../services/liquidacionOverride
  *
  * UN MENSUAL SIN IMPORTE NO ESTÁ «SIN TARIFA» (dueño, 15/09/2026: «los jefes cobran por mes, no preguntes más»).
  */
-export const motivoSinCobra = (l: { modalidad?: string | null; sinNeto?: boolean }): string =>
-  l.modalidad === 'mensual' ? 'importe no cargado' : l.sinNeto ? 'sin neto' : 'sin tarifa'
+export const motivoSinCobra = (l: { modalidad?: string | null; sinNeto?: boolean; sello?: { conLinea: boolean } | null }): string =>
+  sinSello(l) ?? (l.modalidad === 'mensual' ? 'importe no cargado' : l.sinNeto ? 'sin neto' : 'sin tarifa')
+
+/**
+ * QUÉ SE DICE EN UNA CELDA VACÍA DE LA QUINCENA CERRADA (18/09/2026). La cerrada muestra la foto de `liquidacion_linea`
+ * y nada más: si la persona no tiene línea sellada, NADA de su fila es dato («sin línea sellada»); si la tiene y esta
+ * columna vino vacía —quincena vieja—, «sin dato sellado». En los dos casos la celda NO se rellena con el cálculo de
+ * hoy, que es exactamente lo que la pantalla hacía y el auditor reprodujo (Bazán a $4.000/h con $4.300 sellados).
+ * `null` en la abierta: ahí cada celda dice lo suyo («sin tarifa», «—»).
+ */
+export const sinSello = (l: { sello?: { conLinea: boolean } | null }): string | null =>
+  l.sello == null ? null : l.sello.conLinea ? 'sin dato sellado' : 'sin línea sellada'
 
 /**
  * LA MARCA DE JORNALES CUANDO LA PLANILLA NO DICE LO MISMO QUE EL CUADRO. `null` = no hay marca.
