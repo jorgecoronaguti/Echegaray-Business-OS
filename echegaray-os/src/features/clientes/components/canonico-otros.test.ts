@@ -29,10 +29,10 @@ test('la ficha dibuja Otros entre Subcontratos y Mano de obra, con su pista y su
   // Cuatro pistas de 112 en el ancho entero y cuatro de 108 debajo de 1200: una por rubro.
   assert.match(src, /_minmax\(0,112px\)_minmax\(0,112px\)_minmax\(0,112px\)_minmax\(0,112px\)_minmax\(0,148px\)/)
   assert.match(src, /_minmax\(0,108px\)_minmax\(0,108px\)_minmax\(0,108px\)_minmax\(0,108px\)_minmax\(0,132px\)/)
-  assert.match(src, /title=\{AYUDA_OTROS\}><RotuloCol derecha>Otros<\/RotuloCol><ALaFecha \/>/)
+  assert.match(src, /title=\{AYUDA_OTROS\}><RotuloCol derecha>Otros<\/RotuloCol><ALaFecha conIva \/>/)
 })
 
-test('la celda de Otros de la ficha delega, escribe lo por vencer y NO enlaza a un detalle que no existe', () => {
+test('la celda de Otros de la ficha delega, escribe lo por vencer y abre su detalle como las otras', () => {
   const src = leer('./ListasClienteV2.tsx')
   const desde = src.indexOf('data-testid="otros-obra-cliente"')
   assert.ok(desde > 0, 'no está la celda de otros de la obra')
@@ -40,10 +40,11 @@ test('la celda de Otros de la ficha delega, escribe lo por vencer y NO enlaza a 
   assert.match(celda, /textoOtros\(costoDeLaObra\)/)
   assert.match(celda, /tituloOtros\(costoDeLaObra\) \?\? AYUDA_OTROS/)
   assert.doesNotMatch(celda, /toLocaleString|\?\? 0|Math\.round/)
-  assert.doesNotMatch(celda, /AbrirDetalle/, 'la RPC de detalle no publica «otros»: un botón abriría un panel vacío')
-  assert.match(src.slice(desde, desde + 900), /PorVencer texto=\{textoPorVencer\(costoDeLaObra\?\.otrosPorVencer\)\}/)
-  // El detalle por rubro sigue sin conocer «otros» —y el día que lo conozca, este caso avisa que hay que enlazar.
-  assert.match(leer('../services/detalleCostoDeObra.ts'), /export const RUBROS = \['materiales', 'subcontratos', 'mo', 'hh'\] as const/)
+  // DESDE 20260918T1510 el detalle publica «otros» con la MISMA regla que la celda: se enlaza.
+  assert.match(celda, /hrefDetalle\(o\.obra_id, 'otros'\)/)
+  assert.match(src.slice(desde, desde + 1200), /PorVencer texto=\{textoPorVencer\(costoDeLaObra\?\.otrosPorVencer\)\}/)
+  assert.match(leer('../services/detalleCostoDeObra.ts'), /export const RUBROS = \['materiales', 'subcontratos', 'otros', 'mo', 'hh'\] as const/)
+  assert.match(leer('../services/detalleCostoDeObra.ts'), /rpc\('detalle_costo_de_obra_rubros'/, 'el panel lee la función de cuatro rubros, la que cierra con la celda')
 })
 
 test('los títulos dicen qué contiene Otros y qué dejó de contener Materiales', () => {

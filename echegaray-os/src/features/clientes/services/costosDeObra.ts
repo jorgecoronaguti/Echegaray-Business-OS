@@ -108,10 +108,13 @@ export interface CostoDeObra {
 }
 
 /** LOS RÓTULOS DICEN QUÉ ES EL NÚMERO (dueño, 13/09/2026): lo gastado hasta hoy, no lo presupuestado. */
-export const ROTULO_MATERIALES = 'Materiales a la fecha'
+// «CON IVA» EN EL RÓTULO (auditoría 18/09/2026): las compras del CRM van con IVA —lo pagado, decisión del
+// 17/09— y Analíticas y la ficha de la obra las muestran sin IVA. Sin decirlo, el mismo comprobante daba
+// dos números en dos pantallas. La mano de obra no lleva IVA y su rótulo no lo nombra.
+export const ROTULO_MATERIALES = 'Materiales a la fecha, con IVA'
 export const ROTULO_MANO_OBRA = 'Mano de obra a la fecha'
-export const ROTULO_SUBCONTRATOS = 'Subcontratos a la fecha'
-export const ROTULO_OTROS = 'Otros a la fecha'
+export const ROTULO_SUBCONTRATOS = 'Subcontratos a la fecha, con IVA'
+export const ROTULO_OTROS = 'Otros a la fecha, con IVA'
 export const ROTULO_SIN_OBRA = 'Gastos del cliente sin obra asignada'
 
 function num(v: unknown): number | null {
