@@ -444,12 +444,50 @@ test('si el rótulo del cliente no está en el desplegable, la J queda VACÍA �
   assert.equal(p.cols.obraJ, null, 'dos clientes en la misma fila es peor que una celda vacía')
 })
 
-test('sin nada escrito a mano, el historial sigue funcionando exactamente como antes', async () => {
+// ═══ QUÉ DECIDE LA COLUMNA «Obra» CUANDO NO HAY NADA ESCRITO A MANO — LA TRAZA (18/09/2026) ═══
+//
+// 14/09: el dueño inserta la columna «Obra» en L y se establece que REGISTRA UNA DECISIÓN: lo que
+//        sale del historial del proveedor es una estadística sobre otros gastos, así que no se
+//        escribe. Este test afirmaba eso (`p.obra.valor === null`).
+// 17/09: el dueño reclama lo contrario para los casos deducibles — «no está completando todas las
+//        columnas». El caso concreto es la fila 981 (Neumagom, neumáticos, taller): el sistema tenía
+//        el historial que la resolvía y se la dejó para que la completara él a mano.
+// 18/09: la regla pasa a ser **se escribe sólo lo inequívoco, lo demás se nombra como excepción**.
+//        No es aflojar el criterio: es moverlo de «de dónde salió el dato» a «el dato resuelve UNA
+//        obra o no». El origen se sigue declarando (`via: 'historial'`, más la marca `[historial:
+//        obra]` en el Concepto) y la ambigüedad sigue frenando igual. Pesa además que el sync ya
+//        imputaba el espejo `costos_obra` con esa misma J/K una hora después: la decisión se tomaba
+//        igual, sólo que fuera de la celda, y el dueño tipeaba lo que el OS ya había resuelto.
+//
+// Los dos tests de acá abajo son las dos mitades de esa regla. El segundo es el que impide que
+// «escribir lo deducible» se convierta en «escribir cualquier cosa».
+
+test('J y K del HISTORIAL escriben la columna Obra cuando resuelven UNA obra — con la vía declarada', async () => {
   const p = await planCon('')
   assert.equal(p.cols.obraJ, 'LA ESTRELLA', 'lo firme del historial se sigue aplicando')
   assert.equal(p.aplicado.obra.n, 6)
-  assert.equal(p.obra.valor, null, 'pero el historial NO decide la columna Obra')
-  assert.match(p.obra.porque, /historial/)
+  // Las seis cargas de este proveedor fueron a LA ESTRELLA con el detalle «Galpón 9»: J + K resuelven
+  // una sola obra del catálogo. Antes del 18/09 esto quedaba en null y lo tipeaba el dueño.
+  assert.equal(p.obra.valor, 'OB-0007 · LE - GALPÓN 9')
+  assert.equal(p.valores.L, 'OB-0007 · LE - GALPÓN 9', 'y llega a la celda, no sólo al informe')
+  assert.equal(p.obra.via, 'historial', 'sin la vía, una inferencia se lee como un dato del papel')
+  assert.match(p.obra.porque, /historial del proveedor/)
+  // Y queda declarado en el Concepto, que es lo que permite distinguirlo meses después.
+  assert.match(p.valores.M, /\[historial:[^\]]*obra/)
+})
+
+test('EL LÍMITE: si la K del historial no nombra ninguna obra del cliente, la columna Obra queda VACÍA', async () => {
+  // Mismo origen —todo del historial— y el resultado opuesto: «La Estrella» tiene siete obras en el
+  // catálogo y «materiales» no nombra ninguna. Elegir la más frecuente sería imputar el costo a una
+  // obra por estadística, que es exactamente lo que no se hace. Se deja vacía y se dice por qué.
+  const genericos = perfilesDeImputacion(
+    Array.from({ length: 6 }, () => ({ proveedor: 'Corralon Progreso', obra_texto: 'LA ESTRELLA', unidad_negocio: 'Civil', detalle: 'materiales', concepto: 'varios' })),
+  )
+  const p = await planCon('', { perfiles: genericos })
+  assert.equal(p.cols.obraJ, 'LA ESTRELLA', 'la J sí se completa: ésa no es ambigua')
+  assert.equal(p.obra.valor, null)
+  assert.equal(p.valores.L, undefined, 'una celda vacía es mejor que una obra elegida por promedio')
+  assert.match(p.obra.porque, /no nombra una obra de LA ESTRELLA/, 'y la excepción se nombra con el porqué')
 })
 
 test('los ocho del fajo dc2d0273, por el camino real del cargador', async () => {
