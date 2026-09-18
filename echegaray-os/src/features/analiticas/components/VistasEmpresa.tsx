@@ -1,14 +1,13 @@
-// CAJA, NÓMINA Y COBRANZA — las tres lecturas de la empresa, al final del módulo.
+// NÓMINA Y COBRANZA — dos lecturas de la empresa, al final del módulo. (Caja vive en VistaCaja.tsx:
+// desde el 18/09/2026 es la pestaña CAJA leída de su espejo, no un cálculo sobre egresos.)
 //
 // Diseño v6: columnas mensuales (caja apilada obra/estructura; nómina con la suba sobre marzo en
 // ámbar), barras por área, la banda de antigüedad apilada y la tabla de clientes con el verbo del día.
 // Lo que el diseño trae escrito a mano (3.053,5 h, 396 h, «27 de 30») sale acá de los datos o no sale.
-import { millones, pctConSigno, pctEntero } from '../services/formato'
-import { bandasDeCobranza, caja, cifrasCobranza, cobranza, legajos, leerEgresos, MES_BASE, nomina, seisMesesReales, type FilaCobranza } from '../services/empresa'
+import { millones, pctConSigno } from '../services/formato'
+import { bandasDeCobranza, cifrasCobranza, cobranza, legajos, MES_BASE, nomina, seisMesesReales, type FilaCobranza } from '../services/empresa'
 import type { ClaveBanda } from '../../clientes/services/reglasCobranza'
 import { ancho, Cabecera, ENCABEZADO, rotuloMes, Seccion, SinLectura } from './Piezas'
-
-const veces = (x: number | null) => (x == null ? null : `${x.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ×`)
 
 /** Columnas mensuales con el valor arriba y el mes abajo; `partes` se apilan de arriba hacia abajo. */
 export function Columnas({ meses }: { meses: { mes: string; valor: string | null; color?: string; partes: { alto: number; clase: string }[]; nota?: string }[] }) {
@@ -25,56 +24,6 @@ export function Columnas({ meses }: { meses: { mes: string; valor: string | null
         </div>
       ))}
     </div>
-  )
-}
-
-export function VistaCaja({ egresos, periodo }: { egresos: unknown[] | null; periodo: string }) {
-  if (!egresos) return <SinLectura que="los egresos" />
-  const c = caja(leerEgresos(egresos))
-  const max = Math.max(1, ...c.meses.map((m) => m.aObra + m.estructura))
-  const areas = [
-    { area: 'Obra', monto: c.aObra, tono: 'bg-accent', color: 'text-ink', nota: 'imputado a una obra concreta' },
-    ...c.ramas.map((r) => ({ area: r.rotulo, monto: r.total, tono: 'bg-dato-referencia', color: 'text-muted', nota: '' })),
-    ...(c.nSinDestino ? [{ area: 'Sin clasificar', monto: c.sinDestino, tono: 'bg-warn', color: 'text-warn', nota: `${c.nSinDestino} filas sin área · esperan destino` }] : []),
-  ]
-  const maxArea = Math.max(1, ...areas.map((a) => a.monto))
-  return (
-    <>
-      <Cabecera titulo="Caja" detalle={`${periodo} · a dónde fue la plata`}
-        cifras={[
-          { rotulo: 'salió', valor: millones(c.salio) },
-          { rotulo: 'a una obra', valor: millones(c.aObra) },
-          { rotulo: 'estructura', valor: millones(c.estructura), tono: 'muted' },
-          { rotulo: 'sin destino', valor: c.nSinDestino ? millones(c.sinDestino) : null, falta: 'ninguno', tono: 'warn' },
-          { rotulo: 'estructura por peso de obra', valor: veces(c.estructuraPorPesoDeObra), falta: '—' },
-        ]}
-        derecha={c.nSinDestino ? (
-          // SIN PANTALLA DE IMPUTACIÓN TODAVÍA: el botón del diseño se muestra, apagado y con la razón.
-          <button type="button" disabled title="La imputación de un egreso sin área todavía no tiene pantalla: se corrige en Compras."
-            className="h-11 whitespace-nowrap rounded-control bg-marca px-4 text-[12.5px] font-semibold text-accent disabled:cursor-not-allowed disabled:opacity-60 lg:h-[34px]">
-            Imputar las {c.nSinDestino} filas sin destino
-          </button>
-        ) : undefined} />
-      <Seccion titulo="Lo que salió, por mes" leyenda={[{ color: 'bg-accent', rotulo: 'a una obra' }, { color: 'bg-dato-referencia', rotulo: 'estructura' }]}>
-        <Columnas meses={c.meses.map((m) => ({
-          mes: m.mes, valor: millones(m.aObra + m.estructura),
-          partes: [{ alto: (m.estructura / max) * 170, clase: 'bg-dato-referencia' }, { alto: (m.aObra / max) * 170, clase: 'bg-accent' }],
-        }))} />
-      </Seccion>
-      <Seccion titulo="Por área" aclaracion="parte de lo que salió" filo>
-        <div className="flex flex-col pb-9">
-          {areas.map((a) => (
-            <div key={a.area} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-1.5 border-b border-line py-2.5 hover:bg-surface-quiet lg:h-12 lg:grid-cols-[150px_minmax(0,1fr)_96px_64px_260px] lg:gap-6 lg:py-0">
-              <div className={`text-[13px] font-medium ${a.color}`}>{a.area}</div>
-              <div className="col-span-3 row-start-2 h-3 lg:col-span-1 lg:row-auto"><div className={`h-full rounded-[2px] ${a.tono}`} style={{ width: ancho(a.monto, maxArea) }} /></div>
-              <div className={`text-right text-[13px] font-semibold ${a.color}`}>{millones(a.monto)}</div>
-              <div className="text-right text-[11.5px] text-faint">{c.salio > 0 ? pctEntero(a.monto / c.salio) : '—'}</div>
-              <div className="hidden truncate text-[11.5px] text-muted lg:block">{a.nota}</div>
-            </div>
-          ))}
-        </div>
-      </Seccion>
-    </>
   )
 }
 

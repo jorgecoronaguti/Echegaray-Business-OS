@@ -1,0 +1,272 @@
+// CAJA — la pestaña CAJA del Flujo de Caja, tal cual, más lo que se está gastando por fecha de pago.
+//
+// El dueño (18/09/2026): «reflejo fiel de lo que muestra la pestaña caja». Por eso cada número de
+// arriba es el TEXTO de la celda del Sheet leído de su espejo (`caja_sheet_vigente`): no se formatea,
+// no se convierte, no se suma. Las cinco tarjetas, las cuentas en dos monedas, la escalera de
+// vencimientos, las alertas, las acciones y los cuatro gráficos son los de la pestaña, con sus
+// rótulos. La posición es A LA FECHA que la pestaña declara; el filtro de fechas no la mueve.
+//
+// Lo que sí gobierna el filtro es la parte de abajo —«me gusta lo de marcar lo que se está gastando,
+// pero quiero filtro de fechas»—: lo salido por FECHA DE CAJA (percibido), marcado a obra / estructura
+// / sin destino, mes a mes y por área.
+//
+// Diseño: las piezas de Analíticas v6 (Cabecera, Seccion, Columnas) y los tokens; sin cards, sin
+// sombras. Los gráficos COMBO de la pestaña tienen dos ejes; acá las mismas series van en dos paneles
+// apilados con el mismo eje de días (barras arriba, saldo abajo): dos escalas en un plano alinean lo
+// que no se alinea.
+import { millones, pctEntero } from '../services/formato'
+import { caja, type Caja } from '../services/empresa'
+import { egresosPercibidos, frescura, horaSanJuan, type GraficoCaja, type LecturaCaja, type SeccionCaja, type SerieCaja } from '../services/cajaSheet'
+import { apilar, escala, indicesRotulados, paneles, rotuloEje } from '../services/graficoCaja'
+import { ancho, Cabecera, ENCABEZADO, FilaDeCifras, Seccion, SinLectura } from './Piezas'
+import { Columnas } from './VistasEmpresa'
+
+export function VistaCaja({ lectura, egresos, periodo, rango }: {
+  lectura: LecturaCaja
+  egresos: unknown[] | null
+  periodo: string
+  rango: { desde: string | null; hasta: string | null }
+}) {
+  if (lectura.estado !== 'foto') {
+    return (
+      <>
+        <Cabecera titulo="Caja" detalle="la pestaña CAJA del Flujo de Caja" cifras={[]} />
+        <p className="mt-6 text-sm text-muted" data-testid="caja-sin-foto">
+          {lectura.estado === 'sin_espejo' ? 'El espejo de CAJA todavía no está publicado en esta base (migración 20260918T1500 pendiente).'
+            : lectura.estado === 'sin_foto' ? `El espejo de CAJA todavía no guardó ninguna foto${lectura.error ? ` — último intento: ${lectura.error}` : ''}.`
+              : 'No se pudo leer el espejo de CAJA.'}
+        </p>
+        <Gasto egresos={egresos} periodo={periodo} rango={rango} />
+      </>
+    )
+  }
+  const { foto } = lectura
+  const { aviso } = frescura(foto, new Date().toISOString())
+  const tablas = foto.secciones.filter((s): s is Extract<SeccionCaja, { forma: 'tabla' }> => s.forma === 'tabla')
+  const listas = foto.secciones.filter((s): s is Extract<SeccionCaja, { forma: 'lista' }> => s.forma === 'lista')
+  return (
+    <>
+      <Cabecera titulo="Caja" repartidas
+        detalle={<>
+          {foto.portada.titulo || 'CAJA'} · leída {horaSanJuan(foto.verificadaEn)}{foto.versionDrive ? ` · v${foto.versionDrive}` : ''}
+          {aviso ? <span className="block text-warn" data-testid="caja-aviso">▲ {aviso}</span> : null}
+        </>}
+        cifras={foto.portada.tarjetas.map((t) => ({ rotulo: t.rotulo, valor: t.valor.texto || null, falta: '—', nota: t.contexto || undefined }))} />
+      {tablas.map((s) => (
+        <Seccion key={s.clave} titulo={s.titulo} arriba="pt-8">
+          <Tabla s={s} />
+        </Seccion>
+      ))}
+      {listas.length ? (
+        <div className="mt-8 grid gap-6 border-t border-line pt-6 lg:grid-cols-2">
+          {listas.map((s) => (
+            <div key={s.clave} className="flex flex-col gap-2.5">
+              <h2 className="text-[13px] font-semibold text-ink">{s.titulo}</h2>
+              {s.items.length ? s.items.map((i) => (
+                <p key={i.fila} className={`text-[12.5px] leading-normal ${i.texto.startsWith('▲') ? 'text-warn' : 'text-ink-soft'}`}>{i.texto}</p>
+              )) : <p className="text-[12.5px] text-faint">nada</p>}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {foto.graficos.map((g) => (
+        <Seccion key={g.id} titulo={g.titulo.replace(/^⟡\s*/, '')} aclaracion={g.subtitulo || undefined} filo>
+          <Grafico g={g} />
+        </Seccion>
+      ))}
+      <Gasto egresos={egresos} periodo={periodo} rango={rango} />
+    </>
+  )
+}
+
+// ─── Las tablas de la pestaña ───────────────────────────────────────────────────────────────────
+
+/** «Balanz · inversiones ARS ‖ invertido» → el nombre y su marca, como los escribe la pestaña. */
+const partirRotulo = (t: string): { nombre: string; marca: string | null } => {
+  const [nombre, marca] = t.split('‖').map((x) => x.trim())
+  return { nombre, marca: marca || null }
+}
+
+function Tabla({ s }: { s: Extract<SeccionCaja, { forma: 'tabla' }> }) {
+  const n = s.encabezados.length
+  const cols = `minmax(0,1.6fr) repeat(${Math.max(n - 1, 1)}, minmax(0,1fr))`
+  return (
+    <div className="flex flex-col" data-testid={`caja-${s.clave}`}>
+      <div className={`grid h-9 items-center gap-4 border-b border-line ${ENCABEZADO}`} style={{ gridTemplateColumns: cols }}>
+        {s.encabezados.map((h, i) => <div key={h} className={i === 0 ? '' : 'text-right'}>{h}</div>)}
+      </div>
+      {s.filas.map((f, k) => {
+        const total = /^(total|⇒)/i.test(f.celdas[0]?.texto ?? '')
+        const { nombre, marca } = partirRotulo(f.celdas[0]?.texto ?? '')
+        return (
+          <div key={f.clave} className={`grid min-h-10 items-center gap-4 py-2 tabular-nums hover:bg-surface-quiet ${total ? 'border-t border-line-strong font-semibold' : k < s.filas.length - 1 ? 'border-b border-line' : ''}`} style={{ gridTemplateColumns: cols }}>
+            <div className="min-w-0 text-[13px] text-ink">
+              <span className={total ? 'font-semibold' : 'font-medium'}>{nombre}</span>
+              {marca ? <span className="ml-2 text-[11px] font-normal text-faint">{marca}</span> : null}
+            </div>
+            {f.celdas.slice(1).map((c, i) => (
+              <div key={i} className={`truncate text-right text-[13px] ${c.texto === '' ? 'text-faint' : c.numero != null && c.numero < 0 ? 'text-neg' : c.fecha ? 'text-muted' : 'text-ink'}`}>{c.texto || '—'}</div>
+            ))}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Los gráficos ────────────────────────────────────────────────────────────────────────────────
+
+/** Identidad por serie, en orden fijo. «Ya salió» es gris porque ya no hay que conseguirlo (así lo pinta la pestaña). */
+const RELLENO = ['fill-serie-1', 'fill-serie-2', 'fill-serie-3', 'fill-serie-4', 'fill-accent', 'fill-dato-materiales']
+const PUNTO = ['bg-serie-1', 'bg-serie-2', 'bg-serie-3', 'bg-serie-4', 'bg-accent', 'bg-dato-materiales']
+const TRAZO = ['stroke-accent', 'stroke-serie-1', 'stroke-serie-2', 'stroke-serie-3']
+const PUNTO_LINEA = ['bg-accent', 'bg-serie-1', 'bg-serie-2', 'bg-serie-3']
+const esYaSalio = (s: SerieCaja) => /^ya sali/i.test(s.nombre)
+const rellenoDe = (series: SerieCaja[], k: number) => (esYaSalio(series[k]) ? 'fill-dato-referencia' : RELLENO[series.filter((s, i) => i < k && !esYaSalio(s)).length % RELLENO.length])
+const puntoDe = (series: SerieCaja[], k: number) => (esYaSalio(series[k]) ? 'bg-dato-referencia' : PUNTO[series.filter((s, i) => i < k && !esYaSalio(s)).length % PUNTO.length])
+
+const ANCHO = 720
+const IZQ = 64
+const DER = 12
+const ALTO_BARRAS = 150
+const ALTO_LINEAS = 130
+const PIE = 22
+
+function Grafico({ g }: { g: GraficoCaja }) {
+  const n = g.dominio.length
+  if (!n) return <p className="text-sm text-faint">el gráfico no tiene puntos</p>
+  const { barras, lineas } = paneles(g)
+  const rotulados = new Set(indicesRotulados(n))
+  const x = (i: number) => IZQ + ((i + 0.5) / n) * (ANCHO - IZQ - DER)
+  const paso = (ANCHO - IZQ - DER) / n
+  const tramos = apilar(barras, n)
+  const eB = escala(tramos.flatMap((t) => [t.y0, t.y1]))
+  const eL = escala(lineas.flatMap((s) => s.valores.filter((v): v is number => v != null)))
+  const alto = (barras.length ? ALTO_BARRAS + 8 : 0) + (lineas.length ? ALTO_LINEAS + 8 : 0) + PIE
+  let y0 = 0
+  const yB = (v: number) => y0 + ALTO_BARRAS - ((v - eB.min) / (eB.max - eB.min)) * ALTO_BARRAS
+  const panelBarras = barras.length ? (() => {
+    const top = y0
+    const out = (
+      <g key="barras">
+        {eB.ticks.map((t) => <g key={t}><line x1={IZQ} x2={ANCHO - DER} y1={yB(t)} y2={yB(t)} className={t === 0 ? 'stroke-line-strong' : 'stroke-line'} strokeWidth="1" /><text x={IZQ - 6} y={yB(t) + 3} textAnchor="end" className="fill-faint text-[9px] tabular-nums">{rotuloEje(t)}</text></g>)}
+        {tramos.map((t) => {
+          const a = Math.min(yB(t.y0), yB(t.y1))
+          const h = Math.max(0, Math.abs(yB(t.y0) - yB(t.y1)) - 1)
+          const w = Math.max(2, paso * 0.66)
+          return (
+            <rect key={`${t.serie}-${t.i}`} x={x(t.i) - w / 2} y={a} width={w} height={h} rx={h > 3 ? 1.5 : 0} className={rellenoDe(barras, t.serie)}>
+              <title>{`${g.dominio[t.i]} · ${barras[t.serie].nombre || 'valor'}: ${millones(t.y1 - t.y0) ?? ''}`}</title>
+            </rect>
+          )
+        })}
+      </g>
+    )
+    y0 = top + ALTO_BARRAS + 8
+    return out
+  })() : null
+  const yL = (v: number) => y0 + ALTO_LINEAS - ((v - eL.min) / (eL.max - eL.min)) * ALTO_LINEAS
+  const panelLineas = lineas.length ? (
+    <g key="lineas">
+      {eL.ticks.map((t) => <g key={t}><line x1={IZQ} x2={ANCHO - DER} y1={yL(t)} y2={yL(t)} className={t === 0 ? 'stroke-line-strong' : 'stroke-line'} strokeWidth="1" /><text x={IZQ - 6} y={yL(t) + 3} textAnchor="end" className="fill-faint text-[9px] tabular-nums">{rotuloEje(t)}</text></g>)}
+      {lineas.map((s, k) => {
+        const puntos = s.valores.map((v, i) => (v == null ? null : [x(i), yL(v)] as const))
+        const d = puntos.map((p, i) => (p ? `${i === 0 || !puntos[i - 1] ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}` : '')).join(' ')
+        const ultimo = [...puntos].reverse().find((p) => p)
+        const ultimoV = [...s.valores].reverse().find((v) => v != null)
+        return (
+          <g key={k}>
+            <path d={d} fill="none" className={TRAZO[k % TRAZO.length]} strokeWidth="2" strokeLinejoin="round" strokeDasharray={s.punteada ? '4 3' : undefined} />
+            {puntos.map((p, i) => (p ? <circle key={i} cx={p[0]} cy={p[1]} r="5" className="fill-transparent"><title>{`${g.dominio[i]} · ${s.nombre || 'valor'}: ${millones(s.valores[i]) ?? ''}`}</title></circle> : null))}
+            {ultimo && ultimoV != null ? <text x={Math.min(ultimo[0] + 6, ANCHO - DER)} y={ultimo[1] - 6} textAnchor={ultimo[0] > ANCHO - 90 ? 'end' : 'start'} className="fill-muted text-[9.5px] tabular-nums">{millones(ultimoV)}</text> : null}
+          </g>
+        )
+      })}
+    </g>
+  ) : null
+  const yPie = (barras.length ? ALTO_BARRAS + 8 : 0) + (lineas.length ? ALTO_LINEAS + 8 : 0) + 12
+  const leyenda = [
+    ...barras.map((s, k) => ({ nombre: s.nombre || 'barras', color: puntoDe(barras, k), tipo: 'barra' as const })),
+    ...lineas.map((s, k) => ({ nombre: s.nombre || g.titulo.replace(/^⟡\s*/, ''), color: PUNTO_LINEA[k % PUNTO_LINEA.length], tipo: s.punteada ? 'punteada' as const : 'linea' as const })),
+  ]
+  return (
+    <div className="flex flex-col gap-3" data-testid={`caja-grafico-${g.id}`}>
+      {leyenda.length > 1 ? (
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-muted">
+          {leyenda.map((l) => <div key={l.nombre} className="flex items-center gap-2"><span className={`${l.tipo === 'barra' ? 'size-2.5 rounded-[2px]' : 'h-0.5 w-4'} ${l.color}`} />{l.nombre}</div>)}
+        </div>
+      ) : null}
+      <svg viewBox={`0 0 ${ANCHO} ${alto}`} className="block w-full" role="img" aria-label={g.titulo}>
+        {panelBarras}
+        {panelLineas}
+        {g.dominio.map((d, i) => (rotulados.has(i) ? <text key={i} x={x(i)} y={yPie} textAnchor="middle" className="fill-faint text-[9px]">{d}</text> : null))}
+      </svg>
+      <details className="text-[11.5px] text-muted">
+        <summary className="cursor-pointer select-none">los números</summary>
+        <div className="mt-2 max-h-64 overflow-auto">
+          <table className="w-full tabular-nums">
+            <thead><tr className={ENCABEZADO}><th className="py-1 text-left font-normal">día</th>{g.series.map((s, k) => <th key={k} className="py-1 text-right font-normal">{s.nombre || '—'}</th>)}</tr></thead>
+            <tbody>{g.dominio.map((d, i) => <tr key={i} className="border-t border-line"><td className="py-1">{d}</td>{g.series.map((s, k) => <td key={k} className="py-1 text-right">{millones(s.valores[i]) ?? ''}</td>)}</tr>)}</tbody>
+          </table>
+        </div>
+      </details>
+    </div>
+  )
+}
+
+// ─── Lo que se está gastando (se conserva; ahora por fecha de caja y con el filtro) ─────────────
+
+function Gasto({ egresos, periodo, rango }: { egresos: unknown[] | null; periodo: string; rango: { desde: string | null; hasta: string | null } }) {
+  if (!egresos) return <div className="mt-8 border-t border-line"><SinLectura que="lo que salió (caja_egreso_percibido)" /></div>
+  const p = egresosPercibidos(egresos)
+  const c: Caja = caja(p.egresos)
+  const max = Math.max(1, ...c.meses.map((m) => m.aObra + m.estructura))
+  const areas = [
+    { area: 'Obra', monto: c.aObra, tono: 'bg-accent', color: 'text-ink', nota: 'imputado a una obra concreta' },
+    ...c.ramas.map((r) => ({ area: r.rotulo, monto: r.total, tono: 'bg-dato-referencia', color: 'text-muted', nota: '' })),
+    ...(c.nSinDestino ? [{ area: 'Sin clasificar', monto: c.sinDestino, tono: 'bg-warn', color: 'text-warn', nota: `${c.nSinDestino} filas sin área · esperan destino` }] : []),
+  ]
+  const maxArea = Math.max(1, ...areas.map((a) => a.monto))
+  const ventana = rango.desde || rango.hasta ? `${rango.desde ?? '…'} → ${rango.hasta ?? '…'}` : 'desde el inicio'
+  return (
+    <div className="mt-10 border-t border-line-strong pt-7" data-testid="caja-gasto">
+      <div className="grid gap-5 lg:grid-cols-[180px_minmax(0,1fr)] lg:gap-6">
+        <div className="flex flex-col gap-1.5">
+          <h2 className="text-[15px] font-semibold text-ink">Lo que se está gastando</h2>
+          <p className="text-xs leading-[1.45] text-muted tabular-nums">{periodo} · {ventana} · por fecha de caja, sólo lo pagado</p>
+        </div>
+        <FilaDeCifras cifras={[
+          { rotulo: 'salió', valor: c.salio ? millones(c.salio) : null, falta: 'nada pagado' },
+          { rotulo: 'a una obra', valor: c.salio ? millones(c.aObra) : null, falta: '—' },
+          { rotulo: 'estructura', valor: c.salio ? millones(c.estructura) : null, falta: '—', tono: 'muted' },
+          { rotulo: 'sin destino', valor: c.nSinDestino ? millones(c.sinDestino) : null, falta: 'ninguno', tono: 'warn' },
+          { rotulo: 'por pagar en el período', valor: p.pendientes.n ? millones(p.pendientes.total) : null, falta: 'nada', tono: 'muted', nota: p.pendientes.n ? `${p.pendientes.n} compras · deuda, no salida` : undefined },
+        ]} />
+      </div>
+      {c.meses.length ? (
+        <>
+          <Seccion titulo="Lo que salió, por mes" leyenda={[{ color: 'bg-accent', rotulo: 'a una obra' }, { color: 'bg-dato-referencia', rotulo: 'estructura' }]}>
+            <Columnas meses={c.meses.map((m) => ({
+              mes: m.mes, valor: millones(m.aObra + m.estructura),
+              partes: [{ alto: (m.estructura / max) * 170, clase: 'bg-dato-referencia' }, { alto: (m.aObra / max) * 170, clase: 'bg-accent' }],
+            }))} />
+          </Seccion>
+          <Seccion titulo="Por área" aclaracion="parte de lo que salió" filo>
+            <div className="flex flex-col pb-9">
+              {areas.map((a) => (
+                <div key={a.area} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-1.5 border-b border-line py-2.5 hover:bg-surface-quiet lg:h-12 lg:grid-cols-[150px_minmax(0,1fr)_96px_64px_260px] lg:gap-6 lg:py-0">
+                  <div className={`text-[13px] font-medium ${a.color}`}>{a.area}</div>
+                  <div className="col-span-3 row-start-2 h-3 lg:col-span-1 lg:row-auto"><div className={`h-full rounded-[2px] ${a.tono}`} style={{ width: ancho(a.monto, maxArea) }} /></div>
+                  <div className={`text-right text-[13px] font-semibold ${a.color}`}>{millones(a.monto)}</div>
+                  <div className="text-right text-[11.5px] text-faint">{c.salio > 0 ? pctEntero(a.monto / c.salio) : '—'}</div>
+                  <div className="hidden truncate text-[11.5px] text-muted lg:block">{a.nota}</div>
+                </div>
+              ))}
+            </div>
+          </Seccion>
+        </>
+      ) : <p className="mt-6 pb-9 text-sm text-faint">nada pagado en el período</p>}
+      {p.pagadosSinFecha ? <p className="pb-6 text-[11.5px] text-warn">▲ {p.pagadosSinFecha} compra(s) pagada(s) sin «Fecha de caja» en Compras: no entran a ningún mes.</p> : null}
+    </div>
+  )
+}
