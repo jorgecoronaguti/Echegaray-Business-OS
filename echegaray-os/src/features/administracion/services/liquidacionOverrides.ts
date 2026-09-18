@@ -190,6 +190,17 @@ export interface LineaConOverrides extends LineaLiquidada {
    */
   sinDesglose: boolean
   /**
+   * QUINCENA CERRADA SIN PAGO REGISTRADO (auditor, 18/09/2026). Ni `pagado_banco`, ni `pagado_efectivo`, ni la marca
+   * «pagada»: nadie afirmó cuánto se le pagó. La fila NO publica saldo —ni «a pagar hoy»—, sólo lo que consta.
+   *
+   * Medido ese día: en las 16 cerradas de obreros, TODA línea con lo pagado registrado da saldo exactamente 0, y todo
+   * el saldo pendiente ($36,6 M) sale de las 108 líneas sin registro, que son todas de personas que hoy ya no están:
+   * `--completar-pagado` (JORNALES → lo pagado) corrió sólo con `where p.en_la_empresa`. Cerrar tampoco prueba el pago
+   * (`cerrarQuincena` dice «No se marcó ningún pago», y las cerradas de 2026 se sellaron en bloque el 09 y el 15/09).
+   * El saldo de esas filas es una alarma que nadie puede probar: la misma clase que el −$378.000 de Agüero.
+   */
+  pagoSinRegistrar: boolean
+  /**
    * LOS SALDOS DE LA FILA (dueño, 15/09/2026). La cuenta entera vive en `pagoDeLaQuincena.ts`: banco − pagado,
    * negro − pagado, y el exceso de un lado descontado del otro. Acá sólo se le entrega la entrada.
    */
@@ -431,7 +442,7 @@ export function aplicarOverrides(
     negro: sueldo?.negro ?? null,
     horasNegro: sueldo?.horasNegro ?? null,
     horasDeLosDias: base.horas,
-    pagadoBanco, pagadoEfectivo, pago, formulas, sinDesglose,
+    pagadoBanco, pagadoEfectivo, pago, formulas, sinDesglose, pagoSinRegistrar: false,
   }
 }
 
@@ -492,16 +503,21 @@ export function sinOverrides(
   // BANCO medido en la planilla o un peso registrado por banco. Límite declarado: un «0 por banco» que una persona haya
   // escrito a mano en una quincena ya cerrada, sin recibo y sin BANCO en la planilla, se lee igual que el del cargador.
   const sinDesglose = desgloseSinAfirmar({ escritoAMano: false, neto: null, reciboNeto: base.reciboNeto, jornales, pagadoBanco })
+  // ¿ALGUIEN REGISTRÓ LO PAGADO? En una foto sellada (`sello` presente) sin registro no se afirma saldo: lo pagado que
+  // se muestra son los adelantos de la foto —eso sí consta— y el resto no se da por debido ni por pagado.
+  const pagoSinRegistrar = sello != null && registrado(ov.pagadoBanco) == null && registrado(ov.pagadoEfectivo) == null
   return {
     ...base, manual: { ...SIN_MARCAS }, origen: { ...TODO_CALCULADO }, discrepancia: {},
     // `sueldo` SIGUE EN NULL A PROPÓSITO: el modelo blanco+negro no se recalcula sobre algo ya pagado. Lo que sí
     // viaja es el sello, para que el $/h de esa quincena deje de ser «—».
     referenciaJornales: null, sueldo: null, sello, presentismo: sellado, sinNeto: false, horasRecibo: null, valorHoraRecibo: null,
     negro: null, horasNegro: null, horasDeLosDias: base.horas,
-    pagadoBanco, pagadoEfectivo, formulas: {}, sinDesglose,
+    pagadoBanco, pagadoEfectivo, formulas: {}, sinDesglose, pagoSinRegistrar,
     pago: pagoDeLaLinea({
-      banco: base.porBanco,
-      negro: negroDeLaFila({
+      // SIN REGISTRO, LOS DOS LADOS VAN EN NULL: `pagoDeLaLinea` no afirma saldo ni «a pagar hoy», y el pie la cuenta
+      // aparte (`sinSaldo`) en vez de sumarla como deuda.
+      banco: pagoSinRegistrar ? null : base.porBanco,
+      negro: pagoSinRegistrar ? null : negroDeLaFila({
         netoMensual: base.netoMensual, cobra: base.cobra, porBanco: base.porBanco, sueldo: null, modalidad: base.modalidad,
       }),
       pagadoBanco, pagadoEfectivo,

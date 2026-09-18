@@ -63,7 +63,7 @@ export function separarPorTipo<T extends { grupo: GrupoLiquidacion; linea: { mod
 }
 
 type LineaDelMensual = Pick<LineaConOverrides, 'cobra' | 'porBanco' | 'reciboNeto' | 'pagadoBanco' | 'pagadoEfectivo'>
-  & { manual: Pick<LineaConOverrides['manual'], 'porBanco'>; sello?: { conLinea: boolean } | null }
+  & { manual: Pick<LineaConOverrides['manual'], 'porBanco'>; sello?: { conLinea: boolean } | null; pagoSinRegistrar?: boolean }
 
 export interface PagoDelMensual extends PagoDeLaLinea {
   /** El sueldo del mes (`cobra`: neto mensual, importe cargado o escrito a mano). `null` = no cargado. */
@@ -87,6 +87,17 @@ function bancoDelMensual(l: LineaDelMensual): { banco: number | null; origen: Pa
 
 export function pagoDelMensual(l: LineaDelMensual): PagoDelMensual {
   const sueldo = l.cobra == null ? null : r2(l.cobra)
+  // ═══ LA QUINCENA CERRADA NO AFIRMA EL SALDO DE UN MENSUAL (auditor, 18/09/2026) ═══
+  //
+  // Un mensual cobra por MES, y la foto es de la QUINCENA: los jefes de julio dan +$358.000 en la 1ª y −$358.000 en la
+  // 2ª (el banco giró los dos recibos juntos), que en el mes suman cero. Un saldo por quincena de un mensual cerrado es
+  // una alarma que el mes desmiente. Sin línea sellada, además, no hay nada que afirmar. Lo pagado que consta, sí.
+  if (l.sello != null) {
+    const conLinea = l.sello.conLinea
+    const p = pagoDeLaLinea({ banco: null, negro: null, pagadoBanco: l.pagadoBanco, pagadoEfectivo: l.pagadoEfectivo })
+    return { ...p, banco: conLinea ? r2(l.porBanco) : null, negro: conLinea && sueldo != null ? r2(sueldo - l.porBanco) : null,
+      sueldo: conLinea ? sueldo : null, origenBanco: conLinea ? 'sellado' : null }
+  }
   const { banco, origen } = bancoDelMensual(l)
   if (banco != null) {
     const negro = sueldo == null ? null : r2(sueldo - banco)
@@ -164,13 +175,16 @@ export interface TotalesDeMensuales {
   /** Filas cuya cadena escrita a mano no cierra (`cierreDeLaFila`), y por cuánto en total. */
   noCierran: number
   diferencia: number
+  /** Filas con sueldo y sin saldo que afirmar (quincena cerrada: se salda por mes), y cuánto suman sueldo − pagado. */
+  sinSaldo: number
+  sinSaldoImporte: number
 }
 
 export function totalesDeMensuales(filas: readonly FilaDelEspejo[]): TotalesDeMensuales {
   const t: TotalesDeMensuales = {
     personas: filas.length, sueldo: 0, sinSueldo: 0, banco: 0, efectivo: 0, sinRecibo: 0,
     pagadoBanco: 0, pagadoEfectivo: 0, pagado: 0, saldoTotal: 0, redondeo: redondeoDe(filas), saldoRedondeado: 0,
-    noCierran: 0, diferencia: 0,
+    noCierran: 0, diferencia: 0, sinSaldo: 0, sinSaldoImporte: 0,
   }
   const saldos: (number | null)[] = []
   for (const f of filas) {
@@ -184,11 +198,12 @@ export function totalesDeMensuales(filas: readonly FilaDelEspejo[]): TotalesDeMe
     t.pagadoEfectivo += p.pagadoEfectivo
     t.pagado += p.pagado
     t.saldoTotal += p.saldoTotal ?? 0
+    if (p.saldoTotal == null) { t.sinSaldo++; t.sinSaldoImporte += p.sueldo - p.pagado }
     saldos.push(p.saldoTotal)
     if (p.banco == null) t.sinRecibo++
     else { t.banco += p.banco; t.efectivo += p.negro ?? 0 }
   }
-  for (const k of ['sueldo', 'banco', 'efectivo', 'pagadoBanco', 'pagadoEfectivo', 'pagado', 'saldoTotal', 'diferencia'] as const) t[k] = r2(t[k])
+  for (const k of ['sueldo', 'banco', 'efectivo', 'pagadoBanco', 'pagadoEfectivo', 'pagado', 'saldoTotal', 'diferencia', 'sinSaldoImporte'] as const) t[k] = r2(t[k])
   t.saldoRedondeado = saldoRedDe(saldos)
   return t
 }
@@ -206,6 +221,11 @@ export interface TotalGeneral {
   cierra: boolean
   /** Por qué no cierra, con el importe de cada causa. Vacío cuando cierra. */
   causas: CausaDeDescuadre[]
+  /**
+   * QUINCENA CERRADA Y TODO EL DESCUADRE SON FILAS SIN SALDO QUE AFIRMAR (pago sin registrar, mensual que se salda por
+   * mes). No es un error ni una deuda: la pantalla lo dice apagado, no en rojo. Cualquier otra causa sigue en rojo.
+   */
+  sinAlarma: boolean
 }
 
 /**
@@ -213,7 +233,7 @@ export interface TotalGeneral {
  * Lo que no cierra se dice con su causa: filas que suman al total y no tienen saldo que afirmar, o una cadena escrita
  * a mano que ya no da Banco + Negro. Lo que quede sin explicar se dice como tal, no se reparte entre las causas.
  */
-export function totalGeneral(j: TotalesDeJornaleros, m: TotalesDeMensuales): TotalGeneral {
+export function totalGeneral(j: TotalesDeJornaleros, m: TotalesDeMensuales, sellada = false): TotalGeneral {
   const total = r2(j.cobra + m.sueldo)
   const pagado = r2(j.pago.pagado + m.pagado)
   const saldo = r2(j.pago.saldoTotal + m.saldoTotal)
@@ -221,9 +241,17 @@ export function totalGeneral(j: TotalesDeJornaleros, m: TotalesDeMensuales): Tot
   const causas: CausaDeDescuadre[] = []
   if (Math.abs(descuadre) > 1) {
     if (Math.abs(j.sinSaldoImporte) > 1) {
-      causas.push({ causa: `${j.pago.sinSaldo} jornalero${j.pago.sinSaldo === 1 ? '' : 's'} sin saldo que afirmar`, importe: j.sinSaldoImporte })
+      causas.push({
+        causa: sellada
+          ? `${j.pago.sinSaldo} jornalero${j.pago.sinSaldo === 1 ? '' : 's'} con el pago sin registrar`
+          : `${j.pago.sinSaldo} jornalero${j.pago.sinSaldo === 1 ? '' : 's'} sin saldo que afirmar`,
+        importe: j.sinSaldoImporte,
+      })
     }
-    const resto = r2(descuadre - j.sinSaldoImporte)
+    if (Math.abs(m.sinSaldoImporte) > 1) {
+      causas.push({ causa: `${m.sinSaldo} mensual${m.sinSaldo === 1 ? '' : 'es'} que se salda${m.sinSaldo === 1 ? '' : 'n'} por mes`, importe: m.sinSaldoImporte })
+    }
+    const resto = r2(descuadre - j.sinSaldoImporte - m.sinSaldoImporte)
     if (Math.abs(resto) > 1) {
       const cierre = cierreDeTotales(j)
       causas.push({
@@ -232,8 +260,9 @@ export function totalGeneral(j: TotalesDeJornaleros, m: TotalesDeMensuales): Tot
       })
     }
   }
+  const soloSinSaldo = Math.abs(r2(descuadre - j.sinSaldoImporte - m.sinSaldoImporte)) <= 1
   return {
-    total, pagado, saldo, descuadre, cierra: Math.abs(descuadre) <= 1, causas,
+    total, pagado, saldo, descuadre, cierra: Math.abs(descuadre) <= 1, causas, sinAlarma: sellada && soloSinSaldo,
     redondeo: r2(j.redondeo + m.redondeo), saldoRedondeado: j.saldoRedondeado + m.saldoRedondeado,
   }
 }

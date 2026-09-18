@@ -121,14 +121,29 @@ test('sin overrides, la línea queda idéntica y sin ninguna marca', () => {
     sello: undefined,
     // `sinDesglose` (17/09/2026) es la sexta marca — «nadie afirmó el banco» — y se comprueba en sus propios tests.
     sinDesglose: undefined,
+    // `pagoSinRegistrar` (18/09/2026) es la séptima: la cerrada sin lo pagado registrado no afirma saldo. Se prueba abajo.
+    pagoSinRegistrar: undefined,
   }
   assert.deepEqual({ ...r, ...sinMarcas }, { ...linea, ...sinMarcas })
+  // SIN SELLO NO HAY FOTO: la marca no se prende fuera de una quincena cerrada.
+  assert.equal(r.pagoSinRegistrar, false)
   // SIN SELLO, NULL: nadie lo inventa. Con sello, viaja tal cual — la cerrada no lo recalcula, sólo lo muestra.
   assert.equal(r.sello, null)
   // `conLinea` (18/09/2026): la foto dice además si esta persona TIENE línea sellada. Sin ella, la pantalla escribe
   // «sin línea sellada» en vez de dibujar el cálculo de hoy sobre una quincena ya pagada.
   const foto = { valorHora: 5400, conLinea: true, piso: 5703, pisoDesde: '2026-05-01', hasta: '2026-06-15' }
   assert.deepEqual(sinOverrides(linea, null, {}, foto).sello, foto)
+  // ═══ LA CERRADA SIN LO PAGADO REGISTRADO NO AFIRMA SALDO (auditor, 18/09/2026) ═══ Las 108 líneas de bajas de 2026
+  // daban $36,6 M de «saldo»: nadie registró lo pagado (`--completar-pagado` corrió sólo para el plantel de hoy).
+  const sinRegistro = sinOverrides(linea, null, {}, foto)
+  assert.equal(sinRegistro.pagoSinRegistrar, true)
+  assert.equal(sinRegistro.pago.saldoTotal, null, 'MUTACIÓN: un saldo que nadie puede probar')
+  assert.equal(sinRegistro.pago.aPagarEfectivo, null)
+  assert.equal(sinRegistro.cobra, linea.cobra, 'lo sellado sigue publicándose')
+  // UN 0 REGISTRADO ES UN REGISTRO: con lo pagado escrito, el saldo se afirma.
+  const conRegistro = sinOverrides(linea, null, { pagadoBanco: 0, pagadoEfectivo: linea.cobra as number }, foto)
+  assert.equal(conRegistro.pagoSinRegistrar, false)
+  assert.equal(conRegistro.pago.saldoTotal, 0)
   // LA FOTO CERRADA TAMBIÉN DICE CUÁNTO FALTA: lo pagado son los adelantos de la foto, y el saldo, la resta.
   assert.equal(r.pagadoBanco, linea.yaTransferido)
   assert.equal(r.pagadoEfectivo, linea.adelanto)
