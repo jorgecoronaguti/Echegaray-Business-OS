@@ -108,13 +108,12 @@ export function ContratadoDelTrabajo({ o, veEconomia, tam = '11.5px', consolidad
   // esto». La moneda del contrato no se pierde: sigue entera en el `title`.
   const adicionales = consolidado ? lineaDelConsolidado(consolidado) : null
   const secundaria = adicionales ?? (usd !== null ? dolares(usd) : null)
-  // EL FORMULARIO SE DICE (dueño, 14/09/2026): un monto del formulario no se lee con la tinta de una OC.
-  const formulario = fraseDeOrigenContratado(o.origenContratado)
-  const origen = formulario ? `${formulario} ` : o.contratoTotal !== null
+  // EL FORMULARIO Y LA SUMA VIVA SE DICEN CON LA MISMA FRASE QUE USA CUALQUIER OTRA PANTALLA (18/09/2026):
+  // `fraseDeOrigenContratado` es la única fuente; acá no se escribe la aclaración a mano.
+  const frase = fraseDeOrigenContratado(o.origenContratado)
+  const origen = frase ? `${frase} ` : o.contratoTotal !== null
     ? 'Mano de obra + materiales según el papel, en pesos de hoy. '
-    : viva
-      ? 'OBRAS NO publica precio para este trabajo: el número es la SUMA VIVA de lo que Cobranzas lleva registrado como venta y sube cada vez que se factura. No es lo que el trabajo vale. '
-      : 'Precio que publica la pestaña OBRAS, neto. '
+    : 'Precio que publica la pestaña OBRAS, neto. '
   return (
     <span data-origen={viva ? 'suma-viva' : undefined} data-nota={o.nota ? '' : undefined} className="grid">
       <Cifra

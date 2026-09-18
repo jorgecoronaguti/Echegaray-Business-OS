@@ -17,6 +17,7 @@ import { horasTexto, millones, pctConSigno, pctEntero, porHora } from '../servic
 import { celda, cierreDeRubro, costoPorHora, definicionDe, ITEMS, porHoraMedido, UMBRAL_HORA_CARA, type Celda, type Item } from '../services/agregados'
 import { mesesParaAgotar, type MesDeConsumo, type Ritmo } from '../services/consumo'
 import { rotuloEstimada, type ObraAnalitica } from '../services/obras'
+import { fraseDeOrigenContratado, ORIGEN_SUMA_VIVA } from '../../clientes/services/economiaObras'
 import { ancho, Cabecera, Seccion, TONO_TEXTO } from './Piezas'
 import { DetalleRubro } from './DetalleRubro'
 import { ORDEN_RUBROS, porcionesDeRubros, RUBRO_COLOR, Torta } from './Torta'
@@ -26,7 +27,7 @@ import { Columnas } from './VistasEmpresa'
 
 const ORIGEN_CONTRATO: Record<string, string> = {
   contrato: 'según contrato', oc: 'según OC del cliente', 'oc-cliente': 'según OC del cliente', presupuesto: 'según cotización aprobada',
-  'oc-pesos': 'según OBRAS', 'oc-usd-x-tc': 'en U$S, al dólar de hoy', formulario: 'declarado en la obra', 'suma-viva': 'suma de lo facturado en Cobranzas',
+  'oc-pesos': 'según OBRAS', 'oc-usd-x-tc': 'en U$S, al dólar de hoy', formulario: 'declarado en la obra',
 }
 
 export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva, tipoCosto }: {
@@ -43,6 +44,7 @@ export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva, tipoC
   if (!obra) return <p className="mt-9 text-sm text-muted">Ninguna obra con estos filtros.</p>
   const queda = obra.presupuesto != null ? obra.presupuesto - (obra.consumoComparable ?? 0) : null
   const meses = mesesParaAgotar(queda, ritmo?.porMes ?? null)
+  const esSumaViva = obra.contrato.origen === ORIGEN_SUMA_VIVA
   const origen = obra.contrato.origen ? ORIGEN_CONTRATO[obra.contrato.origen] ?? obra.contrato.origen : null
   const conPresupuesto = obra.presupuestoRubros ? ITEMS.filter((i) => i.clave !== 'horas' && (obra.presupuestoRubros?.[i.clave as Exclude<Item, 'horas'>] ?? null) != null).map((i) => i.rotulo.toLowerCase()) : []
   return (
@@ -51,7 +53,11 @@ export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva, tipoC
       <Cabecera titulo={obra.nombre}
         detalle={<>
           {obra.clienteNombre}
-          {obra.precio != null ? ` · contratado ${millones(obra.precio)}${obra.precioEnDolares ? ' (en U$S)' : ''}${origen ? ` · ${origen}` : ''}` : obra.contrato.origen === 'suma-viva' ? ' · sin precio: lo que OBRAS tiene es lo facturado' : ' · sin precio'}
+          {/* LA SUMA VIVA LLEVA LA MISMA ACLARACIÓN QUE LA FICHA (dueño, 18/09/2026): `fraseDeOrigenContratado`
+              es la única fuente; acá no se escribe una versión corta propia. */}
+          {obra.precio != null
+            ? ` · contratado ${millones(obra.precio)}${obra.precioEnDolares ? ' (en U$S)' : ''}${esSumaViva ? ` · ${fraseDeOrigenContratado(ORIGEN_SUMA_VIVA)}` : origen ? ` · ${origen}` : ''}`
+            : esSumaViva ? ` · ${fraseDeOrigenContratado(ORIGEN_SUMA_VIVA)}` : ' · sin precio'}
           {obra.fuentePresupuesto ? ` · presupuesto: ${obra.fuentePresupuesto}` : ''}
           {obra.presupuestoEstimado ? ' · presupuesto estimado' : ''}
         </>}
@@ -60,10 +66,8 @@ export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva, tipoC
             nota: obra.presupuesto != null ? `${conPresupuesto.join(', ')} cotizados` : (obra.motivoPresupuesto ?? undefined) },
           { rotulo: 'consumido', valor: millones(obra.presupuesto != null ? obra.consumoComparable : obra.gasto.total), falta: 'sin movimiento', nota: obra.presupuesto != null ? 'en esos rubros' : undefined },
           { rotulo: queda != null && queda < 0 ? 'excedido' : 'queda', valor: queda != null ? millones(Math.abs(queda)) : null, falta: '—', tono: queda != null && queda < 0 ? 'neg' : undefined, nota: obra.avanceGasto != null ? `${pctEntero(obra.avanceGasto)} consumido` : undefined },
-          // A QUÉ VELOCIDAD CONSUME Y CUÁNTO DURA LO QUE QUEDA, dicho en palabras: «ritmo por mes ·
-          // alcanza 2,9 meses» no decía ninguna de las dos cosas (dueño, 17/09/2026).
-          { rotulo: 'consume por mes', valor: ritmo?.porMes != null ? millones(ritmo.porMes) : null, falta: consumo == null ? 'sin publicar' : 'sin consumo reciente',
-            nota: ritmo?.porMes != null ? `a este ritmo viene consumiendo en los últimos 3 meses cerrados${ritmo.conEstimada ? ', con mano de obra estimada' : ''}${meses != null ? `; a ese ritmo lo que queda alcanza para ${meses === 0 ? '0 meses' : `${meses.toLocaleString('es-AR', { maximumFractionDigits: 1 })} meses`}` : ''}` : undefined },
+          { rotulo: 'ritmo por mes', valor: ritmo?.porMes != null ? millones(ritmo.porMes) : null, falta: consumo == null ? 'sin publicar' : 'sin consumo reciente',
+            nota: ritmo?.porMes != null ? `últimos 3 meses cerrados${ritmo.conEstimada ? ' · con mano de obra estimada' : ''}${meses != null ? ` · alcanza ${meses === 0 ? '0 meses' : `${meses.toLocaleString('es-AR', { maximumFractionDigits: 1 })} meses`}` : ''}` : undefined },
         ]} />
       {/* TORTA (dueño, 18/09/2026): de qué está hecho lo consumido de ESTA obra, 4 porciones, parte de un
           total. Las barras de abajo comparan cotizado contra consumido rubro por rubro: eso sigue en barra. */}
@@ -148,15 +152,12 @@ function Rubro({ item, rotulo, c }: { item: Item; rotulo: string; c: Celda }) {
   )
 }
 
-/**
- * DEBAJO DE LOS RUBROS: con qué base se midió lo consumido. Un número con IVA no se compara con un
- * presupuesto sin IVA. Empieza nombrando lo que corrige —«todo lo consumido»— (dueño, 17/09/2026).
- */
+/** DEBAJO DE LOS RUBROS: con qué base se midió lo consumido. Un número con IVA no se compara con un presupuesto sin IVA. */
 function NotaIva({ sinIva }: { sinIva: number | null }) {
   return (
-    <p data-testid="nota-iva" className="mt-4 text-[10.5px] text-muted">
-      {sinIva == null ? 'todo lo consumido está medido con IVA: la base todavía no publica el neto'
-        : `todo lo consumido está medido neto de IVA · ${sinIva} ${sinIva === 1 ? 'comprobante no discrimina' : 'comprobantes no discriminan'} el IVA y ${sinIva === 1 ? 'se tomó' : 'se tomaron'} por el total`}
+    <p data-testid="nota-iva" className="mt-4 text-[10.5px] text-faint">
+      {sinIva == null ? 'consumo con IVA: la base todavía no publica el neto'
+        : `neto de IVA · ${sinIva} ${sinIva === 1 ? 'comprobante' : 'comprobantes'} sin IVA discriminado tomados al total`}
     </p>
   )
 }
