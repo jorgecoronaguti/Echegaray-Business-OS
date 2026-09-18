@@ -19,6 +19,7 @@ import { aplicarCorreccion, elementosDe, dialogoCorreccion, leerEstado, MAX_ELEM
 import { repoMemoria, portGuarda, mmFalso } from './dobles.mjs'
 import { ESTADO } from '../../lib/comprobantes/fajo.mjs'
 import { congelado, RUTA_MARCA } from '../../lib/congelador-sheets.mjs'
+import { COMPRAS_1809 } from '../../lib/comprobantes/encabezado-vivo-compras.mjs'
 
 const SECRETO = 'un-secreto-largo-de-verdad'
 const URL = `https://chat.ecsas.com.ar/comprobantes/accion?t=${SECRETO}`
@@ -175,12 +176,24 @@ test('CARGADO SIN OBRA: se dice con todas las letras, con su fila y con la colum
     assert.equal(json.length, 1, 'el que no tiene obra igual se manda al cargador')
     return { ok: true, datos: { ok: true, escritas: 1, filas: [{ i: 0, fila: 413 }] } }
   }
-  const r = await escribirFajo({ port: null, repo, correr, congelado: SIN_HIELO }, fajo)
+  // 18/09: el aviso se lee de la FILA ESCRITA, no del ítem. Este test no inyectaba relector y releía
+  // el Sheet REAL del dueño (la fila 413 de verdad es «Sueldos / LA ESTRELLA»): once segundos y un
+  // resultado que dependía de lo que hubiera ahí. Se le da una fila 413 con la J en blanco.
+  const fila413 = Array(COMPRAS_1809.length).fill('')
+  for (const [rotulo, v] of Object.entries({
+    Proveedor: 'Combustibles Barcelo', 'N° Comprobante': '0001-00000001', 'Fecha factura': 45662, Importe: 30132.48, IVA: 6327.82,
+    Total: 36460.3, Categoría: 'B', 'Unidad de Negocio': 'Civil', 'Detalles / Obra': 'Camion - BSA', Obra: 'OB-0007 · ME - PLANTA DE BSA',
+    'Tipo pago': 'Efectivo', 'CUIT (OS)': '30-70839055-7',
+  })) fila413[COMPRAS_1809.indexOf(rotulo)] = v
+  const leerCompras = async () => ({ encabezado: [...COMPRAS_1809], filas: [...Array(413 - 4).fill([]), fila413] })
+  const r = await escribirFajo({ port: null, repo, correr, congelado: SIN_HIELO, leerCompras }, fajo)
   assert.equal(r.estado, ESTADO.CARGADO)
-  assert.match(r.texto, /imputación por completar/)
+  assert.match(r.texto, /celdas por completar/)
+  assert.doesNotMatch(r.texto, /no pude releer/, 'la fila se releyó: lo que falta sale de ahí')
   // 14/08: el renglón identifica el comprobante por su CONTENIDO —proveedor, importe y fecha— y no
   // sólo por la fila. El dueño reconoce «$36.460 del 05/01»; el número de fila todavía no lo vio.
-  assert.match(r.texto, /fila 413 \(Combustibles Barcelo \$36\.460 del 05\/01\) → falta .*Obra \(J\)/)
+  // 18/09: la J se nombra por su rótulo real, «Cliente / Asignación»; «Obra» es la L desde el 14/09.
+  assert.match(r.texto, /fila 413 \(Combustibles Barcelo \$36\.460 del 05\/01\) → falta .*Cliente \/ Asignación \(J\)/)
   assert.doesNotMatch(r.texto, /Estrella/, 'no se inventa una obra que el comprobante no dice')
 })
 
