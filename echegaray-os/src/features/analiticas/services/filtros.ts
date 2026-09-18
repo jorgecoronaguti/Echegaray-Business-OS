@@ -27,7 +27,7 @@ export const VISTAS = [
 ] as const
 
 export type Vista = (typeof VISTAS)[number]['clave']
-export type Preset = 'mes' | 'tri' | 'anio' | 'inicio'
+export type Preset = 'mes' | 'mesAnt' | '30d' | 'tri' | 'anio' | 'inicio'
 export type EstadoObra = 'curso' | 'terminadas' | 'sinIniciar' | 'todas'
 export type Control = 'periodo' | 'estado' | 'obras'
 
@@ -53,6 +53,10 @@ export const VISTAS_RETIRADAS: Readonly<Record<string, Vista>> = {
 
 export const PRESETS: { clave: Preset; rotulo: string }[] = [
   { clave: 'mes', rotulo: 'Este mes' },
+  // LOS ATAJOS DE CAJA (dueño, 18/09/2026: «quiero filtro de fechas para determinar lo que quiero ver»):
+  // el mes cerrado anterior y los últimos 30 días, que son como se mira lo que salió.
+  { clave: 'mesAnt', rotulo: 'Mes anterior' },
+  { clave: '30d', rotulo: 'Últimos 30 días' },
   { clave: 'tri', rotulo: 'Este trimestre' },
   { clave: 'anio', rotulo: 'Este año' },
   { clave: 'inicio', rotulo: 'Desde el inicio' },
@@ -75,7 +79,7 @@ const FECHA = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((s) => {
 })
 const SLUG = z.string().regex(/^[a-z0-9][a-z0-9-]{0,80}$/)
 const VISTA = z.enum(VISTAS.map((v) => v.clave) as [Vista, ...Vista[]])
-const PRESET = z.enum(['mes', 'tri', 'anio', 'inicio'])
+const PRESET = z.enum(['mes', 'mesAnt', '30d', 'tri', 'anio', 'inicio'])
 const ESTADO = z.enum(['curso', 'terminadas', 'sinIniciar', 'todas'])
 
 type Params = Record<string, string | string[] | undefined>
@@ -168,6 +172,9 @@ export function rangoDe(p: Periodo, hoyISO: string): { desde: string | null; has
   const hoy = new Date(`${hoyISO}T00:00:00Z`)
   const y = hoy.getUTCFullYear()
   const m = hoy.getUTCMonth()
+  // El mes anterior es un mes CERRADO: del 1 al último día, sin llegar a hoy.
+  if (p.preset === 'mesAnt') return { desde: iso(new Date(Date.UTC(y, m - 1, 1))), hasta: iso(new Date(Date.UTC(y, m, 0))) }
+  if (p.preset === '30d') return { desde: iso(new Date(hoy.getTime() - 29 * 86400000)), hasta: hoyISO }
   const inicio = p.preset === 'mes' ? new Date(Date.UTC(y, m, 1))
     : p.preset === 'tri' ? new Date(Date.UTC(y, m - (m % 3), 1))
       : new Date(Date.UTC(y, 0, 1))
