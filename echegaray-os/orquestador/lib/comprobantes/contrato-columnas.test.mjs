@@ -192,3 +192,34 @@ test('un rótulo del contrato que desaparece aborta la resolución — el cargad
   const sinTotal = COMPRAS_CON_OBRA.map((r) => (r === 'Total' ? 'Total $' : r))
   assert.throws(() => contratoContra(sinTotal), /falta la columna «Total»/)
 })
+
+// ════════════════════════════════════════════════════════════════════════════
+// LA FILA DE RÓTULOS VIVA (18/09/2026), FIJADA COMO CASO — ver `encabezado-vivo-compras.mjs`
+// ════════════════════════════════════════════════════════════════════════════
+import { COMPRAS_1809, LETRAS_1809 } from './encabezado-vivo-compras.mjs'
+
+test('el contrato resuelve contra la fila de rótulos VIVA del 18/09/2026 — 41 columnas, sin respaldo', () => {
+  const vivo = contratoContra(COMPRAS_1809)
+  assert.equal(vivo.length, 41)
+  assert.equal(vivo.at(-1).letra, 'AO')
+  assert.equal(vivo.at(-1).rotulo, 'Tramo de vencimiento (OS)')
+  // Cada clave del cargador cae en la letra medida. Una inserción del dueño corre alguna de éstas.
+  const col = colDelCargador(vivo)
+  for (const [clave, letra] of Object.entries(LETRAS_1809)) assert.equal(col[clave], letra, `«${clave}» no está en ${letra}`)
+})
+
+test('la fila viva leída coincide con el layout construido (COMPRAS_CON_OBRA): si se separan, uno de los dos miente', () => {
+  assert.deepEqual([...COMPRAS_1809], [...COMPRAS_CON_OBRA])
+})
+
+test('una lectura truncada en AN (40 rótulos) NO resuelve: fue el falso positivo del 17/09', () => {
+  assert.throws(() => contratoContra(COMPRAS_1809.slice(0, 40)), /Tramo de vencimiento \(OS\)/)
+})
+
+test('con la fila viva, las columnas que el cargador NUNCA escribe son AD/AE/AF/AG/AK y las del OS AC/AL/AM/AN/AO', () => {
+  assert.deepEqual(letrasDe(COLUMNAS_DEL_DUENO, COMPRAS_1809), ['AD', 'AE', 'AF', 'AG', 'AK'])
+  assert.deepEqual(letrasDe(COLUMNAS_DEL_OS, COMPRAS_1809), ['AC', 'AL', 'AM', 'AN', 'AO'])
+  const der = derivar(contratoContra(COMPRAS_1809))
+  assert.equal(der.letrasIndebidas(['AD', 'AN', 'Z', 'AB']).length, 4, 'Rubro, CUIT, Tipo de Costo y Estado Carga no se escriben')
+  assert.equal(der.letrasIndebidas(['L', 'Q', 'I']).length, 0)
+})
