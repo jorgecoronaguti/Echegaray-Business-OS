@@ -149,6 +149,7 @@ test('la MISMA lectura entrega la historia de imputación, con el detalle de la 
     detalle: 'Camion - BSA',
     concepto: 'concepto',
     categoria: null,
+    tipo_pago: null,
   })
 })
 

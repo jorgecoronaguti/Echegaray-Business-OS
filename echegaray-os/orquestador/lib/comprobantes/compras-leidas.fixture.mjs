@@ -11,15 +11,18 @@ import { CLAVES_B_O } from './compras-leidas.mjs'
 /**
  * @param {any[][]} filasBaO filas con la forma B..O (B = 0)
  * @param {readonly any[]} [encabezado] la fila de rótulos de la pestaña simulada
- * @param {{obraFila?:(i:number)=>string}} [o] valor de la columna «Obra» por fila, si existe
+ * @param {{obraFila?:(i:number)=>string, tipoPago?:(i:number)=>string}} [o] valor de la columna
+ *   «Obra» y de «Tipo pago» por fila, si se quieren simular
  */
-export function hojaDesdeBaO(filasBaO = [], encabezado = COMPRAS_2508, { obraFila } = {}) {
+export function hojaDesdeBaO(filasBaO = [], encabezado = COMPRAS_2508, { obraFila, tipoPago } = {}) {
   const pos = CLAVES_B_O.map((_, i) => encabezado.indexOf(COMPRAS_2508[i + 1]))
   const iObra = encabezado.indexOf('Obra')
+  const iPago = encabezado.indexOf('Tipo pago')
   return [[...encabezado], ...filasBaO.map((f, k) => {
     const out = Array(encabezado.length).fill('')
     pos.forEach((j, i) => { if (j >= 0) out[j] = f?.[i] ?? '' })
     if (iObra >= 0 && obraFila) out[iObra] = obraFila(k)
+    if (iPago >= 0 && tipoPago) out[iPago] = tipoPago(k)
     return out
   })]
 }

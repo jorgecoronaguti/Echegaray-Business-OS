@@ -33,7 +33,8 @@ test('lo que no se pudo leer y lo que quedó sin imputar van EN EL MISMO mensaje
   }, { enVuelo: 0 })
   assert.match(t, /IMG_7572\.HEIC/)
   assert.match(t, /fila 841/)
-  assert.match(t, /Obra/)
+  // La J se llama «Cliente / Asignación» desde que «Obra» es la L (14/09/2026): nombrarla «Obra» mandaba al dueño a la columna equivocada.
+  assert.match(t, /Cliente \/ Asignación/)
   assert.match(t, /Unidad de Negocio/)
   // NADA QUE CONTESTAR. Ni una pregunta, ni un "tocá", ni un "elegí": eso es lo que él sacó.
   assert.doesNotMatch(t, /\?/)

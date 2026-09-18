@@ -58,6 +58,41 @@ export const ESTADO_ARCA = Object.freeze({
   NO_VERIFICADO: 'no_verificado',
 })
 
+// ═══ QUÉ VÍAS IDENTIFICAN AL EMISOR, Y CUÁL NO (18/09/2026) ═══
+//
+// `estado: 'coincide'` dice que se encontró LA FILA del libro fiscal; no dice que se haya
+// identificado a QUIÉN la emitió. `VIA.FECHA_TOTAL` es la vía débil —se usa justamente cuando la
+// foto no dejó leer el CUIT— y `candidatasArca` trae todas las filas de esa fecha **de cualquier
+// emisor**; `resolver` no compara el emisor contra el proveedor leído. Entonces una foto sin CUIT
+// (o con el CUIT mal leído) que cae sobre una única fila de OTRO emisor con la misma fecha y el
+// mismo total devuelve `emisorCuit` ajeno con `estado: 'coincide'`.
+//
+// Para lo que sólo describe el comprobante (corregir el número, el total, la fecha) eso alcanza y
+// está declarado en `via`. Para afirmar la IDENTIDAD del proveedor —completar su CUIT en el maestro,
+// que es un dato maestro y parte su cuenta corriente si se equivoca— no alcanza: hace falta una vía
+// que haya usado el CUIT o el CAE para encontrar la fila.
+//
+// Medido el 18/09: hoy no hay dos comprobantes con la misma fecha y total en el libro, así que el
+// caso no se dio todavía. Pero la regla declarada («el CUIT que ARCA confirmó») no era la que
+// corría, y ésa es la diferencia que hay que cerrar antes de que la base crezca.
+
+/** Las vías que identifican al EMISOR, no sólo a la fila. `FECHA_TOTAL` no está: no mira el CUIT. */
+export const VIAS_CON_EMISOR = Object.freeze([VIA.CAE, VIA.CUIT_FECHA_TOTAL, VIA.CUIT_NUMERO])
+
+/**
+ * El CUIT del emisor SÓLO cuando la vía de la conciliación lo identifica. `null` en cualquier otro
+ * caso — incluida una coincidencia por fecha + total, que puede ser la factura de otro emisor.
+ *
+ * @param {{estado?:string, via?:string, emisorCuit?:string|null}} bloque  el bloque `arca` del ítem
+ * @returns {string|null} once dígitos, o null
+ */
+export function emisorConfirmado(bloque = {}) {
+  if (bloque?.estado !== ESTADO_ARCA.COINCIDE) return null
+  if (!VIAS_CON_EMISOR.includes(bloque?.via)) return null
+  const cuit = soloDigitos(bloque?.emisorCuit)
+  return cuit.length === 11 ? cuit : null
+}
+
 /** `{punto_venta:'4', numero:'3642'}` → `0004-00003642`. Es el formato de la columna H de Compras. */
 export function numeroDeArca(fila = {}) {
   const pv = soloDigitos(fila.punto_venta)
@@ -218,8 +253,24 @@ export function aplicarArca(comprobante = {}, conciliacion = {}) {
   } else if (!comprobante.numero && conciliacion.numeroArca) {
     comprobante.numero = conciliacion.numeroArca
   }
-  // El CUIT del emisor es del padrón, no de la foto: la foto trae dos CUIT y el modelo elige mal.
-  if (conciliacion.emisorCuit) comprobante.cuit = conciliacion.emisorCuit
+  // ═══ EL CUIT DEL EMISOR ES DEL PADRÓN — PERO SÓLO SI LA VÍA SUPO QUIÉN ES (18/09/2026) ═══
+  //
+  // La foto trae dos CUIT y el modelo elige mal: por eso el del padrón manda. Pero acá se escribía
+  // `conciliacion.emisorCuit` sin mirar `via`, y la vía `fecha+total` no identifica al emisor —
+  // existe justamente para cuando la foto NO dejó leer el CUIT, y `candidatasArca` trae las filas de
+  // esa fecha de CUALQUIER emisor—. Con un papel sin CUIT que cae sobre una única factura ajena del
+  // mismo día y el mismo importe, esta línea le ponía al comprobante el CUIT de otra empresa.
+  //
+  // Y ese CUIT no se queda quieto: `matchProveedor` lo hace MANDAR SOBRE EL NOMBRE («el CUIT resuelve
+  // QUIÉN es»), así que la columna E del Sheet terminaba con el proveedor equivocado —Neumagom
+  // cargado como «OTRA SA»— y la clave de idempotencia quedaba fuerte y FALSA (`c:<CUIT ajeno>|<n°>`).
+  // Es la misma raíz que `emisorConfirmado` ya cierra del lado del maestro de proveedores; acá faltaba.
+  //
+  // Sin CUIT confirmado el comprobante se queda con el que traía (o sin ninguno) y la identidad la
+  // sigue resolviendo el nombre, como antes de que ARCA opinara. Lo que la vía débil SÍ puede
+  // corregir —número, total, fecha— no cambia: eso describe la fila, no a quién la emitió.
+  const cuitDelPadron = emisorConfirmado({ estado: conciliacion.estado, via: conciliacion.via, emisorCuit: conciliacion.emisorCuit })
+  if (cuitDelPadron) comprobante.cuit = cuitDelPadron
   if (conciliacion.cae && !comprobante.cae) comprobante.cae = conciliacion.cae
   // LA FECHA DE EMISIÓN TAMBIÉN ES DEL PADRÓN. Un comprobante identificado por CAE puede traer la
   // fecha mal leída (el 05/12/2003 de Barcelo), y ahí el control de plausibilidad lo frena pidiendo un

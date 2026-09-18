@@ -24,7 +24,7 @@
 
 import { claveComprobante } from './lectura.mjs'
 import { faltantesDe, puedeCargarse, POLITICA, PREGUNTA_OBRA, ROTULO } from './faltantes.mjs'
-import { mismoPapel, mejorDe, basesDe } from './mejor-lectura.mjs'
+import { mismoPapel, mismoComprobanteAunqueElNombreCambie, mejorDe, basesDe } from './mejor-lectura.mjs'
 
 /** Ventana de agrupación, en minutos. Corta a propósito: agrupa una tanda, no una jornada. */
 export const VENTANA_FAJO_MIN = Number(process.env.ORQ_COMPROBANTES_VENTANA_MIN || 5)
@@ -77,6 +77,22 @@ export function entraEnElFajo(abierto, post, { ventanaMin = VENTANA_FAJO_MIN } =
  * no se puede afirmar que sean el mismo, y unir dos gastos distintos es peor que mostrar dos veces
  * el mismo.
  *
+ * ═══ LOS DOS LÍMITES QUE QUEDAN, MEDIDOS EL 18/09/2026 — PARA NO REDESCUBRIRLOS ═══
+ *
+ * 1. SIN CUIT, LA CLAVE ES DÉBIL. `claveComprobante` baja a `p:<proveedor>|<n°>`, que depende de
+ *    cómo se leyó el nombre. Dentro del fajo eso lo cubre la huella de papel (abajo). ENTRE CORRIDAS
+ *    la barrera real no es esta clave sino la pestaña VIVA (`compras-vivas.mjs`), que busca por
+ *    número, por fecha+total y por proveedor con tolerancia de subcadena — o sea que un nombre leído
+ *    distinto la próxima vez igual encuentra la fila ya cargada. Las dos barreras son distintas a
+ *    propósito: ésta mira lo que entró en este fajo, aquélla mira el destino.
+ *
+ * 2. EL PROVEEDOR ILEGIBLE AHORA PREGUNTA MÁS. Desde que ARCA no le pega el CUIT al comprobante
+ *    cuando la vía no identificó al emisor (`emisorConfirmado`), un papel sin proveedor legible y
+ *    sin CUIT ya no tiene identidad fuerte (`identidadFuerte` en `faltantes.mjs`), así que no entra
+ *    apoyado en un CUIT que ARCA nunca confirmó: queda pendiente y el bot pregunta. Es la dirección
+ *    correcta —antes podía cargarse con el CUIT de otra empresa— pero significa MÁS preguntas al
+ *    dueño, y eso es un costo real que alguien va a querer revisar. Está medido y es consciente.
+ *
  * ═══ EL REPETIDO SE ANOTA, NO SE TIRA (05/08) ═══
  *
  * Antes el repetido salía por `repetidos` y quien llamaba lo descartaba. Es la mitad del defecto de
@@ -112,10 +128,17 @@ export function colapsarRepetidos(items = [], { ahora } = {}) {
   // Ver `mejor-lectura.mjs`. Dos fotos del mismo papel que el modelo leyó distinto producían dos
   // ítems, uno se cargaba y el otro quedaba trabado para siempre — con el agravante de que el trabado
   // podía ser el de $220.540.034 mientras el bueno ($2.205.400,34) ya estaba en la fila 844.
+  //
+  // Y DESDE EL 18/09, TAMBIÉN EL MISMO COMPROBANTE EN DOS ARCHIVOS DISTINTOS. `mismoPapel` exige
+  // que las dos lecturas compartan el archivo base, así que no ve dos FOTOS distintas del mismo
+  // ticket cuyo nombre de proveedor se leyó distinto y sin CUIT que las una: sus claves difieren y
+  // entraban dos gastos. La huella (clase, número, fecha, total) + proveedor compatible las junta.
+  // El porqué, la medición que eligió esa huella y el riesgo espejo: `mejor-lectura.mjs`.
   const finales = []
   const sinUnir = []
   for (const g of grupos) {
-    const par = g.colapsable === false ? null : finales.find((f) => f.colapsable !== false && mismoPapel(f.miembros[0], g.miembros[0]).si)
+    const par = g.colapsable === false ? null : finales.find((f) => f.colapsable !== false
+      && (mismoPapel(f.miembros[0], g.miembros[0]).si || mismoComprobanteAunqueElNombreCambie(f.miembros[0], g.miembros[0]).si))
     if (par) { par.subgrupos.push(g); continue }
     finales.push({ ...g, subgrupos: [g] })
   }

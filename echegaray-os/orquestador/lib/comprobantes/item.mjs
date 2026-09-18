@@ -14,7 +14,7 @@ import { matchProveedor } from '../carga-comprobantes.mjs'
 import { normalizarLectura, claveComprobante } from './lectura.mjs'
 import { imputacionDeAnotacion, condicionDeAnotacion } from './imputacion.mjs'
 import { completarDesdeAnotacion } from './anotacion-a-obra.mjs'
-import { imputacionDelModelo, valorDeLista } from './desplegables.mjs'
+import { imputacionDelModelo, pagoDelPapel, valorDeLista } from './desplegables.mjs'
 import { categoriaDelComprobante } from './categoria.mjs'
 import { detalleCompuesto } from './detalle.mjs'
 import { palabrasInventadas, ecoDelOcr } from './plausibilidad.mjs'
@@ -143,7 +143,15 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null, ahora = 
   // LA FORMA DE PAGO YA VIENE FILTRADA CONTRA SU DESPLEGABLE. Lo que la visión leyó en `forma_pago`
   // es texto libre del papel —ahí decía "Importe" y "30 DIAS FECHA FACTURA"— y sólo sobrevive si es
   // uno de los seis valores de la columna P. Si no lo es, la celda queda vacía a propósito.
-  comprobante.formaPago = delModelo.formaPago ?? null
+  //
+  // PERO NO SE TIRA (18/09/2026). Descartarlo en silencio dejó de ser inofensivo desde que el
+  // historial del proveedor completa esa columna: un ticket que dice «Mercado Pago» quedaba con el
+  // campo vacío y el paso siguiente le ponía «Efectivo» marcado `[historial: pago]` — el historial
+  // pisando al papel. `formaPagoLeida` guarda lo que decía, no llega a ninguna celda, frena al
+  // historial (`completarUno`) y se nombra como excepción en el aviso. Ver `pagoDelPapel`.
+  const pago = pagoDelPapel(crudo?.forma_pago, listas?.tiposPago)
+  comprobante.formaPago = pago.valor
+  comprobante.formaPagoLeida = pago.leido
 
   // Y por último lo que la persona escribió al mandar la foto.
   if (!imp.obra) {

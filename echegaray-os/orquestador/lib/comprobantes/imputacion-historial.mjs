@@ -36,10 +36,69 @@
 // arma el sufijo que va a la celda. Una inferencia escrita sin marca es una estimación presentada
 // como hecho, que es la Regla de Oro #2.
 
-import { sugerirImputacion } from '../imputacion-aprendida.mjs'
+import { normProv, perfilesDeImputacion, sugerirImputacion } from '../imputacion-aprendida.mjs'
 
-/** Las cuatro dimensiones que el historial puede completar, en el orden en que se resuelven. */
-export const DIMENSIONES = Object.freeze(['obra', 'detalle', 'unidad', 'categoria'])
+/** Las dimensiones que el historial puede completar, en el orden en que se resuelven. */
+export const DIMENSIONES = Object.freeze(['obra', 'detalle', 'unidad', 'categoria', 'pago'])
+
+// ═══ EL TIPO DE PAGO (COLUMNA Q) SALE DE LAS ÚLTIMAS CARGAS, NO DEL PROMEDIO (18/09/2026) ═══
+//
+// Medido sobre las 131 filas que el bot cargó entre el 18/08 y el 17/09 (ubicadas en Compras por
+// N° + proveedor, no por la fila registrada): el ítem llegó SIN forma de pago en 88 y el dueño la
+// tipeó a mano en 85. Es la columna que más le cuesta por carga. Y no se deduce del papel: la
+// «condición de venta» dice Contado o Cuenta Corriente, y Cuenta Corriente terminó en Echeq 20
+// veces, en Efectivo 18 y en Transferencia 8.
+//
+// Lo que sí la predice es CÓMO LE VIENE PAGANDO a ese proveedor. Se probaron cuatro reglas con
+// holdout temporal (sólo filas anteriores a la que se evalúa):
+//   · moda global n≥5 y ≥80%   → 44 predichas, 3 mal (Barcelo: 129 Efectivo de 152, y esa vez Débito)
+//   · moda global n≥5 y ≥90%   → 8 predichas, 0 mal — casi no propone
+//   · las últimas 5 IGUALES    → 53 predichas, 51 bien, 2 mal (96%)
+//   · últimas 10, n≥5 y ≥80%   → 84 predichas, 3 mal
+// Se eligió «las últimas 5 iguales»: unanimidad reciente. Un proveedor al que se le pagó cinco veces
+// seguidas de la misma forma se le va a pagar así la sexta, salvo que el papel diga otra cosa —y el
+// papel manda—. El umbral es un número declarado, no un ajuste: ULTIMAS_PAGO.
+//
+// Lo escrito queda marcado `[historial: pago]` en el Concepto (`marca-origen.mjs`): es una
+// inferencia, no un dato del comprobante, y una persona la corrige en dos segundos en la celda.
+
+/** Cuántas cargas seguidas del proveedor, con la MISMA forma de pago, hacen falta para proponerla. */
+export const ULTIMAS_PAGO = 5
+
+/**
+ * NÚCLEO PURO: el perfil de pago de cada proveedor a partir de la historia EN ORDEN de la pestaña.
+ * `sugerido` es la forma de pago de las últimas `ULTIMAS_PAGO` cargas cuando son todas iguales;
+ * si no, null (y `ultimas` dice qué había, para poder ofrecerlo sin afirmarlo).
+ *
+ * @param {Array<{proveedor?:string, tipo_pago?:string|null}>} historia  filas en orden de fila
+ * @returns {Record<string, {sugerido:string|null, n:number, ultimas:string[]}>} por proveedor normalizado
+ */
+export function perfilesDePago(historia = []) {
+  const porProv = new Map()
+  for (const r of historia) {
+    const k = normProv(r?.proveedor)
+    const v = String(r?.tipo_pago ?? '').trim()
+    if (!k || !v) continue
+    if (!porProv.has(k)) porProv.set(k, [])
+    porProv.get(k).push(v)
+  }
+  const out = {}
+  for (const [k, pagos] of porProv) {
+    const ultimas = pagos.slice(-ULTIMAS_PAGO)
+    const unanime = ultimas.length === ULTIMAS_PAGO && ultimas.every((p) => p === ultimas[0])
+    out[k] = { sugerido: unanime ? ultimas[0] : null, n: pagos.length, ultimas }
+  }
+  return out
+}
+
+/**
+ * LOS PERFILES CON LOS QUE SE COMPLETA UN COMPROBANTE, de una sola historia: los de imputación
+ * (`perfilesDeImputacion`, obra/detalle/unidad/categoría) MÁS el de pago. Es la única puerta:
+ * el bot y el cargador de terminal la llaman igual, así el mismo papel se completa igual.
+ */
+export function perfilesDeCompras(historia = []) {
+  return { ...perfilesDeImputacion(historia), pago: perfilesDePago(historia) }
+}
 
 /**
  * ═══ LA COLUMNA K SE LLAMA DISTINTO EN CADA VÍA, Y ESO NO SE PUEDE ADIVINAR ═══
@@ -53,7 +112,11 @@ export const DIMENSIONES = Object.freeze(['obra', 'detalle', 'unidad', 'categori
  * un texto al campo del IVA. El test de paridad lo agarró en rojo. La lección: dos vías que nombran
  * distinto la misma cosa NO se unifican adivinando; el que llama declara cuál es su forma.
  */
-const CAMPO = Object.freeze({ obra: 'obra', unidad: 'unidad', categoria: 'categoria' })
+const CAMPO = Object.freeze({
+  obra: 'obra', unidad: 'unidad', categoria: 'categoria', pago: 'formaPago',
+  // Lo que el papel decía y el desplegable no acepta: no es una celda, es un freno. Ver abajo.
+  pagoLeido: 'formaPagoLeida',
+})
 
 /** ¿Esta dimensión ya viene resuelta? Un string en blanco no cuenta como resuelta. */
 const yaTiene = (c, campo) => Boolean(String(c?.[campo] ?? '').trim())
@@ -120,12 +183,25 @@ export function completarUno(comprobante, perfiles = null, { campoDetalle = 'det
     poner(c, 'categoria', CAMPO.categoria, s.categoria.sugerido)
     aplicado.categoria = { n: s.categoria.n, share: s.categoria.share }
   }
+  // EL TIPO DE PAGO (columna Q): sólo si las últimas ULTIMAS_PAGO cargas del proveedor coinciden.
+  //
+  // EL PAPEL MANDA, Y TAMBIÉN EL PAPEL QUE NO ES OPCIÓN (18/09/2026). Si la lectura trajo una forma
+  // de pago válida, el historial no opina — eso ya lo cubre `yaTiene`. Y si trajo una que el
+  // desplegable no acepta («Mercado Pago»), TAMPOCO: la celda queda vacía y el aviso dice qué decía
+  // el papel. Completarla con la moda del proveedor sería el historial pisando una decisión que el
+  // comprobante sí tomó, sólo que con otras palabras. Ver `pagoDelPapel` en `desplegables.mjs`.
+  const pago = perfiles.pago?.[normProv(c.proveedor)] ?? null
+  const papelLoDijo = Boolean(String(c[CAMPO.pagoLeido] ?? '').trim())
+  if (!vedada('pago') && !yaTiene(c, CAMPO.pago) && !papelLoDijo && pago?.sugerido) {
+    poner(c, 'pago', CAMPO.pago, pago.sugerido)
+    aplicado.pago = { n: pago.n, share: 1, ultimas: ULTIMAS_PAGO }
+  }
 
   return {
     aplicado,
     sugerencia: {
       obra: s.obra ?? null, detalle: s.detalle ?? null, unidad: s.unidad ?? null,
-      categoria: s.categoria ?? null, rubro: s.rubro ?? null,
+      categoria: s.categoria ?? null, rubro: s.rubro ?? null, pago,
       pide_confirmacion: s.pide_confirmacion, nota: s.nota ?? null,
     },
   }

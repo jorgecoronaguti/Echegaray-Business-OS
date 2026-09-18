@@ -36,7 +36,8 @@ import { estaCompleto, imputacionVacia, ESTADO } from '../../lib/comprobantes/fa
 import { identificar } from '../../lib/comprobantes/identidad.mjs'
 import { numeroCanonico, claveComprobante, conceptoConAnotacion, conceptoConProveedorLeido } from '../../lib/comprobantes/lectura.mjs'
 import * as repoReal from './repositorio.mjs'
-import { avisosDeVerificacion, cierre, COL as VCOL, colVerificacion, tablaDeLoEscrito } from '../../lib/comprobantes/verificacion.mjs'
+import { avisosDeVerificacion, cierre, COL as VCOL, colVerificacion, filaEnBlanco, letrasCompletables, NOMBRE_COMPLETABLE, sinCompletar, tablaDeLoEscrito } from '../../lib/comprobantes/verificacion.mjs'
+import { COMPRAS_1809 } from '../../lib/comprobantes/encabezado-vivo-compras.mjs'
 import { rangoFilas } from '../../lib/columnas-por-encabezado.mjs'
 import { vigilar } from '../../lib/comprobantes/vigilancia.mjs'
 import { respaldarFajoCargado, avisoDeRespaldo } from '../../lib/comprobantes/respaldo-adjunto.mjs'
@@ -125,6 +126,9 @@ export function aFajoJson(items = []) {
       total: c.total,
       condicion: c.condicion ?? undefined,
       formaPago: c.formaPago ?? undefined,
+      // Lo que el papel decía de la forma de pago y el desplegable no acepta. No va a ninguna celda:
+      // viaja para que el cargador no la complete con el historial y para poder nombrarlo (18/09).
+      formaPagoLeida: c.formaPagoLeida ?? undefined,
       obra: c.obra ?? undefined,
       unidad: c.unidad ?? undefined,
       detalle: c.detalleObra ?? undefined,
@@ -138,6 +142,7 @@ export function aFajoJson(items = []) {
       detalleVia: c.detalleVia ?? undefined,
       unidadVia: c.unidadVia ?? undefined,
       categoriaVia: c.categoriaVia ?? undefined,
+      pagoVia: c.pagoVia ?? undefined,
       duplicadoResuelto: it.duplicadoResuelto ?? undefined,
     }
   })
@@ -558,7 +563,14 @@ export async function escribirFajo(d, fajo) {
   // Cash Flow con el rubro sin clasificar exactamente igual que una sin obra.
   //
   // `entran` y `filas` están en el mismo orden por construcción (los dos salen del mismo filtro).
-  const pendientes = entran
+  //
+  // ═══ ESTO ES LO QUE SE MANDÓ; LO QUE QUEDÓ SE LEE DE LA FILA, MÁS ABAJO (18/09/2026) ═══
+  //
+  // `imputacionVacia(it)` dice qué iba vacío en el ÍTEM. El cargador completa después (anotación a
+  // mano, historial, catálogo de obras) y puede no escribir algo que el ítem traía: el aviso y la
+  // celda discrepaban en los dos sentidos. Esta lista es el RESPALDO para cuando no se pudo releer;
+  // la que se publica sale de `sinCompletar(leidas)`, con la letra viva de cada columna.
+  const porIntento = entran
     .map((it, k) => ({ it, fila: filas[k], campos: imputacionVacia(it) }))
     .filter(({ campos }) => campos.length)
     .map(({ it, fila, campos }) => ({
@@ -569,7 +581,10 @@ export async function escribirFajo(d, fajo) {
       fecha: it.comprobante?.fecha ?? null,
       fila: fila.fila ?? null,
       campos,
+      origen: 'intento',
+      pagoLeido: it.comprobante?.formaPagoLeida ?? null,
     }))
+  let pendientes = porIntento
   // Lo que cargó de verdad, en plata. Es el número contra el que el dueño compara el fajo de papeles
   // que tiene en la mano: contar filas no le dice si se le perdió una factura de dos millones.
   const suma = entran.reduce((a, it) => a + (Number(it.comprobante?.total) || 0), 0)
@@ -600,6 +615,8 @@ export async function escribirFajo(d, fajo) {
     try {
       const leidas = await releerLoEscrito(d, filas)
       prueba = [tablaDeLoEscrito(leidas), ...avisosDeVerificacion(leidas), cierre(leidas)].filter(Boolean).join('\n')
+      // LO QUE QUEDÓ VACÍO, LEÍDO DE LA FILA. Si se releyó, manda esto; el intento queda de respaldo.
+      if (leidas.length) pendientes = pendientesDesdeElDestino(leidas, entran, filas, porIntento)
     } catch (e) {
       log?.warn?.('comprobantes: no pude releer lo escrito', { detalle: recorte(e?.message) })
       prueba = '⚠ Cargué, pero no pude releer las filas para mostrarte lo que quedó. Revisalas en Compras.'
@@ -831,14 +848,42 @@ async function releerLoEscrito(d, filas) {
   })
 }
 
-/** Cómo se llama cada columna de imputación en el aviso. Son los rótulos REALES de Compras. */
-const ROTULO_COLUMNA = Object.freeze({
-  proveedor: 'Proveedor (E)',
-  categoria: 'Categoría (B)',
-  unidad: 'Unidad de Negocio (I)',
-  obra: 'Obra (J)',
-  detalle: 'Detalle (K)',
-})
+/**
+ * Cómo se llama cada columna en el aviso: nombre + letra VIVA (`letras`, de la fila releída). Sin
+ * letras —el respaldo por intento, cuando no se pudo releer— se resuelven por RÓTULO contra la fila
+ * de rótulos medida (`COMPRAS_1809`), no con un mapa escrito a mano: un mapa se queda viejo el día
+ * que el dueño inserte una columna y nombra la letra de al lado, que es el defecto que el contrato
+ * por rótulo vino a cerrar. Esa constante es la fila de rótulos MEDIDA el 18/09; la suite prueba que
+ * el contrato y el layout construido coinciden con ella, y `encabezado-vivo-compras.vivo.test.mjs`
+ * —opt-in, `ORQ_TEST_SHEET_VIVO=1`— es el que la compara contra la pestaña de verdad.
+ */
+const LETRA_REF = letrasCompletables(COMPRAS_1809)
+const rotuloColumna = (c, letras = {}) => `${NOMBRE_COMPLETABLE[c] ?? c}${letras[c] ?? LETRA_REF[c] ? ` (${letras[c] ?? LETRA_REF[c]})` : ''}`
+
+/**
+ * LAS CELDAS VACÍAS DE CADA FILA RECIÉN ESCRITA, leídas del destino (18/09/2026). El importe y la
+ * fecha salen del ítem (la relectura viene sin formato: la fecha sería un serial) y sólo para que la
+ * persona reconozca el papel; qué falta y en qué letra lo dice la fila.
+ */
+export function pendientesDesdeElDestino(leidas = [], entran = [], filas = [], porIntento = []) {
+  const itemDe = new Map(entran.map((it, k) => [filas[k]?.fila, it]))
+  // UNA FILA RELEÍDA EN BLANCO NO ES «TODO VACÍO»: es que no se pudo releer ESA fila. Para ella vale
+  // el respaldo por intento; decir «falta Proveedor, Categoría, …» sobre una fila que no se leyó
+  // sería afirmar sobre lo que no se miró. El criterio vive en `filaEnBlanco` (verificacion.mjs).
+  const noLeidas = new Set(leidas.filter((x) => filaEnBlanco(x)).map((x) => x.fila))
+  const delDestino = sinCompletar(leidas.filter((x) => !noLeidas.has(x.fila))).map((x) => {
+    const c = itemDe.get(x.fila)?.comprobante ?? {}
+    return {
+      proveedor: c.proveedor ?? x.proveedor ?? null, total: c.total ?? null, fecha: c.fecha ?? null,
+      fila: x.fila, campos: x.campos, letras: x.letras, derivadas: x.derivadas, origen: 'destino',
+      // LO QUE EL PAPEL DECÍA Y EL DESPLEGABLE NO ACEPTA. Una celda vacía con una causa conocida no
+      // es la misma celda vacía que una sin causa: «Tipo pago» en blanco porque el ticket decía
+      // «Mercado Pago» se completa sabiendo eso. Ver `pagoDelPapel` en `desplegables.mjs`.
+      pagoLeido: c.formaPagoLeida ?? null,
+    }
+  })
+  return [...delDestino, ...porIntento.filter((p) => noLeidas.has(p.fila))].sort((a, b) => (a.fila ?? 0) - (b.fila ?? 0))
+}
 
 /** $ en es-AR, sin decimales: es un total de control, no un asiento. */
 const enPesos = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
@@ -858,7 +903,10 @@ export function obraPorFila(datos) {
   for (const p of datos?.filas ?? []) {
     if (p?.fila == null || !Object.hasOwn(p, 'obra')) continue
     if (p.obra && p.obraEscrita) {
-      out.set(p.fila, { corta: `obra ${p.obra}`, larga: `Obra: **${p.obra}**` })
+      // Una obra que salió del historial del proveedor se dice: es una inferencia (marcada en el
+      // Concepto), no algo que el papel dijera. La persona la corrige en la celda si no es.
+      const hist = p.obraVia === 'historial' ? ' _(del historial del proveedor)_' : ''
+      out.set(p.fila, { corta: `obra ${p.obra}${hist ? ' (historial)' : ''}`, larga: `Obra: **${p.obra}**${hist}` })
     } else if (p.obra) {
       out.set(p.fila, {
         corta: `obra ${p.obra} (sin escribir)`,
@@ -909,18 +957,46 @@ export function textoCargado(filas, yaEstaban, datos, { pendientes = [], suma = 
   // entra al Flujo de Caja con el rubro sin clasificar y la única forma de que alguien la complete es
   // que sepa que existe. Va con la FILA y con las COLUMNAS, para que completarla sea abrir Compras e
   // ir a esa línea, no buscarla y después adivinar qué le falta.
-  if (pendientes.length) {
-    l.push(pendientes.length === 1
-      ? '⚠️ Quedó **con la imputación por completar** en Compras:'
-      : `⚠️ ${pendientes.length} quedaron **con la imputación por completar** en Compras:`)
-    for (const p of pendientes) {
-      const cols = p.campos.map((c) => ROTULO_COLUMNA[c] ?? c).join(', ')
+  // LAS CELDAS QUE QUEDARON VACÍAS, con la fila y la LETRA (18/09/2026: leídas del destino cuando se
+  // pudo releer; si no, lo que iba vacío en lo mandado, y se dice cuál de las dos es).
+  const conCeldas = pendientes.filter((p) => p.campos?.length)
+  // ═══ EL CUIT QUE ESTA MISMA CORRIDA RESOLVIÓ NO SE RECLAMA (18/09/2026) ═══
+  //
+  // «CUIT (OS)» se lee vacía en la fila recién escrita porque la ARRAYFORMULA mira la auxiliar
+  // `_PROVEEDORES_OS`, que se regenera después. Si el maestro ya tiene el CUIT —porque lo completó
+  // `cuit-maestro.mjs` o porque el proveedor se dio de ALTA con su CUIT en esta misma carga
+  // (`altasAplicadas`)— decir «el maestro no tiene el CUIT de X» es falso: lo tiene desde hace un
+  // segundo. Se cuentan las dos fuentes o el aviso miente justo en el caso que se acaba de arreglar.
+  const conCuitAhora = new Set([
+    ...(datos?.cuitsCompletados ?? []).map((c) => c?.nombre),
+    ...(datos?.altasAplicadas?.creados ?? []).map((c) => c?.nombre),
+    ...(datos?.altasAplicadas?.yaEstaban ?? []).map((c) => c?.nombre),
+  ].map((n) => String(n ?? '').trim().toLowerCase()).filter(Boolean))
+  const sinCuit = pendientes.filter((p) => p.derivadas?.includes('cuit') && !conCuitAhora.has(String(p.proveedor ?? '').trim().toLowerCase()))
+  if (conCeldas.length) {
+    const desde = conCeldas.some((p) => p.origen === 'intento') ? ' _(no pude releer la fila: es lo que mandé vacío)_' : ''
+    l.push(conCeldas.length === 1
+      ? `⚠️ Quedó **con celdas por completar** en Compras${desde}:`
+      : `⚠️ ${conCeldas.length} quedaron **con celdas por completar** en Compras${desde}:`)
+    for (const p of conCeldas) {
+      const cols = p.campos.map((c) => rotuloColumna(c, p.letras)).join(', ')
       // SE NOMBRA POR SU CONTENIDO, NO SÓLO POR LA FILA: «fila 846 (Clavero $172.002 del 09/08)». El
       // dueño reconoce el papel por el importe, no por el número de fila que todavía no vio.
       const quien = identificar({ comprobante: p }).texto
-      l.push(`· fila ${p.fila ?? '?'}${quien ? ` (${quien})` : ''} → falta ${cols}`)
+      // La causa, cuando se sabe: el papel SÍ decía una forma de pago, pero no es una del desplegable.
+      const porque = p.pagoLeido && p.campos.includes('tipoPago')
+        ? ` — el papel dice «${p.pagoLeido}», que no es una opción de «Tipo pago»`
+        : ''
+      l.push(`· fila ${p.fila ?? '?'}${quien ? ` (${quien})` : ''} → falta ${cols}${porque}`)
     }
-    l.push('_No la inventé: el comprobante no la dice y el historial no alcanzó para afirmarla._')
+    l.push('_No lo inventé: el comprobante no lo dice y el historial del proveedor no alcanzó para afirmarlo. Se completa en la celda._')
+  }
+  // «CUIT (OS)» VACÍA no se completa en Compras: es el maestro de proveedores el que no tiene el CUIT.
+  for (const p of sinCuit) {
+    l.push(`ℹ fila ${p.fila ?? '?'}: «CUIT (OS)»${p.letras?.cuit ? ` (${p.letras.cuit})` : ''} vacía — el maestro de proveedores no tiene el CUIT de «${p.proveedor ?? '?'}». Se completa en la app (Proveedores), no en Compras.`)
+  }
+  if (datos?.cuitsCompletados?.length) {
+    l.push(`ℹ CUIT completado en el maestro (lo confirma ARCA): ${datos.cuitsCompletados.map((c) => `${c.nombre} → ${c.cuit}`).join(' · ')}. «CUIT (OS)» lo muestra cuando se regenere la auxiliar _PROVEEDORES_OS.`)
   }
   // UN ARCHIVO CON VARIOS COMPROBANTES: entró UNO. Decirlo es lo único que evita que el resto se dé
   // por cargado. Se pide el reenvío por separado, que es lo que el flujo sí sabe hacer bien.
@@ -928,7 +1004,9 @@ export function textoCargado(filas, yaEstaban, datos, { pendientes = [], suma = 
     const cuantos = Number.isFinite(v.cuantos) && v.cuantos > 1 ? `${v.cuantos} comprobantes` : 'más de un comprobante'
     l.push(`⚠️ ${v.nombre ? `**${v.nombre}**` : 'Uno de los archivos'} tenía ${cuantos}: cargué sólo el de la fila ${v.fila ?? '?'}. **Mandá los otros en fotos separadas.**`)
   }
-  l.push('_Completá vos la Unidad de Negocio y el Tipo de Costo: ahí clasifica el rubro de caja._')
+  // Hasta el 18/09 acá iba, siempre, «Completá vos la Unidad de Negocio y el Tipo de Costo». Era
+  // ruido: la Unidad suele quedar escrita, y «Tipo de Costo» el dueño la usa en 16 de 173 filas
+  // propias — no es una columna que el cargador deba reclamar. Lo que falta se nombra arriba, por fila.
   return l.join('\n')
 }
 

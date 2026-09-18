@@ -38,7 +38,9 @@ import { query, closePool } from '../lib/db.mjs'
 import { matchProveedor, valoresInput, aFechaAR, discrepanciaNeto, verificarEscritura, colIndice, filaModeloDeFormulas } from '../lib/carga-comprobantes.mjs'
 import { faltantesDe, puedeCargarse, POLITICA } from '../lib/comprobantes/faltantes.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
-import { perfilesDeImputacionDesdeDB, perfilesDeImputacion } from '../lib/imputacion-aprendida.mjs'
+import { perfilesDeImputacionDesdeDB } from '../lib/imputacion-aprendida.mjs'
+import { perfilesDeCompras } from '../lib/comprobantes/imputacion-historial.mjs'
+import { completarCuitsDelMaestro, cuitsParaCompletar } from '../lib/comprobantes/cuit-maestro.mjs'
 import { completarUno } from '../lib/comprobantes/imputacion-historial.mjs'
 import { completarDesdeAnotacion } from '../lib/comprobantes/anotacion-a-obra.mjs'
 import { aritmetica, colVerificacion } from '../lib/comprobantes/verificacion.mjs'
@@ -48,7 +50,8 @@ import { COMPRAS_2508 } from '../lib/encabezados-referencia.mjs'
 import { catalogosDeAsignacion } from '../lib/compras-obra-asignada.mjs'
 import { destinosDeObra, obraParaLaColumna, pestanaDelComprobante, PESTANA_COMPRAS } from '../lib/comprobantes/obra-y-destino.mjs'
 import { indiceDeCompras, buscarEnCompras, HALLAZGO } from '../lib/comprobantes/compras-vivas.mjs'
-import { conciliarConArca, aplicarArca, candidatasArca, ESTADO_ARCA } from '../lib/comprobantes/arca.mjs'
+import { conciliarConArca, aplicarArca, candidatasArca, emisorConfirmado, ESTADO_ARCA } from '../lib/comprobantes/arca.mjs'
+import { pagoDelPapel } from '../lib/comprobantes/desplegables.mjs'
 import { listasDeCompras, proveedoresPorCuit } from '../lib/comprobantes/listas.mjs'
 import { CAMINO, ampliarDesplegable, aplicarAltas, planDeAltas, requestValidacionProveedores, resolverNoMatcheado } from '../lib/alta-proveedor.mjs'
 
@@ -299,7 +302,7 @@ async function conciliar(cc, arcaDe) {
  *
  * @returns {Promise<{item:object, arca:object, prov:object, hallazgo:object|null}>}
  */
-export async function prepararUno(c = {}, { lista = [], porCuit = null, nombresPorCuit = null, indiceCompras = null, arcaDe = null, cargarIgual = false, conocidos = {} } = {}) {
+export async function prepararUno(c = {}, { lista = [], listas = null, porCuit = null, nombresPorCuit = null, indiceCompras = null, arcaDe = null, cargarIgual = false, conocidos = {} } = {}) {
   // EL CUIT MANDA SOBRE EL NOMBRE, igual que en el chat: la factura trae la razón social del padrón
   // y el desplegable el nombre de fantasía. Sin `porCuit` se comporta exactamente como antes.
   let prov = matchProveedor(c.proveedor, lista, { cuit: c.cuit, porCuit })
@@ -318,7 +321,16 @@ export async function prepararUno(c = {}, { lista = [], porCuit = null, nombresP
   const nombreCelda = alta?.nombreCanonico ?? prov.valor
   // La fecha se canoniza ANTES que nada: ARCA la exige en DD/MM/AAAA y el índice de Compras compara
   // contra ese mismo formato. Un "5/1/2026" sin normalizar no matchea nada y el duplicado pasa.
-  const cc = { ...c, proveedor: nombreCelda, fecha: aFechaAR(c.fecha) ?? c.fecha ?? null }
+  // LA FORMA DE PAGO DEL PAPEL SE SEPARA IGUAL QUE EN EL CHAT (18/09/2026). El `fajo.json` puede
+  // traer en `formaPago` un texto que el desplegable no acepta —«Mercado Pago», «30 DIAS FECHA
+  // FACTURA»—: ese texto no va a la celda (`valoresInput` ya lo filtra) pero tiene que frenar al
+  // historial y poder nombrarse. Sin esto, las dos vías resolvían el mismo papel distinto: el chat
+  // lo perdía en la lectura y le ponía la moda del proveedor; acá quedaba mudo. Ver `pagoDelPapel`.
+  const pagoPapel = pagoDelPapel(c.formaPago ?? c.formaPagoLeida, listas?.tiposPago)
+  const cc = {
+    ...c, proveedor: nombreCelda, fecha: aFechaAR(c.fecha) ?? c.fecha ?? null,
+    formaPago: pagoPapel.valor ?? undefined, formaPagoLeida: pagoPapel.leido ?? undefined,
+  }
   const arca = await conciliar(cc, arcaDe)
   const hallazgo = indiceCompras?.ok === false ? null : buscarEnCompras(cc, indiceCompras ?? {})
   const item = {
@@ -415,6 +427,11 @@ export async function prepararPlan(comprobantes = [], o = {}) {
     plan.push({
       i, valores: valoresInput(cc, o.col), col: o.col ?? colDelCargador(CONTRATO), nuevo: prov.esNuevo, proveedor: prov.valor, sug, aplicado,
       obra, cuit: cuit.length === 11 ? cuit : null, pestana, rubro,
+      // EL CUIT QUE ARCA CONFIRMÓ, para completar el maestro si a ese proveedor le falta (18/09).
+      // Sólo de un proveedor que YA existe (matcheó): el nuevo entra por `altas`. Y sólo si la VÍA
+      // identificó al emisor: `coincide` por fecha+total puede ser la factura de otro. Ver
+      // `emisorConfirmado` en `arca.mjs` y `cuit-maestro.mjs`.
+      cuitConfirmado: prov.esNuevo ? null : emisorConfirmado(bloque),
       // LO QUE VA A QUEDAR EN LAS COLUMNAS QUE DECIDEN EL COSTO, para poder mirarlo en el `--dry`
       // sin abrir el Sheet: I Unidad, J Cliente/Asignación, K Detalle, y qué dijo la mano.
       cols: { unidad: cc.unidad ?? null, obraJ: cc.obra ?? null, detalle: cc.detalle ?? null },
@@ -432,6 +449,8 @@ export function filasDelPlan(plan = [], desde = 0) {
     i: p.i, fila: desde + k, proveedor: p.proveedor, cuit: p.cuit ?? null, pestana: p.pestana ?? PESTANA_COMPRAS,
     obra: p.obra?.valor ?? null, obraPorque: p.obra?.valor ? null : (p.obra?.porque ?? null),
     obraEscrita: Boolean(p.obra?.valor && p.col?.obraFila),
+    // De dónde salió la obra escrita: `historial` viaja para que el mensaje lo diga (18/09/2026).
+    obraVia: p.obra?.valor ? (p.obra?.via ?? null) : null,
   }))
 }
 
@@ -518,9 +537,11 @@ function informarImputacion(plan, perfiles) {
   const aplicados = plan.filter((p) => Object.keys(p.aplicado ?? {}).length)
   if (aplicados.length) {
     console.log('\n✍ Imputación COMPLETADA con el historial (queda marcada en el Concepto como `[historial: …]`):')
+    // La dimensión «pago» vive en la clave `formaPago` del contrato de columnas.
+    const claveDe = (k) => (k === 'pago' ? 'formaPago' : k)
     for (const p of aplicados) {
       const cual = Object.entries(p.aplicado)
-        .map(([k, v]) => `${k} = «${p.valores[p.col?.[k]] ?? '?'}» (${v.n} cargas, ${Math.round((v.share ?? 0) * 100)}%)`)
+        .map(([k, v]) => `${k} = «${p.valores[p.col?.[claveDe(k)]] ?? '?'}» (${v.ultimas ? `últimas ${v.ultimas} iguales de ${v.n}` : `${v.n} cargas, ${Math.round((v.share ?? 0) * 100)}%`})`)
       console.log(`   ${p.proveedor}: ${cual.join(' · ')}`)
     }
   }
@@ -570,7 +591,8 @@ const FILA_PRIMERA = 4
  */
 async function perfilesDe(indiceCompras) {
   if (indiceCompras?.ok && indiceCompras.historia?.length) {
-    return { ...perfilesDeImputacion(indiceCompras.historia), disponible: true, nota: `${indiceCompras.filas} filas de Compras (pestaña viva)` }
+    // `perfilesDeCompras` = imputación + tipo de pago (18/09/2026), la misma puerta que usa el bot.
+    return { ...perfilesDeCompras(indiceCompras.historia), disponible: true, nota: `${indiceCompras.filas} filas de Compras (pestaña viva)` }
   }
   return perfilesDeImputacionDesdeDB({ query }).catch(() => null)
 }
@@ -808,9 +830,15 @@ async function main() {
   //    gasto suyo entró de verdad, no porque un plan dijera que iba a entrar.
   const aplicadas = DRY || SIN_ALTA ? null : await aplicarAltas(altas, { query, comprobante: `Compras!${desde}..${hasta}` })
   if (aplicadas) informarAplicadas(aplicadas)
+  // 5) EL CUIT QUE ARCA CONFIRMÓ COMPLETA EL MAESTRO SI FALTABA (18/09/2026). Sin CUIT en el
+  //    maestro, la columna «CUIT (OS)» de Compras queda vacía para siempre — pasó con Neumagom el
+  //    17/09 teniendo el CUIT confirmado en la mano. Nunca lanza: un fallo acá no deshace la carga.
+  const cuitsCompletados = DRY || SIN_ALTA ? [] : await completarCuitsDelMaestro(query, cuitsParaCompletar(plan, conocidos))
+    .catch((e) => { console.log(`· CUIT del maestro no completado: ${String(e?.message ?? e).slice(0, 120)}`); return [] })
+  for (const c of cuitsCompletados) console.log(`  ✔ CUIT ${c.cuit} completado en el maestro para «${c.nombre}» (lo confirma ARCA). «CUIT (OS)» lo muestra cuando se regenere _PROVEEDORES_OS.`)
 
   emitir({
-    ok: true, desde, hasta, escritas: plan.length, errores, sinRubro,
+    ok: true, desde, hasta, escritas: plan.length, errores, sinRubro, cuitsCompletados,
     filas: filasDelPlan(plan, desde), fueraDeCompras,
     // `percep` VIAJA EN EL JSON (14/08). La percepción absorbida se imprimía sólo por stdout y el bot
     // parsea únicamente esta línea: en la fila 844 se metieron $53.356,45 de percepción de IIBB

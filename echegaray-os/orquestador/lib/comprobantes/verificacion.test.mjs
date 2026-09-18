@@ -86,3 +86,94 @@ test('el cierre dice que se releyó, y con hallazgos dice que NO se dé por buen
   const mal = [{ fila: 812, valores: fila({ importe: 100, iva: 21, total: 999 }) }]
   assert.match(cierre(mal), /No lo des por bueno/)
 })
+
+// ════════════════════════════════════════════════════════════════════════════
+// LO QUE QUEDÓ VACÍO SE NOMBRA LEYENDO LA FILA, CON SU LETRA VIVA (18/09/2026)
+// ════════════════════════════════════════════════════════════════════════════
+import { colVerificacion, filaEnBlanco, letrasCompletables, sinCompletar, COMPLETABLES } from './verificacion.mjs'
+import { COMPRAS_1809 } from './encabezado-vivo-compras.mjs'
+
+/** Una fila de Compras contra el encabezado VIVO, por rótulo. */
+function filaViva(valores = {}) {
+  const f = Array(COMPRAS_1809.length).fill('')
+  for (const [rotulo, v] of Object.entries(valores)) {
+    const i = COMPRAS_1809.indexOf(rotulo)
+    if (i < 0) throw new Error(`rótulo desconocido «${rotulo}»`)
+    f[i] = v
+  }
+  return f
+}
+const COLV = colVerificacion(COMPRAS_1809)
+const BASE = { Proveedor: 'Neumagom', 'N° Comprobante': '0002-00004213', 'Fecha factura': 46000, Importe: 479338.84, IVA: 100661.16, Total: 580000, Categoría: 'B' }
+
+test('sinCompletar nombra las celdas vacías con la LETRA viva: Obra es L y Tipo pago es Q', () => {
+  const leidas = [{ fila: 981, col: COLV, valores: filaViva({ ...BASE, 'Unidad de Negocio': 'Estructura', 'Cliente / Asignación': 'Taller', 'Detalles / Obra': 'Neumático', 'CUIT (OS)': '30-69185382-5' }) }]
+  const [p] = sinCompletar(leidas)
+  assert.deepEqual(p.campos, ['obraFila', 'tipoPago'])
+  assert.deepEqual(p.letras, { obraFila: 'L', tipoPago: 'Q' })
+  assert.deepEqual(p.derivadas, [])
+  assert.equal(p.proveedor, 'Neumagom')
+})
+
+test('una fila completa no sale; una sin Unidad ni J ni K sale con las tres, en orden de columna', () => {
+  const completa = filaViva({ ...BASE, 'Unidad de Negocio': 'Estructura', 'Cliente / Asignación': 'Taller', 'Detalles / Obra': 'x', Obra: 'ES-TAL · Estructura – Taller', 'Tipo pago': 'Echeq', 'CUIT (OS)': '30-69185382-5' })
+  assert.deepEqual(sinCompletar([{ fila: 1, col: COLV, valores: completa }]), [])
+  const vacia = filaViva({ ...BASE, Obra: 'ES-TAL · Estructura – Taller', 'Tipo pago': 'Echeq', 'CUIT (OS)': 'x' })
+  assert.deepEqual(sinCompletar([{ fila: 2, col: COLV, valores: vacia }])[0].campos, ['unidad', 'obra', 'detalle'])
+})
+
+test('«CUIT (OS)» vacía es una DERIVADA, no una celda para completar en Compras: va aparte', () => {
+  const sinCuit = filaViva({ ...BASE, 'Unidad de Negocio': 'Estructura', 'Cliente / Asignación': 'Taller', 'Detalles / Obra': 'x', Obra: 'ES-TAL · Estructura – Taller', 'Tipo pago': 'Echeq' })
+  const [p] = sinCompletar([{ fila: 981, col: COLV, valores: sinCuit }])
+  assert.deepEqual(p.campos, [])
+  assert.deepEqual(p.derivadas, ['cuit'])
+  assert.equal(p.letras.cuit, 'AN')
+})
+
+test('contra un encabezado sin «Obra» ni «CUIT (OS)» (opcionales) no se reclama lo que la pestaña no tiene', () => {
+  const enc = COMPRAS_1809.filter((r) => r !== 'Obra' && r !== 'CUIT (OS)')
+  const col = colVerificacion(enc)
+  assert.equal(col.obraFila, null)
+  assert.equal(col.cuit, null)
+  const f = Array(enc.length).fill('')
+  f[enc.indexOf('Proveedor')] = 'X'; f[enc.indexOf('Unidad de Negocio')] = 'Civil'; f[enc.indexOf('Cliente / Asignación')] = 'MESSINA'
+  f[enc.indexOf('Detalles / Obra')] = 'k'; f[enc.indexOf('Tipo pago')] = 'Efectivo'; f[enc.indexOf('Categoría')] = 'B'
+  assert.deepEqual(sinCompletar([{ fila: 5, col, valores: f }]), [])
+})
+
+test('las completables son exactamente las que una persona tipea en Compras — Tipo de Costo y Estado Carga NO están', () => {
+  assert.deepEqual(COMPLETABLES.map(([k]) => k), ['proveedor', 'categoria', 'unidad', 'obra', 'detalle', 'obraFila', 'tipoPago'])
+})
+
+test('una fila con TODAS las columnas releídas vacías es «no la pude releer»; una con algo, no', () => {
+  const vacia = Array(COMPRAS_1809.length).fill('')
+  assert.equal(filaEnBlanco({ valores: vacia, col: COLV }), true)
+  assert.equal(filaEnBlanco({ valores: [], col: COLV }), true)
+  assert.equal(filaEnBlanco({ valores: filaViva(BASE), col: COLV }), false)
+})
+
+test('EL FALSO POSITIVO: proveedor fuera del desplegable + ticket sin número es una fila REAL, no una sin leer', () => {
+  // Las dos celdas quedan vacías a la vez legítimamente: la E se deja en blanco a propósito cuando el
+  // proveedor no está en el desplegable estricto (`aFajoJson`), y el número no se exige
+  // (`POLITICA.exigirNumero: false`). Con el criterio «E y H vacías» el bot decía «no pude releer la
+  // fila» sobre una fila que había releído perfecto, y el aviso de lo que faltaba salía del intento.
+  const f = filaViva({ 'Fecha factura': 46011, Importe: 479338.84, IVA: 100661.16, Total: 580000, Categoría: 'B', Proveedor: '', 'N° Comprobante': '' })
+  assert.equal(filaEnBlanco({ valores: f, col: COLV }), false)
+  const [p] = sinCompletar([{ fila: 981, col: COLV, valores: f }])
+  assert.ok(p.campos.includes('proveedor'), 'la E vacía se sigue reclamando: es una celda para completar')
+})
+
+test('las letras del respaldo salen del RÓTULO, no de un mapa a mano: una inserción las corre solas', () => {
+  // `escritura.mjs` las usa cuando no pudo releer la fila. Con un mapa hardcodeado, el día que el
+  // dueño inserte una columna el aviso nombraría la letra de al lado — el defecto que el contrato
+  // por rótulo vino a cerrar. Acá se prueba contra la fila viva y contra una con una columna más.
+  assert.deepEqual(letrasCompletables(COMPRAS_1809), {
+    categoria: 'B', fecha: 'C', proveedor: 'E', comprobante: 'H', unidad: 'I', obra: 'J', detalle: 'K',
+    obraFila: 'L', concepto: 'M', importe: 'N', iva: 'O', total: 'P', tipoPago: 'Q', estado: 'Y', cuit: 'AN',
+  })
+  const conExtra = [...COMPRAS_1809.slice(0, 11), 'Centro de costo', ...COMPRAS_1809.slice(11)]
+  const corridas = letrasCompletables(conExtra)
+  assert.equal(corridas.detalle, 'K', 'lo anterior a la inserción no se mueve')
+  assert.equal(corridas.obraFila, 'M', '«Obra» se corre una letra')
+  assert.equal(corridas.tipoPago, 'R')
+})
