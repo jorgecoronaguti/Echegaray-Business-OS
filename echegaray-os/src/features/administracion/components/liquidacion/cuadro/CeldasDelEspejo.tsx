@@ -14,7 +14,7 @@ import { InlineEdit } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { CeldaEditable, IconoDeAviso, MarcaDeOrigen } from '../CeldasDeLiquidacion'
 import { horas as nHoras, pesos } from '../formato'
-import { referenciaDeJornales } from './estadoDelPago'
+import { referenciaDeJornales, sinSello } from './estadoDelPago'
 import { horasNoCoincidenConLosDias, type CampoEditable, type LineaConOverrides } from '../../../services/liquidacionOverrides'
 import type { EdicionDelBlanco } from './CeldasBlancoNegro'
 import type { CeldaDelEspejo, FilaDelEspejo } from '../../../services/espejoDeJornales'
@@ -270,6 +270,13 @@ export function CeldaHorasPagas({ fila, edicion }: { fila: FilaDelEspejo; edicio
           <IconoDeAviso titulo={`no coincide con los días: ${nHoras(dias)} h`} testid={`horas-no-coinciden-${fila.personaId}`} />
         )}
       </div>
+    )
+  }
+  // LA CERRADA SIN HORAS SELLADAS LO DICE, no dibuja «—» ni las horas de los días de hoy (18/09/2026).
+  if (fila.cerrada && l.horas == null && sinSello(l)) {
+    return (
+      <div data-testid={`espejo-hs-pagas-${fila.personaId}`} data-sin-sello="1" title="La quincena está cerrada y la foto no tiene esta cifra. No se rellena con las horas de hoy."
+        style={{ textAlign: 'right', fontSize: '11px', color: V.tenue, whiteSpace: 'nowrap' }}>{sinSello(l)}</div>
     )
   }
   return (

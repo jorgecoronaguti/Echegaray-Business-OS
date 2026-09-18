@@ -13,13 +13,22 @@
 // Es el error peor de los dos. Los dos números están tomados al último día de ESA quincena (`q.hasta`) y el `title`
 // lo dice; si alguien los tomara de hoy, la pantalla afirmaría que en junio se pagó la escala de septiembre.
 //
-// MUTACIONES: sacar la rama del sello, pasarle `hoy` en vez de `q.hasta`, o dejar de pasar `selloDe(l)` en la rama
-// cerrada del servicio → rojo.
+// ═══ Y EL PEOR DE LOS TRES (auditor, 18/09/2026): EL $/H DE `persona_tarifa` DISFRAZADO DE SELLADO ═══
+//
+// Este archivo afirmaba por regex que el sello sale de `l.valorHora` con la tarifa vigente a `q.hasta`. Eso certificaba
+// la fuente equivocada: la foto es `liquidacion_linea.valor_hora`. Ahora se prueba con un fixture donde las dos difieren.
+//
+// MUTACIONES: sacar la rama del sello, pasarle `hoy` en vez de `q.hasta`, dejar de pasar `selloDe(l)` en la rama
+// cerrada del servicio, o volver a armar el cuadro cerrado con `persona_tarifa` → rojo.
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { categoriasDeLaFila } from './categoriasDeLaFila.ts'
+import { motivoSinCobra, sinSello } from './estadoDelPago.ts'
+import { cuadroSellado } from '../../../services/liquidacionSellada.ts'
+import { sinOverrides } from '../../../services/liquidacionOverrides.ts'
+import type { LineaLiquidada } from '../../../services/liquidacionQuincena.ts'
 
 const fuente = (n: string): string => readFileSync(new URL(n, import.meta.url), 'utf8')
 
@@ -69,24 +78,63 @@ test('LA ABIERTA NO CAMBIA: con recibo manda el recibo, sin sello no hay foto', 
   assert.equal(abierta.coinciden, true)
 })
 
-test('EL SELLO SE ARMA A LA FECHA DE LA QUINCENA, Y SÓLO EN LA RAMA CERRADA', () => {
+test('EL $/H DEL SELLO ES EL DE `liquidacion_linea`, NO EL DE `persona_tarifa` (auditor, 18/09/2026)', () => {
+  // ═══ EL TEST QUE ESTABA ACÁ CERTIFICABA LA FUENTE EQUIVOCADA ═══
+  //
+  // Afirmaba por regex que el sello sale de `l.valorHora` con `persona_tarifa` filtrada a `q.hasta`. Eso NO es la foto:
+  // Bazán tiene una sola tarifa cargada ($4.000 desde enero) y la 2ª de marzo se cerró a $4.300; la pantalla decía
+  // «Se liquidó a $4.000/h · cobra $36.000» sobre $38.700 entregados. Ahora se prueba con un fixture donde la tarifa
+  // vigente y la sellada difieren, de punta a punta: cuadro sellado → sello → renglón de la fila.
+  const vigente: LineaLiquidada = {
+    personaId: 'bazan', nombre: 'BAZAN JUAN', esJefe: false, horas: 9, horasEquivalentes: 9, extras: [], valorHora: 4000,
+    netoMensual: null, modalidad: 'hora', cobra: 36000, adelanto: 0, yaTransferido: 0, porBanco: 0, enEfectivo: 36000,
+    total: 36000, efectivoRedondeado: null, sinTarifa: false, reciboNeto: null, blancoAcuerdo: 18000, efectivoAcuerdo: 18000,
+    reciboSinGiro: false, origenTarifa: 'liquidacion_linea sellada quincena 2026-01-01',
+  }
+  const { lineas } = cuadroSellado({
+    grupo: 'obreros',
+    selladas: [{ personaId: 'bazan', horas: 9, valorHora: 4300, cobra: 38700, adelanto: 0, yaTransferido: 0, porBanco: 0, enEfectivo: 38700, total: 38700 }],
+    vivas: [vigente],
+    personas: new Map([['bazan', { id: 'bazan', nombre: 'BAZAN JUAN', esJefe: false }]]),
+    selladosEnLaQuincena: new Set(['bazan']),
+    redondeos: new Map(),
+  })
+  const l = lineas[0]
+  const fila = sinOverrides(l, null, {}, { valorHora: l.valorHora, conLinea: true, piso: 5703, pisoDesde: '2026-03-01', hasta: '2026-03-31' })
+  const c = categoriasDeLaFila({ ...CERRADA, pisoPlataforma: 5703, sello: fila.sello })
+  assert.equal(c.recibo, 'Se liquidó a $4.300/h', 'MUTACIÓN: el sello lleva la tarifa vigente ($4.000) y no la sellada')
+  assert.equal(fila.cobra, 38700)
+  assert.match(c.titulo, /31\/03\/2026/)
+
+  // Y EL SERVICIO ARMA EL CUADRO CERRADO CON `cuadroSellado` Y LE PASA ESA LÍNEA AL SELLO: no hay otra rama que
+  // pueda volver a `persona_tarifa`.
   const servicio = fuente('../../../services/liquidacionQuincenaService.ts')
-  // `pisoDe` y `pisoDesdeDe` salen de `exposicion`, que corre con `q.hasta` (`exponerAlPiso(p, escalas, q.hasta, …)`).
-  assert.match(servicio, /const pisoDesdeDe = new Map\(exposicion\.lineas\.map/)
-  // SÓLO EL CUERPO DE `selloDe`: `q.hasta` aparece en varios lugares del archivo y una búsqueda global no probaría
-  // nada. Acá el único `hasta` admisible es el de la quincena.
+  assert.match(servicio, /const cuadros = vivos\.map\(\(c\) => \{\s*if \(estadoDelCuadro\(estados, c\.grupo\)\.estado !== 'cerrada'\) return c\s*const foto = cuadroSellado\(\{/)
+  assert.match(servicio, /'horas', 'valor_hora', 'adelanto', 'ya_transferido', 'por_banco',\s*'en_efectivo', 'total',/, 'las columnas selladas se piden a la base')
+  assert.match(servicio, /sinOverrides\(l, presentismosSellados\.get\(l\.personaId\) \?\? null, overrides\.get\(l\.personaId\) \?\? \{\}, selloDe\(l\)\)/,
+    'la rama cerrada le pasa el sello de la línea sellada')
   const armado = servicio.slice(servicio.indexOf('const selloDe ='))
   const cuerpo = armado.slice(armado.indexOf('=> ({'), armado.indexOf('  })') + 4)
   assert.match(cuerpo, /hasta: q\.hasta,/, 'la foto se fecha con el fin de la quincena')
   assert.doesNotMatch(cuerpo, /\bhoy\b/, 'nunca la fecha de hoy')
-  assert.match(servicio, /sinOverrides\(l, presentismosSellados\.get\(l\.personaId\) \?\? null, overrides\.get\(l\.personaId\) \?\? \{\}, selloDe\(l\)\)/,
-    'la rama cerrada le pasa el sello')
 
   const overrides = fuente('../../../services/liquidacionOverrides.ts')
   // LA ABIERTA NO TIENE FOTO: su $/h sale del modelo, que sí puede correr.
   assert.match(overrides, /\/\/ LA ABIERTA NO TIENE FOTO[\s\S]{0,120}sello: null,/)
   // Y LA CERRADA SIGUE SIN RECALCULAR: `sueldo` queda en null.
   assert.match(overrides, /referenciaJornales: null, sueldo: null, sello,/)
+})
+
+test('SIN $/H EN LA FOTO LA CELDA DICE «sin dato sellado»; SIN LÍNEA, «sin línea sellada»', () => {
+  assert.equal(sinSello({ sello: { conLinea: true } }), 'sin dato sellado')
+  assert.equal(sinSello({ sello: { conLinea: false } }), 'sin línea sellada')
+  assert.equal(sinSello({ sello: null }), null, 'la abierta no tiene sello: cada celda dice lo suyo')
+  assert.equal(motivoSinCobra({ modalidad: 'hora', sello: { conLinea: false } }), 'sin línea sellada')
+  assert.equal(motivoSinCobra({ modalidad: 'hora', sello: null }), 'sin tarifa')
+  const celdas = fuente('./CeldasBlancoNegro.tsx')
+  assert.match(celdas, /if \(s == null && sello != null\) \{[\s\S]{0,400}\{sinSello\(fila\.linea\)\}/, 'el $/h cat. de la cerrada sin foto lo dice')
+  assert.match(fuente('./CeldaTarifa.tsx'), /\{actual == null \? \(sinSello\(l\) \?\? '—'\) : pesos\(actual\)\}/)
+  assert.match(fuente('./CeldasDelEspejo.tsx'), /if \(fila\.cerrada && l\.horas == null && sinSello\(l\)\)/)
 })
 
 test('LA COLUMNA «$/h cat.» DIBUJA EL SELLO, APAGADO Y CON SU FECHA; Y NUNCA PIERDE SU TESTID', () => {
