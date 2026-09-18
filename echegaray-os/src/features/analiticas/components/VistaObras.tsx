@@ -26,7 +26,7 @@ import { Columnas } from './VistasEmpresa'
 
 const ORIGEN_CONTRATO: Record<string, string> = {
   contrato: 'según contrato', oc: 'según OC del cliente', 'oc-cliente': 'según OC del cliente', presupuesto: 'según cotización aprobada',
-  'oc-pesos': 'según OBRAS', 'oc-usd-x-tc': 'en U$S, al dólar de hoy', formulario: 'declarado en la obra', 'suma-viva': 'lo facturado hasta hoy, no es precio',
+  'oc-pesos': 'según OBRAS', 'oc-usd-x-tc': 'en U$S, al dólar de hoy', formulario: 'declarado en la obra', 'suma-viva': 'suma de lo facturado en Cobranzas',
 }
 
 export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva, tipoCosto }: {

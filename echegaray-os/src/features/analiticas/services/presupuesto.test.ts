@@ -90,9 +90,9 @@ test('las horas cotizadas vienen de la misma vista', () => {
   assert.deepEqual(celda(o, 'horas').lectura, { tipo: 'queda', monto: 50 })
 })
 
-test('el contratado sale de la misma fila: precio salvo suma viva; una pata en dólares sin valuar se dice', () => {
+test('el contratado sale de la misma fila con la regla de la ficha; una pata en dólares sin valuar se dice', () => {
   assert.deepEqual(precioDe(filaDe('a', { contrato: { contratado: 40e6, contratado_origen: 'presupuesto' } }).contrato), { precio: 40e6, ausencia: null })
-  assert.deepEqual(precioDe(filaDe('b', { contrato: { contratado: 17.7e6, contratado_origen: 'suma-viva' } }).contrato), { precio: null, ausencia: 'sin precio' })
+  assert.deepEqual(precioDe(filaDe('b', { contrato: { contratado: 17.7e6, contratado_origen: 'suma-viva' } }).contrato), { precio: 17.7e6, ausencia: null })
   assert.deepEqual(precioDe(filaDe('c', { contrato: { contratado: null, contratado_usd: 63000, contratado_origen: 'contrato' } }).contrato), { precio: null, ausencia: 'sin valuar' })
   assert.deepEqual(precioDe(filaDe('d', { contrato: { contratado: 5008661, contratado_origen: 'formulario' } }).contrato), { precio: 5008661, ausencia: null })
 })

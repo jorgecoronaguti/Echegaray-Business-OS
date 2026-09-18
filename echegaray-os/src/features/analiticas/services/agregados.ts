@@ -71,10 +71,12 @@ export function cifrasResumen(obras: ObraAnalitica[], sinObra: ReadonlyMap<strin
 //
 // ═══ LAS TRES REGLAS QUE ESTA CUENTA NO PUEDE ROMPER ═══
 //
-// 1. CONTRATADO ES EL PRECIO, NUNCA LO FACTURADO. Lo decide `precioDe` (obras.ts): el contrato
-//    desglosado, o el precio que OBRAS declara. La suma viva de Cobranzas NO es precio —el dueño ya
-//    rechazó una columna que la publicaba: Instalación Eléctrica vale $ 40 M y lleva $ 20 M
-//    facturados, y con lo facturado la obra aparentaba perder plata contra su costo.
+// 1. CONTRATADO ES `baseDelContrato`, LA MISMA FUNCIÓN QUE LA FICHA Y EL CRM (dueño, 18/09/2026: «lo
+//    contratado de las obras está OK, ¿por qué no se ve así en Analíticas?»). Lo aplica `precioDe`
+//    (obras.ts) sin regla propia. DUDA ABIERTA, no decidida acá: antes se excluía el origen
+//    `suma-viva` (lo facturado de Cobranzas) porque el dueño había rechazado publicar lo facturado
+//    como precio (Instalación Eléctrica: $ 40 M de precio, $ 20 M facturados). Si esa exclusión
+//    vale, va en `baseDelContrato` y cambia las dos pantallas juntas.
 // 2. UNA OBRA SIN PRECIO NO SE RELLENA. Ni con su presupuesto ni con lo facturado: queda AFUERA de
 //    la cuenta, y lo que gastó se dice aparte. Un contratado que no incluye una obra no puede
 //    compararse contra un gastado que sí la incluye.

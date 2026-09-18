@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { armarCostosPorObra } from '../../clientes/services/costosDeObra.ts'
+import { baseDelContrato } from '../../clientes/services/contratoDeObra.ts'
 import { agruparPorSemaforo, armarObra, elegirObra, costoObjetivoValido, estadoDe, fraseDeObra, grupoDe, pasaEstado, precioDe, rubrosComparables, type ObraPanel } from './obras.ts'
 import { filaDe, presupuestoDe } from './presupuesto.fixture.ts'
 
@@ -29,8 +30,8 @@ test('EL CONTRATO NO ES PRESUPUESTO: con contrato firmado y sin presupuesto, la 
   assert.equal(o.presupuestoRubros, null)
 })
 
-test('la suma viva de Cobranzas NO es un precio: medir contra ella da siempre «dentro»', () => {
-  assert.deepEqual(precioDe(filaDe('x', { contrato: { contratado: 17704199, contratado_origen: 'suma-viva' } }).contrato), { precio: null, ausencia: 'sin precio' })
+test('el precio de Analíticas es baseDelContrato, también con origen suma-viva (dueño 18/09: la cifra de la ficha)', () => {
+  assert.deepEqual(precioDe(filaDe('x', { contrato: { contratado: 17704199, contratado_origen: 'suma-viva' } }).contrato), { precio: 17704199, ausencia: null })
   assert.deepEqual(precioDe(filaDe('x', { contrato: { contratado: 5008661, contratado_origen: 'formulario' } }).contrato), { precio: 5008661, ausencia: null })
   assert.deepEqual(precioDe(null), { precio: null, ausencia: 'sin precio' })
 })
@@ -110,4 +111,23 @@ test('la obra de la vista Obras: la pedida si pasa los filtros; si no, la que m�
   assert.equal(elegirObra([a, b], 'no-esta-en-el-filtro')?.id, 'b')
   assert.equal(elegirObra([a, b], null)?.id, 'b')
   assert.equal(elegirObra([], 'a'), null)
+})
+
+// ═══ UNA SOLA DEFINICIÓN DEL CONTRATADO (dueño, 18/09/2026) ═══
+// La ficha de la obra y el CRM muestran `baseDelContrato({ contratoTotal, contratado })`. Analíticas
+// tiene que mostrar EXACTAMENTE lo mismo, al peso, para cualquier fila: si alguien vuelve a poner una
+// regla propia en `precioDe` (excluir un origen, exigir > 0, redondear), esto falla.
+test('Analíticas y la ficha dicen el mismo contratado, al peso, en toda combinación de la fila', () => {
+  const totales = [null, 0, 139_000_000, 44_110_000.55]
+  const contratados = [null, 0, 17_704_199, 40_000_000, 102_500_000.1]
+  const origenes = [null, 'contrato', 'oc-pesos', 'oc-usd-x-tc', 'suma-viva', 'formulario']
+  let n = 0
+  for (const contrato_total of totales) for (const contratado of contratados) for (const contratado_origen of origenes) {
+    const fila = filaDe('x', { contrato: { contrato_total, contratado, contratado_origen } })
+    const ficha = baseDelContrato({ contratoTotal: contrato_total, contratado })
+    assert.equal(precioDe(fila.contrato).precio, ficha, `total ${contrato_total} · contratado ${contratado} · ${contratado_origen}`)
+    assert.equal(armarObra(panel('x'), fila, null)?.precio ?? null, ficha)
+    n++
+  }
+  assert.equal(n, 120)
 })

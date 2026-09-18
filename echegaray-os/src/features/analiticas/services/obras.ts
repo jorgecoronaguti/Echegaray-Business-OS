@@ -20,6 +20,7 @@
 // Los números no se calculan acá: los traen `obra_economia_rubros`, `analiticas_costos` y
 // `costo_de_obras_por_rubro`. Este archivo decide qué dice cada hueco y en qué grupo cae cada obra.
 import type { CostoDeObra, GastoSinObra } from '../../clientes/services/costosDeObra.ts'
+import { baseDelContrato } from '../../clientes/services/contratoDeObra.ts'
 import type { EstadoObra } from './filtros.ts'
 import { millones } from './formato.ts'
 import type { ConsumoRubro } from './consumo.ts'
@@ -89,9 +90,8 @@ export interface ObraAnalitica {
     origen: string | null
   }
   /**
-   * EL PRECIO DE VENTA: lo que el cliente se comprometió a pagar. Es `contratado_de_obra` (la misma
-   * cifra que el CRM y la ficha), salvo que su origen sea una `suma-viva` de Cobranzas: eso es lo
-   * facturado, y acá no se llama precio (`precioDe`). `null` → `ausencia` dice por qué.
+   * EL PRECIO DE VENTA: `baseDelContrato` de la ficha y el CRM, la misma función (`precioDe`).
+   * `null` → `ausencia` dice por qué.
    */
   precio: number | null
   ausencia: AusenciaPrecio | null
@@ -181,16 +181,21 @@ export function rotuloEstimada(g: Pick<Gasto, 'manoObra' | 'manoObraEstimada'>):
 }
 
 /**
- * EL PRECIO Y, SI NO HAY, LA PALABRA. El número es `contratado` de la vista (la definición única);
- * lo único que se decide acá es que una `suma-viva` de Cobranzas no es un precio.
+ * EL PRECIO Y, SI NO HAY, LA PALABRA. El número es `baseDelContrato` —la MISMA función que usa la
+ * ficha de la obra y el CRM (dueño, 18/09/2026: «lo contratado de las obras está OK, ¿por qué no se
+ * ve así en Analíticas?»)—: el total del contrato desglosado si es > 0; si no, el contratado de la
+ * vista. Acá no hay regla propia: antes se descartaba el origen `suma-viva` (lo facturado de
+ * Cobranzas) y la obra quedaba «sin precio» mientras la ficha mostraba el número. Si esa exclusión
+ * vuelve, vuelve en `baseDelContrato`, para las dos pantallas a la vez.
+ * Lo único propio es la PALABRA cuando no hay número: una pata en dólares sin dólar del día es
+ * «sin valuar», no «sin precio».
  */
 export function precioDe(c: ContratoLeido | null | undefined): { precio: number | null; ausencia: AusenciaPrecio | null } {
   if (!c) return { precio: null, ausencia: 'sin precio' }
-  if (c.contratado != null && c.contratado > 0 && c.origen !== ORIGEN_SUMA_VIVA) return { precio: c.contratado, ausencia: null }
-  // UNA PATA EN DÓLARES SIN DÓLAR DEL DÍA: el contrato existe, pero no se puede decir en pesos.
+  const precio = baseDelContrato({ contratoTotal: c.total, contratado: c.contratado })
+  if (precio != null) return { precio, ausencia: null }
   const patasUsd = (c.manoObraUsd != null && c.manoObra == null) || (c.materialesUsd != null && c.materiales == null) || (c.contratadoUsd != null && c.contratado == null)
-  if (patasUsd) return { precio: null, ausencia: 'sin valuar' }
-  return { precio: null, ausencia: 'sin precio' }
+  return { precio: null, ausencia: patasUsd ? 'sin valuar' : 'sin precio' }
 }
 
 export function grupoDe(presupuesto: number | null, total: number | null): Grupo {

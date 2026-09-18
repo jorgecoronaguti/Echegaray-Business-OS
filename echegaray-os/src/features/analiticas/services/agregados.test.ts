@@ -201,16 +201,16 @@ test('qué contiene cada rubro (Resumen): definición, presupuestado en las obra
 
 // ─── Lo contratado contra lo gastado (dueño, 17/09/2026: «más claridad de lo contratado vs lo que se va gastando») ───
 
-test('Contrato: lo contratado es el PRECIO (nunca la suma viva de lo facturado) y se compara sólo con lo gastado en esas mismas obras', () => {
+test('Contrato: lo contratado es baseDelContrato (la cifra de la ficha) y se compara sólo con lo gastado en esas mismas obras', () => {
   // Instalación Eléctrica: vale $ 40 M, lleva $ 20 M facturados. El precio es 40, no 20.
   const a = obra('a', 'me', { contratado: 40e6, origen: 'oc-pesos' }, { mano_obra: 5e6, materiales: 15e6 })
-  // BSA: OBRAS no tiene precio; `contratado` es la suma viva de Cobranzas → NO es precio: queda afuera.
-  const b = obra('b', 'me', { contratado: 17.7e6, origen: 'suma-viva' }, { materiales: 12e6 })
+  // Una obra SIN precio en ninguna fuente (baseDelContrato → null): queda afuera.
+  const b = obra('b', 'me', { contratado: null }, { materiales: 12e6 })
   // Quattropani: U$S 63.000 valuados al TC de hoy; el contrato desglosado manda.
   const q = obra('q', 'qp', { contratado: 139e6, contratado_usd: 63000, tipo_cambio: 1510, origen: 'contrato', contrato_total: 139e6 }, { mano_obra: 30e6 })
   const r = contraContrato([a, b, q])
   assert.equal(r.conPrecio, 2)
-  assert.equal(r.contratado, 179e6, '40 + 139; la suma viva de b no entra')
+  assert.equal(r.contratado, 179e6, '40 + 139; b no tiene precio y no entra')
   assert.equal(r.gastado, 50e6, '20 de a + 30 de q; los 12 de b no entran porque b no tiene precio')
   assert.equal(r.queda, 129e6)
   assert.equal(r.pct, 50e6 / 179e6)
@@ -221,7 +221,7 @@ test('Contrato: lo contratado es el PRECIO (nunca la suma viva de lo facturado) 
 })
 
 test('Contrato: sin ninguna obra con precio no hay cuenta — null, nunca $ 0 ni 0 %', () => {
-  const b = obra('b', 'me', { contratado: 17.7e6, origen: 'suma-viva' }, { materiales: 12e6 })
+  const b = obra('b', 'me', { contratado: null }, { materiales: 12e6 })
   const r = contraContrato([b])
   assert.equal(r.conPrecio, 0)
   assert.equal(r.contratado, null)
@@ -240,7 +240,7 @@ test('Contrato: una obra con precio y sin gasto queda todo; con más gasto que p
 
 test('Contrato por cliente: mismo orden que la lista de presupuestado (del que más gastó al que menos), el gasto por rubro es sólo de las obras con precio', () => {
   const a = obra('a', 'me', { contratado: 40e6, origen: 'oc-pesos' }, { mano_obra: 5e6, materiales: 15e6 })
-  const b = obra('b', 'me', { contratado: 17.7e6, origen: 'suma-viva' }, { materiales: 12e6 })
+  const b = obra('b', 'me', { contratado: null }, { materiales: 12e6 })
   const q = obra('q', 'qp', { contratado: 139e6, contratado_usd: 63000, tipo_cambio: 1510, origen: 'contrato', contrato_total: 139e6 }, { mano_obra: 30e6 })
   const f = contratoPorCliente([q, a, b])
   assert.deepEqual(f.map((c) => c.clienteId), ['me', 'qp'], 'me gastó 32 (20 + 12), qp 30')
