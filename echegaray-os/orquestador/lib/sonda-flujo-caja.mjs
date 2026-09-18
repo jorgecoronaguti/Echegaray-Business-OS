@@ -68,6 +68,9 @@ export function estadoTras({ estado, marca, ok, notas }) {
  * @param {() => Promise<boolean>} d.syncCorriendo
  * @param {() => Promise<void>} d.sincronizarCompras  tira si falla
  * @param {(anterior:any) => Promise<{notas:any, linea:string}>} d.sincronizarNotas  tira si falla
+ * @param {() => Promise<void>} [d.sincronizarCaja]  el espejo de CAJA (18/09/2026). Su falla NO deja la
+ *   versión sin atender: relanzar Compras por un problema de CAJA sería martillar otra cosa. Tiene su
+ *   propio timer de red (10 min) y su error queda en `caja_sheet_sync`, a la vista de la app.
  * @param {(s:string) => void} [d.log]
  */
 export async function vueltaDeSonda(d) {
@@ -82,6 +85,9 @@ export async function vueltaDeSonda(d) {
   let notas
   try {
     await d.sincronizarCompras()
+    if (d.sincronizarCaja) {
+      try { await d.sincronizarCaja() } catch (e) { log(`sonda: el espejo de CAJA no arrancó (${e.message}) — queda su timer de 10 min`) }
+    }
     const r = await d.sincronizarNotas(estado?.notas ?? null)
     log(r.linea)
     // UNA LECTURA SALTEADA NO ATIENDE LA VERSIÓN (auditoría 17/09): si el pipeline arrancó en el medio,

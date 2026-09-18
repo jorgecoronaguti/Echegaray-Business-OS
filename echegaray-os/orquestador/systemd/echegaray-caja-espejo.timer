@@ -1,0 +1,13 @@
+# LA RED DEL ESPEJO DE CAJA. El camino principal es la sonda (1 min, sólo si el archivo cambió).
+# Esto cubre lo que CAJA cambia SIN que nadie edite: fórmulas con TODAY() y el dólar de GOOGLEFINANCE.
+# Una vuelta sin cambios es un UPDATE de una fila (`verificada_en`): no es carga para la base.
+[Unit]
+Description=Echegaray OS - Espejo de CAJA cada 10 min (red de seguridad)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

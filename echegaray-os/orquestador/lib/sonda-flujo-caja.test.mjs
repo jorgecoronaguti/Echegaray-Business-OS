@@ -98,3 +98,36 @@ test('X7 · el script le pasa pipelineCorriendo a vueltaDeSonda', () => {
   const vuelta = SCRIPT.slice(SCRIPT.indexOf('await vueltaDeSonda({'))
   assert.match(vuelta.slice(0, vuelta.indexOf('})')), /pipelineCorriendo: \(\) => unidadCorriendo\(UNIDAD_PIPELINE\)/)
 })
+
+test('versión nueva: después de Compras dispara el espejo de CAJA', async () => {
+  const d = deps()
+  d.sincronizarCaja = async () => { d.llamadas.push('caja') }
+  await vueltaDeSonda(d)
+  assert.equal(d.llamadas[0], 'compras')
+  assert.equal(d.llamadas[1], 'caja')
+  assert.equal(d.guardado().marca, '10')
+})
+
+test('el espejo de CAJA que falla no deja la versión sin atender (no relanza Compras por CAJA)', async () => {
+  const d = deps()
+  const log = []
+  d.log = (s) => log.push(s)
+  d.sincronizarCaja = async () => { throw new Error('unidad no instalada') }
+  const r = await vueltaDeSonda(d)
+  assert.equal(r.ok, true)
+  assert.equal(d.guardado().marca, '10')
+  assert.ok(log.some((l) => /espejo de CAJA no arrancó \(unidad no instalada\)/.test(l)))
+})
+
+test('con un sync corriendo tampoco se dispara CAJA (la versión se atiende entera en la vuelta siguiente)', async () => {
+  const d = deps({ corriendo: true })
+  d.sincronizarCaja = async () => { d.llamadas.push('caja') }
+  await vueltaDeSonda(d)
+  assert.deepEqual(d.llamadas, [])
+})
+
+test('X8 · el script le pasa sincronizarCaja a vueltaDeSonda y la lanza sin bloquear', () => {
+  const vuelta = SCRIPT.slice(SCRIPT.indexOf('await vueltaDeSonda({'))
+  assert.match(vuelta.slice(0, vuelta.indexOf('})')), /sincronizarCaja,/)
+  assert.match(SCRIPT, /'start', '--no-block', UNIDAD_CAJA/)
+})

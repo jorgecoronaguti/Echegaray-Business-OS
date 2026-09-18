@@ -1,0 +1,30 @@
+# EL ESPEJO DE LA PESTAÑA CAJA → public.caja_sheet_foto (Analíticas → Caja lee de ahí).
+# La lógica y el porqué, en `orquestador/lib/caja-espejo.mjs` y `scripts/sync-caja-espejo.mjs`.
+#
+# NO ESCRIBE EL SHEET: abre Google con alcance de sólo lectura.
+# La dispara la sonda (`echegaray-sonda-flujo-caja`, 1 min) cuando el archivo cambió, y su timer cada
+# 10 min por lo que cambia sin edición (TODAY(), GOOGLEFINANCE).
+#
+# NO INSTALADA. Orden: (1) mergear y desplegar el código en ~/echegaray-os/produccion, (2) aplicar
+# la migración 20260918T1500_caja_espejo_de_la_pestana, (3) copiar esta unidad y su .timer a
+# ~/.config/systemd/user/, `daemon-reload`, `enable --now echegaray-caja-espejo.timer`.
+# Sin la migración el script no escribe y lo dice; sin la unidad la sonda lo anota y sigue.
+[Unit]
+Description=Echegaray OS - Espejo de la pestaña CAJA (Sheet -> caja_sheet_foto)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
+Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/sync-caja-espejo.mjs
+# 4 lecturas a Google (~1,5 s medidos el 18/09) y una escritura de una fila.
+TimeoutStartSec=90
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=caja-espejo
+
+[Install]
+WantedBy=default.target
