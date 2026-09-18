@@ -77,11 +77,8 @@ export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, 
             nota: comprobantes != null && comprobantes > 0 ? `${comprobantes} comprobantes sin obra` : undefined },
           { rotulo: 'horas en obra', valor: horasTexto(horas), falta: 'sin horas',
             nota: `${conHoras} ${conHoras === 1 ? 'obra carga' : 'obras cargan'} horas` },
-          // CUÁL ES LA OBRA (dueño, 17/09/2026): con una sola, no decir el nombre obliga a ir a buscarlo.
           { rotulo: 'obras sin presupuesto', valor: `${sinPres.length} de ${obras.length}`, tono: sinPres.length ? 'warn' : undefined,
-            nota: sinPres.length
-              ? `${sinPres.length === 1 ? sinPres[0].nombre : `${sinPres.length} obras`}${consumidoSinPres > 0 ? ` · ${millones(consumidoSinPres)} consumidos` : ''}`
-              : undefined },
+            nota: sinPres.length && consumidoSinPres > 0 ? `${millones(consumidoSinPres)} consumidos` : undefined },
         ]} />
 
       {/* LO CONTRATADO CONTRA LO GASTADO (dueño, 17/09/2026): primero, porque es lo que no veía. Sólo las
