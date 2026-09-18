@@ -112,7 +112,11 @@ export function perfilesDeCompras(historia = []) {
  * un texto al campo del IVA. El test de paridad lo agarró en rojo. La lección: dos vías que nombran
  * distinto la misma cosa NO se unifican adivinando; el que llama declara cuál es su forma.
  */
-const CAMPO = Object.freeze({ obra: 'obra', unidad: 'unidad', categoria: 'categoria', pago: 'formaPago' })
+const CAMPO = Object.freeze({
+  obra: 'obra', unidad: 'unidad', categoria: 'categoria', pago: 'formaPago',
+  // Lo que el papel decía y el desplegable no acepta: no es una celda, es un freno. Ver abajo.
+  pagoLeido: 'formaPagoLeida',
+})
 
 /** ¿Esta dimensión ya viene resuelta? Un string en blanco no cuenta como resuelta. */
 const yaTiene = (c, campo) => Boolean(String(c?.[campo] ?? '').trim())
@@ -180,9 +184,15 @@ export function completarUno(comprobante, perfiles = null, { campoDetalle = 'det
     aplicado.categoria = { n: s.categoria.n, share: s.categoria.share }
   }
   // EL TIPO DE PAGO (columna Q): sólo si las últimas ULTIMAS_PAGO cargas del proveedor coinciden.
-  // El papel manda: si la lectura ya trajo una forma de pago válida, el historial no opina.
+  //
+  // EL PAPEL MANDA, Y TAMBIÉN EL PAPEL QUE NO ES OPCIÓN (18/09/2026). Si la lectura trajo una forma
+  // de pago válida, el historial no opina — eso ya lo cubre `yaTiene`. Y si trajo una que el
+  // desplegable no acepta («Mercado Pago»), TAMPOCO: la celda queda vacía y el aviso dice qué decía
+  // el papel. Completarla con la moda del proveedor sería el historial pisando una decisión que el
+  // comprobante sí tomó, sólo que con otras palabras. Ver `pagoDelPapel` en `desplegables.mjs`.
   const pago = perfiles.pago?.[normProv(c.proveedor)] ?? null
-  if (!vedada('pago') && !yaTiene(c, CAMPO.pago) && pago?.sugerido) {
+  const papelLoDijo = Boolean(String(c[CAMPO.pagoLeido] ?? '').trim())
+  if (!vedada('pago') && !yaTiene(c, CAMPO.pago) && !papelLoDijo && pago?.sugerido) {
     poner(c, 'pago', CAMPO.pago, pago.sugerido)
     aplicado.pago = { n: pago.n, share: 1, ultimas: ULTIMAS_PAGO }
   }

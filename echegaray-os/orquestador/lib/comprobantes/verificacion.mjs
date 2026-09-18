@@ -61,6 +61,18 @@ export const COMPLETABLES = Object.freeze([
 export const NOMBRE_COMPLETABLE = Object.freeze(Object.fromEntries(COMPLETABLES))
 
 /**
+ * La LETRA de cada columna releída contra un encabezado. Es lo que permite que un aviso armado sin
+ * la fila a la vista (el respaldo, cuando no se pudo releer) nombre igual las letras que uno armado
+ * con ella, sin ningún mapa escrito a mano que se quede viejo cuando el dueño inserte una columna.
+ */
+export function letrasCompletables(encabezado) {
+  const col = colVerificacion(encabezado)
+  return Object.freeze(Object.fromEntries(Object.entries(col)
+    .filter(([, i]) => i != null)
+    .map(([k, i]) => [k, letraDe(i)])))
+}
+
+/**
  * Por fila releída: qué columnas completables quedaron VACÍAS (con su letra viva) y qué derivadas
  * del OS no resolvieron (`cuit` = «CUIT (OS)» vacía: el maestro no tiene el CUIT del proveedor).
  * Las filas sin nada vacío no salen. `col` de cada fila es el de `colVerificacion(encabezado)`.
@@ -68,6 +80,20 @@ export const NOMBRE_COMPLETABLE = Object.freeze(Object.fromEntries(COMPLETABLES)
  * @param {Array<{fila:number, valores:Array, col?:object}>} leidas
  * @returns {Array<{fila:number, proveedor:string|null, campos:string[], letras:Record<string,string>, derivadas:string[]}>}
  */
+/**
+ * ¿ESTA FILA SE PUDO RELEER? Si NINGUNA de las columnas releídas tiene algo, no se leyó (el rango
+ * vino corto, o la escritura no entró — eso lo caza `verificarEscritura` en el cargador).
+ *
+ * No alcanza con mirar el proveedor y el número: los dos quedan legítimamente vacíos a la vez en una
+ * fila real —proveedor fuera del desplegable (la E se deja en blanco a propósito) más un ticket sin
+ * número (`POLITICA.exigirNumero: false`)— y con ese criterio el bot decía «no pude releer la fila»
+ * sobre una fila que había releído perfecto. La fecha, los importes y el Total (fórmula estampada)
+ * están en toda fila escrita.
+ */
+export function filaEnBlanco({ valores, col = colRef } = {}) {
+  return !Object.values(col).some((i) => i != null && String(valores?.[i] ?? '').trim() !== '')
+}
+
 export function sinCompletar(leidas = []) {
   const out = []
   for (const { fila, valores, col = colRef } of leidas) {

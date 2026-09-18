@@ -116,3 +116,46 @@ test('una fila releída EN BLANCO no es «todo vacío»: para esa fila vale lo q
   assert.doesNotMatch(r.texto, /Proveedor \(E\)/)
   assert.equal(r.sinImputar[0].origen, 'intento')
 })
+
+// ── Los cuatro arreglos de la revisión del 18/09 que se ven en el mensaje ────
+
+test('el aviso nombra la EXCEPCIÓN: la Q quedó vacía porque el papel decía algo que no es opción', async () => {
+  const r = await cargar({
+    item: { unidad: 'Estructura', obra: 'Taller', detalleObra: 'x', formaPago: null, formaPagoLeida: 'Mercado Pago' },
+    fila: fila981({ 'Unidad de Negocio': 'Estructura', 'Cliente / Asignación': 'Taller', Obra: 'ES-TAL · Estructura – Taller', 'CUIT (OS)': 'x' }),
+  })
+  assert.match(r.texto, /falta Tipo pago \(Q\) — el papel dice «Mercado Pago», que no es una opción de «Tipo pago»/)
+  assert.equal(r.sinImputar[0].pagoLeido, 'Mercado Pago')
+})
+
+test('un proveedor recién dado de ALTA con su CUIT no recibe «el maestro no tiene el CUIT»', async () => {
+  // La ARRAYFORMULA «CUIT (OS)» lee la auxiliar `_PROVEEDORES_OS`, que se regenera después: la celda
+  // se relee vacía aunque el maestro ya tenga el CUIT desde hace un segundo. El aviso descontaba
+  // `cuitsCompletados` pero no las altas de esta misma corrida, y decía algo falso.
+  const completa = fila981({ 'Unidad de Negocio': 'Estructura', 'Cliente / Asignación': 'Taller', Obra: 'ES-TAL · Estructura – Taller', 'Tipo pago': 'Echeq' })
+  const r = await cargar({
+    item: { unidad: 'Estructura', obra: 'Taller', detalleObra: 'x' }, fila: completa,
+    datosExtra: { altasAplicadas: { creados: [{ nombre: 'Neumagom', cuit: '30691853825', id: 'x' }], yaEstaban: [], alias: [], rechazos: [] } },
+  })
+  assert.doesNotMatch(r.texto, /el maestro de proveedores no tiene el CUIT/)
+  // Y el que ya existía en la base por CUIT (`yaEstaban`) tampoco.
+  const ya = await cargar({
+    item: { unidad: 'Estructura', obra: 'Taller', detalleObra: 'x' }, fila: completa,
+    datosExtra: { altasAplicadas: { creados: [], yaEstaban: [{ nombre: 'Neumagom', cuit: '30691853825', id: 'x' }], alias: [], rechazos: [] } },
+  })
+  assert.doesNotMatch(ya.texto, /el maestro de proveedores no tiene el CUIT/)
+  // Pero si nadie resolvió el CUIT, el aviso sigue saliendo: no se apagó, se acotó.
+  const nadie = await cargar({ item: { unidad: 'Estructura', obra: 'Taller', detalleObra: 'x' }, fila: completa })
+  assert.match(nadie.texto, /el maestro de proveedores no tiene el CUIT de «Neumagom»/)
+})
+
+test('proveedor fuera del desplegable + ticket sin número: la fila SE RELEYÓ, y el aviso no dice lo contrario', async () => {
+  const sinEyH = fila981({
+    Proveedor: '', 'N° Comprobante': '', 'Unidad de Negocio': 'Estructura', 'Cliente / Asignación': 'Taller',
+    Obra: 'ES-TAL · Estructura – Taller', 'Tipo pago': 'Echeq', 'CUIT (OS)': 'x',
+  })
+  const r = await cargar({ item: { unidad: 'Estructura', obra: 'Taller', detalleObra: 'x' }, fila: sinEyH })
+  assert.doesNotMatch(r.texto, /no pude releer/)
+  assert.match(r.texto, /falta Proveedor \(E\)/, 'la E vacía es una celda para completar, no una fila sin leer')
+  assert.equal(r.sinImputar[0].origen, 'destino')
+})

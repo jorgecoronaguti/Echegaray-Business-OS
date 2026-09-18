@@ -90,7 +90,7 @@ test('el cierre dice que se releyó, y con hallazgos dice que NO se dé por buen
 // ════════════════════════════════════════════════════════════════════════════
 // LO QUE QUEDÓ VACÍO SE NOMBRA LEYENDO LA FILA, CON SU LETRA VIVA (18/09/2026)
 // ════════════════════════════════════════════════════════════════════════════
-import { colVerificacion, sinCompletar, COMPLETABLES } from './verificacion.mjs'
+import { colVerificacion, filaEnBlanco, letrasCompletables, sinCompletar, COMPLETABLES } from './verificacion.mjs'
 import { COMPRAS_1809 } from './encabezado-vivo-compras.mjs'
 
 /** Una fila de Compras contra el encabezado VIVO, por rótulo. */
@@ -143,4 +143,37 @@ test('contra un encabezado sin «Obra» ni «CUIT (OS)» (opcionales) no se recl
 
 test('las completables son exactamente las que una persona tipea en Compras — Tipo de Costo y Estado Carga NO están', () => {
   assert.deepEqual(COMPLETABLES.map(([k]) => k), ['proveedor', 'categoria', 'unidad', 'obra', 'detalle', 'obraFila', 'tipoPago'])
+})
+
+test('una fila con TODAS las columnas releídas vacías es «no la pude releer»; una con algo, no', () => {
+  const vacia = Array(COMPRAS_1809.length).fill('')
+  assert.equal(filaEnBlanco({ valores: vacia, col: COLV }), true)
+  assert.equal(filaEnBlanco({ valores: [], col: COLV }), true)
+  assert.equal(filaEnBlanco({ valores: filaViva(BASE), col: COLV }), false)
+})
+
+test('EL FALSO POSITIVO: proveedor fuera del desplegable + ticket sin número es una fila REAL, no una sin leer', () => {
+  // Las dos celdas quedan vacías a la vez legítimamente: la E se deja en blanco a propósito cuando el
+  // proveedor no está en el desplegable estricto (`aFajoJson`), y el número no se exige
+  // (`POLITICA.exigirNumero: false`). Con el criterio «E y H vacías» el bot decía «no pude releer la
+  // fila» sobre una fila que había releído perfecto, y el aviso de lo que faltaba salía del intento.
+  const f = filaViva({ 'Fecha factura': 46011, Importe: 479338.84, IVA: 100661.16, Total: 580000, Categoría: 'B', Proveedor: '', 'N° Comprobante': '' })
+  assert.equal(filaEnBlanco({ valores: f, col: COLV }), false)
+  const [p] = sinCompletar([{ fila: 981, col: COLV, valores: f }])
+  assert.ok(p.campos.includes('proveedor'), 'la E vacía se sigue reclamando: es una celda para completar')
+})
+
+test('las letras del respaldo salen del RÓTULO, no de un mapa a mano: una inserción las corre solas', () => {
+  // `escritura.mjs` las usa cuando no pudo releer la fila. Con un mapa hardcodeado, el día que el
+  // dueño inserte una columna el aviso nombraría la letra de al lado — el defecto que el contrato
+  // por rótulo vino a cerrar. Acá se prueba contra la fila viva y contra una con una columna más.
+  assert.deepEqual(letrasCompletables(COMPRAS_1809), {
+    categoria: 'B', fecha: 'C', proveedor: 'E', comprobante: 'H', unidad: 'I', obra: 'J', detalle: 'K',
+    obraFila: 'L', concepto: 'M', importe: 'N', iva: 'O', total: 'P', tipoPago: 'Q', estado: 'Y', cuit: 'AN',
+  })
+  const conExtra = [...COMPRAS_1809.slice(0, 11), 'Centro de costo', ...COMPRAS_1809.slice(11)]
+  const corridas = letrasCompletables(conExtra)
+  assert.equal(corridas.detalle, 'K', 'lo anterior a la inserción no se mueve')
+  assert.equal(corridas.obraFila, 'M', '«Obra» se corre una letra')
+  assert.equal(corridas.tipoPago, 'R')
 })

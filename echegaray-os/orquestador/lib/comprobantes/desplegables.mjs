@@ -65,3 +65,32 @@ export function imputacionDelModelo(crudo = {}, listas = {}) {
   if (pago) out.formaPago = pago
   return out
 }
+
+// ═══ LO QUE EL PAPEL DIJO NO SE PIERDE, AUNQUE NO SEA UNA OPCIÓN (18/09/2026) ═══
+//
+// Desde que el historial del proveedor completa «Tipo pago» (`imputacion-historial.mjs`), descartar
+// en silencio una forma de pago ilegible dejó de ser inofensivo: el campo quedaba vacío y el paso
+// siguiente lo llenaba con la moda del proveedor. Un ticket que dice «Mercado Pago» —que no está en
+// el desplegable— terminaba con Q = «Efectivo», marcado `[historial: pago]`. El historial pisando al
+// papel es exactamente lo que la regla prohíbe, y el bot y el cargador de terminal lo resolvían al
+// revés (en el fajo.json el texto crudo sobrevive y frena el historial).
+//
+// La respuesta es una sola para las dos vías: el valor válido va a la celda; el texto que no es
+// opción viaja aparte, NO llega a ninguna celda (el desplegable es estricto), frena al historial y
+// se nombra como excepción en el aviso. La celda queda vacía, que es lo que una persona completa en
+// dos segundos sabiendo lo que decía el papel.
+
+/**
+ * La forma de pago del papel, separada en lo que se puede escribir y lo que sólo se puede decir.
+ *
+ * @param {string|null} leido  lo que la visión sacó del comprobante (texto libre)
+ * @param {string[]} [lista]   el desplegable VIVO de «Tipo pago», si se pudo leer
+ * @returns {{valor:string|null, leido:string|null}} `valor` va a la celda; `leido` es el texto que
+ *   el papel traía y el desplegable no acepta (null si estaba vacío o si resolvió a un valor).
+ */
+export function pagoDelPapel(leido, lista) {
+  const texto = String(leido ?? '').trim()
+  if (!texto) return { valor: null, leido: null }
+  const valido = tipoPagoValido(texto, lista)
+  return valido ? { valor: valido, leido: null } : { valor: null, leido: texto }
+}
