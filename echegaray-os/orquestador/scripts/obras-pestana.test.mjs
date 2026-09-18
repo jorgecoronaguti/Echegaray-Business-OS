@@ -68,6 +68,7 @@ test('el rótulo se compara con trim: un espacio de más en el archivo no rompe 
 })
 
 test('"Retenciones" NO puede resolver a una de las tres columnas de "Retención": daría una parte', () => {
+  // 18/09/2026: con la columna «Obra» (H) insertada el 17/09, todas las letras desde la H corren una.
   // EL ENCABEZADO REAL DE COBRANZAS, transcrito de las columnas que importan (13/08). Conviven el
   // TOTAL retenido de la fila (col L) y TRES columnas de desglose más a la derecha. Todas empiezan
   // parecido, ninguna da error si se elige la equivocada: la pestaña publicaría una fracción del
@@ -76,7 +77,7 @@ test('"Retenciones" NO puede resolver a una de las tres columnas de "Retención"
   // SE PRUEBA EL CRITERIO QUE USA EL ESCRITOR (`ROTULOS_COBRANZAS`), no una copia escrita acá: un
   // test con su propio patrón daría verde aunque alguien aflojara el del escritor a /^Retenci/.
   const real = [[
-    'ID', 'Categoría', 'Fecha emisión', 'Factura', 'N° Comprobante', 'Unidad', 'Obra / Cliente',
+    'ID', 'Categoría', 'Fecha emisión', 'Factura', 'N° Comprobante', 'Unidad', 'Obra / Cliente', 'Obra',
     'ORDEN DE  COMPRA', 'Concepto', 'Monto neto', 'IVA', 'Retenciones / descuentos',
     'TOTAL a cobrar (neto de retenciones)', 'Forma de Cobro', 'Estado', 'Fecha de Venta', 'Fecha cobro',
     'Mes cobro (auto)', 'Probabilidad %', 'Monto ponderado', 'Días hasta vto.', 'Estado cobro', 'Notas',
@@ -84,14 +85,14 @@ test('"Retenciones" NO puede resolver a una de las tres columnas de "Retención"
     'Retención 2,5%/3,5% del neto ⚠ rótulo original perdido', 'Moneda',
   ]]
   const cols = resolverColumnas(real, ROTULOS_COBRANZAS)
-  assert.equal(cols.retenciones, 'L', 'el TOTAL retenido de la fila, no un desglose')
-  for (const desglose of ['X', 'Y', 'Z']) assert.notEqual(cols.retenciones, desglose)
+  assert.equal(cols.retenciones, 'M', 'el TOTAL retenido de la fila, no un desglose')
+  for (const desglose of ['Y', 'Z', 'AA']) assert.notEqual(cols.retenciones, desglose)
   // Y de paso queda fijado el resto del contrato contra el encabezado REAL: si el archivo se
   // reordena, las letras cambian solas; si un rótulo desaparece, el escritor rompe.
-  assert.equal(cols.total, 'M', '"TOTAL a cobrar" es neto de retenciones: la plata que entra')
-  assert.equal(cols.neto, 'J')
-  assert.equal(cols.fechaVenta, 'P')
-  assert.equal(cols.fechaCobro, 'Q')
+  assert.equal(cols.total, 'N', '"TOTAL a cobrar" es neto de retenciones: la plata que entra')
+  assert.equal(cols.neto, 'K')
+  assert.equal(cols.fechaVenta, 'Q')
+  assert.equal(cols.fechaCobro, 'R')
   // Si mañana el rótulo del total retenido cambia, el escritor ROMPE — no elige el parecido.
   const sinTotal = [real[0].map((r) => (r === 'Retenciones / descuentos' ? 'Descuentos' : r))]
   assert.throws(() => resolverColumnas(sinTotal, ROTULOS_COBRANZAS), /campo "retenciones"/)
@@ -146,10 +147,24 @@ test('el rótulo "Moneda" se resuelve como los demás — y si no está, el escr
   // Sin esta columna la pestaña no puede distinguir U$S 15.400 de $15.400. Resolver "casi" no sirve:
   // una letra equivocada haría que el criterio ;"USD" no matchee nunca y los dólares vuelvan a
   // sumarse como pesos, sin un solo error a la vista.
-  const cab = [['ID', 'Obra / Cliente', 'Concepto', 'Monto neto', 'Categoría', 'OC', 'TOTAL a cobrar (x)',
+  const cab = [['ID', 'Obra / Cliente', 'Obra', 'Concepto', 'Monto neto', 'Categoría', 'OC', 'TOTAL a cobrar (x)',
     'Estado', 'Fecha cobro', 'Retenciones / descuentos', 'Fecha de Venta', 'Fecha emisión', 'Forma de Cobro', 'Moneda']]
-  assert.equal(resolverColumnas(cab, ROTULOS_COBRANZAS).moneda, 'N')
+  assert.equal(resolverColumnas(cab, ROTULOS_COBRANZAS).moneda, 'O')
+  assert.equal(resolverColumnas(cab, ROTULOS_COBRANZAS).obra, 'C')
   assert.throws(() => resolverColumnas([cab[0].slice(0, -1)], ROTULOS_COBRANZAS), /Moneda/)
+})
+
+test('BSA: la columna «Obra» suma la fila que no nombra la obra, sin contar dos veces (18/09/2026)', () => {
+  // Fila 46 de Cobranzas: «ACTUALIZACION DE PRECIOS OC 02-00000279», Obra = OB-0019 · ME - BSA, $3.583.956.
+  // Sin el tercer criterio el contratado de BSA en OBRAS quedaba en $14.120.243 en vez de $17.704.199,40.
+  const formulas = (g) => g.filas.flat().filter((c) => typeof c === 'string' && c.startsWith('='))
+  const con = formulas(grillaObras({ obras: OBRAS_FUTURAS, refs: { cob: { ...REFS_OBRAS.cob, obra: 'AB' } } }))
+  const tercero = con.filter((f) => f.includes('$AB$5:$AB;"OB-0019 · ME - BSA"'))
+  assert.ok(tercero.length > 0, 'el contratado/cobro de BSA suma también por la columna Obra')
+  // y sólo lo que concepto y OC no tomaron: las dos exclusiones van en el mismo tramo
+  assert.ok(tercero.every((f) => /\$AB\$5:\$AB;"OB-0019 · ME - BSA";[^;]+;"<>\*BSA\*";[^;]+;"<>\*BSA\*"/.test(f)))
+  // Sin la columna resuelta la grilla no inventa el criterio (el escritor la exige antes de llegar acá).
+  assert.ok(!formulas(grillaObras({ obras: OBRAS_FUTURAS })).some((f) => f.includes('"OB-0019 · ME - BSA"')))
 })
 
 test('indiceDeLetra es el inverso exacto de letra, también pasando la Z', () => {

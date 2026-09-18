@@ -865,9 +865,20 @@ const tramos = (cob, cliente, extra = {}) => {
   // antes que retocar Cobranzas. Si el cliente tiene DOS O MÁS obras declaradas, sigue mandando el
   // match por texto: MESSINA factura trabajos fuera de las 7 obras y forzarlos sería inventar.
   if (extra.unica) return variantesDe(cliente).map((v) => [v, cat])
+  // TERCER CRITERIO (18/09/2026): LA COLUMNA «Obra» DE COBRANZAS. Una fila puede no nombrar la obra ni en
+  // el Concepto ni en la OC y estar imputada a mano en la columna Obra — la «ACTUALIZACION DE PRECIOS OC
+  // 02-00000279» de BSA ($3.583.956, fila 46) quedaba afuera del contratado y el dueño confirmó que es
+  // parte. Entra sólo lo que los dos primeros criterios NO tomaron (concepto y OC sin la aguja), así una
+  // fila que cumple varios se cuenta una vez.
+  // Condicional a que la columna esté resuelta: el escritor (obras-pestana.mjs) la EXIGE por rótulo y rompe
+  // si falta, así que en la corrida real nunca se cae en silencio; los layouts de referencia viejos no la tienen.
+  const porObra = extra.needle && extra.obraCelda && cob?.obra
+    ? [[`;${abierto(cob, 'obra')};"${extra.obraCelda}";${abierto(cob, 'concepto')};"<>*${extra.needle}*";${abierto(cob, 'oc')};"<>*${extra.needle}*"${cat}`]]
+    : []
   return variantesDe(cliente).flatMap((v) => (extra.needle
     ? [[v, `;${abierto(cob, 'concepto')};"*${extra.needle}*"${cat}`],
-      [v, `;${abierto(cob, 'oc')};"*${extra.needle}*";${abierto(cob, 'concepto')};"<>*${extra.needle}*"${cat}`]]
+      [v, `;${abierto(cob, 'oc')};"*${extra.needle}*";${abierto(cob, 'concepto')};"<>*${extra.needle}*"${cat}`],
+      ...porObra.map(([c]) => [v, c])]
     : [[v, cat]]))
 }
 
@@ -1112,7 +1123,7 @@ function bloqueObra(h, refs, o, idx, unica = false) {
   // `o.inicio && o.fin` es la segunda versión del mismo concepto esperando a divergir.
   const proyectable = esProyectable(o)
   const fProt = h.n + 1
-  const dela = { needle: o.ventaTexto, unica }
+  const dela = { needle: o.ventaTexto, unica, obraCelda: o.obraCelda }
   const rot = rotuloDeObra(o, idx)
   h.rotulos.push({ fila: fProt, texto: rot.texto })
   // UNA OBRA SIN COSTO CARGADO NO PUBLICA UNA FÓRMULA QUE NO PUEDE RESOLVER.

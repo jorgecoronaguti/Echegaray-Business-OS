@@ -221,6 +221,8 @@ export const ROTULOS_COBRANZAS = {
   // La ORDEN DE COMPRA reconoce la obra cuando el Concepto no la nombra. Faltaba acá, y por eso
   // se publicaron 40 celdas con #ERROR!: la grilla la usaba y el escritor no la resolvía.
   oc: /^(OC|ORDEN DE COMPRA)$/i,
+  // La columna «Obra» (H desde el 17/09): tercer criterio para reconocer una fila (ver `tramos`).
+  obra: /^Obra$/i,
   total: /^TOTAL a cobrar/, estado: 'Estado', fechaCobro: /^Fecha de cobro|^Fecha cobro/i,
   // LA FECHA DE EMISIÓN ES EL RELOJ DE LO VENCIDO (14/08). Es la única de las tres fechas de una fila
   // que no se re-escribe cuando el cobro se posterga: la fila ID 41 de MESSINA la conserva en
