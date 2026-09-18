@@ -24,6 +24,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { MENSAJE_CONFLICTO, coincideConLoEsperado } from '@/shared/lib/pilaDeDeshacer'
 // Ver `./accion`: un archivo `'use server'` no puede exportar una constante.
 import type { EstadoAccion, Resultado } from './accion'
 
@@ -128,10 +129,18 @@ export async function editarCampoPartida(_prev: EstadoAccion, form: FormData): P
   // permiso económico, no el estado— así que el freno vive acá. Se verifica contra la base y no
   // contra lo que dice la pantalla: la misma acción entra por un formulario y mañana por el chat.
   const { data: cong } = await c.from('cotizacion_partida')
-    .select('cotizacion_id, cotizaciones!inner(congelada_en)').eq('id', partida_id).maybeSingle()
+    .select(`cotizacion_id, ${campo}, cotizaciones!inner(congelada_en)`).eq('id', partida_id).maybeSingle()
   const congelada = (cong as { cotizaciones?: { congelada_en?: string | null } } | null)?.cotizaciones?.congelada_en
   if (congelada) {
     return { error: 'Este presupuesto está congelado: para cambiarlo se crea una versión nueva.' }
+  }
+
+  // DESHACER NO PISA LO QUE CAMBIÓ (18/09/2026): con `esperado` —lo que la celda mostraba— se escribe sólo
+  // si la base todavía tiene eso. Si otra persona corrigió la misma celda en el medio, se rechaza y se dice.
+  const esperado = form.get('esperado')
+  if (esperado !== null) {
+    const hoy = (cong as Record<string, unknown> | null)?.[campo]
+    if (!coincideConLoEsperado(hoy, String(esperado))) return { error: MENSAJE_CONFLICTO }
   }
 
   const { error: e } = await c.from('cotizacion_partida').update({ [campo]: valor }).eq('id', partida_id)

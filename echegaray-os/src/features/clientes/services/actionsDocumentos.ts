@@ -21,6 +21,7 @@ import { revalidatePath } from 'next/cache'
 import { invalidarFichaCliente } from './invalidarFicha'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { MENSAJE_CONFLICTO, coincideConLoEsperado } from '@/shared/lib/pilaDeDeshacer'
 import { parsearReferenciaDrive } from '@/features/obras/services/driveUrl'
 import { ROLES_DOCUMENTO } from '../types'
 import type { Resultado } from './actions'
@@ -92,6 +93,16 @@ export async function clasificarDocumentoCliente(
   const parsed = rolSchema.safeParse(String(form.get('rol') ?? ''))
   if (!parsed.success) return { ok: false, error: 'Ese no es uno de los tipos de documento' }
   const supabase = await createClient()
+  // DESHACER NO PISA LO QUE CAMBIÓ (18/09/2026): con `esperado` —el rol que el desplegable mostraba— se escribe
+  // sólo si la base todavía tiene ese rol. Otra persona clasificó el mismo archivo en el medio → se rechaza.
+  const esperado = form.get('esperado')
+  if (esperado !== null) {
+    const { data: hoy, error: eLectura } = await supabase.from('cliente_documento')
+      .select('rol').eq('cliente_id', clienteId).eq('drive_file_id', driveFileId).maybeSingle()
+    if (eLectura) return { ok: false, error: eLectura.message }
+    if (!hoy) return { ok: false, error: 'Ese documento ya no está vinculado.' }
+    if (!coincideConLoEsperado(hoy.rol, String(esperado))) return { ok: false, error: MENSAJE_CONFLICTO }
+  }
   const { error } = await supabase.from('cliente_documento')
     .update({ rol: parsed.data || null })
     .eq('cliente_id', clienteId)
