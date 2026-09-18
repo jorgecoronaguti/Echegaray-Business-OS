@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { aplicarOverrides, camposGuardables, sinOverrides } from './liquidacionOverrides.ts'
+import { aplicarOverrides, camposGuardables, desgloseSinAfirmar, sinOverrides } from './liquidacionOverrides.ts'
 import { liquidarLinea, type EntradaDeLinea } from './liquidacionQuincena.ts'
 
 // LOS DEFECTOS QUE ESTOS TESTS ATRAPAN:
@@ -119,6 +119,8 @@ test('sin overrides, la línea queda idéntica y sin ninguna marca', () => {
     // `sello` (17/09/2026) es la quinta marca: el $/h y el piso de ESA quincena, para que la cerrada deje de decir
     // «—». Tampoco es un importe de la cadena — se comprueba abajo.
     sello: undefined,
+    // `sinDesglose` (17/09/2026) es la sexta marca — «nadie afirmó el banco» — y se comprueba en sus propios tests.
+    sinDesglose: undefined,
   }
   assert.deepEqual({ ...r, ...sinMarcas }, { ...linea, ...sinMarcas })
   // SIN SELLO, NULL: nadie lo inventa. Con sello, viaja tal cual — la cerrada no lo recalcula, sólo lo muestra.
@@ -280,4 +282,67 @@ test('EL CIERRE NO ESCRIBE LAS COLUMNAS DE PAGO', () => {
   const CIERRE = readFileSync(new URL('./liquidacionCierreActions.ts', import.meta.url), 'utf8')
   const foto = CIERRE.slice(CIERRE.indexOf('async function escribirFoto('), CIERRE.indexOf('function fotoDelPresentismo('))
   assert.ok(!/pagado_banco|pagado_efectivo/.test(foto), 'la foto del cierre no sella lo pagado')
+})
+
+// ═══ NULL NO ES CERO: «SIN DESGLOSE» (17/09/2026) ═══
+//
+// Ocho bloques de JORNALES de 2026 tienen la columna BANCO vacía en TODAS sus filas. La app leía ese NULL como 0 y
+// el legajo decía «$0 por banco, todo en efectivo» de plata que nadie repartió. Estos tests fijan la diferencia entre
+// un bloque donde nadie anotó BANCO (sin desglose) y uno donde la planilla escribió 0 (medido).
+//
+// MUTACIONES QUE PONEN ESTO EN ROJO: tratar `porBanco: null` del espejo igual que `porBanco: 0`; contar el 0 que
+// el cargador escribe en `pagado_banco` como una afirmación; o que el flag mueva un importe de la cadena.
+
+const entradaSinRecibo: EntradaDeLinea = {
+  personaId: 'p2', nombre: 'Quiroga', horas: 100,
+  tarifa: { valorHora: 6014.6, netoMensual: null, desde: '2026-01-01', origen: 'sheet:_J_OBREROS' },
+  adelanto: 178_644, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
+}
+const sinRecibo = liquidarLinea(entradaSinRecibo, 'obreros', null)
+
+test('CERRADA sin recibo, sin espejo y sin un peso por banco: nadie afirmó el desglose, y lo pagado no cambia', () => {
+  const r = sinOverrides(sinRecibo)
+  assert.equal(r.sinDesglose, true)
+  assert.equal(r.pago.pagado, 178_644)
+  assert.equal(r.pago.pagadoEfectivo, 178_644, 'la cuenta es la de siempre: cambia cómo se DICE el reparto')
+  // El cargador de JORNALES escribe pagado_banco = 0 justo cuando BANCO estaba vacío: ese 0 tampoco afirma nada.
+  assert.equal(sinOverrides(sinRecibo, null, { pagadoBanco: 0, pagadoEfectivo: 178_644 }).sinDesglose, true)
+})
+
+test('la planilla con BANCO = 0 afirma; con la columna vacía en todo el bloque, no; vacía en un bloque medido, sí', () => {
+  assert.equal(sinOverrides(sinRecibo, null, {}, null, { porBanco: 0 }).sinDesglose, false, 'un 0 escrito en la planilla es un dato')
+  assert.equal(sinOverrides(sinRecibo, null, {}, null, { porBanco: null, bancoMedido: false }).sinDesglose, true, 'NULL en todo el bloque no es un dato')
+  assert.equal(sinOverrides(sinRecibo, null, {}, null, { porBanco: null, bancoMedido: true }).sinDesglose, false, 'la celda vacía de un bloque medido es «nada por banco»')
+})
+
+test('un recibo, un giro registrado o un peso transferido afirman el desglose aunque la planilla calle', () => {
+  assert.equal(sinOverrides(linea).sinDesglose, false, 'la línea de partida tiene recibo')
+  assert.equal(sinOverrides(sinRecibo, null, { pagadoBanco: 94_795.5 }).sinDesglose, false)
+  const conGiro = liquidarLinea({ ...entradaSinRecibo, yaTransferido: 60_000 }, 'obreros', null)
+  assert.equal(sinOverrides(conGiro).sinDesglose, false, 'ADELANTO BANCO en la planilla es plata que salió por banco')
+})
+
+test('ABIERTA: lo escrito a mano afirma (aun un 0); sin nada, sin desglose; y el flag no mueve la cadena', () => {
+  assert.equal(aplicarOverrides(sinRecibo, {}, 'obreros').sinDesglose, true)
+  assert.equal(aplicarOverrides(sinRecibo, { porBanco: 0 }, 'obreros').sinDesglose, false)
+  assert.equal(aplicarOverrides(sinRecibo, { pagadoBanco: 0 }, 'obreros').sinDesglose, false, '«todavía no le giré nada» es una afirmación')
+  assert.equal(aplicarOverrides(sinRecibo, { pagadoEfectivo: 178_644 }, 'obreros').sinDesglose, false)
+  assert.equal(aplicarOverrides(sinRecibo, {}, 'obreros', { porBanco: null, bancoMedido: false }).sinDesglose, true)
+  assert.equal(aplicarOverrides(sinRecibo, {}, 'obreros', { porBanco: 230_240.12 }).sinDesglose, false)
+  const r = aplicarOverrides(sinRecibo, {}, 'obreros')
+  assert.deepEqual(
+    [r.cobra, r.adelanto, r.porBanco, r.enEfectivo, r.total, r.pago.pagado],
+    [sinRecibo.cobra, sinRecibo.adelanto, sinRecibo.porBanco, sinRecibo.enEfectivo, sinRecibo.total, 178_644],
+  )
+})
+
+test('desgloseSinAfirmar, la regla sola', () => {
+  const nada = { escritoAMano: false, neto: null, reciboNeto: null, jornales: null, pagadoBanco: 0 }
+  assert.equal(desgloseSinAfirmar(nada), true)
+  assert.equal(desgloseSinAfirmar({ ...nada, escritoAMano: true }), false)
+  assert.equal(desgloseSinAfirmar({ ...nada, neto: 215_564.62 }), false)
+  assert.equal(desgloseSinAfirmar({ ...nada, reciboNeto: 1 }), false)
+  assert.equal(desgloseSinAfirmar({ ...nada, pagadoBanco: 1 }), false)
+  assert.equal(desgloseSinAfirmar({ ...nada, jornales: {} }), true, 'un espejo que no habla del banco no afirma')
+  assert.equal(desgloseSinAfirmar({ ...nada, jornales: { porBanco: 0 } }), false)
 })
