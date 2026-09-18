@@ -106,13 +106,11 @@ test('EL $/H DEL SELLO ES EL DE `liquidacion_linea`, NO EL DE `persona_tarifa` (
   assert.equal(fila.cobra, 38700)
   assert.match(c.titulo, /31\/03\/2026/)
 
-  // Y EL SERVICIO ARMA EL CUADRO CERRADO CON `cuadroSellado` Y LE PASA ESA LÍNEA AL SELLO: no hay otra rama que
-  // pueda volver a `persona_tarifa`.
+  // EL CABLEADO DEL SERVICIO NO SE PRUEBA ACÁ POR REGEX (auditor, 18/09/2026): la regex sobre la llamada a
+  // `sinOverrides` se rompió en cuanto `main` le agregó un argumento, y ya antes no mordía —el auditor pasó las líneas
+  // vivas como selladas (M1) y 64 tests siguieron verdes—. Lo prueba `liquidacionSelladaCableado.test.ts`, que LLAMA a
+  // `getLiquidacionDeLaQuincena` con un cliente falso y se pone rojo con M1 y con M3. Acá queda sólo la fecha del sello.
   const servicio = fuente('../../../services/liquidacionQuincenaService.ts')
-  assert.match(servicio, /const cuadros = vivos\.map\(\(c\) => \{\s*if \(estadoDelCuadro\(estados, c\.grupo\)\.estado !== 'cerrada'\) return c\s*const foto = cuadroSellado\(\{/)
-  assert.match(servicio, /'horas', 'valor_hora', 'adelanto', 'ya_transferido', 'por_banco',\s*'en_efectivo', 'total',/, 'las columnas selladas se piden a la base')
-  assert.match(servicio, /sinOverrides\(l, presentismosSellados\.get\(l\.personaId\) \?\? null, overrides\.get\(l\.personaId\) \?\? \{\}, selloDe\(l\)\)/,
-    'la rama cerrada le pasa el sello de la línea sellada')
   const armado = servicio.slice(servicio.indexOf('const selloDe ='))
   const cuerpo = armado.slice(armado.indexOf('=> ({'), armado.indexOf('  })') + 4)
   assert.match(cuerpo, /hasta: q\.hasta,/, 'la foto se fecha con el fin de la quincena')
