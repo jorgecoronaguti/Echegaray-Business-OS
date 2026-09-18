@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import XLSX from 'xlsx'
 import {
-  DEFINICION_RUBRO, OBRAS, RUBROS, agregarPorRubro, explotarLibro, horasDelDocumento, rubroDePartida, rubroDeRecurso, rubroPorDescripcion, rubrosDeObra,
+  DEFINICION_RUBRO, OBRAS, RUBROS, agregarPorRubro, explotarLibro, horasDelDocumento, horasPorCantidades, leerAnalisis, rubroDePartida, rubroDeRecurso, rubroPorDescripcion, rubrosDeObra,
 } from './presupuesto-rubros.mjs'
 
 test('los cuatro rubros y sus definiciones son los de la migración 20260918T0900', () => {
@@ -173,4 +173,83 @@ test('D6 · un coeficiente que es tipo de cambio multiplica el precio y NO la ca
   assert.equal(oficial.cantidad, 1, 'un coeficiente 1 no cambia nada')
   // Horas: 32 del oficial en dólares + 1 del oficial; la carga social (hr) no es hora.
   assert.equal(horasDelDocumento([ex]), 33)
+})
+
+// ═══ 18/09 · EL SUBCONTRATO DE PISOS INDUSTRIALES ═══
+// La cotización interna de Pisos Industriales (drive 1iKAAb…) modela el hormigonado de Pedro Tello como
+// «OFICIAL 0,9 hs/m²» con las cargas sociales anuladas (=E1012*0): el lector lo leía como mano de obra
+// propia y subcontratistas quedaba en 0. La planilla hermana «Horas Hombre - Pisos Industriales.xlsm»
+// (misma carpeta, mismo día) re-analiza la misma tarea con el recurso PEDRO TELLO (M2, $4.300) — pero
+// su hoja Presupuesto tiene COSTO MO/MA/CS en J/K/L (y las horas en I), no en O/P/Q.
+
+/** Un libro con la forma de «Horas Hombre - Pisos Industriales.xlsm». */
+function libroHorasHombre() {
+  const wb = XLSX.utils.book_new()
+  const P = [[], [], [], [], [], [],
+    ['ID TAREA', 'ID', 'TAREA', 'U.', 'CANT.', 'COSTO U TOTAL', 'COEF. AJUSTE', 'SUBTOTAL', 'FECHA', 'COSTO MO', 'COSTO MA', 'COSTO CS'],
+    [],
+    [2144, 'T1107.1', 'PISO DE HORMIGON ALISADO MECÁNICO - MANO DE OBRA', 'M2', 100, 4718, 1, 471800, 8, 41800, 430000, 0],
+    [null, null, 'COSTO DIRECTO TOTAL'],
+  ]
+  const A = [[], [], [], [], ['COD T', 'COD R', 'DESCRIPCION', 'UN', 'CANTIDAD', 'COSTO', 'TOTAL'], [],
+    ['T1107.1', null, 'PISO DE HORMIGON ALISADO MECÁNICO - MANO DE OBRA', 'M2', null, null, 4718],
+    [null, 1, 'OFICIAL', 'hs', 0.08, 5225, 418],
+    [null, 401, 'PEDRO TELLO', 'M2', 1, 4300, 4300],
+    [null, 256, 'CARGA SOCIAL OF', 'hr', 0, 5460, 0],
+  ]
+  const R = [[], [], [], ['CODIGO', 'INSUMO', 'UNIDAD', 'COSTO', 'FECHA', 'FUENTE', 'FAMILIA', 'DIVISION'],
+    [1, 'OFICIAL', 'hs', 5225, null, 'UOCRA', 'MANO DE OBRA', 'JORNALES'],
+    [256, 'CARGA SOCIAL OF', 'hr', 5460, null, null, 'MANO DE OBRA', 'JORNALES'],
+    [401, 'PEDRO TELLO', 'M2', 4300, null, 'SUBCONTRATISTA', 'MANO DE OBRA', null],
+  ]
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(P), 'Presupuesto')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(A), 'Análisis')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(R), 'Recursos')
+  return wb
+}
+
+test('la planilla de Horas Hombre (MO/MA/CS en J/K/L) se lee; el subcontrato por m² va a subcontratistas y no suma horas propias', () => {
+  const ex = explotarLibro(libroHorasHombre())
+  assert.deepEqual(ex.problemas, [], 'el encabezado se busca por su texto, no por la letra de la columna')
+  const agg = agregarPorRubro(ex.lineas)
+  assert.equal(agg.subcontratistas.monto, 430000, '100 m² × $4.300 de PEDRO TELLO')
+  assert.equal(agg.mano_obra.monto, 41800)
+  assert.match(agg.subcontratistas.detalle[0].porque, /subcontrato/)
+  assert.equal(horasDelDocumento([ex]), 8, 'sólo las 0,08 hs/m² del oficial propio; el m² del subcontratista no es hora')
+})
+
+test('un encabezado de Presupuesto sin COSTO MO/MA/CS sigue siendo un problema (no se lee a ciegas)', () => {
+  const wb = libroHorasHombre()
+  wb.Sheets.Presupuesto.J7.v = 'OTRA COSA'
+  assert.match(explotarLibro(wb).problemas.join(' '), /COSTO MO/i)
+})
+
+test('OBRAS · pisos-industriales lee el documento que nombra al subcontratista, con la cotización vendida citada', () => {
+  const o = OBRAS.find((x) => x.obra === 'pisos-industriales')
+  assert.equal(o.libros[0].drive, '1qCcsSD2oe15d9JCP2-TqfGqyxRp48Ydb')
+  assert.match(o.libros[0].nota, /1iKAAbLs6vdk9jnzgRYS4Bo16g-1wrgdF/)
+  const cfg = { obra: 'x', libros: [{ drive: '1abc', nombre: 'hh.xlsm', parte: 'obra', nota: 'misma oferta que y.xlsm' }] }
+  const r = rubrosDeObra(cfg, [{ libro: cfg.libros[0], explosion: explotarLibro(libroHorasHombre()) }])
+  assert.match(r.rubros.subcontratistas.cita, /misma oferta que y\.xlsm/)
+  assert.equal(r.hh, 8)
+})
+
+test('horasPorCantidades: horas propias por unidad del Análisis × cantidades de otro documento (el PDF vendido)', () => {
+  const tareas = leerAnalisis(libro().Sheets['Análisis']).tareas
+  const r = horasPorCantidades(tareas, [
+    { codigo: 'T1', cantidad: 10, coef: 1, cita: 'pdf a' },       // 0,1 hs × 10 = 1 (la carga social no es hora)
+    { codigo: 'T2', cantidad: 2, coef: 2, cita: 'pdf a' },        // (0,5 + 0,25) × 2 × 2 = 3 (el vibro por HR no es hora)
+  ])
+  assert.equal(r.hh, 4)
+  assert.deepEqual(r.faltan, [])
+  const sinTarea = horasPorCantidades(tareas, [{ codigo: 'T99', cantidad: 1, coef: 1, cita: 'x' }])
+  assert.deepEqual(sinTarea.faltan, ['T99'])
+  assert.equal(sinTarea.hh, null, 'una tarea que no está en el Análisis no se completa con cero')
+})
+
+test('OBRAS · messina-pisos-120-rampa: las horas salen del Análisis del .xlsm × las cantidades de los dos PDF vendidos', () => {
+  const o = OBRAS.find((x) => x.obra === 'messina-pisos-120-rampa')
+  assert.match(o.horas.drive, /^1[A-Za-z0-9_-]{24,}$/)
+  assert.ok(o.horas.cantidades.length >= 10)
+  for (const c of o.horas.cantidades) assert.match(c.cita, /pdf/i, c.codigo)
 })

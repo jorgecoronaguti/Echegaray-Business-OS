@@ -28,7 +28,7 @@ import path from 'node:path'
 import XLSX from 'xlsx'
 import { getPool, closePool } from '../lib/db.mjs'
 import { makeGoogleClient } from '../lib/google.mjs'
-import { OBRAS, RUBROS, explotarLibro, rubrosDeObra, rubrosDesdePartidas } from '../lib/presupuesto-rubros.mjs'
+import { OBRAS, RUBROS, explotarLibro, hoja, horasPorCantidades, leerAnalisis, rubrosDeObra, rubrosDesdePartidas } from '../lib/presupuesto-rubros.mjs'
 
 const args = process.argv.slice(2)
 const aplicar = args.includes('--aplicar')
@@ -68,7 +68,19 @@ async function leerObra(google, cfg, c) {
         where p.obra_canonica_id = $1 and p.estado = 'aprobado' order by pp.codigo`, [cfg.obra])
     if (!rows.length) return { estado: 'sin_presupuesto', motivo: 'sin partidas cargadas en presupuestos', rubros: null, costoDirecto: null, controles: [], problemas: [] }
     const r = rubrosDesdePartidas(cfg, rows)
-    return { estado: 'leido', ...r, fuente: cfg.fuente, cita: cfg.cita, modificado: null, estimado: true }
+    let hh = null
+    let cita = cfg.cita
+    if (cfg.horas) {
+      // LAS HORAS: Análisis del libro × cantidades de los PDF (CÁLCULO; la obra ya es INFERENCIA/estimada).
+      const { bytes } = await bajar(google, cfg.horas)
+      const tareas = leerAnalisis(hoja(XLSX.read(bytes, { type: 'buffer', cellDates: false }), 'Análisis')).tareas
+      const h = horasPorCantidades(tareas, cfg.horas.cantidades)
+      if (h.faltan.length) r.problemas.push(`horas: tareas que no están en el Análisis de ${cfg.horas.nombre}: ${h.faltan.join(', ')}`)
+      hh = h.hh
+      r.horasDetalle = h.detalle
+      cita = `${cita} · HORAS ${hh ?? '—'} = CÁLCULO: ${cfg.horas.nombre} Análisis (hs de oficial/ayudante por unidad) × cantidades × coeficiente de los PDF vendidos: ${h.detalle.map((d) => `${d.codigo} ${d.cantidad}×${d.coef}×${d.hs_por_unidad}=${d.horas}`).join(' + ')}`
+    }
+    return { estado: 'leido', ...r, hh, fuente: cfg.fuente, cita, modificado: null, estimado: true }
   }
   const explosiones = []
   let modificado = null
