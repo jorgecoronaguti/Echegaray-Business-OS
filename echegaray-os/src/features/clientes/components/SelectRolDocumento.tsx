@@ -60,7 +60,7 @@ export function SelectRolDocumento({
   const lista = rol && !opciones.includes(rol) ? [rol, ...opciones] : opciones
 
   const guardarDeshacible = useGuardadoDeshacible({
-    clave, rotulo, valorAnterior: rol,
+    clave, rotulo, valorAnterior: rol, protegido: true,
     formato: (v) => (v === '' ? 'sin clasificar' : v),
     guardar: async (v, contexto) => {
       const form = new FormData()

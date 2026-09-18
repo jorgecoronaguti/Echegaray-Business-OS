@@ -70,7 +70,7 @@ export function SelectActividad({
   }
 
   const guardarDeshacible = useGuardadoDeshacible({
-    clave, rotulo, valorAnterior: elegida, formato: nombre,
+    clave, rotulo, valorAnterior: elegida, formato: nombre, protegido: true,
     guardar: async (v, contexto) => {
       const r = await alElegir(v, contexto?.esperado)
       return r.error ? { ok: false as const, error: r.error } : { ok: true as const }

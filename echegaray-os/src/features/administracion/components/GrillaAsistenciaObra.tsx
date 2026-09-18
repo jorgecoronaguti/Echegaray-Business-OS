@@ -279,8 +279,11 @@ export function GrillaAsistenciaObra({
         deshacer?.registrar({
           clave: `obra-actual-${fila.persona.id}`, rotulo: `Obra de ${fila.persona.nombre}`,
           anterior, nuevo: valor, anteriorTexto: nombreDeObra(anterior), nuevoTexto: nombreDeObra(valor),
-        }, async (v) => {
-          const x = await cambiarObraActual({ persona_id: fila.persona.id, obra_id: v || null })
+          // `cambiarObraActual` compara `esperado` también al dejar a alguien sin obra: se puede rehacer a vacío.
+          protegido: true,
+        }, async (v, esperado) => {
+          // CON `esperado` (auditoría, 18/09/2026): si otro la movió, el servidor no la devuelve a la vieja.
+          const x = await cambiarObraActual({ persona_id: fila.persona.id, obra_id: v || null, esperado })
           if (!x.ok) return { ok: false, error: x.error }
           setElegidas((e) => ({ ...e, [fila.clave]: v }))
           router.refresh()
@@ -365,8 +368,9 @@ export function GrillaAsistenciaObra({
     deshacer?.registrar({
       clave: k, rotulo: `Horas de ${fila.persona.nombre} el ${diaCorto(fecha)}`,
       anterior, nuevo, anteriorTexto: anterior || 'sin horas', nuevoTexto: nuevo || 'sin horas',
-    }, async (v) => {
-      const x = await escribirCeldaDeHoras({ obraId, personaId: fila.persona.id, fecha, valor: v })
+    }, async (v, esperado) => {
+      // CON `esperado` (auditoría, 18/09/2026): el servidor no escribe si la celda ya no muestra lo que se vio.
+      const x = await escribirCeldaDeHoras({ obraId, personaId: fila.persona.id, fecha, valor: v, esperado })
       if (!x.ok) return { ok: false, error: x.error }
       volverAlValorAnterior(k)
       router.refresh()

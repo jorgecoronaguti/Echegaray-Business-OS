@@ -34,6 +34,11 @@ export const envioSchema = z.object({
   /** A quiénes se les dejó la casilla EN BLANCO teniendo horas cargadas: «sin horas», para completar
    *  más tarde (dueño, 15/09/2026). Lo decide `personasAVaciar`; lo aplica `vaciadoDeHoras.ts`. */
   vaciar: z.array(z.string().uuid()).default([]),
+  /**
+   * DESHACER (auditoría, 18/09/2026): lo que la celda de horas mostraba. Si viene, la jornada se escribe sólo si
+   * el servidor sigue viendo esas horas para esa persona en esa obra ese día. Una sola marca por envío.
+   */
+  esperado: z.string().optional(),
 }).refine((d) => d.marcas.length + d.vaciar.length > 0, { message: 'No marcaste a nadie.' })
 
 export type MarcaDeJornada = z.infer<typeof marcaSchema>

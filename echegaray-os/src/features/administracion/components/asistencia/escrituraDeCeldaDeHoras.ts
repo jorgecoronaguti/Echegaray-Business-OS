@@ -10,8 +10,10 @@ import { corregirJornada, guardarJornada } from '../../services/jornadaPorObraAc
 
 export type ResultadoCeldaDeHoras = { ok: true; mensaje: string } | { ok: false; error: string }
 
-export async function escribirCeldaDeHoras({ obraId, personaId, fecha, valor }: {
+export async function escribirCeldaDeHoras({ obraId, personaId, fecha, valor, esperado }: {
   obraId: string; personaId: string; fecha: string; valor: string
+  /** Deshacer: lo que la celda mostraba. `guardarJornada` lo compara antes de escribir. */
+  esperado?: string
 }): Promise<ResultadoCeldaDeHoras> {
   const lectura = leerCeldaDeHoras(valor)
   if (lectura.accion === 'error') return { ok: false, error: lectura.error }
@@ -21,7 +23,11 @@ export async function escribirCeldaDeHoras({ obraId, personaId, fecha, valor }: 
       estado: 'vaciar', horas: null, motivo: null, hasta: null, asignar: false,
     })
   }
+  // EL VACIADO NO RECIBE `esperado`, Y NO HACE FALTA: el deshacer de esta celda no está marcado `protegido`,
+  // así que la pila nunca lo manda a vaciar (`motivoParaNoRestaurar`). Todo lo que llega por acá desde el
+  // deshacer es un número, y ése sí se comprueba.
   return guardarJornada({
     obra_id: obraId, fecha, marcas: [{ persona_id: personaId, estado: 'presente', horas: lectura.horas }],
+    ...(esperado !== undefined ? { esperado } : {}),
   })
 }

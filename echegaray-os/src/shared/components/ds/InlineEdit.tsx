@@ -167,6 +167,7 @@ export function InlineEdit({
   const guardarDeshacible = useGuardadoDeshacible({
     clave, rotulo: deshacer?.rotulo ?? etiqueta, valorAnterior: deshacer?.anterior ?? vigente, guardar,
     vacioRestaurable: deshacer?.vacioRestaurable === true && deshacer?.verificaServidor === true,
+    protegido: deshacer?.verificaServidor === true,
     formato: (x) => (x === '' ? falta : `${mostrar ? mostrar(x) : enISO(x)}${sufijo ? ` ${sufijo}` : ''}`),
   })
   useCeldaViva(clave, {

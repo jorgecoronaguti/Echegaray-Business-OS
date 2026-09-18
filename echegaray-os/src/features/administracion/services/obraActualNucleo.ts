@@ -18,6 +18,7 @@
 // `obraActualActions.ts` y en `planDeObraActual.ts`; no se repite acá.
 
 import { z } from 'zod'
+import { MENSAJE_SIN_CONFIRMAR, coincideConLoEsperado } from '../../../shared/lib/pilaDeDeshacer.ts'
 import {
   planDeCambioDeObra, puedeCambiarObraActual, validarProgramacion, type AsignacionAbierta,
 } from './planDeObraActual.ts'
@@ -80,6 +81,8 @@ const cambioSchema = z.object({
   obra_id: z.union([z.string().trim().min(1), z.literal(''), z.null()]).optional(),
   desde: fechaOpcional,
   hasta: fechaOpcional,
+  /** Deshacer (auditoría, 18/09/2026): la obra que la grilla mostraba. `''` = sin obra. */
+  esperado: z.string().optional(),
 })
 
 export async function cambiarObraActualCon(
@@ -125,6 +128,22 @@ export async function cambiarObraActualCon(
 
   const abiertas = await leerAbiertas(supabase, personaId)
   if (abiertas.error) return { ok: false, error: abiertas.error }
+
+  // ═══ DESHACER NO PISA A QUIEN LA MOVIÓ (auditoría, 18/09/2026) ═══
+  //
+  // El jefe de obra mueve gente y la oficina también, y el deshacer de la grilla escribía sin mirar: mover a
+  // alguien, que otro lo moviera después, y un Cmd+Z devolvía la obra vieja por encima. Ahora, si viene
+  // `esperado`, la obra vigente hoy tiene que ser la que la grilla mostraba.
+  //
+  // NO ES ATÓMICO, Y SE DICE: un cambio de obra cierra, borra e inserta tramos; no es un `update` al que se le
+  // pueda agregar la condición. Queda una ventana chica entre esta lectura y la escritura. Si no coincide, el
+  // mensaje no acusa a nadie: la grilla puede mostrar un tramo que el servidor lee distinto.
+  if (parsed.data.esperado !== undefined) {
+    const vigente = abiertas.data
+      .filter((a) => !a.desde || a.desde <= hoy)
+      .sort((a, b) => (b.desde ?? '').localeCompare(a.desde ?? ''))[0]?.obra_id ?? null
+    if (!coincideConLoEsperado(vigente, parsed.data.esperado)) return { ok: false, error: MENSAJE_SIN_CONFIRMAR }
+  }
 
   const plan = planDeCambioDeObra({ abiertas: abiertas.data, destino: obra.destino, hoy, desde, hasta })
   if (plan.sinCambio) return { ok: true, mensaje: plan.acuse }
