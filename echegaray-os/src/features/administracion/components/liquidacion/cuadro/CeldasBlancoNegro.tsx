@@ -294,6 +294,10 @@ export function CeldaPagado({ campo, fila, edicion }: {
     ? `pagado ${lado}, escrito a mano`
     : `pagado ${lado}: los adelantos ya cargados de esta quincena. Escribilo para corregirlo.`
   const testid = `pagado-${campo === 'pagadoBanco' ? 'banco' : 'efectivo'}-${fila.personaId}`
+  // SIN LÍNEA SELLADA, NI «$0» PAGADO (18/09/2026): un cero es una afirmación, y de esta fila no hay foto.
+  if (l.sello && !l.sello.conLinea) {
+    return <div data-testid={testid} title="Sin línea sellada en esta quincena cerrada." style={{ ...DERECHA, color: V.tenue }}>—</div>
+  }
   if (seEscribeDinero(fila, campo, edicion)) {
     return (
       <div data-testid={testid} title={titulo}>
@@ -326,6 +330,13 @@ export function CeldaSaldo({ fila, lado, pago, sinDato }: {
   const valor = lado === 'banco' ? p.saldoBanco : lado === 'efectivo' ? p.saldoEfectivo : p.saldoTotal
   const testid = `saldo-${lado}-${fila.personaId}`
   // LA CERRADA SIN LO PAGADO REGISTRADO NO AFIRMA SALDO, Y LO DICE (auditor, 18/09/2026).
+  // SIN LÍNEA SELLADA LO DICE ASÍ, NO «—» (que se lee como «sin negro») ni «sin registrar» (no hay nada que registrar).
+  if (valor == null && sinDato == null && fila.linea.sello && !fila.linea.sello.conLinea) {
+    return (
+      <div data-testid={testid} title="La quincena está cerrada y esta persona no tiene línea sellada: no hay saldo que afirmar."
+        style={{ ...DERECHA, color: V.tenue, fontSize: '11px' }}>sin línea sellada</div>
+    )
+  }
   if (valor == null && fila.linea.pagoSinRegistrar) {
     return (
       <div data-testid={testid} data-sin-registro="1" title="Quincena cerrada sin lo pagado registrado: no se da por debido ni por pagado."

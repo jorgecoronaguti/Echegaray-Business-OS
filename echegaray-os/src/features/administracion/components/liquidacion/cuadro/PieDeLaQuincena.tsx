@@ -78,6 +78,16 @@ export function ResumenMensuales({ t, sellada = false }: { t: TotalesDeMensuales
   if (t.sinSueldo > 0) avisos.push(sellada ? `${t.sinSueldo} sin línea sellada` : `${t.sinSueldo} sin sueldo cargado`)
   if (t.sinRecibo > 0 && !sellada) avisos.push(`${t.sinRecibo} sin recibo todavía: banco y efectivo sin repartir`)
   if (sellada && t.sinSaldo > 0) avisos.push('cobran por mes: el saldo es del mes, no de la quincena')
+  // UNA CERRADA SIN NINGUNA LÍNEA SELLADA DE MENSUALES (Oficina 16–31/08 no tiene cabecera): no hay cifra que dar, y
+  // «$0 · falta recibo» afirmaría un importe y un pendiente que no existen.
+  if (sellada && t.personas > 0 && t.sinSueldo === t.personas) {
+    return (
+      <Tira testid="pie-mensuales">
+        <Cifra rotulo="Liquidado en la quincena" valor="sin línea sellada" testid="pie-mensuales-sueldo" />
+        <Aviso tono={V.apagado}>ningún mensual tiene línea sellada en esta quincena cerrada</Aviso>
+      </Tira>
+    )
+  }
   return (
     <Tira testid="pie-mensuales">
       {/* UNA CERRADA NO TIENE «SUELDO DEL MES»: la foto es lo liquidado en la quincena (Maldonado 16–31/03, 105 h × $8.125). */}
