@@ -92,6 +92,8 @@ import { getValorHoraDelLegajo } from '@/features/administracion/services/valorH
 import { ValorHoraDelLegajo } from '@/features/administracion/components/ValorHoraDelLegajo'
 import { getRetribucionDelLegajo } from '@/features/administracion/services/retribucionDelLegajoService'
 import { RetribucionDelLegajo } from '@/features/administracion/components/RetribucionDelLegajo'
+import { getHaberesDelBanco } from '@/features/administracion/services/haberesDelBancoService'
+import { HaberesDelBanco } from '@/features/administracion/components/HaberesDelBanco'
 import { puedeAnotar, veAnotaciones } from '@/features/administracion/services/anotacionesPersona'
 import { getAnotaciones } from '@/features/administracion/services/anotacionesService'
 import { crearAnotacion } from '@/features/administracion/services/anotacionesActions'
@@ -196,11 +198,16 @@ export default async function FichaPersonaPage({
   ])
   // LA RETRIBUCIÓN DEL AÑO SÓLO EN SU SOLAPA Y SÓLO CON PERMISO: es la lectura más cara del legajo
   // —le pregunta a la Liquidación quincena por quincena— y no se paga en las otras seis vistas.
-  const retribucion = vista === 'retribucion' && liquida
-    ? await getRetribucionDelLegajo(supabase, {
-      personaId: id, cuil: persona.cuil ?? null, puedeVer: true, anio: Number(hoy.slice(0, 4)), hoy,
-    })
-    : null
+  // LO QUE EL BANCO CERTIFICA QUE LE PAGÓ (dueño, 18/09/2026) va en la misma solapa, con la misma puerta y en
+  // paralelo: no depende del plantel de ninguna quincena, así que un inactivo sin línea de liquidación lo ve igual.
+  const [retribucion, haberesBanco] = vista === 'retribucion' && liquida
+    ? await Promise.all([
+      getRetribucionDelLegajo(supabase, {
+        personaId: id, cuil: persona.cuil ?? null, puedeVer: true, anio: Number(hoy.slice(0, 4)), hoy,
+      }),
+      getHaberesDelBanco(supabase, { personaId: id, puedeVer: true, anio: Number(hoy.slice(0, 4)) }),
+    ])
+    : [null, null]
   // LAS HH TAMBIÉN EN EL RESUMEN, desde el canónico 20: la tira de métricas publica HH del mes y del
   // año, y el bloque de arriba dibuja la semana. La consulta filtra por `persona_id`, así que es la
   // de UNA persona y no la tabla entera; las otras cuatro solapas siguen sin pagarla.
@@ -593,6 +600,9 @@ export default async function FichaPersonaPage({
               r={retribucion} rotulo={valorHora.rotulo}
               hrefLiquidacion="/administracion/personas?vista=liquidacion&quincena="
             />
+          )}
+          {vista === 'retribucion' && haberesBanco && (
+            <div className="mt-8"><HaberesDelBanco h={haberesBanco} /></div>
           )}
 
           {vista === 'documentos' && (
