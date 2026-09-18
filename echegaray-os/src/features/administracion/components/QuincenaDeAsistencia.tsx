@@ -22,19 +22,24 @@
 // El amarillo aparece UNA vez y como marca, no como estado: el filo que dice «hoy».
 //
 // Ningún hex suelto: todo sale de los tokens de `globals.css`.
+//
+// ═══ Y POR QUÉ DEJÓ DE SER UNA TARJETA (dueño, 18/09/2026) ═══
+//
+// Era una `TarjetaFicha`: caja redondeada, borde entero, aire propio adentro. El resto del legajo
+// —encabezado, tira de $/h, cifras, retribución, horas, documentos— es plano: rótulo chico, filos y
+// la sangría del cuerpo. Con las dos a la vista, la caja se lee como «esto es otra cosa» cuando es
+// la misma ficha, y sus 14px de margen interno dejaban este bloque desalineado con la columna de al
+// lado. Ahora es una `SeccionDeFicha`, que es el mismo objeto sin la caja.
+//
+// NADA SE FUE CON LA CAJA: el título y lo que la cabecera de la tarjeta mostraba a la derecha siguen
+// en el rótulo de la sección. Lo único que no vuelve es el ícono, que no era un dato.
 
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { TarjetaFicha } from './FichaCanonica'
+import { SeccionDeFicha } from '@/shared/components/v2/segundoNivel'
 import { CeldaDia, type EntradaCeldaDia } from '@/shared/components/ds'
 import { tituloDeConflicto } from '@/shared/components/ds/celdaDia'
 import type { BarraQuincena, CifrasQuincena, DiaDeQuincena } from '../services/quincenaDePersona'
-
-const ICONO = (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-    <rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" />
-  </svg>
-)
 
 const hs = (n: number): string =>
   n.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
@@ -168,18 +173,18 @@ export function QuincenaDeAsistencia({
   const sinDatos = cifras.diasTrabajados + cifras.ausencias + cifras.licencias === 0
   const guion = <span className="text-faint">—</span>
   return (
-    <TarjetaFicha
-      titulo="Asistencia de la quincena" icono={ICONO} testid="bloque-quincena-asistencia"
-      indicador={<span className="font-sans text-[11.5px] text-muted" data-testid="ventana-quincena">{rotuloVentana}</span>}
+    <SeccionDeFicha
+      titulo="Asistencia de la quincena" testid="bloque-quincena-asistencia"
+      derecha={<span data-testid="ventana-quincena">{rotuloVentana}</span>}
     >
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(38px,1fr))] gap-x-1 gap-y-2 px-3.5 pb-3.5 pt-3.5"
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(38px,1fr))] gap-x-1 gap-y-2 pb-3.5"
         data-testid="franja-quincena">
         {dias.map((d) => <Casilla key={d.fecha} d={d} />)}
       </div>
 
       {/* LA REFERENCIA, UNA LÍNEA. Sin ella el marco punteado y la «A» se leen como sinónimos, que
           es exactamente la confusión que este módulo no puede permitirse. */}
-      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 px-3.5 pb-3 text-[10.5px] text-faint">
+      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 pb-3 text-[10.5px] text-faint">
         <span><b className="mr-1 font-semibold text-pos">●</b>fichó</span>
         <span><b className="mr-1 font-semibold text-neg">A</b>ausencia</span>
         <span><b className="mr-1 font-semibold text-muted">L</b>licencia</span>
@@ -187,7 +192,7 @@ export function QuincenaDeAsistencia({
         <span><span className="mr-1 font-mono text-ink">8,0</span>horas cargadas</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line-hairline px-3.5 py-3 sm:grid-cols-4"
+      <div className="grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line-hairline py-3 sm:grid-cols-4"
         data-testid="cifras-quincena">
         <Cifra
           k="HH trabajadas" v={sinDatos ? guion : <span data-testid="hh-quincena">{hs(cifras.trabajadas)}</span>}
@@ -216,7 +221,7 @@ export function QuincenaDeAsistencia({
         />
       </div>
 
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line-hairline px-3.5 py-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line-hairline py-3">
         <span className="text-[11.5px] text-muted" data-testid="obra-de-la-quincena">
           {obra
             ? (
@@ -238,10 +243,10 @@ export function QuincenaDeAsistencia({
         </Link>
       </div>
 
-      <div className="border-t border-line-hairline px-3.5 py-3">
+      <div className="border-t border-line-hairline py-3">
         <p className="mb-1.5 text-[11px] text-muted">Últimas 6 quincenas</p>
         <Historial barras={barras} />
       </div>
-    </TarjetaFicha>
+    </SeccionDeFicha>
   )
 }

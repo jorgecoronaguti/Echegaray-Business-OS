@@ -15,17 +15,22 @@
 //
 // Cuando el catálogo no trajo la obra —RLS, o la fila ya no existe— `activa` es `null` y NO se
 // escribe ni «activa» ni «cerrada»: un control que no pudo mirar no dice «no está».
+//
+// ═══ Y POR QUÉ DEJÓ DE SER UNA TARJETA (dueño, 18/09/2026) ═══
+//
+// Era una `TarjetaFicha`: caja redondeada, borde entero, aire propio adentro. El resto del legajo
+// —encabezado, tira de $/h, cifras, retribución, horas, documentos— es plano: rótulo chico, filos y
+// la sangría del cuerpo. Con las dos a la vista, la caja se lee como «esto es otra cosa» cuando es
+// la misma ficha, y sus 14px de margen interno dejaban este bloque desalineado con la columna de al
+// lado. Ahora es una `SeccionDeFicha`, que es el mismo objeto sin la caja.
+//
+// NADA SE FUE CON LA CAJA: el título y lo que la cabecera de la tarjeta mostraba a la derecha siguen
+// en el rótulo de la sección. Lo único que no vuelve es el ícono, que no era un dato.
 
 import Link from 'next/link'
-import { TarjetaFicha } from './FichaCanonica'
+import { SeccionDeFicha } from '@/shared/components/v2/segundoNivel'
 import { fecha } from '@/features/obras/components/formato'
 import type { ObraTrabajada, TramoProgramado } from '../services/obrasDePersona'
-
-const ICONO = (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-    <path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6" />
-  </svg>
-)
 
 const hs = (n: number): string =>
   n.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
@@ -60,7 +65,7 @@ function Estado({ activa }: { activa: boolean | null }) {
  */
 function Programados({ tramos }: { tramos: TramoProgramado[] }) {
   return (
-    <div className="border-t border-line-hairline px-3.5 py-2.5" data-testid="programados-persona">
+    <div className="border-t border-line-hairline py-2.5" data-testid="programados-persona">
       <h4 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-faint">
         Programado
       </h4>
@@ -89,19 +94,18 @@ export function ObrasDeLaPersona({ obras, programados = [], hrefAsignaciones }: 
   obras: ObraTrabajada[]
   /** Sus pases futuros. Vacío = no tiene ninguno, y entonces la sección no existe. */
   programados?: TramoProgramado[]
-  /** El historial de ASIGNACIONES —dónde se lo puso, con o sin horas— vive en su solapa. */
+  /** El historial de ASIGNACIONES —dónde se lo puso, con o sin horas—. Desde el 18/09/2026 no es
+   *  una solapa propia: es la segunda sección de «Horas y obras», y el enlace apunta a su ancla. */
   hrefAsignaciones: string
 }) {
   return (
-    <TarjetaFicha
-      titulo="Obras en las que trabajó" icono={ICONO} testid="bloque-obras-persona"
-      indicador={obras.length > 0
-        ? `${obras.length}`
-        : <span className="font-sans text-[11.5px] text-faint">—</span>}
+    <SeccionDeFicha
+      titulo="Obras en las que trabajó" testid="bloque-obras-persona"
+      cuenta={obras.length > 0 ? obras.length : '—'}
     >
       {obras.length === 0
         ? (
-            <p className="px-3.5 py-3 text-[12px] text-faint" data-testid="obras-persona-vacio">
+            <p className="py-3 text-[12px] text-faint" data-testid="obras-persona-vacio">
               {/* NO ES «NO TRABAJÓ EN NINGUNA OBRA»: es que no hay horas imputadas a su nombre. */}
               Sin horas imputadas a su nombre en ninguna obra. Se cargan desde la solapa Personal de
               la obra o desde Campo · Asistencia.
@@ -111,7 +115,7 @@ export function ObrasDeLaPersona({ obras, programados = [], hrefAsignaciones }: 
             <Link
               key={o.id} href={`/obras/${o.id}`} prefetch={false} data-testid="fila-obra-persona"
               data-activa={o.activa == null ? 'sin-dato' : o.activa ? 'si' : 'no'}
-              className="flex items-center gap-3 border-b border-line-hairline px-3.5 py-2.5 transition-colors last:border-0 hover:bg-canvas"
+              className="flex items-center gap-3 border-b border-line-hairline py-2.5 transition-colors last:border-0 hover:bg-canvas"
             >
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2">
@@ -148,12 +152,12 @@ export function ObrasDeLaPersona({ obras, programados = [], hrefAsignaciones }: 
           haya cerrado la asignación, trae el estado de hoy, los días y las HH. Dos bloques con la
           misma respuesta obligan a decidir cuál mirar. El historial de asignaciones no se pierde:
           es su propia solapa, y se llega desde acá. */}
-      <div className="border-t border-line-hairline px-3.5 py-2.5">
+      <div className="border-t border-line-hairline py-2.5">
         <Link href={hrefAsignaciones} prefetch={false}
           className="text-[12px] font-medium text-ink hover:underline" data-testid="ir-a-asignaciones">
           Ver el historial de asignaciones →
         </Link>
       </div>
-    </TarjetaFicha>
+    </SeccionDeFicha>
   )
 }

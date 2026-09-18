@@ -18,7 +18,7 @@
 import Link from 'next/link'
 import type { CSSProperties, ReactNode } from 'react'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
-import { V } from './patron'
+import { ALTO_HEADER_APP, V } from './patron'
 
 /** El chevron de la miga y el de volver. 15px, el mismo trazo del §11. `23v2:50`. */
 function Chevron({ className }: { className?: string }) {
@@ -261,6 +261,73 @@ export function AvisoDeFicha({ children, verbo, href, tono = 'warn', testid = 'a
   return href
     ? <Link href={href} data-testid={testid} style={estilo} className="hover:bg-[#F2F1ED]">{cuerpo}</Link>
     : <div data-testid={testid} style={estilo}>{cuerpo}</div>
+}
+
+/**
+ * UNA SECCIÓN DE LA COLUMNA PRINCIPAL DE UNA FICHA: rótulo en versalitas, su cuenta, lo que va
+ * contra el margen derecho, y un filo de cierre. **No es una tarjeta.**
+ *
+ * ═══ POR QUÉ EXISTE (18/09/2026) ═══
+ *
+ * El legajo hablaba DOS idiomas en la misma pantalla. El encabezado, la tira de $/h, las cifras, la
+ * Retribución, las Horas y los Documentos son planos —rótulo chico, filos, sin caja—; el Resumen
+ * dibujaba tres cajas redondeadas con borde entero y su propio aire adentro (`TarjetaFicha`). Con
+ * las dos a la vista el ojo lee la caja como «esto es otra cosa» cuando es la misma ficha, y el
+ * margen de adentro de la caja no coincide con el de afuera: las cifras del encabezado y las de la
+ * quincena arrancan en dos sangrías distintas a quince píxeles una de otra.
+ *
+ * El rótulo es el MISMO de una columna de tabla del v2 (11px, 600, versalitas, `.06em`) y el filo el
+ * `lineaFuerte` con el que cierra un encabezado: la sección se lee como lo que es —el encabezado de
+ * un bloque— y no como un objeto flotando sobre el fondo. Es el criterio 3 del patrón, el mismo por
+ * el que la tira de cifras no son cuatro cards.
+ *
+ * NINGÚN DATO SE VA CON LA CAJA: el título, la cuenta y el rango que la tarjeta dibujaba en su
+ * cabecera siguen acá, en `titulo`, `cuenta` y `derecha`.
+ */
+export function SeccionDeFicha({ id, titulo, cuenta, derecha, children, testid }: {
+  /** El ancla de la sección. Con dos secciones en una cara, el enlace que viene de otra pantalla
+   *  tiene que poder apuntar a la de abajo — si no, unificar dos solapas se paga haciendo que el
+   *  que llega busque a mano. `scrollMarginTop` deja el rótulo debajo del header pegajoso. */
+  id?: string
+  titulo: string
+  /** Lo que la sección cuenta o mide. `null` = no se pudo, y entonces NO se escribe: un 0 ahí
+   *  diría que se midió y dio cero. */
+  cuenta?: number | string | null
+  /** Contra el margen derecho del rótulo: el rango de la ventana, una aclaración, un enlace. */
+  derecha?: ReactNode
+  children: ReactNode
+  testid?: string
+}) {
+  return (
+    <section id={id} data-testid={testid} style={{ minWidth: 0, scrollMarginTop: ALTO_HEADER_APP + 12 }}>
+      <div
+        style={{
+          display: 'flex', alignItems: 'baseline', gap: 9, flexWrap: 'wrap',
+          borderBottom: `1px solid ${V.lineaFuerte}`, paddingBottom: 6, marginBottom: 10,
+        }}
+      >
+        <span
+          style={{
+            fontSize: '11px', fontWeight: 600, letterSpacing: '.06em',
+            textTransform: 'uppercase', color: V.tenue, whiteSpace: 'nowrap',
+          }}
+        >
+          {titulo}
+        </span>
+        {cuenta != null && (
+          <span className="font-mono tabular-nums" style={{ fontSize: '11px', color: V.lupa }}>
+            {cuenta}
+          </span>
+        )}
+        {derecha != null && (
+          <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: V.tenue, minWidth: 0 }}>
+            {derecha}
+          </span>
+        )}
+      </div>
+      {children}
+    </section>
+  )
 }
 
 /** Una cifra de la tira: rótulo en versalitas y el número a 19px mono. `23v2:88-92`. */

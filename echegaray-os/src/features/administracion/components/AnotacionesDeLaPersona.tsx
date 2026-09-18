@@ -23,20 +23,25 @@
 //
 // Sin categorías ni etiquetas: texto libre. El dueño pidió *un lugar para anotar*, y un catálogo de
 // categorías inventado por el sistema es exactamente lo que hace que nadie anote.
+//
+// ═══ Y POR QUÉ DEJÓ DE SER UNA TARJETA (dueño, 18/09/2026) ═══
+//
+// Era una `TarjetaFicha`: caja redondeada, borde entero, aire propio adentro. El resto del legajo
+// —encabezado, tira de $/h, cifras, retribución, horas, documentos— es plano: rótulo chico, filos y
+// la sangría del cuerpo. Con las dos a la vista, la caja se lee como «esto es otra cosa» cuando es
+// la misma ficha, y sus 14px de margen interno dejaban este bloque desalineado con la columna de al
+// lado. Ahora es una `SeccionDeFicha`, que es el mismo objeto sin la caja.
+//
+// NADA SE FUE CON LA CAJA: el título y lo que la cabecera de la tarjeta mostraba a la derecha siguen
+// en el rótulo de la sección. Lo único que no vuelve es el ícono, que no era un dato.
 
 import { Aviso } from '@/shared/components/ds'
 import { Campo, FormAccion, type AccionFormulario } from '@/shared/components/ui'
 import { ZONA_OBRA } from '@/features/jefe/services/zona'
-import { TarjetaFicha } from './FichaCanonica'
+import { SeccionDeFicha } from '@/shared/components/v2/segundoNivel'
 import { CampoAnotacion } from './CampoAnotacion'
 import { autorDeAnotacion, LARGO_MAXIMO } from '../services/anotacionesPersona'
 import type { AnotacionDePersona } from '../services/anotacionesService'
-
-const ICONO = (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-    <path d="M4 4h16v12H8l-4 4z" />
-  </svg>
-)
 
 /** CUÁNDO, con hora. Una anotación del mismo día es lo normal —tres de la misma semana se
  *  distinguen por la hora— y el huso se fija: si dependiera del reloj del servidor, la misma
@@ -58,22 +63,20 @@ export function AnotacionesDeLaPersona({ anotaciones, puedeEscribir, anotar, pen
   pendiente: string | null
 }) {
   return (
-    <TarjetaFicha
-      titulo="Anotaciones" icono={ICONO} testid="bloque-anotaciones"
-      indicador={anotaciones.length > 0
-        ? `${anotaciones.length}`
-        : <span className="font-sans text-[11.5px] text-faint">—</span>}
+    <SeccionDeFicha
+      titulo="Anotaciones" testid="bloque-anotaciones"
+      cuenta={anotaciones.length > 0 ? anotaciones.length : '—'}
     >
       {/* EL AVISO VA ARRIBA DEL CAMPO. Debajo se leería después de escribir la anotación y apretar
           el botón, o sea después de perder el tiempo que el aviso existe para ahorrar. */}
       {pendiente && (
-        <div className="px-3.5 pt-3">
+        <div className="pt-1 pb-3">
           <Aviso tono="warn">{pendiente}</Aviso>
         </div>
       )}
 
       {puedeEscribir && anotar && (
-        <div className="border-b border-line-hairline px-3.5 py-3">
+        <div className="border-b border-line-hairline pb-3">
           <FormAccion
             accion={anotar} testid="form-anotacion" enviar="Anotar" tactil
             limpiarAlOk mensajeOk="Anotado." bloqueado={pendiente != null}
@@ -88,7 +91,7 @@ export function AnotacionesDeLaPersona({ anotaciones, puedeEscribir, anotar, pen
 
       {anotaciones.length === 0
         ? (
-            <p className="px-3.5 py-3 text-[12px] text-faint" data-testid="anotaciones-vacio">
+            <p className="py-3 text-[12px] text-faint" data-testid="anotaciones-vacio">
               {/* Corto, y sin repetir lo que el aviso de arriba ya dijo cuando falta la migración. */}
               {pendiente ? 'No se pueden leer todavía.' : 'Sin anotaciones.'}
             </p>
@@ -96,7 +99,7 @@ export function AnotacionesDeLaPersona({ anotaciones, puedeEscribir, anotar, pen
         : anotaciones.map((a) => (
             <article
               key={a.id} data-testid="fila-anotacion"
-              className="border-b border-line-hairline px-3.5 py-2.5 last:border-0"
+              className="border-b border-line-hairline py-2.5 last:border-0"
             >
               <p className="flex items-baseline gap-2 text-[11px] text-faint">
                 <time dateTime={a.creado_en} className="shrink-0 font-mono tabular-nums">{cuando(a.creado_en)}</time>
@@ -106,6 +109,6 @@ export function AnotacionesDeLaPersona({ anotaciones, puedeEscribir, anotar, pen
               <p className="mt-1 whitespace-pre-line text-[12.5px] leading-[1.55] text-ink">{a.texto}</p>
             </article>
           ))}
-    </TarjetaFicha>
+    </SeccionDeFicha>
   )
 }
