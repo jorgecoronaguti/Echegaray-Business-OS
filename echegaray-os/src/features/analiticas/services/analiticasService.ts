@@ -8,9 +8,17 @@
 //
 //   contratado y presupuestado por rubro → `obra_economia_rubros` (la vista única; `contratado` es
 //                                          `contratado_de_obra`, lo mismo que obra_panel, la ficha y el CRM)
-//   consumido por rubro (con período)     → `analiticas_costos` → `costo_de_obras_a_la_fecha` (lo mismo que
-//                                          el CRM) y `costo_de_obras_por_rubro` para el detalle
-//   consumo mes a mes                     → `analiticas_consumo_mensual`
+//   consumido por rubro (con período)     → `analiticas_costos_rubros` → `costo_de_obras_a_la_fecha_rubros`
+//                                          (lo mismo que el CRM, sin IVA acá) y `costo_de_obras_por_rubro`
+//                                          para el detalle
+//   consumo mes a mes                     → `analiticas_consumo_mensual_rubros`
+//
+// ═══ POR QUÉ `*_rubros` Y NO LAS DE SIEMPRE (auditoría 18/09/2026) ═══
+//
+// `analiticas_costos`, `costo_de_obras_a_la_fecha` y `analiticas_consumo_mensual` las lee también el
+// código PUBLICADO, que no conoce «otros». Cambiarlas en la base antes de publicar dejó $ 22,6 M de costo
+// invisibles en producción: se devolvieron a como estaban (T1500) y los cuatro rubros viven en objetos
+// nuevos con la misma regla. Al publicar esta rama, una migración unifica y retira el duplicado.
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { armarCostosPorObra, armarGastosSinObra, type GastoSinObra } from '@/features/clientes/services/costosDeObra'
 import { rangoParaVista, type Filtros } from './filtros'
@@ -70,7 +78,7 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
   const [panel, rubros, costos] = await Promise.all([
     supabase.from('obra_panel').select('obra_id, nombre, cliente_id, cliente_slug, cliente_nombre, estado, n_comprobantes, avance_pct, orden, obra_padre_id'),
     supabase.from('obra_economia_rubros').select(COLUMNAS_RUBROS),
-    supabase.rpc('analiticas_costos', { p_desde: rango.desde, p_hasta: rango.hasta, p_obras: null }),
+    supabase.rpc('analiticas_costos_rubros', { p_desde: rango.desde, p_hasta: rango.hasta, p_obras: null }),
   ])
   const raiz = (costos.data ?? null) as Record<string, unknown> | null
   const porObra = armarCostosPorObra(Array.isArray(raiz?.obras) ? raiz.obras : null)
@@ -91,7 +99,7 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
   // EL CONSUMO MES A MES, SÓLO DE LA OBRA ELEGIDA: la consulta de toda la cartera tardó 2,6 s el
   // 17/09/2026 (recorre las quincenas como `analiticas_costos`) y la base está justa.
   const obraElegida = f.vista === 'obras' ? elegirObra(obras, f.obra) : null
-  const consumo = obraElegida ? await supabase.rpc('analiticas_consumo_mensual', { p_obras: [obraElegida.id] }) : null
+  const consumo = obraElegida ? await supabase.rpc('analiticas_consumo_mensual_rubros', { p_obras: [obraElegida.id] }) : null
   const mensual = consumo && !consumo.error ? leerConsumoMensual(consumo.data) : null
   // LO SIN OBRA ES DEL CLIENTE: se recorta por período y NUNCA por obra.
   const sinObra = new Map([...(sinObraCruda ?? new Map()).entries()].map(([k, g]) => [k, sinObraDe(g)]))
