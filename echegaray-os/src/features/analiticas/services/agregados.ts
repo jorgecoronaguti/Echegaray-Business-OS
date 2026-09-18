@@ -420,6 +420,52 @@ export function contenidoPorRubro(obras: ObraAnalitica[]): ContenidoDeRubro[] {
   })
 }
 
+// ─── La tabla por rubro del Resumen (dueño, 18/09/2026: «columna Otros propia en el Resumen: hacelo») ───
+//
+// Una fila por cliente y una columna por rubro —Mano de obra · Materiales · Subcontratistas · OTROS— con
+// presupuestado y consumido en cada celda, y la fila Empresa al pie. Los totales NO cambian: «otros» ya
+// estaba adentro del consumido y del presupuestado; lo que cambia es que se ve en su columna. La fila
+// Empresa suma EXACTAMENTE lo que dice la cabecera (`cifrasResumen`): es lo que prueba el test.
+
+export interface CeldaPorRubro {
+  /** Σ del presupuesto de las obras que cotizaron este rubro; `null` = ninguna. */
+  presupuestado: number | null
+  obrasConPresupuesto: number
+  consumido: number | null
+  /** Los grupos del gasto (familias / proveedores / quincenas) sumados, para decir qué contiene. */
+  contenido: GrupoAgregado[]
+}
+
+export interface FilaPorRubro {
+  clienteId: string
+  nombre: string
+  obras: number
+  porRubro: Record<Rubro, CeldaPorRubro>
+  presupuestado: number | null
+  consumido: number | null
+}
+
+function filaPorRubroDe(clienteId: string, nombre: string, lista: ObraAnalitica[]): FilaPorRubro {
+  const c = contenidoPorRubro(lista)
+  const porRubro = Object.fromEntries(c.map((x) => [x.rubro, {
+    presupuestado: x.presupuestado, obrasConPresupuesto: x.obrasConPresupuesto, consumido: x.consumido, contenido: x.gruposConsumo,
+  }])) as Record<Rubro, CeldaPorRubro>
+  return {
+    clienteId, nombre, obras: lista.length, porRubro,
+    presupuestado: sumaNula(lista.map((o) => o.presupuesto)),
+    consumido: sumaNula(lista.map((o) => o.gasto.total)),
+  }
+}
+
+/** Las filas por cliente, en el orden de `resumenPorCliente` (del que más consumió al que menos), y la Empresa. */
+export function tablaPorRubro(obras: ObraAnalitica[], orden: readonly { clienteId: string }[]): { filas: FilaPorRubro[]; empresa: FilaPorRubro } {
+  const filas = orden.map((c) => {
+    const lista = obras.filter((o) => o.clienteId === c.clienteId)
+    return filaPorRubroDe(c.clienteId, lista[0]?.clienteNombre ?? c.clienteId, lista)
+  })
+  return { filas, empresa: filaPorRubroDe('empresa', 'Empresa', obras) }
+}
+
 // ─── Costo por hora ─────────────────────────────────────────────────────────────────────
 
 export const UMBRAL_HORA_CARA = 0.2
