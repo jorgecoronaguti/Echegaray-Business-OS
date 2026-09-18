@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   TIPO, VOCABULARIO, esCandidata, tipoDeCosto, planDeTipoCosto, medirContraEtiquetas, tramosDeEscritura,
-  verificarRelectura, planDeReversa,
+  verificarRelectura, planDeReversa, planDeCorreccion, CORRECCION_ESTRUCTURA_A_DIRECTO_1809,
 } from './compras-tipo-costo.mjs'
 import { VIA } from './compras-obra-asignada.mjs'
 
@@ -144,6 +144,45 @@ test('reversa: sólo vacía lo que sigue diciendo exactamente lo que escribí so
   const escribir = [{ fila: 5, valor: 'Directo' }, { fila: 6, valor: 'Indirecto' }, { fila: 7, valor: 'Directo' }]
   const r = planDeReversa({ escribir, respaldo, leido: new Map([[5, 'Directo'], [6, 'Estructura'], [7, 'Directo']]) })
   assert.deepEqual(r.vaciar.map((v) => v.fila), [5, 7])
+  assert.deepEqual(r.restaurar, [])
   assert.equal(r.noSonMias.length, 1)
   assert.match(r.noSonMias[0].motivo, /Estructura/)
+})
+
+// ═══ LA CORRECCIÓN DEL DUEÑO (18/09/2026): «no son de estructura entonces, son CIVIL, cambialas» ═══
+const F349 = { fila: 349, proveedor: 'FEMENIA', unidad_negocio: 'Civil', tipo_costo: 'Estructura', obra_celda: 'OB-0006 · LE - OFICINA Y FÁBRICA DE PALITOS', destino: 'obra', obra_id: 'le-comedor', total: 78000, concepto: '10 M3 - RIPIO' }
+const F350 = { fila: 350, proveedor: 'Linarc', unidad_negocio: 'Estructura', tipo_costo: 'Estructura', obra_celda: 'ES-TAL · Estructura – Taller', destino: 'estructura_taller', total: 327000 }
+
+test('corrección: son exactamente las 18 filas del pedido, y la 350 (Linarc, taller) no está', () => {
+  const filas = CORRECCION_ESTRUCTURA_A_DIRECTO_1809.filas.map((x) => x.fila)
+  assert.equal(filas.length, 18)
+  assert.equal(new Set(filas).size, 18)
+  assert.ok(!filas.includes(350))
+  assert.equal(CORRECCION_ESTRUCTURA_A_DIRECTO_1809.de, 'Estructura')
+  assert.equal(CORRECCION_ESTRUCTURA_A_DIRECTO_1809.a, 'Directo')
+})
+
+test('corrección: escribe sólo donde dice exactamente «Estructura», con el proveedor esperado y obra en la L', () => {
+  const c = { ...CORRECCION_ESTRUCTURA_A_DIRECTO_1809, filas: [{ fila: 349, proveedor: 'FEMENIA' }, { fila: 351, proveedor: 'Diego Sosa' }, { fila: 352, proveedor: 'Metalis' }, { fila: 353, proveedor: 'Metalis' }, { fila: 354, proveedor: 'DUPEC' }] }
+  const p = planDeCorreccion([
+    F349,
+    { ...F349, fila: 351, proveedor: 'Diego Sosa', tipo_costo: 'Directo' }, // ya la cambió alguien: no se toca
+    { ...F349, fila: 352, proveedor: 'Otro' }, // la fila se movió
+    { ...F349, fila: 353, proveedor: 'Metalis', destino: 'estructura_admin', obra_celda: 'ES-ADM' }, // sin obra
+    F350,
+  ], c)
+  assert.deepEqual(p.escribir.map((e) => [e.fila, e.antes, e.valor]), [[349, 'Estructura', 'Directo']])
+  assert.deepEqual(p.noSeTocan.map((x) => x.fila), [351, 352, 353, 354])
+  assert.match(p.noSeTocan[0].motivo, /ya cambió/)
+  assert.match(p.noSeTocan[1].motivo, /se movió/)
+  assert.match(p.noSeTocan[3].motivo, /no existe/)
+})
+
+test('reversa de la corrección: devuelve «Estructura» sólo donde sigue diciendo «Directo»', () => {
+  const escribir = [{ fila: 349, valor: 'Directo', antes: 'Estructura' }, { fila: 351, valor: 'Directo', antes: 'Estructura' }, { fila: 352, valor: 'Directo', antes: 'Estructura' }]
+  const respaldo = [{ fila: 349, valor: 'Estructura' }, { fila: 351, valor: 'Estructura' }, { fila: 352, valor: '' }]
+  const r = planDeReversa({ escribir, respaldo, leido: new Map([[349, 'Directo'], [351, 'Indirecto'], [352, 'Directo']]) })
+  assert.deepEqual(r.restaurar, [{ fila: 349, valor: 'Directo', antes: 'Estructura' }])
+  assert.deepEqual(r.vaciar, [])
+  assert.deepEqual(r.noSonMias.map((x) => x.fila), [351, 352])
 })
