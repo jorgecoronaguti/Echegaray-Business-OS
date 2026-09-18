@@ -36,11 +36,12 @@ const Aviso = ({ children, tono }: { children: ReactNode; tono: string }) => (
   <span style={{ fontSize: '11.5px', color: tono }}>{children}</span>
 )
 
-export function ResumenJornaleros({ t }: { t: TotalesDeJornaleros }) {
+export function ResumenJornaleros({ t, sellada = false }: { t: TotalesDeJornaleros; sellada?: boolean }) {
   const cierre = cierreDeTotales(t)
   const avisos: string[] = []
   if (cierre?.cierra === false) avisos.push(`no cierra por ${pesos(cierre.diferencia)}`)
-  if (t.pago.sinSaldo > 0) avisos.push(`${t.pago.sinSaldo} sin saldo`)
+  // EN LA CERRADA «SIN SALDO» ES «NADIE REGISTRÓ LO PAGADO» (`pagoSinRegistrar`): no se da por debido ni por pagado.
+  if (t.pago.sinSaldo > 0) avisos.push(sellada ? `${t.pago.sinSaldo} con el pago sin registrar: no se afirma saldo` : `${t.pago.sinSaldo} sin saldo`)
   if (t.sinNeto > 0) avisos.push(`${t.sinNeto} sin neto`)
   if (t.sinTarifa > 0) avisos.push(`${t.sinTarifa} sin retribución`)
   if (t.estimados > 0) avisos.push(`${t.estimados} con blanco estimado`)
@@ -69,14 +70,20 @@ export function ResumenJornaleros({ t }: { t: TotalesDeJornaleros }) {
   )
 }
 
-export function ResumenMensuales({ t }: { t: TotalesDeMensuales }) {
+export function ResumenMensuales({ t, sellada = false }: { t: TotalesDeMensuales; sellada?: boolean }) {
   const avisos: string[] = []
   if (t.noCierran > 0) avisos.push(`${t.noCierran} no cierra${t.noCierran === 1 ? '' : 'n'} por ${pesos(t.diferencia)}`)
-  if (t.sinSueldo > 0) avisos.push(`${t.sinSueldo} sin sueldo cargado`)
-  if (t.sinRecibo > 0) avisos.push(`${t.sinRecibo} sin recibo todavía: banco y efectivo sin repartir`)
+  // EN LA CERRADA NO HAY PENDIENTES QUE CARGAR (auditor, 18/09/2026): «sin sueldo cargado» y «sin recibo todavía» son
+  // avisos de algo por hacer, y sobre una quincena cerrada no hay nada por hacer. Se dice lo que es.
+  if (t.sinSueldo > 0) avisos.push(sellada ? `${t.sinSueldo} sin línea sellada` : `${t.sinSueldo} sin sueldo cargado`)
+  if (t.sinRecibo > 0 && !sellada) avisos.push(`${t.sinRecibo} sin recibo todavía: banco y efectivo sin repartir`)
+  if (sellada && t.sinSaldo > 0) avisos.push('cobran por mes: el saldo es del mes, no de la quincena')
   return (
     <Tira testid="pie-mensuales">
-      <Cifra rotulo="Sueldos del mes" valor={pesos(t.sueldo)} testid="pie-mensuales-sueldo" />
+      {/* UNA CERRADA NO TIENE «SUELDO DEL MES»: la foto es lo liquidado en la quincena (Maldonado 16–31/03, 105 h × $8.125). */}
+      {sellada
+        ? <Cifra rotulo="Liquidado en la quincena" valor={pesos(t.sueldo)} testid="pie-mensuales-sueldo" />
+        : <Cifra rotulo="Sueldos del mes" valor={pesos(t.sueldo)} testid="pie-mensuales-sueldo" />}
       <Cifra rotulo="Banco" valor={t.sinRecibo === t.personas - t.sinSueldo ? 'falta recibo' : pesos(t.banco)} testid="pie-mensuales-banco" />
       <Cifra rotulo="Efectivo" valor={t.sinRecibo === t.personas - t.sinSueldo ? 'falta recibo' : pesos(t.efectivo)} testid="pie-mensuales-efectivo" />
       <Cifra rotulo="Pagado" valor={pesos(t.pagado)} testid="pie-mensuales-pagado" />
@@ -100,7 +107,12 @@ export function PieTotalGeneral({ g, hayMensuales }: { g: TotalGeneral; hayMensu
         <Cifra rotulo="Saldo red." valor={pesos(g.saldoRedondeado > 0 ? g.saldoRedondeado : null)} testid="pie-general-saldo-redondeado" />
         {g.cierra
           ? <Aviso tono={V.pos}>el total cierra: total − pagado = saldo</Aviso>
-          : (
+          : g.sinAlarma ? (
+            // CERRADA, Y LO ÚNICO QUE FALTA ES LO QUE NADIE REGISTRÓ: no es una deuda ni un error, se dice apagado.
+            <span data-testid="pie-general-sin-registro" style={{ fontSize: '11.5px', color: V.apagado }}>
+              {`quincena cerrada · no se afirma saldo por ${pesos(g.descuadre)}: ${g.causas.map((c) => `${c.causa} ${pesos(c.importe)}`).join(' · ')}`}
+            </span>
+          ) : (
             <span data-testid="pie-general-no-cierra" style={{ fontSize: '11.5px', color: V.neg }}>
               {`no cierra por ${pesos(g.descuadre)}: ${g.causas.map((c) => `${c.causa} ${pesos(c.importe)}`).join(' · ')}`}
             </span>

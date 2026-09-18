@@ -325,6 +325,13 @@ export function CeldaSaldo({ fila, lado, pago, sinDato }: {
   const p = pago ?? fila.linea.pago
   const valor = lado === 'banco' ? p.saldoBanco : lado === 'efectivo' ? p.saldoEfectivo : p.saldoTotal
   const testid = `saldo-${lado}-${fila.personaId}`
+  // LA CERRADA SIN LO PAGADO REGISTRADO NO AFIRMA SALDO, Y LO DICE (auditor, 18/09/2026).
+  if (valor == null && fila.linea.pagoSinRegistrar) {
+    return (
+      <div data-testid={testid} data-sin-registro="1" title="Quincena cerrada sin lo pagado registrado: no se da por debido ni por pagado."
+        style={{ ...DERECHA, color: V.tenue, fontSize: '11px' }}>sin registrar</div>
+    )
+  }
   if (valor == null) {
     return (
       <div data-testid={testid} title={sinDato?.titulo ?? 'Sin negro del período: no hay saldo que afirmar.'}
