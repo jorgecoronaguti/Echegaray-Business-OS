@@ -73,37 +73,64 @@ const mismaCompra = (compra, cambio) => (cambio?.clave ?? null) === (compra?.cla
  * Un pedido cuya fila cambió de comprobante se deja quieto: lo va a rechazar el worker con la huella,
  * que es donde vive esa decisión.
  *
+ * ═══ VARIOS PAGOS DE LA MISMA FILA, EN ORDEN (18/09/2026) ═══
+ *
+ * Una fila tiene dos tramos de pago y la app puede pedir el segundo antes de que el primero baje al
+ * Sheet. Hasta hoy `porFila` guardaba UN pedido por fila —el último ganaba— y eso, con el primero ya
+ * escrito por el worker pero todavía no leído, producía el peor resultado posible: el primer pago
+ * desaparecía del espejo, y el segundo, comparado contra una lectura que no lo incluía, se
+ * clasificaba `conflicto` y el sync lo cerraba `rechazado`, que es TERMINAL. Un segundo pago legítimo
+ * se auto-rechazaba.
+ *
+ * Ahora los pedidos de una misma fila se PLIEGAN en orden de creación: cada uno se clasifica contra la
+ * fila con los anteriores ya superpuestos, que es exactamente el estado que tenía el Sheet cuando se
+ * pidió. El `hoy` y el flag comercial se siguen deduciendo de la fila ORIGINAL, que es la única que
+ * los publica.
+ *
+ * `cambios` tiene que venir en orden de creación: lo garantiza el `order by creado_at` de quien lee.
+ *
  * @param {object[]} compras lo leído del Sheet
- * @param {object[]} cambios los pedidos `tipo='pago'` en estado pendiente/procesando
+ * @param {object[]} cambios los pedidos `tipo='pago'` que todavía pueden no estar en el Sheet
  * @param {string} hoy ISO del día, para el semáforo proyectado
  * @returns {{compras:object[], conflictos:Array<{id:string, fila:number, detalle:string}>, superpuestos:number}}
  */
 export function superponerPagosPendientes(compras = [], cambios = [], hoy = new Date().toISOString().slice(0, 10)) {
   const porFila = new Map()
-  for (const c of cambios ?? []) porFila.set(Number(c.fila), c)
+  for (const c of cambios ?? []) {
+    const k = Number(c?.fila)
+    if (!porFila.has(k)) porFila.set(k, [])
+    porFila.get(k).push(c)
+  }
   const conflictos = []
   let superpuestos = 0
-  const salida = (compras ?? []).map((compra) => {
-    const cambio = porFila.get(Number(compra.fila))
-    if (!cambio || !mismaCompra(compra, cambio)) return compra
-    const r = clasificarPagoPendiente(compra, cambio)
-    if (r.estado === 'aplicado') return compra
-    if (r.estado === 'conflicto') {
-      conflictos.push({ id: cambio.id, fila: Number(compra.fila), detalle: r.detalle })
-      return compra
+  const salida = (compras ?? []).map((original) => {
+    const pedidos = porFila.get(Number(original.fila))
+    if (!pedidos?.length) return original
+    let actual = original
+    for (const cambio of pedidos) {
+      if (!mismaCompra(actual, cambio)) continue
+      // Contra `actual` y no contra `original`: el pedido siguiente se pidió sobre la fila que ya
+      // tenía el anterior encima, y compararlo contra la foto vieja lo declararía conflicto.
+      const r = clasificarPagoPendiente(actual, cambio)
+      if (r.estado === 'aplicado') continue
+      if (r.estado === 'conflicto') {
+        conflictos.push({ id: cambio.id, fila: Number(original.fila), detalle: r.detalle })
+        continue
+      }
+      superpuestos += 1
+      const encima = { ...actual }
+      for (const c of cambio.celdas) encima[CLAVE_POR_ROTULO[c.rotulo]] = c.valor
+      // LAS TRES DERIVADAS TAMBIÉN, O LA FILA QUEDA INCOHERENTE. Superponer sólo las celdas de entrada
+      // dejaría «Estado = Pagado» junto al `Saldo pendiente (OS)` viejo, que es el número que suma la
+      // pestaña Proveedores: la app mostraría la factura pagada y la deuda entera al mismo tiempo. El
+      // flag comercial se deduce de la fila ORIGINAL, que es la única que todavía lo publica.
+      const d = proyectar(encima, hoy, original)
+      encima.monto_parcial_1 = d.monto_parcial_1
+      encima.estado_pago = d.estado_pago
+      if (d.saldo_pendiente !== null) encima.saldo_pendiente = d.saldo_pendiente
+      actual = encima
     }
-    superpuestos += 1
-    const encima = { ...compra }
-    for (const c of cambio.celdas) encima[CLAVE_POR_ROTULO[c.rotulo]] = c.valor
-    // LAS TRES DERIVADAS TAMBIÉN, O LA FILA QUEDA INCOHERENTE. Superponer sólo las celdas de entrada
-    // dejaría «Estado = Pagado» junto al `Saldo pendiente (OS)` viejo, que es el número que suma la
-    // pestaña Proveedores: la app mostraría la factura pagada y la deuda entera al mismo tiempo. El
-    // flag comercial se deduce de la fila ORIGINAL, que es la única que todavía lo publica.
-    const d = proyectar(encima, hoy, compra)
-    encima.monto_parcial_1 = d.monto_parcial_1
-    encima.estado_pago = d.estado_pago
-    if (d.saldo_pendiente !== null) encima.saldo_pendiente = d.saldo_pendiente
-    return encima
+    return actual
   })
   return { compras: salida, conflictos, superpuestos }
 }

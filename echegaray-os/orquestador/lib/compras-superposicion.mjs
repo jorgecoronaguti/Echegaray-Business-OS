@@ -49,8 +49,14 @@ export function cuentaParaSuperponer(cambio, desde) {
 
 /**
  * Reparte lo leído en las dos superposiciones, con la forma que cada función pura espera:
- *   · obras: el ÚLTIMO cambio de obra por fila (el más nuevo gana, como antes).
- *   · pagos: todos, en orden de creación (la aritmética la resuelve `superponerPagosPendientes`).
+ *
+ *   · obras: el ÚLTIMO cambio de obra por fila. La celda es UNA y el pedido más nuevo la describe
+ *     entera, así que plegar los anteriores no agregaría nada; y cada uno trae su `valor_anterior`,
+ *     con el que `aplicarCambiosPendientes` decide si el Sheet todavía dice lo que la pantalla vio.
+ *   · pagos: TODOS, en orden de creación, porque una fila tiene dos tramos y el segundo puede pedirse
+ *     antes de que el primero baje al Sheet. `superponerPagosPendientes` los pliega en ese orden
+ *     —cada uno contra la fila con los anteriores encima—; quedarse con uno solo perdía el primero y
+ *     hacía que el segundo se auto-rechazara por conflicto (18/09/2026).
  */
 export function repartir(cambios = [], desde = null) {
   const cuentan = (cambios ?? []).filter((c) => cuentaParaSuperponer(c, desde))
@@ -69,10 +75,26 @@ export function repartir(cambios = [], desde = null) {
   }
 }
 
+/**
+ * EL RELOJ QUE MANDA ES EL DE POSTGRES.
+ *
+ * `aplicado_at` lo escribe la base con `now()` (`comunicacion/compras/cola-obra.mjs`), y `desde` se
+ * compara contra él. Tomado del reloj de la VM, un adelanto mayor que lo que tarda la lectura de
+ * Google dejaría afuera un cambio que sí ocurrió durante la corrida — el defecto que esto existe
+ * para cerrar. Se pide a la misma base que después va a contestar la consulta.
+ */
+export async function ahoraDeLaBase(q) {
+  const { rows } = await q('select now() as t')
+  const t = rows?.[0]?.t
+  if (!t) throw new Error('sync-compras: la base no dijo qué hora es y de eso depende no pisar al dueño')
+  return new Date(t)
+}
+
 /** Lo que la app decidió sobre la pestaña Compras y todavía puede no estar en el Sheet. */
 export async function leerLoDecididoEnLaApp(q, { desde }) {
   const { rows } = await q(
-    `select id, fila, clave, coalesce(to_jsonb(c) ->> 'tipo', 'obra') as tipo, estado, valor_nuevo,
+    `select id, fila, clave, coalesce(to_jsonb(c) ->> 'tipo', 'obra') as tipo, estado,
+            valor_anterior, valor_nuevo,
             to_jsonb(c) -> 'celdas' as celdas, to_jsonb(c) -> 'previo' as previo, creado_at, aplicado_at
        from public.compra_obra_cambio c
       where coalesce(to_jsonb(c) ->> 'pestana', 'Compras') = 'Compras'

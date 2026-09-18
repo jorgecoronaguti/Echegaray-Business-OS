@@ -117,14 +117,64 @@ test('un cambio de la app todavía no escrito en el Sheet no se pierde en el syn
     { fila: 11, clave: 'c:2|B', obra_celda: 'ES-ADM · Estructura – Administración' },
   ]
   const cambios = [
-    { fila: 10, clave: 'c:1|A', valor_nuevo: 'OB-0021 · ME - PLAYÓN DE AZUFRE' },
+    { fila: 10, clave: 'c:1|A', valor_anterior: null, valor_nuevo: 'OB-0021 · ME - PLAYÓN DE AZUFRE' },
     // La fila 11 ya no es el mismo comprobante (alguien insertó arriba): el cambio NO se superpone.
-    { fila: 11, clave: 'c:9|Z', valor_nuevo: 'ES-TAL · Estructura – Taller' },
+    { fila: 11, clave: 'c:9|Z', valor_anterior: 'ES-ADM · Estructura – Administración', valor_nuevo: 'ES-TAL · Estructura – Taller' },
   ]
   const r = aplicarCambiosPendientes(compras, cambios)
   assert.equal(r[0].obra_celda, 'OB-0021 · ME - PLAYÓN DE AZUFRE')
   assert.equal(r[1].obra_celda, 'ES-ADM · Estructura – Administración')
   assert.equal(compras[0].obra_celda, null, 'no muta la lectura')
+})
+
+// ═══ LA OTRA MITAD, LA QUE LOS PAGOS YA TENÍAN (18/09/2026) ═══
+//
+// Superponer mirando sólo la clave hace que la app muestre la pestaña del dueño diciendo algo que su
+// pestaña no dice, hasta diez minutos. El Sheet nunca se toca —el worker rechaza el pedido por
+// `celda_cambio` cuando lo tome—, pero mientras tanto la app miente. La comparación es la MISMA del
+// bisturí, para que la app no prometa nada que el Sheet vaya a rechazar.
+
+test('si el dueño escribió otra obra en el Sheet DESPUÉS del pedido, gana el Sheet y no se superpone', () => {
+  const compras = [{ fila: 10, clave: 'c:1|A', obra_celda: 'OB-0009 · LO QUE ESCRIBIÓ EL DUEÑO' }]
+  const cambios = [{ fila: 10, clave: 'c:1|A', valor_anterior: null, valor_nuevo: 'OB-0001 · LO QUE PIDIÓ LA APP' }]
+  assert.equal(aplicarCambiosPendientes(compras, cambios)[0].obra_celda, 'OB-0009 · LO QUE ESCRIBIÓ EL DUEÑO')
+})
+
+test('un pedido de «sin obra» NO vacía en el espejo una celda que el Sheet trae cargada por otra mano', () => {
+  const compras = [{ fila: 10, clave: 'c:1|A', obra_celda: 'OB-0009 · LA QUE PUSO EL DUEÑO' }]
+  // La pantalla vio la celda vacía y pidió dejarla sin obra; el Sheet ya dice otra cosa.
+  const cambios = [{ fila: 10, clave: 'c:1|A', valor_anterior: null, valor_nuevo: null }]
+  assert.equal(aplicarCambiosPendientes(compras, cambios)[0].obra_celda, 'OB-0009 · LA QUE PUSO EL DUEÑO')
+  // Pero si el Sheet sigue diciendo lo que la pantalla vio, vaciar es lo que la persona pidió.
+  const coherente = [{ fila: 10, clave: 'c:1|A', obra_celda: 'OB-0009 · LA QUE PUSO EL DUEÑO' }]
+  const pedido = [{ fila: 10, clave: 'c:1|A', valor_anterior: 'OB-0009 · LA QUE PUSO EL DUEÑO', valor_nuevo: '' }]
+  assert.equal(aplicarCambiosPendientes(coherente, pedido)[0].obra_celda, null)
+})
+
+test('si el worker ya escribió la celda, la lectura la trae y no se superpone nada (ni se rompe)', () => {
+  const compras = [{ fila: 10, clave: 'c:1|A', obra_celda: 'OB-0001 · YA ESCRITA' }]
+  const cambios = [{ fila: 10, clave: 'c:1|A', valor_anterior: null, valor_nuevo: 'OB-0001 · YA ESCRITA' }]
+  const r = aplicarCambiosPendientes(compras, cambios)
+  assert.equal(r[0].obra_celda, 'OB-0001 · YA ESCRITA')
+  assert.equal(r[0], compras[0], 'no se copia la fila cuando no hay nada que cambiar')
+})
+
+test('la comparación de la celda es la MISMA que la del bisturí: si una se afloja, la app promete algo que el Sheet rechaza', async () => {
+  const { normalizarCelda } = await import('./bisturi-compras-obra.mjs')
+  for (const v of [null, undefined, '', '  ', 'OB-0001 · x', ' OB-0001 · x ']) {
+    const compras = [{ fila: 10, clave: 'c:1|A', obra_celda: v }]
+    // Se superpone si y sólo si el bisturí diría que la celda todavía dice lo que la pantalla vio.
+    const cambios = [{ fila: 10, clave: 'c:1|A', valor_anterior: ' OB-0001 · x ', valor_nuevo: 'OB-0002 · y' }]
+    const coincide = normalizarCelda(v) === normalizarCelda(' OB-0001 · x ')
+    assert.equal(aplicarCambiosPendientes(compras, cambios)[0].obra_celda === 'OB-0002 · y', coincide,
+      `la celda ${JSON.stringify(v)} tiene que decidirse igual en los dos lados`)
+  }
+})
+
+test('un pago en la misma cola no toca la obra, aunque venga sin `valor_anterior` (su valor_nuevo es la acción)', () => {
+  const compras = [{ fila: 10, clave: 'c:1|A', obra_celda: 'ES-TAL · Estructura – Taller' }]
+  const cambios = [{ fila: 10, clave: 'c:1|A', tipo: 'pago', valor_anterior: null, valor_nuevo: 'total' }]
+  assert.equal(aplicarCambiosPendientes(compras, cambios)[0].obra_celda, 'ES-TAL · Estructura – Taller')
 })
 
 import { indiceColumnaObra } from './obra-destino.mjs'

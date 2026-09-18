@@ -6,7 +6,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { clasificarPagoPendiente, superponerPagosPendientes } from './pagos-pendientes.mjs'
-import { planDePago } from './pagos-de-compra.mjs'
+import { CLAVE_POR_ROTULO, planDePago } from './pagos-de-compra.mjs'
 
 const HOY = '2026-09-16'
 /** La fila como la lee el sync del Sheet, antes de que el worker escriba nada. */
@@ -101,4 +101,65 @@ test('un parcial pendiente deja el saldo proyectado, no el del Sheet', () => {
   assert.equal(f.fecha_prevista_2, '2026-10-15')
   assert.equal(f.saldo_pendiente, 71000)
   assert.equal(f.estado, 'Pendiente')
+})
+
+// ═══ DOS TRAMOS DE LA MISMA FILA (18/09/2026) ═══
+//
+// Desde que el sync también superpone lo que el worker aplicó MIENTRAS leía el Sheet, una fila puede
+// traer dos pedidos: el primero ya escrito y el segundo todavía en cola. Quedarse con uno solo —lo que
+// hacía `porFila.set`— perdía el primero del espejo Y, comparando el segundo contra una lectura que no
+// lo incluía, lo declaraba `conflicto`; el sync cierra los conflictos como `rechazado`, que es TERMINAL.
+// Un segundo pago legítimo se auto-rechazaba.
+
+/** La fila como queda después de aplicarle las celdas de un pedido. Es lo que ve quien pide el tramo 2. */
+const conElPedidoEncima = (compra, p) => {
+  const f = { ...compra }
+  for (const c of p.celdas) f[CLAVE_POR_ROTULO[c.rotulo]] = c.valor
+  return f
+}
+
+/** Los dos tramos: 50.000 en el primero y el resto en el segundo, pedido sobre la fila ya con el primero. */
+function dosTramos() {
+  const original = leida()
+  const p1 = pedido({ tipo: 'parcial', monto: 50000, fecha: HOY, fechaResto: '2026-10-15' }, original)
+  const tras1 = conElPedidoEncima(original, p1)
+  const p2 = { ...pedido({ tipo: 'total', fecha: HOY, medio: 'Efectivo' }, tras1), id: 'p-2' }
+  return { original, p1, tras1, p2 }
+}
+
+test('dos pagos de la misma fila se pliegan en orden: no se pierde el primero ni se auto-rechaza el segundo', () => {
+  const { original, p1, p2 } = dosTramos()
+  const r = superponerPagosPendientes([original], [p1, p2], HOY)
+  assert.equal(r.conflictos.length, 0, 'el segundo tramo no es un conflicto: se pidió sobre la fila con el primero encima')
+  assert.equal(r.superpuestos, 2)
+  const f = r.compras[0]
+  assert.equal(f.monto_pagado, 50000, 'el primer tramo sigue en el espejo')
+  assert.equal(f.monto_parcial_2, 71000)
+  assert.equal(f.saldo_pendiente, 0)
+  assert.equal(f.estado, 'Pagado')
+  assert.equal(f.pago_total_o_parcial, 'Total')
+  assert.equal(original.monto_pagado, 0, 'la fila de entrada no se muta')
+})
+
+test('si la lectura del Sheet YA trae el primer tramo, ése no se superpone y el segundo sí', () => {
+  const { p1, p2, tras1 } = dosTramos()
+  assert.equal(clasificarPagoPendiente(tras1, p1).estado, 'aplicado')
+  const r = superponerPagosPendientes([tras1], [p1, p2], HOY)
+  assert.equal(r.conflictos.length, 0)
+  assert.equal(r.superpuestos, 1, 'sólo el segundo: el primero ya está en la lectura')
+  assert.equal(r.compras[0].monto_parcial_2, 71000)
+  assert.equal(r.compras[0].saldo_pendiente, 0)
+})
+
+test('con dos pedidos, uno que el Sheet contradice se declara conflicto y el otro se superpone igual', () => {
+  const { original, p1 } = dosTramos()
+  // Alguien escribió otra cosa en el Sheet: el pedido esperaba «vacía» en Tipo de Pago y dice «Cheque».
+  const editada = { ...original, tipo_pago: 'Cheque' }
+  const ajeno = { id: 'p-x', fila: 57, clave: original.clave, celdas: [{ rotulo: 'Tipo de Pago', valor: 'Efectivo', anterior: null }] }
+  const r = superponerPagosPendientes([editada], [ajeno, p1], HOY)
+  assert.equal(r.conflictos.length, 1)
+  assert.equal(r.conflictos[0].id, 'p-x')
+  assert.equal(r.superpuestos, 1)
+  assert.equal(r.compras[0].monto_pagado, 50000, 'el pedido sano no paga el conflicto del otro')
+  assert.equal(r.compras[0].tipo_pago, 'Cheque', 'y lo que el dueño escribió en el Sheet queda')
 })

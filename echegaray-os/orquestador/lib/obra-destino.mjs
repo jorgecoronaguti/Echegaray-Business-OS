@@ -198,12 +198,33 @@ export function proyectarObraDeFila(c, cat) {
 }
 
 /**
+ * La celda de Obra, comparable. ESPEJO EXACTO de `normalizarCelda` de `bisturi-compras-obra.mjs` — no se
+ * importa de allá porque el bisturí importa de este archivo y sería un ciclo; el test lo compara contra él.
+ */
+const celdaComparable = (v) => String(v ?? '').trim()
+
+/**
  * LOS CAMBIOS DE LA APP QUE TODAVÍA NO LLEGARON AL SHEET, superpuestos a la lectura.
  *
  * El sync reescribe `compra_sheet` entero cada hora desde el Sheet. Sin esto, una obra elegida en la
  * app a las 10:59 volvería a «vacía» a las 11:00 y reaparecería cuando el worker escriba la columna Obra: la
  * pantalla parpadearía y el dueño creería que no se guardó. Sólo se superpone si la fila sigue siendo
  * el MISMO comprobante (misma clave): si alguien insertó una fila arriba, la fila N es otra compra.
+ *
+ * ═══ Y SÓLO SI EL SHEET SIGUE DICIENDO LO QUE LA PANTALLA VIO (18/09/2026) ═══
+ *
+ * Faltaba la otra mitad, la que los pagos sí tenían: comparar contra `valor_anterior`. Si el dueño
+ * escribió «OB-0009» en la celda DESPUÉS del pedido, superponer «OB-0001» hacía que la app le mostrara
+ * su propia pestaña diciendo algo que su pestaña no dice, hasta diez minutos; y un pedido de «sin obra»
+ * (`valor_nuevo` vacío) VACIABA en el espejo una celda que el Sheet trae cargada. El Sheet nunca se
+ * tocó, pero la app mentía. Una edición hecha por una persona es la verdad definitiva.
+ *
+ * Los tres casos, con la MISMA comparación que va a hacer el bisturí cuando el worker tome el pedido
+ * (`celda_cambio`), para que la app no prometa nada que el Sheet vaya a rechazar:
+ *
+ *   · la celda dice lo pedido    → el worker ya escribió: no hay nada que superponer.
+ *   · la celda dice `valor_anterior` → el pedido sigue en pie: se superpone.
+ *   · la celda dice otra cosa    → alguien la editó: GANA EL SHEET y no se superpone.
  */
 export function aplicarCambiosPendientes(compras = [], cambios = []) {
   // SÓLO CAMBIOS DE OBRA. Desde 20260916T1700 la misma cola lleva pagos, cuyo `valor_nuevo` es la
@@ -214,7 +235,11 @@ export function aplicarCambiosPendientes(compras = [], cambios = []) {
   return compras.map((c) => {
     const x = porFila.get(Number(c.fila))
     if (!x || (x.clave ?? null) !== (c.clave ?? null)) return c
-    return { ...c, obra_celda: String(x.valor_nuevo ?? '').trim() || null }
+    const actual = celdaComparable(c.obra_celda)
+    const pedido = celdaComparable(x.valor_nuevo)
+    if (actual === pedido) return c
+    if (actual !== celdaComparable(x.valor_anterior)) return c
+    return { ...c, obra_celda: pedido || null }
   })
 }
 

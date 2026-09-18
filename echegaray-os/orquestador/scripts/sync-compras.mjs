@@ -38,7 +38,8 @@ import { PESTANAS, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import { esCostoDeObra } from '../lib/compras-costo-de-obra.mjs'
 import { asignadorConColumnaObra, asignadorDeCompras, catalogosDeAsignacion, planDeAsignacion, VIA } from '../lib/compras-obra-asignada.mjs'
 import { catalogoDeDestinos, proyectarObraDeFila } from '../lib/obra-destino.mjs'
-import { leerLoDecididoEnLaApp, mismoConjunto, superponerLoDecidido } from '../lib/compras-superposicion.mjs'
+import { ahoraDeLaBase, leerLoDecididoEnLaApp, mismoConjunto, superponerLoDecidido } from '../lib/compras-superposicion.mjs'
+import { columnasSinRefrescar, columnasVivasDeCompraSheet, porQueNoEscribo } from '../lib/compras-espejo-columnas.mjs'
 import { planDeReconciliacion, proveedorPorArchivo } from '../lib/comprobantes/reconciliar-adjuntos.mjs'
 import { avisarSiCambio, fotografiar, lineaDeAviso } from '../lib/espejo-aviso.mjs'
 
@@ -325,10 +326,20 @@ const VUELTAS = 3
 
 async function main() {
   const obraPorFila = await hayObraPorFila(query)
+  // EL FRENO DEL UPSERT: una columna viva que el espejo no escriba se quedaría con el valor de la
+  // corrida anterior bajo un número de fila que pudo cambiar de compra. Se pregunta a la base, no a
+  // las migraciones, y se aborta nombrando las columnas. Ver `lib/compras-espejo-columnas.mjs`.
+  const sinRefrescar = columnasSinRefrescar(
+    await columnasVivasDeCompraSheet(query), obraPorFila ? [...CAMPOS, ...CAMPOS_OBRA] : CAMPOS)
+  if (sinRefrescar.length) {
+    console.error(porQueNoEscribo(sinRefrescar))
+    await closePool(); process.exit(1)
+  }
   const catalogos = await catalogosDeAsignacion(query)
-  // EL INSTANTE EN QUE SE EMPIEZA A LEER EL SHEET. Todo cambio que el worker aplique desde acá puede
-  // no estar en lo leído: la superposición lo incluye (`cuentaParaSuperponer`).
-  const desde = new Date()
+  // EL INSTANTE EN QUE SE EMPIEZA A LEER EL SHEET, según el reloj de POSTGRES: es el mismo que escribe
+  // `aplicado_at`. Todo cambio que el worker aplique desde acá puede no estar en lo leído, y la
+  // superposición lo incluye (`cuentaParaSuperponer`).
+  const desde = await ahoraDeLaBase(query)
   const leidas = await leerPestana()
   const asignar = asignadorDelSync(catalogos, obraPorFila)
   const { rows: [previo] } = await query('select count(*)::int n from public.compra_sheet')
