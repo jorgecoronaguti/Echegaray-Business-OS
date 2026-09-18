@@ -27,9 +27,16 @@ export const CLAVES_B_O = Object.freeze([
 const PEDIDAS = Object.freeze({
   ...Object.fromEntries(CLAVES_B_O.map((k, i) => [k, COMPRAS_2508[i + 1]])),
   obraFila: COMPRAS.obra,
+  // «Tipo pago» (Q) viaja desde el 18/09/2026: es la columna que el dueño completaba a mano en 85 de
+  // las 131 filas que cargó el bot en un mes, y la única forma legítima de proponerla es lo que él
+  // ya puso para ese proveedor. Ver `imputacion-historial.mjs` → `perfilesDePago`.
+  tipoPago: COMPRAS.tipoPago,
 })
 
-const ORDEN = Object.freeze([...CLAVES_B_O, 'obraFila'])
+/** Después de B..O van las columnas fuera del contrato viejo, en este orden. Contrato con `EN_EXTRA`. */
+export const EXTRAS = Object.freeze(['obraFila', 'tipoPago'])
+
+const ORDEN = Object.freeze([...CLAVES_B_O, ...EXTRAS])
 
 /**
  * NÚCLEO PURO: lo leído desde la fila de rótulos → filas con la forma B..O (+ `obraFila` al final).

@@ -32,7 +32,7 @@ import { rendicionDeAdjuntos, textoRendicion } from '../../lib/comprobantes/rend
 import { identificar } from '../../lib/comprobantes/identidad.mjs'
 import { parteVacia, parteDeRendicion, parteDeEscritura, sumarPartes } from '../../lib/comprobantes/parte.mjs'
 import { matchUnico } from '../../lib/comprobantes/imputacion.mjs'
-import { perfilesDeImputacion } from '../../lib/imputacion-aprendida.mjs'
+import { perfilesDeCompras } from '../../lib/comprobantes/imputacion-historial.mjs'
 import { completarUno } from '../../lib/comprobantes/imputacion-historial.mjs'
 import { puedeCargarComprobantes } from './guarda.mjs'
 import * as repoReal from './repositorio.mjs'
@@ -783,7 +783,8 @@ async function textoAcumulado(port, repo, fajo, cuantasAhora = 0) {
  * Si no hay ninguna, se devuelve null y no se sugiere nada. Sin historia no se inventa una obra.
  */
 async function perfilesDeHistorial(indiceCompras, d) {
-  if (indiceCompras?.ok && indiceCompras.historia?.length) return perfilesDeImputacion(indiceCompras.historia)
+  // `perfilesDeCompras` = imputación + tipo de pago (18/09/2026), de la MISMA historia.
+  if (indiceCompras?.ok && indiceCompras.historia?.length) return perfilesDeCompras(indiceCompras.historia)
   const desdeDB = d.perfilesDesdeDB
   if (typeof desdeDB !== 'function') return null
   try { return await desdeDB() } catch { return null }

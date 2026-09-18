@@ -36,10 +36,13 @@ export const PREFIJO_MARCA = '[historial:'
 const RE_MARCA = /\s*\[historial:[^\]]*\]/g
 
 /** Las dimensiones que la marca sabe nombrar, en el orden en que se leen. Es contrato con el rótulo. */
-export const DIMENSIONES = Object.freeze(['obra', 'detalle', 'unidad', 'categoria'])
+// `pago` (columna Q, «Tipo pago») se suma el 18/09/2026: sale de las últimas cargas del proveedor y
+// tiene que declararse igual que la obra — una forma de pago deducida que se lee como leída del
+// papel es la misma mentira con otra columna.
+export const DIMENSIONES = Object.freeze(['obra', 'detalle', 'unidad', 'categoria', 'pago'])
 
 /** Cómo se llama cada dimensión en la celda. Corto: la columna L la lee una persona. */
-const ROTULO = Object.freeze({ obra: 'obra', detalle: 'detalle', unidad: 'unidad', categoria: 'categoría' })
+const ROTULO = Object.freeze({ obra: 'obra', detalle: 'detalle', unidad: 'unidad', categoria: 'categoría', pago: 'pago' })
 
 /**
  * Las dimensiones que este comprobante tomó del historial, en orden estable.
