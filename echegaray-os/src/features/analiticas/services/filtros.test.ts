@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { aUrl, apartado, cuantosApartados, leerFiltros, rangoDe, rangoParaVista, razonNoAplica, redireccionDe, VISTAS } from './filtros.ts'
+import { aUrl, apartado, cuantosApartados, DEFECTO, leerFiltros, leerPeriodo, rangoDe, rangoParaVista, razonNoAplica, redireccionDe, VISTAS } from './filtros.ts'
 
 test('sin parámetros abre Resumen, y la URL de los defectos es la ruta pelada', () => {
   const f = leerFiltros({})
@@ -72,4 +72,12 @@ test('estado y obras no aplican a Caja, Nómina ni Cobranza; el período sí', (
     assert.equal(razonNoAplica(v, 'periodo'), null)
   }
   assert.equal(apartado(leerFiltros({ obras: 'quattropani' }), 'obras'), true)
+})
+
+test('los atajos de Caja: mes anterior es un mes cerrado y los últimos 30 días incluyen hoy', () => {
+  assert.deepEqual(rangoDe({ tipo: 'preset', preset: 'mesAnt' }, '2026-09-18'), { desde: '2026-08-01', hasta: '2026-08-31' })
+  assert.deepEqual(rangoDe({ tipo: 'preset', preset: 'mesAnt' }, '2026-01-10'), { desde: '2025-12-01', hasta: '2025-12-31' })
+  assert.deepEqual(rangoDe({ tipo: 'preset', preset: '30d' }, '2026-09-18'), { desde: '2026-08-20', hasta: '2026-09-18' })
+  assert.equal(leerPeriodo('mesAnt').tipo, 'preset')
+  assert.equal(aUrl({ ...DEFECTO, vista: 'caja', periodo: { tipo: 'preset', preset: '30d' } }), '/analiticas?vista=caja&periodo=30d')
 })

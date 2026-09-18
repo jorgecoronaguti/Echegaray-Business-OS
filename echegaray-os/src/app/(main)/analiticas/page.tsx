@@ -19,7 +19,8 @@ import { BarraAnaliticas } from '@/features/analiticas/components/BarraAnalitica
 import { SinLectura } from '@/features/analiticas/components/Piezas'
 import { VistaResumen } from '@/features/analiticas/components/VistaResumen'
 import { VistaObras } from '@/features/analiticas/components/VistaObras'
-import { VistaCaja, VistaCobranza, VistaNomina } from '@/features/analiticas/components/VistasEmpresa'
+import { VistaCobranza, VistaNomina } from '@/features/analiticas/components/VistasEmpresa'
+import { VistaCaja } from '@/features/analiticas/components/VistaCaja'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
 import { manoObraDe } from '@/features/analiticas/services/agregados'
 import { rotuloEstimada, type ObraAnalitica } from '@/features/analiticas/services/obras'
@@ -66,7 +67,7 @@ function Vista({ filtros, d, periodo }: {
     case 'obras': return <VistaObras obras={d.obras} obra={d.obraElegida} filtros={filtros} consumo={d.consumoMensual} ritmo={d.ritmo}
       sinIva={d.obraElegida && d.sinIvaDiscriminado.size ? (d.sinIvaDiscriminado.get(d.obraElegida.id) ?? 0) : null}
       tipoCosto={d.obraElegida ? (d.tipoCosto?.get(d.obraElegida.id) ?? null) : null} />
-    case 'caja': return <VistaCaja egresos={d.egresos} periodo={periodo} />
+    case 'caja': return <VistaCaja lectura={d.cajaSheet} egresos={d.egresos} periodo={periodo} rango={d.rango} />
     case 'nomina': return <VistaNomina filas={d.nomina} quincenas={d.quincenas} personas={d.personas} rango={d.rango} periodo={periodo} hoy={d.hoy}
       enObras={d.legible ? manoObraEnObras(d.cartera) : null} />
     case 'cobranza': return <VistaCobranza cuenta={d.cuentaCorriente} documentos={d.documentos} hoy={d.hoy} periodo={periodo} />

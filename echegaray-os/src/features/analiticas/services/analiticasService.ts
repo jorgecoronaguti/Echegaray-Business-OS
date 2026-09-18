@@ -27,6 +27,7 @@ import { armarObra, elegirObra, pasaEstado, rubrosComparables, sinObraDe, type O
 import { leerEconomiaRubros } from './presupuesto'
 import { leerConsumoMensual, leerConsumoPorRubro, ritmoPorObra, type MesDeConsumo, type Ritmo } from './consumo'
 import { leerTipoCosto, type TipoCostoDeObra } from './tipoCosto'
+import { leerFotoCaja, type LecturaCaja } from './cajaSheet'
 
 export interface DatosAnaliticas {
   hoy: string
@@ -39,7 +40,10 @@ export interface DatosAnaliticas {
   /** Lo sin obra de cada cliente con su apertura (materiales, subcontratos, comprobantes). */
   sinObraDetalle: Map<string, GastoSinObra>
   cuentaCorriente: unknown[] | null
+  /** Vista Caja: filas de `caja_egreso_percibido` (lo salido por fecha de caja) dentro del período. */
   egresos: unknown[] | null
+  /** Vista Caja: la pestaña CAJA leída de su espejo (`caja_sheet_vigente`). */
+  cajaSheet: LecturaCaja
   nomina: unknown[] | null
   quincenas: unknown[] | null
   personas: unknown[] | null
@@ -121,11 +125,12 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     if (rango.hasta) r = r.lte(col, rango.hasta)
     return r
   }
-  const [egresos, nomina, quincenas, personas, documentos] = await Promise.all([
-    // PAGINADO (D6): la vista pasa las 1.000 filas y PostgREST corta ahí sin error.
+  const [egresos, nomina, quincenas, personas, documentos, cajaSheet] = await Promise.all([
+    // LO QUE SALIÓ, POR FECHA DE CAJA (dueño, 18/09/2026: criterio percibido, filtrable por fechas). Lo
+    // pendiente viaja también —es deuda del período y se cuenta aparte—. PAGINADO (D6): 911 filas el 18/09.
     f.vista === 'caja'
-      ? leerPaginado((a, b) => conRango(supabase.from('egreso_por_area').select('area, grupo, total, fecha'), 'fecha')
-        .order('fecha').order('area').order('grupo').order('total').range(a, b))
+      ? leerPaginado((a, b) => conRango(supabase.from('caja_egreso_percibido').select('area, fecha_pago, total, estado'), 'fecha_pago')
+        .order('fecha_pago').order('area').order('estado').order('total').range(a, b))
         .then((data) => ({ data }))
       : null,
     f.vista === 'nomina' ? supabase.from('nomina_por_mes').select('mes, costo_nomina, cargas_sociales, es_estimacion').order('mes') : null,
@@ -145,9 +150,11 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
         return q.order('cobranza_id').range(a, b)
       })
       : null,
+    f.vista === 'caja' ? leerCajaSheet(supabase) : Promise.resolve<LecturaCaja>({ estado: 'no_leida' }),
   ])
   return {
     hoy, rango, cartera, obras, sinObra, sinObraDetalle: sinObraCruda ?? new Map(),
+    cajaSheet,
     cuentaCorriente: Array.isArray(raiz?.cuenta_corriente) ? raiz.cuenta_corriente : null,
     egresos: egresos?.data ?? null,
     nomina: nomina?.data ?? null,
@@ -170,4 +177,23 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     detalleLegible: consumoPorRubro != null,
     tipoCosto,
   }
+}
+
+/** «No existe la relación» en PostgREST (schema cache) o en Postgres: la migración del espejo no está aplicada. */
+const SIN_RELACION = new Set(['PGRST205', '42P01'])
+
+/**
+ * LA PESTAÑA CAJA DESDE SU ESPEJO. Cuatro estados distintos porque se dibujan distinto: sin la
+ * migración la app dice que el espejo no está publicado (la base no va adelante del código, y el
+ * código puede ir adelante de la base); sin foto, que el sync no guardó ninguna; con foto, CAJA.
+ */
+export async function leerCajaSheet(supabase: SupabaseClient): Promise<LecturaCaja> {
+  const [vigente, sync] = await Promise.all([
+    supabase.from('caja_sheet_vigente').select('*').maybeSingle(),
+    supabase.from('caja_sheet_sync').select('intento_en, ok, error').eq('id', 1).maybeSingle(),
+  ])
+  if (vigente.error) return SIN_RELACION.has(String(vigente.error.code)) ? { estado: 'sin_espejo' } : { estado: 'no_leida' }
+  const foto = vigente.data ? leerFotoCaja(vigente.data) : null
+  if (!foto) return { estado: 'sin_foto', error: sync.data && sync.data.ok === false ? String(sync.data.error ?? 'sin detalle') : null }
+  return { estado: 'foto', foto }
 }
