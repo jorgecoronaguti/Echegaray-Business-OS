@@ -66,6 +66,20 @@ function selectDe(page: Page) {
   return page.getByRole('row').filter({ hasText: MATERIAL }).getByTestId('pedido-actividad')
 }
 
+/**
+ * ELEGIR Y ESPERAR A QUE EL PASO ESTÉ APILADO.
+ *
+ * El `select` se deshabilita mientras guarda, así que volver a estar habilitado es la señal de que la acción
+ * RESOLVIÓ en el cliente — que es cuando se apila el paso del deshacer. Sin esta espera el test teclea Cmd+Z
+ * con la pila todavía vacía: la base ya tiene el valor nuevo (el `update` llegó) pero la promesa del server
+ * action no volvió. Con la pila vacía el proveedor no pinta nada, a propósito, y el test leía esa ausencia
+ * como un defecto que no existe.
+ */
+async function elegir(page: Page, valor: string) {
+  await selectDe(page).selectOption(valor)
+  await expect(selectDe(page)).toBeEnabled({ timeout: 30_000 })
+}
+
 async function abrirPedidos(page: Page) {
   await entrar(page)
   await page.goto('/integraciones/pedidos-materiales')
@@ -86,7 +100,7 @@ test('caso 1 del auditor: B asigna X, A elige Y y deshace → la base vuelve a X
     expect((await leerPedido())?.actividad_id, 'antes: sin asignar').toBeNull()
 
     // ═══ OTRA PERSONA (B) CARGA X ═══
-    await selectDe(B).selectOption(X)
+    await elegir(B, X)
     await expect.poll(async () => (await leerPedido())?.actividad_id, { timeout: 20_000 }).toBe(X)
 
     // ═══ EL REFRESCO EN VIVO LLEGA A A Y EL SELECT LO ADOPTA (antes se quedaba en '') ═══
@@ -94,7 +108,7 @@ test('caso 1 del auditor: B asigna X, A elige Y y deshace → la base vuelve a X
       .toHaveValue(X, { timeout: 45_000 })
 
     // ═══ A ELIGE Y ═══
-    await selectDe(A).selectOption(Y)
+    await elegir(A, Y)
     await expect.poll(async () => (await leerPedido())?.actividad_id, { timeout: 20_000 }).toBe(Y)
 
     // ═══ A DESHACE SIN CLICAR AFUERA (el foco sigue en el select) ═══
@@ -121,7 +135,7 @@ test('(a) con anterior vacío no se escribe NULL: «no había un valor anterior 
     await abrirPedidos(A)
     await expect(selectDe(A)).toHaveValue('')
 
-    await selectDe(A).selectOption(X)
+    await elegir(A, X)
     await expect.poll(async () => (await leerPedido())?.actividad_id, { timeout: 20_000 }).toBe(X)
 
     await A.keyboard.press('Control+z')
@@ -145,7 +159,7 @@ test('(b) si otra persona cambió la celda después de mi edición, deshacer se 
     await expect(selectDe(A)).toHaveValue(X)
 
     // A: X → Y.
-    await selectDe(A).selectOption(Y)
+    await elegir(A, Y)
     await expect.poll(async () => (await leerPedido())?.actividad_id, { timeout: 20_000 }).toBe(Y)
 
     // OTRA PERSONA (por la base, como lo haría el teléfono): Y → sin asignar.
@@ -171,6 +185,7 @@ test('(d) deshacer el estado devuelve también el origen: el pedido del AppSheet
     await abrirPedidos(A)
     const estado = A.getByRole('row').filter({ hasText: MATERIAL }).getByTestId('cambiar-estado')
     await estado.selectOption('PEDIDO')
+    await expect(estado).toBeEnabled({ timeout: 30_000 })
     await expect.poll(async () => (await leerPedido())?.estado, { timeout: 20_000 }).toBe('PEDIDO')
     expect((await leerPedido())?.origen, 'la ida marca origen os').toBe('os')
 
