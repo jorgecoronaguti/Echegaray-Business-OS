@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { MENSAJE_CONFLICTO, coincideConLoEsperado } from '@/shared/lib/pilaDeDeshacer'
 import { asignarActividadAPedido } from '@/features/obras/services/actionsEjecucion'
 
 // Módulo NATIVO de Pedidos de Materiales (control desde la web, no desde el chat). Supabase
@@ -58,6 +59,19 @@ export async function createPedidoAction(_prev: ActionState, formData: FormData)
   return { error: null, ok: true }
 }
 
+// ═══ DESHACER UN ESTADO (18/09/2026) ═══
+//
+// La ida escribe `origen='os'` para que el sync del Sheet no pise lo decidido acá. La vuelta (Cmd+Z)
+// tiene que devolver TAMBIÉN el origen: si no, un pedido del AppSheet queda «del OS» después de
+// deshacer, y el sync deja de actualizarlo aunque nadie haya decidido nada en el OS. Los dos campos
+// del deshacer —`esperado` y `origen`— viajan juntos y sólo se honran juntos: `origen` sin `esperado`
+// sería dejar que cualquier formulario reescriba quién manda sobre la fila.
+const ORIGENES = ['appsheet_sheet', 'os'] as const
+const deshacerEstadoSchema = z.object({
+  esperado: z.enum(['', 'PENDIENTE', 'PEDIDO', 'ENTREGADO']),
+  origen: z.enum(ORIGENES).optional(),
+})
+
 export async function setEstadoPedidoAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const id = String(formData.get('id_pedido') || '').trim()
   const estado = String(formData.get('estado') || '').trim().toUpperCase()
@@ -65,10 +79,25 @@ export async function setEstadoPedidoAction(_prev: ActionState, formData: FormDa
 
   const c = await client()
   if (!c.supabase) return { error: c.error! }
-  // Al editar en el OS, marcamos origen='os' para que el sync del Sheet no lo pise.
+
+  let origen: (typeof ORIGENES)[number] = 'os'
+  if (formData.has('esperado')) {
+    const d = deshacerEstadoSchema.safeParse({
+      esperado: String(formData.get('esperado') ?? '').trim().toUpperCase(),
+      origen: formData.has('origen') ? String(formData.get('origen') ?? '').trim() : undefined,
+    })
+    if (!d.success) return { error: d.error.issues[0].message }
+    const { data: hoy, error: eLectura } = await c.supabase
+      .from('pedidos_materiales').select('estado').eq('id_pedido', id).maybeSingle()
+    if (eLectura) return { error: eLectura.message }
+    if (!hoy) return { error: 'Ese pedido ya no existe.' }
+    if (!coincideConLoEsperado(hoy.estado, d.data.esperado)) return { error: MENSAJE_CONFLICTO }
+    origen = d.data.origen ?? 'os'
+  }
+  // Al editar en el OS, marcamos origen='os' para que el sync del Sheet no lo pise (y al deshacer, el que había).
   const { error } = await c.supabase
     .from('pedidos_materiales')
-    .update({ estado, origen: 'os', updated_at: new Date().toISOString() })
+    .update({ estado, origen, updated_at: new Date().toISOString() })
     .eq('id_pedido', id)
   if (error) return { error: error.message }
   revalidatePath(PATH)
@@ -129,16 +158,19 @@ const asignarSchema = z.object({
   obra_id: z.string().trim().min(1),
   // Vacío = DESASIGNAR, que es una decisión válida: alguien lo colgó de la actividad equivocada.
   actividad_id: z.union([z.string().uuid(), z.literal('')]),
+  // Lo que la pantalla tenía (deshacer): si la base tiene otra cosa, no se escribe.
+  esperado: z.union([z.string().uuid(), z.literal('')]).optional(),
 })
 
 export async function asignarActividadPedidoAction(
   idPedido: string,
   obraId: string,
   actividadId: string,
+  esperado?: string,
 ): Promise<ActionState> {
-  const parsed = asignarSchema.safeParse({ id_pedido: idPedido, obra_id: obraId, actividad_id: actividadId })
+  const parsed = asignarSchema.safeParse({ id_pedido: idPedido, obra_id: obraId, actividad_id: actividadId, esperado })
   if (!parsed.success) return { error: parsed.error.issues[0].message }
-  const r = await asignarActividadAPedido(parsed.data.obra_id, parsed.data.id_pedido, parsed.data.actividad_id)
+  const r = await asignarActividadAPedido(parsed.data.obra_id, parsed.data.id_pedido, parsed.data.actividad_id, parsed.data.esperado)
   if (!r.ok) return { error: r.error }
   revalidatePath(PATH)
   return { error: null, ok: true }

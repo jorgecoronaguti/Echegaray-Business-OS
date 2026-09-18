@@ -29,6 +29,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { MENSAJE_CONFLICTO, coincideConLoEsperado } from '@/shared/lib/pilaDeDeshacer'
 import type { Resultado } from './actions'
 import { imputarHHMasivo } from './actionsHH'
 import { leerReparto, totalDelReparto } from './repartoHH'
@@ -323,11 +324,22 @@ export async function medirEnLote(obraId: string, form: FormData): Promise<Resul
  *
  * NO TOCA NINGÚN OTRO CAMPO. Los pedidos se sincronizan desde el Sheet de AppSheet y esta columna no
  * está en ese contrato: escribirla acá no compite con el origen, y el sync no la pisa.
+ *
+ * `esperado` (deshacer, 18/09/2026): la actividad que la pantalla tenía como vigente. Si la base tiene
+ * otra —la cambió otra persona—, no se escribe: la auditoría encontró un Cmd+Z que dejó en NULL una
+ * actividad que otro había cargado. Se compara contra la BASE, no contra la pantalla que pide.
  */
 export async function asignarActividadAPedido(
-  obraId: string, idPedido: string, actividadId: string,
+  obraId: string, idPedido: string, actividadId: string, esperado?: string,
 ): Promise<Resultado> {
   const supabase = await createClient()
+  if (esperado !== undefined) {
+    const { data: hoy, error: eLectura } = await supabase
+      .from('pedidos_materiales').select('actividad_id').eq('id_pedido', idPedido).maybeSingle()
+    if (eLectura) return { ok: false, error: eLectura.message }
+    if (!hoy) return { ok: false, error: 'Ese pedido ya no existe.' }
+    if (!coincideConLoEsperado(hoy.actividad_id, esperado)) return { ok: false, error: MENSAJE_CONFLICTO }
+  }
   if (actividadId) {
     // La actividad tiene que ser DE ESTA OBRA. Sin este chequeo, un id de otra obra colgaría el
     // pedido de un trabajo que nadie de acá puede ver.

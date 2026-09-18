@@ -12,6 +12,9 @@ export interface PedidoMaterial {
   /** PARA QUÉ ACTIVIDAD se pidió. Opcional y lo seguirá siendo: la obra es el eje, y exigirlo
    *  agregaría fricción a un pedido que hoy se carga desde el teléfono en treinta segundos. */
   actividad_id: string | null
+  /** Quién manda sobre la fila: `appsheet_sheet` (el sync la actualiza) u `os` (se decidió acá). El deshacer
+   *  de un estado lo devuelve a lo que era. */
+  origen: string | null
 }
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
@@ -20,7 +23,7 @@ export async function getPedidosMateriales(supabase: SupabaseClient): Promise<Se
   try {
     const { data, error } = await supabase
       .from('pedidos_materiales')
-      .select('id_pedido, obra_texto, obra_id, fecha, material, cantidad, estado, sincronizado_en, actividad_id')
+      .select('id_pedido, obra_texto, obra_id, fecha, material, cantidad, estado, sincronizado_en, actividad_id, origen')
       .order('fecha', { ascending: false, nullsFirst: false })
     if (error) return { data: null, error: error.message }
     return { data: (data ?? []) as PedidoMaterial[], error: null }
