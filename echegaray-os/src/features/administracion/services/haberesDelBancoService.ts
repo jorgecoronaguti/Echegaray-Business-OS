@@ -19,7 +19,7 @@ const numero = (v: unknown): number | null =>
 const fecha = (v: unknown): string => String(v ?? '').slice(0, 10)
 
 export async function getHaberesDelBanco(
-  supabase: SupabaseClient, p: { personaId: string; puedeVer: boolean; anio: number },
+  supabase: SupabaseClient, p: { personaId: string; puedeVer: boolean; anio: number; estimadas?: readonly string[] },
 ): Promise<HaberesDelBanco> {
   if (!p.puedeVer) return armarHaberesDelBanco({ puedeVer: false, anio: p.anio, acreditaciones: [], planilla: [], liquidacion: [] })
   const desde = `${p.anio}-01-01`
@@ -64,5 +64,5 @@ export async function getHaberesDelBanco(
     if (!q?.desde || !q.hasta) return []
     return [{ desde: fecha(q.desde), hasta: fecha(q.hasta), porBanco: numero(f.por_banco), pagadoBanco: numero(f.pagado_banco) }]
   })
-  return armarHaberesDelBanco({ puedeVer: true, anio: p.anio, acreditaciones, planilla, liquidacion, errores })
+  return armarHaberesDelBanco({ puedeVer: true, anio: p.anio, acreditaciones, planilla, liquidacion, estimadas: p.estimadas, errores })
 }

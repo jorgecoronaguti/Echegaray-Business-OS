@@ -4,10 +4,12 @@
 // (`datos/haberes/…csv`, que suma el IMPORTE TOTAL del pie), no de la tabla que la pantalla lee. Si el
 // cargador perdiera, duplicara o reasignara una acreditación, esto se pone rojo.
 //
-// Cuatro legajos: un jornalero activo con muchos pagos (Agüero), un jefe de obra mensual (Maldonado), un
-// inactivo con liquidación final y sin línea de liquidación en su final (Santander Walter) y un inactivo
-// sin fecha de egreso con un pago «a confirmar» (Navarro). Ninguna de las 32 personas falta en el padrón,
-// así que no hay legajo de «fuera del padrón» que abrir: eso lo prueba el test del cargador.
+// Cinco legajos: un jornalero activo con muchos pagos (Agüero, con la 1ª de septiembre estimada en la
+// Liquidación), un jefe de obra mensual (Maldonado), un inactivo con liquidación final (Bazán), un inactivo
+// cuyo pago único quedó «a confirmar» porque el último bloque con BANCO no tiene acreditación propia
+// (Santander Walter, D1 de la auditoría del 18/09) y un inactivo sin fecha de egreso con un pago «a confirmar»
+// (Navarro). Ninguna de las 32 personas falta en el padrón, así que no hay legajo de «fuera del padrón» que
+// abrir: eso lo prueba el test del cargador.
 import { test, expect } from '@playwright/test'
 import { readFileSync, mkdirSync } from 'node:fs'
 import { ADMIN, JEFE, servicio, entrar, pedir } from './util/identidades'
@@ -27,10 +29,11 @@ const pesos = (c: number): string => {
 const fechaCorta = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
 
 const CASOS = [
-  { cuil: '20294271067', archivo: 'aguero-jornalero-activo', finales: 0, aConfirmar: 0 },
-  { cuil: '20359232668', archivo: 'maldonado-jefe-mensual', finales: 0, aConfirmar: 0 },
-  { cuil: '20258303939', archivo: 'santander-inactivo-final', finales: 1, aConfirmar: 0 },
-  { cuil: '20399947511', archivo: 'navarro-inactivo-a-confirmar', finales: 0, aConfirmar: 1 },
+  { cuil: '20294271067', archivo: 'aguero-jornalero-activo', finales: 0, aConfirmar: 0, estimadas: 1 },
+  { cuil: '20359232668', archivo: 'maldonado-jefe-mensual', finales: 0, aConfirmar: 0, estimadas: 0 },
+  { cuil: '20380773091', archivo: 'bazan-inactivo-final', finales: 1, aConfirmar: 0, estimadas: 0 },
+  { cuil: '20258303939', archivo: 'santander-inactivo-a-confirmar-d1', finales: 0, aConfirmar: 1, estimadas: 0 },
+  { cuil: '20399947511', archivo: 'navarro-inactivo-a-confirmar', finales: 0, aConfirmar: 1, estimadas: 0 },
 ]
 
 test.describe('legajo · acreditado por el banco', () => {
@@ -71,6 +74,16 @@ test.describe('legajo · acreditado por el banco', () => {
       }
       await expect(page.getByTestId('haberes-banco-finales-fila')).toHaveCount(caso.finales)
       await expect(page.getByTestId('haberes-banco-a-confirmar-fila')).toHaveCount(caso.aConfirmar)
+      // La liquidación estimada se rotula «est.» como en la tabla de arriba (Agüero, 1ª de septiembre): cada
+      // fila del bloque con «est.» tiene su fila de Retribución con «est.». No al revés: la tabla de arriba
+      // también estima quincenas que el banco todavía no pagó, y ésas no están en el bloque.
+      const est = page.getByTestId('haberes-banco-liquidacion-est')
+      await expect(est).toHaveCount(caso.estimadas)
+      for (const celda of await est.all()) {
+        const desde = await celda.locator('xpath=ancestor::tr').getAttribute('data-desde')
+        const arriba = page.getByTestId('retribucion-fila').filter({ has: page.locator(`a[href$="quincena=${desde}"]`) })
+        await expect(arriba, `la fila ${desde} de Retribución no dice «est.»`).toContainText('est.')
+      }
 
       await bloque.scrollIntoViewIfNeeded()
       await bloque.screenshot({ path: `qa-shots/haberes-banco/${caso.archivo}.png` })

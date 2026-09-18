@@ -70,6 +70,8 @@ export interface PeriodoDelBanco {
   liquidacion: number | null
   contraPlanilla: Cotejo
   contraLiquidacion: Cotejo
+  /** La cifra de la liquidación de este período es un neto ESTIMADO (la tabla de Retribución lo rotula «est.»). */
+  liquidacionEstimada: boolean
   /** Alguna de las dos fuentes dice otra cosa que el banco. La pantalla lo marca; no elige. */
   difiere: boolean
   /** Alguna acreditación salió de la regla de fecha y no de una coincidencia al peso. */
@@ -115,12 +117,24 @@ function cotejar(banco: number, otro: number | null): Cotejo {
   return alPeso(banco, otro) ? 'coincide' : 'difiere'
 }
 
+/** ¿La liquidación de este período es un estimado? Un mes lo es si alguna de sus quincenas lo es. */
+export function liquidacionEstimada(x: { desde: string; tipo: 'quincena' | 'mes' }, estimadas: readonly string[]): boolean {
+  return x.tipo === 'mes' ? estimadas.some((d) => d.slice(0, 7) === x.desde.slice(0, 7)) : estimadas.includes(x.desde)
+}
+
+/** Marca `liquidacionEstimada` sobre un resultado ya armado, cuando las quincenas estimadas se conocen después. */
+export function conLiquidacionEstimada(h: HaberesDelBanco, estimadas: readonly string[]): HaberesDelBanco {
+  return { ...h, periodos: h.periodos.map((x) => ({ ...x, liquidacionEstimada: x.liquidacion != null && liquidacionEstimada(x, estimadas) })) }
+}
+
 export function armarHaberesDelBanco(p: {
   puedeVer: boolean
   anio: number
   acreditaciones: readonly AcreditacionDelBanco[]
   planilla: readonly FilaDePlanilla[]
   liquidacion: readonly LineaDeLiquidacion[]
+  /** `desde` de las quincenas cuyo banco la Retribución muestra como estimado (`bancoEstimado`). */
+  estimadas?: readonly string[]
   errores?: string[]
 }): HaberesDelBanco {
   const vacio = { acreditado: 0, periodos: 0, finales: 0, aConfirmar: 0, diferencias: 0 }
@@ -173,6 +187,7 @@ export function armarHaberesDelBanco(p: {
         desde: x.desde, hasta: x.hasta, tipo: mensual ? 'mes' as const : 'quincena' as const,
         acreditaciones: x.acreditaciones.sort((a, b) => a.fecha.localeCompare(b.fecha)),
         banco, planilla, liquidacion, contraPlanilla, contraLiquidacion,
+        liquidacionEstimada: liquidacion != null && liquidacionEstimada({ desde: x.desde, tipo: mensual ? 'mes' : 'quincena' }, p.estimadas ?? []),
         difiere: contraPlanilla === 'difiere' || contraLiquidacion === 'difiere',
         porRegla: x.acreditaciones.some((a) => a.confianza === 'regla_fecha'),
       }

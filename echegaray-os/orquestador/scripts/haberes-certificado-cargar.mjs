@@ -84,11 +84,10 @@ async function main() {
   console.log(`certificado: ${archivo}`)
   console.log(`  ${cert.acreditaciones.length} acreditaciones · $${pesosDeCentavos(cert.totalCentavos)} · hash ${cert.hash}`)
 
-  const [personas, planilla] = await Promise.all([
-    query(`select id, cuil, fecha_ingreso::text, fecha_egreso::text from public.personas`),
-    query(`select persona_id, pestana, quincena_desde::text, quincena_hasta::text, por_banco, ya_transferido
-             from public.jornales_bloque_persona`),
-  ])
+  // En serie, a propósito: una sola conexión abierta a la base por vez.
+  const personas = await query(`select id, cuil, fecha_ingreso::text, fecha_egreso::text from public.personas`)
+  const planilla = await query(`select persona_id, pestana, quincena_desde::text, quincena_hasta::text, por_banco, ya_transferido
+                                  from public.jornales_bloque_persona`)
   const clasificadas = clasificar({ acreditaciones: cert.acreditaciones, personas: personas.rows, planilla: planilla.rows })
 
   const sinPersona = clasificadas.filter((c) => !c.persona_id)
