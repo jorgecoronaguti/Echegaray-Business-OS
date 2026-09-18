@@ -11,7 +11,7 @@ coordinaba. Resultado: 6,6 GiB usados, swap lleno, carga >60, VS Code Remote SSH
 | Pieza | Qué hace |
 |---|---|
 | `ecos <clase> -- <cmd>` | Toma un cupo (`flock`), mide RAM/swap/carga antes de abrir, encola FIFO si no hay lugar, corre el comando en un scope de systemd (`ecos.slice`) con techo de memoria y de swap, y al terminar/fallar/cancelar apaga el scope entero. |
-| `hook-bash.mjs` | `PreToolUse` de Bash (global y del proyecto): frena todo comando pesado que no pase por `ecos` y dice cómo lanzarlo. Cubre a Claude Code, agentes y los +100 worktrees viejos. Mira sólo el **arranque de cada tramo real** de la línea: lo que está entre comillas es un argumento, no un tramo, así que `grep -n "eslintConfig\|eslint" package.json` o `rg "tsc --noEmit"` pasan, y `cat x \| npx tsc` se frena. |
+| `hook-bash.mjs` | `PreToolUse` de Bash (global y del proyecto): frena todo comando pesado que no pase por `ecos` y dice cómo lanzarlo. Cubre a Claude Code, agentes y los +100 worktrees viejos. Parte la línea por `;` `&&` `\|\|` `\|` `(` y saltos **sin mirar comillas**, a propósito: ver «Partidor por comillas». |
 | `barrer.mjs` | Apaga SOLO huérfanos: tareas cuyo `ecos` o cuya sesión murió, procesos de desarrollo adoptados por PID 1 o sin dueño vivo, o con el worktree borrado. Corre al cerrar sesión/agente, en emergencia y cada 5 min (`ecos-barrido.timer`). |
 | `estado.mjs` | `ecos estado`: memoria, swap, carga, cupos, cola, procesos de desarrollo vivos. |
 | `politica.env` | Los límites. La copia instalada (`~/.echegaray-os/recursos/`) manda. |
@@ -76,8 +76,32 @@ recién cuando están todas las clases, y un sello sin candado se muestra como h
 
 **Cobertura:** `recursos.test.mjs` reproduce la espera circular, el sello que mentía, el diagnóstico con
 nombre propio, el cupo de un proceso muerto de golpe (SIGKILL), el ticket de un proceso muerto y cuatro
-pedidos simultáneos de la misma clase; del hook, el falso positivo del `|` entre comillas y los cinco
-casos de la auditoría (una comilla sin cerrar que apagaba el análisis del resto, `bash -c` con comillas
-escapadas, `eval`) más `$(…)`, backticks y `xargs`. Agujeros del hook que siguen abiertos, declarados en
-`hook-bash.mjs`: variable expandida, here-string, alias/funciones, `npx --yes tsc`, binario por ruta.
+pedidos simultáneos de la misma clase, y fija como límite aceptado el falso positivo de grep (abajo).
 Se corre con `ecos validacion -- node --test scripts/recursos/recursos.test.mjs`.
+
+## Partidor por comillas: intentado y retirado (18/09/2026)
+
+El hook frena `grep -n "eslintConfig\|eslint" package.json`: parte por el `|` de adentro de las comillas
+y el segundo pedazo empieza con `eslint"`. **Es un límite conocido y aceptado**, fijado en un test.
+
+Se intentó dos veces un partidor que respetara comillas, y la auditoría independiente lo retiró las dos,
+porque interpretar bash a mano no tiene piso. Lo que encontró:
+
+1. **Apóstrofo en un comentario.** `echo hola  # don't` ⏎ `npx tsc --noEmit`: el `'` abría una comilla que
+   nunca cerraba, se tragaba el salto de línea, y el resto quedaba en un tramo que empieza con texto
+   inofensivo. Bash corría tsc.
+2. **Comillas balanceadas entre dos comentarios.** `# don't touch` ⏎ `npx tsc --noEmit` ⏎ `# it's ok`: los
+   dos apóstrofos se emparejan y el comando del medio queda «adentro de una comilla». Bash no mira
+   comillas dentro de un `#`: lo ejecuta.
+3. **Un escalón de respaldo que partía menos, no más.** `tr -d '"' < a; npx tsc --noEmit; tr -d '"' < b  # don't`:
+   tratar `'` como texto emparejó los `"` que estaban protegidos y dejó un solo tramo.
+
+La cuenta que decide: **el falso positivo cuesta un reintento por `ecos`; un agujero puede costar la VM.**
+Si alguien lo retoma, la dirección que propuso el auditor es quitar primero los comentarios `#` que abren
+palabra fuera de comillas y recién después analizar comillas — y traer los tres casos de arriba como
+tests antes de escribir una línea.
+
+**Agujeros que ya estaban en `main` y siguen** (el hook es la primera barrera, no la única; lo que se le
+escapa corre igual sin cupo, lo muestra `ecos estado` y lo limpia `barrer` si queda huérfano):
+`eval "npx tsc"`, backticks, `xargs npx tsc`, `if npx tsc; then`, `for …; do …; done`, `{ …; }`,
+`! npx tsc`, `command npx tsc`, `npm test`, `npx -y tsc`, `node node_modules/typescript/bin/tsc`.
