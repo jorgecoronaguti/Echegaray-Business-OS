@@ -6,6 +6,11 @@
 // no haya cambiado desde que se miró (`esperado`), guarda en `compra_sheet` y encola la escritura de
 // la columna «Obra» en `compra_obra_cambio`. Esta acción sólo valida la FORMA y traduce los errores:
 // la regla de qué es una obra válida vive en la base y en `obra-destino.mjs`, no acá.
+//
+// POR QUÉ ESTA NO USA `actualizarSiSigueIgual` (18/09/2026): a las otras cuatro superficies del deshacer se
+// les metió la comparación de `esperado` adentro del `update` para que dos personas que deshacen a la vez no
+// se pisen. Acá ya está hecho, y mejor: la RPC compara y escribe dentro de la MISMA transacción en la base.
+// Agregar la primitiva sería una segunda definición de la misma regla. No falta nada.
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'

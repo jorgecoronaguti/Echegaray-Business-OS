@@ -30,7 +30,9 @@
 //
 // Cada elección pasa por `useGuardadoDeshacible`, la MISMA pila que `InlineEdit`. Deshacer vuelve a
 // llamar a `asignarObraDeCompra` con la obra anterior y con `esperado` = la que acaba de quedar: si
-// otra persona la movió en el medio, la base rechaza y el aviso lo dice, en vez de pisarla.
+// otra persona la movió en el medio, la base rechaza y el aviso lo dice, en vez de pisarla. Quien compare
+// las cinco superficies: ésta no pasa por `actualizarSiSigueIgual` porque su RPC ya compara y escribe en
+// una sola transacción — ver `obraDeCompraActions.ts`.
 //
 // LO QUE EL DESHACER NO DESHACE ACÁ: la escritura ENCOLADA de la celda del Sheet. Deshacer encola
 // otra escritura con la obra anterior — el worker termina escribiendo lo correcto, pero la cola

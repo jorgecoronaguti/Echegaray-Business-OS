@@ -1,5 +1,33 @@
 import { defineConfig } from '@playwright/test'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, lstatSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+
+// ═══ LAS DOS COSAS QUE HACEN QUE EL E2E NO ARRANQUE EN ESTA VM, Y NO SON UN DEFECTO DEL CÓDIGO ═══
+//
+// Las dos cuestan una corrida entera cada una, y el rojo que producen no señala nada de lo que se estaba
+// probando. Por eso se resuelven acá y no en la cabeza del que venga (18/09/2026).
+//
+// 1. CHROMIUM NECESITA LIBRERÍAS QUE LA VM NO TIENE INSTALADAS. `npx playwright install-deps` pide root.
+//    Están bajadas sin root en `~/.local/lib/pw-libs` (ver la memoria `qa-visual-sin-root`). Sin ellas el
+//    navegador muere con `libatk-1.0.so.0: cannot open shared object file` y TODOS los tests fallan en
+//    milisegundos, como si el spec estuviera roto. Se agrega solo si el directorio existe.
+// 2. UN WORKTREE CON `node_modules` COMO SYMLINK NO LEVANTA: Turbopack corta con «Symlink [project]/
+//    node_modules is invalid, it points out of the filesystem root» y Playwright informa «webServer was not
+//    able to start». La regla del repo es enlaces DUROS (`scripts/preparar-worktree.mjs`, que ya lo explica);
+//    acá sólo se avisa con el comando exacto, porque el mensaje de Turbopack no dice qué hacer.
+const libsDeChromium = join(homedir(), '.local/lib/pw-libs')
+if (existsSync(libsDeChromium) && !(process.env.LD_LIBRARY_PATH ?? '').includes(libsDeChromium)) {
+  process.env.LD_LIBRARY_PATH = `${libsDeChromium}:${process.env.LD_LIBRARY_PATH ?? ''}`
+}
+if (existsSync('node_modules') && lstatSync('node_modules').isSymbolicLink()) {
+  console.warn(
+    '\n  ⚠ `node_modules` es un symlink y Turbopack lo rechaza: el servidor no va a arrancar.\n' +
+    '    Arreglalo con enlaces duros (segundos, sin ocupar disco):\n' +
+    '      rm node_modules && cp -al ../../echegaray-os/node_modules node_modules\n' +
+    '    o `node scripts/preparar-worktree.mjs`, que hace eso y el `.env.local`.\n',
+  )
+}
 
 // El proceso de Playwright (a diferencia de `next dev`) no carga .env.local solo --
 // algunos tests (ej. recalculo-frescura-fuentes) necesitan las mismas credenciales
