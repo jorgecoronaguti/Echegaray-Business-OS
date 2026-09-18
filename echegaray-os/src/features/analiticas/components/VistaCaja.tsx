@@ -90,22 +90,27 @@ const partirRotulo = (t: string): { nombre: string; marca: string | null } => {
 function Tabla({ s }: { s: Extract<SeccionCaja, { forma: 'tabla' }> }) {
   const n = s.encabezados.length
   const cols = `minmax(0,1.6fr) repeat(${Math.max(n - 1, 1)}, minmax(0,1fr))`
+  // EN EL TELÉFONO NO SE TRUNCA UN NÚMERO: la fila se abre en dos líneas —el nombre y, debajo, cada
+  // celda con su encabezado chico— antes que mostrar «35.027.4…» con cara de dato (captura 390, 18/09).
   return (
     <div className="flex flex-col" data-testid={`caja-${s.clave}`}>
-      <div className={`grid h-9 items-center gap-4 border-b border-line ${ENCABEZADO}`} style={{ gridTemplateColumns: cols }}>
+      <div className={`hidden h-9 items-center gap-4 border-b border-line lg:grid ${ENCABEZADO}`} style={{ gridTemplateColumns: cols }}>
         {s.encabezados.map((h, i) => <div key={h} className={i === 0 ? '' : 'text-right'}>{h}</div>)}
       </div>
       {s.filas.map((f, k) => {
         const total = /^(total|⇒)/i.test(f.celdas[0]?.texto ?? '')
         const { nombre, marca } = partirRotulo(f.celdas[0]?.texto ?? '')
         return (
-          <div key={f.clave} className={`grid min-h-10 items-center gap-4 py-2 tabular-nums hover:bg-surface-quiet ${total ? 'border-t border-line-strong font-semibold' : k < s.filas.length - 1 ? 'border-b border-line' : ''}`} style={{ gridTemplateColumns: cols }}>
+          <div key={f.clave} className={`flex flex-col gap-1.5 py-2.5 tabular-nums hover:bg-surface-quiet lg:grid lg:min-h-10 lg:items-center lg:gap-4 lg:py-2 lg:[grid-template-columns:var(--cols)] ${total ? 'border-t border-line-strong font-semibold' : k < s.filas.length - 1 ? 'border-b border-line' : ''}`} style={{ ['--cols' as string]: cols }}>
             <div className="min-w-0 text-[13px] text-ink">
               <span className={total ? 'font-semibold' : 'font-medium'}>{nombre}</span>
               {marca ? <span className="ml-2 text-[11px] font-normal text-faint">{marca}</span> : null}
             </div>
             {f.celdas.slice(1).map((c, i) => (
-              <div key={i} className={`truncate text-right text-[13px] ${c.texto === '' ? 'text-faint' : c.numero != null && c.numero < 0 ? 'text-neg' : c.fecha ? 'text-muted' : 'text-ink'}`}>{c.texto || '—'}</div>
+              <div key={i} className="flex items-baseline justify-between gap-3 lg:block lg:text-right">
+                <span className={`lg:hidden ${ENCABEZADO}`}>{s.encabezados[i + 1]}</span>
+                <span className={`whitespace-nowrap text-[13px] ${c.texto === '' ? 'text-faint' : c.numero != null && c.numero < 0 ? 'text-neg' : c.fecha ? 'text-muted' : 'text-ink'}`}>{c.texto || '—'}</span>
+              </div>
             ))}
           </div>
         )
@@ -131,6 +136,8 @@ const DER = 12
 const ALTO_BARRAS = 150
 const ALTO_LINEAS = 130
 const PIE = 22
+/** Aire arriba: la marca más alta del eje lleva su rótulo por encima de la línea y no puede quedar cortada. */
+const TECHO = 10
 
 function Grafico({ g }: { g: GraficoCaja }) {
   const n = g.dominio.length
@@ -142,8 +149,8 @@ function Grafico({ g }: { g: GraficoCaja }) {
   const tramos = apilar(barras, n)
   const eB = escala(tramos.flatMap((t) => [t.y0, t.y1]))
   const eL = escala(lineas.flatMap((s) => s.valores.filter((v): v is number => v != null)))
-  const alto = (barras.length ? ALTO_BARRAS + 8 : 0) + (lineas.length ? ALTO_LINEAS + 8 : 0) + PIE
-  let y0 = 0
+  const alto = TECHO + (barras.length ? ALTO_BARRAS + 8 : 0) + (lineas.length ? ALTO_LINEAS + 8 : 0) + PIE
+  let y0 = TECHO
   const yB = (v: number) => y0 + ALTO_BARRAS - ((v - eB.min) / (eB.max - eB.min)) * ALTO_BARRAS
   const panelBarras = barras.length ? (() => {
     const top = y0
@@ -184,7 +191,7 @@ function Grafico({ g }: { g: GraficoCaja }) {
       })}
     </g>
   ) : null
-  const yPie = (barras.length ? ALTO_BARRAS + 8 : 0) + (lineas.length ? ALTO_LINEAS + 8 : 0) + 12
+  const yPie = TECHO + (barras.length ? ALTO_BARRAS + 8 : 0) + (lineas.length ? ALTO_LINEAS + 8 : 0) + 12
   const leyenda = [
     ...barras.map((s, k) => ({ nombre: s.nombre || 'barras', color: puntoDe(barras, k), tipo: 'barra' as const })),
     ...lineas.map((s, k) => ({ nombre: s.nombre || g.titulo.replace(/^⟡\s*/, ''), color: PUNTO_LINEA[k % PUNTO_LINEA.length], tipo: s.punteada ? 'punteada' as const : 'linea' as const })),
@@ -196,11 +203,14 @@ function Grafico({ g }: { g: GraficoCaja }) {
           {leyenda.map((l) => <div key={l.nombre} className="flex items-center gap-2"><span className={`${l.tipo === 'barra' ? 'size-2.5 rounded-[2px]' : 'h-0.5 w-4'} ${l.color}`} />{l.nombre}</div>)}
         </div>
       ) : null}
-      <svg viewBox={`0 0 ${ANCHO} ${alto}`} className="block w-full" role="img" aria-label={g.titulo}>
+      {/* En el teléfono el gráfico no se achica hasta lo ilegible: se desplaza de costado adentro de su caja. */}
+      <div className="overflow-x-auto">
+      <svg viewBox={`0 0 ${ANCHO} ${alto}`} className="block w-full min-w-[640px]" role="img" aria-label={g.titulo}>
         {panelBarras}
         {panelLineas}
-        {g.dominio.map((d, i) => (rotulados.has(i) ? <text key={i} x={x(i)} y={yPie} textAnchor="middle" className="fill-faint text-[9px]">{d}</text> : null))}
+        {g.dominio.map((d, i) => (rotulados.has(i) ? <text key={i} x={x(i)} y={yPie} textAnchor={i === n - 1 && n > 8 ? 'end' : i === 0 && n > 8 ? 'start' : 'middle'} className="fill-faint text-[9px]">{d}</text> : null))}
       </svg>
+      </div>
       <details className="text-[11.5px] text-muted">
         <summary className="cursor-pointer select-none">los números</summary>
         <div className="mt-2 max-h-64 overflow-auto">
@@ -217,7 +227,7 @@ function Grafico({ g }: { g: GraficoCaja }) {
 // ─── Lo que se está gastando (se conserva; ahora por fecha de caja y con el filtro) ─────────────
 
 function Gasto({ egresos, periodo, rango }: { egresos: unknown[] | null; periodo: string; rango: { desde: string | null; hasta: string | null } }) {
-  if (!egresos) return <div className="mt-8 border-t border-line"><SinLectura que="lo que salió (caja_egreso_percibido)" /></div>
+  if (!egresos) return <SinLectura que="lo que salió (caja_egreso_percibido)" />
   const p = egresosPercibidos(egresos)
   const c: Caja = caja(p.egresos)
   const max = Math.max(1, ...c.meses.map((m) => m.aObra + m.estructura))
