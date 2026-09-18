@@ -41,7 +41,7 @@
 // porque el guardado ya dependía de `onBlur`.
 
 import { useEffect, useRef, useState, useTransition } from 'react'
-import { useCeldaViva, useGuardadoDeshacible } from '@/shared/components/deshacer/DeshacerProvider'
+import { useCeldaViva, useGuardadoDeshacible, type ContextoDeGuardado } from '@/shared/components/deshacer/DeshacerProvider'
 import {
   alConfirmarGuardado, alLlegarDelServidor, hayQueGuardar, valorVigente, type EstadoInline,
 } from '@/shared/components/ds/inlineEdit'
@@ -111,12 +111,14 @@ export function CeldaEditable({
   const estadoRef = useRef(estado)
   useEffect(() => { estadoRef.current = estado })
 
-  async function escribir(v: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  async function escribir(v: string, contexto?: ContextoDeGuardado): Promise<{ ok: true } | { ok: false; error: string }> {
     const fd = new FormData()
     fd.set('partida_id', partidaId)
     fd.set('cotizacion_id', cotizacionId)
     fd.set('campo', campo)
     fd.set('valor', v)
+    // DESHACER VIAJA CON LO QUE ESTA CELDA VIO (18/09/2026): la acción no escribe si la base ya tiene otra cosa.
+    if (contexto?.esperado !== undefined) fd.set('esperado', contexto.esperado)
     const r = await editarCampoPartida(INICIAL, fd)
     return r.ok ? { ok: true } : { ok: false, error: r.error ?? 'no se pudo guardar' }
   }

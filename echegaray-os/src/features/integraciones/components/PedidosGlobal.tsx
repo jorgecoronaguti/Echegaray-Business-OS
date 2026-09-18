@@ -34,7 +34,7 @@ export function PedidosGlobal({
   /** Los textos de obra tal como los escribe el campo: alimentan el alta y la edición. */
   obras: string[]
   actividadesPorObra: Record<string, ActividadOpcion[]>
-  asignarActividad: (idPedido: string, obraId: string, actividadId: string) => Promise<ActionState>
+  asignarActividad: (idPedido: string, obraId: string, actividadId: string, esperado?: string) => Promise<ActionState>
 }) {
   const [q, setQ] = useState('')
   const [estadoFiltro, setEstadoFiltro] = useState<string>('')
@@ -170,7 +170,7 @@ function FilaPedido({
 }: {
   p: Pedido
   actividades: ActividadOpcion[]
-  asignarActividad: (idPedido: string, obraId: string, actividadId: string) => Promise<ActionState>
+  asignarActividad: (idPedido: string, obraId: string, actividadId: string, esperado?: string) => Promise<ActionState>
 }) {
   const [editando, setEditando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -218,7 +218,7 @@ function FilaPedido({
             actividades={actividades}
             clave={`actividad-del-pedido-${p.id_pedido}`}
             rotulo={`Actividad del pedido ${p.id_pedido}`}
-            alElegir={(actividadId) => asignarActividad(p.id_pedido, p.obra_canonica_id as string, actividadId)}
+            alElegir={(actividadId, esperado) => asignarActividad(p.id_pedido, p.obra_canonica_id as string, actividadId, esperado)}
           />
         ) : (
           <Nulo>sin asignar</Nulo>

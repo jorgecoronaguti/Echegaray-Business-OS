@@ -49,6 +49,11 @@ export interface DeshacerDeCelda {
   anterior?: string
   /** La acción comprueba `esperado` en el servidor: no hace falta mirar el valor dibujado. */
   verificaServidor?: boolean
+  /**
+   * `''` NO deja la celda vacía: es «sin corrección manual» y la celda vuelve a dibujar el calculado. Sólo con
+   * `verificaServidor`. Sin esto, deshacer hacia `''` se rechaza (regla de la casa: nunca se vacía una celda).
+   */
+  vacioRestaurable?: boolean
   /** Cómo se nombra en el aviso («Banco de Rosales»). Sin esto, la `etiqueta`. */
   rotulo?: string
 }
@@ -161,6 +166,7 @@ export function InlineEdit({
   useEffect(() => { estadoRef.current = estado })
   const guardarDeshacible = useGuardadoDeshacible({
     clave, rotulo: deshacer?.rotulo ?? etiqueta, valorAnterior: deshacer?.anterior ?? vigente, guardar,
+    vacioRestaurable: deshacer?.vacioRestaurable === true && deshacer?.verificaServidor === true,
     formato: (x) => (x === '' ? falta : `${mostrar ? mostrar(x) : enISO(x)}${sufijo ? ` ${sufijo}` : ''}`),
   })
   useCeldaViva(clave, {

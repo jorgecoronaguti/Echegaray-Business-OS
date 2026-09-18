@@ -40,6 +40,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useCeldaViva, useGuardadoDeshacible } from '@/shared/components/deshacer/DeshacerProvider'
+import { useEstadoDelServidor } from '@/shared/tiempo-real/useEstadoDelServidor'
 import { Aviso, Buscador, CAMPO, Estado, FilaTotal, Nulo, SubTabs, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import { IconoBloqueo, IconoCompra, IconoDinero, IconoHerramienta } from '@/shared/components/iconos'
 import { AvisoDeLectura } from '@/shared/components/estado'
@@ -108,7 +109,7 @@ function Pedidos({
 }: {
   pedidos: PedidoOperacion[]
   actividades?: Actividad[]
-  asignar?: (idPedido: string, actividadId: string) => Promise<ResultadoAccion>
+  asignar?: (idPedido: string, actividadId: string, esperado?: string) => Promise<ResultadoAccion>
   q: string
 }) {
   if (!pedidos.length) {
@@ -142,7 +143,7 @@ function Pedidos({
                   valor={p.actividad_id}
                   clave={`actividad-del-pedido-${p.id_pedido}`}
                   rotulo={`Actividad del pedido ${p.id_pedido}`}
-                  alElegir={(id) => asignar!(p.id_pedido, id)}
+                  alElegir={(id, esperado) => asignar!(p.id_pedido, id, esperado)}
                 />
               </Td>
             )}
@@ -158,19 +159,24 @@ function Pedidos({
  *
  *  CMD/CTRL+Z Y CMD/CTRL+SHIFT+Z (dueño, 17/09/2026): cada elección se apila en la pila de la
  *  plataforma y deshacer llama a la MISMA acción con la actividad anterior. La `clave` lleva el id
- *  del pedido: sin eso las treinta filas comparten paso y Cmd+Z reasigna la que no es. */
+ *  del pedido: sin eso las treinta filas comparten paso y Cmd+Z reasigna la que no es.
+ *
+ *  LO ELEGIDO SE RESINCRONIZA CON LA BASE (auditoría, 18/09/2026): con `useState(valor)` el select no
+ *  adoptaba lo que otra persona cargó y Cmd+Z apilaba un anterior falso (`''`) que terminaba en NULL
+ *  sobre la actividad ajena. `useEstadoDelServidor` adopta cada relectura; la vuelta viaja con
+ *  `esperado` y la acción rechaza si la base ya tiene otra cosa. */
 function SelectActividad({
   actividades, valor, alElegir, clave, rotulo,
 }: {
   actividades: Actividad[]
   valor: string | null
-  alElegir: (actividadId: string) => Promise<ResultadoAccion>
+  alElegir: (actividadId: string, esperado?: string) => Promise<ResultadoAccion>
   clave: string
   rotulo: string
 }) {
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [elegida, setElegida] = useState(valor ?? '')
+  const [elegida, setElegida] = useEstadoDelServidor(valor ?? '')
   const elegidaRef = useRef(elegida)
   useEffect(() => { elegidaRef.current = elegida })
 
@@ -182,8 +188,8 @@ function SelectActividad({
 
   const guardarDeshacible = useGuardadoDeshacible({
     clave, rotulo, valorAnterior: elegida, formato: nombre,
-    guardar: async (v) => {
-      const r = await alElegir(v)
+    guardar: async (v, contexto) => {
+      const r = await alElegir(v, contexto?.esperado)
       return r.ok ? { ok: true as const } : { ok: false as const, error: r.error }
     },
   })
@@ -338,8 +344,8 @@ export function TabOperacion({
    *  cuatro bloques que salen de ahí: los impedimentos son del OS y siguen funcionando. */
   errorFuente?: string | null
   pedidos: PedidoOperacion[]
-  /** Decir para qué actividad es un pedido. Sin ella la columna no se dibuja. */
-  asignarActividadAPedido?: (idPedido: string, actividadId: string) => Promise<ResultadoAccion>
+  /** Decir para qué actividad es un pedido. Sin ella la columna no se dibuja. `esperado` viene del deshacer. */
+  asignarActividadAPedido?: (idPedido: string, actividadId: string, esperado?: string) => Promise<ResultadoAccion>
   compras: ComprasObra
   herramientas: HerramientaOperacion[]
   movimientos: MovimientoOperacion[]

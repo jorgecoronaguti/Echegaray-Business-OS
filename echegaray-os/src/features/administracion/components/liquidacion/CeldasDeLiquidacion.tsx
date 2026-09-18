@@ -209,7 +209,9 @@ export function CeldaEditable({
         mostrar={(v) => (typeof v === 'string' && v.startsWith('=') ? v : formato(Number(v)))}
         // CMD/CTRL+Z: deshacer restaura el valor MANUAL anterior («sin manual» vuelve al calculado) y el servidor no
         // pisa lo que cambió (`esperado`).
-        deshacer={{ anterior: manual ? String(valor ?? '') : '', verificaServidor: true, rotulo: rotuloDeshacer }}
+        // `vacioRestaurable`: deshacer la primera corrección manual escribe `''` y la celda vuelve al calculado —
+        // no queda vacía—, y el servidor verifica `esperado`. Es la excepción declarada a «nunca se vacía una celda».
+        deshacer={{ anterior: manual ? String(valor ?? '') : '', verificaServidor: true, vacioRestaurable: true, rotulo: rotuloDeshacer }}
         guardar={async (v, contexto) => {
           const r = await guardarCeldaLiquidacion({
             ...quincena, grupo, persona_id: personaId, campo, valor: v.trim(), esperado: contexto?.esperado,
@@ -378,6 +380,8 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
         deshacer?.registrar({
           clave: `redondeo-${personaId}`, rotulo: 'Efectivo redondeado', anterior, nuevo,
           anteriorTexto: anterior === '' ? 'sugerido' : pesos(Number(anterior)), nuevoTexto: nuevo === '' ? 'sugerido' : pesos(Number(nuevo)),
+          // `''` = vuelve al sugerido, no una celda vacía; y la acción verifica `esperado`.
+          vacioRestaurable: true,
         }, (v, esperado) => guardarEfectivoRedondeado({ ...quincena, grupo, persona_id: personaId, importe: v, esperado }))
       }
     })

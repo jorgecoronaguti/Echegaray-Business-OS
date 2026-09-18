@@ -17,8 +17,13 @@ import type { PedidoGlobal } from '../services/operacionGlobalService'
 //
 // CMD/CTRL+Z Y CMD/CTRL+SHIFT+Z (dueño, 17/09/2026): el cambio se apila en la pila de la plataforma y
 // deshacer vuelve a llamar a la MISMA acción con el estado anterior. Escribe sólo en Supabase
-// (`pedidos_materiales`, origen `os`): la app no toca el Sheet del AppSheet, así que volver atrás es
-// simétrico de ir adelante.
+// (`pedidos_materiales`): la app no toca el Sheet del AppSheet, así que volver atrás es simétrico de
+// ir adelante.
+//
+// LA VUELTA DEVUELVE TAMBIÉN EL `origen` (auditoría, 18/09/2026): la ida marca `origen='os'` para que
+// el sync no pise lo decidido acá; deshacer sin devolverlo dejaba un pedido del AppSheet como «del OS»
+// y el sync dejaba de actualizarlo. Se manda el origen que la fila tenía al momento de la ida, y
+// `esperado` (el estado que esta pantalla vio): la acción rechaza si otra persona lo cambió.
 //
 // Los tres estados que ofrece son los que acepta la acción (`pedidoSchema`). Un estado que la fuente
 // trajo y no está entre ésos se MUESTRA igual —no se borra— pero no se puede elegir: cambiarlo por
@@ -41,10 +46,13 @@ export function SelectEstadoPedido({ p }: { p: PedidoGlobal }) {
     rotulo: `Estado del pedido ${p.id_pedido}`,
     valorAnterior: estado ?? '',
     formato: (v) => lecturaPedido(v).label,
-    guardar: async (v) => {
+    guardar: async (v, contexto) => {
       const fd = new FormData()
       fd.set('id_pedido', p.id_pedido)
       fd.set('estado', v)
+      if (contexto?.esperado !== undefined) fd.set('esperado', contexto.esperado)
+      // `p.origen` es el de la fila ANTES de la ida: esta función queda capturada por el paso apilado.
+      if (contexto?.accion === 'deshacer' && p.origen) fd.set('origen', p.origen)
       const r = await setEstadoPedidoAction({ error: null }, fd)
       return r.error ? { ok: false as const, error: r.error } : { ok: true as const }
     },
