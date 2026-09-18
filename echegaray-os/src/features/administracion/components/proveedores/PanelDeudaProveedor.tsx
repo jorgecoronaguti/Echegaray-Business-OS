@@ -3,6 +3,25 @@
 // EL DETALLE DE LO QUE SE LE DEBE A UN PROVEEDOR — «que si le hago click se amplíe en detalle de
 // cada uno con menú a la derecha» (dueño, 16/09/2026).
 //
+// ═══ PRIMERO LOS COMPROBANTES, POR OBRA (dueño, 18/09/2026) ═══
+//
+// «Necesito, al hacer click en el menú derecho, que primero salgan los comprobantes que estoy
+// debiendo y en relación a las obras que esto incluyen». Hasta hoy el panel abría con la nota «Qué
+// hacer» y recién después las líneas, partidas en tres bloques por vencimiento, con la obra como una
+// palabra dentro de cada renglón. Ahora:
+//
+//   1. una línea de resumen: «$X vencido · $Y por vencer · $Z sin fecha» — el CUÁNDO no se pierde,
+//      pasa de ser la agrupación a ser un atributo;
+//   2. un bloque por OBRA, con el nombre como cabecera y el subtotal adeudado por obra; «sin obra»
+//      al final y dicho como tal; adentro cada comprobante con vencimiento, número, concepto (la
+//      cuota adelante) y saldo — lo vencido en ámbar, lo por vencer en tinta, línea por línea;
+//   3. el total, el cotejo contra `proveedor_deuda` y la aclaración de lo por vencer;
+//   4. «Qué hacer», que no se quita (lo pidió el dueño el 17/09): baja debajo de los comprobantes;
+//   5. el enlace a la ficha.
+//
+// El agrupado, el orden de las obras y los subtotales los arma `deudaPorObra` en el servicio, que se
+// prueba sin navegador. Acá sólo se elige qué se ve y de qué color.
+//
 // ═══ ES UN `Drawer`, COMO EL DEL CRM ═══
 //
 // El mismo componente que abre el detalle de una celda de costo en Clientes (`PanelDetalleCosto`):
@@ -19,15 +38,16 @@
 // ═══ CADA LÍNEA LLEVA A SU FILA EN COMPRAS ═══
 //
 // `/administracion/compras?s=<fila>` es el mismo destino que usa el CRM: Compras es donde se corrige
-// el estado, el vencimiento o el pago. El panel no edita nada — mostrar acá un formulario haría que
-// la misma compra se pudiera tocar desde dos pantallas con dos reglas.
+// el estado, el vencimiento, el pago o la obra. El panel no edita nada — mostrar acá un formulario
+// haría que la misma compra se pudiera tocar desde dos pantallas con dos reglas.
 //
 // ═══ EL PANEL NO LEE NI CALCULA ═══
 //
-// Recibe el detalle ya armado por `detalleDeProveedor`, que se prueba sin navegador. Acá sólo se
-// elige qué se ve y de qué color: ámbar para lo vencido (un problema), tinta para lo por vencer (un
-// compromiso). Los subtotales del pie son los del servicio, no una segunda suma de las filas
-// dibujadas: si discreparan, el panel estaría inventando su propio total.
+// Recibe el detalle ya armado por `detalleDeProveedor`. Los subtotales por obra y el total son los
+// del servicio, no una segunda suma de las filas dibujadas: si discreparan, el panel estaría
+// inventando su propio total. Ámbar para lo vencido (un problema), tinta para lo por vencer (un
+// compromiso). Un subtotal de obra sin nada vencido NO va en ámbar: el color es de la cifra que
+// bloquea, no del bloque.
 //
 // ═══ LO QUE DICE LA PESTAÑA, AL LADO DE LO QUE DICE EL CÁLCULO ═══
 //
@@ -43,12 +63,18 @@ import { V } from '@/shared/components/v2/patron'
 import { plataCentavos } from '@/shared/utils/format'
 import { diaMesAnioISO, diaMesISO } from '@/shared/utils/fecha'
 import { conceptoConCuotaAdelante } from '../../services/deudaProveedores'
-import type { DetalleDeuda, LineaDeuda } from '../../services/deudaProveedores'
+import type { DetalleDeuda, DeudaPorObra, LineaDeuda } from '../../services/deudaProveedores'
 import type { NotaDeProveedor } from '../../services/notasDeDeuda'
 import { NotaQueHacer } from './NotaQueHacer'
 
 const MONO = 'font-mono tabular-nums'
-const COLS = '44px minmax(0,1fr) 96px'
+/**
+ * 110 PX PARA EL SALDO, no 96: medido el 18/09/2026, «$12.666.727,27» (14 caracteres en mono de
+ * 12,5-13 px) se cortaba en el subtotal y en el total con 96 px. Un total que no se lee entero es un
+ * total distinto.
+ */
+const COLS = '44px minmax(0,1fr) 110px'
+const COLS_CABECERA_OBRA = 'minmax(0,1fr) 110px'
 const FILA = {
   display: 'grid', gap: 8, alignItems: 'baseline',
   padding: '6px 0', borderBottom: `1px solid ${V.lineaPanel}`,
@@ -72,26 +98,30 @@ export function PanelDeudaProveedor({ detalle, nota, obras, hoy, aviso, cerrarHr
   hrefComprasBase: string
 }) {
   const router = useRouter()
-  const vencidas = detalle.lineas.filter((l) => l.estado === 'vencido')
-  const porVencer = detalle.lineas.filter((l) => l.estado === 'por_vencer')
-  const sinFecha = detalle.lineas.filter((l) => l.estado === 'sin_fecha')
+  const conObra = detalle.obras.filter((o) => o.obraId !== null).length
   return (
     <Drawer
       titulo={detalle.nombre}
-      subtitulo={`${detalle.lineas.length} ${detalle.lineas.length === 1 ? 'línea' : 'líneas'} con saldo · al ${diaMesAnioISO(hoy)}`}
+      subtitulo={subtitulo(detalle, conObra, hoy)}
       ancho={460}
       onCerrar={() => router.push(cerrarHref)}
       testid="panel-deuda-proveedor"
     >
-      {/* La `key` reinicia el campo cuando el Sheet trae otra nota o el pedido se resuelve. */}
-      {nota && <NotaQueHacer key={`${nota.claveNota}|${nota.nota}|${nota.pendiente ?? ''}`} nota={nota} />}
-      {vencidas.length > 0 && <Bloque titulo="Vencido" lineas={vencidas} total={detalle.vencido} obras={obras} base={hrefComprasBase} problema />}
-      {porVencer.length > 0 && <Bloque titulo="Por vencer" lineas={porVencer} total={detalle.porVencer} obras={obras} base={hrefComprasBase} />}
-      {sinFecha.length > 0 && <Bloque titulo="Sin fecha prevista" lineas={sinFecha} total={detalle.sinFecha} obras={obras} base={hrefComprasBase} problema />}
+      <Resumen detalle={detalle} />
+
+      <div style={{ ...FILA, gridTemplateColumns: COLS, borderBottom: `1px solid ${V.lineaFuerte}`, marginTop: 10 }}>
+        <span style={CABEZA}>Vence</span>
+        <span style={CABEZA}>Comprobante · concepto</span>
+        <span style={{ ...CABEZA, textAlign: 'right' }}>Saldo</span>
+      </div>
+
+      {detalle.obras.map((o) => (
+        <BloqueObra key={o.obraId ?? 'sin-obra'} o={o} nombre={o.obraId ? obras.get(o.obraId) ?? null : null} base={hrefComprasBase} />
+      ))}
 
       <div
         data-testid="deuda-detalle-total"
-        style={{ display: 'grid', gridTemplateColumns: COLS, gap: 8, paddingTop: 12, borderTop: `1px solid ${V.lineaFuerte}`, marginTop: 12 }}
+        style={{ display: 'grid', gridTemplateColumns: COLS, gap: 8, paddingTop: 12, borderTop: `1px solid ${V.lineaFuerte}`, marginTop: 4 }}
       >
         <span />
         <span style={{ fontSize: '12.5px', fontWeight: 600, color: V.tinta }}>Total adeudado</span>
@@ -106,20 +136,29 @@ export function PanelDeudaProveedor({ detalle, nota, obras, hoy, aviso, cerrarHr
 
       {/* LO POR VENCER NO SE DEBE TODAVÍA: sin esta línea, el total del panel se lee como plata a
           pagar hoy. Va una vez, al pie, y no repetida bajo cada importe. */}
-      {porVencer.length > 0 && (
+      {detalle.porVencer > 0 && (
         <p style={{ fontSize: '11.5px', color: V.tenue, paddingTop: 6 }}>
           {`Lo por vencer tiene fecha posterior al ${diaMesAnioISO(hoy)}: está comprometido, no exigible hoy.`}
         </p>
       )}
 
+      {/* «QUÉ HACER» BAJA DEBAJO DE LOS COMPROBANTES (18/09/2026): lo primero que se ve es lo que se
+          debe. La nota no se quita — la pidió el dueño el 17/09 — y sigue siendo lo único editable.
+          La `key` reinicia el campo cuando el Sheet trae otra nota o el pedido se resuelve. */}
+      {nota && (
+        <div style={{ marginTop: 20, paddingTop: 14, borderTop: `1px solid ${V.linea}` }}>
+          <NotaQueHacer key={`${nota.claveNota}|${nota.nota}|${nota.pendiente ?? ''}`} nota={nota} />
+        </div>
+      )}
+
       {fichaHref
         ? (
-            <Link href={fichaHref} prefetch={false} data-testid="deuda-ver-ficha" style={{ display: 'inline-block', marginTop: 16, fontSize: '12.5px', fontWeight: 500, color: V.tinta }}>
+            <Link href={fichaHref} prefetch={false} data-testid="deuda-ver-ficha" style={{ display: 'inline-block', marginTop: nota ? 4 : 16, fontSize: '12.5px', fontWeight: 500, color: V.tinta }}>
               Ver la ficha del proveedor →
             </Link>
           )
         : (
-            <p data-testid="deuda-sin-ficha-panel" style={{ marginTop: 16, fontSize: '11.5px', color: V.apagado }}>
+            <p data-testid="deuda-sin-ficha-panel" style={{ marginTop: nota ? 4 : 16, fontSize: '11.5px', color: V.apagado }}>
               Este nombre de Compras todavía no está vinculado a un proveedor: no tiene ficha que abrir.
               Se resuelve en «Nombres sin resolver».
             </p>
@@ -128,39 +167,101 @@ export function PanelDeudaProveedor({ detalle, nota, obras, hoy, aviso, cerrarHr
   )
 }
 
-function Bloque({ titulo, lineas, total, obras, base, problema }: {
-  titulo: string; lineas: LineaDeuda[]; total: number
-  obras: Map<string, string>; base: string; problema?: boolean
-}) {
+/** «9 comprobantes en 1 obra · al 18/09/2026». Cuenta obras de verdad: «sin obra» no es una obra. */
+function subtitulo(detalle: DetalleDeuda, conObra: number, hoy: string): string {
+  const n = detalle.lineas.length
+  const partes = [`${n} ${n === 1 ? 'comprobante' : 'comprobantes'} con saldo`]
+  if (conObra > 0) partes.push(`en ${conObra} ${conObra === 1 ? 'obra' : 'obras'}`)
+  return `${partes.join(' ')} · al ${diaMesAnioISO(hoy)}`
+}
+
+/**
+ * EL CUÁNDO, EN UNA LÍNEA: «$X vencido · $Y por vencer · $Z sin fecha». Sólo las partes que existen:
+ * «$0,00 vencido» en ámbar se lee como una alarma que no está (el mismo criterio que la tabla).
+ */
+function Resumen({ detalle }: { detalle: DetalleDeuda }) {
+  const partes: { texto: string; color: string; testid: string }[] = []
+  if (detalle.vencido > 0) partes.push({ texto: `${plataCentavos(detalle.vencido)} vencido`, color: V.warn, testid: 'deuda-resumen-vencido' })
+  if (detalle.porVencer > 0) partes.push({ texto: `${plataCentavos(detalle.porVencer)} por vencer`, color: V.tinta, testid: 'deuda-resumen-por-vencer' })
+  if (detalle.sinFecha > 0) partes.push({ texto: `${plataCentavos(detalle.sinFecha)} sin fecha`, color: V.warn, testid: 'deuda-resumen-sin-fecha' })
+  if (!partes.length) return null
   return (
-    <div data-testid={`deuda-bloque-${titulo.toLowerCase().replace(/\s+/g, '-')}`} style={{ marginBottom: 14 }}>
-      <div style={{ ...FILA, gridTemplateColumns: COLS, borderBottom: `1px solid ${V.lineaFuerte}` }}>
-        <span style={CABEZA}>Vence</span>
-        <span style={{ ...CABEZA, color: problema ? V.warn : V.tenue }}>{titulo}</span>
-        <span style={{ ...CABEZA, textAlign: 'right' }}>Saldo</span>
-      </div>
-      {lineas.map((l) => <Linea key={`${l.fila}-${l.cuota ?? ''}`} l={l} obras={obras} base={base} problema={problema} />)}
-      <div style={{ ...FILA, gridTemplateColumns: COLS, borderBottom: 'none', paddingTop: 6 }}>
-        <span />
-        <span style={{ fontSize: '11.5px', color: V.apagado }}>{`Subtotal ${titulo.toLowerCase()}`}</span>
-        <span className={MONO} style={{ fontSize: '12.5px', fontWeight: 600, color: problema ? V.warn : V.tinta, textAlign: 'right' }}>
-          {plataCentavos(total)}
+    <p data-testid="deuda-resumen" className={MONO} style={{ fontSize: '12px', color: V.tenue, lineHeight: '18px' }}>
+      {partes.map((p, i) => (
+        <span key={p.testid}>
+          {i > 0 && <span> · </span>}
+          <span data-testid={p.testid} style={{ color: p.color, fontWeight: p.color === V.warn ? 600 : 500 }}>{p.texto}</span>
+        </span>
+      ))}
+    </p>
+  )
+}
+
+/** Una obra: su nombre y su subtotal como cabecera, y debajo sus comprobantes. */
+function BloqueObra({ o, nombre, base }: { o: DeudaPorObra; nombre: string | null; base: string }) {
+  const sinObra = o.obraId === null
+  // UN ID QUE NO ESTÁ EN `obra_panel` no se rellena con nada: se dibuja el id en tenue y se ve que
+  // falta el nombre, que es distinto de «sin obra» — la imputación existe, el rótulo no.
+  const titulo = sinObra ? 'Sin obra imputada' : nombre ?? o.obraId
+  return (
+    <div data-testid="deuda-obra" data-obra={o.obraId ?? ''} style={{ marginBottom: 10 }}>
+      <div
+        data-testid="deuda-obra-cabecera"
+        style={{ ...FILA, gridTemplateColumns: COLS_CABECERA_OBRA, paddingTop: 12, borderBottom: `1px solid ${V.lineaPanel}` }}
+      >
+        <span style={{ display: 'grid', minWidth: 0 }}>
+          <span
+            className="truncate"
+            title={sinObra ? 'Comprobantes con saldo que Compras todavía no imputó a ninguna obra. Se imputan en Compras.' : titulo ?? undefined}
+            style={{ fontSize: '12.5px', fontWeight: 600, color: sinObra ? V.apagado : nombre ? V.tinta : V.tenue, fontStyle: sinObra ? 'italic' : undefined }}
+          >
+            {titulo}
+          </span>
+          {/* A 390 PX ESTA LÍNEA QUIEBRA, y quiebra por tramo entero: medido el 18/09/2026, con un
+              solo `span` el corte caía adentro del importe y «vencido» quedaba solo en el renglón
+              de abajo. `flex-wrap` baja «$332.256,84 vencido» completo. */}
+          <span style={{ display: 'flex', flexWrap: 'wrap', columnGap: 4, fontSize: '11px', color: V.tenue }}>
+            <span style={{ whiteSpace: 'nowrap' }}>
+              {`${o.comprobantes} ${o.comprobantes === 1 ? 'comprobante' : 'comprobantes'}`}
+              {o.vencido > 0 && ' ·'}
+            </span>
+            {/* LO VENCIDO DE ESTA OBRA, al lado del conteo: el subtotal de la derecha es lo que se
+                debe; esto es la parte que ya bloquea. Sólo si existe: «$0,00 vencido» no se escribe. */}
+            {o.vencido > 0 && (
+              <span className={MONO} data-testid="deuda-obra-vencido" style={{ color: V.warn, whiteSpace: 'nowrap' }}>
+                {`${plataCentavos(o.vencido)} vencido`}
+              </span>
+            )}
+          </span>
+        </span>
+        {/* EL SUBTOTAL VA EN TINTA: es lo que se debe por esta obra, no lo que bloquea. Lo que
+            bloquea está al lado del conteo, en ámbar, con su propia cifra. */}
+        <span
+          className={MONO} data-testid="deuda-obra-subtotal"
+          style={{ fontSize: '12.5px', fontWeight: 600, color: V.tinta, textAlign: 'right' }}
+        >
+          {plataCentavos(o.total)}
         </span>
       </div>
+      {o.lineas.map((l) => <Linea key={`${l.fila}-${l.cuota ?? ''}`} l={l} base={base} />)}
     </div>
   )
 }
 
-function Linea({ l, obras, base, problema }: {
-  l: LineaDeuda; obras: Map<string, string>; base: string; problema?: boolean
-}) {
-  const obra = l.obraId ? obras.get(l.obraId) ?? null : null
-  // EL COMPROBANTE Y LA OBRA IDENTIFICAN LA LÍNEA; el concepto la explica. La cuota va adelante
-  // cuando existe: seis líneas del mismo concepto largo se ven idénticas si el recorte se come el
-  // «2 de 2» del final — es la trampa que ya pagó el panel de costos del CRM.
-  const encabezado = [l.comprobante, obra ?? 'sin obra'].filter(Boolean).join(' · ')
-  const detalle = [l.cuota ? `cuota ${l.cuota}` : null, conceptoConCuotaAdelante(l.concepto)]
+function Linea({ l, base }: { l: LineaDeuda; base: string }) {
+  // ÁMBAR PARA LO QUE YA BLOQUEA: vencido, y sin fecha (se debe y no se puede decir cuándo). Lo por
+  // vencer es un compromiso y va en tinta.
+  const problema = l.estado !== 'por_vencer'
+  // EL COMPROBANTE IDENTIFICA LA LÍNEA; el concepto la explica. La cuota va adelante cuando existe:
+  // seis líneas del mismo concepto largo se ven idénticas si el recorte se come el «2 de 2» del
+  // final — es la trampa que ya pagó el panel de costos del CRM.
+  const concepto = [l.cuota ? `cuota ${l.cuota}` : null, conceptoConCuotaAdelante(l.concepto)]
     .filter(Boolean).join(' · ')
+  // SIN NÚMERO DE COMPROBANTE, EL CONCEPTO ES LA LÍNEA PRINCIPAL. Medido el 18/09/2026: las nueve
+  // filas de Pedro Tello no tienen número, y «sin número de comprobante» nueve veces en negrita
+  // tapaba lo único que las distingue. Que falta el número se dice en el `title`, no en la fila.
+  const principal = l.comprobante ?? (concepto || 'sin comprobante ni concepto en Compras')
+  const secundario = l.comprobante ? concepto : ''
   const pagadoParcial = l.pagado > 0 && l.total != null && l.pagado < l.total
   return (
     <Link
@@ -168,6 +269,7 @@ function Linea({ l, obras, base, problema }: {
       prefetch={false}
       data-testid="deuda-linea"
       data-fila={l.fila}
+      data-estado={l.estado}
       className="hover:underline"
       style={{ ...FILA, gridTemplateColumns: COLS }}
     >
@@ -175,6 +277,7 @@ function Linea({ l, obras, base, problema }: {
         className={MONO}
         title={[
           l.vence ? `Vence el ${diaMesAnioISO(l.vence)}` : 'Sin fecha prevista de pago en Compras',
+          l.estado === 'vencido' ? 'vencido' : l.estado === 'por_vencer' ? 'por vencer' : null,
           l.tramoSheet ? `la pestaña dice: ${l.tramoSheet}` : null,
         ].filter(Boolean).join(' · ')}
         style={{ fontSize: '11.5px', color: problema ? V.warn : V.tenue }}
@@ -182,23 +285,30 @@ function Linea({ l, obras, base, problema }: {
         {diaMesISO(l.vence) ?? 's/f'}
       </span>
       <span style={{ display: 'grid', minWidth: 0 }}>
-        <span className="truncate" style={{ fontSize: '12px', fontWeight: 500, color: V.tinta }}>{encabezado}</span>
-        {detalle && (
-          <span
-            className="truncate"
-            // EL TEXTO ENTERO, EN EL ORDEN ORIGINAL: lo de arriba está reordenado para que se
-            // distinga de un vistazo, y acá se puede leer lo que Compras escribió.
-            title={[l.comprobante, l.concepto].filter(Boolean).join(' · ')}
-            style={{ fontSize: '11px', color: V.apagado }}
-          >
-            {detalle}
+        <span
+          className="truncate"
+          // EL TEXTO ENTERO, EN EL ORDEN ORIGINAL: lo de la fila está reordenado para que se
+          // distinga de un vistazo, y acá se puede leer lo que Compras escribió.
+          title={[l.comprobante ?? 'sin número de comprobante', l.concepto].filter(Boolean).join(' · ')}
+          style={{ fontSize: '12px', fontWeight: 500, color: l.comprobante || concepto ? V.tinta : V.apagado }}
+        >
+          {principal}
+        </span>
+        {secundario && (
+          <span className="truncate" title={l.concepto ?? undefined} style={{ fontSize: '11px', color: V.apagado }}>
+            {secundario}
           </span>
         )}
         {/* EL PAGO PARCIAL SE DICE: sin esto, un saldo menor que el total se lee como un error de
             carga en vez de como lo que es — una entrega a cuenta ya hecha. */}
         {pagadoParcial && (
-          <span className={MONO} data-testid="deuda-pagado-parcial" style={{ fontSize: '10.5px', color: V.tenue }}>
-            {`de ${plataCentavos(l.total)} · pagado ${plataCentavos(l.pagado)}`}
+          <span
+            className={MONO} data-testid="deuda-pagado-parcial"
+            // Dos tramos que quiebran enteros a 390 px, no una frase cortada por la mitad de un importe.
+            style={{ display: 'flex', flexWrap: 'wrap', columnGap: 4, fontSize: '10.5px', color: V.tenue }}
+          >
+            <span style={{ whiteSpace: 'nowrap' }}>{`de ${plataCentavos(l.total)} ·`}</span>
+            <span style={{ whiteSpace: 'nowrap' }}>{`pagado ${plataCentavos(l.pagado)}`}</span>
           </span>
         )}
       </span>

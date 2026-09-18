@@ -128,3 +128,43 @@ test('lo que no se sabe se dice: sin fecha, sin ficha y el descuadre tienen su l
   assert.match(panel(), /testid="deuda-no-cierra"/)
   assert.match(panel(), /testid="deuda-sin-ficha-panel"/)
 })
+
+// ═══ PRIMERO LOS COMPROBANTES, POR OBRA (dueño, 18/09/2026) ═══
+//
+// «Que primero salgan los comprobantes que estoy debiendo y en relación a las obras que esto
+// incluyen». Lo que se protege: que el agrupado venga del servicio (no de un `Map` armado en el
+// JSX), que la nota «Qué hacer» siga existiendo pero DEBAJO de los comprobantes, y que el
+// vencimiento no se pierda al dejar de ser la agrupación.
+
+test('el panel dibuja los bloques por obra que arma el servicio, no los agrupa por su cuenta', () => {
+  const src = panel()
+  assert.match(src, /detalle\.obras\.map\(/, 'el panel dejó de recorrer los grupos del servicio')
+  assert.match(src, /\bDeudaPorObra\b/, 'el panel dejó de tipar el bloque con el tipo del servicio')
+  // Un `new Map(` o un `groupBy` en el componente sería una segunda definición de qué obra tiene qué.
+  assert.doesNotMatch(src, /new Map\(|groupBy|\.filter\(\(l\) => l\.obraId/, 'el panel agrupa por obra por su cuenta')
+  assert.match(src, /testid="deuda-obra"/)
+  assert.match(src, /testid="deuda-obra-subtotal"/)
+  assert.match(src, /Sin obra imputada/, 'el grupo sin obra dejó de decirse como tal')
+})
+
+test('«Qué hacer» no se quita, pero va DESPUÉS de los comprobantes y ANTES de la ficha', () => {
+  const src = panel()
+  const nota = src.indexOf('<NotaQueHacer')
+  const total = src.indexOf('testid="deuda-detalle-total"')
+  const obras = src.indexOf('detalle.obras.map(')
+  const ficha = src.indexOf('testid="deuda-ver-ficha"')
+  assert.ok(nota > 0, 'la nota «Qué hacer» desapareció del panel: el dueño la pidió el 17/09')
+  assert.ok(obras < nota && total < nota, 'la nota volvió a estar arriba de los comprobantes')
+  assert.ok(nota < ficha, 'la nota quedó debajo del enlace a la ficha')
+})
+
+test('el cuándo no se pierde: resumen de una línea arriba y el estado en cada línea', () => {
+  const src = panel()
+  assert.match(src, /testid="deuda-resumen"/)
+  assert.match(src, /deuda-resumen-vencido/)
+  assert.match(src, /deuda-resumen-por-vencer/)
+  assert.match(src, /deuda-resumen-sin-fecha/)
+  assert.match(src, /data-estado=\{l\.estado\}/, 'la línea dejó de declarar si está vencida')
+  // El ámbar es de la línea vencida o sin fecha; lo por vencer va en tinta.
+  assert.match(src, /const problema = l\.estado !== 'por_vencer'/)
+})
