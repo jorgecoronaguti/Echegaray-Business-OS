@@ -93,8 +93,20 @@ for (const t of tramos(cmd)) {
 }
 if (!hallazgo) process.exit(0)
 
+// LA FORMA DE UNA PRUEBA DE NAVEGADOR SE DICE ACÁ, NO SE SUPONE. El 18/09/2026 un agente dejó abierto
+// un `ecos next` (servidor de desarrollo) y pidió el navegador por separado: el servidor no soltaba su
+// cupo hasta correr la prueba, y la prueba esperaba detrás de un `e2e` ajeno que necesitaba ese mismo
+// servidor. Se pide UNA sola reserva: `e2e` toma `next` y `browser` juntos y Playwright levanta y
+// apaga su propio servidor con E2E_PORT.
+const forma = hallazgo.clase === 'e2e'
+  ? `E2E_PORT=3xxx ecos e2e -- ${hallazgo.tramo}`
+  : `ecos ${hallazgo.clase} -- ${hallazgo.tramo}`
 const razon =
   `Recursos: este comando es trabajo pesado (${hallazgo.clase}) y en esta VM sólo puede correr por el portero. `
-  + `Lanzalo así:  ecos ${hallazgo.clase} -- ${hallazgo.tramo}   `
+  + `Lanzalo así:  ${forma}   `
+  + (hallazgo.clase === 'e2e'
+    ? 'Una sola reserva: e2e toma `next` y `browser` juntos y Playwright levanta y apaga SU propio servidor con E2E_PORT. '
+      + 'NO dejes un `ecos next` abierto mientras esperás el navegador: el servidor retiene el cupo que el otro necesita y se traban. '
+    : '')
   + `(si no hay recursos, ecos espera en cola y avisa; nunca lanza encima de lo que ya corre). Ver: ecos estado`
 process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: razon } }))
