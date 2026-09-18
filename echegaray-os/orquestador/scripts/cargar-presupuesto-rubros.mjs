@@ -94,7 +94,7 @@ async function leerObra(google, cfg, c) {
   const r = rubrosDeObra(cfg, explosiones)
   const principal = cfg.libros[0]
   return {
-    estado: 'leido', ...r, modificado, estimado: false,
+    estado: 'leido', ...r, modificado, estimado: !!cfg.estimado,
     // LA FUENTE DICE TODOS LOS PAPELES: en Quattropani los materiales salen del contrato (fondo
     // administrado), no de la cotización, y el encabezado tiene que nombrarlo (auditoría 18/09).
     fuente: { drive: principal.drive, nombre: [...cfg.libros.map((l) => l.nombre), ...(cfg.materialesDelContrato ? ['materiales: CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx'] : [])].join(' + ') },

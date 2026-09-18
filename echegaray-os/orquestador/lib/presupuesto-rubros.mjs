@@ -361,7 +361,15 @@ export const OBRAS = Object.freeze([
       { drive: '1M_p-AQaFXRY0UF8ccH_NKHV4SM5DlMht', nombre: 'ADICIONALES.xlsm', parte: 'adicional' },
     ],
   },
-  { obra: 'messina-bsa', sinPresupuesto: MOTIVO_BSA },
+  // BSA: el dueño (18/09/2026) decidió usar la cotización de 2024 hasta que se recotice. Precios de 2024:
+  // queda ESTIMADA en todos sus rubros, nunca como lectura firme. MOTIVO_BSA queda como el porqué del estimado.
+  {
+    obra: 'messina-bsa', fecha: '2024-12-31', estimado: true,
+    libros: [{
+      drive: '1rKUCSYZHeUsFWOjbOySCOoueqqz7kWRi', nombre: 'PRESUPUESTO FINAL - DEMOLICION Y PILETA DE CONTENCION - FI 12.xlsm', parte: 'obra',
+      nota: 'cotización 2024 con precios de 2024, usada por decisión del dueño 18/09/2026 hasta que se recotice: ESTIMADA',
+    }],
+  },
   { obra: 'messina-playon-azufre', fecha: '2026-07-30', libros: [{ drive: '1HiGyOFW85G45G2NFM_rHGit9AzqhdS_D', nombre: 'PLATEA DE HORMIGON - AGOSTO 2026.xlsm', parte: 'obra' }] },
   { obra: 'messina-playon-dilucion-acido', fecha: '2026-08-28', libros: [{ drive: '1_1Si2IKXMBTgFdXYo1eXdz8ACbIOwRz-', nombre: 'Cotizacion.xlsm', parte: 'obra' }] },
   { obra: 'messina-adicional-tercer-muro', fecha: '2026-08-27', libros: [{ drive: '1MFtUGWLGVk_qnAeeapwdiz99xZ9AA8yV', nombre: 'ADICIONAL MURO.xlsm', parte: 'obra' }] },
