@@ -44,6 +44,54 @@ const txt = (v) => String(v ?? '').trim()
 export const FILA0_BANCO = 4
 
 /**
+ * NÚCLEO PURO: LA IDENTIDAD DE CADA FILA DE `_BANCO_RAW`, que es la que el libro usa como clave.
+ *
+ * ═══ DOS MOVIMIENTOS IDÉNTICOS DEL MISMO DÍA SON DOS MOVIMIENTOS (18/09/2026) ═══
+ *
+ * La réplica no trae la referencia del banco, así que la identidad se armaba con fecha + concepto +
+ * importe. Y el banco repite esa terna: las 15 acreditaciones del Fondo de Cese del 10/09 ($1.160.400)
+ * tienen seis importes distintos, y `deduplicar` dejó seis filas — el libro perdió $593.044 y Cargas
+ * Sociales mostraba $567.356 pagados. Los dos pagos de IERIC/FODECO del 11/09 quedaron en uno.
+ *
+ * LA REGLA: la terna más un ORDINAL dentro de su grupo, contado en el orden del banco. La primera
+ * ocurrencia conserva la clave de siempre (`fecha|concepto|importe`, sin sufijo), así que nada que no
+ * se repita cambia de identidad; la segunda es `…#2`, la tercera `…#3`.
+ *
+ * POR QUÉ ES ESTABLE ENTRE CORRIDAS. Dos filas del mismo grupo son indistinguibles en todo lo que el
+ * libro mira (fecha, concepto, importe y, por lo tanto, naturaleza): si el banco las reordenara, la
+ * `#2` pasaría a ser la otra fila y el libro emitiría exactamente lo mismo. El ordinal sólo cambia si
+ * el grupo gana o pierde un miembro — y eso es un movimiento nuevo o borrado, que DEBE cambiar el libro.
+ * El grupo se forma con la misma normalización que `claveDe` (minúsculas, espacios colapsados): si no,
+ * dos conceptos que difieren en una mayúscula arrancarían los dos en 1 y chocarían igual en la clave.
+ *
+ * SE CALCULA SOBRE EL EXTRACTO ENTERO Y NO SOBRE LO QUE CADA EXTRACTOR FILTRA. `deBancoCargos`,
+ * `deBancoObligaciones` y los retenidos miran subconjuntos distintos; si cada uno contara su ordinal,
+ * la misma fila podría ser `#1` en uno y `#2` en otro, y el dedupe que hoy reconoce a un débito
+ * emitido por dos puertas dejaría de reconocerlo.
+ *
+ * LO QUE ESTO NO ES: la referencia del banco (`banco_movimientos.referencia`), que es la clave real.
+ * Llevarla a la réplica exige una columna nueva en `_BANCO_RAW`, que es contrato de las fórmulas de CAJA.
+ *
+ * @returns {Map<number, string>} fila de la hoja (1-based) → referencia
+ */
+export function referenciasDelExtracto(filas = [], { fila0 = FILA0_BANCO } = {}) {
+  const vistos = new Map()
+  const out = new Map()
+  for (let i = fila0 - 1; i < filas.length; i++) {
+    const f = filas[i] ?? []
+    const fecha = num(f[0])
+    const importe = num(f[2])
+    if (fecha === null || importe === null) continue
+    const base = `${fecha}|${txt(f[1])}|${importe}`
+    const grupo = base.toLowerCase().replace(/\s+/g, ' ')
+    const n = (vistos.get(grupo) ?? 0) + 1
+    vistos.set(grupo, n)
+    out.set(i + 1, n === 1 ? base : `${base}#${n}`)
+  }
+  return out
+}
+
+/**
  * NÚCLEO PURO: los DÉBITOS del extracto — fecha, concepto, naturaleza e importe en MAGNITUD.
  *
  * El importe se devuelve positivo a propósito: acá "cuánto salió" es una magnitud y el sentido ya lo
@@ -52,16 +100,21 @@ export const FILA0_BANCO = 4
  * equivocado — es la misma razón por la que `movimiento()` separa importe y signo.
  *
  * @param {Array<Array>} filas `_BANCO_RAW`: A fecha · B concepto · C importe · F naturaleza
- * @returns {Array<{fecha:number, concepto:string, importe:number, naturaleza:string, fila:number}>}
+ * @returns {Array<{fecha:number, concepto:string, importe:number, naturaleza:string, fila:number, referencia:string}>}
+ *   `referencia` es la identidad de la fila (ver `referenciasDelExtracto`).
  */
 export function debitosDelExtracto(filas = [], { fila0 = FILA0_BANCO } = {}) {
   const out = []
+  const refs = referenciasDelExtracto(filas, { fila0 })
   for (let i = fila0 - 1; i < filas.length; i++) {
     const f = filas[i] ?? []
     const fecha = num(f[0])
     const importe = num(f[2])
     if (fecha === null || importe === null || importe >= 0) continue
-    out.push({ fecha, concepto: txt(f[1]), importe: -importe, naturaleza: txt(f[5]), fila: i + 1 })
+    out.push({
+      fecha, concepto: txt(f[1]), importe: -importe, naturaleza: txt(f[5]), fila: i + 1,
+      referencia: refs.get(i + 1),
+    })
   }
   return out
 }

@@ -39,6 +39,7 @@
 import { movimiento, ENTRA } from './libro-movimientos.mjs'
 import { isoDeSerial } from './libro-extractores-fechas.mjs'
 import { esRetenida } from './banco-detalle-declarado.mjs'
+import { referenciasDelExtracto } from './libro-respaldo-banco.mjs'
 import { RUBRO_CARTERA } from './cash-flow-conectividad.mjs'
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
@@ -96,6 +97,9 @@ export function masDiasHabiles(serial, n = DIAS_ACREDITACION) {
 export function deDepositosRetenidos(filas = [], { ingresosDelLibro = [], fila0 = 4 } = {}) {
   const avisos = []
   const movimientos = []
+  // La identidad de cada fila, calculada sobre el extracto ENTERO: dos depósitos idénticos del mismo
+  // día son dos depósitos (ver `referenciasDelExtracto`).
+  const refs = referenciasDelExtracto(filas, { fila0 })
   for (let i = fila0 - 1; i < filas.length; i++) {
     const f = filas[i] ?? []
     const fecha = num(f[0])
@@ -133,7 +137,7 @@ export function deDepositosRetenidos(filas = [], { ingresosDelLibro = [], fila0 
       // bajo «Ingresos proyectados» y un REAL acá caería en «· Otros» (cash-flow-conectividad).
       estado: 'PROYECTADO',
       instrumento: 'echeq',
-      referenciaBanco: `${fecha}|${txt(f[1])}|${importe}`,
+      referenciaBanco: refs.get(i + 1),
       origen: { pestana: PESTANA_BANCO, fila: i + 1 },
     }))
     avisos.push(`libro-extractores-retenidos: ${pesos(importe)} depositados el ${isoDeSerial(fecha)} y `
