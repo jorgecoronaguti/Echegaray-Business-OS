@@ -31,6 +31,8 @@ const RUBROS_VISTA = {
     presupuesto_estado: 'leido', presupuesto_motivo: null, presupuestado_total: '83690841.56', presupuesto_moneda: 'ARS', presupuesto_estimado: false,
     presupuesto_fuente_nombre: 'Cotizacion Final.xlsm', presupuesto_fecha: new Date(2026, 6, 27), presupuesto_hh: null,
     presupuestado_mano_obra: '39353557.25', presupuestado_materiales: '44110169.31', presupuestado_subcontratistas: '0', presupuestado_otros: '227115',
+    // D1: el margen cotizado lo define la base (contratado − costo directo − gastos generales).
+    margen_cotizado: '45651162.69', gastos_generales_cotizados: '9898228.06',
     presupuesto_rubros: {
       mano_obra: { monto: 39353557.25, motivo: null, estimado: false, detalle: [] },
       materiales: { monto: 44110169.31, motivo: null, estimado: false, detalle: [] },
@@ -112,7 +114,8 @@ test('findObras lee obra_canonica sin pruebas y matchea por id, nombre sin acent
 
 test('obra con las dos patas: contratado en U$S según contrato, presupuesto por rubro con documento y fecha, consumido por rubro con queda/excedido', async () => {
   const c = await cuadroEconomico('quattropani')
-  assert.match(c, /Contratado: \*\*U\$S 63\.000\*\* = \$ 139\.240\.232 a TC 1\.510 · según contrato «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA\.docx»\s+_\(DATO\)_/)
+  // D6 (18/09/2026): 63.000 × 1.510 no son $ 139 M. Cada parte con su moneda.
+  assert.match(c, /Contratado: \*\*U\$S 63\.000\*\* de mano de obra \(= \$ 95\.130\.063 a TC 1\.510\) \+ \$ 44\.110\.169 de materiales en pesos = \$ 139\.240\.232 · según contrato «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA\.docx»\s+_\(DATO\)_/)
   assert.match(c, /Presupuestado \(costo directo\): \*\*\$ 83\.690\.842\*\* · «Cotizacion Final\.xlsm» del 27\/07\/2026\s+_\(DATO\)_/)
   assert.match(c, /– Mano de obra: \$ 39\.353\.557\n/)
   assert.match(c, /– Subcontratistas: \$ 0 \(la cotización no prevé subcontratos\)/)
@@ -125,7 +128,8 @@ test('obra con las dos patas: contratado en U$S según contrato, presupuesto por
   assert.match(c, /– Subcontratistas: \$ 3\.161\.385 · 6 comprobantes · Pedro Fredes \$ 3\.120\.000 → \*\*excedido \$ 3\.161\.385\*\* \(presupuesto \$ 0\)/)
   assert.match(c, /– Otros: \$ 203\.912 · 2 comprobantes · Combustible de obra \$ 203\.912 → queda \$ 23\.203 \(10\.2%\)/)
   // Cálculos con las dos patas completas (hay mano de obra).
-  assert.match(c, /Margen cotizado: \*\*\$ 55\.549\.391\*\* \(39\.9%\)\s+_\(CÁLCULO = contratado − presupuestado\)_/)
+  // D1 (18/09/2026): el margen cotizado es el de la base —con gastos generales— y coincide con la ficha.
+  assert.match(c, /Margen cotizado: \*\*\$ 45\.651\.163\*\* \(32\.8%\)\s+_\(DATO de la base = contratado − presupuestado − gastos generales \$ 9\.898\.228\)_/)
   assert.match(c, /Del presupuesto queda \$ 37\.434\.565 \(44\.7%\)\s+_\(CÁLCULO\)_/)
   assert.match(c, /Margen a la fecha \(parcial\): \*\*\$ 92\.983\.955\*\* \(66\.8%\)\s+_\(CÁLCULO = contratado − consumido\)_/)
   assert.match(c, /Adicionales \/ certificado \/ cobrado: sin registros ligados a esta obra _\(DESCONOCIDO\)_/)

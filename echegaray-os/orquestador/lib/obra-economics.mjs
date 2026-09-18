@@ -148,6 +148,8 @@ function armar(obra, fuentes) {
           referencia: r.contratado_referencia || null, fuente: r.contrato_fuente_nombre || null,
           cita: r.contrato_cita || null, tipoCambio: num(r.tipo_cambio),
           manoObra: num(r.contrato_mano_obra), materiales: num(r.contrato_materiales),
+          // D1 (18/09/2026): el margen cotizado lo define la base, una sola vez, y acá se lee.
+          margenCotizado: num(r.margen_cotizado), gastosGenerales: num(r.gastos_generales_cotizados),
         }
       : null,
     presup,
@@ -181,8 +183,14 @@ function lineaContratado(c) {
   const o = ORIGEN_CONTRATADO[c.origen] || { texto: c.origen ? `origen «${c.origen}»` : 'origen sin declarar', esPrecio: true }
   const partes = []
   if (c.usd != null) {
+    // D6 (18/09/2026): «U$S 63.000 = $ 139 M a TC 1.511» era falso: 63.000 × 1.511 son $ 95 M; el resto es
+    // el fondo de materiales, que el contrato pacta en pesos. Se dice cada parte con su moneda.
     partes.push(`**${usd(c.usd)}**`)
-    if (c.monto != null) partes.push(`= ${ars(c.monto)}${c.tipoCambio ? ` a TC ${fmtNum.format(c.tipoCambio)}` : ''}`)
+    if (c.manoObra != null && c.materiales != null && c.materiales > 0 && c.monto != null) {
+      partes.push(`de mano de obra (= ${ars(c.manoObra)}${c.tipoCambio ? ` a TC ${fmtNum.format(c.tipoCambio)}` : ''}) + ${ars(c.materiales)} de materiales en pesos = ${ars(c.monto)}`)
+    } else if (c.monto != null) {
+      partes.push(`= ${ars(c.monto)}${c.tipoCambio ? ` a TC ${fmtNum.format(c.tipoCambio)}` : ''}`)
+    }
   } else {
     partes.push(`**${ars(c.monto)}**`)
   }
@@ -268,9 +276,13 @@ function formatCuadro(d) {
   // Cálculos: sólo con las dos patas y sólo sobre un contratado que sea precio.
   const precio = contratado && contratado.esPrecio && contratado.monto != null ? contratado.monto : null
   const calc = []
-  if (precio != null && presupLeido && presup.total != null && presup.moneda !== 'USD') {
-    const margen = precio - presup.total
-    calc.push(`→ Margen cotizado: **${ars(margen)}** (${pct(precio ? margen / precio : null)})  _(CÁLCULO = contratado − presupuestado)_`)
+  // D1 (18/09/2026): el margen cotizado NO se calcula acá. Lo define `obra_economia_rubros.margen_cotizado`
+  // (contratado − costo directo presupuestado − gastos generales) y es la misma cifra que la ficha.
+  if (contratado && contratado.margenCotizado != null) {
+    const m = contratado.margenCotizado
+    calc.push(`→ Margen cotizado: **${ars(m)}** (${pct(precio ? m / precio : null)})  _(DATO de la base = contratado − presupuestado − gastos generales${contratado.gastosGenerales != null ? ` ${ars(contratado.gastosGenerales)}` : ''})_`)
+  } else if (precio != null && presupLeido && presup.total != null) {
+    calc.push('→ Margen cotizado: sin dato — la cotización no tiene gastos generales cargados en `presupuestos`.  _(DESCONOCIDO)_')
   }
   // Total consumido y margen a la fecha: SÓLO con mano de obra adentro. Sin jornales, «contratado −
   // compras» no es un margen y decirlo con dos decimales sería precisión falsa: se compara por rubro.
@@ -350,7 +362,9 @@ export async function desviosObras({ margenGapMin = 0.03, sobreCostoMin = 0.05, 
       const precio = d.contratado?.esPrecio && d.contratado.monto ? d.contratado.monto : null
       if (!d.enCurso && precio) {
         const margenReal = (precio - d.consumidoTotal) / precio
-        const margenCot = (precio - d.presup.total) / precio
+        // D1: el margen cotizado es el de la base (con gastos generales), no una resta local.
+        if (d.contratado?.margenCotizado == null) continue
+        const margenCot = d.contratado.margenCotizado / precio
         const gap = margenReal - margenCot
         if (gap < -margenGapMin) flags.push(`margen real ${pct(margenReal)} vs cotizado ${pct(margenCot)} (${pct(gap)})`)
       }
