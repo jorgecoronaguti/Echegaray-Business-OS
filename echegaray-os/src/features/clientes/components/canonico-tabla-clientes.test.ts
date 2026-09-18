@@ -184,7 +184,10 @@ test('el subtítulo de /clientes y el panel lateral suman la MISMA base que la c
 test('la suma viva se marca y la discrepancia declarada se dice (auditor final, 11/09/2026)', () => {
   const src = celdas()
   assert.match(src, /const viva = o\.contratoTotal === null && o\.origenContratado === ORIGEN_SUMA_VIVA/)
-  assert.match(src, /SUMA VIVA de lo que Cobranzas lleva registrado/)
+  // LA FRASE DE LA SUMA VIVA VIVE EN `fraseDeOrigenContratado` (18/09/2026), no acá adentro: Analíticas
+  // la necesita también y una frase escrita a mano en dos archivos se desalinea sola. `celdas()` sólo
+  // tiene que seguir LLAMANDO a la función única; el texto lo prueba economiaObras.test/contratadoFormulario.test.
+  assert.match(src, /const frase = fraseDeOrigenContratado\(o\.origenContratado\)/)
   assert.match(src, /Discrepancia declarada por la vista: \$\{o\.nota\}/)
   assert.match(src, /data-origen=\{viva \? 'suma-viva' : undefined\}/)
 })
