@@ -39,8 +39,28 @@ const PESTANA = 'Compras'
 const FILA0 = 4
 export const MARCA = 'ELIMINADO'
 
-/** Columnas (índice 0) que este bisturí lee; escribe sólo X, y M/N u O. */
+/** Columnas (índice 0) del layout VIEJO, sólo para las grillas sintéticas de los tests. */
 export const COL = { id: 0, fecha: 2, proveedor: 4, cliente: 9, neto: 12, iva: 13, total: 14, pagado: 19, estado: 23 }
+
+/**
+ * LAS COLUMNAS SE BUSCAN POR SU ENCABEZADO (18/09/2026). El 17/09 se insertó «Obra» en la L de Compras y
+ * todas las letras desde ahí corrieron una: con las fijas, este bisturí habría escrito ELIMINADO en
+ * «Estado pago» y puesto en cero el CONCEPTO en vez del importe. Cada rótulo tiene que aparecer UNA vez
+ * en la fila de encabezado; si falta o se repite, no se escribe nada.
+ */
+export const ROTULOS = Object.freeze({
+  id: /^ID$/i, fecha: /^Fecha factura$/i, proveedor: /^Proveedor$/i, cliente: /^Cliente \/ Asignaci[oó]n$/i,
+  neto: /^Importe$/i, iva: /^IVA$/i, total: /^Total$/i, pagado: /^Monto Pagado$/i, estado: /^Estado$/i,
+})
+export function columnasDe(encabezado = []) {
+  const col = {}
+  for (const [k, re] of Object.entries(ROTULOS)) {
+    const hits = encabezado.map((t, i) => (re.test(String(t ?? '').trim()) ? i : -1)).filter((i) => i >= 0)
+    if (hits.length !== 1) throw new Error(`Compras: el rótulo ${re} aparece ${hits.length} veces en el encabezado — no escribo nada`)
+    col[k] = hits[0]
+  }
+  return col
+}
 
 const cent = (x) => Math.round((Number(x) || 0) * 100)
 const norm = (x) => String(x ?? '').trim()
@@ -50,20 +70,20 @@ export const iso = (s) => (Number.isFinite(Number(s)) && Number(s) > 0
 const esFormula = (x) => typeof x === 'string' && x.startsWith('=')
 
 /** La huella de una fila del Sheet, en la misma forma que la trae la lista. */
-export function huella(f = []) {
-  return { id: Number(f[COL.id]) || null, fecha: iso(f[COL.fecha]), proveedor: norm(f[COL.proveedor]), cliente: norm(f[COL.cliente]), total: Number(f[COL.total]) || 0 }
+export function huella(f = [], col = COL) {
+  return { id: Number(f[col.id]) || null, fecha: iso(f[col.fecha]), proveedor: norm(f[col.proveedor]), cliente: norm(f[col.cliente]), total: Number(f[col.total]) || 0 }
 }
 const mismaHuella = (a, b) => a.id === (Number(b.id) || null) && a.fecha === iso(b.fecha) && a.proveedor === norm(b.proveedor)
   && a.cliente === norm(b.cliente) && cent(a.total) === cent(b.total)
 // Una fila que YA quedó marcada tiene el importe en cero, así que su huella ya no trae el importe
 // pedido: se la reconoce por el resto de la huella más la marca. Sin esto el bisturí no es
 // idempotente —la segunda corrida ve 28 «problemas» y se niega a terminar las 11 que faltaban—.
-const yaMarcada = (f, b) => {
-  const a = huella(f)
-  return norm(f[COL.estado]).toUpperCase() === MARCA && cent(a.total) === 0 && a.id === (Number(b.id) || null)
+const yaMarcada = (f, b, col = COL) => {
+  const a = huella(f, col)
+  return norm(f[col.estado]).toUpperCase() === MARCA && cent(a.total) === 0 && a.id === (Number(b.id) || null)
     && a.fecha === iso(b.fecha) && a.proveedor === norm(b.proveedor) && a.cliente === norm(b.cliente)
 }
-const coincide = (f, b) => mismaHuella(huella(f), b) || yaMarcada(f, b)
+const coincide = (f, b, col = COL) => mismaHuella(huella(f, col), b) || yaMarcada(f, b, col)
 
 /**
  * NÚCLEO PURO: qué celdas escribir por cada fila pedida.
@@ -74,13 +94,14 @@ const coincide = (f, b) => mismaHuella(huella(f), b) || yaMarcada(f, b)
  * @param {Array<{fila:number,id:number,fecha:string,proveedor:string,cliente:string,total:number}>} pedidas
  * @returns {{aEscribir:Array, yaEstaban:Array, problemas:Array}}
  */
-export function planDeEliminacion(valores = [], formulas = [], fila0 = FILA0, pedidas = []) {
+export function planDeEliminacion(valores = [], formulas = [], fila0 = FILA0, pedidas = [], COL_ = COL) {
+  const COL = COL_
   const aEscribir = []; const yaEstaban = []; const problemas = []
   for (const p of pedidas) {
     // Primero la fila declarada; si su huella no coincide, se busca la huella en toda la pestaña.
     let idx = p.fila - fila0
-    if (!(idx >= 0 && idx < valores.length && coincide(valores[idx], p))) {
-      const hits = valores.map((f, i) => (coincide(f, p) ? i : -1)).filter((i) => i >= 0)
+    if (!(idx >= 0 && idx < valores.length && coincide(valores[idx], p, COL))) {
+      const hits = valores.map((f, i) => (coincide(f, p, COL) ? i : -1)).filter((i) => i >= 0)
       if (hits.length !== 1) { problemas.push({ ...p, cuantas: hits.length, motivo: hits.length ? 'huella repetida' : 'la fila declarada no coincide y la huella no está' }); continue }
       idx = hits[0]
     }
@@ -100,7 +121,8 @@ export function planDeEliminacion(valores = [], formulas = [], fila0 = FILA0, pe
 }
 
 /** Las requests de batchUpdate para una fila del plan. */
-export function requestsDe(e, sheetId) {
+export function requestsDe(e, sheetId, COL_ = COL) {
+  const COL = COL_
   const celda = (col, value) => ({ updateCells: {
     range: { sheetId, startRowIndex: e.fila - 1, endRowIndex: e.fila, startColumnIndex: col, endColumnIndex: col + 1 },
     rows: [{ values: [value == null ? {} : { userEnteredValue: value }] }],
@@ -127,12 +149,16 @@ async function main() {
   const meta = await google.getSheetMeta(ID)
   const hoja = meta.find((h) => h.title === PESTANA)
   if (!hoja) throw new Error(`no encontré la pestaña "${PESTANA}"`)
-  const rango = `'${PESTANA}'!A${FILA0}:X${hoja.rows}`
+  const cols = columnasDe((await google.readSheetValues(ID, `'${PESTANA}'!A${FILA0 - 1}:AO${FILA0 - 1}`))[0] ?? [])
+  const ultima = Math.max(...Object.values(cols))
+  const letra = (i) => (i > 25 ? String.fromCharCode(64 + Math.floor(i / 26)) : '') + String.fromCharCode(65 + (i % 26))
+  console.log(`columnas por encabezado: ${Object.entries(cols).map(([k, i]) => `${k}=${letra(i)}`).join(' ')}`)
+  const rango = `'${PESTANA}'!A${FILA0}:${letra(ultima)}${hoja.rows}`
   const [valores, formulas] = await Promise.all([
     google.readSheetValues(ID, rango, { render: 'UNFORMATTED_VALUE' }),
     google.readSheetValues(ID, rango, { render: 'FORMULA' }),
   ])
-  const { aEscribir, yaEstaban, problemas } = planDeEliminacion(valores, formulas, FILA0, pedidas)
+  const { aEscribir, yaEstaban, problemas } = planDeEliminacion(valores, formulas, FILA0, pedidas, cols)
 
   console.log(`«${PESTANA}» · ${pedidas.length} fila(s) pedidas · ${aEscribir.length} a marcar · ${yaEstaban.length} ya marcadas · ${problemas.length} con problema`)
   for (const p of problemas) console.error(`  ✖ fila ${p.fila} · ${p.proveedor} ${p.fecha} ${plata(p.total)}: ${p.motivo} (${p.cuantas})`)
@@ -148,7 +174,7 @@ async function main() {
   writeFileSync(respaldo, JSON.stringify({ archivo: ID, pestana: PESTANA, cuando: new Date().toISOString(), filas: aEscribir }, null, 1))
   console.log(`  respaldo de lo que piso: ${respaldo}`)
 
-  const r = await google.spreadsheetBatchUpdate(ID, aEscribir.flatMap((e) => requestsDe(e, hoja.sheetId)))
+  const r = await google.spreadsheetBatchUpdate(ID, aEscribir.flatMap((e) => requestsDe(e, hoja.sheetId, cols)))
   if (r?.congelado) return console.log('🧊 el freno de mano está puesto: no escribí nada.')
   if (r?.protegido) return console.log('🔒 la guarda descartó todo: la pestaña está candada.')
 
@@ -157,9 +183,9 @@ async function main() {
   let mal = 0
   for (const e of aEscribir) {
     const f = despues[e.fila - FILA0] ?? []
-    const ok = norm(f[COL.estado]) === MARCA && cent(f[COL.total]) === 0
+    const ok = norm(f[cols.estado]) === MARCA && cent(f[cols.total]) === 0
     if (ok) console.log(`  ✓ fila ${e.fila} · X = ${MARCA} · O = 0`)
-    else { mal++; console.error(`  ✖ fila ${e.fila} · X = "${norm(f[COL.estado])}" · O = ${f[COL.total]}`) }
+    else { mal++; console.error(`  ✖ fila ${e.fila} · Estado = "${norm(f[cols.estado])}" · Total = ${f[cols.total]}`) }
   }
   if (mal) { console.error('\n✖ el archivo no dice lo que escribí.'); process.exit(1) }
   console.log(`\n✓ ${aEscribir.length} fila(s) por ${plata(total)} marcadas ${MARCA}. Reversible con el respaldo.`)

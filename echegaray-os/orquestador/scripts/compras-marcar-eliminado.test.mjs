@@ -58,3 +58,16 @@ test('las requests: X siempre; O→0 si es número, M→0 (y N→0 si tenía nú
 test('la huella lee fecha serial como ISO y el id como número', () => {
   assert.deepEqual(huella(V[0]), { id: 1, fecha: '2026-01-10', proveedor: 'Sueldos', cliente: 'Administracion', total: 4500000 })
 })
+
+test('columnas por encabezado: con «Obra» insertada en la L (17/09) el importe es N, el total P, Monto Pagado U y Estado Y', async () => {
+  const { columnasDe } = await import('./compras-marcar-eliminado.mjs')
+  // Encabezado REAL de Compras, fila 3, leído el 18/09/2026.
+  const cab = ['ID', 'Categoría', 'Fecha factura', 'Fecha factura (mes)', 'Proveedor', 'Modalidad', 'Tipo', 'N° Comprobante',
+    'Unidad de Negocio', 'Cliente / Asignación', 'Detalles / Obra', 'Obra', 'Concepto', 'Importe', 'IVA', 'Total', 'Tipo pago',
+    'Fecha prevista de pago (día)', 'Fecha prevista de pago (mes)', 'Total o Parcial', 'Monto Pagado', 'Monto Parcial 1',
+    'Fecha prevista de pago 2', 'Monto Parcial 2', 'Estado', 'Tipo de Costo', 'Estado pago', 'Estado Carga']
+  assert.deepEqual(columnasDe(cab), { id: 0, fecha: 2, proveedor: 4, cliente: 9, neto: 13, iva: 14, total: 15, pagado: 20, estado: 24 })
+  // Un rótulo que falta o se repite no deja escribir nada.
+  assert.throws(() => columnasDe(cab.filter((c) => c !== 'Monto Pagado')), /Monto Pagado/)
+  assert.throws(() => columnasDe([...cab, 'Estado']), /Estado/)
+})
