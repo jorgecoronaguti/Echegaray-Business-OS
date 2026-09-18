@@ -29,8 +29,19 @@
 //     fila. Si la fila de abajo trae dos o más rótulos es una TABLA (encabezados + filas); si no, es una
 //     LISTA (alertas, acciones).
 //
-// Si falta un ancla, `leerCaja` TIRA: un espejo a medio leer no se publica (la app sigue mostrando la
-// última foto buena, con su hora, y el error queda a la vista).
+// ═══ A MEDIAS NO SE PUBLICA (auditoría 18/09/2026) ═══
+//
+// `leerCaja` TIRA —y la app sigue mostrando la última foto buena, con su hora y el error a la vista—
+// cuando falta cualquiera de las cuatro secciones que la pestaña tiene (`1 - DISTRIBUCIÓN` con guión
+// hacía desaparecer la sección 1 en silencio), cuando la numeración no es 1..N seguida, cuando una
+// TABLA (cuentas, vencimientos) pierde su fila de encabezados o una LISTA (alertas, acciones) no lo es,
+// cuando una tarjeta queda sin valor o sin su renglón de contexto, y cuando cualquier celda publicada
+// es un error de cálculo (`#REF!`, `#VALUE!`…: por `errorValue` de la API y también por su texto).
+// La forma de cada sección se DECLARA (`SECCIONES`), no se adivina por cuántas celdas trae la fila de
+// abajo: una alerta con dos celdas no convierte la lista en tabla.
+//
+// La huella es del CONTENIDO —rótulos, textos, números, gráficos, tipo de cambio— y no de los números
+// de fila: una fila en blanco insertada no es una foto nueva.
 //
 // Núcleo PURO: entra la grilla ya leída (`readSheetGrid`), sale la foto. Se prueba sin Google ni Postgres.
 import { createHash } from 'node:crypto'
@@ -52,6 +63,18 @@ export function celda(c) {
   const numero = typeof c?.numero === 'number' && Number.isFinite(c.numero) ? c.numero : null
   const fecha = c?.formato === 'DATE' || c?.formato === 'DATE_TIME' ? serialAIso(numero) : null
   return { texto, numero, fecha }
+}
+
+/** Los textos con que Sheets muestra un error de cálculo, por si la lectura no trae `errorValue`. */
+const TEXTO_DE_ERROR = /^#(REF|VALUE|N\/A|DIV\/0|NAME\?|NUM|ERROR|NULL)!?$/i
+
+/** ¿La celda es un error de cálculo? Por lo que declara la API o por lo que se ve. */
+export const esError = (c) => Boolean(c?.error) || TEXTO_DE_ERROR.test(txt(c))
+
+/** Tira si alguna celda publicada es un error: un `#REF!` con cara de dato es peor que no publicar. */
+function exigirSinErrores(celdas, donde) {
+  const malas = celdas.filter(({ c }) => esError(c))
+  if (malas.length) throw new Error(`CAJA: ${donde} tiene ${malas.length} celda(s) con error de cálculo (${malas.map(({ c }) => c?.error ?? txt(c)).join(', ')}) — no publico`)
 }
 
 const slug = (s) => norm(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'fila'
@@ -77,10 +100,28 @@ export function leerPortada(filas) {
   if (!tarjetas.every((t) => t.valor.texto !== '')) {
     throw new Error(`CAJA: una tarjeta sin valor (${tarjetas.filter((t) => t.valor.texto === '').map((t) => t.rotulo).join(', ')})`)
   }
+  // EL RENGLÓN DE CONTEXTO ES PARTE DE LA TARJETA («al 18/09 · ▲ $0,8M…»): sin él, el número no dice a
+  // qué fecha es. Si alguien borró la fila, no se publica una portada muda.
+  if (!tarjetas.every((t) => t.contexto !== '')) {
+    throw new Error(`CAJA: una tarjeta sin su renglón de contexto (${tarjetas.filter((t) => t.contexto === '').map((t) => t.rotulo).join(', ')})`)
+  }
+  exigirSinErrores(llenas(filas[i]).flatMap(({ col }) => [{ c: filas[i + 1]?.[col] }, { c: filas[i + 2]?.[col] }]), 'la portada')
   return { titulo, tarjetas, fila: i + 1 }
 }
 
-/** LAS SECCIONES «N · TÍTULO», con su forma (tabla o lista) y sus filas, tal cual. */
+/**
+ * LAS SECCIONES QUE LA PESTAÑA TIENE, con su forma declarada. Se buscan por el texto del título (sin
+ * el número) y TODAS tienen que estar: la pestaña la genera `scripts/caja-pestana.mjs` y no cambia de
+ * forma sin que cambie este contrato.
+ */
+export const SECCIONES = Object.freeze([
+  { titulo: /DISTRIBUCION POR CUENTAS/, forma: 'tabla' },
+  { titulo: /PROXIMOS VENCIMIENTOS/, forma: 'tabla' },
+  { titulo: /ALERTAS/, forma: 'lista' },
+  { titulo: /ACCIONES/, forma: 'lista' },
+])
+
+/** LAS SECCIONES «N · TÍTULO», con la forma que el contrato declara y sus filas, tal cual. */
 export function leerSecciones(filas, desdeFila = 0) {
   const anclas = []
   filas.forEach((f, i) => {
@@ -91,31 +132,44 @@ export function leerSecciones(filas, desdeFila = 0) {
     }
   })
   if (!anclas.length) throw new Error('CAJA: no encuentro ninguna sección «N · TÍTULO»')
-  return anclas.map((a) => {
+  // TODAS LAS ESPERADAS, Y NUMERADAS 1..N SEGUIDAS. «1 - DISTRIBUCIÓN» (guión) no es un ancla: sin esta
+  // exigencia la sección 1 desaparecía del espejo sin que nadie lo dijera.
+  const faltan = SECCIONES.filter((e) => !anclas.some((a) => e.titulo.test(norm(a.titulo))))
+  if (faltan.length) throw new Error(`CAJA: falta(n) ${faltan.length} sección(es) esperada(s): ${faltan.map((e) => e.titulo.source).join(', ')} — no publico`)
+  const numeros = anclas.map((a) => a.numero).sort((x, y) => x - y)
+  if (numeros.some((n, k) => n !== k + 1)) throw new Error(`CAJA: las secciones no van 1..N seguidas (${numeros.join(', ')}) — no publico`)
+  return anclas.sort((x, y) => x.numero - y.numero).map((a) => {
+    const esperada = SECCIONES.find((e) => e.titulo.test(norm(a.titulo)))
     const vecina = anclas.filter((b) => b.fila === a.fila && b.col > a.col).sort((x, y) => x.col - y.col)[0]
     const hasta = vecina ? vecina.col : Infinity
     // La sección termina donde empieza la próxima que ocupa sus columnas (más abajo), o al final.
     const fin = anclas.filter((b) => b.fila > a.fila && b.col >= a.col && b.col < hasta).map((b) => b.fila).sort((x, y) => x - y)[0] ?? filas.length
-    const debajo = llenas(filas[a.fila + 1], a.col, hasta)
     const base = { clave: `seccion-${a.numero}`, numero: a.numero, titulo: a.titulo }
-    if (debajo.length >= 2) {
+    if (esperada?.forma === 'tabla') {
+      const debajo = llenas(filas[a.fila + 1], a.col, hasta)
+      if (debajo.length < 2) throw new Error(`CAJA: la tabla «${a.titulo}» perdió su fila de encabezados — no publico`)
       const cols = debajo.map((d) => d.col)
       const encabezados = debajo.map((d) => txt(d.c))
       const vistas = new Map()
       const filasTabla = []
       for (let r = a.fila + 2; r < fin; r++) {
-        const valores = cols.map((j) => celda(filas[r]?.[j]))
+        const crudas = cols.map((j) => filas[r]?.[j])
+        const valores = crudas.map(celda)
         if (valores.every((v) => v.texto === '')) continue
+        exigirSinErrores(crudas.map((c) => ({ c })), `la tabla «${a.titulo}», fila ${r + 1}`)
         const k = slug(valores[0].texto)
         const n = (vistas.get(k) ?? 0) + 1
         vistas.set(k, n)
         filasTabla.push({ clave: n > 1 ? `${k}-${n}` : k, fila: r + 1, celdas: valores })
       }
+      if (!filasTabla.length) throw new Error(`CAJA: la tabla «${a.titulo}» no tiene filas — no publico`)
       return { ...base, forma: 'tabla', encabezados, filas: filasTabla }
     }
     const items = []
     for (let r = a.fila + 1; r < fin; r++) {
-      for (const { c } of llenas(filas[r], a.col, hasta)) items.push({ fila: r + 1, texto: txt(c) })
+      const l = llenas(filas[r], a.col, hasta)
+      exigirSinErrores(l, `la lista «${a.titulo}», fila ${r + 1}`)
+      for (const { c } of l) items.push({ fila: r + 1, texto: txt(c) })
     }
     return { ...base, forma: 'lista', items }
   })
@@ -220,8 +274,24 @@ export function leerCaja({ grid, graficos = [], tipoCambioUsd = null }) {
   const secciones = leerSecciones(filas, portada.fila)
   const tc = typeof tipoCambioUsd === 'number' && Number.isFinite(tipoCambioUsd) ? tipoCambioUsd : null
   const contenido = { portada, secciones, graficos, tipo_cambio_usd: tc }
-  const huella = createHash('sha256').update(JSON.stringify(contenido)).digest('hex')
-  return { ...contenido, grilla: grillaPlana(filas), huella }
+  return { ...contenido, grilla: grillaPlana(filas), huella: huellaDe(contenido) }
+}
+
+/**
+ * LA HUELLA DEL CONTENIDO, sin números de fila ni de gráfico-ancla: lo que se ve (rótulos, textos,
+ * números, series, tipo de cambio). Una fila en blanco insertada arriba no es una foto nueva; un peso
+ * distinto en cualquier celda, un gráfico con otro valor o el dólar de otro día, sí.
+ */
+export function huellaDe({ portada, secciones, graficos, tipo_cambio_usd }) {
+  const c = (x) => [x.texto, x.numero, x.fecha]
+  const visible = {
+    portada: [portada.titulo, portada.tarjetas.map((t) => [t.rotulo, c(t.valor), t.contexto])],
+    secciones: secciones.map((s) => [s.numero, s.titulo, s.forma,
+      s.forma === 'tabla' ? [s.encabezados, s.filas.map((f) => f.celdas.map(c))] : s.items.map((i) => i.texto)]),
+    graficos: graficos.map((g) => [g.id, g.titulo, g.subtitulo, g.tipo, g.apilado, g.dominio, g.series.map((x) => [x.nombre, x.tipo, x.eje, x.punteada, x.valores])]),
+    tipo_cambio_usd,
+  }
+  return createHash('sha256').update(JSON.stringify(visible)).digest('hex')
 }
 
 /**

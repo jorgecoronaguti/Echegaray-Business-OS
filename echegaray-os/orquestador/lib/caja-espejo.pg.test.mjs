@@ -86,7 +86,7 @@ test('lo leen Dirección y Administración; jefe de obra, campo y anónimo no; n
   })
 })
 
-test('lo percibido es lo PAGADO en su fecha: mes a mes cierra con Monto Pagado + Monto Parcial 2 de Compras (Δ 0), y lo sin desglose no se suma', { skip: !hayBase && 'sin base' }, async () => {
+test('lo percibido es lo PAGADO en su fecha: mes a mes cierra con Monto Pagado + Monto Parcial 2 de compra_sheet (sin join; el Δ es sólo lo declarado fuera de costos_obra), y lo sin desglose no se suma', { skip: !hayBase && 'sin base' }, async () => {
   await enEnsayo(async (c) => {
     // COMO DIRECCIÓN: sin el bypass de `auth.uid() is null`, la vista no le contesta a nadie sin rol económico.
     const ids = Object.fromEntries((await c.query('select distinct on (rol) rol, id from public.perfiles order by rol')).rows.map((r) => [r.rol, r.id]))
@@ -95,26 +95,41 @@ test('lo percibido es lo PAGADO en su fecha: mes a mes cierra con Monto Pagado +
     const { rows } = await c.query(`
       with sheet as (
         select to_char(cs.fecha_caja, 'YYYY-MM') mes, sum(cs.monto_pagado) monto from public.compra_sheet cs
-          join public.costos_obra co on co.referencia_externa = coalesce(cs.sheet_id, cs.fila)::text and co.origen = 'compras_sheet'
          where not coalesce(cs.anulada, false) and coalesce(cs.monto_pagado, 0) <> 0 group by 1
         union all
         select to_char(cs.fecha_prevista_2, 'YYYY-MM'), sum(cs.monto_parcial_2) from public.compra_sheet cs
-          join public.costos_obra co on co.referencia_externa = coalesce(cs.sheet_id, cs.fila)::text and co.origen = 'compras_sheet'
          where not coalesce(cs.anulada, false) and coalesce(cs.monto_parcial_2, 0) <> 0 group by 1
-      ), s as (select mes, sum(monto) monto from sheet group by 1),
+      ),
+      -- LO QUE COMPRAS DICE PAGADO Y NO ESTÁ EN costos_obra (la vista lo pierde en el join): se mide aparte
+      -- y se declara, en vez de sacarlo de los dos lados y que el Δ 0 lo esconda.
+      fuera as (
+        select to_char(case when k = 1 then cs.fecha_caja else cs.fecha_prevista_2 end, 'YYYY-MM') mes,
+               sum(case when k = 1 then cs.monto_pagado else cs.monto_parcial_2 end) monto
+          from public.compra_sheet cs cross join (values (1), (2)) as x(k)
+         where not coalesce(cs.anulada, false)
+           and coalesce(case when k = 1 then cs.monto_pagado else cs.monto_parcial_2 end, 0) <> 0
+           and not exists (select 1 from public.costos_obra co where co.origen = 'compras_sheet' and co.referencia_externa = coalesce(cs.sheet_id, cs.fila)::text)
+         group by 1),
+      s as (select mes, sum(monto) monto from sheet group by 1),
       v as (select to_char(fecha_pago, 'YYYY-MM') mes, sum(monto) filter (where naturaleza = 'pago') pago,
                    sum(total) filter (where naturaleza = 'sin_desglose') sin_desglose, count(*) filter (where naturaleza = 'sin_desglose')::int n_sd,
                    sum(monto) filter (where naturaleza = 'pendiente') pendiente
               from public.caja_egreso_percibido group by 1)
       select m.mes, s.monto::bigint sheet_pagado, v.pago::bigint vista_pago, (coalesce(v.pago,0) - coalesce(s.monto,0))::bigint delta,
-             v.sin_desglose::bigint sin_desglose, v.n_sd, v.pendiente::bigint pendiente
+             v.sin_desglose::bigint sin_desglose, v.n_sd, v.pendiente::bigint pendiente,
+             coalesce(fu.monto, 0)::numeric::float8 fuera,
+             (coalesce(v.pago,0) - coalesce(s.monto,0) + coalesce(fu.monto,0))::numeric::float8 delta_explicado
         from (select mes from s union select mes from v) m
         left join s on s.mes is not distinct from m.mes
-        left join v on v.mes is not distinct from m.mes order by 1`)
+        left join v on v.mes is not distinct from m.mes
+        left join fuera fu on fu.mes is not distinct from m.mes order by 1`)
     assert.ok(rows.length >= 9, `sólo ${rows.length} meses`)
-    console.log('Δ percibido por mes (sheet Monto Pagado+Parcial 2 vs vista pago):')
-    for (const r of rows) console.log(`  ${r.mes ?? 'sin fecha'}\tsheet ${r.sheet_pagado}\tvista ${r.vista_pago}\tΔ ${r.delta}\tsin desglose ${r.sin_desglose ?? 0} (${r.n_sd})\tpendiente ${r.pendiente ?? 0}`)
-    for (const r of rows) assert.equal(Number(r.delta), 0, `mes ${r.mes}`)
+    console.log('Δ percibido por mes (compra_sheet Monto Pagado+Parcial 2, SIN join, vs vista pago):')
+    for (const r of rows) console.log(`  ${r.mes ?? 'sin fecha'}\tsheet ${r.sheet_pagado}\tvista ${r.vista_pago}\tΔ ${r.delta}\tfuera de costos_obra ${r.fuera}\tsin desglose ${r.sin_desglose ?? 0} (${r.n_sd})\tpendiente ${r.pendiente ?? 0}`)
+    // Todo el Δ es lo que no llegó a costos_obra, y eso no puede ser plata que se note (≤ $ 1.000 en total).
+    for (const r of rows) assert.ok(Math.abs(r.delta_explicado) < 0.01, `mes ${r.mes}: Δ ${r.delta} no lo explica lo que falta en costos_obra (${r.fuera})`)
+    const fuera = rows.reduce((a, r) => a + Math.abs(r.fuera), 0)
+    assert.ok(fuera <= 1000, `$ ${fuera} pagados en Compras no llegan a costos_obra: la vista los pierde`)
     // Los casos de la auditoría: cada pago en su fecha, y lo «Pagado» sin monto no se asume.
     const f = async (fila) => (await c.query('select naturaleza, fecha_pago::text f, monto::numeric::float8 m from public.caja_egreso_percibido where fila = $1 order by f', [fila])).rows
     assert.deepEqual(await f(492), [{ naturaleza: 'pago', f: '2026-06-19', m: 1000000 }, { naturaleza: 'pago', f: '2026-07-18', m: 450000 }])
