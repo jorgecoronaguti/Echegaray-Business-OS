@@ -28,6 +28,8 @@ import { leerEconomiaRubros } from './presupuesto'
 import { leerConsumoMensual, leerConsumoPorRubro, ritmoPorObra, type MesDeConsumo, type Ritmo } from './consumo'
 import { leerTipoCosto, type TipoCostoDeObra } from './tipoCosto'
 import { leerFotoCaja, type LecturaCaja } from './cajaSheet'
+import { getDeuda } from '@/features/administracion/services/deudaProveedoresService'
+import { totalesDeuda, type TotalesDeuda } from '@/features/administracion/services/deudaProveedores'
 
 export interface DatosAnaliticas {
   hoy: string
@@ -44,6 +46,12 @@ export interface DatosAnaliticas {
   egresos: unknown[] | null
   /** Vista Caja: la pestaña CAJA leída de su espejo (`caja_sheet_vigente`). */
   cajaSheet: LecturaCaja
+  /**
+   * Vista Caja: lo que se les debe HOY a los proveedores, con la MISMA lectura y la misma cuenta que
+   * «A quién le debo» en Proveedores (`getDeuda` + `totalesDeuda`). El dueño (18/09/2026): la deuda de
+   * Caja es la de Proveedores, no la tarjeta de la pestaña. `null` = no se pudo leer (se dice, no se inventa).
+   */
+  deudaProveedores: (TotalesDeuda & { truncado: boolean }) | null
   nomina: unknown[] | null
   quincenas: unknown[] | null
   personas: unknown[] | null
@@ -125,7 +133,7 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     if (rango.hasta) r = r.lte(col, rango.hasta)
     return r
   }
-  const [egresos, nomina, quincenas, personas, documentos, cajaSheet] = await Promise.all([
+  const [egresos, nomina, quincenas, personas, documentos, cajaSheet, deuda] = await Promise.all([
     // LO QUE SALIÓ, CADA PAGO EN SU FECHA (dueño, 18/09/2026: criterio percibido, filtrable por fechas). Lo
     // pendiente y lo «Pagado» sin monto viajan también: se cuentan aparte. PAGINADO (D6): ~960 filas el 18/09.
     f.vista === 'caja'
@@ -151,10 +159,12 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
       })
       : null,
     f.vista === 'caja' ? leerCajaSheet(supabase) : Promise.resolve<LecturaCaja>({ estado: 'no_leida' }),
+    f.vista === 'caja' ? getDeuda(supabase) : null,
   ])
   return {
     hoy, rango, cartera, obras, sinObra, sinObraDetalle: sinObraCruda ?? new Map(),
     cajaSheet,
+    deudaProveedores: deuda?.data ? { ...totalesDeuda(deuda.data.filas), truncado: deuda.data.truncado } : null,
     cuentaCorriente: Array.isArray(raiz?.cuenta_corriente) ? raiz.cuenta_corriente : null,
     egresos: egresos?.data ?? null,
     nomina: nomina?.data ?? null,

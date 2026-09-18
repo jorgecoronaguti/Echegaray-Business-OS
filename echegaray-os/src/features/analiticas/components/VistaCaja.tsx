@@ -16,13 +16,15 @@
 // que no se alinea.
 import { millones, pctEntero } from '../services/formato'
 import { caja, type Caja } from '../services/empresa'
+import type { TotalesDeuda } from '@/features/administracion/services/deudaProveedores'
 import { egresosPercibidos, frescura, horaSanJuan, type GraficoCaja, type LecturaCaja, type SeccionCaja, type SerieCaja } from '../services/cajaSheet'
 import { apilar, disposicion, escala, fechaCorta, GEOMETRIA, paneles, rotuloEje, rotulosDelEje, rotuloVentana, textoCelda, xDe } from '../services/graficoCaja'
 import { ancho, Cabecera, Cifras, ENCABEZADO, Seccion, SinLectura } from './Piezas'
 import { Columnas } from './VistasEmpresa'
 
-export function VistaCaja({ lectura, egresos, periodo, rango }: {
+export function VistaCaja({ lectura, egresos, periodo, rango, deuda = null }: {
   lectura: LecturaCaja
+  deuda?: (TotalesDeuda & { truncado: boolean }) | null
   egresos: unknown[] | null
   periodo: string
   rango: { desde: string | null; hasta: string | null }
@@ -54,7 +56,7 @@ export function VistaCaja({ lectura, egresos, periodo, rango }: {
           <span className="block" data-testid="caja-a-la-fecha">posición a la fecha que declara la pestaña · el período de arriba no la mueve: gobierna sólo «Lo que se está gastando»</span>
           {aviso ? <span className="block text-warn" data-testid="caja-aviso">▲ {aviso}</span> : null}
         </>}
-        cifras={foto.portada.tarjetas.map((t) => ({ rotulo: t.rotulo, valor: t.valor.texto || null, falta: '—', nota: t.contexto || undefined }))} />
+        cifras={foto.portada.tarjetas.map((t) => (/deuda/i.test(t.rotulo) ? tarjetaDeuda(deuda) : { rotulo: t.rotulo, valor: t.valor.texto || null, falta: '—', nota: t.contexto || undefined }))} />
       {tablas.map((s) => (
         <Seccion key={s.clave} titulo={s.titulo} arriba="pt-8">
           <Tabla s={s} />
@@ -88,6 +90,24 @@ export function VistaCaja({ lectura, egresos, periodo, rango }: {
 const partirRotulo = (t: string): { nombre: string; marca: string | null } => {
   const [nombre, marca] = t.split('‖').map((x) => x.trim())
   return { nombre, marca: marca || null }
+}
+
+const pesos = (n: number): string => `$ ${Math.round(n).toLocaleString('es-AR')}`
+
+/**
+ * LA DEUDA ES LA DE PROVEEDORES (dueño, 18/09/2026): «lo que dice que se le debe actualmente, sacado de
+ * Supabase, que es lo que sale en Proveedores». Reemplaza la tarjeta de deuda de la pestaña en su mismo
+ * lugar; el resto de las tarjetas sigue siendo el texto del Sheet. Sin lectura, lo dice: no cae a la
+ * cifra del Sheet, porque serían dos definiciones de la misma deuda.
+ */
+export function tarjetaDeuda(d: (TotalesDeuda & { truncado: boolean }) | null) {
+  if (!d) return { rotulo: 'Deuda con proveedores', valor: null, falta: 'no se pudo leer Proveedores', nota: undefined }
+  return {
+    rotulo: 'Deuda con proveedores',
+    valor: pesos(d.total),
+    falta: '—',
+    nota: `vencido ${pesos(d.vencido)} · por vencer ${pesos(d.porVencer)}${d.sinFecha ? ` · sin fecha ${pesos(d.sinFecha)}` : ''} · ${d.proveedores} proveedores · la de Proveedores${d.truncado ? ' · ▲ lectura recortada' : ''}`,
+  }
 }
 
 function Tabla({ s }: { s: Extract<SeccionCaja, { forma: 'tabla' }> }) {

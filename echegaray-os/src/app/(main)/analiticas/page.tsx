@@ -67,7 +67,7 @@ function Vista({ filtros, d, periodo }: {
     case 'obras': return <VistaObras obras={d.obras} obra={d.obraElegida} filtros={filtros} consumo={d.consumoMensual} ritmo={d.ritmo}
       sinIva={d.obraElegida && d.sinIvaDiscriminado.size ? (d.sinIvaDiscriminado.get(d.obraElegida.id) ?? 0) : null}
       tipoCosto={d.obraElegida ? (d.tipoCosto?.get(d.obraElegida.id) ?? null) : null} />
-    case 'caja': return <VistaCaja lectura={d.cajaSheet} egresos={d.egresos} periodo={periodo} rango={d.rango} />
+    case 'caja': return <VistaCaja lectura={d.cajaSheet} egresos={d.egresos} periodo={periodo} rango={d.rango} deuda={d.deudaProveedores} />
     case 'nomina': return <VistaNomina filas={d.nomina} quincenas={d.quincenas} personas={d.personas} rango={d.rango} periodo={periodo} hoy={d.hoy}
       enObras={d.legible ? manoObraEnObras(d.cartera) : null} />
     case 'cobranza': return <VistaCobranza cuenta={d.cuentaCorriente} documentos={d.documentos} hoy={d.hoy} periodo={periodo} />
