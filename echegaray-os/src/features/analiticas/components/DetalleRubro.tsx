@@ -35,9 +35,10 @@ export function DetalleRubro({ rotulo, definicion, presupuesto, consumo, fuente,
   const grupos = consumo?.detalle ?? []
   const fueraTotal = fuera.reduce((a, d) => a + d.importe, 0)
   return (
-    <details open={abierto || undefined} className="group rounded-control border border-line bg-surface-quiet/40" data-testid={`detalle-${rotulo}`}>
+    <details open={abierto || undefined} className="group min-w-0 rounded-control border border-line bg-surface-quiet/40" data-testid={`detalle-${rotulo}`}>
       <summary className="cursor-pointer list-none px-3.5 py-3">
-        <div className="flex items-baseline justify-between gap-3">
+        {/* 390 px (18/09/2026): las cifras en una sola línea empujaban scroll horizontal; parten renglón. */}
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
           <span className="text-[13px] font-semibold text-ink">
             <span className="mr-1 inline-block text-faint transition-transform group-open:rotate-90">›</span>{rotulo}
           </span>

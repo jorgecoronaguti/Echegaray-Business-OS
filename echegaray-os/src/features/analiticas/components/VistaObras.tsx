@@ -89,7 +89,7 @@ export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva, tipoC
           pidió ver era justamente eso. Acá entra a dos columnas, con el mismo dibujo que el Resumen. */}
       <Seccion titulo="Qué contiene cada rubro" filo
         aclaracion="a la izquierda, los insumos del documento de cotización; a la derecha, de dónde sale el gasto (familias de Compras, proveedores, quincenas)">
-        <div className="grid gap-4 lg:grid-cols-2" data-testid="contenido-rubros-obra">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2" data-testid="contenido-rubros-obra">
           {ITEMS.filter((i) => i.clave !== 'horas').map((i) => (
             <DetalleRubro key={i.clave} rotulo={i.rotulo} definicion={definicionDe(i.clave)}
               presupuesto={obra.presupuestoDetalle?.[i.clave as Exclude<Item, 'horas'>] ?? null}

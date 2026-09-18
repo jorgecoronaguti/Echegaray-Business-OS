@@ -376,11 +376,12 @@ function Huecos({ obras, sinPres }: { obras: ObraAnalitica[]; sinPres: ObraAnali
 
 function ContenidoRubros({ contenido }: { contenido: ContenidoDeRubro[] }) {
   return (
-    <div className="grid gap-4 lg:grid-cols-2" data-testid="contenido-rubros">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2" data-testid="contenido-rubros">
       {contenido.map((c) => (
-        <details key={c.rubro} className="group rounded-control border border-line" data-testid={`contenido-${c.rubro}`}>
+        <details key={c.rubro} className="group min-w-0 rounded-control border border-line" data-testid={`contenido-${c.rubro}`}>
           <summary className="cursor-pointer list-none px-3.5 py-3">
-            <div className="flex items-baseline justify-between gap-3">
+            {/* 390 px (18/09/2026): las cifras en una sola línea empujaban 30 px de scroll horizontal; parten renglón. */}
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
               <span className="text-[13px] font-semibold text-ink"><span className="mr-1 inline-block text-faint transition-transform group-open:rotate-90">›</span>{c.rotulo}</span>
               <span className="whitespace-nowrap text-[11.5px] tabular-nums text-muted">
                 presupuestado {millones(c.presupuestado) ?? <span className="text-faint">—</span>} · consumido {millones(c.consumido) ?? <span className="text-faint">—</span>}
