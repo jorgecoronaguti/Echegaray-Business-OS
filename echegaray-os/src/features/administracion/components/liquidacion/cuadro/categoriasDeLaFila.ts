@@ -22,7 +22,7 @@ export interface EntradaDeCategorias {
    * sobre algo ya pagado— y por eso decía «Recibo: sin recibo todavía · —/h» para gente a la que se le liquidaron
    * horas × $/h. Con el sello dice su $/h y de cuándo es.
    */
-  sello?: { valorHora: number | null; pisoDesde: string | null; hasta: string } | null
+  sello?: { valorHora: number | null; pisoDesde: string | null; hasta: string; conLinea?: boolean } | null
 }
 
 export interface CategoriasDeLaFila {
@@ -77,6 +77,15 @@ export function categoriasDeLaFila(e: EntradaDeCategorias): CategoriasDeLaFila {
           `La categoría no quedó sellada al cerrar: «${plat}» es la del legajo de HOY.`,
         ].join('\n'),
         coinciden: e.pisoPlataforma != null && Math.round(e.sello.valorHora) === Math.round(e.pisoPlataforma),
+      }
+    }
+    // CERRADA Y SIN FOTO (18/09/2026): no hay recibo «todavía» que esperar; hay una quincena sin línea sellada.
+    if (e.sello && e.sello.conLinea === false) {
+      return {
+        recibo: 'Sin línea sellada',
+        plataforma,
+        titulo: 'Quincena CERRADA sin línea sellada para esta persona: nada de esta fila es dato sellado, y no se rellena con hoy.',
+        coinciden: false,
       }
     }
     return {

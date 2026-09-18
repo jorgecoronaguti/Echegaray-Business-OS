@@ -174,7 +174,9 @@ test('QUIEN ESTÁ SELLADO EN OFICINA NO SE REPITE EN OBREROS, AUNQUE HOY NO SEA 
   const g = oficina.lineas[0]
   assert.equal(g.modalidad, 'mensual', 'la cabecera sellada manda: cobra por mes')
   assert.equal(g.cobra, 475000)
-  assert.equal(g.netoMensual, 475000, 'el importe del mes de la foto es `cobra`: la celda «Sueldo del mes» lo muestra')
+  // LA FOTO NO TIENE NETO MENSUAL, Y NO SE INVENTA (auditor, 18/09/2026): `cobra` es lo de la QUINCENA. Publicarlo como
+  // neto mensual lo rotulaba «Cobra al mes» y «Sueldos del mes».
+  assert.equal(g.netoMensual, null, 'MUTACIÓN: el importe de una quincena rotulado como sueldo del mes')
   assert.equal(g.blancoAcuerdo, null, 'un mensual no tiene reparto 50/50')
 })
 
@@ -197,5 +199,22 @@ test('EL JEFE DE OBRA CERRADO SIGUE EN OFICINA CON SU IMPORTE SELLADO, Y EL BANC
   assert.equal(p.origenBanco, 'sellado')
   assert.equal(p.banco, 0, 'MUTACIÓN: el banco de la cerrada sale del recibo y no de la foto')
   assert.equal(p.negro, 853125)
-  assert.equal(p.saldoTotal, 0)
+  assert.equal(p.pagado, 853125, 'lo pagado que consta, sí')
+  // UN MENSUAL SE SALDA POR MES (auditor, 18/09/2026): los jefes de julio dan +$358.000 en la 1ª y −$358.000 en la 2ª.
+  // Un saldo por quincena de un mensual cerrado es una alarma que el mes desmiente: no se afirma.
+  assert.equal(p.saldoTotal, null, 'MUTACIÓN: saldo por quincena de alguien que cobra por mes')
+  assert.equal(p.aPagarEfectivo, null)
+  // Y SIN LÍNEA SELLADA NADA VIVO SE CUELA: ni el recibo de hoy (Oficina 16–31/08 publicaba $663.141,56 por jefe).
+  const sinFoto = cuadroSellado({
+    grupo: 'oficina', selladas: [],
+    vivas: [viva('maldonado', 'MALDONADO BATISTA EMILIANO MIGUEL', { esJefe: true, modalidad: 'mensual', reciboNeto: 663141.56 })],
+    personas: personas({ id: 'maldonado', nombre: 'MALDONADO BATISTA EMILIANO MIGUEL', esJefe: true }),
+    selladosEnLaQuincena: new Set(), redondeos: new Map(),
+  })
+  const sf = sinOverrides(sinFoto.lineas[0], null, {}, { valorHora: null, conLinea: false, piso: null, pisoDesde: null, hasta: '2026-08-31' })
+  assert.equal(sf.reciboNeto, null, 'MUTACIÓN: el recibo de hoy en una fila sin foto')
+  const q = pagoDelMensual(sf)
+  assert.equal(q.banco, null)
+  assert.equal(q.saldoTotal, null)
+  assert.equal(q.sueldo, null)
 })

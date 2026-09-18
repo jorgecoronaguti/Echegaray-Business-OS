@@ -249,6 +249,12 @@ function Sello({ titulo, cerrada, espejo, difieren, horasDeDiferencia }: {
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 14 }}>
         <span style={{ fontSize: '14.5px', fontWeight: 600, color: V.tinta }}>{titulo}</span>
         <span style={{ fontSize: '12px', color: V.apagado }}>{cerrada ? 'cerrada' : 'abierta'}</span>
+        {/* LA CERRADA ES LA FOTO (auditor, 18/09/2026): sin días, porque la foto guarda el total y no los días. */}
+        {cerrada && (
+          <span data-testid="quincena-sellada-nota" style={{ fontSize: '11.5px', color: V.tenue }}>
+            se muestra lo sellado al cerrarla · los días no quedan en la foto (el detalle vivo está en Asistencia)
+          </span>
+        )}
       </div>
       <div data-testid="espejo-sello" style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
         <span style={rotulo}>JORNALES</span>
