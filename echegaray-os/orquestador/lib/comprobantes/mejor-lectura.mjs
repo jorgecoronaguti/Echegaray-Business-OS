@@ -37,7 +37,8 @@
 // evidencia que ya está sobre la mesa cuando se decide.
 
 import { faltantesDe, POLITICA } from './faltantes.mjs'
-import { soloDigitos, numeroCanonico } from './lectura.mjs'
+import { soloDigitos, numeroCanonico, claseDeComprobante } from './lectura.mjs'
+import { identidadProveedor } from './compras-vivas.mjs'
 import { normalizar } from '../carga-comprobantes.mjs'
 
 /**
@@ -100,6 +101,65 @@ export function sonPapelesDistintos(a = {}, b = {}) {
   const y = b?.comprobante ?? {}
   const difiere = (f) => { const u = f(x); const v = f(y); return u != null && v != null && u !== v }
   return difiere(totalDe) && difiere((c) => c?.fecha ?? null) && difiere(correlativoDe)
+}
+
+// ═══ DOS FOTOS DEL MISMO TICKET, EN ARCHIVOS DISTINTOS Y SIN CUIT LEGIBLE (18/09/2026) ═══
+//
+// EL AGUJERO, y es plata que entra dos veces. `colapsarRepetidos` une por `claveComprobante`, que
+// sin CUIT se degrada a `p:<proveedor normalizado>|<n°>`. Si el mismo ticket se fotografía dos veces
+// y el modelo lee el nombre distinto —«NEUMAGOM S.A.S.» contra «Neumagom»— las dos claves difieren,
+// no se colapsan, y como la pestaña todavía no tiene escrita la primera fila, la barrera de
+// duplicados entre corridas tampoco puede frenar a la segunda: entran DOS gastos.
+//
+// `mismoPapel` (abajo) no lo cubre: exige que las dos lecturas compartan el ARCHIVO base, y acá son
+// dos fotos distintas (`IMG_001` y `IMG_002`). Hasta el 18/09 esto lo tapaba, sin querer, que ARCA
+// le pegara el CUIT al comprobante: las dos lecturas terminaban con el mismo CUIT y la misma clave
+// fuerte. Ese pegado se sacó —le ponía al comprobante el CUIT de OTRA empresa cuando la vía era
+// débil— y al sacarlo quedó este hueco a la vista.
+//
+// ═══ LA CLAVE SECUNDARIA, ELEGIDA CON LA MEDICIÓN ═══
+//
+// Medido sobre las 980 filas de Compras (18/09):
+//   · (número, fecha, total) iguales con proveedor DISTINTO → **0 casos**. Es una huella segura.
+//   · (fecha, total) SIN el número → 42 repetidos, y 5 de ellos son de proveedores distintos:
+//     «SERVICIOS TALLER» vs «Lucas Guzman», «ARCA» vs «Sueldos», «Banco» vs «Sueldos»… todos sin
+//     número. O sea: sacar el número de la huella uniría gastos que no tienen nada que ver.
+//
+// Por eso la huella EXIGE número, y por eso lleva además la clase (`F`/`NC`/`ND`): una nota de
+// crédito comparte numeración con su factura y confundirlas ya costó $41,9M.
+//
+// Y pide que los proveedores sean COMPATIBLES con la misma tolerancia que usa la búsqueda contra la
+// pestaña (`identidadProveedor`: iguales, uno vacío, o subcadena de 4+). Es la guarda contra el
+// riesgo espejo —dos proveedores realmente distintos que casualmente compartan número, fecha e
+// importe—: hoy no hay ninguno, pero cuesta nada y es lo único que separa «el mismo papel leído
+// distinto» de «dos papeles que se parecen».
+
+/** La huella de papel de un comprobante: clase, número, fecha y total. `null` si falta alguno. */
+export function huellaDePapel(c = {}) {
+  const numero = numeroCanonico(c?.numero)
+  const total = totalDe(c)
+  const fecha = c?.fecha ?? null
+  if (!numero || !fecha || total == null) return null
+  return `${claseDeComprobante(c)}|${numero}|${fecha}|${total}`
+}
+
+/**
+ * ¿Son el MISMO comprobante aunque sus claves no coincidan? Para dos fotos del mismo ticket cuyo
+ * nombre de proveedor se leyó distinto y sin CUIT que las una.
+ *
+ * NO reemplaza a la clave: sólo une lo que la clave dejó separado, y sólo con la huella completa.
+ *
+ * @returns {{si:boolean, porque:string|null}}
+ */
+export function mismoComprobanteAunqueElNombreCambie(a = {}, b = {}) {
+  const x = a?.comprobante ?? {}
+  const y = b?.comprobante ?? {}
+  const h = huellaDePapel(x)
+  if (!h || h !== huellaDePapel(y)) return { si: false, porque: null }
+  // `identidadProveedor` compara primero por CUIT: dos CUIT distintos son dos proveedores distintos
+  // y ahí no se une nada, por más que el número, la fecha y el total coincidan.
+  if (identidadProveedor(x, { cuit: y.cuit, proveedor: y.proveedor }) === 'distinto') return { si: false, porque: null }
+  return { si: true, porque: `mismo comprobante ${numeroCanonico(x.numero)}, misma fecha y mismo total` }
 }
 
 /**
