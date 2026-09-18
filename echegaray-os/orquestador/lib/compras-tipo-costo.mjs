@@ -243,18 +243,67 @@ export function verificarRelectura({ respaldo = [], escribir = [], leido = new M
 }
 
 /**
- * LA REVERSA: qué celdas vaciar. Sólo las del plan cuyo valor actual es EXACTAMENTE el que se escribió
- * y cuyo valor previo era vacío. Si el dueño ya la cambió, no es mía y no se toca.
+ * LA REVERSA: qué celdas devolver a su valor previo. Sólo las del plan cuyo valor actual es EXACTAMENTE el
+ * que se escribió y cuyo valor previo en el respaldo es el que el plan dice que había (vacío en el relleno;
+ * `antes` en una corrección). Si alguien ya la cambió, no es mía y no se toca.
+ * @returns {{vaciar:object[], restaurar:object[], noSonMias:object[]}}  `vaciar` = previo vacío; `restaurar` = previo con texto
  */
 export function planDeReversa({ escribir = [], respaldo = [], leido = new Map() }) {
   const previo = new Map(respaldo.map((r) => [r.fila, T(r.valor)]))
   const vaciar = []
+  const restaurar = []
   const noSonMias = []
   for (const e of escribir) {
     const ahora = T(leido.get(e.fila))
-    if (previo.get(e.fila)) { noSonMias.push({ fila: e.fila, motivo: `tenía «${previo.get(e.fila)}» antes de escribir` }); continue }
+    const esperado = T(e.antes)
+    if (previo.get(e.fila) !== esperado) { noSonMias.push({ fila: e.fila, motivo: `el respaldo dice «${previo.get(e.fila) ?? ''}» y el plan esperaba «${esperado}»` }); continue }
     if (ahora !== e.valor) { noSonMias.push({ fila: e.fila, motivo: `dice «${ahora}» y yo escribí «${e.valor}»` }); continue }
-    vaciar.push({ fila: e.fila, valor: e.valor })
+    if (esperado) restaurar.push({ fila: e.fila, valor: e.valor, antes: esperado })
+    else vaciar.push({ fila: e.fila, valor: e.valor })
   }
-  return { vaciar, noSonMias }
+  return { vaciar, restaurar, noSonMias }
+}
+
+/**
+ * LA CORRECCIÓN QUE ORDENÓ EL DUEÑO (18/09/2026). Se le mostraron las 18 filas que él marcó «Estructura»
+ * y que tienen una obra (OB-####) en la columna Obra —bloque 349–378, $33.434.550— y contestó, textual:
+ * «no son de estructura entonces, son CIVIL, cambialas». Las 18 ya tienen Unidad de Negocio «Civil»;
+ * «Civil» no es un valor de Tipo de Costo, así que la orden es Tipo de Costo «Estructura» → «Directo»
+ * (su criterio de la mañana: directo es lo que impacta en la obra). La Unidad de Negocio no se toca.
+ *
+ * Fila + proveedor: el ID de Compras es `=ROW()-4`, una posición; si alguien inserta una fila arriba, la
+ * fila 349 es otra compra y el proveedor lo delata.
+ */
+export const CORRECCION_ESTRUCTURA_A_DIRECTO_1809 = Object.freeze({
+  pedido: '«no son de estructura entonces, son CIVIL, cambialas» — dueño, 18/09/2026',
+  de: TIPO.ESTRUCTURA,
+  a: TIPO.DIRECTO,
+  filas: Object.freeze([
+    [349, 'FEMENIA'], [351, 'Diego Sosa'], [352, 'Metalis'], [353, 'Metalis'], [354, 'DUPEC'], [355, 'Gerson Castro'],
+    [359, 'Fernandez'], [360, 'FEMENIA'], [361, 'FEMENIA'], [362, 'Herrero'], [363, 'Pocero'], [364, 'Pocero'],
+    [365, 'FEMENIA'], [366, 'Diego Sosa'], [367, 'DUPEC'], [368, 'DUPEC'], [377, 'Industrias Castel'], [378, 'Alumetal'],
+  ].map(([fila, proveedor]) => Object.freeze({ fila, proveedor }))),
+})
+
+/**
+ * NÚCLEO PURO: el plan de una corrección con GUARDA POR VALOR ESPERADO. Se escribe `a` sólo en la celda
+ * que hoy dice exactamente `de`, en la fila del proveedor esperado y con una obra en la columna Obra.
+ * Cualquier otra cosa no se toca y se informa.
+ * @param {object[]} filas  la pestaña proyectada (fila, proveedor, tipo_costo, destino, obra_celda, …)
+ * @returns {{escribir:object[], noSeTocan:object[]}}  cada `escribir` lleva `antes` (para la reversa)
+ */
+export function planDeCorreccion(filas = [], correccion = CORRECCION_ESTRUCTURA_A_DIRECTO_1809) {
+  const porFila = new Map(filas.map((f) => [f.fila, f]))
+  const escribir = []
+  const noSeTocan = []
+  for (const o of correccion.filas) {
+    const f = porFila.get(o.fila)
+    const base = { fila: o.fila, proveedor: T(f?.proveedor) || null, concepto: T(f?.concepto) || null, obra_celda: T(f?.obra_celda) || null, unidad: T(f?.unidad_negocio) || null, total: f?.total ?? null }
+    if (!f) { noSeTocan.push({ ...base, motivo: 'la fila no existe o no tiene ID' }); continue }
+    if (normAlias(f.proveedor) !== normAlias(o.proveedor)) { noSeTocan.push({ ...base, motivo: `esperaba proveedor «${o.proveedor}»: la fila se movió` }); continue }
+    if (T(f.tipo_costo) !== correccion.de) { noSeTocan.push({ ...base, motivo: `Tipo de Costo dice «${T(f.tipo_costo)}», no «${correccion.de}»: ya cambió, no se toca` }); continue }
+    if (f.destino !== 'obra') { noSeTocan.push({ ...base, motivo: `la columna Obra dice «${T(f.obra_celda)}», no una obra` }); continue }
+    escribir.push({ ...base, valor: correccion.a, antes: correccion.de, motivo: correccion.pedido })
+  }
+  return { escribir, noSeTocan }
 }
