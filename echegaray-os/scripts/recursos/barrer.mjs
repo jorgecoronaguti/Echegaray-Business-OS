@@ -13,7 +13,7 @@
 //
 // Uso: barrer.mjs [--seco] [--motivo texto]     `--seco` muestra sin matar.
 
-import { unlinkSync, readdirSync, existsSync, appendFileSync, mkdirSync } from 'node:fs'
+import { unlinkSync, readdirSync, readFileSync, existsSync, appendFileSync, mkdirSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { DIR, procesosDesarrollo, registros, vivo, medir, tieneDueno, padreDe, descendientes } from './comun.mjs'
@@ -99,12 +99,37 @@ if (matados.length && !SECO) {
   }
 }
 
-// ── Tickets de cola y sellos de cupo de procesos muertos. ──
+// ── Tickets de cola de procesos muertos. ──
 for (const sub of ['cola']) {
   const d = join(DIR, sub); if (!existsSync(d)) continue
   for (const f of readdirSync(d)) {
     const pid = Number(f.split('-').pop())
-    if (pid && !vivo(pid) && !SECO) { try { unlinkSync(join(d, f)) } catch { /* nada */ } }
+    if (pid && !vivo(pid) && !SECO) { try { unlinkSync(join(d, f)); log(`ticket de cola de un proceso muerto borrado: ${f}`) } catch { /* nada */ } }
+  }
+}
+
+// ── Sellos de cupo que ya no corresponden. ──
+// El sello `.quien` dice de quién es un cupo; la evidencia de que el cupo está tomado es el candado.
+// Si el proceso del sello murió de golpe (SIGKILL) el núcleo suelta el candado al instante, pero el
+// sello queda: sin esta limpieza, `ecos estado` seguiría mostrando un dueño para un cupo que no tiene
+// ninguno, y la regla de prioridad de `ecos` le daría trato de retenedor a un muerto.
+// SE BORRA SÓLO CON CERTEZA: si `flock` no está o falla de otro modo, el sello se deja.
+const dirSlots = join(DIR, 'slots')
+if (existsSync(dirSlots)) {
+  for (const f of readdirSync(dirSlots).filter((x) => x.endsWith('.quien'))) {
+    const sello = join(dirSlots, f)
+    const lock = sello.replace(/\.quien$/, '.lock')
+    let pid = 0
+    try { pid = Number((readFileSync(sello, 'utf8').match(/pid=(\d+)/) || [])[1] || 0) } catch { /* ilegible */ }
+    let candado = 'desconocido'
+    if (existsSync(lock)) {
+      try { execFileSync('flock', ['-n', lock, 'true'], { stdio: 'ignore' }); candado = 'libre' }
+      catch (e) { candado = e?.status === 1 ? 'tomado' : 'desconocido' }
+    } else candado = 'libre'
+    const sobra = (!pid || !vivo(pid)) ? true : candado === 'libre'
+    if (!sobra) continue
+    log(`${SECO ? 'borraría' : 'borré'} el sello huérfano ${f} (pid ${pid || '?'}${pid && !vivo(pid) ? ' ya no existe' : ''}, candado ${candado})`)
+    if (!SECO) { try { unlinkSync(sello) } catch { /* nada */ } }
   }
 }
 
