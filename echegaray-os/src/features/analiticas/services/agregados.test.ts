@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { armarCostosPorObra } from '../../clientes/services/costosDeObra.ts'
 import { armarObra } from './obras.ts'
 import { filaDe, type Rubros } from './presupuesto.fixture.ts'
-import { cajonesDeLosClientes, celda, cierreDeRubro, cifrasResumen, composicionDelGasto, contenidoPorRubro, contraContrato, contratoPorCliente, controlPorObra, costoPorHora, definicionDe, ITEMS, manoObraDe, obrasQueMasConsumen, porHoraMedido, resumenPorCliente } from './agregados.ts'
+import { cajonesDeLosClientes, celda, cierreDeRubro, cifrasResumen, composicionDelGasto, contenidoPorRubro, tablaPorRubro, contraContrato, contratoPorCliente, controlPorObra, costoPorHora, definicionDe, ITEMS, manoObraDe, obrasQueMasConsumen, porHoraMedido, resumenPorCliente } from './agregados.ts'
 import { rotuloEstimada } from './obras.ts'
 import { leerConsumoPorRubro } from './consumo.ts'
 
@@ -257,4 +257,27 @@ test('Contrato por cliente: mismo orden que la lista de presupuestado (del que m
   assert.equal(me.obraPrincipal, 'a')
   assert.equal(f[1].enDolares, 1)
   assert.equal(f[1].contratado, 139e6)
+})
+
+test('la tabla por rubro del Resumen: «otros» es columna propia, y la fila Empresa suma exactamente la cabecera', () => {
+  const q = obra('q', 'qp', {}, { mano_obra: 30e6, materiales: 37e6, subcontratos: 3e6, otros: 0.2e6 }, { MO: 39e6, MAT: 44e6, SUB: null, OTR: 0.23e6 },
+    [{ rubro: 'otros', monto: 0.2e6, n: 2, detalle: [{ grupo: 'Combustible de obra', n: 2, monto: 0.2e6 }] }])
+  const p = obra('p', 'me', {}, { materiales: 3e6, otros: 1e6 }, { MAT: 4e6, OTR: 0.5e6 },
+    [{ rubro: 'otros', monto: 1e6, n: 1, detalle: [{ grupo: 'Alquiler y traslado de equipos', n: 1, monto: 1e6 }] }])
+  const s = obra('s', 'me', {}, { materiales: 2e6 })
+  const clientes = resumenPorCliente([q, p, s], new Map())
+  const t = tablaPorRubro([q, p, s], clientes)
+  assert.deepEqual(t.filas.map((f) => f.clienteId), clientes.map((c) => c.clienteId), 'el mismo orden que la lista por cliente')
+  const me = t.filas.find((f) => f.clienteId === 'me')!
+  assert.equal(me.porRubro.otros.presupuestado, 0.5e6)
+  assert.equal(me.porRubro.otros.consumido, 1e6)
+  assert.equal(me.porRubro.otros.contenido[0].nombre, 'Alquiler y traslado de equipos', 'la columna dice qué contiene')
+  assert.equal(me.porRubro.subcontratos.consumido, null, 'sin movimiento: null, nunca 0')
+  const r = cifrasResumen([q, p, s], new Map())
+  assert.equal(t.empresa.consumido, r.consumoTotal, 'la fila Empresa es el consumido de la cabecera')
+  assert.equal(t.empresa.presupuestado, r.presupuestado, 'y su presupuestado')
+  assert.equal(t.empresa.porRubro.otros.consumido, 1.2e6)
+  // Los cuatro rubros de la Empresa suman el consumido total: nada queda afuera ni se cuenta dos veces.
+  const suma = (['manoObra', 'materiales', 'subcontratos', 'otros'] as const).reduce((a, k) => a + (t.empresa.porRubro[k].consumido ?? 0), 0)
+  assert.equal(suma, r.consumoTotal)
 })

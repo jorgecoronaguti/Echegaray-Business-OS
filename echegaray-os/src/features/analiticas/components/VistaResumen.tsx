@@ -22,13 +22,14 @@ import Link from 'next/link'
 import { aUrl, type Filtros } from '../services/filtros'
 import { horasTexto, millones, pctEntero } from '../services/formato'
 import {
-  cajonesDeLosClientes, cifrasResumen, composicionDelGasto, contenidoPorRubro, contraContrato, contratoPorCliente, manoObraDe, obrasQueMasConsumen, resumenPorCliente,
-  type Composicion, type ContenidoDeRubro, type FilaContrato, type FilaDeCliente,
+  cajonesDeLosClientes, cifrasResumen, composicionDelGasto, contenidoPorRubro, contraContrato, contratoPorCliente, manoObraDe, obrasQueMasConsumen, resumenPorCliente, tablaPorRubro,
+  type Composicion, type ContenidoDeRubro, type FilaContrato, type FilaDeCliente, type FilaPorRubro,
 } from '../services/agregados'
 import { importe } from './DetalleRubro'
 import { ORDEN_RUBROS, porcionesDeRubros, RUBRO_COLOR, Torta } from './Torta'
 import { DEFINICION_TIPO_COSTO, tipoCostoDe, type TipoCostoDeObra } from '../services/tipoCosto'
 import { rotuloEstimada, type ObraAnalitica } from '../services/obras'
+import { DEFINICION_RUBRO, RUBROS, type Rubro } from '../services/presupuesto'
 import { ancho, Cabecera, Cifras, LEYENDA_GASTO, Seccion } from './Piezas'
 
 export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, neto, tipoCosto }: {
@@ -112,6 +113,14 @@ export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, 
         aclaracion="por cliente · la barra fina de arriba es lo presupuestado (el costo previsto en la cotización); la gruesa de abajo, lo consumido"
         leyenda={[...LEYENDA_GASTO, { color: 'bg-dato-cajon', rotulo: 'sin obra asignada' }]}>
         <PorCliente clientes={clientes} filtros={filtros} />
+      </Seccion>
+
+      {/* «OTROS» COMO COLUMNA PROPIA (dueño, 18/09/2026: «hacelo»): una fila por cliente, una columna por
+          rubro, presupuestado → consumido en cada celda, y la fila Empresa que suma exactamente la cabecera.
+          Los totales no cambian: «otros» ya estaba adentro; ahora se ve en su columna, con lo que contiene. */}
+      <Seccion titulo="Por rubro" filo
+        aclaracion="una columna por rubro, con el mismo color que en las barras; en cada celda, presupuestado → consumido. La columna Otros dice qué contiene al pasar el mouse.">
+        <TablaPorRubro tabla={tablaPorRubro(obras, clientes)} />
       </Seccion>
 
       {/* QUÉ CONTIENE CADA RUBRO (dueño, 18/09/2026): la definición de una línea y, abierto, de qué está
@@ -444,6 +453,63 @@ export function TipoCostoIndicador({ t }: { t: TipoCostoDeObra | null }) {
           <div key={k}><span className="font-medium text-ink">{k}</span> · {DEFINICION_TIPO_COSTO[k]}</div>
         ))}
       </div>
+    </div>
+  )
+}
+
+// ─── Por rubro: la tabla con «Otros» como columna propia ────────────────────────────────────────
+
+const RUBRO_CLAVES: Rubro[] = RUBROS.map((r) => r.clave)
+
+function tituloDeCelda(rubro: Rubro, c: FilaPorRubro['porRubro'][Rubro]): string {
+  const def = DEFINICION_RUBRO[rubro]
+  const contiene = c.contenido.slice(0, 6).map((g) => `${g.nombre} ${millones(g.monto) ?? ''}`).join(' · ')
+  return `${def}${contiene ? `\nEn el gasto: ${contiene}${c.contenido.length > 6 ? ' · …' : ''}` : ''}`
+}
+
+function CeldaRubro({ rubro, c }: { rubro: Rubro; c: FilaPorRubro['porRubro'][Rubro] }) {
+  return (
+    <td className="px-2 py-2 text-right align-top tabular-nums" title={tituloDeCelda(rubro, c)} data-testid={`celda-${rubro}`}>
+      <div className="text-[11px] text-muted">{c.presupuestado == null ? <span className="text-faint">sin presup.</span> : millones(c.presupuestado)}</div>
+      <div className="text-[12.5px] font-semibold text-ink">{c.consumido == null ? <span className="font-normal text-faint">—</span> : millones(c.consumido)}</div>
+    </td>
+  )
+}
+
+function TablaPorRubro({ tabla }: { tabla: ReturnType<typeof tablaPorRubro> }) {
+  const encabezado = (r: Rubro) => (
+    <th key={r} className="px-2 pb-2 text-right font-normal" scope="col">
+      <div className="flex items-center justify-end gap-1.5 text-[11px] text-ink"><span className={`size-2.5 rounded-[2px] ${RUBRO_COLOR[r].clase}`} />{RUBRO_COLOR[r].rotulo}</div>
+      <div className="text-[10px] text-faint">presup. → consumido</div>
+    </th>
+  )
+  const fila = (f: FilaPorRubro, empresa = false) => (
+    <tr key={f.clienteId} className={`border-t border-line ${empresa ? 'bg-surface-quiet font-semibold' : ''}`} data-testid={empresa ? 'por-rubro-empresa' : 'por-rubro-cliente'}>
+      <th scope="row" className="px-2 py-2 text-left align-top text-[12.5px] font-medium text-ink">
+        {f.nombre}<div className="text-[10.5px] font-normal text-faint">{f.obras} {f.obras === 1 ? 'obra' : 'obras'}</div>
+      </th>
+      {RUBRO_CLAVES.map((r) => <CeldaRubro key={r} rubro={r} c={f.porRubro[r]} />)}
+      <td className="px-2 py-2 text-right align-top tabular-nums" data-testid="celda-total">
+        <div className="text-[11px] text-muted">{f.presupuestado == null ? <span className="text-faint">sin presup.</span> : millones(f.presupuestado)}</div>
+        <div className="text-[12.5px] font-semibold text-ink">{f.consumido == null ? <span className="font-normal text-faint">—</span> : millones(f.consumido)}</div>
+      </td>
+    </tr>
+  )
+  return (
+    <div className="barra-corrible -mx-4 overflow-x-auto px-4 lg:mx-0 lg:px-0">
+      <table className="w-full min-w-[640px] border-collapse" data-testid="tabla-por-rubro">
+        <thead>
+          <tr>
+            <th className="px-2 pb-2 text-left text-[11px] font-normal text-faint" scope="col">cliente</th>
+            {RUBRO_CLAVES.map(encabezado)}
+            <th className="px-2 pb-2 text-right font-normal" scope="col"><div className="text-[11px] text-ink">total</div><div className="text-[10px] text-faint">presup. → consumido</div></th>
+          </tr>
+        </thead>
+        <tbody>
+          {tabla.filas.map((f) => fila(f))}
+          {fila(tabla.empresa, true)}
+        </tbody>
+      </table>
     </div>
   )
 }
