@@ -22,6 +22,7 @@ import {
 } from './CeldasBlancoNegro'
 import { CeldaTarifa, rotuloCategoria } from './CeldaTarifa'
 import { CeldaPersona, RenglonDelDetalle } from './CeldaPersona'
+import { LoQueCobra } from './LoQueCobra'
 import { categoriasDeLaFila } from './categoriasDeLaFila'
 import { filaPagada } from './marcaDePago'
 import { filaGrid, PERSONA_ESTIRADA } from './TablaDeBloques'
@@ -44,19 +45,24 @@ export function FilaJornalero({ fila, columnas, edicion, pct, abrir }: {
   const fondo = filaPagada(l.pagadaEn) ? V.posSuave : undefined
   const s = l.sueldo
   // LAS DOS CATEGORÍAS CON SU $/H (dueño, 16/09/2026): la del recibo paga el blanco; la de plataforma, el negro.
+  // EL PISO SALE DEL MODELO EN LA ABIERTA Y DEL SELLO EN LA CERRADA: el mismo número, la misma fecha (`q.hasta`).
   const c = categoriasDeLaFila({
-    plataforma: fila.categoria ? rotuloCategoria(fila.categoria) : null, pisoPlataforma: s?.pisoCategoria ?? null,
+    plataforma: fila.categoria ? rotuloCategoria(fila.categoria) : null, pisoPlataforma: s?.pisoCategoria ?? l.sello?.piso ?? null,
     categoriaRecibo: s?.categoriaRecibo, valorHoraRecibo: s?.valorHoraCategoria, periodoRecibo: s?.periodoRecibo, estado: s?.estado ?? null,
+    sello: l.sello,
   })
   return (
     // `data-fila-edicion`: Tab en una celda pasa a la siguiente editable de ESTA fila (`InlineEdit`).
     <div data-testid={`espejo-fila-${fila.personaId}`} data-tipo="jornalero" data-fila-edicion="" data-pagada={fondo ? '1' : undefined}
       style={{ ...filaGrid(columnas, ALTO_LIQ.filaAlta), background: fondo }}>
       <CeldaPersona fila={fila} fondo={fondo} quincena={quincena} camposEditables={edicion.camposEditables} abrir={abrir}
+        cobro={<LoQueCobra fila={fila} />}
         detalle={(
           <div data-testid={`categorias-${fila.personaId}`} data-coinciden={c.coinciden ? '1' : '0'} title={c.titulo}>
+            {/* LOS DOS RENGLONES QUEDAN (los pidió el dueño el 16/09) pero tenues; la plataforma se oscurece SÓLO
+                cuando no coincide con el recibo, que es el único caso en el que hay algo que mirar. */}
             <RenglonDelDetalle>{c.recibo}</RenglonDelDetalle>
-            <RenglonDelDetalle tono={c.coinciden ? V.apagado : V.tintaSuave}>{c.plataforma}</RenglonDelDetalle>
+            <RenglonDelDetalle tono={c.coinciden ? undefined : V.tintaSuave}>{c.plataforma}</RenglonDelDetalle>
           </div>
         )} />
       {fila.celdas.map((d) => <CeldaDeDia key={d.fecha} celda={d} personaId={fila.personaId} nombre={fila.nombre} />)}
@@ -96,7 +102,7 @@ export function TotalJornaleros({ columnas, dias, t }: { columnas: string; dias:
     <div data-testid="espejo-total" style={{ ...filaGrid(columnas, ALTO_LIQ.filaAlta), borderBottom: 'none', borderTop: `1px solid ${V.grafito}`, fontWeight: 600 }}>
       <div style={{ ...COLUMNA_FIJA, ...PERSONA_ESTIRADA }}>{`${t.personas} jornalero${t.personas === 1 ? '' : 's'}`}</div>
       {dias.map((f, i) => (
-        <div key={f} style={{ textAlign: 'center', color: t.porDia[i] == null ? V.tenue : V.tinta }}>{t.porDia[i] == null ? '·' : nHoras(t.porDia[i])}</div>
+        <div key={f} style={{ textAlign: 'center', color: V.tinta }}>{t.porDia[i] == null ? '' : nHoras(t.porDia[i])}</div>
       ))}
       <Leida valor={t.horasPagas} unidad="horas" testid="espejo-total-hs" />
       <div /><div />

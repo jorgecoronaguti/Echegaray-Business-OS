@@ -116,8 +116,15 @@ test('sin overrides, la línea queda idéntica y sin ninguna marca', () => {
     // abajo. Acá se excluyen igual que las marcas para que este test siga afirmando lo único que afirma —que
     // los importes de la cadena no se mueven—.
     pago: undefined, pagadoBanco: undefined, pagadoEfectivo: undefined, formulas: undefined,
+    // `sello` (17/09/2026) es la quinta marca: el $/h y el piso de ESA quincena, para que la cerrada deje de decir
+    // «—». Tampoco es un importe de la cadena — se comprueba abajo.
+    sello: undefined,
   }
   assert.deepEqual({ ...r, ...sinMarcas }, { ...linea, ...sinMarcas })
+  // SIN SELLO, NULL: nadie lo inventa. Con sello, viaja tal cual — la cerrada no lo recalcula, sólo lo muestra.
+  assert.equal(r.sello, null)
+  const foto = { valorHora: 5400, piso: 5703, pisoDesde: '2026-05-01', hasta: '2026-06-15' }
+  assert.deepEqual(sinOverrides(linea, null, {}, foto).sello, foto)
   // LA FOTO CERRADA TAMBIÉN DICE CUÁNTO FALTA: lo pagado son los adelantos de la foto, y el saldo, la resta.
   assert.equal(r.pagadoBanco, linea.yaTransferido)
   assert.equal(r.pagadoEfectivo, linea.adelanto)

@@ -43,14 +43,15 @@ Debe existir `playwright.config.ts` en la raiz del proyecto (testDir, baseURL, w
 `npx playwright` **no tiene** subcomandos interactivos tipo `navigate`/`click`/`fill`/`snapshot` — eso no existe en el CLI real (confirmado con `npx playwright --help` durante PRP-001). Los subcomandos reales son:
 
 ```bash
-# Correr todos los tests (usa testDir + webServer de playwright.config.ts)
-npx playwright test
+# Correr todos los tests (usa testDir + webServer de playwright.config.ts).
+# SIEMPRE por el portero de recursos: un solo navegador y un solo servidor en la VM.
+npm run e2e                      # = ecos e2e -- playwright test
 
 # Correr un archivo especifico
-npx playwright test tests/fundacion.spec.ts
+ecos e2e -- npx playwright test tests/fundacion.spec.ts
 
 # Screenshot standalone de una URL (util para un chequeo visual rapido, sin test)
-npx playwright screenshot http://localhost:3000/ruta screenshot.png
+ecos e2e -- npx playwright screenshot http://localhost:3000/ruta screenshot.png
 
 # Grabar interacciones y generar el codigo de un test automaticamente
 npx playwright codegen http://localhost:3000

@@ -12,6 +12,11 @@ import {
   armarQuincenaPorObra, chipsConElegida, diasSinMarcar, filtrarPorObra, OBRA_SIN, personasPorObra, SIN_OBRA,
   totalDeLaQuincena, totalesPorDia,
 } from '../services/quincenaPorObra'
+import {
+  categoriasDelCorte, etiquetaDeLaElegida, filtrarPorCategoria,
+} from '../services/recorteDeCategoria'
+import { FiltroDeCategoria } from './FiltroDeCategoria'
+import type { FilaQuincena } from '../services/quincenaPorObra'
 import { GrillaAsistenciaObra } from './GrillaAsistenciaObra'
 import { rotuloDeObra } from '@/shared/utils/obra'
 import type { ObraConVentana } from '../services/obrasPorFecha'
@@ -34,8 +39,19 @@ import type { ObraConVentana } from '../services/obrasPorFecha'
 // La quincena viaja en la URL (`?quincena=2026-09-16`): así se puede pasar «mirá la quincena
 // pasada» por mensaje, y recargar no devuelve a hoy.
 
+/**
+ * LA FILA DICHA EN LOS TÉRMINOS DE LA REGLA, sin perder la fila.
+ *
+ * El recorte por categoría pregunta si la persona cobra por mes; esta grilla lo sabe como `esJefe`
+ * (`cobroMensual.ts`: jefe de obra o neto mensual vigente, y acá el neto no se lee). Se traduce UNA
+ * vez y el resultado se usa para filtrar y para contar: con dos traducciones, un jefe podía contar en
+ * una pastilla y no aparecer al apretarla.
+ */
+const conCategoria = (f: FilaQuincena): FilaQuincena & { cobraPorMes: boolean } =>
+  ({ ...f, cobraPorMes: f.esJefe })
+
 export async function BloqueAsistenciaQuincena({
-  quincenaPedida, hoy, q, obra, hrefDe, hrefObra, puedeCorregir, puedeCambiarObra,
+  quincenaPedida, hoy, q, obra, categoria, hrefDe, hrefObra, hrefCategoria, puedeCorregir, puedeCambiarObra,
 }: {
   /** Cualquier día de la quincena que se quiere ver. Lo que no sea una fecha vuelve a la de hoy. */
   quincenaPedida?: string
@@ -44,10 +60,16 @@ export async function BloqueAsistenciaQuincena({
   q?: string
   /** `?obra=` — el RÓTULO del chip, o `sin-obra`. Recorta igual que `q`: después de armar. */
   obra?: string
+  /** `?categoria=` — la clave del legajo, o uno de los dos cajones de `recorteDeCategoria.ts`.
+   *  Significa lo mismo que en el Plantel y en Liquidación: la categoría no cambia de sentido
+   *  según la solapa, y por eso ésta es la única de las tres que viaja entre ellas. */
+  categoria?: string
   hrefDe: (quincena: string) => string
   /** Esta misma vista con otro recorte de obra. `undefined` lo apaga; lo demás (quincena, texto,
    *  modo) lo conserva la página, que es la dueña de la URL. */
   hrefObra: (obra?: string) => string
+  /** Esta misma vista con otro recorte por categoría. `undefined` lo apaga. */
+  hrefCategoria: (cambios: Record<string, string | undefined>) => string
   /** Corregir la OBRA de un día es de Administración. La policy decide de verdad; esto evita
    *  ofrecer un botón que va a rebotar contra un `permission denied`. */
   puedeCorregir: boolean
@@ -93,7 +115,17 @@ export async function BloqueAsistenciaQuincena({
   // La regla es de `filtrarPorObra`: acá sólo se elige el orden, y el orden importa porque el
   // buscador mira el rótulo de obra: filtrar por obra primero no cambiaría el resultado, pero
   // partiría en dos la única regla de «se recorta lo dibujado, nunca lo crudo».
-  const filas = filtrarPorObra(porTexto, obra)
+  // ═══ EL RECORTE POR CATEGORÍA (dueño, 17/09/2026) ═══
+  //
+  // Va DESPUÉS del texto y de la obra, sobre la misma grilla ya armada: la regla de esta pantalla es
+  // «se recorta lo dibujado, nunca lo crudo», y filtrar los registros antes de armar sacaría a una
+  // persona de las celdas de sus compañeros.
+  //
+  // `deLaFila` traduce la fila a lo que la regla necesita, y lo hace UNA sola vez para el filtro y
+  // para las pastillas: con dos traducciones, un jefe podía contar en «Fuera de convenio» y no
+  // aparecer al apretarla.
+  const categoriaElegida = categoria?.trim() || undefined
+  const filas = filtrarPorCategoria(filtrarPorObra(porTexto, obra).map(conCategoria), categoriaElegida)
   // EL VALOR DE LA URL, NORMALIZADO AL TOKEN DEL CHIP. `sin-obra` y el rótulo largo «Sin obra
   // activa» piden el mismo recorte —una URL que ya se compartió por mensaje no puede morir porque
   // se acortó el token—, y el chip que se marca activo tiene que ser el mismo en los dos casos.
@@ -115,11 +147,24 @@ export async function BloqueAsistenciaQuincena({
   //
   // LOS SUBTOTALES POR GRUPO —Jefes/Obreros— los calcula la grilla sobre las filas que recibe: ésos
   // contestan siempre «lo que estoy viendo».
-  const paraElPie = filtrarPorObra(todas, obra)
+  //
+  // Y EL RECORTE POR CATEGORÍA TAMBIÉN MUEVE EL PIE, por lo mismo que la obra: elegir una categoría
+  // es elegir una POBLACIÓN, no buscar un nombre. Con seis filas a la vista, un total que siguiera
+  // sumando diecisiete se leería como el de esas seis. El rótulo dice de quién es.
+  const paraElPie = filtrarPorCategoria(filtrarPorObra(todas, obra).map(conCategoria), categoriaElegida)
   const totales = totalesPorDia(paraElPie, dias)
   // EL ELEGIDO SIEMPRE ESTÁ ENTRE LOS CHIPS, aunque en esta quincena no alcance a nadie: si no, el
   // filtro queda puesto sin ningún chip activo y no hay qué apretar para sacarlo (dueño, 11/09/2026).
   const chips = chipsConElegida(personasPorObra(todas), elegida)
+  // LAS PASTILLAS CUENTAN LA QUINCENA ENTERA, no lo que sobrevive a la obra ni al buscador: la misma
+  // regla que los chips de obra, y por el mismo motivo.
+  const chipsDeCategoria = categoriasDelCorte(todas.map(conCategoria), categoriaElegida)
+  const rotuloCategoria = categoriaElegida ? etiquetaDeLaElegida(categoriaElegida) : null
+  // EL TOTAL DICE DE QUIÉN ES. Dos recortes puestos se nombran los dos: «Total · SF - PISOS · Oficial».
+  const partesDelTotal = [
+    elegida ? (elegida === OBRA_SIN ? 'sin obra' : rotuloElegido) : null,
+    rotuloCategoria,
+  ].filter((x): x is string => x !== null)
   const sinMarcar = diasSinMarcar(todas)
   // LAS OBRAS A LAS QUE SE PUEDE MOVER UN DÍA: las activas que la sesión ve. La jornada de cada una
   // viaja junta —es lo que vale una ausencia— y sale del mismo viaje, no de dos.
@@ -149,15 +194,28 @@ export async function BloqueAsistenciaQuincena({
         </span>
       </div>
 
+      {/* LA FILA DEL RECORTE POR CATEGORÍA (dueño, 17/09/2026): el mismo control que en el Plantel y
+          en Liquidación. LLEVA EL CONTEO porque acá no hay otra fila que diga cuánta gente quedó a
+          la vista —los chips de obra cuentan la quincena entera, a propósito—. */}
+      <FiltroDeCategoria
+        chips={chipsDeCategoria}
+        elegida={categoriaElegida}
+        hrefDe={hrefCategoria}
+        conteo={{ n: filas.length, total: todas.length, sustantivo: 'personas' }}
+        nota="El total y los totales por día son los del recorte."
+      />
+
       {filas.length === 0 ? (
         <Vacio>
           {/* EL VACÍO NOMBRA AL RECORTE QUE LO CAUSÓ. Si el texto ya no dejó a nadie, la obra no
               tiene la culpa: por eso se mira `porTexto`, no `todas`. */}
-          {elegida && porTexto.length > 0
-            ? `Nadie de esta quincena está en «${rotuloElegido}».`
-            : q?.trim()
-              ? `Ninguna persona de esta quincena coincide con «${q.trim()}».`
-              : 'Nadie tiene asignación vigente ni horas cargadas en esta quincena.'}
+          {rotuloCategoria && filtrarPorObra(porTexto, obra).length > 0
+            ? `Nadie de esta quincena es «${rotuloCategoria}». «Todas» vuelve a la lista entera.`
+            : elegida && porTexto.length > 0
+              ? `Nadie de esta quincena está en «${rotuloElegido}».`
+              : q?.trim()
+                ? `Ninguna persona de esta quincena coincide con «${q.trim()}».`
+                : 'Nadie tiene asignación vigente ni horas cargadas en esta quincena.'}
           {' '}La asistencia se carga por obra, desde{' '}
           <Link href="/campo/asistencia" className="underline">Campo · Asistencia</Link>.
         </Vacio>
@@ -170,9 +228,7 @@ export async function BloqueAsistenciaQuincena({
           columnasTenues={dias.map((d) => tenues.has(d))}
           totalesDia={totales}
           total={totalDeLaQuincena(paraElPie)}
-          rotuloTotal={elegida
-            ? `Total · ${elegida === OBRA_SIN ? 'sin obra' : rotuloElegido}`
-            : undefined}
+          rotuloTotal={partesDelTotal.length > 0 ? `Total · ${partesDelTotal.join(' · ')}` : undefined}
           jornadaPorObra={jornadaPorObra}
           obras={obras.map((o) => ({ id: o.id, nombre: o.nombre }))}
           catalogoHoras={catalogoHoras}

@@ -53,13 +53,19 @@ export interface PlantelLeido {
    * con los obreros (QA 15/09/2026, Maldonado en 16–31/08). Sale de la lectura que ya se hace acá.
    */
   puestos: Record<string, string | null>
+  /**
+   * `persona_directorio.categoria` de TODO el directorio, por el mismo motivo y de la misma lectura:
+   * el recorte por categoría de la solapa Horas (dueño, 17/09/2026) tiene que poder ubicar también a
+   * quien está en el plantel sin asignación ni horas. Una consulta aparte podría contestar distinto.
+   */
+  categorias: Record<string, string | null>
   errores: { que: string; error: string }[]
 }
 
 /** LAS SEIS LECTURAS EN UNA TANDA, y la regla. */
 export async function leerPlantelDeLaQuincena(supabase: SupabaseClient, q: Quincena): Promise<PlantelLeido> {
   const [directorio, registros, lineas, recibos, jornales, cuiles, deprueba, tarifas, presentes, subcontratos] = await Promise.all([
-    supabase.from('persona_directorio').select('id, nombre_completo, en_la_empresa, fecha_ingreso, fecha_egreso, puesto'),
+    supabase.from('persona_directorio').select('id, nombre_completo, en_la_empresa, fecha_ingreso, fecha_egreso, puesto, categoria'),
     leerRegistrosHH(supabase, { desde: q.desde, hasta: q.hasta, columnas: 'persona_id, fecha' }),
     supabase.from('liquidacion_quincena').select('liquidacion_linea(persona_id)').eq('desde', q.desde).eq('hasta', q.hasta),
     supabase.from('recibo_sueldo_linea').select('persona_id, cuil').eq('periodo', periodoDeRecibo(q)),
@@ -102,6 +108,9 @@ export async function leerPlantelDeLaQuincena(supabase: SupabaseClient, q: Quinc
   const puestos: Record<string, string | null> = Object.fromEntries(
     ((directorio.data ?? []) as { id: string; puesto?: string | null }[]).map((r) => [r.id, r.puesto ?? null]),
   )
+  const categorias: Record<string, string | null> = Object.fromEntries(
+    ((directorio.data ?? []) as { id: string; categoria?: string | null }[]).map((r) => [r.id, r.categoria ?? null]),
+  )
   const delCuadro = new Set(activas.filter((p) => {
     // UN JEFE DE LA QUINCENA SIEMPRE TIENE FILA, con o sin tarifa (dueño, 15/09/2026): Liquidación lo manda a
     // Oficina por `esJefeDeObra`, y Horas tiene que mostrar las mismas personas.
@@ -116,5 +125,5 @@ export async function leerPlantelDeLaQuincena(supabase: SupabaseClient, q: Quinc
       horas: actividad.conHoras.has(p.id) ? 1 : 0, presenteSinHoras: conPresencia.has(p.id),
     })
   }).map((p) => p.id))
-  return { personas: activas, ids: new Set(activas.map((p) => p.id)), delCuadro, puestos, errores }
+  return { personas: activas, ids: new Set(activas.map((p) => p.id)), delCuadro, puestos, categorias, errores }
 }

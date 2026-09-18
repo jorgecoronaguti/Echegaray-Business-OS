@@ -161,10 +161,20 @@ repo, se señala el archivo de ejemplo en vez de describirlo.
 npm run orq:test     # 216 archivos de test, ~37 s   ← la evidencia de cierre
 npm run typecheck    # ~2 s
 npm run lint         # ~33 s (eslint .)
-npm run dev / build
+npm run dev / build   # por el portero de recursos (abajo)
+npm run e2e          # Playwright, un solo navegador
+npm run recursos     # qué ocupa la VM: memoria, swap, carga, cupos, cola
 ```
 
 **`npm test` no existe**: devuelve éxito en 0,16 s sin correr nada. Nunca es evidencia.
+
+## Recursos de la VM (regla dura)
+
+4 núcleos, 7 GiB, y el OS productivo corriendo al lado. Todo trabajo pesado —Next, Playwright/Chromium,
+`tsc`, eslint, suite, build— pasa por el portero `scripts/recursos/ecos` (`ecos <next|browser|validacion|e2e> -- <cmd>`).
+Los scripts de npm ya lo hacen; un comando pelado lo frena el hook de Bash y dice cómo lanzarlo. Cupos:
+**1 Next · 1 navegador · 1 validación**; sin memoria, swap o CPU la tarea espera en cola y avisa. Al
+terminar, fallar o cancelar, el portero apaga lo que lanzó. Política y motivos: `scripts/recursos/README.md`.
 
 ## Arquitectura
 

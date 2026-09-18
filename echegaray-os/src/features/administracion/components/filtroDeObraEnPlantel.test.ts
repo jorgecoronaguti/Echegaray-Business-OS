@@ -63,7 +63,9 @@ test('el recorte vive en la URL: cada enlace sale de la regla, ninguno se arma a
   const src = sinComentarios(pagina())
   assert.match(src, /hrefDe=\{\(cambios\) => armarHref\(sp, cambios\)\}/)
   // Y `armarHref` NO VUELVE A ESCRIBIR LA REGLA: la comparte con las otras dos solapas de la pantalla.
-  assert.match(src, /function armarHref[\s\S]{0,400}?return enlaceConservando\(RUTA/)
+  // (La llamada quedó en varias líneas al sumarse el recorte por categoría: lo que se protege es que
+  //  la regla siga siendo `enlaceConservando`, no cuántos renglones ocupa.)
+  assert.match(src, /function armarHref[\s\S]{0,400}?return enlaceConservando\(\s*RUTA/)
   assert.doesNotMatch(src.slice(src.indexOf('function armarHref'), src.indexOf('const hrefAsistencia')),
     /new URLSearchParams/, 'el enlace del Plantel volvió a armar la URL por su cuenta')
 })
@@ -76,7 +78,10 @@ test('el recorte por obra NO cruza a las otras solapas: el mismo parámetro, otr
   // filtro. Las tres solapas se enlazan con la URL escrita desde cero, y así tiene que quedar.
   const src = sinComentarios(pagina())
   const barra = src.slice(src.indexOf('function vistasDe'), src.indexOf('function vacioDe'))
-  assert.match(barra, /href: armarHref\(\{\}\)/, 'la solapa Plantel dejó de arrancar limpia')
+  // ARRANCA LIMPIA SALVO POR LA CATEGORÍA (17/09/2026), que SÍ cruza: significa lo mismo en las tres
+  // solapas —la del legajo—, así que llevarla no promete un recorte distinto del que ocurre. La obra
+  // sigue sin cruzar, y eso es lo que esta prueba defiende.
+  assert.match(barra, /href: armarHref\(\{ categoria \}\)/, 'la solapa Plantel dejó de arrancar limpia')
   assert.doesNotMatch(barra, /obra/, 'una solapa se puso a arrastrar el recorte por obra de otra vista')
 })
 
@@ -87,7 +92,7 @@ test('el buscador manda la obra puesta: escribir un nombre no borra el recorte',
   // elegida contestaba sobre el plantel entero y el recorte desaparecía sin que nadie lo apagara. Es
   // el mismo defecto que ya se pagó en la solapa Horas.
   const src = sinComentarios(pagina())
-  assert.match(src, /oculto: \{ f: [^}]*obra: obraElegida \}/)
+  assert.match(src, /oculto: \{[\s\S]{0,200}?obra: obraElegida/)
 })
 
 test('los chips cuentan el PADRÓN y la tabla se recorta con la regla probada', () => {
@@ -102,7 +107,7 @@ test('los chips cuentan el PADRÓN y la tabla se recorta con la regla probada', 
   assert.match(src, /sinObraDelCorte\(filasDelPadron, filtro\)/)
   assert.doesNotMatch(src, /obrasDelCorte\(personas/)
   // LA TABLA SE RECORTA CON LA MISMA REGLA QUE CUENTA LOS CHIPS, no con un `filter` escrito acá.
-  assert.match(src, /const personas = filtrarPorObra\(listado\.data \?\? \[\], obraElegida\)/)
+  assert.match(src, /filtrarPorObra\(listado\.data \?\? \[\], obraElegida\)/)
   // Y EL PADRÓN NO ES UN VIAJE MÁS: sale de la lectura que ya contaba las cuatro pastillas.
   assert.match(src, /conteos: padron\.conteos, filasDelPadron: padron\.filas/)
   assert.equal((src.match(/getConteosDeFiltro\(/g) ?? []).length, 1)
@@ -140,7 +145,7 @@ test('la tabla vacía por el recorte dice que es el recorte', () => {
   // equivocado: lo que la vació está en la fila de abajo. Sin esta línea, la salida —«Todas»— no está
   // a la vista de quien no sabe que el recorte existe.
   const src = sinComentarios(pagina())
-  assert.match(src, /function vacioDe\(filtro: FiltroPersonal, q\?: string, obra\?: string\)/)
+  assert.match(src, /function vacioDe\(filtro: FiltroPersonal, q\?: string, obra\?: string/)
   assert.match(src, /if \(obra\) return '[^']*«Todas»[^']*'/)
-  assert.match(src, /vacio=\{vacioDe\(filtro, sp\.q, obraElegida\)\}/)
+  assert.match(src, /vacio=\{vacioDe\(filtro, sp\.q, obraElegida/)
 })

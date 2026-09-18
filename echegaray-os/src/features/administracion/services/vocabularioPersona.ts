@@ -37,6 +37,21 @@ function clave(v: string): string {
 }
 
 /**
+ * LA CLAVE CON LA QUE DOS GRAFÍAS DE LA MISMA CATEGORÍA SE RECONOCEN IGUALES, o `null` si no hay
+ * texto. Es la MISMA normalización que usa `pareceCategoria` para mirar el catálogo — expuesta
+ * porque el recorte por categoría (`recorteDeCategoria.ts`) tiene que agrupar «OFICIAL», «Oficial» y
+ * `oficial` en una sola pastilla. Con dos normalizaciones, el filtro abriría tres puertas al mismo
+ * grupo y ninguna las tres contendría a todos.
+ *
+ * NO REEMPLAZA A `categoriaVisible`: acá se decide con qué se COMPARA, no qué se MUESTRA. Lo que se
+ * muestra es el texto del legajo tal como está cargado.
+ */
+export function claveDeCategoria(texto: string | null | undefined): string | null {
+  const t = texto?.trim()
+  return t ? clave(t) : null
+}
+
+/**
  * ¿ESTE TEXTO LIBRE ES, EN REALIDAD, UNA CATEGORÍA DEL CONVENIO?
  *
  * Se compara contra el catálogo tanto por su clave (`medio_oficial`) como por su etiqueta («Medio

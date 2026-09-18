@@ -34,6 +34,22 @@ export const VARIABLE_PERSONA = '[--liq-persona:170px] md:[--liq-persona:250px]'
 /** El fondo de cada tono, de los tokens del tema: canvas y superficie hundida. Clases estáticas, no hex. */
 export const CLASE_DE_TONO: Record<TonoDeBloque, string> = { ninguno: '', claro: 'bg-canvas', hundido: 'bg-surface-sunken' }
 
+/**
+ * EL ✎ SIGUE ESTANDO —lo pedido no se quita— PERO NO COMPITE (limpieza 17/09/2026). Repetido en once rótulos, en la
+ * misma tinta que el nombre de la columna, era la mitad de la fila de encabezados. Queda en la línea fuerte: se ve
+ * que esa columna se escribe, sin leerse antes que cómo se llama. La definición (`columnasDelCuadro.ts`) no cambia:
+ * los tests siguen leyendo el ✎ ahí.
+ */
+export function RotuloDeColumna({ rotulo }: { rotulo: string }) {
+  if (!rotulo.endsWith('✎')) return <>{rotulo}</>
+  return (
+    <>
+      {rotulo.slice(0, -1).trimEnd()}
+      <span title="esta columna se escribe" style={{ color: V.lineaFuerte, marginLeft: 3 }}>✎</span>
+    </>
+  )
+}
+
 const DIAS_CORTOS = ['D', 'L', 'M', 'M', 'J', 'V', 'S'] as const
 function rotuloDia(fecha: string): string {
   const [a, m, d] = fecha.split('-').map(Number)
@@ -185,7 +201,9 @@ function Encabezado({ columnas, definicion, dias, tramos, sellada, corrimiento, 
       {tramos.map((t) => (
         <div key={t.clave} data-testid={banda(t.clave)} className={CLASE_DE_TONO[t.tono]} style={{
           gridColumn: `${t.inicio} / span ${t.span}`, gridRow: '1 / span 2', alignSelf: 'stretch', marginInline: -2,
-          borderTop: `2px solid ${t.tono === 'ninguno' ? V.lineaFuerte : V.grafito}`, overflow: 'clip',
+          // 1 px ALCANZA PARA CORTAR (limpieza 17/09/2026): cuatro barras de 2 px de grafito sobre el encabezado
+          // pesaban más que los rótulos que separan.
+          borderTop: `1px solid ${t.tono === 'ninguno' ? V.lineaFuerte : V.grafito}`, overflow: 'clip',
         }}>
           <div style={{
             display: 'inline-flex', alignItems: 'baseline', gap: 8, padding: '6px 4px 0', color: V.tinta, fontWeight: 600,
@@ -200,7 +218,7 @@ function Encabezado({ columnas, definicion, dias, tramos, sellada, corrimiento, 
         <div key={f} title={f} style={{ gridColumn: 2 + i, gridRow: 2, textAlign: 'center', padding: '28px 0 8px', minWidth: DIA }}>{rotuloDia(f)}</div>
       ))}
       {definicion.columnas.map((c, i) => (
-        <div key={c.clave} style={{ gridColumn: 2 + dias.length + i, gridRow: 2, textAlign: 'right', padding: '28px 0 8px' }}>{c.rotulo}</div>
+        <div key={c.clave} style={{ gridColumn: 2 + dias.length + i, gridRow: 2, textAlign: 'right', padding: '28px 0 8px' }}><RotuloDeColumna rotulo={c.rotulo} /></div>
       ))}
     </div>
   )

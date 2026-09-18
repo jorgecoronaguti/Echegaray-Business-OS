@@ -183,6 +183,10 @@ export interface DatosQuincenaPorObra {
   obrasActivas: string[]
   /** `personas.puesto` por id. Vacío cuando la lectura no se pudo hacer — ver `puestosDe`. */
   puestos: Record<string, string | null>
+  /** `persona_directorio.categoria` por id, de la MISMA lectura del plantel que trae los puestos. Es
+   *  lo que recorta la grilla por categoría (dueño, 17/09/2026). Vacío = no se pudo leer, y entonces
+   *  todas las filas caen en «Sin categoría»: nunca una categoría inventada. */
+  categorias: Record<string, string | null>
 }
 
 /** Los feriados de la ventana. La misma tabla que lee la grilla de presencia — no una lista aparte.
@@ -331,6 +335,11 @@ export async function getQuincenaPorObra(
       // asignación o registros dejaba afuera al jefe que está en el plantel sin ninguna de las dos: caía con
       // los obreros (QA 15/09/2026, Maldonado en 16–31/08).
       puestos: plantel.puestos,
+      // LA CATEGORÍA DE TODO EL DIRECTORIO, de la misma lectura que los puestos: es lo que recorta la
+      // grilla por categoría (dueño, 17/09/2026). Pedirla sólo para quien tuvo asignación o registros
+      // dejaría afuera a quien está en el plantel sin ninguna de las dos, que es la fila que más
+      // necesita el recorte para aparecer.
+      categorias: plantel.categorias,
       tardanzas: Object.fromEntries((presencias.data ?? [])
         .filter((p) => p.estado === 'presente' && (p.llego_tarde === true || p.salio_antes === true))
         .map((p) => [

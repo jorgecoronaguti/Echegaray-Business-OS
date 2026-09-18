@@ -182,6 +182,8 @@ export function BloqueDocumentos({
                           valor={d.rol}
                           opciones={ROLES_DOCUMENTO}
                           guardar={clasificar(d.drive_file_id)}
+                          clave={`rol-del-documento-${d.drive_file_id}`}
+                          rotulo={`Rol de ${d.name ?? d.drive_file_id}`}
                           testid="rol-documento"
                         />
                       ) : d.rol ? (
