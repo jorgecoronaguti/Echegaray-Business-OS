@@ -174,6 +174,14 @@ export interface LineaConOverrides extends LineaLiquidada {
   /** Lo entregado en mano de verdad: los adelantos en efectivo, salvo que alguien haya escrito otra cifra. */
   pagadoEfectivo: number
   /**
+   * NADIE AFIRMÓ CUÁNTO FUE POR BANCO (17/09/2026). El $0 de `porBanco` y de `pagadoBanco` de esta fila es un valor por
+   * defecto, no un dato: no hay recibo, ni neto del modelo, ni celda escrita a mano, ni BANCO anotado en la planilla,
+   * ni un peso registrado por banco. Ocho bloques de JORNALES de 2026 tienen la columna BANCO vacía en TODAS sus
+   * filas y la app publicaba «$0 por banco, todo en efectivo» como si alguien lo hubiera medido. La regla vive en
+   * `desgloseSinAfirmar`; el legajo lo escribe «sin desglose» y no reparte lo pagado.
+   */
+  sinDesglose: boolean
+  /**
    * LOS SALDOS DE LA FILA (dueño, 15/09/2026). La cuenta entera vive en `pagoDeLaQuincena.ts`: banco − pagado,
    * negro − pagado, y el exceso de un lado descontado del otro. Acá sólo se le entrega la entrada.
    */
@@ -203,9 +211,38 @@ export interface CadenaDeJornales {
   yaTransferido?: number | null
   porBanco?: number | null
   enEfectivo?: number | null
+  /**
+   * LA COLUMNA BANCO DEL BLOQUE TIENE AL MENOS UNA CIFRA. Con `porBanco` NULL y esto en `true`, la planilla midió el
+   * canal y a esta persona no le fue nada por banco; con esto en `false`, nadie anotó la columna en todo el bloque.
+   */
+  bancoMedido?: boolean
 }
 
 const redondear2 = (n: number): number => Math.round(n * 100) / 100
+
+/**
+ * ¿NADIE AFIRMÓ CUÁNTO FUE POR BANCO? Puro. Una sola fuente que hable alcanza para que el desglose esté afirmado:
+ *
+ *   escritoAMano   alguien escribió Por banco, Pagado banco o Pagado efectivo en la app (un 0 también afirma);
+ *   neto           el modelo blanco + negro tiene neto (recibo real o estimado);
+ *   reciboNeto     el estudio cargó un recibo para el período, girado o no;
+ *   jornales       la planilla anotó BANCO para la persona (aun 0) o para alguien del bloque (`bancoMedido`);
+ *   pagadoBanco    consta plata que salió por banco (ADELANTO BANCO, lote del extracto, registro).
+ *
+ * NULL NO ES CERO: sin ninguna de esas, el 0 que la cadena publica por banco no lo midió nadie.
+ */
+export function desgloseSinAfirmar(e: {
+  escritoAMano: boolean
+  neto: number | null
+  reciboNeto: number | null
+  jornales: CadenaDeJornales | null
+  pagadoBanco: number
+}): boolean {
+  if (e.escritoAMano) return false
+  if (e.neto != null || e.reciboNeto != null) return false
+  if (e.jornales && (e.jornales.porBanco != null || e.jornales.bancoMedido === true)) return false
+  return !(e.pagadoBanco > 0)
+}
 
 const SIN_MARCAS: Record<CampoEditable, boolean> = {
   horas: false, cobra: false, adelanto: false, yaTransferido: false,
@@ -274,7 +311,8 @@ export function aplicarOverrides(
     const j = jornales[campo as keyof CadenaDeJornales]
     // NULL NO ES CERO, TAMPOCO ACÁ. Una columna que la planilla no rotula viaja NULL y no puede
     // borrar lo que la app calculó: «no hay columna» y «no le dieron nada» son cosas distintas.
-    if (j == null || !Number.isFinite(j)) return calculado
+    // (`typeof`, no sólo `Number.isFinite`: la cadena también lleva `bancoMedido`, que es un booleano y no una celda.)
+    if (typeof j !== 'number' || !Number.isFinite(j)) return calculado
     const jr = redondear2(j)
     origen[campo] = 'jornales'
     // LA DIFERENCIA CONTRA EL DERIVADO SE DICE: gana JORNALES y la pantalla publica las dos cifras.
@@ -346,6 +384,11 @@ export function aplicarOverrides(
   // celda la vuelve manual y manda, igual que en el resto del cuadro.
   const pagadoBanco = puesto('pagadoBanco') ?? yaTransferido
   const pagadoEfectivo = puesto('pagadoEfectivo') ?? adelanto
+  // NULL NO ES CERO (17/09/2026): si ninguna fuente afirmó el banco, la fila lo dice en vez de publicar $0.
+  const sinDesglose = desgloseSinAfirmar({
+    escritoAMano: manual.porBanco || manual.pagadoBanco || manual.pagadoEfectivo,
+    neto: sueldo?.neto ?? null, reciboNeto: base.reciboNeto, jornales, pagadoBanco,
+  })
   const pago = pagoDeLaLinea({
     banco: porBanco,
     // EL MISMO NEGRO QUE MUESTRA LA COLUMNA (`negroDeLaFila`): un saldo calculado sobre otro negro que el
@@ -380,7 +423,7 @@ export function aplicarOverrides(
     negro: sueldo?.negro ?? null,
     horasNegro: sueldo?.horasNegro ?? null,
     horasDeLosDias: base.horas,
-    pagadoBanco, pagadoEfectivo, pago, formulas,
+    pagadoBanco, pagadoEfectivo, pago, formulas, sinDesglose,
   }
 }
 
@@ -429,18 +472,25 @@ function descontarDelNegro(s: SueldoBlancoNegro, p: PresentismoDeLinea | null): 
 export function sinOverrides(
   base: LineaLiquidada, sellado: PresentismoDeLinea | null = null, ov: OverridesDeLinea = {},
   sello: SelloDeLaQuincena | null = null,
+  /** Lo que la planilla dice de esta persona. En la cerrada NO manda sobre la cadena: sólo dice si midió el banco. */
+  jornales: CadenaDeJornales | null = null,
 ): LineaConOverrides {
   const registrado = (v: number | null | undefined): number | null =>
     v != null && Number.isFinite(v) ? redondear2(v) : null
   const pagadoBanco = registrado(ov.pagadoBanco) ?? base.yaTransferido
   const pagadoEfectivo = registrado(ov.pagadoEfectivo) ?? base.adelanto
+  // EN LA FOTO CERRADA NADA ES «ESCRITO A MANO» (es una foto), así que un `pagado_banco` registrado en 0 no afirma el
+  // canal: el cargador de JORNALES escribe ese 0 justamente cuando la columna BANCO estaba vacía. Afirma un recibo, un
+  // BANCO medido en la planilla o un peso registrado por banco. Límite declarado: un «0 por banco» que una persona haya
+  // escrito a mano en una quincena ya cerrada, sin recibo y sin BANCO en la planilla, se lee igual que el del cargador.
+  const sinDesglose = desgloseSinAfirmar({ escritoAMano: false, neto: null, reciboNeto: base.reciboNeto, jornales, pagadoBanco })
   return {
     ...base, manual: { ...SIN_MARCAS }, origen: { ...TODO_CALCULADO }, discrepancia: {},
     // `sueldo` SIGUE EN NULL A PROPÓSITO: el modelo blanco+negro no se recalcula sobre algo ya pagado. Lo que sí
     // viaja es el sello, para que el $/h de esa quincena deje de ser «—».
     referenciaJornales: null, sueldo: null, sello, presentismo: sellado, sinNeto: false, horasRecibo: null, valorHoraRecibo: null,
     negro: null, horasNegro: null, horasDeLosDias: base.horas,
-    pagadoBanco, pagadoEfectivo, formulas: {},
+    pagadoBanco, pagadoEfectivo, formulas: {}, sinDesglose,
     pago: pagoDeLaLinea({
       banco: base.porBanco,
       negro: negroDeLaFila({

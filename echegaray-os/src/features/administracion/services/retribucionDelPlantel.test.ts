@@ -25,13 +25,13 @@ const porHora = (personaId: string, nombre: string, o: {
   banco: number | null; negro: number | null; pagadoBanco?: number; pagadoEfectivo?: number; sinNeto?: boolean
 }): LineaDelCuadro => ({
   personaId, nombre, modalidad: 'hora', horas: 80, valorHora: 6000, netoMensual: null, cobra: null, sinTarifa: false,
-  sinNeto: o.sinNeto === true, sueldo: { estado: 'recibo' },
+  sinNeto: o.sinNeto === true, sueldo: { estado: 'recibo' }, sinDesglose: false,
   pago: pagoDeLaLinea({ banco: o.banco, negro: o.negro, pagadoBanco: o.pagadoBanco, pagadoEfectivo: o.pagadoEfectivo }),
 })
 
 const mensual = (personaId: string, nombre: string, neto: number, pagadoBanco: number): LineaDelCuadro => ({
   personaId, nombre, modalidad: 'mensual', horas: 90, valorHora: null, netoMensual: neto, cobra: neto, sinTarifa: false,
-  sinNeto: false, sueldo: null, pago: pagoDeLaLinea({ banco: neto, negro: 0, pagadoBanco }),
+  sinNeto: false, sueldo: null, sinDesglose: false, pago: pagoDeLaLinea({ banco: neto, negro: 0, pagadoBanco }),
 })
 
 const leida = (desde: string, obreros: LineaDelCuadro[], oficina: LineaDelCuadro[] = [], final: LineaDelCuadro[] = []): QuincenaLeida => ({
@@ -138,7 +138,7 @@ test('sin permiso no se arma ninguna fila; la medida desconocida es «pagado»',
 test('el mensual antes de septiembre: la celda «liquidado» del mes es la suma de sus quincenas, no «sin total»', () => {
   const jefe = (cobra: number, pagadoEfectivo: number): LineaDelCuadro => ({
     personaId: 'j', nombre: 'Jefe', modalidad: 'mensual', horas: 90, valorHora: null, netoMensual: null, cobra,
-    sinTarifa: false, sinNeto: false, sueldo: null, pago: pagoDeLaLinea({ banco: 0, negro: null, pagadoEfectivo }),
+    sinTarifa: false, sinNeto: false, sueldo: null, sinDesglose: false, pago: pagoDeLaLinea({ banco: 0, negro: null, pagadoEfectivo }),
   })
   const lecturas = [leida('2026-07-01', [], [jefe(796400, 438400)]), leida('2026-07-16', [], [jefe(1007000, 0)])]
   const d = armarRetribucionDelPlantel({
