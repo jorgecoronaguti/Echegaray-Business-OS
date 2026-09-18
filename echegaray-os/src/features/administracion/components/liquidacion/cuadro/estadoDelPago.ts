@@ -9,6 +9,15 @@ import { cierreDeLaFila, type CadenaParaCerrar } from '../../../services/cuadroD
 import type { ReferenciaDeJornales } from '../../../services/liquidacionOverrides.ts'
 
 /**
+ * POR QUÉ NO HAY TOTAL QUE AFIRMAR, EN UNA SOLA DEFINICIÓN. Lo dicen dos lugares —la columna «Total» y el cobro que
+ * va pegado al nombre (`LoQueCobra`)— y dos frases distintas para el mismo hueco harían creer que son dos huecos.
+ *
+ * UN MENSUAL SIN IMPORTE NO ESTÁ «SIN TARIFA» (dueño, 15/09/2026: «los jefes cobran por mes, no preguntes más»).
+ */
+export const motivoSinCobra = (l: { modalidad?: string | null; sinNeto?: boolean }): string =>
+  l.modalidad === 'mensual' ? 'importe no cargado' : l.sinNeto ? 'sin neto' : 'sin tarifa'
+
+/**
  * LA MARCA DE JORNALES CUANDO LA PLANILLA NO DICE LO MISMO QUE EL CUADRO. `null` = no hay marca.
  *
  * Dueño, 14/09/2026: las horas y el cobra salen de las celdas del cuadro; la planilla queda como

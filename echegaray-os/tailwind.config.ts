@@ -71,7 +71,15 @@ const config: Config = {
           referencia: 'rgb(var(--os-dato-referencia-rgb) / <alpha-value>)',
           materiales: 'rgb(var(--os-dato-materiales-rgb) / <alpha-value>)',
           cajon: 'rgb(var(--os-dato-sin-obra-rgb) / <alpha-value>)',
+          otros: 'rgb(var(--os-dato-otros-rgb) / <alpha-value>)',
           mora: 'rgb(var(--os-dato-mora-media-rgb) / <alpha-value>)',
+        },
+        // LOS CUATRO RUBROS DEL COSTO (Analíticas): la misma identidad en barras y tortas. Ver globals.css.
+        rubro: {
+          mo: 'rgb(var(--os-rubro-mo-rgb) / <alpha-value>)',
+          materiales: 'rgb(var(--os-rubro-materiales-rgb) / <alpha-value>)',
+          subcontratistas: 'rgb(var(--os-rubro-subcontratistas-rgb) / <alpha-value>)',
+          otros: 'rgb(var(--os-rubro-otros-rgb) / <alpha-value>)',
         },
         // Series de gráfico: identidad, nunca estado. Ver el porqué y la validación en globals.css.
         serie: {

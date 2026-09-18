@@ -1,8 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  armarCostosPorObra, armarGastosSinObra, textoManoObra, textoMateriales, textoSubcontratos, textoTotalManoObra,
-  textoTotalSubcontratos, tituloManoObra, tituloMateriales, tituloSubcontratos, totalesDelCliente,
+  armarCostosPorObra, armarGastosSinObra, textoManoObra, textoMateriales, textoOtros, textoSubcontratos,
+  textoTotalManoObra, textoTotalOtros, textoTotalSubcontratos, tituloManoObra, tituloMateriales, tituloOtros,
+  tituloSubcontratos, totalesDelCliente,
 } from './costosDeObra.ts'
 
 // ═══ QUÉ DEFECTOS ATRAPA ═══
@@ -17,6 +18,8 @@ import {
 //      recibo + negro por quincena, y el `title` no puede volver a explicarla como «× cargas».
 //  5 · QUE UN ESTIMADO SE DIBUJE COMO UN REAL: la celda dice «est.».
 //  6 · QUE UN `numeric` QUE LLEGA COMO TEXTO DEJE LA CELDA VACÍA TENIENDO EL DATO.
+//  7 · QUE «OTROS» (18/09/2026) SE DIBUJE COMO $ 0 CUANDO LA RPC NO LO PUBLICA, O SE SUME DENTRO DE
+//      MATERIALES EN EL PIE: es el cuarto rubro, con su columna y su «—».
 //
 // Cambio de contrato (14/09/2026): se fueron `multiplicador` e `implicito` de la RPC, y con ellos los
 // casos que los probaban acá. `multiplicadorDeCosto` sigue probado en `costoHora.test.ts`.
@@ -213,4 +216,60 @@ test('sin nada valorizado el pie dice null, no 0 — y sin costos tampoco', () =
   const vacio = totalesDelCliente(null, ['quattropani'])
   assert.equal(vacio.materiales, null)
   assert.equal(vacio.manoObra, null)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// OTROS (dueño, 18/09/2026): el cuarto rubro, y la reclasificación no cambia el costo directo
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('OTROS: el importe, el title dice qué contiene y lo por vencer, y «—» cuando no hay ninguno', () => {
+  const c = armarCostosPorObra([{
+    ...QUATTROPANI, materiales: 40_000_000, otros: 2_580_345.01, n_otros: 3, otros_por_vencer: '450000', corte: '2026-09-18',
+  }])!.get('quattropani')
+  assert.equal(c?.otros, 2580345.01)
+  assert.equal(c?.nOtros, 3)
+  assert.equal(c?.otrosPorVencer, 450000, 'un numeric que llega como texto sigue siendo el número')
+  assert.equal(textoOtros(c), '$2.580.345')
+  const t = tituloOtros(c)!
+  assert.match(t, /^Otros al 18\/09: 3 comprobantes\. Alquiler y traslado de equipos, servicios de obra \(baño, contenedor, agua\), combustible, fletes y honorarios/)
+  assert.match(t, /No están en Materiales ni en Subcontratos/)
+  assert.match(t, /\+ \$450\.000 por vencer, que no entra\.$/)
+  // EL TITLE DE MATERIALES NOMBRA LO QUE SE FUE: quien compare contra el número de ayer ve adónde fueron.
+  assert.match(tituloMateriales(c)!, /Sin los \$2\.580\.345 de otros \(equipos, servicios, combustible, fletes\), que van en su columna/)
+  // Un comprobante en singular.
+  assert.match(tituloOtros(armarCostosPorObra([{ ...QUATTROPANI, otros: 100, n_otros: 1 }])!.get('quattropani'))!, /1 comprobante\./)
+})
+
+test('OTROS ausente: «—», nunca $ 0 — sea porque no hay comprobantes o porque la RPC es anterior a 20260918T0900', () => {
+  // La fila de Quattropani de 20260915 no trae `otros`: la RPC anterior no lo publicaba.
+  const viejo = armarCostosPorObra([QUATTROPANI])!.get('quattropani')
+  assert.equal(viejo?.otros, null)
+  assert.equal(viejo?.nOtros, 0)
+  assert.equal(viejo?.otrosPorVencer, null)
+  assert.equal(textoOtros(viejo), '—')
+  assert.equal(tituloOtros(viejo), null, 'sin importe no hay nada que respaldar')
+  assert.doesNotMatch(tituloMateriales(viejo)!, /de otros/, 'sin otros, el title de materiales no inventa la frase')
+  // La RPC nueva contestó y no hay ninguno: también «—», y sin comprobante que contar.
+  const nada = armarCostosPorObra([{ ...QUATTROPANI, otros: null, n_otros: 0 }])!.get('quattropani')
+  assert.equal(textoOtros(nada), '—')
+  assert.equal(textoOtros(null), '—')
+})
+
+test('el total del cliente suma OTROS aparte de Materiales, y lo sin obra no entra a Otros', () => {
+  const m = armarCostosPorObra([
+    { ...QUATTROPANI, obra_id: 'a', materiales: 100, subcontratos: 40, otros: 25 },
+    { ...QUATTROPANI, obra_id: 'b', materiales: 50, subcontratos: null, otros: null },
+    { ...QUATTROPANI, obra_id: 'c', materiales: null, subcontratos: null, otros: 5 },
+  ])!
+  const sinObra = armarGastosSinObra([{ cliente_id: 'k', materiales: 30, subcontratos: 7, n_comprobantes: 2 }])!.get('k')!
+  const t = totalesDelCliente(m, ['a', 'b', 'c'], sinObra)
+  assert.equal(t.materiales, 180, 'otros no puede sumarse en Materiales')
+  assert.equal(t.otros, 30)
+  assert.equal(textoTotalOtros(t), '$30')
+  // LA IDENTIDAD DEL COSTO DIRECTO: repartir en cuatro rubros no cambia la suma.
+  assert.equal((t.materiales ?? 0) + (t.subcontratos ?? 0) + (t.otros ?? 0), 100 + 40 + 25 + 50 + 30 + 7 + 5)
+  // Ninguna obra con otros → null, y el pie dice «—»; no leído → vacío.
+  assert.equal(totalesDelCliente(m, ['b']).otros, null)
+  assert.equal(textoTotalOtros(totalesDelCliente(m, ['b'])), '—')
+  assert.equal(textoTotalOtros(totalesDelCliente(null, ['a'])), '')
 })

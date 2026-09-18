@@ -218,7 +218,7 @@ test('EL RECORTE PREGUNTA CÓMO COBRA: por quincena o mensual (dueño, 14/09/202
 test('EL BUSCADOR RECORTA LAS FILAS Y EL TOTAL, y conserva quincena y recorte', () => {
   assert.match(VISTA, /normalizar\(f\.nombre\)\.includes\(buscar\)/)
   assert.match(VISTA, /totalesDelEspejo\(visibles\)/)
-  assert.match(VISTA, /ocultos: \{ vista: 'liquidacion', quincena: quincena\.desde/)
+  assert.match(VISTA, /ocultos: \{\s*vista: 'liquidacion', quincena: quincena\.desde/)
 })
 
 test('LA BARRA MUESTRA UNA SOLA PANTALLA Y MANDA EL RESTO A «MÁS» (dueño, 14/09/2026)', () => {

@@ -1,4 +1,4 @@
-import { Aviso } from '@/shared/components/ds'
+import { Aviso, Vacio } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
 import { correrQuincena, esFechaISO, quincenaDe, rotuloQuincena } from '../../../services/quincena'
@@ -9,6 +9,10 @@ import { ORDEN_DE_CUADROS, seccionesDePersonal } from '../../../services/ordenDe
 import { historialDeTarifa, type EntradaDeHistorial } from '../../../services/cuadroDeJornales'
 import type { GrupoLiquidacion } from '../../../services/liquidacionQuincena'
 import { RECORTES, normalizar } from '../../../services/recorteDeLiquidacion'
+import {
+  categoriasDelCorte, etiquetaDeLaElegida, filtrarPorCategoria,
+} from '../../../services/recorteDeCategoria'
+import { FiltroDeCategoria } from '../../FiltroDeCategoria'
 import { FiltrosDelEspejo, GrillaEspejoQuincena, type SeccionDelEspejo } from '../GrillaEspejoQuincena'
 import { MONO } from './tabla'
 import type { PropsDeSolapa } from './index'
@@ -86,9 +90,25 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
   // entero debajo de tres filas filtradas sería un total que no cierra con lo que está arriba.
   const grupo = RECORTES.find((r) => r.clave === parametros.grupo)?.clave ?? 'todos'
   const buscar = normalizar(parametros.buscar ?? '')
-  const visibles = filas
-    .filter((f) => grupo === 'todos' || f.grupo === grupo)
-    .filter((f) => !buscar || normalizar(f.nombre).includes(buscar))
+  // ═══ EL RECORTE POR CATEGORÍA (dueño, 17/09/2026) ═══
+  //
+  // *«necesito en todo el módulo personal, filtro por categoría de empleados»*. Es el MISMO control y
+  // la MISMA regla que el Plantel y Horas (`recorteDeCategoria.ts`), y por eso el parámetro cruza
+  // entre las tres solapas: la categoría no cambia de significado según dónde se mire.
+  //
+  // ENTRA POR ACÁ Y NO POR `FiltrosDelEspejo` a propósito: esa fila es del cuadro y ya lleva quincena,
+  // «Cobra» y el buscador. Esta pastilla corta por un eje distinto y se lee como tal.
+  const categoriaElegida = parametros.categoria?.trim() || undefined
+  const visibles = filtrarPorCategoria(
+    filas
+      .filter((f) => grupo === 'todos' || f.grupo === grupo)
+      .filter((f) => !buscar || normalizar(f.nombre).includes(buscar))
+      .map(conCategoria),
+    categoriaElegida,
+  )
+  // LAS PASTILLAS CUENTAN LA QUINCENA ENTERA —no lo que sobrevive a «Cobra» ni al buscador—, igual que
+  // los otros recortes del módulo: una pastilla dice cuánta gente hay del otro lado del clic.
+  const chipsDeCategoria = categoriasDelCorte(filas.map(conCategoria), categoriaElegida)
   const secciones = seccionesDelEspejo(visibles, tituloDe)
   const totales = totalesDelEspejo(visibles)
 
@@ -122,11 +142,36 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
         grupos={grupos}
         busqueda={{
           valor: parametros.buscar ?? '',
-          ocultos: { vista: 'liquidacion', quincena: quincena.desde, ...(grupo === 'todos' ? {} : { grupo }) },
+          // LA CATEGORÍA VIAJA CON EL BUSCADOR: un formulario manda SÓLO lo que declara, y sin este
+          // campo escribir un nombre borraba el recorte puesto (el mismo defecto que ya se pagó con
+          // la obra en el Plantel y en Horas).
+          ocultos: {
+            vista: 'liquidacion', quincena: quincena.desde,
+            ...(grupo === 'todos' ? {} : { grupo }),
+            ...(categoriaElegida ? { categoria: categoriaElegida } : {}),
+          },
           limpiar: parametros.buscar ? hrefDe({ buscar: undefined }) : null,
         }}
         cerrar={hrefDe({ solapa: 'cierre', buscar: undefined })}
       />
+      {/* EL RECORTE POR CATEGORÍA, EN SU PROPIA FILA Y CON EL CONTEO: los cuadros de abajo suman lo
+          que muestran —sus totales salen de `visibles`—, así que la pantalla tiene que decir sobre
+          cuánta gente está sumando. */}
+      <FiltroDeCategoria
+        chips={chipsDeCategoria}
+        elegida={categoriaElegida}
+        hrefDe={hrefDe}
+        conteo={{ n: visibles.length, total: filas.length, sustantivo: 'personas' }}
+        nota="Los totales de los cuadros y el general son los del recorte."
+      />
+      {/* CERO FILAS POR EL RECORTE SE DICE, no se muestra un cuadro en blanco: sin esta línea, la
+          quincena vacía se lee como «esta gente no cobró», que es otra afirmación. Se nombra el
+          recorte que la vació y la salida. */}
+      {categoriaElegida && visibles.length === 0 && (
+        <Vacio>
+          {`Nadie de esta quincena es «${etiquetaDeLaElegida(categoriaElegida)}». «Todas» vuelve al cuadro entero.`}
+        </Vacio>
+      )}
       <GrillaEspejoQuincena
         dias={dias}
         secciones={secciones}
@@ -148,6 +193,17 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
     </div>
   )
 }
+
+/**
+ * LA FILA DEL CUADRO DICHA EN LOS TÉRMINOS DE LA REGLA, sin perder la fila.
+ *
+ * Quién NO cobra por la escala del convenio lo dice el cuadro: Oficina liquida un neto mensual
+ * (`modalidadDe('oficina')`) y el jefe de obra va a Oficina por `cobraPorMes`. Se traduce una sola
+ * vez y sirve para filtrar y para contar — dos traducciones darían una pastilla que cuenta a alguien
+ * que después no aparece.
+ */
+const conCategoria = (f: FilaDelEspejo): FilaDelEspejo & { cobraPorMes: boolean } =>
+  ({ ...f, cobraPorMes: f.esJefe || f.grupo === 'oficina' })
 
 /**
  * LAS SECCIONES, EN EL ORDEN DE LOS CUADROS Y CON LOS RÓTULOS DEL MÓDULO PERSONAL.

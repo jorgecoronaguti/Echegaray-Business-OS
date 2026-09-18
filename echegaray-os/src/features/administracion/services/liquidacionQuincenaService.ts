@@ -40,7 +40,7 @@ import type { EntradaDePresentismo } from './presentismo.ts'
 import { leerGuardadas, ausenciasPorPersona, tardanzasPorPersona, type EstadoDeLaQuincena } from './liquidacionGuardadas.ts'
 import {
   aplicarOverrides, camposGuardables, sinOverrides,
-  type CampoEditable, type LineaConOverrides,
+  type CampoEditable, type LineaConOverrides, type SelloDeLaQuincena,
 } from './liquidacionOverrides.ts'
 import { getEspejoDeLaPlanilla, type EspejoDeLaPlanilla } from './espejoDeJornalesService.ts'
 import { getExposicionDeLaQuincena, type ExposicionDeLaQuincena } from './exposicionConvenioService.ts'
@@ -306,6 +306,20 @@ export async function getLiquidacionDeLaQuincena(
   // estimado (`exponerAlPiso` → `pisoVigente`, `convenio_escala` con la escala del CCT 76/75): una
   // segunda lectura sería un segundo básico. Las marcas salen de las presencias que esta función ya leyó.
   const categoriaDe = new Map(exposicion.lineas.map((l) => [l.personaId, l.categoria]))
+  // ═══ EL $/H DE UNA QUINCENA CERRADA (dueño, 17/09/2026: «no salen los valores $/h de cada uno en las quincenas
+  // anteriores») ═══
+  //
+  // `exponerAlPiso` ya corre con `q.hasta`, así que `pisoDe` es el piso de la escala que REGÍA ESA QUINCENA, no el de
+  // hoy; y `persona_tarifa` se lee con `desde <= q.hasta`, así que `l.valorHora` es la tarifa de esa fecha. Los dos
+  // números ya existían: lo único que faltaba era un lugar donde la línea cerrada pudiera llevarlos (`SelloDeLaQuincena`).
+  // No es un recálculo — la cerrada no se recalcula; es la foto, dicha con su fecha.
+  const pisoDesdeDe = new Map(exposicion.lineas.map((l) => [l.personaId, l.piso?.desde ?? null]))
+  const selloDe = (l: { personaId: string; valorHora: number | null }): SelloDeLaQuincena => ({
+    valorHora: l.valorHora,
+    piso: pisoDe.get(l.personaId) ?? null,
+    pisoDesde: pisoDesdeDe.get(l.personaId) ?? null,
+    hasta: q.hasta,
+  })
   const tardanzas = tardanzasPorPersona(presencias.data)
   // LAS FALTAS SALEN DE LAS MISMAS PRESENCIAS (dueño, 16/09/2026). Una falta injustificada pierde el
   // presentismo igual que una tardanza; una licencia reconocida no. Lo decide `presentismo.ts`.
@@ -352,8 +366,10 @@ export async function getLiquidacionDeLaQuincena(
         // EL PRESENTISMO DE UNA QUINCENA CERRADA ES EL SELLADO: se muestra lo que se pagó, no se recalcula.
         // LO PAGADO VIAJA TAMBIÉN EN LA CERRADA: es el registro de una plata que salió, no un override del
         // cálculo. Sin esto, cerrar la quincena borraría de la pantalla el pago que alguien registró.
+        // EL ESPEJO VIAJA TAMBIÉN A LA CERRADA, pero no manda: sólo dice si la planilla midió el banco (`sinDesglose`).
         ? c.lineas.map((l) => conMarcaDePago(
-          sinOverrides(l, presentismosSellados.get(l.personaId) ?? null, overrides.get(l.personaId) ?? {}), pagadas,
+          sinOverrides(l, presentismosSellados.get(l.personaId) ?? null, overrides.get(l.personaId) ?? {}, selloDe(l),
+            espejo.cadenaPorPersona.get(l.personaId) ?? null), pagadas,
         ))
         // LA PRECEDENCIA VIVE EN `aplicarOverrides` Y NO ACÁ: manual > JORNALES > calculado, una sola
         // vez y con sus diez tests. Acá sólo se le entrega la fuente.

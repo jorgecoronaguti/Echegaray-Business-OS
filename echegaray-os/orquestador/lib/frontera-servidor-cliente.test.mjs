@@ -36,7 +36,26 @@ function archivos(dir, ext = /\.tsx?$/) {
   return salida
 }
 
-const esCliente = (src) => /^\s*['"]use client['"]/.test(src)
+// El prólogo de directivas va DESPUÉS de los comentarios: `'use client'` en la línea 39, debajo de
+// un bloque de comentarios, es exactamente igual de cliente que en la línea 1 —así lo compila Next—.
+// Mirar sólo el arranque crudo del archivo dejaba SIETE archivos cliente contados como servidor: se
+// los revisaba como origen (falso rojo: TabOperacion.tsx el 17/09) y, peor, no entraban en la lista
+// de destinos, así que un Server Component que les importara un valor pasaba sin que nadie lo viera.
+const sinComentarios = (src) => {
+  let i = 0
+  for (;;) {
+    while (i < src.length && /\s/.test(src[i])) i += 1
+    if (src.startsWith('//', i)) {
+      const fin = src.indexOf('\n', i)
+      i = fin < 0 ? src.length : fin + 1
+    } else if (src.startsWith('/*', i)) {
+      const fin = src.indexOf('*/', i)
+      i = fin < 0 ? src.length : fin + 2
+    } else return src.slice(i)
+  }
+}
+
+const esCliente = (src) => /^['"]use client['"]/.test(sinComentarios(src))
 
 /** `import { A, type B, c } from '…'` → los nombres importados que NO son `type`. */
 function importados(linea) {

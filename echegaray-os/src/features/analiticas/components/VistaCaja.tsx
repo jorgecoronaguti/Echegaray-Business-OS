@@ -18,7 +18,7 @@ import { millones, pctEntero } from '../services/formato'
 import { caja, type Caja } from '../services/empresa'
 import { egresosPercibidos, frescura, horaSanJuan, type GraficoCaja, type LecturaCaja, type SeccionCaja, type SerieCaja } from '../services/cajaSheet'
 import { apilar, escala, indicesRotulados, paneles, rotuloEje } from '../services/graficoCaja'
-import { ancho, Cabecera, ENCABEZADO, FilaDeCifras, Seccion, SinLectura } from './Piezas'
+import { ancho, Cabecera, Cifras, ENCABEZADO, Seccion, SinLectura } from './Piezas'
 import { Columnas } from './VistasEmpresa'
 
 export function VistaCaja({ lectura, egresos, periodo, rango }: {
@@ -245,7 +245,7 @@ function Gasto({ egresos, periodo, rango }: { egresos: unknown[] | null; periodo
           <h2 className="text-[15px] font-semibold text-ink">Lo que se está gastando</h2>
           <p className="text-xs leading-[1.45] text-muted tabular-nums">{periodo} · {ventana} · por fecha de caja, sólo lo pagado</p>
         </div>
-        <FilaDeCifras cifras={[
+        <Cifras cifras={[
           { rotulo: 'salió', valor: c.salio ? millones(c.salio) : null, falta: 'nada pagado' },
           { rotulo: 'a una obra', valor: c.salio ? millones(c.aObra) : null, falta: '—' },
           { rotulo: 'estructura', valor: c.salio ? millones(c.estructura) : null, falta: '—', tono: 'muted' },

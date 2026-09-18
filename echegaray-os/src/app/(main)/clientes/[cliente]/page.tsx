@@ -915,7 +915,8 @@ export default async function ClientePage({ params, searchParams }: {
                     otras ocho la cifra tendría que decir «no las tengo», que se lee como un cero. */}
                 {/* LO QUE COMPRAS LE IMPUTA AL CLIENTE SIN NOMBRAR UNA DE SUS OBRAS: una fila, nunca repartido. */}
                 {/* EL MISMO SCROLL QUE LA TABLA DE TRABAJOS (QA 14/09/2026): esta fila usa `COLS_OBRAS`,
-                    que a 390 px exige 688 px, y suelta hacía que la página entera midiera 708 px de ancho. */}
+                    que a 390 px exige su piso (928 px desde Otros, 18/09/2026; eran 688 el 14/09), y
+                    suelta hacía que la página entera midiera 708 px de ancho. */}
                 <div data-testid="sin-obra-scroll" className="max-[559px]:overflow-x-auto">
                   <FilaGastosSinObra gasto={sinObraDelCliente} columnas={COLS_OBRAS} sangria={16} visible={veEconomia} hrefDetalle={hrefDetalleSinObra} />
                 </div>

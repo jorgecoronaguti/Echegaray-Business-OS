@@ -16,13 +16,14 @@
 // LAS RUTAS VAN RELATIVAS Y CON EXTENSIÓN: el alias `@/` lo resuelve el bundler, no `node --test`.
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { ROTULO_MANO_OBRA, ROTULO_MATERIALES, ROTULO_SUBCONTRATOS, type CostoDeObra, type GastoSinObra } from './costosDeObra.ts'
+import { ROTULO_MANO_OBRA, ROTULO_MATERIALES, ROTULO_OTROS, ROTULO_SUBCONTRATOS, type CostoDeObra, type GastoSinObra } from './costosDeObra.ts'
 import type { HorasDeObra } from './horasDeObra.ts'
 import { frescuraDeLaFicha } from './frescuraFicha.ts'
 import { hh as fmtHH, plata } from '../../../shared/utils/format.ts'
 
 /** El parámetro `rubro` de la URL. Entrada de usuario: se valida, y lo que no valida no abre nada. */
-export const RUBROS = ['materiales', 'subcontratos', 'mo', 'hh'] as const
+// «otros» (equipos, servicios, combustible, fletes) desde 20260918T1510: `detalle_costo_de_obra_rubros` lo abre.
+export const RUBROS = ['materiales', 'subcontratos', 'otros', 'mo', 'hh'] as const
 export type Rubro = (typeof RUBROS)[number]
 const ESQUEMA_RUBRO = z.enum(RUBROS)
 
@@ -37,11 +38,11 @@ export function esRubroSinObra(r: Rubro | null): r is 'materiales' | 'subcontrat
 }
 
 /** El nombre del rubro en la RPC. `mo` viaja corto en la URL y largo en SQL. */
-const RUBRO_SQL: Record<Rubro, string> = { materiales: 'materiales', subcontratos: 'subcontratos', mo: 'mano_obra', hh: 'hh' }
+const RUBRO_SQL: Record<Rubro, string> = { materiales: 'materiales', subcontratos: 'subcontratos', otros: 'otros', mo: 'mano_obra', hh: 'hh' }
 
 /** Cómo se llama la celda, con las MISMAS palabras que el encabezado de la tabla. */
 export const ROTULO_RUBRO: Record<Rubro, string> = {
-  materiales: ROTULO_MATERIALES, subcontratos: ROTULO_SUBCONTRATOS, mo: ROTULO_MANO_OBRA, hh: 'HH acumuladas',
+  materiales: ROTULO_MATERIALES, subcontratos: ROTULO_SUBCONTRATOS, otros: ROTULO_OTROS, mo: ROTULO_MANO_OBRA, hh: 'HH acumuladas',
 }
 
 export interface ComprobanteDeDetalle {
@@ -89,7 +90,7 @@ interface DetalleBase {
 }
 
 export type DetalleCosto =
-  | (DetalleBase & { rubro: 'materiales' | 'subcontratos'; total: number; porVencer: number; filas: ComprobanteDeDetalle[] })
+  | (DetalleBase & { rubro: 'materiales' | 'subcontratos' | 'otros'; total: number; porVencer: number; filas: ComprobanteDeDetalle[] })
   | (DetalleBase & {
     rubro: 'mo'; total: number | null; horas: number | null; horasSinTarifa: number | null
     puedeVerTarifas: boolean; filas: QuincenaDePersona[]
@@ -164,6 +165,7 @@ export function armarDetalleCosto(j: unknown): DetalleCosto | null {
   switch (r.rubro) {
     case 'materiales':
     case 'subcontratos':
+    case 'otros':
       return { ...base, rubro: r.rubro, total: num(r.total) ?? 0, porVencer: num(r.por_vencer) ?? 0, filas: comprobantesDe(r.filas) }
     case 'mano_obra':
       return {
@@ -256,6 +258,7 @@ export function celdaDeCosto(
   switch (p.rubro) {
     case 'materiales': return c?.materiales ?? null
     case 'subcontratos': return c?.subcontratos ?? null
+    case 'otros': return c?.otros ?? null
     case 'mo': return c?.manoObra ?? null
     case 'hh': return horas?.get(p.obraId)?.hhReal ?? null
   }
@@ -274,7 +277,9 @@ export async function leerDetalle(
   supabase: SupabaseClient, pedido: PedidoDeDetalle,
 ): Promise<{ detalle: DetalleCosto | null; error: string | null }> {
   const { data, error } = 'obraId' in pedido
-    ? await supabase.rpc('detalle_costo_de_obra', { p_obra: pedido.obraId, p_rubro: RUBRO_SQL[pedido.rubro] })
+    // `detalle_costo_de_obra_rubros` (20260918T1510): la MISMA regla de rubros que la celda
+    // (`rubro_de_compra`), así el panel cierra con ella; la vieja metía «otros» dentro de materiales.
+    ? await supabase.rpc('detalle_costo_de_obra_rubros', { p_obra: pedido.obraId, p_rubro: RUBRO_SQL[pedido.rubro] })
     : await supabase.rpc('detalle_costo_sin_obra', { p_cliente: pedido.clienteSlug, p_rubro: pedido.rubro })
   if (error) return { detalle: null, error: error.message }
   return { detalle: armarDetalleCosto(data), error: null }

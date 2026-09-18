@@ -114,6 +114,18 @@
   --os-dato-referencia: #c8c7c1; /* cotizado / contrato: trazo fino */
   --os-dato-materiales: #b0afa9; /* materiales, y el control que no aplica */
   --os-dato-sin-obra: #e0b900; /* el cajón «sin obra asignada»: marca apagada, nunca estado */
+  --os-dato-otros: #d6cfbf; /* «otros» (equipos, combustible, fletes, servicios): arena apagada, entre materiales y el cajón */
+  /* ═══ LOS CUATRO RUBROS DEL COSTO, UN COLOR CADA UNO EN TODA ANALÍTICAS (dueño, 18/09/2026: tortas) ═══
+     La identidad de un rubro es la misma en las barras apiladas y en las tortas: mano de obra siempre
+     serie-1, materiales siempre serie-2, subcontratistas siempre serie-3, otros siempre serie-4. Son los
+     colores de serie del OS con el 3 y el 4 corridos para pasar la validación categórica de la guía de
+     visualización en claro Y en oscuro (validate_palette.js: banda de luminosidad, piso de croma, ΔE
+     adyacente ≥ 15 con y sin daltonismo; los grises del diseño v6 fallaban las cuatro). Identidad, nunca
+     estado: por eso no son pos/neg/warn. */
+  --os-rubro-mo: #2a78d6;
+  --os-rubro-materiales: #1baf7a;
+  --os-rubro-subcontratistas: #7b5fd0;
+  --os-rubro-otros: #d7628f;
   --os-dato-mora-media: #c4482b; /* cobranza vencida 31–90 días: entre el ámbar que reclama y el rojo de +90 */
 
   /* ═══ LOS MISMOS COLORES, EN CANALES SUELTOS ═══
@@ -153,6 +165,11 @@
   --os-dato-referencia-rgb: 200 199 193;
   --os-dato-materiales-rgb: 176 175 169;
   --os-dato-sin-obra-rgb: 224 185 0;
+  --os-dato-otros-rgb: 214 207 191;
+  --os-rubro-mo-rgb: 42 120 214;
+  --os-rubro-materiales-rgb: 27 175 122;
+  --os-rubro-subcontratistas-rgb: 123 95 208;
+  --os-rubro-otros-rgb: 215 98 143;
   --os-dato-mora-media-rgb: 196 72 43;
   --os-serie-1-rgb: 42 120 214;
   --os-serie-2-rgb: 27 175 122;

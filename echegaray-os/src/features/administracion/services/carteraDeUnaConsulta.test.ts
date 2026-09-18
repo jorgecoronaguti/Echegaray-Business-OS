@@ -11,7 +11,12 @@
 // Los tres controles:
 //
 //   1 · `leerCarteraDeUnaConsulta` hace UN `rpc()` y CERO `from()`. Si mañana alguien agrega una
-//       lectura suelta acá adentro, este test la cuenta y falla.
+//       lectura suelta acá adentro, este test la cuenta y falla. UNA EXCEPCIÓN, CON FECHA DE RETIRO
+//       (18/09/2026): cuando la pantalla trae costos, se pide `costo_de_obras_a_la_fecha_rubros` para
+//       los mismos trabajos. `pantalla_clientes` la lee también lo publicado, que no conoce «otros»,
+//       y cambiarla antes de publicar dejó $ 22,6 M invisibles en producción. Al publicar la rama,
+//       `pantalla_clientes` pasa a cuatro rubros y este segundo viaje se retira (ver
+//       `costosEnCuatroRubros.ts`).
 //   2 · Cada lista de la RPC aterriza en la clave que le corresponde. El riesgo real del cableado
 //       es cruzar `obras_activas` con `obras_todas` —tienen columnas parecidas y ninguna pantalla
 //       gritaría—, así que las dos listas del fixture son deliberadamente distintas.
@@ -28,10 +33,17 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { leerCarteraDeUnaConsulta } from './carteraDeUnaConsulta.ts'
 
 /** Un cliente que cuenta lo que se le pide y devuelve el JSON que se le dé. */
-function baseQueCuenta(respuesta: { data: unknown; error: { message: string } | null }) {
+function baseQueCuenta(respuesta: { data: unknown; error: { message: string } | null }, rubros: unknown[] | null = null) {
   const llamadas = { rpc: [] as string[], from: [] as string[] }
   const supabase = {
-    rpc: (nombre: string) => { llamadas.rpc.push(nombre); return Promise.resolve(respuesta) },
+    rpc: (nombre: string) => {
+      llamadas.rpc.push(nombre)
+      // El segundo viaje (los cuatro rubros): si el test no da filas, la base «falla» y se ve `null`.
+      if (nombre === 'costo_de_obras_a_la_fecha_rubros') {
+        return Promise.resolve(rubros ? { data: rubros, error: null } : { data: null, error: { message: 'sin fixture' } })
+      }
+      return Promise.resolve(respuesta)
+    },
     from: (tabla: string) => {
       llamadas.from.push(tabla)
       throw new Error(`la pantalla volvió a leer «${tabla}» por fuera de la RPC`)
@@ -131,10 +143,16 @@ test('el costo a la fecha llega por obra y por cliente; sin la clave es «no pud
       costo_sin_obra: [{ cliente_id: 'c1', materiales: 50, subcontratos: null, n_comprobantes: 1 }],
     },
     error: null,
-  })
+  }, [{ obra_id: 'o1', materiales: 600, otros: 100, mano_obra: 300, horas_valorizadas: 5, horas_sin_tarifa: 0 }])
   const r = await leerCarteraDeUnaConsulta(conCosto.supabase)
-  assert.equal(r.costosPorObra?.get('o1')?.materiales, 700)
+  // LOS CUATRO RUBROS MANDAN: los 700 de materiales de la pantalla eran 600 de materiales y 100 de otros.
+  assert.equal(r.costosPorObra?.get('o1')?.materiales, 600)
+  assert.equal(r.costosPorObra?.get('o1')?.otros, 100)
   assert.equal(r.costosPorObra?.get('o1')?.manoObra, 300)
+  assert.deepEqual(conCosto.llamadas.rpc, ['pantalla_clientes', 'costo_de_obras_a_la_fecha_rubros'])
+  // Si el segundo viaje falla, «no puedo decirlo»: nunca el mapa de tres rubros con Otros vacío.
+  const sinRubros = baseQueCuenta({ data: { ...CARTERA, costo_obra: [{ obra_id: 'o1', materiales: 700 }] }, error: null })
+  assert.equal((await leerCarteraDeUnaConsulta(sinRubros.supabase)).costosPorObra, null)
   assert.equal(r.gastosSinObra?.get('c1')?.materiales, 50)
   // Rol que no es Administración: la RPC manda `null` y la cartera NO lo convierte en un mapa vacío.
   const ciego = baseQueCuenta({ data: { ...CARTERA, costo_obra: null, costo_sin_obra: null }, error: null })

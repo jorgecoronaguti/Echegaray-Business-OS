@@ -17,7 +17,7 @@ export interface FilaUocra {
 
 export interface ValorDeEscala {
   categoria: string
-  /** «Ayud.», «½ Of.», «Of.», «Of. Esp.», «Sereno». */
+  /** «Ayud.», «Medio of.», «Of.», «Of. Esp.», «Sereno»: el nombre de la categoría abreviado, nunca un símbolo. */
   corto: string
   /** $/h, o $/mes para el sereno. */
   valor: number
@@ -37,10 +37,19 @@ export interface EscalaVigente {
   cargadoEn: string | null
 }
 
-/** El orden y el rótulo corto de cada categoría. Lo que no está acá no se dibuja en la tira. */
+/**
+ * El orden y el rótulo corto de cada categoría. Lo que no está acá no se dibuja en la tira.
+ *
+ * ═══ «½ Of.» NO ES LA CATEGORÍA (dueño, 17/09/2026: «falta la categoría medio oficial») ═══
+ *
+ * El dato estaba —`uocra_escala` trae Medio Oficial $5.866 desde el 01/08/2026— pero el rótulo era un símbolo de
+ * fracción, no un nombre: el dueño leyó la tira y no encontró su categoría. Un rótulo que hay que descifrar equivale
+ * a un dato ausente. Todos los cortos son ahora el NOMBRE abreviado, igual que en el resto de la pantalla
+ * (`CATEGORIA_LABEL`, «Medio oficial»); ninguno es un símbolo.
+ */
 const CATEGORIAS: readonly { clave: string; corto: string; porMes: boolean }[] = [
   { clave: 'ayudante', corto: 'Ayud.', porMes: false },
-  { clave: 'medio oficial', corto: '½ Of.', porMes: false },
+  { clave: 'medio oficial', corto: 'Medio of.', porMes: false },
   { clave: 'oficial', corto: 'Of.', porMes: false },
   { clave: 'oficial especializado', corto: 'Of. Esp.', porMes: false },
   { clave: 'sereno', corto: 'Sereno', porMes: true },

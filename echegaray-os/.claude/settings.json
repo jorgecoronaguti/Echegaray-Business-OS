@@ -77,6 +77,41 @@
             "statusMessage": "validando la tarea del agente"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node $CLAUDE_PROJECT_DIR/scripts/recursos/barrer.mjs --motivo fin-de-sesion",
+            "timeout": 30,
+            "statusMessage": "limpiando huérfanos"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node $CLAUDE_PROJECT_DIR/scripts/recursos/hook-bash.mjs",
+            "timeout": 10,
+            "statusMessage": "recursos"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node $CLAUDE_PROJECT_DIR/scripts/recursos/barrer.mjs --motivo fin-de-sesion",
+            "timeout": 30,
+            "statusMessage": "limpiando huérfanos"
+          }
+        ]
       }
     ],
     "SessionEnd": [

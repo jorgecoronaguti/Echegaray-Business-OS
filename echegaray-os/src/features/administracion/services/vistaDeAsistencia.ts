@@ -69,6 +69,9 @@ export interface EstadoAsistencia {
   modo?: string
   /** El recorte por obra: el RÓTULO del chip en la grilla, el id o el nombre en la carga del día. */
   obra?: string
+  /** El recorte por categoría (`recorteDeCategoria.ts`). Va ÚLTIMO en la URL: el orden de estas
+   *  claves es parte del contrato y los enlaces que no la llevan puesta quedan idénticos. */
+  categoria?: string
 }
 
 /**
@@ -90,9 +93,9 @@ export function hrefDeAsistencia(
   cambios: Record<string, string | undefined> = {},
 ): string {
   // LA REGLA NO VIVE ACÁ: vive en `enlaceConservando`, que es la misma que usan el Plantel y
-  // Liquidación. Lo propio de esta vista es QUÉ conserva —estas cuatro claves, en este orden—, y eso
+  // Liquidación. Lo propio de esta vista es QUÉ conserva —estas cinco claves, en este orden—, y eso
   // es lo único que este archivo tiene que saber.
   return enlaceConservando(ruta, { vista: 'asistencia' }, {
-    quincena: base.quincena, q: base.q, modo: base.modo, obra: base.obra,
+    quincena: base.quincena, q: base.q, modo: base.modo, obra: base.obra, categoria: base.categoria,
   }, cambios)
 }

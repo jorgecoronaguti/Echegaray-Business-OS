@@ -104,12 +104,15 @@ export function CeldaTarifa({ fila, quincena, pct, sinValor = 'sin tarifa' }: {
         <button type="button" data-testid={`tarifa-${fila.personaId}`} aria-label={`Cambiar el valor de ${fila.nombre}`}
           onClick={() => { setError(null); setTexto(actual == null ? '' : String(actual)) }}
           style={{
-            minHeight: 32, padding: '0 6px', border: `1px solid ${error ? V.neg : V.lineaFuerte}`, borderRadius: 4,
+            // MISMO MARCO SUAVE QUE EL RESTO DE LAS CELDAS ESCRIBIBLES (limpieza 17/09/2026). El error sigue en rojo.
+            minHeight: 32, padding: '0 6px', border: `1px solid ${error ? V.neg : V.linea}`, borderRadius: 4,
             background: '#FFFFFF', color: actual == null ? V.tenue : V.tinta, cursor: 'text',
             fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
           }}>{actual == null ? sinValor : pesos(actual)}</button>
       ) : (
-        <span style={{ color: V.apagado }}>{actual == null ? '—' : pesos(actual)}</span>
+        // EL MISMO TESTID QUE EL BOTÓN: en una quincena cerrada la celda no se escribe, pero el valor tiene que poder
+        // medirse igual (17/09/2026: el «—» de las quincenas anteriores no lo veía ningún test porque no tenía testid).
+        <span data-testid={`tarifa-${fila.personaId}`} data-solo-lectura="1" style={{ color: V.apagado }}>{actual == null ? '—' : pesos(actual)}</span>
       )}
       {/* UN 0% NO DICE NADA: aparece cuando el Sheet sembró la quincena con el mismo valor. */}
       {pct != null && pct !== 0 && texto == null && (

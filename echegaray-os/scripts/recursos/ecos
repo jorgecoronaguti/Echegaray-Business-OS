@@ -1,0 +1,394 @@
+#!/usr/bin/env bash
+# ECOS — PORTERO DE RECURSOS DEL ENTORNO DE DESARROLLO DEL BUSINESS OS.
+#
+# QUÉ PROBLEMA RESUELVE. El 17/09/2026 esta VM (4 núcleos, 7,2 GiB) llegó a 6,6 GiB usados, 8/8 GiB de
+# swap y carga >60, y dejó sin responder a VS Code Remote SSH. No fue un proceso desbocado: fueron
+# varios trabajos legítimos al mismo tiempo — servidores `next dev` de distintos worktrees, Chromium de
+# Playwright, `tsc --noEmit`, eslint y `node --test` (203 archivos, un proceso por archivo). Nadie los
+# coordinaba. Cada agente, cada worktree y cada hook lanzaba lo suyo suponiendo que la máquina estaba
+# libre.
+#
+# QUÉ HACE. Es la única puerta por la que pasa el trabajo pesado de desarrollo:
+#
+#   1. CUENTA. Un servidor Next, un navegador, una validación pesada. No dos.
+#   2. MIDE ANTES DE ABRIR. Memoria disponible, swap y carga. Si no hay lugar, la tarea ESPERA en una
+#      cola FIFO y lo dice; no se lanza "a ver si entra".
+#   3. ENCIERRA. Cada tarea corre en su propio scope de systemd bajo `ecos.slice`, con techo de memoria
+#      y de swap. Una tarea que se desboca muere sola, sin arrastrar a la máquina.
+#   4. LIMPIA. Al terminar, fallar, cancelarse o morir, se detiene el scope entero: el `next-server`,
+#      el Chromium y todo hijo se van con él. No quedan huérfanos.
+#
+# QUÉ NO TOCA, NUNCA. Los servicios productivos del OS (`echegaray-*.service`: worker de Work Fabric,
+# motor interactivo, bot de Mattermost, gateway de XSAS, túnel), Mattermost, Postgres, Docker, Caddy,
+# cloudflared, el navegador de Balanz, VS Code Server y las propias sesiones de Claude Code. Este
+# portero sólo gobierna trabajo de DESARROLLO, y sólo el que él mismo lanzó o el que quedó huérfano.
+#
+# NO AUMENTA EL SWAP. Al contrario: le pone techo al swap que puede usar el desarrollo, porque el swap
+# lleno fue el síntoma que dejó la máquina inservible.
+#
+# USO
+#   ecos <clase> -- <comando…>     clases: next · browser · validacion · e2e (= next + browser)
+#   ecos estado [--json]           qué hay corriendo, cuánta memoria, quién espera
+#   ecos barrer [--seco]           limpia SOLO procesos de desarrollo huérfanos
+#   ecos hay-recursos <clase>      código 0 si esa clase podría arrancar ahora mismo
+#
+# Ejemplos reales:
+#   ecos next -- npm run dev
+#   ecos validacion -- npm run typecheck
+#   ecos e2e -- npx playwright test
+#
+# REENTRANTE: si un comando gobernado lanza adentro otro `ecos` de una clase que ya tiene tomada, no
+# se vuelve a pedir el turno (si no, Playwright —que levanta su propio `next dev`— se trabaría solo).
+
+set -uo pipefail
+
+ECOS_RAIZ="${ECOS_RAIZ:-$HOME/.echegaray-os}"
+ECOS_DIR="${ECOS_DIR:-$ECOS_RAIZ/recursos}"
+AQUI="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
+# La política instalada manda; si no está (worktree recién clonado, primera corrida), vale la del repo.
+for p in "$ECOS_DIR/politica.env" "$AQUI/politica.env"; do
+  if [ -r "$p" ]; then . "$p"; break; fi
+done
+
+: "${ECOS_MAX_NEXT:=1}";        : "${ECOS_MAX_BROWSER:=1}";        : "${ECOS_MAX_VALIDACION:=1}"
+: "${ECOS_MIN_MB_NEXT:=1500}";  : "${ECOS_MIN_MB_BROWSER:=1100}";  : "${ECOS_MIN_MB_VALIDACION:=1200}"
+: "${ECOS_MAX_SWAP_PCT:=55}";   : "${ECOS_MAX_CARGA:=10}"
+: "${ECOS_EMERGENCIA_MB:=450}"; : "${ECOS_EMERGENCIA_SWAP_PCT:=85}"
+: "${ECOS_ESPERA_MAX:=1800}";   : "${ECOS_AVISO_CADA:=30}"
+: "${ECOS_CGROUP_NEXT_HIGH:=2200}";       : "${ECOS_CGROUP_NEXT_MAX:=3300}";       : "${ECOS_CGROUP_NEXT_SWAP:=512}"
+: "${ECOS_CGROUP_BROWSER_HIGH:=1400}";    : "${ECOS_CGROUP_BROWSER_MAX:=2200}";    : "${ECOS_CGROUP_BROWSER_SWAP:=256}"
+: "${ECOS_CGROUP_VALIDACION_HIGH:=2000}"; : "${ECOS_CGROUP_VALIDACION_MAX:=3300}"; : "${ECOS_CGROUP_VALIDACION_SWAP:=384}"
+
+SLOTS="$ECOS_DIR/slots"; COLA="$ECOS_DIR/cola"; REGISTRO="$ECOS_DIR/registro"; LOG="$ECOS_DIR/log"
+mkdir -p "$SLOTS" "$COLA" "$REGISTRO" "$LOG" 2>/dev/null
+
+# systemd de usuario: los hooks y los scripts de npm no siempre heredan estas dos variables, y sin
+# ellas `systemd-run --user` no encuentra el bus y el encierro en cgroup se perdería en silencio.
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+
+aviso() { printf 'recursos: %s\n' "$*" >&2; }
+
+# ── MEDICIÓN (sin abrir un solo proceso: /proc y aritmética de bash) ──
+medir() {
+  local mt ma st sf
+  while read -r k v _; do
+    case "$k" in
+      MemTotal:) mt=$v ;; MemAvailable:) ma=$v ;; SwapTotal:) st=$v ;; SwapFree:) sf=$v ;;
+    esac
+  done < /proc/meminfo
+  MEM_DISP_MB=$(( ma / 1024 ))
+  MEM_TOTAL_MB=$(( mt / 1024 ))
+  SWAP_TOTAL_MB=$(( st / 1024 ))
+  SWAP_USADO_MB=$(( (st - sf) / 1024 ))
+  if [ "$st" -gt 0 ]; then SWAP_PCT=$(( (st - sf) * 100 / st )); else SWAP_PCT=0; fi
+  read -r c1 _ < /proc/loadavg
+  CARGA1="$c1"
+  CARGA1_ENT="${c1%%.*}"
+}
+
+# ¿Estamos en emergencia? Es la única condición que NO encola: rechaza y barre huérfanos.
+emergencia() {
+  medir
+  [ "$MEM_DISP_MB" -lt "$ECOS_EMERGENCIA_MB" ] && return 0
+  [ "$SWAP_PCT" -gt "$ECOS_EMERGENCIA_SWAP_PCT" ] && return 0
+  return 1
+}
+
+minimo_de() {
+  case "$1" in
+    next) echo "$ECOS_MIN_MB_NEXT" ;;
+    browser) echo "$ECOS_MIN_MB_BROWSER" ;;
+    *) echo "$ECOS_MIN_MB_VALIDACION" ;;
+  esac
+}
+max_de() {
+  case "$1" in
+    next) echo "$ECOS_MAX_NEXT" ;;
+    browser) echo "$ECOS_MAX_BROWSER" ;;
+    *) echo "$ECOS_MAX_VALIDACION" ;;
+  esac
+}
+fdbase_de() {
+  case "$1" in
+    next) echo 220 ;;
+    browser) echo 210 ;;
+    *) echo 230 ;;
+  esac
+}
+
+# ¿Alcanza la máquina para esta clase? Devuelve 0 si sí; si no, deja el motivo en MOTIVO.
+alcanza() {
+  local clase="$1" min; min="$(minimo_de "$clase")"
+  medir
+  if [ "$MEM_DISP_MB" -lt "$min" ]; then
+    MOTIVO="memoria disponible ${MEM_DISP_MB} MB < ${min} MB"; return 1
+  fi
+  if [ "$SWAP_PCT" -gt "$ECOS_MAX_SWAP_PCT" ]; then
+    MOTIVO="swap en ${SWAP_PCT}% (tope ${ECOS_MAX_SWAP_PCT}%)"; return 1
+  fi
+  if [ "$CARGA1_ENT" -gt "$ECOS_MAX_CARGA" ]; then
+    MOTIVO="carga ${CARGA1} (tope ${ECOS_MAX_CARGA})"; return 1
+  fi
+  MOTIVO=""; return 0
+}
+
+# ── CLASES PEDIDAS ──
+# El orden es SIEMPRE el mismo (browser, next, validacion) para que dos tareas que piden dos clases
+# no se queden trabadas cada una con la mitad de lo que necesita la otra.
+normalizar_clases() {
+  local pedido="$1" out=""
+  pedido="${pedido//e2e/next,browser}"
+  for c in browser next validacion; do
+    case ",$pedido," in *",$c,"*) out="$out $c" ;; esac
+  done
+  echo "${out# }"
+}
+
+FDS_TOMADOS=""
+SCOPE=""
+GRUPO=""
+LIMPIANDO=0
+
+# ── LIMPIEZA: lo que se lanzó, se apaga. Sin excepción y sin importar cómo terminó. ──
+limpiar() {
+  local codigo=$?
+  [ "$LIMPIANDO" = 1 ] && return
+  LIMPIANDO=1
+  if [ -n "$SCOPE" ]; then
+    # El pico de memoria del scope es la prueba de cuánto costó de verdad esta tarea. Se anota antes
+    # de matarlo, porque después el cgroup deja de existir.
+    local cg="/sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/ecos.slice/$SCOPE"
+    local pico=""; [ -r "$cg/memory.peak" ] && pico="$(cat "$cg/memory.peak" 2>/dev/null)"
+    # Si la tarea terminó sola, el scope ya no existe: vale la última lectura del vigía.
+    [ -z "$pico" ] && [ -r "$LOG/.pico.$$" ] && pico="$(cat "$LOG/.pico.$$" 2>/dev/null)"
+    [ -n "${VIGIA:-}" ] && kill "$VIGIA" 2>/dev/null
+    rm -f "$LOG/.pico.$$" 2>/dev/null
+    printf '%s\t%s\t%s\t%s\t%s\n' "$(date -Is)" "${CLASES// /,}" "$SCOPE" "${pico:-?}" "fin=$codigo" \
+      >> "$LOG/corridas.tsv" 2>/dev/null
+    systemctl --user stop "$SCOPE" >/dev/null 2>&1
+  fi
+  if [ -n "${GRUPO:-}" ]; then kill -TERM -- "-$GRUPO" 2>/dev/null; sleep 1; kill -KILL -- "-$GRUPO" 2>/dev/null; fi
+  rm -f "$TICKET" "$REGISTRO/$$.json" 2>/dev/null
+  return $codigo
+}
+
+# ── COLA FIFO ──
+# Sin cola, el que más veces pregunta gana y una validación puede esperar para siempre mientras
+# entran tareas nuevas. El turno es por antigüedad del pedido, y los tickets de procesos muertos se
+# descartan solos.
+# La cola es POR CLASE: un navegador no espera detrás de una validación que está esperando su propio
+# cupo. Sólo cede el turno ante un ticket más viejo que comparta alguna clase con el suyo.
+mi_turno() {
+  local t pid clases c
+  for t in $(ls -1 "$COLA" 2>/dev/null | sort); do
+    pid="${t##*-}"
+    if [ ! -d "/proc/$pid" ]; then rm -f "$COLA/$t" 2>/dev/null; continue; fi
+    [ "$COLA/$t" = "$TICKET" ] && return 0
+    clases="${t#*-}"; clases="${clases%-*}"
+    for c in $CLASES; do case "+$clases+" in *"+$c+"*) return 1 ;; esac; done
+  done
+  return 0
+}
+
+tomar_turno() {
+  local clase esperando=0 ultimo_aviso=0 t0
+  t0=$(date +%s)
+  TICKET="$COLA/$(date +%s%N)-${CLASES// /+}-$$"
+  : > "$TICKET"
+
+  while :; do
+    if emergencia; then
+      aviso "EMERGENCIA: memoria disponible ${MEM_DISP_MB} MB · swap ${SWAP_PCT}%. No se lanza trabajo pesado."
+      node "$AQUI/barrer.mjs" --motivo emergencia >&2 2>/dev/null
+      medir
+      if [ "$MEM_DISP_MB" -lt "$ECOS_EMERGENCIA_MB" ] || [ "$SWAP_PCT" -gt "$ECOS_EMERGENCIA_SWAP_PCT" ]; then
+        aviso "sigue en emergencia tras barrer huérfanos: la tarea NO se ejecuta. Liberá la VM y reintentá."
+        rm -f "$TICKET"; exit 75
+      fi
+    fi
+
+    if mi_turno; then
+      local todas_ok=1
+      for clase in $CLASES; do
+        if ! alcanza "$clase"; then todas_ok=0; break; fi
+      done
+      if [ "$todas_ok" = 1 ] && tomar_slots; then
+        [ "$esperando" = 1 ] && aviso "turno concedido tras $(( $(date +%s) - t0 ))s de espera."
+        return 0
+      fi
+    else
+      MOTIVO="hay tareas pesadas antes en la cola"
+    fi
+
+    esperando=1
+    local ahora; ahora=$(date +%s)
+    if [ $(( ahora - ultimo_aviso )) -ge "$ECOS_AVISO_CADA" ]; then
+      aviso "esperando recursos para ${CLASES// /+}: ${MOTIVO:-cupo ocupado} · libre ${MEM_DISP_MB} MB · swap ${SWAP_PCT}% · carga ${CARGA1}"
+      ultimo_aviso=$ahora
+    fi
+    if [ $(( ahora - t0 )) -ge "$ECOS_ESPERA_MAX" ]; then
+      aviso "se agotó la espera (${ECOS_ESPERA_MAX}s) sin recursos para ${CLASES// /+}. La tarea NO se ejecutó."
+      rm -f "$TICKET"; exit 75
+    fi
+    sleep 3
+  done
+}
+
+# Toma un cupo de cada clase pedida. Si no consigue todos, suelta los que había tomado: media tarea
+# con medio cupo es la forma más fácil de trabar a las dos.
+tomar_slots() {
+  local clase i base fd max obtenido
+  local tomados_ahora=""
+  for clase in $CLASES; do
+    max="$(max_de "$clase")"; base="$(fdbase_de "$clase")"; obtenido=0
+    for i in $(seq 1 "$max"); do
+      fd=$(( base + i ))
+      eval "exec $fd>>'$SLOTS/$clase.$i.lock'" 2>/dev/null || continue
+      if flock -n "$fd"; then
+        printf '%s pid=%s %s\n' "$(date -Is)" "$$" "${ORDEN:-?}" > "$SLOTS/$clase.$i.quien" 2>/dev/null
+        tomados_ahora="$tomados_ahora $fd"; obtenido=1; break
+      fi
+      eval "exec $fd>&-" 2>/dev/null
+    done
+    if [ "$obtenido" = 0 ]; then
+      MOTIVO="ya hay $max tarea(s) de tipo '$clase' corriendo"
+      for fd in $tomados_ahora; do eval "exec $fd>&-" 2>/dev/null; done
+      return 1
+    fi
+  done
+  FDS_TOMADOS="$tomados_ahora"
+  return 0
+}
+
+# ── SUBCOMANDOS DE CONSULTA ──
+case "${1:-}" in
+  ''|-h|--help|ayuda)
+    sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    exit 0 ;;
+  estado)
+    shift; exec node "$AQUI/estado.mjs" "$@" ;;
+  barrer)
+    shift; exec node "$AQUI/barrer.mjs" "$@" ;;
+  hay-recursos)
+    clase="$(normalizar_clases "${2:-validacion}")"
+    for c in $clase; do
+      if ! alcanza "$c"; then printf '%s\n' "$MOTIVO"; exit 1; fi
+    done
+    exit 0 ;;
+esac
+
+# ── EJECUCIÓN GOBERNADA ──
+PEDIDO="$1"; shift
+[ "${1:-}" = "--" ] && shift
+if [ $# -eq 0 ]; then aviso "falta el comando:  ecos $PEDIDO -- <comando>"; exit 64; fi
+
+CLASES="$(normalizar_clases "$PEDIDO")"
+if [ -z "$CLASES" ]; then
+  aviso "clase desconocida '$PEDIDO'. Son: next · browser · validacion · e2e"
+  exit 64
+fi
+
+# REENTRANCIA: lo que ya está tomado no se vuelve a pedir.
+YA="${ECOS_CLASES:-}"
+FALTAN=""
+for c in $CLASES; do
+  case ",$YA," in *",$c,"*) ;; *) FALTAN="$FALTAN $c" ;; esac
+done
+FALTAN="${FALTAN# }"
+if [ -z "$FALTAN" ]; then exec "$@"; fi
+CLASES="$FALTAN"
+
+ORDEN="$*"
+TICKET=""
+registrar() {
+  printf '%s\n' "{\"clase\":\"${CLASES// /,}\",\"pid\":$$,\"dueno\":${DUENO:-0},\"estado\":\"$1\",\"cwd\":\"$PWD\",\"desde\":\"$(date -Is)\",\"cmd\":\"$(printf '%s' "$ORDEN" | tr -d '"' | cut -c1-200)\"}" \
+    > "$REGISTRO/$$.json" 2>/dev/null
+}
+# DUEÑO: la sesión que lanzó esta tarea (Claude Code, VS Code, SSH, un servicio). Cuando el dueño
+# muere, el barrido apaga la tarea aunque `ecos` siga vivo — un `ecos next -- npm run dev &` no puede
+# sobrevivir a la sesión que lo pidió con el cupo tomado para nadie.
+DUENO=$PPID; p=$PPID
+while [ "${p:-0}" -gt 1 ]; do
+  cmd="$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)"
+  case "$cmd" in *native-binary/claude*|claude\ *|*/claude\ *|*.vscode-server/*|*sshd*|*systemd*) DUENO=$p; break ;; esac
+  p="$(sed 's/.*) //' "/proc/$p/stat" 2>/dev/null | awk '{print $2}')"
+done
+# Una señal (Ctrl-C, `timeout`, kill) TERMINA la tarea: se limpia y se sale. Sin el `exit`, bash
+# vuelve del manejador y sigue esperando en la cola como si nada — y el que mandó la señal termina
+# mandando un SIGKILL, que no limpia nada.
+interrumpir() { limpiar; exit 143; }
+trap limpiar EXIT
+trap interrumpir INT TERM HUP
+# Se registra ANTES de esperar: mientras esta tarea hace cola, el barrido ya sabe que su cadena de
+# padres (el `npm run …` que la llamó) tiene dueño y no la toca.
+registrar esperando
+tomar_turno
+rm -f "$TICKET" 2>/dev/null; TICKET=""
+
+# Concurrencia de pruebas según la máquina REAL, no según nproc. `node --test` abre un proceso por
+# archivo; con 203 archivos y 4 núcleos, el valor por defecto es una bomba de memoria.
+NUCLEOS="$(nproc)"
+POR_MEM=$(( MEM_DISP_MB / 700 )); [ "$POR_MEM" -lt 1 ] && POR_MEM=1
+POR_CPU=$(( NUCLEOS / 2 )); [ "$POR_CPU" -lt 1 ] && POR_CPU=1
+CONC=$(( POR_MEM < POR_CPU ? POR_MEM : POR_CPU )); [ "$CONC" -gt 3 ] && CONC=3
+export ECOS_TEST_CONCURRENCIA="$CONC"
+export ECOS_CLASES="${YA:+$YA,}${CLASES// /,}"
+export ECOS_ACTIVO=1
+
+registrar corriendo
+
+CLASE_PPAL="${CLASES##* }"
+case "$CLASE_PPAL" in
+  next)       HIGH=$ECOS_CGROUP_NEXT_HIGH; MAXM=$ECOS_CGROUP_NEXT_MAX; SW=$ECOS_CGROUP_NEXT_SWAP ;;
+  browser)    HIGH=$ECOS_CGROUP_BROWSER_HIGH; MAXM=$ECOS_CGROUP_BROWSER_MAX; SW=$ECOS_CGROUP_BROWSER_SWAP ;;
+  *)          HIGH=$ECOS_CGROUP_VALIDACION_HIGH; MAXM=$ECOS_CGROUP_VALIDACION_MAX; SW=$ECOS_CGROUP_VALIDACION_SWAP ;;
+esac
+# Si la tarea pide dos clases (e2e: servidor + navegador) el techo es la suma: es un solo scope.
+if [ "$(printf '%s\n' $CLASES | wc -l)" -gt 1 ]; then
+  HIGH=$(( ECOS_CGROUP_NEXT_HIGH + ECOS_CGROUP_BROWSER_HIGH ))
+  MAXM=$(( ECOS_CGROUP_NEXT_MAX + ECOS_CGROUP_BROWSER_MAX ))
+  SW=$(( ECOS_CGROUP_NEXT_SWAP + ECOS_CGROUP_BROWSER_SWAP ))
+fi
+
+SCOPE="ecos-${CLASES// /-}-$$.scope"
+# Los descriptores del candado NO se heredan: si este proceso muere de golpe, el cupo tiene que
+# quedar libre en el acto y no esperar a que el hijo se entere.
+CERRAR='for f in 211 212 213 221 222 223 231 232 233; do eval "exec $f>&-" 2>/dev/null; done;'
+
+# VIGÍA del pico: lee memory.peak del scope cada 2 s mientras la tarea vive. Es la evidencia de cuánto
+# costó de verdad (un `cat` cada 2 s; no un proceso más en la cuenta).
+CG="/sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/ecos.slice/$SCOPE"
+# El vigía SUELTA los candados que heredó y se muere solo si `ecos` desaparece: un subproceso que
+# conserve el descriptor del candado dejaría el cupo tomado para siempre después de un SIGKILL.
+PADRE=$$
+( eval "$CERRAR"; while sleep 2; do [ -d "/proc/$PADRE" ] || exit 0; [ -r "$CG/memory.peak" ] && cat "$CG/memory.peak" > "$LOG/.pico.$PADRE" 2>/dev/null; done ) &
+VIGIA=$!
+
+# EN SEGUNDO PLANO Y `wait`, A PROPÓSITO: bash no atiende una señal mientras espera un comando en
+# primer plano. Con la tarea en primer plano, un Ctrl-C o un `timeout` sobre `ecos` no llegaba al
+# manejador hasta que la tarea terminaba sola — y el scope con el next-server adentro sobrevivía.
+# El `<&0` conserva la entrada estándar (bash le pondría /dev/null a un trabajo en segundo plano).
+#
+# EL MODO SE DECIDE ANTES DE CORRER, UNA SOLA VEZ. Una versión anterior corría con systemd-run y, si
+# eso devolvía 1, "caía" a setsid y volvía a lanzar el comando: un `tsc` que salía con 1 por errores
+# de tipos se ejecutaba dos veces, y la segunda fuera de todo techo. El comando se ejecuta UNA vez.
+if systemd-run --user --scope --slice=ecos.slice --quiet --collect -- /bin/true >/dev/null 2>&1; then
+  systemd-run --user --scope --slice=ecos.slice --unit="$SCOPE" --quiet --collect --same-dir \
+    -p "MemoryHigh=${HIGH}M" -p "MemoryMax=${MAXM}M" -p "MemorySwapMax=${SW}M" \
+    -p CPUWeight=30 -p IOWeight=30 -p TasksMax=900 \
+    -- bash -c "$CERRAR exec \"\$@\"" ecos-hijo "$@" <&0 &
+  HIJO=$!
+else
+  # systemd de usuario no disponible (otra máquina, contenedor): se pierde el techo de memoria, no la
+  # limpieza — el grupo de procesos entero se mata al salir.
+  aviso "systemd de usuario no disponible: corro sin techo de memoria (el cupo y la limpieza siguen activos)."
+  SCOPE=""
+  setsid bash -c "$CERRAR exec \"\$@\"" ecos-hijo "$@" <&0 &
+  HIJO=$!
+  GRUPO=$HIJO
+fi
+wait "$HIJO"; CODIGO=$?
+
+exit $CODIGO

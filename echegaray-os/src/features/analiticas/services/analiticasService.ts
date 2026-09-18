@@ -1,16 +1,32 @@
 // LA LECTURA DE ANALÍTICAS: una consulta por fuente, con la sesión de quien mira.
 //
 // El permiso lo decide la base: `analiticas_costos` devuelve null sin `ve_economia()`, y las vistas
-// `obra_economia_cartera`, `egreso_por_area` y `nomina_por_mes` ya filtran por rol. Cada lectura que
+// `obra_economia_rubros`, `egreso_por_area` y `nomina_por_mes` ya filtran por rol. Cada lectura que
 // falla vuelve `null` —no una lista vacía—: «no pude leer» y «no hay nada» se dibujan distinto.
+//
+// ═══ DE DÓNDE SALE CADA CONCEPTO (dueño, 18/09/2026: «los mismos lugares en toda la app») ═══
+//
+//   contratado y presupuestado por rubro → `obra_economia_rubros` (la vista única; `contratado` es
+//                                          `contratado_de_obra`, lo mismo que obra_panel, la ficha y el CRM)
+//   consumido por rubro (con período)     → `analiticas_costos_rubros` → `costo_de_obras_a_la_fecha_rubros`
+//                                          (lo mismo que el CRM, sin IVA acá) y `costo_de_obras_por_rubro`
+//                                          para el detalle
+//   consumo mes a mes                     → `analiticas_consumo_mensual_rubros`
+//
+// ═══ POR QUÉ `*_rubros` Y NO LAS DE SIEMPRE (auditoría 18/09/2026) ═══
+//
+// `analiticas_costos`, `costo_de_obras_a_la_fecha` y `analiticas_consumo_mensual` las lee también el
+// código PUBLICADO, que no conoce «otros». Cambiarlas en la base antes de publicar dejó $ 22,6 M de costo
+// invisibles en producción: se devolvieron a como estaban (T1500) y los cuatro rubros viven en objetos
+// nuevos con la misma regla. Al publicar esta rama, una migración unifica y retira el duplicado.
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { armarCostosPorObra, armarGastosSinObra, type GastoSinObra } from '@/features/clientes/services/costosDeObra'
-import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
 import { rangoParaVista, type Filtros } from './filtros'
 import { leerPaginado } from './paginar'
 import { armarObra, elegirObra, pasaEstado, rubrosComparables, sinObraDe, type ObraAnalitica, type ObraPanel } from './obras'
-import { leerPresupuestos, presupuestoPorObra } from './presupuesto'
-import { leerConsumoMensual, ritmoPorObra, type MesDeConsumo, type Ritmo } from './consumo'
+import { leerEconomiaRubros } from './presupuesto'
+import { leerConsumoMensual, leerConsumoPorRubro, ritmoPorObra, type MesDeConsumo, type Ritmo } from './consumo'
+import { leerTipoCosto, type TipoCostoDeObra } from './tipoCosto'
 import { leerFotoCaja, type LecturaCaja } from './cajaSheet'
 
 export interface DatosAnaliticas {
@@ -47,6 +63,14 @@ export interface DatosAnaliticas {
   netoDeIva: boolean
   /** `false` = la puerta de la base contestó null: sin permiso económico. */
   legible: boolean
+  /** `false` = el detalle por rubro (`costo_de_obras_por_rubro`) no se pudo leer. */
+  detalleLegible: boolean
+  /**
+   * EL COSTO POR TIPO DE COSTO (Directo · Indirecto), por obra y con el mismo período. `null` = no se
+   * pudo leer: hoy, porque `costo_de_obras_por_tipo_costo` (20260918T1530) todavía no está aplicada en
+   * producción. La pantalla lo dice; no se calcula por otra vía.
+   */
+  tipoCosto: Map<string, TipoCostoDeObra> | null
 }
 
 export const hoySanJuan = (): string =>
@@ -54,38 +78,43 @@ export const hoySanJuan = (): string =>
 
 const numero = (v: unknown): number | null => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v))
 
+export const COLUMNAS_RUBROS = 'obra_canonica_id, contratado, contratado_usd, contratado_origen, contratado_referencia, '
+  + 'contrato_mano_obra, contrato_mano_obra_usd, contrato_materiales, contrato_materiales_usd, contrato_total, contrato_fuente_nombre, contrato_cita, '
+  + 'presupuesto_estado, presupuesto_motivo, presupuestado_total, presupuesto_estimado, presupuesto_fuente_drive_id, presupuesto_fuente_nombre, '
+  + 'presupuesto_fecha, presupuesto_cita, presupuesto_rubros, presupuesto_hh'
+
 export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): Promise<DatosAnaliticas> {
   const hoy = hoySanJuan()
   const rango = rangoParaVista(f, hoy)
-  const [panel, economia, costos, presupuestos] = await Promise.all([
+  const [panel, rubros, costos] = await Promise.all([
     supabase.from('obra_panel').select('obra_id, nombre, cliente_id, cliente_slug, cliente_nombre, estado, n_comprobantes, avance_pct, orden, obra_padre_id'),
-    getEconomiaDeObras(supabase),
-    supabase.rpc('analiticas_costos', { p_desde: rango.desde, p_hasta: rango.hasta, p_obras: null }),
-    // SÓLO EL APROBADO: 'reemplazado' y 'cotizado' no son presupuesto vigente (migración 20260917T1700).
-    supabase.from('presupuestos')
-      .select('id, obra_canonica_id, estado, costo_directo_presupuestado, costo_pendiente_motivo, fuente_legacy, hh_estimada')
-      .eq('estado', 'aprobado').not('obra_canonica_id', 'is', null),
+    supabase.from('obra_economia_rubros').select(COLUMNAS_RUBROS),
+    supabase.rpc('analiticas_costos_rubros', { p_desde: rango.desde, p_hasta: rango.hasta, p_obras: null }),
   ])
   const raiz = (costos.data ?? null) as Record<string, unknown> | null
   const porObra = armarCostosPorObra(Array.isArray(raiz?.obras) ? raiz.obras : null)
   const sinObraCruda = armarGastosSinObra(Array.isArray(raiz?.sin_obra) ? raiz.sin_obra : null)
-  const aprobados = presupuestos.error ? null : (presupuestos.data ?? [])
-  const partidas = aprobados?.length
-    ? await supabase.from('partidas_presupuesto').select('presupuesto_id, codigo, descripcion, monto')
-      .in('presupuesto_id', aprobados.map((x) => String(x.id)))
-    : null
-  const lecturaPresupuestos = leerPresupuestos(aprobados, partidas && !partidas.error ? (partidas.data ?? []) : null)
-  const presupuestoDe = presupuestoPorObra(lecturaPresupuestos)
+  const economia = leerEconomiaRubros(rubros.error ? null : (rubros.data ?? []))
+  const ids = ((panel.data ?? []) as ObraPanel[]).map((p) => p.obra_id)
+  // EL DETALLE POR RUBRO, CON EL MISMO PERÍODO que el costo: una sola llamada para toda la cartera.
+  const [detalle, tipo] = ids.length && raiz != null
+    ? await Promise.all([
+      supabase.rpc('costo_de_obras_por_rubro', { p_obras: ids, p_desde: rango.desde, p_hasta: rango.hasta, p_neto: true }),
+      supabase.rpc('costo_de_obras_por_tipo_costo', { p_obras: ids, p_desde: rango.desde, p_hasta: rango.hasta, p_neto: true }),
+    ])
+    : [null, null]
+  const consumoPorRubro = detalle && !detalle.error ? leerConsumoPorRubro(detalle.data) : null
+  const tipoCosto = tipo && !tipo.error ? leerTipoCosto(tipo.data) : null
   const cartera = ((panel.data ?? []) as ObraPanel[])
     .map((p) => armarObra({ ...p, n_comprobantes: numero(p.n_comprobantes), avance_pct: numero(p.avance_pct) },
-      economia?.get(p.obra_id), porObra?.get(p.obra_id), presupuestoDe.get(p.obra_id) ?? null))
+      economia.porObra.get(p.obra_id), porObra?.get(p.obra_id), consumoPorRubro?.get(p.obra_id) ?? null))
     .filter((o): o is ObraAnalitica => o != null)
   const elegidas = new Set(f.obras)
   const obras = cartera.filter((o) => pasaEstado(o.estado, f.estado) && (elegidas.size === 0 || elegidas.has(o.id)))
   // EL CONSUMO MES A MES, SÓLO DE LA OBRA ELEGIDA: la consulta de toda la cartera tardó 2,6 s el
   // 17/09/2026 (recorre las quincenas como `analiticas_costos`) y la base está justa.
   const obraElegida = f.vista === 'obras' ? elegirObra(obras, f.obra) : null
-  const consumo = obraElegida ? await supabase.rpc('analiticas_consumo_mensual', { p_obras: [obraElegida.id] }) : null
+  const consumo = obraElegida ? await supabase.rpc('analiticas_consumo_mensual_rubros', { p_obras: [obraElegida.id] }) : null
   const mensual = consumo && !consumo.error ? leerConsumoMensual(consumo.data) : null
   // LO SIN OBRA ES DEL CLIENTE: se recorta por período y NUNCA por obra.
   const sinObra = new Map([...(sinObraCruda ?? new Map()).entries()].map(([k, g]) => [k, sinObraDe(g)]))
@@ -104,7 +133,7 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
         .order('fecha_pago').order('area').order('estado').order('total').range(a, b))
         .then((data) => ({ data }))
       : null,
-    f.vista === 'nomina' ? supabase.from('nomina_por_mes').select('mes, costo_nomina, cargas_sociales, es_estimacion') : null,
+    f.vista === 'nomina' ? supabase.from('nomina_por_mes').select('mes, costo_nomina, cargas_sociales, es_estimacion').order('mes') : null,
     f.vista === 'nomina' ? supabase.from('jornales_quincena').select('desde, estado') : null,
     f.vista === 'nomina' ? supabase.from('personas').select('en_la_empresa, categoria').eq('es_prueba', false) : null,
     // LA ACCIÓN DEL DÍA SE DECIDE POR DOCUMENTO DE COBRANZAS (D10), la misma fuente del saldo y con el
@@ -132,7 +161,7 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     quincenas: quincenas?.data ?? null,
     personas: personas?.data ?? null,
     documentos: documentos ?? null,
-    motivoPresupuesto: lecturaPresupuestos.motivo,
+    motivoPresupuesto: economia.motivo,
     obraElegida, consumoMensual: mensual,
     // EL RITMO DEL «ALCANZA» ES DE LOS MISMOS RUBROS QUE EL «QUEDA»: sin presupuesto, todo lo consumido.
     ritmo: mensual && obraElegida
@@ -145,6 +174,8 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
       return typeof r.obra_id === 'string' && r.neto_de_iva === true ? [[r.obra_id, Number(r.n_sin_iva_discriminado ?? 0)] as [string, number]] : []
     })),
     legible: raiz != null,
+    detalleLegible: consumoPorRubro != null,
+    tipoCosto,
   }
 }
 

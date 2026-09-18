@@ -1,110 +1,98 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { leerPresupuestos, presupuestoPorObra, rubroDeCodigo } from './presupuesto.ts'
-import { presupuestoDe } from './presupuesto.fixture.ts'
-import { armarObra } from './obras.ts'
+import { DEFINICION_RUBRO, leerEconomiaRubros, RUBROS, rubroDeDb } from './presupuesto.ts'
+import { filaDe, presupuestoDe } from './presupuesto.fixture.ts'
+import { armarObra, precioDe } from './obras.ts'
 import { celda } from './agregados.ts'
 import { armarCostosPorObra } from '../../clientes/services/costosDeObra.ts'
 
-const cab = (obra: string, extra: Record<string, unknown> = {}) => ({
-  id: `p-${obra}`, obra_canonica_id: obra, estado: 'aprobado', costo_directo_presupuestado: '100', costo_pendiente_motivo: null, fuente_legacy: 'x.xlsm', ...extra,
-})
-const obra = (id: string, gasto: Record<string, unknown> | null, p: ReturnType<typeof presupuestoDe>) => armarObra(
+const obra = (id: string, gasto: Record<string, unknown> | null, f: ReturnType<typeof presupuestoDe> | null) => armarObra(
   { obra_id: id, nombre: id, cliente_id: 'c', cliente_slug: 'c', cliente_nombre: 'C', estado: 'activa', n_comprobantes: 1, avance_pct: null },
-  null, gasto ? armarCostosPorObra([{ obra_id: id, ...gasto }])?.get(id) : null, p)!
+  f, gasto ? armarCostosPorObra([{ obra_id: id, ...gasto }])?.get(id) : null)!
+
+test('LOS CUATRO RUBROS son los de la base y del lector de Drive (orquestador/lib/presupuesto-rubros.mjs), con la misma definición', async () => {
+  const lib = await import('../../../../orquestador/lib/presupuesto-rubros.mjs')
+  assert.deepEqual(RUBROS.map((r) => r.db), [...lib.RUBROS])
+  for (const r of RUBROS) {
+    assert.equal(DEFINICION_RUBRO[r.clave], lib.DEFINICION_RUBRO[r.db], `la definición de ${r.db} difiere entre la pantalla y el lector`)
+    assert.equal(r.rotulo, lib.ROTULO_RUBRO[r.db])
+  }
+  assert.equal(rubroDeDb('subcontratistas'), 'subcontratos')
+  assert.equal(rubroDeDb('cualquiera'), null)
+})
 
 test('no se pudo leer ≠ no hay presupuesto: cada uno con su motivo', () => {
-  assert.equal(leerPresupuestos(null, null).motivo, 'no se pudo leer el presupuesto')
-  assert.deepEqual(leerPresupuestos([], []), { cabeceras: [], filas: [], motivo: 'sin presupuesto cargado' })
+  assert.equal(leerEconomiaRubros(null).motivo, 'no se pudo leer el presupuesto ni el contrato')
+  assert.deepEqual(leerEconomiaRubros([]).motivo, 'sin presupuesto cargado')
+  assert.equal(leerEconomiaRubros([{ obra_canonica_id: 'x', contratado: 'no es un número' }]).porObra.size, 0, 'una fila que no parsea no entra')
 })
 
-test('sólo el aprobado es presupuesto: «reemplazado» y «cotizado» no entran', () => {
-  const l = leerPresupuestos([cab('a', { estado: 'reemplazado' }), cab('b', { estado: 'cotizado' }), cab('c')], [])
-  assert.deepEqual(l.cabeceras.map((x) => x.obraId), ['c'])
-})
-
-test('un aprobado sin costo se muestra con SU motivo (messina-bsa), y un costo NULL sin motivo no entra', () => {
-  const motivo = 'recotización 2026 sin costo cotizado; pedido al dueño'
-  const l = leerPresupuestos([cab('messina-bsa', { costo_directo_presupuestado: null, costo_pendiente_motivo: motivo }), cab('z', { costo_directo_presupuestado: null })], [])
-  assert.deepEqual(l.cabeceras.map((x) => [x.obraId, x.costoTotal, x.motivo]), [['messina-bsa', null, motivo]])
-  const o = obra('messina-bsa', { materiales: 5e6 }, presupuestoPorObra(l).get('messina-bsa') ?? null)
+test('una obra sin presupuesto trae SU motivo (messina-bsa); una sin fila dice «sin presupuesto cargado»', () => {
+  const motivo = 'la recotización 2026 aprobada no tiene costo cotizado'
+  const o = obra('messina-bsa', { materiales: 5e6 }, filaDe('messina-bsa', { motivo }))
   assert.equal(o.presupuesto, null)
   assert.equal(o.motivoPresupuesto, motivo)
+  assert.equal(o.presupuestoRubros, null)
   assert.equal(celda(o, 'materiales').cotizadoAusente, motivo)
+  const sinFila = obra('z', { materiales: 1 }, null)
+  assert.equal(sinFila.motivoPresupuesto, 'sin presupuesto cargado')
 })
 
-test('códigos de partida → rubro: MO y CS son mano de obra; MA y EQ materiales; SC y lo desconocido, otros', () => {
-  assert.deepEqual(['MO', 'CS', 'ADIC-MO', 'RAMPA-MOCS', 'MA', 'RAMPA-EQ', 'ADIC-MA', 'SC', 'ADIC-SC', 'XYZ', null].map(rubroDeCodigo),
-    ['manoObra', 'manoObra', 'manoObra', 'manoObra', 'materiales', 'materiales', 'materiales', 'otros', 'otros', 'otros', 'otros'])
+test('RUBRO CONTRA RUBRO: Quattropani cotizó mano de obra, el fondo de materiales y otros; subcontratistas quedó fuera de la oferta', () => {
+  const q = obra('quattropani', { mano_obra: 30e6, materiales: 37e6, subcontratos: 3e6, otros: 0.2e6 },
+    presupuestoDe('quattropani', { MO: 39.35e6, MAT: 44.11e6, SUB: null, OTR: 0.23e6 }, { motivos: { SUB: 'la oferta es sólo mano de obra: fuera del precio' } }))
+  assert.equal(q.presupuesto, 39.35e6 + 44.11e6 + 0.23e6)
+  assert.equal(q.consumoComparable, 30e6 + 37e6 + 0.2e6, 'los subcontratos no entran: no tienen presupuesto')
+  assert.equal(celda(q, 'subcontratos').cotizadoAusente, 'la oferta es sólo mano de obra: fuera del precio')
+  assert.deepEqual(celda(q, 'subcontratos').lectura, { tipo: 'sinPresupuesto', monto: null })
+  assert.deepEqual(celda(q, 'manoObra').lectura, { tipo: 'queda', monto: 9.35e6 })
+  assert.deepEqual(celda(q, 'otros').lectura, { tipo: 'queda', monto: 0.03e6 })
+  assert.equal(q.fuentePresupuesto, 'cot.xlsm · 27/07/2026')
 })
 
-test('RUBRO CONTRA RUBRO: una obra que sólo cotizó MO+CS no mide sus materiales contra ese presupuesto (Quattropani)', () => {
-  const o = obra('quattropani', { mano_obra: 30e6, materiales: 37e6 }, presupuestoDe('quattropani', [['MO', 20e6], ['CS', 19e6]]))
-  assert.equal(o.presupuesto, 39e6)
-  assert.equal(o.consumoComparable, 30e6, 'sólo la mano de obra')
-  assert.equal(o.grupo, 'dentro', 'con los materiales adentro daría «pasada» al 172 %')
-  assert.equal(celda(o, 'materiales').cotizadoAusente, 'sin presupuesto de este rubro')
-  assert.deepEqual(celda(o, 'materiales').lectura, { tipo: 'sinPresupuesto', monto: null })
-  assert.deepEqual(celda(o, 'manoObra').lectura, { tipo: 'queda', monto: 9e6 })
+test('un rubro previsto en CERO no es una ausencia: si se gastó, «no previsto» con lo gastado entero', () => {
+  const o = obra('p', { subcontratos: 3e6, mano_obra: 1e6 }, presupuestoDe('p', { MO: 5e6, MAT: 0, SUB: 0, OTR: 0 }))
+  assert.equal(o.presupuesto, 5e6)
+  assert.equal(o.consumoComparable, 4e6, 'los subcontratos entran: el rubro tiene presupuesto (cero)')
+  assert.deepEqual(celda(o, 'subcontratos').lectura, { tipo: 'noPrevisto', monto: 3e6 })
+  assert.deepEqual(celda(o, 'materiales').lectura, { tipo: 'sinMovimiento', monto: null })
 })
 
-test('INFERENCIA se rotula «estimado» por rubro; «otros» presupuestado no tiene consumo con qué compararse', () => {
-  const o = obra('pisos', { mano_obra: 1e6 }, presupuestoDe('pisos', [['MO', 2e6, 'Piso · Mano de obra · INFERENCIA'], ['SC', 1e6]]))
+test('estimado lo dice el rubro: un ajuste en mano de obra no vuelve estimados los materiales', () => {
+  const f = presupuestoDe('l', { MO: 34e6, MAT: 47e6, SUB: 0, OTR: 0 }, { estimados: ['manoObra'] })
+  assert.deepEqual(f.presupuesto?.estimados, ['manoObra'])
+  assert.equal(f.presupuesto?.estimado, true)
+  const o = obra('l', { mano_obra: 1e6 }, f)
   assert.equal(celda(o, 'manoObra').estimado, true)
-  assert.equal(celda(o, 'otros').estimado, false)
-  assert.deepEqual(celda(o, 'otros').lectura, { tipo: 'sinConsumo', monto: null })
-  assert.equal(o.presupuesto, 2e6, '«otros» no entra a lo comparable')
+  assert.equal(celda(o, 'materiales').estimado, false)
 })
 
-test('una partida negativa, sin cabecera aprobada o con monto no numérico no entra', () => {
-  const l = leerPresupuestos([cab('a')], [
-    { presupuesto_id: 'p-a', codigo: 'MO', descripcion: 'ok', monto: '10' },
-    { presupuesto_id: 'p-a', codigo: 'MA', descripcion: 'neg', monto: -1 },
-    { presupuesto_id: 'p-otro', codigo: 'MO', descripcion: 'huérfana', monto: 5 },
-    { presupuesto_id: 'p-a', codigo: 'CS', descripcion: 'texto', monto: 'mucho' },
-  ])
-  assert.deepEqual(l.filas.map((f) => [f.rubro, f.monto]), [['manoObra', 10]])
+test('el detalle del presupuesto viaja por rubro, con lo que quedó fuera de la oferta marcado', () => {
+  const f = presupuestoDe('e', { MO: 3.83e6, MAT: null, SUB: 0, OTR: 0 }, {
+    detalle: {
+      MO: [{ item: 'OFICIAL ESPECIALIZADO', unidad: 'hs', cantidad: 121.5, importe: 826200, porque: 'unidad hs' }],
+      MAT: [{ item: 'CAÑO ESTRUCTURAL 150X50X2', unidad: 'UN', cantidad: 3, importe: 381398, fuera_de_oferta: true }],
+    },
+    motivos: { MAT: 'los materiales los provee el cliente' },
+  })
+  const r = f.presupuesto!.rubros
+  assert.equal(r.manoObra.detalle[0].item, 'OFICIAL ESPECIALIZADO')
+  assert.equal(r.manoObra.detalle[0].fueraDeOferta, false)
+  assert.equal(r.materiales.monto, null)
+  assert.equal(r.materiales.motivo, 'los materiales los provee el cliente')
+  assert.equal(r.materiales.detalle[0].fueraDeOferta, true)
+  assert.equal(r.subcontratos.detalle.length, 0)
 })
 
-test('estimado lo dice la partida: una cabecera con INFERENCIA en los gastos generales no vuelve estimada la MO de celdas (Quattropani)', () => {
-  const q = presupuestoDe('q', [['MO', 20e6, 'Mano de obra · Presupuesto!O'], ['CS', 19e6, 'Cargas · Presupuesto!Q']], { fuente_legacy: 'Cotizacion Final.xlsm · INFERENCIA: GG = 25%' })!
-  assert.equal(q.estimado, false)
-  assert.deepEqual(q.estimados, [])
-  const p = presupuestoDe('p', [['MO', 1e6, 'Piso · Mano de obra · INFERENCIA'], ['MA', 1e6, 'Piso · Materiales']], { fuente_legacy: 'INFERENCIA · PISO' })!
-  assert.equal(p.estimado, true)
-  assert.deepEqual(p.estimados, ['manoObra'])
-  const sinPartidas = presupuestoDe('s', [], { costo_directo_presupuestado: 5, fuente_legacy: 'INFERENCIA total' })!
-  assert.equal(sinPartidas.estimado, true)
+test('las horas cotizadas vienen de la misma vista', () => {
+  const o = obra('h', { horas_valorizadas: 150 }, presupuestoDe('h', { MO: 1, MAT: 0, SUB: 0, OTR: 0 }, { hh: 200 }))
+  assert.equal(o.hhPresupuestadas, 200)
+  assert.deepEqual(celda(o, 'horas').lectura, { tipo: 'queda', monto: 50 })
 })
 
-test('TRES RUBROS SEPARADOS: materiales y subcontratos se ven aparte; el queda contra MA es uno solo', async () => {
-  const { ITEMS, quedaMaterialesYSubcontratos } = await import('./agregados.ts')
-  assert.deepEqual(ITEMS.map((i) => i.rotulo), ['Mano de obra', 'Materiales', 'Subcontratos', 'Otros', 'Horas hombre'])
-  const con = obra('c', { materiales: 9e6, subcontratos: 3e6, mano_obra: 1e6 }, presupuestoDe('c', [['MA', 10e6], ['MO', 5e6]]))
-  assert.equal(con.consumoComparable, 13e6, 'MO 1 + materiales 9 + subcontratos 3')
-  const mat = celda(con, 'materiales')
-  assert.equal(mat.gastado, 9e6, 'materiales solos')
-  assert.equal(mat.cotizado, 10e6)
-  assert.equal(mat.lectura, null, 'sin queda propio: 9 contra 10 diría «queda» y los subcontratos lo pasan')
-  const sub = celda(con, 'subcontratos')
-  assert.equal(sub.gastado, 3e6)
-  assert.equal(sub.cotizadoAusente, 'incluido en materiales de la cotización')
-  assert.equal(sub.lectura, null)
-  assert.deepEqual(quedaMaterialesYSubcontratos(con)?.lectura, { tipo: 'excedido', monto: 2e6 }, 'MA 10 − (9 + 3)')
-  const sin = obra('s', { materiales: 6e6, subcontratos: 2e6, mano_obra: 1e6 }, presupuestoDe('s', [['MO', 5e6]]))
-  assert.equal(sin.consumoComparable, 1e6)
-  assert.equal(quedaMaterialesYSubcontratos(sin), null)
-  assert.equal(celda(sin, 'materiales').cotizadoAusente, 'sin presupuesto de este rubro')
-  assert.equal(celda(sin, 'subcontratos').cotizadoAusente, 'sin presupuesto de este rubro')
-})
-
-test('Quattropani: el fondo de materiales (44.110.169,31 sin IVA) contra materiales + subcontratos NETOS', async () => {
-  const { quedaMaterialesYSubcontratos } = await import('./agregados.ts')
-  // Neto leído el 17/09/2026: 14 F A con IVA discriminado → importe (30.878.408,49); 5 comprobantes de
-  // Pedro Fredes sin tipo → total (2.080.000). Con IVA daba 37.188.800,09 de materiales.
-  const q = obra('quattropani', { materiales: 30878408.49, subcontratos: 2080000, mano_obra: 5.67e6 },
-    presupuestoDe('quattropani', [['MO', 20115544.67], ['CS', 19477367.58], ['MA', 44110169.31]]))
-  const c = quedaMaterialesYSubcontratos(q)!
-  assert.equal(c.cotizado, 44110169.31)
-  assert.deepEqual(c.lectura, { tipo: 'queda', monto: 44110169.31 - 30878408.49 - 2080000 })
+test('el contratado sale de la misma fila: precio salvo suma viva; una pata en dólares sin valuar se dice', () => {
+  assert.deepEqual(precioDe(filaDe('a', { contrato: { contratado: 40e6, contratado_origen: 'presupuesto' } }).contrato), { precio: 40e6, ausencia: null })
+  assert.deepEqual(precioDe(filaDe('b', { contrato: { contratado: 17.7e6, contratado_origen: 'suma-viva' } }).contrato), { precio: null, ausencia: 'sin precio' })
+  assert.deepEqual(precioDe(filaDe('c', { contrato: { contratado: null, contratado_usd: 63000, contratado_origen: 'contrato' } }).contrato), { precio: null, ausencia: 'sin valuar' })
+  assert.deepEqual(precioDe(filaDe('d', { contrato: { contratado: 5008661, contratado_origen: 'formulario' } }).contrato), { precio: 5008661, ausencia: null })
 })
