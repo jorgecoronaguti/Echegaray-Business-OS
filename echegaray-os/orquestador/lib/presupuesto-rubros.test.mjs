@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import XLSX from 'xlsx'
 import {
-  DEFINICION_RUBRO, OBRAS, RUBROS, agregarPorRubro, explotarLibro, rubroDePartida, rubroDeRecurso, rubroPorDescripcion, rubrosDeObra,
+  DEFINICION_RUBRO, OBRAS, RUBROS, agregarPorRubro, explotarLibro, horasDelDocumento, rubroDePartida, rubroDeRecurso, rubroPorDescripcion, rubrosDeObra,
 } from './presupuesto-rubros.mjs'
 
 test('los cuatro rubros y sus definiciones son los de la migración 20260918T0900', () => {
@@ -135,4 +135,42 @@ test('OBRAS: cada libro cita un drive id y cada obra tiene libro, partidas o mot
     for (const l of o.libros) assert.match(l.drive, /^1[A-Za-z0-9_-]{24,}$/, `${o.obra} ${l.nombre}`)
     if (o.libros.some((l) => l.soloManoObra)) assert.ok(o.motivoFueraDeOferta, o.obra)
   }
+})
+
+test('D6 · un coeficiente que es tipo de cambio multiplica el precio y NO la cantidad; las horas salen del documento', () => {
+  const wb = XLSX.utils.book_new()
+  const P = [[], [], [], [], [], [],
+    ['ID TAREA', 'ID', 'TAREA', 'U.', 'CANT.', 'COSTO U TOTAL', 'COEF. AJUSTE', 'SUBTOTAL', 'TOTAL', '', '', '', '', '', 'COSTO MO', 'COSTO MA', 'COSTO CS'],
+    [],
+    ['x', 'T9', 'ALQUILER BOBCAT', 'HR', 32, 12.5, 1450, 580000],
+    ['x', 'T1', 'REPLANTEO', 'M2', 10, 100, 1, 1000],
+    [null, null, 'COSTO DIRECTO TOTAL'],
+  ]
+  const A = [[], [], [], [], ['COD T', 'COD R', 'DESCRIPCION', 'UN', 'CANTIDAD', 'COSTO', 'TOTAL'], [],
+    ['T9', null, 'ALQUILER BOBCAT', 'HR', null, null, 12.5],
+    [null, 0, 'OFICIAL ESPECIALIZADO - EN DOLARES', 'hs', 1, 4.5, 4.5],
+    [null, 334, 'COSTO HORA BOBCAT - DOLAR', 'DOLAR', 1, 8, 8],
+    [],
+    ['T1', null, 'REPLANTEO', 'M2', null, null, 100],
+    [null, 1, 'OFICIAL', 'hs', 0.1, 600, 60],
+    [null, 256, 'CARGA SOCIAL OF', 'hr', 0.1, 400, 40],
+  ]
+  const R = [[], [], [], ['CODIGO', 'INSUMO', 'UNIDAD', 'COSTO', 'FECHA', 'FUENTE', 'FAMILIA', 'DIVISION'],
+    [0, 'OFICIAL ESPECIALIZADO - EN DOLARES', 'hs', 4.5, null, null, 'MANO DE OBRA', 'JORNALES'],
+    [1, 'OFICIAL', 'hs', 600, null, null, 'MANO DE OBRA', 'JORNALES'],
+    [256, 'CARGA SOCIAL OF', 'hr', 400, null, null, 'MANO DE OBRA', 'JORNALES'],
+    [334, 'COSTO HORA BOBCAT - DOLAR', 'DOLAR', 8, null, null, 'MAQUINA', null],
+  ]
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(P), 'Presupuesto')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(A), 'Análisis')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(R), 'Recursos')
+  const ex = explotarLibro(wb)
+  const oficialUsd = ex.lineas.find((l) => l.insumo === 'OFICIAL ESPECIALIZADO - EN DOLARES')
+  assert.equal(oficialUsd.cantidad, 32, 'el documento dice 32 hs, no 32 × 1.450')
+  assert.equal(oficialUsd.importe, 32 * 1450 * 4.5, 'el importe sí lleva el dólar')
+  assert.match(oficialUsd.porque, /tipo de cambio/)
+  const oficial = ex.lineas.find((l) => l.insumo === 'OFICIAL')
+  assert.equal(oficial.cantidad, 1, 'un coeficiente 1 no cambia nada')
+  // Horas: 32 del oficial en dólares + 1 del oficial; la carga social (hr) no es hora.
+  assert.equal(horasDelDocumento([ex]), 33)
 })

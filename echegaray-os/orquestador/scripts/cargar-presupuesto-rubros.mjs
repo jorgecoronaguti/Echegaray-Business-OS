@@ -83,7 +83,9 @@ async function leerObra(google, cfg, c) {
   const principal = cfg.libros[0]
   return {
     estado: 'leido', ...r, modificado, estimado: false,
-    fuente: { drive: principal.drive, nombre: cfg.libros.map((l) => l.nombre).join(' + ') },
+    // LA FUENTE DICE TODOS LOS PAPELES: en Quattropani los materiales salen del contrato (fondo
+    // administrado), no de la cotización, y el encabezado tiene que nombrarlo (auditoría 18/09).
+    fuente: { drive: principal.drive, nombre: [...cfg.libros.map((l) => l.nombre), ...(cfg.materialesDelContrato ? ['materiales: CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx'] : [])].join(' + ') },
     cita: RUBROS.map((k) => r.rubros[k].cita).filter(Boolean).join(' | ').slice(0, 900),
     explosiones,
   }
@@ -143,7 +145,7 @@ async function main() {
         console.log(`  ${k.padEnd(16)} ${b.monto == null ? '—'.padStart(14) : plata(b.monto).padStart(14)}  ${b.detalle.length} líneas${fuera ? ` · fuera de la oferta ${plata(fuera)}` : ''}${b.motivo ? ` · ${b.motivo}` : ''}`)
         if (conDetalle) for (const d of b.detalle.slice(0, 40)) console.log(`      ${plata(d.importe).padStart(13)}  ${d.item}${d.unidad ? ` [${d.unidad}${d.cantidad != null ? ` ${d.cantidad}` : ''}]` : ''}${d.parte ? ` (${d.parte})` : ''}${d.fuera_de_oferta ? ' · fuera de la oferta' : ''}${d.sin_evidencia ? ' · SIN EVIDENCIA' : ''}`)
       }
-      console.log(`  control: ${r.control}`)
+      console.log(`  control: ${r.control} · horas del documento ${r.hh ?? '—'}`)
       for (const x of r.controles) console.log(`  ⚠ ${x}`)
       for (const x of r.problemas) console.log(`  ✗ ${x}`)
     }
@@ -158,13 +160,14 @@ async function main() {
     let escritas = 0
     for (const r of resultados) {
       await c.query(
-        `insert into public.obra_presupuesto_lectura (obra_canonica_id, estado, motivo, costo_directo, moneda, estimado, fuente_drive_id, fuente_nombre, fuente_fecha, fuente_modificado, cita, leido_en, leido_por)
-         values ($1, $2, $3, $4, 'ARS', $5, $6, $7, $8, $9, $10, now(), $11)
+        `insert into public.obra_presupuesto_lectura (obra_canonica_id, estado, motivo, costo_directo, moneda, estimado, fuente_drive_id, fuente_nombre, fuente_fecha, fuente_modificado, cita, leido_en, leido_por, hh_cotizadas)
+         values ($1, $2, $3, $4, 'ARS', $5, $6, $7, $8, $9, $10, now(), $11, $12)
          on conflict (obra_canonica_id) do update set estado = excluded.estado, motivo = excluded.motivo, costo_directo = excluded.costo_directo,
            estimado = excluded.estimado, fuente_drive_id = excluded.fuente_drive_id, fuente_nombre = excluded.fuente_nombre, fuente_fecha = excluded.fuente_fecha,
-           fuente_modificado = excluded.fuente_modificado, cita = excluded.cita, leido_en = now(), leido_por = excluded.leido_por`,
+           fuente_modificado = excluded.fuente_modificado, cita = excluded.cita, leido_en = now(), leido_por = excluded.leido_por,
+           hh_cotizadas = excluded.hh_cotizadas`,
         [r.obra, r.estado, r.estado === 'leido' ? null : r.motivo, r.costoDirecto, !!r.estimado, r.fuente?.drive ?? null, r.fuente?.nombre ?? null,
-          r.fecha, r.modificado ?? null, r.estado === 'leido' ? r.cita : null, QUIEN])
+          r.fecha, r.modificado ?? null, r.estado === 'leido' ? r.cita : null, QUIEN, r.hh ?? null])
       await c.query('delete from public.obra_presupuesto_rubro where obra_canonica_id = $1', [r.obra])
       if (r.estado !== 'leido') continue
       for (const k of RUBROS) {
