@@ -1,0 +1,10 @@
+{
+  "plan": "/home/jorge/echegaray-os/app/wt-tipo-costo/echegaray-os/orquestador/datos/respaldos/compras-tipo-costo-plan-2026-09-18T12-19-16.json",
+  "relectura": {
+    "previstas": 474,
+    "confirmadas": 474,
+    "noAterrizo": [],
+    "ajenasCambiadas": []
+  },
+  "leido_en": "2026-09-18T12:19:30.448Z"
+}
