@@ -158,7 +158,15 @@ export function mismoComprobanteAunqueElNombreCambie(a = {}, b = {}) {
   if (!h || h !== huellaDePapel(y)) return { si: false, porque: null }
   // `identidadProveedor` compara primero por CUIT: dos CUIT distintos son dos proveedores distintos
   // y ahí no se une nada, por más que el número, la fecha y el total coincidan.
-  if (identidadProveedor(x, { cuit: y.cuit, proveedor: y.proveedor }) === 'distinto') return { si: false, porque: null }
+  //
+  // SE EXIGE 'igual', NO «que no sea 'distinto'» (revisión independiente, 18/09/2026). Con `!==
+  // 'distinto'` se unían también los pares 'desconocido': una lectura con CUIT y sin nombre más otra
+  // con nombre y sin CUIT no se pueden comparar, y ante la duda se trataban como el mismo emisor.
+  // Si eran dos, el segundo gasto desaparecía de la carga y le llegaba al dueño como «otra foto del
+  // mismo comprobante». Unir dos papeles es una afirmación; sin identidad probada no se afirma.
+  // Los casos que este arreglo existe para unir («NEUMAGOM S.A.S.» / «Neumagom», «Combustibles
+  // Barcelo SRL» / «Combustibles Barcelo») dan 'igual' y se siguen uniendo.
+  if (identidadProveedor(x, { cuit: y.cuit, proveedor: y.proveedor }) !== 'igual') return { si: false, porque: null }
   return { si: true, porque: `mismo comprobante ${numeroCanonico(x.numero)}, misma fecha y mismo total` }
 }
 
