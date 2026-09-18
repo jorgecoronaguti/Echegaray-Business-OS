@@ -128,7 +128,7 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
         .order('fecha').order('area').order('grupo').order('total').range(a, b))
         .then((data) => ({ data }))
       : null,
-    f.vista === 'nomina' ? supabase.from('nomina_por_mes').select('mes, costo_nomina, cargas_sociales, es_estimacion') : null,
+    f.vista === 'nomina' ? supabase.from('nomina_por_mes').select('mes, costo_nomina, cargas_sociales, es_estimacion').order('mes') : null,
     f.vista === 'nomina' ? supabase.from('jornales_quincena').select('desde, estado') : null,
     f.vista === 'nomina' ? supabase.from('personas').select('en_la_empresa, categoria').eq('es_prueba', false) : null,
     // LA ACCIÓN DEL DÍA SE DECIDE POR DOCUMENTO DE COBRANZAS (D10), la misma fuente del saldo y con el
