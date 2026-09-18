@@ -97,3 +97,37 @@ test('cambiar la tarifa NO reliquida una quincena cerrada (R6)', () => {
   assert.equal(reliquidaAlCambiarTarifa('cerrada'), false)
   assert.equal(reliquidaAlCambiarTarifa('abierta'), true)
 })
+
+// ═══ EL IMPORTE SE LEE EN ES-AR (auditoría del deshacer, 18/09/2026) ═══
+//
+// El lector viejo borraba TODOS los puntos antes de leer: «150000.50» salía 15.000.050 y «8.5», 85. Estos casos dan
+// rojo con ese código: pasan sólo con `leerNumeroEsAR`.
+const conImporte = (importe: string) => validarAdelanto({
+  personaId: PERSONA, quincena: QUINCENA, fecha: '2026-09-05', importe, canal: 'efectivo', nota: '',
+})
+
+test('UN PUNTO DECIMAL NO MULTIPLICA EL ADELANTO: «150000.50» es 150.000,50, no 15.000.050', () => {
+  const r = conImporte('150000.50')
+  assert.ok(r.ok)
+  assert.equal(r.ok && r.adelanto.importe, 150000.5, 'MUTACIÓN: borrar todos los puntos multiplica por 100')
+  const chico = conImporte('8.5')
+  assert.equal(chico.ok && chico.adelanto.importe, 8.5, 'MUTACIÓN: «8.5» leído 85')
+})
+
+test('LOS MILES CON PUNTO Y LOS DECIMALES CON COMA SIGUEN LEYÉNDOSE IGUAL', () => {
+  const miles = conImporte('150.000')
+  assert.equal(miles.ok && miles.adelanto.importe, 150000)
+  const conCentavos = conImporte('$ 150.000,50')
+  assert.equal(conCentavos.ok && conCentavos.adelanto.importe, 150000.5)
+})
+
+test('LO QUE NO ES UN NÚMERO SE RECHAZA CON SU MOTIVO, NO SE QUEDA CON LOS DÍGITOS SUELTOS', () => {
+  for (const malo of ['1.5.0', '15o.000', '150.000,5,0']) {
+    const r = conImporte(malo)
+    assert.equal(r.ok, false, `«${malo}» no es un importe`)
+    assert.match(!r.ok ? r.error : '', /no es un número/)
+  }
+  // VACÍO SIGUE SIENDO «FALTA», no «inválido».
+  const vacio = conImporte('  ')
+  assert.equal(!vacio.ok && vacio.error, 'Escribí el importe.')
+})
