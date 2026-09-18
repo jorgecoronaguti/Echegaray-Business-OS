@@ -38,8 +38,10 @@ export function EditorObraDeCompra({
   const [hecho, setHecho] = useState(false)
   const [pendiente, empezar] = useTransition()
   // LO QUE LA BASE TIENE HOY según este panel: el `esperado` de la próxima escritura, y el valor al que
-  // vuelve un Cmd+Z.
-  const [enBase, setEnBase] = useState(celda ?? '')
+  // vuelve un Cmd+Z. TAMBIÉN adopta lo que trae el servidor (18/09/2026): con `useState(celda)` se tomaba
+  // una vez, y si otra persona movía la obra mientras el panel estaba abierto, el `esperado` y el anterior
+  // que se apilaba eran los viejos.
+  const [enBase, setEnBase] = useEstadoDelServidor(celda ?? '')
   const enBaseRef = useRef(enBase)
   const valorRef = useRef(valor)
   useEffect(() => { enBaseRef.current = enBase; valorRef.current = valor })

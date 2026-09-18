@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { CAMPO } from '@/shared/components/ds'
+import { useEstadoDelServidor } from '@/shared/tiempo-real/useEstadoDelServidor'
 import { useCeldaViva, useGuardadoDeshacible } from '@/shared/components/deshacer/DeshacerProvider'
 import type { ActividadOpcion } from '../services/operacionGlobalService'
 import type { ActionState } from '../services/pedidosActions'
@@ -22,6 +23,14 @@ import type { ActionState } from '../services/pedidosActions'
 // obligatoria porque el deshacer necesita distinguir una fila de las otras treinta — con el `testid`
 // compartido, Cmd+Z habría restaurado el pedido equivocado.
 //
+// ═══ LO ELEGIDO SE RESINCRONIZA CON LA BASE (auditoría, 18/09/2026) ═══
+//
+// Antes era `useState(valor ?? '')`: se tomaba UNA vez al montar. Otra persona asignaba la actividad X,
+// el refresco en vivo traía `valor = X`, y el select seguía en «sin asignar». Esta persona elegía Y con
+// un anterior falso (`''`) y Cmd+Z escribía NULL sobre la X del otro. `useEstadoDelServidor` adopta lo
+// que trae el servidor cada vez que cambia: el anterior que se apila es el real. Y la vuelta viaja con
+// `esperado`: si la base ya tiene otra cosa, la acción rechaza en vez de pisar.
+//
 // ═══ UNA ASIGNACIÓN QUE NO ESTÁ EN LA LISTA NO SE PISA EN SILENCIO ═══
 //
 // Si el pedido apunta a una actividad archivada —o a una que este usuario no ve—, el `select` con
@@ -39,7 +48,8 @@ export function SelectActividad({
 }: {
   valor: string | null
   actividades: ActividadOpcion[]
-  alElegir: (actividadId: string) => Promise<ActionState>
+  /** `esperado` llega sólo desde el deshacer: lo que esta pantalla tenía; la acción no escribe si la base difiere. */
+  alElegir: (actividadId: string, esperado?: string) => Promise<ActionState>
   testid?: string
   /** Qué fila es, para el deshacer. Sin esto todas las filas comparten paso y se restaura la que no es. */
   clave: string
@@ -48,7 +58,7 @@ export function SelectActividad({
 }) {
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [elegida, setElegida] = useState(valor ?? '')
+  const [elegida, setElegida] = useEstadoDelServidor(valor ?? '')
   const elegidaRef = useRef(elegida)
   useEffect(() => { elegidaRef.current = elegida })
   const huerfana = Boolean(valor) && !actividades.some((a) => a.id === valor)
@@ -61,8 +71,8 @@ export function SelectActividad({
 
   const guardarDeshacible = useGuardadoDeshacible({
     clave, rotulo, valorAnterior: elegida, formato: nombre,
-    guardar: async (v) => {
-      const r = await alElegir(v)
+    guardar: async (v, contexto) => {
+      const r = await alElegir(v, contexto?.esperado)
       return r.error ? { ok: false as const, error: r.error } : { ok: true as const }
     },
   })

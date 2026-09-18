@@ -62,9 +62,11 @@ export function SelectRolDocumento({
   const guardarDeshacible = useGuardadoDeshacible({
     clave, rotulo, valorAnterior: rol,
     formato: (v) => (v === '' ? 'sin clasificar' : v),
-    guardar: async (v) => {
+    guardar: async (v, contexto) => {
       const form = new FormData()
       form.set('rol', v)
+      // DESHACER VIAJA CON EL ROL QUE ESTE DESPLEGABLE VIO (18/09/2026): la acción rechaza si otra persona lo cambió.
+      if (contexto?.esperado !== undefined) form.set('esperado', contexto.esperado)
       const r = await guardar(form)
       return r.ok ? { ok: true as const } : { ok: false as const, error: r.error }
     },
