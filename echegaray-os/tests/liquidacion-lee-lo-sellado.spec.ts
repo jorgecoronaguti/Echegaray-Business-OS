@@ -92,12 +92,27 @@ async function filaComoSellada(page: Page, s: Sellada) {
   const fila = page.getByTestId(`espejo-fila-${id}`)
   await expect(fila, `${s.nombre} tiene fila`).toBeVisible()
   // CUÁNTO COBRA, PEGADO AL NOMBRE: el cobra sellado.
-  await expect(page.getByTestId(`cobro-total-${id}`), `${s.nombre}: cobra`).toHaveText(new RegExp(`Cobra( al mes)? ${escapar(pesos(s.cobra))}$`))
-  // PAGADO Y SALDO: lo registrado (o los adelantos de la foto) y lo que falta.
-  const pagado = r2((s.pagado_banco ?? s.ya_transferido) + (s.pagado_efectivo ?? s.adelanto))
-  const saldo = r2(s.cobra - pagado)
-  await expect(page.getByTestId(`cobro-${id}`), `${s.nombre}: pagado y saldo`).toContainText(`pagado ${pesos(pagado)}`)
-  await expect(page.getByTestId(`cobro-${id}`)).toContainText(`saldo ${pesos(saldo)}`)
+  // «COBRA AL MES» NUNCA EN UNA CERRADA: la foto es lo liquidado en la quincena (Maldonado 16–31/03, 105 h × $8.125).
+  await expect(page.getByTestId(`cobro-total-${id}`), `${s.nombre}: cobra`).toHaveText(`Cobra ${pesos(s.cobra)}`)
+  // ═══ EL SALDO NO SE ESPERA CON LA FÓRMULA DE LA APP (auditor, 18/09/2026) ═══
+  //
+  // Antes este spec calculaba el saldo esperado igual que `pagoDeLaLinea` —adelantos por defecto, compensación por
+  // lado— y certificaba así el saldo fantasma de las cerradas: un control contra la misma derivación. Ahora la
+  // expectativa sale de la BASE y de una regla que la app no usa para calcularlo:
+  //   · con lo pagado REGISTRADO (`pagado_banco`/`pagado_efectivo` no nulos): saldo = cobra − registrado, en SQL-aritmética.
+  //   · sin registro: la fila NO afirma saldo y lo dice («pago sin registrar»). Cualquier «saldo $…» es un rojo.
+  const cobro = page.getByTestId(`cobro-${id}`)
+  if (s.pagado_banco != null || s.pagado_efectivo != null) {
+    const registrado = r2((s.pagado_banco ?? 0) + (s.pagado_efectivo ?? 0))
+    await expect(cobro, `${s.nombre}: pagado registrado`).toContainText(`pagado ${pesos(registrado)}`)
+    if (s.grupo === 'obreros') await expect(cobro, `${s.nombre}: saldo`).toContainText(`saldo ${pesos(r2(s.cobra - registrado))}`)
+    // UN MENSUAL CERRADO NO AFIRMA SALDO POR QUINCENA: se salda por mes.
+    else await expect(cobro).toContainText('saldo del mes')
+  } else {
+    await expect(cobro, `${s.nombre}: sin registro no hay saldo`).not.toContainText('saldo $')
+    await expect(page.getByTestId(`cobro-sin-saldo-${id}`), `${s.nombre}: dice por qué`).toHaveText('pago sin registrar')
+    await expect(page.getByTestId(`saldo-total-${id}`)).toHaveText('sin registrar')
+  }
   if (s.grupo === 'obreros') {
     // LAS HORAS Y EL $/H SELLADOS. `hora-categoria` lleva `data-sellado="1"`: es la foto, no el modelo.
     if (s.horas != null) await expect(page.getByTestId(`espejo-hs-pagas-${id}`), `${s.nombre}: horas`).toHaveText(horas(s.horas))
@@ -116,6 +131,23 @@ async function filaComoSellada(page: Page, s: Sellada) {
 
 const escapar = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
+/**
+ * LO QUE RODEA A LAS FILAS DE UNA CERRADA (auditor, 18/09/2026): ni días vivos, ni saldos que nadie registró como
+ * alarma, ni «sueldo del mes», ni avisos de pendiente.
+ */
+async function sinNadaVivoAlrededor(page: Page) {
+  // LOS DÍAS NO SE SELLAN: ni celdas de día ni totales por día (la 1ª de junio mostraba 1.676,5 h vivas ahí).
+  await expect(page.locator('[data-testid^="espejo-dia-"]')).toHaveCount(0)
+  await expect(page.getByTestId('quincena-sellada-nota')).toBeVisible()
+  // EL PIE GENERAL NO GRITA: si lo único que falta es lo que nadie registró, se dice apagado.
+  await expect(page.getByTestId('pie-general-no-cierra')).toHaveCount(0)
+  // NI «SUELDO DEL MES» NI «COBRA AL MES» NI PENDIENTES DE CARGA.
+  await expect(page.getByText('Cobra al mes', { exact: false })).toHaveCount(0)
+  await expect(page.getByText('sin sueldo cargado')).toHaveCount(0)
+  await expect(page.getByText('importe no cargado')).toHaveCount(0)
+  await expect(page.getByText('sin recibo todavía')).toHaveCount(0)
+}
+
 test.describe('Liquidación · la quincena cerrada muestra lo sellado', () => {
   test.describe.configure({ timeout: 240_000 })
   test.beforeAll(() => mkdirSync(SALIDA, { recursive: true }))
@@ -131,6 +163,7 @@ test.describe('Liquidación · la quincena cerrada muestra lo sellado', () => {
     expect(bazan!.valor_hora, 'el fixture real: sellado a $4.300 con tarifa vigente $4.000').toBe(4300)
 
     await abrirQuincena(page, '2026-03-16')
+    await sinNadaVivoAlrededor(page)
     await filaComoSellada(page, bazan!)
     // TODAS LAS FILAS DE OBREROS, NO SÓLO LA DEL CASO: cada una contra su línea.
     for (const s of sellado.filter((x) => x.grupo === 'obreros')) await filaComoSellada(page, s)
@@ -153,6 +186,7 @@ test.describe('Liquidación · la quincena cerrada muestra lo sellado', () => {
       return s!
     }
     await abrirQuincena(page, '2026-06-01')
+    await sinNadaVivoAlrededor(page)
     for (const s of [de('AGUERO'), de('ROSALES'), de('ALANIZ'), de('GONZALES ABEL')]) await filaComoSellada(page, s)
     for (const s of obreros) await filaComoSellada(page, s)
     // EL PIE DE JORNALEROS: la cantidad de filas, las horas y el cobra sellados.
@@ -163,14 +197,48 @@ test.describe('Liquidación · la quincena cerrada muestra lo sellado', () => {
     await page.goto(`${RUTA}&quincena=2026-06-01&grupo=obreros`)
     await expect(page.getByTestId('espejo-total')).toBeVisible({ timeout: 60_000 })
     await expect(page.getByTestId('pie-total')).toHaveText(`Total ${pesos(r2(obreros.reduce((a, s) => a + s.cobra, 0)))}`)
+    await expect(page.getByTestId('cuadro-mensuales')).not.toContainText('Sueldo del mes')
+    await expect(page.getByTestId('cuadro-mensuales')).toContainText('Liquidado en la quincena')
     await page.screenshot({ path: `${SALIDA}/2026-06-01-completa.png`, fullPage: true })
     await page.getByTestId(`espejo-fila-${de('AGUERO').persona_id}`).scrollIntoViewIfNeeded()
     await page.screenshot({ path: `${SALIDA}/2026-06-01-aguero.png`, fullPage: false })
   })
 
+  test('16–31/08: Oficina sin línea sellada no muestra el recibo de hoy como banco ni saldo', async ({ page }) => {
+    const sellado = await leerSellado('2026-08-16')
+    expect(sellado.filter((s) => s.grupo === 'oficina').length, 'Oficina no tiene cabecera en 16–31/08: hereda el cierre').toBe(0)
+    await abrirQuincena(page, '2026-08-16')
+    await sinNadaVivoAlrededor(page)
+    const mensuales = page.locator('[data-testid^="espejo-fila-"][data-tipo="mensual"]')
+    const n = await mensuales.count()
+    expect(n, 'los jefes siguen en el cuadro').toBeGreaterThan(0)
+    for (let i = 0; i < n; i++) {
+      const id = (await mensuales.nth(i).getAttribute('data-testid'))!.replace('espejo-fila-', '')
+      // NADA VIVO SE CUELA: ni el recibo del estudio como Banco, ni un saldo.
+      await expect(page.getByTestId(`banco-mensual-${id}`)).toHaveText('sin línea sellada')
+      await expect(page.getByTestId(`saldo-total-${id}`)).toHaveText('sin línea sellada')
+      await expect(page.getByTestId(`cobro-${id}`)).not.toContainText('saldo $')
+      await expect(page.getByTestId(`cobro-${id}`)).not.toContainText('pagado')
+      // NI «$0» PAGADO: sin foto, un cero es una afirmación que nadie hizo.
+      await expect(page.getByTestId(`pagado-banco-${id}`)).toHaveText('—')
+      await expect(page.getByTestId(`pagado-efectivo-${id}`)).toHaveText('—')
+    }
+    // EL PIE Y EL SUBTOTAL DE MENSUALES TAMPOCO DICEN «$0» NI «falta recibo».
+    await expect(page.getByTestId('pie-mensuales')).not.toContainText('$0')
+    await expect(page.getByTestId('pie-mensuales')).not.toContainText('falta recibo')
+    await expect(page.getByTestId('mensuales-total-sueldo')).toHaveText('—')
+    // Y EL ENCABEZADO NO DICE «Sueldo del mes» sobre algo que no es un sueldo mensual.
+    await expect(page.getByTestId('cuadro-mensuales')).not.toContainText('Sueldo del mes')
+    await expect(page.getByText('$663.141')).toHaveCount(0)
+    await page.screenshot({ path: `${SALIDA}/2026-08-16-oficina.png`, fullPage: true })
+  })
+
   test('la ABIERTA sigue viva: sin sello, con el $/h escribible y sin «sin dato sellado»', async ({ page }) => {
     await abrirQuincena(page, '2026-09-01')
     await expect(page.locator('[data-sellado="1"]')).toHaveCount(0)
+    // LA ABIERTA SÍ DIBUJA LOS DÍAS: se escriben en la celda.
+    expect(await page.locator('[data-testid^="espejo-dia-"]').count()).toBeGreaterThan(0)
+    await expect(page.getByTestId('quincena-sellada-nota')).toHaveCount(0)
     await expect(page.locator('[data-sin-sello="1"]')).toHaveCount(0)
     await expect(page.getByText('sin dato sellado')).toHaveCount(0)
     await expect(page.getByText('sin línea sellada')).toHaveCount(0)
