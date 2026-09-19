@@ -278,7 +278,10 @@ test('el header de nivel 1 recorta su barra en vez de montarla sobre el avatar',
   // (95px en 77). Los dos lados se pisaban porque los dos cedían ancho y ninguno recortaba.
   const src = codigo('src/shared/components/AppHeader.tsx')
 
-  const nav = /<nav className="([^"]+)"[^>]*data-testid="nav-areas"/.exec(src)
+  // EL ORDEN DE LOS ATRIBUTOS NO ES EL CONTRATO (19/09/2026): este control se puso rojo el día que el
+  // `<nav>` recibió un `ref` ANTES del `className`, con la clase intacta. Un control que falla por dónde
+  // está escrito un atributo entrena a no mirarlo. Lo que se sigue exigiendo es la clase que recorta.
+  const nav = /<nav[^>]*className="([^"]+)"[^>]*data-testid="nav-areas"/.exec(src)
   assert.ok(nav, 'el header dejó de tener su barra de áreas identificable')
   assert.match(
     nav[1], /\bbarra-corrible\b/,
@@ -286,7 +289,7 @@ test('el header de nivel 1 recorta su barra en vez de montarla sobre el avatar',
     + 'la lupa, la campana y el avatar en cuanto el ancho no alcanza',
   )
 
-  const usuario = /className="([^"]+)" data-testid="usuario-actual"/.exec(src)
+  const usuario = /className="([^"]+)"[^>]*data-testid="usuario-actual"/.exec(src)
   assert.ok(usuario, 'el header dejó de tener su bloque de usuario identificable')
   assert.match(
     usuario[1], /\bshrink-0\b/,
