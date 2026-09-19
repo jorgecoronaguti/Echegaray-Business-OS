@@ -54,6 +54,12 @@ const NO_SON_GENERADORES = new Set([
   // `deleteDimension`, va por `spreadsheetBatchUpdate` y esta Regla 0 nunca lo cubrió. El script se
   // guarda solo: archiva primero, RELEE el archivo y compara conteo y suma, y recién ahí borra.
   'compras-retirar-canceladas.mjs',
+  // ═══ PRUEBA DE PUNTA A PUNTA SOBRE UNA COPIA (19/09/2026) ═══
+  //
+  // `probar-notas-en-copia.mjs` copia el Flujo de Caja en Drive y escribe SÓLO sobre esa copia, que
+  // manda a la papelera al terminar. El archivo real no se toca. Igual que `sheet-copia-prueba.mjs`,
+  // la exención no se cree: el test de abajo la comprueba leyendo a qué id apunta cada escritura.
+  'probar-notas-en-copia.mjs',
   // ═══ ESCRIBE EN LA COPIA QUE ACABA DE CREAR, NUNCA EN EL ARCHIVO REAL (12/09/2026) ═══
   //
   // `sheet-copia-prueba.mjs` hace `files.copy` del Flujo de Caja y siembra en ESA copia los valores de
@@ -97,6 +103,17 @@ test('la exención de la copia de prueba se verifica: sólo escribe valores en l
   const llamadas = [...src.matchAll(/\b(updateSheetValues|appendSheetValues|batchUpdateValues)\s*\(\s*([A-Za-z_$][\w$]*)/g)]
   assert.ok(llamadas.length > 0, 'el script dejó de escribir valores: sacalo de NO_SON_GENERADORES')
   const fuera = llamadas.map((m) => m[2]).filter((destino) => destino !== 'copia')
+  assert.deepEqual(fuera, [],
+    'este script está exento de la Regla 0 porque sólo escribe en la copia que acaba de crear. '
+    + `Estas escrituras apuntan a otro archivo: ${fuera.join(' | ')}`)
+})
+
+test('la exención de la prueba de notas se verifica: sólo escribe en la copia que creó', () => {
+  const src = readFileSync(join(SCRIPTS, 'probar-notas-en-copia.mjs'), 'utf8')
+  const llamadas = [...src.matchAll(/\b(updateSheetValues|appendSheetValues|batchUpdateValues)\s*\(\s*([A-Za-z_$][\w$]*)/g)]
+  assert.ok(llamadas.length > 0, 'el script dejó de escribir valores: sacalo de NO_SON_GENERADORES')
+  // `ID` es la constante local que vale `copia.id`; cualquier otro destino (CASHFLOW_ID) pone esto rojo.
+  const fuera = llamadas.map((m) => m[2]).filter((destino) => destino !== 'ID')
   assert.deepEqual(fuera, [],
     'este script está exento de la Regla 0 porque sólo escribe en la copia que acaba de crear. '
     + `Estas escrituras apuntan a otro archivo: ${fuera.join(' | ')}`)

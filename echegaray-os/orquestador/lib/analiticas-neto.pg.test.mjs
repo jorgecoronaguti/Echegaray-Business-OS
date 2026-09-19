@@ -29,6 +29,9 @@ test('consumo neto de IVA y RLS de presupuestos', { skip: !hayBase }, async (t) 
   }
   try {
     await c.query('begin')
+    // EL TURNO (19/09/2026): este test aplica una migración sobre la base COMPARTIDA; sin el lock dos
+    // corridas se traban entre sí y el rojo que sale es de la máquina, no del código.
+    await c.query('select pg_advisory_xact_lock(20260822)')
     // LO PAGADO SE LEE ANTES Y DESPUÉS CON LA MISMA SESIÓN: la respuesta depende del rol (tarifas).
     await como('direccion')
     await c.query('set local role authenticated')

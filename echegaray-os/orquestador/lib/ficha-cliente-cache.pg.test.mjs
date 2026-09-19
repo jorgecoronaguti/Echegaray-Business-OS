@@ -78,6 +78,9 @@ test('la ficha y el desglose desde la caché son los del cálculo en vivo, y só
     const c = await getPool().connect()
     try {
       await c.query('begin')
+      // EL TURNO (19/09/2026): este test aplica una migración sobre la base COMPARTIDA; sin el lock dos
+      // corridas se traban entre sí y el rojo que sale es de la máquina, no del código.
+      await c.query('select pg_advisory_xact_lock(20260822)')
       await c.query(`set local statement_timeout = '150s'`)
       const { rows: clientes } = await c.query('select id, slug from public.clientes order by slug')
       const { rows: obras } = await c.query(

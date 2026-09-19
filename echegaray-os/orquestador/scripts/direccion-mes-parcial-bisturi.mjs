@@ -40,7 +40,10 @@ async function main() {
   if (!snap) { console.error('sin snapshot no escribo: no habría cómo volver atrás.'); process.exitCode = 1; return }
 
   const data = cambios.map((c) => ({ range: `'${PESTAÑA}'!${c.celda}`, values: [[c.nueva]] }))
-  const res = await google.batchUpdateValues(ID, data, { yaGuardado: true })
+  // REGLA 0, DECLARADA (19/09/2026): `respetar: false` — este bisturí NO preserva ediciones, y no las
+  // pisa porque sólo escribe celdas cuyo contenido ACTUAL es la fórmula del generador (se compara antes,
+  // `formaApi`); una celda que el dueño tocó no entra en `cambios` y queda nombrada en la salida.
+  const res = await google.batchUpdateValues(ID, data, { yaGuardado: true, respetar: false })
   if (res?.protegido) { console.error(`la guarda frenó la escritura: ${res.motivo ?? JSON.stringify(res)}`); process.exitCode = 1; return }
 
   // RELECTURA: cada celda, fórmula y valor.

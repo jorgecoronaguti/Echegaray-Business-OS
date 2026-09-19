@@ -36,7 +36,21 @@ const RAIZ = join(import.meta.dirname, '..')
 const TURNO = 'pg_advisory_xact_lock(20260822)'
 
 /** Los que leen un `.sql` de `supabase/migrations` y lo ejecutan ellos mismos. */
+// ═══ LEER UNA MIGRACIÓN NO ES APLICARLA (19/09/2026) ═══
+//
+// El detector marcaba todo archivo que NOMBRARA la carpeta de migraciones, y dos tests la leen sólo
+// para recortarle un fragmento de SQL y compararlo (`costo-directo-invariante`, `costo-cerradas-control`):
+// nunca hacen DDL. Ese falso positivo tuvo el control en rojo, y un control que está en rojo por algo
+// que no es el defecto que persigue deja de mirarse — que es exactamente lo que pasó.
+//
+// Ahora se exige la EJECUCIÓN: el texto de la migración pasa por `query(...)`. Un test que vuelva a
+// aplicar DDL sin turno sigue cayendo, y el de abajo lo prueba con una mutación.
 const DDL_PROPIO = /supabase['"\s,]+['"]migrations/
+const APLICA_VAR = /query\(\s*[A-Za-z_$][\w$]*(MIG|SQL|DDL)[\w$]*/i
+// El DDL escrito a mano cuenta sólo si va DENTRO de un `query(`: los dos tests que recortan el texto de
+// una migración para compararlo nombran «CREATE OR REPLACE FUNCTION» en un `indexOf`, y eso no aplica nada.
+const APLICA_DDL = /query\(\s*[`'\"][^`'\"]{0,80}\b(create|alter|drop)\s+(or\s+replace\s+)?(function|table|view|materialized|type|index|policy|schema)/i
+const aplica = (src) => APLICA_VAR.test(src) || APLICA_DDL.test(src)
 
 /**
  * Los que DELEGAN el DDL en un helper. El turno lo toma el helper —un solo lugar, heredado por todos
@@ -85,7 +99,7 @@ test('todo test que aplica migraciones sobre la base compartida pide el turno', 
     const src = sinComentarios(readFileSync(ruta, 'utf8'))
     if (BASE_PROPIA.test(src)) continue
     const delegados = Object.keys(DELEGAN).filter((fn) => src.includes(fn))
-    if (!DDL_PROPIO.test(src) && !delegados.length) continue
+    if ((!DDL_PROPIO.test(src) || !aplica(src)) && !delegados.length) continue
     conDdl += 1
     // El turno puede estar acá o en el helper que aplica por él. Lo que no puede es no estar.
     const donde = [src, ...delegados.map((fn) => sinComentarios(readFileSync(join(RAIZ, DELEGAN[fn]), 'utf8')))]
@@ -93,7 +107,9 @@ test('todo test que aplica migraciones sobre la base compartida pide el turno', 
   }
   // Si esto queda en cero, el barrido dejó de encontrar los tests que hacen DDL y el control se
   // volvió una constante que no puede decir que no.
-  assert.ok(conDdl >= 15, `sólo ${conDdl} tests con DDL compartido: el detector dejó de reconocerlos`)
+  // MEDIDO el 19/09/2026 con el detector preciso: 7 tests aplican DDL compartido (antes contaba 15
+  // porque sumaba a los que sólo LEEN el archivo de la migración). Por debajo de 5 el barrido se rompió.
+  assert.ok(conDdl >= 5, `sólo ${conDdl} tests con DDL compartido: el detector dejó de reconocerlos`)
   assert.deepEqual(sinTurno, [],
     'estos tests aplican migraciones sobre la base compartida sin tomar el turno, así que pueden '
     + `trabar a los demás y ponerse rojos por la carga de la máquina:\n${sinTurno.join('\n')}\n`

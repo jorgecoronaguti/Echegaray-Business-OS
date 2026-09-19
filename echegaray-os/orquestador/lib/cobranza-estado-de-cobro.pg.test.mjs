@@ -74,6 +74,9 @@ test('vencida es la columna U en Postgres, en el gemelo y en cada cara', { skip:
   const q = async (sql, params) => (await c.query(sql, params)).rows
   try {
     await c.query('begin')
+    // EL TURNO (19/09/2026): este test aplica una migración sobre la base COMPARTIDA; sin el lock dos
+    // corridas se traban entre sí y el rojo que sale es de la máquina, no del código.
+    await c.query('select pg_advisory_xact_lock(20260822)')
     // Si una vista está tomada, fallar rápido antes que trabar la app del dueño.
     await c.query(`set local lock_timeout = '5s'`)
     if (!(await q(`select to_regprocedure('public.estado_de_cobro(text,date,date)') f`))[0].f) {

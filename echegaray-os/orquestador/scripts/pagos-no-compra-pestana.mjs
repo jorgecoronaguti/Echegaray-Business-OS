@@ -106,7 +106,10 @@ async function main() {
   const r1 = r0 + plan.altas.length - 1
   const res = await google.batchUpdateValues(ID,
     [{ range: `'${PESTANA_PAGOS_NC}'!A${r0}:${String.fromCharCode(64 + ANCHO)}${r1}`, values: plan.altas.map(filaPagoNC) }],
-    { soloFilasVacias: true })
+    // REGLA 0, DECLARADA (19/09/2026): `respetar: false` — esta pestaña no se regenera nunca. Lo que
+    // protege lo del dueño no es preservar: es que `soloFilasVacias` relee cada rango y sólo deja pasar
+    // el que está COMPLETAMENTE vacío, así que una fila cargada a mano no se puede pisar.
+    { soloFilasVacias: true, respetar: false })
   if (res?.protegido) { console.error(`la guarda frenó la escritura: ${res.motivo ?? JSON.stringify(res)}`); process.exitCode = 1; return }
 
   // RELECTURA: cada pago agregado, leído de vuelta por su clave.

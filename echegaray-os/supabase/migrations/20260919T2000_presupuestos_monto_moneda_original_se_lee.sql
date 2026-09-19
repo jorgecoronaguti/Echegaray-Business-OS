@@ -1,0 +1,11 @@
+-- LA COLUMNA QUE SE PODÍA ESCRIBIR Y NO LEER (19/09/2026).
+--
+-- `presupuestos.monto_moneda_original` nació con INSERT y UPDATE para `authenticated` y SIN SELECT: la
+-- app la escribe y después la lee vacía, sin error y sin nada que mirar — el mismo patrón que ya costó
+-- caro con otras columnas nuevas. Lo encontró el control `columnas-comerciales-cerradas` («no se perdió
+-- ninguna columna que sí se puede leer»), que estaba en rojo desde entonces.
+--
+-- No es un dato comercial cerrado: es el monto tal como se cotizó en su moneda, que la pantalla de
+-- presupuestos muestra al lado del monto en pesos. Por eso se abre a lectura y no se agrega a la lista
+-- negra del control.
+grant select (monto_moneda_original) on public.presupuestos to authenticated;

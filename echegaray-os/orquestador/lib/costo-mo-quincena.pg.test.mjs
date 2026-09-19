@@ -71,6 +71,8 @@ test('el cálculo SQL y el espejo JS dan lo mismo, fila por fila: la 01/09 (jefe
   const c = await getPool().connect()
   try {
     await c.query('begin transaction read only')
+    // EL TURNO (19/09/2026): aplica la migración sobre la base COMPARTIDA (ver `query(MIG…)` más abajo).
+    await c.query('select pg_advisory_xact_lock(20260822)')
     const quincenas = [{ desde: '2026-09-01', hasta: '2026-09-15' }, ...(await c.query(`select desde::text, hasta::text from public.liquidacion_quincena
                                        group by 1, 2 having bool_and(estado = 'cerrada') order by 1 desc limit 2`)).rows]
     const jefes = await c.query("select 1 from public.persona_tarifa where neto_mensual is not null and desde <= '2026-09-15'")
