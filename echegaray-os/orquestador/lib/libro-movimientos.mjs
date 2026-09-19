@@ -193,7 +193,26 @@ export function deduplicar(movimientos = []) {
   for (const m of movimientos) {
     const ya = porClave.get(m.clave)
     if (!ya) { porClave.set(m.clave, m); continue }
-    colapsos.push({ clave: m.clave, se_queda: ya.origen, se_descarta: m.origen, importe: m.importe })
+    // ═══ NO TODO COLAPSO ES INOCENTE, Y HASTA HOY NO SE DISTINGUÍAN (06/09/2026) ═══
+    //
+    // Si los dos lados traen el MISMO importe, es el mismo hecho llegando por dos puertas y quedarse
+    // con uno es exactamente lo que este algoritmo existe para hacer. Si traen importes DISTINTOS son
+    // dos hechos que comparten clave, y el que se descarta desaparece del Libro con su plata: la clave
+    // `comp:CUIT:NÚMERO:SIGNO` no mira el importe. Medido en vivo: 11 filas de Compras por $5.745.493
+    // —Industrias Castel $3.240.300, SIDERAGRO $1.619.197— con el número de comprobante repetido, que
+    // la propia planilla ya marca en su columna "¿Comprobante repetido? (OS)".
+    //
+    // NO SE CAMBIA LA CLAVE ACÁ: meter el importe en la clave dejaría entrar de nuevo los duplicados
+    // que llegan con centavos de diferencia, y eso es una decisión de negocio con efecto económico.
+    // Lo que se hace es dejar de perder plata EN SILENCIO — `borra_plata` es lo que un control mira.
+    colapsos.push({
+      clave: m.clave,
+      se_queda: ya.origen,
+      se_descarta: m.origen,
+      importe: m.importe,
+      importe_que_queda: ya.importe,
+      borra_plata: Math.abs((ya.importe ?? 0) - (m.importe ?? 0)) > 1,
+    })
     if (FUERZA[m.estado] > FUERZA[ya.estado]) porClave.set(m.clave, m)
   }
   return { libro: [...porClave.values()], colapsos }

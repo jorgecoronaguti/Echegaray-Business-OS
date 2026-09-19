@@ -144,7 +144,26 @@ export function deCompras(filas = [], corte = null, { aviso = (m) => console.war
     const f = filas[i] ?? []
     const importe = num(f[c.importe])
     const cargada = num(f[c.fechaCaja])
-    if (importe === null || cargada === null) continue // sin importe o sin fecha de caja no hay movimiento
+    if (importe === null) continue // no es una fila de plata
+    // ═══ EL DESCARTE MUDO QUE BORRABA $687.249 (06/09/2026) ═══
+    //
+    // Sin fecha de caja no hay movimiento —eso no cambia: ubicarlo en el calendario exigiría inventar
+    // la fecha—. Lo que cambia es que ahora se DICE. Hasta hoy este `continue` era silencioso: 21
+    // facturas ($687.249, de los cuales $171.314 seguían pendientes) desaparecían del Libro y de los
+    // dos Cash Flow sin dejar rastro en ningún lado. La única señal era indirecta y apuntaba al
+    // síntoma equivocado — el control del pie de "Proveedores" decía "$171.314 salen por un medio de
+    // pago que no tiene columna", porque esas mismas filas tienen también el Tipo pago vacío.
+    //
+    // El aviso sólo sale con importe distinto de cero: las 196 filas en blanco del final del rango no
+    // son un hallazgo, y un control que grita 196 veces por nada entierra las 21 veces que importan.
+    if (cargada === null) {
+      if (importe !== 0) {
+        aviso(`libro-extractores(Compras) fila ${i + 1} (${txt(f[c.proveedor])}): "Fecha de caja" VACÍA `
+          + `con Total ${importe}. La fila NO entra al libro y su plata no llega a ningún Cash Flow. `
+          + 'Se arregla cargando la fecha en Compras — acá inventarla sería fabricar un dato.')
+      }
+      continue
+    }
     // Se tolera decoración alrededor de la palabra ("✅ Pagado"): se compara sólo lo alfabético.
     const pagado = estaPagada(f[c.estado])
     const tipo = txt(f[c.tipoPago]).toLowerCase()

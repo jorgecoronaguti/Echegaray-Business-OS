@@ -500,6 +500,21 @@ async function main() {
   for (const c of colapsos.slice(0, 8)) {
     console.log(`    · colapsó ${c.clave.slice(0, 44)} — se queda ${c.se_queda.pestana}:${c.se_queda.fila}, cae ${c.se_descarta.pestana}:${c.se_descarta.fila}`)
   }
+  // ═══ EL COLAPSO QUE SE COME PLATA SE SEPARA DEL QUE NO (06/09/2026) ═══
+  //
+  // Los dos se imprimían juntos, así que un duplicado inocente y una factura que desaparece con
+  // $3,2M adentro se leían igual. Se listan TODOS los que borran plata —no los primeros ocho—: son
+  // pocos por definición y cada uno es una corrección de una celda en Compras.
+  const borran = colapsos.filter((c) => c.borra_plata)
+  if (borran.length) {
+    const perdido = borran.reduce((a, c) => a + Math.abs(c.importe), 0)
+    console.log(`  ⚠ ${borran.length} colapso(s) BORRAN PLATA por ${pesos(perdido)}: dos filas con la misma `
+      + 'clave y DISTINTO importe son dos hechos, y el que cae no está en ningún Cash Flow.')
+    for (const c of borran) {
+      console.log(`    ⚠ ${c.se_descarta.pestana}:${c.se_descarta.fila} ${pesos(c.importe)} cae contra `
+        + `${c.se_queda.pestana}:${c.se_queda.fila} ${pesos(c.importe_que_queda)} — clave ${c.clave.slice(0, 44)}`)
+    }
+  }
 
   const porEstado = {}
   for (const e of ['REAL', 'COMPROMETIDO', 'PROYECTADO', 'VENCIDO']) {

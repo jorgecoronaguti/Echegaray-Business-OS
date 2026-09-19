@@ -144,3 +144,25 @@ test('los cuatro estados están declarados y ninguno es un sinónimo de otro', (
   assert.deepEqual(ESTADOS, ['REAL', 'COMPROMETIDO', 'PROYECTADO', 'VENCIDO'])
   assert.equal(new Set(ESTADOS).size, ESTADOS.length)
 })
+
+test('DEDUP: el colapso que se come plata se distingue del duplicado inocente', () => {
+  // ═══ EL DEFECTO (06/09/2026) ═══
+  //
+  // La clave `comp:CUIT:NÚMERO:SIGNO` no mira el importe. Dos filas de Compras con el MISMO número de
+  // comprobante y distinto importe colapsan en una, y la que cae desaparece del Libro y de los dos
+  // Cash Flow. Medido en el archivo vivo: 11 filas por $5.745.493 — Industrias Castel $3.240.300 cayó
+  // contra una fila de $2.000.000 de la misma factura. Los dos casos se imprimían igual, así que
+  // nadie podía distinguir un duplicado inocente de una factura que se evapora.
+  const comp = (fila, importe) => movimiento({
+    fecha: 46000, signo: SALE, importe, concepto: 'Industrias Castel', estado: 'REAL',
+    cuit: '30-11111111-1', comprobante: '00003-00012792', origen: { pestana: 'Compras', fila },
+  })
+  const { colapsos } = deduplicar([comp(75, 2000000), comp(76, 3240300)])
+  assert.equal(colapsos.length, 1)
+  assert.equal(colapsos[0].borra_plata, true, 'sin esta marca, $3.240.300 desaparecen en silencio')
+  assert.equal(colapsos[0].importe_que_queda, 2000000)
+
+  // El mismo hecho por dos puertas con el mismo importe: colapsarlo es lo correcto y NO se grita.
+  const igual = deduplicar([comp(129, 77384), comp(130, 77384)])
+  assert.equal(igual.colapsos[0].borra_plata, false, 'gritar por un colapso correcto entierra el que importa')
+})

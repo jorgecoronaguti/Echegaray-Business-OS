@@ -403,6 +403,22 @@ export const PASOS = [
   // ellas, y las dos cosas sólo se pueden contestar DESPUÉS de que todos los generadores corrieron.
   // Corrido antes, mediría la corrida de ayer. Ver `lib/coherencia-pestanas.mjs`.
   ['auditar-coherencia-pestanas.mjs', 'el control del dueño: ¿están todas al día y condicen entre sí?', []],
+  // ═══ LA REGLA DE ORO 8, MEDIDA EN CADA CORRIDA (06/09/2026) ═══
+  //
+  // *"los cash flows semanales y mensuales tienen q reflejar todos los datos del sheet"*. Los tres
+  // controles que ya existían alrededor de esa regla contestan otra pregunta: `auditar-cuadre-cash-
+  // flow` compara las DOS VISTAS entre sí (y su cabecera declara que no valida el número del que
+  // parten), `guardaDeCobertura` mide que no falten SEMANAS, y `huecosDeCobertura` mide que cada rubro
+  // llegue a diciembre — un rubro puede llegar a diciembre y faltarle veintiuna facturas.
+  //
+  // Éste se para del lado de la FUENTE: cuenta las hojas del archivo que nadie declaró (eran 23 de 39)
+  // y, fila por fila, cuál no llegó al Libro y por qué. La primera corrida encontró $171.314 pendientes
+  // sin fecha de caja y $5.745.493 que la deduplicación se comió por número de comprobante repetido.
+  //
+  // VA AL FINAL Y EN `REPORTES`: necesita el Libro y las dos vistas ya escritas por los pasos de
+  // arriba, y su ≠0 significa "encontré plata afuera", no "no pude generar los datos" — contado como
+  // fallo dejaría el servicio en rojo permanente y la frescura del Cash Flow sin registrarse.
+  ['auditar-cobertura-del-archivo.mjs', 'la regla 8: qué hoja no tiene rol y qué plata de las fuentes no llegó al Libro', []],
   // ═══ EL AUDITOR QUE HABRÍA CAZADO LOS DOCE `ARCA_*` TAMPOCO LO CORRÍA NADIE (14/08/2026) ═══
   //
   // Exactamente la misma historia que `_CRUCE_ARCA` cuatro entradas más arriba, sobre otro objeto.
@@ -561,7 +577,7 @@ export function estaRetirado(script) { return PASOS_RETIRADOS.some((p) => p.scri
 export const REPORTES = new Set([
   'formato-pestanas.mjs', 'reparar-pantalla.mjs', 'censo-numeros-pegados.mjs', 'auditar-saldo-banco.mjs',
   'reparar-textos.mjs', 'formato-condicional.mjs', 'auditar-pantalla.mjs', 'auditar-duenos-pestanas.mjs',
-  'auditar-coherencia-pestanas.mjs', 'auditar-diseno-unificado.mjs',
+  'auditar-coherencia-pestanas.mjs', 'auditar-diseno-unificado.mjs', 'auditar-cobertura-del-archivo.mjs',
   'auditar-doble-conteo-compras.mjs', 'auditar-rangos-fosilizados.mjs',
   // Sus hallazgos («jornales proyectados con $0 de material») son una lectura de lo que falta
   // cargar, no un error de cuadre: reporte visible, jamás un fallo del pipeline.

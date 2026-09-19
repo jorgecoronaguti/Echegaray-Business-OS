@@ -587,3 +587,26 @@ test('COMPRAS: una cuota de plan en día HÁBIL se respeta aunque no coincida co
   ]), 46100, { aviso: () => {} })
   assert.equal(ms.find((m) => m.rubro === 'Deuda previsional (planes de pago)').fecha, jueves)
 })
+
+test('COMPRAS: la fila SIN "Fecha de caja" se descarta AVISANDO — hasta hoy era un continue mudo', () => {
+  // ═══ EL DEFECTO (06/09/2026) ═══
+  //
+  // `if (importe === null || cargada === null) continue` era silencioso: 21 facturas por $687.249 —de
+  // las cuales $171.314 seguían PENDIENTES— desaparecían del libro y de los dos Cash Flow sin dejar
+  // rastro. La única señal era indirecta y señalaba el síntoma equivocado (el control del pie de
+  // "Proveedores": "$171.314 salen por un medio de pago que no tiene columna"). La fila sigue sin
+  // entrar —inventar la fecha sería fabricar el dato—, pero ahora se sabe cuál y por cuánto.
+  const avisos = []
+  const ms = deCompras(compras([
+    ['Corralon Progreso', '', '0007-00002594', 4903, 'Pendiente', 'Transferencia', 'Materiales Civil', '', ''],
+  ]), 46000, { aviso: (m) => avisos.push(m) })
+  assert.ok(!ms.some((m) => m.concepto === 'Corralon Progreso'), 'sin fecha no se puede ubicar en el calendario')
+  assert.equal(avisos.filter((a) => /Fecha de caja" VACÍA/.test(a)).length, 1, 'y no puede caerse en silencio')
+  assert.match(avisos.find((a) => /VACÍA/.test(a)), /Corralon Progreso/)
+})
+
+test('COMPRAS: la fila en blanco del final del rango NO genera aviso — 196 gritos entierran los 21', () => {
+  const avisos = []
+  deCompras(compras([['', '', '', 0, '', '', '', '', '']]), 46000, { aviso: (m) => avisos.push(m) })
+  assert.deepEqual(avisos.filter((a) => /VACÍA/.test(a)), [])
+})
