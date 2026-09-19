@@ -18,23 +18,17 @@ import { ROTULO_SIN_OBRA, importeSinObra, tituloSinObra, type GastoSinObra, titu
 import { textoPorVencer } from '../services/porVencer'
 import { AbrirDetalle, PorVencer } from './CeldaCosto'
 
-/**
- * La segunda línea del rótulo de una columna de costo, debajo de su `RotuloCol`.
- *
- * `conIva` (auditoría 18/09/2026): las compras de esta tabla van CON IVA (lo pagado, decisión del 17/09),
- * y Analíticas y la ficha de la obra las muestran SIN IVA. El mismo comprobante daba dos números en dos
- * pantallas y ninguna de las dos decía por qué. Ahora lo dice el encabezado. La mano de obra no lleva IVA.
- */
-export function ALaFecha({ conIva = false }: { conIva?: boolean }) {
+/** La segunda línea del rótulo de una columna de costo, debajo de su `RotuloCol`. */
+export function ALaFecha() {
   return (
     <span style={{ fontSize: '10px', lineHeight: '11px', color: V.tenue, textAlign: 'right', whiteSpace: 'nowrap' }}>
-      {conIva ? 'a la fecha, con IVA' : 'a la fecha'}
+      a la fecha
     </span>
   )
 }
 
 /** «MATERIALES / a la fecha»: el nombre de la columna y, debajo, el corte que lo define. */
-export function RotuloACorte({ texto, titulo, conIva = false }: { texto: string; titulo: string; conIva?: boolean }) {
+export function RotuloACorte({ texto, titulo }: { texto: string; titulo: string }) {
   return (
     <span className="grid justify-items-end" title={titulo} style={{ lineHeight: '12px', minWidth: 0 }}>
       <span style={{
@@ -43,7 +37,7 @@ export function RotuloACorte({ texto, titulo, conIva = false }: { texto: string;
       }}>
         {texto}
       </span>
-      <span style={{ fontSize: '10px', color: V.tenue, whiteSpace: 'nowrap' }}>{conIva ? 'a la fecha, con IVA' : 'a la fecha'}</span>
+      <span style={{ fontSize: '10px', color: V.tenue, whiteSpace: 'nowrap' }}>a la fecha</span>
     </span>
   )
 }
@@ -103,12 +97,6 @@ export function FilaGastosSinObra({ gasto, columnas, sangria, visible, hrefDetal
         </span>
         <PorVencer texto={textoPorVencer(gasto?.subcontratosPorVencer)} />
       </span>
-      {/* OTROS: PISTA VACÍA, NO «—». `compras_sin_obra_de_clientes` sigue publicando materiales +
-          subcontratos (20260918T0900: «lo sin obra es un cajón que no se compara con ningún
-          presupuesto»), así que acá no hay dato que afirmar ni ausencia que dibujar. La pista existe
-          porque esta fila usa la MISMA grilla que la tabla: sin ella, Mano de obra y Contratado se
-          corren una columna a la izquierda. */}
-      <span />
       {/* MANO DE OBRA y CONTRATADO: las horas siempre tienen obra, y lo sin obra no tiene precio. */}
       <span />
       <span aria-hidden />

@@ -34,7 +34,6 @@
 // eso llega como lista vacía, no como `null` — la pantalla no dibuja esas columnas para su rol y no
 // tiene que confundir «no te toca» con «no pude leer».
 
-import { costosEnCuatroRubros } from '../../clientes/services/costosEnCuatroRubros.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Perfil } from '@/features/auth/types'
 import type { ClientePanel, ObraDePanel } from '@/features/clientes/types'
@@ -139,9 +138,7 @@ export async function leerCarteraDeUnaConsulta(supabase: SupabaseClient): Promis
     contratos: new Set(j.contratos ?? []),
     economiaCliente: armarEconomiaDeClientes(j.economia_clientes ?? []),
     // `?? null` y NO `?? []`: una clave ausente es «no pude leer», no «ningún trabajo gastó nada».
-    // LOS CUATRO RUBROS (18/09/2026): la pantalla trae tres; `costosEnCuatroRubros` pide los mismos
-    // trabajos a la función de cuatro. Ver ese archivo: por qué no se cambió la función de la pantalla.
-    costosPorObra: await costosEnCuatroRubros(supabase, armarCostosPorObra(j.costo_obra ?? null)),
+    costosPorObra: armarCostosPorObra(j.costo_obra ?? null),
     gastosSinObra: armarGastosSinObra(j.costo_sin_obra ?? null),
   }
 }

@@ -123,22 +123,10 @@ export function nomina(
   return { base, meses }
 }
 
-/**
- * Los últimos seis meses REALES: ni incompletos ni estimados.
- *
- * Devuelve TAMBIÉN cuáles son (`desde`/`hasta`). Sin eso la pantalla decía «seis meses $ 144,13 M» sin
- * decir qué seis, y con jul/ago/sep todavía sin liquidar no son los seis últimos del calendario.
- */
-export function seisMesesReales(meses: MesNomina[]): { total: number; meses: number; desde: string; hasta: string } | null {
-  // ORDENADOS POR MES antes de tomar los últimos seis: «el último» del arreglo es el último que devolvió
-  // la base, y la consulta no garantizaba orden. Ahora que la pantalla NOMBRA los meses, un orden
-  // prestado haría que el rótulo diga un rango que no es el que se sumó.
-  const reales = meses.filter((m) => m.estado === 'real' && m.costo != null).sort((a, b) => a.mes.localeCompare(b.mes)).slice(-6)
-  if (!reales.length) return null
-  return {
-    total: reales.reduce((a, m) => a + (m.costo ?? 0), 0), meses: reales.length,
-    desde: reales[0].mes, hasta: reales[reales.length - 1].mes,
-  }
+/** Los últimos seis meses REALES: ni incompletos ni estimados. */
+export function seisMesesReales(meses: MesNomina[]): { total: number; meses: number } | null {
+  const reales = meses.filter((m) => m.estado === 'real' && m.costo != null).slice(-6)
+  return reales.length ? { total: reales.reduce((a, m) => a + (m.costo ?? 0), 0), meses: reales.length } : null
 }
 
 export interface Legajos { plantel: number; conCategoria: number; sinCategoria: number }
@@ -184,22 +172,14 @@ export interface FilaCobranza {
  * LAS ZONAS DE LA LÍNEA DE ANTIGÜEDAD. «Por vencer» tiene la SUYA, antes del cero: dibujada dentro de
  * «0–30 días» se leía como vencida hace pocos días (auditoría 17/09/2026, D9). Cinco zonas del mismo
  * ancho, en el orden de los tramos de `bandasAntiguedad`.
- *
- * EL PRIMER TRAMO SE LLAMA «al día», no «Por vencer» (17/09/2026): es la palabra del diseño aprobado y
- * la misma que ya usa la cifra de arriba. Con dos palabras para lo mismo, la banda y la tabla parecían
- * hablar de dos cosas distintas. La ficha del cliente conserva su rótulo (`BANDAS`): es otra pantalla.
- * Los tramos vencidos llevan «días» completo — «31–60» solo no dice de qué son sesenta.
  */
 export const ZONAS_COBRANZA: { clave: ClaveBanda; rotulo: string }[] = [
-  { clave: 'por_vencer', rotulo: 'al día' },
+  { clave: 'por_vencer', rotulo: 'Por vencer' },
   { clave: 'd1_30', rotulo: '1–30 días' },
-  { clave: 'd31_60', rotulo: '31–60 días' },
-  { clave: 'd61_90', rotulo: '61–90 días' },
-  { clave: 'd90', rotulo: '+90 días' },
+  { clave: 'd31_60', rotulo: '31–60' },
+  { clave: 'd61_90', rotulo: '61–90' },
+  { clave: 'd90', rotulo: '+90' },
 ]
-
-/** El rótulo de un tramo con las palabras de Analíticas, no con las de la ficha del cliente. */
-export const rotuloDeZona = (t: ClaveBanda): string => ZONAS_COBRANZA.find((z) => z.clave === t)?.rotulo ?? ''
 
 /** Dónde empieza y termina (0–1) la zona de un tramo. */
 export function zonaDeTramo(t: ClaveBanda): { desde: number; hasta: number } {
@@ -253,7 +233,7 @@ export function cobranza(cuenta: unknown[], filasCobranzas: unknown[] | null = n
     return [{
       clienteId: r.cliente_id, nombre: String(r.nombre_comercial ?? ''), saldo, vencido,
       porVencer: fila.aging_por_vencer, masDe60: fila.aging_61_90 + fila.aging_mas_90,
-      tramo: viejo?.clave ?? null, rotuloTramo: viejo ? rotuloDeZona(viejo.clave) : null,
+      tramo: viejo?.clave ?? null, rotuloTramo: viejo?.rotulo ?? null,
       estado: vencido > 0 ? 'vencido' : 'alDia',
       verbo: propios.length ? (planDeCobranza(propios, hoy)[0]?.rotulo ?? null) : null,
       evaluado: propios.length > 0,

@@ -12,71 +12,21 @@
 // anteriores al de hoy, y un mes de la ventana sin consumo cuenta como cero —la obra no consumió—,
 // pero una obra sin NINGÚN consumo en la ventana no tiene ritmo: «sin consumo reciente».
 
-import { rubroDeDb, type Rubro } from './presupuesto.ts'
-
-const num = (v: unknown): number | null => {
-  if (v == null || v === '') return null
-  const x = Number(v)
-  return Number.isFinite(x) ? x : null
-}
-
 export interface MesDeConsumo {
   obraId: string
   /** `AAAA-MM`. `null` = comprobante sin fecha: no tiene mes. */
   mes: string | null
   materiales: number | null
   subcontratos: number | null
-  /** Equipos, combustible, fletes, servicios (20260918T0900). */
-  otros: number | null
   manoObra: number | null
   manoObraEstimada: number | null
 }
 
-/** Un grupo del detalle de lo consumido: una familia de Compras, un proveedor o una quincena. */
-export interface GrupoDeConsumo {
-  grupo: string
-  n: number
-  monto: number
-  /** Sólo mano de obra: las horas de la quincena y si tiene parte estimada. */
-  horas: number | null
-  estimado: boolean
-  horasSinDato: number | null
+const num = (v: unknown): number | null => {
+  if (v == null || v === '') return null
+  const x = Number(v)
+  return Number.isFinite(x) ? x : null
 }
-
-/** Lo consumido en un rubro, como lo publica `costo_de_obras_por_rubro`. */
-export interface ConsumoRubro {
-  monto: number | null
-  /** La parte estimada (sólo mano de obra). */
-  estimado: number | null
-  /** Comprobantes, o quincenas en mano de obra. */
-  n: number
-  detalle: GrupoDeConsumo[]
-}
-
-/**
- * LAS FILAS DE `costo_de_obras_por_rubro`, POR OBRA Y RUBRO. `null` = no se pudo leer. Una obra sin
- * ninguna fila no está en el mapa; un rubro sin fila queda `null` («sin movimiento»), no 0.
- */
-export function leerConsumoPorRubro(crudas: unknown): Map<string, Record<Rubro, ConsumoRubro | null>> | null {
-  if (!Array.isArray(crudas)) return null
-  const m = new Map<string, Record<Rubro, ConsumoRubro | null>>()
-  for (const c of crudas) {
-    const r = (c ?? {}) as Record<string, unknown>
-    const rubro = typeof r.rubro === 'string' ? rubroDeDb(r.rubro) : null
-    if (typeof r.obra_id !== 'string' || !r.obra_id || !rubro) continue
-    const fila = m.get(r.obra_id) ?? { manoObra: null, materiales: null, subcontratos: null, otros: null }
-    const detalle = (Array.isArray(r.detalle) ? r.detalle : []).flatMap((d): GrupoDeConsumo[] => {
-      const g = (d ?? {}) as Record<string, unknown>
-      const monto = num(g.monto)
-      if (monto == null) return []
-      return [{ grupo: typeof g.grupo === 'string' ? g.grupo : 'sin nombre', n: num(g.n) ?? 0, monto, horas: num(g.horas), estimado: g.estimado === true, horasSinDato: num(g.horas_sin_dato) }]
-    })
-    fila[rubro] = { monto: num(r.monto), estimado: num(r.monto_estimado), n: num(r.n) ?? 0, detalle }
-    m.set(r.obra_id, fila)
-  }
-  return m
-}
-
 
 /** Las filas crudas de la RPC. `null` = no se pudo leer (distinto de «no hay consumo»). */
 export function leerConsumoMensual(crudas: unknown): MesDeConsumo[] | null {
@@ -86,7 +36,7 @@ export function leerConsumoMensual(crudas: unknown): MesDeConsumo[] | null {
     if (typeof r.obra_id !== 'string' || !r.obra_id) return []
     const mes = typeof r.mes === 'string' && /^\d{4}-\d{2}/.test(r.mes) ? r.mes.slice(0, 7) : null
     return [{
-      obraId: r.obra_id, mes, materiales: num(r.materiales), subcontratos: num(r.subcontratos), otros: num(r.otros),
+      obraId: r.obra_id, mes, materiales: num(r.materiales), subcontratos: num(r.subcontratos),
       manoObra: num(r.mano_obra), manoObraEstimada: num(r.mano_obra_estimada),
     }]
   })
@@ -112,8 +62,8 @@ export interface Ritmo {
   conEstimada: boolean
 }
 
-type RubroDeConsumo = Rubro
-const TODOS: RubroDeConsumo[] = ['manoObra', 'materiales', 'subcontratos', 'otros']
+type RubroDeConsumo = 'manoObra' | 'materiales' | 'subcontratos'
+const TODOS: RubroDeConsumo[] = ['manoObra', 'materiales', 'subcontratos']
 const totalDe = (f: MesDeConsumo, rubros: RubroDeConsumo[]): number => rubros.reduce((a, k) => a + (f[k] ?? 0), 0)
 
 /** El ritmo de cada obra que tiene alguna fila. Una obra que no está en el mapa no tiene consumo. */

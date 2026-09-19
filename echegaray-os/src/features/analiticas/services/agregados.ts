@@ -4,9 +4,8 @@
 // OBRA: repartirlos sería decidir a qué obra fue una compra que Compras no supo decir. Un ratio sin sus
 // dos patas no se publica: `queda` sólo existe con presupuesto Y consumo del MISMO rubro, `$/hora` sólo
 // con mano de obra imputada Y horas. El contrato viaja como referencia, nunca como presupuesto.
-import { horasTexto, millones, pctEntero } from './formato.ts'
-import { rotuloEstimada, type AusenciaPrecio, type ObraAnalitica } from './obras.ts'
-import { DEFINICION_RUBRO, RUBROS, SIN_PRESUPUESTO, SIN_PRESUPUESTO_RUBRO, type Rubro } from './presupuesto.ts'
+import { rotuloEstimada, type ObraAnalitica } from './obras.ts'
+import { SIN_PRESUPUESTO, SIN_PRESUPUESTO_RUBRO, type Rubro } from './presupuesto.ts'
 
 const sumaNula = (xs: (number | null)[]): number | null =>
   xs.every((x) => x == null) ? null : xs.reduce<number>((a, x) => a + (x ?? 0), 0)
@@ -55,108 +54,6 @@ export function cifrasResumen(obras: ObraAnalitica[], sinObra: ReadonlyMap<strin
     sinObraAsignada: sumaNula([...sinObra.values()]),
     obrasSinPresupuesto: obras.length - conPres.length,
   }
-}
-
-// ─── Lo contratado contra lo gastado ────────────────────────────────────────────────────────────
-//
-// ═══ LA OTRA PREGUNTA, LA QUE EL DUEÑO PIDIÓ EL 17/09/2026 ═══
-//
-// «Lo que quiero es más claridad en la pestaña Resumen de lo contratado vs lo que se va gastando».
-// Es una lectura DISTINTA de presupuestado contra consumido y las dos se publican:
-//
-//   CONTRATADO − GASTADO   lo que el cliente se comprometió a pagar menos lo que costó hasta hoy.
-//   PRESUPUESTADO − CONSUMIDO   el costo previsto menos el costo incurrido: el desvío.
-//
-// Mezclarlas esconde una de las dos. Por eso viven en dos funciones y en dos secciones.
-//
-// ═══ LAS TRES REGLAS QUE ESTA CUENTA NO PUEDE ROMPER ═══
-//
-// 1. CONTRATADO ES `baseDelContrato`, LA MISMA FUNCIÓN QUE LA FICHA Y EL CRM (dueño, 18/09/2026: «lo
-//    contratado de las obras está OK, ¿por qué no se ve así en Analíticas?»). Lo aplica `precioDe`
-//    (obras.ts) sin regla propia. DUDA ABIERTA, no decidida acá: antes se excluía el origen
-//    `suma-viva` (lo facturado de Cobranzas) porque el dueño había rechazado publicar lo facturado
-//    como precio (Instalación Eléctrica: $ 40 M de precio, $ 20 M facturados). Si esa exclusión
-//    vale, va en `baseDelContrato` y cambia las dos pantallas juntas.
-// 2. UNA OBRA SIN PRECIO NO SE RELLENA. Ni con su presupuesto ni con lo facturado: queda AFUERA de
-//    la cuenta, y lo que gastó se dice aparte. Un contratado que no incluye una obra no puede
-//    compararse contra un gastado que sí la incluye.
-// 3. EL QUEDA NO ES EL MARGEN FINAL. La obra está en curso: falta costo por incurrir. Es lo que
-//    queda del precio para cubrirlo. La pantalla lo dice con esas palabras.
-
-/** Una obra que no entra a la cuenta del contrato, con la palabra que dice por qué. */
-export interface ObraSinPrecio { id: string; nombre: string; ausencia: AusenciaPrecio; gasto: number | null }
-
-export interface ContraContrato {
-  /** Cuántas obras tienen precio contratado: las únicas de esta cuenta. */
-  conPrecio: number
-  /** Σ del precio de esas obras. `null` = ninguna lo tiene. */
-  contratado: number | null
-  /** Σ de lo gastado EN ESAS MISMAS obras. `null` = ninguna tiene precio. */
-  gastado: number | null
-  /** contratado − gastado: lo que queda del precio para el costo que falta. */
-  queda: number | null
-  /** gastado ÷ contratado. `null` sin las dos patas. */
-  pct: number | null
-  /** Las obras que quedaron afuera, con su palabra y lo que gastaron. */
-  sinPrecio: ObraSinPrecio[]
-  /** Σ de lo gastado por las obras sin precio: está afuera de la cuenta y se dice. */
-  gastadoSinPrecio: number | null
-}
-
-/** LO CONTRATADO CONTRA LO GASTADO, sólo con las obras que tienen precio (regla 2 de arriba). */
-export function contraContrato(obras: ObraAnalitica[]): ContraContrato {
-  const con = obras.filter((o) => o.precio != null)
-  const sin = obras.filter((o) => o.precio == null)
-  const contratado = sumaNula(con.map((o) => o.precio))
-  const gastado = con.length ? sumaNula(con.map((o) => o.gasto.total)) : null
-  return {
-    conPrecio: con.length, contratado, gastado,
-    queda: contratado != null ? contratado - (gastado ?? 0) : null,
-    pct: contratado != null && contratado > 0 && gastado != null ? gastado / contratado : null,
-    sinPrecio: sin.map((o) => ({ id: o.id, nombre: o.nombre, ausencia: o.ausencia ?? 'sin precio', gasto: o.gasto.total })),
-    gastadoSinPrecio: sin.length ? sumaNula(sin.map((o) => o.gasto.total)) : null,
-  }
-}
-
-export type FilaContrato = ContraContrato & {
-  clienteId: string
-  nombre: string
-  obras: number
-  /** Lo gastado en las obras CON precio, abierto por rubro: la barra gruesa del diseño. */
-  manoObra: number | null
-  subcontratos: number | null
-  materiales: number | null
-  otros: number | null
-  /** Cuántas de las obras con precio están contratadas en dólares (valuadas al tipo de cambio de hoy). */
-  enDolares: number
-  obraPrincipal: string
-}
-
-/**
- * LA MISMA CUENTA, CLIENTE POR CLIENTE, en el orden de la lista de presupuestado (del que más gastó al
- * que menos): las dos listas del Resumen se leen una debajo de la otra y un cliente tiene que estar en
- * el mismo lugar en las dos.
- */
-export function contratoPorCliente(obras: ObraAnalitica[]): FilaContrato[] {
-  const m = new Map<string, ObraAnalitica[]>()
-  for (const o of obras) m.set(o.clienteId, [...(m.get(o.clienteId) ?? []), o])
-  return [...m.values()].map((lista): FilaContrato => {
-    const con = lista.filter((o) => o.precio != null)
-    return {
-      ...contraContrato(lista),
-      clienteId: lista[0].clienteId, nombre: lista[0].clienteNombre, obras: lista.length,
-      manoObra: sumaNula(con.map((o) => o.gasto.manoObra)),
-      subcontratos: sumaNula(con.map((o) => o.gasto.subcontratos)),
-      materiales: sumaNula(con.map((o) => o.gasto.materiales)),
-      otros: sumaNula(con.map((o) => o.gasto.otros)),
-      enDolares: con.filter((o) => o.precioEnDolares).length,
-      obraPrincipal: [...lista].sort((a, b) => (b.gasto.total ?? 0) - (a.gasto.total ?? 0))[0].id,
-    }
-  }).sort((a, b) => {
-    const ga = a.obras ? (a.gastado ?? 0) + (a.gastadoSinPrecio ?? 0) : 0
-    const gb = b.obras ? (b.gastado ?? 0) + (b.gastadoSinPrecio ?? 0) : 0
-    return gb - ga || (b.contratado ?? -1) - (a.contratado ?? -1) || a.nombre.localeCompare(b.nombre, 'es')
-  })
 }
 
 export interface ControlDeObra {
@@ -209,7 +106,6 @@ export interface FilaDeCliente {
   manoObra: number | null
   subcontratos: number | null
   materiales: number | null
-  otros: number | null
   /** El cajón del cliente: consumo que Compras no pudo poner en una obra. Se dibuja, no se reparte. */
   sinObra: number | null
   /** Obras + sin obra: el largo de la barra gruesa. */
@@ -234,13 +130,12 @@ export function resumenPorCliente(obras: ObraAnalitica[], sinObra: ReadonlyMap<s
     const manoObra = sumaNula(lista.map((o) => o.gasto.manoObra))
     const subcontratos = sumaNula(lista.map((o) => o.gasto.subcontratos))
     const materiales = sumaNula(lista.map((o) => o.gasto.materiales))
-    const otros = sumaNula(lista.map((o) => o.gasto.otros))
     const so = sinObra.get(lista[0].clienteId) ?? null
     const queda = presupuestado != null ? presupuestado - (sumaNula(conPres.map((o) => o.consumoComparable)) ?? 0) : null
     return {
       clienteId: lista[0].clienteId, nombre: lista[0].clienteNombre, obras: lista.length, conPresupuesto: conPres.length,
-      presupuestado, manoObra, subcontratos, materiales, otros, sinObra: so,
-      total: sumaNula([manoObra, subcontratos, materiales, otros, so]),
+      presupuestado, manoObra, subcontratos, materiales, sinObra: so,
+      total: sumaNula([manoObra, subcontratos, materiales, so]),
       horas: sumaNula(lista.map((o) => o.gasto.horas)),
       lectura: queda == null ? { tipo: 'sinPresupuesto' }
         : { tipo: queda < 0 ? 'excedido' : 'queda', monto: Math.abs(queda), conPresupuesto: conPres.length, obras: lista.length },
@@ -249,7 +144,7 @@ export function resumenPorCliente(obras: ObraAnalitica[], sinObra: ReadonlyMap<s
   }).sort((a, b) => (b.total ?? 0) - (a.total ?? 0) || a.nombre.localeCompare(b.nombre, 'es'))
 }
 
-export interface Composicion { nombre: string; manoObra: number; subcontratos: number; materiales: number; otros: number; total: number }
+export interface Composicion { nombre: string; manoObra: number; subcontratos: number; materiales: number; total: number }
 
 /** DE QUÉ ESTÁ HECHO EL GASTO: la empresa y cada cliente con consumo, a 100 %. Sin el cajón sin obra. */
 export function composicionDelGasto(obras: ObraAnalitica[], clientes: FilaDeCliente[]): Composicion[] {
@@ -257,8 +152,7 @@ export function composicionDelGasto(obras: ObraAnalitica[], clientes: FilaDeClie
     const mo = lista.reduce((a, o) => a + (o.gasto.manoObra ?? 0), 0)
     const sub = lista.reduce((a, o) => a + (o.gasto.subcontratos ?? 0), 0)
     const mat = lista.reduce((a, o) => a + (o.gasto.materiales ?? 0), 0)
-    const otr = lista.reduce((a, o) => a + (o.gasto.otros ?? 0), 0)
-    return { nombre, manoObra: mo, subcontratos: sub, materiales: mat, otros: otr, total: mo + sub + mat + otr }
+    return { nombre, manoObra: mo, subcontratos: sub, materiales: mat, total: mo + sub + mat }
   }
   return [de('Empresa', obras), ...clientes.map((c) => de(c.nombre, obras.filter((o) => o.clienteId === c.clienteId)))]
     .filter((x) => x.total > 0)
@@ -278,46 +172,55 @@ export function manoObraDe(obras: ObraAnalitica[]): { manoObra: number | null; m
 }
 
 // ─── Obras: rubro contra rubro ──────────────────────────────────────────────────────────────────
-//
-// LOS CUATRO RUBROS DEL GASTO SON LOS CUATRO DEL PRESUPUESTO (dueño, 18/09/2026): mano de obra,
-// materiales, subcontratistas y otros, con la misma definición en las dos patas. Cada uno se mide
-// contra el suyo; lo que no tiene presupuesto lo dice con el motivo que trajo el documento.
 
 export type Item = Rubro | 'horas'
 export const ITEMS: { clave: Item; rotulo: string }[] = [
-  ...RUBROS.map((r) => ({ clave: r.clave as Item, rotulo: r.rotulo })),
+  { clave: 'manoObra', rotulo: 'Mano de obra' },
+  { clave: 'materiales', rotulo: 'Materiales' },
+  { clave: 'subcontratos', rotulo: 'Subcontratos' },
+  { clave: 'otros', rotulo: 'Otros' },
   { clave: 'horas', rotulo: 'Horas hombre' },
 ]
 
-/** La definición de una línea de cada rubro, para escribirla al lado del número. */
-export const definicionDe = (item: Item): string | null => (item === 'horas' ? null : DEFINICION_RUBRO[item])
+/** ¿La obra cotizó MA (materiales, equipos, fletes Y subcontratos: la plantilla no los separa)? */
+export const conMA = (o: ObraAnalitica): boolean => (o.presupuestoRubros?.materiales ?? null) != null
+
+export const INCLUIDO_EN_MATERIALES = 'incluido en materiales de la cotización'
+
+/**
+ * EL QUEDA DE MATERIALES Y SUBCONTRATOS, UNA SOLA VEZ (dueño, 17/09/2026: subcontratos se ve aparte).
+ * Los rubros se muestran separados, pero el presupuesto no separa subcontratos: MA los incluye. Medir
+ * materiales solos contra MA daría un excedido falso, y repartir MA sería inventar. Por eso lo que queda
+ * se calcula MA − (materiales + subcontratos) y se dice debajo de los dos. `null` sin MA.
+ */
+export function quedaMaterialesYSubcontratos(o: ObraAnalitica): { cotizado: number; consumido: number | null; pct: number | null; lectura: Celda['lectura'] } | null {
+  const ma = o.presupuestoRubros?.materiales ?? null
+  if (ma == null) return null
+  const consumido = sumaNula([o.gasto.materiales, o.gasto.subcontratos])
+  return { cotizado: ma, consumido, pct: ma > 0 && consumido != null ? consumido / ma : null, lectura: lecturaDe(ma, consumido) }
+}
 
 export interface Celda {
   /** Lo gastado (pesos, u horas en HH). `null` = no hay registro. */
   gastado: number | null
-  /** Por qué no hay gastado. `null` = simplemente no hubo movimiento. */
-  gastadoAusente: string | null
+  /** Por qué no hay gastado: «otros» no tiene fuente de consumo. */
+  gastadoAusente: 'sin registrar' | null
   /** `true` = el presupuesto de este rubro es INFERENCIA. */
   estimado: boolean
   cotizado: number | null
-  /** La palabra de lo cotizado cuando no hay número: el motivo del documento. */
+  /** La palabra de lo cotizado cuando no hay número. */
   cotizadoAusente: string | null
   /** gastado ÷ cotizado; `null` sin las dos patas. */
   pct: number | null
-  lectura: { tipo: 'queda' | 'excedido' | 'noPrevisto' | 'sinMovimiento' | 'sinPresupuesto'; monto: number | null } | null
+  lectura: { tipo: 'queda' | 'excedido' | 'sinMovimiento' | 'sinPresupuesto' | 'sinConsumo'; monto: number | null } | null
   /** «62 % estimada»: la parte estimada de la mano de obra consumida. */
   consumoEstimado: string | null
 }
 
-/**
- * Una celda armada con sus dos patas: lo que queda, lo excedido o por qué no se puede decir. Un
- * presupuesto en CERO no es una ausencia: el documento previó nada en este rubro, y si igual se gastó,
- * se dice «no previsto» con lo gastado entero.
- */
+/** Una celda armada con sus dos patas: lo que queda, lo excedido o por qué no se puede decir. */
 export function lecturaDe(cotizado: number | null, gastado: number | null): Celda['lectura'] {
-  if (cotizado == null) return gastado != null && gastado > 0 ? { tipo: 'sinPresupuesto', monto: null } : null
+  if (cotizado == null || cotizado <= 0) return gastado != null && gastado > 0 ? { tipo: 'sinPresupuesto', monto: null } : null
   if (gastado == null || gastado <= 0) return { tipo: 'sinMovimiento', monto: null }
-  if (cotizado <= 0) return { tipo: 'noPrevisto', monto: gastado }
   return gastado > cotizado ? { tipo: 'excedido', monto: gastado - cotizado } : { tipo: 'queda', monto: cotizado - gastado }
 }
 
@@ -325,150 +228,34 @@ export function celda(o: ObraAnalitica, item: Item): Celda {
   if (item === 'horas') {
     const hh = o.hhPresupuestadas
     return {
-      // «sin previsión» se leía como un error de la pantalla; la cotización simplemente no previó horas.
-      gastado: o.gasto.horas, gastadoAusente: null, estimado: false, cotizado: hh, cotizadoAusente: hh == null ? 'la cotización no previó horas' : null,
+      gastado: o.gasto.horas, gastadoAusente: null, estimado: false, cotizado: hh, cotizadoAusente: hh == null ? 'sin previsión' : null,
       pct: hh != null && o.gasto.horas != null ? o.gasto.horas / hh : null, lectura: hh == null ? null : lecturaDe(hh, o.gasto.horas), consumoEstimado: null,
     }
   }
-  const g = o.gasto[item]
+  const g = item === 'otros' ? null : o.gasto[item]
   const cot = o.presupuestoRubros?.[item] ?? null
-  // SIN PRESUPUESTO se dice el motivo del documento para ESTE rubro («la oferta es sólo mano de obra…»),
-  // o el de la obra cuando no hay presupuesto.
-  const motivoRubro = o.presupuestoDetalle?.[item]?.motivo ?? null
-  const ausente = cot != null ? null : (motivoRubro ?? o.motivoPresupuesto ?? (o.presupuestoRubros ? SIN_PRESUPUESTO_RUBRO : SIN_PRESUPUESTO))
+  // CON MA, materiales y subcontratos no se leen por separado: su queda es uno solo (arriba).
+  if ((item === 'materiales' || item === 'subcontratos') && conMA(o)) {
+    return {
+      gastado: g, gastadoAusente: null, estimado: o.rubrosEstimados.includes('materiales'),
+      cotizado: item === 'materiales' ? cot : null, cotizadoAusente: item === 'subcontratos' ? INCLUIDO_EN_MATERIALES : null,
+      pct: null, lectura: null, consumoEstimado: null,
+    }
+  }
+  // SIN PRESUPUESTO APROBADO se dice el motivo de la obra; CON presupuesto y sin este rubro, que el
+  // rubro no se cotizó aparte (Quattropani: sólo MO+CS; subcontratos van dentro de MA en la plantilla).
+  const desglosado = Object.values(o.presupuestoRubros ?? {}).some((v) => v != null)
+  const ausente = cot != null ? null : desglosado ? SIN_PRESUPUESTO_RUBRO : (o.motivoPresupuesto ?? SIN_PRESUPUESTO)
   return {
-    gastado: g, gastadoAusente: null, estimado: o.rubrosEstimados.includes(item),
+    gastado: g, gastadoAusente: item === 'otros' ? 'sin registrar' : null, estimado: o.rubrosEstimados.includes(item),
     cotizado: cot, cotizadoAusente: ausente,
     pct: cot != null && cot > 0 && g != null ? g / cot : null,
-    lectura: lecturaDe(cot, g),
+    lectura: item === 'otros' && cot != null ? { tipo: 'sinConsumo', monto: null } : lecturaDe(cot, g),
     consumoEstimado: item === 'manoObra' ? rotuloEstimada(o.gasto) : null,
   }
 }
 
-/**
- * LA ÚLTIMA LÍNEA DE UN RUBRO: qué le pasó a ese rubro, dicho siempre y en el mismo lugar.
- *
- * Dueño, 17/09/2026: la lectura aparecía «solo en algunos». Acá ninguno queda sin cerrar: o dice qué
- * queda, o dice por qué no se puede decir. Nunca devuelve la cadena vacía. Eso es lo que prueba el test.
- */
-export type TonoCierre = 'muted' | 'neg' | 'warn' | 'faint'
-
-export function cierreDeRubro(c: Celda, item: Item): { texto: string; tono: TonoCierre } {
-  const fmt = item === 'horas' ? horasTexto : millones
-  const l = c.lectura
-  if (l?.tipo === 'queda') return { texto: `queda ${fmt(l.monto)} · ${pctEntero(c.pct)} consumido`, tono: 'muted' }
-  if (l?.tipo === 'excedido') return { texto: `excedido en ${fmt(l.monto)}`, tono: 'neg' }
-  if (l?.tipo === 'noPrevisto') return { texto: `no previsto en la cotización · ${fmt(l.monto)} consumidos`, tono: 'neg' }
-  if (l?.tipo === 'sinMovimiento') return { texto: 'sin movimiento', tono: 'muted' }
-  if (l?.tipo === 'sinPresupuesto') return { texto: item === 'horas' ? 'horas sin previsión con qué compararse' : 'consumo sin presupuesto de este rubro', tono: 'warn' }
-  if (c.cotizado == null && c.cotizadoAusente) return { texto: c.cotizadoAusente, tono: 'faint' }
-  return { texto: 'sin nada con qué compararlo', tono: 'faint' }
-}
-
-// ─── Qué contiene cada rubro (Resumen) ──────────────────────────────────────────────────────────
-//
-// «Quiero que cada cosa quede aclarada diciendo qué contiene cada uno en detalle» (dueño, 18/09/2026).
-// Para la cartera: por rubro, la definición, lo presupuestado (en las obras que lo tienen), lo consumido
-// y de qué está hecho cada uno —los insumos del documento sumados entre obras, y las familias de
-// Compras / proveedores / quincenas del gasto—. Nada se reparte: se suma lo que cada obra publica.
-
-export interface GrupoAgregado { nombre: string; monto: number; n: number; obras: number }
-
-export interface ContenidoDeRubro {
-  rubro: Rubro
-  rotulo: string
-  definicion: string
-  /** Σ del presupuesto de las obras que tienen este rubro; `null` = ninguna lo tiene. */
-  presupuestado: number | null
-  obrasConPresupuesto: number
-  /** Las obras que tienen presupuesto pero NO de este rubro, con el motivo del documento. */
-  sinEsteRubro: { nombre: string; motivo: string }[]
-  consumido: number | null
-  /** Los insumos del presupuesto sumados entre obras (sólo los que están dentro de la oferta). */
-  itemsPresupuesto: GrupoAgregado[]
-  /** Las familias / proveedores / quincenas del gasto sumadas entre obras. */
-  gruposConsumo: GrupoAgregado[]
-}
-
-function agregar(pares: { nombre: string; monto: number; n: number }[][]): GrupoAgregado[] {
-  const m = new Map<string, GrupoAgregado>()
-  for (const lista of pares) {
-    for (const p of lista) {
-      const k = p.nombre.toUpperCase()
-      const g = m.get(k) ?? { nombre: p.nombre, monto: 0, n: 0, obras: 0 }
-      g.monto += p.monto; g.n += p.n; g.obras += 1
-      m.set(k, g)
-    }
-  }
-  return [...m.values()].sort((a, b) => b.monto - a.monto)
-}
-
-export function contenidoPorRubro(obras: ObraAnalitica[]): ContenidoDeRubro[] {
-  return RUBROS.map(({ clave, rotulo }): ContenidoDeRubro => {
-    const con = obras.filter((o) => (o.presupuestoRubros?.[clave] ?? null) != null)
-    const consumido = sumaNula(obras.map((o) => o.gasto[clave]))
-    return {
-      rubro: clave, rotulo, definicion: DEFINICION_RUBRO[clave],
-      presupuestado: con.length ? con.reduce((a, o) => a + (o.presupuestoRubros?.[clave] ?? 0), 0) : null,
-      obrasConPresupuesto: con.length,
-      sinEsteRubro: obras
-        .filter((o) => o.presupuestoRubros && (o.presupuestoRubros[clave] ?? null) == null)
-        .map((o) => ({ nombre: o.nombre, motivo: o.presupuestoDetalle?.[clave]?.motivo ?? SIN_PRESUPUESTO_RUBRO })),
-      consumido,
-      itemsPresupuesto: agregar(con.map((o) => (o.presupuestoDetalle?.[clave]?.detalle ?? [])
-        .filter((d) => !d.fueraDeOferta).map((d) => ({ nombre: d.item, monto: d.importe, n: 1 })))),
-      gruposConsumo: agregar(obras.map((o) => (o.consumoDetalle?.[clave]?.detalle ?? []).map((g) => ({ nombre: g.grupo, monto: g.monto, n: g.n })))),
-    }
-  })
-}
-
-// ─── La tabla por rubro del Resumen (dueño, 18/09/2026: «columna Otros propia en el Resumen: hacelo») ───
-//
-// Una fila por cliente y una columna por rubro —Mano de obra · Materiales · Subcontratistas · OTROS— con
-// presupuestado y consumido en cada celda, y la fila Empresa al pie. Los totales NO cambian: «otros» ya
-// estaba adentro del consumido y del presupuestado; lo que cambia es que se ve en su columna. La fila
-// Empresa suma EXACTAMENTE lo que dice la cabecera (`cifrasResumen`): es lo que prueba el test.
-
-export interface CeldaPorRubro {
-  /** Σ del presupuesto de las obras que cotizaron este rubro; `null` = ninguna. */
-  presupuestado: number | null
-  obrasConPresupuesto: number
-  consumido: number | null
-  /** Los grupos del gasto (familias / proveedores / quincenas) sumados, para decir qué contiene. */
-  contenido: GrupoAgregado[]
-}
-
-export interface FilaPorRubro {
-  clienteId: string
-  nombre: string
-  obras: number
-  porRubro: Record<Rubro, CeldaPorRubro>
-  presupuestado: number | null
-  consumido: number | null
-}
-
-function filaPorRubroDe(clienteId: string, nombre: string, lista: ObraAnalitica[]): FilaPorRubro {
-  const c = contenidoPorRubro(lista)
-  const porRubro = Object.fromEntries(c.map((x) => [x.rubro, {
-    presupuestado: x.presupuestado, obrasConPresupuesto: x.obrasConPresupuesto, consumido: x.consumido, contenido: x.gruposConsumo,
-  }])) as Record<Rubro, CeldaPorRubro>
-  return {
-    clienteId, nombre, obras: lista.length, porRubro,
-    presupuestado: sumaNula(lista.map((o) => o.presupuesto)),
-    consumido: sumaNula(lista.map((o) => o.gasto.total)),
-  }
-}
-
-/** Las filas por cliente, en el orden de `resumenPorCliente` (del que más consumió al que menos), y la Empresa. */
-export function tablaPorRubro(obras: ObraAnalitica[], orden: readonly { clienteId: string }[]): { filas: FilaPorRubro[]; empresa: FilaPorRubro } {
-  const filas = orden.map((c) => {
-    const lista = obras.filter((o) => o.clienteId === c.clienteId)
-    return filaPorRubroDe(c.clienteId, lista[0]?.clienteNombre ?? c.clienteId, lista)
-  })
-  return { filas, empresa: filaPorRubroDe('empresa', 'Empresa', obras) }
-}
-
-// ─── Costo por hora ─────────────────────────────────────────────────────────────────────
+// ─── Costo por hora ─────────────────────────────────────────────────────────────────────────────
 
 export const UMBRAL_HORA_CARA = 0.2
 

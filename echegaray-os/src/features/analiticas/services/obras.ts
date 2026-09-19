@@ -6,25 +6,22 @@
 // está «al 0 %»: está «sin presupuesto cargado». Una obra que no gastó nada no está «dentro»: está «sin
 // movimiento todavía». El semáforo sólo pinta lo que puede medir.
 //
-// ═══ QUÉ ES «PRESUPUESTO» ACÁ (dueño, 18/09/2026) ═══
+// ═══ QUÉ ES «PRESUPUESTO» ACÁ ═══
 //
-// El COSTO previsto en el documento de cotización de la obra, abierto en los CUATRO rubros del gasto
-// —mano de obra, materiales, subcontratistas, otros— por `obra_economia_rubros` (una sola fuente, con
-// el detalle y la cita del documento). La comparación es RUBRO CONTRA RUBRO: `presupuesto` es la suma
-// de los rubros que tienen monto, y `consumoComparable` lo gastado en ESOS rubros. Una obra que sólo
-// cotizó mano de obra (Quattropani, Entrepiso) no se mide con sus materiales adentro: el rubro dice
-// por qué no tiene presupuesto. NUNCA el contrato: el contrato es el precio de venta, y medir el gasto
-// contra él esconde el margen en el «queda» (dueño, 17/09/2026). El contrato se lee de la MISMA vista
-// (`contratado_de_obra`, la definición de obra_panel, la ficha y el CRM) y viaja como referencia.
+// El COSTO previsto por rubro que publica `presupuesto.ts` (una sola fuente: el presupuesto aprobado
+// de `presupuestos`, con cita de celda), comparado RUBRO CONTRA RUBRO: `presupuesto` es la suma de los
+// rubros que tienen consumo con el que compararse (mano de obra y materiales), y `consumoComparable`
+// lo gastado en ESOS rubros. Una obra que sólo cotizó MO+CS no se mide con sus materiales adentro. NUNCA el contrato: el contrato es el precio de venta, y medir el gasto contra él
+// esconde el margen en el «queda» (dueño, 17/09/2026). El contrato —y el precio que OBRAS o el
+// formulario declaran, nunca la suma viva de Cobranzas— se sigue leyendo, como referencia al lado.
 //
-// Los números no se calculan acá: los traen `obra_economia_rubros`, `analiticas_costos` y
-// `costo_de_obras_por_rubro`. Este archivo decide qué dice cada hueco y en qué grupo cae cada obra.
+// Los números no se calculan acá: los traen `obra_economia_cartera`, `analiticas_costos` y el lector
+// de presupuestos. Este archivo decide qué dice cada hueco y en qué grupo cae cada obra.
 import type { CostoDeObra, GastoSinObra } from '../../clientes/services/costosDeObra.ts'
-import { baseDelContrato } from '../../clientes/services/contratoDeObra.ts'
+import type { EconomiaDeObra } from '../../clientes/services/economiaObras.ts'
 import type { EstadoObra } from './filtros.ts'
 import { millones } from './formato.ts'
-import type { ConsumoRubro } from './consumo.ts'
-import { RUBROS, SIN_PRESUPUESTO, type ContratoLeido, type FilaRubros, type PresupuestoArmado, type Rubro, type RubroPresupuestado } from './presupuesto.ts'
+import { RUBROS_COMPARABLES, SIN_PRESUPUESTO, type PresupuestoArmado, type Rubro } from './presupuesto.ts'
 
 /** La fila de `obra_panel` que el módulo usa. */
 export interface ObraPanel {
@@ -52,9 +49,7 @@ export interface Gasto {
   manoObra: number | null
   subcontratos: number | null
   materiales: number | null
-  /** Equipos, combustible, fletes, servicios (20260918T0900). `null` = la base no lo publica o no hay. */
-  otros: number | null
-  /** Σ de los cuatro. `null` = ninguno tiene dato: «sin movimiento». */
+  /** Σ de las tres. `null` = ninguna de las tres tiene dato: «sin movimiento». */
   total: number | null
   /** Horas cargadas (valorizadas + sin valorizar). `null` = ninguna. */
   horas: number | null
@@ -81,44 +76,32 @@ export interface ObraAnalitica {
     manoObra: number | null
     materiales: number | null
     total: number | null
-    /** `true` = hay un papel detrás (contrato desglosado, OC o cotización): el número tiene cita. */
+    /** `true` = hay una fila en `obra_contrato`: el número tiene papel. */
     conPapel: boolean
     /** Materiales pactados en 0 con cita: los pone el cliente. */
     materialesDelCliente: boolean
     cita: string | null
-    /** Por qué camino salió el contratado: contrato · oc · presupuesto · formulario · suma-viva. */
-    origen: string | null
   }
-  /**
-   * EL PRECIO DE VENTA: `baseDelContrato` de la ficha y el CRM, la misma función (`precioDe`).
-   * `null` → `ausencia` dice por qué.
-   */
+  /** El precio de venta, SÓLO como referencia. `null` → `ausencia` dice por qué. */
   precio: number | null
   ausencia: AusenciaPrecio | null
-  /** `true` = el contrato está en dólares y `precio` es su valuación al tipo de cambio de hoy. */
-  precioEnDolares: boolean
-  /** Σ del presupuesto de los rubros con monto: contra esto se mide. `null` = nada que comparar. */
+  /** Σ del presupuesto de los rubros comparables: contra esto se mide. `null` = nada que comparar. */
   presupuesto: number | null
-  /** Lo gastado en los rubros que tienen presupuesto. */
+  /** Lo gastado en los rubros que tienen presupuesto comparable. */
   consumoComparable: number | null
-  /** El costo cotizado total del documento (todos los rubros). Para mostrar, no para medir. */
+  /** El costo cotizado total de la cotización aprobada (todos los rubros). Para mostrar, no para medir. */
   costoCotizado: number | null
   /** Por qué no hay presupuesto: el motivo de la base, o `sin presupuesto cargado`. `null` si hay. */
   motivoPresupuesto: string | null
-  /** El presupuesto por rubro; `null` = la obra no tiene presupuesto. */
+  /** El presupuesto por rubro; `null` = la obra no tiene presupuesto aprobado. */
   presupuestoRubros: Record<Rubro, number | null> | null
-  /** Cada rubro con su monto, motivo, detalle y cita. `null` = sin presupuesto. */
-  presupuestoDetalle: Record<Rubro, RubroPresupuestado> | null
-  /** Lo consumido por rubro con su detalle (familias, proveedores, quincenas). `null` = no se leyó. */
-  consumoDetalle: Record<Rubro, ConsumoRubro | null> | null
-  /** Rubros cuyo presupuesto es INFERENCIA; `estimado` = alguno lo es. */
+  /** Rubros cuyo presupuesto es INFERENCIA; `estimado` = la cabecera lo es. */
   rubrosEstimados: Rubro[]
   presupuestoEstimado: boolean
   /** Horas hombre de la cotización aprobada. `null` = sin previsión. */
   hhPresupuestadas: number | null
-  /** El documento del que salió el presupuesto: «Cotizacion Final.xlsm · 27/07/2026». */
+  /** La cita de la cotización aprobada (archivo, drive, celda). */
   fuentePresupuesto: string | null
-  fuentePresupuestoDriveId: string | null
   gasto: Gasto
   /** consumoComparable ÷ presupuesto. `null` sin las dos patas. */
   avanceGasto: number | null
@@ -127,9 +110,16 @@ export interface ObraAnalitica {
 
 export const UMBRAL_CERCA = 0.8
 
-/** LOS RUBROS QUE SE MIDEN CONTRA EL PRESUPUESTO: los que tienen monto (0 incluido: previsto en cero). */
-export function rubrosComparables(porRubro: Record<Rubro, number | null> | null): Rubro[] {
-  return RUBROS.map((k) => k.clave).filter((k) => porRubro?.[k] != null)
+/**
+ * LOS RUBROS DE CONSUMO QUE SE MIDEN CONTRA EL PRESUPUESTO. MO+CS cotizado → mano de obra. MA de la
+ * plantilla = materiales + equipos + fletes + SUBCONTRATOS (no los separa) → materiales Y subcontratos
+ * (decisión 17/09/2026). Lo usan el «queda» y el ritmo del «alcanza»: los dos miden lo mismo.
+ */
+export function rubrosComparables(porRubro: Record<Rubro, number | null> | null): ('manoObra' | 'materiales' | 'subcontratos')[] {
+  const out: ('manoObra' | 'materiales' | 'subcontratos')[] = []
+  if ((porRubro?.manoObra ?? 0) > 0) out.push('manoObra')
+  if ((porRubro?.materiales ?? 0) > 0) out.push('materiales', 'subcontratos')
+  return out
 }
 
 const ORIGEN_SUMA_VIVA = 'suma-viva'
@@ -160,8 +150,7 @@ export function gastoDe(c: CostoDeObra | null | undefined): Gasto {
     manoObra: c?.manoObra ?? null,
     subcontratos: c?.subcontratos ?? null,
     materiales: c?.materiales ?? null,
-    otros: c?.otros ?? null,
-    total: c ? suma(c.manoObra, c.subcontratos, c.materiales, c.otros) : null,
+    total: c ? suma(c.manoObra, c.subcontratos, c.materiales) : null,
     horas: horas && horas > 0 ? horas : null,
     horasValorizadas: c?.horasValorizadas && c.horasValorizadas > 0 ? c.horasValorizadas : null,
     manoObraEstimada: c?.manoObraEstimada && c.manoObraEstimada > 0 ? c.manoObraEstimada : null,
@@ -180,69 +169,55 @@ export function rotuloEstimada(g: Pick<Gasto, 'manoObra' | 'manoObraEstimada'>):
   return p != null && p > 0 ? `${Math.max(1, Math.round(p * 100))} % estimada` : null
 }
 
-/**
- * EL PRECIO Y, SI NO HAY, LA PALABRA. El número es `baseDelContrato` —la MISMA función que usa la
- * ficha de la obra y el CRM (dueño, 18/09/2026: «lo contratado de las obras está OK, ¿por qué no se
- * ve así en Analíticas?»)—: el total del contrato desglosado si es > 0; si no, el contratado de la
- * vista. Acá no hay regla propia: antes se descartaba el origen `suma-viva` (lo facturado de
- * Cobranzas) y la obra quedaba «sin precio» mientras la ficha mostraba el número. Si esa exclusión
- * vuelve, vuelve en `baseDelContrato`, para las dos pantallas a la vez.
- * Lo único propio es la PALABRA cuando no hay número: una pata en dólares sin dólar del día es
- * «sin valuar», no «sin precio».
- */
-export function precioDe(c: ContratoLeido | null | undefined): { precio: number | null; ausencia: AusenciaPrecio | null } {
-  if (!c) return { precio: null, ausencia: 'sin precio' }
-  const precio = baseDelContrato({ contratoTotal: c.total, contratado: c.contratado })
-  if (precio != null) return { precio, ausencia: null }
-  const patasUsd = (c.manoObraUsd != null && c.manoObra == null) || (c.materialesUsd != null && c.materiales == null) || (c.contratadoUsd != null && c.contratado == null)
-  return { precio: null, ausencia: patasUsd ? 'sin valuar' : 'sin precio' }
+/** El precio y, si no hay, la palabra. */
+export function precioDe(e: EconomiaDeObra | null | undefined): { precio: number | null; ausencia: AusenciaPrecio | null } {
+  if (!e) return { precio: null, ausencia: 'sin precio' }
+  // UNA PATA EN DÓLARES SIN DÓLAR DEL DÍA: el contrato existe, pero no se puede decir en pesos.
+  const patasUsd = (e.contrato_mano_obra_usd != null && e.contrato_mano_obra == null)
+    || (e.contrato_materiales_usd != null && e.contrato_materiales == null)
+  if (e.contrato_total != null && e.contrato_total > 0) return { precio: e.contrato_total, ausencia: null }
+  if (patasUsd) return { precio: null, ausencia: 'sin valuar' }
+  if (e.contratado != null && e.contratado > 0 && e.origen !== ORIGEN_SUMA_VIVA) return { precio: e.contratado, ausencia: null }
+  return { precio: null, ausencia: 'sin precio' }
 }
 
 export function grupoDe(presupuesto: number | null, total: number | null): Grupo {
   if (presupuesto == null) return 'sinPresupuesto'
   // SIN GASTO NO ESTÁ «DENTRO»: no hay nada medido contra el presupuesto (auditoría 17/09/2026, D5).
   if (total == null || total <= 0) return 'sinMovimiento'
-  if (presupuesto <= 0) return 'pasadas'
   const r = total / presupuesto
   return r > 1 ? 'pasadas' : r >= UMBRAL_CERCA ? 'cerca' : 'dentro'
 }
 
 export function armarObra(
-  p: ObraPanel, fila: FilaRubros | null | undefined, c: CostoDeObra | null | undefined, consumo: Record<Rubro, ConsumoRubro | null> | null = null,
+  p: ObraPanel, e: EconomiaDeObra | null | undefined, c: CostoDeObra | null | undefined, armado: PresupuestoArmado | null,
 ): ObraAnalitica | null {
   if (!p.cliente_id || !p.cliente_slug) return null
-  const k = fila?.contrato ?? null
-  const armado: PresupuestoArmado | null = fila?.presupuesto ?? null
-  const { precio, ausencia } = precioDe(k)
-  const precioEnDolares = precio != null && (k?.contratadoUsd != null || k?.manoObraUsd != null || k?.materialesUsd != null)
+  const { precio, ausencia } = precioDe(e)
   const gasto = gastoDe(c)
-  const comparables = rubrosComparables(armado?.porRubro ?? null)
-  const presupuesto = comparables.length ? comparables.reduce((a, r) => a + (armado?.porRubro[r] ?? 0), 0) : null
-  const consumoComparable = comparables.length ? suma(...comparables.map((r) => gasto[r])) : null
+  const comparables = RUBROS_COMPARABLES.filter((k) => (armado?.porRubro[k] ?? 0) > 0)
+  const presupuesto = comparables.length ? comparables.reduce((a, k) => a + (armado?.porRubro[k] ?? 0), 0) : null
+  const consumoComparable = comparables.length ? suma(...rubrosComparables(armado?.porRubro ?? null).map((k) => gasto[k])) : null
   return {
     id: p.obra_id, nombre: p.nombre, clienteId: p.cliente_id, clienteSlug: p.cliente_slug,
     orden: p.orden ?? null, padreId: p.obra_padre_id ?? null,
     clienteNombre: p.cliente_nombre ?? p.cliente_slug, estado: estadoDe(p),
     contrato: {
-      manoObra: k?.manoObra ?? null,
-      materiales: k?.materiales ?? null,
-      total: k?.total ?? null,
-      conPapel: k?.cita != null || (k?.origen != null && k.origen !== ORIGEN_SUMA_VIVA && k.origen !== 'formulario'),
-      materialesDelCliente: k?.materiales === 0 && k.cita != null,
-      cita: k?.cita ?? null,
-      origen: k?.origen ?? null,
+      manoObra: e?.contrato_mano_obra ?? null,
+      materiales: e?.contrato_materiales ?? null,
+      total: e?.contrato_total ?? null,
+      conPapel: e?.contrato_fuente != null || e?.contrato_cita != null,
+      materialesDelCliente: e?.contrato_materiales === 0 && e.contrato_cita != null,
+      cita: e?.contrato_cita ?? null,
     },
-    precio, ausencia, precioEnDolares, presupuesto, consumoComparable, gasto,
+    precio, ausencia, presupuesto, consumoComparable, gasto,
     costoCotizado: armado?.costoTotal ?? null,
-    motivoPresupuesto: presupuesto != null ? null : armado?.motivo ?? SIN_PRESUPUESTO,
-    presupuestoRubros: armado?.costoTotal != null ? { ...armado.porRubro } : null,
-    presupuestoDetalle: armado?.costoTotal != null ? armado.rubros : null,
-    consumoDetalle: consumo,
+    motivoPresupuesto: presupuesto != null ? null : armado?.motivo ?? (armado ? 'presupuesto sin desglose por rubro' : SIN_PRESUPUESTO),
+    presupuestoRubros: armado ? { ...armado.porRubro } : null,
     rubrosEstimados: armado?.estimados ?? [],
     presupuestoEstimado: armado?.estimado ?? false,
     hhPresupuestadas: armado?.hh ?? null,
     fuentePresupuesto: armado?.fuente || null,
-    fuentePresupuestoDriveId: armado?.fuenteDriveId ?? null,
     avanceGasto: presupuesto && consumoComparable != null ? consumoComparable / presupuesto : null,
     grupo: grupoDe(presupuesto, consumoComparable),
   }
@@ -284,7 +259,8 @@ export function agruparPorSemaforo(obras: ObraAnalitica[]): Map<Grupo, ObraAnali
  * `obra_economia` también publica como `costo_objetivo` la suma de «partidas congeladas convertidas a
  * esta obra»: en Quattropani son 2 partidas por $ 1,77 M contra un contrato de $ 139 M, y el semáforo
  * la daba «pasada al 2.544 %». Un pedazo de presupuesto no es el presupuesto: medir contra él
- * fabrica un desvío.
+ * fabrica un desvío. Queda para cuando el presupuesto se conecte (`presupuesto.ts`): un `costo_objetivo`
+ * parcial no puede entrar como presupuesto de la obra.
  */
 export function costoObjetivoValido(valor: number | null, origen: string | null | undefined): number | null {
   if (valor == null || valor <= 0) return null

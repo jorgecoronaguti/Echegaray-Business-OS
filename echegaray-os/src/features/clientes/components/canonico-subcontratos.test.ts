@@ -19,8 +19,7 @@ test('la cartera dibuja Subcontratos entre Materiales y Mano de obra, con su pis
   const i = (t: string) => src.indexOf(`texto="${t}"`)
   assert.ok(i('Materiales') > 0 && i('Materiales') < i('Subcontratos') && i('Subcontratos') < i('Mano de obra'),
     'el orden dejó de ser Materiales · Subcontratos · Mano de obra')
-  // Cuatro pistas de costo desde el 18/09/2026 (Otros va después de Subcontratos; lo mide `canonico-otros`).
-  assert.match(src, /grid-cols-\[minmax\(0,2fr\)_150px_130px_130px_130px_140px_210px\]/)
+  assert.match(src, /grid-cols-\[minmax\(0,2fr\)_150px_130px_130px_140px_210px\]/)
 })
 
 test('la ficha dibuja Subcontratos entre Materiales y Mano de obra, y la celda delega', () => {

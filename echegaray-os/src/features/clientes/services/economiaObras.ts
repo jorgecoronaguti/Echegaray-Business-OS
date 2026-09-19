@@ -90,21 +90,11 @@ export const ORIGEN_SUMA_VIVA = 'suma-viva'
 /** Contratado del formulario de la obra: obras CERRADAS sin OBRAS ni contrato (dueño, 14/09/2026; 20260915T0830). */
 export const ORIGEN_FORMULARIO = 'formulario'
 
-/**
- * Lo que el `title` del contratado agrega por su origen. `null` = el origen no necesita aclaración.
- *
- * LA SUMA VIVA TAMBIÉN SE ACLARA ACÁ (dueño, 18/09/2026): antes vivía sólo escrita a mano dentro de
- * `CeldasDeContrato.tsx` (la ficha); Analíticas empezó a publicar el mismo precio (`baseDelContrato`,
- * `precioDe`) y necesitaba la MISMA aclaración, no una parecida. Realidad única: una sola función.
- */
+/** Lo que el `title` del contratado agrega por su origen. `null` = el origen no necesita aclaración. */
 export function fraseDeOrigenContratado(origen: string | null | undefined): string | null {
-  if (origen === ORIGEN_FORMULARIO) {
-    return 'Contratado según formulario de la obra: la obra está cerrada, no figura en OBRAS ni tiene contrato desglosado (decisión del dueño, 14/09/2026).'
-  }
-  if (origen === ORIGEN_SUMA_VIVA) {
-    return 'OBRAS NO publica precio para este trabajo: el número es la SUMA VIVA de lo que Cobranzas lleva registrado como venta y sube cada vez que se factura. No es lo que el trabajo vale.'
-  }
-  return null
+  return origen === ORIGEN_FORMULARIO
+    ? 'Contratado según formulario de la obra: la obra está cerrada, no figura en OBRAS ni tiene contrato desglosado (decisión del dueño, 14/09/2026).'
+    : null
 }
 
 /** El `origen` que dice «no lo declara OBRAS, pero hay una ORDEN DE COMPRA que lo respalda». Es un

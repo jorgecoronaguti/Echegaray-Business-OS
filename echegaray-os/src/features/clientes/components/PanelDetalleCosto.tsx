@@ -72,7 +72,7 @@ export function PanelDetalleCosto({
       {detalle?.rubro === 'mo' && (
         <ListaManoObra filas={detalle.filas} horasSinTarifa={detalle.horasSinTarifa} puedeVerTarifas={detalle.puedeVerTarifas} />
       )}
-      {(detalle?.rubro === 'materiales' || detalle?.rubro === 'subcontratos' || detalle?.rubro === 'otros') && (
+      {(detalle?.rubro === 'materiales' || detalle?.rubro === 'subcontratos') && (
         <ListaComprobantes filas={detalle.filas} corte={detalle.corte} base={hrefComprasBase} />
       )}
       {detalle && <Cotejo detalle={detalle} total={sumaDeFilas(detalle)} celda={celda} />}

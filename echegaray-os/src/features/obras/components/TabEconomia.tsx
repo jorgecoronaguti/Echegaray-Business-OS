@@ -40,7 +40,6 @@ import {
 import type { Certificado, EconomiaObra } from '../types'
 import type { PlanDeEconomia } from '../services/obrasService'
 import { fecha, plata } from './formato'
-import { ROTULO_RUBRO_OBRA, RUBROS_DE_OBRA } from '../services/rubrosDeLaObra'
 
 /** Un renglón: concepto ↔ cifra. El origen va en el `title`; el "qué falta", visible sólo si falta. */
 function Linea({
@@ -113,18 +112,12 @@ export function TabEconomia({
   if (!plan) return <Callout tono="neg">No pude leer el plan contra real de esta obra.</Callout>
 
   const e = economia
-  const rb = e?.rubros ?? null
   const sinObjetivo = e?.costo_objetivo == null
   // `costo_real` llega en 0 cuando la obra existe pero no tiene un solo comprobante imputado. Ese 0
   // es real —la vista lo calcula— pero significa "todavía nadie cargó nada", no "salió gratis".
   const sinComprobantes = !e?.costo_real_n_comprobantes
-  // ═══ D2 (auditoría 18/09/2026): LO MISMO CONTRA LO MISMO ═══
-  // Antes: costo real (comprobantes con IVA, sin mano de obra, `obra_costo_real`) menos costo objetivo
-  // (presupuesto CON mano de obra). Daba −$ 40,99 M · −49 % en verde en Quattropani. Ahora el desvío
-  // es el consumido sin IVA de los rubros que tienen presupuesto menos ese presupuesto: las mismas dos
-  // fuentes que Analíticas. Sin las dos patas, null.
-  const desvioPesos = rb && rb.presupuestado != null && rb.consumidoComparable != null
-    ? rb.consumidoComparable - rb.presupuestado : null
+  const desvioPesos = e && e.costo_objetivo != null && e.costo_real != null && !sinComprobantes
+    ? e.costo_real - e.costo_objetivo : null
   // LA COBERTURA DEL COSTO REAL, dicha al lado del número. La mano de obra se carga con rótulos que
   // el diccionario clasifica como Estructura y por eso casi nunca llega a una obra: un costo sin
   // una hora adentro no sostiene ninguna conclusión sobre rentabilidad.
@@ -169,49 +162,18 @@ export function TabEconomia({
         )}
 
         <Bloque titulo="Costo" testid="economia-costo">
-          {/* EL COSTO OBJETIVO ES EL PRESUPUESTO LEÍDO DEL DOCUMENTO (18/09/2026), el mismo que Analíticas.
-              `obra_economia.costo_objetivo` publicado prefiere «partidas congeladas convertidas» ($ 1,77 M en
-              Quattropani: un pedazo, no el presupuesto); la migración que lo corrige (20260918T1540) se aplica
-              al publicar la rama. Hasta entonces la ficha muestra la lectura del documento y deja la de la
-              vista como respaldo, nunca las dos como si fueran lo mismo. */}
           <Linea
             concepto="Costo objetivo"
-            valor={rb?.presupuestado != null ? plata(rb.presupuestado) : e?.costo_objetivo == null ? null : plata(e.costo_objetivo)}
-            origen={rb?.presupuestado != null
-              ? `Costo directo del presupuesto leído por rubro de «${rb.fuente ?? 'documento'}»: la misma cifra que Analíticas.`
-              : (e?.costo_objetivo_origen ?? 'Lo que se cotizó que iba a costar.')}
-            falta={falta(rb?.motivo ?? 'Sin presupuesto: no hay contra qué medir el gasto.')}
-          />
-          {/* LOS CUATRO RUBROS, DE LAS MISMAS FUENTES QUE ANALÍTICAS (18/09/2026): presupuestado por rubro
-              del documento de cotización, consumido sin IVA por rubro. Un rubro sin presupuesto se dice. */}
-          {rb && (
-            <div data-testid="economia-rubros" className="py-2 text-[11.5px] leading-snug text-muted">
-              <div className="mb-1 text-ink">Por rubro · presupuestado → consumido a hoy, sin IVA{rb.fuente ? ` · ${rb.fuente}` : ''}</div>
-              {RUBROS_DE_OBRA.map((k) => (
-                <div key={k} className="flex justify-between gap-3 tabular-nums">
-                  <span>{ROTULO_RUBRO_OBRA[k]}</span>
-                  <span>
-                    {rb.presupuestadoPorRubro[k] == null ? <span className="text-faint">sin presupuesto</span> : plata(rb.presupuestadoPorRubro[k])}
-                    {' → '}
-                    {rb.consumidoPorRubro[k] == null ? <span className="text-faint">sin movimiento</span> : plata(rb.consumidoPorRubro[k])}
-                    {k === 'mano_obra' && rb.manoObraEstimada ? <span className="text-faint"> ({plata(rb.manoObraEstimada)} estimada)</span> : null}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-          <Linea
-            concepto="Consumido a hoy, sin IVA" fuerte
-            valor={rb?.consumido == null ? null : plata(rb.consumido)}
-            origen="Los cuatro rubros sumados, neto de IVA: compras a la fecha (Compras, columna K) más la mano de obra propia por quincena. La misma cifra que Analíticas."
-            falta={rb ? 'Ningún comprobante ni quincena imputados. No es que costó $0.' : 'No se pudo leer el consumo por rubro.'}
+            valor={e?.costo_objetivo == null ? null : plata(e.costo_objetivo)}
+            origen={e?.costo_objetivo_origen ?? 'Lo que se cotizó que iba a costar.'}
+            falta={falta('Sin presupuesto: no hay contra qué medir el gasto.')}
           />
           <Linea
-            concepto="Comprobantes imputados, con IVA"
+            concepto="Costo real a hoy"
             valor={sinComprobantes ? null : plata(e?.costo_real ?? null)}
             origen={`Comprobantes de Compras imputados a esta obra${
-              e?.costo_real_n_comprobantes ? ` (${e.costo_real_n_comprobantes}),` : ','
-            } con IVA y sin la mano de obra: es lo que dice la pestaña Compras, no el costo comparable con el presupuesto.`}
+              e?.costo_real_n_comprobantes ? ` (${e.costo_real_n_comprobantes}).` : '.'
+            } Es lo que se logró imputar, no todo lo que la obra consumió.`}
             falta="Ningún comprobante imputado. No es que costó $0."
           />
           {sinManoDeObra && (
@@ -243,13 +205,13 @@ export function TabEconomia({
             falta={e?.costo_comprometido_estado ?? 'No disponible.'}
           />
           <Linea
-            concepto="Desvío contra el presupuesto"
+            concepto="Desvío contra el objetivo"
             valor={desvioPesos == null ? null
               : `${desvioPesos > 0 ? '+' : ''}${plata(desvioPesos)}` +
-                (pct(desvioPesos, rb?.presupuestado) ? ` · ${pct(desvioPesos, rb?.presupuestado)}` : '')}
-            origen="Consumido sin IVA en los rubros que tienen presupuesto, menos ese presupuesto. Positivo = se gastó de más. Lo mismo contra lo mismo: la mano de obra está en las dos puntas."
-            falta={rb?.presupuestado != null && rb.consumidoComparable == null ? 'Sin movimiento en los rubros presupuestados.'
-              : falta(rb?.motivo ?? 'Falta el presupuesto por rubro.')}
+                (pct(desvioPesos, e?.costo_objetivo) ? ` · ${pct(desvioPesos, e?.costo_objetivo)}` : '')}
+            origen="Costo real menos costo objetivo. Positivo = se gastó de más."
+            falta={sinComprobantes && !sinObjetivo ? 'Faltan comprobantes imputados.'
+              : falta(sinComprobantes ? 'Faltan las dos puntas.' : 'Falta el costo objetivo.')}
             tono={desvioPesos != null && desvioPesos > 0 ? 'neg' : 'pos'}
           />
           <Linea
@@ -339,18 +301,15 @@ export function TabEconomia({
             investiga, un número cómodo se cree. */}
         {veComercial && (
         <Bloque titulo="Margen" testid="economia-resultado">
-          {/* D1 (18/09/2026): UNA SOLA DEFINICIÓN. `obra_economia_rubros.margen_cotizado` = contratado −
-              costo directo presupuestado − gastos generales de la cotización. La misma cifra que el chat. */}
           <Linea
             concepto="Margen cotizado" fuerte
-            valor={rb?.margenCotizado == null ? null
-              : `${plata(rb.margenCotizado)}${pct(rb.margenCotizado, e?.venta_contratada) ? ` · ${pct(rb.margenCotizado, e?.venta_contratada)}` : ''}`}
-            origen={`Contratado menos costo directo presupuestado menos gastos generales de la cotización${rb?.gastosGenerales != null ? ` (${plata(rb.gastosGenerales)})` : ''}: el margen con el que se vendió la obra. Una sola definición para la ficha, Analíticas y el chat.`}
-            falta={e?.venta_contratada == null
+            valor={e?.margen_cotizado == null ? null
+              : `${plata(e.margen_cotizado)}${pct(e.margen_cotizado, e.venta_total) ? ` · ${pct(e.margen_cotizado, e.venta_total)}` : ''}`}
+            origen="Venta contratada menos costo objetivo: el margen con el que se vendió la obra."
+            falta={e?.venta_total == null
               ? 'Margen cotizado no disponible: falta el monto contratado.'
-              : rb?.presupuestado == null ? `Margen cotizado no disponible: ${rb?.motivo ?? 'sin presupuesto leído'}.`
-                : 'Margen cotizado no disponible: la cotización no tiene gastos generales cargados, o lo contratado es una suma viva de Cobranzas.'}
-            tono={rb?.margenCotizado != null && rb.margenCotizado < 0 ? 'neg' : 'ink'}
+              : 'Margen cotizado no disponible: esta obra no tiene costo objetivo (ni presupuesto congelado ni presupuesto cargado).'}
+            tono={e?.margen_cotizado != null && e.margen_cotizado < 0 ? 'neg' : 'ink'}
           />
           <Linea
             concepto="Margen final proyectado" fuerte

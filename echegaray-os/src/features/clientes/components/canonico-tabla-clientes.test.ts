@@ -41,8 +41,7 @@ test('las cinco columnas, en el orden del dueño, y ninguna de OC ni de OP', () 
   assert.doesNotMatch(src, />OC c\/IVA</, 'la columna OC se fue: los totales viven en la ficha, solapa Órdenes')
   assert.doesNotMatch(src, />OP c\/IVA</)
   assert.doesNotMatch(src, /TotalDePapeles/, 'ningún total de papeles en la cartera')
-  // Seis pistas más el nombre desde el 18/09/2026: Contratado · Materiales · Subcontratos · Otros · Mano de obra · Avance.
-  assert.match(src, /grid-cols-\[minmax\(0,2fr\)_150px_130px_130px_130px_140px_210px\]/)
+  assert.match(src, /grid-cols-\[minmax\(0,2fr\)_150px_130px_130px_140px_210px\]/)
 })
 
 test('las OC siguen debajo de cada obra, con su PDF', () => {
@@ -184,10 +183,7 @@ test('el subtítulo de /clientes y el panel lateral suman la MISMA base que la c
 test('la suma viva se marca y la discrepancia declarada se dice (auditor final, 11/09/2026)', () => {
   const src = celdas()
   assert.match(src, /const viva = o\.contratoTotal === null && o\.origenContratado === ORIGEN_SUMA_VIVA/)
-  // LA FRASE DE LA SUMA VIVA VIVE EN `fraseDeOrigenContratado` (18/09/2026), no acá adentro: Analíticas
-  // la necesita también y una frase escrita a mano en dos archivos se desalinea sola. `celdas()` sólo
-  // tiene que seguir LLAMANDO a la función única; el texto lo prueba economiaObras.test/contratadoFormulario.test.
-  assert.match(src, /const frase = fraseDeOrigenContratado\(o\.origenContratado\)/)
+  assert.match(src, /SUMA VIVA de lo que Cobranzas lleva registrado/)
   assert.match(src, /Discrepancia declarada por la vista: \$\{o\.nota\}/)
   assert.match(src, /data-origen=\{viva \? 'suma-viva' : undefined\}/)
 })
@@ -196,8 +192,7 @@ test('el jefe de obra no ve una sola cifra', () => {
   const src = tabla()
   assert.match(src, /veEconomia \? 'Contratado' : ''/)
   assert.match(src, /veEconomia \? 'Avance de cobro' : ''/)
-  // Cuatro pistas vacías, una por rubro (Materiales · Subcontratos · Otros · Mano de obra).
-  assert.match(leer('./CeldasDeCosto.tsx'), /if \(!veEconomia\) return <><span className=\{SOLO_ANCHO\} \/><span className=\{SOLO_ANCHO\} \/><span className=\{SOLO_ANCHO\} \/><span className=\{SOLO_ANCHO\} \/><\/>/)
+  assert.match(leer('./CeldasDeCosto.tsx'), /if \(!veEconomia\) return <><span className=\{SOLO_ANCHO\} \/><span className=\{SOLO_ANCHO\} \/><span className=\{SOLO_ANCHO\} \/><\/>/)
 })
 
 test('el costo a la fecha del cliente suma TODAS sus obras, también las cerradas (QA 14/09/2026)', () => {

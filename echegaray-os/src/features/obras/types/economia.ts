@@ -30,12 +30,6 @@ export interface ManoObraPropia {
 export interface EconomiaObra {
   /** No es columna de la vista: la agrega `getEconomiaObra`. `null` = no se pudo leer. */
   mano_obra_propia?: ManoObraPropia | null
-  /**
-   * LA OBRA EN LOS CUATRO RUBROS (18/09/2026): presupuestado y consumido de las MISMAS fuentes que
-   * Analíticas (`obra_economia_rubros` + `costo_de_obras_por_rubro`) y el único margen cotizado. Tampoco
-   * es columna de la vista. `null` = no se pudo leer ninguna de las dos.
-   */
-  rubros?: import('../services/rubrosDeLaObra').RubrosDeLaObra | null
   obra_id: string
   obra: string
   // Venta

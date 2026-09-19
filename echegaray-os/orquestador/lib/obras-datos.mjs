@@ -310,9 +310,6 @@ export const OBRAS_FUTURAS = [
     cliente: 'MESSINA',
     obra: 'BSA',
     ventaTexto: 'BSA',
-    // La columna «Obra» de Cobranzas también la reconoce: la actualización de precios de la OC 279 no dice
-    // «BSA» y el dueño confirmó (18/09/2026) que es parte del contratado.
-    obraCelda: 'OB-0019 · ME - BSA',
     // 14/08: 8 filas de MESSINA, $7.955.772 neto — "Planta de BSA" ×6, "Camion - BSA", "Excavadora -
     // BSA". "BSA" no aparece en ninguna otra fila de la pestaña entera (verificado sobre las 1.136),
     // así que el tramo corto no puede arrastrar plata de otra obra.

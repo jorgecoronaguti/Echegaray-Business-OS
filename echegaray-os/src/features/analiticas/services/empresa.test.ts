@@ -52,7 +52,7 @@ test('D1 · julio con cargas en 0 o una quincena en curso es INCOMPLETO: no var�
   const mayo = r.meses.find((m) => m.mes === '2026-05')!
   assert.equal(mayo.estado, 'incompleto', 'quincena en curso')
   assert.equal(mayo.contraBase, null)
-  assert.deepEqual(seisMesesReales(r.meses), { total: 21760799 + 30728205, meses: 2, desde: '2026-03', hasta: '2026-06' })
+  assert.deepEqual(seisMesesReales(r.meses), { total: 21760799 + 30728205, meses: 2 })
 })
 
 test('legajos por pertenencia: en_la_empresa manda, no la fecha de egreso', () => {
@@ -97,8 +97,7 @@ test('D10 · la acción del día es la de planDeCobranza: documentos sólo a má
 
 test('D9 · «por vencer» tiene su zona antes del cero y nunca cae dentro de 1–30 días', () => {
   assert.equal(ZONAS_COBRANZA[0].clave, 'por_vencer')
-  // La palabra del diseño aprobado y de la cifra de arriba: en Analíticas el tramo se llama «al día».
-  assert.equal(ZONAS_COBRANZA[0].rotulo, 'al día')
+  assert.equal(ZONAS_COBRANZA[0].rotulo, 'Por vencer')
   const pv = zonaDeTramo('por_vencer')
   const d30 = zonaDeTramo('d1_30')
   assert.ok(pv.hasta <= d30.desde, 'la zona por vencer termina antes de que empiece 1–30')
@@ -146,33 +145,4 @@ test('la banda de antigüedad de la empresa suma las mismas filas que el «por c
   const b = bandasDeCobranza(cuenta)
   assert.deepEqual(b.map((x) => [x.clave, x.monto]), [['por_vencer', 130], ['d1_30', 0], ['d31_60', 0], ['d61_90', 50], ['d90', 0]])
   assert.equal(b.reduce((a, x) => a + x.monto, 0), cifrasCobranza(cobranza(cuenta)).porCobrar)
-})
-
-// ─── Claridad de Cobranza y Nómina (dueño, 17/09/2026) ────────────────────────────────
-
-test('la banda de antigüedad devuelve las CINCO zonas aunque cuatro estén vacías', () => {
-  // Toda la deuda en un solo tramo: es el caso real que dibujaba una barra verde entera y muda.
-  const b = bandasDeCobranza([{ cliente_id: 'c1', nombre_comercial: 'ME', saldo: '100', aging_por_vencer: '100' }])
-  assert.equal(b.length, 5, 'una zona sin plata sigue siendo una zona que hay que rotular')
-  assert.deepEqual(b.map((x) => x.clave), ZONAS_COBRANZA.map((z) => z.clave))
-  assert.equal(b.filter((x) => x.monto > 0).length, 1)
-  for (const x of b) assert.ok(x.rotulo.trim().length > 0, 'una zona sin rótulo no se puede leer')
-})
-
-test('la tabla y la banda llaman igual al mismo tramo: «al día», la palabra de la cifra de arriba', () => {
-  const f = cobranza([{ cliente_id: 'c1', nombre_comercial: 'ME', saldo: '100', aging_por_vencer: '100' }])
-  assert.equal(f[0].rotuloTramo, 'al día')
-  assert.equal(bandasDeCobranza([{ cliente_id: 'c1', nombre_comercial: 'ME', saldo: '100', aging_por_vencer: '100' }])[0].rotulo, 'al día')
-})
-
-test('los seis meses dicen CUÁLES son, y el orden no lo presta la base', () => {
-  const filas = [
-    { mes: '2026-06-01', costo_nomina: '30000000', cargas_sociales: '1', es_estimacion: false },
-    { mes: '2026-01-01', costo_nomina: '17000000', cargas_sociales: '1', es_estimacion: false },
-    { mes: '2026-03-01', costo_nomina: '21000000', cargas_sociales: '1', es_estimacion: false },
-  ]
-  const r = seisMesesReales(nomina(filas, { desde: null, hasta: null }).meses)!
-  assert.equal(r.desde, '2026-01')
-  assert.equal(r.hasta, '2026-06')
-  assert.equal(r.meses, 3)
 })

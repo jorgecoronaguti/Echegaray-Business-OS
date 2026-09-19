@@ -53,29 +53,19 @@ export interface SubcontratoDeObra {
   /** Lo que de este comprobante entra a la fecha (20260915T2320). `null` = RPC anterior: es `total`. */
   aLaFecha: number | null
   porVencer: number | null
-  /** 'proveedor' = rubro «Subcontratista» marcado en la ficha del proveedor; 'familia' = la familia de Compras
-   *  «Subcontratos y mano de obra» (regla de los cuatro rubros, 20260918T0900). */
-  motivo: 'proveedor' | 'familia'
+  /** Siempre 'proveedor': rubro «Subcontratista» marcado (la marca por familia se retiró el 14/09/2026). */
+  motivo: 'proveedor'
 }
 
 /** Lo que la clave `costo_obra` publica por trabajo. */
 export interface CostoDeObra {
   obraId: string
-  /** Σ de las compras asignadas al trabajo a la fecha, sin nómina, sin anuladas, sin subcontratos y —desde
-   *  20260918T0900— sin lo que la regla de los cuatro rubros manda a «otros». */
+  /** Σ de las compras asignadas al trabajo a la fecha, sin nómina, sin anuladas y sin subcontratos. */
   materiales: number | null
-  /** Lo facturado por subcontratistas (20260915T0810): proveedores marcados «Subcontratista» o la familia
-   *  «Subcontratos y mano de obra». No es material ni mano de obra propia: tiene su columna. */
+  /** Lo facturado por subcontratistas (20260915T0810): proveedores marcados «Subcontratista». No es material
+   *  ni mano de obra propia: tiene su columna. */
   subcontratos: number | null
   nSubcontratos: number
-  /**
-   * OTROS (dueño, 18/09/2026): alquiler y traslado de equipos, servicios de obra (baño, contenedor, agua),
-   * combustible, fletes, honorarios. Hasta hoy iban dentro de «materiales»; ahora tienen su rubro, con la
-   * MISMA regla que la cotización (`rubro_de_compra` en la base). `null` = la RPC anterior no lo publica.
-   */
-  otros: number | null
-  nOtros: number
-  otrosPorVencer: number | null
   subcontratosDetalle: SubcontratoDeObra[]
   nComprobantes: number
   /** ISO `YYYY-MM-DD` del último comprobante imputado. */
@@ -108,13 +98,9 @@ export interface CostoDeObra {
 }
 
 /** LOS RÓTULOS DICEN QUÉ ES EL NÚMERO (dueño, 13/09/2026): lo gastado hasta hoy, no lo presupuestado. */
-// «CON IVA» EN EL RÓTULO (auditoría 18/09/2026): las compras del CRM van con IVA —lo pagado, decisión del
-// 17/09— y Analíticas y la ficha de la obra las muestran sin IVA. Sin decirlo, el mismo comprobante daba
-// dos números en dos pantallas. La mano de obra no lleva IVA y su rótulo no lo nombra.
-export const ROTULO_MATERIALES = 'Materiales a la fecha, con IVA'
+export const ROTULO_MATERIALES = 'Materiales a la fecha'
 export const ROTULO_MANO_OBRA = 'Mano de obra a la fecha'
-export const ROTULO_SUBCONTRATOS = 'Subcontratos a la fecha, con IVA'
-export const ROTULO_OTROS = 'Otros a la fecha, con IVA'
+export const ROTULO_SUBCONTRATOS = 'Subcontratos a la fecha'
 export const ROTULO_SIN_OBRA = 'Gastos del cliente sin obra asignada'
 
 function num(v: unknown): number | null {
@@ -152,7 +138,7 @@ function subcontratosDe(v: unknown): SubcontratoDeObra[] {
     if (total == null) return []
     return [{
       proveedor: texto(r.proveedor), comprobante: texto(r.comprobante),
-      fecha: texto(r.fecha)?.slice(0, 10) ?? null, total, motivo: r.motivo === 'familia' ? 'familia' : 'proveedor',
+      fecha: texto(r.fecha)?.slice(0, 10) ?? null, total, motivo: 'proveedor',
       aLaFecha: num(r.a_la_fecha), porVencer: num(r.por_vencer),
     }]
   })
@@ -180,9 +166,6 @@ export function armarCostosPorObra(
       subcontratos: num(r.subcontratos),
       nSubcontratos: entero(r.n_subcontratos),
       subcontratosDetalle: subcontratosDe(r.subcontratos_detalle),
-      otros: num(r.otros),
-      nOtros: entero(r.n_otros),
-      otrosPorVencer: num(r.otros_por_vencer),
       nComprobantes: entero(r.n_comprobantes),
       ultimoComprobante: texto(r.ultimo_comprobante)?.slice(0, 10) ?? null,
       manoObra: num(r.mano_obra),
@@ -229,9 +212,6 @@ export function tituloMateriales(c: CostoDeObra | null | undefined): string | nu
   let t = `${partes.join(' · ')}. No entran nómina, cargas, ARCA ni financiero.`
   // LOS SUBCONTRATOS NO DESAPARECEN AL EXCLUIRLOS: tienen su columna, y el title de materiales lo dice.
   if (c.subcontratos != null) t += ` Sin los ${plata(c.subcontratos)} de subcontratos, que van en su columna.`
-  // LO QUE SE FUE A «OTROS» TAMPOCO DESAPARECE (dueño, 18/09/2026): equipos, servicios, combustible y fletes
-  // salieron de Materiales, y quien compare contra el número de ayer tiene que poder ver adónde fueron.
-  if (c.otros != null) t += ` Sin los ${plata(c.otros)} de otros (equipos, servicios, combustible, fletes), que van en su columna.`
   return t + fraseFuturo(porVencerDeMateriales(c))
 }
 
@@ -264,29 +244,6 @@ export function tituloSubcontratosSinObra(g: GastoSinObra | null | undefined): s
   if (!g || g.subcontratos == null) return null
   const lineas = g.subcontratosDetalle.slice(0, MAX_LINEAS).map(lineaDeSubcontrato)
   return `Subcontratos del cliente sin obra asignada${aLaFecha(g.corte)}: ${lineas.join('; ')}. ${REGLA_SUBCONTRATO}`
-}
-
-// ═══ OTROS (dueño, 18/09/2026): el cuarto rubro, con la MISMA regla que la cotización ═══
-//
-// Hasta el 18/09 el alquiler de la plataforma, el baño químico, el gasoil y el flete iban dentro de
-// Materiales. Ahora `rubro_de_compra` (Postgres) los manda a «otros» y la celda los dibuja aparte; acá
-// sólo se da formato. `otros` en `null` es «la base contestó sin nada en este rubro» o «RPC anterior a
-// 20260918T0900»: los dos se dibujan «—», porque en ninguno hay un importe que afirmar.
-
-/** OTROS: el importe o «—». */
-export function textoOtros(c: CostoDeObra | null | undefined): string {
-  return plata(c?.otros ?? null)
-}
-
-/** QUÉ CONTIENE LA COLUMNA, dicho en la celda: la regla de los cuatro rubros, sin inventar detalle. */
-const REGLA_OTROS = 'Alquiler y traslado de equipos, servicios de obra (baño, contenedor, agua), combustible, fletes y '
-  + 'honorarios (regla rubro_de_compra, por familia y sub-rubro de Compras).'
-
-/** El detalle que respalda el importe de otros. `null` = nada que respaldar. */
-export function tituloOtros(c: CostoDeObra | null | undefined): string | null {
-  if (!c || c.otros == null) return null
-  return `Otros${aLaFecha(c.corte)}: ${c.nOtros} ${c.nOtros === 1 ? 'comprobante' : 'comprobantes'}. ${REGLA_OTROS} `
-    + 'No están en Materiales ni en Subcontratos.' + fraseFuturo(c.otrosPorVencer)
 }
 
 /** Lo que dibuja la celda de mano de obra, con de dónde salió cada variante. */
@@ -453,11 +410,6 @@ export function textoTotalSubcontratos(t: TotalesDelCliente): string {
   return t.legible ? plata(t.subcontratos) : ''
 }
 
-/** LA CELDA DE OTROS DE UN CLIENTE: vacío = no se pudo leer; «—» = ninguno. */
-export function textoTotalOtros(t: TotalesDelCliente): string {
-  return t.legible ? plata(t.otros) : ''
-}
-
 /** LA CELDA DE MANO DE OBRA DE UN CLIENTE: el total, «sin valorizar» o vacío, y si está incompleto. */
 export function textoTotalManoObra(t: TotalesDelCliente): CeldaManoObra {
   if (!t.legible) return { texto: '', parcial: false, estimado: false }
@@ -485,8 +437,6 @@ export interface TotalesDelCliente {
   /** Σ de los subcontratos de sus obras MÁS los sin obra. `null` = ninguno. Nunca dentro de `materiales`. */
   subcontratos: number | null
   subcontratosSinObra: number | null
-  /** Σ de «otros» (equipos, servicios, combustible, fletes) de sus obras. `null` = ninguno. Lo sin obra no lo abre. */
-  otros: number | null
   /** Σ de la mano de obra valorizada. `null` = no se pudo valorizar NINGUNA hora. */
   manoObra: number | null
   /** `true` = hay horas que quedaron afuera del total de mano de obra. */
@@ -513,14 +463,13 @@ export function totalesDelCliente(
   sinObra: GastoSinObra | null = null,
 ): TotalesDelCliente {
   const vacio: TotalesDelCliente = {
-    legible: false, materiales: null, materialesSinObra: null, subcontratos: null, subcontratosSinObra: null, otros: null, manoObra: null,
+    legible: false, materiales: null, materialesSinObra: null, subcontratos: null, subcontratosSinObra: null, manoObra: null,
     manoObraParcial: false, manoObraEstimada: 0, horasSinValorizar: 0,
   }
   if (!costos) return vacio
   let materiales: number | null = null
   let manoObra: number | null = null
   let subcontratos: number | null = null
-  let otros: number | null = null
   let horasSinValorizar = 0
   let manoObraEstimada = 0
   for (const id of obraIds) {
@@ -528,7 +477,6 @@ export function totalesDelCliente(
     if (!c) continue
     if (c.materiales != null) materiales = (materiales ?? 0) + c.materiales
     if (c.subcontratos != null) subcontratos = (subcontratos ?? 0) + c.subcontratos
-    if (c.otros != null) otros = (otros ?? 0) + c.otros
     if (c.manoObra != null) manoObra = (manoObra ?? 0) + c.manoObra
     horasSinValorizar += c.horasSinTarifa ?? 0
     manoObraEstimada += c.manoObraEstimada ?? 0
@@ -539,7 +487,7 @@ export function totalesDelCliente(
   if (materialesSinObra != null) materiales = (materiales ?? 0) + materialesSinObra
   if (subcontratosSinObra != null) subcontratos = (subcontratos ?? 0) + subcontratosSinObra
   return {
-    legible: true, materiales, materialesSinObra, subcontratos, subcontratosSinObra, otros, manoObra,
+    legible: true, materiales, materialesSinObra, subcontratos, subcontratosSinObra, manoObra,
     manoObraParcial: horasSinValorizar > 0, manoObraEstimada, horasSinValorizar,
   }
 }

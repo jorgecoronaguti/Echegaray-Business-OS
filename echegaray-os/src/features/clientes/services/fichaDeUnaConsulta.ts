@@ -31,7 +31,6 @@
 // separadas, exactamente como viajaban, y las cruzan las MISMAS funciones que usa el camino de
 // PostgREST (`armarDocumentosCliente`, `armarNotasCliente`, `armarFuentesActividad`).
 
-import { costosEnCuatroRubros } from './costosEnCuatroRubros.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Perfil } from '@/features/auth/types'
 import type {
@@ -240,9 +239,7 @@ export async function leerFichaDeUnaConsulta(
     horasPorObra,
     // `?? null` Y NO `?? []`, por lo mismo que `hh_obra`: la RPC devuelve `null` a propósito y
     // convertirlo en lista vacía escribiría «este trabajo no gastó nada» sobre una obra de $ 154 M.
-    // LOS CUATRO RUBROS (18/09/2026): la pantalla trae tres; `costosEnCuatroRubros` pide los mismos
-    // trabajos a la función de cuatro. Ver ese archivo: por qué no se cambió la función de la pantalla.
-    costosPorObra: await costosEnCuatroRubros(supabase, armarCostosPorObra(j.costo_obra ?? null)),
+    costosPorObra: armarCostosPorObra(j.costo_obra ?? null),
     // AUSENTE (T1600 sin aplicar) o `null` (rol/cara) = no se pudo leer: la fila sin obra calla.
     gastosSinObra: armarGastosSinObra(j.costo_sin_obra ?? null),
     // LA COTIZACIÓN ACEPTADA NO SE DEDUCE DEL NOMBRE: la dice `obra_contrato`, que es el papel que

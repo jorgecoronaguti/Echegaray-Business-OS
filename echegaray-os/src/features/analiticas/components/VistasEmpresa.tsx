@@ -40,11 +40,9 @@ export function VistaCaja({ egresos, periodo }: { egresos: unknown[] | null; per
   const maxArea = Math.max(1, ...areas.map((a) => a.monto))
   return (
     <>
-      {/* LO QUE ES, DICHO (auditoría 18/09/2026): la fuente es `egreso_por_area` = egresos de Compras por
-          FECHA DEL COMPROBANTE. Es devengado, no lo pagado; no es un extracto de caja. */}
-      <Cabecera titulo="Caja" detalle={`${periodo} · egresos de Compras por fecha de comprobante, no lo pagado`}
+      <Cabecera titulo="Caja" detalle={`${periodo} · a dónde fue la plata`}
         cifras={[
-          { rotulo: 'egresos de Compras', valor: millones(c.salio), nota: 'por fecha de comprobante (devengado); no incluye nómina ni lo pagado desde caja' },
+          { rotulo: 'salió', valor: millones(c.salio) },
           { rotulo: 'a una obra', valor: millones(c.aObra) },
           { rotulo: 'estructura', valor: millones(c.estructura), tono: 'muted' },
           { rotulo: 'sin destino', valor: c.nSinDestino ? millones(c.sinDestino) : null, falta: 'ninguno', tono: 'warn' },
@@ -57,10 +55,7 @@ export function VistaCaja({ egresos, periodo }: { egresos: unknown[] | null; per
             Imputar las {c.nSinDestino} filas sin destino
           </button>
         ) : undefined} />
-      {/* EL GRÁFICO NO DECÍA DE QUÉ PERÍODO NI QUÉ ES UNA COLUMNA (dueño, 17/09/2026): lo dice la
-          aclaración, que además queda pegada a la leyenda de colores. */}
-      <Seccion titulo="Egresos de Compras, por mes" aclaracion={`${periodo} · cada columna son los comprobantes de Compras con fecha de ese mes, a obra o a estructura; no es lo que salió de caja${c.nSinDestino ? ' · lo sin destino no está en las columnas' : ''}`}
-        leyenda={[{ color: 'bg-accent', rotulo: 'a una obra' }, { color: 'bg-dato-referencia', rotulo: 'estructura' }]}>
+      <Seccion titulo="Lo que salió, por mes" leyenda={[{ color: 'bg-accent', rotulo: 'a una obra' }, { color: 'bg-dato-referencia', rotulo: 'estructura' }]}>
         <Columnas meses={c.meses.map((m) => ({
           mes: m.mes, valor: millones(m.aObra + m.estructura),
           partes: [{ alto: (m.estructura / max) * 170, clase: 'bg-dato-referencia' }, { alto: (m.aObra / max) * 170, clase: 'bg-accent' }],
@@ -83,15 +78,13 @@ export function VistaCaja({ egresos, periodo }: { egresos: unknown[] | null; per
   )
 }
 
-export function VistaNomina({ filas, quincenas, personas, rango, periodo, hoy, enObras }: {
+export function VistaNomina({ filas, quincenas, personas, rango, periodo, hoy }: {
   filas: unknown[] | null
   quincenas: unknown[] | null
   personas: unknown[] | null
   rango: { desde: string | null; hasta: string | null }
   periodo: string
   hoy: string
-  /** La mano de obra imputada a obras en el período (la misma cifra que Resumen y Obras). `null` = no se leyó. */
-  enObras: { manoObra: number | null; estimada: string | null; obras: number } | null
 }) {
   if (!filas) return <SinLectura que="la nómina" />
   const { base, meses: todos } = nomina(filas, rango, quincenas ?? [])
@@ -106,20 +99,10 @@ export function VistaNomina({ filas, quincenas, personas, rango, periodo, hoy, e
     <>
       <Cabecera titulo="Nómina" detalle={`${periodo} · sueldos y cargas`}
         cifras={[
-          { rotulo: seis && seis.meses < 6 ? `últimos ${seis.meses} meses` : 'seis meses', valor: seis ? millones(seis.total) : null },
+          { rotulo: seis && seis.meses < 6 ? `últimos ${seis.meses} meses liquidados` : 'seis meses', valor: seis ? millones(seis.total) : null },
           { rotulo: ultimo ? `${rotuloMes(ultimo.mes)} contra ${rotuloMes(MES_BASE)}` : `contra ${rotuloMes(MES_BASE)}`, valor: pctConSigno(ultimo?.contraBase), falta: '—', tono: (ultimo?.contraBase ?? 0) > 0 ? 'warn' : undefined },
           { rotulo: 'plantel', valor: l ? String(l.plantel) : null, nota: 'por pertenencia, no por fecha de egreso' },
-          // UNA SOLA VERDAD EN TODA LA PANTALLA (auditoría 18/09/2026): decía «ninguna obra carga todavía su
-          // parte de este costo» mientras Resumen publicaba «mano de obra 25 %». La mano de obra SÍ se
-          // imputa, por quincena (`costo_mo_quincena`), y sale de la misma fuente que Resumen y Obras.
-          //
-          // NO ES LA CIFRA DEL RESUMEN Y SE DICE POR QUÉ: Nómina es de la empresa —el filtro de obras y
-          // estado no le aplica (ver filtros.ts)—, así que suma TODAS las obras de la cartera; el Resumen
-          // muestra sólo las que el filtro deja. Escribir «la misma cifra que Resumen» sería falso.
-          { rotulo: 'imputado a obras', valor: enObras ? millones(enObras.manoObra) : null, falta: enObras ? 'sin horas en obra' : 'no se leyó',
-            nota: enObras?.manoObra != null
-              ? `acumulado de las ${enObras.obras} obras de la cartera, por quincena${enObras.estimada ? ` · ${enObras.estimada}` : ''}. El Resumen muestra la parte de las obras que su filtro deja.`
-              : undefined },
+          { rotulo: 'repartido a obra', valor: null, falta: 'sin repartir' },
         ]} />
       <Seccion titulo="Costo de la nómina, por mes" aclaracion={base != null ? `en ámbar, lo que subió sobre ${rotuloMes(MES_BASE)} (${millones(base)})` : `sin ${rotuloMes(MES_BASE)} liquidado no hay base`} arriba="pt-8">
         <Columnas meses={meses.map((m) => {

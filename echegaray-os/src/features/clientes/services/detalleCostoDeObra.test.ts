@@ -37,9 +37,6 @@ test('el rubro de la URL se valida: los cuatro conocidos abren, cualquier otra c
   assert.equal(leerRubro('mo'), 'mo')
   assert.equal(leerRubro('hh'), 'hh')
   assert.equal(leerRubro('mano_obra'), null, 'el nombre SQL no es el de la URL')
-  // OTROS NO ABRE PANEL TODAVÍA (18/09/2026): `detalle_costo_de_obra` (20260915T2320) no conoce el rubro y
-  // contestaría `null`; la celda va sin enlace. Cuando la RPC lo publique, se agrega a `RUBROS` y este caso cambia.
-  assert.equal(leerRubro('otros'), 'otros', 'desde 20260918T1510 la base publica el detalle de «otros»')
   assert.equal(leerRubro(''), null)
   assert.equal(leerRubro(undefined), null)
   assert.equal(leerRubro("'; drop table x; --"), null)
@@ -121,14 +118,14 @@ test('el subtítulo del panel nombra lo por vencer, y calla cuando no hay nada p
   assert.ok(d)
   assert.equal(
     subtituloDelDetalle('subcontratos', d),
-    'Subcontratos a la fecha, con IVA · $3.020.000 · por vencer $12.864.000 · 10 comprobantes',
+    'Subcontratos a la fecha · $3.020.000 · por vencer $12.864.000 · 10 comprobantes',
   )
   // SIN NADA POR VENCER NO SE ESCRIBE «por vencer $0».
   const pagado = armarDetalleCosto({
     ...SUBCONTRATOS_OB11, total: '1800000.00', por_vencer: 0, n: 1, filas: [SUBCONTRATOS_OB11.filas[0]],
   })
   assert.ok(pagado)
-  assert.equal(subtituloDelDetalle('subcontratos', pagado), 'Subcontratos a la fecha, con IVA · $1.800.000 · 1 comprobante')
+  assert.equal(subtituloDelDetalle('subcontratos', pagado), 'Subcontratos a la fecha · $1.800.000 · 1 comprobante')
   // SIN DETALLE, EL NOMBRE DE LA COLUMNA Y NADA MÁS: no se inventa un cero.
   assert.equal(subtituloDelDetalle('mo', null), 'Mano de obra a la fecha')
 })

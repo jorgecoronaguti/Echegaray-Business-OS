@@ -8,7 +8,6 @@
 // Sin cards y sin sombras: una cifra es un rótulo chico arriba y un número tabular abajo; las
 // secciones se separan con aire y un filo.
 import type { ReactNode } from 'react'
-import { ORDEN_RUBROS, RUBRO_COLOR } from './Torta'
 
 /** Ancho de una barra: `x` sobre la escala, recortado a 0–100 %. Una escala nula dibuja nada. */
 export const ancho = (x: number | null | undefined, escala: number | null | undefined): string =>
@@ -31,23 +30,14 @@ export const TONO_TEXTO: Record<Tono, string> = { neg: 'text-neg', warn: 'text-w
 
 export interface Cifra { rotulo: string; valor: string | null; falta?: string; tono?: Tono; nota?: ReactNode }
 
-export function UnaCifra({ c }: { c: Cifra }) {
+function UnaCifra({ c }: { c: Cifra }) {
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <div className="text-[11px] text-faint">{c.rotulo}</div>
-      <div className={`whitespace-nowrap text-[22px] font-semibold leading-[1.05] tracking-[-0.02em] tabular-nums lg:text-[28px] ${c.valor == null ? 'text-faint' : c.tono ? TONO_TEXTO[c.tono] : 'text-ink'}`}>
+      <div className={`text-[22px] font-semibold leading-[1.05] tracking-[-0.02em] tabular-nums lg:text-[28px] ${c.valor == null ? 'text-faint' : c.tono ? TONO_TEXTO[c.tono] : 'text-ink'}`}>
         {c.valor ?? c.falta ?? 'sin registrar'}
       </div>
       {c.nota ? <div className="text-[11.5px] text-muted">{c.nota}</div> : null}
-    </div>
-  )
-}
-
-/** Una fila de cifras dentro de una sección (no en la cabecera): dos columnas en el teléfono, todas en una fila en escritorio. */
-export function Cifras({ cifras }: { cifras: Cifra[] }) {
-  return (
-    <div className={`grid grid-cols-2 items-end gap-x-6 gap-y-5 lg:gap-6 ${cifras.length === 3 ? 'lg:grid-cols-3' : cifras.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-5'}`}>
-      {cifras.map((c) => <UnaCifra key={c.rotulo} c={c} />)}
     </div>
   )
 }
@@ -109,8 +99,11 @@ export function Seccion({ titulo, aclaracion, leyenda, children, arriba = 'pt-7'
   )
 }
 
-/** LOS CUATRO RUBROS DEL GASTO, en el orden fijo en que se apilan y se cortan, con su color fijo (Torta.tsx). */
-export const LEYENDA_GASTO = ORDEN_RUBROS.map((k) => ({ color: RUBRO_COLOR[k].clase, rotulo: RUBRO_COLOR[k].rotulo }))
+export const LEYENDA_GASTO = [
+  { color: 'bg-accent', rotulo: 'mano de obra' },
+  { color: 'bg-muted', rotulo: 'subcontratos' },
+  { color: 'bg-dato-materiales', rotulo: 'materiales' },
+]
 
 /** Sin datos legibles: la base no contestó para este rol, o la lectura falló. Se dice, no se dibuja en cero. */
 export function SinLectura({ que }: { que: string }) {
