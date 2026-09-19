@@ -276,8 +276,11 @@ function condicionesPagoDelMes(r, mes, anio, nombres = NOMBRES_DIRECCION) {
 function formulaPagadoMes(r, mes, anio, nombres = NOMBRES_DIRECCION) {
   return `=SUMPRODUCT(${condicionesPagoDelMes(r, mes, anio, nombres).join('*')}`
     + `*IF(ISNUMBER(${r.importe});${r.importe};0))`
-    + `+SUMPRODUCT(${condicionesPagoNC(RUBROS_PAGOS_NC.direccion, periodoDe(anio, mes)).join('*')}`
-    + `*IF(ISNUMBER(${refsPagosNC.importe});${refsPagosNC.importe};0))`
+    // LA SEGUNDA FUENTE VA ENVUELTA (revisión 19/09/2026): si `_PAGOS_NO_COMPRA_RAW` se borra o se
+    // renombra, su #REF! no puede arrastrar lo que Compras sí sabe — ni el Estado ni el Proyectado de la
+    // fila, que leen esta celda. Misma regla que `formulaSePagaElDireccion`.
+    + `+IFERROR(SUMPRODUCT(${condicionesPagoNC(RUBROS_PAGOS_NC.direccion, periodoDe(anio, mes)).join('*')}`
+    + `*IF(ISNUMBER(${refsPagosNC.importe});${refsPagosNC.importe};0));0)`
 }
 
 /**

@@ -50,9 +50,15 @@ async function main() {
   for (const c of cambios) {
     const j = c.celda.charCodeAt(0) - 65
     const leida = String(despues?.[0]?.[j] ?? '')
-    const bien = formaApi(leida) === formaApi(c.nueva)
+    const valor = valores?.[0]?.[j]
+    const escrita = formaApi(leida) === formaApi(c.nueva)
+    // EL EFECTO ES EL VALOR, NO EL TEXTO (revisión 19/09/2026): una fórmula bien escrita que rinde #REF!
+    // no es una celda arreglada.
+    const rinde = !(typeof valor === 'string' && /^#(REF|N\/A|VALUE|DIV\/0|NAME|ERROR|NUM|NULL)/i.test(valor))
+    const bien = escrita && rinde
     ok &&= bien
-    console.log(`  ${bien ? '✓' : '✗'} ${c.celda} ${bien ? 'quedó escrita' : 'NO coincide con lo escrito'} · valor: ${JSON.stringify(valores?.[0]?.[j])}`)
+    const que = !escrita ? 'NO coincide con lo escrito' : !rinde ? 'quedó escrita pero RINDE ERROR' : 'quedó escrita'
+    console.log(`  ${bien ? '✓' : '✗'} ${c.celda} ${que} · valor: ${JSON.stringify(valor)}`)
   }
   if (!ok) process.exitCode = 1
 }

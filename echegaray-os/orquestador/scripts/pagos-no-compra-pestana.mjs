@@ -19,7 +19,9 @@ import * as E from '../lib/estilo-pestana.mjs'
 import { tomarSnapshot } from '../lib/sheet-snapshot.mjs'
 import {
   PESTANA_PAGOS_NC, COLUMNAS_PAGOS_NC, FILA0_PAGOS_NC, RUBROS_PAGOS_NC, planDeAltaNC, filaPagoNC, pagoDeFila, clavePagoNC,
+  enComprasTambien, aIso,
 } from '../lib/pagos-no-compra.mjs'
+import { leerColumnasRetiros } from '../lib/direccion-retiros.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const APLICAR = process.argv.includes('--aplicar')
@@ -71,6 +73,25 @@ async function main() {
   for (const y of plan.yaEstaban) console.log(`  = ya estaba ${y.clave}: ${y.pago.fecha} ${y.pago.persona} ${$(y.pago.importe)}`)
   for (const p of plan.altas) console.log(`  + ${p.fecha} · ${p.rubro} · ${p.persona} · ${$(p.importe)} · período ${p.periodo} · ref ${p.referencia}`)
   if (plan.rechazados.length) process.exitCode = 1
+
+  // EL CRUCE CONTRA COMPRAS: un pago que ya está allá no entra acá (se sumaría dos veces).
+  const CARGAR_IGUAL = process.argv.includes('--cargar-igual')
+  if (plan.altas.length) {
+    const cols = await leerColumnasRetiros(google, ID)
+    const leer = async (k) => (await google.readSheetValues(ID, `'Compras'!${cols[k].letra}4:${cols[k].letra}`, { render: 'UNFORMATTED_VALUE' })) ?? []
+    const [personas, importes, fechas] = await Promise.all([leer('persona'), leer('importe'), leer('fechaCaja')])
+    const compras = personas.map((f, i) => ({
+      fila: i + 4, persona: f?.[0], importe: Number(importes[i]?.[0]), fecha: aIso(fechas[i]?.[0]),
+    })).filter((c) => c.persona && Number.isFinite(c.importe))
+    const choques = enComprasTambien(plan.altas, compras)
+    for (const c of choques) console.log(`  ⚠ probable duplicado en Compras (fila ${c.filas.join(', ')}): ${c.pago.fecha} ${c.pago.persona} ${$(c.pago.importe)}`)
+    if (choques.length && !CARGAR_IGUAL) {
+      const fuera = new Set(choques.map((c) => c.pago))
+      plan.altas = plan.altas.filter((p) => !fuera.has(p))
+      console.log(`  ${choques.length} pago(s) no se cargan. Si ya los miraste y no son el mismo, repetilo con --cargar-igual.`)
+      process.exitCode = 1
+    }
+  }
   if (!plan.altas.length) { console.log('nada que agregar.'); return }
   if (!APLICAR) { console.log(`\n— en seco: ${plan.altas.length} fila(s) se agregarían. Repetilo con --aplicar.`); return }
 
