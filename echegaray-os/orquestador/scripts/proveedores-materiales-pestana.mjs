@@ -73,7 +73,7 @@ import { FAMILIAS, SIN_FAMILIA, formulaFamilia, familiaDeMaterial, RUBROS_CON_FA
 import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, filasHuerfanas, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
-import { fusionar, sobrantes, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { fusionar, sobrantes, VACIO, limpiarFilasEstructurales } from '../lib/preservar-anotaciones.mjs'
 import { conEdicionesRespetadas, guardarRegistro, detectarArranqueEnFrio, autoRespetarReescritura } from '../lib/respetar-ediciones.mjs'
 import { firmaGuardia, sellarFirma } from '../lib/firma-tab.mjs'
 import { ESTADO_DEUDA } from '../lib/cuentas-por-pagar.mjs'
@@ -443,7 +443,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
     push([n.proveedor, n.comprobante, n.fecha, arcaPorComprobante(`"${n.cuit ?? ''}"`, `$B${f}`, '-1'), n.que, n.anula, n.reemplaza, '', ''])
   }
   const nc1 = filas.length
-  push(['TOTAL ACREDITADO', '', '', `=SUM($D${nc0}:$D${nc1})`, '', '', '', '', ''])
+  const fTotAcred = push(['TOTAL ACREDITADO', '', '', `=SUM($D${nc0}:$D${nc1})`, '', '', '', '', ''])
   push([])
   let cabAnu = 0, anu0 = 0, anu1 = 0
   if (anuladasCargadas.length) {
@@ -470,7 +470,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
       r.cuit ? arcaPorComprobante(`$B${f}`, `$C${f}`, '1') : r.importe, '', '', '', ''])
   }
   const afip1 = filas.length
-  push(['TOTAL SIN CARGAR', '', '', '', `=SUM($E${afip0}:$E${afip1})`, '', '', '', ''])
+  const fTotSinCargar = push(['TOTAL SIN CARGAR', '', '', '', `=SUM($E${afip0}:$E${afip1})`, '', '', '', ''])
   push([])
 
   // ── 7 · CONTROL Y AUDITORÍA DE CARGA ────────────────────────────────────────────────────────────
@@ -570,7 +570,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
       r.enCobranzas ? '✓ está en Cobranzas' : '⚠ NO está en Cobranzas', '', '', ''])
   }
   const emi1 = filas.length
-  push(['TOTAL FACTURADO', '', '', '', `=SUM($E${emi0}:$E${emi1})`, '', '', '', ''])
+  const fTotFacturado = push(['TOTAL FACTURADO', '', '', '', `=SUM($E${emi0}:$E${emi1})`, '', '', '', ''])
   push([])
 
   // ── 3 · FAMILIA × MES ───────────────────────────────────────────────────────────────────────────
@@ -623,24 +623,30 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
     ? c.replaceAll('$TOTFAM', String(totFam)).replaceAll('$TOTPROV', String(fTotProv)).replaceAll('$TOTDEUDA', String(fTotProv))
     : c)))
 
-  // ═══ EL GENERADOR ES DUEÑO DE SU GRILLA ═══
-  // Sus vacíos se LIMPIAN (VACIO), para que un valor de la corrida anterior no sobreviva — eso ya
-  // ensució el bloque de deuda con nombres de proveedor repetidos y un total al doble. La única
-  // excepción son las columnas que la persona agregó al bloque de deuda y el generador no llena
-  // (Comentarios): ahí el vacío significa "no es mía" y la fusión las conserva.
-  // Se RELLENA cada fila hasta el ancho de la grilla, no sólo se recorre lo que tiene. Una fila
-  // separadora es `push([])` —longitud CERO—: recorriéndola no se marca nada, después se rellenaba
-  // con '' (preservar) y sobrevivía el texto viejo. Así reaparecía el título de la sección 2
-  // duplicado en dos filas seguidas cuando el bloque de deuda crecía.
-  const anchoGrilla = Math.max(...filas.map((f) => f.length), 1)
-  for (const f of filas) {
-    for (let j = 0; j < anchoGrilla; j++) {
-      if (f[j] !== '' && f[j] !== undefined && f[j] !== null) continue
-      f[j] = VACIO
-    }
-  }
+  // ═══ EL GENERADOR LIMPIA EL FOOTPRINT DE SUS FILAS ESTRUCTURALES ═══
+  //
+  // EL DEFECTO (27/07). Las filas de TOTAL ("TOTAL ACREDITADO/SIN CARGAR/FACTURADO") y las de
+  // encabezado/conteo de la sección de ARCA llevan '' en las columnas que no usan, y '' se PRESERVA en
+  // la fusión ("no es mi celda"). Cuando el layout de esas filas se acortó respecto de una versión más
+  // ancha, sobrevivieron fantasmas de la vieja en col D–I: seriales de fecha pintados como moneda
+  // ($46.162) y rótulos viejos ("Fecha correcta", "Tipo", "Factura A"). El dueño los tuvo que borrar a
+  // mano. El generador SABE que esas columnas van vacías: ahora lo dice con el centinela VACIO (se
+  // limpia), no con '' (se preservaba).
+  //
+  // QUIRÚRGICO: sólo estas filas conocidas, sólo sus celdas que YA son '' — nunca una fórmula, un
+  // número ni la nota de conciliación legítima en col I de "· cargados …" (no es '', queda intacta).
+  // Cualquier anotación del dueño FUERA de estas filas sigue siendo '' y la fusión la conserva; y el
+  // bloque de deuda limpia lo suyo aparte, con celdas()=VACIO y las notas del dueño re-ancladas.
+  //
+  // (El loop viejo que marcaba VACIO TODA celda vacía de la grilla era código muerto: mutaba `filas`,
+  //  no el `resuelto` que se retorna —verificado— así que nunca limpió nada. Y de haber estado vivo
+  //  habría barrido rangos amplios a ciegas, que es justo lo que NO se debe hacer: borraría una
+  //  anotación del dueño en cualquier bloque. Por eso ahora la limpieza recibe la lista de filas.)
+  const filasEstructurales = [fTotAcred, fTotSinCargar, fTotFacturado,
+    cabArca, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas]
+  const limpio = limpiarFilasEstructurales(resuelto, filasEstructurales)
 
-  return { filas: resuelto, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, pos0, pos1, posTotal, posProy, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaL: L, deudaHeaders, deudaGrupos, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
+  return { filas: limpio, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, pos0, pos1, posTotal, posProy, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaL: L, deudaHeaders, deudaGrupos, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
 }
 
 async function main() {

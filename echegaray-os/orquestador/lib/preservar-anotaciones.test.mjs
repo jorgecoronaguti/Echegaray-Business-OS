@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { fusionar, sobrantes, tiene, letraCol, escribirPreservando, limpiarCentinela, VACIO } from './preservar-anotaciones.mjs'
+import { fusionar, sobrantes, tiene, letraCol, escribirPreservando, limpiarCentinela, limpiarFilasEstructurales, VACIO } from './preservar-anotaciones.mjs'
 
 test('lo que anota el dueño NUNCA se borra, esté en la columna que esté', () => {
   const generado = [['Proveedor', 'Importe'], ['Alumetal', 100]]
@@ -128,4 +128,64 @@ test('limpiarCentinela deja la grilla lista para una escritura que no pasa por l
   assert.deepEqual(limpiarCentinela(g), [['Cuenta', '', 'ARS'], ['', 0, '']])
   // No toca el original: el generador puede seguir usándolo para fusionar.
   assert.equal(g[0][1], VACIO)
+})
+
+// ═══ FILAS ESTRUCTURALES: EL GENERADOR LIMPIA SU PROPIO FOOTPRINT (27/07) ═══
+// El defecto real: filas de TOTAL y de conteo de ARCA que se acortaron dejaron fantasmas ('' preservado)
+// en col D–I: seriales de fecha pintados como moneda, rótulos viejos. La cura es marcar VACIO esas
+// celdas conocidas-vacías — sin tocar nada del dueño ni las notas legítimas del generador.
+
+test('(a) una fila de TOTAL con basura previa en col D queda vacía tras generar', () => {
+  // TOTAL SIN CARGAR: la fórmula del total va en col E (índice 4); col D y F–I van vacías. En la
+  // pestaña quedaron fantasmas de una versión más ancha: un serial de fecha en col D y rótulos viejos
+  // ("Fecha correcta", "Tipo") en F–G — exactamente lo que el dueño tuvo que borrar a mano.
+  const generado = [['TOTAL SIN CARGAR', '', '', '', '=SUM(E2:E9)', '', '', '', '']]
+  const existente = [['TOTAL SIN CARGAR', '', '', 46164, '=SUM(E2:E9)', 'Fecha correcta', 'Tipo', '', '']]
+  const limpiado = limpiarFilasEstructurales(generado, [1]) // la fila 1 es estructural
+  assert.equal(limpiado[0][3], VACIO, 'la col D conocida-vacía se marca VACIO, no "" (que se preservaría)')
+  const out = fusionar(limpiado, existente)
+  assert.equal(out[0][3], '', 'el serial de fecha fantasma en col D se limpió')
+  assert.equal(out[0][5], '', 'el rótulo viejo "Fecha correcta" en col F se limpió')
+  assert.equal(out[0][6], '', 'el rótulo viejo "Tipo" en col G se limpió')
+  // El generador conserva lo suyo con contenido: el rótulo y la fórmula del total no se tocan.
+  assert.equal(out[0][0], 'TOTAL SIN CARGAR')
+  assert.equal(out[0][4], '=SUM(E2:E9)', 'la fórmula del total queda intacta')
+})
+
+test('(b) una nota/edición del dueño FUERA de las filas estructurales NO se borra', () => {
+  const generado = [
+    ['TOTAL SIN CARGAR', '', '', '', '=SUM(E2:E9)', ''], // fila 1: estructural
+    ['Acerolatina', 30, 5000, '', '', ''],               // fila 2: NO estructural
+  ]
+  // El dueño anotó en col D (misma columna donde caían los fantasmas) de una fila NO estructural.
+  const existente = [
+    ['TOTAL SIN CARGAR', '', '', 46164, '=SUM(E2:E9)', ''],
+    ['Acerolatina', 30, 5000, 'ojo: falta la NC del 12/06', '', ''],
+  ]
+  const out = fusionar(limpiarFilasEstructurales(generado, [1]), existente)
+  assert.equal(out[0][3], '', 'el fantasma en la fila estructural sí se limpió')
+  assert.equal(out[1][3], 'ojo: falta la NC del 12/06', 'la nota del dueño en la fila vecina sobrevive')
+})
+
+test('(c) la nota de conciliación legítima del generador en col I se conserva', () => {
+  // La fila "· cargados en Compras…" lleva su nota (no es '') en col I (índice 8): NO debe limpiarse.
+  const nota = 'Conciliación del OS al 2026-07-27 — no es una fórmula.'
+  const generado = [['  · cargados en Compras, por N° de comprobante', 5, 100, '', '', '', '', '', nota]]
+  const existente = [['  · cargados en Compras, por N° de comprobante', 4, 90, '', '', '', '', '', 'nota vieja']]
+  const limpiado = limpiarFilasEstructurales(generado, [1])
+  assert.equal(limpiado[0][8], nota, 'la nota (contenido, no "") queda intacta: sólo "" → VACIO')
+  const out = fusionar(limpiado, existente)
+  assert.equal(out[0][8], nota, 'tras fusionar, la nota legítima del generador se conserva')
+  assert.equal(out[0][3], '', 'y las columnas D–H conocidas-vacías sí se limpian')
+})
+
+test('limpiarFilasEstructurales es quirúrgico: no toca filas que no se le pasan ni celdas con contenido', () => {
+  const grid = [['a', '', 'x'], ['b', '', 'y']]
+  const out = limpiarFilasEstructurales(grid, [1]) // sólo la fila 1
+  assert.equal(out[0][1], VACIO, 'la "" de la fila indicada pasa a VACIO')
+  assert.equal(out[0][0], 'a', 'el contenido de la fila indicada no se toca')
+  assert.equal(out[0][2], 'x', 'el contenido de la fila indicada no se toca')
+  assert.equal(out[1][1], '', 'la fila NO indicada queda intacta ("" sigue "")')
+  // Sin filas objetivo, devuelve la grilla tal cual (misma referencia).
+  assert.equal(limpiarFilasEstructurales(grid, []), grid)
 })
