@@ -71,3 +71,23 @@ test('columnas por encabezado: con «Obra» insertada en la L (17/09) el importe
   assert.throws(() => columnasDe(cab.filter((c) => c !== 'Monto Pagado')), /Monto Pagado/)
   assert.throws(() => columnasDe([...cab, 'Estado']), /Estado/)
 })
+
+test('CON EL ENCABEZADO NUEVO LAS CELDAS CAEN EN N/P/U/Y, nunca en «Tipo de Costo» ni «Estado pago»', async () => {
+  // EL DEFECTO QUE ESTE CONTROL FIJA (19/09/2026, pedido de la revisión independiente): con las letras
+  // fijas del layout viejo, «Estado» caía en el índice 25 —«Tipo de Costo»— y el importe en «Estado pago».
+  // El test de arriba prueba el MAPEO; éste prueba lo que de verdad se escribe con ese mapeo.
+  const { columnasDe } = await import('./compras-marcar-eliminado.mjs')
+  const cab = ['ID', 'Categoría', 'Fecha factura', 'Fecha factura (mes)', 'Proveedor', 'Modalidad', 'Tipo', 'N° Comprobante',
+    'Unidad de Negocio', 'Cliente / Asignación', 'Detalles / Obra', 'Obra', 'Concepto', 'Importe', 'IVA', 'Total', 'Tipo pago',
+    'Fecha prevista de pago (día)', 'Fecha prevista de pago (mes)', 'Total o Parcial', 'Monto Pagado', 'Monto Parcial 1',
+    'Fecha prevista de pago 2', 'Monto Parcial 2', 'Estado', 'Tipo de Costo', 'Estado pago', 'Estado Carga']
+  const cols = columnasDe(cab)
+  const indices = (req) => req.map((r) => r.updateCells.range.startColumnIndex)
+  // N = Importe (13) · P = Total (15) · Y = Estado (24). «Tipo de Costo» (25) y «Estado pago» (26) quedan afuera.
+  assert.deepEqual(indices(requestsDe({ fila: 4, oEsFormula: false }, 7, cols)), [24, 15])
+  assert.deepEqual(indices(requestsDe({ fila: 5, oEsFormula: true, nTieneNumero: true }, 7, cols)), [24, 13, 14])
+  for (const r of [...requestsDe({ fila: 4, oEsFormula: false }, 7, cols), ...requestsDe({ fila: 5, oEsFormula: true, nTieneNumero: true }, 7, cols)]) {
+    const c = r.updateCells.range.startColumnIndex
+    assert.ok(c !== 25 && c !== 26, `escribió en ${cab[c]}: es una columna que el dueño maneja, no del script`)
+  }
+})
