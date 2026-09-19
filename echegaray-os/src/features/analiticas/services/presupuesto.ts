@@ -37,7 +37,7 @@ export const DEFINICION_RUBRO: Record<Rubro, string> = {
   manoObra: 'Jornales del personal propio con sus cargas sociales. En la cotización, las horas de oficial y ayudante y sus cargas; en el gasto, las quincenas liquidadas (recibo + parte en negro).',
   materiales: 'Lo que se compra y queda en la obra o se consume haciéndola: áridos, hierro, hormigón, chapa, madera, sanitarios, ferretería, EPP.',
   subcontratos: 'Trabajo contratado a terceros: proveedores marcados «Subcontratista» en Compras; en la cotización, insumos cotizados por unidad de obra en vez de por hora.',
-  otros: 'Alquiler y uso de equipos (propios o alquilados), combustible, fletes y traslados, servicios de obra (baño, contenedor, agua, bomba), honorarios y servicios.',
+  otros: 'Uso de equipos (propios o alquilados), combustible, fletes y traslados, servicios de obra (baño, contenedor, agua, bomba), honorarios y servicios.',
 }
 
 export const rotuloDe = (r: Rubro): string => RUBROS.find((x) => x.clave === r)?.rotulo ?? r
