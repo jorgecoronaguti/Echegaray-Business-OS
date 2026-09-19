@@ -20,6 +20,15 @@
 // que hace esta misma comprobación adentro de la base (migración 20260915T0700). Duplicarla acá sería una
 // segunda definición de la misma regla.
 //
+// ═══ LÍMITE CONOCIDO: EL RLS SÓLO ESTÁ MEDIDO EN UNA TABLA (revisión independiente, 19/09/2026) ═══
+//
+// La prueba con sesiones reales —roles `campo` y `jefe de obra`— corre sobre `pedidos_materiales.estado`.
+// El resto de las superficies que esta primitiva protege (partida, rol de documento, Liquidación) están
+// cubiertas por INFERENCIA: la policy es la misma forma, pero nadie la ejercitó con un jefe operando
+// fuera de su obra. Y el caso «ve la fila y no puede escribirla» no se dio con ningún rol de prueba en
+// esa tabla, así que tampoco está medido. Queda declarado acá, no en la cabeza de nadie: el día que se
+// mida, esta nota se reemplaza por el test.
+//
 // ═══ CERO FILAS NO SIEMPRE ES «LA CAMBIÓ OTRA PERSONA» (auditoría, 18/09/2026) ═══
 //
 // Una fila que la RLS no deja escribir también devuelve cero filas. Decir ahí «la celda la cambió otra persona»
