@@ -113,8 +113,13 @@ export function hayEdicionEnCurso(p: {
   msDesdeUltimaTecla?: number
 }): boolean {
   if (p.celdaMarcada) return true
-  // EL MISMO CRITERIO QUE CMD/CTRL+Z: lo que el deshacer considera «el navegador está editando texto» es
-  // exactamente lo que no se puede mover debajo del cursor.
+  // EL SELECT ES LA EXCEPCIÓN, Y POR ESO SE NOMBRA (19/09/2026). Para el DESHACER un `<select>` no es
+  // edición de texto —el foco se queda en él después de elegir y Cmd+Z no tenía nada que deshacer—,
+  // pero para el REFRESCO sí es alguien trabajando: mover la tabla debajo de un desplegable abierto le
+  // cambia la fila que estaba por elegir. Las dos respuestas son distintas porque las preguntas lo son.
+  if (String(p.activo?.tagName ?? '').toUpperCase() === 'SELECT') return true
+  // Para todo lo demás vale el mismo criterio que Cmd/Ctrl+Z: lo que el navegador considera edición de
+  // texto es exactamente lo que no se puede mover debajo del cursor.
   if (!destinoEditable(p.activo)) return false
   return p.msDesdeUltimaTecla == null || p.msDesdeUltimaTecla < EDICION_INACTIVA_MS
 }

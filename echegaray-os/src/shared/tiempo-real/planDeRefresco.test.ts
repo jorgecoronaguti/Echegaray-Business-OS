@@ -63,6 +63,12 @@ test('REGLA DEL DUEÑO: con alguien editando no se refresca aunque ya sea la hor
   assert.deepEqual(decidir(e, 60_001, LIBRE), { tipo: 'refrescar' })
 })
 
+test('el select frena el refresco aunque el deshacer no lo trate como edición de texto (19/09/2026)', () => {
+  // MUTACIÓN: si `hayEdicionEnCurso` delegara sólo en `destinoEditable`, esto daría false y la tabla se
+  // movería debajo de un desplegable abierto.
+  assert.equal(hayEdicionEnCurso({ activo: { tagName: 'SELECT' }, celdaMarcada: false }), true)
+})
+
 test('edición en curso: campo con foco o celda marcada; un botón o el body no cuentan', () => {
   for (const tagName of ['INPUT', 'textarea', 'SELECT']) {
     assert.equal(hayEdicionEnCurso({ activo: { tagName }, celdaMarcada: false }), true, tagName)
