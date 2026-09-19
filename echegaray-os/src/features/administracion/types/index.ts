@@ -212,7 +212,7 @@ export interface Proveedor {
   activo: boolean
   /**
    * EL RUBRO DECLARADO POR UNA PERSONA. Le gana a `rubro_deducido` para siempre — no por una regla
-   * de la pantalla sino porque el deductor no escribe esta columna (ver `20260906T1800`).
+   * de la pantalla sino porque el deductor no escribe esta columna (ver `20260906T1830`).
    */
   rubro: string | null
   /** Lo CALCULADO de las compras. Nunca se dibuja como si fuera decidido. */

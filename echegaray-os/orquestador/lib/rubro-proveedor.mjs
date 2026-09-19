@@ -20,7 +20,7 @@
 // De 36 proveedores, muchos tienen una sola compra, o todas sin clasificar. Ésos quedan sin rubro y
 // la función devuelve POR QUÉ. Llenar la columna para que se vea llena es fabricar un dato.
 
-/** El vocabulario. Lo impone además un CHECK en la base (`20260906T1800`). */
+/** El vocabulario. Lo impone además un CHECK en la base (`20260906T1830`). */
 export const RUBROS = [
   'Materiales', 'Subcontratista', 'Fletes', 'Combustible', 'Equipos',
   'Servicios de obra', 'Seguridad e higiene',

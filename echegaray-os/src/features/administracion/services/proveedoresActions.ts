@@ -114,7 +114,7 @@ export async function editarProveedor(proveedorId: string, form: FormData): Prom
       nombre: d.nombre, razon_social: texto(d.razon_social), cuit, notas: texto(d.notas),
       // `rubro_deducido` NO se toca desde acá, ni para limpiarlo: la deducción sigue debajo, viva,
       // y vuelve a mandar sola en cuanto alguien borra la declaración. Además la web no tiene
-      // permiso de escribirla (`20260906T1800`), así que esto no es sólo una convención.
+      // permiso de escribirla (`20260906T1830`), así que esto no es sólo una convención.
       rubro,
       rubro_declarado_por: rubro ? quien : null,
       rubro_declarado_en: rubro ? new Date().toISOString() : null,

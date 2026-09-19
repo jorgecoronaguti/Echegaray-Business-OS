@@ -14,7 +14,7 @@ const compras = (mezcla) => Object.entries(mezcla)
   .flatMap(([familia, n]) => Array.from({ length: n }, () => ({ familia: familia || null })))
 
 test('el mapa no puede inventar un rubro que la base rechaza', () => {
-  // El CHECK de `20260906T1800` sólo acepta los siete. Un valor de más acá pasaría el deductor y
+  // El CHECK de `20260906T1830` sólo acepta los siete. Un valor de más acá pasaría el deductor y
   // moriría en el `update` con un error de constraint, que es el peor lugar para enterarse.
   for (const r of Object.values(FAMILIA_A_RUBRO)) {
     assert.ok(RUBROS.includes(r), `«${r}» no está en el vocabulario que acepta la base`)

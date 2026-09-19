@@ -302,7 +302,7 @@ test('TIPO no inventa un rubro: sale de la deducción o de una persona, nunca de
   // Que alguien llene la columna deduciendo el rubro del NOMBRE —«Corralón» ⇒ Materiales,
   // «Transporte» ⇒ Fletes—. Esa inferencia acierta lo suficiente como para que nadie revise las
   // veces que falla, y se apoya justo en el texto que este mismo módulo declara que NO identifica a
-  // un proveedor. Desde el 06/09/2026 el rubro SÍ tiene fuente (`20260906T1800`), pero la fuente
+  // un proveedor. Desde el 06/09/2026 el rubro SÍ tiene fuente (`20260906T1830`), pero la fuente
   // son sus COMPRAS: la tabla no puede volver a mirar el nombre.
   const tabla = codigo('TablaProveedores.tsx')
   assert.match(tabla, /const rubro = rubroDe\(p\)/,

@@ -19,7 +19,7 @@
 // ═══ EL RUBRO YA TIENE FUENTE, Y SE DIBUJA DISTINTO SEGÚN DE DÓNDE VENGA (06/09/2026) ═══
 //
 // Hasta ayer esta columna decía «sin rubro» en las 36 filas porque `proveedores` no tenía la
-// columna. El dueño decidió cargarla deduciéndola de lo que cada uno vendió (`20260906T1800` y
+// columna. El dueño decidió cargarla deduciéndola de lo que cada uno vendió (`20260906T1830` y
 // `orquestador/lib/rubro-proveedor.mjs`), y ahora la celda tiene TRES estados que NO se pueden
 // dibujar iguales:
 //
