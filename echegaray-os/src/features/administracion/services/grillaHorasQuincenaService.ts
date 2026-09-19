@@ -41,7 +41,7 @@ import type { PersonaDeGrilla } from './grillaHorasQuincena.ts'
 import { desdeDeHHPorMes, hhPorMes } from './panelDePersona.ts'
 import type { CorreccionDeDia, MesDeHH, RegistroDelPanel } from './panelDePersona.ts'
 import type { PresenciaDeQuincena, RegistroDeQuincena } from './liquidacionQuincena.ts'
-import { modalidadDe, type ModalidadDeLiquidacion } from './liquidacionQuincena.ts'
+import { modalidadDeLaPersona } from './cobroMensual.ts'
 import { correrQuincena, type Quincena } from './quincena.ts'
 import { leerRegistrosHH } from './registrosHHService.ts'
 import { leerCuilesDelLegajo, leerPresenciasDeLaQuincena } from './lecturasCompartidasDeQuincena.ts'
@@ -255,10 +255,10 @@ export async function getDatosDeLaSolapaHoras(
       valorHora: tarifaDe.get(p.id)?.valorHora ?? null,
       netoMensual: tarifaDe.get(p.id)?.netoMensual ?? null,
       convenio: legajoDe.get(p.id)?.convenio_colectivo ?? null,
-      // LA MISMA REGLA QUE `armarCuadros`: quien tiene neto mensual vigente es Oficina, el resto se
-      // liquida por hora. El campo `modalidad_liquidacion` del legajo está vacío en las diecisiete
-      // personas de la base y publicaba «Modalidad mensual sin cargar» sobre gente que cobra por mes.
-      modalidad: modalidadDeLaTarifa(tarifaDe.get(p.id) ?? null),
+      // LA MISMA REGLA QUE `armarCuadros` (`cobraPorMes`): el jefe de obra y quien tiene neto mensual
+      // vigente cobran por mes; el resto, por hora. Por la tarifa sola, los jefes de agosto —sin neto
+      // cargado— salían «por hora, sin tarifa» y con sus horas contadas como liquidables.
+      modalidad: modalidadDeLaPersona({ esJefe: esJefeDeObra(p.puesto), netoMensual: tarifaDe.get(p.id)?.netoMensual ?? null }),
       // ALTA Y CATEGORÍA YA VENÍAN EN ESTA LECTURA (el panel las usa): el cuadro de la quincena las
       // pide como columnas (dueño, 14/09/2026: «Legajo: alta y categoría») sin una consulta más.
       fechaIngreso: p.fecha_ingreso,
@@ -308,17 +308,6 @@ function vigentes(filas: readonly FilaTarifa[]): Map<string, TarifaDeGrilla> {
     }
   }
   return new Map([...m].map(([id, v]) => [id, { valorHora: v.valorHora, netoMensual: v.netoMensual }]))
-}
-
-/**
- * EL CORTE OBRERO/OFICINA, POR LA FUNCIÓN DE LA LIQUIDACIÓN.
- *
- * `armarCuadros` manda a Oficina a quien tiene neto mensual vigente; `modalidadDe` traduce el
- * cuadro a la modalidad. Escribir acá `netoMensual != null ? 'mensual' : 'hora'` sería la misma
- * cuenta con otra cara y se despegaría de la liquidación en el primer cambio de criterio.
- */
-function modalidadDeLaTarifa(t: TarifaDeGrilla | null): ModalidadDeLiquidacion {
-  return modalidadDe(t?.netoMensual != null ? 'oficina' : 'obreros')
 }
 
 function agruparCorrecciones(

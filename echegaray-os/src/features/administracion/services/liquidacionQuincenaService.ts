@@ -31,7 +31,9 @@ import {
   filasDeHoras, horasDeLaQuincena, type HorasDeLaQuincena,
 } from './horasDeLaQuincena.ts'
 import { leerRegistrosHH } from './registrosHHService.ts'
-import { laSesionEsDePrueba, leerCuilesDelLegajo, leerPresenciasDeLaQuincena } from './lecturasCompartidasDeQuincena.ts'
+import {
+  laSesionEsDePrueba, leerCuilesDelLegajo, leerPresenciasDeLaQuincena, leerSubcontratoDePersonas, subcontratoPorPersona,
+} from './lecturasCompartidasDeQuincena.ts'
 import { plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
 import { esJefeDeObra } from './vocabularioPersona.ts'
 import {
@@ -41,6 +43,7 @@ import {
 import { getEspejoDeLaPlanilla, type EspejoDeLaPlanilla } from './espejoDeJornalesService.ts'
 import { getExposicionDeLaQuincena, type ExposicionDeLaQuincena } from './exposicionConvenioService.ts'
 import { periodoDeRecibo } from './liquidacionCuadros.ts'
+import { estadoDelCuadro } from './estadoDelCuadro.ts'
 import { entradaDeBlanco } from './sueldoBlancoNegro.ts'
 import { baseDelEstimado, leerFeriadosDeLaQuincena } from './reciboEstimadoService.ts'
 import { REGLAS_GENERADAS } from './reglasDelRecibo.generadas.ts'
@@ -131,7 +134,7 @@ export async function getLiquidacionDeLaQuincena(
   supabase: SupabaseClient, q: Quincena,
 ): Promise<LiquidacionDeLaQuincena> {
   const [directorio, legajo, tarifas, registros, presencias, recibos, adelantos, guardadas, espejo, sesionDePrueba,
-    exposicion, feriados] =
+    exposicion, feriados, subcontratos] =
     await Promise.all([
       // `puesto` VIAJA CON EL PLANTEL para que las pantallas de Liquidación ordenen y rotulen como
       // el resto de Personal (dueño, 10/09/2026). Es la misma columna y la misma función
@@ -189,6 +192,8 @@ export async function getLiquidacionDeLaQuincena(
       // ═══ EL RECIBO ESTIMADO CONCEPTO POR CONCEPTO (dueño, 14/09/2026) ═══ Los feriados de la quincena; las reglas
       // son las congeladas (`reglasDelRecibo.generadas.ts`) y los recibos, los que ya trae la exposición.
       leerFeriadosDeLaQuincena(supabase, q.desde, q.hasta),
+      // LA CUADRILLA DE UN SUBCONTRATISTA NO ES PLANTEL PROPIO (dueño, 15/09/2026). Lectura aparte: ver la puerta.
+      leerSubcontratoDePersonas(supabase),
     ])
 
   const errores: { que: string; error: string }[] = []
@@ -196,6 +201,7 @@ export async function getLiquidacionDeLaQuincena(
     if (e && !sinTabla(e)) errores.push({ que, error: e.message })
   }
   anotar('el plantel', directorio.error)
+  anotar('las cuadrillas de subcontrato', subcontratos.error)
   anotar('los CUIL del legajo', legajo.error)
   anotar('las tarifas', tarifas.error)
   // `leerRegistrosHH` devuelve el error ya en texto: no trae `code` porque un tope alcanzado no es
@@ -213,6 +219,7 @@ export async function getLiquidacionDeLaQuincena(
   const cuilPorPersona = new Map(
     ((legajo.data ?? []) as { id: string; cuil: string | null }[]).map((r) => [r.id, r.cuil]),
   )
+  const deSubcontrato = subcontratoPorPersona(subcontratos)
   const personas: PersonaDeLiquidacion[] =
     ((directorio.data ?? []) as
       { id: string; nombre_completo: string; en_la_empresa: boolean; puesto: string | null; fecha_ingreso: string | null; fecha_egreso: string | null }[])
@@ -224,6 +231,7 @@ export async function getLiquidacionDeLaQuincena(
         fechaIngreso: r.fecha_ingreso ? String(r.fecha_ingreso).slice(0, 10) : null,
         fechaEgreso: r.fecha_egreso ? String(r.fecha_egreso).slice(0, 10) : null,
         esJefe: esJefeDeObra(r.puesto),
+        subcontratoId: deSubcontrato.get(r.id) ?? null,
       }))
 
   const { estados, redondeos, overrides, importesCargados } = leerGuardadas(guardadas.data)
@@ -308,7 +316,8 @@ export async function getLiquidacionDeLaQuincena(
     // pagó, que es exactamente lo que cerrar existe para impedir.
     cuadros: cuadros.map((c) => ({
       ...c,
-      lineas: estados[c.grupo]?.estado === 'cerrada'
+      // UN CUADRO SIN CABECERA DE UNA QUINCENA CERRADA TAMPOCO SE PISA: hereda el cierre (`estadoDelCuadro`).
+      lineas: estadoDelCuadro(estados, c.grupo).estado === 'cerrada'
         ? c.lineas.map(sinOverrides)
         // LA PRECEDENCIA VIVE EN `aplicarOverrides` Y NO ACÁ: manual > JORNALES > calculado, una sola
         // vez y con sus diez tests. Acá sólo se le entrega la fuente.

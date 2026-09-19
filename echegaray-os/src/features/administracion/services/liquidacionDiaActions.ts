@@ -26,7 +26,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { permisoDeLiquidacion } from './liquidacionPermiso'
 import { FUENTE_CORRECCION_HORAS } from './presenciaDelDia'
-import { quincenaDe } from './quincena'
+import { quincenaCerrada } from './quincenaCerradaService'
 import { vaciarHorasDelDia } from './vaciadoDeHorasService'
 
 const RUTA = '/administracion/personas'
@@ -55,17 +55,6 @@ interface RegistroTocado {
   obra_canonica_id: string | null
 }
 
-/** ¿Está sellada la quincena de esa fecha? Falla CERRADO: sin lectura no se corrige nada. */
-async function quincenaCerrada(
-  supabase: Awaited<ReturnType<typeof createClient>>, fecha: string,
-): Promise<{ cerrada: boolean } | { error: string }> {
-  const q = quincenaDe(fecha)
-  const { data, error } = await supabase.from('liquidacion_quincena')
-    .select('estado').eq('desde', q.desde).eq('hasta', q.hasta)
-  if (error) return { error: `No pude verificar si la quincena está cerrada: ${error.message}` }
-  return { cerrada: (data ?? []).some((f) => (f as { estado: string }).estado === 'cerrada') }
-}
-
 /**
  * CORREGIR LAS HORAS DE UN DÍA. El id llega atado con `.bind(null, id)`: nunca viaja en el
  * formulario, donde cualquiera lo cambiaría por el de otra persona.
@@ -86,11 +75,8 @@ export async function corregirHorasDelDia(registroId: string, valor: string): Pr
   const fila = actual.data as RegistroTocado
   if (!fila.fecha) return { ok: false, error: 'Ese día no tiene fecha cargada: no sé a qué quincena pertenece.' }
 
-  const sello = await quincenaCerrada(supabase, fila.fecha)
-  if ('error' in sello) return { ok: false, error: sello.error }
-  if (sello.cerrada) {
-    return { ok: false, error: 'La quincena está cerrada: las horas quedaron selladas. Reabrila para corregir.' }
-  }
+  const cierre = await quincenaCerrada(supabase, fila.fecha)
+  if (cierre !== null) return { ok: false, error: cierre }
 
   const antes = fila.horas == null ? null : Number(fila.horas)
   const despues = datos.data.horas === '' ? null : datos.data.horas

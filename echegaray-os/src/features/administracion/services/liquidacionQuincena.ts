@@ -318,7 +318,7 @@ export function liquidarLinea(
     // «SIN TARIFA» ES POR MODALIDAD. Antes era `tarifa == null`, y eso dejaba pasar como cargada
     // una tarifa de la modalidad equivocada; ahora falta la que ESTA línea cobra. La gente de
     // Oficina tiene valor hora NULL por definición y NO está sin tarifa: tiene un neto mensual.
-    sinTarifa: faltaLaTarifa(modalidad, valorHora, netoMensual),
+    sinTarifa: faltaLaTarifa(modalidad, valorHora, netoMensual, e.esJefe === true),
     // LAS FINALES REPARTEN CONTRA LA MITAD BLANCA DEL RECIBO, que es de donde salió COBRA
     // (`mitadBlanca × 2`). Partir ese COBRA al medio otra vez daría el mismo número por un camino
     // que no es el de la fuente, y dejaría de coincidir el día que el recibo no sea la mitad justa.
@@ -339,10 +339,11 @@ export function liquidarLinea(
  * les va a cargar nunca. El cierre ya lo había corregido; la grilla tenía su propia copia.
  */
 export function faltaLaTarifa(
-  modalidad: ModalidadDeLiquidacion, valorHora: number | null, netoMensual: number | null,
+  modalidad: ModalidadDeLiquidacion, valorHora: number | null, netoMensual: number | null, esJefe = false,
 ): boolean {
   if (modalidad === 'hora') return valorHora == null
-  if (modalidad === 'mensual') return netoMensual == null
+  // EL JEFE COBRA POR MES Y NO SE LE PREGUNTA (dueño, 15/09/2026): sin neto es dato faltante (`cobroMensual.ts`).
+  if (modalidad === 'mensual') return netoMensual == null && !esJefe
   return false
 }
 

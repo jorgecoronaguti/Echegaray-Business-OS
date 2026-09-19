@@ -157,7 +157,7 @@ function estadoDeFila(f: Omit<FilaDeGrilla, 'estado'>, p: PersonaDeGrilla): Esta
   if (f.diasSinMotivo > 0) return 'motivo'
   // LA TARIFA QUE FALTA ES LA DE SU MODALIDAD, y quién lo decide es `faltaLaTarifa` — la misma
   // función que el cierre. Sin modalidad conocida se exige el valor hora, que es el caso de siempre.
-  if (faltaLaTarifa(p.modalidad ?? 'hora', p.valorHora, p.netoMensual ?? null)) return 'tarifa'
+  if (faltaLaTarifa(p.modalidad ?? 'hora', p.valorHora, p.netoMensual ?? null, p.esJefe === true)) return 'tarifa'
   if (f.diasSinCargar > 0) return 'sin-cargar'
   if (f.horasDeLicencia > 0) return 'licencia'
   return 'al-dia'

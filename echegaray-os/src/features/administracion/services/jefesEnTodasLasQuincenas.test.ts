@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { quincenaDe } from './quincena.ts'
 import { armarCuadros, type DatosDeCuadros, type PersonaDeLiquidacion } from './liquidacionCuadros.ts'
+import { rotuloDelMensual, ROTULO_IMPORTE_NO_CARGADO } from './cobroMensual.ts'
 import { getQuincenaPorObra } from './jornadaPorObraService.ts'
 import { armarQuincenaPorObra } from './quincenaPorObra.ts'
 
@@ -36,7 +37,7 @@ const datos = (extra: Partial<DatosDeCuadros> = {}): DatosDeCuadros => ({
 
 const cuadro = (cs: ReturnType<typeof armarCuadros>, grupo: string) => cs.find((c) => c.grupo === grupo)!
 
-test('LIQUIDACIÓN: un jefe SIN tarifa va a Oficina, no a Obreros, y dice que le falta el dato', () => {
+test('LIQUIDACIÓN: un jefe SIN tarifa va a Oficina, no a Obreros, y dice «mensual · importe no cargado»', () => {
   const cs = armarCuadros(datos())
   assert.deepEqual(cuadro(cs, 'obreros').lineas.map((l) => l.personaId), [], 'el jefe cayó a obreros por no tener tarifa')
   const [l] = cuadro(cs, 'oficina').lineas
@@ -44,7 +45,10 @@ test('LIQUIDACIÓN: un jefe SIN tarifa va a Oficina, no a Obreros, y dice que le
   assert.equal(l.esJefe, true)
   assert.equal(l.horas, 44, 'sus horas se ven aunque no cuenten en la obra')
   assert.equal(l.cobra, null, 'sin neto mensual ni importe cargado no se inventa un sueldo')
-  assert.equal(l.sinTarifa, true)
+  // «LOS JEFES DE OBRA COBRAN POR MES, NO PREGUNTES MÁS» (dueño, 15/09/2026): dato faltante, no «sin tarifa».
+  assert.equal(l.modalidad, 'mensual')
+  assert.equal(l.sinTarifa, false)
+  assert.equal(rotuloDelMensual(l), ROTULO_IMPORTE_NO_CARGADO)
 })
 
 test('LIQUIDACIÓN: un jefe con tarifa POR HORA sigue siendo jefe', () => {
@@ -59,7 +63,8 @@ test('LIQUIDACIÓN: sin neto mensual, COBRA es el importe que cargó la planilla
   const [l] = cuadro(armarCuadros(datos({ importesCargados: new Map([[MALDONADO, 398200]]) })), 'oficina').lineas
   assert.equal(l.cobra, 398200)
   assert.equal(l.origenTarifa, 'importe cargado de la planilla')
-  assert.equal(l.sinTarifa, true, 'la tarifa mensual histórica sigue faltando y se dice')
+  assert.equal(l.sinTarifa, false, 'el jefe cobra por mes: no se le pide tarifa (dueño, 15/09/2026)')
+  assert.equal(rotuloDelMensual(l), 'mensual · importe cargado de la planilla')
 })
 
 test('LIQUIDACIÓN: el neto mensual vigente le gana al importe cargado', () => {

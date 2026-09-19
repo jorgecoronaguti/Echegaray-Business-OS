@@ -93,7 +93,15 @@ const PERSONAS_ABIERTAS = [
   // de campo, pasó a leer las 74 filas. Un permiso mínimo y declarado le gana a una vista que se
   // saltea la cerradura entera.
   'es_prueba',
+  // `subcontrato_id` (20260915T0910, dueño 15/09/2026): de qué subcontrato es la cuadrilla que pasó por nuestra nómina.
+  // La necesita `persona_directorio` (security_invoker) para sacarla del plantel propio. No publica nada de la persona:
+  // es el id de un contrato con un proveedor, no su sueldo, documento ni carpeta.
+  'subcontrato_id',
 ]
+
+// UNA COLUMNA DE LA LISTA QUE TODAVÍA NO EXISTE NO SE DA POR «CERRADA»: la migración que la crea puede estar en el repo y
+// sin aplicar. Sólo las nombradas acá, con su migración; cualquier otra ausente sigue siendo rojo.
+const PENDIENTES_DE_MIGRACION = { subcontrato_id: '20260915T0910_cuadrilla_de_subcontrato_no_es_plantel_propio.sql' }
 
 const SIN_BASE = !process.env.DATABASE_URL
 
@@ -145,7 +153,9 @@ test('`personas` sólo abre las columnas operativas: la lista es BLANCA', { skip
   assert.deepEqual(demas, [],
     `estas columnas del legajo quedaron legibles para todo el sistema: ${demas.join(', ')}. ` +
     'El legajo se lee por `persona_legajo`, que exige es_administracion().')
+  const existen = new Set(await todas('personas'))
   for (const c of PERSONAS_ABIERTAS) {
+    if (PENDIENTES_DE_MIGRACION[c] && !existen.has(c)) continue
     assert.ok(abiertas.includes(c),
       `se cerró \`${c}\`, que las pantallas de Obras y \`persona_directorio\` necesitan`)
   }

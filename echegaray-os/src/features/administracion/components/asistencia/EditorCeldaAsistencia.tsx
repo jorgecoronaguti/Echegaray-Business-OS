@@ -24,13 +24,18 @@
 //
 // ═══ LO QUE ESTE EDITOR NO HACE ═══
 //
-// No mueve el día de obra, no asigna a la persona a la obra destino y no asienta un tramo de varios
-// días: eso sigue siendo del panel, que muestra el desglose antes de tocar nada. Un día repartido
-// entre dos obras no llega hasta acá (ver `GrillaAsistenciaObra`): elegir a cuál de las dos se le
-// imputa no es una edición en línea.
+// No asigna a la persona a la obra destino y no asienta un tramo de varios días: eso sigue siendo del
+// panel, que muestra el desglose antes de tocar nada. Un día repartido entre dos obras no llega hasta
+// acá (ver `GrillaAsistenciaObra`): elegir a cuál de las dos se le imputa no es una edición en línea.
+//
+// ═══ LA OBRA DEL DÍA SE ELIGE ACÁ (dueño, 15/09/2026) ═══
+//
+// *«no existe la posibilidad de marcarle hs en una obra determinada de días anteriores»*. El editor
+// imputaba siempre a la obra de hoy de la fila, y sin obra de hoy pedía «elegí la obra» sin ofrecer
+// ninguna. La lista es la del DÍA (`obraDeLaCelda`): las activas y las cerradas que estaban en marcha.
 
 import { useState } from 'react'
-import { InlineEdit, type ResultadoInline } from '@/shared/components/ds'
+import { InlineEdit, type OpcionInline, type ResultadoInline } from '@/shared/components/ds'
 import { hs } from '../../services/jornadaPorObra'
 import {
   estadoElegidoDeCelda, opcionesDeEstadoDeCelda, planDeCelda, TRABAJO,
@@ -38,14 +43,17 @@ import {
 } from '../../services/edicionDeCelda'
 
 export function EditorCeldaAsistencia({
-  celda, persona, fecha, hoy, obraOrigen, obraDestino, rotuloDia, guardar, cerrar, abrirPanel,
+  celda, persona, fecha, hoy, obraOrigen, obraDestino, obras, rotuloDia, guardar, cerrar, abrirPanel,
 }: {
   celda: { estado: string; horas: number | null; motivo: string | null }
   persona: string
   fecha: string
   hoy: string
   obraOrigen: string | null
+  /** La obra que viene elegida (`obraDeLaCelda().inicial`). `null` = hay que elegirla. */
   obraDestino: string | null
+  /** Las obras que admiten horas ESE día (`obraDeLaCelda().opciones`). */
+  obras: OpcionInline[]
   /** `jue 10/09`. El editor tapa la celda que se tocó: sin el día escrito no se sabe cuál se está
    *  corrigiendo, y ya se corrigió el día equivocado por eso. */
   rotuloDia: string
@@ -54,11 +62,14 @@ export function EditorCeldaAsistencia({
   abrirPanel: () => void
 }) {
   const [estado, setEstado] = useState(estadoElegidoDeCelda(celda))
+  const [obra, setObra] = useState(obraDestino ?? '')
+  const [errorObra, setErrorObra] = useState<string | null>(null)
 
-  // EL PLAN SE ARMA EN LA REGLA, NO ACÁ. Los dos campos escriben la misma corrección; lo único que
-  // cambia entre ellos es cuál de los dos valores acaba de moverse.
-  const enviar = async (p: { estado: string; horas: string }): Promise<ResultadoInline> => {
-    const plan = planDeCelda({ ...p, fecha, hoy, obraOrigen, obraDestino })
+  // EL PLAN SE ARMA EN LA REGLA, NO ACÁ. Los campos escriben la misma corrección; lo único que
+  // cambia entre ellos es cuál de los valores acaba de moverse. `destino` viaja explícito porque el
+  // selector de obra lo cambia en el mismo gesto en que guarda, antes de que el estado se actualice.
+  const enviar = async (p: { estado: string; horas: string }, destino = obra): Promise<ResultadoInline> => {
+    const plan = planDeCelda({ ...p, fecha, hoy, obraOrigen, obraDestino: destino || null })
     if (!plan.ok) return { ok: false, error: plan.error }
     const r = await guardar(plan.correccion)
     // SE CIERRA SÓLO SI GUARDÓ. Cerrar sobre un error deja la pantalla como si hubiera andado, y el
@@ -83,6 +94,35 @@ export function EditorCeldaAsistencia({
       <p className="mb-1 truncate text-[11px] text-muted" title={`${persona} · ${rotuloDia}`}>
         {persona} · {rotuloDia}
       </p>
+
+      {/* SIN OBRA EN UN DÍA QUE NO PASÓ: las horas a futuro no se cargan (`planDeCelda`), así que el
+          selector sólo ofrecería una decisión que después se rechaza. */}
+      {fecha <= hoy && (
+        <div className="mb-1 flex items-center gap-1">
+          <span className="w-[38px] shrink-0 text-[11.5px] text-muted">Obra</span>
+          <select
+            data-testid="editor-celda-obra"
+            aria-label={`Obra del ${fecha} de ${persona}`}
+            value={obra}
+            onChange={(e) => {
+              const v = e.target.value
+              setObra(v)
+              setErrorObra(null)
+              // CON HORAS YA CARGADAS, CAMBIAR LA OBRA ES MOVER ESE DÍA: se guarda en el gesto, con
+              // las mismas horas. Sin horas, sólo queda elegida para el número que se escriba.
+              if (v && celda.estado === 'horas' && celda.horas !== null && v !== obraOrigen) {
+                void enviar({ estado: TRABAJO, horas: String(celda.horas) }, v)
+                  .then((r) => { if (!r.ok) setErrorObra(r.error) })
+              }
+            }}
+            className="w-[168px] rounded-control border border-line bg-canvas px-1 py-0.5 text-[12px]"
+          >
+            <option value="">Elegí la obra</option>
+            {obras.map((o) => <option key={o.valor} value={o.valor}>{o.etiqueta}</option>)}
+          </select>
+        </div>
+      )}
+      {errorObra && <p data-testid="editor-celda-obra-error" className="mb-1 text-[11px] text-neg">{errorObra}</p>}
 
       <div className="flex items-center gap-1">
         <span className="w-[38px] shrink-0 text-[11.5px] text-muted">Horas</span>

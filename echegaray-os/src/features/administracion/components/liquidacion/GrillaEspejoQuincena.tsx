@@ -41,6 +41,7 @@ import type { CampoEditable } from '../../services/liquidacionOverrides'
 import type { FilaDelEspejo, TotalesDelEspejo } from '../../services/espejoDeJornales'
 import { cierreDeTotales, type EntradaDeHistorial } from '../../services/cuadroDeJornales'
 import { sumaDelRedondeo } from '../../services/efectivoRedondeado'
+import { rotuloDelMensual } from '../../services/cobroMensual'
 import type { DetalleLaboral } from '../../services/detalleLaboral'
 
 export { FiltrosDelEspejo } from './cuadro/FiltrosDelEspejo'
@@ -246,14 +247,15 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
       </div>
       {fila.celdas.map((c) => <CeldaDeDia key={c.fecha} celda={c} personaId={fila.personaId} nombre={fila.nombre} />)}
       <CeldaHorasPagas fila={fila} edicion={{ quincena, camposEditables }} />
-      {l.netoMensual != null ? (
+      {l.modalidad === 'mensual' ? (
+        // POR MODALIDAD, NO POR NETO: el jefe sin neto cargado cobra por mes igual (dueño, 15/09/2026).
         // UN MENSUAL NO VA EN LAS BANDAS (QA, 14/09/2026): su sueldo fijo en «$/h negro» sumaba al Total
         // sin estar en Neto ni en Negro. Una celda propia ocupa las seis columnas; su neto mensual se
         // sigue editando acá, y el pie lo suma en «Sueldos mensuales».
         <div data-testid={`mensual-${fila.personaId}`} style={{
           gridColumn: `span ${ANCHO_DE_LAS_BANDAS}`, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8,
         }}>
-          <span style={{ fontSize: '11px', color: V.apagado }}>mensual</span>
+          <span data-testid={`rotulo-mensual-${fila.personaId}`} style={{ fontSize: '11px', color: V.apagado }}>{rotuloDelMensual(l) ?? 'mensual'}</span>
           <CeldaTarifa fila={fila} quincena={quincena} pct={pct} />
         </div>
       ) : (

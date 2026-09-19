@@ -14,6 +14,7 @@ import {
 } from '../services/quincenaPorObra'
 import { GrillaAsistenciaObra } from './GrillaAsistenciaObra'
 import { rotuloDeObra } from '@/shared/utils/obra'
+import type { ObraConVentana } from '../services/obrasPorFecha'
 
 // LA SOLAPA «ASISTENCIA» DE PERSONAL — la QUINCENA, por obra.
 //
@@ -122,7 +123,7 @@ export async function BloqueAsistenciaQuincena({
   const sinMarcar = diasSinMarcar(todas)
   // LAS OBRAS A LAS QUE SE PUEDE MOVER UN DÍA: las activas que la sesión ve. La jornada de cada una
   // viaja junta —es lo que vale una ausencia— y sale del mismo viaje, no de dos.
-  const obras = await obrasElegibles(supabase)
+  const { activas: obras, catalogoHoras } = await obrasElegibles(supabase)
   const jornadaPorObra = Object.fromEntries(obras.map((o) => [o.id, o.jornada]))
   const tenues = new Set(noLaborables)
 
@@ -174,6 +175,7 @@ export async function BloqueAsistenciaQuincena({
             : undefined}
           jornadaPorObra={jornadaPorObra}
           obras={obras.map((o) => ({ id: o.id, nombre: o.nombre }))}
+          catalogoHoras={catalogoHoras}
           puedeCorregir={puedeCorregir}
           puedeCambiarObra={puedeCambiarObra}
           hoy={hoy}
@@ -201,12 +203,38 @@ export async function BloqueAsistenciaQuincena({
  */
 async function obrasElegibles(
   supabase: Awaited<ReturnType<typeof createClient>>,
-): Promise<{ id: string; nombre: string; jornada: number }[]> {
-  const { data } = await supabase
-    .from('obra_canonica').select('id, nombre, codigo, jornada_horas, estado').order('nombre')
-  return ((data ?? []) as {
-    id: string; nombre: string; codigo: string | null; jornada_horas: number | string | null; estado: string | null
-  }[])
+): Promise<{ activas: { id: string; nombre: string; jornada: number }[]; catalogoHoras: ObraConVentana[] }> {
+  const columnas = 'id, nombre, codigo, jornada_horas, estado, fecha_inicio_real, fecha_inicio_plan, fecha_fin_real'
+  // LA EVIDENCIA DE HORAS VIAJA EN LA MISMA CONSULTA (15/09/2026). La mitad de las obras cerradas no
+  // tiene fecha de inicio, y su ventana sale del primer y el último día con horas (`ventanaDe`). Dos
+  // embebidos de `registros_hh` con orden y `limit 1` POR OBRA: PostgREST los resuelve como un lateral
+  // por el índice de la obra, en una sola ida. Los agregados (`fecha.min()`) no están habilitados en
+  // esta base, y una lectura por obra sería un N+1 en la pantalla que el dueño usa todo el día.
+  const conEvidencia = await supabase
+    .from('obra_canonica')
+    .select(`${columnas}, primera:registros_hh(fecha), ultima:registros_hh(fecha)`)
+    .order('nombre')
+    .order('fecha', { referencedTable: 'primera', ascending: true })
+    .limit(1, { referencedTable: 'primera' })
+    .order('fecha', { referencedTable: 'ultima', ascending: false })
+    .limit(1, { referencedTable: 'ultima' })
+  // SI LA EVIDENCIA NO SE PUEDE LEER, LA LISTA NO SE VACÍA: sin esta vuelta, un error del embebido
+  // dejaba la grilla sin obras para nadie. Se degrada a las fechas declaradas, que es un no más, no un sí.
+  const { data } = conEvidencia.error
+    ? await supabase.from('obra_canonica').select(columnas).order('nombre')
+    : conEvidencia
+  const filas = (data ?? []) as unknown as (ObraConVentana & {
+    jornada_horas: number | string | null
+    primera?: { fecha: string }[]; ultima?: { fecha: string }[]
+  })[]
+  // LA MISMA LECTURA ALIMENTA LA LISTA DE OBRAS DE CADA DÍA (dueño, 15/09/2026). Qué entra lo decide
+  // `obrasElegiblesEl` con la fecha de la celda, no esta consulta.
+  const catalogoHoras: ObraConVentana[] = filas.map((o) => ({
+    id: o.id, nombre: rotuloDeObra(o), estado: o.estado, codigo: o.codigo ?? null,
+    fecha_inicio_real: o.fecha_inicio_real, fecha_inicio_plan: o.fecha_inicio_plan, fecha_fin_real: o.fecha_fin_real,
+    primera_hh: o.primera?.[0]?.fecha ?? null, ultima_hh: o.ultima?.[0]?.fecha ?? null,
+  }))
+  const activas = filas
     // SÓLO LAS ACTIVAS SE OFRECEN COMO DESTINO. La acción lo rechaza igual —es la puerta— pero un
     // selector que ofrece 40 obras cerradas para que la acción las rebote una por una enseña que la
     // pantalla miente. Una obra cerrada con horas mal imputadas se corrige reabriéndola.
@@ -217,6 +245,7 @@ async function obrasElegibles(
       // y los chips de obra, así que el rótulo se arma una vez y no en cada lugar que lo dibuja.
       return { id: o.id, nombre: rotuloDeObra(o), jornada: Number.isFinite(h) && h > 0 ? h : 0 }
     })
+  return { activas, catalogoHoras }
 }
 
 /** «‹ anterior · siguiente ›» salta de QUINCENA, no de quince días — ver `correrQuincena`. */

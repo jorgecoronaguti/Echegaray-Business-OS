@@ -19,7 +19,7 @@ import type { ModalidadDeLiquidacion } from './liquidacionQuincena.ts'
 export interface LineaParaCerrar {
   personaId: string
   nombre: string
-  /** Jefe de obra según `esJefeDeObra(puesto)`. Opcional: viaja para AGRUPAR, no decide plata. */
+  /** Jefe de obra según `esJefeDeObra(puesto)`. Agrupa, y exime al jefe mensual de pedir tarifa (`cobroMensual.ts`). */
   esJefe?: boolean
   horas: number | null
   valorHora: number | null
@@ -51,7 +51,7 @@ export interface LineaParaCerrar {
 function faltaLaTarifa(l: LineaParaCerrar): boolean {
   if (l.sinTarifa) return true
   if (l.modalidad === 'hora') return l.valorHora == null
-  if (l.modalidad === 'mensual') return l.netoMensual == null
+  if (l.modalidad === 'mensual') return l.netoMensual == null && l.esJefe !== true
   return false
 }
 
@@ -119,7 +119,9 @@ export function estadoDeCierre(
   // faltaba. El conteo lo calcula `diasSinMotivoDeLaQuincena` con la definición de `celdaDelDia`.
   pendientes.push(...pendientesDeDias(carga))
   const sinTarifa = lineas.filter(faltaLaTarifa)
-  const sinCobra = lineas.filter((l) => !l.sinTarifa && l.cobra == null)
+  // «MENSUAL · IMPORTE NO CARGADO» NO TRABA EL SELLO (dueño, 15/09/2026: «no preguntes más»). La línea
+  // queda sin importe —null, nunca $ 0— y no suma a `totalSellado`.
+  const sinCobra = lineas.filter((l) => !l.sinTarifa && l.cobra == null && !(l.esJefe === true && l.modalidad === 'mensual'))
   const noCierra = lineas.filter((l) => (
     l.cobra != null && l.enEfectivo != null && l.total != null
     && Math.abs(l.total - (l.porBanco + l.enEfectivo)) > 0.5

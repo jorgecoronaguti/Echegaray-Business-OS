@@ -277,9 +277,10 @@ export function marcaDeCategoria(s: SueldoBlancoNegro | null): ComparacionConElP
  */
 export function negroDeLaFila(l: {
   netoMensual: number | null; cobra: number | null; porBanco: number; sueldo: SueldoBlancoNegro | null
+  modalidad?: 'hora' | 'mensual' | 'ninguna'
   manual?: { cobra?: boolean; porBanco?: boolean }
 }): number | null {
-  if (l.netoMensual != null) return null
+  if (l.netoMensual != null || l.modalidad === 'mensual') return null
   // EL NEGRO QUE MUESTRA LA FILA, SIEMPRE: el del modelo (calculado o escrito). Un Cobra total escrito a mano NO lo
   // recalcula en silencio; si deja de cerrar, lo marca `cierreDeLaFila` (dueño, 15/09/2026).
   if (l.sueldo) return l.sueldo.negro

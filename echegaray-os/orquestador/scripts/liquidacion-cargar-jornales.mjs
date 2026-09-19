@@ -140,6 +140,8 @@ function imprimirDetalle(h, plan, ctx) {
   }))
   listar('EFECTIVO DERIVADO DE LA CADENA DE PAGO (la celda estaba vacía, no en cero):',
     lineas.filter(({ l }) => l.efectivoDerivado).map(({ q, l }) => `${q.desde} fila ${l.fila} ${l.nombre}: ${ars(l.enEfectivo)}`))
+  listar('BAJA CON EL TOTAL DE LA PLANILLA MAL (Hs × $/h = BANCO + ADELANTO + EFECTIVO): se carga Hs × $/h:',
+    lineas.filter(({ l }) => l.totalDeLaPlanilla != null).map(({ q, l }) => `${q.desde} fila ${l.fila} ${l.nombre}: TOTAL ${ars(l.totalDeLaPlanilla)} → ${ars(l.cobra)}`))
   listar('LÍNEAS CON PLATA ILEGIBLE — voltean su quincena entera:',
     cerradas.flatMap((q) => q.control.bloqueantes.map((l) => `${q.desde} fila ${l.fila} ${l.nombre}: ${l.incompleta}`)))
   listar(`LO QUE QUEDA AFUERA EN ${h.hoja}, POR QUINCENA (se escribe en liquidacion_quincena.excluidas):`,

@@ -12,6 +12,7 @@
 
 import { leerCeldaDeHoras } from './jornadaPorObra.ts'
 import { motivosDeDiaNoTrabajado } from './motivoDeAusencia.ts'
+import { obrasElegiblesEl, type ObraConVentana } from './obrasPorFecha.ts'
 import type { OpcionInline } from '@/shared/components/ds/InlineEdit'
 
 /** El valor del desplegable cuando el día se trabajó. Coincide con el `estado` de la corrección. */
@@ -135,7 +136,56 @@ export function planDeCelda(p: PedidoDeCelda): PlanDeCelda {
   // TRABAJAR ES TRABAJAR EN UNA OBRA: sin destino no hay a quién imputarle el costo, y elegir una
   // por descarte movería mano de obra de una obra a otra sin que nadie lo decida.
   if (p.obraDestino === null) {
-    return { ok: false, error: 'Esa persona no tiene obra activa: elegí la obra antes de cargarle horas.' }
+    return { ok: false, error: 'Elegí la obra de ese día antes de cargarle horas.' }
   }
   return { ok: true, correccion: { ...base, obra_destino: p.obraDestino, estado: 'presente', horas, motivo: null } }
+}
+
+// ═══ QUÉ SE PUEDE HACER CON UNA CELDA, Y EN QUÉ OBRA (dueño, 15/09/2026) ═══
+//
+// Textual: *«no existe la posibilidad de marcarle hs en una obra determinada de días anteriores a
+// ninguna persona»*. La celda de un día pasado abría el editor, pero el editor imputaba siempre a la
+// obra de HOY de la fila: a quien no tenía obra vigente le decía «elegí la obra» sin ofrecer dónde, y a
+// quien hoy está en otra obra no había forma de cargarle el día donde lo trabajó.
+
+/** `tipear`: el número se escribe en la celda (y el ▾ abre el editor). `editor`: se toca y abre el
+ *  editor. `panel`: el día repartido entre obras se corrige con el desglose. `lectura`: sin permiso. */
+export type AccesoACelda = 'tipear' | 'editor' | 'panel' | 'lectura'
+
+const NO_SE_TIPEA = new Set(['no_laborable', 'futuro', 'licencia', 'ausente'])
+
+export function accesoACelda(c: {
+  estado: string; tramos: number; conObraPorDefecto: boolean; puedeCorregir: boolean
+}): AccesoACelda {
+  if (c.tramos > 1) return c.puedeCorregir ? 'panel' : 'lectura'
+  // TIPEAR NECESITA UNA OBRA SIN PREGUNTAR: la del día o la de la fila. Sin ninguna de las dos el
+  // número no tiene destino, y el camino es el editor, que pide la obra.
+  if (!NO_SE_TIPEA.has(c.estado) && (c.conObraPorDefecto || c.tramos === 1)) return 'tipear'
+  return c.puedeCorregir ? 'editor' : 'lectura'
+}
+
+/**
+ * La lista de obras del editor para ESE día y cuál viene elegida.
+ *
+ * Elegida: la del día si ya tiene horas en una sola; si no, la obra de la fila, si admite el día; si
+ * no, ninguna — adivinar a qué obra va el costo de un día es fabricarlo. La obra de un día ya cargado
+ * entra aunque su ventana no lo cubra: se muestra dónde está, y corregir ahí es historia de esa obra.
+ */
+export function obraDeLaCelda(p: {
+  fecha: string
+  tramos: { obra_id: string; nombre: string }[]
+  obraPorDefecto: { id: string } | null
+  catalogo: ObraConVentana[]
+}): { inicial: string | null; opciones: OpcionInline[] } {
+  const elegibles = obrasElegiblesEl(p.catalogo, p.fecha)
+  const opciones: OpcionInline[] = elegibles.map((o) => ({
+    valor: o.id, etiqueta: o.cerrada ? `${o.nombre} (cerrada)` : o.nombre,
+  }))
+  const delDia = p.tramos.length === 1 ? p.tramos[0] : null
+  if (delDia) {
+    if (!opciones.some((o) => o.valor === delDia.obra_id)) opciones.unshift({ valor: delDia.obra_id, etiqueta: delDia.nombre })
+    return { inicial: delDia.obra_id, opciones }
+  }
+  const deLaFila = p.obraPorDefecto && elegibles.some((o) => o.id === p.obraPorDefecto?.id) ? p.obraPorDefecto.id : null
+  return { inicial: deLaFila, opciones }
 }

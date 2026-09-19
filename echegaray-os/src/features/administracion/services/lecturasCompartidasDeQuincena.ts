@@ -58,10 +58,12 @@ type Lectura<T> = { data: T[] | null; error: { code?: string; message: string } 
 
 export type FilaPresencia = { persona_id: string; fecha: string; estado: string; motivo: string | null }
 export type FilaCuil = { id: string; cuil: string | null }
+export type FilaSubcontrato = { id: string; subcontrato_id: string | null }
 
 const memoPresencias = cache((): Map<string, Promise<Lectura<FilaPresencia>>> => new Map())
 const memoCuiles = cache((): Map<string, Promise<Lectura<FilaCuil>>> => new Map())
 const memoSesionDePrueba = cache((): Map<string, Promise<boolean>> => new Map())
+const memoSubcontratos = cache((): Map<string, Promise<Lectura<FilaSubcontrato>>> => new Map())
 
 /**
  * LA PRESENCIA DECLARADA DE LA QUINCENA (`asistencia_dia`), una vez por request y por ventana.
@@ -111,4 +113,24 @@ export function laSesionEsDePrueba(supabase: SupabaseClient): Promise<boolean> {
     const { data, error } = await supabase.rpc('sesion_es_de_prueba')
     return error ? false : data === true
   })
+}
+
+/**
+ * QUIÉN ES DE LA CUADRILLA DE UN SUBCONTRATISTA (`persona_directorio.subcontrato_id`, 20260915T0910), una vez por request.
+ *
+ * Va APARTE de las lecturas del directorio que ya existen, y no sumado a sus `select`, por el orden de despliegue: sin
+ * la migración aplicada la columna no existe, y pedirla junto con el resto haría fallar la lectura ENTERA del plantel.
+ * Así, sin la migración la respuesta es «column does not exist», que `sinTabla()` de los llamadores ya trata como
+ * «todavía no está», y el plantel queda exactamente como antes.
+ */
+export function leerSubcontratoDePersonas(supabase: SupabaseClient): Promise<Lectura<FilaSubcontrato>> {
+  return recordar(memoSubcontratos(), 'persona_directorio(id,subcontrato_id)', async () => {
+    const { data, error } = await supabase.from('persona_directorio').select('id, subcontrato_id').not('subcontrato_id', 'is', null)
+    return { data: (data ?? null) as FilaSubcontrato[] | null, error }
+  })
+}
+
+/** `persona_id → subcontrato_id` de una lectura; vacía si la lectura falló. */
+export function subcontratoPorPersona(l: Lectura<FilaSubcontrato>): Map<string, string> {
+  return new Map((l.data ?? []).filter((f) => f.subcontrato_id).map((f) => [f.id, f.subcontrato_id as string]))
 }

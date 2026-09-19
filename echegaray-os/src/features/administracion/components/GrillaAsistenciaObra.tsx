@@ -16,7 +16,8 @@ import { PlanDeObraPanel } from './PlanDeObraPanel'
 import { PanelCorreccionJornada, type ObraElegible } from './PanelCorreccionJornada'
 import { CeldaDia, type EntradaCeldaDia, type ResultadoInline } from '@/shared/components/ds'
 import { EditorCeldaAsistencia } from './asistencia/EditorCeldaAsistencia'
-import type { CorreccionDeCelda } from '../services/edicionDeCelda'
+import { accesoACelda, obraDeLaCelda, type CorreccionDeCelda } from '../services/edicionDeCelda'
+import type { ObraConVentana } from '../services/obrasPorFecha'
 
 // 02 · LA QUINCENA, POR OBRA. La misma jornada que el jefe carga en el teléfono, a la distancia de
 // Administración: una fila por par (persona, obra) y una columna por día del período que se paga.
@@ -134,7 +135,7 @@ function vacioDe(estado: CeldaObra['estado']): { texto: string; color: string } 
 
 export function GrillaAsistenciaObra({
   filas, dias, etiquetas, titulos, columnasTenues, totalesDia, total, rotuloTotal, jornadaPorObra,
-  obras, puedeCorregir, puedeCambiarObra, hoy,
+  obras, catalogoHoras, puedeCorregir, puedeCambiarObra, hoy,
 }: {
   filas: FilaQuincena[]
   dias: string[]
@@ -157,6 +158,9 @@ export function GrillaAsistenciaObra({
   jornadaPorObra: Record<string, number>
   /** Las obras a las que se puede mover un día. Vienen del servidor con el RLS ya aplicado. */
   obras: ObraElegible[]
+  /** El catálogo con estado y ventana de fechas. De acá sale la lista de obras de CADA día del editor:
+   *  `obras` es la de hoy (sólo activas) y un día pasado pudo trabajarse en una obra ya cerrada. */
+  catalogoHoras: ObraConVentana[]
   /** Sólo Administración corrige la obra de un día. La puerta de verdad es la policy; esto evita
    *  ofrecer un botón que va a rebotar contra un `permission denied`. */
   puedeCorregir: boolean
@@ -600,9 +604,19 @@ export function GrillaAsistenciaObra({
                 // la vez: «corregile las horas reconocidas» y «en realidad trabajó», y la segunda
                 // mueve costo a una obra. Las dos se hacen en el panel, que muestra el motivo y las
                 // horas juntos. Marcar «A» sobre una celda vacía sigue funcionando igual.
-                const editable = celda.estado !== 'no_laborable' && celda.estado !== 'futuro'
-                  && celda.estado !== 'licencia' && celda.estado !== 'ausente'
-                  && !repartido && (fila.obraPorDefecto !== null || celda.tramos.length === 1)
+                // La regla vive en `accesoACelda` (edicionDeCelda.ts), con sus pruebas.
+                const editable = accesoACelda({
+                  estado: celda.estado, tramos: celda.tramos.length,
+                  conObraPorDefecto: fila.obraPorDefecto !== null, puedeCorregir,
+                }) === 'tipear'
+                // LA OBRA DEL DÍA, NO LA DE HOY DE LA FILA (dueño, 15/09/2026): ver `obraDeLaCelda`.
+                // Sólo para la celda con el editor abierto: son 16 días por fila y la lista no se ve.
+                const eleccion = editandoCelda === k
+                  ? obraDeLaCelda({
+                    fecha: celda.fecha, tramos: celda.tramos,
+                    obraPorDefecto: fila.obraPorDefecto, catalogo: catalogoHoras,
+                  })
+                  : null
                 // Lo que escribe una celda que NO se edita. Vacío en licencia, ausencia y futuro:
                 // el día ya está dicho arriba, y un «—» ahí afirmaría que no era laborable.
                 // LAS HORAS DE LA AUSENCIA SE VEN DEBAJO DE LA «A» (dueño, 08/09/2026): «las
@@ -743,9 +757,8 @@ export function GrillaAsistenciaObra({
                         hoy={hoy}
                         rotuloDia={diaCorto(celda.fecha)}
                         obraOrigen={celda.tramos.length === 1 ? celda.tramos[0].obra_id : null}
-                        obraDestino={celda.tramos.length === 1
-                          ? celda.tramos[0].obra_id
-                          : fila.obraPorDefecto?.id ?? null}
+                        obraDestino={eleccion?.inicial ?? null}
+                        obras={eleccion?.opciones ?? []}
                         guardar={(c) => corregirDesdeCelda(fila, c)}
                         cerrar={() => setEditandoCelda(null)}
                         abrirPanel={() => {
