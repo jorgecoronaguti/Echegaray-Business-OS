@@ -123,7 +123,10 @@ test('sin overrides, la línea queda idéntica y sin ninguna marca', () => {
   assert.deepEqual({ ...r, ...sinMarcas }, { ...linea, ...sinMarcas })
   // SIN SELLO, NULL: nadie lo inventa. Con sello, viaja tal cual — la cerrada no lo recalcula, sólo lo muestra.
   assert.equal(r.sello, null)
-  const foto = { valorHora: 5400, piso: 5703, pisoDesde: '2026-05-01', hasta: '2026-06-15' }
+  const foto = {
+    origen: 'sello' as const, valorHora: 5400, horas: 87, cobra: 469800, categoria: null,
+    piso: 5703, pisoDesde: '2026-05-01', hasta: '2026-06-15',
+  }
   assert.deepEqual(sinOverrides(linea, null, {}, foto).sello, foto)
   // LA FOTO CERRADA TAMBIÉN DICE CUÁNTO FALTA: lo pagado son los adelantos de la foto, y el saldo, la resta.
   assert.equal(r.pagadoBanco, linea.yaTransferido)

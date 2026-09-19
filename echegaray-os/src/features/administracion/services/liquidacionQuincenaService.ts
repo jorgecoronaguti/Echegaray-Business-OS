@@ -242,7 +242,7 @@ export async function getLiquidacionDeLaQuincena(
         subcontratoId: deSubcontrato.get(r.id) ?? null,
       }))
 
-  const { estados, redondeos, overrides, formulas, importesCargados, presentismosSellados, pagadas } = leerGuardadas(guardadas.data)
+  const { estados, redondeos, overrides, formulas, importesCargados, presentismosSellados, pagadas, sellos } = leerGuardadas(guardadas.data)
   const camposEditables = camposGuardables(guardadas.columnas)
   const hayColumnasPresentismo = COLUMNAS_PRESENTISMO.every((c) => guardadas.columnas.includes(c))
   const hayColumnaDeFormulas = guardadas.columnas.includes('formulas')
@@ -306,20 +306,35 @@ export async function getLiquidacionDeLaQuincena(
   // estimado (`exponerAlPiso` → `pisoVigente`, `convenio_escala` con la escala del CCT 76/75): una
   // segunda lectura sería un segundo básico. Las marcas salen de las presencias que esta función ya leyó.
   const categoriaDe = new Map(exposicion.lineas.map((l) => [l.personaId, l.categoria]))
-  // ═══ EL $/H DE UNA QUINCENA CERRADA (dueño, 17/09/2026: «no salen los valores $/h de cada uno en las quincenas
-  // anteriores») ═══
+  // ═══ EL $/H DE UNA QUINCENA CERRADA SALE DEL REGISTRO, NO DE UNA RECONSTRUCCIÓN ═══
   //
-  // `exponerAlPiso` ya corre con `q.hasta`, así que `pisoDe` es el piso de la escala que REGÍA ESA QUINCENA, no el de
-  // hoy; y `persona_tarifa` se lee con `desde <= q.hasta`, así que `l.valorHora` es la tarifa de esa fecha. Los dos
-  // números ya existían: lo único que faltaba era un lugar donde la línea cerrada pudiera llevarlos (`SelloDeLaQuincena`).
-  // No es un recálculo — la cerrada no se recalcula; es la foto, dicha con su fecha.
+  // Dueño 17/09/2026: «no salen los valores $/h de cada uno en las quincenas anteriores». El primer arreglo tapó el
+  // hueco recomponiendo desde `persona_tarifa` y lo escribió como hecho. Medido contra Postgres (20 quincenas
+  // cerradas, 324 líneas): 45 líneas no coinciden con lo guardado y una afirmaba otro número (Bazán, 16–31/03:
+  // $4.000 en pantalla contra $4.300 guardado). Ahora manda `liquidacion_linea` —`sellos`—, que es el registro de lo
+  // que se pagó; la recomposición queda como RESPALDO y la pantalla dice que lo es.
+  //
+  // `piso`/`pisoDesde` son CONTEXTO, no el registro: `exponerAlPiso` ya corre con `q.hasta`, así que son los del
+  // convenio vigente ESA quincena, nunca los de hoy.
   const pisoDesdeDe = new Map(exposicion.lineas.map((l) => [l.personaId, l.piso?.desde ?? null]))
-  const selloDe = (l: { personaId: string; valorHora: number | null }): SelloDeLaQuincena => ({
-    valorHora: l.valorHora,
-    piso: pisoDe.get(l.personaId) ?? null,
-    pisoDesde: pisoDesdeDe.get(l.personaId) ?? null,
+  const contextoDe = (personaId: string) => ({
+    piso: pisoDe.get(personaId) ?? null,
+    pisoDesde: pisoDesdeDe.get(personaId) ?? null,
     hasta: q.hasta,
   })
+  const selloDe = (l: { personaId: string; valorHora: number | null }): SelloDeLaQuincena => {
+    const guardada = sellos.get(l.personaId)
+    if (guardada) {
+      return {
+        origen: 'sello',
+        valorHora: guardada.valorHora, horas: guardada.horas, cobra: guardada.cobra, categoria: guardada.categoria,
+        ...contextoDe(l.personaId),
+      }
+    }
+    // SIN FILA GUARDADA: la tarifa que regía al cierre de esa quincena (`persona_tarifa` con `desde <= q.hasta`).
+    // Es un respaldo declarado, no el registro — la pantalla no puede decir «se liquidó a» sobre esto.
+    return { origen: 'reconstruido', valorHora: l.valorHora, horas: null, cobra: null, categoria: null, ...contextoDe(l.personaId) }
+  }
   const tardanzas = tardanzasPorPersona(presencias.data)
   // LAS FALTAS SALEN DE LAS MISMAS PRESENCIAS (dueño, 16/09/2026). Una falta injustificada pierde el
   // presentismo igual que una tardanza; una licencia reconocida no. Lo decide `presentismo.ts`.
@@ -367,7 +382,10 @@ export async function getLiquidacionDeLaQuincena(
         // LO PAGADO VIAJA TAMBIÉN EN LA CERRADA: es el registro de una plata que salió, no un override del
         // cálculo. Sin esto, cerrar la quincena borraría de la pantalla el pago que alguien registró.
         ? c.lineas.map((l) => conMarcaDePago(
-          sinOverrides(l, presentismosSellados.get(l.personaId) ?? null, overrides.get(l.personaId) ?? {}, selloDe(l)), pagadas,
+          sinOverrides(
+            l, presentismosSellados.get(l.personaId) ?? null, overrides.get(l.personaId) ?? {},
+            selloDe(l), sellos.get(l.personaId) ?? null,
+          ), pagadas,
         ))
         // LA PRECEDENCIA VIVE EN `aplicarOverrides` Y NO ACÁ: manual > JORNALES > calculado, una sola
         // vez y con sus diez tests. Acá sólo se le entrega la fuente.
@@ -422,10 +440,20 @@ const COLUMNAS_PAGADO = ['pagado_banco', 'pagado_efectivo', 'formulas'] as const
 /** La marca «pagada» de la línea, si la migración `20260916T1300` ya se aplicó. */
 const COLUMNAS_PAGADA = ['pagada_en'] as const
 
+/**
+ * LA CADENA GUARDADA DE LA LÍNEA — el registro de lo que se pagó, que la quincena cerrada MUESTRA en vez de
+ * recomponer (auditoría 17/09/2026). `cobra` ya viajaba en `COLUMNAS_LINEA` desde antes; éstas son las demás.
+ * Van como grupo opcional por la misma razón que el resto: una base sin la columna del sello degrada a la
+ * recomposición —diciéndolo— en vez de romper la pantalla entera.
+ */
+const COLUMNAS_SELLO = [
+  'horas', 'valor_hora', 'adelanto', 'ya_transferido', 'por_banco', 'en_efectivo', 'total', 'categoria_sellada',
+] as const
+
 /** Los grupos que dependen de una migración, del más viejo al más nuevo. */
 const GRUPOS_OPCIONALES: readonly (readonly string[])[] = [
   COLUMNAS_MANUALES, COLUMNAS_BLANCO, COLUMNAS_NEGRO, COLUMNAS_HORAS, COLUMNAS_PRESENTISMO, COLUMNAS_PAGADO,
-  COLUMNAS_PAGADA,
+  COLUMNAS_PAGADA, COLUMNAS_SELLO,
 ]
 
 /**

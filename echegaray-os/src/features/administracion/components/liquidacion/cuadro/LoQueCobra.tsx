@@ -38,9 +38,20 @@ export function LoQueCobra({ fila, pago }: {
   const p = pago ?? l.pago
   const porMes = l.modalidad === 'mensual'
   const saldo = p.saldoTotal
+  // ═══ EN UNA QUINCENA CERRADA, CUÁNTO COBRÓ Y QUÉ QUEDÓ SALEN DEL REGISTRO ═══ (auditoría 17/09/2026)
+  //
+  // `l.cobra` y `l.pago` ya llegan de la línea guardada cuando la hay (`sinOverrides` con la cadena sellada): antes
+  // salían de recomponer horas de `registros_hh` vivo y a Agüero le fabricaban «pagado $469.800 · saldo −$378.000»
+  // sobre un registro que dice cobra $469.800 y pagado $0. Acá sólo se DICE de dónde viene, porque una cifra
+  // reconstruida y una registrada no pueden verse iguales.
+  const cerradaSinRegistro = l.sello?.origen === 'reconstruido'
+  const deDonde = l.sello == null
+    ? (porMes ? 'Cobra por mes: el sueldo del mes, lo ya pagado y el saldo que resta' : 'Lo que cobra por la quincena, lo ya pagado y el saldo que resta')
+    : cerradaSinRegistro
+      ? 'Quincena cerrada SIN línea guardada: estas cifras están RECONSTRUIDAS con las horas y las tarifas de hoy. Pueden no ser lo que se pagó.'
+      : 'Quincena cerrada: lo que dice la línea guardada del cierre — el registro de lo que se pagó, no un recálculo.'
   return (
-    <div data-testid={`cobro-${fila.personaId}`}
-      title={porMes ? 'Cobra por mes: el sueldo del mes, lo ya pagado y el saldo que resta' : 'Lo que cobra por la quincena, lo ya pagado y el saldo que resta'}
+    <div data-testid={`cobro-${fila.personaId}`} data-origen={l.sello?.origen} title={deDonde}
       style={{
         // ENVUELVE, NO RECORTA: a 390 px la columna Persona mide 170 y las tres cifras no entran en un renglón. Cortar
         // con puntos suspensivos escondería justamente el saldo, que es lo que se va a pagar.
@@ -50,8 +61,11 @@ export function LoQueCobra({ fila, pago }: {
       {l.cobra == null ? (
         <span data-testid={`cobro-total-${fila.personaId}`} style={{ color: V.tenue }}>{motivoSinCobra(l)}</span>
       ) : (
-        <span data-testid={`cobro-total-${fila.personaId}`} style={{ fontSize: '13px', fontWeight: 600, color: V.tinta }}>
+        <span data-testid={`cobro-total-${fila.personaId}`}
+          style={{ fontSize: '13px', fontWeight: 600, color: cerradaSinRegistro ? V.apagado : V.tinta, fontStyle: cerradaSinRegistro ? 'italic' : undefined }}>
           {`${porMes ? 'Cobra al mes' : 'Cobra'} ${pesos(l.cobra)}`}
+          {/* «rec.» al lado: sin línea guardada esto es una reconstrucción, y se lee distinto de un registro. */}
+          {cerradaSinRegistro && <span style={{ fontSize: '9.5px', fontWeight: 400, fontStyle: 'normal', color: V.tenue, marginLeft: 3 }}>rec.</span>}
         </span>
       )}
       <Menor rotulo="pagado" valor={pesos(p.pagado)} tono={p.pagado === 0 ? V.tenue : V.apagado} />

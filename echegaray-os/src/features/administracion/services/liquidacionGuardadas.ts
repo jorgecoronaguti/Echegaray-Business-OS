@@ -42,6 +42,51 @@ export type LineaGuardada = {
   presentismo_perdido?: string | null
   /** La marca «pagada» (20260916T1300): cuándo. `null`/ausente = sin marcar. */
   pagada_en?: string | null
+  // ═══ LA FOTO DEL CIERRE (20260909T1200 la tabla, 20260909T1710/T1850 el sello) ═══
+  // Son las columnas que `cerrarQuincena` escribe: la cadena entera de la línea con la que se pagó.
+  horas?: number | string | null
+  valor_hora?: number | string | null
+  adelanto?: number | string | null
+  ya_transferido?: number | string | null
+  por_banco?: number | string | null
+  en_efectivo?: number | string | null
+  total?: number | string | null
+  categoria_sellada?: string | null
+  sellado_en?: string | null
+}
+
+/**
+ * LA LÍNEA DE UNA QUINCENA CERRADA, TAL COMO QUEDÓ GUARDADA — el registro de lo que se pagó.
+ *
+ * ═══ POR QUÉ EXISTE (auditoría del 17/09/2026) ═══
+ *
+ * La pantalla dibujaba las quincenas cerradas RECOMPONIÉNDOLAS: horas de `registros_hh` vivo y $/h de
+ * `persona_tarifa`. Medido contra Postgres sobre 20 quincenas cerradas y 324 líneas: 45 líneas difieren del
+ * registro guardado. En la 1ª de junio la recomposición daba 1.676,5 h y $7.970.750 contra 1.886,5 h y $9.393.250
+ * sellados — $1.422.500 de diferencia contra lo que se pagó— y le fabricaba a Agüero un saldo de −$378.000 que no
+ * existe. Una fila decía otro $/h que el guardado (Bazán, 16–31/03: $4.000 en pantalla contra $4.300 sellado).
+ *
+ * Una quincena cerrada NO SE RECALCULA: se lee de acá. Recomponer es el respaldo para las líneas que no tienen
+ * fila guardada, y se dice que es un respaldo.
+ *
+ * ═══ `sellado_en` NO SIRVE COMO SEÑAL ═══
+ *
+ * Está vacío en las 324 líneas cerradas (medido 17/09/2026), igual que `categoria_sellada` y `convenio_sellado`:
+ * estas filas las escribió el pipeline, no el botón «Cerrar y sellar» de la web. Lo que hace que una fila SEA el
+ * registro no es esa marca sino estar en una quincena cerrada y traer la cadena. Gatear por `sellado_en` habría
+ * dejado el defecto vivo en las 324.
+ */
+export interface LineaSellada {
+  horas: number | null
+  valorHora: number | null
+  cobra: number | null
+  adelanto: number | null
+  yaTransferido: number | null
+  porBanco: number | null
+  enEfectivo: number | null
+  total: number | null
+  /** La categoría con la que se cerró. Vacía en toda la base hoy: sin ella, el rótulo es el del legajo de HOY. */
+  categoria: string | null
 }
 
 interface CabeceraGuardada {
@@ -117,6 +162,12 @@ export function leerGuardadas(data: unknown): {
   presentismosSellados: Map<string, PresentismoDeLinea>
   /** Cuándo se marcó «pagada» cada línea (dueño, 16/09/2026). Sólo las marcadas. */
   pagadas: Map<string, string>
+  /**
+   * LA CADENA GUARDADA DE CADA LÍNEA. La consume SÓLO la rama cerrada (`liquidacionQuincenaService`): en una
+   * quincena abierta estos mismos campos son el resultado de la corrida anterior del pipeline y NO son la foto
+   * de nada — leerlos ahí congelaría una quincena que todavía se está armando.
+   */
+  sellos: Map<string, LineaSellada>
 } {
   const filas = (data ?? []) as CabeceraGuardada[]
   const estados: Record<string, EstadoDeLaQuincena> = {}
@@ -126,6 +177,7 @@ export function leerGuardadas(data: unknown): {
   const importesCargados = new Map<string, number>()
   const presentismosSellados = new Map<string, PresentismoDeLinea>()
   const pagadas = new Map<string, string>()
+  const sellos = new Map<string, LineaSellada>()
   for (const f of filas) {
     estados[f.grupo] = {
       id: f.id,
@@ -142,9 +194,33 @@ export function leerGuardadas(data: unknown): {
       const sellado = presentismoSellado(l)
       if (sellado) presentismosSellados.set(l.persona_id, sellado)
       if (typeof l.pagada_en === 'string' && l.pagada_en) pagadas.set(l.persona_id, l.pagada_en)
+      const guardada = lineaSellada(l)
+      if (guardada) sellos.set(l.persona_id, guardada)
     }
   }
-  return { estados, redondeos, overrides, formulas, importesCargados, presentismosSellados, pagadas }
+  return { estados, redondeos, overrides, formulas, importesCargados, presentismosSellados, pagadas, sellos }
+}
+
+/**
+ * LA CADENA GUARDADA DE UNA LÍNEA. `null` cuando la fila no trae NINGUNO de los tres números que la identifican
+ * como registro (`horas`, `valor_hora`, `cobra`): ahí no hay foto que mostrar y la pantalla recompone, diciéndolo.
+ */
+export function lineaSellada(l: LineaGuardada): LineaSellada | null {
+  const n = (v: number | string | null | undefined): number | null => {
+    if (v == null || v === '') return null
+    const x = Number(v)
+    return Number.isFinite(x) ? x : null
+  }
+  const horas = n(l.horas)
+  const valorHora = n(l.valor_hora)
+  const cobra = n(l.cobra)
+  if (horas == null && valorHora == null && cobra == null) return null
+  return {
+    horas, valorHora, cobra,
+    adelanto: n(l.adelanto), yaTransferido: n(l.ya_transferido),
+    porBanco: n(l.por_banco), enEfectivo: n(l.en_efectivo), total: n(l.total),
+    categoria: typeof l.categoria_sellada === 'string' && l.categoria_sellada.trim() !== '' ? l.categoria_sellada : null,
+  }
 }
 
 /** La foto sellada, como la publica la línea. Sin importe no hay foto (no regía o no había categoría). */

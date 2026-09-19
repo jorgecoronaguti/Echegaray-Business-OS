@@ -18,11 +18,14 @@ export interface EntradaDeCategorias {
   /** `recibo` = el del período; `estimado` = el $/h viene del último recibo real; sin recibo = nunca tuvo. */
   estado: 'recibo' | 'estimado' | null
   /**
-   * LA FOTO DE UNA QUINCENA CERRADA. `null` en la abierta. Una cerrada no tiene modelo blanco+negro —no se recalcula
-   * sobre algo ya pagado— y por eso decía «Recibo: sin recibo todavía · —/h» para gente a la que se le liquidaron
-   * horas × $/h. Con el sello dice su $/h y de cuándo es.
+   * LA QUINCENA CERRADA. `null` en la abierta. Una cerrada no tiene modelo blanco+negro —no se recalcula sobre algo
+   * ya pagado— y por eso decía «Recibo: sin recibo todavía · —/h» para gente a la que se le liquidaron horas × $/h.
+   *
+   * `origen` DECIDE CÓMO SE DICE, y no es cosmética: `sello` es el registro de `liquidacion_linea` —lo que se
+   * pagó— y `reconstruido` es la tarifa recompuesta desde `persona_tarifa`, que en 45 de 324 líneas no coincide
+   * con lo guardado. Sólo el registro puede decirse como hecho.
    */
-  sello?: { valorHora: number | null; pisoDesde: string | null; hasta: string } | null
+  sello?: { origen: 'sello' | 'reconstruido'; valorHora: number | null; pisoDesde: string | null; hasta: string } | null
 }
 
 export interface CategoriasDeLaFila {
@@ -60,23 +63,33 @@ export function categoriasDeLaFila(e: EntradaDeCategorias): CategoriasDeLaFila {
   const catRecibo = legible(e.categoriaRecibo)
   const hayRecibo = e.estado != null && (catRecibo != null || e.valorHoraRecibo != null) && e.periodoRecibo != null
   if (!hayRecibo) {
-    // ═══ UNA QUINCENA CERRADA DICE SU $/H (dueño, 17/09/2026) ═══
+    // ═══ UNA QUINCENA CERRADA DICE SU $/H, Y DICE DE DÓNDE SALE ═══
     //
-    // No hay recibo que mostrar —la cerrada no vuelve a estimar el blanco— pero sí hay un $/h: el que se usó para
-    // liquidarla. Decir «sin recibo todavía · —/h» sobre una quincena ya pagada esconde un dato que existe. Se dice
-    // con su fecha, para que nadie lo lea como el valor de hoy.
+    // No hay recibo que mostrar —la cerrada no vuelve a estimar el blanco— pero sí hay un $/h. Cuál se muestra y
+    // CÓMO se dice depende del origen, y ésa es la corrección de la auditoría del 17/09/2026: «Se liquidó a $X/h»
+    // sobre una reconstrucción es una afirmación falsa con forma de hecho (Bazán, 16–31/03: decía $4.000 y el
+    // registro guarda $4.300). El registro se afirma; la reconstrucción se declara como lo que es.
     if (e.sello && e.sello.valorHora != null) {
+      const esRegistro = e.sello.origen === 'sello'
+      const piso = `Piso del convenio para ${plat} a esa fecha: ${pesos(e.pisoPlataforma)}/h${e.sello.pisoDesde ? ` (rige desde el ${dia(e.sello.pisoDesde)})` : ''}.`
+      // LA CATEGORÍA CASI NUNCA SE SELLA: `categoria_sellada` está vacía en las 324 líneas cerradas de la base.
+      const deHoy = `La categoría no quedó sellada al cerrar: «${plat}» es la del legajo de HOY.`
       return {
-        // «$/h de la quincena · $5.400/h» repetía la unidad. Se dice como el hecho que es: ya se pagó a ese valor.
-        recibo: `Se liquidó a ${pesos(e.sello.valorHora)}/h`,
+        recibo: esRegistro
+          ? `Se liquidó a ${pesos(e.sello.valorHora)}/h`
+          : `Sin línea guardada · tarifa de esa fecha ${pesos(e.sello.valorHora)}/h`,
         plataforma,
-        titulo: [
-          `Quincena CERRADA: ${pesos(e.sello.valorHora)}/h es la tarifa con la que se liquidó, tomada al ${dia(e.sello.hasta)}. No es la de hoy.`,
-          `Piso del convenio para ${plat} a esa fecha: ${pesos(e.pisoPlataforma)}/h${e.sello.pisoDesde ? ` (rige desde el ${dia(e.sello.pisoDesde)})` : ''}.`,
-          // LA CATEGORÍA NO SE SELLA: `liquidacion_linea.categoria_sellada` está vacío en toda la base.
-          `La categoría no quedó sellada al cerrar: «${plat}» es la del legajo de HOY.`,
-        ].join('\n'),
-        coinciden: e.pisoPlataforma != null && Math.round(e.sello.valorHora) === Math.round(e.pisoPlataforma),
+        titulo: (esRegistro
+          ? [
+            `Quincena CERRADA: ${pesos(e.sello.valorHora)}/h es el $/h GUARDADO en la línea del cierre (liquidacion_linea.valor_hora). Es el registro de lo que se pagó, no un recálculo de hoy.`,
+            piso, deHoy,
+          ]
+          : [
+            `Quincena CERRADA y SIN LÍNEA GUARDADA para esta persona: no hay registro de lo que se le pagó.`,
+            `${pesos(e.sello.valorHora)}/h es una RECONSTRUCCIÓN: la tarifa que regía al ${dia(e.sello.hasta)} según persona_tarifa. Puede no ser lo que se liquidó.`,
+            piso, deHoy,
+          ]).join('\n'),
+        coinciden: esRegistro && e.pisoPlataforma != null && Math.round(e.sello.valorHora) === Math.round(e.pisoPlataforma),
       }
     }
     return {

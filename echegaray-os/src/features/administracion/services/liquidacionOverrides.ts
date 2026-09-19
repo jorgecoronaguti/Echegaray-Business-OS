@@ -71,35 +71,58 @@ export interface ReferenciaDeJornales {
 }
 
 /**
- * LA FOTO DE UNA QUINCENA CERRADA (dueño, 17/09/2026: «no salen los valores $/h de cada uno en las quincenas
- * anteriores, revisar y rehacer»).
+ * LA FOTO DE UNA QUINCENA CERRADA — y de dónde sale de verdad.
  *
- * ═══ QUÉ PASABA ═══
+ * ═══ QUÉ PASABA (dueño 17/09/2026; auditoría del mismo día) ═══
  *
- * Una quincena cerrada no se recalcula: se dibuja con `sinOverrides`, que deja `sueldo` en `null` a propósito —el
- * modelo blanco+negro depende de recibos y estimaciones que NO pueden volver a correr sobre algo ya pagado—. Pero la
- * pantalla leía el $/h SÓLO de ese modelo, así que la columna «$/h cat.» decía «—» y el detalle «Plataforma: Oficial
- * · —/h» para gente a la que se le liquidaron horas × $/h. El dato existía; no había por dónde decirlo.
+ * La 1ª de junio decía «Recibo: sin recibo todavía», «Plataforma: Oficial · —/h» y «$/h cat.» en «—» para veinte
+ * personas a las que se les liquidaron horas × $/h. El primer arreglo tapó el hueco con una RECONSTRUCCIÓN
+ * (`persona_tarifa` a la fecha de la quincena) y la escribió como hecho: «Se liquidó a $X/h». Medido contra
+ * Postgres, 45 de 324 líneas cerradas no coinciden con el registro guardado, y una afirmaba otro número
+ * (Bazán, 16–31/03: $4.000 en pantalla, $4.300 guardado). Una reconstrucción con forma de hecho es peor que el
+ * «—» que reemplazó: el «—» al menos no miente.
  *
- * ═══ QUÉ ES Y QUÉ NO ES ═══
+ * ═══ LA REGLA ═══
  *
- * Los dos valores están tomados AL ÚLTIMO DÍA DE ESA QUINCENA, nunca a hoy: la tarifa sale de `persona_tarifa` filtrada
- * por `desde <= q.hasta` y el piso, de `pisoVigente(escala, …, q.hasta)` —la misma escala histórica que usa Convenios—.
- * NO es un recálculo: son dos números que la quincena cerrada ya tenía y que no tenían dónde mostrarse.
+ * Una quincena cerrada se LEE de `liquidacion_linea` —es el registro de lo que se pagó— y no se recalcula. La
+ * reconstrucción queda como RESPALDO para las líneas que no tienen fila guardada, y se dice que lo es
+ * (`origen: 'reconstruido'`): nunca «se liquidó a».
  *
- * LA CATEGORÍA NO SE SELLA. `liquidacion_linea.categoria_sellada` está vacío en TODA la base (verificado 17/09/2026:
- * 0 de 0 en agosto, julio y junio), así que el nombre de la categoría que se muestra es el del legajo de HOY. Eso se
- * dice en el `title`: si alguien recategorizó a una persona, el rótulo cambió aunque la quincena esté cerrada.
+ * `piso` y `pisoDesde` son CONTEXTO, no el registro: el piso del convenio para su categoría vigente a esa fecha
+ * (`exponerAlPiso` ya corre con `q.hasta`). Sirven para leer el $/h guardado contra lo que el convenio pedía ese
+ * mes, y van con su fecha para que no se lean como los de hoy.
+ *
+ * LA CATEGORÍA CASI NUNCA SE SELLA: `categoria_sellada` está vacía en las 324 líneas cerradas. Cuando falta, el
+ * rótulo que se ve es el del legajo de HOY y la pantalla lo dice.
  */
 export interface SelloDeLaQuincena {
-  /** El $/h con el que se liquidó esa quincena. `null` si la persona no cobraba por hora. */
+  /** `sello` = la línea guardada, el registro de lo que se pagó. `reconstruido` = respaldo, y se dice. */
+  origen: 'sello' | 'reconstruido'
+  /** El $/h. Del registro, o —en el respaldo— la tarifa que regía al cierre de esa quincena. */
   valorHora: number | null
-  /** El piso del convenio para su categoría, vigente A ESA FECHA. `null` sin categoría o sin escala de ese mes. */
+  /** Horas y cobra GUARDADOS. `null` en el respaldo: ahí no hay registro que mostrar. */
+  horas: number | null
+  cobra: number | null
+  /** La categoría con la que se cerró. `null` = no se selló; el rótulo es el del legajo de hoy. */
+  categoria: string | null
+  /** Contexto: el piso del convenio para su categoría, vigente A ESA FECHA. Nunca el de hoy. */
   piso: number | null
   /** Desde cuándo rige ese piso (ISO). Va en el `title`: sin él, el piso se leería como el de hoy. */
   pisoDesde: string | null
-  /** El último día de la quincena: la fecha a la que están tomados los dos valores. */
+  /** El último día de la quincena: la fecha a la que están tomados el respaldo y el piso. */
   hasta: string
+}
+
+/** La cadena entera guardada de una línea cerrada. La escribe `cerrarQuincena`; acá sólo se lee. */
+export interface CadenaSellada {
+  horas: number | null
+  valorHora: number | null
+  cobra: number | null
+  adelanto: number | null
+  yaTransferido: number | null
+  porBanco: number | null
+  enEfectivo: number | null
+  total: number | null
 }
 
 export interface LineaConOverrides extends LineaLiquidada {
@@ -428,23 +451,46 @@ function descontarDelNegro(s: SueldoBlancoNegro, p: PresentismoDeLinea | null): 
  */
 export function sinOverrides(
   base: LineaLiquidada, sellado: PresentismoDeLinea | null = null, ov: OverridesDeLinea = {},
-  sello: SelloDeLaQuincena | null = null,
+  sello: SelloDeLaQuincena | null = null, cadena: CadenaSellada | null = null,
 ): LineaConOverrides {
   const registrado = (v: number | null | undefined): number | null =>
     v != null && Number.isFinite(v) ? redondear2(v) : null
-  const pagadoBanco = registrado(ov.pagadoBanco) ?? base.yaTransferido
-  const pagadoEfectivo = registrado(ov.pagadoEfectivo) ?? base.adelanto
+  // ═══ LA CADENA GUARDADA GANA SOBRE LA RECOMPUESTA (auditoría 17/09/2026) ═══
+  //
+  // `base` llega RECOMPUESTA: horas de `registros_hh` vivo y $/h de `persona_tarifa`. Para una quincena cerrada eso
+  // no es la foto, es una segunda opinión de hoy sobre algo que ya se pagó — y difiere: en la 1ª de junio daba
+  // 1.676,5 h y $7.970.750 contra 1.886,5 h y $9.393.250 guardados, y le inventaba a Agüero un saldo de −$378.000.
+  // Campo por campo, no en bloque: una fila a la que le falte un número guardado conserva el recompuesto en ESE
+  // campo en vez de quedarse sin nada.
+  const horas = cadena?.horas ?? base.horas
+  const valorHora = cadena?.valorHora ?? base.valorHora
+  const cobra = cadena?.cobra ?? base.cobra
+  const adelanto = cadena?.adelanto ?? base.adelanto
+  const yaTransferido = cadena?.yaTransferido ?? base.yaTransferido
+  const porBanco = cadena?.porBanco ?? base.porBanco
+  const enEfectivo = cadena?.enEfectivo ?? base.enEfectivo
+  const total = cadena?.total ?? base.total
+  const pagadoBanco = registrado(ov.pagadoBanco) ?? yaTransferido
+  const pagadoEfectivo = registrado(ov.pagadoEfectivo) ?? adelanto
   return {
     ...base, manual: { ...SIN_MARCAS }, origen: { ...TODO_CALCULADO }, discrepancia: {},
+    horas, valorHora, cobra, adelanto, yaTransferido, porBanco, enEfectivo, total,
+    // LAS HORAS EQUIVALENTES NO SE SELLAN. Con cadena guardada se igualan a las horas guardadas porque lo que se
+    // pagó es `cobra`, no horas × $/h recalculadas: dejar las equivalentes vivas al lado de las horas guardadas
+    // haría que la misma fila cerrada publicara dos cantidades de horas distintas.
+    horasEquivalentes: cadena?.horas ?? base.horasEquivalentes,
+    // CON $/H GUARDADO NADIE ESTÁ «SIN TARIFA»: Gonzales Abel Valentín (1ª de junio) cobró 94 h × $4.000 y la
+    // pantalla lo dibujaba «sin tarifa» porque hoy no tiene fila en `persona_tarifa`.
+    sinTarifa: cadena?.valorHora != null || cadena?.cobra != null ? false : base.sinTarifa,
     // `sueldo` SIGUE EN NULL A PROPÓSITO: el modelo blanco+negro no se recalcula sobre algo ya pagado. Lo que sí
     // viaja es el sello, para que el $/h de esa quincena deje de ser «—».
     referenciaJornales: null, sueldo: null, sello, presentismo: sellado, sinNeto: false, horasRecibo: null, valorHoraRecibo: null,
-    negro: null, horasNegro: null, horasDeLosDias: base.horas,
+    negro: null, horasNegro: null, horasDeLosDias: horas,
     pagadoBanco, pagadoEfectivo, formulas: {},
     pago: pagoDeLaLinea({
-      banco: base.porBanco,
+      banco: porBanco,
       negro: negroDeLaFila({
-        netoMensual: base.netoMensual, cobra: base.cobra, porBanco: base.porBanco, sueldo: null, modalidad: base.modalidad,
+        netoMensual: base.netoMensual, cobra, porBanco, sueldo: null, modalidad: base.modalidad,
       }),
       pagadoBanco, pagadoEfectivo,
     }),

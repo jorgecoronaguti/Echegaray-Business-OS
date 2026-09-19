@@ -110,9 +110,10 @@ export function CeldaTarifa({ fila, quincena, pct, sinValor = 'sin tarifa' }: {
             fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
           }}>{actual == null ? sinValor : pesos(actual)}</button>
       ) : (
-        // EL MISMO TESTID QUE EL BOTÓN: en una quincena cerrada la celda no se escribe, pero el valor tiene que poder
-        // medirse igual (17/09/2026: el «—» de las quincenas anteriores no lo veía ningún test porque no tenía testid).
-        <span data-testid={`tarifa-${fila.personaId}`} data-solo-lectura="1" style={{ color: V.apagado }}>{actual == null ? '—' : pesos(actual)}</span>
+        // TESTID PROPIO, NO EL DEL BOTÓN (auditoría 17/09/2026). El valor de una quincena cerrada tiene que poder
+        // medirse —antes este span no tenía ninguno y el «—» vivía invisible— pero repetir `tarifa-<id>` haría que un
+        // `getByTestId` devolviera el nodo que exista y no el que se quiso medir: uno se escribe y el otro no.
+        <span data-testid={`tarifa-leida-${fila.personaId}`} style={{ color: V.apagado }}>{actual == null ? '—' : pesos(actual)}</span>
       )}
       {/* UN 0% NO DICE NADA: aparece cuando el Sheet sembró la quincena con el mismo valor. */}
       {pct != null && pct !== 0 && texto == null && (

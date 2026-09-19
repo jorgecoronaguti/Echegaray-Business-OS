@@ -30,6 +30,11 @@ const DERECHA: CSSProperties = { textAlign: 'right', whiteSpace: 'nowrap', overf
 
 /** `2026-06-15` → `15/06/2026`. Una cifra vieja sin su fecha se lee como la de hoy. */
 const diaDeLaFoto = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
+
+/** «rec.» chico: este número no es el registro, es una reconstrucción. Igual que `Est` para el blanco estimado. */
+const Rec = () => (
+  <span style={{ fontSize: '9.5px', color: V.tenue, marginLeft: 3, fontStyle: 'normal' }}>rec.</span>
+)
 const ESTIMADO: CSSProperties = { color: V.apagado, fontStyle: 'italic' }
 
 export const urlDelRecibo = (id: string): string => `https://drive.google.com/file/d/${id}/view`
@@ -105,16 +110,24 @@ export function CeldaHorasBlanco({ fila, edicion }: { fila: FilaDelEspejo; edici
 export function CeldaHoraCategoria({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
   const s = fila.linea.sueldo
   const bajo = marcaDeCategoria(s)
-  // ═══ LA QUINCENA CERRADA TAMBIÉN TIENE $/H (dueño, 17/09/2026: «no salen los valores $/h … en las quincenas
-  // anteriores») ═══ Sin modelo blanco+negro esta celda decía «—» sobre una persona a la que se le liquidaron horas
-  // × $/h. El valor es el de ESA quincena (`SelloDeLaQuincena`), nunca el de hoy, y el `title` dice a qué fecha está
-  // tomado. Apagado, no en tinta plena: es una foto, no una celda que se pueda escribir.
+  // ═══ LA QUINCENA CERRADA TAMBIÉN TIENE $/H, Y DICE DE DÓNDE SALE ═══
+  //
+  // Sin modelo blanco+negro esta celda decía «—» sobre gente a la que se le liquidaron horas × $/h. Ahora muestra el
+  // $/h GUARDADO en la línea del cierre. Si no hay línea guardada muestra la reconstrucción, en cursiva y con «rec.»
+  // al lado: la auditoría del 17/09/2026 encontró 45 de 324 líneas donde las dos fuentes no coinciden, así que las
+  // dos no pueden verse iguales. Apagado, no en tinta plena: es un registro, no una celda que se pueda escribir.
   const sello = fila.linea.sello
   if (s == null && sello?.valorHora != null) {
+    const esRegistro = sello.origen === 'sello'
     return (
-      <div data-testid={`hora-categoria-${fila.personaId}`} data-sellado="1"
-        title={`Quincena cerrada: ${pesos(sello.valorHora)}/h es la tarifa con la que se liquidó, tomada al ${diaDeLaFoto(sello.hasta)}. No es la de hoy.`}
-        style={{ ...DERECHA, color: V.apagado }}>{pesos(sello.valorHora)}</div>
+      <div data-testid={`hora-categoria-${fila.personaId}`} data-sellado={esRegistro ? '1' : undefined}
+        data-reconstruido={esRegistro ? undefined : '1'}
+        title={esRegistro
+          ? `Quincena cerrada: ${pesos(sello.valorHora)}/h es el $/h GUARDADO en la línea del cierre. Es el registro de lo que se pagó.`
+          : `Quincena cerrada SIN línea guardada: ${pesos(sello.valorHora)}/h es una RECONSTRUCCIÓN con la tarifa vigente al ${diaDeLaFoto(sello.hasta)}. Puede no ser lo que se liquidó.`}
+        style={{ ...DERECHA, ...(esRegistro ? { color: V.apagado } : ESTIMADO) }}>
+        {pesos(sello.valorHora)}{!esRegistro && <Rec />}
+      </div>
     )
   }
   if (seEscribe(fila, 'valorHoraRecibo', edicion)) {
