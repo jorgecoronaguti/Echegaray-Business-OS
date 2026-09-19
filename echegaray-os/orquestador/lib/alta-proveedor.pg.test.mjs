@@ -91,3 +91,29 @@ test('el alta automática contra la base real', { skip: !hayBase }, async (t) =>
     c.release()
   }
 })
+
+// ═══ EL DUPLICADO QUE EL ALTA AUTOMÁTICA PUEDE CREAR TIENE QUE SER VISIBLE ═══
+//
+// Medido el 25/08 contra el Sheet vivo: de los 138 proveedores del desplegable de `Compras!E`, sólo
+// 24 tienen CUIT en `public.proveedores` y 22 en la pestaña `Proveedores`. Para los demás, el OS no
+// tiene con qué saber que la razón social de una factura es un proveedor que ya existe. El alta lo
+// va a duplicar, y un duplicado que se ve correcto no lo busca nadie: la marca en la ficha es la
+// única forma de encontrarlo después.
+test('la ficha creada sola queda marcada en la cartera', { skip: !hayBase }, async () => {
+  const c = await getPool().connect()
+  try {
+    await c.query('begin')
+    await c.query('select pg_advisory_xact_lock(20260822)')
+    const q = (sql, params) => c.query(sql, params)
+    const plan = planDeAltas([resolverNoMatcheado({ nombre: 'QA MARCA 20260825', cuit: '30999999987' }, {})])
+    const r = await aplicarAltas(plan, { query: q, comprobante: 'Compras!900..900' })
+    const { rows } = await q('select nombre, cuit, notas, activo from public.proveedores where id = $1', [r.creados[0].id])
+    assert.equal(rows[0].cuit, '30999999987')
+    assert.equal(rows[0].activo, true)
+    assert.match(rows[0].notas, /^alta automática por CUIT 30999999987 · Compras!900\.\.900/)
+    assert.match(rows[0].notas, /revisar que no sea otro nombre de un proveedor que ya existía/)
+  } finally {
+    await c.query('rollback').catch(() => {})
+    c.release()
+  }
+})

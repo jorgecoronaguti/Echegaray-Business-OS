@@ -346,7 +346,7 @@ export async function aplicarAltas(plan, { query, comprobante = null } = {}) {
   for (const e of plan?.existentes ?? []) if (e.proveedorId) porCuit.set(e.cuit, e.proveedorId)
 
   for (const a of plan?.altas ?? []) {
-    const r = await insertarProveedor(query, a)
+    const r = await insertarProveedor(query, a, comprobante)
     if (r.id) porCuit.set(a.cuit, r.id)
     if (r.creado) out.creados.push({ ...a, id: r.id })
     else if (r.id) out.yaEstaban.push({ ...a, id: r.id })
@@ -370,11 +370,22 @@ export async function aplicarAltas(plan, { query, comprobante = null } = {}) {
   return out
 }
 
-async function insertarProveedor(query, { nombre, cuit }) {
+/**
+ * LA FICHA NACE MARCADA, Y NO ES BUROCRACIA.
+ *
+ * Medido el 25/08 sobre el Sheet vivo: de los 138 proveedores del desplegable, sólo 24 tienen el
+ * CUIT cargado en `public.proveedores` y la pestaña `Proveedores` conoce 22. Para los ~114 restantes
+ * el OS no puede saber que la razón social de una factura es un proveedor que ya existe, así que el
+ * alta automática lo va a duplicar — y un duplicado que se ve correcto es peor que una celda roja,
+ * porque nadie lo va a ir a buscar. La marca en `notas` es lo que lo hace visible en la cartera de
+ * `/administracion/proveedores` y lo que permite fusionarlo después.
+ */
+async function insertarProveedor(query, { nombre, cuit }, comprobante) {
+  const notas = `${MARCA_AUTOMATICA} ${cuit}${comprobante ? ` · ${comprobante}` : ''} — revisar que no sea otro nombre de un proveedor que ya existía`
   const { rows } = await query(
-    `insert into public.proveedores (nombre, cuit) values ($1, $2)
+    `insert into public.proveedores (nombre, cuit, notas) values ($1, $2, $3)
      on conflict do nothing returning id`,
-    [nombre, cuit],
+    [nombre, cuit, notas],
   )
   if (rows?.[0]?.id) return { id: rows[0].id, creado: true }
   // No devolvió fila: o el CUIT ya estaba (carrera) o el NOMBRE choca con otro proveedor. Se
