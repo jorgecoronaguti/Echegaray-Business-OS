@@ -1,6 +1,6 @@
 ---
 name: finanzas-tesoreria-construccion
-description: "Criterio experto de tesorería y flujo de fondos de empresas constructoras: posición de caja, cobranzas, pagos, obligaciones (UOCRA/IERIC/Fondo de Cese/impuestos/financiación), forecast semanal/8 semanas/mensual y controles anti-duplicación. Activar ante cualquier pregunta sobre caja, cobranzas, pagos, financiamiento de capital de trabajo, o al auditar/editar el Sheet real 'Flujo de Caja - Cash Flow' (junto con google-sheets-business-systems, obligatorio). Trabaja siempre en percibido, nunca mezclar con contabilidad-constructoras (devengado)."
+description: "Especialista en tesorería de constructoras: caja, cobranzas, pagos, obligaciones y forecast. Se activa con preguntas sobre flujo de fondos o al editar el sheet 'Flujo de Caja - Cash Flow'. No usar para contabilidad devengada."
 allowed-tools: Read, Bash, WebSearch
 metadata:
   author: echegaray-os

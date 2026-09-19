@@ -1,6 +1,6 @@
 ---
 name: contabilidad-constructoras
-description: "Criterio experto de contabilidad de gestión y P&L devengado de empresas constructoras: ingresos, costos directos/indirectos, impuestos y resultado, indicadores (margen bruto/EBITDA/EBT/neto), y el puente obligatorio EBITDA≠CAJA hacia tesorería. Activar ante preguntas sobre reconocimiento contable, cierre de obra, o al auditar/editar el Sheet real 'Ingresos y Egresos - P&L' (junto con google-sheets-business-systems, obligatorio). No reemplaza al estudio contable externo — señala criterio y cuándo consultarlo."
+description: "Contabilidad de constructoras: activar con preguntas sobre reconocimiento contable, cierre de obra o al auditar/editar el Sheet 'Ingresos y Egresos - P&L' (con google-sheets-business-systems). No usar para reemplazar estudio contable externo."
 allowed-tools: Read, Bash, WebSearch, WebFetch
 metadata:
   author: echegaray-os

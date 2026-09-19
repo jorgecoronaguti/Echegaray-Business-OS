@@ -1,6 +1,6 @@
 ---
 name: derecho-laboral-construccion
-description: "Régimen laboral específico de la construcción (distinto del derecho laboral general): CCT de UOCRA, registro IERIC, Fondo de Cese Laboral. Activar ante preguntas sobre alta/baja de personal, registro de trabajadores, categorías UOCRA, o desvinculación. Confirmado con evidencia real: Echegaray realiza pagos recurrentes a IERIC y UOCRA."
+description: "Régimen laboral específico de la construcción: CCT UOCRA, registro IERIC, Fondo de Cese Laboral. Activar ante preguntas sobre alta/baja de personal, registro de trabajadores, categorías UOCRA o desvinculación. No usar para derecho laboral general."
 allowed-tools: Read, Bash, WebSearch, WebFetch
 metadata:
   author: echegaray-os

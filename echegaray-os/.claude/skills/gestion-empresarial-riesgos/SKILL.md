@@ -1,6 +1,6 @@
 ---
 name: gestion-empresarial-riesgos
-description: "Marco de gestión de riesgo empresarial integral para Echegaray Construcciones: riesgo de cliente, de obra, de concentración, financiero y operativo. Activar ante decisiones Go/No-Go de una obra, evaluación de riesgo de un cliente nuevo, o análisis de exposición general de la empresa. Es el marco que integra el resto de las skills cuando la decisión es sobre la empresa como conjunto, no sobre una obra puntual."
+description: "Activar para decisiones Go/No-Go de obras, evaluación de clientes nuevos o análisis de exposición empresarial general. No usar para decisiones sobre obras puntuales."
 allowed-tools: Read, Bash
 metadata:
   author: echegaray-os

@@ -1,6 +1,6 @@
 ---
 name: web-ux-deploy-operacion-producto
-description: "Diseño de interfaz web, UX por rol (Dirección/Administración/Obras/Campo), autenticación/autorización desde la experiencia de usuario, y estrategia de deploy/operación del Business OS. Activar ante cualquier decisión de pantalla nueva, navegación, permisos visibles, o pregunta sobre cómo/dónde correr el sistema (local/staging/producción)."
+description: "Diseño de interfaz web y UX por rol, autenticación/autorización, y estrategia de deploy/operación. Activar ante decisiones de pantalla nueva, navegación, permisos visibles, o preguntas sobre entornos de ejecución local/staging/producción."
 allowed-tools: Read, Bash, Grep, Glob
 metadata:
   author: echegaray-os

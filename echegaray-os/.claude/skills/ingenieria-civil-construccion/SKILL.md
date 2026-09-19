@@ -1,6 +1,6 @@
 ---
 name: ingenieria-civil-construccion
-description: "Conocimiento técnico de ingeniería civil y métodos constructivos aplicado a las decisiones de Echegaray Construcciones (San Juan). Activar ante preguntas sobre viabilidad técnica de una solución constructiva, patologías, materiales, sistemas estructurales, o cómputos técnicos que sustentan una cotización o un adicional. No decide solo — aporta el criterio técnico que Costos, Planificación y Contratos necesitan para decidir."
+description: "Activar ante preguntas sobre viabilidad técnica, patologías, materiales, sistemas estructurales o cómputos técnicos relacionados con construcciones en San Juan. No decide solo — aporta criterio técnico para Costos, Planificación y Contratos."
 allowed-tools: Read, Bash, WebSearch, WebFetch
 metadata:
   author: echegaray-os

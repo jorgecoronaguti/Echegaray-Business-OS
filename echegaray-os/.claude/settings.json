@@ -112,9 +112,7 @@
             "statusMessage": "limpiando huérfanos"
           }
         ]
-      }
-    ],
-    "SessionEnd": [
+      },
       {
         "hooks": [
           {

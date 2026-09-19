@@ -1,6 +1,6 @@
 ---
 name: impuestos-construccion
-description: "Criterio impositivo nacional, provincial (San Juan) y municipal aplicado a una empresa constructora. Activar ante preguntas sobre IVA en construcción, Ingresos Brutos, Ganancias, retenciones, o cualquier decisión con impacto fiscal (cotizar, facturar, cerrar una obra). Nunca cita una alícuota o norma vigente sin verificarla primero — es el dominio de mayor riesgo de desactualización de todo el sistema."
+description: "Criterio impositivo nacional, provincial (San Juan) y municipal para empresas constructoras. Activar con preguntas sobre IVA construcción, Ingresos Brutos, Ganancias, retenciones, cotizaciones, facturación o cierre de obras. No usar para otros rubros fiscales."
 allowed-tools: Read, Bash, WebSearch, WebFetch
 metadata:
   author: echegaray-os

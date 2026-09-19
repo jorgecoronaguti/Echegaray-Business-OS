@@ -1,6 +1,6 @@
 ---
 name: discovery-drive-echegaray
-description: "Investigar el Google Drive de Echegaray Construcciones para responder una pregunta de negocio puntual, usando el conocimiento ya confirmado en dos rondas de discovery (AS-IS). Activar cuando se necesita un dato concreto de un archivo o sistema ya mapeado, o verificar si algo cambió desde el último discovery. No activar para explorar Drive de forma general."
+description: "Investigar Google Drive de Echegaray Construcciones para obtener datos específicos de archivos ya mapeados o verificar cambios desde último discovery. Activar con preguntas de negocio concretas sobre archivos conocidos. No usar para exploración general de Drive."
 allowed-tools: mcp__claude_ai_Google_Drive__search_files, mcp__claude_ai_Google_Drive__read_file_content, mcp__claude_ai_Google_Drive__get_file_metadata, mcp__claude_ai_Google_Drive__list_recent_files, mcp__claude_ai_Google_Drive__download_file_content, Read, Bash
 metadata:
   type: methodology

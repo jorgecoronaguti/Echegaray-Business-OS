@@ -1,6 +1,6 @@
 ---
 name: diseno-ui-ux-producto-os
-description: "Contrato OBLIGATORIO de diseño de interfaz del Business OS de Echegaray: identidad de marca medida del logo real (grafito #30302F + amarillo #FDC900), las 25 reglas visuales estrictas del dueño, y el sistema de producto tomado de Asana (estructura), Figma (interacción), Autodesk Construction Cloud (la obra como workspace) y la lógica de software constructor. Activar SIEMPRE antes de crear o modificar cualquier pantalla, componente o token visual de app.ecsas.com.ar. No decide QUÉ dato mostrar —eso lo deciden las skills de dominio—: decide cómo se ve, cómo se usa, y verifica el resultado con un navegador real."
+description: "Contrato visual de app.ecsas.com.ar: marca, 25 reglas visuales y sistema de producto. Cargar antes de crear o modificar pantallas, componentes, gráficos o tokens visuales; verifica en navegador real. No decide qué dato mostrar."
 allowed-tools: Read, Bash, Edit, Write, Grep, Glob, WebSearch
 metadata:
   author: echegaray-os

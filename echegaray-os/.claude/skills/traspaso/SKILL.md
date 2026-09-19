@@ -1,6 +1,6 @@
 ---
 name: traspaso
-description: Cierra la sesión dejando por escrito el estado para retomarla horas o días después sin reconstruir contexto. Usalo antes de cerrar Claude Code con trabajo a medio hacer, cuando el contexto se está llenando y va a haber `/clear`, o cuando el dueño dice "seguimos mañana". NO lo uses para documentar una decisión permanente — eso va a una skill, a `.claude/rules/` o a la memoria.
+description: "Guarda el estado de la sesión actual para retomarla más tarde, antes de cerrar Claude Code, cuando hay mucho contexto o el usuario indica que continuará otro día. No usar para decisiones permanentes."
 argument-hint: "[nota opcional sobre dónde quedó]"
 allowed-tools: Read, Write, Edit, Bash(git *)
 ---

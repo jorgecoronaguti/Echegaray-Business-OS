@@ -1,6 +1,6 @@
 ---
 name: lectura-bancaria-impacto-sheet
-description: "El OS SIEMPRE sabe leer información bancaria (extracto CSV, texto pegado o CAPTURAS de pantalla de banca online: saldos, movimientos, débitos/créditos, cheques/echeqs, impuestos, descubierto) y saber EXACTAMENTE qué impacta en la pestaña CAJA y en TODAS las demás pestañas del Sheet 'Flujo de Caja - Cash Flow'. Activar SIEMPRE que llegue un extracto, un resumen o una captura del banco, o antes de cargar movimientos bancarios al OS. Reusa el importador que ya existe (nunca reescribe el motor) y aplica el MAPA DE IMPACTO: qué evento bancario → qué pestaña/columna. Cruza con finanzas-tesoreria-construccion, google-sheets-business-systems, admin-finanzas-sheets-clase-mundial e impuestos-construccion."
+description: "El OS lee extractos bancarios (CSV, texto, capturas) y determina automáticamente qué movimientos impactan en cada pestaña del Sheet 'Flujo de Caja'. Se activa siempre que llega un extracto, resumen o captura del banco, o antes de cargar movimientos bancarios. No usar para otros tipos de documentos financieros."
 license: MIT
 allowed-tools: Read, Bash, Edit, Write, WebSearch
 metadata:

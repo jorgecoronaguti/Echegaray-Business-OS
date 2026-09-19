@@ -1,6 +1,6 @@
 ---
 name: carga-gastos-multimedia
-description: "Procedimiento ejecutable y confiable para cargar un GASTO que llega como multimedia (foto/PDF/imagen de factura, ticket o comprobante) a la pestaña 'Compras' del Sheet 'Flujo de Caja - Cash Flow' de Echegaray. Activar SIEMPRE que el dueño mande una o varias fotos/PDF de comprobantes para registrar. Encapsula: cómo leer la multimedia, cómo tratar IVA y percepciones (M = Total − IVA), cómo armar el fajo.json, cómo asignar obra sin inventar, proveedor nuevo vs existente, la corrida del loader existente con --dry primero, y la verificación post-carga. NO reescribe el motor: orquesta el uso correcto de orquestador/scripts/cargar-comprobantes-compras.mjs. Cruzar con lectura-drive-documentos-multiformato (OCR), impuestos-construccion y contabilidad-constructoras (IVA/percepciones), google-sheets-business-systems y admin-finanzas-sheets-clase-mundial (el Sheet)."
+description: "Cargar gastos desde multimedia (foto/PDF de factura/ticket/comprobante) a la pestaña 'Compras' del Sheet 'Flujo de Caja - Cash Flow' de Echegaray. Activar cuando el dueño envíe imágenes o PDFs de comprobantes para registrar. No reescribe el motor: orquesta scripts existentes."
 allowed-tools: Read, Bash, Write
 metadata:
   author: echegaray-os
