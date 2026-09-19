@@ -16,6 +16,9 @@
 
 import { REGLAS, RUBROS } from './rubro-caja.mjs'
 import { TASAS, REAL as REAL_DESCUBIERTO } from './costo-descubierto.mjs'
+// La fecha de caja de una quincena vive en un solo lugar: ni el cash flow ni la pestaña de Jornales
+// la definen por su cuenta. Ver lib/jornales-fecha-pago.mjs.
+import { fechaDeCajaDeQuincena } from './jornales-fecha-pago.mjs'
 
 /** El sub-rubro de Estructura que NO es gasto del mes sino inversión. Lo escribe estructura-pestana. */
 export const SUB_BIENES_DE_USO = 'Equipos y rodados (inversión)'
@@ -389,10 +392,28 @@ export function formulaJornales(desde, hasta) {
   // Jornales del 23/07 movió las quincenas reales a la fila 41 y estas dos sumas habrían seguido
   // devolviendo un número —el de las filas equivocadas— sin marcar un solo error. Los nombres los
   // publica el generador de Jornales y se mueven con la pestaña.
-  // Bloque 1: quincenas reales (HASTA = fecha de pago, TOTAL = lo pagado).
-  const real = `SUMPRODUCT(ISNUMBER(JORNALES_REAL_HASTA)*(JORNALES_REAL_HASTA>=${desde})*(JORNALES_REAL_HASTA<${hasta})*IF(ISNUMBER(JORNALES_REAL_TOTAL);JORNALES_REAL_TOTAL;0))`
+  //
+  // ═══ LA FECHA QUE DECIDE ES LA DE PAGO, NO LA DE CIERRE (31/07) ═══
+  //
+  // Decía acá mismo: "HASTA = fecha de pago, TOTAL = lo pagado". Era falso. El dueño: *"los jornales
+  // que se pagan de la quincena q termina hoy, se pagarán la semana que viene"* — y el extracto del
+  // Santander ya lo probaba desde antes: la quincena que cerró el 15/07 se pagó el 17/07 (lote
+  // 260717507, $3.775.150, que es EXACTAMENTE su columna "Banco"), y la que cerró el 30/06 se pagó el
+  // 01/07. Una quincena no se paga el día que cierra: se paga uno o dos días hábiles después.
+  //
+  // MEDIDO sobre las 24 quincenas del año: la quincena 16/07–31/07 ($7.675.588) pasa de la columna de
+  // JULIO a la de AGOSTO, y de la semana del 27/07 a la del 03/08. El total del año no cambia
+  // ($184.172.771 de las dos formas): la plata se mueve entre columnas, no aparece ni desaparece.
+  //
+  // EL FALLBACK A `HASTA` NO ES OPCIONAL. Si la celda de pago quedara vacía —una quincena vieja, una
+  // fórmula borrada a mano— la línea devolvería cero para esa quincena y el cuadro seguiría cuadrando
+  // con menos plata. Una línea en cero sin avisar es el peor resultado posible de este archivo.
+  const fReal = fechaDeCajaDeQuincena('JORNALES_REAL_PAGO', 'JORNALES_REAL_HASTA')
+  const fProy = fechaDeCajaDeQuincena('JORNALES_PROY_PAGO', 'JORNALES_PROY_HASTA')
+  // Bloque 1: quincenas reales (TOTAL = lo pagado).
+  const real = `SUMPRODUCT(ISNUMBER(${fReal})*(${fReal}>=${desde})*(${fReal}<${hasta})*IF(ISNUMBER(JORNALES_REAL_TOTAL);JORNALES_REAL_TOTAL;0))`
   // Bloque 2: quincenas proyectadas.
-  const proy = `SUMPRODUCT(ISNUMBER(JORNALES_PROY_HASTA)*(JORNALES_PROY_HASTA>=${desde})*(JORNALES_PROY_HASTA<${hasta})*IF(ISNUMBER(JORNALES_PROY_TOTAL);JORNALES_PROY_TOTAL;0))`
+  const proy = `SUMPRODUCT(ISNUMBER(${fProy})*(${fProy}>=${desde})*(${fProy}<${hasta})*IF(ISNUMBER(JORNALES_PROY_TOTAL);JORNALES_PROY_TOTAL;0))`
   return `=${real}+${proy}`
 }
 
