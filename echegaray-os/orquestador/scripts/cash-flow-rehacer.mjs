@@ -9,13 +9,15 @@
 //
 //   node orquestador/scripts/cash-flow-rehacer.mjs [--dry]
 
+import { pathToFileURL } from 'node:url'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import {
   bloqueControl, CUADRO, verificarCuadro, formulaLineaMes, expresionReal, formulaTotalRubro, origenLinea,
   tablasDeProyeccion, formulaChequesSinFactura, hipervinculoDetalle, detalleDeRubro, SANGRIA_DETALLE,
+  formulaInteresSemana, edicionesConContenidoReal,
 } from '../lib/cash-flow-lineas.mjs'
-import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
+import { conEdicionesRespetadas, guardarRegistro, respetarEdiciones } from '../lib/respetar-ediciones.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { ref as refPestana } from '../lib/partir-pestana.mjs'
 import { CAJA as N_CAJA } from '../lib/rangos-nombrados.mjs'
@@ -29,6 +31,12 @@ import { parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
+// --force / ORQ_CF_FORCE: aplicar un cambio de ESTRUCTURA intencional. Saltea SÓLO el gate grueso
+// (candado + auto-respeto de reescritura, que confunde un cambio estructural grande con una reescritura
+// del dueño). La fusión celda a celda que preserva las ediciones reales del dueño (conEdicionesRespetadas)
+// SIGUE SIEMPRE activa — ver el bloque de escritura más abajo. --force NUNCA es destructivo.
+const FORCE = process.argv.includes('--force') ||
+  ['1', 'true', 'yes', 'si', 'sí'].includes(String(process.env.ORQ_CF_FORCE || '').trim().toLowerCase())
 const AÑO = 2026
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
@@ -47,7 +55,7 @@ const fechaAR = (d) => `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullY
  * Arma la grilla de una pestaña de cash flow.
  * @param {'semanal'|'mensual'} periodo
  */
-function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, filasTabla = {}) {
+export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, filasTabla = {}) {
   const cols = periodo === 'semanal' ? semanas() : Array.from({ length: 12 }, (_, m) => new Date(Date.UTC(AÑO, m, 1)))
   const n = cols.length
   const colTotal = letra(n + 1) // A + n períodos → la siguiente es el total
@@ -110,30 +118,34 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
         // La línea de cheques SUMA las marcas que el OS escribe al lado de cada cheque y de cada
         // consumo de tarjeta. Antes era el único lugar del cuadro con números pegados: el día que se
         // cargaba una factura que faltaba, la línea seguía mostrando el importe viejo.
-        // Los intereses se calculan sobre el saldo con el que ARRANCA cada mes, que es la celda
-        // "Efectivo al inicio" de SU MISMA columna. No hay circularidad: ese inicio es el cierre del
-        // mes anterior, que ya está resuelto cuando le toca el turno a este mes.
+        // Los intereses se calculan sobre el saldo con el que ARRANCA cada período (mes o semana), que
+        // es la celda "Efectivo al inicio" de SU MISMA columna. No hay circularidad: ese inicio es el
+        // cierre del período anterior, que ya está resuelto cuando le toca el turno a este.
         //
         // ME EQUIVOQUÉ UNA VUELTA ANTES y conviene dejarlo escrito: la primera versión referenciaba
-        // el inicio de la columna ANTERIOR, o sea un mes de más para atrás. Diciembre calculaba
+        // el inicio de la columna ANTERIOR, o sea un período de más para atrás. Diciembre calculaba
         // sobre el saldo de noviembre al arrancar (−$56,7M) en vez del de diciembre (−$127,1M), y
         // daba $2.969.865 donde van $6,6M. El error no se ve en ningún control: la suma cierra igual.
         //
-        // Es un PISO declarado: no cobra la deuda que se toma dentro del mismo mes. En el semanal no va: a nivel semana el saldo
-        // inicial no está calculado y un interés semanal sería ruido.
+        // EL DUEÑO PIDIÓ QUE EL SEMANAL TAMBIÉN LOS CALCULE. Antes iban vacíos "porque a nivel semana
+        // no hay saldo inicial calculado" — pero sí lo hay: el bloque de cierre encadena inicio→cierre
+        // también en el semanal, así que "Efectivo al inicio" de cada semana existe (es el cierre de la
+        // anterior). El interés semanal usa ese mismo saldo con la ventana de 7 días (formulaInteresSemana,
+        // el MISMO modelo verificado que el mensual, sólo cambia la ventana). Es un PISO declarado: no
+        // cobra la deuda que se toma dentro de la misma semana.
         const celdas = l.cheques
           ? cols.map((_, i) => formulaChequesSinFactura(desde(i), hasta(i), MARCAS.falta))
           : l.descubierto
-            // En el semanal va VACÍO, no cero: a nivel semana no hay saldo inicial calculado, así
-            // que no se puede saber el interés. Un 0 escrito dice "no hay interés" y es distinto de
-            // "no se puede saber" — además son 53 números pegados que el auditor marca, con razón.
             ? cols.map((_, i) => (periodo === 'mensual'
               ? formulaInteresMes(`${letra(i + 1)}#{INICIO}`, `${letra(i + 1)}$${FILA_CAB}`)
-              : ''))
+              : formulaInteresSemana(`${letra(i + 1)}#{INICIO}`, desde(i), hasta(i))))
             : l.impuestoCheque
               // Se resuelve al final: necesita la lista de TODAS las demás líneas, que todavía no
-              // existen. Referenciar el total de egresos sería circular — esta línea es un egreso.
-              ? cols.map((_, i) => (periodo === 'mensual' ? `#{IMP:${letra(i + 1)}}` : ''))
+              // existen. Referenciar el total de egresos sería circular — esta línea es un egreso. El
+              // impuesto semanal es 0,6% de entradas + 0,6% de salidas de la semana: mismo #{IMP:col}
+              // que el mensual (formulaImpuesto suma ingresos+egresos de la columna × 0,6%), resuelto
+              // abajo para AMBAS pestañas cuando ya se sabe en qué fila quedó cada línea.
+              ? cols.map((_, i) => `#{IMP:${letra(i + 1)}}`)
               : f
         push([`${SANGRIA_DETALLE}${l.nombre}`, ...celdas])
         meta.detalle.push({ fila: filas.length, linea: l, signo: g.signo })
@@ -456,14 +468,22 @@ async function main() {
   // Este generador escribe DOS pestañas y no pasa por el portón `escribirPreservando`, así que el
   // candado se aplica acá: si el dueño tomó 'Cash Flow Semanal' o 'Cash Flow Mensual', esa pestaña se
   // saca de `data` y no se toca ni una celda. La otra, si está libre, se rehace normal.
-  try {
-    const { pestanasBloqueadas, filtrarBloqueadas } = await import('../lib/pestana-bloqueada.mjs')
-    const set = await pestanasBloqueadas({}, ID)
-    const { bloqueadas } = filtrarBloqueadas(data.map((d) => d.pestaña), set)
-    for (const p of bloqueadas) console.log(`  🔒 "${p}" está bajo tu control (candado): no la toco.`)
-    for (let i = data.length - 1; i >= 0; i--) if (set.has(data[i].pestaña)) data.splice(i, 1)
-    if (!data.length) { console.log('Ambas pestañas están bajo tu control: no hay nada que rehacer.'); return }
-  } catch { /* sin base: se sigue, la Regla 0 celda a celda sigue activa abajo */ }
+  //
+  // --force SALTEA ESTE GATE GRUESO (candado), no la fusión. Un cambio de ESTRUCTURA intencional
+  // necesita reescribir la pestaña aunque esté candada; lo que NO se saltea nunca es la fusión celda a
+  // celda de más abajo, que preserva las ediciones reales del dueño. Ver el bloque de escritura.
+  if (FORCE) {
+    console.log('  ⚙ --force: salteo el candado y el auto-respeto de reescritura (cambio de estructura intencional). La fusión que preserva tus ediciones SIGUE activa.')
+  } else {
+    try {
+      const { pestanasBloqueadas, filtrarBloqueadas } = await import('../lib/pestana-bloqueada.mjs')
+      const set = await pestanasBloqueadas({}, ID)
+      const { bloqueadas } = filtrarBloqueadas(data.map((d) => d.pestaña), set)
+      for (const p of bloqueadas) console.log(`  🔒 "${p}" está bajo tu control (candado): no la toco.`)
+      for (let i = data.length - 1; i >= 0; i--) if (set.has(data[i].pestaña)) data.splice(i, 1)
+      if (!data.length) { console.log('Ambas pestañas están bajo tu control: no hay nada que rehacer.'); return }
+    } catch { /* sin base: se sigue, la Regla 0 celda a celda sigue activa abajo */ }
+  }
 
   // Limpiar primero lo viejo: la grilla nueva es más corta que la que había y quedarían restos
   // (incluidas las columnas auxiliares BE/BF, que ahora viven en Compras).
@@ -519,7 +539,12 @@ async function main() {
   // va acá también: junto todos los rótulos que quiero escribir en cada pestaña y, si la gran mayoría
   // ya no está en la pestaña (la reescribiste con otra estructura), la tomo como tuya: la auto-cando y
   // saco sus rangos de `data` para no tocar ni una celda. Mismo criterio conservador que el portón.
-  try {
+  //
+  // --force SALTEA ESTA DETECCIÓN. Es justamente la que confunde un cambio de estructura grande del
+  // GENERADOR (muchos rótulos nuevos, pocos viejos) con una reescritura del dueño. Cuando el cambio de
+  // estructura lo hago yo a propósito (--force), no quiero que el generador se auto-cande y no escriba.
+  // La preservación de lo que el dueño realmente editó sigue garantizada por la fusión de más abajo.
+  if (!FORCE) try {
     const { duenoReescribioLaPestana } = await import('../lib/respetar-ediciones.mjs')
     const { firmaGuardia } = await import('../lib/firma-tab.mjs')
     const porPestana = new Map()
@@ -542,13 +567,28 @@ async function main() {
     if (!data.length) { console.log('Reescribiste/editaste ambas pestañas: no hay nada que rehacer.'); return }
   } catch { /* sin base no se puede consultar; sigue la Regla 0 celda a celda */ }
 
+  // ── LA FUSIÓN QUE PRESERVA LO DEL DUEÑO — SIEMPRE ACTIVA, TAMBIÉN BAJO --force ──
+  // Ni --force la apaga. Lo único que cambia bajo --force: se aplican SÓLO las ediciones del dueño con
+  // CONTENIDO REAL (renombres), no los borrados (reemplazo vacío). Así un cambio de TAMAÑO de la grilla
+  // no puede perder un header del generador vía un borrado —posiblemente falso o viejo— que apuntaría a
+  // texto vacío. El registro completo (incluidos los borrados) se persiste igual, así que un borrado real
+  // del dueño no se olvida: se re-aplica en la próxima corrida NORMAL. Ver edicionesConContenidoReal.
   for (const d of data) {
     // El TEXTO QUE SE VE, no la fórmula: ver lib/preservar-anotaciones.mjs.
     const actual = await verPestana(d.pestaña)
-    const { grid, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, d.pestaña, d.values, actual)
+    const res = await conEdicionesRespetadas(ID, d.pestaña, d.values, actual)
+    const { ediciones, candidatos } = res
+    let { grid, respetadas } = res
+    if (FORCE) {
+      // La fusión SIGUE, pero sin borrados: sólo renombres reales. respetarEdiciones ancla al TEXTO del
+      // rótulo (no a la posición), así que un cambio de estructura no descoloca nada.
+      const r = respetarEdiciones(d.values, actual, edicionesConContenidoReal(ediciones))
+      grid = r.grid
+      respetadas = r.respetadas
+    }
     for (const r of respetadas) console.log(`  ✋ ${d.pestaña}: respeto tu texto ("${String(r.suyo).slice(0, 40)}") en vez de "${String(r.mio).slice(0, 40)}"`)
     d.values = grid
-    d._ediciones = ediciones
+    d._ediciones = ediciones // se persiste el set COMPLETO: un borrado real del dueño no se olvida.
     d._candidatos = candidatos
     d._actual = actual
   }
@@ -580,4 +620,7 @@ async function main() {
   }
 }
 
-main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+// Sólo se ejecuta cuando se corre directo (node cash-flow-rehacer.mjs). Importarlo —para testear
+// grilla(), que es pura y no toca Google— NO dispara main(): así el test no intenta escribir el Sheet.
+const ejecutadoDirecto = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
+if (ejecutadoDirecto) main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })

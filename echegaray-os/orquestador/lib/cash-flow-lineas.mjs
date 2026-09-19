@@ -15,6 +15,7 @@
 // (un gasto cae en un solo rubro) y quedar afuera es visible (el control de abajo lo resta).
 
 import { REGLAS, RUBROS } from './rubro-caja.mjs'
+import { TASAS, REAL as REAL_DESCUBIERTO } from './costo-descubierto.mjs'
 
 /** El sub-rubro de Estructura que NO es gasto del mes sino inversión. Lo escribe estructura-pestana. */
 export const SUB_BIENES_DE_USO = 'Equipos y rodados (inversión)'
@@ -666,6 +667,39 @@ export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}) {
 }
 
 /**
+ * NÚCLEO PURO: el interés del descubierto de UNA SEMANA, para las columnas del Cash Flow Semanal.
+ *
+ * POR QUÉ EXISTE (item del dueño). El mensual ya calcula el interés del descubierto (formulaInteresMes,
+ * en costo-descubierto.mjs) pero el semanal lo dejaba VACÍO. El dueño pidió que también se calcule por
+ * semana. Esta función NO inventa un cálculo nuevo: es el MISMO modelo verificado del mensual —importa
+ * TASAS y el contrato REAL de costo-descubierto.mjs, no los redefine— con la ÚNICA diferencia de la
+ * VENTANA: siete días en vez de DAY(EOMONTH(...)), y el rango del interés ya cobrado acotado a la semana.
+ *
+ * SOBRE EL SALDO CON EL QUE ARRANCA LA SEMANA. El interés se proyecta sobre "Efectivo al inicio" de esa
+ * misma columna, que es el cierre de la semana anterior —ya resuelto cuando le toca el turno a esta—:
+ * no hay circularidad (el interés no referencia el cierre de su propia semana). Es un PISO, igual que el
+ * mensual: no cobra la deuda que se toma dentro de la misma semana, y lo que el banco YA cobró en la
+ * semana manda (MAX contra el real de _BANCO_RAW).
+ *
+ * @param {string} saldoInicial celda "Efectivo al inicio" de la columna de la semana (cierre de la anterior)
+ * @param {string} desde expresión de la fecha del lunes de la semana (ej. 'B$3')
+ * @param {string} hasta expresión del límite superior EXCLUYENTE (ej. 'B$3+7')
+ * @returns {string} fórmula es-AR
+ */
+export function formulaInteresSemana(saldoInicial, desde, hasta) {
+  const diaria = `${TASAS.tna}/${TASAS.base}`
+  const conImp = `*(1+${TASAS.iva}+${TASAS.percepcion})`
+  const DIAS = 7 // una semana; el mensual usa DAY(EOMONTH(mes;0)). Es la única diferencia con el modelo mensual.
+  const proyectado = `IF(N(${saldoInicial})>=0;0;-${saldoInicial}*${diaria}*${DIAS}${conImp})`
+  const R = REAL_DESCUBIERTO
+  const rango = (c) => `${R.hoja}!$${c}$4:$${c}`
+  // Lo que el banco YA cobró DENTRO de la semana [desde, hasta): ventana semi-abierta, igual que las
+  // demás columnas del semanal. En el mensual la ventana es del mes; acá, de la semana. Mismo dato.
+  const real = `SUMIFS(${rango(R.importe)};${rango(R.naturaleza)};"${R.marca}";${rango(R.fecha)};">="&${desde};${rango(R.fecha)};"<"&${hasta})`
+  return `=MAX(${proyectado};IFERROR(-${real};0))`
+}
+
+/**
  * De dónde sale la proyección de una línea, para explicarlo en el Sheet. PURA.
  *
  * ═══ CORTAS A PROPÓSITO ═══
@@ -768,4 +802,32 @@ export function hipervinculoDetalle(l, filasTabla = {}) {
   const etiqueta = `${SANGRIA_DETALLE}${l.nombre}`.replace(/"/g, '""')
   const formula = `=HYPERLINK("#gid=GID{${dest.pestaña}}&range=${dest.rango}";"${etiqueta}")`
   return { formula, destino: dest.pestaña, rango: dest.rango }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// --force NO DESTRUCTIVO — LA FUSIÓN QUE PRESERVA LO DEL DUEÑO SIGUE SIEMPRE ACTIVA
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// POR QUÉ EXISTE. Para aplicar un cambio de ESTRUCTURA (mover filas, agregar/quitar líneas), el
+// generador corre con --force. La tentación era que --force escribiera la grilla CRUDA, salteando la
+// fusión celda a celda —y con eso pisaba ediciones del dueño—. El problema real que motivaba el atajo
+// NO era la fusión en sí (que ancla al TEXTO del rótulo, no a la posición), sino un caso puntual: un
+// BORRADO registrado (reemplazo vacío) —posiblemente falso o viejo— que, al cambiar el tamaño de la
+// grilla, terminaba borrando un header que el generador SÍ quiere escribir.
+//
+// LA SOLUCIÓN, SIN APAGAR LA FUSIÓN. Bajo --force la fusión sigue, pero sólo se aplican las ediciones
+// del dueño con CONTENIDO REAL (un renombre: "Jornales" → "Jornales LA ESTRELLA"). Los borrados
+// (reemplazo vacío) NO se aplican en la corrida forzada: así un cambio de estructura no puede perder un
+// header del generador por un borrado que apunta a texto vacío. El borrado real del dueño no se olvida
+// —se sigue persistiendo el registro completo— y se re-detecta en la próxima corrida NORMAL, de a uno.
+
+/**
+ * NÚCLEO PURO: se queda sólo con las ediciones del dueño que tienen CONTENIDO REAL (renombres), y
+ * descarta los borrados (reemplazo vacío o sólo espacios). Se usa en la corrida --force para que un
+ * cambio de tamaño de la grilla no borre un header del generador vía un borrado falso/viejo.
+ * @param {Map<string,string>} ediciones texto mío → texto del dueño ('' = borrado)
+ * @returns {Map<string,string>} el subconjunto con reemplazo no vacío
+ */
+export function edicionesConContenidoReal(ediciones = new Map()) {
+  return new Map([...ediciones].filter(([, v]) => String(v ?? '').trim() !== ''))
 }
