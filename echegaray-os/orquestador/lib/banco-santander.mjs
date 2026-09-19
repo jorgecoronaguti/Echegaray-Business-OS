@@ -337,8 +337,52 @@ export function verificarCadena(movs = MOVIMIENTOS, inicial = SALDO_INICIAL) {
  */
 export function clasificarMovimiento(concepto = '') {
   const c = String(concepto)
-  if (/impuesto ley 25\.413/i.test(c)) return 'Impuesto al cheque (Ley 25.413)'
-  if (/interes por descubierto|iva 10,5%|iva percep/i.test(c)) return 'Costo financiero del descubierto'
+  // LA REVERSA DEL IMPUESTO AL CHEQUE VA AL MISMO BUCKET QUE EL IMPUESTO (31/07). El banco escribe
+  // "Anul imp ley 25.413 debito 0,6%" —"imp", no "impuesto"— así que el regex de abajo no lo tomaba y
+  // el crédito de +$294,78 caía en el cajón de sastre: un INGRESO sentado adentro de "Transferencias a
+  // proveedores", el mismo síntoma que delató el bucket de cheques en positivo. Va con su impuesto, en
+  // positivo, para que el bucket muestre el impuesto NETO. Ojo: la fórmula de Impuestos y Financieros
+  // hacía ABS() de cada fila, así que sumaba la reversa en vez de restarla — ver impuestos-pestana.mjs.
+  if (/impuesto ley 25\.413|anul imp ley 25\.413/i.test(c)) return 'Impuesto al cheque (Ley 25.413)'
+  // ═══ EL DESCUBIERTO Y LA COMISIÓN DE CUENTA SON DOS COSAS QUE SE DECIDEN DISTINTO (31/07) ═══
+  //
+  // La regla que había —/interes por descubierto|iva 10,5%|iva percep/— metía TODAS las percepciones RG
+  // 2408 en "Costo financiero del descubierto". Medido sobre el extracto real (170 movimientos,
+  // 22/06→31/07): 7 de las 8 percepciones RG 2408 no acompañan al interés del descubierto sino a las
+  // COMISIONES de servicio de cuenta, $9.233,46 atribuidos al bucket equivocado.
+  //
+  // Y no es un problema de prolijidad: el descubierto es una decisión de FINANCIAMIENTO (se evita
+  // dejando de girar en rojo) y la comisión de mantenimiento de cuenta es un COSTO FIJO (se negocia con
+  // el banco o se cambia de paquete). Mezcladas, ninguna de las dos acciones queda a la vista.
+  //
+  // LA EVIDENCIA QUE PERMITE SEPARARLAS ESTÁ EN EL PROPIO CONCEPTO, y se verifica con aritmética:
+  //   · el interés del descubierto lleva IVA al 10,5% (tasa reducida de la ley de IVA para intereses de
+  //     financiación) y su percepción dice literalmente "alic reducida" (1,5%):
+  //     interés 252.340,32 → IVA 26.495,73 = 10,5% exacto · percep 3.785,10 = 1,5% exacto.
+  //   · cada comisión lleva IVA al 21% (tasa general de un servicio bancario) y percepción RG 2408 al 3%:
+  //     69.000 → 14.490 (21%) + 2.070 (3%) · 8.000 → 1.680 + 240 · 14.770 → 3.101,70 + 443,10 ·
+  //     117.651,97 → 24.706,91 + 3.529,56 · 14.400 → 3.024 + 432 · 14.960 → 3.141,60 + 448,80.
+  //     Los siete tripletes cierran al centavo — lo verifica verificarTripletesBancarios().
+  //
+  // O SEA: la ALÍCUOTA es la que dice de qué es el impuesto. 10,5% (y "alic reducida") = descubierto;
+  // 21% (y RG 2408 a secas) = comisión. No es una inferencia sobre el texto: es la ley de IVA aplicada
+  // al importe, y el importe la confirma.
+  //
+  // LO QUE ESTA REGLA NO PUEDE HACER, Y SE DECLARA: si el banco cobrara algún día un servicio gravado
+  // al 21% que NO sea una comisión (un cargo por gestión de cobranza, por ejemplo), su IVA caería acá
+  // como si fuera de una comisión. El control que lo detecta es la aritmética del triplete: si el IVA
+  // 21% de un día no equivale al 21% de ninguna comisión de ese mismo día, verificarTripletesBancarios
+  // lo devuelve como huérfano. No se inventa una regla más fina que la evidencia.
+  if (/interes por descubierto|iva 10,5%|alic reducida/i.test(c)) return 'Costo financiero del descubierto'
+  // LOS COSTOS BANCARIOS QUE NINGUNA PESTAÑA MIRABA. Antes caían en el cajón de sastre y se leían como
+  // pagos a proveedores: $381.649,64 en el mes y medio del extracto ($113.794,80 en junio, $267.854,84
+  // en julio) que inflaban Compras y hacían invisible lo que se lleva el banco por tener la cuenta
+  // abierta. El bucket incluye el IVA y la percepción junto con la comisión, con el MISMO criterio que
+  // el descubierto (costo-descubierto.mjs: "lo que sale de la cuenta = interés + IVA + percepción"):
+  // esta pestaña es de CAJA, y lo que sale de la cuenta sale completo. La contracara —que el IVA 21% es
+  // crédito fiscal y la percepción RG 2408 es pago a cuenta, o sea recuperables— es un asunto de la
+  // posición fiscal, no del flujo: se declara en COBERTURA_NATURALEZA y no se descuenta acá.
+  if (/comision|iva 21% reg de transfisc|iva percepcion rg 2408/i.test(c)) return 'Comisiones y gastos bancarios'
   if (/pago haberes|pago de haberes/i.test(c)) return 'Sueldos'
   // UN ECHEQ QUE ENTRA NO ES UN CHEQUE QUE SALE (28/07). "Deposito e-cheq int misma plaza" es un
   // echeq de TERCERO que se acreditó: es plata que ENTRA (crédito), la contracara del que ya estaba
@@ -370,10 +414,78 @@ export function clasificarMovimiento(concepto = '') {
   // la de débito), no un pago a proveedor por transferencia. Sin esto caía en "Transferencias a
   // proveedores" e inflaba los pagos a proveedores con un consumo de tarjeta. Va con las compras con
   // tarjeta de débito, cuyo destino es Compras.
-  if (/tarjeta de debito|compra en el exterior/i.test(c)) return 'Compras con tarjeta de débito'
+  // LA PERCEPCIÓN DEL 30% VA CON LA COMPRA QUE LA GENERÓ (31/07). "Percep perc rg 5617 30% o suj -
+  // Google workspace ecsas.co - tarj nro. 6077" es la percepción de Ganancias sobre un consumo en
+  // moneda extranjera con tarjeta: el concepto trae la MISMA cola de comercio y tarjeta que la compra
+  // ($37.926 el 01/07) y sale de la cuenta el mismo día. Antes caía en el cajón de sastre: $11.203,92
+  // leídos como pago a proveedor. Va con su compra —mismo criterio que el IVA con su comisión— porque
+  // esta pestaña es de caja y lo que salió por esa compra salió completo: $49.129,92, no $37.926.
+  //
+  // GAP DECLARADO, no tapado: esa percepción es PAGO A CUENTA de Ganancias, o sea recuperable en la
+  // DDJJ, no un costo definitivo. Hoy ninguna pestaña la computa como crédito (Impuestos y Financieros
+  // § 3 lee retenciones sólo de Cobranzas). Son $11.203,92 en el período del extracto: se informa, no
+  // se le inventa una fila. La regla se ancla al número de RG para no capturar cualquier percepción.
+  if (/percep perc rg 5617|tarjeta de debito|compra en el exterior/i.test(c)) return 'Compras con tarjeta de débito'
   if (/debito automatico/i.test(c)) return 'Débitos automáticos (seguros)'
   if (/sin detalle/i.test(c)) return 'Ajuste sin detalle del banco'
+  // ═══ LOS DOS QUE REVISÉ Y SE QUEDAN DONDE ESTABAN, PERO AHORA POR DECISIÓN Y NO POR CAÍDA ═══
+  //
+  // "Pago de honorarios - 260702507" ($2.000.000 el 02/07). Es el servicio de pagos por lote del banco
+  // —mismo formato de lote que "Pago haberes - 260630507"— usado para honorarios profesionales. NO es
+  // Sueldos: un honorario no es una relación de dependencia, no lleva cargas sociales y su factura es
+  // de un tercero. La pestaña dueña es la misma que la de un pago a proveedor de servicios (Compras,
+  // donde se carga la factura de honorarios), así que comparte bucket y destino con las
+  // transferencias. Se escribe la regla igual, explícita, para que quede como decisión revisable y no
+  // como un movimiento de $2M que nadie miró. En el mismo período hay otros $896.268,31 de honorarios
+  // pagados por transferencia con la etiqueta "- hon /" del banco, que caen al mismo lugar.
+  if (/pago de honorarios/i.test(c)) return 'Transferencias a proveedores'
+  // "Debito transf. online banking emp" — dos movimientos, y sólo uno se puede identificar:
+  //   · 13/07 −$62.600 "- A pedro ward / - var / 23280102199" → contraparte con nombre y CUIT válido:
+  //     es un pago, idéntico a una "Transferencia realizada".
+  //   · 02/07 −$1.000.000 "- 00720567007000245843ars" → el banco NO dice a quién. El 072 es el propio
+  //     Santander y el sufijo "ars" indica cuenta en pesos, así que es una transferencia a otra cuenta
+  //     —que podría ser de un tercero o DE LA PROPIA EMPRESA (y entonces sería un traslado, no un
+  //     egreso)—. NO SE INVENTA: se clasifica como egreso (que es lo único seguro: la plata salió) y
+  //     el $1.000.000 queda declarado en el informe como contraparte a identificar. Un bucket nuevo
+  //     "transferencia sin identificar" sería una regla que parece precisa sobre un solo caso.
+  if (/debito transf\. online banking/i.test(c)) return 'Transferencias a proveedores'
   return 'Transferencias a proveedores'
+}
+
+/**
+ * NÚCLEO PURO: la aritmética que PRUEBA a qué pertenece cada impuesto que el banco debita.
+ *
+ * POR QUÉ EXISTE (31/07). La regla que separa el costo del descubierto de la comisión de cuenta se
+ * apoya en la alícuota (10,5% + 1,5% para el interés · 21% + 3% para la comisión). Una regla basada en
+ * texto se puede afirmar; ésta se puede DEMOSTRAR: cada IVA y cada percepción tiene que ser el
+ * porcentaje exacto de un cargo del mismo día. Si un día aparece un IVA 21% que no es el 21% de
+ * ninguna comisión de ese día, el triplete queda huérfano y la clasificación de ese peso es una
+ * suposición — que es exactamente lo que hay que saber antes de que sea plata mal contada.
+ *
+ * @param {{fecha:string, concepto:string, importe:number}[]} movs
+ * @returns {{cerrados:Array, huerfanos:Array}} `huerfanos` vacío = cada impuesto tiene su cargo.
+ */
+export function verificarTripletesBancarios(movs = MOVIMIENTOS) {
+  const TOL = 0.02 // el banco redondea a dos decimales; más que un centavo por lado no se tolera
+  // Qué cargo puede haber generado cada impuesto, y con qué alícuota. La percepción RG 2408 tiene dos
+  // alícuotas y el concepto declara cuál: "alic reducida" (1,5%) acompaña al interés; a secas, 3%.
+  const REGLAS = [
+    { impuesto: /^iva 21% reg de transfisc/i, sobre: /comision/i, tasa: 0.21, cargo: 'comisión' },
+    { impuesto: /^iva percepcion rg 2408/i, sobre: /comision/i, tasa: 0.03, cargo: 'comisión' },
+    { impuesto: /^iva 10,5% reg trans fisc/i, sobre: /interes por descubierto/i, tasa: 0.105, cargo: 'interés del descubierto' },
+    { impuesto: /^iva percep rg 2408 alic reducida/i, sobre: /interes por descubierto/i, tasa: 0.015, cargo: 'interés del descubierto' },
+  ]
+  const cerrados = []; const huerfanos = []
+  for (const m of movs) {
+    const c = String(m.concepto ?? '').trim()
+    const r = REGLAS.find((x) => x.impuesto.test(c))
+    if (!r) continue
+    const base = movs.find((x) => x.fecha === m.fecha && r.sobre.test(String(x.concepto ?? ''))
+      && Math.abs(Math.abs(Number(x.importe)) * r.tasa - Math.abs(Number(m.importe))) <= TOL)
+    if (base) cerrados.push({ ...m, cargo: r.cargo, base: base.concepto, tasa: r.tasa })
+    else huerfanos.push({ ...m, esperaba: `${r.tasa * 100}% de una ${r.cargo} del mismo día` })
+  }
+  return { cerrados, huerfanos }
 }
 
 /** NÚCLEO PURO: agrupa el extracto por tipo de movimiento, para poder cruzarlo contra el Sheet. */
@@ -589,6 +701,11 @@ export function ingresosPorNaturaleza(movs = MOVIMIENTOS) {
 export const NAT = {
   impuestoCheque: 'Impuesto al cheque (Ley 25.413)',
   descubierto: 'Costo financiero del descubierto',
+  // EL RÓTULO ES UN CONTRATO CON LAS FÓRMULAS DEL SHEET. Cambiarlo no rompe nada visible: hace que un
+  // SUMIF deje de encontrar filas y el número se vaya a cero SIN dar error. Si algún día hay que
+  // renombrarlo, hay que tocar en el mismo commit: impacto-bancario.DESTINOS, conciliacion-por-
+  // naturaleza.GRUPOS (que es lo que arma el bloque 4.7 de CAJA) y COMISIONES.marca de abajo.
+  comisiones: 'Comisiones y gastos bancarios',
   sueldos: 'Sueldos',
   cheques: 'Cheques y echeq',
   afip: 'AFIP',
@@ -618,7 +735,11 @@ export const NAT = {
  */
 export const COBERTURA_NATURALEZA = [
   { naturaleza: NAT.impuestoCheque, lado: 'egreso', destino: 'Cash Flow — línea "Impuesto al cheque (Ley 25.413)"', alCashFlow: true, grupoConciliacion: true, nota: 'Se calcula sobre el movimiento proyectado (0,6% de cada lado); línea propia en Financiación del cuadro.' },
-  { naturaleza: NAT.descubierto, lado: 'egreso', destino: 'Cash Flow — línea "Intereses del acuerdo en descubierto"', alCashFlow: true, grupoConciliacion: true, nota: 'Se calcula con la tasa del acuerdo (costo-descubierto.mjs); línea propia en Financiación.' },
+  { naturaleza: NAT.descubierto, lado: 'egreso', destino: 'Cash Flow — línea "Intereses del acuerdo en descubierto"', alCashFlow: true, grupoConciliacion: true, nota: 'Se calcula con la tasa del acuerdo (costo-descubierto.mjs); línea propia en Financiación. Sólo el interés y sus impuestos a la alícuota reducida (10,5% + 1,5%): las comisiones tienen su propia línea.' },
+  {
+    naturaleza: NAT.comisiones, lado: 'egreso', destino: 'Cash Flow — línea "Comisiones y gastos bancarios (Santander)"', alCashFlow: true, grupoConciliacion: true,
+    nota: 'Lo que el banco cobra por tener la cuenta abierta y mover plata: comisión de servicio de cuenta, comisión mensual de clearing, comisión de cuenta en dólares, comisión de compensación de cheques, cada una con su IVA 21% y su percepción RG 2408 al 3%. NO sale de Compras (el banco no factura por ahí, lo debita solo): la línea lee _BANCO_RAW, igual que el descubierto y el impuesto al cheque. Medido sobre el extracto: $113.794,80 en junio y $267.854,84 en julio; la parte recurrente es ~$122.000/mes y julio trae además $145.888,44 de compensación de cheques, que no es mensual. El IVA y la percepción se incluyen porque el cuadro es de CAJA y salen de la cuenta; que sean crédito fiscal y pago a cuenta (recuperables) es un asunto de la posición fiscal, no del flujo.',
+  },
   { naturaleza: NAT.sueldos, lado: 'egreso', destino: 'Jornales por Quincena → línea "Jornales de obra"', alCashFlow: true, grupoConciliacion: true, nota: 'La acreditación de haberes; el dato real vive en Jornales por Quincena.' },
   { naturaleza: NAT.cheques, lado: 'egreso', destino: 'Cheques Emitidos (rubro de su factura si está en Compras; si no, línea "Cheques y tarjeta sin factura")', alCashFlow: true, grupoConciliacion: true, nota: 'Cheque propio ya debitado; se concilia contra Cheques Emitidos DEBITADO=SI.' },
   { naturaleza: NAT.afip, lado: 'egreso', destino: 'Compras rubro Impuestos → línea "Impuestos nacionales y provinciales"', alCashFlow: true, grupoConciliacion: true, nota: 'Pago a AFIP; su detalle vive en Impuestos y Financieros.' },

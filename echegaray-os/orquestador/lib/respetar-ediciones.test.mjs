@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { respetarEdiciones, detectarEdiciones, esRotulo, esEstructural, detectarArranqueEnFrio, MAX_BORRADOS_CREIBLES } from './respetar-ediciones.mjs'
+import { respetarEdiciones, detectarEdiciones, esRotulo, esEstructural, detectarArranqueEnFrio, MAX_BORRADOS_CREIBLES, duenoReescribioLaPestana} from './respetar-ediciones.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 
 test('un rótulo es texto: no una fórmula, no un número, no un importe escrito', () => {
@@ -204,4 +204,39 @@ test('un borrado MASIVO real y PERSISTENTE ahora SÍ se respeta (el viejo MAX ya
 test('el marcador PENDIENTE no se confunde con un borrado ni con un texto', () => {
   assert.equal(PENDIENTE, '::PENDIENTE::')
   assert.notEqual(PENDIENTE, '')
+})
+
+test('EL FALSO POSITIVO DEL 31/07: una pestaña de fórmulas no es una pestaña reescrita', () => {
+  // Los dos cash flow se auto-candaron y quedaron semanas sin mantenerse. El detector contaba cada
+  // celda como ancla —2.387 en el semanal, casi todas fórmulas— y las comparaba contra lo que la
+  // pestaña MUESTRA (los valores ya calculados). "=SUMPRODUCT(…)" nunca coincide con "$9.384.100":
+  // 84 de 2.387, 3,5%, y se candaba sola. En una pestaña de fórmulas el veredicto era inevitable.
+  const generado = [
+    ['ACTIVIDADES OPERATIVAS'],
+    ['Cobranzas de obra civil', '=SUMPRODUCT(A1:A9)', '=SUMIFS(B:B;C:C;">0")'],
+    ['Jornales de obra', '=SUMPRODUCT(JORNALES_REAL_TOTAL)', '=X1+X2'],
+    ['Sueldos de administración', '=SUMIFS(x)', '=y'],
+    ['Materiales e insumos de obra civil', '=a', '=b'],
+    ['Gastos de estructura y administración', '=c', '=d'],
+    ['Pagos de impuestos', '=e', '=f'],
+    ['FLUJO NETO DE ACTIVIDADES OPERATIVAS', '=g', '=h'],
+    ['Efectivo al inicio', '=CAJA_TOTAL_DISPONIBLE', '=i'],
+  ]
+  // Lo que la pestaña muestra: los MISMOS rótulos y los valores calculados de esas fórmulas.
+  const actual = generado.map((f) => [f[0], ...f.slice(1).map(() => '$9.384.100')])
+  const r = duenoReescribioLaPestana(generado, actual)
+  assert.equal(r.reescrita, false, 'los rótulos están todos: la pestaña NO fue reescrita')
+  assert.ok(r.fraccion >= 0.99, `los rótulos coinciden al 100%, no al 3,5% (dio ${r.fraccion})`)
+})
+
+test('y sigue detectando la reescritura REAL: cuando desaparecen los rótulos', () => {
+  const generado = [
+    ['ACTIVIDADES OPERATIVAS'], ['Cobranzas de obra civil', '=a'], ['Jornales de obra', '=b'],
+    ['Sueldos de administración', '=c'], ['Materiales e insumos', '=d'], ['Gastos de estructura', '=e'],
+    ['Pagos de impuestos', '=f'], ['FLUJO NETO', '=g'], ['Efectivo al inicio', '=h'],
+  ]
+  // El dueño la rehizo con su propia estructura: sus rótulos, no los míos.
+  const actual = [['MI FLUJO'], ['Ingresos', '$1'], ['Egresos', '$2'], ['Saldo', '$3'], ['Otro', '$4']]
+  const r = duenoReescribioLaPestana(generado, actual)
+  assert.equal(r.reescrita, true, 'esto SÍ es una reescritura y se tiene que seguir detectando')
 })

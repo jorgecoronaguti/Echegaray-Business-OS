@@ -1,0 +1,13 @@
+[Unit]
+Description=Echegaray OS - Ronda del vigía de fuentes cada 4h
+
+[Timer]
+# 14 minutos después del arranque: da tiempo a que el indexador del data room
+# (echegaray-drive-index.timer, OnBootSec=8min) haya refrescado public.drive_index.
+OnBootSec=14min
+OnUnitActiveSec=4h
+Persistent=true
+Unit=echegaray-vigia-fuentes.service
+
+[Install]
+WantedBy=timers.target

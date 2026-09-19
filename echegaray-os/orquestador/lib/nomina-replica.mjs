@@ -14,7 +14,10 @@ import { query } from './db.mjs'
 // punto es separador de miles). Escribir un segundo parser acá creaba dos verdades sobre el mismo
 // número: el primero que hice devolvía 0 para ese importe.
 import { montoAR as num } from './egresos-por-area.mjs'
-import { ubicarCuadro } from './nomina-sync.mjs'
+// LOS ÍNDICES DE COLUMNA SE IMPORTAN, NO SE TIPEAN. Estaban escritos a mano acá y el rediseño de la
+// pestaña del 23/07 los dejó corridos: la réplica leía la columna de al lado sin dar un solo error.
+// Ahora vienen del módulo que ESCRIBE el cuadro, así que un cambio de layout se propaga solo.
+import { ubicarCuadro, COL_REGISTRO, COL_PROYECCION } from './nomina-sync.mjs'
 
 export { num }
 
@@ -37,18 +40,22 @@ export function fechaSheet(v) {
 /**
  * NÚCLEO PURO: filas del cuadro de quincenas → registros para la base.
  * `hoy` se inyecta para poder testear el estado sin depender del día en que corra.
+ *
+ * ⚠ LOS ÍNDICES DE COLUMNA SALEN DE `COL_REGISTRO` / `COL_PROYECCION` (lib/nomina-sync.mjs), el módulo
+ * que ESCRIBE el cuadro. Estaban tipeados acá y el rediseño del 23/07 los dejó corridos.
  */
 export function mapearQuincenas(filas = [], { hoy = new Date(), proyectadas = [] } = {}) {
+  const R = COL_REGISTRO, P = COL_PROYECCION
   const out = []
   for (const r of filas) {
     if (/^total/i.test(String(r?.[0] ?? ''))) continue
-    const hasta = fechaSheet(r?.[1])
+    const hasta = fechaSheet(r?.[R.hasta])
     // La columna "Desde" viene del archivo JORNALES y trae el día sin año ("5/1", "16/7"), así que
     // fechaSheet devuelve null y la quincena se perdía: la réplica marcaba 0 cerradas y $0. El año
     // sale de "Hasta", que sí es una fecha real.
-    let desde = fechaSheet(r?.[0])
+    let desde = fechaSheet(r?.[R.desde])
     if (!desde && hasta) {
-      const m = /^(\d{1,2})[/-](\d{1,2})$/.exec(String(r?.[0] ?? '').trim())
+      const m = /^(\d{1,2})[/-](\d{1,2})$/.exec(String(r?.[R.desde] ?? '').trim())
       if (m) desde = `${hasta.slice(0, 4)}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
     }
     if (!desde) continue
@@ -56,23 +63,29 @@ export function mapearQuincenas(filas = [], { hoy = new Date(), proyectadas = []
     // subiendo, y presentarlo como cerrado haría creer que la quincena costó menos de lo que costó.
     const estado = hasta && new Date(hasta) >= hoy ? 'en_curso' : 'cerrada'
     out.push({
-      desde, hasta, estado,
-      dias_habiles: Math.round(num(r?.[2])) || null,
-      personas: Math.round(num(r?.[3])) || null,
-      hs_correspondientes: num(r?.[4]) || null,
-      hs_reales: num(r?.[5]) || null,
-      banco: num(r?.[6]), adelanto: num(r?.[7]), total_recibo: num(r?.[8]), total: num(r?.[9]),
+      desde, hasta, estado, fecha_pago: fechaSheet(r?.[R.pago]),
+      dias_habiles: Math.round(num(r?.[R.dias])) || null,
+      personas: Math.round(num(r?.[R.personas])) || null,
+      hs_correspondientes: num(r?.[R.hs_previstas]) || null,
+      hs_reales: num(r?.[R.hs_reales]) || null,
+      banco: num(r?.[R.banco]), adelanto: num(r?.[R.adelanto]),
+      total_recibo: num(r?.[R.total_recibo]), total: num(r?.[R.total]),
     })
   }
   for (const p of proyectadas) {
-    const desde = fechaSheet(p?.[0])
+    const desde = fechaSheet(p?.[P.desde])
     if (!desde || out.some((o) => o.desde === desde)) continue   // la en curso ya está como dato
     out.push({
-      desde, hasta: fechaSheet(p?.[1]), estado: 'proyectada',
-      dias_habiles: Math.round(num(p?.[2])) || null,
-      personas: Math.round(num(p?.[3])) || null,
-      hs_correspondientes: num(p?.[4]) || null, hs_reales: null,
-      banco: 0, adelanto: 0, total_recibo: 0, total: num(p?.[5]),
+      desde, hasta: fechaSheet(p?.[P.hasta]), estado: 'proyectada', fecha_pago: fechaSheet(p?.[P.pago]),
+      dias_habiles: Math.round(num(p?.[P.dias])) || null,
+      personas: Math.round(num(p?.[P.personas])) || null,
+      hs_correspondientes: num(p?.[P.valores_hoy]) || null, hs_reales: null,
+      // EL TOTAL PROYECTADO ES `total`, NO EL AJUSTE POR INFLACIÓN. Leía el índice 5 —que en el layout
+      // nuevo es "A valores de hoy" y en el momento del rediseño cayó sobre "Ajuste inflación"— y las
+      // diez quincenas proyectadas quedaron cargadas en la base por $10,54 en total: la suma de los
+      // coeficientes 1,02 · 1,04 · … O sea que la web mostraba $2 de jornales para agosto en vez de
+      // $13,8M. No dio error: $2 es un número perfectamente válido.
+      banco: 0, adelanto: 0, total_recibo: 0, total: num(p?.[P.total]),
     })
   }
   return out
@@ -101,25 +114,61 @@ export async function replicarNomina(google, { file_id = CASH_FLOW, hoy = new Da
   // Se lee la pestaña ENTERA y se ubica cada bloque por su encabezado. Leer rangos fijos fue el
   // error que rompió esto: la planilla se reordena (el dueño borra filas, mueve bloques) y un rango
   // clavado empieza a leer otra cosa — o nada, y la réplica queda en cero sin avisar.
-  const [hoja, cargas] = await Promise.all([
-    google.readSheetValues(file_id, 'Jornales por Quincena!A1:J200').catch(() => []),
+  // ═══ TRES ANCLAS MUERTAS, Y LA RÉPLICA VACIABA LA BASE SIN DECIR NADA (verificado el 31/07) ═══
+  //
+  // Medido contra la pestaña real, las tres búsquedas de esta función devolvían "no encontrado":
+  //   · `ubicarCuadro` ancla en el rótulo "Desde" y el encabezado del registro dice "Quincena" (fila 17)
+  //   · /^TOTAL PROYECTADO$/i — el rótulo real es "⇒ Total a pagar hasta diciembre" (fila 28)
+  //   · /^Básico \$\/hora$/i — el rótulo real es "· Escala del convenio, por hora:" (fila 51)
+  //
+  // Y abajo hay un `delete from jornales_quincena` que corría IGUAL. O sea: cada corrida borraba las
+  // 24 quincenas de la base e insertaba cero. La base tenía la foto del 20/07 congelada, y
+  // `nomina_por_mes` —que lee la web— se habría quedado en cero jornales la próxima vez.
+  //
+  // AHORA SE UBICA POR RANGO CON NOMBRE, que es lo que la pestaña mueve sola, con los rótulos actuales
+  // como respaldo. Y si no encuentra el cuadro, NO BORRA: fallar sin escribir es recuperable; borrar y
+  // no escribir, no.
+  const [hoja, cargas, nombrados] = await Promise.all([
+    google.readSheetValues(file_id, 'Jornales por Quincena!A1:M200').catch(() => []),
     google.readSheetValues(file_id, 'Cargas Sociales!A1:H60').catch(() => []),
+    google.getNamedRanges ? google.getNamedRanges(file_id).catch(() => []) : Promise.resolve([]),
   ])
   const buscar = (re, desde = 0) => hoja.findIndex((r, i) => i >= desde && (r ?? []).some((c) => re.test(String(c ?? '').trim())))
-
-  const u = ubicarCuadro(hoja)
-  const cuadro = u.encontrado ? hoja.slice(u.filaInicio - 1, u.filaInicio - 1 + u.filas) : []
-
-  const hProy = buscar(/^TOTAL PROYECTADO$/i)
-  let proy = []
-  if (hProy >= 0) {
-    const fin = hoja.findIndex((r, i) => i > hProy && /^total$/i.test(String(r?.[0] ?? '').trim()))
-    proy = hoja.slice(hProy + 1, fin > 0 ? fin : hProy + 20)
+  const porNombre = new Map(nombrados.map((r) => [r.name, r.range]))
+  /** Las filas de un bloque, ubicadas por su rango con nombre (0-based, fin excluyente). */
+  const bloquePorNombre = (nombre) => {
+    const r = porNombre.get(nombre)
+    return r?.startRowIndex == null ? null : hoja.slice(r.startRowIndex, r.endRowIndex)
   }
 
-  const hUocra = buscar(/^Básico \$\/hora$/i)
+  // El registro de quincenas reales.
+  let cuadro = bloquePorNombre('JORNALES_REAL_HASTA')
+  if (!cuadro?.length) {
+    const u = ubicarCuadro(hoja)
+    const h = u.encontrado ? u.filaInicio - 1 : buscar(/^Quincena$/i) + 1
+    cuadro = h > 0 ? hoja.slice(h, h + (u.filas || 40)).filter((r) => String(r?.[0] ?? '').trim() && !/^(⇒|·)/.test(String(r?.[0]))) : []
+  }
+
+  // La proyección.
+  let proy = bloquePorNombre('JORNALES_PROY_HASTA')
+  if (!proy?.length) {
+    const hProy = buscar(/^(TOTAL PROYECTADO|Quincena)$/i)
+    if (hProy >= 0) {
+      const fin = hoja.findIndex((r, i) => i > hProy && /^(⇒|total)/i.test(String(r?.[0] ?? '').trim()))
+      proy = hoja.slice(hProy + 1, fin > 0 ? fin : hProy + 20)
+    } else proy = []
+  }
+
+  // La escala UOCRA: no tiene rango con nombre, así que va por rótulo — el ACTUAL y el viejo.
+  const hUocra = buscar(/^(·\s*)?(Básico \$\/hora|Escala del convenio, por hora:)$/i)
   let uocra = []
-  if (hUocra >= 0) uocra = hoja.slice(hUocra + 1, hUocra + 7).filter((r) => String(r?.[0] ?? '').trim())
+  if (hUocra >= 0) {
+    uocra = hoja.slice(hUocra + 1, hUocra + 7)
+      // Los rótulos del bloque vienen con el prefijo de sub-ítem ("   · Oficial"): se limpia para que
+      // la categoría entre a la base como "Oficial" y no como "· Oficial".
+      .map((r) => [String(r?.[0] ?? '').replace(/^\s*·\s*/, '').replace(/\s+—.*$/, '').trim(), ...(r ?? []).slice(1)])
+      .filter((r) => r[0])
+  }
 
   // Las cargas sociales: la fila de encabezado es la que trae los períodos YYYY-MM.
   const hCargas = cargas.findIndex((r) => (r ?? []).some((c) => /^\d{4}-\d{2}$/.test(String(c ?? '').trim())))

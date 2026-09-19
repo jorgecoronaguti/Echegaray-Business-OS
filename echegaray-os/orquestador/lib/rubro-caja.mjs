@@ -121,7 +121,13 @@ export const REGLAS = [
     sql: `(${ES('proveedor', 'sueldos')} and ${UNO_DE('cliente', OBRAS)})`,
   },
   {
-    rubro: 'Nómina · Sueldos administración', detalle: 'Compras', paga: 'compras',
+    // SE PAGA DESDE "Jornales por Quincena", igual que los jornales de obra (01/08). Compras tiene
+    // estas filas cargadas a mano y le faltaban meses: los retiros de Dirección están una sola vez
+    // (julio, a pagar el 10/08) y de septiembre a diciembre queda el renglón viejo de $3.000.000
+    // contra un compromiso real de $9.800.000 — $26.000.000 que el cash flow no mostraba. La pestaña
+    // de nómina tiene las dos mitades (planilla de Oficina + retiros de Dirección) y las proyecta.
+    // Las filas siguen cargadas acá para registrar el PAGO; el monto del cuadro ya no sale de acá.
+    rubro: 'Nómina · Sueldos administración', detalle: 'Jornales por Quincena', paga: 'Jornales por Quincena',
     js: (r) => norm(r.proveedor) === 'sueldos',
     sheet: '(LOWER($E$4:$E)="sueldos")',
     sql: ES('proveedor', 'sueldos'),

@@ -75,8 +75,19 @@ export const GRUPOS = [
   {
     naturaleza: 'Sueldos',
     pestana: 'Jornales por Quincena',
-    formula: null,
-    nota: 'La acreditación de haberes. Jornales lleva la quincena devengada, no el día del pago.',
+    // ═══ EL CONTROL QUE FALTABA, Y QUE YA SE PUEDE HACER (01/08) ═══
+    //
+    // La nota decía "Jornales lleva la quincena devengada, no el día del pago", y por eso esta fila
+    // no tenía contraste. Era cierto y dejó de serlo: la pestaña tiene ahora "Pagado el" —el día en
+    // que la plata salió— y la columna Banco —cuánto de esa quincena salió por transferencia—. Con
+    // esas dos, comparar contra el extracto es exactamente la misma cuenta que las demás filas.
+    //
+    // POR QUÉ IMPORTA, MEDIDO. Al 31/07 el extracto no muestra NINGUNA acreditación de haberes y
+    // Jornales registra dos quincenas pagadas ese día con $7.621.808 por banco. Sin esta fila, esos
+    // $7,6 millones no aparecían en ningún control: ni en el saldo (el extracto no los tiene) ni en
+    // el desvío (esta celda estaba vacía). El dinero más regular de la empresa, sin cuadrar.
+    formula: (d, h) => `SUMPRODUCT(ISNUMBER(JORNALES_REAL_PAGADO)*(JORNALES_REAL_PAGADO>=${d})*(JORNALES_REAL_PAGADO<=${h})*N(JORNALES_REAL_BANCO))`,
+    nota: 'La acreditación de haberes: columna Banco de las quincenas con fecha en "Pagado el" dentro de la ventana del extracto. Sólo la parte bancaria — lo que se pagó en billetes (Adelanto y Total recibo) sale de la caja física, no de la cuenta.',
   },
   {
     naturaleza: 'Préstamo prendario',
@@ -100,6 +111,19 @@ export const GRUPOS = [
     // el cuadro es MENSUAL y el extracto cubre 16 días, y porque el cuadro aplica la alícuota a
     // TODO el movimiento proyectado, incluido el que no pasa por el banco.
     nota: 'Tiene su línea en el Cash Flow Mensual, dentro de Actividades de Financiación. La alícuota no se inventó: el propio extracto la declara (0,6%) y medida sobre estos movimientos da 0,595% sobre los débitos y 0,600% sobre los créditos.',
+  },
+  {
+    naturaleza: 'Comisiones y gastos bancarios',
+    pestana: 'Cash Flow Mensual',
+    formula: null,
+    // EL GRUPO QUE FALTABA (31/07). Estos movimientos estaban dentro de "Transferencias a proveedores",
+    // así que la fila de Compras de arriba los reclamaba como pagos a proveedor y el desvío de ese
+    // grupo salía $381.649,64 más grande de lo que era. Sin fórmula de contraste a propósito: NO hay
+    // pestaña que los pueda tener. El banco los debita sin factura, así que no existen en Compras y
+    // nunca van a existir — el único registro es el extracto, y por eso la línea del Cash Flow los lee
+    // de _BANCO_RAW. La columna "Según la pestaña" se deja vacía en vez de escribir un 0, que se leería
+    // como "cuadra" cuando lo correcto es "no hay nada del otro lado".
+    nota: 'Comisión de cuenta, de clearing, de cuenta en dólares y de compensación de cheques, con su IVA 21% y su percepción RG 2408 al 3%. Tienen línea propia en Actividades de Financiación del Cash Flow, que las lee de acá: el banco las debita sin factura y NUNCA van a estar en Compras. Medido: $113.794,80 en junio y $267.854,84 en julio.',
   },
   {
     naturaleza: 'Costo financiero del descubierto',

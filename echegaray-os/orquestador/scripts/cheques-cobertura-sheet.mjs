@@ -223,6 +223,39 @@ async function main() {
 
   await marcarInstrumentos(google, datos)
 
+  // ═══ EL QUE ESCRIBE ÚLTIMO, SELLA. SI NO, CANDA UNA PESTAÑA QUE NADIE EDITÓ (01/08) ═══
+  //
+  // "Cash Flow Mensual" tiene DOS escritores: cash-flow-rehacer, que hace el cuadro y sella la firma
+  // de toda la pestaña, y este script, que le agrega este bloque al pie y NO sellaba. El resultado,
+  // medido: el 31/07 a las 20:55 el cuadro selló, este bloque escribió a las 20:56, y a las 20:57 el
+  // control de firma vio una pestaña distinta de la última escritura registrada y la AUTO-CANDÓ con
+  // el motivo "la firma difiere de mi última escritura: la editaste".
+  //
+  // Jorge no la editó. Comparadas celda a celda contra el snapshot del OS, las 45 diferencias eran
+  // todas nuestras: los rangos de este bloque (`$M$399`→`$M$400`, `$L$385`→`$L$400`), su calendario
+  // "TOTAL A CUBRIR" y una fila de proyección de Estructura que se movió sola. Cero celdas escritas
+  // por una persona.
+  //
+  // El costo no fue cosmético: la pestaña quedó congelada tres días y la corrección de la nómina de
+  // administración no llegaba a ella —el semanal la mostraba y el mensual no— hasta que se destrabó
+  // a mano. Es el mismo patrón que los "borrados falsos de la Regla 0": un control que acusa al dueño
+  // de algo que hizo el OS gasta la confianza que hace que el candado sirva para algo.
+  //
+  // Se sella acá, DESPUÉS de escribir y formatear. La firma que queda registrada es la de la pestaña
+  // completa tal como quedó, con el cuadro de arriba y este bloque de abajo: la próxima corrida la
+  // encuentra igual y no canda nada.
+  try {
+    const { sellarFirma } = await import('../lib/firma-tab.mjs')
+    const { sellarFormato } = await import('../lib/firma-formato.mjs')
+    await sellarFirma(google, ID, PESTAÑA)
+    await sellarFormato(google, ID, PESTAÑA)
+    console.log(`  🔏 firma de "${PESTAÑA}" resellada: este bloque es del OS, no una edición tuya`)
+  } catch (e) {
+    // Sin sello, la corrida siguiente candaría la pestaña acusando al dueño. Se avisa fuerte en vez
+    // de seguir en silencio: es exactamente el defecto que este bloque vino a cerrar.
+    console.warn(`  ⚠ no pude resellar la firma de "${PESTAÑA}" (${e.message}) — si la próxima corrida la canda, NO la editaste vos: fue este script.`)
+  }
+
   const v = await google.readSheetValues(ID, `${PESTAÑA}!A${F}:C${F + filas.length - 1}`)
   console.log(`\nEscrito en la fila ${F}:`)
   for (const f of v) if (f?.[0] && (f?.[2] || f?.[1])) console.log(`  ${String(f[0]).slice(0, 46).padEnd(48)}${String(f[1] ?? '').padStart(6)}${String(f[2] ?? '').padStart(16)}`)

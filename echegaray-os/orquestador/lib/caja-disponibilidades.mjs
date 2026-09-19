@@ -64,13 +64,31 @@ export const CUENTAS = [
     moneda: 'ARS',
     patron: /^caja en pesos/i,
     origenSugerido: 'Arqueo de caja',
+    // La fecha de esta fila es la del ARQUEO, no la de hoy. Ver caja-pestana.mjs: fechar un conteo
+    // de caja con TODAY() afirma que se contó hoy y deja la alarma de antigüedad clavada en 0 días.
+    arqueo: 'CAJA_ARQUEO_ARS_FECHA',
   },
   {
-    nombre: 'Fondo fijo',
-    moneda: 'ARS',
-    patron: /^fondo fijo/i,
+    // ═══ EL CAJÓN TAMBIÉN TIENE DÓLARES (01/08) ═══
+    //
+    // El dueño: "tenemos una cobranza en dólares en efectivo dentro de esa pestaña". Es la fila 62 de
+    // Cobranzas: U$S 15.000 de anticipo de Quattropani, cobrados en efectivo el 31/07. Hasta hoy ese
+    // cobro entraba a la caja de PESOS como $15.000 — el importe correcto en la moneda equivocada.
+    //
+    // Se trata igual que la cuenta en dólares del banco, que ya existía: se lleva el saldo EN SU
+    // MONEDA y se valúa con TIPO_CAMBIO_USD para poder sumarlo al total. No se convierte al cargarlo:
+    // un cobro en dólares sigue siendo dólares hasta que se venda, y la exposición cambiaria tiene
+    // que poder verse (por eso el bloque 4.8 la muestra aparte).
+    nombre: 'Caja en dólares',
+    moneda: 'USD',
+    patron: /^caja en d[oó]lares/i,
     origenSugerido: 'Arqueo de caja',
+    arqueo: 'CAJA_ARQUEO_USD_FECHA',
   },
+  // FONDO FIJO — RETIRADO (01/08). El dueño: "quita la fila de fondo fijo, no la voy a usar, no la
+  // consideres más". Vivía en el bloque desde el diseño original y nunca tuvo un peso cargado: una
+  // fila permanentemente en "⚠ sin cargar" no es un control, es ruido que enseña a ignorar los avisos.
+  // No se reemplaza por una fila vacía: se saca. Si algún día hay caja chica, se vuelve a agregar acá.
   {
     // Nombre terso, estilo statement de tesorería (el n° de cuenta va en la nota de origen, no en el
     // rótulo). El saldo lo trae el extracto (banco-santander.mjs), no depende del nombre de la fila.
@@ -102,7 +120,14 @@ export const CUENTAS = [
     //
     // El corte es la fecha de acreditación: si todavía no llegó, el valor está en cartera. Los que ya
     // se acreditaron son saldo del banco y contarlos acá los duplicaría.
-    nombre: 'Valores a depositar',
+    // 02/08 — EL ‖ NO ES DECORACIÓN. El total de disponibilidades es `SUM(E10:E26)-E14`: RESTA esta
+    // línea. El criterio es correcto —un ECHEQ en custodia no es plata disponible hoy, entra en su
+    // fecha de pago y ya está contado en el calendario de vencimientos— pero la pestaña no lo decía
+    // en ningún lado. El dueño sumaba la columna a ojo y le faltaban $10.290.000 contra el total, sin
+    // nada que explicara la diferencia. Un cuadro cuyo total no cierra con sus propias líneas no se
+    // puede auditar mirándolo, y eso es exactamente lo que él llamó "mal manejo de información".
+    // El ‖ es la misma marca que usan las líneas memo de los dos Cash Flow: se lee igual en todos lados.
+    nombre: 'Valores a depositar ‖ no suma al total',
     moneda: 'ARS',
     patron: /^valores a depositar/i,
     // 21/07: DEJÓ DE SALIR DE COBRANZAS. La fórmula sobre Cobranzas daba $30.000.000 y la cartera

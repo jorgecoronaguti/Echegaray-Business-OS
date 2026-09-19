@@ -20,7 +20,14 @@ import { dirname, resolve } from 'node:path'
 import { sqlRubroDeCaja } from '../lib/rubro-caja.mjs'
 import { RUBROS_SIN_PROYECCION, MIN_MESES } from '../lib/cash-flow-lineas.mjs'
 
-export const DESTINO = resolve(dirname(fileURLToPath(import.meta.url)), '../../supabase/migrations/20260720160000_rubro_caja_nucleo.sql')
+// EL DESTINO SE MUEVE CUANDO LA DEFINICIÓN CAMBIA DE FONDO, NO EN CADA CORRIDA.
+//
+// Era `20260720160000_rubro_caja_nucleo.sql`. El 31/07 la fecha de caja de una quincena pasó de `hasta`
+// a `fecha_pago`, y eso no es un ajuste del CASE: es otra definición de cuándo sale la plata. Editar la
+// migración ya aplicada la habría dejado sin registro de que cambió, y una base recreada de cero
+// habría saltado del viejo criterio al nuevo sin dejar rastro. El archivo viejo queda como historia
+// (todo es `create or replace`, así que aplicarlos en orden da el estado nuevo).
+export const DESTINO = resolve(dirname(fileURLToPath(import.meta.url)), '../../supabase/migrations/20260731140000_caja_por_fecha_de_pago.sql')
 
 /** NÚCLEO PURO: el texto completo de la migración. Se genera para poder testearlo sin tocar disco. */
 /** La línea del cash flow que NO sale de Compras porque mide lo que a Compras le falta. */
@@ -40,6 +47,12 @@ export function migracion() {
 -- las fórmulas del Sheet. Medido: el calendario de caja de la web mostraba $4.121.169 de egresos
 -- futuros contra $352M+ en la planilla. No era un bug de la web — era que la definición no estaba
 -- en el núcleo, así que la web y el chat miraban un universo distinto al de la planilla.
+--
+-- QUÉ CAMBIÓ EL 31/07: LA FECHA DE CAJA DE UNA QUINCENA. Decía "-- La quincena es caja del día en que
+-- CIERRA: se paga al terminarla" y era falso. El extracto del Santander lo prueba: la quincena que
+-- cerró el 15/07 se pagó el 17/07 (lote 260717507 + el cci del mismo día = $3.775.150, exactamente su
+-- columna "Banco") y la que cerró el 30/06 se pagó el 01/07. Ahora la caja va por
+-- \`coalesce(fecha_pago, hasta)\`. Ver 20260731120000_jornal_quincena_fecha_pago.sql.
 
 create or replace function public.rubro_caja(
   proveedor text, unidad_negocio text, obra_texto text, concepto text
@@ -91,8 +104,12 @@ create or replace view public.egreso_rubro_mes as
          and public.rubro_caja(o.proveedor, o.unidad_negocio, o.obra_texto, o.concepto)
              <> 'Nómina · Jornales de obra'
       union all
-      -- La quincena es caja del día en que CIERRA: se paga al terminarla.
-      select 'Nómina · Jornales de obra', date_trunc('month', j.hasta)::date, j.clase, j.total, 1
+      -- LA QUINCENA ES CAJA DEL DÍA EN QUE SE PAGA, NO DEL DÍA EN QUE CIERRA (31/07). Ver el
+      -- encabezado: el banco lo prueba, uno o dos días hábiles después del cierre. El coalesce es el
+      -- FALLBACK: una quincena sin fecha de pago cargada vale su cierre y no desaparece del cuadro —
+      -- que una línea quede en cero sin avisar es peor que una fecha vieja.
+      select 'Nómina · Jornales de obra',
+             date_trunc('month', coalesce(j.fecha_pago, j.hasta))::date, j.clase, j.total, 1
         from public.jornal_quincena j
       union all
       select '${LINEA_INSTRUMENTOS}', date_trunc('month', i.fecha_pago)::date, 'real', i.monto, 1
@@ -201,10 +218,13 @@ create or replace view public.calendario_caja as
      and public.rubro_caja(o.proveedor, o.unidad_negocio, o.obra_texto, o.concepto)
          <> 'Nómina · Jornales de obra'
   union all
-  select 'pago', j.clase, j.hasta,
+  -- El evento de caja de una quincena es su PAGO, no su cierre. Y el concepto lo dice, para que en el
+  -- calendario se lea "Quincena 16/07–31/07 · se paga el 03/08" y nadie tenga que deducirlo.
+  select 'pago', j.clase, coalesce(j.fecha_pago, j.hasta),
          'Jornales de obra',
          'Quincena ' || to_char(j.desde, 'DD/MM') || '–' || to_char(j.hasta, 'DD/MM')
-           || coalesce(' · ' || j.personas || ' personas', ''),
+           || coalesce(' · ' || j.personas || ' personas', '')
+           || coalesce(' · se paga el ' || to_char(j.fecha_pago, 'DD/MM'), ' · sin fecha de pago cargada'),
          -j.total,
          (j.clase = 'real')
     from public.jornal_quincena j

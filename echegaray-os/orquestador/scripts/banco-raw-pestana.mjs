@@ -115,8 +115,13 @@ async function main() {
   }
   const datos = movs.map(fila)
   const corte = new Date().toISOString().slice(0, 16).replace('T', ' ')
+  // EL CORTE DE LA RÉPLICA ES EL DE SUS DATOS, NO UNA CONSTANTE (29/07). BANCO.CORTE describe el
+  // seed estático del código (22/07); la réplica escribe lo que hoy tiene la base, que llega más
+  // lejos. Declarar el corte del dato —el movimiento más nuevo— es lo que evita que envejezca en
+  // silencio; usar la constante mostraría un corte viejo con datos nuevos.
+  const corteData = movs.reduce((mx, m) => (String(m.fecha) > mx ? String(m.fecha) : mx), BANCO.CORTE)
 
-  console.log(`${datos.length} movimientos del extracto · corte del banco ${BANCO.CORTE}`)
+  console.log(`${datos.length} movimientos del extracto · corte del banco ${corteData}`)
   const entran = datos.filter((f) => f[4] === 'entra')
   console.log(`  entran ${entran.length} por ${Math.round(entran.reduce((s, f) => s + f[2], 0)).toLocaleString('es-AR')} · salen ${datos.length - entran.length}`)
   if (DRY) return console.log('--dry: no escribí nada.')
@@ -137,7 +142,7 @@ async function main() {
   // NO se borra nada escrito por una persona (regla de oro): se arma la grilla completa
   // —título, nota, encabezados y datos— y se FUSIONA con lo que hay. Ver lib/preservar-anotaciones.mjs.
   const gridRaw = [
-    [`_BANCO_RAW — extracto del ${BANCO.CUENTA?.banco ?? 'Santander'} ${BANCO.CUENTA?.numero ?? ''} · corte del banco ${BANCO.CORTE} · réplica del ${corte}`],
+    [`_BANCO_RAW — extracto del ${BANCO.CUENTA?.banco ?? 'Santander'} ${BANCO.CUENTA?.numero ?? ''} · corte del banco ${corteData} · réplica del ${corte}`],
     [`${datos.length} movimientos. NO se carga a mano: la reescribe el agente desde la réplica del extracto. Existe para que los números de CAJA que hoy salen del banco sean FÓRMULAS y no valores calculados afuera y pegados. La columna "Naturaleza" NO está en el extracto: la deduce el OS —un depósito de efectivo y un cobro son las dos cosas un ingreso para el banco, y sólo una es plata nueva—.`],
     COLUMNAS.map(([n]) => n),
     ...datos,

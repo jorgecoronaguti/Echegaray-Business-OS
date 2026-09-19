@@ -86,16 +86,21 @@ export const USA = {
     J: 'Debitado',
     K: 'Unidad de negocio',
   },
+  // Todo corrido una columna a la derecha desde el 31/07: entró "Se paga el" en la C. Hasta ya NO es
+  // la fecha de caja —era falso, y el extracto del banco lo probaba: la quincena se paga uno o dos
+  // días hábiles después de cerrar—. Hasta es la fecha del DEVENGAMIENTO (el mes trabajado, que es lo
+  // que miran Cargas Sociales y nomina_por_mes) y C es la fecha de CAJA.
   'Jornales por Quincena': {
     A: 'Desde',
-    B: 'Hasta → la fecha de caja de la quincena',
-    C: 'Días hábiles',
-    D: 'Personas',
-    F: 'Horas reales',
-    G: 'Banco / TOTAL PROYECTADO según el bloque',
-    H: 'Adelanto',
-    I: 'Total recibo',
-    J: 'TOTAL QUINCENA → el importe que usa el cash flow',
+    B: 'Hasta → cuándo CIERRA la quincena (devengamiento)',
+    C: 'Se paga el → la fecha de CAJA: la usa la línea de jornales del cash flow',
+    D: 'Días hábiles',
+    E: 'Personas',
+    G: 'Horas reales',
+    H: 'Banco / TOTAL PROYECTADO según el bloque',
+    I: 'Adelanto',
+    J: 'Total recibo',
+    K: 'TOTAL QUINCENA → el importe que usa el cash flow',
   },
 }
 
@@ -144,11 +149,11 @@ export const DERIVADA_DE = {
   'Cheques Emitidos!J': 'I — es =I, una copia de la fecha de pago',
   'Tarjeta de Credito!B': 'A — es =A, una copia de la fecha de compra',
   'Tarjeta de Credito!I': 'H — es =H, una copia de la fecha de pago',
-  'Jornales por Quincena!E': 'C, D y Parámetros!B43 — horas × dotación × jornal',
-  'Jornales por Quincena!K': '_J_OBREROS — suma del espejo que el OS refresca',
+  'Jornales por Quincena!F': 'D, E y Parámetros!B43 — horas × dotación × jornal',
+  'Jornales por Quincena!L': '_J_OBREROS — suma del espejo que el OS refresca',
   // La columna Estado del registro: =IF(B<=TODAY();"cerrada";"en curso"). Deriva de B (Hasta) y se
   // recalcula sola; es la que distingue la quincena en curso de las cerradas. No es un hueco.
-  'Jornales por Quincena!L': 'B — "cerrada"/"en curso" según si el último día de la quincena ya pasó (=B<=TODAY())',
+  'Jornales por Quincena!M': 'B — "cerrada"/"en curso" según si el último día de la quincena ya pasó (=B<=TODAY())',
 }
 
 /**

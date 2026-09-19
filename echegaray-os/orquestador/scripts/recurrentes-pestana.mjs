@@ -164,9 +164,24 @@ async function main() {
   }])
   // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.
   const gridRec = g.filas.map((f) => f.map((c) => (c instanceof Date ? `${c.getUTCDate()}/${c.getUTCMonth() + 1}/${c.getUTCFullYear()}` : c)))
-  const { conservadas } = await escribirPreservando(google, ID, hoja.title, gridRec, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  const escritura = await escribirPreservando(google, ID, hoja.title, gridRec, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  // ═══ SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07) ═══
+  //
+  // El defecto que arruinó CAJA, buscado en todos los generadores y encontrado en seis. La guarda hace
+  // bien su trabajo —con la pestaña candada o con la firma editada, `escribirPreservando` NO escribe—
+  // pero el resultado se descartaba y la corrida seguía: el formateador pintaba la geometría de la
+  // grilla NUEVA sobre los valores VIEJOS, y donde había rangos con nombre los reapuntaba a filas que
+  // en la pestaña no tienen ese dato. En CAJA eso dejó CAJA_TOTAL_DISPONIBLE y CAJA_FECHA_SALDO sobre
+  // dos celdas vacías: con el total y la fecha de corte en cero, todo cheque y toda quincena pasaban el
+  // filtro y el calendario inflaba sus tramos. Sin un solo #ERROR y sin un aviso.
+  //
+  // Una pestaña que no se escribió no cambió de forma: su formato y sus nombres son los de su última
+  // escritura y así tienen que quedar.
+  const salteada = Boolean(escritura?.bloqueada || escritura?.editadaPorHumano)
+  if (salteada) console.log('  🔒 bajo tu control: no escribí, y por lo tanto no le toco el formato ni sus rangos con nombre. Queda exactamente como la dejaste.')
+  const { conservadas } = salteada ? { conservadas: [] } : escritura
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
-  await formatear(google, hoja, g)
+  if (!salteada) await formatear(google, hoja, g)
 
   const v = await google.readSheetValues(ID, `${hoja.title}!A1:C${g.filas.length}`)
   console.log(`\nCONTROL  Compras ${v[g.ctrl]?.[1]} · cuadro ${v[g.ctrl + 1]?.[1]} · diferencia ${v[g.ctrl + 2]?.[1]}`)

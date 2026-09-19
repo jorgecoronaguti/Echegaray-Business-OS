@@ -23,27 +23,23 @@ test('la ventana es semiabierta — el último día de un mes no se cuenta dos v
   assert.ok(!f.includes('<=Y'), 'con <= el corte se solapa con el mes siguiente')
 })
 
-const lineasDeBanco = () => CUADRO.flatMap((a) => a.grupos.flatMap((x) => x.lineas)).filter((l) => l.bancoNat)
-
-test('CANARIO: el cuadro todavía NO tiene las líneas de control del banco', () => {
-  // Este archivo se rescató SOLO (bloque de banco). Las líneas `bancoNat` del cuadro viven en
-  // cash-flow-lineas.mjs, que es la estructura de la pestaña Cash Flow y NO entra en esta tanda.
-  //
-  // Mientras no estén, las dos pruebas de abajo no prueban nada (recorren una lista vacía), y una
-  // prueba que pasa sin ejercitar el código es la peor clase de verde. Este canario lo dice en voz
-  // alta: cuando alguien traiga `bancoNat` al cuadro, ESTE test se pone rojo, y lo que hay que hacer
-  // es borrarlo y restituir los dos asserts que están abajo comentados con su nombre.
-  assert.equal(lineasDeBanco().length, 0,
-    'llegó bancoNat al cuadro: borrá este canario y activá "grupo que NO suma" + "NUNCA consume un rubro"')
+test('las tres líneas de control viven en un grupo que NO suma', () => {
+  // Es lo único que impide que estas líneas dupliquen plata: si mañana alguien las mueve a un grupo
+  // con signo, el mismo gasto quedaría contado por el banco Y por Compras, y el control del pie
+  // seguiría cerrando porque las dos salen del mismo lado. verificarCuadro lo exige.
+  const grupos = CUADRO.flatMap((a) => a.grupos)
+  const g = grupos.find((x) => x.lineas.some((l) => l.bancoNat))
+  assert.ok(g, 'el grupo de control tiene que existir')
+  assert.equal(g.signo, 0)
+  assert.deepEqual(g.lineas.map((l) => l.bancoNat),
+    ['AFIP', 'Compras con tarjeta de débito', 'Débitos automáticos (seguros)'])
 })
 
 test('una línea de banco NUNCA consume un rubro de Compras', () => {
   // Si tuviera `rubro`, la partición de Compras la contaría y el control del pie dejaría de cerrar.
-  // Hoy recorre una lista vacía a propósito — lo custodia el canario de arriba.
-  for (const l of lineasDeBanco()) {
+  for (const l of CUADRO.flatMap((a) => a.grupos.flatMap((x) => x.lineas)).filter((l) => l.bancoNat)) {
     assert.equal(l.rubro, undefined, `"${l.nombre}" no puede tener rubro: rompería la partición de Compras`)
   }
-  // Esto SÍ ejercita el cuadro real de main: la estructura que hay tiene que ser coherente.
   assert.doesNotThrow(() => verificarCuadro())
 })
 
@@ -74,15 +70,8 @@ test('la fórmula del control es es-AR y cierra paréntesis', () => {
   assert.ok(!f.replace(/"[^"]*"/g, '""').includes(','), `separador con coma: ${f}`)
 })
 
-test('cada naturaleza controlada sabe dónde tendría que estar cargada', () => {
-  // Reemplaza a "la línea de control produce fórmula": aquélla llamaba expresionReal() sobre la línea
-  // del cuadro con bancoNat === 'AFIP', que en main no existe — le pasaba undefined y explotaba. Lo que
-  // SÍ se puede probar sin la pestaña es el contrato de esta lib: una naturaleza sin `donde` deja al
-  // dueño con un número y sin ninguna acción posible.
-  for (const c of CONTROLADAS) {
-    assert.ok(c.donde, `${c.nat} no dice dónde cargarlo`)
-    assert.ok(Object.hasOwn(c, 'lineaDelCuadro'), `${c.nat} tiene que declarar su línea, aunque sea null`)
-    assert.ok(formulaBancoPorNaturaleza(c.nat, '$C$3', '$D$3').includes(`="${c.nat}"`))
-  }
-  assert.equal(typeof expresionReal, 'function', 'la lib del cuadro sigue exportando expresionReal')
+test('la línea de control produce fórmula (no es una de las que llena el script)', () => {
+  const l = CUADRO.flatMap((a) => a.grupos.flatMap((x) => x.lineas)).find((l) => l.bancoNat === 'AFIP')
+  const e = expresionReal(l, '$C$3', '$D$3')
+  assert.ok(e && e.includes('_BANCO_RAW'), e)
 })
