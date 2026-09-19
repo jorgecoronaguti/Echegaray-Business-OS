@@ -6,7 +6,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { importe, fecha, campos, parsearExtracto, novedades, verificarCadena, clave } from './banco-importar.mjs'
+import { importe, fecha, campos, parsearExtracto, novedades, verificarCadena, clave, dryRun } from './banco-importar.mjs'
 
 test('el importe se lee a la argentina: punto de miles, coma decimal', () => {
   assert.equal(importe('1.234,56'), 1234.56)
@@ -238,4 +238,108 @@ test('CSV del banco: el saldo intradía se DEDUCE de la cadena (no queda inflado
   // cronológico: [23/07 depósito 8.714.485,73] → [cheque -500k → 8.214.485,73] → [cheque -500k → 7.714.485,73]
   assert.equal(movimientos.at(-1).saldo, 7714485.73)
   assert.equal(movimientos.at(-2).saldo, 8214485.73)
+})
+
+// ── FILA ENVUELTA POR UN SALTO DE LÍNEA (el pegado del dueño del 28/07) ──────────────────────────────
+// La banca online envuelve el concepto largo ("Transferencia recibida - credin - Id debin <id> cuit
+// <cuit>") y el copiar/pegar mete un `\n` en medio del concepto. La primera mitad arranca con fecha
+// pero su último campo es TEXTO, no un importe → antes se descartaba y el cobro de Quattropani del
+// 28/07 ($30M y $35M, cuit 30716699648) nunca entraba: banco_movimientos cortaba el 24/07.
+
+test('fila credin ENVUELTA en 2 líneas se re-une a un solo movimiento con importe y saldo correctos', () => {
+  const txt = [
+    'Fecha;Suc. Origen;Desc. Sucursal;Cod. Operativo;Referencia;Concepto;Importe;Saldo',
+    '28/07/2026;0179;San Juan;3058;8700;Transferencia recibida - credin - Id debin 987654321',
+    'cuit 30716699648;30.000.000,00;42.000.000,00',
+  ].join('\n')
+  const { movimientos, rechazos } = parsearExtracto(txt)
+  assert.equal(rechazos.length, 0, 'la fila envuelta no se rechaza')
+  assert.equal(movimientos.length, 1, 'las dos líneas son UN movimiento, no dos')
+  assert.equal(movimientos[0].concepto, 'Transferencia recibida - credin - Id debin 987654321 cuit 30716699648')
+  assert.equal(movimientos[0].importe, 30000000)
+  assert.equal(movimientos[0].saldo, 42000000)
+})
+
+test('la fila envuelta encadena: saldo(n) = saldo(n-1) + importe(n)', () => {
+  // El extracto real del 28/07 trae los dos credin de Quattropani seguidos. Re-unidos, la cadena cierra.
+  const txt = [
+    'Fecha;Suc. Origen;Desc. Sucursal;Cod. Operativo;Referencia;Concepto;Importe;Saldo',
+    '28/07/2026;0179;San Juan;3058;8700;Transferencia recibida - credin - Id debin 111',
+    'cuit 30716699648;30.000.000,00;42.000.000,00',
+    '28/07/2026;0179;San Juan;3058;8701;Transferencia recibida - credin - Id debin 222',
+    'cuit 30716699648;35.000.000,00;77.000.000,00',
+  ].join('\n')
+  const { movimientos, rechazos } = parsearExtracto(txt)
+  assert.equal(rechazos.length, 0)
+  assert.equal(movimientos.length, 2)
+  assert.equal(movimientos[1].importe, 35000000)
+  // saldo inicial = 42.000.000 − 30.000.000 = 12.000.000
+  assert.equal(verificarCadena(movimientos, 12000000).ok, true)
+})
+
+test('re-unir NO rompe las filas normales de una sola línea (ni CSV ni pegado)', () => {
+  const txt = [
+    'Fecha;Suc. Origen;Desc. Sucursal;Cod. Operativo;Referencia;Concepto;Importe;Saldo',
+    '07/07/2026;0179;San Juan;0557;01464204;Prestamos prendarios - 0179-039101464204;(1.282.810,54);(6.356.623,39)',
+    '08/07/2026;0179;San Juan;3058;299;Deposito e-cheq;3.000.000,00;(3.356.623,39)',
+  ].join('\n')
+  const { movimientos, rechazos } = parsearExtracto(txt)
+  assert.equal(rechazos.length, 0)
+  assert.equal(movimientos.length, 2)
+  assert.equal(movimientos[0].importe, -1282810.54)
+  assert.equal(movimientos[0].saldo, -6356623.39)
+  assert.equal(movimientos[1].importe, 3000000)
+})
+
+test('una fila envuelta de DÉBITO (importe entre paréntesis) se interpreta negativa', () => {
+  const txt = [
+    'Fecha;Suc. Origen;Desc. Sucursal;Cod. Operativo;Referencia;Concepto;Importe;Saldo',
+    '28/07/2026;0179;San Juan;3058;900;Transferencia realizada - A un proveedor con nombre',
+    'muy largo que la pantalla envolvió;(1.500.000,00);(2.000.000,00)',
+  ].join('\n')
+  const { movimientos, rechazos } = parsearExtracto(txt)
+  assert.equal(rechazos.length, 0)
+  assert.equal(movimientos.length, 1)
+  assert.equal(movimientos[0].importe, -1500000, 'los paréntesis = débito negativo')
+  assert.equal(movimientos[0].saldo, -2000000)
+  assert.ok(movimientos[0].concepto.includes('muy largo que la pantalla envolvió'))
+})
+
+test('una fila envuelta que igual no cierra se DEVUELVE una sola vez, no desaparece', () => {
+  // Si la continuación nunca trae un importe, la fila unida cae en rechazos (visible), no en silencio.
+  const txt = [
+    'Fecha;Suc. Origen;Desc. Sucursal;Cod. Operativo;Referencia;Concepto;Importe;Saldo',
+    '28/07/2026;0179;San Juan;3058;901;Transferencia recibida - concepto',
+    'que sigue sin importe ni saldo',
+  ].join('\n')
+  const { movimientos, rechazos } = parsearExtracto(txt)
+  assert.equal(movimientos.length, 0)
+  assert.equal(rechazos.length, 1, 'una sola línea de rechazo para la fila unida entera')
+  assert.equal(rechazos[0].linea, 2, 'apunta a la línea donde ARRANCA la fila')
+})
+
+test('la fila siguiente (con su propia fecha) NO se traga al re-unir la anterior', () => {
+  // El re-unir corta antes de una línea que abre su propia fila: no se comen movimientos válidos.
+  const txt = [
+    'Fecha;Suc. Origen;Desc. Sucursal;Cod. Operativo;Referencia;Concepto;Importe;Saldo',
+    '28/07/2026;0179;San Juan;3058;902;Transferencia recibida - concepto sin cierre',
+    '27/07/2026;0179;San Juan;3058;903;Deposito;5.000.000,00;10.000.000,00',
+  ].join('\n')
+  const { movimientos, rechazos } = parsearExtracto(txt)
+  assert.equal(movimientos.length, 1, 'la fila del 27/07 se parsea entera')
+  assert.equal(movimientos[0].fecha, '2026-07-27')
+  assert.equal(movimientos[0].importe, 5000000)
+  assert.equal(rechazos.length, 1, 'sólo la fila incompleta del 28/07 se rechaza')
+})
+
+test('DRY-RUN: parsea + verifica la cadena en una sola pasada (fila envuelta real)', () => {
+  const txt = [
+    'Fecha;Suc. Origen;Desc. Sucursal;Cod. Operativo;Referencia;Concepto;Importe;Saldo',
+    '28/07/2026;0179;San Juan;3058;8700;Transferencia recibida - credin - Id debin 111',
+    'cuit 30716699648;30.000.000,00;42.000.000,00',
+  ].join('\n')
+  const { movimientos, rechazos, cadena } = dryRun(txt, { saldoInicial: 12000000 })
+  assert.equal(movimientos.length, 1)
+  assert.equal(rechazos.length, 0)
+  assert.equal(cadena.ok, true)
 })

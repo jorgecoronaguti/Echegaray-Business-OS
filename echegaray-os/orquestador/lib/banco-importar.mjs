@@ -114,39 +114,90 @@ function encabezadoCsvBanco(linea) {
   return { fecha: 0, concepto: iConcepto, importe: iImporte, saldo: iSaldo >= 0 ? iSaldo : null }
 }
 
+/** El primer campo de la línea. Sirve para ver si la línea ABRE una fila (arranca con una fecha). */
+function empiezaConFecha(linea) {
+  const primero = linea.includes(';') ? linea.split(';')[0].trim() : (campos(linea)[0] ?? '')
+  return fecha(primero) !== null
+}
+
+/** Un token que es un importe DE VERDAD y no un número escondido en el concepto (CUIT, nº de tarjeta,
+ *  Id debin): tiene dígitos, no tiene letras, y parsea a la argentina. */
+const esNumeroPuro = (t) => t !== '' && !/[a-záéíóúñ]/i.test(t) && importe(t) !== null
+
+/**
+ * ¿La línea CIERRA una fila? Una fila del extracto termina en el par final `importe;saldo` —o sólo en
+ * el importe, en los "Movimientos del Día" que aún no traen saldo—. Su último campo no vacío es un
+ * número puro.
+ *
+ * POR QUÉ EXISTE (28/07). El dueño pega el listado de la banca online y, cuando el concepto es largo
+ * ("Transferencia recibida - credin - Id debin <id> cuit <cuit>"), la pantalla lo ENVUELVE y el pegado
+ * mete un salto de línea en medio del concepto. La primera mitad arranca con fecha pero su último
+ * campo es TEXTO (parte del concepto), así que no cierra: la fila sigue en la línea de abajo. Sin
+ * re-unirlas, esos movimientos —entre ellos $30.000.000 y $35.000.000 del cobro de Quattropani— se
+ * descartaban y banco_movimientos cortaba en el 24/07.
+ */
+function cierraFila(linea) {
+  const f = linea.includes(';') ? linea.split(';').map((s) => s.trim()) : campos(linea)
+  let k = f.length - 1
+  while (k >= 0 && f[k] === '') k-- // el saldo puede venir vacío (movimiento del día): no invalida
+  return k >= 1 && esNumeroPuro(f[k])
+}
+
 export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {}) {
   const movimientos = []
   const rechazos = []
   const lineas = String(texto ?? '').split('\n')
   let cols = null // mapeo posicional, si apareció un encabezado del CSV del banco
 
-  lineas.forEach((linea, i) => {
-    const cruda = linea.trim()
-    if (!cruda) return
+  for (let i = 0; i < lineas.length; i++) {
+    let cruda = lineas[i].trim()
+    if (!cruda) continue
     // Un encabezado del CSV del banco fija el mapeo de columnas y no es un movimiento en sí.
     const cab = encabezadoCsvBanco(cruda)
-    if (cab) { cols = cab; return }
-    if (ES_RUIDO.test(cruda)) return
+    if (cab) { cols = cab; continue }
+    if (ES_RUIDO.test(cruda)) continue
+
+    // ── RE-UNIR UNA FILA ENVUELTA POR UN SALTO DE LÍNEA ──
+    // Si la línea ABRE una fila (arranca con fecha) pero NO cierra (su último campo es texto del
+    // concepto, no un importe), el pegado partió el concepto en dos. Se pegan las líneas siguientes
+    // —que no abren su propia fila ni son ruido/encabezado— hasta que cierre. Se unen con un espacio:
+    // el corte cae dentro de un campo (el concepto), y ese campo se normaliza igual más abajo. Las
+    // filas normales de una sola línea ya cierran, así que este bloque ni las toca.
+    const numLinea = i + 1
+    if (empiezaConFecha(cruda) && !cierraFila(cruda)) {
+      let j = i + 1
+      while (j < lineas.length) {
+        const sig = lineas[j].trim()
+        if (encabezadoCsvBanco(sig) || ES_RUIDO.test(sig) || empiezaConFecha(sig)) break
+        if (sig) cruda = `${cruda} ${sig}`
+        j++
+        if (cierraFila(cruda)) break
+      }
+      // Consumimos sólo las líneas de continuación (el while corta ANTES de una fecha/ruido/encabezado,
+      // así que nunca nos comemos la fila siguiente). Si aun así no cerró, la fila unida se parsea igual
+      // y caerá en `rechazos` una sola vez, visible, en lugar de desaparecer en silencio.
+      i = j - 1
+    }
 
     // ── Vía CSV del banco: columnas fijas, se parte SÓLO por `;` (los conceptos tienen espacios) ──
     if (cols) {
       const p = cruda.split(';').map((s) => s.trim())
       const f = fecha(p[cols.fecha], anio)
-      if (!f) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: `"${p[cols.fecha]}" no es una fecha` }); return }
+      if (!f) { rechazos.push({ linea: numLinea, texto: cruda.slice(0, 90), motivo: `"${p[cols.fecha]}" no es una fecha` }); continue }
       const imp = importe(p[cols.importe])
-      if (imp === null) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: 'no encontré el importe' }); return }
+      if (imp === null) { rechazos.push({ linea: numLinea, texto: cruda.slice(0, 90), motivo: 'no encontré el importe' }); continue }
       const concepto = String(p[cols.concepto] ?? '').replace(/\s+/g, ' ').trim()
-      if (!concepto) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: 'la fila no tiene concepto' }); return }
+      if (!concepto) { rechazos.push({ linea: numLinea, texto: cruda.slice(0, 90), motivo: 'la fila no tiene concepto' }); continue }
       const saldo = cols.saldo != null ? importe(p[cols.saldo]) : null
       movimientos.push({ fecha: f, concepto, importe: imp, saldo })
-      return
+      continue
     }
 
     const c = campos(cruda)
     // Una línea de movimiento tiene, como mínimo, fecha + concepto + importe.
-    if (c.length < 3) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: 'no tiene fecha, concepto e importe' }); return }
+    if (c.length < 3) { rechazos.push({ linea: numLinea, texto: cruda.slice(0, 90), motivo: 'no tiene fecha, concepto e importe' }); continue }
     const f = fecha(c[0], anio)
-    if (!f) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: `"${c[0]}" no es una fecha` }); return }
+    if (!f) { rechazos.push({ linea: numLinea, texto: cruda.slice(0, 90), motivo: `"${c[0]}" no es una fecha` }); continue }
 
     // El IMPORTE es el último campo numérico, o el anteúltimo si además viene el saldo. Se busca de
     // atrás para adelante porque el concepto puede tener números adentro (el CUIT, el nº de tarjeta)
@@ -158,10 +209,10 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
       if (n === null || /[a-záéíóúñ]/i.test(c[j])) break
       numericos.unshift({ j, n })
     }
-    if (!numericos.length) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: 'no encontré el importe' }); return }
+    if (!numericos.length) { rechazos.push({ linea: numLinea, texto: cruda.slice(0, 90), motivo: 'no encontré el importe' }); continue }
 
     const concepto = c.slice(1, numericos[0].j).join(' ').replace(/\s+/g, ' ').trim()
-    if (!concepto) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: 'la fila no tiene concepto' }); return }
+    if (!concepto) { rechazos.push({ linea: numLinea, texto: cruda.slice(0, 90), motivo: 'la fila no tiene concepto' }); continue }
 
     // Con dos números, el primero es el importe y el segundo el saldo corrido. Con uno solo —típico
     // de los "Movimientos del Día"— hay importe y todavía no hay saldo: se guarda en null, no en 0.
@@ -169,7 +220,7 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
     const imp = numericos[0].n
     const saldo = numericos.length >= 2 ? numericos[numericos.length - 1].n : null
     movimientos.push({ fecha: f, concepto, importe: imp, saldo })
-  })
+  }
 
   // EL HOMEBANKING DESCARGA DEL MÁS NUEVO AL MÁS VIEJO. La cadena de saldos —saldo(n)=saldo(n−1)+
   // importe(n)— sólo cierra en orden CRONOLÓGICO. Si el extracto viene en fechas descendentes, se
@@ -256,4 +307,49 @@ export function verificarCadena(movs = [], saldoInicial = null, tolerancia = 0.0
     anterior = Number(m.saldo)
   }
   return { ok: cortes.length === 0, cortes }
+}
+
+/**
+ * DRY-RUN: parsea un texto de extracto y devuelve las filas + el veredicto de la cadena de saldos.
+ * NO toca red ni base — es sólo el núcleo puro encadenado, para mirar un extracto antes de importarlo.
+ *
+ * @param {string} texto
+ * @param {{anio?:number, saldoInicial?:number|null}} opts
+ */
+export function dryRun(texto, { anio, saldoInicial = null } = {}) {
+  const { movimientos, rechazos } = parsearExtracto(texto, anio != null ? { anio } : {})
+  const cadena = verificarCadena(movimientos, saldoInicial)
+  return { movimientos, rechazos, cadena }
+}
+
+// ── CLI DE DRY-RUN (sin red ni base) ────────────────────────────────────────────────────────────
+// Para que main mire el extracto 25-28/07 real ANTES de importar nada:
+//   node orquestador/lib/banco-importar.mjs --dry-run < extracto.txt
+//   node orquestador/lib/banco-importar.mjs --dry-run extracto.txt [saldoInicial]
+// Imprime cada fila parseada, los rechazos, y si la cadena de saldos cierra. No escribe nada.
+if (import.meta.url === `file://${process.argv[1]}` && process.argv.includes('--dry-run')) {
+  const { readFileSync } = await import('node:fs')
+  const args = process.argv.slice(2).filter((a) => a !== '--dry-run')
+  const posiblePath = args.find((a) => !/^-?[\d.,]+$/.test(a))
+  const saldoInicial = (() => {
+    const s = args.find((a) => /^-?[\d.,]+$/.test(a))
+    return s == null ? null : importe(s)
+  })()
+  const texto = posiblePath ? readFileSync(posiblePath, 'utf8') : readFileSync(0, 'utf8')
+  const { movimientos, rechazos, cadena } = dryRun(texto, { saldoInicial })
+
+  const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+  console.log(`\nMOVIMIENTOS PARSEADOS: ${movimientos.length}`)
+  for (const m of movimientos) {
+    console.log(`  ${m.fecha}  imp ${fmt(m.importe).padStart(18)}  saldo ${fmt(m.saldo).padStart(18)}  ${m.concepto.slice(0, 70)}`)
+  }
+  if (rechazos.length) {
+    console.log(`\nRECHAZOS: ${rechazos.length}`)
+    for (const r of rechazos) console.log(`  línea ${r.linea}: ${r.motivo} — ${r.texto}`)
+  }
+  console.log(`\nCADENA DE SALDOS: ${cadena.ok ? 'CIERRA ✓' : `NO CIERRA — ${cadena.cortes.length} corte(s)`}`)
+  for (const c of cadena.cortes) {
+    console.log(`  ${c.fecha} ${c.concepto.slice(0, 40)}: esperado ${fmt(c.esperado)} vs declarado ${fmt(c.declarado)} (dif ${fmt(c.diferencia)})`)
+  }
+  console.log('')
 }
