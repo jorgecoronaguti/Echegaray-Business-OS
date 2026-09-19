@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   aParams, criteriosDeURL, hayCriterios, LLAVE, numeroDe, opcionesDe, pasaCriterios, periodoDe,
-  SIN_ASIGNAR, tramoVisible, type Criteriable, type Criterios,
+  SIN_ASIGNAR, textoDeImporte, tramoVisible, type Criteriable, type Criterios,
 } from './comprasFiltros.ts'
 
 // LOS DEFECTOS QUE ESTOS TESTS ATRAPAN:
@@ -194,4 +194,28 @@ test('el desplegable no ofrece DOS VECES el mismo valor escrito distinto', () =>
   // La opción que quedó TIENE que seguir trayendo las filas de la otra grafía — si no, deduplicar
   // habría escondido trabajo en vez de ordenar la lista.
   assert.equal(pasaCriterios(fila({ proveedor: 'Dupec' }), { proveedor: 'DUPEC' }), true)
+})
+
+// ═══ AUDITORÍA 18/09/2026: «8.5» NO ES 85, Y EL IMPORTE NO CRECE ×10 EN CADA VUELTA ═══
+//
+// `numeroDe` sacaba TODOS los puntos antes de cambiar la coma, y el campo se precargaba con `toString()`:
+// «1.500,50» quedaba 1500.5, el campo mostraba «1500.5», y al cambiar otro filtro se releía 15005.
+// MUTACIÓN QUE LOS PONE ROJOS: volver a `replace(/\./g, '').replace(',', '.')`.
+
+test('«8.5» ES OCHO Y MEDIO, NO 85', () => {
+  assert.equal(numeroDe('8.5'), 8.5, 'MUTACIÓN: el punto decimal volvió a leerse como miles')
+  assert.equal(numeroDe('12.50'), 12.5)
+  assert.equal(numeroDe('1.500'), 1500)
+  assert.equal(numeroDe('-1.500'), -1500, 'las notas de crédito van en negativo')
+})
+
+test('EL IMPORTE PRECARGADO, REENVIADO, ES EL MISMO: no crece en cada vuelta por la URL', () => {
+  for (const tecleado of ['1.500,50', '8,5', '1.500', '250.000', '0,75']) {
+    const primero = numeroDe(tecleado)
+    let valor = primero
+    // Tres vueltas: lo que el campo muestra se reenvía al cambiar otro filtro.
+    for (let i = 0; i < 3; i++) valor = numeroDe(textoDeImporte(valor))
+    assert.equal(valor, primero, `«${tecleado}» cambió al volver por la URL: ${primero} → ${valor}`)
+  }
+  assert.equal(textoDeImporte(undefined), undefined)
 })

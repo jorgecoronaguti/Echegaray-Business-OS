@@ -47,3 +47,19 @@ test('un cambio de pago vacío se rechaza en vez de escribir nada', () => {
   // `null` en aviso_dias es «sin aviso», y tiene que poder mandarse.
   assert.equal(cambioPagoSchema.safeParse({ aviso_dias: null }).success, true)
 })
+
+// ═══ AUDITORÍA 18/09/2026: `aMonto` NO TENÍA EL DEFECTO «8.5 → 85», Y ESTO LO SOSTIENE ═══
+//
+// Un grep de `replace(/\./g, '')` lo marcó junto con `medicionEnLote` y `comprasFiltros`, que sí lo tenían. Acá
+// ese replace sólo corre cuando hay coma —donde los puntos SON miles—; sin coma, los puntos son miles sólo si el
+// último grupo tiene tres dígitos. Medido contra `leerNumeroEsAR`, el lector de la casa: iguales en todos los
+// casos. No es un test de regresión (no hubo defecto): es lo que impide que un «arreglo» apurado lo rompa.
+// MUTACIÓN QUE LO PONE ROJO: sacar todos los puntos también sin coma.
+
+test('aMonto LEE IGUAL QUE EL LECTOR DE LA CASA', async () => {
+  const { leerNumeroEsAR } = await import('../../../shared/lib/numeroEsAR.ts')
+  for (const t of ['8.5', '12.5', '12.50', '1.23', '0.5', '8,5', '1.500', '1.234,5', '3.100.000', '12.345,67', '$ 1.500', '-1.500', '1500']) {
+    const l = leerNumeroEsAR(t)
+    assert.equal(aMonto(t), l.ok ? l.valor : null, `«${t}»`)
+  }
+})
