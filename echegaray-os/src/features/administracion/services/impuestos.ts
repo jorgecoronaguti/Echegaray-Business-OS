@@ -38,7 +38,7 @@ export interface PagoSinImputar {
   importe: number
   descripcion: string | null
   fuente: string
-  /** vep · debito_automatico · debito_bancario · retencion · percepcion (check de la tabla). */
+  /** vep · debito_automatico · debito_bancario · debin · retencion · percepcion (check de la tabla). */
   tipo: string | null
 }
 

@@ -106,6 +106,8 @@ export function MesAMes({ filas, testid, conImpuesto = false, vacio }: {
 
 const COMO: Record<string, string> = {
   vep: 'VEP', debito_automatico: 'débito automático', debito_bancario: 'débito del banco', retencion: 'retención', percepcion: 'percepción',
+  // DEBIN: lo inicia el cobrador (PlusPagos cobra el IIBB de DGR San Juan) y el pagador lo acepta (19/09/2026).
+  debin: 'DEBIN',
 }
 
 /** Los pagos al fisco que salieron pero no se sabe a qué impuesto van. */

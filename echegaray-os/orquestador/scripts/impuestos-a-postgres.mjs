@@ -33,7 +33,7 @@ import {
   obligacionesIvaCalculadas, obligacionesIibbEstimadas, obligacionesGananciasDDJJ,
 } from '../lib/impuestos-registro.mjs'
 import {
-  pagosDelBanco, pagosDeCompras, pagosDeCobranzas, sinPagosRepetidos, creditosPorPeriodo, conEstadoDePago,
+  pagosDelBanco, pagosDeCompras, pagosDeCobranzas, sinPagosRepetidos, creditosPorPeriodo, conEstadoDePago, declaradasCubiertasPorBanco,
   obligacionesDeDebitosBancarios,
 } from '../lib/impuestos-registro-pagos.mjs'
 import { planDeEscritura, lectoresEfectivos, CLAVE } from '../lib/impuestos-escritura.mjs'
@@ -91,8 +91,10 @@ export function construir(f) {
   const deCompras = pagosDeCompras(f.compras ?? [], { f931: totalesF931 })
   // LA IMPUTACIÓN SUBE DE FUERZA EN ESTE ORDEN: importe (dentro de pagosDelBanco/Compras) → el comprobante
   // del VEP (documento) → lo que declaró el dueño, sólo para lo que siguió sin imputar.
+  // El «a pagar» de cada DDJJ de IIBB presentada: contra eso se aparea un DEBIN al cobrador (PlusPagos).
+  const iibbAPagar = new Map(obligacionesIibbDDJJ(f.ddjjIibb ?? []).map((o) => [o.periodo, o.a_pagar]))
   const pagosSinPlan = imputarDeclaradas(imputarPorVep(sinPagosRepetidos([
-    ...pagosDelBanco(f.banco ?? [], { f931: totalesF931, cuotasPlan: deCompras.cuotasPlan }),
+    ...pagosDelBanco(f.banco ?? [], { f931: totalesF931, cuotasPlan: deCompras.cuotasPlan, iibb: iibbAPagar }),
     ...deCompras.pagos,
     ...(f.cobranzas ? pagosDeCobranzas(f.cobranzas.filas, f.cobranzas.cols) : []),
   ]), f.veps ?? []))
@@ -173,9 +175,15 @@ async function escribir(construido, estado) {
     .map(([l, e]) => [l, { ...e, datos_al: construido.datosAl[l] ?? null }]))
   const ex = async (sql) => (await query(sql)).rows
   const oblEx = (await ex('select impuesto, periodo, concepto, fuente, lector from public.impuesto_obligacion')).map((o) => ({ clave: CLAVE.obligacion(o), lector: o.lector }))
-  const pagEx = (await ex('select fuente, referencia, lector from public.impuesto_pago')).map((p) => ({ clave: CLAVE.pago(p), lector: p.lector }))
+  const pagFilas = await ex('select fuente, referencia, lector, imputacion, impuesto, periodo, importe from public.impuesto_pago')
+  const pagEx = pagFilas.map((p) => ({ clave: CLAVE.pago(p), lector: p.lector }))
   const pO = planDeEscritura({ tabla: 'obligacion', lectores, nuevas: construido.obligaciones, existentes: oblEx })
   const pP = planDeEscritura({ tabla: 'pago', lectores, nuevas: construido.pagos, existentes: pagEx })
+  // Una declaración a mano cuyo débito ya está en el extracto (y se va a escribir en esta corrida) se retira:
+  // dos filas del mismo pago lo contarían dos veces. Sólo si el lector del banco leyó bien.
+  const cubiertas = declaradasCubiertasPorBanco(pagFilas, pP.upsert)
+  for (const k of cubiertas) console.log(`  ↩ declaración cubierta por el extracto, se retira: ${k}`)
+  pP.borrar.push(...cubiertas.filter((k) => !pP.borrar.includes(k)))
   for (const r of [...pO.retenidos, ...pP.retenidos]) console.log(`  ✋ ${r.lector}: ${r.motivo}`)
   await withTx(async (cx) => {
     await cx.query("set local lock_timeout = '5s'")

@@ -57,10 +57,30 @@ export function periodoF931PorImporte(importe, f931 = new Map()) {
 }
 
 /**
+ * LOS CUIT QUE COBRAN POR DEBIN SIN SER EL ACREEDOR. Identificado el 18/09/2026: 30-70774398-7 es
+ * ADMINISTRADORA SAN JUAN S.A., la sociedad detrás de PlusPagos (registro de entidades especializadas
+ * en cobranza; cuitonline / sistemas360 / boletín oficial). Es una PLATAFORMA: por ella el dueño pagó
+ * el IIBB de 08/2026 a DGR San Juan (DEBIN del 17/09, $432.764,90 = «a pagar» de la DDJJ al centavo) y
+ * antes la boleta de UOCRA de julio (19/08, ver `cargas-pagos-banco.mjs`). El extracto sólo dice el
+ * CUIT del cobrador: QUÉ se pagó lo prueba el importe contra un declarado, nunca el CUIT solo.
+ */
+export const COBRADORES_DEBIN = Object.freeze([
+  Object.freeze({ cuit: '30707743987', nombre: 'Administradora San Juan S.A. (PlusPagos)', cobraPara: ['DGR San Juan', 'UOCRA'] }),
+])
+
+/** El período de IIBB cuyo «a pagar» declarado coincide con este importe, o null. Único, y nunca un cero. */
+export function periodoIibbPorImporte(importe, iibb = new Map()) {
+  const hits = [...iibb].filter(([, aPagar]) => aPagar > 0 && Math.abs(aPagar - importe) <= 0.05).map(([p]) => p)
+  return hits.length === 1 ? hits[0] : null
+}
+
+const cuitDelDebin = (txt) => (/cuit\s*(\d{11})/i.exec(txt)?.[1] ?? null)
+
+/**
  * EL EXTRACTO. `cuotasPlan` son los importes de las cuotas de planes de deuda previsional que Compras
  * declara por texto: un débito automático de ARCA que coincide con una de ellas es esa cuota.
  */
-export function pagosDelBanco(movs = [], { f931 = new Map(), cuotasPlan = [] } = {}) {
+export function pagosDelBanco(movs = [], { f931 = new Map(), cuotasPlan = [], iibb = new Map() } = {}) {
   const out = []
   for (const m of movs) {
     const fecha = fechaISO(m.fecha)
@@ -73,7 +93,8 @@ export function pagosDelBanco(movs = [], { f931 = new Map(), cuotasPlan = [] } =
       out.push(pago(per
         ? { ...base, tipo: 'vep', importe: imp, impuesto: 'cargas_sociales', periodo: per, concepto: 'ddjj', imputacion: 'importe' }
         : { ...base, tipo: 'vep', importe: imp, impuesto: null, periodo: null, imputacion: 'sin_imputar' }))
-    } else if (/^Debito automatico - Afip/i.test(txt)) {
+    } else if (/^Debito automatico - (Afip|Arca)/i.test(txt)) {
+      // «Afip» hasta agosto de 2026; desde septiembre el banco lo rotula «Arca». Es el mismo débito.
       const esCuota = cuotasPlan.some((c) => Math.abs(c - imp) <= TOLERANCIA_IMPORTE)
       out.push(pago(esCuota
         ? { ...base, tipo: 'debito_automatico', importe: imp, impuesto: 'cargas_sociales', periodo: null, concepto: 'plan de pago', imputacion: 'importe' }
@@ -90,6 +111,16 @@ export function pagosDelBanco(movs = [], { f931 = new Map(), cuotasPlan = [] } =
     } else if (/Dgr san juan/i.test(txt)) {
       // Rentas cobra IIBB, automotor e inmobiliario por el mismo canal: el extracto no dice cuál.
       out.push(pago({ ...base, tipo: 'debito_bancario', importe: imp, impuesto: null, periodo: null, imputacion: 'sin_imputar' }))
+    } else if (/^Debito debin\b/i.test(txt) && imp > 0) {
+      // Un DEBIN a un COBRADOR (PlusPagos) sólo es un pago de IIBB si el importe es EXACTAMENTE el «a pagar»
+      // de una DDJJ presentada. Sin esa coincidencia no se registra nada: por la misma plataforma viaja
+      // la boleta de UOCRA (gremial, no impuesto), y un «sin imputar» acá la mostraría como impuesto.
+      const cobrador = COBRADORES_DEBIN.find((c) => c.cuit === cuitDelDebin(txt))
+      const per = cobrador ? periodoIibbPorImporte(imp, iibb) : null
+      if (cobrador && per) {
+        out.push(pago({ ...base, tipo: 'debin', importe: imp, impuesto: 'iibb', periodo: per, concepto: 'ddjj', imputacion: 'importe',
+          contraparte: 'DGR San Juan', detalle: { cobrador: cobrador.nombre, cobrador_cuit: cobrador.cuit, por: 'importe = a pagar de la DDJJ presentada' } }))
+      }
     }
   }
   return out
@@ -201,6 +232,23 @@ export function sinPagosRepetidos(pagos = []) {
   const banco = pagos.filter((p) => p.fuente === 'banco')
   return pagos.filter((p) => p.fuente !== 'compras'
     || !banco.some((b) => Math.abs(b.importe - p.importe) <= TOLERANCIA_IMPORTE && diasEntre(b.fecha, p.fecha) <= 3))
+}
+
+/**
+ * LA DECLARACIÓN A MANO QUE EL BANCO YA PROBÓ. El 17/09/2026 el dueño dijo «lo pagué recién» del IIBB de
+ * agosto y quedó una fila `manual` / `declarada` sin extracto; el 18/09 llegó el DEBIN. Las dos filas
+ * juntas duplicarían el pago. El débito es la evidencia del efecto: le gana a la palabra, igual que el
+ * documento le gana a la declaración en `imputarDeclaradas`.
+ * @param {Array<{fuente:string, referencia:string, imputacion?:string, impuesto?:string, periodo?:string, importe:number|string}>} existentes filas de la base
+ * @param {object[]} pagos los pagos construidos en esta corrida
+ * @returns {string[]} las claves `fuente|referencia` de las declaraciones cubiertas, para borrarlas
+ */
+export function declaradasCubiertasPorBanco(existentes = [], pagos = []) {
+  const banco = pagos.filter((p) => p.fuente === 'banco' && p.impuesto && p.periodo)
+  return existentes
+    .filter((e) => e.fuente === 'manual' && e.imputacion === 'declarada'
+      && banco.some((b) => b.impuesto === e.impuesto && b.periodo === e.periodo && Math.abs(b.importe - Number(e.importe)) <= TOLERANCIA_IMPORTE))
+    .map((e) => `${e.fuente}|${e.referencia}`)
 }
 
 /** Retenciones y percepciones imputadas a un impuesto, por período. Alimenta los créditos del cálculo. */

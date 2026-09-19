@@ -98,11 +98,13 @@ export const COBRADORES_UOCRA = Object.freeze([
   Object.freeze({
     cuit: '30707743987',
     porVerificar: true,
-    nota: 'A VERIFICAR POR EL DUEÑO: este CUIT no es el de UOCRA. Se lo incluye porque el DEBIN del '
-      + '19/08/2026 le pagó $649.940,06, que es EXACTAMENTE el Total determinado de la boleta ORIGINAL '
-      + 'de julio, y ocho días después el resto de la rectificativa fue al CUIT de UOCRA. Es inferencia '
-      + 'con evidencia, no un hecho: si resulta ser otro acreedor, se borra esta entrada y julio vuelve '
-      + 'a quedar apareado sólo por $611.671,32.',
+    nota: 'IDENTIFICADO EL 18/09/2026: es ADMINISTRADORA SAN JUAN S.A., la sociedad de PlusPagos (entidad '
+      + 'de cobranza; cuitonline / sistemas360 / boletín oficial), no un acreedor: una plataforma por la que '
+      + 'también se pagó el IIBB de 08/2026 a DGR San Juan (DEBIN del 17/09, $432.764,90). Se lo incluye '
+      + 'porque el DEBIN del 19/08/2026 le pagó $649.940,06, EXACTAMENTE el Total determinado de la boleta '
+      + 'ORIGINAL de julio, y ocho días después el resto de la rectificativa fue al CUIT de UOCRA. Que ese '
+      + 'DEBIN sea la boleta sigue siendo inferencia por importe (la plataforma cobra para varios), por eso '
+      + 'sigue marcado y avisa; lo que ya no está en duda es quién es el CUIT.',
   }),
 ])
 
