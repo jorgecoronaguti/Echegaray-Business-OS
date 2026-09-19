@@ -34,6 +34,8 @@ import { mismaTardanza, type Tardanza } from './tardanza.ts'
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { jornadaPorDefecto } from './jornadaPorDefecto.ts'
 import { esMotivo, tipoDeMotivo } from './motivoDeAusencia.ts'
+import { horasDeAusencia } from './liquidacionDeAusencias.ts'
+import type { MarcaDelDia } from './ausenciaDeLaPersona.ts'
 
 /** Los tres estados que la pantalla puede afirmar. `null` en una casilla NO es un cuarto estado:
  *  es «todavía nadie dijo nada», y eso no se guarda. */
@@ -536,4 +538,44 @@ export function marcaDeLaCasilla(personaId: string, c: CasillaPresencia): MarcaP
   // EN UN TOQUE SUELTO LA TARDANZA VIAJA SIEMPRE, también en `false`: sacar «llegó tarde» es una
   // escritura, y omitir el campo dejaría la marca vieja guardada.
   return m.estado === 'presente' ? { ...m, llego_tarde: c.llego_tarde === true, salio_antes: c.salio_antes === true } : m
+}
+
+/**
+ * LO QUE EL «NO VINO» DEL JEFE ESCRIBE EN LAS HORAS (dueño, 19/09/2026: «ayer se marcó como ausente a
+ * una persona en la asistencia y no se ve reflejado en la sección horas»).
+ *
+ * Hasta hoy `guardarPresencia` dejaba la ausencia sólo en `asistencia_dia` y confiaba en que «la
+ * ausencia en sí la escribe el camino que ya existe». Nadie la escribía: Reta el 18/09 quedó ausente
+ * en la asistencia y con el día vacío en Horas. Ahora las dos puertas —la «A» de la grilla y el «No
+ * vino» del teléfono— pasan por la MISMA regla (`planDeAusenciasSinObra`), sin obra y con las horas de
+ * `horasDeAusencia` (sin motivo que pague, cero).
+ *
+ * Sólo lo que CAMBIÓ contra lo guardado (misma regla que el defecto: volver a guardar no es declarar),
+ * y nunca sobre quien tiene trabajo cargado a mano ese día (`conflictos` del defecto): ahí dos
+ * personas afirman cosas distintas y elegir por ellas es inventar el dato. Volver de ausente a
+ * presente saca la ausencia sin obra, para que el día no quede trabajado y faltado a la vez.
+ */
+export function marcasSinObraDeLaPresencia({ presencias, guardadas, fecha, conflictos }: {
+  presencias: readonly MarcaPresencia[]
+  guardadas: readonly PresenciaGuardada[]
+  fecha: string
+  conflictos: readonly string[]
+}): MarcaDelDia[] {
+  const antes = new Map(guardadas.map((g) => [g.persona_id, g.estado]))
+  const frenadas = new Set(conflictos)
+  const salida: MarcaDelDia[] = []
+  for (const m of presencias) {
+    if (antes.get(m.persona_id) === m.estado || frenadas.has(m.persona_id)) continue
+    if (m.estado === 'presente') {
+      salida.push({ persona_id: m.persona_id, estado: 'presente', horas: 0, motivo: null })
+      continue
+    }
+    salida.push({
+      persona_id: m.persona_id,
+      estado: 'ausente',
+      horas: horasDeAusencia({ motivo: m.motivo, jornada: jornadaPorDefecto(fecha) }),
+      motivo: m.motivo,
+    })
+  }
+  return salida
 }

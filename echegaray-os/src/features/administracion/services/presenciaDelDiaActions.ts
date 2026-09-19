@@ -46,8 +46,8 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { esMotivo } from './motivoDeAusencia'
 import {
-  acuseDeHorasPorDefecto, acusePresencia, FUENTE_HORAS_POR_DEFECTO, planDeHorasPorDefecto,
-  planDePresencia, resumenPresencia,
+  acuseDeHorasPorDefecto, acusePresencia, FUENTE_HORAS_POR_DEFECTO, marcasSinObraDeLaPresencia,
+  planDeHorasPorDefecto, planDePresencia, resumenPresencia,
   type HoraDelDia, type MarcaPresencia, type PresenciaGuardada,
 } from './presenciaDelDia'
 import { getPresenciaDelDia, quitarPresenciaDelDia } from './presenciaDelDiaService'
@@ -56,6 +56,8 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { puedeCambiarObraActual } from './planDeObraActual'
 import { quincenaCerrada } from './quincenaCerradaService'
 import { acuseDeQuita, jornadaAQuitarConElPresente, QUITAR_JORNADA_POR_DEFECTO_AL_QUITAR } from './quitaDePresente'
+import { acuseDeAusenciasDelDia, planDeAusenciasSinObra } from './ausenciaDeLaPersona'
+import { escribirAusenciasSinObra, filasSinObraDelDia, sacarAusenciasSinObra } from './ausenciaDeLaPersonaService'
 
 // EL MOTIVO SE VALIDA CONTRA EL CATÁLOGO, NO CONTRA UNA LISTA DE ESTA PANTALLA. `esMotivo` mira
 // `orquestador/lib/asistencia-motivos.mjs`, que es lo que usa el bot desde julio. Y una presencia
@@ -231,13 +233,30 @@ async function aplicarHorasPorDefecto(
     .eq('fecha', fecha).in('persona_id', personaIds)
   if (existentes.error) return { mensaje: noSePudo(existentes.error.message), escribio: false }
 
+  // LA AUSENCIA DECLARADA LLEGA A LAS HORAS (19/09/2026, ver `marcasSinObraDeLaPresencia`). Primero se
+  // decide sin los conflictos —dependen sólo del trabajo cargado a mano, que esto no toca— para saber
+  // qué ausencia sin obra se retira: esa fila no puede frenar la jornada de quien vuelve a estar.
+  const sinObra = await filasSinObraDelDia(supabase, personaIds, fecha)
+  if (sinObra.error) return { mensaje: noSePudo(sinObra.error), escribio: false }
+  const previo = planDeAusenciasSinObra(
+    marcasSinObraDeLaPresencia({ presencias: marcas, guardadas, fecha, conflictos: [] }), sinObra.data)
+  const seVan = new Set(previo.borrar)
+
   const plan = planDeHorasPorDefecto({
     presencias: marcas,
     guardadas,
-    horasExistentes: (existentes.data ?? []) as HoraDelDia[],
+    horasExistentes: ((existentes.data ?? []) as HoraDelDia[]).filter((h) => !seVan.has(h.id)),
     fecha,
     obra: obraId,
   })
+  const fuera = planDeAusenciasSinObra(
+    marcasSinObraDeLaPresencia({ presencias: marcas, guardadas, fecha, conflictos: plan.conflictos }), sinObra.data)
+
+  // LO DE AFUERA SE ESCRIBE ANTES DE CUALQUIER BORRADO, y se saca al final: sin transacción, un
+  // duplicado visible le gana a una pérdida silenciosa (misma regla que `guardarJornada`).
+  const escritas = await escribirAusenciasSinObra(supabase, fecha, fuera.escribir)
+  if (escritas.error) return { mensaje: noSePudo(escritas.error), escribio: false }
+  const tocoAfuera = escritas.insertadas + escritas.actualizadas > 0
 
   let insertadas = 0
   if (plan.insertar.length > 0) {
@@ -250,7 +269,7 @@ async function aplicarHorasPorDefecto(
       // distinga de una hora cargada contra una tarea.
       actividad_id: null,
     }))).select('id')
-    if (error) return { mensaje: noSePudo(error.message), escribio: false }
+    if (error) return { mensaje: noSePudo(error.message), escribio: tocoAfuera }
     insertadas = (data ?? []).length
   }
 
@@ -261,13 +280,21 @@ async function aplicarHorasPorDefecto(
     // camino borraría una corrección hecha por una persona diez segundos antes.
     const { data, error } = await supabase.from('registros_hh').delete()
       .in('id', plan.borrar).eq('fuente_legacy', FUENTE_HORAS_POR_DEFECTO).select('id')
-    if (error) return { mensaje: noSePudo(error.message), escribio: insertadas > 0 }
+    if (error) return { mensaje: noSePudo(error.message), escribio: tocoAfuera || insertadas > 0 }
     borradas = (data ?? []).length
   }
 
+  const sacadas = await sacarAusenciasSinObra(supabase, fuera.borrar)
+  const afuera = acuseDeAusenciasDelDia({
+    ...escritas, ...sacadas, sinCambio: fuera.sinCambio, intactas: fuera.intactas,
+  })
   return {
-    mensaje: acuseDeHorasPorDefecto({ insertadas, borradas, conflictos: plan.conflictos.length }),
-    escribio: insertadas > 0 || borradas > 0,
+    mensaje: [
+      acuseDeHorasPorDefecto({ insertadas, borradas, conflictos: plan.conflictos.length }),
+      afuera,
+      sacadas.error ? noSePudo(sacadas.error) : null,
+    ].filter(Boolean).join(' · ') || null,
+    escribio: tocoAfuera || insertadas > 0 || borradas > 0 || sacadas.sacadas > 0,
   }
 }
 

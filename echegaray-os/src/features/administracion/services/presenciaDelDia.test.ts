@@ -5,8 +5,9 @@ import {
   esDefectoQueNadieMiro, FUENTE_CORRECCION_HORAS, FUENTE_HORAS_POR_DEFECTO,
   horasSegunPresencia, loQueViajaPresencia, marcarTodosPresentes,
   personasAMarcar, personasSinHoras, planDeHorasPorDefecto, planDePresencia, resumenPresencia,
-  sumarPersonasNuevasPresencia,
+  sumarPersonasNuevasPresencia, marcasSinObraDeLaPresencia,
 } from './presenciaDelDia.ts'
+import { planDeAusenciasSinObra } from './ausenciaDeLaPersona.ts'
 import type {
   CasillaPresencia, HoraDelDia, MarcaPresencia, PresenciaGuardada,
 } from './presenciaDelDia.ts'
@@ -410,4 +411,51 @@ test('LA JORNADA POR DEFECTO QUE NADIE TOCÓ SÍ SE RETIRA AL DECLARAR AUSENTE',
   })
   assert.deepEqual(plan.borrar, ['r-9h'])
   assert.deepEqual(plan.conflictos, [])
+})
+
+// ═══ EL «NO VINO» LLEGA A LAS HORAS (19/09/2026: Reta ausente el 18/09 en la asistencia, vacío en Horas) ═══
+
+const RETA = 'b7f61a6e-8c14-43f7-832b-fbed3c03fdd6'
+
+test('marcasSinObraDeLaPresencia: ausente recién declarado escribe una ausencia sin obra (el caso del 18/09)', () => {
+  const marcas = marcasSinObraDeLaPresencia({
+    presencias: [{ persona_id: RETA, estado: 'ausente', motivo: null }],
+    guardadas: [], fecha: '2026-09-18', conflictos: [],
+  })
+  assert.deepEqual(marcas, [{ persona_id: RETA, estado: 'ausente', horas: 0, motivo: null }])
+  const plan = planDeAusenciasSinObra(marcas, [])
+  assert.equal(plan.escribir.length, 1)
+  assert.equal(plan.escribir[0].tipo, 'ausencia')
+  assert.equal(plan.escribir[0].id, null)
+})
+
+test('marcasSinObraDeLaPresencia: con motivo que paga lleva la jornada del día (viernes 8 h)', () => {
+  const [m] = marcasSinObraDeLaPresencia({
+    presencias: [{ persona_id: RETA, estado: 'licencia', motivo: 'enfermedad' }],
+    guardadas: [], fecha: '2026-09-18', conflictos: [],
+  })
+  assert.equal(m.horas, 8)
+  assert.equal(planDeAusenciasSinObra([m], []).escribir[0].tipo, 'licencia')
+})
+
+test('marcasSinObraDeLaPresencia: volver a guardar lo mismo no escribe, y el conflicto con trabajo a mano frena', () => {
+  assert.deepEqual(marcasSinObraDeLaPresencia({
+    presencias: [{ persona_id: RETA, estado: 'ausente', motivo: null }],
+    guardadas: [{ persona_id: RETA, estado: 'ausente', motivo: null }], fecha: '2026-09-18', conflictos: [],
+  }), [])
+  assert.deepEqual(marcasSinObraDeLaPresencia({
+    presencias: [{ persona_id: RETA, estado: 'ausente', motivo: null }],
+    guardadas: [], fecha: '2026-09-18', conflictos: [RETA],
+  }), [])
+})
+
+test('marcasSinObraDeLaPresencia: de ausente a presente saca la ausencia sin obra', () => {
+  const marcas = marcasSinObraDeLaPresencia({
+    presencias: [{ persona_id: RETA, estado: 'presente', motivo: null }],
+    guardadas: [{ persona_id: RETA, estado: 'ausente', motivo: null }], fecha: '2026-09-18', conflictos: [],
+  })
+  const plan = planDeAusenciasSinObra(marcas, [
+    { id: 'a1', persona_id: RETA, horas: 0, tipo_hora: 'ausencia', notas: null, obra_canonica_id: null },
+  ])
+  assert.deepEqual(plan.borrar, ['a1'])
 })
