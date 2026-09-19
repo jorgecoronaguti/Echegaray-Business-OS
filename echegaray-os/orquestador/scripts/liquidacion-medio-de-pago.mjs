@@ -21,8 +21,10 @@ const APLICAR = process.argv.includes('--aplicar')
 const DESDE = arg('quincena')
 const GRUPO = arg('grupo', 'obreros')
 const MOTIVO = arg('motivo')
+// LO QUE SE MIRÓ para afirmarlo. Opcional: sin él, la traza no nombra ninguna evidencia.
+const EVIDENCIA = arg('evidencia')
 if (!/^\d{4}-\d{2}-\d{2}$/.test(DESDE ?? '') || !MOTIVO) {
-  console.error('uso: --quincena AAAA-MM-DD --grupo obreros|oficina --motivo "…" [--aplicar]'); process.exit(2)
+  console.error('uso: --quincena AAAA-MM-DD --grupo obreros|oficina --motivo "…" [--evidencia "lo que se miró"] [--aplicar]'); process.exit(2)
 }
 const ars = (n) => (n == null ? 'sin registro' : `$${Number(n).toLocaleString('es-AR')}`)
 
@@ -66,6 +68,8 @@ async function main() {
     console.log(`\nCeldas BANCO de la planilla con importe (${espejo.length}); la columna la dice el rótulo del bloque:`)
     for (const e of espejo) console.log(`  «${e.pestana}» fila ${e.fila1}: ${e.nombre_planilla} · ${ars(e.por_banco)}`)
 
+    // LA TRAZA SE MUESTRA ANTES DE ESCRIBIRLA: lo que va a quedar en la base se lee en el ensayo, no después.
+    console.log(`\nTraza que se agregaría a la observación:\n  ${observacionDeMedio(null, plan, { fecha: new Date().toISOString(), motivo: MOTIVO, evidencia: EVIDENCIA })}`)
     if (!APLICAR) { console.log('\n(dry) nada escrito. Agregá --aplicar.'); return }
     if (plan.cambios.length === 0) { console.log('\nnada que escribir.'); return }
 
@@ -79,7 +83,7 @@ async function main() {
           [q.id, c.persona_id, c.despues.pagado_banco, c.despues.pagado_efectivo, hoy])
         if (r.rowCount !== 1) throw new Error(`${c.nombre}: la base actualizó ${r.rowCount} filas`)
       }
-      const obs = observacionDeMedio(q.observacion, plan, { fecha: hoy, motivo: MOTIVO })
+      const obs = observacionDeMedio(q.observacion, plan, { fecha: hoy, motivo: MOTIVO, evidencia: EVIDENCIA })
       await db.query(`update public.liquidacion_quincena set observacion = $2 where id = $1`, [q.id, obs])
       await db.query('commit')
     } catch (e) { await db.query('rollback'); throw e }

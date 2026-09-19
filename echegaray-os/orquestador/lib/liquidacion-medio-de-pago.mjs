@@ -82,14 +82,17 @@ const ars = (n) => (n == null ? 'sin registro' : `$${Number(n).toLocaleString('e
  *
  * @param {string|null} observacion lo que hay hoy
  * @param {ReturnType<typeof planDePagoEnEfectivo>} plan
- * @param {{ fecha: string, motivo: string }} p `fecha` ISO de hoy; `motivo` textual de la decisión
+ * @param {{ fecha: string, motivo: string, evidencia?: string|null }} p `fecha` ISO de hoy; `motivo` textual de la
+ *   decisión; `evidencia` lo que se MIRÓ para afirmarlo (p. ej. «el certificado del Santander no tiene acreditaciones de
+ *   esta quincena»). Sin evidencia la traza no nombra ninguna: el script no consulta el banco y no puede afirmar que
+ *   alguien lo hizo (revisión 19/09/2026).
  */
-export function observacionDeMedio(observacion, plan, { fecha, motivo }) {
+export function observacionDeMedio(observacion, plan, { fecha, motivo, evidencia = null }) {
   const d = fecha.slice(0, 10).split('-').reverse().map((x) => String(Number(x))).join('/')
   const lineas = plan.cambios.map((c) =>
     `${c.nombre}: banco ${ars(c.antes.pagado_banco ?? c.antes.por_banco)} → $0, efectivo ${ars(c.antes.pagado_efectivo)} → ${ars(c.despues.pagado_efectivo)}${c.sinRegistroPrevio ? ' (sin registro previo)' : ''}`)
-  const nota = `Medio de pago corregido el ${d} por ${motivo}: la quincena se pagó en EFECTIVO, no por banco `
-    + `(el certificado del Santander no tiene acreditaciones de esta quincena). pagado_banco → 0 y pagado_efectivo = cobra en `
+  const nota = `Medio de pago corregido el ${d} por ${motivo}: la quincena se pagó en EFECTIVO, no por banco`
+    + `${evidencia && evidencia.trim() ? ` (${evidencia.trim()})` : ''}. pagado_banco → 0 y pagado_efectivo = cobra en `
     + `${plan.cambios.length} línea(s); banco corregido ${ars(bancoQueSeCorrige(plan))}. La foto sellada (por_banco, en_efectivo) no se toca. `
     + `Antes: ${lineas.join(' · ')}.`
   return observacion && observacion.trim() ? `${observacion.trim()} ${nota}` : nota
