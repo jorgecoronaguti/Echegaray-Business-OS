@@ -21,19 +21,44 @@ import {
 
 const HOY = new Date(Date.UTC(2026, 7, 5)) // miércoles 5 de agosto de 2026
 
-test('EL AÑO ENTERO: 53 semanas de 2026, la primera contiene el 1° de enero y la última el 31/12', () => {
+test('EL AÑO ENTERO: 53 columnas semanales de 2026, y NINGUNA se sale del ejercicio', () => {
   const v = semanasDelAnio(2026)
   // El defecto que esto mata: un rodante desde hoy mete columnas de 2027 en un cuadro rotulado 2026 y
   // esconde las semanas ya cerradas, que son contra las que se compara lo que viene.
   assert.equal(v.length, 53)
-  assert.equal(v[0].desde.toISOString().slice(0, 10), '2025-12-29', 'la semana del 1° de enero arranca en diciembre')
-  assert.ok(v[0].desde <= new Date(Date.UTC(2026, 0, 1)) && new Date(Date.UTC(2026, 0, 1)) < v[0].hasta)
-  const fin = new Date(Date.UTC(2026, 11, 31))
-  assert.ok(v[52].desde <= fin && fin < v[52].hasta, 'la última semana tiene que contener el 31/12')
-  for (const s of v) assert.equal(s.desde.getUTCDay(), 1, 'toda semana arranca el lunes')
-  assert.deepEqual(particionExacta(v, v[0].desde, v[52].hasta).huecos, [],
+  // ═══ Y EL SEGUNDO DEFECTO, EL DEL BORDE (13/08/2026) ═══
+  //
+  // Acá se exigía `v[0].desde === '2025-12-29'` y que la última contuviera al 3/1/2027: la ventana era
+  // la semana ISO entera. El TOTAL del Semanal es `SUM` de las 53 columnas, así que se llevaba puestos
+  // tres días de 2025 y tres de 2027 — $13.073.317 de nómina proyectada del 1/1/2027 medidos en vivo.
+  // Ahora `lunes` es la IDENTIDAD de la columna (lo que va en el encabezado) y `desde`/`hasta` es lo
+  // que la columna SUMA, recortado al ejercicio. Son dos preguntas distintas y confundirlas ERA el bug.
+  assert.equal(v[0].lunes.toISOString().slice(0, 10), '2025-12-29', 'el encabezado sigue siendo el lunes')
+  assert.equal(v[0].desde.toISOString().slice(0, 10), '2026-01-01', 'pero la primera columna NO suma diciembre de 2025')
+  assert.equal(v[52].lunes.toISOString().slice(0, 10), '2026-12-28')
+  assert.equal(v[52].hasta.toISOString().slice(0, 10), '2027-01-01', 'y la última NO suma enero de 2027')
+  for (const s of v) assert.equal(s.lunes.getUTCDay(), 1, 'toda semana se rotula con su lunes')
+  // Las 51 del medio no se tocan: el recorte muerde sólo en los dos bordes.
+  for (const s of v.slice(1, 52)) assert.equal(s.desde.getTime(), s.lunes.getTime())
+  // Y el ejercicio queda cubierto sin huecos ni solapes: cada día de 2026 cae en UNA columna.
+  assert.deepEqual(particionExacta(v, new Date(Date.UTC(2026, 0, 1)), new Date(Date.UTC(2027, 0, 1))).huecos, [],
     'un hueco entre dos semanas es un movimiento que no cae en ninguna columna')
   assert.equal(ventanas('semana', { anio: 2026 }).length, 53)
+})
+
+test('LA VENTANA DE LA COLUMNA SE RECORTA AL EJERCICIO — el borde del año, en la fórmula', () => {
+  // Éste es el test que se pone rojo si se revierte el arreglo: sin el recorte, la última columna
+  // filtra hasta el 3/1/2027 y arrastra la nómina de enero al TOTAL del Semanal (y al MIN del piso).
+  const conAnio = expresionVentana('$BB$7', 'semana', 2026)
+  assert.equal(conAnio.desde, 'MAX($BB$7;DATE(2026;1;1))')
+  assert.equal(conAnio.hasta, 'MIN($BB$7+7;DATE(2027;1;1))', 'la columna del 28/12 no puede sumar enero de 2027')
+  // Uniforme en las 53, no sólo en las dos del borde: que el recorte dependa de acertar cuál es la
+  // columna del borde es exactamente el error que se está cerrando — nadie estaba mirando esa columna.
+  assert.equal(expresionVentana('$B$7', 'semana', 2026).hasta, 'MIN($B$7+7;DATE(2027;1;1))')
+  // El mes no lo necesita: EOMONTH nunca se sale del año que se le pide.
+  assert.ok(expresionVentana('$B$7', 'mes', 2026).hasta.includes('EOMONTH'))
+  // Y sin año no hay ejercicio que recortar: el rodante de los controles mira hacia adelante.
+  assert.equal(expresionVentana('$B$7', 'semana').hasta, '$B$7+7')
 })
 
 test('una vista semanal sin año ni largo de rodante NO se construye con un default silencioso', () => {
@@ -58,11 +83,18 @@ test('PARTICIÓN COHERENTE: una semana y un mes son uniones de las MISMAS ventan
   // Lo que hace imposible que las dos vistas se contradigan no es que las semanas sumen el mes —una
   // semana cruza el fin de mes y cae a los dos lados—, sino que las dos se construyen sobre la misma
   // unidad atómica con el mismo filtro. Eso es lo que se prueba.
-  for (const s of ventanas('semana', { anio: 2026 })) {
+  const sem = ventanas('semana', { anio: 2026 })
+  for (const s of sem) {
     const dias = ventanasDiarias(s.desde, s.hasta)
-    assert.equal(dias.length, 7)
+    // 7 en las 51 del medio; en las dos del borde, los días que quedan DENTRO del ejercicio (4 y 3).
+    // Un día de menos acá no es un redondeo: es plata que no cae en ninguna columna.
     assert.deepEqual(particionExacta(dias, s.desde, s.hasta).huecos, [])
   }
+  const largos = sem.map((s) => ventanasDiarias(s.desde, s.hasta).length)
+  assert.deepEqual(largos.filter((n) => n !== 7), [4, 4], 'sólo la primera y la última columna están recortadas')
+  // Y LA CUENTA QUE CIERRA EL ASUNTO: 4 + 51×7 + 4 = 365. Las 53 columnas suman los días de 2026, ni
+  // uno más ni uno menos. Con la ventana sin recortar daban 371 — seis días ajenos adentro del TOTAL.
+  assert.equal(largos.reduce((a, b) => a + b, 0), 365)
   for (const m of ventanas('mes', { anio: 2026 })) {
     const dias = ventanasDiarias(m.desde, m.hasta)
     assert.deepEqual(particionExacta(dias, m.desde, m.hasta).huecos, [])

@@ -226,7 +226,15 @@ test('el vínculo "hoy" del Mensual apunta al mes corriente, con la URL entera y
   // El primero del mes corriente, con la MISMA expresión con la que se escribieron los encabezados.
   assert.ok(v.includes('EOMONTH(TODAY();-1)+1'), v)
   assert.ok(!v.includes('WEEKDAY'), 'el mes no se ubica por el lunes de la semana')
-  assert.ok(v.endsWith(';"⏵  IR AL MES ACTUAL")'), v)
+  // ═══ EL CONTRATO CAMBIÓ EL 13/08/2026, Y NO ES UN AJUSTE PARA QUE PASE ═══
+  //
+  // Acá se exigía `;"⏵  IR AL MES ACTUAL")`: un rótulo tipeado que promete un botón. `HYPERLINK` no
+  // puede ser un botón (un clic selecciona, el segundo abre el chip, el tercero navega, y el doble
+  // clic abre el modo edición), así que el rótulo pasa a DECIR dónde está el mes en curso. El prefijo
+  // sigue siendo literal porque es por donde el control del pipeline parte la fórmula.
+  assert.ok(v.includes(';"Mes actual: "&'), v)
+  assert.ok(v.endsWith('"mmm yy"))'), v)
+  assert.ok(!v.includes('⏵'), 'el ícono de botón se fue con la promesa que no se podía cumplir')
   assert.ok(!v.includes('IFERROR'), 'un cuadro vencido tiene que gritar #N/A, no llevar a una celda cualquiera')
 })
 

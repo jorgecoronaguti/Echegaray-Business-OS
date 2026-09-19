@@ -242,16 +242,20 @@ export function rubrosEnOtros(movimientos = []) {
 }
 
 /**
- * NÚCLEO PURO: ¿las dos vistas cubren el MISMO período?
+ * NÚCLEO PURO: ¿las dos vistas cubren el MISMO período? SÍ — Y ESTO ES EL DETECTOR DE REGRESIÓN.
  *
- * NO LO HACEN, Y NO ES UN DEFECTO ARREGLABLE: el mensual es el año calendario y el semanal son las
- * semanas ISO que lo contienen, así que el semanal se derrama sobre los últimos días de diciembre
- * anterior y los primeros de enero siguiente. Lo que sí es un defecto es AFIRMAR que cubren lo
- * mismo —el comentario de `cash-flow-semanas.mjs` lo decía— porque entonces la columna TOTAL de las
- * dos pestañas se lee como si tuviera que coincidir, y no tiene por qué.
+ * ═══ LO QUE ESTA FUNCIÓN DECÍA HASTA EL 13/08/2026, Y POR QUÉ ERA FALSO ═══
  *
- * Medido el 06/08: $11.259.575 de nómina proyectada de enero de 2027 aparecen en el TOTAL del
- * semanal y no en el del mensual.
+ * Decía que las dos vistas NO cubren el mismo período y que "no es un defecto arreglable": el mensual
+ * es el año calendario y el semanal son las semanas ISO que lo contienen, así que se derramaba sobre
+ * los últimos días de diciembre anterior y los primeros de enero siguiente. Lo inevitable era otra
+ * cosa: que una SEMANA cruce el 1° de enero. La PLATA de esos días no tenía por qué contarse, y
+ * contarla costó $13.073.317 de nómina de enero de 2027 en el TOTAL del Semanal — y, peor, un PISO DEL
+ * PERÍODO ~$15M más alarmante, porque el `MIN` del saldo final caía justo en esa columna.
+ *
+ * La columna del 28/12 sigue existiendo y sigue rotulada con su lunes; lo que se recortó es su ventana
+ * (`semanasDelAnio` + `expresionVentana`, en cash-flow-matriz.mjs). `soloSemanal` tiene que dar SIEMPRE
+ * vacío: cualquier otra cosa significa que la ventana del semanal se volvió a abrir.
  *
  * @returns {{soloSemanal:Array, neto:number, semanal:{desde:number,hasta:number}, mensual:{desde:number,hasta:number}}}
  */

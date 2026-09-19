@@ -190,16 +190,20 @@ function formatoEncabezado({ celdas, meta }) {
     { textFormat: txt(MUTED, { size: 9 }), horizontalAlignment: 'LEFT' })
   celdas(FILA.subtitulo, meta.cab.colTotal, meta.cab.colTotal + 1, 'userEnteredFormat(textFormat,horizontalAlignment)',
     { textFormat: txt(ACENTO, { size: 9 }), horizontalAlignment: 'RIGHT' })
-  // EL BOTÓN "IR A LA SEMANA ACTUAL" (A3): fondo suave, negrita y borde — que se vea como acción,
-  // no como una celda más. Sólo existe donde la grilla lo declaró (meta.botonHoy).
+  // ── A3 DEJA DE DISFRAZARSE DE BOTÓN (13/08/2026) ──
+  //
+  // Tenía fondo azul, negrita y texto centrado: la forma exacta de un botón. Y `HYPERLINK` no puede
+  // ser un botón —un clic sólo selecciona, el segundo abre el chip, el tercero navega, y el doble clic
+  // abre el modo edición—, así que la piel estaba prometiendo lo mismo que el rótulo viejo. Ahora la
+  // celda dice "Semana actual: AH · 10/08" y se ve como lo que es: un dato con un vínculo adentro.
+  // Alineada a la izquierda como el título y el subtítulo, sin fondo, en el acento del archivo.
   if (meta.botonHoy) {
     celdas(meta.botonHoy.fila, meta.botonHoy.col, meta.botonHoy.col + 1,
-      'userEnteredFormat(textFormat,backgroundColor,horizontalAlignment,borders)',
+      'userEnteredFormat(textFormat,backgroundColor,horizontalAlignment)',
       {
-        textFormat: txt(ACENTO, { bold: true, size: 10 }),
-        backgroundColor: { red: 0.91, green: 0.94, blue: 0.98 },
-        horizontalAlignment: 'CENTER',
-        borders: undefined,
+        textFormat: txt(ACENTO, { size: 9 }),
+        backgroundColor: BLANCO,
+        horizontalAlignment: 'LEFT',
       })
   }
 }

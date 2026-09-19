@@ -19,15 +19,20 @@ const mov = (o) => ({ signo: -1, importe: 0, estado: 'REAL', rubro: 'Materiales 
 
 // ══ LA GEOMETRÍA: DÓNDE CAE CADA MÉTODO DE PAGO ═══════════════════════════════════════════════════
 
-test('la rejilla de 2026 son 53 semanas y 12 meses, y NO cubren el mismo período', () => {
+test('la rejilla de 2026 son 53 semanas y 12 meses, y AHORA cubren el mismo período', () => {
   const s = rejilla('semana', ANIO)
   const m = rejilla('mes', ANIO)
   assert.equal(s.length, 53)
   assert.equal(m.length, 12)
-  // La primera semana de 2026 es la del lunes 29/12/2025: contiene el 1° de enero.
-  assert.equal(s[0].desde, 46020)
+  // ═══ ACÁ SE EXIGÍA EL DEFECTO (hasta el 13/08/2026) ═══
+  //
+  // Decía `s[0].desde === 46020` (29/12/2025) y `s[52].hasta > m[11].hasta` — "el semanal se derrama
+  // sobre enero de 2027". Se leía como una propiedad inevitable de las semanas ISO y no lo era: lo que
+  // tiene que caer de un solo lado es la SEMANA, no la PLATA. La columna del 28/12 sigue existiendo y
+  // sigue rotulada 28/12; lo que se recortó es su ventana.
+  assert.equal(s[0].desde, 46023, 'la primera columna semanal arranca el 1/1/2026, igual que el mensual')
   assert.equal(m[0].desde, 46023)
-  assert.ok(s[s.length - 1].hasta > m[m.length - 1].hasta, 'el semanal se derrama sobre enero de 2027')
+  assert.equal(s[s.length - 1].hasta, m[m.length - 1].hasta, 'y las dos vistas terminan el 1/1/2027')
 })
 
 test('cada método de pago de Compras cae en la fila que le corresponde, con su rubro', () => {
@@ -75,15 +80,23 @@ test('EL DEFECTO: un proyectado de 2027 no cae en NINGUNA columna del cuadro 202
   assert.ok(!v.movimientos.some((m) => m.fecha === 46237))
 })
 
-test('EL DEFECTO: el TOTAL del semanal y el del mensual NO son el mismo período', () => {
-  // $11.259.575 de nómina proyectada de enero de 2027 caen en la semana 53 del cuadro semanal (que
-  // llega hasta el 3/01/2027) y en ninguna columna del mensual. Los dos TOTAL difieren, y está bien:
-  // lo que estaba mal era el comentario que prometía que cubrían lo mismo.
-  const libro = [mov({ fecha: 46389, importe: 11259575, estado: 'PROYECTADO', origen: 'Jornales por Quincena' })]
-  const b = bordesEntreVistas(libro, ANIO)
-  assert.equal(b.soloSemanal.length, 1)
-  assert.equal(Math.round(b.neto), -11259575)
-  assert.ok(b.semanal.desde < b.mensual.desde && b.semanal.hasta > b.mensual.hasta)
+test('EL DEFECTO CERRADO: no queda plata que esté en el TOTAL del semanal y no en el del mensual', () => {
+  // ═══ QUÉ COSTABA, MEDIDO EN EL ARCHIVO VIVO EL 13/08/2026 ═══
+  //
+  // Egresos proyectados: $364.126.253 en el Semanal contra $351.052.936 en el Mensual. La diferencia
+  // exacta —$13.073.317— eran dos movimientos fechados el 1/1/2027 que la última columna del Semanal
+  // capturaba porque filtraba hasta el 3/1: jornales $9.110.600,82 y oficina $3.962.716,30.
+  //
+  // `bordesEntreVistas` medía ese borde y lo informaba como inevitable. Ahora es un DETECTOR DE
+  // REGRESIÓN: si alguien vuelve a abrir la ventana del semanal, esto se pone rojo.
+  const nomina2027 = mov({ fecha: 46389, importe: 13073317, estado: 'PROYECTADO', origen: 'Jornales por Quincena' })
+  const b = bordesEntreVistas([nomina2027], ANIO)
+  assert.deepEqual(b.soloSemanal, [], 'el 1/1/2027 ya no cae en ninguna columna del cuadro 2026')
+  assert.equal(b.neto, 0)
+  assert.equal(b.semanal.desde, b.mensual.desde)
+  assert.equal(b.semanal.hasta, b.mensual.hasta)
+  // Y lo de adentro sigue contándose una sola vez: un movimiento de 2026 no es "sólo del semanal".
+  assert.deepEqual(bordesEntreVistas([mov({ fecha: 46237, importe: 1000 })], ANIO).soloSemanal, [])
 })
 
 // ══ EL DEFECTO 2: EL SALDO DECLARADO YA LO TIENE, Y LA COLUMNA LO CUENTA OTRA VEZ ═════════════════

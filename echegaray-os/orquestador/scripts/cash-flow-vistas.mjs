@@ -29,6 +29,7 @@ import { publicar } from '../lib/rangos-nombrados.mjs'
 import { CAJA as N_CAJA } from '../lib/rangos-nombrados.mjs'
 import { DESDE_CAJA } from '../lib/caja-anexo-nombres.mjs'
 import { rectangulo, letra } from '../lib/cash-flow-matriz.mjs'
+import { requestsDePliegue, rangoEnLetras } from '../lib/cash-flow-hoy.mjs'
 import { grillaSemanal, PESTANA_SEMANAL } from '../lib/cash-flow-semanas.mjs'
 import { grillaMeses, destinosNombrados, PESTANA_MENSUAL } from '../lib/cash-flow-meses.mjs'
 import {
@@ -238,7 +239,36 @@ async function escribirVista(google, construir, footprint, refs, nombresDe = nul
     await google.spreadsheetBatchUpdate(ID, graficos.dibujar)
       .catch((e) => console.warn(`  ⚠ ${meta.pestana}: los gráficos fallaron (${e.message}); la tabla quedó bien`))
   }
+
+  await plegarElPasado(google, hoja.sheetId, meta)
   return { hoja, escrito: true, meta }
+}
+
+/**
+ * EL PASADO, PLEGADO — Y VA ÚLTIMO, QUE NO ES INDISTINTO.
+ *
+ * `pielMatriz` desoculta el footprint entero (`hiddenByUser:false`) y colapsar un grupo es justamente
+ * poner `hiddenByUser:true`: plegar antes del formato dejaría el margen mostrando un grupo colapsado
+ * con las columnas a la vista. Y va después de los gráficos porque un `addChart` que falla no puede
+ * llevarse puesto el pliegue, que es lo que hace que la pestaña abra en la semana actual.
+ *
+ * SI FALLA, LA PESTAÑA QUEDA ENTERA. Incómoda —hay que scrollear— pero nunca tapada. Ver el porqué del
+ * borrar-y-rehacer en cada corrida en `requestsDePliegue` (cash-flow-hoy.mjs).
+ */
+async function plegarElPasado(google, sheetId, meta) {
+  const req = requestsDePliegue(sheetId, meta.plegar)
+  if (!req.length) {
+    console.log(`  ⌄ ${meta.pestana}: no hay pasado que plegar (hoy no cae adentro del ejercicio ${meta.anio}, o es el primer período)`)
+    return false
+  }
+  try {
+    await google.spreadsheetBatchUpdate(ID, req)
+    console.log(`  ⌄ ${meta.pestana}: ${meta.plegar.fin - meta.plegar.inicio} columna(s) del pasado plegadas (${rangoEnLetras(meta.plegar)}) — la pestaña abre en el período en curso`)
+    return true
+  } catch (e) {
+    console.warn(`  ⚠ ${meta.pestana}: no pude plegar el pasado (${e.message}); el cuadro quedó entero y hay que scrollear`)
+    return false
+  }
 }
 
 async function main() {
@@ -253,10 +283,10 @@ async function main() {
   const hoy = new Date()
   // EL MENSUAL VA PRIMERO, y no es indistinto: publica CF_MESES —los doce meses del ejercicio— y la
   // proyección de comisiones del SEMANAL cuenta sobre ese rango.
-  const mensual = grillaMeses({ anio: AÑO, refs })
+  const mensual = grillaMeses({ anio: AÑO, refs, hoy })
   // Los nombres los publica escribirVista ANTES de achicar la hoja: publicarlos después dejó
   // CF_SALDO_INICIO/CIERRE quemados el 06/08 (ver el comentario adentro).
-  await escribirVista(google, (gid) => grillaMeses({ anio: AÑO, refs, gid }), mensual.meta.footprint, refs, destinosNombrados)
+  await escribirVista(google, (gid) => grillaMeses({ anio: AÑO, refs, gid, hoy }), mensual.meta.footprint, refs, destinosNombrados)
   // Y EL SEMANAL VA CON EL MISMO AÑO QUE EL MENSUAL, no con el rodante de hoy: las dos vistas cubren
   // el mismo ejercicio o la conciliación entre ellas deja de significar algo.
   const semanal = grillaSemanal({ hoy, anio: AÑO, refs })
