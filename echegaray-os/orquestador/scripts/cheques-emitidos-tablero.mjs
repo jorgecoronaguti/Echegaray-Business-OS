@@ -68,6 +68,7 @@ import { skinRequests, MUTED, HAIR } from '../lib/estilo-statement.mjs'
 import { seccion, total } from '../lib/patron-pestana.mjs'
 import { conEdicionesRespetadas, guardarRegistro, autoRespetarReescritura } from '../lib/respetar-ediciones.mjs'
 import { firmaGuardia, sellarFirma } from '../lib/firma-tab.mjs'
+import { formulaUltimaFecha, formulaFrescuraDe, rotuloAlDia } from '../lib/fecha-de-frescura.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTANA = 'Cheques Emitidos'
@@ -79,13 +80,31 @@ const BANDA = 19
 const TITULAR = 8
 
 const ACENTO = { red: 0.11, green: 0.23, blue: 0.37 }
-const hoy = new Date().toLocaleDateString('es-AR')
+
+/**
+ * HASTA CUÁNDO LLEGA EL REGISTRO — CALCULADO, NO ESTAMPADO.
+ *
+ * Hasta el 03/08 el subtítulo decía `al ${new Date()}`: la fecha del día en que corrió el generador.
+ * Con el pipeline detenido, la pestaña declaraba "al 24/7/2026" mientras el dueño cargaba cheques
+ * del 03/08. El rótulo con el que se decide envejecía sin gritar.
+ *
+ * SE MIRAN LAS DOS COLUMNAS DE FECHA, Y HAY QUE MIRAR LAS DOS. La emisión (C) la carga el dueño a
+ * mano; los cheques que `cheques-emitidos-sync-banco` agrega desde el banco vienen SIN emisión y sólo
+ * traen la fecha de pago (I). Con una sola columna, media población del registro no movería el rótulo.
+ *
+ * Las dos van filtradas por "ya pasó" (lo hace formulaUltimaFecha): la fecha de pago de un cheque
+ * diferido está en el futuro y tomarla como frescura haría decir a la pestaña "al 30/09/2026".
+ */
+const FRESCURA = formulaFrescuraDe([
+  formulaUltimaFecha('$C$1:$C'), // fecha de emisión — columna entera, sin citar ninguna fila
+  formulaUltimaFecha('$I$1:$I'), // fecha de pago ya vencida
+])
 
 /**
  * NÚCLEO PURO: las filas de la banda, dado dónde arranca el registro.
  * Devuelve la grilla de 13 columnas lista para escribir. Todo fórmula: 0 números pegados.
  */
-export function bandaFilas(HDR, fechaCorte = hoy) {
+export function bandaFilas(HDR) {
   const F = `$F$${HDR}:$F` // Monto
   const K = `$K$${HDR}:$K` // DEBITADO SI/No
   const I = `$I$${HDR}:$I` // fecha de pago
@@ -107,7 +126,9 @@ export function bandaFilas(HDR, fechaCorte = hoy) {
     fila('Cheques emitidos'),
     // El subtítulo entra en UNA línea que desborda sobre las columnas vacías: envuelto en la
     // columna A necesitaría cinco renglones y una fila alta, que es lo que hace ver "apretado".
-    fila(`Cuánto de lo firmado todavía no salió de la cuenta, y cuándo sale · registro de tesorería · al ${fechaCorte} · en pesos`),
+    // Es una FÓRMULA: la fecha se recalcula sola cada vez que alguien abre la planilla, aunque no
+    // corra ningún generador — que es exactamente la situación en la que mentía.
+    fila(rotuloAlDia('Cuánto de lo firmado todavía no salió de la cuenta, y cuándo sale · registro de tesorería', FRESCURA, { cola: 'en pesos' })),
     fila(),
     fila(seccion(1, '¿me alcanza? — lo que firmé contra lo que hay en el banco')),
     fila('Concepto', 'Monto', 'Qué significa'),
