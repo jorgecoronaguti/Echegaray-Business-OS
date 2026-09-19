@@ -27,7 +27,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { TARJETA, CORTE, ORIGEN } from '../lib/banco-santander.mjs'
 import { INSTRUMENTOS } from '../lib/cash-flow-lineas.mjs'
-import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando, marcarVacios } from '../lib/preservar-anotaciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = INSTRUMENTOS.tarjeta.pestaña
@@ -74,7 +74,7 @@ export function ventanaMes(rango, anio, mes) {
   return `${rango};">="&DATE(${anio};${mes};1);${rango};"<"&DATE(${finA};${finM};1)`
 }
 
-function grilla(filaDatos, desde) {
+export function grilla(filaDatos, desde) {
   const filas = []
   const push = (c = []) => { const r = [...c]; while (r.length < ANCHO) r.push(''); filas.push(r); return filas.length }
   const M = INSTRUMENTOS.tarjeta
@@ -177,7 +177,11 @@ async function main() {
   // Se limpia una franja generosa: si el bloque anterior era más largo, quedarían filas colgadas
   // debajo del nuevo diciendo otra cosa.
   // NO se borra lo que escribió una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.
-  const cp = await escribirPreservando(google, ID, PESTAÑA, g.filas, { fila0: desde })
+  // marcarVacios: las columnas vacías de las filas estructurales (título, subtítulo, separadores,
+  // encabezados, TOTAL PENDIENTE y el título del bloque 2) se LIMPIAN en vez de preservar un valor
+  // de una corrida anterior si el bloque se achica. El bloque ocupa A:E (ANCHO=5), todas del OS; el
+  // dueño carga sus consumos ARRIBA del bloque y anota a la derecha, y eso la fusión lo preserva.
+  const cp = await escribirPreservando(google, ID, PESTAÑA, marcarVacios(g.filas), { fila0: desde })
   if (cp.conservadas.length) console.log(`  ✋ ${cp.conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   // El formato: la columna A es texto y B/C/D son plata. Sin esto el título del bloque se lee como

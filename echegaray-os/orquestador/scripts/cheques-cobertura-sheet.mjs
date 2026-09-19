@@ -20,7 +20,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { repartirCobertura, aCubrirPorMes, normComprobante, esLlaveUtil, hallarPestana, MARCAS, marcaDe } from '../lib/cheques-cobertura.mjs'
 import { INSTRUMENTOS, formulasInstrumento } from '../lib/cash-flow-lineas.mjs'
 import { ARCA as N_ARCA } from '../lib/rangos-nombrados.mjs'
-import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando, marcarVacios } from '../lib/preservar-anotaciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cash Flow Mensual'
@@ -72,7 +72,7 @@ async function leer(google) {
   return { enCompras, cheques, tarjeta, pestanaCheques: CH, filasCh: crudoCh.length + 1, filasTj: crudoTj.length + 2 }
 }
 
-function grilla({ enCompras, cheques, tarjeta }) {
+export function grilla({ enCompras, cheques, tarjeta }) {
   const ch = repartirCobertura(cheques, enCompras)
   const tj = repartirCobertura(tarjeta, enCompras)
   const cubrir = aCubrirPorMes(cheques)
@@ -178,7 +178,11 @@ async function main() {
       : c
     return conSum.replace(/#\{(\d+)\}/g, (_, n) => String(Number(n) + F - 1))
   }))
-  const cp = await escribirPreservando(google, ID, PESTAÑA, filas, { fila0: F, anchoHoja: ANCHO })
+  // marcarVacios: las columnas vacías de las filas estructurales (título, subtítulo, separadores,
+  // encabezados FUENTE/Cantidad/Monto y las líneas TOTAL) se LIMPIAN en vez de preservar un valor de
+  // una corrida anterior si el bloque cambia de alto. El bloque ocupa A:F (ANCHO=6), todas columnas
+  // del OS; una anotación del dueño va a la derecha (col G+) y la fusión la preserva.
+  const cp = await escribirPreservando(google, ID, PESTAÑA, marcarVacios(filas), { fila0: F, anchoHoja: ANCHO })
   if (cp.conservadas.length) console.log(`  ✋ ${cp.conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   // ═══ LIMPIAR LAS COLAS DE VERSIONES ANTERIORES ═══

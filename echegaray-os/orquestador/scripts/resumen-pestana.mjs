@@ -32,7 +32,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { borrar } from '../lib/pivot-sheets.mjs'
-import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando, marcarVacios } from '../lib/preservar-anotaciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'RESUMEN'
@@ -55,9 +55,8 @@ const chBase = `ISNUMBER(${chFecha})*(UPPER(${chDebito})<>"SI")*IF(ISNUMBER(${ch
 // meter el emoji "⇒" adentro de la fórmula.
 const TARJETA_PEND = `=IFERROR(INDEX('Tarjeta de Credito'!$B:$B;MATCH("*TOTAL PENDIENTE";'Tarjeta de Credito'!$A:$A;0));0)`
 
-function grilla() {
+export function grilla() {
   const filas = []
-  const vacia = () => Array(ANCHO).fill('')
   const push = (a = '', b = '', c = '') => { filas.push([a, b, c]); return filas.length }
 
   push('LO QUE VIENE A PAGAR')
@@ -137,7 +136,10 @@ async function main() {
     },
   }])
   // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.
-  const { conservadas } = await escribirPreservando(google, ID, hoja.title, g.filas, { anchoHoja: Math.max(3, hoja.cols ?? 3) })
+  // marcarVacios: las columnas vacías de las filas estructurales (título, subtítulo, separadores) se
+  // LIMPIAN en vez de preservar un serial o rótulo viejo si el tablero se achica. RESUMEN es una
+  // pestaña enteramente del OS: todas sus columnas A:C son suyas y el dueño anota más a la derecha.
+  const { conservadas } = await escribirPreservando(google, ID, hoja.title, marcarVacios(g.filas), { anchoHoja: Math.max(3, hoja.cols ?? 3) })
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
   await formatear(google, hoja, g)
 

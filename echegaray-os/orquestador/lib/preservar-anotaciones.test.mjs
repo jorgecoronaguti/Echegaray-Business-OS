@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { fusionar, sobrantes, tiene, letraCol, escribirPreservando, limpiarCentinela, VACIO } from './preservar-anotaciones.mjs'
+import { fusionar, sobrantes, tiene, letraCol, escribirPreservando, limpiarCentinela, marcarVacios, VACIO } from './preservar-anotaciones.mjs'
 
 test('lo que anota el dueño NUNCA se borra, esté en la columna que esté', () => {
   const generado = [['Proveedor', 'Importe'], ['Alumetal', 100]]
@@ -121,6 +121,38 @@ test('una grilla vacía no escribe nada', async () => {
   const { conservadas } = await escribirPreservando(google, 'ID', 'X', [])
   assert.equal(toco, false)
   assert.deepEqual(conservadas, [])
+})
+
+test('marcarVacios: una fila de TOTAL con basura previa queda LIMPIA tras fusionar', () => {
+  // El generador produce una fila de TOTAL: sólo la col A y la col C tienen contenido; B y D van vacías.
+  const generado = marcarVacios([['TOTAL', '', '=SUM(C2:C9)', '']])
+  // Sus columnas vacías quedaron marcadas (no como '') para que la fusión las limpie.
+  assert.equal(generado[0][1], VACIO)
+  assert.equal(generado[0][3], VACIO)
+  // En la pestaña quedaba un serial y un rótulo de una corrida anterior, en esas mismas columnas.
+  const existente = [['TOTAL', 46229, '=SUM(C2:C9)', 'ARCOR viejo']]
+  const out = fusionar(generado, existente)
+  assert.equal(out[0][1], '', 'la basura de la col B se limpió')
+  assert.equal(out[0][3], '', 'el rótulo viejo de la col D se limpió')
+  assert.equal(out[0][2], '=SUM(C2:C9)', 'el contenido del generador se mantiene')
+})
+
+test('marcarVacios: una nota del dueño A LA DERECHA de la grilla NO se borra', () => {
+  // La grilla del generador es de 3 columnas; el dueño anotó en la col D (fuera de la grilla).
+  const generado = marcarVacios([['TOTAL', '', '=SUM(C2:C9)']])
+  const existente = [['TOTAL', 'basura', '=SUM(C2:C9)', 'REVISAR CON RODRIGO']]
+  const out = fusionar(generado, existente)
+  assert.equal(out[0][1], '', 'la basura DENTRO de la grilla se limpia')
+  assert.equal(out[0][3], 'REVISAR CON RODRIGO', 'la nota del dueño, fuera de la grilla, sobrevive')
+})
+
+test('marcarVacios: un separador vacío rellena y limpia todo su ancho', () => {
+  // Un separador es una fila `[]`; la grilla mide 3 por otras filas. El separador tiene que limpiar
+  // las 3 columnas, no preservar texto viejo (el bug del título duplicado en Proveedores).
+  const generado = marcarVacios([['Título', 'x', 'y'], []])
+  assert.deepEqual(generado[1], [VACIO, VACIO, VACIO])
+  const out = fusionar(generado, [['Título', 'x', 'y'], ['título viejo', 'a', 'b']])
+  assert.deepEqual(out[1], ['', '', ''], 'el separador limpió la fila entera')
 })
 
 test('limpiarCentinela deja la grilla lista para una escritura que no pasa por la fusión', () => {

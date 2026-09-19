@@ -22,7 +22,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { SUBRUBROS, OTROS } from '../lib/sub-rubro-estructura.mjs'
-import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando, marcarVacios } from '../lib/preservar-anotaciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Estructura'
@@ -52,7 +52,7 @@ const rangoSub = 'Compras!$AF$4:$AF'
 const rangoFecha = 'Compras!$AD$4:$AD'
 const COL_SUB_COMPRAS = 31   // AF
 
-function grilla() {
+export function grilla() {
   const rubros = [...SUBRUBROS.map(([n]) => n), OTROS]
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
@@ -165,7 +165,11 @@ async function main() {
   await google.spreadsheetBatchUpdate(ID, reqC)
 
   // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.
-  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, g.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  // marcarVacios: las columnas vacías de las filas estructurales (título, subtítulo, separadores,
+  // título de sección, encabezado, TOTAL y bloque de control) se LIMPIAN en vez de preservar valores
+  // de una corrida anterior. La pestaña es enteramente del OS (incluidas las auxiliares); el dueño
+  // anota más a la derecha, fuera de esta grilla, y eso la fusión lo preserva.
+  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, marcarVacios(g.filas), { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
   await formatear(google, sheetId, g)
 

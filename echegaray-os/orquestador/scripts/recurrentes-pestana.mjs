@@ -23,7 +23,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { MIN_MESES, COL_RUBRO, COL_FECHA, COL_TOTAL } from '../lib/cash-flow-lineas.mjs'
-import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando, marcarVacios } from '../lib/preservar-anotaciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Recurrentes'
@@ -39,7 +39,7 @@ const C_AUX0 = 17
 const ANCHO = C_AUX0 + 12
 const FILA_CAB = 4
 
-function grilla(proveedores) {
+export function grilla(proveedores) {
   const filas = []
   const vacia = () => Array(ANCHO).fill('')
   const push = (f) => { filas.push(f); return filas.length }
@@ -163,8 +163,12 @@ async function main() {
     },
   }])
   // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.
+  // marcarVacios: las columnas vacías de las filas estructurales (título, subtítulo, título de sección,
+  // encabezado, TOTAL, separador y bloque de control) se LIMPIAN en vez de preservar valores de una
+  // corrida anterior. La pestaña es enteramente del OS (incluidas las auxiliares); el dueño anota
+  // más a la derecha, fuera de esta grilla, y eso la fusión lo preserva.
   const gridRec = g.filas.map((f) => f.map((c) => (c instanceof Date ? `${c.getUTCDate()}/${c.getUTCMonth() + 1}/${c.getUTCFullYear()}` : c)))
-  const { conservadas } = await escribirPreservando(google, ID, hoja.title, gridRec, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  const { conservadas } = await escribirPreservando(google, ID, hoja.title, marcarVacios(gridRec), { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
   await formatear(google, hoja, g)
 

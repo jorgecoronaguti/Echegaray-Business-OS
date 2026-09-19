@@ -22,7 +22,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { COL, FIN, INICIO, filaCliente, formulaClientes } from '../lib/cobranzas-por-cliente.mjs'
-import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando, marcarVacios } from '../lib/preservar-anotaciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cobranzas'
@@ -119,7 +119,11 @@ async function main() {
   // deuda de cada cliente corrida un renglón.
   if (F_CAB - F_TITULO !== 2 || F_0 - F_CAB !== 1) throw new Error('las filas del cuadro no son consecutivas: revisar F_TITULO/F_CAB/F_0')
   // Se FUSIONA el bloque en vez de limpiarlo: nada escrito por una persona se borra.
-  const cp = await escribirPreservando(google, ID, PESTAÑA, [filas[0], filas[1], filas[2], ...filas.slice(3)], { fila0: F_TITULO, col0: C0 })
+  // marcarVacios: las filas estructurales (título y subtítulo de una sola columna, el separador `[]`,
+  // el TOTAL y el control) rellenan y LIMPIAN sus columnas vacías en vez de preservar un rótulo o
+  // serial de una corrida anterior. El cuadro ocupa AC:AJ (8 columnas del OS); las columnas de carga
+  // del dueño (A:AA) quedan a la izquierda, fuera de esta grilla, y la fusión no las toca.
+  const cp = await escribirPreservando(google, ID, PESTAÑA, marcarVacios(filas), { fila0: F_TITULO, col0: C0 })
   if (cp.conservadas.length) console.log(`  ✋ ${cp.conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   const rg = (r0, r1, c0, c1) => ({ sheetId: hoja.sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
