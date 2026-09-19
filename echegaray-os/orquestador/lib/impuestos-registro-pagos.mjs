@@ -25,6 +25,7 @@ import { parseMonto } from './cash-briefing.mjs'
 import { verificarAlicuota, COLUMNAS as COLUMNAS_RET } from './retenciones-sufridas.mjs'
 import { exigirColumnas } from './cobranzas-columnas.mjs'
 import { c2 } from './impuestos-registro.mjs'
+import { COBRADORES_DEBIN } from './cobradores-debin.mjs'
 
 /** Tolerancia de coincidencia por importe. El débito automático del plan difiere 3 centavos de Compras. */
 export const TOLERANCIA_IMPORTE = 1
@@ -64,9 +65,7 @@ export function periodoF931PorImporte(importe, f931 = new Map()) {
  * antes la boleta de UOCRA de julio (19/08, ver `cargas-pagos-banco.mjs`). El extracto sólo dice el
  * CUIT del cobrador: QUÉ se pagó lo prueba el importe contra un declarado, nunca el CUIT solo.
  */
-export const COBRADORES_DEBIN = Object.freeze([
-  Object.freeze({ cuit: '30707743987', nombre: 'Administradora San Juan S.A. (PlusPagos)', cobraPara: ['DGR San Juan', 'UOCRA'] }),
-])
+export { COBRADORES_DEBIN } from './cobradores-debin.mjs'
 
 /** El período de IIBB cuyo «a pagar» declarado coincide con este importe, o null. Único, y nunca un cero. */
 export function periodoIibbPorImporte(importe, iibb = new Map()) {

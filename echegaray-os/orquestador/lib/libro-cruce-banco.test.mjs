@@ -7,7 +7,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { movimiento, SALE } from './libro-movimientos.mjs'
-import { NAT } from './banco-santander.mjs'
+import { NAT, clasificarMovimiento } from './banco-santander.mjs'
 import {
   cruzarLibroContraBanco, naturalezaEsperada, MODO, MODO_DE_NATURALEZA, VEREDICTO_CRUCE, HOLGURA_MENSUAL,
 } from './libro-cruce-banco.mjs'
@@ -196,9 +196,19 @@ test('el rubro decide la naturaleza, y el que no tiene contraparte natural no se
   // Los gremiales los cobran FCL/UOCRA/IERIC/FODECO por transferencia, NO ARCA. Mandarlos a AFIP
   // haría que el VEP de ARCA "pagara" una obligación sindical.
   assert.equal(naturalezaEsperada({ rubro: 'Nómina · Gremiales', contraparte: 'FCL · UOCRA' }), null)
-  // El IIBB lo cobra DGR San Juan y en el extracto entra como compra con tarjeta de débito.
-  assert.equal(naturalezaEsperada({ rubro: 'Impuestos', contraparte: 'DGR San Juan' }), null)
+  // EL IIBB LO COBRA DGR SAN JUAN POR DEBIN (19/09/2026): hasta hoy esto daba null y el IIBB de 08/2026
+  // seguía publicándose VENCIDO con la plata ya debitada el 17/09.
+  assert.equal(naturalezaEsperada({ rubro: 'Impuestos', contraparte: 'DGR San Juan' }), NAT.debinCobro)
+  // Y el modo es EXACTO: el canal no prueba nada, lo prueba el importe igual al centavo.
+  assert.equal(MODO_DE_NATURALEZA[NAT.debinCobro], MODO.exacto)
   assert.equal(naturalezaEsperada({ rubro: 'Impuestos', contraparte: 'ARCA' }), NAT.afip)
+})
+
+test('un DEBIN a una plataforma de cobro declarada tiene su naturaleza, y a otro CUIT no', () => {
+  const debin = (cuit) => `Debito debin - id debin lmorzp90ged80oyynegj46 cuit ${cuit}`
+  assert.equal(clasificarMovimiento(debin('30707743987')), NAT.debinCobro)
+  // MUTACIÓN: sin la regla, el pago del IIBB caía en el cajón de las transferencias a proveedores.
+  assert.equal(clasificarMovimiento(debin('30999999995')), NAT.transferencias)
 })
 
 test('el modo de cada naturaleza está declarado: ninguna se empareja "como salga"', () => {

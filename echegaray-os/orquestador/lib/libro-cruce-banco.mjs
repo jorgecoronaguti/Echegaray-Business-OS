@@ -102,6 +102,10 @@ export const MODO_DE_NATURALEZA = Object.freeze({
   [NAT.prendario]: MODO.cuota,
   [NAT.transferencias]: MODO.exacto,
   [NAT.debitosAuto]: MODO.exacto,
+  // EXACTO, Y ES LO QUE LO HACE HONESTO (19/09/2026): un DEBIN a una plataforma de cobro sólo prueba el
+  // canal. Lo que lo ata a ESTA obligación es que el importe sea el mismo al centavo — que es como se
+  // identificó el pago del IIBB de 08/2026. Sin coincidencia exacta no prueba nada y no se empareja.
+  [NAT.debinCobro]: MODO.exacto,
 })
 
 /**
@@ -159,7 +163,13 @@ export function naturalezaEsperada({ rubro, contraparte, instrumento } = {}) {
   if (r === 'Cheques emitidos') return NAT.cheques
   // ARCA es la única contraparte que se paga como AFIP. El rubro solo no alcanza: "Impuestos" tiene
   // adentro el IVA (ARCA) y el IIBB (DGR San Juan), y son dos organismos distintos.
-  if (r === 'Nómina · Cargas sociales' || r === 'Impuestos') return c === 'arca' ? NAT.afip : null
+  // DGR SAN JUAN COBRA EL IIBB POR DEBIN (19/09/2026). Hasta hoy esto devolvía null para todo lo que no
+  // fuera ARCA, así que el IIBB pagado seguía publicándose «VENCIDO»: el libro mostraba $432.764,90 de
+  // deuda del período 08/2026 que había salido de la cuenta el 17/09.
+  if (r === 'Nómina · Cargas sociales' || r === 'Impuestos') {
+    if (c === 'arca') return NAT.afip
+    return c === 'dgr san juan' ? NAT.debinCobro : null
+  }
   if (r === 'Financiero') return /banco|prendario|credito prendario/.test(c) ? NAT.prendario : null
   return null
 }

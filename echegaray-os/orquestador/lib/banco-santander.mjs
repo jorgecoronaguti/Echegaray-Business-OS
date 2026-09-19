@@ -32,6 +32,7 @@
 
 import { extraer } from './cuit.mjs'
 import { esMovimientoDeCheques } from './cheques-debito-banco.mjs'
+import { cobradorDelDebin } from './cobradores-debin.mjs'
 
 /** El día y la hora de la foto. Todo lo de abajo es verdad A ESTA FECHA, no hoy. */
 export const CORTE = '2026-07-22'
@@ -636,6 +637,10 @@ export function clasificarMovimiento(concepto = '') {
   // crédito fiscal y la percepción RG 2408 es pago a cuenta, o sea recuperables— es un asunto de la
   // posición fiscal, no del flujo: se declara en COBERTURA_NATURALEZA y no se descuenta acá.
   if (/comision|iva 21% reg de transfisc|iva percepcion rg 2408/i.test(c)) return 'Comisiones y gastos bancarios'
+  // EL DEBIN A UNA PLATAFORMA DE COBRO (19/09/2026). Va ANTES del cajón de sastre de transferencias,
+  // donde caía: un impuesto provincial contado como pago a proveedor. Sólo los CUIT declarados en
+  // COBRADORES_DEBIN — un DEBIN a cualquier otro CUIT sigue siendo lo que era.
+  if (cobradorDelDebin(c)) return NAT.debinCobro
   // ═══ EL BANCO ESCRIBE "HABER" EN SINGULAR Y SE LLEVÓ $3.380.000 AL CAJÓN EQUIVOCADO (15/08) ═══
   //
   // La regla pedía "haberes" con ese literal, y el lote del 14/08 llega como *"Acreditacion en cta
@@ -971,6 +976,11 @@ export const NAT = {
   tarjetaDebito: 'Compras con tarjeta de débito',
   debitosAuto: 'Débitos automáticos (seguros)',
   transferencias: 'Transferencias a proveedores',
+  // LO ÚNICO QUE EL EXTRACTO PRUEBA (19/09/2026). Un DEBIN lo inicia el COBRADOR y el pagador lo acepta;
+  // el concepto sólo trae el CUIT de la plataforma. Por PlusPagos (Administradora San Juan S.A.) viajan
+  // el IIBB de DGR San Juan y la boleta de UOCRA: QUÉ se pagó lo prueba el importe contra lo declarado,
+  // nunca el CUIT. Por eso la naturaleza nombra el canal, no al acreedor.
+  debinCobro: 'DEBIN a plataforma de cobro',
   ajusteSinDetalle: 'Ajuste sin detalle del banco',
   cobranzas: 'Cobranzas de clientes',
   rescates: 'Rescates de inversión y financiero',
@@ -1009,6 +1019,10 @@ export const COBERTURA_NATURALEZA = [
   { naturaleza: NAT.tarjetaDebito, lado: 'egreso', destino: 'Compras (por fecha de caja)', alCashFlow: true, grupoConciliacion: true, nota: 'Compra de mostrador con débito; si no está cargada en Compras, es costo invisible (lo grita la conciliación).' },
   { naturaleza: NAT.debitosAuto, lado: 'egreso', destino: 'Compras (seguros y coberturas)', alCashFlow: true, grupoConciliacion: true, nota: 'Seguros que se debitan solos; si no están en Compras, no están en ningún rubro (lo grita la conciliación).' },
   { naturaleza: NAT.transferencias, lado: 'egreso', destino: 'Compras (por fecha de caja)', alCashFlow: true, grupoConciliacion: true, nota: 'Pago a proveedor por transferencia; es el rubro de su factura en Compras.' },
+  {
+    naturaleza: NAT.debinCobro, lado: 'egreso', destino: 'Impuestos y Financieros (IIBB de DGR San Juan) o Cargas Sociales (boleta de UOCRA), según qué declarado explique el importe', alCashFlow: true, grupoConciliacion: false,
+    nota: 'El DEBIN del 17/09/2026 por $432.764,90 pagó el IIBB de 08/2026 (dueño, 19/09: «pagué rentas»), y el importe es exactamente el «a pagar» de esa DDJJ. Sin grupo de conciliación propio: el canal no tiene pestaña dueña, la tiene cada obligación que explica. El cruce del libro lo empareja por importe exacto con la obligación de su acreedor.',
+  },
   // ── LOS CUATRO QUE ESTABAN SUELTOS (28/07) ──────────────────────────────────────────────────────
   {
     naturaleza: NAT.ajusteSinDetalle, lado: 'egreso', destino: null, alCashFlow: false, grupoConciliacion: false,
