@@ -324,24 +324,47 @@ export function lunesDe(d) {
 }
 
 /** Una semana ISO a partir de su lunes. `hasta` es el lunes siguiente, EXCLUIDO. */
-const semanaDe = (lunes) => ({ desde: lunes, hasta: new Date(lunes.getTime() + 7 * DIA_MS) })
+const semanaDe = (lunes) => ({ lunes, desde: lunes, hasta: new Date(lunes.getTime() + 7 * DIA_MS) })
+
+/** El 1° de enero de `anio`, que es donde arranca y termina el ejercicio. */
+const primeroDeEnero = (anio) => new Date(Date.UTC(anio, 0, 1))
 
 /**
- * NÚCLEO PURO: LAS SEMANAS DE UN AÑO CALENDARIO, de la que contiene el 1° de enero a la que contiene
- * el 31 de diciembre. Para 2026 son 53: la primera arranca el lunes 29/12/2025.
+ * NÚCLEO PURO: LAS COLUMNAS SEMANALES DE UN EJERCICIO. Para 2026 son 53: la primera es la semana del
+ * lunes 29/12/2025 (la que contiene el 1° de enero) y la última la del lunes 28/12/2026.
  *
- * La primera semana pertenece al año aunque arranque en diciembre del anterior — si no, los primeros
- * días del ejercicio no caerían en ninguna columna y el semanal dejaría de cubrir lo mismo que el
- * mensual. Lo mismo del otro lado: la última semana se derrama sobre enero.
+ * ═══ LA VENTANA ESTÁ RECORTADA AL EJERCICIO, Y EL DEFECTO QUE ESO CIERRA (13/08/2026) ═══
+ *
+ * Cada columna tenía la semana ISO entera, así que la primera empezaba el 29/12/2025 y la última
+ * terminaba el 4/1/2027. El TOTAL del semanal es la suma de las 53 columnas: se llevaba puestos tres
+ * días de 2025 y tres de 2027. Medido en el archivo vivo: **$13.073.317** de nómina proyectada del
+ * 1/1/2027 (jornales $9.110.601 + oficina $3.962.717) estaban en el TOTAL del Semanal y no en el del
+ * Mensual, que por diseño no puede pasar de diciembre. Peor que la diferencia de TOTAL: el PISO DEL
+ * PERÍODO —el titular de la pestaña— sale de `MIN` sobre la fila del saldo final, y el mínimo caía
+ * justo en esa columna contaminada. El dueño leía un piso $15M más alarmante que el real.
+ *
+ * `lunes` es la IDENTIDAD de la semana (lo que va en el encabezado y lo que busca el atajo "hoy");
+ * `desde`/`hasta` son los días que la columna SUMA. En 51 de las 53 son la misma cosa; en la primera
+ * y en la última no, y ahí está todo el asunto. Se devuelven las dos porque son dos preguntas
+ * distintas y confundirlas fue exactamente el defecto.
  *
  * El largo se CALCULA, no se declara: entre los dos lunes hay un número exacto de semanas y contarlo
  * mal significa una columna de más (vacía y sumada al TOTAL) o una de menos (días sin columna).
  */
 export function semanasDelAnio(anio) {
-  const primera = lunesDe(new Date(Date.UTC(anio, 0, 1)))
+  const primera = lunesDe(primeroDeEnero(anio))
   const ultima = lunesDe(new Date(Date.UTC(anio, 11, 31)))
   const n = Math.round((ultima.getTime() - primera.getTime()) / (7 * DIA_MS)) + 1
-  return Array.from({ length: n }, (_, i) => semanaDe(new Date(primera.getTime() + i * 7 * DIA_MS)))
+  const inicio = primeroDeEnero(anio)
+  const fin = primeroDeEnero(anio + 1)
+  return Array.from({ length: n }, (_, i) => {
+    const s = semanaDe(new Date(primera.getTime() + i * 7 * DIA_MS))
+    return {
+      lunes: s.lunes,
+      desde: s.desde < inicio ? inicio : s.desde,
+      hasta: s.hasta > fin ? fin : s.hasta,
+    }
+  })
 }
 
 /**
@@ -383,11 +406,26 @@ export function ventanasDiarias(desde, hasta) {
  *
  * El encabezado ES la fecha (un serial, no un texto): de ahí sale la ventana, así que no puede haber
  * una columna cuyo título diga una cosa y cuyo filtro sume otra.
+ *
+ * ═══ EL RECORTE AL EJERCICIO VA EN LA FÓRMULA, NO EN "LA PRIMERA Y LA ÚLTIMA" (13/08/2026) ═══
+ *
+ * Con `anio`, toda columna semanal se acota a `[1/1/anio, 1/1/anio+1)` con un `MAX`/`MIN` que en 51 de
+ * las 53 no muerde. Podría emitirse sólo donde hace falta —y ahorraría ruido— pero entonces el recorte
+ * dependería de que alguien acierte qué columna es el borde, y ése es el error que se está cerrando:
+ * el TOTAL del Semanal arrastraba enero de 2027 justamente porque nadie estaba mirando esa columna.
+ * Uniforme es imposible de olvidar, y además cada celda del cuadro DICE que la pestaña no sale de su
+ * año, que es lo que el dueño lee cuando audita una fórmula.
+ *
+ * Sin `anio` (el rodante de los controles que miran hacia adelante) no hay ejercicio que recortar y la
+ * ventana es la semana entera.
  */
-export function expresionVentana(celdaCab, tipo) {
-  return tipo === 'mes'
-    ? { desde: celdaCab, hasta: `EOMONTH(${celdaCab};0)+1` }
-    : { desde: celdaCab, hasta: `${celdaCab}+7` }
+export function expresionVentana(celdaCab, tipo, anio = null) {
+  if (tipo === 'mes') return { desde: celdaCab, hasta: `EOMONTH(${celdaCab};0)+1` }
+  if (anio === null) return { desde: celdaCab, hasta: `${celdaCab}+7` }
+  return {
+    desde: `MAX(${celdaCab};DATE(${anio};1;1))`,
+    hasta: `MIN(${celdaCab}+7;DATE(${anio + 1};1;1))`,
+  }
 }
 
 /**

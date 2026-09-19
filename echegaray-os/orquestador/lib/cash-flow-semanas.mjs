@@ -17,16 +17,22 @@
 // rotulada 2026. Ahora son las 53 semanas de 2026: la primera es la del lunes 29/12/2025, que contiene
 // el 1° de enero.
 //
-// ═══ Y LO QUE ESO NO SIGNIFICA: LAS DOS VISTAS NO CUBREN EL MISMO PERÍODO (06/08, medido) ═══
+// ═══ EL BORDE DEL AÑO: SÍ ERA ARREGLABLE, Y COSTÓ $13.073.317 (13/08/2026) ═══
 //
-// Acá decía "el semanal cubre EXACTAMENTE el mismo período que el mensual". Es falso y se puede
-// medir: el semanal va de [29/12/2025, 4/1/2027) y el mensual de [1/1/2026, 1/1/2027). Son tres días
-// de más de cada lado, y sobre el archivo vivo esos tres días valen **$11.259.575** de nómina
-// proyectada de enero de 2027 que están en el TOTAL del semanal y no en el del mensual.
+// Acá decía que las dos vistas NO pueden cubrir el mismo período —"una semana ISO que cruza el 1° de
+// enero tiene que caer en algún lado"— y que por eso las dos columnas TOTAL no tenían por qué
+// coincidir. Era falso: lo que tiene que caer de un solo lado es la SEMANA, no la PLATA. La columna
+// del 28/12 sigue existiendo y sigue siendo la semana del 28/12; lo que se recortó es su ventana, que
+// ahora termina el 31/12 y no el 3/1 (`semanasDelAnio` + `expresionVentana`).
 //
-// No es un defecto arreglable —una semana ISO que cruza el 1° de enero tiene que caer en algún lado—,
-// pero la AFIRMACIÓN sí lo era: hace leer las dos columnas TOTAL como si tuvieran que coincidir. La
-// diferencia la mide `bordesEntreVistas` y la imprime `scripts/cf-conectividad.mjs`.
+// Lo que costaba: $9.110.601 de jornales y $3.962.717 de oficina fechados el 1/1/2027 entraban en la
+// última columna, y el TOTAL del Semanal es `SUM` de las 53 — Egresos proyectados daba $364.126.253
+// contra $351.052.936 del Mensual. Y el titular: el PISO DEL PERÍODO sale de `MIN` sobre el saldo
+// final y el mínimo caía en esa columna contaminada, así que el dueño leía un piso $15M peor.
+//
+// AHORA LAS DOS VISTAS CUBREN EXACTAMENTE [1/1, 1/1 del año siguiente), y eso dejó de ser una promesa
+// escrita en un comentario: lo mide `cash-flow-cuadre-vistas.mjs` fila por fila y ABORTA el generador
+// antes de escribir si alguna difiere más de $1.
 //
 // Lo que se paga por el año entero: hay scroll horizontal. Se compensa con la columna A congelada y
 // el atajo "📅 hoy", que salta a la columna de la semana corriente.
@@ -119,7 +125,10 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
 
   // ── La cabecera: el concepto y los lunes del ejercicio ───────────────────────────────────────────
   poner(FILA.cabecera, 0, 'Concepto')
-  semanas.forEach((v, j) => poner(FILA.cabecera, COL.tiempo0 + j, serialDeFecha(v.desde)))
+  // EL ENCABEZADO ES EL LUNES, LA VENTANA ES LO QUE LA COLUMNA SUMA. En la primera y en la última
+  // semana no coinciden —están recortadas al ejercicio— y el rótulo tiene que seguir siendo el lunes:
+  // es la identidad de la semana, lo que el dueño reconoce y lo que busca el atajo "hoy".
+  semanas.forEach((v, j) => poner(FILA.cabecera, COL.tiempo0 + j, serialDeFecha(v.lunes)))
   poner(FILA.cabecera, cT, 'TOTAL')
 
   // ── Las siete filas de concepto ──────────────────────────────────────────────────────────────────
@@ -183,7 +192,9 @@ function bloqueHero(poner, meta, refs) {
 function columnaDeSemana(poner, meta, j, { refSaldo, refFecha }) {
   const col = meta.cab.col0 + j
   const cab = celda(col, meta.cab.fila)
-  const { desde, hasta } = expresionVentana(cab, meta.tipo)
+  // CON EL AÑO: la ventana se recorta al ejercicio. Sin él, la columna del 28/12 sumaba hasta el 3/1
+  // del año siguiente y el TOTAL —que es `SUM` de las 53— se llevaba puesto enero de 2027.
+  const { desde, hasta } = expresionVentana(cab, meta.tipo, meta.anio)
   const f = meta.fila
 
   poner(f.saldoInicial, col, inicioDeLaSemana({
