@@ -57,7 +57,7 @@ import { puedeCambiarObraActual } from './planDeObraActual'
 import { quincenaCerrada } from './quincenaCerradaService'
 import { acuseDeQuita, jornadaAQuitarConElPresente, QUITAR_JORNADA_POR_DEFECTO_AL_QUITAR } from './quitaDePresente'
 import { acuseDeAusenciasDelDia, planDeAusenciasSinObra } from './ausenciaDeLaPersona'
-import { escribirAusenciasSinObra, filasSinObraDelDia, sacarAusenciasSinObra } from './ausenciaDeLaPersonaService'
+import { escribirAusenciaSinObra, filasSinObraDelDia, sacarAusenciasSinObra } from './ausenciaDeLaPersonaService'
 
 // EL MOTIVO SE VALIDA CONTRA EL CATÁLOGO, NO CONTRA UNA LISTA DE ESTA PANTALLA. `esMotivo` mira
 // `orquestador/lib/asistencia-motivos.mjs`, que es lo que usa el bot desde julio. Y una presencia
@@ -163,7 +163,8 @@ export async function guardarPresencia(entrada: unknown): Promise<ResultadoPrese
   // (`quincenaCerrada.ts`); la marca ya quedó escrita, así que se dice en el acuse en vez de fallar.
   const horas = cierre === null
     ? await aplicarHorasPorDefecto(supabase, obraId, fecha, tardanzas.marcas, guardadas)
-    : { mensaje: `Las horas por defecto no se cargaron. ${cierre}`, escribio: false }
+    // LA AUSENCIA TAMPOCO: lo sellado no se toca, y el acuse lo dice para que nadie la espere en Horas.
+    : { mensaje: `Las horas por defecto y las ausencias no se cargaron en Horas. ${cierre}`, escribio: false }
 
   revalidatePath('/campo/asistencia')
   revalidatePath('/administracion/personas')
@@ -254,9 +255,21 @@ async function aplicarHorasPorDefecto(
 
   // LO DE AFUERA SE ESCRIBE ANTES DE CUALQUIER BORRADO, y se saca al final: sin transacción, un
   // duplicado visible le gana a una pérdida silenciosa (misma regla que `guardarJornada`).
-  const escritas = await escribirAusenciasSinObra(supabase, fecha, fuera.escribir)
-  if (escritas.error) return { mensaje: noSePudo(escritas.error), escribio: false }
+  // UNA POR PERSONA, SIN FRENAR AL GRUPO (revisión 19/09/2026): la ausencia que la policy le rechaza a
+  // uno no puede dejar sin jornada a los otros nueve presentes del mismo guardado. Y un `update` que
+  // afecta cero filas sin error es un rechazo, no «nada que cambiar»: se cuenta y se dice.
+  const escritas = { insertadas: 0, actualizadas: 0 }
+  const noQuedaron: string[] = []
+  for (const e of fuera.escribir) {
+    const r = await escribirAusenciaSinObra(
+      supabase, { persona_id: e.marca.persona_id, fecha, motivo: e.marca.motivo ?? null }, e.marca.horas, e.id)
+    if (r.fila === 'insertada') escritas.insertadas += 1
+    else if (r.fila === 'actualizada') escritas.actualizadas += 1
+    else noQuedaron.push(r.error ?? 'la base no guardó la fila (puede ser un permiso)')
+  }
   const tocoAfuera = escritas.insertadas + escritas.actualizadas > 0
+  const avisoAfuera = noQuedaron.length === 0 ? null
+    : `${noQuedaron.length === 1 ? 'Una ausencia no quedó' : `${noQuedaron.length} ausencias no quedaron`} en Horas: ${noQuedaron[0]}. Cargala con «A» en Asistencia.`
 
   let insertadas = 0
   if (plan.insertar.length > 0) {
@@ -292,6 +305,7 @@ async function aplicarHorasPorDefecto(
     mensaje: [
       acuseDeHorasPorDefecto({ insertadas, borradas, conflictos: plan.conflictos.length }),
       afuera,
+      avisoAfuera,
       sacadas.error ? noSePudo(sacadas.error) : null,
     ].filter(Boolean).join(' · ') || null,
     escribio: tocoAfuera || insertadas > 0 || borradas > 0 || sacadas.sacadas > 0,
