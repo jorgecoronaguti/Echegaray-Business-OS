@@ -227,6 +227,29 @@ export function notasAncladas(bloque = [], L = {}) {
  */
 export const estructural = (arr = []) => arr.map((c) => (c === '' ? VACIO : c))
 
+/**
+ * ¿ESTE PROVEEDOR TODAVÍA DEBE? — LA GUARDA VIVA DEL CUADRO DE DEUDA.
+ *
+ * EL BUG (27/07). El dueño: cuando pasa un proveedor a "Pagado", la fila-cabecera SEGUÍA en el cuadro
+ * de deuda con el importe en "−" (un 0 pintado en formato contable). La causa: la cabecera escribía el
+ * NOMBRE como texto fijo y el importe como una fórmula que da 0 cuando ya no hay facturas pendientes.
+ * El proveedor pagado no desaparecía hasta la próxima corrida del agente (cada 2 h), y en el medio
+ * figuraba como deuda con "−". Un cuadro de "qué se debe" que lista a quien ya no te debe engaña.
+ *
+ * EL FIX, VIVO. `neta(condProv)` ya es una fórmula sobre Compras: cuando las facturas del proveedor
+ * pasan a "Pagado" salen del filtro "Pendiente" y su saldo neto cae a 0 — SOLO, en el mismo recálculo,
+ * sin esperar al agente. `viveDeuda` convierte ese saldo en la pregunta "¿sigue debiendo?" y `siVive`
+ * envuelve CADA celda de la cabecera para que se vacíe junta cuando la respuesta es no. El proveedor
+ * pagado se va del cuadro al instante; en la corrida siguiente el grupo se descarta del todo (la lista
+ * materializada ya filtra `total > 0.5`), así que ni siquiera queda la fila en blanco.
+ *
+ * ES-AR: sin decimal suelto en el literal (rompería con coma). Se redondea a pesos y se compara > 0,
+ * el mismo idioma que ya usa el aviso de desfasaje ("ROUND(...;0)=0"). Sub-peso = ruido, no es deuda.
+ */
+export const viveDeuda = (saldoFormula) => `ROUND(${saldoFormula};0)>0`
+/** Envuelve una expresión de cabecera para que la celda quede VACÍA cuando el proveedor ya no debe. */
+export const siVive = (vive, expr) => `=IF(${vive};${expr};"")`
+
 export function layoutDeuda(headers) {
   const H = (headers || []).map((h) => String(h ?? '').trim())
   const base = ['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe', 'Obra', 'Tipo de pago', 'Categoría']
@@ -366,11 +389,15 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
     const conFecha = `${condProv};${COL_FECHA};">0"`
     // Fila-cabecera del proveedor: total NETO (Total − Monto Pagado) y próximo pago por fórmula viva.
     // Es la que queda a la vista cuando el grupo está colapsado; las facturas se pliegan debajo.
+    // ¿SIGUE DEBIENDO? Guarda VIVA sobre el saldo neto de Compras (ver viveDeuda/siVive): cuando el
+    // proveedor pasa a "Pagado" su saldo cae a 0 y TODA la cabecera se vacía sola en el mismo recálculo,
+    // en vez de quedar listada con el importe en "−". No espera a la próxima corrida del agente.
+    const vive = viveDeuda(neta(condProv))
     const hCel = celdas()
-    hCel[L.prov] = gp.nombre
-    if (L.fecha >= 0) hCel[L.fecha] = `=IF(COUNTIFS(${conFecha})=0;"sin fecha";MINIFS(${COL_FECHA};${conFecha}))`
-    if (L.comp >= 0) hCel[L.comp] = `=COUNTIFS(${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")&" fac."`
-    if (L.imp >= 0) hCel[L.imp] = `=${neta(condProv)}`
+    hCel[L.prov] = siVive(vive, `"${key}"`)
+    if (L.fecha >= 0) hCel[L.fecha] = siVive(vive, `IF(COUNTIFS(${conFecha})=0;"sin fecha";MINIFS(${COL_FECHA};${conFecha}))`)
+    if (L.comp >= 0) hCel[L.comp] = siVive(vive, `COUNTIFS(${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")&" fac."`)
+    if (L.imp >= 0) hCel[L.imp] = siVive(vive, neta(condProv))
     ponerNotas(hCel, NOTAS.porProveedor, gp.nombre)
     const hRow = push(hCel)
     deudaHeaders.push(hRow)
