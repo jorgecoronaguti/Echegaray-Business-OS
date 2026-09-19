@@ -13,7 +13,7 @@
 // del propio generador (la col I de los cruces ARCA, que es no-vacía y por eso se conserva).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { estructural } from './proveedores-materiales-pestana.mjs'
+import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas } from './proveedores-materiales-pestana.mjs'
 import { fusionar, VACIO } from '../lib/preservar-anotaciones.mjs'
 
 test('estructural: convierte los \'\' en VACIO y deja intacto todo lo no-vacío', () => {
@@ -65,4 +65,86 @@ test('(c) la nota de conciliación LEGÍTIMA en col I de los cruces ARCA se cons
   const out = fusionar([generado], [existente])[0]
   assert.equal(out[8], nota, 'gana la nota nueva del generador, no la vieja')
   assert.equal(out[3], '', 'el $46.213 fantasma de col D se borra')
+})
+
+// ═══ BUG 1 (28/07): EL PROVEEDOR PAGADO DESAPARECE SOLO DEL CUADRO DE DEUDA ═══
+//
+// El dueño: al pasar un proveedor a estado "Pagado", SEGUÍA apareciendo en el listado con un "−" en vez
+// de desaparecer. La fila-cabecera se materializa en JS (para el +/- y para re-anclar sus notas), pero
+// su nombre era texto fijo. Ahora cada celda de la cabecera se gatea con predicadoConDeuda: si el saldo
+// neto no es > 0, la fila entera queda VACÍA en vivo. El cuadro lista SÓLO proveedores con saldo > 0.
+
+test('predicadoConDeuda: exige saldo neto redondeado > 0 (estado ≠ Pagado ya lo filtra condProv)', () => {
+  const neta = 'SUMIFS(O;C;"X")-SUMIFS(T;C;"X")'
+  assert.equal(predicadoConDeuda(neta), `ROUND(${neta};0)>0`)
+})
+
+test('soloConDeuda (texto): el NOMBRE sólo aparece en la rama verdadera; si no hay deuda, la celda va vacía', () => {
+  const pred = predicadoConDeuda('SALDO')
+  const cell = soloConDeuda(pred, 'ARCOR', { texto: true })
+  assert.equal(cell, '=IF(ROUND(SALDO;0)>0;"ARCOR";"")')
+  assert.ok(cell.startsWith('=IF('), 'es una fórmula, no un texto fijo')
+  assert.ok(cell.endsWith(';"")'), 'la rama falsa (sin deuda) es la cadena vacía: el proveedor no se lista')
+  // El nombre está dentro del IF, nunca suelto: un proveedor pagado no deja el nombre a la vista.
+  assert.equal(cell.indexOf('"ARCOR"'), cell.indexOf('>0;') + 3, 'el nombre va inmediatamente en la rama verdadera')
+})
+
+test('soloConDeuda (texto): escapa las comillas del nombre y tolera una coma dentro del nombre (es-AR)', () => {
+  const cell = soloConDeuda(predicadoConDeuda('S'), 'Metalúrgica "El Álamo", SA', { texto: true })
+  assert.equal(cell, '=IF(ROUND(S;0)>0;"Metalúrgica ""El Álamo"", SA";"")')
+  // La única coma vive DENTRO del literal de cadena; el separador de argumentos es ';' (locale es-AR).
+  assert.ok(!/,(?=[^"]*(?:"[^"]*"[^"]*)*$)/.test(cell.replace(/"[^"]*"/g, '')), 'no hay coma fuera del literal')
+})
+
+test('soloConDeuda (fórmula): quita el "=" inicial y anida la subexpresión dentro del IF', () => {
+  const pred = predicadoConDeuda('S')
+  assert.equal(soloConDeuda(pred, '=MINIFS(F;C;"X")'), '=IF(ROUND(S;0)>0;MINIFS(F;C;"X");"")')
+  assert.equal(soloConDeuda(pred, 'COUNTIFS(C;"X")&" fac."'), '=IF(ROUND(S;0)>0;COUNTIFS(C;"X")&" fac.";"")')
+})
+
+test('la fila-cabecera COMPLETA (nombre + próximo pago + N° fac. + importe) queda vacía sin deuda', () => {
+  // Se arman las cuatro celdas igual que grilla(): un proveedor pagado → las cuatro colapsan a "".
+  const neta = 'SUMIFS(O;E;"ACME")-SUMIFS(T;E;"ACME")'
+  const pred = predicadoConDeuda(neta)
+  const cabecera = [
+    soloConDeuda(pred, 'ACME', { texto: true }),
+    soloConDeuda(pred, 'IF(COUNTIFS(FE;">0")=0;"sin fecha";MINIFS(FE))'),
+    soloConDeuda(pred, 'COUNTIFS(E;"ACME";O;"<>")&" fac."'),
+    soloConDeuda(pred, neta),
+  ]
+  for (const c of cabecera) {
+    assert.ok(c.startsWith('=IF(ROUND(' + neta + ';0)>0;'), 'toda celda depende del mismo predicado de saldo')
+    assert.ok(c.endsWith(';"")'), 'y colapsa a vacío cuando el proveedor no debe: no queda "−" ni nombre suelto')
+  }
+})
+
+// ═══ BUG 2 (28/07): LAS NOTAS DEL DUEÑO SE RE-ANCLAN AUNQUE LA CABECERA SEA UNA FÓRMULA ═══
+//
+// La cabecera del proveedor pasó de texto fijo a fórmula. notasAncladas trabaja sobre el bloque LEÍDO
+// de la pestaña (render computado), donde esa fórmula ya muestra el NOMBRE en claro — así que la nota
+// del dueño se sigue anclando por proveedor. El fix de raíz del "se pisan las ediciones" es leer el
+// bloque ENTERO (antes cortaba a 80 filas): acá se prueba que la re-ancla + la fusión conservan la nota.
+
+test('notasAncladas ancla la nota del dueño al proveedor por el nombre COMPUTADO de la cabecera', () => {
+  const L = layoutDeuda(['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe', 'Obra', 'Tipo de pago', 'Categoría', 'Comentarios'])
+  // Lo que se lee de la pestaña (computado): la cabecera muestra el nombre en claro y el dueño anotó
+  // en la columna "Comentarios" (índice 7), que el generador no llena.
+  const bloque = [
+    ['ACME', 'sin fecha', '2 fac.', 1000, '', '', '', 'reclamar remito 1234'],
+    ['', '0001-00000009', '', 500, 'MESSINA', 'Cheque', 'Materiales', ''],
+  ]
+  const NOTAS = notasAncladas(bloque, L)
+  assert.equal(NOTAS.porProveedor.get('acme')?.get(7), 'reclamar remito 1234', 'la nota se ancla al proveedor')
+})
+
+test('con la nota re-anclada, la fusión la conserva pese a que la celda del generador va VACIA', () => {
+  // La fila-cabecera que produce el generador: columnas propias con fórmula/nombre, "Comentarios" (7)
+  // con el centinela VACIO (celda del generador que va vacía). Al re-anclar, se le pone la nota encima.
+  const generada = ['=IF(ROUND(S;0)>0;"ACME";"")', '=IF(...)', '=IF(...)', '=IF(...)', VACIO, VACIO, VACIO, 'reclamar remito 1234']
+  // En la pestaña ya estaba la nota, en su fila. La fusión debe conservarla (gana el generador, que acá
+  // trae la MISMA nota re-anclada — nunca la borra).
+  const enPestana = ['ACME', 'sin fecha', '2 fac.', 1000, '', '', '', 'reclamar remito 1234']
+  const out = fusionar([generada], [enPestana])[0]
+  assert.equal(out[7], 'reclamar remito 1234', 'la nota del dueño sobrevive la corrida')
+  assert.equal(out[4], '', 'la columna Obra propia del generador, VACIA, se limpia (no arrastra basura vieja)')
 })
