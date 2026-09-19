@@ -264,7 +264,7 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
         }]}
         filtros={(
           // EL CONTROL CONTRA ARCA NO DESAPARECE: es otra pregunta y tiene su puerta.
-          <Link href={`${RUTA}?f=arca`} data-testid="ir-control-arca" className="text-[12px] text-faint underline underline-offset-2">
+          <Link href={`${RUTA}?f=arca`} prefetch={false} data-testid="ir-control-arca" className="text-[12px] text-faint underline underline-offset-2">
             Control ARCA
           </Link>
         )}

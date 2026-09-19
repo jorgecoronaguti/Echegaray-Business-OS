@@ -53,7 +53,7 @@ export default async function PresupuestoNuevoPage() {
         <span className="text-[12px] text-faint">/</span>
         <span className="text-[13px] font-semibold text-ink">Presupuesto nuevo</span>
         <div className="flex-1" />
-        <Link href="/presupuestos?nuevo=1" data-testid="carga-manual" className="text-[12px] text-muted underline hover:text-ink">
+        <Link href="/presupuestos?nuevo=1" prefetch={false} data-testid="carga-manual" className="text-[12px] text-muted underline hover:text-ink">
           cargarlo a mano
         </Link>
       </div>
