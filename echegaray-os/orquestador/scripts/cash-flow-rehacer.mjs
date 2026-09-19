@@ -14,6 +14,8 @@ import { loadConfig } from '../lib/config.mjs'
 import {
   bloqueControl, CUADRO, verificarCuadro, formulaLineaMes, expresionReal, formulaTotalRubro, origenLinea,
   tablasDeProyeccion, formulaChequesSinFactura, hipervinculoDetalle, detalleDeRubro, SANGRIA_DETALLE,
+  instrumentosDeLinea, formulaCalendarioImpuestosMes, formulaCalendarioImpuestosSemana,
+  rotulosCalendarioImpuestos, CALENDARIO_IMPUESTOS,
 } from '../lib/cash-flow-lineas.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
@@ -47,7 +49,7 @@ const fechaAR = (d) => `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullY
  * Arma la grilla de una pestaña de cash flow.
  * @param {'semanal'|'mensual'} periodo
  */
-function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, filasTabla = {}) {
+function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, filasTabla = {}, filasCalendario = {}) {
   const cols = periodo === 'semanal' ? semanas() : Array.from({ length: 12 }, (_, m) => new Date(Date.UTC(AÑO, m, 1)))
   const n = cols.length
   const colTotal = letra(n + 1) // A + n períodos → la siguiente es el total
@@ -121,8 +123,15 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
         //
         // Es un PISO declarado: no cobra la deuda que se toma dentro del mismo mes. En el semanal no va: a nivel semana el saldo
         // inicial no está calculado y un interés semanal sería ruido.
+        // La de IVA/IIBB NO sale de Compras: la mensual lee la celda del mes del calendario; la semanal
+        // reparte el total del mes a la semana que contiene su vencimiento (fin de mes). El monto es
+        // exacto; sólo la timing intra-mes es aproximada (declarado en cash-flow-lineas.mjs).
         const celdas = l.cheques
-          ? cols.map((_, i) => formulaChequesSinFactura(desde(i), hasta(i), MARCAS.falta))
+          ? cols.map((_, i) => formulaChequesSinFactura(desde(i), hasta(i), MARCAS.falta, instrumentosDeLinea(l.inst)))
+          : l.calendarioImpuestos
+            ? cols.map((_, i) => (periodo === 'mensual'
+              ? formulaCalendarioImpuestosMes(letra(i + 1), filasCalendario)
+              : formulaCalendarioImpuestosSemana(desde(i), hasta(i), AÑO, filasCalendario)))
           : l.descubierto
             // En el semanal va VACÍO, no cero: a nivel semana no hay saldo inicial calculado, así
             // que no se puede saber el interés. Un 0 escrito dice "no hay interés" y es distinto de
@@ -425,9 +434,24 @@ async function main() {
     filasTabla[pestaña] = i + 1
     console.log(`  proyección de ${pestaña}: fila ${i + 1}`)
   }
+
+  // Las filas "⇒ IVA a pagar" / "⇒ IIBB a pagar" del calendario fiscal, ubicadas POR RÓTULO (no
+  // hardcodeadas: la pestaña se arma con filas dinámicas). Si un rótulo no aparece, se rompe en vez de
+  // escribir una referencia muerta que devolvería $0 en silencio.
+  const filasCalendario = {}
+  {
+    const colA = await google.readSheetValues(ID, `${CALENDARIO_IMPUESTOS.pestaña}!A1:A120`)
+    for (const { clave, rotulo } of rotulosCalendarioImpuestos()) {
+      const i = colA.findIndex((f) => String(f?.[0] ?? '').trim() === rotulo)
+      if (i < 0) throw new Error(`no encontré la fila "${rotulo}" en "${CALENDARIO_IMPUESTOS.pestaña}" — la línea de IVA/IIBB apuntaría a la nada`)
+      filasCalendario[clave] = i + 1
+      console.log(`  calendario fiscal ${clave.toUpperCase()}: fila ${i + 1}`)
+    }
+  }
+
   const data = []
   for (const [pestaña, periodo] of [['Cash Flow Semanal', 'semanal'], ['Cash Flow Mensual', 'mensual']]) {
-    const g = grilla(periodo, faltantes, refCaja, refCajaFecha, filasTabla)
+    const g = grilla(periodo, faltantes, refCaja, refCajaFecha, filasTabla, filasCalendario)
     // Los marcadores se resuelven acá, cuando el cuadro ya está armado y se sabe en qué fila quedó
     // cada línea. Escribir los números a mano rompería el día que el cuadro crezca una línea.
     const ingreso = g.meta.detalle.filter((d) => d.signo > 0).map((d) => d.fila)
@@ -480,7 +504,7 @@ async function main() {
     // El atajo "IR A LA SEMANA / MES DE HOY" apunta a la propia pestaña (placeholder SEMGID).
     d.values = d.values.map((f) => f.map((c) => (typeof c === 'string' ? c.replace('SEMGID', String(gid)) : c)))
     for (const det of d.g.meta.detalle) {
-      const h = hipervinculoDetalle(det.linea, filasTabla)
+      const h = hipervinculoDetalle(det.linea, filasTabla, filasCalendario)
       if (!h) continue
       const gidDestino = gidPorPestana.get(h.destino)
       if (gidDestino == null) { sinDestino.push(`${d.pestaña}: "${det.linea.nombre}" → no encontré la pestaña "${h.destino}"`); continue }
