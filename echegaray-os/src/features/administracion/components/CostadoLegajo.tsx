@@ -79,9 +79,14 @@ export function CostadoLegajo({ identidad, laboral, asignacion, meses, hrefIdent
         <DatoDeCostado key={d.k} k={d.k} v={d.v} falta={d.falta} mono={d.mono} />
       ))}
 
-      <div style={{ marginTop: 22 }}>
-        <RotuloPanel>HH por mes</RotuloPanel>
-      </div>
+      {/* UN RÓTULO SIN NADA DEBAJO NO SE DIBUJA. Mientras las horas se leían sólo en dos caras,
+          «HH por mes» encabezaba un hueco en las otras cuatro: un título mudo dice que ahí debería
+          haber algo y no explica por qué no está. */}
+      {meses.length > 0 && (
+        <div style={{ marginTop: 22 }}>
+          <RotuloPanel>HH por mes</RotuloPanel>
+        </div>
+      )}
       {meses.map((m) => (
         <div key={m.clave} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 0' }} data-testid="hh-mes">
           <span style={{ fontSize: '11.5px', color: V.apagado, width: 44, flexShrink: 0 }}>{m.rotulo}</span>

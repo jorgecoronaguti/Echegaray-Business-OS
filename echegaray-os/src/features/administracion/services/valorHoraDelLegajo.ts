@@ -194,7 +194,7 @@ function datoPactado(e: EntradaDelRotulo): DatoDelRotulo {
   if (!vigente) {
     return dato({
       rotulo: '$/h negro', falta: 'sin $/h cargado', tono: 'warn',
-      titulo: 'Sin fila vigente en persona_tarifa: la quincena no la valoriza y no suma al total.',
+      titulo: 'Nadie cargó el $/h que se le paga: la quincena no lo valoriza y no suma al total.',
     })
   }
   const forma = formaDe(vigente)
@@ -215,7 +215,7 @@ function datoRecibo(e: EntradaDelRotulo): DatoDelRotulo {
   if (valor == null) {
     return dato({
       rotulo: '$/h recibo', falta: 'sin recibo cargado', tono: 'falta',
-      titulo: 'No hay línea en recibo_sueldo_linea para esta persona. El blanco se estima.',
+      titulo: 'Todavía no hay recibo cargado para esta persona: el blanco se estima.',
     })
   }
   const recibo = e.recibo as ReciboDelLegajo

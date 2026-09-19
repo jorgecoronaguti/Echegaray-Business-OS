@@ -3,36 +3,38 @@
 // ═══ POR QUÉ NO ESTÁ TODO A LA VISTA ═══
 //
 // El dueño: *"NO mostrar toda la información simultáneamente en 15 cards."* La ficha tiene
-// identidad, relación laboral, historial de asignaciones, horas, documentos, la cuenta con la que
-// entra y la bitácora de cambios: junto es una pared. Separado, cada pregunta tiene su solapa y el
+// identidad, relación laboral, historial de asignaciones, horas, lo que cobra, documentos y la
+// cuenta con la que entra: junto es una pared. Separado, cada pregunta tiene su solapa y el
 // Resumen contesta las tres que se hacen todos los días —quién es, qué categoría cobra, dónde está—.
 //
-// ═══ DOS SOLAPAS QUE NO SON COMO LAS OTRAS ═══
+// ═══ LA SOLAPA QUE SE FUE (dueño, 17/09/2026) ═══
 //
-// «Usuario y permisos» y «Auditoría» no describen a la PERSONA: describen su CUENTA y lo que se le
-// hizo a su ficha. Por eso cada una tiene su propio control de acceso, distinto del de la pantalla:
+// «Auditoría» listaba campo por campo quién tocó la ficha y cuándo. El dueño: *«eso de auditoría no
+// sirve en el legajo de ninguno, quitar»*. Se retiró la cara, su bloque y su lectura. El rastro de
+// cambios sigue existiendo en la base —lo escriben los disparadores, no esta pantalla—: lo que se
+// quitó es la pared de filas que nadie leía, no el registro.
 //
-//   Usuario y permisos   `veLaCuentaDeOtro` = `ve_economia()`, el MISMO predicado que cierra
-//                        `/administracion/usuarios`. Sin esto, la ficha sería el camino largo hasta
-//                        la pantalla que la lista negra le cierra al jefe de obra.
-//   Auditoría            `es_administracion()`, que es lo que la RLS de `entidad_cambio` ya exige.
-//                        Por eso la retribución llega tapada desde la base: el jefe de obra entra.
+// ═══ UNA SOLAPA QUE NO ES COMO LAS OTRAS ═══
 //
-// Y CADA SOLAPA PIDE SÓLO LO SUYO: el Resumen se abre muchas veces por día y no necesita el
-// historial de horas para decir quién es esta persona.
+// «Usuario y permisos» no describe a la PERSONA: describe su CUENTA. Por eso tiene su propio
+// control de acceso, distinto del de la pantalla: `veLaCuentaDeOtro` = `ve_economia()`, el MISMO
+// predicado que cierra `/administracion/usuarios`. Sin esto, la ficha sería el camino largo hasta
+// la pantalla que la lista negra le cierra al jefe de obra.
 //
-// ═══ DOS LECTURAS QUE SÍ CORREN SIEMPRE, Y POR QUÉ (Design 23/08/2026) ═══
+// ═══ LO QUE SE LEE EN TODAS LAS VISTAS, Y POR QUÉ ═══
 //
-// La asignación vigente y los documentos se leen en las SEIS vistas. No es un descuido del
-// principio de arriba: es que el slab de identidad los AFIRMA en todas.
+// La asignación vigente, los documentos, el $/h y las HORAS se leen en las SEIS caras, porque la
+// cabecera las AFIRMA en las seis.
 //
-// Y afirmarlos sin leerlos era un defecto real. El encabezado decía «Cuadrilla: sin cuadrilla ·
-// Obra actual: sin asignar» en las solapas Horas, Documentos, Usuario y Auditoría —porque
-// `asignaciones` sólo se pedía en dos— sobre personas que estaban en obra. Un control que no pudo
-// mirar no dice «no está»: o mira, o se calla. Miran.
+// Afirmar sin leer ya fue un defecto real dos veces. Primero el encabezado decía «Cuadrilla: sin
+// cuadrilla · Obra actual: sin asignar» en cuatro solapas sobre gente que estaba en obra. Después
+// —dueño, 17/09/2026: *«esto así no me sirve»*— las cifras de HH del mes y del año decían «se lee
+// en Horas» en las cuatro caras donde el registro no se pedía: eso no es un dato, es mandar a otra
+// pantalla desde el lugar donde la pregunta se hizo. Un control que no pudo mirar no dice «no
+// está»: o mira, o se calla. Miran.
 //
-// Las dos son chicas (las asignaciones y los papeles de UNA persona). La cara sigue siendo `horas`,
-// que lee `registros_hh` entera, y ésa sigue corriendo sólo en su solapa.
+// Todas son lecturas de UNA persona —sus asignaciones, sus papeles, su tarifa, sus registros— y no
+// del módulo entero: `registros_hh` se filtra por `persona_id` y viaja en el mismo paralelo.
 //
 // ═══ Y POR QUÉ SE EDITA EN UN PANEL ═══
 //
@@ -78,7 +80,6 @@ import { getDocumentosSubidos } from '@/features/documentos/services/documentosS
 import { getCertificadosDeLicencia } from '@/features/documentos/services/certificadosDeLicenciaService'
 import { ArchivosDeDrive } from '@/features/documentos/components/ArchivosDeDrive'
 import { DocumentosSubidos } from '@/features/documentos/components/DocumentosSubidos'
-import { BloqueAuditoria } from '@/features/administracion/components/BloqueAuditoria'
 import { BloqueUsuario } from '@/features/administracion/components/BloqueUsuario'
 import { CamposIdentidad, CamposLaboral } from '@/features/administracion/components/FormularioPersona'
 import { AltaDocumento } from '@/features/administracion/components/FichaPartes'
@@ -96,7 +97,6 @@ import { puedeAnotar, veAnotaciones } from '@/features/administracion/services/a
 import { getAnotaciones } from '@/features/administracion/services/anotacionesService'
 import { crearAnotacion } from '@/features/administracion/services/anotacionesActions'
 import { getCuentaDePersona } from '@/features/administracion/services/accesoService'
-import { getBitacora, TRAMO } from '@/features/administracion/services/auditoriaService'
 import { getHHDePersona, resumenDelPeriodo } from '@/features/administracion/services/hhPersonaService'
 import { esPeriodo, rotulo, ventanaDe, type Periodo } from '@/features/administracion/services/periodoHH'
 import { darDeBaja, editarPersona, reincorporar, type GrupoEdicion } from '@/features/administracion/services/personasActions'
@@ -110,21 +110,18 @@ import { fecha } from '@/features/obras/components/formato'
 
 export const dynamic = 'force-dynamic'
 
-type Busqueda = { v?: string; editar?: string; p?: string; n?: string }
-
-/** Cuántos cambios de la bitácora se piden. El «ver más» viaja en la URL, no en un estado de cliente. */
-function cuantosCambios(n: string | undefined): number {
-  const pedidos = Number(n)
-  // UN TOPE, Y NO POR PRUDENCIA: `?n=` viene del navegador. Sin techo, cualquiera con sesión pide
-  // la bitácora entera de una persona en una sola consulta y la pantalla tarda lo que tarde.
-  if (!Number.isInteger(pedidos) || pedidos <= 0) return TRAMO
-  return Math.min(pedidos, TRAMO * 20)
-}
+type Busqueda = { v?: string; editar?: string; p?: string }
 
 // EL PERÍODO LO ELIGE QUIEN MIRA. Antes era una ventana fija de 30 días, que no coincide con NINGUNA
 // liquidación: el dueño pidió *"día · semana · quincena · mes"*, y la quincena es la de la empresa
 // —1 al 15 y 16 a fin de mes—. Ver `services/periodoHH.ts`, donde se calcula sin depender del reloj.
 const PERIODO_POR_DEFECTO: Periodo = 'quincena'
+
+/** Las HH con su unidad y el punto de miles de acá: «1.605 h», no «1605». Es el mismo dibujo que
+ *  usan la solapa Retribución y el cuadro de la Liquidación — el mismo número no puede escribirse de
+ *  dos formas en la misma pantalla. */
+const hh = (n: number): string =>
+  `${n.toLocaleString('es-AR', { maximumFractionDigits: 1 })} h`
 
 export default async function FichaPersonaPage({
   params, searchParams,
@@ -179,7 +176,7 @@ export default async function FichaPersonaPage({
   // AFIRMA en todas. Leerlo sólo en el Resumen escribiría «sin $/h cargado» en las otras cinco
   // sobre gente que sí tiene tarifa —el defecto que ya se pagó con «Obra actual: sin asignar»—. Son
   // cuatro consultas chicas: las de UNA persona y la escala de UNA categoría, no el módulo entero.
-  const [asignaciones, documentos, valorHora] = await Promise.all([
+  const [asignaciones, documentos, valorHora, horas] = await Promise.all([
     getAsignacionesDe(supabase, id),
     getDocumentos(supabase, id),
     getValorHoraDelLegajo(supabase, {
@@ -193,6 +190,11 @@ export default async function FichaPersonaPage({
       puedeVer: liquida,
       hoy,
     }),
+    // LAS HORAS TAMBIÉN EN LAS SEIS. La tira de cifras publica HH del mes y del año en todas las
+    // caras, y el costado dibuja las barras por mes en todas: leerlas sólo en dos obligaba a
+    // escribir «se lee en Horas» donde tenía que ir el número. Filtra por `persona_id` —son los
+    // registros de UNA persona, no la tabla— y viaja en el mismo paralelo que las otras tres.
+    getHHDePersona(supabase, id),
   ])
   // LA RETRIBUCIÓN DEL AÑO SÓLO EN SU SOLAPA Y SÓLO CON PERMISO: es la lectura más cara del legajo
   // —le pregunta a la Liquidación quincena por quincena— y no se paga en las otras seis vistas.
@@ -201,10 +203,6 @@ export default async function FichaPersonaPage({
       personaId: id, cuil: persona.cuil ?? null, puedeVer: true, anio: Number(hoy.slice(0, 4)), hoy,
     })
     : null
-  // LAS HH TAMBIÉN EN EL RESUMEN, desde el canónico 20: la tira de métricas publica HH del mes y del
-  // año, y el bloque de arriba dibuja la semana. La consulta filtra por `persona_id`, así que es la
-  // de UNA persona y no la tabla entera; las otras cuatro solapas siguen sin pagarla.
-  const horas = vista === 'horas' || vista === 'resumen' ? await getHHDePersona(supabase, id) : null
   // LA CUENTA NO SE LEE SI EL QUE MIRA NO PUEDE VERLA. Esconder la solapa y leer igual dejaría los
   // datos en el HTML de la página para el que sepa mirar la respuesta del servidor.
   const cuenta = vista === 'usuario' && veLaCuenta ? await getCuentaDePersona(supabase, id) : null
@@ -224,8 +222,6 @@ export default async function FichaPersonaPage({
   // el legajo sólo podía VINCULAR un archivo que ya estuviera en Drive: quien tenía la foto del DNI
   // en el teléfono no tenía por dónde meterla.
   const subidos = vista === 'documentos' ? await getDocumentosSubidos(supabase, 'persona', id) : null
-  const cuantos = cuantosCambios(sp.n)
-  const bitacora = vista === 'auditoria' ? await getBitacora(supabase, 'personas', id, cuantos) : null
 
   const vigente = (asignaciones?.data ?? []).find((a) => !a.hasta) ?? null
   const papeles = documentos?.data ?? []
@@ -234,14 +230,14 @@ export default async function FichaPersonaPage({
   // HH: calcularlo en el navegador daría una antigüedad distinta a cada lado de la medianoche.
   const antiguedad = antiguedadEnAnios(persona.fecha_ingreso, hoy)
   const pendientes = papelesPendientes(papeles, persona.en_la_empresa)
-  const filasHH = horas?.data ?? []
+  const filasHH = horas.data ?? []
   const periodo = esPeriodo(sp.p) ? sp.p : PERIODO_POR_DEFECTO
   const ventana = ventanaDe(periodo, hoy)
   const resumen = resumenDelPeriodo(filasHH, ventana.desde, ventana.hasta)
   // El error de las anotaciones entra al mismo aviso: un bloque que no se pudo leer no puede
   // dibujarse vacío como si la persona no tuviera ninguna. (La tabla ausente NO es un error: viaja
   // por `pendiente` y lo dice el propio bloque.)
-  const fallo = asignaciones?.error ?? horas?.error ?? documentos?.error ?? anotaciones?.error
+  const fallo = asignaciones?.error ?? horas.error ?? documentos?.error ?? anotaciones?.error
 
   // LO QUE PUBLICA LA TIRA DE MÉTRICAS. Las tres ventanas se fijan en el SERVIDOR por la misma razón
   // que la de la liquidación: el mes y el año dependen del día, y el navegador de quien mira puede
@@ -288,8 +284,8 @@ export default async function FichaPersonaPage({
 
   // HH POR MES DEL COSTADO: se arma sobre los registros YA leídos. Un `group by` más contra
   // `registros_hh` daría un segundo total del mismo mes por otro camino, y el día que no coincidan
-  // nadie sabría cuál mirar. Sólo se calcula cuando las horas se leyeron.
-  const meses = horas ? hhPorMes(filasHH, hoy, 5) : []
+  // nadie sabría cuál mirar.
+  const meses = hhPorMes(filasHH, hoy, 5)
 
   const identidad: DatoDeLegajo[] = [
     // SE MUESTRAN FORMATEADOS Y SE GUARDAN PELADOS: once cifras seguidas no se comparan de un
@@ -326,10 +322,10 @@ export default async function FichaPersonaPage({
     ...(pareceCategoria(persona.puesto) ? [] : [{ k: 'Puesto', v: persona.puesto }]),
     { k: 'Modalidad', v: persona.modalidad_liquidacion },
     { k: 'Notas', v: persona.notas },
-    // LA RETRIBUCIÓN YA NO VIENE DE `persona_legajo` —que no publica la columna— sino de
-    // `persona_tarifa`, que es donde vive el $/h que se paga. Es EL MISMO objeto que pinta la tira
-    // de arriba: no puede decir una cosa acá y otra allá.
-    { k: 'Retribución', v: valorHora.rotulo.pactado.valor, falta: valorHora.rotulo.pactado.falta ?? 'sin dato', mono: true },
+    // EL $/H NO SE REPITE ACÁ. Este renglón dibujaba `valorHora.rotulo.pactado` —literalmente el
+    // mismo objeto que la tira de arriba— y la tira está en las seis caras: era el mismo número
+    // dicho dos veces en la misma pantalla, a 19px arriba y a 12px al costado. Se queda el de
+    // arriba, que además trae desde cuándo rige y cuánto varió. (Dueño, 17/09/2026.)
   ]
 
   const asignacion: DatoDeLegajo[] = vigente
@@ -348,17 +344,19 @@ export default async function FichaPersonaPage({
     // El cuarto número del canónico es «Ausencias»; acá va «Papeles pendientes» porque una ausencia
     // CON AVISO no existe como hecho cargado en `registros_hh` —hay tipo `ausencia`, pero no el
     // aviso— y dibujar el rótulo sobre un conteo de otra cosa afirmaría algo que nadie registró.
+    // EL NÚMERO, O LA PALABRA QUE EXPLICA SU AUSENCIA — nunca un cero ni un enlace a otra pantalla.
+    // Tres ausencias distintas y tres palabras distintas: no se pudo leer · nadie imputó · el número.
+    // Un cero acá afirmaría que la persona no trabajó este mes, y «se lee en Horas» —lo que decía
+    // hasta el 17/09/2026— mandaba a buscar a otra cara el dato que se está preguntando en ésta.
     {
       rotulo: 'HH del mes',
-      // Sin las horas leídas la cifra NO dice 0: dice que no se leyeron. Un cero acá afirma que la
-      // persona no trabajó este mes.
-      valor: horas ? (mes.trabajadas || null) : null,
-      falta: horas ? 'sin imputar' : 'se lee en Horas',
+      valor: horas.error ? null : (mes.trabajadas ? hh(mes.trabajadas) : null),
+      falta: horas.error ? 'no se pudo leer' : 'sin imputar',
     },
     {
       rotulo: 'HH del año',
-      valor: horas ? (anio.trabajadas || null) : null,
-      falta: horas ? 'sin imputar' : 'se lee en Horas',
+      valor: horas.error ? null : (anio.trabajadas ? hh(anio.trabajadas) : null),
+      falta: horas.error ? 'no se pudo leer' : 'sin imputar',
     },
     {
       rotulo: 'Antigüedad',
@@ -452,13 +450,15 @@ export default async function FichaPersonaPage({
           solapa Personal de la obra.
         </AvisoDeFicha>
       )}
+      {/* UNA FRASE, Y DEL NEGOCIO. Acá vivía el nombre de una tabla entre comillas invertidas
+          explicando por qué el legajo no controla vencimientos (dueño, 17/09/2026: *«en pantalla
+          NUNCA van nombres de tablas»*). Lo que el aviso tiene que decir es qué falta y dónde se
+          resuelve; el alcance del control se dice una vez, al pie de la solapa Documentos. */}
       {vigente && pendientes > 0 && (
         <AvisoDeFicha verbo="Ver papeles" href={href('documentos')} testid="aviso-papeles">
           {pendientes === 1
             ? 'Falta un papel del legajo.'
             : `Faltan ${pendientes} papeles del legajo.`}
-          {' '}Ninguno vence: `documento_legajo` no guarda fecha de vencimiento, así que lo que falta
-          es que estén, no que estén al día.
         </AvisoDeFicha>
       )}
 
@@ -623,10 +623,12 @@ export default async function FichaPersonaPage({
                   />
                 </div>
               )}
+              {/* LO QUE ESTA CARA PUEDE AFIRMAR Y LO QUE NO, en una línea y sin nombrar una tabla.
+                  El legajo no lleva fechas de vencimiento: decir «al día» sería afirmar un control
+                  que nadie está haciendo. */}
               <p style={{ fontSize: '11px', lineHeight: 1.6, color: V.tenue, marginTop: 12, maxWidth: 720 }}>
-                Vínculos a Drive: el archivo no se copia. Ninguno vence —`documento_legajo` no guarda
-                fecha de vencimiento—, así que esta cara nunca dice «al día»: sería una afirmación
-                sobre un control que nadie está haciendo.
+                Los papeles se enlazan a Drive: el archivo no se copia. Acá se controla que el papel
+                esté, no que esté vigente.
               </p>
             </div>
           )}
@@ -652,15 +654,6 @@ export default async function FichaPersonaPage({
               // NADIE SE SACA EL ACCESO A SÍ MISMO, y acá se sabe antes de apretar.
               esUnoMismo={cuenta.hay && cuenta.cuenta.usuarioId === actor?.id}
             />
-          )}
-
-          {vista === 'auditoria' && bitacora && (
-            <div data-testid="bloque-auditoria">
-              <BloqueAuditoria
-                bitacora={bitacora}
-                hrefMas={`${base}?${new URLSearchParams({ v: 'auditoria', n: String(cuantos + TRAMO) })}`}
-              />
-            </div>
           )}
         </div>
 

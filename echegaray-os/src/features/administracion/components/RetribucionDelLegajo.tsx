@@ -3,12 +3,18 @@
 //
 // ═══ QUÉ HAY Y EN QUÉ ORDEN ═══
 //
-//   1. Lo vigente: $/h negro (pactado), $/h del recibo (blanco) y el básico de convenio — los mismos
-//      tres números de la tira de arriba, porque la sección tiene que poder leerse sola.
-//   2. El año en cinco cifras: liquidado, consta pagado, negro, blanco, horas.
-//   3. La tabla del año, quincena por quincena (mes por mes para un mensual), con lo que la Liquidación
+//   1. El año en cinco cifras: liquidado, consta pagado, negro, blanco, horas.
+//   2. La tabla del año, quincena por quincena (mes por mes para un mensual), con lo que la Liquidación
 //      calculó para cada una. Cada período enlaza a su quincena en Liquidación: ahí se corrige, acá se lee.
-//   4. Los dos historiales de $/h, a la vista y no bajo un `<details>`: eso fue lo que el dueño pidió rehacer.
+//   3. Los dos historiales de $/h, a la vista y no bajo un `<details>`: eso fue lo que el dueño pidió rehacer.
+//
+// ═══ LO VIGENTE NO SE REPITE ACÁ (dueño, 17/09/2026) ═══
+//
+// La sección abría con $/h negro · $/h recibo · piso de convenio, los mismos tres números que la
+// tira de la cabecera del legajo ya publica en TODAS las caras, con el mismo dibujo y el mismo
+// tamaño. En la captura que mandó el dueño el bloque se veía dos veces seguidas en la misma
+// pantalla: *«esto así no me sirve, es un desastre»*. La sección no necesita repetirlos para leerse
+// sola —están treinta píxeles más arriba, siempre—; empieza directo por el año.
 //
 // ═══ SIN TARJETAS, SIN PÁRRAFOS ═══
 //
@@ -86,7 +92,7 @@ function FilaDelAnio({ f, hrefLiquidacion }: { f: FilaDeRetribucion; hrefLiquida
     <tr data-testid="retribucion-fila" data-estado={f.estado}>
       <Celda izquierda>{periodo}</Celda>
       <Celda>{horas(f.horas)}</Celda>
-      <Celda tono={f.sinTarifa ? V.warn : undefined} title={f.sinTarifa ? 'sin tarifa vigente en persona_tarifa' : undefined}>
+      <Celda tono={f.sinTarifa ? V.warn : undefined} title={f.sinTarifa ? 'Nadie cargó el $/h que regía en esa quincena' : undefined}>
         {f.sinTarifa ? 'sin tarifa' : f.mensual ? `${pesos(f.tarifa)} / mes` : pesos(f.tarifa)}
       </Celda>
       <Celda>{pesos(p.negro)}</Celda>
@@ -207,12 +213,7 @@ export function RetribucionDelLegajo({ r, rotulo, hrefLiquidacion, testid = 'blo
 }) {
   return (
     <div data-testid={testid} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div data-testid="retribucion-vigente" style={{ display: 'flex', flexWrap: 'wrap', gap: 34, rowGap: 14 }}>
-        <DatoDelValorHora d={rotulo.pactado} />
-        <DatoDelValorHora d={rotulo.recibo} />
-        <DatoDelValorHora d={rotulo.piso} />
-      </div>
-
+      {/* SIN EL BLOQUE DE LO VIGENTE: la tira de la cabecera lo dice en las seis caras. Ver arriba. */}
       <div data-testid="retribucion-cifras" style={{ display: 'flex', flexWrap: 'wrap', gap: 34, rowGap: 14 }}>
         {r.cifras.map((c) => <DatoDelValorHora key={c.rotulo} d={cifraComoDato(c)} />)}
       </div>
