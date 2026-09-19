@@ -35,7 +35,10 @@ import { resolverColumnas } from '../lib/compras-columnas.mjs'
 import { RUBRO_SAC } from '../lib/libro-extractores-sac.mjs'
 // LAS COLUMNAS Y LA MARCA SALEN DEL BISTURÍ, no de una copia: si la planilla mueve una columna, la
 // simulación y la escritura real tienen que moverse juntas o se mide una orden distinta de la que se da.
-import { COL as COL_BISTURI, MARCA as ANULADA } from './compras-marcar-eliminado.mjs'
+// Y LAS COLUMNAS DEL BISTURÍ SE RESUELVEN CONTRA LA FILA DE RÓTULOS LEÍDA (18/09/2026), no contra
+// letras fijas: con «Obra» insertada en L, la constante vieja habría comparado el importe pedido
+// contra la columna IVA y anulado la fila equivocada en la simulación.
+import { COL as COL_BISTURI, colDe as colDelBisturi, MARCA as ANULADA } from './compras-marcar-eliminado.mjs'
 import { isoDeSerial } from '../lib/libro-extractores-fechas.mjs'
 import { RANGO_TC, tipoCambioDeCelda } from '../lib/tipo-cambio.mjs'
 import { query } from '../lib/db.mjs'
@@ -116,6 +119,10 @@ export function comprasComoQuedaria(filas = [], { lista = null, desde = null } =
   let anuladas = 0
   let saltadas = 0
   const porFila = new Map((lista ?? []).map((x) => [Number(x.fila), x]))
+  // Las columnas del bisturí, por rótulo, resueltas la primera vez que hacen falta (una pestaña sin
+  // filas que anular no necesita el contrato entero).
+  let bisturi = null
+  const b = () => (bisturi ??= colDelBisturi(filas[2] ?? []))
   for (let i = 3; i < filas.length; i++) {
     const f = filas[i] ?? []
     const rubro = String(f[c.rubro] ?? '').trim()
@@ -123,7 +130,7 @@ export function comprasComoQuedaria(filas = [], { lista = null, desde = null } =
     const pedida = porFila.get(i + 1)
     if (lista) {
       if (!pedida) continue
-      const mal = desajusteDeHuella(f, pedida)
+      const mal = desajusteDeHuella(f, pedida, b())
       if (mal) { problemas.push({ fila: i + 1, motivo: mal }); continue }
     } else {
       if (!rubro && !unidad) continue
@@ -134,7 +141,7 @@ export function comprasComoQuedaria(filas = [], { lista = null, desde = null } =
     // criterio de selección, y así las dos corridas (completa y recortada) eligen el mismo conjunto.
     const fechaCaja = typeof f[c.fechaCaja] === 'number' ? f[c.fechaCaja] : null
     if (desde !== null && (fechaCaja === null || fechaCaja < desde)) { saltadas += 1; continue }
-    out[i] = filaMarcada(f, c)
+    out[i] = filaMarcada(f, c, b())
     anuladas += 1
     unidades.set(unidad || '(vacía)', (unidades.get(unidad || '(vacía)') ?? 0) + 1)
   }
@@ -142,10 +149,10 @@ export function comprasComoQuedaria(filas = [], { lista = null, desde = null } =
 }
 
 /** La fila tal como la deja el bisturí: X=ELIMINADO y neto/IVA/total/pagado en CERO. PURO. */
-function filaMarcada(f, c) {
+function filaMarcada(f, c, bisturi = COL_BISTURI) {
   const copia = f.slice()
   copia[c.estado] = ANULADA
-  for (const col of [COL_BISTURI.neto, COL_BISTURI.iva, COL_BISTURI.total, COL_BISTURI.pagado]) {
+  for (const col of [bisturi.neto, bisturi.iva, bisturi.total, bisturi.pagado]) {
     // Sólo si la celda tenía un número: poner 0 donde había vacío inventaría un dato que el bisturí
     // tampoco escribe (su `nTieneNumero` hace exactamente esta pregunta antes de pisar el IVA).
     if (typeof copia[col] === 'number') copia[col] = 0
@@ -160,19 +167,19 @@ function filaMarcada(f, c) {
  * proveedor, cliente e importe. Si la planilla se reordenó, el número de fila apunta a otra compra —
  * y una simulación que anula otra fila mide una orden que nadie dio.
  */
-export function desajusteDeHuella(f, pedida) {
+export function desajusteDeHuella(f, pedida, bisturi = COL_BISTURI) {
   const norm = (v) => String(v ?? '').trim()
   const cent = (v) => Math.round((Number(v) || 0) * 100)
-  const id = Number(f[COL_BISTURI.id]) || null
+  const id = Number(f[bisturi.id]) || null
   if (pedida.id != null && id !== Number(pedida.id)) return `el id de la A es ${id} y la lista pide ${pedida.id}`
-  if (norm(f[COL_BISTURI.proveedor]).toLowerCase() !== norm(pedida.proveedor).toLowerCase()) {
-    return `el proveedor es "${norm(f[COL_BISTURI.proveedor])}" y la lista pide "${pedida.proveedor}"`
+  if (norm(f[bisturi.proveedor]).toLowerCase() !== norm(pedida.proveedor).toLowerCase()) {
+    return `el proveedor es "${norm(f[bisturi.proveedor])}" y la lista pide "${pedida.proveedor}"`
   }
   // El importe se compara SALVO que la fila ya esté marcada: el bisturí es idempotente y una fila ya
   // hecha tiene el total en cero, así que exigirle el importe original la reportaría como problema.
-  const yaMarcada = norm(f[COL_BISTURI.estado]).toUpperCase() === ANULADA && cent(f[COL_BISTURI.total]) === 0
-  if (!yaMarcada && cent(f[COL_BISTURI.total]) !== cent(pedida.total)) {
-    return `el importe es ${f[COL_BISTURI.total]} y la lista pide ${pedida.total}`
+  const yaMarcada = norm(f[bisturi.estado]).toUpperCase() === ANULADA && cent(f[bisturi.total]) === 0
+  if (!yaMarcada && cent(f[bisturi.total]) !== cent(pedida.total)) {
+    return `el importe es ${f[bisturi.total]} y la lista pide ${pedida.total}`
   }
   return null
 }

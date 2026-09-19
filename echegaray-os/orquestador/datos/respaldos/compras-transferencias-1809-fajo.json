@@ -1,0 +1,42 @@
+[
+  {
+    "proveedor": "Corzo Carlos David",
+    "cuit": "20-28895457-8",
+    "fecha": "16/09/2026",
+    "tipo": "A",
+    "numero": "0003-00000533",
+    "neto": 107438,
+    "iva": 22561.98,
+    "total": 130000,
+    "condicion": "Contado",
+    "formaPago": "Transferencia",
+    "categoria": "B",
+    "concepto": "Pago a proveedor por transferencia Santander 09/09/2026 ref 88244002 ($130.000) · factura A 0003-00000533 del 16/09/2026 según ARCA (CAE 86373312605639) · decisión del dueño 18/09: pagos a proveedores en transfer"
+  },
+  {
+    "proveedor": "Cerdera Maggini Vanesa",
+    "cuit": "27-28020869-3",
+    "fecha": "01/09/2026",
+    "tipo": "N/A",
+    "neto": 189591.91,
+    "iva": 0,
+    "total": 189591.91,
+    "condicion": "Contado",
+    "formaPago": "Transferencia",
+    "categoria": "N",
+    "concepto": "Pago a proveedor por transferencia Santander 01/09/2026 ref 4129444 · SIN COMPROBANTE · decisión del dueño 18/09: pagos a proveedores en transfer"
+  },
+  {
+    "proveedor": "Basso Gabriel Fabian",
+    "cuit": "20-25939106-8",
+    "fecha": "15/09/2026",
+    "tipo": "N/A",
+    "neto": 80000,
+    "iva": 0,
+    "total": 80000,
+    "condicion": "Contado",
+    "formaPago": "Transferencia",
+    "categoria": "N",
+    "concepto": "Pago a proveedor por transferencia Santander 15/09/2026 ref 92531589 · SIN COMPROBANTE · devolvió $13.000 el 17/09 (ref 34593722), no cargada como compra · decisión del dueño 18/09"
+  }
+]

@@ -307,3 +307,56 @@ export function planDeCorreccion(filas = [], correccion = CORRECCION_ESTRUCTURA_
   }
   return { escribir, noSeTocan }
 }
+
+/**
+ * LA SEGUNDA CORRECCIÓN QUE ORDENÓ EL DUEÑO (18/09/2026, tarde). Regla vigente, textual: Directo = impacta en
+ * una obra; Indirecto = Administración (ES-ADM) y Taller (ES-TAL). Las filas cuya columna Obra dice estructura
+ * y que él había etiquetado «Directo» pasan a «Indirecto»: «sí». Medido sobre el espejo y sobre la pestaña viva
+ * el 18/09: 71 filas (Administracion 36 · Taller 23 · TALLER 3 · Almacen 9 — todas con L = ES-ADM/ES-TAL).
+ *
+ * No se nombran filas: la orden es la REGLA, y la fila la elige la columna Obra que él mismo cargó. La guarda
+ * es por valor esperado: se escribe `a` sólo donde la celda dice exactamente `de` y la L dice estructura.
+ */
+export const CORRECCION_DIRECTO_A_INDIRECTO_ESTRUCTURA_1809 = Object.freeze({
+  nombre: 'directo-a-indirecto-estructura',
+  pedido: 'Administración y Taller marcadas «Directo» pasan a «Indirecto»: «sí» — dueño, 18/09/2026',
+  de: TIPO.DIRECTO,
+  a: TIPO.INDIRECTO,
+  destinos: Object.freeze(['estructura_admin', 'estructura_taller']),
+  /** Filas que quedan afuera aunque cumplan la regla (decisión del dueño). */
+  excluir: Object.freeze([983]),
+})
+
+/** Las correcciones que el script acepta por nombre (`--corregir <nombre>`). */
+export const CORRECCIONES = Object.freeze({
+  [CORRECCION_DIRECTO_A_INDIRECTO_ESTRUCTURA_1809.nombre]: CORRECCION_DIRECTO_A_INDIRECTO_ESTRUCTURA_1809,
+})
+
+/**
+ * NÚCLEO PURO: el plan de una corrección POR DESTINO con guarda por valor esperado. Recorre la pestaña entera:
+ * escribe `a` en toda fila cuyo `destino` (de la columna Obra) esté en `destinos` y cuyo Tipo de Costo diga
+ * exactamente `de`. Lo demás no se toca. Devuelve también el conteo por texto de la J, para cotejarlo con lo
+ * que se le mostró al dueño antes de escribir.
+ * @param {object[]} filas  la pestaña proyectada (fila, proveedor, tipo_costo, destino, obra_celda, obra_texto, …)
+ * @returns {{escribir:object[], porCliente:Object<string,number>, excluidas:object[]}}
+ */
+export function planDeCorreccionPorDestino(filas = [], correccion = CORRECCION_DIRECTO_A_INDIRECTO_ESTRUCTURA_1809) {
+  const escribir = []
+  const excluidas = []
+  const porCliente = {}
+  for (const f of filas) {
+    if (!correccion.destinos.includes(f.destino)) continue
+    if (T(f.tipo_costo) !== correccion.de) continue
+    const base = {
+      fila: f.fila, proveedor: T(f.proveedor) || null, concepto: T(f.concepto) || null, cliente: T(f.obra_texto) || null,
+      obra_celda: T(f.obra_celda) || null, unidad: T(f.unidad_negocio) || null, total: f.total ?? null,
+    }
+    if ((correccion.excluir ?? []).includes(f.fila)) { excluidas.push({ ...base, motivo: 'excluida por decisión del dueño' }); continue }
+    if (esAnuladaTC(f)) { excluidas.push({ ...base, motivo: 'fila anulada' }); continue }
+    porCliente[base.cliente ?? '(vacía)'] = (porCliente[base.cliente ?? '(vacía)'] ?? 0) + 1
+    escribir.push({ ...base, valor: correccion.a, antes: correccion.de, motivo: `L «${base.obra_celda}» → ${f.destino}: ${correccion.pedido}` })
+  }
+  return { escribir, porCliente, excluidas }
+}
+
+const esAnuladaTC = (f) => Boolean(f.anulada) || /^(eliminado|cancelado)$/i.test(T(f.estado))

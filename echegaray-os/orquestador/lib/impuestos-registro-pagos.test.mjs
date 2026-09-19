@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   pagosDelBanco, pagosDeCompras, pagosDeCobranzas, sinPagosRepetidos, creditosPorPeriodo, conEstadoDePago,
-  periodoF931PorImporte, fechaISO, obligacionesDeDebitosBancarios,
+  periodoF931PorImporte, fechaISO, obligacionesDeDebitosBancarios, declaradasCubiertasPorBanco, COBRADORES_DEBIN,
 } from './impuestos-registro-pagos.mjs'
 
 const F931 = new Map([['2026-07', 8235741.96], ['2026-08', 8331697.69]])
@@ -104,4 +104,41 @@ test('impuesto al cheque: la obligación del mes es la suma neta de lo debitado,
   const [o, ...resto] = obligacionesDeDebitosBancarios(pagos, { datosAl: '2026-09-14' })
   assert.equal(resto.length, 0, 'una percepción no es un impuesto al cheque')
   assert.deepEqual([o.impuesto, o.periodo, o.a_pagar, o.estado], ['impuesto_cheque', '2026-08', 500, 'pagado'])
+})
+
+// ═══ 18/09/2026: EL DEBIN A PLUSPAGOS Y EL DÉBITO AUTOMÁTICO QUE AHORA DICE «Arca» ═══
+
+const IIBB = new Map([['2026-07', 0], ['2026-08', 432764.9]])
+
+test('un DEBIN al CUIT de PlusPagos (Administradora San Juan S.A.) que coincide al centavo con el «a pagar» de una DDJJ de IIBB es ese pago', () => {
+  const [p] = pagosDelBanco([mov({ id: 1103, fecha: '2026-09-17', importe: -432764.9, concepto: 'Debito debin - id debin lmorzp90ged80oyynegj46 cuit 30707743987' })], { iibb: IIBB })
+  assert.deepEqual([p.impuesto, p.periodo, p.tipo, p.concepto, p.imputacion, p.importe, p.referencia], ['iibb', '2026-08', 'debin', 'ddjj', 'importe', 432764.9, 'banco:1103'])
+  assert.match(p.contraparte, /DGR San Juan/)
+  assert.match(p.detalle.cobrador, /PlusPagos/)
+  assert.equal(COBRADORES_DEBIN[0].cuit, '30707743987')
+})
+
+test('un DEBIN al mismo cobrador que NO coincide con ninguna DDJJ de IIBB no es un impuesto por evidencia: no se registra (la boleta de UOCRA también viaja por ahí)', () => {
+  const pagos = pagosDelBanco([
+    mov({ id: 801, fecha: '2026-08-19', importe: -649940.06, concepto: 'Debito debin - id debin 7l8gyknx4k0y0rqpnmprz5 cuit 30707743987' }),
+    mov({ id: 1037, fecha: '2026-09-10', importe: -994941.26, concepto: 'Debito debin - id debin rd06zo9w4lqdwjv325gp7x cuit 30503049097' }),
+  ], { iibb: IIBB })
+  assert.deepEqual(pagos, [])
+})
+
+test('«Debito automatico - Arca» (el banco cambió AFIP por ARCA) entra como débito automático sin imputar, igual que «Afip»', () => {
+  const [p] = pagosDelBanco([mov({ id: 1091, fecha: '2026-09-16', importe: -242519.6, concepto: 'Debito automatico - Arca -30716304643' })])
+  assert.deepEqual([p.tipo, p.impuesto, p.imputacion, p.importe, p.referencia], ['debito_automatico', null, 'sin_imputar', 242519.6, 'banco:1091'])
+})
+
+test('una declaración a mano del dueño queda cubierta cuando el banco trae el mismo impuesto, período e importe: el débito le gana a la declaración', () => {
+  const existentes = [
+    { fuente: 'manual', referencia: 'iibb-2026-08-declarado', lector: 'dueño', imputacion: 'declarada', impuesto: 'iibb', periodo: '2026-08', importe: '432764.90' },
+    { fuente: 'manual', referencia: 'iibb-2026-09-declarado', lector: 'dueño', imputacion: 'declarada', impuesto: 'iibb', periodo: '2026-09', importe: '870434.04' },
+    { fuente: 'banco', referencia: 'banco:1090', lector: 'banco', imputacion: 'importe', impuesto: 'cargas_sociales', periodo: '2026-06', importe: '2494875.65' },
+  ]
+  const pagos = pagosDelBanco([mov({ id: 1103, fecha: '2026-09-17', importe: -432764.9, concepto: 'Debito debin - id debin x cuit 30707743987' })], { iibb: IIBB })
+  assert.deepEqual(declaradasCubiertasPorBanco(existentes, pagos), ['manual|iibb-2026-08-declarado'])
+  // Sin el débito del banco no se toca ninguna declaración.
+  assert.deepEqual(declaradasCubiertasPorBanco(existentes, []), [])
 })

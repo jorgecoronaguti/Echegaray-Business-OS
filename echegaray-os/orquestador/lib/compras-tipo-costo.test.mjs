@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   TIPO, VOCABULARIO, esCandidata, tipoDeCosto, planDeTipoCosto, medirContraEtiquetas, tramosDeEscritura,
   verificarRelectura, planDeReversa, planDeCorreccion, CORRECCION_ESTRUCTURA_A_DIRECTO_1809,
+  planDeCorreccionPorDestino, CORRECCION_DIRECTO_A_INDIRECTO_ESTRUCTURA_1809, CORRECCIONES,
 } from './compras-tipo-costo.mjs'
 import { VIA } from './compras-obra-asignada.mjs'
 
@@ -185,4 +186,46 @@ test('reversa de la corrección: devuelve «Estructura» sólo donde sigue dicie
   assert.deepEqual(r.restaurar, [{ fila: 349, valor: 'Directo', antes: 'Estructura' }])
   assert.deepEqual(r.vaciar, [])
   assert.deepEqual(r.noSonMias.map((x) => x.fila), [351, 352])
+})
+
+// ═══ LA CORRECCIÓN DE LA TARDE DEL 18/09: Directo → Indirecto donde la columna Obra dice ES-ADM / ES-TAL ═══
+
+const ADM_DIRECTO = { fila: 95, proveedor: 'Movistar', unidad_negocio: 'Estructura', obra_texto: 'Administracion', obra_celda: 'ES-ADM · Estructura – Administración', destino: 'estructura_admin', tipo_costo: 'Directo', total: 315834.53, concepto: 'Serv telefono' }
+const TAL_DIRECTO = { fila: 78, proveedor: 'DUPEC', unidad_negocio: 'Estructura', obra_texto: 'Taller', obra_celda: 'ES-TAL · Estructura – Taller', destino: 'estructura_taller', tipo_costo: 'Directo', total: 24000, concepto: 'REPARACION AMOLADORA 4"' }
+const ALMACEN_DIRECTO = { fila: 70, proveedor: 'DUPEC', unidad_negocio: 'Estructura', obra_texto: 'Almacen', obra_celda: 'ES-TAL · Estructura – Taller', destino: 'estructura_taller', tipo_costo: 'Directo', total: 416400, concepto: 'AMOLADORA MAKITA' }
+const ADM_INDIRECTO = { ...ADM_DIRECTO, fila: 96, tipo_costo: 'Indirecto' }
+const ADM_ESTRUCTURA = { ...ARCA_F931, tipo_costo: 'Estructura' }
+const OBRA_DIRECTO = { ...LE_CEMENTO, tipo_costo: 'Directo' }
+const ADM_DIRECTO_ANULADA = { ...ADM_DIRECTO, fila: 97, estado: 'ELIMINADO' }
+const HORMISERV_983 = { fila: 983, proveedor: 'Hormiserv', obra_texto: 'LA ESTRELLA', obra_celda: 'ES-TAL · Estructura – Taller', destino: 'estructura_taller', tipo_costo: 'Directo', total: 2456784 }
+
+test('Directo → Indirecto SÓLO donde la L dice estructura y la celda dice exactamente «Directo»', () => {
+  const r = planDeCorreccionPorDestino([ADM_DIRECTO, TAL_DIRECTO, ALMACEN_DIRECTO, ADM_INDIRECTO, ADM_ESTRUCTURA, OBRA_DIRECTO, ADM_DIRECTO_ANULADA])
+  assert.deepEqual(r.escribir.map((e) => [e.fila, e.valor, e.antes]), [[95, 'Indirecto', 'Directo'], [78, 'Indirecto', 'Directo'], [70, 'Indirecto', 'Directo']])
+  // El conteo por texto de la J es lo que se coteja con lo mostrado al dueño (Administracion 36 · Taller 23 · TALLER 3 · Almacen 9).
+  assert.deepEqual(r.porCliente, { Administracion: 1, Taller: 1, Almacen: 1 })
+  // La fila con obra no se toca aunque diga Directo (es directa de verdad); la anulada se lista, no se escribe.
+  assert.ok(!r.escribir.some((e) => e.fila === OBRA_DIRECTO.fila))
+  assert.deepEqual(r.excluidas.map((x) => [x.fila, x.motivo]), [[97, 'fila anulada']])
+})
+
+test('la 983 (Hormiserv) queda afuera por decisión del dueño aunque cumpliera la regla', () => {
+  const r = planDeCorreccionPorDestino([HORMISERV_983, ADM_DIRECTO])
+  assert.deepEqual(r.escribir.map((e) => e.fila), [95])
+  assert.deepEqual(r.excluidas.map((x) => [x.fila, x.motivo]), [[983, 'excluida por decisión del dueño']])
+})
+
+test('la corrección se pide por nombre y el vocabulario que escribe es el del dueño', () => {
+  assert.equal(CORRECCIONES['directo-a-indirecto-estructura'], CORRECCION_DIRECTO_A_INDIRECTO_ESTRUCTURA_1809)
+  assert.ok(VOCABULARIO.includes(CORRECCION_DIRECTO_A_INDIRECTO_ESTRUCTURA_1809.a))
+})
+
+test('la reversa de una corrección RESTAURA el valor previo («Directo»), no vacía la celda', () => {
+  const { escribir } = planDeCorreccionPorDestino([ADM_DIRECTO, TAL_DIRECTO])
+  const respaldo = [{ fila: 95, valor: 'Directo' }, { fila: 78, valor: 'Directo' }]
+  const leido = new Map([[95, 'Indirecto'], [78, 'Estructura']]) // la 78 la cambió alguien después
+  const r = planDeReversa({ escribir, respaldo, leido })
+  assert.deepEqual(r.restaurar, [{ fila: 95, valor: 'Indirecto', antes: 'Directo' }])
+  assert.deepEqual(r.vaciar, [])
+  assert.deepEqual(r.noSonMias.map((x) => x.fila), [78])
 })

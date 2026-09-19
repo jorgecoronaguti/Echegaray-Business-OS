@@ -14,6 +14,7 @@ import {
   diferencias, comoCelda, netoPorSemana, netoPorRubroMes, comprasComoQuedaria, sumarDif, SALIDA_ERROR,
 } from './libro-simular-sin-compras.mjs'
 import { serialDe, isoDeSerial } from '../lib/libro-extractores-fechas.mjs'
+import { COMPRAS_1809 } from '../lib/comprobantes/encabezado-vivo-compras.mjs'
 
 const S = (iso) => serialDe(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)), Number(iso.slice(8, 10)))
 /** Un movimiento con lo que estas funciones miran. Egreso = signo −1, como en el libro. */
@@ -154,4 +155,24 @@ test('comprasComoQuedaria aborta si falta la columna de unidad: no simula a cieg
   assert.throws(() => comprasComoQuedaria([[], [], enc]), /Unidad de Negocio/)
   // Y con ella, no explota y no anula nada si no hay filas.
   assert.equal(comprasComoQuedaria([[], [], [...enc, 'Unidad de Negocio']]).anuladas, 0)
+})
+
+test('con --lista y la fila de rótulos del 18/09 (Obra en L), la simulación anula por las columnas RESUELTAS: Estado=Y, Total=P', () => {
+  const enc = [...COMPRAS_1809]
+  const i = (r) => enc.indexOf(r)
+  const f = new Array(enc.length).fill('')
+  f[i('ID')] = 419; f[i('Fecha factura')] = 46153; f[i('Proveedor')] = 'FCL'; f[i('Cliente / Asignación')] = 'FCL'
+  f[i('Unidad de Negocio')] = 'Impuestos'; f[i('Total')] = 1137000; f[i('Monto Pagado')] = 1137000; f[i('Estado')] = 'Pagado'
+  f[i('Fecha de caja')] = 46153
+  const filas = [[], [], enc, f]
+  const r = comprasComoQuedaria(filas, { lista: [{ fila: 4, id: 419, proveedor: 'FCL', total: 1137000 }] })
+  assert.deepEqual(r.problemas, [])
+  assert.equal(r.anuladas, 1)
+  const q = r.filas[3]
+  assert.equal(q[i('Estado')], 'ELIMINADO')
+  assert.equal(q[i('Total')], 0)
+  assert.equal(q[i('Monto Pagado')], 0)
+  // Y las columnas que con los índices viejos habrían recibido el golpe quedan intactas.
+  assert.equal(q[i('Monto Parcial 2')], '')
+  assert.equal(q[i('IVA')], '')
 })

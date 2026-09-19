@@ -1,0 +1,6 @@
+[
+  { "fila": 423, "id": 419, "fecha": "2026-05-11", "proveedor": "FCL", "cliente": "FCL", "total": 1137000 },
+  { "fila": 434, "id": 430, "fecha": "2026-06-10", "proveedor": "FCL", "cliente": "FCL", "total": 800000 },
+  { "fila": 457, "id": 453, "fecha": "2026-07-10", "proveedor": "FCL", "cliente": "FCL", "total": 800000 },
+  { "fila": 465, "id": 461, "fecha": "2026-08-10", "proveedor": "FCL", "cliente": "FCL", "total": 1222596 }
+]
