@@ -1,6 +1,6 @@
 ---
 name: fondo-de-cese-pago-simple-afon
-description: "Procedimiento mensual para generar el archivo que el dueño sube a Online Banking Empresas de Santander para depositar el Fondo de Cese Laboral (FCL) de cada trabajador: el Excel «PAGO SIMPLE AFON - MMAAAA.xlsx». Activar cuando el estudio contable manda la planilla del FCL del mes (mail «BOLETAS UOCRA Y IERIC» con «FCL 2026.xlsx»), cuando el dueño pida «el archivo del FCL / del fondo de cese / AFON para el banco», o cuando el Cash Flow proyecte el pago del FCL del mes. Encapsula lo aprendido el 10/09/2026: el banco NO usa el formato FUR (txt) con Echegaray sino Pago Simple; el archivo se genera SOBRE el último lote que Santander acreditó, nunca de cero; las cuentas salen del lote acreditado, no de un padrón; «Orden de pago» lleva el período MAAAA; y quién cobra por transferencia o en efectivo lo dice la planilla del estudio. Usa orquestador/scripts/santander-fur-fcl.mjs (no reescribe el motor). Cruzar con derecho-laboral-construccion sólo si la duda es de régimen, no de formato."
+description: "Generar «PAGO SIMPLE AFON - MMAAAA.xlsx» para depositar el Fondo de Cese (FCL) en Santander: al llegar «FCL 2026.xlsx» del estudio (mail «BOLETAS UOCRA Y IERIC»), al pedir el archivo AFON o al proyectar el FCL en el Cash Flow. No usar para régimen laboral."
 allowed-tools: Read, Bash, Write
 metadata:
   author: echegaray-os

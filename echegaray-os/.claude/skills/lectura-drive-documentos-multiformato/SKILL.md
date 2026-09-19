@@ -1,6 +1,6 @@
 ---
 name: lectura-drive-documentos-multiformato
-description: "Metodología para inspeccionar, leer, extraer y validar información desde Google Drive y documentos multiformato (Sheets, Docs, PDF, Excel, Word, CSV, imágenes/OCR) para Echegaray Business OS. Activar ante cualquier auditoría de datos, carga de línea base (PR0), conciliación financiera, o necesidad de convertir una fuente legacy en un registro candidato del OS. Nunca asume que 'leer un archivo' significa importar todo — prioriza lectura mínima suficiente, trazabilidad y detección explícita de lo que no se pudo leer."
+description: "Cargar esta skill al detectar solicitudes de lectura de archivos en Google Drive o documentos multiformato (PDF, Excel, Word, CSV, imágenes) para tareas de auditoría, carga de datos o conversión a registros del sistema. No usar para suponer que 'leer un archivo' implica importar su totalidad."
 allowed-tools: Read, Bash, mcp__claude_ai_Google_Drive__search_files, mcp__claude_ai_Google_Drive__get_file_metadata, mcp__claude_ai_Google_Drive__read_file_content, mcp__claude_ai_Google_Drive__download_file_content, mcp__claude_ai_Google_Drive__list_recent_files, mcp__claude_ai_Google_Drive__get_file_permissions
 metadata:
   author: echegaray-os

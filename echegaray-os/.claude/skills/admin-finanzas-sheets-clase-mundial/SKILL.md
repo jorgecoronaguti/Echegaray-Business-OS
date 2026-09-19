@@ -1,6 +1,6 @@
 ---
 name: admin-finanzas-sheets-clase-mundial
-description: "Contrato OBLIGATORIO del área de Administración y Finanzas de Echegaray: cada vez que se toca un Sheet real (leer, escribir, rediseñar), el resultado tiene que quedar minimalista, de clase mundial y cumplir las 9 Reglas de Oro del dueño. Activar SIEMPRE antes de tocar cualquier pestaña del 'Flujo de Caja - Cash Flow' u otro Sheet de admin/finanzas, junto con google-sheets-business-systems (el cómo técnico) y la skill de dominio dueña del dato (finanzas-tesoreria-construccion, contabilidad-constructoras). No decide qué dato hace falta: hace cumplir el estándar y la disciplina de ejecución, y verifica con las herramientas reales del OS."
+description: "Activa siempre antes de tocar cualquier Sheet de admin/finanzas como 'Flujo de Caja - Cash Flow'. No decide qué dato hace falta: solo aplica el estándar y verifica con las herramientas del OS. Usar junto con google-sheets-business-systems y la skill dueña del dato específico."
 allowed-tools: Read, Bash, Edit, Write, WebSearch
 metadata:
   author: echegaray-os

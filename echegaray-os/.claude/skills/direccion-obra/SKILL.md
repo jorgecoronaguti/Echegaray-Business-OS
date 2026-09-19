@@ -1,6 +1,6 @@
 ---
 name: direccion-obra
-description: "Criterio de dirección y gestión de obra (coordinación de frentes, relación con el cliente en sitio, resolución de problemas del día a día) para Echegaray Construcciones. Activar ante preguntas sobre cómo organizar la ejecución, gestionar un conflicto de obra, o coordinar entre jefe de obra, cuadrillas y cliente. Distinta de planificacion-produccion: esta skill es coordinación y liderazgo, no cronograma ni rendimientos."
+description: "Activar para consultas sobre organización de ejecución, gestión de conflictos en obra, o coordinación entre jefe de obra, cuadrillas y cliente. No usar para planificación ni control de producción."
 allowed-tools: Read, Bash
 metadata:
   author: echegaray-os

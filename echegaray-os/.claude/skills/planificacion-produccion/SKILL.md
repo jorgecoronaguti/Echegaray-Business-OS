@@ -1,6 +1,6 @@
 ---
 name: planificacion-produccion
-description: "Planificación técnica y control económico-productivo de obra: cronograma, secuencia constructiva, ruta crítica, rendimientos, restricciones, ETC/EAC/margen forecast y el ciclo comercial completo de la obra (avance→certificación→facturación→cobranza). Activar ante preguntas sobre plazos, avance físico vs. económico, rendimiento real vs. estimado, o al auditar/editar el Sheet real de avance/control de obra (junto con google-sheets-business-systems, obligatorio). Trabaja junto a costos-presupuestacion (rendimientos alimentan ambos) y direccion-obra (coordinación operativa)."
+description: "Planificación y control productivo de obra: cronograma, ruta crítica, rendimientos, avance físico vs. económico, EAC/ETC, ciclo avance→certificación→cobro, o editar el Sheet de avance de obra. No usar para finanzas generales ni administración."
 allowed-tools: Read, Bash, WebSearch
 metadata:
   author: echegaray-os

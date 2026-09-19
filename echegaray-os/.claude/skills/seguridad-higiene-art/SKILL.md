@@ -1,6 +1,6 @@
 ---
 name: seguridad-higiene-art
-description: "Seguridad e Higiene en el trabajo y ART aplicado a obra de construcción. Activar ante preguntas sobre requisitos de seguridad para trabajar en una obra o planta industrial, actuación ante un incidente, o cumplimiento de un pliego de Seguridad/Salud/Medio Ambiente de cliente. Prioridad alta confirmada: ARCOR exige pliego propio de SSMA para poder cotizar/trabajar en su planta."
+description: "Activar ante preguntas sobre requisitos de seguridad e higiene en obras o plantas industriales, actuación ante incidentes, o cumplimiento de pliegos de Seguridad/Salud/Medio Ambiente. No usar para temas generales de salud ocupacional fuera de contexto constructivo."
 allowed-tools: Read, Bash, WebSearch, WebFetch
 metadata:
   author: echegaray-os

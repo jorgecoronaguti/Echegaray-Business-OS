@@ -1,6 +1,6 @@
 ---
 name: integraciones-apis-sistemas-externos
-description: "Criterio de arquitectura de integraciones con sistemas externos para Echegaray Business OS: APIs REST/webhooks, autenticación, sincronización, idempotencia, reconciliación, migración desde Sheets legacy. Activar ante cualquier decisión de conectar el OS con un banco, AFIP/DGR, un proveedor, o de migrar una fuente Drive/Sheet a una capacidad del OS. Nunca asume que hace falta una API cuando una carga manual o import batch alcanza."
+description: "Activar al conectar Echegaray Business OS con bancos, AFIP/DGR, proveedores, o migrar datos de Sheets/Drive. No usar para conexiones manuales o importaciones batch simples."
 allowed-tools: Read, Bash, WebSearch, WebFetch
 metadata:
   author: echegaray-os

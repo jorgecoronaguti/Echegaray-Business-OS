@@ -1,6 +1,6 @@
 ---
 name: appsheet-desarrollo
-description: "Criterio y capacidad para desarrollar, modificar, auditar y gobernar las apps de AppSheet de Echegaray (empezando por 'Pedidos de Materiales' / Sheet de respaldo GESTION DE MATERIALES). Activar SIEMPRE antes de tocar una app de AppSheet o su Sheet de respaldo: agregar/renombrar columnas o tablas, cambiar tipos, vistas, acciones, slices, security filters, o sincronizar sus datos al OS. AppSheet se configura sobre un Google Sheet: un cambio 'inocente' en el Sheet (renombrar un encabezado, reordenar columnas, cambiar el locale) puede romper expresiones, vistas y la app entera. Nunca improvisar sobre el Sheet de respaldo como si fuera una planilla suelta."
+description: "Activar siempre antes de modificar apps AppSheet o sus Sheets de respaldo: cambios en columnas, tablas, tipos, vistas, acciones, slices, security filters o sincronización de datos. No usar para planillas sueltas."
 allowed-tools: Read, Bash, WebSearch, WebFetch
 metadata:
   author: echegaray-os

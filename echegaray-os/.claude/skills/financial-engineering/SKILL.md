@@ -1,6 +1,6 @@
 ---
 name: financial-engineering
-description: Motor de Ingeniería Financiera del Business OS — el cerebro de tesorería que optimiza permanentemente liquidez, capital de trabajo y costo financiero. Piensa como el CFO/Tesorero de una corporación: consolida en un modelo único de liquidez las fuentes ya existentes (caja, obligaciones, cobranzas, cheques, descubierto, IVA), y agrega la capa de DECISIÓN que faltaba (priorización de pagos multicriterio, comparación de alternativas de financiamiento, recomendaciones justificadas económicamente). Activar ante cualquier decisión de tesorería: qué pagar y cuándo, con qué medio, si entrar al descubierto/descontar un cheque/esperar, cómo cubrir un bache de caja, cómo optimizar el capital de trabajo. Toda la lógica vive en el Business OS (orquestador/lib/ingenieria-financiera.mjs); la Web, el Director IA, el CFO IA y las APIs sólo consumen su resultado.
+description: "Activa para decisiones de tesorería: qué pagar y cuándo, con qué medio, si entrar al descubierto, descontar cheques, cubrir baches de caja o optimizar capital de trabajo. No usar para contabilidad básica ni análisis histórico."
 metadata:
   type: expert-domain
 ---

@@ -1,6 +1,6 @@
 ---
 name: crear-presentacion-google-slides
-description: Arma presentaciones de GOOGLE SLIDES con la plantilla corporativa de Echegaray y las deja en Drive con su link — informe al cliente, avance de obra, propuesta comercial, reunión de Dirección, informe técnico, presupuesto. Activar cuando el dueño pida "armame una presentación", "preparame las slides para la reunión con X", "el informe de avance para el cliente", "una propuesta", o cuando una respuesta larga se entienda mejor proyectada que escrita. La NARRATIVA la escribís vos; el diseño (grilla, tipografía, color, posición) lo decide el motor `orquestador/lib/slides/` y no se puede pedir por parámetro. Todo dato que no salga del OS entra marcado como externo y con su URL. NO usar para exportar a PDF algo que ya existe (eso es exportar_a_pdf) ni para escribir un documento largo (eso es un Doc).
+description: "Crear presentaciones en Google Slides con la plantilla de Echegaray y guardarlas en Drive: «armame una presentación», slides para una reunión, informe de avance o propuesta al cliente. No usar para exportar a PDF ni para documentos largos."
 metadata:
   type: technical
 ---

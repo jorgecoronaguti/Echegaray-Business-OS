@@ -1,6 +1,6 @@
 ---
 name: google-sheets-business-systems
-description: "Criterio profesional de nivel experto para diseñar, auditar y operar Google Sheets como sistemas de negocio reales (finanzas, tesorería, control de gestión, obras, presupuestos, compras, proveedores, cobranzas, HH, productividad, avance, certificaciones, adicionales, equipos). Activar SIEMPRE antes de tocar un Sheet real de Echegaray -- lectura, escritura o rediseño. Nunca improvisar una fórmula aislada cuando el archivo merece tratarse como un sistema."
+description: "Diseñar, auditar y operar Google Sheets como sistemas de negocio reales. Activar siempre antes de tocar un Sheet real de Echegaray. No usar para hojas de cálculo simples o fórmulas aisladas."
 allowed-tools: Read, Bash, WebSearch, WebFetch
 metadata:
   author: echegaray-os
