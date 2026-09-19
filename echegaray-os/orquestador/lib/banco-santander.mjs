@@ -339,17 +339,32 @@ export function clasificarMovimiento(concepto = '') {
   if (/impuesto ley 25\.413/i.test(c)) return 'Impuesto al cheque (Ley 25.413)'
   if (/interes por descubierto|iva 10,5%|iva percep/i.test(c)) return 'Costo financiero del descubierto'
   if (/pago haberes|pago de haberes/i.test(c)) return 'Sueldos'
-  if (/e-?cheq|cheque debitado|canje interno/i.test(c)) return 'Cheques y echeq'
-  if (/afip|imp\.afip/i.test(c)) return 'AFIP'
-  if (/prestamos prendarios/i.test(c)) return 'Préstamo prendario'
-  if (/tarjeta de credito/i.test(c)) return 'Pago de la tarjeta'
-  if (/deposito de efectivo|transferencia recibida/i.test(c)) {
+  // UN ECHEQ QUE ENTRA NO ES UN CHEQUE QUE SALE (28/07). "Deposito e-cheq int misma plaza" es un
+  // echeq de TERCERO que se acreditó: es plata que ENTRA (crédito), la contracara del que ya estaba
+  // en "Valores a depositar". El bucket de cheques es de SALIDAS (echeq propios que el banco debitó,
+  // canje interno, cheque debitado) y su destino es la columna DEBITADO de Cheques Emitidos. Metido
+  // ahí, un ingreso quedaba registrado como una salida: en la data real, $58.940.000 de echeq
+  // acreditados dejaban ese bucket en +$38M —un grupo de egresos en positivo, la señal exacta de que
+  // la clasificación está mal—. Por eso la detección de INGRESOS (depósito de efectivo, transferencia
+  // recibida, depósito de e-cheq) va ANTES del bucket de cheques: un crédito se resuelve por su
+  // naturaleza (cobranza / traslado / financiero) y nunca cae en cheques emitidos. Las salidas de
+  // echeq —"Echeq clearing recibido", "Canje interno recibido", "Cheque debitado"— NO matchean esta
+  // regla (no dicen "depósito" ni "transferencia recibida") y siguen cayendo en el bucket de cheques.
+  if (/dep[oó]sito de efectivo|transferencia recibida|dep[oó]sito (?:de )?e-?cheq/i.test(c)) {
     const n = naturalezaIngreso({ concepto: c })
     return n === 'cobranza' ? 'Cobranzas de clientes'
       : n === 'financiero' ? 'Rescates de inversión y financiero'
       : 'Traslados de fondos propios (no es ingreso)'
   }
-  if (/tarjeta de debito/i.test(c)) return 'Compras con tarjeta de débito'
+  if (/e-?cheq|cheque debitado|canje interno/i.test(c)) return 'Cheques y echeq'
+  if (/afip|imp\.afip/i.test(c)) return 'AFIP'
+  if (/prestamos prendarios/i.test(c)) return 'Préstamo prendario'
+  if (/tarjeta de credito/i.test(c)) return 'Pago de la tarjeta'
+  // "Compra en el exterior - Google workspace ... tarj nro. 6077" es un consumo con tarjeta (6077 es
+  // la de débito), no un pago a proveedor por transferencia. Sin esto caía en "Transferencias a
+  // proveedores" e inflaba los pagos a proveedores con un consumo de tarjeta. Va con las compras con
+  // tarjeta de débito, cuyo destino es Compras.
+  if (/tarjeta de debito|compra en el exterior/i.test(c)) return 'Compras con tarjeta de débito'
   if (/debito automatico/i.test(c)) return 'Débitos automáticos (seguros)'
   if (/sin detalle/i.test(c)) return 'Ajuste sin detalle del banco'
   return 'Transferencias a proveedores'
@@ -357,29 +372,9 @@ export function clasificarMovimiento(concepto = '') {
 
 /** NÚCLEO PURO: agrupa el extracto por tipo de movimiento, para poder cruzarlo contra el Sheet. */
 export function porTipo(movs = MOVIMIENTOS) {
-  const clas = (c) => clasificarMovimiento(c)
-  const _viejo = (c) => {
-    if (/impuesto ley 25\.413/i.test(c)) return 'Impuesto al cheque (Ley 25.413)'
-    if (/interes por descubierto|iva 10,5%|iva percep/i.test(c)) return 'Costo financiero del descubierto'
-    if (/pago haberes|pago de haberes/i.test(c)) return 'Sueldos'
-    if (/e-?cheq|cheque debitado|canje interno/i.test(c)) return 'Cheques y echeq'
-    if (/afip|imp\.afip/i.test(c)) return 'AFIP'
-    if (/prestamos prendarios/i.test(c)) return 'Préstamo prendario'
-    if (/tarjeta de credito/i.test(c)) return 'Pago de la tarjeta'
-    // Un crédito NO es automáticamente un ingreso: puede ser plata propia cambiando de lugar.
-    if (/deposito de efectivo|transferencia recibida/i.test(c)) {
-      const n = naturalezaIngreso({ concepto: c })
-      return n === 'cobranza' ? 'Cobranzas de clientes'
-        : n === 'financiero' ? 'Rescates de inversión y financiero'
-        : 'Traslados de fondos propios (no es ingreso)'
-    }
-    if (/tarjeta de debito/i.test(c)) return 'Compras con tarjeta de débito'
-    if (/debito automatico/i.test(c)) return 'Débitos automáticos (seguros)'
-    return 'Transferencias a proveedores'
-  }
   const acc = new Map()
   for (const m of movs) {
-    const k = clas(m.concepto)
+    const k = clasificarMovimiento(m.concepto)
     const a = acc.get(k) ?? { tipo: k, cantidad: 0, monto: 0 }
     a.cantidad++; a.monto += m.importe
     acc.set(k, a)

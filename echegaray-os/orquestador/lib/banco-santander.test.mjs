@@ -39,19 +39,43 @@ test('cada movimiento tiene fecha, concepto e importe', () => {
   }
 })
 
-// "Deposito E-cheq Int Misma Plaza" no matcheaba /echeq/ por el guion, y sus $10.000.000 caían en
-// "transferencias a proveedores" — que quedaba en POSITIVO. Un grupo de egresos con signo más es la
-// señal de que la clasificación está mal.
-test('los echeq se reconocen con guion y sin guion', () => {
+// UN ECHEQ QUE ENTRA NO ES UN CHEQUE QUE SALE (28/07). "Deposito E-cheq Int Misma Plaza" es un
+// echeq de tercero acreditado: plata que ENTRA. Antes matcheaba /e-?cheq/ y caía en el bucket
+// "Cheques y echeq" —que es de SALIDAS y cuyo destino es la columna DEBITADO de Cheques Emitidos—,
+// registrando un ingreso como una salida. En la data real eran $58.940.000 que dejaban ese bucket
+// en +$38M: un grupo de egresos en positivo es la señal exacta de que la clasificación está mal.
+// Ahora un crédito se resuelve por su naturaleza ANTES del bucket de cheques.
+test('un echeq acreditado es un traslado que ENTRA, no un cheque que sale', () => {
+  // El crédito se clasifica como traslado (plata propia cambiando de lugar), NUNCA como cheque.
+  assert.equal(clasificarMovimiento('Deposito e-cheq int misma plaza'), 'Traslados de fondos propios (no es ingreso)')
+  assert.equal(clasificarMovimiento('Deposito e-cheq int ots plazas'), 'Traslados de fondos propios (no es ingreso)')
+  // Las SALIDAS de echeq siguen en el bucket de cheques: el banco las debita contra Cheques Emitidos.
+  assert.equal(clasificarMovimiento('Echeq clearing recibido 48hs'), 'Cheques y echeq')
+  assert.equal(clasificarMovimiento('Canje interno recibido 24 hs'), 'Cheques y echeq')
+  assert.equal(clasificarMovimiento('Echeq canje interno recibido 24hs'), 'Cheques y echeq')
+  assert.equal(clasificarMovimiento('Cheque debitado - Nº 221'), 'Cheques y echeq')
+  // El bucket de cheques, mirando SÓLO lo que sale, no puede dar positivo.
+  const soloSalidas = MOVIMIENTOS.filter((m) => clasificarMovimiento(m.concepto) === 'Cheques y echeq')
+  assert.ok(soloSalidas.every((m) => m.importe < 0), 'el bucket de cheques quedó con un crédito adentro')
+})
+
+test('los créditos se agrupan por su naturaleza, no como "Ingresos" a secas', () => {
   const t = porTipo()
   const prov = t.find((x) => x.tipo === 'Transferencias a proveedores')
   assert.ok(prov.monto < 0, 'un grupo de pagos a proveedores no puede dar positivo')
   // Desde el 21/07 los créditos ya no se agrupan como "Ingresos" a secas: un crédito puede ser un
   // cobro, un traslado de plata propia o un rescate de inversión, y mezclarlos hizo que el OS
-  // reportara $11,9M "faltantes" que eran del rescate de Balanz.
-  assert.equal(t.find((x) => x.tipo === 'Traslados de fondos propios (no es ingreso)').cantidad, 3)
+  // reportara $11,9M "faltantes" que eran del rescate de Balanz. En la ventana de referencia los
+  // traslados son 3 depósitos de efectivo + 2 depósitos de e-cheq acreditados = 5.
+  assert.equal(t.find((x) => x.tipo === 'Traslados de fondos propios (no es ingreso)').cantidad, 5)
   assert.equal(t.find((x) => x.tipo === 'Rescates de inversión y financiero').cantidad, 1)
   assert.equal(t.find((x) => x.tipo === 'Ingresos'), undefined, 'un crédito no es automáticamente un ingreso')
+})
+
+// Una compra en el exterior con tarjeta (Google Workspace, tarj nro. 6077) es un consumo de tarjeta,
+// no un pago a proveedor por transferencia. Sin esto inflaba "Transferencias a proveedores".
+test('la compra en el exterior con tarjeta es consumo de tarjeta, no pago a proveedor', () => {
+  assert.equal(clasificarMovimiento('Compra en el exterior - Google workspace ecsas.co - tarj nro. 6077'), 'Compras con tarjeta de débito')
 })
 
 test('el rescate de Balanz NO se cuenta como cobranza', () => {
