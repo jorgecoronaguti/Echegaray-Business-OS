@@ -135,6 +135,32 @@ export function planDeAltaNC(filasLeidas = [], nuevos = []) {
 }
 
 /**
+ * NÚCLEO PURO: LOS PAGOS QUE COMPRAS YA TIENE (revisión independiente 19/09/2026).
+ *
+ * La pestaña deduplica contra sí misma; esto la cruza contra Compras. El bloque de Dirección suma las dos
+ * fuentes, así que un retiro cargado en los dos lados se contaría dos veces sin que ningún número
+ * descuadre. Es PROBABLE y no cierto —Compras no guarda la referencia del banco—: misma persona, mismo
+ * importe y fechas a `tolerancia` días o menos. Quien carga lo mira y decide; el script no escribe esos.
+ *
+ * @param {object[]} altas pagos a cargar ({ fecha ISO, persona, importe })
+ * @param {object[]} compras filas de Compras ya leídas ({ fila, persona, importe, fecha ISO })
+ */
+export function enComprasTambien(altas = [], compras = [], { tolerancia = 5 } = {}) {
+  const dia = (iso) => Date.parse(`${iso}T00:00:00Z`) / 86400000
+  const norm = (t) => String(t ?? '').trim().toLowerCase()
+  const choques = []
+  for (const p of altas) {
+    const persona = norm(p.persona)
+    if (!persona) continue
+    const iguales = compras.filter((c) => norm(c.persona) === persona
+      && Math.abs(Number(c.importe) - Number(p.importe)) < 0.5
+      && Number.isFinite(dia(c.fecha)) && Math.abs(dia(c.fecha) - dia(p.fecha)) <= tolerancia)
+    if (iguales.length) choques.push({ pago: p, filas: iguales.map((c) => c.fila) })
+  }
+  return choques
+}
+
+/**
  * NÚCLEO PURO: las condiciones de Sheets que eligen, en esta pestaña, los pagos de UN rubro y UN período.
  * Se unen con `*` para SUMPRODUCT y con `;` para FILTER — el mismo idioma que `condicionesPagoDelMes`.
  */

@@ -104,8 +104,10 @@ const evaluarSePagaEl = (formula, filas, pagosNC = []) => {
 
 /** Lo que rinde la celda "Pagado" del mismo mes, sobre las mismas filas. */
 const evaluarPagado = (formula, filas, pagosNC = []) => {
-  const m = formula.match(/^=SUMPRODUCT\((.+)\)\+SUMPRODUCT\((.+)\)$/)
-  assert.ok(m, `"Pagado" ya no es SUMPRODUCT(Compras)+SUMPRODUCT(pagos sin compra): ${formula}`)
+  // LA SEGUNDA FUENTE, ENVUELTA (19/09/2026): sin el IFERROR, una `_PAGOS_NO_COMPRA_RAW` borrada llevaría
+  // a #REF! la celda entera, y con ella el Estado y el Proyectado de la fila.
+  const m = formula.match(/^=SUMPRODUCT\((.+)\)\+IFERROR\(SUMPRODUCT\((.+)\);0\)$/)
+  assert.ok(m, `"Pagado" ya no es SUMPRODUCT(Compras)+IFERROR(SUMPRODUCT(pagos sin compra);0): ${formula}`)
   const sumar = (expr, colImporte, fajo) => {
     const partes = args(expr, '*')
     assert.equal(partes.pop(), `IF(ISNUMBER(${colImporte});${colImporte};0)`, `lo que se suma es el importe de ${colImporte}`)
@@ -305,7 +307,7 @@ test('"Pagado" y "Se paga el" salen de UNA sola definición de las filas que pag
   }
   // Y ninguna de las dos agrega condiciones propias sobre Compras: mismo conteo en las dos.
   assert.equal(args(cuando.match(/IFERROR\(MAX\(FILTER\((.+?)\)\);0\)/)[1]).length - 1, conds.length)
-  assert.equal(args(pagado.match(/^=SUMPRODUCT\((.+?)\)\+SUMPRODUCT/)[1], '*').length - 1, conds.length)
+  assert.equal(args(pagado.match(/^=SUMPRODUCT\((.+?)\)\+IFERROR\(SUMPRODUCT/)[1], '*').length - 1, conds.length)
 })
 
 test('AGOSTO PARCIAL: los tres pagos sin compra suman $1.800.000 y fechan el mes al 17/09 (18/09)', () => {

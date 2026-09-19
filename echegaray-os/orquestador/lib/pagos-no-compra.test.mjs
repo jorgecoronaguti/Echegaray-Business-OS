@@ -62,3 +62,15 @@ test('las condiciones para otras pestañas eligen por rubro y período explícit
   assert.equal(refsPagosNC.importe, `'${PESTANA_PAGOS_NC}'!$E$4:$E`)
   assert.equal(periodoDe(2026, 13), '2027-01', 'diciembre+1 es enero del año que viene, no un mes 13')
 })
+
+test('EL MISMO RETIRO EN COMPRAS Y EN LA PESTAÑA SE DETECTA (revisión 19/09): persona, importe y ±5 días', async () => {
+  const { enComprasTambien } = await import('./pagos-no-compra.mjs')
+  const alta = { fecha: '2026-09-11', persona: 'Jorge Corona', importe: 300000, rubro: 'x', periodo: '2026-08' }
+  const compras = [
+    { fila: 779, persona: 'jorge corona', importe: 300000, fecha: '2026-09-09' },
+    { fila: 780, persona: 'Jorge Corona', importe: 300000, fecha: '2026-08-01' },
+    { fila: 781, persona: 'Rodrigo Echegaray', importe: 300000, fecha: '2026-09-11' },
+  ]
+  assert.deepEqual(enComprasTambien([alta], compras), [{ pago: alta, filas: [779] }])
+  assert.deepEqual(enComprasTambien([{ ...alta, importe: 500000 }], compras), [], 'otro importe no es el mismo pago')
+})
