@@ -55,19 +55,43 @@
 // rompe en silencio si la columna se mueve (lo verifica caja-posterior-al-corte.test.mjs).
 import { COL_FECHA_CAJA } from './rubro-caja.mjs'
 
-/** Las columnas de Cobranzas. Verificadas contra la fila de encabezado del 21/07. */
-export const COB = { hoja: 'Cobranzas', total: 'M', forma: 'N', estado: 'O', fecha: 'Q', desde: 5, hasta: 400 }
-/** Las columnas de Cheques Emitidos. I es la fecha en que se debita, K el SI/NO. */
-export const CHQ = { hoja: 'Cheques Emitidos', importe: 'F', fechaPago: 'I', debitado: 'K', desde: 2, hasta: 400 }
+// ═══ LOS RANGOS SON ABIERTOS. NINGUNA FILA FINAL. (31/07) ═══
+//
+// Estos tres bloques tenían fila final tipeada —Cobranzas hasta 400, Compras hasta 1200, Cheques
+// Emitidos hasta 400— y eso es una bomba de tiempo silenciosa: el día que la pestaña pasa esa fila,
+// la fórmula deja de ver lo nuevo y NO da error. La caja miente para abajo y nada avisa.
+//
+// No era teórico. Medido el 31/07 sobre el archivo real: Cobranzas tenía datos hasta la fila 358 y
+// el rango terminaba en la 400. Cuarenta y dos filas de aire. Al ritmo de carga de este año, un mes
+// o dos. La primera cobranza en efectivo que cayera en la fila 401 habría desaparecido de "Caja en
+// pesos" sin un solo #REF! — exactamente el defecto que este archivo ya documentó tres veces (el
+// rango fosilizado, el encabezado de período con la fila fija, el auditor con ventana fija).
+//
+// Un rango abierto (`$M$5:$M`) no tiene ese modo de falla. Cuesta más calcular y no importa: son mil
+// filas, una vez, y el precio de la alternativa es un número falso que nadie ve. El test
+// `los rangos son ABIERTOS` falla si alguien vuelve a poner una fila final.
+//
+// Nota para SUMPRODUCT: todos los rangos de un mismo SUMPRODUCT tienen que tener el mismo largo. Acá
+// se cumple por construcción, porque cada SUMPRODUCT mira columnas de UNA sola pestaña.
+
+/** Las columnas de Cobranzas. Verificadas contra la fila de encabezado del 21/07. Rango ABIERTO. */
+export const COB = { hoja: 'Cobranzas', total: 'M', forma: 'N', estado: 'O', fecha: 'Q', desde: 5 }
+/** Las columnas de Cheques Emitidos. I es la fecha en que se debita, K el SI/NO. Rango ABIERTO. */
+export const CHQ = { hoja: 'Cheques Emitidos', importe: 'F', fechaPago: 'I', debitado: 'K', desde: 2 }
 /**
  * Las columnas de Compras. O=Total, P=Tipo pago, X=Estado, AD=Fecha de caja. Verificadas 24/07.
  * `tiposBanco`: los medios que pegan al banco EN EL DÍA y todavía no están cubiertos por otra línea —
  * Cheque ya lo resta "Cheques Emitidos", la Tarjeta de Crédito consume el cupo (no la cuenta), el
  * Efectivo no toca el banco (sale de la caja física). Sólo Transferencia y Débito faltan.
+ * Rango ABIERTO.
  */
-export const CMP = { hoja: 'Compras', total: 'O', tipoPago: 'P', estado: 'X', fecha: COL_FECHA_CAJA, desde: 4, hasta: 1200, tiposBanco: ['Transferencia', 'Débito'] }
+export const CMP = { hoja: 'Compras', total: 'O', tipoPago: 'P', estado: 'X', fecha: COL_FECHA_CAJA, desde: 4, tiposBanco: ['Transferencia', 'Débito'] }
 
-const rango = (h, col, d, f) => `'${h}'!$${col}$${d}:$${col}$${f}`
+/**
+ * Un rango de columna ABIERTO: de la primera fila de datos hasta el final de la pestaña.
+ * No acepta fila final a propósito — ver el bloque de arriba.
+ */
+const rango = (h, col, d) => `'${h}'!$${col}$${d}:$${col}`
 
 // ═══ LA COLUMNA "FECHA DE CAJA" DE COMPRAS VIENE EN FORMATO MIXTO — POR QUÉ ESTAS FÓRMULAS NO USAN SUMIFS ═══
 //
@@ -86,11 +110,11 @@ const rango = (h, col, d, f) => `'${h}'!$${col}$${d}:$${col}$${f}`
 
 /** La "Fecha de caja" de Compras coaccionada a número, tolerante al formato mixto serie/texto. */
 const fechaCajaCoerc = (c) => {
-  const r = rango(c.hoja, c.fecha, c.desde, c.hasta)
+  const r = rango(c.hoja, c.fecha, c.desde)
   return `IFERROR(DATEVALUE(${r}&"");N(${r}))`
 }
 /** El total de Compras coaccionado con N(): SUMPRODUCT no suma texto, N() lo lleva a 0. */
-const totalCoerc = (c) => `N(${rango(c.hoja, c.total, c.desde, c.hasta)})`
+const totalCoerc = (c) => `N(${rango(c.hoja, c.total, c.desde)})`
 
 /**
  * NÚCLEO PURO: lo cobrado DESPUÉS de la fecha de corte del extracto.
@@ -103,13 +127,13 @@ const totalCoerc = (c) => `N(${rango(c.hoja, c.total, c.desde, c.hasta)})`
  * @returns {string} fórmula, separador es-AR
  */
 export function formulaCobrosPosteriores(corte, c = COB) {
-  return `SUMIFS(${rango(c.hoja, c.total, c.desde, c.hasta)};`
-    + `${rango(c.hoja, c.estado, c.desde, c.hasta)};"Cobrado";`
-    + `${rango(c.hoja, c.forma, c.desde, c.hasta)};"<>Echeq";`
+  return `SUMIFS(${rango(c.hoja, c.total, c.desde)};`
+    + `${rango(c.hoja, c.estado, c.desde)};"Cobrado";`
+    + `${rango(c.hoja, c.forma, c.desde)};"<>Echeq";`
     // El efectivo va a la caja física (T06), no al banco: se excluye para que la partición por canal
     // no deje ningún cobro contado dos veces. Ver el encabezado de este archivo.
-    + `${rango(c.hoja, c.forma, c.desde, c.hasta)};"<>Efectivo";`
-    + `${rango(c.hoja, c.fecha, c.desde, c.hasta)};">"&${corte})`
+    + `${rango(c.hoja, c.forma, c.desde)};"<>Efectivo";`
+    + `${rango(c.hoja, c.fecha, c.desde)};">"&${corte})`
 }
 
 /**
@@ -121,9 +145,9 @@ export function formulaCobrosPosteriores(corte, c = COB) {
  * @returns {string} fórmula
  */
 export function formulaChequesDebitadosPosteriores(corte, c = CHQ) {
-  return `SUMIFS(${rango(c.hoja, c.importe, c.desde, c.hasta)};`
-    + `${rango(c.hoja, c.debitado, c.desde, c.hasta)};"SI";`
-    + `${rango(c.hoja, c.fechaPago, c.desde, c.hasta)};">"&${corte})`
+  return `SUMIFS(${rango(c.hoja, c.importe, c.desde)};`
+    + `${rango(c.hoja, c.debitado, c.desde)};"SI";`
+    + `${rango(c.hoja, c.fechaPago, c.desde)};">"&${corte})`
 }
 
 /**
@@ -142,8 +166,8 @@ export function formulaChequesDebitadosPosteriores(corte, c = CHQ) {
  * @returns {string} fórmula (sin `=`)
  */
 export function formulaComprasPagadasPosteriores(corte, c = CMP) {
-  const tipos = c.tiposBanco.map((t) => `(${rango(c.hoja, c.tipoPago, c.desde, c.hasta)}="${t}")`).join('+')
-  return `SUMPRODUCT((${rango(c.hoja, c.estado, c.desde, c.hasta)}="Pagado")`
+  const tipos = c.tiposBanco.map((t) => `(${rango(c.hoja, c.tipoPago, c.desde)}="${t}")`).join('+')
+  return `SUMPRODUCT((${rango(c.hoja, c.estado, c.desde)}="Pagado")`
     + `*(${tipos})`
     + `*(${fechaCajaCoerc(c)}>${corte})`
     + `*${totalCoerc(c)})`
@@ -199,10 +223,10 @@ export const DEP = { hoja: '_BANCO_RAW', fecha: 'A', concepto: 'B', importe: 'C'
  * @returns {string} fórmula, separador es-AR
  */
 export function formulaCobrosEfectivoPosteriores(arqueo, c = COB) {
-  return `SUMIFS(${rango(c.hoja, c.total, c.desde, c.hasta)};`
-    + `${rango(c.hoja, c.estado, c.desde, c.hasta)};"Cobrado";`
-    + `${rango(c.hoja, c.forma, c.desde, c.hasta)};"Efectivo";`
-    + `${rango(c.hoja, c.fecha, c.desde, c.hasta)};">"&${arqueo})`
+  return `SUMIFS(${rango(c.hoja, c.total, c.desde)};`
+    + `${rango(c.hoja, c.estado, c.desde)};"Cobrado";`
+    + `${rango(c.hoja, c.forma, c.desde)};"Efectivo";`
+    + `${rango(c.hoja, c.fecha, c.desde)};">"&${arqueo})`
 }
 
 /**
@@ -216,8 +240,8 @@ export function formulaCobrosEfectivoPosteriores(arqueo, c = COB) {
  * @returns {string} fórmula
  */
 export function formulaComprasEfectivoPosteriores(arqueo, c = CMP) {
-  return `SUMPRODUCT((${rango(c.hoja, c.estado, c.desde, c.hasta)}="Pagado")`
-    + `*(${rango(c.hoja, c.tipoPago, c.desde, c.hasta)}="Efectivo")`
+  return `SUMPRODUCT((${rango(c.hoja, c.estado, c.desde)}="Pagado")`
+    + `*(${rango(c.hoja, c.tipoPago, c.desde)}="Efectivo")`
     + `*(${fechaCajaCoerc(c)}>${arqueo})`
     + `*${totalCoerc(c)})`
 }
