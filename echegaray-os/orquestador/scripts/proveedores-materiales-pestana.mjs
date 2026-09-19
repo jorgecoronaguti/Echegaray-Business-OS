@@ -127,6 +127,11 @@ let COL_PAGADO = 'Compras!$T$4:$T'
 // eso `neta()` suma T + los positivos de U + los positivos de W. Restar sólo T inflaba la deuda.
 let COL_PARCIAL1 = 'Compras!$U$4:$U'
 let COL_PARCIAL2 = 'Compras!$W$4:$W'
+// TIPO DE PAGO ("Tipo pago", col P): decide si la deuda todavía es del PROVEEDOR o ya se movió a un
+// INSTRUMENTO. Una factura pagada con cheque o tarjeta ya no se le debe al proveedor (se la debés al
+// cheque/tarjeta, que se cuentan en Cheques Emitidos, Tarjeta y CAJA). Contarla también acá es doble
+// conteo — el "proveedor con deuda a quien ya pagaste". Por eso el hero desglosa directa/cheque/tarjeta.
+let COL_TIPOPAGO = 'Compras!$P$4:$P'
 const COL_OBRA = 'Compras!$J$4:$J'
 const COL_FACTURA = 'Compras!$C$4:$C'
 const COL_TOTAL = 'Compras!$O$4:$O'
@@ -135,7 +140,7 @@ const COL_ESTADO = 'Compras!$X$4:$X'
 const CH = "'Cheques Emitidos'"
 
 /** Índices (0-based) de las columnas de Compras que el JS lee de cada fila. Se recalculan por nombre. */
-const IDX = { rubro: 28, fechaCaja: 29, familia: 30, comercial: 35, pagado: 19, parcial1: 20, parcial2: 22, obra: 9, prov: 4, total: 14, estado: 23, concepto: 11, detalle: 10 }
+const IDX = { rubro: 28, fechaCaja: 29, familia: 30, comercial: 35, pagado: 19, parcial1: 20, parcial2: 22, tipoPago: 15, obra: 9, prov: 4, total: 14, estado: 23, concepto: 11, detalle: 10 }
 
 
 /** Los rubros que hacen que un proveedor sea COMERCIAL. Sueldos, ARCA o el banco no son proveedores
@@ -237,7 +242,6 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // facturó AFIP que Compras todavía no tiene—. Cada número es una fórmula viva sobre Compras o un
   // rango con nombre de ARCA: ni uno pegado, y el que quiera el detalle lo tiene en las tablas de
   // abajo. Es el layout que el dueño aprobó para Impuestos: resumen vertical arriba, detalle debajo.
-  const hoy = new Date().toLocaleDateString('es-AR')
   // LA DEUDA ES NETA DE PAGOS PARCIALES: Total menos Monto Pagado. `neta(condiciones)` devuelve la
   // fórmula SUMIFS(Total;cond) − SUMIFS(Monto Pagado;cond) para cualquier juego de condiciones. Es lo
   // que el dueño marcó: un pago parcial baja el saldo, así que sumar el Total entero lo sobreestima.
@@ -250,21 +254,35 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // Total − (T + positivos de U + positivos de W). El filtro ">0" excluye los saldos negativos/entre
   // paréntesis de U/W, que son "lo que falta", no pagos (regla confirmada por el dueño el 27/07).
   const neta = (conds) => `SUMIFS(${COL_TOTAL};${conds})-SUMIFS(${COL_PAGADO};${conds})-SUMIFS(${COL_PARCIAL1};${conds};${COL_PARCIAL1};">0")-SUMIFS(${COL_PARCIAL2};${conds};${COL_PARCIAL2};">0")`
-  const bPos = push([`POSICIÓN DE PROVEEDORES · al ${hoy} · en pesos`])
-  const pos0 = filas.length + 1
+  // EL SELLO ES VIVO, NO UN TEXTO CONGELADO: los importes de esta pestaña son fórmulas sobre Compras,
+  // así que la posición está "en vivo al" día en que se abre. El listado de facturas de abajo se
+  // reconstruye cuando corre el agente, y el aviso "⚠ Faltan N facturas" (más abajo) cubre ese desfase.
+  const bPos = push(['="POSICIÓN DE PROVEEDORES · importes en vivo al "&TEXT(TODAY();"dd/mm/yyyy")&" · en pesos"'])
   // Esta pestaña es SÓLO proveedores comerciales. La deuda con ARCA, impuestos y nómina NO va acá —
   // vive en "Impuestos y Financieros" (regla 9, no duplicar). Por eso el hero abre con la deuda
   // comercial como titular y no con un "total con terceros" que mezcle las dos cosas.
-  const posTotal = push(['DEUDA CON PROVEEDORES COMERCIALES', `=${neta(condComercial)}`, 'Compras — facturas Pendientes, netas de pagos parciales. La deuda con ARCA/impuestos/nómina vive en Impuestos y Financieros.'])
-  push(['  · de eso, ya vencida', `=${neta(`${condComercial};${COL_FECHA};">0";${COL_FECHA};"<"&TODAY()`)}`, 'la fecha de pago ya pasó'])
-  push(['  · de eso, sin fecha de pago', `=${neta(condComercial)}-${neta(`${condComercial};${COL_FECHA};">0"`)}`, '⚠ no cae en ninguna semana del cash flow'])
+  // DESGLOSE POR TIPO DE PAGO (27/07, regla confirmada por el dueño). El titular sigue siendo el total,
+  // pero abajo se parte en: directa (efectivo/transferencia sin pagar — la única que todavía se le paga
+  // al proveedor) + comprometido vía cheque + vía tarjeta. Cheque y tarjeta ya no son deuda del
+  // proveedor: el instrumento las cuenta en Cheques Emitidos / Tarjeta / CAJA. Sin este desglose, una
+  // factura pagada con cheque figura como "proveedor con deuda a quien ya pagaste".
+  const condDirecta = `${condComercial};${COL_TIPOPAGO};"<>Cheque";${COL_TIPOPAGO};"<>Tarjeta Crédito"`
+  const condCheque = `${condComercial};${COL_TIPOPAGO};"Cheque"`
+  const condTarjeta = `${condComercial};${COL_TIPOPAGO};"Tarjeta Crédito"`
+  // BANDA DE KPIs — mismo patrón que la pestaña CAJA (la que el dueño aprobó): una fila de RÓTULOS en
+  // versalita, una de CIFRAS grandes, y un pie chico. Cada KPI ocupa dos columnas (se combinan en
+  // formatear). La deuda comercial es la respuesta; el desglose separa lo que se paga DIRECTO al
+  // proveedor de lo que ya tiene instrumento (cheque/tarjeta) que baja por su propia vía.
+  const kpiTit = push(['DEUDA COMERCIAL', '', 'DIRECTA — A PAGAR', '', 'VÍA CHEQUE', '', 'VÍA TARJETA', ''])
+  const kpiCif = push([`=${neta(condComercial)}`, '', `=${neta(condDirecta)}`, '', `=${neta(condCheque)}`, '', `=${neta(condTarjeta)}`, ''])
+  push(['lo que se le debe a proveedores', '', 'única vía que se le paga al proveedor', '', 'ya tiene cheque — baja por Cheques Emitidos', '', 'debería estar en Tarjeta de Credito', ''])
   push([])
   // Estado "Proyectado" de Compras, sólo comerciales: pactado pero todavía no es deuda firme, así que
   // va aparte del titular para no inflar la deuda. Las proyecciones no comerciales ($137,9M) no entran.
-  const posProy = push(['Compras comerciales proyectadas', `=${neta(condProyectado)}`, `=COUNTIFS(${condProyectado};${COL_TOTAL};"<>")&" compras estado ""Proyectado"" — pactadas, aún no deuda firme. Excluye proyecciones de ARCA/nómina/financieras."`])
-  push([])
-  const posPlazo = push(['Plazo de pago promedio', `=IFERROR(SUMPRODUCT(ISNUMBER(${COL_FACTURA})*ISNUMBER(${COL_FECHA})*(IF(ISNUMBER(${COL_FECHA});${COL_FECHA};0)-IF(ISNUMBER(${COL_FACTURA});${COL_FACTURA};0))*IF(ISNUMBER(${COL_TOTAL});${COL_TOTAL};0))/SUMPRODUCT(ISNUMBER(${COL_FACTURA})*ISNUMBER(${COL_FECHA})*IF(ISNUMBER(${COL_TOTAL});${COL_TOTAL};0));"")`, 'días entre factura y pago — casi no se usa el crédito del proveedor, que es gratis'])
-  const posFaltan = push(['Facturado por AFIP que Compras no tiene', `=${N_ARCA.faltanMonto}`, `=${N_ARCA.faltanN}&" comprobantes con CAE que ninguna otra pestaña ve"`])
+  const pos0 = filas.length + 1
+  const posProy = push(['Compras proyectadas (aún no deuda firme)', `=${neta(condProyectado)}`])
+  const posPlazo = push(['Plazo de pago promedio', `=IFERROR(SUMPRODUCT(ISNUMBER(${COL_FACTURA})*ISNUMBER(${COL_FECHA})*(IF(ISNUMBER(${COL_FECHA});${COL_FECHA};0)-IF(ISNUMBER(${COL_FACTURA});${COL_FACTURA};0))*IF(ISNUMBER(${COL_TOTAL});${COL_TOTAL};0))/SUMPRODUCT(ISNUMBER(${COL_FACTURA})*ISNUMBER(${COL_FECHA})*IF(ISNUMBER(${COL_TOTAL});${COL_TOTAL};0));"")`])
+  const posFaltan = push(['Facturado por AFIP que Compras no tiene', `=${N_ARCA.faltanMonto}`])
   const pos1 = filas.length
   push([])
 
@@ -298,13 +316,13 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // literal de array, que NO es portable al separador es-AR ({"a"\"b"} vs {"a";"b"}) — ya rompió
   // una vez en esta misma pestaña. El texto del QUERY va entre comillas y el localizador de
   // fórmulas respeta los literales, así que sus comas llegan intactas.
-  const b1 = push(['1 · QUÉ SE DEBE Y CUÁNDO'])
+  const b1 = push(['1 · QUÉ SE DEBE Y CUÁNDO ⟨SENTINEL-AEA4⟩'])
   // AVISO VIVO DE DESFASAJE. El detalle de abajo son filas físicas: existen cuando corre el agente.
   // Los IMPORTES son fórmulas y se mueven solos, pero una factura de un proveedor NUEVO no tiene fila
   // hasta la próxima corrida. Esta línea compara —en vivo— el total real contra la suma de lo listado
   // y avisa el hueco, para que el cuadro nunca engañe aunque esté desactualizado. Se llena más abajo,
   // cuando el bloque ya tiene coordenadas.
-  push(['La deuda agrupada por proveedor: la fila de cada uno muestra su total y su próximo pago; con el +/- del Sheet (menú Datos → Agrupar) se abren o cierran sus facturas. Todo son fórmulas sobre Compras: se marca una pagada allá y baja acá.'])
+  // Sin subtítulo: el título de sección y los encabezados de columna alcanzan. Menos es más.
   // Las columnas son las que el dueño dejó en la pestaña (nombre y orden). Ver layoutDeuda.
   const L = layoutDeuda(deudaCols)
   // Las notas del dueño vuelven a SU proveedor / SU comprobante, no a la fila donde estaban.
@@ -323,12 +341,34 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   const deudaGrupos = []
   const deudaHeaders = []
   const qLit = (s) => String(s ?? '').replace(/"/g, '""')
+  // Arma la línea de UNA factura, referida a su fila de Compras (si allá se marca pagada, se vacía sola).
+  const lineaFactura = (inv, rowNum) => {
+    const rr = inv.fila
+    const pend = `Compras!$X$${rr}="${ESTADO_DEUDA}"`
+    const c = celdas()
+    if (L.fecha >= 0) c[L.fecha] = `=IF(${pend};Compras!$${letra(IDX.fechaCaja)}$${rr};"")`
+    if (L.comp >= 0) c[L.comp] = `=IF(${pend};Compras!$H$${rr}&"";"")`
+    // Saldo = Total − pagado. Pagado = T + positivos de U y W (MAX(0;·) descarta el saldo negativo).
+    if (L.imp >= 0) c[L.imp] = `=IF(${pend};Compras!$O$${rr}-Compras!$${letra(IDX.pagado)}$${rr}-MAX(0;Compras!$${letra(IDX.parcial1)}$${rr})-MAX(0;Compras!$${letra(IDX.parcial2)}$${rr});"")`
+    if (L.obra >= 0) c[L.obra] = `=IF(${pend};Compras!$J$${rr};"")`
+    if (L.instr >= 0 && L.comp >= 0) {
+      const cc = `$${letra(L.comp)}${rowNum}`
+      c[L.instr] = `=IF(NOT(${pend});"";IF(${cc}="";"—";IFERROR(INDEX(${CH}!$A$2:$A;MATCH(${cc};${CH}!$H$2:$H;0))&" "&INDEX(${CH}!$B$2:$B;MATCH(${cc};${CH}!$H$2:$H;0));"—")))`
+    }
+    if (L.pago >= 0) c[L.pago] = `=IF(${pend};Compras!$P$${rr}&"";"")`
+    if (L.cat >= 0) c[L.cat] = `=IF(${pend};Compras!$B$${rr}&"";"")`
+    return c
+  }
   for (const gp of deudaAgrupada) {
     const key = qLit(gp.nombre)
     const condProv = `${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}"`
     const conFecha = `${condProv};${COL_FECHA};">0"`
-    // Fila-cabecera del proveedor: total NETO (Total − Monto Pagado) y próximo pago por fórmula viva.
-    // Es la que queda a la vista cuando el grupo está colapsado; las facturas se pliegan debajo.
+    // ═══ CADA PROVEEDOR ES UN GRUPO COLAPSABLE (la función AGRUPAR que el dueño usa) ═══
+    // El dueño (27/07): "me quitaste el AGRUPAR q contenía los comprobantes traídos de Compras". Es la
+    // función que usa para ver, con el +/- del Sheet, qué comprobantes componen la deuda de cada
+    // proveedor. Por eso TODO proveedor —tenga una factura o diez— lleva su fila-CABECERA (subtotal:
+    // próximo pago + "N fac." + total neto) y debajo sus FACTURAS plegables, cada una con su N° de
+    // comprobante traído de Compras (col H). Nunca una sola línea: el agrupar se perdería.
     const hCel = celdas()
     hCel[L.prov] = gp.nombre
     if (L.fecha >= 0) hCel[L.fecha] = `=IF(COUNTIFS(${conFecha})=0;"sin fecha";MINIFS(${COL_FECHA};${conFecha}))`
@@ -339,26 +379,8 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
     deudaHeaders.push(hRow)
     const inicio = filas.length + 1
     for (const inv of gp.filas) {
-      const rr = inv.fila
       const rowNum = filas.length + 1
-      const pend = `Compras!$X$${rr}="${ESTADO_DEUDA}"`
-      // Cada factura referencia SU fila de Compras; si allá se marca pagada, la celda se vacía sola.
-      // Cada dato va a LA COLUMNA QUE EL DUEÑO ROTULÓ. Las que él agregó y el generador no llena
-      // —"Comentarios"— quedan vacías: la fusión conserva lo que escribió ahí.
-      const c = celdas()
-      if (L.fecha >= 0) c[L.fecha] = `=IF(${pend};Compras!$${letra(IDX.fechaCaja)}$${rr};"")`
-      if (L.comp >= 0) c[L.comp] = `=IF(${pend};Compras!$H$${rr}&"";"")`
-      // Saldo de ESTA factura = Total − pagado. Pagado = T + los positivos de U y W (MAX(0;·) descarta
-      // el saldo negativo/entre paréntesis, que no es un pago). Misma regla que neta(), fila a fila.
-      if (L.imp >= 0) c[L.imp] = `=IF(${pend};Compras!$O$${rr}-Compras!$${letra(IDX.pagado)}$${rr}-MAX(0;Compras!$${letra(IDX.parcial1)}$${rr})-MAX(0;Compras!$${letra(IDX.parcial2)}$${rr});"")`
-      if (L.obra >= 0) c[L.obra] = `=IF(${pend};Compras!$J$${rr};"")`
-      if (L.instr >= 0 && L.comp >= 0) {
-        const cc = `$${letra(L.comp)}${rowNum}`
-        c[L.instr] = `=IF(NOT(${pend});"";IF(${cc}="";"—";IFERROR(INDEX(${CH}!$A$2:$A;MATCH(${cc};${CH}!$H$2:$H;0))&" "&INDEX(${CH}!$B$2:$B;MATCH(${cc};${CH}!$H$2:$H;0));"—")))`
-      }
-      // Tipo de pago (Compras col P) y Categoría (Compras col B), de la misma fila de Compras.
-      if (L.pago >= 0) c[L.pago] = `=IF(${pend};Compras!$P$${rr}&"";"")`
-      if (L.cat >= 0) c[L.cat] = `=IF(${pend};Compras!$B$${rr}&"";"")`
+      const c = lineaFactura(inv, rowNum)
       ponerNotas(c, NOTAS.porComprobante, inv.comprobante)
       push(c)
     }
@@ -375,8 +397,13 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
       .map((gp) => `COUNTIFS(${COL_PROV};"${qLit(gp.nombre)}";${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")`)
       .join('+') || '0'
     const totalN = `COUNTIFS(${COL_ESTADO};"${ESTADO_DEUDA}";${COL_COMERCIAL};1;${COL_TOTAL};"<>")`
+    // EL AVISO SÓLO CUANDO FALTA DEUDA DE VERDAD (un hueco POSITIVO). Antes se disparaba con el conteo
+    // de facturas, y contaba también a los proveedores con saldo neto ≤ 0 (más notas de crédito que
+    // facturas) que se excluyen del listado a propósito: mostraba "⚠ Faltan 8 factura(s) por -$500.000",
+    // un negativo confuso que no es un faltante. Ahora se gatilla por la PLATA: si el listado ya cubre
+    // la deuda (falta ≤ 0), queda en blanco. Sólo un hueco real —listado por debajo del total— avisa.
     const avisoFila = L.cols.map(() => VACIO)
-    avisoFila[0] = `=IF(ROUND(${falta};0)=0;"✓ Al día: el listado muestra toda la deuda comercial de Compras.";"⚠ Faltan "&TEXT((${totalN})-(${listadasN});"0")&" factura(s) por "&TEXT(${falta};"$#,##0")&" que este listado todavía no muestra — aparecen cuando corre el agente. El total de arriba ya las cuenta.")`
+    avisoFila[0] = `=IF(ROUND(${falta};0)<=0;"";"⚠ Faltan "&TEXT((${totalN})-(${listadasN});"0")&" factura(s) por "&TEXT(${falta};"$#,##0")&" — aparecen la próxima vez que corre el OS")`
     filas[fAviso - 1] = avisoFila
   }
   push([])
@@ -387,7 +414,8 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // las diez columnas de deuda que repetían el bloque de arriba (regla 9) y hacían de esto una pared de
   // dieciséis columnas ilegible. Menos es más: siete columnas, cada una con un trabajo.
   const b2 = push(['2 · CUENTA CORRIENTE POR PROVEEDOR'])
-  push(['Con quién se gasta y con qué plazo. El plazo —días entre factura y pago— es el dato clave: pagar a 0 días empuja al descubierto al 62,78% anual cuando el crédito del proveedor es gratis. La deuda de cada uno está arriba, agrupada. Sólo comerciales.'])
+  // Sin subtítulo en prosa (menos es más): el título y los encabezados de columna alcanzan. El plazo
+  // en días es la columna clave; su lectura va en la nota de esa celda, no en un párrafo colgado.
   const cabProv = push(['Proveedor', 'CUIT', 'Comprobantes', `Comprado ${AÑO}`, 'Plazo promedio', 'Qué se le compra'])
   const p0 = filas.length + 1
   for (const p of proveedores) {
@@ -462,7 +490,11 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   const ctrl = filas.length + 1
   push([`${RUBROS_CON_FAMILIA[0]} (rubro de Compras)`, `=SUMIF(${COL_RUBRO};"${RUBROS_CON_FAMILIA[0]}";${COL_TOTAL})`, 'Es la misma línea del Cash Flow Mensual.'])
   push([`${RUBROS_CON_FAMILIA[1]} (rubro de Compras)`, `=SUMIF(${COL_RUBRO};"${RUBROS_CON_FAMILIA[1]}";${COL_TOTAL})`, ''])
-  push(['⇒ Diferencia contra el total de materiales (tiene que ser $0)', `=$B${ctrl}+$B${ctrl + 1}-${letra(13)}$TOTFAM`, 'Distinto de cero = hay materiales que ninguna familia está mirando.'])
+  // EL TOTAL DE MATERIALES SE RECALCULA ACÁ, NO SE REFERENCIA CRUZADO. Antes apuntaba a la celda TOTAL
+  // MATERIALES (N$TOTFAM), que al partirse la pestaña quedó en OTRA hoja (Materiales): la referencia
+  // local daba #VALUE!. Se computa igual —la suma de todo lo que tiene familia asignada, que es
+  // exactamente el universo material— pero self-contained sobre Compras, sin cruzar de pestaña.
+  push(['⇒ Diferencia contra el total de materiales (tiene que ser $0)', `=$B${ctrl}+$B${ctrl + 1}-SUMIF(${COL_FAMILIA};"?*";${COL_TOTAL})`, 'Distinto de cero = hay materiales que ninguna familia está mirando.'])
   // ESTE CONTROL ESTABA MAL Y VALE DEJARLO ESCRITO: la primera versión era =X-Y-(X-Y), que da cero
   // SIEMPRE, mire lo que mire. Un control que no puede fallar no controla nada — es peor que no
   // tenerlo, porque da tranquilidad gratis.
@@ -624,7 +656,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
     }
   }
 
-  return { filas: resuelto, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, pos0, pos1, posTotal, posProy, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaL: L, deudaHeaders, deudaGrupos, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
+  return { filas: resuelto, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, kpiTit, kpiCif, pos0, pos1, posProy, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaL: L, deudaHeaders, deudaGrupos, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
 }
 
 async function main() {
@@ -656,6 +688,7 @@ async function main() {
   COL_PAGADO = fijar('pagado', COL_PAGADO, 'Monto Pagado')
   COL_PARCIAL1 = fijar('parcial1', COL_PARCIAL1, 'Monto Parcial 1')
   COL_PARCIAL2 = fijar('parcial2', COL_PARCIAL2, 'Monto Parcial 2')
+  COL_TIPOPAGO = fijar('tipoPago', COL_TIPOPAGO, 'Tipo pago')
   console.log(`  Compras por encabezado: Rubro=${letra(IDX.rubro)} · Fecha de caja=${letra(IDX.fechaCaja)} · Familia=${letra(IDX.familia)} · ¿Comercial?=${letra(IDX.comercial)} · Pagado=${letra(IDX.pagado)} · Parcial1=${letra(IDX.parcial1)} · Parcial2=${letra(IDX.parcial2)}`)
 
   // ═══ UN SOLO NOMBRE POR PROVEEDOR EN TODA LA PESTAÑA ═══════════════════════════════════════════
@@ -962,7 +995,7 @@ async function main() {
   const M = g.marcas
   const TRAMOS = [
     { titulo: NOMBRES.proveedores, desde: M.bPos, hasta: M.b3 - 1,
-      subtitulo: 'Qué se debe y a quién: la posición arriba, la deuda agrupada por proveedor (con el +/- para abrir sus facturas), la cuenta corriente con su plazo, las notas de crédito y lo que AFIP facturó que Compras no tiene. Todo son fórmulas sobre Compras y ARCA — ni un importe escrito.',
+      subtitulo: 'A quién se le debe, cuánto y cuándo · todo es fórmula sobre Compras y ARCA, ni un importe escrito a mano',
       anchos: [230, 132, 142, 104, 132, 132, 124, 172, 124, 124, 124, 124, 136, 116, 104, 240] },
     { titulo: NOMBRES.materiales, desde: M.b3, hasta: M.fin,
       subtitulo: 'En qué se va la plata: por familia de material y por mes, y la misma plata abierta por obra. Sale de la columna "Familia de material" de Compras, que el OS calcula con una sola definición.',
@@ -1075,8 +1108,63 @@ async function main() {
     for (const r of respetadas) console.log(`  ✋ ${t.titulo}: respeto tu texto ("${String(r.suyo).slice(0, 40)}") en vez de "${String(r.mio).slice(0, 40)}"`)
     const fusion = fusionar(cuadroFinal, previo)
     const conservadas = sobrantes(cuadroFinal, previo)
+    if (t.titulo === 'Proveedores') console.error(`DBGWRITE ${t.titulo} fusion.len=${fusion.length} rows12-16=${JSON.stringify(fusion.slice(11,16).map((f)=>String(f?.[0]).slice(0,40)))}`)
     await google.batchUpdateValues(ID, [{ range: `${refPestana(t.titulo)}!A1`, values: fusion }])
     if (conservadas.length) console.log(`  ✋ ${t.titulo}: ${conservadas.length} celda(s) escritas por el dueño — CONSERVADAS, no se borra nada`)
+
+    // ═══ LIMPIAR LAS FILAS SOBRANTES CUANDO EL CUADRO SE ACHICA (patrón "generadores que no borran") ═══
+    //
+    // POR QUÉ (27/07). La escritura de arriba sólo cubre `cuadroP.length` filas (la fusión). Cuando el
+    // cuadro NUEVO tiene MENOS filas que el que había —el single-line de la deuda achica el bloque: un
+    // proveedor de una factura pasó de cabecera+detalle (2 filas) a UNA— las filas viejas de abajo
+    // quedan colgando: duplicados y artefactos. Ninguna otra escritura las tocaba porque `previo` se
+    // lee sólo hasta la altura nueva. Acá se limpian, pero SÓLO las de TERRITORIO DEL OS: una celda es
+    // mía si es una FÓRMULA, un RÓTULO que yo genero, o un número/fecha suelto de un cálculo. Cualquier
+    // otra cosa —una nota del dueño— se conserva idéntica. Es la regla de oro: el OS nunca borra lo suyo
+    // encima de lo del dueño, y ante la duda, preserva.
+    if (visible.length > cuadroP.length) {
+      const osLabels = new Set()
+      for (const f of cuadroP) for (const c of f) {
+        if (typeof c === 'string' && c !== VACIO && c.trim() && !c.startsWith('=')) osLabels.add(c.trim().toLowerCase())
+      }
+      // Número, moneda, porcentaje o fecha: un valor calculado, no un rótulo del dueño (misma forma que
+      // usa esRotulo() en respetar-ediciones para descartar "esto es un dato, no texto").
+      const esDato = (s) => /^[-—$\s\d.,%()]+$/.test(s) || /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(s)
+      // La cola se lee con render FORMULA: un cálculo mío (que en pantalla muestra "ARCOR" o "$500.000")
+      // devuelve "=IF(…)" y así se reconoce como OS aunque su RESULTADO parezca texto.
+      const colaF = await google.readSheetValues(
+        ID, `${refPestana(t.titulo)}!A${cuadroP.length + 1}:${letra(anchoLeer - 1)}${visible.length}`, { render: 'FORMULA' },
+      ).catch(() => [])
+      const limpieza = []
+      const filasPuras = [] // índices (0-based dentro de la cola) donde TODA la fila era del OS → se puede resetear su formato
+      let limpiadas = 0
+      for (let i = 0; i < visible.length - cuadroP.length; i++) {
+        const fF = colaF[i] || []
+        const fila = []
+        let todoMio = true
+        for (let j = 0; j < anchoLeer; j++) {
+          const txt = String(fF[j] ?? '').trim()
+          const esMio = txt === '' || txt.startsWith('=') || osLabels.has(txt.toLowerCase()) || esDato(txt)
+          if (esMio) { if (txt !== '') limpiadas++; fila.push('') } else { fila.push(fF[j]); todoMio = false }
+        }
+        limpieza.push(fila)
+        if (todoMio) filasPuras.push(cuadroP.length + i) // 0-based absoluto
+      }
+      if (limpiadas) {
+        await google.batchUpdateValues(ID, [{ range: `${refPestana(t.titulo)}!A${cuadroP.length + 1}`, values: limpieza }])
+        // El formato y las notas viejas de las filas que quedaron 100% del OS también se van (una
+        // hairline o un fondo huérfano se lee como un error). Sólo las filas puras: si una fila tenía
+        // una nota del dueño, no se le toca ni el formato.
+        const resetReq = []
+        for (const row of filasPuras) {
+          const rango = { sheetId: hoja.sheetId, startRowIndex: row, endRowIndex: row + 1, startColumnIndex: 0, endColumnIndex: Math.max(anchoLeer, 26) }
+          resetReq.push({ repeatCell: { range: rango, cell: { userEnteredFormat: { backgroundColor: { red: 1, green: 1, blue: 1 }, textFormat: { bold: false, italic: false, fontSize: 10, foregroundColor: { red: 0, green: 0, blue: 0 } }, horizontalAlignment: 'LEFT', verticalAlignment: 'MIDDLE', wrapStrategy: 'CLIP' }, note: '' }, fields: 'userEnteredFormat,note' } })
+          resetReq.push({ updateBorders: { range: rango, top: { style: 'NONE' }, bottom: { style: 'NONE' }, left: { style: 'NONE' }, right: { style: 'NONE' }, innerHorizontal: { style: 'NONE' }, innerVertical: { style: 'NONE' } } })
+        }
+        if (resetReq.length) await google.spreadsheetBatchUpdate(ID, resetReq).catch((e) => console.warn(`  ⚠ ${t.titulo}: no pude resetear el formato de las filas sobrantes: ${e.message}`))
+        console.log(`  🧹 ${t.titulo}: ${limpiadas} celda(s) de filas sobrantes del OS limpiadas (el cuadro se achicó ${visible.length - cuadroP.length} filas); notas del dueño conservadas`)
+      }
+    }
     await sellarFirma(google, ID, t.titulo, refPestana(t.titulo))
     await guardarRegistro(ID, t.titulo, cuadroFinal, ediciones, visible, candidatos)
       .catch((e) => console.warn(`  ⚠ ${t.titulo}: no pude guardar el registro de rótulos: ${e.message}`))
@@ -1112,6 +1200,9 @@ async function main() {
   // con el +/-. Primero se BORRAN los grupos viejos (la API los APILA, no los reemplaza; sin esto el
   // agente que rehace el cuadro cada 2 horas dejaría una escalera de +/- creciendo sola) y recién
   // después se crean los nuevos, colapsados: la pestaña abre compacta, una fila por proveedor.
+  // Si la pestaña Proveedores quedó protegida (firma/candado) y no se reescribió, no está en `escritas`:
+  // salto agrupar/nombres en vez de crashear con hojaArca undefined. La verificación de abajo sigue.
+  if (hojaArca) {
   const gruposPrevios = (await google.getRowGroups(ID)).find((x) => x.sheetId === hojaArca.sheetId)?.grupos ?? []
   const reqGr = gruposPrevios.map((v) => ({ deleteDimensionGroup: { range: { sheetId: hojaArca.sheetId, dimension: 'ROWS', startIndex: v.startIndex, endIndex: v.endIndex } } }))
   // MOSTRAR TODAS LAS FILAS primero: borrar un grupo colapsado deja las filas con hiddenByUser=true, y
@@ -1150,6 +1241,9 @@ async function main() {
     { name: N_ARCA.ventasMonto, fila: tArca.fArcaVentas, col: 3 },
   ].filter((x) => x.fila))
   console.log(`  ${nombres.nombres} rangos con nombre publicados: el Cash Flow los referencia en vez de copiarlos`)
+  } else {
+    console.warn('  ⚠ "Proveedores" quedó protegida y no se reescribió: salté agrupar/nombres. Regenerá con la firma sincronizada si querés aplicar cambios de diseño.')
+  }
 
   // ═══ VERIFICACIÓN ANTES DE RETIRAR LA PESTAÑA VIEJA ═══
   // No se borra nada hasta comprobar que las cuatro nuevas están escritas y sin errores.
@@ -1188,6 +1282,9 @@ async function formatear(google, sheetId, g, ancho, filas) {
   //
   // Un formato es tan persistente como un dato: si el cuadro se rehace entero, el formato también.
   const req = [
+    // Desfreezar ANTES de todo: la banda de KPIs combina de a pares y no se puede combinar una columna
+    // congelada con una que no lo está. Va primero en el batch para que el merge ya la vea libre.
+    { updateSheetProperties: { properties: { sheetId, gridProperties: { frozenColumnCount: 0 } }, fields: 'gridProperties.frozenColumnCount' } },
     { unmergeCells: { range: r(0, filas) } },
     // ═══ LAS NOTAS VIEJAS TAMBIÉN SE BORRAN ═══
     //
@@ -1294,26 +1391,36 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // Resumen vertical sin encabezado de tabla (Concepto · Monto · una nota al lado). El total va
   // rulado y en negrita; las sub-líneas ("· de eso, ...") en gris; el plazo, en días, no en pesos.
   // Es el mismo patrón que el dueño aprobó en Impuestos, adaptado a las columnas de esta pestaña.
-  if (g.bPos && g.pos0 && g.pos1) {
-    // Título de la posición: tinta, sin barra; una línea fina arriba lo separa del subtítulo.
-    fmt(r(g.bPos - 1, g.bPos), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
-      { textFormat: { bold: true, fontSize: 11, foregroundColor: INK }, backgroundColor: { red: 1, green: 1, blue: 1 } })
+  if (g.bPos) {
+    // El sello: tinta, derrama a la derecha (OVERFLOW), una línea fina arriba lo separa del subtítulo.
+    fmt(r(g.bPos - 1, g.bPos), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor,userEnteredFormat.wrapStrategy',
+      { textFormat: { bold: true, fontSize: 11, foregroundColor: INK }, backgroundColor: { red: 1, green: 1, blue: 1 }, wrapStrategy: 'OVERFLOW_CELL' })
     hairTop(g.bPos)
-    // Concepto (A) en negrita suave; Monto (B) moneda a la derecha; la nota (C) en gris, sin plata.
-    fmt(r(g.pos0 - 1, g.pos1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: false, fontSize: 11, foregroundColor: INK } })
-    fmt(r(g.pos0 - 1, g.pos1, 1, 2), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.textFormat',
-      { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT', textFormat: { bold: false, fontSize: 11, foregroundColor: INK } })
-    fmt(r(g.pos0 - 1, g.pos1, 2, ancho), 'userEnteredFormat', E.nota())
-    // El total con terceros: rulado arriba y en negrita, como un subtotal de statement.
-    if (g.posTotal) {
-      fmt(r(g.posTotal - 1, g.posTotal, 0, 2), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 11, foregroundColor: INK } })
-      hairTop(g.posTotal, 0, 2)
+  }
+  // ═══ EL HERO ES UNA BANDA DE KPIs, igual que CAJA (aprobada por el dueño): rótulos versalita, cifras
+  // grandes, pie chico; cada KPI ocupa dos columnas combinadas para que el número tenga aire. ═══
+  if (g.kpiTit && g.kpiCif) {
+    fmt(r(g.kpiTit - 1, g.kpiTit, 0, 8), 'userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.backgroundColor',
+      { textFormat: { bold: true, fontSize: 9, foregroundColor: MUTED }, horizontalAlignment: 'LEFT', backgroundColor: { red: 1, green: 1, blue: 1 } })
+    fmt(r(g.kpiCif - 1, g.kpiCif, 0, 8), 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment',
+      { numberFormat: E.NUM.moneda, textFormat: { bold: true, fontSize: 13, foregroundColor: INK }, horizontalAlignment: 'LEFT', verticalAlignment: 'MIDDLE' })
+    fmt(r(g.kpiCif, g.kpiCif + 1, 0, 8), 'userEnteredFormat', E.nota())
+    req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: g.kpiCif - 1, endIndex: g.kpiCif }, properties: { pixelSize: 34 }, fields: 'pixelSize' } })
+    for (const c of [0, 2, 4, 6]) {
+      req.push({ mergeCells: { range: r(g.kpiTit - 1, g.kpiTit, c, c + 2), mergeType: 'MERGE_ROWS' } })
+      req.push({ mergeCells: { range: r(g.kpiCif - 1, g.kpiCif, c, c + 2), mergeType: 'MERGE_ROWS' } })
+      req.push({ mergeCells: { range: r(g.kpiCif, g.kpiCif + 1, c, c + 2), mergeType: 'MERGE_ROWS' } })
     }
-    // El plazo son días, no pesos. Igual que en el control: la columna es de plata y esta celda no.
-    if (g.posProy) hairTop(g.posProy, 0, 2)
+    hairTop(g.kpiTit)
+  }
+  // Secundarios: concepto (A) chico en tinta, monto (B) moneda a la derecha, sin columna de notas.
+  if (g.pos0 && g.pos1) {
+    fmt(r(g.pos0 - 1, g.pos1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: false, fontSize: 10, foregroundColor: INK } })
+    fmt(r(g.pos0 - 1, g.pos1, 1, 2), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.textFormat',
+      { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT', textFormat: { bold: false, fontSize: 10, foregroundColor: INK } })
     if (g.posPlazo) fmt(r(g.posPlazo - 1, g.posPlazo, 1, 2), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: { type: 'NUMBER', pattern: '0.0" días"' }, horizontalAlignment: 'RIGHT' })
-    // Lo de AFIP sin cargar es una alerta suave: es plata facturada que ninguna pestaña más ve.
-    if (g.posFaltan) fmt(r(g.posFaltan - 1, g.posFaltan, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: false, fontSize: 11, foregroundColor: E.COLOR.alertaTexto } })
+    if (g.posFaltan) fmt(r(g.posFaltan - 1, g.posFaltan, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: false, fontSize: 10, foregroundColor: E.COLOR.alertaTexto } })
+    hairTop(g.pos0)
   }
 
   for (const f of [g.cabProv, g.cabFam, g.cabObra]) {
@@ -1457,7 +1564,9 @@ async function formatear(google, sheetId, g, ancho, filas) {
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 250 }, fields: 'pixelSize' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: ancho }, properties: { pixelSize: 108 }, fields: 'pixelSize' } })
   // La reja apagada es el mayor salto de "planilla" a "statement". Va con la columna congelada.
-  req.push({ updateSheetProperties: { properties: { sheetId, gridProperties: { frozenColumnCount: 1, hideGridlines: true } }, fields: 'gridProperties(frozenColumnCount,hideGridlines)' } })
+  // Sin columna congelada: la banda de KPIs combina de a pares (A-B, C-D…) y no se puede combinar una
+  // columna congelada con una que no lo está. Igual que CAJA, que tampoco congela la primera.
+  req.push({ updateSheetProperties: { properties: { sheetId, gridProperties: { frozenColumnCount: 0, hideGridlines: true } }, fields: 'gridProperties(frozenColumnCount,hideGridlines)' } })
   await google.spreadsheetBatchUpdate(ID, req)
 }
 
