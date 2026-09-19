@@ -57,6 +57,17 @@ export function cadenaDeCaja(inicio = [], neto = [], cierre = [], cols = [], tol
 }
 
 /**
+ * SOBRE CUÁNTOS PERÍODOS SE PUDO VERIFICAR LA CADENA.
+ *
+ * `cadenaDeCaja` saltea los períodos sin ancla, así que si la pestaña CAJA está a medio reescribir y
+ * el saldo llega vacío, la cadena no encuentra NADA que revisar y devuelve cero fallas: un verde que
+ * no verificó nada. Un control que no puede correr tiene que decir que no corrió, no aprobar.
+ */
+export function periodosConAncla(inicio = [], cols = []) {
+  return cols.filter(({ col }) => esNum(inicio[col])).length
+}
+
+/**
  * INVARIANTE 2 — cada subtotal es la suma de SUS componentes.
  * @param {Array<{fila:number, hijos:number[], concepto:string}>} mapa filas 1-indexadas
  */
