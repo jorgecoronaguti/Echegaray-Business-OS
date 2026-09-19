@@ -32,11 +32,11 @@
 
 	# ── ASISTENCIA (Business OS) — pantalla de carga + slash command ────────────────
 	#
-	# QUÉ PUBLICA:
-	#   GET  /asistencia?t=<token>          la pantalla que abre el jefe desde el celular
-	#   GET  /asistencia/api/*              contexto y cuadrilla que consume esa pantalla
-	#   POST /asistencia/api/registrar      el registro (escribe en JORNALES)
+	# QUÉ PUBLICA (y nada más — la pantalla web se descartó el 30/07/2026: la interfaz vive
+	# adentro de Mattermost y nadie abre un navegador para cargar asistencia):
 	#   POST /asistencia/comando            el slash command /asistencia de Mattermost
+	#   POST /asistencia/accion?t=<secreto> los clicks de los botones y el envío de diálogos
+	# Todo lo demás bajo /asistencia* recibe 404 del propio servicio.
 	#
 	# Todo eso lo atiende UN proceso del host (`orquestador/comunicacion/servidor-asistencia.mjs`,
 	# user-unit `echegaray-asistencia-http.service`). Ese proceso NO abre ningún puerto público:
@@ -62,6 +62,47 @@
 	# POR QUÉ EL PREFIJO /asistencia Y NO OTRO: Mattermost usa `/<nombre-del-equipo>/…` para su
 	# webapp. `asistencia` queda RESERVADO como nombre de equipo en este Mattermost — el canal
 	# se llama así, el equipo no, y no debe llamarse así.
+	# ── PANTALLA REMOTA DEL NAVEGADOR DE BALANZ ─────────────────────────────────────
+	#
+	# QUÉ PUBLICA:
+	#   GET /balanz?t=<token>     el escritorio de la VM, para iniciar sesión en el bróker a mano
+	#   GET /balanz/vendor/*      el cliente del escritorio (librería abierta, sin secretos)
+	#   WS  /balanz/ws?t=<token>  el puente hacia el escritorio
+	#
+	# Mismo camino que `/asistencia` y por el mismo motivo: socket unix, porque el firewall del host
+	# descarta lo que llega desde los bridges de Docker. Caddy sigue siendo lo único que mira a
+	# Internet, y el VNC del contenedor sólo existe en 127.0.0.1 de la VM.
+	#
+	# El WebSocket no necesita configuración especial: `reverse_proxy` de Caddy v2 hace el upgrade
+	# solo (igual que para Mattermost).
+	#
+	# El token va en `?t=` porque el enlace tiene que poder abrirse desde un click en el celular. Se
+	# borra del log de acceso más abajo, junto con el de asistencia: quien lo tenga entra.
+	@balanz path /balanz /balanz/*
+	handle @balanz {
+		reverse_proxy {$OS_BALANZ_UPSTREAM:unix//sockets/balanz.sock}
+	}
+
+	# CARGA DE COMPROBANTES POR CHAT. Los botones Confirmar/Corregir/Descartar del canal
+	# `comprobantes-gastos` llaman acá. Sin esta ruta el click cae en Mattermost y el usuario ve
+	# "Error en la acción de la integración" — que fue exactamente lo que pasó el 03/08.
+	# El secreto viaja en `?t=` igual que el de asistencia, así que el filtro de log de abajo ya
+	# lo borra. Lo atiende el mismo proceso del host.
+	@comprobantes path /comprobantes /comprobantes/*
+	handle @comprobantes {
+		reverse_proxy {$OS_ASISTENCIA_UPSTREAM:unix//sockets/asistencia.sock}
+	}
+
+	# RECEPCIÓN DE ARCHIVOS POR CHAT. Los botones de un archivo suelto en el chat —confirmar la
+	# importación de un extracto, descartarlo— llaman acá. Mismo proceso y mismo mecanismo que
+	# `/comprobantes`: el secreto viaja en `?t=` y el filtro de log de abajo ya lo borra.
+	# Sin esta ruta el click cae en Mattermost y el usuario ve "Error en la acción de la
+	# integración", que es el mismo síntoma del 03/08 por la misma causa.
+	@archivos path /archivos /archivos/*
+	handle @archivos {
+		reverse_proxy {$OS_ASISTENCIA_UPSTREAM:unix//sockets/asistencia.sock}
+	}
+
 	@asistencia path /asistencia /asistencia/*
 	handle @asistencia {
 		# X-Forwarded-For lo agrega `reverse_proxy` solo: el servidor lee de ahí la IP real
@@ -74,9 +115,9 @@
 		reverse_proxy mattermost:8065
 	}
 
-	# El token del enlace viaja en `?t=` porque tiene que poder abrirse desde un click en el
-	# celular. Es de un solo uso y dura 10 minutos, pero igual no tiene por qué quedar escrito
-	# en el log de acceso: se borra del registro. El resto de la URL se loguea normal.
+	# El SECRETO DE LA INTEGRACIÓN viaja en `?t=` de la URL de callback que Mattermost tiene
+	# guardada. No tiene por qué quedar escrito en el log de acceso: se borra del registro.
+	# El resto de la URL se loguea normal.
 	log {
 		format filter {
 			wrap console
