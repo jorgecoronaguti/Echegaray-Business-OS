@@ -39,6 +39,9 @@
  * separa de la larga en la primera excepción nueva.
  */
 export const SIN_GENERADOR = {
+  // Declarada el 19/09/2026: pagos sin factura (retiros de Dirección, SAC en efectivo) que se cargan uno por uno con
+  // referencia del extracto. `pagos-no-compra-pestana.mjs` sólo AGREGA filas pedidas, nunca la regenera.
+  _PAGOS_NO_COMPRA_RAW: 'la carga una persona (vía pagos-no-compra-pestana --file): pagos sin compra con su referencia bancaria; no se regenera.',
   Compras: 'la carga una persona: es el libro de gastos. El OS le calcula columnas (rubro-caja-sheet) pero no la reescribe.',
   Cobranzas: 'la carga una persona: es el libro de ventas y cobros.',
   Parámetros: 'los parámetros los decide una persona (alícuotas, jornada, clientes).',

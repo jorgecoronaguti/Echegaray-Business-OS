@@ -22,6 +22,7 @@ import {
   enComprasTambien, aIso,
 } from '../lib/pagos-no-compra.mjs'
 import { leerColumnasRetiros } from '../lib/direccion-retiros.mjs'
+import { rangoAbierto } from '../lib/columnas-por-encabezado.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const APLICAR = process.argv.includes('--aplicar')
@@ -78,10 +79,12 @@ async function main() {
   const CARGAR_IGUAL = process.argv.includes('--cargar-igual')
   if (plan.altas.length) {
     const cols = await leerColumnasRetiros(google, ID)
-    const leer = async (k) => (await google.readSheetValues(ID, `'Compras'!${cols[k].letra}4:${cols[k].letra}`, { render: 'UNFORMATTED_VALUE' })) ?? []
+    const leer = async (k) => (await google.readSheetValues(ID, rangoAbierto('Compras', cols[k]), { render: 'UNFORMATTED_VALUE' })) ?? []
     const [personas, importes, fechas] = await Promise.all([leer('persona'), leer('importe'), leer('fechaCaja')])
-    const compras = personas.map((f, i) => ({
-      fila: i + 4, persona: f?.[0], importe: Number(importes[i]?.[0]), fecha: aIso(fechas[i]?.[0]),
+    // Cada lectura es UNA columna: la celda es el único elemento de su fila.
+    const celda = (filas, i) => { const [v] = filas[i] ?? []; return v }
+    const compras = personas.map((_, i) => ({
+      fila: i + 4, persona: celda(personas, i), importe: Number(celda(importes, i)), fecha: aIso(celda(fechas, i)),
     })).filter((c) => c.persona && Number.isFinite(c.importe))
     const choques = enComprasTambien(plan.altas, compras)
     for (const c of choques) console.log(`  ⚠ probable duplicado en Compras (fila ${c.filas.join(', ')}): ${c.pago.fecha} ${c.pago.persona} ${$(c.pago.importe)}`)

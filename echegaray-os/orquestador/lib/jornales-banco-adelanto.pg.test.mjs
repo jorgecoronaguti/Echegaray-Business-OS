@@ -23,7 +23,7 @@ test('escenario A: aplicar y revertir dejan la línea como estaba', { skip: !hay
   const tx = { query: q }
   try {
     await q('begin')
-    await q('select pg_advisory_xact_lock(20260918)')
+    await q('select pg_advisory_xact_lock(20260822)')
 
     const { plan } = await planDeCorreccion(q)
     const objetivo = plan.find((p) => p.lineas.some((l) => !lineaBloqueada(l)))
