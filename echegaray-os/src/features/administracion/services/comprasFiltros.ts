@@ -30,6 +30,8 @@
 // «¿esto está vencido?» y se contradirían el día que el criterio del Sheet cambie. El prefijo
 // numérico es su ORDEN — se usa para ordenar y se saca para mostrar.
 
+import { leerNumeroEsAR } from '../../../shared/lib/numeroEsAR.ts'
+
 /** Lo que un criterio necesita mirar de una fila. Subconjunto de `CompraSheet` más su obra. */
 export interface Criteriable {
   proveedor: string | null
@@ -102,12 +104,25 @@ export function periodoDe(fecha: string | null | undefined): string {
  * `undefined` y no 0 cuando no se puede leer, y ésa es toda la diferencia entre «no filtré por
  * importe» y «filtré por importe mayor a cero» — que en una pestaña con notas de crédito en negativo
  * son dos listas distintas.
+ *
+ * ═══ QUÉ TEXTO LLEGA (auditoría, 18/09/2026) ═══
+ *
+ * El que escribe el formulario de filtros: lo tecleado la primera vez, y después lo que el mismo campo
+ * precarga al volver. Antes se sacaban TODOS los puntos, así que «8.5» se leía 85 — y el campo se precargaba
+ * con `toString()`: se tecleaba «1.500,50», quedaba 1500.5, el campo mostraba «1500.5» y al cambiar cualquier
+ * otro filtro se reenviaba y se leía 15005. Diez veces más en cada vuelta, sin que nadie tocara el importe.
+ * Ahora los dos lados comparten contrato: se lee con `leerNumeroEsAR` y se precarga con `textoDeImporte`.
  */
 export function numeroDe(v: string | null | undefined): number | undefined {
-  const t = String(v ?? '').trim().replace(/\./g, '').replace(',', '.')
+  const t = String(v ?? '').trim()
   if (!t) return undefined
-  const n = Number(t)
-  return Number.isFinite(n) ? n : undefined
+  const l = leerNumeroEsAR(t)
+  return l.ok && l.valor != null ? l.valor : undefined
+}
+
+/** Cómo se precarga un importe en el campo: el MISMO formato que `numeroDe` lee. Coma decimal, sin miles. */
+export function textoDeImporte(n: number | undefined): string | undefined {
+  return n == null ? undefined : String(n).replace('.', ',')
 }
 
 type Params = Record<string, string | undefined>

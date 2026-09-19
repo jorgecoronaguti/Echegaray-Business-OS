@@ -37,7 +37,7 @@ import { leerReparto, totalDelReparto } from './repartoHH'
 import { leerEquipos, rotuloEquipo } from './equiposDelParte'
 import { crearImpedimento } from './actions'
 import { vincularDocumento } from './actionsDocumentos'
-import { cambiosDeMedicion, metodoTrasMedir } from './medicionEnLote'
+import { leerMedicion, metodoTrasMedir } from './medicionEnLote'
 
 const parteSchema = z.object({
   actividad_id: z.string().uuid('Elegí la actividad'),
@@ -301,7 +301,17 @@ export async function medirEnLote(obraId: string, form: FormData): Promise<Resul
   if (errLectura) return { ok: false, error: errLectura.message }
 
   const filas = (actuales ?? []) as { id: string; unidad: string | null; cantidad_objetivo: number | null; metodo_avance: string }[]
-  const cambios = cambiosDeMedicion(form.entries(), filas)
+  const { cambios, ilegibles } = leerMedicion(form.entries(), filas)
+  // UNA CANTIDAD ILEGIBLE FRENA EL LOTE (auditoría, 18/09/2026): antes se leía `null` y vaciaba la medición
+  // que había. Se dice cuál, y no se guarda nada: a medias, la persona creería que cargó todo.
+  if (ilegibles.length > 0) {
+    const cuales = ilegibles.slice(0, 3).map((i) => `«${i.texto}»`).join(', ')
+    return {
+      ok: false,
+      error: `No entendí ${ilegibles.length === 1 ? 'la cantidad' : 'las cantidades'} ${cuales}${ilegibles.length > 3 ? '…' : ''}: `
+        + 'escribí un número mayor a cero, con coma para los decimales (12,5) y punto para los miles (1.500). No se guardó nada.',
+    }
+  }
   if (cambios.length === 0) return { ok: true, mensaje: 'No había nada que cambiar.' }
 
   const metodoDe = new Map(filas.map((f) => [f.id, f.metodo_avance]))

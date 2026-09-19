@@ -21,7 +21,7 @@
 
 import Link from 'next/link'
 import { BarraFiltros, CampoFiltro, SelectFiltro } from './BarraFiltros'
-import { LLAVE, type Criterios, type Opciones } from '../services/comprasFiltros'
+import { LLAVE, textoDeImporte, type Criterios, type Opciones } from '../services/comprasFiltros'
 
 /** El mes `2026-08` como «ago 2026», que es como se lee un período y no como se guarda. */
 function rotuloPeriodo(p: string): string {
@@ -90,11 +90,11 @@ export function FiltrosComprasSheet({
         <CampoFiltro label="Hasta" name={LLAVE.hasta} valor={criterios.hasta} tipo="date" testid="f-hasta" />
         <CampoFiltro
           label="Importe mín." name={LLAVE.min} placeholder="0"
-          valor={criterios.min?.toString()} testid="f-min"
+          valor={textoDeImporte(criterios.min)} testid="f-min"
         />
         <CampoFiltro
           label="Importe máx." name={LLAVE.max} placeholder="sin tope"
-          valor={criterios.max?.toString()} testid="f-max"
+          valor={textoDeImporte(criterios.max)} testid="f-max"
         />
       </BarraFiltros>
       {limpiarHref && (
