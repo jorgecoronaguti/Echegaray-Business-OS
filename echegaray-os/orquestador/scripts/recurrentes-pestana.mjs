@@ -46,6 +46,7 @@ import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR, PORCENTAJE } fro
 import { bloqueControlArca, FILA_BLOQUE, MONTOS_BLOQUE } from '../lib/control-arca-bloque.mjs'
 import { RECURRENTES, norm } from '../lib/rubro-caja.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
+import { ANCLA_AUXILIAR } from '../lib/libro-extractores-estructura.mjs'
 import { fila as filaConNombre, aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -92,7 +93,10 @@ export function grilla(proveedores) {
   const vacia = () => Array(ANCHO).fill(VACIO)
   const push = (f) => { filas.push(f); return filas.length }
 
-  const t = vacia(); t[0] = `Servicios recurrentes ${AÑO}`
+  // A1 ES EL NOMBRE DE LA PESTAÑA, SIN AÑO NI ADORNO. Decía «Servicios recurrentes 2026» sobre una
+  // pestaña llamada «Recurrentes»: el lector tenía dos nombres para lo mismo, y el año —que sí es
+  // información— pertenece a la línea de procedencia, donde se declara el período.
+  const t = vacia(); t[0] = PESTAÑA
   push(t)
   // EL SUBTÍTULO ES UNA LÍNEA. La versión anterior tenía acá un párrafo de 600 caracteres que se
   // envolvía en diez renglones y se cortaba contra la columna de enero: el "muro de texto" que el
@@ -105,8 +109,20 @@ export function grilla(proveedores) {
   // fecha de la factura: el dueño leyó agosto vacío porque pagó Movistar el 07/08 con facturas
   // fechadas en julio. Mezclar las dos ventanas es la regla de oro 3, y el rótulo es el único lugar
   // donde se puede declarar cuál se está usando.
-  n[0] = `Rubro "${RUBRO}" por FECHA DE CAJA, no de factura. Cerrados: lo real. En curso y futuros: lo esperado (itálica).`
+  // EL AÑO NO PUEDE IR PRIMERO: «2026 · rubro …» matchea la gramática de un título de sección
+  // (`ES_SECCION_NUM`) y el contrato lo cuenta como el bloque número 2.026, con lo que la numeración
+  // de toda la pestaña queda corrida. Medido al construir la grilla, no en el archivo.
+  n[0] = `Rubro "${RUBRO}" de Compras por FECHA DE CAJA · ${AÑO} · lo proyectado en itálica`
   push(n)
+  // ═══ LA FILA 3 VA VACÍA, Y ESO NO CORRE NINGUNA FÓRMULA ═══
+  //
+  // El título de sección ocupaba la fila 3 «para no correr ninguna fila», y el contrato pide ahí el
+  // respiro que separa el encabezado del primer bloque. Correrlas es seguro: esta grilla no tiene
+  // una sola referencia a un número de fila escrito a mano —cada fórmula se arma con `filas.length`
+  // mientras se construye— y los dos rangos con nombre los recalcula `rangosDeRecurrentes(g)` sobre
+  // la grilla ya armada. Es justamente lo contrario del defecto que esa función acaba de arreglar:
+  // un nombre anclado a un layout viejo.
+  push(vacia())
   // EL TÍTULO DE SECCIÓN VA JUSTO ARRIBA DE SU ENCABEZADO, y ocupa la fila en blanco que ya había:
   // así no corre ninguna fila. Las fórmulas de abajo referencian filas absolutas y un desplazamiento
   // las dejaría apuntando a otra cosa, en silencio.
@@ -122,7 +138,12 @@ export function grilla(proveedores) {
   // ya se cargó del mes en curso— porque es el hecho que el control de abajo compara contra Compras.
   cab[C_NMESES] = 'Meses cerrados con gasto'
   cab[C_PROM] = 'Promedio de meses cerrados'
-  cab[C_AUX0] = 'AUXILIAR — el real de cada mes. De acá sale la proyección: sin separarlo, la fórmula de un mes se leería a sí misma (#REF!). No borrar.'
+  // EL ENCABEZADO DE LA AUXILIAR ES EL ANCLA, Y NADA MÁS. Medía 135 caracteres explicando por qué la
+  // columna existe (sin separarla, la fórmula de un mes se leería a sí misma y daría #REF!) y
+  // pidiendo que no se borre. Las dos cosas son ciertas y ninguna se lee en una columna que está
+  // oculta: viven acá. El texto se toma de `ANCLA_AUXILIAR`, que es lo que `libro-extractores` busca
+  // con `startsWith` para encontrar la columna — dos copias del ancla es cómo se pierde el destino.
+  cab[C_AUX0] = ANCLA_AUXILIAR
   push(cab)
 
   const f0 = filas.length + 1
@@ -196,7 +217,9 @@ export function grilla(proveedores) {
   // EL RÓTULO DICE LO QUE DECÍA LA PROSA DE AL LADO. La columna C llevaba "Distinto de cero = hay un
   // proveedor recurrente que este cuadro no está listando." — una oración por fila, en cada corrida,
   // que el dueño borraba a mano y volvía. Cabe en el rótulo.
-  c4[0] = '⇒ Diferencia — un proveedor del rubro que el cuadro no lista (tiene que ser $0)'
+  // «tiene que ser $0» es lo que el control mide, y el control lo dice solo: si da distinto de cero,
+  // hay un proveedor del rubro fuera del cuadro. Nombrar la fila alcanza.
+  c4[0] = '⇒ Diferencia — proveedor del rubro fuera del cuadro'
   // ROUND A PESO. El SUMIFS de Compras y la suma del cuadro difieren en fracciones de centavo, y el
   // formato dibujaba "-$0" EN ROJO con los datos perfectos. Un control que grita por medio centavo se
   // deja de mirar, que es peor que no tenerlo. El rojo queda sólo para una diferencia de un peso o más.
