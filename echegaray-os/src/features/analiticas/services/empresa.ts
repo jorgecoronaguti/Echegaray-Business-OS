@@ -190,12 +190,12 @@ export interface FilaCobranza {
  * hablar de dos cosas distintas. La ficha del cliente conserva su rótulo (`BANDAS`): es otra pantalla.
  * Los tramos vencidos llevan «días» completo — «31–60» solo no dice de qué son sesenta.
  */
-export const ZONAS_COBRANZA: { clave: ClaveBanda; rotulo: string }[] = [
-  { clave: 'por_vencer', rotulo: 'al día' },
-  { clave: 'd1_30', rotulo: '1–30 días' },
-  { clave: 'd31_60', rotulo: '31–60 días' },
-  { clave: 'd61_90', rotulo: '61–90 días' },
-  { clave: 'd90', rotulo: '+90 días' },
+export const ZONAS_COBRANZA: { clave: ClaveBanda; rotulo: string; corto: string }[] = [
+  { clave: 'por_vencer', rotulo: 'al día', corto: 'al día' },
+  { clave: 'd1_30', rotulo: '1–30 días', corto: '1–30' },
+  { clave: 'd31_60', rotulo: '31–60 días', corto: '31–60' },
+  { clave: 'd61_90', rotulo: '61–90 días', corto: '61–90' },
+  { clave: 'd90', rotulo: '+90 días', corto: '+90' },
 ]
 
 /** El rótulo de un tramo con las palabras de Analíticas, no con las de la ficha del cliente. */
@@ -274,7 +274,7 @@ export function cifrasCobranza(filas: FilaCobranza[]): { porCobrar: number; masD
  * saldo, con los tramos de `bandasAntiguedad`. Suma lo que suma `cobranza` —clientes con saldo—, así la
  * banda y la cifra «por cobrar» nunca difieren.
  */
-export function bandasDeCobranza(cuenta: unknown[]): { clave: ClaveBanda; rotulo: string; monto: number }[] {
+export function bandasDeCobranza(cuenta: unknown[]): { clave: ClaveBanda; rotulo: string; corto: string; monto: number }[] {
   const tot = new Map<ClaveBanda, number>()
   for (const f of cuenta) {
     const r = f as Record<string, unknown>
@@ -285,5 +285,7 @@ export function bandasDeCobranza(cuenta: unknown[]): { clave: ClaveBanda; rotulo
     } as CuentaCorriente
     for (const b of bandasAntiguedad(fila)) tot.set(b.clave, (tot.get(b.clave) ?? 0) + b.monto)
   }
-  return ZONAS_COBRANZA.map((z) => ({ clave: z.clave, rotulo: z.rotulo, monto: tot.get(z.clave) ?? 0 }))
+  // `corto` es el mismo rótulo sin la palabra «días»: en el teléfono las cinco zonas no entran enteras y
+  // un rótulo cortado a la mitad («31–6…») no dice nada.
+  return ZONAS_COBRANZA.map((z) => ({ clave: z.clave, rotulo: z.rotulo, corto: z.corto, monto: tot.get(z.clave) ?? 0 }))
 }

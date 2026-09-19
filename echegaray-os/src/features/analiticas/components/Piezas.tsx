@@ -37,7 +37,9 @@ function UnaCifra({ c }: { c: Cifra }) {
       <div className={`text-[22px] font-semibold leading-[1.05] tracking-[-0.02em] tabular-nums lg:text-[28px] ${c.valor == null ? 'text-faint' : c.tono ? TONO_TEXTO[c.tono] : 'text-ink'}`}>
         {c.valor ?? c.falta ?? 'sin registrar'}
       </div>
-      {c.nota ? <div className="text-[11.5px] text-muted">{c.nota}</div> : null}
+      {/* UNA NOTA LARGA NO PUEDE ROBARLE ANCHO A LA CIFRA DE AL LADO: sin tope, la fila en `flex-nowrap`
+          repartía el sobrante y «$ 38,70 M» se partía en dos renglones. La nota envuelve, el número no. */}
+      {c.nota ? <div className="max-w-[260px] text-[11.5px] text-muted">{c.nota}</div> : null}
     </div>
   )
 }

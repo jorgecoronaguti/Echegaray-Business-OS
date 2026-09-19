@@ -21,7 +21,11 @@ export function Columnas({ meses }: { meses: { mes: string; valor: string | null
     <div className="grid h-[220px] items-end gap-2 lg:gap-4" style={{ gridTemplateColumns: `repeat(${Math.max(meses.length, 1)}, minmax(0, 1fr))` }}>
       {meses.map((m) => (
         <div key={m.mes} className="flex h-full min-w-0 flex-col items-center justify-end gap-2">
-          <div className={`whitespace-nowrap text-[11px] font-semibold lg:text-[12.5px] ${m.valor == null ? 'font-normal text-faint' : m.color ?? 'text-ink'}`}>{m.valor ?? m.nota}</div>
+          {/* LA CIFRA NUNCA SE PARTE; la palabra de un mes sin dato cerrado sí, o a 390 se encima con la
+              del mes de al lado —con nueve columnas ninguna palabra entra en una sola línea—. */}
+          <div className={m.valor == null
+            ? 'text-center text-[10px] font-normal leading-[1.15] text-faint lg:whitespace-nowrap lg:text-[12.5px]'
+            : `whitespace-nowrap text-[11px] font-semibold lg:text-[12.5px] ${m.color ?? 'text-ink'}`}>{m.valor ?? m.nota}</div>
           <div className="flex w-full max-w-[120px] flex-col overflow-hidden rounded-t-[2px]">
             {m.partes.map((p, i) => <div key={i} className={p.clase} style={{ height: `${Math.max(0, p.alto)}px` }} />)}
           </div>
@@ -101,6 +105,12 @@ export function VistaNomina({ filas, quincenas, personas, rango, periodo, hoy }:
   const ultimo = meses.filter((m) => m.estado === 'real').at(-1)
   const seis = seisMesesReales(meses)
   const incompletos = meses.filter((m) => m.estado !== 'real').length
+  // QUÉ LE FALTA A CADA MES SIN BARRA. En la columna no entra ni una palabra (nueve columnas a 390),
+  // así que el detalle vive en la aclaración, donde sí hay lugar para decirlo con nombre y apellido.
+  const sinCerrar = [
+    lista(meses.filter((m) => m.estado === 'incompleto').map((m) => rotuloMes(m.mes)), 'a medio liquidar'),
+    lista(meses.filter((m) => m.estado === 'estimacion').map((m) => rotuloMes(m.mes)), 'todavía una proyección'),
+  ].filter(Boolean).join('; ')
   const l = personas ? legajos(personas) : null
   const max = Math.max(1, ...meses.map((m) => (m.estado === 'real' ? m.costo ?? 0 : 0)))
   return (
@@ -122,11 +132,12 @@ export function VistaNomina({ filas, quincenas, personas, rango, periodo, hoy }:
       <Seccion titulo="Costo de la nómina, por mes" arriba="pt-8"
         aclaracion={<>
           {base != null ? `en ámbar, lo que subió sobre ${rotuloMes(MES_BASE)} (${millones(base)})` : `sin ${rotuloMes(MES_BASE)} liquidado no hay base`}
-          {incompletos ? `. Los ${incompletos === 1 ? 'último mes' : `últimos ${incompletos} meses`} no ${incompletos === 1 ? 'tiene' : 'tienen'} barra porque todavía no está${incompletos === 1 ? '' : 'n'} liquidado${incompletos === 1 ? '' : 's'}: sin costo cerrado no hay nada que dibujar.` : null}
+          {sinCerrar ? `. Los meses sin barra todavía no cerraron: ${sinCerrar}. Sin costo cerrado no hay nada que dibujar.` : null}
         </>}>
         <Columnas meses={meses.map((m) => {
           // «incompleto» y «estimación» sonaban a defecto del dato; lo que pasa es que el mes no cerró.
-          if (m.estado !== 'real' || m.costo == null) return { mes: m.mes, valor: null, nota: m.estado === 'estimacion' ? 'sin liquidar' : 'a medio liquidar', partes: [] }
+          // Cuál de las dos cosas le pasa a cada mes lo dice la aclaración de la izquierda, donde entra.
+          if (m.estado !== 'real' || m.costo == null) return { mes: m.mes, valor: null, nota: 'sin cerrar', partes: [] }
           const sube = base != null ? Math.max(0, m.costo - base) : 0
           return {
             mes: m.mes, valor: millones(m.costo), color: (m.contraBase ?? 0) > 0.2 ? 'text-warn' : undefined,
@@ -146,6 +157,13 @@ export function VistaNomina({ filas, quincenas, personas, rango, periodo, hoy }:
       </div>
     </>
   )
+}
+
+/** «jul y ago», «sep», o nada. Enumerar en castellano sin fabricar una coma de más. */
+function lista(meses: string[], que: string): string {
+  if (!meses.length) return ''
+  const nombres = meses.length === 1 ? meses[0] : `${meses.slice(0, -1).join(', ')} y ${meses[meses.length - 1]}`
+  return `${nombres} ${meses.length === 1 ? 'está' : 'están'} ${que}`
 }
 
 function Hueco({ valor, falta = 'sin registrar', texto, tenue = false }: { valor: string | null; falta?: string; texto: string; tenue?: boolean }) {
@@ -194,8 +212,10 @@ export function VistaCobranza({ cuenta, documentos, hoy, periodo }: {
             {/* LA ZONA CON PLATA OCUPA LO QUE LE TOCA; la vacía, lo justo para que su rótulo se lea. */}
             {bandas.map((b) => (
               <div key={b.clave} title={b.monto > 0 ? `${b.rotulo}: ${millones(b.monto)}` : `${b.rotulo}: nada`}
-                style={b.monto > 0 ? { flex: `${b.monto} 1 0%` } : { flex: '0 1 76px' }}
-                className={`flex min-w-0 items-center justify-center gap-2 overflow-hidden whitespace-nowrap border-r border-surface px-1 text-[11.5px] last:border-r-0 ${b.monto > 0 ? `text-surface ${TONO_BANDA[b.clave].fondo}` : 'text-faint'}`}>
+                style={b.monto > 0 ? { flexGrow: b.monto } : undefined}
+                className={`flex min-w-0 items-center justify-center gap-2 overflow-hidden whitespace-nowrap border-r border-surface px-1 text-[11.5px] last:border-r-0 ${
+                  // A 390 LA ZONA CON PLATA SE QUEDABA EN «$ …»: reservarle un piso y achicar las vacías.
+                  b.monto > 0 ? `grow basis-[112px] text-surface lg:basis-0 ${TONO_BANDA[b.clave].fondo}` : 'grow-0 basis-[56px] text-faint lg:basis-[76px]'}`}>
                 {b.monto > 0 ? <span className="truncate font-semibold tabular-nums">{millones(b.monto)}</span> : null}
                 <span className="truncate opacity-85">{b.rotulo}</span>
               </div>

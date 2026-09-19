@@ -38,7 +38,7 @@ export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva }: {
           // A QUÉ VELOCIDAD CONSUME Y CUÁNTO DURA LO QUE QUEDA, dicho en palabras: «ritmo por mes ·
           // alcanza 2,9 meses» no decía ninguna de las dos cosas (dueño, 17/09/2026).
           { rotulo: 'consume por mes', valor: ritmo?.porMes != null ? millones(ritmo.porMes) : null, falta: consumo == null ? 'sin publicar' : 'sin consumo reciente',
-            nota: ritmo?.porMes != null ? `a este ritmo viene consumiendo en los últimos 3 meses cerrados${ritmo.conEstimada ? ', con mano de obra estimada' : ''}${meses != null ? `; a ese ritmo lo que queda alcanza para ${meses === 0 ? '0 meses' : `${meses.toLocaleString('es-AR', { maximumFractionDigits: 1 })} meses`}` : ''}` : undefined },
+            nota: ritmo?.porMes != null ? `últimos 3 meses cerrados${ritmo.conEstimada ? ', con mano de obra estimada' : ''}${meses != null ? ` · a ese ritmo, lo que queda alcanza para ${meses === 0 ? '0 meses' : `${meses.toLocaleString('es-AR', { maximumFractionDigits: 1 })} meses`}` : ''}` : undefined },
         ]} />
       <Seccion titulo="Rubro contra rubro" aclaracion="mano de obra contra mano de obra y cargas cotizadas. La cotización incluye los subcontratos dentro de materiales: lo que queda de los dos se dice una sola vez.">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5" data-testid="rubros">
