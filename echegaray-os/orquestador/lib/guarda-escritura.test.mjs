@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { nombreTab, esProtegible, tabsProtegibles, separarPermitido, sheetIdDeRequestContenido, separarRequests } from './guarda-escritura.mjs'
+import { nombreTab, esProtegible, tabsProtegibles, separarPermitido, sheetIdDeRequestContenido, separarRequests, gridVacia, protegerVacioSobreLleno, guardarEscritura } from './guarda-escritura.mjs'
 
 test('nombreTab: saca la pestaña de un rango A1', () => {
   assert.equal(nombreTab('Compras!A1:B2'), 'Compras')
@@ -96,6 +96,87 @@ test('separarRequests: descarta sólo los requests de contenido a sheetIds bloqu
   assert.equal(permitidos.length, 2)
   assert.equal(bloqueados.length, 1)
   assert.ok(bloqueados[0].updateCells.range.sheetId === 7)
+})
+
+// ═══ CINTURÓN "VACÍO SOBRE LLENO" (28/07, TGUARD) — defensa en profundidad, sin base ═══
+
+test('gridVacia: reconoce una grilla sin contenido; el 0 y el texto SÍ son contenido', () => {
+  assert.equal(gridVacia([]), true)
+  assert.equal(gridVacia(undefined), true)
+  assert.equal(gridVacia(null), true)
+  assert.equal(gridVacia([[]]), true)
+  assert.equal(gridVacia([['', ''], ['', null, undefined]]), true)
+  assert.equal(gridVacia([['x']]), false)
+  assert.equal(gridVacia([['', ''], ['', 0]]), false, 'el 0 es contenido')
+  assert.equal(gridVacia([['', 'algo']]), false)
+})
+
+test('protegerVacioSobreLleno: grilla VACÍA sobre destino con datos → NO escribe (fail-closed, sin base)', async () => {
+  // Reproduce el bug: un generador (sin DATABASE_URL) produce una grilla vacía que borraría la pestaña.
+  let leyo = false
+  const cliente = { async readSheetValues() { leyo = true; return [['Proveedor', 'Importe'], ['ARCOR', 1000]] } }
+  const { data, protegidos } = await protegerVacioSobreLleno(cliente, 'ID', [{ range: 'Compras!A1:B2', values: [] }])
+  assert.equal(data.length, 0, 'la escritura vacía se descarta')
+  assert.equal(protegidos.length, 1)
+  assert.equal(protegidos[0].range, 'Compras!A1:B2')
+  assert.ok(leyo, 'releyó el destino para confirmar que tenía contenido')
+  assert.match(protegidos[0].motivo, /vac/i)
+})
+
+test('protegerVacioSobreLleno: grilla NO vacía → pasa tal cual, NO relee (camino feliz intacto)', async () => {
+  let leyo = false
+  const cliente = { async readSheetValues() { leyo = true; return [['viejo']] } }
+  const data = [{ range: 'Compras!A1:B2', values: [['ARCOR', 1000]] }]
+  const out = await protegerVacioSobreLleno(cliente, 'ID', data)
+  assert.deepEqual(out.data, data, 'la escritura con contenido pasa idéntica')
+  assert.equal(out.protegidos.length, 0)
+  assert.equal(leyo, false, 'una escritura con contenido NUNCA se relee: cero costo')
+})
+
+test('protegerVacioSobreLleno: vacío sobre destino vacío → inofensivo, pasa', async () => {
+  const cliente = { async readSheetValues() { return [] } }
+  const { data, protegidos } = await protegerVacioSobreLleno(cliente, 'ID', [{ range: 'Compras!A1:B2', values: [] }])
+  assert.equal(data.length, 1, 'vacío sobre vacío no destruye nada → se permite')
+  assert.equal(protegidos.length, 0)
+})
+
+test('protegerVacioSobreLleno: si NO se puede releer el destino → fail-closed (no piso)', async () => {
+  const cliente = { async readSheetValues() { throw new Error('sin red / sin permiso') } }
+  const { data, protegidos } = await protegerVacioSobreLleno(cliente, 'ID', [{ range: 'Compras!A1:B2', values: [] }])
+  assert.equal(data.length, 0, 'ante la duda no se escribe')
+  assert.equal(protegidos.length, 1)
+  assert.match(protegidos[0].motivo, /releer|fail-closed/i)
+})
+
+test('protegerVacioSobreLleno: mezcla — descarta la vacía-sobre-llena, conserva la de contenido', async () => {
+  const cliente = { async readSheetValues(_id, range) { return range.startsWith('Compras') ? [['ARCOR', 1]] : [] } }
+  const data = [
+    { range: 'Compras!A1:B2', values: [] },            // vacía sobre lleno → se protege
+    { range: 'CAJA!A1', values: [['saldo', 500]] },    // con contenido → pasa
+  ]
+  const { data: out, protegidos } = await protegerVacioSobreLleno(cliente, 'ID', data)
+  assert.deepEqual(out.map((d) => d.range), ['CAJA!A1'])
+  assert.deepEqual(protegidos.map((p) => p.range), ['Compras!A1:B2'])
+})
+
+test('guardarEscritura: sin base, grilla VACÍA sobre pestaña con datos → protegido, NO escribe', async () => {
+  // El cinturón corre ANTES de candado/firma y no toca Postgres: aunque no haya DATABASE_URL, no piso.
+  const cliente = { async readSheetValues() { return [['ARCOR', 1000]] } }
+  const g = await guardarEscritura(cliente, 'ID', [{ range: 'Compras!A1:B2', values: [] }])
+  assert.equal(g.data.length, 0, 'no queda nada para escribir → el caller devuelve protegido:true')
+  assert.deepEqual(g.bloqueadas, ['Compras!A1:B2'])
+  assert.ok(g.motivo, 'devuelve el motivo del bloqueo')
+})
+
+test('guardarEscritura: chequearVacio:false (clearValues/append) NO aplica el cinturón vacío', async () => {
+  // clearValues es un borrado intencional: con chequearVacio:false, el cinturón no lo frena. Se lo deja
+  // seguir hacia la guarda de candado/firma. Sin base, evaluarBloqueadas falla-cerrado (protege la
+  // pestaña de contenido igual) — lo que se comprueba acá es que NO lo frenó el cinturón vacío.
+  const cliente = { async readSheetValues() { throw new Error('no debería releer para el cinturón') } }
+  const g = await guardarEscritura(cliente, 'ID', [{ range: 'Compras!A1:B2', values: [] }], { chequearVacio: false })
+  // Sin base, la pestaña de contenido queda protegida por candado/firma (fail-closed), pero el motivo
+  // del cinturón vacío NO aparece: la ruta fue la de candado/firma, no la del cinturón.
+  assert.equal(g.motivo, undefined, 'no lo frenó el cinturón vacío-sobre-lleno')
 })
 
 test('RESPETO-NOTAS: borrar/escribir una NOTA sobre una pestaña candada se frena; el formato pasa', () => {
