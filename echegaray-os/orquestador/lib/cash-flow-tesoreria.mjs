@@ -68,7 +68,9 @@ export function bloqueDecision({ periodo, fila0, colN, filaCab, filaCierre, fila
   const Us = periodo === 'semanal' ? 'Semanas' : 'Meses'
   const filas = []
   const push = (a, b = '', c = '') => { filas.push([a, b, c]); return fila0 + filas.length - 1 }
-  const rango = (f) => `$B$${f}:${colN}$${f}`
+  // Con el `$` de la columna final: el generador escribe cada celda, pero una referencia mixta en una
+  // pestaña que alguien puede copiar o mover es una bomba silenciosa (devuelve otro número, no un error).
+  const rango = (f) => `$B$${f}:$${colN}$${f}`
   const cierres = rango(filaCierre)
 
   const fTit = push('LO QUE ESTE CUADRO DECIDE — riesgo de caja y de cliente')

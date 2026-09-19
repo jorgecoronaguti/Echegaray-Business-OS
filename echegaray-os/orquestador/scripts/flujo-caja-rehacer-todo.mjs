@@ -62,7 +62,10 @@ async function verificarPresentacion(bloqueadas = new Set()) {
   // probar el atajo "IR A HOY"). Si el dueño tomó una pestaña, NO se la toca ni para verificarla:
   // saltó justo el candado y, sobre una pestaña que él restauró más corta, el A200 se salía de la
   // grilla y tiraba la corrida entera. La pestaña del dueño es suya: no se lee ni se escribe.
-  for (const [pestaña, hasta] of [['Cash Flow Mensual', 13], ['Cash Flow Semanal', 54]]) {
+  // El segundo número es cuántas columnas de PERÍODO tiene cada cuadro, +1. El Semanal pasó de 53
+  // semanas del año a 13 rodantes (lib/cash-flow-horizonte.mjs): con 54 acá, esta verificación
+  // reclamaría el ancho de cuarenta columnas que el cuadro ya no usa, en cada corrida.
+  for (const [pestaña, hasta] of [['Cash Flow Mensual', 13], ['Cash Flow Semanal', 14]]) {
     if (bloqueadas.has(pestaña)) { console.log(`   🔒 ${pestaña}: bajo tu control, no la verifico ni la toco.`); continue }
     const w = await google.getColumnWidths(ID, pestaña).catch(() => [])
     // Las columnas de período tienen que medir todas lo mismo. Una distinta = alguien la tocó.

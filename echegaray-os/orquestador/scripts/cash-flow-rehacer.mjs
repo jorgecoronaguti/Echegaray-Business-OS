@@ -65,13 +65,12 @@ const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26
 // $293M del año. La Semanal tenía 29/12/2026 en su primera semana, un año adelantado. Los dos valores
 // estaban en la PESTAÑA, no en el código: este generador siempre escribió bien, pero las pestañas están
 // candadas y nunca los recibieron. scripts/cash-flow-encabezados.mjs las corrige contra esta función.
-export function semanas() {
-  const d = new Date(Date.UTC(AÑO, 0, 1))
-  while (d.getUTCDay() !== 1) d.setUTCDate(d.getUTCDate() - 1) // retroceder al lunes
-  const out = []
-  for (let i = 0; i < 53; i++) { out.push(new Date(d)); d.setUTCDate(d.getUTCDate() + 7) }
-  return out
-}
+// LA GRILLA DEL SEMANAL YA NO ES EL AÑO. Acá vivía `semanas()`, las 53 semanas del calendario, y
+// era la fila 3 del Cash Flow Semanal. Desde el 04/08 esa pestaña es un forecast rodante de 13
+// semanas y su grilla la define `semanasRodantes()` en lib/cash-flow-horizonte.mjs, junto con el
+// porqué. Se borra en vez de dejarse "por si acaso": una segunda definición de la grilla de períodos
+// es exactamente lo que ya se corrió una vez y escondió $292,8M.
+
 /** Los 12 PRIMEROS-DE-MES del año. Es lo que la fila 3 de la Mensual tiene que decir. */
 export function meses() {
   return Array.from({ length: 12 }, (_, m) => new Date(Date.UTC(AÑO, m, 1)))
@@ -269,7 +268,14 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   // El aviso es una FÓRMULA y no un texto fijo: tiene que aparecer y desaparecer solo según haya o
   // no un saldo cargado, sin esperar a que el agente vuelva a correr. Un cuadro que arranca de $0
   // sin decirlo hace leer el saldo proyectado como plata que hay.
+  // ═══ EL AVISO TIENE QUE ENTRAR EN LA CELDA (04/08) ═══
+  // Decía "Efectivo y equivalentes al inicio del período ⚠ sin saldo cargado en CAJA — el cuadro no
+  // puede decir cuándo se queda sin plata": 126 caracteres en una columna de 340px donde entran 66.
+  // Un aviso cortado a la mitad no avisa. El prefijo "Efectivo y equivalentes al inicio" se conserva
+  // intacto porque caja-pestana ubica esta fila por él (ubicarEnCashFlow), y un rótulo que cambia de
+  // prefijo dejaría a CAJA leyendo una fila que no existe, en silencio.
   const rotuloInicio = 'Efectivo y equivalentes al inicio del período'
+  const AVISO_SIN_SALDO = 'Efectivo y equivalentes al inicio ⚠ sin saldo en CAJA'
   // EL SALDO REAL ANCLA EN EL PERÍODO QUE CONTIENE SU FECHA, NO EN ENERO Y NO EN "SU MES".
   //
   // La primera versión ponía el saldo declarado como inicio de ENERO. El saldo cargado es de JULIO,
@@ -291,8 +297,8 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   // días; en la mensual, a un mes. Es de orden menor frente a la alternativa, que era mentir en siete
   // meses, pero es real y por eso se dice.
   meta.inicio = push([refCaja
-    ? `=IF(N(${refCaja})=0;"${rotuloInicio}  ⚠ sin saldo cargado en CAJA — el cuadro no puede decir cuándo se queda sin plata";"${rotuloInicio}")`
-    : `${rotuloInicio}  ⚠ no encontré la pestaña CAJA`,
+    ? `=IF(N(${refCaja})=0;"${AVISO_SIN_SALDO}";"${rotuloInicio}")`
+    : 'Efectivo y equivalentes al inicio ⚠ no encontré CAJA',
     ...cols.map((_, i) => {
       if (!refCaja || !refCajaFecha) return i === 0 ? '=0' : `=${letra(i)}${filas.length + 2}`
       return expresionInicio({
@@ -371,9 +377,19 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   push([])
   const filaRef = push(['DÓNDE ESTÁ EL DETALLE DE CADA LÍNEA'])
   for (const { linea: l } of meta.detalle) {
-    push([l.nombre, l.detalle
+    // TRES LÍNEAS NO VIVEN EN COMPRAS Y DECÍAN 'Compras, rubro "undefined"'. Son las que el OS
+    // calcula (interés del descubierto, comisiones del extracto, impuesto al cheque): no tienen
+    // rubro porque no tienen factura, y la plantilla les metía la palabra "undefined" en el único
+    // lugar del cuadro que existe para contestar de dónde sale un número.
+    const origen = l.detalle
       ? `Pestaña ${l.detalle}`
-      : `Compras, rubro "${l.rubro}"${l.excluirSub ? ` (sin "${l.excluirSub}", que va a inversión)` : ''} · detalle en la pestaña ${detalleDeRubro(l.rubro)}`])
+      : l.rubro
+        ? `Compras, rubro "${l.rubro}"${l.excluirSub ? ` (sin "${l.excluirSub}", que va a inversión)` : ''} · detalle en la pestaña ${detalleDeRubro(l.rubro)}`
+        : l.descubierto ? 'No sale de Compras: lo calcula el OS con la tasa del acuerdo sobre el saldo inicial del período'
+          : l.comisionesBancarias ? 'No sale de Compras: lo debita el banco sin factura · extracto en _BANCO_RAW'
+            : l.impuestoCheque ? 'No sale de Compras: 0,6% de todo lo que entra + 0,6% de todo lo que sale (Ley 25.413)'
+              : 'Sin origen declarado — hay que declararlo en CUADRO (cash-flow-lineas.mjs)'
+    push([l.nombre, origen])
   }
 
   push([])
@@ -640,6 +656,7 @@ async function main() {
     const ancho = Math.max(...g.filas.map((f) => f.length))
     // Normalizar el rectángulo: si una fila es más corta, la API deja lo viejo debajo.
     const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
+    g.ancho = ancho
     console.log(`${pestaña}: ${cuadro.length} filas x ${ancho} columnas · egresos ${g.meta.egr0}-${g.meta.egr1} · control fila ${g.filaCtrl}`)
     data.push({ range: `${pestaña}!A1:${letra(ancho - 1)}${cuadro.length}`, values: cuadro, g, pestaña })
   }
@@ -803,7 +820,38 @@ async function main() {
   // con edicionesConContenidoReal) YA corrió y preservó tus ediciones reales, así que el portón
   // (candado/firma) es una segunda capa redundante que hay que saltear para poder aplicar el cambio.
   // Sin --force NUNCA se saltea. Después se re-sella la firma (abajo), así el freeze sigue vigente.
-  await google.batchUpdateValues(ID, data.map(({ range, values }) => ({ range, values })), { yaGuardado: FORCE })
+  // ═══ LAS COLUMNAS QUE EL CUADRO DEJÓ DE USAR (04/08) ═══
+  //
+  // El Semanal pasó de 53 columnas de período a 13. Este generador escribe SÓLO su propio rectángulo
+  // (A1:O123), así que las cuarenta columnas de la derecha se quedarían con los números de la semana
+  // 14 a la 53 del año — plata vieja, con formato de plata, al lado del cuadro nuevo y sin nada que
+  // diga que ya no significa nada. Es exactamente la clase de dato que después alguien lee.
+  //
+  // NO SE BORRA A CIEGAS. Se blanquea sólo lo que ES DEL GENERADOR: una fórmula o un número. Si en
+  // esas celdas hay texto, es de una persona y se conserva — la misma regla de siempre, aplicada
+  // celda por celda en vez de al bloque entero. Y se dice cuántas celdas se tocaron.
+  const colas = []
+  for (const d of data) {
+    const hoja = metaGid.find((s) => s.title === d.pestaña)
+    const desdeCol = d.g.ancho
+    const hastaCol = hoja?.cols ?? desdeCol
+    if (hastaCol <= desdeCol) continue
+    const actual = await verPestana(d.pestaña)
+    const alto = Math.max(d.values.length, actual.length)
+    let tocadas = 0
+    const cuerpo = Array.from({ length: alto }, (_, f) => Array.from({ length: hastaCol - desdeCol }, (_, c) => {
+      const v = actual[f]?.[desdeCol + c]
+      const s = String(v ?? '').trim()
+      if (!s) return ''
+      // Un texto que no es un número es de una persona: se deja tal cual.
+      if (Number.isNaN(Number(s.replace(/[.$\s]/g, '').replace(',', '.')))) return v
+      tocadas++
+      return ''
+    }))
+    if (tocadas) console.log(`  🧹 ${d.pestaña}: ${tocadas} celda(s) numéricas de columnas que el cuadro ya no usa (${letra(desdeCol)}–${letra(hastaCol - 1)}), blanqueadas`)
+    colas.push({ range: `${d.pestaña}!${letra(desdeCol)}1:${letra(hastaCol - 1)}${alto}`, values: cuerpo })
+  }
+  await google.batchUpdateValues(ID, [...data.map(({ range, values }) => ({ range, values })), ...colas], { yaGuardado: FORCE })
   // Sellar la firma de lo que dejé (re-lectura), así la próxima corrida detecta cualquier edición tuya.
   const { sellarFirma } = await import('../lib/firma-tab.mjs')
   for (const pest of new Set(data.map((d) => d.pestaña))) await sellarFirma(google, ID, pest, refPestana(pest))
