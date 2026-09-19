@@ -56,6 +56,15 @@ test('LA TRAZA SE AGREGA A LA OBSERVACIÓN Y DICE EL ANTES DE CADA LÍNEA', () =
   assert.equal(observacionDeMedio(null, plan, { fecha: '2026-09-18', motivo: 'x' }).startsWith('Medio de pago'), true)
 })
 
+test('LA TRAZA NO AFIRMA UNA EVIDENCIA QUE NADIE MIRÓ: el Santander sólo aparece si se lo pasa', () => {
+  const plan = planDePagoEnEfectivo(JUNIO)
+  const sin = observacionDeMedio(null, plan, { fecha: '2026-09-18', motivo: 'el dueño confirma pago en mano' })
+  assert.doesNotMatch(sin, /Santander|certificado/, 'MUTACIÓN: texto fijo fabrica una verificación bancaria')
+  const con = observacionDeMedio(null, plan, {
+    fecha: '2026-09-18', motivo: 'x', evidencia: 'el certificado del Santander no tiene acreditaciones de esta quincena' })
+  assert.match(con, /EFECTIVO, no por banco \(el certificado del Santander no tiene acreditaciones de esta quincena\)\./)
+})
+
 test('LA RELECTURA MANDA: lo que la base no devolvió como se escribió, no se da por escrito', () => {
   const plan = planDePagoEnEfectivo(JUNIO)
   assert.deepEqual(diferenciasTrasEscribir(plan, [
