@@ -7,6 +7,7 @@ import {
 } from '@/features/obras/services/vistaRecordada'
 import { destinoPorRol } from '@/features/portal/types'
 import { trazar } from '@/lib/supabase/traza'
+import { exigirEntornoDeclarado } from '@/lib/supabase/entorno'
 import { TOPE_MS_MIDDLEWARE, esFallaDeBackend, fetchConTope } from '@/lib/supabase/fetch-con-tope'
 import { COOKIE_ROL, VIDA_ROL_SEGUNDOS, leerRol, sellarRol, secretoDelRol } from '@/lib/auth/rol-cache'
 
@@ -24,6 +25,8 @@ import { COOKIE_ROL, VIDA_ROL_SEGUNDOS, leerRol, sellarRol, secretoDelRol } from
  * (login, estáticos) siguen pasando: no dependen de Supabase para dibujarse.
  */
 export async function middleware(request: NextRequest) {
+  // Un `next dev` o un worktree no hablan con el Supabase de producción sin declararlo (ver entorno.ts).
+  exigirEntornoDeclarado()
   try {
     return await middlewareConBackend(request)
   } catch (e) {

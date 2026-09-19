@@ -1,3 +1,4 @@
+import { exigirEntornoDeclarado } from './entorno'
 import { createClient } from '@supabase/supabase-js'
 
 // Cliente Supabase con la CLAVE DE SERVICIO — SOLO servidor (server actions / route handlers).
@@ -42,6 +43,7 @@ export function nombresDeConfiguracionSupabase(): string[] {
 }
 
 export function createAdminClient() {
+  exigirEntornoDeclarado()
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const nombre = nombreDeLaClaveDeServicio()
   const key = nombre ? process.env[nombre] : undefined

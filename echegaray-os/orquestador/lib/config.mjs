@@ -10,6 +10,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import { loadEnvLocalInto } from '../../scripts/lib/env-file.mjs'
+import { hidratarDesarrollo } from './entorno.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 // orquestador/lib -> echegaray-os (app Next) -> app (raíz git real)
@@ -19,6 +20,13 @@ export const REPO_ROOT = path.resolve(APP_DIR, '..')
 // En desarrollo local, completar desde .env.local lo que no esté en el entorno.
 // En la VM (systemd) las variables llegan por EnvironmentFile: tienen prioridad.
 loadEnvLocalInto(process.env, path.join(APP_DIR, '.env.local'))
+// ═══ ANTES DE worker.env: UN PROCESO DE DESARROLLO VA A LA BASE DE DESARROLLO (18/09/2026) ═══
+// El bloque de abajo hidrata DATABASE_URL desde worker.env para cualquier proceso —y worker.env apunta a
+// PRODUCCIÓN—. Así un test en un worktree terminaba en la base real (caídas del 12/09, 13/09 y 18/09).
+// Si este proceso es de desarrollo (worktree, test, next dev) y no trae DATABASE_URL, se carga primero
+// `~/.config/echegaray-orq/desarrollo.env` (pg-reprod). No pisa nada; y si el archivo no existe, la
+// conexión remota la frena `db.mjs` antes de abrir el socket. Ver `entorno.mjs`.
+export const HIDRATACION = hidratarDesarrollo(process.env)
 // Y ADEMÁS desde el EnvironmentFile de systemd (worker.env), donde vive DATABASE_URL.
 // POR QUÉ (28/07): un proceso nuevo que no heredó las variables de systemd —típicamente un AGENTE en
 // un worktree, o un script corrido a mano sin `source`— arrancaba SIN DATABASE_URL. Sin base, la

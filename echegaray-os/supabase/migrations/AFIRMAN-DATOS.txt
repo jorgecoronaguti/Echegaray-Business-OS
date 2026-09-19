@@ -1,0 +1,13 @@
+# Migraciones cuyas afirmaciones de DATOS no se pueden verificar en una base sin datos reales.
+# Las escribe reconstruir-desde-cero.mjs --sin-datos: el esquema se aplicó; la afirmación quedó como warning.
+# archivo <TAB> lo que afirmaba
+20260828T1500_lo_que_ya_mediamos_de_estructura_metalica_se_puede_cotizar.sql	esperaba 6 análisis con mano de obra, carga social, rendimiento y CERO materiales; hay 0
+20260907T2000_la_cartera_de_obras_es_la_del_sheet_y_lo_que_lleva_plata_no_se_borra.sql	obra_egreso_proyectado cambió: 0 filas por $0 (esperado 24 por $145.855.278)
+20260907T2010_la_obra_seguia_diciendo_la_fecha_de_su_plan_viejo_y_no_la_del_sheet.sql	se perdieron horas imputadas: archivar no puede desvincular una imputación
+20260907T2020_la_procedencia_de_una_obra_no_es_su_cronograma_y_no_se_vaciaba.sql	la procedencia de la obra no volvió
+20260907T2300_la_ausencia_no_es_hora_de_apoyo_del_subcontrato.sql	3 vista(s) que leen registros_hh siguen sin filtrar tipo_hora
+20260910T2330_obra_cobranza_por_orden_de_compra.sql	insert into public.obra_alias (alias, obra_id, clasificacion… → 23503 insert or update on table "obra_alias" violates foreign key constraint "obra_alias_obra_id
+20260910T2355_el_contratado_sale_de_la_orden_y_el_dolar_se_valua_vivo.sql	afirmación degradada: obra_economia_cartera devolvió CERO filas: el control no miró nada
+20260910T2356_obra_cuenta_las_mismas_columnas_que_publica_obras.sql	afirmación degradada: obra_cuenta no devolvió ninguna obra con cobranzas: el control no miró nada
+20260911T0920_el_comprobante_de_una_cobranza_se_ata_por_fila.sql	insert into public.cobranza_comprobante (cliente_id, sheet_i… → 23503 insert or update on table "cobranza_comprobante" violates foreign key constraint "cobranza
+20260913T2100_refresco_de_la_ficha_liviano.sql	select cron.alter_job(39, schedule := '* * * * *')… → XX000 Job 39 does not exist or you don't own it

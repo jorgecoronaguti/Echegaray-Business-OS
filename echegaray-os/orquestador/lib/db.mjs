@@ -8,6 +8,8 @@ import pg from 'pg'
 import { loadConfig } from './config.mjs'
 import { baseDeclaradaDePrueba, enContextoDePrueba, instalarGuarda } from './guarda-base-de-prueba.mjs'
 import { esConexionPerdida } from './conexion-perdida.mjs'
+import { clasificarEntorno, decidirConexion, nombreDeAplicacion, DESARROLLO } from './entorno.mjs'
+import { esUrlLocal } from './reconstruccion-candados.mjs'
 
 let pool = null
 
@@ -108,9 +110,26 @@ export function parseConnectionString(raw) {
  *  autocommit falla y un commit que escribió se convierte en rollback. El detalle y las tres
  *  salidas legítimas, en `guarda-base-de-prueba.mjs`. Fuera de un test devuelve el pool pelado —
  *  la guarda no se instala en producción. */
+let avisoDeclaracion = false
 export function getPool() {
   if (pool) return pool
   const cfg = loadConfig()
+  // ═══ LA GUARDA DE ENTORNO: UN PROCESO DE DESARROLLO NO ABRE UN SOCKET A PRODUCCIÓN SIN DECLARARLO ═══
+  // La decisión es pura y está en entorno.mjs (con test). Acá sólo se ejecuta: si frena, el error sale
+  // ANTES de crear el pool — no hay conexión que cerrar ni consulta a medias.
+  const clasif = clasificarEntorno()
+  const decision = decidirConexion({ url: cfg.DATABASE_URL, entorno: clasif.entorno, declarado: clasif.declarado })
+  if (decision.accion === 'frena') {
+    throw new Error(`db: ${decision.motivo}\n  (este proceso es de ${clasif.entorno}: ${clasif.motivo})`)
+  }
+  // ¿Cómo se habría clasificado SIN la declaración? Si es un proceso con forma de desarrollo que declaró
+  // producción, se dice una vez por stderr y la conexión se presenta como `dev:<worktree>:<pid>` en
+  // pg_stat_activity: lo que habla con producción desde desarrollo tiene que verse.
+  const forma = clasificarEntorno({ env: { ...process.env, ECHEGARAY_ENTORNO: '' } })
+  if (forma.entorno === DESARROLLO && clasif.declarado && !esUrlLocal(cfg.DATABASE_URL) && !avisoDeclaracion) {
+    avisoDeclaracion = true
+    process.stderr.write(`db: hablando con una base REMOTA desde un proceso de desarrollo por declaración explícita (${forma.motivo})\n`)
+  }
   const ssl = cfg.DB_SSL ? { rejectUnauthorized: false } : false
   const parsed = parseConnectionString(cfg.DATABASE_URL)
   const base = parsed
@@ -120,7 +139,7 @@ export function getPool() {
     ...base,
     ssl,
     max: Math.max(2, cfg.CONCURRENCY + 1),
-    application_name: `orq-worker:${cfg.WORKER_ID}`,
+    application_name: nombreDeAplicacion({ entorno: forma.entorno, workerId: cfg.WORKER_ID }),
     idle_in_transaction_session_timeout: 60_000,
     // Ninguna espera infinita. Ver el bloque del incidente, arriba.
     connectionTimeoutMillis: CONNECT_TIMEOUT_MS,

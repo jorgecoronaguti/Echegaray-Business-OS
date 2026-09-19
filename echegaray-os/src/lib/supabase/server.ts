@@ -1,8 +1,10 @@
+import { exigirEntornoDeclarado } from './entorno'
 import { createServerClient, type SetAllCookies } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { trazar } from './traza'
 
 export async function createClient() {
+  exigirEntornoDeclarado()
   const cookieStore = await cookies()
 
   return createServerClient(

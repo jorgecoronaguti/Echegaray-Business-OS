@@ -29,12 +29,13 @@
 // `--si-remoto` se niega a hablar con cualquier host que no sea local, y aún local se niega si
 // encuentra tablas de negocio sin su propio ledger (una base que no construyó él, no la toca).
 
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import pg from 'pg'
 import { esUrlLocal, decisionSobreBase, semillaPermitida, PREFIJO_SEMILLA } from '../lib/reconstruccion-candados.mjs'
+import { partirSentencias, esErrorDeDatos, degradarAfirmacionesDeDatos } from '../lib/sql-sentencias.mjs'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 const RAIZ = join(AQUI, '..', '..')
@@ -50,6 +51,64 @@ if (!args.includes('--url') || !url || url.startsWith('--')) {
 if (!esUrlLocal(url) && !args.includes('--si-remoto')) {
   console.error('la URL no es local. Reconstruir un host remoto exige decirlo: --si-remoto')
   process.exit(1)
+}
+
+// ═══ --sin-datos: UNA BASE DE DESARROLLO NO TIENE LOS DATOS QUE PRODUCCIÓN AFIRMA (18/09/2026) ═══
+//
+// 62 migraciones terminan con un bloque `do $$ … if n <> 6 then raise exception … $$` que verifica que la
+// transformación de DATOS salió como se esperaba EN PRODUCCIÓN («esperaba 6 análisis … hay 0»). Sobre una
+// base sin esos datos la afirmación falla, la transacción se deshace —incluido el DDL del mismo archivo— y
+// la cadena se corta, aunque el ESQUEMA que la migración construye sea perfectamente reproducible.
+//
+// Con `--sin-datos`, y SÓLO sobre una base local, una migración que falla con SQLSTATE P0001 (un `raise
+// exception` propio, no un error de esquema) se reintenta con los `raise exception` de sus bloques `do`
+// degradados a `raise warning`. Las funciones que la migración crea NO se tocan: la degradación se aplica
+// únicamente dentro de `do $tag$ … $tag$`. Queda constancia doble: en el ledger (`aplicada_por`) y en
+// `supabase/migrations/AFIRMAN-DATOS.txt`, que este runner escribe y se commitea — la lista enumerable de
+// qué afirmaciones no se pueden verificar sin datos reales. Lo mismo vale para un `insert` con ids de
+// producción (clave foránea) o un único: se aplica SENTENCIA POR SENTENCIA con savepoint, se omite la de
+// datos y el esquema del mismo archivo queda aplicado (`aplicarSinDatos`). Un error de esquema (columna inexistente, tipo
+// que no cierra) sigue cortando la cadena: eso sí es un defecto de reproducibilidad.
+const SIN_DATOS = args.includes('--sin-datos')
+if (SIN_DATOS && !esUrlLocal(url)) {
+  console.error('--sin-datos sólo vale sobre una base local: degrada afirmaciones, jamás sobre producción')
+  process.exit(1)
+}
+const LISTA_AFIRMAN = join(DIR_MIGRACIONES, 'AFIRMAN-DATOS.txt')
+/**
+ * SENTENCIA POR SENTENCIA, CON SAVEPOINT. Una sentencia que falla por DATOS (clave foránea a un id de
+ * producción, único, `raise exception` de un `do`) se omite y se anota; el resto del archivo —el esquema—
+ * se aplica. Un `do` que afirma datos se reintenta con la afirmación degradada a warning antes de omitirlo.
+ * Cualquier error de ESQUEMA corta la cadena como siempre. Devuelve las sentencias omitidas.
+ */
+const ES_DATO_DE_CRON = /\bcron\.(unschedule|alter_job)\s*\(/i
+async function aplicarSinDatos(c, sql) {
+  const omitidas = []
+  for (const s of partirSentencias(sql)) {
+    await c.query('savepoint sd')
+    try { await c.query(s); await c.query('release savepoint sd'); continue } catch (e) {
+      await c.query('rollback to savepoint sd')
+      if (e.code === 'P0001' && /^do\b/i.test(s)) {
+        try { await c.query(degradarAfirmacionesDeDatos(s)); await c.query('release savepoint sd'); omitidas.push(`afirmación degradada: ${e.message}`); continue } catch (e2) {
+          await c.query('rollback to savepoint sd'); if (!esErrorDeDatos(e2.code)) throw e2; e = e2
+        }
+      }
+      // Un `cron.unschedule(<id de producción>)` es DATO del scheduler de producción, no esquema.
+      if (!esErrorDeDatos(e.code) && !ES_DATO_DE_CRON.test(s)) throw e
+      omitidas.push(`${s.slice(0, 60).replace(/\s+/g, ' ')}… → ${e.code} ${e.message}`)
+    }
+    await c.query('release savepoint sd').catch(() => {})
+  }
+  return omitidas
+}
+function anotarAfirmaDatos(archivo, motivo) {
+  let actual = ''
+  try { actual = readFileSync(LISTA_AFIRMAN, 'utf8') } catch { /* primera vez */ }
+  if (actual.includes(archivo)) return
+  const cabecera = actual ? '' : '# Migraciones cuyas afirmaciones de DATOS no se pueden verificar en una base sin datos reales.\n'
+    + '# Las escribe reconstruir-desde-cero.mjs --sin-datos: el esquema se aplicó; la afirmación quedó como warning.\n'
+    + '# archivo <TAB> lo que afirmaba\n'
+  writeFileSync(LISTA_AFIRMAN, `${actual}${cabecera}${archivo}\t${motivo.replace(/\s+/g, ' ').slice(0, 160)}\n`)
 }
 
 const LEDGER = `create table if not exists public.migracion_aplicada (
@@ -93,6 +152,21 @@ for (const f of archivos) {
   const sql = readFileSync(join(DIR_MIGRACIONES, f), 'utf8')
   const h = hashDe(sql)
   if (aplicadas.get(f) === h) { saltadas++; continue }
+  // `create index concurrently` no puede vivir en una transacción: ese archivo se aplica sentencia por
+  // sentencia en autocommit (es lo que hizo producción: su hash en el ledger es de otra herramienta).
+  if (/create\s+index\s+concurrently/i.test(sql)) {
+    try {
+      for (const sentencia of partirSentencias(sql)) await c.query(sentencia)
+      await c.query(
+        `insert into public.migracion_aplicada (archivo, hash, aplicada_por) values ($1, $2, 'reconstruir-desde-cero (autocommit: index concurrently)')
+         on conflict (archivo) do update set hash = excluded.hash, aplicada_en = now()`, [f, h])
+      ok++
+      continue
+    } catch (e) {
+      console.error(`✗ la cadena se cortó en ${f} (autocommit):\n  ${e.message}`)
+      await c.end(); process.exit(1)
+    }
+  }
   try {
     await c.query('begin')
     await c.query(sql)
@@ -103,6 +177,26 @@ for (const f of archivos) {
     ok++
   } catch (e) {
     await c.query('rollback').catch(() => {})
+    if (SIN_DATOS && (esErrorDeDatos(e.code) || ES_DATO_DE_CRON.test(sql))) {
+      try {
+        await c.query('begin')
+        const omitidas = await aplicarSinDatos(c, sql)
+        await c.query(
+          `insert into public.migracion_aplicada (archivo, hash, aplicada_por) values ($1, $2, $3)
+           on conflict (archivo) do update set hash = excluded.hash, aplicada_en = now()`,
+          [f, h, `reconstruir --sin-datos: ${omitidas.length} sentencia(s) de datos omitidas`])
+        await c.query('commit')
+        anotarAfirmaDatos(f, omitidas.join(' | ') || e.message)
+        console.warn(`⚠ ${f}: ${omitidas.length} sentencia(s) de datos omitidas (esquema aplicado). Primera: ${(omitidas[0] || e.message).slice(0, 110)}`)
+        ok++
+        continue
+      } catch (e2) {
+        await c.query('rollback').catch(() => {})
+        console.error(`✗ la cadena se cortó en ${f} (error de ESQUEMA, aun omitiendo datos):\n  ${e2.message}`)
+        console.error(`  (${saltadas} ya estaban, ${ok} aplicadas en esta corrida; al corregir, relanzar: continúa desde acá)`)
+        await c.end(); process.exit(1)
+      }
+    }
     console.error(`✗ la cadena se cortó en ${f}:\n  ${e.message}`)
     console.error(`  (${saltadas} ya estaban, ${ok} aplicadas en esta corrida; al corregir, relanzar: continúa desde acá)`)
     await c.end(); process.exit(1)

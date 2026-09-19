@@ -18,7 +18,11 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { basename, join } from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { getPool } from '../lib/db.mjs'
+import { loadConfig } from '../lib/config.mjs'
+import { esUrlLocal } from '../lib/reconstruccion-candados.mjs'
+import { decisionAplicarEnProduccion } from '../lib/migracion-candados.mjs'
 
 const DIR = 'supabase/migrations'
 
@@ -72,6 +76,16 @@ async function main() {
   const nombre = basename(ruta)
   const hash = hashDe(sql)
 
+  // ═══ EL CANDADO DE origin/main (18/09/2026) ═══ La decisión es pura (migracion-candados.mjs, con test);
+  // acá sólo se junta la evidencia: ¿la base es remota? ¿el archivo está en origin/main con este hash?
+  const remota = !esUrlLocal(loadConfig().DATABASE_URL)
+  const candado = decisionAplicarEnProduccion({ aplicar, remota, ...(remota && aplicar ? verificarEnOriginMain(nombre, hash) : { fetchOk: true, enOriginMain: true, hashOrigin: hash }), hashLocal: hash })
+  if (candado.aviso) console.log(`⚠ ${candado.aviso}`)
+  if (!candado.seguir) {
+    console.error(`✗ ${nombre} NO se aplica: ${candado.motivo}`)
+    await pool.end(); process.exitCode = 1; return
+  }
+
   await pool.query(LEDGER)
   const previa = await pool.query('select hash, aplicada_en from public.migracion_aplicada where archivo = $1', [nombre])
   if (previa.rows.length) {
@@ -90,6 +104,20 @@ async function main() {
 //
 // No se corrigen solos borrándoles el `commit` desde acá: una migración que se auto-transacciona
 // puede estar contando con eso. Se rechaza, se nombra el problema y la escribe quien la manda.
+/** ¿Está este archivo, con este contenido, en origin/main? Hace UN fetch (30 s de tope). Sin git o sin red
+ *  devuelve fetchOk=false, y el candado no deja aplicar. */
+function verificarEnOriginMain(nombre, hashLocal) {
+  const git = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 30000 })
+  try { git(['fetch', '--quiet', 'origin', 'main']) } catch { return { fetchOk: false, enOriginMain: false } }
+  let prefijo = ''
+  try { prefijo = git(['rev-parse', '--show-prefix']).trim() } catch { return { fetchOk: false, enOriginMain: false } }
+  const rutaEnRepo = `${prefijo}${DIR}/${nombre}`
+  try {
+    const contenido = git(['show', `origin/main:${rutaEnRepo}`])
+    return { fetchOk: true, enOriginMain: true, hashOrigin: hashDe(contenido) }
+  } catch { return { fetchOk: true, enOriginMain: false, hashOrigin: undefined, hashLocal } }
+}
+
 function transaccionaSola(sql) {
   const limpio = sql
     .replace(/\/\*[\s\S]*?\*\//g, ' ')   // comentarios de bloque
