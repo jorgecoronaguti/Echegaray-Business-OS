@@ -327,6 +327,19 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   meta.egr0 = meta.detalle[0].fila
   meta.egr1 = meta.detalle[meta.detalle.length - 1].fila
 
+  // ── LA BANDA DE LIQUIDEZ — el piso contra el que se compara cada período ────────────────────────
+  //
+  // Va PEGADA al cierre y no en un bloque aparte: es su lectura, no un anexo. El cierre dice cuánta
+  // plata queda; estas tres dicen si alcanza. El porqué de cada una —y por qué el revolvente es otra
+  // línea y no se suma al efectivo— está en lib/cash-flow-liquidez.mjs.
+  //
+  // Y VA ACÁ, DESPUÉS DEL CIERRE, y no más arriba: las filas 6 a 53 son el contrato que lee la
+  // conciliación (lib/cash-flow-mapa.mjs, fila por fila). Insertar tres filas en el medio del estado
+  // correría 44 líneas conciliadas de golpe. Debajo del cierre no se mueve nada.
+  const liq = bloqueLiquidez({ fila0: filas.length + 1, n, filaCierre: meta.cierre })
+  for (const f of liq.filas) push(f)
+  meta.liquidez = liq
+
   // ══════════════════════════════════════════════════════════════════════════════════════════════
   // LO QUE EL CUADRO DECIDE — va DEBAJO del efectivo al cierre, y es una decisión, no una omisión
   // ══════════════════════════════════════════════════════════════════════════════════════════════

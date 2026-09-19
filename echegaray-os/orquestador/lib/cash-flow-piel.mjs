@@ -213,6 +213,26 @@ export function pielCashFlow({
   regla(meta.cierre, 'top')
   regla(meta.cierre, 'bottom')
 
+  // ── 4 bis. LA BANDA DE LIQUIDEZ ────────────────────────────────────────────────────────────────
+  //
+  // Tres filas de saldo pegadas al cierre: llevan "$" como él (son niveles, no flujos) y quedan
+  // apagadas contra su tinta — el cierre sigue siendo el ancla y éstas se leen como su lectura.
+  //
+  // EL ÚNICO ACENTO DEL CUADRO ESTÁ ACÁ. El estándar del dueño prohíbe la decoración, y por eso el
+  // color se reserva para lo que decide: la fila del excedente contra la caja mínima es la que dispara
+  // una acción (salir a buscar plata) y es la única que se pinta. El déficit ya sale entre paréntesis
+  // por el patrón de número: el acento no repite el signo, marca DÓNDE mirar.
+  if (meta.liquidez) {
+    for (const f of [meta.liquidez.minima, meta.liquidez.excedente, meta.liquidez.liquidez]) {
+      fila(f, 'userEnteredFormat(textFormat,numberFormat)',
+        { textFormat: txt(MUTED, { size: 9 }), numberFormat: MONEDA_TOTAL })
+      push(rango(f - 1, f, 0, 1), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
+    }
+    fila(meta.liquidez.excedente, 'userEnteredFormat.textFormat',
+      { textFormat: txt(ACENTO, { bold: true, size: 9 }) })
+    regla(meta.liquidez.liquidez, 'bottom')
+  }
+
   // ── 5. Lo proyectado, en itálica ────────────────────────────────────────────────────────────────
   // Sólo el campo `italic` del textFormat, para no borrar la negrita de los subtotales que ya se puso.
   const proy = columnasProyectadas(periodo, fechas, hoy)

@@ -63,15 +63,43 @@ const queryClientes = (where, limite) => `QUERY(${Q_RANGO};"select Col1,sum(Col7
  * @param {string|null} p.refCaja referencia al total de disponibilidades (rango con nombre)
  * @returns {{filas:Array<Array<string>>, formatos:{moneda:number[],porcentaje:number[],fecha:number[],texto:number[],entero:number[]}, titulo:number}}
  */
-export function bloqueDecision({ periodo, fila0, colN, filaCab, filaCierre, filasEgreso, filasIngreso, refCaja }) {
+export function bloqueDecision({
+  periodo, fila0, colN, filaCab, filaCierre, filasEgreso, filasIngreso, refCaja, liquidez = null,
+}) {
   const U = periodo === 'semanal' ? 'semana' : 'mes'
   const Us = periodo === 'semanal' ? 'Semanas' : 'Meses'
   const filas = []
   const push = (a, b = '', c = '') => { filas.push([a, b, c]); return fila0 + filas.length - 1 }
   const rango = (f) => `$B$${f}:${colN}$${f}`
   const cierres = rango(filaCierre)
+  const ventana = {
+    desde: `$B$${filaCab}`,
+    hasta: periodo === 'semanal' ? `${colN}$${filaCab}+7` : `EOMONTH(${colN}$${filaCab};0)+1`,
+  }
 
-  const fTit = push('LO QUE ESTE CUADRO DECIDE — riesgo de caja y de cliente')
+  const fTit = push('LO QUE HAY QUE MIRAR PRIMERO — riesgo de caja, de cliente y de proveedor')
+
+  // ── 1. LA VARIANZA, ARRIBA DE TODO ──────────────────────────────────────────────────────────────
+  //
+  // El dueño fue explícito: "la varianza previsto-vs-real es el corazón, no un anexo". El contraste
+  // completo por período cerrado sigue existiendo más abajo —es una tabla y necesita su lugar—, pero
+  // el número que decide es UNO: de lo que se había comprometido cobrar en los períodos ya cerrados,
+  // cuánto NO entró. Si ese número es grande, todo lo que sigue está construido sobre una promesa que
+  // ya falló una vez, y hay que leerlo con esa desconfianza.
+  //
+  // Es un contraste entre DOS HECHOS REGISTRADOS, no contra una foto guardada del forecast viejo:
+  // Cobranzas guarda la fecha comprometida (P) y la fecha real de cobro (Q). Del lado del egreso ese
+  // contraste NO se puede hacer y se dice: Compras tiene una sola fecha de pago, así que no hay
+  // registro de "cuándo se había prometido pagar". Declarar el hueco vale más que inventar la mitad.
+  const cerrado = { desde: `EOMONTH(TODAY();-2)+1`, hasta: `TODAY()` }
+  const vencia = `SUMPRODUCT(${enVentana(COB.vence, cerrado.desde, cerrado.hasta)}*(LOWER(${r(COB.estado)})<>"endosado")*${noEndosado()}*${monto()})`
+  const entro = `SUMPRODUCT(${enVentana(COB.cobro, cerrado.desde, cerrado.hasta)}*(LOWER(${r(COB.estado)})="cobrado")*${noEndosado()}*${monto()})`
+  const fVar = push('Cobranza que vencía y NO entró (últimos 2 meses cerrados)', `=IFERROR(${vencia}-${entro};"")`,
+    '← el supuesto del forecast que ya falló una vez')
+  push('· sobre lo que vencía en esa ventana', `=IFERROR(IF(${vencia}=0;"";(${vencia}-${entro})/${vencia});"")`,
+    'del lado del egreso no hay contraste posible: Compras guarda una sola fecha de pago')
+
+  // ── 2. LA PEOR COLUMNA Y EL PISO ────────────────────────────────────────────────────────────────
   // La peor columna se identifica por su FECHA, no por su número de columna: así el resto del bloque
   // la vuelve a encontrar aunque la grilla cambie de ancho, y de paso se lee.
   const fPeor = push(`Peor ${U} del horizonte`, `=IFERROR(INDEX(${rango(filaCab)};1;MATCH(MIN(${cierres});${cierres};0));"")`)
@@ -87,7 +115,24 @@ export function bloqueDecision({ periodo, fila0, colN, filaCab, filaCierre, fila
   push('· el egreso que más la explica',
     `=IFERROR(MAX(${filasEgreso.map(val).join(';')});"")`,
     `=IFERROR(IFS(${filasEgreso.map((f) => `${val(f)}=$B$${fRubro};$A$${f}`).join(';')});"")`)
-  push(`${Us} del horizonte con la caja en negativo`, `=COUNTIF(${cierres};"<0")`)
+
+  // ── 3. LOS PERÍODOS CRÍTICOS: CONTRA EL PISO, NO CONTRA CERO ────────────────────────────────────
+  //
+  // "Que el saldo de cierre no baje nunca de un monto fijado" es la regla; contar los períodos que dan
+  // NEGATIVO mide otra cosa y la mide tarde: para cuando la caja está en cero, la decisión que había
+  // que tomar ya pasó. El contador que sirve es el de los que rompen el colchón — y el peor déficit
+  // dice cuánta plata hay que conseguir, que es la pregunta siguiente.
+  const fCrit = push(`${Us} que cierran por debajo de la caja mínima`,
+    liquidez ? liquidez.criticos : `=COUNTIF(${cierres};"<0")`,
+    liquidez ? '← días críticos' : '⚠ sin banda de liquidez: cuenta los que dan negativo, no los que rompen el piso')
+  const fDef = liquidez
+    ? push('· el peor déficit contra el colchón', liquidez.peorDeficit, 'lo que hay que conseguir, no cuántas veces falta')
+    : fCrit
+  const fExc = liquidez
+    ? push(`${Us} con caja parada por encima del doble del colchón`, liquidez.exceso,
+      '← exceso de liquidez: plata quieta es margen que se evapora')
+    : fCrit
+  if (liquidez) push('· cuánto sobra en el pico', liquidez.cobertura, 'techo de lo colocable sin tocar la política')
 
   // ── COBERTURA DE OBLIGACIONES ───────────────────────────────────────────────────────────────────
   // (caja de hoy + cobros previstos en la ventana) / (pagos previstos en la ventana). Menor que 1 =
@@ -105,20 +150,43 @@ export function bloqueDecision({ periodo, fila0, colN, filaCab, filaCierre, fila
   const fPend = push('Cobranza pendiente de cobro (todas las obras)',
     `=IFERROR(SUM(INDEX(${queryClientes(Q_PEND)};0;2));0)`)
   const top1 = `INDEX(${queryClientes(Q_PEND, 1)};1;2)`
-  push('· el mayor cliente concentra', `=IFERROR(${top1}/$B$${fPend};"")`,
+  const fCli1 = push('· el mayor cliente concentra', `=IFERROR(${top1}/$B$${fPend};"")`,
     `=IFERROR(INDEX(${queryClientes(Q_PEND, 1)};1;1);"")`)
-  push('· los tres mayores concentran', `=IFERROR(SUM(INDEX(${queryClientes(Q_PEND, 3)};0;2))/$B$${fPend};"")`)
+  const fCli3 = push('· los tres mayores concentran', `=IFERROR(SUM(INDEX(${queryClientes(Q_PEND, 3)};0;2))/$B$${fPend};"")`)
   const fVenc = push('· ya venció y sigue sin cobrarse',
     `=IFERROR(SUM(INDEX(${queryClientes(`${Q_PEND} and Col10 < date '"&TEXT(TODAY();"yyyy-mm-dd")&"'`)};0;2));0)`)
 
+  // ── CONCENTRACIÓN DE PAGOS ──────────────────────────────────────────────────────────────────────
+  //
+  // La otra mitad de la misma pregunta, y la que faltaba. La concentración de COBRANZA dice de quién
+  // depende que entre la plata; la de PAGO dice a quién le duele si no sale. No son simétricas: un
+  // cliente concentrado es una exposición que se padece, un proveedor concentrado es una palanca —
+  // el que más pesa es también con el que se puede renegociar un plazo y mover la peor semana entera.
+  //
+  // La ventana es la MISMA que la del cuadro (de la primera columna de período al fin de la última),
+  // no "los próximos 90 días": comparar la concentración de una ventana contra el pozo de otra sería
+  // mezclar dos ventanas de tiempo, que es lo que la regla de oro 3 prohíbe.
+  const fSale = push('Pagos a proveedores dentro del horizonte', `=IFERROR(SUM(INDEX(${queryProveedores(ventana)};0;2));0)`)
+  const fProv1 = push('· el mayor proveedor concentra', `=IFERROR(INDEX(${queryProveedores(ventana, 1)};1;2)/$B$${fSale};"")`,
+    `=IFERROR(INDEX(${queryProveedores(ventana, 1)};1;1);"")`)
+  const fProv3 = push('· los tres mayores concentran',
+    `=IFERROR(SUM(INDEX(${queryProveedores(ventana, 3)};0;2))/$B$${fSale};"")`,
+    'con el que más pesa se negocia un plazo y se mueve la peor columna entera')
+
+  // Cada fila declara su especie EXPLÍCITAMENTE. La versión anterior las nombraba con aritmética
+  // (`fVenc - 2`, `fCob30 + 1`), y ese es el mismo defecto que dejó la naturaleza pintada de moneda en
+  // el cuerpo: el día que se inserta una fila en el medio, una cobertura del 87% se dibuja "$1".
+  const moneda = [fVar, fPeorCierre, fRubro, fPend, fVenc, fSale]
+  const entero = [fCrit]
+  if (liquidez) { moneda.push(fDef, fPico); entero.push(fExc) }
   return {
     filas,
     titulo: fTit,
     formatos: {
       fecha: [fPeor],
-      moneda: [fPeor + 1, fRubro, fPend, fVenc],
-      entero: [fRubro + 1],
-      porcentaje: [fCob30, fCob30 + 1, fCob30 + 2, fVenc - 2, fVenc - 1],
+      moneda,
+      entero,
+      porcentaje: [fVarPct, fCob30, fCob60, fCob90, fCli1, fCli3, fProv1, fProv3],
       texto: [fTit],
     },
   }
