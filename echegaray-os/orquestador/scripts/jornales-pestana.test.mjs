@@ -240,6 +240,7 @@ import { auditarPatron, glosasLargas } from '../lib/patron-pestana.mjs'
 import { contrastarEscala } from '../lib/uocra-paritaria.mjs'
 import { LINEA_DRIVER_OFICINA } from '../lib/oficina-escalon.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
+import { evaluarFormula, hojaDeGrilla } from '../lib/evaluar-formula-sheet.mjs'
 
 const cinco = (rotulo, [oe, of, mo, ay, se]) => [
   [rotulo, 'Oficial Especializado', 'Hora', String(oe), '', '', String(oe), String(oe)],
@@ -1182,7 +1183,7 @@ test('el RESTO de la quincena en curso se marca como tal, y se dice en la pesta�
   assert.ok(!g3.filas.map((f) => String(f[0] ?? '')).some(esAviso))
 })
 
-test('EL CALENDARIO CONTESTA LA PREGUNTA: obreros, oficina y dirección, y su total, en una fila', () => {
+test('EL CALENDARIO CONTESTA LA PREGUNTA: las tres nóminas y las dos mitades del acuerdo, en una fila', () => {
   // La fila se rellena hasta el ancho de la pestaña con el centinela: se compara el cuadro, no el relleno.
   assert.deepEqual(gm.filas[gm.p0 - 2].slice(0, COLS_CALENDARIO.length), COLS_CALENDARIO,
     'el encabezado del calendario no es el declarado')
@@ -1194,10 +1195,19 @@ test('EL CALENDARIO CONTESTA LA PREGUNTA: obreros, oficina y dirección, y su to
   for (const [i, letra] of [[3, 'D'], [4, 'E'], [5, 'F'], [6, 'G'], [7, 'H']]) {
     assert.equal(String(tot[i]), `=SUM(${letra}${gm.p0}:${letra}${fin})`, `la columna ${letra} del total no suma su cuadro`)
   }
-  // El TOTAL de cada fila suma EXACTAMENTE las tres columnas de población: ni una de más (doble
-  // conteo) ni una de menos (una nómina que desaparece del calendario).
+  // ═══ LAS DOS MITADES DEL ACUERDO 50/50, LAS DOS PUBLICADAS (14/08) ═══
+  //
+  // El dueño, cuatro veces el mismo día: *"el 50 y 50 acuerdo interno, lo dije mil veces"*. El
+  // calendario publicaba «Efectivo» y ninguna columna de banco. Son la MISMA cuenta y por eso son
+  // idénticas: si una se separara de la otra, una de las dos dejó de salir del acuerdo.
+  //
+  // Y las dos cubren Obreros + Oficina, NO el total de la fila: Dirección no se reparte porque su
+  // canal no está registrado en ninguna fuente. `/2` y nunca `*0,5` — en es_AR la coma es separador
+  // de argumentos y el literal decimal parte la fórmula en dos.
   for (let r = gm.p0; r <= fin; r++) {
-    assert.equal(String(gm.filas[r - 1][6]), `=SUM(D${r}:F${r})`, `la fila ${r} no totaliza las tres nóminas`)
+    assert.equal(String(gm.filas[r - 1][6]), `=(D${r}+E${r})/2`, `la fila ${r} no publica la mitad por banco`)
+    assert.equal(String(gm.filas[r - 1][7]), `=(D${r}+E${r})/2`, `la fila ${r} no publica la mitad en efectivo`)
+    assert.ok(!String(gm.filas[r - 1][6]).includes(','), 'separador es-AR: la coma partiría la fórmula')
   }
 })
 
@@ -1237,12 +1247,14 @@ test('EL TOTAL DEL CALENDARIO NO SE CUENTA DOS VECES EN CAJA: el rango publicado
   // perfectamente plausible y ninguna celda en rojo.
   const proy = rangosDeJornales(gm).find((x) => x.nombre === 'JORNALES_PROY_TOTAL')
   assert.equal(proy.ancla.texto, 'Obreros')
-  assert.notEqual(proy.c0, COLS_CALENDARIO.indexOf('TOTAL'))
+  assert.equal(COLS_CALENDARIO.indexOf('TOTAL'), -1, 'la columna TOTAL salió: entró la mitad por banco')
+  assert.notEqual(proy.c0, COLS_CALENDARIO.indexOf('Banco'))
   // Y el lector de la caja tiene que leer la MISMA columna: su declaración vive en nomina-sync, que
   // es el módulo que escribe el cuadro. Dos definiciones de dónde está el total es cómo se
   // desincronizó este mismo cuadro en julio.
   assert.equal(COL_PROYECCION.total, proy.c0, 'el lector de la caja y el rango publicado apuntan a columnas distintas')
-  assert.equal(COL_PROYECCION.consolidado, COLS_CALENDARIO.indexOf('TOTAL'))
+  assert.equal(COL_PROYECCION.banco, COLS_CALENDARIO.indexOf('Banco'), 'el mapa del lector quedó apuntando a la columna vieja')
+  assert.equal(COL_PROYECCION.efectivo, COLS_CALENDARIO.indexOf('Efectivo'))
 })
 
 test('cada PROYECTADO del cuadro del año sale del bloque de SU grupo, no de una suma propia', () => {
@@ -1469,4 +1481,107 @@ test('la medida ve el texto ADENTRO de la fórmula — si no, el párrafo vuelve
   assert.equal(d[0].fila, 3)
   // Y una máscara de formato larga NO es una glosa: sin el filtro, `TEXT(x;"#,##0")` daría falso rojo.
   assert.deepEqual(glosasLargas([['t'], ['sub'], [`=TEXT(A1;"${'#,##0'.repeat(20)}")`]]), [])
+})
+
+
+/**
+ * ═══ LA PROYECCIÓN DE OBREROS, REHECHA (14/08) ═══
+ *
+ * El dueño, después de pedirlo cuatro veces el mismo día: *"tenés que tener en cuenta el convenio,
+ * qué mierda estás haciendo con las proyecciones de obreros? rehacer"* y *"quería que la proyección de
+ * los restantes meses se basara en el 100% del convenio considerando el 50 y 50 acuerdo interno, lo
+ * dije mil veces"*. Y *"hacé lo solicitado CON EL PLANTEL ACTUAL"*.
+ *
+ * QUÉ PUBLICABA. `MAX(convenio; demanda de obra)`, y con eso el número cambiaba de NATURALEZA fila por
+ * fila: tres quincenas eran lo que piden las obras vendidas —$18.759.425, que con la Σ $/hora del
+ * plantel ($97.772) y 7,30 hs/día equivale a ~38 personas contra las 16 que hay— y seis eran el
+ * convenio del plantel real. El total del año daba $107.350.450 para un plantel que al convenio cuesta
+ * ~$73.200.000: $34M inflados por una demanda que no es su gente.
+ *
+ * LA REGLA AHORA. Σ $/hora del convenio (plantel actual) × horas por persona y día × días hábiles L-V,
+ * en las NUEVE quincenas, sin `MAX` y sin demanda. Repartida 50% banco / 50% efectivo.
+ *
+ * ESTE TEST EVALÚA LAS FÓRMULAS, no compara strings: si mañana alguien vuelve a meter la demanda de
+ * obra en esa columna, los importes se van del rango y esto se pone rojo.
+ */
+test('OBREROS · la proyección es el 100% del convenio con el PLANTEL ACTUAL, sin MAX contra la demanda', () => {
+  const pend = [
+    { desde: new Date(2026, 7, 16), hasta: new Date(2026, 7, 31) },
+    { desde: new Date(2026, 8, 1), hasta: new Date(2026, 8, 15) },
+    { desde: new Date(2026, 8, 16), hasta: new Date(2026, 8, 30) },
+    { desde: new Date(2026, 9, 1), hasta: new Date(2026, 9, 15) },
+    { desde: new Date(2026, 9, 16), hasta: new Date(2026, 9, 31) },
+    { desde: new Date(2026, 10, 1), hasta: new Date(2026, 10, 15) },
+    { desde: new Date(2026, 10, 16), hasta: new Date(2026, 10, 30) },
+    { desde: new Date(2026, 11, 1), hasta: new Date(2026, 11, 15) },
+    { desde: new Date(2026, 11, 16), hasta: new Date(2026, 11, 31) },
+  ]
+  // La demanda de obra ENTRA a la corrida —las obras vendidas existen— y no tiene que mover un peso
+  // de esta columna. Con los importes reales del 14/08: si volviera a pisar, la primera quincena
+  // saltaría a $18,7M y el rango de abajo se rompe.
+  const demanda = {
+    nObras: 7,
+    porQuincena: new Map([
+      ['2026-08-2', { jornales: 18759425 }],
+      ['2026-09-1', { jornales: 21576937 }],
+      ['2026-09-2', { jornales: 19100252 }],
+      ['2026-10-1', { jornales: 5655120 }],
+    ]),
+  }
+  // El motor tiene que cubrir los meses de TODAS las quincenas: con la ventana corta de la fixture
+  // base, las de noviembre y diciembre no encuentran su escalón y la celda rinde vacío.
+  const g = conMotor({ pendientes: pend, demanda, meses: mesesDelMotor(new Date(2026, 6, 31), pend, [new Date(2026, 6, 31)]) })
+  const hoja = hojaDeGrilla(g.filas)
+  const fin = g.p0 + g.nProy - 1
+
+  // ── LA HOJA SE COMPLETA CON LO QUE LA PESTAÑA MIDE Y ESTE TEST NO SIMULA ──
+  // Las fechas de cada quincena y las horas por persona y día (7,30, medidas por la propia pestaña
+  // sobre las quincenas cerradas). El resto —la Σ del plantel por mes— sale del cuadro 4.2 de la
+  // grilla real, así que se rellena leyendo los rangos de la PROPIA fórmula: anclar en un número de
+  // fila escrito acá sería el defecto que este libro ya pagó.
+  pend.forEach((q, i) => {
+    hoja[`A${g.p0 + i}`] = q.desde
+    hoja[`B${g.p0 + i}`] = q.hasta
+    hoja[`C${g.p0 + i}`] = new Date(q.hasta.getFullYear(), q.hasta.getMonth(), q.hasta.getDate() + 4)
+  })
+  hoja[`B${g.cantidades[0]}`] = 7.30
+  const f0 = String(g.filas[g.p0 - 1][3])
+  const m = /INDEX\((\$?[A-Z]+\$?\d+:\$?[A-Z]+\$?\d+);MATCH\(EOMONTH\(A\d+;0\);(\$?[A-Z]+\$?\d+:\$?[A-Z]+\$?\d+);0\)\)/.exec(f0)
+  assert.ok(m, `no pude ubicar el cuadro del escalón en la fórmula: ${f0}`)
+  const filasDe = (r) => { const [a, b] = r.replace(/\$/g, '').split(':'); const n = (x) => Number(/\d+/.exec(x)[0]); return [n(a), n(b)] }
+  const [sig0] = filasDe(m[1]); const [mes0, mes1] = filasDe(m[2])
+  const colSigma = /^\$?([A-Z]+)/.exec(m[1].replace(/\$/g, ''))[1]
+  const colMes = /^\$?([A-Z]+)/.exec(m[2].replace(/\$/g, ''))[1]
+  // La escala del convenio ya publicada en 4.2, julio→diciembre, tal cual la lee el dueño.
+  const SIGMA = [95949, 97772, 99630, 101523, 103452, 105417]
+  for (let k = 0; k <= mes1 - mes0; k++) {
+    hoja[`${colMes}${mes0 + k}`] = new Date(2026, 7 + k + 1, 0)   // fin de mes, de agosto en adelante
+    hoja[`${colSigma}${sig0 + k}`] = SIGMA[Math.min(k + 1, SIGMA.length - 1)]
+  }
+
+  // ── LO QUE TIENE QUE DAR ──
+  let total = 0
+  for (let r = g.p0; r <= fin; r++) {
+    const f = String(g.filas[r - 1][3])
+    // NI MAX NI CONSTANTE DE DEMANDA: la columna es una sola cosa.
+    assert.doesNotMatch(f, /MAX\(/, `la fila ${r} volvió a competir contra la demanda de obra`)
+    assert.doesNotMatch(f, /1[89]\d{6}|2[01]\d{6}/, `la fila ${r} tiene una constante de demanda adentro`)
+    assert.match(f, /NETWORKDAYS\.INTL/, `la fila ${r} perdió los días hábiles del convenio`)
+    const v = evaluarFormula(f, { hoja, hoy: new Date(2026, 7, 14) })
+    assert.equal(typeof v, 'number', `la fila ${r} no rindió un número: ${v}`)
+    // EL ORDEN DE MAGNITUD ES EL CRITERIO DE ACEPTACIÓN DEL DUEÑO: con el plantel actual, cada
+    // quincena está entre $6M y $10M. Los $18,7M de la demanda quedan afuera por construcción.
+    assert.ok(v >= 6_000_000 && v <= 10_000_000, `la fila ${r} publicó $${Math.round(v).toLocaleString('es-AR')}: fuera del plantel actual`)
+    total += v
+    // Y LAS DOS MITADES DEL ACUERDO, evaluadas: idénticas y sumando el jornal + oficina de la fila.
+    const banco = evaluarFormula(String(g.filas[r - 1][6]), { hoja, hoy: new Date(2026, 7, 14) })
+    const efvo = evaluarFormula(String(g.filas[r - 1][7]), { hoja, hoy: new Date(2026, 7, 14) })
+    assert.equal(banco, efvo, `la fila ${r} no reparte 50/50`)
+    assert.ok(Math.abs(banco * 2 - v) < 1, `la fila ${r}: las dos mitades no suman el jornal de obra`)
+  }
+  // EL TOTAL DEL AÑO. El dueño lo fijó en ~$73,2M contra los $107.350.450 que publicaba: la banda es
+  // ancha a propósito (los días hábiles y el mes del escalón se miden en la pestaña, no acá) pero
+  // excluye por completo el número viejo.
+  assert.ok(total >= 70_000_000 && total <= 76_000_000,
+    `el proyectado del año dio $${Math.round(total).toLocaleString('es-AR')}: fuera de la banda $70M–$76M`)
 })

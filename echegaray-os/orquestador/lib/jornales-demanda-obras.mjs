@@ -24,6 +24,7 @@
 //     ayudante }, moCargasPesos, plantelFullTime, plantelTemporales, notas }
 
 import { factorUocraEntre, ESCALA_VERIFICADA, PERIODO_VERIFICADO } from './uocra-paritaria.mjs'
+import { ALERTA } from './glifos.mjs'
 
 /**
  * LA EQUIVALENCIA ENTRE LAS CLAVES DE HORAS DEL INSUMO Y LAS CATEGORÍAS DEL CONVENIO.
@@ -316,33 +317,126 @@ export function proyeccionQuincena(piso, demanda) {
  * @returns {string} la fórmula, separador es-AR
  */
 export function formulaProyectadoQuincena({ convenio, celdaPago }, demanda = null) {
-  const C = celdaPago
-  const jornales = Math.round(Number(demanda?.jornales) || 0)
-  if (!(jornales > 0)) return `=IFERROR(${convenio};"")`
-  return `=IF(AND(N(${C})>0;${C}<=EOMONTH(TODAY();0));`
-    + `IFERROR(${convenio};"");`
-    + `MAX(IFERROR(${convenio};0);${jornales}))`
+  // `celdaPago` y `demanda` sobreviven en la firma porque los llamadores y los tests los pasan, y
+  // porque el gate por fecha de caja vuelve el día que haya un segundo término. Hoy no hay ninguno:
+  // la columna es el convenio y nada más. Ver la cabecera de este bloque.
+  void celdaPago; void demanda
+  return `=IFERROR(${convenio};"")`
 }
 
 /**
- * NÚCLEO PURO: la glosa de la demanda — de dónde salió el término constante del MAX.
+ * NÚCLEO PURO: LAS DOS BRECHAS ENTRE EL PLANTEL Y LAS OBRAS — lo que el `MAX` escondía.
+ *
+ * Sacar la demanda de la columna no puede significar tirarla: es el dato que dice si el plantel
+ * alcanza. Pero es OTRA magnitud, así que va afuera del cuadro de importes, en dos líneas que se
+ * apagan solas —cada una existe únicamente el día que su brecha es mayor que cero—:
+ *
+ *   · las obras piden MÁS de lo que el plantel cubre  → falta gente, o van a ir horas extra;
+ *   · el plantel cuesta MÁS de lo que las obras piden → plantel sin obra vendida que lo sostenga.
+ *
+ * Las dos son decisiones del dueño (vender obra, tomar gente, ajustar plantel) y las dos estaban
+ * enterradas adentro de un `MAX` que publicaba el ganador y callaba al perdedor.
+ *
+ * SE CALCULAN EN LA PESTAÑA, NO ACÁ. El término del plantel es la celda «Obreros» de cada fila —una
+ * fórmula del Sheet que este proceso no puede evaluar sin recalcular el libro entero—, así que la
+ * comparación vive donde viven los dos números. Calcularla en JS obligaría a reimplementar el motor
+ * salarial y a que la pestaña y el aviso pudieran decir cosas distintas.
+ *
+ * @param {{col:string, filas:Array<{fila:number, jornales:number}>}} d la columna «Obreros» y, por
+ *   fila del calendario, el jornal puro que piden las obras vendidas en esa quincena (0 si ninguna)
+ * @returns {{falta:string|null, sobra:string|null}} las dos fórmulas, o null si no hay nada que medir
+ */
+export function formulasBrechaDemanda({ col, filas = [] } = {}) {
+  const usables = (filas ?? []).filter((f) => Number.isFinite(Number(f?.fila)))
+  if (!col || !usables.length) return { falta: null, sobra: null }
+  // Una quincena sin obra cargada entra con 0: su plantel entero es plantel sin demanda, que es
+  // exactamente lo que hay que ver. Omitirla haría que la brecha se midiera sólo donde hay obra.
+  const j = (f) => Math.round(Number(f.jornales) || 0)
+  const suma = (dir) => usables
+    .map((f) => (dir === 'falta' ? `MAX(0;${j(f)}-N(${col}${f.fila}))` : `MAX(0;N(${col}${f.fila})-${j(f)})`))
+    .join('+')
+  // LET para no repetir la suma dos veces (la fórmula ya mide ~300 caracteres con nueve términos). El
+  // nombre lleva CUATRO letras y ninguna forma de referencia A1: `nPa1` da #NAME? y `brecha` no.
+  const linea = (dir, texto) => `=LET(brecha;${suma(dir)};IF(brecha<=0;"";"${ALERTA} $"&TEXT(brecha;"#,##0")&" ${texto}"))`
+  return {
+    falta: linea('falta', 'que las obras piden por encima del plantel'),
+    sobra: linea('sobra', 'de plantel sin obra vendida que lo demande'),
+  }
+}
+
+/** DD/MM, que es como se leen las fechas en este archivo (locale es_AR). */
+const diaMes = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
+
+/**
+ * NÚCLEO PURO: EN QUÉ QUINCENAS ENTRA LA DEMANDA AL CÁLCULO — el mismo mapa que emite las fórmulas.
+ *
+ * Devuelve el índice (0-based) de las `pendientes` que llevan término de demanda. Es un HECHO del
+ * generador, no una interpretación: si la clave está en `porQuincena`, esa fila salió con `MAX`.
+ *
+ * NO dice cuál de los dos GANÓ. Ganar lo decide el MAX adentro del Sheet, contra un convenio que es
+ * una expresión de celdas y que acá no se puede evaluar sin recalcular la pestaña entera —y un número
+ * calculado por dos caminos distintos es exactamente cómo un control empieza a validarse contra lo que
+ * él mismo produce—. Lo que sí se puede afirmar, y es lo que el dueño necesita para explicar el salto,
+ * es DÓNDE entra la demanda y desde dónde ya no hay ninguna.
+ */
+export function quincenasConDemanda(demanda = null, pendientes = []) {
+  const mapa = demanda?.porQuincena
+  if (!mapa?.size) return []
+  return (pendientes ?? []).reduce((acc, q, i) => {
+    if (q?.desde instanceof Date && mapa.has(claveQuincena(q.desde))) acc.push(i)
+    return acc
+  }, [])
+}
+
+/**
+ * NÚCLEO PURO: la glosa de la demanda — de dónde sale el proyectado de cada quincena.
  *
  * CORTA Y EN LA PROSA QUE YA EXISTE, no en filas ni columnas nuevas: la orden de diseño del dueño
- * (07/08) es pestaña de tesorería enterprise —importes protagonistas, texto mínimo— así que el MAX
- * no agrega nada visible; esta frase se APPENDEA a la línea de prosa que la sección ya tiene. Y
- * nunca en una nota de celda: ningún generador escribe notas (regla del repo — notas-que-resucitan).
- * Vacía cuando ninguna quincena lleva demanda, para que glosa y fórmulas no puedan contar historias
- * distintas: las dos salen del mismo mapa.
+ * (07/08) es pestaña de tesorería enterprise —importes protagonistas, texto mínimo— y el ancho de ocho
+ * columnas del calendario es un contrato. Y nunca en una nota de celda: ningún generador escribe notas
+ * (regla del repo — notas-que-resucitan). Vacía cuando ninguna quincena lleva demanda, para que glosa
+ * y fórmulas no puedan contar historias distintas: las dos salen del mismo mapa.
+ *
+ * ═══ EL SALTO QUE NO SE PODÍA EXPLICAR (14/08) ═══
+ *
+ * El dueño, sobre la columna «Obreros»: *"esas proyecciones no pueden ser así, no dan confianza"*. Y
+ * medido en la pestaña viva, las tres primeras quincenas triplican a las seis siguientes:
+ *
+ *     16/08→31/08  $18.759.425      01/10→15/10  $8.220.014
+ *     01/09→15/09  $21.576.937      16/10→31/10  $8.220.014
+ *     16/09→30/09  $19.100.252      …            …
+ *
+ * Con el MISMO plantel y la MISMA escala. No es un error: las tres primeras salen del `MAX` contra la
+ * demanda de las obras vendidas y las seis siguientes sólo del convenio, porque después del 30/09 no
+ * hay obra cargada. Pero la glosa decía únicamente *"Proyectado = MAX(convenio; demanda de 7 obras)"*
+ * para las nueve, así que las dos magnitudes se leían como la misma cosa. Un número que el dueño no
+ * puede explicar no lo va a usar, y con razón.
+ *
+ * Ahora la línea declara el CORTE —hasta qué fecha entra la demanda— y el supuesto que estaba oculto
+ * detrás del escalón: de ahí en adelante se proyecta el PLANTEL DE HOY y nada más. Eso no es una
+ * opinión sobre el futuro: es lo que el cálculo hace, dicho en voz alta.
  *
  * @param {{porQuincena?: Map, nObras?: number}|null} demanda lo que armó jornales-demanda-fuente
+ * @param {Array<{desde: Date, hasta: Date}>} pendientes las quincenas que emite la pestaña
  * @returns {string} '' o la frase para concatenar a la prosa existente
  */
-export function glosaDemanda(demanda = null) {
+export function glosaDemanda(demanda = null, pendientes = []) {
   const nQ = demanda?.porQuincena?.size ?? 0
   if (!nQ) return ''
   const n = Number(demanda?.nObras) || 0
   // LA FÓRMULA DICE MÁS QUE LA FRASE Y OCUPA UN CUARTO. "Donde la demanda de las N obras vendidas
   // (insumo del dueño) supera el convenio, Proyectado es MAX(convenio; demanda)" son 110 caracteres
   // para expresar en palabras exactamente el MAX que la celda ya calcula.
-  return ` · Proyectado = MAX(convenio; demanda de ${n} obra${n === 1 ? '' : 's'})`
+  const base = ` · Proyectado = MAX(convenio; demanda de ${n} obra${n === 1 ? '' : 's'})`
+  const con = quincenasConDemanda(demanda, pendientes)
+  // Sin las quincenas a la vista no se puede declarar ningún corte, y se dice lo de siempre: una glosa
+  // que afirmara un corte que no midió sería peor que la genérica.
+  if (!con.length || con.length === (pendientes?.length ?? 0)) return base
+  // EL CASO NORMAL es el prefijo contiguo: las obras vendidas terminan y de ahí en más no hay ninguna.
+  const contiguo = con.every((v, k) => v === k)
+  const corte = pendientes[con[con.length - 1]]?.hasta
+  if (contiguo && corte instanceof Date) {
+    return `${base} hasta el ${diaMes(corte)} · después, sólo el plantel de hoy`
+  }
+  return `${base} en ${con.length} de ${pendientes.length} quincenas · el resto, sólo el plantel de hoy`
 }

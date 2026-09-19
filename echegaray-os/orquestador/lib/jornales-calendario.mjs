@@ -73,8 +73,32 @@ export const COLS_CALENDARIO = [
   // tres columnas BANCO/ADELANTO/TOTAL RECIBO que la de obra. Dirección sigue afuera: de esos tres
   // retiros el canal no está registrado en ninguna parte, y repartirlos con la proporción de otro
   // grupo sería inventarlo.
-  'Período', 'Hasta', 'Se paga el', 'Obreros', 'Oficina', 'Dirección', 'TOTAL', 'Efectivo',
+  // ═══ «TOTAL» SALIÓ Y ENTRÓ «Banco» (14/08, orden del dueño) ═══
+  //
+  // *"queria q la proyeccion de los restantes meses se basara en el 100% del convenio considerando el
+  // 50 y 50 acuerdo interno, lo dije mil veces"*. El acuerdo interno es mitad transferencia y mitad
+  // billetes, en TODAS las quincenas, y el calendario publicaba una sola de las dos mitades: el dueño
+  // veía cuánto efectivo juntar y no veía cuánto transferir, que es el otro número con el que opera.
+  //
+  // El ancho de ocho columnas no se negocia, así que algo tenía que salir, y el criterio de corte es
+  // el del dueño: ¿qué decisión cambia si este número cambia? «TOTAL» era `Obreros+Oficina+Dirección`
+  // con las tres al lado —una suma que el ojo hace sola y que no decide nada por sí misma—, mientras
+  // que las dos mitades son con las que se arma la caja de la quincena. Y ningún rango con nombre la
+  // citaba: `JORNALES_PROY_TOTAL` apunta a «Obreros», no a esta columna (ver `rangosDeJornales`).
+  //
+  // LAS DOS MITADES CUBREN OBREROS + OFICINA, NO EL TOTAL DE LA FILA, y por eso hay una línea que lo
+  // dice. Dirección queda afuera del reparto porque de esos tres retiros el canal no está registrado
+  // en ninguna fuente y aplicarles el 50/50 sería fabricar el dato — es la misma decisión que el
+  // cuadro de pago ya toma poniendo «—» en su celda de banco. Sin esa línea, `Banco + Efectivo` no da
+  // el total de la fila y se lee como un error de suma.
+  'Período', 'Hasta', 'Se paga el', 'Obreros', 'Oficina', 'Dirección', 'Banco', 'Efectivo',
 ]
+
+/**
+ * La línea que declara qué cubren las dos mitades. Va al lado del cuadro, no en una nota: ningún
+ * generador escribe notas (regla del repo). Sin número adentro: DECLARA, no calcula.
+ */
+export const LINEA_MITADES = '‖ Mitades de Obreros + Oficina — Dirección no se reparte'
 
 /** La letra A1 de una columna del calendario, buscada por su rótulo. Falla RUIDOSA. */
 export function colCalendario(rotulo, cols = COLS_CALENDARIO) {

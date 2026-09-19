@@ -77,3 +77,32 @@ test('una celda que vuelve a tener contenido pierde la marca: el candado no es e
   await guardarHuellas(FILE, TAB, [['TOTAL']], { fila0: 1, col0: 0 })
   assert.equal((await leerHuellas(FILE, TAB)).get(claveCelda(1, 0))?.borrada, false)
 })
+
+/**
+ * EL BARRIDO NO PUEDE TIRAR LA EVIDENCIA DE UN JUICIO QUE NO SE HIZO (14/08).
+ *
+ * Barrer significa "esto ya lo juzgué y es un layout que dejé atrás". Cuando el mapa de posición no
+ * alinea —el estado en el que queda una pestaña recién rediseñada— no se juzgó NADA por coordenada, y
+ * el barrido borraba igual la huella de la corrida anterior: la única prueba de que esa celda era del
+ * OS. La corrida siguiente encontraba `!mia && ocupada` y preservaba el residuo. Para siempre.
+ *
+ * Es el paso que volvía INMORTAL al residuo de rediseño en «Jornales por Quincena».
+ */
+test('sin mapa de posición no se barre: la huella del layout anterior sobrevive para juzgarla después',
+  { skip: !hayBase && 'sin base' }, async (t) => {
+    t.after(limpiar)
+    await limpiar()
+    // Corrida 1: el layout viejo escribe dos celdas.
+    await guardarHuellas(FILE, TAB, [['Básico convenio', 'Banco']], { fila0: 80, col0: 6 })
+    assert.equal((await leerHuellas(FILE, TAB)).size, 2)
+
+    // Corrida 2: la pestaña se rediseñó, la huella NO decidió y esas celdas ya no llevan contenido.
+    await guardarHuellas(FILE, TAB, [['', '']], { fila0: 80, col0: 6, barrer: false })
+    const h = await leerHuellas(FILE, TAB)
+    assert.equal(h.size, 2, 'la evidencia sigue disponible para la corrida que sí pueda juzgarla')
+    assert.equal(h.get(claveCelda(80, 6))?.forma, 'básico convenio')
+
+    // Y cuando la huella SÍ decide, el barrido vuelve a correr: no se acumula un layout muerto.
+    await guardarHuellas(FILE, TAB, [['', '']], { fila0: 80, col0: 6 })
+    assert.equal((await leerHuellas(FILE, TAB)).size, 0, 'con mapa, el layout viejo sí se barre')
+  })

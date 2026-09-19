@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   demandaPorQuincena, costoDemanda, proyeccionQuincena, formulaProyectadoQuincena, glosaDemanda,
+  quincenasConDemanda,
   diasHabilesObra, claveQuincena, ESCALON_RESPALDO, TARIFA_CARGAS_EXPLOSION,
 } from './jornales-demanda-obras.mjs'
 import { factorUocraEntre } from './uocra-paritaria.mjs'
@@ -155,4 +156,45 @@ test('la glosa habla sólo cuando alguna quincena lleva demanda, y dice cuántas
   // el número, el lector no sabe sobre qué se apoya la suba— y que declare que la regla es un MAX.
   assert.match(g, /7 obras/)
   assert.match(g, /MAX\(convenio; demanda/)
+})
+
+/**
+ * EL SALTO QUE EL DUEÑO NO PODÍA EXPLICAR (14/08), reproducido con las nueve quincenas reales.
+ *
+ * Las tres primeras publicaban $18,7M · $21,6M · $19,1M y las seis siguientes $8,2M para abajo, con el
+ * mismo plantel y la misma escala. La glosa decía lo mismo para las nueve, así que las dos magnitudes
+ * se leían como la misma cosa. Si se vuelve a la glosa genérica, este test se pone rojo.
+ */
+test('la glosa declara HASTA CUÁNDO entra la demanda: es lo que explica el escalón de octubre', () => {
+  const q = (m, mitad) => ({
+    desde: new Date(2026, m - 1, mitad === 1 ? 1 : 16),
+    hasta: mitad === 1 ? new Date(2026, m - 1, 15) : new Date(2026, m, 0),
+  })
+  // Tal cual las emite la pestaña: el resto de agosto y de ahí a fin de año.
+  const pendientes = [q(8, 2), q(9, 1), q(9, 2), q(10, 1), q(10, 2), q(11, 1), q(11, 2), q(12, 1), q(12, 2)]
+  // Y la demanda de obra, que se apaga el 30/09 porque después no hay obra cargada.
+  const demanda = { nObras: 7, porQuincena: new Map([['2026-08-2', {}], ['2026-09-1', {}], ['2026-09-2', {}]]) }
+
+  assert.deepEqual(quincenasConDemanda(demanda, pendientes), [0, 1, 2], 'sólo las tres primeras llevan MAX')
+  const g = glosaDemanda(demanda, pendientes)
+  assert.match(g, /hasta el 30\/09/, 'la fecha del corte es la que separa las dos magnitudes')
+  assert.match(g, /sólo el plantel de hoy/, 'y el supuesto de las seis restantes queda declarado')
+  assert.ok(g.length <= 110, `la glosa mide ${g.length}: la pestaña es de importes, no de prosa`)
+})
+
+test('si la demanda no es un tramo contiguo, la glosa cuenta cuántas y no inventa un corte', () => {
+  const q = (m, mitad) => ({ desde: new Date(2026, m - 1, mitad === 1 ? 1 : 16), hasta: new Date(2026, m - 1, mitad === 1 ? 15 : 28) })
+  const pendientes = [q(9, 1), q(9, 2), q(10, 1), q(10, 2)]
+  const demanda = { nObras: 3, porQuincena: new Map([['2026-09-1', {}], ['2026-10-1', {}]]) }
+  const g = glosaDemanda(demanda, pendientes)
+  assert.match(g, /en 2 de 4 quincenas/)
+  assert.doesNotMatch(g, /hasta el/, 'un corte por fecha sería mentira: hay un hueco en el medio')
+})
+
+test('con demanda en TODAS las quincenas no hay corte que declarar y la glosa vuelve a la genérica', () => {
+  const pendientes = [{ desde: new Date(2026, 8, 1), hasta: new Date(2026, 8, 15) }]
+  const demanda = { nObras: 2, porQuincena: new Map([['2026-09-1', {}]]) }
+  assert.equal(glosaDemanda(demanda, pendientes), ' · Proyectado = MAX(convenio; demanda de 2 obras)')
+  // Y sin las quincenas a la vista tampoco se afirma un corte que no se midió.
+  assert.equal(glosaDemanda(demanda), ' · Proyectado = MAX(convenio; demanda de 2 obras)')
 })

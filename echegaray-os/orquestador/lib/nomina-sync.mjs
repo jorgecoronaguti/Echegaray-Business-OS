@@ -86,9 +86,17 @@ export const COL_REGISTRO = {
  * `total` apunta a "Obreros" a propósito: es el total DE ESTE BLOQUE para quien lo consume. El nombre
  * se conserva porque `JORNALES_PROY_TOTAL` ya está publicado y citado por fórmulas del Sheet; el
  * contrato es que ese nombre significa "los jornales de obra proyectados", no "la nómina entera".
+ *
+ * ═══ LA COLUMNA 6 DEJÓ DE SER «TOTAL» Y ES «Banco» (14/08) ═══
+ *
+ * El dueño ordenó publicar las DOS mitades del acuerdo 50/50 y el ancho de ocho columnas no se
+ * negocia, así que salió la suma de las tres nóminas —que el ojo hace solo con las tres al lado— y
+ * entró la mitad que faltaba. `consolidado` se renombra en vez de dejarse apuntando a otra cosa: un
+ * nombre que sobrevive a la columna que describía es cómo un lector empieza a leer el dato de al lado.
+ * Nadie lo consumía (verificado por grep el 14/08: sólo se declaraba acá), así que el rename es seguro.
  */
 export const COL_PROYECCION = {
-  desde: 0, hasta: 1, pago: 2, total: 3, oficina: 4, direccion: 5, consolidado: 6, efectivo: 7,
+  desde: 0, hasta: 1, pago: 2, total: 3, oficina: 4, direccion: 5, banco: 6, efectivo: 7,
 }
 
 export function filasQuincenas(bloques, filaInicio = 6, hoja = '_J_OBREROS') {

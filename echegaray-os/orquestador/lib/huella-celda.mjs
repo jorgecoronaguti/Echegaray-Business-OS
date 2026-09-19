@@ -59,6 +59,7 @@ import {
   claveCelda, formaComparable, formaDe, hayContenido, LARGO_FORMA, MARCAS_TIPOGRAFICAS,
   noReponerAusentes, quiereEscribir,
 } from './huella-forma.mjs'
+import { residuosMigrantes } from './huella-residuo.mjs'
 
 // EL VOCABULARIO DE LA FORMA SE MUDÓ a `huella-forma.mjs` y se re-exporta desde acá para no romper a
 // quien ya lo importaba. Tuvo que mudarse porque ahora hay DOS veredictos que necesitan la misma
@@ -266,8 +267,17 @@ export function mejorDesplazamiento(actual = [], huellas = new Map(), opts = {})
  * El veredicto de reemplazo no usa la posición —que es justo lo que no se puede creer— sino la
  * ausencia de la forma en TODA la pestaña. Vive en `huella-forma.mjs` con sus tres frenos.
  *
+ * ═══ Y LA CUARTA EVIDENCIA, QUE NO NECESITA EL MAPA (14/08) ═══
+ *
+ * Un rediseño corre las filas y deja en las coordenadas nuevas lo que el layout viejo tenía ahí. Esa
+ * celda no tiene huella, tiene contenido, y el generador le manda `VACIO`: la firma exacta de `ajenas`.
+ * El residuo quedaba inmortal Y ADEMÁS ITINERANTE — reparado a mano en tres coordenadas, reapareció en
+ * otras cuatro el mismo día. `huella-residuo.mjs` lo prueba sin usar la huella para nada, y por eso se
+ * consulta también en el camino de abajo: cuando la pestaña se acaba de rediseñar el mapa NO alinea, y
+ * ése es justo el momento en que el residuo nace.
+ *
  * @returns {{grid:any[][], suprimidas:Array, ajenas:Array, residuos:Array, limpiadas:Array,
- *            editadas:Array, reescritos:Array, alineacion:object}}
+ *            editadas:Array, reescritos:Array, migrantes:Array, alineacion:object}}
  */
 export function aplicarHuella(generado = [], actual = [], huellas = new Map(), opts = {}) {
   const { fila0 = 1, col0 = 0 } = opts
@@ -277,16 +287,30 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
   // el contenido de hoy. Mezclarlos haría que el log dijera "la limpio" sobre una celda que quedó con
   // una fórmula — y el log es la única forma que tiene el dueño de auditar qué decidí sobre su celda.
   const reescritos = []
-  const vacio = { grid: generado, suprimidas, ajenas, residuos, limpiadas, editadas, reescritos, alineacion }
+  const migra = residuosMigrantes(generado, actual, {
+    esOrdenDeLimpiar: (c) => c === VACIO, fila0, col0,
+  })
+  const migrantes = migra.celdas
+  const vacio = { grid: generado, suprimidas, ajenas, residuos, limpiadas, editadas, reescritos, migrantes, alineacion: { ...alineacion, migrantes: migra.motivo, migrantesFrenado: migra.frenado } }
   if (!alineacion.alineada) {
     const porForma = noReponerAusentes(generado, actual, huellas, { fila0, col0 })
     suprimidas.push(...porForma.suprimidas)
-    return { ...vacio, grid: porForma.grid, alineacion: { ...alineacion, porForma: porForma.motivo } }
+    // SIN MAPA, LA CUARTA EVIDENCIA ES LA ÚNICA QUE PUEDE LIMPIAR. Sólo sobre las celdas que
+    // `noReponerAusentes` dejó intactas: si ahí puso `''` es porque esa celda llevaba CONTENIDO mío
+    // ausente de la pestaña, y eso nunca es una orden de limpieza.
+    const aplicados = []
+    const grid = porForma.grid.map((f, i) => (f || []).map((c, j) => {
+      if (c !== VACIO || !migra.claves.has(`${i}:${j}`)) return c
+      aplicados.push(migrantes.find((m) => m.i === i && m.j === j))
+      return MIA_PROBADA
+    }))
+    return { ...vacio, grid, migrantes: aplicados, alineacion: { ...vacio.alineacion, porForma: porForma.motivo } }
   }
   const mias = formasDeTextoPropio(generado)
   // El segundo testigo, para los residuos que un rediseño deja en celdas donde HOY escribo contenido.
   const textosMios = textosPropiosDeLaGrilla(generado)
   const norm = (v) => String(v ?? '').replace(/^'/, '').trim().toLowerCase()
+  const aplicados = []
   const grid = generado.map((f, i) => (f || []).map((c, j) => {
     if (!quiereEscribir(c)) return c
     const fila = fila0 + i - alineacion.off
@@ -323,6 +347,13 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
         residuos.push({ fila: fila0 + i, col, suyo: String(hoy).slice(0, 60) })
         return MIA_PROBADA
       }
+      // LA CUARTA EVIDENCIA. Lo mismo que arriba pero para lo que aquel filtro deja pasar a propósito
+      // —un rótulo corto, una fórmula, un serial— y por eso pide dos pruebas más: que lo que hay sea
+      // una copia de algo VIVO en esta grilla, y que venga en BLOQUE. Ver `huella-residuo.mjs`.
+      if (c === VACIO && migra.claves.has(`${i}:${j}`)) {
+        aplicados.push({ fila: fila0 + i, col, suyo: String(hoy).slice(0, 60) })
+        return MIA_PROBADA
+      }
       // ═══ EL RESIDUO DE REDISEÑO, QUE ERA INMORTAL POR CONSTRUCCIÓN (14/08) ═══
       //
       // Cuando una pestaña se REDISEÑA las filas se corren, y en las coordenadas nuevas queda lo que
@@ -357,7 +388,7 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
     }
     return c
   }))
-  return { ...vacio, grid }
+  return { ...vacio, grid, migrantes: aplicados }
 }
 
 /**
@@ -444,7 +475,7 @@ async function upsertHuellas(fileId, pestana, filas, sello) {
  * de esa marca de una sola forma legítima: que la celda vuelva a tener algo (la escribe él, o la
  * escribo yo porque volvió a haber contenido), y entonces el upsert la limpia.
  */
-export async function guardarHuellas(fileId, pestana, grid, { fila0 = 1, col0 = 0, suprimidas = [] } = {}) {
+export async function guardarHuellas(fileId, pestana, grid, { fila0 = 1, col0 = 0, suprimidas = [], barrer = true } = {}) {
   await asegurarTabla()
   const sello = new Date()
   const filas = huellasDeEscritura(grid, { fila0, col0 })
@@ -472,6 +503,18 @@ export async function guardarHuellas(fileId, pestana, grid, { fila0 = 1, col0 = 
   // escritor borrara la huella del primero, y a la corrida siguiente las celdas del primero
   // aparecerían "sin huella" → ajenas → dejaría de mantenerlas. Es la misma forma del candado falso
   // por dos escritores. Sólo se limpia lo que estaba DENTRO del rectángulo que esta corrida escribió.
+  //
+  // ═══ Y NO SE BARRE CUANDO LA HUELLA NO DECIDIÓ (14/08) ═══
+  //
+  // Barrer es declarar "esto ya lo juzgué y es un layout que dejé atrás". Cuando el mapa de posición no
+  // alinea —que es el estado en el que queda una pestaña recién rediseñada— NO se juzgó nada por
+  // coordenada, y el barrido tiraba la única prueba de propiedad que existía sobre esas celdas: la
+  // huella de la corrida anterior. Ese es el paso que volvía INMORTAL al residuo de rediseño. La
+  // corrida siguiente encontraba `!mia && ocupada` y lo preservaba para siempre.
+  //
+  // Conservarlas no borra ni escribe nada: sólo deja la evidencia disponible para el día que el mapa
+  // vuelva a alinear, y ahí el camino `limpiadas` —la evidencia más fuerte que hay— saca el residuo solo.
+  if (!barrer) return { escritas: filas.length, borradas: suprimidas.length, barrido: false }
   const ancho = Math.max(...grid.map((f) => (f || []).length), 1)
   await query(
     `delete from public.sheet_huella_celda
@@ -498,7 +541,8 @@ export async function conHuellaDeCelda(fileId, pestana, generado, actual, opts =
   const r = aplicarHuella(generado, actual, huellas, opts)
   return {
     ...r,
-    guardar: (escrito) => guardarHuellas(fileId, pestana, escrito, { ...opts, suprimidas: r.suprimidas })
+    // El barrido sólo corre si la huella DECIDIÓ esta corrida: ver `guardarHuellas`.
+    guardar: (escrito) => guardarHuellas(fileId, pestana, escrito, { ...opts, suprimidas: r.suprimidas, barrer: r.alineacion.alineada })
       .catch((e) => console.warn(`  ⚠ no pude guardar la huella por celda: ${e.message}`)),
   }
 }
@@ -521,6 +565,11 @@ export function explicarHuella(pestana, h, log = console.log) {
   if ((h.residuos?.length ?? 0) > 6) log(`      … y ${h.residuos.length - 6} residuos más`)
   for (const r of (h.reescritos ?? []).slice(0, 6)) log(`  🧹 ${letraCol(r.col)}${r.fila} tenía mi rótulo "${r.suyo}" de un layout anterior en una fila mía: escribo lo que va ("${r.mio}")`)
   if ((h.reescritos?.length ?? 0) > 6) log(`      … y ${h.reescritos.length - 6} residuos de rediseño más`)
+  for (const m of (h.migrantes ?? []).slice(0, 6)) log(`  🧹 ${letraCol(m.col)}${m.fila} es una copia mía que quedó de un layout anterior ("${m.suyo}"): la limpio`)
+  if ((h.migrantes?.length ?? 0) > 6) log(`      … y ${h.migrantes.length - 6} celdas más del bloque que se movió`)
+  // EL TOPE SE DICE EN VOZ ALTA. Un freno silencioso deja al dueño mirando el mismo residuo corrida
+  // tras corrida sin ninguna pista de por qué el OS no lo saca.
+  if (h.alineacion?.migrantesFrenado) log(`  ✋ residuo de layout: ${h.alineacion.migrantes}`)
   for (const l of (h.limpiadas ?? []).slice(0, 6)) log(`  🧹 ${letraCol(l.col)}${l.fila} la escribí yo y ya no va ("${l.mio}"): la limpio`)
   if ((h.limpiadas?.length ?? 0) > 6) log(`      … y ${h.limpiadas.length - 6} celdas mías más que limpio`)
   // SIN MAPA DE POSICIÓN YA NO SE ESCRIBE A CIEGAS, y el mensaje tiene que decir qué se hizo en su
@@ -567,6 +616,6 @@ export async function conHuellaFueraDelPorton(fileId, pestana, generado, actual,
     // Ni la base ni la huella pueden tumbar una escritura: sin veredicto, se escribe como siempre.
     // Se dice fuerte porque el costo de esta corrida es real — un borrado del dueño puede volver.
     console.warn(`  ⚠ huella por celda inactiva en "${pestana}" (${e.message}) — un borrado tuyo podría volver`)
-    return { grid: limpiarCentinela(generado), suprimidas: [], ajenas: [], residuos: [], limpiadas: [], editadas: [], reescritos: [], alineacion: { alineada: false, motivo: e.message }, guardar: async () => {} }
+    return { grid: limpiarCentinela(generado), suprimidas: [], ajenas: [], residuos: [], limpiadas: [], editadas: [], reescritos: [], migrantes: [], alineacion: { alineada: false, motivo: e.message }, guardar: async () => {} }
   }
 }

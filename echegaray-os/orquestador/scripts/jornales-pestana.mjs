@@ -107,7 +107,7 @@ import {
   COLS_CALENDARIO, colCalendario, diasLaborables, expresionDias,
   formulaVentana, formulaControlCalendario,
   formulaShareAdelanto, MIN_QUINCENAS_SHARE,
-  formulaBajaNoRegistrada, LINEA_SABADOS, LINEA_HABERES_SIN_QUINCENA,
+  formulaBajaNoRegistrada, LINEA_SABADOS, LINEA_HABERES_SIN_QUINCENA, LINEA_MITADES,
 } from '../lib/jornales-calendario.mjs'
 // CÓMO SE PAGA LA QUINCENA: el acuerdo 50/50 del dueño, por grupo de empleados, y los tres avisos que
 // condicionan su lectura. Toda la aritmética vive en la lib y se prueba con números, no con strings.
@@ -124,7 +124,7 @@ import {
 } from '../lib/oficina-escalon.mjs'
 import { VERIFICADA_EL, VIGENCIA_HASTA, contrastarEscala, tramoDe } from '../lib/uocra-paritaria.mjs'
 // El otro lado del MAX de 1.3: la demanda de las obras vendidas. Toda la lógica vive en la lib.
-import { claveQuincena, formulaProyectadoQuincena, glosaDemanda } from '../lib/jornales-demanda-obras.mjs'
+import { claveQuincena, formulaProyectadoQuincena, glosaDemanda, formulasBrechaDemanda } from '../lib/jornales-demanda-obras.mjs'
 import { demandaParaJornales } from '../lib/jornales-demanda-fuente.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { JORNALES_FILE_ID } from '../lib/espejo-jornales.mjs'
@@ -567,7 +567,9 @@ export function grilla({
   push([seccion(1, 'El calendario de pago')])
   // La glosa de la demanda: cuándo el proyectado de una quincena no sale del convenio sino del MAX
   // contra la demanda de las obras vendidas. Es del calendario, no del convenio: se queda.
-  const gd = glosaDemanda(demanda)
+  // Con las quincenas a la vista la glosa puede declarar el CORTE —hasta cuándo entra la demanda y
+  // desde cuándo la columna es sólo el plantel de hoy—, que es lo que explica el escalón de octubre.
+  const gd = glosaDemanda(demanda, pendientes)
   if (gd) push([sub(gd.replace(/^\s*·\s*/, '').trim())])
   //
   // ═══ LAS TRES NÓMINAS EN UNA SOLA GRILLA (13/08, orden del dueño) ═══
@@ -610,6 +612,9 @@ export function grilla({
   // LO QUE LA PROYECCIÓN NO VE, DICHO DONDE SE LA LEE. Ver LINEA_SABADOS: es una declaración, no un
   // supuesto de cálculo — no entra en ninguna celda de importe.
   push([sub(LINEA_SABADOS)])
+  // LAS DOS MITADES NO SUMAN EL TOTAL DE LA FILA, y sin decirlo se lee como un error de suma:
+  // Dirección queda afuera del reparto porque su canal no está registrado en ninguna fuente.
+  push([sub(LINEA_MITADES)])
   const fHpd = push([sub('Horas por persona y día — medidas')])
   // ═══ EL SHARE MEDIDO Y LA BRECHA CONTRA EL ACUERDO SE FUERON (14/08) ═══
   //
@@ -639,7 +644,7 @@ export function grilla({
   const pFin = p0 + pendientes.length - 1
   const cO = colCalendario('Oficina')
   const cD = colCalendario('Dirección')
-  const cT = colCalendario('TOTAL')
+  const cB = colCalendario('Banco')
   const cE = colCalendario('Efectivo')
   const cObra = colCalendario('Obreros')
   pendientes.forEach((q, i) => {
@@ -658,7 +663,13 @@ export function grilla({
       // citan filas que todavía no existen —el cuadro del escalón (sección 4) para la de obra, los
       // bloques mensuales (secciones 2 y 3) para las otras dos—. Ninguna se puede escribir acá.
       VACIO, VACIO, VACIO,
-      `=SUM(${cObra}${r}:${cD}${r})`,
+      // ═══ LA MITAD QUE FALTABA (14/08, orden del dueño repetida cuatro veces) ═══
+      //
+      // *"el 50 y 50 acuerdo interno, lo dije mil veces"*. El calendario publicaba «Efectivo» y ninguna
+      // columna de banco: el dueño veía cuántos billetes juntar y no veía cuánto transferir, que es el
+      // otro número con el que arma la quincena. Las dos mitades son la MISMA cuenta y por eso son
+      // idénticas — la identidad tiene que verse, no deducirse.
+      `=(${cObra}${r}+${cO}${r})/2`,
       // ═══ LOS BILLETES SALEN DEL ACUERDO, NO DE UNA MEDICIÓN (14/08) ═══
       //
       // Era `obra × share_medido + oficina × share_oficina`, con dos porcentajes calculados sobre el
@@ -680,7 +691,7 @@ export function grilla({
   // layout anterior tenía en esa misma celda, y quedaría un #VALUE! al lado del total bueno.
   const sumaCol = (c) => `=SUM(${c}${p0}:${c}${pFin})`
   const fTotalProy = push([rotuloTotal('Total a pagar hasta diciembre'), VACIO, VACIO,
-    sumaCol(cObra), sumaCol(cO), sumaCol(cD), sumaCol(cT), sumaCol(cE)])
+    sumaCol(cObra), sumaCol(cO), sumaCol(cD), sumaCol(cB), sumaCol(cE)])
   // EL CONTROL VA DEBAJO DEL MENSAJE, NO ENCIMA. Se completa abajo, cuando existen los dos totales
   // contra los que compara.
   const fControlCal = push([VACIO])
@@ -695,6 +706,21 @@ export function grilla({
   // VA ACÁ Y NO EN LA SECCIÓN 4: es un control de ESTE cuadro. El respaldo gremial vive abajo, pero el
   // aviso de que la columna «Obreros» perdió su piso tiene que estar donde se lee la columna.
   const fControlPiso = push([VACIO])
+  // ═══ LA DEMANDA DE OBRA DEJÓ DE PISAR LA COLUMNA, Y NO SE TIRA (14/08) ═══
+  //
+  // El dueño: *"tenés que tener en cuenta el convenio, qué mierda estás haciendo con las proyecciones
+  // de obreros? rehacer"*. La columna publicaba `MAX(convenio; demanda de obra)` y con eso cambiaba de
+  // NATURALEZA fila por fila: tres quincenas eran lo que piden las obras vendidas —$18,7M, que con la
+  // Σ del plantel equivale a ~38 personas contra las 16 que hay— y seis eran el convenio del plantel
+  // real. Nueve números del mismo color midiendo dos cosas distintas.
+  //
+  // Ahora la columna es UNA sola cosa: el 100% del convenio con el plantel actual. La demanda no se
+  // borra —es el dato que dice si el plantel alcanza— pero sale del cuadro de importes y se publica
+  // como lo que es: DOS BRECHAS, cada una encendida sólo el día que existe. Que las obras pidan más de
+  // lo que el plantel cubre y que sobre plantel sin obra vendida son las dos decisiones que el `MAX`
+  // enterraba publicando al ganador y callando al perdedor.
+  const fFaltaObra = push([VACIO])
+  const fSobraPlantel = push([VACIO])
   blanco()
 
   // ══ 2 · SUELDOS DE OFICINA ══
@@ -1473,6 +1499,19 @@ export function grilla({
     celdasBasico: `$F$${plantel.fPrimera}:$F$${plantel.fUltima}`,
     nQuincenas: pendientes.length,
   })
+  // LAS DOS BRECHAS CONTRA LA DEMANDA DE OBRA. Se calculan en la pestaña —el término del plantel es la
+  // celda «Obreros», una fórmula que este proceso no puede evaluar— y se apagan solas cuando su brecha
+  // es cero. Sin demanda cargada no se emite ninguna de las dos: una línea que dijera "$0" todos los
+  // días sería invisible el día que importa.
+  const brechas = formulasBrechaDemanda({
+    col: cObra,
+    filas: pendientes.map((q, i) => ({
+      fila: p0 + i,
+      jornales: demanda?.porQuincena?.get(claveQuincena(q.desde))?.jornales ?? 0,
+    })),
+  })
+  filas[fFaltaObra - 1][0] = demanda?.porQuincena?.size ? brechas.falta : VACIO
+  filas[fSobraPlantel - 1][0] = demanda?.porQuincena?.size ? brechas.sobra : VACIO
 
   // ══ EL SUBTÍTULO DEL CUADRO DE PAGO Y SUS TRES AVISOS ══
   //

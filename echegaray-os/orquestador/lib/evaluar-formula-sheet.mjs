@@ -276,6 +276,61 @@ function llamar(n, args, ev) {
     case 'MIN': return Math.min(...plano(v).map(num))
     case 'ROUND': { const d = 10 ** num(v[1] ?? 0); return Math.round(num(v[0]) * d) / d }
     case 'N': return typeof v[0] === 'number' ? v[0] : 0
+    // AND · OR · NOT: los tres colapsan a un booleano y aplanan sus rangos, igual que Sheets. Hacían
+    // falta para poder evaluar en frío el gate por fecha de caja de la proyección de jornales
+    // (`IF(AND(N(C)>0;C<=EOMONTH(TODAY();0));…)`), que hasta hoy sólo se podía verificar comparando el
+    // texto de la fórmula — y comparar strings no prueba qué número publica la celda.
+    case 'AND': return plano(v).every((x) => num(x) !== 0)
+    case 'OR': return plano(v).some((x) => num(x) !== 0)
+    case 'NOT': return num(v[0]) === 0
+    // ═══ INDEX / MATCH — EL PAR CON EL QUE ESTE LIBRO BUSCA (14/08) ═══
+    //
+    // Es como el motor salarial lee el escalón del mes (`INDEX(Σ; MATCH(EOMONTH(A29;0); meses; 0))`) y
+    // como el bloque 4.1 lee el básico de cada categoría. Sin los dos, la proyección de jornales sólo
+    // se podía verificar comparando el TEXTO de la fórmula, y un string igual no prueba qué número
+    // publica la celda — que es justamente la diferencia que dejó pasar los $79.753.312.
+    //
+    // SÓLO COINCIDENCIA EXACTA (tipo 0). El binario sobre datos sin ordenar devuelve un resultado
+    // plausible y equivocado, y este repo ya lo pagó (`lookup-binario-no-sirve`): pedir un tipo
+    // distinto es un error del test, no un valor por defecto.
+    case 'MATCH': {
+      if (v.length > 2 && num(v[2]) !== 0) throw new Error('evaluar-formula-sheet: MATCH sólo soporta coincidencia exacta (0)')
+      const lista = plano([v[1]])
+      const i = lista.findIndex((x) => (typeof v[0] === 'string' || typeof x === 'string'
+        ? String(x).trim().toLowerCase() === String(v[0]).trim().toLowerCase()
+        : num(x) === num(v[0])))
+      if (i < 0) throw new ErrorHoja(`#N/A — MATCH no encontró "${v[0]}"`)
+      return i + 1
+    }
+    // NETWORKDAYS.INTL(desde; hasta; máscara) — los días laborables de la semana de obra.
+    //
+    // La máscara son siete caracteres de LUNES a DOMINGO con 1 = no laborable ("0000011" = fin de
+    // semana), y es como la pestaña de Jornales declara que la obra trabaja hasta el viernes (criterio
+    // del dueño, 13/08). Se evalúa acá para poder verificar en frío los importes de la proyección: son
+    // el tercer factor de `Σ $/hora × horas por día × DÍAS`, y sin él la cuenta no se puede cerrar.
+    case 'NETWORKDAYS.INTL': {
+      const mascara = String(v[2] ?? '0000011')
+      if (!/^[01]{7}$/.test(mascara)) throw new Error(`evaluar-formula-sheet: máscara de NETWORKDAYS.INTL inválida "${mascara}"`)
+      let [a, b] = [num(v[0]), num(v[1])]
+      const signo = a <= b ? 1 : -1
+      if (signo < 0) [a, b] = [b, a]
+      let n = 0
+      for (let s = Math.floor(a); s <= Math.floor(b); s++) {
+        // getUTCDay: 0 = domingo. La máscara arranca en lunes, así que el domingo es el índice 6.
+        const dia = aFecha(s).getUTCDay()
+        if (mascara[(dia + 6) % 7] === '0') n++
+      }
+      return n * signo
+    }
+    case 'INDEX': {
+      const lista = plano([v[0]])
+      // Los dos índices de Sheets: `INDEX(rango; n)` sobre una columna, y `INDEX(rango; fila; col)`
+      // donde la columna es 1 porque acá los rangos son de una sola.
+      const k = num(v[1] ?? 1)
+      if (v.length > 2 && num(v[2]) > 1) throw new Error('evaluar-formula-sheet: INDEX de más de una columna')
+      if (k < 1 || k > lista.length) throw new ErrorHoja(`#REF! — INDEX fuera de rango (${k} de ${lista.length})`)
+      return lista[k - 1]
+    }
     case 'TEXT': return textoConPatron(v[0], v[1])
     case 'TODAY': return aSerial(ev.hoy)
     case 'EOMONTH': { const d = aFecha(num(v[0])); return aSerial(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + num(v[1]) + 1, 0))) }
