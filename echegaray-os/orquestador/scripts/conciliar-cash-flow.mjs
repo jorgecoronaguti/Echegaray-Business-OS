@@ -24,6 +24,7 @@ import {
   cobradasConFechaFutura, pendientesFueraDeVentana, ritmoMensual,
 } from '../lib/cash-flow-conciliacion.mjs'
 import { LINEAS, SUBTOTALES, impuestoAlChequeDeColumna } from '../lib/cash-flow-mapa.mjs'
+import { DESDE_CAJA } from '../lib/caja-anexo-nombres.mjs'
 import {
   columnasDePeriodo, mesDeSerial, cadenaDeCaja, subtotales, totalAnual, semanasPorMes, cuadreDeFila,
 } from '../lib/cash-flow-invariantes.mjs'
@@ -35,15 +36,19 @@ const ANIO = 2026
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 const $ = (n) => (Math.abs(n) < 0.5 ? '—' : Math.round(n).toLocaleString('es-AR'))
 const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
+/** Serial de Sheets → dd/mm/aaaa. El epoch es el 30/12/1899. Un serial que no es una fecha
+ *  plausible se muestra crudo: taparlo con una fecha inventada es el defecto, no la cura. */
+const fechaDeSerial = (s) => (s > 0 && s < 100000
+  ? new Date(Date.UTC(1899, 11, 30) + s * 86400000).toLocaleDateString('es-AR', { timeZone: 'UTC' })
+  : `serial ${s} — NO es una fecha`)
 
 async function leer(google) {
   const v = (r) => google.readSheetValues(ID, r, { render: 'UNFORMATTED_VALUE' })
   const leido = new Date()
-  const [men, sem, compras, cobranzas, cheques, tarjeta, banco, impuestos, jor, caja] = await Promise.all([
+  const [men, sem, compras, cobranzas, cheques, tarjeta, banco, impuestos, jor] = await Promise.all([
     v(`'Cash Flow Mensual'!A1:P70`), v(`'Cash Flow Semanal'!A1:BZ70`), v(`'Compras'!A1:AJ2000`),
     v(`'Cobranzas'!A1:BD400`), v(`'Cheques Emitidos'!A1:P400`), v(`'Tarjeta de Credito'!A1:N400`),
     v(`'_BANCO_RAW'!A1:H3000`), v(`'Impuestos y Financieros'!A1:N40`), v(`'Jornales por Quincena'!A1:P110`),
-    v(`'CAJA'!A1:J40`),
   ])
   // Los rangos con nombre del bloque de jornales, resueltos a filas con sus campos con nombre.
   const tramo = (desde, hasta, campos) => jor.slice(desde - 1, hasta).map((f) => {
@@ -67,7 +72,6 @@ async function leer(google) {
       oficina: tramo(28, 39, { pagado: 2, pago: 4, proyectado: 7 }), // C·E·H
       direccion: tramo(53, 64, { pagado: 2, pago: 4, proyectado: 7 }),
     },
-    caja,
   }
 }
 
@@ -279,7 +283,7 @@ function imprimirSolape(fuentes, inicioMesActual, hoy) {
 async function main() {
   const soloSemanal = process.argv.includes('--semanal')
   const google = makeGoogleClient({ config: loadConfig() })
-  const { leido, men, sem, fuentes, caja } = await leer(google)
+  const { leido, men, sem, fuentes } = await leer(google)
   const colsMen = columnasDePeriodo(men[2] || [])
   const colsSem = columnasDePeriodo(sem[2] || [])
 
@@ -290,7 +294,19 @@ async function main() {
   console.log(`Leído el ${leido.toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour12: false })} `
     + `(el cuadro proyecta con TODAY() y se recalcula solo: cualquier cifra de acá vale para ESE instante)`)
   console.log(`Períodos: ${colsMen.length} mensuales · ${colsSem.length} semanales · tolerancia $${TOL}`)
-  console.log(`Ancla de caja: CAJA!E23 = $${$(num((caja[22] || [])[4]))} al serial ${num((caja[22] || [])[5])} · hoy = serial ${hoy}`)
+  // ═══ EL ANCLA SE LEE POR SU NOMBRE, NO POR UNA CELDA (05/08) ═══
+  //
+  // Acá decía `CAJA!E23`, escrito cuando esa celda era "⇒ Total disponibilidades". El rediseño de CAJA
+  // dejó la fila 23 en "El mes que viene" del calendario, así que esta línea publicaba el NETO de un
+  // tramo como si fuera el saldo, y su columna F —el "Queda después"— como si fuera una fecha: imprimía
+  // "al serial 236.725.251", que como día del calendario cae en el año 650.000. Un encabezado con un
+  // saldo falso y una fecha imposible es peor que no tener encabezado: nadie duda de un rótulo.
+  //
+  // `CAJA_TOTAL_DISPONIBLE` y `CAJA_FECHA_SALDO` son los nombres que CAJA publica (caja-anexo-nombres.mjs)
+  // y los mismos que ya usa conciliar-caja-vs-cashflow. Una capacidad, una fuente.
+  const anclaN = async (n) => num((await google.readSheetValues(ID, n, { render: 'UNFORMATTED_VALUE' }))?.[0]?.[0])
+  const [anclaSaldo, anclaFecha] = await Promise.all([anclaN(DESDE_CAJA.total), anclaN(DESDE_CAJA.fecha)])
+  console.log(`Ancla de caja: ${DESDE_CAJA.total} = $${$(anclaSaldo)} al ${fechaDeSerial(anclaFecha)} · hoy = serial ${hoy}`)
 
   const filasMen = soloSemanal ? [] : conciliar('mensual', men, fuentes, colsMen, inicioMesActual)
   const filasSem = conciliar('semanal', sem, fuentes, colsSem, inicioMesActual)

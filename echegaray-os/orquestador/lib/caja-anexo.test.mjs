@@ -13,6 +13,7 @@ import { ANEXO, DESDE_CAJA } from './caja-anexo-nombres.mjs'
 import { ESPECIE_ANEXO } from './caja-anexo-nombres.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { MARCAS } from './cheques-cobertura.mjs'
+import { inciertoHasta } from './caja-anexo-controles.mjs'
 
 const vacia = (s) => s === '' || s === VACIO
 const REFS = { bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito', cierre: 60, inicio: 50, cab: 5 }
@@ -370,4 +371,25 @@ test('TEXTO EN UNA COLUMNA DE PLATA: sólo los encabezados que el formateador de
         `fila ${i + 1} col ${String.fromCharCode(65 + col)}: "${v}" es texto en una columna de plata fuera de un encabezado`)
     }
   }
+})
+
+
+// ═══ LA BANDA DEL PISO NO PUEDE RESTAR PLATA QUE YA SALIÓ DE LA CUENTA ═══
+//
+// El defecto que atrapa (05/08/2026): `inciertoHasta` construía sus dos términos SIN `soloNoDebitados`,
+// así que la punta de abajo del piso volvía a restar cheques que el banco ya había debitado y que el
+// saldo de arranque tenía descontados. Medido contra el Sheet real: $20.750.154 de cheques sin N° de
+// comprobante ya debitados; la banda daba $22.573.154 donde va $1.823.000.
+//
+// SE VERIFICA SOBRE LA FÓRMULA GENERADA, no sobre un total: la banda vive en CAJA (no en el anexo) y es
+// una expresión de Sheets. Lo que prueba el arreglo es que CADA sumando de la expresión traiga su filtro
+// de DEBITADO — si alguien saca `SOLO_PENDIENTES` de uno solo de los dos, esto se pone rojo.
+test('la banda del piso excluye los cheques que el banco YA debitó, en TODOS sus términos', () => {
+  const expr = inciertoHasta('TODAY()+7', '0')
+  const terminos = expr.split('+SUMPRODUCT').length - 1 + 1 // sumandos que arrancan con SUMPRODUCT
+  assert.ok(terminos >= 2, `esperaba al menos un término por marca incierta, hay ${terminos}`)
+  const filtros = expr.split('UPPER(').length - 1
+  assert.equal(filtros, terminos,
+    `cada sumando de la banda tiene que filtrar DEBITADO<>"SI": ${filtros} filtros para ${terminos} sumandos.\n${expr}`)
+  assert.match(expr, /<>"SI"/, 'la banda volvió a contar cheques ya debitados: el saldo del banco ya los descontó')
 })

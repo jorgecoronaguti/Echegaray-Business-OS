@@ -24,7 +24,7 @@ import { CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
 import { MARCAS } from '../lib/cheques-cobertura.mjs'
 import { EN_CARTERA } from '../lib/cartera-cheques.mjs'
 import { PESTAÑA as RAW_CHEQUES, COL as COL_CHEQUE, FILA0 as FILA0_CHEQUES } from './cheques-raw-pestana.mjs'
-import { BORDES } from '../lib/caja-grilla.mjs'
+import { BORDES, PISO_PUBLICADO } from '../lib/caja-grilla.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
@@ -372,9 +372,17 @@ async function main() {
   // Ahora se lee la celda que CAJA publica. LA FILA SE BUSCA POR SU RÓTULO: el punto más bajo se
   // mueve cada vez que el calendario gana o pierde una fila, y una referencia fija leería otra cosa
   // sin dar error. Si la pestaña todavía no se regeneró, la diferencia lo dice con su número.
-  const ROTULO_PISO = 'el punto más bajo del horizonte'
-  const caja = await g.readSheetValues(ID, 'CAJA!A1:F', { render: 'UNFORMATTED_VALUE' })
-  const iPiso = caja.findIndex((f) => String(f?.[0] ?? '').includes(ROTULO_PISO))
+  //
+  // ═══ Y EL RÓTULO SE IMPORTA, NO SE COPIA (05/08) ═══
+  //
+  // Acá decía `const ROTULO_PISO = 'el punto más bajo del horizonte'`, escrito a mano. CAJA se rediseñó,
+  // la fila pasó a llamarse `· el piso, y entre qué y qué está parado` y el número se mudó de la columna
+  // F a la C — y este bloque, que es el ÚNICO paso del script que compara contra la pestaña de verdad,
+  // se apagó en silencio: imprimía "no encontré la fila" y salía con 1. Un rótulo copiado envejece igual
+  // que una fila fija; lo que no envejece es leer del mismo lugar donde escribe el generador.
+  const { rotulo: ROTULO_PISO, colMejor: COL_MEJOR, colPeor: COL_PEOR } = PISO_PUBLICADO
+  const caja = await g.readSheetValues(ID, 'CAJA!A1:G', { render: 'UNFORMATTED_VALUE' })
+  const iPiso = caja.findIndex((f) => String(f?.[0] ?? '').trim() === ROTULO_PISO)
 
   // ── LA DIFERENCIA, ABIERTA POR TRAMO Y POR LADO ────────────────────────────────────────────────
   // Las filas del calendario se buscan POR RÓTULO, igual que el piso: son las mismas seis constantes
@@ -402,9 +410,16 @@ async function main() {
     process.exitCode = 1
     return
   }
-  const escrito = num(caja[iPiso]?.[5])
+  const escrito = num(caja[iPiso]?.[COL_MEJOR])
+  const escritoPeor = num(caja[iPiso]?.[COL_PEOR])
   console.log(`  piso escrito en CAJA (fila ${iPiso + 1}) : ${pesos(escrito)}`)
   console.log(`  piso con la definición única        : ${pesos(peorNuevo.v)}`)
+  // LA PUNTA DE ABAJO TAMBIÉN SE VERIFICA, y no es un adorno: es la mitad de la banda con la que el
+  // dueño decide cuánta plata inmoviliza. Verificar sólo la punta de arriba dejó pasar $20.750.154 de
+  // cheques YA DEBITADOS que la banda seguía restando (ver inciertoHasta en caja-anexo-controles.mjs).
+  console.log(`  punta de abajo escrita en CAJA      : ${pesos(escritoPeor)}`)
+  console.log(`  punta de abajo del modelo           : ${pesos(pisoPeor)}`)
+  const difPeor = escritoPeor - pisoPeor
   // ═══ POR QUÉ NO SE EXIGE EL PESO EXACTO ═══
   //
   // El cajón en dólares se revalúa entre una lectura y la otra, así que las dos corridas no ven el
@@ -424,10 +439,14 @@ async function main() {
   const dif = escrito - peorNuevo.v
   const TOLERANCIA = 1000
   console.log(`  el piso sigue inflado en            : ${pesos(dif)}`)
+  console.log(`  la punta de abajo, hundida en       : ${pesos(-difPeor)}`)
   console.log(Math.abs(dif) <= TOLERANCIA
-    ? '\n  ✓ la pestaña muestra el piso de la definición única (dentro de la deriva del dólar).\n'
-    : `\n  ✗ NO CIERRA por ${pesos(dif)}. Si es positivo, CAJA sigue viendo de menos y el piso miente.\n`)
-  if (Math.abs(dif) > TOLERANCIA) process.exitCode = 1
+    ? '\n  ✓ la pestaña muestra el piso de la definición única (dentro de la deriva del dólar).'
+    : `\n  ✗ NO CIERRA por ${pesos(dif)}. Si es positivo, CAJA sigue viendo de menos y el piso miente.`)
+  console.log(Math.abs(difPeor) <= TOLERANCIA
+    ? '  ✓ la banda de incertidumbre también coincide.\n'
+    : `  ✗ LA BANDA NO CIERRA por ${pesos(difPeor)}: la pestaña resta plata que el modelo no resta.\n`)
+  if (Math.abs(dif) > TOLERANCIA || Math.abs(difPeor) > TOLERANCIA) process.exitCode = 1
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => { console.error(e); process.exitCode = 1 })

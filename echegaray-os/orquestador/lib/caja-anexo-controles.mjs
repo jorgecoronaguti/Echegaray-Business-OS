@@ -20,6 +20,7 @@ import { esIndistinguible } from './cobranzas-duplicado.mjs'
 import * as CONC from './conciliacion-por-naturaleza.mjs'
 import { MARCAS, expresionTieneNumero } from './cheques-cobertura.mjs'
 import { formulaChequesSinFactura } from './cash-flow-lineas.mjs'
+import { SOLO_PENDIENTES } from './caja-calendario.mjs'
 import {
   ESTADOS, ESPERADOS, formulaTotalEstado, formulaCantidadEstado,
   formulaEstadoDesconocido, formulaUltimoCobroRegistrado,
@@ -292,9 +293,23 @@ export function bloqueCalendarioCiego(h) {
  * Los INFERIDOS no entran en la banda: tienen evidencia positiva (una factura del mismo proveedor por
  * exactamente el mismo importe). Ésa es toda la utilidad del cruce de respaldo: no cambia el piso,
  * ANGOSTA la banda.
+ *
+ * ═══ SOLO_PENDIENTES, Y POR QUÉ FALTABA COSTÓ $20.750.154 (05/08/2026) ═══
+ *
+ * Un cheque que el banco YA DEBITÓ salió de la cuenta, y el saldo del que arranca el calendario lo tiene
+ * descontado: restarlo otra vez es contarlo dos veces. Esa media vuelta ya se había pagado del lado del
+ * término "FALTA la factura" —está escrita en caja-calendario.mjs, valía $12.188.441 y por eso existe
+ * `SOLO_PENDIENTES`— pero la banda se quedó sin ella. Medido contra el Sheet real ese día: $20.750.154 de
+ * cheques SIN N° de comprobante ya debitados hundían la punta de abajo de $44.614.428 a $23.864.241.
+ *
+ * NO ALCANZA CON QUE EL ERROR SEA CONSERVADOR. Ese número es con el que se decide cuánta plata se
+ * inmoviliza en un plazo fijo: una banda el doble de ancha frena colocaciones que sí se podían hacer, y
+ * además hace ilegible la banda como medida de ignorancia — que es para lo único que sirve.
  */
 export function inciertoHasta(hasta, desdeSiempre = '0') {
-  return [MARCAS.sinNumero, ''].map((m) => formulaChequesSinFactura(desdeSiempre, hasta, m).slice(1)).join('+')
+  return [MARCAS.sinNumero, '']
+    .map((m) => formulaChequesSinFactura(desdeSiempre, hasta, m, undefined, SOLO_PENDIENTES).slice(1))
+    .join('+')
 }
 
 /** Los nombres que este archivo publica, para que el script no los adivine. */

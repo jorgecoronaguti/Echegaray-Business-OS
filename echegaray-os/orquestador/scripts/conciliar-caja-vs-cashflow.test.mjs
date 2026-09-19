@@ -1,6 +1,15 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import { bordesDeTramos, tramoDe, repartir, dateASerial, serialADate, descomponerPorTramo, vencimientosFiscales } from './conciliar-caja-vs-cashflow.mjs'
+import { grilla as grillaCaja, PISO_PUBLICADO } from '../lib/caja-grilla.mjs'
+
+/** Lo mínimo que `grilla` necesita para armarse en frío: pestañas y filas ya resueltas por rótulo. */
+const REFS_CAJA = {
+  cheques: 'Cheques Emitidos', recibidos: 'Cheques Recibidos', tarjeta: 'Tarjeta de Credito',
+  bancoRaw: '_BANCO_RAW', cierre: 60, inicio: 50, cab: 5,
+  filasCal: { iva: 20, iibb: 21 },
+}
 
 /** 04/08/2026, el día en que se midió la diferencia de $41.704.351. */
 const HOY = dateASerial(new Date(Date.UTC(2026, 7, 4)))
@@ -120,4 +129,45 @@ test('el borde del mes es EXCLUYENTE: lo del 31/08 no es "resto de este mes"', (
   assert.equal(b[3].hasta, finDeAgosto)
   assert.equal(tramoDe(finDeAgosto, b), 4, 'el 31/08 cae en "el mes que viene", no en agosto')
   assert.equal(tramoDe(finDeAgosto - 1, b), 3)
+})
+
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL ANCLA DEL VEREDICTO — LO ÚNICO DE ESTE SCRIPT QUE MIRA LA PESTAÑA DE VERDAD
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO QUE ATRAPA (05/08/2026). Todo lo demás de este archivo compara dos MODELOS suyos; el único
+// paso que compara contra CAJA es el que lee la fila del piso. Ese paso buscaba el rótulo
+// `el punto más bajo del horizonte`, COPIADO A MANO, y leía la columna F. El rediseño de CAJA renombró
+// la fila a `· el piso, y entre qué y qué está parado` y movió los dos números a las columnas C y D.
+// Desde entonces el script imprimía "no encontré la fila" y salía con 1: el verificador estaba apagado
+// y su salida decía exactamente lo mismo que dice cuando la pestaña está mal.
+//
+// Estos dos tests atan el LECTOR al ESCRITOR. El primero prohíbe la COPIA —que es lo que se pudrió— y
+// el segundo fija las columnas: el generador escribe por la constante, así que renombrar la fila mueve
+// las dos puntas a la vez y el conciliador la sigue.
+test('el conciliador NO lleva su propia copia del rótulo del piso: lo importa', async () => {
+  const fuente = await readFile(new URL('./conciliar-caja-vs-cashflow.mjs', import.meta.url), 'utf8')
+  assert.match(fuente, /PISO_PUBLICADO/,
+    'el conciliador tiene que leer el rótulo y las columnas de donde el generador las escribe')
+  // Cualquier rótulo del piso escrito a mano acá vuelve a abrir el agujero: una copia envejece igual
+  // que una fila fija, y el síntoma es un "no encontré la fila" indistinguible de un fallo real.
+  for (const copia of ['punto más bajo', 'el piso, y entre qué']) {
+    assert.doesNotMatch(fuente.replace(/^\s*\/\/.*$/gm, ''), new RegExp(copia),
+      `hay un rótulo del piso copiado a mano ("${copia}") fuera de un comentario`)
+  }
+})
+
+test('las dos puntas del piso están en las columnas que el conciliador lee', () => {
+  const { filas } = grillaCaja(new Map(), REFS_CAJA)
+  const fila = filas.find((f) => String(f?.[0] ?? '').trim() === PISO_PUBLICADO.rotulo)
+  // La punta de arriba es el mínimo del recorrido; la de abajo, el mismo mínimo restando lo incierto
+  // acumulado. Las dos son MIN: si una columna dejara de serlo, el conciliador estaría comparando su
+  // modelo contra el ancho de la banda o contra un texto, y la diferencia no significaría nada.
+  assert.match(String(fila[PISO_PUBLICADO.colMejor]), /^=MIN\(/,
+    'la columna del MEJOR caso dejó de ser el mínimo del recorrido')
+  assert.match(String(fila[PISO_PUBLICADO.colPeor]), /^=MIN\(/,
+    'la columna del PEOR caso dejó de ser el mínimo con lo incierto restado')
+  assert.notEqual(String(fila[PISO_PUBLICADO.colMejor]), String(fila[PISO_PUBLICADO.colPeor]),
+    'las dos puntas de la banda no pueden ser la misma fórmula: sin banda, la ignorancia se lee como certeza')
 })

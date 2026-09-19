@@ -51,6 +51,31 @@ import {
 
 export { BORDES, cobranzasEsperadasTramo }
 
+/**
+ * DÓNDE PUBLICA CAJA EL PISO, declarado UNA VEZ para que nadie lo copie a mano.
+ *
+ * ═══ POR QUÉ ES UNA CONSTANTE Y NO UN TEXTO EN EL CONCILIADOR (05/08/2026) ═══
+ *
+ * `conciliar-caja-vs-cashflow.mjs` es el único lugar donde el modelo del piso se compara contra lo que
+ * la pestaña muestra de verdad — el resto del script son dos modelos del mismo archivo comparándose
+ * entre sí. Ese script buscaba la fila por el rótulo `el punto más bajo del horizonte`, escrito a mano;
+ * el rediseño de CAJA la renombró a `· el piso, y entre qué y qué está parado` y movió el número de la
+ * columna F a la C. Resultado: el verificador dejó de verificar, imprimió "no encontré la fila" y salió
+ * con 1 — o sea que su ÚNICO paso de verificación real llevaba días apagado sin que nada lo dijera.
+ *
+ * Anclar en el rótulo no sirve de nada si el rótulo se copia: la copia envejece igual que una fila fija.
+ * Ancla el que LEE el mismo dato que ESCRIBE.
+ */
+export const PISO_PUBLICADO = {
+  rotulo: '· el piso, y entre qué y qué está parado',
+  /** columna C: el piso con lo que se PUEDE afirmar (mejor caso). Índice 0 = columna A. */
+  colMejor: 2,
+  /** columna D: el piso si NINGÚN cheque incierto tuviera su factura cargada (peor caso). */
+  colPeor: 3,
+  /** columna E: el ancho de la banda = mejor − peor. */
+  colBanda: 4,
+}
+
 /** El objetivo del rediseño, escrito donde se puede verificar. Una pantalla, sin scrollear. */
 export const FILAS_MAXIMAS = 45
 
@@ -317,7 +342,7 @@ export function grilla(cargado, refs) {
   // ERAN OCHO RENGLONES Y AHORA SON DOS. Los seis que se fueron (los tres del riesgo de cobertura, el
   // declarado de ya debitados, los conceptos sin fuente y los cheques sin fecha) están enteros en
   // `_CAJA_ANEXO` bloque A8, y su veredicto está en el bloque 6 de acá.
-  const fPeor = push(['· el piso, y entre qué y qué está parado', '',
+  const fPeor = push([PISO_PUBLICADO.rotulo, '',
     `=MIN($F${cal0}:$F${cal1})`,
     `=MIN(${BORDES.map((_, k) => `$F${cal0 + k}-(${inciertoHasta(hastaTramo(k), DESDE_SIEMPRE)})`).join(';')})`,
     `=$C${filas.length + 1}-$D${filas.length + 1}`, '',
