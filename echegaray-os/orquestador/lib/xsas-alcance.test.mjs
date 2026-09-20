@@ -1,4 +1,4 @@
-// ¿A CUÁNTAS DE LAS 47 SKILLS LLEGA LA PUERTA? La respuesta honesta, fijada por un test.
+// ¿A CUÁNTAS DE LAS 48 SKILLS LLEGA LA PUERTA? La respuesta honesta, fijada por un test.
 //
 // La afirmación cómoda sería «las 47 están disponibles vía Gateway». No es cierta y no debe serlo:
 // trece de las cuarenta y siete gobiernan el trabajo de CLAUDE CODE —crear una skill, correr un
@@ -25,6 +25,9 @@ const DEL_BUILDER = new Set([
   'add-login', 'ai', 'backlog', 'bucle-agentico', 'image-generation', 'memory-manager',
   'orquestador-de-razonamiento-y-skills', 'playwright-cli', 'primer', 'prp', 'skill-creator',
   'supabase', 'traspaso',
+  // 19/09/2026: `trabajo-eficiente` dice cómo gastar contexto y tokens al trabajar sobre el repo. Es del
+  // builder: ninguna pregunta de negocio la tiene que activar.
+  'trabajo-eficiente',
 ])
 
 /** Una skill es alcanzable si el ruteo puede nombrarla: por capacidad (`advise.*`), por su índice
@@ -49,7 +52,7 @@ test('las de Claude Code NO se rutean desde un pedido del negocio (Claude ≠ XS
   assert.deepEqual(coladas, [], `skills del builder cableadas al ruteo del negocio: ${coladas.join(', ')}`)
 })
 
-test('el número está fijado: 47 en disco, 34 de dominio alcanzables, 13 del builder', async () => {
+test('el número está fijado: 48 en disco, 34 de dominio alcanzables, 14 del builder', async () => {
   // 46 → 47 EL 12/09/2026: entró `fondo-de-cese-pago-simple-afon` (commit 2b69cf45), que es de
   // dominio —genera el Excel de Pago Simple que el dueño sube a Santander—, así que la que sube es
   // la cuenta de ALCANZABLES (33 → 34) y el lado del builder no se mueve. El número se corrige acá
@@ -57,7 +60,8 @@ test('el número está fijado: 47 en disco, 34 de dominio alcanzables, 13 del bu
   // rojo antes de que alguien descubra que existía y nadie la activaba.
   const catalogo = await leerCatalogoDeDisco({})
   const rutables = alcanzables(catalogo)
-  assert.equal(catalogo.length, 47)
-  assert.equal(catalogo.filter((f) => DEL_BUILDER.has(f.clave)).length, 13)
+  // 47 → 48 EL 19/09/2026: entró `trabajo-eficiente`, del builder; el lado de dominio no se mueve.
+  assert.equal(catalogo.length, 48)
+  assert.equal(catalogo.filter((f) => DEL_BUILDER.has(f.clave)).length, 14)
   assert.equal(catalogo.filter((f) => rutables.has(f.clave)).length, 34)
 })

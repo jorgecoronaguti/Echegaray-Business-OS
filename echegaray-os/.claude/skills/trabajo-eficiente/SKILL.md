@@ -1,6 +1,9 @@
 ---
 name: trabajo-eficiente
 description: "Cómo se reparte el trabajo para gastar pocos tokens: contexto mínimo (e5), trabajo mecánico a scripts y modelos de HF, agentes con paquete de contexto y salida corta. Cargar al empezar una tarea de varios pasos o antes de lanzar un subagente."
+metadata:
+  type: methodology
+  author: echegaray-os
 ---
 
 # Trabajo eficiente — quién hace cada cosa
