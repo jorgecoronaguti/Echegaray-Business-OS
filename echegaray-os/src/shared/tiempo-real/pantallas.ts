@@ -62,6 +62,8 @@ export const TABLAS_DE = {
   /** «A quién le debo» sale de `compra_sheet`: sin ella, un pago marcado en el Sheet no llegaba en vivo. */
   proveedores: unir(PROVEEDOR, [
     'subcontrato_documento', 'comprobantes_arca', 'compra_sheet', 'proveedor_notas', 'proveedor_nota_cambio',
+    // La agenda de la ficha (20260921T1000).
+    'proveedor_contacto',
   ]),
   obras: unir(OBRA, ['clientes', 'certificados', 'subcontrato']),
   gantt: ['obra_canonica', 'obra_actividad', 'obra_ejecucion', 'obra_restriccion'],

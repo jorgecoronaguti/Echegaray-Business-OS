@@ -29,14 +29,21 @@
 // ya no recorta por obra —el recorte venía de `costos_obra`— y por eso el rótulo dejó de ser «en tus
 // obras»: publicar un rótulo recortado sobre un total que no lo está sería peor que no aclararlo.
 //
-// ═══ LAS DOS CIFRAS DEL MOCKUP QUE NO SE DIBUJAN ═══
+// ═══ LO DEL MOCKUP QUE NO SE DIBUJA ═══
 //
 //   SALDO       exige la cuenta corriente del proveedor —lo facturado contra lo pagado— y no existe
 //               ninguna tabla que la lleve. Su lugar lo ocupa CONTRATADO, que sí sale de
 //               `subcontrato` y contesta la otra mitad de «cuánto le debemos de acá en adelante».
-//   CONTACTO    `public.proveedores` no tiene columna de contacto, teléfono, condición de IVA ni
-//               plazo de pago. Dibujarlas en «sin cargar» promete un campo que el sistema no puede
-//               guardar, y quien lo intentara no encontraría dónde.
+//   IVA/PLAZO   `public.proveedores` no tiene condición de IVA ni plazo de pago. Dibujarlas en «sin
+//               cargar» promete un campo que el sistema no puede guardar.
+//
+// ═══ CONTACTO SÍ SE DIBUJA DESDE EL 21/09/2026 ═══
+//
+// Pedido del dueño: «no tengo forma de agregar personas a los proveedores […] no puedo dejar asentado
+// un nombre un contacto nada». Vive en `proveedor_contacto` (20260921T1000), la misma forma que
+// `cliente_contacto`, y se dibuja con el MISMO bloque que la ficha del cliente, en el mismo lugar que
+// el mockup le da: el costado, entre Identidad y «Dónde se le compra». Una persona por fila —el
+// proveedor tiene quien vende, quien factura y quien cobra— y no una columna en `proveedores`.
 
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
@@ -54,6 +61,12 @@ import { getOpcionesDeObra } from '@/features/administracion/services/obraDeComp
 import { comoComprobantes, filtrosDeURL } from '@/features/administracion/services/comprobantesProveedor'
 import { formatearCuit } from '@/features/administracion/services/identidad'
 import { getDocumentosDelProveedor } from '@/features/administracion/services/documentosProveedorService'
+import { getContactosDelProveedor } from '@/features/administracion/services/contactosProveedorService'
+import { avisoSinTabla } from '@/features/administracion/services/contactosProveedor'
+import {
+  borrarContactoProveedor, crearContactoProveedor, editarContactoProveedor,
+} from '@/features/administracion/services/contactosProveedorActions'
+import { BloqueContactos, type TextosAgenda } from '@/features/clientes/components/BloqueContactos'
 import {
   NombresDelProveedor, ObrasDelProveedor, PaquetesDelProveedor, QueProvee, RepartoPorObra,
 } from '@/features/administracion/components/ListasProveedorV2'
@@ -89,11 +102,35 @@ const CARAS_RETIRADAS = new Set(['papeles', 'comprobantes'])
 /** El año de hoy en San Juan: el 31/12 a las 22 h, UTC ya diría el año que viene. */
 const anioDeHoy = () => Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/San_Juan', year: 'numeric' }).format(new Date()))
 
+/** Las palabras de la agenda del proveedor. La forma del bloque es la del cliente. */
+const TEXTOS_CONTACTOS: Partial<TextosAgenda> = {
+  testid: 'contactos-proveedor',
+  vacio: 'Sin contactos cargados.',
+  rotuloRol: 'Rol o área',
+  ejemploRol: 'comercial, administración, cobranzas',
+  rotuloTelefono: 'Teléfono / WhatsApp',
+  mailBloquea: false,
+  conNotas: true,
+}
+
+type Consulta = { vista?: string; anio?: string; papel?: string; n?: string; contacto?: string; accContacto?: string }
+
+/**
+ * LA MISMA DIRECCIÓN CON UN CONTACTO ABIERTO —o cerrado—. Conserva la solapa y los filtros de
+ * Compras: abrir la edición de un teléfono no puede tirar el año que la persona había elegido.
+ */
+function urlConContacto(base: string, sp: Consulta, cambios: Partial<Record<'contacto' | 'accContacto', string | null>>) {
+  const q = new URLSearchParams()
+  for (const [k, v] of Object.entries({ ...sp, ...cambios })) if (v) q.set(k, v)
+  const s = q.toString()
+  return s ? `${base}?${s}` : base
+}
+
 const fecha = (f: string | null) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(0, 4)}` : null)
 
 export default async function ProveedorFichaPage({ params, searchParams }: {
   params: Promise<{ proveedor: string }>
-  searchParams: Promise<{ vista?: string; anio?: string; papel?: string; n?: string }>
+  searchParams: Promise<Consulta>
 }) {
   const { proveedor: id } = await params
   const sp = await searchParams
@@ -111,7 +148,7 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
   // LAS COMPRAS LAS VE QUIEN VE COMPRAS: el mismo `esAdministracion` que corta esa pantalla. Otro rol
   // no llega a pedirlas, y su ficha dice por qué en vez de mostrar un proveedor sin compras.
   const veCompras = esAdministracion(perfil.data?.rol ?? null)
-  const [nombres, paquetes, documentos, compras, opcionesObra] = await Promise.all([
+  const [nombres, paquetes, documentos, compras, opcionesObra, contactos] = await Promise.all([
     getNombresDelProveedor(supabase, proveedor.id),
     getPaquetesDelProveedor(supabase, proveedor.id),
     getDocumentosDelProveedor(supabase, proveedor.id),
@@ -119,12 +156,14 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
     // EL MISMO DESPLEGABLE QUE COMPRAS, armado por la misma función: dos listas de obras válidas
     // serían dos definiciones de qué se puede elegir. Error de lectura ⇒ lista vacía ⇒ no se edita.
     veCompras && cara === 'compras' ? getOpcionesDeObra(supabase) : Promise.resolve([]),
+    // LA AGENDA TIENE LA MISMA PUERTA QUE LA TABLA (`es_administracion()`). A otro rol la base le
+    // devolvería cero filas sin error, y la ficha diría «sin contactos» de un proveedor que los tiene.
+    veCompras ? getContactosDelProveedor(supabase, proveedor.id) : Promise.resolve(null),
   ])
   const filas = compras?.data ? comoComprobantes(compras.data.filas) : []
 
   const resumen = resumirProveedor(filas)
   const porObra = comprasPorObra(filas)
-  // «Qué provee» ocupa el lugar que el mockup le da a CONTACTO, que no tiene columna en la base.
   const conceptos = conceptosProvistos(filas)
   const conceptosTotal = new Set(filas.map((f) => f.concepto?.trim()).filter(Boolean)).size
   // SIN NINGÚN PAQUETE CON PRECIO, «contratado» es AUSENCIA y no cero.
@@ -143,6 +182,7 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
 
   const href = (v: Cara) => `/administracion/proveedores/${proveedor.id}${v === 'compras' ? '' : `?vista=${v}`}`
   const panelDeEdicion = `/administracion/proveedores?p=${proveedor.id}`
+  const base = `/administracion/proveedores/${proveedor.id}`
 
   const cifras: CifraDeFicha[] = [
     {
@@ -302,6 +342,36 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
           />
           <DatoDeCostado k="Notas" v={proveedor.notas?.trim() || null} falta="sin notas" />
 
+          {/* CONTACTO — el lugar que le da el mockup, con el bloque de la ficha del cliente. */}
+          {contactos && (
+            <>
+              <div style={{ marginTop: 22 }}>
+                <RotuloPanel cuenta={contactos.estado === 'ok' ? contactos.contactos.length : undefined}>
+                  Contacto
+                </RotuloPanel>
+              </div>
+              {contactos.estado === 'ok' && (
+                <BloqueContactos
+                  contactos={contactos.contactos}
+                  enEdicion={sp.contacto ?? null}
+                  menuAbierto={sp.accContacto ?? null}
+                  urlDe={(c) => urlConContacto(base, sp, { contacto: c })}
+                  urlMenuDe={(c) => urlConContacto(base, sp, c ? { accContacto: c } : { accContacto: null, contacto: null })}
+                  editar={(c) => editarContactoProveedor.bind(null, c)}
+                  crear={crearContactoProveedor.bind(null, proveedor.id)}
+                  borrar={borrarContactoProveedor}
+                  textos={TEXTOS_CONTACTOS}
+                />
+              )}
+              {contactos.estado === 'sin-tabla' && (
+                <Aviso tono="info" testid="contactos-sin-tabla">{avisoSinTabla()}</Aviso>
+              )}
+              {contactos.estado === 'error' && (
+                <Aviso tono="neg" titulo="No pude leer los contactos">{contactos.error}</Aviso>
+              )}
+            </>
+          )}
+
           <div style={{ marginTop: 22 }}>
             <RotuloPanel>Dónde se le compra</RotuloPanel>
           </div>
@@ -312,13 +382,13 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
           </div>
           <QueProvee filas={conceptos} total={conceptosTotal} />
 
-          {/* CONTACTO, CONDICIÓN DE IVA Y PLAZO DE PAGO NO SE DIBUJAN, y se dice una vez por qué. */}
+          {/* CONDICIÓN DE IVA Y PLAZO DE PAGO NO SE DIBUJAN, y se dice una vez por qué. */}
           <p
             style={{ fontSize: '11px', lineHeight: 1.6, color: V.tenue, marginTop: 22, textWrap: 'pretty' }}
             data-testid="limites-ficha"
           >
-            Contacto, teléfono, condición de IVA y plazo de pago no tienen columna en{' '}
-            <code>proveedores</code>: no se dibujan porque no habría dónde guardarlos. Habilitación
+            Condición de IVA y plazo de pago no tienen columna en <code>proveedores</code>: no se
+            dibujan porque no habría dónde guardarlos. Habilitación
             para entrar a obra y certificación de cada paquete tampoco existen como dato. Todo lo
             demás —lo comprado, a qué obras fue y su actividad— se DERIVA de las compras; ningún
             total se guarda al lado de sus filas.

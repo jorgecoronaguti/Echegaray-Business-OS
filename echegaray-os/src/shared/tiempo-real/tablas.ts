@@ -1,4 +1,4 @@
-// LAS TABLAS QUE AVISAN CUANDO CAMBIAN — espejo de las migraciones marcadas (20260915T2100, 20260916T2010, 20260917T1400/T1410).
+// LAS TABLAS QUE AVISAN CUANDO CAMBIAN — espejo de las migraciones marcadas (20260915T2100, 20260916T2010, 20260917T1400/T1410, 20260921T1000).
 //
 // Una pantalla declara de qué tablas depende (`<RefrescarEnVivo tablas={[...]} />`) y el tipo sólo
 // acepta tablas de esta lista. Declarar una tabla sin trigger compilaría y la pantalla nunca se
@@ -21,7 +21,7 @@ export const TABLAS_CON_AVISO = [
   'obra_adjunto_cliente', 'obra_asignacion', 'obra_canonica', 'obra_dependencia', 'obra_documento',
   'obra_ejecucion', 'obra_ejecucion_equipo', 'obra_restriccion', 'pago_informado', 'pedidos_materiales',
   'persona_adelanto', 'persona_externa', 'persona_nota', 'persona_tarifa', 'persona_tarifa_correccion',
-  'personas', 'proveedor_alias', 'proveedor_documento', 'proveedores', 'recurso', 'recurso_precio',
+  'personas', 'proveedor_alias', 'proveedor_contacto', 'proveedor_documento', 'proveedores', 'recurso', 'recurso_precio',
   // Notas «Qué hacer» y su cola: migraciones 20260917T1400 y T1410 (upsert por clave, no borrar y reinsertar).
   'proveedor_notas', 'proveedor_nota_cambio',
   'registro_hh_correccion', 'registros_hh', 'solicitud_correccion_asistencia', 'subcontrato',

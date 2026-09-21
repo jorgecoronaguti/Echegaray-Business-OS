@@ -11,6 +11,7 @@ import { revalidatePath } from 'next/cache'
 import { invalidarFichaCliente } from './invalidarFicha'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { emailOpcional, leerContacto } from '@/shared/contactos/contacto'
 // Qué hacer cuando la migración de la relación está en el repositorio y no en la base: el criterio
 // —y la regla de no guardar de menos en silencio— vive en su propio módulo, con tests.
 import { faltaLaRelacion, mensajeDeMigracion, sinLaRelacion } from './migracionPendiente'
@@ -32,7 +33,8 @@ const cuitSchema = z.string().trim().transform((v) => v.replace(/\D/g, ''))
 
 // Un email vacío es «no lo sé», no un email inválido: el campo es opcional y el formulario no puede
 // plantarse por un dato que nadie prometió tener.
-const emailSchema = z.union([z.string().trim().email('Revisá el email: no tiene formato de correo'), z.literal('')]).optional()
+// La definición es la de la agenda de contactos (`@/shared/contactos/contacto`): una sola.
+const emailSchema = emailOpcional
 
 const clienteSchema = z.object({
   nombre_comercial: z.string().trim().min(2, 'El nombre comercial es obligatorio'),
@@ -128,30 +130,15 @@ export async function archivarCliente(clienteId: string, activo: boolean): Promi
 
 // ── CONTACTOS ──────────────────────────────────────────────────────────────────────────────────
 
-const contactoSchema = z.object({
-  nombre: z.string().trim().min(2, 'El nombre del contacto es obligatorio'),
-  rol: z.string().trim().max(120).optional(),
-  email: emailSchema,
-  telefono: z.string().trim().max(60).optional(),
-  notas: z.string().trim().max(400).optional(),
-})
-
-function aFilaContacto(d: z.infer<typeof contactoSchema>) {
-  return {
-    nombre: d.nombre,
-    rol: d.rol || null,
-    email: d.email || null,
-    telefono: d.telefono || null,
-    notas: d.notas || null,
-  }
-}
+// LA VALIDACIÓN DEL CONTACTO VIVE EN `@/shared/contactos/contacto` desde el 21/09/2026: la agenda del
+// proveedor usa la misma, y dos definiciones de qué es un contacto válido terminan contradiciéndose.
 
 export async function crearContacto(clienteId: string, form: FormData): Promise<Resultado> {
-  const parsed = contactoSchema.safeParse(Object.fromEntries(form))
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+  const leido = leerContacto(form)
+  if (!leido.ok) return { ok: false, error: leido.error }
   const supabase = await createClient()
   const { error } = await supabase.from('cliente_contacto')
-    .insert({ cliente_id: clienteId, ...aFilaContacto(parsed.data) })
+    .insert({ cliente_id: clienteId, ...leido.fila })
   if (error) return { ok: false, error: error.message }
   await invalidarFichaCliente(supabase, clienteId)
   revalidatePath('/clientes', 'layout')
@@ -167,11 +154,11 @@ export async function crearContacto(clienteId: string, form: FormData): Promise<
  * permitiría moverlo desde el navegador.
  */
 export async function editarContacto(contactoId: string, form: FormData): Promise<Resultado> {
-  const parsed = contactoSchema.safeParse(Object.fromEntries(form))
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+  const leido = leerContacto(form)
+  if (!leido.ok) return { ok: false, error: leido.error }
   const supabase = await createClient()
   const { error } = await supabase.from('cliente_contacto')
-    .update(aFilaContacto(parsed.data)).eq('id', contactoId)
+    .update(leido.fila).eq('id', contactoId)
   if (error) return { ok: false, error: error.message }
   // Sin el cliente a mano: se invalidan todas antes que buscarlo con otro viaje.
   await invalidarFichaCliente(supabase, null)

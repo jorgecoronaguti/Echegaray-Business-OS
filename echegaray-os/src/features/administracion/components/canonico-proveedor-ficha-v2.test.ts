@@ -13,8 +13,10 @@ import { dirname, join } from 'node:path'
 //
 //  · VOLVER A LA TARJETA. La ficha de agosto se dibujaba con `FichaCanonica` —slab blanco con
 //    avatar, `TarjetaFicha` con borde y radio, `TiraMetricas` en celdas—. El v2 borra la caja.
-//  · PROMETER UN CAMPO QUE NO EXISTE. `public.proveedores` no tiene contacto, teléfono, condición
-//    de IVA ni plazo de pago. Dibujarlos en «sin cargar» manda a alguien a buscar dónde cargarlos.
+//  · PROMETER UN CAMPO QUE NO EXISTE. `public.proveedores` no tiene condición de IVA ni plazo de
+//    pago. Dibujarlos en «sin cargar» manda a alguien a buscar dónde cargarlos.
+//  · UN SEGUNDO MODELO DE CONTACTO. Desde el 21/09/2026 los contactos SÍ existen
+//    (`proveedor_contacto`), y se dibujan con el MISMO bloque del cliente, en el lugar del mockup.
 //  · ESCRIBIR 0 DONDE NO SE MIDIÓ. La solapa «Papeles» no puede contar: ninguna tabla vincula un
 //    archivo con un proveedor, y un «0» ahí afirma que se contaron y no hay ninguno.
 
@@ -55,14 +57,49 @@ test('no hay ninguna acción amarilla: los comprobantes no entran por esta panta
   assert.match(src, /<AccionSecundaria/)
 })
 
-test('contacto, condición de IVA y plazo de pago NO se dibujan como campos', () => {
+test('condición de IVA y plazo de pago NO se dibujan como campos', () => {
   const src = codigoPagina()
-  assert.doesNotMatch(src, /k="Contacto"/)
-  assert.doesNotMatch(src, /k="Teléfono"/)
   assert.doesNotMatch(src, /k="Condición de IVA"/)
   assert.doesNotMatch(src, /k="Plazo de pago"/)
   // Y se dice por qué, una vez, en vez de nueve renglones en «sin cargar».
   assert.match(src, /limites-ficha/)
+  // El pie ya no puede decir que el contacto no tiene dónde guardarse: desde el 21/09 lo tiene.
+  assert.doesNotMatch(pagina(), /Contacto, teléfono, condición de IVA/)
+})
+
+// ═══ LOS CONTACTOS (pedido del dueño, 21/09/2026) ═══
+// «no tengo forma de agregar personas a los proveedores […] no puedo dejar asentado un nombre un
+// contacto nada».
+
+test('los contactos se dibujan con el bloque del cliente, no con un DatoDeCostado suelto', () => {
+  const src = codigoPagina()
+  assert.match(src, /<BloqueContactos/)
+  assert.match(src, /from '@\/features\/clientes\/components\/BloqueContactos'/)
+  // Un solo campo «Contacto» guardaría UNA persona; el proveedor tiene quien vende, factura y cobra.
+  assert.doesNotMatch(src, /k="Contacto"/)
+  assert.doesNotMatch(src, /k="Teléfono"/)
+  // Alta, edición y baja atadas a las acciones de SU tabla, no a las del cliente.
+  assert.match(src, /crear=\{crearContactoProveedor\.bind\(null, proveedor\.id\)\}/)
+  assert.match(src, /editar=\{\(c\) => editarContactoProveedor\.bind\(null, c\)\}/)
+  assert.match(src, /borrar=\{borrarContactoProveedor\}/)
+  assert.doesNotMatch(src, /crearContacto\.bind|borrar=\{borrarContacto\}/)
+})
+
+test('los contactos van en el costado, entre Identidad y «Dónde se le compra» (lugar del mockup)', () => {
+  const src = codigoPagina()
+  const costado = src.indexOf('<CostadoDeFicha')
+  const identidad = src.indexOf('>Identidad<')
+  const bloque = src.indexOf('<BloqueContactos')
+  const donde = src.indexOf('>Dónde se le compra<')
+  assert.ok(costado > 0 && identidad > costado, 'no encontré el costado')
+  assert.ok(bloque > identidad && bloque < donde, 'los contactos no están entre Identidad y «Dónde se le compra»')
+})
+
+test('la tabla que falta y el error de lectura se dicen; ninguno se dibuja como «sin contactos»', () => {
+  const src = codigoPagina()
+  assert.match(src, /contactos\.estado === 'sin-tabla'/)
+  assert.match(src, /contactos\.estado === 'error'/)
+  assert.match(src, /contactos\.estado === 'ok' && \(\s*<BloqueContactos/)
 })
 
 // ═══ EL COMPROBANTE AL LADO DE CADA COMPRA (pedido del dueño, 14/09/2026) ═══
