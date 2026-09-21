@@ -30,7 +30,12 @@ export const TONO_TEXTO: Record<Tono, string> = { neg: 'text-neg', warn: 'text-w
 
 export interface Cifra { rotulo: string; valor: string | null; falta?: string; tono?: Tono; nota?: ReactNode }
 
-function UnaCifra({ c }: { c: Cifra }) {
+/** Una fila de cifras suelta (fuera de la cabecera): mismo dibujo, para una sección que tiene sus propios números. */
+export function FilaDeCifras({ cifras }: { cifras: Cifra[] }) {
+  return <div className="grid grid-cols-2 items-end gap-x-6 gap-y-5 lg:flex lg:flex-nowrap lg:gap-x-10 xl:gap-x-14">{cifras.map((c) => <UnaCifra key={c.rotulo} c={c} />)}</div>
+}
+
+export function UnaCifra({ c }: { c: Cifra }) {
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <div className="text-[11px] text-faint">{c.rotulo}</div>

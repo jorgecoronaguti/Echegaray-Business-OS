@@ -11,6 +11,9 @@ import { leerPaginado } from './paginar'
 import { armarObra, elegirObra, pasaEstado, rubrosComparables, sinObraDe, type ObraAnalitica, type ObraPanel } from './obras'
 import { leerPresupuestos, presupuestoPorObra } from './presupuesto'
 import { leerConsumoMensual, ritmoPorObra, type MesDeConsumo, type Ritmo } from './consumo'
+import { leerFotoCaja, type LecturaCaja } from './cajaSheet'
+import { getDeuda } from '@/features/administracion/services/deudaProveedoresService'
+import { totalesDeuda, type TotalesDeuda } from '@/features/administracion/services/deudaProveedores'
 
 export interface DatosAnaliticas {
   hoy: string
@@ -23,12 +26,33 @@ export interface DatosAnaliticas {
   /** Lo sin obra de cada cliente con su apertura (materiales, subcontratos, comprobantes). */
   sinObraDetalle: Map<string, GastoSinObra>
   cuentaCorriente: unknown[] | null
+  /**
+   * Vista Caja: lo salido dentro del período, con la forma de `caja_egreso_percibido`. Sin esa vista
+   * en la base (migración 20260918T1500 sin aplicar) son las filas de `egreso_por_area` adaptadas, y
+   * `criterioEgresos` lo dice: son dos criterios distintos y la pantalla no los puede confundir.
+   */
   egresos: unknown[] | null
+  /** `percibido` = cada pago en su fecha (Compras) · `devengado` = la fecha del comprobante. */
+  criterioEgresos: CriterioEgreso
+  /** Vista Caja: la pestaña CAJA leída de su espejo (`caja_sheet_vigente`). */
+  cajaSheet: LecturaCaja
+  /**
+   * Vista Caja: lo que se les debe HOY a los proveedores, con la MISMA lectura y la misma cuenta que
+   * «A quién le debo» en Proveedores (`getDeuda` + `totalesDeuda`). El dueño (18/09/2026): la deuda de
+   * Caja es la de Proveedores, no la tarjeta de la pestaña. `null` = no se pudo leer (se dice, no se inventa).
+   */
+  deudaProveedores: (TotalesDeuda & { truncado: boolean }) | null
   nomina: unknown[] | null
   quincenas: unknown[] | null
   personas: unknown[] | null
   /** Las filas de deuda de `public.cobranzas`: SÓLO para la acción del día (`planDeCobranza`). */
   documentos: unknown[] | null
+  /**
+   * Las MISMAS filas de deuda pero SIN el recorte por fecha de emisión: la agenda de cobros próximos
+   * mira para adelante y un período pasado la dejaría vacía justo cuando hay plata por entrar.
+   * Con el período en su defecto es exactamente `documentos` (no se lee dos veces).
+   */
+  documentosParaAgenda: unknown[] | null
   /** Por qué no hay presupuesto (`null` si lo hay). */
   motivoPresupuesto: string | null
   /** La obra de la vista Obras (la pedida si pasa los filtros; si no, la que más consumió). */
@@ -86,19 +110,10 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
   // LO SIN OBRA ES DEL CLIENTE: se recorta por período y NUNCA por obra.
   const sinObra = new Map([...(sinObraCruda ?? new Map()).entries()].map(([k, g]) => [k, sinObraDe(g)]))
 
-  const conRango = <T extends { gte: (c: string, v: string) => T; lte: (c: string, v: string) => T }>(q: T, col: string): T => {
-    let r = q
-    if (rango.desde) r = r.gte(col, rango.desde)
-    if (rango.hasta) r = r.lte(col, rango.hasta)
-    return r
-  }
-  const [egresos, nomina, quincenas, personas, documentos] = await Promise.all([
-    // PAGINADO (D6): la vista pasa las 1.000 filas y PostgREST corta ahí sin error.
-    f.vista === 'caja'
-      ? leerPaginado((a, b) => conRango(supabase.from('egreso_por_area').select('area, grupo, total, fecha'), 'fecha')
-        .order('fecha').order('area').order('grupo').order('total').range(a, b))
-        .then((data) => ({ data }))
-      : null,
+  const [egresos, nomina, quincenas, personas, documentos, cajaSheet, deuda] = await Promise.all([
+    // LO QUE SALIÓ, CADA PAGO EN SU FECHA (dueño, 18/09/2026: criterio percibido, filtrable por fechas). Lo
+    // pendiente y lo «Pagado» sin monto viajan también: se cuentan aparte. PAGINADO (D6): ~960 filas el 18/09.
+    f.vista === 'caja' ? leerEgresosDeCaja(supabase, rango) : null,
     f.vista === 'nomina' ? supabase.from('nomina_por_mes').select('mes, costo_nomina, cargas_sociales, es_estimacion') : null,
     f.vista === 'nomina' ? supabase.from('jornales_quincena').select('desde, estado') : null,
     f.vista === 'nomina' ? supabase.from('personas').select('en_la_empresa, categoria').eq('es_prueba', false) : null,
@@ -106,25 +121,29 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     // mismo recorte por emisión que la cuenta corriente. Se lee de `cliente_cobranza`, la vista canónica
     // fila por fila (DEFINICIONES: «cobrado»): `public.cobranzas` es la réplica cruda y no se lee desde la
     // app. Paginado por `cobranza_id`, que es único: Cobranzas pasa las 1.000 filas.
-    f.vista === 'cobranza'
-      ? leerPaginado((a, b) => {
-        let q = supabase.from('cliente_cobranza')
-          .select('cobranza_id, cliente_id, estado, fecha_cobro, fecha_emision, total_bruto, obra_id, numero_comprobante, factura, concepto')
-          .in('estado', ['Pendiente', 'Facturado']).not('cliente_id', 'is', null)
-        if (rango.desde) q = q.gte('fecha_emision', rango.desde)
-        if (rango.hasta) q = q.lte('fecha_emision', rango.hasta)
-        return q.order('cobranza_id').range(a, b)
-      })
-      : null,
+    f.vista === 'cobranza' ? leerDeudaDeCobranzas(supabase, rango) : null,
+    f.vista === 'caja' ? leerCajaSheet(supabase) : Promise.resolve<LecturaCaja>({ estado: 'no_leida' }),
+    f.vista === 'caja' ? getDeuda(supabase) : null,
   ])
+  // LA AGENDA NO SE RECORTA POR EL PERÍODO (dueño, 21/09/2026: «que me marque con claridad los cobros
+  // próximos»): un cobro de octubre no está emitido en el período que se esté mirando y desaparecería.
+  // Sin período apartado del defecto las dos lecturas son la misma fila por fila: no se lee dos veces.
+  const recorta = rango.desde != null || rango.hasta != null
+  const documentosParaAgenda = f.vista === 'cobranza' && recorta
+    ? await leerDeudaDeCobranzas(supabase, { desde: null, hasta: null })
+    : documentos
   return {
     hoy, rango, cartera, obras, sinObra, sinObraDetalle: sinObraCruda ?? new Map(),
+    cajaSheet,
+    deudaProveedores: deuda?.data ? { ...totalesDeuda(deuda.data.filas), truncado: deuda.data.truncado } : null,
     cuentaCorriente: Array.isArray(raiz?.cuenta_corriente) ? raiz.cuenta_corriente : null,
-    egresos: egresos?.data ?? null,
+    egresos: egresos?.filas ?? null,
+    criterioEgresos: egresos?.criterio ?? 'percibido',
     nomina: nomina?.data ?? null,
     quincenas: quincenas?.data ?? null,
     personas: personas?.data ?? null,
     documentos: documentos ?? null,
+    documentosParaAgenda: documentosParaAgenda ?? null,
     motivoPresupuesto: lecturaPresupuestos.motivo,
     obraElegida, consumoMensual: mensual,
     // EL RITMO DEL «ALCANZA» ES DE LOS MISMOS RUBROS QUE EL «QUEDA»: sin presupuesto, todo lo consumido.
@@ -139,4 +158,84 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     })),
     legible: raiz != null,
   }
+}
+
+export type CriterioEgreso = 'percibido' | 'devengado'
+
+/**
+ * LO QUE SALIÓ, Y CON QUÉ CRITERIO SALIÓ.
+ *
+ * La fuente buena es `caja_egreso_percibido`: cada pago de Compras en la fecha en que se pagó (criterio
+ * percibido, regla de oro 5). Vive en la migración 20260918T1500, que se aplica DESPUÉS de publicar esta
+ * rama. Mientras no esté, en vez de dejar la vista muda se lee `egreso_por_area` —lo que la Caja mostraba
+ * hasta hoy, por fecha del comprobante— y se devuelve `devengado` para que la pantalla lo DIGA. Dos
+ * criterios distintos no se pueden dibujar iguales; tampoco se publica una pantalla en blanco.
+ */
+export async function leerEgresosDeCaja(
+  supabase: SupabaseClient, rango: { desde: string | null; hasta: string | null },
+): Promise<{ criterio: CriterioEgreso; filas: unknown[] | null }> {
+  const acotar = <T extends { gte: (c: string, v: string) => T; lte: (c: string, v: string) => T }>(q: T, col: string): T => {
+    let r = q
+    if (rango.desde) r = r.gte(col, rango.desde)
+    if (rango.hasta) r = r.lte(col, rango.hasta)
+    return r
+  }
+  const sonda = await supabase.from('caja_egreso_percibido').select('fila').limit(1)
+  if (!sonda.error) {
+    return {
+      criterio: 'percibido',
+      filas: await leerPaginado((a, b) => acotar(supabase.from('caja_egreso_percibido').select('area, fecha_pago, monto, naturaleza, fila'), 'fecha_pago')
+        .order('fecha_pago').order('fila').order('naturaleza').order('monto').range(a, b)),
+    }
+  }
+  if (!SIN_RELACION.has(String(sonda.error.code))) return { criterio: 'percibido', filas: null }
+  const viejas = await leerPaginado((a, b) => acotar(supabase.from('egreso_por_area').select('area, grupo, total, fecha'), 'fecha')
+    .order('fecha').order('area').order('grupo').order('total').range(a, b))
+  // Con la forma de `caja_egreso_percibido`, para que abajo haya UNA sola lectura: cada comprobante es
+  // un «pago» en la fecha de su comprobante. No se inventa nada — el criterio viaja al lado.
+  return {
+    criterio: 'devengado',
+    filas: viejas?.map((f) => {
+      const r = f as Record<string, unknown>
+      return { area: r.area, fecha_pago: r.fecha, monto: r.total, naturaleza: 'pago', fila: null }
+    }) ?? null,
+  }
+}
+
+/**
+ * LA DEUDA VIVA DE COBRANZAS, fila por fila. Se lee de `cliente_cobranza`, la vista canónica
+ * (DEFINICIONES: «cobrado»): `public.cobranzas` es la réplica cruda y no se lee desde la app.
+ * Paginado por `cobranza_id`, que es único: Cobranzas pasa las 1.000 filas que corta PostgREST.
+ *
+ * `certificado_cliente` NO sirve acá: es un subconjunto y ya dejó a San Francisco «sin nada pendiente
+ * hoy» con $ 26,6 M que vencían al día siguiente (auditoría 17/09/2026, D10).
+ */
+export function leerDeudaDeCobranzas(supabase: SupabaseClient, rango: { desde: string | null; hasta: string | null }) {
+  return leerPaginado((a, b) => {
+    let q = supabase.from('cliente_cobranza')
+      .select('cobranza_id, cliente_id, estado, fecha_cobro, fecha_emision, total_bruto, obra_id, numero_comprobante, factura, concepto')
+      .in('estado', ['Pendiente', 'Facturado']).not('cliente_id', 'is', null)
+    if (rango.desde) q = q.gte('fecha_emision', rango.desde)
+    if (rango.hasta) q = q.lte('fecha_emision', rango.hasta)
+    return q.order('cobranza_id').range(a, b)
+  })
+}
+
+/** «No existe la relación» en PostgREST (schema cache) o en Postgres: la migración del espejo no está aplicada. */
+const SIN_RELACION = new Set(['PGRST205', '42P01'])
+
+/**
+ * LA PESTAÑA CAJA DESDE SU ESPEJO. Cuatro estados distintos porque se dibujan distinto: sin la
+ * migración la app dice que el espejo no está publicado (la base no va adelante del código, y el
+ * código puede ir adelante de la base); sin foto, que el sync no guardó ninguna; con foto, CAJA.
+ */
+export async function leerCajaSheet(supabase: SupabaseClient): Promise<LecturaCaja> {
+  const [vigente, sync] = await Promise.all([
+    supabase.from('caja_sheet_vigente').select('*').maybeSingle(),
+    supabase.from('caja_sheet_sync').select('intento_en, ok, error').eq('id', 1).maybeSingle(),
+  ])
+  if (vigente.error) return SIN_RELACION.has(String(vigente.error.code)) ? { estado: 'sin_espejo' } : { estado: 'no_leida' }
+  const foto = vigente.data ? leerFotoCaja(vigente.data) : null
+  if (!foto) return { estado: 'sin_foto', error: sync.data && sync.data.ok === false ? String(sync.data.error ?? 'sin detalle') : null }
+  return { estado: 'foto', foto }
 }
