@@ -187,9 +187,10 @@ function CobrosProximos({ a, agenda, hoy }: { a: AgendaDeCobro; agenda: unknown[
           const tono = tonoDeCobro(f.dias, f.vencido)
           return (
             <div key={f.id} data-testid="cobranza-proximo" className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 border-b border-line py-2.5 hover:bg-surface-quiet lg:h-11 lg:grid-cols-[150px_110px_minmax(0,1fr)_150px_170px] lg:gap-6 lg:py-0">
-              <div className="flex min-w-0 items-baseline gap-2">
+              {/* EN EL TELÉFONO EL TIEMPO BAJA UNA LÍNEA antes que truncarse: «mañ…» no es una palabra. */}
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
                 <span className="whitespace-nowrap text-[13px] font-medium tabular-nums text-ink">{diaMesAnio(f.fecha)}</span>
-                <span className={`truncate text-[11.5px] ${tono.texto}`}>{cuando(f.dias)}</span>
+                <span className={`whitespace-nowrap text-[11.5px] ${tono.texto}`}>{cuando(f.dias)}</span>
               </div>
               <div className="whitespace-nowrap text-right text-[13px] font-semibold tabular-nums text-ink">{millones(f.monto)}</div>
               <div className="col-span-2 row-start-2 h-3 lg:col-span-1 lg:row-auto"><div className={`h-full rounded-[2px] ${tono.fondo}`} style={{ width: ancho(f.monto, max) }} /></div>
