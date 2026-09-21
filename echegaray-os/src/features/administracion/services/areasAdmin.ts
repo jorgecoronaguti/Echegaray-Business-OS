@@ -84,6 +84,18 @@ export const DESTINOS: readonly Destino[] = [
   // cliente; se retiraron y la absorción se fue con ellas. Quién entra al portal y qué cobros ve se
   // administra DENTRO de la ficha, que es una subruta de `/clientes` y ya enciende esta solapa sola.
   { clave: 'clientes', titulo: 'Clientes', href: '/clientes', grupo: 'quien' },
+  // PRESUPUESTOS, AL LADO DE CLIENTES (dueño, 21/09/2026): *«"presupuestos" es una sección dentro de
+  // CRM admin»*. Había subido a la barra de la aplicación el 25/08 por el mockup v2; vuelve acá
+  // porque un presupuesto se hace PARA UN CLIENTE y se lee junto a él, no en otra barra. Va en
+  // `quien` y pegado a Clientes por eso: el filo del grupo separa a quién le hablamos de lo que
+  // registramos, y un presupuesto es lo primero.
+  //
+  // Absorbe la base maestra, que se le había mudado el 26/08: tareas tipo y recursos son la materia
+  // con la que se cotiza, así que encienden la misma solapa que la cotización.
+  {
+    clave: 'presupuestos', titulo: 'Presupuestos', href: '/presupuestos', grupo: 'quien',
+    absorbe: ['/administracion/base-maestra'],
+  },
   // «Personal» y no «Personas»: es el rótulo del canónico 19 y el del mockup. La clave sigue siendo
   // `personas` porque es la que nombra la ruta y los identificadores de prueba.
   // Absorbe Asistencia: corregir una marca es trabajo sobre una persona, no un área hermana.

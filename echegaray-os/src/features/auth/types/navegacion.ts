@@ -8,21 +8,20 @@
 // navegación, y meterlo en `Area` habría convertido «a qué solapa entro» en «qué clase de usuario
 // soy», que son dos preguntas distintas con la misma palabra.
 //
-// ═══ PRESUPUESTOS SUBE A NIVEL 1 (00 · Home Navegación v2, zip del 25/08/2026) ═══
+// ═══ PRESUPUESTOS VUELVE A NIVEL 2 (dueño, 21/09/2026) ═══
 //
-// El mockup dibuja tres solapas —Administración · Obras · Presupuestos— y le pone al tercero este
-// `title`: *«Comercial, no administración: vive al lado de Obras»*. Hasta hoy `/presupuestos` era
-// nivel 2 de Administración: estaba en la barra del área y su layout dibujaba esa barra.
+// Textual, mirando la barra: *«"presupuestos" es una sección dentro de CRM admin»*.
 //
-// ESTO CONTRADICE UNA REGLA VIGENTE Y HAY QUE MIRARLO. El 24/08 se corrigió el header para que
-// `/presupuestos`, `/documentos` y `/flujo-caja` pintaran «Administración» como activa (commit
-// fdfdb03e: *«la nav perdía el "dónde estoy" en las rutas de primer nivel»*). Desde acá,
-// `/presupuestos` pinta SU PROPIA solapa. El PROPÓSITO de aquella corrección se conserva —ninguna
-// ruta de primer nivel se queda sin decir dónde estás— y su letra cambia sólo para Presupuestos:
-// `/documentos` y `/flujo-caja` siguen pintando Administración, y el test lo fija.
+// Había subido a nivel 1 el 25/08 por el mockup «00 · Home Navegación v2», que lo dibujaba al lado
+// de Obras con el `title` *«Comercial, no administración: vive al lado de Obras»*. El dueño lo
+// revierte: un presupuesto se hace PARA UN CLIENTE, y el cliente vive en Administración. Vuelve a
+// la barra del área, al lado de Clientes, y `/presupuestos` vuelve a pintar «Administración» como
+// activa — que es lo que hacían `/documentos` y `/flujo-caja` desde la corrección del 24/08
+// (fdfdb03e, *«la nav perdía el "dónde estoy" en las rutas de primer nivel»*), y ahora otra vez las
+// tres por la misma regla.
 //
-// LA VE SÓLO QUIEN PUEDE ABRIRLA. `/presupuestos` está en `RUTAS_SOLO_ECONOMIA`: un presupuesto ES
-// precio. Al jefe de obra no se le dibuja la solapa, igual que antes no se le dibujaba la sección.
+// LA VE SÓLO QUIEN PUEDE ABRIRLA, y eso no cambia: `/presupuestos` sigue en `RUTAS_SOLO_ECONOMIA`
+// —un presupuesto ES precio— así que al jefe de obra no se le dibuja la sección.
 
 import type { Rol } from './index'
 import { AREA_HREF, AREA_LABEL, areasDe, puedeVerRuta } from './areas.ts'
@@ -32,9 +31,6 @@ export interface SolapaNav {
   label: string
   href: string
 }
-
-/** `/presupuestos` es la única solapa de nivel 1 que no es un área de usuario. */
-const PRESUPUESTOS: SolapaNav = { clave: 'presupuestos', label: 'Presupuestos', href: '/presupuestos' }
 
 /**
  * ANALÍTICAS, CUARTO DESTINO (dueño, 17/09/2026 · «Analíticas v6»). Tampoco es un nivel de usuario: es
@@ -52,7 +48,7 @@ const ANALITICAS: SolapaNav = { clave: 'analiticas', label: 'Analíticas', href:
  */
 export function solapasDeNav(rol: Rol | null | undefined): SolapaNav[] {
   const areas = areasDe(rol).map((a) => ({ clave: a, label: AREA_LABEL[a], href: AREA_HREF[a] }))
-  const destinos = [PRESUPUESTOS, ANALITICAS].filter((d) => puedeVerRuta(rol, d.href))
+  const destinos = [ANALITICAS].filter((d) => puedeVerRuta(rol, d.href))
   return [...areas, ...destinos]
 }
 
@@ -102,9 +98,8 @@ export function destinoDeLaHome(rol: Rol | null | undefined): string {
 
 export function solapaActiva(pathname: string, solapas: SolapaNav[]): string | null {
   if (solapas.length === 1) return solapas[0].clave
-  if (/^\/presupuestos(\/|$)/.test(pathname)) return 'presupuestos'
   if (/^\/analiticas(\/|$)/.test(pathname)) return 'analiticas'
-  if (/^\/(administracion|clientes|documentos)(\/|$)/.test(pathname)) return 'administracion'
+  if (/^\/(administracion|clientes|documentos|presupuestos)(\/|$)/.test(pathname)) return 'administracion'
   if (/^\/(obras|obra|integraciones|campo|hoy|mi-trabajo|mi-informacion)(\/|$)/.test(pathname)) {
     return 'obras'
   }

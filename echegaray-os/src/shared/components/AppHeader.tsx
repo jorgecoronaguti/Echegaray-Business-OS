@@ -146,9 +146,6 @@ export function AppHeader({
                 href={a.href}
                 data-testid={`nav-${a.clave}`}
                 aria-current={activa === a.clave ? 'page' : undefined}
-                // «Comercial, no administración: vive al lado de Obras» — el `title` del mockup para
-                // Presupuestos, que es lo único que explica por qué subió de nivel.
-                title={a.clave === 'presupuestos' ? 'Comercial, no administración: vive al lado de Obras' : undefined}
                 // EL ÁREA ACTIVA SE MARCA CON EL AMARILLO DE LA MARCA, y con una regla de 2px
                 // debajo — no con un fondo amarillo. #FDC900 da 1,6:1 sobre blanco: como fondo de
                 // un control con texto encima es ilegible. Como REGLA no lleva texto, así que el

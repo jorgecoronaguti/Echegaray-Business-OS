@@ -10,30 +10,33 @@ import { RUTAS_SOLO_ECONOMIA, puedeVerRuta } from '../../auth/types/areas.ts'
 // dibuje para quien el middleware va a rebotar, y —sobre todo— que la barra se apague adentro de
 // las rutas que perdieron su solapa (Pendientes, Asistencia y ahora Proveedores).
 
-test('son CUATRO destinos en DOS grupos: Proveedores se fue adentro de Compras, Impuestos se sumó', () => {
+test('son CINCO destinos en DOS grupos: Presupuestos volvió al área, Proveedores sigue adentro de Compras', () => {
   // El dueño lo pidió el 16/09/2026: «poné todo el módulo proveedores dentro de compras como
   // sección». Si vuelve a aparecer en la barra, hay DOS puertas al mismo módulo y la sección de
   // Compras deja de ser la única respuesta a dónde vive Proveedores.
   assert.deepEqual(
     DESTINOS.map((d) => d.titulo),
-    ['Clientes', 'Personal', 'Compras', 'Impuestos'],
+    // PRESUPUESTOS, PEGADO A CLIENTES (dueño, 21/09/2026): «"presupuestos" es una sección dentro de
+    // CRM admin». Había subido a la barra de la aplicación el 25/08 por el mockup v2. El orden
+    // importa: se lee junto al cliente para el que se cotiza, no al final con los registros.
+    ['Clientes', 'Presupuestos', 'Personal', 'Compras', 'Impuestos'],
   )
   assert.equal(DESTINOS.some((d) => d.clave === 'proveedores'), false)
   assert.deepEqual([...new Set(DESTINOS.map((d) => d.grupo))], ['quien', 'registro'])
 })
 
-test('«Trabajo», «Base maestra» y «Documentos» ya no son destinos', () => {
+test('«Trabajo» y «Documentos» ya no son destinos, y «Base maestra» no tiene solapa propia', () => {
   // Es una decisión declarada del handoff v4, no un olvido: si alguien los devuelve a la barra,
   // esto se pone rojo y hay que discutirlo antes de tener siete hermanos de todo otra vez.
   const claves = DESTINOS.map((d) => d.clave)
   assert.ok(!claves.includes('trabajo'))
-  assert.ok(!claves.includes('base-maestra'))
+  assert.ok(!claves.includes('base-maestra'), 'no vuelve como solapa: la absorbió Presupuestos')
   assert.ok(!claves.includes('documentos'))
 })
 
 test('el filo va SÓLO donde cambia el grupo, y sobre la lista ya filtrada por rol', () => {
   const todas = [...DESTINOS]
-  assert.deepEqual(todas.map((_, i) => hayFiloAntes(todas, i)), [false, false, true, false])
+  assert.deepEqual(todas.map((_, i) => hayFiloAntes(todas, i)), [false, false, false, true, false])
 
   // El filo se calcula sobre la lista YA filtrada: nunca puede quedar uno abriendo la barra, que
   // es lo que pasaría el día que un destino sea sólo de quien ve economía y el cálculo mire la
@@ -117,12 +120,13 @@ test('lo que ya no es un destino no enciende ninguna solapa', () => {
   // Las cinco rutas siguen VIVAS y respondiendo: lo único que perdieron es la solapa. Si alguna
   // vuelve a encender algo, es porque volvió a la barra, y eso se discute.
   assert.equal(areaActiva('/administracion'), null)
-  assert.equal(areaActiva('/administracion/base-maestra/recursos'), null)
+  // `/administracion/base-maestra` SÍ enciende, desde el 21/09: la absorbió Presupuestos, porque
+  // tareas tipo y recursos son la materia con la que se cotiza.
+  assert.equal(areaActiva('/administracion/base-maestra/recursos'), 'presupuestos')
   assert.equal(areaActiva('/documentos'), null)
   assert.equal(areaActiva('/administracion/usuarios'), null)
-  assert.equal(areaActiva('/presupuestos'), null)
   assert.equal(areaActiva('/obras'), null)
-  assert.equal(DESTINOS.length, 4)
+  assert.equal(DESTINOS.length, 5)
 })
 
 test('las dos pantallas del portal se retiraron: ya no encienden nada', () => {

@@ -14,25 +14,34 @@ const claves = (rol: Parameters<typeof solapasDeNav>[0]) => solapasDeNav(rol).ma
 const activa = (ruta: string, rol: Parameters<typeof solapasDeNav>[0] = 'direccion') =>
   solapaActiva(ruta, solapasDeNav(rol))
 
-test('Administración ve CUATRO solapas: Presupuestos subió a nivel 1 y Analíticas es el cuarto destino (17/09/2026)', () => {
-  assert.deepEqual(claves('direccion'), ['administracion', 'obras', 'presupuestos', 'analiticas'])
-  assert.deepEqual(claves('administracion'), ['administracion', 'obras', 'presupuestos', 'analiticas'])
+// ═══ PRESUPUESTOS VOLVIÓ A NIVEL 2 (dueño, 21/09/2026) ═══
+//
+// *«"presupuestos" es una sección dentro de CRM admin».* Había subido a nivel 1 el 25/08 por el
+// mockup v2; el dueño lo revirtió mirando la barra. La solapa de la aplicación queda en TRES, y
+// `/presupuestos` vuelve a pintar «Administración» —igual que `/clientes` y `/documentos`—, que es
+// la regla que la corrección del 24/08 había fijado para todas las rutas de primer nivel.
+test('Administración ve TRES solapas: Presupuestos volvió a ser sección del área (21/09/2026)', () => {
+  assert.deepEqual(claves('direccion'), ['administracion', 'obras', 'analiticas'])
+  assert.deepEqual(claves('administracion'), ['administracion', 'obras', 'analiticas'])
+  assert.ok(!claves('direccion').includes('presupuestos'), 'no puede volver a la barra de la aplicación sin una decisión del dueño')
 })
 
 test('el jefe de obra NO ve Presupuestos: un presupuesto ES precio', () => {
-  // La ruta está en `RUTAS_SOLO_ECONOMIA` y la base cierra `cotizaciones_select` con
-  // `ve_economia()`. Dibujarle la solapa sería una pantalla más ancha que la base.
+  // La ruta sigue en `RUTAS_SOLO_ECONOMIA` y la base cierra `cotizaciones_select` con
+  // `ve_economia()`. Que haya bajado de nivel no le abre la puerta a nadie.
+  assert.equal(puedeVerRuta('jefe_obra', '/presupuestos'), false)
   assert.deepEqual(claves('jefe_obra'), ['administracion', 'obras'])
   assert.deepEqual(claves('campo'), ['obras'])
   assert.deepEqual(claves(null), ['obras'], 'sin perfil se cae al nivel MENOS privilegiado')
 })
 
 test('cada ruta de primer nivel dice dónde estás', () => {
-  assert.equal(activa('/presupuestos'), 'presupuestos')
-  assert.equal(activa('/presupuestos/casa-luna/partida/3'), 'presupuestos')
+  assert.equal(activa('/presupuestos'), 'administracion')
+  assert.equal(activa('/presupuestos/casa-luna/partida/3'), 'administracion')
   assert.equal(activa('/analiticas'), 'analiticas')
   assert.equal(activa('/analiticas-2025'), null)
-  // LO QUE NO CAMBIA de la corrección del 24/08: estas tres siguen pintando Administración.
+  // LO QUE NO CAMBIA de la corrección del 24/08: éstas siguen pintando Administración, y desde el
+  // 21/09 también Presupuestos, que había sido la única excepción.
   assert.equal(activa('/documentos'), 'administracion')
   assert.equal(activa('/clientes/la-estrella'), 'administracion')
   assert.equal(activa('/administracion/pendientes'), 'administracion')
