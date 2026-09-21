@@ -112,16 +112,23 @@ export async function convertirADxf(rutaDwg, { directorio = null } = {}) {
   if (!conversor.argumentos) {
     return { ok: false, archivo: path.basename(String(rutaDwg ?? '')), porQue: `${conversor.comando} está instalado pero este módulo no sabe invocarlo todavía`, comoSeResuelve: 'agregar sus argumentos en CONVERSORES', estado: 'REQUIERE_CONVERSION' }
   }
-  const destino = path.join(directorio ?? fs.mkdtempSync(path.join(os.tmpdir(), 'xsas-dwg-')), `${path.basename(String(rutaDwg), path.extname(String(rutaDwg)))}.dxf`)
+  // Si nadie nos da un directorio, el temporal es NUESTRO: se borra en toda salida que no devuelve un
+  // DXF, y en la que sí lo devuelve se informa para que el que llama lo borre. Antes se creaba y no lo
+  // borraba nadie: /tmp tiene cuota y se agotó (20/09/2026).
+  const dirPropio = directorio ? null : fs.mkdtempSync(path.join(os.tmpdir(), 'xsas-dwg-'))
+  const limpiarPropio = () => { if (dirPropio) { try { fs.rmSync(dirPropio, { recursive: true, force: true }) } catch { /* ya no está */ } } }
+  const destino = path.join(directorio ?? dirPropio, `${path.basename(String(rutaDwg), path.extname(String(rutaDwg)))}.dxf`)
   const corrida = await correrConversor(conversor, rutaDwg, destino)
   if (!corrida.ok) {
+    limpiarPropio()
     return { ok: false, archivo: path.basename(String(rutaDwg ?? '')), porQue: `${conversor.comando} falló: ${corrida.porQue}`, comoSeResuelve: 'revisar la versión del DWG — LibreDWG no soporta todas', estado: 'NO_LEGIBLE', erroresConversor: corrida.errores, ultimasLineas: corrida.cola }
   }
   const tamano = fs.existsSync(destino) ? fs.statSync(destino).size : 0
   if (tamano < 64) {
+    limpiarPropio()
     return { ok: false, archivo: path.basename(String(rutaDwg ?? '')), porQue: `la conversión terminó sin error pero produjo un DXF de ${tamano} bytes: eso no es un plano`, comoSeResuelve: 'probar otro conversor o pedir el DXF al cliente', estado: 'NO_LEGIBLE' }
   }
-  return { ok: true, dxf: destino, bytes: tamano, conversor: conversor.comando, erroresConversor: corrida.errores, estado: 'LEIDO' }
+  return { ok: true, dxf: destino, directorioTemporal: dirPropio, bytes: tamano, conversor: conversor.comando, erroresConversor: corrida.errores, estado: 'LEIDO' }
 }
 
 /**

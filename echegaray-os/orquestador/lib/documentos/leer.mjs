@@ -17,7 +17,7 @@
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { writeFile, unlink, mkdtemp } from 'node:fs/promises'
+import { writeFile, rm, mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -76,7 +76,9 @@ export async function leerDocumento(bytes, { nombre = 'documento', mimeDeclarado
   } catch (e) {
     return { ...base, ok: false, porQue: `${e.code === 'ETIMEDOUT' ? 'tardó más de ' + TIMEOUT_MS + ' ms' : e.message.slice(0, 120)}` }
   } finally {
-    await unlink(ruta).catch(() => {})
+    // El directorio, no sólo el archivo: `unlink(ruta)` dejaba un `orq-doc-*` vacío por
+    // cada PDF leído, y /tmp tiene cuota (20/09/2026).
+    await rm(dir, { recursive: true, force: true }).catch(() => {})
   }
 }
 

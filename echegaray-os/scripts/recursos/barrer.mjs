@@ -13,10 +13,11 @@
 //
 // Uso: barrer.mjs [--seco] [--motivo texto]     `--seco` muestra sin matar.
 
-import { unlinkSync, readdirSync, existsSync, appendFileSync, mkdirSync } from 'node:fs'
+import { unlinkSync, readdirSync, readFileSync, existsSync, appendFileSync, mkdirSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
-import { DIR, procesosDesarrollo, registros, vivo, medir, tieneDueno, padreDe, descendientes } from './comun.mjs'
+import { DIR, procesosDesarrollo, registros, vivo, medir, tieneDueno, padreDe, descendientes, politica } from './comun.mjs'
+import { higieneTmp } from './higiene-tmp.mjs'
 
 const args = process.argv.slice(2)
 const SECO = args.includes('--seco')
@@ -99,14 +100,55 @@ if (matados.length && !SECO) {
   }
 }
 
-// ── Tickets de cola y sellos de cupo de procesos muertos. ──
+// ── Tickets de cola de procesos muertos. ──
 for (const sub of ['cola']) {
   const d = join(DIR, sub); if (!existsSync(d)) continue
   for (const f of readdirSync(d)) {
     const pid = Number(f.split('-').pop())
-    if (pid && !vivo(pid) && !SECO) { try { unlinkSync(join(d, f)) } catch { /* nada */ } }
+    if (pid && !vivo(pid) && !SECO) { try { unlinkSync(join(d, f)); log(`ticket de cola de un proceso muerto borrado: ${f}`) } catch { /* nada */ } }
   }
 }
+
+// ── Sellos de cupo que ya no corresponden. ──
+// El sello `.quien` dice de quién es un cupo; la evidencia de que el cupo está tomado es el candado.
+// Si el proceso del sello murió de golpe (SIGKILL) el núcleo suelta el candado al instante, pero el
+// sello queda: sin esta limpieza, `ecos estado` seguiría mostrando un dueño para un cupo que no tiene
+// ninguno, y la regla de prioridad de `ecos` le daría trato de retenedor a un muerto.
+// SE BORRA SÓLO CON CERTEZA: si `flock` no está o falla de otro modo, el sello se deja.
+// La sonda `flock -n` puede hacerle ver «ocupado» a un `ecos` que intenta tomar el cupo en ese mismo
+// instante (medido: ~0,1 % en operación normal, un ciclo de 3 s de demora). Acá el efecto inverso —ver
+// tomado un cupo libre— sólo hace NO borrar un sello: conservador.
+const dirSlots = join(DIR, 'slots')
+if (existsSync(dirSlots)) {
+  for (const f of readdirSync(dirSlots).filter((x) => x.endsWith('.quien'))) {
+    const sello = join(dirSlots, f)
+    const lock = sello.replace(/\.quien$/, '.lock')
+    let pid = 0
+    try { pid = Number((readFileSync(sello, 'utf8').match(/pid=(\d+)/) || [])[1] || 0) } catch { /* ilegible */ }
+    let candado = 'desconocido'
+    if (existsSync(lock)) {
+      try { execFileSync('flock', ['-n', lock, 'true'], { stdio: 'ignore' }); candado = 'libre' }
+      catch (e) { candado = e?.status === 1 ? 'tomado' : 'desconocido' }
+    } else candado = 'libre'
+    const sobra = (!pid || !vivo(pid)) ? true : candado === 'libre'
+    if (!sobra) continue
+    log(`${SECO ? 'borraría' : 'borré'} el sello huérfano ${f} (pid ${pid || '?'}${pid && !vivo(pid) ? ' ya no existe' : ''}, candado ${candado})`)
+    if (!SECO) { try { unlinkSync(sello) } catch { /* nada */ } }
+  }
+}
+
+// ── Higiene de /tmp. ──
+// Un huérfano no siempre es un proceso. El 20/09 fueron 95.657 directorios de `mkdtemp` que agotaron
+// la cuota de /tmp y dejaron sin shell a todas las sesiones de Claude Code. Ver higiene-tmp.mjs.
+try {
+  const pol = politica()
+  const dias = pol.ECOS_TMP_EDAD_DIAS || 3
+  const h = higieneTmp({ seco: SECO, edadDias: dias, tope: pol.ECOS_TMP_TOPE || 20000 })
+  if (h.borrados) {
+    log(`${SECO ? 'borraría' : 'borré'} ${h.borrados} temporal(es) de /tmp de más de ${dias} día(s)`
+      + `${h.enUso ? ` — ${h.enUso} en uso, intactos` : ''}${h.tope ? ' — tope de la corrida alcanzado, sigue en la próxima' : ''}`)
+  }
+} catch { /* la higiene ayuda, no manda: nunca puede trabar el barrido de procesos */ }
 
 const despues = medir()
 const resumen = acciones.length

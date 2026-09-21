@@ -147,6 +147,7 @@ normalizar_clases() {
 }
 
 FDS_TOMADOS=""
+SELLOS_MIOS=""
 SCOPE=""
 GRUPO=""
 LIMPIANDO=0
@@ -170,9 +171,64 @@ limpiar() {
     systemctl --user stop "$SCOPE" >/dev/null 2>&1
   fi
   if [ -n "${GRUPO:-}" ]; then kill -TERM -- "-$GRUPO" 2>/dev/null; sleep 1; kill -KILL -- "-$GRUPO" 2>/dev/null; fi
+  # Los sellos de cupo se borran acá, con los candados todavía en la mano: nadie puede haber tomado
+  # el cupo en el medio, así que no se borra el sello de otro. Si este proceso muere de golpe (SIGKILL)
+  # el candado lo suelta el núcleo al instante y el sello queda huérfano: lo limpia `ecos barrer`, y
+  # `ecos estado` no lo cree porque pregunta por el candado.
+  for s in ${SELLOS_MIOS:-}; do grep -q "pid=$$ " "$s" 2>/dev/null && rm -f "$s" 2>/dev/null; done
   rm -f "$TICKET" "$REGISTRO/$$.json" 2>/dev/null
   return $codigo
 }
+
+# ── QUIÉN RETIENE CADA CUPO ──
+# El sello `.quien` es el único lugar donde queda escrito QUIÉN tiene un cupo, desde cuándo y por
+# cuenta de qué sesión. Lo escribe `tomar_slots` SÓLO cuando consiguió TODAS las clases que pedía, y
+# lo borra al soltar.
+#
+# ANTES SE ESCRIBÍA APENAS SE CONSEGUÍA CADA CANDADO, Y ESO HACÍA MENTIR AL PANEL (18/09/2026): un
+# pedido de `e2e` que tomaba `browser` y no conseguía `next` devolvía el candado —medido: cerrar el
+# descriptor lo suelta— pero dejaba el sello escrito. `ecos estado` mostraba a la vez «cupo browser
+# 1/1 · pid N» y a ese mismo pid en la cola. Un panel que miente sobre quién tiene un cupo es tan
+# grave como el bloqueo, porque es el panel con el que se diagnostica el bloqueo.
+#
+# LA EVIDENCIA DE QUE UN CUPO ESTÁ TOMADO ES EL CANDADO, NO EL SELLO. El sello sólo dice de quién es.
+campo_sello() {  # campo_sello "<linea>" <clave>   ·   `orden` va último y lleva espacios
+  case " $1 " in *" $2="*) ;; *) return 1 ;; esac
+  local r="${1#* $2=}"
+  if [ "$2" = orden ]; then printf '%s' "$r"; else printf '%s' "${r%% *}"; fi
+}
+
+# Sello del que retiene esta clase, si su proceso sigue vivo. Falla si el cupo no tiene dueño conocido.
+quien_retiene() {
+  local clase="$1" f linea pid
+  for f in "$SLOTS/$clase".*.quien; do
+    [ -r "$f" ] || continue
+    linea="$(cat "$f" 2>/dev/null)"; [ -n "$linea" ] || continue
+    pid="$(campo_sello "$linea" pid)" || continue
+    [ -n "$pid" ] && [ -d "/proc/$pid" ] || continue
+    printf '%s' "$linea"; return 0
+  done
+  return 1
+}
+
+# ¿El cupo de esta clase lo retiene MI PROPIA sesión, en otro `ecos` lanzado por el mismo dueño?
+retiene_mi_dueno() {
+  local linea d
+  [ -n "${DUENO:-}" ] && [ "${DUENO:-0}" != 0 ] || return 1
+  linea="$(quien_retiene "$1")" || return 1
+  d="$(campo_sello "$linea" dueno)" || return 1
+  [ "$d" = "$DUENO" ]
+}
+
+# El texto del comando. Los sellos escritos por la versión anterior no tienen la clave `orden=`: ahí
+# vale todo lo que sigue al pid. Sirve durante el reemplazo, con las dos versiones conviviendo.
+orden_de_sello() {
+  local r
+  case " $1 " in *' orden='*) r="${1#* orden=}" ;; *) r="${1#* pid=}"; r="${r#* }" ;; esac
+  printf '%s' "$r"
+}
+
+dueno_de_pid() { sed -n 's/.*"dueno":\([0-9]*\).*/\1/p' "$REGISTRO/$1.json" 2>/dev/null; }
 
 # ── COLA FIFO ──
 # Sin cola, el que más veces pregunta gana y una validación puede esperar para siempre mientras
@@ -180,20 +236,119 @@ limpiar() {
 # descartan solos.
 # La cola es POR CLASE: un navegador no espera detrás de una validación que está esperando su propio
 # cupo. Sólo cede el turno ante un ticket más viejo que comparta alguna clase con el suyo.
+#
+# ═══ PRIORIDAD AL QUE RETIENE — POR QUÉ EXISTE ESTA EXCEPCIÓN (18/09/2026) ═══
+#
+# La antigüedad sola produjo una espera circular que dejó cuatro tareas paradas 30 minutos y después
+# las hizo fallar sin ejecutarlas, con la VM en carga 0,3 y 4,2 GB libres:
+#
+#   · `ecos next -- next dev` (sesión A) retiene `next`. Es un servidor: no lo suelta hasta que su
+#     dueño termine lo que vino a hacer.
+#   · `ecos e2e` (sesión B) pide `next`+`browser`. Su ticket es el más viejo. No puede arrancar porque
+#     `next` lo retiene A.
+#   · `ecos browser` (sesión A, la misma) queda detrás del ticket de B porque comparten `browser`.
+#   · A no suelta `next` hasta que corra su navegador; su navegador no corre porque le cede el turno
+#     a B; B no arranca porque espera el `next` de A. Ciclo cerrado.
+#
+# LA REGLA: no le cedo el turno a un pedido más viejo cuya espera depende de un cupo que retiene MI
+# PROPIA sesión. Cederle es cerrar el ciclo: su espera sólo termina cuando mi sesión suelta, y mi
+# sesión no suelta hasta que yo corra. Saltearlo, en el peor caso, lo demora — y ya estaba demorado
+# por un cupo que yo no controlo.
+#
+# POR QUÉ ESTO ALCANZA. `tomar_slots` es todo-o-nada: un `ecos` que espera NO retiene ningún cupo.
+# Entonces la única forma de que un retenedor esté a su vez bloqueado es que sea un proceso de vida
+# larga cuyo dueño esté esperando otro cupo — y esa dependencia pasa siempre por su propio dueño, que
+# es exactamente el arco que esta regla corta. LÍMITE CONOCIDO: si alguien introdujera un retenedor
+# indefinido de `browser` o `validacion` (un `tsc --watch`, un navegador abierto a mano) podría
+# armarse un ciclo entre DOS sesiones distintas; eso esta regla no lo rompe sola, pero `diagnostico`
+# lo nombra como BLOQUEO MUTUO en vez de mentir «no hay recursos».
+#
+# QUÉ SIGNIFICA «MI PROPIA SESIÓN» EN ESTA MÁQUINA, MEDIDO (auditoría del 18/09/2026): `DUENO` es el
+# primer `claude` hacia arriba en la cadena de padres, y en esta VM hay UN solo proceso `claude` con
+# todos los agentes corriendo adentro. En la práctica `DUENO` es una constante de máquina, y la regla
+# se lee «no le cedo el turno a quien espera un cupo que retiene CUALQUIER agente». No es riesgo de
+# saturación —el cupo lo sigue imponiendo `flock`, y el ciclo del incidente se sigue cortando—; es
+# pérdida de equidad: un pedido puede adelantarse a uno más viejo que igual no podía arrancar. Medido
+# en unos 3 s (un ciclo de espera). Si algún día cada agente tiene su proceso, la regla se afina sola.
 mi_turno() {
-  local t pid clases c
+  local t pid clases c comparte
   for t in $(ls -1 "$COLA" 2>/dev/null | sort); do
     pid="${t##*-}"
     if [ ! -d "/proc/$pid" ]; then rm -f "$COLA/$t" 2>/dev/null; continue; fi
     [ "$COLA/$t" = "$TICKET" ] && return 0
     clases="${t#*-}"; clases="${clases%-*}"
-    for c in $CLASES; do case "+$clases+" in *"+$c+"*) return 1 ;; esac; done
+    comparte=0
+    for c in $CLASES; do case "+$clases+" in *"+$c+"*) comparte=1 ;; esac; done
+    [ "$comparte" = 0 ] && continue
+    if depende_de_mi_sesion "$clases"; then continue; fi
+    return 1
   done
   return 0
 }
 
+# ¿Este pedido más viejo espera algún cupo que retiene mi propia sesión?
+depende_de_mi_sesion() {
+  local c
+  for c in ${1//+/ }; do retiene_mi_dueno "$c" && return 0; done
+  return 1
+}
+
+# ── DIAGNÓSTICO: QUIÉN TIENE QUÉ, CON NOMBRE Y HORA ──
+# Decir «se agotó la espera sin recursos» con 4,2 GB libres y carga 0,3 es mentir: no faltaban
+# recursos, faltaba un cupo que otro no soltaba. El que lee esto tiene que poder ver a quién llamar.
+diagnostico() {
+  local c linea pid d desde orden mio t tpid tclases td c2
+  for c in $CLASES; do
+    if linea="$(quien_retiene "$c")"; then
+      pid="$(campo_sello "$linea" pid)"; d="$(campo_sello "$linea" dueno)"
+      desde="${linea%% *}"; orden="$(orden_de_sello "$linea")"
+      mio=''; [ "$d" = "${DUENO:-0}" ] && mio='   ← ES TU PROPIA SESIÓN'
+      aviso "  cupo '$c': lo retiene pid $pid (sesión $d) desde $desde — ${orden:-?}$mio"
+    else
+      aviso "  cupo '$c': sin dueño registrado (libre, o tomado por alguien que no alcanzó a sellarlo)"
+    fi
+  done
+  for t in $(ls -1 "$COLA" 2>/dev/null | sort); do
+    [ "$COLA/$t" = "$TICKET" ] && break
+    tpid="${t##*-}"; [ -d "/proc/$tpid" ] || continue
+    tclases="${t#*-}"; tclases="${tclases%-*}"
+    aviso "  delante en la cola: pid $tpid pide ${tclases}"
+  done
+  medir
+  aviso "  la máquina: libre ${MEM_DISP_MB} MB (mínimo $(minimo_de "${CLASES##* }")) · swap ${SWAP_PCT}% (tope ${ECOS_MAX_SWAP_PCT}%) · carga ${CARGA1} (tope ${ECOS_MAX_CARGA})"
+  # Ciclo entre dos sesiones: yo espero un cupo de otra sesión que, a su vez, espera uno de la mía.
+  for c in $CLASES; do
+    linea="$(quien_retiene "$c")" || continue
+    d="$(campo_sello "$linea" dueno)"
+    [ "$d" = "${DUENO:-0}" ] && continue
+    for t in $(ls -1 "$COLA" 2>/dev/null); do
+      tpid="${t##*-}"; [ -d "/proc/$tpid" ] || continue
+      td="$(dueno_de_pid "$tpid")"; [ "$td" = "$d" ] || continue
+      tclases="${t#*-}"; tclases="${tclases%-*}"
+      for c2 in ${tclases//+/ }; do
+        retiene_mi_dueno "$c2" || continue
+        aviso "  BLOQUEO MUTUO: la sesión $d retiene '$c' y espera '$c2', que retiene tu sesión (${DUENO:-?})."
+        aviso "                 Ninguna avanza sola: una de las dos tiene que soltar su cupo."
+      done
+    done
+  done
+}
+
+# ── LA FORMA CORRECTA, DICHA CUANDO HACE FALTA ──
+# Un servidor de desarrollo abierto con `ecos next` mientras se espera el navegador aparte es la forma
+# que traba. Playwright levanta y apaga SU propio servidor: una sola reserva toma las dos clases.
+consejo_forma() {
+  case " $CLASES " in *' browser '*) ;; *) return 1 ;; esac
+  retiene_mi_dueno next || return 1
+  aviso "  forma: tu sesión dejó abierto un 'ecos next' (servidor de desarrollo) y pide el navegador por separado."
+  aviso "         Una prueba de navegador se pide con UNA SOLA reserva, que toma 'next' y 'browser' juntos:"
+  aviso "             E2E_PORT=3xxx ecos e2e -- npx playwright test <spec>"
+  aviso "         Playwright levanta y apaga su propio servidor con E2E_PORT; no hace falta el 'ecos next' abierto."
+  return 0
+}
+
 tomar_turno() {
-  local clase esperando=0 ultimo_aviso=0 t0
+  local clase esperando=0 ultimo_aviso=0 t0 forma_avisada=0
   t0=$(date +%s)
   TICKET="$COLA/$(date +%s%N)-${CLASES// /+}-$$"
   : > "$TICKET"
@@ -219,17 +374,20 @@ tomar_turno() {
         return 0
       fi
     else
-      MOTIVO="hay tareas pesadas antes en la cola"
+      MOTIVO="hay un pedido más viejo en la cola por la misma clase"
     fi
 
     esperando=1
+    [ "$forma_avisada" = 0 ] && { consejo_forma && forma_avisada=1; }
     local ahora; ahora=$(date +%s)
     if [ $(( ahora - ultimo_aviso )) -ge "$ECOS_AVISO_CADA" ]; then
-      aviso "esperando recursos para ${CLASES// /+}: ${MOTIVO:-cupo ocupado} · libre ${MEM_DISP_MB} MB · swap ${SWAP_PCT}% · carga ${CARGA1}"
+      aviso "esperando ${CLASES// /+}: ${MOTIVO:-cupo ocupado} · libre ${MEM_DISP_MB} MB · swap ${SWAP_PCT}% · carga ${CARGA1}"
       ultimo_aviso=$ahora
     fi
     if [ $(( ahora - t0 )) -ge "$ECOS_ESPERA_MAX" ]; then
-      aviso "se agotó la espera (${ECOS_ESPERA_MAX}s) sin recursos para ${CLASES// /+}. La tarea NO se ejecutó."
+      aviso "se agotó la espera (${ECOS_ESPERA_MAX}s) para ${CLASES// /+}. La tarea NO se ejecutó. Esto es lo que había:"
+      diagnostico
+      consejo_forma
       rm -f "$TICKET"; exit 75
     fi
     sleep 3
@@ -237,28 +395,38 @@ tomar_turno() {
 }
 
 # Toma un cupo de cada clase pedida. Si no consigue todos, suelta los que había tomado: media tarea
-# con medio cupo es la forma más fácil de trabar a las dos.
+# con medio cupo es la forma más fácil de trabar a las dos. Este todo-o-nada es lo que garantiza que
+# un `ecos` que espera no retenga NADA, y es la mitad del argumento de por qué no puede haber ciclo.
 tomar_slots() {
-  local clase i base fd max obtenido
-  local tomados_ahora=""
+  local clase i base fd max obtenido s linea
+  local tomados_ahora="" sellos_ahora=""
   for clase in $CLASES; do
     max="$(max_de "$clase")"; base="$(fdbase_de "$clase")"; obtenido=0
     for i in $(seq 1 "$max"); do
       fd=$(( base + i ))
       eval "exec $fd>>'$SLOTS/$clase.$i.lock'" 2>/dev/null || continue
       if flock -n "$fd"; then
-        printf '%s pid=%s %s\n' "$(date -Is)" "$$" "${ORDEN:-?}" > "$SLOTS/$clase.$i.quien" 2>/dev/null
-        tomados_ahora="$tomados_ahora $fd"; obtenido=1; break
+        tomados_ahora="$tomados_ahora $fd"; sellos_ahora="$sellos_ahora $SLOTS/$clase.$i.quien"; obtenido=1; break
       fi
       eval "exec $fd>&-" 2>/dev/null
     done
     if [ "$obtenido" = 0 ]; then
-      MOTIVO="ya hay $max tarea(s) de tipo '$clase' corriendo"
+      if linea="$(quien_retiene "$clase")"; then
+        MOTIVO="el cupo '$clase' lo retiene pid $(campo_sello "$linea" pid) desde ${linea%% *} ($(orden_de_sello "$linea"))"
+      else
+        MOTIVO="ya hay $max tarea(s) de tipo '$clase' corriendo"
+      fi
       for fd in $tomados_ahora; do eval "exec $fd>&-" 2>/dev/null; done
       return 1
     fi
   done
-  FDS_TOMADOS="$tomados_ahora"
+  # EL SELLO SE ESCRIBE RECIÉN ACÁ, con todas las clases ya conseguidas: un intento que se devuelve no
+  # deja rastro de propiedad. Ver el comentario de arriba: el panel mentía por escribirlo antes.
+  for s in $sellos_ahora; do
+    printf '%s pid=%s dueno=%s clases=%s orden=%s\n' "$(date -Is)" "$$" "${DUENO:-0}" "${CLASES// /+}" \
+      "$(printf '%s' "${ORDEN:-?}" | tr '\n\t' '  ' | cut -c1-200)" > "$s" 2>/dev/null
+  done
+  FDS_TOMADOS="$tomados_ahora"; SELLOS_MIOS="$sellos_ahora"
   return 0
 }
 
@@ -309,7 +477,11 @@ registrar() {
 # DUEÑO: la sesión que lanzó esta tarea (Claude Code, VS Code, SSH, un servicio). Cuando el dueño
 # muere, el barrido apaga la tarea aunque `ecos` siga vivo — un `ecos next -- npm run dev &` no puede
 # sobrevivir a la sesión que lo pidió con el cupo tomado para nadie.
-DUENO=$PPID; p=$PPID
+# `ECOS_DUENO` permite DECLARAR la sesión dueña cuando la cadena de padres no la delata: un supervisor
+# que lanza tareas por cuenta de otra sesión, o una prueba que necesita simular dos sesiones distintas.
+DUENO="${ECOS_DUENO:-}"; p=$PPID
+[ -n "$DUENO" ] && p=1
+[ -z "$DUENO" ] && DUENO=$PPID
 while [ "${p:-0}" -gt 1 ]; do
   cmd="$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)"
   case "$cmd" in *native-binary/claude*|claude\ *|*/claude\ *|*.vscode-server/*|*sshd*|*systemd*) DUENO=$p; break ;; esac
