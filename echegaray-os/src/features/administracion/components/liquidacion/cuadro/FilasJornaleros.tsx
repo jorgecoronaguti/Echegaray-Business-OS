@@ -22,7 +22,6 @@ import {
 } from './CeldasBlancoNegro'
 import { CeldaTarifa, rotuloCategoria } from './CeldaTarifa'
 import { CeldaPersona, RenglonDelDetalle } from './CeldaPersona'
-import { LoQueCobra } from './LoQueCobra'
 import { categoriasDeLaFila } from './categoriasDeLaFila'
 import { filaPagada } from './marcaDePago'
 import { filaGrid, PERSONA_ESTIRADA } from './TablaDeBloques'
@@ -56,7 +55,6 @@ export function FilaJornalero({ fila, columnas, edicion, pct, abrir }: {
     <div data-testid={`espejo-fila-${fila.personaId}`} data-tipo="jornalero" data-fila-edicion="" data-pagada={fondo ? '1' : undefined}
       style={{ ...filaGrid(columnas, ALTO_LIQ.filaAlta), background: fondo }}>
       <CeldaPersona fila={fila} fondo={fondo} quincena={quincena} camposEditables={edicion.camposEditables} abrir={abrir}
-        cobro={<LoQueCobra fila={fila} />}
         detalle={(
           <div data-testid={`categorias-${fila.personaId}`} data-coinciden={c.coinciden ? '1' : '0'} title={c.titulo}>
             {/* LOS DOS RENGLONES QUEDAN (los pidió el dueño el 16/09) pero tenues; la plataforma se oscurece SÓLO
