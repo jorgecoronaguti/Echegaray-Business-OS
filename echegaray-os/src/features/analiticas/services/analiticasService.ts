@@ -26,8 +26,14 @@ export interface DatosAnaliticas {
   /** Lo sin obra de cada cliente con su apertura (materiales, subcontratos, comprobantes). */
   sinObraDetalle: Map<string, GastoSinObra>
   cuentaCorriente: unknown[] | null
-  /** Vista Caja: filas de `caja_egreso_percibido` (lo salido por fecha de caja) dentro del período. */
+  /**
+   * Vista Caja: lo salido dentro del período, con la forma de `caja_egreso_percibido`. Sin esa vista
+   * en la base (migración 20260918T1500 sin aplicar) son las filas de `egreso_por_area` adaptadas, y
+   * `criterioEgresos` lo dice: son dos criterios distintos y la pantalla no los puede confundir.
+   */
   egresos: unknown[] | null
+  /** `percibido` = cada pago en su fecha (Compras) · `devengado` = la fecha del comprobante. */
+  criterioEgresos: CriterioEgreso
   /** Vista Caja: la pestaña CAJA leída de su espejo (`caja_sheet_vigente`). */
   cajaSheet: LecturaCaja
   /**
@@ -104,20 +110,10 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
   // LO SIN OBRA ES DEL CLIENTE: se recorta por período y NUNCA por obra.
   const sinObra = new Map([...(sinObraCruda ?? new Map()).entries()].map(([k, g]) => [k, sinObraDe(g)]))
 
-  const conRango = <T extends { gte: (c: string, v: string) => T; lte: (c: string, v: string) => T }>(q: T, col: string): T => {
-    let r = q
-    if (rango.desde) r = r.gte(col, rango.desde)
-    if (rango.hasta) r = r.lte(col, rango.hasta)
-    return r
-  }
   const [egresos, nomina, quincenas, personas, documentos, cajaSheet, deuda] = await Promise.all([
     // LO QUE SALIÓ, CADA PAGO EN SU FECHA (dueño, 18/09/2026: criterio percibido, filtrable por fechas). Lo
     // pendiente y lo «Pagado» sin monto viajan también: se cuentan aparte. PAGINADO (D6): ~960 filas el 18/09.
-    f.vista === 'caja'
-      ? leerPaginado((a, b) => conRango(supabase.from('caja_egreso_percibido').select('area, fecha_pago, monto, naturaleza, fila'), 'fecha_pago')
-        .order('fecha_pago').order('fila').order('naturaleza').order('monto').range(a, b))
-        .then((data) => ({ data }))
-      : null,
+    f.vista === 'caja' ? leerEgresosDeCaja(supabase, rango) : null,
     f.vista === 'nomina' ? supabase.from('nomina_por_mes').select('mes, costo_nomina, cargas_sociales, es_estimacion') : null,
     f.vista === 'nomina' ? supabase.from('jornales_quincena').select('desde, estado') : null,
     f.vista === 'nomina' ? supabase.from('personas').select('en_la_empresa, categoria').eq('es_prueba', false) : null,
@@ -141,7 +137,8 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     cajaSheet,
     deudaProveedores: deuda?.data ? { ...totalesDeuda(deuda.data.filas), truncado: deuda.data.truncado } : null,
     cuentaCorriente: Array.isArray(raiz?.cuenta_corriente) ? raiz.cuenta_corriente : null,
-    egresos: egresos?.data ?? null,
+    egresos: egresos?.filas ?? null,
+    criterioEgresos: egresos?.criterio ?? 'percibido',
     nomina: nomina?.data ?? null,
     quincenas: quincenas?.data ?? null,
     personas: personas?.data ?? null,
@@ -160,6 +157,48 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
       return typeof r.obra_id === 'string' && r.neto_de_iva === true ? [[r.obra_id, Number(r.n_sin_iva_discriminado ?? 0)] as [string, number]] : []
     })),
     legible: raiz != null,
+  }
+}
+
+export type CriterioEgreso = 'percibido' | 'devengado'
+
+/**
+ * LO QUE SALIÓ, Y CON QUÉ CRITERIO SALIÓ.
+ *
+ * La fuente buena es `caja_egreso_percibido`: cada pago de Compras en la fecha en que se pagó (criterio
+ * percibido, regla de oro 5). Vive en la migración 20260918T1500, que se aplica DESPUÉS de publicar esta
+ * rama. Mientras no esté, en vez de dejar la vista muda se lee `egreso_por_area` —lo que la Caja mostraba
+ * hasta hoy, por fecha del comprobante— y se devuelve `devengado` para que la pantalla lo DIGA. Dos
+ * criterios distintos no se pueden dibujar iguales; tampoco se publica una pantalla en blanco.
+ */
+export async function leerEgresosDeCaja(
+  supabase: SupabaseClient, rango: { desde: string | null; hasta: string | null },
+): Promise<{ criterio: CriterioEgreso; filas: unknown[] | null }> {
+  const acotar = <T extends { gte: (c: string, v: string) => T; lte: (c: string, v: string) => T }>(q: T, col: string): T => {
+    let r = q
+    if (rango.desde) r = r.gte(col, rango.desde)
+    if (rango.hasta) r = r.lte(col, rango.hasta)
+    return r
+  }
+  const sonda = await supabase.from('caja_egreso_percibido').select('fila').limit(1)
+  if (!sonda.error) {
+    return {
+      criterio: 'percibido',
+      filas: await leerPaginado((a, b) => acotar(supabase.from('caja_egreso_percibido').select('area, fecha_pago, monto, naturaleza, fila'), 'fecha_pago')
+        .order('fecha_pago').order('fila').order('naturaleza').order('monto').range(a, b)),
+    }
+  }
+  if (!SIN_RELACION.has(String(sonda.error.code))) return { criterio: 'percibido', filas: null }
+  const viejas = await leerPaginado((a, b) => acotar(supabase.from('egreso_por_area').select('area, grupo, total, fecha'), 'fecha')
+    .order('fecha').order('area').order('grupo').order('total').range(a, b))
+  // Con la forma de `caja_egreso_percibido`, para que abajo haya UNA sola lectura: cada comprobante es
+  // un «pago» en la fecha de su comprobante. No se inventa nada — el criterio viaja al lado.
+  return {
+    criterio: 'devengado',
+    filas: viejas?.map((f) => {
+      const r = f as Record<string, unknown>
+      return { area: r.area, fecha_pago: r.fecha, monto: r.total, naturaleza: 'pago', fila: null }
+    }) ?? null,
   }
 }
 

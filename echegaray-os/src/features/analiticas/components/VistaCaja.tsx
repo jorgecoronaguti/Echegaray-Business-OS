@@ -17,6 +17,7 @@
 import { millones } from '../services/formato'
 import { caja, type Caja } from '../services/empresa'
 import type { TotalesDeuda } from '@/features/administracion/services/deudaProveedores'
+import type { CriterioEgreso } from '../services/analiticasService'
 import { egresosPercibidos, frescura, horaSanJuan, type GraficoCaja, type LecturaCaja, type SeccionCaja, type SerieCaja } from '../services/cajaSheet'
 import { apilar, disposicion, escala, fechaCorta, GEOMETRIA, paneles, rotuloEje, rotulosDelEje, rotuloVentana, textoCelda, xDe } from '../services/graficoCaja'
 import { Cabecera, FilaDeCifras, ENCABEZADO, Seccion, SinLectura } from './Piezas'
@@ -26,10 +27,12 @@ import { Columnas } from './VistasEmpresa'
 /** La rampa de grises del diseño v9 para las ramas de estructura, en el orden en que llegan. */
 const GRISES_DE_AREA = ['text-ink-soft', 'text-muted', 'text-dato-materiales', 'text-dato-referencia']
 
-export function VistaCaja({ lectura, egresos, periodo, rango, deuda = null }: {
+export function VistaCaja({ lectura, egresos, criterio = 'percibido', periodo, rango, deuda = null }: {
   lectura: LecturaCaja
   deuda?: (TotalesDeuda & { truncado: boolean }) | null
   egresos: unknown[] | null
+  /** Con qué criterio llegó lo salido; sin la migración del espejo es `devengado` y se dice. */
+  criterio?: CriterioEgreso
   periodo: string
   rango: { desde: string | null; hasta: string | null }
 }) {
@@ -42,7 +45,7 @@ export function VistaCaja({ lectura, egresos, periodo, rango, deuda = null }: {
             : lectura.estado === 'sin_foto' ? `El espejo de CAJA todavía no guardó ninguna foto${lectura.error ? ` — último intento: ${lectura.error}` : ''}.`
               : 'No se pudo leer el espejo de CAJA.'}
         </p>
-        <Gasto egresos={egresos} periodo={periodo} rango={rango} />
+        <Gasto egresos={egresos} criterio={criterio} periodo={periodo} rango={rango} />
       </>
     )
   }
@@ -83,7 +86,7 @@ export function VistaCaja({ lectura, egresos, periodo, rango, deuda = null }: {
           <Grafico g={g} />
         </Seccion>
       ))}
-      <Gasto egresos={egresos} periodo={periodo} rango={rango} />
+      <Gasto egresos={egresos} criterio={criterio} periodo={periodo} rango={rango} />
     </>
   )
 }
@@ -250,8 +253,9 @@ function Grafico({ g }: { g: GraficoCaja }) {
  */
 const porPesoDeObra = (x: number | null) => (x == null ? null : `$ ${x.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
 
-function Gasto({ egresos, periodo, rango }: { egresos: unknown[] | null; periodo: string; rango: { desde: string | null; hasta: string | null } }) {
+function Gasto({ egresos, criterio, periodo, rango }: { egresos: unknown[] | null; criterio: CriterioEgreso; periodo: string; rango: { desde: string | null; hasta: string | null } }) {
   if (!egresos) return <div data-testid="caja-gasto-sin-lectura"><SinLectura que="lo que salió (caja_egreso_percibido)" /></div>
+  const percibido = criterio === 'percibido'
   const p = egresosPercibidos(egresos)
   const c: Caja = caja(p.egresos)
   const max = Math.max(1, ...c.meses.map((m) => m.aObra + m.estructura))
@@ -267,7 +271,10 @@ function Gasto({ egresos, periodo, rango }: { egresos: unknown[] | null; periodo
       <div className="grid gap-5 lg:grid-cols-[180px_minmax(0,1fr)] lg:gap-6">
         <div className="flex flex-col gap-1.5">
           <h2 className="text-[15px] font-semibold text-ink">Lo que se está gastando</h2>
-          <p className="text-xs leading-[1.45] text-muted tabular-nums" data-testid="caja-gasto-ventana">{ventana} · cada pago en la fecha en que se pagó, según Compras</p>
+          <p className="text-xs leading-[1.45] text-muted tabular-nums" data-testid="caja-gasto-ventana">
+            {ventana} · {percibido ? 'cada pago en la fecha en que se pagó, según Compras'
+              : 'por fecha del comprobante: la lectura de pagos (caja_egreso_percibido) todavía no está publicada en esta base'}
+          </p>
         </div>
         <div className="flex flex-col gap-6">
           <FilaDeCifras cifras={[
@@ -278,14 +285,15 @@ function Gasto({ egresos, periodo, rango }: { egresos: unknown[] | null; periodo
             { rotulo: 'estructura por cada peso de obra', valor: porPesoDeObra(c.estructuraPorPesoDeObra), falta: '—',
               nota: c.estructuraPorPesoDeObra != null ? `por cada $ 1 que fue a una obra, ${porPesoDeObra(c.estructuraPorPesoDeObra)} fueron a estructura` : undefined },
           ]} />
-          {/* LO QUE NO ES SALIDA, APARTE Y DICHO: deuda del período, lo «Pagado» sin monto en Compras y un pago sin fecha. */}
-          <FilaDeCifras cifras={[
+          {/* LO QUE NO ES SALIDA, APARTE Y DICHO: deuda del período, lo «Pagado» sin monto en Compras y un
+              pago sin fecha. Sin la vista de pagos no hay con qué decirlo, y no se dibuja un cero. */}
+          {percibido ? <FilaDeCifras cifras={[
             { rotulo: 'por pagar en el período', valor: p.pendientes.n ? millones(p.pendientes.total) : null, falta: 'nada', tono: 'muted', nota: p.pendientes.n ? `${p.pendientes.n} ${p.pendientes.n === 1 ? 'compra' : 'compras'} · deuda, no salida` : undefined },
             { rotulo: 'pagado sin monto en Compras', valor: p.sinDesglose.n ? millones(p.sinDesglose.total) : null, falta: 'ninguno', tono: p.sinDesglose.n ? 'warn' : 'muted',
               nota: p.sinDesglose.n ? `${p.sinDesglose.n} ${p.sinDesglose.n === 1 ? 'compra marcada' : 'compras marcadas'} «Pagado» sin Monto Pagado · no se suman: se completan en Compras` : undefined },
             { rotulo: 'pagos sin fecha', valor: p.pagosSinFecha.n ? millones(p.pagosSinFecha.total) : null, falta: 'ninguno', tono: p.pagosSinFecha.n ? 'warn' : 'muted',
               nota: p.pagosSinFecha.n ? `${p.pagosSinFecha.n} sin «Fecha prevista 2» · no entran a ningún mes` : undefined },
-          ]} />
+          ]} /> : null}
         </div>
       </div>
       {c.meses.length ? (

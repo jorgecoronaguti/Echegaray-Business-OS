@@ -175,7 +175,7 @@ function CobrosProximos({ a, agenda, hoy }: { a: AgendaDeCobro; agenda: unknown[
   ].join(' · ')
   return (
     <Seccion titulo="Cobros próximos" aclaracion={aclaracion} arriba="pt-8">
-      <div className="flex flex-col">
+      <div className="flex flex-col" data-testid="cobranza-proximos">
         <div className={`hidden h-9 items-center gap-6 border-b border-line lg:grid lg:grid-cols-[150px_110px_minmax(0,1fr)_150px_170px] ${ENCABEZADO}`}>
           <div>Cuándo</div><div className="text-right">Monto</div><div /><div>Cliente</div><div>Comprobante</div>
         </div>
@@ -186,7 +186,7 @@ function CobrosProximos({ a, agenda, hoy }: { a: AgendaDeCobro; agenda: unknown[
         ) : cerca.map((f) => {
           const tono = tonoDeCobro(f.dias, f.vencido)
           return (
-            <div key={f.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 border-b border-line py-2.5 hover:bg-surface-quiet lg:h-11 lg:grid-cols-[150px_110px_minmax(0,1fr)_150px_170px] lg:gap-6 lg:py-0">
+            <div key={f.id} data-testid="cobranza-proximo" className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 border-b border-line py-2.5 hover:bg-surface-quiet lg:h-11 lg:grid-cols-[150px_110px_minmax(0,1fr)_150px_170px] lg:gap-6 lg:py-0">
               <div className="flex min-w-0 items-baseline gap-2">
                 <span className="whitespace-nowrap text-[13px] font-medium tabular-nums text-ink">{diaMesAnio(f.fecha)}</span>
                 <span className={`truncate text-[11.5px] ${tono.texto}`}>{cuando(f.dias)}</span>
