@@ -298,3 +298,45 @@ test('con una obra elegida se la nombra: la pantalla habla de esa y de nada más
     '2 pagos · ME - BSA',
   )
 })
+
+// ═══ EL IVA QUE SE DEBE SOLO — DATOS REALES DE QUATTROPANI (dueño, 21/09/2026) ═══
+//
+// Textual: «mostrar q debe el iva, al final de todo porque sale como $0 en los saldos y lo pagado en
+// pendiente iva». Su cronograma en pesos visible en el portal son tres líneas: el IVA de la Factura
+// 220 (cobrado), la Certificación 1/9 (cobrada, $5.262.600 sin IVA en la línea) y «IVA de FC A
+// 0001-00000230» (PENDIENTE, $1.105.146) — el impuesto de esa certificación ya cobrada.
+//
+// EL DEFECTO: el número grande del pie es el NETO, y el neto de una línea que ES el impuesto vale
+// cero. El cliente leía «PENDIENTE $ 0» debiendo $1.105.146. Cero en el lugar de la deuda no es un
+// número incompleto: es una afirmación falsa.
+//
+// LA MUTACIÓN QUE TIENE QUE PONER ESTO ROJO: contar esa línea como neto pendiente (haría que el pie
+// publique $1.105.146 de obra que no se certificó), o dejar de contarla (vuelve el $ 0 mudo).
+test('QUATTROPANI: el IVA pendiente sin neto detrás se cuenta aparte, y el neto pendiente sigue en cero', () => {
+  const pagos = [
+    p({ id: 'iva220', monto: 6_510_000, iva: 6_510_000, fechaPago: '2026-08-19' }),
+    p({ id: 'cert1', monto: 5_262_600, neto: 5_262_600, fechaPago: '2026-09-09' }),
+    p({ id: 'iva230', monto: 1_105_146, iva: 1_105_146, fechaPrevista: '2026-09-25' }),
+  ]
+  const r = resumenDeCobro(pagos, null, HOY)
+  // El neto pendiente SIGUE siendo cero, y está bien: no hay obra sin certificar. Lo que faltaba era
+  // decir la deuda, no inflar el neto.
+  assert.equal(r.netoPendiente, 0)
+  assert.equal(r.ivaSinNetoPendiente, 1_105_146)
+  assert.equal(r.nIvaSinNeto, 1)
+  // Y lo cobrado no se toca: el IVA de la Factura 220 es impuesto puro, no obra facturada.
+  assert.equal(r.netoPagado, 5_262_600)
+  assert.equal(r.ivaPagado, 6_510_000)
+})
+
+test('una certificación pendiente CON neto no entra en el IVA sin neto: ahí el pie ya lo dice', () => {
+  const r = resumenDeCobro([p({ monto: 6_413_890.56, neto: 5_300_736, iva: 1_113_154.56, fechaPrevista: '2026-10-09' })], null, HOY)
+  assert.equal(r.ivaSinNetoPendiente, 0)
+  assert.equal(r.nIvaSinNeto, 0)
+  assert.equal(r.netoPendiente, 5_300_736)
+})
+
+test('sin ninguna línea en la moneda, el IVA sin neto es ausencia y no cero', () => {
+  const r = resumenDeCobro([p({ moneda: 'USD', monto: 4235, neto: 3500, iva: 735, fechaPrevista: '2026-10-09' })], null, HOY)
+  assert.equal(r.ivaSinNetoPendiente, null)
+})

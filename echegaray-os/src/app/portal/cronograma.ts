@@ -136,6 +136,23 @@ export type ResumenCobro = {
   netoPendiente: number | null
   ivaPendiente: number | null
   /**
+   * ═══ EL IVA QUE SE DEBE SOLO, SIN NETO DETRÁS (dueño, 21/09/2026) ═══
+   *
+   * Textual: «mostrar q debe el iva, al final de todo porque sale como $0 en los saldos y lo pagado
+   * en pendiente iva».
+   *
+   * Hay líneas pendientes que SON el impuesto y nada más —«IVA de FC A 0001-00000230», cuya
+   * certificación ya se cobró—. Su neto es 0, así que el pie publicaba «PENDIENTE $ 0» en el número
+   * grande con el total con IVA en letra chica debajo. El cero es cierto del NETO y falso de la
+   * DEUDA: el cliente lee que no debe nada y debe el impuesto entero.
+   *
+   * Se cuenta aparte para poder decirlo con palabras al final del pie, en vez de esperar que alguien
+   * deduzca una deuda de un cero. `null` = ninguna línea de esta moneda lo alimentó.
+   */
+  ivaSinNetoPendiente: number | null
+  /** Cuántas líneas de impuesto puro quedaron pendientes. Un total sin su conteo no se cruza. */
+  nIvaSinNeto: number
+  /**
    * ═══ DE CUÁNTOS COBROS SALE CADA NÚMERO (26/08/2026) ═══
    *
    * «Los filtros de la sección Pagos deben indicar qué es lo que muestra cada concepto del footer.»
@@ -211,6 +228,9 @@ export function resumenDeCobro(
   // Los números del pie salen de la MISMA pasada: neto e IVA de lo cobrado y de lo pendiente, para
   // que el cliente pueda cruzarlos contra su libro de IVA compras sin sacar la calculadora.
   let netoPagado = 0, ivaPagado = 0, netoPendiente = 0, ivaPendiente = 0
+  // El impuesto puro pendiente: líneas sin neto detrás, que el pie no puede representar con su
+  // número grande porque ese número es el neto.
+  let ivaSinNetoPendiente = 0, nIvaSinNeto = 0
   // CUÁNTAS LÍNEAS DE ESTA MONEDA ALIMENTARON CADA TOTAL. Sin esto, un cliente cuyo cronograma está entero
   // en dólares —Quattropani— leía «Pendiente $ 0» teniendo nueve certificados por delante. Cero es
   // una afirmación: dice que no debe nada. Lo que corresponde decir ahí es que no hay nada EN PESOS,
@@ -243,8 +263,12 @@ export function resumenDeCobro(
     }
     if (p.tipo === 'fondo_reparo') continue
     pendiente += p.monto
-    netoPendiente += netoDe(p)
+    const neto = netoDe(p)
+    netoPendiente += neto
     if (p.iva != null) ivaPendiente += p.iva
+    // LA LÍNEA QUE ES SÓLO IMPUESTO. Su neto es cero de verdad (no «sin cargar»): lo que se debe es
+    // el IVA de un trabajo cuyo neto ya se cobró.
+    if (neto === 0 && p.iva != null && p.iva > 0) { ivaSinNetoPendiente += p.iva; nIvaSinNeto++ }
     nPendiente++
     if (estadoDePago(p, hoyISO) === 'vencido') vencido += p.monto
   }
@@ -254,6 +278,8 @@ export function resumenDeCobro(
     netoPendiente: enLaMoneda ? netoPendiente : null,
     ivaPagado: enLaMoneda ? ivaPagado : null,
     ivaPendiente: enLaMoneda ? ivaPendiente : null,
+    ivaSinNetoPendiente: enLaMoneda ? ivaSinNetoPendiente : null,
+    nIvaSinNeto,
     nPagado, nPendiente,
     vencido: enLaMoneda ? vencido : null,
     pendiente: enLaMoneda ? pendiente : null,

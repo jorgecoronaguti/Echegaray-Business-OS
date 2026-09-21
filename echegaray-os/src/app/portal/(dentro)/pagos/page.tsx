@@ -194,6 +194,15 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   const hayPesos = enCurso.some((p) => p.moneda === 'ARS') && (aportaEnPesos || !hayDolares)
   /** IVA cobrado en pesos que no tiene columna propia porque su neto está en otra moneda. */
   const ivaSueltoEnPesos = !hayPesos && (total.ivaPagado ?? 0) > 0 ? total.ivaPagado : null
+  // EL IMPUESTO PURO PENDIENTE: deuda que el número grande del pie no puede mostrar, porque ese
+  // número es el neto y el neto de estas líneas es cero.
+  //
+  // VA EN PESOS Y PUNTO (dueño, 21/09/2026: «la obra de este cliente está cotizada en dólares pero
+  // paga en pesos al tipo de cambio del día de pago, no compliques las cosas»). El IVA se factura y
+  // se paga en pesos: no hay una versión en dólares de este número que haya que separar.
+  const ivaSinNeto = (total.ivaSinNetoPendiente ?? 0) > 0 && total.nIvaSinNeto > 0
+    ? { monto: total.ivaSinNetoPendiente as number, n: total.nIvaSinNeto }
+    : null
   const nombreDelFiltro = obra ? (conPagos.find(([id]) => id === obra)?.[1] ?? '') : null
   // De cuántas obras salió el contrato, y cuántas quedaron sin él. Con una obra elegida es esa sola.
   const cobertura = obra
@@ -527,6 +536,24 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
           {ivaSueltoEnPesos ? (
             <p className="mt-3 text-[12.5px] text-faint">
               Además pagó {pesos(ivaSueltoEnPesos)} de IVA en pesos, correspondiente a los pagos de arriba.
+            </p>
+          ) : null}
+          {/* ═══ EL IVA QUE SE DEBE, DICHO CON PALABRAS Y AL FINAL DE TODO (dueño, 21/09/2026) ═══
+
+              «Mostrar que debe el IVA, al final de todo, porque sale como $ 0 en los saldos y lo
+              pagado en pendiente IVA.» Quattropani tiene una línea pendiente que ES el impuesto de
+              una certificación cuyo neto ya cobró: el pie publicaba «PENDIENTE $ 0» —cierto del
+              neto, que es lo que ese número mide— con el importe real en letra chica debajo. Un
+              cero en el lugar donde se lee la deuda dice «no debe nada», y debe el impuesto entero.
+
+              Va acá abajo, después de las columnas y de los avisos, porque es lo último que queda
+              por saldar; y va con el conteo al lado, como el resto del pie. NO se suma al neto
+              pendiente: el trabajo está facturado y cobrado, lo que falta es el impuesto. */}
+          {ivaSinNeto ? (
+            <p className="mt-3 text-[12.5px] text-ink">
+              Además queda pendiente el IVA de {ivaSinNeto.n === 1 ? 'una certificación ya cobrada' : `${ivaSinNeto.n} certificaciones ya cobradas`}:{' '}
+              <span className="tnum font-mono font-semibold">{pesos(ivaSinNeto.monto)}</span>.{' '}
+              No suma al neto pendiente —ese trabajo ya está cobrado— pero sí se debe.
             </p>
           ) : null}
           {anteriores.length ? (
