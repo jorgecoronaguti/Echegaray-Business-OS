@@ -234,7 +234,23 @@ export function formulaBlancoMedido({ filaTotal, hoja = 'Cargas Sociales' } = {}
   const H = `'${hoja}'`
   const rot = `MATCH("Remuneración declarada";${H}!$A$1:$A$80;0)`
   const fila = `INDEX(${H}!$B$1:$M$80;${rot};0)`
-  return `=IFERROR(SUM(${fila})*(1-$D$5)/SUM(OFFSET($D$${filaTotal};0;0;1;COUNT(${fila})));"")`
+  const calculo = `SUM(${fila})*(1-$D$5)/SUM(OFFSET($D$${filaTotal};0;0;1;COUNT(${fila})))`
+  // ═══ SE DIBUJA CON TEXT() Y NO CON UN FORMATO DE PORCENTAJE, Y HAY UN MOTIVO ═══
+  //
+  // La celda venía sin formato numérico propio y publicaba `0,3860502603`, que al lado de un 50 % no
+  // se lee. Ponerle formato PERCENT lo rechaza la guarda —«ese rango ya tiene un formato que yo no
+  // puse»— porque el diseño de «Nómina» es del dueño, y la única forma de forzarlo sería borrar las
+  // 66 huellas de formato de la pestaña: eso dejaría a `formato-pestanas.mjs`, que corre en el
+  // pipeline, libre para reformatearle la pestaña entera. El remedio sería peor que el defecto.
+  //
+  // Devolver el texto ya formateado no toca el formato de nadie. Se puede hacer porque esta celda NO
+  // TIENE CONSUMIDOR: ningún rango con nombre la publica y ninguna fórmula la lee —`Cargas Sociales`
+  // lee `NOMINA_PCT_BLANCO` (B5) y `$D$5`, nunca ésta—. Es un indicador para leer, no una entrada.
+  // El día que algo necesite el número, se parte en dos celdas: el número y su rótulo.
+  // EL PATRÓN VA EN US AUNQUE EL ARCHIVO SEA es_AR, y acá costó un decimal: con `"0,0%"` Google lee
+  // la coma como separador de MILES, el patrón queda sin decimales y 38,6 % se publicó como «39%».
+  // Con `"0.0%"` la API interpreta el punto como el decimal y lo MUESTRA con la coma del locale.
+  return `=IFERROR(TEXT(${calculo};"0.0%");"")`
 }
 
 /** Lo que la celda de abajo declara: contra qué se midió. */
