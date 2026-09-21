@@ -137,8 +137,13 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
 
   // ── 1 y 2. El título, de dónde sale todo, y el atajo a la semana corriente ───────────────────────
   poner(FILA.titulo, 0, TITULO)  // el año lo dice el subtítulo y cada encabezado de columna: en A1 era glosa
-  poner(FILA.subtitulo, 0,
-    '="Qué se cobra, qué se paga y con cuánto cierra cada semana · del libro de movimientos · al "&TEXT(TODAY();"d/mm/yyyy")')
+  // El aviso del saldo reconstruido es el MISMO contrato que el mensual (`cash-flow-meses.formulaSubtitulo`):
+  // un saldo despejado hacia atrás es aritmética, no registro, y la pestaña lo tiene que decir sola. Sin
+  // esta línea, la reconstrucción que se agregó el 21/09 sería exactamente lo que la regla vieja temía.
+  poner(FILA.subtitulo, 0, refFecha
+    ? '="Qué se cobra, qué se paga y con cuánto cierra cada semana · del libro de movimientos · al "&TEXT(TODAY();"d/mm/yyyy")'
+      + `&IF(${celda(COL.tiempo0, FILA.cabecera)}<${refFecha};" · las semanas anteriores al "&TEXT(${refFecha};"d/mm")&" muestran un saldo CALCULADO hacia atrás, no registrado";"")`
+    : '="Qué se cobra, qué se paga y con cuánto cierra cada semana · del libro de movimientos · al "&TEXT(TODAY();"d/mm/yyyy")')
   // EL BOTÓN VA EN A3, NO EN LA COLUMNA TOTAL (06/08, pedido del dueño): en la columna 55 el atajo
   // existía y nadie lo veía — un vínculo que hay que scrollear para encontrar no ahorra el scroll.
   const vinculo = vinculoHoy(gid, meta, hoy)
@@ -253,6 +258,9 @@ function columnaDeSemana(poner, meta, j, { refSaldo, refFecha, n }) {
 
   poner(f.saldoInicial, col, inicioDeLaSemana({
     desde, hasta, refSaldo, refFecha, anterior: j === 0 ? null : celda(col - 1, f.saldoFinal),
+    // Para despejar el pasado hacia atrás, igual que el mensual: la última columna no tiene siguiente.
+    siguiente: j === meta.cab.n - 1 ? null : celda(col + 1, f.saldoInicial),
+    resultadoDelPeriodo: celda(col, f.resultado),
   }))
   // Cada medida trae su subtotal Y su apertura por rubro, de la misma función que usa el mensual.
   // EL VENCIDO NO VA EN LA VENTANA DE SU FECHA SINO EN LA COLUMNA DEL ANCLA (10/09/2026). Acá es donde
@@ -298,7 +306,7 @@ function columnaDeSemana(poner, meta, j, { refSaldo, refFecha, n }) {
  * Sin los dos rangos con nombre la celda va VACÍA y la pestaña lo dice en el hero: un ancla mal
  * apuntada es un cuadro entero mintiendo con cara de correcto.
  */
-function inicioDeLaSemana({ desde, hasta, refSaldo, refFecha, anterior = null }) {
+function inicioDeLaSemana({ desde, hasta, refSaldo, refFecha, anterior = null, siguiente = null, resultadoDelPeriodo = null }) {
   if (!refSaldo || !refFecha) return ''
   const ancla = expresionInicioCorrido({
     refSaldo,
@@ -310,7 +318,22 @@ function inicioDeLaSemana({ desde, hasta, refSaldo, refFecha, anterior = null })
   // El vacío de la primera columna se escribe como "" y no como la celda de la izquierda: a la
   // izquierda de la primera columna está el rótulo, y N("Saldo inicial") daría 0 sin avisar.
   const encadena = anterior ? `IF(N(${anterior})=0;"";${anterior})` : '""'
-  return `=IF(${hasta}<=${refFecha};"";IF(${desde}<=${refFecha};${ancla};${encadena}))`
+  // ═══ LAS SEMANAS ANTERIORES AL CORTE YA NO VAN VACÍAS (21/09/2026) ═══
+  //
+  // El mensual resolvió esto el 28/08 y al semanal nunca se lo portaron: mientras el cuadro arrancaba
+  // en la semana corriente no había columnas anteriores, pero desde que cubre el año entero las hay
+  // TODAS —el corte de CAJA es hoy—, y la fila entera quedaba en blanco. El dueño lo reportó así:
+  // «has borrado todo el historial de la fila de saldo inicial y saldo final de caja».
+  //
+  // Se despeja de la propia cadena, `inicio(semana) = inicio(semana+1) − variación(semana)`, y se
+  // engancha al INICIO de la siguiente y no al cierre de la propia para no cerrar un ciclo de
+  // referencias. La última columna no tiene siguiente: va vacía, y el vacío se propaga solo hacia la
+  // izquierda porque `N("")` es 0 y la guarda lo vuelve a convertir en "". Es la MISMA aritmética que
+  // `expresionInicio` usa en el mensual: las dos vistas no pueden reconstruir el pasado distinto.
+  const antes = siguiente && resultadoDelPeriodo
+    ? `IF(N(${siguiente})=0;"";N(${siguiente})-N(${resultadoDelPeriodo}))`
+    : '""'
+  return `=IF(${hasta}<=${refFecha};${antes};IF(${desde}<=${refFecha};${ancla};${encadena}))`
 }
 
 /**

@@ -63,12 +63,26 @@ test('los encabezados de tiempo son SERIALES de fecha, nunca texto', () => {
   for (let j = 1; j < seriales.length; j++) assert.equal(seriales[j] - seriales[j - 1], 7)
 })
 
-test('LA HISTORIA SE VE PERO NO SE INVENTA: antes del corte hay flujos y NO hay saldo', () => {
+// ═══ ESTA PRUEBA CAMBIÓ DE SIGNO EL 21/09/2026, Y EL DUEÑO ES QUIEN LA CAMBIÓ ═══
+//
+// Se llamaba «LA HISTORIA SE VE PERO NO SE INVENTA» y exigía que el saldo de las semanas anteriores al
+// corte quedara VACÍO. Con el cuadro cubriendo el año entero y el corte en el día de hoy, eso dejaba la
+// fila entera en blanco, y el dueño lo reportó como un borrado: «has borrado todo el historial de la
+// fila de saldo inicial y saldo final de caja, revisar y recomponer».
+//
+// Despejar hacia atrás NO es inventar: es la misma aritmética que el mensual usa desde el 28/08
+// —`inicio(t) = inicio(t+1) − variación(t)`— y es exacta si el libro está completo. Lo que sí hay que
+// hacer es DECLARARLO, como hace el subtítulo del mensual: es un saldo calculado, no registrado.
+// Las dos vistas no pueden reconstruir el pasado de manera distinta.
+test('LA HISTORIA SE RECONSTRUYE Y SE DECLARA: antes del corte el saldo se despeja de la cadena', () => {
   const { filas, meta } = armar()
   // Cuál columna es "antes" lo decide la FÓRMULA, no el generador: refFecha es un rango con nombre que
   // se lee cuando la hoja calcula. Lo que se prueba es que las tres ramas estén escritas.
   const ini = en(filas, meta.fila.saldoInicial, meta.cab.col0 + 20)
-  assert.ok(ini.startsWith('=IF($V$7+7<=CAJA_FECHA_SALDO;"";'), `falta la rama ANTES (saldo en blanco): ${ini.slice(0, 60)}`)
+  // La rama ANTES despeja del INICIO de la semana siguiente, no del cierre de la propia: enganchar al
+  // cierre cerraría un ciclo de referencias.
+  assert.ok(ini.startsWith(`=IF($V$7+7<=CAJA_FECHA_SALDO;IF(N($W$${meta.fila.saldoInicial})=0;"";N($W$${meta.fila.saldoInicial})-N($V$${meta.fila.resultado}));`),
+    `la rama ANTES tiene que despejar de la cadena, no ir en blanco: ${ini.slice(0, 90)}`)
   assert.ok(ini.includes('IF($V$7<=CAJA_FECHA_SALDO;'), 'falta la rama ANCLA')
   // Y el cierre propaga el vacío: un cero se leería como "cerró la semana sin plata".
   const fin = en(filas, meta.fila.saldoFinal, meta.cab.col0 + 20)

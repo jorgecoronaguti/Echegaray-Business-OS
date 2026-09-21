@@ -63,7 +63,14 @@ export async function leerPlantelDeLaQuincena(supabase: SupabaseClient, q: Quinc
     leerRegistrosHH(supabase, { desde: q.desde, hasta: q.hasta, columnas: 'persona_id, fecha' }),
     supabase.from('liquidacion_quincena').select('liquidacion_linea(persona_id)').eq('desde', q.desde).eq('hasta', q.hasta),
     supabase.from('recibo_sueldo_linea').select('persona_id, cuil').eq('periodo', periodoDeRecibo(q)),
-    supabase.from('jornales_bloque_persona').select('persona_id').eq('quincena_desde', q.desde),
+    // EL BLOQUE DE JORNALES NO EMPIEZA EL 1 NI EL 16. La planilla del dueño arranca los períodos donde
+    // arrancan de verdad (02/02, 18/05, 03/08, 17/08), así que pedirlos con `eq('quincena_desde', q.desde)`
+    // devolvía CERO filas justo en esas quincenas: el espejo dejaba de contar como evidencia del plantel y
+    // quien sólo figuraba ahí quedaba afuera del cuadro. Se usa el mismo criterio que
+    // `espejoDeJornalesService.getEspejoDeLaPlanilla` —el bloque es de la quincena en la que EMPIEZA, no por
+    // solape—, y los dos tienen que decir lo mismo. Hallado por la auditoría del 21/09/2026.
+    supabase.from('jornales_bloque_persona').select('persona_id')
+      .gte('quincena_desde', q.desde).lte('quincena_desde', q.hasta),
     leerCuilesDelLegajo(supabase),
     laSesionEsDePrueba(supabase),
     supabase.from('persona_tarifa').select('persona_id, desde, valor_hora, neto_mensual, origen').lte('desde', q.hasta),
