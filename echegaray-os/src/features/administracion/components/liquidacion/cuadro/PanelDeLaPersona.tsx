@@ -183,7 +183,6 @@ function PresentismoDelPanel({ fila }: { fila: FilaDelEspejo }) {
   // es que cumplió: es que no hay dato. Pasa todos los días 16 de cada quincena mientras se cargan las
   // horas —el día del QA eran 2 de 15 obreros— y un jefe de obra lo lee como un visto bueno.
   const estado = p.estado === 'perdido' ? 'Perdido'
-    : p.estado === 'a_revisar' ? 'A revisar'
     : p.estado === 'sin_horas' ? 'Sin horas'
     : 'Cumple'
   const color = p.estado === 'aplica' ? V.tinta : p.estado === 'sin_horas' ? V.apagado : V.warn
@@ -202,8 +201,8 @@ function PresentismoDelPanel({ fila }: { fila: FilaDelEspejo }) {
         <Leida valor={p.importe} />
       </Renglon>
       <Renglon rotulo="Estado"
-        nota={p.estado === 'perdido' ? motivosDePerdida(p)
-          : p.estado === 'a_revisar' ? `no vino ${fechasCortas(p.aRevisar)} y nadie cargó el motivo: hasta que se cargue no se descuenta`
+        nota={p.estado === 'perdido'
+          ? `${motivosDePerdida(p)}${p.aRevisar.length > 0 ? ` · cargá el motivo de ${fechasCortas(p.aRevisar)}: si lo justifica, lo recupera` : ''}`
           : p.estado === 'sin_horas' ? 'sin horas cargadas en la quincena: todavía no hay presentismo que calcular'
           : 'sin faltas injustificadas, tardanzas ni retiros'}
         alerta={p.estado !== 'aplica' && p.estado !== 'sin_horas'}>
