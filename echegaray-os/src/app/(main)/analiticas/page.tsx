@@ -59,7 +59,7 @@ function Vista({ filtros, d, periodo }: {
       sinIva={d.obraElegida && d.sinIvaDiscriminado.size ? (d.sinIvaDiscriminado.get(d.obraElegida.id) ?? 0) : null} />
     case 'caja': return <VistaCaja lectura={d.cajaSheet} egresos={d.egresos} periodo={periodo} rango={d.rango} deuda={d.deudaProveedores} />
     case 'nomina': return <VistaNomina filas={d.nomina} quincenas={d.quincenas} personas={d.personas} rango={d.rango} periodo={periodo} hoy={d.hoy} />
-    case 'cobranza': return <VistaCobranza cuenta={d.cuentaCorriente} documentos={d.documentos} hoy={d.hoy} periodo={periodo} />
+    case 'cobranza': return <VistaCobranza cuenta={d.cuentaCorriente} documentos={d.documentos} agenda={d.documentosParaAgenda} hoy={d.hoy} periodo={periodo} />
     default: return <VistaResumen obras={d.obras} sinObra={d.sinObra} filtros={filtros} neto={d.netoDeIva}
       comprobantesPorCliente={d.sinObraDetalle.size ? new Map([...d.sinObraDetalle.entries()].map(([id, g]) => [id, g.nComprobantes])) : null} />
   }

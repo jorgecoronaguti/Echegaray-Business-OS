@@ -41,6 +41,12 @@ export interface DatosAnaliticas {
   personas: unknown[] | null
   /** Las filas de deuda de `public.cobranzas`: SÓLO para la acción del día (`planDeCobranza`). */
   documentos: unknown[] | null
+  /**
+   * Las MISMAS filas de deuda pero SIN el recorte por fecha de emisión: la agenda de cobros próximos
+   * mira para adelante y un período pasado la dejaría vacía justo cuando hay plata por entrar.
+   * Con el período en su defecto es exactamente `documentos` (no se lee dos veces).
+   */
+  documentosParaAgenda: unknown[] | null
   /** Por qué no hay presupuesto (`null` si lo hay). */
   motivoPresupuesto: string | null
   /** La obra de la vista Obras (la pedida si pasa los filtros; si no, la que más consumió). */
@@ -119,19 +125,17 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     // mismo recorte por emisión que la cuenta corriente. Se lee de `cliente_cobranza`, la vista canónica
     // fila por fila (DEFINICIONES: «cobrado»): `public.cobranzas` es la réplica cruda y no se lee desde la
     // app. Paginado por `cobranza_id`, que es único: Cobranzas pasa las 1.000 filas.
-    f.vista === 'cobranza'
-      ? leerPaginado((a, b) => {
-        let q = supabase.from('cliente_cobranza')
-          .select('cobranza_id, cliente_id, estado, fecha_cobro, fecha_emision, total_bruto, obra_id, numero_comprobante, factura, concepto')
-          .in('estado', ['Pendiente', 'Facturado']).not('cliente_id', 'is', null)
-        if (rango.desde) q = q.gte('fecha_emision', rango.desde)
-        if (rango.hasta) q = q.lte('fecha_emision', rango.hasta)
-        return q.order('cobranza_id').range(a, b)
-      })
-      : null,
+    f.vista === 'cobranza' ? leerDeudaDeCobranzas(supabase, rango) : null,
     f.vista === 'caja' ? leerCajaSheet(supabase) : Promise.resolve<LecturaCaja>({ estado: 'no_leida' }),
     f.vista === 'caja' ? getDeuda(supabase) : null,
   ])
+  // LA AGENDA NO SE RECORTA POR EL PERÍODO (dueño, 21/09/2026: «que me marque con claridad los cobros
+  // próximos»): un cobro de octubre no está emitido en el período que se esté mirando y desaparecería.
+  // Sin período apartado del defecto las dos lecturas son la misma fila por fila: no se lee dos veces.
+  const recorta = rango.desde != null || rango.hasta != null
+  const documentosParaAgenda = f.vista === 'cobranza' && recorta
+    ? await leerDeudaDeCobranzas(supabase, { desde: null, hasta: null })
+    : documentos
   return {
     hoy, rango, cartera, obras, sinObra, sinObraDetalle: sinObraCruda ?? new Map(),
     cajaSheet,
@@ -142,6 +146,7 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     quincenas: quincenas?.data ?? null,
     personas: personas?.data ?? null,
     documentos: documentos ?? null,
+    documentosParaAgenda: documentosParaAgenda ?? null,
     motivoPresupuesto: lecturaPresupuestos.motivo,
     obraElegida, consumoMensual: mensual,
     // EL RITMO DEL «ALCANZA» ES DE LOS MISMOS RUBROS QUE EL «QUEDA»: sin presupuesto, todo lo consumido.
@@ -156,6 +161,25 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     })),
     legible: raiz != null,
   }
+}
+
+/**
+ * LA DEUDA VIVA DE COBRANZAS, fila por fila. Se lee de `cliente_cobranza`, la vista canónica
+ * (DEFINICIONES: «cobrado»): `public.cobranzas` es la réplica cruda y no se lee desde la app.
+ * Paginado por `cobranza_id`, que es único: Cobranzas pasa las 1.000 filas que corta PostgREST.
+ *
+ * `certificado_cliente` NO sirve acá: es un subconjunto y ya dejó a San Francisco «sin nada pendiente
+ * hoy» con $ 26,6 M que vencían al día siguiente (auditoría 17/09/2026, D10).
+ */
+export function leerDeudaDeCobranzas(supabase: SupabaseClient, rango: { desde: string | null; hasta: string | null }) {
+  return leerPaginado((a, b) => {
+    let q = supabase.from('cliente_cobranza')
+      .select('cobranza_id, cliente_id, estado, fecha_cobro, fecha_emision, total_bruto, obra_id, numero_comprobante, factura, concepto')
+      .in('estado', ['Pendiente', 'Facturado']).not('cliente_id', 'is', null)
+    if (rango.desde) q = q.gte('fecha_emision', rango.desde)
+    if (rango.hasta) q = q.lte('fecha_emision', rango.hasta)
+    return q.order('cobranza_id').range(a, b)
+  })
 }
 
 /** «No existe la relación» en PostgREST (schema cache) o en Postgres: la migración del espejo no está aplicada. */

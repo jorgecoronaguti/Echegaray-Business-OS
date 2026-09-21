@@ -14,13 +14,17 @@
 // sombras. Los gráficos COMBO de la pestaña tienen dos ejes; acá las mismas series van en dos paneles
 // apilados con el mismo eje de días (barras arriba, saldo abajo): dos escalas en un plano alinean lo
 // que no se alinea.
-import { millones, pctEntero } from '../services/formato'
+import { millones } from '../services/formato'
 import { caja, type Caja } from '../services/empresa'
 import type { TotalesDeuda } from '@/features/administracion/services/deudaProveedores'
 import { egresosPercibidos, frescura, horaSanJuan, type GraficoCaja, type LecturaCaja, type SeccionCaja, type SerieCaja } from '../services/cajaSheet'
 import { apilar, disposicion, escala, fechaCorta, GEOMETRIA, paneles, rotuloEje, rotulosDelEje, rotuloVentana, textoCelda, xDe } from '../services/graficoCaja'
-import { ancho, Cabecera, Cifras, ENCABEZADO, Seccion, SinLectura } from './Piezas'
+import { Cabecera, FilaDeCifras, ENCABEZADO, Seccion, SinLectura } from './Piezas'
+import { Torta } from './Torta'
 import { Columnas } from './VistasEmpresa'
+
+/** La rampa de grises del diseño v9 para las ramas de estructura, en el orden en que llegan. */
+const GRISES_DE_AREA = ['text-ink-soft', 'text-muted', 'text-dato-materiales', 'text-dato-referencia']
 
 export function VistaCaja({ lectura, egresos, periodo, rango, deuda = null }: {
   lectura: LecturaCaja
@@ -252,11 +256,11 @@ function Gasto({ egresos, periodo, rango }: { egresos: unknown[] | null; periodo
   const c: Caja = caja(p.egresos)
   const max = Math.max(1, ...c.meses.map((m) => m.aObra + m.estructura))
   const areas = [
-    { area: 'Obra', monto: c.aObra, tono: 'bg-accent', color: 'text-ink', nota: 'imputado a una obra concreta' },
-    ...c.ramas.map((r) => ({ area: r.rotulo, monto: r.total, tono: 'bg-dato-referencia', color: 'text-muted', nota: '' })),
-    ...(c.nSinDestino ? [{ area: 'Sin clasificar', monto: c.sinDestino, tono: 'bg-warn', color: 'text-warn', nota: `${c.nSinDestino} pagos sin área · esperan destino` }] : []),
+    { area: 'Obra', monto: c.aObra, color: 'text-accent' },
+    // LA RAMPA DE GRISES DEL DISEÑO v9 (TONOS_AREA): la estructura se lee más apagada que la obra.
+    ...c.ramas.map((r, i) => ({ area: r.rotulo, monto: r.total, color: GRISES_DE_AREA[i] ?? 'text-dato-referencia' })),
+    { area: 'Sin clasificar', monto: c.sinDestino, color: 'text-warn' },
   ]
-  const maxArea = Math.max(1, ...areas.map((a) => a.monto))
   const ventana = rotuloVentana(periodo, rango)
   return (
     <div className="mt-10 border-t border-line-strong pt-7" data-testid="caja-gasto">
@@ -266,7 +270,7 @@ function Gasto({ egresos, periodo, rango }: { egresos: unknown[] | null; periodo
           <p className="text-xs leading-[1.45] text-muted tabular-nums" data-testid="caja-gasto-ventana">{ventana} · cada pago en la fecha en que se pagó, según Compras</p>
         </div>
         <div className="flex flex-col gap-6">
-          <Cifras cifras={[
+          <FilaDeCifras cifras={[
             { rotulo: 'salió', valor: c.salio ? millones(c.salio) : null, falta: 'nada pagado' },
             { rotulo: 'a una obra', valor: c.salio ? millones(c.aObra) : null, falta: '—' },
             { rotulo: 'estructura', valor: c.salio ? millones(c.estructura) : null, falta: '—', tono: 'muted' },
@@ -275,7 +279,7 @@ function Gasto({ egresos, periodo, rango }: { egresos: unknown[] | null; periodo
               nota: c.estructuraPorPesoDeObra != null ? `por cada $ 1 que fue a una obra, ${porPesoDeObra(c.estructuraPorPesoDeObra)} fueron a estructura` : undefined },
           ]} />
           {/* LO QUE NO ES SALIDA, APARTE Y DICHO: deuda del período, lo «Pagado» sin monto en Compras y un pago sin fecha. */}
-          <Cifras cifras={[
+          <FilaDeCifras cifras={[
             { rotulo: 'por pagar en el período', valor: p.pendientes.n ? millones(p.pendientes.total) : null, falta: 'nada', tono: 'muted', nota: p.pendientes.n ? `${p.pendientes.n} ${p.pendientes.n === 1 ? 'compra' : 'compras'} · deuda, no salida` : undefined },
             { rotulo: 'pagado sin monto en Compras', valor: p.sinDesglose.n ? millones(p.sinDesglose.total) : null, falta: 'ninguno', tono: p.sinDesglose.n ? 'warn' : 'muted',
               nota: p.sinDesglose.n ? `${p.sinDesglose.n} ${p.sinDesglose.n === 1 ? 'compra marcada' : 'compras marcadas'} «Pagado» sin Monto Pagado · no se suman: se completan en Compras` : undefined },
@@ -294,17 +298,11 @@ function Gasto({ egresos, periodo, rango }: { egresos: unknown[] | null; periodo
               partes: [{ alto: (m.estructura / max) * 170, clase: 'bg-dato-referencia' }, { alto: (m.aObra / max) * 170, clase: 'bg-accent' }],
             }))} />
           </Seccion>
-          <Seccion titulo="Por área" aclaracion="de todo lo que salió, cuánto se llevó cada área" filo>
-            <div className="flex flex-col pb-9">
-              {areas.map((a) => (
-                <div key={a.area} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-1.5 border-b border-line py-2.5 hover:bg-surface-quiet lg:h-12 lg:grid-cols-[150px_minmax(0,1fr)_96px_64px_260px] lg:gap-6 lg:py-0">
-                  <div className={`text-[13px] font-medium ${a.color}`}>{a.area}</div>
-                  <div className="col-span-3 row-start-2 h-3 lg:col-span-1 lg:row-auto"><div className={`h-full rounded-[2px] ${a.tono}`} style={{ width: ancho(a.monto, maxArea) }} /></div>
-                  <div className={`text-right text-[13px] font-semibold ${a.color}`}>{millones(a.monto)}</div>
-                  <div className="text-right text-[11.5px] text-faint">{c.salio > 0 ? pctEntero(a.monto / c.salio) : '—'}</div>
-                  <div className="hidden truncate text-[11.5px] text-muted lg:block">{a.nota}</div>
-                </div>
-              ))}
+          {/* POR ÁREA ES LA TORTA DEL DISEÑO v9: el total al centro y cada área con su parte. */}
+          <Seccion titulo="Por área" aclaracion={`de todo lo que salió, cuánto se llevó cada área${c.nSinDestino ? ` · ${c.nSinDestino} ${c.nSinDestino === 1 ? 'pago sin área' : 'pagos sin área'} esperan destino` : ''}`} filo>
+            <div className="pb-9">
+              <Torta centro={millones(c.salio)} centroNota="salió"
+                gajos={areas.map((a) => ({ rotulo: a.area, monto: a.monto, color: a.color, falta: a.area === 'Sin clasificar' ? 'ninguno' : 'sin movimiento' }))} />
             </div>
           </Seccion>
         </>
