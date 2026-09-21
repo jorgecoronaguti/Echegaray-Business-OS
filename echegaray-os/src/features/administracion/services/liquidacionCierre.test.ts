@@ -232,17 +232,27 @@ test('oficina se sella con valor_hora NULL: el neto ya está en «cobra», no se
 // puede pasar a valer la jornada entera. Sellar antes congela el 0 y manda la corrección al camino de
 // «reabrir con motivo escrito», que existe para los errores y no para lo que ya se sabía que faltaba.
 
-test('LAS AUSENCIAS SIN MOTIVO TRABAN EL CIERRE Y SE NOMBRAN', () => {
+// ═══ LA DECISIÓN SE INVIRTIÓ EL 21/09/2026, Y EL TEST LO DICE ═══
+//
+// El dueño: «no me importa, si pongo cerrar, que se cierre». La ausencia sin motivo se SIGUE
+// calculando y nombrando —el riesgo de congelar 0 h no desapareció—, pero no apaga el botón: sale
+// con `traba: false`. Lo que traba es sólo lo que obligaría a inventar un número (tarifa, importe,
+// suma que no cierra). Si alguien vuelve a poner la traba, este test da rojo y tiene que venir con
+// la decisión del dueño que la reponga.
+test('LA AUSENCIA SIN MOTIVO AVISA CON NOMBRE PROPIO Y YA NO TRABA', () => {
   const completa = [linea({ personaId: 'p1', nombre: 'A', cobra: 100, porBanco: 0, enEfectivo: 100, total: 100 })]
-  // Sin la traba, esta quincena cierra: no le falta ni una tarifa ni un importe.
   assert.equal(estadoDeCierre(completa).puedeCerrar, true)
-  // EL DEFECTO QUE ATRAPA: con nueve ausencias sin motivo seguía diciendo que sí.
   const con = estadoDeCierre(completa, { diasSinMotivo: 9 })
-  assert.equal(con.puedeCerrar, false)
+  assert.equal(con.puedeCerrar, true, 'nueve ausencias sin motivo no pueden apagar el botón')
   const p = con.pendientes.find((x) => x.clave === 'sin-motivo')
-  assert.ok(p, 'el pendiente tiene que tener nombre propio, no ser un botón gris sin explicación')
+  assert.ok(p, 'el pendiente tiene que seguir apareciendo: sellar 0 h se ve antes de sellarlo')
+  assert.equal(p.traba, false)
   assert.equal(p.cuantas, 9)
   assert.match(p.texto, /9 ausencia/)
+  // Y LO QUE SÍ TRABA SIGUE TRABANDO: una línea sin tarifa escribiría un valor hora que nadie acordó.
+  const sinTarifa = estadoDeCierre([linea({ personaId: 'p2', nombre: 'B', sinTarifa: true })])
+  assert.equal(sinTarifa.puedeCerrar, false)
+  assert.equal(sinTarifa.pendientes.find((x) => x.clave === 'sin-tarifa')?.traba, true)
 })
 
 test('CERO AUSENCIAS SIN MOTIVO NO INVENTA UN PENDIENTE', () => {

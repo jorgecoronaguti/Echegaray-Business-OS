@@ -68,6 +68,14 @@ export interface Pendiente {
   clave: string
   texto: string
   cuantas: number
+  /**
+   * SI ESTE PENDIENTE APAGA EL BOTÓN O SÓLO AVISA (dueño, 21/09/2026: «si pongo cerrar, que se
+   * cierre»). Lo que falta por un dato que nadie puede inventar —una tarifa, un importe, una suma
+   * que no da— sigue trabando: sellar ahí escribiría un número que nadie acordó. Lo que falta por
+   * una carga que el dueño puede decidir dejar como está —una ausencia sin motivo, un día sin
+   * cargar— se muestra y se sella igual, con la consecuencia dicha en pantalla.
+   */
+  traba: boolean
   /** Quién y qué días, cuando el pendiente es de días. La pantalla enlaza cada nombre a su fila. */
   personas?: PersonaPendiente[]
 }
@@ -110,16 +118,14 @@ export function estadoDeCierre(
   carga: CargaDeCierre = {},
 ): EstadoDeCierre {
   const pendientes: Pendiente[] = []
-  // ═══ UNA AUSENCIA SIN MOTIVO TRABA EL SELLO, Y HASTA HOY SÓLO TRABABA EN «HORAS» ═══
+  // ═══ LA AUSENCIA SIN MOTIVO AVISA, YA NO TRABA (dueño, 21/09/2026) ═══
   //
-  // La grilla dejaba el botón gris con «9 ausencias sin motivo»; esta pantalla lo dibujaba amarillo
-  // y activo sobre la misma quincena, porque acá sólo se miraban tarifas e importes. Dos criterios
-  // para la misma acción, y el que sella era el permisivo.
-  //
-  // No es cosmético: sin motivo el día vale 0 h (R4), y el día que alguien le ponga el motivo puede
-  // pasar a valer la jornada entera. Sellar antes congela el 0 y manda la corrección al camino de
-  // «reabrir con motivo escrito», que existe para los errores, no para lo que ya se sabía que
-  // faltaba. El conteo lo calcula `diasSinMotivoDeLaQuincena` con la definición de `celdaDelDia`.
+  // Trababa: sin motivo el día vale 0 h (R4), y el día que alguien le ponga el motivo puede pasar a
+  // valer la jornada entera; sellar antes congela ese 0. El dueño resolvió que esa decisión es suya
+  // y no del sistema —«no me importa, si pongo cerrar, que se cierre»—, así que el pendiente se
+  // sigue calculando y mostrando con nombre y fecha, pero con `traba: false`: la consecuencia queda
+  // escrita al lado del botón y el sello sale. Si hace falta corregir, el camino es reabrir, que ya
+  // existe y deja firma. El conteo lo calcula `pendientesPorPersona` con la definición de `celdaDelDia`.
   pendientes.push(...pendientesDeDias(carga))
   const sinTarifa = lineas.filter(faltaLaTarifa)
   // «MENSUAL · IMPORTE NO CARGADO» NO TRABA EL SELLO (dueño, 15/09/2026: «no preguntes más»). La línea
@@ -132,6 +138,7 @@ export function estadoDeCierre(
   if (sinTarifa.length) {
     pendientes.push({
       clave: 'sin-tarifa',
+      traba: true,
       cuantas: sinTarifa.length,
       texto: `${sinTarifa.length} sin tarifa cargada (${sinTarifa.map((l) => l.nombre).join(', ')}): sellar su línea escribiría un valor hora que nadie acordó.`,
     })
@@ -139,6 +146,7 @@ export function estadoDeCierre(
   if (sinCobra.length) {
     pendientes.push({
       clave: 'sin-cobra',
+      traba: true,
       cuantas: sinCobra.length,
       texto: `${sinCobra.length} sin importe calculable: falta el dato, no es $ 0.`,
     })
@@ -146,13 +154,14 @@ export function estadoDeCierre(
   if (noCierra.length) {
     pendientes.push({
       clave: 'no-cierra',
+      traba: true,
       cuantas: noCierra.length,
       texto: `${noCierra.length} donde por banco + efectivo no da el total.`,
     })
   }
   const liquidables = lineas.filter((l) => l.cobra != null && !l.sinTarifa)
   return {
-    puedeCerrar: pendientes.length === 0 && lineas.length > 0,
+    puedeCerrar: !pendientes.some((p) => p.traba) && lineas.length > 0,
     pendientes,
     liquidadas: liquidables.length,
     personas: lineas.length,
@@ -163,12 +172,11 @@ export function estadoDeCierre(
 /**
  * LOS PENDIENTES DE DÍAS: ausencias sin motivo y días sin cargar.
  *
- * ═══ «SIN CARGAR» TRABA, IGUAL QUE TRABABA EN «HORAS» (14/09/2026) ═══
+ * ═══ LOS DOS AVISAN Y NINGUNO TRABA (dueño, 21/09/2026) ═══
  *
- * La grilla de Horas dejaba el botón gris con «8 días sin cargar» y esta función no los miraba. Al
- * unificar «Más» la grilla se fue y los pendientes quedaron sólo acá: si «sin cargar» no trabara, la
- * pantalla habría pasado a permitir sellar lo que antes no. Mismo motivo que la ausencia sin motivo:
- * sellar congela 0 h en un día que alguien todavía tiene que escribir.
+ * Los dos trababan: sellar congela 0 h en un día que alguien todavía tiene que escribir. El dueño
+ * puso esa decisión de su lado, así que salen con `traba: false`. Se siguen calculando enteros —con
+ * nombre, fecha y enlace a la fila— porque lo que se sella en 0 h tiene que verse antes de sellarlo.
  *
  * Sin `porPersona` se conserva el comportamiento anterior (sólo el conteo de ausencias).
  */
@@ -184,15 +192,16 @@ function pendientesDeDias(carga: CargaDeCierre): Pendiente[] {
   if (nMotivo > 0) {
     salida.push({
       clave: 'sin-motivo',
+      traba: false,
       cuantas: nMotivo,
-      texto: `${nMotivo} ausencia(s) sin motivo: sin motivo el día vale 0 h, y sellarlo congela ese 0.`,
+      texto: `${nMotivo} ausencia(s) sin motivo: el día vale 0 h y el sello lo congela así. No traba el cierre.`,
       ...(conDetalle ? { personas: sinMotivo } : {}),
     })
   }
   const sinCargar = detalle('sinCargar')
   const nCargar = suma(sinCargar)
   if (nCargar > 0) {
-    salida.push({ clave: 'sin-cargar', cuantas: nCargar, texto: `${nCargar} día(s) sin cargar: sellarlos congela 0 h.`, personas: sinCargar })
+    salida.push({ clave: 'sin-cargar', traba: false, cuantas: nCargar, texto: `${nCargar} día(s) sin cargar: el sello los congela en 0 h. No traba el cierre.`, personas: sinCargar })
   }
   return salida
 }

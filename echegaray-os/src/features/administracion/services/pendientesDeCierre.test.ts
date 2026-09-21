@@ -34,7 +34,7 @@ test('LOS DÍAS SIN CARGAR SON LOS MISMOS QUE CUENTA LA FILA DE LA GRILLA', () =
   assert.ok(porPersona[0].sinCargar.every((f) => f <= '2026-09-08'))
 })
 
-test('estadoDeCierre PUBLICA SIN CARGAR Y SIN MOTIVO, CON LAS PERSONAS Y SUS DÍAS, Y TRABA', () => {
+test('estadoDeCierre PUBLICA SIN CARGAR Y SIN MOTIVO, CON LAS PERSONAS Y SUS DÍAS, Y AVISA SIN TRABAR', () => {
   const fila = (id: string, nombre: string, celdas: FilaDeGrilla['celdas']): FilaDeGrilla => ({
     personaId: id, nombre, celdas, cargadas: 0, esperadas: 97, estado: 'al-dia',
     diasSinMotivo: 0, diasSinCargar: 0, horasDeLicencia: 0, esJefe: false,
@@ -53,7 +53,11 @@ test('estadoDeCierre PUBLICA SIN CARGAR Y SIN MOTIVO, CON LAS PERSONAS Y SUS DÍ
   assert.deepEqual(motivo?.personas, [{ personaId: 'p1', nombre: 'Zogbe Fabian', fechas: ['2026-09-01'] }])
   assert.equal(cargar?.cuantas, 1)
   assert.deepEqual(cargar?.personas, [{ personaId: 'p1', nombre: 'Zogbe Fabian', fechas: ['2026-09-02'] }])
-  assert.equal(e.puedeCerrar, false)
+  // 21/09/2026: los dos avisan, ninguno apaga el botón. El detalle con nombre y fecha es justamente
+  // lo que permite decidir sellar igual sabiendo qué queda en 0 h.
+  assert.equal(motivo?.traba, false)
+  assert.equal(cargar?.traba, false)
+  assert.equal(e.puedeCerrar, true)
 })
 
 test('SIN DETALLE POR PERSONA SE CONSERVA EL CONTEO DE SIEMPRE (la acción de cerrar no cambia)', () => {

@@ -145,6 +145,24 @@ test('jornada completa (su último recibo ≥ 88 h): sin 0426 ni 92 ter', () => 
   assert.equal(e.lineas.find((l) => l.codigo === '0425')?.monto, Math.round(0.2 * completa.horasNormales! * completa.valorHora! * 100) / 100)
 })
 
+// ═══ EL DEFECTO QUE LA REVISIÓN INDEPENDIENTE ENCONTRÓ EL 21/09/2026 ═══
+//
+// `presentismoPropio` salteaba el bloque 0425/0426 ENTERO. En media jornada suma cero —el 0426 anula
+// al 0425— y el test de arriba lo prueba con Rosales. En JORNADA COMPLETA el 0426 no existe (0 de 8
+// recibos): ahí el 0425 va solo y es plata del recibo. Salteado, el remunerativo bajaba un 20 % del
+// básico y el neto estimado con él, que en `sueldoBlancoNegro` ES el banco preliminar de la fila.
+// Medido en los dos de jornada completa: −$115.395,84 cada uno, ~$221.000 por quincena.
+test('jornada completa: el 0425 NO se saca con el presentismo del OS, porque ahí nada lo anula', () => {
+  const completa = RECIBOS.find((r) => r.periodo === 'Q1-08/2026' && (r.horasNormales ?? 0) >= 88)!
+  const base = { persona: completa.persona, periodo: 'Q2-08/2026', valorHora: completa.valorHora, horasRecibo: null, feriados: 0, recibosPropios: RECIBOS.filter((r) => r.persona === completa.persona) }
+  const sinBandera = estimarRecibo(REGLAS, base)!
+  const conBandera = estimarRecibo(REGLAS, { ...base, presentismoPropio: true })!
+  assert.equal(conBandera.jornada, 'completa')
+  assert.ok(conBandera.lineas.some((l) => l.codigo === '0425'), 'MUTACIÓN: se llevó el 0425 de jornada completa y con él el neto')
+  assert.equal(conBandera.remunerativo, sinBandera.remunerativo)
+  assert.equal(conBandera.neto, sinBandera.neto, 'el arreglo del panel no puede mover el banco')
+})
+
 test('real contra estimado: la única diferencia de Rosales Q2-08 es el seguro de vida', () => {
   const filas = compararConReal(estimarRecibo(REGLAS, ROSALES), REAL_Q2_08.conceptos)
   const conDiferencia = filas.filter((f) => f.diferencia != null && f.diferencia !== 0)

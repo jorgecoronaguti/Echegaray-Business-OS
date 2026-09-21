@@ -25,7 +25,9 @@ export function PendientesDeCierre({ pendientes, hrefDe }: {
           display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4, padding: '6px 0',
           minHeight: ALTO_LIQ.renglon, borderBottom: `1px solid ${V.linea}`, fontSize: '12.5px',
         }}>
-          <span style={{ color: V.warn }}>{pendiente.texto}</span>
+          {/* EL QUE TRABA VA EN ÁMBAR; EL QUE SÓLO AVISA, EN TINTA. Pintarlos igual haría creer que
+              una ausencia sin motivo apaga el botón, y desde el 21/09/2026 no lo apaga. */}
+          <span style={{ color: pendiente.traba ? V.warn : V.tinta }}>{pendiente.texto}</span>
           {pendiente.personas && pendiente.personas.length > 0 && (
             <span style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 16px', fontSize: '12px' }}>
               {pendiente.personas.map((p) => (

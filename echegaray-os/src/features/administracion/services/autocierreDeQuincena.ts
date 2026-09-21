@@ -58,18 +58,24 @@ export function decisionDeAutocierre({ lineas, personaId, porPersona = [] }: {
   const estado = estadoDeCierre(lineas, { porPersona: porPersona.filter((p) => ids.has(p.personaId)) })
   const foto = lineas.map(fotoDeLinea).filter((f): f is LineaCongelada => f != null)
   const pendientes = [...estado.pendientes]
-  if (foto.length === 0) pendientes.push({ clave: 'sin-foto', texto: 'ninguna línea se puede congelar', cuantas: lineas.length })
+  // SIN FOTO NO HAY CIERRE POSIBLE: eso traba de verdad, no es un aviso.
+  if (foto.length === 0) pendientes.push({ clave: 'sin-foto', traba: true, texto: 'ninguna línea se puede congelar', cuantas: lineas.length })
   return { todasPagadas: true, pendientes, foto }
 }
 
 /** El texto que acompaña a «Marcada como pagada» cuando ya están todos. */
 export function avisoDeAutocierre(d: DecisionDeAutocierre, cerrada: { ok: true; lineas: number } | { ok: false; error: string } | null): string {
   if (!d.todasPagadas) return 'Marcada como pagada.'
-  if (d.pendientes.length > 0) {
-    return `Marcada como pagada. Ya están todos pagados, pero NO cerré la quincena: ${d.pendientes.map((p) => p.texto).join(' · ')}`
+  // SÓLO LO QUE TRABA IMPIDE EL AUTOCIERRE (dueño, 21/09/2026). Los avisos —ausencias sin motivo,
+  // días sin cargar— se siguen diciendo, pero con la quincena ya cerrada, no en lugar de cerrarla.
+  const traban = d.pendientes.filter((p) => p.traba)
+  const avisos = d.pendientes.filter((p) => !p.traba)
+  if (traban.length > 0) {
+    return `Marcada como pagada. Ya están todos pagados, pero NO cerré la quincena: ${traban.map((p) => p.texto).join(' · ')}`
   }
-  if (cerrada == null) return 'Marcada como pagada. Ya están todos pagados.'
+  const cola = avisos.length > 0 ? ` Con ${avisos.map((p) => p.texto).join(' · ')}` : ''
+  if (cerrada == null) return `Marcada como pagada. Ya están todos pagados.${cola}`
   return cerrada.ok
-    ? `Marcada como pagada. Todos pagados: quincena cerrada, ${cerrada.lineas} línea(s) congeladas.`
+    ? `Marcada como pagada. Todos pagados: quincena cerrada, ${cerrada.lineas} línea(s) congeladas.${cola}`
     : `Marcada como pagada. Todos pagados, pero el cierre falló: ${cerrada.error}`
 }

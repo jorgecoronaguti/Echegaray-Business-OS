@@ -179,8 +179,8 @@ async function escribirSello(
 }
 
 /** El pendiente que traba, con su texto: un «no se puede» sin cuál manda a adivinar. */
-const porQueNo = (pendientes: readonly { texto: string }[]): string =>
-  pendientes.map((p) => p.texto).join(' · ')
+const porQueNo = (pendientes: readonly { texto: string; traba: boolean }[]): string =>
+  pendientes.filter((p) => p.traba).map((p) => p.texto).join(' · ')
 
 /**
  * CERRAR Y SELLAR. Sella cada línea con la cabecera ABIERTA y recién después la marca cerrada.

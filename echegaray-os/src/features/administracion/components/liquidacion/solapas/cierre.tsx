@@ -216,6 +216,9 @@ function Abierta({ estado, puedeCerrar, quincena }: {
   estado: ReturnType<typeof estadoDeCierre>; puedeCerrar: boolean; quincena: Quincena
 }) {
   const bloqueado = !estado.puedeCerrar || !puedeCerrar
+  // SÓLO LOS QUE TRABAN EXPLICAN EL BOTÓN GRIS. Los avisos —ausencias sin motivo, días sin cargar—
+  // se muestran arriba y no apagan nada (dueño, 21/09/2026).
+  const traban = estado.pendientes.filter((p) => p.traba)
   return (
     <div>
       <p style={{ fontSize: '12.5px', color: V.apagado, margin: '0 0 12px' }}>
@@ -231,8 +234,8 @@ function Abierta({ estado, puedeCerrar, quincena }: {
         bloqueado={bloqueado}
         porque={!puedeCerrar
           ? 'Cerrar una quincena es de Dirección y Administración.'
-          : estado.pendientes.length
-            ? `${estado.pendientes.length} pendiente(s) arriba: sellar una línea incompleta la vuelve indistinguible de una correcta.`
+          : traban.length
+            ? `${traban.length} pendiente(s) arriba: sellar una línea incompleta la vuelve indistinguible de una correcta.`
             : 'No hay ninguna línea que cerrar.'}
       />
     </div>

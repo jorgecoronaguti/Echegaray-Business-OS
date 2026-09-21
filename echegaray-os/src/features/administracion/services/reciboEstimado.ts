@@ -121,7 +121,16 @@ function haberes(
     { codigo: '0401', descripcion: 'BASICO HS NORMALES', seccion: 'remunerativo', unidad: normales, base: vh, monto: basico, fuente: 'horas normales × $/h de categoría' },
   ]
   const a = reglas.asistencia
-  if (a.tasa != null && !presentismoPropio) {
+  // ═══ EL PAR SE SACA SÓLO CUANDO ES UN PAR (revisión independiente, 21/09/2026) ═══
+  //
+  // `presentismoPropio` saltaba el bloque ENTERO. Eso suma cero únicamente donde el 0426 anula al 0425
+  // —jornada parcial: 64 de 64 recibos—. En JORNADA COMPLETA el 0426 no existe (`anula: false`, 0 de 8):
+  // ahí el 0425 va solo y ES PLATA DEL RECIBO. Saltearlo bajaba el remunerativo un 20 % del básico y con
+  // él el neto estimado, que en `sueldoBlancoNegro` es el banco preliminar de la fila: medido en Nievas
+  // Villegas y Maldonado Batista (96 h, $7.420/h) daba $557.362 contra $672.758, −$115.396 cada uno,
+  // ~$221.000 por quincena, contra un recibo real de $663.142. Se saltea el par sólo si de verdad se anula.
+  const seAnula = a.ajuste[jornada].anula === true
+  if (a.tasa != null && !(presentismoPropio && seAnula)) {
     const monto = a.dudosa ? null : r2(a.tasa * basico)
     out.push({ codigo: '0425', descripcion: 'ASISTENCIA PERFECTA (ART. 52 CCT)', seccion: 'remunerativo', unidad: null, base: null, monto, fuente: `${pct(a.tasa)} del 0401 · reproduce ${a.evidencia.aciertos} de ${a.evidencia.recibos} recibos (${ventanaDe(reglas)})` })
     const aj = a.ajuste[jornada]

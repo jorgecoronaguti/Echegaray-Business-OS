@@ -579,7 +579,7 @@ export async function marcarLineaPagada(entrada: unknown): Promise<ResultadoLiqu
   // congelaría ceros que mañana valen una jornada.
   const decision = decisionDeAutocierre({ lineas: lineasDelGrupo, personaId, porPersona: pendientesPorPersona(cuadro.grilla, hoyISO) })
   let cerrada: { ok: true; lineas: number } | { ok: false; error: string } | null = null
-  if (decision.todasPagadas && decision.pendientes.length === 0) {
+  if (decision.todasPagadas && !decision.pendientes.some((p) => p.traba)) {
     const r = await congelar(supabase, cab.id, decision.foto)
     cerrada = r.ok ? { ok: true, lineas: decision.foto.length } : { ok: false, error: r.error }
   }
