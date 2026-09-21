@@ -84,7 +84,9 @@ import {
 } from '@/features/clientes/services/accesosActions'
 import { resumenAccesos } from '@/features/clientes/services/reglasPortal'
 import { cambiosSinPublicar } from '@/features/clientes/services/reglasEsquema'
-import { A_SANGRE, destinoDe, esCaraRetirada, solapaDe, solapasDeCliente } from '@/features/clientes/services/solapasCliente'
+import {
+  A_SANGRE, destinoDe, direccionDeFicha, esCaraRetirada, rotuloDeSolapa, solapaDe, solapasDeCliente,
+} from '@/features/clientes/services/solapasCliente'
 import { tasaDeConversion } from '@/features/clientes/services/tasaConversion'
 import { leerDesgloseHH } from '@/features/clientes/services/desgloseHH'
 import { ROTULO_SIN_OBRA, totalesDelCliente } from '@/features/clientes/services/costosDeObra'
@@ -445,18 +447,10 @@ export default async function ClientePage({ params, searchParams }: {
   }, null)
 
   /** La misma dirección con un parámetro cambiado. Los demás se preservan. */
-  const url = (cambio: Partial<Record<keyof Query, string | null>>) => {
-    const p = new URLSearchParams(
-      // `solapa` se lee pero NO se propaga: un enlace viejo abre la cara que pedía y a partir de ahí
-      // la dirección se escribe con el nombre de hoy.
-      // `rubro` y `sinobra` TAMPOCO: el detalle de una celda es del clic que lo abrió, y cualquier otra
-      // dirección de la ficha lo cierra. Sólo `hrefDetalle` los escribe, a propósito.
-      Object.entries({ ...q, solapa: null, rubro: null, sinobra: null, ...cambio })
-        .filter(([, v]) => v != null && v !== '') as [string, string][],
-    )
-    const s = p.toString()
-    return `/clientes/${slug}${s ? `?${s}` : ''}`
-  }
+  // `solapa` se lee pero NO se propaga; `rubro`/`sinobra` (el detalle de una celda) y `portal` (la
+  // pantalla de accesos) son del clic que los abrió y cualquier otro enlace de la ficha los cierra.
+  // Con `portal` pegado, la solapa «Documentos» seguía dibujando el portal (dueño, 21/09/2026).
+  const url = (cambio: Partial<Record<keyof Query, string | null>>) => direccionDeFicha(slug, q, cambio)
 
   // ═══ LAS DOS CIFRAS (DISENO-FICHA-CLIENTE-v3 · §2.3, recortado el 11/09/2026) ═══
   //
@@ -641,7 +635,8 @@ export default async function ClientePage({ params, searchParams }: {
                     >
                       Ver portal ↗
                     </a>
-                    <AccionSecundaria href={url({ portal: '1' })} testid="ficha-accesos-portal">
+                    {/* Abre y cierra, como «Editar»: con la pantalla abierta, el mismo botón vuelve. */}
+                    <AccionSecundaria href={url({ portal: portalAbierto ? null : '1' })} testid="ficha-accesos-portal">
                       Accesos al portal
                     </AccionSecundaria>
                   </>
@@ -712,7 +707,10 @@ export default async function ClientePage({ params, searchParams }: {
           clave: s.clave,
           titulo: s.label,
           cuenta: s.cuenta,
-          activa: solapa === s.clave,
+          // CON EL PORTAL ABIERTO NINGUNA SOLAPA ESTÁ ACTIVA: lo que se ve abajo no es ninguna de
+          // ellas, y marcar «Documentos» encima de la pantalla de accesos es lo que hizo creer que los
+          // papeles del cliente habían desaparecido (21/09/2026). Cualquier solapa cierra el portal.
+          activa: !portalAbierto && solapa === s.clave,
           // Obras es la cara por defecto y por eso su enlace NO lleva parámetro: así la dirección de
           // la ficha sigue siendo `/clientes/<slug>` a secas.
           href: url({ vista: s.clave === 'obras' ? null : s.clave, nueva: null }),
@@ -730,7 +728,7 @@ export default async function ClientePage({ params, searchParams }: {
           la cuenta (saldo, antigüedad, certificados) y cuándo entra (el cronograma).
 
           NINGUNA CIFRA SE DIBUJA DOS VECES en esta cara: ver el comentario de cada bloque. */}
-      {solapa === 'cobranzas' && veEconomia && (
+      {solapa === 'cobranzas' && veEconomia && !portalAbierto && (
         <>
           <SolapaCobranzas
             filas={cobranzas}
@@ -778,13 +776,14 @@ export default async function ClientePage({ params, searchParams }: {
           del cliente» del costado, que ahora publica CUÁNTOS entran sin necesidad de abrirla. */}
       {portalAbierto && (
         <div data-testid="sub-pantalla-portal">
-          <div style={{ padding: '14px 24px 0' }}>
-            <a
-              href={url({ portal: null })} data-testid="volver-de-portal"
-              style={{ fontSize: '12.5px', color: V.apagado }}
-            >
-              ‹ Volver a la ficha del cliente
-            </a>
+          {/* DÓNDE ESTOY Y A DÓNDE VUELVO (21/09/2026). Con ninguna solapa marcada, la pantalla se nombra
+              a sí misma, y la vuelta dice a qué cara vuelve: la que estaba abierta cuando se entró. */}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '16px 24px 0', fontSize: '12.5px' }}>
+            <Link href={url({ portal: null })} data-testid="volver-de-portal" style={{ color: V.apagado }}>
+              ‹ {rotuloDeSolapa(solapa)}
+            </Link>
+            <span style={{ color: V.tenue }}>/</span>
+            <span style={{ color: V.tinta, fontWeight: 600 }} data-testid="rotulo-sub-pantalla-portal">Portal del cliente</span>
           </div>
           <AccesosPortal
             accesos={lector.leer(accesos, [])}

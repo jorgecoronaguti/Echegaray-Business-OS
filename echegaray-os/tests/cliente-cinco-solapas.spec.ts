@@ -93,6 +93,36 @@ test('la actividad completa y el portal se abren sin solapa propia', async ({ pa
   await page.screenshot({ path: `tests/capturas/cliente-portal-subpantalla-${ANCHO}.png`, fullPage: false })
 })
 
+// ═══ EL PORTAL TAPABA LOS DOCUMENTOS (dueño, 21/09/2026) ═══
+//
+// «No tengo acceso a los recibos emitidos para el cliente ni las facturas ni ningún documento porque
+// tapaste esa sección de cada cliente con lo de su portal.» Medido en producción sobre Quattropani:
+// después de «Accesos al portal», la solapa «Documentos» apuntaba a `?portal=1&vista=documentos`, se
+// marcaba activa y adentro seguía el portal. Es de LECTURA: no habilita ni revoca ningún acceso.
+test('desde el portal, la solapa Documentos abre los documentos y cierra el portal', async ({ page }) => {
+  test.setTimeout(240000)
+  await entrar(page)
+  await page.setViewportSize({ width: ANCHO, height: 1000 })
+
+  await page.goto('/clientes/quattropani')
+  await page.getByTestId('ficha-accesos-portal').click()
+  await expect(page.getByTestId('sub-pantalla-portal')).toBeVisible({ timeout: 60000 })
+  // Con el portal abierto ninguna solapa se marca: lo que se ve no es ninguna de ellas.
+  await expect(page.locator('[data-testid="vistas-cliente"] [aria-current="page"]')).toHaveCount(0)
+
+  await page.getByTestId('solapa-documentos').click()
+  await expect(page.getByTestId('solapa-abierta-documentos')).toBeVisible({ timeout: 60000 })
+  await expect(page.getByTestId('sub-pantalla-portal')).toHaveCount(0)
+  expect(new URL(page.url()).searchParams.get('portal')).toBeNull()
+  await expect(page.getByTestId('solapa-documentos')).toHaveAttribute('aria-current', 'page')
+
+  // Y la vuelta del portal devuelve a la cara desde la que se entró.
+  await page.getByTestId('ficha-accesos-portal').click()
+  await expect(page.getByTestId('volver-de-portal')).toHaveText(/Documentos/, { timeout: 60000 })
+  await page.getByTestId('volver-de-portal').click()
+  await expect(page.getByTestId('solapa-abierta-documentos')).toBeVisible({ timeout: 60000 })
+})
+
 test('a 400px la ficha consolidada no se lleva la página de costado', async ({ page }) => {
   test.setTimeout(240000)
   await entrar(page)

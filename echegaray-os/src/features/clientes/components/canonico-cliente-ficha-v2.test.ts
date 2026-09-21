@@ -171,6 +171,18 @@ test('el costado publica CUÁNTOS entran al portal, y no un placeholder ni un ce
   assert.match(src, /href=\{url\(\{ portal: '1' \}\)\}/)
 })
 
+test('con el portal abierto ninguna solapa se marca activa ni otra cara se dibuja debajo', () => {
+  // 21/09/2026: «tapaste esa sección de cada cliente con lo de su portal». La solapa «Documentos»
+  // quedaba marcada sobre la pantalla de accesos. Que `?portal=1` no viaje en los enlaces lo prueba
+  // `solapasCliente.test.ts`; acá, que la página use esa regla y no vuelva a armar la suya.
+  const src = codigoPagina()
+  assert.match(src, /activa: !portalAbierto && solapa === s\.clave/)
+  assert.match(src, /solapa === 'cobranzas' && veEconomia && !portalAbierto/)
+  assert.match(src, /direccionDeFicha\(slug, q, cambio\)/)
+  assert.doesNotMatch(src, /new URLSearchParams\(\s*Object\.entries\(\{ \.\.\.q,/, 'la ficha volvió a armar sus enlaces a mano')
+  assert.match(src, /data-testid="volver-de-portal"/)
+})
+
 // ═══ ACCIONES DE FILA (handoff CRM / Administración v4) ═════════════════════════════════════════
 
 test('el menú de la fila NO es un popover flotante: expande dentro de la fila', () => {

@@ -106,6 +106,40 @@ export function esCaraRetirada(vista: string | undefined, legacy?: string | unde
   return RETIRADAS[vista ?? legacy ?? ''] !== undefined
 }
 
+// ═══ LO QUE ABRE UN CLIC NO VIAJA EN LOS DEMÁS ENLACES (dueño, 21/09/2026) ═══
+//
+// «No tengo acceso a los recibos emitidos para el cliente ni las facturas ni ningún documento porque
+// tapaste esa sección de cada cliente con lo de su portal.» Medido en producción sobre Quattropani:
+// «Accesos al portal» deja `?portal=1` en la dirección, y la función que arma los enlaces de la ficha
+// preservaba TODO lo que hubiera en la dirección. La solapa «Documentos 43» apuntaba a
+// `?portal=1&vista=documentos`: se marcaba activa y adentro seguía dibujando el portal. No había
+// forma de llegar a los papeles del cliente salvo encontrar el «‹ Volver» de arriba.
+//
+// Estos parámetros son de la sub-pantalla o del panel que abrió UN clic, y cualquier otro enlace de
+// la ficha los cierra. Sólo el enlace que los pide explícitamente los escribe.
+//   solapa   el nombre viejo de `vista`: se lee, no se propaga.
+//   rubro, sinobra   el detalle de una celda de costo.
+//   portal   la pantalla de accesos al portal (`?portal=1`).
+export const PARAMETROS_DE_UN_CLIC = ['solapa', 'rubro', 'sinobra', 'portal'] as const
+
+/**
+ * LA MISMA DIRECCIÓN DE LA FICHA CON UN PARÁMETRO CAMBIADO. Los demás se preservan, salvo los
+ * `PARAMETROS_DE_UN_CLIC`, que sólo sobreviven si `cambio` los vuelve a pedir.
+ */
+export function direccionDeFicha(
+  slug: string,
+  q: Record<string, string | undefined>,
+  cambio: Record<string, string | null | undefined>,
+): string {
+  const cerrados = Object.fromEntries(PARAMETROS_DE_UN_CLIC.map((k) => [k, null]))
+  const p = new URLSearchParams(
+    Object.entries({ ...q, ...cerrados, ...cambio })
+      .filter(([, v]) => v != null && v !== '') as [string, string][],
+  )
+  const s = p.toString()
+  return `/clientes/${slug}${s ? `?${s}` : ''}`
+}
+
 export interface SolapaVisible {
   clave: Solapa
   label: string
@@ -130,6 +164,11 @@ const LABEL: Record<Solapa, string> = {
   cobranzas: 'Cobranzas',
   presupuestos: 'Presupuestos',
   documentos: 'Documentos',
+}
+
+/** El rótulo de una cara, el mismo de su solapa: lo usa el «‹ Volver» de la pantalla del portal. */
+export function rotuloDeSolapa(s: Solapa): string {
+  return LABEL[s]
 }
 
 export function solapasDeCliente({ veEconomia, obras, presupuestos, documentos, cobranzas = null, ordenes = null }: {

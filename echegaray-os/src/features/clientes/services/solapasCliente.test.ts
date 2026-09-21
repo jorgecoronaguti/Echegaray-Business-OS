@@ -4,7 +4,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  A_SANGRE, CARAS_RETIRADAS, destinoDe, esCaraRetirada, solapaDe, solapasDeCliente,
+  A_SANGRE, CARAS_RETIRADAS, destinoDe, direccionDeFicha, esCaraRetirada, rotuloDeSolapa, solapaDe,
+  solapasDeCliente,
 } from './solapasCliente.ts'
 
 const CUENTAS = { obras: 3, presupuestos: 2, documentos: 18 }
@@ -86,4 +87,36 @@ test('sólo Cobranzas va a sangre: es la única cara que usa el ancho entero', (
   for (const conCostado of ['obras', 'ordenes', 'presupuestos', 'documentos'] as const) {
     assert.equal(A_SANGRE.includes(conCostado), false, `${conCostado} no puede ir a sangre`)
   }
+})
+
+// ═══ EL PORTAL TAPABA LOS DOCUMENTOS (dueño, 21/09/2026) ═══
+//
+// Medido en producción sobre Quattropani: después de «Accesos al portal» la solapa «Documentos»
+// apuntaba a `?portal=1&vista=documentos`, se marcaba activa y adentro seguía el portal. Los recibos,
+// las facturas y los demás papeles del cliente quedaban inalcanzables desde las solapas.
+
+test('desde el portal abierto, cada solapa lleva a su cara y cierra el portal', () => {
+  const q = { portal: '1' }
+  assert.equal(direccionDeFicha('quattropani', q, { vista: 'documentos' }), '/clientes/quattropani?vista=documentos')
+  assert.equal(direccionDeFicha('quattropani', q, { vista: null }), '/clientes/quattropani')
+  // «Editar» también: su formulario vive en el costado, que con el portal abierto no se dibuja.
+  assert.equal(direccionDeFicha('quattropani', q, { editar: '1' }), '/clientes/quattropani?editar=1')
+})
+
+test('el portal sólo se abre cuando el enlace lo pide, y la vuelta conserva la cara de origen', () => {
+  const q = { vista: 'documentos' }
+  assert.equal(direccionDeFicha('messina', q, { portal: '1' }), '/clientes/messina?vista=documentos&portal=1')
+  assert.equal(direccionDeFicha('messina', { ...q, portal: '1' }, { portal: null }), '/clientes/messina?vista=documentos')
+})
+
+test('lo demás de la dirección se preserva; el detalle de celda y el nombre viejo no', () => {
+  const q = { vista: 'obras', trabajo: 'ob-1', rubro: 'materiales', sinobra: '1', solapa: 'documentos', documentos: 'todo' }
+  assert.equal(direccionDeFicha('x', q, { accDoc: 'd1' }), '/clientes/x?vista=obras&trabajo=ob-1&documentos=todo&accDoc=d1')
+  // `hrefDetalle` los pide explícitamente y ahí sí viajan.
+  assert.equal(direccionDeFicha('x', {}, { trabajo: 'ob-1', rubro: 'hh' }), '/clientes/x?rubro=hh&trabajo=ob-1')
+})
+
+test('la vuelta del portal nombra la cara con el mismo rótulo que su solapa', () => {
+  const porClave = new Map(solapasDeCliente({ veEconomia: true, ...CUENTAS }).map((s) => [s.clave, s.label]))
+  for (const [clave, label] of porClave) assert.equal(rotuloDeSolapa(clave), label)
 })
