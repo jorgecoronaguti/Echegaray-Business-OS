@@ -80,3 +80,36 @@ export function Torta({ gajos, centro, centroNota }: { gajos: Gajo[]; centro: st
     </div>
   )
 }
+
+/**
+ * LA TORTITA DE 56 px — una por cliente, al lado de la torta grande del Resumen.
+ *
+ * Del diseño v9, sección «De qué está hecho el gasto»: `grid-template-columns:56px minmax(0,1fr)`
+ * con 12 px de aire, y a la derecha tres renglones —nombre 12.5px/500, monto 11.5px muted y la
+ * mezcla 11px faint («MO 43 · sub 1 · mat 56»)—. Sin leyenda: la de la torta grande ya está arriba
+ * y repetirla cinco veces sería la misma información cinco veces.
+ *
+ * NO LLEVA CENTRO BLANCO. En el diseño la tortita es maciza: a 56 px el agujero se come el dibujo.
+ * Es el mismo `arco()` con el mismo viewBox, así que los dos gráficos son el mismo gráfico.
+ */
+export function Tortita({ nombre, monto, mezcla, gajos }: {
+  /** `null` = no se pudo formatear el total; se escribe ausencia, nunca «$ 0,00 M». */
+  nombre: string; monto: string | null; mezcla: string; gajos: Gajo[]
+}) {
+  const trozos = gajosDe(gajos)
+  return (
+    <div className="grid min-w-0 grid-cols-[56px_minmax(0,1fr)] items-center gap-3">
+      <svg viewBox="0 0 160 160" className="block size-14" role="img" aria-label={`${nombre}: ${mezcla}`}>
+        {trozos.map((t) => (
+          <path key={t.gajo.rotulo} d={t.d} className={`${t.gajo.color} fill-current stroke-surface`} strokeWidth={1.5} />
+        ))}
+        {trozos.length === 0 ? <circle cx={C} cy={C} r={R} className="fill-line" /> : null}
+      </svg>
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="truncate text-[12.5px] font-medium text-ink">{nombre}</div>
+        <div className={`whitespace-nowrap text-[11.5px] tabular-nums ${monto == null ? 'text-faint' : 'text-muted'}`}>{monto ?? 'sin registrar'}</div>
+        <div className="truncate text-[11px] text-faint tabular-nums">{mezcla}</div>
+      </div>
+    </div>
+  )
+}

@@ -14,6 +14,7 @@ import {
 } from '../services/agregados'
 import { rotuloEstimada, type ObraAnalitica } from '../services/obras'
 import { ancho, Cabecera, LEYENDA_GASTO, Seccion } from './Piezas'
+import { Torta, Tortita, type Gajo } from './Torta'
 
 export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, neto }: {
   obras: ObraAnalitica[]
@@ -45,9 +46,9 @@ export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, 
         cifras={[
           { rotulo: 'presupuestado', valor: millones(r.presupuestado), falta: 'sin presupuesto',
             nota: `${conPres.length} ${conPres.length === 1 ? 'obra' : 'obras'}${estimados ? ` · ${estimados} ${estimados === 1 ? 'estimado' : 'estimados'}` : ''}` },
-          { rotulo: neto ? 'consumido en obras, sin IVA' : 'consumido en obras, con IVA', valor: millones(total), falta: 'sin movimiento',
+          { rotulo: neto ? 'consumido, sin IVA' : 'consumido, con IVA', valor: millones(total), falta: 'sin movimiento',
             nota: total ? `mano de obra ${pctEntero(mo / total)} · materiales ${pctEntero(mat / total)}` : undefined },
-          { rotulo: 'sin obra asignada', valor: millones(r.sinObraAsignada), falta: 'ninguno', tono: r.sinObraAsignada ? 'warn' : undefined,
+          { rotulo: 'sin obra', valor: millones(r.sinObraAsignada), falta: 'ninguno', tono: r.sinObraAsignada ? 'warn' : undefined,
             nota: comprobantes != null && comprobantes > 0 ? `${comprobantes} comprobantes sin obra` : undefined },
           { rotulo: 'horas en obra', valor: horasTexto(horas), falta: 'sin horas',
             nota: `${conHoras} ${conHoras === 1 ? 'obra carga' : 'obras cargan'} horas` },
@@ -55,11 +56,15 @@ export function VistaResumen({ obras, sinObra, comprobantesPorCliente, filtros, 
             nota: sinPres.length && consumidoSinPres > 0 ? `${millones(consumidoSinPres)} consumidos` : undefined },
         ]} />
 
-      <Seccion titulo="Por cliente" leyenda={[...LEYENDA_GASTO, { color: 'bg-dato-cajon', rotulo: 'sin obra asignada' }]}>
+      <Seccion titulo="Por cliente" leyenda={[...LEYENDA_GASTO, { color: 'bg-dato-cajon', rotulo: 'sin obra' }]}>
         <PorCliente clientes={clientes} filtros={filtros} />
       </Seccion>
 
-      <DeQueYObras obras={obras} clientes={clientes} filtros={filtros} />
+      <DeQueEstaHecho obras={obras} clientes={clientes} />
+
+      <Seccion titulo="Las obras que más gastan" filo>
+        <ObrasQueMasGastan obras={obras} filtros={filtros} />
+      </Seccion>
 
       <Huecos obras={obras} sinPres={sinPres} />
       <div className="pb-7" />
@@ -130,46 +135,70 @@ function Lectura({ c }: { c: FilaDeCliente }) {
 
 // ─── De qué está hecho el gasto · Las obras que más gastan ──────────────────────────────────────
 
-function DeQueYObras({ obras, clientes, filtros }: { obras: ObraAnalitica[]; clientes: FilaDeCliente[]; filtros: Filtros }) {
+/**
+ * DE QUÉ ESTÁ HECHO EL GASTO — la torta de la empresa y una tortita por cliente.
+ *
+ * El diseño v9 lo dibuja con dona: `torta: { lado:'160px', centro: M(total), centroNota:'consumido' }`
+ * más `tortitas` en `repeat(auto-fill,minmax(230px,1fr))` con 20 px de aire. Estaba implementado con
+ * barras apiladas horizontales, que no es el mismo gráfico: una barra compara longitudes contra el
+ * borde de la pantalla y una torta compara partes contra el total, que es la pregunta de esta
+ * sección. El componente `Torta` ya existía y se usaba en Cobranza y en Caja.
+ */
+function DeQueEstaHecho({ obras, clientes }: { obras: ObraAnalitica[]; clientes: FilaDeCliente[] }) {
   const mix = composicionDelGasto(obras, clientes)
-  const top = obrasQueMasConsumen(obras)
-  const max = top[0]?.gasto.total ?? 1
+  const [empresa, ...porCliente] = mix
+  if (!empresa || empresa.total <= 0) return null
   return (
-    <section className="grid gap-x-10 gap-y-6 pt-9 lg:grid-cols-[180px_minmax(0,1fr)_minmax(0,1fr)]">
-      <h2 className="pt-0.5 text-[13px] font-semibold text-ink">De qué está hecho el gasto</h2>
-      <div className="flex flex-col gap-3">
-        {mix.map((m, i) => <Mezcla key={m.nombre} m={m} empresa={i === 0} />)}
+    <Seccion titulo="De qué está hecho el gasto">
+      <div className="flex flex-col gap-7">
+        <Torta gajos={gajosDe(empresa)} centro={millones(empresa.total)} centroNota="consumido" />
+        {porCliente.some((m) => m.total > 0) ? (
+          <div className="grid gap-5 pt-1 lg:grid-cols-[repeat(auto-fill,minmax(230px,1fr))]">
+            {porCliente.filter((m) => m.total > 0).map((m) => (
+              <Tortita key={m.nombre} nombre={m.nombre} monto={millones(m.total)} mezcla={mezclaDe(m)} gajos={gajosDe(m)} />
+            ))}
+          </div>
+        ) : null}
       </div>
-      <div className="flex min-w-0 flex-col">
-        <h2 className="mb-3.5 text-[13px] font-semibold text-ink">Las obras que más gastan</h2>
-        {top.map((o, i) => (
-          <Link key={o.id} href={aUrl({ ...filtros, vista: 'obras', obra: o.id })} prefetch={false}
-            className="grid h-[34px] grid-cols-[22px_minmax(0,1fr)_48px_76px] items-center gap-2.5 sm:grid-cols-[22px_minmax(0,1fr)_minmax(0,120px)_84px] sm:gap-3 border-b border-line hover:bg-surface-quiet">
-            <div className="font-mono text-[11px] text-faint">{String(i + 1).padStart(2, '0')}</div>
-            <div className="flex min-w-0 flex-col gap-px">
-              <div className="truncate text-[12.5px] font-medium text-ink">{o.nombre}</div>
-              <div className="truncate text-[10.5px] text-faint">{o.clienteNombre} · {o.presupuesto != null ? millones(o.presupuesto) : 'sin presupuesto'}</div>
-            </div>
-            <div className={`h-2 rounded-[2px] ${o.presupuesto == null ? 'bg-warn' : 'bg-accent'}`} style={{ width: ancho(o.gasto.total, max) }} />
-            <div className="text-right text-[12.5px] font-semibold tabular-nums text-ink">{millones(o.gasto.total)}</div>
-          </Link>
-        ))}
-      </div>
-    </section>
+    </Seccion>
   )
 }
 
-function Mezcla({ m, empresa }: { m: Composicion; empresa: boolean }) {
-  const pct = (v: number) => Math.round((v / m.total) * 100)
-  const rot = (v: number) => (pct(v) >= 8 ? `${pct(v)} %` : '')
+/** Los tres gajos, con los mismos tokens que la leyenda de la sección. */
+const gajosDe = (m: Composicion): Gajo[] => [
+  { rotulo: 'mano de obra', monto: m.manoObra, color: 'text-accent' },
+  { rotulo: 'subcontratos', monto: m.subcontratos, color: 'text-muted' },
+  { rotulo: 'materiales', monto: m.materiales, color: 'text-dato-materiales' },
+]
+
+/** «MO 43 · sub 1 · mat 56», tal cual el diseño. Enteros: a 11 px un decimal no se lee. */
+const mezclaDe = (m: Composicion): string => {
+  const p = (v: number) => Math.round((v / m.total) * 100)
+  return `MO ${p(m.manoObra)} · sub ${p(m.subcontratos)} · mat ${p(m.materiales)}`
+}
+
+/**
+ * LAS OBRAS QUE MÁS GASTAN — tres celdas, sin barra.
+ *
+ * El diseño es `grid-template-columns: 22px minmax(0,1fr) auto`: número, nombre con su subtítulo, y
+ * el monto a la derecha. La barra que había acá no está en el diseño y además competía con el monto
+ * por la misma lectura. Y es una SECCIÓN propia con filo, no una columna al lado de la torta: el
+ * diseño apila las cuatro secciones del Resumen, cada una con su columna de título de 180 px.
+ */
+function ObrasQueMasGastan({ obras, filtros }: { obras: ObraAnalitica[]; filtros: Filtros }) {
   return (
-    <div className="grid grid-cols-[110px_minmax(0,1fr)] items-center gap-3.5">
-      <div className={`truncate text-xs ${empresa ? 'font-semibold text-ink' : 'text-muted'}`}>{m.nombre}</div>
-      <div className={`flex overflow-hidden rounded-[2px] bg-line text-[10.5px] tabular-nums ${empresa ? 'h-7' : 'h-[18px]'}`}>
-        <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-accent text-white" style={{ width: ancho(m.manoObra, m.total) }}>{rot(m.manoObra)}</div>
-        <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-muted text-white" style={{ width: ancho(m.subcontratos, m.total) }}>{rot(m.subcontratos)}</div>
-        <div className="flex items-center justify-center overflow-hidden whitespace-nowrap bg-dato-materiales text-ink" style={{ width: ancho(m.materiales, m.total) }}>{rot(m.materiales)}</div>
-      </div>
+    <div className="flex min-w-0 flex-col">
+      {obrasQueMasConsumen(obras).map((o, i) => (
+        <Link key={o.id} href={aUrl({ ...filtros, vista: 'obras', obra: o.id })} prefetch={false}
+          className="grid h-[34px] grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-2.5 border-b border-line hover:bg-surface-quiet sm:gap-3">
+          <div className="font-mono text-[11px] text-faint">{String(i + 1).padStart(2, '0')}</div>
+          <div className="flex min-w-0 flex-col gap-px">
+            <div className="truncate text-[12.5px] font-medium text-ink">{o.nombre}</div>
+            <div className="truncate text-[10.5px] text-faint">{o.clienteNombre} · {o.presupuesto != null ? millones(o.presupuesto) : 'sin presupuesto'}</div>
+          </div>
+          <div className="text-right text-[12.5px] font-semibold tabular-nums text-ink">{millones(o.gasto.total)}</div>
+        </Link>
+      ))}
     </div>
   )
 }
@@ -183,17 +212,27 @@ function Mezcla({ m, empresa }: { m: Composicion; empresa: boolean }) {
 function Huecos({ obras, sinPres }: { obras: ObraAnalitica[]; sinPres: ObraAnalitica[] }) {
   const est = rotuloEstimada(manoObraDe(obras))
   const huecos = [
-    est ? { que: 'Mano de obra real', porque: `El ${est.replace(' estimada', '')} de la mano de obra consumida es estimada: quincenas sin recibo del estudio, horas × tarifa.`, destraba: 'los recibos del estudio' } : null,
-    sinPres.length ? { que: 'Consumo contra presupuesto', porque: sinPres.map((o) => `${o.nombre}: ${o.motivoPresupuesto ?? 'sin cotización aprobada'}`).join(' · '), destraba: 'cargar el costo cotizado' } : null,
-    { que: 'Subcontratos contra presupuesto', porque: `La cotización no los separa: van ${INCLUIDO_EN_MATERIALES.replace('incluido ', '')} y se miden junto con materiales.`, destraba: 'una partida propia en la cotización' },
-    { que: 'Productividad', porque: 'Las horas entran por día y por obra; no bajan a la actividad.', destraba: 'horas por actividad' },
-  ].filter((h): h is { que: string; porque: string; destraba: string } => h != null)
+    // ═══ «PORQUE» ES UNA ETIQUETA, NO UN PÁRRAFO (diseño v9) ═══
+    //
+    // El diseño escribe `'22 % estimada'`, `'12 obras sin cotización'`, `'van dentro de materiales'`.
+    // Acá se habían vuelto oraciones de tres líneas, y cuatro tarjetas de tres líneas ocupan el
+    // triple de alto y dejan de leerse de un vistazo. El detalle largo no se pierde: va al `title`,
+    // que es donde se busca cuando la etiqueta no alcanza.
+    est ? { que: 'Mano de obra real', porque: est.replace(' estimada', ' estimada'), destraba: 'recibos del estudio',
+      detalle: `El ${est.replace(' estimada', '')} de la mano de obra consumida es estimada: quincenas sin recibo del estudio, horas × tarifa.` } : null,
+    sinPres.length ? { que: 'Consumo contra presupuesto', porque: `${sinPres.length} ${sinPres.length === 1 ? 'obra sin cotización' : 'obras sin cotización'}`, destraba: 'cargar el costo cotizado',
+      detalle: sinPres.map((o) => `${o.nombre}: ${o.motivoPresupuesto ?? 'sin cotización aprobada'}`).join(' · ') } : null,
+    { que: 'Subcontratos', porque: 'van dentro de materiales', destraba: 'partida propia',
+      detalle: `La cotización no los separa: van ${INCLUIDO_EN_MATERIALES.replace('incluido ', '')} y se miden junto con materiales.` },
+    { que: 'Productividad', porque: 'las horas no bajan a la actividad', destraba: 'horas por actividad',
+      detalle: 'Las horas entran por día y por obra; no bajan a la actividad.' },
+  ].filter((h): h is { que: string; porque: string; destraba: string; detalle: string } => h != null)
   return (
     <section className="grid gap-4 pt-9 lg:grid-cols-[180px_minmax(0,1fr)] lg:gap-6">
-      <h2 className="pt-0.5 text-[13px] font-semibold text-ink">Lo que la base no puede afirmar</h2>
+      <h2 className="pt-0.5 text-[13px] font-semibold text-ink">Lo que no se puede afirmar</h2>
       <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
         {huecos.map((h) => (
-          <div key={h.que} className="flex flex-col gap-1.5 border-t border-line pt-3">
+          <div key={h.que} title={h.detalle} className="flex flex-col gap-1.5 border-t border-line pt-3">
             <div className="text-[13px] font-medium text-ink">{h.que}</div>
             <div className="text-[11.5px] leading-normal text-muted">{h.porque}</div>
             <div className="font-mono text-[11px] text-faint">{h.destraba}</div>

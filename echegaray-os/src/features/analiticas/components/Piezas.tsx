@@ -55,7 +55,13 @@ export function Cabecera({ titulo, detalle, cifras, repartidas = false, derecha 
   titulo: string
   detalle: ReactNode
   cifras: Cifra[]
-  /** `true` = las cifras ocupan todo el ancho en columnas iguales (Resumen); si no, van juntas. */
+  /**
+   * DEPRECADO Y SIN EFECTO (diseño v9, 21/09/2026). Las cinco vistas comparten la MISMA retícula de
+   * cifras —`repeat(5,minmax(0,1fr))`—, tengan tres, cuatro o cinco: por eso en el diseño las cifras
+   * de Resumen, Obras, Nómina y Cobranza caen en las mismas x. Con la rama `flex`, Obras, Nómina y
+   * Cobranza las apretaban a la izquierda y los números se movían al cambiar de solapa. Se conserva
+   * la prop para no tocar las cinco llamadas; ya no decide nada.
+   */
   repartidas?: boolean
   derecha?: ReactNode
 }) {
@@ -65,9 +71,7 @@ export function Cabecera({ titulo, detalle, cifras, repartidas = false, derecha 
         <h1 className="text-[22px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">{titulo}</h1>
         <p className="text-xs leading-[1.45] text-muted tabular-nums">{detalle}</p>
       </div>
-      <div className={repartidas
-        ? `grid grid-cols-2 items-end gap-x-6 gap-y-5 lg:gap-6 ${cifras.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-5'}`
-        : 'grid grid-cols-2 items-end gap-x-6 gap-y-5 lg:flex lg:flex-nowrap lg:gap-x-10 xl:gap-x-14'}>
+      <div className={`grid grid-cols-2 items-end gap-x-6 gap-y-5 lg:gap-6 ${cifras.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-5'}`}>
         {cifras.map((c) => <UnaCifra key={c.rotulo} c={c} />)}
       </div>
       {derecha ? <div className="min-w-0 lg:justify-self-end">{derecha}</div> : null}
@@ -88,7 +92,7 @@ export function Seccion({ titulo, aclaracion, leyenda, children, arriba = 'pt-7'
 }) {
   return (
     <section className={`grid gap-4 lg:grid-cols-[180px_minmax(0,1fr)] lg:gap-6 ${filo ? 'mt-8 border-t border-line pt-6' : arriba}`}>
-      <div className="flex flex-col gap-3.5 pt-0.5">
+      <div className="flex flex-col gap-3 pt-0.5">
         <h2 className="text-[13px] font-semibold text-ink">{titulo}</h2>
         {aclaracion ? <p className="text-[11.5px] leading-normal text-muted">{aclaracion}</p> : null}
         {leyenda ? (

@@ -17,6 +17,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { aCorta, deCorta } from '../services/fechaCorta'
 import {
   aUrl, apartado, cuantosApartados, DEFECTO, ESTADOS, leerPeriodo, PRESETS, razonNoAplica, rotuloPeriodo, VISTAS,
   type Control, type EstadoObra, type Filtros,
@@ -124,12 +125,30 @@ function Opcion({ activa, onClick, children, extra }: { activa: boolean; onClick
   )
 }
 
-function PanelPeriodo({ filtros, cambiar }: { filtros: Filtros; cambiar: (f: Filtros) => void }) {
+/**
+ * @param enHoja `true` en la hoja del teléfono, donde el «Aplicar» del pie ya confirma todo.
+ *
+ * ═══ DOS BOTONES «APLICAR» EN LA MISMA PANTALLA (revisión de fidelidad, 21/09/2026) ═══
+ *
+ * La hoja de 390 tenía el «Aplicar» amarillo del pie —el del diseño— y, además, otro adentro de la
+ * sección Período. Dos botones con la misma palabra y distinto alcance: uno confirma el rango y el
+ * otro confirma los tres filtros. En la hoja el rango entra al borrador apenas queda completo y el
+ * botón interno desaparece; en el menú de 1440 sigue, porque ahí `cambiar` navega de verdad y sin
+ * botón no habría forma de confirmar.
+ */
+function PanelPeriodo({ filtros, cambiar, enHoja = false }: { filtros: Filtros; cambiar: (f: Filtros) => void; enHoja?: boolean }) {
   const p = filtros.periodo
   const [desde, setDesde] = useState(p.tipo === 'rango' ? p.desde : '')
   const [hasta, setHasta] = useState(p.tipo === 'rango' ? p.hasta : '')
   const rango = leerPeriodo(`${desde}..${hasta}`)
   const invertido = desde !== '' && hasta !== '' && desde > hasta
+  /** En la hoja, un rango completo y coherente entra solo al borrador. */
+  const anotar = (d: string, h: string) => {
+    setDesde(d); setHasta(h)
+    if (!enHoja) return
+    const r = leerPeriodo(`${d}..${h}`)
+    if (r.tipo === 'rango' && !(d !== '' && h !== '' && d > h)) cambiar({ ...filtros, periodo: r })
+  }
   return (
     <>
       <div className="flex flex-col gap-px border-b border-line p-1.5">
@@ -139,16 +158,42 @@ function PanelPeriodo({ filtros, cambiar }: { filtros: Filtros; cambiar: (f: Fil
       </div>
       <div className="flex flex-col gap-2.5 px-3.5 pb-3.5 pt-3">
         <div className="grid grid-cols-2 gap-2">
-          <label className="flex flex-col gap-1"><span className="text-[11px] text-muted">Desde</span><input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="h-9 rounded-control border border-line-strong bg-surface px-2 text-xs text-ink lg:h-[30px]" /></label>
-          <label className="flex flex-col gap-1"><span className="text-[11px] text-muted">Hasta</span><input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="h-9 rounded-control border border-line-strong bg-surface px-2 text-xs text-ink lg:h-[30px]" /></label>
+          <CampoFecha rotulo="Desde" iso={desde} alCambiar={(v) => anotar(v, hasta)} />
+          <CampoFecha rotulo="Hasta" iso={hasta} alCambiar={(v) => anotar(desde, v)} />
         </div>
-        <div className="flex items-center justify-between gap-2.5">
-          <span className={`text-[11px] ${invertido ? 'text-warn' : 'text-faint'}`}>{invertido ? 'desde debe ser anterior a hasta' : 'inclusive · fecha de imputación'}</span>
-          <button type="button" disabled={rango.tipo !== 'rango'} onClick={() => cambiar({ ...filtros, periodo: rango })}
-            className="h-9 rounded-control bg-marca px-3 text-xs font-medium text-accent disabled:opacity-50 lg:h-7">Aplicar</button>
-        </div>
+        {enHoja ? (
+          invertido ? <span className="text-[11px] text-warn">desde debe ser anterior a hasta</span> : null
+        ) : (
+          <div className="flex items-center justify-between gap-2.5">
+            <span className={`text-[11px] ${invertido ? 'text-warn' : 'text-faint'}`}>{invertido ? 'desde debe ser anterior a hasta' : 'inclusive · fecha de imputación'}</span>
+            <button type="button" disabled={rango.tipo !== 'rango'} onClick={() => cambiar({ ...filtros, periodo: rango })}
+              className="h-9 rounded-control bg-marca px-3 text-xs font-medium text-accent disabled:opacity-50 lg:h-7">Aplicar</button>
+          </div>
+        )}
       </div>
     </>
+  )
+}
+
+/**
+ * UN CAMPO DE FECHA QUE SE LEE `dd/mm/aa`.
+ *
+ * El `<input type="date">` dibuja el formato del locale DEL NAVEGADOR, no el de la página: en el
+ * teléfono del dueño salía `mm/dd/yyyy`. Acá se escribe a mano con el formato al lado, como en el
+ * diseño, y `fechaCorta` traduce. Lo que no se pudo leer se dice en el campo, no se adivina.
+ */
+function CampoFecha({ rotulo, iso, alCambiar }: { rotulo: string; iso: string; alCambiar: (iso: string) => void }) {
+  const [texto, setTexto] = useState(() => aCorta(iso))
+  const roto = texto.trim() !== '' && deCorta(texto) == null
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] text-muted">{rotulo}</span>
+      <input
+        type="text" inputMode="numeric" placeholder="dd/mm/aa" aria-label={`${rotulo} (dd/mm/aa)`} value={texto}
+        onChange={(e) => { setTexto(e.target.value); alCambiar(deCorta(e.target.value) ?? '') }}
+        className={`h-10 rounded-control border bg-surface px-2 text-[13px] tabular-nums text-ink lg:h-[30px] lg:text-xs ${roto ? 'border-warn' : 'border-line-strong'}`}
+      />
+    </label>
   )
 }
 
@@ -223,7 +268,7 @@ function HojaFiltros({ filtros, obras, cerrar, ir }: { filtros: Filtros; obras: 
           className="h-11 px-2 text-sm text-muted">Restablecer</button>
       </div>
       <div className="flex-1 overflow-y-auto px-4">
-        {seccion('periodo', 'Período', <PanelPeriodo filtros={borrador} cambiar={setBorrador} />)}
+        {seccion('periodo', 'Período', <PanelPeriodo filtros={borrador} cambiar={setBorrador} enHoja />)}
         {seccion('estado', 'Estado de obra', <PanelEstado filtros={borrador} obras={obras} cambiar={setBorrador} />)}
         {seccion('obras', 'Obras', <ListaObras filtros={borrador} obras={obras} elegidas={borrador.obras} alternarObra={(id) => setBorrador({ ...borrador, obras: alternarEn(borrador.obras, id) })} />)}
       </div>

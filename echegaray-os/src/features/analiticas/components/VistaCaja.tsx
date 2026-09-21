@@ -253,6 +253,21 @@ function Grafico({ g }: { g: GraficoCaja }) {
  */
 const porPesoDeObra = (x: number | null) => (x == null ? null : `$ ${x.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
 
+/**
+ * El botón de imputación del diseño. Deshabilitado y diciendo por qué: la pantalla no existe todavía
+ * y la corrección se hace en Compras. Un botón que no lleva a ningún lado sin explicar por qué es
+ * peor que no tenerlo; con el motivo al lado, es trabajo pendiente declarado.
+ */
+function BotonImputar({ n }: { n: number }) {
+  return (
+    <button type="button" disabled data-testid="caja-imputar"
+      title="La imputación de un egreso sin área todavía no tiene pantalla: se corrige en Compras."
+      className="mt-1 flex h-[34px] w-fit items-center whitespace-nowrap rounded-control bg-marca px-4 text-[12.5px] font-semibold text-accent opacity-60">
+      Imputar {n === 1 ? 'la fila sin destino' : `las ${n} filas sin destino`}
+    </button>
+  )
+}
+
 function Gasto({ egresos, criterio, periodo, rango }: { egresos: unknown[] | null; criterio: CriterioEgreso; periodo: string; rango: { desde: string | null; hasta: string | null } }) {
   if (!egresos) return <div data-testid="caja-gasto-sin-lectura"><SinLectura que="lo que salió (caja_egreso_percibido)" /></div>
   const percibido = criterio === 'percibido'
@@ -271,6 +286,12 @@ function Gasto({ egresos, criterio, periodo, rango }: { egresos: unknown[] | nul
       <div className="grid gap-5 lg:grid-cols-[180px_minmax(0,1fr)] lg:gap-6">
         <div className="flex flex-col gap-1.5">
           <h2 className="text-[15px] font-semibold text-ink">Lo que se está gastando</h2>
+          {/* LA ÚNICA ACCIÓN DE TODO EL MÓDULO, Y SE HABÍA PERDIDO (diseño v9).
+              `derecha: 'Imputar las N filas sin destino'`, amarillo al 60 % porque todavía no tiene
+              pantalla propia: el `title` dice dónde se corrige mientras tanto. Va acá, con el bloque
+              de gasto, que es de donde salen esas filas. Sin filas sin destino no se dibuja: un
+              botón para imputar cero filas es trabajo pendiente inventado. */}
+          {c.nSinDestino ? <BotonImputar n={c.nSinDestino} /> : null}
           <p className="text-xs leading-[1.45] text-muted tabular-nums" data-testid="caja-gasto-ventana">
             {ventana} · {percibido ? 'cada pago en la fecha en que se pagó, según Compras'
               : 'por fecha del comprobante: la lectura de pagos (caja_egreso_percibido) todavía no está publicada en esta base'}

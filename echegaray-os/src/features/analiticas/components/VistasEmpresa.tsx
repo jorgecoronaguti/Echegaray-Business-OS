@@ -54,7 +54,7 @@ export function VistaNomina({ filas, quincenas, personas, rango, periodo, hoy }:
         cifras={[
           { rotulo: seis && seis.meses < 6 ? `últimos ${seis.meses} meses liquidados` : 'seis meses', valor: seis ? millones(seis.total) : null },
           { rotulo: ultimo ? `${rotuloMes(ultimo.mes)} contra ${rotuloMes(MES_BASE)}` : `contra ${rotuloMes(MES_BASE)}`, valor: pctConSigno(ultimo?.contraBase), falta: '—', tono: (ultimo?.contraBase ?? 0) > 0 ? 'warn' : undefined },
-          { rotulo: 'plantel', valor: l ? String(l.plantel) : null, nota: 'por pertenencia, no por fecha de egreso' },
+          { rotulo: 'plantel', valor: l ? String(l.plantel) : null, nota: 'por pertenencia' },
           { rotulo: 'repartido a obra', valor: null, falta: 'sin repartir' },
         ]} />
       <Seccion titulo="Costo de la nómina, por mes" aclaracion={base != null ? `en ámbar, lo que subió sobre ${rotuloMes(MES_BASE)} (${millones(base)})` : `sin ${rotuloMes(MES_BASE)} liquidado no hay base`} arriba="pt-8">
@@ -67,20 +67,30 @@ export function VistaNomina({ filas, quincenas, personas, rango, periodo, hoy }:
           }
         })} />
       </Seccion>
-      <div className="mt-8 grid grid-cols-2 gap-6 border-t border-line pb-9 pt-6 lg:grid-cols-[180px_repeat(2,minmax(0,1fr))]">
-        <div className="col-span-2 pt-1 text-[11.5px] leading-normal text-muted lg:col-span-1">lo que la nómina no puede decir hoy</div>
-        <Hueco valor={l ? `${l.sinCategoria} de ${l.plantel}` : null} texto="legajos sin categoría · sin categoría no hay jornal" tenue />
-        <Hueco valor={String(incompletos)} texto="meses sin liquidar del todo · no entran a la suba" />
-      </div>
+      {/* ═══ ES UNA SECCIÓN, CON SU TÍTULO Y SU FILO (diseño v9) ═══
+          Era una línea suelta en minúscula de 11.5 px, sin `<h2>` y sin filo sobre las tarjetas, y
+          el valor se dibujaba a 22 px en gris: «0 de 17» salía enorme y apagado donde el diseño
+          pone el dato chico y en tinta. Se usa el mismo dibujo de huecos que el Resumen. */}
+      <Seccion titulo="Lo que no se puede decir" filo>
+        <div className="grid gap-6 pb-9 sm:grid-cols-2">
+          <Hueco que={l ? `${l.sinCategoria} de ${l.plantel}` : null} falta="sin registrar"
+            porque="legajos sin categoría" destraba="sin categoría no hay jornal" />
+          <Hueco que={String(incompletos)} porque="meses sin liquidar del todo" destraba="no entran a la suba" />
+        </div>
+      </Seccion>
     </>
   )
 }
 
-function Hueco({ valor, falta = 'sin registrar', texto, tenue = false }: { valor: string | null; falta?: string; texto: string; tenue?: boolean }) {
+/** Una tarjeta de hueco, con el mismo dibujo que las del Resumen: filo arriba, `que` 13px/500. */
+function Hueco({ que, falta = 'sin registrar', porque, destraba }: {
+  que: string | null; falta?: string; porque: string; destraba: string
+}) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className={`text-[22px] font-semibold leading-none tracking-[-0.02em] tabular-nums ${valor == null || tenue ? 'text-faint' : 'text-ink'}`}>{valor ?? falta}</div>
-      <div className="text-[11.5px] text-muted">{texto}</div>
+    <div className="flex flex-col gap-1.5 border-t border-line pt-3">
+      <div className={`text-[13px] font-medium tabular-nums ${que == null ? 'text-faint' : 'text-ink'}`}>{que ?? falta}</div>
+      <div className="text-[11.5px] leading-normal text-muted">{porque}</div>
+      <div className="font-mono text-[11px] text-faint">{destraba}</div>
     </div>
   )
 }
@@ -132,7 +142,7 @@ export function VistaCobranza({ cuenta, documentos, agenda, hoy, periodo }: {
           { rotulo: 'al día', valor: c.alDia > 0 ? millones(c.alDia) : null, falta: 'ninguno', tono: 'pos' },
         ]} />
       <CobrosProximos a={a} agenda={agenda} hoy={hoy} />
-      <Seccion titulo="Antigüedad de lo que se debe" aclaracion="por la fecha de cobro de cada comprobante" filo>
+      <Seccion titulo="Antigüedad de lo que se debe" filo>
         {c.porCobrar > 0 ? (
           <Torta centro={millones(c.porCobrar)} centroNota="por cobrar"
             gajos={bandas.map((b) => ({ rotulo: b.rotulo.toLowerCase(), monto: b.monto, color: TONO_BANDA[b.clave].texto, falta: 'ninguno' }))} />
@@ -140,8 +150,12 @@ export function VistaCobranza({ cuenta, documentos, agenda, hoy, periodo }: {
       </Seccion>
       <Seccion titulo="Por cliente" filo>
         <div className="flex flex-col pb-9">
-          <div className={`hidden h-9 items-center gap-6 border-b border-line lg:grid lg:grid-cols-[150px_minmax(0,1fr)_96px_150px_170px] ${ENCABEZADO}`}>
-            <div>Cliente</div><div /><div className="text-right">Saldo</div><div>Antigüedad</div><div>Hoy</div>
+          {/* ═══ EL SALDO VA PEGADO AL NOMBRE, NO DEL OTRO LADO DE LA BARRA (diseño v9) ═══
+              `gFilaCobro: '150px 96px minmax(0,1fr) 150px 170px'`. Estaba al revés: la barra entre
+              el cliente y el saldo empujaba el número a 600 px de distancia. El dato que decide
+              —cuánto se debe— quedaba detrás del adorno que sólo lo ilustra. */}
+          <div className={`hidden h-9 items-center gap-6 border-b border-line lg:grid lg:grid-cols-[150px_96px_minmax(0,1fr)_150px_170px] ${ENCABEZADO}`}>
+            <div>Cliente</div><div className="text-right">Saldo</div><div /><div>Antigüedad</div><div>Hoy</div>
           </div>
           {filas.map((f) => <FilaCliente key={f.clienteId} f={f} max={maxSaldo} documentos={documentos} proximo={proximos.get(f.clienteId) ?? null} />)}
         </div>
@@ -218,10 +232,10 @@ function FilaCliente({ f, max, documentos, proximo }: { f: FilaCobranza; max: nu
   // sí. Nunca se inventa: si el cliente no tiene documento con fecha, sigue diciendo por qué no hay.
   const sinVerbo = documentos == null ? 'no se pudo leer Cobranzas' : f.evaluado ? null : 'no evaluado'
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 border-b border-line py-2.5 hover:bg-surface-quiet lg:h-[52px] lg:grid-cols-[150px_minmax(0,1fr)_96px_150px_170px] lg:gap-6 lg:py-0">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 border-b border-line py-2.5 hover:bg-surface-quiet lg:h-[52px] lg:grid-cols-[150px_96px_minmax(0,1fr)_150px_170px] lg:gap-6 lg:py-0">
       <div className="truncate text-[13px] font-medium text-ink">{f.nombre}</div>
-      <div className="col-span-2 row-start-2 h-3 lg:col-span-1 lg:row-auto"><div className={`h-full rounded-[2px] ${tono.fondo}`} style={{ width: ancho(f.saldo, max) }} /></div>
       <div className={`whitespace-nowrap text-right text-[13px] font-semibold ${f.estado === 'vencido' ? 'text-neg' : 'text-ink'}`}>{millones(f.saldo)}</div>
+      <div className="col-span-2 row-start-2 h-3 lg:col-span-1 lg:row-auto"><div className={`h-full rounded-[2px] ${tono.fondo}`} style={{ width: ancho(f.saldo, max) }} /></div>
       <div className={`text-xs ${tono.texto}`}>{f.rotuloTramo ?? 'sin vencimiento'}</div>
       <div className="flex flex-col gap-0.5 text-right text-xs lg:text-left">
         {f.verbo ? <span className="text-ink-soft">{f.verbo}</span> : proximo ? null : <span className="text-faint">{sinVerbo ?? 'sin acción pendiente'}</span>}
