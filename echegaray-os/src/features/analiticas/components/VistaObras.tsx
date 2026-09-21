@@ -35,8 +35,14 @@ export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva }: {
           { rotulo: 'presupuestado', valor: millones(obra.presupuesto), falta: 'sin presupuesto', nota: obra.presupuesto != null ? undefined : (obra.motivoPresupuesto ?? undefined) },
           { rotulo: 'consumido', valor: millones(obra.presupuesto != null ? obra.consumoComparable : obra.gasto.total), falta: 'sin movimiento', nota: obra.presupuesto != null ? 'en esos rubros' : undefined },
           { rotulo: queda != null && queda < 0 ? 'excedido' : 'queda', valor: queda != null ? millones(Math.abs(queda)) : null, falta: '—', tono: queda != null && queda < 0 ? 'neg' : undefined, nota: obra.avanceGasto != null ? `${pctEntero(obra.avanceGasto)} consumido` : undefined },
+          // LA NOTA DEL DISEÑO ES «alcanza X meses», y nada más: con la frase entera envolvía a dos
+          // renglones y esta cifra quedaba más arriba que las otras tres. De qué sale el ritmo —tres
+          // meses cerrados, con o sin mano de obra estimada— no se pierde: va en el `title`.
           { rotulo: 'ritmo por mes', valor: ritmo?.porMes != null ? millones(ritmo.porMes) : null, falta: consumo == null ? 'sin publicar' : 'sin consumo reciente',
-            nota: ritmo?.porMes != null ? `últimos 3 meses cerrados${ritmo.conEstimada ? ' · con mano de obra estimada' : ''}${meses != null ? ` · alcanza ${meses === 0 ? '0 meses' : `${meses.toLocaleString('es-AR', { maximumFractionDigits: 1 })} meses`}` : ''}` : undefined },
+            nota: ritmo?.porMes != null && meses != null
+              ? `alcanza ${meses === 0 ? '0 meses' : `${meses.toLocaleString('es-AR', { maximumFractionDigits: 1 })} meses`}`
+              : undefined,
+            detalle: ritmo?.porMes != null ? `últimos 3 meses cerrados${ritmo.conEstimada ? ' · con mano de obra estimada' : ''}` : undefined },
         ]} />
       <Seccion titulo="Rubro contra rubro" aclaracion="la cotización incluye los subcontratos dentro de materiales">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5" data-testid="rubros">

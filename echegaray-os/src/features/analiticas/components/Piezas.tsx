@@ -28,11 +28,21 @@ export function Valor({ v, falta }: { v: string | null; falta: string }) {
 export type Tono = 'neg' | 'warn' | 'pos' | 'muted' | 'faint'
 export const TONO_TEXTO: Record<Tono, string> = { neg: 'text-neg', warn: 'text-warn', pos: 'text-pos', muted: 'text-muted', faint: 'text-faint' }
 
-export interface Cifra { rotulo: string; valor: string | null; falta?: string; tono?: Tono; nota?: ReactNode }
+export interface Cifra {
+  rotulo: string; valor: string | null; falta?: string; tono?: Tono
+  /**
+   * UNA LÍNEA, NO UNA ORACIÓN. En el diseño la nota es corta («en esos rubros», «48 % consumido»,
+   * «alcanza 2,7 meses»): con dos renglones la cifra se corre hacia arriba —la fila alinea por
+   * abajo— y las cinco dejan de estar a la misma altura. Lo que no entra va en `detalle`.
+   */
+  nota?: ReactNode
+  /** El porqué largo de la nota, para el `title`. Ahí se busca cuando la línea no alcanza. */
+  detalle?: string
+}
 
 /** Una fila de cifras suelta (fuera de la cabecera): mismo dibujo, para una sección que tiene sus propios números. */
 export function FilaDeCifras({ cifras }: { cifras: Cifra[] }) {
-  return <div className="grid grid-cols-2 items-end gap-x-6 gap-y-5 lg:flex lg:flex-nowrap lg:gap-x-10 xl:gap-x-14">{cifras.map((c) => <UnaCifra key={c.rotulo} c={c} />)}</div>
+  return <div className="grid grid-cols-2 items-start gap-x-6 gap-y-5 lg:flex lg:flex-nowrap lg:gap-x-10 xl:gap-x-14">{cifras.map((c) => <UnaCifra key={c.rotulo} c={c} />)}</div>
 }
 
 export function UnaCifra({ c }: { c: Cifra }) {
@@ -42,7 +52,7 @@ export function UnaCifra({ c }: { c: Cifra }) {
       <div className={`text-[22px] font-semibold leading-[1.05] tracking-[-0.02em] tabular-nums lg:text-[28px] ${c.valor == null ? 'text-faint' : c.tono ? TONO_TEXTO[c.tono] : 'text-ink'}`}>
         {c.valor ?? c.falta ?? 'sin registrar'}
       </div>
-      {c.nota ? <div className="text-[11.5px] text-muted">{c.nota}</div> : null}
+      {c.nota ? <div className="text-[11.5px] text-muted" title={c.detalle}>{c.nota}</div> : null}
     </div>
   )
 }
@@ -66,12 +76,17 @@ export function Cabecera({ titulo, detalle, cifras, repartidas = false, derecha 
   derecha?: ReactNode
 }) {
   return (
-    <div className={`mt-6 grid grid-cols-[minmax(0,1fr)] gap-5 border-b border-line-strong pb-6 lg:mt-9 lg:items-end lg:gap-6 ${derecha ? 'lg:grid-cols-[180px_minmax(0,1fr)_auto]' : 'lg:grid-cols-[180px_minmax(0,1fr)]'} ${repartidas ? 'lg:pb-7' : ''}`}>
+    <div className={`mt-6 grid grid-cols-[minmax(0,1fr)] gap-5 border-b border-line-strong pb-6 lg:mt-9 lg:items-start lg:gap-6 ${derecha ? 'lg:grid-cols-[180px_minmax(0,1fr)_auto]' : 'lg:grid-cols-[180px_minmax(0,1fr)]'} ${repartidas ? 'lg:pb-7' : ''}`}>
       <div className="flex flex-col gap-1.5">
         <h1 className="text-[22px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">{titulo}</h1>
         <p className="text-xs leading-[1.45] text-muted tabular-nums">{detalle}</p>
       </div>
-      <div className={`grid grid-cols-2 items-end gap-x-6 gap-y-5 lg:gap-6 ${cifras.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-5'}`}>
+      {/* CINCO COLUMNAS SIEMPRE, TENGA TRES CIFRAS O CINCO (`gCifras: repeat(5,minmax(0,1fr))`).
+          Quedaba un caso especial para cuatro que las repartía en cuatro columnas: en Obras el
+          «presupuestado» caía en la misma x que en Resumen pero los otros tres no, así que al
+          cambiar de solapa los números se movían. Con cinco columnas fijas, la quinta queda vacía y
+          las cuatro cifras aterrizan donde el diseño las pone. */}
+      <div className="grid grid-cols-2 items-start gap-x-6 gap-y-5 lg:grid-cols-5 lg:gap-6">
         {cifras.map((c) => <UnaCifra key={c.rotulo} c={c} />)}
       </div>
       {derecha ? <div className="min-w-0 lg:justify-self-end">{derecha}</div> : null}
