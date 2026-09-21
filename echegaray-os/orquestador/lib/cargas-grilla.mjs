@@ -69,6 +69,57 @@ export function desdeQueMesSeProyecta(periodos) {
 /** Los meses que YA tienen DDJJ: 1..desdeProy-1. El denominador de lo que se mide sobre lo real. */
 export const MESES_REALES = (desdeProy) => Array.from({ length: desdeProy - 1 }, (_, i) => i + 1)
 
+/**
+ * LOS MESES EN QUE SE PAGA EL AGUINALDO. Ley 23.041: dos cuotas, junio y diciembre.
+ *
+ * No es un detalle de calendario: la remuneración declarada de esos meses lleva MEDIO SUELDO de más,
+ * así que cualquier relación medida sobre ellos queda inflada. Medido en el archivo vivo: junio
+ * declaró $18,3 M contra ~$12,5 M de mayo y julio.
+ */
+export const MESES_CON_SAC = Object.freeze([6, 12])
+
+/**
+ * SOBRE QUÉ MESES SE MIDE LA RELACIÓN ENTRE LO DECLARADO Y LOS JORNALES.
+ *
+ * ═══ ERA «TODOS LOS QUE TIENEN DDJJ», Y ESO TENÍA DOS DEFECTOS (21/09/2026) ═══
+ *
+ * La relación `remuneración declarada ÷ jornales netos` es lo que multiplica TODA la proyección de
+ * cargas sociales de la pestaña, y por lo tanto la línea del Cash Flow. Se medía sobre los ocho
+ * meses con DDJJ y daba 0,7013. Los dos problemas, medidos:
+ *
+ *   1. JUNIO ESTABA ADENTRO. Junio lleva la primera cuota del aguinaldo: su relación es 0,974
+ *      contra 0,69–0,80 de los meses vecinos. Promediado sobre ocho meses, eso reparte un octavo de
+ *      aguinaldo en CADA mes proyectado —septiembre, octubre y noviembre, que no tienen SAC— y al
+ *      mismo tiempo deja a diciembre, que SÍ lo tiene, con el mismo promedio que los demás. El error
+ *      va para los dos lados a la vez.
+ *   2. EL AÑO ENTERO NO ES EL RITMO DE HOY. La relación viene subiendo todo el año —0,45 en febrero,
+ *      0,78 en julio, 0,81 en agosto— porque sube la porción registrada. Un promedio de doce meses
+ *      no describe ningún mes: describe el pasado.
+ *
+ * Con los últimos tres meses sin SAC (mayo, julio, agosto) la relación da 0,7563 en vez de 0,7013:
+ * la proyección de septiembre a diciembre sube ~$2,5 M, que es plata que sale de la caja.
+ *
+ * LA VENTANA ES UN PARÁMETRO, NO UNA VERDAD. Tres meses es el suavizado habitual de una serie
+ * mensual ruidosa, y es lo que se puede defender — no es un valor normativo ni medido. Se declara en
+ * la pestaña, al lado del número, para que se pueda discutir.
+ *
+ * @param {number} desdeProy el primer mes SIN DDJJ presentada
+ * @param {{ventana?:number, sac?:number[]}} opciones
+ * @returns {number[]} los meses, en orden, sobre los que se mide
+ */
+export const VENTANA_CALIBRACION = 3
+
+export function mesesDeCalibracion(desdeProy, { ventana = VENTANA_CALIBRACION, sac = MESES_CON_SAC } = {}) {
+  const conDDJJ = MESES_REALES(desdeProy)
+  const limpios = conDDJJ.filter((m) => !sac.includes(m))
+  // SIN NINGÚN MES LIMPIO NO SE INVENTA UNA MEDICIÓN: se vuelve a todos los que hay. Pasa en los
+  // primeros meses del año, cuando el único mes con DDJJ podría ser uno con aguinaldo — y en ese caso
+  // una relación inflada declarada es mejor que ninguna, porque sin relación la proyección es cero y
+  // el Cash Flow vuelve a la fila plana de Compras.
+  const base = limpios.length ? limpios : conDDJJ
+  return base.slice(Math.max(0, base.length - ventana))
+}
+
 /** El constructor de la grilla: las tres formas de fila que usa la pestaña, y nada más. */
 /** Un mes cuya DDJJ todavía no existe. TEXTO y no número: no entra en ninguna suma, y se lee como
  *  la ausencia que es en vez de como un cero declarado (07/09/2026, pedido del dueño). */

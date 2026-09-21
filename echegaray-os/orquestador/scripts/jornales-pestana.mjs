@@ -92,7 +92,7 @@ import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mj
 // "Pagado el", la del dueño. Importarla era la invitación a volver a llamarla, que es exactamente la
 // 4ª reincidencia del borrado de sus catorce fechas.
 import { borrarNotas } from '../lib/nota-celda.mjs'
-import { detectarQuincenas, filasQuincenas } from '../lib/nomina-sync.mjs'
+import { detectarQuincenas, filasQuincenas, expresionCorteDeLoReal } from '../lib/nomina-sync.mjs'
 import {
   CATEGORIAS, CATEGORIA_ANCLA, COL as UOCRA_COL, HOJA as UOCRA_HOJA,
   parsearAcuerdos, escalonDe, escalonVigenteEn, estadoReplica,
@@ -359,6 +359,9 @@ export function quincenasPendientes(desde, anio = AÑO) {
 }
 
 const fecha = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+/** La MISMA fecha, escrita para que viva ADENTRO de una fórmula. `"11/09/2026"` depende del locale
+ *  con el que Google lea la celda; `DATE(2026;9;11)` no depende de nada. */
+const literalFecha = (d) => `DATE(${d.getFullYear()};${d.getMonth() + 1};${d.getDate()})`
 /** NÚCLEO PURO: el período 'YYYY-MM' del mes SIGUIENTE al de `d`. Cruza el 1° de enero sin mes 13. */
 export function periodoSiguiente(d = new Date()) {
   const x = new Date(d.getFullYear(), d.getMonth() + 1, 1)
@@ -595,7 +598,13 @@ export function grilla({
       // La primera arranca el día siguiente al último con HORAS CARGADAS; las demás encadenan. Así la
       // quincena en curso queda partida en su parte real y su parte proyectada, y el mes de transición
       // deja de sumar una quincena a medio cargar MÁS una quincena entera (defecto A8).
-      i === 0 ? fecha(q.desde) : `=B${r - 1}+1`,
+      // ═══ Y EL ARRANQUE ES UNA FÓRMULA, NO LA FECHA DE LA CORRIDA (21/09/2026) ═══
+      //
+      // La fila real de esta misma quincena es una fórmula viva que suma el bloque entero del
+      // espejo; si el arranque de la proyección queda pegado, los dos renglones corren con relojes
+      // distintos y cada día que se cargan horas nuevas se cuentan dos veces. Medido: $1.907.211
+      // del 11 al 15/09. El porqué completo y el criterio, en `expresionCorteDeLoReal`.
+      i === 0 && bloques.length ? expresionCorteDeLoReal(bloques[bloques.length - 1], { anio: AÑO, respaldo: literalFecha(q.desde) }) : (i === 0 ? fecha(q.desde) : `=B${r - 1}+1`),
       // EL CIERRE DE UNA QUINCENA SE DEFINE UNA SOLA VEZ, en `expresionCierreDeQuincena`.
       `=${expresionCierreDeQuincena(`A${r}`)}`,
       // LA FECHA DE CAJA. Una quincena proyectada nunca tiene lote en el banco, así que acá manda el

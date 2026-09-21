@@ -208,6 +208,65 @@ export function filasQuincenas(bloques, hoja = '_J_OBREROS') {
   })
 }
 
+/**
+ * DÓNDE TERMINA LO REAL Y EMPIEZA LO PROYECTADO — COMO FÓRMULA, NO COMO FECHA PEGADA.
+ *
+ * ═══ EL DEFECTO, MEDIDO EN EL ARCHIVO VIVO (21/09/2026) ═══
+ *
+ * La primera fila de proyección llevaba la fecha LITERAL que `main()` calculaba en la corrida:
+ * `A28 = 46276` (11/09). El generador la calcula bien —es `ultimoDiaConHoras + 1`— pero la escribe
+ * y se congela ahí, mientras la fila REAL de esa misma quincena es una fórmula viva que suma el
+ * bloque entero del espejo. Los dos renglones quedan con relojes distintos: cada día que la planilla
+ * carga horas nuevas, la fila real las suma Y la proyección las sigue proyectando.
+ *
+ * Medido el 21/09: el bloque 01–15/09 tenía las horas de los 15 obreros cargadas hasta el 15/09
+ * —la fila real ya cobraba $8.287.618— y la proyección seguía arrancando el 11/09, volviendo a
+ * contar el 11, el 14 y el 15: **$1.907.211 contados dos veces**. No da error, no lo ve ningún test
+ * de la grilla y viaja derecho al Cash Flow, porque la proyección de cargas sociales multiplica
+ * justamente ese total de jornales.
+ *
+ * ═══ POR QUÉ UNA FÓRMULA Y NO UNA CORRIDA MÁS SEGUIDA ═══
+ *
+ * Correr el generador otra vez arregla el número de hoy y no la clase de defecto: mañana se cargan
+ * más horas y vuelve. El corte tiene que vivir del MISMO lado que la fila real —el espejo— para que
+ * los dos se muevan juntos. Con esto, el día que la planilla carga el 16/09, la fila real lo suma y
+ * la proyección arranca el 17/09 sola, sin que nadie corra nada.
+ *
+ * ═══ EL CRITERIO ES EL MISMO DE `ultimoDiaConHoras`, NO UNO NUEVO ═══
+ *
+ * El día que cuenta es el último en que trabajó LA CUADRILLA: al menos la mitad de las personas del
+ * bloque con horas ese día. Una sola persona adelantada no cierra la quincena (decisión del 08/09).
+ * El criterio se decide una vez, en JS, y esta expresión lo dice en el idioma del Sheet — no es un
+ * segundo criterio: si algún día se separan, la corrida siguiente los vuelve a juntar.
+ *
+ * El literal que calculó la corrida queda de RESPALDO en el IFERROR: si el espejo cambia de forma y
+ * la expresión no puede medirse, la pestaña vuelve a la fecha de la corrida en vez de quedar vacía
+ * —una proyección sin fecha de arranque no se dibuja y la quincena desaparece del cash flow—.
+ *
+ * @param {{inicio:number, fin:number, filaFecha:number}} bloque el ÚLTIMO bloque del espejo
+ * @param {{hoja?:string, anio:number, respaldo:string}} opciones `respaldo` es la fecha ya formateada
+ * @returns {string} la fórmula para la celda «Desde» de la primera quincena proyectada
+ */
+export function expresionCorteDeLoReal(bloque, { hoja = '_J_OBREROS', anio, respaldo }) {
+  const H = `'${hoja}'`
+  const { inicio, fin, filaFecha: ff } = bloque
+  // Las columnas de día del espejo son F..U, las mismas que lee `filasQuincenas`: una sola
+  // definición del ancho del bloque para las dos caras del mismo renglón.
+  const horas = `${H}!$F$${inicio}:$U$${fin}`
+  const fechas = `${H}!$F$${ff}:$U$${ff}`
+  // Cuántas personas tienen horas en CADA día (un vector por columna). `SEQUENCE(n;1;1;0)` es el
+  // vector de unos: multiplicar por él es sumar.
+  const porDia = `TRANSPOSE(MMULT(TRANSPOSE(N(${horas}>0));SEQUENCE(ROWS(${horas});1;1;0)))`
+  // La CUADRILLA del bloque son las personas con alguna hora cargada en él, no las filas abiertas:
+  // un alta reciente o una licencia entera no pueden exigir que se las espere.
+  const cuadrilla = `SUMPRODUCT(N(MMULT(N(${horas}>0);SEQUENCE(COLUMNS(${horas});1;1;0))>0))`
+  // La fila de fechas del espejo viene como texto corto ("1/9"): se le pega el año para leerla como
+  // fecha. Si alguna celda ya fuera una fecha de verdad, `N()` la toma tal cual; si está vacía o no
+  // se puede leer, queda en 0 y `MAX` la ignora sola.
+  const serial = `IFERROR(DATEVALUE(${fechas}&"/${anio}");N(${fechas}))`
+  return `=IFERROR(MAX(ARRAYFORMULA(${serial}*(${porDia}>=${cuadrilla}/2)))+1;${respaldo})`
+}
+
 /** Compara lo que hay contra lo que debería haber. PURA. Sirve para no reescribir al pepe. */
 export function hayCambio(bloquesNuevos = [], quincenasEnSheet = 0) {
   return bloquesNuevos.length !== quincenasEnSheet

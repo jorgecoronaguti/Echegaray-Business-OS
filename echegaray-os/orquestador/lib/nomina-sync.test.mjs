@@ -1,5 +1,5 @@
 // Test hermético del sincronizador de nómina. Sin Sheet, sin Drive.
-import { detectarQuincenas, filasQuincenas, hayCambio, cuerpoDelCuadro, ubicarCuadro, formatSync } from './nomina-sync.mjs'
+import { detectarQuincenas, filasQuincenas, hayCambio, cuerpoDelCuadro, ubicarCuadro, formatSync, expresionCorteDeLoReal } from './nomina-sync.mjs'
 
 let ok = 0, falla = 0
 const check = (n, c) => { if (c) ok++; else { falla++; console.error(`  FALLA: ${n}`) } }
@@ -122,6 +122,37 @@ check('formato: dice que escribió', t.includes('actualizadas'))
 check('formato: sin cambios lo dice', formatSync({ ddjj_meses: 6, ddjj_total: 1, quincenas: 14, escribio: false }).includes('Nada cambió'))
 check('formato: error se declara', formatSync({ error: 'x' }).includes('No pude'))
 
+// ═══ EL CORTE ENTRE LO REAL Y LO PROYECTADO ═══
+//
+// El defecto que esto cierra está medido en el archivo vivo (21/09/2026): la fila REAL de la
+// quincena 01–15/09 es una fórmula que suma el bloque entero del espejo —con las horas cargadas
+// hasta el 15/09— y la proyección seguía arrancando el 11/09, porque su fecha era el literal que
+// había escrito la corrida anterior. El 11, el 14 y el 15 se contaban dos veces: $1.907.211 que
+// viajan derecho al Cash Flow, multiplicados por la proyección de cargas sociales.
+//
+// Acá se prueba que la celda «Desde» deja de ser una fecha y pasa a MEDIRSE contra el mismo espejo
+// que alimenta la fila real, con el mismo criterio que `ultimoDiaConHoras` usa en JS.
+//
+// EL COMPORTAMIENTO CONTRA DATOS REALES ESTÁ VERIFICADO APARTE, en una copia del archivo: con el
+// bloque 561–575 cargado hasta el 15/09 devolvió el 16/09; con UNA persona adelantada al 16/09 NO
+// se movió; con ocho de quince, sí. Un test de texto no puede probar eso — prueba que el criterio
+// que se manda al Sheet sigue siendo el que se decidió.
+const corte = expresionCorteDeLoReal({ inicio: 561, fin: 575, filaFecha: 560 }, { anio: 2026, respaldo: 'DATE(2026;9;11)' })
+check('corte: es una fórmula, no la fecha de la corrida', corte.startsWith('=IFERROR(MAX('))
+check('corte: las horas salen del bloque del espejo', corte.includes("'_J_OBREROS'!$F$561:$U$575"))
+check('corte: las fechas salen de la fila de fechas del bloque', corte.includes("'_J_OBREROS'!$F$560:$U$560"))
+// LA MITAD DE LA CUADRILLA, no una persona: es la decisión del 08/09/2026 y no puede perderse.
+check('corte: sigue siendo media cuadrilla', corte.includes('/2)'))
+// La cuadrilla son las personas CON HORAS en el bloque, no las filas abiertas.
+check('corte: la cuadrilla se cuenta por quien tiene horas', corte.includes('SUMPRODUCT(N(MMULT('))
+// Sin fecha de arranque la quincena no se dibuja y desaparece del cash flow: el literal queda.
+check('corte: el respaldo de la corrida no falta', corte.endsWith(';DATE(2026;9;11))'))
+// El separador es el del locale del archivo: con coma, la fórmula que se MANDA deja de ser la que
+// la pestaña DEVUELVE y toda huella queda ciega (el porqué, en `filasQuincenas`).
+check('corte: separador en locale es_AR', !corte.includes(','))
+
+
 console.log(`nomina-sync.test: ${ok} OK, ${falla} FALLA`)
 if (falla) process.exit(1)
+
 

@@ -36,7 +36,7 @@ import {
   proyeccionDeConcepto, jornalesDelMes,
 } from './cargas-cadena.mjs'
 import { ROTULOS_CARGAS, NOMBRES_CARGAS, RUBRO_PLANES, RUBRO_GREMIALES } from './libro-extractores-cargas.mjs'
-import { MES, cm, REALES, MESES_REALES, SIN_DDJJ } from './cargas-grilla.mjs'
+import { MES, cm, REALES, MESES_REALES, SIN_DDJJ, mesesDeCalibracion, VENTANA_CALIBRACION, MESES_CON_SAC } from './cargas-grilla.mjs'
 import { notaSupuesto } from './proyeccion-convenio.mjs'
 import { ALERTA } from './glifos.mjs'
 // EL BLOQUE «PAGADO» SE MUDÓ A SU PROPIO ARCHIVO el 11/09/2026 (el techo de 500 líneas, y una fuente
@@ -153,9 +153,18 @@ export function bloqueProyeccion(G, {
   // proyectando desde el primer mes sin F931 y los meses con boleta los cubre el declarado.
   const desde1 = Math.min(Number.isInteger(desdeGrem) && desdeGrem > 0 ? desdeGrem : desdeProy, desdeProy)
   const gremMeses = Array.from({ length: 12 - desde1 + 1 }, (_, i) => desde1 + i)
+  // ═══ LA RELACIÓN SE MIDE SOBRE LOS ÚLTIMOS MESES SIN AGUINALDO (21/09/2026) ═══
+  //
+  // Era `SUM(B:H)/(todos los jornales)` — el promedio del año entero, junio incluido. Junio lleva la
+  // primera cuota del SAC, así que repartía un octavo de aguinaldo en cada mes proyectado; y el
+  // promedio del año no describe el ritmo de hoy, que viene subiendo todo el año. El porqué medido,
+  // en `mesesDeCalibracion`. Acá sólo se usa: el criterio se decide en un solo lugar.
+  const calib = mesesDeCalibracion(desdeProy)
+  const sumaDecl = calib.map((x) => `N(${cm(x)}$${fRem})`).join('+')
+  const sumaJorn = calib.map((x) => jornalesDelMes(`DATE(${anio};${x};1)`)).join('+')
   const fRelacion = G.mensual('Remuneración declarada ÷ jornales netos', (m) => (m === desdeProy
-    ? `=IFERROR(SUM(${REALES(fRem, desdeProy)})/(${MESES_REALES(desdeProy).map((x) => jornalesDelMes(`DATE(${anio};${x};1)`)).join('+')});"")` : VACIO),
-  `Medido sobre los ${desdeProy - 1} meses que tienen las dos cifras. Lo declarado en F931 no es el neto pagado en mano: esta relación traduce una en otra.`, { meses: proyMeses, totaliza: false })
+    ? `=IFERROR((${sumaDecl})/(${sumaJorn});"")` : VACIO),
+  `Medido sobre ${calib.map((x) => MES[x]).join(' · ')}: los últimos ${VENTANA_CALIBRACION} meses con DDJJ que NO llevan aguinaldo. Lo declarado en F931 no es el neto pagado en mano: esta relación traduce una en otra.`, { meses: proyMeses, totaliza: false })
   // EL SUPUESTO DEL 100% DEL CONVENIO SE DECLARA ACÁ TAMBIÉN, Y NO ES REDUNDANCIA (07/08): esta fila no
   // muestra la masa, la MULTIPLICA — y sobre ella corren contribuciones, IERIC, FODECO y FCL. El
   // supuesto llega compuesto hasta la última fila de esta pestaña; declararlo sólo en Jornales lo deja
@@ -169,10 +178,47 @@ export function bloqueProyeccion(G, {
   // gremiales de agosto tengan base, y la base de agosto NO es una estimación de jornales — es la
   // remuneración que la propia empresa declaró en el F931, doce filas más arriba. Proyectarla teniendo
   // el hecho al lado sería fabricar un dato que ya existe.
-  const fRemProy = G.mensual('Remuneración proyectada', (m) => (m < desdeProy
+  // ═══ Y EL AGUINALDO DE DICIEMBRE SE PROYECTA APARTE, EN SU PROPIO RENGLÓN (21/09/2026) ═══
+  //
+  // La proyección no tenía SAC en ningún lado. La primera cuota no hace falta proyectarla —junio ya
+  // tiene DDJJ y viene declarada—, pero la segunda vence el 18/12 (ley 23.041) y devenga sus
+  // contribuciones como cualquier remuneración. Sin esta fila, diciembre proyectaba un mes común.
+  //
+  // VA EN UNA FILA PROPIA Y NO SUMADO ADENTRO DE LA DE ARRIBA: son ~$6 M que cambian el devengado de
+  // diciembre, y un importe de ese tamaño escondido en una celda no se puede discutir.
+  //
+  // Y NO ES DEVENGADO DE ADORNO EN UNA PESTAÑA PERCIBIDA: `CARGAS_MES_F931` cubre los DOCE meses y
+  // `CARGAS_MES_FECHAS` fecha diciembre el 10/01/2027, así que estas contribuciones salen por el
+  // Libro con fecha de caja como cualquier otra. Lo que esta fila agrega es plata que sale.
+  const fRemProy = G.n() + 1
+  const fSac = fRemProy + 1
+  const conSac = proyMeses.includes(12)
+  const fRemProyReal = G.mensual('Remuneración proyectada', (m) => (m < desdeProy
     ? `=N(${cm(m)}$${fRem})`
-    : `=IFERROR((${jornalesDelMes(`DATE(${anio};${m};1)`)})*$${cm(desdeProy)}$${fRelacion};0)`),
-  `Jornales proyectados × la relación de arriba; en los meses con DDJJ, la remuneración declarada. ${notaSupuesto(baseJornales)}`, { meses: gremMeses })
+    : `=IFERROR((${jornalesDelMes(`DATE(${anio};${m};1)`)})*$${cm(desdeProy)}$${fRelacion};0)${conSac && m === 12 ? `+N(${cm(m)}$${fSac})` : ''}`),
+  `Jornales proyectados × la relación de arriba; en los meses con DDJJ, la remuneración declarada. En diciembre incluye el aguinaldo de la fila de abajo. ${notaSupuesto(baseJornales)}`, { meses: gremMeses })
+  if (fRemProyReal !== fRemProy) throw new Error(`la fila de «Remuneración proyectada» quedó en ${fRemProyReal} y la cité como ${fRemProy}`)
+  // ═══ EL MES PROMEDIO DEL SEMESTRE, NO EL MEJOR — Y NO ES DESCUIDO (21/09/2026) ═══
+  //
+  // La ley mide el SAC sobre el MEJOR SUELDO MENSUAL DE CADA PERSONA. Esta pestaña no tiene sueldos
+  // por persona: tiene el TOTAL del mes. Y sobre un total, `MAX` mide otra cosa.
+  //
+  // Medido en la corrida del 21/09: octubre proyecta $15,5 M contra $10,9 M de noviembre, y no es
+  // porque alguien gane más — es el piso de demanda de las obras vendidas ($13,1 M para la quincena
+  // del 01/10, ver el MAX contra la demanda en «Jornales por Quincena»). Un mes alto por MÁS GENTE no
+  // le da a nadie un aguinaldo más grande: los que entran cobran su SAC en proporción a los meses que
+  // trabajaron. Con `MAX` el aguinaldo salía $7,75 M; con el promedio del semestre, $6,33 M.
+  //
+  // El promedio no es el criterio legal y se dice: es lo mejor que se puede medir con lo que la
+  // pestaña tiene. El día que haya remuneración por persona, esta fila se mide como manda la ley.
+  //
+  // Diciembre queda afuera del promedio porque la fila de arriba ya lo suma: la fórmula se citaría
+  // a sí misma.
+  const fSacReal = G.mensual('SAC · 2ª cuota (ley 23.041)', (m) => (m === 12
+    ? `=IFERROR(AVERAGE(${cm(7)}$${fRemProy}:${cm(11)}$${fRemProy})/2;0)` : VACIO),
+  'Medio mes promedio de julio a noviembre. La ley mide el mejor mes DE CADA PERSONA y acá sólo hay el total del mes: es una aproximación. Vence el 18/12 y sus contribuciones salen de la caja el 10/01/2027, con el F931 de diciembre.',
+  { meses: conSac ? [12] : [], totaliza: false })
+  if (fSacReal !== fSac) throw new Error(`la fila del SAC quedó en ${fSacReal} y la cité como ${fSac}`)
   // ═══ LA DOTACIÓN ES LA ÚLTIMA REAL, NO UN PROMEDIO (defecto A7) ═══
   //
   // Decía `AVERAGE(B19:G19)` = 21 personas: el promedio de los seis F931 presentados (18·16·24·22·23·22).

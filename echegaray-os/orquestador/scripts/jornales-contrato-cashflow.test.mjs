@@ -66,9 +66,22 @@ const FUENTE = {
   JORNALES_REAL_ADELANTO: { todas: /^=SUM\('_J_OBREROS'!Y\d+:Y\d+\)\+SUM\('_J_OBREROS'!Z\d+:Z\d+\)$/ },
   JORNALES_REAL_RECIBO: { todas: /^=SUM\('_J_OBREROS'!AA\d+:AA\d+\)$/ },
 
-  // ── OBRA · las quincenas que faltan. La primera fecha es literal (arranca donde termina lo
-  // cargado) y las demás encadenan; el cierre lo pone la regla de calendario, nunca una constante.
-  JORNALES_PROY_DESDE: { todas: /^(\d{2}\/\d{2}\/\d{4}|=B\d+\+1)$/ },
+  // ── OBRA · las quincenas que faltan.
+  //
+  // ═══ EL CONTRATO CAMBIÓ Y NO ES UN AJUSTE PARA QUE PASE (21/09/2026) ═══
+  //
+  // Decía que la primera fecha es LITERAL, «arranca donde termina lo cargado». Eso era cierto el día
+  // de la corrida y dejaba de serlo al día siguiente: la fila REAL de esa misma quincena es una
+  // fórmula viva que suma el bloque entero del espejo, así que los dos renglones corrían con relojes
+  // distintos. Medido en el archivo vivo: con las horas cargadas hasta el 15/09 y el literal clavado
+  // en el 11/09, el 11, el 14 y el 15 se contaban DOS VECES — $1.907.211 que viajaban al Cash Flow
+  // multiplicados por la proyección de cargas sociales.
+  //
+  // Ahora la primera celda MIDE el corte contra el mismo espejo que alimenta la fila real, con el
+  // criterio de media cuadrilla (`expresionCorteDeLoReal`), y el literal de la corrida queda de
+  // respaldo adentro del IFERROR para que la quincena nunca se quede sin fecha de arranque. Las
+  // demás siguen encadenando, y el cierre lo sigue poniendo la regla de calendario.
+  JORNALES_PROY_DESDE: { todas: /^(=IFERROR\(MAX\(ARRAYFORMULA\(.*'_J_OBREROS'.*\)\)\+1;DATE\(\d{4};\d{1,2};\d{1,2}\)\)|=B\d+\+1)$/s },
   JORNALES_PROY_HASTA: { todas: /^=IF\(DAY\(A\d+\)<16;DATE\(YEAR\(A\d+\);MONTH\(A\d+\);15\);EOMONTH\(A\d+;0\)\)$/ },
   JORNALES_PROY_PAGO: { todas: /'_BANCO_RAW'.+JORNALES_DESFASE_PAGO/s },
   // EL PLANTEL POR SU ESCALÓN, POR HORAS Y POR DÍAS — nunca el TOTAL de las tres nóminas: oficina y

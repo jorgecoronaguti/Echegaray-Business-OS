@@ -141,9 +141,33 @@ test('LA PESTAÑA NO PUBLICA DEVENGADO: SAC, vacaciones y FCL devengado se fuero
   // LO QUE SE PIERDE, DICHO: con la sección se fue el único lugar donde el Fondo de Cese devengado
   // (DDJJ de UOCRA) estaba al lado de lo pagado. Los dos pendientes siguen avisándose por consola
   // (el test de abajo lo exige) y las funciones siguen vivas en lib/vacaciones-construccion.mjs.
-  for (const re of [/SAC/, /Vacaciones/, /Provisión acumulada/, /Fondo de Cese devengado/]) {
+  // ═══ Y EL CONTROL SE AFINA, NO SE APAGA (21/09/2026) ═══
+  //
+  // Decía `/SAC/` a secas, y con eso también prohibía la fila «SAC · 2ª cuota (ley 23.041)» de la
+  // proyección, que NO es lo que la decisión del 09/09 mandó sacar. La diferencia es si la cifra
+  // sale de la caja o no:
+  //
+  //   · «SAC devengado», «Provisión acumulada», «Vacaciones devengadas» y «Fondo de Cese devengado»
+  //     eran SALDOS devengados. El Libro no lee ninguno (ver `rangosDeCargas`) y ninguno decide un
+  //     peso de caja. Ésos siguen prohibidos, y por eso el patrón ahora nombra el saldo y no la sigla.
+  //   · La 2ª cuota del aguinaldo vence el 18/12 y sus contribuciones entran al Libro por
+  //     `CARGAS_MES_F931`, que cubre los DOCE meses, con la fecha que publica `CARGAS_MES_FECHAS`
+  //     para diciembre: el 10/01/2027. Es plata que sale, con fecha. Prohibirla era dejar la
+  //     proyección de diciembre como un mes común, que es el defecto que se arregló.
+  //
+  // El control sigue pudiendo decir que no: la línea de abajo lo prueba contra un rótulo de saldo.
+  for (const re of [/SAC devengado/, /Vacaciones/, /Provisión acumulada/, /Fondo de Cese devengado/]) {
     assert.equal(filaCS(re), undefined, `volvió una fila de devengado a una pestaña percibida: ${re}`)
   }
+  // LO QUE SÍ PUEDE ESTAR, TIENE QUE ESTAR: si la fila del aguinaldo desaparece, diciembre vuelve a
+  // proyectarse como un mes cualquiera y nadie se entera.
+  const sac = filaCS(/^SAC · 2ª cuota/)
+  assert.ok(sac, 'se perdió la 2ª cuota del aguinaldo: diciembre vuelve a proyectarse como un mes común')
+  // NO `MAX`: sobre un TOTAL mensual, el mes más alto puede serlo por más gente y no por mejores
+  // sueldos —octubre proyecta el piso de demanda de las obras—, y eso no agranda el aguinaldo de
+  // nadie. El porqué medido, en `bloqueProyeccion`.
+  assert.match(String(sac[12]), /AVERAGE\(/, 'el SAC se mide sobre el mes promedio del semestre')
+  assert.doesNotMatch(String(sac[12]), /MAX\(/, 'volvió el mejor mes: un pico de demanda infla el aguinaldo')
 })
 
 test('A7 · LA DOTACIÓN ES LA ÚLTIMA REAL, NO UN AVERAGE — y se controla contra otra fuente', () => {
