@@ -16,10 +16,10 @@ test('son CINCO destinos en DOS grupos: Presupuestos volvió al área, Proveedor
   // Compras deja de ser la única respuesta a dónde vive Proveedores.
   assert.deepEqual(
     DESTINOS.map((d) => d.titulo),
-    // PRESUPUESTOS, PEGADO A CLIENTES (dueño, 21/09/2026): «"presupuestos" es una sección dentro de
-    // CRM admin». Había subido a la barra de la aplicación el 25/08 por el mockup v2. El orden
-    // importa: se lee junto al cliente para el que se cotiza, no al final con los registros.
-    ['Clientes', 'Presupuestos', 'Personal', 'Compras', 'Impuestos'],
+    // PRESUPUESTOS VA ÚLTIMO (dueño, 21/09/2026: «mover "presupuestos" a después de impuestos»).
+    // El orden lo fijó él mirando la barra, así que es el orden y no una consecuencia de otra cosa:
+    // si alguien lo mueve, esto da rojo y tiene que venir con una decisión suya.
+    ['Clientes', 'Personal', 'Compras', 'Impuestos', 'Presupuestos'],
   )
   assert.equal(DESTINOS.some((d) => d.clave === 'proveedores'), false)
   assert.deepEqual([...new Set(DESTINOS.map((d) => d.grupo))], ['quien', 'registro'])
@@ -36,7 +36,7 @@ test('«Trabajo» y «Documentos» ya no son destinos, y «Base maestra» no tie
 
 test('el filo va SÓLO donde cambia el grupo, y sobre la lista ya filtrada por rol', () => {
   const todas = [...DESTINOS]
-  assert.deepEqual(todas.map((_, i) => hayFiloAntes(todas, i)), [false, false, false, true, false])
+  assert.deepEqual(todas.map((_, i) => hayFiloAntes(todas, i)), [false, false, true, false, false])
 
   // El filo se calcula sobre la lista YA filtrada: nunca puede quedar uno abriendo la barra, que
   // es lo que pasaría el día que un destino sea sólo de quien ve economía y el cálculo mire la
