@@ -41,7 +41,9 @@
 -- nuevo sin la migración muestra «el espejo de CAJA todavía no está publicado» (no rompe), y el sync
 -- sin la migración no escribe y lo dice.
 
-begin;
+-- SIN `begin/commit` PROPIOS: los envuelve `orquestador/scripts/aplicar-migracion.mjs`, que corre la
+-- migración entera en UNA transacción y la deshace cuando es ensayo. Un `commit` acá adentro cerraba
+-- la transacción del script y el ensayo dejaba de ser ensayo: se aplicaba de verdad (21/09/2026).
 
 create table if not exists public.caja_sheet_foto (
   id             bigint generated always as identity primary key,
@@ -139,5 +141,3 @@ create policy caja_sheet_sync_select on public.caja_sheet_sync for select to aut
 
 revoke all on public.caja_sheet_foto, public.caja_sheet_sync, public.caja_sheet_vigente, public.caja_egreso_percibido from anon, authenticated;
 grant select on public.caja_sheet_foto, public.caja_sheet_sync, public.caja_sheet_vigente, public.caja_egreso_percibido to authenticated;
-
-commit;
