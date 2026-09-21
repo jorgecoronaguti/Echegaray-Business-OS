@@ -119,6 +119,37 @@ export function conNumerosVivos(f: FilaEsquema, v: FilaCobranzaViva, hoy: Date):
 }
 
 /**
+ * UNA FILA EN DÓLARES CUYO IMPORTE QUEDÓ VALUADO EN PESOS NO PUBLICA ESE NÚMERO.
+ *
+ * ═══ EL DEFECTO (21/09/2026): «PAGADO US$ … total U$S 23.359.294» ═══
+ *
+ * `sync-cobranzas` valúa los dólares a pesos en `total_bruto` y guarda el nativo en
+ * `total_bruto_origen`; `conNumerosVivos` toma el nativo. Pero cuando la fila de Cobranzas a la que
+ * apunta `cobranza_fila` YA NO EXISTE —los sheet_id se renumeran en cada sync—, no hay refresco y
+ * queda la copia guardada, que trae el importe VALUADO con la moneda USD al lado. Medido en
+ * Quattropani, fila 62 del esquema: `neto` U$S 15.400 y `monto` 23.340.779. El pie del portal le
+ * publicaba al cliente «total U$S 23.359.294» sobre un contrato de U$S 63.000.
+ *
+ * NO SE FABRICA NADA: en una fila en dólares el total ES `neto + iva`, los dos ya en dólares y los
+ * dos escritos por alguien. Lo que se descarta es el número que NO está en esa moneda. Sin `neto`
+ * no hay con qué reconstruir y el importe queda en `null` —«sin cargar»—, que es lo único cierto:
+ * un importe en pesos disfrazado de dólares es peor que la ausencia.
+ *
+ * El umbral es de ORDEN DE MAGNITUD, no de centavos: un desvío del 1 % es redondeo o tipo de cambio;
+ * uno de 10× es otra moneda. No hay cotización cerca de 10, así que no puede haber falso positivo.
+ */
+export function sinValuacionFantasma(f: FilaEsquema): FilaEsquema {
+  if (String(f.moneda ?? '').toUpperCase() !== 'USD') return f
+  const monto = aNumero(f.monto)
+  if (monto == null) return f
+  const neto = aNumero(f.neto)
+  const esperado = neto == null ? null : neto + (aNumero(f.iva) ?? 0)
+  if (esperado != null && Math.abs(monto - esperado) <= Math.max(1, Math.abs(esperado) * 0.01)) return f
+  // El importe no es el de esta moneda. Se reconstruye con lo que sí está en dólares, o se declara ausente.
+  return { ...f, monto: esperado }
+}
+
+/**
  * EL ESQUEMA DEL CLIENTE, CON LA PLATA VIVA DE COBRANZAS.
  *
  * @param filas las filas de `esquema_pago` del cliente.
@@ -135,9 +166,9 @@ export function refrescarConCobranzas(
     // SIN FILA VIVA (sin `cobranza_fila`, o la fila ya no está en la réplica) la copia guardada no se
     // refresca y se DICE: `estado_vivo: false` hace que el portal no pueda publicarla vencida
     // (auditoría, 14/09/2026 — dos filas cobradas en el Sheet se le reclamaban al cliente).
-    if (!v) { out.push({ ...f, estado_vivo: false }); continue }
+    if (!v) { out.push(sinValuacionFantasma({ ...f, estado_vivo: false })); continue }
     if (anuladaEnCobranzas(v)) continue
-    out.push(conNumerosVivos(f, v, hoy))
+    out.push(sinValuacionFantasma(conNumerosVivos(f, v, hoy)))
   }
   return out
 }

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { refrescarConCobranzas, conNumerosVivos, filaDeLaReplica } from './vivo.ts'
+import { refrescarConCobranzas, conNumerosVivos, filaDeLaReplica, sinValuacionFantasma } from './vivo.ts'
 import { pagosDelEsquema } from './esquema.ts'
 import type { FilaEsquema } from './esquema.ts'
 import type { FilaCobranzaViva } from './vivo.ts'
@@ -133,4 +133,35 @@ test('LA COSTURA COMPLETA: el pago que llega a la pantalla ya trae el número vi
   assert.equal(pago.monto, 2_330_000)
   assert.equal(pago.fechaPago, '2026-05-07')
   assert.equal(pago.rotulo, 'PILON - Pago parcial (07/05)')
+})
+
+// ═══ QUATTROPANI, FILA 62: U$S 15.400 QUE SE PUBLICABAN COMO U$S 23 MILLONES (21/09/2026) ═══
+//
+// `cobranza_fila` apunta a una fila de Cobranzas que ya no existe —los sheet_id se renumeran en cada
+// sync—, así que no hay refresco y queda la copia guardada: `neto` U$S 15.400 con `monto` 23.340.779,
+// que es el VALUADO en pesos. El pie del portal sumaba ese número en la columna de dólares y le
+// publicaba al cliente «total U$S 23.359.294» sobre un contrato de U$S 63.000.
+//
+// LAS MUTACIONES QUE TIENEN QUE PONER ESTO ROJO: dejar pasar el valuado (vuelve el U$S 23 M), o
+// tocar las filas en pesos (donde `monto` ES el total y no hay nada que reconstruir).
+test('una fila en dólares con el importe valuado en pesos no publica ese número', () => {
+  const rota = sinValuacionFantasma(guardada({ moneda: 'USD', neto: 15_400, iva: 0, monto: 23_340_779 })) as { monto: number | null }
+  assert.equal(rota.monto, 15_400)
+})
+
+test('una fila en dólares sana no se toca, y el redondeo del 1 % no la altera', () => {
+  const sana = sinValuacionFantasma(guardada({ moneda: 'USD', neto: 3500, iva: 735, monto: 4235 })) as { monto: number | null }
+  assert.equal(sana.monto, 4235)
+  const conRedondeo = sinValuacionFantasma(guardada({ moneda: 'USD', neto: 11_500, iva: 2415, monto: 13_915.5 })) as { monto: number | null }
+  assert.equal(conRedondeo.monto, 13_915.5)
+})
+
+test('sin neto no hay con qué reconstruir: el importe se declara ausente, nunca en pesos disfrazados', () => {
+  const sinNeto = sinValuacionFantasma(guardada({ moneda: 'USD', neto: null, iva: null, monto: 23_340_779 })) as { monto: number | null }
+  assert.equal(sinNeto.monto, null)
+})
+
+test('las filas en pesos no las toca: ahí el monto ES el total', () => {
+  const ars = sinValuacionFantasma(guardada({ moneda: 'ARS', neto: 5_262_600, iva: null, monto: 6_367_746 })) as { monto: number | null }
+  assert.equal(ars.monto, 6_367_746)
 })
