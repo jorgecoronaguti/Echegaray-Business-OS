@@ -485,6 +485,14 @@ export function deDireccion(bloque = {}, corte = null, { aviso = avisoPorDefecto
  * Los dos rubros son los que esta pestaña es dueña de emitir. Un movimiento de otro rubro no es
  * remuneración (las cargas sociales no se devengan sobre sí mismas) y no entra.
  *
+ * ═══ LOS RETIROS DE DIRECCIÓN NO SON REMUNERACIÓN (21/09/2026) ═══
+ *
+ * Viajan en el mismo rubro que Oficina porque en el cuadro son la otra mitad de «sueldos de
+ * administración», pero son retiros de los socios: no hay recibo ni aguinaldo que se devengue sobre
+ * ellos. Contarlos inflaba el SAC en la mitad de un retiro por mes, y peor: el pago va por FECHA de
+ * pago, así que el mes que junta dos (el resto de agosto y octubre, ambos el 01/10) duplicaba la base.
+ * Medido el 21/09: SAC de diciembre $20,99 M con Dirección; sin ella, la base es sólo la nómina.
+ *
  * @param {Array} movimientos el libro (o la parte de nómina de él)
  * @param {(serial:number)=>string} mesDe serial → 'YYYY-MM'
  * @returns {Map<string, number>} mes → lo que la nómina paga ese mes
@@ -493,6 +501,7 @@ export function remuneracionMensualDeLaNomina(movimientos = [], mesDe) {
   const out = new Map()
   for (const m of movimientos ?? []) {
     if (m?.rubro !== RUBRO_JORNALES && m?.rubro !== RUBRO_ADMINISTRACION) continue
+    if (String(m?.origen?.fila ?? '').startsWith('Dirección:')) continue
     const mes = mesDe(m.fecha)
     if (!mes) continue
     out.set(mes, Math.round(((out.get(mes) ?? 0) + Math.abs(Number(m.importe) || 0)) * 100) / 100)

@@ -116,6 +116,15 @@ test('remuneracionMensualDeLaNomina suma los dos rubros de nómina y ningún otr
   assert.equal(r.get('2026-10'), 19400000, 'las cargas sociales no son remuneración: el SAC no se devenga sobre ellas')
 })
 
+test('remuneracionMensualDeLaNomina no cuenta los retiros de Dirección: los socios no cobran aguinaldo', () => {
+  const retiro = (fila) => movimiento({
+    fecha: S('2026-10-01'), signo: SALE, importe: 9000000, rubro: RUBRO_ADMINISTRACION,
+    estado: 'PROYECTADO', concepto: 'Dirección · 2026-10-01', origen: { pestana: 'Jornales por Quincena', fila },
+  })
+  const r = remuneracionMensualDeLaNomina([...NOMINA, retiro('Dirección:10'), retiro('Dirección:9:resto')], mesDeSerial)
+  assert.equal(r.get('2026-10'), 19400000, 'dos retiros el mismo día no pueden duplicar la base del SAC')
+})
+
 test('mejorMesDelSemestre elige el máximo, no el último ni el promedio', () => {
   const r = remuneracionMensualDeLaNomina(NOMINA, mesDeSerial)
   assert.deepEqual(mejorMesDelSemestre(r, 2026, [7, 8, 9, 10, 11, 12]), { mes: '2026-10', importe: 19400000 })
