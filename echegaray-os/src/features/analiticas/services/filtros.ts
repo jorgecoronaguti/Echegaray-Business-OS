@@ -119,13 +119,19 @@ const esDefectoPeriodo = (p: Periodo): boolean => p.tipo === 'preset' && p.prese
  * LA URL DE UNOS FILTROS: sólo lo que se aparta del defecto. `obra` es de la vista Obras y no viaja
  * a las otras: la obra elegida no tiene significado en Caja.
  */
-export function aUrl(f: Filtros): string {
+/**
+ * @param extra llaves que NO son filtros y viajan igual en la URL: hoy sólo `rubro`, que abre el
+ * panel de composición. Van aparte a propósito —un panel abierto no es un filtro— y `null` las
+ * borra, que es como se cierra el panel sin perder la obra ni el período.
+ */
+export function aUrl(f: Filtros, extra: Record<string, string | null> = {}): string {
   const q = new URLSearchParams()
   if (f.vista !== DEFECTO.vista) q.set('vista', f.vista)
   if (f.obra && f.vista === 'obras') q.set('obra', f.obra)
   if (!esDefectoPeriodo(f.periodo)) q.set('periodo', textoPeriodo(f.periodo))
   if (f.estado !== DEFECTO.estado) q.set('estado', f.estado)
   if (f.obras.length) q.set('obras', f.obras.join(','))
+  for (const [k, v] of Object.entries(extra)) if (v) q.set(k, v)
   const s = q.toString().replaceAll('%2C', ',')
   return s ? `/analiticas?${s}` : '/analiticas'
 }

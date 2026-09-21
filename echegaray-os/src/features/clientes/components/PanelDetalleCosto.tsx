@@ -38,7 +38,7 @@ const COLS_QUINCENA = '58px minmax(0,1fr) 44px 92px'
 const COLS_PERSONA = 'minmax(0,1fr) 36px 96px 60px'
 
 export function PanelDetalleCosto({
-  titulo, rubro, detalle, error, celda, cerrarHref, hrefDesgloseHH, hrefComprasBase,
+  titulo, rubro, detalle, error, celda, aclaracion, cerrarHref, hrefDesgloseHH, hrefComprasBase,
 }: {
   titulo: string
   rubro: Rubro
@@ -47,6 +47,15 @@ export function PanelDetalleCosto({
   error: string | null
   /** Lo que la celda dibujó, para cotejar. `null` = la celda estaba vacía o decía «—». */
   celda: number | null
+  /**
+   * UNA LÍNEA ARRIBA DE LA LISTA, cuando la pantalla que abrió el panel mide con OTRO criterio.
+   *
+   * Analíticas publica el consumo NETO DE IVA y este panel lista los comprobantes como los registra
+   * Compras, con IVA: los dos totales son correctos y distintos. Sin decirlo, el que mira ve dos
+   * números para la misma palabra y uno de los dos parece un error. Con `aclaracion` puesta, el
+   * cotejo contra la celda se apaga: cotejar dos criterios distintos siempre daría rojo.
+   */
+  aclaracion?: string
   cerrarHref: string
   /** La pantalla completa persona × día (`?hh=`), sólo en el rubro HH de una obra. */
   hrefDesgloseHH: string | null
@@ -62,6 +71,11 @@ export function PanelDetalleCosto({
       onCerrar={() => router.push(cerrarHref)}
       testid="panel-detalle-costo"
     >
+      {aclaracion && (
+        <p data-testid="detalle-aclaracion" style={{ fontSize: '11.5px', lineHeight: 1.45, color: V.apagado, paddingBottom: 8 }}>
+          {aclaracion}
+        </p>
+      )}
       {error && <p style={{ fontSize: '12.5px', color: V.warn }}>{`No pude leer el detalle: ${error}`}</p>}
       {!error && !detalle && (
         <p data-testid="detalle-sin-permiso" style={{ fontSize: '12.5px', color: V.apagado }}>
@@ -75,7 +89,7 @@ export function PanelDetalleCosto({
       {(detalle?.rubro === 'materiales' || detalle?.rubro === 'subcontratos') && (
         <ListaComprobantes filas={detalle.filas} corte={detalle.corte} base={hrefComprasBase} />
       )}
-      {detalle && <Cotejo detalle={detalle} total={sumaDeFilas(detalle)} celda={celda} />}
+      {detalle && <Cotejo detalle={detalle} total={sumaDeFilas(detalle)} celda={aclaracion ? null : celda} />}
     </Drawer>
   )
 }

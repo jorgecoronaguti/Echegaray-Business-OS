@@ -182,6 +182,21 @@ export const ITEMS: { clave: Item; rotulo: string }[] = [
   { clave: 'horas', rotulo: 'Horas hombre' },
 ]
 
+/**
+ * EL RUBRO DE ESTA PANTALLA → EL DE `detalle_costo_de_obra` (dueño, 21/09/2026).
+ *
+ * *«Cada rubro de Analíticas > Obras, al hacer click, tiene que abrirse un menú a la derecha donde
+ * muestre cómo está compuesto.»* Es el mismo pedido que el 15/09 puso el panel en la ficha del
+ * cliente, así que se abre EL MISMO panel con LA MISMA RPC: dos paneles con el mismo nombre y
+ * distinta cuenta serían dos definiciones del costo de una obra.
+ *
+ * «Otros» devuelve `null` a propósito: la RPC no tiene ese rubro —no es una partida, es el resto— y
+ * abrir un panel vacío prometería un desglose que no existe.
+ */
+export const RUBRO_DEL_DETALLE: Record<Item, 'materiales' | 'subcontratos' | 'mo' | 'hh' | null> = {
+  manoObra: 'mo', materiales: 'materiales', subcontratos: 'subcontratos', otros: null, horas: 'hh',
+}
+
 /** ¿La obra cotizó MA (materiales, equipos, fletes Y subcontratos: la plantilla no los separa)? */
 export const conMA = (o: ObraAnalitica): boolean => (o.presupuestoRubros?.materiales ?? null) != null
 

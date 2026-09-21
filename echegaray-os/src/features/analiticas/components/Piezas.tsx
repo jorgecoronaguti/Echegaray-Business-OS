@@ -42,7 +42,7 @@ export interface Cifra {
 
 /** Una fila de cifras suelta (fuera de la cabecera): mismo dibujo, para una sección que tiene sus propios números. */
 export function FilaDeCifras({ cifras }: { cifras: Cifra[] }) {
-  return <div className="grid grid-cols-2 items-start gap-x-6 gap-y-5 lg:flex lg:flex-nowrap lg:gap-x-10 xl:gap-x-14">{cifras.map((c) => <UnaCifra key={c.rotulo} c={c} />)}</div>
+  return <div className="grid grid-cols-2 items-end gap-x-6 gap-y-5 lg:flex lg:flex-nowrap lg:gap-x-10 xl:gap-x-14">{cifras.map((c) => <UnaCifra key={c.rotulo} c={c} />)}</div>
 }
 
 export function UnaCifra({ c }: { c: Cifra }) {
@@ -76,17 +76,24 @@ export function Cabecera({ titulo, detalle, cifras, repartidas = false, derecha 
   derecha?: ReactNode
 }) {
   return (
-    <div className={`mt-6 grid grid-cols-[minmax(0,1fr)] gap-5 border-b border-line-strong pb-6 lg:mt-9 lg:items-start lg:gap-6 ${derecha ? 'lg:grid-cols-[180px_minmax(0,1fr)_auto]' : 'lg:grid-cols-[180px_minmax(0,1fr)]'} ${repartidas ? 'lg:pb-7' : ''}`}>
+    <div className={`mt-6 grid grid-cols-[minmax(0,1fr)] gap-5 border-b border-line-strong pb-6 lg:mt-9 lg:items-end lg:gap-6 ${derecha ? 'lg:grid-cols-[180px_minmax(0,1fr)_auto]' : 'lg:grid-cols-[180px_minmax(0,1fr)]'} ${repartidas ? 'lg:pb-7' : ''}`}>
       <div className="flex flex-col gap-1.5">
         <h1 className="text-[22px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">{titulo}</h1>
         <p className="text-xs leading-[1.45] text-muted tabular-nums">{detalle}</p>
       </div>
-      {/* CINCO COLUMNAS SIEMPRE, TENGA TRES CIFRAS O CINCO (`gCifras: repeat(5,minmax(0,1fr))`).
+      {/* ═══ LAS CIFRAS SE APOYAN ABAJO, NO ARRIBA ═══
+          Medido en el diseño renderizado (marco D02, 21/09/2026): «presupuestado» —la única sin
+          nota— tiene su rótulo en y=244 y las otras tres en y=228. Esos 16 px son exactamente lo
+          que produce `align-items: end`: el bloque sin nota baja hasta apoyar en la misma línea que
+          los que la tienen. Alinearlas arriba las deja a todas en la misma y, que se ve más
+          prolijo y NO es el diseño: la referencia visual de la fila es el borde de abajo.
+
+          CINCO COLUMNAS SIEMPRE, TENGA TRES CIFRAS O CINCO (`gCifras: repeat(5,minmax(0,1fr))`).
           Quedaba un caso especial para cuatro que las repartía en cuatro columnas: en Obras el
           «presupuestado» caía en la misma x que en Resumen pero los otros tres no, así que al
           cambiar de solapa los números se movían. Con cinco columnas fijas, la quinta queda vacía y
           las cuatro cifras aterrizan donde el diseño las pone. */}
-      <div className="grid grid-cols-2 items-start gap-x-6 gap-y-5 lg:grid-cols-5 lg:gap-6">
+      <div className="grid grid-cols-2 items-end gap-x-6 gap-y-5 lg:grid-cols-5 lg:gap-6">
         {cifras.map((c) => <UnaCifra key={c.rotulo} c={c} />)}
       </div>
       {derecha ? <div className="min-w-0 lg:justify-self-end">{derecha}</div> : null}

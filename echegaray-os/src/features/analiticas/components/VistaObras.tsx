@@ -7,7 +7,7 @@
 import Link from 'next/link'
 import { aUrl, type Filtros } from '../services/filtros'
 import { horasTexto, millones, pctConSigno, pctEntero, porHora } from '../services/formato'
-import { celda, costoPorHora, INCLUIDO_EN_MATERIALES, ITEMS, porHoraMedido, quedaMaterialesYSubcontratos, UMBRAL_HORA_CARA, type Celda, type Item } from '../services/agregados'
+import { celda, costoPorHora, INCLUIDO_EN_MATERIALES, ITEMS, porHoraMedido, quedaMaterialesYSubcontratos, RUBRO_DEL_DETALLE, UMBRAL_HORA_CARA, type Celda, type Item } from '../services/agregados'
 import { mesesParaAgotar, type MesDeConsumo, type Ritmo } from '../services/consumo'
 import { rotuloEstimada, type ObraAnalitica } from '../services/obras'
 import { SIN_PRESUPUESTO_RUBRO } from '../services/presupuesto'
@@ -46,7 +46,7 @@ export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva }: {
         ]} />
       <Seccion titulo="Rubro contra rubro" aclaracion="la cotización incluye los subcontratos dentro de materiales">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5" data-testid="rubros">
-          {ITEMS.map((i) => <Rubro key={i.clave} item={i.clave} rotulo={i.rotulo} c={celda(obra, i.clave)} />)}
+          {ITEMS.map((i) => <Rubro key={i.clave} item={i.clave} rotulo={i.rotulo} c={celda(obra, i.clave)} filtros={filtros} />)}
         </div>
         {/* ═══ EL «QUEDA» CIERRA EL BLOQUE, NO LO PARTE (diseño v9) ═══
             Iba insertado después de Subcontratos: en el teléfono aparecía a mitad de la lista, antes
@@ -95,7 +95,19 @@ function Selector({ obras, elegida, filtros }: { obras: ObraAnalitica[]; elegida
 }
 
 /** Un rubro: la barra fina de lo cotizado, la gruesa de lo consumido, y qué queda. Medidas del diseño v6. */
-function Rubro({ item, rotulo, c }: { item: Item; rotulo: string; c: Celda }) {
+/**
+ * UN RUBRO. El título abre el panel de composición (dueño, 21/09/2026: «cada rubro, al hacer click,
+ * tiene que abrirse un menú a la derecha en donde muestre cómo está compuesto»).
+ *
+ * EL CLIC VIVE EN LA URL (`&rubro=`), no en un estado: así se comparte por chat, se cierra con el
+ * botón de atrás y lo lee el servidor con la RLS de quien mira. Es el mismo camino que la ficha del
+ * cliente, y el panel y la RPC también son los mismos.
+ *
+ * «Otros» NO es un enlace: la RPC no tiene ese rubro —es el resto, no una partida— y un título que
+ * se ve clickeable y no abre nada es peor que uno que no lo parece.
+ */
+function Rubro({ item, rotulo, c, filtros }: { item: Item; rotulo: string; c: Celda; filtros: Filtros }) {
+  const rubro = RUBRO_DEL_DETALLE[item]
   const fmt = item === 'horas' ? horasTexto : millones
   const escala = Math.max(c.cotizado ?? 0, c.gastado ?? 0)
   const excedido = c.lectura?.tipo === 'excedido'
@@ -104,7 +116,14 @@ function Rubro({ item, rotulo, c }: { item: Item; rotulo: string; c: Celda }) {
   const gColor = c.gastado == null ? 'text-faint' : excedido ? 'text-neg' : sinPres ? 'text-warn' : 'text-ink'
   return (
     <div className="flex min-w-0 flex-col gap-2.5" data-testid={`rubro-${item}`}>
-      <div className="text-[13px] font-semibold text-ink">{rotulo}</div>
+      {rubro ? (
+        <Link href={aUrl(filtros, { rubro })} prefetch={false} scroll={false} data-testid={`rubro-abrir-${item}`}
+          className="w-fit text-[13px] font-semibold text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">
+          {rotulo}
+        </Link>
+      ) : (
+        <div className="text-[13px] font-semibold text-ink">{rotulo}</div>
+      )}
       <Par rotulo="cotizado" ancho={ancho(c.cotizado, escala)} barra="bg-dato-referencia"
         valor={c.cotizado != null ? `${fmt(c.cotizado)}${c.estimado ? ' est.' : ''}` : '—'} color={c.cotizado != null ? 'text-ink' : 'text-faint'} titulo={c.cotizadoAusente ?? undefined} />
       <Par rotulo="consumido" ancho={ancho(c.gastado, escala)} barra={tono}

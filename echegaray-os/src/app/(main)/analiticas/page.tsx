@@ -21,7 +21,12 @@ import { VistaResumen } from '@/features/analiticas/components/VistaResumen'
 import { VistaObras } from '@/features/analiticas/components/VistaObras'
 import { VistaCobranza, VistaNomina } from '@/features/analiticas/components/VistasEmpresa'
 import { VistaCaja } from '@/features/analiticas/components/VistaCaja'
+import type { ObraAnalitica } from '@/features/analiticas/services/obras'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
+import { PanelDetalleCosto } from '@/features/clientes/components/PanelDetalleCosto'
+import { leerDetalle, leerRubro } from '@/features/clientes/services/detalleCostoDeObra'
+import { aUrl } from '@/features/analiticas/services/filtros'
+import { millones } from '@/features/analiticas/services/formato'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,6 +40,20 @@ export default async function AnaliticasPage({ searchParams }: { searchParams: P
   const filtros = leerFiltros(params)
 
   const d = await getDatosAnaliticas(supabase, filtros)
+  // ═══ EL PANEL DE COMPOSICIÓN DE UN RUBRO (dueño, 21/09/2026) ═══
+  //
+  // «Cada rubro de Analíticas > Obras, al hacer click, tiene que abrirse un menú a la derecha en
+  // donde muestre cómo está compuesto.» Es el MISMO pedido que el 15/09 puso el panel en la ficha
+  // del cliente, así que se reutiliza el mismo panel y la misma RPC (`detalle_costo_de_obra`): dos
+  // paneles con el mismo nombre y distinta cuenta serían dos definiciones del costo de una obra.
+  //
+  // Sólo en la vista Obras y con una obra elegida. La lectura se hace SÓLO con el panel abierto: es
+  // el detalle de un clic, no algo que la pantalla necesite para dibujarse.
+  const rubro = filtros.vista === 'obras' ? leerRubro(params.rubro) : null
+  const obraDelPanel = rubro && d.obraElegida ? d.obraElegida : null
+  const detalle = obraDelPanel && rubro
+    ? await leerDetalle(supabase, { obraId: obraDelPanel.id, rubro })
+    : { detalle: null, error: null }
   const periodo = razonNoAplica(filtros.vista, 'periodo') ? 'acumulado a la fecha' : rotuloPeriodo(filtros.periodo).toLowerCase()
   const opciones = d.cartera.map((o) => ({ id: o.id, nombre: o.nombre, cliente: o.clienteNombre, estado: o.estado }))
 
@@ -45,6 +64,28 @@ export default async function AnaliticasPage({ searchParams }: { searchParams: P
       <div className="px-4 lg:px-10">
         {!d.legible ? <SinLectura que="el gasto de las obras" /> : <Vista filtros={filtros} d={d} periodo={periodo} />}
       </div>
+      {obraDelPanel && rubro ? (
+        <PanelDetalleCosto
+          titulo={obraDelPanel.nombre}
+          rubro={rubro}
+          detalle={detalle.detalle}
+          error={detalle.error}
+          celda={celdaDeLaVista(obraDelPanel, rubro)}
+          // ═══ LOS DOS NÚMEROS SON CORRECTOS Y DISTINTOS, Y SE DICE ═══
+          //
+          // Analíticas publica el consumo NETO DE IVA; este panel lista los comprobantes como los
+          // registra Compras, con IVA. Medido en Salón Comercial: la pantalla dice $ 31,15 M y el
+          // panel suma $ 37,51 M. Sin esta línea, el que mira ve dos números para la misma palabra y
+          // supone que uno está mal. Con la aclaración puesta, el cotejo contra la celda se apaga:
+          // enfrentar dos criterios distintos daría ámbar siempre y el aviso dejaría de significar.
+          aclaracion={rubro === 'materiales' || rubro === 'subcontratos'
+            ? `La pantalla mide ${millonesDeLaVista(obraDelPanel, rubro)} neto de IVA; acá abajo van los comprobantes como los registra Compras, con IVA. Los dos son correctos: miden cosas distintas.`
+            : undefined}
+          cerrarHref={aUrl(filtros, { rubro: null })}
+          hrefDesgloseHH={null}
+          hrefComprasBase="/administracion/compras?s="
+        />
+      ) : null}
     </>
   )
 }
@@ -62,5 +103,21 @@ function Vista({ filtros, d, periodo }: {
     case 'cobranza': return <VistaCobranza cuenta={d.cuentaCorriente} documentos={d.documentos} agenda={d.documentosParaAgenda} hoy={d.hoy} periodo={periodo} />
     default: return <VistaResumen obras={d.obras} sinObra={d.sinObra} filtros={filtros} neto={d.netoDeIva}
       comprobantesPorCliente={d.sinObraDetalle.size ? new Map([...d.sinObraDetalle.entries()].map(([id, g]) => [id, g.nComprobantes])) : null} />
+  }
+}
+
+/** El importe de la vista, escrito, para poder nombrarlo en la aclaración del panel. */
+function millonesDeLaVista(o: ObraAnalitica, rubro: 'materiales' | 'subcontratos' | 'mo' | 'hh'): string {
+  const v = celdaDeLaVista(o, rubro)
+  return v == null ? 'otra cosa' : (millones(v) ?? 'otra cosa')
+}
+
+/** Lo que la vista Obras publica para ese rubro. Es la MISMA celda que el clic abrió. */
+function celdaDeLaVista(o: ObraAnalitica, rubro: 'materiales' | 'subcontratos' | 'mo' | 'hh'): number | null {
+  switch (rubro) {
+    case 'materiales': return o.gasto.materiales ?? null
+    case 'subcontratos': return o.gasto.subcontratos ?? null
+    case 'mo': return o.gasto.manoObra ?? null
+    case 'hh': return o.gasto.horas ?? null
   }
 }
