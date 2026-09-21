@@ -239,3 +239,24 @@ export function formulaBlancoMedido({ filaTotal, hoja = 'Cargas Sociales' } = {}
 
 /** Lo que la celda de abajo declara: contra qué se midió. */
 export const NOTA_BLANCO_MEDIDO = 'neto en blanco ÷ neto total pagado, en los meses con DDJJ'
+
+/**
+ * LOS TRES RETIROS DE DIRECCIÓN, ANCLADOS AL NOMBRE Y NO A LA FILA.
+ *
+ * ═══ EL DEFECTO, MEDIDO EL 21/09/2026 ═══
+ *
+ * El cuadro 4 de «Nómina» leía `'Jornales por Quincena'!B56`, `B57` y `B58` — tres números de fila
+ * escritos a mano. El día que «Jornales» perdió UNA fila —la quincena 11–15/09 que se contaba dos
+ * veces— el bloque de Dirección subió un renglón y las tres referencias se corrieron: las dos
+ * primeras siguieron mostrando $3.000.000 porque los tres retiros son iguales (el error era
+ * INVISIBLE) y la tercera cayó sobre la fila de total, que está vacía. Jorge Corona desapareció del
+ * cuadro y «TOTAL DIRECCIÓN» pasó de $9.000.000 a $6.000.000 por mes: **$36.000.000 en el año**,
+ * sin un solo error en pantalla.
+ *
+ * Es la regla del archivo aplicada a una celda: anclar al TEXTO, nunca a la posición. Una fila fija
+ * da tres totales distintos según el día.
+ */
+export function formulaRetiroDeDireccion(persona, { hoja = 'Jornales por Quincena' } = {}) {
+  const H = `'${hoja}'`
+  return `=IFERROR(INDEX(${H}!$B$1:$B$80;MATCH("${persona}";${H}!$A$1:$A$80;0));"")`
+}

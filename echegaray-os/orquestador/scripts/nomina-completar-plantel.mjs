@@ -32,7 +32,7 @@ import { devengadoPorMes, COL_OBRA } from '../lib/nomina-devengado.mjs'
 import {
   devengadoDeLosQueSeFueron, ROTULO_DESVINCULADOS, ROTULO_OFICINA, ROTULO_SAC,
   celdasDesvinculados, celdasOficina, cargasDeUnGrupo, formulaDelSac, sumaDeLaColumna,
-  ubicarCuadros, colMes, bloqueDeOficina, formulaBlancoMedido, NOTA_BLANCO_MEDIDO,
+  ubicarCuadros, colMes, bloqueDeOficina, formulaBlancoMedido, NOTA_BLANCO_MEDIDO, formulaRetiroDeDireccion,
 } from '../lib/nomina-plantel-completo.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -142,6 +142,19 @@ async function main() {
   if (PCT_BLANCO != null) {
     console.log(`  · B5 «% en blanco» pasa a ${(PCT_BLANCO * 100).toFixed(0)} %`)
     escribir.push({ rango: `B5`, filas: [[PCT_BLANCO]] })
+  }
+
+  // ── Y LOS TRES RETIROS DE DIRECCIÓN, QUE APUNTABAN POR NÚMERO DE FILA ───────────────────────────
+  //
+  // Se re-anclan al nombre. El porqué —y los $36 M que costó el corrimiento de una fila— en
+  // `formulaRetiroDeDireccion`. Se buscan por rótulo en ESTA pestaña, igual que todo lo demás.
+  const dir = ['Jorge Echegaray', 'Rodrigo Echegaray', 'Jorge Corona']
+  const A = (i) => String(grid[i]?.[0] ?? '').trim()
+  for (const persona of dir) {
+    const f = grid.findIndex((_, i) => A(i) === persona)
+    if (f < 0) { console.warn(`  ▲ «${persona}» no está en el cuadro 4: no re-anclo su retiro`); continue }
+    // +nUno+nuevasDos.length: las filas insertadas arriba corrieron el cuadro 4 hacia abajo.
+    escribir.push({ rango: `B${f + 1 + nUno + nuevasDos.length}`, filas: [[formulaRetiroDeDireccion(persona)]] })
   }
 
   for (const e of escribir) {
