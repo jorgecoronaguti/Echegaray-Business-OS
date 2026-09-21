@@ -8,6 +8,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { r2, type ConceptoDeRecibo, type ReciboParaReglas, type ReglasDelRecibo } from './reglasDelRecibo.ts'
 import type { BaseDelEstimado, ReciboDeSueldo } from './sueldoBlancoNegro.ts'
+import { quincenaConPresentismo } from './presentismo.ts'
 
 export const esDiaHabil = (fecha: string): boolean => {
   const d = new Date(`${fecha.slice(0, 10)}T12:00:00Z`).getUTCDay()
@@ -44,10 +45,20 @@ export function reciboParaReglas(r: ReciboDeSueldo, conceptos: readonly Concepto
   }
 }
 
-/** La base del estimado de `periodo`. Sin `porRecibo` (la tabla de conceptos no existe todavía), sin conceptos reales. */
+/**
+ * La base del estimado de `periodo`. Sin `porRecibo` (la tabla de conceptos no existe todavía), sin conceptos reales.
+ *
+ * `quincenaDesde` decide si el estimado trae el par 0425/0426 (ver `haberes`): desde la quincena que liquida con el
+ * presentismo del OS no lo trae, porque ese concepto lo dice `presentismo.ts` y no puede tener dos versiones. Sin
+ * fecha se comporta como siempre: las quincenas viejas no cambian de reglas a mitad de camino.
+ */
 export function baseDelEstimado(
   periodo: string, reglas: ReglasDelRecibo, recibos: readonly ReciboDeSueldo[], feriados: number | null,
-  porRecibo: ReadonlyMap<string, ConceptoDeRecibo[]> = new Map(),
+  porRecibo: ReadonlyMap<string, ConceptoDeRecibo[]> = new Map(), quincenaDesde: string | null = null,
 ): BaseDelEstimado {
-  return { periodo, reglas, feriados, recibos: recibos.map((r) => reciboParaReglas(r, (r.id ? porRecibo.get(r.id) : undefined) ?? [])) }
+  return {
+    periodo, reglas, feriados,
+    recibos: recibos.map((r) => reciboParaReglas(r, (r.id ? porRecibo.get(r.id) : undefined) ?? [])),
+    presentismoPropio: quincenaDesde != null && quincenaConPresentismo(quincenaDesde),
+  }
 }

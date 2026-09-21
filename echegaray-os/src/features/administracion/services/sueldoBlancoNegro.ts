@@ -73,6 +73,11 @@ export interface BaseDelEstimado {
   feriados: number | null
   /** Los recibos (con sus conceptos si están cargados); `persona` es el CUIL normalizado. */
   recibos: readonly ReciboParaReglas[]
+  /**
+   * LA QUINCENA LIQUIDA CON EL PRESENTISMO DEL OS (desde el 16/09/2026). Es de la quincena, no de la
+   * persona: el estimado deja de traer el par 0425/0426, que el bloque «Presentismo» ya dice entero.
+   */
+  presentismoPropio?: boolean
 }
 
 /** Lo que el blanco necesita saber de una persona, además de sus horas y su $/h negro. */
@@ -194,6 +199,7 @@ function estimadoDe(e: EntradaDeSueldo, horasRecibo: number | null = null, valor
   return estimarRecibo(est.base.reglas, {
     persona: est.persona, periodo: est.base.periodo, valorHora: valorHoraRecibo ?? valorHoraDelUltimoRecibo(e) ?? num(e.pisoCategoria), horasRecibo,
     feriados: est.base.feriados, recibosPropios: est.persona ? est.base.recibos.filter((r) => r.persona === est.persona) : [],
+    presentismoPropio: est.base.presentismoPropio === true,
   })
 }
 
