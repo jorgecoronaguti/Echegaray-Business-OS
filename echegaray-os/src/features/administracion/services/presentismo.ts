@@ -30,12 +30,22 @@
 // OJO CON LA SUSPENSIÓN: se guarda con estado `licencia` y igual descuenta. «¿Se paga el día?» y
 // «¿pierde el premio?» son dos preguntas distintas; el motivo se mira ANTES que el estado.
 //
-// ═══ UNA AUSENCIA SIN MOTIVO NO DESCUENTA SOLA: SE REVISA ═══
+// ═══ UNA AUSENCIA SIN MOTIVO PIERDE EL PRESENTISMO (dueño, 21/09/2026) ═══
 //
-// Un día marcado «no vino» sin motivo cargado —o con «Otro», que no dice nada— no es una falta
-// injustificada probada. Quitar plata con un dato ambiguo es fabricar la afirmación que el dueño pidió
-// NO hacer automáticamente. Esos días salen en estado `a_revisar`: el presentismo se mantiene, la
-// pantalla dice qué día falta clasificar, y Administración lo resuelve cargando el motivo.
+// Textual: *«estás calculando mal el presentismo en liq de hs porque hay ausentes de esta quincena que
+// los seguís contando y no como que ya lo tienen perdido»*. Hasta el 20/09 un día marcado «no vino» sin
+// motivo cargado —o con «Otro», que no dice nada— quedaba en estado `a_revisar` y SEGUÍA COBRANDO el
+// presentismo hasta que alguien clasificara el día. En la quincena 16–30/09 eso le mantenía el premio a
+// Reta Ramón (ausente el 18/09, sin motivo): el cuadro decía que cumplía.
+//
+// LA CARGA DE LA PRUEBA SE DIO VUELTA, Y ESA ES LA DECISIÓN: no vino, y eso es un hecho declarado por el
+// jefe. Lo que falta no es la ausencia —está cargada— sino la justificación, y mientras no exista el
+// premio de asistencia no se paga. No se inventa nada: una ausencia sin motivo es una ausencia.
+//
+// SE RECUPERA CARGANDO EL MOTIVO, y por eso el día sigue saliendo en `aRevisar`: cuando Administración
+// carga «enfermedad», «lluvia» o «franco», el presentismo vuelve solo en la misma pantalla. Lo que el
+// dueño pidió el 16/09 —no tratar automáticamente una novedad justificada como falta injustificada—
+// sigue valiendo: un motivo cargado manda siempre, y ninguna licencia pierde nada.
 //
 // ═══ CUÁNDO NO RIGE ═══
 //
@@ -76,7 +86,10 @@ export const MOTIVOS_QUE_PIERDEN: readonly string[] = [
   MOTIVO.FALTA, MOTIVO.FALTA_CON_AVISO, MOTIVO.SUSPENSION, MOTIVO.PERMISO,
 ]
 
-/** Un motivo que no dice nada: no prueba una falta injustificada, pero deja el día sin clasificar. */
+/**
+ * UN MOTIVO QUE NO DICE NADA. «Otro» es texto libre: no justifica la ausencia, así que desde el
+ * 21/09/2026 se trata como el día sin motivo —pierde el presentismo— y queda listado para clasificar.
+ */
 export const MOTIVOS_SIN_CLASIFICAR: readonly string[] = [MOTIVO.OTRO]
 /** La primera quincena que liquida con presentismo. Se compara contra `quincena.desde`. */
 export const PRESENTISMO_DESDE = '2026-09-16'
@@ -106,8 +119,6 @@ export type EstadoPresentismo =
   | 'sin_categoria'
   /** Rige pero no hay horas con qué calcularlo. */
   | 'sin_horas'
-  /** Rige, no hay causa probada de pérdida, pero quedan días sin clasificar: no se descuenta todavía. */
-  | 'a_revisar'
   /** No rige: quincena anterior al 16/09/2026 o cuadro cerrado. */
   | 'no_rige'
   /** No corresponde a esta persona: cobra por mes (jefe de obra u otro mensual). Sin importe, no suma, sin pendiente. */
@@ -137,7 +148,10 @@ export interface PresentismoDeLinea {
   perdido: string[]
   /** Las causas con su etiqueta: el «motivo si lo perdió» de la pantalla. */
   causas: CausaDePerdida[]
-  /** Días no trabajados que nadie clasificó: no descuentan, pero hay que resolverlos. */
+  /**
+   * Días no trabajados que nadie clasificó. DESCUENTAN (21/09/2026) y además hay que resolverlos: son los
+   * únicos días perdidos que se recuperan cargando el motivo, y la pantalla lo dice para que se haga.
+   */
   aRevisar: string[]
   basico: number | null
   categoria: string | null
@@ -178,8 +192,14 @@ export function presentismoNoAplica(e: { categoria?: string | null; basico?: num
   }
 }
 
+/**
+ * ¿ESTA QUINCENA SE LIQUIDA CON EL PRESENTISMO DEL OS? Sólo mira la fecha: a QUIÉN le corresponde lo
+ * decide `rigePresentismo`. La usa también el recibo estimado, que es de la quincena y no de la persona.
+ */
+export const quincenaConPresentismo = (desde: string): boolean => desde >= PRESENTISMO_DESDE
+
 export function rigePresentismo(e: Pick<EntradaDePresentismo, 'quincenaDesde' | 'modalidad' | 'esJefe' | 'cerrada'>): boolean {
-  return e.quincenaDesde >= PRESENTISMO_DESDE && e.modalidad === 'hora' && !e.esJefe && !e.cerrada
+  return quincenaConPresentismo(e.quincenaDesde) && e.modalidad === 'hora' && !e.esJefe && !e.cerrada
 }
 
 /** Las fechas con marca, ordenadas y sin repetir. UNA basta: el presentismo se pierde entero. */
@@ -188,22 +208,25 @@ export function fechasPerdidas(tardanzas: readonly TardanzaDelDia[]): string[] {
 }
 
 /**
- * ¿ESTE DÍA NO TRABAJADO ES UNA FALTA INJUSTIFICADA? Sólo los dos motivos imputables al trabajador.
+ * ¿ESTE DÍA NO TRABAJADO HACE PERDER EL PRESENTISMO?
  *
- *   `pierde`      faltó sin avisar · faltó con aviso
- *   `revisar`     sin motivo cargado, o «Otro»: no prueba nada, se resuelve cargando el motivo
- *   `no-afecta`   licencias y lo que no depende del trabajador (lluvia, obra parada, paro, franco…)
+ *   `pierde`             faltó sin avisar · faltó con aviso · suspensión · permiso
+ *   `pierde_sin_motivo`  no vino y nadie cargó el motivo (o cargó «Otro»): pierde, y se recupera
+ *                        cargando un motivo que lo justifique (dueño, 21/09/2026)
+ *   `no-afecta`          licencias y lo que no depende del trabajador (lluvia, obra parada, paro, franco…)
  *
  * UN ESTADO `licencia` NUNCA PIERDE, aunque le hayan puesto un motivo raro: el estado ya dice que la
  * empresa lo reconoció.
  */
-export function efectoDeLaAusencia(a: AusenciaDelDia): 'pierde' | 'revisar' | 'no-afecta' {
+export function efectoDeLaAusencia(a: AusenciaDelDia): 'pierde' | 'pierde_sin_motivo' | 'no-afecta' {
   // EL MOTIVO SE MIRA ANTES QUE EL ESTADO (16/09/2026). Una suspensión se guarda con estado
   // `licencia` —la empresa la reconoce y la documenta— y aun así pierde el presentismo. Si el estado
   // se evaluara primero, la decisión del dueño no llegaría nunca a aplicarse.
   if (a.motivo != null && MOTIVOS_QUE_PIERDEN.includes(a.motivo)) return 'pierde'
   if (a.estado === 'licencia') return 'no-afecta'
-  if (a.motivo == null || MOTIVOS_SIN_CLASIFICAR.includes(a.motivo)) return 'revisar'
+  // UN MOTIVO CARGADO MANDA: lluvia, obra parada, paro, franco y las licencias que igual se guardaron
+  // como ausencia siguen sin descontar nada. Sólo el día que NADIE explicó pierde el premio.
+  if (a.motivo == null || MOTIVOS_SIN_CLASIFICAR.includes(a.motivo)) return 'pierde_sin_motivo'
   return 'no-afecta'
 }
 
@@ -238,15 +261,20 @@ export function causasDePerdida(
     if (t.salioAntes) out.push({ fecha: t.fecha, causa: 'retiro', etiqueta: 'Se retiró antes' })
   }
   for (const a of ausencias) {
-    if (efectoDeLaAusencia(a) !== 'pierde') continue
-    out.push({ fecha: a.fecha, causa: 'falta', etiqueta: etiquetaDeMotivo(a.motivo) ?? 'Falta injustificada' })
+    const efecto = efectoDeLaAusencia(a)
+    if (efecto === 'no-afecta') continue
+    // EL DÍA SIN MOTIVO SE NOMBRA COMO LO QUE ES, no como una falta injustificada que nadie probó: lo que
+    // se le dice al dueño es que no vino y que falta cargar por qué. Ahí está la acción que lo recupera.
+    out.push(efecto === 'pierde_sin_motivo'
+      ? { fecha: a.fecha, causa: 'falta', etiqueta: 'No vino · sin motivo cargado' }
+      : { fecha: a.fecha, causa: 'falta', etiqueta: etiquetaDeMotivo(a.motivo) ?? 'Falta injustificada' })
   }
   return out.sort((x, y) => (x.fecha === y.fecha ? x.causa.localeCompare(y.causa) : x.fecha.localeCompare(y.fecha)))
 }
 
-/** Los días no trabajados que nadie clasificó. No descuentan: se resuelven cargando el motivo. */
+/** Los días no trabajados que nadie clasificó. Descuentan, y se recuperan cargando el motivo. */
 export function diasARevisar(ausencias: readonly AusenciaDelDia[]): string[] {
-  return [...new Set(ausencias.filter((a) => efectoDeLaAusencia(a) === 'revisar').map((a) => a.fecha))].sort()
+  return [...new Set(ausencias.filter((a) => efectoDeLaAusencia(a) === 'pierde_sin_motivo').map((a) => a.fecha))].sort()
 }
 
 export function presentismoDeLinea(e: EntradaDePresentismo, horas: number | null): PresentismoDeLinea {
@@ -267,11 +295,9 @@ export function presentismoDeLinea(e: EntradaDePresentismo, horas: number | null
   const base = baseDePresentismo(horas, e.basico)
   const importe = importeDePresentismo(horas, e.basico)
   if (base == null || importe == null) return { ...comun, estado: 'sin_horas', importe: null, base: null }
-  // EL ORDEN IMPORTA: una causa probada gana sobre un día sin clasificar. Quien llegó tarde pierde el
-  // presentismo aunque además tenga una ausencia que nadie cargó; lo contrario dejaría de descontar por
-  // un dato que falta en OTRO día.
+  // UNA SOLA CAUSA BASTA, Y EL DÍA SIN MOTIVO ES UNA DE ELLAS (21/09/2026): `causasDePerdida` ya las trae
+  // todas, así que acá no hay un segundo criterio que pueda discrepar del que dibuja la pantalla.
   if (causas.length > 0) return { ...comun, estado: 'perdido', importe, base }
-  if (aRevisar.length > 0) return { ...comun, estado: 'a_revisar', importe, base }
   return { ...comun, estado: 'aplica', importe, base }
 }
 
@@ -294,7 +320,7 @@ export interface TotalesDePresentismo {
   /** Cuántas líneas lo perdieron. */
   perdidos: number
   sinCategoria: number
-  /** Cuántas tienen días sin clasificar: cobran el presentismo, pero hay que resolverlos. */
+  /** Cuántas perdieron el presentismo por un día que nadie clasificó: se recuperan cargando el motivo. */
   aRevisar: number
 }
 
@@ -303,7 +329,7 @@ export function totalesDePresentismo(lineas: readonly { presentismo: Presentismo
   for (const { presentismo: p } of lineas) {
     if (!p) continue
     if (p.estado === 'sin_categoria') t.sinCategoria++
-    if (p.estado === 'a_revisar') t.aRevisar++
+    if (p.aRevisar.length > 0) t.aRevisar++
     if (p.importe == null) continue
     t.enJuego += p.importe
     if (p.estado === 'perdido') { t.perdido += p.importe; t.perdidos++ }

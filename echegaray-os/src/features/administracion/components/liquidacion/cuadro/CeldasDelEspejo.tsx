@@ -71,21 +71,17 @@ export function CeldaPresentismo({ fila }: { fila: FilaDelEspejo }) {
   const cuenta = `Base ${pesos(p.base)} (${fila.linea.horas ?? 0} h × ${pesos(p.basico)}/h × 50 % en blanco`
     + `${p.categoria ? `, ${p.categoria}` : ''}) × 20 % = ${pesos(p.importe)}`
   if (p.estado === 'perdido') {
+    // EL DÍA SIN MOTIVO SE PUEDE REVERTIR Y LA CELDA LO DICE (dueño, 21/09/2026): pierde el presentismo ya
+    // —no vino—, y cargar el motivo que lo justifique se lo devuelve. Sin esta línea el descuento se lee
+    // como definitivo y nadie iría a clasificar el día.
+    const recuperable = p.aRevisar.length > 0
+      ? ` · sin motivo cargado: ${fechasCortas(p.aRevisar)}. Cargá el motivo y, si lo justifica, lo recupera.`
+      : ''
     return (
-      <div data-testid={testid} data-presentismo="perdido" title={`${cuenta} · PERDIDO: ${motivosDePerdida(p)} · se descuenta del negro`}
+      <div data-testid={testid} data-presentismo="perdido" data-sin-motivo={recuperable ? '1' : undefined}
+        title={`${cuenta} · PERDIDO: ${motivosDePerdida(p)} · se descuenta del negro${recuperable}`}
         style={{ textAlign: 'right', whiteSpace: 'nowrap', color: V.warn, fontWeight: 500 }}>
         perdido {fechasCortas(p.perdido)}
-      </div>
-    )
-  }
-  // A REVISAR: cobra el presentismo, pero hay días que nadie clasificó. Se dice en la celda, porque si
-  // se resuelven como falta injustificada esa plata se va — y quien liquida tiene que verlo ANTES de pagar.
-  if (p.estado === 'a_revisar') {
-    return (
-      <div data-testid={testid} data-presentismo="a-revisar"
-        title={`${cuenta} · sin clasificar: ${fechasCortas(p.aRevisar)}. No vino y nadie cargó el motivo: hasta que se cargue NO se descuenta.`}
-        style={{ textAlign: 'right', whiteSpace: 'nowrap', color: V.tintaSuave }}>
-        {pesos(p.importe)} <span style={{ color: V.warn, fontWeight: 600 }} aria-hidden>•</span>
       </div>
     )
   }

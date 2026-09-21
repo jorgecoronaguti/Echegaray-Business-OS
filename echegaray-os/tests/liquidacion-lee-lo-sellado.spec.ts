@@ -91,9 +91,11 @@ async function filaComoSellada(page: Page, s: Sellada) {
   const id = s.persona_id
   const fila = page.getByTestId(`espejo-fila-${id}`)
   await expect(fila, `${s.nombre} tiene fila`).toBeVisible()
-  // CUÁNTO COBRA, PEGADO AL NOMBRE: el cobra sellado.
-  // «COBRA AL MES» NUNCA EN UNA CERRADA: la foto es lo liquidado en la quincena (Maldonado 16–31/03, 105 h × $8.125).
-  await expect(page.getByTestId(`cobro-total-${id}`), `${s.nombre}: cobra`).toHaveText(`Cobra ${pesos(s.cobra)}`)
+  // CUÁNTO COBRA: el cobra sellado, en la columna Total.
+  // LA COLUMNA PERSONA YA NO LO REPITE (dueño, 21/09/2026: «quitá el total de lo que cobra de ahí»): el dato se mide
+  // donde vive, y la celda del nombre no puede volver a traer una copia que mañana diga otra cosa.
+  await expect(page.getByTestId(`total-${id}`), `${s.nombre}: cobra`).toContainText(pesos(s.cobra))
+  await expect(page.getByTestId(`espejo-fila-${id}`).locator('[data-testid^="cobro-"]'), `${s.nombre}: sin copia del total`).toHaveCount(0)
   // ═══ EL SALDO NO SE ESPERA CON LA FÓRMULA DE LA APP (auditor, 18/09/2026) ═══
   //
   // Antes este spec calculaba el saldo esperado igual que `pagoDeLaLinea` —adelantos por defecto, compensación por
@@ -101,17 +103,17 @@ async function filaComoSellada(page: Page, s: Sellada) {
   // expectativa sale de la BASE y de una regla que la app no usa para calcularlo:
   //   · con lo pagado REGISTRADO (`pagado_banco`/`pagado_efectivo` no nulos): saldo = cobra − registrado, en SQL-aritmética.
   //   · sin registro: la fila NO afirma saldo y lo dice («pago sin registrar»). Cualquier «saldo $…» es un rojo.
-  const cobro = page.getByTestId(`cobro-${id}`)
   if (s.pagado_banco != null || s.pagado_efectivo != null) {
     const registrado = r2((s.pagado_banco ?? 0) + (s.pagado_efectivo ?? 0))
-    await expect(cobro, `${s.nombre}: pagado registrado`).toContainText(`pagado ${pesos(registrado)}`)
-    if (s.grupo === 'obreros') await expect(cobro, `${s.nombre}: saldo`).toContainText(`saldo ${pesos(r2(s.cobra - registrado))}`)
-    // UN MENSUAL CERRADO NO AFIRMA SALDO POR QUINCENA: se salda por mes.
-    else await expect(cobro).toContainText('saldo del mes')
+    await expect(page.getByTestId(`pagado-total-${id}`), `${s.nombre}: pagado registrado`).toContainText(pesos(registrado))
+    if (s.grupo === 'obreros') {
+      await expect(page.getByTestId(`saldo-total-${id}`), `${s.nombre}: saldo`).toContainText(pesos(r2(s.cobra - registrado)))
+    } else {
+      // UN MENSUAL CERRADO NO AFIRMA SALDO POR QUINCENA: se salda por mes.
+      await expect(page.getByTestId(`saldo-total-${id}`)).toHaveText('saldo del mes')
+    }
   } else {
-    await expect(cobro, `${s.nombre}: sin registro no hay saldo`).not.toContainText('saldo $')
-    await expect(page.getByTestId(`cobro-sin-saldo-${id}`), `${s.nombre}: dice por qué`).toHaveText('pago sin registrar')
-    await expect(page.getByTestId(`saldo-total-${id}`)).toHaveText('sin registrar')
+    await expect(page.getByTestId(`saldo-total-${id}`), `${s.nombre}: sin registro no hay saldo`).toHaveText('sin registrar')
   }
   if (s.grupo === 'obreros') {
     // LAS HORAS Y EL $/H SELLADOS. `hora-categoria` lleva `data-sellado="1"`: es la foto, no el modelo.
@@ -125,7 +127,7 @@ async function filaComoSellada(page: Page, s: Sellada) {
       await expect(page.getByTestId(`categorias-${id}`)).toContainText(`Se liquidó a $${Math.round(s.valor_hora).toLocaleString('es-AR')}/h`)
     }
     await expect(fila.getByTestId('sin-tarifa'), `${s.nombre}: nunca «sin tarifa» en una quincena pagada`).toHaveCount(0)
-    await expect(page.getByTestId(`cobro-total-${id}`)).not.toContainText('sin tarifa')
+    await expect(page.getByTestId(`total-${id}`)).not.toContainText('sin tarifa')
   }
 }
 
@@ -219,8 +221,7 @@ test.describe('Liquidación · la quincena cerrada muestra lo sellado', () => {
       // NADA VIVO SE CUELA: ni el recibo del estudio como Banco, ni un saldo.
       await expect(page.getByTestId(`banco-mensual-${id}`)).toHaveText('sin línea sellada')
       await expect(page.getByTestId(`saldo-total-${id}`)).toHaveText('sin línea sellada')
-      await expect(page.getByTestId(`cobro-${id}`)).not.toContainText('saldo $')
-      await expect(page.getByTestId(`cobro-${id}`)).not.toContainText('pagado')
+      await expect(mensuales.nth(i).locator('[data-testid^="cobro-"]')).toHaveCount(0)
       // NI «$0» PAGADO: sin foto, un cero es una afirmación que nadie hizo.
       await expect(page.getByTestId(`pagado-banco-${id}`)).toHaveText('—')
       await expect(page.getByTestId(`pagado-efectivo-${id}`)).toHaveText('—')

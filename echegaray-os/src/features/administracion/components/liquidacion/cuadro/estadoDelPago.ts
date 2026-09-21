@@ -9,8 +9,9 @@ import { cierreDeLaFila, type CadenaParaCerrar } from '../../../services/cuadroD
 import type { ReferenciaDeJornales } from '../../../services/liquidacionOverrides.ts'
 
 /**
- * POR QUÉ NO HAY TOTAL QUE AFIRMAR, EN UNA SOLA DEFINICIÓN. Lo dicen dos lugares —la columna «Total» y el cobro que
- * va pegado al nombre (`LoQueCobra`)— y dos frases distintas para el mismo hueco harían creer que son dos huecos.
+ * POR QUÉ NO HAY TOTAL QUE AFIRMAR, EN UNA SOLA DEFINICIÓN. La dice la columna «Total» (`CeldaTotal`): dos frases
+ * distintas para el mismo hueco harían creer que son dos huecos. Hasta el 21/09/2026 la decía también el cobro
+ * pegado al nombre, que el dueño mandó sacar.
  *
  * UN MENSUAL SIN IMPORTE NO ESTÁ «SIN TARIFA» (dueño, 15/09/2026: «los jefes cobran por mes, no preguntes más»).
  */

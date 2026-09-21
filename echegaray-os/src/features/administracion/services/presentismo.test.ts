@@ -170,24 +170,47 @@ test('lo que no depende del trabajador no descuenta: lluvia, obra parada, paro, 
   }
 })
 
-test('un día sin motivo o con «Otro» NO descuenta solo: queda a revisar', () => {
+// ═══ EL DEFECTO DEL 21/09/2026 (dueño, textual) ═══
+//
+// *«hay ausentes de esta quincena que los seguís contando y no como que ya lo tienen perdido»*. Reta Ramón figuraba
+// ausente el 18/09 sin motivo cargado y el cuadro le pagaba el presentismo: `a_revisar` mantenía el premio hasta que
+// alguien clasificara el día. No vino es un hecho declarado por el jefe; lo que falta es la justificación, y sin
+// ella el premio de asistencia no se paga.
+
+test('un día sin motivo o con «Otro» PIERDE el presentismo, y se puede recuperar cargando el motivo', () => {
   for (const motivo of [null, 'otro']) {
     const p = presentismoDeLinea({ ...BASE, ausencias: [falta('2026-09-18', motivo)] }, 105)
-    assert.equal(p.estado, 'a_revisar', 'MUTACIÓN: descontó con un dato que nadie cargó')
+    assert.equal(p.estado, 'perdido', 'MUTACIÓN: volvió a pagarle el premio a alguien que no vino')
+    assert.deepEqual(p.perdido, ['2026-09-18'])
+    assert.equal(cobraConPresentismo(627000, p), 560346, 'se descuenta igual que una falta')
+    // EL DÍA SIGUE LISTADO PARA CLASIFICAR: es la acción que lo devuelve, y la pantalla la dice.
     assert.deepEqual(p.aRevisar, ['2026-09-18'])
-    assert.equal(cobraConPresentismo(627000, p), 627000, 'no se descuenta hasta que se clasifique')
-    assert.deepEqual(p.causas, [])
+    assert.equal(p.causas[0].etiqueta, 'No vino · sin motivo cargado', 'no se le inventa una falta injustificada')
   }
 })
 
-test('una causa probada gana sobre un día sin clasificar', () => {
+test('cargar un motivo que lo justifica le devuelve el presentismo: el descuento no es definitivo', () => {
+  const sinMotivo = presentismoDeLinea({ ...BASE, ausencias: [falta('2026-09-18', null)] }, 105)
+  assert.equal(sinMotivo.estado, 'perdido')
+  for (const motivo of ['enfermedad', 'lluvia', 'franco', 'vacaciones']) {
+    const p = presentismoDeLinea({ ...BASE, ausencias: [falta('2026-09-18', motivo)] }, 105)
+    assert.equal(p.estado, 'aplica', `${motivo} justifica el día y devuelve el premio`)
+    assert.deepEqual(p.aRevisar, [], 'y deja de estar pendiente de clasificar')
+    assert.equal(cobraConPresentismo(627000, p), 627000)
+  }
+})
+
+test('una causa probada convive con un día sin clasificar: un solo descuento, los dos motivos a la vista', () => {
   const p = presentismoDeLinea({
     ...BASE,
     tardanzas: [{ fecha: '2026-09-17', llegoTarde: true, salioAntes: false }],
     ausencias: [falta('2026-09-21', null)],
   }, 105)
-  assert.equal(p.estado, 'perdido', 'la tardanza del 17 lo pierde aunque el 21 esté sin clasificar')
-  assert.deepEqual(p.aRevisar, ['2026-09-21'], 'y el día sin clasificar se sigue diciendo')
+  assert.equal(p.estado, 'perdido')
+  assert.deepEqual(p.perdido, ['2026-09-17', '2026-09-21'])
+  assert.deepEqual(p.aRevisar, ['2026-09-21'], 'el día sin clasificar se sigue diciendo')
+  // EL PREMIO SE PIERDE UNA SOLA VEZ: dos causas no descuentan dos veces.
+  assert.equal(cobraConPresentismo(627000, p), 560346)
 })
 
 test('las causas se dicen con fecha y motivo, ordenadas: es el «motivo si lo perdió» de la pantalla', () => {
@@ -217,15 +240,15 @@ test('jefes y mensuales siguen afuera aunque falten', () => {
   assert.equal(presentismoDeLinea({ ...conFalta, modalidad: 'mensual' }, 105).estado, 'no_aplica')
 })
 
-test('el pie cuenta cuántos quedaron a revisar, sin mezclarlos con los perdidos', () => {
+test('el pie cuenta los perdidos, y aparte cuántos se recuperan cargando el motivo', () => {
   const t = totalesDePresentismo([
     { presentismo: presentismoDeLinea({ ...BASE, ausencias: [falta('2026-09-18', 'falta')] }, 105) },
     { presentismo: presentismoDeLinea({ ...BASE, ausencias: [falta('2026-09-18', null)] }, 105) },
     { presentismo: presentismoDeLinea(BASE, 105) },
   ])
-  assert.equal(t.perdidos, 1)
-  assert.equal(t.aRevisar, 1)
-  assert.equal(t.perdido, 66654, 'sólo se descuenta el probado')
+  assert.equal(t.perdidos, 2, 'los dos ausentes lo perdieron')
+  assert.equal(t.aRevisar, 1, 'y uno de ellos se recupera clasificando el día')
+  assert.equal(t.perdido, 66654 * 2)
   assert.equal(t.enJuego, 66654 * 3)
 })
 

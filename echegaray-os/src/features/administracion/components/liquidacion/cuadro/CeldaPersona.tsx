@@ -1,14 +1,15 @@
 'use client'
 
-// LA CELDA FIJA DE PERSONA, IGUAL EN LOS DOS CUADROS: el nombre en un renglón entero (abre el panel), debajo CUÁNTO
-// COBRA, después lo que explica cómo cobra, y a la derecha la marca de pago. Lo que cambia entre jornalero y mensual
-// es sólo el detalle y de qué pago sale el cobro.
+// LA CELDA FIJA DE PERSONA, IGUAL EN LOS DOS CUADROS: el nombre en un renglón entero (abre el panel), debajo lo que
+// explica cómo cobra, y a la derecha la marca de pago. Lo que cambia entre jornalero y mensual es sólo el detalle.
 //
-// ═══ EL ORDEN DE LECTURA ES LA JERARQUÍA (dueño, 17/09/2026: «no está claro cuánto cobra cada uno») ═══
+// ═══ EL TOTAL SE FUE DE ACÁ (dueño, 21/09/2026) ═══
 //
-// Quién · cuánto cobra · por qué cobra eso. El «por qué» —categoría del recibo y de plataforma— se mira cuando algo
-// no cuadra, así que va tenue y abajo; antes competía en tinta con el nombre y el cuadro no decía en ninguna parte
-// visible cuánto termina cobrando la persona.
+// Textual, sobre la captura de esta misma celda: *«quites el total de lo que cobra de ahí y sólo dejes los valores
+// hs»*. Desde el 17/09 la celda traía «Cobra $192.887,47 · pagado $0 · saldo $192.887,47» encima de los dos
+// renglones de $/h. Esas tres cifras siguen enteras en sus columnas —Total, Pagado y Saldo del bloque «Resto del
+// cálculo»— y en el panel de la persona: lo que se saca es la copia, no el dato. La celda queda con QUIÉN es y con
+// los dos $/h que explican con qué se le paga.
 
 import type { ReactNode } from 'react'
 import { V } from '@/shared/components/v2/patron'
@@ -21,15 +22,13 @@ import type { CampoEditable } from '../../../services/liquidacionOverrides'
 const corta = (iso: string | null): string =>
   iso == null ? 'alta sin cargar' : `alta ${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`
 
-export function CeldaPersona({ fila, fondo, quincena, camposEditables, abrir, cobro, detalle }: {
+export function CeldaPersona({ fila, fondo, quincena, camposEditables, abrir, detalle }: {
   fila: FilaDelEspejo
   /** El color de la fila (pagada), para que la celda fija lo repita OPACO. */
   fondo: string | undefined
   quincena: { desde: string; hasta: string }
   camposEditables: readonly CampoEditable[]
   abrir: () => void
-  /** Cuánto cobra: `LoQueCobra`, con el pago que corresponde a su tipo. */
-  cobro: ReactNode
   /** Los dos renglones chicos de abajo del nombre. */
   detalle: ReactNode
 }) {
@@ -40,7 +39,6 @@ export function CeldaPersona({ fila, fondo, quincena, camposEditables, abrir, co
           display: 'block', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left',
           color: V.tinta, font: 'inherit', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{fila.nombre}</button>
-      {cobro}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {/* EL DETALLE ES SEGUNDO PLANO: tenue. Quien necesita mirarlo lo busca; quien mira la fila busca la plata. */}
         <div style={{ flex: 1, minWidth: 0, fontSize: '11px', lineHeight: '13px', color: V.tenue }}>

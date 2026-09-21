@@ -20,7 +20,6 @@ import { CeldaPresentismo, Leida } from './CeldasDelEspejo'
 import { CeldaPagado, CeldaPagadoTotal, CeldaSaldo, CeldaSaldoRedondeado, CeldaTotal } from './CeldasBlancoNegro'
 import { CeldaTarifa } from './CeldaTarifa'
 import { CeldaPersona, RenglonDelDetalle } from './CeldaPersona'
-import { LoQueCobra } from './LoQueCobra'
 import { filaPagada } from './marcaDePago'
 import { filaGrid, PERSONA_ESTIRADA } from './TablaDeBloques'
 import { SaldoTotal, type EdicionDeFila } from './FilasJornaleros'
@@ -71,8 +70,6 @@ export function FilaMensual({ fila, columnas, edicion, pct, abrir }: {
     <div data-testid={`espejo-fila-${fila.personaId}`} data-tipo="mensual" data-fila-edicion="" data-pagada={fondo ? '1' : undefined}
       style={{ ...filaGrid(columnas, ALTO_LIQ.filaAlta), background: fondo }}>
       <CeldaPersona fila={fila} fondo={fondo} quincena={quincena} camposEditables={edicion.camposEditables} abrir={abrir}
-        /* EL MENSUAL COBRA POR MES: su pago es el de `pagoDelMensual`, el mismo que dibujan Pagado y Saldo abajo. */
-        cobro={<LoQueCobra fila={fila} pago={p} />}
         detalle={(
           <div data-testid={`categorias-${fila.personaId}`}>
             <RenglonDelDetalle>{`${l.esJefe ? 'Jefe de obra' : 'Mensual'} · cobra por mes`}</RenglonDelDetalle>

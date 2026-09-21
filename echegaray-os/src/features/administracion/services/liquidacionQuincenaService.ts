@@ -371,7 +371,9 @@ export async function getLiquidacionDeLaQuincena(
   // EL RECIBO ESTIMADO: reglas congeladas (primera entrega sin migración), los recibos que ya leyó la exposición y
   // los feriados. Un error del calendario se dice: estimar sin feriados en silencio movería el 0401 y el 0431.
   anotar('el calendario de feriados', feriados.error ? { message: feriados.error } : null)
-  const baseEstimado = baseDelEstimado(periodo, REGLAS_GENERADAS, exposicion.recibos, feriados.feriados)
+  // `q.desde` decide el par 0425/0426: desde la quincena que liquida con el presentismo del OS, el estimado ya no lo
+  // trae (el concepto lo dice el bloque «Presentismo», una sola vez).
+  const baseEstimado = baseDelEstimado(periodo, REGLAS_GENERADAS, exposicion.recibos, feriados.feriados, new Map(), q.desde)
   /** La entrada del blanco de un obrero. Oficina y finales no cobran por hora: fuera del modelo. */
   const blancoDe = (grupo: string, l: { personaId: string; reciboNeto: number | null }) => grupo !== 'obreros'
     ? null

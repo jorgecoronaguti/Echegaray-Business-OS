@@ -98,6 +98,30 @@ test('Rosales Q2-08 estimado: 45 + 5 feriado a $6.348, cada concepto igual al re
   assert.equal(e.costoTotal, null)
 })
 
+// ═══ EL PRESENTISMO SE DICE UNA SOLA VEZ (dueño, 21/09/2026) ═══
+//
+// *«el menú que se abre con la liquidación en blanco sigue restando el concepto presentismo en la quincena actual,
+// algo que ya no es así»*. En la quincena que liquida con el presentismo del OS, el estimado deja de traer el par
+// 0425/0426 —la costumbre del estudio en la ventana de recibos— porque ese concepto lo decide `presentismo.ts` y
+// lo muestra el bloque «Presentismo» del panel, con base, %, importe y motivo.
+
+test('con el presentismo del OS, el estimado no trae 0425 ni 0426 — y NO mueve el neto', () => {
+  const sinBandera = estimarRecibo(REGLAS, ROSALES)!
+  const conBandera = estimarRecibo(REGLAS, { ...ROSALES, presentismoPropio: true })!
+  const codigos = (e: typeof sinBandera) => e.lineas.map((l) => l.codigo)
+  assert.ok(codigos(sinBandera).includes('0425') && codigos(sinBandera).includes('0426'), 'antes estaban los dos')
+  assert.equal(codigos(conBandera).includes('0425'), false, 'la asistencia perfecta sale')
+  assert.equal(codigos(conBandera).includes('0426'), false, 'MUTACIÓN: quedó el ajuste restando el presentismo')
+  // NI UN PESO: el 0426 es exactamente −0425, así que sacarlos no cambia el remunerativo, los descuentos ni el neto.
+  // Si alguien saca SÓLO el 0426, este test se pone rojo: el neto subiría y el banco pagaría de más.
+  assert.equal(conBandera.remunerativo, sinBandera.remunerativo)
+  assert.equal(conBandera.descuentos, sinBandera.descuentos)
+  assert.equal(conBandera.neto, sinBandera.neto)
+  assert.equal(conBandera.neto, 231880.94)
+  // El resto del recibo no se toca: el básico, el feriado y los descuentos siguen concepto por concepto.
+  assert.deepEqual(codigos(conBandera), codigos(sinBandera).filter((c) => c !== '0425' && c !== '0426'))
+})
+
 test('mutación «olvidar el feriado»: sin feriados, las 50 h van al 0401 y el 0431 desaparece', () => {
   const e = estimarRecibo(REGLAS, { ...ROSALES, feriados: 0 })!
   assert.equal(e.lineas.find((l) => l.codigo === '0401')?.monto, 317400)
