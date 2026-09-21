@@ -76,7 +76,9 @@ export const TABLAS_DE = {
   cotizaciones: unir(COTIZACION, ['obra_actividad', 'obra_canonica']),
   baseMaestra: unir(COTIZACION, ['tarea_tipo', 'convenio_escala']),
   pedidosMateriales: ['pedidos_materiales', 'obra_canonica'],
-  herramientas: ['herramientas', 'movimientos_herramienta', 'obra_canonica'],
+  /** Herramientas (20260921T2100): las tablas nuevas. `herramientas` y `movimientos_herramienta` son vistas
+   *  desde esa migración y una vista no emite eventos. */
+  herramientas: ['activo', 'activo_movimiento', 'activo_incidencia', 'ubicacion', 'obra_canonica'],
   /** Las pantallas del jefe de obra (`/obra/...`). */
   jefe: unir(OBRA, HH_Y_ASISTENCIA, ['personas', 'cuadrilla', 'cuadrilla_integrante']),
   // LAS QUE HABÍAN QUEDADO AFUERA (16/09/2026). Dueño: «lo que marco en el celular no se actualiza en la
@@ -89,7 +91,7 @@ export const TABLAS_DE = {
     ['compra_adjunto', 'comprobante_entrada', 'comprobantes_arca', 'pedidos_materiales', 'herramientas']),
   usuarios: ['personas', 'usuario_obra', 'obra_canonica'],
   documentos: ['asistencia_dia', 'cliente_documento', 'documentacion_legajo', 'obra_documento'],
-  integraciones: ['herramientas', 'movimientos_herramienta', 'pedidos_materiales', 'obra_actividad', 'obra_canonica'],
+  integraciones: ['activo', 'activo_movimiento', 'pedidos_materiales', 'obra_actividad', 'obra_canonica'],
   /** Mi cuenta: mis horas, mi legajo, mis obras. */
   miCuenta: unir(PERSONAS, HH_Y_ASISTENCIA, OBRA, ['liquidacion_linea', 'liquidacion_quincena']),
   reportes: ['registros_hh'],

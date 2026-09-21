@@ -112,7 +112,7 @@ export default async function CampoPage() {
       testid: 'ir-asistencia',
     },
     {
-      href: '/integraciones/herramientas',
+      href: '/campo/herramientas',
       titulo: 'Herramientas',
       detalle: 'Qué tengo en obra',
       senal: senalHerramientas(d.herramientasEnObra),

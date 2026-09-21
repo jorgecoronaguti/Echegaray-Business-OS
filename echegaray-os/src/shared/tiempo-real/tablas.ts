@@ -1,10 +1,12 @@
-// LAS TABLAS QUE AVISAN CUANDO CAMBIAN — espejo de las migraciones marcadas (20260915T2100, 20260916T2010, 20260917T1400/T1410, 20260921T1000).
+// LAS TABLAS QUE AVISAN CUANDO CAMBIAN — espejo de las migraciones marcadas (20260915T2100, 20260916T2010, 20260917T1400/T1410, 20260921T1000, 20260921T2110).
 //
 // Una pantalla declara de qué tablas depende (`<RefrescarEnVivo tablas={[...]} />`) y el tipo sólo
 // acepta tablas de esta lista. Declarar una tabla sin trigger compilaría y la pantalla nunca se
 // actualizaría: un «en vivo» que miente. `planDeRefresco.test.ts` compara esta lista con la de las migraciones.
 
 export const TABLAS_CON_AVISO = [
+  // Herramientas, etapa 1: migración 20260921T2110 (las tablas de 20260921T2100).
+  'activo', 'activo_incidencia', 'activo_movimiento', 'ubicacion',
   'analisis', 'analisis_linea', 'asistencia_dia', 'asistencia_marca',
   'certificado_cliente', 'certificados', 'cliente_acceso', 'cliente_actividad_portal',
   'cliente_contacto', 'cliente_documento', 'cliente_nota', 'clientes',

@@ -60,7 +60,7 @@ export const ROL_LABEL: Record<Rol, string> = {
 //
 // `/contrasena-nueva` es el final del mismo camino y no es pública —ahí ya hay sesión por
 // definición—, así que sin la entrada pasa exactamente lo mismo un paso más tarde.
-export const CAMPO_RUTAS_PERMITIDAS = ['/hoy', '/mi-trabajo', '/mi-informacion', '/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos', '/campo', '/descargas', '/mi-cuenta', '/marca', '/recuperar', '/callback', '/contrasena-nueva']
+export const CAMPO_RUTAS_PERMITIDAS = ['/hoy', '/mi-trabajo', '/mi-informacion', '/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos', '/herramientas', '/h', '/campo', '/descargas', '/mi-cuenta', '/marca', '/recuperar', '/callback', '/contrasena-nueva']
 export function esRutaCampoPermitida(pathname: string): boolean {
   return CAMPO_RUTAS_PERMITIDAS.some((r) => pathname === r || pathname.startsWith(r + '/'))
 }

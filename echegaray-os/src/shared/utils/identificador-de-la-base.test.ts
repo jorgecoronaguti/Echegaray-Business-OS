@@ -81,11 +81,10 @@ test('la ficha del proveedor dice a qué OBRA llegó el gasto, no sólo qué dic
  * EL BARRIDO. Cualquier pantalla que rotule «Identificador» tiene que estar declarada acá con la
  * COLUMNA de Supabase que muestra. Una pantalla nueva que invente un identificador se pone roja sola.
  */
-const IDENTIFICADORES_LEGITIMOS: Record<string, string> = {
-  // `herramientas.id_herramienta` es la identidad que la BASE le da a la herramienta —la que está
-  // pegada con etiqueta en el equipo—, no un slug derivado de un nombre.
-  'features/integraciones/components/FichaHerramienta.tsx': 'h.id_herramienta',
-}
+// Vacío desde el 21/09/2026: la ficha vieja de herramientas (`FichaHerramienta.tsx`, que rotulaba
+// `herramientas.id_herramienta`) se retiró con el módulo Herramientas nuevo, que muestra `activo.codigo`
+// sin rotularlo «Identificador».
+const IDENTIFICADORES_LEGITIMOS: Record<string, string> = {}
 
 test('todo rótulo «Identificador» de la app muestra una columna de la base, declarada acá', () => {
   const conRotulo = archivos('.').filter((f) => /["'>]Identificador["'<]/.test(leer(f)))

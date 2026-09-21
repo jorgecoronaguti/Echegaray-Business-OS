@@ -14,7 +14,7 @@ export type VistaOperacion = 'pedidos' | 'herramientas' | 'movimientos' | 'fuent
 
 const VISTAS: { id: VistaOperacion; label: string; href: string }[] = [
   { id: 'pedidos', label: 'Pedidos', href: '/integraciones/pedidos-materiales' },
-  { id: 'herramientas', label: 'Herramientas', href: '/integraciones/herramientas' },
+  { id: 'herramientas', label: 'Herramientas', href: '/herramientas' },
   { id: 'movimientos', label: 'Movimientos', href: '/integraciones/movimientos' },
   { id: 'fuentes', label: 'Fuentes', href: '/integraciones' },
 ]

@@ -122,7 +122,7 @@ export default async function MiTrabajoPage({
           <p style={{ fontSize: 11, color: C.faint, letterSpacing: '.06em' }}>TAMBIÉN DESDE ACÁ</p>
           <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: '8px 18px', fontSize: 12.5 }}>
             <Link href="/integraciones/pedidos-materiales" data-testid="ir-pedidos" style={{ color: C.muted }}>Pedir material →</Link>
-            <Link href="/integraciones/herramientas" data-testid="ir-herramientas" style={{ color: C.muted }}>Herramientas →</Link>
+            <Link href="/herramientas" data-testid="ir-herramientas" style={{ color: C.muted }}>Herramientas →</Link>
             <Link href="/integraciones/movimientos" data-testid="ir-movimientos" style={{ color: C.muted }}>Movimientos →</Link>
             <Link href="/campo" data-testid="ir-campo" style={{ color: C.muted }}>Parte de campo →</Link>
           </div>

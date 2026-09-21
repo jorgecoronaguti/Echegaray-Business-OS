@@ -41,6 +41,15 @@ export interface SolapaNav {
 const ANALITICAS: SolapaNav = { clave: 'analiticas', label: 'Analíticas', href: '/analiticas' }
 
 /**
+ * HERRAMIENTAS, CUARTO DESTINO, AL FINAL (dueño, 21/09/2026). Textual: menú de nivel 1
+ * «Administración · Obras · Analíticas · Herramientas». No es un nivel de usuario: es el inventario de
+ * herramientas, equipos y rodados, y lo ven TODOS los niveles con los mismos permisos («todos los niveles
+ * de usuario con permisos iguales»). Sin perfil (`null`) no se dibuja: sin saber quién entró se cae al
+ * nivel menos privilegiado, y el cliente del portal no tiene barra del OS.
+ */
+const HERRAMIENTAS: SolapaNav = { clave: 'herramientas', label: 'Herramientas', href: '/herramientas' }
+
+/**
  * LAS SOLAPAS QUE ESTE ROL VE, en el orden del mockup.
  *
  * El nivel Obras ve una sola y por eso su navegación no dibuja una barra de un elemento: dibuja el
@@ -49,7 +58,8 @@ const ANALITICAS: SolapaNav = { clave: 'analiticas', label: 'Analíticas', href:
 export function solapasDeNav(rol: Rol | null | undefined): SolapaNav[] {
   const areas = areasDe(rol).map((a) => ({ clave: a, label: AREA_LABEL[a], href: AREA_HREF[a] }))
   const destinos = [ANALITICAS].filter((d) => puedeVerRuta(rol, d.href))
-  return [...areas, ...destinos]
+  const herramientas = rol && rol !== 'cliente' ? [HERRAMIENTAS] : []
+  return [...areas, ...destinos, ...herramientas]
 }
 
 /**
@@ -99,6 +109,8 @@ export function destinoDeLaHome(rol: Rol | null | undefined): string {
 export function solapaActiva(pathname: string, solapas: SolapaNav[]): string | null {
   if (solapas.length === 1) return solapas[0].clave
   if (/^\/analiticas(\/|$)/.test(pathname)) return 'analiticas'
+  // `/h/<código>` es la puerta del QR: abre la ficha de Herramientas.
+  if (/^\/(herramientas|h)(\/|$)/.test(pathname)) return 'herramientas'
   if (/^\/(administracion|clientes|documentos|presupuestos)(\/|$)/.test(pathname)) return 'administracion'
   if (/^\/(obras|obra|integraciones|campo|hoy|mi-trabajo|mi-informacion)(\/|$)/.test(pathname)) {
     return 'obras'

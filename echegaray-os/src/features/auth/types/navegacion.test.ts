@@ -17,12 +17,14 @@ const activa = (ruta: string, rol: Parameters<typeof solapasDeNav>[0] = 'direcci
 // ═══ PRESUPUESTOS VOLVIÓ A NIVEL 2 (dueño, 21/09/2026) ═══
 //
 // *«"presupuestos" es una sección dentro de CRM admin».* Había subido a nivel 1 el 25/08 por el
-// mockup v2; el dueño lo revirtió mirando la barra. La solapa de la aplicación queda en TRES, y
+// mockup v2; el dueño lo revirtió mirando la barra. Presupuestos no vuelve a la barra, y
 // `/presupuestos` vuelve a pintar «Administración» —igual que `/clientes` y `/documentos`—, que es
 // la regla que la corrección del 24/08 había fijado para todas las rutas de primer nivel.
-test('Administración ve TRES solapas: Presupuestos volvió a ser sección del área (21/09/2026)', () => {
-  assert.deepEqual(claves('direccion'), ['administracion', 'obras', 'analiticas'])
-  assert.deepEqual(claves('administracion'), ['administracion', 'obras', 'analiticas'])
+// ═══ HERRAMIENTAS, AL FINAL (dueño, 21/09/2026) ═══
+// «Administración · Obras · Analíticas · Herramientas», y para todos los niveles con los mismos permisos.
+test('Administración ve CUATRO solapas: Presupuestos es sección del área y Herramientas va al final', () => {
+  assert.deepEqual(claves('direccion'), ['administracion', 'obras', 'analiticas', 'herramientas'])
+  assert.deepEqual(claves('administracion'), ['administracion', 'obras', 'analiticas', 'herramientas'])
   assert.ok(!claves('direccion').includes('presupuestos'), 'no puede volver a la barra de la aplicación sin una decisión del dueño')
 })
 
@@ -30,9 +32,18 @@ test('el jefe de obra NO ve Presupuestos: un presupuesto ES precio', () => {
   // La ruta sigue en `RUTAS_SOLO_ECONOMIA` y la base cierra `cotizaciones_select` con
   // `ve_economia()`. Que haya bajado de nivel no le abre la puerta a nadie.
   assert.equal(puedeVerRuta('jefe_obra', '/presupuestos'), false)
-  assert.deepEqual(claves('jefe_obra'), ['administracion', 'obras'])
-  assert.deepEqual(claves('campo'), ['obras'])
+  assert.deepEqual(claves('jefe_obra'), ['administracion', 'obras', 'herramientas'])
+  assert.deepEqual(claves('campo'), ['obras', 'herramientas'], 'permisos iguales: el empleado también ve Herramientas')
   assert.deepEqual(claves(null), ['obras'], 'sin perfil se cae al nivel MENOS privilegiado')
+  assert.deepEqual(claves('cliente'), ['obras'], 'el cliente del portal no ve el inventario')
+})
+
+test('Herramientas y la puerta del QR (/h/<código>) encienden Herramientas', () => {
+  assert.equal(activa('/herramientas'), 'herramientas')
+  assert.equal(activa('/herramientas/inventario'), 'herramientas')
+  assert.equal(activa('/h/HER-0042'), 'herramientas')
+  assert.equal(activa('/herramientas-viejas'), null)
+  assert.equal(activa('/hoy', 'campo'), 'obras')
 })
 
 test('cada ruta de primer nivel dice dónde estás', () => {
@@ -62,7 +73,7 @@ test('un prefijo no es una ruta: `/clientes-vip` no es Clientes', () => {
   assert.equal(activa('/presupuestos-2025'), null)
 })
 
-test('con una sola solapa, esa es la activa esté donde esté', () => {
+test('el empleado está en Obras en sus pantallas propias, que no empiezan con /obras', () => {
   // El nivel Obras no dibuja una barra de un elemento: dibuja el nombre del área. Y `/campo` o
   // `/mi-informacion` no empiezan con `/obras`, así que sin este caso se apagaría sola.
   assert.equal(activa('/campo', 'campo'), 'obras')
