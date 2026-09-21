@@ -59,8 +59,11 @@ export function VistaObras({ obras, obra, filtros, consumo, ritmo, sinIva }: {
           <NotaIva sinIva={sinIva} />
         </div>
       </Seccion>
+      {/* EL DISEÑO DEJA ESTA ACLARACIÓN EN BLANCO (`aclaracion: ''`, y también `notaColumnas: ''`).
+          Acá era un párrafo de tres renglones en la columna de 180 px, que empujaba el gráfico. El
+          criterio de imputación no se pierde: va en el `title` del encabezado. */}
       <Seccion titulo="Consumo por mes" filo
-        aclaracion="materiales y subcontratos por fecha del comprobante; mano de obra por la quincena en que empieza"
+        detalle="Materiales y subcontratos por fecha del comprobante; mano de obra por la quincena en que empieza."
         leyenda={[{ color: 'bg-accent', rotulo: 'mano de obra' }, { color: 'bg-muted', rotulo: 'subcontratos' }, { color: 'bg-dato-materiales', rotulo: 'materiales' }]}>
         <ConsumoMensual consumo={consumo} />
       </Seccion>

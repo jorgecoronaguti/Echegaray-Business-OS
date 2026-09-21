@@ -95,10 +95,16 @@ export function Cabecera({ titulo, detalle, cifras, repartidas = false, derecha 
 }
 
 /** Una sección: el título (y su leyenda) en la columna izquierda, el gráfico o la lista a la derecha. */
-export function Seccion({ titulo, aclaracion, leyenda, children, arriba = 'pt-7', filo = false }: {
+export function Seccion({ titulo, aclaracion, detalle, leyenda, children, arriba = 'pt-7', filo = false }: {
   titulo: string
-  /** Una línea en tenue bajo el título: qué muestra el gráfico, cuando el título no alcanza. */
+  /**
+   * Una línea en tenue bajo el título: qué muestra el gráfico, cuando el título no alcanza. UNA, no
+   * un párrafo: la columna mide 180 px y tres renglones empujan todo el bloque hacia abajo. El v9
+   * deja varias en blanco a propósito. Lo que no entra va en `detalle`.
+   */
   aclaracion?: ReactNode
+  /** El porqué largo, para el `title` del encabezado. Ahí se busca cuando la línea no alcanza. */
+  detalle?: string
   leyenda?: { color: string; rotulo: string }[]
   children: ReactNode
   arriba?: string
@@ -108,7 +114,7 @@ export function Seccion({ titulo, aclaracion, leyenda, children, arriba = 'pt-7'
   return (
     <section className={`grid gap-4 lg:grid-cols-[180px_minmax(0,1fr)] lg:gap-6 ${filo ? 'mt-8 border-t border-line pt-6' : arriba}`}>
       <div className="flex flex-col gap-3 pt-0.5">
-        <h2 className="text-[13px] font-semibold text-ink">{titulo}</h2>
+        <h2 className="text-[13px] font-semibold text-ink" title={detalle}>{titulo}</h2>
         {aclaracion ? <p className="text-[11.5px] leading-normal text-muted">{aclaracion}</p> : null}
         {leyenda ? (
           <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-muted lg:flex-col">
