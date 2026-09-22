@@ -43,7 +43,7 @@ export function NavHerramientas({ cuentas, derecha }: { cuentas: CuentasNav; der
   const [q, setQ] = useState('')
   return (
     <div
-      data-testid="nav-herramientas"
+      data-testid="nav-herramientas" data-no-imprimir
       style={{
         // Fija debajo del header de la app (44 px, `sticky top-0 h-11`): dueño, 22/09, «dejar fijo todo el
         // header a medida q te vas moviendo por el listado».
