@@ -123,7 +123,7 @@ export function VistaNomina({ pagado, personas, filtros, mes, hoy }: {
           registrado, con su fecha de corte y con la vara escrita: mezclarlo con el año, en cambio,
           sería sumar dos definiciones de «pagado» en una cifra sola. */}
       {enCurso ? (
-        <Seccion titulo={`${rotuloMes(enCurso.mes, false)}, en curso`} filo
+        <Seccion titulo={`El mes en curso · ${rotuloMes(enCurso.mes, true)}`} filo
           aclaracion={`al ${alDia} · mes incompleto: ${enCurso.quincenasAbiertas} ${enCurso.quincenasAbiertas === 1 ? 'quincena abierta' : 'quincenas abiertas'}, ninguna cerrada`}
           detalle="La quincena abierta no selló `cobra` todavía, así que este mes no se puede medir como los cerrados. Lo que se publica es lo ENTREGADO y registrado por canal: blanco = depositado (pagado_banco), negro = plata en mano (pagado_efectivo). El reparto sale del canal de pago y no del recibo del estudio, que para este mes no tiene ninguna línea cargada. Por eso no se suma al total del año.">
           <FilaDeCifras cifras={[
