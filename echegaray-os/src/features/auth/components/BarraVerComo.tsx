@@ -31,7 +31,7 @@ export function BarraVerComo({
       className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line-strong bg-warn px-3 py-1.5 text-ink sm:px-6 lg:px-10"
     >
       <span className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.04em]">
-        <span aria-hidden>👁</span> Viendo como {etiqueta}
+        Viendo como {etiqueta}
       </span>
 
       {/* LO QUE ESTO NO PRUEBA, ESCRITO EN LA PANTALLA. Sin esta línea, una captura de esta franja

@@ -16,7 +16,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { faltaMigracion } from '../../herramientas/logica/falta-migracion'
-import type { EntregaSaldo, TicketRendicion } from './tipos'
+import type { DevolucionEstado, EntregaSaldo, TicketRendicion } from './tipos'
 
 export type Lectura<T> =
   | { estado: 'ok'; dato: T }
@@ -29,7 +29,7 @@ const COLS_ENTREGA =
 
 const COLS_TICKET =
   'id, entrega_id, entrega, canal, enviado_en, storage_path, nombre_archivo, media_type, motivo, resultado, ' +
-  'monto_rendido, observacion, observado_en, respuesta, respondido_en, descartado_motivo, estado'
+  'monto_rendido, observacion, observado_en, respuesta, respondido_en, descartado_motivo, confirmado_en, estado'
 
 /** `numeric` llega como texto desde PostgREST: se pasa a número una vez, acá. */
 function numerosDeEntrega(e: Record<string, unknown>): EntregaSaldo {
@@ -67,19 +67,59 @@ async function conQuienEntrego(supabase: SupabaseClient, entregas: EntregaSaldo[
     .from('efectivo_entrega').select('id, entregada_por').in('id', entregas.map((e) => e.id))
   const porEntrega = new Map(((filas ?? []) as { id: string; entregada_por: string }[]).map((f) => [f.id, f.entregada_por]))
   const usuarios = [...new Set(porEntrega.values())]
-  const nombres = await nombresDeUsuarios(supabase, usuarios)
-  return entregas.map((e) => ({ ...e, entregada_por_nombre: nombres.get(porEntrega.get(e.id) ?? '') ?? null }))
+  const perfiles = await perfilesDeUsuarios(supabase, usuarios)
+  return entregas.map((e) => {
+    const p = perfiles.get(porEntrega.get(e.id) ?? '')
+    return { ...e, entregada_por_nombre: p?.nombre ?? null, entregada_por_persona: p?.persona ?? null }
+  })
 }
 
-/** Nombre de cada usuario que se pueda leer. Lo que no se puede leer, no está en el mapa. */
-export async function nombresDeUsuarios(supabase: SupabaseClient, ids: readonly string[]): Promise<Map<string, string>> {
+/**
+ * Nombre y PERSONA de cada usuario que se pueda leer. Lo que no se puede leer, no está en el mapa.
+ *
+ * La persona hace falta para M08: `declarar_devolucion_efectivo` guarda a quién se le lleva la plata y
+ * `efectivo_devolucion.recibida_por` apunta a `personas`, no a `perfiles`. Un usuario sin persona
+ * vinculada queda con `persona: null` y la devolución se declara sin destinatario: es preferible a
+ * adivinar a quién se le está entregando efectivo.
+ */
+export async function perfilesDeUsuarios(
+  supabase: SupabaseClient, ids: readonly string[],
+): Promise<Map<string, { nombre: string; persona: string | null }>> {
   const limpios = ids.filter(Boolean)
   if (!limpios.length) return new Map()
-  const { data, error } = await supabase.from('perfiles').select('id, nombre').in('id', limpios)
+  const { data, error } = await supabase.from('perfiles').select('id, nombre, persona_id').in('id', limpios)
   if (error) return new Map()
-  return new Map(((data ?? []) as { id: string; nombre: string | null }[])
+  return new Map(((data ?? []) as { id: string; nombre: string | null; persona_id: string | null }[])
     .filter((p) => p.nombre?.trim())
-    .map((p) => [p.id, p.nombre!.trim()]))
+    .map((p) => [p.id, { nombre: p.nombre!.trim(), persona: p.persona_id ?? null }]))
+}
+
+/** Sólo los nombres, que es lo que piden M07 y la ficha. */
+export async function nombresDeUsuarios(supabase: SupabaseClient, ids: readonly string[]): Promise<Map<string, string>> {
+  const perfiles = await perfilesDeUsuarios(supabase, ids)
+  return new Map([...perfiles].map(([id, p]) => [id, p.nombre]))
+}
+
+/**
+ * LAS DEVOLUCIONES DE ESAS ENTREGAS — las declaradas y las ya recibidas.
+ *
+ * Lo DECLARADO no baja el saldo (la plata sigue en la mano): M08 lo resta del tope para que tocar el
+ * botón dos veces no declare dos veces lo mismo, y lo dice en pantalla.
+ */
+export async function getMisDevoluciones(
+  supabase: SupabaseClient, entregaIds: readonly string[],
+): Promise<Lectura<DevolucionEstado[]>> {
+  if (!entregaIds.length) return { estado: 'ok', dato: [] }
+  const { data, error } = await supabase
+    .from('efectivo_devolucion_estado')
+    .select('id, entrega_id, entrega, monto, fecha, recibe, declarada_en, confirmada_en, firmo_entrega, firmo_recibe, estado')
+    .in('entrega_id', entregaIds as string[])
+    .order('fecha', { ascending: false })
+  if (error) return faltaMigracion(error) ? { estado: 'sin-publicar' } : { estado: 'error', error: error.message }
+  return {
+    estado: 'ok',
+    dato: ((data ?? []) as unknown as DevolucionEstado[]).map((d) => ({ ...d, monto: Number(d.monto ?? 0) })),
+  }
 }
 
 /** Los tickets de esas entregas, el más nuevo primero. */

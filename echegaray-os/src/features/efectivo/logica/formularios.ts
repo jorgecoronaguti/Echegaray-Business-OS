@@ -71,11 +71,23 @@ export function validarDevolucion(texto: string, enSuPoder: number): Validacion<
   return m
 }
 
-/** Qué pasa al registrar la devolución: si deja la entrega en cero, se cierra; si no, sigue abierta con el resto. */
-export function efectoDevolucion(monto: number | null, enSuPoder: number): { cierra: boolean; resto: number } {
-  if (monto == null || monto <= 0) return { cierra: false, resto: enSuPoder }
+/**
+ * QUÉ PASA AL REGISTRAR LA DEVOLUCIÓN: si deja la entrega en cero se cierra; si no, sigue abierta con el
+ * resto. Y NO CIERRA CON UN TICKET EN CAMINO.
+ *
+ * `enCamino` entró el 22/09/2026 con un agujero medido en la base: ER-0005 tenía $ 120.000 en la mano y
+ * un ticket observado de $ 30.000, y la devolución del total la cerró igual. Si ese ticket se cargaba
+ * después, la entrega cerrada quedaba con «en su poder» negativo. Lo cierra la base
+ * (`20260922T3000`); esto es lo que la pantalla promete ANTES de apretar, y las dos cuentas tienen que
+ * decir lo mismo — prometer un cierre que la base va a negar es peor que no prometer nada.
+ */
+export function efectoDevolucion(
+  monto: number | null, enSuPoder: number, enCamino = 0,
+): { cierra: boolean; resto: number; frena: boolean } {
+  if (monto == null || monto <= 0) return { cierra: false, resto: enSuPoder, frena: false }
   const resto = Math.round((enSuPoder - monto) * 100) / 100
-  return { cierra: resto === 0, resto }
+  const enCero = resto === 0
+  return { cierra: enCero && enCamino === 0, resto, frena: enCero && enCamino > 0 }
 }
 
 // ═══ LO QUE CONTESTA LA BASE ═══

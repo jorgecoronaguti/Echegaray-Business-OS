@@ -21,6 +21,14 @@ import { COLOR_TONO, FONDO_OBSERVADO, MONO, V, botonClaro, botonOscuro, cifraFic
  * `enviadoEn` viene de `efectivo_aviso_enviado`, que sólo se escribe con el id del post releído de
  * Mattermost. Sin eso el pedido está EN COLA: decir «reclamado» sería afirmar un efecto que no ocurrió.
  */
+/** QUÉ LE FALTA AL COMPROBANTE DE DEVOLUCIÓN, dicho en una frase (D06). */
+export const ROTULO_FIRMAS: Record<Devolucion['comprobante'], string> = {
+  completo: 'comprobante con las dos firmas',
+  falta_quien_devolvio: 'falta la firma de quien devolvió',
+  falta_quien_recibio: 'falta la firma de quien recibió',
+  sin_firmas: 'sin firmar',
+}
+
 export function textoDelReclamo(r: { pedidoEn: string; enviadoEn: string | null } | null): string | null {
   if (!r) return null
   return r.enviadoEn ? `Reclamado por el canal el ${ddmmHora(r.enviadoEn)}` : 'Reclamo en cola: todavía no salió al canal'
@@ -162,7 +170,10 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
                 ))}
             </div>
           </div>
-          <Papeles e={e} papelUrl={extra.papelUrl} fotos={comprobantes.filter((c) => c.storage_path).length} destino={nombreDestino} />
+          <Papeles
+            e={e} papelUrl={extra.papelUrl} fotos={comprobantes.filter((c) => c.storage_path).length}
+            destino={nombreDestino} devoluciones={devoluciones}
+          />
           {anulable && <AnularEntrega entrega={e.id} volverHref={urlEfectivo({})} />}
           {e.estado === 'anulada' && e.anulada_motivo && (
             <div style={{ fontSize: '12.5px', color: V.apagado }}>Anulada: {e.anulada_motivo}</div>
@@ -194,7 +205,9 @@ function Cifra({ rotulo, valor, bajada, color, bajadaColor }: { rotulo: string; 
  * Se rotula la fuente REAL y la ruta de la obra se dice como la dice el diseño. El archivado en la
  * carpeta de la obra lo tiene que hacer el orquestador (la web no tiene credenciales de Google).
  */
-function Papeles({ e, papelUrl, fotos, destino }: { e: Entrega; papelUrl: string | null; fotos: number; destino: string }) {
+function Papeles({ e, papelUrl, fotos, destino, devoluciones }: {
+  e: Entrega; papelUrl: string | null; fotos: number; destino: string; devoluciones: Devolucion[]
+}) {
   // Ritmo de panel: «Papeles» es la columna lateral de la ficha, no una tabla de datos; el diseño (D03) la
   // dibuja a 42 y crece con el botón de subir el papel.
   const fila = { minHeight: 42, display: 'flex', alignItems: 'center', gap: 10, fontSize: '13px' } as const
@@ -223,6 +236,16 @@ function Papeles({ e, papelUrl, fotos, destino }: { e: Entrega; papelUrl: string
           <span>{fotos} {fotos === 1 ? 'foto' : 'fotos'} de comprobantes</span>
           {fotos > 0 && <span style={fuente}>bucket comprobantes</span>}
         </div>
+        {/* EL COMPROBANTE DE DEVOLUCIÓN Y SUS DOS FIRMAS (D06). Lo que falta lo dice la base
+            (`efectivo_devolucion_estado.comprobante`), no una suma de booleanos hecha acá. */}
+        {devoluciones.map((d) => (
+          <div key={d.id} style={{ ...fila, borderBottom: `1px solid ${V.lineaFila}` }} data-testid="papel-devolucion" data-estado={d.comprobante}>
+            <span style={{ color: d.comprobante === 'completo' ? V.tinta : V.warn }}>
+              Devolución {pesos(d.monto)} del {ddmm(d.fecha)} · {ROTULO_FIRMAS[d.comprobante]}
+            </span>
+            <span style={fuente}>{d.recibe ?? 'sin quien la recibió'}</span>
+          </div>
+        ))}
         {/* LA RENDICIÓN CERRADA: el diseño la dibuja apagada hasta que existe. Mientras la entrega está
             abierta no hay nada que cerrar, y una vez cerrada el papel todavía no lo genera nadie: se
             dice así, no se dibuja un enlace que no lleva a ningún lado. */}

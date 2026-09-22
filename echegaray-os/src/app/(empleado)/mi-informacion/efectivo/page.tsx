@@ -5,7 +5,8 @@ import { AvisoError } from '@/shared/components/movil/Piezas'
 import { contextoEfectivo } from '@/features/efectivo/campo/contexto'
 import { getMiEfectivo } from '@/features/efectivo/campo/datos'
 import {
-  abiertas, cifra, conVuelta, destino, fraseTePiden, pesos, resumenMiEfectivo, tarjetaDeHoy, textoTengoQueRendir,
+  aConfirmar, abiertas, cifra, conVuelta, destino, fraseTePiden, pesos, resumenMiEfectivo, tarjetaDeHoy,
+  textoTengoQueRendir,
 } from '@/features/efectivo/campo/logica'
 import {
   Caja, CifraGrande, Contorno, FilaAcceso, Pie, Primario, Renglon, Rotulo, SinPublicar,
@@ -55,6 +56,9 @@ export default async function MiEfectivoPage({ searchParams }: { searchParams: P
   const numero = textoTengoQueRendir(r, sinFirmar)
   const hoy = tarjetaDeHoy(entregas, tickets)
   const piden = r.piden[0] ?? null
+  // M05: los tickets leídos que esperan que la persona diga si están bien. Van ARRIBA de «te piden un
+  // dato»: éste es el paso que frena la carga en Compras, el otro la completa.
+  const porConfirmar = aConfirmar(tickets)
   const ruta = (h: string) => conVuelta(`/mi-informacion/efectivo${h}`, ctx.sufijo)
   const puedeRendir = abiertas(entregas).length > 0
 
@@ -92,6 +96,19 @@ export default async function MiEfectivoPage({ searchParams }: { searchParams: P
                 ))}
               </div>
             )}
+          </Caja>
+        )}
+
+        {porConfirmar.length > 0 && (
+          <Caja fondo={C.warnFondo} borde={C.warnBorde} gap={9} relleno="16px 18px" testid="hay-que-confirmar">
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: C.warn }}>
+              {porConfirmar.length === 1 ? 'Mirá si está bien' : `${porConfirmar.length} tickets para mirar`}
+            </div>
+            <div style={{ fontSize: 13, color: C.inkSuave, lineHeight: 1.5 }}>
+              Ya se leyó{porConfirmar.length === 1 ? ' tu ticket' : 'n tus tickets'}. Hasta que digas que está bien, no
+              {porConfirmar.length === 1 ? ' entra' : ' entran'} a Compras.
+            </div>
+            <Contorno href={ruta('/rendir/confirmar')} testid="ir-confirmar">Confirmar el gasto</Contorno>
           </Caja>
         )}
 

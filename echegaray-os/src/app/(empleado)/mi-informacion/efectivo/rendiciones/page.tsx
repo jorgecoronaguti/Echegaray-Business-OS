@@ -69,7 +69,14 @@ export default async function RendicionesPage({ searchParams }: { searchParams: 
         ) : (
           <TarjetaLista testid="lista-rendiciones">
             {lista.map((t, i) => (
-              <FilaTicket key={t.id} t={t} href={ruta(`/rendiciones/${t.id}`)} ultima={i === lista.length - 1} />
+              <FilaTicket
+                key={t.id}
+                t={t}
+                // M05: el que espera confirmación va DERECHO a confirmarse. El detalle de un ticket
+                // cuenta en qué está; éste no necesita que le cuenten, necesita que lo miren.
+                href={ruta(t.estado === 'a_confirmar' ? `/rendir/confirmar?ticket=${t.id}` : `/rendiciones/${t.id}`)}
+                ultima={i === lista.length - 1}
+              />
             ))}
           </TarjetaLista>
         )}

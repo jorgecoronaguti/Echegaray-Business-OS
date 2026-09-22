@@ -12,7 +12,7 @@
 //   · La devolución la registra quien recibe la plata (la RPC exige Administración): el teléfono no
 //     la ofrece como acción propia.
 
-import type { EntregaSaldo, EstadoTicket, TicketRendicion } from './tipos.ts'
+import type { EntregaSaldo, EstadoTicket, RenglonLeido, TicketRendicion } from './tipos.ts'
 import { extensionDe } from '../../administracion/services/comprobanteEntrada.ts'
 
 /** La migración que publica el módulo. Mientras no esté aplicada, las pantallas lo dicen. */
@@ -67,23 +67,43 @@ export function aNumero(v: string | number | null | undefined): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+/**
+ * LOS RENGLONES DEL TICKET — lo ESCRITO si entró, lo LEÍDO si todavía no.
+ *
+ * `comprobantes` son las filas de Compras que el ticket produjo: un hecho verificado en su destino.
+ * `leidos` es lo que el modelo leyó de un ticket que se frenó esperando la confirmación de la persona
+ * (M05): todavía no es nada, pero es lo único que hay para mostrarle y preguntarle si está bien. Lo
+ * escrito manda siempre que exista; nunca se mezclan en una misma suma.
+ */
+export function renglonesDelTicket(t: Pick<TicketRendicion, 'resultado'>): RenglonLeido[] {
+  const escritos = t.resultado?.comprobantes ?? []
+  if (escritos.length) return escritos
+  return t.resultado?.leidos ?? []
+}
+
 /** El importe del ticket: el de la fila de Compras si ya entró; si no, lo que leyó el circuito. */
 export function totalDelTicket(t: Pick<TicketRendicion, 'monto_rendido' | 'resultado'>): number | null {
   if (t.monto_rendido != null) return Number(t.monto_rendido)
-  const leidos = (t.resultado?.comprobantes ?? []).map((c) => aNumero(c.total)).filter((n): n is number => n != null)
+  const leidos = renglonesDelTicket(t).map((c) => aNumero(c.total)).filter((n): n is number => n != null)
   return leidos.length ? leidos.reduce((s, n) => s + n, 0) : null
 }
 
 /** El comercio que leyó el circuito, o `null` si todavía no lo leyó (o no se lee). */
 export function comercioDelTicket(t: Pick<TicketRendicion, 'resultado'>): string | null {
-  const p = (t.resultado?.comprobantes ?? []).map((c) => c.proveedor?.trim()).find((x) => !!x)
+  const p = renglonesDelTicket(t).map((c) => c.proveedor?.trim()).find((x) => !!x)
   return p ?? null
 }
 
 /** La fecha del comprobante si el circuito la leyó; si no, el día en que se mandó. */
 export function fechaDelTicket(t: Pick<TicketRendicion, 'resultado' | 'enviado_en'>): string {
-  const leida = (t.resultado?.comprobantes ?? []).map((c) => c.fecha).find((x) => !!x && /^\d{4}-\d{2}-\d{2}/.test(x))
+  const leida = renglonesDelTicket(t).map((c) => c.fecha).find((x) => !!x && /^\d{4}-\d{2}-\d{2}/.test(x))
   return diaMes(leida ?? t.enviado_en)
+}
+
+/** `2026-09-22` → `22/09/2026`, que es como lo escribe M05. */
+export function fechaLarga(iso: string | null | undefined): string | null {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
 }
 
 export type Tono = 'faint' | 'warn' | 'pos' | 'neg'
@@ -115,6 +135,10 @@ export function estadoVisible(t: TicketRendicion): EstadoVisible {
     ({ titulo, etiqueta, tono, pideDato: false, pendiente })
   switch (t.estado as EstadoTicket) {
     case 'en_compras': return base('en Compras', 'pos')
+    // M05: se leyó y no se escribió nada. Es `pendiente` —todavía no es gasto de la obra— y NO es
+    // `pideDato`: no falta un dato, falta que la persona mire. Mandarla a M07 le pediría escribir algo
+    // que ya está escrito.
+    case 'a_confirmar': return base('mirá si está bien', 'warn', comercio ?? 'Ticket leído', true)
     case 'leyendo': return base('leyendo', 'faint', comercio ?? 'Leyendo el ticket', true)
     case 'respondido': return base('contestaste · falta cargar', 'faint', comercio ?? 'Ticket', true)
     case 'observado':
@@ -213,6 +237,12 @@ export function textoTengoQueRendir(
     return { rotulo: 'Tengo que rendir', valor: pesos(0), detalle: 'Rendiste todo lo que recibiste.' }
   }
   return { rotulo: 'Tengo que rendir', valor: pesos(r.tengoQueRendir), detalle: null }
+}
+
+/** Los tickets que esperan que la persona confirme lo leído (M05), el más viejo primero. */
+export function aConfirmar(tickets: readonly TicketRendicion[]): TicketRendicion[] {
+  return tickets.filter((t) => t.estado === 'a_confirmar')
+    .slice().sort((a, b) => a.enviado_en.localeCompare(b.enviado_en))
 }
 
 /** La frase de la tarjeta «Te piden un dato»: `El ticket de $ 30.000 del 21/09: falta el comercio.` */

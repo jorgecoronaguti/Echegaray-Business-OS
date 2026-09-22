@@ -170,6 +170,10 @@ export function sinRendirDe(persona: string, entregas: readonly Entrega[]): { to
 
 export const ROTULO_COMPROBANTE: Record<EstadoComprobante, { texto: string; tono: Tono }> = {
   leyendo: { texto: 'Por imputar', tono: 'warn' },
+  // LO QUE ESPERA A LA PERSONA, NO A ADMINISTRACIÓN: el worker ya lo leyó y no escribe hasta que ella
+  // confirme desde el teléfono que el total es ése. Decirle «Por imputar» a Administración la mandaría a
+  // imputar algo que no está esperándola a ella.
+  a_confirmar: { texto: 'Espera que lo confirme', tono: 'neutro' },
   en_compras: { texto: 'En Compras', tono: 'pos' },
   observado: { texto: 'Observado', tono: 'warn' },
   respondido: { texto: 'Contestó · falta cargar', tono: 'neutro' },

@@ -29,6 +29,7 @@ import {
 } from '../../../services/reciboDeLaQuincena'
 import { sellarRecibo } from '../../../services/reciboEmitido'
 import { aceptarRecibo } from '../../../services/recibosEmitidosActions'
+import { enviarReciboAFirmar } from '../../../services/cicloDelReciboActions'
 import { rotuloCategoria } from './CeldaTarifa'
 import { tipoDeLiquidacion } from '../../../services/liquidacionPorTipo'
 import { HojaDelRecibo, imprimirHoja, tituloDelRecibo } from './HojaDelRecibo'
@@ -72,14 +73,41 @@ export function ArmarRecibo({ fila, quincena }: {
     return false
   }
 
+  const sellar = () => sellarRecibo(
+    { personaId: fila.personaId, nombre: fila.nombre, categoria, desde: quincena.desde, hasta: quincena.hasta },
+    recibo,
+  )
+
+  // D12 · ENVIAR A FIRMAR — el eslabón que faltaba: hasta hoy se pagaba la quincena, se imprimía un papel y
+  // de la conformidad NO quedaba ningún rastro digital. Esto emite el recibo y lo deja en el teléfono de la
+  // persona, que lo firma con el dedo o sube el papel firmado. No imprime: son dos gestos distintos y el
+  // de al lado sigue existiendo para quien entrega el papel en la mano.
+  const enviarAFirmar = () => {
+    if (nada || guardando) return
+    const sellado = sellar()
+    setGuardando(true)
+    setAviso(null)
+    empezar(async () => {
+      const emitido = await aceptarRecibo(sellado)
+      if (!emitido.ok || !emitido.id) {
+        setGuardando(false)
+        setAviso({ tono: 'mal', texto: `${emitido.ok ? 'La base no devolvió el recibo.' : emitido.error} No lo mandé a firmar.` })
+        return
+      }
+      const enviado = await enviarReciboAFirmar(emitido.id)
+      setGuardando(false)
+      setAviso(enviado.ok
+        // EL RECIBO QUEDA EMITIDO IGUAL SI EL ENVÍO FALLA: se dice, porque la persona no lo va a ver.
+        ? { tono: 'ok', texto: 'Emitido y enviado a firmar: ya le aparece en el teléfono, en «Mi información · Recibos». Cuando firme, se archiva desde el legajo.' }
+        : { tono: 'mal', texto: `El recibo quedó emitido en el legajo, pero NO se lo pude mandar a firmar: ${enviado.error}` })
+    })
+  }
+
   // PRIMERO SE REGISTRA, DESPUÉS SE IMPRIME. El orden es la función: al revés, un fallo del registro dejaría
   // circulando un papel que el legajo no conoce.
   const aceptarEImprimir = () => {
     if (nada || guardando) return
-    const sellado = sellarRecibo(
-      { personaId: fila.personaId, nombre: fila.nombre, categoria, desde: quincena.desde, hasta: quincena.hasta },
-      recibo,
-    )
+    const sellado = sellar()
     setGuardando(true)
     setAviso(null)
     empezar(async () => {
@@ -120,8 +148,14 @@ export function ArmarRecibo({ fila, quincena }: {
       <HojaDelRecibo hoja={hoja} nombre={fila.nombre} categoria={categoria} quincena={quincena} recibo={recibo} />
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button type="button" disabled={nada || guardando} onClick={aceptarEImprimir} data-testid="recibo-aceptar"
+        {/* D12: el botón oscuro del diseño es «Enviar a firmar». El de al lado es el que el dueño pidió a la
+            mañana —aceptar e imprimir— y no se quita: quien entrega el papel en la mano lo sigue usando. */}
+        <button type="button" disabled={nada || guardando} onClick={enviarAFirmar} data-testid="recibo-enviar-a-firmar"
           style={{ ...BOTON, border: 0, background: V.grafito, color: '#FFFFFF', fontWeight: 600, cursor: nada || guardando ? 'default' : 'pointer', opacity: nada || guardando ? 0.5 : 1 }}>
+          {guardando ? 'Guardando…' : 'Enviar a firmar'}
+        </button>
+        <button type="button" disabled={nada || guardando} onClick={aceptarEImprimir} data-testid="recibo-aceptar"
+          style={{ ...BOTON, border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta, fontWeight: 600, cursor: nada || guardando ? 'default' : 'pointer', opacity: nada || guardando ? 0.5 : 1 }}>
           {guardando ? 'Guardando…' : 'Aceptar e imprimir'}
         </button>
         {/* LOS DOS QUE YA ESTABAN NO SE QUITAN (el dueño los pidió el 22/09 a la mañana), pero ahora dicen lo
@@ -134,7 +168,12 @@ export function ArmarRecibo({ fila, quincena }: {
           style={{ ...BOTON, border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta, cursor: nada ? 'default' : 'pointer', opacity: nada ? 0.5 : 1 }}>
           Guardar PDF
         </button>
-        <span style={{ fontSize: '11.5px', color: V.apagado }}>Para el PDF, elegí «Guardar como PDF» en el diálogo.</span>
+        {/* EL DISEÑO DICE «se guarda en Drive al emitir» Y ESO NO ESTÁ HECHO: el PDF lo arma el diálogo de
+            impresión del navegador, en esta máquina, y la app no lo ve. Lo que queda guardado son las cifras
+            selladas y la firma. Decirlo acá es más barato que un recibo que nadie encuentra en Drive. */}
+        <span style={{ fontSize: '11.5px', color: V.apagado }}>
+          Para el PDF, elegí «Guardar como PDF» en el diálogo. El archivo queda en esta máquina: a Drive no sube.
+        </span>
         {aviso && (
           <div style={{ width: '100%', fontSize: '12.5px', color: aviso.tono === 'ok' ? V.tinta : V.warn, lineHeight: 1.5 }}
             data-testid={aviso.tono === 'ok' ? 'recibo-registrado' : 'recibo-falla'}>

@@ -35,7 +35,13 @@ export const COLUMNAS_ENTREGA = [
 /** El estado que ve la gente, derivado por la vista `efectivo_comprobante_estado` — nunca tipeado. */
 // `respondido` (20260922T1500, commit 1af709b0): la persona ya contestó lo que faltaba y la carga todavía no se
 // completó. Es pendiente, pero NO se le vuelve a pedir el dato.
-export type EstadoComprobante = 'leyendo' | 'en_compras' | 'observado' | 'respondido' | 'duplicado' | 'error' | 'descartado'
+//
+// `a_confirmar` (20260922T3000, el circuito del teléfono): el worker LEYÓ el ticket y todavía no escribió la
+// fila de Compras porque espera que la persona confirme que lo leído está bien. El escritorio tiene que
+// conocer este estado aunque no lo produzca: sin él, `ROTULO_COMPROBANTE[estado]` queda en `undefined` y la
+// fila de D03 y la cabecera de D04 se rompen al leer `.texto` de nada.
+export type EstadoComprobante =
+  | 'leyendo' | 'a_confirmar' | 'en_compras' | 'observado' | 'respondido' | 'duplicado' | 'error' | 'descartado'
 
 /** Lo que el worker guardó de cada comprobante leído (`comprobante_entrada.resultado.comprobantes[]`). */
 export interface LeidoDelPapel {
@@ -80,15 +86,32 @@ export const COLUMNAS_COMPROBANTE = [
   'respondido_en', 'descartado_en', 'descartado_motivo', 'estado',
 ].join(', ')
 
+/**
+ * Una fila de `public.efectivo_devolucion_estado` (migraciones 20260922T2800/2900).
+ *
+ * `comprobante` es UNA definición del estado del papel, en la base: la pantalla no vuelve a sumar dos
+ * booleanos por su cuenta. La firma de quien recibe se toma en D06; la de quien devolvió, en su teléfono.
+ */
 export interface Devolucion {
   id: string
   entrega_id: string
   monto: number
   fecha: string
   recibida_por: string | null
+  /** Nombre de quien recibió el vuelto. Decorativo: llega por LEFT JOIN, puede ser null. */
+  recibe: string | null
   registrada_en: string
   nota: string | null
+  firmo_entrega: boolean
+  firmo_recibe: boolean
+  comprobante: 'completo' | 'falta_quien_devolvio' | 'falta_quien_recibio' | 'sin_firmas'
+  papel_url: string | null
 }
+
+export const COLUMNAS_DEVOLUCION = [
+  'id', 'entrega_id', 'monto', 'fecha', 'recibida_por', 'recibe', 'registrada_en', 'nota',
+  'firmo_entrega', 'firmo_recibe', 'comprobante', 'papel_url',
+].join(', ')
 
 export interface Rendicion {
   id: string

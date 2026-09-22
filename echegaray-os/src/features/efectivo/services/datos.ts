@@ -15,7 +15,7 @@ import { esAdministracion } from '@/features/auth/types/areas'
 import { conteosDeCampanita, diaAR } from '../logica/entregas'
 import { faltaMigracion } from '../logica/formularios'
 import {
-  COLUMNAS_COMPROBANTE, COLUMNAS_ENTREGA,
+  COLUMNAS_COMPROBANTE, COLUMNAS_DEVOLUCION, COLUMNAS_ENTREGA,
   type Comprobante, type Devolucion, type Entrega, type FilaDeCompras, type ObraOpcion, type PersonaOpcion, type Rendicion,
 } from '../types'
 
@@ -62,7 +62,9 @@ export async function leerEfectivo(): Promise<LecturaEfectivo> {
       supabase.from('efectivo_entrega_saldo').select(COLUMNAS_ENTREGA).order('fecha', { ascending: false }).limit(TOPE),
       supabase.from('efectivo_comprobante_estado').select(COLUMNAS_COMPROBANTE).order('enviado_en', { ascending: false }).limit(TOPE),
       supabase.from('efectivo_rendicion').select('id, entrega_id, compra_clave, monto, imputada_en, comprobante_id').limit(TOPE),
-      supabase.from('efectivo_devolucion').select('id, entrega_id, monto, fecha, recibida_por, registrada_en, nota').limit(TOPE),
+      // LA VISTA, NO LA TABLA: el estado del comprobante de devolución (las dos firmas) tiene UNA sola
+      // definición y vive en `efectivo_devolucion_estado` (20260922T2900).
+      supabase.from('efectivo_devolucion_estado').select(COLUMNAS_DEVOLUCION).limit(TOPE),
       supabase.from('personas').select('id, nombre_completo, puesto').eq('en_la_empresa', true).eq('es_prueba', false)
         .order('nombre_completo').limit(1000),
       leerObras(supabase),

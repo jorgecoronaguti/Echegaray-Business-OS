@@ -35,7 +35,7 @@ function ticket(p: Partial<TicketRendicion> = {}): TicketRendicion {
     id: 't1', entrega_id: 'e1', entrega: 'ER-0001', canal: 'app', enviado_en: '2026-09-22T12:10:00Z',
     storage_path: null, nombre_archivo: null, media_type: null, motivo: null, resultado: null, monto_rendido: null,
     observacion: null, observado_en: null, respuesta: null, respondido_en: null, descartado_motivo: null,
-    estado: 'leyendo', ...p,
+    confirmado_en: null, estado: 'leyendo', ...p,
   }
 }
 

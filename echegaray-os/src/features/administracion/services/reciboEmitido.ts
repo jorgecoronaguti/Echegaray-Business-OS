@@ -25,6 +25,7 @@
 
 import type { ReciboArmado, RenglonDelRecibo } from './reciboDeLaQuincena.ts'
 import { ROTULO } from './reciboDeLaQuincena.ts'
+import type { CicloDelRecibo } from '@/shared/recibo/ciclo.ts'
 
 /** El papel entero, tal como salió. Es lo que se guarda en `recibo_liquidacion.renglones`. */
 export interface RenglonesSellados {
@@ -105,8 +106,14 @@ export function motivoParaNoEmitir(r: ReciboSellado): string | null {
 }
 
 /** Una fila de `recibo_liquidacion_emitido`, tal como la devuelve la base. */
-export interface ReciboEnElLegajo extends ReciboSellado {
+export interface ReciboEnElLegajo extends ReciboSellado, CicloDelRecibo {
   id: string
+  /** «REC-2026-0004». Es como se nombra un recibo entre personas; un uuid no le dice nada a nadie. */
+  codigo: string | null
+  /** Dónde está la foto del papel firmado, en el bucket. */
+  papelPath: string | null
+  /** Enlace firmado y corto a esa foto, para mirarla y verificarla (D13). `null` = no hay papel. */
+  papelUrl: string | null
   emitidoEn: string
   /** El NOMBRE de quien lo emitió, ya resuelto. `null` = el perfil no tiene nombre cargado. */
   emitidoPor: string | null

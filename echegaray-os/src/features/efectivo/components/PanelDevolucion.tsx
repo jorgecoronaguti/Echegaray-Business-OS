@@ -13,8 +13,21 @@ import { pesos } from '../logica/entregas'
 import { efectoDevolucion, validarDevolucion, validarMonto } from '../logica/formularios'
 import { urlEfectivo } from '../logica/url'
 import { cerrarEntregaAction, registrarDevolucionAction } from '../services/acciones'
+import { FirmaEnElPanel } from './FirmaEnElPanel'
 import { Campo, Cerrar, ErrorPanel, PANEL_CLASE } from './Piezas'
 import { CAJA_POS, MONO, V, botonClaroGrande, botonOscuroGrande, cajaConfirmar, campo, campoMonto, panel } from './estilo'
+
+/**
+ * QUÉ VA A QUEDAR DEL COMPROBANTE, DICHO ANTES DE APRETAR.
+ *
+ * El diseño promete el comprobante «con las dos firmas». La de quien recibe se toma acá; la de quien
+ * devolvió es de su teléfono. Si acá no se firmó, el papel nace sin ninguna: se dice, no se promete.
+ */
+export function textoDelComprobante(firma: string | null): string {
+  return firma
+    ? 'Queda el comprobante de devolución firmado por quien recibe; falta la firma de quien devolvió, que la da desde su teléfono.'
+    : 'Sin firmar, el comprobante de devolución queda sin ninguna de las dos firmas.'
+}
 
 export function PanelDevolucion({ e, destino, porImputar, personas, miPersona }: {
   e: Entrega
@@ -27,10 +40,11 @@ export function PanelDevolucion({ e, destino, porImputar, personas, miPersona }:
   const cerrarHref = urlEfectivo({ entrega: e.codigo })
   const [monto, setMonto] = useState(e.en_su_poder > 0 ? String(e.en_su_poder).replace('.', ',') : '')
   const [recibe, setRecibe] = useState(miPersona && personas.some((p) => p.id === miPersona) ? miPersona : '')
+  const [firma, setFirma] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pendiente, empezar] = useTransition()
   const leido = validarMonto(monto)
-  const efecto = efectoDevolucion(leido.ok ? leido.dato : null, e.en_su_poder)
+  const efecto = efectoDevolucion(leido.ok ? leido.dato : null, e.en_su_poder, porImputar)
   // QA 22/09: con más que el saldo la vista previa decía «le quedan −$ 3,50» y los botones seguían activos.
   const valida = validarDevolucion(monto, e.en_su_poder)
   const excede = leido.ok && !valida.ok
@@ -39,7 +53,7 @@ export function PanelDevolucion({ e, destino, porImputar, personas, miPersona }:
     const v = validarDevolucion(monto, e.en_su_poder)
     if (!v.ok) { setError(v.error); return }
     empezar(async () => {
-      const r = await registrarDevolucionAction({ entrega: e.id, monto, recibidaPor: recibe || null, cerrar })
+      const r = await registrarDevolucionAction({ entrega: e.id, monto, recibidaPor: recibe || null, cerrar, firmaRecibe: firma })
       if (!r.ok) { setError(r.error); return }
       router.push(cerrarHref, { scroll: false })
     })
@@ -77,12 +91,18 @@ export function PanelDevolucion({ e, destino, porImputar, personas, miPersona }:
             style={{ ...campoMonto, borderColor: V.grafito }} aria-label="Devuelve" data-testid="devolucion-monto"
           />
         </Campo>
-        {/* LA DEVOLUCIÓN ENTRA A EFECTIVO: es la única caja que la base registra para esto (`efectivo_movimiento_caja`). */}
+        {/* ═══ «ENTRA A» NO ES UNA ELECCIÓN, Y DECIRLO ES MEJOR QUE UN DESPLEGABLE MUDO ═══
+            El diseño dibuja un menú. La base tiene UNA sola caja para esto: `efectivo_movimiento_caja`
+            alimenta la réplica de CAJA del Sheet y no conoce otra. Una devolución «al banco» sería un
+            depósito —otro hecho económico, con su movimiento bancario— y no existe. Un desplegable con
+            una sola opción, apagado, obliga a abrirlo para descubrir que no hay nada: se dice el destino
+            y por qué es el único. */}
         <Campo rotulo="Entra a">
-          <select value="Efectivo" disabled style={{ ...campo, color: V.tinta, background: '#FFFFFF' }} aria-label="Entra a">
-            <option>Efectivo</option>
-          </select>
+          <div style={{ ...campo, display: 'flex', alignItems: 'center' }} data-testid="devolucion-entra-a">Efectivo</div>
         </Campo>
+      </div>
+      <div style={{ fontSize: '11.5px', color: V.apagado, marginTop: -8 }}>
+        El vuelto vuelve al cajón. Depositarlo es otro movimiento y se registra en el banco.
       </div>
 
       <Campo rotulo="Quién la recibe">
@@ -92,19 +112,28 @@ export function PanelDevolucion({ e, destino, porImputar, personas, miPersona }:
         </select>
       </Campo>
 
+      {/* EL COMPROBANTE SE FIRMA ACÁ, con la persona enfrente. La otra firma es de su teléfono. */}
+      {e.en_su_poder > 0 && <FirmaEnElPanel rotulo="Firma de quien recibe" onCambio={setFirma} />}
+
       {excede && !valida.ok && (
         <div style={{ fontSize: '12.5px', color: V.warn, lineHeight: 1.5 }} data-testid="devolucion-excede">{valida.error}</div>
       )}
       {leido.ok && !excede && (efecto.cierra ? (
         <div style={{ ...cajaConfirmar, ...CAJA_POS }} data-testid="devolucion-efecto">
           <div style={{ fontSize: '12.5px', fontWeight: 600, color: V.pos }}>La entrega queda en cero y se cierra</div>
-          <div style={{ fontSize: '12.5px', color: V.tintaSuave, lineHeight: 1.45 }}>Entran {pesos(leido.dato)} a Efectivo.</div>
+          <div style={{ fontSize: '12.5px', color: V.tintaSuave, lineHeight: 1.45 }}>
+            Entran {pesos(leido.dato)} a Efectivo. {textoDelComprobante(firma)}
+          </div>
         </div>
       ) : (
         <div style={cajaConfirmar} data-testid="devolucion-efecto">
           <div style={{ fontSize: '12.5px', fontWeight: 600 }}>La entrega sigue abierta</div>
           <div style={{ fontSize: '12.5px', color: V.tintaSuave, lineHeight: 1.45 }}>
-            Entran {pesos(leido.dato)} a Efectivo y le quedan {pesos(efecto.resto)} en su poder.
+            {efecto.frena
+              // NO SE PROMETE UN CIERRE QUE LA BASE VA A NEGAR (20260922T3000).
+              ? `Entran ${pesos(leido.dato)} a Efectivo y le queda $ 0 en su poder, pero la entrega NO se cierra: ${porImputar === 1 ? 'queda un ticket' : `quedan ${porImputar} tickets`} sin llegar a Compras. Se cierra cuando estén imputados o descartados.`
+              : `Entran ${pesos(leido.dato)} a Efectivo y le quedan ${pesos(efecto.resto)} en su poder.`}
+            {' '}{textoDelComprobante(firma)}
           </div>
         </div>
       ))}

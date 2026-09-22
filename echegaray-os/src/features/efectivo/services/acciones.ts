@@ -58,19 +58,42 @@ const devolucionSchema = z.object({
   monto: z.string(),
   recibidaPor: z.string().uuid().nullable(),
   cerrar: z.boolean(),
+  /** El SVG de la firma de quien recibe el vuelto (D06). `null` = se registra sin firmar. */
+  firmaRecibe: z.string().max(60_000).nullable().default(null),
 })
 
-/** D06 — el vuelto vuelve a Efectivo. Devuelve lo que le queda en su poder. */
-export async function registrarDevolucionAction(entrada: z.input<typeof devolucionSchema>): Promise<Resultado<number>> {
+export interface DevolucionRegistrada {
+  devolucion: string
+  resto: number
+  cerrada: boolean
+  firmada: boolean
+}
+
+/**
+ * D06 — el vuelto vuelve a Efectivo, con la firma de quien lo recibe.
+ *
+ * SIEMPRE SE LLAMA A LA DE 7 ARGUMENTOS (migración 20260922T2900), aunque no haya firma: con dos
+ * sobrecargas publicadas, mandar los siete nombres es lo que le saca a PostgREST la ambigüedad.
+ */
+export async function registrarDevolucionAction(entrada: z.input<typeof devolucionSchema>): Promise<Resultado<DevolucionRegistrada>> {
   const p = devolucionSchema.safeParse(entrada)
   if (!p.success) return { ok: false, error: p.error.issues[0].message }
   const m = validarMonto(p.data.monto)
   if (!m.ok) return { ok: false, error: m.error }
-  const r = await rpc<number | string>('registrar_devolucion_efectivo', {
+  const r = await rpc<{ devolucion: string; resto: number | string; cerrada: boolean }>('registrar_devolucion_efectivo', {
     p_entrega: p.data.entrega, p_monto: m.dato, p_recibida_por: p.data.recibidaPor,
-    p_cerrar: p.data.cerrar, p_nota: null, p_fecha: null,
+    p_cerrar: p.data.cerrar, p_nota: null, p_fecha: null, p_firma_recibe: p.data.firmaRecibe,
   })
-  return r.ok ? { ok: true, dato: Number(r.dato) } : r
+  if (!r.ok) return r
+  return {
+    ok: true,
+    dato: {
+      devolucion: r.dato.devolucion,
+      resto: Number(r.dato.resto),
+      cerrada: r.dato.cerrada === true,
+      firmada: !!p.data.firmaRecibe,
+    },
+  }
 }
 
 /**

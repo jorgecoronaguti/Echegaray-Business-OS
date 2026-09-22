@@ -120,3 +120,54 @@ export async function responderObservacionAction(entrada: z.input<typeof respues
   if (r.ok) refrescar()
   return r.ok ? { ok: true, dato: null } : r
 }
+
+/**
+ * M05: «Está bien · enviar». Recién con esto el worker escribe la fila de Compras.
+ *
+ * No manda lo que se leyó de vuelta: la base no le cree a la pantalla lo que dice el papel. Confirmar
+ * es decir «lo miré y es esto», y lo que se carga es la lectura que ya está guardada. Corregir un dato
+ * mal leído se hace por donde ya se hacía —M07, el dato que Administración pide— o sacando la foto de
+ * nuevo; no se abre un segundo camino de escritura desde el teléfono.
+ */
+export async function confirmarLecturaAction(ticket: string): Promise<Resultado> {
+  const p = uuid.safeParse(ticket)
+  if (!p.success) return { ok: false, error: 'Ese ticket no existe.' }
+  const r = await rpc<null>('confirmar_lectura_rendicion', { p_comprobante: p.data })
+  if (r.ok) refrescar()
+  return r.ok ? { ok: true, dato: null } : r
+}
+
+/** M05: «Sacar la foto de nuevo». El ticket se descarta y la persona vuelve a la cámara. */
+export async function rehacerFotoAction(ticket: string): Promise<Resultado> {
+  const p = uuid.safeParse(ticket)
+  if (!p.success) return { ok: false, error: 'Ese ticket no existe.' }
+  const r = await rpc<null>('rehacer_foto_rendicion', { p_comprobante: p.data })
+  if (r.ok) refrescar()
+  return r.ok ? { ok: true, dato: null } : r
+}
+
+const devolucionSchema = z.object({
+  entrega: uuid,
+  // En pesos enteros: el teléfono no tiene dónde escribir centavos y la plata en la mano tampoco.
+  monto: z.number().int().positive('Escribí cuánto devolvés.').max(99999999),
+  trazo: z.string().refine(esTrazoGuardable, 'Firmá arriba de la línea: el recuadro está vacío.'),
+  recibidaPor: uuid.nullable().optional(),
+})
+
+/**
+ * M08: «Devolver y firmar». DECLARA la devolución; no la da por recibida.
+ *
+ * La plata sigue en la mano de la persona hasta que quien la recibe la cuenta, y por eso esto NO baja el
+ * saldo: lo baja `confirmada_en`, que pone quien registra la devolución en Administración. Una pantalla
+ * que descontara acá sería una forma de dejar de deber plata sin moverla de lugar.
+ */
+export async function declararDevolucionAction(entrada: z.input<typeof devolucionSchema>): Promise<Resultado<string>> {
+  const p = devolucionSchema.safeParse(entrada)
+  if (!p.success) return { ok: false, error: p.error.issues[0].message }
+  const r = await rpc<string>('declarar_devolucion_efectivo', {
+    p_entrega: p.data.entrega, p_monto: p.data.monto, p_trazo: p.data.trazo,
+    p_recibida_por: p.data.recibidaPor ?? null,
+  })
+  if (r.ok) refrescar()
+  return r
+}

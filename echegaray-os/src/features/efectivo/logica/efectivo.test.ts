@@ -242,8 +242,19 @@ test('devolución: no más de lo que tiene; cierra sólo si queda en cero', () =
   assert.equal(validarDevolucion('540.000', 540_000).ok, true)
   const mucho = validarDevolucion('600.000', 540_000)
   assert.equal(!mucho.ok && mucho.error, 'Tiene $ 540.000 en su poder: no puede devolver más.')
-  assert.deepEqual(efectoDevolucion(540_000, 540_000), { cierra: true, resto: 0 })
-  assert.deepEqual(efectoDevolucion(500_000, 540_000), { cierra: false, resto: 40_000 })
+  assert.deepEqual(efectoDevolucion(540_000, 540_000), { cierra: true, resto: 0, frena: false })
+  assert.deepEqual(efectoDevolucion(500_000, 540_000), { cierra: false, resto: 40_000, frena: false })
+})
+
+// ═══ EL AGUJERO DE ER-0005 (22/09/2026), MEDIDO EN LA BASE ═══
+//
+// Con un ticket todavía en camino, devolver el saldo entero NO cierra la entrega: si ese ticket se
+// carga después a Compras, la entrega cerrada queda con «en su poder» negativo. La base lo frena
+// (`20260922T3000`); esto prueba que la pantalla promete lo mismo y no un cierre que va a ser negado.
+test('devolución: el saldo entero NO cierra si queda un ticket en camino', () => {
+  assert.deepEqual(efectoDevolucion(120_000, 120_000, 1), { cierra: false, resto: 0, frena: true })
+  // Devolver de menos con un ticket en camino no «frena» nada: no iba a cerrar de todos modos.
+  assert.deepEqual(efectoDevolucion(100_000, 120_000, 1), { cierra: false, resto: 20_000, frena: false })
 })
 
 // ═══ LOS ERRORES DE LAS FUNCIONES DE LA BASE ═══

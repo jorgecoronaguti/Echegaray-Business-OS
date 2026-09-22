@@ -9,10 +9,16 @@
 // control que no puede decir que no.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { esEstado } from '@/shared/recibo/ciclo'
 import type { ReciboEnElLegajo, RenglonesSellados } from './reciboEmitido.ts'
 
 const numero = (v: unknown): number | null =>
   v == null || !Number.isFinite(Number(v)) ? null : Number(v)
+
+const texto = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
+
+/** Lo que dura el enlace a la foto del papel firmado: se mira ahora, no se comparte. */
+const SEGUNDOS_DEL_ENLACE = 300
 
 /** Un jsonb que no tenga la forma esperada no se dibuja como un papel vacío: se dibuja como nada. */
 function renglonesDe(v: unknown): RenglonesSellados {
@@ -35,7 +41,7 @@ export async function getRecibosEmitidos(
   if (!p.puedeVer) return { puedeVer: false, recibos: [], error: null }
   const { data, error } = await supabase
     .from('recibo_liquidacion_emitido')
-    .select('id, persona_id, nombre, categoria, quincena_desde, quincena_hasta, horas, banco, efectivo, total, renglones, emitido_en, emitido_por, es_ultimo')
+    .select('id, codigo, persona_id, nombre, categoria, quincena_desde, quincena_hasta, horas, banco, efectivo, total, renglones, emitido_en, emitido_por, es_ultimo, estado, enviado_en, trazo, firmado_en, firmado_desde, papel_path, papel_subido_en, archivado_en, observacion')
     .eq('persona_id', p.personaId)
     .order('quincena_desde', { ascending: false })
     .order('emitido_en', { ascending: false })
@@ -61,6 +67,19 @@ export async function getRecibosEmitidos(
   }
   const recibos = filas.map((f): ReciboEnElLegajo => ({
     id: String(f.id),
+    codigo: typeof f.codigo === 'string' ? f.codigo : null,
+    // EL CICLO (D13): un estado que la base no conoce NO se dibuja como «emitido» —eso diría que falta
+    // firmarlo cuando quizá ya está archivado—; se deja `observado`, que es el que obliga a mirar.
+    estado: esEstado(f.estado) ? f.estado : 'observado',
+    enviadoEn: texto(f.enviado_en),
+    trazo: texto(f.trazo),
+    firmadoEn: texto(f.firmado_en),
+    firmadoDesde: texto(f.firmado_desde),
+    papelPath: texto(f.papel_path),
+    papelUrl: null,
+    papelSubidoEn: texto(f.papel_subido_en),
+    archivadoEn: texto(f.archivado_en),
+    observacion: texto(f.observacion),
     personaId: String(f.persona_id),
     nombre: String(f.nombre ?? ''),
     categoria: (f.categoria as string | null) ?? null,
@@ -75,5 +94,15 @@ export async function getRecibosEmitidos(
     emitidoPor: typeof f.emitido_por === 'string' ? nombres.get(f.emitido_por) ?? null : null,
     esUltimo: f.es_ultimo === true,
   }))
+  // LA FOTO DEL PAPEL FIRMADO, MIRABLE (D13: «verificar antes de archivar»). El bucket es privado: sin
+  // enlace firmado la pantalla mostraría el nombre de un archivo que nadie puede abrir, y verificar una
+  // firma que no se puede ver es exactamente el control que no puede decir que no. Un enlace que no sale
+  // deja `papelUrl` en null y la pantalla dice que no pudo abrirla, no que no hay papel.
+  for (const r of recibos) {
+    if (!r.papelPath) continue
+    const { data: firmado } = await supabase.storage
+      .from('comprobantes').createSignedUrl(r.papelPath, SEGUNDOS_DEL_ENLACE)
+    r.papelUrl = firmado?.signedUrl ?? null
+  }
   return { puedeVer: true, recibos, error: null }
 }

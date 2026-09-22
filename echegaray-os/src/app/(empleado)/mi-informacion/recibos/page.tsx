@@ -4,10 +4,14 @@ import { getUsuarioActual } from '@/features/auth/services/authService'
 import { getPerfilPropio } from '@/features/mi-cuenta/services/miCuentaService'
 import { SinVinculo } from '@/features/mi-cuenta/components/SinVinculo'
 import { Aviso, Estado } from '@/shared/components/ds'
-import { PantallaEmpleado } from '@/features/empleado/components/ShellEmpleado'
+import { PantallaEmpleado, Seccion } from '@/features/empleado/components/ShellEmpleado'
 import { Fila, Nada } from '@/features/empleado/components/Filas'
 import { getMisRecibos } from '@/features/empleado/services/empleadoService'
-import { etiquetaDePeriodo, lecturaDeRecibo, ordenar } from '@/features/empleado/services/recibos'
+import { etiquetaDePeriodo, lecturaDeRecibo, ordenar, pesos } from '@/features/empleado/services/recibos'
+import {
+  getMisRecibosDeQuincena, periodoDicho,
+} from '@/features/empleado/services/miReciboDeQuincena'
+import { lecturaDelCiclo } from '@/shared/recibo/ciclo'
 
 // «RECIBOS» — Período | Estado | Neto | Acción.
 //
@@ -39,11 +43,44 @@ export default async function RecibosPage() {
 
   const recibos = await getMisRecibos(supabase)
   const lista = ordenar(recibos.data ?? [])
+  // LOS DOS PAPELES CONVIVEN Y NO SON LO MISMO: arriba, el recibo de la quincena que emite la empresa (banco
+  // + efectivo), que es el que se firma. Abajo, los PDF de sueldo que liquida el estudio. Mezclarlos en una
+  // sola lista haría creer que un recibo de quincena firmado reemplaza al recibo de sueldo, y no.
+  const quincenas = await getMisRecibosDeQuincena(supabase)
 
   return (
     <PantallaEmpleado titulo="Recibos" volver={{ href: '/mi-informacion', label: 'Mi información' }}>
       {recibos.error && <Aviso tono="neg" titulo="No se pudieron leer tus recibos." testid="recibos-error">{recibos.error}</Aviso>}
+      {quincenas.error && (
+        <Aviso tono="neg" titulo="No se pudieron leer tus recibos de quincena." testid="recibos-quincena-error">
+          {quincenas.error}
+        </Aviso>
+      )}
 
+      {(quincenas.data?.length ?? 0) > 0 && (
+        <Seccion titulo="De la quincena" extra={<span className="text-faint">lo que paga la empresa</span>}>
+          <div data-testid="lista-recibos-quincena">
+            {(quincenas.data ?? []).map((r) => {
+              const l = lecturaDelCiclo(r)
+              return (
+                <Fila
+                  key={r.id}
+                  testid="fila-recibo-quincena"
+                  href={`/mi-informacion/recibos/quincena/${r.id}`}
+                  titulo={periodoDicho(r)}
+                  detalle={<Estado tono={l.tono} clave={l.rotulo}>{l.rotulo}</Estado>}
+                  // NUNCA $ 0: un recibo sin total dice que no lo traía.
+                  senal={r.total == null
+                    ? <span className="text-faint">sin importe en el papel</span>
+                    : pesos(r.total)}
+                />
+              )
+            })}
+          </div>
+        </Seccion>
+      )}
+
+      <Seccion titulo="De sueldo" extra={<span className="text-faint">los que liquida el estudio</span>}>
       <div data-testid="lista-recibos">
         {lista.length === 0 ? (
           <Nada testid="sin-recibos">
@@ -69,6 +106,7 @@ export default async function RecibosPage() {
           })
         )}
       </div>
+      </Seccion>
 
       <p className="mt-6 text-[11.5px] leading-relaxed text-faint">
         Sólo tus recibos. Si un período todavía no está liquidado, se dice: nunca aparece $ 0 por
