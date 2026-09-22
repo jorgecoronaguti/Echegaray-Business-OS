@@ -16,6 +16,8 @@ import {
 import { hoyISO } from '@/features/empleado/services/acciones'
 import { pendientes } from '@/features/empleado/services/documentos'
 import { legible, mesDe, mesLargo } from '@/features/empleado/services/fecha'
+import { getMiEfectivo } from '@/features/efectivo/campo/datos'
+import { pesos, resumenMiEfectivo } from '@/features/efectivo/campo/logica'
 
 // M09 · YO — porte literal de `M09 · Yo.dc.html`.
 //
@@ -67,7 +69,7 @@ export default async function MiInformacionPage() {
 
   const hoy = await hoyISO()
   const mes = mesDe(hoy)
-  const [legajo, docs, horas, asistencia, recibos, obras, cuadrilla] = await Promise.all([
+  const [legajo, docs, horas, asistencia, recibos, obras, cuadrilla, efectivo] = await Promise.all([
     getMiLegajo(supabase),
     getMisDocumentos(supabase),
     getHorasPropias(supabase, mes.desde, mes.hasta),
@@ -75,7 +77,13 @@ export default async function MiInformacionPage() {
     getMisRecibos(supabase),
     getMiObra(supabase),
     getMiCuadrilla(supabase),
+    getMiEfectivo(supabase, perfil.data.persona_id),
   ])
+
+  // «MI EFECTIVO» SÓLO A QUIEN ALGUNA VEZ RECIBIÓ: a la mayoría del plantel nunca le entregan plata, y
+  // una fila que siempre dice «$ 0» es ruido en la ficha. Sin la migración aplicada, tampoco.
+  const efectivoResumen = efectivo.estado === 'ok' && efectivo.dato.entregas.length > 0
+    ? resumenMiEfectivo(efectivo.dato.entregas, efectivo.dato.tickets) : null
 
   const hh = (horas.data ?? []).reduce((s, h) => s + h.horas, 0)
   const jornadas = (asistencia.data ?? []).filter((d) => d.estado !== 'sin_registrar').length
@@ -170,6 +178,19 @@ export default async function MiInformacionPage() {
               detalle="Fichaje, la semana y los pedidos de corrección"
               testid="ir-asistencia"
             />
+            {efectivoResumen && (
+              <Acceso
+                href="/mi-informacion/efectivo"
+                icono="recibo"
+                titulo="Mi efectivo"
+                detalle={efectivoResumen.piden.length
+                  ? `Te piden ${efectivoResumen.piden.length === 1 ? 'un dato' : `${efectivoResumen.piden.length} datos`}`
+                  : `Tengo que rendir ${pesos(efectivoResumen.tengoQueRendir)}`}
+                tonoDetalle={efectivoResumen.piden.length ? C.warn : C.muted}
+                insignia={efectivoResumen.piden.length ? String(efectivoResumen.piden.length) : undefined}
+                testid="ir-efectivo"
+              />
+            )}
             <Acceso
               href="/mi-informacion/recibos"
               icono="recibo"

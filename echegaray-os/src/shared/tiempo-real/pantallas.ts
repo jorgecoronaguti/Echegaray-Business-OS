@@ -79,6 +79,10 @@ export const TABLAS_DE = {
   /** Herramientas (20260921T2100): las tablas nuevas. `herramientas` y `movimientos_herramienta` son vistas
    *  desde esa migración y una vista no emite eventos. */
   herramientas: ['activo', 'activo_movimiento', 'activo_incidencia', 'activo_lectura_uso', 'ubicacion', 'obra_canonica'],
+  /** Efectivo a rendir en el teléfono (`/mi-informacion/efectivo/...` y `/obra/efectivo`): la entrega, su
+   *  conformidad, cada ticket y su vínculo con Compras, y la devolución. `comprobante_entrada` porque el
+   *  estado «leyendo → en Compras» lo cambia el worker ahí antes de escribir el vínculo. */
+  efectivoCampo: ['efectivo_entrega', 'efectivo_comprobante', 'efectivo_rendicion', 'efectivo_devolucion', 'comprobante_entrada'],
   /** Las pantallas del jefe de obra (`/obra/...`). */
   jefe: unir(OBRA, HH_Y_ASISTENCIA, ['personas', 'cuadrilla', 'cuadrilla_integrante']),
   // LAS QUE HABÍAN QUEDADO AFUERA (16/09/2026). Dueño: «lo que marco en el celular no se actualiza en la
