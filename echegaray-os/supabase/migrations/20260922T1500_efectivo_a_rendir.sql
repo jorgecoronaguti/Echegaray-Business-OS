@@ -430,6 +430,42 @@ grant execute on function public.rendir_comprobante(uuid, text, text, text, bigi
   public.observar_comprobante_rendicion(uuid, text), public.responder_observacion_rendicion(uuid, text),
   public.descartar_comprobante_rendicion(uuid, text) to authenticated;
 
+-- ── EL VÍNCULO SE RECONCILIA, NO SE CONFÍA AL MOMENTO DE LA CARGA ─────────────────────────────────
+--
+-- Un ticket puede quedar en espera (proveedor fuera del desplegable, dato ilegible) y escribirse en
+-- Compras horas después, cuando alguien lo completa. Si el vínculo sólo se pusiera al cargar, ese
+-- gasto quedaría rendido en Compras y la persona seguiría debiéndolo. Esta función mira el REGISTRO
+-- de lo escrito (`comunicacion.comprobantes_cargados`, la evidencia en su destino) y vincula lo que
+-- falte. La llaman la cola web y el canal en cada vuelta; es idempotente.
+create or replace function public.vincular_rendiciones_pendientes() returns integer
+language plpgsql security definer set search_path = public as $$
+declare n integer;
+begin
+  insert into efectivo_rendicion (entrega_id, compra_clave, monto, imputada_por, comprobante_id)
+  select distinct on (cc.clave) c.entrega_id, cc.clave, round(cc.total::numeric, 2),
+         coalesce(c.enviado_por, e.entregada_por), c.id
+    from efectivo_comprobante c
+    join efectivo_entrega e on e.id = c.entrega_id and e.anulada_en is null
+    left join comprobante_entrada ce on ce.id = c.entrada_id
+    join comunicacion.comprobantes_cargados cc
+      on (c.mm_post_id is not null and cc.plataforma = 'mattermost' and cc.post_id = c.mm_post_id)
+      or (ce.id is not null and exists (
+            select 1 from comunicacion.comprobante_fajos f
+             where f.id = cc.fajo_id and f.plataforma = 'web' and f.channel_id = ce.lote::text))
+   where c.descartado_en is null and cc.clave is not null and coalesce(cc.total, 0) > 0
+   order by cc.clave, c.enviado_en
+  on conflict (compra_clave) do nothing;
+  get diagnostics n = row_count;
+  return n;
+end $$;
+revoke all on function public.vincular_rendiciones_pendientes() from public, anon, authenticated;
+
+-- El área del canal de rendiciones: el binding canal → área es un DATO (comunicacion.canales_area),
+-- y el área tiene que existir para que el especialista la reclame.
+insert into public.area_canonica (clave, nombre, orden)
+select 'rendicion', 'Rendiciones de efectivo', coalesce(max(orden), 0) + 1 from public.area_canonica
+on conflict (clave) do nothing;
+
 -- ── TIEMPO REAL ──────────────────────────────────────────────────────────────────────────────────
 do $do$
 declare

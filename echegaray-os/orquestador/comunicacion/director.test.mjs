@@ -28,10 +28,11 @@ test('los especialistas se descubren del directorio, sin lista escrita a mano', 
 })
 
 test('cada especialista declara un ÁREA CANÓNICA del OS, no una taxonomía propia', async () => {
-  // Las 8 áreas de public.area_canonica. Si un especialista inventa una, el binding de
-  // canales (que tiene FK) lo rechazaría en producción.
+  // Las 9 áreas de public.area_canonica. Si un especialista inventa una, el binding de
+  // canales (que tiene FK) lo rechazaría en producción. `rendicion` la crea la migración
+  // 20260922T1500 (el canal de rendiciones de efectivo que pidió el dueño).
   const AREAS = new Set(['compras', 'administracion_finanzas', 'obras', 'personas',
-    'contabilidad_legales', 'comercial', 'calidad', 'gestion_general'])
+    'contabilidad_legales', 'comercial', 'calidad', 'gestion_general', 'rendicion'])
   for (const e of await especialistas()) {
     assert.ok(AREAS.has(e.area), `${e.slug} declara un área desconocida: ${e.area}`)
   }

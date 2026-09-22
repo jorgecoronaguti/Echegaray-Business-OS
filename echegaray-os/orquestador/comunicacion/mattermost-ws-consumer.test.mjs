@@ -405,13 +405,14 @@ test('la misma foto en el canal de comprobantes SÍ entra', async () => {
   assert.equal(repo.eventos.length, 1)
 })
 
-test('los canales de ingesta resueltos son SÓLO los de compras', async () => {
+test('los canales de ingesta resueltos son SÓLO los de compras y rendiciones', async () => {
   const port = portBindingReal()
   const canales = await crearCanalesDeIngesta({ port, base: new Set(['compras']) })()
   assert.deepEqual([...canales].sort(), ['ataehrdpmfyctqyjcfz5rs9jka', 'comprobantes-gastos', 'compras'].sort())
   assert.equal(canales.has('oficina'), false, 'Oficina no puede estar en la lista que sale en el log')
   assert.equal(canales.has('9crfuy4qebyu58wpo1yo4a9cer'), false)
-  assert.deepEqual(port.areas, ['compras'], 'se le pregunta al binding por UNA sola área')
+  // Desde el 22/09/2026 también el área `rendicion` (el canal de rendiciones de efectivo). Ninguna más.
+  assert.deepEqual(port.areas, ['compras', 'rendicion'], 'se le pregunta al binding por las dos áreas de adjuntos, ninguna más')
 })
 
 // ── El canal que no existe (04/08) ──────────────────────────────────────────

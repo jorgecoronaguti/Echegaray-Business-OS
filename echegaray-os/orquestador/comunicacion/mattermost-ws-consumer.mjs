@@ -101,7 +101,9 @@ export function canalesDeAdjuntos(env = process.env) {
  * No hay forma de dejar pasar el CSV del banco y no la foto del contrapiso — el prefiltro mira el
  * canal, no el contenido.
  */
-export const AREAS_DE_ADJUNTOS = Object.freeze(['compras'])
+// `rendicion` (22/09/2026): el canal nuevo de rendiciones de efectivo, pedido textual del dueño. Mismo
+// trueque que compras: todo adjunto de ese canal crea evento, y la puerta de verdad está en el especialista.
+export const AREAS_DE_ADJUNTOS = Object.freeze(['compras', 'rendicion'])
 
 /**
  * LA LISTA DE CANALES DE INGESTA SALE DEL BINDING, no de una lista escrita a mano.

@@ -271,3 +271,74 @@ test('si cerrar el fajo falla, el veredicto de las filas igual queda guardado', 
   assert.equal(port.updates[0].estado, ENTRADA.CARGADO)
   assert.equal(r.fajo, null)
 })
+
+// ═══ EFECTIVO A RENDIR (22/09/2026) ═══════════════════════════════════════════════════════════════
+const ENTREGA = '33333333-3333-3333-3333-333333333333'
+const PERSONA = '44444444-4444-4444-4444-444444444444'
+
+function portRendicion({ filas, rol = 'campo', personaDelPerfil = PERSONA, abierta = true, estructura = false, registrados = [], vinculadas = 1 } = {}) {
+  const inserts = []
+  const base = portFalso({ filas, rol, registrados })
+  return {
+    inserts,
+    updates: base.updates,
+    async query(sql, args = []) {
+      if (/from public\.perfiles/.test(sql)) return { rows: [{ rol, nombre: 'Rubén Sosa', persona_id: personaDelPerfil }] }
+      if (/from public\.efectivo_comprobante c/.test(sql)) {
+        return { rows: filas.slice(0, vinculadas).map((f, i) => ({ comprobante_id: `c${i}`, entrada_id: f.id, entrega_id: ENTREGA, codigo: 'ER-0001', persona_id: PERSONA, abierta, estructura, obra_codigo: estructura ? null : 'OB-0011', obra: estructura ? null : 'SF - PISOS INDUSTRIALES' })) }
+      }
+      if (/insert into public\.efectivo_rendicion/.test(sql)) { inserts.push(args); return { rows: [] } }
+      return base.query(sql, args)
+    },
+  }
+}
+const filaRendicion = (id) => ({ ...filaCola(id, `${id}.jpg`), origen: 'rendicion' })
+
+test('RENDICIÓN: el ticket viaja con la obra de la entrega y con «A rendir» forzado', async () => {
+  const filas = [filaRendicion('r1')]
+  const port = portRendicion({ filas, registrados: [{ proveedor: 'Corralón El Nogal', clave: '30-1|FB|3-41927', total: 96400 }] })
+  const llamadas = []
+  await procesarUnLote({ port, procesar: async (_d, m) => { llamadas.push(m); return { estado: 'cargado', texto: '✔', fajoId: 'f', parte: parte({ cargados: 1, suma: 96400 }) } } })
+  assert.equal(llamadas[0].texto, 'OB-0011 SF - PISOS INDUSTRIALES')
+  assert.deepEqual(llamadas[0].forzar, { formaPago: 'A rendir' })
+  assert.deepEqual(port.inserts, [[ENTREGA, '30-1|FB|3-41927', 96400, USUARIO, 'c0']], 'lo escrito en Compras queda vinculado a la entrega')
+})
+
+test('RENDICIÓN: un «ya estaba» NO se vincula — podría ser una compra pagada por otro medio', async () => {
+  const filas = [filaRendicion('r1')]
+  const port = portRendicion({ filas, registrados: [] })
+  await procesarUnLote({ port, procesar: async () => ({ estado: 'ya_estaba', texto: '', fajoId: 'f', parte: parte({ yaEstaban: 1 }) }) })
+  assert.equal(port.inserts.length, 0)
+})
+
+test('RENDICIÓN: la persona de la entrega pasa la guarda sin rol de Administración; otra no', async () => {
+  const ctx = { personaId: PERSONA, abierta: true }
+  const actor = { plataforma_user_id: USUARIO, channel_id: LOTE }
+  const suya = await guardaDeLaWeb(portRendicion({ filas: [] }), { rendicion: ctx })({ actor })
+  assert.equal(suya.ok, true)
+  assert.equal(suya.via, 'entrega')
+  const ajena = await guardaDeLaWeb(portRendicion({ filas: [], personaDelPerfil: 'otra' }), { rendicion: ctx })({ actor })
+  assert.equal(ajena.ok, false)
+  const cerrada = await guardaDeLaWeb(portRendicion({ filas: [] }), { rendicion: { ...ctx, abierta: false } })({ actor })
+  assert.equal(cerrada.ok, false, 'una entrega cerrada ya no recibe tickets')
+  const sinRendicion = await guardaDeLaWeb(portRendicion({ filas: [] }))({ actor })
+  assert.equal(sinRendicion.ok, false, 'fuera de la rendición, el rol campo sigue sin cargar')
+})
+
+test('RENDICIÓN: un lote sin vínculo completo no se adivina — va sin «A rendir» ni obra', async () => {
+  const filas = [filaRendicion('r1'), filaRendicion('r2')]
+  const port = portRendicion({ filas, vinculadas: 1, rol: 'administracion' })
+  const llamadas = []
+  await procesarUnLote({ port, procesar: async (_d, m) => { llamadas.push(m); return { estado: 'cargado', texto: '', fajoId: 'f', parte: parte() } } })
+  assert.equal(llamadas[0].forzar, undefined)
+  assert.equal(llamadas[0].texto, null)
+})
+
+test('RENDICIÓN: entrega a Estructura no manda obra, pero sí «A rendir»', async () => {
+  const filas = [filaRendicion('r1')]
+  const port = portRendicion({ filas, estructura: true })
+  const llamadas = []
+  await procesarUnLote({ port, procesar: async (_d, m) => { llamadas.push(m); return { estado: 'cargado', texto: '', fajoId: 'f', parte: parte() } } })
+  assert.equal(llamadas[0].texto, null)
+  assert.deepEqual(llamadas[0].forzar, { formaPago: 'A rendir' })
+})
