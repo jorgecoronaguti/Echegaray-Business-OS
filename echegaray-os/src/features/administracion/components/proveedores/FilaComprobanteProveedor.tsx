@@ -27,13 +27,21 @@ import { pastillaDe } from '../../services/comprasSheet'
 import type { CompraConPapel } from '../../services/comprobantesProveedorService'
 import { fechaCortaConAnio, pesos } from '@/shared/components/canon/formato'
 import { ALTO_V2, CAJA_CONTENIDO, V } from '@/shared/components/v2/patron'
-import { COLS_COMPROBANTES } from './columnasComprobantes'
+import { COLS_COMPROBANTES, COLS_COMPROBANTES_CON_ENTREGA } from './columnasComprobantes'
 
-export function FilaComprobanteProveedor({ c, papelesSinLeer, proveedorId, opcionesObra, obraEditable }: {
+export function FilaComprobanteProveedor({
+  c, papelesSinLeer, proveedorId, opcionesObra, obraEditable, entregas,
+}: {
   c: CompraConPapel
   papelesSinLeer: boolean
   /** Para revalidar ESTA ficha cuando se cambia la obra: el cambio se ve donde se hizo. */
   proveedorId: string
+  /**
+   * D08 · las entregas de efectivo que rindieron ESTA compra (`ER-0147`), o `undefined` cuando la
+   * lista no lleva la columna. Una lista vacía significa «esta compra no se pagó en efectivo» y
+   * dibuja la celda vacía, no un cero ni un guion que parezca un dato.
+   */
+  entregas?: string[]
   opcionesObra: string[]
   obraEditable: boolean
 }) {
@@ -57,7 +65,7 @@ export function FilaComprobanteProveedor({ c, papelesSinLeer, proveedorId, opcio
   return (
     <div data-testid="fila-comprobante-proveedor" style={{ borderBottom: `1px solid ${V.lineaFila}` }}>
       <div
-        className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS_COMPROBANTES} hover:bg-[#F2F1ED]`}
+        className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${entregas === undefined ? COLS_COMPROBANTES : COLS_COMPROBANTES_CON_ENTREGA} hover:bg-[#F2F1ED]`}
         style={{
           height: ALTO_V2.cara, paddingLeft: 13,
           // Sin obra imputada el filo es ROJO y no ámbar: el gasto ya ocurrió y no le pesa a ninguna
@@ -150,6 +158,21 @@ export function FilaComprobanteProveedor({ c, papelesSinLeer, proveedorId, opcio
                   </>
                 )}
         </span>
+
+        {/* D08 · CON QUÉ ENTREGA SE PAGÓ. Vacío = esta compra no se pagó con efectivo a rendir; no
+            se dibuja guion ni cero, que se leerían como un dato. La celda existe sólo cuando la
+            lista lleva la columna (`entregas !== undefined`), y entonces existe en TODAS las filas:
+            una grilla a la que le falta una celda corre todo lo que viene después. */}
+        {entregas !== undefined && (
+          <span
+            className="font-mono tabular-nums truncate" data-testid="entrega-de-la-compra"
+            style={{ fontSize: '11.5px', color: V.apagado }}
+            title={entregas.length > 1 ? `Rendida por ${entregas.length} entregas: ${entregas.join(', ')}` : undefined}
+          >
+            {entregas[0] ?? ''}
+            {entregas.length > 1 && <span style={{ color: V.tenue }}> +{entregas.length - 1}</span>}
+          </span>
+        )}
       </div>
 
       {error && <p style={{ fontSize: '11.5px', color: V.warn, padding: '0 0 8px 13px' }} data-testid="error-ver">{error}</p>}

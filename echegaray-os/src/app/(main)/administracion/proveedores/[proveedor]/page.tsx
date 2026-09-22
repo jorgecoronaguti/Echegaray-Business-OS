@@ -48,7 +48,7 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
-import { esAdministracion } from '@/features/auth/types/areas'
+import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
 import { getProveedor } from '@/features/administracion/services/proveedoresService'
 import {
   getNombresDelProveedor, getPaquetesDelProveedor,
@@ -58,6 +58,10 @@ import {
 } from '@/features/administracion/services/fichaProveedor'
 import { getComprasConPapel } from '@/features/administracion/services/comprobantesProveedorService'
 import { getDeudaDeUnProveedor } from '@/features/administracion/services/deudaProveedoresService'
+import { getEfectivoRendidoDelProveedor } from '@/features/administracion/services/efectivoDelProveedorService'
+import {
+  entregaPorClave, resumirEfectivoDelProveedor, tituloDelEfectivo,
+} from '@/features/administracion/services/efectivoDelProveedor'
 import {
   deudaDeLaFicha, tituloDeLaDeuda, tonoDeLaDeuda,
 } from '@/features/administracion/services/deudaEnLaFicha'
@@ -162,7 +166,12 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
   // LAS COMPRAS LAS VE QUIEN VE COMPRAS: el mismo `esAdministracion` que corta esa pantalla. Otro rol
   // no llega a pedirlas, y su ficha dice por qué en vez de mostrar un proveedor sin compras.
   const veCompras = esAdministracion(perfil.data?.rol ?? null)
-  const [nombres, paquetes, documentos, compras, opcionesObra, contactos, deudaLeida] = await Promise.all([
+  // D08 · EL EFECTIVO DE OBRA TIENE OTRA PUERTA QUE LAS COMPRAS. `proveedor_efectivo_rendido` hereda
+  // `ve_economia()` (20260922T2700), que el jefe de obra NO tiene aunque sí vea esta ficha: pedírsela
+  // igual devolvería cero filas sin error, y la ficha diría «no se le pagó nada en efectivo» de un
+  // proveedor al que se le pagó. La pregunta no se hace.
+  const veEfectivo = veEconomia(perfil.data?.rol ?? null)
+  const [nombres, paquetes, documentos, compras, opcionesObra, contactos, deudaLeida, efectivoLeido] = await Promise.all([
     getNombresDelProveedor(supabase, proveedor.id),
     getPaquetesDelProveedor(supabase, proveedor.id),
     getDocumentosDelProveedor(supabase, proveedor.id),
@@ -185,10 +194,16 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
     // colgada de `veCompras`: a otro rol la base devolvería cero filas sin error y la ficha diría
     // «al día» de un proveedor al que se le deben millones.
     veCompras ? getDeudaDeUnProveedor(supabase, proveedor.id) : Promise.resolve(null),
+    veEfectivo ? getEfectivoRendidoDelProveedor(supabase, proveedor.id) : Promise.resolve(null),
   ])
   const filas = compras?.data ? comoComprobantes(compras.data.filas) : []
 
   const resumen = resumirProveedor(filas)
+  // El porcentaje sale de lo comprado DE ESTA MISMA lectura: dos consultas distintas podrían dar dos
+  // porcentajes para la misma pregunta.
+  const rendidoEnEfectivo = efectivoLeido ?? []
+  const efectivo = resumirEfectivoDelProveedor(rendidoEnEfectivo, resumen.comprado)
+  const entregasDeCadaCompra = entregaPorClave(rendidoEnEfectivo)
   const porObra = comprasPorObra(filas)
   const conceptos = conceptosProvistos(filas)
   const conceptosTotal = new Set(filas.map((f) => f.concepto?.trim()).filter(Boolean)).size
@@ -252,6 +267,16 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
       falta: 'sin comprobantes',
     },
     { rotulo: 'Comprobantes', valor: resumen.comprobantes || null, falta: 'ninguno' },
+    // D08 · PAGADO EN EFECTIVO DE OBRA. Sólo para quien ve economía, y nunca en cero: sin ninguna
+    // compra rendida el dato no existe y se dibuja «ninguno», no «$ 0».
+    ...(veEfectivo
+      ? [{
+        rotulo: 'Pagado en efectivo',
+        valor: efectivo.rendido === null ? null : pesos(efectivo.rendido),
+        falta: 'ninguno',
+        titulo: tituloDelEfectivo(efectivo),
+      } as CifraDeFicha]
+      : []),
     {
       rotulo: 'Contratado',
       valor: contratado === null ? null : pesos(contratado),
@@ -361,6 +386,7 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
               proveedorId={proveedor.id} lectura={compras}
               filtros={filtros} anioActual={anioActual}
               opcionesObra={opcionesObra}
+              entregasDeCadaCompra={veEfectivo ? entregasDeCadaCompra : undefined}
             />
           )}
           {cara === 'nombres' && (

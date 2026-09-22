@@ -56,5 +56,38 @@ test('ninguna pieza de la lista toca Storage, sube archivos ni escribe la cola',
 test('a 390px la lista scrollea adentro de su caja, con ancho mínimo propio', () => {
   const src = lista()
   assert.match(src, /overflowX: 'auto'/)
-  assert.match(src, /minWidth: ANCHO_MINIMO_COMPRAS/)
+  // Con la columna «Entrega» (D08) el piso es otro —una columna más y su gap—, pero sigue siendo una
+  // constante medida y no un ancho suelto: las dos ramas salen de `columnasComprobantes.ts`.
+  assert.match(src, /minWidth: conEntrega \? ANCHO_MINIMO_COMPRAS_CON_ENTREGA : ANCHO_MINIMO_COMPRAS/)
+})
+
+// ═══ D08 · LA COLUMNA «ENTREGA» NO PUEDE APARECER VACÍA NI DESALINEAR LA GRILLA ═══
+//
+// Dos formas de romper esta pantalla, las dos silenciosas:
+//
+//  · LA COLUMNA SIEMPRE PUESTA. Al 95 % de los proveedores no se les paga en efectivo: una séptima
+//    columna vacía en todas las fichas contradice el mockup («la ficha no cambia de forma») y
+//    angosta las seis que sí dicen algo.
+//  · LA CELDA CONDICIONAL DENTRO DE LA FILA. Si la celda se dibujara sólo cuando ESA compra tiene
+//    entrega, las filas sin entrega tendrían seis celdas en una grilla de siete: el comprobante se
+//    correría a la columna de la entrega y la lista mostraría cada dato bajo el rótulo equivocado.
+//    Por eso la condición es `entregas !== undefined` —lleva la columna o no la lleva— y nunca
+//    `entregas.length`.
+
+test('la columna «Entrega» sólo existe si hay alguna compra rendida en efectivo', () => {
+  const src = lista()
+  assert.match(src, /const conEntrega = entregasDeCadaCompra !== undefined/)
+  assert.match(src, /Object\.keys\(entregasDeCadaCompra\)\.length > 0/)
+  assert.match(src, /\{conEntrega && <RotuloCol>Entrega<\/RotuloCol>\}/)
+  // El encabezado y las filas eligen la MISMA grilla: si una sola de las dos ramas se olvidara, los
+  // rótulos dejarían de caer sobre sus columnas.
+  assert.match(src, /conEntrega \? COLS_COMPROBANTES_CON_ENTREGA : COLS_COMPROBANTES/)
+})
+
+test('la celda de la entrega se dibuja en TODAS las filas de una lista que lleva la columna', () => {
+  const src = fila()
+  assert.match(src, /\{entregas !== undefined && \(/)
+  assert.doesNotMatch(src, /\{entregas\?\.length && \(|\{entregas\.length > 0 && \(/)
+  // Y la fila elige su grilla por lo mismo que el encabezado.
+  assert.match(src, /entregas === undefined \? COLS_COMPROBANTES : COLS_COMPROBANTES_CON_ENTREGA/)
 })

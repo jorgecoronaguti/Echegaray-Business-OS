@@ -28,7 +28,10 @@ import {
 } from '../../services/comprobantesProveedor'
 import type { ComprasConPapel } from '../../services/comprobantesProveedorService'
 import type { ServiceResult } from '../../services/comprasSheetService'
-import { ANCHO_MINIMO_COMPRAS, COLS_COMPROBANTES } from './columnasComprobantes'
+import {
+  ANCHO_MINIMO_COMPRAS, ANCHO_MINIMO_COMPRAS_CON_ENTREGA,
+  COLS_COMPROBANTES, COLS_COMPROBANTES_CON_ENTREGA,
+} from './columnasComprobantes'
 import { FilaComprobanteProveedor } from './FilaComprobanteProveedor'
 
 const PAPEL: { clave: FiltroPapel; etiqueta: string }[] = [
@@ -83,18 +86,29 @@ export function urlDeComprobantes(
   return `/administracion/proveedores/${proveedorId}${qs ? `?${qs}` : ''}`
 }
 
-export function ComprasDelProveedor({ proveedorId, lectura, filtros, anioActual, opcionesObra }: {
+export function ComprasDelProveedor({
+  proveedorId, lectura, filtros, anioActual, opcionesObra, entregasDeCadaCompra,
+}: {
   proveedorId: string
   lectura: ServiceResult<ComprasConPapel>
   filtros: FiltrosComprobantes
   anioActual: number
   /** El MISMO desplegable que Compras. Vacío ⇒ la obra se ve pero no se elige. */
   opcionesObra: string[]
+  /**
+   * D08 · qué entrega de efectivo rindió cada compra, por clave. `undefined` (quien mira no ve
+   * economía) o vacío (a este proveedor nunca se le pagó en efectivo) dejan la lista de seis
+   * columnas: el mockup dice que la ficha no cambia de forma, y una séptima columna vacía en cada
+   * ficha es peor que no tenerla.
+   */
+  entregasDeCadaCompra?: Record<string, string[]>
 }) {
   if (lectura.error !== null) {
     return <Aviso tono="neg" titulo="No pude leer las compras de este proveedor">{lectura.error}</Aviso>
   }
   const { filas, truncado, papelesSinLeer, obraEditable } = lectura.data
+  const conEntrega = entregasDeCadaCompra !== undefined
+    && Object.keys(entregasDeCadaCompra).length > 0
   // «Compras» es la cara por defecto: su URL no lleva `vista`.
   const base = `/administracion/proveedores/${proveedorId}`
   const url = (cambio: CambioDeFiltro) => urlDeComprobantes(proveedorId, filtros, cambio, anioActual)
@@ -182,14 +196,18 @@ export function ComprasDelProveedor({ proveedorId, lectura, filtros, anioActual,
       </p>
 
       <div style={{ overflowX: 'auto' }} data-testid="caja-scroll-compras">
-        <div style={{ minWidth: ANCHO_MINIMO_COMPRAS }}>
-          <div className={`grid gap-[14px] ${COLS_COMPROBANTES}`} style={{ ...ENCABEZADO, paddingLeft: 13 }}>
+        <div style={{ minWidth: conEntrega ? ANCHO_MINIMO_COMPRAS_CON_ENTREGA : ANCHO_MINIMO_COMPRAS }}>
+          <div
+            className={`grid gap-[14px] ${conEntrega ? COLS_COMPROBANTES_CON_ENTREGA : COLS_COMPROBANTES}`}
+            style={{ ...ENCABEZADO, paddingLeft: 13 }}
+          >
             <RotuloCol>Fecha</RotuloCol>
             <RotuloCol>Concepto</RotuloCol>
             <RotuloCol>Obra</RotuloCol>
             <RotuloCol derecha>Importe</RotuloCol>
             <RotuloCol>Estado</RotuloCol>
             <RotuloCol>Comprobante</RotuloCol>
+            {conEntrega && <RotuloCol>Entrega</RotuloCol>}
           </div>
           {visibles.map((c) => (
             <FilaComprobanteProveedor key={`${c.fila}-${c.clave ?? ''}`} c={c}
@@ -197,6 +215,9 @@ export function ComprasDelProveedor({ proveedorId, lectura, filtros, anioActual,
               // SIN OPCIONES NO SE EDITA: un desplegable vacío deja elegir «sin imputar» y nada más,
               // que es una forma de borrar la obra sin poder ponerle otra.
               obraEditable={obraEditable && opcionesObra.length > 0}
+              // SIN LA COLUMNA, `undefined`; con la columna, la lista de esa compra —vacía si no se
+              // pagó en efectivo—. Las dos cosas tienen que ser distintas: `[]` dibuja la celda.
+              entregas={conEntrega ? (entregasDeCadaCompra?.[c.clave ?? ''] ?? []) : undefined}
             />
           ))}
         </div>
