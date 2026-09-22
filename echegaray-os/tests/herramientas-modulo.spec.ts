@@ -64,22 +64,22 @@ test.describe('módulo Herramientas · inventario (22/09)', () => {
     await page.goto('/herramientas/inventario')
     await page.waitForLoadState('networkidle')
     await expect(page.getByTestId('totales-inventario')).toContainText(/\d+ activos/)
-    // Un total es un filtro: «Servicio técnico 1» muestra cuál es. Y la ficha se cierra con la ×.
-    await page.getByTestId('total-servicio_tecnico').click()
-    await expect(page).toHaveURL(/ubicacion=tipo%3Aservicio_tecnico|ubicacion=tipo:servicio_tecnico/)
-    await expect(page.getByTestId('totales-inventario')).toContainText(/^\s*1 activo/)
-    await page.getByRole('table', { name: 'Inventario' }).getByText(/[A-Z]{3}-\d{3}/).first().click()
-    await expect(page.getByTestId('cerrar-ficha')).toBeVisible()
-    await page.screenshot({ path: `${CAPTURAS}_serv-tecnico.png`, fullPage: false })
-    await page.getByTestId('cerrar-ficha').click()
-    await expect(page.getByTestId('cerrar-ficha')).toHaveCount(0)
-    await page.getByTestId('total-servicio_tecnico').click()
-    // Cada obra es su propio total y su propio filtro.
+    // Cada obra es su propio total y su propio filtro; la ficha se abre desde la lista y se cierra
+    // con la × (al lado de «Editar datos»). Sin clavar cuál: las herramientas se mueven de verdad.
     const obra = page.getByTestId('total-obra').first()
     const rotuloObra = (await obra.textContent())!.replace(/\s*\d+\s*$/, '').trim()
     await obra.click()
     await expect(page).toHaveURL(/ubicacion=[0-9a-f-]{36}/)
     await expect(page.getByRole('table', { name: 'Inventario' }).getByText(rotuloObra).first()).toBeVisible()
+    await page.getByRole('table', { name: 'Inventario' }).getByText(/[A-Z]{3}-\d{3}/).first().click()
+    await expect(page.getByTestId('cerrar-ficha')).toBeVisible()
+    await expect(page.getByTestId('editar-ficha')).toBeVisible()
+    const x = (await page.getByTestId('cerrar-ficha').boundingBox())!
+    const ed = (await page.getByTestId('editar-ficha').boundingBox())!
+    expect(ed.x + ed.width <= x.x || x.x + x.width <= ed.x, 'la × no se encima con «Editar datos»').toBe(true)
+    await page.screenshot({ path: `${CAPTURAS}_filtro-obra.png`, fullPage: false })
+    await page.getByTestId('cerrar-ficha').click()
+    await expect(page.getByTestId('cerrar-ficha')).toHaveCount(0)
     await page.getByTestId('total-obra').first().click()
     const buscar = page.getByTestId('buscar-inventario')
     await buscar.click()
