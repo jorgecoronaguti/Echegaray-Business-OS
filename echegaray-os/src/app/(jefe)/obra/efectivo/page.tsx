@@ -20,13 +20,14 @@ import { SinEfectivo, TarjetaRecibir } from '@/features/efectivo/campo/component
 
 // D15 · MI EFECTIVO DE LA OBRA — la misma entrega, vista por el jefe de obra.
 //
-// ═══ SÓLO LO SUYO, Y LO FILTRA LA CONSULTA — NO LA BASE ═══
+// ═══ SÓLO LO SUYO, Y AHORA LO CIERRA LA BASE ═══
 //
-// El diseño dice «lo cierra la base, no la pantalla». HOY NO ES ASÍ: la migración 20260922T1500 deja
-// leer las entregas a `es_administracion()`, que desde el 19/08 incluye al Jefe de obra — la base le
-// muestra el efectivo de todos. Esta pantalla filtra por SU persona (`getMisEntregas`), así que dice
-// la verdad sobre lo que muestra; pero el bloque «Lo que este rol NO ve» del mockup no se dibuja,
-// porque afirmaría una cerradura que no existe. Queda reportado para que la base lo cierre.
+// Hasta el 22/09/2026 esto lo filtraba SÓLO la consulta: la 20260922T1500 abría las entregas a
+// `es_administracion()`, que desde el 19/08 incluye al Jefe de obra, y PostgREST le devolvía el
+// efectivo en la mano de toda la empresa. Lo cerró `20260922T2700`: la policy pasó a
+// `ve_efectivo_entrega(persona_id, entregada_por)` — Dirección y Administración ven todo, cada uno
+// ve lo suyo, y quien entregó ve lo que entregó. El `.eq('persona_id', …)` de `getMisEntregas` se
+// queda como segunda vuelta, no como cerradura.
 //
 // El teléfono es de 390 px: la tabla del mockup (Fecha · Dónde · Importe · Estado) va como la lista
 // de M06, que dice lo mismo en dos renglones sin desplazarse de costado.

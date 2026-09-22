@@ -2,9 +2,11 @@
 //
 // Las vistas `efectivo_entrega_saldo` y `efectivo_comprobante_estado` son `security_invoker`: la base
 // deja ver las entregas propias (`persona_id = mi_persona_id()`). Igual se filtra por la persona de
-// forma EXPLÍCITA, y no es redundante: Dirección, Administración y el Jefe de obra pasan por
-// `es_administracion()` y la RLS les muestra las de todos. «Mi efectivo» es el mío, lo mire quien lo
-// mire.
+// forma EXPLÍCITA, y no es redundante: a Dirección y Administración la RLS les muestra las de todos
+// (`ve_economia()`), y a cualquiera le muestra además las que ÉL entregó. «Mi efectivo» es el mío, lo
+// mire quien lo mire. Lo que ya NO depende de este filtro es la cerradura: hasta el 22/09/2026 el Jefe
+// de obra entraba por `es_administracion()` y PostgREST le devolvía el efectivo de toda la empresa;
+// lo cerró la migración `20260922T2700`.
 //
 // ═══ LA MIGRACIÓN PUEDE NO ESTAR APLICADA ═══
 //
