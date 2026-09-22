@@ -111,6 +111,10 @@ test('estado visible: los seis estados de la vista, y «observado» ya contestad
   const contestado = estadoVisible(ticket({ estado: 'observado', observacion: 'x', respondido_en: '2026-09-22T13:00:00Z' }))
   assert.equal(contestado.pideDato, false)
   assert.equal(contestado.etiqueta, 'contestaste · falta cargar')
+  // El estado propio de la vista (22/09/2026): contestado y esperando la carga no pide nada.
+  const respondido = estadoVisible(ticket({ estado: 'respondido', respondido_en: '2026-09-22T13:00:00Z' }))
+  assert.equal(respondido.pideDato, false)
+  assert.equal(respondido.etiqueta, 'contestaste · falta cargar')
   // Observado por la cola (sin observación de Administración): el motivo del circuito es lo que falta.
   assert.equal(estadoVisible(ticket({ estado: 'observado', motivo: 'Sin CUIT legible' })).titulo, 'Sin CUIT legible')
 })

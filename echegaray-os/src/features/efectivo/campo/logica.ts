@@ -105,9 +105,9 @@ export interface EstadoVisible {
  *
  * ═══ «OBSERVADO» NO SIEMPRE ES «TE LO PIDEN» ═══
  *
- * La vista deriva `observado` también cuando la persona YA contestó pero la cola sigue en
- * `en_espera` (el worker todavía no lo volvió a pasar). Decirle «te lo piden» a quien ya contestó lo
- * manda a contestar dos veces; se le dice que su respuesta está esperando la carga.
+ * Desde el 22/09/2026 la vista tiene su propio estado `respondido` para quien YA contestó y espera la
+ * carga. El caso `observado` + `respondido_en` se conserva por si llega una fila de antes de ese cambio.
+ * Decirle «te lo piden» a quien ya contestó lo manda a contestar dos veces.
  */
 export function estadoVisible(t: TicketRendicion): EstadoVisible {
   const comercio = comercioDelTicket(t)
@@ -116,6 +116,7 @@ export function estadoVisible(t: TicketRendicion): EstadoVisible {
   switch (t.estado as EstadoTicket) {
     case 'en_compras': return base('en Compras', 'pos')
     case 'leyendo': return base('leyendo', 'faint', comercio ?? 'Leyendo el ticket', true)
+    case 'respondido': return base('contestaste · falta cargar', 'faint', comercio ?? 'Ticket', true)
     case 'observado':
       if (t.respondido_en) return base('contestaste · falta cargar', 'faint', comercio ?? 'Ticket', true)
       return {

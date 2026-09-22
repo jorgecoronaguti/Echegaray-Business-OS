@@ -30,7 +30,7 @@ export interface EntregaSaldo {
 }
 
 /** El estado que ve la gente, derivado en la base — nunca tipeado. */
-export type EstadoTicket = 'leyendo' | 'en_compras' | 'observado' | 'duplicado' | 'error' | 'descartado'
+export type EstadoTicket = 'leyendo' | 'en_compras' | 'observado' | 'respondido' | 'duplicado' | 'error' | 'descartado'
 
 /** Lo que el worker guardó del circuito de comprobantes (`comprobante_entrada.resultado`). */
 export interface ResultadoLectura {

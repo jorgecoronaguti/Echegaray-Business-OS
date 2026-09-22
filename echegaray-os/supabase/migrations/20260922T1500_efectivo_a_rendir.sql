@@ -299,7 +299,9 @@ comment on table public.efectivo_comprobante is
 alter table public.efectivo_rendicion add column if not exists comprobante_id uuid references public.efectivo_comprobante(id);
 
 -- El estado que ve la gente, derivado — nunca tipeado:
---   leyendo · en_compras · observado · duplicado · error · descartado
+--   leyendo · en_compras · observado · respondido · duplicado · error · descartado
+-- `respondido`: la persona ya contestó lo que faltaba y la carga todavía no se completó. Sin este
+-- estado el ticket seguía «observado» después de contestar: le pedía a la persona algo que ya dio.
 create or replace view public.efectivo_comprobante_estado with (security_invoker = true) as
   select c.id, c.entrega_id, e.codigo as entrega, e.persona_id, c.canal, c.enviado_en,
          ce.storage_path, ce.nombre_archivo, ce.media_type, ce.estado as estado_cola, ce.motivo,
@@ -311,6 +313,7 @@ create or replace view public.efectivo_comprobante_estado with (security_invoker
            when c.observacion is not null and c.respondido_en is null then 'observado'
            when ce.estado in ('pendiente', 'procesando') then 'leyendo'
            when ce.estado = 'ya_estaba' then 'duplicado'
+           when c.respondido_en is not null and ce.estado in ('en_espera', 'rechazado') then 'respondido'
            when ce.estado in ('en_espera', 'rechazado') then 'observado'
            when ce.estado = 'error' then 'error'
            when ce.estado = 'cargado' then 'leyendo'   -- escrito, falta el vínculo (lo pone el worker)
@@ -373,8 +376,8 @@ begin
   if e.anulada_en is not null or e.cerrada_en is not null then
     raise exception '% está %: no recibe comprobantes', e.codigo, case when e.anulada_en is not null then 'anulada' else 'cerrada' end using errcode = 'P0001';
   end if;
-  if split_part(p_storage_path, '/', 1) <> auth.uid()::text then
-    raise exception 'el archivo tiene que estar en tu carpeta' using errcode = '42501';
+  if split_part(p_storage_path, '/', 1) <> auth.uid()::text or split_part(p_storage_path, '/', 2) <> 'rendicion' then
+    raise exception 'el archivo tiene que estar en tu carpeta de rendiciones' using errcode = '42501';
   end if;
   insert into comprobante_entrada (origen, storage_path, lote, nombre_archivo, media_type, bytes, subido_por)
   values ('rendicion', p_storage_path, coalesce(p_lote, gen_random_uuid()), p_nombre, p_media_type, p_bytes, auth.uid())
