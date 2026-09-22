@@ -200,15 +200,16 @@ function FilaMes({ m, elegido, href, alDia }: { m: MesPagado; elegido: boolean; 
           cinco columnas de números sin encabezado —el encabezado es `lg:grid`— son cinco cifras que
           nadie puede nombrar. El dueño y los jefes entran desde el teléfono. */}
       <div className="flex min-w-0 flex-col gap-0.5">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span className="text-[13px] font-medium text-ink">{rotuloMes(m.mes, true)}</span>
+        {/* LA COLUMNA DEL MES MIDE 110 px Y EL SELLO NO ENTRA AL LADO (QA visual, 22/09/2026): sin
+            `flex-wrap` el sello empujaba el año a un renglón propio y la única fila cortada era la
+            del mes en curso, que es la primera que el dueño mira. El mes no se parte; el sello baja. */}
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+          <span className="whitespace-nowrap text-[13px] font-medium text-ink">{rotuloMes(m.mes, true)}</span>
           {m.estado === 'parcial' ? <span className="whitespace-nowrap text-[11px] text-warn">media quincena sin cerrar</span> : null}
           {enCurso ? <span className="whitespace-nowrap text-[11px] text-warn">en curso · al {alDia}</span> : null}
         </div>
         {enCurso ? (
-          <span className="text-[11px] leading-normal text-muted">
-            lo entregado y registrado, no la quincena cerrada · no suma al año
-          </span>
+          <span className="text-[11px] leading-normal text-muted">lo entregado · no suma al año</span>
         ) : null}
         <span className="text-[11px] tabular-nums text-muted lg:hidden">
           {m.total == null ? 'sin medir' : `blanco ${millones(m.blanco)} · negro ${millones(m.negro)} · ${pctEntero(pct)} en negro`}
