@@ -1,10 +1,12 @@
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
-import { getUsuarioActual, getPerfilActual } from '@/features/auth/services/authService'
+import { getUsuarioActual, getPerfilActual, getPerfilReal } from '@/features/auth/services/authService'
+import { estadoVerComo } from '@/features/auth/services/verComo'
 import { ROL_LABEL } from '@/features/auth/types'
 import { puedeVerRuta } from '@/features/auth/types/areas'
 import { solapasDeNav } from '@/features/auth/types/navegacion'
 import { LogoutButton } from '@/features/auth/components/LogoutButton'
+import { AvisoVerComo } from '@/features/auth/components/AvisoVerComo'
 import { AppHeader } from '@/shared/components/AppHeader'
 import { HeaderEsqueleto } from '@/shared/components/carga'
 import { DeshacerProvider } from '@/shared/components/deshacer/DeshacerProvider'
@@ -49,9 +51,19 @@ import { ProveedorTiempoReal } from '@/shared/tiempo-real/ProveedorTiempoReal'
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-canvas">
-      <Suspense fallback={<HeaderEsqueleto />}>
-        <HeaderConUsuario />
-      </Suspense>
+      {/* EL AVISO Y EL HEADER SE PEGAN JUNTOS. Los dos son `sticky top-0`: sueltos, el de arriba
+          tapaba al otro al scrollear y el header desaparecía. Pegados en UN contenedor sticky, la
+          franja de «ver como» y la navegación viajan como un bloque — que es lo que son mientras la
+          lente está puesta. Sin lente, `AvisoVerComo` devuelve `null` y el contenedor mide lo mismo
+          que el header solo: la geometría de siempre. */}
+      <div className="sticky top-0 z-40">
+        <Suspense fallback={null}>
+          <AvisoVerComo />
+        </Suspense>
+        <Suspense fallback={<HeaderEsqueleto />}>
+          <HeaderConUsuario />
+        </Suspense>
+      </div>
       {/* CMD/CTRL+Z EN TODA LA PLATAFORMA (dueño, 15/09/2026): un solo proveedor para todas las pantallas. */}
       <DeshacerProvider>
         {/* TIEMPO REAL (dueño, 15/09/2026): un canal por pestaña; cada pantalla declara sus tablas. */}
@@ -64,7 +76,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 }
 
 async function HeaderConUsuario() {
-  const { nombre, email, rolLabel, rol } = await loadUsuario()
+  const { nombre, email, rolLabel, rol, verComo } = await loadUsuario()
   return (
     <AppHeader
       solapas={solapasDeNav(rol)}
@@ -76,6 +88,9 @@ async function HeaderConUsuario() {
       // MISMA PUERTA QUE LA PANTALLA. Si el rol no puede abrir Personal, el menú no le ofrece un
       // atajo que el middleware va a rebotar: un ítem que no puede funcionar enseña que la app miente.
       cargaAsistencia={puedeVerRuta(rol, '/administracion/personas')}
+      // «VER COMO» (dueño, 22/09/2026). Va con el rol REAL, no con el mirado: preguntando por el
+      // mirado, un Dirección que se puso los ojos de `campo` perdería el menú desde el que salir.
+      verComo={verComo}
       salir={<LogoutButton />}
     />
   )
@@ -85,10 +100,14 @@ async function loadUsuario() {
   try {
     const supabase = await createClient()
     const user = await getUsuarioActual(supabase)
-    if (!user) return { nombre: null, email: null, rolLabel: null, rol: null }
+    if (!user) return { nombre: null, email: null, rolLabel: null, rol: null, verComo: { puede: false, mirando: null } }
     // El id ya está: `getPerfilActual()` sin él volvía a preguntarle a Supabase quién es el usuario.
     const perfil = await getPerfilActual(supabase, user.id)
+    // El real sale del MISMO memo por request: no es un viaje más a Postgres.
+    const real = await getPerfilReal(supabase, user.id)
+    const lente = await estadoVerComo(real.data)
     return {
+      verComo: { puede: lente.puede, mirando: lente.mirando },
       // El nombre es sólo para las iniciales del avatar: si el perfil no lo tiene, `iniciales()`
       // se cae al correo. Nunca se dibuja entero en el header.
       nombre: perfil.data?.nombre ?? null,
@@ -99,6 +118,6 @@ async function loadUsuario() {
   } catch {
     // Sin perfil legible se cae al nivel MENOS privilegiado (`solapasDeNav(null)` → sólo Obras), nunca al
     // más. Un error de lectura no puede ser una puerta a la economía de la empresa.
-    return { nombre: null, email: null, rolLabel: null, rol: null }
+    return { nombre: null, email: null, rolLabel: null, rol: null, verComo: { puede: false, mirando: null } }
   }
 }

@@ -9,6 +9,9 @@ import { destinoPorRol } from '@/features/portal/types'
 import { trazar } from '@/lib/supabase/traza'
 import { TOPE_MS_MIDDLEWARE, esFallaDeBackend, fetchConTope } from '@/lib/supabase/fetch-con-tope'
 import { COOKIE_ROL, VIDA_ROL_SEGUNDOS, leerRol, sellarRol, secretoDelRol } from '@/lib/auth/rol-cache'
+import {
+  COOKIE_VER_COMO, ROL_QUE_MIRA, RUTA_VER_COMO, esPeticionDeEscritura, leerVerComo,
+} from '@/lib/auth/ver-como'
 
 // Refresca la sesión de Supabase en cada request -- sin esto, un usuario logueado
 // puede quedar con un token vencido en Server Components y verse "deslogueado" sin
@@ -136,8 +139,43 @@ async function middlewareConBackend(request: NextRequest) {
         })
       }
     }
+    // ═══ «VER COMO»: LA LENTE DE DIRECCIÓN (22/09/2026) ═══
+    //
+    // El dueño pidió mirar la app con los ojos de cada rol sin dar de alta usuarios de prueba. Acá
+    // se decide lo único que se puede decidir en la puerta, y son tres cosas, en este orden:
+    //
+    //   1. LA LENTE ES SÓLO DE DIRECCIÓN. Se compara contra el rol REAL —el que salió de `perfiles`
+    //      o de la cookie que `perfiles` selló—, nunca contra la lente misma. Si quien la tiene
+    //      puesta dejó de ser Dirección, la cookie se borra en este mismo request.
+    //   2. CON LA LENTE PUESTA NO SE ESCRIBE. Ni como el rol imitado (sería suplantación) ni como
+    //      uno mismo (nadie tiene que averiguar después con qué firma quedó lo que cargó). Se corta
+    //      por MÉTODO y no por ruta: un Server Action de Next viaja como POST al path de la
+    //      pantalla, así que la URL no lo delata y el método sí.
+    //   3. `/ver-como` PASA SIEMPRE. Es la ruta que prende y apaga la lente, y apagarla tiene que
+    //      funcionar aunque el rol mirado sea `campo` —que abajo se va derecho a `/hoy`—.
+    //
+    // A partir de acá el rol que gobierna las redirecciones es el MIRADO: es lo que hace que la
+    // lente mueva la navegación de verdad y no sólo los colores.
+    //
+    // ESTO NO PRUEBA PERMISOS. La base sigue viendo al usuario real (`es_administracion()`,
+    // `ve_economia()`, `ve_obra()`, `mi_persona_id()`): la lente cambia la puerta, no la cerradura.
+    let mirando = secreto && rol
+      ? await leerVerComo(request.cookies.get(COOKIE_VER_COMO)?.value, { uid: user.id }, secreto)
+      : null
+    if (mirando && rol !== ROL_QUE_MIRA) {
+      response.cookies.delete(COOKIE_VER_COMO)
+      mirando = null
+    }
+    if (mirando && esPeticionDeEscritura(request.method)) {
+      return new NextResponse(
+        'Estás mirando la aplicación como otro rol («ver como»). Con la lente puesta no se escribe: ni con la identidad imitada ni con la propia. Salí del modo y repetí la acción.',
+        { status: 403, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } },
+      )
+    }
+    if (pathname === RUTA_VER_COMO || pathname.startsWith(RUTA_VER_COMO + '/')) return response
+
     // El rol viene de la base o de la cookie que la base selló: la forma la garantiza `perfiles`.
-    const perfil = rol ? { rol: rol as Rol } : null
+    const perfil = mirando ? { rol: mirando as Rol } : rol ? { rol: rol as Rol } : null
 
     // ═══ EL PORTAL DEL CLIENTE SE DECIDE PRIMERO (25/08/2026) ═══
     //

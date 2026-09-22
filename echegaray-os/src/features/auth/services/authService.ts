@@ -1,6 +1,7 @@
 import { cache } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Perfil } from '@/features/auth/types'
+import { conLaLente } from './verComo'
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
 
@@ -123,6 +124,20 @@ async function leerPerfil(supabase: SupabaseClient, id: string): Promise<Service
  * Sin `userId` se comporta exactamente como antes: nadie tiene que cambiar para seguir funcionando.
  */
 export async function getPerfilActual(supabase: SupabaseClient, userId?: string): Promise<ServiceResult<Perfil | null>> {
+  const real = await getPerfilReal(supabase, userId)
+  if (real.error) return real
+  return { data: await conLaLente(real.data), error: null }
+}
+
+/**
+ * EL PERFIL SIN LA LENTE: el rol que esta persona TIENE, no con el que está mirando.
+ *
+ * Lo necesitan dos clases de código y ninguna más: el que decide si se puede encender «ver como»
+ * (`/ver-como`), y el que dibuja el propio aviso de la lente —que si preguntara por el rol mirado
+ * nunca sabría que hay una lente puesta—. Todo lo demás usa `getPerfilActual`, que es lo que hace
+ * que la lente valga sin tocar una sola pantalla.
+ */
+export async function getPerfilReal(supabase: SupabaseClient, userId?: string): Promise<ServiceResult<Perfil | null>> {
   const id = userId ?? (await getUsuarioActual(supabase))?.id
   if (!id) return { data: null, error: null }
   return recordar(memoDeLosPerfiles(), id, () => leerPerfil(supabase, id))

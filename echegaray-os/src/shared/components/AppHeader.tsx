@@ -9,6 +9,16 @@ import { Novedades } from './Novedades'
 import { iniciales } from './iniciales'
 import { scrollParaMostrar } from './desplazarSolapa'
 
+/** Lo que el servidor le cuenta al header sobre la lente. `puede` sale de `perfiles`, no de la cookie. */
+export type VerComo = { puede: boolean; mirando: string | null }
+
+/** Los mismos tres de `lib/auth/ver-como.ts`, escritos acá para no arrastrar Web Crypto al bundle del navegador. */
+const ROLES_QUE_SE_MIRAN = [
+  { rol: 'administracion', label: 'Administración' },
+  { rol: 'jefe_obra', label: 'Jefe de Obra' },
+  { rol: 'campo', label: 'Empleado' },
+] as const
+
 // EL HEADER DEL ERP — UNA LÍNEA, DOS ÁREAS, Y NADA MÁS.
 //
 // ═══ EL QUE REEMPLAZA (18/08/2026) ═══
@@ -45,6 +55,7 @@ export function AppHeader({
   rolLabel,
   verUsuarios,
   cargaAsistencia,
+  verComo,
   salir,
 }: {
   /** Las solapas de nivel 1 que este rol ve. Tres para Administración, una para Obras. */
@@ -57,6 +68,8 @@ export function AppHeader({
   verUsuarios: boolean
   /** Si este rol puede abrir Personal. El atajo a la carga de asistencia cuelga de eso. */
   cargaAsistencia: boolean
+  /** «Ver como»: si esta persona puede encender la lente, y con qué ojos está mirando ahora. */
+  verComo: VerComo
   salir: React.ReactNode
 }) {
   const pathname = usePathname()
@@ -191,7 +204,7 @@ export function AppHeader({
             </>
           )}
           {email ? (
-            <MenuUsuario nombre={nombre} email={email} rolLabel={rolLabel} verUsuarios={verUsuarios} cargaAsistencia={cargaAsistencia} salir={salir} />
+            <MenuUsuario nombre={nombre} email={email} rolLabel={rolLabel} verUsuarios={verUsuarios} cargaAsistencia={cargaAsistencia} verComo={verComo} salir={salir} />
           ) : (
             <Link href="/login" className="rounded-md px-2.5 py-1.5 text-[13px] text-muted hover:bg-surface-quiet">
               Ingresar
@@ -233,6 +246,7 @@ function MenuUsuario({
   rolLabel,
   verUsuarios,
   cargaAsistencia,
+  verComo,
   salir,
 }: {
   nombre?: string | null
@@ -240,10 +254,12 @@ function MenuUsuario({
   rolLabel: string | null
   verUsuarios: boolean
   cargaAsistencia: boolean
+  verComo: VerComo
   salir: React.ReactNode
 }) {
   const [abierto, setAbierto] = useState(false)
   const caja = useRef<HTMLDivElement>(null)
+  const aqui = encodeURIComponent(usePathname() ?? '/')
 
   // Mismo cierre que `ds/MenuContextual`: clic afuera y Escape. Se repite y no se importa porque
   // aquel componente dibuja un `···` de fila y recibe `items` planos — acá el contenido es el
@@ -291,6 +307,40 @@ function MenuUsuario({
             <div className="truncate text-[12px] text-ink">{email}</div>
             {rolLabel && <div className="text-[11.5px] text-faint">{rolLabel}</div>}
           </div>
+          {/* ═══ «VER COMO» — SÓLO DIRECCIÓN (dueño, 22/09/2026) ═══
+              *«tengo que probar cómo las verían el resto. No me crees un usuario normal»*. Vive en
+              este menú y no en la barra porque no es un destino: es un modo de mirar, y el menú es
+              donde ya se lee «quién soy». `verComo.puede` lo decide el servidor contra `perfiles`;
+              si no es Dirección, estos ítems NO EXISTEN en el HTML — no están escondidos por CSS. */}
+          {verComo.puede && (
+            <div className="border-b border-line px-1.5 py-1.5">
+              <div className="px-1.5 pb-1 text-[10.5px] font-semibold uppercase tracking-[0.04em] text-faint">
+                Ver como
+              </div>
+              <div className="flex flex-wrap gap-1 px-0.5" data-testid="ver-como-menu">
+                {ROLES_QUE_SE_MIRAN.map((r) => (
+                  <Link
+                    key={r.rol}
+                    prefetch={false}
+                    href={`/ver-como?rol=${r.rol}&volver=${aqui}`}
+                    role="menuitem"
+                    data-testid={`menu-ver-como-${r.rol}`}
+                    aria-current={verComo.mirando === r.rol ? 'true' : undefined}
+                    className={`rounded-md border px-2 py-1 text-[11.5px] ${
+                      verComo.mirando === r.rol
+                        ? 'border-line-strong bg-ink font-semibold text-white'
+                        : 'border-line text-ink hover:bg-surface-quiet'
+                    }`}
+                  >
+                    {r.label}
+                  </Link>
+                ))}
+              </div>
+              <div className="px-1.5 pt-1.5 text-[10.5px] leading-snug text-faint">
+                Lente de pantalla: no prueba los permisos de la base, y con ella puesta no se escribe.
+              </div>
+            </div>
+          )}
           {/* ═══ EL ATAJO DEL TELÉFONO (08/09/2026) ═══
               Los roles de adentro no tienen barra inferior —ésa es del rol `campo`—, así que para
               cargar la asistencia desde la obra había que entrar a Administración, tocar Personal y

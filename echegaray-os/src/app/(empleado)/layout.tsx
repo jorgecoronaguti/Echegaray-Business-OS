@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual } from '@/features/auth/services/authService'
 import { ShellEmpleado } from '@/features/empleado/components/ShellEmpleado'
+import { AvisoVerComo } from '@/features/auth/components/AvisoVerComo'
 
 // EL MARCO DEL PERFIL EMPLEADO.
 //
@@ -23,5 +24,15 @@ export default async function EmpleadoLayout({ children }: { children: React.Rea
   // NI LAS INICIALES NI LA OBRA VIAJAN POR ACÁ. El topbar de marca lo dibuja M02 —M09 abre con la
   // ficha de la persona y M03…M08 con su topbar de detalle—, así que leerlos en el marco obligaba a
   // consultar el perfil y la obra en las nueve pantallas para pintarlos en una.
-  return <ShellEmpleado>{children}</ShellEmpleado>
+  // LA FRANJA DE «VER COMO» TAMBIÉN EN EL TELÉFONO. A este marco se llega desde Dirección SÓLO con
+  // la lente puesta, así que sin el aviso el dueño quedaría en la app del obrero sin nada que se lo
+  // recuerde ni forma de volver. Va arriba de todo y pegada: la barra de contextos vive abajo.
+  return (
+    <>
+      <div className="sticky top-0 z-40">
+        <AvisoVerComo />
+      </div>
+      <ShellEmpleado>{children}</ShellEmpleado>
+    </>
+  )
 }

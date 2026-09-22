@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual } from '@/features/auth/services/authService'
 import { ShellJefe } from '@/features/jefe/components/ShellJefe'
+import { AvisoVerComo } from '@/features/auth/components/AvisoVerComo'
 import { ProveedorTiempoReal, RefrescarEnVivo } from '@/shared/tiempo-real/ProveedorTiempoReal'
 import { TABLAS_DE } from '@/shared/tiempo-real/pantallas'
 
@@ -29,6 +30,10 @@ export default async function JefeLayout({ children }: { children: React.ReactNo
   // corrige desde la oficina; las dos puntas se tienen que ver sin recargar.
   return (
     <ProveedorTiempoReal>
+      {/* Mismo motivo que en `(empleado)`: a estas pantallas Dirección llega con la lente puesta. */}
+      <div className="sticky top-0 z-40">
+        <AvisoVerComo />
+      </div>
       <ShellJefe>{children}</ShellJefe>
       <RefrescarEnVivo tablas={TABLAS_DE.jefe} />
     </ProveedorTiempoReal>
