@@ -3,13 +3,36 @@
 // Cada renglón dice qué pasó y quién. Un reporte dice «la ubicación no cambió» porque es la regla que
 // más se confunde: reportar un problema no mueve nada.
 
+import type { LecturaUso } from '../types.ts'
 import { autorDe, rotuloUbicacion, MOTIVO_BAJA, type Parque } from './parque.ts'
+import { ITEMS, numeroAr } from './verificacion.ts'
 
 export interface Renglon {
   fecha: string
   texto: string
   nota: string | null
-  tipo: 'movimiento' | 'reporte' | 'alta' | 'baja' | 'cierre'
+  tipo: 'movimiento' | 'reporte' | 'alta' | 'baja' | 'cierre' | 'verificacion'
+}
+
+/** Quién manejó u operó: la persona elegida en M13 o, si no se eligió, el usuario que la cargó. */
+export function operadorDe(p: Parque, l: Pick<LecturaUso, 'operador_persona_id' | 'usuario_id'>): string | null {
+  if (l.operador_persona_id) return p.personas?.[l.operador_persona_id] ?? null
+  return p.nombres[l.usuario_id] ?? null
+}
+
+/** «Verificación de uso · sin observaciones · 148.220 km · R. Sosa» (D03). */
+export function textoLecturaHistorial(p: Parque, clase: string, l: LecturaUso): string {
+  const clave = clase === 'equipo' ? 'equipo' : 'rodado'
+  const mal = ITEMS[clave].filter((i) => l.checklist?.[i.clave] === 'mal').map((i) => i.rotulo.toLowerCase())
+  const que = mal.length ? `mal en ${mal.join(', ')}` : l.observacion ? null : 'sin observaciones'
+  const quien = operadorDe(p, l)
+  return [
+    'Verificación de uso',
+    que,
+    l.observacion ? `«${l.observacion}»` : null,
+    l.lectura != null ? `${numeroAr(l.lectura)} ${l.unidad}` : null,
+    quien,
+  ].filter(Boolean).join(' · ')
 }
 
 const TIPO_REPORTE: Record<string, string> = {
@@ -39,6 +62,9 @@ export function historial(p: Parque, activoId: string): Renglon[] {
     const quien = i.usuario_id ? p.nombres[i.usuario_id] : null
     out.push({ fecha: i.creado_en, texto: `${TIPO_REPORTE[i.tipo] ?? 'Problema reportado'}${quien ? ` · ${quien}` : ''}`, nota: i.texto, tipo: 'reporte' })
     if (i.cerrada_en) out.push({ fecha: i.cerrada_en, texto: 'Reporte cerrado', nota: null, tipo: 'cierre' })
+  }
+  for (const l of p.lecDe.get(activoId) ?? []) {
+    out.push({ fecha: l.fecha_hora, texto: textoLecturaHistorial(p, a.clase, l), nota: null, tipo: 'verificacion' })
   }
   if (a.baja_en) out.push({ fecha: a.baja_en, texto: `Baja por ${MOTIVO_BAJA[a.baja_motivo ?? ''] ?? 'motivo sin cargar'}`, nota: a.baja_detalle, tipo: 'baja' })
   const importado = !!a.legado_id

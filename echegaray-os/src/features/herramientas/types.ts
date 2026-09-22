@@ -90,3 +90,24 @@ export const COLUMNAS_MOVIMIENTO =
   'id, activo_id, origen_id, destino_id, fecha_hora, usuario_id, usuario_texto, lote_id, nota, corrige_a, importado'
 export const COLUMNAS_INCIDENCIA =
   'id, activo_id, tipo, texto, foto_url, ubicacion_id, estado_resultante, usuario_id, creado_en, cerrada_en'
+
+/** Una verificación de uso (migración 20260922T1200): km para un rodado, horas para un equipo. */
+export type RespuestaChecklist = 'bien' | 'mal'
+export interface LecturaUso {
+  id: string
+  activo_id: string
+  unidad: 'km' | 'h'
+  /** null = no se cargó (sin odómetro u horómetro). Vacío no es cero. */
+  lectura: number | null
+  checklist: Record<string, RespuestaChecklist>
+  criticos_mal: string[]
+  observacion: string | null
+  operador_persona_id: string | null
+  usuario_id: string
+  fecha_hora: string
+  incidencia_id: string | null
+  estado_resultante: string
+}
+/** numeric de Postgres llega como string por PostgREST cuando no entra en un double seguro: se normaliza al leer. */
+export const COLUMNAS_LECTURA =
+  'id, activo_id, unidad, lectura, checklist, criticos_mal, observacion, operador_persona_id, usuario_id, fecha_hora, incidencia_id, estado_resultante'

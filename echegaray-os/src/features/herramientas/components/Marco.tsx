@@ -45,7 +45,7 @@ export function Marco({ lectura, children, derecha }: {
 
 /** El parque sin sus índices (`Map` no cruza al cliente): el cliente lo vuelve a armar. */
 function datosPlanos(p: Parque): DatosParque {
-  return { activos: p.activos, ubicaciones: p.ubicaciones, obras: p.obras, movimientos: p.movimientos, incidencias: p.incidencias, nombres: p.nombres, categorias: p.categorias }
+  return { activos: p.activos, ubicaciones: p.ubicaciones, obras: p.obras, movimientos: p.movimientos, incidencias: p.incidencias, nombres: p.nombres, categorias: p.categorias, lecturas: p.lecturas, personas: p.personas }
 }
 
 function SinBase({ lectura }: { lectura: Exclude<Lectura, { estado: 'ok' }> }) {
