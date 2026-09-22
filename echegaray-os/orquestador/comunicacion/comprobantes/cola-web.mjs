@@ -239,7 +239,7 @@ export async function contextoDeRendicion(port, filas = []) {
   const r = await port.query(
     `select c.id as comprobante_id, c.entrada_id, e.id as entrega_id, e.codigo, e.persona_id,
             e.anulada_en is null and e.cerrada_en is null as abierta, e.estructura, o.codigo as obra_codigo, o.nombre as obra,
-            coalesce(per.es_prueba, false) as es_prueba
+            coalesce(per.es_prueba, false) as es_prueba, c.confirmado_en
        from public.efectivo_comprobante c
        join public.efectivo_entrega e on e.id = c.entrega_id
        left join public.personas per on per.id = e.persona_id
@@ -260,7 +260,34 @@ export async function contextoDeRendicion(port, filas = []) {
     entregaId: x.entrega_id, codigo: x.codigo, personaId: x.persona_id, abierta: x.abierta,
     texto: x.estructura ? null : [x.obra_codigo, x.obra].filter(Boolean).join(' '),
     comprobantePorEntrada: new Map(rows.map((y) => [String(y.entrada_id), y.comprobante_id])),
+    // M05: mientras a UNO del lote le falte la confirmación de la persona, el lote NO se escribe. El
+    // lote es un fajo y se carga entero o no se carga: escribir la mitad dejaría a la persona
+    // confirmando un ticket que ya está en Compras.
+    confirmado: rows.every((y) => y.confirmado_en != null),
   }
+}
+
+/**
+ * LO QUE SE LEYÓ, PARA QUE LA PERSONA LO PUEDA CONFIRMAR (M05).
+ *
+ * El `resultado` de la fila guarda `comprobantes`: lo que ENTRÓ a Compras, leído del registro. Cuando
+ * el lote se frena esperando la confirmación no entró nada, y sin embargo hay algo que mostrar: los
+ * ítems que el modelo leyó, que viven en el fajo abierto. Van aparte, en `leidos`, y no mezclados con
+ * `comprobantes`: uno es «esto se escribió» y el otro «esto dice el papel». Confundirlos es lo que la
+ * pantalla no puede permitirse — el primero es un hecho y el segundo una lectura.
+ */
+export async function leidosDelFajo(port, fajoId) {
+  if (!fajoId) return []
+  const r = await port.query('select items from comunicacion.comprobante_fajos where id = $1', [fajoId])
+  const items = r?.rows?.[0]?.items ?? []
+  if (!Array.isArray(items)) return []
+  return items.map((it) => ({
+    clave: it?.clave ?? null,
+    proveedor: it?.comprobante?.proveedor ?? it?.comprobante?.concepto ?? null,
+    total: it?.comprobante?.total ?? null,
+    fecha: it?.comprobante?.fecha ?? null,
+    obra: it?.comprobante?.obra ?? null,
+  }))
 }
 
 /**
@@ -336,6 +363,9 @@ export async function procesarUnLote(dep) {
       postId: String(lote),
       rootPostId: String(lote),
       ahora: new Date(),
+      // M05: se lee, no se escribe, hasta que la persona confirme lo leído de SU ticket. Ese total es
+      // el que le baja el saldo: una lectura ×10 la deja debiendo plata que no gastó.
+      confirmaLaPersona: !!rinde && !rinde.confirmado,
     })
   } catch (e) {
     const v = aplicarReintento(estadoDeExcepcion(e), intentos)
@@ -348,6 +378,13 @@ export async function procesarUnLote(dep) {
   }
 
   const veredicto = aplicarReintento(estadoDeEntrada(salida), intentos)
+  // M05: el lote frenado a propósito vuelve como `confirmar`, que `estadoDeEntrada` traduce a
+  // `en_espera` con el motivo del chat («falta un dato para poder cargarlo»). Acá no falta ningún
+  // dato: falta que la persona mire. El motivo se dice con lo que de verdad pasó, porque es lo que
+  // ve Administración en la pantalla de Compras.
+  if (rinde && !rinde.confirmado && veredicto.estado === ENTRADA.EN_ESPERA) {
+    veredicto.motivo = 'esperando que la persona confirme lo que se leyó de su ticket'
+  }
   const registrados = await comprobantesDelLote(port, lote)
   // El vínculo va ANTES de cerrar las filas: la pantalla pasa de «leyendo» a «en Compras» en un solo paso.
   if (rinde) await vincularRendicion(port, vinculosDeRendicion(rinde, registrados, { usuario, filas }))
@@ -357,6 +394,10 @@ export async function procesarUnLote(dep) {
     // `null` y `[]` NO son lo mismo: uno es «no pude leer el registro», el otro «no entró ninguno».
     comprobantes: registrados,
   }
+  // M05: el lote que se frenó esperando a la persona guarda lo LEÍDO. Es lo que la pantalla le muestra
+  // para que diga «está bien» o «la saco de nuevo», y es la señal que la vista mira para el estado
+  // `a_confirmar`. Sin `leidos` no hay nada que preguntar y el ticket sigue como «leyendo».
+  if (rinde && !rinde.confirmado) resultado.leidos = await leidosDelFajo(port, salida?.fajoId ?? null)
   for (const v of repartirVeredicto(filas, veredicto, salida?.parte ?? {})) {
     await guardarFila(port, v, { fajoId: salida?.fajoId ?? null, resultado })
   }

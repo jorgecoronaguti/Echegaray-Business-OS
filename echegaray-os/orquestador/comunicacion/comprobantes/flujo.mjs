@@ -513,7 +513,19 @@ export async function procesarPost(d, m = {}) {
   }
   // 10) SE CARGA SOLO. Ver `cargarSolo`. Le viaja la rendición ENTERA y no su texto: allá se sabe si
   //     la escritura ocurrió de verdad, y sólo entonces el renglón puede hablar en pasado.
-  const solo = await cargarSolo(d, fajo, repo, rendicion)
+  //
+  // ═══ SALVO QUE FALTE QUE UNA PERSONA CONFIRME LO QUE SE LEYÓ DE SU TICKET (M05, 22/09/2026) ═══
+  //
+  // Lo pone SÓLO la cola de rendición (`cola-web.mjs`), y sólo mientras el ticket no tenga
+  // `confirmado_en`. El bot de Mattermost y la pantalla de Compras nunca lo mandan: se comportan
+  // exactamente igual que antes. Lo que cambia para la rendición es el orden, no la máquina —la
+  // lectura ya está hecha y el fajo queda ABIERTO con sus ítems, que es el mismo estado en el que
+  // queda un fajo que espera que alguien apriete Confirmar en el chat. La salida `confirmar` la
+  // traduce `estadoDeEntrada` a `en_espera`, que es «vivo, esperando a una persona».
+  //
+  // Por qué acá y no en la puerta: la puerta corre ANTES de leer (paso 2), y no se puede confirmar
+  // una lectura que todavía no existe.
+  const solo = m.confirmaLaPersona ? null : await cargarSolo(d, fajo, repo, rendicion)
   if (solo) return solo
 
   const msg = mensajeFajo(fajo, { url })

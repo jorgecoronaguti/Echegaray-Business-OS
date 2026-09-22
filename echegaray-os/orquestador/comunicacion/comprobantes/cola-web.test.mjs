@@ -276,7 +276,7 @@ test('si cerrar el fajo falla, el veredicto de las filas igual queda guardado', 
 const ENTREGA = '33333333-3333-3333-3333-333333333333'
 const PERSONA = '44444444-4444-4444-4444-444444444444'
 
-function portRendicion({ filas, rol = 'campo', personaDelPerfil = PERSONA, abierta = true, estructura = false, registrados = [], vinculadas = 1 } = {}) {
+function portRendicion({ filas, rol = 'campo', personaDelPerfil = PERSONA, abierta = true, estructura = false, registrados = [], vinculadas = 1, confirmado = true, itemsDelFajo = null } = {}) {
   const inserts = []
   const base = portFalso({ filas, rol, registrados })
   return {
@@ -285,8 +285,9 @@ function portRendicion({ filas, rol = 'campo', personaDelPerfil = PERSONA, abier
     async query(sql, args = []) {
       if (/from public\.perfiles/.test(sql)) return { rows: [{ rol, nombre: 'Rubén Sosa', persona_id: personaDelPerfil }] }
       if (/from public\.efectivo_comprobante c/.test(sql)) {
-        return { rows: filas.slice(0, vinculadas).map((f, i) => ({ comprobante_id: `c${i}`, entrada_id: f.id, entrega_id: ENTREGA, codigo: 'ER-0001', persona_id: PERSONA, abierta, estructura, obra_codigo: estructura ? null : 'OB-0011', obra: estructura ? null : 'SF - PISOS INDUSTRIALES' })) }
+        return { rows: filas.slice(0, vinculadas).map((f, i) => ({ comprobante_id: `c${i}`, entrada_id: f.id, entrega_id: ENTREGA, codigo: 'ER-0001', persona_id: PERSONA, abierta, estructura, obra_codigo: estructura ? null : 'OB-0011', obra: estructura ? null : 'SF - PISOS INDUSTRIALES', confirmado_en: confirmado ? '2026-09-22T12:00:00Z' : null })) }
       }
+      if (/from comunicacion\.comprobante_fajos/.test(sql)) return { rows: [{ items: itemsDelFajo ?? [] }] }
       if (/insert into public\.efectivo_rendicion/.test(sql)) { inserts.push(args); return { rows: [] } }
       return base.query(sql, args)
     },
@@ -360,4 +361,62 @@ test('un lote de una entrega de PRUEBA no se procesa y queda rechazado (auditor�
   assert.equal(proceso, false, 'no se llamó al circuito')
   assert.equal(r.estado, 'rechazado')
   assert.match(port.updates[0].motivo, /prueba/)
+})
+
+// ═══ M05 · LO QUE SE LEYÓ SE CONFIRMA ANTES DE ESCRIBIR ═══
+//
+// El defecto que atrapan: la persona saca la foto y el circuito decide solo. El total que el modelo
+// leyó de SU ticket es el que le baja el saldo, y una lectura ×10 la deja debiendo plata que no gastó.
+
+test('M05: mientras falte la confirmación, el lote se LEE pero no se escribe', async () => {
+  const filas = [filaRendicion('r1')]
+  const port = portRendicion({ filas, confirmado: false })
+  const llamadas = []
+  await procesarUnLote({ port, procesar: async (_d, m) => { llamadas.push(m); return { estado: 'confirmar', texto: 'Falta algo', fajoId: 'f', parte: parte() } } })
+  assert.equal(llamadas[0].confirmaLaPersona, true, 'el freno no viajó: el circuito iba a escribir sin preguntar')
+  assert.equal(port.updates[0].estado, ENTRADA.EN_ESPERA, 'un ticket que espera a una persona no está terminado')
+  assert.match(port.updates[0].motivo, /confirme lo que se leyó/)
+  assert.equal(port.inserts.length, 0, 'se vinculó a Compras algo que nadie confirmó')
+})
+
+test('M05: ya confirmado, el lote se escribe como siempre — el freno es de una sola vuelta', async () => {
+  const filas = [filaRendicion('r1')]
+  const port = portRendicion({ filas, confirmado: true, registrados: [{ clave: '30-1|FB|3-41927', total: 96400 }] })
+  const llamadas = []
+  await procesarUnLote({ port, procesar: async (_d, m) => { llamadas.push(m); return { estado: 'cargado', texto: '✔', fajoId: 'f', parte: parte({ cargados: 1, suma: 96400 }) } } })
+  assert.equal(llamadas[0].confirmaLaPersona, false)
+  assert.equal(port.inserts.length, 1)
+})
+
+test('M05: el lote frenado guarda lo LEÍDO, que es lo que la pantalla le muestra a la persona', async () => {
+  const filas = [filaRendicion('r1')]
+  const port = portRendicion({
+    filas, confirmado: false,
+    itemsDelFajo: [{ clave: 'k1', comprobante: { proveedor: 'Corralón El Nogal', total: 96400, fecha: '2026-09-22' } }],
+  })
+  await procesarUnLote({ port, procesar: async () => ({ estado: 'confirmar', texto: '', fajoId: 'f', parte: parte() }) })
+  const r = JSON.parse(port.updates[0].resultado)
+  assert.deepEqual(r.leidos, [{ clave: 'k1', proveedor: 'Corralón El Nogal', total: 96400, fecha: '2026-09-22', obra: null }])
+  assert.deepEqual(r.comprobantes, [], 'lo LEÍDO no se mezcla con lo ESCRITO: uno es una lectura y el otro un hecho')
+})
+
+test('M05: el freno es sólo de la rendición — el bot y la pantalla de Compras no lo ven', async () => {
+  const port = portFalso({ filas: [filaCola('a', '1.jpg')] })
+  const llamadas = []
+  await procesarUnLote({ port, procesar: async (_d, m) => { llamadas.push(m); return { estado: 'cargado', texto: '✔', parte: parte({ cargados: 1 }) } } })
+  assert.equal(llamadas[0].confirmaLaPersona, false)
+})
+
+test('M05: un lote es un fajo — si a UNO le falta la confirmación, no se escribe ninguno', async () => {
+  const filas = [filaRendicion('r1'), filaRendicion('r2')]
+  const port = {
+    inserts: [],
+    ...portRendicion({ filas, vinculadas: 2 }),
+  }
+  // Una confirmada y la otra no: `contextoDeRendicion` exige TODAS.
+  const mixto = portRendicion({ filas, vinculadas: 2, confirmado: false })
+  const llamadas = []
+  await procesarUnLote({ port: mixto, procesar: async (_d, m) => { llamadas.push(m); return { estado: 'confirmar', texto: '', fajoId: 'f', parte: parte() } } })
+  assert.equal(llamadas[0].confirmaLaPersona, true)
+  assert.equal(mixto.inserts.length, 0)
 })
