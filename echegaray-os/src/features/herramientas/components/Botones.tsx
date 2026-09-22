@@ -7,9 +7,11 @@ import { useHerramientas } from './Espacio'
 import { botonPrimario, botonSecundario } from './estilo'
 import { IcoFlecha } from './iconos'
 
-export function BotonMover({ ids, destino, children, primario = true, testid = 'registrar-movimiento', style }: {
+export function BotonMover({ ids, destino, origen, children, primario = true, testid = 'registrar-movimiento', style }: {
   ids: string[]
   destino?: string
+  /** Desde qué lugar: los lotes repartidos salen de ahí. */
+  origen?: string
   children?: ReactNode
   primario?: boolean
   testid?: string
@@ -17,7 +19,7 @@ export function BotonMover({ ids, destino, children, primario = true, testid = '
 }) {
   const { abrir } = useHerramientas()
   return (
-    <button type="button" data-testid={testid} onClick={() => abrir({ tipo: 'mover', ids, destino })} style={{ ...(primario ? botonPrimario : botonSecundario), ...style }}>
+    <button type="button" data-testid={testid} onClick={() => abrir({ tipo: 'mover', ids, destino, origen })} style={{ ...(primario ? botonPrimario : botonSecundario), ...style }}>
       {primario && <IcoFlecha tam={13} />}
       {children ?? 'Registrar movimiento'}
     </button>

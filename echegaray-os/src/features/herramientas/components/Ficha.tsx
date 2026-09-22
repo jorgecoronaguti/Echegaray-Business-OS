@@ -16,9 +16,9 @@ import {
   UNIDAD, seVerifica, textoLectura, textoVerificacion, ultimaLectura, ultimaVerificacion, verificacionDe,
 } from '../logica/verificacion'
 import {
-  ETIQUETA_ESTADO, MOTIVO_BAJA, TONO_ESTADO, conProblema, rotuloUbicacion, tipoDe, ubicacionDelRodado, activosEn,
+  ETIQUETA_ESTADO, MOTIVO_BAJA, TONO_ESTADO, conProblema, lugaresDe, rotuloLugares, rotuloUbicacion, tipoDe, ubicacionDelRodado, activosEn,
 } from '../logica/parque'
-import { cambiarEstadoAction } from '../services/acciones'
+import { ajustarExistenciaAction, cambiarEstadoAction } from '../services/acciones'
 import { useHerramientas } from './Espacio'
 import { QR } from './QR'
 import { COLOR_TONO, eyebrow, MONO, SUPERFICIE, V, vacio } from './estilo'
@@ -67,7 +67,7 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
           <div style={{ fontSize: '17px', fontWeight: 600, letterSpacing: '-.01em', color: a.estado === 'baja' ? V.tenue : V.tinta }}>{a.nombre}</div>
           <div style={{ fontSize: '12.5px', color: V.apagado }}>
             <span style={{ fontFamily: MONO }}>{a.codigo}</span>
-            {a.patente ? ` · ${a.patente}` : ''} · {a.categoria ?? <span style={vacio}>sin categoría</span>} · {a.ubicacion_id ? `en ${rotuloUbicacion(parque, a.ubicacion_id)}` : <span style={vacio}>sin ubicación cargada</span>}
+            {a.patente ? ` · ${a.patente}` : ''} · {a.categoria ?? <span style={vacio}>sin categoría</span>} · {a.ubicacion_id ? `en ${a.estado === 'baja' ? rotuloUbicacion(parque, a.ubicacion_id) : rotuloLugares(parque, a)}` : <span style={vacio}>sin ubicación cargada</span>}
           </div>
         </div>
         {/* «Editar datos» y la × van en la misma fila, una al lado de la otra: con la × flotando
@@ -111,6 +111,8 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
           </div>
         </div>
       </div>
+
+      {a.estado !== 'baja' && a.cantidad > 1 && <Reparto id={a.id} />}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={eyebrow}>Estado</div>
@@ -214,6 +216,63 @@ function Uso({ id, clase, codigo }: { id: string; clase: 'rodado' | 'equipo'; co
           </Link>
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * DÓNDE ESTÁN LAS UNIDADES DE UN LOTE (dueño, 22/09): «Taller 5 · Entrepiso 3». Cada lugar se puede
+ * corregir si al contar hay otra cantidad (recuento: queda en el historial con quién y cuándo). Para
+ * llevar unidades a otro lado es «Mover»; para las que se rompieron o se perdieron, «Dar de baja».
+ */
+function Reparto({ id }: { id: string }) {
+  const { parque, avisar, refrescar } = useHerramientas()
+  const a = parque.activoPorId.get(id)!
+  const lugares = lugaresDe(parque, id)
+  const [editando, setEditando] = useState<string | null>(null)
+  const [valor, setValor] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [enviando, setEnviando] = useState(false)
+
+  async function guardar(ubicacion: string) {
+    const n = Math.trunc(Number(valor))
+    if (!Number.isFinite(n) || n < 1) return setError('Es un número de 1 o más. Para dejar el lugar en 0: moverlas o darlas de baja.')
+    setEnviando(true)
+    setError(null)
+    const r = await ajustarExistenciaAction({ activo: id, ubicacion, cantidad: n, detalle: 'recuento desde la ficha' })
+    setEnviando(false)
+    if (!r.ok) return setError(r.error)
+    avisar(`${a.nombre}: en ${rotuloUbicacion(parque, ubicacion)} quedaron ${n}.`)
+    setEditando(null)
+    refrescar()
+  }
+
+  return (
+    <div data-testid="reparto-lote" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={eyebrow}>Dónde están las {a.cantidad} unidades</div>
+      {lugares.map((e) => (
+        <div key={e.ubicacion_id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '13px', minHeight: 30, borderBottom: `1px solid ${V.linea}` }}>
+          <span style={{ flex: 1, minWidth: 0, color: V.tintaSuave }}>{rotuloUbicacion(parque, e.ubicacion_id)}</span>
+          {editando === e.ubicacion_id ? (
+            <>
+              <input type="number" min={1} autoFocus value={valor} onChange={(ev) => setValor(ev.target.value)} data-testid="recuento-cantidad"
+                onKeyDown={(ev) => { if (ev.key === 'Enter') guardar(e.ubicacion_id); if (ev.key === 'Escape') setEditando(null) }}
+                style={{ width: 64, height: 28, border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, padding: '0 8px', fontSize: '13px' }} />
+              <button type="button" disabled={enviando} onClick={() => guardar(e.ubicacion_id)} style={{ fontSize: '12.5px', fontWeight: 500 }} data-testid="recuento-guardar">Guardar</button>
+              <button type="button" onClick={() => { setEditando(null); setError(null) }} style={{ fontSize: '12.5px', color: V.apagado }}>cancelar</button>
+            </>
+          ) : (
+            <>
+              <b style={{ fontWeight: 600 }}>{e.cantidad}</b>
+              <button type="button" onClick={() => { setEditando(e.ubicacion_id); setValor(String(e.cantidad)); setError(null) }}
+                style={{ fontSize: '12px', color: V.apagado, textDecoration: 'underline', textDecorationColor: V.linea }} data-testid="recuento-corregir">
+                corregir
+              </button>
+            </>
+          )}
+        </div>
+      ))}
+      {error && <div role="alert" style={{ fontSize: '12.5px', color: V.neg }}>{error}</div>}
     </div>
   )
 }

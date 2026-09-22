@@ -6,7 +6,7 @@
 // reportes se vio «nunca». Ninguna función de acá devuelve 0 o un lugar por defecto para tapar un hueco.
 
 import { rotuloDeObra } from '../../../shared/utils/obra.ts'
-import type { Activo, EstadoActivo, Incidencia, LecturaUso, Movimiento, ObraIndice, TipoUbicacion, Ubicacion } from '../types.ts'
+import type { Activo, Ajuste, EstadoActivo, Existencia, Incidencia, LecturaUso, Movimiento, ObraIndice, TipoUbicacion, Ubicacion } from '../types.ts'
 
 export interface DatosParque {
   activos: Activo[]
@@ -25,6 +25,13 @@ export interface DatosParque {
   lecturas?: LecturaUso[] | null
   /** persona_id → nombre, para «opera D. Luna». Sólo las que la sesión puede ver. */
   personas?: Record<string, string>
+  /**
+   * Cuántas unidades hay en cada lugar (20260922T1300). Ausente = se deriva de `activo.ubicacion_id` y
+   * `activo.cantidad` (todo en un solo lugar), que es lo que valía antes de repartir lotes.
+   */
+  existencias?: Existencia[]
+  /** Recuentos y bajas parciales (20260922T1300). */
+  ajustes?: Ajuste[]
 }
 
 export interface Parque extends DatosParque {
@@ -37,6 +44,18 @@ export interface Parque extends DatosParque {
   movsDe: Map<string, Movimiento[]>
   /** Incidencias de cada activo, de la más nueva a la más vieja. */
   incDe: Map<string, Incidencia[]>
+  /** Dónde están las unidades de cada activo vivo, de donde hay más a donde hay menos. */
+  existDe: Map<string, Existencia[]>
+  /** Qué hay en cada lugar. */
+  existEn: Map<string, Existencia[]>
+  /** Recuentos y bajas parciales de cada activo. */
+  ajustesDe: Map<string, Ajuste[]>
+}
+
+function agrupar<T>(l: T[], k: (x: T) => string): Map<string, T[]> {
+  const m = new Map<string, T[]>()
+  for (const x of l) m.set(k(x), [...(m.get(k(x)) ?? []), x])
+  return m
 }
 
 const desc = (a: string, b: string) => (a < b ? 1 : a > b ? -1 : 0)
@@ -60,8 +79,24 @@ export function armarParque(d: DatosParque): Parque {
     if (x) x.push(l)
     else lecDe.set(l.activo_id, [l])
   }
+  const vivos = new Set(d.activos.filter((a) => a.estado !== 'baja').map((a) => a.id))
+  const existencias = (d.existencias ?? d.activos
+    .filter((a) => a.ubicacion_id)
+    .map((a) => ({ activo_id: a.id, ubicacion_id: a.ubicacion_id!, cantidad: a.cantidad ?? 1 })))
+    .filter((e) => vivos.has(e.activo_id))
+  const existDe = new Map<string, Existencia[]>()
+  const existEn = new Map<string, Existencia[]>()
+  for (const e of existencias) {
+    existDe.set(e.activo_id, [...(existDe.get(e.activo_id) ?? []), e])
+    existEn.set(e.ubicacion_id, [...(existEn.get(e.ubicacion_id) ?? []), e])
+  }
+  for (const l of existDe.values()) l.sort((a, b) => b.cantidad - a.cantidad)
   return {
     ...d,
+    existencias,
+    existDe,
+    existEn,
+    ajustesDe: agrupar(d.ajustes ?? [], (x) => x.activo_id),
     lecDe,
     activoPorId: new Map(d.activos.map((a) => [a.id, a])),
     ubicacionPorId: new Map(d.ubicaciones.map((u) => [u.id, u])),
@@ -178,9 +213,41 @@ export const vivo = (a: Pick<Activo, 'estado'>) => a.estado !== 'baja'
 export const conProblema = (a: Pick<Activo, 'estado'>) =>
   a.estado === 'requiere_mantenimiento' || a.estado === 'fuera_servicio' || a.estado === 'reparacion_externa'
 
-/** Los activos vivos que están HOY en una ubicación. */
+/** Los activos vivos que tienen HOY al menos una unidad en una ubicación (un lote repartido está en varias). */
 export function activosEn(p: Parque, ubicacionId: string): Activo[] {
-  return p.activos.filter((a) => vivo(a) && a.ubicacion_id === ubicacionId)
+  return (p.existEn.get(ubicacionId) ?? []).map((e) => p.activoPorId.get(e.activo_id)!).filter((a) => a && vivo(a))
+}
+
+/** Dónde están las unidades de un activo, de donde hay más a donde hay menos. Vacío = baja o sin ubicación. */
+export function lugaresDe(p: Parque, activoId: string): Existencia[] {
+  return p.existDe.get(activoId) ?? []
+}
+
+/** Cuántas unidades de un activo hay en un lugar (0 = ninguna). */
+export function cantidadEn(p: Parque, activoId: string, ubicacionId: string | null | undefined): number {
+  if (!ubicacionId) return 0
+  return lugaresDe(p, activoId).find((e) => e.ubicacion_id === ubicacionId)?.cantidad ?? 0
+}
+
+/** Un lote con unidades en más de un lugar. */
+export function repartido(p: Parque, activoId: string): boolean {
+  return lugaresDe(p, activoId).length > 1
+}
+
+/**
+ * Dónde está, en palabras. Un lote repartido dice cada lugar con sus unidades: «Taller 5 · OB-0010 · SF
+ * ENTREPISO 3». Lo demás, su lugar (una baja, el último).
+ */
+export function rotuloLugares(p: Parque, a: Activo): string {
+  const l = lugaresDe(p, a.id)
+  if (l.length <= 1) return rotuloUbicacion(p, l[0]?.ubicacion_id ?? a.ubicacion_id)
+  return l.map((e) => `${rotuloUbicacion(p, e.ubicacion_id)} ${e.cantidad}`).join(' · ')
+}
+
+/** De dónde sale por defecto: el lugar pedido si tiene unidades ahí; si no, donde hay más. */
+export function origenPara(p: Parque, a: Activo, preferido?: string | null): string | null {
+  if (preferido && cantidadEn(p, a.id, preferido) > 0) return preferido
+  return lugaresDe(p, a.id)[0]?.ubicacion_id ?? a.ubicacion_id
 }
 
 /** La ubicación que ES un rodado (la de su carga), si existe. */
@@ -188,8 +255,8 @@ export function ubicacionDelRodado(p: Parque, rodadoId: string): Ubicacion | nul
   return p.ubicaciones.find((u) => u.tipo === 'rodado' && u.activo_id === rodadoId) ?? null
 }
 
-/** Desde cuándo está un activo en su lugar actual: el último movimiento que llegó ahí. */
-export function llegoEn(p: Parque, a: Activo): string | null {
-  const m = p.movsDe.get(a.id)?.find((x) => x.destino_id === a.ubicacion_id)
+/** Desde cuándo está un activo en un lugar (por defecto, el principal): el último movimiento que llegó ahí. */
+export function llegoEn(p: Parque, a: Activo, ubicacionId: string | null = a.ubicacion_id): string | null {
+  const m = p.movsDe.get(a.id)?.find((x) => x.destino_id === ubicacionId)
   return m?.fecha_hora ?? null
 }

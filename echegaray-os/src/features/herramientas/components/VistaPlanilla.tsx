@@ -157,7 +157,7 @@ function FilaImpresa({ f }: { f: FilaControl }) {
     <tr>
       <td style={{ ...celda, fontFamily: MONO, fontSize: '11.5px' }}>{a.codigo}</td>
       <td style={celda}>{a.nombre}</td>
-      <td style={{ ...celda, textAlign: 'right' }}>{a.cantidad ?? 1}</td>
+      <td style={{ ...celda, textAlign: 'right' }}>{f.cantidad}</td>
       <td style={{ ...celda, color: a.estado === 'operativo' ? V.tintaSuave : V.warn }}>{textoEstado(a)}</td>
       <td style={celda}>{f.llego ? `${diaMes(f.llego)} · ${f.dias} d` : 'sin registro'}</td>
       <td style={celda}>{f.trajo ?? ''}</td>

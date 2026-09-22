@@ -7,8 +7,8 @@
 
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { candidatos, categorias, cuentaPorEstado, filtrar, queryDe, sugerencias, totales, type Filtros, type FiltroClase, type FiltroEstado } from '../logica/inventario'
-import { ETIQUETA_ESTADO_CORTA, MOTIVO_BAJA, TONO_ESTADO, quienLaMovio, rotuloUbicacion, textoVisto, vistoEn, rotuloRodado, type Parque } from '../logica/parque'
+import { cantidadVisible, candidatos, categorias, cuentaPorEstado, filtrar, queryDe, sugerencias, totales, type Filtros, type FiltroClase, type FiltroEstado } from '../logica/inventario'
+import { ETIQUETA_ESTADO_CORTA, MOTIVO_BAJA, TONO_ESTADO, quienLaMovio, rotuloLugares, rotuloUbicacion, textoVisto, vistoEn, rotuloRodado, type Parque } from '../logica/parque'
 import { editarActivoAction } from '../services/acciones'
 import type { Activo } from '../types'
 import { useHerramientas } from './Espacio'
@@ -55,7 +55,9 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
   const cats = categorias(parque.activos)
   const abierto = activo ? parque.activos.find((x) => x.codigo === activo) ?? null : null
   const lugares = parque.ubicaciones.filter((u) => !u.archivada && u.tipo !== 'obra' && u.tipo !== 'rodado')
-  const obrasConAlgo = parque.ubicaciones.filter((u) => u.tipo === 'obra' && parque.activos.some((a) => a.ubicacion_id === u.id))
+  const obrasConAlgo = parque.ubicaciones.filter((u) => u.tipo === 'obra' && (parque.existEn.get(u.id)?.length ?? 0) > 0)
+  // Mirando un lugar concreto, los lotes salen de ahí al moverlos.
+  const origenMirado = filtros.ubicacion && /^[0-9a-f-]{36}$/.test(filtros.ubicacion) ? filtros.ubicacion : null
   const rodados = parque.activos.filter((a) => a.clase === 'rodado' && a.estado !== 'baja')
 
   const toggle = (id: string) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
@@ -90,7 +92,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
             )
           })}
           <div style={{ marginLeft: 'auto' }}>
-            <button type="button" onClick={() => abrir({ tipo: 'mover', ids: sel.filter((id) => parque.activoPorId.get(id)?.estado !== 'baja') })} data-testid="armar-envio"
+            <button type="button" onClick={() => abrir({ tipo: 'mover', ids: sel.filter((id) => parque.activoPorId.get(id)?.estado !== 'baja'), origen: origenMirado })} data-testid="armar-envio"
               style={{ height: 28, fontSize: '12.5px', padding: '0 12px', borderRadius: 6, background: V.marca, color: V.grafito, fontWeight: 600, marginRight: 8 }}>
               Armar envío a obra
             </button>
@@ -145,7 +147,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
           <div data-testid="barra-seleccion" style={{ minHeight: 38, display: 'flex', alignItems: 'center', gap: 16, padding: '0 12px', background: SUPERFICIE, border: `1px solid ${V.linea}`, borderRadius: 6, fontSize: '12.5px', flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 500 }}>{sel.length === 1 ? '1 seleccionada' : `${sel.length} seleccionadas`}</span>
             {vivosSel.length > 0 && (
-              <button type="button" onClick={() => abrir({ tipo: 'mover', ids: vivosSel })} data-testid="mover-seleccion"
+              <button type="button" onClick={() => abrir({ tipo: 'mover', ids: vivosSel, origen: origenMirado })} data-testid="mover-seleccion"
                 style={{ height: 28, padding: '0 12px', borderRadius: 6, background: V.marca, color: V.grafito, fontWeight: 600 }}>
                 Mover o asignar a obra
               </button>
@@ -173,7 +175,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
           </div>
         )}
 
-          <TotalesInventario t={totales(parque, lista)} activo={filtros.ubicacion} onFiltrar={(u) => ir({ ubicacion: filtros.ubicacion === u ? null : u })} />
+          <TotalesInventario t={totales(parque, lista, filtros.ubicacion)} activo={filtros.ubicacion} onFiltrar={(u) => ir({ ubicacion: filtros.ubicacion === u ? null : u })} />
           <div role="table" aria-label="Inventario (rótulos)">
           <div role="row" style={{ ...eyebrow, display: 'grid', gridTemplateColumns: COLS, gap: 16, height: 36, alignItems: 'center', borderBottom: `1px solid ${V.linea}` }}>
             <div>
@@ -192,7 +194,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
             </div>
           )}
           {lista.map((a) => (
-            <Fila key={a.id} parque={parque} a={a} marcada={sel.includes(a.id)} abierta={abierto?.id === a.id}
+            <Fila key={a.id} parque={parque} a={a} filtroUbicacion={filtros.ubicacion} marcada={sel.includes(a.id)} abierta={abierto?.id === a.id}
               onMarcar={() => toggle(a.id)} onAbrir={() => ir({}, a.codigo)} />
           ))}
         </div>
@@ -310,7 +312,7 @@ function BuscadorInventario({ parque, valor, onBuscar, onElegir }: {
               style={{ display: 'flex', width: '100%', alignItems: 'baseline', gap: 10, padding: '7px 12px', textAlign: 'left', background: i === marcado ? V.hover : 'transparent' }}>
               <span style={{ fontSize: '13px', color: V.tinta, fontWeight: 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.nombre}</span>
               <span style={{ fontFamily: MONO, fontSize: '11.5px', color: V.tenue }}>{a.codigo}</span>
-              <span style={{ fontSize: '12px', color: V.apagado, whiteSpace: 'nowrap' }}>{rotuloUbicacion(parque, a.ubicacion_id) ?? 'sin ubicación'}</span>
+              <span style={{ fontSize: '12px', color: V.apagado, whiteSpace: 'nowrap', maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis' }}>{rotuloLugares(parque, a)}</span>
             </button>
           ))}
         </div>
@@ -323,8 +325,11 @@ const selectFiltro = {
   height: 28, padding: '0 8px', border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, fontSize: '12.5px', color: V.tintaSuave, background: '#FFFFFF', maxWidth: 220,
 }
 
-function Fila({ parque, a, marcada, abierta, onMarcar, onAbrir }: { parque: Parque; a: Activo; marcada: boolean; abierta: boolean; onMarcar: () => void; onAbrir: () => void }) {
+function Fila({ parque, a, filtroUbicacion, marcada, abierta, onMarcar, onAbrir }: { parque: Parque; a: Activo; filtroUbicacion: string | null; marcada: boolean; abierta: boolean; onMarcar: () => void; onAbrir: () => void }) {
   const baja = a.estado === 'baja'
+  // Con un lugar filtrado, el lote muestra lo que hay AHÍ («× 3 de 8»); sin filtro, el total.
+  const cant = cantidadVisible(parque, a, filtroUbicacion)
+  const lugares = rotuloLugares(parque, a)
   const quien = quienLaMovio(parque, a.id)
   const visto = vistoEn(parque, a.id)
   const tono = COLOR_TONO[TONO_ESTADO[a.estado]]
@@ -335,7 +340,7 @@ function Fila({ parque, a, marcada, abierta, onMarcar, onAbrir }: { parque: Parq
         <input type="checkbox" aria-label={`Seleccionar ${a.nombre}`} checked={marcada} onChange={onMarcar} style={{ width: 14, height: 14, accentColor: V.grafito }} />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <div style={{ fontWeight: 500 }}>{a.nombre}{a.patente && <span style={{ fontFamily: MONO, fontSize: '11px', color: V.tenue, fontWeight: 400 }}> {a.patente}</span>}{a.cantidad > 1 && <span data-testid="cantidad-lote" style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 4, background: V.hover, fontSize: '11.5px', color: V.tintaSuave, fontWeight: 500 }}>× {a.cantidad}</span>}</div>
+        <div style={{ fontWeight: 500 }}>{a.nombre}{a.patente && <span style={{ fontFamily: MONO, fontSize: '11px', color: V.tenue, fontWeight: 400 }}> {a.patente}</span>}{a.cantidad > 1 && <span data-testid="cantidad-lote" style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 4, background: V.hover, fontSize: '11.5px', color: V.tintaSuave, fontWeight: 500 }}>× {cant}{cant !== a.cantidad ? ` de ${a.cantidad}` : ''}</span>}</div>
         <div style={{ fontFamily: MONO, fontSize: '11.5px', color: V.tenue }}>
           {a.codigo}{a.alta_desde_obra ? ' · alta desde obra' : ''}
         </div>
@@ -346,7 +351,7 @@ function Fila({ parque, a, marcada, abierta, onMarcar, onAbrir }: { parque: Parq
         {baja ? `Baja · ${MOTIVO_BAJA[a.baja_motivo ?? ''] ?? ''} ${a.baja_en ? diaMes(a.baja_en) : ''}` : ETIQUETA_ESTADO_CORTA[a.estado]}
       </div>
       <div style={a.ubicacion_id ? { color: V.tintaSuave } : vacio}>
-        {baja && a.ubicacion_id ? `última: ${rotuloUbicacion(parque, a.ubicacion_id)}` : rotuloUbicacion(parque, a.ubicacion_id)}
+        {baja && a.ubicacion_id ? `última: ${rotuloUbicacion(parque, a.ubicacion_id)}` : lugares}
       </div>
       <div style={quien ? { color: V.apagado } : vacio}>{quien ?? 'sin registro'}</div>
       <div style={{ textAlign: 'right', ...(visto ? { color: V.apagado } : vacio) }}>{textoVisto(visto)}</div>

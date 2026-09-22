@@ -7,7 +7,7 @@
 import Link from 'next/link'
 import { Fragment } from 'react'
 import {
-  ETIQUETA_ESTADO_CORTA, ETIQUETA_TIPO, ORDEN_TIPO, TONO_ESTADO, activosEn, autorDe, conProblema, diasDesde, llegoEn,
+  ETIQUETA_ESTADO_CORTA, ETIQUETA_TIPO, ORDEN_TIPO, TONO_ESTADO, activosEn, autorDe, cantidadEn, conProblema, diasDesde, llegoEn,
   rotuloUbicacion, vivo, type Parque,
 } from '../logica/parque'
 import type { TipoUbicacion, Ubicacion } from '../types'
@@ -100,7 +100,7 @@ function Grupo({ parque, tipo, primero, actual }: { parque: Parque; tipo: TipoUb
 
 function Detalle({ parque, u, filtro, hoy }: { parque: Parque; u: Ubicacion; filtro: FiltroLugar; hoy: Date }) {
   const aca = activosEn(parque, u.id).sort((a, b) => Number(b.clase === 'rodado') - Number(a.clase === 'rodado') || a.nombre.localeCompare(b.nombre, 'es'))
-  const viejo = (id: string) => { const l = llegoEn(parque, parque.activoPorId.get(id)!); return l ? diasDesde(l, hoy) > 60 : false }
+  const viejo = (id: string) => { const l = llegoEn(parque, parque.activoPorId.get(id)!, u.id); return l ? diasDesde(l, hoy) > 60 : false }
   const lista = filtro === 'problema' ? aca.filter(conProblema) : filtro === 'viejas' ? aca.filter((a) => viejo(a.id)) : aca
   const obra = u.obra_id ? parque.obraPorId.get(u.obra_id) : null
   const rodado = u.activo_id ? parque.activoPorId.get(u.activo_id) : null
@@ -112,6 +112,7 @@ function Detalle({ parque, u, filtro, hoy }: { parque: Parque; u: Ubicacion; fil
     u.contacto ? u.contacto : null,
   ].filter(Boolean).join(' · ')
   const conProb = aca.filter(conProblema).length
+  const unidadesAca = aca.reduce((s, a) => s + cantidadEn(parque, a.id, u.id), 0)
   const filtros: { v: FiltroLugar; t: string; n: number; warn?: boolean }[] = [
     { v: 'todo', t: 'Todo', n: aca.length },
     { v: 'problema', t: 'Con problema', n: conProb, warn: true },
@@ -126,7 +127,7 @@ function Detalle({ parque, u, filtro, hoy }: { parque: Parque; u: Ubicacion; fil
             {u.tipo === 'rodado' && <IcoRodado tam={16} />}{rotuloUbicacion(parque, u.id)}
           </h2>
           <div style={{ fontSize: '13px', color: V.apagado }}>
-            {aca.length} {aca.length === 1 ? 'activo' : 'activos'}{conProb ? ` · ${conProb} con problema` : ''}
+            {aca.length} {aca.length === 1 ? 'activo' : 'activos'}{unidadesAca !== aca.length ? ` · ${unidadesAca} unidades` : ''}{conProb ? ` · ${conProb} con problema` : ''}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -134,7 +135,7 @@ function Detalle({ parque, u, filtro, hoy }: { parque: Parque; u: Ubicacion; fil
             style={{ height: 32, padding: '0 14px', border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, fontSize: '13px', display: 'inline-flex', alignItems: 'center' }}>
             Planilla
           </Link>
-          {aca.length > 0 && <BotonMover ids={aca.map((a) => a.id)} testid="mover-desde-aca">Mover desde acá</BotonMover>}
+          {aca.length > 0 && <BotonMover ids={aca.map((a) => a.id)} origen={u.id} testid="mover-desde-aca">Mover desde acá</BotonMover>}
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: '12.5px', paddingBottom: 4 }}>
@@ -154,7 +155,8 @@ function Detalle({ parque, u, filtro, hoy }: { parque: Parque; u: Ubicacion; fil
         </div>
         {lista.length === 0 && <div style={{ fontSize: '13px', color: V.tenue, padding: '14px 0' }}>{aca.length ? 'Nada con este filtro.' : 'No hay nada acá.'}</div>}
         {lista.map((a, i) => {
-          const llego = llegoEn(parque, a)
+          const llego = llegoEn(parque, a, u.id)
+          const aqui = cantidadEn(parque, a.id, u.id)
           const mov = parque.movsDe.get(a.id)?.find((m) => m.destino_id === u.id)
           const quien = mov ? autorDe(parque, mov) : null
           const tono = COLOR_TONO[TONO_ESTADO[a.estado]]
@@ -166,6 +168,7 @@ function Detalle({ parque, u, filtro, hoy }: { parque: Parque; u: Ubicacion; fil
               <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
                 {a.clase === 'rodado' && <IcoRodado tam={14} />}
                 <span style={{ fontWeight: 500 }}>{a.nombre}</span>
+                {a.cantidad > 1 && <span data-testid="cantidad-lugar" style={{ padding: '1px 6px', borderRadius: 4, background: V.hover, fontSize: '11.5px', color: V.tintaSuave, fontWeight: 500 }}>× {aqui}{aqui !== a.cantidad ? ` de ${a.cantidad}` : ''}</span>}
                 <span style={{ fontFamily: MONO, fontSize: '11.5px', color: V.tenue }}>{a.patente ?? a.codigo}</span>
               </div>
               <div style={a.clase === 'rodado' ? { color: V.tintaSuave } : a.categoria ? { color: V.tintaSuave } : vacio}>

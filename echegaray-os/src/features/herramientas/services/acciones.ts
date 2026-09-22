@@ -72,6 +72,65 @@ export async function moverActivosAction(entrada: z.input<typeof moverSchema>): 
   return r
 }
 
+// LOTES REPARTIDOS (20260922T1300): cada renglón dice de qué lugar sale y cuántas unidades. La base
+// no deja mandar más de las que hay en el origen.
+const moverExistenciasSchema = z.object({
+  items: z.array(z.object({
+    activo: uuid,
+    origen: uuid.nullable(),
+    cantidad: z.number().int('La cantidad es un número entero').min(1, 'La cantidad es 1 o más'),
+  })).min(1, 'No hay nada para mover').max(500),
+  destino: destinoSchema,
+  nota: z.string().trim().max(400).optional(),
+  bajarCarga: z.boolean().default(false),
+})
+
+export async function moverExistenciasAction(entrada: z.input<typeof moverExistenciasSchema>): Promise<Resultado<string | null>> {
+  const p = moverExistenciasSchema.safeParse(entrada)
+  if (!p.success) return { ok: false, error: p.error.issues[0].message }
+  const d = await resolverDestino(p.data.destino)
+  if (!d.ok) return d
+  const r = await rpc<string | null>('mover_existencias', {
+    p_items: p.data.items, p_destino: d.dato, p_nota: p.data.nota || null, p_bajar_carga: p.data.bajarCarga,
+  })
+  if (r.ok && r.dato === null) return { ok: true, dato: null, mensaje: 'Ya estaban ahí: no se registró ningún movimiento.' }
+  return r
+}
+
+const ajusteSchema = z.object({
+  activo: uuid,
+  ubicacion: uuid,
+  cantidad: z.number().int('La cantidad es un número entero').min(1, 'Para dejar un lugar en 0 es una baja o un movimiento'),
+  detalle: z.string().trim().max(400).optional(),
+})
+
+/** Recuento en un lugar («había 7, no 8»). Queda en `activo_ajuste`. */
+export async function ajustarExistenciaAction(entrada: z.input<typeof ajusteSchema>): Promise<Resultado> {
+  const p = ajusteSchema.safeParse(entrada)
+  if (!p.success) return { ok: false, error: p.error.issues[0].message }
+  return rpc<null>('ajustar_existencia', {
+    p_activo: p.data.activo, p_ubicacion: p.data.ubicacion, p_cantidad: p.data.cantidad, p_detalle: p.data.detalle || null,
+  })
+}
+
+const bajaParcialSchema = z.object({
+  activo: uuid,
+  ubicacion: uuid,
+  cantidad: z.number().int('La cantidad es un número entero').min(1, 'La cantidad es 1 o más'),
+  motivo: z.enum(['robada', 'perdida', 'descartada', 'vendida'], { message: 'El motivo es obligatorio' }),
+  detalle: z.string().trim().max(400).optional(),
+})
+
+/** Baja de parte de un lote en un lugar. Si son todas las unidades que le quedan, es la baja total. */
+export async function darDeBajaParcialAction(entrada: z.input<typeof bajaParcialSchema>): Promise<Resultado> {
+  const p = bajaParcialSchema.safeParse(entrada)
+  if (!p.success) return { ok: false, error: p.error.issues[0].message }
+  return rpc<null>('dar_de_baja_parcial', {
+    p_activo: p.data.activo, p_ubicacion: p.data.ubicacion, p_cantidad: p.data.cantidad,
+    p_motivo: p.data.motivo, p_detalle: p.data.detalle || null,
+  })
+}
+
 async function subirFoto(file: File, carpeta: string): Promise<Resultado<string>> {
   if (!file.type.startsWith('image/')) return { ok: false, error: 'La foto tiene que ser una imagen' }
   if (file.size > 12 * 1024 * 1024) return { ok: false, error: 'La foto pesa más de 12 MB' }

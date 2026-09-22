@@ -104,11 +104,11 @@ begin
   select * into v_act from activo where id = p_activo for update;
   if not found then raise exception 'el activo no existe'; end if;
   if v_act.estado = 'baja' then raise exception '% está dado de baja', v_act.codigo; end if;
-  v_estado := case p_tipo
+  v_estado := (case p_tipo
     when 'fallando' then 'requiere_mantenimiento'
     when 'no_anda' then 'fuera_servicio'
     when 'no_encontrada' then v_act.estado
-    else null end;
+    else null end);
   if v_estado is null then raise exception 'tipo de problema desconocido: %', p_tipo; end if;
   -- Un activo en reparación externa no vuelve a «requiere mantenimiento» porque alguien lo reporte.
   if v_act.estado = 'reparacion_externa' then v_estado := v_act.estado; end if;

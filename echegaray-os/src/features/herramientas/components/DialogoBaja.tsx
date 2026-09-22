@@ -4,10 +4,13 @@
 //
 // Diseño: «sólo dirección». Decisión del dueño (21/09): todos los niveles con permisos iguales, incluida
 // la baja. No se filtra por rol; la base sólo exige un usuario logueado.
+//
+// Un lote (cantidad > 1) pregunta en qué lugar y cuántas: «se rompieron 2 de las 3 de la obra» baja 2 y
+// el resto sigue vivo (`dar_de_baja_parcial`). Si son todas las que quedan, es la baja del lote entero.
 
 import { useEffect, useState } from 'react'
-import { rotuloUbicacion } from '../logica/parque'
-import { darDeBajaAction } from '../services/acciones'
+import { lugaresDe, rotuloUbicacion } from '../logica/parque'
+import { darDeBajaAction, darDeBajaParcialAction } from '../services/acciones'
 import type { MotivoBaja } from '../types'
 import { useHerramientas } from './Espacio'
 import { ErrorPanel } from './PanelLateral'
@@ -22,6 +25,11 @@ export function DialogoBaja({ id, onHecho }: { id: string; onHecho: (t: string) 
   const a = parque.activoPorId.get(id)
   const [motivo, setMotivo] = useState<MotivoBaja | null>(null)
   const [detalle, setDetalle] = useState('')
+  const lugares = lugaresDe(parque, id)
+  const lote = (a?.cantidad ?? 1) > 1 && lugares.length > 0
+  const [donde, setDonde] = useState<string | null>(lugares[0]?.ubicacion_id ?? null)
+  const hayAhi = lugares.find((e) => e.ubicacion_id === donde)?.cantidad ?? 0
+  const [cuantas, setCuantas] = useState<number>(hayAhi)
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
   useEffect(() => {
@@ -35,10 +43,16 @@ export function DialogoBaja({ id, onHecho }: { id: string; onHecho: (t: string) 
     if (!motivo || !a) return
     setEnviando(true)
     setError(null)
-    const r = await darDeBajaAction({ activo: a.id, motivo, detalle })
+    const n = Math.min(Math.max(Math.trunc(cuantas) || 0, 1), hayAhi)
+    const r = lote && donde
+      ? await darDeBajaParcialAction({ activo: a.id, ubicacion: donde, cantidad: n, motivo, detalle })
+      : await darDeBajaAction({ activo: a.id, motivo, detalle })
     setEnviando(false)
     if (!r.ok) return setError(r.error)
-    onHecho(`${a.codigo} · ${a.nombre} quedó dado de baja.`)
+    const quedan = lote ? a.cantidad - n : 0
+    onHecho(quedan > 0
+      ? `${a.codigo} · ${a.nombre}: ${n} dadas de baja en ${rotuloUbicacion(parque, donde)}. Quedan ${quedan}.`
+      : `${a.codigo} · ${a.nombre} quedó dado de baja.`)
   }
 
   return (
@@ -48,9 +62,28 @@ export function DialogoBaja({ id, onHecho }: { id: string; onHecho: (t: string) 
     >
       <div style={{ width: 410, maxWidth: '100%', background: '#FFFFFF', border: `1px solid ${V.lineaFuerte}`, borderRadius: 8, padding: '24px 20px 20px', display: 'flex', flexDirection: 'column', gap: 16, boxShadow: '0 12px 32px rgba(0,0,0,.08)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          <div id="titulo-baja" style={{ fontSize: '16px', fontWeight: 600, letterSpacing: '-.01em' }}>Dar de baja {a.nombre}</div>
+          <div id="titulo-baja" style={{ fontSize: '16px', fontWeight: 600, letterSpacing: '-.01em' }}>Dar de baja {lote ? 'unidades de ' : ''}{a.nombre}</div>
           <div style={{ fontSize: '12.5px', color: V.apagado }}>{a.codigo} · última ubicación: {rotuloUbicacion(parque, a.ubicacion_id)}</div>
         </div>
+        {lote && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="baja-lote">
+            <div style={eyebrow}>Cuántas y dónde</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '13px' }}>
+              <input type="number" min={1} max={hayAhi} value={cuantas} data-testid="baja-cantidad" aria-label="Cuántas se dan de baja"
+                onChange={(e) => setCuantas(e.target.valueAsNumber)}
+                style={{ width: 70, height: 32, border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, padding: '0 8px', fontSize: '13px' }} />
+              de {hayAhi} en
+              {lugares.length > 1 ? (
+                <select value={donde ?? ''} data-testid="baja-lugar" aria-label="En qué lugar"
+                  onChange={(e) => { setDonde(e.target.value); setCuantas(lugares.find((x) => x.ubicacion_id === e.target.value)?.cantidad ?? 1) }}
+                  style={{ height: 32, border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, padding: '0 6px', fontSize: '12.5px', maxWidth: 220 }}>
+                  {lugares.map((e) => <option key={e.ubicacion_id} value={e.ubicacion_id}>{rotuloUbicacion(parque, e.ubicacion_id)} ({e.cantidad})</option>)}
+                </select>
+              ) : <span>{rotuloUbicacion(parque, donde)}</span>}
+            </div>
+            <div style={{ fontSize: '12px', color: V.apagado }}>El lote tiene {a.cantidad} en total. Las que no se dan de baja siguen donde están.</div>
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={eyebrow}>Motivo</div>
           <div role="radiogroup">

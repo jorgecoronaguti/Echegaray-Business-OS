@@ -59,6 +59,19 @@ export interface Movimiento {
   nota: string | null
   corrige_a: string | null
   importado: boolean
+  /** Unidades movidas (20260922T1300). null = anterior, cuando un lote sólo se movía entero. */
+  cantidad?: number | null
+}
+
+/**
+ * Cuántas unidades de un activo hay en un lugar (migración 20260922T1300). Un lote puede estar
+ * repartido: BAL-001 con 5 en el Taller y 3 en una obra. Es LA verdad de dónde están las cosas;
+ * `activo.ubicacion_id` es sólo el lugar donde hay más y `activo.cantidad` el total.
+ */
+export interface Existencia {
+  activo_id: string
+  ubicacion_id: string
+  cantidad: number
 }
 
 export interface Incidencia {
@@ -87,7 +100,22 @@ export const COLUMNAS_ACTIVO =
   'id, codigo, clase, nombre, cantidad, categoria, patente, numero_serie, foto_url, compra_fecha, compra_precio, ubicacion_id, estado, estado_nota, estado_desde, estado_por, estado_asumido, baja_motivo, baja_detalle, baja_en, alta_desde_obra, etiqueta_impresa_en, legado_id, creado_en'
 export const COLUMNAS_UBICACION = 'id, tipo, nombre, obra_id, activo_id, contacto, archivada'
 export const COLUMNAS_MOVIMIENTO =
-  'id, activo_id, origen_id, destino_id, fecha_hora, usuario_id, usuario_texto, lote_id, nota, corrige_a, importado'
+  'id, activo_id, origen_id, destino_id, fecha_hora, usuario_id, usuario_texto, lote_id, nota, corrige_a, importado, cantidad'
+export const COLUMNAS_EXISTENCIA = 'activo_id, ubicacion_id, cantidad'
+
+/** Un cambio de cantidad en un lugar que no es un movimiento: recuento o baja de parte de un lote. */
+export interface Ajuste {
+  id: string
+  activo_id: string
+  ubicacion_id: string
+  antes: number
+  despues: number
+  motivo: 'recuento' | MotivoBaja
+  detalle: string | null
+  usuario_id: string | null
+  creado_en: string
+}
+export const COLUMNAS_AJUSTE = 'id, activo_id, ubicacion_id, antes, despues, motivo, detalle, usuario_id, creado_en'
 export const COLUMNAS_INCIDENCIA =
   'id, activo_id, tipo, texto, foto_url, ubicacion_id, estado_resultante, usuario_id, creado_en, cerrada_en'
 

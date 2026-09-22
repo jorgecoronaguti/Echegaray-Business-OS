@@ -7,7 +7,7 @@ import { ListaDelLugar, type ItemLugar } from '@/features/herramientas/component
 import { V } from '@/features/herramientas/components/estilo'
 import { diaMes } from '@/features/herramientas/components/formato'
 import { conLugar, resolverLugar } from '@/features/herramientas/logica/lugar'
-import { ETIQUETA_ESTADO, activosEn, conProblema, llegoEn, ubicacionDelRodado } from '@/features/herramientas/logica/parque'
+import { ETIQUETA_ESTADO, activosEn, cantidadEn, conProblema, llegoEn, ubicacionDelRodado } from '@/features/herramientas/logica/parque'
 
 // M05 · QUÉ HAY EN ESTA OBRA (o en el Taller) — ver por ubicación y marcar qué mover.
 export const dynamic = 'force-dynamic'
@@ -23,10 +23,11 @@ export default async function LugarCampo({ searchParams }: { searchParams: Promi
   const aca = (lugar.ubicacionId ? activosEn(p, lugar.ubicacionId) : [])
     .sort((a, b) => Number(conProblema(b)) - Number(conProblema(a)) || a.nombre.localeCompare(b.nombre, 'es'))
   const items: ItemLugar[] = aca.map((a) => {
-    const llego = llegoEn(p, a)
+    const llego = llegoEn(p, a, lugar.ubicacionId)
+    const aqui = cantidadEn(p, a.id, lugar.ubicacionId)
     const u = a.clase === 'rodado' ? ubicacionDelRodado(p, a.id) : null
     return {
-      id: a.id, codigo: a.codigo, nombre: a.nombre, clase: a.clase, patente: a.patente,
+      id: a.id, codigo: a.codigo, nombre: a.cantidad > 1 ? `${a.nombre} × ${aqui}` : a.nombre, clase: a.clase, patente: a.patente,
       problema: conProblema(a),
       detalle: conProblema(a) ? ETIQUETA_ESTADO[a.estado].toLowerCase() : llego ? `acá desde el ${diaMes(llego)}` : 'acá, sin fecha de llegada',
       lleva: u ? activosEn(p, u.id).length : 0,

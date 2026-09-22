@@ -10,6 +10,7 @@
 import { useState } from 'react'
 import { cambiarCodigoAction, cambiarFotoAction, editarActivoAction } from '../services/acciones'
 import { problemaDelPrefijo } from '../logica/codigo'
+import { lugaresDe } from '../logica/parque'
 import { CampoCodigo } from './CampoCodigo'
 import { useHerramientas } from './Espacio'
 import { ErrorPanel, PanelLateral } from './PanelLateral'
@@ -18,6 +19,7 @@ import { botonPrimarioGrande, botonSecundarioGrande, campo, eyebrow, V } from '.
 export function PanelEditar({ id, onHecho }: { id: string; onHecho: (t: string) => void }) {
   const { parque, cerrar } = useHerramientas()
   const a = parque.activoPorId.get(id)
+  const enVarios = a ? lugaresDe(parque, a.id).length > 1 : false
   const [v, setV] = useState(() => ({
     nombre: a?.nombre ?? '', categoria: a?.categoria ?? '', cantidad: String(a?.cantidad ?? 1), numero_serie: a?.numero_serie ?? '', patente: a?.patente ?? '',
     compra_fecha: a?.compra_fecha ?? '', compra_precio: a?.compra_precio != null ? String(a.compra_precio) : '',
@@ -48,7 +50,10 @@ export function PanelEditar({ id, onHecho }: { id: string; onHecho: (t: string) 
     const r = await editarActivoAction({
       activo: a.id,
       datos: {
-        nombre: v.nombre, categoria: v.categoria, cantidad: Math.max(1, Math.trunc(Number(v.cantidad) || 1)), numero_serie: v.numero_serie, compra_fecha: v.compra_fecha,
+        nombre: v.nombre, categoria: v.categoria,
+        // Repartido en varios lugares, la cantidad se corrige en cada lugar (ficha → «corregir»).
+        ...(enVarios ? {} : { cantidad: Math.max(1, Math.trunc(Number(v.cantidad) || 1)) }),
+        numero_serie: v.numero_serie, compra_fecha: v.compra_fecha,
         compra_precio: v.compra_precio.replace(',', '.'),
         ...(a.clase === 'rodado' ? { patente: v.patente } : {}),
         ...(revisada ? { revisada: true as const } : {}),
@@ -102,7 +107,12 @@ export function PanelEditar({ id, onHecho }: { id: string; onHecho: (t: string) 
               {cats.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </label>
-          {fila('cantidad', 'Cantidad', { type: 'number', min: 1, max: 100000, step: 1 })}
+          {enVarios ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '12.5px', color: V.apagado }} data-testid="editar-cantidad-repartida">
+              <span style={eyebrow}>Cantidad</span>
+              {a.cantidad} en {lugaresDe(parque, a.id).length} lugares: se corrige en cada lugar, desde la ficha.
+            </div>
+          ) : fila('cantidad', 'Cantidad', { type: 'number', min: 1, max: 100000, step: 1 })}
         </div>
         {fila('numero_serie', 'Número de serie', { maxLength: 80 })}
         {a.clase === 'rodado' && fila('patente', 'Patente', { maxLength: 20 })}

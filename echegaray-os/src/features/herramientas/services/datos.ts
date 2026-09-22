@@ -15,8 +15,8 @@ import { codigosDeObra } from '@/shared/services/codigosDeObra'
 import { armarParque, type Parque } from '../logica/parque'
 import { faltaMigracion } from '../logica/falta-migracion'
 import {
-  COLUMNAS_ACTIVO, COLUMNAS_INCIDENCIA, COLUMNAS_LECTURA, COLUMNAS_MOVIMIENTO, COLUMNAS_UBICACION,
-  type Activo, type Incidencia, type LecturaUso, type Movimiento, type ObraIndice, type Ubicacion,
+  COLUMNAS_ACTIVO, COLUMNAS_AJUSTE, COLUMNAS_EXISTENCIA, COLUMNAS_INCIDENCIA, COLUMNAS_LECTURA, COLUMNAS_MOVIMIENTO, COLUMNAS_UBICACION,
+  type Activo, type Ajuste, type Existencia, type Incidencia, type LecturaUso, type Movimiento, type ObraIndice, type Ubicacion,
 } from '../types'
 
 export type Lectura =
@@ -70,7 +70,7 @@ export async function leerOperadores(): Promise<{ id: string; nombre: string }[]
 export async function leerParque(): Promise<Lectura> {
   try {
     const supabase = await createClient()
-    const [activos, ubicaciones, movimientos, incidencias, obras, perfiles, usuario, categorias, lecturas] = await Promise.all([
+    const [activos, ubicaciones, movimientos, incidencias, obras, perfiles, usuario, categorias, lecturas, existencias, ajustes] = await Promise.all([
       supabase.from('activo').select(COLUMNAS_ACTIVO).order('codigo').limit(TOPE),
       supabase.from('ubicacion').select(COLUMNAS_UBICACION).limit(TOPE),
       supabase.from('activo_movimiento').select(COLUMNAS_MOVIMIENTO).order('fecha_hora', { ascending: false }).limit(TOPE),
@@ -80,7 +80,11 @@ export async function leerParque(): Promise<Lectura> {
       getUsuarioActual(supabase),
       supabase.from('activo_categoria').select('nombre').order('orden'),
       supabase.from('activo_lectura_uso').select(COLUMNAS_LECTURA).order('fecha_hora', { ascending: false }).limit(TOPE),
+      supabase.from('activo_existencia').select(COLUMNAS_EXISTENCIA).limit(TOPE),
+      supabase.from('activo_ajuste').select(COLUMNAS_AJUSTE).order('creado_en', { ascending: false }).limit(TOPE),
     ])
+    // Las existencias por lugar son de 20260922T1300: sin esa tabla, cada activo está entero en su lugar.
+    if (existencias.error && !faltaMigracion(existencias.error)) return { estado: 'error', mensaje: existencias.error.message }
     for (const r of [activos, ubicaciones, movimientos, incidencias]) {
       if (faltaMigracion(r.error)) return { estado: 'falta_migracion' }
       if (r.error) return { estado: 'error', mensaje: r.error.message }
@@ -108,6 +112,8 @@ export async function leerParque(): Promise<Lectura> {
         categorias: ((categorias.data ?? []) as { nombre: string }[]).map((c) => c.nombre),
         lecturas: lecs,
         personas,
+        existencias: existencias.error ? undefined : ((existencias.data ?? []) as unknown as Existencia[]),
+        ajustes: ajustes.error ? [] : ((ajustes.data ?? []) as unknown as Ajuste[]),
       }),
       yo: { id: usuario?.id ?? null, nombre: perfil?.data?.nombre ?? null },
     }

@@ -2,7 +2,7 @@
 
 import type { Activo, Clase, EstadoActivo } from '../types.ts'
 import { nombresRepetidos } from './resumen.ts'
-import { rotuloUbicacion, vivo, type Parque } from './parque.ts'
+import { lugaresDe, rotuloLugares, rotuloUbicacion, vivo, type Parque } from './parque.ts'
 import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
 import { normalizarCodigo } from './codigo.ts'
 
@@ -43,13 +43,36 @@ export function filtrosDeURL(sp: Record<string, string | string[] | undefined>):
   }
 }
 
+/** Si un LUGAR entra en el filtro de ubicación (`sin` no es un lugar: lo mira `pasaUbicacion`). */
+function lugarPasa(p: Parque, ubicacionId: string, u: string): boolean {
+  if (u === 'obras') return p.ubicacionPorId.get(ubicacionId)?.tipo === 'obra'
+  // `tipo:<tipo>`: cualquier lugar de ese tipo (lo usan los totales clicables: «Servicio técnico 1»).
+  if (u.startsWith('tipo:')) return p.ubicacionPorId.get(ubicacionId)?.tipo === u.slice(5)
+  return ubicacionId === u
+}
+
+/** Los lugares de un activo: donde tiene unidades; una baja, el último donde estuvo. */
+function lugaresDeActivo(p: Parque, a: Activo): { ubicacion_id: string; cantidad: number }[] {
+  const l = lugaresDe(p, a.id)
+  if (l.length) return l
+  return a.ubicacion_id ? [{ ubicacion_id: a.ubicacion_id, cantidad: a.cantidad ?? 1 }] : []
+}
+
+// Un lote repartido pasa el filtro si tiene unidades en ALGUNO de los lugares pedidos.
 function pasaUbicacion(p: Parque, a: Activo, u: string | null): boolean {
   if (!u) return true
-  if (u === 'sin') return !a.ubicacion_id
-  if (u === 'obras') return !!a.ubicacion_id && p.ubicacionPorId.get(a.ubicacion_id)?.tipo === 'obra'
-  // `tipo:<tipo>`: cualquier lugar de ese tipo (lo usan los totales clicables: «Servicio técnico 1»).
-  if (u.startsWith('tipo:')) return !!a.ubicacion_id && p.ubicacionPorId.get(a.ubicacion_id)?.tipo === u.slice(5)
-  return a.ubicacion_id === u
+  const l = lugaresDeActivo(p, a)
+  if (u === 'sin') return l.length === 0
+  return l.some((e) => lugarPasa(p, e.ubicacion_id, u))
+}
+
+/**
+ * Las unidades que se ven con el filtro de ubicación puesto: con Entrepiso filtrado, BAL-001 (5 en el
+ * Taller y 3 ahí) cuenta 3. Sin filtro, el total del lote.
+ */
+export function cantidadVisible(p: Parque, a: Activo, u: string | null): number {
+  if (!u || u === 'sin') return a.cantidad ?? 1
+  return lugaresDeActivo(p, a).filter((e) => lugarPasa(p, e.ubicacion_id, u)).reduce((s, e) => s + e.cantidad, 0)
 }
 
 /** Lo que cumple todo MENOS el filtro de estado: sirve para contar cada solapa de estado. */
@@ -65,7 +88,7 @@ export function candidatos(p: Parque, f: Filtros): Activo[] {
     if (f.especial === 'alta_desde_obra' && !(a.alta_desde_obra && vivo(a))) return false
     if (f.especial === 'sin_etiqueta' && !(!a.etiqueta_impresa_en && vivo(a))) return false
     if (repetidos && !repetidos.has(a.id)) return false
-    if (f.q && a.codigo !== codigo && !contieneEnAlguno([a.nombre, a.codigo, a.categoria, a.patente, a.numero_serie, rotuloUbicacion(p, a.ubicacion_id)], f.q)) return false
+    if (f.q && a.codigo !== codigo && !contieneEnAlguno([a.nombre, a.codigo, a.categoria, a.patente, a.numero_serie, rotuloLugares(p, a)], f.q)) return false
     return true
   })
 }
@@ -125,7 +148,7 @@ export function sugerencias(p: Parque, q: string, max = 8): Activo[] {
   const nt = norm(t)
   const rango = (a: Activo) => (a.codigo === codigo ? 0 : norm(a.nombre).startsWith(nt) ? 1 : 2)
   return p.activos
-    .filter((a) => a.estado !== 'baja' && (a.codigo === codigo || contieneEnAlguno([a.nombre, a.codigo, a.categoria, a.patente, rotuloUbicacion(p, a.ubicacion_id)], t)))
+    .filter((a) => a.estado !== 'baja' && (a.codigo === codigo || contieneEnAlguno([a.nombre, a.codigo, a.categoria, a.patente, rotuloLugares(p, a)], t)))
     .sort((x, y) => rango(x) - rango(y) || x.nombre.localeCompare(y.nombre, 'es'))
     .slice(0, max)
 }
@@ -142,16 +165,30 @@ export interface Totales {
   porObra: { u: string; rotulo: string; activos: number }[]
 }
 
-/** Los totales de lo que se está viendo (dueño, 22/09: «necesito q inventario me vaya mostrando totales»). */
-export function totales(p: Parque, lista: Activo[]): Totales {
+/**
+ * Los totales de lo que se está viendo (dueño, 22/09: «necesito q inventario me vaya mostrando totales»).
+ * Cuentan por lugar: un lote repartido suma sus unidades en cada lugar donde está y aparece en cada obra
+ * donde tiene algo. Con un filtro de ubicación, sólo cuenta lo que hay en los lugares filtrados.
+ */
+export function totales(p: Parque, lista: Activo[], ubicacion: string | null = null): Totales {
   let unidades = 0
   const c = new Map<Totales['porTipo'][number]['tipo'], number>()
   const obras = new Map<string, number>()
   for (const a of lista) {
-    unidades += a.cantidad ?? 1
-    const t = a.ubicacion_id ? (p.ubicacionPorId.get(a.ubicacion_id)?.tipo ?? 'sin') : 'sin'
-    c.set(t, (c.get(t) ?? 0) + 1)
-    if (t === 'obra') obras.set(a.ubicacion_id!, (obras.get(a.ubicacion_id!) ?? 0) + 1)
+    const lugares = lugaresDeActivo(p, a).filter((e) => !ubicacion || ubicacion === 'sin' || lugarPasa(p, e.ubicacion_id, ubicacion))
+    if (!lugares.length) {
+      unidades += a.cantidad ?? 1
+      c.set('sin', (c.get('sin') ?? 0) + 1)
+      continue
+    }
+    const tipos = new Set<Totales['porTipo'][number]['tipo']>()
+    for (const e of lugares) {
+      unidades += e.cantidad
+      const t = p.ubicacionPorId.get(e.ubicacion_id)?.tipo ?? 'sin'
+      tipos.add(t)
+      if (t === 'obra') obras.set(e.ubicacion_id, (obras.get(e.ubicacion_id) ?? 0) + 1)
+    }
+    for (const t of tipos) c.set(t, (c.get(t) ?? 0) + 1)
   }
   const orden: Totales['porTipo'][number]['tipo'][] = ['taller', 'obra', 'rodado', 'servicio_tecnico', 'tercero', 'sin']
   const porObra = [...obras].map(([u, n]) => ({ u, rotulo: rotuloUbicacion(p, u), activos: n })).sort((a, b) => b.activos - a.activos || a.rotulo.localeCompare(b.rotulo, 'es'))

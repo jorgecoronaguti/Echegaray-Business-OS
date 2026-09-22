@@ -10,13 +10,14 @@
 
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { cifras, decisiones, dondeEstaElParque, type Decision } from '../logica/resumen'
+import { cifras, decisiones, dondeEstaElParque, obrasConHerramientas, type Decision } from '../logica/resumen'
 import { diasDesde, ETIQUETA_TIPO, type Parque } from '../logica/parque'
 import { sinVerificarHoy } from '../logica/verificacion'
 import { BotonMover } from './Botones'
 import { COLOR_BARRA, IconoLugar, IcoAviso, IcoLista, IcoObra, IcoReloj, IcoTaller } from './iconos'
 import { bajadaPagina, eyebrow, pagina, tituloBloque, tituloPagina, V } from './estilo'
 
+const COLS_OBRAS = 'minmax(0,1.6fr) minmax(0,1fr) 70px 80px 100px 190px'
 const plural = (n: number, a: string, b: string) => `${n} ${n === 1 ? a : b}`
 
 export function VistaResumen({ parque, hoy = new Date() }: { parque: Parque; hoy?: Date }) {
@@ -24,6 +25,7 @@ export function VistaResumen({ parque, hoy = new Date() }: { parque: Parque; hoy
   const ds = decisiones(parque, hoy)
   const filas = dondeEstaElParque(parque)
   const sv = sinVerificarHoy(parque, hoy)
+  const obras = obrasConHerramientas(parque)
   const max = Math.max(1, ...filas.filter((f) => f.tipo !== 'sin_ubicacion').map((f) => f.activos))
   const partes = [
     c.herramientas ? plural(c.herramientas, 'herramienta', 'herramientas') : null,
@@ -56,6 +58,42 @@ export function VistaResumen({ parque, hoy = new Date() }: { parque: Parque; hoy
         </Link>
         <Cifra rotulo="Papeles de rodados" valor={null}
           pie={c.rodados ? `${plural(c.rodados, 'rodado', 'rodados')}, ningún papel cargado` : 'no hay rodados cargados'} />
+      </div>
+
+      {/* CADA OBRA, A UN CLIC (dueño, 22/09): el renglón lleva a lo que hay en esa obra; «Planilla», al
+          control para imprimir. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16 }}>
+          <h2 style={tituloBloque}>Obras</h2>
+          <Link href="/herramientas/ubicaciones?tipo=obra" prefetch={false} style={{ fontSize: '12.5px', color: V.apagado }}>Ver todas las ubicaciones</Link>
+        </div>
+        {obras.length === 0 ? (
+          <div style={{ fontSize: '13.5px', color: V.apagado }}>Ninguna obra tiene herramientas hoy.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column' }} data-testid="obras-resumen">
+            <div style={{ ...eyebrow, display: 'grid', gridTemplateColumns: COLS_OBRAS, gap: 18, height: 34, alignItems: 'center', borderBottom: `1px solid ${V.linea}` }}>
+              <div>Obra</div><div>Cliente</div><div style={{ textAlign: 'right' }}>Activos</div><div style={{ textAlign: 'right' }}>Unidades</div><div style={{ textAlign: 'right' }}>Con problema</div><div />
+            </div>
+            {obras.map((o, i) => (
+              <div key={o.ubicacionId} className="hover:bg-surface-quiet"
+                style={{ display: 'grid', gridTemplateColumns: COLS_OBRAS, gap: 18, minHeight: 44, alignItems: 'center', borderBottom: i < obras.length - 1 ? `1px solid ${V.linea}` : undefined, fontSize: '13.5px' }}>
+                <Link href={`/herramientas/ubicaciones?u=${o.ubicacionId}`} prefetch={false} data-testid="obra-resumen"
+                  style={{ display: 'flex', alignItems: 'center', gap: 9, fontWeight: 500, minWidth: 0 }}>
+                  <IcoObra tam={14} color={V.tintaSuave} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'underline', textDecorationColor: V.linea, textUnderlineOffset: 3 }}>{o.rotulo}</span>
+                </Link>
+                <div style={{ color: o.cliente ? V.tintaSuave : V.tenue, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.cliente ?? 'sin cliente'}</div>
+                <div style={{ textAlign: 'right', fontWeight: 500 }}>{o.activos}</div>
+                <div style={{ textAlign: 'right', color: V.tintaSuave }}>{o.unidades}</div>
+                <div style={{ textAlign: 'right', color: o.conProblema ? V.warn : V.tenue }}>{o.conProblema || '—'}</div>
+                <div style={{ display: 'flex', gap: 14, justifyContent: 'flex-end', fontSize: '12.5px' }}>
+                  <Link href={`/herramientas/inventario?clase=todo&ubicacion=${o.ubicacionId}`} prefetch={false} style={{ color: V.apagado }}>En inventario</Link>
+                  <Link href={`/herramientas/planilla?u=${o.ubicacionId}`} prefetch={false} style={{ color: V.apagado }}>Planilla</Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.35fr) minmax(0,1fr)', gap: 44 }}>

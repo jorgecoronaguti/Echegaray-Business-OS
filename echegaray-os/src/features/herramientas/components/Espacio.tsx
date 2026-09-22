@@ -21,7 +21,7 @@ import { PanelEditar } from './PanelEditar'
 export interface Yo { id: string | null; nombre: string | null }
 
 type PanelAbierto =
-  | { tipo: 'mover'; ids: string[]; destino?: string }
+  | { tipo: 'mover'; ids: string[]; destino?: string; origen?: string | null }
   | { tipo: 'alta' }
   | { tipo: 'baja'; id: string }
   | { tipo: 'reportar'; ids: string[] }
@@ -86,7 +86,7 @@ export function EspacioHerramientas({ datos, obras, yo, children }: {
           )}
           {children}
         </div>
-        {abierto?.tipo === 'mover' && <PanelMover key={abierto.ids.join(',')} idsIniciales={abierto.ids} destinoInicial={abierto.destino} onHecho={hecho} />}
+        {abierto?.tipo === 'mover' && <PanelMover key={abierto.ids.join(',')} idsIniciales={abierto.ids} destinoInicial={abierto.destino} origenInicial={abierto.origen} onHecho={hecho} />}
         {abierto?.tipo === 'alta' && <PanelAlta onHecho={hecho} />}
         {abierto?.tipo === 'reportar' && <PanelReportar ids={abierto.ids} onHecho={hecho} />}
         {abierto?.tipo === 'editar' && <PanelEditar id={abierto.id} onHecho={hecho} />}

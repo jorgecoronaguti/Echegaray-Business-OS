@@ -2,18 +2,23 @@
 
 // D05 · REGISTRAR MOVIMIENTO — individual y masivo, el mismo panel.
 //
-// El origen no se elige: es donde cada uno está hoy (lo agrupa `origenes`). El destino sale de
+// El origen es donde están las unidades. Un lote (cantidad > 1) pregunta cuántas van y, si está
+// repartido en varios lugares, de cuál sale (dueño, 22/09: «como se hara el descuento de unidades a
+// medida q se asigna la herram en una obra?»). Lo que es de a una no pregunta nada. El destino sale de
 // `destinos()`: Taller, rodados vivos, servicios técnicos y terceros, y las obras ACTIVAS del índice.
 // Al mover un rodado que lleva algo encima, se pregunta si la carga viaja con él o baja donde está
 // (`p_bajar_carga`): la base no lo adivina y el panel tampoco.
 
 import { useMemo, useState } from 'react'
-import { advertencias, claveDestino, destinos, origenes, textoBotonMover, type OpcionDestino } from '../logica/mover'
-import { rotuloUbicacion, ETIQUETA_ESTADO } from '../logica/parque'
+import {
+  advertencias, claveDestino, conCantidad, conOrigen, destinos, itemPorDefecto, lugaresDeSalida, origenesDeItems, paraLaBase,
+  textoBotonMover, textoParte, type ItemMover, type OpcionDestino,
+} from '../logica/mover'
+import { rotuloLugares, rotuloUbicacion, ETIQUETA_ESTADO } from '../logica/parque'
 import { normalizarCodigo } from '../logica/codigo'
 import { sugerencias } from '../logica/inventario'
 import { contieneEnAlguno } from '@/shared/utils/busqueda'
-import { crearUbicacionAction, moverActivosAction } from '../services/acciones'
+import { crearUbicacionAction, moverExistenciasAction } from '../services/acciones'
 import { useHerramientas } from './Espacio'
 import { Bloque, ErrorPanel, PanelLateral } from './PanelLateral'
 import { IcoRodado } from './iconos'
@@ -23,13 +28,19 @@ import { fechaHora } from './formato'
 // Armando un envío se ve la lista entera: es lo que se está por mover (dueño, 22/09).
 const VISIBLES = 500
 
-export function PanelMover({ idsIniciales, destinoInicial, onHecho }: {
+export function PanelMover({ idsIniciales, destinoInicial, origenInicial, onHecho }: {
   idsIniciales: string[]
   destinoInicial?: string
+  /** El lugar que se está mirando (filtro de ubicación): los lotes salen de ahí si tienen unidades ahí. */
+  origenInicial?: string | null
   onHecho: (t: string) => void
 }) {
   const { parque, obras, yo, cerrar, refrescar } = useHerramientas()
-  const [ids, setIds] = useState(() => idsIniciales.filter((id) => parque.activoPorId.get(id)?.estado !== 'baja'))
+  const [items, setItems] = useState<ItemMover[]>(() => idsIniciales
+    .map((id) => parque.activoPorId.get(id))
+    .filter((a): a is NonNullable<typeof a> => !!a && a.estado !== 'baja')
+    .map((a) => itemPorDefecto(parque, a, origenInicial)))
+  const ids = items.map((it) => it.activo.id)
   const [destino, setDestino] = useState<string | null>(destinoInicial ?? null)
   const [busca, setBusca] = useState('')
   const [abiertaLista, setAbiertaLista] = useState(false)
@@ -41,11 +52,17 @@ export function PanelMover({ idsIniciales, destinoInicial, onHecho }: {
   const [enviando, setEnviando] = useState(false)
   const [nuevo, setNuevo] = useState<{ tipo: 'tercero' | 'servicio_tecnico'; nombre: string; contacto: string } | null>(null)
 
-  const activos = ids.map((id) => parque.activoPorId.get(id)!).filter(Boolean)
+  const activos = items.map((it) => it.activo)
+  const unidades = items.reduce((s, it) => s + it.cantidad, 0)
+  const cambiar = (id: string, f: (it: ItemMover) => ItemMover) => setItems((l) => l.map((it) => (it.activo.id === id ? f(it) : it)))
+  const agregar = (id: string) => {
+    const a = parque.activoPorId.get(id)
+    if (a) setItems((l) => (l.some((it) => it.activo.id === id) ? l : [...l, itemPorDefecto(parque, a, origenInicial)]))
+  }
   const opciones = useMemo(() => destinos(parque, obras), [parque, obras])
   const elegida = opciones.find((o) => claveDestino(o) === destino) ?? null
   const destinoUbicacion = elegida?.tipo === 'ubicacion' ? elegida.ubicacionId : null
-  const w = advertencias(parque, activos, destinoUbicacion)
+  const w = advertencias(parque, activos, destinoUbicacion, items)
   // A mano, a un toque: las obras activas primero y después los rodados (dueño, 22/09).
   const rapidas = opciones
   const filtradas = busca.trim() ? opciones.filter((o) => contieneEnAlguno([o.rotulo], busca)) : opciones
@@ -55,7 +72,7 @@ export function PanelMover({ idsIniciales, destinoInicial, onHecho }: {
   // Lo que el buscador del panel ofrece: lo vivo que todavía no está en la lista.
   const opcionesSumar = useMemo(() => sugerencias(parque, codigo, 12).filter((a) => !ids.includes(a.id)), [parque, codigo, ids])
   function sumar(id: string) {
-    setIds((l) => (l.includes(id) ? l : [...l, id]))
+    agregar(id)
     setCodigo('')
     setError(null)
   }
@@ -67,7 +84,7 @@ export function PanelMover({ idsIniciales, destinoInicial, onHecho }: {
     if (!a) return setError(`«${codigo.trim()}» no está en el inventario.`)
     if (a.estado === 'baja') return setError(`${c} está dado de baja: no se mueve más.`)
     setError(null)
-    setIds((l) => (l.includes(a.id) ? l : [...l, a.id]))
+    agregar(a.id)
     setCodigo('')
   }
 
@@ -87,21 +104,22 @@ export function PanelMover({ idsIniciales, destinoInicial, onHecho }: {
     if (!elegida) return
     setEnviando(true)
     setError(null)
-    const r = await moverActivosAction({ activos: ids, destino: claveDestino(elegida), nota, bajarCarga: bajarCarga ?? false })
+    const r = await moverExistenciasAction({ items: paraLaBase(items), destino: claveDestino(elegida), nota, bajarCarga: bajarCarga ?? false })
     setEnviando(false)
     if (!r.ok) return setError(r.error)
-    onHecho(r.mensaje ?? `${activos.length === 1 ? activos[0].nombre : `${activos.length} activos`} → ${elegida.rotulo}.`)
+    const parte = items.length === 1 ? textoParte(items[0]) : null
+    onHecho(r.mensaje ?? `${items.length === 1 ? `${parte ? `${parte} · ` : ''}${activos[0].nombre}` : `${items.length} activos`} → ${elegida.rotulo}.`)
   }
 
-  const lista = todos ? activos : activos.slice(0, VISIBLES)
+  const lista = todos ? items : items.slice(0, VISIBLES)
   return (
     <PanelLateral
       testid="panel-mover" titulo="Registrar movimiento" onCerrar={cerrar}
-      subtitulo={activos.length === 1 ? activos[0].nombre : `${activos.length} activos seleccionados`}
+      subtitulo={activos.length === 1 ? activos[0].nombre : `${activos.length} activos seleccionados${unidades !== activos.length ? ` · ${unidades} unidades` : ''}`}
       pie={
         <>
           <button type="button" data-testid="confirmar-mover" disabled={!puede} onClick={mover} style={{ ...botonPrimarioGrande, opacity: puede ? 1 : 0.45 }}>
-            {enviando ? 'Moviendo…' : textoBotonMover(activos.length)}
+            {enviando ? 'Moviendo…' : textoBotonMover(activos.length, unidades)}
           </button>
           <button type="button" onClick={cerrar} style={botonSecundarioGrande}>Cancelar</button>
         </>
@@ -111,13 +129,13 @@ export function PanelMover({ idsIniciales, destinoInicial, onHecho }: {
         {activos.length === 0 ? (
           <div style={{ fontSize: '13px', color: V.apagado }}>Todavía no hay nada para mover. Agregalo por código abajo.</div>
         ) : (
-          origenes(parque, activos).map((g) => (
+          origenesDeItems(parque, items).map((g) => (
             <div key={g.ubicacionId ?? 'sin'} style={{ fontSize: '14px', fontStyle: g.ubicacionId ? undefined : 'italic', color: g.ubicacionId ? V.tinta : V.tenue }}>
-              {g.rotulo} <span style={{ color: V.apagado, fontSize: '12.5px', fontStyle: 'normal' }}>· {g.cuenta} {g.cuenta === 1 ? 'activo' : 'activos'}</span>
+              {g.rotulo} <span style={{ color: V.apagado, fontSize: '12.5px', fontStyle: 'normal' }}>· {g.cuenta} {g.cuenta === 1 ? 'activo' : 'activos'}{g.unidades !== g.cuenta ? ` · ${g.unidades} unidades` : ''}</span>
             </div>
           ))
         )}
-        <div style={{ fontSize: '12.5px', color: V.apagado }}>El origen no se elige: es donde cada uno está hoy.</div>
+        <div style={{ fontSize: '12.5px', color: V.apagado }}>Sale de donde está. Un lote repartido en varios lugares elige de cuál, abajo.</div>
       </Bloque>
 
       <Bloque rotulo="Hacia">
@@ -174,7 +192,7 @@ export function PanelMover({ idsIniciales, destinoInicial, onHecho }: {
       <Bloque
         rotulo="Qué se mueve"
         derecha={
-          <span style={{ fontSize: '12.5px', color: V.apagado }}>{activos.length} {activos.length === 1 ? 'activo' : 'activos'}</span>
+          <span style={{ fontSize: '12.5px', color: V.apagado }}>{activos.length} {activos.length === 1 ? 'activo' : 'activos'}{unidades !== activos.length ? ` · ${unidades} u.` : ''}</span>
         }
       >
         {/* ARMAR LA LISTA (dueño, 22/09: «ir armando un listado en el menu de la derecha … a medida q voy
@@ -194,7 +212,7 @@ export function PanelMover({ idsIniciales, destinoInicial, onHecho }: {
                   <span style={{ color: V.pos, fontWeight: 600 }}>+</span>
                   <span style={{ flex: 1, minWidth: 0, color: V.tinta }}>{a.nombre}</span>
                   <span style={{ fontSize: '11.5px', color: V.tenue, fontFamily: "'IBM Plex Mono', monospace" }}>{a.codigo}</span>
-                  <span style={{ fontSize: '12px', color: V.apagado, whiteSpace: 'nowrap' }}>{rotuloUbicacion(parque, a.ubicacion_id) ?? 'sin ubicación'}</span>
+                  <span style={{ fontSize: '12px', color: V.apagado, whiteSpace: 'nowrap', maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis' }}>{rotuloLugares(parque, a)}</span>
                 </button>
               ))}
             </div>
@@ -204,12 +222,45 @@ export function PanelMover({ idsIniciales, destinoInicial, onHecho }: {
           <div style={{ fontSize: '13px', color: V.apagado }} data-testid="envio-vacio">Todavía no hay nada en la lista. Buscá arriba y hacé clic en cada una.</div>
         )}
         <div style={{ display: 'flex', flexDirection: 'column', fontSize: '13px' }}>
-          {lista.map((a) => {
+          {lista.map((it) => {
+            const a = it.activo
             const problema = a.estado === 'requiere_mantenimiento' || a.estado === 'fuera_servicio' || a.estado === 'reparacion_externa'
+            const salidas = lugaresDeSalida(parque, a)
+            const lote = it.disponible > 1 || salidas.length > 1
             return (
-              <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 36, borderBottom: `1px solid ${V.linea}`, color: problema ? V.warn : V.tinta }}>
-                <span>{a.nombre} <span style={{ fontSize: '11.5px', color: V.tenue, fontFamily: "'IBM Plex Mono', monospace" }}>{a.codigo}</span>{problema && ` · ${ETIQUETA_ESTADO[a.estado].toLowerCase()}`}</span>
-                <button type="button" onClick={() => setIds((l) => l.filter((x) => x !== a.id))} style={{ color: V.tenue }}>quitar</button>
+              <div key={a.id} data-testid="renglon-envio" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '7px 0', borderBottom: `1px solid ${V.linea}`, color: problema ? V.warn : V.tinta }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                  <span>{a.nombre} <span style={{ fontSize: '11.5px', color: V.tenue, fontFamily: "'IBM Plex Mono', monospace" }}>{a.codigo}</span>{problema && ` · ${ETIQUETA_ESTADO[a.estado].toLowerCase()}`}</span>
+                  <button type="button" onClick={() => setItems((l) => l.filter((x) => x.activo.id !== a.id))} style={{ color: V.tenue }}>quitar</button>
+                </div>
+                {lote && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '12.5px', color: V.apagado }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      Van
+                      <input
+                        type="number" min={1} max={it.disponible} value={it.cantidad} data-testid="cantidad-envio"
+                        aria-label={`Cuántas unidades de ${a.nombre}`}
+                        onChange={(e) => cambiar(a.id, (x) => conCantidad(x, e.target.valueAsNumber))}
+                        style={{ ...campo, width: 70, height: 30, padding: '0 8px', fontSize: '13px' }}
+                      />
+                      de {it.disponible}
+                    </label>
+                    {salidas.length > 1 ? (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        desde
+                        <select
+                          value={it.origen ?? ''} data-testid="origen-envio" aria-label={`De dónde sale ${a.nombre}`}
+                          onChange={(e) => cambiar(a.id, (x) => conOrigen(parque, x, e.target.value))}
+                          style={{ ...campo, height: 30, padding: '0 6px', fontSize: '12.5px', maxWidth: 230 }}
+                        >
+                          {salidas.map((sl) => <option key={sl.ubicacionId} value={sl.ubicacionId}>{sl.rotulo} ({sl.cantidad})</option>)}
+                        </select>
+                      </label>
+                    ) : (
+                      <span>en {rotuloUbicacion(parque, it.origen)}</span>
+                    )}
+                  </div>
+                )}
               </div>
             )
           })}

@@ -9,11 +9,13 @@
 //   · lo que ya tiene un problema reportado, para no volver a descubrirlo;
 //   · lo que entró y salió en los últimos 30 días, para reconstruir un faltante.
 
-import { autorDe, diasDesde, ETIQUETA_ESTADO, rotuloUbicacion, type Parque } from './parque.ts'
+import { activosEn, autorDe, cantidadEn, diasDesde, ETIQUETA_ESTADO, rotuloUbicacion, type Parque } from './parque.ts'
 import type { Activo, Movimiento } from '../types.ts'
 
 export interface FilaControl {
   activo: Activo
+  /** Unidades que hay EN ESTE LUGAR (un lote repartido puede tener otras en otro lado). */
+  cantidad: number
   llego: string | null
   dias: number | null
   trajo: string | null
@@ -37,11 +39,12 @@ export interface Control {
 }
 
 export function controlDeUbicacion(p: Parque, ubicacionId: string, hoy: Date = new Date(), ventanaDias = 30): Control {
-  const aca = p.activos.filter((a) => a.ubicacion_id === ubicacionId && a.estado !== 'baja')
+  const aca = activosEn(p, ubicacionId)
   const filas = aca.map((a): FilaControl => {
     const llegada = (p.movsDe.get(a.id) ?? []).find((m) => m.destino_id === ubicacionId) ?? null
     return {
       activo: a,
+      cantidad: cantidadEn(p, a.id, ubicacionId),
       llego: llegada?.fecha_hora ?? null,
       dias: llegada ? diasDesde(llegada.fecha_hora, hoy) : null,
       trajo: llegada ? autorDe(p, llegada) : null,
@@ -79,7 +82,7 @@ export function controlDeUbicacion(p: Parque, ubicacionId: string, hoy: Date = n
   return {
     porCategoria,
     activos: aca.length,
-    unidades: aca.reduce((s, a) => s + (a.cantidad ?? 1), 0),
+    unidades: filas.reduce((s, f) => s + f.cantidad, 0),
     conProblema: filas.filter((f) => f.activo.estado !== 'operativo'),
     ultimos,
   }

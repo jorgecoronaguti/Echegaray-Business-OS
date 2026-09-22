@@ -7,7 +7,7 @@
 // herramientas con problema que siguen en obra y reparaciones externas sin novedad hace 30 días.
 
 import type { Activo, TipoUbicacion } from '../types.ts'
-import { ORDEN_TIPO, diasDesde, tipoDe, vivo, type Parque } from './parque.ts'
+import { ORDEN_TIPO, activosEn, cantidadEn, conProblema, diasDesde, lugaresDe, rotuloUbicacion, tipoDe, vivo, type Parque } from './parque.ts'
 
 export interface FilaParque {
   tipo: TipoUbicacion | 'sin_ubicacion'
@@ -16,14 +16,24 @@ export interface FilaParque {
   lugares: number
 }
 
-/** Los activos vivos por tipo de lugar. «Sin ubicación cargada» va aparte y al final, nunca como 0. */
+/**
+ * Los activos vivos por tipo de lugar. «Sin ubicación cargada» va aparte y al final, nunca como 0.
+ * Un lote repartido cuenta en cada tipo de lugar donde tiene unidades.
+ */
 export function dondeEstaElParque(p: Parque): FilaParque[] {
   const vivos = p.activos.filter(vivo)
   const filas: FilaParque[] = ORDEN_TIPO.map((tipo) => {
-    const aca = vivos.filter((a) => tipoDe(p, a.ubicacion_id) === tipo)
-    return { tipo, activos: aca.length, lugares: new Set(aca.map((a) => a.ubicacion_id)).size }
+    const lugares = new Set<string>()
+    let activos = 0
+    for (const a of vivos) {
+      const aca = lugaresDe(p, a.id).filter((e) => tipoDe(p, e.ubicacion_id) === tipo)
+      if (!aca.length) continue
+      activos++
+      for (const e of aca) lugares.add(e.ubicacion_id)
+    }
+    return { tipo, activos, lugares: lugares.size }
   })
-  const sin = vivos.filter((a) => !a.ubicacion_id).length
+  const sin = vivos.filter((a) => lugaresDe(p, a.id).length === 0).length
   return [...filas.filter((f) => f.activos > 0), ...(sin > 0 ? [{ tipo: 'sin_ubicacion' as const, activos: sin, lugares: 0 }] : [])]
 }
 
@@ -211,4 +221,37 @@ export function cifras(p: Parque, hoy: Date = new Date()): Cifras {
     sinVer90,
     nuncaVistos: nunca,
   }
+}
+
+export interface ObraConHerramientas {
+  ubicacionId: string
+  rotulo: string
+  cliente: string | null
+  activos: number
+  /** Los lotes suman las unidades que hay en ESA obra. */
+  unidades: number
+  conProblema: number
+}
+
+/**
+ * Cada obra que tiene algo hoy, con lo que tiene (dueño, 22/09: «en seccion resumen … tiene q poder
+ * accederse directamente a cada obra y ver lo q hay»). De la que más tiene a la que menos.
+ */
+export function obrasConHerramientas(p: Parque): ObraConHerramientas[] {
+  return p.ubicaciones
+    .filter((u) => u.tipo === 'obra')
+    .map((u) => {
+      const aca = activosEn(p, u.id)
+      const obra = u.obra_id ? p.obraPorId.get(u.obra_id) : undefined
+      return {
+        ubicacionId: u.id,
+        rotulo: rotuloUbicacion(p, u.id),
+        cliente: obra?.cliente ?? null,
+        activos: aca.length,
+        unidades: aca.reduce((s, a) => s + cantidadEn(p, a.id, u.id), 0),
+        conProblema: aca.filter(conProblema).length,
+      }
+    })
+    .filter((o) => o.activos > 0)
+    .sort((a, b) => b.activos - a.activos || a.rotulo.localeCompare(b.rotulo, 'es'))
 }

@@ -51,12 +51,22 @@ export function historial(p: Parque, activoId: string): Renglon[] {
     const que = m.origen_id
       ? `${rotuloUbicacion(p, m.origen_id)} → ${hacia}`
       : m.importado ? `origen desconocido → ${hacia}` : `Alta${a.alta_desde_obra ? ' desde obra' : ''} en ${hacia}`
+    // Un lote dice cuántas unidades viajaron («3 u. · Taller → Entrepiso»); lo de a una, nada.
+    const cuantas = (a.cantidad > 1 || (m.cantidad ?? 1) > 1) && m.cantidad ? `${m.cantidad} u. · ` : ''
     out.push({
       fecha: m.fecha_hora,
-      texto: `${que}${quien ? ` · ${quien}` : ''}`,
+      texto: `${cuantas}${que}${quien ? ` · ${quien}` : ''}`,
       nota: m.nota && m.nota !== 'alta' ? m.nota : null,
       tipo: 'movimiento',
     })
+  }
+  for (const j of p.ajustesDe.get(activoId) ?? []) {
+    const quien = j.usuario_id ? p.nombres[j.usuario_id] : null
+    const donde = rotuloUbicacion(p, j.ubicacion_id)
+    const texto = j.motivo === 'recuento'
+      ? `Recuento en ${donde}: ${j.antes} → ${j.despues}`
+      : `Baja de ${j.antes - j.despues} u. en ${donde} por ${MOTIVO_BAJA[j.motivo] ?? j.motivo}`
+    out.push({ fecha: j.creado_en, texto: `${texto}${quien ? ` · ${quien}` : ''}`, nota: j.detalle, tipo: j.motivo === 'recuento' ? 'movimiento' : 'baja' })
   }
   for (const i of p.incDe.get(activoId) ?? []) {
     const quien = i.usuario_id ? p.nombres[i.usuario_id] : null
