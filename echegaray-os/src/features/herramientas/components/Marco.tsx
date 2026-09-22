@@ -43,9 +43,16 @@ export function Marco({ lectura, children, derecha }: {
   )
 }
 
-/** El parque sin sus índices (`Map` no cruza al cliente): el cliente lo vuelve a armar. */
+/**
+ * El parque sin sus índices (`Map` no cruza al cliente): el cliente lo vuelve a armar. El `satisfies`
+ * obliga a pasar CADA campo de `DatosParque`: el 22/09 las existencias por lugar se quedaron afuera y
+ * la pantalla mostraba el lote entero en el Taller aunque la base ya lo tenía repartido.
+ */
 function datosPlanos(p: Parque): DatosParque {
-  return { activos: p.activos, ubicaciones: p.ubicaciones, obras: p.obras, movimientos: p.movimientos, incidencias: p.incidencias, nombres: p.nombres, categorias: p.categorias, lecturas: p.lecturas, personas: p.personas }
+  return {
+    activos: p.activos, ubicaciones: p.ubicaciones, obras: p.obras, movimientos: p.movimientos, incidencias: p.incidencias,
+    nombres: p.nombres, categorias: p.categorias, lecturas: p.lecturas, personas: p.personas, existencias: p.existencias, ajustes: p.ajustes,
+  } satisfies Record<keyof DatosParque, unknown>
 }
 
 function SinBase({ lectura }: { lectura: Exclude<Lectura, { estado: 'ok' }> }) {
