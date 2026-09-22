@@ -27,7 +27,7 @@ const btn = (primario: boolean) => ({
   color: primario ? V.grafito : V.tinta, fontWeight: primario ? 600 : 400,
 })
 
-export function Ficha({ id }: { id: string }) {
+export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
   const { parque, abrir, avisar, refrescar } = useHerramientas()
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
@@ -67,11 +67,19 @@ export function Ficha({ id }: { id: string }) {
             {a.patente ? ` · ${a.patente}` : ''} · {a.categoria ?? <span style={vacio}>sin categoría</span>} · {a.ubicacion_id ? `en ${rotuloUbicacion(parque, a.ubicacion_id)}` : <span style={vacio}>sin ubicación cargada</span>}
           </div>
         </div>
-        {a.estado !== 'baja' && (
-          <button type="button" onClick={() => abrir({ tipo: 'editar', id })} style={{ fontSize: '12.5px', color: V.apagado, whiteSpace: 'nowrap' }} data-testid="editar-ficha">
-            Editar datos
-          </button>
-        )}
+        {/* «Editar datos» y la × van en la misma fila, una al lado de la otra: con la × flotando
+            encima se tapaban (dueño, 22/09). */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+          {a.estado !== 'baja' && (
+            <button type="button" onClick={() => abrir({ tipo: 'editar', id })} style={{ fontSize: '12.5px', color: V.apagado, whiteSpace: 'nowrap' }} data-testid="editar-ficha">
+              Editar datos
+            </button>
+          )}
+          {onCerrar && (
+            <button type="button" onClick={onCerrar} aria-label="Cerrar la ficha" data-testid="cerrar-ficha"
+              style={{ width: 28, height: 28, borderRadius: 6, fontSize: '18px', lineHeight: 1, color: V.tenue, border: `1px solid ${V.linea}` }}>×</button>
+          )}
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>

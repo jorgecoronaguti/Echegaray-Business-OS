@@ -68,9 +68,7 @@ export function VistaMantenimiento({ activo }: { activo: string | null }) {
       <div style={{ width: 2, background: V.linea }} />
       {!conPanel && elegido && (
       <div style={{ width: 430, flexShrink: 0, padding: '22px 24px 28px', background: '#FFFFFF', position: 'sticky', top: 83, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 83px)', overflowY: 'auto', borderLeft: `1px solid ${V.linea}` }}>
-        <button type="button" onClick={() => router.replace(ruta, { scroll: false })} aria-label="Cerrar la ficha" data-testid="cerrar-ficha"
-          style={{ position: 'absolute', top: 14, right: 16, width: 28, height: 28, borderRadius: 6, fontSize: '18px', color: V.tenue, lineHeight: 1 }}>×</button>
-        <Ficha id={elegido.id} />
+        <Ficha id={elegido.id} onCerrar={() => router.replace(ruta, { scroll: false })} />
       </div>
       )}
     </div>

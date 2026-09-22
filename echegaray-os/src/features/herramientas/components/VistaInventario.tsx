@@ -205,10 +205,8 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
       {/* La ficha sólo ocupa lugar cuando hay una abierta, y se cierra con la × (dueño, 22/09). */}
       {!conPanel && activo && (
       <div style={{ width: 430, flexShrink: 0, padding: '22px 24px 28px', background: '#FFFFFF', position: 'sticky', top: 83, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 83px)', overflowY: 'auto', borderLeft: `1px solid ${V.linea}` }}>
-        <button type="button" onClick={() => ir({}, null)} aria-label="Cerrar la ficha" data-testid="cerrar-ficha"
-          style={{ position: 'absolute', top: 14, right: 16, width: 28, height: 28, borderRadius: 6, fontSize: '18px', color: V.tenue, lineHeight: 1 }}>×</button>
-        {abierto ? <Ficha id={abierto.id} /> : (
-          <div style={{ fontSize: '13px', color: V.tenue, paddingTop: 4 }} data-testid="ficha-vacia">{activo} no está en el inventario.</div>
+        {abierto ? <Ficha id={abierto.id} onCerrar={() => ir({}, null)} /> : (
+          <div style={{ fontSize: '13px', color: V.tenue, paddingTop: 4 }} data-testid="ficha-vacia">{activo} no está en el inventario. <button type="button" onClick={() => ir({}, null)} style={{ textDecoration: 'underline' }}>cerrar</button></div>
         )}
       </div>
       )}
@@ -234,13 +232,15 @@ function TotalesInventario({ t, activo, onFiltrar }: { t: ReturnType<typeof tota
       {t.unidades !== t.activos && <span><b style={{ color: V.tinta, fontWeight: 600 }}>{t.unidades}</b> unidades</span>}
       {/* Cada total es un filtro (dueño, 22/09: «le hago click a eso y no me lleva a ninguna herram»).
           Un segundo clic lo saca. */}
-      {t.porTipo.map((x) => {
-        const u = x.tipo === 'sin' ? 'sin' : x.tipo === 'obra' ? 'obras' : `tipo:${x.tipo}`
+      {t.porTipo.flatMap((x): { clave: string; rotulo: string; activos: number; tipo: string; u: string }[] => (x.tipo === 'obra'
+        ? t.porObra.map((o) => ({ clave: o.u, rotulo: o.rotulo, activos: o.activos, tipo: 'obra' as const, u: o.u }))
+        : [{ clave: x.tipo, rotulo: TIPO_TOTAL[x.tipo], activos: x.activos, tipo: x.tipo, u: x.tipo === 'sin' ? 'sin' : `tipo:${x.tipo}` }])).map((x) => {
+        const u = x.u
         const on = activo === u
         return (
-          <button key={x.tipo} type="button" onClick={() => onFiltrar(u)} data-testid={`total-${x.tipo}`} title={on ? 'Quitar el filtro' : `Ver sólo ${TIPO_TOTAL[x.tipo].toLowerCase()}`}
+          <button key={x.clave} type="button" onClick={() => onFiltrar(u)} data-testid={x.tipo === 'obra' ? 'total-obra' : `total-${x.tipo}`} title={on ? 'Quitar el filtro' : `Ver sólo ${x.rotulo}`}
             style={{ color: x.tipo === 'sin' ? V.warn : V.apagado, textDecoration: on ? 'none' : 'underline', textDecorationColor: V.linea, textUnderlineOffset: 3, fontWeight: on ? 600 : 400, background: on ? V.hover : 'transparent', borderRadius: 4, padding: on ? '1px 6px' : 0 }}>
-            {TIPO_TOTAL[x.tipo]} <b style={{ color: x.tipo === 'sin' ? V.warn : V.tintaSuave, fontWeight: 500 }}>{x.activos}</b>
+            {x.rotulo} <b style={{ color: x.tipo === 'sin' ? V.warn : V.tintaSuave, fontWeight: 500 }}>{x.activos}</b>
           </button>
         )
       })}

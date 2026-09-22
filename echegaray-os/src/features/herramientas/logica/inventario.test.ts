@@ -87,4 +87,5 @@ test('totales de lo que se ve: activos, unidades (los lotes cuentan lo que dicen
   assert.equal(t.activos, 4, 'la solapa por defecto es Herramientas: el rodado no entra')
   assert.equal(t.unidades, 11, '3 sueltos + 8 del lote')
   assert.deepEqual(t.porTipo, [{ tipo: 'taller', activos: 1 }, { tipo: 'obra', activos: 1 }, { tipo: 'sin', activos: 2 }])
+  assert.deepEqual(t.porObra, [{ u: 'u-o', rotulo: 'OB-0012 · PISOS ARCOR', activos: 1 }], 'cada obra por separado, con su filtro')
 })

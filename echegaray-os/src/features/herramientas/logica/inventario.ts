@@ -135,17 +135,25 @@ export interface Totales {
   /** Los lotes cuentan su `cantidad`: «Balde de albañil · lote» con cantidad 8 son 8. */
   unidades: number
   porTipo: { tipo: 'taller' | 'obra' | 'rodado' | 'servicio_tecnico' | 'tercero' | 'sin'; activos: number }[]
+  /**
+   * Cada obra por separado (dueño, 22/09: «me sirve el filtro por obra»): `u` es el valor del filtro
+   * de ubicación, el mismo que el desplegable.
+   */
+  porObra: { u: string; rotulo: string; activos: number }[]
 }
 
 /** Los totales de lo que se está viendo (dueño, 22/09: «necesito q inventario me vaya mostrando totales»). */
 export function totales(p: Parque, lista: Activo[]): Totales {
   let unidades = 0
   const c = new Map<Totales['porTipo'][number]['tipo'], number>()
+  const obras = new Map<string, number>()
   for (const a of lista) {
     unidades += a.cantidad ?? 1
     const t = a.ubicacion_id ? (p.ubicacionPorId.get(a.ubicacion_id)?.tipo ?? 'sin') : 'sin'
     c.set(t, (c.get(t) ?? 0) + 1)
+    if (t === 'obra') obras.set(a.ubicacion_id!, (obras.get(a.ubicacion_id!) ?? 0) + 1)
   }
   const orden: Totales['porTipo'][number]['tipo'][] = ['taller', 'obra', 'rodado', 'servicio_tecnico', 'tercero', 'sin']
-  return { activos: lista.length, unidades, porTipo: orden.filter((t) => c.has(t)).map((t) => ({ tipo: t, activos: c.get(t)! })) }
+  const porObra = [...obras].map(([u, n]) => ({ u, rotulo: rotuloUbicacion(p, u), activos: n })).sort((a, b) => b.activos - a.activos || a.rotulo.localeCompare(b.rotulo, 'es'))
+  return { activos: lista.length, unidades, porTipo: orden.filter((t) => c.has(t)).map((t) => ({ tipo: t, activos: c.get(t)! })), porObra }
 }

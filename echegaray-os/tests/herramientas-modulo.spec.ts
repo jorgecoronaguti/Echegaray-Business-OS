@@ -74,6 +74,13 @@ test.describe('módulo Herramientas · inventario (22/09)', () => {
     await page.getByTestId('cerrar-ficha').click()
     await expect(page.getByTestId('cerrar-ficha')).toHaveCount(0)
     await page.getByTestId('total-servicio_tecnico').click()
+    // Cada obra es su propio total y su propio filtro.
+    const obra = page.getByTestId('total-obra').first()
+    const rotuloObra = (await obra.textContent())!.replace(/\s*\d+\s*$/, '').trim()
+    await obra.click()
+    await expect(page).toHaveURL(/ubicacion=[0-9a-f-]{36}/)
+    await expect(page.getByRole('table', { name: 'Inventario' }).getByText(rotuloObra).first()).toBeVisible()
+    await page.getByTestId('total-obra').first().click()
     const buscar = page.getByTestId('buscar-inventario')
     await buscar.click()
     await buscar.pressSequentially('amol', { delay: 60 })
