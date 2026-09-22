@@ -157,6 +157,15 @@ export const DESTINOS = {
     fuente: 'lib/banco-santander.mjs · naturalezaIngreso / ingresosPorNaturaleza',
     escribe: 'concilia',
   },
+  // 22/09/2026: la salida a Balanz. Antes caía en «Transferencias a proveedores» y la conciliación
+  // contra Compras buscaba un pago de $10.000.000 que no existe.
+  'Aportes a inversión (Balanz)': {
+    pestaña: 'Caja (CAJA INVERTIDA)',
+    seccion: 'Aporte a la inversión — plata propia que pasa del banco a Balanz',
+    mecanismo: 'El saldo del banco la absorbe; CAJA INVERTIDA la suma por la constante BALANZ (aporte con su referencia del extracto)',
+    fuente: 'lib/banco-santander.mjs · BALANZ / clasificarMovimiento',
+    escribe: 'no',
+  },
   'Rescates de inversión y financiero': {
     pestaña: 'Ninguna (no es ingreso operativo)',
     seccion: 'Rescate de inversión / desembolso de préstamo — plata propia o financiamiento',
