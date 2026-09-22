@@ -73,9 +73,10 @@ test('sin `hrefs` propios, cada sección apunta a su ruta canónica', () => {
     [
       '/administracion/compras',
       '/administracion/proveedores',
-      '/administracion/compras?vista=a-rendir',
       '/administracion/proveedores?vista=deuda',
       '/administracion/proveedores?vista=resolver',
+      // Efectivo va ÚLTIMO (dueño, 22/09/2026): en el medio se leía como un paso más de la cadena de compras.
+      '/administracion/compras?vista=a-rendir',
     ],
   )
 })
@@ -120,6 +121,6 @@ test('la fila y la puerta usan el MISMO portero: el jefe de obra ve las cuatro',
   }
   assert.deepEqual(
     SECCIONES_COMPRAS.filter((s) => puedeVerRuta('jefe_obra', s.href)).map((s) => s.clave),
-    ['compras', 'proveedores', 'efectivo', 'deuda', 'resolver'],
+    ['compras', 'proveedores', 'deuda', 'resolver', 'efectivo'],
   )
 })
