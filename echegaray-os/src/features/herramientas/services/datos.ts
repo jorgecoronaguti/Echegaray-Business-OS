@@ -14,6 +14,7 @@ import { getUsuarioActual, getPerfilActual } from '@/features/auth/services/auth
 import { codigosDeObra } from '@/shared/services/codigosDeObra'
 import { armarParque, type Parque } from '../logica/parque'
 import { faltaMigracion } from '../logica/falta-migracion'
+import { COLUMNAS_PAPEL, type Papel } from '../logica/papeles'
 import {
   COLUMNAS_ACTIVO, COLUMNAS_AJUSTE, COLUMNAS_EXISTENCIA, COLUMNAS_INCIDENCIA, COLUMNAS_LECTURA, COLUMNAS_MOVIMIENTO, COLUMNAS_UBICACION,
   type Activo, type Ajuste, type Existencia, type Incidencia, type LecturaUso, type Movimiento, type ObraIndice, type Ubicacion,
@@ -70,7 +71,7 @@ export async function leerOperadores(): Promise<{ id: string; nombre: string }[]
 export async function leerParque(): Promise<Lectura> {
   try {
     const supabase = await createClient()
-    const [activos, ubicaciones, movimientos, incidencias, obras, perfiles, usuario, categorias, lecturas, existencias, ajustes] = await Promise.all([
+    const [activos, ubicaciones, movimientos, incidencias, obras, perfiles, usuario, categorias, lecturas, existencias, ajustes, papeles] = await Promise.all([
       supabase.from('activo').select(COLUMNAS_ACTIVO).order('codigo').limit(TOPE),
       supabase.from('ubicacion').select(COLUMNAS_UBICACION).limit(TOPE),
       supabase.from('activo_movimiento').select(COLUMNAS_MOVIMIENTO).order('fecha_hora', { ascending: false }).limit(TOPE),
@@ -82,6 +83,7 @@ export async function leerParque(): Promise<Lectura> {
       supabase.from('activo_lectura_uso').select(COLUMNAS_LECTURA).order('fecha_hora', { ascending: false }).limit(TOPE),
       supabase.from('activo_existencia').select(COLUMNAS_EXISTENCIA).limit(TOPE),
       supabase.from('activo_ajuste').select(COLUMNAS_AJUSTE).order('creado_en', { ascending: false }).limit(TOPE),
+      supabase.from('activo_papel_vigente').select(COLUMNAS_PAPEL).limit(TOPE),
     ])
     // Las existencias por lugar son de 20260922T1300: sin esa tabla, cada activo está entero en su lugar.
     if (existencias.error && !faltaMigracion(existencias.error)) return { estado: 'error', mensaje: existencias.error.message }
@@ -95,6 +97,8 @@ export async function leerParque(): Promise<Lectura> {
     // La verificación de uso es de 20260922T1200: si esa tabla todavía no existe, el resto del módulo
     // anda igual y la verificación dice «sin la migración» (null), nunca «nunca».
     if (lecturas.error && !faltaMigracion(lecturas.error)) return { estado: 'error', mensaje: lecturas.error.message }
+    // Los papeles son de 20260922T2400: sin esa vista la pantalla dice «sin cargar», que es la verdad.
+    if (papeles.error && !faltaMigracion(papeles.error)) return { estado: 'error', mensaje: papeles.error.message }
     const lecs = lecturas.error ? null : ((lecturas.data ?? []) as unknown as LecturaUso[]).map((l) => ({
       ...l, lectura: l.lectura == null ? null : Number(l.lectura),
     }))
@@ -114,6 +118,9 @@ export async function leerParque(): Promise<Lectura> {
         personas,
         existencias: existencias.error ? undefined : ((existencias.data ?? []) as unknown as Existencia[]),
         ajustes: ajustes.error ? [] : ((ajustes.data ?? []) as unknown as Ajuste[]),
+        papeles: papeles.error ? null : ((papeles.data ?? []) as unknown as Papel[]).map((p) => ({
+          ...p, dias: p.dias == null ? null : Number(p.dias),
+        })),
       }),
       yo: { id: usuario?.id ?? null, nombre: perfil?.data?.nombre ?? null },
     }

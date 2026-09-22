@@ -11,14 +11,23 @@
 // botón de alta queden alineados con la LISTA QUE GOBIERNAN, no con el borde de la página. Sin ese
 // hueco, abrir el panel corre la tabla hacia la izquierda y los controles se quedan flotando sobre
 // el panel, gobernando algo que ya no está debajo. 392 = 344 del panel (`PanelFilo`, `v4A:255`) +
-// 24 de margen + 24 de sangría: EL HUECO SIGUE AL PANEL, así que si el panel vuelve a cambiar de
-// ancho hay que mover los dos números o la cabecera queda desalineada de su propia tabla.
+// 24 de margen + 24 de sangría.
+//
+// EL HUECO SIGUE AL PANEL, Y NO DE PALABRA. Hasta el 22/09 el hueco era el literal `lg:w-[392px]`
+// y la única garantía de que coincidiera con el panel era este comentario: «Efectivo a rendir»
+// estrenó un panel de 520 y el botón oscuro «+ Entregar efectivo» quedó 128px ADENTRO del panel,
+// montado encima. Por eso `espacioPanel` acepta el ancho: una pantalla con un panel que no es el
+// `PanelFilo` pasa SU constante —la misma que dibuja el panel— y las dos medidas no pueden
+// separarse. `true` sigue queriendo decir «el panel del patrón», que mide 392.
 
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { IconoCrear } from '@/shared/components/iconos'
 import { BuscadorFilo } from './BuscadorFilo'
 import { V } from './patron'
+
+/** El hueco del `PanelFilo`: 344 de panel + 24 de margen + 24 de sangría. */
+export const HUECO_PANEL_FILO = 392
 
 export interface SubVista {
   clave: string
@@ -59,7 +68,11 @@ export function CabeceraSeccion({ vistas, buscador, alta, accion, filtros, espac
   accion?: ReactNode
   /** Los recortes, cuando el mockup los pone en la MISMA línea que el buscador (`25v2:66-73`). */
   filtros?: ReactNode
-  espacioPanel: boolean
+  /**
+   * ¿Hay un panel abierto al costado, y cuánto mide? `true` = el `PanelFilo` del patrón (392).
+   * Un número = el ancho TOTAL de un panel propio, tomado de la constante que lo dibuja.
+   */
+  espacioPanel: boolean | number
   testid?: string
 }) {
   return (
@@ -138,7 +151,14 @@ export function CabeceraSeccion({ vistas, buscador, alta, accion, filtros, espac
         </div>
       </div>
 
-      {espacioPanel && <span className="hidden shrink-0 lg:block lg:w-[392px]" aria-hidden />}
+      {espacioPanel && (
+        <span
+          className="hidden shrink-0 lg:block"
+          style={{ width: typeof espacioPanel === 'number' ? espacioPanel : HUECO_PANEL_FILO }}
+          data-testid="hueco-panel"
+          aria-hidden
+        />
+      )}
     </div>
   )
 }

@@ -100,3 +100,23 @@ export function resumenDeUnidad(papeles: readonly Papel[] | null | undefined, ac
   }).filter(Boolean)
   return partes.length ? partes.join(' · ') : 'sin cargar'
 }
+
+/** Las columnas de `activo_papel_vigente` que la pantalla necesita. `dias` lo calcula la vista. */
+export const COLUMNAS_PAPEL =
+  'id, activo_id, tipo, numero, emisor, titular, emitido_en, vence_en, dias, drive_file_id, drive_nombre, observacion'
+
+/**
+ * El PDF en Drive. `null` cuando el papel se cargó sin archivo: un enlace roto es peor que ninguno,
+ * porque manda a alguien a buscar un papel que no está donde dice.
+ */
+export function enlaceDrive(p: Pick<Papel, 'drive_file_id'>): string | null {
+  return p.drive_file_id ? `https://drive.google.com/file/d/${p.drive_file_id}/view` : null
+}
+
+/**
+ * Cuántos papeles del parque hay que mirar hoy (vencidos o por vencer). `null` sin la migración:
+ * la bajada dice «papeles sin cargar», nunca «0 por vencer», que se lee como «está todo bien».
+ */
+export function cuantosVencen(papeles: readonly Papel[] | null | undefined): number | null {
+  return loQueVence(papeles)?.length ?? null
+}

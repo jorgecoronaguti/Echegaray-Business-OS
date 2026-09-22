@@ -49,6 +49,8 @@
 /**
  * Las cinco. `deuda` y `resolver` viven en la misma ruta que `proveedores`, con `?vista=`; `efectivo`, en la
  * de Compras con `?vista=a-rendir` (diseño «Efectivo a rendir», D01: «quinta sección de nivel 3»).
+ * Se llama «Efectivo» a secas desde el 22/09/2026, igual que el canal de Mattermost: es el mismo lugar
+ * dicho de dos formas, y el dueño pidió un solo nombre.
  */
 export type SeccionCompras = 'compras' | 'proveedores' | 'efectivo' | 'deuda' | 'resolver'
 
@@ -82,7 +84,7 @@ export const SECCIONES_COMPRAS: readonly SeccionDeCompras[] = [
   { clave: 'proveedores', titulo: 'Proveedores', href: '/administracion/proveedores' },
   // EFECTIVO A RENDIR (22/09/2026) — entre el maestro y la deuda, donde lo pone el diseño. Es plata de la
   // empresa en manos de una persona: se decide mirándola igual que la deuda, y su gasto termina en Compras.
-  { clave: 'efectivo', titulo: 'Efectivo a rendir', href: '/administracion/compras?vista=a-rendir' },
+  { clave: 'efectivo', titulo: 'Efectivo', href: '/administracion/compras?vista=a-rendir' },
   { clave: 'deuda', titulo: 'A quién le debo', href: '/administracion/proveedores?vista=deuda' },
   { clave: 'resolver', titulo: 'Nombres sin resolver', href: '/administracion/proveedores?vista=resolver' },
 ] as const

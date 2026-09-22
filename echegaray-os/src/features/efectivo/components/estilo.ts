@@ -76,8 +76,17 @@ export function punto(tono: Tono): CSSProperties {
   return { width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: tono === 'neutro' ? V.tenue : COLOR_TONO[tono] }
 }
 
+/**
+ * EL ANCHO TOTAL DEL PANEL AL COSTADO (`D02`): 520px, con el filo y el padding adentro
+ * (`border-box`, preflight de Tailwind). Es el mismo número que la cabecera reserva como hueco
+ * (`espacioPanel`): si acá cambia y allá no, el botón oscuro se monta encima del panel.
+ */
+export const ANCHO_PANEL = 520
+/** El panel del comprobante observado es más ancho: la foto y la respuesta conviven. `D05`. */
+export const ANCHO_PANEL_OBSERVADO = 560
+
 /** El panel al costado: 520px, filo izquierdo. `D02`. */
 export const panel: CSSProperties = {
-  width: 520, flexShrink: 0, background: '#FFFFFF', borderLeft: `1px solid ${V.lineaFuerte}`,
+  width: ANCHO_PANEL, flexShrink: 0, background: '#FFFFFF', borderLeft: `1px solid ${V.lineaFuerte}`,
   padding: '26px 28px 30px', display: 'flex', flexDirection: 'column', gap: 22,
 }

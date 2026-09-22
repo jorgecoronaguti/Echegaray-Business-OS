@@ -3,7 +3,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  AVISO_DIAS, estadoDePapel, loQueVence, papelDe, papelesDe, resumenDeUnidad, type Papel,
+  AVISO_DIAS, cuantosVencen, enlaceDrive, estadoDePapel, loQueVence, papelDe, papelesDe, resumenDeUnidad, type Papel,
 } from './papeles.ts'
 
 const papel = (o: Partial<Papel> = {}): Papel => ({
@@ -59,4 +59,15 @@ test('los papeles de una unidad salen en el orden en que se leen, y no se mezcla
   assert.deepEqual(papelesDe(ps, 'a1').map((p) => p.tipo), ['rto', 'seguro', 'titulo'])
   assert.equal(papelDe(ps, 'a1', 'rto')?.id, '2')
   assert.equal(papelDe(ps, 'a1', 'patente'), null)
+})
+
+test('el enlace al PDF sólo existe si hay archivo', () => {
+  assert.equal(enlaceDrive({ drive_file_id: '1abc' }), 'https://drive.google.com/file/d/1abc/view')
+  assert.equal(enlaceDrive({ drive_file_id: null }), null)
+})
+
+test('el aviso del parque cuenta lo que hay que mirar, y sin la migración no cuenta cero', () => {
+  assert.equal(cuantosVencen(null), null)
+  assert.equal(cuantosVencen([]), 0)
+  assert.equal(cuantosVencen([papel({ tipo: 'rto', dias: -2 }), papel({ tipo: 'seguro', dias: 400, vence_en: '2027-11-01' })]), 1)
 })

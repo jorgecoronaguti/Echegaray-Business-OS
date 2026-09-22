@@ -25,13 +25,13 @@ import { PanelDevolucion } from './PanelDevolucion'
 import { PanelEntregar } from './PanelEntregar'
 import { PanelObservado } from './PanelObservado'
 import { RevisarComprobante } from './RevisarComprobante'
-import { V, botonOscuro } from './estilo'
+import { ANCHO_PANEL, ANCHO_PANEL_OBSERVADO, V, botonOscuro } from './estilo'
 
 type Params = Record<string, string | undefined>
 
 export async function VistaEfectivo({ sp }: { sp: Params }) {
   const lectura = await leerEfectivo()
-  const cabecera = (accion?: React.ReactNode, cuenta: number | null = null, espacioPanel = false) => (
+  const cabecera = (accion?: React.ReactNode, cuenta: number | null = null, espacioPanel: boolean | number = false) => (
     <CabeceraSeccion
       testid="vistas-compras"
       vistas={seccionesDeCompras('efectivo', { efectivo: cuenta })}
@@ -80,7 +80,7 @@ export async function VistaEfectivo({ sp }: { sp: Params }) {
   )
 }
 
-type Cabecera = (accion?: React.ReactNode, cuenta?: number | null, espacioPanel?: boolean) => React.ReactNode
+type Cabecera = (accion?: React.ReactNode, cuenta?: number | null, espacioPanel?: boolean | number) => React.ReactNode
 
 function vistaLista({ d, sp, abiertas, cabecera }: { d: DatosEfectivo; sp: Params; abiertas: number; cabecera: Cabecera }) {
   const filtro = filtroDeLista(sp.f)
@@ -96,7 +96,11 @@ function vistaLista({ d, sp, abiertas, cabecera }: { d: DatosEfectivo; sp: Param
   )
   return (
     <>
-      {cabecera(accion, abiertas, entregando)}
+      {/* CON EL PANEL ABIERTO LA CABECERA NO MUESTRA SU ACCIÓN. La lista queda atenuada porque
+          mientras se entrega no se toca; «Exportar» y «Entregar efectivo» seguían encima de esa
+          zona, vivos y clickeables —abrir el panel de nuevo sobre el panel abierto—. Y el hueco
+          mide lo que mide EL PANEL, no lo que mide el del patrón. */}
+      {cabecera(entregando ? undefined : accion, abiertas, entregando && ANCHO_PANEL)}
       <div className="flex flex-col lg:flex-row lg:items-start">
         <div className="min-w-0 flex-1" style={{ padding: '22px 20px 34px', display: 'flex', flexDirection: 'column', gap: 24, opacity: entregando ? 0.4 : 1 }}>
           <Tarjetas r={resumir(d.entregas, d.comprobantes, d.rendiciones, d.hoy)} />
@@ -145,7 +149,11 @@ async function vistaFicha({ d, entrega: e, sp, abiertas, cabecera }: {
   )
   return (
     <>
-      {cabecera(volver, abiertas, devolviendo || !!observado)}
+      {cabecera(
+        devolviendo || observado ? undefined : volver,
+        abiertas,
+        devolviendo ? ANCHO_PANEL : observado ? ANCHO_PANEL_OBSERVADO : false,
+      )}
       <div className="flex flex-col lg:flex-row lg:items-start">
         <div className="min-w-0 flex-1" style={{ padding: '22px 20px 34px', opacity: devolviendo || observado ? 0.4 : 1 }}>
           <FichaEntrega e={e} comprobantes={comprobantes} rendiciones={rendiciones} devoluciones={devoluciones} extra={extra} cliente={cliente} />

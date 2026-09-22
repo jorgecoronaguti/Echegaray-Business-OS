@@ -6,6 +6,7 @@
 // reportes se vio «nunca». Ninguna función de acá devuelve 0 o un lugar por defecto para tapar un hueco.
 
 import { rotuloDeObra } from '../../../shared/utils/obra.ts'
+import type { Papel } from './papeles.ts'
 import type { Activo, Ajuste, EstadoActivo, Existencia, Incidencia, LecturaUso, Movimiento, ObraIndice, TipoUbicacion, Ubicacion } from '../types.ts'
 
 export interface DatosParque {
@@ -32,6 +33,11 @@ export interface DatosParque {
   existencias?: Existencia[]
   /** Recuentos y bajas parciales (20260922T1300). */
   ajustes?: Ajuste[]
+  /**
+   * Los papeles vigentes de cada activo (`activo_papel_vigente`, migración 20260922T2400).
+   * `null`/ausente = la tabla todavía no existe: la pantalla dice «sin cargar», nunca «al día».
+   */
+  papeles?: Papel[] | null
 }
 
 export interface Parque extends DatosParque {

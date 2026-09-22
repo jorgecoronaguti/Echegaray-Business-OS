@@ -12,7 +12,7 @@ import { ddmm, ddmmHora, pesos, queFalta, totalLeido } from '../logica/entregas'
 import { urlEfectivo } from '../logica/url'
 import { DescartarComprobante, ObservarComprobante } from './AccionesComprobante'
 import { Cerrar, PANEL_CLASE } from './Piezas'
-import { V, botonClaroGrande, cajaConfirmar, panel, punto } from './estilo'
+import { ANCHO_PANEL_OBSERVADO, V, botonClaroGrande, cajaConfirmar, panel, punto } from './estilo'
 
 export function PanelObservado({ c, e, destino }: { c: Comprobante; e: Entrega; destino: string }) {
   const volver = urlEfectivo({ entrega: e.codigo })
@@ -21,7 +21,7 @@ export function PanelObservado({ c, e, destino }: { c: Comprobante; e: Entrega; 
   const fila = { minHeight: 46, display: 'flex', alignItems: 'center', gap: 12, fontSize: '13.5px' } as const
   const faltas = queFalta(c)
   return (
-    <aside style={{ ...panel, width: 560, gap: 20 }} className={PANEL_CLASE} aria-label="Comprobante observado" data-testid="panel-observado">
+    <aside style={{ ...panel, width: ANCHO_PANEL_OBSERVADO, gap: 20 }} className={PANEL_CLASE} aria-label="Comprobante observado" data-testid="panel-observado">
       <Cerrar
         href={volver}
         antes={(
