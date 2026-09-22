@@ -81,7 +81,7 @@ test('el buscador sugiere mientras se tipea: código exacto primero, bajas nunca
 
 test('totales de lo que se ve: activos, unidades (los lotes cuentan lo que dicen) y dónde están', () => {
   const p = parque()
-  const lista = [...filtrar(p, filtrosDeURL({})), { ...p.activos[3], id: 'lote', nombre: 'Balde de albañil (8 u.)' }]
+  const lista = [...filtrar(p, filtrosDeURL({})), { ...p.activos[3], id: 'lote', nombre: 'Balde de albañil · lote', cantidad: 8 }]
   const t = totales(p, lista)
   assert.equal(t.activos, 4, 'la solapa por defecto es Herramientas: el rodado no entra')
   assert.equal(t.unidades, 11, '3 sueltos + 8 del lote')

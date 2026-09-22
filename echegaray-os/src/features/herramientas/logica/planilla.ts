@@ -1,50 +1,90 @@
-// LA PLANILLA DE UNA OBRA — Herramienta · Ingreso · Salida · Observación.
+// EL CONTROL DE HERRAMIENTAS DE UNA OBRA — lo que el sistema sabe, impreso para controlarlo en obra.
 //
-// Dueño, 22/09, con la foto de la planilla de papel que se usa hoy en obra: «el resultado de esto puede
-// ser q la obra tenga algo asi». No se carga aparte: sale de los movimientos. Cada vez que un activo
-// ENTRA a la ubicación es un renglón; la salida es el movimiento siguiente que lo saca de ahí (vacía si
-// sigue). La observación junta la nota con que llegó, la nota con que salió y, si todavía está ahí con
-// un problema, su estado.
+// Dueño, 22/09: «la planilla q se crea para imprimir por obra no quiero q sea una replica de la foto,
+// quiero q crees algo q sea realmente util en base a el sistema». La hoja de papel sólo anotaba
+// ingreso y salida a mano; el sistema ya sabe eso. Lo útil en obra es lo que NO sabe: si lo que figura
+// está de verdad. Por eso la planilla es un control:
+//   · lo que hay hoy, por categoría, con desde cuándo, cuántos días y quién lo llevó, para tildar
+//     «está / falta» (lo que falte se reporta después como «no la encuentro»);
+//   · lo que ya tiene un problema reportado, para no volver a descubrirlo;
+//   · lo que entró y salió en los últimos 30 días, para reconstruir un faltante.
 
-import { ETIQUETA_ESTADO, type Parque } from './parque.ts'
-import type { Activo } from '../types.ts'
+import { autorDe, diasDesde, ETIQUETA_ESTADO, rotuloUbicacion, type Parque } from './parque.ts'
+import type { Activo, Movimiento } from '../types.ts'
 
-export interface RenglonPlanilla {
+export interface FilaControl {
   activo: Activo
-  ingreso: string
-  salida: string | null
-  observacion: string
+  llego: string | null
+  dias: number | null
+  trajo: string | null
 }
 
-export function planilla(p: Parque, ubicacionId: string): RenglonPlanilla[] {
-  const porActivo = new Map<string, typeof p.movimientos>()
-  for (const m of p.movimientos) {
-    const l = porActivo.get(m.activo_id)
-    if (l) l.push(m)
-    else porActivo.set(m.activo_id, [m])
-  }
-  const out: RenglonPlanilla[] = []
-  for (const [activoId, movs] of porActivo) {
-    const a = p.activoPorId.get(activoId)
-    if (!a) continue
-    const orden = [...movs].sort((x, y) => x.fecha_hora.localeCompare(y.fecha_hora) || x.id.localeCompare(y.id))
-    for (let i = 0; i < orden.length; i++) {
-      const entra = orden[i]
-      if (entra.destino_id !== ubicacionId) continue
-      const sale = orden.slice(i + 1).find((m) => m.origen_id === ubicacionId || m.destino_id !== ubicacionId) ?? null
-      const notas = [limpia(entra.nota), sale ? limpia(sale.nota) : null].filter(Boolean) as string[]
-      const sigue = !sale && a.ubicacion_id === ubicacionId
-      if (sigue && a.estado !== 'operativo') notas.push(ETIQUETA_ESTADO[a.estado].toLowerCase())
-      out.push({ activo: a, ingreso: entra.fecha_hora, salida: sale ? sale.fecha_hora : null, observacion: notas.join(' · ') })
+export interface MovimientoControl {
+  fecha: string
+  activo: Activo
+  sentido: 'entró' | 'salió'
+  otroLado: string
+  quien: string | null
+  nota: string | null
+}
+
+export interface Control {
+  porCategoria: { categoria: string; filas: FilaControl[] }[]
+  activos: number
+  unidades: number
+  conProblema: FilaControl[]
+  ultimos: MovimientoControl[]
+}
+
+export function controlDeUbicacion(p: Parque, ubicacionId: string, hoy: Date = new Date(), ventanaDias = 30): Control {
+  const aca = p.activos.filter((a) => a.ubicacion_id === ubicacionId && a.estado !== 'baja')
+  const filas = aca.map((a): FilaControl => {
+    const llegada = (p.movsDe.get(a.id) ?? []).find((m) => m.destino_id === ubicacionId) ?? null
+    return {
+      activo: a,
+      llego: llegada?.fecha_hora ?? null,
+      dias: llegada ? diasDesde(llegada.fecha_hora, hoy) : null,
+      trajo: llegada ? autorDe(p, llegada) : null,
     }
+  })
+  const orden = new Map((p.categorias ?? []).map((c, i) => [c, i]))
+  const grupos = new Map<string, FilaControl[]>()
+  for (const f of filas) {
+    const c = f.activo.categoria ?? 'Sin categoría'
+    const l = grupos.get(c)
+    if (l) l.push(f)
+    else grupos.set(c, [f])
   }
-  return out.sort((x, y) => x.ingreso.localeCompare(y.ingreso) || x.activo.nombre.localeCompare(y.activo.nombre, 'es'))
+  const porCategoria = [...grupos]
+    .sort(([a], [b]) => (orden.get(a) ?? 999) - (orden.get(b) ?? 999) || a.localeCompare(b, 'es'))
+    .map(([categoria, fs]) => ({ categoria, filas: fs.sort((x, y) => x.activo.nombre.localeCompare(y.activo.nombre, 'es', { numeric: true })) }))
+
+  const ultimos: MovimientoControl[] = p.movimientos
+    .filter((m) => (m.destino_id === ubicacionId || m.origen_id === ubicacionId) && !m.importado && diasDesde(m.fecha_hora, hoy) <= ventanaDias)
+    .map((m: Movimiento) => {
+      const entro = m.destino_id === ubicacionId
+      const otro = entro ? m.origen_id : m.destino_id
+      return {
+        fecha: m.fecha_hora,
+        activo: p.activoPorId.get(m.activo_id)!,
+        sentido: entro ? 'entró' as const : 'salió' as const,
+        otroLado: otro ? rotuloUbicacion(p, otro) : 'alta',
+        quien: autorDe(p, m),
+        nota: m.nota && m.nota !== 'alta' ? m.nota : null,
+      }
+    })
+    .filter((x) => x.activo)
+    .sort((a, b) => b.fecha.localeCompare(a.fecha))
+
+  return {
+    porCategoria,
+    activos: aca.length,
+    unidades: aca.reduce((s, a) => s + (a.cantidad ?? 1), 0),
+    conProblema: filas.filter((f) => f.activo.estado !== 'operativo'),
+    ultimos,
+  }
 }
 
-/** Las notas automáticas de la importación no son observaciones de obra. */
-function limpia(n: string | null): string | null {
-  if (!n) return null
-  const t = n.trim()
-  if (!t || /^importado/i.test(t) || t === 'alta') return null
-  return t
+export function textoEstado(a: Activo): string {
+  return ETIQUETA_ESTADO[a.estado]
 }

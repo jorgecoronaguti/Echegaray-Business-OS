@@ -47,7 +47,7 @@ async function leerObras(supabase: SupabaseClient): Promise<ObraIndice[]> {
 export async function leerParque(): Promise<Lectura> {
   try {
     const supabase = await createClient()
-    const [activos, ubicaciones, movimientos, incidencias, obras, perfiles, usuario] = await Promise.all([
+    const [activos, ubicaciones, movimientos, incidencias, obras, perfiles, usuario, categorias] = await Promise.all([
       supabase.from('activo').select(COLUMNAS_ACTIVO).order('codigo').limit(TOPE),
       supabase.from('ubicacion').select(COLUMNAS_UBICACION).limit(TOPE),
       supabase.from('activo_movimiento').select(COLUMNAS_MOVIMIENTO).order('fecha_hora', { ascending: false }).limit(TOPE),
@@ -55,6 +55,7 @@ export async function leerParque(): Promise<Lectura> {
       leerObras(supabase),
       supabase.from('perfiles').select('id, nombre'),
       getUsuarioActual(supabase),
+      supabase.from('activo_categoria').select('nombre').order('orden'),
     ])
     for (const r of [activos, ubicaciones, movimientos, incidencias]) {
       if (faltaMigracion(r.error)) return { estado: 'falta_migracion' }
@@ -73,6 +74,7 @@ export async function leerParque(): Promise<Lectura> {
         incidencias: (incidencias.data ?? []) as unknown as Incidencia[],
         obras,
         nombres,
+        categorias: ((categorias.data ?? []) as { nombre: string }[]).map((c) => c.nombre),
       }),
       yo: { id: usuario?.id ?? null, nombre: perfil?.data?.nombre ?? null },
     }

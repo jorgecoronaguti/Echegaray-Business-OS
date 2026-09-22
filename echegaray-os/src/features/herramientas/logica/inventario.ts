@@ -130,7 +130,7 @@ export function sugerencias(p: Parque, q: string, max = 8): Activo[] {
 
 export interface Totales {
   activos: number
-  /** Los lotes cuentan por lo que dicen: «Balde de albañil (8 u.)» son 8. */
+  /** Los lotes cuentan su `cantidad`: «Balde de albañil · lote» con cantidad 8 son 8. */
   unidades: number
   porTipo: { tipo: 'taller' | 'obra' | 'rodado' | 'servicio_tecnico' | 'tercero' | 'sin'; activos: number }[]
 }
@@ -140,8 +140,7 @@ export function totales(p: Parque, lista: Activo[]): Totales {
   let unidades = 0
   const c = new Map<Totales['porTipo'][number]['tipo'], number>()
   for (const a of lista) {
-    const lote = /\((\d+) u\.\)/.exec(a.nombre)
-    unidades += lote ? Number(lote[1]) : 1
+    unidades += a.cantidad ?? 1
     const t = a.ubicacion_id ? (p.ubicacionPorId.get(a.ubicacion_id)?.tipo ?? 'sin') : 'sin'
     c.set(t, (c.get(t) ?? 0) + 1)
   }

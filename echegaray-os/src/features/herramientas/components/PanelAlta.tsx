@@ -10,7 +10,6 @@ import Link from 'next/link'
 import { useMemo, useRef, useState } from 'react'
 import { claveDestino, destinos } from '../logica/mover'
 import { prefijoDeNombre } from '../logica/codigo'
-import { categorias } from '../logica/inventario'
 import { darDeAltaAction } from '../services/acciones'
 import type { Clase } from '../types'
 import { useHerramientas } from './Espacio'
@@ -26,7 +25,9 @@ export function PanelAlta({ onHecho }: { onHecho: (t: string) => void }) {
   const { parque, obras, cerrar, refrescar } = useHerramientas()
   const opciones = useMemo(() => destinos(parque, obras), [parque, obras])
   const taller = opciones.find((o) => o.grupo === 'taller')
-  const cats = useMemo(() => categorias(parque.activos).valores, [parque.activos])
+  // La lista cerrada de la base (`activo_categoria`): no se tipea una categoría nueva.
+  const cats = parque.categorias ?? []
+  const [categoria, setCategoria] = useState('')
   const [clase, setClase] = useState<Clase>('herramienta')
   const [destino, setDestino] = useState(taller ? claveDestino(taller) : '')
   const [error, setError] = useState<string | null>(null)
@@ -44,6 +45,8 @@ export function PanelAlta({ onHecho }: { onHecho: (t: string) => void }) {
     fd.set('clase', clase)
     fd.set('destino', destino)
     fd.set('codigo', letras)
+    fd.set('categoria', clase === 'rodado' ? 'Rodados' : categoria)
+    if (clase !== 'rodado' && !categoria) return setError('Elegí la categoría')
     setEnviando(true)
     setError(null)
     const r = await darDeAltaAction(fd)
@@ -107,8 +110,14 @@ export function PanelAlta({ onHecho }: { onHecho: (t: string) => void }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 11 }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <span style={eyebrow}>Categoría</span>
-              <input name="categoria" list="categorias-herramientas" maxLength={60} placeholder="sin categoría" style={campo} />
-              <datalist id="categorias-herramientas">{cats.map((c) => <option key={c} value={c} />)}</datalist>
+              {clase === 'rodado' ? (
+                <div style={{ ...campo, display: 'flex', alignItems: 'center', color: V.tintaSuave }}>Rodados</div>
+              ) : (
+                <select value={categoria} onChange={(e) => setCategoria(e.target.value)} style={{ ...campo, borderColor: categoria ? V.lineaFuerte : V.grafito }} data-testid="alta-categoria">
+                  <option value="">Elegí la categoría</option>
+                  {cats.filter((c) => c !== 'Rodados').map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              )}
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <span style={eyebrow}>Dónde entra</span>
@@ -118,6 +127,13 @@ export function PanelAlta({ onHecho }: { onHecho: (t: string) => void }) {
               </select>
             </label>
           </div>
+          {clase !== 'rodado' && (
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 8, width: 140 }}>
+              <span style={eyebrow}>Cantidad</span>
+              <input name="cantidad" type="number" min={1} max={100000} step={1} defaultValue={1} style={campo} data-testid="alta-cantidad" />
+              <span style={{ fontSize: '12px', color: V.tenue }}>Más de 1 = un lote.</span>
+            </label>
+          )}
           {clase === 'rodado' && (
             <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <span style={eyebrow}>Patente</span>

@@ -3,7 +3,7 @@ import type { Activo, Incidencia, Movimiento, Ubicacion } from '../types.ts'
 
 export function activo(p: Partial<Activo> & Pick<Activo, 'id' | 'codigo' | 'nombre'>): Activo {
   return {
-    clase: 'herramienta', categoria: null, patente: null, numero_serie: null, foto_url: null,
+    clase: 'herramienta', cantidad: 1, categoria: null, patente: null, numero_serie: null, foto_url: null,
     compra_fecha: null, compra_precio: null, ubicacion_id: null, estado: 'operativo', estado_nota: null,
     estado_desde: '2026-09-01T12:00:00Z', estado_por: null, estado_asumido: false, baja_motivo: null,
     baja_detalle: null, baja_en: null, alta_desde_obra: false, etiqueta_impresa_en: null, legado_id: null,

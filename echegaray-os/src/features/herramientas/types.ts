@@ -14,6 +14,8 @@ export interface Activo {
   codigo: string
   clase: Clase
   nombre: string
+  /** 1 = una unidad; más = un lote («Balde de albañil · lote», 8). Migración 20260922T1000. */
+  cantidad: number
   categoria: string | null
   patente: string | null
   numero_serie: string | null
@@ -82,7 +84,7 @@ export interface ObraIndice {
 }
 
 export const COLUMNAS_ACTIVO =
-  'id, codigo, clase, nombre, categoria, patente, numero_serie, foto_url, compra_fecha, compra_precio, ubicacion_id, estado, estado_nota, estado_desde, estado_por, estado_asumido, baja_motivo, baja_detalle, baja_en, alta_desde_obra, etiqueta_impresa_en, legado_id, creado_en'
+  'id, codigo, clase, nombre, cantidad, categoria, patente, numero_serie, foto_url, compra_fecha, compra_precio, ubicacion_id, estado, estado_nota, estado_desde, estado_por, estado_asumido, baja_motivo, baja_detalle, baja_en, alta_desde_obra, etiqueta_impresa_en, legado_id, creado_en'
 export const COLUMNAS_UBICACION = 'id, tipo, nombre, obra_id, activo_id, contacto, archivada'
 export const COLUMNAS_MOVIMIENTO =
   'id, activo_id, origen_id, destino_id, fecha_hora, usuario_id, usuario_texto, lote_id, nota, corrige_a, importado'

@@ -62,7 +62,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
   const vivosSel = sel.filter((id) => parque.activoPorId.get(id)?.estado !== 'baja')
 
   async function cambiarCategoria() {
-    if (cambiandoCat == null) return
+    if (!cambiandoCat) return
     for (const id of vivosSel) {
       const r = await editarActivoAction({ activo: id, datos: { categoria: cambiandoCat } })
       if (!r.ok) return avisar(r.error)
@@ -157,8 +157,10 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
               <button type="button" onClick={() => setCambiandoCat('')} style={{ color: V.tintaSuave }}>Cambiar categoría</button>
             ) : (
               <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                <input autoFocus list="cats-sel" value={cambiandoCat} onChange={(e) => setCambiandoCat(e.target.value)} placeholder="categoría" style={{ height: 26, border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, padding: '0 8px', fontSize: '12.5px' }} />
-                <datalist id="cats-sel">{cats.valores.map((c) => <option key={c} value={c} />)}</datalist>
+                <select autoFocus value={cambiandoCat} onChange={(e) => setCambiandoCat(e.target.value)} data-testid="categoria-masiva" style={{ height: 26, border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, padding: '0 8px', fontSize: '12.5px' }}>
+                  <option value="">Elegí la categoría</option>
+                  {(parque.categorias ?? []).map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
                 <button type="button" onClick={cambiarCategoria} style={{ fontWeight: 500 }}>Aplicar</button>
                 <button type="button" onClick={() => setCambiandoCat(null)} style={{ color: V.apagado }}>cancelar</button>
               </span>
@@ -319,7 +321,7 @@ function Fila({ parque, a, marcada, abierta, onMarcar, onAbrir }: { parque: Parq
         <input type="checkbox" aria-label={`Seleccionar ${a.nombre}`} checked={marcada} onChange={onMarcar} style={{ width: 14, height: 14, accentColor: V.grafito }} />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <div style={{ fontWeight: 500 }}>{a.nombre}{a.patente && <span style={{ fontFamily: MONO, fontSize: '11px', color: V.tenue, fontWeight: 400 }}> {a.patente}</span>}</div>
+        <div style={{ fontWeight: 500 }}>{a.nombre}{a.patente && <span style={{ fontFamily: MONO, fontSize: '11px', color: V.tenue, fontWeight: 400 }}> {a.patente}</span>}{a.cantidad > 1 && <span data-testid="cantidad-lote" style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 4, background: V.hover, fontSize: '11.5px', color: V.tintaSuave, fontWeight: 500 }}>× {a.cantidad}</span>}</div>
         <div style={{ fontFamily: MONO, fontSize: '11.5px', color: V.tenue }}>
           {a.codigo}{a.alta_desde_obra ? ' · alta desde obra' : ''}
         </div>

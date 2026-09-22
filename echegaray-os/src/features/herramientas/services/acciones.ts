@@ -147,6 +147,7 @@ const altaSchema = z.object({
   // escaneada. La base decide si sirve y, si no, dice qué espera (`_codigo_propuesto`).
   codigo: z.string().trim().max(40).optional(),
   patente: z.string().trim().max(20).optional(),
+  cantidad: z.coerce.number().int('La cantidad es un número entero').min(1, 'La cantidad es 1 o más').max(100000).default(1),
   desdeObra: z.boolean(),
 })
 
@@ -159,6 +160,7 @@ export async function darDeAltaAction(form: FormData): Promise<Resultado<{ id: s
     destino: form.get('destino') || undefined,
     codigo: form.get('codigo') || undefined,
     patente: form.get('patente') || undefined,
+    cantidad: form.get('cantidad') || undefined,
     desdeObra: form.get('desde_obra') === '1',
   })
   if (!p.success) return { ok: false, error: p.error.issues[0].message }
@@ -179,7 +181,7 @@ export async function darDeAltaAction(form: FormData): Promise<Resultado<{ id: s
   const r = await rpc<string>('dar_de_alta_activo', {
     p_clase: p.data.clase, p_nombre: p.data.nombre, p_ubicacion: ubicacion, p_categoria: p.data.categoria || null,
     p_codigo: codigo, p_patente: p.data.clase === 'rodado' ? p.data.patente || null : null,
-    p_alta_desde_obra: p.data.desdeObra, p_foto_url: foto,
+    p_alta_desde_obra: p.data.desdeObra, p_foto_url: foto, p_cantidad: p.data.cantidad,
   })
   if (!r.ok) return r
   try {
@@ -196,6 +198,7 @@ const editarSchema = z.object({
   datos: z.object({
     nombre: z.string().trim().min(2).max(160).optional(),
     categoria: z.string().trim().max(60).optional(),
+    cantidad: z.number().int().min(1).max(100000).optional(),
     numero_serie: z.string().trim().max(80).optional(),
     patente: z.string().trim().max(20).optional(),
     compra_fecha: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/).optional(),

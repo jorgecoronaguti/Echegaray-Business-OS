@@ -8,7 +8,6 @@
 // queda como anterior (su QR sigue abriendo la ficha) y la etiqueta vuelve a la cola de impresión.
 
 import { useState } from 'react'
-import { categorias } from '../logica/inventario'
 import { cambiarCodigoAction, cambiarFotoAction, editarActivoAction } from '../services/acciones'
 import { problemaDelPrefijo } from '../logica/codigo'
 import { CampoCodigo } from './CampoCodigo'
@@ -20,7 +19,7 @@ export function PanelEditar({ id, onHecho }: { id: string; onHecho: (t: string) 
   const { parque, cerrar } = useHerramientas()
   const a = parque.activoPorId.get(id)
   const [v, setV] = useState(() => ({
-    nombre: a?.nombre ?? '', categoria: a?.categoria ?? '', numero_serie: a?.numero_serie ?? '', patente: a?.patente ?? '',
+    nombre: a?.nombre ?? '', categoria: a?.categoria ?? '', cantidad: String(a?.cantidad ?? 1), numero_serie: a?.numero_serie ?? '', patente: a?.patente ?? '',
     compra_fecha: a?.compra_fecha ?? '', compra_precio: a?.compra_precio != null ? String(a.compra_precio) : '',
   }))
   const [revisada, setRevisada] = useState(false)
@@ -29,7 +28,7 @@ export function PanelEditar({ id, onHecho }: { id: string; onHecho: (t: string) 
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
   if (!a) return null
-  const cats = categorias(parque.activos).valores
+  const cats = parque.categorias ?? []
 
   async function guardar() {
     if (!a) return
@@ -49,7 +48,7 @@ export function PanelEditar({ id, onHecho }: { id: string; onHecho: (t: string) 
     const r = await editarActivoAction({
       activo: a.id,
       datos: {
-        nombre: v.nombre, categoria: v.categoria, numero_serie: v.numero_serie, compra_fecha: v.compra_fecha,
+        nombre: v.nombre, categoria: v.categoria, cantidad: Math.max(1, Math.trunc(Number(v.cantidad) || 1)), numero_serie: v.numero_serie, compra_fecha: v.compra_fecha,
         compra_precio: v.compra_precio.replace(',', '.'),
         ...(a.clase === 'rodado' ? { patente: v.patente } : {}),
         ...(revisada ? { revisada: true as const } : {}),
@@ -95,8 +94,16 @@ export function PanelEditar({ id, onHecho }: { id: string; onHecho: (t: string) 
             Tiene etiqueta impresa: la nueva queda en la cola para imprimir. La vieja sigue abriendo esta ficha.
           </div>
         )}
-        {fila('categoria', 'Categoría', { maxLength: 60, list: 'categorias-editar' })}
-        <datalist id="categorias-editar">{cats.map((c) => <option key={c} value={c} />)}</datalist>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 120px', gap: 11 }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span style={eyebrow}>Categoría</span>
+            <select value={v.categoria} onChange={(e) => setV({ ...v, categoria: e.target.value })} style={campo} data-testid="editar-categoria">
+              {!v.categoria && <option value="">sin categoría</option>}
+              {cats.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          {fila('cantidad', 'Cantidad', { type: 'number', min: 1, max: 100000, step: 1 })}
+        </div>
         {fila('numero_serie', 'Número de serie', { maxLength: 80 })}
         {a.clase === 'rodado' && fila('patente', 'Patente', { maxLength: 20 })}
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 11 }}>

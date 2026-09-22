@@ -1,69 +1,169 @@
 'use client'
 
-// LA PLANILLA DE LA OBRA — la de papel que hoy se llena a mano (foto del dueño, 22/09), armada sola con
-// los movimientos: Herramienta · Ingreso · Salida · Observación. Se imprime con renglones en blanco
-// abajo para lo que se anote en obra. Al imprimir se ocultan el menú y los botones.
+// EL CONTROL DE HERRAMIENTAS DE LA OBRA, PARA IMPRIMIR — ver `logica/planilla.ts`.
+//
+// No es la hoja de papel copiada (dueño, 22/09): es lo que el sistema sabe de esa obra, puesto para
+// controlarlo en el lugar. Lo que hay hoy por categoría con casilleros «está / falta», lo que ya tiene
+// un problema, lo que entró y salió en 30 días, y las firmas. Al imprimir se ocultan menú y botones.
 
 import Link from 'next/link'
-import { planilla } from '../logica/planilla'
+import { controlDeUbicacion, textoEstado, type FilaControl } from '../logica/planilla'
 import { rotuloUbicacion, type Parque } from '../logica/parque'
 import { MONO, V, bajadaPagina, pagina, tituloPagina } from './estilo'
-import { diaMes } from './formato'
+import { diaMes, diaMesAnio } from './formato'
 
-const EN_BLANCO = 8
+const celda = { borderBottom: '1px solid #D7D5CF', padding: '6px 8px', fontSize: '12.5px', textAlign: 'left' as const, verticalAlign: 'top' as const }
+const rotulo = { ...celda, fontSize: '10.5px', letterSpacing: '.06em', textTransform: 'uppercase' as const, color: '#6B6B67', fontWeight: 500, borderBottom: '1px solid #1F1F1E' }
+const casilla = { display: 'inline-block', width: 13, height: 13, border: '1.3px solid #1F1F1E', borderRadius: 2 }
 
 export function VistaPlanilla({ parque, ubicacionId }: { parque: Parque; ubicacionId: string | null }) {
   const u = ubicacionId ? parque.ubicacionPorId.get(ubicacionId) : undefined
   if (!u) {
     return (
       <div style={pagina}>
-        <div style={tituloPagina}>Planilla</div>
+        <div style={tituloPagina}>Control de herramientas</div>
         <div style={bajadaPagina}>Elegí una obra o un lugar desde <Link href="/herramientas/ubicaciones" style={{ textDecoration: 'underline' }}>Ubicaciones</Link>.</div>
       </div>
     )
   }
-  const filas = planilla(parque, u.id)
-  const hoy = filas.filter((f) => !f.salida).length
-  const celda = { border: '1px solid #1F1F1E', padding: '7px 9px', fontSize: '13px', textAlign: 'left' as const, verticalAlign: 'top' as const }
+  const hoy = new Date()
+  const c = controlDeUbicacion(parque, u.id, hoy)
+  const obra = u.obra_id ? parque.obraPorId.get(u.obra_id) : null
+
   return (
-    <div style={pagina} data-testid="planilla">
-      <style>{`@media print { header, nav, [data-no-imprimir] { display: none !important; } body { background: #fff; } }`}</style>
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20 }}>
+    <div style={{ ...pagina, maxWidth: 1100 }} data-testid="planilla">
+      <style>{`@media print {
+        header, nav, [data-no-imprimir] { display: none !important; }
+        body { background: #fff; }
+        @page { size: A4; margin: 12mm; }
+        [data-planilla-bloque] { break-inside: avoid; }
+      }`}</style>
+
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, borderBottom: '2px solid #1F1F1E', paddingBottom: 12 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={tituloPagina}>Planilla de herramientas · {rotuloUbicacion(parque, u.id)}</div>
-          <div style={bajadaPagina}>{filas.length} ingresos registrados · {hoy} {hoy === 1 ? 'sigue' : 'siguen'} acá · impresa el {diaMes(new Date().toISOString())}</div>
+          <div style={{ fontSize: '11px', letterSpacing: '.08em', textTransform: 'uppercase', color: V.apagado }}>Echegaray Construcciones · Control de herramientas</div>
+          <div style={tituloPagina}>{rotuloUbicacion(parque, u.id)}</div>
+          <div style={bajadaPagina}>
+            {obra?.cliente ? `${obra.cliente} · ` : ''}{c.activos} {c.activos === 1 ? 'activo' : 'activos'}
+            {c.unidades !== c.activos ? ` · ${c.unidades} unidades` : ''} · {c.conProblema.length} con problema · impreso el {diaMesAnio(hoy.toISOString())}
+          </div>
         </div>
-        <div data-no-imprimir style={{ display: 'flex', gap: 10 }}>
-          <Link href={`/herramientas/ubicaciones?u=${u.id}`} style={{ fontSize: '13px', color: V.apagado, alignSelf: 'center' }}>Volver</Link>
+        <div data-no-imprimir style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <Link href={`/herramientas/ubicaciones?u=${u.id}`} style={{ fontSize: '13px', color: V.apagado }}>Volver</Link>
           <button type="button" onClick={() => window.print()} data-testid="imprimir-planilla"
             style={{ height: 32, padding: '0 14px', borderRadius: 6, background: V.marca, color: V.grafito, fontWeight: 600, fontSize: '13px' }}>
             Imprimir
           </button>
         </div>
       </div>
-      <table style={{ borderCollapse: 'collapse', width: '100%', maxWidth: 980 }}>
-        <thead>
-          <tr>
-            {['Herramienta', 'Ingreso', 'Salida', 'Observación'].map((t, i) => (
-              <th key={t} style={{ ...celda, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.02em', width: i === 0 ? '42%' : i === 3 ? '30%' : '14%', textAlign: i === 1 || i === 2 ? 'center' : 'left' }}>{t}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {filas.map((f, i) => (
-            <tr key={`${f.activo.id}-${i}`}>
-              <td style={celda}>{f.activo.nombre} <span style={{ fontFamily: MONO, fontSize: '11px', color: V.tenue }}>{f.activo.codigo}</span></td>
-              <td style={{ ...celda, textAlign: 'center' }}>{diaMes(f.ingreso)}</td>
-              <td style={{ ...celda, textAlign: 'center' }}>{f.salida ? diaMes(f.salida) : ''}</td>
-              <td style={celda}>{f.observacion}</td>
-            </tr>
-          ))}
-          {Array.from({ length: EN_BLANCO }, (_, i) => (
-            <tr key={`b${i}`}><td style={{ ...celda, height: 30 }} /><td style={celda} /><td style={celda} /><td style={celda} /></tr>
-          ))}
-        </tbody>
-      </table>
-      {filas.length === 0 && <div style={bajadaPagina}>Todavía no entró ninguna herramienta acá. Los renglones en blanco sirven para anotar a mano.</div>}
+
+      <section data-planilla-bloque style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ fontSize: '14px', fontWeight: 600 }}>1 · Lo que tiene que estar hoy</div>
+        <div style={{ fontSize: '12px', color: V.apagado }}>Tildar lo que se ve. Lo que falte se reporta después como «No la encuentro» en el teléfono, con el código.</div>
+        {c.activos === 0 ? (
+          <div style={bajadaPagina}>El sistema no tiene nada registrado acá.</div>
+        ) : (
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead>
+              <tr>
+                <th style={{ ...rotulo, width: 80 }}>Código</th>
+                <th style={rotulo}>Herramienta</th>
+                <th style={{ ...rotulo, width: 44, textAlign: 'right' }}>Cant.</th>
+                <th style={{ ...rotulo, width: 120 }}>Estado</th>
+                <th style={{ ...rotulo, width: 110 }}>Llegó</th>
+                <th style={{ ...rotulo, width: 110 }}>La trajo</th>
+                <th style={{ ...rotulo, width: 44, textAlign: 'center' }}>Está</th>
+                <th style={{ ...rotulo, width: 44, textAlign: 'center' }}>Falta</th>
+                <th style={{ ...rotulo, width: 170 }}>Observación</th>
+              </tr>
+            </thead>
+            <tbody>
+              {c.porCategoria.map((g) => [
+                <tr key={`g-${g.categoria}`}>
+                  <td colSpan={9} style={{ ...celda, paddingTop: 12, fontWeight: 600, fontSize: '12px', color: V.tinta, borderBottom: '1px solid #91918B' }}>
+                    {g.categoria} <span style={{ color: V.tenue, fontWeight: 400 }}>· {g.filas.length}</span>
+                  </td>
+                </tr>,
+                ...g.filas.map((f) => <FilaImpresa key={f.activo.id} f={f} />),
+              ])}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {c.conProblema.length > 0 && (
+        <section data-planilla-bloque style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: '14px', fontWeight: 600 }}>2 · Ya tienen un problema reportado</div>
+          <div style={{ fontSize: '12px', color: V.apagado }}>No hace falta volver a reportarlas: decidir si se retiran al Taller.</div>
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <tbody>
+              {c.conProblema.map((f) => (
+                <tr key={f.activo.id}>
+                  <td style={{ ...celda, width: 80, fontFamily: MONO, fontSize: '11.5px' }}>{f.activo.codigo}</td>
+                  <td style={celda}>{f.activo.nombre}</td>
+                  <td style={{ ...celda, width: 160, color: V.warn }}>{textoEstado(f.activo)}</td>
+                  <td style={{ ...celda, width: 300, color: V.tintaSuave }}>{f.activo.estado_nota ?? ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      <section data-planilla-bloque style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ fontSize: '14px', fontWeight: 600 }}>{c.conProblema.length > 0 ? '3' : '2'} · Entró y salió en los últimos 30 días</div>
+        {c.ultimos.length === 0 ? (
+          <div style={bajadaPagina}>Sin movimientos en 30 días.</div>
+        ) : (
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead>
+              <tr>
+                <th style={{ ...rotulo, width: 70 }}>Fecha</th>
+                <th style={{ ...rotulo, width: 70 }}></th>
+                <th style={rotulo}>Herramienta</th>
+                <th style={{ ...rotulo, width: 190 }}>Desde / hacia</th>
+                <th style={{ ...rotulo, width: 130 }}>Quién</th>
+                <th style={{ ...rotulo, width: 200 }}>Nota</th>
+              </tr>
+            </thead>
+            <tbody>
+              {c.ultimos.map((m, i) => (
+                <tr key={i}>
+                  <td style={celda}>{diaMes(m.fecha)}</td>
+                  <td style={{ ...celda, color: m.sentido === 'entró' ? V.pos : V.warn, fontWeight: 500 }}>{m.sentido}</td>
+                  <td style={celda}>{m.activo.nombre} <span style={{ fontFamily: MONO, fontSize: '11px', color: V.tenue }}>{m.activo.codigo}</span></td>
+                  <td style={celda}>{m.sentido === 'entró' ? 'desde ' : 'a '}{m.otroLado}</td>
+                  <td style={celda}>{m.quien ?? ''}</td>
+                  <td style={{ ...celda, color: V.tintaSuave }}>{m.nota ?? ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section data-planilla-bloque style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 28, paddingTop: 26, fontSize: '12.5px' }}>
+        {['Controló (nombre y firma)', 'Recibió en obra (jefe)', 'Fecha del control'].map((t) => (
+          <div key={t} style={{ borderTop: '1px solid #1F1F1E', paddingTop: 6, color: V.apagado }}>{t}</div>
+        ))}
+      </section>
     </div>
+  )
+}
+
+function FilaImpresa({ f }: { f: FilaControl }) {
+  const a = f.activo
+  return (
+    <tr>
+      <td style={{ ...celda, fontFamily: MONO, fontSize: '11.5px' }}>{a.codigo}</td>
+      <td style={celda}>{a.nombre}</td>
+      <td style={{ ...celda, textAlign: 'right' }}>{a.cantidad ?? 1}</td>
+      <td style={{ ...celda, color: a.estado === 'operativo' ? V.tintaSuave : V.warn }}>{textoEstado(a)}</td>
+      <td style={celda}>{f.llego ? `${diaMes(f.llego)} · ${f.dias} d` : 'sin registro'}</td>
+      <td style={celda}>{f.trajo ?? ''}</td>
+      <td style={{ ...celda, textAlign: 'center' }}><span style={casilla} /></td>
+      <td style={{ ...celda, textAlign: 'center' }}><span style={casilla} /></td>
+      <td style={celda} />
+    </tr>
   )
 }

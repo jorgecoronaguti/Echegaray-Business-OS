@@ -83,6 +83,9 @@ test.describe('módulo Herramientas · inventario (22/09)', () => {
     await page.mouse.wheel(0, -5000)
     await page.getByTestId('nuevo-activo').click()
     await page.getByTestId('alta-nombre').fill('Carretilla verde')
+    await expect(page.getByTestId('alta-categoria').locator('option')).toHaveCount(15, { timeout: 5000 })
+    await page.getByTestId('alta-categoria').selectOption('Transporte en obra')
+    await expect(page.getByTestId('alta-cantidad')).toHaveValue('1')
     await expect(page.getByTestId('codigo-prefijo')).toHaveValue('CAR')
     await expect(page.getByTestId('codigo-vista')).toHaveText(/^CAR-\d{3}$/)
     await page.getByTestId('codigo-prefijo').fill('cr-t9')
@@ -114,8 +117,8 @@ test.describe('módulo Herramientas · envío a obra y planilla (22/09)', () => 
     await page.mouse.move(300, 600)
     await page.mouse.wheel(0, 2000)
     await page.waitForTimeout(300)
-    const panel = await page.getByTestId('confirmar-mover').boundingBox()
-    expect(panel && panel.y).toBeLessThan(900)
+    const panel = await page.getByTestId('panel-mover').boundingBox()
+    expect(panel && panel.y).toBeLessThanOrEqual(90)
     await page.screenshot({ path: `${CAPTURAS}_envio.png`, fullPage: false })
     // No se confirma: la prueba no mueve herramientas reales.
 

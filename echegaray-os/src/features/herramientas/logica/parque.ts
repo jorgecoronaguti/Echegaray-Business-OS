@@ -16,6 +16,8 @@ export interface DatosParque {
   incidencias: Incidencia[]
   /** usuario_id → nombre del perfil. */
   nombres: Record<string, string>
+  /** Las categorías posibles, en su orden (`activo_categoria`). La lista es cerrada: no se tipea otra. */
+  categorias?: string[]
 }
 
 export interface Parque extends DatosParque {
