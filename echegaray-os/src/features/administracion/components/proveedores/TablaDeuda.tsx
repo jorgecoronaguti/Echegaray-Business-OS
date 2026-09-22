@@ -195,6 +195,15 @@ function FilaDeuda({ f, nota, elegida, href }: {
         <span className={MONO} data-testid="deuda-total" style={{ fontSize: '13.5px', fontWeight: 600, color: V.tinta }}>
           {plataCentavos(f.total)}
         </span>
+        {f.aFavor < 0 && (
+          <span
+            className={MONO} data-testid="deuda-a-favor"
+            title="Notas de crédito abiertas en Compras: restan del total. Es plata a favor de la empresa, no algo que haya que pagar."
+            style={{ fontSize: '10.5px', lineHeight: '12px', color: V.pos }}
+          >
+            {`${plataCentavos(f.aFavor)} en notas de crédito`}
+          </span>
+        )}
         {f.sinFecha > 0 && (
           <span
             className={MONO} data-testid="deuda-sin-fecha"

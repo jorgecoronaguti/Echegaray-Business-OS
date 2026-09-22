@@ -72,6 +72,7 @@ export function DeudaDelProveedor({ deuda, detalleHref, testid = 'deuda-del-prov
         <p style={{ fontSize: '12px', color: V.apagado, margin: 0 }}>
           <strong style={{ color: V.tinta, fontWeight: 600 }}>Al día</strong>
           {` · ninguna compra suya tiene saldo pendiente al ${hoy}.`}
+          {deuda.aFavor < 0 && ` Tiene ${plataCentavos(-deuda.aFavor)} a favor en notas de crédito sin aplicar.`}
         </p>
       </div>
     )
@@ -99,6 +100,12 @@ export function DeudaDelProveedor({ deuda, detalleHref, testid = 'deuda-del-prov
           <Tramo
             rotulo="Sin fecha" monto={deuda.sinFecha} color={V.warn} testid="deuda-sin-fecha"
             title="Se debe, pero la fila de Compras no tiene fecha prevista: no está vencido, está sin fecha."
+          />
+        )}
+        {deuda.aFavor < 0 && (
+          <Tramo
+            rotulo="Notas de crédito" monto={deuda.aFavor} color={V.pos} testid="deuda-a-favor"
+            title="Notas de crédito suyas todavía abiertas en la pestaña Compras. Restan: es plata a favor de la empresa, no algo que haya que pagar."
           />
         )}
         {detalleHref && (

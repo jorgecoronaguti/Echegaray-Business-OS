@@ -40,6 +40,8 @@ export interface DeudaDeLaFicha {
   vencido: number
   porVencer: number
   sinFecha: number
+  /** Sus notas de crédito abiertas, en NEGATIVO. `0` = ninguna. Ya está restado del total. */
+  aFavor: number
   /** Filas de Compras con saldo, no tramos de vencimiento. */
   comprobantes: number
   /** La fecha vencida más vieja, ISO. `null` = no hay nada vencido. */
@@ -67,7 +69,7 @@ export interface LecturaDeDeuda {
 }
 
 const VACIO = {
-  total: 0, vencido: 0, porVencer: 0, sinFecha: 0, comprobantes: 0,
+  total: 0, vencido: 0, porVencer: 0, sinFecha: 0, aFavor: 0, comprobantes: 0,
   desde: null, diasDeAtraso: null, proximo: null, clave: null, truncado: false, cotejo: null,
 } as const
 
@@ -98,6 +100,8 @@ export function deudaDeLaFicha(
   const { fila, hoy } = leido
   const comun = { hoyISO: hoy, truncado: leido.truncado ?? false, cotejo: leido.cotejo ?? null }
   // TRUNCADO NO PUEDE DECIR «AL DÍA»: la fila de este proveedor puede haber quedado fuera del tope.
+  // TOTAL ≤ 0 NO ES SIEMPRE «AL DÍA»: con una nota de crédito abierta que supera lo que se le debe,
+  // no hay nada que pagarle pero SÍ hay plata a favor, y el estado la lleva para poder decirla.
   if (!fila || fila.total <= 0) {
     if (comun.truncado) {
       return {
@@ -106,7 +110,7 @@ export function deudaDeLaFicha(
           + 'proveedor esté al día.',
       }
     }
-    return { ...VACIO, ...comun, estado: 'al-dia', motivo: null }
+    return { ...VACIO, ...comun, estado: 'al-dia', motivo: null, aFavor: fila?.aFavor ?? 0 }
   }
   return {
     ...comun,
@@ -116,6 +120,7 @@ export function deudaDeLaFicha(
     vencido: fila.vencido,
     porVencer: fila.porVencer,
     sinFecha: fila.sinFecha,
+    aFavor: fila.aFavor,
     comprobantes: fila.comprobantes,
     desde: fila.masViejaVencida,
     diasDeAtraso: fila.masViejaVencida ? diasEntre(fila.masViejaVencida, hoy) : null,

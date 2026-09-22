@@ -271,7 +271,9 @@ export function TablaProveedores({
                 fontWeight: debe?.deuda ? 600 : 400,
               }}
               data-testid="deuda-proveedor"
-              title={debe?.deuda
+              title={debe && debe.deuda < 0
+                ? 'Notas de crédito suyas sin aplicar: no se le debe nada, hay plata a favor de la empresa.'
+                : debe?.deuda
                 ? `${debe.comprobantes_impagos} comprobante${debe.comprobantes_impagos === 1 ? '' : 's'} con saldo`
                   + `${debe.impaga_mas_vieja ? `; la compra más vieja sin saldar es del ${fechaCortaConAnio(debe.impaga_mas_vieja)}` : ''}`
                   + '. Abrir la ficha para ver cuánto está vencido.'

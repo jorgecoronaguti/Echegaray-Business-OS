@@ -75,6 +75,8 @@ export function PanelDeudaProveedor({ detalle, nota, obras, hoy, aviso, cerrarHr
   const vencidas = detalle.lineas.filter((l) => l.estado === 'vencido')
   const porVencer = detalle.lineas.filter((l) => l.estado === 'por_vencer')
   const sinFecha = detalle.lineas.filter((l) => l.estado === 'sin_fecha')
+  // LAS NOTAS DE CRÉDITO, EN SU PROPIO BLOQUE. No vencen y no se pagan: restan del total.
+  const aFavor = detalle.lineas.filter((l) => l.estado === 'a_favor')
   return (
     <Drawer
       titulo={detalle.nombre}
@@ -88,6 +90,7 @@ export function PanelDeudaProveedor({ detalle, nota, obras, hoy, aviso, cerrarHr
       {vencidas.length > 0 && <Bloque titulo="Vencido" lineas={vencidas} total={detalle.vencido} obras={obras} base={hrefComprasBase} problema />}
       {porVencer.length > 0 && <Bloque titulo="Por vencer" lineas={porVencer} total={detalle.porVencer} obras={obras} base={hrefComprasBase} />}
       {sinFecha.length > 0 && <Bloque titulo="Sin fecha prevista" lineas={sinFecha} total={detalle.sinFecha} obras={obras} base={hrefComprasBase} problema />}
+      {aFavor.length > 0 && <Bloque titulo="Notas de crédito (restan)" lineas={aFavor} total={detalle.aFavor} obras={obras} base={hrefComprasBase} />}
 
       <div
         data-testid="deuda-detalle-total"

@@ -58,7 +58,10 @@ export async function getDeuda(
 ): Promise<ServiceResult<DeudaLeida>> {
   const [compras, resueltos, canon, notasLeidas, pedidos] = await Promise.all([
     supabase.from('compra_sheet').select(COLUMNAS)
-      .gt('saldo_pendiente', 0).not('anulada', 'is', true)
+      // `neq` Y NO `gt`: una NOTA DE CRÉDITO llega con saldo NEGATIVO y con `.gt(…, 0)` no se sumaba
+      // mal, DESAPARECÍA — la app publicaba más deuda de la que la pestaña declara (22/09/2026).
+      // El cero sigue afuera: una compra saldada no es una deuda de cero.
+      .neq('saldo_pendiente', 0).not('anulada', 'is', true)
       .order('fecha_prevista', { ascending: true, nullsFirst: false })
       .limit(TOPE_DEUDA + 1),
     supabase.from('proveedor_nombre_resuelto').select('nombre_norm, proveedor_id, proveedor_nombre, estado'),
@@ -135,7 +138,10 @@ export async function getDeudaDeUnProveedor(
 ): Promise<ServiceResult<DeudaDeUnProveedor>> {
   const [compras, resueltos, canon] = await Promise.all([
     supabase.from('compra_sheet').select(COLUMNAS)
-      .gt('saldo_pendiente', 0).not('anulada', 'is', true)
+      // `neq` Y NO `gt`: una NOTA DE CRÉDITO llega con saldo NEGATIVO y con `.gt(…, 0)` no se sumaba
+      // mal, DESAPARECÍA — la app publicaba más deuda de la que la pestaña declara (22/09/2026).
+      // El cero sigue afuera: una compra saldada no es una deuda de cero.
+      .neq('saldo_pendiente', 0).not('anulada', 'is', true)
       .order('fecha_prevista', { ascending: true, nullsFirst: false })
       .limit(TOPE_DEUDA + 1),
     supabase.from('proveedor_nombre_resuelto').select('nombre_norm, proveedor_id, proveedor_nombre, estado'),

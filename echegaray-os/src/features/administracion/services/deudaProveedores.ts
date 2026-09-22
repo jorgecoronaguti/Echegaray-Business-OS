@@ -29,6 +29,25 @@
 // semana» el 25/09 hasta que el Sheet se regenere. Viajan en el detalle como referencia, con su
 // rótulo, y quien mire puede ver que la pestaña dice otra cosa.
 //
+// ═══ UNA NOTA DE CRÉDITO RESTA (22/09/2026) ═══
+//
+// El dueño reportó que la ficha de Corralón Progreso publicaba MÁS deuda de la que la pestaña
+// Compras declara, por el importe EXACTO de sus dos notas de crédito abiertas. La causa: en el
+// Sheet una NC se carga con el importe en NEGATIVO (columna P), la fórmula de `Saldo pendiente
+// (OS)` la arrastra con su signo —`P − U − X` mientras el Estado sea «Pendiente»— y TODO el camino
+// de la deuda cortaba en `saldo > 0`: `.gt('saldo_pendiente', 0)` en el servicio, `saldo <= 0
+// continue` acá y `cs.saldo_pendiente > 0` en la vista `proveedor_deuda`. La fila negativa no se
+// sumaba mal: DESAPARECÍA. El error es unidireccional y siempre en contra — la app cobra de más.
+//
+// El signo de una nota de crédito ya está decidido en este proyecto (`orquestador/lib/
+// comprobante-arca.mjs`, 21/07/2026, y `compras-costo-de-obra.mjs`, que corta en `total !== 0`):
+// la NC RESTA, la nota de DÉBITO suma. Acá se aplica el mismo criterio, no uno nuevo.
+//
+// Una NC NO es un vencimiento: no hay nada que pagar el martes. Por eso entra con estado propio
+// `a_favor`, queda fuera de vencido / por vencer / sin fecha —que siguen diciendo cuánto hay que
+// pagar y cuándo— y baja el TOTAL, que es el número que el dueño lee. El invariante que la pantalla
+// puede verificar a ojo es: total = vencido + por vencer + sin fecha + a favor (a favor ≤ 0).
+//
 // ═══ LAS CUOTAS PARCIALES ═══
 //
 // En Compras una cuota suele ser su propia FILA (las 881-883 de Pedro Tello son tres cuotas con
@@ -78,7 +97,12 @@ export interface ProveedorResuelto {
   estado: string | null
 }
 
-export type EstadoVencimiento = 'vencido' | 'por_vencer' | 'sin_fecha'
+/**
+ * `a_favor` es la NOTA DE CRÉDITO: saldo NEGATIVO. No es un vencimiento —no hay nada que pagar—
+ * sino plata a favor de la empresa que todavía no se aplicó contra ninguna factura. Ver la sección
+ * «UNA NOTA DE CRÉDITO RESTA» de la cabecera.
+ */
+export type EstadoVencimiento = 'vencido' | 'por_vencer' | 'sin_fecha' | 'a_favor'
 
 /** Un tramo de deuda con UNA fecha de vencimiento. Una fila de Compras da uno o dos. */
 export interface LineaDeuda {
@@ -113,6 +137,8 @@ export interface DeudaDeProveedor {
   vencido: number
   porVencer: number
   sinFecha: number
+  /** Las notas de crédito abiertas, en NEGATIVO. `0` = no tiene ninguna. Ya está restado del total. */
+  aFavor: number
   total: number
   /** Filas de Compras distintas, no tramos: una fila partida en dos cuotas es UN comprobante. */
   comprobantes: number
@@ -128,6 +154,8 @@ export interface TotalesDeuda {
   vencido: number
   porVencer: number
   sinFecha: number
+  /** Las notas de crédito abiertas de todos, en NEGATIVO. Ya está restado del total. */
+  aFavor: number
   total: number
 }
 
@@ -140,6 +168,8 @@ export interface DetalleDeuda {
   vencido: number
   porVencer: number
   sinFecha: number
+  /** Las notas de crédito abiertas de este proveedor, en NEGATIVO. Ya está restado del total. */
+  aFavor: number
   total: number
 }
 
@@ -188,8 +218,9 @@ function claveDe(compra: CompraConSaldo, resueltos: Map<string, ProveedorResuelt
 /**
  * LAS LÍNEAS DE DEUDA de un lote de compras: una por vencimiento, ya clasificadas.
  *
- * Quedan afuera las anuladas y todo saldo ≤ 0 — una compra saldada no es una deuda de cero, y una
- * anulada no se debe.
+ * Quedan afuera las anuladas y todo saldo EN CERO — una compra saldada no es una deuda de cero, y
+ * una anulada no se debe. El saldo NEGATIVO sí entra: es una nota de crédito y RESTA (ver la
+ * cabecera). Cortarlo acá era el defecto del 22/09/2026.
  */
 export function lineasDeDeuda(
   compras: CompraConSaldo[], resueltos: Map<string, ProveedorResuelto>, hoy: string,
@@ -198,7 +229,7 @@ export function lineasDeDeuda(
   for (const c of compras) {
     if (c.anulada) continue
     const saldo = centavos(aNumero(c.saldo_pendiente) ?? 0)
-    if (saldo <= 0) continue
+    if (saldo === 0) continue
     const quien = claveDe(c, resueltos)
     if (!quien) continue
     const base = {
@@ -210,7 +241,9 @@ export function lineasDeDeuda(
     for (const t of tramosDeLaFila(c, saldo)) {
       salida.push({
         ...base, saldo: t.saldo, vence: t.vence, cuota: t.cuota,
-        estado: estadoDeVencimiento(t.vence, hoy),
+        // UNA NOTA DE CRÉDITO NO VENCE: no hay nada que pagar, así que no puede caer en «vencido»
+        // —pintaría de rojo una urgencia inexistente— ni en «por vencer». Va a su propio estado.
+        estado: t.saldo < 0 ? 'a_favor' : estadoDeVencimiento(t.vence, hoy),
       })
     }
   }
@@ -224,6 +257,9 @@ function tramosDeLaFila(
   const prev1 = c.fecha_prevista?.slice(0, 10) ?? null
   const prev2 = c.fecha_prevista_2?.slice(0, 10) ?? null
   const parcial2 = centavos(aNumero(c.monto_parcial_2) ?? 0)
+  // UNA NOTA DE CRÉDITO NO SE PARTE EN CUOTAS: es un crédito entero, no un pago a plazo. Partirla
+  // daría dos tramos negativos con fechas de vencimiento que no significan nada.
+  if (saldo < 0) return [{ saldo, vence: prev1, cuota: null }]
   // Sin segunda fecha, o con una segunda cuota que se come el saldo entero: un solo vencimiento.
   if (!prev2 || parcial2 <= 0) return [{ saldo, vence: prev1, cuota: null }]
   if (parcial2 >= saldo) return [{ saldo, vence: prev2, cuota: null }]
@@ -249,7 +285,7 @@ export function deudaPorProveedor(
     if (!d) {
       d = {
         clave: l.clave, proveedorId: quien?.proveedorId ?? null, nombre: quien?.nombre ?? l.clave,
-        vencido: 0, porVencer: 0, sinFecha: 0, total: 0, comprobantes: 0,
+        vencido: 0, porVencer: 0, sinFecha: 0, aFavor: 0, total: 0, comprobantes: 0,
         masViejaVencida: null, proximoVencimiento: null, filas: new Set<number>(),
       }
       porClave.set(l.clave, d)
@@ -260,6 +296,8 @@ export function deudaPorProveedor(
     } else if (l.estado === 'por_vencer') {
       d.porVencer = centavos(d.porVencer + l.saldo)
       if (l.vence && (!d.proximoVencimiento || l.vence < d.proximoVencimiento)) d.proximoVencimiento = l.vence
+    } else if (l.estado === 'a_favor') {
+      d.aFavor = centavos(d.aFavor + l.saldo)
     } else {
       d.sinFecha = centavos(d.sinFecha + l.saldo)
     }
@@ -268,6 +306,10 @@ export function deudaPorProveedor(
   }
   return [...porClave.values()]
     .map(({ filas, ...d }) => ({ ...d, comprobantes: filas.size }))
+    // NETO EXACTAMENTE CERO ⇒ NO ES UNA FILA. Le pasa a quien tiene una nota de crédito que cancela
+    // justo su factura abierta: no se le debe nada y no tiene nada a favor. Publicar «$0» ahí lo
+    // pondría en la lista de a quién hay que pagarle.
+    .filter((d) => d.total !== 0)
     .sort(porUrgencia)
 }
 
@@ -305,11 +347,15 @@ export function totalesDeuda(filas: DeudaDeProveedor[]): TotalesDeuda {
     vencido: centavos(a.vencido + f.vencido),
     porVencer: centavos(a.porVencer + f.porVencer),
     sinFecha: centavos(a.sinFecha + f.sinFecha),
+    aFavor: centavos(a.aFavor + f.aFavor),
     total: centavos(a.total + f.total),
-  }), { proveedores: 0, comprobantes: 0, vencido: 0, porVencer: 0, sinFecha: 0, total: 0 })
+  }), { proveedores: 0, comprobantes: 0, vencido: 0, porVencer: 0, sinFecha: 0, aFavor: 0, total: 0 })
 }
 
-const ORDEN_ESTADO: Record<EstadoVencimiento, number> = { vencido: 0, por_vencer: 1, sin_fecha: 2 }
+// A favor va ÚLTIMO: lo primero que hay que leer es qué hay que pagar y cuándo; el crédito cierra.
+const ORDEN_ESTADO: Record<EstadoVencimiento, number> = {
+  vencido: 0, por_vencer: 1, sin_fecha: 2, a_favor: 3,
+}
 
 function porFecha(a: LineaDeuda, b: LineaDeuda): number {
   if (a.estado !== b.estado) return ORDEN_ESTADO[a.estado] - ORDEN_ESTADO[b.estado]
@@ -333,7 +379,7 @@ export function detalleDeProveedor(lineas: LineaDeuda[], fila: DeudaDeProveedor)
   return {
     clave: fila.clave, nombre: fila.nombre, proveedorId: fila.proveedorId, lineas: mias,
     vencido: sumar(mias, 'vencido'), porVencer: sumar(mias, 'por_vencer'),
-    sinFecha: sumar(mias, 'sin_fecha'),
+    sinFecha: sumar(mias, 'sin_fecha'), aFavor: sumar(mias, 'a_favor'),
     total: centavos(mias.reduce((a, l) => a + l.saldo, 0)),
   }
 }

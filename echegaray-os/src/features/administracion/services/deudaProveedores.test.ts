@@ -43,13 +43,70 @@ test('una compra anulada no es deuda, aunque su saldo sea positivo', () => {
   assert.deepEqual(filas, [])
 })
 
-test('un saldo de cero o negativo no es deuda: la fila no existe', () => {
+test('un saldo de cero o sin dato no es deuda: la fila no existe', () => {
   const { filas } = armar([
     compra({ fila: 1, saldo_pendiente: 0 }),
-    compra({ fila: 2, saldo_pendiente: -120 }),
     compra({ fila: 3, saldo_pendiente: null }),
   ])
   assert.deepEqual(filas, [])
+})
+
+// ═══ LA NOTA DE CRÉDITO RESTA (defecto del 22/09/2026) ═══
+//
+// Hasta esta fecha el saldo NEGATIVO se descartaba (`saldo <= 0 continue`), y con él la nota de
+// crédito entera: la app publicaba MÁS deuda de la que la pestaña declara. El error era
+// unidireccional y siempre en contra del dueño.
+
+test('una nota de crédito con saldo negativo RESTA del total del proveedor', () => {
+  const { filas } = armar([
+    compra({ fila: 1, saldo_pendiente: 200000, fecha_prevista: '2026-09-30' }),
+    compra({ fila: 2, saldo_pendiente: -50000, total: -50000, comprobante: 'NC 0006-68' }),
+  ])
+  assert.equal(filas.length, 1)
+  assert.equal(filas[0].total, 150000)
+  assert.equal(filas[0].aFavor, -50000)
+  // NO es un vencimiento: no ensucia lo que hay que pagar ni cuándo.
+  assert.equal(filas[0].porVencer, 200000)
+  assert.equal(filas[0].vencido, 0)
+  assert.equal(filas[0].sinFecha, 0)
+})
+
+test('una nota de crédito vieja no se cuenta como vencida: no hay nada que pagar', () => {
+  const { lineas } = armar([compra({ fila: 1, saldo_pendiente: -1000, fecha_prevista: '2020-01-01' })])
+  assert.equal(lineas.length, 1)
+  assert.equal(lineas[0].estado, 'a_favor')
+})
+
+test('una nota de crédito no se parte en cuotas aunque la fila traiga segunda fecha', () => {
+  const { lineas } = armar([compra({
+    fila: 1, saldo_pendiente: -30000, total: -30000,
+    fecha_prevista_2: '2026-10-15', monto_parcial_2: 10000,
+  })])
+  assert.equal(lineas.length, 1)
+  assert.equal(lineas[0].saldo, -30000)
+  assert.equal(lineas[0].cuota, null)
+})
+
+test('si la nota de crédito cancela exactamente lo que se debe, el proveedor no tiene fila', () => {
+  const { filas } = armar([
+    compra({ fila: 1, saldo_pendiente: 7000 }),
+    compra({ fila: 2, saldo_pendiente: -7000, total: -7000 }),
+  ])
+  assert.deepEqual(filas, [])
+})
+
+test('CORRALÓN PROGRESO 22/09/2026: sin las dos NC daba $1.543.107,26; con ellas, $1.434.834,97', () => {
+  // Los tres números del reporte del dueño. Las dos notas de crédito son las reales:
+  // 0006-00000068 por $105.857,89 y 0004-00000097 por $2.414,40 — juntas, $108.272,29.
+  const { filas } = armar([
+    compra({ fila: 900, saldo_pendiente: 1543107.26, fecha_prevista: '2026-09-30' }),
+    compra({ fila: 901, saldo_pendiente: -105857.89, total: -105857.89, comprobante: '0006-00000068' }),
+    compra({ fila: 902, saldo_pendiente: -2414.40, total: -2414.40, comprobante: '0004-00000097' }),
+  ])
+  assert.equal(filas.length, 1)
+  assert.equal(filas[0].aFavor, -108272.29)
+  assert.equal(filas[0].total, 1434834.97)
+  assert.equal(totalesDeuda(filas).total, 1434834.97)
 })
 
 test('un texto marcado «no es proveedor» no genera acreedor', () => {
@@ -219,7 +276,7 @@ test('el pie suma exactamente las filas que la tabla dibuja', () => {
   const t = totalesDeuda(filas)
   assert.deepEqual(t, {
     proveedores: 2, comprobantes: 3, vencido: 81000, porVencer: 2355724.8,
-    sinFecha: 500000, total: 2936724.8,
+    sinFecha: 500000, aFavor: 0, total: 2936724.8,
   })
 })
 

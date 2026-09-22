@@ -4,7 +4,7 @@ import { notasDeLaDeuda } from './notasDeDeuda.ts'
 import type { CompraConSaldo, DeudaDeProveedor, LineaDeuda } from './deudaProveedores.ts'
 
 const fila = (clave: string): DeudaDeProveedor => ({
-  clave, proveedorId: null, nombre: clave, vencido: 0, porVencer: 0, sinFecha: 0, total: 0, comprobantes: 1,
+  clave, proveedorId: null, nombre: clave, vencido: 0, porVencer: 0, sinFecha: 0, aFavor: 0, total: 0, comprobantes: 1,
   masViejaVencida: null, proximoVencimiento: null,
 })
 const compra = (n: number, proveedor: string) => ({ fila: n, proveedor }) as unknown as CompraConSaldo
