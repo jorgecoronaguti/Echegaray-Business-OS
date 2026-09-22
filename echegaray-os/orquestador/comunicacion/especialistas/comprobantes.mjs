@@ -48,6 +48,7 @@ import { urlConSecreto } from '../secreto-compartido.mjs'
 import { puedeCargarComprobantes } from '../comprobantes/guarda.mjs'
 import { conLaTanda } from '../comprobantes/tanda.mjs'
 import * as repo from '../comprobantes/repositorio.mjs'
+import { especialista as rendiciones, entregasAbiertasDe, RE_NO_ES_DE_LA_ENTREGA } from './rendiciones.mjs'
 
 /** URL de callback de los botones. Distinta de la de asistencia: son dos dominios distintos. */
 export const URL_ACCION_BASE = process.env.COMPROBANTES_ACCION_URL
@@ -117,6 +118,30 @@ async function reclamoDeRespuesta(texto, ctx = {}) {
   } catch { return null }
 }
 
+/**
+ * ¿ESTA FOTO ES UNA RENDICIÓN DE EFECTIVO A RENDIR? (dueño, 22/09/2026)
+ *
+ * Textual: *«quiero usar el canal "envio de comprobantes" en lugar del nuevo q has creado»*. En un mismo canal
+ * conviven dos cosas: el gasto pagado con la caja de la oficina (lo de siempre) y el ticket pagado con plata
+ * que la empresa YA le entregó a quien lo manda. Lo que las distingue no es el papel —el papel no sabe de
+ * dónde salió la plata— sino quién manda la foto: si tiene una entrega ABIERTA, rinde contra ella.
+ *
+ * Y se puede decir que no: quien pagó con la caja de la oficina teniendo una entrega abierta lo escribe con la
+ * foto («no es de la entrega», «caja de la oficina»). Es la única forma de que la persona corrija al bot sin
+ * pasar por Administración, y el riesgo de imputar mal es de plata.
+ *
+ * FALLA HACIA LA CARGA DE SIEMPRE: si la base no contesta, se devuelve null y el comprobante sigue su camino
+ * normal. Nunca al revés — quedarse con la foto por no poder leer las entregas sería perder el gasto.
+ */
+async function rendicionSiCorresponde(d) {
+  if (!d.fileIds?.length) return null
+  if (RE_NO_ES_DE_LA_ENTREGA.test(String(d.texto ?? ''))) return null
+  let yo
+  try { yo = await entregasAbiertasDe(d.port, d.actor?.plataforma_user_id) } catch { return null }
+  if (!yo?.abiertas?.length) return null
+  return await rendiciones.atender({ ...d, intencion: { destino: 'rendir', confianza: 1 } })
+}
+
 export const especialista = {
   slug: 'comprobantes',
   agentSlug: 'compras',
@@ -184,6 +209,11 @@ export const especialista = {
     }
 
     if (!fileIds.length || ruta?.destino === 'ayuda') return ayuda()
+
+    // LA RENDICIÓN VA PRIMERO: el ticket de quien tiene efectivo a rendir se carga «A rendir» y vinculado a
+    // su entrega. Si no tiene ninguna abierta, sigue de largo y es una compra común.
+    const rendida = await rendicionSiCorresponde({ texto, port, actor, google, fileIds, postId, mattermost, log })
+    if (rendida) return rendida
 
     const url = urlAccion(config?.env ?? process.env)
     // ═══ UN SOLO MENSAJE PARA TODA LA TANDA (13/08) ═══

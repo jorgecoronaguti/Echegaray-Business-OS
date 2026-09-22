@@ -1,4 +1,4 @@
-// RENDICIONES — el ticket del efectivo a rendir, mandado al canal de rendiciones de Mattermost.
+// RENDICIONES — el ticket del efectivo a rendir, mandado al canal de comprobantes de Mattermost.
 //
 // ═══ EL PEDIDO, TEXTUAL (22/09/2026) ═══
 //
@@ -8,7 +8,7 @@
 //
 // ═══ QUÉ HACE ═══
 //
-// Una foto en el canal de rendiciones es un gasto pagado con plata que la empresa YA le entregó a
+// Una foto de quien tiene una entrega abierta es un gasto pagado con plata que la empresa YA le entregó a
 // quien la manda. Entra por EL MISMO circuito que el canal de comprobantes (lectura, ARCA, duplicados,
 // escritura con freno de mano), con dos datos que el papel no puede decir y que acá se saben:
 //
@@ -24,19 +24,32 @@
 // El saldo de cada persona. El canal lo ven todos los que rinden, y cuánto tiene cada uno en la mano
 // es de esa persona y de Administración: se ve en la app, no en el grupo.
 //
+// ═══ EL CANAL ES EL DE SIEMPRE (dueño, 22/09/2026, segunda decisión) ═══
+//
+// Primero pidió un canal nuevo; después: *«quiero usar el canal "envio de comprobantes" en lugar del nuevo
+// q has creado»*. Las rendiciones entran por **Comprobantes-gastos**, el mismo canal donde ya se mandan los
+// gastos pagados con la caja de la oficina. Quién manda la foto decide cuál es cuál: si tiene una entrega
+// ABIERTA, el ticket se rinde contra ella; si no, es una compra común y la atiende el especialista de
+// comprobantes, como siempre. Se puede decir que NO es de la entrega escribiéndolo con la foto (ver
+// `NO_ES_DE_LA_ENTREGA`), porque la persona es la única que sabe con qué plata pagó.
+//
 // ═══ LAS DOS PUERTAS, FALLA CERRADO ═══
 //
-//   1. CANAL: el oficial del área `rendicion`.
+//   1. CANAL: un canal OFICIAL de `rendicion` o de `compras` (el binding, no una lista en el código).
 //   2. QUIÉN: la persona del padrón detrás del usuario de Mattermost tiene una entrega ABIERTA. No
 //      alcanza con estar en el canal: rendir descuenta de SU saldo, así que tiene que tener uno.
 import { procesarComprobantes } from '../comprobantes/circuito.mjs'
 import { canalOficialDeArea } from '../../lib/canal-de-area.mjs'
 
 export const AREA_RENDICION = 'rendicion'
+/** Las áreas cuyo canal oficial acepta una rendición. `compras` es Comprobantes-gastos (dueño, 22/09/2026). */
+export const AREAS_QUE_RINDEN = Object.freeze([AREA_RENDICION, 'compras'])
+/** Lo que escribe quien pagó de su bolsillo o con la caja de la oficina teniendo una entrega abierta. */
+export const RE_NO_ES_DE_LA_ENTREGA = /\bno es (de la|de mi|a rendir)\b|caja de la oficina|de la caja chica/i
 const RE_CODIGO = /\bER-?\s?(\d{1,6})\b/i
 
 export const TEXTO = Object.freeze({
-  CANAL: 'Las rendiciones se mandan al canal de rendiciones. Mandá la foto del ticket ahí.',
+  CANAL: 'Las rendiciones se mandan al canal de comprobantes. Mandá la foto del ticket ahí.',
   NO_VERIFICABLE: 'No pude confirmar desde dónde escribís ni quién sos, así que no cargué nada. Probá de nuevo en un minuto.',
   SIN_PERSONA: 'No encuentro tu legajo detrás de este usuario de Mattermost, y cada rendición descuenta del saldo de una persona. Avisale a Administración.',
   ES_PRUEBA: 'Esta persona es de PRUEBA: no cargo su ticket en Compras. Si esto no es una prueba, avisale a Administración.',
@@ -45,6 +58,7 @@ export const TEXTO = Object.freeze({
     'Soy **Rendiciones**. Para rendir un gasto pagado con efectivo que te entregó la empresa:',
     '',
     '1. Sacá la foto del ticket o la factura y mandala a este canal. No hace falta mencionarme.',
+    '   Si ese gasto NO salió de la plata que te entregaron, escribí «no es de la entrega» con la foto.',
     '2. La cargo sola en **Compras** como «A rendir», a la obra de tu entrega, y te contesto qué quedó.',
     '3. Si tenés más de una entrega abierta, escribí su número (por ejemplo **ER-0147**) junto con la foto.',
     '',
@@ -114,13 +128,16 @@ export const especialista = {
   titulo: 'Rendiciones · efectivo a rendir',
   descripcion:
     'Rendí un gasto pagado con efectivo que te entregó la empresa: mandá la foto del ticket al canal de '
-    + 'rendiciones. Lo cargo en Compras como «A rendir», a la obra de tu entrega, y baja lo que te queda por rendir.',
-  ejemplos: ['(mandá la foto del ticket al canal de rendiciones)', 'cómo rindo un gasto'],
+    + 'comprobantes. Lo cargo en Compras como «A rendir», a la obra de tu entrega, y baja lo que te queda por rendir.',
+  ejemplos: ['(mandá la foto del ticket al canal de comprobantes)', 'cómo rindo un gasto'],
   operativo: true,
   preferidoDeArea: true,
 
   async reconoce(texto, ctx = {}) {
-    if (ctx.area !== AREA_RENDICION) return null
+    if (!AREAS_QUE_RINDEN.includes(ctx.area)) return null
+    // En el canal de comprobantes manda el especialista de compras: él delega acá SÓLO cuando quien manda
+    // la foto tiene una entrega abierta. Sin eso, una foto ahí es una compra común.
+    if (ctx.area === 'compras' && !ctx.delegado) return null
     if ((ctx.fileIds?.length ?? 0) > 0) return { destino: 'rendir', confianza: 1 }
     // En su propio canal, un texto sin foto se contesta con cómo se usa: el área tiene que tener dueño.
     return { destino: 'ayuda', confianza: 0.5 }
@@ -132,8 +149,13 @@ export const especialista = {
     const ruta = intencion ?? await this.reconoce(texto, { fileIds, area: AREA_RENDICION })
     if (!fileIds.length || ruta?.destino !== 'rendir') return { texto: TEXTO.AYUDA, estado: 'ayuda', privado: false }
 
-    // 1. CANAL
-    const canal = await canalOficialDeArea({ port, channelId: actor?.channel_id, area: AREA_RENDICION })
+    // 1. CANAL: el oficial de rendiciones o el de comprobantes. Un canal cualquiera sigue sin entrar.
+    let canal = { ok: false, motivo: 'no_es_el_oficial' }
+    for (const area of AREAS_QUE_RINDEN) {
+      const r = await canalOficialDeArea({ port, channelId: actor?.channel_id, area })
+      if (r.ok) { canal = r; break }
+      if (r.motivo === 'no_verificable') canal = r
+    }
     if (!canal.ok) return { texto: canal.motivo === 'no_verificable' ? TEXTO.NO_VERIFICABLE : TEXTO.CANAL, estado: `rechazado_canal`, privado: false }
 
     // 2. QUIÉN, y a qué entrega

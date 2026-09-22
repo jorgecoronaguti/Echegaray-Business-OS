@@ -1,7 +1,7 @@
 // El canal de rendiciones (22/09/2026): a qué entrega va el ticket y quién puede rendir.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { elegirEntrega, textoAmbigua, especialista, TEXTO } from './rendiciones.mjs'
+import { elegirEntrega, textoAmbigua, especialista, TEXTO, RE_NO_ES_DE_LA_ENTREGA } from './rendiciones.mjs'
 
 const A = { id: 'a', codigo: 'ER-0147', obra: 'Galpón 8', obra_codigo: 'OB-0020', estructura: false }
 const B = { id: 'b', codigo: 'ER-0144', obra: null, estructura: true }
@@ -85,4 +85,31 @@ test('una persona de PRUEBA no carga nada en Compras (auditoría 22/09/2026)', a
   assert.equal(proceso, false, 'no se llama al circuito de carga')
   assert.equal(r.estado, 'rechazado_persona_prueba')
   assert.ok(!port.q.some((x) => /insert into public\.efectivo_comprobante/.test(x)), 'no registra el ticket')
+})
+
+// ═══ EL CANAL ES COMPROBANTES-GASTOS (dueño, 22/09/2026) ═══
+
+test('en el canal de comprobantes NO se reclama sola: la foto es una compra común salvo que compras delegue', async () => {
+  assert.equal(await especialista.reconoce('', { area: 'compras', fileIds: ['f1'] }), null)
+  const r = await especialista.reconoce('', { area: 'compras', fileIds: ['f1'], delegado: true })
+  assert.equal(r?.destino, 'rendir')
+})
+
+test('delegada desde el canal de comprobantes, la rendición se carga igual que antes', async () => {
+  const port = portFalso()
+  const llamadas = []
+  const r = await especialista.atender({
+    texto: '', port, actor, fileIds: ['f1'], postId: 'postA',
+    intencion: { destino: 'rendir', confianza: 1 },
+    procesar: async (_d, m) => { llamadas.push(m); return { texto: 'ok', estado: 'cargado' } },
+  })
+  assert.deepEqual(llamadas[0].forzar, { formaPago: 'A rendir', pagado: true })
+  assert.match(r.texto, /ER-0147/)
+})
+
+test('«no es de la entrega» lo escribe la persona: es la única que sabe con qué plata pagó', () => {
+  for (const t of ['no es de la entrega', 'esto lo pagué con la caja de la oficina', 'no es a rendir']) {
+    assert.ok(RE_NO_ES_DE_LA_ENTREGA.test(t), t)
+  }
+  for (const t of ['flete para el galpón', 'ER-0147 áridos']) assert.equal(RE_NO_ES_DE_LA_ENTREGA.test(t), false)
 })
