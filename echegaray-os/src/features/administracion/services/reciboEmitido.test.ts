@@ -33,7 +33,7 @@ test('lo sellado son las cifras DEL PAPEL: horas totales, banco, efectivo y tota
 })
 
 test('se guardan los renglones ENTEROS: la reimpresión no recalcula, copia', () => {
-  const papel = armarRecibo(jornalero, { horas: true, banco: true, efectivo: true, pagado: true }, fmt)
+  const papel = armarRecibo(jornalero, { horas: true, horasRecibo: false, horasFuera: false, banco: true, efectivo: true, pagado: true }, fmt)
   const s = sellarRecibo(quien, papel)
   assert.deepEqual(s.renglones.medios, papel.medios)
   assert.deepEqual(s.renglones.horas, papel.horas)
@@ -43,7 +43,7 @@ test('se guardan los renglones ENTEROS: la reimpresión no recalcula, copia', ()
 })
 
 test('un medio sin tildar deja su columna en null, que NO es $ 0', () => {
-  const s = sellarRecibo(quien, armarRecibo(jornalero, { horas: false, banco: false, efectivo: true, pagado: false }, fmt))
+  const s = sellarRecibo(quien, armarRecibo(jornalero, { horas: false, horasRecibo: false, horasFuera: false, banco: false, efectivo: true, pagado: false }, fmt))
   assert.equal(s.banco, null)
   assert.equal(s.horas, null)
   assert.equal(s.efectivo, 306000)
@@ -70,6 +70,6 @@ test('un apellido Blanco NO rebota: el control mira los rótulos, no el nombre',
 })
 
 test('un recibo sin ningún renglón no se emite', () => {
-  const s = sellarRecibo(quien, armarRecibo(jornalero, { horas: false, banco: false, efectivo: false, pagado: false }, fmt))
+  const s = sellarRecibo(quien, armarRecibo(jornalero, { horas: false, horasRecibo: false, horasFuera: false, banco: false, efectivo: false, pagado: false }, fmt))
   assert.match(motivoParaNoEmitir(s) ?? '', /Tildá al menos un concepto/)
 })

@@ -19,7 +19,7 @@
 import type { LineaConOverrides } from './liquidacionOverrides'
 import { pagoDelMensual } from './liquidacionPorTipo.ts'
 
-export type ConceptoDelRecibo = 'horas' | 'banco' | 'efectivo' | 'pagado'
+export type ConceptoDelRecibo = 'horas' | 'horasRecibo' | 'horasFuera' | 'banco' | 'efectivo' | 'pagado'
 
 /**
  * LOS RÓTULOS DE LOS TRES RENGLONES QUE EL PAPEL AFIRMA, en un solo lugar.
@@ -31,6 +31,15 @@ export type ConceptoDelRecibo = 'horas' | 'banco' | 'efectivo' | 'pagado'
  */
 export const ROTULO = {
   horas: 'Horas trabajadas',
+  // ═══ LAS DOS OPCIONES QUE PIDIÓ EL DUEÑO (22/09/2026) ═══
+  //
+  // Textual: *«en recibo quiero dos opciones adicionales q sean hs trabajadas por recibo y hs trabajadas
+  // fuera de recibo»*. Son el reparto de las horas, SÍ — pero dicho por lo que el papel del estudio cubre y
+  // lo que no, que es un hecho verificable contra el recibo mismo. Nunca las palabras «blanco» y «negro»:
+  // eso sigue rigiendo (*«no puede quedar evidencia de blanco o negro»*), y por eso ninguna de las dos se
+  // tilda sola — sale del papel salvo que quien lo arma decida ponerla.
+  horasRecibo: 'Horas trabajadas por recibo',
+  horasFuera: 'Horas trabajadas fuera de recibo',
   banco: 'Depósito en banco',
   efectivo: 'Efectivo',
 } as const
@@ -38,6 +47,10 @@ export const ROTULO = {
 export interface EleccionDelRecibo {
   /** El TOTAL de horas de la quincena. Nunca el reparto entre blanco y negro: ver el encabezado. */
   horas: boolean
+  /** Las horas que el recibo del estudio cubre. Apagada por defecto. */
+  horasRecibo: boolean
+  /** Las horas que el recibo no cubre. Apagada por defecto. */
+  horasFuera: boolean
   banco: boolean
   efectivo: boolean
   /** Debajo de cada medio: lo ya pagado (adelantos) y lo que resta. */
@@ -68,12 +81,31 @@ export interface ReciboArmado {
  */
 export function conceptosDisponibles(l: LineaConOverrides, mensual = false): Record<ConceptoDelRecibo, string | null> {
   const horas = horasDeLaQuincena(l)
+  const sinHoras = mensual ? 'cobra por mes: no se liquida por hora' : 'sin horas cargadas en la quincena'
+  // El reparto sólo existe cuando la línea trae el modelo de sueldo. Sin él no se reparte nada: se dice que
+  // no está, en vez de imprimir «0 h fuera de recibo», que afirmaría algo que nadie cargó.
+  const r = horasPorRecibo(l)
+  const f = horasFueraDeRecibo(l)
   return {
-    horas: horas == null ? (mensual ? 'cobra por mes: no se liquida por hora' : 'sin horas cargadas en la quincena') : null,
+    horas: horas == null ? sinHoras : null,
+    horasRecibo: r == null ? (horas == null ? sinHoras : 'la quincena no trae el reparto de horas') : null,
+    horasFuera: f == null ? (horas == null ? sinHoras : 'la quincena no trae el reparto de horas') : null,
     banco: null,
     efectivo: null,
     pagado: null,
   }
+}
+
+/** Las horas que cubre el recibo del estudio. `null` si la línea no trae el reparto. */
+export function horasPorRecibo(l: LineaConOverrides): number | null {
+  const b = l.sueldo?.horasBlanco
+  return b == null ? null : Math.round(b * 100) / 100
+}
+
+/** Las horas que el recibo no cubre. `null` si la línea no trae el reparto. */
+export function horasFueraDeRecibo(l: LineaConOverrides): number | null {
+  const n = l.sueldo?.horasNegro
+  return n == null ? null : Math.round(n * 100) / 100
 }
 
 /**
@@ -95,7 +127,8 @@ export function horasDeLaQuincena(l: LineaConOverrides): number | null {
 /** Por defecto va todo lo que la línea puede decir. */
 export function eleccionInicial(l: LineaConOverrides, mensual = false): EleccionDelRecibo {
   const d = conceptosDisponibles(l, mensual)
-  return { horas: d.horas == null, banco: true, efectivo: true, pagado: false }
+  // El reparto NO se tilda solo: el papel por defecto dice el total de horas y nada más.
+  return { horas: d.horas == null, horasRecibo: false, horasFuera: false, banco: true, efectivo: true, pagado: false }
 }
 
 const hs = (n: number | null | undefined): string => (n == null ? 'sin dato' : `${String(Math.round(n * 100) / 100).replace('.', ',')} h`)
@@ -160,6 +193,13 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n:
     // SIN IMPORTE NI $/H: el importe por hora abriría el reparto que este papel no dice. Lo que se firma es
     // cuántas horas trabajó y cuánta plata recibió.
     horas.push({ rotulo: ROTULO.horas, horas: hs, detalle: null, importe: null })
+  }
+  // El reparto va DEBAJO del total y sangrado: son las partes de la cifra de arriba, no dos renglones más.
+  if (e.horasRecibo && d.horasRecibo == null) {
+    horas.push({ rotulo: ROTULO.horasRecibo, horas: horasPorRecibo(l), detalle: null, importe: null, sub: e.horas && d.horas == null })
+  }
+  if (e.horasFuera && d.horasFuera == null) {
+    horas.push({ rotulo: ROTULO.horasFuera, horas: horasFueraDeRecibo(l), detalle: null, importe: null, sub: e.horas && d.horas == null })
   }
 
   const m = medios(l, mensual)

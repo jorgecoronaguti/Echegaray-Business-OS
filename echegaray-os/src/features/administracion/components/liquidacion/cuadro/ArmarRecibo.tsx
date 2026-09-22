@@ -37,6 +37,10 @@ import { HojaDelRecibo, imprimirHoja, tituloDelRecibo } from './HojaDelRecibo'
 // una cuenta interna y se mira en el panel de Liquidación, no en lo que firma la persona.
 const OPCIONES: { clave: ConceptoDelRecibo; rotulo: string }[] = [
   { clave: 'horas', rotulo: 'Horas trabajadas' },
+  // Dueño, 22/09/2026: «en recibo quiero dos opciones adicionales q sean hs trabajadas por recibo y hs
+  // trabajadas fuera de recibo». Van juntas al total de horas, que es de lo que son partes.
+  { clave: 'horasRecibo', rotulo: 'Horas trabajadas por recibo' },
+  { clave: 'horasFuera', rotulo: 'Horas trabajadas fuera de recibo' },
   { clave: 'banco', rotulo: 'Depósito en banco' },
   { clave: 'efectivo', rotulo: 'Efectivo' },
   { clave: 'pagado', rotulo: 'Lo ya pagado y lo que resta' },
