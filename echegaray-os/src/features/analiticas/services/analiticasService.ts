@@ -236,6 +236,9 @@ export function leerDeudaDeCobranzas(supabase: SupabaseClient, rango: { desde: s
  * pero el día que no coincidan la RLS devuelve una lista VACÍA, no un error: publicar «$ 0 pagado en el
  * año» sería la peor respuesta posible. Cero quincenas = no se pudo leer, y la pantalla lo dice.
  *
+ * `pagado_banco` y `pagado_efectivo` viajan para el MES EN CURSO: es lo único que tiene un mes cuyas
+ * quincenas no cerraron todavía (ver el bloque del mes en curso en `nominaPagada.ts`).
+ *
  * Paginado: `liquidacion_linea` va por 348 filas en 2026 y crece ~25 por quincena; el corte de 1.000 de
  * PostgREST llega en 2028 sin avisar.
  */
@@ -243,7 +246,8 @@ export async function leerNominaPagada(supabase: SupabaseClient, anio: number): 
   const [quincenas, lineas, recibos, personas] = await Promise.all([
     supabase.from('liquidacion_quincena').select('id, desde, estado'),
     leerPaginado((a, b) => supabase.from('liquidacion_linea')
-      .select('id, liquidacion_id, persona_id, cobra, cobra_manual').order('id').range(a, b)),
+      .select('id, liquidacion_id, persona_id, cobra, cobra_manual, pagado_banco, pagado_efectivo')
+      .order('id').range(a, b)),
     leerPaginado((a, b) => supabase.from('recibo_sueldo_linea')
       .select('id, persona_id, periodo, neto').order('id').range(a, b)),
     supabase.from('persona_directorio').select('id, nombre_completo'),

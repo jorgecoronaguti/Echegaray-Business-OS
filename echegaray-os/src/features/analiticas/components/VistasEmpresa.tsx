@@ -13,7 +13,7 @@ import type { ClaveBanda } from '../../clientes/services/reglasCobranza'
 import { documentosDeCobranzas } from '../../clientes/services/documentoDeCobranza'
 import { diaMes, diaMesAnio } from '../../clientes/services/cobranzaFormato'
 import { agendaDeCobro, cuando, proximoPorCliente, type AgendaDeCobro, type CobroProximo } from '../services/cobrosProximos'
-import { ancho, Cabecera, ENCABEZADO, rotuloMes, Seccion, SinLectura, Valor } from './Piezas'
+import { ancho, Cabecera, ENCABEZADO, FilaDeCifras, rotuloMes, Seccion, SinLectura, Valor } from './Piezas'
 import { Torta } from './Torta'
 
 /**
@@ -73,16 +73,19 @@ export function Columnas({ meses }: { meses: { mes: string; valor: string | null
  * es CALENDARIO y fijo: el control de período no aplica a esta vista (`razonNoAplica`), porque «todo
  * el año» fue el pedido y una serie recortada a un mes no se lee contra el resto.
  */
-export function VistaNomina({ pagado, personas, filtros, mes }: {
+export function VistaNomina({ pagado, personas, filtros, mes, hoy }: {
   pagado: NominaPagada | null
   personas: unknown[] | null
   filtros: Filtros
   /** El mes que abre el detalle por persona, ya elegido por la página. */
   mes: string | null
+  /** El día de San Juan, para poder fechar el corte del mes en curso («al 22/09»). */
+  hoy: string
 }) {
   if (!pagado) return <SinLectura que="la liquidación de sueldos" />
   const l = personas ? legajos(personas) : null
-  const { total, meses, avisos } = pagado
+  const { total, meses, avisos, enCurso } = pagado
+  const alDia = `${hoy.slice(8, 10)}/${hoy.slice(5, 7)}`
   const max = Math.max(1, ...meses.map((m) => m.total ?? 0))
   const detalle = mes ? pagado.porPersona.get(mes) ?? [] : []
   const maxPersona = Math.max(1, ...detalle.map((p) => p.total))
@@ -96,20 +99,43 @@ export function VistaNomina({ pagado, personas, filtros, mes }: {
           { rotulo: 'en negro', valor: millones(total?.negro), nota: 'lo que el recibo no paga' },
           { rotulo: 'en negro', valor: pctEntero(pagado.pctNegro), falta: '—', tono: (pagado.pctNegro ?? 0) > 0.5 ? 'warn' : undefined,
             nota: 'del total pagado' },
+          // EL MES EN CURSO NO ENTRA ACÁ: la cabecera tiene CINCO columnas fijas por diseño y, sobre
+          // todo, se mide con otra vara. Va en su propia sección, abajo, con su fecha de corte.
           { rotulo: 'plantel', valor: l ? String(l.plantel) : null, nota: 'por pertenencia' },
         ]} />
       <Seccion titulo="Lo pagado, mes a mes" arriba="pt-8"
         aclaracion="neto de recibo y plata en mano; ninguna carga social, ninguna liquidación final"
-        detalle="Blanco: el neto del recibo del estudio (recibo_sueldo_linea). Negro: lo cobrado en la quincena cerrada menos ese neto. Las contribuciones patronales, el F931 y las cargas sociales no entran en ninguna de las dos."
+        detalle="Blanco: el neto del recibo del estudio (recibo_sueldo_linea). Negro: lo cobrado en la quincena cerrada menos ese neto. EL MES EN CURSO se mide distinto porque su quincena todavía no cerró y `cobra` vale 0 hasta el cierre: ahí blanco es lo depositado (pagado_banco) y negro la plata en mano (pagado_efectivo), el reparto sale del canal de pago y no del recibo, y por eso no se suma al total del año. Las contribuciones patronales, el F931 y las cargas sociales no entran en ninguna de las dos."
         leyenda={[{ color: 'bg-serie-1', rotulo: 'blanco (recibo)' }, { color: 'bg-serie-2', rotulo: 'negro (en mano)' }]}>
-        <Columnas meses={meses.map((m) => (m.total == null ? { mes: m.mes, valor: null, nota: 'en curso', partes: [] } : {
+        <Columnas meses={meses.map((m) => (m.total == null ? { mes: m.mes, valor: null, nota: 'sin medir', partes: [] } : {
           mes: m.mes, valor: millones(m.total),
+          // El mes en curso se dibuja apagado: es la misma serie, medida con otra vara y a medio mes.
+          color: m.medida === 'registro_por_canal' ? 'text-muted' : undefined,
           partes: [
-            { alto: ((m.negro ?? 0) / max) * 170, clase: 'bg-serie-2' },
-            { alto: ((m.blanco ?? 0) / max) * 170, clase: 'bg-serie-1' },
+            { alto: ((m.negro ?? 0) / max) * 170, clase: m.medida === 'registro_por_canal' ? 'bg-serie-2 opacity-60' : 'bg-serie-2' },
+            { alto: ((m.blanco ?? 0) / max) * 170, clase: m.medida === 'registro_por_canal' ? 'bg-serie-1 opacity-60' : 'bg-serie-1' },
           ],
         }))} />
       </Seccion>
+      {/* ═══ EL MES EN CURSO TIENE SECCIÓN PROPIA PORQUE TIENE OTRA VARA ═══
+          Dueño, 22/09/2026: la sección «no muestra nada en el mes en curso». Mostraba «en curso» y
+          nada más, porque `cobra` vale 0 hasta que la quincena cierra. Ahora publica lo ENTREGADO y
+          registrado, con su fecha de corte y con la vara escrita: mezclarlo con el año, en cambio,
+          sería sumar dos definiciones de «pagado» en una cifra sola. */}
+      {enCurso ? (
+        <Seccion titulo={`${rotuloMes(enCurso.mes, false)}, en curso`} filo
+          aclaracion={`al ${alDia} · mes incompleto: ${enCurso.quincenasAbiertas} ${enCurso.quincenasAbiertas === 1 ? 'quincena abierta' : 'quincenas abiertas'}, ninguna cerrada`}
+          detalle="La quincena abierta no selló `cobra` todavía, así que este mes no se puede medir como los cerrados. Lo que se publica es lo ENTREGADO y registrado por canal: blanco = depositado (pagado_banco), negro = plata en mano (pagado_efectivo). El reparto sale del canal de pago y no del recibo del estudio, que para este mes no tiene ninguna línea cargada. Por eso no se suma al total del año.">
+          <FilaDeCifras cifras={[
+            { rotulo: 'entregado', valor: millones(enCurso.total), falta: '—', nota: 'no suma al año' },
+            { rotulo: 'depositado', valor: millones(enCurso.blanco), falta: '—', nota: 'blanco, por canal' },
+            { rotulo: 'en mano', valor: millones(enCurso.negro), falta: '—', nota: 'negro, por canal' },
+            { rotulo: 'gente cobrada', valor: String(enCurso.personas), nota: 'con pago registrado' },
+            { rotulo: 'sin pago registrado', valor: String(enCurso.sinPagoRegistrado),
+              tono: enCurso.sinPagoRegistrado > 0 ? 'warn' : undefined, nota: 'no es «cobró 0»' },
+          ]} />
+        </Seccion>
+      ) : null}
       <Seccion titulo="Cada mes, en números" filo
         aclaracion={mes ? 'el mes elegido abre el detalle de abajo' : 'ningún mes con quincena cerrada todavía'}>
         <div className="flex flex-col">
@@ -117,12 +143,13 @@ export function VistaNomina({ pagado, personas, filtros, mes }: {
             <div>Mes</div><div className="text-right">Blanco</div><div className="text-right">Negro</div>
             <div className="text-right">Total</div><div className="text-right">% negro</div>
           </div>
-          {meses.map((m) => <FilaMes key={m.mes} m={m} elegido={m.mes === mes} href={aUrl(filtros, { mes: m.mes })} />)}
+          {meses.map((m) => <FilaMes key={m.mes} m={m} elegido={m.mes === mes} href={aUrl(filtros, { mes: m.mes })} alDia={alDia} />)}
         </div>
       </Seccion>
       {mes ? (
         <Seccion titulo={`Quién cobró en ${rotuloMes(mes, true)}`} filo
-          aclaracion={`${detalle.length} ${detalle.length === 1 ? 'persona' : 'personas'} · lo que se le pagó, no lo que le costó a la empresa`}>
+          aclaracion={`${detalle.length} ${detalle.length === 1 ? 'persona' : 'personas'} · lo que se le pagó, no lo que le costó a la empresa${
+            meses.find((x) => x.mes === mes)?.medida === 'registro_por_canal' ? ` · al ${alDia}, mes en curso: lo entregado por banco y en efectivo` : ''}`}>
           <div className="flex flex-col">
             <div className={`hidden h-9 items-center gap-6 border-b border-line lg:grid lg:grid-cols-[minmax(0,1fr)_110px_110px_110px_120px] ${ENCABEZADO}`}>
               <div>Persona</div><div className="text-right">Blanco</div><div className="text-right">Negro</div>
@@ -143,7 +170,10 @@ export function VistaNomina({ pagado, personas, filtros, mes }: {
           <Hueco que={avisos.sinLinea.n ? `${avisos.sinLinea.n} · ${millones(avisos.sinLinea.importe)}` : '0'} falta="ninguno"
             porque="recibos sin línea de quincena" destraba="suman blanco sin negro al lado" />
           <Hueco que={`${avisos.mesesSinCerrar} · ${avisos.quincenasAbiertas} quincenas`}
-            porque="meses sin ninguna quincena cerrada" destraba="no valen 0: no publican cifra" />
+            porque="meses sin ninguna quincena cerrada"
+            destraba={avisos.mesesPorRegistro ? 'se miden por lo entregado, no por la quincena' : 'no valen 0: no publican cifra'} />
+          <Hueco que={`${avisos.sinPagoRegistrado}`} falta="ninguno"
+            porque="líneas abiertas sin pago registrado" destraba="no es «cobró 0»: no consta el pago" />
           <Hueco que={l ? `${l.sinCategoria} de ${l.plantel}` : null} falta="sin registrar"
             porque="legajos sin categoría" destraba="sin categoría no hay jornal" />
           <Hueco que="0" porque="cargas sociales incluidas" destraba="ninguna cifra las lleva adentro" />
@@ -153,9 +183,16 @@ export function VistaNomina({ pagado, personas, filtros, mes }: {
   )
 }
 
-/** Una fila del cuadro mensual. El mes sin quincena cerrada dice «en curso» y no publica ni un cero. */
-function FilaMes({ m, elegido, href }: { m: MesPagado; elegido: boolean; href: string }) {
+/**
+ * Una fila del cuadro mensual.
+ *
+ * El mes EN CURSO publica lo entregado y dice con qué vara —«al 22/09 · lo entregado, no la quincena
+ * cerrada»— y cuánta gente quedó sin pago registrado. Un mes que no se pudo medir con NINGUNA de las
+ * dos varas sigue sin publicar cifra: «sin medir», nunca un 0 que se lee como «no se le pagó a nadie».
+ */
+function FilaMes({ m, elegido, href, alDia }: { m: MesPagado; elegido: boolean; href: string; alDia: string }) {
   const pct = m.total ? m.negro! / m.total : null
+  const enCurso = m.medida === 'registro_por_canal'
   return (
     <Link href={href} scroll={false}
       className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 border-b border-line py-2.5 hover:bg-surface-quiet lg:grid-cols-[110px_repeat(3,minmax(0,1fr))_90px] lg:gap-6 lg:py-3 ${elegido ? 'bg-surface-quiet' : ''}`}>
@@ -166,12 +203,18 @@ function FilaMes({ m, elegido, href }: { m: MesPagado; elegido: boolean; href: s
         <div className="flex min-w-0 items-baseline gap-2">
           <span className="text-[13px] font-medium text-ink">{rotuloMes(m.mes, true)}</span>
           {m.estado === 'parcial' ? <span className="whitespace-nowrap text-[11px] text-warn">media quincena sin cerrar</span> : null}
+          {enCurso ? <span className="whitespace-nowrap text-[11px] text-warn">en curso · al {alDia}</span> : null}
         </div>
+        {enCurso ? (
+          <span className="text-[11px] leading-normal text-muted">
+            lo entregado y registrado, no la quincena cerrada · no suma al año
+          </span>
+        ) : null}
         <span className="text-[11px] tabular-nums text-muted lg:hidden">
-          {m.total == null ? 'en curso' : `blanco ${millones(m.blanco)} · negro ${millones(m.negro)} · ${pctEntero(pct)} en negro`}
+          {m.total == null ? 'sin medir' : `blanco ${millones(m.blanco)} · negro ${millones(m.negro)} · ${pctEntero(pct)} en negro`}
         </span>
       </div>
-      <div className="hidden text-right text-[13px] tabular-nums text-ink-soft lg:block"><Valor v={millones(m.blanco)} falta="en curso" /></div>
+      <div className="hidden text-right text-[13px] tabular-nums text-ink-soft lg:block"><Valor v={millones(m.blanco)} falta="sin medir" /></div>
       <div className="hidden text-right text-[13px] tabular-nums text-ink-soft lg:block"><Valor v={millones(m.negro)} falta="" /></div>
       <div className="text-right text-[13px] font-semibold tabular-nums text-ink"><Valor v={millones(m.total)} falta="" /></div>
       <div className={`hidden text-right text-[13px] tabular-nums lg:block ${(pct ?? 0) > 0.5 ? 'text-warn' : 'text-muted'}`}><Valor v={pctEntero(pct)} falta="" /></div>
@@ -188,6 +231,7 @@ function FilaPersonaPagada({ p, max }: { p: PersonaPagada; max: number }) {
         {p.sinRecibo ? <span className="text-[11px] text-warn">sin recibo cargado: todo contado en negro</span> : null}
         {p.sinLinea ? <span className="text-[11px] text-warn">sin línea de quincena: sólo se puede afirmar el recibo</span> : null}
         {p.reciboMayor != null ? <span className="text-[11px] text-warn">el recibo supera lo cobrado en {millones(p.reciboMayor)}</span> : null}
+        {p.porCanal ? <span className="text-[11px] text-muted">mes en curso: blanco = depositado, negro = en mano (el recibo del estudio todavía no está cargado)</span> : null}
         <span className="text-[11px] tabular-nums text-muted lg:hidden">blanco {millones(p.blanco)} · negro {millones(p.negro)}</span>
       </div>
       <div className="hidden text-right text-[13px] tabular-nums text-ink-soft lg:block">{millones(p.blanco)}</div>

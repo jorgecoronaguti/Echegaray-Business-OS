@@ -39,6 +39,27 @@
 // Por eso la medida es la quincena CERRADA: la decisión de pago ya tomada y sellada. El día que el
 // registro por canal esté completo pasa a ser la fuente buena, y la cuenta se cambia acá.
 //
+// ═══ EL MES EN CURSO SE MIDE DISTINTO, Y POR ESO SE DICE DISTINTO (22/09/2026) ═══
+//
+// Dueño, 22/09/2026: *«la sección Nómina no muestra nada en el mes en curso cuando ya tenemos una
+// quincena liquidada, horas de segunda y empleados mensualizados»*. Tenía razón y la causa está
+// escrita arriba: `cobra` vale 0 hasta el cierre, así que un mes SIN NINGUNA QUINCENA CERRADA no
+// tenía con qué medirse y salía «en curso», sin una cifra. Septiembre/2026 son tres quincenas
+// abiertas: el mes entero quedaba mudo aunque el 17/09 se hubiera pagado.
+//
+// Para ESE mes —y sólo para ése— la medida es lo REGISTRADO POR CANAL: `pagado_banco` +
+// `pagado_efectivo`, que son entregas con fecha (`pagada_en`) y no una promesa. El hueco de registro
+// que descalifica esa columna en los meses viejos no la descalifica acá: no hay nada mejor, y un mes
+// en blanco se lee como «no se pagó nada», que es falso.
+//
+//   BLANCO (mes en curso)  `pagado_banco` — lo depositado, que es el canal del recibo.
+//   NEGRO  (mes en curso)  `pagado_efectivo` — la plata en mano.
+//
+// ESO ES UNA INFERENCIA, NO EL MISMO BLANCO DE LOS MESES CERRADOS: el reparto sale del CANAL, no del
+// recibo del estudio, que para 09/2026 todavía no cargó ninguna línea. La fila lo marca (`medida`) y
+// la pantalla lo escribe. Por la misma razón el mes en curso NO se suma al total del año: son dos
+// criterios distintos y mezclarlos rompería la serie que ya está verificada.
+//
 // LAS LIQUIDACIONES FINALES QUEDAN AFUERA (período `FINAL-MM/AAAA`): no son quincena y el dueño ya
 // decidió que no entran en el costo de mano de obra.
 //
@@ -55,13 +76,26 @@ const texto = (v: unknown): string | null => (typeof v === 'string' && v !== '' 
 /** Una cabecera de `liquidacion_quincena`. */
 export interface FilaQuincena { id: string; desde: string; estado: string }
 /** Una línea de `liquidacion_linea`: lo sellado al cerrar, con lo escrito a mano si lo hay. */
-export interface FilaLinea { liquidacion_id: string; persona_id: string; cobra: unknown; cobra_manual?: unknown }
+export interface FilaLinea {
+  liquidacion_id: string; persona_id: string; cobra: unknown; cobra_manual?: unknown
+  /** Lo registrado como entregado por cada canal. Es la medida del mes EN CURSO, no la de los cerrados. */
+  pagado_banco?: unknown; pagado_efectivo?: unknown
+}
 /** Una línea de `recibo_sueldo_linea`: el recibo real del estudio. */
 export interface FilaRecibo { persona_id: string; periodo: string; neto: unknown }
 /** `persona_directorio`: sólo el nombre, para el detalle del mes. */
 export interface FilaPersona { id: string; nombre_completo: unknown }
 
 export type EstadoMesPagado = 'cerrado' | 'parcial' | 'sin_cerrar'
+
+/**
+ * CON QUÉ SE MIDIÓ EL MES. No es decorativo: son dos definiciones distintas de «pagado» y la pantalla
+ * tiene que decir cuál usó.
+ *   `quincena_cerrada`    lo sellado al cerrar, con el blanco del recibo del estudio. Es la serie del año.
+ *   `registro_por_canal`  lo entregado por banco y en efectivo, para el mes que todavía no cerró nada.
+ *   `null`                no hay nada que afirmar.
+ */
+export type MedidaDelMes = 'quincena_cerrada' | 'registro_por_canal' | null
 
 /** Un aviso con cuántos casos y cuántos pesos hay detrás. `n === 0` = nada que decir. */
 export interface Aviso { n: number; importe: number }
@@ -82,6 +116,15 @@ export interface MesPagado {
   sinLinea: Aviso
   /** El recibo superó lo cobrado: el negro se apoya en 0 y acá va la diferencia. */
   reciboMayor: Aviso
+  /** Con qué se midió. `registro_por_canal` = mes en curso: banco y efectivo, no el recibo del estudio. */
+  medida: MedidaDelMes
+  /** Cuántas personas tienen cifra en el mes. */
+  personas: number
+  /**
+   * Mes en curso: cuántas personas tienen línea de quincena y NINGUNA entrega registrada todavía —los
+   * mensualizados de septiembre entre ellas—. No es «cobró 0»: es «no consta que se le haya pagado».
+   */
+  sinPagoRegistrado: number
 }
 
 export interface PersonaPagada {
@@ -96,6 +139,8 @@ export interface PersonaPagada {
   sinLinea: boolean
   /** El recibo superó lo cobrado, por tanto. `null` = no pasó. */
   reciboMayor: number | null
+  /** `true` = su blanco/negro sale del CANAL de pago (mes en curso), no del recibo del estudio. */
+  porCanal?: boolean
 }
 
 export interface NominaPagada {
@@ -107,7 +152,18 @@ export interface NominaPagada {
   pctNegro: number | null
   /** El detalle por persona de cada mes con cifras. */
   porPersona: Map<string, PersonaPagada[]>
-  avisos: { sinRecibo: Aviso; sinLinea: Aviso; reciboMayor: Aviso; mesesSinCerrar: number; quincenasAbiertas: number }
+  /**
+   * EL MES EN CURSO, medido por registro de canal y NO sumado al total del año (otro criterio). `null`
+   * = ningún mes abierto con entregas registradas.
+   */
+  enCurso: MesPagado | null
+  avisos: {
+    sinRecibo: Aviso; sinLinea: Aviso; reciboMayor: Aviso; mesesSinCerrar: number; quincenasAbiertas: number
+    /** Meses que publican por registro de canal en vez de por quincena cerrada. */
+    mesesPorRegistro: number
+    /** Personas con línea abierta y ninguna entrega registrada, en los meses medidos por canal. */
+    sinPagoRegistrado: number
+  }
 }
 
 /**
@@ -137,11 +193,22 @@ export function leerMes(crudo: unknown): string | null {
 const vacio = (): Aviso => ({ n: 0, importe: 0 })
 const sumar = (a: Aviso, importe: number): void => { a.n++; a.importe = r2(a.importe + importe) }
 
+interface PersonaAcumulada {
+  cobra: number
+  blanco: number
+  conLinea: boolean
+  conRecibo: boolean
+  /** Lo registrado como entregado en las quincenas ABIERTAS del mes: la medida del mes en curso. */
+  banco: number
+  efectivo: number
+  conPagoRegistrado: boolean
+}
+
 interface Acumulado {
   cerradas: number
   abiertas: number
   periodosCerrados: Set<string>
-  personas: Map<string, { cobra: number; blanco: number; conLinea: boolean; conRecibo: boolean }>
+  personas: Map<string, PersonaAcumulada>
 }
 
 /**
@@ -173,18 +240,28 @@ export function pagoDeNomina(d: {
       if (p) a.periodosCerrados.add(p)
     } else a.abiertas++
   }
-  const dePersona = (a: Acumulado, personaId: string) => {
-    const p = a.personas.get(personaId) ?? { cobra: 0, blanco: 0, conLinea: false, conRecibo: false }
+  const dePersona = (a: Acumulado, personaId: string): PersonaAcumulada => {
+    const p = a.personas.get(personaId)
+      ?? { cobra: 0, blanco: 0, conLinea: false, conRecibo: false, banco: 0, efectivo: 0, conPagoRegistrado: false }
     a.personas.set(personaId, p)
     return p
   }
   // LO COBRADO SÓLO DE LAS QUINCENAS CERRADAS: una abierta todavía no selló `cobra` y vale 0 en la base.
+  // DE LAS ABIERTAS se guarda, aparte, lo REGISTRADO POR CANAL: es lo único que tiene el mes en curso.
   for (const l of d.lineas) {
     const q = quincenas.get(l.liquidacion_id)
-    if (!q || q.estado !== 'cerrada') continue
+    if (!q) continue
     const p = dePersona(acumulado(q.desde.slice(0, 7)), l.persona_id)
-    p.cobra = r2(p.cobra + (n(l.cobra_manual) ?? n(l.cobra) ?? 0))
-    p.conLinea = true
+    if (q.estado === 'cerrada') {
+      p.cobra = r2(p.cobra + (n(l.cobra_manual) ?? n(l.cobra) ?? 0))
+      p.conLinea = true
+      continue
+    }
+    const banco = n(l.pagado_banco) ?? 0
+    const efectivo = n(l.pagado_efectivo) ?? 0
+    p.banco = r2(p.banco + banco)
+    p.efectivo = r2(p.efectivo + efectivo)
+    if (banco > 0 || efectivo > 0) p.conPagoRegistrado = true
   }
   // EL BLANCO, SÓLO DE LOS PERÍODOS QUE YA CERRARON: el recibo de una quincena abierta entraría sin
   // su negro al lado y el mes saldría 100 % en blanco.
@@ -200,8 +277,12 @@ export function pagoDeNomina(d: {
   }
 
   const nombres = new Map(d.personas.map((p) => [p.id, texto(p.nombre_completo)]))
+  const nombreDe = (id: string): string => nombres.get(id) ?? 'sin nombre en el directorio'
   const porPersona = new Map<string, PersonaPagada[]>()
-  const avisos = { sinRecibo: vacio(), sinLinea: vacio(), reciboMayor: vacio(), mesesSinCerrar: 0, quincenasAbiertas: 0 }
+  const avisos = {
+    sinRecibo: vacio(), sinLinea: vacio(), reciboMayor: vacio(), mesesSinCerrar: 0, quincenasAbiertas: 0,
+    mesesPorRegistro: 0, sinPagoRegistrado: 0,
+  }
   const filas: MesPagado[] = [...meses.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([mes, a]) => {
     const estado: EstadoMesPagado = a.cerradas === 0 ? 'sin_cerrar' : a.abiertas > 0 ? 'parcial' : 'cerrado'
     avisos.quincenasAbiertas += a.abiertas
@@ -209,8 +290,35 @@ export function pagoDeNomina(d: {
       mes, blanco: null, negro: null, total: null, estado,
       quincenasCerradas: a.cerradas, quincenasAbiertas: a.abiertas,
       sinRecibo: vacio(), sinLinea: vacio(), reciboMayor: vacio(),
+      medida: null, personas: 0, sinPagoRegistrado: 0,
     }
-    if (estado === 'sin_cerrar') { avisos.mesesSinCerrar++; return f }
+    // EL MES SIN NINGUNA QUINCENA CERRADA SE MIDE POR LO REGISTRADO POR CANAL. Sin una sola entrega
+    // registrada sigue sin publicar cifra: ahí «no se pudo medir» y «no se pagó» siguen siendo distintos.
+    if (estado === 'sin_cerrar') {
+      avisos.mesesSinCerrar++
+      const entregado: PersonaPagada[] = []
+      let banco = 0
+      let efectivo = 0
+      for (const [personaId, p] of a.personas) {
+        if (!p.conPagoRegistrado) { f.sinPagoRegistrado++; avisos.sinPagoRegistrado++; continue }
+        banco = r2(banco + p.banco)
+        efectivo = r2(efectivo + p.efectivo)
+        entregado.push({
+          personaId, nombre: nombreDe(personaId), blanco: p.banco, negro: p.efectivo, total: r2(p.banco + p.efectivo),
+          sinRecibo: false, sinLinea: false, reciboMayor: null, porCanal: true,
+        })
+      }
+      if (!entregado.length) return f
+      avisos.mesesPorRegistro++
+      f.medida = 'registro_por_canal'
+      f.blanco = banco
+      f.negro = efectivo
+      f.total = r2(banco + efectivo)
+      f.personas = entregado.length
+      porPersona.set(mes, entregado.sort((x, y) => y.total - x.total || x.nombre.localeCompare(y.nombre)))
+      return f
+    }
+    f.medida = 'quincena_cerrada'
     const gente: PersonaPagada[] = []
     let blanco = 0
     let negro = 0
@@ -225,7 +333,7 @@ export function pagoDeNomina(d: {
       negro = r2(negro + suNegro)
       if (p.blanco > 0 || suNegro > 0) {
         gente.push({
-          personaId, nombre: nombres.get(personaId) ?? 'sin nombre en el directorio',
+          personaId, nombre: nombreDe(personaId),
           blanco: p.blanco, negro: suNegro, total: r2(p.blanco + suNegro),
           sinRecibo: !p.conRecibo, sinLinea: p.conRecibo && !p.conLinea, reciboMayor: mayor,
         })
@@ -234,11 +342,14 @@ export function pagoDeNomina(d: {
     f.blanco = blanco
     f.negro = negro
     f.total = r2(blanco + negro)
+    f.personas = gente.length
     porPersona.set(mes, gente.sort((x, y) => y.total - x.total || x.nombre.localeCompare(y.nombre)))
     return f
   })
 
-  const conCifras = filas.filter((m) => m.total != null)
+  // EL TOTAL DEL AÑO ES SÓLO LO MEDIDO CON LA QUINCENA CERRADA: sumarle el mes en curso mezclaría dos
+  // criterios en una cifra sola, que es exactamente lo que la serie del año no puede permitirse.
+  const conCifras = filas.filter((m) => m.medida === 'quincena_cerrada')
   const total = conCifras.length ? {
     blanco: r2(conCifras.reduce((s, m) => s + (m.blanco ?? 0), 0)),
     negro: r2(conCifras.reduce((s, m) => s + (m.negro ?? 0), 0)),
@@ -247,6 +358,7 @@ export function pagoDeNomina(d: {
   } : null
   return {
     anio: d.anio, meses: filas, total, porPersona, avisos,
+    enCurso: filas.filter((m) => m.medida === 'registro_por_canal').at(-1) ?? null,
     pctNegro: total && total.total > 0 ? total.negro / total.total : null,
   }
 }

@@ -108,7 +108,7 @@ function Vista({ filtros, d, periodo, mes }: {
     case 'obras': return <VistaObras obras={d.obras} obra={d.obraElegida} filtros={filtros} consumo={d.consumoMensual} ritmo={d.ritmo}
       sinIva={d.obraElegida && d.sinIvaDiscriminado.size ? (d.sinIvaDiscriminado.get(d.obraElegida.id) ?? 0) : null} />
     case 'caja': return <VistaCaja lectura={d.cajaSheet} egresos={d.egresos} criterio={d.criterioEgresos} periodo={periodo} rango={d.rango} deuda={d.deudaProveedores} />
-    case 'nomina': return <VistaNomina pagado={d.nominaPagada} personas={d.personas} filtros={filtros} mes={mes} />
+    case 'nomina': return <VistaNomina pagado={d.nominaPagada} personas={d.personas} filtros={filtros} mes={mes} hoy={d.hoy} />
     case 'cobranza': return <VistaCobranza cuenta={d.cuentaCorriente} documentos={d.documentos} agenda={d.documentosParaAgenda} hoy={d.hoy} periodo={periodo} />
     default: return <VistaResumen obras={d.obras} sinObra={d.sinObra} filtros={filtros} neto={d.netoDeIva}
       comprobantesPorCliente={d.sinObraDetalle.size ? new Map([...d.sinObraDetalle.entries()].map(([id, g]) => [id, g.nComprobantes])) : null} />

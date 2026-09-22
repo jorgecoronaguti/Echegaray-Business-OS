@@ -95,6 +95,49 @@ test('un recibo sin línea de liquidación suma al blanco y se declara: la plata
   assert.equal(r.porPersona.get('2026-08')?.[0].sinLinea, true)
 })
 
+test('el mes en curso se mide por lo ENTREGADO: banco es blanco, efectivo es negro, y no entra al año', () => {
+  // Septiembre/2026 real, medido el 22/09/2026 con la service key: tres quincenas abiertas, `cobra` en 0,
+  // y $ 8.604.952 registrados como entregados el 17/09 (banco $ 3.281.941 · efectivo $ 5.323.011).
+  const r = pagoDeNomina({
+    anio: 2026,
+    quincenas: [Q('ago', '2026-08-01'), Q('sepOf', '2026-09-01', 'abierta'), Q('sepOb', '2026-09-01', 'abierta'), Q('sepQ2', '2026-09-16', 'abierta')],
+    lineas: [
+      { liquidacion_id: 'ago', persona_id: 'zogbe', cobra: 473000 },
+      // El jefe mensualizado: tiene línea abierta y ninguna entrega registrada. No es «cobró 0».
+      { liquidacion_id: 'sepOf', persona_id: 'maldonado', cobra: 0 },
+      { liquidacion_id: 'sepOb', persona_id: 'zogbe', cobra: 0, pagado_banco: 294795.5, pagado_efectivo: 259765.78 },
+      { liquidacion_id: 'sepQ2', persona_id: 'zogbe', cobra: 0, pagado_efectivo: 68000 },
+    ],
+    recibos: [{ persona_id: 'zogbe', periodo: 'Q1-08/2026', neto: 260000 }],
+    personas: [{ id: 'zogbe', nombre_completo: 'ZOGBE RAMOS WALTER LEONARDO' }, { id: 'maldonado', nombre_completo: 'MALDONADO BATISTA EMILIANO MIGUEL' }],
+  })
+  const sep = r.meses.find((m) => m.mes === '2026-09')!
+  assert.equal(sep.medida, 'registro_por_canal')
+  assert.deepEqual([sep.blanco, sep.negro, sep.total], [294795.5, 327765.78, 622561.28])
+  assert.deepEqual([sep.estado, sep.quincenasAbiertas, sep.personas, sep.sinPagoRegistrado], ['sin_cerrar', 3, 1, 1])
+  // EL AÑO NO SE CONTAMINA: el total sigue siendo sólo lo medido con la quincena cerrada.
+  assert.deepEqual(r.total, { blanco: 260000, negro: 213000, total: 473000, meses: 1 })
+  assert.equal(r.enCurso?.mes, '2026-09')
+  assert.deepEqual([r.avisos.mesesPorRegistro, r.avisos.sinPagoRegistrado, r.avisos.mesesSinCerrar], [1, 1, 1])
+  // El detalle del mes en curso marca de dónde sale su reparto, y el mensualizado sin pago no se dibuja como cobrado.
+  assert.deepEqual(r.porPersona.get('2026-09')?.map((p) => [p.nombre, p.blanco, p.negro, p.porCanal]),
+    [['ZOGBE RAMOS WALTER LEONARDO', 294795.5, 327765.78, true]])
+  // Y el detalle abre en el mes en curso, que es lo que el dueño mira.
+  assert.equal(mesDelDetalle(r, null), '2026-09')
+})
+
+test('el mes en curso SIN una sola entrega registrada sigue sin publicar cifra: no se dibuja un 0', () => {
+  const r = pagoDeNomina({
+    anio: 2026,
+    quincenas: [Q('q1', '2026-09-01', 'abierta')],
+    lineas: [{ liquidacion_id: 'q1', persona_id: 'p1', cobra: 0, pagado_banco: null, pagado_efectivo: 0 }],
+    recibos: [],
+    personas: [{ id: 'p1', nombre_completo: 'QUIEN SEA' }],
+  })
+  assert.deepEqual([r.meses[0].total, r.meses[0].medida, r.meses[0].sinPagoRegistrado], [null, null, 1])
+  assert.equal(r.enCurso, null)
+})
+
 test('una quincena sin cerrar NO vale 0: el mes no publica cifras y dice que está en curso', () => {
   const r = pagoDeNomina({
     anio: 2026,
