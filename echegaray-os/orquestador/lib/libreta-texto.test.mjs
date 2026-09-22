@@ -68,3 +68,23 @@ test('la línea tiene identidad propia: la misma anotada dos veces no se carga d
   assert.notEqual(a, claveDeLinea(interpretarLinea('P. FREDES (18/9) 2.640.000', HOY)))
   assert.equal(claveDeLinea({ fecha: '2026-09-18', concepto: 'x', monto: 0 }), null)
 })
+
+// ═══ LA PRIMERA PRUEBA REAL DEL DUEÑO EN EL CANAL (22/09/2026) ═══
+//
+// Escribió tres líneas en el canal Efectivo y NO PASÓ NADA: un piso de $1.000 —puesto para que
+// «galpón 8» no entrara como $ 8— las descartó a las tres, y con ninguna línea «lista» el bot ni
+// contestó. El piso resolvía el caso equivocado: «galpón 8» es una línea de ENTREGA, que atiende otro
+// especialista. En la libreta un gasto de $ 150 es un gasto de $ 150.
+test('las tres líneas con las que el dueño probó el canal entran las tres', () => {
+  const r = interpretarLibreta('saque $100\npague 100 en arreglo auto\ncombustible 150', HOY)
+  assert.deepEqual(r.map((x) => x.estado), ['listo', 'listo', 'listo'])
+  assert.deepEqual(r.map((x) => x.monto), [100, 100, 150])
+  assert.deepEqual(r.map((x) => x.concepto), ['saque', 'pague en arreglo auto', 'combustible'])
+  assert.deepEqual(r.map((x) => x.fecha), ['2026-09-22', '2026-09-22', '2026-09-22'], 'sin fecha, hoy')
+})
+
+test('un número chico suelto no le gana al importe grande, y sin importe grande el último manda', () => {
+  assert.equal(interpretarLinea('Flete 4? 19/9 60.000', HOY).monto, 60000, 'el 4 es un apunte')
+  assert.equal(interpretarLinea('combustible 150', HOY).monto, 150, 'el último número es el importe')
+  assert.equal(interpretarLinea('saque $100', HOY).monto, 100, 'el signo $ lo declara')
+})

@@ -60,13 +60,35 @@ export function leerMonto(texto, o = {}) {
  */
 export function montoEn(texto, { sinFecha = null } = {}) {
   const t = plano(sinFecha ?? texto).replace(/\s+/g, ' ').trim()
-  const ms = [...t.matchAll(/(?<![\w./-])\$?\s*(\d[\d.,]*)\s*(mill?on(?:es)?|mil|k)?(?![\w./-])/g)]
+  const ms = [...t.matchAll(/(?<![\w./-])(\$)?\s*(\d[\d.,]*)\s*(mill?on(?:es)?|mil|k)?(?![\w./-])/g)]
+    .map((m) => ({ 0: m[0], pesos: Boolean(m[1]), 1: m[2], 2: m[3], index: m.index }))
   if (!ms.length) return null
-  // El ÚLTIMO número de la línea es el monto: «Rep t.los/stereo 19/9 325.000». Con dos candidatos de plata
-  // sin fecha de por medio no se adivina — se pregunta.
-  const plata = ms.filter((m) => m[2] || (Number(String(m[1]).replace(/\./g, '').replace(',', '.')) || 0) >= 1000)
+  // ═══ NO HAY PISO DE MONTO (22/09/2026) ═══
+  //
+  // Había uno de $1.000, puesto para que «galpón 8» no entrara como $ 8. Se comió la primera prueba real
+  // del dueño —«saque $100», «combustible 150»— y el bot no cargó NADA. El piso resolvía el caso
+  // equivocado: «galpón 8» es una línea de ENTREGA, que atiende otro especialista; en la libreta la forma
+  // es concepto + monto, y un gasto de $150 es un gasto de $150.
+  //
+  // Lo que queda protegiendo es la FORMA, no el tamaño: un número pegado a letras o barras no es plata
+  // (lo frena el lookbehind: la patente «EEA885», la factura «0006-00003501»), y con DOS candidatos
+  // sueltos no se adivina — se pregunta, que es lo que hace este `return null`.
+  // TRES SEÑALES, EN ORDEN DE FUERZA:
+  //   1. el «$» escrito lo declara, aunque haya otros números en la línea;
+  //   2. un único número «grande» (≥ 1.000 o con escala) manda sobre los chicos sueltos, que en una
+  //      libreta son apuntes: «Flete 4? 19/9 60.000» — el 4 es una anotación, el monto son 60.000;
+  //   3. sin ninguna de las dos, el ÚLTIMO número de la línea, que es donde se escribe el importe
+  //      («combustible 150»). Dos grandes sin «$» sí son ambiguos: ahí se pregunta.
+  const valor = (m) => Number(String(m[1]).replace(/\./g, '').replace(',', '.')) || 0
+  const conPesos = ms.filter((m) => m.pesos)
+  const grandes = ms.filter((m) => m[2] || valor(m) >= 1000)
+  const plata = conPesos.length === 1 ? conPesos
+    : grandes.length === 1 ? grandes
+      : grandes.length > 1 ? []
+        : ms.slice(-1)
   if (plata.length !== 1) return null
-  const [, crudo, escala] = plata[0]
+  const crudo = plata[0][1]
+  const escala = plata[0][2]
   const n = Number(String(crudo).replace(/\./g, '').replace(',', '.'))
   if (!Number.isFinite(n) || n <= 0) return null
   const factor = !escala ? 1 : /mill/.test(escala) ? 1_000_000 : 1_000
@@ -108,7 +130,11 @@ export function interpretarLinea(texto, hoy = new Date()) {
   const fecha = leerFecha(t, hoy)
   const sinFecha = fecha ? t.replace(RE_FECHA, ' ') : t
   const monto = leerMonto(t, { sinFecha })
-  if (monto == null) return { estado: 'pregunta', falta: 'monto' }
+  // SACADA LA FECHA, ¿QUEDA ALGÚN NÚMERO? De eso depende si vale la pena PREGUNTAR por el importe.
+  // «P. Tello 18/9» no tiene ninguno: puede ser cualquier mensaje, y reclamarlo sería robárselo a los
+  // demás especialistas. «materiales 50.000 y 30.000» sí los tiene, y ahí callarse es lo peor. La línea
+  // lo declara con `conNumero` y el ESPECIALISTA decide si contesta: acá no se decide quién atiende.
+  if (monto == null) return { estado: 'pregunta', falta: 'monto', conNumero: /\d/.test(sinFecha) }
   const concepto = leerConcepto(t, hoy)
   if (!concepto) return { estado: 'pregunta', falta: 'concepto' }
   return { estado: 'listo', concepto, fecha: fecha ?? iso(hoy), monto }

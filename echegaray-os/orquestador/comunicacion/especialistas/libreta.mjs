@@ -101,8 +101,25 @@ export const especialista = {
     // Con adjuntos manda la foto: eso es un ticket o un vale, no una línea escrita.
     if ((ctx.fileIds?.length ?? 0) > 0) return null
     const leidas = interpretarLibreta(texto)
-    if (!leidas.some((l) => l.estado === 'listo' || l.estado === 'jornales')) return null
-    return { destino: 'libreta', confianza: 1, leidas }
+    if (leidas.some((l) => l.estado === 'listo' || l.estado === 'jornales')) {
+      return { destino: 'libreta', confianza: 1, leidas }
+    }
+    // ═══ EL BOT NO SE QUEDA CALLADO (22/09/2026) ═══
+    //
+    // La primera prueba real del dueño —«saque $100 / pague 100 en arreglo auto / combustible 150»— no
+    // entró por un piso de monto, y como ninguna línea quedaba «lista» este `reconoce` devolvía null: el
+    // bot NO CONTESTÓ NADA. Callar es el peor final posible, porque no se distingue de estar caído: la
+    // persona no sabe si el mensaje llegó, si no se entendió o si el sistema está roto, y deja de usarlo.
+    //
+    // Con algo que parezca un renglón de libreta —tiene números y no es otra cosa— se contesta SIEMPRE,
+    // aunque sea para decir qué no se entendió. La confianza baja deja que cualquier especialista que
+    // reconozca de verdad el mensaje gane: esto es la red de abajo, no un secuestro del canal.
+    // Sólo cuando quedó un número que no es la fecha: eso es alguien anotando un gasto y escribiéndolo
+    // mal. «P. Tello 18/9», sin ningún número propio, puede ser cualquier mensaje y no se reclama.
+    if (leidas.some((l) => l.estado === 'pregunta' && l.conNumero)) {
+      return { destino: 'libreta', confianza: 0.2, leidas }
+    }
+    return null
   },
 
   async atender({ texto, intencion, port, actor, log, escribir = escribirFajo, abrir = repo.abrirFajo }) {
@@ -120,7 +137,14 @@ export const especialista = {
     const leidas = ruta.leidas ?? interpretarLibreta(texto)
     const cargables = leidas.filter((l) => l.estado === 'listo')
     if (!cargables.length) {
-      return { texto: textoDeRespuesta(leidas, 'No cargué nada.'), estado: 'nada_cargable', privado: false }
+      // No alcanza con decir que no cargué: si no digo CÓMO se escribe, la persona prueba otra vez a
+      // ciegas. El ejemplo va junto al rechazo, en el mismo mensaje.
+      const soloJornales = leidas.every((l) => l.estado !== 'pregunta')
+      return {
+        texto: textoDeRespuesta(leidas, soloJornales ? 'No cargué nada.' : `No cargué nada.\n\n${TEXTO.AYUDA}`),
+        estado: 'nada_cargable',
+        privado: false,
+      }
     }
 
     // UN FAJO CON TODAS LAS LÍNEAS: es la misma tanda, igual que las fotos de un fajo. El fajo lleva el
