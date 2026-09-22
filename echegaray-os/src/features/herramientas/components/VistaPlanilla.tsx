@@ -189,7 +189,7 @@ function FilaImpresa({ f, nota, onNota }: { f: FilaControl; nota: string; onNota
           value={nota} onChange={(e) => onNota(e.target.value)} maxLength={300} rows={1}
           style={{ width: '100%', minHeight: 26, border: `1px solid ${nota ? V.lineaFuerte : V.linea}`, borderRadius: 4, padding: '4px 6px', fontSize: '12px', fontFamily: 'inherit', resize: 'vertical', background: '#FFFFFF', fieldSizing: 'content' } as CSSProperties}
         />
-        <div data-nota-papel style={{ display: 'none', whiteSpace: 'pre-wrap', fontSize: '12px', padding: '3px 4px' }}>{nota}</div>
+        <div data-nota-papel data-testid="observacion-papel" style={{ display: 'none', whiteSpace: 'pre-wrap', fontSize: '12px', padding: '3px 4px' }}>{nota}</div>
       </td>
     </tr>
   )
