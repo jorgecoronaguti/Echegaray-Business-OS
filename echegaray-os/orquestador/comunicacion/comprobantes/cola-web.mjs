@@ -47,13 +47,19 @@ const TEXTO_SIN_PERMISO =
  * se va a escribir en el Sheet. Un rol se cambia entre que alguien sube una foto y el worker la
  * procesa, y este camino termina moviendo plata: falla cerrado, igual que la del chat.
  */
-export function guardaDeLaWeb(port) {
+export function guardaDeLaWeb(port, { rendicion = null } = {}) {
   return async ({ actor = {} } = {}) => {
     const id = actor?.plataforma_user_id
     if (!id) return { ok: false, motivo: 'sin_identidad', detalle: 'sin_identidad', texto: TEXTO_SIN_PERMISO }
     try {
-      const r = await port.query('select rol, nombre from public.perfiles where id = $1', [id])
+      const r = await port.query('select rol, nombre, persona_id from public.perfiles where id = $1', [id])
       const rol = r?.rows?.[0]?.rol
+      // EFECTIVO A RENDIR (22/09/2026): quien recibió la plata rinde SU entrega aunque no tenga rol de
+      // Administración. Se vuelve a preguntar ahora, contra la entrega todavía abierta.
+      if (rendicion && !ROLES.includes(rol)) {
+        const esSuya = r?.rows?.[0]?.persona_id && r.rows[0].persona_id === rendicion.personaId && rendicion.abierta
+        if (esSuya) return { ok: true, canal: { id: actor.channel_id, nombre: 'rendición de efectivo', area: 'compras' }, display: r.rows[0].nombre ?? null, via: 'entrega' }
+      }
       if (!ROLES.includes(rol)) {
         return { ok: false, motivo: 'permiso', detalle: 'sin_permiso', texto: TEXTO_SIN_PERMISO }
       }
@@ -103,7 +109,7 @@ export async function tomarLote(port) {
      update public.comprobante_entrada e
         set estado = 'procesando', intentos = e.intentos + 1, tomado_at = now(), motivo = null
       where e.lote = (select lote from siguiente) and e.estado = 'pendiente'
-      returning e.id, e.lote, e.storage_path, e.nombre_archivo, e.media_type, e.subido_por, e.intentos`,
+      returning e.id, e.lote, e.storage_path, e.nombre_archivo, e.media_type, e.subido_por, e.intentos, e.origen`,
   )
   return r?.rows ?? []
 }
@@ -221,6 +227,61 @@ export async function cerrarFajoDelLote(dep, { fajoId = null, lote, usuario, ver
  *
  * @param {object} dep `{port, google, log, procesar?, bajarArchivo?}`
  */
+/**
+ * EFECTIVO A RENDIR (22/09/2026): de qué entrega es este lote, y qué texto le pasa al circuito.
+ *
+ * El texto es la obra de la entrega, igual que cuando alguien escribe la obra al mandar la foto por el
+ * chat: el circuito la resuelve contra el mismo catálogo. Una entrega a «Estructura» no manda texto —no
+ * hay obra que imputar— y el Tipo pago se fuerza a «A rendir» en los dos casos.
+ */
+export async function contextoDeRendicion(port, filas = []) {
+  if (!filas.length || filas.some((f) => f.origen !== 'rendicion')) return null
+  const r = await port.query(
+    `select c.id as comprobante_id, c.entrada_id, e.id as entrega_id, e.codigo, e.persona_id,
+            e.anulada_en is null and e.cerrada_en is null as abierta, e.estructura, o.codigo as obra_codigo, o.nombre as obra
+       from public.efectivo_comprobante c
+       join public.efectivo_entrega e on e.id = c.entrega_id
+       left join public.obra_canonica o on o.id = e.obra_id
+      where c.entrada_id = any($1::uuid[])`,
+    [filas.map((f) => f.id)],
+  )
+  const rows = r?.rows ?? []
+  const entregas = new Set(rows.map((x) => x.entrega_id))
+  // Un lote es de UNA entrega. Si no lo es (o falta el vínculo) no se adivina: se procesa sin rendición
+  // y la guarda de siempre decide; el ticket queda a la vista sin vínculo.
+  if (rows.length !== filas.length || entregas.size !== 1) return { invalido: true }
+  const x = rows[0]
+  return {
+    entregaId: x.entrega_id, codigo: x.codigo, personaId: x.persona_id, abierta: x.abierta,
+    texto: x.estructura ? null : [x.obra_codigo, x.obra].filter(Boolean).join(' '),
+    comprobantePorEntrada: new Map(rows.map((y) => [String(y.entrada_id), y.comprobante_id])),
+  }
+}
+
+/**
+ * NÚCLEO: lo que el lote escribió EN COMPRAS (leído del registro, no del mensaje) queda vinculado a su
+ * entrega. Sólo lo CARGADO en este lote: un «ya estaba» puede ser una compra pagada por otro medio, y
+ * vincularla restaría del saldo de la persona un gasto que no hizo.
+ */
+export function vinculosDeRendicion(ctx, registrados = [], { usuario, filas = [] } = {}) {
+  if (!ctx || ctx.invalido || !Array.isArray(registrados)) return []
+  const unico = filas.length === 1 ? ctx.comprobantePorEntrada.get(String(filas[0].id)) ?? null : null
+  return registrados
+    .filter((c) => c?.clave && Number(c.total) > 0)
+    .map((c) => ({ entregaId: ctx.entregaId, clave: String(c.clave), monto: Math.round(Number(c.total) * 100) / 100, usuario, comprobanteId: unico }))
+}
+
+async function vincularRendicion(port, vinculos = []) {
+  for (const v of vinculos) {
+    await port.query(
+      `insert into public.efectivo_rendicion (entrega_id, compra_clave, monto, imputada_por, comprobante_id)
+       values ($1, $2, $3, $4, $5) on conflict (compra_clave) do nothing`,
+      [v.entregaId, v.clave, v.monto, v.usuario, v.comprobanteId],
+    )
+  }
+  return vinculos.length
+}
+
 export async function procesarUnLote(dep) {
   const { port, google, log } = dep
   const procesar = dep.procesar ?? procesarComprobantes
@@ -231,18 +292,24 @@ export async function procesarUnLote(dep) {
   const usuario = filas[0].subido_por
   const intentos = Math.max(...filas.map((f) => Number(f.intentos) || 1))
   const quien = await nombreDeQuienSubio(port, usuario)
+  const rendicion = await contextoDeRendicion(port, filas)
+  const rinde = rendicion && !rendicion.invalido ? rendicion : null
 
   let salida
   try {
     salida = await procesar({
       port, google, log,
       bajar: bajadorDe(filas, dep.bajarArchivo),
-      guarda: guardaDeLaWeb(port),
+      guarda: guardaDeLaWeb(port, { rendicion: rinde }),
     }, {
       fileIds: filas.map((f) => String(f.id)),
-      // SIN TEXTO. En el chat el texto del post es de donde sale la obra cuando el papel no la dice;
-      // acá no hay texto que mandar, y fabricar uno sería fabricar imputación contable.
-      texto: null,
+      // SIN TEXTO, salvo la rendición. En el chat el texto del post es de donde sale la obra cuando el
+      // papel no la dice; en la pantalla de Compras no hay texto que mandar, y fabricar uno sería
+      // fabricar imputación contable. La rendición sí lo tiene y no es inventado: es la obra que
+      // Administración declaró al entregar la plata.
+      texto: rinde?.texto ?? null,
+      // «A rendir» lo sabe quién mandó el ticket, no el papel (ver `forzar` en flujo.mjs).
+      forzar: rinde ? { formaPago: 'A rendir' } : undefined,
       actor: {
         plataforma: 'web', plataforma_user_id: String(usuario), channel_id: String(lote),
         // Ver `nombreDeQuienSubio`: es lo que distingue «una persona cargó esto» de «un timer
@@ -267,6 +334,8 @@ export async function procesarUnLote(dep) {
 
   const veredicto = aplicarReintento(estadoDeEntrada(salida), intentos)
   const registrados = await comprobantesDelLote(port, lote)
+  // El vínculo va ANTES de cerrar las filas: la pantalla pasa de «leyendo» a «en Compras» en un solo paso.
+  if (rinde) await vincularRendicion(port, vinculosDeRendicion(rinde, registrados, { usuario, filas }))
   const resultado = {
     texto: salida?.texto ?? null,
     cargados: veredicto.cargados, yaEstaban: veredicto.yaEstaban, suma: veredicto.suma,
@@ -292,7 +361,11 @@ export async function drenarCola(dep, { maxLotes = 20 } = {}) {
     if (!r) break
     hechos.push(r)
   }
-  return { reciclados: reciclados.length, lotes: hechos }
+  // EFECTIVO A RENDIR: lo que se completó y escribió DESPUÉS (un ticket en espera que alguien resolvió)
+  // se vincula acá, en cada vuelta. Sin la migración aplicada la función no existe: no se frena la cola.
+  let vinculadas = null
+  try { vinculadas = (await dep.port.query('select public.vincular_rendiciones_pendientes() as n'))?.rows?.[0]?.n ?? 0 } catch { /* sin migración */ }
+  return { reciclados: reciclados.length, lotes: hechos, vinculadas }
 }
 
 export { ENTRADA }

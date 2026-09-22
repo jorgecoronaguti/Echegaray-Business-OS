@@ -18,6 +18,7 @@ import {
 import { aspectoDeFrente, dotacionDeFrente, parteDeFrente } from '@/features/jefe/services/aspecto'
 import { conObra } from '@/features/jefe/services/navegacion'
 import { getEsperados, getPresencia } from '@/features/administracion/services/presenciaService'
+import { EfectivoEnHoyJefe } from '@/features/efectivo/campo/components/EfectivoEnHoyJefe'
 import { agrupar } from '@/features/administracion/services/presencia'
 
 // J01 · JEFE HOY — porte literal de `J01 · Jefe Hoy.dc.html`.
@@ -92,6 +93,9 @@ export default async function JefeHoyPage({
         </div>
 
         {primerError && <div style={{ marginTop: 14 }}><AvisoError testid="jefe-hoy-error">{primerError}</AvisoError></div>}
+
+        {/* EFECTIVO A RENDIR: la entrega sin firmar (M01) o el acceso a D15. Nada si no tiene. */}
+        <EfectivoEnHoyJefe obraId={obra.id} />
 
         {/* LOS TRES DEL DÍA, no los de la obra. El avance y el fin de plan viven en J03, que es la
             pantalla que los compara contra el plan. */}

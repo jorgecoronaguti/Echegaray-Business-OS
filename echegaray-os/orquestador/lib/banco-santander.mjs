@@ -648,6 +648,9 @@ export function clasificarMovimiento(concepto = '') {
   // donde caía: un impuesto provincial contado como pago a proveedor. Sólo los CUIT declarados en
   // COBRADORES_DEBIN — un DEBIN a cualquier otro CUIT sigue siendo lo que era.
   if (cobradorDelDebin(c)) return NAT.debinCobro
+  // LA SALIDA A BALANZ (22/09/2026): «Debito transf. online banking emp - A balanz capital valores …
+  // 30710630670». El crédito del mismo CUIT es el rescate y lo resuelve `naturalezaIngreso`.
+  if (/\ba balanz\b|balanz capital/i.test(c) && !/recibid|credin/i.test(c)) return NAT.aportesInversion
   // ═══ EL BANCO ESCRIBE "HABER" EN SINGULAR Y SE LLEVÓ $3.380.000 AL CAJÓN EQUIVOCADO (15/08) ═══
   //
   // La regla pedía "haberes" con ese literal, y el lote del 14/08 llega como *"Acreditacion en cta
@@ -991,6 +994,10 @@ export const NAT = {
   ajusteSinDetalle: 'Ajuste sin detalle del banco',
   cobranzas: 'Cobranzas de clientes',
   rescates: 'Rescates de inversión y financiero',
+  // EL ESPEJO DEL RESCATE (22/09/2026): la plata que SALE a Balanz. Caía en «Transferencias a
+  // proveedores» —el cajón de sastre— y la conciliación contra Compras buscaba $10.000.000 de un pago a
+  // proveedor que no existe. No es gasto: es plata propia que pasa a CAJA INVERTIDA.
+  aportesInversion: 'Aportes a inversión (Balanz)',
   traslados: 'Traslados de fondos propios (no es ingreso)',
 }
 
@@ -1042,6 +1049,10 @@ export const COBERTURA_NATURALEZA = [
   {
     naturaleza: NAT.rescates, lado: 'ingreso', destino: null, alCashFlow: false, grupoConciliacion: false,
     nota: 'GAP DECLARADO. Rescate de una inversión propia (ej. Balanz $11,9M) o desembolso de préstamo: es un flujo de INVERSIÓN/FINANCIACIÓN real, pero el cuadro sólo lee ingresos de Cobranzas y no tiene línea para un ingreso financiero. Requiere decisión del dueño y el dato de la cuenta de inversión (no se inventa). Ver banco-santander.mjs CONTRAPARTES.',
+  },
+  {
+    naturaleza: NAT.aportesInversion, lado: 'traslado', destino: null, alCashFlow: false, grupoConciliacion: false,
+    nota: 'Plata propia que pasa del banco a la inversión (Balanz): baja CAJA DISPONIBLE y sube CAJA INVERTIDA (constante BALANZ con su referencia). No es gasto ni pago a proveedor: no va al cuadro ni se concilia contra Compras.',
   },
   {
     naturaleza: NAT.traslados, lado: 'traslado', destino: null, alCashFlow: false, grupoConciliacion: false,

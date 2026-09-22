@@ -401,3 +401,12 @@ test('compromisosPorBeneficiario suma lo vivo y descarta lo que ya salió', () =
   assert.equal(c[0].proximo, '2026-09-03')  // el más cercano de los que quedan vivos
   assert.equal(c[1].monto, 469564.70)
 })
+
+test('la SALIDA a Balanz es un aporte a la inversión, no un pago a proveedor (22/09/2026)', async () => {
+  const B = await import('./banco-santander.mjs')
+  assert.equal(B.clasificarMovimiento('Debito transf. online banking emp - A balanz capital valores  /              - inv / 30710630670'), B.NAT.aportesInversion)
+  assert.equal(B.clasificarMovimiento('Transferencia inmediata - A balanz capital valores / inv / 30710630670'), B.NAT.aportesInversion)
+  // La otra punta sigue siendo el rescate, y un proveedor cualquiera sigue siendo un proveedor.
+  assert.equal(B.clasificarMovimiento('Transferencia recibida - credin - Id debin cuit 30710630670'), B.NAT.rescates)
+  assert.equal(B.clasificarMovimiento('Debito transf. online banking emp - A corralon progreso'), B.NAT.transferencias)
+})

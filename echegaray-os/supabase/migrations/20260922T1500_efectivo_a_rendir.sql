@@ -299,7 +299,9 @@ comment on table public.efectivo_comprobante is
 alter table public.efectivo_rendicion add column if not exists comprobante_id uuid references public.efectivo_comprobante(id);
 
 -- El estado que ve la gente, derivado — nunca tipeado:
---   leyendo · en_compras · observado · duplicado · error · descartado
+--   leyendo · en_compras · observado · respondido · duplicado · error · descartado
+-- `respondido`: la persona ya contestó lo que faltaba y la carga todavía no se completó. Sin este
+-- estado el ticket seguía «observado» después de contestar: le pedía a la persona algo que ya dio.
 create or replace view public.efectivo_comprobante_estado with (security_invoker = true) as
   select c.id, c.entrega_id, e.codigo as entrega, e.persona_id, c.canal, c.enviado_en,
          ce.storage_path, ce.nombre_archivo, ce.media_type, ce.estado as estado_cola, ce.motivo,
@@ -311,6 +313,7 @@ create or replace view public.efectivo_comprobante_estado with (security_invoker
            when c.observacion is not null and c.respondido_en is null then 'observado'
            when ce.estado in ('pendiente', 'procesando') then 'leyendo'
            when ce.estado = 'ya_estaba' then 'duplicado'
+           when c.respondido_en is not null and ce.estado in ('en_espera', 'rechazado') then 'respondido'
            when ce.estado in ('en_espera', 'rechazado') then 'observado'
            when ce.estado = 'error' then 'error'
            when ce.estado = 'cargado' then 'leyendo'   -- escrito, falta el vínculo (lo pone el worker)
@@ -373,8 +376,8 @@ begin
   if e.anulada_en is not null or e.cerrada_en is not null then
     raise exception '% está %: no recibe comprobantes', e.codigo, case when e.anulada_en is not null then 'anulada' else 'cerrada' end using errcode = 'P0001';
   end if;
-  if split_part(p_storage_path, '/', 1) <> auth.uid()::text then
-    raise exception 'el archivo tiene que estar en tu carpeta' using errcode = '42501';
+  if split_part(p_storage_path, '/', 1) <> auth.uid()::text or split_part(p_storage_path, '/', 2) <> 'rendicion' then
+    raise exception 'el archivo tiene que estar en tu carpeta de rendiciones' using errcode = '42501';
   end if;
   insert into comprobante_entrada (origen, storage_path, lote, nombre_archivo, media_type, bytes, subido_por)
   values ('rendicion', p_storage_path, coalesce(p_lote, gen_random_uuid()), p_nombre, p_media_type, p_bytes, auth.uid())
@@ -429,6 +432,42 @@ revoke all on function public.rendir_comprobante(uuid, text, text, text, bigint,
 grant execute on function public.rendir_comprobante(uuid, text, text, text, bigint, uuid),
   public.observar_comprobante_rendicion(uuid, text), public.responder_observacion_rendicion(uuid, text),
   public.descartar_comprobante_rendicion(uuid, text) to authenticated;
+
+-- ── EL VÍNCULO SE RECONCILIA, NO SE CONFÍA AL MOMENTO DE LA CARGA ─────────────────────────────────
+--
+-- Un ticket puede quedar en espera (proveedor fuera del desplegable, dato ilegible) y escribirse en
+-- Compras horas después, cuando alguien lo completa. Si el vínculo sólo se pusiera al cargar, ese
+-- gasto quedaría rendido en Compras y la persona seguiría debiéndolo. Esta función mira el REGISTRO
+-- de lo escrito (`comunicacion.comprobantes_cargados`, la evidencia en su destino) y vincula lo que
+-- falte. La llaman la cola web y el canal en cada vuelta; es idempotente.
+create or replace function public.vincular_rendiciones_pendientes() returns integer
+language plpgsql security definer set search_path = public as $$
+declare n integer;
+begin
+  insert into efectivo_rendicion (entrega_id, compra_clave, monto, imputada_por, comprobante_id)
+  select distinct on (cc.clave) c.entrega_id, cc.clave, round(cc.total::numeric, 2),
+         coalesce(c.enviado_por, e.entregada_por), c.id
+    from efectivo_comprobante c
+    join efectivo_entrega e on e.id = c.entrega_id and e.anulada_en is null
+    left join comprobante_entrada ce on ce.id = c.entrada_id
+    join comunicacion.comprobantes_cargados cc
+      on (c.mm_post_id is not null and cc.plataforma = 'mattermost' and cc.post_id = c.mm_post_id)
+      or (ce.id is not null and exists (
+            select 1 from comunicacion.comprobante_fajos f
+             where f.id = cc.fajo_id and f.plataforma = 'web' and f.channel_id = ce.lote::text))
+   where c.descartado_en is null and cc.clave is not null and coalesce(cc.total, 0) > 0
+   order by cc.clave, c.enviado_en
+  on conflict (compra_clave) do nothing;
+  get diagnostics n = row_count;
+  return n;
+end $$;
+revoke all on function public.vincular_rendiciones_pendientes() from public, anon, authenticated;
+
+-- El área del canal de rendiciones: el binding canal → área es un DATO (comunicacion.canales_area),
+-- y el área tiene que existir para que el especialista la reclame.
+insert into public.area_canonica (clave, nombre, orden)
+select 'rendicion', 'Rendiciones de efectivo', coalesce(max(orden), 0) + 1 from public.area_canonica
+on conflict (clave) do nothing;
 
 -- ── TIEMPO REAL ──────────────────────────────────────────────────────────────────────────────────
 do $do$

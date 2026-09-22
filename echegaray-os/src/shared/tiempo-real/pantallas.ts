@@ -83,6 +83,10 @@ export const TABLAS_DE = {
    *  `efectivo_entrega_saldo` y `efectivo_comprobante_estado` no avisan: avisan estas tablas. La cola de
    *  comprobantes y `compra_sheet` ya las escucha el layout de Compras (`TABLAS_DE.compras`). */
   efectivo: ['efectivo_entrega', 'efectivo_devolucion', 'efectivo_rendicion', 'efectivo_comprobante'],
+  /** Efectivo a rendir en el teléfono (`/mi-informacion/efectivo/...` y `/obra/efectivo`): la entrega, su
+   *  conformidad, cada ticket y su vínculo con Compras, y la devolución. `comprobante_entrada` porque el
+   *  estado «leyendo → en Compras» lo cambia el worker ahí antes de escribir el vínculo. */
+  efectivoCampo: ['efectivo_entrega', 'efectivo_comprobante', 'efectivo_rendicion', 'efectivo_devolucion', 'comprobante_entrada'],
   /** Las pantallas del jefe de obra (`/obra/...`). */
   jefe: unir(OBRA, HH_Y_ASISTENCIA, ['personas', 'cuadrilla', 'cuadrilla_integrante']),
   // LAS QUE HABÍAN QUEDADO AFUERA (16/09/2026). Dueño: «lo que marco en el celular no se actualiza en la

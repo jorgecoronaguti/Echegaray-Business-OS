@@ -375,7 +375,13 @@ export async function procesarPost(d, m = {}) {
     // es la forma en que se manda un fajo de una misma obra.
     // `ahora` es el momento en que llegó la foto, y es el reloj contra el que se juzga si la fecha
     // del comprobante puede ser cierta. Va con el ítem, no se toma al renderizar.
-    items.push(armarItem({ lectura: r.crudo, adjunto: a, listas: vocabulario, textoPost: m.texto ?? null, ahora: m.ahora ?? new Date(), destinos }))
+    const item = armarItem({ lectura: r.crudo, adjunto: a, listas: vocabulario, textoPost: m.texto ?? null, ahora: m.ahora ?? new Date(), destinos })
+    // EFECTIVO A RENDIR (22/09/2026): el medio de pago NO sale del papel —el ticket no sabe que la plata
+    // era de una entrega—, lo sabe quién lo mandó. La cola de rendición lo fuerza acá, antes de la
+    // historia del proveedor y del menú, para que nada lo pise. Lo que el papel decía queda en
+    // `formaPagoLeida`, como siempre.
+    if (m.forzar?.formaPago) item.comprobante.formaPago = m.forzar.formaPago
+    items.push(item)
   }
   if (!items.length) {
     const rend = rendicionDeAdjuntos({ fileIds, items: [], problemas })

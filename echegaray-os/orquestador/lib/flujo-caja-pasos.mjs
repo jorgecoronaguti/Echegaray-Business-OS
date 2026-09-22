@@ -64,6 +64,9 @@ export const PASOS = [
   // La réplica de ARCA va ANTES de Impuestos: esa pestaña la referencia con fórmulas y necesita que
   // los comprobantes ya estén en el archivo. Es el mismo orden que el espejo de JORNALES.
   ['banco-raw-pestana.mjs', '_BANCO_RAW — el extracto del Santander dentro del Sheet', ['_BANCO_RAW']],
+  // EFECTIVO A RENDIR (22/09/2026): la réplica de entregas y devoluciones. ANTES que `_CAJA_ANEXO`, que
+  // la lee por fórmula: si el anexo nuevo corriera sin la pestaña, el efectivo de CAJA daría #REF!.
+  ['efectivo-raw-pestana.mjs', '_EFECTIVO_RAW — entregas y devoluciones de efectivo a rendir', ['_EFECTIVO_RAW']],
   ['arca-raw-pestana.mjs', '_ARCA_RAW — los comprobantes de ARCA dentro del Sheet', ['_ARCA_RAW']],
   ['rubro-caja-sheet.mjs', 'la columna "Rubro de caja" de Compras — de acá cuelga todo lo demás', []],
   // ═══ EL CRUCE CONTRA ARCA NUNCA ESTUVO EN ESTA LISTA (14/08/2026) ═══

@@ -16,8 +16,7 @@ const DRY = process.argv.includes('--dry-run')
 
 /** Canal → área canónica (public.area_canonica). Es la ÚNICA lista, y es de instalación:
  *  el runtime la lee de la base, no de acá. */
-/** Canales operativos a instalar. HOY hay uno solo: el de asistencia, que es la única
- *  capacidad con especialista operativo. Agregar Compras el día que exista su especialista
+/** Canales operativos a instalar: asistencia y, desde el 22/09/2026, rendiciones. Agregar Compras el día que exista su especialista
  *  es sumar una entrada acá — no tocar el Director ni el handler. */
 const CANALES = [
   {
@@ -36,6 +35,24 @@ const CANALES = [
       '@os editar asistencia de ayer',
       '@os quién faltó ayer',
       '@os horas extra del 17/01',
+    ].join('\n'),
+  },
+  // 22/09/2026 — pedido del dueño: las rendiciones de efectivo por un canal nuevo, no por mensaje
+  // directo. Necesita la migración 20260922T1500 aplicada (crea el área `rendicion`).
+  {
+    nombre: 'Rendiciones',
+    slug: 'rendiciones',
+    area: 'rendicion',
+    proposito: 'Rendición del efectivo a rendir: la foto del ticket pagado con plata que te entregó la empresa.',
+    fijado: [
+      'Canal de rendiciones de efectivo de Echegaray Construcciones.',
+      '',
+      'Si pagaste algo con efectivo que te entregó la empresa, mandá acá la foto del ticket o la factura.',
+      'Se carga sola en Compras como «A rendir», a la obra de tu entrega. No hace falta mencionar a @os.',
+      'Si tenés más de una entrega abierta, escribí su número (por ejemplo ER-0147) con la foto.',
+      '',
+      'Lo que te queda por rendir lo ves en la app, en Mi efectivo: acá no se publica.',
+      'Los gastos pagados con la caja de la oficina siguen yendo a Comprobantes-gastos, como siempre.',
     ].join('\n'),
   },
 ]

@@ -64,9 +64,19 @@ export function grilla(movs, corte) {
 }
 
 async function main() {
-  const { rows } = await query(
-    `select fecha, codigo, persona, destino, movimiento, importe
-       from public.efectivo_movimiento_caja order by fecha, registrado_en, codigo`)
+  // SIN LA MIGRACIÓN, LA PESTAÑA IGUAL SE ESCRIBE — VACÍA. El anexo de CAJA la lee por fórmula: si no
+  // existiera, el efectivo entero daría #REF!. Que la base no tenga las tablas todavía quiere decir
+  // «no hubo entregas», y eso es exactamente lo que dice una réplica sin filas. Cualquier OTRO error
+  // de la base sí corta: publicar cero porque se cayó Postgres sería inventar que nadie tiene plata.
+  let rows = []
+  try {
+    rows = (await query(
+      `select fecha, codigo, persona, destino, movimiento, importe
+         from public.efectivo_movimiento_caja order by fecha, registrado_en, codigo`)).rows
+  } catch (e) {
+    if (e?.code !== '42P01') throw e
+    console.log('· la migración 20260922T1500 no está aplicada: escribo la réplica sin movimientos')
+  }
   const corte = new Date().toISOString().slice(0, 16).replace('T', ' ')
   const gridRaw = grilla(rows, corte)
   console.log(`${rows.length} movimiento(s) de efectivo a rendir · ${ID === '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8' ? 'SHEET REAL' : 'copia ' + ID}`)
