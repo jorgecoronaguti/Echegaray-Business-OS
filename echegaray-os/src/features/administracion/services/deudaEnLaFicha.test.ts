@@ -142,3 +142,21 @@ test('los días se cuentan en UTC: ninguna fecha se corre por el huso de San Jua
   assert.equal(diasEntre('2025-12-31', '2026-01-01'), 1)
   assert.equal(diasEntre('2026-08-31', '2026-09-01'), 1)
 })
+
+// ═══ LA LECTURA CORTADA NO PUEDE ABSOLVER A NADIE ═══
+
+test('si la lista llegó al tope, «sin fila» NO es «al día»', () => {
+  const d = deudaDeLaFicha({ fila: null, hoy: HOY, truncado: true }, null)
+  assert.equal(d.estado, 'sin-leer')
+  assert.match(d.motivo ?? '', /tope de lectura/)
+})
+
+test('el descuadre contra proveedor_deuda viaja hasta la pantalla', () => {
+  const d = deudaDeLaFicha({
+    fila: filaDe([compra({ fila: 1, saldo_pendiente: 100 })]), hoy: HOY,
+    cotejo: 'Esta tabla suma 100,00 y proveedor_deuda dice 90,00: difieren en 10,00.',
+  }, null)
+  assert.match(d.cotejo ?? '', /difieren/)
+  // Y el corte del «hoy» se publica: sin él, «vencido» no dice contra qué día.
+  assert.equal(d.hoyISO, HOY)
+})

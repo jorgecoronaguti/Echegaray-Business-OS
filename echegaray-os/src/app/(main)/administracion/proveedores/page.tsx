@@ -407,6 +407,10 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                       limpiarHref={armarHref(sp, { q: undefined, cuit: undefined, tipo: undefined, activo: undefined })}
                       comprado={comprado}
                       subcontratistas={subs}
+                      // LA MISMA LECTURA QUE YA PAGABA EL FILTRO «Con deuda / Sin deuda»: hasta hoy
+                      // recortaba la lista por este dato sin decir nunca cuánto. `null` = no se pudo
+                      // leer, y la columna lo dice en vez de escribir «al día» en las 36 filas.
+                      deudas={deudas ?? null}
                     />
 
                     <NotaBloque testid="nota-proveedores">

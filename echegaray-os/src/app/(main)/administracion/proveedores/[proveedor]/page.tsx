@@ -57,6 +57,10 @@ import {
   comprasPorObra, conceptosProvistos, resumirProveedor,
 } from '@/features/administracion/services/fichaProveedor'
 import { getComprasConPapel } from '@/features/administracion/services/comprobantesProveedorService'
+import { getDeudaDeUnProveedor } from '@/features/administracion/services/deudaProveedoresService'
+import {
+  deudaDeLaFicha, tituloDeLaDeuda, tonoDeLaDeuda,
+} from '@/features/administracion/services/deudaEnLaFicha'
 import { getOpcionesDeObra } from '@/features/administracion/services/obraDeCompraService'
 import { comoComprobantes, filtrosDeURL } from '@/features/administracion/services/comprobantesProveedor'
 import { formatearCuit } from '@/features/administracion/services/identidad'
@@ -71,6 +75,7 @@ import {
   NombresDelProveedor, ObrasDelProveedor, PaquetesDelProveedor, QueProvee, RepartoPorObra,
 } from '@/features/administracion/components/ListasProveedorV2'
 import { ComprasDelProveedor } from '@/features/administracion/components/proveedores/ComprasDelProveedor'
+import { DeudaDelProveedor } from '@/features/administracion/components/proveedores/DeudaDelProveedor'
 import { DocumentosDelProveedor } from '@/features/administracion/components/proveedores/DocumentosDelProveedor'
 import { getArchivosDeEntidad } from '@/features/documentos/services/carpetaDeEntidadService'
 import { ArchivosDeDrive } from '@/features/documentos/components/ArchivosDeDrive'
@@ -148,7 +153,7 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
   // LAS COMPRAS LAS VE QUIEN VE COMPRAS: el mismo `esAdministracion` que corta esa pantalla. Otro rol
   // no llega a pedirlas, y su ficha dice por qué en vez de mostrar un proveedor sin compras.
   const veCompras = esAdministracion(perfil.data?.rol ?? null)
-  const [nombres, paquetes, documentos, compras, opcionesObra, contactos] = await Promise.all([
+  const [nombres, paquetes, documentos, compras, opcionesObra, contactos, deudaLeida] = await Promise.all([
     getNombresDelProveedor(supabase, proveedor.id),
     getPaquetesDelProveedor(supabase, proveedor.id),
     getDocumentosDelProveedor(supabase, proveedor.id),
@@ -159,6 +164,18 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
     // LA AGENDA TIENE LA MISMA PUERTA QUE LA TABLA (`es_administracion()`). A otro rol la base le
     // devolvería cero filas sin error, y la ficha diría «sin contactos» de un proveedor que los tiene.
     veCompras ? getContactosDelProveedor(supabase, proveedor.id) : Promise.resolve(null),
+    // ═══ LO QUE SE LE DEBE, EN EL MISMO VIAJE QUE TODO LO DEMÁS (dueño, 22/09/2026) ═══
+    //
+    // «Necesito q dentro de la ficha de cada proveedor pueda ver si tengo monto adeudado y cuanto,
+    // son muchos clicks hasta llegar a ver algo y esta muy oculto en la ux». Estaba a tres clics y
+    // en otra pantalla; ahora abre con la ficha, sin un clic más.
+    //
+    // Es la MISMA regla y la MISMA fuente que «A quién le debo» (`getDeudaDeUnProveedor` reusa
+    // `deudaProveedores.ts` sobre `compra_sheet`): no hay una segunda consulta que pueda dar otro
+    // número. La puerta también es la misma —`compra_sheet` es de Administración—, y por eso va
+    // colgada de `veCompras`: a otro rol la base devolvería cero filas sin error y la ficha diría
+    // «al día» de un proveedor al que se le deben millones.
+    veCompras ? getDeudaDeUnProveedor(supabase, proveedor.id) : Promise.resolve(null),
   ])
   const filas = compras?.data ? comoComprobantes(compras.data.filas) : []
 
@@ -170,6 +187,20 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
   const conPrecio = (paquetes.data ?? []).filter((p) => p.precio !== null)
   const contratado = conPrecio.length === 0 ? null : conPrecio.reduce((a, p) => a + (p.precio ?? 0), 0)
   const cuit = formatearCuit(proveedor.cuit)
+  // NO SE PUDO MIRAR ≠ NO SE LE DEBE. Los dos casos que no son deuda llevan su motivo escrito, y
+  // ninguno se dibuja como «$ 0» (regla de oro 2).
+  const deuda = deudaDeLaFicha(
+    deudaLeida?.data ?? null,
+    !veCompras
+      ? 'No puedo decir cuánto se le debe: los saldos salen de Compras, que es de Administración.'
+      : deudaLeida?.error
+        ? `No pude leer lo que se le debe: ${deudaLeida.error}`
+        : null,
+  )
+  // El detalle comprobante por comprobante ya existe: es la fila de «A quién le debo» abierta.
+  const deudaHref = deuda.clave
+    ? `/administracion/proveedores?vista=deuda&d=${encodeURIComponent(deuda.clave)}`
+    : null
   // ═══ EL PROVEEDOR TODAVÍA NO TIENE CARPETA EN DRIVE, Y LA FICHA LO DICE ═══
   //
   // En el Drive de la empresa NO EXISTEN carpetas por proveedor. Dónde va el papel de un proveedor
@@ -185,6 +216,16 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
   const base = `/administracion/proveedores/${proveedor.id}`
 
   const cifras: CifraDeFicha[] = [
+    // ADEUDADO VA PRIMERO: es la pregunta con la que se abre esta ficha —«¿le debo algo?»— y el
+    // único número de la tira que dispara una decisión (pagar o no pagar) en vez de describir el
+    // pasado. `falta` dice «al día» o «sin leer»; nunca un cero.
+    {
+      rotulo: 'Adeudado',
+      valor: deuda.estado === 'debe' ? pesos(deuda.total) : null,
+      falta: deuda.estado === 'al-dia' ? 'al día' : 'sin leer',
+      tono: tonoDeLaDeuda(deuda),
+      titulo: tituloDeLaDeuda(deuda, deuda.hoyISO || 'hoy'),
+    },
     {
       rotulo: 'Comprado · histórico',
       valor: resumen.comprado === null ? null : pesos(resumen.comprado),
@@ -260,6 +301,10 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
       )}
 
       <CifrasDeFicha cifras={cifras} testid="cifras-proveedor" />
+
+      {/* DE QUÉ ESTÁ HECHO EL NÚMERO DE ARRIBA: vencido, por vencer, sin fecha y desde cuándo. Va
+          pegado a la cifra y antes de las solapas porque es lo que se mira para decidir un pago. */}
+      <DeudaDelProveedor deuda={deuda} detalleHref={deudaHref} />
 
       <SolapasDeFicha
         testid="vistas-proveedor"

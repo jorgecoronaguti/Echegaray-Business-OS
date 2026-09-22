@@ -50,11 +50,25 @@ export interface DeudaDeLaFicha {
   proximo: string | null
   /** La clave de la fila en «A quién le debo» — la que abre su detalle. `null` = no hay detalle que abrir. */
   clave: string | null
+  /** El día contra el que se decidió qué está vencido. Va en la pantalla: el corte se declara. */
+  hoyISO: string
+  /** `true` = la lectura llegó al tope y el total puede quedar corto. Se dice, no se calla. */
+  truncado: boolean
+  /** El descuadre contra `public.proveedor_deuda`. `null` = cierran o no hay con qué cotejar. */
+  cotejo: string | null
+}
+
+/** Lo que la lectura entrega. `truncado` y `cotejo` viajan porque los dos pueden invalidar el total. */
+export interface LecturaDeDeuda {
+  fila: DeudaDeProveedor | null
+  hoy: string
+  truncado?: boolean
+  cotejo?: string | null
 }
 
 const VACIO = {
   total: 0, vencido: 0, porVencer: 0, sinFecha: 0, comprobantes: 0,
-  desde: null, diasDeAtraso: null, proximo: null, clave: null,
+  desde: null, diasDeAtraso: null, proximo: null, clave: null, truncado: false, cotejo: null,
 } as const
 
 /** Días enteros entre dos ISO `YYYY-MM-DD`, contados en UTC para que ningún huso corra una fecha. */
@@ -72,15 +86,30 @@ export function diasEntre(desde: string, hasta: string): number {
  * inventar una explicación. `fila === null` con lectura buena ⇒ al día.
  */
 export function deudaDeLaFicha(
-  leido: { fila: DeudaDeProveedor | null; hoy: string } | null,
+  leido: LecturaDeDeuda | null,
   motivo: string | null,
 ): DeudaDeLaFicha {
   if (!leido) {
-    return { ...VACIO, estado: 'sin-leer', motivo: motivo ?? 'No se pudo leer lo que se le debe.' }
+    return {
+      ...VACIO, estado: 'sin-leer', hoyISO: '',
+      motivo: motivo ?? 'No se pudo leer lo que se le debe.',
+    }
   }
   const { fila, hoy } = leido
-  if (!fila || fila.total <= 0) return { ...VACIO, estado: 'al-dia', motivo: null }
+  const comun = { hoyISO: hoy, truncado: leido.truncado ?? false, cotejo: leido.cotejo ?? null }
+  // TRUNCADO NO PUEDE DECIR «AL DÍA»: la fila de este proveedor puede haber quedado fuera del tope.
+  if (!fila || fila.total <= 0) {
+    if (comun.truncado) {
+      return {
+        ...VACIO, ...comun, estado: 'sin-leer',
+        motivo: 'La lista de compras con saldo llegó al tope de lectura: no puedo afirmar que este '
+          + 'proveedor esté al día.',
+      }
+    }
+    return { ...VACIO, ...comun, estado: 'al-dia', motivo: null }
+  }
   return {
+    ...comun,
     estado: 'debe',
     motivo: null,
     total: fila.total,

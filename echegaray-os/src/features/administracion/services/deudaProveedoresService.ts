@@ -23,8 +23,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from './comprasSheetService.ts'
 import {
-  deudaPorProveedor, hoyISO, lineasDeDeuda,
-  type CompraConSaldo, type DeudaDeProveedor, type LineaDeuda, type ProveedorResuelto,
+  cotejoDeDeuda, detalleDeProveedor, deudaPorProveedor, hoyISO, lineasDeDeuda,
+  type CompraConSaldo, type DetalleDeuda, type DeudaDeProveedor, type LineaDeuda,
+  type ProveedorResuelto,
 } from './deudaProveedores.ts'
 import { notasDeLaDeuda, type NotaDeProveedor, type NotaGuardada, type PedidoDeNota } from './notasDeDeuda.ts'
 

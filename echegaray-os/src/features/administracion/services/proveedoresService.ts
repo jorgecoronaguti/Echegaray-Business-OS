@@ -155,8 +155,10 @@ export async function getProveedores(
  * UN PROVEEDOR SIN FILA NO DEBE NADA, y eso NO es lo mismo que deber $0: la vista no publica ceros.
  * Por eso el resultado es un Map y no un número por proveedor — la ausencia significa algo.
  *
- * Si la lectura falla, el Map queda VACÍO y la cartera se dibuja sin deuda. Nunca al revés: inventar
- * una deuda porque no se pudo leer mandaría a pagar algo que quizá ya está pagado.
+ * Si la lectura falla devuelve `null`, y NO un Map vacío. Los dos se filtraban igual —sin deuda—,
+ * pero desde que la lista dibuja la columna ADEUDADO ya no se dicen igual: un Map vacío afirma que
+ * nadie tiene saldo, y `null` dice que no se pudo mirar. Un control que no pudo mirar no puede
+ * decir «no hay» (dueño, 22/09/2026: la deuda también se lee en la lista y en la ficha).
  */
 export interface DeudaProveedor {
   deuda: number
@@ -166,11 +168,11 @@ export interface DeudaProveedor {
 
 export async function getDeudaProveedores(
   supabase: SupabaseClient,
-): Promise<Map<string, DeudaProveedor>> {
+): Promise<Map<string, DeudaProveedor> | null> {
   const { data, error } = await supabase
     .from('proveedor_deuda')
     .select('proveedor_id, deuda, comprobantes_impagos, impaga_mas_vieja')
-  if (error || !data) return new Map()
+  if (error || !data) return null
   const mapa = new Map<string, DeudaProveedor>()
   for (const f of data as unknown as ({ proveedor_id: string } & DeudaProveedor)[]) {
     if (!f.proveedor_id) continue

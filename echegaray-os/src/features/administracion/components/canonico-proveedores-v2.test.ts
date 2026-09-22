@@ -273,7 +273,7 @@ test('el rotulo que se suelta en angosto no lleva `display` inline', () => {
   }
 })
 
-test('el maestro tiene las SEIS columnas: las cinco del v4 más el contador que pidió el dueño', () => {
+test('el maestro tiene las SIETE columnas: las cinco del v4 más el contador y lo adeudado', () => {
   // ═══ EL CONTRATO CAMBIÓ, Y ÉSTE ES EL VALOR NUEVO ═══
   //
   // Hasta el 05/09/2026 este test exigía CUATRO columnas —PROVEEDOR · CUIT · COMPRADO · COMPROB.—
@@ -296,7 +296,17 @@ test('el maestro tiene las SEIS columnas: las cinco del v4 más el contador que 
   // pistas. Lo que NO se negocia es el rótulo: el Sheet cuenta 2026 y esta columna cuenta el
   // histórico, y sin la ventana escrita al lado los dos números se leen como el mismo.
   const src = codigo('TablaProveedores.tsx')
-  for (const c of ['Proveedor', 'CUIT', 'Tipo', 'Comprado', 'Comprobantes · histórico', 'Última compra']) {
+  // ═══ LA SÉPTIMA PISTA (22/09/2026) ═══
+  //
+  // «Necesito q dentro de la ficha de cada proveedor pueda ver si tengo monto adeudado y cuanto,
+  // son muchos clicks hasta llegar a ver algo y esta muy oculto en la ux». La ficha es el pedido
+  // literal; la columna es el camino: esta misma pantalla YA recortaba por «Con deuda / Sin deuda»
+  // sin decir nunca cuánto, o sea que el dato se usaba para filtrar y se le negaba al que mira.
+  // El mockup no la dibuja: acá vuelve a ganar el pedido del dueño, como con el contador.
+  //
+  // ADEUDADO ≠ COMPRADO y por eso son dos columnas: una es el histórico entero y la otra el saldo
+  // vivo de hoy. Juntarlas sería mezclar dos ventanas de tiempo en la misma celda.
+  for (const c of ['Proveedor', 'CUIT', 'Tipo', 'Comprado', 'Adeudado', 'Comprobantes · histórico', 'Última compra']) {
     assert.ok(src.includes(`>${c}<`), `falta la columna ${c}`)
   }
   // Un «Comprobantes» pelado, sin la ventana, es el defecto que este test existe para atrapar.
@@ -308,14 +318,20 @@ test('el maestro tiene las SEIS columnas: las cinco del v4 más el contador que 
   // LA GRILLA, CARÁCTER POR CARÁCTER: las cinco medidas del mockup
   // (`Administración v4 · Pantallas.dc.html:152`) intactas, más los 176px del contador.
   assert.ok(
-    src.includes('grid-cols-[minmax(240px,1.6fr)_160px_130px_160px_200px_minmax(120px,1fr)]'),
-    'la grilla ancha dejó de tener las cinco medidas del handoff v4 más el contador',
+    src.includes('grid-cols-[minmax(240px,1.6fr)_160px_130px_160px_130px_200px_minmax(120px,1fr)]'),
+    'la grilla ancha dejó de tener las cinco medidas del handoff v4, el contador y lo adeudado',
   )
-  // Seis pistas declaradas y seis celdas dibujadas por fila. Se cuentan sobre el bloque de la
+  // Y POR DEBAJO DE 1320px LA TABLA SIGUE SIENDO LA DE ANTES, carácter por carácter: la columna que
+  // se suelta es la NUEVA. El defecto que atrapa es agregar un dato sacando uno que ya se miraba.
+  assert.ok(
+    src.includes('max-[1319px]:grid-cols-[minmax(240px,1.6fr)_160px_130px_160px_200px_minmax(120px,1fr)]'),
+    'la grilla intermedia dejó de ser exactamente la de seis pistas del handoff v4',
+  )
+  // Siete pistas declaradas y siete celdas dibujadas por fila. Se cuentan sobre el bloque de la
   // fila, no sobre el archivo, para que un `<span>` del encabezado no infle el número.
   const cuerpo = src.slice(src.indexOf('{proveedores.map('))
   const celdas = [
-    'IconoProveedor', 'formatearCuit', 'tipo-proveedor', 'pesos(c.total)',
+    'IconoProveedor', 'formatearCuit', 'tipo-proveedor', 'pesos(c.total)', 'deuda-proveedor',
     'textoComprobantes(c, comprado !== null)', 'ultima-compra',
   ]
   for (const c of celdas) assert.ok(cuerpo.includes(c), `la fila perdió la celda ${c}`)

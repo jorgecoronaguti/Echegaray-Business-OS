@@ -75,7 +75,7 @@ import { IconoProblema, IconoProveedor } from '@/shared/components/iconos'
 import { formatearCuit } from '../services/identidad'
 import { fechaCortaConAnio, pesos } from '@/shared/components/canon/formato'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
-import { textoComprobantes, type CompradoProveedor } from '../services/proveedoresService'
+import { textoComprobantes, type CompradoProveedor, type DeudaProveedor } from '../services/proveedoresService'
 import { rubroDe, type Proveedor } from '../types'
 
 /**
@@ -83,7 +83,12 @@ import { rubroDe, type Proveedor } from '../types'
  * armado en runtime.
  */
 const COLS
-  = 'grid-cols-[minmax(240px,1.6fr)_160px_130px_160px_200px_minmax(120px,1fr)]'
+  = 'grid-cols-[minmax(240px,1.6fr)_160px_130px_160px_130px_200px_minmax(120px,1fr)]'
+  // POR DEBAJO DE 1320px LA TABLA ES EXACTAMENTE LA DE ANTES: seis pistas, sin ADEUDADO. La cuenta
+  // es de ancho, no de gusto — con la séptima pista las fijas suman 780 y los seis huecos 96, y por
+  // debajo de ~1276px de ventana el nombre empezaría a comerse su mínimo. Se suelta la columna
+  // NUEVA, nunca las que ya estaban: agregar un dato no puede sacar uno que ya se miraba.
+  + ' max-[1319px]:grid-cols-[minmax(240px,1.6fr)_160px_130px_160px_200px_minmax(120px,1fr)]'
   + ' max-[1249px]:grid-cols-[minmax(160px,1.6fr)_minmax(0,1fr)]'
 /** `gap:16` del bloque «2 · PROVEEDORES». El patrón v2 declara 14 y esta pantalla lo corre a 16. */
 const GAP = 16
@@ -96,6 +101,8 @@ const GAP = 16
  * primera fila. Medido a 1200px el 25/08/2026. Es la misma trampa que `EnvoltorioAncho` documenta.
  */
 const SOLO_ANCHO = 'max-[1249px]:hidden'
+/** La séptima pista —ADEUDADO— y su rótulo. Mismo motivo y misma trampa que `SOLO_ANCHO`. */
+const SOLO_MUY_ANCHO = 'max-[1319px]:hidden'
 
 /**
  * POR QUÉ UNA FILA PUEDE NO TENER FECHA, dicho en la celda y no sólo en un comentario. Con la
@@ -106,7 +113,7 @@ const SIN_FECHA
   = 'Este proveedor tiene compras vinculadas, pero ninguna con fecha cargada en costos_obra.'
 
 export function TablaProveedores({
-  proveedores, seleccionado, hrefDe, hrefCuitDe, comprado, subcontratistas, limpiarHref,
+  proveedores, seleccionado, hrefDe, hrefCuitDe, comprado, subcontratistas, deudas, limpiarHref,
 }: {
   proveedores: Proveedor[]
   seleccionado?: string
@@ -117,6 +124,12 @@ export function TablaProveedores({
   comprado: Map<string, CompradoProveedor> | null
   /** Los que tienen al menos un paquete en `subcontrato`. `null` = no se pudo leer. */
   subcontratistas: Set<string> | null
+  /**
+   * De `public.proveedor_deuda`, la definición canónica del total adeudado — la misma que suma «A
+   * quién le debo» y la que la ficha cotejea. `null` = NO SE PUDO LEER, y entonces la columna dice
+   * «sin leer»: un «al día» ahí sería afirmar que no se le debe nada a nadie por un error de red.
+   */
+  deudas: Map<string, DeudaProveedor> | null
   limpiarHref: string
 }) {
   return (
@@ -126,6 +139,10 @@ export function TablaProveedores({
         <RotuloCol>CUIT</RotuloCol>
         <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Tipo</RotuloCol></span>
         <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Comprado</RotuloCol></span>
+        {/* ADEUDADO — «son muchos clicks hasta llegar a ver algo y esta muy oculto» (dueño,
+            22/09/2026). El recorte «Con deuda / Sin deuda» de esta misma pantalla ya recortaba por
+            este dato sin decir NUNCA cuánto: se podía filtrar por quién debe y no ver el número. */}
+        <span className={`grid ${SOLO_MUY_ANCHO}`}><RotuloCol derecha>Adeudado</RotuloCol></span>
         {/* LA VENTANA VA EN EL RÓTULO, no en una nota al pie: el Sheet cuenta 811 comprobantes de
             2026 y esta columna cuenta todo lo que hay en `costos_obra`. Sin la palabra «histórico»
             los dos números se leen como el mismo. El porqué está en `textoComprobantes`. */}
@@ -135,6 +152,7 @@ export function TablaProveedores({
 
       {proveedores.map((p) => {
         const c = comprado?.get(p.id)
+        const debe = deudas?.get(p.id)
         const esSub = subcontratistas?.has(p.id) ?? false
         const rubro = rubroDe(p)
         const elegido = p.id === seleccionado
@@ -234,6 +252,32 @@ export function TablaProveedores({
                   (`22v2:316`). A esta escala la abreviatura «$ 64,2 M» esconde justo el orden de
                   magnitud que separa a un proveedor de $ 900.000 de uno de $ 90.000.000. */}
               {c ? (pesos(c.total) ?? 'sin compras') : comprado ? 'sin compras' : 'sin leer'}
+            </span>
+
+            {/* ADEUDADO — LO QUE SE LE DEBE HOY, no lo que se le compró alguna vez. Son dos
+                ventanas distintas y por eso van en dos columnas: COMPRADO es el histórico entero y
+                esto es el saldo vivo. Las tres ausencias se dicen distinto y ninguna es «$ 0»:
+                «al día» (se leyó y no debe), «sin leer» (no se pudo mirar) y el importe en rojo
+                cuando hay algo vencido — el mismo rojo que usa la ficha para lo mismo. */}
+            <span
+              className={`font-mono tabular-nums ${SOLO_MUY_ANCHO}`}
+              style={{
+                fontSize: '12px', textAlign: 'right',
+                // SIN COLOR DE ALARMA ACÁ. `proveedor_deuda` no separa lo vencido de lo por
+                // vencer —su `impaga_mas_vieja` es la FECHA DE COMPRA más vieja, no un
+                // vencimiento—, así que pintar esta celda de rojo afirmaría una urgencia que este
+                // dato no puede sostener. El vencido lo dice la ficha, que sí lo calcula.
+                color: !deudas ? V.cuentaApagada : debe?.deuda ? V.tinta : V.cuentaApagada,
+                fontWeight: debe?.deuda ? 600 : 400,
+              }}
+              data-testid="deuda-proveedor"
+              title={debe?.deuda
+                ? `${debe.comprobantes_impagos} comprobante${debe.comprobantes_impagos === 1 ? '' : 's'} con saldo`
+                  + `${debe.impaga_mas_vieja ? `; la compra más vieja sin saldar es del ${fechaCortaConAnio(debe.impaga_mas_vieja)}` : ''}`
+                  + '. Abrir la ficha para ver cuánto está vencido.'
+                : undefined}
+            >
+              {!deudas ? 'sin leer' : debe?.deuda ? (pesos(debe.deuda) ?? 'al día') : 'al día'}
             </span>
 
             {/* COMPROBANTES — CUÁNTOS SOSTIENEN ESE TOTAL. Pedido del dueño (09/09/2026).
