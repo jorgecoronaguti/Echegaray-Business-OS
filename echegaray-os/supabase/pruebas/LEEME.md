@@ -122,3 +122,47 @@ Diez casos, y cada uno corta el script si falla:
 `current_rol() in ('direccion','administracion')` por `es_administracion()` —un cambio que parece
 inocente y que es el que estaba escrito en el pedido— el caso 3 aborta con «FALLÓ: el jefe pudo
 marcar ausente a alguien sin asignación vigente».
+
+## `activo_mover` — mover lo que todavía no está en ningún lado
+
+Dueño, 22/09/2026: *«roto el movimiento de maquinarias en modulo de herramientas»*. MIN-001
+(Minicargadora Bobcat S650), dada de alta sin ubicación, no se podía mover: el panel contestaba
+«MIN-001 no tiene unidades en el lugar de origen». La prueba corre las funciones de mover de verdad.
+
+```bash
+docker run -d --name pg-mover -e POSTGRES_PASSWORD=x postgres:16-alpine
+sleep 6
+
+docker cp supabase/pruebas/activo_mover_00_andamio.sql pg-mover:/tmp/00.sql
+docker exec pg-mover psql -U postgres -q -v ON_ERROR_STOP=1 -f /tmp/00.sql   # andamio, PRIMERO
+
+for f in 20260921T2100_herramientas_activos 20260922T0900_activo_codigo_por_prefijo \
+         20260922T1000_activo_categoria_y_cantidad 20260922T1300_activo_existencia_por_lugar \
+         20260922T2500_mover_el_activo_sin_ubicacion; do
+  docker cp supabase/migrations/$f.sql pg-mover:/tmp/$f.sql
+  docker exec pg-mover psql -U postgres -q -v ON_ERROR_STOP=1 -f /tmp/$f.sql   # la cadena, en orden
+done
+
+docker cp supabase/pruebas/activo_mover_02_sin_ubicacion.sql pg-mover:/tmp/02.sql
+docker exec pg-mover psql -U postgres -q -v ON_ERROR_STOP=1 -f /tmp/02.sql   # las pruebas
+
+docker rm -f pg-mover
+```
+
+Los roles (`authenticated`, `anon`, `service_role`) son del clúster, no de la base: cada
+corrida va en un contenedor nuevo, no en otra base del mismo contenedor.
+
+Cinco casos, y cada uno corta el script si falla:
+
+1. La maquinaria dada de alta **sin ubicación entra a la obra**: queda la existencia, el activo
+   apunta ahí, el movimiento nace **sin origen** (no se inventa uno) y después se sigue moviendo.
+2. `mover_activos` —la firma de siempre— **no puede devolver un silencio**: antes recorría cero
+   existencias, devolvía `null` y la app lo traducía como «ya estaban ahí».
+3. Lo que ya andaba no se afloja: un **lote repartido sigue exigiendo el lugar de salida**, y no se
+   pierde ni una unidad en el intento.
+4. Lo que no está en ningún lado **entra entero**: mandar 4 de 10 dejaría las otras 6 en la nada,
+   porque el total se recalcula desde `activo_existencia`. Entero entra y entero llega.
+5. **La cuenta cierra**: el total de cada activo vivo es la suma de sus lugares.
+
+**Se verificó que estas pruebas PUEDEN dar rojo**: sin `20260922T2500` el caso 1 aborta con
+«MIN-001 no tiene unidades en el lugar de origen» — el mismo texto que devolvió producción.

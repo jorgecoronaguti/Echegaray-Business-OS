@@ -11,7 +11,7 @@
 
 import { useMemo, useState } from 'react'
 import {
-  advertencias, claveDestino, conCantidad, conOrigen, destinos, itemPorDefecto, lugaresDeSalida, origenesDeItems, paraLaBase,
+  advertencias, claveDestino, conCantidad, conOrigen, destinos, eligeCantidad, itemPorDefecto, lugaresDeSalida, origenesDeItems, paraLaBase,
   textoBotonMover, textoParte, type ItemMover, type OpcionDestino,
 } from '../logica/mover'
 import { rotuloLugares, rotuloUbicacion, ETIQUETA_ESTADO } from '../logica/parque'
@@ -226,7 +226,7 @@ export function PanelMover({ idsIniciales, destinoInicial, origenInicial, onHech
             const a = it.activo
             const problema = a.estado === 'requiere_mantenimiento' || a.estado === 'fuera_servicio' || a.estado === 'reparacion_externa'
             const salidas = lugaresDeSalida(parque, a)
-            const lote = it.disponible > 1 || salidas.length > 1
+            const lote = eligeCantidad(it, salidas.length)
             return (
               <div key={a.id} data-testid="renglon-envio" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '7px 0', borderBottom: `1px solid ${V.linea}`, color: problema ? V.warn : V.tinta }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -260,6 +260,9 @@ export function PanelMover({ idsIniciales, destinoInicial, origenInicial, onHech
                       <span>en {rotuloUbicacion(parque, it.origen)}</span>
                     )}
                   </div>
+                )}
+                {!lote && it.disponible > 1 && (
+                  <div style={{ fontSize: '12.5px', color: V.apagado }}>Entran las {it.disponible}: todavía no está en ningún lado.</div>
                 )}
               </div>
             )

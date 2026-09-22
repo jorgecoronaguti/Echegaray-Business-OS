@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { armarParque } from './parque.ts'
-import { advertencias, claveDestino, destinos, origenes } from './mover.ts'
+import { advertencias, claveDestino, conCantidad, destinos, eligeCantidad, itemPorDefecto, origenes, paraLaBase } from './mover.ts'
 import { activo, ubicacion } from './fixture.test-util.ts'
 import type { ObraIndice } from '../types.ts'
 
@@ -27,6 +27,8 @@ function parque() {
       activo({ id: 'a2', codigo: 'HER-0002', nombre: 'Nivel', ubicacion_id: 'u-taller', estado: 'requiere_mantenimiento' }),
       activo({ id: 'a3', codigo: 'HER-0003', nombre: 'Balde', ubicacion_id: 'u-hilux' }),
       activo({ id: 'a4', codigo: 'HER-0004', nombre: 'Sin lugar', ubicacion_id: null }),
+      activo({ id: 'a5', codigo: 'PUN-0001', nombre: 'Puntales', ubicacion_id: null, cantidad: 10 }),
+      activo({ id: 'e1', codigo: 'MIN-001', clase: 'equipo', nombre: 'Minicargadora Bobcat S650', ubicacion_id: null }),
       activo({ id: 'r1', codigo: 'ROD-0001', clase: 'rodado', nombre: 'Hilux', patente: 'NMN898', ubicacion_id: 'u-taller' }),
       activo({ id: 'r2', codigo: 'ROD-0002', clase: 'rodado', nombre: 'F100', patente: 'AXH205', estado: 'baja', baja_motivo: 'vendida', baja_en: '2026-01-01T00:00:00Z' }),
     ],
@@ -54,4 +56,24 @@ test('advertencias: el problema viaja, el rodado con carga pregunta, y no se met
   assert.deepEqual(w.rodadosConCarga.map((x) => [x.rodado.id, x.carga]), [['r1', 1]])
   assert.equal(w.adentroDeSiMismo?.id, 'r1')
   assert.deepEqual(advertencias(p, sel, 'u-taller').yaEstan.map((a) => a.id), ['a1', 'a2', 'r1'])
+})
+
+// 22/09/2026, dueño: «roto el movimiento de maquinarias». MIN-001 se dio de alta sin ubicación y el
+// panel mandaba origen null; la base contestaba «no tiene unidades en el lugar de origen»
+// (20260922T2500 la arregla). Del lado de la pantalla: lo que no está en ningún lado entra ENTERO.
+test('la maquinaria recién dada de alta, sin ubicación, se manda entera y sin origen', () => {
+  const p = parque()
+  const it = itemPorDefecto(p, p.activoPorId.get('e1')!)
+  assert.equal(it.origen, null)
+  assert.deepEqual(paraLaBase([it]), [{ activo: 'e1', origen: null, cantidad: 1 }])
+  assert.equal(eligeCantidad(it, 0), false, 'sin ubicación no hay lugar de salida que elegir')
+})
+
+test('un lote sin ubicación no se reparte: entran todas las unidades', () => {
+  const p = parque()
+  const it = itemPorDefecto(p, p.activoPorId.get('a5')!)
+  assert.equal(it.disponible, 10)
+  assert.equal(conCantidad(it, 4).cantidad, 10, 'lo que no está en ningún lado no se puede repartir')
+  assert.equal(eligeCantidad(it, 0), false)
+  assert.equal(eligeCantidad(itemPorDefecto(p, p.activoPorId.get('a1')!), 1), false, 'uno solo en un lugar tampoco pregunta')
 })

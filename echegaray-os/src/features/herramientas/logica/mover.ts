@@ -51,10 +51,20 @@ export function conOrigen(p: Parque, it: ItemMover, origen: string): ItemMover {
   return { ...it, origen, cantidad: disponible, disponible }
 }
 
-/** La cantidad tipeada, dentro de 1…disponible. Lo que no es número vuelve a todas. */
+/**
+ * La cantidad tipeada, dentro de 1…disponible. Lo que no es número vuelve a todas.
+ * Lo que todavía no está en ningún lado NO se reparte: entra entero (la base lo rechaza al revés,
+ * porque el total sale de la suma por lugar y las unidades que no viajan quedarían en la nada).
+ */
 export function conCantidad(it: ItemMover, n: number): ItemMover {
+  if (it.origen === null) return { ...it, cantidad: it.disponible }
   const v = Number.isFinite(n) ? Math.trunc(n) : it.disponible
   return { ...it, cantidad: Math.min(Math.max(v, 1), it.disponible) }
+}
+
+/** Si el renglón deja elegir cuántas van y de dónde salen. Sin ubicación cargada, no hay nada que elegir. */
+export function eligeCantidad(it: ItemMover, lugares: number): boolean {
+  return it.origen !== null && (it.disponible > 1 || lugares > 1)
 }
 
 /** Los lugares de los que puede salir un activo (más de uno = lote repartido: se elige). */
