@@ -144,6 +144,20 @@ test.describe('módulo Herramientas · envío a obra y planilla (22/09)', () => 
     await expect(page.getByTestId('planilla')).toBeVisible()
     await expect(page.getByTestId('planilla').locator('tbody tr').first()).toBeVisible()
     await page.screenshot({ path: `${CAPTURAS}_planilla.png`, fullPage: false })
+
+    // La observación se escribe en pantalla, sobrevive a la recarga y sale en papel (dueño, 22/09).
+    const obs = page.getByTestId('observacion-planilla').first()
+    await obs.fill('falta el disco · revisar')
+    await page.reload()
+    await expect(page.getByTestId('observacion-planilla').first()).toHaveValue('falta el disco · revisar')
+    await page.emulateMedia({ media: 'print' })
+    await expect(page.getByTestId('observacion-planilla').first()).toBeHidden()
+    await expect(page.getByTestId('planilla').getByText('falta el disco · revisar')).toBeVisible()
+    await page.screenshot({ path: `${CAPTURAS}_planilla-impresa.png`, fullPage: false })
+    await page.emulateMedia({ media: 'screen' })
+    page.once('dialog', (d) => d.accept())
+    await page.getByTestId('borrar-notas').click()
+    await expect(page.getByTestId('observacion-planilla').first()).toHaveValue('')
   })
 })
 

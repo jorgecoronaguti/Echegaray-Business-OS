@@ -5,8 +5,13 @@
 // No es la hoja de papel copiada (dueño, 22/09): es lo que el sistema sabe de esa obra, puesto para
 // controlarlo en el lugar. Lo que hay hoy por categoría con casilleros «está / falta», lo que ya tiene
 // un problema, lo que entró y salió en 30 días, y las firmas. Al imprimir se ocultan menú y botones.
+//
+// La columna «Observación» se escribe en pantalla antes de imprimir (dueño, 22/09: «q la columna
+// observacion pueda ser editable para hacer anotaciones e imprimir»). Son notas de la hoja, no un dato
+// del activo: quedan en ESTE navegador para esa obra (sobreviven a una recarga) y no van a la base.
 
 import Link from 'next/link'
+import { useSyncExternalStore, type CSSProperties } from 'react'
 import { controlDeUbicacion, textoEstado, type FilaControl } from '../logica/planilla'
 import { rotuloUbicacion, type Parque } from '../logica/parque'
 import { MONO, V, bajadaPagina, pagina, tituloPagina } from './estilo'
@@ -26,6 +31,12 @@ export function VistaPlanilla({ parque, ubicacionId }: { parque: Parque; ubicaci
       </div>
     )
   }
+  return <Planilla parque={parque} u={u} />
+}
+
+function Planilla({ parque, u }: { parque: Parque; u: NonNullable<ReturnType<Parque['ubicacionPorId']['get']>> }) {
+  const [notas, anotar] = useNotas(u.id)
+  const hayNotas = Object.values(notas).some((t) => t.trim())
   const hoy = new Date()
   const c = controlDeUbicacion(parque, u.id, hoy)
   const obra = u.obra_id ? parque.obraPorId.get(u.obra_id) : null
@@ -34,6 +45,8 @@ export function VistaPlanilla({ parque, ubicacionId }: { parque: Parque; ubicaci
     <div style={{ ...pagina, maxWidth: 1100 }} data-testid="planilla">
       <style>{`@media print {
         header, nav, [data-no-imprimir] { display: none !important; }
+        [data-nota-pantalla] { display: none !important; }
+        [data-nota-papel] { display: block !important; }
         body { background: #fff; }
         @page { size: A4; margin: 12mm; }
         [data-planilla-bloque] { break-inside: avoid; }
@@ -49,6 +62,12 @@ export function VistaPlanilla({ parque, ubicacionId }: { parque: Parque; ubicaci
           </div>
         </div>
         <div data-no-imprimir style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {hayNotas && (
+            <button type="button" data-testid="borrar-notas" style={{ fontSize: '13px', color: V.apagado }}
+              onClick={() => { if (window.confirm('¿Borrar todas las observaciones escritas en esta planilla?')) anotar(null, '') }}>
+              Borrar observaciones
+            </button>
+          )}
           <Link href={`/herramientas/ubicaciones?u=${u.id}`} style={{ fontSize: '13px', color: V.apagado }}>Volver</Link>
           <button type="button" onClick={() => window.print()} data-testid="imprimir-planilla"
             style={{ height: 32, padding: '0 14px', borderRadius: 6, background: V.marca, color: V.grafito, fontWeight: 600, fontSize: '13px' }}>
@@ -60,6 +79,7 @@ export function VistaPlanilla({ parque, ubicacionId }: { parque: Parque; ubicaci
       <section data-planilla-bloque style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ fontSize: '14px', fontWeight: 600 }}>1 · Lo que tiene que estar hoy</div>
         <div style={{ fontSize: '12px', color: V.apagado }}>Tildar lo que se ve. Lo que falte se reporta después como «No la encuentro» en el teléfono, con el código.</div>
+        <div data-no-imprimir style={{ fontSize: '12px', color: V.apagado }}>La columna «Observación» se puede escribir acá antes de imprimir. Queda guardada en esta computadora para esta obra.</div>
         {c.activos === 0 ? (
           <div style={bajadaPagina}>El sistema no tiene nada registrado acá.</div>
         ) : (
@@ -84,7 +104,7 @@ export function VistaPlanilla({ parque, ubicacionId }: { parque: Parque; ubicaci
                     {g.categoria} <span style={{ color: V.tenue, fontWeight: 400 }}>· {g.filas.length}</span>
                   </td>
                 </tr>,
-                ...g.filas.map((f) => <FilaImpresa key={f.activo.id} f={f} />),
+                ...g.filas.map((f) => <FilaImpresa key={f.activo.id} f={f} nota={notas[f.activo.id] ?? ''} onNota={(t) => anotar(f.activo.id, t)} />),
               ])}
             </tbody>
           </table>
@@ -151,7 +171,7 @@ export function VistaPlanilla({ parque, ubicacionId }: { parque: Parque; ubicaci
   )
 }
 
-function FilaImpresa({ f }: { f: FilaControl }) {
+function FilaImpresa({ f, nota, onNota }: { f: FilaControl; nota: string; onNota: (t: string) => void }) {
   const a = f.activo
   return (
     <tr>
@@ -163,7 +183,45 @@ function FilaImpresa({ f }: { f: FilaControl }) {
       <td style={celda}>{f.trajo ?? ''}</td>
       <td style={{ ...celda, textAlign: 'center' }}><span style={casilla} /></td>
       <td style={{ ...celda, textAlign: 'center' }}><span style={casilla} /></td>
-      <td style={celda} />
+      <td style={{ ...celda, padding: '3px 4px' }}>
+        <textarea
+          data-nota-pantalla data-testid="observacion-planilla" aria-label={`Observación de ${a.codigo}`}
+          value={nota} onChange={(e) => onNota(e.target.value)} maxLength={300} rows={1}
+          style={{ width: '100%', minHeight: 26, border: `1px solid ${nota ? V.lineaFuerte : V.linea}`, borderRadius: 4, padding: '4px 6px', fontSize: '12px', fontFamily: 'inherit', resize: 'vertical', background: '#FFFFFF', fieldSizing: 'content' } as CSSProperties}
+        />
+        <div data-nota-papel style={{ display: 'none', whiteSpace: 'pre-wrap', fontSize: '12px', padding: '3px 4px' }}>{nota}</div>
+      </td>
     </tr>
   )
+}
+
+// ── LAS NOTAS DE LA HOJA, EN ESTE NAVEGADOR ──────────────────────────────────────────────────────
+// Por obra: `planilla-notas:<ubicación>` → { activo_id: texto }. Si el navegador no deja guardar
+// (ventana privada, almacenamiento bloqueado), se escribe e imprime igual: sólo no sobrevive a una recarga.
+
+const avisos = new Set<() => void>()
+const memoria = new Map<string, string>()
+const clave = (u: string) => `planilla-notas:${u}`
+
+function leerCrudo(u: string): string {
+  try { return window.localStorage.getItem(clave(u)) ?? memoria.get(u) ?? '{}' } catch { return memoria.get(u) ?? '{}' }
+}
+
+function useNotas(u: string): [Record<string, string>, (activo: string | null, texto: string) => void] {
+  const crudo = useSyncExternalStore(
+    (cb) => { avisos.add(cb); return () => { avisos.delete(cb) } },
+    () => leerCrudo(u),
+    () => '{}',
+  )
+  let notas: Record<string, string> = {}
+  try { notas = JSON.parse(crudo) as Record<string, string> } catch { notas = {} }
+  const anotar = (activo: string | null, texto: string) => {
+    const nuevas = activo ? { ...notas, [activo]: texto } : {}
+    for (const k of Object.keys(nuevas)) if (!nuevas[k]) delete nuevas[k]
+    const json = JSON.stringify(nuevas)
+    memoria.set(u, json)
+    try { window.localStorage.setItem(clave(u), json) } catch { /* sin almacenamiento: queda en memoria */ }
+    for (const cb of avisos) cb()
+  }
+  return [notas, anotar]
 }
