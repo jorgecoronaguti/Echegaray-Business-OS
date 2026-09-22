@@ -93,15 +93,22 @@ export const CUENTA = {
  * 25.413; destino confirmado por el dueño). Plata de la empresa que cambió de lugar: sacarla del
  * banco sin darle una fila la hacía desaparecer del total de disponibilidades.
  *
- * GAP DECLARADO: esto es el APORTE de ese día, no la posición total de Balanz — el 16/07 hubo un
+ * 22/09/2026, extracto Santander: "Debito transf. online banking emp - A balanz capital valores / inv /
+ * 30710630670" por $10.000.000 (ref. 10173486). El dueño, textual: «se enviaron 10m a balanz para
+ * inversion». Los pesos aportados pasan a $22.530.000 + $10.000.000 = $32.530.000, fechados el 22/09;
+ * los dólares siguen siendo el aporte del 05/08 y conservan su fecha (`corteUsd`).
+ *
+ * GAP DECLARADO: esto son los APORTES probados, no la posición total de Balanz — el 16/07 hubo un
  * rescate de $11.913.568, así que la cuenta existía antes y puede tener tenencias previas y
  * rendimientos que acá no están. Sin el extracto de Balanz no se inventan: cuando el dueño lo
  * traiga, estos números se reemplazan por la posición declarada por Balanz.
  */
 export const BALANZ = {
-  ars: 22530000,
+  ars: 22530000 + 10000000,
   usd: 15000,
-  corte: '2026-08-05',
+  // `corte` es el del último aporte en pesos; el de los dólares va aparte para no fecharlos con otra fuente.
+  corte: '2026-09-22',
+  corteUsd: '2026-08-05',
   cuit: '30710630670',
 }
 

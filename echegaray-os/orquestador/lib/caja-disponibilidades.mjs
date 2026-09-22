@@ -156,7 +156,7 @@ export const CUENTAS = [
     banco: 'balanzArs',
     patron: /^balanz.*\bars\b/i,
     noSuma: true,
-    origenSugerido: 'Transferencia del 05/08 (extracto Santander) — posición pendiente del extracto Balanz',
+    origenSugerido: 'Transferencias del 05/08 y del 22/09 (extracto Santander) — posición pendiente del extracto Balanz',
   },
   {
     nombre: 'Balanz · inversiones USD ‖ invertido',

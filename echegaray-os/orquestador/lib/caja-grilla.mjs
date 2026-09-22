@@ -147,7 +147,8 @@ const saldoDeBanco = (c) => (c.banco === 'cartera' ? BANCO.totalEcheqs(BANCO.enC
  *  la cuenta USD (movida el 05/08) o Balanz (aportada el 05/08) afirma una frescura que no es la del
  *  dato — el defecto exacto que el dueño señaló tres veces ("aún noto desactualizadas las fechas"). */
 const corteDeBanco = (c) => (c.banco === 'saldoDolares' ? (BANCO.CUENTA.corteDolares ?? BANCO.CORTE)
-  : c.banco === 'balanzArs' || c.banco === 'balanzUsd' ? BANCO.BALANZ.corte
+  : c.banco === 'balanzArs' ? BANCO.BALANZ.corte
+    : c.banco === 'balanzUsd' ? (BANCO.BALANZ.corteUsd ?? BANCO.BALANZ.corte)
     : BANCO.CORTE)
 
 /**

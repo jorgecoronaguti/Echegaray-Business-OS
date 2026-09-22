@@ -15,6 +15,7 @@
 // escribe).
 // Las fórmulas de las tarjetas y de los avisos se verifican en lib/caja-tarjetas.test.mjs y
 // lib/caja-avisos.test.mjs; los bloques que se mudaron al anexo, en lib/caja-anexo.test.mjs.
+import { BALANZ as BALANZ_APORTES } from '../lib/banco-santander.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { COLUMNAS_HOY } from '../lib/columnas-caja.fixture.mjs'
@@ -563,13 +564,15 @@ test('BALANZ ESTÁ EN LA CAJA, DISCRIMINADO: se ve, se valúa, y el rótulo decl
   assert.equal(fUsd, g.fBalanzUsd)
   assert.ok(fArs > 0, 'falta la fila Balanz ARS')
   assert.ok(fUsd > 0, 'falta la fila Balanz USD')
-  assert.equal(g.filas[fArs - 1][1], 22530000, 'el aporte ARS probado por el extracto del 05/08')
-  assert.equal(g.filas[fUsd - 1][1], 15000, 'el aporte USD probado por la base 25.413 de la cta USD')
+  // Atado a la fuente y no a la cifra (22/09 se sumaron $10.000.000 al ARS): un test que afirma un dato
+  // del mundo envejece con el dato.
+  assert.equal(g.filas[fArs - 1][1], BALANZ_APORTES.ars, 'los aportes ARS probados por el extracto (05/08 + 22/09)')
+  assert.equal(g.filas[fUsd - 1][1], BALANZ_APORTES.usd, 'el aporte USD probado por la base 25.413 de la cta USD')
   assert.ok(g.usd.includes(fUsd), 'la fila USD se declara para valuarse con TIPO_CAMBIO_USD')
   assert.equal(celda(g, fUsd, 2), `=IF(ISNUMBER(B${fUsd});B${fUsd}*TIPO_CAMBIO_USD;"")`)
   // CADA CUENTA SE FECHA CON SU PROPIA FUENTE: Balanz es del 05/08, no del corte global de julio.
-  assert.equal(celda(g, fArs, 3), '2026-08-05')
-  assert.equal(celda(g, fUsd, 3), '2026-08-05')
+  assert.equal(celda(g, fArs, 3), BALANZ_APORTES.corte, 'el ARS con la fecha de su último aporte')
+  assert.equal(celda(g, fUsd, 3), '2026-08-05', 'el USD conserva la del 05/08: no se fecha con el aporte en pesos')
 })
 
 // ═══ ESTE TEST AFIRMABA EL ESTADO DEL MUNDO Y EL MUNDO CAMBIÓ (04/09/2026) ═══
