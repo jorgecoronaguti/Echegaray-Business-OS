@@ -102,8 +102,8 @@ export function ArmarRecibo({ fila, quincena }: {
                 escrito. Va como `<img>` y no como `next/image` a propósito: lo que se imprime es una COPIA
                 del HTML de este recuadro, y el marcado que genera `next/image` (srcset, carga diferida) no
                 sobrevive a esa copia — saldría el hueco vacío. */}
-            <img src="/marca/logo.png" alt="Echegaray Construcciones S.A.S." height={56}
-              style={{ height: 56, width: 'auto', display: 'block' }} />
+            <img src="/marca/logo.png" alt="Echegaray Construcciones S.A.S." height={92}
+              style={{ height: 92, width: 'auto', display: 'block' }} />
             <div style={{ fontSize: '11.5px', color: '#6B6B69', marginTop: 6 }}>San Juan · Argentina</div>
           </div>
           <div style={{ textAlign: 'right' }}>
