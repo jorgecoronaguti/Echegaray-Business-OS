@@ -40,9 +40,26 @@ export interface Cifra {
   detalle?: string
 }
 
+/**
+ * LA CIFRA SE IDENTIFICA POR SU LUGAR, NO POR SU RÓTULO (22/09/2026).
+ *
+ * Dos cifras de la misma fila pueden llamarse igual —Nómina publica «en negro» dos veces, la plata y
+ * su porcentaje— y con `key={c.rotulo}` eso son DOS HERMANAS CON LA MISMA LLAVE. En el servidor no se
+ * nota: cada vista se dibuja entera. Se nota al cambiar de solapa sin recargar, que es lo que hacen
+ * los `<Link>` de la barra: del lado del cliente las vistas son componentes de servidor ya resueltos
+ * —lo que queda es un `div` de cabecera en el mismo lugar del árbol—, así que React RECONCILIA las
+ * cifras viejas contra las nuevas por su llave en vez de rehacerlas. Con una llave repetida el mapeo
+ * se rompe y un nodo sobrante queda pegado: de Nómina a Caja, la cabecera de Caja amanecía con «en
+ * negro · $ 80,69 M · lo que el recibo no paga» al lado de SALDO AL CIERRE (dueño, 22/09/2026:
+ * *«quitar ese valor de "en negro" … no tiene nada que ver con lo que debe mostrar ahí»*).
+ *
+ * El índice es la llave correcta acá: la fila es una lista fija que se dibuja en orden y nunca se
+ * reordena ni se filtra, y así dos cifras homónimas no pueden volver a pisarse. Se arregla en la
+ * pieza y no en la vista: cualquier cabecera futura con dos rótulos iguales tendría el mismo defecto.
+ */
 /** Una fila de cifras suelta (fuera de la cabecera): mismo dibujo, para una sección que tiene sus propios números. */
 export function FilaDeCifras({ cifras }: { cifras: Cifra[] }) {
-  return <div className="grid grid-cols-2 items-end gap-x-6 gap-y-5 lg:flex lg:flex-nowrap lg:gap-x-10 xl:gap-x-14">{cifras.map((c) => <UnaCifra key={c.rotulo} c={c} />)}</div>
+  return <div className="grid grid-cols-2 items-end gap-x-6 gap-y-5 lg:flex lg:flex-nowrap lg:gap-x-10 xl:gap-x-14">{cifras.map((c, i) => <UnaCifra key={i} c={c} />)}</div>
 }
 
 export function UnaCifra({ c }: { c: Cifra }) {
@@ -94,7 +111,9 @@ export function Cabecera({ titulo, detalle, cifras, repartidas = false, derecha 
           cambiar de solapa los números se movían. Con cinco columnas fijas, la quinta queda vacía y
           las cuatro cifras aterrizan donde el diseño las pone. */}
       <div className="grid grid-cols-2 items-end gap-x-6 gap-y-5 lg:grid-cols-5 lg:gap-6">
-        {cifras.map((c) => <UnaCifra key={c.rotulo} c={c} />)}
+        {/* LA LLAVE ES EL LUGAR, NO EL RÓTULO: ver `FilaDeCifras`. Dos cifras homónimas con la misma
+            llave dejaban una tarjeta de Nómina pegada en la cabecera de Caja al cambiar de solapa. */}
+        {cifras.map((c, i) => <UnaCifra key={i} c={c} />)}
       </div>
       {derecha ? <div className="min-w-0 lg:justify-self-end">{derecha}</div> : null}
     </div>

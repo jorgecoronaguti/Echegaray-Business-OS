@@ -76,3 +76,33 @@ test('en 390 px la vista Caja no se desplaza de costado', async ({ page }) => {
   const [scroll, ancho] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth])
   expect(scroll).toBeLessThanOrEqual(ancho)
 })
+
+// ═══ DE NÓMINA A CAJA: LA CABECERA DE CAJA NO ARRASTRA UNA TARJETA DE NÓMINA (dueño, 22/09/2026) ═══
+//
+// «quitar ese valor de "en negro" que aparece en la sección Caja del módulo de Analíticas, no tiene
+// nada que ver con lo que debe mostrar ahí». No estaba en el Sheet ni en `VistaCaja`: la portada del
+// espejo publica exactamente cinco tarjetas y ninguna se llama así. Era React reusando un nodo: las
+// dos tarjetas «en negro» de Nómina compartían `key`, y al cambiar de solapa SIN recargar (las
+// solapas son `<Link>`) el sobrante quedaba pegado en la cabecera de Caja. Por eso la navegación
+// tiene que ser por la solapa: un `goto` recarga y el defecto no aparece.
+test('de Nómina a Caja por la solapa: la cabecera de Caja no arrastra la tarjeta «en negro»', async ({ page }) => {
+  await entrarComo(page, EMAIL, PASSWORD)
+  await page.goto('/analiticas?vista=nomina')
+  await expect(page.getByRole('heading', { name: 'Nómina', exact: true })).toBeVisible()
+  const negro = page.getByText('lo que el recibo no paga', { exact: true })
+  if (!(await negro.count())) test.skip(true, 'esta base no tiene nómina pagada: la tarjeta «en negro» no se dibuja')
+  // EN NÓMINA LA CIFRA SÍ CORRESPONDE, Y SON DOS (la plata y su porcentaje): el arreglo es de llaves,
+  // no saca nada de acá.
+  await expect(page.getByText('en negro', { exact: true })).toHaveCount(2)
+  await page.getByTestId('vista-caja').click()
+  await expect(page.getByRole('heading', { name: 'Caja', exact: true })).toBeVisible()
+  await expect(page.getByText('lo que el recibo no paga', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('en negro', { exact: true })).toHaveCount(0)
+  // Y LAS DE CAJA SIGUEN ESTANDO, con la de deuda reemplazada por la de Proveedores.
+  if (!(await page.getByTestId('caja-sin-foto').count())) {
+    for (const t of ['CAJA DISPONIBLE', 'SI NO COBRÁS MÁS ESTE MES', 'CAJA INVERTIDA', 'SALDO AL CIERRE']) {
+      await expect(page.getByText(t, { exact: true })).toBeVisible()
+    }
+    await expect(page.getByText('Deuda con proveedores', { exact: true })).toBeVisible()
+  }
+})
