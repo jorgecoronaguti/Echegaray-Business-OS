@@ -5,7 +5,7 @@
 // Es la única pieza que "instala" la interfaz conversacional. No crea bots, ni servicios,
 // ni WebSockets: usa el bot `@os` que ya existe y la misma infraestructura de siempre.
 //
-// Uso:  node orquestador/comunicacion/scripts-canales.mjs [--dry-run]
+// Uso:  node orquestador/comunicacion/scripts-canales.mjs [--dry-run] [--solo=<slug>]
 
 import { query, closePool } from '../lib/db.mjs'
 
@@ -13,6 +13,10 @@ const MM = process.env.MM_BASE_URL
 const TOKEN = process.env.MM_BOT_TOKEN
 const BOT = process.env.MM_BOT_USER_ID
 const DRY = process.argv.includes('--dry-run')
+// --solo=<slug>: instala sólo ese canal. 22/09/2026: el bot no es miembro del canal Asistencia (privado,
+// 403), así que el instalador no lo encuentra por nombre y crearía un #asistencia nuevo y le movería el
+// vínculo del área. Para sumar un canal sin tocar los demás.
+const SOLO = process.argv.find((a) => a.startsWith('--solo='))?.slice('--solo='.length) ?? null
 
 /** Canal → área canónica (public.area_canonica). Es la ÚNICA lista, y es de instalación:
  *  el runtime la lee de la base, no de acá. */
@@ -72,7 +76,7 @@ async function main() {
   if (!equipo) throw new Error('el bot no pertenece a ningún equipo de Mattermost')
   console.log(`equipo: ${equipo.display_name} (${equipo.name})\n`)
 
-  for (const c of CANALES) {
+  for (const c of CANALES.filter((x) => !SOLO || x.slug === SOLO)) {
     let canal = null
     try { canal = await api(`/teams/${equipo.id}/channels/name/${c.slug}`) } catch (e) { if (e.status !== 404) throw e }
     const existia = Boolean(canal)
