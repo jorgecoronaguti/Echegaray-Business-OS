@@ -73,6 +73,12 @@ export function FiltrosComprasSheet({
           label="Estado" name={LLAVE.estado} valor={criterios.estado} testid="f-estado"
           opciones={[TODOS, ...opciones.estados.map((v) => ({ valor: v, etiqueta: v }))]}
         />
+        {/* MEDIO DE PAGO (efectivo a rendir, D07). «A rendir» se nombra como lo dibuja el diseño —«Efectivo a
+            rendir»— y viaja con el valor de la pestaña, que es lo que compara el filtro. */}
+        <SelectFiltro
+          label="Medio de pago" name={LLAVE.medio} valor={criterios.medio} testid="f-medio"
+          opciones={[{ valor: '', etiqueta: 'Todos los medios' }, ...opciones.medios.map((v) => ({ valor: v, etiqueta: v === 'A rendir' ? 'Efectivo a rendir' : v }))]}
+        />
         <SelectFiltro
           label="Vencimiento" name={LLAVE.vencimiento} valor={criterios.vencimiento} testid="f-vencimiento"
           opciones={[TODOS, ...opciones.vencimientos.map((v) => ({ valor: v, etiqueta: v }))]}

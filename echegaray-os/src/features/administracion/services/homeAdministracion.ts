@@ -47,6 +47,14 @@ export interface ConteosAtencion {
   comprasDuplicadas: number | null
   pendientes: number | null
   correcciones: number | null
+  /**
+   * EFECTIVO A RENDIR (D14, 22/09/2026): tickets que todavía no son fila de Compras, y de ésos los leídos sin
+   * CUIT. NO vienen de `campanita_atencion()` —esa función no los cuenta y tocarla es una migración—: los
+   * lee `getNovedades` aparte, en el mismo viaje. `undefined` = esta lectura no los mide (la home, o la base
+   * sin 20260922T1500) y no se dibujan; `null` = se intentó y falló, y se dice como las demás.
+   */
+  efectivoPorImputar?: number | null
+  efectivoSinCuit?: number | null
 }
 
 /** Lo que `getConteosHome` lee. `clientes` NO está: sale de la cartera que la página ya trajo. */
@@ -290,6 +298,8 @@ export function areasDeAdministracion(c: ConteosHome, rol: Rol | null | undefine
 const SENALES: {
   clave: string
   de: (c: ConteosAtencion) => number | null
+  /** Una señal que no todas las lecturas miden: sin medir no cuenta para «no pude leer nada». */
+  opcional?: true
   singular: string
   plural: string
   bloquea: string
@@ -348,6 +358,21 @@ const SENALES: {
     donde: 'Horas', accion: 'Revisar',
     href: '/administracion/asistencia', tono: 'warn', icono: 'tiempo',
   },
+  // EFECTIVO A RENDIR (D14). Sin «rendición vencida»: no hay plazo, decisión del dueño del 22/09/2026.
+  {
+    clave: 'efectivo-por-imputar', de: (c) => (c.efectivoPorImputar === undefined ? 0 : c.efectivoPorImputar), opcional: true,
+    singular: 'comprobante de efectivo por imputar', plural: 'comprobantes de efectivo por imputar',
+    bloquea: 'El saldo de quien rindió no baja hasta que la fila de Compras exista',
+    donde: 'Compras · Efectivo a rendir', accion: 'Revisar',
+    href: '/administracion/compras?vista=a-rendir', tono: 'warn', icono: 'compra',
+  },
+  {
+    clave: 'efectivo-sin-cuit', de: (c) => (c.efectivoSinCuit === undefined ? 0 : c.efectivoSinCuit), opcional: true,
+    singular: 'comprobante de efectivo sin CUIT', plural: 'comprobantes de efectivo sin CUIT',
+    bloquea: 'La clave queda débil: dos tickets iguales podrían no distinguirse',
+    donde: 'Compras · Efectivo a rendir', accion: 'Pedir el dato',
+    href: '/administracion/compras?vista=a-rendir', tono: 'warn', icono: 'compra',
+  },
 ]
 
 /**
@@ -398,7 +423,7 @@ export function chipsDeAtencion(c: ConteosAtencion, rol: Rol | null | undefined)
  * es una afirmación que esta pantalla no puede hacer si no pudo mirar.
  */
 export function atencionNoLeida(c: ConteosAtencion): boolean {
-  return SENALES.every((s) => s.de(c) === null)
+  return SENALES.filter((s) => !s.opcional).every((s) => s.de(c) === null)
 }
 
 /** Cuántas señales están vivas HOY. Es el contador de «Trabajo» en la barra. */

@@ -23,6 +23,7 @@ import { apilar, disposicion, escala, fechaCorta, GEOMETRIA, paneles, rotuloEje,
 import { Cabecera, FilaDeCifras, ENCABEZADO, Seccion, SinLectura } from './Piezas'
 import { Torta } from './Torta'
 import { Columnas } from './VistasEmpresa'
+import { EfectivoEnManos } from '@/features/efectivo/components/EfectivoEnManos'
 
 /** La rampa de grises del diseño v9 para las ramas de estructura, en el orden en que llegan. */
 const GRISES_DE_AREA = ['text-ink-soft', 'text-muted', 'text-dato-materiales', 'text-dato-referencia']
@@ -317,6 +318,10 @@ function Gasto({ egresos, criterio, periodo, rango }: { egresos: unknown[] | nul
           ]} /> : null}
         </div>
       </div>
+      {/* EFECTIVO A RENDIR (D09): una cifra y quién la tiene, leída de `efectivo_entrega_saldo`. Va acá y no
+          arriba: lo de arriba es el espejo fiel de la pestaña CAJA y no se toca. Es posición A HOY, no del
+          período, y lo dice. Sin la migración, una línea; nunca rompe la vista. */}
+      <div className="mt-7 border-t border-line pt-6"><EfectivoEnManos /></div>
       {c.meses.length ? (
         <>
           {/* EL GRÁFICO DICE DE QUÉ PERÍODO Y QUÉ ES UNA COLUMNA (dueño, 17/09/2026). */}

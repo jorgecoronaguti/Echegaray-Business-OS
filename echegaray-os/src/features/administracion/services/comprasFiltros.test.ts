@@ -124,8 +124,20 @@ test('la URL va y vuelve sin perder ni agregar nada', () => {
   assert.deepEqual(params, { [LLAVE.proveedor]: 'DUPEC', [LLAVE.obra]: 'MESSINA', [LLAVE.min]: '100000', [LLAVE.periodo]: '2026-08' })
   assert.deepEqual(criteriosDeURL(params), {
     proveedor: 'DUPEC', obra: 'MESSINA', min: 100000, periodo: '2026-08',
-    categoria: undefined, estado: undefined, vencimiento: undefined, desde: undefined, hasta: undefined, max: undefined,
+    categoria: undefined, estado: undefined, medio: undefined, vencimiento: undefined, desde: undefined, hasta: undefined, max: undefined,
   })
+})
+
+test('D07 · el medio «A rendir» se ofrece aunque ninguna fila lo tenga, y filtra exacto', () => {
+  const filas = [fila({ proveedor: 'DUPEC' }), { ...fila({ proveedor: 'Corralón El Nogal' }), tipo_pago: 'A rendir' } as Criteriable,
+    { ...fila({ proveedor: 'X' }), tipo_pago: 'Mercado Pago' } as Criteriable]
+  const o = opcionesDe(filas)
+  assert.ok(o.medios.includes('A rendir'))
+  assert.ok(o.medios.includes('Transferencia'), 'la lista del panel de pago se ofrece entera')
+  assert.equal(o.medios.at(-1), 'Mercado Pago', 'lo que la pestaña trae además se agrega al final')
+  assert.equal(opcionesDe([]).medios.includes('A rendir'), true)
+  assert.deepEqual(filas.filter((f) => pasaCriterios(f, { medio: 'a rendir' })).map((f) => f.proveedor), ['Corralón El Nogal'])
+  assert.deepEqual(criteriosDeURL(aParams({ medio: 'A rendir' })).medio, 'A rendir')
 })
 
 test('un valor ilegible en la URL se ignora: no vacía la lista', () => {

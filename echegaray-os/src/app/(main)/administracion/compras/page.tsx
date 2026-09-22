@@ -98,6 +98,8 @@ import {
   getCompra, getCompras, getConteos, getObrasDelEmisor, getParecidos, TOPE,
 } from '@/features/administracion/services/comprasService'
 import { getEntradas } from '@/features/administracion/services/comprobanteEntradaService'
+import { VistaEfectivo } from '@/features/efectivo/components/VistaEfectivo'
+import { entregaPorClave } from '@/features/efectivo/services/datos'
 import { claveIdentidad, getIdentidades } from '@/features/administracion/services/identidadProveedorService'
 import { nombresDeObra } from '@/features/clientes/services/nombresDeObra'
 import {
@@ -141,6 +143,9 @@ export default async function ComprasPage({
   searchParams: Promise<Record<string, string | undefined>>
 }) {
   const sp = await searchParams
+  // EFECTIVO A RENDIR (22/09/2026): sección de nivel 3 de Compras, en esta misma ruta como pide el diseño.
+  // Vive entera en `features/efectivo`: acá sólo se enruta.
+  if (sp.vista === 'a-rendir') return <Marco><VistaEfectivo sp={sp} /></Marco>
   if (sp.f === 'arca') return <ControlArca searchParams={searchParams} />
   return <PestanaCompras sp={sp} />
 }
@@ -179,7 +184,9 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
   // Desde que CADA FILA tiene su desplegable, pedirlas al abrir el panel las dejaría fuera de la
   // lista: doscientas filas dibujarían un control sin opciones. Es una lectura chica —el catálogo de
   // obras, no una fila por compra— y en paralelo no agrega una ronda. Error ⇒ lista vacía.
-  const [perfil, listado, entradas, identidades, celdasObra, asignacionesObra, opcionesObra] = await Promise.all([
+  // EL NÚMERO DE ENTREGA DE LAS FILAS «A RENDIR» (D07) viaja en el mismo viaje: una lectura chica del
+  // vínculo `efectivo_rendicion`, que vacía (sin la migración) no le saca ninguna fila a la lista.
+  const [perfil, listado, entradas, identidades, celdasObra, asignacionesObra, opcionesObra, entregaDe] = await Promise.all([
     getPerfilActual(supabase),
     getComprasSheet(supabase),
     getEntradas(supabase),
@@ -187,6 +194,7 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
     getCeldasObra(supabase),
     getAsignaciones(supabase),
     getOpcionesDeObra(supabase),
+    entregaPorClave(supabase),
   ])
   if (!esAdministracion(perfil.data?.rol ?? null)) {
     return (
@@ -401,6 +409,7 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                   hrefDe={(fila) => urlSheet({ s: fila === filaAbierta?.fila ? null : fila })}
                   opcionesObra={opcionesObra}
                   obraEditable={celdasObra.disponible}
+                  entregaDe={entregaDe}
                 />
                 <PieCompras filas={recorte.enPantalla} total={todas.length}>
                   {(filtro !== 'todo' || q) && (

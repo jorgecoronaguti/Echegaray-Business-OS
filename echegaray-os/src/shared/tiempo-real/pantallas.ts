@@ -80,6 +80,10 @@ export const TABLAS_DE = {
   /** Herramientas (20260921T2100): las tablas nuevas. `herramientas` y `movimientos_herramienta` son vistas
    *  desde esa migración y una vista no emite eventos. */
   herramientas: ['activo', 'activo_movimiento', 'activo_incidencia', 'activo_lectura_uso', 'ubicacion', 'obra_canonica'],
+  /** Efectivo a rendir (20260922T1500): entregas, devoluciones, tickets y el vínculo con Compras. Las vistas
+   *  `efectivo_entrega_saldo` y `efectivo_comprobante_estado` no avisan: avisan estas tablas. La cola de
+   *  comprobantes y `compra_sheet` ya las escucha el layout de Compras (`TABLAS_DE.compras`). */
+  efectivo: ['efectivo_entrega', 'efectivo_devolucion', 'efectivo_rendicion', 'efectivo_comprobante'],
   /** Efectivo a rendir en el teléfono (`/mi-informacion/efectivo/...` y `/obra/efectivo`): la entrega, su
    *  conformidad, cada ticket y su vínculo con Compras, y la devolución. `comprobante_entrada` porque el
    *  estado «leyendo → en Compras» lo cambia el worker ahí antes de escribir el vínculo. */

@@ -152,6 +152,11 @@ export const ALTO_V2 = {
    * número del ritmo lo tiene que poder cambiar UN archivo, que es la regla que el árbol rompía.
    */
   ramaDeTrabajo: 34,
+  /**
+   * LA FILA DE UNA ENTREGA DE EFECTIVO (Compras · Efectivo a rendir, D01). Dos renglones por celda —la
+   * persona y su puesto, la obra y su cliente—: el diseño `efectivo-a-rendir.dc.html` la dibuja a 52.
+   */
+  entrega: 52,
   /** Cabecera de columnas. Universal en los seis canvas. `v4A:81`, `v4B:88`. */
   encabezado: 30,
 } as const

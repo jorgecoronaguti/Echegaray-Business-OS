@@ -214,3 +214,22 @@ test('un JSON que no llegó es «no pude mirar», nunca cero', () => {
   // Y eso tiene que llegar hasta el desplegable: `atencionNoLeida` es quien lo dice con letras.
   assert.equal(atencionNoLeida(conteos), true)
 })
+
+// ═══ EFECTIVO A RENDIR EN LA CAMPANITA (D14, 22/09/2026) ═══
+
+test('efectivo: sin medir no se dibuja; medido va con su filtro; sin «rendición vencida»', () => {
+  // La home no lo mide (`undefined`): ni chip ni «no pude leer».
+  assert.equal(senalesDeTrabajo(CERO, 'direccion').some((s) => s.clave.startsWith('efectivo')), false)
+  const chips = chipsDeAtencion(con({ efectivoPorImputar: 7, efectivoSinCuit: 2 }), 'direccion')
+  assert.deepEqual(chips.filter((c) => c.clave.startsWith('efectivo')).map((c) => `${c.numero} ${c.texto} → ${c.href}`), [
+    '7 comprobantes de efectivo por imputar → /administracion/compras?vista=a-rendir',
+    '2 comprobantes de efectivo sin CUIT → /administracion/compras?vista=a-rendir',
+  ])
+  assert.equal(chips.some((c) => /vencid/i.test(c.texto)), false, 'no hay plazo: no existe una rendición vencida')
+  // Leída y fallida: se dice como las demás, sin cifra.
+  assert.ok(senalesDeTrabajo(con({ efectivoPorImputar: null }), 'direccion').some((s) => s.clave === 'efectivo-por-imputar' && s.numero === null))
+  // Y no cambia «no pude leer nada»: las siete de siempre siguen mandando.
+  assert.equal(atencionNoLeida({ ...NADA, efectivoPorImputar: 3 }), true)
+  // El jefe de obra ve Compras: le llegan.
+  assert.ok(chipsDeAtencion(con({ efectivoPorImputar: 1 }), 'jefe_obra').some((c) => c.clave === 'efectivo-por-imputar'))
+})

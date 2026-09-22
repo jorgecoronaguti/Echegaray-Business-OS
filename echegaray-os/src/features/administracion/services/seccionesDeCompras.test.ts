@@ -13,10 +13,11 @@ import { RUTAS_SOLO_ECONOMIA, puedeVerRuta } from '../../auth/types/areas.ts'
 // sección aparezca colgada de otra (el cuarto nivel), que un conteo que nadie leyó se dibuje como 0,
 // y que una sección quede fuera de la solapa que la contiene.
 
-test('son CUATRO secciones, en el orden que decidió el dueño', () => {
+test('son CINCO secciones, en el orden que decidió el dueño', () => {
+  // «Efectivo a rendir» entra el 22/09/2026 entre el maestro y la deuda (diseño efectivo-a-rendir, D01).
   assert.deepEqual(
     SECCIONES_COMPRAS.map((s) => s.titulo),
-    ['Compras', 'Proveedores', 'A quién le debo', 'Nombres sin resolver'],
+    ['Compras', 'Proveedores', 'Efectivo a rendir', 'A quién le debo', 'Nombres sin resolver'],
   )
 })
 
@@ -29,7 +30,7 @@ test('LA FILA ES PLANA: ninguna sección cuelga de otra', () => {
   // Se comprueba con lo único que puede afirmarlo sin un navegador: las cuatro salen de la MISMA
   // llamada, todas al mismo tiempo, y no hay ninguna estructura anidada donde meter una quinta.
   const fila = seccionesDeCompras('proveedores')
-  assert.equal(fila.length, 4)
+  assert.equal(fila.length, 5)
   for (const v of fila) {
     assert.equal(Object.prototype.hasOwnProperty.call(v, 'vistas'), false,
       `${v.clave} trae sub-vistas propias: eso es un cuarto nivel`)
@@ -60,7 +61,7 @@ test('un conteo que nadie leyó NO se dibuja como 0', () => {
   const desdeCompras = seccionesDeCompras('compras', { compras: 947 })
   assert.deepEqual(
     desdeCompras.map((v) => v.cuenta),
-    [947, null, null, null],
+    [947, null, null, null, null],
   )
   // Y un 0 REAL sí se dibuja: es una lectura que devolvió cero, no una lectura que no se hizo.
   assert.equal(seccionesDeCompras('deuda', { deuda: 0 }).find((v) => v.clave === 'deuda')!.cuenta, 0)
@@ -72,6 +73,7 @@ test('sin `hrefs` propios, cada sección apunta a su ruta canónica', () => {
     [
       '/administracion/compras',
       '/administracion/proveedores',
+      '/administracion/compras?vista=a-rendir',
       '/administracion/proveedores?vista=deuda',
       '/administracion/proveedores?vista=resolver',
     ],
@@ -88,7 +90,7 @@ test('una pantalla puede estrechar SU destino para no tirar lo que está puesto,
     '/administracion/proveedores?q=corralon&activo=todos')
   assert.equal(fila.find((v) => v.clave === 'compras')!.href, '/administracion/compras')
   assert.deepEqual(fila.map((v) => v.titulo),
-    ['Compras', 'Proveedores', 'A quién le debo', 'Nombres sin resolver'])
+    ['Compras', 'Proveedores', 'Efectivo a rendir', 'A quién le debo', 'Nombres sin resolver'])
 })
 
 // ═══ NINGUNA SECCIÓN SE QUEDA AFUERA DE SU SOLAPA ═══
@@ -118,6 +120,6 @@ test('la fila y la puerta usan el MISMO portero: el jefe de obra ve las cuatro',
   }
   assert.deepEqual(
     SECCIONES_COMPRAS.filter((s) => puedeVerRuta('jefe_obra', s.href)).map((s) => s.clave),
-    ['compras', 'proveedores', 'deuda', 'resolver'],
+    ['compras', 'proveedores', 'efectivo', 'deuda', 'resolver'],
   )
 })

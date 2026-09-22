@@ -86,9 +86,10 @@ test('LA FILA DE SECCIONES ES PLANA: ninguna sección abre otra fila debajo', ()
   // último lugar que hay. Si «A quién le debo» o «Nombres sin resolver» vuelven a colgarse de una
   // sección «Proveedores», aparece un cuarto nivel (área → Compras → Proveedores → deuda).
   //
-  // Se comprueba sobre la lista, que es donde se decidiría: las cuatro son hermanas y ninguna
+  // Se comprueba sobre la lista, que es donde se decidiría: las cinco son hermanas (Efectivo a rendir
+  // entró el 22/09/2026) y ninguna
   // declara hijas.
-  assert.equal(SECCIONES_COMPRAS.length, 4)
+  assert.equal(SECCIONES_COMPRAS.length, 5)
   for (const s of SECCIONES_COMPRAS) {
     assert.deepEqual(Object.keys(s).sort(), ['clave', 'href', 'titulo'],
       `${s.titulo} ganó un campo: si es para anidar secciones, es el cuarto nivel`)
