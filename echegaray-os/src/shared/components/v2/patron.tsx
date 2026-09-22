@@ -157,11 +157,6 @@ export const ALTO_V2 = {
    * persona y su puesto, la obra y su cliente—: el diseño `efectivo-a-rendir.dc.html` la dibuja a 52.
    */
   entrega: 52,
-  /**
-   * LA FILA DE UN RECIBO DE PAGO (Personal · Liquidación, D11–D12). También dos renglones —la persona y su
-   * categoría—, y el diseño `efectivo-a-rendir.dc.html` dibuja esas filas a 52 como la entrega.
-   */
-  recibo: 52,
   /** Cabecera de columnas. Universal en los seis canvas. `v4A:81`, `v4B:88`. */
   encabezado: 30,
 } as const

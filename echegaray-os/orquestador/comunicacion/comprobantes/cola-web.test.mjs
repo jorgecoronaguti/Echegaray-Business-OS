@@ -342,3 +342,22 @@ test('RENDICIÓN: entrega a Estructura no manda obra, pero sí «A rendir»', as
   assert.equal(llamadas[0].texto, null)
   assert.deepEqual(llamadas[0].forzar, { formaPago: 'A rendir', pagado: true })
 })
+
+test('un lote de una entrega de PRUEBA no se procesa y queda rechazado (auditoría 22/09/2026)', async () => {
+  // Sin esto el ticket caía al circuito de siempre: entraba a Compras como gasto común, restando de la
+  // caja, mientras la caja no ve la entrega de una persona de prueba (migración 1900).
+  const fila = { ...filaCola('a', '1.jpg'), origen: 'rendicion' }
+  const port = portFalso({ filas: [fila] })
+  const antes = port.query.bind(port)
+  port.query = async (sql, args) => {
+    if (/from public\.efectivo_comprobante c/.test(sql)) {
+      return { rows: [{ comprobante_id: 'c1', entrada_id: 'a', entrega_id: 'g1', codigo: 'ER-0002', persona_id: 'p1', abierta: true, estructura: true, es_prueba: true }] }
+    }
+    return antes(sql, args)
+  }
+  let proceso = false
+  const r = await procesarUnLote({ port, procesar: async () => { proceso = true; return { estado: 'cargado', parte: parte() } } })
+  assert.equal(proceso, false, 'no se llamó al circuito')
+  assert.equal(r.estado, 'rechazado')
+  assert.match(port.updates[0].motivo, /prueba/)
+})

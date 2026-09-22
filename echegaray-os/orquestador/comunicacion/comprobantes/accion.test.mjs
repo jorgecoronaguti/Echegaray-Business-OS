@@ -555,6 +555,13 @@ test('la fila de trazabilidad guarda de qué post y de qué fajo salió', () => 
   assert.equal(f.tipo, 'A')
 })
 
+test('el ítem que sabe su post se registra con ESE post, no con el primero del fajo (auditoría 22/09/2026)', () => {
+  // Rendiciones: el ticket 2 (post p2, otra entrega) se sumó al fajo del ticket 1 (p1). Con el primero del
+  // fajo, `vincular_rendiciones_pendientes` lo ataba a la entrega del ticket 1.
+  const f = filaDeRegistro({ ...item(), postId: 'p2' }, { id: 'f1', channel_id: 'c1', post_ids: ['p1', 'p2'], plataforma_user_id: 'u1' })
+  assert.equal(f.postId, 'p2')
+})
+
 // ── El probable duplicado: dos botones, y ninguna decisión automática ────────
 //
 // Mismo proveedor, mismo día y mismo importe con otro número puede ser el mismo comprobante con un

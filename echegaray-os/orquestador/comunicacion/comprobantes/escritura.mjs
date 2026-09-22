@@ -797,7 +797,8 @@ export function filaDeRegistro(it, fajo = {}) {
     total: c.total ?? null,
     plataforma: fajo.plataforma ?? 'mattermost',
     channelId: fajo.channel_id ?? null,
-    postId: (fajo.post_ids ?? [])[0] ?? null,
+    // El post de ESA foto; el primero del fajo sólo para ítems de antes del 22/09/2026, que no lo guardaban.
+    postId: it.postId ?? (fajo.post_ids ?? [])[0] ?? null,
     userId: fajo.plataforma_user_id ?? null,
     fajoId: fajo.id ?? null,
     hoja: 'Compras',

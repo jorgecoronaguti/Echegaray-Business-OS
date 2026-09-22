@@ -76,7 +76,11 @@ async function main() {
   if (!equipo) throw new Error('el bot no pertenece a ningún equipo de Mattermost')
   console.log(`equipo: ${equipo.display_name} (${equipo.name})\n`)
 
-  for (const c of CANALES.filter((x) => !SOLO || x.slug === SOLO)) {
+  const aInstalar = CANALES.filter((x) => !SOLO || x.slug === SOLO)
+  if (SOLO && !aInstalar.length) {
+    throw new Error(`--solo=${SOLO} no existe. Los canales son: ${CANALES.map((c) => c.slug).join(', ')}`)
+  }
+  for (const c of aInstalar) {
     let canal = null
     try { canal = await api(`/teams/${equipo.id}/channels/name/${c.slug}`) } catch (e) { if (e.status !== 404) throw e }
     const existia = Boolean(canal)

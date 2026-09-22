@@ -25,7 +25,6 @@ const PERSONAS: Lista = [
 
 const LIQUIDACION: Lista = [
   'liquidacion_quincena', 'liquidacion_linea', 'liquidacion_reapertura', 'convenio_escala', 'costo_hora_alicuota',
-  'recibo_pago',
 ]
 
 const OBRA: Lista = [

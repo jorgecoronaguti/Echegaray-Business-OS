@@ -9,7 +9,7 @@
 // No guarda nada en la base: el papel es lo que se imprime. «Guardar PDF» es el diálogo de impresión con
 // «Guardar como PDF» (el patrón de la planilla de Herramientas): la app no genera PDF en el servidor.
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { pesos } from '../formato'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
@@ -18,6 +18,7 @@ import {
   type ConceptoDelRecibo, type EleccionDelRecibo,
 } from '../../../services/reciboDeLaQuincena'
 import { rotuloCategoria } from './CeldaTarifa'
+import { tipoDeLiquidacion } from '../../../services/liquidacionPorTipo'
 
 const MONO = "'IBM Plex Mono', monospace"
 const fecha = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
@@ -31,33 +32,42 @@ const OPCIONES: { clave: ConceptoDelRecibo; rotulo: string }[] = [
   { clave: 'pagado', rotulo: 'Lo ya pagado y lo que resta' },
 ]
 
-export function ArmarRecibo({ fila, quincena, onVolver }: {
+/**
+ * IMPRIME SÓLO EL RECIBO, EN SU PROPIA VENTANA.
+ *
+ * Antes se ocultaba la app con `visibility: hidden` y el recibo iba `position: fixed`. Eso deja el alto del
+ * cuadro entero —y Chrome repite los elementos fijos en cada hoja—: salían páginas en blanco y el recibo
+ * repetido (auditoría 22/09/2026). Una ventana con el recibo solo imprime una hoja, y su título es el nombre
+ * que el diálogo propone al guardar como PDF.
+ */
+function imprimir(nodo: HTMLElement | null, titulo: string): void {
+  if (!nodo) return
+  const v = window.open('', '_blank', 'width=900,height=1000')
+  if (!v) return
+  v.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${titulo}</title>`
+    + '<style>@page { size: A4; margin: 16mm } '
+    + "body { margin: 0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1F1F1E }"
+    + '</style></head><body>' + nodo.outerHTML + '</body></html>')
+  v.document.close()
+  v.focus()
+  v.print()
+}
+
+export function ArmarRecibo({ fila, quincena }: {
   fila: FilaDelEspejo
   quincena: { desde: string; hasta: string }
-  onVolver: () => void
 }) {
-  const disponibles = conceptosDisponibles(fila.linea)
-  const [eleccion, setEleccion] = useState<EleccionDelRecibo>(() => eleccionInicial(fila.linea))
-  const recibo = armarRecibo(fila.linea, eleccion, pesos)
+  // MENSUAL vs JORNALERO lo decide la misma función que el cuadro: una quincena cerrada tampoco trae el
+  // detalle de blanco y negro, y sin esto el panel le decía «cobra por mes» a un jornalero.
+  const mensual = tipoDeLiquidacion(fila) === 'mensual'
+  const disponibles = conceptosDisponibles(fila.linea, mensual)
+  const [eleccion, setEleccion] = useState<EleccionDelRecibo>(() => eleccionInicial(fila.linea, mensual))
+  const recibo = armarRecibo(fila.linea, eleccion, pesos, mensual)
+  const hoja = useRef<HTMLDivElement>(null)
   const nada = recibo.horas.length === 0 && recibo.medios.length === 0
 
   return (
     <section data-testid="armar-recibo" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      {/* SÓLO EL PAPEL SE IMPRIME: la app, el cuadro y las casillas quedan afuera. */}
-      <style>{`@media print {
-        body * { visibility: hidden !important; }
-        [data-recibo-imprimible], [data-recibo-imprimible] * { visibility: visible !important; }
-        [data-recibo-imprimible] { position: fixed; left: 0; top: 0; width: 100%; border: 0 !important; padding: 0 !important; }
-        @page { size: A4; margin: 16mm; }
-      }`}</style>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button type="button" onClick={onVolver} data-testid="recibo-volver"
-          style={{ fontSize: '12.5px', color: V.apagado, background: 'none', border: 0, padding: 0, cursor: 'pointer' }}>
-          ‹ Volver a la liquidación
-        </button>
-      </div>
-
       <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <legend style={{ fontSize: '11px', letterSpacing: '0.06em', textTransform: 'uppercase', color: V.apagado, marginBottom: 6 }}>
           Qué lleva el recibo
@@ -77,7 +87,7 @@ export function ArmarRecibo({ fila, quincena, onVolver }: {
       </fieldset>
 
       {/* EL PAPEL, tal como sale. */}
-      <div data-recibo-imprimible data-testid="recibo-hoja"
+      <div ref={hoja} data-recibo-imprimible data-testid="recibo-hoja"
         style={{ border: `1px solid ${V.lineaFila}`, borderRadius: 6, padding: '20px 20px 24px', background: '#FFFFFF', color: '#1F1F1E', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <header style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
           <div>
@@ -127,11 +137,11 @@ export function ArmarRecibo({ fila, quincena, onVolver }: {
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button type="button" disabled={nada} onClick={() => window.print()} data-testid="recibo-imprimir"
+        <button type="button" disabled={nada} onClick={() => imprimir(hoja.current, `Recibo ${fila.nombre} ${fecha(quincena.desde)} al ${fecha(quincena.hasta)}`)} data-testid="recibo-imprimir"
           style={{ padding: '9px 16px', lineHeight: '20px', borderRadius: 6, border: 0, background: V.grafito, color: '#FFFFFF', fontSize: '13px', fontWeight: 600, cursor: nada ? 'default' : 'pointer', opacity: nada ? 0.5 : 1 }}>
           Imprimir
         </button>
-        <button type="button" disabled={nada} onClick={() => window.print()} data-testid="recibo-pdf"
+        <button type="button" disabled={nada} onClick={() => imprimir(hoja.current, `Recibo ${fila.nombre} ${fecha(quincena.desde)} al ${fecha(quincena.hasta)}`)} data-testid="recibo-pdf"
           style={{ padding: '9px 16px', lineHeight: '20px', borderRadius: 6, border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta, fontSize: '13px', cursor: nada ? 'default' : 'pointer', opacity: nada ? 0.5 : 1 }}>
           Guardar PDF
         </button>

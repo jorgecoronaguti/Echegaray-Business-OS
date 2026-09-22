@@ -64,7 +64,17 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
   const [armando, setArmando] = useState(false)
   return (
     <Drawer
-      titulo={fila.nombre}
+      // «VOLVER» ARRIBA (dueño, 22/09/2026): *«al hacer click en recibo [...] tiene q haber arriba de ese desplegable
+      // un boton de volver»*. En la cabecera, al lado del nombre: se ve sin scrollear.
+      titulo={armando ? (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button type="button" onClick={() => setArmando(false)} data-testid="recibo-volver"
+            style={{ padding: '5px 12px', lineHeight: '20px', borderRadius: 6, border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta, fontSize: '13px', fontWeight: 500, cursor: 'pointer', flexShrink: 0 }}>
+            ‹ Volver
+          </button>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{`Recibo · ${fila.nombre}`}</span>
+        </span>
+      ) : fila.nombre}
       subtitulo={`${fila.categoria ? rotuloCategoria(fila.categoria) : 'sin categoría'} · alta ${corta(fila.alta)}`}
       onCerrar={onCerrar}
       ancho={520}
@@ -83,7 +93,7 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
     >
       {armando ? (
         <div style={{ padding: '16px 16px 24px' }}>
-          <ArmarRecibo fila={fila} quincena={quincena} onVolver={() => setArmando(false)} />
+          <ArmarRecibo fila={fila} quincena={quincena} />
         </div>
       ) : (
       <div style={{ padding: '16px 16px 24px', display: 'flex', flexDirection: 'column', gap: 24 }}>

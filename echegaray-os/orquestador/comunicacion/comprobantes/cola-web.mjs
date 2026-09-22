@@ -238,9 +238,11 @@ export async function contextoDeRendicion(port, filas = []) {
   if (!filas.length || filas.some((f) => f.origen !== 'rendicion')) return null
   const r = await port.query(
     `select c.id as comprobante_id, c.entrada_id, e.id as entrega_id, e.codigo, e.persona_id,
-            e.anulada_en is null and e.cerrada_en is null as abierta, e.estructura, o.codigo as obra_codigo, o.nombre as obra
+            e.anulada_en is null and e.cerrada_en is null as abierta, e.estructura, o.codigo as obra_codigo, o.nombre as obra,
+            coalesce(per.es_prueba, false) as es_prueba
        from public.efectivo_comprobante c
        join public.efectivo_entrega e on e.id = c.entrega_id
+       left join public.personas per on per.id = e.persona_id
        left join public.obra_canonica o on o.id = e.obra_id
       where c.entrada_id = any($1::uuid[])`,
     [filas.map((f) => f.id)],
@@ -251,6 +253,9 @@ export async function contextoDeRendicion(port, filas = []) {
   // y la guarda de siempre decide; el ticket queda a la vista sin vínculo.
   if (rows.length !== filas.length || entregas.size !== 1) return { invalido: true }
   const x = rows[0]
+  // PERSONA DE PRUEBA: su ticket no se carga (auditoría 22/09/2026). Entraría a Compras y al libro con
+  // espejo, mientras la caja no ve su entrega (migración 1900). Mismo criterio que el canal.
+  if (x.es_prueba) return { invalido: true, esPrueba: true }
   return {
     entregaId: x.entrega_id, codigo: x.codigo, personaId: x.persona_id, abierta: x.abierta,
     texto: x.estructura ? null : [x.obra_codigo, x.obra].filter(Boolean).join(' '),
@@ -293,6 +298,16 @@ export async function procesarUnLote(dep) {
   const intentos = Math.max(...filas.map((f) => Number(f.intentos) || 1))
   const quien = await nombreDeQuienSubio(port, usuario)
   const rendicion = await contextoDeRendicion(port, filas)
+  // PERSONA DE PRUEBA: el lote NO se procesa (auditoría 22/09/2026). Dejarlo caer al circuito de siempre
+  // lo cargaría en Compras como un gasto común —sin «A rendir» y restando de la caja— mientras la caja no
+  // ve su entrega (migración 1900). Se cierra rechazado, con su motivo, y no se reintenta.
+  if (rendicion?.esPrueba) {
+    for (const f of filas) {
+      await guardarFila(port, { id: f.id, estado: 'rechazado', motivo: 'entrega de una persona de prueba: no se carga en Compras' })
+    }
+    log?.warn?.('comprobantes web: lote de una persona de prueba, no se carga', { lote, filas: filas.length })
+    return { lote, filas: filas.length, estado: 'rechazado' }
+  }
   const rinde = rendicion && !rendicion.invalido ? rendicion : null
 
   let salida

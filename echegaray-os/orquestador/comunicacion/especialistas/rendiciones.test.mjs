@@ -33,14 +33,14 @@ test('sólo reclama en su área; con foto rinde, sin foto explica', async () => 
   assert.equal((await especialista.reconoce('cómo rindo', { area: 'rendicion', fileIds: [] })).destino, 'ayuda')
 })
 
-function portFalso({ canal = true, persona = 'p1', abiertas = [A] } = {}) {
+function portFalso({ canal = true, persona = 'p1', abiertas = [A], esPrueba = false } = {}) {
   const q = []
   return {
     q,
     async query(sql, args) {
       q.push(sql)
       if (/comunicacion\.canales_area/.test(sql)) return { rows: canal ? [{ canal_nombre: 'Rendiciones' }] : [] }
-      if (/comunicacion\.identidades/.test(sql)) return { rows: persona ? [{ perfil_id: 'u1', persona_id: persona }] : [{ perfil_id: 'u1', persona_id: null }] }
+      if (/comunicacion\.identidades/.test(sql)) return { rows: persona ? [{ perfil_id: 'u1', persona_id: persona, es_prueba: esPrueba }] : [{ perfil_id: 'u1', persona_id: null }] }
       if (/from public\.efectivo_entrega e/.test(sql)) return { rows: abiertas }
       return { rows: [] }
     },
@@ -72,4 +72,17 @@ test('con las puertas pasadas: registra el ticket POR POST y le manda al circuit
   assert.equal(llamadas[0].texto, 'OB-0020 Galpón 8')
   assert.deepEqual(llamadas.map((m) => m.postId), ['postA', 'postB'])
   assert.equal(port.q.filter((s) => /insert into public\.efectivo_comprobante/.test(s)).length, 2)
+})
+
+test('una persona de PRUEBA no carga nada en Compras (auditoría 22/09/2026)', async () => {
+  // La caja ya excluye sus entregas (migración 1900), pero su ticket sí entraría a Compras y al libro.
+  const port = portFalso({ esPrueba: true })
+  let proceso = false
+  const r = await especialista.atender({
+    texto: '', port, actor, fileIds: ['f1'], postId: 'post1',
+    procesar: async () => { proceso = true; return { texto: 'ok', estado: 'cargado' } },
+  })
+  assert.equal(proceso, false, 'no se llama al circuito de carga')
+  assert.equal(r.estado, 'rechazado_persona_prueba')
+  assert.ok(!port.q.some((x) => /insert into public\.efectivo_comprobante/.test(x)), 'no registra el ticket')
 })

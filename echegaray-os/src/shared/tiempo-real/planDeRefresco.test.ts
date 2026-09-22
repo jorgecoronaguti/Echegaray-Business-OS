@@ -85,14 +85,17 @@ test('la lista del navegador es EXACTAMENTE la de las migraciones: ninguna panta
   // agregó sus tablas en un archivo propio. Leyendo sólo 20260915T2100, declarar una tabla en `tablas.ts`
   // sin su trigger volvería a compilar y el «en vivo» mentiría.
   const dir = fileURLToPath(new URL('../../../supabase/migrations/', import.meta.url))
-  const marcadas = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()
+  const todas = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()
     .map((f) => readFileSync(join(dir, f), 'utf8'))
-    .filter((sql) => sql.includes('-- TABLAS-CON-AVISO:inicio'))
+  const marcadas = todas.filter((sql) => sql.includes('-- TABLAS-CON-AVISO:inicio'))
+  // UNA TABLA RETIRADA (22/09/2026, recibo_pago): la migración que la borra lo dice con
+  // `-- TABLAS-CON-AVISO:retirada '<tabla>'`, y sale de la lista sin reescribir la migración ya aplicada.
+  const retiradas = new Set(todas.flatMap((sql) => [...sql.matchAll(/-- TABLAS-CON-AVISO:retirada '([a-z_0-9]+)'/g)].map((m) => m[1])))
   assert.ok(marcadas.length >= 2, 'se perdieron las marcas de la lista en las migraciones')
   const delSql = marcadas.flatMap((sql) => {
     const tramo = sql.split('-- TABLAS-CON-AVISO:inicio')[1]?.split('-- TABLAS-CON-AVISO:fin')[0] ?? ''
     return [...tramo.matchAll(/'([a-z_0-9]+)'/g)].map((m) => m[1])
-  }).sort()
+  }).filter((t) => !retiradas.has(t)).sort()
   assert.deepEqual([...TABLAS_CON_AVISO].sort(), delSql)
   assert.equal(new Set(delSql).size, delSql.length, 'tabla repetida en las migraciones')
 })

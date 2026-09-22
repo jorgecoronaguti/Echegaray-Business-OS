@@ -385,6 +385,10 @@ export async function procesarPost(d, m = {}) {
     // esto, un ticket que no dice «contado» quedaba sin Estado → PROYECTADO en el libro, la línea de
     // fondos seguía en −entregado y Proveedores lo mostraba a pagar, mientras la base lo daba rendido.
     if (m.forzar?.pagado) item.comprobante.condicion = 'Contado'
+    // EL POST DE ESTA FOTO VIAJA CON EL ÍTEM (auditoría 22/09/2026): el fajo junta posts de cinco minutos, y el
+    // registro guardaba el primero para todos. En Rendiciones eso ataba el ticket de otra entrega a la del
+    // primer ticket (`vincular_rendiciones_pendientes` empareja por post).
+    item.postId = m.postId ?? null
     items.push(item)
   }
   if (!items.length) {

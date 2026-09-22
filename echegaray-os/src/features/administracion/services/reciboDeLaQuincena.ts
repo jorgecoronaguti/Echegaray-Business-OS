@@ -10,6 +10,7 @@
 // «sin dato» no se imprime como $ 0.
 
 import type { LineaConOverrides } from './liquidacionOverrides'
+import { pagoDelMensual } from './liquidacionPorTipo.ts'
 
 export type ConceptoDelRecibo = 'blanco' | 'negro' | 'banco' | 'efectivo' | 'pagado'
 
@@ -38,10 +39,17 @@ export interface ReciboArmado {
   total: number | null
 }
 
-/** Lo que se puede tildar para esta línea, y por qué no, cuando no se puede. */
-export function conceptosDisponibles(l: LineaConOverrides): Record<ConceptoDelRecibo, string | null> {
+/**
+ * Lo que se puede tildar para esta línea, y por qué no, cuando no se puede.
+ *
+ * `mensual` lo decide el llamador (`tipoDeLiquidacion`): sin él, a un jornalero de una quincena CERRADA —que
+ * tampoco trae `sueldo`— se le decía «cobra por mes», que es falso (auditoría 22/09/2026).
+ */
+export function conceptosDisponibles(l: LineaConOverrides, mensual = false): Record<ConceptoDelRecibo, string | null> {
   const s = l.sueldo
-  const sinHoras = s ? null : 'cobra por mes: no tiene horas en blanco y en negro'
+  const sinHoras = s ? null : (mensual
+    ? 'cobra por mes: no tiene horas en blanco y en negro'
+    : 'esta quincena no guarda el detalle de blanco y negro')
   return {
     blanco: sinHoras ?? (s!.horasBlanco == null ? 'sin horas de recibo cargadas' : null),
     negro: sinHoras ?? (s!.horasNegro == null ? 'sin horas en negro calculadas' : null),
@@ -52,37 +60,57 @@ export function conceptosDisponibles(l: LineaConOverrides): Record<ConceptoDelRe
 }
 
 /** Por defecto va todo lo que la línea puede decir. */
-export function eleccionInicial(l: LineaConOverrides): EleccionDelRecibo {
-  const d = conceptosDisponibles(l)
+export function eleccionInicial(l: LineaConOverrides, mensual = false): EleccionDelRecibo {
+  const d = conceptosDisponibles(l, mensual)
   return { blanco: d.blanco == null, negro: d.negro == null, banco: true, efectivo: true, pagado: false }
 }
 
 const hs = (n: number | null | undefined): string => (n == null ? 'sin dato' : `${String(Math.round(n * 100) / 100).replace('.', ',')} h`)
 
-/** Los dos medios: con modelo blanco + negro salen de `pago`; sin él, de la línea (mensual, oficina, finales). */
-function medios(l: LineaConOverrides) {
+/**
+ * Los dos medios. Tres modelos, y NINGUNO se reinventa acá — son los mismos que dibuja el panel:
+ *
+ *   · blanco + negro (jornalero, quincena abierta): `l.pago`.
+ *   · mensual y Oficina: `pagoDelMensual`, que es lo que muestra `CadenaMensual`.
+ *   · el resto (finales, quincena cerrada sin modelo): la cadena de siempre. Acá estaba el defecto que
+ *     encontró la auditoría del 22/09/2026: `l.enEfectivo` YA viene con el adelanto y lo transferido
+ *     descontados (`cobra − adelanto − yaTransferido − porBanco`), así que ponerlo como total del efectivo
+ *     y volver a restar «ya pagado» descontaba el adelanto dos veces. El total del efectivo es
+ *     `cobra − porBanco`, lo ya pagado es el adelanto más lo transferido, y lo que resta es `enEfectivo`.
+ */
+function medios(l: LineaConOverrides, mensual: boolean) {
   if (l.sueldo) {
     const p = l.pago
     return {
       banco: { total: p.banco, pagado: p.pagadoBanco, resta: p.saldoBanco },
       efectivo: { total: p.negro, pagado: p.pagadoEfectivo, resta: p.saldoEfectivo },
+      excedente: p.excedente, absorbido: p.absorbido,
     }
   }
+  if (mensual) {
+    const p = pagoDelMensual(l as Parameters<typeof pagoDelMensual>[0])
+    return {
+      banco: { total: p.banco, pagado: p.pagadoBanco, resta: p.saldoBanco },
+      efectivo: { total: p.negro, pagado: p.pagadoEfectivo, resta: p.saldoEfectivo },
+      excedente: p.excedente, absorbido: p.absorbido,
+    }
+  }
+  const efectivo = l.cobra == null ? null : Math.round((l.cobra - l.porBanco) * 100) / 100
   return {
-    banco: { total: l.porBanco, pagado: l.pagadoBanco ?? 0, resta: l.pago?.saldoBanco ?? null },
-    efectivo: { total: l.enEfectivo, pagado: l.pagadoEfectivo ?? 0, resta: l.pago?.saldoEfectivo ?? null },
+    banco: { total: l.porBanco, pagado: 0, resta: l.porBanco },
+    efectivo: { total: efectivo, pagado: Math.round(((l.adelanto ?? 0) + (l.yaTransferido ?? 0)) * 100) / 100, resta: l.enEfectivo },
+    excedente: null, absorbido: null,
   }
 }
 
 /** Lo pagado de más por un lado que se descuenta del otro (`pago.absorbido`): va escrito debajo del que lo absorbe. */
-function absorbidoPor(l: LineaConOverrides, clave: 'banco' | 'efectivo'): RenglonDelRecibo | null {
-  const a = l.pago?.absorbido
+function absorbidoPor(a: { lado: 'banco' | 'efectivo'; importe: number } | null, clave: 'banco' | 'efectivo'): RenglonDelRecibo | null {
   if (!a || a.lado === clave || !(a.importe > 0)) return null
   return { rotulo: `menos lo pagado de más en ${a.lado === 'banco' ? 'banco' : 'efectivo'}`, importe: -a.importe, sub: true }
 }
 
-export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n: number) => string): ReciboArmado {
-  const d = conceptosDisponibles(l)
+export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n: number) => string, mensual = false): ReciboArmado {
+  const d = conceptosDisponibles(l, mensual)
   const s = l.sueldo
   const horas: RenglonDelRecibo[] = []
   if (e.blanco && d.blanco == null && s) {
@@ -101,7 +129,7 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n:
     })
   }
 
-  const m = medios(l)
+  const m = medios(l, mensual)
   const renglones: RenglonDelRecibo[] = []
   const elegidos: (number | null)[] = []
   for (const [clave, rotulo] of [['banco', 'Depósito en banco'], ['efectivo', 'Efectivo']] as const) {
@@ -111,8 +139,12 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n:
     elegidos.push(x.total)
     if (e.pagado) {
       renglones.push({ rotulo: 'ya pagado', importe: x.pagado, sub: true })
-      const absorbido = absorbidoPor(l, clave)
+      const absorbido = absorbidoPor(m.absorbido, clave)
       if (absorbido) renglones.push(absorbido)
+      // COBRÓ DE MÁS: el papel lo dice, no lo esconde detrás de un «resta $ 0» (auditoría 22/09/2026).
+      if (m.excedente?.lado === clave && m.excedente.importe > 0) {
+        renglones.push({ rotulo: 'cobró de más', importe: m.excedente.importe, sub: true })
+      }
       renglones.push({ rotulo: 'resta', importe: x.resta, sub: true })
     }
   }

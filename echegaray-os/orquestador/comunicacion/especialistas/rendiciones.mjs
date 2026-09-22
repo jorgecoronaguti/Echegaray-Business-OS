@@ -39,6 +39,7 @@ export const TEXTO = Object.freeze({
   CANAL: 'Las rendiciones se mandan al canal de rendiciones. Mandá la foto del ticket ahí.',
   NO_VERIFICABLE: 'No pude confirmar desde dónde escribís ni quién sos, así que no cargué nada. Probá de nuevo en un minuto.',
   SIN_PERSONA: 'No encuentro tu legajo detrás de este usuario de Mattermost, y cada rendición descuenta del saldo de una persona. Avisale a Administración.',
+  ES_PRUEBA: 'Esta persona es de PRUEBA: no cargo su ticket en Compras. Si esto no es una prueba, avisale a Administración.',
   SIN_ENTREGA: 'No tenés efectivo a rendir abierto, así que no cargué el ticket. Si pagaste con plata de la empresa, avisale a Administración para que registre la entrega.',
   AYUDA: [
     'Soy **Rendiciones**. Para rendir un gasto pagado con efectivo que te entregó la empresa:',
@@ -89,20 +90,21 @@ export function textoAmbigua(abiertas = []) {
 /** La persona del padrón detrás del usuario de Mattermost, y sus entregas abiertas. */
 export async function entregasAbiertasDe(port, mmUserId) {
   const r = await port.query(
-    `select p.id as perfil_id, p.persona_id
+    `select p.id as perfil_id, p.persona_id, coalesce(per.es_prueba, false) as es_prueba
        from comunicacion.identidades i
        join auth.users u on lower(u.email) = lower(i.email)
        join public.perfiles p on p.id = u.id
+      left join public.personas per on per.id = p.persona_id
       where i.plataforma = 'mattermost' and i.plataforma_user_id = $1 and i.activo
       limit 1`, [String(mmUserId)])
   const yo = r?.rows?.[0]
-  if (!yo?.persona_id) return { perfilId: yo?.perfil_id ?? null, personaId: null, abiertas: [] }
+  if (!yo?.persona_id) return { perfilId: yo?.perfil_id ?? null, personaId: null, esPrueba: false, abiertas: [] }
   const e = await port.query(
     `select e.id, e.codigo, e.estructura, o.nombre as obra, o.codigo as obra_codigo
        from public.efectivo_entrega e left join public.obra_canonica o on o.id = e.obra_id
       where e.persona_id = $1 and e.anulada_en is null and e.cerrada_en is null
       order by e.fecha, e.numero`, [yo.persona_id])
-  return { perfilId: yo.perfil_id, personaId: yo.persona_id, abiertas: e?.rows ?? [] }
+  return { perfilId: yo.perfil_id, personaId: yo.persona_id, esPrueba: yo.es_prueba === true, abiertas: e?.rows ?? [] }
 }
 
 export const especialista = {
@@ -138,6 +140,9 @@ export const especialista = {
     let yo
     try { yo = await entregasAbiertasDe(port, actor?.plataforma_user_id) } catch { return { texto: TEXTO.NO_VERIFICABLE, estado: 'rechazado_no_verificable', privado: false } }
     if (!yo.personaId) return { texto: TEXTO.SIN_PERSONA, estado: 'rechazado_sin_persona', privado: false }
+    // PERSONA DE PRUEBA, NADA EN COMPRAS (auditoría 22/09/2026): la caja ya excluye sus entregas (migración
+    // 1900), pero su ticket sí entraría a Compras y al libro, con espejo y sin la entrega que lo respalda.
+    if (yo.esPrueba) return { texto: TEXTO.ES_PRUEBA, estado: 'rechazado_persona_prueba', privado: false }
     const { entrega, motivo } = elegirEntrega(yo.abiertas, texto)
     if (motivo === 'ninguna') return { texto: TEXTO.SIN_ENTREGA, estado: 'rechazado_sin_entrega', privado: false }
     if (!entrega) return { texto: textoAmbigua(yo.abiertas), estado: 'pregunta_entrega', privado: false }

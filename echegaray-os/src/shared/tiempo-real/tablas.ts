@@ -12,7 +12,6 @@ export const TABLAS_CON_AVISO = [
   // Efectivo a rendir, etapa 1: migración 20260922T1500.
   'efectivo_comprobante', 'efectivo_devolucion', 'efectivo_entrega', 'efectivo_rendicion',
   // Recibos de pago: migración 20260922T1600.
-  'recibo_pago',
   'analisis', 'analisis_linea', 'asistencia_dia', 'asistencia_marca',
   'certificado_cliente', 'certificados', 'cliente_acceso', 'cliente_actividad_portal',
   'cliente_contacto', 'cliente_documento', 'cliente_nota', 'clientes',
