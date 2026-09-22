@@ -12,6 +12,7 @@ import { armarObra, elegirObra, pasaEstado, rubrosComparables, sinObraDe, type O
 import { leerPresupuestos, presupuestoPorObra } from './presupuesto'
 import { leerConsumoMensual, ritmoPorObra, type MesDeConsumo, type Ritmo } from './consumo'
 import { leerFotoCaja, type LecturaCaja } from './cajaSheet'
+import { pagoDeNomina, type FilaLinea, type FilaPersona, type FilaQuincena, type FilaRecibo, type NominaPagada } from './nominaPagada'
 import { getDeuda } from '@/features/administracion/services/deudaProveedoresService'
 import { totalesDeuda, type TotalesDeuda } from '@/features/administracion/services/deudaProveedores'
 
@@ -113,12 +114,14 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
   // LO SIN OBRA ES DEL CLIENTE: se recorta por período y NUNCA por obra.
   const sinObra = new Map([...(sinObraCruda ?? new Map()).entries()].map(([k, g]) => [k, sinObraDe(g)]))
 
-  const [egresos, nomina, quincenas, personas, documentos, cajaSheet, deuda] = await Promise.all([
+  const [egresos, nominaPagada, personas, documentos, cajaSheet, deuda] = await Promise.all([
     // LO QUE SALIÓ, CADA PAGO EN SU FECHA (dueño, 18/09/2026: criterio percibido, filtrable por fechas). Lo
     // pendiente y lo «Pagado» sin monto viajan también: se cuentan aparte. PAGINADO (D6): ~960 filas el 18/09.
     f.vista === 'caja' ? leerEgresosDeCaja(supabase, rango) : null,
-    f.vista === 'nomina' ? supabase.from('nomina_por_mes').select('mes, costo_nomina, cargas_sociales, es_estimacion') : null,
-    f.vista === 'nomina' ? supabase.from('jornales_quincena').select('desde, estado') : null,
+    // LA NÓMINA ES LO PAGADO A LA GENTE, NO EL COSTO DE NÓMINA (dueño, 22/09/2026). Se arma en
+    // `nominaPagada.ts` sobre la liquidación sellada y los recibos del estudio: `nomina_por_mes` ya no
+    // se lee — mezclaba cargas sociales y publicaba un factor en vez de pesos desde agosto.
+    f.vista === 'nomina' ? leerNominaPagada(supabase, Number(hoy.slice(0, 4))) : null,
     f.vista === 'nomina' ? supabase.from('personas').select('en_la_empresa, categoria').eq('es_prueba', false) : null,
     // LA ACCIÓN DEL DÍA SE DECIDE POR DOCUMENTO DE COBRANZAS (D10), la misma fuente del saldo y con el
     // mismo recorte por emisión que la cuenta corriente. Se lee de `cliente_cobranza`, la vista canónica
@@ -142,8 +145,7 @@ export async function getDatosAnaliticas(supabase: SupabaseClient, f: Filtros): 
     cuentaCorriente: Array.isArray(raiz?.cuenta_corriente) ? raiz.cuenta_corriente : null,
     egresos: egresos?.filas ?? null,
     criterioEgresos: egresos?.criterio ?? 'percibido',
-    nomina: nomina?.data ?? null,
-    quincenas: quincenas?.data ?? null,
+    nominaPagada: nominaPagada ?? null,
     personas: personas?.data ?? null,
     documentos: documentos ?? null,
     documentosParaAgenda: documentosParaAgenda ?? null,
@@ -221,6 +223,38 @@ export function leerDeudaDeCobranzas(supabase: SupabaseClient, rango: { desde: s
     if (rango.desde) q = q.gte('fecha_emision', rango.desde)
     if (rango.hasta) q = q.lte('fecha_emision', rango.hasta)
     return q.order('cobranza_id').range(a, b)
+  })
+}
+
+/**
+ * LO PAGADO A LA GENTE EN EL AÑO: la liquidación sellada y los recibos del estudio, sin una sola carga social.
+ *
+ * ═══ POR QUÉ `null` CUANDO NO HAY QUINCENAS ═══
+ *
+ * `liquidacion_quincena` y `recibo_sueldo_linea` tienen su propia puerta —`liquida_sueldos()`: dirección
+ * y administración—, distinta de la de Analíticas (`ve_economia()`). Hoy los dos conjuntos coinciden,
+ * pero el día que no coincidan la RLS devuelve una lista VACÍA, no un error: publicar «$ 0 pagado en el
+ * año» sería la peor respuesta posible. Cero quincenas = no se pudo leer, y la pantalla lo dice.
+ *
+ * Paginado: `liquidacion_linea` va por 348 filas en 2026 y crece ~25 por quincena; el corte de 1.000 de
+ * PostgREST llega en 2028 sin avisar.
+ */
+export async function leerNominaPagada(supabase: SupabaseClient, anio: number): Promise<NominaPagada | null> {
+  const [quincenas, lineas, recibos, personas] = await Promise.all([
+    supabase.from('liquidacion_quincena').select('id, desde, estado'),
+    leerPaginado((a, b) => supabase.from('liquidacion_linea')
+      .select('id, liquidacion_id, persona_id, cobra, cobra_manual').order('id').range(a, b)),
+    leerPaginado((a, b) => supabase.from('recibo_sueldo_linea')
+      .select('id, persona_id, periodo, neto').order('id').range(a, b)),
+    supabase.from('persona_directorio').select('id, nombre_completo'),
+  ])
+  if (quincenas.error || !quincenas.data?.length || !lineas || !recibos) return null
+  return pagoDeNomina({
+    anio,
+    quincenas: quincenas.data as FilaQuincena[],
+    lineas: lineas as FilaLinea[],
+    recibos: recibos as FilaRecibo[],
+    personas: (personas.data ?? []) as FilaPersona[],
   })
 }
 

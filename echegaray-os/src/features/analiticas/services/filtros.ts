@@ -156,6 +156,12 @@ export function razonNoAplica(vista: Vista, c: Control): string | null {
   if (c === 'periodo' && ACUMULADAS.has(vista)) {
     return 'Esta vista compara lo gastado contra el presupuesto: es acumulada a la fecha.'
   }
+  // NÓMINA ES EL AÑO ENTERO (dueño, 22/09/2026: «lo pagado en conceptos negro y blanco de TODO EL
+  // AÑO»). Con el período aplicando, «Este mes» dejaba una sola columna y el reparto blanco/negro
+  // perdía contra qué compararse; y el mes se elige abajo, en el cuadro, sin tocar la serie.
+  if (c === 'periodo' && vista === 'nomina') {
+    return 'La nómina se mira por año calendario: el mes se elige en el cuadro.'
+  }
   if (c !== 'periodo' && DE_EMPRESA.has(vista)) {
     return vista === 'nomina' ? 'La nómina es de la empresa: no se abre por obra.' : 'La cobranza es por cliente: no se abre por obra.'
   }

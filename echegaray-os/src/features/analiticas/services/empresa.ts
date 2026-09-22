@@ -80,54 +80,12 @@ export function caja(egresos: Egreso[]): Caja {
 }
 
 // ─── Nómina ─────────────────────────────────────────────────────────────────────────────────────
-
-/** La base contra la que se mide la suba: marzo, el último mes con paritaria cerrada antes de la serie. */
-export const MES_BASE = '2026-03'
-
-export type EstadoMes = 'real' | 'incompleto' | 'estimacion'
-export interface MesNomina { mes: string; costo: number | null; estado: EstadoMes; contraBase: number | null }
-
-/**
- * QUÉ MES ES UN DATO. Tres estados, y sólo `real` entra a una suma o a una variación:
- *
- *   · `estimacion` — `nomina_por_mes` lo marca proyectado, y en esos meses publica un factor (2,04…) en
- *     la columna de pesos: dibujarlo sería una caída de $ 30 M a $ 2 que no existió.
- *   · `incompleto` — las cargas sociales todavía en 0, o una quincena de `jornales_quincena` EN CURSO.
- *     Julio 2026 salía «real» con $ 15,01 M y «−31 %» contra marzo: le faltaban el F931 y media
- *     quincena (auditoría 17/09/2026, D1). Un mes a medio liquidar no bajó el costo: no terminó.
- *   · `real` — todo lo demás.
- */
-export function nomina(
-  filas: unknown[], rango: { desde: string | null; hasta: string | null }, quincenas: unknown[] = [],
-): { base: number | null; meses: MesNomina[] } {
-  const enCurso = new Set(quincenas.flatMap((q) => {
-    const r = q as Record<string, unknown>
-    const m = mes(r.desde)
-    return m && r.estado === 'en_curso' ? [m] : []
-  }))
-  const todos = filas.flatMap((f): MesNomina[] => {
-    const r = f as Record<string, unknown>
-    const m = mes(r.mes)
-    if (!m) return []
-    const cargas = n(r.cargas_sociales)
-    const estado: EstadoMes = r.es_estimacion === true ? 'estimacion'
-      : (cargas == null || cargas <= 0 || enCurso.has(m)) ? 'incompleto' : 'real'
-    return [{ mes: m, costo: estado === 'estimacion' ? null : n(r.costo_nomina), estado, contraBase: null }]
-  })
-  const base = todos.find((x) => x.mes === MES_BASE && x.estado === 'real')?.costo ?? null
-  const desde = rango.desde?.slice(0, 7) ?? null
-  const hasta = rango.hasta?.slice(0, 7) ?? null
-  const meses = todos
-    .filter((x) => (desde == null || x.mes >= desde) && (hasta == null || x.mes <= hasta))
-    .map((x) => ({ ...x, contraBase: x.estado === 'real' && base && x.costo != null ? x.costo / base - 1 : null }))
-  return { base, meses }
-}
-
-/** Los últimos seis meses REALES: ni incompletos ni estimados. */
-export function seisMesesReales(meses: MesNomina[]): { total: number; meses: number } | null {
-  const reales = meses.filter((m) => m.estado === 'real' && m.costo != null).slice(-6)
-  return reales.length ? { total: reales.reduce((a, m) => a + (m.costo ?? 0), 0), meses: reales.length } : null
-}
+//
+// EL COSTO DE NÓMINA SE RETIRÓ DE ACÁ EL 22/09/2026. `nomina()` leía `nomina_por_mes` —jornales MÁS
+// cargas sociales, y un factor 2,04 en la columna de pesos desde agosto—; el dueño pidió lo PAGADO a
+// la gente, blanco y negro, sin cargas. Eso vive en `nominaPagada.ts`, con otra fuente y otra cuenta.
+// No se deja la función al lado: dos respuestas para «la nómina del mes» es exactamente lo que la
+// regla de realidad única prohíbe. `legajos()` se queda: el plantel sigue siendo de la misma cabecera.
 
 export interface Legajos { plantel: number; conCategoria: number; sinCategoria: number }
 

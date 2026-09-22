@@ -27,6 +27,7 @@ import { PanelDetalleCosto } from '@/features/clientes/components/PanelDetalleCo
 import { leerDetalle, leerRubro } from '@/features/clientes/services/detalleCostoDeObra'
 import { aUrl } from '@/features/analiticas/services/filtros'
 import { millones } from '@/features/analiticas/services/formato'
+import { leerMes, mesDelDetalle } from '@/features/analiticas/services/nominaPagada'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,6 +55,12 @@ export default async function AnaliticasPage({ searchParams }: { searchParams: P
   const detalle = obraDelPanel && rubro
     ? await leerDetalle(supabase, { obraId: obraDelPanel.id, rubro })
     : { detalle: null, error: null }
+  // ═══ EL MES DEL DETALLE DE NÓMINA VIAJA EN LA URL, COMO `rubro` ═══
+  //
+  // No es un filtro (no recorta la serie: los doce meses se siguen dibujando), es qué mes tiene
+  // abierto el detalle por persona. Entra por `leerMes`, que no cree en un `2026-13`, y si el mes
+  // pedido no tiene cifras se abre el último que sí las tenga.
+  const mes = filtros.vista === 'nomina' && d.nominaPagada ? mesDelDetalle(d.nominaPagada, leerMes(params.mes)) : null
   const periodo = razonNoAplica(filtros.vista, 'periodo') ? 'acumulado a la fecha' : rotuloPeriodo(filtros.periodo).toLowerCase()
   const opciones = d.cartera.map((o) => ({ id: o.id, nombre: o.nombre, cliente: o.clienteNombre, estado: o.estado }))
 
@@ -62,7 +69,7 @@ export default async function AnaliticasPage({ searchParams }: { searchParams: P
       <SelloDatoBueno />
       <BarraAnaliticas filtros={filtros} obras={opciones} />
       <div className="px-4 lg:px-10">
-        {!d.legible ? <SinLectura que="el gasto de las obras" /> : <Vista filtros={filtros} d={d} periodo={periodo} />}
+        {!d.legible ? <SinLectura que="el gasto de las obras" /> : <Vista filtros={filtros} d={d} periodo={periodo} mes={mes} />}
       </div>
       {obraDelPanel && rubro ? (
         <PanelDetalleCosto
@@ -90,16 +97,18 @@ export default async function AnaliticasPage({ searchParams }: { searchParams: P
   )
 }
 
-function Vista({ filtros, d, periodo }: {
+function Vista({ filtros, d, periodo, mes }: {
   filtros: ReturnType<typeof leerFiltros>
   d: Awaited<ReturnType<typeof getDatosAnaliticas>>
   periodo: string
+  /** Vista Nómina: el mes cuyo detalle por persona se abre. `null` = ninguno tiene cifras. */
+  mes: string | null
 }) {
   switch (filtros.vista) {
     case 'obras': return <VistaObras obras={d.obras} obra={d.obraElegida} filtros={filtros} consumo={d.consumoMensual} ritmo={d.ritmo}
       sinIva={d.obraElegida && d.sinIvaDiscriminado.size ? (d.sinIvaDiscriminado.get(d.obraElegida.id) ?? 0) : null} />
     case 'caja': return <VistaCaja lectura={d.cajaSheet} egresos={d.egresos} criterio={d.criterioEgresos} periodo={periodo} rango={d.rango} deuda={d.deudaProveedores} />
-    case 'nomina': return <VistaNomina filas={d.nomina} quincenas={d.quincenas} personas={d.personas} rango={d.rango} periodo={periodo} hoy={d.hoy} />
+    case 'nomina': return <VistaNomina pagado={d.nominaPagada} personas={d.personas} filtros={filtros} mes={mes} />
     case 'cobranza': return <VistaCobranza cuenta={d.cuentaCorriente} documentos={d.documentos} agenda={d.documentosParaAgenda} hoy={d.hoy} periodo={periodo} />
     default: return <VistaResumen obras={d.obras} sinObra={d.sinObra} filtros={filtros} neto={d.netoDeIva}
       comprobantesPorCliente={d.sinObraDetalle.size ? new Map([...d.sinObraDetalle.entries()].map(([id, g]) => [id, g.nComprobantes])) : null} />

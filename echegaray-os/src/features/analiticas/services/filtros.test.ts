@@ -65,12 +65,17 @@ test('Resumen y Obras son acumuladas: el período no viaja a la base aunque est�
   assert.deepEqual(rangoParaVista({ ...f, vista: 'caja' }, '2026-09-17'), { desde: '2026-09-01', hasta: '2026-09-17' })
 })
 
-test('estado y obras no aplican a Caja, Nómina ni Cobranza; el período sí', () => {
+test('estado y obras no aplican a Caja, Nómina ni Cobranza; el período sí, salvo en Nómina', () => {
   for (const v of ['caja', 'nomina', 'cobranza'] as const) {
     assert.ok(razonNoAplica(v, 'estado'))
     assert.ok(razonNoAplica(v, 'obras'))
-    assert.equal(razonNoAplica(v, 'periodo'), null)
   }
+  assert.equal(razonNoAplica('caja', 'periodo'), null)
+  assert.equal(razonNoAplica('cobranza', 'periodo'), null)
+  // NÓMINA NO: es el año calendario entero (dueño, 22/09/2026), y el rango no viaja a la base.
+  assert.ok(razonNoAplica('nomina', 'periodo'))
+  assert.deepEqual(rangoParaVista({ ...DEFECTO, vista: 'nomina', periodo: { tipo: 'preset', preset: 'mes' } }, '2026-09-22'),
+    { desde: null, hasta: null })
   assert.equal(apartado(leerFiltros({ obras: 'quattropani' }), 'obras'), true)
 })
 

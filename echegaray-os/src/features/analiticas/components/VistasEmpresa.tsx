@@ -1,16 +1,19 @@
 // NÓMINA Y COBRANZA — dos lecturas de la empresa, al final del módulo. (Caja vive en VistaCaja.tsx:
 // desde el 18/09/2026 es la pestaña CAJA leída de su espejo, no un cálculo sobre egresos.)
 //
-// Diseño v6: columnas mensuales (caja apilada obra/estructura; nómina con la suba sobre marzo en
-// ámbar), barras por área, la banda de antigüedad apilada y la tabla de clientes con el verbo del día.
+// Diseño v6: columnas mensuales (nómina apilada blanco/negro), barras por área, la banda de
+// antigüedad apilada y la tabla de clientes con el verbo del día.
 // Lo que el diseño trae escrito a mano (3.053,5 h, 396 h, «27 de 30») sale acá de los datos o no sale.
-import { millones, pctConSigno } from '../services/formato'
-import { bandasDeCobranza, cifrasCobranza, cobranza, legajos, MES_BASE, nomina, seisMesesReales, type FilaCobranza } from '../services/empresa'
+import Link from 'next/link'
+import { millones, pctEntero } from '../services/formato'
+import { bandasDeCobranza, cifrasCobranza, cobranza, legajos, type FilaCobranza } from '../services/empresa'
+import type { MesPagado, NominaPagada, PersonaPagada } from '../services/nominaPagada'
+import { aUrl, type Filtros } from '../services/filtros'
 import type { ClaveBanda } from '../../clientes/services/reglasCobranza'
 import { documentosDeCobranzas } from '../../clientes/services/documentoDeCobranza'
 import { diaMes, diaMesAnio } from '../../clientes/services/cobranzaFormato'
 import { agendaDeCobro, cuando, proximoPorCliente, type AgendaDeCobro, type CobroProximo } from '../services/cobrosProximos'
-import { ancho, Cabecera, ENCABEZADO, rotuloMes, Seccion, SinLectura } from './Piezas'
+import { ancho, Cabecera, ENCABEZADO, rotuloMes, Seccion, SinLectura, Valor } from './Piezas'
 import { Torta } from './Torta'
 
 /** Columnas mensuales con el valor arriba y el mes abajo; `partes` se apilan de arriba hacia abajo. */
@@ -31,54 +34,134 @@ export function Columnas({ meses }: { meses: { mes: string; valor: string | null
   )
 }
 
-export function VistaNomina({ filas, quincenas, personas, rango, periodo, hoy }: {
-  filas: unknown[] | null
-  quincenas: unknown[] | null
+/**
+ * NÓMINA — LO PAGADO A LA GENTE EN EL AÑO, EN BLANCO Y EN NEGRO, SIN CARGAS SOCIALES.
+ *
+ * Dueño, 22/09/2026: *«la sección "nómina" no es de utilidad así como está; tiene que salir lo pagado
+ * en conceptos negro y blanco de todo el año, sin cargas sociales»*. Antes mostraba el COSTO de
+ * nómina de `nomina_por_mes` —jornales + cargas, y desde agosto un factor 2,04 en vez de pesos—: ni
+ * separaba blanco de negro, ni sacaba las cargas, ni llegaba a hoy.
+ *
+ * La cuenta entera vive en `nominaPagada.ts` y se prueba sin base; acá no se suma ni un peso. El año
+ * es CALENDARIO y fijo: el control de período no aplica a esta vista (`razonNoAplica`), porque «todo
+ * el año» fue el pedido y una serie recortada a un mes no se lee contra el resto.
+ */
+export function VistaNomina({ pagado, personas, filtros, mes }: {
+  pagado: NominaPagada | null
   personas: unknown[] | null
-  rango: { desde: string | null; hasta: string | null }
-  periodo: string
-  hoy: string
+  filtros: Filtros
+  /** El mes que abre el detalle por persona, ya elegido por la página. */
+  mes: string | null
 }) {
-  if (!filas) return <SinLectura que="la nómina" />
-  const { base, meses: todos } = nomina(filas, rango, quincenas ?? [])
-  // LOS MESES QUE VIENEN NO SON NÓMINA: `nomina_por_mes` proyecta hasta diciembre. Se dibuja hasta hoy.
-  const meses = todos.filter((m) => m.mes <= hoy.slice(0, 7))
-  const ultimo = meses.filter((m) => m.estado === 'real').at(-1)
-  const seis = seisMesesReales(meses)
-  const incompletos = meses.filter((m) => m.estado !== 'real').length
+  if (!pagado) return <SinLectura que="la liquidación de sueldos" />
   const l = personas ? legajos(personas) : null
-  const max = Math.max(1, ...meses.map((m) => (m.estado === 'real' ? m.costo ?? 0 : 0)))
+  const { total, meses, avisos } = pagado
+  const max = Math.max(1, ...meses.map((m) => m.total ?? 0))
+  const detalle = mes ? pagado.porPersona.get(mes) ?? [] : []
+  const maxPersona = Math.max(1, ...detalle.map((p) => p.total))
   return (
     <>
-      <Cabecera titulo="Nómina" detalle={`${periodo} · sueldos y cargas`}
+      <Cabecera titulo="Nómina" detalle={`año ${pagado.anio} · lo pagado a la gente, sin cargas sociales`}
         cifras={[
-          { rotulo: seis && seis.meses < 6 ? `últimos ${seis.meses} meses liquidados` : 'seis meses', valor: seis ? millones(seis.total) : null },
-          { rotulo: ultimo ? `${rotuloMes(ultimo.mes)} contra ${rotuloMes(MES_BASE)}` : `contra ${rotuloMes(MES_BASE)}`, valor: pctConSigno(ultimo?.contraBase), falta: '—', tono: (ultimo?.contraBase ?? 0) > 0 ? 'warn' : undefined },
+          { rotulo: 'pagado en el año', valor: millones(total?.total), falta: 'sin quincena cerrada',
+            nota: total ? `${total.meses} ${total.meses === 1 ? 'mes' : 'meses'} con quincena cerrada` : null },
+          { rotulo: 'en blanco', valor: millones(total?.blanco), nota: 'neto de los recibos' },
+          { rotulo: 'en negro', valor: millones(total?.negro), nota: 'lo que el recibo no paga' },
+          { rotulo: 'en negro', valor: pctEntero(pagado.pctNegro), falta: '—', tono: (pagado.pctNegro ?? 0) > 0.5 ? 'warn' : undefined,
+            nota: 'del total pagado' },
           { rotulo: 'plantel', valor: l ? String(l.plantel) : null, nota: 'por pertenencia' },
-          { rotulo: 'repartido a obra', valor: null, falta: 'sin repartir' },
         ]} />
-      <Seccion titulo="Costo de la nómina, por mes" aclaracion={base != null ? `en ámbar, lo que subió sobre ${rotuloMes(MES_BASE)} (${millones(base)})` : `sin ${rotuloMes(MES_BASE)} liquidado no hay base`} arriba="pt-8">
-        <Columnas meses={meses.map((m) => {
-          if (m.estado !== 'real' || m.costo == null) return { mes: m.mes, valor: null, nota: m.estado === 'estimacion' ? 'estimación' : 'incompleto', partes: [] }
-          const sube = base != null ? Math.max(0, m.costo - base) : 0
-          return {
-            mes: m.mes, valor: millones(m.costo), color: (m.contraBase ?? 0) > 0.2 ? 'text-warn' : undefined,
-            partes: [{ alto: (sube / max) * 170, clase: 'bg-warn' }, { alto: ((m.costo - sube) / max) * 170, clase: 'bg-accent' }],
-          }
-        })} />
+      <Seccion titulo="Lo pagado, mes a mes" arriba="pt-8"
+        aclaracion="neto de recibo y plata en mano; ninguna carga social, ninguna liquidación final"
+        detalle="Blanco: el neto del recibo del estudio (recibo_sueldo_linea). Negro: lo cobrado en la quincena cerrada menos ese neto. Las contribuciones patronales, el F931 y las cargas sociales no entran en ninguna de las dos."
+        leyenda={[{ color: 'bg-serie-1', rotulo: 'blanco (recibo)' }, { color: 'bg-serie-2', rotulo: 'negro (en mano)' }]}>
+        <Columnas meses={meses.map((m) => (m.total == null ? { mes: m.mes, valor: null, nota: 'en curso', partes: [] } : {
+          mes: m.mes, valor: millones(m.total),
+          partes: [
+            { alto: ((m.negro ?? 0) / max) * 170, clase: 'bg-serie-2' },
+            { alto: ((m.blanco ?? 0) / max) * 170, clase: 'bg-serie-1' },
+          ],
+        }))} />
       </Seccion>
-      {/* ═══ ES UNA SECCIÓN, CON SU TÍTULO Y SU FILO (diseño v9) ═══
-          Era una línea suelta en minúscula de 11.5 px, sin `<h2>` y sin filo sobre las tarjetas, y
-          el valor se dibujaba a 22 px en gris: «0 de 17» salía enorme y apagado donde el diseño
-          pone el dato chico y en tinta. Se usa el mismo dibujo de huecos que el Resumen. */}
+      <Seccion titulo="Cada mes, en números" filo
+        aclaracion={mes ? 'el mes elegido abre el detalle de abajo' : 'ningún mes con quincena cerrada todavía'}>
+        <div className="flex flex-col">
+          <div className={`hidden h-9 items-center gap-6 border-b border-line lg:grid lg:grid-cols-[110px_repeat(3,minmax(0,1fr))_90px] ${ENCABEZADO}`}>
+            <div>Mes</div><div className="text-right">Blanco</div><div className="text-right">Negro</div>
+            <div className="text-right">Total</div><div className="text-right">% negro</div>
+          </div>
+          {meses.map((m) => <FilaMes key={m.mes} m={m} elegido={m.mes === mes} href={aUrl(filtros, { mes: m.mes })} />)}
+        </div>
+      </Seccion>
+      {mes ? (
+        <Seccion titulo={`Quién cobró en ${rotuloMes(mes, true)}`} filo
+          aclaracion={`${detalle.length} ${detalle.length === 1 ? 'persona' : 'personas'} · lo que se le pagó, no lo que le costó a la empresa`}>
+          <div className="flex flex-col">
+            <div className={`hidden h-9 items-center gap-6 border-b border-line lg:grid lg:grid-cols-[minmax(0,1fr)_110px_110px_110px_120px] ${ENCABEZADO}`}>
+              <div>Persona</div><div className="text-right">Blanco</div><div className="text-right">Negro</div>
+              <div className="text-right">Total</div><div />
+            </div>
+            {detalle.length === 0
+              ? <p className="py-4 text-sm text-faint">ninguna línea de liquidación cerrada en el mes</p>
+              : detalle.map((p) => <FilaPersonaPagada key={p.personaId} p={p} max={maxPersona} />)}
+          </div>
+        </Seccion>
+      ) : null}
       <Seccion titulo="Lo que no se puede decir" filo>
         <div className="grid gap-6 pb-9 sm:grid-cols-2">
+          <Hueco que={avisos.sinRecibo.n ? `${avisos.sinRecibo.n} · ${millones(avisos.sinRecibo.importe)}` : '0'} falta="ninguno"
+            porque="pagos sin recibo cargado" destraba="contados enteros en negro" />
+          <Hueco que={avisos.reciboMayor.n ? `${avisos.reciboMayor.n} · ${millones(avisos.reciboMayor.importe)}` : '0'} falta="ninguno"
+            porque="el recibo superó lo cobrado" destraba="el negro se apoya en 0" />
+          <Hueco que={avisos.sinLinea.n ? `${avisos.sinLinea.n} · ${millones(avisos.sinLinea.importe)}` : '0'} falta="ninguno"
+            porque="recibos sin línea de quincena" destraba="suman blanco sin negro al lado" />
+          <Hueco que={`${avisos.mesesSinCerrar} · ${avisos.quincenasAbiertas} quincenas`}
+            porque="meses sin ninguna quincena cerrada" destraba="no valen 0: no publican cifra" />
           <Hueco que={l ? `${l.sinCategoria} de ${l.plantel}` : null} falta="sin registrar"
             porque="legajos sin categoría" destraba="sin categoría no hay jornal" />
-          <Hueco que={String(incompletos)} porque="meses sin liquidar del todo" destraba="no entran a la suba" />
+          <Hueco que="0" porque="cargas sociales incluidas" destraba="ninguna cifra las lleva adentro" />
         </div>
       </Seccion>
     </>
+  )
+}
+
+/** Una fila del cuadro mensual. El mes sin quincena cerrada dice «en curso» y no publica ni un cero. */
+function FilaMes({ m, elegido, href }: { m: MesPagado; elegido: boolean; href: string }) {
+  const pct = m.total ? m.negro! / m.total : null
+  return (
+    <Link href={href} scroll={false}
+      className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 border-b border-line py-2.5 hover:bg-surface-quiet lg:grid-cols-[110px_repeat(3,minmax(0,1fr))_90px] lg:gap-6 lg:py-3 ${elegido ? 'bg-surface-quiet' : ''}`}>
+      <div className="flex min-w-0 items-baseline gap-2">
+        <span className="text-[13px] font-medium text-ink">{rotuloMes(m.mes, true)}</span>
+        {m.estado === 'parcial' ? <span className="whitespace-nowrap text-[11px] text-warn">media quincena sin cerrar</span> : null}
+      </div>
+      <div className="text-right text-[13px] tabular-nums text-ink-soft"><Valor v={millones(m.blanco)} falta="en curso" /></div>
+      <div className="text-right text-[13px] tabular-nums text-ink-soft"><Valor v={millones(m.negro)} falta="" /></div>
+      <div className="text-right text-[13px] font-semibold tabular-nums text-ink"><Valor v={millones(m.total)} falta="" /></div>
+      <div className={`text-right text-[13px] tabular-nums ${(pct ?? 0) > 0.5 ? 'text-warn' : 'text-muted'}`}><Valor v={pctEntero(pct)} falta="" /></div>
+    </Link>
+  )
+}
+
+/** Una persona del mes elegido, con la barra de lo que cobró y la marca de lo que no se pudo afirmar. */
+function FilaPersonaPagada({ p, max }: { p: PersonaPagada; max: number }) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 border-b border-line py-2.5 lg:grid-cols-[minmax(0,1fr)_110px_110px_110px_120px] lg:gap-6 lg:py-3">
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="truncate text-[13px] font-medium text-ink">{p.nombre}</span>
+        {p.sinRecibo ? <span className="text-[11px] text-warn">sin recibo cargado: todo contado en negro</span> : null}
+        {p.sinLinea ? <span className="text-[11px] text-warn">sin línea de quincena: sólo se puede afirmar el recibo</span> : null}
+        {p.reciboMayor != null ? <span className="text-[11px] text-warn">el recibo supera lo cobrado en {millones(p.reciboMayor)}</span> : null}
+      </div>
+      <div className="text-right text-[13px] tabular-nums text-ink-soft">{millones(p.blanco)}</div>
+      <div className="text-right text-[13px] tabular-nums text-ink-soft">{millones(p.negro)}</div>
+      <div className="text-right text-[13px] font-semibold tabular-nums text-ink">{millones(p.total)}</div>
+      <div className="col-span-2 row-start-2 flex h-3 overflow-hidden rounded-[2px] lg:col-span-1 lg:row-auto">
+        <div className="h-full bg-serie-1" style={{ width: ancho(p.blanco, max) }} />
+        <div className="h-full bg-serie-2" style={{ width: ancho(p.negro, max) }} />
+      </div>
+    </div>
   )
 }
 
