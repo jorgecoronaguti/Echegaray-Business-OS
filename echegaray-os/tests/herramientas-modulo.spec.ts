@@ -93,9 +93,11 @@ test.describe('módulo Herramientas · inventario (22/09)', () => {
     await page.waitForTimeout(600)
     await page.mouse.wheel(0, 2500)
     await page.waitForTimeout(400)
-    const cab = page.getByTestId('cabecera-inventario')
-    const caja = await cab.boundingBox()
-    expect(caja && caja.y).toBeLessThan(120)
+    // Las dos barras fijas —funciones y clases— y la cabecera del inventario justo debajo de ellas.
+    const barra = (await page.getByTestId('barra-clases').boundingBox())!
+    expect(barra.y).toBeLessThan(120)
+    const caja = (await page.getByTestId('cabecera-inventario').boundingBox())!
+    expect(caja.y).toBeLessThan(barra.y + barra.height + 3)
     await page.screenshot({ path: `${CAPTURAS}_cabecera-fija.png`, fullPage: false })
     await page.mouse.wheel(0, -5000)
     await page.getByTestId('nuevo-activo').click()
@@ -174,7 +176,8 @@ test.describe('módulo Herramientas · verificación de uso', () => {
     await page.waitForLoadState('networkidle')
     const col = page.getByTestId('fila-rodado').first().getByTestId('verificacion')
     await expect(col).toHaveText(/^(hoy \d{2}:\d{2}|ayer|hace \d+ d|nunca|sin la migración)$/)
-    await expect(page.getByTestId('maquinas')).toBeVisible()
+    // Las maquinarias ya no son un bloque de esta pantalla: son otra clase, a un clic de la barra.
+    await expect(page.getByTestId('clase-equipo')).toBeVisible()
     await page.screenshot({ path: `${CAPTURAS}_verif_rodados.png`, fullPage: true })
     await page.goto('/herramientas')
     await expect(page.getByTestId('cifra-sin-verificar')).toContainText('Sin verificar hoy')

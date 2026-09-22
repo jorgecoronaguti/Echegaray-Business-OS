@@ -6,25 +6,18 @@
 // pantalla. La ficha abierta también va en la URL (`?activo=AMO-007`): es la que abre `/h/<código>`.
 
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { cantidadVisible, candidatos, categorias, cuentaPorEstado, filtrar, queryDe, sugerencias, totales, type Filtros, type FiltroClase, type FiltroEstado } from '../logica/inventario'
+import { useEffect, useMemo, useState } from 'react'
+import { cantidadVisible, candidatos, categorias, cuentaPorEstado, filtrar, queryDe, sugerencias, totales, type Filtros, type FiltroEstado } from '../logica/inventario'
 import { ETIQUETA_ESTADO_CORTA, MOTIVO_BAJA, TONO_ESTADO, quienLaMovio, rotuloLugares, rotuloUbicacion, textoVisto, vistoEn, rotuloRodado, type Parque } from '../logica/parque'
 import { editarActivoAction } from '../services/acciones'
 import type { Activo } from '../types'
 import { useHerramientas } from './Espacio'
 import { Ficha } from './Ficha'
-import { IcoEquipo, IcoRodado, IcoTaller } from './iconos'
 import { COLOR_TONO, MONO, SUPERFICIE, V, eyebrow, vacio, botonSecundario } from './estilo'
 import { diaMes } from './formato'
 
 const COLS = '28px minmax(0,1.5fr) 120px 150px minmax(0,1fr) 130px 70px'
 
-const CLASES: { v: FiltroClase; t: string; ico?: ReactNode }[] = [
-  { v: 'herramienta', t: 'Herramientas', ico: <IcoTaller tam={13} /> },
-  { v: 'equipo', t: 'Maquinarias', ico: <IcoEquipo tam={13} /> },
-  { v: 'rodado', t: 'Rodados', ico: <IcoRodado tam={13} /> },
-  { v: 'todo', t: 'Todo' },
-]
 const ESTADOS: { v: FiltroEstado; t: string; warn?: boolean }[] = [
   { v: 'todos', t: 'Todos' }, { v: 'operativo', t: 'Operativos' },
   { v: 'requiere_mantenimiento', t: 'Requieren mant.', warn: true }, { v: 'fuera_servicio', t: 'Fuera de servicio' },
@@ -51,7 +44,6 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
   const base = useMemo(() => candidatos(parque, { ...filtros, estado: 'todos' }), [parque, filtros])
   const cuentas = cuentaPorEstado(base)
   const lista = useMemo(() => filtrar(parque, filtros), [parque, filtros])
-  const porClase = (c: FiltroClase) => candidatos(parque, { ...filtros, clase: c, estado: 'todos' }).filter((a) => a.estado !== 'baja').length
   const cats = categorias(parque.activos)
   const abierto = activo ? parque.activos.find((x) => x.codigo === activo) ?? null : null
   const lugares = parque.ubicaciones.filter((u) => !u.archivada && u.tipo !== 'obra' && u.tipo !== 'rodado')
@@ -77,20 +69,13 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
   return (
     <div style={{ display: 'flex', alignItems: 'stretch', minHeight: 700 }}>
       <div style={{ flex: 1, minWidth: 0, padding: '0 24px 28px', display: 'flex', flexDirection: 'column', gap: 18 }} data-testid="inventario">
-        {/* LA CABECERA FIJA (dueño, 22/09): clases, estados, buscador, filtros, la barra de selección y los
+        {/* LA CABECERA FIJA (dueño, 22/09): estados, buscador, filtros, la barra de selección y los
             rótulos de columna quedan arriba mientras se recorre el listado. 44 del header de la app + 39 de
-            las solapas del módulo. Los rótulos van acá adentro para que no se separen de los filtros. */}
-        <div data-testid="cabecera-inventario" style={{ position: 'sticky', top: 83, zIndex: 10, background: '#FFFFFF', display: 'flex', flexDirection: 'column', gap: 18, paddingTop: 22 }}>
+            las solapas del módulo + 38 de la barra de clases (`BarraClases`, que vive arriba de la
+            bifurcación para no desaparecer en Maquinarias y Rodados). Los rótulos van acá adentro para
+            que no se separen de los filtros. */}
+        <div data-testid="cabecera-inventario" style={{ position: 'sticky', top: 121, zIndex: 10, background: '#FFFFFF', display: 'flex', flexDirection: 'column', gap: 18, paddingTop: 22 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 20, fontSize: '13px', flexWrap: 'wrap' }}>
-          {CLASES.map((c) => {
-            const on = filtros.clase === c.v
-            return (
-              <button key={c.v} type="button" onClick={() => ir({ clase: c.v })} data-testid={`clase-${c.v}`}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontWeight: on ? 500 : 400, color: on ? V.tinta : V.apagado, boxShadow: on ? `inset 0 -1.5px 0 ${V.tinta}` : 'none', paddingBottom: 3 }}>
-                {c.ico}{c.t} <span style={{ color: V.tenue, fontWeight: 400 }}>{porClase(c.v)}</span>
-              </button>
-            )
-          })}
           <div style={{ marginLeft: 'auto' }}>
             <button type="button" onClick={() => abrir({ tipo: 'mover', ids: sel.filter((id) => parque.activoPorId.get(id)?.estado !== 'baja'), origen: origenMirado })} data-testid="armar-envio"
               style={{ height: 28, fontSize: '12.5px', padding: '0 12px', borderRadius: 6, background: V.marca, color: V.grafito, fontWeight: 600, marginRight: 8 }}>
