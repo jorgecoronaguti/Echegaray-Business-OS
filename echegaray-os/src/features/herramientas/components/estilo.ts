@@ -9,7 +9,7 @@ import type { TonoEstado } from '../logica/parque'
 
 export { V }
 
-/** Azul de los iconos de lugar (Depósito, Control). `D01`. */
+/** Azul de los iconos de acción (buscar, decisiones de información). `D01`. */
 export const AZUL = '#175CD3'
 /** Superficie apagada del panel y la foto vacía. */
 export const SUPERFICIE = '#FAFAF8'

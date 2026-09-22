@@ -47,7 +47,7 @@ export default async function InicioHerramientasCampo({ searchParams }: { search
       titulo={<span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>Herramientas</span>}
       volver="/campo"
       derecha={<Link href="/campo/herramientas" prefetch={false} style={{ textDecoration: 'underline' }}>Cambiar lugar</Link>}
-      pie={<Link href={conLugar('/campo/herramientas/escanear', lugar.clave)} prefetch={false} style={primarioTelefono} data-testid="escanear"><IcoEscanear tam={17} />Escanear</Link>}
+      pie={<Link href={conLugar('/campo/herramientas/escanear', lugar.clave)} prefetch={false} className="min-h-[52px]" style={primarioTelefono} data-testid="escanear"><IcoEscanear tam={17} />Escanear</Link>}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         <h1 style={{ fontSize: '20px', fontWeight: 600, letterSpacing: '-.01em' }} data-testid="lugar-actual">{lugar.rotulo}</h1>

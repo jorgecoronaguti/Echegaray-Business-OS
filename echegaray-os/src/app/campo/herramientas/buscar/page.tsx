@@ -69,7 +69,7 @@ export default async function BuscarCampo({ searchParams }: { searchParams: Prom
           const baja = a.estado === 'baja'
           const destino = reportar && !baja ? `/campo/herramientas/a/${encodeURIComponent(a.codigo)}/reportar` : `/campo/herramientas/a/${encodeURIComponent(a.codigo)}`
           return (
-            <Link key={a.id} href={conLugar(destino, sp.en)} prefetch={false} data-testid="resultado"
+            <Link key={a.id} href={conLugar(destino, sp.en)} prefetch={false} data-testid="resultado" className="min-h-[56px]"
               style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '12px 0', borderBottom: i < res.length - 1 ? `1px solid ${V.linea}` : undefined, opacity: baja ? 0.6 : 1 }}>
               <span style={{ fontSize: '15px', fontWeight: 500 }}>{a.nombre}</span>
               <span style={{ fontSize: '12.5px', color: V.apagado }}>

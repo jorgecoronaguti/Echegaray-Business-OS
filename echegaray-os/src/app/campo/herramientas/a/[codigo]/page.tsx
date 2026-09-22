@@ -42,7 +42,7 @@ export default async function UnaHerramienta({ params, searchParams }: {
     <MarcoTelefono
       titulo={<span style={{ fontFamily: MONO }}>{a.codigo}</span>}
       volver={volver}
-      pie={baja ? undefined : <Link href={conLugar(`/campo/herramientas/mover?ids=${a.id}`, en)} prefetch={false} style={primarioTelefono} data-testid="mover">Mover</Link>}
+      pie={baja ? undefined : <Link href={conLugar(`/campo/herramientas/mover?ids=${a.id}`, en)} prefetch={false} className="min-h-[52px]" style={primarioTelefono} data-testid="mover">Mover</Link>}
     >
       <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }} data-testid="una-herramienta">
         <div style={{ width: 88, height: 70, border: `1px solid ${V.linea}`, borderRadius: 6, background: SUPERFICIE, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11.5px', color: V.tenue, overflow: 'hidden', flexShrink: 0 }}>
@@ -81,7 +81,7 @@ export default async function UnaHerramienta({ params, searchParams }: {
 
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {!baja && (
-          <Link href={conLugar(`/campo/herramientas/a/${encodeURIComponent(a.codigo)}/reportar`, en)} prefetch={false} data-testid="ir-reportar"
+          <Link href={conLugar(`/campo/herramientas/a/${encodeURIComponent(a.codigo)}/reportar`, en)} prefetch={false} className="min-h-[52px]" data-testid="ir-reportar"
             style={{ minHeight: 52, display: 'flex', alignItems: 'center', borderBottom: `1px solid ${V.linea}`, fontSize: '14.5px' }}>
             Reportar un problema <span style={{ marginLeft: 'auto', color: V.tenue }}>›</span>
           </Link>
