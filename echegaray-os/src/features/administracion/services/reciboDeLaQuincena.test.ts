@@ -55,21 +55,6 @@ test('el mensual no tiene horas en blanco ni en negro: se dice por qué y paga b
 
 // ═══ LO QUE ENCONTRÓ LA AUDITORÍA DEL 22/09/2026 ═══
 
-test('sin modelo blanco + negro el adelanto NO se descuenta dos veces: el total es el cobra', () => {
-  // Quincena cerrada: cobra 500.000, banco 200.000, adelanto 100.000 → enEfectivo = 200.000.
-  // Antes el papel decía Efectivo 200.000 · ya pagado 100.000 · resta 200.000, y total 400.000.
-  const cerrada = {
-    sueldo: null, cobra: 500000, porBanco: 200000, adelanto: 100000, yaTransferido: 0, enEfectivo: 200000,
-    pagadoBanco: 0, pagadoEfectivo: 0, pago: pagoDeLaLinea({ banco: null, negro: null }),
-  } as unknown as LineaConOverrides
-  const r = armarRecibo(cerrada, { blanco: false, negro: false, banco: true, efectivo: true, pagado: true }, fmt, false)
-  assert.deepEqual(r.medios.map((m) => [m.rotulo, m.importe]), [
-    // El banco sin saldo afirmable va «sin dato» (null), no una deuda inventada.
-    ['Depósito en banco', 200000], ['ya pagado', 0], ['resta', null],
-    ['Efectivo', 300000], ['ya pagado', 100000], ['resta', 200000],
-  ])
-  assert.equal(r.total, 500000, 'banco + efectivo = lo que cobra')
-})
 
 test('a un jornalero de una quincena cerrada NO se le dice «cobra por mes»', () => {
   const cerrada = { ...mensual, sueldo: null } as unknown as LineaConOverrides
@@ -98,22 +83,38 @@ test('el blanco dice que es bruto, y lo pagado de más en efectivo se escribe de
   ])
 })
 
-test('con lo transferido registrado, el papel no afirma una deuda ya pagada (auditoría de cierre 22/09/2026)', () => {
-  const cerrada = {
-    sueldo: null, cobra: 500000, porBanco: 200000, adelanto: 100000, yaTransferido: 0, enEfectivo: 200000,
-    pagadoBanco: 200000, pagadoEfectivo: 0, pago: pagoDeLaLinea({ banco: 200000, negro: 300000, pagadoBanco: 200000 }),
-  } as unknown as LineaConOverrides
-  const r = armarRecibo(cerrada, { blanco: false, negro: false, banco: true, efectivo: false, pagado: true }, fmt, false)
-  assert.deepEqual(r.medios.map((m) => [m.rotulo, m.importe]), [
-    ['Depósito en banco', 200000], ['ya pagado', 200000], ['resta', 0],
-  ])
+
+
+// ═══ LA RAMA SIN MODELO BLANCO + NEGRO (mensual sellado, Oficina, finales, quincena cerrada) ═══
+//
+// Dos vueltas de auditoría el 22/09/2026: primero el adelanto se descontaba dos veces; después lo YA
+// TRANSFERIDO se contaba de los dos lados y el papel declaraba $ 50.000 menos de deuda. El papel imprime la
+// misma cadena que el panel: cobra − adelanto − ya transferido = banco + efectivo.
+const cerrada = (extra = {}) => ({
+  sueldo: null, cobra: 500000, porBanco: 200000, adelanto: 100000, yaTransferido: 50000, enEfectivo: 150000,
+  pagadoBanco: 0, pagadoEfectivo: 0, pago: pagoDeLaLinea({ banco: null, negro: null }), ...extra,
+} as unknown as LineaConOverrides)
+
+test('el papel imprime lo que se paga hoy: banco + efectivo, sin contar dos veces el adelanto ni lo transferido', () => {
+  const r = armarRecibo(cerrada(), { blanco: false, negro: false, banco: true, efectivo: true, pagado: false }, fmt, false)
+  assert.deepEqual(r.medios.map((m) => [m.rotulo, m.importe]), [['Depósito en banco', 200000], ['Efectivo', 150000]])
+  assert.equal(r.total, 350000, 'cobra 500.000 − adelanto 100.000 − transferido 50.000')
 })
 
-test('si el modelo no puede afirmar el saldo del banco, el papel dice «sin dato» y no una deuda', () => {
-  const sinAfirmar = {
-    sueldo: null, cobra: 500000, porBanco: 200000, adelanto: 0, yaTransferido: 0, enEfectivo: 300000,
-    pagadoBanco: 0, pagadoEfectivo: 0, pago: pagoDeLaLinea({ banco: null, negro: null }),
-  } as unknown as LineaConOverrides
-  const r = armarRecibo(sinAfirmar, { blanco: false, negro: false, banco: true, efectivo: false, pagado: true }, fmt, false)
-  assert.equal(r.medios.find((m) => m.rotulo === 'resta')?.importe, null)
+test('con «lo ya pagado» tildado, lo cobrado antes se dice UNA vez y arriba', () => {
+  const r = armarRecibo(cerrada(), { blanco: false, negro: false, banco: true, efectivo: true, pagado: true }, fmt, false)
+  assert.deepEqual(r.medios.map((m) => [m.rotulo, m.importe]), [
+    ['Cobra la quincena', 500000], ['menos el adelanto', -100000], ['menos lo ya transferido', -50000],
+    ['Depósito en banco', 200000], ['Efectivo', 150000],
+  ])
+  assert.equal(r.total, 350000)
+  const pagado = r.medios.filter((m) => m.rotulo === 'ya pagado')
+  assert.equal(pagado.length, 0, 'sin un «ya pagado» por medio que vuelva a restar lo mismo')
+})
+
+test('sin adelantos ni transferencias, el papel no agrega renglones que no dicen nada', () => {
+  const r = armarRecibo(cerrada({ adelanto: 0, yaTransferido: 0, enEfectivo: 300000 }),
+    { blanco: false, negro: false, banco: true, efectivo: true, pagado: true }, fmt, false)
+  assert.deepEqual(r.medios.map((m) => m.rotulo), ['Depósito en banco', 'Efectivo'])
+  assert.equal(r.total, 500000)
 })

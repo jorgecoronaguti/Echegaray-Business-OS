@@ -84,7 +84,7 @@ function medios(l: LineaConOverrides, mensual: boolean) {
     return {
       banco: { total: p.banco, pagado: p.pagadoBanco, resta: p.saldoBanco },
       efectivo: { total: p.negro, pagado: p.pagadoEfectivo, resta: p.saldoEfectivo },
-      excedente: p.excedente, absorbido: p.absorbido,
+      excedente: p.excedente, absorbido: p.absorbido, previos: [],
     }
   }
   if (mensual) {
@@ -92,19 +92,24 @@ function medios(l: LineaConOverrides, mensual: boolean) {
     return {
       banco: { total: p.banco, pagado: p.pagadoBanco, resta: p.saldoBanco },
       efectivo: { total: p.negro, pagado: p.pagadoEfectivo, resta: p.saldoEfectivo },
-      excedente: p.excedente, absorbido: p.absorbido,
+      excedente: p.excedente, absorbido: p.absorbido, previos: [],
     }
   }
-  const efectivo = l.cobra == null ? null : Math.round((l.cobra - l.porBanco) * 100) / 100
+  // LA CADENA DEL PANEL, TAL CUAL (`CadenaSinModelo`): cobra total − adelanto − ya transferido = banco +
+  // efectivo. Acá estuvo el ida y vuelta de la auditoría del 22/09/2026: primero `enEfectivo` como total del
+  // efectivo descontaba el adelanto dos veces; después `cobra − porBanco` con «ya pagado = adelanto + ya
+  // transferido» contaba lo TRANSFERIDO de los dos lados y declaraba $ 50.000 menos de deuda. Lo que se paga
+  // hoy es `porBanco` y `enEfectivo`; lo ya cobrado se dice arriba, entero, una sola vez.
   return {
-    // LO PAGADO POR BANCO ES LO PAGADO, NO CERO (auditoría de cierre, 22/09/2026): con `pagado_banco`
-    // registrado, el papel afirmaba «ya pagado 0 · resta 200.000» sobre plata ya girada, y eso es lo que la
-    // persona firma. `resta` sale del mismo saldo que el panel; si el modelo no puede afirmarlo, va `null` y
-    // el papel dice «sin dato» en vez de inventar una deuda.
-    banco: { total: l.porBanco, pagado: l.pagadoBanco ?? 0, resta: l.pago?.saldoBanco ?? null },
-    // El efectivo de la cadena de siempre ya viene con el adelanto y lo transferido descontados.
-    efectivo: { total: efectivo, pagado: Math.round(((l.adelanto ?? 0) + (l.yaTransferido ?? 0)) * 100) / 100, resta: l.enEfectivo },
-    excedente: l.pago?.excedente ?? null, absorbido: l.pago?.absorbido ?? null,
+    banco: { total: l.porBanco, pagado: null, resta: null },
+    efectivo: { total: l.enEfectivo, pagado: null, resta: null },
+    excedente: l.pago?.excedente ?? null,
+    absorbido: l.pago?.absorbido ?? null,
+    previos: [
+      { rotulo: 'Cobra la quincena', importe: l.cobra },
+      ...((l.adelanto ?? 0) > 0 ? [{ rotulo: 'menos el adelanto', importe: -(l.adelanto ?? 0), sub: true }] : []),
+      ...((l.yaTransferido ?? 0) > 0 ? [{ rotulo: 'menos lo ya transferido', importe: -(l.yaTransferido ?? 0), sub: true }] : []),
+    ],
   }
 }
 
@@ -136,13 +141,15 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n:
 
   const m = medios(l, mensual)
   const renglones: RenglonDelRecibo[] = []
+  // Lo ya cobrado de esta quincena, cuando la línea no tiene modelo blanco + negro: va entero y arriba.
+  if (e.pagado && m.previos.length > 1) renglones.push(...m.previos)
   const elegidos: (number | null)[] = []
   for (const [clave, rotulo] of [['banco', 'Depósito en banco'], ['efectivo', 'Efectivo']] as const) {
     if (!e[clave]) continue
     const x = m[clave]
     renglones.push({ rotulo, importe: x.total })
     elegidos.push(x.total)
-    if (e.pagado) {
+    if (e.pagado && x.pagado != null) {
       renglones.push({ rotulo: 'ya pagado', importe: x.pagado, sub: true })
       const absorbido = absorbidoPor(m.absorbido, clave)
       if (absorbido) renglones.push(absorbido)
