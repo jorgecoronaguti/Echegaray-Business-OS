@@ -40,12 +40,20 @@ export const FILAS_AGING = Object.freeze(
  */
 export const SUBTITULO = 'Qué se le debe a cada proveedor y cuándo sale · Compras (saldo, vencimiento y medio de pago) · al día'
 
-/** Medios de pago. El criterio es UNO: el `Tipo pago` de Compras, sin reinterpretarlo. */
+/**
+ * Medios de pago. El criterio es UNO: el `Tipo pago` de Compras, sin reinterpretarlo.
+ *
+ * «A RENDIR» TIENE FILA PROPIA (22/09/2026). Es un medio más en Compras desde Efectivo a rendir: el
+ * ticket que la persona paga con el fondo que se le entregó. Sin fila, un «A rendir» con saldo caía en
+ * el aging y en ningún medio, y la cuadratura del pie se ponía roja por un medio declarado. No se funde
+ * con «Efectivo»: ese billete sale del cajón; éste ya salió con la entrega.
+ */
 export const MEDIOS = Object.freeze([
   { rotulo: 'Cheque y echeq', criterios: ['Cheque', 'Echeq'] },
   { rotulo: 'Tarjeta de crédito', criterios: ['Tarjeta*'] },
   { rotulo: 'Transferencia', criterios: ['Transferencia'] },
   { rotulo: 'Efectivo', criterios: ['Efectivo'] },
+  { rotulo: 'Efectivo a rendir', criterios: ['A rendir'] },
 ])
 
 /**

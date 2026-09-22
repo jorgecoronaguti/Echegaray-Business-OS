@@ -87,8 +87,12 @@ test('el control NO se valida contra la misma información que produce', () => {
   assert.ok(medio.includes('$P$') && !medio.includes('$AN$'), 'el medio de pago agrupa por instrumento')
 })
 
-test('los cuatro medios de pago están y ninguno se solapa con otro', () => {
-  assert.equal(MEDIOS.length, 4)
+// CAMBIO DE CONTRATO (22/09/2026): eran cuatro; «A rendir» es un Tipo pago de Compras desde Efectivo
+// a rendir y sin fila propia su saldo descuadraba el pie. Tiene que entrar por encima del TOTAL del aging.
+test('los cinco medios de pago están, ninguno se solapa y el TOTAL de medios no baja del aging', () => {
+  assert.equal(MEDIOS.length, 5)
+  assert.ok(MEDIOS.some((m) => m.criterios.includes('A rendir')))
+  assert.ok(F.totalMedios <= F.totalAging, 'el bloque de medios no puede pisar los controles del pie')
   const criterios = MEDIOS.flatMap((m) => m.criterios)
   assert.equal(new Set(criterios).size, criterios.length, 'un criterio repetido contaría dos veces')
 })
