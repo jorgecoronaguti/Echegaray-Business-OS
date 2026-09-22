@@ -97,9 +97,14 @@ function medios(l: LineaConOverrides, mensual: boolean) {
   }
   const efectivo = l.cobra == null ? null : Math.round((l.cobra - l.porBanco) * 100) / 100
   return {
-    banco: { total: l.porBanco, pagado: 0, resta: l.porBanco },
+    // LO PAGADO POR BANCO ES LO PAGADO, NO CERO (auditoría de cierre, 22/09/2026): con `pagado_banco`
+    // registrado, el papel afirmaba «ya pagado 0 · resta 200.000» sobre plata ya girada, y eso es lo que la
+    // persona firma. `resta` sale del mismo saldo que el panel; si el modelo no puede afirmarlo, va `null` y
+    // el papel dice «sin dato» en vez de inventar una deuda.
+    banco: { total: l.porBanco, pagado: l.pagadoBanco ?? 0, resta: l.pago?.saldoBanco ?? null },
+    // El efectivo de la cadena de siempre ya viene con el adelanto y lo transferido descontados.
     efectivo: { total: efectivo, pagado: Math.round(((l.adelanto ?? 0) + (l.yaTransferido ?? 0)) * 100) / 100, resta: l.enEfectivo },
-    excedente: null, absorbido: null,
+    excedente: l.pago?.excedente ?? null, absorbido: l.pago?.absorbido ?? null,
   }
 }
 

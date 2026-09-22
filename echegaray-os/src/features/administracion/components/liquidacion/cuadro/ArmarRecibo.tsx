@@ -40,10 +40,11 @@ const OPCIONES: { clave: ConceptoDelRecibo; rotulo: string }[] = [
  * repetido (auditoría 22/09/2026). Una ventana con el recibo solo imprime una hoja, y su título es el nombre
  * que el diálogo propone al guardar como PDF.
  */
-function imprimir(nodo: HTMLElement | null, titulo: string): void {
-  if (!nodo) return
+function imprimir(nodo: HTMLElement | null, titulo: string): boolean {
+  if (!nodo) return false
   const v = window.open('', '_blank', 'width=900,height=1000')
-  if (!v) return
+  // VENTANA BLOQUEADA: el navegador puede negarla y antes no pasaba NADA, sin decir por qué.
+  if (!v) return false
   v.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${titulo}</title>`
     + '<style>@page { size: A4; margin: 16mm } '
     + "body { margin: 0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1F1F1E }"
@@ -51,6 +52,7 @@ function imprimir(nodo: HTMLElement | null, titulo: string): void {
   v.document.close()
   v.focus()
   v.print()
+  return true
 }
 
 export function ArmarRecibo({ fila, quincena }: {
@@ -64,6 +66,7 @@ export function ArmarRecibo({ fila, quincena }: {
   const [eleccion, setEleccion] = useState<EleccionDelRecibo>(() => eleccionInicial(fila.linea, mensual))
   const recibo = armarRecibo(fila.linea, eleccion, pesos, mensual)
   const hoja = useRef<HTMLDivElement>(null)
+  const [bloqueada, setBloqueada] = useState(false)
   const nada = recibo.horas.length === 0 && recibo.medios.length === 0
 
   return (
@@ -137,15 +140,20 @@ export function ArmarRecibo({ fila, quincena }: {
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button type="button" disabled={nada} onClick={() => imprimir(hoja.current, `Recibo ${fila.nombre} ${fecha(quincena.desde)} al ${fecha(quincena.hasta)}`)} data-testid="recibo-imprimir"
+        <button type="button" disabled={nada} onClick={() => setBloqueada(!imprimir(hoja.current, `Recibo ${fila.nombre} ${fecha(quincena.desde)} al ${fecha(quincena.hasta)}`))} data-testid="recibo-imprimir"
           style={{ padding: '9px 16px', lineHeight: '20px', borderRadius: 6, border: 0, background: V.grafito, color: '#FFFFFF', fontSize: '13px', fontWeight: 600, cursor: nada ? 'default' : 'pointer', opacity: nada ? 0.5 : 1 }}>
           Imprimir
         </button>
-        <button type="button" disabled={nada} onClick={() => imprimir(hoja.current, `Recibo ${fila.nombre} ${fecha(quincena.desde)} al ${fecha(quincena.hasta)}`)} data-testid="recibo-pdf"
+        <button type="button" disabled={nada} onClick={() => setBloqueada(!imprimir(hoja.current, `Recibo ${fila.nombre} ${fecha(quincena.desde)} al ${fecha(quincena.hasta)}`))} data-testid="recibo-pdf"
           style={{ padding: '9px 16px', lineHeight: '20px', borderRadius: 6, border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta, fontSize: '13px', cursor: nada ? 'default' : 'pointer', opacity: nada ? 0.5 : 1 }}>
           Guardar PDF
         </button>
         <span style={{ fontSize: '11.5px', color: V.apagado }}>Para el PDF, elegí «Guardar como PDF» en el diálogo.</span>
+        {bloqueada && (
+          <div style={{ width: '100%', fontSize: '12.5px', color: V.warn, lineHeight: 1.5 }} data-testid="recibo-bloqueada">
+            El navegador bloqueó la ventana de impresión. Permití las ventanas emergentes de app.ecsas.com.ar y probá de nuevo.
+          </div>
+        )}
       </div>
     </section>
   )

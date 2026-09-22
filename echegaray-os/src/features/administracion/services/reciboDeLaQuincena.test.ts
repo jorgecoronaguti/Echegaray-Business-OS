@@ -64,7 +64,8 @@ test('sin modelo blanco + negro el adelanto NO se descuenta dos veces: el total 
   } as unknown as LineaConOverrides
   const r = armarRecibo(cerrada, { blanco: false, negro: false, banco: true, efectivo: true, pagado: true }, fmt, false)
   assert.deepEqual(r.medios.map((m) => [m.rotulo, m.importe]), [
-    ['Depósito en banco', 200000], ['ya pagado', 0], ['resta', 200000],
+    // El banco sin saldo afirmable va «sin dato» (null), no una deuda inventada.
+    ['Depósito en banco', 200000], ['ya pagado', 0], ['resta', null],
     ['Efectivo', 300000], ['ya pagado', 100000], ['resta', 200000],
   ])
   assert.equal(r.total, 500000, 'banco + efectivo = lo que cobra')
@@ -95,4 +96,24 @@ test('el blanco dice que es bruto, y lo pagado de más en efectivo se escribe de
   assert.deepEqual(r.medios.map((m) => [m.rotulo, m.importe]), [
     ['Depósito en banco', 230240.12], ['ya pagado', 0], ['menos lo pagado de más en efectivo', -9738], ['resta', 220502.12],
   ])
+})
+
+test('con lo transferido registrado, el papel no afirma una deuda ya pagada (auditoría de cierre 22/09/2026)', () => {
+  const cerrada = {
+    sueldo: null, cobra: 500000, porBanco: 200000, adelanto: 100000, yaTransferido: 0, enEfectivo: 200000,
+    pagadoBanco: 200000, pagadoEfectivo: 0, pago: pagoDeLaLinea({ banco: 200000, negro: 300000, pagadoBanco: 200000 }),
+  } as unknown as LineaConOverrides
+  const r = armarRecibo(cerrada, { blanco: false, negro: false, banco: true, efectivo: false, pagado: true }, fmt, false)
+  assert.deepEqual(r.medios.map((m) => [m.rotulo, m.importe]), [
+    ['Depósito en banco', 200000], ['ya pagado', 200000], ['resta', 0],
+  ])
+})
+
+test('si el modelo no puede afirmar el saldo del banco, el papel dice «sin dato» y no una deuda', () => {
+  const sinAfirmar = {
+    sueldo: null, cobra: 500000, porBanco: 200000, adelanto: 0, yaTransferido: 0, enEfectivo: 300000,
+    pagadoBanco: 0, pagadoEfectivo: 0, pago: pagoDeLaLinea({ banco: null, negro: null }),
+  } as unknown as LineaConOverrides
+  const r = armarRecibo(sinAfirmar, { blanco: false, negro: false, banco: true, efectivo: false, pagado: true }, fmt, false)
+  assert.equal(r.medios.find((m) => m.rotulo === 'resta')?.importe, null)
 })
