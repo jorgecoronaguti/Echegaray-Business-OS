@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as EventoPuntero } from 'react'
 import { useRouter } from 'next/navigation'
 import { C, R } from '@/shared/components/movil/tokens'
-import { firmaValida, svgDeFirma, type Trazo } from '../firma'
+import { firmaValida, svgDeFirma, type Trazo } from '@/shared/firma/firma'
 import { firmarConformidadAction } from '../acciones'
 import { Contorno, Primario } from './Piezas'
 

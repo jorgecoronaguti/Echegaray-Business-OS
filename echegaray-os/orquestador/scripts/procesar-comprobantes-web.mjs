@@ -66,6 +66,13 @@ async function main() {
     else if (r.lotes.length || r.reciclados) {
       process.stdout.write(`✔ ${r.lotes.length} lote(s) procesado(s)${r.reciclados ? `, ${r.reciclados} fila(s) recicladas` : ''}\n`)
     }
+    // EFECTIVO A RENDIR (22/09/2026): el aviso de cada entrega nueva, con el enlace para firmar. Misma
+    // cadencia que la cola; una falla del aviso no frena los comprobantes.
+    try {
+      const { avisarEntregas } = await import('./efectivo-avisos.mjs')
+      const a = await avisarEntregas(port, { log })
+      if (a.avisadas) process.stdout.write(`✔ ${a.avisadas} aviso(s) de entrega de efectivo\n`)
+    } catch (e) { log.warn('efectivo: los avisos fallaron', { error: String(e?.message ?? e) }) }
   } finally {
     await db.closePool?.().catch?.(() => {})
   }

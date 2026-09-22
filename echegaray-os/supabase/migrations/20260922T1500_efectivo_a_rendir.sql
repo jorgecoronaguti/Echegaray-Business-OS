@@ -46,6 +46,9 @@ create table if not exists public.efectivo_entrega (
   anulada_en       timestamptz,
   anulada_por      uuid,
   anulada_motivo   text,
+  -- Cuándo se le avisó a la persona por el canal de Rendiciones (lo pone el proceso de la VM).
+  avisada_en       timestamptz,
+  aviso_post_id    text,
   -- Toda entrega nace con obra o con «estructura». No hay tercera opción (principio del diseño).
   constraint efectivo_entrega_destino check ((obra_id is not null) <> estructura),
   constraint efectivo_entrega_anulada check ((anulada_en is null) = (anulada_motivo is null))

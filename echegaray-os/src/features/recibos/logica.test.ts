@@ -16,7 +16,7 @@ import {
   motivoParaNo, nombreDelArchivo, periodoCorto, periodoDeCarpeta, periodoLargo, resumenDeQuincena, rutaDelPapel,
   type FotoDeRecibo, type LineaActual,
 } from './logica.ts'
-import { firmaValida, svgDeFirma } from './firma.ts'
+import { firmaValida, svgDeFirma } from '../../shared/firma/firma.ts'
 import { aplicarOverrides, sinOverrides } from '../administracion/services/liquidacionOverrides.ts'
 import { liquidarLinea, type EntradaDeLinea } from '../administracion/services/liquidacionQuincena.ts'
 

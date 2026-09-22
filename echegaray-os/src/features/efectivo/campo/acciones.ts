@@ -13,7 +13,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { faltaMigracion } from '../../herramientas/logica/falta-migracion'
-import { esTrazoGuardable } from './firma'
+import { esTrazoGuardable } from '@/shared/firma/firma'
 import { MIGRACION_EFECTIVO, esRutaDeRendicion } from './logica'
 
 export type Resultado<T = null> = { ok: true; dato: T } | { ok: false; error: string }

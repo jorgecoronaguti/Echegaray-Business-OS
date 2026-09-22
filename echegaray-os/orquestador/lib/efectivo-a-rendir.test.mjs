@@ -94,3 +94,22 @@ test('CAJA no cuenta dos veces el ticket rendido: «Ya salió» del día y lo pa
   // Día de la entrega: sale de verdad.
   assert.equal(repartirSalidas([{ signo: -1, importe: 800000, estado: 'REAL', rubro: RUBRO, instrumento: 'efectivo' }]).yaSalio, 800000)
 })
+
+test('el aviso de una entrega: menciona, lleva el enlace a la firma y NO publica el monto', async () => {
+  const { textoDelAviso, avisarEntregas } = await import('../scripts/efectivo-avisos.mjs')
+  const t = textoDelAviso({ username: 'rsosa', codigo: 'ER-0001', destino: 'Galpón 8', entregaId: 'abc' })
+  assert.match(t, /^@rsosa /)
+  assert.match(t, /\/mi-informacion\/efectivo\/firmar\/abc/)
+  assert.doesNotMatch(t, /\$|\d{3}\.\d{3}/)
+  // Sin canal de Rendiciones no se inventa otro lugar ni se marca como avisada.
+  const q = []
+  const port = { async query(sql) { q.push(sql); return { rows: /efectivo_entrega e/.test(sql) ? [{ id: 'abc', codigo: 'ER-0001', destino: 'X', username: 'r' }] : [] } } }
+  const r = await avisarEntregas(port, { log: { warn() {} }, publicar: async () => 'post1' })
+  assert.equal(r.sinCanal, 1)
+  assert.ok(!q.some((s) => /update public\.efectivo_entrega/.test(s)))
+  // Con canal: publica y marca UNA vez, sólo si el post se pudo releer.
+  const q2 = []
+  const port2 = { async query(sql) { q2.push(sql); if (/efectivo_entrega e/.test(sql)) return { rows: [{ id: 'abc', codigo: 'ER-0001', destino: 'X', username: 'r' }] }; if (/canales_area/.test(sql)) return { rows: [{ channel_id: 'ch' }] }; return { rows: [] } } }
+  assert.equal((await avisarEntregas(port2, { log: {}, publicar: async () => null })).avisadas, 0, 'post no releído: no cuenta')
+  assert.equal((await avisarEntregas(port2, { log: {}, publicar: async () => 'post1' })).avisadas, 1)
+})
