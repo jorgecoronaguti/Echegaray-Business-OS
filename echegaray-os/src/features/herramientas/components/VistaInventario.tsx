@@ -125,6 +125,10 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
               <option value="">Ubicación: todas</option>
               <option value="sin">Sin ubicación cargada</option>
               <option value="obras">Cualquier obra</option>
+              <option value="tipo:taller">Taller</option>
+              <option value="tipo:servicio_tecnico">Servicio técnico</option>
+              <option value="tipo:rodado">Arriba de un rodado</option>
+              <option value="tipo:tercero">Terceros</option>
               {lugares.map((u) => <option key={u.id} value={u.id}>{rotuloUbicacion(parque, u.id)}</option>)}
               {obrasConAlgo.map((u) => <option key={u.id} value={u.id}>{rotuloUbicacion(parque, u.id)}</option>)}
               {rodados.map((r) => { const u = parque.ubicaciones.find((x) => x.activo_id === r.id); return u ? <option key={u.id} value={u.id}>{rotuloRodado(r)}</option> : null })}
@@ -169,7 +173,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
           </div>
         )}
 
-          <TotalesInventario t={totales(parque, lista)} />
+          <TotalesInventario t={totales(parque, lista)} activo={filtros.ubicacion} onFiltrar={(u) => ir({ ubicacion: filtros.ubicacion === u ? null : u })} />
           <div role="table" aria-label="Inventario (rótulos)">
           <div role="row" style={{ ...eyebrow, display: 'grid', gridTemplateColumns: COLS, gap: 16, height: 36, alignItems: 'center', borderBottom: `1px solid ${V.linea}` }}>
             <div>
@@ -198,12 +202,13 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
       </div>
 
       <div style={{ width: 2, background: V.linea }} />
-      {!conPanel && (
-      <div style={{ width: 430, flexShrink: 0, padding: '22px 24px 28px', background: '#FFFFFF', position: 'sticky', top: 83, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 83px)', overflowY: 'auto' }}>
+      {/* La ficha sólo ocupa lugar cuando hay una abierta, y se cierra con la × (dueño, 22/09). */}
+      {!conPanel && activo && (
+      <div style={{ width: 430, flexShrink: 0, padding: '22px 24px 28px', background: '#FFFFFF', position: 'sticky', top: 83, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 83px)', overflowY: 'auto', borderLeft: `1px solid ${V.linea}` }}>
+        <button type="button" onClick={() => ir({}, null)} aria-label="Cerrar la ficha" data-testid="cerrar-ficha"
+          style={{ position: 'absolute', top: 14, right: 16, width: 28, height: 28, borderRadius: 6, fontSize: '18px', color: V.tenue, lineHeight: 1 }}>×</button>
         {abierto ? <Ficha id={abierto.id} /> : (
-          <div style={{ fontSize: '13px', color: V.tenue, paddingTop: 4 }} data-testid="ficha-vacia">
-            {activo ? `${activo} no está en el inventario.` : 'Elegí un activo de la lista para ver su ficha.'}
-          </div>
+          <div style={{ fontSize: '13px', color: V.tenue, paddingTop: 4 }} data-testid="ficha-vacia">{activo} no está en el inventario.</div>
         )}
       </div>
       )}
@@ -222,14 +227,23 @@ const TIPO_TOTAL: Record<string, string> = {
 }
 
 /** Los totales de lo que se ve, arriba del listado: cambian con cada filtro y con cada letra del buscador. */
-function TotalesInventario({ t }: { t: ReturnType<typeof totales> }) {
+function TotalesInventario({ t, activo, onFiltrar }: { t: ReturnType<typeof totales>; activo: string | null; onFiltrar: (u: string) => void }) {
   return (
     <div data-testid="totales-inventario" style={{ display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap', fontSize: '12.5px', color: V.apagado, marginBottom: -8 }}>
       <span><b style={{ fontSize: '14px', color: V.tinta, fontWeight: 600 }}>{t.activos}</b> {t.activos === 1 ? 'activo' : 'activos'}</span>
       {t.unidades !== t.activos && <span><b style={{ color: V.tinta, fontWeight: 600 }}>{t.unidades}</b> unidades</span>}
-      {t.porTipo.map((x) => (
-        <span key={x.tipo} style={{ color: x.tipo === 'sin' ? V.warn : V.apagado }}>{TIPO_TOTAL[x.tipo]} <b style={{ color: x.tipo === 'sin' ? V.warn : V.tintaSuave, fontWeight: 500 }}>{x.activos}</b></span>
-      ))}
+      {/* Cada total es un filtro (dueño, 22/09: «le hago click a eso y no me lleva a ninguna herram»).
+          Un segundo clic lo saca. */}
+      {t.porTipo.map((x) => {
+        const u = x.tipo === 'sin' ? 'sin' : x.tipo === 'obra' ? 'obras' : `tipo:${x.tipo}`
+        const on = activo === u
+        return (
+          <button key={x.tipo} type="button" onClick={() => onFiltrar(u)} data-testid={`total-${x.tipo}`} title={on ? 'Quitar el filtro' : `Ver sólo ${TIPO_TOTAL[x.tipo].toLowerCase()}`}
+            style={{ color: x.tipo === 'sin' ? V.warn : V.apagado, textDecoration: on ? 'none' : 'underline', textDecorationColor: V.linea, textUnderlineOffset: 3, fontWeight: on ? 600 : 400, background: on ? V.hover : 'transparent', borderRadius: 4, padding: on ? '1px 6px' : 0 }}>
+            {TIPO_TOTAL[x.tipo]} <b style={{ color: x.tipo === 'sin' ? V.warn : V.tintaSuave, fontWeight: 500 }}>{x.activos}</b>
+          </button>
+        )
+      })}
     </div>
   )
 }

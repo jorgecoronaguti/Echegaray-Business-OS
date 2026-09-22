@@ -47,6 +47,8 @@ function pasaUbicacion(p: Parque, a: Activo, u: string | null): boolean {
   if (!u) return true
   if (u === 'sin') return !a.ubicacion_id
   if (u === 'obras') return !!a.ubicacion_id && p.ubicacionPorId.get(a.ubicacion_id)?.tipo === 'obra'
+  // `tipo:<tipo>`: cualquier lugar de ese tipo (lo usan los totales clicables: «Servicio técnico 1»).
+  if (u.startsWith('tipo:')) return !!a.ubicacion_id && p.ubicacionPorId.get(a.ubicacion_id)?.tipo === u.slice(5)
   return a.ubicacion_id === u
 }
 

@@ -43,6 +43,7 @@ test('filtros de clase, ubicación, categoría y especiales', () => {
   assert.deepEqual(filtrar(p, { ...f, clase: 'rodado' }).map((a) => a.id), ['r'])
   assert.deepEqual(filtrar(p, { ...f, ubicacion: 'sin' }).map((a) => a.id), ['4'])
   assert.deepEqual(filtrar(p, { ...f, ubicacion: 'obras' }).map((a) => a.id), ['1'])
+  assert.deepEqual(filtrar(p, { ...f, ubicacion: 'tipo:taller' }).map((a) => a.id), ['2'], 'los totales filtran por tipo de lugar')
   assert.deepEqual(filtrar(p, { ...f, categoria: 'sin' }).map((a) => a.id), ['4'])
   assert.deepEqual(filtrar(p, { ...f, especial: 'asumido' }).map((a) => a.id), ['2'])
   assert.deepEqual(filtrar(p, { ...f, especial: 'repetidos' }).map((a) => a.id), [])
