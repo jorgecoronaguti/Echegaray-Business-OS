@@ -93,6 +93,8 @@ import { ValorHoraDelLegajo } from '@/features/administracion/components/ValorHo
 import { getRetribucionDelLegajo } from '@/features/administracion/services/retribucionDelLegajoService'
 import { RetribucionDelLegajo } from '@/features/administracion/components/RetribucionDelLegajo'
 import { getHaberesDelBanco } from '@/features/administracion/services/haberesDelBancoService'
+import { getRecibosEmitidos } from '@/features/administracion/services/recibosEmitidosService'
+import { RecibosEmitidos } from '@/features/administracion/components/RecibosEmitidos'
 import { HaberesDelBanco } from '@/features/administracion/components/HaberesDelBanco'
 import { conLiquidacionEstimada } from '@/features/administracion/services/haberesDelBanco'
 import { puedeAnotar, veAnotaciones } from '@/features/administracion/services/anotacionesPersona'
@@ -203,14 +205,18 @@ export default async function FichaPersonaPage({
   // paralelo: no depende del plantel de ninguna quincena, así que un inactivo sin línea de liquidación lo ve igual.
   // Las dos lecturas en paralelo; el bloque del banco recibe después qué quincenas tienen el neto ESTIMADO
   // (lo sabe la Retribución) para rotular «est.» la cifra de la liquidación igual que la tabla de arriba.
-  const [retribucion, haberesBancoCrudo] = vista === 'retribucion' && liquida
+  // LOS RECIBOS EMITIDOS van con la Retribución y no con Documentos: dicen cuánta plata cobró la persona, y
+  // Documentos la abre el jefe de obra. Misma puerta que el módulo donde se emiten (`liquidaSueldos`); la
+  // cerradura sigue siendo la RLS de `recibo_liquidacion`.
+  const [retribucion, haberesBancoCrudo, recibosEmitidos] = vista === 'retribucion' && liquida
     ? await Promise.all([
       getRetribucionDelLegajo(supabase, {
         personaId: id, cuil: persona.cuil ?? null, puedeVer: true, anio: Number(hoy.slice(0, 4)), hoy,
       }),
       getHaberesDelBanco(supabase, { personaId: id, puedeVer: true, anio: Number(hoy.slice(0, 4)) }),
+      getRecibosEmitidos(supabase, { personaId: id, puedeVer: true }),
     ])
-    : [null, null]
+    : [null, null, null]
   const haberesBanco = haberesBancoCrudo && retribucion
     ? conLiquidacionEstimada(haberesBancoCrudo, retribucion.filas.filter((f) => f.bancoEstimado).map((f) => f.desde))
     : haberesBancoCrudo
@@ -610,6 +616,7 @@ export default async function FichaPersonaPage({
           {vista === 'retribucion' && haberesBanco && (
             <div className="mt-8"><HaberesDelBanco h={haberesBanco} /></div>
           )}
+          {vista === 'retribucion' && recibosEmitidos && <RecibosEmitidos datos={recibosEmitidos} />}
 
           {vista === 'documentos' && (
             <div data-testid="bloque-documentos">

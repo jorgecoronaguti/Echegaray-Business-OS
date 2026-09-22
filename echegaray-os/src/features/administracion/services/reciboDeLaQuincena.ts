@@ -21,6 +21,20 @@ import { pagoDelMensual } from './liquidacionPorTipo.ts'
 
 export type ConceptoDelRecibo = 'horas' | 'banco' | 'efectivo' | 'pagado'
 
+/**
+ * LOS RÓTULOS DE LOS TRES RENGLONES QUE EL PAPEL AFIRMA, en un solo lugar.
+ *
+ * Estaban escritos a mano acá y otra vez en quien lee el recibo guardado. El recibo emitido se SELLA por
+ * estos rótulos (`reciboEmitido.ts` busca el renglón de banco y el de efectivo para llenar sus columnas):
+ * dos copias del texto significan que cambiar «Efectivo» por «En efectivo» deja de encontrar la cifra y la
+ * ficha empieza a decir «sin dato» sobre plata que se entregó.
+ */
+export const ROTULO = {
+  horas: 'Horas trabajadas',
+  banco: 'Depósito en banco',
+  efectivo: 'Efectivo',
+} as const
+
 export interface EleccionDelRecibo {
   /** El TOTAL de horas de la quincena. Nunca el reparto entre blanco y negro: ver el encabezado. */
   horas: boolean
@@ -145,7 +159,7 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n:
     const hs = horasDeLaQuincena(l)
     // SIN IMPORTE NI $/H: el importe por hora abriría el reparto que este papel no dice. Lo que se firma es
     // cuántas horas trabajó y cuánta plata recibió.
-    horas.push({ rotulo: 'Horas trabajadas', horas: hs, detalle: null, importe: null })
+    horas.push({ rotulo: ROTULO.horas, horas: hs, detalle: null, importe: null })
   }
 
   const m = medios(l, mensual)
@@ -153,7 +167,7 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n:
   // Lo ya cobrado de esta quincena, cuando la línea no tiene modelo blanco + negro: va entero y arriba.
   if (e.pagado && m.previos.length > 1) renglones.push(...m.previos)
   const elegidos: (number | null)[] = []
-  for (const [clave, rotulo] of [['banco', 'Depósito en banco'], ['efectivo', 'Efectivo']] as const) {
+  for (const [clave, rotulo] of [['banco', ROTULO.banco], ['efectivo', ROTULO.efectivo]] as const) {
     if (!e[clave]) continue
     const x = m[clave]
     renglones.push({ rotulo, importe: x.total })
