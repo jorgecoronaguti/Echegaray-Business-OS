@@ -17,7 +17,7 @@ test('son CINCO secciones, en el orden que decidió el dueño', () => {
   // «Efectivo a rendir» entra el 22/09/2026 entre el maestro y la deuda (diseño efectivo-a-rendir, D01).
   assert.deepEqual(
     SECCIONES_COMPRAS.map((s) => s.titulo),
-    ['Compras', 'Proveedores', 'Efectivo', 'A quién le debo', 'Nombres sin resolver'],
+    ['Compras', 'Proveedores', 'A quién le debo', 'Nombres sin resolver', 'Efectivo'],
   )
 })
 
@@ -90,7 +90,7 @@ test('una pantalla puede estrechar SU destino para no tirar lo que está puesto,
     '/administracion/proveedores?q=corralon&activo=todos')
   assert.equal(fila.find((v) => v.clave === 'compras')!.href, '/administracion/compras')
   assert.deepEqual(fila.map((v) => v.titulo),
-    ['Compras', 'Proveedores', 'Efectivo', 'A quién le debo', 'Nombres sin resolver'])
+    ['Compras', 'Proveedores', 'A quién le debo', 'Nombres sin resolver', 'Efectivo'])
 })
 
 // ═══ NINGUNA SECCIÓN SE QUEDA AFUERA DE SU SOLAPA ═══

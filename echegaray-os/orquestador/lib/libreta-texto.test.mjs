@@ -2,7 +2,7 @@
 // líneas, con su letra y sus abreviaturas. Lo que se prueba es que no invente un monto ni una fecha.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { interpretarLibreta, interpretarLinea, leerConcepto, leerFecha, leerMonto } from './libreta-texto.mjs'
+import { claveDeLinea, interpretarLibreta, interpretarLinea, leerConcepto, leerFecha, leerMonto } from './libreta-texto.mjs'
 
 const HOY = new Date('2026-09-22T12:00:00Z')
 
@@ -55,4 +55,16 @@ test('el concepto es lo que escribió la persona, sin la fecha ni el monto', () 
 test('un mensaje que no es una línea de libreta no se toca', () => {
   assert.equal(interpretarLinea('hola, alguna novedad?', HOY).estado, 'nada')
   assert.equal(interpretarLinea('', HOY).estado, 'nada')
+})
+
+test('la línea tiene identidad propia: la misma anotada dos veces no se carga dos veces', () => {
+  const a = claveDeLinea(interpretarLinea('P. TELLO (18/9) 2.640.000', HOY))
+  const b = claveDeLinea(interpretarLinea('p tello 18/9 2640000', HOY))
+  assert.equal(a, b, 'la misma línea escrita distinto es la misma línea')
+  assert.equal(a, 'l:2026-09-18|p-tello|264000000')
+  // Distinto monto, distinta fecha o distinto concepto: otra línea.
+  assert.notEqual(a, claveDeLinea(interpretarLinea('P. TELLO (18/9) 2.640.001', HOY)))
+  assert.notEqual(a, claveDeLinea(interpretarLinea('P. TELLO (19/9) 2.640.000', HOY)))
+  assert.notEqual(a, claveDeLinea(interpretarLinea('P. FREDES (18/9) 2.640.000', HOY)))
+  assert.equal(claveDeLinea({ fecha: '2026-09-18', concepto: 'x', monto: 0 }), null)
 })

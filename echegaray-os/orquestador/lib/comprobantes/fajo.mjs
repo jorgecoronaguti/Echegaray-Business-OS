@@ -266,7 +266,9 @@ export function rotulosDe(item = {}, o = {}) {
 
 /** ¿Este ítem se puede escribir sin preguntarle nada a nadie? */
 export function estaCompleto(item = {}, o = {}) {
-  return puedeCargarse(item, POLITICA.CHAT, o)
+  // Una línea de la libreta se juzga con SU política (sin número, sin proveedor del desplegable): el dueño
+  // decidió el 22/09/2026 que un gasto sin comprobante entra igual, con el concepto escrito. Ver `faltantes`.
+  return puedeCargarse(item, item?.origenCarga === 'libreta' ? POLITICA.LIBRETA : POLITICA.CHAT, o)
 }
 
 /** ¿Queda algún duplicado sin contestar? Mientras lo haya, no se ofrece Confirmar. */

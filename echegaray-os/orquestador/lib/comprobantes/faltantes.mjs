@@ -166,6 +166,25 @@ export const POLITICA = Object.freeze({
     // entre. Acá la diferencia no es cuánto cuesta el error: es cuánta confianza merece la fuente.
     verificarPlausibilidad: false,
   }),
+  /**
+   * LA LIBRETA (dueño, 22/09/2026). Una línea escrita a mano en el chat —«P. Tello 18/9 2.640.000»— no tiene
+   * número de factura ni proveedor del desplegable, y el dueño decidió que entre igual: *«¿Un gasto sin
+   * comprobante entra igual a Compras? ok»*. Lo que NO se afloja es el total: sin monto no hay fila que
+   * escribir, y la identidad la da la propia línea (`clave` `l:<fecha>|<concepto>|<centavos>`), así que la
+   * barrera de duplicados sigue existiendo.
+   *
+   * La plausibilidad tampoco se exige: el que escribe es una persona con la libreta delante, igual que en la
+   * política del cargador. Lo que sí sigue frenando es la aritmética que no cierra y el duplicado, que no
+   * dependen de la política.
+   */
+  LIBRETA: Object.freeze({
+    nombre: 'libreta',
+    exigirObra: false,
+    exigirNumero: false,
+    exigirTotal: true,
+    exigirProveedorConocido: false,
+    verificarPlausibilidad: false,
+  }),
   // El bot: tiene botones, así que lo que falta se pregunta antes de escribir nada.
   CHAT: Object.freeze({
     nombre: 'chat',

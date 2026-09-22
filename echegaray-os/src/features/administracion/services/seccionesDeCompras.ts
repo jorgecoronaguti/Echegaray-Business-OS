@@ -75,18 +75,20 @@ export interface VistaDeSeccion {
  * EL ORDEN ES EL ARGUMENTO y por eso vive en un solo lugar.
  *
  * Primero el libro —es a lo que se entra—, después con quién se comercia, después lo que se le debe,
- * y último la cola de mantenimiento. Es el mismo orden relativo que Proveedores ya tenía entre sus
+ * y último la cola de mantenimiento, con Efectivo al final de todo. Es el mismo orden relativo que Proveedores ya tenía entre sus
  * tres sub-vistas (16/09/2026: la deuda va entre el maestro y la cola porque es lo que se mira para
  * decidir un pago); lo único nuevo es Compras al frente.
  */
 export const SECCIONES_COMPRAS: readonly SeccionDeCompras[] = [
   { clave: 'compras', titulo: 'Compras', href: '/administracion/compras' },
   { clave: 'proveedores', titulo: 'Proveedores', href: '/administracion/proveedores' },
-  // EFECTIVO A RENDIR (22/09/2026) — entre el maestro y la deuda, donde lo pone el diseño. Es plata de la
-  // empresa en manos de una persona: se decide mirándola igual que la deuda, y su gasto termina en Compras.
-  { clave: 'efectivo', titulo: 'Efectivo', href: '/administracion/compras?vista=a-rendir' },
   { clave: 'deuda', titulo: 'A quién le debo', href: '/administracion/proveedores?vista=deuda' },
   { clave: 'resolver', titulo: 'Nombres sin resolver', href: '/administracion/proveedores?vista=resolver' },
+  // EFECTIVO, AL FINAL (dueño, 22/09/2026: «llevarlo al final de todos porque sino se mezcla»). Las cuatro
+  // de arriba son la misma cadena —la compra, quién la vendió, qué se le debe y qué nombre falta resolver—;
+  // el efectivo es otra cosa: plata de la empresa en manos de una persona. Puesto en el medio, se leía como
+  // un paso más de esa cadena.
+  { clave: 'efectivo', titulo: 'Efectivo', href: '/administracion/compras?vista=a-rendir' },
 ] as const
 
 /**

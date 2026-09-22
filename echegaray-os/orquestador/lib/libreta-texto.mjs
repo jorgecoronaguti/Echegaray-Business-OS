@@ -124,3 +124,18 @@ export function interpretarLibreta(texto, hoy = new Date()) {
 
 export const TEXTO_JORNALES =
   'Los jornales se cargan en Liquidación de horas, no acá: si los escribo como gasto, la quincena los cuenta dos veces.'
+
+/**
+ * LA IDENTIDAD DE UNA LÍNEA. Sin factura no hay CUIT ni número, así que la clave la da lo que la línea DICE:
+ * fecha, concepto y monto. Dos líneas idénticas el mismo día son, casi siempre, la misma anotada dos veces —y
+ * ese es el error que hay que evitar, porque el gasto se duplica en cuatro pestañas—. Cuando de verdad son
+ * dos pagos iguales el mismo día, se distinguen escribiendo algo más en el concepto («Flete 2»).
+ *
+ * El prefijo `l:` la separa de las claves de comprobante (`c:` con CUIT, `p:` con proveedor): son espacios
+ * distintos y no pueden colisionar.
+ */
+export function claveDeLinea({ fecha, concepto, monto } = {}) {
+  const c = plano(concepto).replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, '-')
+  if (!fecha || !c || !(monto > 0)) return null
+  return `l:${fecha}|${c}|${Math.round(monto * 100)}`
+}
