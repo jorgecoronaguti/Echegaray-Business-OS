@@ -79,6 +79,11 @@ export const TITULO_SECCION_1 = 'QUÉ SE DEBE Y CUÁNDO'
  * deuda pendiente sale por un medio sin columna, el control del pie lo dice con su importe en vez de
  * que el cuadro cuadre solo escondiéndolo.
  */
+//
+// «A RENDIR» (22/09/2026) NO TIENE COLUMNA, A PROPÓSITO. Esta sección dice qué sale de la caja cada
+// día, y un ticket a rendir lo paga la persona con un fondo que ya salió del cajón el día de la
+// entrega. Un «A rendir» pendiente es un ticket rendido a medias —una carga a corregir, no un pago que
+// programar—, y el control del pie («Sale por un medio de pago sin columna») lo muestra con su importe.
 export const MEDIOS_DEL_DIA = Object.freeze(['Efectivo', 'Cheque', 'Echeq', 'Transferencia'])
 
 /** Los rótulos, en el orden en que se publican. `TOTAL DEL DÍA` es el número que decide. */

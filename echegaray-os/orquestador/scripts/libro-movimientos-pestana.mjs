@@ -49,6 +49,8 @@ import {
   deBancoObligaciones, dePrendarioFuturo, PESTANA_PRENDARIO,
 } from '../lib/libro-extractores-banco-obligaciones.mjs'
 import { deSac } from '../lib/libro-extractores-sac.mjs'
+// Efectivo a rendir (22/09/2026): la entrega y la devolución desde la réplica, y el espejo de lo rendido.
+import { deEfectivoARendir, rendidoDelLibro, fuenteViva, ORIGEN_RENDIR } from '../lib/libro-extractores-rendir.mjs'
 import { leerDatos } from '../lib/datos-propios.mjs'
 import { leerBoletasIeric } from '../lib/cargas-boletas-ieric.mjs'
 import { PESTAÑA as RAW_UOCRA } from './uocra-raw-pestana.mjs'
@@ -223,6 +225,12 @@ export async function extraerDeLasFuentes(google, corte) {
   // réplica no hay apareo posible y la única consecuencia es que los gremiales vuelven a decidirse
   // sólo por Compras — el estado de ayer. Por eso es lectura opcional, como las cinco de arriba.
   const boletasUocra = await opcional(`'${RAW_UOCRA}'!A1:J`)
+  // ═══ _EFECTIVO_RAW ES LECTURA BLANDA, Y NO DESCUADRA CONTRA CAJA SI FALTA (22/09/2026) ═══
+  //
+  // La escribe `efectivo-raw-pestana.mjs` antes que este paso, vacía si la migración no está. Si igual
+  // faltara, CAJA tampoco resta ninguna entrega (sus fórmulas leen la misma réplica), así que el libro
+  // sin entregas dice lo mismo que CAJA. Lo rendido se sigue espejando: ese gasto no tocó el cajón.
+  const efectivoRaw = (await opcional(`'${ORIGEN_RENDIR}'!A1:F`)) ?? []
   // Y LAS DE IERIC/FODECO SE LEEN DEL PDF EN DRIVE (11/09/2026): no tienen réplica en el Sheet porque el
   // declarado de la pestaña no las incluye; ver lib/cargas-boletas-ieric.mjs. Sin base o sin Drive → [] y aviso.
   const boletasIeric = await leerBoletasIeric({ query, google, aviso: (m) => console.warn(`  ⚠ ${m}`) })
@@ -570,6 +578,9 @@ export async function extraerDeLasFuentes(google, corte) {
       // sale de Compras, y cuando la fila se marca ELIMINADO sale de acá. Nunca de las dos.
       '_BANCO_RAW · obligaciones': delBanco.movimientos,
       [PESTANA_PRENDARIO]: prendario.movimientos,
+      // La entrega SALE y la devolución ENTRA, REAL, con el rubro de fondos. Lo rendido no sale de acá:
+      // lo espeja `consolidar` sobre el libro ya deduplicado (ver libro-extractores-rendir.mjs).
+      [ORIGEN_RENDIR]: deEfectivoARendir(efectivoRaw, { aviso: (m) => console.warn(`  ⚠ ${m}`) }),
   }
   // ═══ LOS DEPÓSITOS RETENIDOS VAN DESPUÉS DE COBRANZAS Y DE LA CARTERA, Y NO ES CASUAL ═══
   //
@@ -685,7 +696,10 @@ export function consolidar(porFuente, { debitosBanco, corteBanco, usadosBanco, l
   // — el F931 de julio ($7.074.772) con el pago de ARCA del 11/08 ya debitado. Ver lib/libro-cruce-banco.mjs.
   todos = aplicarCruce(todos, cruceBanco(todos, debitosBanco, corteBanco, usadosBanco, log))
   const { libro: dedup, colapsos } = deduplicar(todos)
-  return { ...separarInternas(dedup), colapsos }
+  // EL ESPEJO DE LO RENDIDO VA ÚLTIMO: sobre el libro que de verdad se va a escribir, después del
+  // cruce (que puede promover un pendiente a REAL) y de la deduplicación (que puede descartar una fila).
+  // Así el fondo recupera exactamente lo que el rubro del gasto muestra, ni un peso más.
+  return { ...separarInternas([...dedup, ...rendidoDelLibro(dedup)]), colapsos }
 }
 
 async function main() {
@@ -702,6 +716,9 @@ async function main() {
     const t = sumar(ms, {})
     console.log(`  ${fuente.padEnd(18)} ${String(ms.length).padStart(4)} movimiento(s) · neto ${pesos(t.total)}`)
   }
+  // Los espejos no están en ninguna fuente: los arma `consolidar`. Se cuentan igual, con su plata.
+  const espejos = consolidado.filter((m) => m.espejoDe)
+  console.log(`  ${'↩ rendido (espejo)'.padEnd(18)} ${String(espejos.length).padStart(4)} movimiento(s) · neto ${pesos(sumar(espejos, {}).total)}`)
   // LA EXCLUSIÓN SE PUBLICA CON SU MONTO. Una plata que desaparece del cuadro sin que nadie diga
   // cuánta es indistinguible de un error — y ésta son $20.000.000.
   if (excluidos.length) {
@@ -753,7 +770,7 @@ async function main() {
 
   // LO QUE SE AUTOPROMUEVE SE CUENTA. Es la mitad del COMPROMETIDO que ya no espera a la próxima
   // corrida para desaparecer cuando el dueño marca el pago: sin el número, el cambio es invisible.
-  const vivas = consolidado.filter((m) => String(celdaEstado(m, colEstadoCompras)).startsWith('='))
+  const vivas = consolidado.filter((m) => String(celdaEstado(fuenteViva(m), colEstadoCompras)).startsWith('='))
   console.log(`  ${'— estado vivo'.padEnd(14)} ${String(vivas.length).padStart(4)} fila(s) de Compras escriben su estado `
     + `como fórmula contra Compras!${colEstadoCompras} · ${pesos(sumar(vivas, {}).total)} `
     + '— pasan solas a REAL cuando la fila dice "Pagado"')
@@ -823,8 +840,10 @@ async function escribirYVerificar(google, consolidado, colEstadoCompras = null, 
     // deben salir de ahí"). Criterio y exclusiones en lib/libro-estado-vivo.mjs. Las filas de Obras
     // traen su propia fórmula (`importeVivo`, el neteo contra Compras): tiene precedencia porque su
     // origen no es Compras y `celdaImporte` la dejaría pegada.
-    .map((m) => [m.fecha, m.signo, m.importeVivo ?? celdaImporte(m, colsVivas), m.moneda, m.concepto, m.rubro, m.actividad,
-      celdaEstado(m, colEstadoCompras),
+    // El espejo de un gasto «A rendir» mira la MISMA fila de Compras que el gasto (`fuenteViva`): cuando
+    // el dueño marca «Pagado», el gasto y su vuelta al fondo se promueven juntos.
+    .map((m) => [m.fecha, m.signo, m.importeVivo ?? celdaImporte(fuenteViva(m), colsVivas), m.moneda, m.concepto, m.rubro, m.actividad,
+      celdaEstado(fuenteViva(m), colEstadoCompras),
       m.instrumento, m.contraparte, m.cuit, m.comprobante, m.obra, m.origen.pestana, m.origen.fila ?? '', m.clave,
       m.cliente])]
 

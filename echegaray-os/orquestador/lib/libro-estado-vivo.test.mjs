@@ -179,8 +179,10 @@ test('el generador escribe la columna H por `celdaEstado`, no por `m.estado`', (
   // El script no se puede importar (ejecuta main() al cargarse), así que el contrato se lee del
   // fuente. Sin esto, revertir el arreglo en el script dejaría todos los tests de arriba en verde.
   const fuente = fs.readFileSync(path.join(AQUI, '../scripts/libro-movimientos-pestana.mjs'), 'utf8')
-  assert.ok(/celdaEstado\(m,\s*colEstadoCompras\)/.test(fuente),
-    'la fila que se escribe tiene que pasar el estado por celdaEstado(m, colEstadoCompras)')
+  // Desde el 22/09 el movimiento pasa por `fuenteViva(m)`: el espejo de un gasto «A rendir» mira la
+  // fila de Compras que espeja (libro-extractores-rendir.mjs); para cualquier otro es `m` mismo.
+  assert.ok(/celdaEstado\(fuenteViva\(m\),\s*colEstadoCompras\)/.test(fuente),
+    'la fila que se escribe tiene que pasar el estado por celdaEstado(fuenteViva(m), colEstadoCompras)')
   assert.ok(!/m\.actividad,\s*m\.estado,/.test(fuente),
     'la columna H volvió a ser `m.estado` pegado: el pago del dueño deja de verse hasta la regeneración')
   // La letra viaja desde la lectura de Compras, resuelta por rótulo — no escrita a mano en el script.
@@ -323,6 +325,7 @@ test('EL SCRIPT EXIGE EL NETEO: no queda ningún camino que degrade a importes p
 test('EL ESCRITOR USA LA CELDA VIVA DEL IMPORTE, no `m.importe` pegado', () => {
   const fuente = fs.readFileSync(
     path.join(path.dirname(fileURLToPath(import.meta.url)), '../scripts/libro-movimientos-pestana.mjs'), 'utf8')
-  assert.ok(/celdaImporte\(m, colsVivas\)/.test(fuente),
+  // `fuenteViva(m)` desde el 22/09: ver el test de la columna H.
+  assert.ok(/celdaImporte\(fuenteViva\(m\), colsVivas\)/.test(fuente),
     'la columna C volvió a ser `m.importe`: el parcial del dueño deja de descontar hasta la regeneración')
 })

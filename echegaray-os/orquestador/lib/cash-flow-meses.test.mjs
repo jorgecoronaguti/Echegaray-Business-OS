@@ -43,7 +43,9 @@ test('doce columnas de mes más TOTAL, y las filas de concepto en orden', () => 
   // "Ingresos reales · Valores en cartera", que era cero en los doce meses por construcción. El 13/08
   // entró "Materiales de obra proyectados" —los egresos de las obras en curso, que caían en "Otros"—
   // sólo bajo lo proyectado, por el mismo criterio: bajo lo real sería otra fila condenada a cero.
-  assert.equal(conceptosDe('mes').length, 81)
+  // El 22/09 entró «Efectivo a rendir (fondos en manos de la gente)» bajo egresos reales Y proyectados
+  // (+2): la línea que hace cerrar el cuadro contra CAJA entre la entrega y la rendición.
+  assert.equal(conceptosDe('mes').length, 83)
   assert.deepEqual(meta.footprint, footprintDe('mes', 2026))
 })
 

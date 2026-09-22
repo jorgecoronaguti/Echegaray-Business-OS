@@ -144,8 +144,9 @@ test('EL FOOTPRINT SE RECALCULA con las filas nuevas: el gráfico sigue cayendo 
   // emitir porque la cartera nunca es real (cuando el valor se acredita, entra por el banco como
   // "Cobranzas")— y una MÁS desde el 13/08: "Egresos proyectados · Materiales de obra proyectados",
   // los egresos de las siete obras en curso, que hasta ese día caían enteros en "· Otros".
-  assert.equal(conceptosDe('semana').length, 43 + seccion)
-  assert.equal(conceptosDe('mes').length, 45 + seccion)
+  // +2 desde el 22/09: «Efectivo a rendir (fondos en manos de la gente)» bajo los dos egresos.
+  assert.equal(conceptosDe('semana').length, 45 + seccion)
+  assert.equal(conceptosDe('mes').length, 47 + seccion)
   for (const tipo of ['semana', 'mes']) {
     const fp = footprintDe(tipo, 2026)
     assert.equal(filaGraficos(tipo), FILA.concepto + conceptosDe(tipo).length + 1)

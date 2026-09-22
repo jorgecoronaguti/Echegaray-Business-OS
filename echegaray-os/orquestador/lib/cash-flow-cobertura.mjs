@@ -35,7 +35,7 @@
 //
 // NO CALCULA PLATA. Recibe los movimientos que el Libro emitió y contesta sobre ellos.
 
-import { RUBROS_INGRESO, RUBROS_EGRESO } from './cash-flow-rubros.mjs'
+import { RUBROS_INGRESO, RUBROS_EGRESO, RUBRO_FONDOS_A_RENDIR } from './cash-flow-rubros.mjs'
 import { RUBRO_OBRAS } from './libro-extractores-obras.mjs'
 
 /** Los tres horizontes posibles. Ver el bloque de arriba. */
@@ -170,6 +170,11 @@ export const DUENOS = [
     porque: 'Es una línea que existe para DESAPARECER: sólo los pagos cuya factura todavía no se '
       + 'cargó. Que llegue a cero es el objetivo, no un hueco.',
   },
+  {
+    rubro: RUBRO_FONDOS_A_RENDIR, dueno: '_EFECTIVO_RAW', horizonte: HORIZONTE.cargado,
+    porque: 'Una entrega de efectivo a rendir es un hecho con fecha, no un ritmo: proyectar entregas '
+      + 'futuras sería inventarlas. Lo rendido se espeja de las filas «A rendir» de Compras con su estado.',
+  },
 ]
 
 const porRubro = new Map(DUENOS.map((d) => [d.rubro, d]))
@@ -249,6 +254,13 @@ export const MAPA = [
     // real que el extracto muestra, así que el archivo aporta calendario y el banco aporta monto.
     pestania: 'prestamo-prendario.json', rol: 'FUENTE', concepto: 'Financiero (cuotas futuras del prendario)',
     nota: 'Cuotas 15 a 26, la última en diciembre de 2026, el día 7. Si Compras todavía tiene la cuota de ese mes como pendiente, no se proyecta: el REAL sale de Compras mientras la fila exista.',
+  },
+  {
+    // EFECTIVO A RENDIR (22/09/2026). La réplica de efectivo_entrega / efectivo_devolucion que CAJA ya
+    // resta del cajón. El libro trae de acá la entrega y la devolución, y bajo el MISMO origen el espejo
+    // de cada gasto «A rendir» de Compras (libro-extractores-rendir.mjs): el gasto sigue en su rubro.
+    pestania: '_EFECTIVO_RAW', rol: 'FUENTE', concepto: 'Efectivo a rendir (fondos en manos de la gente)',
+    nota: 'La entrega sale de la caja y la devolución vuelve; lo rendido vuelve a esta línea porque su gasto ya sale por el rubro de la factura. Neto del período = lo que se movió de verdad el cajón.',
   },
   {
     pestania: '_CHEQUES_RAW', rol: 'FUENTE', concepto: 'Valores en cartera',

@@ -27,6 +27,7 @@ import { PESTAÑA as RAW_CHEQUES, COL as COL_CHEQUE, FILA0 as FILA0_CHEQUES } fr
 import { BORDES } from '../lib/caja-grilla.mjs'
 import { COMPRAS, columnasDe, lectorDeEncabezados, rangoHasta } from '../lib/columnas-por-encabezado.mjs'
 import { columnasCobranzas } from '../lib/cobranzas-columnas.mjs'
+import { instrumentoDePago, INSTRUMENTO_A_RENDIR } from '../lib/caja-canales.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
@@ -319,16 +320,21 @@ async function main() {
   // el IVA como egreso y las retenciones como cobro, y el residuo habría sido la columna de al lado.
   const lector = lectorDeEncabezados(g, ID)
   const cc = columnasDe(await lector.encabezado('Compras'),
-    { rubro: COMPRAS.rubro, fecha: COMPRAS.fechaCaja, total: COMPRAS.total, sub: COMPRAS.subRubro }, 'Compras')
+    { rubro: COMPRAS.rubro, fecha: COMPRAS.fechaCaja, total: COMPRAS.total, sub: COMPRAS.subRubro, tipoPago: COMPRAS.tipoPago }, 'Compras')
   const kb = columnasCobranzas(await lector.encabezado('Cobranzas'), ['total', 'estado', 'fechaCobro'])
-  const [cRubro, cFecha, cTotal, cSub] = await Promise.all(
-    [cc.rubro, cc.fecha, cc.total, cc.sub].map((c) => col(rangoHasta('Compras', c, 5000))))
+  const [cRubro, cFecha, cTotal, cSub, cTipo] = await Promise.all(
+    [cc.rubro, cc.fecha, cc.total, cc.sub, cc.tipoPago].map((c) => col(rangoHasta('Compras', c, 5000))))
   // La nómina NO se toma de Compras: su fuente es la planilla (arriba). Tomarla acá la duplicaría.
   const DESDE_PLANILLA = new Set(['Nómina · Jornales de obra', 'Nómina · Sueldos administración'])
   const porRubro = new Map()
   for (let i = 0; i < cRubro.length; i++) {
     const r = String(cRubro[i] ?? '').trim()
     if (!r || DESDE_PLANILLA.has(r)) continue
+    // «A RENDIR» NO ES UNA SALIDA FUTURA DE CAJA (22/09/2026): lo paga la persona con un fondo que ya
+    // salió del cajón el día de la entrega (CAJA lo resta desde _EFECTIVO_RAW). En el libro el gasto
+    // sale por su rubro y vuelve entero a «Efectivo a rendir»: neto cero para la escalera. Contarlo
+    // acá restaría dos veces el mismo billete.
+    if (instrumentoDePago(cTipo[i]) === INSTRUMENTO_A_RENDIR) continue
     if (!esNum(cFecha[i]) || cFecha[i] < corte) continue   // antes del corte ya está en el saldo
     const esBienDeUso = String(cSub[i] ?? '').trim() === SUB_BIENES_DE_USO
     const clave = esBienDeUso ? 'Bienes de uso (inversión)' : r

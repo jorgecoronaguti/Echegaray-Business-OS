@@ -377,7 +377,8 @@ test('después de la sección POR CLIENTE no hay NADA: nada se cuela sin que el 
   // Eran 36 de apertura: el 06/08 se dejó de emitir "Ingresos reales · Valores en cartera", que valía
   // cero en las 53 columnas porque el valor acreditado entra al libro como "Cobranzas"; el 13/08 entró
   // "Egresos proyectados · Materiales de obra proyectados", que hasta ese día caía en "· Otros".
-  assert.equal(conceptosDe('semana').length, 79)
+  // El 22/09 entró «Efectivo a rendir (fondos en manos de la gente)» bajo los dos egresos (+2).
+  assert.equal(conceptosDe('semana').length, 81)
 })
 
 test('EL CONTRATO DE DISEÑO en la grilla del semanal: cero desvíos, y el atajo intacto', () => {

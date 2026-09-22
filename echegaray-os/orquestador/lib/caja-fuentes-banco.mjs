@@ -14,5 +14,6 @@ export const CHQ = { hoja: 'Cheques Emitidos', importe: 'F', fechaPago: 'I', deb
 export const DEP = { hoja: '_BANCO_RAW', fecha: 'A', concepto: 'B', importe: 'C', flujo: 'E', desde: 4 }
 
 /** La réplica de Efectivo a rendir (22/09/2026, scripts/efectivo-raw-pestana.mjs): A=fecha,
- *  E=movimiento («Entrega» | «Devolución»), F=importe con su signo para la caja (la entrega negativa). */
-export const RENDIR = { hoja: '_EFECTIVO_RAW', fecha: 'A', movimiento: 'E', importe: 'F', desde: 4 }
+ *  B=entrega (ER-nnnn), C=persona, E=movimiento («Entrega» | «Devolución»), F=importe con su signo
+ *  para la caja (la entrega negativa). La lee CAJA por fórmula y el libro (libro-extractores-rendir). */
+export const RENDIR = { hoja: '_EFECTIVO_RAW', fecha: 'A', entrega: 'B', persona: 'C', movimiento: 'E', importe: 'F', desde: 4 }

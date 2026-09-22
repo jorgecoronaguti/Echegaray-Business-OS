@@ -26,6 +26,14 @@ import { RUBRO_OBRAS } from './libro-extractores-obras.mjs'
 /** Los rubros de INGRESO del libro, en orden de peso. */
 export const RUBROS_INGRESO = Object.freeze(['Cobranzas', 'Valores en cartera'])
 
+/**
+ * EFECTIVO A RENDIR (22/09/2026): la plata de la empresa en manos de la gente. Un anticipo, no un
+ * gasto: sale con la entrega, vuelve con la devolución y con cada ticket rendido (cuyo gasto sale por
+ * su propio rubro). Lo emite `libro-extractores-rendir.mjs`; se declara ACÁ y no allá porque la lista
+ * de abajo se congela al cargar el módulo y un import circular la dejaría con un hueco.
+ */
+export const RUBRO_FONDOS_A_RENDIR = 'Efectivo a rendir (fondos en manos de la gente)'
+
 /** Los rubros de EGRESO del libro, en orden de peso. */
 export const RUBROS_EGRESO = Object.freeze([
   'Materiales Civil',
@@ -55,6 +63,9 @@ export const RUBROS_EGRESO = Object.freeze([
   'Servicios recurrentes',
   'Cheques emitidos',
   'Cheques y tarjeta sin factura cargada',
+  // Al final: es el único rubro que no es un costo. Su neto del período puede ser NEGATIVO (se
+  // rindió más de lo que se entregó) y eso es correcto: el fondo en manos de la gente bajó.
+  RUBRO_FONDOS_A_RENDIR,
 ])
 
 /** El rótulo del resto. No es un rubro del libro: es lo que queda cuando se restan los que sí lo son. */
