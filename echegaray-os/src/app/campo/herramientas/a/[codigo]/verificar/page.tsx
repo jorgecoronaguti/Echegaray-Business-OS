@@ -35,7 +35,7 @@ export default async function VerificarCampo({ params, searchParams }: { params:
   if (a.estado === 'baja') return aviso(`${a.nombre} está dado de baja: no se verifica.`)
   if (!seVerifica(a)) return aviso('La verificación de uso es para rodados y equipos que se operan con gente, no para herramientas.')
   if (!p.lecturas) {
-    return aviso('La verificación de uso espera la migración 20260922T1200: todavía no se puede registrar. El resto del módulo anda igual.')
+    return aviso('Falta aplicar la migración 20260922T1200 de la verificación de uso: todavía no se puede registrar. El resto del módulo anda igual.')
   }
 
   const ult = ultimaVerificacion(p, a.id)

@@ -144,7 +144,7 @@ export async function registrarVerificacionAction(entrada: z.input<typeof verifi
   })
   // `traducir` nombra la migración de la etapa 1; la que falta acá es la de la verificación.
   if (!r.ok && r.error.startsWith('El módulo espera la migración')) {
-    return { ok: false, error: 'La verificación de uso espera la migración 20260922T1200: todavía no se puede registrar.' }
+    return { ok: false, error: 'Falta aplicar la migración 20260922T1200 de la verificación de uso: todavía no se puede registrar.' }
   }
   return r
 }

@@ -1,7 +1,7 @@
 // LA COLA DE MANTENIMIENTO (D07, etapa 1) — con lo que la base sabe: estados e incidencias.
 //
 // Etapa 1: la reparación externa es un ESTADO. La orden (remito, presupuesto, fecha prometida) es etapa
-// 2, igual que «Se operan con gente» (verificación de uso) y el plan de service de rodados y máquinas:
+// 2, igual que el plan de service de rodados y máquinas («Se operan con gente» lee la verificación de uso):
 // esos bloques no se dibujan vacíos.
 
 import type { Activo, Incidencia } from '../types.ts'

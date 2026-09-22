@@ -129,3 +129,41 @@ test.describe('módulo Herramientas · envío a obra y planilla (22/09)', () => 
     await page.screenshot({ path: `${CAPTURAS}_planilla.png`, fullPage: false })
   })
 })
+
+// VERIFICACIÓN DE USO (migración 20260922T1200). Sólo lectura: no registra ninguna verificación real.
+// Anda con la migración aplicada o sin ella: sin ella, cada lugar dice «sin la migración», nunca
+// «nunca» ni un cero.
+test.describe('módulo Herramientas · verificación de uso', () => {
+  test('Rodados, Resumen y la ficha muestran la verificación; el teléfono abre M10', async ({ page }) => {
+    test.setTimeout(180000)
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await entrar(page)
+    await page.goto('/herramientas/rodados')
+    await page.waitForLoadState('networkidle')
+    const col = page.getByTestId('fila-rodado').first().getByTestId('verificacion')
+    await expect(col).toHaveText(/^(hoy \d{2}:\d{2}|ayer|hace \d+ d|nunca|sin la migración)$/)
+    await expect(page.getByTestId('maquinas')).toBeVisible()
+    await page.screenshot({ path: `${CAPTURAS}_verif_rodados.png`, fullPage: true })
+    await page.goto('/herramientas')
+    await expect(page.getByTestId('cifra-sin-verificar')).toContainText('Sin verificar hoy')
+
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/campo/herramientas/a/TOY-001')
+    await page.waitForLoadState('networkidle')
+    await page.getByTestId('ir-verificar').click()
+    await expect(page).toHaveURL(/\/campo\/herramientas\/a\/TOY-001\/verificar/)
+    const form = page.getByTestId('checklist')
+    await expect(form.or(page.getByTestId('no-se-verifica'))).toBeVisible()
+    if (await form.isVisible()) {
+      await expect(page.getByTestId('listo')).toBeDisabled()
+      for (const c of ['frenos_direccion', 'luces_alarma', 'cubiertas_fluidos', 'matafuego_auxilio_botiquin']) {
+        await page.getByTestId(`${c}-bien`).click()
+      }
+      await expect(page.getByTestId('listo')).toBeEnabled()
+      await page.getByTestId('luces_alarma-mal').click()
+      await expect(page.getByTestId('regla')).toContainText('no sale')
+      // No se toca «Listo»: la prueba no registra verificaciones reales.
+    }
+    await page.screenshot({ path: `${CAPTURAS}_tel_verificar.png`, fullPage: true })
+  })
+})

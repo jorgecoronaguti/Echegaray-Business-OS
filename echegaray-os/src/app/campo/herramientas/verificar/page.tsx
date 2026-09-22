@@ -26,7 +26,7 @@ export default async function ElegirVerificacion({ searchParams }: { searchParam
         <div style={{ fontSize: '13px', color: V.apagado }}>Rodados y equipos que se operan con gente.</div>
       </div>
       {!p.lecturas && (
-        <div style={{ fontSize: '13px', color: V.warn }}>La verificación de uso espera la migración 20260922T1200: todavía no se puede registrar.</div>
+        <div style={{ fontSize: '13px', color: V.warn }}>Falta aplicar la migración 20260922T1200 de la verificación de uso: todavía no se puede registrar.</div>
       )}
       {lista.length === 0 ? (
         <div style={{ fontSize: '14px', color: V.apagado }}>No hay rodados ni equipos cargados.</div>

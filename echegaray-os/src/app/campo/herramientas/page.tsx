@@ -71,7 +71,7 @@ export default async function InicioHerramientasCampo({ searchParams }: { search
             <FilaTelefono key={a.id} href={conLugar(`/campo/herramientas/a/${encodeURIComponent(a.codigo)}/verificar`, lugar.clave)}
               icono={<IcoLista tam={18} color={v.tipo === 'hoy' ? V.pos : V.warn} />}
               titulo={a.clase === 'rodado' ? `Verificar el rodado ${a.patente ?? a.nombre}` : `Verificar ${a.nombre}`}
-              bajada={v.tipo === 'hoy' ? `hecha ${textoVerificacion(v)}` : v.tipo === 'sin_base' ? 'espera la migración' : `sin verificar hoy · última: ${textoVerificacion(v)}`}
+              bajada={v.tipo === 'hoy' ? `hecha ${textoVerificacion(v)}` : v.tipo === 'sin_base' ? 'sin la migración' : `sin verificar hoy · última: ${textoVerificacion(v)}`}
               tonoBajada={v.tipo === 'hoy' ? V.pos : undefined} testid="ir-verificar" />
           )
         })}

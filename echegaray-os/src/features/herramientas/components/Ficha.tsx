@@ -194,7 +194,7 @@ function Uso({ id, clase, codigo }: { id: string; clase: 'rodado' | 'equipo'; co
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4, borderTop: `1px solid ${V.linea}` }} data-testid="ficha-uso">
       <div style={{ ...eyebrow, paddingTop: 10 }}>Uso</div>
       {sinBase ? (
-        <div style={{ fontSize: '12.5px', color: V.tenue }}>La verificación de uso espera la migración 20260922T1200.</div>
+        <div style={{ fontSize: '12.5px', color: V.tenue }}>Falta aplicar la migración 20260922T1200 de la verificación de uso.</div>
       ) : (
         <>
           {fila(clase === 'rodado' ? 'Kilometraje' : 'Horómetro', <span style={l ? undefined : vacio}>{textoLectura(l, UNIDAD[clase])}</span>, 'ficha-lectura')}

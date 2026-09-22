@@ -4,11 +4,16 @@
 // acciones (mover al taller, reparación externa como estado, marcar operativa).
 //
 // Lo que el diseño pone al costado —la orden de reparación externa con remito, presupuesto y fecha
-// prometida— es etapa 2, igual que «Se operan con gente» y el plan de service: no se dibujan.
+// prometida— es etapa 2, igual que el plan de service: no se dibujan. «Se operan con gente» sí: lee la
+// verificación de uso (migración 20260922T1200). Sin habilitación del operador: no existe en la base.
 
 import { usePathname, useRouter } from 'next/navigation'
 import { colaDeMantenimiento, TITULO_GRUPO, type GrupoMant } from '../logica/mantenimiento'
-import { ETIQUETA_ESTADO, rotuloUbicacion } from '../logica/parque'
+import { ETIQUETA_ESTADO, rotuloUbicacion, type Parque } from '../logica/parque'
+import { operadorDe } from '../logica/historial'
+import {
+  UNIDAD, seVerifica, textoLectura, textoVerificacion, ultimaLectura, ultimaVerificacion, verificacionDe,
+} from '../logica/verificacion'
 import { useHerramientas } from './Espacio'
 import { Ficha } from './Ficha'
 import { SUPERFICIE, V, bajadaPagina, eyebrow, tituloPagina } from './estilo'
@@ -64,6 +69,7 @@ export function VistaMantenimiento({ activo }: { activo: string | null }) {
             })}
           </div>
         ))}
+        <SeOperanConGente parque={parque} />
       </div>
       <div style={{ width: 2, background: V.linea }} />
       {!conPanel && (
@@ -73,6 +79,41 @@ export function VistaMantenimiento({ activo }: { activo: string | null }) {
         )}
       </div>
       )}
+    </div>
+  )
+}
+
+/** D07 «Se operan con gente»: rodados y equipos vivos con su última verificación y su lectura. */
+function SeOperanConGente({ parque }: { parque: Parque }) {
+  const lista = parque.activos.filter(seVerifica).map((a) => ({ a, v: verificacionDe(parque, a.id) }))
+    .sort((x, y) => Number(x.v.tipo === 'hoy') - Number(y.v.tipo === 'hoy') || x.a.nombre.localeCompare(y.a.nombre, 'es'))
+  if (lista.length === 0) return null
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="se-operan-con-gente">
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <h2 style={{ fontSize: '14px', fontWeight: 600 }}>Se operan con gente</h2>
+        <span style={{ fontSize: '12.5px', color: V.apagado }}>{lista.length} · verificación antes de usar</span>
+      </div>
+      <div style={{ ...eyebrow, display: 'grid', gridTemplateColumns: COLS, gap: 18, height: 30, alignItems: 'center', borderBottom: `1px solid ${V.linea}` }}>
+        <div>Activo</div><div>Dónde está</div><div>Verificación</div><div style={{ textAlign: 'right' }}>Lectura</div>
+      </div>
+      {lista.map(({ a, v }) => {
+        const ult = ultimaVerificacion(parque, a.id)
+        const quien = ult ? operadorDe(parque, ult) : null
+        const que = v.tipo === 'sin_base' ? 'sin la migración'
+          : v.tipo === 'hoy' ? `Verificada ${textoVerificacion(v)}${quien ? ` · ${quien}` : ''}`
+            : `Sin verificar hoy · última: ${textoVerificacion(v)}${quien ? ` · ${quien}` : ''}`
+        const l = ultimaLectura(parque, a.id)
+        return (
+          <div key={a.id} style={{ display: 'grid', gridTemplateColumns: COLS, gap: 18, minHeight: 42, alignItems: 'center', borderBottom: `1px solid ${V.linea}`, fontSize: '13.5px' }} data-testid="item-verificacion">
+            <div style={{ fontWeight: 500 }}>{a.nombre}</div>
+            <div style={{ color: a.ubicacion_id ? V.tintaSuave : V.tenue, fontStyle: a.ubicacion_id ? undefined : 'italic' }}>{rotuloUbicacion(parque, a.ubicacion_id)}</div>
+            <div style={{ color: v.tipo === 'hoy' ? V.apagado : V.warn }}>{que}</div>
+            <div style={{ textAlign: 'right', color: l ? V.tintaSuave : V.tenue, fontStyle: l ? undefined : 'italic' }}>{parque.lecturas ? textoLectura(l, UNIDAD[a.clase]) : '—'}</div>
+          </div>
+        )
+      })}
+      <div style={{ fontSize: '12.5px', color: V.apagado }}>Sin verificar no traba el uso: se avisa. Un «Mal» crítico lo deja fuera de servicio y aparece arriba, en la cola.</div>
     </div>
   )
 }

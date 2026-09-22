@@ -52,7 +52,7 @@ export function VistaResumen({ parque, hoy = new Date() }: { parque: Parque; hoy
           pie={c.nuncaVistos ? `más ${c.nuncaVistos} sin ningún registro nunca` : 'ningún movimiento ni reporte'} />
         <Link href="/herramientas/rodados" prefetch={false} data-testid="cifra-sin-verificar" className="hover:bg-surface-quiet">
           <Cifra rotulo="Sin verificar hoy" valor={sv ? sv.sin : null} vacioTexto="sin la migración" tono={sv && sv.sin ? V.warn : V.tinta}
-            pie={sv ? (sv.de ? `de ${sv.de} que se operan con gente` : 'no hay rodados ni equipos cargados') : 'la verificación de uso espera la migración 20260922T1200'} />
+            pie={sv ? (sv.de ? `de ${sv.de} que se operan con gente` : 'no hay rodados ni equipos cargados') : 'falta aplicar la migración 20260922T1200'} />
         </Link>
         <Cifra rotulo="Papeles de rodados" valor={null}
           pie={c.rodados ? `${plural(c.rodados, 'rodado', 'rodados')}, ningún papel cargado` : 'no hay rodados cargados'} />
