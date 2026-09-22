@@ -106,6 +106,24 @@ export function canalesDeAdjuntos(env = process.env) {
 export const AREAS_DE_ADJUNTOS = Object.freeze(['compras', 'rendicion'])
 
 /**
+ * LAS ÁREAS CUYOS CANALES TAMBIÉN ESCUCHAN TEXTO SUELTO, sin foto adjunta.
+ *
+ * ═══ EL DEFECTO QUE ARREGLA (22/09/2026) ═══
+ *
+ * `esRelevante` exigía `tieneAdjuntos(post)` para TODO canal de ingesta: sin foto, el mensaje se
+ * descartaba antes de llegar a ningún especialista. Eso dejó muerta la carga escrita entera del canal
+ * Efectivo —la libreta («P. Tello 18/9 2.640.000») y las entregas («entregué $250.000 a Rubén
+ * Sosa»)—, que es texto puro. El dueño lo probó y dijo, con razón: «no funciona la carga por chat de
+ * nada del módulo efectivo». No es que el bot no entendiera: el mensaje nunca le llegaba.
+ *
+ * NO SE ABRE PARA TODOS. En `compras` un canal atado sirve para recibir fotos de facturas, y dejar
+ * entrar el texto metería la charla del equipo —«che, ¿cuánto le debemos a Cemento SA?»— en el
+ * circuito de carga, con su costo de IA. Por eso esto es una lista corta y explícita, no un permiso
+ * general: sólo las áreas donde alguien ESCRIBE lo que hay que registrar.
+ */
+export const AREAS_QUE_ESCUCHAN_TEXTO = Object.freeze(['rendicion'])
+
+/**
  * LA LISTA DE CANALES DE INGESTA SALE DEL BINDING, no de una lista escrita a mano.
  *
  * EL DEFECTO QUE ARREGLA. `MM_CANALES_ADJUNTOS` traía un default con dos slugs escritos en el
@@ -127,7 +145,7 @@ export const AREAS_DE_ADJUNTOS = Object.freeze(['compras', 'rendicion'])
  * @param {number} [o.ttlMs]         cada cuánto se relee el binding (no por mensaje: por minuto)
  * @returns {() => Promise<Set<string>>}
  */
-export function crearCanalesDeIngesta({ port = null, base = canalesDeAdjuntos(), ttlMs = 60_000, ahora = () => Date.now(), log = null } = {}) {
+export function crearCanalesDeIngesta({ port = null, base = canalesDeAdjuntos(), ttlMs = 60_000, ahora = () => Date.now(), log = null, areas = AREAS_DE_ADJUNTOS } = {}) {
   let vigente = new Set(base)
   let vence = 0
   return async function canales() {
@@ -135,7 +153,7 @@ export function crearCanalesDeIngesta({ port = null, base = canalesDeAdjuntos(),
     vence = ahora() + ttlMs
     const union = new Set(base)
     let falla = null
-    for (const area of AREAS_DE_ADJUNTOS) {
+    for (const area of areas) {
       const r = await canalesDeArea({ port, area }).catch((e) => ({ ok: false, motivo: String(e?.message ?? e) }))
       if (!r.ok) { falla = r.motivo; continue }
       for (const c of r.canales) {
@@ -212,7 +230,7 @@ export function tieneAdjuntos(post) {
 /** GUARDA de relevancia. Acepta SÓLO: DM al bot, mención directa a @os (por
  *  user_id en mentions o por texto), o un post CON ADJUNTOS en un canal de ingesta.
  *  Rechaza el eco del propio bot. Todo lo demás se ignora ANTES de crear un evento ⇒ cero costo. */
-export function esRelevante(info, { botUserId = null, botUsername = null, botUsernames = null, canalesAdjuntos = null } = {}) {
+export function esRelevante(info, { botUserId = null, botUsername = null, botUsernames = null, canalesAdjuntos = null, canalesDeTexto = null } = {}) {
   if (!info?.post) return false
   const { post, channelType, channelName, mentions } = info
   if (botUserId && post.user_id === botUserId) return false // eco propio (anti-loop)
@@ -230,7 +248,15 @@ export function esRelevante(info, { botUserId = null, botUsername = null, botUse
   // el id sobrevive a que alguien renombre el canal, el slug es lo que se lee cómodo en el .env.
   const esCanalDeIngesta = (channelName && canales.has(String(channelName).toLowerCase()))
     || (post.channel_id && canales.has(String(post.channel_id).toLowerCase()))
-  return Boolean(esCanalDeIngesta && tieneAdjuntos(post))
+  if (!esCanalDeIngesta) return false
+  if (tieneAdjuntos(post)) return true
+  // SIN ADJUNTO, sólo entra si el canal pertenece a un área que escucha texto (ver
+  // `AREAS_QUE_ESCUCHAN_TEXTO`): ahí vive la carga escrita —la libreta y las entregas—, que no tiene
+  // foto. Un mensaje vacío no entra ni siquiera ahí: sin texto ni adjunto no hay nada que interpretar.
+  const escuchaTexto = canalesDeTexto
+    && ((channelName && canalesDeTexto.has(String(channelName).toLowerCase()))
+      || (post.channel_id && canalesDeTexto.has(String(post.channel_id).toLowerCase())))
+  return Boolean(escuchaTexto && String(post.message ?? '').trim())
 }
 
 /** Mapea el post de Mattermost al payload que el MattermostAdapter ya espera.
@@ -292,6 +318,10 @@ export function crearConsumidorWS(opts) {
     // `port` —los tests del consumidor solo— queda exactamente el comportamiento anterior.
     port = null,
     canalesDeIngesta = crearCanalesDeIngesta({ port, base: canalesAdjuntos, log }),
+    // Los canales del área que ESCRIBE lo que hay que registrar: ahí un mensaje sin foto también
+    // entra. Mismo mecanismo y misma caché de un minuto; base vacía porque esto no se configura por
+    // entorno — sale del binding, que es donde el dueño ata un canal a un área.
+    canalesDeTexto = crearCanalesDeIngesta({ port, base: new Set(), log, areas: AREAS_QUE_ESCUCHAN_TEXTO }),
   } = opts
   if (!con?.recibir) throw new Error('consumidor-ws: falta con.recibir')
   if (!wsUrl) throw new Error('consumidor-ws: falta wsUrl')
@@ -308,7 +338,8 @@ export function crearConsumidorWS(opts) {
     // Los canales de ingesta se piden por mensaje, pero se releen por minuto: adentro hay una
     // caché con TTL. Así atar un canal nuevo al área lo habilita sin reiniciar el servicio.
     const canalesAhora = await canalesDeIngesta()
-    if (!esRelevante(info, { botUserId, botUsernames, canalesAdjuntos: canalesAhora })) {
+    const textoAhora = await canalesDeTexto()
+    if (!esRelevante(info, { botUserId, botUsernames, canalesAdjuntos: canalesAhora, canalesDeTexto: textoAhora })) {
       // POR QUÉ SE IGNORÓ, NO SÓLO QUE SE IGNORÓ. Una foto de factura que no llega a ningún lado y
       // deja un log que dice "ignorado por guarda" manda a buscar el problema a ciegas: pasó el
       // 03/08 y costó media hora descubrir que el canal viaja por SLUG y no por nombre visible.
@@ -320,6 +351,10 @@ export function crearConsumidorWS(opts) {
         channel_id: info.post.channel_id ?? null,
         tiene_adjuntos: tieneAdjuntos(info.post),
         canales_de_ingesta: [...canalesAhora],
+        // El quinto campo, que faltaba y costó una tarde: un mensaje de TEXTO en un canal de ingesta
+        // se descartaba y el log no dejaba ver por qué. Con esta lista al lado se contesta de una
+        // lectura si el canal escucha texto o sólo fotos.
+        canales_que_escuchan_texto: [...textoAhora],
       })
       return { estado: 'ignorado' }
     }

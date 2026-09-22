@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   parsearPosted, esRelevante, mapearAPayload, Deduplicador, crearConsumidorWS, AREAS_DE_ADJUNTOS,
-  verificarCanalesDeIngesta, crearCanalesDeIngesta,
+  verificarCanalesDeIngesta, crearCanalesDeIngesta, AREAS_QUE_ESCUCHAN_TEXTO,
 } from './mattermost-ws-consumer.mjs'
 import {
   CommunicationService, RepositorioMemoria, MattermostAdapter, FakeMattermost,
@@ -342,8 +342,13 @@ test('el binding se relee por minuto, no por mensaje', async () => {
   // el número esperado sale de esa lista y no de una constante escrita a mano: cuando se sumó
   // `administracion_finanzas` (04/08), un `1` fijo se ponía rojo por el motivo equivocado — el
   // invariante que importa es que no se consulte POR MENSAJE.
-  assert.equal(port.veces, AREAS_DE_ADJUNTOS.length,
-    `una sola relectura del binding para cinco mensajes (${AREAS_DE_ADJUNTOS.length} consulta(s): una por área)`)
+  // 22/09/2026: el consumidor mantiene DOS conjuntos con el mismo mecanismo —los canales de ingesta
+  // y los que además escuchan texto suelto—, así que la relectura por minuto consulta una vez por
+  // área de cada lista. El invariante no cambió: sigue sin consultarse POR MENSAJE, que es lo que
+  // este test cuida; lo que cambió es cuántas listas se releen.
+  const esperadas = AREAS_DE_ADJUNTOS.length + AREAS_QUE_ESCUCHAN_TEXTO.length
+  assert.equal(port.veces, esperadas,
+    `una sola relectura de cada lista para cinco mensajes (${esperadas} consulta(s): una por área de cada lista)`)
 })
 
 // ── EL ÚNICO CANAL DE COMPROBANTES (09/09) ──────────────────────────────────
@@ -458,4 +463,34 @@ test('si la API no contesta se avisa y NO se apaga la ingesta', async () => {
 test('sin cliente de Mattermost se avisa y no se afirma nada', async () => {
   const r = await verificarCanalesDeIngesta({ mattermost: null, canales: new Set(['compras']) })
   assert.equal(r.motivo, 'sin_cliente')
+})
+
+// ═══ LA CARGA ESCRITA DEL CANAL EFECTIVO (22/09/2026) ═══
+//
+// «no funciona la carga por chat de nada del módulo efectivo», dijo el dueño. No era el intérprete:
+// la guarda exigía `tieneAdjuntos` para TODO canal de ingesta, así que la libreta y las entregas
+// —texto puro, sin foto— se descartaban antes de llegar a ningún especialista y el bot ni contestaba.
+test('el canal de un área que escucha texto deja entrar un mensaje SIN foto', () => {
+  const crudo = JSON.parse(JSON.stringify(FRAME_REAL_COMPROBANTES))
+  const post = JSON.parse(crudo.data.post)
+  post.file_ids = []
+  post.message = 'P. Tello 18/9 2.640.000'
+  crudo.data.post = JSON.stringify(post)
+  const info = parsearPosted(crudo)
+  const opciones = { botUserId: BOT, canalesAdjuntos: new Set(['compras']), canalesDeTexto: new Set(['compras']) }
+  assert.equal(esRelevante(info, opciones), true)
+  // Y sin la lista de texto, el MISMO mensaje sigue sin entrar: la apertura es por área, no general.
+  assert.equal(esRelevante(info, { botUserId: BOT, canalesAdjuntos: new Set(['compras']) }), false)
+})
+
+test('un mensaje vacío no entra ni en un canal que escucha texto', () => {
+  const crudo = JSON.parse(JSON.stringify(FRAME_REAL_COMPROBANTES))
+  const post = JSON.parse(crudo.data.post)
+  post.file_ids = []
+  post.message = '   '
+  crudo.data.post = JSON.stringify(post)
+  const info = parsearPosted(crudo)
+  assert.equal(
+    esRelevante(info, { botUserId: BOT, canalesAdjuntos: new Set(['compras']), canalesDeTexto: new Set(['compras']) }),
+    false)
 })
