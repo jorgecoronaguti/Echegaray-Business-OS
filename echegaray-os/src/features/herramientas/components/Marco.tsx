@@ -12,12 +12,10 @@ import { NavHerramientas, type CuentasNav } from './NavHerramientas'
 import { bajadaPagina, pagina, tituloPagina, V } from './estilo'
 
 export function cuentasDeNav(l: Lectura): CuentasNav {
-  if (l.estado !== 'ok') return { mantenimiento: null, maquinarias: null, rodados: null }
+  if (l.estado !== 'ok') return { mantenimiento: null }
   const vivos = l.parque.activos.filter(vivo)
   return {
     mantenimiento: vivos.filter(conProblema).length,
-    maquinarias: vivos.filter((a) => a.clase === 'equipo').length,
-    rodados: vivos.filter((a) => a.clase === 'rodado').length,
   }
 }
 

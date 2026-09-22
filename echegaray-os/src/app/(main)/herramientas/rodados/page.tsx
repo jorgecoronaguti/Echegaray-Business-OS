@@ -1,11 +1,8 @@
-import { leerParque } from '@/features/herramientas/services/datos'
-import { Marco } from '@/features/herramientas/components/Marco'
-import { VistaRodados } from '@/features/herramientas/components/VistaRodados'
+import { redirect } from 'next/navigation'
 
-// D11 · RODADOS, etapa 1 — la lista con lo que hay; km, papeles y service «sin cargar».
-export const dynamic = 'force-dynamic'
-
-export default async function RodadosPage() {
-  const lectura = await leerParque()
-  return <Marco lectura={lectura}>{(l) => <VistaRodados parque={l.parque} />}</Marco>
+// Los RODADOS no son una solapa: son el Inventario filtrado por clase (dueño, 22/09/2026: la barra mezclaba
+// funciones con categorías). La ruta se conserva porque está enlazada desde Analíticas, desde el teléfono y
+// desde los QR: lleva al mismo lugar con el filtro puesto.
+export default function RodadosPage() {
+  redirect('/herramientas/inventario?clase=rodado')
 }

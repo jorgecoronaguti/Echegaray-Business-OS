@@ -3,9 +3,15 @@
 // EL NIVEL 2 DE HERRAMIENTAS — `D01:24-33`: 38px, texto 12,5, la activa subrayada en grafito, el
 // buscador a la derecha.
 //
-// Orden del dueño (21/09): Resumen · Inventario · Ubicaciones · Movimientos · Mantenimiento · Rodados ·
-// Controles. El 22/09 pidió «Maquinarias» ENTRE Mantenimiento y Rodados, con las máquinas con operador que
-// hasta entonces colgaban de Rodados. Controles NO se dibuja en la etapa 1: una solapa que lleva a una pantalla vacía enseña que
+// ═══ UN SOLO EJE (dueño, 22/09/2026) ═══
+//
+// Textual: *«esto esta mal porque mezcla funciones con categorias, rehacer»*. Tenía razón: Resumen,
+// Inventario, Ubicaciones, Movimientos y Mantenimiento son lo que uno VA A HACER; Maquinarias y Rodados son
+// lo que la cosa ES. Mezclarlos en la misma barra obliga a elegir entre dos preguntas distintas.
+//
+// Ahora la barra es de funciones, y la clase es el filtro del Inventario —donde ya vivía— con sus columnas
+// propias: Rodados con km, verificación y papeles; Maquinarias con horómetro. `/herramientas/rodados` y
+// `/herramientas/maquinarias` siguen andando: llevan al Inventario con ese filtro puesto. Controles NO se dibuja en la etapa 1: una solapa que lleva a una pantalla vacía enseña que
 // la app promete lo que no tiene.
 //
 // SIN LECTURA NO HAY CONTADOR. `null` = no se pudo contar (o la migración falta): el número no aparece.
@@ -18,9 +24,6 @@ import { MONO, V } from './estilo'
 
 export interface CuentasNav {
   mantenimiento: number | null
-  /** Máquinas con operador (clase «equipo»), separadas de Rodados por pedido del dueño (22/09/2026). */
-  maquinarias: number | null
-  rodados: number | null
 }
 
 const SOLAPAS = [
@@ -29,14 +32,14 @@ const SOLAPAS = [
   { clave: 'ubicaciones', label: 'Ubicaciones', href: '/herramientas/ubicaciones' },
   { clave: 'movimientos', label: 'Movimientos', href: '/herramientas/movimientos' },
   { clave: 'mantenimiento', label: 'Mantenimiento', href: '/herramientas/mantenimiento' },
-  { clave: 'maquinarias', label: 'Maquinarias', href: '/herramientas/maquinarias' },
-  { clave: 'rodados', label: 'Rodados', href: '/herramientas/rodados' },
 ] as const
 
 /** Qué solapa enciende una ruta. Etiquetas no tiene solapa propia: cuelga del Inventario (`D14`). */
 export function solapaDeHerramientas(pathname: string): string | null {
   if (pathname === '/herramientas') return 'resumen'
   if (pathname.startsWith('/herramientas/etiquetas')) return 'inventario'
+  // Las clases no son solapas: viven adentro del Inventario (dueño, 22/09/2026).
+  if (pathname.startsWith('/herramientas/rodados') || pathname.startsWith('/herramientas/maquinarias')) return 'inventario'
   const s = SOLAPAS.find((x) => x.href !== '/herramientas' && (pathname === x.href || pathname.startsWith(`${x.href}/`)))
   return s?.clave ?? null
 }
@@ -59,9 +62,7 @@ export function NavHerramientas({ cuentas, derecha }: { cuentas: CuentasNav; der
       <nav aria-label="Herramientas" style={{ display: 'flex', alignItems: 'center', gap: 22, overflowX: 'auto', scrollbarWidth: 'none' }}>
         {SOLAPAS.map((s) => {
           const on = s.clave === activa
-          const cuenta = s.clave === 'mantenimiento' ? cuentas.mantenimiento
-            : s.clave === 'maquinarias' ? cuentas.maquinarias
-            : s.clave === 'rodados' ? cuentas.rodados : null
+          const cuenta = s.clave === 'mantenimiento' ? cuentas.mantenimiento : null
           return (
             <Link
               key={s.clave} href={s.href} prefetch={false} data-testid={`ir-${s.clave}`}

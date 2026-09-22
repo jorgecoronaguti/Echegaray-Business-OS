@@ -1,10 +1,18 @@
 import { leerParque } from '@/features/herramientas/services/datos'
 import { Marco } from '@/features/herramientas/components/Marco'
 import { VistaInventario } from '@/features/herramientas/components/VistaInventario'
+import { VistaRodados } from '@/features/herramientas/components/VistaRodados'
+import { VistaMaquinarias } from '@/features/herramientas/components/VistaMaquinarias'
 import { filtrosDeURL } from '@/features/herramientas/logica/inventario'
 import { normalizarCodigo } from '@/features/herramientas/logica/codigo'
 
 // D02 · INVENTARIO — lista + ficha en split. `?activo=<código>` abre la ficha (lo usa `/h/<código>`).
+//
+// ═══ LA CLASE ES EL FILTRO, NO OTRA PANTALLA (dueño, 22/09/2026) ═══
+//
+// «esto esta mal porque mezcla funciones con categorias». Rodados y Maquinarias dejaron de ser solapas: son
+// este mismo Inventario con `?clase=`, y cada clase trae SUS columnas —un rodado se mira por km, verificación
+// y papeles; una herramienta de mano, no—. La ficha (`?activo=`) sigue siendo la del Inventario para todos.
 export const dynamic = 'force-dynamic'
 
 export default async function InventarioPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -12,9 +20,12 @@ export default async function InventarioPage({ searchParams }: { searchParams: P
   const lectura = await leerParque()
   const crudo = Array.isArray(sp.activo) ? sp.activo[0] : sp.activo
   const activo = crudo ? normalizarCodigo(crudo) : null
+  const filtros = filtrosDeURL(sp)
   return (
     <Marco lectura={lectura}>
-      {() => <VistaInventario filtros={filtrosDeURL(sp)} activo={activo} />}
+      {(l) => (filtros.clase === 'rodado' && !activo ? <VistaRodados parque={l.parque} />
+        : filtros.clase === 'equipo' && !activo ? <VistaMaquinarias parque={l.parque} />
+        : <VistaInventario filtros={filtros} activo={activo} />)}
     </Marco>
   )
 }
