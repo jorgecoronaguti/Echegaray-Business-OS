@@ -42,8 +42,8 @@ test('«desde» agrupa por donde está cada uno hoy, incluido «sin ubicación c
 
 test('destinos: sólo obras activas del índice (con o sin ubicación creada), nada archivado, ningún rodado en baja', () => {
   const d = destinos(parque(), obras)
-  assert.deepEqual(d.map(claveDestino), ['u:u-taller', 'u:u-hilux', 'u:u-arcor', 'obra:ob-nueva'])
-  assert.deepEqual(d.map((x) => x.rotulo), ['Taller', 'Hilux NMN898', 'OB-0012 · PISOS ARCOR', 'OB-0031 · NAVE MESSINAS'])
+  assert.deepEqual(d.map(claveDestino), ['u:u-arcor', 'obra:ob-nueva', 'u:u-hilux', 'u:u-taller'])
+  assert.deepEqual(d.map((x) => x.rotulo), ['OB-0012 · PISOS ARCOR', 'OB-0031 · NAVE MESSINAS', 'Hilux NMN898', 'Taller'], 'primero las obras, después los rodados')
 })
 
 test('advertencias: el problema viaja, el rodado con carga pregunta, y no se mete adentro de sí mismo', () => {

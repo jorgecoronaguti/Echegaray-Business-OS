@@ -71,7 +71,8 @@ export function destinos(p: Parque, obrasActivas: ObraIndice[]): OpcionDestino[]
     .filter((u): u is Ubicacion & { tipo: 'taller' | 'rodado' | 'servicio_tecnico' | 'tercero' } => u.tipo !== 'obra' && !u.archivada)
     .filter((u) => u.tipo !== 'rodado' || (u.activo_id && p.activoPorId.get(u.activo_id)?.estado !== 'baja'))
     .map((u) => ({ tipo: 'ubicacion' as const, ubicacionId: u.id, rotulo: rotuloUbicacion(p, u.id), grupo: u.tipo }))
-  const orden = { taller: 0, rodado: 1, servicio_tecnico: 2, tercero: 3 } as const
+  // Orden del dueño (22/09): «q primero salgan las obras y dp los rodados». Después, Taller y el resto.
+  const orden = { rodado: 0, taller: 1, servicio_tecnico: 2, tercero: 3 } as const
   fijos.sort((a, b) => orden[a.grupo] - orden[b.grupo] || a.rotulo.localeCompare(b.rotulo))
   const obras = obrasActivas
     .filter((o) => o.estado === 'activa')
@@ -82,7 +83,7 @@ export function destinos(p: Parque, obrasActivas: ObraIndice[]): OpcionDestino[]
         : { tipo: 'obra' as const, obraId: o.id, rotulo: rotuloDeObra(o), grupo: 'obra' as const }
     })
     .sort((a, b) => a.rotulo.localeCompare(b.rotulo))
-  return [...fijos, ...obras]
+  return [...obras, ...fijos]
 }
 
 /** Clave estable de una opción, para el valor de un radio o de un `<select>`. */

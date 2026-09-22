@@ -46,7 +46,8 @@ export function PanelMover({ idsIniciales, destinoInicial, onHecho }: {
   const elegida = opciones.find((o) => claveDestino(o) === destino) ?? null
   const destinoUbicacion = elegida?.tipo === 'ubicacion' ? elegida.ubicacionId : null
   const w = advertencias(parque, activos, destinoUbicacion)
-  const rapidas = opciones.filter((o) => o.grupo !== 'obra')
+  // A mano, a un toque: las obras activas primero y después los rodados (dueño, 22/09).
+  const rapidas = opciones
   const filtradas = busca.trim() ? opciones.filter((o) => contieneEnAlguno([o.rotulo], busca)) : opciones
   const hayCarga = w.rodadosConCarga.length > 0
   const puede = activos.length > 0 && elegida && !w.adentroDeSiMismo && (!hayCarga || bajarCarga !== null) && !enviando
