@@ -73,10 +73,15 @@ export async function avisarEntregas(port, { dry = false, publicar = publicarYRe
   const pend = await pendientesDeAviso(port)
   if (!pend) return { avisadas: 0, sinMigracion: true }
   if (!pend.length) return { avisadas: 0 }
+  // EL CANAL, POR ORDEN (22/09/2026): el de rendiciones si existiera, y si no el de comprobantes —
+  // Comprobantes-gastos, que es donde el dueño decidió que viva todo el efectivo. El canal propio se archivó;
+  // sin este orden, los avisos para firmar dejaban de salir y nadie se enteraba.
   const canal = (await port.query(
-    `select channel_id from comunicacion.canales_area where plataforma = 'mattermost' and area_clave = 'rendicion' and activo limit 1`)).rows[0]?.channel_id
+    `select channel_id from comunicacion.canales_area
+      where plataforma = 'mattermost' and area_clave in ('rendicion', 'compras') and activo
+      order by case area_clave when 'rendicion' then 0 else 1 end limit 1`)).rows[0]?.channel_id
   // Sin canal no se inventa otro lugar: se dice, y las entregas quedan sin avisar hasta que exista.
-  if (!canal) { log.warn?.(`efectivo: ${pend.length} entrega(s) sin avisar — falta el canal de Rendiciones`); return { avisadas: 0, sinCanal: pend.length } }
+  if (!canal) { log.warn?.(`efectivo: ${pend.length} entrega(s) sin avisar — no hay canal atado a rendicion ni a compras`); return { avisadas: 0, sinCanal: pend.length } }
   let avisadas = 0
   for (const e of pend) {
     const texto = textoDelAviso({ username: e.username, codigo: e.codigo, destino: e.destino, entregaId: e.id })
