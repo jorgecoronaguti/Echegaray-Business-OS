@@ -69,3 +69,15 @@ test('la historia del proveedor NUNCA sugiere «A rendir»: lo decide quién pag
   assert.equal(p.sugerido, null)
   assert.equal(p.ultimas.length, 5, 'lo que había se sigue mostrando, sin afirmarlo')
 })
+
+test('Comprobantes-gastos NO cambia: el consumo en efectivo de la caja sigue entrando como sale del papel', async () => {
+  // Pedido del dueño (22/09/2026): «en el canal comprobantes gastos tb se van a subir comprobantes de
+  // consumos en efectivo q actualmente esta todo armado». Ese canal NO fuerza «A rendir»: sólo la
+  // rendición (canal Rendiciones y la cola web con origen «rendicion») lo hace.
+  const { readFileSync } = await import('node:fs')
+  const canal = readFileSync(new URL('../comunicacion/especialistas/comprobantes.mjs', import.meta.url), 'utf8')
+  assert.doesNotMatch(canal, /forzar|A rendir/)
+  const { especialista } = await import('../comunicacion/especialistas/rendiciones.mjs')
+  assert.equal(await especialista.reconoce('', { area: 'compras', fileIds: ['x'] }), null,
+    'una foto en Comprobantes-gastos no la reclama Rendiciones')
+})
