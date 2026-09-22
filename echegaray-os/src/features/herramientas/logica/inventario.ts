@@ -127,3 +127,24 @@ export function sugerencias(p: Parque, q: string, max = 8): Activo[] {
     .sort((x, y) => rango(x) - rango(y) || x.nombre.localeCompare(y.nombre, 'es'))
     .slice(0, max)
 }
+
+export interface Totales {
+  activos: number
+  /** Los lotes cuentan por lo que dicen: «Balde de albañil (8 u.)» son 8. */
+  unidades: number
+  porTipo: { tipo: 'taller' | 'obra' | 'rodado' | 'servicio_tecnico' | 'tercero' | 'sin'; activos: number }[]
+}
+
+/** Los totales de lo que se está viendo (dueño, 22/09: «necesito q inventario me vaya mostrando totales»). */
+export function totales(p: Parque, lista: Activo[]): Totales {
+  let unidades = 0
+  const c = new Map<Totales['porTipo'][number]['tipo'], number>()
+  for (const a of lista) {
+    const lote = /\((\d+) u\.\)/.exec(a.nombre)
+    unidades += lote ? Number(lote[1]) : 1
+    const t = a.ubicacion_id ? (p.ubicacionPorId.get(a.ubicacion_id)?.tipo ?? 'sin') : 'sin'
+    c.set(t, (c.get(t) ?? 0) + 1)
+  }
+  const orden: Totales['porTipo'][number]['tipo'][] = ['taller', 'obra', 'rodado', 'servicio_tecnico', 'tercero', 'sin']
+  return { activos: lista.length, unidades, porTipo: orden.filter((t) => c.has(t)).map((t) => ({ tipo: t, activos: c.get(t)! })) }
+}

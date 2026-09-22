@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { armarParque } from './parque.ts'
-import { candidatos, categorias, sugerencias, cuentaPorEstado, filtrar, filtrosDeURL, queryDe } from './inventario.ts'
+import { candidatos, categorias, sugerencias, totales, cuentaPorEstado, filtrar, filtrosDeURL, queryDe } from './inventario.ts'
 import { faltaMigracion } from './falta-migracion.ts'
 import { activo, ubicacion } from './fixture.test-util.ts'
 
@@ -77,4 +77,13 @@ test('el buscador sugiere mientras se tipea: código exacto primero, bajas nunca
   assert.deepEqual(sugerencias(p, 'nmn').map((a) => a.id), ['r'], 'y por patente')
   assert.deepEqual(sugerencias(p, '   '), [])
   assert.equal(sugerencias(p, 'a', 2).length, 2)
+})
+
+test('totales de lo que se ve: activos, unidades (los lotes cuentan lo que dicen) y dónde están', () => {
+  const p = parque()
+  const lista = [...filtrar(p, filtrosDeURL({})), { ...p.activos[3], id: 'lote', nombre: 'Balde de albañil (8 u.)' }]
+  const t = totales(p, lista)
+  assert.equal(t.activos, 4, 'la solapa por defecto es Herramientas: el rodado no entra')
+  assert.equal(t.unidades, 11, '3 sueltos + 8 del lote')
+  assert.deepEqual(t.porTipo, [{ tipo: 'taller', activos: 1 }, { tipo: 'obra', activos: 1 }, { tipo: 'sin', activos: 2 }])
 })

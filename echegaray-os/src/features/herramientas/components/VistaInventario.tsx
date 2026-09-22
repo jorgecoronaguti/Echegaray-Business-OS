@@ -7,7 +7,7 @@
 
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { candidatos, categorias, cuentaPorEstado, filtrar, queryDe, sugerencias, type Filtros, type FiltroClase, type FiltroEstado } from '../logica/inventario'
+import { candidatos, categorias, cuentaPorEstado, filtrar, queryDe, sugerencias, totales, type Filtros, type FiltroClase, type FiltroEstado } from '../logica/inventario'
 import { ETIQUETA_ESTADO_CORTA, MOTIVO_BAJA, TONO_ESTADO, quienLaMovio, rotuloUbicacion, textoVisto, vistoEn, rotuloRodado, type Parque } from '../logica/parque'
 import { editarActivoAction } from '../services/acciones'
 import type { Activo } from '../types'
@@ -160,6 +160,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
           </div>
         )}
 
+          <TotalesInventario t={totales(parque, lista)} />
           <div role="table" aria-label="Inventario (rótulos)">
           <div role="row" style={{ ...eyebrow, display: 'grid', gridTemplateColumns: COLS, gap: 16, height: 36, alignItems: 'center', borderBottom: `1px solid ${V.linea}` }}>
             <div>
@@ -205,6 +206,23 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
  * ubicación, igual que el `q` de la URL: el texto se escribe acá y se aplica a los 200 ms, sin
  * recargar la página.
  */
+const TIPO_TOTAL: Record<string, string> = {
+  taller: 'Taller', obra: 'Obras', rodado: 'En rodados', servicio_tecnico: 'Servicio técnico', tercero: 'Terceros', sin: 'Sin ubicación',
+}
+
+/** Los totales de lo que se ve, arriba del listado: cambian con cada filtro y con cada letra del buscador. */
+function TotalesInventario({ t }: { t: ReturnType<typeof totales> }) {
+  return (
+    <div data-testid="totales-inventario" style={{ display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap', fontSize: '12.5px', color: V.apagado, marginBottom: -8 }}>
+      <span><b style={{ fontSize: '14px', color: V.tinta, fontWeight: 600 }}>{t.activos}</b> {t.activos === 1 ? 'activo' : 'activos'}</span>
+      {t.unidades !== t.activos && <span><b style={{ color: V.tinta, fontWeight: 600 }}>{t.unidades}</b> unidades</span>}
+      {t.porTipo.map((x) => (
+        <span key={x.tipo} style={{ color: x.tipo === 'sin' ? V.warn : V.apagado }}>{TIPO_TOTAL[x.tipo]} <b style={{ color: x.tipo === 'sin' ? V.warn : V.tintaSuave, fontWeight: 500 }}>{x.activos}</b></span>
+      ))}
+    </div>
+  )
+}
+
 function BuscadorInventario({ parque, valor, onBuscar, onElegir }: {
   parque: Parque
   valor: string
