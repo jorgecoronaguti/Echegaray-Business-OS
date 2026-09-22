@@ -113,3 +113,19 @@ test('el aviso de una entrega: menciona, lleva el enlace a la firma y NO publica
   assert.equal((await avisarEntregas(port2, { log: {}, publicar: async () => null })).avisadas, 0, 'post no releído: no cuenta')
   assert.equal((await avisarEntregas(port2, { log: {}, publicar: async () => 'post1' })).avisadas, 1)
 })
+
+test('el conciliador CAJA ↔ Cash Flow no cuenta «A rendir» como salida futura (auditoría 22/09/2026)', async () => {
+  const { comprasPorRubro } = await import('../scripts/conciliar-caja-vs-cashflow.mjs')
+  const r = comprasPorRubro({
+    cRubro: ['Materiales', 'Materiales'], cFecha: [46300, 46300], cTotal: [1000, 96400],
+    cSub: ['', ''], cTipo: ['Transferencia', 'A rendir'],
+  }, 46290)
+  assert.deepEqual(r.get('Materiales'), [{ fecha: 46300, monto: 1000 }], 'el billete rendido ya salió con la entrega')
+})
+
+test('el pipeline escribe _EFECTIVO_RAW ANTES que _CAJA_ANEXO (el anexo la lee por fórmula)', async () => {
+  const { PASOS } = await import('./flujo-caja-pasos.mjs')
+  const i = PASOS.findIndex(([s]) => s === 'efectivo-raw-pestana.mjs')
+  const j = PASOS.findIndex(([s]) => s === 'caja-anexo-pestana.mjs')
+  assert.ok(i >= 0 && j >= 0 && i < j, `orden: réplica ${i}, anexo ${j}`)
+})

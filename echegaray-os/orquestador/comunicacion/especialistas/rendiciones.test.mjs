@@ -60,3 +60,16 @@ test('las puertas fallan cerrado ANTES de bajar un archivo: canal ajeno, sin leg
     assert.ok(!port.q.some((s) => /insert into public\.efectivo_comprobante/.test(s)), `${estado}: no registró nada`)
   }
 })
+
+test('con las puertas pasadas: registra el ticket POR POST y le manda al circuito «A rendir», pagado y la obra', async () => {
+  const port = portFalso({ abiertas: [A] })
+  const llamadas = []
+  const procesar = async (_d, m) => { llamadas.push(m); return { texto: 'ok', estado: 'cargado' } }
+  // Dos tickets en el MISMO hilo: cada uno con su post, no el hilo (auditoría 22/09/2026).
+  await especialista.atender({ texto: '', port, actor, fileIds: ['f1'], postId: 'postA', procesar })
+  await especialista.atender({ texto: '', port, actor, fileIds: ['f2'], postId: 'postB', procesar })
+  assert.deepEqual(llamadas[0].forzar, { formaPago: 'A rendir', pagado: true })
+  assert.equal(llamadas[0].texto, 'OB-0020 Galpón 8')
+  assert.deepEqual(llamadas.map((m) => m.postId), ['postA', 'postB'])
+  assert.equal(port.q.filter((s) => /insert into public\.efectivo_comprobante/.test(s)).length, 2)
+})

@@ -300,7 +300,7 @@ test('RENDICIÓN: el ticket viaja con la obra de la entrega y con «A rendir» f
   const llamadas = []
   await procesarUnLote({ port, procesar: async (_d, m) => { llamadas.push(m); return { estado: 'cargado', texto: '✔', fajoId: 'f', parte: parte({ cargados: 1, suma: 96400 }) } } })
   assert.equal(llamadas[0].texto, 'OB-0011 SF - PISOS INDUSTRIALES')
-  assert.deepEqual(llamadas[0].forzar, { formaPago: 'A rendir' })
+  assert.deepEqual(llamadas[0].forzar, { formaPago: 'A rendir', pagado: true })
   assert.deepEqual(port.inserts, [[ENTREGA, '30-1|FB|3-41927', 96400, USUARIO, 'c0']], 'lo escrito en Compras queda vinculado a la entrega')
 })
 
@@ -340,5 +340,5 @@ test('RENDICIÓN: entrega a Estructura no manda obra, pero sí «A rendir»', as
   const llamadas = []
   await procesarUnLote({ port, procesar: async (_d, m) => { llamadas.push(m); return { estado: 'cargado', texto: '', fajoId: 'f', parte: parte() } } })
   assert.equal(llamadas[0].texto, null)
-  assert.deepEqual(llamadas[0].forzar, { formaPago: 'A rendir' })
+  assert.deepEqual(llamadas[0].forzar, { formaPago: 'A rendir', pagado: true })
 })

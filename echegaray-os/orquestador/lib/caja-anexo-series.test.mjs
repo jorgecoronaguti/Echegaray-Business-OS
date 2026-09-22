@@ -89,8 +89,12 @@ test('EL AÑO SE SUMA CONTRA EL LIBRO, NO CONTRA UNA SEGUNDA CUENTA', () => {
   // tarjetas de CAJA discreparían sin que nada avise. Se compara contra el CONSTRUCTOR, no contra un
   // texto copiado: si `terminoLibro` cambia, este test se mueve con él.
   const ventana = (m) => ({ desde: `DATE(YEAR(TODAY());${m};1)`, hasta: `DATE(YEAR(TODAY());${m + 1};1)` })
-  assert.equal(ingresosDelMes(3), `=${terminoLibro({ ...ventana(3), signo: 1, medida: 'magnitud' })}`)
-  assert.equal(egresosDelMes(3), `=${terminoLibro({ ...ventana(3), signo: -1, medida: 'magnitud' })}`)
+  // Menos la línea de fondos a rendir (22/09/2026): plata que cambia de manos adentro, no ingreso ni costo.
+  const fondos = ['Efectivo a rendir (fondos en manos de la gente)']
+  assert.equal(ingresosDelMes(3), `=${terminoLibro({ ...ventana(3), signo: 1, medida: 'magnitud' })}`
+    + `-${terminoLibro({ ...ventana(3), signo: 1, medida: 'magnitud', rubros: fondos })}`)
+  assert.equal(egresosDelMes(3), `=${terminoLibro({ ...ventana(3), signo: -1, medida: 'magnitud' })}`
+    + `-${terminoLibro({ ...ventana(3), signo: -1, medida: 'magnitud', rubros: fondos })}`)
   assert.ok(ingresosDelMes(1).includes('_MOVIMIENTOS!$A$2:$A'), 'la fuente es el libro, con rango abierto')
   assert.ok(!/\$[A-Z]+\$\d+:\$?[A-Z]+\$\d+/.test(egresosDelMes(1)), 'ningún rango con tope: el libro crece con cada corrida')
 })

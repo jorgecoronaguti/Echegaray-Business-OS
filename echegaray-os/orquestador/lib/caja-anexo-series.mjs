@@ -131,10 +131,14 @@ const mes1 = (m) => `DATE(YEAR(TODAY());${m};1)`
  * jamás se tocarían — que es justo lo que este gráfico tiene que mostrar. En magnitud las dos suben
  * desde cero y el cruce es el punto de equilibrio, visible sin leer un número.
  */
+// EFECTIVO A RENDIR (auditoría 22/09/2026): la línea de fondos es plata que cambia de manos ADENTRO de
+// la empresa —la entrega sale, la devolución y el espejo del ticket vuelven—: no es ingreso ni costo. Se
+// saca de los dos lados; el gasto rendido queda contado una vez, como costo en su rubro.
+const sinFondos = (f) => `${terminoLibro(f)}-${terminoLibro({ ...f, rubros: [RUBRO_FONDOS_A_RENDIR] })}`
 export const ingresosDelMes = (m) =>
-  `=${terminoLibro({ desde: mes1(m), hasta: mes1(m + 1), signo: 1, medida: 'magnitud' })}`
+  `=${sinFondos({ desde: mes1(m), hasta: mes1(m + 1), signo: 1, medida: 'magnitud' })}`
 export const egresosDelMes = (m) =>
-  `=${terminoLibro({ desde: mes1(m), hasta: mes1(m + 1), signo: -1, medida: 'magnitud' })}`
+  `=${sinFondos({ desde: mes1(m), hasta: mes1(m + 1), signo: -1, medida: 'magnitud' })}`
 
 /** NÚCLEO PURO: el saldo proyectado al día `d` (positivo = futuro), sumando lo que todavía no pasó. */
 export const saldoProyectado = (d) =>

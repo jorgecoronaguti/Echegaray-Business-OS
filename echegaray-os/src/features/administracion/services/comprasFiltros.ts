@@ -31,7 +31,7 @@
 // numérico es su ORDEN — se usa para ordenar y se saca para mostrar.
 
 import { leerNumeroEsAR } from '../../../shared/lib/numeroEsAR.ts'
-import { MEDIOS_DE_PAGO } from './pagoDeCompra.ts'
+import { MEDIOS_DEL_LIBRO } from './pagoDeCompra.ts'
 
 /** Lo que un criterio necesita mirar de una fila. Subconjunto de `CompraSheet` más su obra. */
 export interface Criteriable {
@@ -281,8 +281,8 @@ export function opcionesDe(filas: Criteriable[]): Opciones {
     // LOS MEDIOS SON LA LISTA DEL PANEL DE PAGO MÁS LO QUE LA PESTAÑA TRAIGA ADEMÁS. A diferencia del resto,
     // «A rendir» se ofrece aunque todavía no haya ninguna fila con ese medio (efectivo a rendir, 22/09/2026):
     // es el filtro que dice «nada se rindió todavía», y esconderlo haría pensar que el medio no existe.
-    medios: [...MEDIOS_DE_PAGO, ...junta((f) => f.tipo_pago)
-      .filter((m) => !(MEDIOS_DE_PAGO as readonly string[]).some((x) => x.toLowerCase() === m.toLowerCase()))],
+    medios: [...MEDIOS_DEL_LIBRO, ...junta((f) => f.tipo_pago)
+      .filter((m) => !(MEDIOS_DEL_LIBRO as readonly string[]).some((x) => x.toLowerCase() === m.toLowerCase()))],
     vencimientos: [...tramos.entries()]
       .sort((a, b) => a[1].localeCompare(b[1], 'es'))
       .map(([visible]) => visible),

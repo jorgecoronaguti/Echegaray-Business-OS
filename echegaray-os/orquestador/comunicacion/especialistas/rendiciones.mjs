@@ -124,7 +124,9 @@ export const especialista = {
     return { destino: 'ayuda', confianza: 0.5 }
   },
 
-  async atender({ texto, intencion, port, actor, google, fileIds = [], postId, mattermost, log }) {
+  // `procesar` es inyectable para que los tests prueben QUÉ se le manda al circuito (el forzado de
+  // «A rendir» y del pago); en producción es siempre el circuito real.
+  async atender({ texto, intencion, port, actor, google, fileIds = [], postId, mattermost, log, procesar = procesarComprobantes }) {
     const ruta = intencion ?? await this.reconoce(texto, { fileIds, area: AREA_RENDICION })
     if (!fileIds.length || ruta?.destino !== 'rendir') return { texto: TEXTO.AYUDA, estado: 'ayuda', privado: false }
 
@@ -140,7 +142,9 @@ export const especialista = {
     if (motivo === 'ninguna') return { texto: TEXTO.SIN_ENTREGA, estado: 'rechazado_sin_entrega', privado: false }
     if (!entrega) return { texto: textoAmbigua(yo.abiertas), estado: 'pregunta_entrega', privado: false }
 
-    const post = actor?.root_post_id ?? postId ?? null
+    // EL POST, NO EL HILO (auditoría 22/09/2026): con el hilo como clave, un segundo ticket mandado en el
+    // mismo hilo chocaba contra el primero y quedaba vinculado a su entrega sin registrarse.
+    const post = postId ?? actor?.root_post_id ?? null
     // El ticket queda registrado ANTES de cargar: si la escritura queda en espera, la reconciliación
     // lo vincula cuando se complete.
     await port.query(
@@ -148,7 +152,7 @@ export const especialista = {
        values ($1, $2, 'mattermost', $3) on conflict (mm_post_id) do nothing`,
       [entrega.id, String(post), yo.perfilId])
 
-    const r = await procesarComprobantes({
+    const r = await procesar({
       port, google, log, mattermost,
       // La guarda de compras preguntaría por el canal de COMPRAS y denegaría éste. Las dos puertas de la
       // rendición ya se pasaron arriba, contra este canal y esta persona.
@@ -156,10 +160,10 @@ export const especialista = {
     }, {
       fileIds,
       texto: entrega.estructura ? null : [entrega.obra_codigo, entrega.obra].filter(Boolean).join(' '),
-      forzar: { formaPago: 'A rendir' },
+      forzar: { formaPago: 'A rendir', pagado: true },
       actor,
       channelId: actor?.channel_id,
-      rootPostId: post,
+      rootPostId: actor?.root_post_id ?? post,
       postId: post,
       ahora: new Date(),
     })

@@ -408,6 +408,11 @@ test('SIN nada sin probar, el lugar lo ocupa lo pagado — y el plan sigue estan
   const pagado = terminoLibro({ signo: -1, estados: ['REAL'], desde: 'EOMONTH(TODAY();-1)+1', hasta: FIN_DE_MES, medida: 'magnitud' })
   const plan = terminoLibro({ signo: -1, estados: PLAN, hasta: FIN_DE_MES, medida: 'magnitud' })
   assert.ok(c.contexto.includes(pagado), 'la rama tranquila conserva "pagaste $Y"')
+  // EFECTIVO A RENDIR (auditoría 22/09/2026): lo pagado RESTA el espejo del ticket rendido — si no, el
+  // ticket se cuenta dos veces (la entrega ya salió). Sólo el espejo (a_rendir), no la devolución.
+  const espejo = terminoLibro({ signo: 1, estados: ['REAL'], desde: 'EOMONTH(TODAY();-1)+1', hasta: FIN_DE_MES,
+    medida: 'magnitud', rubros: ['Efectivo a rendir (fondos en manos de la gente)'], instrumentos: ['a_rendir'] })
+  assert.ok(c.contexto.includes(`(${pagado}-${espejo})`), 'lo pagado del mes resta el espejo de lo rendido')
   // EL PLAN NO ES CONDICIONAL. Es el concepto que el titular dejó afuera: si desapareciera en alguna
   // rama, ese día la tarjeta escondería $38,0M en vez de separarlos.
   assert.equal(c.contexto.split(plan).length - 1, 2, 'el plan se publica en LAS DOS ramas, no sólo en una')

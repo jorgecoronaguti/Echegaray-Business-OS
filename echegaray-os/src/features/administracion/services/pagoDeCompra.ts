@@ -7,8 +7,16 @@
 // La ARITMÉTICA no está acá: es la del Sheet y vive en `orquestador/lib/pagos-de-compra.mjs`. Acá
 // sólo se decide QUÉ se dibuja y CON QUÉ palabras.
 
-/** Los siete del desplegable estricto de «Tipo pago» (`carga-comprobantes.mjs · TIPOS_PAGO`). */
-export const MEDIOS_DE_PAGO = ['Efectivo', 'Transferencia', 'Débito', 'Tarjeta Crédito', 'Echeq', 'Cheque', 'A rendir'] as const
+/**
+ * Los medios que se pueden ELEGIR al registrar un pago en la app. «A rendir» NO está, a propósito
+ * (auditoría 22/09/2026): ese medio dice «esta plata salió de una entrega de efectivo», y sólo lo puede
+ * poner la rendición (canal de Rendiciones o la cola con origen `rendicion`), que además la vincula a la
+ * entrega. Elegido a mano acá, el gasto quedaría en neto cero en el Cash Flow, fuera del cajón y sin
+ * bajar el saldo de nadie: plata que sale sin rastro.
+ */
+export const MEDIOS_DE_PAGO = ['Efectivo', 'Transferencia', 'Débito', 'Tarjeta Crédito', 'Echeq', 'Cheque'] as const
+/** Los siete que puede tener la columna (`carga-comprobantes.mjs · TIPOS_PAGO`): para LEER y filtrar. */
+export const MEDIOS_DEL_LIBRO = [...MEDIOS_DE_PAGO, 'A rendir'] as const
 export type MedioDePago = (typeof MEDIOS_DE_PAGO)[number]
 
 /** En qué punto del viaje está lo que se marcó en la app. */

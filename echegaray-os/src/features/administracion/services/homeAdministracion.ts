@@ -55,6 +55,8 @@ export interface ConteosAtencion {
    */
   efectivoPorImputar?: number | null
   efectivoSinCuit?: number | null
+  /** Filas de Compras «A rendir» sin entrega detrás (vista `efectivo_a_rendir_sin_entrega`, 22/09/2026). */
+  efectivoSinEntrega?: number | null
 }
 
 /** Lo que `getConteosHome` lee. `clientes` NO está: sale de la cartera que la página ya trajo. */
@@ -372,6 +374,15 @@ const SENALES: {
     bloquea: 'La clave queda débil: dos tickets iguales podrían no distinguirse',
     donde: 'Compras · Efectivo a rendir', accion: 'Pedir el dato',
     href: '/administracion/compras?vista=a-rendir', tono: 'warn', icono: 'compra',
+  },
+  // LA AUDITORÍA DE CIERRE (22/09/2026): «A rendir» escrito en una fila que no salió de ninguna entrega es
+  // plata que sale sin rastro — neto cero en el Cash Flow, fuera del cajón, sin bajar el saldo de nadie.
+  {
+    clave: 'efectivo-sin-entrega', de: (c) => (c.efectivoSinEntrega === undefined ? 0 : c.efectivoSinEntrega), opcional: true,
+    singular: 'compra «A rendir» sin entrega', plural: 'compras «A rendir» sin entrega',
+    bloquea: 'Ese gasto no salió de la caja ni bajó el saldo de nadie: falta decir de qué entrega fue, o cambiar el medio',
+    donde: 'Compras', accion: 'Revisar',
+    href: '/administracion/compras?me=A%20rendir', tono: 'warn', icono: 'compra',
   },
 ]
 

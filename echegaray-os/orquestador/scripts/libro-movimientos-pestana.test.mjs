@@ -19,3 +19,18 @@ test('con «Obra» insertada, la lectura del libro sigue alcanzando la última c
   // «Valor banco»: Cobranzas BB (índice 53) antes de insertar, BC (54) después.
   assert.ok(ultimaColumna(RANGOS_FUENTES.cobranzas) >= 54, RANGOS_FUENTES.cobranzas)
 })
+
+test('EFECTIVO A RENDIR: consolidar espeja cada gasto «A rendir» en la línea de fondos (auditoría 22/09/2026)', async () => {
+  // Sin el espejo, el gasto rendido sale del Cash Flow DOS veces: con la entrega y con el ticket.
+  const { consolidar } = await import('./libro-movimientos-pestana.mjs')
+  const { movimiento } = await import('../lib/libro-movimientos.mjs')
+  const { RUBRO_FONDOS_A_RENDIR } = await import('../lib/cash-flow-rubros.mjs')
+  const gasto = movimiento({ fecha: 46286, importe: 96400, signo: -1, estado: 'REAL', rubro: 'Materiales', instrumento: 'a_rendir',
+    concepto: 'Corralón El Nogal', origen: { pestana: 'Compras', fila: 994 } })
+  const { consolidado } = consolidar({ compras: [gasto] }, { debitosBanco: [], corteBanco: null, usadosBanco: new Set() })
+  const espejo = consolidado.filter((m) => m.rubro === RUBRO_FONDOS_A_RENDIR)
+  assert.equal(espejo.length, 1, 'el gasto «A rendir» tiene su espejo en la línea de fondos')
+  assert.equal(espejo[0].signo, 1)
+  assert.equal(espejo[0].importe, 96400)
+  assert.equal(consolidado.reduce((a, m) => a + m.signo * m.importe, 0), 0, 'el día del ticket la caja no se mueve')
+})

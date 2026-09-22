@@ -921,3 +921,15 @@ test('un duplicado PROBABLE no borra la clave de idempotencia: dudar no es haber
   assert.equal(llamadas.length, 0, 'con un duplicado probable no se escribe solo')
   assert.equal(repo._cargados.has(clave), true, 'y sobre todo: la clave sigue puesta')
 })
+
+// ═══ EFECTIVO A RENDIR (auditoría 22/09/2026): la línea que evita el doble descuento tiene que poder dar rojo ═══
+test('RENDICIÓN: `forzar` pone «A rendir» y Contado en el ítem; sin `forzar` el papel manda', async () => {
+  const conForzar = armar()
+  const r1 = await procesarPost(conForzar.d, post({ forzar: { formaPago: 'A rendir', pagado: true } }))
+  const it1 = conForzar.repo._fajos.get(r1.fajoId).items[0]
+  assert.equal(it1.comprobante.formaPago, 'A rendir', 'sin esto el ticket entra como Efectivo y el cajón lo resta dos veces')
+  assert.equal(it1.comprobante.condicion, 'Contado', 'sin esto queda sin Estado: PROYECTADO y la línea de fondos no vuelve')
+  const sinForzar = armar()
+  const r2 = await procesarPost(sinForzar.d, post())
+  assert.notEqual(sinForzar.repo._fajos.get(r2.fajoId).items[0].comprobante.formaPago, 'A rendir', 'Comprobantes-gastos no cambia')
+})

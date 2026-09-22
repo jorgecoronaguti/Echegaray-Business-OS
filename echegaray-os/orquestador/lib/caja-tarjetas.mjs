@@ -45,6 +45,7 @@
 
 import { terminoLibro } from './libro-sumas.mjs'
 import { RUBRO_FONDOS_A_RENDIR } from './cash-flow-rubros.mjs'
+import { INSTRUMENTO_A_RENDIR } from './caja-canales.mjs'
 import { ALERTA } from './glifos.mjs'
 import { DIAS_AVISO } from './fecha-de-frescura.mjs'
 
@@ -262,10 +263,12 @@ export function tarjetas(ref) {
   //
   // Con el efectivo a rendir, la plata sale del cajón con la ENTREGA (salida REAL en la línea de
   // fondos) y el ticket rendido vuelve a aparecer como salida REAL en su rubro, compensado por una
-  // ENTRADA REAL en la línea de fondos. Sumar sólo las salidas contaba el ticket dos veces; se resta la
-  // vuelta de la línea de fondos y queda lo que de verdad salió.
+  // ENTRADA REAL en la línea de fondos. Sumar sólo las salidas contaba el ticket dos veces; se resta ese
+  // espejo (instrumento `a_rendir`) y NO la devolución: el mismo criterio que el balde «Ya salió» de los
+  // gráficos (caja-anexo-series.mjs), para que los dos «pagado» de CAJA no difieran en lo devuelto.
   const periodoMes = { estados: ['REAL'], desde: 'EOMONTH(TODAY();-1)+1', hasta: FIN_DE_MES, medida: 'magnitud' }
-  const pagadoMes = `(${terminoLibro({ ...periodoMes, signo: -1 })}-${terminoLibro({ ...periodoMes, signo: 1, rubros: [RUBRO_FONDOS_A_RENDIR] })})`
+  const espejoRendido = terminoLibro({ ...periodoMes, signo: 1, rubros: [RUBRO_FONDOS_A_RENDIR], instrumentos: [INSTRUMENTO_A_RENDIR] })
+  const pagadoMes = `(${terminoLibro({ ...periodoMes, signo: -1 })}-${espejoRendido})`
   // ═══ EL ATRASO ARRASTRADO SE MUDÓ AL RÓTULO, Y SU CAUSA AL CONTEXTO (16/08/2026) ═══
   //
   // El 15/08 el dueño vio la tarjeta saltar de $55,6M a $125,9M y el contexto pasó a publicar el

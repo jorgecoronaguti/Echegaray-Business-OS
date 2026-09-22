@@ -381,6 +381,10 @@ export async function procesarPost(d, m = {}) {
     // historia del proveedor y del menú, para que nada lo pise. Lo que el papel decía queda en
     // `formaPagoLeida`, como siempre.
     if (m.forzar?.formaPago) item.comprobante.formaPago = m.forzar.formaPago
+    // Y ESTÁ PAGADO (auditoría 22/09/2026): la persona ya pagó el ticket con la plata de la entrega. Sin
+    // esto, un ticket que no dice «contado» quedaba sin Estado → PROYECTADO en el libro, la línea de
+    // fondos seguía en −entregado y Proveedores lo mostraba a pagar, mientras la base lo daba rendido.
+    if (m.forzar?.pagado) item.comprobante.condicion = 'Contado'
     items.push(item)
   }
   if (!items.length) {

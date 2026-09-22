@@ -185,16 +185,21 @@ export async function leerEnManos(obra?: string): Promise<LecturaEnManos> {
  * D14 — LO QUE EL FLUJO LE SUMA A LA CAMPANITA. Sin la migración, `undefined` (no se mide, no se dibuja);
  * con un error de lectura, `null` («no pude mirar», nunca cero). Sólo los tickets que esperan.
  */
-export async function leerCampanitaEfectivo(supabase: SupabaseClient): Promise<{ efectivoPorImputar?: number | null; efectivoSinCuit?: number | null }> {
+export async function leerCampanitaEfectivo(supabase: SupabaseClient): Promise<{ efectivoPorImputar?: number | null; efectivoSinCuit?: number | null; efectivoSinEntrega?: number | null }> {
   try {
-    const { data, error } = await supabase.from('efectivo_comprobante_estado').select('estado, resultado')
-      .not('estado', 'in', '(en_compras,descartado)').limit(TOPE)
-    if (faltaMigracion(error)) return {}
-    if (error) return { efectivoPorImputar: null, efectivoSinCuit: null }
+    const [{ data, error }, sinEntrega] = await Promise.all([
+      supabase.from('efectivo_comprobante_estado').select('estado, resultado')
+        .not('estado', 'in', '(en_compras,descartado)').limit(TOPE),
+      // El control de la auditoría (migración 20260922T1800): tiene que dar cero.
+      supabase.from('efectivo_a_rendir_sin_entrega').select('clave', { count: 'exact', head: true }),
+    ])
+    const control = faltaMigracion(sinEntrega.error) ? {} : { efectivoSinEntrega: sinEntrega.error ? null : (sinEntrega.count ?? 0) }
+    if (faltaMigracion(error)) return control
+    if (error) return { efectivoPorImputar: null, efectivoSinCuit: null, ...control }
     const c = conteosDeCampanita((data ?? []) as unknown as Pick<Comprobante, 'estado' | 'resultado'>[])
-    return { efectivoPorImputar: c.porImputar, efectivoSinCuit: c.sinCuit }
+    return { efectivoPorImputar: c.porImputar, efectivoSinCuit: c.sinCuit, ...control }
   } catch {
-    return { efectivoPorImputar: null, efectivoSinCuit: null }
+    return { efectivoPorImputar: null, efectivoSinCuit: null, efectivoSinEntrega: null }
   }
 }
 

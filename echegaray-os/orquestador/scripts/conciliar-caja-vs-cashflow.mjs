@@ -41,6 +41,31 @@ export const fmtFecha = (s) => serialADate(s).toLocaleDateString('es-AR', { time
 export const pesos = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('es-AR')
 
 /**
+ * NÚCLEO PURO: las salidas FUTURAS de Compras por rubro, desde el corte. Extraído del `main()` el
+ * 22/09/2026 para que la exclusión de «A rendir» tenga un test que pueda dar rojo (auditoría de cierre).
+ */
+export function comprasPorRubro({ cRubro = [], cFecha = [], cTotal = [], cSub = [], cTipo = [] } = {}, corte) {
+  // La nómina NO se toma de Compras: su fuente es la planilla (arriba). Tomarla acá la duplicaría.
+  const DESDE_PLANILLA = new Set(['Nómina · Jornales de obra', 'Nómina · Sueldos administración'])
+  const porRubro = new Map()
+  for (let i = 0; i < cRubro.length; i++) {
+    const r = String(cRubro[i] ?? '').trim()
+    if (!r || DESDE_PLANILLA.has(r)) continue
+    // «A RENDIR» NO ES UNA SALIDA FUTURA DE CAJA (22/09/2026): lo paga la persona con un fondo que ya
+    // salió del cajón el día de la entrega (CAJA lo resta desde _EFECTIVO_RAW). En el libro el gasto
+    // sale por su rubro y vuelve entero a «Efectivo a rendir»: neto cero para la escalera. Contarlo
+    // acá restaría dos veces el mismo billete.
+    if (instrumentoDePago(cTipo[i]) === INSTRUMENTO_A_RENDIR) continue
+    if (!esNum(cFecha[i]) || cFecha[i] < corte) continue   // antes del corte ya está en el saldo
+    const esBienDeUso = String(cSub[i] ?? '').trim() === SUB_BIENES_DE_USO
+    const clave = esBienDeUso ? 'Bienes de uso (inversión)' : r
+    if (!porRubro.has(clave)) porRubro.set(clave, [])
+    porRubro.get(clave).push({ fecha: cFecha[i], monto: num(cTotal[i]) })
+  }
+  return porRubro
+}
+
+/**
  * NÚCLEO PURO: los bordes de los tramos del calendario, con los MISMOS rótulos que arma CAJA.
  *
  * LOS BORDES SE FUERZAN CRECIENTES CON MAX y cada tramo es (borde anterior, borde]. Es lo que evita
@@ -324,23 +349,7 @@ async function main() {
   const kb = columnasCobranzas(await lector.encabezado('Cobranzas'), ['total', 'estado', 'fechaCobro'])
   const [cRubro, cFecha, cTotal, cSub, cTipo] = await Promise.all(
     [cc.rubro, cc.fecha, cc.total, cc.sub, cc.tipoPago].map((c) => col(rangoHasta('Compras', c, 5000))))
-  // La nómina NO se toma de Compras: su fuente es la planilla (arriba). Tomarla acá la duplicaría.
-  const DESDE_PLANILLA = new Set(['Nómina · Jornales de obra', 'Nómina · Sueldos administración'])
-  const porRubro = new Map()
-  for (let i = 0; i < cRubro.length; i++) {
-    const r = String(cRubro[i] ?? '').trim()
-    if (!r || DESDE_PLANILLA.has(r)) continue
-    // «A RENDIR» NO ES UNA SALIDA FUTURA DE CAJA (22/09/2026): lo paga la persona con un fondo que ya
-    // salió del cajón el día de la entrega (CAJA lo resta desde _EFECTIVO_RAW). En el libro el gasto
-    // sale por su rubro y vuelve entero a «Efectivo a rendir»: neto cero para la escalera. Contarlo
-    // acá restaría dos veces el mismo billete.
-    if (instrumentoDePago(cTipo[i]) === INSTRUMENTO_A_RENDIR) continue
-    if (!esNum(cFecha[i]) || cFecha[i] < corte) continue   // antes del corte ya está en el saldo
-    const esBienDeUso = String(cSub[i] ?? '').trim() === SUB_BIENES_DE_USO
-    const clave = esBienDeUso ? 'Bienes de uso (inversión)' : r
-    if (!porRubro.has(clave)) porRubro.set(clave, [])
-    porRubro.get(clave).push({ fecha: cFecha[i], monto: num(cTotal[i]) })
-  }
+  const porRubro = comprasPorRubro({ cRubro, cFecha, cTotal, cSub, cTipo }, corte)
   for (const [r, filas] of [...porRubro].sort()) {
     conceptos.push({ nombre: `Compras · ${r}`, enViejo: false, enNuevo: true, tramos: repartir(filas, bordes) })
   }

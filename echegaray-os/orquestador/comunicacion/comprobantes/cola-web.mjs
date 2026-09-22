@@ -309,7 +309,7 @@ export async function procesarUnLote(dep) {
       // Administración declaró al entregar la plata.
       texto: rinde?.texto ?? null,
       // «A rendir» lo sabe quién mandó el ticket, no el papel (ver `forzar` en flujo.mjs).
-      forzar: rinde ? { formaPago: 'A rendir' } : undefined,
+      forzar: rinde ? { formaPago: 'A rendir', pagado: true } : undefined,
       actor: {
         plataforma: 'web', plataforma_user_id: String(usuario), channel_id: String(lote),
         // Ver `nombreDeQuienSubio`: es lo que distingue «una persona cargó esto» de «un timer
