@@ -12,7 +12,7 @@ import type { Entrega, PersonaOpcion } from '../types'
 import { pesos } from '../logica/entregas'
 import { efectoDevolucion, validarDevolucion, validarMonto } from '../logica/formularios'
 import { urlEfectivo } from '../logica/url'
-import { registrarDevolucionAction } from '../services/acciones'
+import { cerrarEntregaAction, registrarDevolucionAction } from '../services/acciones'
 import { Campo, Cerrar, ErrorPanel, PANEL_CLASE } from './Piezas'
 import { CAJA_POS, MONO, V, botonClaroGrande, botonOscuroGrande, cajaConfirmar, campo, campoMonto, panel } from './estilo'
 
@@ -37,6 +37,15 @@ export function PanelDevolucion({ e, destino, porImputar, personas, miPersona }:
     if (!v.ok) { setError(v.error); return }
     empezar(async () => {
       const r = await registrarDevolucionAction({ entrega: e.id, monto, recibidaPor: recibe || null, cerrar })
+      if (!r.ok) { setError(r.error); return }
+      router.push(cerrarHref, { scroll: false })
+    })
+  }
+
+  // Rendida entera: no hay nada que devolver, se cierra (migración 20260922T1700).
+  const cerrarRendida = () => {
+    empezar(async () => {
+      const r = await cerrarEntregaAction(e.id)
       if (!r.ok) { setError(r.error); return }
       router.push(cerrarHref, { scroll: false })
     })
@@ -94,11 +103,19 @@ export function PanelDevolucion({ e, destino, porImputar, personas, miPersona }:
         </div>
       ))}
 
-      {/* EN CERO NO HAY NADA QUE DEVOLVER, y la base no tiene hoy cómo cerrar una entrega rendida entera
-          (`registrar_devolucion_efectivo` pide monto > 0). Se dice en vez de ofrecer un botón que rebota. */}
-      {e.en_su_poder <= 0 && (
-        <div style={{ fontSize: '12.5px', color: V.warn, lineHeight: 1.5 }} data-testid="devolucion-sin-saldo">
-          No tiene efectivo en su poder: no hay nada que devolver.
+      {/* EN CERO NO HAY NADA QUE DEVOLVER: la entrega rendida entera se cierra con su propia función
+          (`cerrar_entrega_efectivo`, 20260922T1700), que la rechaza si queda un ticket en camino. */}
+      {e.en_su_poder === 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }} data-testid="devolucion-sin-saldo">
+          <span style={{ fontSize: '12.5px', color: V.tintaSuave, lineHeight: 1.5 }}>No tiene efectivo en su poder: no hay nada que devolver.</span>
+          <button type="button" onClick={cerrarRendida} disabled={pendiente} style={{ ...botonOscuroGrande, opacity: pendiente ? 0.6 : 1 }} data-testid="entrega-cerrar-rendida">
+            {pendiente ? 'Cerrando…' : 'Cerrar la entrega'}
+          </button>
+        </div>
+      )}
+      {e.en_su_poder < 0 && (
+        <div style={{ fontSize: '12.5px', color: V.warn, lineHeight: 1.5 }} data-testid="devolucion-rindio-de-mas">
+          Rindió más de lo que se le entregó: no hay nada que devolver.
         </div>
       )}
 

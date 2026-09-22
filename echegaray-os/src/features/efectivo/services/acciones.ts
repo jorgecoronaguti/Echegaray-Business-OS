@@ -73,6 +73,16 @@ export async function registrarDevolucionAction(entrada: z.input<typeof devoluci
   return r.ok ? { ok: true, dato: Number(r.dato) } : r
 }
 
+/**
+ * D06 — cerrar una entrega RENDIDA ENTERA (en su poder = 0). Migración 20260922T1700: la base la
+ * rechaza si queda plata en su poder o un ticket todavía en camino.
+ */
+export async function cerrarEntregaAction(entrega: string): Promise<Resultado> {
+  const p = uuid.safeParse(entrega)
+  if (!p.success) return { ok: false, error: 'Entrega inválida' }
+  return rpc<null>('cerrar_entrega_efectivo', { p_entrega: p.data })
+}
+
 const motivoSchema = z.object({ id: uuid, motivo: texto(400).min(1, 'Escribí el motivo') })
 
 /** Sólo un error de carga, antes de que tenga rendiciones o devoluciones (lo exige la base). */
