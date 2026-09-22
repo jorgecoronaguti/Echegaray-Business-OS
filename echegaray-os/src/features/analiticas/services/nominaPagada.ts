@@ -29,6 +29,16 @@
 //   · EL RECIBO MAYOR QUE LO COBRADO existe (6 casos en 2026): el negro se apoya en 0 —no puede ser
 //     negativo— y la diferencia se declara en vez de esconderse en la resta.
 //
+// ═══ EL LÍMITE QUE HAY QUE SABER: «PAGADO» ACÁ ES «LIQUIDADO Y CERRADO» ═══
+//
+// `liquidacion_linea` tiene `pagado_banco` y `pagado_efectivo` —lo registrado como entregado por cada
+// canal— y NO se usan. Medido el 22/09/2026 sobre las 31 quincenas cerradas de 2026: lo registrado
+// cubre el 58 % de lo liquidado en enero, el 63 % en marzo y el 90 % en agosto. Ese hueco es REGISTRO
+// que falta, no plata que no salió —a nadie se le debe media quincena de enero—, así que medir con
+// esa columna dibujaría una nómina que crece 30 puntos en el año sin que nadie cobre un peso más.
+// Por eso la medida es la quincena CERRADA: la decisión de pago ya tomada y sellada. El día que el
+// registro por canal esté completo pasa a ser la fuente buena, y la cuenta se cambia acá.
+//
 // LAS LIQUIDACIONES FINALES QUEDAN AFUERA (período `FINAL-MM/AAAA`): no son quincena y el dueño ya
 // decidió que no entran en el costo de mano de obra.
 //
