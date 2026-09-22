@@ -46,8 +46,11 @@
 // Sin imports de React ni de Supabase: se prueba con `node --test` y lo lee un componente de
 // servidor sin arrastrar nada.
 
-/** Las cuatro. `deuda` y `resolver` viven en la misma ruta que `proveedores`, con `?vista=`. */
-export type SeccionCompras = 'compras' | 'proveedores' | 'deuda' | 'resolver'
+/**
+ * Las cinco. `deuda` y `resolver` viven en la misma ruta que `proveedores`, con `?vista=`; `efectivo`, en la
+ * de Compras con `?vista=a-rendir` (diseño «Efectivo a rendir», D01: «quinta sección de nivel 3»).
+ */
+export type SeccionCompras = 'compras' | 'proveedores' | 'efectivo' | 'deuda' | 'resolver'
 
 export interface SeccionDeCompras {
   clave: SeccionCompras
@@ -77,6 +80,9 @@ export interface VistaDeSeccion {
 export const SECCIONES_COMPRAS: readonly SeccionDeCompras[] = [
   { clave: 'compras', titulo: 'Compras', href: '/administracion/compras' },
   { clave: 'proveedores', titulo: 'Proveedores', href: '/administracion/proveedores' },
+  // EFECTIVO A RENDIR (22/09/2026) — entre el maestro y la deuda, donde lo pone el diseño. Es plata de la
+  // empresa en manos de una persona: se decide mirándola igual que la deuda, y su gasto termina en Compras.
+  { clave: 'efectivo', titulo: 'Efectivo a rendir', href: '/administracion/compras?vista=a-rendir' },
   { clave: 'deuda', titulo: 'A quién le debo', href: '/administracion/proveedores?vista=deuda' },
   { clave: 'resolver', titulo: 'Nombres sin resolver', href: '/administracion/proveedores?vista=resolver' },
 ] as const

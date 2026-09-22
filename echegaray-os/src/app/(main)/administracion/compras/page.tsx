@@ -98,6 +98,7 @@ import {
   getCompra, getCompras, getConteos, getObrasDelEmisor, getParecidos, TOPE,
 } from '@/features/administracion/services/comprasService'
 import { getEntradas } from '@/features/administracion/services/comprobanteEntradaService'
+import { VistaEfectivo } from '@/features/efectivo/components/VistaEfectivo'
 import { claveIdentidad, getIdentidades } from '@/features/administracion/services/identidadProveedorService'
 import { nombresDeObra } from '@/features/clientes/services/nombresDeObra'
 import {
@@ -141,6 +142,9 @@ export default async function ComprasPage({
   searchParams: Promise<Record<string, string | undefined>>
 }) {
   const sp = await searchParams
+  // EFECTIVO A RENDIR (22/09/2026): sección de nivel 3 de Compras, en esta misma ruta como pide el diseño.
+  // Vive entera en `features/efectivo`: acá sólo se enruta.
+  if (sp.vista === 'a-rendir') return <Marco><VistaEfectivo sp={sp} /></Marco>
   if (sp.f === 'arca') return <ControlArca searchParams={searchParams} />
   return <PestanaCompras sp={sp} />
 }
