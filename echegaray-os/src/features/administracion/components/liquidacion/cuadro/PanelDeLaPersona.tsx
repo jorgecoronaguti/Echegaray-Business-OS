@@ -19,7 +19,7 @@
 // Ni una cuenta nueva: las cifras son las de la línea; el cierre, `cierreDeLaFila`.
 
 import Link from 'next/link'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Drawer } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { horas as nHoras, pesos } from '../formato'
@@ -40,6 +40,7 @@ import { DetalleLaboralDeLaPersona } from './DetalleLaboralDeLaPersona'
 import { textoDelRecibo } from './FilasMensuales'
 import { asistenciaDeReferencia, pagoDelMensual, tipoDeLiquidacion } from '../../../services/liquidacionPorTipo'
 import { ReciboPorConceptos } from './ReciboPorConceptos'
+import { ArmarRecibo } from './ArmarRecibo'
 
 const MONO = "'IBM Plex Mono', monospace"
 const corta = (iso: string | null): string =>
@@ -59,6 +60,8 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
   onCerrar: () => void
 }) {
   const jornales = tituloDeJornales(fila.linea)
+  // «RECIBO» (dueño, 22/09/2026): el mismo panel pasa a armar el recibo de esta persona; «Volver» lo devuelve.
+  const [armando, setArmando] = useState(false)
   return (
     <Drawer
       titulo={fila.nombre}
@@ -66,8 +69,23 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
       onCerrar={onCerrar}
       ancho={520}
       testid="panel-cuadro-persona"
-      pie={<Link href={`/administracion/personas/${fila.personaId}`} prefetch={false} style={{ fontSize: '12.5px', color: V.tinta }}>Ver el legajo completo</Link>}
+      pie={
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {!armando && (
+            <button type="button" onClick={() => setArmando(true)} data-testid="panel-recibo"
+              style={{ padding: '8px 16px', lineHeight: '20px', borderRadius: 6, border: 0, background: V.grafito, color: '#FFFFFF', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+              Recibo
+            </button>
+          )}
+          <Link href={`/administracion/personas/${fila.personaId}`} prefetch={false} style={{ fontSize: '12.5px', color: V.tinta }}>Ver el legajo completo</Link>
+        </div>
+      }
     >
+      {armando ? (
+        <div style={{ padding: '16px 16px 24px' }}>
+          <ArmarRecibo fila={fila} quincena={quincena} onVolver={() => setArmando(false)} />
+        </div>
+      ) : (
       <div style={{ padding: '16px 16px 24px', display: 'flex', flexDirection: 'column', gap: 24 }}>
         {/* LA MISMA SEPARACIÓN QUE EL CUADRO (dueño, 17/09/2026): el mensual no se lee con la cadena por hora. */}
         {tipoDeLiquidacion(fila) === 'mensual'
@@ -91,6 +109,7 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
 
         <DetalleLaboralDeLaPersona detalle={detalle} />
       </div>
+      )}
     </Drawer>
   )
 }

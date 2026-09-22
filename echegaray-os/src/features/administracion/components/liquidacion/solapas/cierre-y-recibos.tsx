@@ -7,7 +7,6 @@
 import type { PropsDeSolapa } from './index'
 import { SolapaCierre } from './cierre'
 import { SolapaRecibos } from './recibos'
-import { SeccionRecibosDePago } from '@/features/recibos/components/SeccionRecibosDePago'
 
 export async function SolapaCierreYRecibos(props: PropsDeSolapa) {
   return (
@@ -17,11 +16,8 @@ export async function SolapaCierreYRecibos(props: PropsDeSolapa) {
       {/* `hrefDe` Y `parametros` VIAJAN (QA, 14/09/2026): sin ellos los cuatro enlaces del recorte salían con
           `href="#"` —no filtraban— y, como el enlace era su clave, React avisaba «two children with the
           same key» en cada carga de esta sección. */}
-      {/* LOS RECIBOS DE PAGO (D11, 22/09/2026): lo que la empresa paga —banco + efectivo— y la persona firma.
-          Van antes que los del estudio porque salen del sello de arriba; los del estudio son otro papel. */}
-      <section id="recibos-pago">
-        {await SeccionRecibosDePago({ quincenaPedida: props.quincenaPedida, hoy: props.hoy })}
-      </section>
+      {/* EL RECIBO DE PAGO YA NO VA ACÁ (dueño, 22/09/2026): se arma desde el panel de cada persona, botón
+          «Recibo» (`cuadro/ArmarRecibo.tsx`), sin esperar al cierre. */}
       <section id="recibos" data-testid="seccion-recibos">
         {await SolapaRecibos({ quincenaPedida: props.quincenaPedida, hoy: props.hoy, hrefDe: props.hrefDe, parametros: props.parametros })}
       </section>
