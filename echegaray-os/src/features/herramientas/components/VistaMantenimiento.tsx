@@ -63,7 +63,7 @@ export function VistaMantenimiento({ activo }: { activo: string | null }) {
         ))}
       </div>
       <div style={{ width: 2, background: V.linea }} />
-      <div style={{ width: 430, flexShrink: 0, padding: '22px 24px 28px' }}>
+      <div style={{ width: 430, flexShrink: 0, padding: '22px 24px 28px', background: '#FFFFFF', position: 'sticky', top: 83, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 83px)', overflowY: 'auto' }}>
         {elegido ? <Ficha id={elegido.id} /> : (
           <div style={{ fontSize: '13px', color: V.tenue }}>Elegí uno de la cola para ver qué le pasa y qué hacer.</div>
         )}

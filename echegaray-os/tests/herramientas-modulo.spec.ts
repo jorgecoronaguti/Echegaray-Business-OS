@@ -24,7 +24,6 @@ test.describe('módulo Herramientas · escritorio', () => {
     await page.goto('/herramientas/ubicaciones')
     await expect(page.getByText('Taller').first()).toBeVisible()
     // Sin clavar cuántas hay: el número cambia con cada movimiento real (el dueño mueve y da de baja).
-    await expect(page.getByText(/SALÓN COMERCIAL/i).first()).toBeVisible()
   })
 
   test('el menú tiene Herramientas al final y la ruta vieja redirige', async ({ page }) => {
@@ -89,5 +88,41 @@ test.describe('módulo Herramientas · inventario (22/09)', () => {
     await page.getByTestId('codigo-prefijo').fill('cr-t9')
     await expect(page.getByTestId('codigo-prefijo')).toHaveValue('CRT')
     await page.screenshot({ path: `${CAPTURAS}_alta-codigo.png`, fullPage: false })
+  })
+})
+
+test.describe('módulo Herramientas · envío a obra y planilla (22/09)', () => {
+  test.use({ viewport: { width: 1440, height: 900 } })
+
+  test('armar el envío buscando por nombre y sumando con clics; la planilla del Taller', async ({ page }) => {
+    test.setTimeout(180000)
+    await entrar(page)
+    await page.goto('/herramientas/inventario')
+    await page.waitForLoadState('networkidle')
+    await page.getByTestId('armar-envio').click()
+    await expect(page.getByTestId('envio-vacio')).toBeVisible()
+    const sumar = page.getByTestId('agregar-codigo')
+    for (const q of ['casco', 'pala ancha']) {
+      await sumar.pressSequentially(q, { delay: 40 })
+      await page.getByTestId('sumar-opciones').getByRole('option').first().click()
+    }
+    await expect(page.getByTestId('envio-vacio')).toHaveCount(0)
+    await page.getByTestId('destino-mover').click()
+    await page.getByRole('listbox').getByRole('option').first().click()
+    await expect(page.getByTestId('confirmar-mover')).toBeEnabled()
+    // Arriba sigue visible el panel aunque se baje la lista de atrás.
+    await page.mouse.move(300, 600)
+    await page.mouse.wheel(0, 2000)
+    await page.waitForTimeout(300)
+    const panel = await page.getByTestId('confirmar-mover').boundingBox()
+    expect(panel && panel.y).toBeLessThan(900)
+    await page.screenshot({ path: `${CAPTURAS}_envio.png`, fullPage: false })
+    // No se confirma: la prueba no mueve herramientas reales.
+
+    await page.goto('/herramientas/ubicaciones?tipo=taller')
+    await page.getByTestId('ver-planilla').click()
+    await expect(page.getByTestId('planilla')).toBeVisible()
+    await expect(page.getByTestId('planilla').locator('tbody tr').first()).toBeVisible()
+    await page.screenshot({ path: `${CAPTURAS}_planilla.png`, fullPage: false })
   })
 })

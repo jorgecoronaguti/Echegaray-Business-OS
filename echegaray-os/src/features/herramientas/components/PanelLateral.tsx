@@ -26,7 +26,8 @@ export function PanelLateral({ titulo, subtitulo, onCerrar, pie, children, testi
       style={{
         width: 520, flexShrink: 0, background: '#FFFFFF', borderLeft: `1px solid ${V.lineaFuerte}`,
         padding: '24px 26px 26px', display: 'flex', flexDirection: 'column', gap: 22,
-        position: 'sticky', top: 0, alignSelf: 'flex-start', height: 'calc(100vh - 48px)', overflowY: 'auto',
+        // Fijo como la cabecera (dueño, 22/09): debajo del header de la app (44) y de las solapas (39).
+        position: 'sticky', top: 83, zIndex: 15, alignSelf: 'flex-start', height: 'calc(100vh - 83px)', overflowY: 'auto',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>

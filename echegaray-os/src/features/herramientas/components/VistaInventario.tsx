@@ -87,6 +87,10 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
             )
           })}
           <div style={{ marginLeft: 'auto' }}>
+            <button type="button" onClick={() => abrir({ tipo: 'mover', ids: sel.filter((id) => parque.activoPorId.get(id)?.estado !== 'baja') })} data-testid="armar-envio"
+              style={{ height: 28, fontSize: '12.5px', padding: '0 12px', borderRadius: 6, background: V.marca, color: V.grafito, fontWeight: 600, marginRight: 8 }}>
+              Armar envío a obra
+            </button>
             <button type="button" onClick={() => abrir({ tipo: 'alta' })} style={{ ...botonSecundario, height: 28, fontSize: '12.5px', padding: '0 10px' }} data-testid="nuevo-activo">
               Nuevo activo
             </button>
@@ -189,7 +193,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
       </div>
 
       <div style={{ width: 2, background: V.linea }} />
-      <div style={{ width: 430, flexShrink: 0, padding: '22px 24px 28px', background: '#FFFFFF' }}>
+      <div style={{ width: 430, flexShrink: 0, padding: '22px 24px 28px', background: '#FFFFFF', position: 'sticky', top: 83, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 83px)', overflowY: 'auto' }}>
         {abierto ? <Ficha id={abierto.id} /> : (
           <div style={{ fontSize: '13px', color: V.tenue, paddingTop: 4 }} data-testid="ficha-vacia">
             {activo ? `${activo} no está en el inventario.` : 'Elegí un activo de la lista para ver su ficha.'}

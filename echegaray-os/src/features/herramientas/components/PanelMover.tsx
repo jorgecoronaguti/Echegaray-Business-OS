@@ -11,6 +11,7 @@ import { useMemo, useState } from 'react'
 import { advertencias, claveDestino, destinos, origenes, textoBotonMover, type OpcionDestino } from '../logica/mover'
 import { rotuloUbicacion, ETIQUETA_ESTADO } from '../logica/parque'
 import { normalizarCodigo } from '../logica/codigo'
+import { sugerencias } from '../logica/inventario'
 import { contieneEnAlguno } from '@/shared/utils/busqueda'
 import { crearUbicacionAction, moverActivosAction } from '../services/acciones'
 import { useHerramientas } from './Espacio'
@@ -19,7 +20,8 @@ import { IcoRodado } from './iconos'
 import { botonPrimarioGrande, botonSecundarioGrande, campo, chip, V } from './estilo'
 import { fechaHora } from './formato'
 
-const VISIBLES = 4
+// Armando un envío se ve la lista entera: es lo que se está por mover (dueño, 22/09).
+const VISIBLES = 500
 
 export function PanelMover({ idsIniciales, destinoInicial, onHecho }: {
   idsIniciales: string[]
@@ -49,11 +51,19 @@ export function PanelMover({ idsIniciales, destinoInicial, onHecho }: {
   const hayCarga = w.rodadosConCarga.length > 0
   const puede = activos.length > 0 && elegida && !w.adentroDeSiMismo && (!hayCarga || bajarCarga !== null) && !enviando
 
+  // Lo que el buscador del panel ofrece: lo vivo que todavía no está en la lista.
+  const opcionesSumar = useMemo(() => sugerencias(parque, codigo, 12).filter((a) => !ids.includes(a.id)), [parque, codigo, ids])
+  function sumar(id: string) {
+    setIds((l) => (l.includes(id) ? l : [...l, id]))
+    setCodigo('')
+    setError(null)
+  }
+
   function agregarCodigo() {
     const c = normalizarCodigo(codigo)
     if (!c) return
-    const a = parque.activos.find((x) => x.codigo === c)
-    if (!a) return setError(`${c} no está en el inventario.`)
+    const a = parque.activos.find((x) => x.codigo === c) ?? (opcionesSumar[0] ? parque.activoPorId.get(opcionesSumar[0].id) : undefined)
+    if (!a) return setError(`«${codigo.trim()}» no está en el inventario.`)
     if (a.estado === 'baja') return setError(`${c} está dado de baja: no se mueve más.`)
     setError(null)
     setIds((l) => (l.includes(a.id) ? l : [...l, a.id]))
@@ -163,21 +173,41 @@ export function PanelMover({ idsIniciales, destinoInicial, onHecho }: {
       <Bloque
         rotulo="Qué se mueve"
         derecha={
-          <form onSubmit={(e) => { e.preventDefault(); agregarCodigo() }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <input
-              value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Escanear o tipear código"
-              aria-label="Agregar por código" data-testid="agregar-codigo"
-              style={{ height: 26, width: 170, padding: '0 8px', border: `1px solid ${V.linea}`, borderRadius: 6, fontSize: '12.5px' }}
-            />
-          </form>
+          <span style={{ fontSize: '12.5px', color: V.apagado }}>{activos.length} {activos.length === 1 ? 'activo' : 'activos'}</span>
         }
       >
+        {/* ARMAR LA LISTA (dueño, 22/09: «ir armando un listado en el menu de la derecha … a medida q voy
+            haciendo click»): se tipea el nombre o el código, aparecen las opciones y cada clic suma una.
+            Enter suma el código exacto o la primera opción. El campo se vacía para buscar la siguiente. */}
+        <form onSubmit={(e) => { e.preventDefault(); agregarCodigo() }} style={{ position: 'relative' }}>
+          <input
+            value={codigo} onChange={(e) => { setCodigo(e.target.value); setError(null) }} placeholder="Buscar por nombre o código para sumar"
+            aria-label="Sumar a la lista por nombre o código" data-testid="agregar-codigo" autoComplete="off"
+            style={{ ...campo, width: '100%' }}
+          />
+          {opcionesSumar.length > 0 && (
+            <div role="listbox" data-testid="sumar-opciones" style={{ position: 'absolute', top: 40, left: 0, right: 0, zIndex: 5, background: '#FFFFFF', border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, boxShadow: '0 6px 18px rgba(31,31,30,.08)', padding: '4px 0', maxHeight: 280, overflowY: 'auto' }}>
+              {opcionesSumar.map((a) => (
+                <button key={a.id} type="button" role="option" aria-selected={false} onClick={() => sumar(a.id)}
+                  style={{ display: 'flex', width: '100%', gap: 10, alignItems: 'baseline', padding: '7px 12px', textAlign: 'left', fontSize: '13px' }}>
+                  <span style={{ color: V.pos, fontWeight: 600 }}>+</span>
+                  <span style={{ flex: 1, minWidth: 0, color: V.tinta }}>{a.nombre}</span>
+                  <span style={{ fontSize: '11.5px', color: V.tenue, fontFamily: "'IBM Plex Mono', monospace" }}>{a.codigo}</span>
+                  <span style={{ fontSize: '12px', color: V.apagado, whiteSpace: 'nowrap' }}>{rotuloUbicacion(parque, a.ubicacion_id) ?? 'sin ubicación'}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </form>
+        {activos.length === 0 && (
+          <div style={{ fontSize: '13px', color: V.apagado }} data-testid="envio-vacio">Todavía no hay nada en la lista. Buscá arriba y hacé clic en cada una.</div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', fontSize: '13px' }}>
           {lista.map((a) => {
             const problema = a.estado === 'requiere_mantenimiento' || a.estado === 'fuera_servicio' || a.estado === 'reparacion_externa'
             return (
               <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 36, borderBottom: `1px solid ${V.linea}`, color: problema ? V.warn : V.tinta }}>
-                <span>{a.nombre}{problema && ` · ${ETIQUETA_ESTADO[a.estado].toLowerCase()}`}</span>
+                <span>{a.nombre} <span style={{ fontSize: '11.5px', color: V.tenue, fontFamily: "'IBM Plex Mono', monospace" }}>{a.codigo}</span>{problema && ` · ${ETIQUETA_ESTADO[a.estado].toLowerCase()}`}</span>
                 <button type="button" onClick={() => setIds((l) => l.filter((x) => x !== a.id))} style={{ color: V.tenue }}>quitar</button>
               </div>
             )

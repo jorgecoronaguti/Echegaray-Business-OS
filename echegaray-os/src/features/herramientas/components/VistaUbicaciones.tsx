@@ -129,11 +129,13 @@ function Detalle({ parque, u, filtro, hoy }: { parque: Parque; u: Ubicacion; fil
             {aca.length} {aca.length === 1 ? 'activo' : 'activos'}{conProb ? ` · ${conProb} con problema` : ''}
           </div>
         </div>
-        {aca.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <BotonMover ids={aca.map((a) => a.id)} testid="mover-desde-aca">Mover desde acá</BotonMover>
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Link href={`/herramientas/planilla?u=${u.id}`} prefetch={false} data-testid="ver-planilla"
+            style={{ height: 32, padding: '0 14px', border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, fontSize: '13px', display: 'inline-flex', alignItems: 'center' }}>
+            Planilla
+          </Link>
+          {aca.length > 0 && <BotonMover ids={aca.map((a) => a.id)} testid="mover-desde-aca">Mover desde acá</BotonMover>}
+        </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: '12.5px', paddingBottom: 4 }}>
         {filtros.map((f) => {
