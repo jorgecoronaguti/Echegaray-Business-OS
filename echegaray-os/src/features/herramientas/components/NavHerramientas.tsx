@@ -4,7 +4,8 @@
 // buscador a la derecha.
 //
 // Orden del dueño (21/09): Resumen · Inventario · Ubicaciones · Movimientos · Mantenimiento · Rodados ·
-// Controles. Controles NO se dibuja en la etapa 1: una solapa que lleva a una pantalla vacía enseña que
+// Controles. El 22/09 pidió «Maquinarias» ENTRE Mantenimiento y Rodados, con las máquinas con operador que
+// hasta entonces colgaban de Rodados. Controles NO se dibuja en la etapa 1: una solapa que lleva a una pantalla vacía enseña que
 // la app promete lo que no tiene.
 //
 // SIN LECTURA NO HAY CONTADOR. `null` = no se pudo contar (o la migración falta): el número no aparece.
@@ -17,6 +18,8 @@ import { MONO, V } from './estilo'
 
 export interface CuentasNav {
   mantenimiento: number | null
+  /** Máquinas con operador (clase «equipo»), separadas de Rodados por pedido del dueño (22/09/2026). */
+  maquinarias: number | null
   rodados: number | null
 }
 
@@ -26,6 +29,7 @@ const SOLAPAS = [
   { clave: 'ubicaciones', label: 'Ubicaciones', href: '/herramientas/ubicaciones' },
   { clave: 'movimientos', label: 'Movimientos', href: '/herramientas/movimientos' },
   { clave: 'mantenimiento', label: 'Mantenimiento', href: '/herramientas/mantenimiento' },
+  { clave: 'maquinarias', label: 'Maquinarias', href: '/herramientas/maquinarias' },
   { clave: 'rodados', label: 'Rodados', href: '/herramientas/rodados' },
 ] as const
 
@@ -55,7 +59,9 @@ export function NavHerramientas({ cuentas, derecha }: { cuentas: CuentasNav; der
       <nav aria-label="Herramientas" style={{ display: 'flex', alignItems: 'center', gap: 22, overflowX: 'auto', scrollbarWidth: 'none' }}>
         {SOLAPAS.map((s) => {
           const on = s.clave === activa
-          const cuenta = s.clave === 'mantenimiento' ? cuentas.mantenimiento : s.clave === 'rodados' ? cuentas.rodados : null
+          const cuenta = s.clave === 'mantenimiento' ? cuentas.mantenimiento
+            : s.clave === 'maquinarias' ? cuentas.maquinarias
+            : s.clave === 'rodados' ? cuentas.rodados : null
           return (
             <Link
               key={s.clave} href={s.href} prefetch={false} data-testid={`ir-${s.clave}`}

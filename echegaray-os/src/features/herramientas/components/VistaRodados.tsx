@@ -4,9 +4,10 @@
 //
 // Papeles y plan de service NO existen todavía en la base: se dicen «sin cargar», nunca un número.
 //
-// Desvíos del diseño: «Rodados» y «Máquinas con operador» van una debajo de la otra en vez de en dos
-// solapas (con 6 y 0 unidades hoy, la solapa escondía la segunda lista). Todos los rodados piden
-// verificación: la base no sabe cuál es un acoplado que no se maneja, y no se inventa ese dato.
+// Las máquinas con operador se fueron a su propia solapa, «Maquinarias», por pedido del dueño (22/09/2026):
+// *«en el medio de esas dos categoria crear la cateogria "maquinarias" y ponerlas ahi, sacandolas de
+// "rodados"»*. Acá quedan sólo las unidades que se manejan. Todos los rodados piden verificación: la base no
+// sabe cuál es un acoplado que no se maneja, y no se inventa ese dato.
 
 import Link from 'next/link'
 import {
@@ -14,17 +15,15 @@ import {
 } from '../logica/parque'
 import { numeroAr, sinVerificarHoy, textoLectura, textoVerificacion, ultimaLectura, verificacionDe } from '../logica/verificacion'
 import type { Activo } from '../types'
-import { COLOR_TONO, MONO, V, bajadaPagina, eyebrow, pagina, tituloBloque, tituloPagina, vacio } from './estilo'
+import { COLOR_TONO, MONO, V, bajadaPagina, eyebrow, pagina, tituloPagina, vacio } from './estilo'
 
 const COLS = 'minmax(0,1.3fr) minmax(0,1.2fr) 150px 110px 130px 100px 90px 90px 110px'
-const COLS_EQ = 'minmax(0,1.3fr) minmax(0,1.2fr) 150px 130px 100px 110px'
 
 const plural = (n: number, a: string, b: string) => `${n} ${n === 1 ? a : b}`
 
 export function VistaRodados({ parque, hoy = new Date() }: { parque: Parque; hoy?: Date }) {
   const orden = (a: Activo, b: Activo) => a.nombre.localeCompare(b.nombre, 'es')
   const rodados = parque.activos.filter((a) => a.clase === 'rodado' && vivo(a)).sort(orden)
-  const equipos = parque.activos.filter((a) => a.clase === 'equipo' && vivo(a)).sort(orden)
   const sinUbic = rodados.filter((r) => !r.ubicacion_id).length
   const sv = sinVerificarHoy(parque, hoy)
   const svRod = sv ? rodados.filter((r) => verificacionDe(parque, r.id, hoy).tipo !== 'hoy').length : null
@@ -65,42 +64,8 @@ export function VistaRodados({ parque, hoy = new Date() }: { parque: Parque; hoy
         })}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="maquinas">
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <h2 style={tituloBloque}>Máquinas con operador</h2>
-          <span style={{ fontSize: '12.5px', color: V.apagado }}>
-            {plural(equipos.length, 'equipo', 'equipos')}
-            {sv && equipos.length ? ` · ${equipos.filter((e) => verificacionDe(parque, e.id, hoy).tipo !== 'hoy').length} sin verificar hoy` : ''}
-          </span>
-        </div>
-        {equipos.length === 0 ? (
-          <div style={{ fontSize: '13px', color: V.apagado }}>No hay equipos cargados: lo que se opera con gente se da de alta con clase «Equipo».</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', overflowX: 'auto' }}>
-            <div style={{ ...eyebrow, display: 'grid', gridTemplateColumns: COLS_EQ, gap: 16, height: 34, alignItems: 'center', borderBottom: `1px solid ${V.linea}`, minWidth: 860 }}>
-              <div>Equipo</div><div>Dónde está</div><div>Estado</div><div>Lo movió</div>
-              <div style={{ textAlign: 'right' }}>Horómetro</div><div style={{ textAlign: 'right' }}>Verificación</div>
-            </div>
-            {equipos.map((e, i) => {
-              const quien = quienLaMovio(parque, e.id)
-              return (
-                <Link key={e.id} href={`/herramientas/inventario?clase=equipo&activo=${encodeURIComponent(e.codigo)}`} prefetch={false} className="hover:bg-surface-quiet" data-testid="fila-equipo"
-                  style={{ display: 'grid', gridTemplateColumns: COLS_EQ, gap: 16, minHeight: 52, alignItems: 'center', borderBottom: i < equipos.length - 1 ? `1px solid ${V.linea}` : undefined, fontSize: '13.5px', minWidth: 860 }}>
-                  <Unidad a={e} />
-                  <div style={e.ubicacion_id ? { color: V.tintaSuave } : vacio}>{rotuloUbicacion(parque, e.ubicacion_id)}</div>
-                  <Estado a={e} />
-                  <div style={quien ? { color: V.tintaSuave } : vacio}>{quien ?? 'sin registro'}</div>
-                  <Lectura parque={parque} a={e} unidad="h" />
-                  <Verificacion parque={parque} a={e} hoy={hoy} />
-                </Link>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
       <div style={{ fontSize: '12.5px', color: V.apagado }}>
-        La verificación la carga desde el teléfono quien maneja u opera, antes de salir o de arrancar. Sin verificar no traba el uso: se ve acá. Papeles y plan de service se cargan en la próxima etapa: hasta entonces no se muestra ningún número.
+        La verificación la carga desde el teléfono quien maneja, antes de salir. Sin verificar no traba el uso: se ve acá. Papeles y plan de service se cargan en la próxima etapa: hasta entonces no se muestra ningún número.
       </div>
     </div>
   )
