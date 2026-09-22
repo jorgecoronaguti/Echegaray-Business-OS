@@ -24,9 +24,10 @@ const MONO = "'IBM Plex Mono', monospace"
 const fecha = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
 const plata = (n: number | null): string => (n == null ? 'sin dato' : pesos(n))
 
+// SIN BLANCO NI NEGRO (dueño, 22/09/2026): el papel dice horas totales, depositado y efectivo. El reparto es
+// una cuenta interna y se mira en el panel de Liquidación, no en lo que firma la persona.
 const OPCIONES: { clave: ConceptoDelRecibo; rotulo: string }[] = [
-  { clave: 'blanco', rotulo: 'Horas en blanco' },
-  { clave: 'negro', rotulo: 'Horas en negro' },
+  { clave: 'horas', rotulo: 'Horas trabajadas' },
   { clave: 'banco', rotulo: 'Depósito en banco' },
   { clave: 'efectivo', rotulo: 'Efectivo' },
   { clave: 'pagado', rotulo: 'Lo ya pagado y lo que resta' },
@@ -118,9 +119,9 @@ export function ArmarRecibo({ fila, quincena }: {
         </div>
 
         {recibo.horas.length > 0 && (
-          <Bloque titulo="Horas trabajadas">
+          <Bloque titulo="Trabajo de la quincena">
             {recibo.horas.map((r) => (
-              <Linea key={r.rotulo} rotulo={r.rotulo} detalle={r.detalle} importe={plata(r.importe)} />
+              <Linea key={r.rotulo} rotulo={r.rotulo} importe={r.horas == null ? 'sin dato' : `${String(r.horas).replace('.', ',')} h`} />
             ))}
           </Bloque>
         )}

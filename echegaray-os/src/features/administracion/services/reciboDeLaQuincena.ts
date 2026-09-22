@@ -5,6 +5,13 @@
 // abrir la opcion de ir armando lo q se quiere imprimir o guardar en ese recibo, hs en blanco, en negro
 // efectivo deposito en banco»*. Y: *«no hace falta quincena cerrada»*.
 //
+// ═══ EL PAPEL NO DICE BLANCO NI NEGRO (dueño, 22/09/2026) ═══
+//
+// Textual: *«el recibo tiene q decir total de hs y total depositado y total efectivo. no puede quedar
+// evidencia de blanco o negro»*. El papel se lo lleva la persona y puede terminar en cualquier lado: lo que
+// se firma es cuántas horas trabajó y cuánta plata recibió por cada medio. El reparto entre lo que paga el
+// recibo del estudio y el resto es una cuenta INTERNA, y vive en el panel de Liquidación, no acá.
+//
 // Ni una cuenta nueva: cada renglón es una cifra que el panel ya muestra (la línea, `sueldo`, `pago`). Lo
 // único que se suma es el total de lo que se eligió imprimir, y sólo si todo lo elegido tiene número: un
 // «sin dato» no se imprime como $ 0.
@@ -12,11 +19,11 @@
 import type { LineaConOverrides } from './liquidacionOverrides'
 import { pagoDelMensual } from './liquidacionPorTipo.ts'
 
-export type ConceptoDelRecibo = 'blanco' | 'negro' | 'banco' | 'efectivo' | 'pagado'
+export type ConceptoDelRecibo = 'horas' | 'banco' | 'efectivo' | 'pagado'
 
 export interface EleccionDelRecibo {
-  blanco: boolean
-  negro: boolean
+  /** El TOTAL de horas de la quincena. Nunca el reparto entre blanco y negro: ver el encabezado. */
+  horas: boolean
   banco: boolean
   efectivo: boolean
   /** Debajo de cada medio: lo ya pagado (adelantos) y lo que resta. */
@@ -25,7 +32,7 @@ export interface EleccionDelRecibo {
 
 export interface RenglonDelRecibo {
   rotulo: string
-  detalle?: string
+  detalle?: string | null
   importe: number | null
   /** Horas, sin importe propio en el total. */
   horas?: number | null
@@ -46,23 +53,35 @@ export interface ReciboArmado {
  * tampoco trae `sueldo`— se le decía «cobra por mes», que es falso (auditoría 22/09/2026).
  */
 export function conceptosDisponibles(l: LineaConOverrides, mensual = false): Record<ConceptoDelRecibo, string | null> {
-  const s = l.sueldo
-  const sinHoras = s ? null : (mensual
-    ? 'cobra por mes: no tiene horas en blanco y en negro'
-    : 'esta quincena no guarda el detalle de blanco y negro')
+  const horas = horasDeLaQuincena(l)
   return {
-    blanco: sinHoras ?? (s!.horasBlanco == null ? 'sin horas de recibo cargadas' : null),
-    negro: sinHoras ?? (s!.horasNegro == null ? 'sin horas en negro calculadas' : null),
+    horas: horas == null ? (mensual ? 'cobra por mes: no se liquida por hora' : 'sin horas cargadas en la quincena') : null,
     banco: null,
     efectivo: null,
     pagado: null,
   }
 }
 
+/**
+ * EL TOTAL DE HORAS, sin abrir el reparto. Con modelo blanco + negro son las dos partes sumadas —que es
+ * exactamente lo que la persona trabajó—; sin modelo, las horas de la línea. `null` = no hay horas cargadas,
+ * y entonces el renglón no se imprime: una quincena sin horas no vale «0 h».
+ */
+export function horasDeLaQuincena(l: LineaConOverrides): number | null {
+  const s = l.sueldo
+  if (s) {
+    const b = s.horasBlanco ?? null
+    const n = s.horasNegro ?? null
+    if (b == null && n == null) return null
+    return Math.round(((b ?? 0) + (n ?? 0)) * 100) / 100
+  }
+  return l.horas ?? null
+}
+
 /** Por defecto va todo lo que la línea puede decir. */
 export function eleccionInicial(l: LineaConOverrides, mensual = false): EleccionDelRecibo {
   const d = conceptosDisponibles(l, mensual)
-  return { blanco: d.blanco == null, negro: d.negro == null, banco: true, efectivo: true, pagado: false }
+  return { horas: d.horas == null, banco: true, efectivo: true, pagado: false }
 }
 
 const hs = (n: number | null | undefined): string => (n == null ? 'sin dato' : `${String(Math.round(n * 100) / 100).replace('.', ',')} h`)
@@ -121,22 +140,12 @@ function absorbidoPor(a: { lado: 'banco' | 'efectivo'; importe: number } | null,
 
 export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n: number) => string, mensual = false): ReciboArmado {
   const d = conceptosDisponibles(l, mensual)
-  const s = l.sueldo
   const horas: RenglonDelRecibo[] = []
-  if (e.blanco && d.blanco == null && s) {
-    horas.push({
-      rotulo: 'Horas en blanco', horas: s.horasBlanco,
-      // BRUTO, y dicho: el banco paga el NETO, y sin la palabra el papel parece no sumar.
-      detalle: `${s.valorHoraCategoria == null ? hs(s.horasBlanco) : `${hs(s.horasBlanco)} × ${fmt(s.valorHoraCategoria)}/h`} · bruto`,
-      importe: s.bruto,
-    })
-  }
-  if (e.negro && d.negro == null && s) {
-    horas.push({
-      rotulo: 'Horas en negro', horas: s.horasNegro,
-      detalle: s.valorHoraNegro == null ? hs(s.horasNegro) : `${hs(s.horasNegro)} × ${fmt(s.valorHoraNegro)}/h`,
-      importe: s.negro,
-    })
+  if (e.horas && d.horas == null) {
+    const hs = horasDeLaQuincena(l)
+    // SIN IMPORTE NI $/H: el importe por hora abriría el reparto que este papel no dice. Lo que se firma es
+    // cuántas horas trabajó y cuánta plata recibió.
+    horas.push({ rotulo: 'Horas trabajadas', horas: hs, detalle: null, importe: null })
   }
 
   const m = medios(l, mensual)
