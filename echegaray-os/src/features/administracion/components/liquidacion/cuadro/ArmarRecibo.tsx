@@ -45,13 +45,17 @@ function imprimir(nodo: HTMLElement | null, titulo: string): boolean {
   const v = window.open('', '_blank', 'width=900,height=1000')
   // VENTANA BLOQUEADA: el navegador puede negarla y antes no pasaba NADA, sin decir por qué.
   if (!v) return false
+  // LA RUTA DEL LOGO TIENE QUE SER ABSOLUTA: la ventana nace en `about:blank`, donde `/marca/logo.png` no
+  // resuelve contra nada y el recibo saldría sin logo (dueño, 22/09/2026: «poneles el logo de la empresa
+  // arriba cuando se arme el pdf»).
+  const html = nodo.outerHTML.replace(/src="\//g, `src="${window.location.origin}/`)
+  // Y SE IMPRIME CUANDO LA IMAGEN YA ESTÁ: `print()` apenas se escribe el documento sale con el hueco del
+  // logo vacío. Lo dispara el `onload` de la ventana, que espera a las imágenes.
   v.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${titulo}</title>`
     + '<style>@page { size: A4; margin: 16mm } '
     + "body { margin: 0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1F1F1E }"
-    + '</style></head><body>' + nodo.outerHTML + '</body></html>')
+    + '</style></head><body onload="window.focus(); window.print()">' + html + '</body></html>')
   v.document.close()
-  v.focus()
-  v.print()
   return true
 }
 
@@ -94,8 +98,13 @@ export function ArmarRecibo({ fila, quincena }: {
         style={{ border: `1px solid ${V.lineaFila}`, borderRadius: 6, padding: '20px 20px 24px', background: '#FFFFFF', color: '#1F1F1E', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <header style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
           <div>
-            <div style={{ fontSize: '12px', letterSpacing: '0.08em', fontWeight: 600 }}>ECHEGARAY CONSTRUCCIONES SAS</div>
-            <div style={{ fontSize: '11.5px', color: '#6B6B69' }}>San Juan · Argentina</div>
+            {/* EL LOGO, ARRIBA (dueño, 22/09/2026). Ya trae el nombre de la empresa, así que no se repite
+                escrito. Va como `<img>` y no como `next/image` a propósito: lo que se imprime es una COPIA
+                del HTML de este recuadro, y el marcado que genera `next/image` (srcset, carga diferida) no
+                sobrevive a esa copia — saldría el hueco vacío. */}
+            <img src="/marca/logo.png" alt="Echegaray Construcciones S.A.S." height={56}
+              style={{ height: 56, width: 'auto', display: 'block' }} />
+            <div style={{ fontSize: '11.5px', color: '#6B6B69', marginTop: 6 }}>San Juan · Argentina</div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '15px', fontWeight: 600 }}>Recibo de pago</div>
