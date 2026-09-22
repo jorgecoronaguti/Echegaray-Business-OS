@@ -101,3 +101,67 @@ test('la respuesta del canal no publica saldos de nadie', () => {
   assert.equal((t.match(/\$/g) ?? []).length, 1, 'sólo el monto de ESTA entrega')
   assert.doesNotMatch(t, /saldo|en su poder|le queda/i)
 })
+
+// ═══ LA FOTO DEL VALE (22/09/2026) ═══
+
+import { atenderVale, RE_VALE } from './entregas-efectivo.mjs'
+
+const mmConFoto = {}
+const bajarFalso = async () => ({ ok: true, fileId: 'f1', nombre: 'vale.jpg', mediaType: 'image/jpeg', data: 'eA==' })
+
+test('sólo se mira la foto si el mensaje dice que es un vale: una factura no paga una lectura de más', async () => {
+  let miro = false
+  const r = await atenderVale({
+    texto: 'factura de Acindar', port: portFalso(), actor, mattermost: mmConFoto, fileIds: ['f1'], bajar: bajarFalso,
+    leer: async () => { miro = true; return { ok: true, vale: { esVale: true, monto: 1000 } } },
+  })
+  assert.equal(r, null)
+  assert.equal(miro, false)
+  assert.ok(RE_VALE.test('vale de $25.000'))
+  assert.ok(RE_VALE.test('entregue este vale'))
+  assert.equal(RE_VALE.test('factura de acindar'), false)
+})
+
+test('si el papel resulta ser una factura, la foto sigue su camino de comprobante', async () => {
+  const r = await atenderVale({
+    texto: 'vale de entrega', port: portFalso(), actor, mattermost: mmConFoto, fileIds: ['f1'], bajar: bajarFalso,
+    leer: async () => ({ ok: true, vale: { esVale: false, monto: 32000, persona: null, paraQue: null, fecha: null } }),
+  })
+  assert.equal(r, null, 'devuelve null para que el circuito de comprobantes la cargue')
+})
+
+test('el vale leído se registra con el papel como conformidad', async () => {
+  const pedidos = []
+  const r = await atenderVale({
+    texto: 'vale firmado', port: portFalso(), actor, mattermost: mmConFoto, fileIds: ['f1'], bajar: bajarFalso,
+    leer: async () => ({ ok: true, vale: { esVale: true, monto: 25000, persona: 'AGUERO CRISTIAN', paraQue: 'gasoil', fecha: '2026-09-22', firmado: true } }),
+    guardarVale: async (p) => { pedidos.push(p); return { codigo: 'ER-0005', papel: true } },
+  })
+  assert.equal(pedidos[0].persona, 'aguero')
+  assert.equal(pedidos[0].monto, 25000)
+  assert.equal(pedidos[0].estructura, true)
+  assert.equal(pedidos[0].fecha, '2026-09-22')
+  assert.equal(r.estado, 'entregada_con_vale')
+  assert.match(r.texto, /ER-0005/)
+  assert.match(r.texto, /conformidad en papel/)
+})
+
+test('el vale sin importe legible NO se registra: se pide el importe', async () => {
+  let guardo = false
+  const r = await atenderVale({
+    texto: 'vale', port: portFalso(), actor, mattermost: mmConFoto, fileIds: ['f1'], bajar: bajarFalso,
+    leer: async () => ({ ok: true, vale: { esVale: true, monto: null, persona: 'AGUERO CRISTIAN', paraQue: 'gasoil' } }),
+    guardarVale: async () => { guardo = true; return { codigo: 'X', papel: true } },
+  })
+  assert.equal(r.estado, 'pregunta_monto')
+  assert.equal(guardo, false)
+})
+
+test('si la foto no se pudo guardar, se dice: la entrega quedó sin su papel', async () => {
+  const r = await atenderVale({
+    texto: 'vale', port: portFalso(), actor, mattermost: mmConFoto, fileIds: ['f1'], bajar: bajarFalso,
+    leer: async () => ({ ok: true, vale: { esVale: true, monto: 25000, persona: 'AGUERO', paraQue: 'gasoil' } }),
+    guardarVale: async () => ({ codigo: 'ER-0006', papel: false }),
+  })
+  assert.match(r.texto, /sin el papel/)
+})

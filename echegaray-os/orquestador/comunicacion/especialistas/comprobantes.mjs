@@ -49,6 +49,7 @@ import { puedeCargarComprobantes } from '../comprobantes/guarda.mjs'
 import { conLaTanda } from '../comprobantes/tanda.mjs'
 import * as repo from '../comprobantes/repositorio.mjs'
 import { especialista as rendiciones, entregasAbiertasDe, RE_NO_ES_DE_LA_ENTREGA } from './rendiciones.mjs'
+import { atenderVale } from './entregas-efectivo.mjs'
 
 /** URL de callback de los botones. Distinta de la de asistencia: son dos dominios distintos. */
 export const URL_ACCION_BASE = process.env.COMPROBANTES_ACCION_URL
@@ -210,7 +211,16 @@ export const especialista = {
 
     if (!fileIds.length || ruta?.destino === 'ayuda') return ayuda()
 
-    // LA RENDICIÓN VA PRIMERO: el ticket de quien tiene efectivo a rendir se carga «A rendir» y vinculado a
+    // EL VALE DE ENTREGA VA ANTES QUE TODO: es plata SALIENDO del cajón, no un gasto. Sólo se mira si el
+    // mensaje dice que es un vale; si el papel resulta ser una factura, `atenderVale` devuelve null y esto
+    // sigue como siempre.
+    const vale = await atenderVale({ texto, port, actor, mattermost, fileIds, log }).catch((e) => {
+      log?.warn?.('comprobantes: el vale falló, sigue como comprobante', { error: String(e?.message ?? e).slice(0, 160) })
+      return null
+    })
+    if (vale) return vale
+
+    // LA RENDICIÓN VA DESPUÉS: el ticket de quien tiene efectivo a rendir se carga «A rendir» y vinculado a
     // su entrega. Si no tiene ninguna abierta, sigue de largo y es una compra común.
     const rendida = await rendicionSiCorresponde({ texto, port, actor, google, fileIds, postId, mattermost, log })
     if (rendida) return rendida

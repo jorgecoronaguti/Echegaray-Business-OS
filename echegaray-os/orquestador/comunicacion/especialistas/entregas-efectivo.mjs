@@ -20,10 +20,21 @@
 import { canalOficialDeArea } from '../../lib/canal-de-area.mjs'
 import { comoUsuario } from '../../lib/como-usuario.mjs'
 import {
-  interpretarEntrega, pareceEntrega, pesos, textoDePregunta,
+  elegirObra, elegirPersona, interpretarEntrega, leerMonto, leerParaQue, pareceEntrega, pesos, textoDePregunta,
 } from '../../lib/efectivo-entrega-texto.mjs'
+import { leerVale } from '../../lib/efectivo-vale-vision.mjs'
+import { bajarAdjunto } from '../comprobantes/flujo.mjs'
+import { subirAStorage } from '../../lib/storage-supabase.mjs'
 
 export const AREAS_QUE_ENTREGAN = Object.freeze(['compras', 'rendicion'])
+
+/**
+ * LA FOTO DEL VALE (dueño, 22/09/2026: «tb registro mediante multimedia»). Se dispara con lo que ESCRIBE
+ * quien manda la foto, no con lo que el modelo crea que ve: en ese canal el 99 % de las fotos son facturas,
+ * y mirar cada una con el prompt del vale sería pagar una lectura de más por cada comprobante. Si el texto
+ * dice vale/entrega, se mira; y si el papel resulta ser una factura, sigue de largo al circuito de siempre.
+ */
+export const RE_VALE = /\bvale\b|\bentreg[a-záéíóúñ]*\b|\ble di\b|\bcomprobante de entrega\b/i
 
 export const TEXTO = Object.freeze({
   CANAL: 'El efectivo se entrega desde el canal de comprobantes. Escribilo ahí.',
@@ -72,6 +83,72 @@ export function textoRegistrada({ codigo, monto, persona, destino }) {
     '',
     'Le avisé para que firme la conformidad desde su teléfono. Los tickets que mande se rinden contra esta entrega.',
   ].join('\n')
+}
+
+/**
+ * LA FOTO DEL VALE, DE PUNTA A PUNTA: se lee, se registra la entrega y la MISMA foto queda guardada como la
+ * conformidad en papel de esa entrega (`firmar_conformidad_entrega`). El papel firmado es la prueba de que
+ * la persona recibió la plata; dejarlo sólo en Mattermost sería dejar la prueba afuera del OS.
+ *
+ * Devuelve `null` cuando la foto NO es un vale: ahí el comprobante sigue su camino de siempre.
+ */
+export async function atenderVale(d) {
+  const { texto = '', port, actor, mattermost, fileIds = [], log } = d
+  if (!fileIds.length || !RE_VALE.test(String(texto))) return null
+
+  // `bajar` es inyectable para que los tests no dependan del cliente de Mattermost.
+  const bajado = await (d.bajar ?? bajarAdjunto)(mattermost, fileIds[0]).catch(() => null)
+  if (!bajado?.ok) return null
+  const leido = await (d.leer ?? leerVale)({ data: bajado.data, mediaType: bajado.mediaType })
+  if (!leido.ok) return { texto: `No pude leer el vale: ${leido.error}`, estado: 'error_lectura', privado: false }
+  if (!leido.vale.esVale) return null
+
+  const yo = await perfilDeMattermost(port, actor?.plataforma_user_id)
+  if (!yo?.perfil_id) return { texto: TEXTO.SIN_PERSONA, estado: 'rechazado_sin_perfil', privado: false }
+  const padron = await padronDeEntregas(port)
+
+  // El papel y lo escrito se leen JUNTOS: el vale dice el monto y el nombre, y el mensaje puede decir la obra.
+  const v = leido.vale
+  const dondeBuscar = `${v.persona ?? ''} ${v.paraQue ?? ''} ${texto}`
+  const monto = v.monto ?? leerMonto(texto)
+  if (monto == null) return { texto: 'Leí el vale pero no el importe. Escribilo con el signo, por ejemplo $25.000.', estado: 'pregunta_monto', privado: false }
+  const quien = elegirPersona(dondeBuscar, padron.personas)
+  if (quien.candidatos) return { texto: textoDePregunta({ falta: 'persona_ambigua', candidatos: quien.candidatos }), estado: 'pregunta_persona_ambigua', privado: false }
+  if (!quien.persona) return { texto: `Leí «${v.persona ?? 'sin nombre'}» en el vale y no lo encuentro en el padrón. Escribí el apellido como figura en el legajo.`, estado: 'pregunta_persona', privado: false }
+  const donde = elegirObra(dondeBuscar, padron.obras)
+  if (donde.candidatos) return { texto: textoDePregunta({ falta: 'obra_ambigua', candidatos: donde.candidatos }), estado: 'pregunta_obra_ambigua', privado: false }
+  const paraQue = v.paraQue ?? leerParaQue(texto)
+  if (!donde.obra && !paraQue) return { texto: textoDePregunta({ falta: 'destino' }), estado: 'pregunta_destino', privado: false }
+
+  const guardar = d.guardarVale ?? registrarEntregaConVale
+  try {
+    const { codigo, papel } = await guardar({
+      perfilId: yo.perfil_id,
+      persona: quien.persona.id,
+      obra: donde.obra?.id ?? null,
+      estructura: !donde.obra,
+      monto,
+      paraQue,
+      fecha: v.fecha,
+      archivo: { data: bajado.data, mediaType: bajado.mediaType, nombre: bajado.nombre },
+    })
+    return {
+      texto: [
+        textoRegistrada({
+          codigo, monto, persona: quien.persona.nombre,
+          destino: donde.obra ? donde.obra.nombre : `Estructura · ${paraQue}`,
+        }),
+        papel ? 'Guardé la foto del vale como la conformidad en papel.' : 'No pude guardar la foto: la entrega quedó registrada igual, sin el papel.',
+      ].join('\n'),
+      estado: 'entregada_con_vale',
+      privado: false,
+    }
+  } catch (e) {
+    const m = String(e?.message ?? e)
+    if (/es de Dirección|logueado|permiso/i.test(m)) return { texto: TEXTO.SIN_PERMISO, estado: 'rechazado_permiso', privado: false }
+    log?.error?.('entregas: el vale no se pudo registrar', { error: m.slice(0, 200) })
+    return { texto: `No pude registrarla: ${m.slice(0, 160)}`, estado: 'error', privado: false }
+  }
 }
 
 export const especialista = {
@@ -159,6 +236,27 @@ export const especialista = {
   skillDe(intencion) {
     return `compras.efectivo.${intencion?.destino === 'entregar' ? 'entregar' : 'ayuda'}`
   },
+}
+
+/**
+ * La entrega CON su papel: se registra, se guarda la foto en el bucket y se ata como conformidad en papel.
+ *
+ * Si la foto no se puede guardar, la entrega NO se deshace: la plata ya salió y el registro es lo que
+ * importa; lo que falta es la prueba, y eso se dice en el mensaje en vez de tirar el registro.
+ */
+async function registrarEntregaConVale({ perfilId, persona, obra, estructura, monto, paraQue, fecha, archivo }) {
+  return await comoUsuario(perfilId, async (c) => {
+    const r = await c.query('select public.entregar_efectivo($1, $2, $3, $4, $5, $6) as codigo',
+      [persona, obra, estructura, monto, paraQue, fecha])
+    const codigo = r.rows[0].codigo
+    const id = (await c.query('select id from public.efectivo_entrega where codigo = $1', [codigo])).rows[0].id
+    const ext = /png/.test(archivo?.mediaType ?? '') ? 'png' : 'jpg'
+    const ruta = `${perfilId}/conformidad/${codigo}.${ext}`
+    const subida = await subirAStorage({ bucket: 'comprobantes', path: ruta, data: archivo.data, mediaType: archivo.mediaType })
+    if (!subida.ok) return { codigo, papel: false }
+    await c.query('select public.firmar_conformidad_entrega($1, null, $2)', [id, ruta])
+    return { codigo, papel: true }
+  })
 }
 
 /** La escritura de verdad, COMO la persona que la ordena. Inyectable para que los tests no toquen la base. */

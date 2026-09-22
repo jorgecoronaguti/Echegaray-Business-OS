@@ -425,8 +425,14 @@ async function motivoDeLaApi(res) {
   } catch { return String(texto ?? '').slice(0, 160) || null }
 }
 
-/** Una sola llamada al modelo. Devuelve el JSON crudo o `{error}`; nunca lanza. */
-async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens, prompt = PROMPT_LECTURA }) {
+/**
+ * Una sola llamada al modelo. Devuelve el JSON crudo o `{error}`; nunca lanza.
+ *
+ * EXPORTADA desde el 22/09/2026 para que el vale de efectivo a rendir la use con SU prompt
+ * (`lib/efectivo-vale-vision.mjs`): mismo fusible, mismo registro de uso y mismo manejo de error que la
+ * lectura de comprobantes. Un segundo camino a la API sería un segundo lugar donde olvidarse del fusible.
+ */
+export async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens, prompt = PROMPT_LECTURA }) {
   // El fusible admite ANTES de gastar: leer un comprobante es una llamada de VISIÓN y consume
   // presupuesto como cualquier otra. Un corte se devuelve como error declarado, no lanza.
   try {
