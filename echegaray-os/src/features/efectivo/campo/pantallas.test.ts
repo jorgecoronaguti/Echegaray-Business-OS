@@ -15,7 +15,7 @@ const RAIZ = new URL('../../../..', import.meta.url).pathname
 
 const PANTALLAS = [
   'src/app/(empleado)/mi-informacion/efectivo/page.tsx',
-  'src/app/(empleado)/mi-informacion/efectivo/firmar/[entrega]/page.tsx',
+  'src/app/(empleado)/mi-informacion/efectivo/firmar/page.tsx',
   'src/app/(empleado)/mi-informacion/efectivo/rendir/page.tsx',
   'src/app/(empleado)/mi-informacion/efectivo/rendiciones/page.tsx',
   'src/app/(empleado)/mi-informacion/efectivo/rendiciones/[ticket]/page.tsx',

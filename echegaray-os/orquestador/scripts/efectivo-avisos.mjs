@@ -22,7 +22,7 @@ export const URL_APP = process.env.ORQ_APP_URL || 'https://app.ecsas.com.ar'
 export function textoDelAviso({ username, codigo, destino, entregaId }) {
   const quien = username ? `@${username}` : 'Hay'
   return [`${quien} ${username ? 'te entregaron' : 'una entrega de'} efectivo a rendir: **${codigo}** · ${destino}.`,
-    `Confirmá que lo recibiste y firmá: ${URL_APP}/mi-informacion/efectivo/firmar/${entregaId}`,
+    `Confirmá que lo recibiste y firmá: ${URL_APP}/mi-informacion/efectivo/firmar?entrega=${entregaId}`,
     'Los tickets de lo que gastes, mandalos a este canal.'].join('\n')
 }
 

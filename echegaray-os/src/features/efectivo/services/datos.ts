@@ -74,6 +74,13 @@ export async function leerEfectivo(): Promise<LecturaEfectivo> {
       if (faltaMigracion(r.error)) return { estado: 'falta_migracion' }
       if (r.error) return { estado: 'error', mensaje: r.error.message }
     }
+    // RENDICIONES Y DEVOLUCIONES, SÓLO DE LAS ENTREGAS QUE LA VISTA DEVUELVE (auditoría de cierre, 22/09/2026).
+    // Las dos tablas no filtran personas de prueba —lo hacen las vistas (migraciones 2200 y 2300)—, y un
+    // vínculo viejo de prueba seguiría sumando en «Rendido del mes» apuntando a una entrega que la lista no
+    // muestra: un contador que no se puede abrir.
+    const idsDeEntrega = new Set(((entregas.data ?? []) as unknown as Entrega[]).map((e) => e.id))
+    const deLasEntregas = <T extends { entrega_id: string }>(filas: readonly T[]): T[] =>
+      filas.filter((f) => idsDeEntrega.has(f.entrega_id))
     const clienteDeObra: Record<string, string> = {}
     for (const o of obras) if (o.cliente) clienteDeObra[o.id] = o.cliente
     const num = (v: unknown) => Number(v ?? 0)
@@ -85,8 +92,8 @@ export async function leerEfectivo(): Promise<LecturaEfectivo> {
           en_su_poder: num(e.en_su_poder), filas_rendidas: num(e.filas_rendidas),
         })),
         comprobantes: (comprobantes.data ?? []) as unknown as Comprobante[],
-        rendiciones: ((rendiciones.data ?? []) as unknown as Rendicion[]).map((r) => ({ ...r, monto: num(r.monto) })),
-        devoluciones: ((devoluciones.data ?? []) as unknown as Devolucion[]).map((d) => ({ ...d, monto: num(d.monto) })),
+        rendiciones: deLasEntregas((rendiciones.data ?? []) as unknown as Rendicion[]).map((r) => ({ ...r, monto: num(r.monto) })),
+        devoluciones: deLasEntregas((devoluciones.data ?? []) as unknown as Devolucion[]).map((d) => ({ ...d, monto: num(d.monto) })),
         personas: ((personas.data ?? []) as { id: string; nombre_completo: string | null; puesto: string | null }[])
           .filter((p) => p.nombre_completo).map((p) => ({ id: p.id, nombre: p.nombre_completo as string, puesto: p.puesto })),
         obras,

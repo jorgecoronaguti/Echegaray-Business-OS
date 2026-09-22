@@ -17,14 +17,18 @@ import { FirmarConformidad } from '@/features/efectivo/campo/components/FirmarCo
 
 export const dynamic = 'force-dynamic'
 
+// LA ENTREGA VIAJA EN LA QUERY, como en «rendir» (dueño, 22/09/2026: «no me parece q esté siguiendo el árbol
+// de urls»). En este árbol `[param]` es el DETALLE de una sección —`documentos/[documento]`,
+// `recibos/[recibo]`, `rendiciones/[ticket]`— y una acción sobre algo lleva su id en la query. `firmar/<id>`
+// era la única ruta con forma de verbo + id.
 type Props = {
-  params: Promise<{ entrega: string }>
-  searchParams: Promise<{ desde?: string; obra?: string }>
+  searchParams: Promise<{ desde?: string; obra?: string; entrega?: string }>
 }
 
-export default async function FirmarPage({ params, searchParams }: Props) {
-  const { entrega: id } = await params
-  const ctx = await contextoEfectivo(await searchParams)
+export default async function FirmarPage({ searchParams }: Props) {
+  const sp = await searchParams
+  const id = sp.entrega ?? ''
+  const ctx = await contextoEfectivo(sp)
 
   if (!ctx.personaId) {
     return (

@@ -14,7 +14,7 @@ import { Caja, CifraGrande, Primario, Renglon, Rotulo } from './Piezas'
 /** El destino de las pantallas del módulo, con la vuelta pegada (el jefe vuelve a `/obra/efectivo`). */
 function rutas(sufijo: string) {
   const base = '/mi-informacion/efectivo'
-  return { firmar: (id: string) => conVuelta(`${base}/firmar/${id}`, sufijo), mi: base }
+  return { firmar: (id: string) => conVuelta(`${base}/firmar?entrega=${id}`, sufijo), mi: base }
 }
 
 /**

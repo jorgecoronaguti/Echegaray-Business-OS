@@ -99,7 +99,7 @@ test('el aviso de una entrega: menciona, lleva el enlace a la firma y NO publica
   const { textoDelAviso, avisarEntregas } = await import('../scripts/efectivo-avisos.mjs')
   const t = textoDelAviso({ username: 'rsosa', codigo: 'ER-0001', destino: 'Galpón 8', entregaId: 'abc' })
   assert.match(t, /^@rsosa /)
-  assert.match(t, /\/mi-informacion\/efectivo\/firmar\/abc/)
+  assert.match(t, /\/mi-informacion\/efectivo\/firmar\?entrega=abc/)
   assert.doesNotMatch(t, /\$|\d{3}\.\d{3}/)
   // Sin canal de Rendiciones no se inventa otro lugar ni se marca como avisada.
   const q = []
