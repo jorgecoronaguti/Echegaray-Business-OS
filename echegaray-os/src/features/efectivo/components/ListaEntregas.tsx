@@ -11,7 +11,7 @@ import {
   destinoDe, diasDeEntrega, estadoDeEntrega, numero, ordenarLista, pesos, type FiltroLista, type Resumen,
 } from '../logica/entregas'
 import { urlEfectivo } from '../logica/url'
-import { HOVER_FILA } from '@/shared/components/v2/patron'
+import { ALTO_V2, HOVER_FILA } from '@/shared/components/v2/patron'
 import { COLOR_TONO, MONO, V, botonOscuro, chip, cifra, eyebrow, punto } from './estilo'
 
 const COLUMNAS = '92px minmax(0,1.2fr) minmax(0,1.3fr) 130px 130px 130px 80px 150px'
@@ -119,7 +119,7 @@ function FilaEntrega({ e, hoy, comprobantes, puesto, cliente }: {
       data-testid="fila-entrega"
       data-codigo={e.codigo}
       style={{
-        display: 'grid', gridTemplateColumns: COLUMNAS, gap: 16, minHeight: 52, alignItems: 'center',
+        display: 'grid', gridTemplateColumns: COLUMNAS, gap: 16, minHeight: ALTO_V2.entrega, alignItems: 'center',
         borderBottom: `1px solid ${V.lineaFila}`, fontSize: '13.5px', color: quieta ? V.tenue : V.tinta,
       }}
     >

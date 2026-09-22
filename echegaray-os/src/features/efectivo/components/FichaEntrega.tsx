@@ -12,10 +12,12 @@ import {
 import { urlEfectivo, urlFilaDeCompras } from '../logica/url'
 import type { ExtraDeFicha } from '../services/datos'
 import { AnularEntrega, SubirPapel } from './Botones'
-import { HOVER_FILA } from '@/shared/components/v2/patron'
+import { ALTO_V2, HOVER_FILA } from '@/shared/components/v2/patron'
 import { COLOR_TONO, FONDO_OBSERVADO, MONO, V, botonClaro, botonOscuro, cifraFicha, eyebrow, punto } from './estilo'
 
 const COLUMNAS = '72px minmax(0,1.4fr) minmax(0,1fr) 120px 140px'
+/** El círculo con las iniciales de la ficha (`D03`): un tamaño de ícono, no un alto de fila. */
+const AVATAR = 44
 
 function iniciales(nombre: string): string {
   return nombre.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('')
@@ -42,7 +44,7 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between" style={{ columnGap: 30 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
           <div style={{
-            width: 44, height: 44, borderRadius: '50%', background: '#EFEEEA', color: V.tintaSuave, fontSize: '14px',
+            width: AVATAR, height: AVATAR, borderRadius: '50%', background: '#EFEEEA', color: V.tintaSuave, fontSize: '14px',
             fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
           }}>
             {iniciales(e.persona)}
@@ -120,7 +122,7 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
                   </>
                 )
                 const estilo = {
-                  display: 'grid', gridTemplateColumns: COLUMNAS, gap: 16, minHeight: 46, alignItems: 'center', fontSize: '13.5px',
+                  display: 'grid', gridTemplateColumns: COLUMNAS, gap: 16, minHeight: ALTO_V2.cara, alignItems: 'center', fontSize: '13.5px',
                   borderBottom: i < filas.length - 1 ? `1px solid ${V.lineaFila}` : undefined,
                   background: f.estado === 'observado' ? FONDO_OBSERVADO : undefined,
                 } as const
@@ -176,6 +178,8 @@ function Cifra({ rotulo, valor, bajada, color, bajadaColor }: { rotulo: string; 
 
 /** PAPELES — la conformidad y las fotos. La rendición cerrada y el recibo son de la etapa 5 y no se dibujan. */
 function Papeles({ e, papelUrl, fotos }: { e: Entrega; papelUrl: string | null; fotos: number }) {
+  // Ritmo de panel: «Papeles» es la columna lateral de la ficha, no una tabla de datos; el diseño (D03) la
+  // dibuja a 42 y crece con el botón de subir el papel.
   const fila = { minHeight: 42, display: 'flex', alignItems: 'center', gap: 10, fontSize: '13px' } as const
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 18, borderTop: `1px solid ${V.linea}` }} data-testid="ficha-papeles">
