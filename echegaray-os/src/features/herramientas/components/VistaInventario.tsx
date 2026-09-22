@@ -38,7 +38,10 @@ const ESPECIAL: Record<string, string> = {
 }
 
 export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo: string | null }) {
-  const { parque, abrir, avisar, refrescar } = useHerramientas()
+  const { parque, abrir, avisar, refrescar, abierto: panel } = useHerramientas()
+  // Con un panel abierto (mover, alta, reportar…) el panel ocupa la derecha: la ficha se esconde para
+  // que el listado no quede apretado entre las dos columnas.
+  const conPanel = !!panel && panel.tipo !== 'baja'
   const router = useRouter()
   const ruta = usePathname()
   const [sel, setSel] = useState<string[]>([])
@@ -193,6 +196,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
       </div>
 
       <div style={{ width: 2, background: V.linea }} />
+      {!conPanel && (
       <div style={{ width: 430, flexShrink: 0, padding: '22px 24px 28px', background: '#FFFFFF', position: 'sticky', top: 83, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 83px)', overflowY: 'auto' }}>
         {abierto ? <Ficha id={abierto.id} /> : (
           <div style={{ fontSize: '13px', color: V.tenue, paddingTop: 4 }} data-testid="ficha-vacia">
@@ -200,6 +204,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }

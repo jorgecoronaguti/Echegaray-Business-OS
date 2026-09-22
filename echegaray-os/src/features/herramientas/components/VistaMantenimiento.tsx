@@ -17,7 +17,10 @@ const COLS = 'minmax(0,1.3fr) minmax(0,1fr) minmax(0,1.2fr) 80px'
 const ORDEN: GrupoMant[] = ['en_obra', 'en_taller', 'externa', 'otros']
 
 export function VistaMantenimiento({ activo }: { activo: string | null }) {
-  const { parque } = useHerramientas()
+  const { parque, abierto: panel } = useHerramientas()
+  // Con un panel abierto (mover, alta, reportar…) el panel ocupa la derecha: la ficha se esconde para
+  // que el listado no quede apretado entre las dos columnas.
+  const conPanel = !!panel && panel.tipo !== 'baja'
   const router = useRouter()
   const ruta = usePathname()
   const cola = colaDeMantenimiento(parque)
@@ -63,11 +66,13 @@ export function VistaMantenimiento({ activo }: { activo: string | null }) {
         ))}
       </div>
       <div style={{ width: 2, background: V.linea }} />
+      {!conPanel && (
       <div style={{ width: 430, flexShrink: 0, padding: '22px 24px 28px', background: '#FFFFFF', position: 'sticky', top: 83, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 83px)', overflowY: 'auto' }}>
         {elegido ? <Ficha id={elegido.id} /> : (
           <div style={{ fontSize: '13px', color: V.tenue }}>Elegí uno de la cola para ver qué le pasa y qué hacer.</div>
         )}
       </div>
+      )}
     </div>
   )
 }
