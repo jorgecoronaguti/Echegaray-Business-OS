@@ -295,9 +295,10 @@ export function bloqueImputacion(v = {}) {
   // FACTURA") en vez de elegir de la lista. Se le dice explícitamente que es una lista cerrada y que
   // el plazo de pago no es una forma de pago.
   if (tiposPago.length) {
-    l.push('', `TIPO DE PAGO (columna P) — CON QUÉ se pagó, no CUÁNDO. Sólo estos valores:\n${tiposPago.map((o) => `  · ${o}`).join('\n')}`,
+    l.push('', `TIPO DE PAGO — CON QUÉ se pagó, no CUÁNDO. Sólo estos valores:\n${tiposPago.map((o) => `  · ${o}`).join('\n')}`,
       'Un plazo ("30 DIAS FECHA FACTURA"), una condición ("Cuenta Corriente") o un rótulo de la factura',
-      '("Importe") NO son formas de pago: ahí va null. Si el papel no dice con qué se pagó, va null.')
+      '("Importe") NO son formas de pago: ahí va null. Si el papel no dice con qué se pagó, va null.',
+      '"A rendir" NUNCA sale del papel: lo decide quién rindió el gasto, no el comprobante. No lo elijas.')
   }
   l.push('', 'Agregá al JSON: "obra":"<exacto de la lista o null>","unidad_negocio":"<exacto o null>",',
     '"detalle_obra":"<exacto de la lista de la obra elegida, o null>",',

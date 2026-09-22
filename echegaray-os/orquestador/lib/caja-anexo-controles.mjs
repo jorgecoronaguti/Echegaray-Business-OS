@@ -14,7 +14,7 @@
 // posible que el anexo cambie de forma sin romper CAJA y al revés.
 
 import * as BANCO from './banco-santander.mjs'
-import { formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores, formulaExtraccionesEfectivoPosteriores, celdaFechaDelEfectivo, mapaCompras, rangoAbiertoDe } from './caja-posterior-al-corte.mjs'
+import { formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores, formulaExtraccionesEfectivoPosteriores, formulaEntregasARendirPosteriores, formulaDevolucionesARendirPosteriores, celdaFechaDelEfectivo, mapaCompras, rangoAbiertoDe } from './caja-posterior-al-corte.mjs'
 import { exigirColumnas } from './cobranzas-columnas.mjs'
 import { rangoHasta } from './columnas-por-encabezado.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
@@ -285,9 +285,12 @@ export function bloqueTrazabilidad(h, { yaRevisados = decisionesDe(CONTROLES.cob
   // sumaba DOS veces: $15.441.950 de jornales y $7.185.800 de oficina "en efectivo" desde Compras, y
   // la planilla entera en los dos términos siguientes. $22.627.750 de "sin explicar" que era la misma
   // plata. El factor sale de rubro-caja.mjs, la misma lista que usa el cajón vivo de CAJA.
-  const fGasto = push(['Pagado en efectivo — Compras (monto pagado) + jornales + oficina', '', '', '',
+  // EFECTIVO A RENDIR (22/09/2026): la entrega también salió del cajón (neta de lo devuelto). Lo que la
+  // persona gastó está en Compras como «A rendir» y NO se suma: el billete salió una sola vez.
+  const fGasto = push(['Pagado en efectivo — Compras (monto pagado) + jornales + oficina + entregado a rendir neto', '', '', '',
     `=SUMPRODUCT((${rangoAbiertoDe(cmp, 'tipoPago')}="Efectivo")*${factorSinPlanilla(rangoAbiertoDe(cmp, 'rubro'))}*N(${rangoAbiertoDe(cmp, 'montoPagado')}))`
-    + `+${formulaJornalesEfectivoPosteriores('0')}+${formulaOficinaEfectivoPosteriores('0')}`, '', ''])
+    + `+${formulaJornalesEfectivoPosteriores('0')}+${formulaOficinaEfectivoPosteriores('0')}`
+    + `+${formulaEntregasARendirPosteriores('0')}-${formulaDevolucionesARendirPosteriores('0')}`, '', ''])
   // EL CAJÓN VIVO, NO EL ARQUEO CRUDO: con la identidad a historia completa, lo que cierra la resta
   // es lo que HAY en la caja hoy (arqueo ± movimientos posteriores) — el mismo número de CAJA!B7.
   // LA FECHA SALE DEL CENTINELA Y NO DE `CAJA!D7` (16/08/2026). Citaba la celda que el dueño tipeaba, y

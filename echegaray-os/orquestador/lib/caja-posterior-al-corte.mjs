@@ -58,7 +58,7 @@ import { columnasCobranzas, exigirColumnas } from './cobranzas-columnas.mjs'
 import { COMPRAS, columnasDe, lectorDeEncabezados } from './columnas-por-encabezado.mjs'
 import { COLUMNAS_CARTERA } from './cobranzas-cartera.mjs'
 import { CLAVE } from './cobranzas-duplicado.mjs'
-import { CHQ, DEP } from './caja-fuentes-banco.mjs'
+import { CHQ, DEP, RENDIR } from './caja-fuentes-banco.mjs'
 import { formulaUltimaFecha, formulaFrescuraDe, fechaNumerica } from './fecha-de-frescura.mjs'
 // EL CRITERIO DE LA VENTANA VIVE EN UN SOLO LADO. Estaba escrito tres veces con `>` y una con `>=`,
 // y esa cuarta era la única correcta: dos filas equivalentes daban números distintos según el estado.
@@ -375,6 +375,35 @@ export function formulaComprasEfectivoPosteriores(arqueo, c) {
     + `*(((${rango(c.hoja, c.estado, c.desde)}="Pagado")*${sale(fechaCajaCoerc(c))})`
     + `+((${rango(c.hoja, c.estado, c.desde)}="Pendiente")*${sale(fechaCargaCoerc())}))`
     + `)`
+}
+
+/**
+ * NÚCLEO PURO: EFECTIVO A RENDIR (22/09/2026) — lo entregado y lo devuelto desde el conteo.
+ *
+ * La entrega saca billetes del cajón y los pone en manos de una persona: descarga la caja física el
+ * día que se entrega. La devolución los trae de vuelta. Lo que la persona gasta NO pasa por acá: es la
+ * fila de Compras con Tipo pago «A rendir», que `formulaComprasEfectivoPosteriores` no suma porque no
+ * dice «Efectivo» — así el mismo billete no descarga el cajón dos veces.
+ *
+ * Sale de `_EFECTIVO_RAW`, la réplica de `efectivo_entrega` / `efectivo_devolucion`. La columna de
+ * importe trae el signo de la caja (entrega negativa); cada fórmula devuelve el monto POSITIVO y el
+ * renglón del anexo le pone el signo, como el resto del cajón.
+ *
+ * @param {string} arqueo referencia al ancla (la de salida para la entrega, la de entrada para la devolución)
+ * @param {object} c columnas de la réplica
+ * @returns {string} fórmula sin `=`
+ */
+export function formulaEntregasARendirPosteriores(arqueo, c = RENDIR) {
+  const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
+  return `SUMPRODUCT((${col(c.movimiento)}="Entrega")*ISNUMBER(${col(c.fecha)})`
+    + `*${ventanaDelConteo(col(c.fecha), arqueo, false)}*IF(ISNUMBER(${col(c.importe)});-${col(c.importe)};0))`
+}
+
+/** La devolución ENTRA al cajón: ventana de entrada (desde el día siguiente al conteo). */
+export function formulaDevolucionesARendirPosteriores(arqueo, c = RENDIR) {
+  const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
+  return `SUMPRODUCT((${col(c.movimiento)}="Devolución")*ISNUMBER(${col(c.fecha)})`
+    + `*${ventanaDelConteo(col(c.fecha), arqueo, true)}*IF(ISNUMBER(${col(c.importe)});${col(c.importe)};0))`
 }
 
 /**
@@ -911,10 +940,26 @@ function maxDepositosEfectivo(arqueo, c = DEP) {
     + `*ISNUMBER(${col(c.fecha)})*${ventanaDelConteo(f, arqueo, false)}*(${imp}<>0)*(${f}<=TODAY())*${f}`)
 }
 
+/** 7/8 · la última ENTREGA a rendir (sale del cajón: ventana inclusiva). */
+function maxEntregasARendir(arqueo, c = RENDIR) {
+  const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
+  const f = fechaNumerica(col(c.fecha))
+  return maxDe(`(${col(c.movimiento)}="Entrega")*ISNUMBER(${col(c.fecha)})*${ventanaDelConteo(f, arqueo, false)}`
+    + `*(N(${col(c.importe)})<>0)*(${f}<=TODAY())*${f}`)
+}
+
+/** 8/8 · la última DEVOLUCIÓN de lo entregado (entra al cajón: desde el día siguiente). */
+function maxDevolucionesARendir(arqueo, c = RENDIR) {
+  const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
+  const f = fechaNumerica(col(c.fecha))
+  return maxDe(`(${col(c.movimiento)}="Devolución")*ISNUMBER(${col(c.fecha)})*${ventanaDelConteo(f, arqueo, true)}`
+    + `*(N(${col(c.importe)})<>0)*(${f}<=TODAY())*${f}`)
+}
+
 /**
  * NÚCLEO PURO: la fecha del ÚLTIMO movimiento de efectivo que ya está sumado en el saldo vivo.
  *
- * Las seis fuentes son las mismas seis de `HISTORICO_EFECTIVO_BASE` y en el mismo orden, para que el
+ * Las ocho fuentes son las mismas ocho de `HISTORICO_EFECTIVO_BASE` y en el mismo orden, para que el
  * desglose del anexo y esta fecha se lean como lo que son: dos vistas del mismo conjunto de hechos.
  *
  * SIN MOVIMIENTOS QUEDA LA FECHA DEL CONTEO, NUNCA UN CERO. Cada término vale 0 cuando no matchea
@@ -941,6 +986,8 @@ export function formulaFechaUltimoEfectivo(arqueo, { conteo = `INT(${arqueo})`, 
     maxOficinaEfectivo(salida),
     maxExtraccionesEfectivo(arqueo),
     maxDepositosEfectivo(salida),
+    maxEntregasARendir(salida),
+    maxDevolucionesARendir(arqueo),
   ]
   return `=IF(NOT(ISNUMBER(${arqueo}));"";MAX(${terminos.join(';')}))`
 }

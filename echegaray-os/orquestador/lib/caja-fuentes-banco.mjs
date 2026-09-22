@@ -12,3 +12,7 @@ export const CHQ = { hoja: 'Cheques Emitidos', importe: 'F', fechaPago: 'I', deb
 /** La réplica del extracto y sus columnas para detectar depósitos de efectivo (mismo criterio que la
  *  alerta de trazabilidad del efectivo en CAJA): A=fecha, B=concepto, C=importe, E=entra/sale. */
 export const DEP = { hoja: '_BANCO_RAW', fecha: 'A', concepto: 'B', importe: 'C', flujo: 'E', desde: 4 }
+
+/** La réplica de Efectivo a rendir (22/09/2026, scripts/efectivo-raw-pestana.mjs): A=fecha,
+ *  E=movimiento («Entrega» | «Devolución»), F=importe con su signo para la caja (la entrega negativa). */
+export const RENDIR = { hoja: '_EFECTIVO_RAW', fecha: 'A', movimiento: 'E', importe: 'F', desde: 4 }

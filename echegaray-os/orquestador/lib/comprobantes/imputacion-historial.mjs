@@ -86,7 +86,11 @@ export function perfilesDePago(historia = []) {
   for (const [k, pagos] of porProv) {
     const ultimas = pagos.slice(-ULTIMAS_PAGO)
     const unanime = ultimas.length === ULTIMAS_PAGO && ultimas.every((p) => p === ultimas[0])
-    out[k] = { sugerido: unanime ? ultimas[0] : null, n: pagos.length, ultimas }
+    // «A RENDIR» NO SE SUGIERE NUNCA (22/09/2026): lo decide QUIÉN pagó —una persona con una entrega
+    // abierta—, no el proveedor. Que las últimas cinco del corralón se hayan rendido no dice nada de la
+    // sexta, y sugerirlo sacaría el gasto de la caja física sin que haya salido de ahí.
+    const sugerible = unanime && !/rendir/i.test(ultimas[0])
+    out[k] = { sugerido: sugerible ? ultimas[0] : null, n: pagos.length, ultimas }
   }
   return out
 }

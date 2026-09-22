@@ -493,7 +493,7 @@ test('las fórmulas de la nómina van en es-AR: separador ; y nunca ,', () => {
 const ANCLA = '$F$34'
 const ULTIMA = formulaFechaUltimoEfectivo(ANCLA, MAPAS_HOY)
 
-test('la fecha del último efectivo mira LAS SEIS FUENTES que mueven el saldo, ninguna menos', () => {
+test('la fecha del último efectivo mira LAS OCHO FUENTES que mueven el saldo, ninguna menos', () => {
   // Si mañana alguien agrega un séptimo canal al neto y no lo agrega acá, el saldo se movería con una
   // fecha que no lo acompaña — el defecto original, de nuevo.
   assert.match(ULTIMA, /'Cobranzas'!\$O\$5:\$O="Cobrado"/, '1/6 cobros en efectivo')
@@ -508,7 +508,10 @@ test('la fecha del último efectivo mira LAS SEIS FUENTES que mueven el saldo, n
   assert.match(ULTIMA, /SEARCH\("retiro de efectivo"/)
   assert.match(ULTIMA, /SEARCH\("deposito"/, '6/6 depósitos al banco')
   assert.match(ULTIMA, /SEARCH\("efvo"/, 'con las dos redacciones del Santander, igual que el importe')
-  assert.equal(ULTIMA.match(/SUMPRODUCT\(MAX\(/g)?.length, 6, 'seis fuentes, seis MAX: ni uno de más ni uno de menos')
+  // Efectivo a rendir (22/09/2026): la entrega y la devolución también mueven el cajón.
+  assert.match(ULTIMA, /_EFECTIVO_RAW!\$E\$4:\$E\)?="Entrega"/, '7/8 entregas a rendir')
+  assert.match(ULTIMA, /_EFECTIVO_RAW!\$E\$4:\$E\)?="Devolución"/, '8/8 devoluciones')
+  assert.equal(ULTIMA.match(/SUMPRODUCT\(MAX\(/g)?.length, 8, 'ocho fuentes, ocho MAX: ni uno de más ni uno de menos')
 })
 
 test('EL DEFECTO: cada fuente usa EXACTAMENTE la misma ventana con la que su importe entra al saldo', () => {
@@ -599,6 +602,7 @@ test('la fórmula de la fecha va en es-AR y usa el idioma de la casa para el arr
   // pasó a estar también en el IMPORTE, que es donde hacía el daño. El comentario de arriba ya
   // decía que un pago programado «entra al saldo por el criterio conservador del piso»: entraba, y
   // por eso el conteo de $18.000.000 del dueño se publicaba como $14.795.500.
-  assert.equal(ULTIMA.match(/<=TODAY\(\)/g)?.length, 13,
+  // DIECISIETE desde el 22/09/2026: las dos fuentes de efectivo a rendir traen las dos puertas cada una.
+  assert.equal(ULTIMA.match(/<=TODAY\(\)/g)?.length, 17,
     'cada fuente filtra el futuro, en la fecha Y en el importe')
 })

@@ -7,8 +7,8 @@
 // La ARITMÉTICA no está acá: es la del Sheet y vive en `orquestador/lib/pagos-de-compra.mjs`. Acá
 // sólo se decide QUÉ se dibuja y CON QUÉ palabras.
 
-/** Los seis del desplegable estricto de «Tipo pago» (`carga-comprobantes.mjs · TIPOS_PAGO`). */
-export const MEDIOS_DE_PAGO = ['Efectivo', 'Transferencia', 'Débito', 'Tarjeta Crédito', 'Echeq', 'Cheque'] as const
+/** Los siete del desplegable estricto de «Tipo pago» (`carga-comprobantes.mjs · TIPOS_PAGO`). */
+export const MEDIOS_DE_PAGO = ['Efectivo', 'Transferencia', 'Débito', 'Tarjeta Crédito', 'Echeq', 'Cheque', 'A rendir'] as const
 export type MedioDePago = (typeof MEDIOS_DE_PAGO)[number]
 
 /** En qué punto del viaje está lo que se marcó en la app. */

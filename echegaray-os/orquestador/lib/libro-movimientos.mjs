@@ -66,7 +66,7 @@ export const ACTIVIDADES = Object.freeze(['operativa', 'inversion', 'financiacio
  * distintos en uno y desaparece un pago.
  */
 export const INSTRUMENTOS = Object.freeze([
-  'transferencia', 'cheque', 'echeq', 'tarjeta', 'efectivo', 'debito', 'desconocido',
+  'transferencia', 'cheque', 'echeq', 'tarjeta', 'efectivo', 'a_rendir', 'debito', 'desconocido',
 ])
 
 const norm = (s) => String(s ?? '').trim()

@@ -72,7 +72,10 @@ export function tipoComprobante(letra) {
 }
 
 /**
- * LOS SEIS VALORES DE LA COLUMNA P ("Tipo pago"), leídos del desplegable ESTRICTO del Sheet.
+ * LOS SIETE VALORES DE LA COLUMNA «Tipo pago», leídos del desplegable ESTRICTO del Sheet.
+ *
+ * «A rendir» (22/09/2026, decisión del dueño): el gasto pagado con efectivo que la empresa ya entregó a
+ * una persona. Es costo de la obra y NO vuelve a restar de la caja física (ver `instrumentoDePago`).
  *
  * ═══ POR QUÉ ESTA LISTA ESTÁ ESCRITA ACÁ (04/08) ═══
  *
@@ -85,7 +88,7 @@ export function tipoComprobante(letra) {
  * cargador de línea de comandos, que no lee listas. Que existan las dos no es duplicar la verdad: es
  * que la celda no se ensucia ni cuando la verdad no se pudo consultar.
  */
-export const TIPOS_PAGO = Object.freeze(['Efectivo', 'Transferencia', 'Débito', 'Tarjeta Crédito', 'Echeq', 'Cheque'])
+export const TIPOS_PAGO = Object.freeze(['Efectivo', 'Transferencia', 'Débito', 'Tarjeta Crédito', 'Echeq', 'Cheque', 'A rendir'])
 
 /**
  * Lo leído → un valor EXACTO del desplegable P, o null.

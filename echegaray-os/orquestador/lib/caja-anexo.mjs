@@ -26,6 +26,7 @@ import {
   formulaCobrosPosteriores, formulaChequesDebitadosPosteriores, formulaComprasPagadasPosteriores,
   formulaJornalesBancoPosteriores, formulaOficinaBancoPosteriores, formulaOficinaSinCanal,
   formulaCobrosEfectivoPosteriores, formulaComprasEfectivoPosteriores, formulaDepositosEfectivoPosteriores,
+  formulaEntregasARendirPosteriores, formulaDevolucionesARendirPosteriores,
   formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores, formulaExtraccionesEfectivoPosteriores,
   formulaFechaUltimoEfectivo, mapasDe,
 } from './caja-posterior-al-corte.mjs'
@@ -168,6 +169,14 @@ export const HISTORICO_EFECTIVO_BASE = [
   { rotulo: '      · (−) depositado en el banco — desde el conteo', entra: false,
     fn: (A) => `=-(${formulaDepositosEfectivoPosteriores(A)})`,
     origen: 'Réplica del extracto: créditos con concepto "depósito de efectivo"' },
+  // EFECTIVO A RENDIR (22/09/2026). La entrega saca billetes del cajón y los pone en manos de una
+  // persona; lo que esa persona gasta entra a Compras como «A rendir» y NO vuelve a restar acá.
+  { rotulo: '      · (−) entregado a rendir — desde el conteo', entra: false,
+    fn: (A) => `=-(${formulaEntregasARendirPosteriores(A)})`,
+    origen: 'Réplica _EFECTIVO_RAW: entregas de efectivo a rendir' },
+  { rotulo: '      · (+) devuelto de lo entregado — desde el conteo', entra: true,
+    fn: (A) => `=${formulaDevolucionesARendirPosteriores(A)}`,
+    origen: 'Réplica _EFECTIVO_RAW: devoluciones de efectivo a rendir' },
 ]
 
 /**
@@ -387,8 +396,11 @@ function bloqueMovimientos(h) {
   // Y MIENTRAS EL SELLO ESTÁ VIEJO (el dueño acaba de tipear un conteo nuevo), el sello se
   // autocancela: resta el histórico entero, el neto da 0 y la caja muestra EXACTAMENTE lo contado —
   // que es la verdad más nueva que existe. La próxima corrida sella y los movimientos corren de ahí.
-  // Las filas se conocen antes de empujarlas: encabezado, neto, 6 históricos, el sello y el estado.
-  const fSello = h.n + 9
+  // Las filas se conocen antes de empujarlas: encabezado, neto, los históricos, el sello y el estado.
+  // DERIVADO DEL LARGO DE LA LISTA, NO TIPEADO (22/09/2026): era `h.n + 9` —los seis renglones de
+  // entonces— y al sumar los dos de efectivo a rendir el neto seguía sumando hasta la fila del sello
+  // viejo: dos renglones adentro de la guarda y afuera del total, sin que nada fallara.
+  const fSello = h.n + 3 + HISTORICO_EFECTIVO.length
   const fEstado = fSello + 1
   // ═══ EL ANCLA ES EL SELLO DEL CÓDIGO, NO UNA CELDA QUE ALGUIEN PUEDE BORRAR (15/08/2026) ═══
   //

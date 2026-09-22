@@ -62,6 +62,9 @@ test('el desglose del efectivo está entero: los seis históricos, cada uno en s
     [/\(−\) sueldos de OFICINA en efectivo — desde el conteo/i, true],
     [/\(\+\) extraído del banco — desde el conteo/i, false],
     [/\(−\) depositado en el banco — desde el conteo/i, true],
+    // Efectivo a rendir (22/09/2026): la entrega descarga el cajón, la devolución lo carga.
+    [/\(−\) entregado a rendir — desde el conteo/i, true],
+    [/\(\+\) devuelto de lo entregado — desde el conteo/i, false],
   ]
   for (const [re, resta] of renglones) {
     const f = filaDe(g, re)
@@ -74,9 +77,10 @@ test('el desglose del efectivo está entero: los seis históricos, cada uno en s
   }
   // Y los renglones son EXACTAMENTE los que el neto y el sello suman: filasHistorico los delimita.
   const [f0, f1] = g.filasHistorico
-  assert.equal(f1 - f0 + 1, 6, 'seis renglones de histórico, ni uno más')
+  assert.equal(f1 - f0 + 1, renglones.length, 'los renglones de histórico, ni uno más')
+  assert.equal(renglones.length, 8)
   assert.equal(filaDe(g, renglones[0][0]), f0)
-  assert.equal(filaDe(g, renglones[5][0]), f1)
+  assert.equal(filaDe(g, renglones.at(-1)[0]), f1)
 })
 
 test('EL SELLO: con conteo nuevo se autocancela (neto 0 = "lo contado, tal cual"); sellado, resta el número sellado', () => {
@@ -236,7 +240,7 @@ test('NI POSITIVO IMPOSIBLE: el techo entra a la misma guarda que el piso', () =
   const neto = celda(g, g.fNeto, 2)
   const [f0] = g.filasHistorico
   const entrada = HISTORICO_EFECTIVO.map((l, i) => (l.entra ? f0 + i : 0)).filter(Boolean)
-  assert.deepEqual(entrada.length, 2, 'cobrado en efectivo y extraído del banco son las que cargan')
+  assert.deepEqual(entrada.length, 3, 'cobrado en efectivo, extraído del banco y devuelto de lo entregado a rendir son las que cargan')
   for (const f of entrada) {
     // CON VENTANA, `C` YA ES LO QUE ENTRÓ DESPUÉS DEL CONTEO (15/08). Restarle su sello —la foto del
     // histórico completo— lo mandaba a un negativo enorme y el techo dejaba de controlar.

@@ -58,10 +58,15 @@ import { TIPOS_BANCO } from './caja-posterior-al-corte.mjs'
  * no puedan discrepar sobre qué es cada método.
  *
  * @param {string} tipoPago el texto de la columna P de Compras
- * @returns {'echeq'|'cheque'|'transferencia'|'efectivo'|'tarjeta'|'debito'|'desconocido'}
+ * «A RENDIR» (22/09/2026) SE PREGUNTA ANTES QUE «EFECTIVO»: es un gasto pagado con plata que la empresa
+ * YA entregó a una persona (la salida del cajón fue la entrega, que CAJA resta desde `_EFECTIVO_RAW`).
+ * Si alguien escribiera «Efectivo a rendir» y cayera en `efectivo`, el mismo billete saldría dos veces.
+ *
+ * @returns {'echeq'|'cheque'|'transferencia'|'a_rendir'|'efectivo'|'tarjeta'|'debito'|'desconocido'}
  */
 export function instrumentoDePago(tipoPago) {
   const t = String(tipoPago ?? '').trim().toLowerCase()
+  if (/rendir/.test(t)) return 'a_rendir'
   if (/echeq/.test(t)) return 'echeq'
   if (/cheque/.test(t)) return 'cheque'
   if (/transfer/.test(t)) return 'transferencia'
@@ -84,6 +89,9 @@ export const INSTRUMENTOS_DIFERIDOS = Object.freeze(['cheque', 'echeq', 'tarjeta
 
 /** El efectivo tiene su propio canal y su propia ancla (la fecha del arqueo, no la del extracto). */
 export const INSTRUMENTO_EFECTIVO = 'efectivo'
+
+/** Efectivo a rendir: el billete ya salió del cajón con la entrega; el gasto sale de «en manos de la gente». */
+export const INSTRUMENTO_A_RENDIR = 'a_rendir'
 
 /**
  * NÚCLEO PURO: el estado con el que un pago de Compras entra al libro.
@@ -127,6 +135,7 @@ export const CANAL = Object.freeze({
   extracto: 'el saldo del banco (el extracto ya lo contiene)',
   posteriores: 'la línea "Movimientos posteriores al corte"',
   efectivo: 'el arqueo + ANEXO_EFECTIVO_NETO (caja física)',
+  aRendir: 'la entrega a rendir, que ya descargó la caja física (_EFECTIVO_RAW)',
   libro: 'el libro, como COMPROMETIDO/PROYECTADO (escalera y tarjetas)',
   cartera: 'la línea "Valores a depositar" — SI el valor está cargado en _CHEQUES_RAW',
   ninguno: 'NINGUNO — esta plata no está en el saldo ni en la proyección',
@@ -162,6 +171,7 @@ export function canalDeMovimiento(mov = {}, { corte = null } = {}) {
   if (fecha <= corte) return { canal: CANAL.extracto, cubierto: true }
   if (INSTRUMENTOS_BANCO.includes(instrumento)) return { canal: CANAL.posteriores, cubierto: true }
   if (instrumento === INSTRUMENTO_EFECTIVO) return { canal: CANAL.efectivo, cubierto: true }
+  if (instrumento === INSTRUMENTO_A_RENDIR) return { canal: CANAL.aRendir, cubierto: true }
   // UN VALOR QUE ENTRA NO SE TRATA COMO UNO QUE SALE. Un echeq COBRADO con acreditación posterior al
   // corte no es un hueco del extractor: la línea de cobros lo excluye a propósito porque su canal es
   // "Valores a depositar", y esa línea sale de _CHEQUES_RAW, no de Cobranzas. Declararlo NINGUNO acá
