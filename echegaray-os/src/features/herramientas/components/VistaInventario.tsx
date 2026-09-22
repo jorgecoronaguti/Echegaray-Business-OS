@@ -3,11 +3,11 @@
 // D02 · INVENTARIO — lista y ficha, lado a lado; selección múltiple con acciones.
 //
 // Los filtros viven en la URL (se comparten y sobreviven a un refresco); la selección vive en la
-// pantalla. La ficha abierta también va en la URL (`?activo=HER-0042`): es la que abre `/h/<código>`.
+// pantalla. La ficha abierta también va en la URL (`?activo=AMO-007`): es la que abre `/h/<código>`.
 
 import { usePathname, useRouter } from 'next/navigation'
-import { useMemo, useState, type ReactNode } from 'react'
-import { candidatos, categorias, cuentaPorEstado, filtrar, queryDe, type Filtros, type FiltroClase, type FiltroEstado } from '../logica/inventario'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { candidatos, categorias, cuentaPorEstado, filtrar, queryDe, sugerencias, type Filtros, type FiltroClase, type FiltroEstado } from '../logica/inventario'
 import { ETIQUETA_ESTADO_CORTA, MOTIVO_BAJA, TONO_ESTADO, quienLaMovio, rotuloUbicacion, textoVisto, vistoEn, rotuloRodado, type Parque } from '../logica/parque'
 import { editarActivoAction } from '../services/acciones'
 import type { Activo } from '../types'
@@ -48,7 +48,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
   const base = useMemo(() => candidatos(parque, { ...filtros, estado: 'todos' }), [parque, filtros])
   const cuentas = cuentaPorEstado(base)
   const lista = useMemo(() => filtrar(parque, filtros), [parque, filtros])
-  const porClase = (c: FiltroClase) => candidatos(parque, { ...filtros, clase: c, estado: 'todos' }).length
+  const porClase = (c: FiltroClase) => candidatos(parque, { ...filtros, clase: c, estado: 'todos' }).filter((a) => a.estado !== 'baja').length
   const cats = categorias(parque.activos)
   const abierto = activo ? parque.activos.find((x) => x.codigo === activo) ?? null : null
   const lugares = parque.ubicaciones.filter((u) => !u.archivada && u.tipo !== 'obra' && u.tipo !== 'rodado')
@@ -71,7 +71,11 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
 
   return (
     <div style={{ display: 'flex', alignItems: 'stretch', minHeight: 700 }}>
-      <div style={{ flex: 1, minWidth: 0, padding: '22px 24px 28px', display: 'flex', flexDirection: 'column', gap: 18 }} data-testid="inventario">
+      <div style={{ flex: 1, minWidth: 0, padding: '0 24px 28px', display: 'flex', flexDirection: 'column', gap: 18 }} data-testid="inventario">
+        {/* LA CABECERA FIJA (dueño, 22/09): clases, estados, buscador, filtros, la barra de selección y los
+            rótulos de columna quedan arriba mientras se recorre el listado. 44 del header de la app + 39 de
+            las solapas del módulo. Los rótulos van acá adentro para que no se separen de los filtros. */}
+        <div data-testid="cabecera-inventario" style={{ position: 'sticky', top: 83, zIndex: 10, background: '#FFFFFF', display: 'flex', flexDirection: 'column', gap: 18, paddingTop: 22 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 20, fontSize: '13px', flexWrap: 'wrap' }}>
           {CLASES.map((c) => {
             const on = filtros.clase === c.v
@@ -109,6 +113,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
             })}
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <BuscadorInventario parque={parque} valor={filtros.q} onBuscar={(q) => ir({ q })} onElegir={(codigo) => ir({}, codigo)} />
             <select aria-label="Ubicación" value={filtros.ubicacion ?? ''} onChange={(e) => ir({ ubicacion: e.target.value || null })} style={selectFiltro} data-testid="filtro-ubicacion">
               <option value="">Ubicación: todas</option>
               <option value="sin">Sin ubicación cargada</option>
@@ -128,7 +133,12 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
         {sel.length > 0 && (
           <div data-testid="barra-seleccion" style={{ minHeight: 38, display: 'flex', alignItems: 'center', gap: 16, padding: '0 12px', background: SUPERFICIE, border: `1px solid ${V.linea}`, borderRadius: 6, fontSize: '12.5px', flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 500 }}>{sel.length === 1 ? '1 seleccionada' : `${sel.length} seleccionadas`}</span>
-            {vivosSel.length > 0 && <button type="button" onClick={() => abrir({ tipo: 'mover', ids: vivosSel })} style={{ color: V.grafito, fontWeight: 500 }} data-testid="mover-seleccion">Mover</button>}
+            {vivosSel.length > 0 && (
+              <button type="button" onClick={() => abrir({ tipo: 'mover', ids: vivosSel })} data-testid="mover-seleccion"
+                style={{ height: 28, padding: '0 12px', borderRadius: 6, background: V.marca, color: V.grafito, fontWeight: 600 }}>
+                Mover o asignar a obra
+              </button>
+            )}
             {vivosSel.length > 0 && <button type="button" onClick={() => abrir({ tipo: 'reportar', ids: vivosSel })} style={{ color: V.tintaSuave }}>Reportar problema</button>}
             {vivosSel.length > 0 && (
               <button type="button" style={{ color: V.tintaSuave }} data-testid="imprimir-seleccion"
@@ -150,7 +160,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
           </div>
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column' }} role="table" aria-label="Inventario">
+          <div role="table" aria-label="Inventario (rótulos)">
           <div role="row" style={{ ...eyebrow, display: 'grid', gridTemplateColumns: COLS, gap: 16, height: 36, alignItems: 'center', borderBottom: `1px solid ${V.linea}` }}>
             <div>
               <input type="checkbox" aria-label="Seleccionar todos" checked={lista.length > 0 && lista.every((a) => sel.includes(a.id))}
@@ -158,6 +168,10 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
             </div>
             <div>Activo</div><div>Categoría</div><div>Estado</div><div>Ubicación actual</div><div>Quién la movió</div><div style={{ textAlign: 'right' }}>Visto</div>
           </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', marginTop: -18 }} role="table" aria-label="Inventario">
           {lista.length === 0 && (
             <div style={{ fontSize: '13.5px', color: V.apagado, padding: '18px 0' }} data-testid="inventario-vacio">
               {parque.activos.length === 0 ? 'Todavía no hay activos cargados. Se cargan con «Nuevo activo».' : 'Nada coincide con estos filtros.'}
@@ -181,6 +195,83 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * El buscador del inventario, al lado de los filtros (dueño, 22/09: «tiene q haber un buscador de
+ * herramientas al lado de el filtro de ubicacion»). Busca por nombre, código, categoría, patente o
+ * ubicación, igual que el `q` de la URL: el texto se escribe acá y se aplica a los 200 ms, sin
+ * recargar la página.
+ */
+function BuscadorInventario({ parque, valor, onBuscar, onElegir }: {
+  parque: Parque
+  valor: string
+  onBuscar: (q: string) => void
+  onElegir: (codigo: string) => void
+}) {
+  const [texto, setTexto] = useState(valor)
+  const [abierto, setAbierto] = useState(false)
+  const [marcado, setMarcado] = useState(0)
+  // Si la URL cambia desde afuera (el buscador del menú, «ver todo»), el campo la sigue. Mientras se
+  // tipea, la URL recibe el texto recortado: no se le borra a nadie el espacio que acaba de escribir.
+  const [previo, setPrevio] = useState(valor)
+  if (valor !== previo) {
+    setPrevio(valor)
+    if (valor !== texto.trim()) setTexto(valor)
+  }
+  useEffect(() => {
+    const limpio = texto.trim()
+    if (limpio === valor) return
+    const t = setTimeout(() => onBuscar(limpio), 200)
+    return () => clearTimeout(t)
+  }, [texto]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Las opciones salen del parque que ya está en pantalla: aparecen con cada tecla, sin ir a la base.
+  const opciones = useMemo(() => sugerencias(parque, texto), [parque, texto])
+  const visible = abierto && texto.trim().length > 0
+  const elegir = (a: Activo) => { setAbierto(false); onElegir(a.codigo) }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <div style={{ ...selectFiltro, display: 'flex', alignItems: 'center', gap: 6, width: 240, maxWidth: 'none' }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={V.tenue} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flexShrink: 0 }}>
+          <circle cx="11" cy="11" r="7" /><path d="M20 20l-4.3-4.3" />
+        </svg>
+        <input
+          type="search" value={texto} placeholder="Buscar herramienta o código"
+          aria-label="Buscar herramienta" data-testid="buscar-inventario" role="combobox"
+          aria-expanded={visible} aria-controls="sugerencias-inventario" aria-autocomplete="list" autoComplete="off"
+          onChange={(e) => { setTexto(e.target.value); setAbierto(true); setMarcado(0) }}
+          onFocus={() => setAbierto(true)}
+          onBlur={() => setTimeout(() => setAbierto(false), 150)}
+          onKeyDown={(e) => {
+            if (!visible || opciones.length === 0) return
+            if (e.key === 'ArrowDown') { e.preventDefault(); setMarcado((m) => Math.min(m + 1, opciones.length - 1)) }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); setMarcado((m) => Math.max(m - 1, 0)) }
+            else if (e.key === 'Enter') { e.preventDefault(); elegir(opciones[marcado]) }
+            else if (e.key === 'Escape') setAbierto(false)
+          }}
+          style={{ flex: 1, minWidth: 0, border: 0, outline: 'none', fontSize: '12.5px', color: V.tinta, background: 'transparent' }}
+        />
+      </div>
+      {visible && (
+        <div id="sugerencias-inventario" role="listbox" data-testid="sugerencias-inventario"
+          style={{ position: 'absolute', top: 32, left: 0, width: 360, zIndex: 30, background: '#FFFFFF', border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, boxShadow: '0 6px 18px rgba(31,31,30,.08)', padding: '4px 0' }}>
+          {opciones.length === 0 ? (
+            <div style={{ padding: '8px 12px', fontSize: '12.5px', color: V.apagado }}>Nada coincide con «{texto.trim()}».</div>
+          ) : opciones.map((a, i) => (
+            <button key={a.id} type="button" role="option" aria-selected={i === marcado}
+              onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setMarcado(i)} onClick={() => elegir(a)}
+              style={{ display: 'flex', width: '100%', alignItems: 'baseline', gap: 10, padding: '7px 12px', textAlign: 'left', background: i === marcado ? V.hover : 'transparent' }}>
+              <span style={{ fontSize: '13px', color: V.tinta, fontWeight: 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.nombre}</span>
+              <span style={{ fontFamily: MONO, fontSize: '11.5px', color: V.tenue }}>{a.codigo}</span>
+              <span style={{ fontSize: '12px', color: V.apagado, whiteSpace: 'nowrap' }}>{rotuloUbicacion(parque, a.ubicacion_id) ?? 'sin ubicación'}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

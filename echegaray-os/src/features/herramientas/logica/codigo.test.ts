@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { codigoDeLectura, normalizarCodigo, urlDeEtiqueta } from './codigo.ts'
+import {
+  codigoDeLectura, FORMATO_CODIGO, limpiarPrefijo, normalizarCodigo, prefijoDeNombre, problemaDelPrefijo, urlDeEtiqueta,
+} from './codigo.ts'
 
 test('lo que se tipea en obra termina en el mismo código que el QR', () => {
   assert.equal(normalizarCodigo('her 42'), 'HER-0042')
@@ -34,4 +36,36 @@ test('un QR de otro sitio no es un código de Echegaray', () => {
 test('el código pelado leído por la cámara también sirve', () => {
   assert.equal(codigoDeLectura('HER-0042'), 'HER-0042')
   assert.equal(codigoDeLectura(''), null)
+})
+
+test('el código nuevo: tres letras del nombre y tres cifras', () => {
+  assert.equal(normalizarCodigo('amo 7'), 'AMO-007')
+  assert.equal(normalizarCodigo('AMO007'), 'AMO-007')
+  assert.equal(normalizarCodigo('car-14'), 'CAR-014')
+  assert.equal(normalizarCodigo('mar 1203'), 'MAR-1203')
+  assert.equal(codigoDeLectura('https://app.ecsas.com.ar/h/AMO-007'), 'AMO-007')
+  assert.match('AMO-007', FORMATO_CODIGO)
+  assert.doesNotMatch('AM-007', FORMATO_CODIGO)
+  assert.doesNotMatch('AMO-7', FORMATO_CODIGO)
+  assert.doesNotMatch('ÁMO-007', FORMATO_CODIGO)
+})
+
+test('el prefijo sugerido sale del nombre igual que en la base', () => {
+  assert.equal(prefijoDeNombre('Amoladora "4 HILTI - 4'), 'AMO')
+  assert.equal(prefijoDeNombre('Arnés de seguridad 1'), 'ARN')
+  assert.equal(prefijoDeNombre('ÉSCALERA'), 'ESC')
+  assert.equal(prefijoDeNombre('Ñandú'), 'NAN')
+  assert.equal(prefijoDeNombre('2 Llaves'), 'LLA')
+  assert.equal(prefijoDeNombre('Pi'), 'PIX')
+  assert.equal(prefijoDeNombre(''), 'XXX')
+})
+
+test('el campo del prefijo no deja escribir cualquier cosa', () => {
+  assert.equal(limpiarPrefijo('cr-t9'), 'CRT')
+  assert.equal(limpiarPrefijo('áéíóu'), 'AEI')
+  assert.equal(limpiarPrefijo('12 3'), '')
+  assert.equal(problemaDelPrefijo(''), 'Escribí tres letras')
+  assert.equal(problemaDelPrefijo('CR'), 'Falta 1 letra')
+  assert.equal(problemaDelPrefijo('C'), 'Faltan 2 letras')
+  assert.equal(problemaDelPrefijo('CRT'), null)
 })

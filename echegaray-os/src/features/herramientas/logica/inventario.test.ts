@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { armarParque } from './parque.ts'
-import { candidatos, categorias, cuentaPorEstado, filtrar, filtrosDeURL, queryDe } from './inventario.ts'
+import { candidatos, categorias, sugerencias, cuentaPorEstado, filtrar, filtrosDeURL, queryDe } from './inventario.ts'
 import { faltaMigracion } from './falta-migracion.ts'
 import { activo, ubicacion } from './fixture.test-util.ts'
 
@@ -30,7 +30,8 @@ test('la URL manda; lo que no se reconoce cae al valor por defecto', () => {
 test('buscar encuentra por nombre, código y por el lugar rotulado desde el índice de obras', () => {
   const p = parque()
   const f = filtrosDeURL({})
-  assert.deepEqual(filtrar(p, { ...f, q: 'amolad' }).map((a) => a.id), ['1', '2', '3'], 'la baja va al final')
+  assert.deepEqual(filtrar(p, { ...f, q: 'amolad' }).map((a) => a.id), ['1', '2'], '«Todos» es el inventario vivo: la baja no aparece')
+  assert.deepEqual(filtrar(p, { ...f, q: 'amolad', estado: 'baja' }).map((a) => a.id), ['3'], 'la baja se ve en su solapa')
   assert.deepEqual(filtrar(p, { ...f, q: 'her 4' }).map((a) => a.id), ['4'], '«her 4» es HER-0004')
   assert.deepEqual(filtrar(p, { ...f, q: 'HER-0004' }).map((a) => a.id), ['4'])
   assert.deepEqual(filtrar(p, { ...f, q: 'arcor' }).map((a) => a.id), ['1'])
@@ -40,9 +41,9 @@ test('filtros de clase, ubicación, categoría y especiales', () => {
   const p = parque()
   const f = filtrosDeURL({})
   assert.deepEqual(filtrar(p, { ...f, clase: 'rodado' }).map((a) => a.id), ['r'])
-  assert.deepEqual(filtrar(p, { ...f, ubicacion: 'sin' }).map((a) => a.id), ['4', '3'])
+  assert.deepEqual(filtrar(p, { ...f, ubicacion: 'sin' }).map((a) => a.id), ['4'])
   assert.deepEqual(filtrar(p, { ...f, ubicacion: 'obras' }).map((a) => a.id), ['1'])
-  assert.deepEqual(filtrar(p, { ...f, categoria: 'sin' }).map((a) => a.id), ['4', '3'])
+  assert.deepEqual(filtrar(p, { ...f, categoria: 'sin' }).map((a) => a.id), ['4'])
   assert.deepEqual(filtrar(p, { ...f, especial: 'asumido' }).map((a) => a.id), ['2'])
   assert.deepEqual(filtrar(p, { ...f, especial: 'repetidos' }).map((a) => a.id), [])
 })
@@ -50,7 +51,7 @@ test('filtros de clase, ubicación, categoría y especiales', () => {
 test('cada solapa de estado cuenta sobre lo que queda con los otros filtros', () => {
   const p = parque()
   const c = cuentaPorEstado(candidatos(p, { ...filtrosDeURL({}), q: 'amol' }))
-  assert.equal(c.todos, 3)
+  assert.equal(c.todos, 2, 'la baja no cuenta en «Todos»')
   assert.equal(c.requiere_mantenimiento, 1)
   assert.equal(c.baja, 1)
   assert.equal(c.fuera_servicio, 0)
@@ -66,4 +67,14 @@ test('la tabla que no existe es «falta la migración», no «no hay herramienta
   assert.equal(faltaMigracion({ code: 'PGRST202', message: 'Could not find the function public.mover_activos' }), true)
   assert.equal(faltaMigracion({ code: '42501', message: 'permission denied for table activo' }), false)
   assert.equal(faltaMigracion(null), false)
+})
+
+test('el buscador sugiere mientras se tipea: código exacto primero, bajas nunca', () => {
+  const p = parque()
+  assert.deepEqual(sugerencias(p, 'amol').map((a) => a.id), ['1', '2'], 'la Stanley está dada de baja')
+  assert.deepEqual(sugerencias(p, 'her 4').map((a) => a.id), ['4'], 'el código tipeado a medias encuentra el activo')
+  assert.deepEqual(sugerencias(p, 'arcor').map((a) => a.id), ['1'], 'también por dónde está')
+  assert.deepEqual(sugerencias(p, 'nmn').map((a) => a.id), ['r'], 'y por patente')
+  assert.deepEqual(sugerencias(p, '   '), [])
+  assert.equal(sugerencias(p, 'a', 2).length, 2)
 })

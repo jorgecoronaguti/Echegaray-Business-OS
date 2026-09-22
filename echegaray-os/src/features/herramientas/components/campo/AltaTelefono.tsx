@@ -2,10 +2,16 @@
 
 // M14 · ALTA RÁPIDA EN OBRA — tres datos y una foto. Entra operativa, donde se eligió, con el nombre de
 // quien la carga, y marcada «alta desde obra» para que administración la revise (aparece en el Resumen).
+//
+// El código: si se escaneó una etiqueta con el formato del sistema (AMO-007) y libre, queda ésa. Si no,
+// tres letras guiadas (`CampoCodigo`) y el número lo pone la base. Una etiqueta ajena no se adopta:
+// se dice y el activo recibe un código propio.
 
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 import { darDeAltaAction } from '../../services/acciones'
+import { FORMATO_CODIGO, prefijoDeNombre } from '../../logica/codigo'
+import { CampoCodigo } from '../CampoCodigo'
 import { MONO, V, eyebrow } from '../estilo'
 import { primarioTelefono } from './MarcoTelefono'
 
@@ -19,7 +25,11 @@ export function AltaTelefono({ codigo, lugares, lugarInicial, en }: {
 }) {
   const router = useRouter()
   const [nombre, setNombre] = useState('')
-  const [cod, setCod] = useState(codigo ?? '')
+  // Una etiqueta leída con el formato del sistema se usa tal cual; cualquier otra no es un código.
+  const leido = codigo && FORMATO_CODIGO.test(codigo) ? codigo : null
+  const ajeno = codigo && !leido ? codigo : null
+  const [prefijo, setPrefijo] = useState<{ v: string; aMano: boolean }>({ v: '', aMano: false })
+  const letras = prefijo.aMano ? prefijo.v : prefijoDeNombre(nombre)
   const [lugar, setLugar] = useState(lugarInicial ?? '')
   const [foto, setFoto] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -33,7 +43,7 @@ export function AltaTelefono({ codigo, lugares, lugarInicial, en }: {
     const fd = new FormData()
     fd.set('clase', 'herramienta')
     fd.set('nombre', nombre)
-    if (cod.trim()) fd.set('codigo', cod)
+    fd.set('codigo', leido ?? letras)
     if (lugar) fd.set('destino', lugar)
     fd.set('desde_obra', '1')
     if (foto) fd.set('foto', foto)
@@ -56,10 +66,21 @@ export function AltaTelefono({ codigo, lugares, lugarInicial, en }: {
         <span style={eyebrow}>Qué es</span>
         <input value={nombre} onChange={(e) => setNombre(e.target.value)} maxLength={160} autoFocus placeholder="Escalera de aluminio 7 tramos" style={{ ...campoTel, borderColor: V.grafito }} data-testid="alta-nombre" />
       </label>
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <span style={eyebrow}>{codigo ? 'Código leído' : 'Código (si tiene etiqueta)'}</span>
-        <input value={cod} onChange={(e) => setCod(e.target.value)} maxLength={40} placeholder="se asigna solo" style={{ ...campoTel, fontFamily: MONO }} />
-      </label>
+      {leido ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={eyebrow}>Código leído</span>
+          <div style={{ ...campoTel, display: 'flex', alignItems: 'center', fontFamily: MONO, color: V.tintaSuave }}>{leido}</div>
+        </div>
+      ) : (
+        <>
+          <CampoCodigo nombre={nombre} prefijo={letras} onPrefijo={(v, aMano) => setPrefijo({ v, aMano })} alto={52} />
+          {ajeno && (
+            <div style={{ fontSize: '12.5px', color: V.warn, lineHeight: 1.45 }}>
+              La etiqueta leída (<span style={{ fontFamily: MONO }}>{ajeno}</span>) no es del sistema: se le asigna un código propio y su etiqueta queda en la cola para imprimir.
+            </div>
+          )}
+        </>
+      )}
       <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <span style={eyebrow}>Dónde queda</span>
         <select value={lugar} onChange={(e) => setLugar(e.target.value)} style={campoTel} data-testid="alta-lugar">

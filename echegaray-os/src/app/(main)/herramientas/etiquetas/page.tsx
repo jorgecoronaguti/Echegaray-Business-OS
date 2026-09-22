@@ -3,7 +3,7 @@ import { Marco } from '@/features/herramientas/components/Marco'
 import { VistaEtiquetas } from '@/features/herramientas/components/VistaEtiquetas'
 import { normalizarCodigo } from '@/features/herramientas/logica/codigo'
 
-// D14 · ETIQUETAS — cola + hoja A4 de 24. `?codigos=HER-0001,HER-0002` imprime sólo esos.
+// D14 · ETIQUETAS — cola + hoja A4 de 24. `?codigos=AMO-001,AMO-002` imprime sólo esos.
 export const dynamic = 'force-dynamic'
 
 export default async function EtiquetasPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

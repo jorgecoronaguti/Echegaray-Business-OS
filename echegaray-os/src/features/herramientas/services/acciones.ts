@@ -24,6 +24,7 @@ function traducir(e: { code?: string; message: string }): string {
   if (faltaMigracion(e)) return `El módulo espera la migración ${MIGRACION}: todavía no se puede escribir.`
   if (e.code === '42501') return 'Hace falta entrar con tu usuario para registrar esto.'
   if (e.code === '23505') return 'Ese código (o esa patente) ya existe en el inventario.'
+  if (e.code === '23514') return 'El código son tres letras y un número, por ejemplo AMO-007.'
   return e.message
 }
 
@@ -142,6 +143,8 @@ const altaSchema = z.object({
   nombre: z.string().trim().min(2, 'El nombre es obligatorio').max(160),
   categoria: z.string().trim().max(60).optional(),
   destino: destinoSchema.optional(),
+  // Tres letras (el número lo pone la base), un código completo AMO-007 libre, o el de una etiqueta
+  // escaneada. La base decide si sirve y, si no, dice qué espera (`_codigo_propuesto`).
   codigo: z.string().trim().max(40).optional(),
   patente: z.string().trim().max(20).optional(),
   desdeObra: z.boolean(),
@@ -160,7 +163,6 @@ export async function darDeAltaAction(form: FormData): Promise<Resultado<{ id: s
   })
   if (!p.success) return { ok: false, error: p.error.issues[0].message }
   const codigo = p.data.codigo ? normalizarCodigo(p.data.codigo) : null
-  if (codigo && (codigo.length < 3 || codigo.length > 40)) return { ok: false, error: 'El código tiene que tener entre 3 y 40 caracteres' }
   let ubicacion: string | null = null
   if (p.data.destino) {
     const d = await resolverDestino(p.data.destino)
@@ -241,4 +243,37 @@ export async function crearUbicacionAction(entrada: z.input<typeof ubicacionSche
   const p = ubicacionSchema.safeParse(entrada)
   if (!p.success) return { ok: false, error: p.error.issues[0].message }
   return rpc<string>('crear_ubicacion', { p_tipo: p.data.tipo, p_nombre: p.data.nombre, p_contacto: p.data.contacto || null })
+}
+
+export type SugerenciaCodigo =
+  | { valido: true; prefijo: string; sugerido_del_nombre: string; codigo: string; usados_con_ese_prefijo: number }
+  | { valido: false; prefijo: string; motivo: string }
+
+/**
+ * Cómo quedaría el código mientras se escribe el nombre o el prefijo. No reserva nada: el alta o el
+ * cambio lo vuelven a calcular en la base, bajo candado. Es una lectura: no refresca pantallas.
+ */
+export async function sugerirCodigoAction(nombre: string, prefijo?: string): Promise<Resultado<SugerenciaCodigo>> {
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase.rpc('sugerir_codigo_activo', {
+      p_nombre: nombre.slice(0, 160), p_prefijo: prefijo ? prefijo.slice(0, 3) : null,
+    })
+    if (error) return { ok: false, error: traducir(error) }
+    return { ok: true, dato: data as SugerenciaCodigo }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'No se pudo conectar con la base' }
+  }
+}
+
+const cambiarCodigoSchema = z.object({
+  activo: uuid,
+  prefijo: z.string().regex(/^[A-Z]{3}$/, 'El prefijo son tres letras, sin acentos ni números'),
+})
+
+/** Cambia el código eligiendo otras tres letras: el número lo pone la base; el viejo queda como anterior. */
+export async function cambiarCodigoAction(entrada: z.input<typeof cambiarCodigoSchema>): Promise<Resultado<string>> {
+  const p = cambiarCodigoSchema.safeParse(entrada)
+  if (!p.success) return { ok: false, error: p.error.issues[0].message }
+  return rpc<string>('cambiar_codigo_activo', { p_activo: p.data.activo, p_codigo: p.data.prefijo })
 }

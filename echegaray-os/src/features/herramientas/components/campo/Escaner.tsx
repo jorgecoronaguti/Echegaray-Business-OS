@@ -133,7 +133,7 @@ export function Escaner({ catalogo, en }: { catalogo: ItemCatalogo[]; en: string
         <div style={{ fontSize: '12.5px', color: GRIS }}>Uno tras otro: cada lectura se apila abajo.</div>
       </div>
       <form onSubmit={(e) => { e.preventDefault(); agregar(manual, false); setManual('') }} style={{ display: 'flex', gap: 8 }}>
-        <input value={manual} onChange={(e) => setManual(e.target.value)} placeholder="o tipeá el código: HER-0042" aria-label="Código de la etiqueta" data-testid="codigo-manual"
+        <input value={manual} onChange={(e) => setManual(e.target.value)} placeholder="o tipeá el código: AMO-007" aria-label="Código de la etiqueta" data-testid="codigo-manual"
           style={{ flex: 1, minWidth: 0, height: 46, padding: '0 12px', borderRadius: 6, border: `1px solid ${FILO}`, background: V.grafito, color: '#FFFFFF', fontFamily: MONO, fontSize: '15px' }} />
         <button type="submit" style={{ height: 46, padding: '0 14px', borderRadius: 6, border: `1px solid ${FILO}`, color: '#FFFFFF', fontSize: '14px' }}>Agregar</button>
       </form>

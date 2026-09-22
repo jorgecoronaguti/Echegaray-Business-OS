@@ -3,10 +3,15 @@
 // COMPLETAR DATOS DE LA FICHA — lo que el alta deja para después (D12 «Opcional»): nombre, categoría,
 // número de serie, patente y compra. Nada de esto toca ubicación ni estado: va por `editar_activo`.
 // Si viene de un alta desde obra, guardar la marca como revisada.
+//
+// El código se cambia eligiendo otras tres letras (`CampoCodigo`): el número lo pone la base, el viejo
+// queda como anterior (su QR sigue abriendo la ficha) y la etiqueta vuelve a la cola de impresión.
 
 import { useState } from 'react'
 import { categorias } from '../logica/inventario'
-import { cambiarFotoAction, editarActivoAction } from '../services/acciones'
+import { cambiarCodigoAction, cambiarFotoAction, editarActivoAction } from '../services/acciones'
+import { problemaDelPrefijo } from '../logica/codigo'
+import { CampoCodigo } from './CampoCodigo'
 import { useHerramientas } from './Espacio'
 import { ErrorPanel, PanelLateral } from './PanelLateral'
 import { botonPrimarioGrande, botonSecundarioGrande, campo, eyebrow, V } from './estilo'
@@ -19,6 +24,7 @@ export function PanelEditar({ id, onHecho }: { id: string; onHecho: (t: string) 
     compra_fecha: a?.compra_fecha ?? '', compra_precio: a?.compra_precio != null ? String(a.compra_precio) : '',
   }))
   const [revisada, setRevisada] = useState(false)
+  const [prefijo, setPrefijo] = useState(() => a?.codigo.slice(0, 3) ?? '')
   const [foto, setFoto] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
@@ -27,8 +33,19 @@ export function PanelEditar({ id, onHecho }: { id: string; onHecho: (t: string) 
 
   async function guardar() {
     if (!a) return
+    const cambiaCodigo = prefijo !== a.codigo.slice(0, 3)
+    if (cambiaCodigo && problemaDelPrefijo(prefijo)) return setError(`Código: ${problemaDelPrefijo(prefijo)}`)
     setEnviando(true)
     setError(null)
+    let nuevoCodigo: string | null = null
+    if (cambiaCodigo) {
+      const c = await cambiarCodigoAction({ activo: a.id, prefijo })
+      if (!c.ok) {
+        setEnviando(false)
+        return setError(`El código no se cambió: ${c.error}`)
+      }
+      nuevoCodigo = c.dato
+    }
     const r = await editarActivoAction({
       activo: a.id,
       datos: {
@@ -50,7 +67,7 @@ export function PanelEditar({ id, onHecho }: { id: string; onHecho: (t: string) 
     }
     setEnviando(false)
     if (!r.ok) return setError(r.error)
-    onHecho(`${a.codigo}: datos guardados.`)
+    onHecho(nuevoCodigo ? `${a.codigo} ahora es ${nuevoCodigo}: datos guardados y la etiqueta nueva quedó en la cola.` : `${a.codigo}: datos guardados.`)
   }
 
   const fila = (k: keyof typeof v, rotulo: string, extra?: Partial<React.InputHTMLAttributes<HTMLInputElement>>) => (
@@ -72,6 +89,12 @@ export function PanelEditar({ id, onHecho }: { id: string; onHecho: (t: string) 
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {fila('nombre', 'Nombre', { maxLength: 160 })}
+        <CampoCodigo nombre={v.nombre} prefijo={prefijo} onPrefijo={(p) => setPrefijo(p)} actual={a.codigo} />
+        {prefijo !== a.codigo.slice(0, 3) && a.etiqueta_impresa_en && (
+          <div style={{ fontSize: '12.5px', color: V.warn, lineHeight: 1.45 }}>
+            Tiene etiqueta impresa: la nueva queda en la cola para imprimir. La vieja sigue abriendo esta ficha.
+          </div>
+        )}
         {fila('categoria', 'Categoría', { maxLength: 60, list: 'categorias-editar' })}
         <datalist id="categorias-editar">{cats.map((c) => <option key={c} value={c} />)}</datalist>
         {fila('numero_serie', 'Número de serie', { maxLength: 80 })}

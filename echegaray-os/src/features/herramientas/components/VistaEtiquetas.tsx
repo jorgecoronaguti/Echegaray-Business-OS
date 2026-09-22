@@ -99,8 +99,8 @@ export function VistaEtiquetas({ pedidos }: { pedidos: string[] }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={tituloBloque}>Cómo funciona</div>
           {[
-            <>Al dar de alta un activo, el sistema le asigna su código (<span style={{ fontFamily: MONO }}>HER-0001</span>) y con eso el QR. No hay un paso aparte de «crear QR».</>,
-            <>El QR codifica una dirección corta: <span style={{ fontFamily: MONO }}>app.ecsas.com.ar/h/HER-0001</span>. Abierta con la cámara del teléfono, cae en la ficha.</>,
+            <>Al dar de alta un activo, el sistema le asigna su código (<span style={{ fontFamily: MONO }}>AMO-001</span>) y con eso el QR. No hay un paso aparte de «crear QR».</>,
+            <>El QR codifica una dirección corta: <span style={{ fontFamily: MONO }}>app.ecsas.com.ar/h/AMO-001</span>. Abierta con la cámara del teléfono, cae en la ficha.</>,
             <>Se imprimen de a hojas A4 de 24 etiquetas de 50 × 25 mm, sobre film autoadhesivo. Impresora común.</>,
             <>Se pega y listo. El activo ya existía sin la etiqueta; el QR sólo acelera encontrarlo.</>,
             <>Si se despega o se rompe, <b>Reimprimir</b> desde la ficha da la misma etiqueta con el mismo código. El código no cambia nunca.</>,

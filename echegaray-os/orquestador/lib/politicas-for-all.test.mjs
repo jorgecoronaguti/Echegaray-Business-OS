@@ -24,8 +24,7 @@ const DEL_MVP = [
   'obra_canonica', 'obra_actividad', 'obra_asignacion', 'obra_restriccion', 'obra_documento',
   'obra_alias', 'clientes', 'cliente_contacto', 'cliente_documento', 'certificados',
   'presupuestos', 'partidas_presupuesto', 'adicionales', 'personas', 'proveedores',
-  'proveedor_alias', 'registros_hh', 'costos_obra', 'pedidos_materiales', 'herramientas',
-  'movimientos_herramienta', 'usuario_obra', 'perfiles', 'actividades_semanales',
+  'proveedor_alias', 'registros_hh', 'costos_obra', 'pedidos_materiales', 'usuario_obra', 'perfiles', 'actividades_semanales',
 ]
 
 /**
@@ -63,7 +62,11 @@ test('ninguna policy de SELECT del MVP dice `true` sobre datos de una obra', { s
   const POR_OBRA = [
     'obra_canonica', 'obra_actividad', 'obra_asignacion', 'obra_restriccion', 'obra_documento',
     'certificados', 'presupuestos', 'adicionales', 'actividades_semanales',
-    'costos_obra', 'pedidos_materiales', 'herramientas', 'movimientos_herramienta',
+    'costos_obra', 'pedidos_materiales',
+    // `herramientas` y `movimientos_herramienta` salieron el 22/09: son VISTAS desde la 20260921T2100
+    // (Postgres no les adjunta policies) y sus tablas (`activo`…) se leen con `true` a propósito:
+    // el dueño dio permisos iguales a todos los niveles (21/09). Su seguridad es de escritura y la
+    // controla `rls-escritura-operativa.test.mjs`.
   ]
   const { rows } = await query(
     `select tablename, policyname, coalesce(qual::text, '') as usando

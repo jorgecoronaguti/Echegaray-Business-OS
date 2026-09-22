@@ -9,7 +9,7 @@ import { filtrar, filtrosDeURL } from '@/features/herramientas/logica/inventario
 import { conLugar, resolverLugar } from '@/features/herramientas/logica/lugar'
 import { ETIQUETA_ESTADO, MOTIVO_BAJA, conProblema, rotuloUbicacion } from '@/features/herramientas/logica/parque'
 
-// M04 · BUSCAR — el camino sin QR. Por nombre o por código tipeado («her 42» encuentra HER-0042).
+// M04 · BUSCAR — el camino sin QR. Por nombre o por código tipeado («amo 7» encuentra AMO-007).
 // `?para=reportar` lleva cada resultado directo a M07.
 export const dynamic = 'force-dynamic'
 

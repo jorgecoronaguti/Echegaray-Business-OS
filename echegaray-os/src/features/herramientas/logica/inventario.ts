@@ -52,7 +52,7 @@ function pasaUbicacion(p: Parque, a: Activo, u: string | null): boolean {
 
 /** Lo que cumple todo MENOS el filtro de estado: sirve para contar cada solapa de estado. */
 export function candidatos(p: Parque, f: Filtros): Activo[] {
-  // «her 42» encuentra HER-0042: el camino manual vale lo mismo que el QR.
+  // «amo 7» encuentra AMO-007: el camino manual vale lo mismo que el QR.
   const codigo = f.q ? normalizarCodigo(f.q) : null
   const repetidos = f.especial === 'repetidos' ? new Set(nombresRepetidos(p.activos).flatMap((g) => g.activos.map((a) => a.id))) : null
   return p.activos.filter((a) => {
@@ -71,13 +71,15 @@ export function candidatos(p: Parque, f: Filtros): Activo[] {
 /** La lista final: con el estado aplicado, las bajas al final (se muestran atenuadas). */
 export function filtrar(p: Parque, f: Filtros): Activo[] {
   return candidatos(p, f)
-    .filter((a) => f.estado === 'todos' || a.estado === f.estado)
+    // «Todos» es el inventario vivo: una baja sólo aparece en su solapa. Mezclarla atenuada al final
+    // hizo creer al dueño (22/09) que la baja «no funcionó» porque la seguía viendo en la lista.
+    .filter((a) => (f.estado === 'todos' ? a.estado !== 'baja' : a.estado === f.estado))
     .sort((x, y) => Number(x.estado === 'baja') - Number(y.estado === 'baja') || x.nombre.localeCompare(y.nombre, 'es') || x.codigo.localeCompare(y.codigo))
 }
 
 export function cuentaPorEstado(lista: Activo[]): Record<FiltroEstado, number> {
   const c: Record<FiltroEstado, number> = {
-    todos: lista.length, operativo: 0, requiere_mantenimiento: 0, fuera_servicio: 0, reparacion_externa: 0, baja: 0,
+    todos: lista.filter((a) => a.estado !== 'baja').length, operativo: 0, requiere_mantenimiento: 0, fuera_servicio: 0, reparacion_externa: 0, baja: 0,
   }
   for (const a of lista) c[a.estado]++
   return c
@@ -106,4 +108,22 @@ export function queryDe(f: Partial<Filtros> & { activo?: string | null }): strin
   if (f.activo) q.set('activo', f.activo)
   const s = q.toString()
   return s ? `?${s}` : ''
+}
+
+/**
+ * Lo que el buscador del inventario va mostrando mientras se tipea (dueño, 22/09: «tiene q ir
+ * mostrando las opciones a medida q vas tipeando»). Sólo lo vivo. Primero el código exacto, después
+ * los nombres que EMPIEZAN con lo tipeado, después el resto que lo contiene; a lo sumo `max`.
+ */
+export function sugerencias(p: Parque, q: string, max = 8): Activo[] {
+  const t = q.trim()
+  if (!t) return []
+  const codigo = normalizarCodigo(t)
+  const norm = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const nt = norm(t)
+  const rango = (a: Activo) => (a.codigo === codigo ? 0 : norm(a.nombre).startsWith(nt) ? 1 : 2)
+  return p.activos
+    .filter((a) => a.estado !== 'baja' && (a.codigo === codigo || contieneEnAlguno([a.nombre, a.codigo, a.categoria, a.patente, rotuloUbicacion(p, a.ubicacion_id)], t)))
+    .sort((x, y) => rango(x) - rango(y) || x.nombre.localeCompare(y.nombre, 'es'))
+    .slice(0, max)
 }

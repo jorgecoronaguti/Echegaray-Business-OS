@@ -2,18 +2,19 @@
 
 // D12 · NUEVO ACTIVO — un panel de tres campos, no un formulario largo.
 //
-// El código lo asigna la base (HER-0001 / EQU-0001 / ROD-0001) salvo que se escanee una etiqueta ya
-// pegada. No se muestra un «próximo código» calculado acá: la secuencia vive en la base y dos personas
-// dando de alta a la vez harían mentir a la sugerencia. Al terminar, el activo queda en la cola de
-// etiquetas (D14) por no tener `etiqueta_impresa_en`.
+// El código son tres letras que salen del nombre (AMO-007) y se pueden cambiar, guiado (`CampoCodigo`);
+// el número lo asigna la base bajo candado, así que la vista previa nunca choca con otra alta. Al
+// terminar, el activo queda en la cola de etiquetas (D14) por no tener `etiqueta_impresa_en`.
 
 import Link from 'next/link'
 import { useMemo, useRef, useState } from 'react'
 import { claveDestino, destinos } from '../logica/mover'
+import { prefijoDeNombre } from '../logica/codigo'
 import { categorias } from '../logica/inventario'
 import { darDeAltaAction } from '../services/acciones'
 import type { Clase } from '../types'
 import { useHerramientas } from './Espacio'
+import { CampoCodigo } from './CampoCodigo'
 import { Bloque, ErrorPanel, PanelLateral } from './PanelLateral'
 import { botonPrimarioGrande, botonSecundarioGrande, campo, eyebrow, V } from './estilo'
 
@@ -31,6 +32,10 @@ export function PanelAlta({ onHecho }: { onHecho: (t: string) => void }) {
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
   const [ultimo, setUltimo] = useState<string | null>(null)
+  const [nombre, setNombre] = useState('')
+  // Las tres letras siguen al nombre hasta que alguien las toca.
+  const [prefijo, setPrefijo] = useState<{ v: string; aMano: boolean }>({ v: '', aMano: false })
+  const letras = prefijo.aMano ? prefijo.v : prefijoDeNombre(nombre)
   const form = useRef<HTMLFormElement>(null)
 
   async function enviar(otra: boolean) {
@@ -38,6 +43,7 @@ export function PanelAlta({ onHecho }: { onHecho: (t: string) => void }) {
     const fd = new FormData(form.current)
     fd.set('clase', clase)
     fd.set('destino', destino)
+    fd.set('codigo', letras)
     setEnviando(true)
     setError(null)
     const r = await darDeAltaAction(fd)
@@ -47,10 +53,10 @@ export function PanelAlta({ onHecho }: { onHecho: (t: string) => void }) {
     if (otra) {
       // Se conservan clase, categoría y destino: la tanda típica es «cinco amoladoras al Taller».
       const n = form.current.elements.namedItem('nombre') as HTMLInputElement | null
-      const c = form.current.elements.namedItem('codigo') as HTMLInputElement | null
       const f = form.current.elements.namedItem('foto') as HTMLInputElement | null
       if (n) n.value = ''
-      if (c) c.value = ''
+      setNombre('')
+      setPrefijo({ v: '', aMano: false })
       if (f) f.value = ''
       n?.focus()
       setUltimo(`${r.dato.codigo} · ${nombre} quedó dado de alta.`)
@@ -96,7 +102,7 @@ export function PanelAlta({ onHecho }: { onHecho: (t: string) => void }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 16, borderTop: `1px solid ${V.linea}` }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <span style={eyebrow}>Nombre</span>
-            <input name="nombre" required minLength={2} maxLength={160} autoFocus style={{ ...campo, borderColor: V.grafito }} data-testid="alta-nombre" />
+            <input name="nombre" required minLength={2} maxLength={160} autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} style={{ ...campo, borderColor: V.grafito }} data-testid="alta-nombre" />
           </label>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 11 }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -118,11 +124,7 @@ export function PanelAlta({ onHecho }: { onHecho: (t: string) => void }) {
               <input name="patente" maxLength={20} style={{ ...campo, textTransform: 'uppercase' }} />
             </label>
           )}
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <span style={eyebrow}>Código</span>
-            <input name="codigo" maxLength={40} placeholder="Se asigna solo al dar de alta" style={{ ...campo, fontFamily: "'IBM Plex Mono', monospace", fontSize: '13px' }} />
-            <span style={{ fontSize: '12.5px', color: V.apagado }}>Si la etiqueta ya está pegada, se escanea o se tipea acá y queda ese.</span>
-          </label>
+          <CampoCodigo nombre={nombre} prefijo={letras} onPrefijo={(v, aMano) => setPrefijo({ v, aMano })} />
         </div>
 
         <Bloque rotulo="Opcional">

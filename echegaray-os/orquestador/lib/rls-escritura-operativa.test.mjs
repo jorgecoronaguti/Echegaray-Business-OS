@@ -27,7 +27,7 @@ const SIN_BASE = !process.env.DATABASE_URL
 
 /** Las tablas que gobierna `20260820T5000`. Si se agrega una operativa, va acá. */
 const OPERATIVAS = [
-  'pedidos_materiales', 'herramientas', 'movimientos_herramienta',
+  'pedidos_materiales',
   'clientes', 'cliente_contacto', 'cliente_documento', 'obra_canonica',
   'comprobantes_arca', 'avance_obra_legado', 'acciones', 'costos_obra',
 ]
@@ -40,10 +40,6 @@ const ESPERADO = {
   'pedidos_materiales.INSERT': /ve_obra_texto\(obra_texto\)/,
   'pedidos_materiales.UPDATE': /ve_obra_texto\(obra_texto\)/,
   'pedidos_materiales.DELETE': /ve_obra_texto\(obra_texto\)/,
-  'herramientas.INSERT': /es_administracion\(\)/,
-  'herramientas.UPDATE': /ve_obra_texto\(ubicacion_actual\)/,
-  'herramientas.DELETE': /es_administracion\(\)/,
-  'movimientos_herramienta.INSERT': /ve_obra_texto\(destino\)/,
   'clientes.INSERT': /es_administracion\(\)/,
   'clientes.UPDATE': /es_administracion\(\)/,
   'clientes.DELETE': /es_administracion\(\)/,
@@ -66,8 +62,16 @@ const ESPERADO = {
 const SIN_ESCRITURA = {
   costos_obra: ['INSERT', 'UPDATE', 'DELETE'],
   avance_obra_legado: ['INSERT', 'UPDATE', 'DELETE'],
-  // Un movimiento es un evento del historial: se corrige con otro movimiento, no se borra.
-  movimientos_herramienta: ['UPDATE', 'DELETE'],
+  // HERRAMIENTAS (20260921T2100): las tablas del módulo no tienen NINGUNA escritura de sesión. Todo
+  // pasa por funciones `security definer`; la ubicación sólo cambia insertando un movimiento.
+  activo: ['INSERT', 'UPDATE', 'DELETE'],
+  ubicacion: ['INSERT', 'UPDATE', 'DELETE'],
+  activo_movimiento: ['INSERT', 'UPDATE', 'DELETE'],
+  activo_incidencia: ['INSERT', 'UPDATE', 'DELETE'],
+  activo_codigo_anterior: ['INSERT', 'UPDATE', 'DELETE'],
+  // Las tablas viejas pasaron a ser vistas de compatibilidad de sólo lectura.
+  herramientas: ['INSERT', 'UPDATE', 'DELETE'],
+  movimientos_herramienta: ['INSERT', 'UPDATE', 'DELETE'],
 }
 
 async function policiesDeEscritura() {
@@ -132,18 +136,41 @@ for (const [tabla, comandos] of Object.entries(SIN_ESCRITURA)) {
   })
 }
 
-test('el maestro de la herramienta no se edita con el grant de la operación', { skip: SIN_BASE }, async () => {
-  // La RLS no corta por columna: lo que corta es el GRANT. `nombre` es el maestro y no lo edita
-  // ninguna pantalla —sólo se fija en el alta—, así que sacarlo del grant cierra el último
-  // resquicio: renombrar la herramienta de otro sin poder darla de alta ni de baja.
+test('herramientas: ninguna tabla del módulo tiene una policy de escritura', { skip: SIN_BASE }, async () => {
+  // Reemplaza al control del «maestro de la herramienta» (20260820T5000): desde la 20260921T2100 no
+  // hay grant por columna que cuidar, porque ninguna sesión escribe estas tablas. Una policy de
+  // escritura que apareciera acá abriría un camino que se saltea las reglas de las funciones.
   const { rows } = await query(
-    `select column_name from information_schema.column_privileges
-      where table_schema = 'public' and table_name = 'herramientas'
-        and grantee = 'authenticated' and privilege_type = 'UPDATE' order by 1`,
+    `select tablename, policyname, cmd from pg_policies
+      where schemaname = 'public' and cmd <> 'SELECT'
+        and tablename in ('activo', 'ubicacion', 'activo_movimiento', 'activo_incidencia', 'activo_codigo_anterior')`,
   )
-  assert.deepEqual(rows.map((r) => r.column_name),
-    ['estado', 'estado_actualizado_en', 'estado_nota', 'imagen_url', 'origen', 'ubicacion_actual', 'updated_at'],
-    'cambió qué columnas de `herramientas` puede escribir una sesión: `nombre` no puede estar')
+  assert.deepEqual(rows.map((r) => `${r.tablename}.${r.policyname} (${r.cmd})`), [])
+})
+
+test('herramientas: las funciones que escriben son security definer con search_path fijo', { skip: SIN_BASE }, async () => {
+  const FUNCIONES = ['mover_activos', 'reportar_problema_activo', 'cambiar_estado_activo', 'dar_de_baja_activo',
+    'dar_de_alta_activo', 'editar_activo', 'ubicacion_de_obra', 'crear_ubicacion', 'cambiar_codigo_activo']
+  const { rows } = await query(
+    `select proname, prosecdef, proconfig from pg_proc
+      where pronamespace = 'public'::regnamespace and proname = any($1)`, [FUNCIONES],
+  )
+  const faltan = FUNCIONES.filter((f) => !rows.some((r) => r.proname === f))
+  assert.deepEqual(faltan, [], `faltan funciones del módulo: ${faltan.join(', ')}`)
+  const flojas = rows.filter((r) => !r.prosecdef || !(r.proconfig ?? []).some((c) => c.startsWith('search_path='))).map((r) => r.proname)
+  assert.deepEqual(flojas, [], `sin security definer o sin search_path fijo: ${flojas.join(', ')}`)
+  const anon = await query(
+    `select p.proname from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname = any($1)
+        and has_function_privilege('anon', p.oid, 'EXECUTE')`, [FUNCIONES],
+  )
+  assert.deepEqual(anon.rows.map((r) => r.proname), [], 'una sesión sin login puede ejecutar funciones del módulo')
+})
+
+test('herramientas: el Taller es uno solo, también para quien llama la base directo', { skip: SIN_BASE }, async () => {
+  const { rows } = await query(
+    `select indexname from pg_indexes where schemaname = 'public' and tablename = 'ubicacion' and indexname = 'ubicacion_un_solo_taller'`,
+  )
+  assert.equal(rows.length, 1, 'falta el índice único que impide un segundo Taller')
 })
 
 test('`texto_es_de_obra` no se convirtió en una puerta', { skip: SIN_BASE }, async () => {

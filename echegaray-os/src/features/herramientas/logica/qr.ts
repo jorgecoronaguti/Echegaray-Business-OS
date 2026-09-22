@@ -4,7 +4,7 @@
 //
 // El repo ya trae `jsqr` (el LECTOR) pero no un generador, y los worktrees comparten el `node_modules`
 // del checkout principal: agregar una dependencia obliga a instalarla ahí, fuera de esta rama. Una
-// etiqueta codifica UNA cosa corta —`https://app.ecsas.com.ar/h/HER-0042`, ~40 bytes—, así que alcanza
+// etiqueta codifica UNA cosa corta —`https://app.ecsas.com.ar/h/AMO-007`, ~40 bytes—, así que alcanza
 // con modo byte, versiones 1 a 10 y corrección M (15 % de módulos recuperables: una etiqueta rayada en
 // obra se sigue leyendo). El algoritmo es el estándar ISO/IEC 18004 en la forma de Nayuki.
 //

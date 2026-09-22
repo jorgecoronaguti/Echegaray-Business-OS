@@ -45,6 +45,9 @@ export function NavHerramientas({ cuentas, derecha }: { cuentas: CuentasNav; der
     <div
       data-testid="nav-herramientas"
       style={{
+        // Fija debajo del header de la app (44 px, `sticky top-0 h-11`): dueño, 22/09, «dejar fijo todo el
+        // header a medida q te vas moviendo por el listado».
+        position: 'sticky', top: 44, zIndex: 20,
         minHeight: 38, display: 'flex', alignItems: 'center', gap: 22, padding: '0 20px', flexWrap: 'wrap',
         borderBottom: `1px solid ${V.linea}`, fontSize: '12.5px', background: '#FFFFFF',
       }}
