@@ -81,3 +81,16 @@ test('Comprobantes-gastos NO cambia: el consumo en efectivo de la caja sigue ent
   assert.equal(await especialista.reconoce('', { area: 'compras', fileIds: ['x'] }), null,
     'una foto en Comprobantes-gastos no la reclama Rendiciones')
 })
+
+test('CAJA no cuenta dos veces el ticket rendido: «Ya salió» del día y lo pagado del mes', async () => {
+  const { repartirSalidas } = await import('./caja-necesidad-baldes.mjs')
+  const RUBRO = 'Efectivo a rendir (fondos en manos de la gente)'
+  // Día del ticket: el gasto sale REAL en Materiales y el espejo vuelve REAL en la línea de fondos.
+  const dia = [
+    { signo: -1, importe: 96400, estado: 'REAL', rubro: 'Materiales', instrumento: 'a_rendir' },
+    { signo: 1, importe: 96400, estado: 'REAL', rubro: RUBRO, instrumento: 'a_rendir' },
+  ]
+  assert.equal(repartirSalidas(dia).yaSalio, 0, 'ese día no salió plata: salió con la entrega')
+  // Día de la entrega: sale de verdad.
+  assert.equal(repartirSalidas([{ signo: -1, importe: 800000, estado: 'REAL', rubro: RUBRO, instrumento: 'efectivo' }]).yaSalio, 800000)
+})

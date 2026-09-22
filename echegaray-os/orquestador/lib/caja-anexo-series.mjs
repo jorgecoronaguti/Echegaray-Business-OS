@@ -44,7 +44,9 @@ import { DESDE_CAJA, ANEXO } from './caja-anexo-nombres.mjs'
 import { NO_REAL } from './caja-tarjetas.mjs'
 // LA TAXONOMÍA DE LOS BALDES VIVE APARTE: qué es cada balde es una decisión de negocio (qué plata ya
 // salió y qué plata falta), y acá sólo se escribe la fórmula que la aplica. Ver caja-necesidad-baldes.
-import { SALIDAS } from './caja-necesidad-baldes.mjs'
+import { SALIDAS, EJECUTADO } from './caja-necesidad-baldes.mjs'
+import { RUBRO_FONDOS_A_RENDIR } from './cash-flow-rubros.mjs'
+import { INSTRUMENTO_A_RENDIR } from './caja-canales.mjs'
 
 /** Cuántos días mira cada curva. El dueño pidió 60 y 60: dos meses a cada lado del día de hoy. */
 export const DIAS_HISTORIA = 60
@@ -246,6 +248,12 @@ export function necesidadDelDia(d, balde) {
   const suma = (f) => terminoLibro({ ...ventana, ...f })
   if (!b.resto) return `=${suma(filtrosDe(b))}`
   const otros = hermanosDe(b).map((x) => suma(filtrosDe(x)))
+  // EFECTIVO A RENDIR (22/09/2026): el ticket rendido es una salida REAL en su rubro, pero ese día no
+  // salió plata — salió con la entrega. Su espejo en la línea de fondos (ENTRADA REAL, instrumento
+  // `a_rendir`) se resta de «Ya salió». Sólo el espejo: una devolución no es un pago negativo.
+  if (b.clave === EJECUTADO) {
+    otros.push(suma({ signo: 1, estados: ['REAL'], rubros: [RUBRO_FONDOS_A_RENDIR], instrumentos: [INSTRUMENTO_A_RENDIR] }))
+  }
   return `=${suma(filtrosDe(b))}${otros.map((t) => `-${t}`).join('')}`
 }
 

@@ -247,7 +247,9 @@ test('EL BALDE DE LO EJECUTADO SUMA SÓLO REAL, Y LOS CINCO RUBROS SÓLO LO QUE 
   // cuotas de cobertura), no el medio PREVISTO del plan — el aval del egreso es el cheque emitido.
   assert.equal(necesidadDelDia(2, 'cheques'),
     `=${terminoLibro({ ...ventana, estados: NO_REAL, rubros: ['Cheques emitidos'] })}`)
-  assert.equal(necesidadDelDia(2, EJECUTADO), `=${terminoLibro({ ...ventana, estados: ['REAL'] })}`)
+  // Menos el espejo del ticket rendido (22/09/2026): esa salida REAL no movió plata ese día.
+  assert.equal(necesidadDelDia(2, EJECUTADO), `=${terminoLibro({ ...ventana, estados: ['REAL'] })}`
+    + `-${terminoLibro({ ...ventana, signo: 1, estados: ['REAL'], rubros: ['Efectivo a rendir (fondos en manos de la gente)'], instrumentos: ['a_rendir'] })}`)
   // Y ningún balde pendiente deja pasar un REAL, ni el de lo ejecutado un COMPROMETIDO.
   for (const b of PENDIENTES) assert.ok(!necesidadDelDia(0, b.clave).includes('="REAL"'), b.clave)
   assert.ok(!necesidadDelDia(0, EJECUTADO).includes('="COMPROMETIDO"'))
@@ -292,7 +294,7 @@ test('LAS BARRAS QUE SE COMPARAN CONTRA EL SALDO SON EXACTAMENTE LAS QUE LO MUEV
   }
   assert.deepEqual(new Set(filtroDeEstados(saldoSinCobrar(0))), new Set(NO_REAL))
   assert.deepEqual(new Set(filtroDeEstados(saldoProyectado(0))), new Set(NO_REAL))
-  assert.deepEqual(filtroDeEstados(necesidadDelDia(0, EJECUTADO)), ['REAL'])
+  assert.deepEqual(new Set(filtroDeEstados(necesidadDelDia(0, EJECUTADO))), new Set(['REAL']))
 })
 
 test('EL DÍA CON UN PAGO HECHO Y DEUDA VIVA MUESTRA LOS DOS, Y NINGUNO EN CERO', () => {

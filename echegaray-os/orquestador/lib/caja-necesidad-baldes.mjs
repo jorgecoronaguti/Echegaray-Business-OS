@@ -156,6 +156,12 @@ export function baldeDeSalida(m) {
 export function repartirSalidas(movs = []) {
   const por = Object.fromEntries(SALIDAS.map((b) => [b.clave, 0]))
   for (const m of movs) {
+    // El espejo del ticket rendido (22/09/2026): la misma resta que hace la fórmula de «Ya salió».
+    if (Number(m?.signo) === 1 && String(m?.estado).toUpperCase() === 'REAL' && m?.instrumento === 'a_rendir'
+      && m?.rubro === 'Efectivo a rendir (fondos en manos de la gente)') {
+      por[EJECUTADO] -= Math.abs(Number(m.importe) || 0)
+      continue
+    }
     const clave = baldeDeSalida(m)
     if (!clave) continue
     por[clave] += Math.abs(Number(m.importe) || 0)
