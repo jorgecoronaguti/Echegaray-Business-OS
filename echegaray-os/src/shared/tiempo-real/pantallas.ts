@@ -78,7 +78,7 @@ export const TABLAS_DE = {
   pedidosMateriales: ['pedidos_materiales', 'obra_canonica'],
   /** Herramientas (20260921T2100): las tablas nuevas. `herramientas` y `movimientos_herramienta` son vistas
    *  desde esa migración y una vista no emite eventos. */
-  herramientas: ['activo', 'activo_movimiento', 'activo_incidencia', 'ubicacion', 'obra_canonica'],
+  herramientas: ['activo', 'activo_movimiento', 'activo_incidencia', 'activo_lectura_uso', 'ubicacion', 'obra_canonica'],
   /** Las pantallas del jefe de obra (`/obra/...`). */
   jefe: unir(OBRA, HH_Y_ASISTENCIA, ['personas', 'cuadrilla', 'cuadrilla_integrante']),
   // LAS QUE HABÍAN QUEDADO AFUERA (16/09/2026). Dueño: «lo que marco en el celular no se actualiza en la

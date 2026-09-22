@@ -10,8 +10,11 @@
 // La baja es texto rojo abajo: la única acción que no se deshace no compite con las demás.
 
 import Link from 'next/link'
-import { useState } from 'react'
-import { historial } from '../logica/historial'
+import { useState, type ReactNode } from 'react'
+import { historial, operadorDe } from '../logica/historial'
+import {
+  UNIDAD, seVerifica, textoLectura, textoVerificacion, ultimaLectura, ultimaVerificacion, verificacionDe,
+} from '../logica/verificacion'
 import {
   ETIQUETA_ESTADO, MOTIVO_BAJA, TONO_ESTADO, conProblema, rotuloUbicacion, tipoDe, ubicacionDelRodado, activosEn,
 } from '../logica/parque'
@@ -151,9 +154,11 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
           {carga.length === 0 ? <div style={{ fontSize: '12.5px', color: V.tenue }}>Nada cargado.</div> : carga.map((c) => (
             <div key={c.id} style={{ fontSize: '12.5px', color: V.tintaSuave }}>{c.nombre} <span style={{ fontFamily: MONO, color: V.tenue }}>{c.codigo}</span></div>
           ))}
-          <div style={{ fontSize: '12px', color: V.apagado }}>Km, papeles, service y verificación: <span style={vacio}>sin cargar</span>.</div>
+          <div style={{ fontSize: '12px', color: V.apagado }}>Papeles y service: <span style={vacio}>sin cargar</span>.</div>
         </div>
       )}
+
+      {seVerifica(a) && <Uso id={a.id} clase={a.clase} codigo={a.codigo} />}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 4, borderTop: `1px solid ${V.linea}` }}>
         <div style={{ ...eyebrow, paddingTop: 10 }}>Historial</div>
@@ -175,6 +180,39 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
         <div style={{ paddingTop: 6 }}>
           <button type="button" onClick={() => abrir({ tipo: 'baja', id })} style={{ fontSize: '12.5px', color: V.neg }} data-testid="abrir-baja">Dar de baja…</button>
         </div>
+      )}
+    </div>
+  )
+}
+
+/** D03 «Uso»: el km (u horas) de la última lectura y la última verificación, con quién la hizo. */
+function Uso({ id, clase, codigo }: { id: string; clase: 'rodado' | 'equipo'; codigo: string }) {
+  const { parque } = useHerramientas()
+  const fila = (rotulo: string, valor: ReactNode, testid?: string) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: '12.5px' }} data-testid={testid}>
+      <span style={{ color: V.apagado }}>{rotulo}</span><span style={{ textAlign: 'right' }}>{valor}</span>
+    </div>
+  )
+  const sinBase = !parque.lecturas
+  const l = ultimaLectura(parque, id)
+  const ult = ultimaVerificacion(parque, id)
+  const quien = ult ? operadorDe(parque, ult) : null
+  const v = verificacionDe(parque, id)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4, borderTop: `1px solid ${V.linea}` }} data-testid="ficha-uso">
+      <div style={{ ...eyebrow, paddingTop: 10 }}>Uso</div>
+      {sinBase ? (
+        <div style={{ fontSize: '12.5px', color: V.tenue }}>Falta aplicar la migración 20260922T1200 de la verificación de uso.</div>
+      ) : (
+        <>
+          {fila(clase === 'rodado' ? 'Kilometraje' : 'Horómetro', <span style={l ? undefined : vacio}>{textoLectura(l, UNIDAD[clase])}</span>, 'ficha-lectura')}
+          {fila('Última verificación', <span style={ult ? { color: v.tipo === 'hoy' ? V.tinta : V.warn } : vacio}>
+            {textoVerificacion(v)}{quien ? ` · ${quien}` : ''}{ult && ult.criticos_mal.length ? ' · no pasó' : ''}
+          </span>, 'ficha-verificacion')}
+          <Link href={`/campo/herramientas/a/${encodeURIComponent(codigo)}/verificar`} prefetch={false} style={{ fontSize: '12px', color: '#175CD3' }}>
+            Verificar (pantalla de teléfono)
+          </Link>
+        </>
       )}
     </div>
   )

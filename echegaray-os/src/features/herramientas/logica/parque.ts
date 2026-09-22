@@ -6,7 +6,7 @@
 // reportes se vio «nunca». Ninguna función de acá devuelve 0 o un lugar por defecto para tapar un hueco.
 
 import { rotuloDeObra } from '../../../shared/utils/obra.ts'
-import type { Activo, EstadoActivo, Incidencia, Movimiento, ObraIndice, TipoUbicacion, Ubicacion } from '../types.ts'
+import type { Activo, EstadoActivo, Incidencia, LecturaUso, Movimiento, ObraIndice, TipoUbicacion, Ubicacion } from '../types.ts'
 
 export interface DatosParque {
   activos: Activo[]
@@ -18,9 +18,18 @@ export interface DatosParque {
   nombres: Record<string, string>
   /** Las categorías posibles, en su orden (`activo_categoria`). La lista es cerrada: no se tipea otra. */
   categorias?: string[]
+  /**
+   * Verificaciones de uso (migración 20260922T1200). `null`/ausente = la tabla todavía no existe: la
+   * pantalla dice «sin la migración», nunca «nunca».
+   */
+  lecturas?: LecturaUso[] | null
+  /** persona_id → nombre, para «opera D. Luna». Sólo las que la sesión puede ver. */
+  personas?: Record<string, string>
 }
 
 export interface Parque extends DatosParque {
+  /** Verificaciones de cada activo, de la más nueva a la más vieja. */
+  lecDe: Map<string, LecturaUso[]>
   activoPorId: Map<string, Activo>
   ubicacionPorId: Map<string, Ubicacion>
   obraPorId: Map<string, ObraIndice>
@@ -45,8 +54,15 @@ export function armarParque(d: DatosParque): Parque {
     if (l) l.push(i)
     else incDe.set(i.activo_id, [i])
   }
+  const lecDe = new Map<string, LecturaUso[]>()
+  for (const l of [...(d.lecturas ?? [])].sort((a, b) => desc(a.fecha_hora, b.fecha_hora))) {
+    const x = lecDe.get(l.activo_id)
+    if (x) x.push(l)
+    else lecDe.set(l.activo_id, [l])
+  }
   return {
     ...d,
+    lecDe,
     activoPorId: new Map(d.activos.map((a) => [a.id, a])),
     ubicacionPorId: new Map(d.ubicaciones.map((u) => [u.id, u])),
     obraPorId: new Map(d.obras.map((o) => [o.id, o])),

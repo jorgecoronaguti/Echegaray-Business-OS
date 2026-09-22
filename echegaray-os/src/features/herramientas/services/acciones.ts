@@ -114,6 +114,41 @@ export async function reportarProblemaAction(form: FormData): Promise<Resultado<
   })
 }
 
+const verificacionSchema = z.object({
+  activo: uuid,
+  /** null = no se cargó (sin odómetro u horómetro que funcione). */
+  lectura: z.number().min(0, 'La lectura no puede ser negativa').max(9_999_999).nullable(),
+  checklist: z.record(z.string().regex(/^[a-z_]{3,40}$/), z.enum(['bien', 'mal'])),
+  observacion: z.string().trim().max(400).optional(),
+  operador: uuid.optional(),
+})
+
+export interface VerificacionHecha {
+  id: string
+  incidencia_id: string | null
+  estado_resultante: string
+  criticos_mal: string[]
+  no_criticos_mal: string[]
+}
+
+/**
+ * M10 · M13. La base (`registrar_verificacion_uso`, migración 20260922T1200) valida el checklist,
+ * rechaza un km u horómetro que baja y, si hay un «Mal» crítico, deja el activo fuera de servicio.
+ */
+export async function registrarVerificacionAction(entrada: z.input<typeof verificacionSchema>): Promise<Resultado<VerificacionHecha>> {
+  const p = verificacionSchema.safeParse(entrada)
+  if (!p.success) return { ok: false, error: p.error.issues[0].message }
+  const r = await rpc<VerificacionHecha>('registrar_verificacion_uso', {
+    p_activo: p.data.activo, p_lectura: p.data.lectura, p_checklist: p.data.checklist,
+    p_observacion: p.data.observacion || null, p_operador: p.data.operador ?? null,
+  })
+  // `traducir` nombra la migración de la etapa 1; la que falta acá es la de la verificación.
+  if (!r.ok && r.error.startsWith('El módulo espera la migración')) {
+    return { ok: false, error: 'Falta aplicar la migración 20260922T1200 de la verificación de uso: todavía no se puede registrar.' }
+  }
+  return r
+}
+
 const estadoSchema = z.object({
   activo: uuid,
   estado: z.enum(['operativo', 'requiere_mantenimiento', 'fuera_servicio', 'reparacion_externa']),
