@@ -62,7 +62,7 @@ import { IconoPersona } from '@/shared/components/iconos'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import { oracion } from '@/shared/utils/texto'
 import type { PersonaEnDirectorio } from '../types'
-import { agruparPorRolOrganizacional, categoriaVisible, esJefeDeObra } from '../services/vocabularioPersona'
+import { agruparPorRolOrganizacional, categoriaVisible, esDireccion, esJefeDeObra } from '../services/vocabularioPersona'
 import { RotuloDeGrupo } from './RotuloDeGrupo'
 import {
   SIN_MARCAR, hayMarcaDeHoy, horasVisibles, ofertaDeMarcar, rotuloHoy,
@@ -171,7 +171,14 @@ export function TablaPersonas({
   // El orden DENTRO de cada grupo es el que llegó: la página ya ordenó, y reordenar acá sería una
   // segunda regla de orden que nadie pidió. Cuando no hay jefes queda un solo grupo y la lista se
   // ve exactamente como antes — sin rótulo, sin hairline y sin un «· 0» que no dice nada.
-  const grupos = agruparPorRolOrganizacional(personas, (p) => esJefeDeObra(p.puesto))
+  //
+  // Y DIRECCIÓN, DESDE EL 22/09/2026, TIENE SU PROPIO RÓTULO. Rodrigo y Jorge entraron al padrón para
+  // poder recibir efectivo a rendir (*«falta q agregues a rodrigo y a mi como receptores de plata»*):
+  // están en el plantel —esta lista es el censo y de acá no se esconde a nadie— pero no son obreros,
+  // y caían bajo «Obreros» porque el agrupador sólo conocía dos roles.
+  const grupos = agruparPorRolOrganizacional(
+    personas, (p) => esJefeDeObra(p.puesto), (p) => esDireccion(p.puesto),
+  )
 
   return (
     <div data-testid="tabla-personas">
@@ -219,7 +226,9 @@ export function TablaPersonas({
               puedeMarcar: true,
               presencia: asistencia.presencia,
               obraId: p.obra_actual_id,
-              esJefe: esJefeDeObra(p.puesto),
+              // `esJefe` es, en esta oferta, «a éste no se le marca la jornada desde acá». Dirección
+              // está en el mismo caso y por la misma razón: no se le declara un día de trabajo.
+              esJefe: esJefeDeObra(p.puesto) || esDireccion(p.puesto),
               enLaEmpresa: p.en_la_empresa,
             })
           : 'nada'
@@ -237,7 +246,12 @@ export function TablaPersonas({
               borderBottom: `1px solid ${V.lineaFila}`,
               // El filo ámbar dice «esto bloquea»: activo y sin obra. A quien ya no está no se le
               // reclama nada, y por eso «Inactivos» no lleva ni un filo.
-              boxShadow: !conBaja && p.en_la_empresa && !p.obra_actual_id ? FILO_BLOQUEA : undefined,
+              // A DIRECCIÓN TAMPOCO SE LE RECLAMA OBRA ACÁ: el filo es la misma señal «sin obra
+              // asignada» dibujada en la fila, y si el chip y la entrada del área ya no la cuentan,
+              // pintarla igual dejaría dos filas en ámbar que nadie puede apagar.
+              boxShadow: !conBaja && p.en_la_empresa && !p.obra_actual_id && !esDireccion(p.puesto)
+                ? FILO_BLOQUEA
+                : undefined,
             }}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>

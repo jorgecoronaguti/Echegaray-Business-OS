@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  agruparPorRolOrganizacional, categoriaVisible, esJefeDeObra, oficioVisible, pareceCategoria,
+  agruparPorRolOrganizacional, categoriaVisible, esDireccion, esJefeDeObra, oficioVisible, pareceCategoria,
 } from './vocabularioPersona.ts'
 
 // EL DEFECTO 4.10, ATRAPADO. La fila del listado escribía `especialidad ?? puesto` debajo del
@@ -138,4 +138,54 @@ test('sin jefes queda un solo grupo, y sin obreros también', () => {
   assert.equal(soloJefes[0].rotulo, 'Jefe de obra · 1')
 
   assert.deepEqual(agruparPorRolOrganizacional([], esJefe), [])
+})
+
+// ═══ DIRECCIÓN — EL TERCER ROL (22/09/2026) ═══
+//
+// Rodrigo y Jorge entraron al padrón para poder recibir efectivo a rendir (*«falta q agregues a
+// rodrigo y a mi como receptores de plata»*). No son obreros: no se les marca asistencia y no se les
+// reclama obra. Esa es la regla, y estos tests la fijan.
+
+test('Dirección es lo que dice `puesto`, con acento y sin acento', () => {
+  assert.equal(esDireccion('DIRECCIÓN'), true)   // la grafía que se carga en el padrón
+  assert.equal(esDireccion('Dirección'), true)
+  assert.equal(esDireccion('direccion'), true)
+  assert.equal(esDireccion('  DIRECCION  '), true)
+})
+
+// EL DEFECTO QUE ATRAPA: que la regla se ensanche y empiece a eximir a gente que sí trabaja en obra.
+// «Administración» no es Dirección: la administrativa no recibe plata a rendir por este camino ni
+// está exenta de nada, y un `includes('dir')` la traería adentro.
+test('ni la ausencia de dato ni un puesto parecido convierten a alguien en Dirección', () => {
+  assert.equal(esDireccion(null), false)
+  assert.equal(esDireccion(''), false)
+  assert.equal(esDireccion('JEFE DE OBRA'), false)
+  assert.equal(esDireccion('ADMINISTRACIÓN'), false)
+  assert.equal(esDireccion('director de obra'), false)
+  assert.equal(esDireccion('OFICIAL'), false)
+})
+
+// DIRECCIÓN NO DESAPARECE DEL PLANTEL: cambia de rótulo. El plantel es el censo y esconder ahí a dos
+// personas haría mentir al total; lo que estaba mal era llamarlas «Obreros».
+test('con el tercer predicado, Dirección es su propio grupo y va primero', () => {
+  const plantel = [
+    P('ACOSTA', null), P('ECHEGARAY', 'DIRECCIÓN'), P('MALDONADO', 'JEFE DE OBRA'),
+    P('CORONA', 'DIRECCIÓN'), P('ZOGBE', null),
+  ]
+  const g = agruparPorRolOrganizacional(plantel, esJefe, (p) => esDireccion(p.puesto))
+  assert.deepEqual(g.map((x) => x.clave), ['direccion', 'jefes', 'obreros'])
+  assert.deepEqual(g[0].integrantes.map((p) => p.nombre), ['ECHEGARAY', 'CORONA'])
+  assert.deepEqual(g[2].integrantes.map((p) => p.nombre), ['ACOSTA', 'ZOGBE'],
+    'Dirección volvió a contarse entre los obreros')
+  // «Dirección · 2», no «Direcciones»: el área es una sola aunque sean dos personas.
+  assert.equal(g[0].rotulo, 'Dirección · 2')
+  assert.equal(g[2].rotulo, 'Obreros · 2')
+})
+
+// SIN EL TERCER PREDICADO, NADA CAMBIA. Las pantallas de liquidación agrupan en dos y ahí Dirección
+// no tiene línea: un grupo vacío sería ruido, y este test impide que el tercer grupo se cuele solo.
+test('sin el predicado de Dirección el agrupador sigue partiendo en dos', () => {
+  const g = agruparPorRolOrganizacional([P('ECHEGARAY', 'DIRECCIÓN'), P('ACOSTA', null)], esJefe)
+  assert.deepEqual(g.map((x) => x.clave), ['obreros'])
+  assert.equal(g[0].integrantes.length, 2)
 })

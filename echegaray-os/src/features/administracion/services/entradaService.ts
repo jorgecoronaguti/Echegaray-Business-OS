@@ -17,6 +17,7 @@
 // ahí diría «no hay ninguno», que es una afirmación sobre la empresa hecha con un error de red.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { perteneceAlCorte, type FilaDeConteo } from './personasService.ts'
 
 export interface Maestro {
   clave: string
@@ -66,6 +67,14 @@ async function cuenta(
 
 const head = { count: 'exact' as const, head: true }
 
+/** Los del plantel sin obra QUE LA NECESITAN: la misma regla del chip «Sin asignar» de Personal. */
+async function contarSinAsignar(supabase: SupabaseClient): Promise<number | null> {
+  const { data, error } = await supabase.from('persona_directorio')
+    .select('en_la_empresa, obra_actual_id, puesto').eq('en_la_empresa', true)
+  if (error) return null
+  return (data as unknown as FilaDeConteo[]).filter((f) => perteneceAlCorte(f, 'sin_asignar')).length
+}
+
 export async function getConteos(supabase: SupabaseClient): Promise<Conteos> {
   const [
     clientes, personas, personasSinAsignar, proveedores, proveedoresSinCuit,
@@ -75,8 +84,11 @@ export async function getConteos(supabase: SupabaseClient): Promise<Conteos> {
     // EL PLANTEL SALE DE LA PERTENENCIA, NO DE LA FECHA: hay bajas sin `fecha_egreso`, y contar por
     // la fecha devolvería al plantel a gente que ya no está.
     cuenta(supabase.from('persona_directorio').select('*', head).eq('en_la_empresa', true)),
-    cuenta(supabase.from('persona_directorio').select('*', head)
-      .eq('en_la_empresa', true).is('obra_actual_id', null)),
+    // «SIN OBRA ASIGNADA» ES UN RECLAMO Y DIRECCIÓN NO LO TIENE. Por eso esta cuenta no puede ser un
+    // `head: true`: hay que mirar el `puesto` de cada fila para aplicar la MISMA regla que el chip de
+    // Personal (`perteneceAlCorte`). Son 19 filas; el viaje cuesta lo mismo y el número deja de
+    // contradecir al que la otra pantalla publica.
+    contarSinAsignar(supabase),
     cuenta(supabase.from('proveedores').select('*', head).eq('activo', true)),
     cuenta(supabase.from('proveedores').select('*', head).eq('activo', true).is('cuit', null)),
     cuenta(supabase.from('proveedor_nombre_pendiente').select('*', head)),

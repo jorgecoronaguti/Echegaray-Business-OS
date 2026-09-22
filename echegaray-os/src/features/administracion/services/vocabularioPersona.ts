@@ -139,6 +139,47 @@ export function categoriaVisible(
 // `20260908T2000_el_rol_organizacional_es_un_campo_propio.sql` deja escrita la alternativa —una
 // columna booleana— para el día que el dueño decida que el texto libre no alcanza.
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// DIRECCIÓN — EL TERCER ROL ORGANIZACIONAL (dueño, 22/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Pedido textual: *«falta q agregues a rodrigo y a mi como receptores de plata»*. Para recibir
+// efectivo a rendir hay que ser una PERSONA (`efectivo_entrega.persona_id` apunta a `personas`) y
+// para firmar la conformidad con el dedo hay que tener el perfil atado a esa persona
+// (`firmar_conformidad_entrega` exige `persona_id = mi_persona_id()`). Así que Rodrigo y Jorge
+// entran al padrón.
+//
+// ═══ LO QUE ESTO NO ES: ESCONDER GENTE ═══
+//
+// Entrar al padrón los ponía, medido en la base antes de escribir nada, en cuatro listas que le
+// piden a cada fila algo que a Dirección no le corresponde: la asistencia del día los sumaba a los
+// 18 que el jefe marca presente o ausente, la señal «sin obra asignada» pasaba de 0 a 2 con un
+// verbo («Asignar») que nunca se va a poder cumplir, y el Plantel los rotulaba «Obreros».
+//
+// DIRECCIÓN NO ES UN OBRERO al que se le marca asistencia ni se le reclama una obra. Eso —y no el
+// tamaño de una lista— es lo que este rol declara. Por eso la exclusión llega EXACTAMENTE hasta
+// donde la fila pide una acción que no corresponde, y ni un paso más: siguen enteros en el Plantel
+// (con su propio rótulo), en la nómina de Analíticas, en el padrón de categorías y en el plantel de
+// cada quincena. Una fila que se esconde de un TOTAL lo hace mentir; una que se esconde de un
+// RECLAMO lo hace honesto.
+//
+// La fuente es la misma que la de jefe de obra —`personas.puesto`, el rol organizacional— y por eso
+// vive acá y no en una segunda regla en cada pantalla.
+
+/** `DIRECCIÓN`, `Direccion`, `direccion`: la misma palabra, normalizada por `clave()`. */
+const PUESTOS_DE_DIRECCION = new Set(['direccion'])
+
+/**
+ * ¿ESTA PERSONA ES DIRECCIÓN? La única definición del OS; todo lo que la exima de un reclamo de
+ * obra o de asistencia la usa.
+ *
+ * Recibe `puesto` y no la persona entera, igual que `esJefeDeObra`: así no hay una segunda regla
+ * escondida mirando la categoría o el convenio.
+ */
+export function esDireccion(puesto: string | null | undefined): boolean {
+  return puesto ? PUESTOS_DE_DIRECCION.has(clave(puesto)) : false
+}
+
 /** La grafía de la nómina (`JEFE DE OBRA`) y la del OS (`jefe_obra`), normalizadas por `clave()`.
  *  Las dos nombran el mismo rol; no se acepta ninguna otra, porque adivinar a partir de un texto
  *  parecido pondría a alguien a decidir sobre una obra sin que nadie lo haya declarado. */
@@ -157,17 +198,20 @@ export function esJefeDeObra(puesto: string | null | undefined): boolean {
 /** Un grupo del plantel con su rótulo ya resuelto. `clave` es para las pruebas y los `data-*`; el
  *  `rotulo` es lo que se lee en pantalla. */
 export interface GrupoDeRol<T> {
-  clave: 'jefes' | 'obreros'
+  clave: 'direccion' | 'jefes' | 'obreros'
   rotulo: string
   integrantes: T[]
 }
 
 /** «Jefe de obra · 1», no «Jefes de obra · 1». El conteo va al lado del rótulo porque es la misma
  *  pregunta —cuántos hay de éstos— y una fila aparte para un número sería una tarjeta por dato. */
-function rotuloDe(clave: 'jefes' | 'obreros', n: number): string {
-  const palabra = clave === 'jefes'
-    ? (n === 1 ? 'Jefe de obra' : 'Jefes de obra')
-    : (n === 1 ? 'Obrero' : 'Obreros')
+function rotuloDe(clave: 'direccion' | 'jefes' | 'obreros', n: number): string {
+  const palabra = clave === 'direccion'
+    // «Dirección» no tiene plural distinto: son dos personas y el área es una sola.
+    ? 'Dirección'
+    : clave === 'jefes'
+      ? (n === 1 ? 'Jefe de obra' : 'Jefes de obra')
+      : (n === 1 ? 'Obrero' : 'Obreros')
   return `${palabra} · ${n}`
 }
 
@@ -184,10 +228,21 @@ function rotuloDe(clave: 'jefes' | 'obreros', n: number): string {
  */
 export function agruparPorRolOrganizacional<T>(
   items: readonly T[], esJefe: (item: T) => boolean,
+  /**
+   * EL TERCER GRUPO, OPCIONAL. Sin él todo sigue partido en dos, que es lo que quieren las pantallas
+   * de liquidación: ahí Dirección no tiene línea y un grupo vacío sería ruido. La pasa el Plantel,
+   * que es la lista donde Dirección SÍ está y no puede quedar rotulada «Obreros».
+   */
+  esDireccionDe?: (item: T) => boolean,
 ): GrupoDeRol<T>[] {
-  const jefes = items.filter(esJefe)
-  const obreros = items.filter((x) => !esJefe(x))
+  const dir = esDireccionDe ? items.filter(esDireccionDe) : []
+  const resto = esDireccionDe ? items.filter((x) => !esDireccionDe(x)) : items
+  const jefes = resto.filter(esJefe)
+  const obreros = resto.filter((x) => !esJefe(x))
   const grupos: GrupoDeRol<T>[] = []
+  // Dirección primero: es el orden de la empresa, el mismo criterio por el que los jefes van
+  // arriba de los obreros.
+  if (dir.length > 0) grupos.push({ clave: 'direccion', rotulo: rotuloDe('direccion', dir.length), integrantes: dir })
   if (jefes.length > 0) grupos.push({ clave: 'jefes', rotulo: rotuloDe('jefes', jefes.length), integrantes: jefes })
   if (obreros.length > 0) grupos.push({ clave: 'obreros', rotulo: rotuloDe('obreros', obreros.length), integrantes: obreros })
   return grupos
