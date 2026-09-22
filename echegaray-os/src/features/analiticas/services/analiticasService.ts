@@ -42,8 +42,11 @@ export interface DatosAnaliticas {
    * Caja es la de Proveedores, no la tarjeta de la pestaña. `null` = no se pudo leer (se dice, no se inventa).
    */
   deudaProveedores: (TotalesDeuda & { truncado: boolean }) | null
-  nomina: unknown[] | null
-  quincenas: unknown[] | null
+  /**
+   * Vista Nómina: lo PAGADO a la gente en el año, blanco y negro, sin cargas sociales. `null` = no se
+   * pudo leer la liquidación (la puerta de sueldos es `liquida_sueldos()`, no `ve_economia()`).
+   */
+  nominaPagada: NominaPagada | null
   personas: unknown[] | null
   /** Las filas de deuda de `public.cobranzas`: SÓLO para la acción del día (`planDeCobranza`). */
   documentos: unknown[] | null

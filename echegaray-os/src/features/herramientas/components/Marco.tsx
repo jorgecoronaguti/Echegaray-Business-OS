@@ -52,7 +52,7 @@ export function Marco({ lectura, children, derecha }: {
 function datosPlanos(p: Parque): DatosParque {
   return {
     activos: p.activos, ubicaciones: p.ubicaciones, obras: p.obras, movimientos: p.movimientos, incidencias: p.incidencias,
-    nombres: p.nombres, categorias: p.categorias, lecturas: p.lecturas, personas: p.personas, existencias: p.existencias, ajustes: p.ajustes,
+    nombres: p.nombres, categorias: p.categorias, lecturas: p.lecturas, personas: p.personas, existencias: p.existencias, ajustes: p.ajustes, papeles: p.papeles,
   } satisfies Record<keyof DatosParque, unknown>
 }
 

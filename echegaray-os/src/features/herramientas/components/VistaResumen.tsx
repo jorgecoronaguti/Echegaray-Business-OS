@@ -4,7 +4,9 @@
 //   · Sin «Nuevo control» (Controles no es de esta etapa).
 //   · «Sin verificar hoy» cuenta rodados y equipos vivos sin verificación de uso con fecha de hoy
 //     (migración 20260922T1200). Sin esa migración dice «sin la migración», no un cero.
-//   · «Papeles de rodados» dice «sin cargar»: los 6 rodados no tienen papeles en la base.
+//   · «Papeles de rodados» cuenta los VENCIDOS O POR VENCER (30 días) de `activo_papel_vigente`
+//     (migración 20260922T2400). Sin esa vista dice «sin cargar», nunca un cero: un cero ahí se lee
+//     «está todo al día», que es exactamente lo contrario de lo que pasa cuando no hay datos.
 //   · «Depósito» no existe: Taller y almacén son un solo lugar, «Taller».
 //   · «Necesita una decisión» suma lo que D09 listaba «a resolver» (la migración no tiene pantalla).
 
@@ -13,6 +15,7 @@ import type { ReactNode } from 'react'
 import { cifras, decisiones, dondeEstaElParque, obrasConHerramientas, type Decision } from '../logica/resumen'
 import { diasDesde, ETIQUETA_TIPO, type Parque } from '../logica/parque'
 import { sinVerificarHoy } from '../logica/verificacion'
+import { AVISO_DIAS, cuantosVencen } from '../logica/papeles'
 import { BotonMover } from './Botones'
 import { COLOR_BARRA, IconoLugar, IcoAviso, IcoLista, IcoObra, IcoReloj, IcoTaller } from './iconos'
 import { bajadaPagina, eyebrow, pagina, tituloBloque, tituloPagina, V } from './estilo'
@@ -26,10 +29,11 @@ export function VistaResumen({ parque, hoy = new Date() }: { parque: Parque; hoy
   const filas = dondeEstaElParque(parque)
   const sv = sinVerificarHoy(parque, hoy)
   const obras = obrasConHerramientas(parque)
+  const porVencer = cuantosVencen(parque.papeles)
   const max = Math.max(1, ...filas.filter((f) => f.tipo !== 'sin_ubicacion').map((f) => f.activos))
   const partes = [
     c.herramientas ? plural(c.herramientas, 'herramienta', 'herramientas') : null,
-    c.equipos ? plural(c.equipos, 'equipo', 'equipos') : null,
+    c.equipos ? plural(c.equipos, 'maquinaria', 'maquinarias') : null,
     c.rodados ? plural(c.rodados, 'rodado', 'rodados') : null,
   ].filter(Boolean)
 
@@ -54,10 +58,14 @@ export function VistaResumen({ parque, hoy = new Date() }: { parque: Parque; hoy
           pie={c.nuncaVistos ? `más ${c.nuncaVistos} sin ningún registro nunca` : 'ningún movimiento ni reporte'} />
         <Link href="/herramientas/rodados" prefetch={false} data-testid="cifra-sin-verificar" className="hover:bg-surface-quiet">
           <Cifra rotulo="Sin verificar hoy" valor={sv ? sv.sin : null} vacioTexto="sin la migración" tono={sv && sv.sin ? V.warn : V.tinta}
-            pie={sv ? (sv.de ? `de ${sv.de} que se operan con gente` : 'no hay rodados ni equipos cargados') : 'falta aplicar la migración 20260922T1200'} />
+            pie={sv ? (sv.de ? `de ${sv.de} que se operan con gente` : 'no hay rodados ni maquinarias cargadas') : 'falta aplicar la migración 20260922T1200'} />
         </Link>
-        <Cifra rotulo="Papeles de rodados" valor={null}
-          pie={c.rodados ? `${plural(c.rodados, 'rodado', 'rodados')}, ningún papel cargado` : 'no hay rodados cargados'} />
+        <Link href="/herramientas/rodados" prefetch={false} data-testid="cifra-papeles" className="hover:bg-surface-quiet">
+          <Cifra rotulo="Papeles por vencer" valor={porVencer} vacioTexto="sin cargar" tono={porVencer ? V.warn : V.tinta}
+            pie={porVencer == null
+              ? 'falta aplicar la migración 20260922T2400'
+              : porVencer ? `RTO o seguro vencido o a menos de ${AVISO_DIAS} días` : `ninguno vence en ${AVISO_DIAS} días`} />
+        </Link>
       </div>
 
       {/* CADA OBRA, A UN CLIC (dueño, 22/09): el renglón lleva a lo que hay en esa obra; «Planilla», al

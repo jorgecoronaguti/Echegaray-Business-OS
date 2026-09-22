@@ -12,12 +12,14 @@
 import Link from 'next/link'
 import { useState, type ReactNode } from 'react'
 import { historial, operadorDe } from '../logica/historial'
+import type { Activo } from '../types'
 import {
   UNIDAD, seVerifica, textoLectura, textoVerificacion, ultimaLectura, ultimaVerificacion, verificacionDe,
 } from '../logica/verificacion'
 import {
   ETIQUETA_ESTADO, MOTIVO_BAJA, TONO_ESTADO, conProblema, lugaresDe, rotuloLugares, rotuloUbicacion, tipoDe, ubicacionDelRodado, activosEn,
 } from '../logica/parque'
+import { NOMBRE_PAPEL, enlaceDrive, estadoDePapel, papelesDe, type Papel } from '../logica/papeles'
 import { ajustarExistenciaAction, cambiarEstadoAction } from '../services/acciones'
 import { useHerramientas } from './Espacio'
 import { QR } from './QR'
@@ -156,9 +158,11 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
           {carga.length === 0 ? <div style={{ fontSize: '12.5px', color: V.tenue }}>Nada cargado.</div> : carga.map((c) => (
             <div key={c.id} style={{ fontSize: '12.5px', color: V.tintaSuave }}>{c.nombre} <span style={{ fontFamily: MONO, color: V.tenue }}>{c.codigo}</span></div>
           ))}
-          <div style={{ fontSize: '12px', color: V.apagado }}>Papeles y service: <span style={vacio}>sin cargar</span>.</div>
+          <div style={{ fontSize: '12px', color: V.apagado }}>Plan de service: <span style={vacio}>sin cargar</span>.</div>
         </div>
       )}
+
+      <Papeles id={a.id} clase={a.clase} />
 
       {seVerifica(a) && <Uso id={a.id} clase={a.clase} codigo={a.codigo} />}
 
@@ -182,6 +186,67 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
         <div style={{ paddingTop: 6 }}>
           <button type="button" onClick={() => abrir({ tipo: 'baja', id })} style={{ fontSize: '12.5px', color: V.neg }} data-testid="abrir-baja">Dar de baja…</button>
         </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * LOS PAPELES DE LA UNIDAD (migración 20260922T2400). Cada papel con lo que DICE —tipo, número, emisor,
+ * titular, emisión, vencimiento— y el PDF de Drive del que salió, para que cualquiera pueda ir a mirar el
+ * original en vez de creerle a la pantalla. Un campo que el papel no trae no se dibuja: no hay «—» que
+ * después alguien lea como «no tiene seguro».
+ *
+ * El titular se muestra tal cual figura: la F100 y una de las Hilux están a nombre de personas, no de la
+ * empresa, y eso es un dato del papel, no un error que la pantalla deba esconder.
+ */
+function Papeles({ id, clase }: { id: string; clase: Activo['clase'] }) {
+  const { parque } = useHerramientas()
+  // Sin la vista, el aviso sólo tiene sentido donde hay papeles que cargar: 178 herramientas de mano no
+  // tienen título ni RTO, y repetir el aviso en cada una lo convierte en ruido que nadie lee.
+  if (!parque.papeles) {
+    if (clase === 'herramienta') return null
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4, borderTop: `1px solid ${V.linea}` }} data-testid="ficha-papeles">
+        <div style={{ ...eyebrow, paddingTop: 10 }}>Papeles</div>
+        <div style={{ fontSize: '12.5px', color: V.tenue }}>Falta aplicar la migración 20260922T2400 de los papeles.</div>
+      </div>
+    )
+  }
+  const papeles = papelesDe(parque.papeles, id)
+  if (papeles.length === 0) return null
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 4, borderTop: `1px solid ${V.linea}` }} data-testid="ficha-papeles">
+      <div style={{ ...eyebrow, paddingTop: 10 }}>Papeles</div>
+      {papeles.map((p) => <UnPapel key={p.id} p={p} />)}
+    </div>
+  )
+}
+
+function UnPapel({ p }: { p: Papel }) {
+  const e = estadoDePapel(p)
+  const color = e.tono === 'neg' ? V.neg : e.tono === 'warn' ? V.warn : e.tono === 'pos' ? V.pos : V.tenue
+  const enlace = enlaceDrive(p)
+  const detalle = [
+    p.numero ? `N° ${p.numero}` : null,
+    p.emisor,
+    p.titular ? `a nombre de ${p.titular}` : null,
+    p.emitido_en ? `emitido ${diaMesAnio(p.emitido_en)}` : null,
+  ].filter(Boolean)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '12.5px' }} data-testid="ficha-papel">
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+        <span style={{ fontWeight: 500 }}>{NOMBRE_PAPEL[p.tipo]}</span>
+        <span style={{ color, textAlign: 'right' }}>{e.texto}</span>
+      </div>
+      {detalle.length > 0 && <div style={{ color: V.apagado }}>{detalle.join(' · ')}</div>}
+      {p.observacion && <div style={{ color: V.tenue }}>{p.observacion}</div>}
+      {enlace ? (
+        <a href={enlace} target="_blank" rel="noreferrer" style={{ color: '#175CD3' }} data-testid="papel-drive">
+          {p.drive_nombre ?? 'Ver el PDF en Drive'}
+        </a>
+      ) : (
+        <span style={vacio}>sin archivo en Drive</span>
       )}
     </div>
   )

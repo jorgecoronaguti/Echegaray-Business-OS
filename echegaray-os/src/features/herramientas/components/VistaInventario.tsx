@@ -21,7 +21,7 @@ const COLS = '28px minmax(0,1.5fr) 120px 150px minmax(0,1fr) 130px 70px'
 
 const CLASES: { v: FiltroClase; t: string; ico?: ReactNode }[] = [
   { v: 'herramienta', t: 'Herramientas', ico: <IcoTaller tam={13} /> },
-  { v: 'equipo', t: 'Equipos', ico: <IcoEquipo tam={13} /> },
+  { v: 'equipo', t: 'Maquinarias', ico: <IcoEquipo tam={13} /> },
   { v: 'rodado', t: 'Rodados', ico: <IcoRodado tam={13} /> },
   { v: 'todo', t: 'Todo' },
 ]

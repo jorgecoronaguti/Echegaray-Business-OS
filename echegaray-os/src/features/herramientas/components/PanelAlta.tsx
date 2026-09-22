@@ -18,7 +18,7 @@ import { Bloque, ErrorPanel, PanelLateral } from './PanelLateral'
 import { botonPrimarioGrande, botonSecundarioGrande, campo, eyebrow, V } from './estilo'
 
 const CLASES: { v: Clase; t: string }[] = [
-  { v: 'herramienta', t: 'Herramienta' }, { v: 'equipo', t: 'Equipo' }, { v: 'rodado', t: 'Rodado' },
+  { v: 'herramienta', t: 'Herramienta' }, { v: 'equipo', t: 'Maquinaria' }, { v: 'rodado', t: 'Rodado' },
 ]
 
 export function PanelAlta({ onHecho }: { onHecho: (t: string) => void }) {

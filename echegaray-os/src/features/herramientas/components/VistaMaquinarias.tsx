@@ -25,23 +25,23 @@ export function VistaMaquinarias({ parque, hoy = new Date() }: { parque: Parque;
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         <h1 style={tituloPagina}>Maquinarias</h1>
         <div style={bajadaPagina}>
-          {plural(equipos.length, 'equipo', 'equipos')}
+          {plural(equipos.length, 'maquinaria', 'maquinarias')}
           {sinVer != null ? ` · ${sinVer} sin verificar hoy` : ' · verificación sin la migración'}
         </div>
       </div>
 
       {equipos.length === 0 ? (
-        <div style={{ fontSize: '13px', color: V.apagado }}>No hay equipos cargados: lo que se opera con gente se da de alta con clase «Equipo».</div>
+        <div style={{ fontSize: '13px', color: V.apagado }}>No hay maquinarias cargadas: lo que se opera con gente se da de alta con clase «Maquinaria».</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', overflowX: 'auto' }}>
           <div style={{ ...eyebrow, display: 'grid', gridTemplateColumns: COLS_EQ, gap: 16, height: 34, alignItems: 'center', borderBottom: `1px solid ${V.linea}`, minWidth: 860 }}>
-            <div>Equipo</div><div>Dónde está</div><div>Estado</div><div>Lo movió</div>
+            <div>Maquinaria</div><div>Dónde está</div><div>Estado</div><div>Lo movió</div>
             <div style={{ textAlign: 'right' }}>Horómetro</div><div style={{ textAlign: 'right' }}>Verificación</div>
           </div>
           {equipos.map((e, i) => {
             const quien = quienLaMovio(parque, e.id)
             return (
-              <Link key={e.id} href={`/herramientas/inventario?clase=equipo&activo=${encodeURIComponent(e.codigo)}`} prefetch={false} className="hover:bg-surface-quiet" data-testid="fila-equipo"
+              <Link key={e.id} href={`/herramientas/inventario?clase=equipo&activo=${encodeURIComponent(e.codigo)}`} prefetch={false} className="hover:bg-surface-quiet" data-testid="fila-maquinaria"
                 style={{ display: 'grid', gridTemplateColumns: COLS_EQ, gap: 16, minHeight: 52, alignItems: 'center', borderBottom: i < equipos.length - 1 ? `1px solid ${V.linea}` : undefined, fontSize: '13.5px', minWidth: 860 }}>
                 <Unidad a={e} />
                 <div style={e.ubicacion_id ? { color: V.tintaSuave } : vacio}>{rotuloUbicacion(parque, e.ubicacion_id)}</div>

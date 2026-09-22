@@ -33,7 +33,7 @@ export function ListaDelLugar({ items, en }: { items: ItemLugar[]; en: string })
   const chips: { v: Filtro; t: string; warn?: boolean; n: number }[] = [
     { v: 'todo', t: 'Todo', n: items.length },
     ...(prob ? [{ v: 'problema' as const, t: 'Con problema', warn: true, n: prob }] : []),
-    ...(equipos ? [{ v: 'equipos' as const, t: 'Equipos y rodados', n: equipos }] : []),
+    ...(equipos ? [{ v: 'equipos' as const, t: 'Maquinarias y rodados', n: equipos }] : []),
   ]
   const moverHref = `/campo/herramientas/mover?ids=${sel.join(',')}&en=${encodeURIComponent(en)}`
   return (
