@@ -79,6 +79,7 @@ import { getOrdenesDeObra } from '@/features/clientes/services/ordenesCliente'
 import { bloqueDeOrdenesDeLaObra } from '@/features/obras/services/ordenesDeLaObra'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { TabEconomia } from '@/features/obras/components/TabEconomia'
+import { EfectivoEnManos } from '@/features/efectivo/components/EfectivoEnManos'
 import { TabDocumentos } from '@/features/obras/components/TabDocumentos'
 import {
   asignarActividadADocumento, clasificarDocumento, desvincularDocumento, vincularDocumento,
@@ -488,6 +489,8 @@ export default async function ObraPage({
           veComercial={veComercial}
         />
       )}
+      {/* D10 · efectivo en manos de esta obra: proyección aparte, no suma a consumido (features/efectivo). */}
+      {vista === 'economia' && <div className="pb-8"><EfectivoEnManos obra={obraId} /></div>}
 
       {vista === 'documentos' && (
         <TabDocumentos

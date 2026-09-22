@@ -89,7 +89,7 @@ export function RevisarComprobante({ e, c, cola, fotoUrl, fila, destino }: {
             <Link href={siguiente ? urlEfectivo({ entrega: e.codigo, comprobante: siguiente.id }) : volver} prefetch={false} style={botonOscuroGrande} data-testid="revisar-seguir">
               {siguiente ? 'Seguir' : 'Volver a la entrega'}
             </Link>
-            {esperando(c) && <ObservarComprobante id={c.id} persona={nombreCorto} />}
+            {esperando(c) && c.estado !== 'respondido' && <ObservarComprobante id={c.id} persona={nombreCorto} />}
             {esperando(c) && <DescartarComprobante id={c.id} alTerminar={volver} />}
             {siguiente && (
               <span style={{ marginLeft: 'auto', fontSize: '12.5px', color: V.apagado }}>
@@ -138,7 +138,7 @@ function Estado({ c, e, fila, total, destino }: { c: Comprobante; e: Entrega; fi
   const motivo = c.observacion ?? c.motivo
   return (
     <div style={cajaConfirmar} data-testid="revisar-estado">
-      <div style={titulo}>{c.estado === 'leyendo' ? 'Se está cargando' : 'Todavía no está en Compras'}</div>
+      <div style={titulo}>{c.estado === 'leyendo' ? 'Se está cargando' : c.estado === 'respondido' ? 'Contestó · falta cargar' : 'Todavía no está en Compras'}</div>
       <div style={cuerpo}>
         {c.estado === 'leyendo' && (
           <div>El sistema lo escribe en Compras con Tipo pago «A rendir» y la obra de la entrega. Cuando la fila exista, el saldo de {e.persona} baja.</div>

@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { Comprobante, Entrega, Rendicion } from '../types.ts'
 import {
-  actividadDe, diasDeEntrega, diasEntre, entregasCsv, estadoDeEntrega, filasDeLaFicha, ordenarLista, pesos, queFalta, resumir,
+  actividadDe, conteosDeCampanita, diasDeEntrega, diasEntre, entregasCsv, estadoDeEntrega, filasDeLaFicha, ordenarLista, pesos, quienTieneEfectivo, ROTULO_COMPROBANTE, queFalta, resumir,
   sinRendirDe, totalLeido,
 } from './entregas.ts'
 import {
@@ -41,6 +41,13 @@ test('en su poder = 0 con todo en Compras es «Lista para cerrar»; con un ticke
 test('los observados mandan sobre la cuenta, y se cuentan en singular y plural', () => {
   assert.deepEqual(estadoDeEntrega(entrega(), [comp('observado')]), { texto: '1 observado', tono: 'warn' })
   assert.equal(estadoDeEntrega(entrega(), [comp('observado'), comp('duplicado')]).texto, '2 observados')
+})
+
+test('«respondido» es pendiente pero ya no es observado: no se le vuelve a pedir el dato', () => {
+  assert.equal(estadoDeEntrega(entrega(), [comp('respondido')]).texto, 'Rindiendo')
+  assert.equal(estadoDeEntrega(entrega({ en_su_poder: 0 }), [comp('respondido')]).texto, 'Rindiendo', 'todavía espera la carga')
+  assert.equal(resumir([entrega()], [comp('respondido')], [], '2026-09-22').porImputar, 1)
+  assert.equal(ROTULO_COMPROBANTE.respondido.texto, 'Contestó · falta cargar')
 })
 
 test('NO existe «Vencida»: una entrega de 90 días sin rendir sigue «Rindiendo» (dueño, 22/09)', () => {
@@ -163,6 +170,32 @@ test('la ficha: el ticket en Compras toma la fila de Compras; la rendición sin 
     ['Hormigonera del Oeste', 412_800, 'en_compras', 900],
     ['Áridos San Juan', 238_500, 'en_compras', 901],
   ])
+})
+
+test('D09/D10 · quién tiene efectivo: la misma cuenta que «En manos de la gente», la más vieja arriba', () => {
+  const l = [
+    entrega(),
+    entrega({ id: 'e2', codigo: 'ER-0141', persona: 'Diego Funes', obra_id: 'OB-9', obra: 'Salón comercial', fecha: '2026-08-30', en_su_poder: 540_000 }),
+    entrega({ id: 'e3', codigo: 'ER-0144', estructura: true, obra_id: null, obra: null, en_su_poder: 465_500, fecha: '2026-09-08' }),
+    entrega({ id: 'e4', codigo: 'ER-0146', en_su_poder: 0 }),
+    entrega({ id: 'e5', codigo: 'ER-0139', estado: 'cerrada', en_su_poder: 10 }),
+  ]
+  const t = quienTieneEfectivo(l, '2026-09-22')
+  assert.deepEqual(t.filas.map((f) => [f.codigo, f.destino, f.dias]), [['ER-0141', 'Salón comercial', 23], ['ER-0144', 'Estructura', 14], ['ER-0147', 'Galpón 8', 6]])
+  assert.equal(t.total, resumir(l, [], [], '2026-09-22').enManos, 'dos pantallas, una definición')
+  assert.deepEqual(quienTieneEfectivo(l, '2026-09-22', 'OB-8').filas.map((f) => f.codigo), ['ER-0147'])
+  assert.equal(quienTieneEfectivo(l, '2026-09-22', 'OB-X').total, 0)
+})
+
+test('D14 · la campanita cuenta lo que espera y, de eso, lo leído sin CUIT', () => {
+  const c = conteosDeCampanita([
+    comp('leyendo', { resultado: { comprobantes: [{ cuit: '30-1' }] } }),
+    comp('observado'),
+    comp('respondido', { resultado: { comprobantes: [{ proveedor: 'X' }] } }),
+    comp('en_compras'), comp('descartado'),
+  ])
+  assert.deepEqual(c, { porImputar: 3, sinCuit: 2 })
+  assert.deepEqual(conteosDeCampanita([]), { porImputar: 0, sinCuit: 0 })
 })
 
 // ═══ LOS CUATRO DATOS DE D02 ═══

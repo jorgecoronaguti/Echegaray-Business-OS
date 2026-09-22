@@ -33,7 +33,9 @@ export const COLUMNAS_ENTREGA = [
 ].join(', ')
 
 /** El estado que ve la gente, derivado por la vista `efectivo_comprobante_estado` — nunca tipeado. */
-export type EstadoComprobante = 'leyendo' | 'en_compras' | 'observado' | 'duplicado' | 'error' | 'descartado'
+// `respondido` (20260922T1500, commit 1af709b0): la persona ya contestó lo que faltaba y la carga todavía no se
+// completó. Es pendiente, pero NO se le vuelve a pedir el dato.
+export type EstadoComprobante = 'leyendo' | 'en_compras' | 'observado' | 'respondido' | 'duplicado' | 'error' | 'descartado'
 
 /** Lo que el worker guardó de cada comprobante leído (`comprobante_entrada.resultado.comprobantes[]`). */
 export interface LeidoDelPapel {

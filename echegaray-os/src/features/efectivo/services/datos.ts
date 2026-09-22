@@ -12,7 +12,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
-import { diaAR } from '../logica/entregas'
+import { conteosDeCampanita, diaAR } from '../logica/entregas'
 import { faltaMigracion } from '../logica/formularios'
 import {
   COLUMNAS_COMPROBANTE, COLUMNAS_ENTREGA,
@@ -148,6 +148,53 @@ export async function urlDeFoto(ruta: string | null): Promise<string | null> {
     return await firmar(await createClient(), ruta)
   } catch {
     return null
+  }
+}
+
+export type LecturaEnManos =
+  | { estado: 'ok'; entregas: Entrega[]; hoy: string }
+  | { estado: 'falta_migracion' }
+  | { estado: 'error'; mensaje: string }
+
+/**
+ * D09 / D10 — LAS ENTREGAS ABIERTAS CON SALDO, para Caja y la Economía de la obra. La misma vista que D01:
+ * la cifra «En manos de la gente» tiene una sola definición. Con `obra`, sólo las de esa obra.
+ */
+export async function leerEnManos(obra?: string): Promise<LecturaEnManos> {
+  try {
+    const supabase = await createClient()
+    let q = supabase.from('efectivo_entrega_saldo').select(COLUMNAS_ENTREGA).eq('estado', 'abierta').gt('en_su_poder', 0).limit(TOPE)
+    if (obra) q = q.eq('obra_id', obra)
+    const { data, error } = await q
+    if (faltaMigracion(error)) return { estado: 'falta_migracion' }
+    if (error) return { estado: 'error', mensaje: error.message }
+    const num = (v: unknown) => Number(v ?? 0)
+    return {
+      estado: 'ok',
+      hoy: diaAR(new Date().toISOString()),
+      entregas: ((data ?? []) as unknown as Entrega[]).map((e) => ({
+        ...e, entregado: num(e.entregado), rendido: num(e.rendido), devuelto: num(e.devuelto), en_su_poder: num(e.en_su_poder),
+      })),
+    }
+  } catch (err) {
+    return { estado: 'error', mensaje: err instanceof Error ? err.message : 'Error al conectar con Supabase' }
+  }
+}
+
+/**
+ * D14 — LO QUE EL FLUJO LE SUMA A LA CAMPANITA. Sin la migración, `undefined` (no se mide, no se dibuja);
+ * con un error de lectura, `null` («no pude mirar», nunca cero). Sólo los tickets que esperan.
+ */
+export async function leerCampanitaEfectivo(supabase: SupabaseClient): Promise<{ efectivoPorImputar?: number | null; efectivoSinCuit?: number | null }> {
+  try {
+    const { data, error } = await supabase.from('efectivo_comprobante_estado').select('estado, resultado')
+      .not('estado', 'in', '(en_compras,descartado)').limit(TOPE)
+    if (faltaMigracion(error)) return {}
+    if (error) return { efectivoPorImputar: null, efectivoSinCuit: null }
+    const c = conteosDeCampanita((data ?? []) as unknown as Pick<Comprobante, 'estado' | 'resultado'>[])
+    return { efectivoPorImputar: c.porImputar, efectivoSinCuit: c.sinCuit }
+  } catch {
+    return { efectivoPorImputar: null, efectivoSinCuit: null }
   }
 }
 

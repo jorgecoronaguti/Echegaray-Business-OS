@@ -172,6 +172,7 @@ export const ROTULO_COMPROBANTE: Record<EstadoComprobante, { texto: string; tono
   leyendo: { texto: 'Por imputar', tono: 'warn' },
   en_compras: { texto: 'En Compras', tono: 'pos' },
   observado: { texto: 'Observado', tono: 'warn' },
+  respondido: { texto: 'Contestó · falta cargar', tono: 'neutro' },
   duplicado: { texto: 'Duplicado', tono: 'warn' },
   error: { texto: 'Falló la lectura', tono: 'neg' },
   descartado: { texto: 'Descartado', tono: 'apagado' },
@@ -260,6 +261,44 @@ export function entregasCsv(entregas: readonly Entrega[], hoy: string): string {
   ])
   const cab = ['Entrega', 'Fecha', 'A cargo de', 'Destino', 'Entregado', 'Rendido', 'Devuelto', 'En su poder', 'Días', 'Estado', 'Para qué']
   return [cab, ...filas].map((f) => f.map(csvCelda).join(';')).join('\n')
+}
+
+// ═══ LA CAMPANITA (D14) ═══
+
+/**
+ * Los dos números que el flujo aporta a la campanita: tickets que todavía no son fila de Compras (con los
+ * observados y los respondidos adentro) y, de ésos, los que se leyeron sin CUIT. SIN «rendición vencida»:
+ * no hay plazo (dueño, 22/09/2026).
+ */
+export function conteosDeCampanita(filas: readonly Pick<Comprobante, 'estado' | 'resultado'>[]): { porImputar: number; sinCuit: number } {
+  const vivos = filas.filter(esperando)
+  return { porImputar: vivos.length, sinCuit: vivos.filter((c) => !leidoDe(c)?.cuit).length }
+}
+
+// ═══ QUIÉN TIENE EFECTIVO (D09 Caja, D10 Economía de la obra) ═══
+
+export interface QuienTiene {
+  codigo: string
+  persona: string
+  destino: string
+  sinRendir: number
+  desde: string
+  dias: number
+}
+
+/**
+ * LAS ENTREGAS ABIERTAS CON SALDO, la más vieja arriba. Es la MISMA cuenta que «En manos de la gente» de
+ * D01 (`resumir`): una cifra con dos pantallas, una definición. Con `obra`, sólo las de esa obra.
+ */
+export function quienTieneEfectivo(entregas: readonly Entrega[], hoy: string, obra?: string): { total: number; filas: QuienTiene[] } {
+  const filas = entregas
+    .filter((e) => e.estado === 'abierta' && e.en_su_poder > 0 && (obra === undefined || e.obra_id === obra))
+    .map((e) => ({
+      codigo: e.codigo, persona: e.persona, destino: e.estructura ? 'Estructura' : (e.obra ?? e.obra_id ?? 'obra sin nombre'),
+      sinRendir: e.en_su_poder, desde: e.fecha, dias: diasDeEntrega(e, hoy),
+    }))
+    .sort((a, b) => b.dias - a.dias || a.codigo.localeCompare(b.codigo))
+  return { total: filas.reduce((s, f) => s + f.sinRendir, 0), filas }
 }
 
 // ═══ LAS FILAS DE LA FICHA (D03) ═══

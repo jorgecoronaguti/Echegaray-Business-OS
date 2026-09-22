@@ -30,6 +30,7 @@
 import { createClient } from '@/lib/supabase/server'
 import type { Rol } from '@/features/auth/types'
 import { armarConteosDeAtencion, chipsDeAtencion, atencionNoLeida, type ChipAtencion } from './homeAdministracion'
+import { leerCampanitaEfectivo } from '@/features/efectivo/services/datos'
 
 export type Novedades =
   | { ok: true; chips: ChipAtencion[]; noLeida: boolean }
@@ -50,10 +51,16 @@ export async function getNovedades(): Promise<Novedades> {
     // El rol viene en el mismo JSON. Antes salía de `getPerfilActual`, que en el render del
     // `page.tsx` está memorizado por request pero acá NO: esto es una server action aparte, con su
     // propio request, así que era un viaje entero.
-    const { data, error } = await supabase.rpc('campanita_atencion')
+    //
+    // EFECTIVO A RENDIR (D14) va AL LADO, no después: la RPC no lo cuenta y cambiarla es una migración.
+    // Es una lectura chica (sólo los tickets que esperan) en paralelo: no agrega una ronda.
+    const [{ data, error }, efectivo] = await Promise.all([
+      supabase.rpc('campanita_atencion'),
+      leerCampanitaEfectivo(supabase),
+    ])
     if (error) return { ok: false, error: error.message }
     const j = (data ?? {}) as { perfil?: { rol?: Rol | null } | null }
-    const conteos = armarConteosDeAtencion(data)
+    const conteos = { ...armarConteosDeAtencion(data), ...efectivo }
     const rol = j.perfil?.rol ?? null
     return { ok: true, chips: chipsDeAtencion(conteos, rol), noLeida: atencionNoLeida(conteos) }
   } catch (e) {
