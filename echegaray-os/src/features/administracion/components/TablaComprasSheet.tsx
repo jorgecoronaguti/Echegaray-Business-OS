@@ -95,6 +95,7 @@ import { estaPagada, pastillaDe, totalesDe } from '../services/comprasSheet'
 import { ObraEnLinea } from './ObraEnLinea'
 import type { FilaConPapel } from '../services/comprasSheetService'
 import { CeldaComprobante } from './CeldaComprobante'
+import { MedioDeLaFila } from './MedioDeLaFila'
 
 /**
  * LA GRILLA DEL CANVAS, carácter por carácter (`v4A:222`), y sus dos variantes angostas. Literales
@@ -283,7 +284,7 @@ function Importe({ f }: { f: FilaConPapel }) {
 }
 
 export function TablaComprasSheet({
-  filas, seleccionada, hrefDe, opcionesObra, obraEditable,
+  filas, seleccionada, hrefDe, opcionesObra, obraEditable, entregaDe,
 }: {
   filas: FilaConPapel[]
   seleccionada?: number
@@ -292,6 +293,8 @@ export function TablaComprasSheet({
   opcionesObra: string[]
   /** `false` = la base todavía no tiene la columna Obra: se muestra el rótulo, no un control muerto. */
   obraEditable: boolean
+  /** Clave de la fila → entrega de efectivo que rinde (ER-0147). Vacío = sin el dato: dice «a rendir» a secas. */
+  entregaDe?: ReadonlyMap<string, string>
 }) {
   return (
     <div data-testid="tabla-compras-sheet">
@@ -451,11 +454,7 @@ export function TablaComprasSheet({
                 {fechaDdMmAa(f.fecha_prevista)}
               </span>
 
-              {/* NO BLOQUEA NADA y por eso es apagado, no ámbar: sin forma de pago la compra existe
-                  igual; lo único que no se puede es proyectar cuándo sale la plata. */}
-              <span className={`truncate ${SUELTA_ANCHO}`} style={{ fontSize: CUERPO, color: f.tipo_pago ? V.tintaSuave : V.tenue }}>
-                {f.tipo_pago || 'sin cargar'}
-              </span>
+              <MedioDeLaFila tipoPago={f.tipo_pago} entrega={f.clave ? entregaDe?.get(f.clave) : null} className={`truncate ${SUELTA_ANCHO}`} cuerpo={CUERPO} />
 
               <span
                 className={`flex min-w-0 flex-col items-end gap-px font-mono tabular-nums ${SUELTA_TELEFONO}`}

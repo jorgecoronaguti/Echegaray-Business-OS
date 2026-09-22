@@ -31,6 +31,7 @@
 // numérico es su ORDEN — se usa para ordenar y se saca para mostrar.
 
 import { leerNumeroEsAR } from '../../../shared/lib/numeroEsAR.ts'
+import { MEDIOS_DE_PAGO } from './pagoDeCompra.ts'
 
 /** Lo que un criterio necesita mirar de una fila. Subconjunto de `CompraSheet` más su obra. */
 export interface Criteriable {
@@ -40,6 +41,8 @@ export interface Criteriable {
   total: number | null
   fecha: string | null
   tramo_vencimiento?: string | null
+  /** El medio de pago (col. «Tipo pago»): Efectivo, Transferencia, … «A rendir». */
+  tipo_pago?: string | null
   /**
    * LA OBRA RESUELTA (`obraDeCompra.ts`): el rótulo único que sale de `obra_id` y `destino` de
    * Supabase. `null` o ausente = esta fila no tiene obra que nombrar.
@@ -69,6 +72,8 @@ export interface Criterios {
   obra?: string
   categoria?: string
   estado?: string
+  /** El medio de pago, EXACTO como lo escribe la pestaña («A rendir», «Transferencia»…). */
+  medio?: string
   /** El tramo de `tramo_vencimiento`, SIN su prefijo de orden. */
   vencimiento?: string
   /** `YYYY-MM` — el mes de la fecha de factura. */
@@ -83,7 +88,7 @@ export interface Criterios {
 
 /** Las llaves con las que viajan en la URL. Cortas porque conviven con `f`, `q`, `s` y `todo`. */
 export const LLAVE = {
-  proveedor: 'pr', obra: 'ob', categoria: 'ct', estado: 'es',
+  proveedor: 'pr', obra: 'ob', categoria: 'ct', estado: 'es', medio: 'me',
   vencimiento: 'vn', periodo: 'pe', desde: 'd', hasta: 'h', min: 'min', max: 'max',
 } as const
 
@@ -135,6 +140,7 @@ export function criteriosDeURL(sp: Params): Criterios {
     obra: t(LLAVE.obra),
     categoria: t(LLAVE.categoria),
     estado: t(LLAVE.estado),
+    medio: t(LLAVE.medio),
     vencimiento: t(LLAVE.vencimiento),
     periodo: t(LLAVE.periodo),
     desde: t(LLAVE.desde),
@@ -156,7 +162,7 @@ export function aParams(c: Criterios): Record<string, string> {
     if (v !== undefined && v !== '') out[k] = String(v)
   }
   set(LLAVE.proveedor, c.proveedor); set(LLAVE.obra, c.obra)
-  set(LLAVE.categoria, c.categoria); set(LLAVE.estado, c.estado)
+  set(LLAVE.categoria, c.categoria); set(LLAVE.estado, c.estado); set(LLAVE.medio, c.medio)
   set(LLAVE.vencimiento, c.vencimiento); set(LLAVE.periodo, c.periodo)
   set(LLAVE.desde, c.desde); set(LLAVE.hasta, c.hasta)
   set(LLAVE.min, c.min); set(LLAVE.max, c.max)
@@ -186,6 +192,7 @@ export function pasaCriterios(f: Criteriable, c: Criterios): boolean {
   else if (!igual(f.obra?.rotulo, c.obra)) return false
   if (!igual(f.categoria, c.categoria)) return false
   if (!igual(f.estado, c.estado)) return false
+  if (!igual(f.tipo_pago, c.medio)) return false
   if (c.vencimiento && tramoVisible(f.tramo_vencimiento).toLowerCase() !== c.vencimiento.trim().toLowerCase()) return false
   if (c.periodo && periodoDe(f.fecha) !== c.periodo) return false
   // Las fechas se comparan como TEXTO ISO, que ordena igual que el calendario y no arrastra la zona
@@ -210,6 +217,7 @@ export interface Opciones {
   obras: string[]
   categorias: string[]
   estados: string[]
+  medios: string[]
   vencimientos: string[]
   periodos: string[]
 }
@@ -270,6 +278,11 @@ export function opcionesDe(filas: Criteriable[]): Opciones {
     obras,
     categorias: alfa(junta((f) => f.categoria)),
     estados: alfa(junta((f) => f.estado)),
+    // LOS MEDIOS SON LA LISTA DEL PANEL DE PAGO MÁS LO QUE LA PESTAÑA TRAIGA ADEMÁS. A diferencia del resto,
+    // «A rendir» se ofrece aunque todavía no haya ninguna fila con ese medio (efectivo a rendir, 22/09/2026):
+    // es el filtro que dice «nada se rindió todavía», y esconderlo haría pensar que el medio no existe.
+    medios: [...MEDIOS_DE_PAGO, ...junta((f) => f.tipo_pago)
+      .filter((m) => !(MEDIOS_DE_PAGO as readonly string[]).some((x) => x.toLowerCase() === m.toLowerCase()))],
     vencimientos: [...tramos.entries()]
       .sort((a, b) => a[1].localeCompare(b[1], 'es'))
       .map(([visible]) => visible),
