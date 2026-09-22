@@ -74,6 +74,13 @@ function medios(l: LineaConOverrides) {
   }
 }
 
+/** Lo pagado de más por un lado que se descuenta del otro (`pago.absorbido`): va escrito debajo del que lo absorbe. */
+function absorbidoPor(l: LineaConOverrides, clave: 'banco' | 'efectivo'): RenglonDelRecibo | null {
+  const a = l.pago?.absorbido
+  if (!a || a.lado === clave || !(a.importe > 0)) return null
+  return { rotulo: `menos lo pagado de más en ${a.lado === 'banco' ? 'banco' : 'efectivo'}`, importe: -a.importe, sub: true }
+}
+
 export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n: number) => string): ReciboArmado {
   const d = conceptosDisponibles(l)
   const s = l.sueldo
@@ -81,7 +88,8 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n:
   if (e.blanco && d.blanco == null && s) {
     horas.push({
       rotulo: 'Horas en blanco', horas: s.horasBlanco,
-      detalle: s.valorHoraCategoria == null ? hs(s.horasBlanco) : `${hs(s.horasBlanco)} × ${fmt(s.valorHoraCategoria)}/h`,
+      // BRUTO, y dicho: el banco paga el NETO, y sin la palabra el papel parece no sumar.
+      detalle: `${s.valorHoraCategoria == null ? hs(s.horasBlanco) : `${hs(s.horasBlanco)} × ${fmt(s.valorHoraCategoria)}/h`} · bruto`,
       importe: s.bruto,
     })
   }
@@ -103,6 +111,8 @@ export function armarRecibo(l: LineaConOverrides, e: EleccionDelRecibo, fmt: (n:
     elegidos.push(x.total)
     if (e.pagado) {
       renglones.push({ rotulo: 'ya pagado', importe: x.pagado, sub: true })
+      const absorbido = absorbidoPor(l, clave)
+      if (absorbido) renglones.push(absorbido)
       renglones.push({ rotulo: 'resta', importe: x.resta, sub: true })
     }
   }

@@ -51,3 +51,16 @@ test('el mensual no tiene horas en blanco ni en negro: se dice por qué y paga b
   assert.equal(r.horas.length, 0)
   assert.equal(r.total, 700000)
 })
+
+test('el blanco dice que es bruto, y lo pagado de más en efectivo se escribe debajo del banco que lo absorbe', () => {
+  // Real, 22/09 (Agüero 16–30/09): efectivo 41.262 con 51.000 ya pagados → 9.738 de más, que baja el banco.
+  const l = {
+    ...jornalero, sueldo: { ...(jornalero.sueldo as object), negro: 41262 },
+    pago: pagoDeLaLinea({ banco: 230240.12, negro: 41262, pagadoEfectivo: 51000 }),
+  } as unknown as LineaConOverrides
+  const r = armarRecibo(l, { blanco: true, negro: false, banco: true, efectivo: false, pagado: true }, fmt)
+  assert.match(r.horas[0].detalle ?? '', /bruto$/)
+  assert.deepEqual(r.medios.map((m) => [m.rotulo, m.importe]), [
+    ['Depósito en banco', 230240.12], ['ya pagado', 0], ['menos lo pagado de más en efectivo', -9738], ['resta', 220502.12],
+  ])
+})
