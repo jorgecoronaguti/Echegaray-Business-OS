@@ -132,14 +132,22 @@ function FilaMes({ m, elegido, href }: { m: MesPagado; elegido: boolean; href: s
   return (
     <Link href={href} scroll={false}
       className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 border-b border-line py-2.5 hover:bg-surface-quiet lg:grid-cols-[110px_repeat(3,minmax(0,1fr))_90px] lg:gap-6 lg:py-3 ${elegido ? 'bg-surface-quiet' : ''}`}>
-      <div className="flex min-w-0 items-baseline gap-2">
-        <span className="text-[13px] font-medium text-ink">{rotuloMes(m.mes, true)}</span>
-        {m.estado === 'parcial' ? <span className="whitespace-nowrap text-[11px] text-warn">media quincena sin cerrar</span> : null}
+      {/* EN EL TELÉFONO SÓLO EL MES Y EL TOTAL, y el reparto baja una línea con su palabra al lado:
+          cinco columnas de números sin encabezado —el encabezado es `lg:grid`— son cinco cifras que
+          nadie puede nombrar. El dueño y los jefes entran desde el teléfono. */}
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="text-[13px] font-medium text-ink">{rotuloMes(m.mes, true)}</span>
+          {m.estado === 'parcial' ? <span className="whitespace-nowrap text-[11px] text-warn">media quincena sin cerrar</span> : null}
+        </div>
+        <span className="text-[11px] tabular-nums text-muted lg:hidden">
+          {m.total == null ? 'en curso' : `blanco ${millones(m.blanco)} · negro ${millones(m.negro)} · ${pctEntero(pct)} en negro`}
+        </span>
       </div>
-      <div className="text-right text-[13px] tabular-nums text-ink-soft"><Valor v={millones(m.blanco)} falta="en curso" /></div>
-      <div className="text-right text-[13px] tabular-nums text-ink-soft"><Valor v={millones(m.negro)} falta="" /></div>
+      <div className="hidden text-right text-[13px] tabular-nums text-ink-soft lg:block"><Valor v={millones(m.blanco)} falta="en curso" /></div>
+      <div className="hidden text-right text-[13px] tabular-nums text-ink-soft lg:block"><Valor v={millones(m.negro)} falta="" /></div>
       <div className="text-right text-[13px] font-semibold tabular-nums text-ink"><Valor v={millones(m.total)} falta="" /></div>
-      <div className={`text-right text-[13px] tabular-nums ${(pct ?? 0) > 0.5 ? 'text-warn' : 'text-muted'}`}><Valor v={pctEntero(pct)} falta="" /></div>
+      <div className={`hidden text-right text-[13px] tabular-nums lg:block ${(pct ?? 0) > 0.5 ? 'text-warn' : 'text-muted'}`}><Valor v={pctEntero(pct)} falta="" /></div>
     </Link>
   )
 }
@@ -153,9 +161,10 @@ function FilaPersonaPagada({ p, max }: { p: PersonaPagada; max: number }) {
         {p.sinRecibo ? <span className="text-[11px] text-warn">sin recibo cargado: todo contado en negro</span> : null}
         {p.sinLinea ? <span className="text-[11px] text-warn">sin línea de quincena: sólo se puede afirmar el recibo</span> : null}
         {p.reciboMayor != null ? <span className="text-[11px] text-warn">el recibo supera lo cobrado en {millones(p.reciboMayor)}</span> : null}
+        <span className="text-[11px] tabular-nums text-muted lg:hidden">blanco {millones(p.blanco)} · negro {millones(p.negro)}</span>
       </div>
-      <div className="text-right text-[13px] tabular-nums text-ink-soft">{millones(p.blanco)}</div>
-      <div className="text-right text-[13px] tabular-nums text-ink-soft">{millones(p.negro)}</div>
+      <div className="hidden text-right text-[13px] tabular-nums text-ink-soft lg:block">{millones(p.blanco)}</div>
+      <div className="hidden text-right text-[13px] tabular-nums text-ink-soft lg:block">{millones(p.negro)}</div>
       <div className="text-right text-[13px] font-semibold tabular-nums text-ink">{millones(p.total)}</div>
       <div className="col-span-2 row-start-2 flex h-3 overflow-hidden rounded-[2px] lg:col-span-1 lg:row-auto">
         <div className="h-full bg-serie-1" style={{ width: ancho(p.blanco, max) }} />
