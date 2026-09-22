@@ -623,7 +623,9 @@ test('el alto y el ancho se miden como el mockup: el borde va POR AFUERA', () =>
   // Y el hueco que la cabecera reserva TIENE QUE SEGUIR AL PANEL: 344 + 24 de margen + 24 de
   // sangría = 392. Desfasarlos deja el buscador gobernando una tabla que ya no está debajo.
   assert.match(patron, /lg:w-\[344px\]/, 'el panel dejó de medir los 344 del canvas v4')
-  assert.match(codigo(V2 + 'CabeceraSeccion.tsx'), /lg:w-\[392px\]/,
+  // El hueco dejó de ser un literal de Tailwind el 22/09 —`espacioPanel` acepta el ancho del panel
+  // que abre la pantalla— y el número del patrón sigue siendo el mismo, ahora con nombre.
+  assert.match(codigo(V2 + 'CabeceraSeccion.tsx'), /export const HUECO_PANEL_FILO = 392/,
     'el hueco de la cabecera se desfasó del panel: 344 + 24 + 24 = 392')
   assert.match(patron, /boxSizing: 'content-box'/, 'el encabezado de columnas perdió su filo por afuera')
   for (const a of ['TablaProveedores.tsx', 'TablaNombres.tsx']) {

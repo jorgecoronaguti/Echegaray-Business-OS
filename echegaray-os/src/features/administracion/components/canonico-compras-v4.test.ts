@@ -394,9 +394,12 @@ test('la fila elegida se dice SÓLO con el filo amarillo: sin fondo y sin paddin
 test('el panel mide los 344 del canvas y la cabecera le reserva 392', () => {
   const patron = sinComentarios(readFileSync(join(DIR, '../../../shared/components/v2/patron.tsx'), 'utf8'))
   assert.match(patron, /lg:w-\[344px\]/, 'el panel volvió a los 372 del v2 de agosto')
+  // Desde el 22/09 el hueco NO es un literal de Tailwind: es la constante que la cabecera reserva
+  // cuando `espacioPanel` es `true` (una pantalla con un panel propio le pasa SU ancho). El número
+  // que se protege es el mismo; lo que cambió es que ahora se puede seguir.
   assert.match(
     sinComentarios(readFileSync(join(DIR, '../../../shared/components/v2/CabeceraSeccion.tsx'), 'utf8')),
-    /lg:w-\[392px\]/, 'el hueco de la cabecera se desfasó del panel (344 + 24 + 24)')
+    /export const HUECO_PANEL_FILO = 392/, 'el hueco de la cabecera se desfasó del panel (344 + 24 + 24)')
   // Y EL CORTE DE COLUMNAS SIGUE AL PANEL. 1026 (las nueve columnas + gap, con los 88 de «A pagar»)
   // + 393 (panel + margen + filo + sangría) + 40 (padding de página) = 1459: por debajo se sueltan
   // tres columnas. Con el corte viejo de 1356 quedaba una franja de 103px donde las nueve no entran
