@@ -94,10 +94,82 @@ export async function avisarEntregas(port, { dry = false, publicar = publicarYRe
   return { avisadas, pendientes: pend.length }
 }
 
+// ── LO QUE LA APP PIDE POR EL CANAL: RECLAMAR UNA RENDICIÓN (D03) Y PEDIR EL DATO DE UN TICKET (D05) ──
+//
+// La web corre en Vercel y no tiene el token del bot: encola el aviso en `public.efectivo_aviso`
+// (migración 20260922T2800) y esto lo vacía. Mismo canal y mismo releído que el aviso de entrega: un
+// post que la API dice haber publicado pero no se puede leer NO se marca enviado y se reintenta.
+//
+// El texto viene armado de la base —la app no elige qué se dice en el chat de la empresa— y no lleva
+// un solo peso: el canal lo ve todo el grupo que rinde.
+
+/** El canal oficial donde salen los avisos del efectivo. `null` si no hay ninguno atado. */
+export async function canalDeEfectivo(port) {
+  const { rows } = await port.query(
+    `select channel_id from comunicacion.canales_area
+      where plataforma = 'mattermost' and area_clave in ('rendicion', 'compras') and activo
+      order by case area_clave when 'rendicion' then 0 else 1 end limit 1`)
+  return rows[0]?.channel_id ?? null
+}
+
+/** NÚCLEO PURO: el mensaje final. La mención va adelante para que le suene el teléfono a quien debe. */
+export function textoDelPedido({ username, texto }) {
+  return username ? `@${username} ${texto}` : texto
+}
+
+export async function drenarAvisos(port, { dry = false, publicar = publicarYReleer, log = console, tope = 20 } = {}) {
+  let pend
+  try {
+    const { rows } = await port.query(
+      `select a.id, a.tipo, a.texto, i.plataforma_username as username
+         from public.efectivo_aviso a
+         join public.efectivo_entrega e on e.id = a.entrega_id
+         left join public.perfiles pf on pf.persona_id = e.persona_id
+         left join auth.users u on u.id = pf.id
+         left join comunicacion.identidades i
+                on lower(i.email) = lower(u.email) and i.plataforma = 'mattermost' and i.activo
+        where a.enviado_en is null and a.intentos < 5
+        order by a.pedido_en limit $1`, [tope])
+    pend = rows
+  } catch (e) {
+    // Sin la 2800 aplicada no hay cola: no es una falla, es una base más vieja que el código.
+    if (e?.code === '42P01' || e?.code === '42703') return { enviados: 0, sinMigracion: true }
+    throw e
+  }
+  if (!pend.length) return { enviados: 0 }
+  const canal = await canalDeEfectivo(port)
+  if (!canal) {
+    log.warn?.(`efectivo: ${pend.length} pedido(s) sin salir — no hay canal atado a rendicion ni a compras`)
+    return { enviados: 0, sinCanal: pend.length }
+  }
+  let enviados = 0
+  for (const a of pend) {
+    const texto = textoDelPedido(a)
+    if (dry) { log.info?.(`[dry] ${a.tipo}: ${texto.split('\n')[0]}`); continue }
+    let post = null
+    try {
+      post = await publicar(canal, texto)
+    } catch (err) {
+      await port.query('select public.efectivo_aviso_fallo($1, $2)', [a.id, String(err?.message ?? err)])
+      log.warn?.(`efectivo: no pude mandar el ${a.tipo}: ${err?.message ?? err}`)
+      continue
+    }
+    if (!post) {
+      await port.query('select public.efectivo_aviso_fallo($1, $2)', [a.id, 'publicado pero no se pudo releer'])
+      continue
+    }
+    await port.query('select public.efectivo_aviso_enviado($1, $2)', [a.id, post])
+    enviados++
+  }
+  return { enviados, pendientes: pend.length }
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const db = await import('../lib/db.mjs')
-  avisarEntregas({ query: (...a) => db.query(...a) }, { dry: process.argv.includes('--dry') })
-    .then((r) => console.log(JSON.stringify(r)))
+  const port = { query: (...a) => db.query(...a) }
+  const dry = process.argv.includes('--dry')
+  Promise.all([avisarEntregas(port, { dry }), drenarAvisos(port, { dry })])
+    .then(([e, a]) => console.log(JSON.stringify({ entregas: e, pedidos: a })))
     .catch((e) => { console.error('ERROR:', e.message); process.exitCode = 1 })
     .finally(() => db.closePool?.())
 }

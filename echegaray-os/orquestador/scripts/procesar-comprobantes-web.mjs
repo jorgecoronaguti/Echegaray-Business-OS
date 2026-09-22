@@ -69,9 +69,12 @@ async function main() {
     // EFECTIVO A RENDIR (22/09/2026): el aviso de cada entrega nueva, con el enlace para firmar. Misma
     // cadencia que la cola; una falla del aviso no frena los comprobantes.
     try {
-      const { avisarEntregas } = await import('./efectivo-avisos.mjs')
+      const { avisarEntregas, drenarAvisos } = await import('./efectivo-avisos.mjs')
       const a = await avisarEntregas(port, { log })
       if (a.avisadas) process.stdout.write(`✔ ${a.avisadas} aviso(s) de entrega de efectivo\n`)
+      // D03 «Reclamar rendición» y D05 «Pedir el dato»: lo que la app encoló, sale acá.
+      const p = await drenarAvisos(port, { log })
+      if (p.enviados) process.stdout.write(`✔ ${p.enviados} pedido(s) de efectivo al canal\n`)
     } catch (e) { log.warn('efectivo: los avisos fallaron', { error: String(e?.message ?? e) }) }
   } finally {
     await db.closePool?.().catch?.(() => {})

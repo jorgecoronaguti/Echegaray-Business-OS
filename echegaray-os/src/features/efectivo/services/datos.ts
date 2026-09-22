@@ -114,6 +114,11 @@ export interface ExtraDeFicha {
   papelUrl: string | null
   /** Las filas de Compras que rinden esta entrega, por clave. */
   compras: Map<string, FilaDeCompras>
+  /**
+   * D03 · el último «Reclamar rendición» de esta entrega (migración 20260922T2800). `enviadoEn` es la
+   * EVIDENCIA: mientras esté en null el pedido está encolado, no avisado.
+   */
+  reclamo: { pedidoEn: string; enviadoEn: string | null } | null
 }
 
 /**
@@ -122,11 +127,15 @@ export interface ExtraDeFicha {
  */
 export async function leerExtraDeFicha(entregaId: string, claves: string[]): Promise<ExtraDeFicha> {
   const supabase = await createClient()
-  const [fila, compras] = await Promise.all([
+  const [fila, compras, reclamo] = await Promise.all([
     supabase.from('efectivo_entrega').select('creada_en, entregada_por, conformidad_papel_url').eq('id', entregaId).maybeSingle(),
     claves.length
       ? supabase.from('compra_sheet').select('fila, clave, fecha, proveedor, concepto, tipo, comprobante, total, tipo_pago').in('clave', claves)
       : Promise.resolve({ data: [] as unknown[], error: null }),
+    // SIN LA 2800 LA TABLA NO EXISTE: se lee con `maybeSingle` y el error se ignora — la ficha sigue
+    // entera, sólo que no cuenta el reclamo. Nunca se inventa que no hubo ninguno.
+    supabase.from('efectivo_aviso').select('pedido_en, enviado_en').eq('entrega_id', entregaId)
+      .eq('tipo', 'reclamo').order('pedido_en', { ascending: false }).limit(1).maybeSingle(),
   ])
   const f = fila.data as { creada_en: string | null; entregada_por: string | null; conformidad_papel_url: string | null } | null
   const [quien, papel] = await Promise.all([
@@ -135,11 +144,13 @@ export async function leerExtraDeFicha(entregaId: string, claves: string[]): Pro
   ])
   const mapa = new Map<string, FilaDeCompras>()
   for (const c of (compras.data ?? []) as FilaDeCompras[]) if (c.clave) mapa.set(c.clave, { ...c, total: c.total == null ? null : Number(c.total) })
+  const r = reclamo.data as { pedido_en: string; enviado_en: string | null } | null
   return {
     creadaEn: f?.creada_en ?? null,
     entregadaPor: (quien.data as { nombre: string | null } | null)?.nombre ?? null,
     papelUrl: papel,
     compras: mapa,
+    reclamo: r ? { pedidoEn: r.pedido_en, enviadoEn: r.enviado_en } : null,
   }
 }
 

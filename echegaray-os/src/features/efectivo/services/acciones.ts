@@ -92,6 +92,20 @@ export async function anularEntregaAction(entrada: z.input<typeof motivoSchema>)
   return rpc<null>('anular_entrega_efectivo', { p_entrega: p.data.id, p_motivo: p.data.motivo })
 }
 
+/**
+ * D03 · «Reclamar rendición» — SALE POR EL CANAL, no se queda en la app.
+ *
+ * La web no tiene el token del bot: `reclamar_rendicion_entrega` encola el pedido en
+ * `efectivo_aviso` (migración 20260922T2800) y el orquestador de la VM lo publica en el canal
+ * Efectivo. Por eso lo que devuelve esta acción es «encolado», nunca «avisado»: lo segundo lo dice
+ * `enviado_en` + `mm_post_id`, que son la evidencia del post leído de vuelta en Mattermost.
+ */
+export async function reclamarRendicionAction(entrega: string): Promise<Resultado<string>> {
+  const p = uuid.safeParse(entrega)
+  if (!p.success) return { ok: false, error: 'Entrega inválida' }
+  return rpc<string>('reclamar_rendicion_entrega', { p_entrega: p.data })
+}
+
 const faltaSchema = z.object({ id: uuid, falta: texto(400).min(1, 'Decí qué falta') })
 
 /** D04/D05 — «Observar y pedir el dato»: queda observado con el motivo, y a la persona le llega el pedido. */

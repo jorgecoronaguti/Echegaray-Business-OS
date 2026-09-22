@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import { useRef, useState, useTransition } from 'react'
 import type { Entrega } from '../types'
 import { entregasCsv } from '../logica/entregas'
-import { anularEntregaAction } from '../services/acciones'
+import { anularEntregaAction, reclamarRendicionAction } from '../services/acciones'
 import { subirConformidadEnPapel } from '../services/subida'
 import { ACCEPT_PAGO } from '@/features/administracion/services/comprobanteDePago'
 import { V, botonClaro, campo } from './estilo'
@@ -50,6 +50,41 @@ export function SubirPapel({ entrega }: { entrega: string }) {
         {pendiente ? 'Subiendo…' : 'Subir el papel firmado'}
       </button>
       {error && <span role="alert" style={{ fontSize: '12px', color: V.neg }}>{error}</span>}
+    </span>
+  )
+}
+
+/**
+ * D03 · «RECLAMAR RENDICIÓN» — el pedido sale por el canal Efectivo.
+ *
+ * ═══ POR QUÉ NO DICE «AVISADO» AL VOLVER ═══
+ *
+ * Apretar el botón ENCOLA (`efectivo_aviso`); quien publica en Mattermost es el orquestador de la VM,
+ * que es el único con el token del bot. Decir «avisado» acá sería afirmar un efecto que todavía no
+ * ocurrió — el mismo defecto que tenía el botón apagado, al revés. La pantalla dice «encolado» y la
+ * ficha muestra cuándo salió de verdad, que es cuando la cola guarda el id del post.
+ */
+export function ReclamarRendicion({ entrega, ultimo }: { entrega: string; ultimo: string | null }) {
+  const router = useRouter()
+  const [dicho, setDicho] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [pendiente, empezar] = useTransition()
+  const reclamar = () => empezar(async () => {
+    setError(null)
+    const r = await reclamarRendicionAction(entrega)
+    if (!r.ok) { setError(r.error); return }
+    setDicho('Pedido encolado: sale por el canal Efectivo.')
+    router.refresh()
+  })
+  return (
+    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+      <button type="button" onClick={reclamar} disabled={pendiente} style={{ ...botonClaro, opacity: pendiente ? 0.6 : 1 }} data-testid="reclamar-rendicion">
+        {pendiente ? 'Reclamando…' : 'Reclamar rendición'}
+      </button>
+      {error && <span role="alert" style={{ fontSize: '12px', color: V.neg }}>{error}</span>}
+      {!error && (dicho || ultimo) && (
+        <span style={{ fontSize: '11.5px', color: V.apagado }} data-testid="reclamo-estado">{dicho ?? ultimo}</span>
+      )}
     </span>
   )
 }

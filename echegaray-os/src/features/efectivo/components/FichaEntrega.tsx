@@ -11,9 +11,20 @@ import {
 } from '../logica/entregas'
 import { urlEfectivo, urlFilaDeCompras } from '../logica/url'
 import type { ExtraDeFicha } from '../services/datos'
-import { AnularEntrega, SubirPapel } from './Botones'
+import { AnularEntrega, ReclamarRendicion, SubirPapel } from './Botones'
 import { ALTO_V2, HOVER_FILA } from '@/shared/components/v2/patron'
 import { COLOR_TONO, FONDO_OBSERVADO, MONO, V, botonClaro, botonOscuro, cifraFicha, eyebrow, punto } from './estilo'
+
+/**
+ * QUÉ PASÓ CON EL ÚLTIMO RECLAMO — dicho por su evidencia, no por la intención.
+ *
+ * `enviadoEn` viene de `efectivo_aviso_enviado`, que sólo se escribe con el id del post releído de
+ * Mattermost. Sin eso el pedido está EN COLA: decir «reclamado» sería afirmar un efecto que no ocurrió.
+ */
+export function textoDelReclamo(r: { pedidoEn: string; enviadoEn: string | null } | null): string | null {
+  if (!r) return null
+  return r.enviadoEn ? `Reclamado por el canal el ${ddmmHora(r.enviadoEn)}` : 'Reclamo en cola: todavía no salió al canal'
+}
 
 const COLUMNAS = '72px minmax(0,1.4fr) minmax(0,1fr) 120px 140px'
 /** El círculo con las iniciales de la ficha (`D03`): un tamaño de ícono, no un alto de fila. */
@@ -66,11 +77,7 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
         </div>
         {abierta && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
-            {/* EL AVISO SALE POR EL CANAL NUEVO que arma el dueño: hasta que esté vinculado, el botón no finge
-                que mandó algo. */}
-            <button type="button" disabled style={{ ...botonClaro, opacity: 0.5, cursor: 'not-allowed' }} title="Sale por el canal de Mattermost cuando esté vinculado" data-testid="reclamar-rendicion">
-              Reclamar rendición
-            </button>
+            <ReclamarRendicion entrega={e.id} ultimo={textoDelReclamo(extra.reclamo)} />
             <Link href={urlEfectivo({ entrega: e.codigo, panel: 'devolucion' })} prefetch={false} scroll={false} style={botonClaro} data-testid="abrir-devolucion">
               Registrar devolución
             </Link>
@@ -155,7 +162,7 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
                 ))}
             </div>
           </div>
-          <Papeles e={e} papelUrl={extra.papelUrl} fotos={comprobantes.filter((c) => c.storage_path).length} />
+          <Papeles e={e} papelUrl={extra.papelUrl} fotos={comprobantes.filter((c) => c.storage_path).length} destino={nombreDestino} />
           {anulable && <AnularEntrega entrega={e.id} volverHref={urlEfectivo({})} />}
           {e.estado === 'anulada' && e.anulada_motivo && (
             <div style={{ fontSize: '12.5px', color: V.apagado }}>Anulada: {e.anulada_motivo}</div>
@@ -176,11 +183,23 @@ function Cifra({ rotulo, valor, bajada, color, bajadaColor }: { rotulo: string; 
   )
 }
 
-/** PAPELES — la conformidad y las fotos. La rendición cerrada y el recibo son de la etapa 5 y no se dibujan. */
-function Papeles({ e, papelUrl, fotos }: { e: Entrega; papelUrl: string | null; fotos: number }) {
+/**
+ * PAPELES (D03) — la conformidad, las fotos, la rendición cerrada y DÓNDE cuelgan.
+ *
+ * ═══ POR QUÉ LA ETIQUETA NO DICE «DRIVE» ═══
+ *
+ * El diseño rotula las dos primeras filas con «Drive». Hoy esos archivos viven en el bucket privado
+ * `comprobantes` de Supabase, no en Drive: escribir «Drive» al lado de un archivo que no está en Drive
+ * sería afirmar un hecho falso sobre dónde buscarlo, que es exactamente para lo que sirve esa columna.
+ * Se rotula la fuente REAL y la ruta de la obra se dice como la dice el diseño. El archivado en la
+ * carpeta de la obra lo tiene que hacer el orquestador (la web no tiene credenciales de Google).
+ */
+function Papeles({ e, papelUrl, fotos, destino }: { e: Entrega; papelUrl: string | null; fotos: number; destino: string }) {
   // Ritmo de panel: «Papeles» es la columna lateral de la ficha, no una tabla de datos; el diseño (D03) la
   // dibuja a 42 y crece con el botón de subir el papel.
   const fila = { minHeight: 42, display: 'flex', alignItems: 'center', gap: 10, fontSize: '13px' } as const
+  const fuente = { marginLeft: 'auto', fontSize: '11.5px', color: V.tenue, whiteSpace: 'nowrap' } as const
+  const cerrada = e.estado === 'cerrada'
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 18, borderTop: `1px solid ${V.linea}` }} data-testid="ficha-papeles">
       <div style={{ fontSize: '13.5px', fontWeight: 600 }}>Papeles</div>
@@ -189,7 +208,9 @@ function Papeles({ e, papelUrl, fotos }: { e: Entrega; papelUrl: string | null; 
           {e.conformidad ? (
             <>
               <span>Conformidad {e.codigo} firmada{e.conformidad_en ? ' en el teléfono' : ' en papel'}</span>
-              {papelUrl && <a href={papelUrl} target="_blank" rel="noreferrer" style={{ marginLeft: 'auto', fontSize: '11.5px', color: V.tenue, textDecoration: 'underline' }}>ver el papel</a>}
+              {papelUrl
+                ? <a href={papelUrl} target="_blank" rel="noreferrer" style={{ ...fuente, textDecoration: 'underline' }}>ver el papel</a>
+                : <span style={fuente}>firma en la app</span>}
             </>
           ) : (
             <>
@@ -198,9 +219,20 @@ function Papeles({ e, papelUrl, fotos }: { e: Entrega; papelUrl: string | null; 
             </>
           )}
         </div>
-        <div style={{ ...fila, color: fotos ? V.tinta : V.tenue }}>
-          {fotos} {fotos === 1 ? 'foto' : 'fotos'} de comprobantes
+        <div style={{ ...fila, borderBottom: `1px solid ${V.lineaFila}`, color: fotos ? V.tinta : V.tenue }}>
+          <span>{fotos} {fotos === 1 ? 'foto' : 'fotos'} de comprobantes</span>
+          {fotos > 0 && <span style={fuente}>bucket comprobantes</span>}
         </div>
+        {/* LA RENDICIÓN CERRADA: el diseño la dibuja apagada hasta que existe. Mientras la entrega está
+            abierta no hay nada que cerrar, y una vez cerrada el papel todavía no lo genera nadie: se
+            dice así, no se dibuja un enlace que no lleva a ningún lado. */}
+        <div style={{ ...fila, color: V.tenue }} data-testid="papel-rendicion-cerrada">
+          <span>Rendición cerrada — {cerrada ? 'sin generar' : 'la entrega sigue abierta'}</span>
+        </div>
+      </div>
+      <div style={{ fontSize: '12px', color: V.apagado, lineHeight: 1.5 }} data-testid="papeles-ruta">
+        Cuelgan de la obra, como el resto:{' '}
+        <span style={{ fontFamily: MONO, fontSize: '11.5px' }}>{destino} / Rendiciones / {e.codigo}</span>
       </div>
     </div>
   )
