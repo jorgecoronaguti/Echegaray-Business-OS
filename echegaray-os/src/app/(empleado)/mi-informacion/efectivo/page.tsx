@@ -50,7 +50,9 @@ export default async function MiEfectivoPage({ searchParams }: { searchParams: P
 
   const { entregas, tickets } = lectura.dato
   const r = resumenMiEfectivo(entregas, tickets)
-  const numero = textoTengoQueRendir(r)
+  // Cuántas entregas abiertas esperan la firma: cambia el texto de «Tengo que rendir» (QA 22/09/2026).
+  const sinFirmar = abiertas(entregas).filter((e) => !e.conformidad).length
+  const numero = textoTengoQueRendir(r, sinFirmar)
   const hoy = tarjetaDeHoy(entregas, tickets)
   const piden = r.piden[0] ?? null
   const ruta = (h: string) => conVuelta(`/mi-informacion/efectivo${h}`, ctx.sufijo)

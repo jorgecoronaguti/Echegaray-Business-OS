@@ -56,7 +56,7 @@ export default async function RendirPage({ searchParams }: { searchParams: Param
   const vivas = abiertas(lectura.dato)
   return (
     <PantallaEmpleado titulo="Rendir un gasto" sub="¿De qué entrega salió la plata?" volver={{ href: ctx.volverA, label: 'Mi efectivo' }}>
-      {vivas.length === 0 ? <SinEfectivo /> : (
+      {vivas.length === 0 ? <SinEfectivo esperandoFirma={false} /> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="rendir-elegir-entrega">
           {vivas.map((e) => (
             <FilaAcceso key={e.id} href={conVuelta(`/mi-informacion/efectivo/rendir?entrega=${e.id}`, ctx.sufijo)}>

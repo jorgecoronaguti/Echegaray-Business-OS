@@ -82,11 +82,22 @@ export function TarjetaMiEfectivo({ t, href }: { t: Extract<TarjetaHoy, { tipo: 
 }
 
 /** El vacío de M12, con su texto. La versalita «Vacío» del mockup rotula el catálogo, no la pantalla. */
-export function SinEfectivo() {
+/**
+ * `esperandoFirma`: hay una entrega abierta que la persona todavía no firmó. Decir «no tenés efectivo» ahí
+ * es falso —la entrega está a la vista en «Mi efectivo»— y deja a la persona sin saber qué le falta hacer
+ * (QA de las pantallas de teléfono, 22/09/2026).
+ */
+export function SinEfectivo({ esperandoFirma = false }: { esperandoFirma?: boolean } = {}) {
   return (
     <Caja gap={9} relleno="16px 18px" testid="efectivo-vacio">
-      <div style={{ fontSize: 14.5, fontWeight: 600, color: C.ink }}>No tenés efectivo de la empresa</div>
-      <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5 }}>Cuando te entreguen, aparece acá.</div>
+      <div style={{ fontSize: 14.5, fontWeight: 600, color: C.ink }}>
+        {esperandoFirma ? 'Falta que firmes la conformidad' : 'No tenés efectivo de la empresa'}
+      </div>
+      <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5 }}>
+        {esperandoFirma
+          ? 'En «Mi efectivo» tenés la entrega esperando tu firma. Cuando firmes, podés rendir y devolver.'
+          : 'Cuando te entreguen, aparece acá.'}
+      </div>
     </Caja>
   )
 }

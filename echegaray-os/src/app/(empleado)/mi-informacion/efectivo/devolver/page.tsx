@@ -4,7 +4,7 @@ import { C } from '@/shared/components/movil/tokens'
 import { AvisoError } from '@/shared/components/movil/Piezas'
 import { contextoEfectivo } from '@/features/efectivo/campo/contexto'
 import { getMiEfectivo } from '@/features/efectivo/campo/datos'
-import { cifra, conVuelta, destino, pesos, resumenMiEfectivo } from '@/features/efectivo/campo/logica'
+import { abiertas, cifra, conVuelta, destino, pesos, resumenMiEfectivo } from '@/features/efectivo/campo/logica'
 import { Caja, CifraGrande, Contorno, Pie, Renglon, Rotulo, SinPublicar } from '@/features/efectivo/campo/components/Piezas'
 import { SinEfectivo } from '@/features/efectivo/campo/components/TarjetasHoy'
 
@@ -48,7 +48,7 @@ export default async function DevolverPage({ searchParams }: { searchParams: Par
   return (
     <PantallaEmpleado titulo="Devolver efectivo" volver={{ ...volver }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minHeight: 'calc(100vh - 110px)' }}>
-        {r.entregas.length === 0 ? <SinEfectivo /> : (
+        {r.entregas.length === 0 ? <SinEfectivo esperandoFirma={abiertas(lectura.dato.entregas).some((e) => !e.conformidad)} /> : (
           <Caja testid="devolver-en-la-mano">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               <Rotulo>Tenés en la mano</Rotulo>

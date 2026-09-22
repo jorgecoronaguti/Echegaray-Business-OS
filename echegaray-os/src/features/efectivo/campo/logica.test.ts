@@ -83,6 +83,8 @@ test('M03: el saldo negativo no se esconde en un cero', () => {
 
 test('M03: sin entregas y en cero, cada uno con su frase', () => {
   assert.match(textoTengoQueRendir(resumenMiEfectivo([], [])).detalle ?? '', /No tenés efectivo de la empresa/)
+  // Con una entrega esperando la firma NO se niega la entrega que la pantalla muestra arriba (QA 22/09/2026).
+  assert.match(textoTengoQueRendir(resumenMiEfectivo([], []), 1).detalle ?? '', /Firmá la conformidad/)
   const cero = resumenMiEfectivo([entrega({ rendido: 1200000, en_su_poder: 0 })], [])
   assert.equal(textoTengoQueRendir(cero).detalle, 'Rendiste todo lo que recibiste.')
 })

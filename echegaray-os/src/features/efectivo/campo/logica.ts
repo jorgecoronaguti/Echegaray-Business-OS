@@ -190,11 +190,18 @@ export function resumenMiEfectivo(entregas: readonly EntregaSaldo[], tickets: re
  * entregada). El negativo no se esconde en un cero: es plata que la empresa le debe a la persona, y
  * eso lo resuelve Administración, no la pantalla.
  */
-export function textoTengoQueRendir(r: Pick<ResumenEfectivo, 'tengoQueRendir' | 'entregas'>): {
-  rotulo: string; valor: string; detalle: string | null
-} {
+export function textoTengoQueRendir(
+  r: Pick<ResumenEfectivo, 'tengoQueRendir' | 'entregas'>,
+  sinFirmar = 0,
+): { rotulo: string; valor: string; detalle: string | null } {
   if (r.entregas.length === 0) {
-    return { rotulo: 'Tengo que rendir', valor: pesos(0), detalle: 'No tenés efectivo de la empresa. Cuando te entreguen, aparece acá.' }
+    // QA del teléfono, 22/09/2026: con una entrega esperando la firma, la pantalla mostraba la tarjeta
+    // «te entregan $ 12.000» y abajo «No tenés efectivo de la empresa». La plata no cuenta hasta firmar
+    // —eso no cambia—, pero el texto tiene que decir QUÉ falta, no negar la entrega que se ve arriba.
+    const detalle = sinFirmar > 0
+      ? 'Firmá la conformidad de arriba y la plata aparece acá.'
+      : 'No tenés efectivo de la empresa. Cuando te entreguen, aparece acá.'
+    return { rotulo: 'Tengo que rendir', valor: pesos(0), detalle }
   }
   if (r.tengoQueRendir < 0) {
     return {
