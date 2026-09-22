@@ -30,11 +30,12 @@ function portFalso({ canal = true, perfil = 'perf-1' } = {}) {
 }
 
 test('reclama lo que dice que se entregó plata, y no una factura ni una foto', async () => {
-  assert.equal((await especialista.reconoce('entregué $250.000 a Sosa', { area: 'compras' }))?.destino, 'entregar')
-  assert.equal(await especialista.reconoce('la factura 0001-00012345 de Acindar', { area: 'compras' }), null)
-  assert.equal(await especialista.reconoce('entregué $250.000 a Sosa', { area: 'compras', fileIds: ['f1'] }), null,
+  assert.equal((await especialista.reconoce('entregué $250.000 a Sosa', { area: 'rendicion' }))?.destino, 'entregar')
+  assert.equal(await especialista.reconoce('la factura 0001-00012345 de Acindar', { area: 'rendicion' }), null)
+  assert.equal(await especialista.reconoce('entregué $250.000 a Sosa', { area: 'rendicion', fileIds: ['f1'] }), null,
     'con foto manda el comprobante, no el texto')
-  assert.equal(await especialista.reconoce('entregué $250.000 a Sosa', { area: 'personas' }), null)
+  assert.equal(await especialista.reconoce('entregué $250.000 a Sosa', { area: 'compras' }), null,
+    'en Comprobantes-gastos no se entrega efectivo')
 })
 
 test('registra lo que dice el mensaje: monto, persona, obra y quién la entregó', async () => {

@@ -24,14 +24,12 @@
 // El saldo de cada persona. El canal lo ven todos los que rinden, y cuánto tiene cada uno en la mano
 // es de esa persona y de Administración: se ve en la app, no en el grupo.
 //
-// ═══ EL CANAL ES EL DE SIEMPRE (dueño, 22/09/2026, segunda decisión) ═══
+// ═══ EL CANAL «EFECTIVO» (dueño, 22/09/2026, decisión final) ═══
 //
-// Primero pidió un canal nuevo; después: *«quiero usar el canal "envio de comprobantes" en lugar del nuevo
-// q has creado»*. Las rendiciones entran por **Comprobantes-gastos**, el mismo canal donde ya se mandan los
-// gastos pagados con la caja de la oficina. Quién manda la foto decide cuál es cuál: si tiene una entrega
-// ABIERTA, el ticket se rinde contra ella; si no, es una compra común y la atiende el especialista de
-// comprobantes, como siempre. Se puede decir que NO es de la entrega escribiéndolo con la foto (ver
-// `NO_ES_DE_LA_ENTREGA`), porque la persona es la única que sabe con qué plata pagó.
+// Tres vueltas: canal nuevo → el de comprobantes → canal propio otra vez, cuando el dueño vio que mezclarlos
+// obligaba al bot a adivinar (*«ese es de carga de archivos multimedia para gastos»*). Ahora no hay nada que
+// adivinar: TODO lo que entra al canal Efectivo es efectivo a rendir —una foto es un ticket, salvo que sea la
+// foto de un vale de entrega—, y Comprobantes-gastos es sólo gastos de compras.
 //
 // ═══ LAS DOS PUERTAS, FALLA CERRADO ═══
 //
@@ -40,16 +38,17 @@
 //      alcanza con estar en el canal: rendir descuenta de SU saldo, así que tiene que tener uno.
 import { procesarComprobantes } from '../comprobantes/circuito.mjs'
 import { canalOficialDeArea } from '../../lib/canal-de-area.mjs'
+import { atenderVale } from './entregas-efectivo.mjs'
 
 export const AREA_RENDICION = 'rendicion'
-/** Las áreas cuyo canal oficial acepta una rendición. `compras` es Comprobantes-gastos (dueño, 22/09/2026). */
-export const AREAS_QUE_RINDEN = Object.freeze([AREA_RENDICION, 'compras'])
+/** Las áreas cuyo canal oficial acepta una rendición: sólo la del canal Efectivo. */
+export const AREAS_QUE_RINDEN = Object.freeze([AREA_RENDICION])
 /** Lo que escribe quien pagó de su bolsillo o con la caja de la oficina teniendo una entrega abierta. */
 export const RE_NO_ES_DE_LA_ENTREGA = /\bno es (de la|de mi|a rendir)\b|caja de la oficina|de la caja chica/i
 const RE_CODIGO = /\bER-?\s?(\d{1,6})\b/i
 
 export const TEXTO = Object.freeze({
-  CANAL: 'Las rendiciones se mandan al canal de comprobantes. Mandá la foto del ticket ahí.',
+  CANAL: 'Las rendiciones se mandan al canal Efectivo. Mandá la foto del ticket ahí.',
   NO_VERIFICABLE: 'No pude confirmar desde dónde escribís ni quién sos, así que no cargué nada. Probá de nuevo en un minuto.',
   SIN_PERSONA: 'No encuentro tu legajo detrás de este usuario de Mattermost, y cada rendición descuenta del saldo de una persona. Avisale a Administración.',
   ES_PRUEBA: 'Esta persona es de PRUEBA: no cargo su ticket en Compras. Si esto no es una prueba, avisale a Administración.',
@@ -58,7 +57,7 @@ export const TEXTO = Object.freeze({
     'Soy **Rendiciones**. Para rendir un gasto pagado con efectivo que te entregó la empresa:',
     '',
     '1. Sacá la foto del ticket o la factura y mandala a este canal. No hace falta mencionarme.',
-    '   Si ese gasto NO salió de la plata que te entregaron, escribí «no es de la entrega» con la foto.',
+    '   Si el gasto lo pagaste con la caja de la oficina, mandalo a Comprobantes-gastos, no acá.',
     '2. La cargo sola en **Compras** como «A rendir», a la obra de tu entrega, y te contesto qué quedó.',
     '3. Si tenés más de una entrega abierta, escribí su número (por ejemplo **ER-0147**) junto con la foto.',
     '',
@@ -128,16 +127,13 @@ export const especialista = {
   titulo: 'Rendiciones · efectivo a rendir',
   descripcion:
     'Rendí un gasto pagado con efectivo que te entregó la empresa: mandá la foto del ticket al canal de '
-    + 'comprobantes. Lo cargo en Compras como «A rendir», a la obra de tu entrega, y baja lo que te queda por rendir.',
-  ejemplos: ['(mandá la foto del ticket al canal de comprobantes)', 'cómo rindo un gasto'],
+    + 'efectivo. Lo cargo en Compras como «A rendir», a la obra de tu entrega, y baja lo que te queda por rendir.',
+  ejemplos: ['(mandá la foto del ticket al canal Efectivo)', 'cómo rindo un gasto'],
   operativo: true,
   preferidoDeArea: true,
 
   async reconoce(texto, ctx = {}) {
     if (!AREAS_QUE_RINDEN.includes(ctx.area)) return null
-    // En el canal de comprobantes manda el especialista de compras: él delega acá SÓLO cuando quien manda
-    // la foto tiene una entrega abierta. Sin eso, una foto ahí es una compra común.
-    if (ctx.area === 'compras' && !ctx.delegado) return null
     if ((ctx.fileIds?.length ?? 0) > 0) return { destino: 'rendir', confianza: 1 }
     // En su propio canal, un texto sin foto se contesta con cómo se usa: el área tiene que tener dueño.
     return { destino: 'ayuda', confianza: 0.5 }
@@ -145,9 +141,14 @@ export const especialista = {
 
   // `procesar` es inyectable para que los tests prueben QUÉ se le manda al circuito (el forzado de
   // «A rendir» y del pago); en producción es siempre el circuito real.
-  async atender({ texto, intencion, port, actor, google, fileIds = [], postId, mattermost, log, procesar = procesarComprobantes }) {
+  async atender({ texto, intencion, port, actor, google, fileIds = [], postId, mattermost, log, procesar = procesarComprobantes, vale = atenderVale }) {
     const ruta = intencion ?? await this.reconoce(texto, { fileIds, area: AREA_RENDICION })
     if (!fileIds.length || ruta?.destino !== 'rendir') return { texto: TEXTO.AYUDA, estado: 'ayuda', privado: false }
+
+    // LA FOTO DE UN VALE NO ES UN TICKET: es plata SALIENDO del cajón. Se mira sólo si el mensaje dice
+    // «vale» o «entregué», y si el papel resulta ser otra cosa, sigue como ticket. Ver `entregas-efectivo`.
+    const esVale = await vale({ texto, port, actor, mattermost, fileIds, log }).catch(() => null)
+    if (esVale) return esVale
 
     // 1. CANAL: el oficial de rendiciones o el de comprobantes. Un canal cualquiera sigue sin entrar.
     let canal = { ok: false, motivo: 'no_es_el_oficial' }

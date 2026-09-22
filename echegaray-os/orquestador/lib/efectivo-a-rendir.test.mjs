@@ -70,19 +70,19 @@ test('la historia del proveedor NUNCA sugiere «A rendir»: lo decide quién pag
   assert.equal(p.ultimas.length, 5, 'lo que había se sigue mostrando, sin afirmarlo')
 })
 
-test('Comprobantes-gastos: sin entrega abierta, el gasto de la caja entra como sale del papel', async () => {
+test('Comprobantes-gastos volvió a ser sólo compras: el efectivo vive en su propio canal', async () => {
   // Dos pedidos del dueño el 22/09/2026, en este orden: «en el canal comprobantes gastos tb se van a subir
   // comprobantes de consumos en efectivo q actualmente esta todo armado», y después «quiero usar el canal
   // "envio de comprobantes" en lugar del nuevo q has creado». Conviven: quien NO tiene efectivo a rendir
   // abierto carga como siempre, y su foto no la reclama Rendiciones.
   const { especialista } = await import('../comunicacion/especialistas/rendiciones.mjs')
   assert.equal(await especialista.reconoce('', { area: 'compras', fileIds: ['x'] }), null,
-    'una foto suelta en Comprobantes-gastos no la reclama Rendiciones')
+    'una foto en Comprobantes-gastos no la reclama Rendiciones')
   const { readFileSync } = await import('node:fs')
   const canal = readFileSync(new URL('../comunicacion/especialistas/comprobantes.mjs', import.meta.url), 'utf8')
-  // «A rendir» no se escribe acá: lo fuerza la rendición, y sólo cuando hay una entrega abierta.
+  // Ni «A rendir», ni entregas, ni vales: ese canal no toca el efectivo.
   assert.doesNotMatch(canal, /forzar: \{/)
-  assert.match(canal, /entregasAbiertasDe/, 'la delegación pregunta por la entrega abierta, no por el canal')
+  assert.doesNotMatch(canal, /entregasAbiertasDe|atenderVale/)
 })
 
 test('CAJA no cuenta dos veces el ticket rendido: «Ya salió» del día y lo pagado del mes', async () => {

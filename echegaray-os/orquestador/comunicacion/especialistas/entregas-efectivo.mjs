@@ -13,7 +13,7 @@
 //
 // ═══ LAS DOS PUERTAS ═══
 //
-//   1. CANAL: el oficial de `compras` (Comprobantes-gastos) o de `rendicion`. Un canal cualquiera no entra.
+//   1. CANAL: el oficial del área `rendicion` (el canal Efectivo). Un canal cualquiera no entra.
 //   2. QUIÉN: la escritura corre COMO EL PERFIL de quien escribe (`comoUsuario`), así que la base aplica
 //      `es_administracion()`. Si quien lo pide no puede entregar, lo rechaza Postgres, no este archivo. Y la
 //      entrega queda firmada con su nombre en `entregada_por`, no con el del robot.
@@ -26,7 +26,7 @@ import { leerVale } from '../../lib/efectivo-vale-vision.mjs'
 import { bajarAdjunto } from '../comprobantes/flujo.mjs'
 import { subirAStorage } from '../../lib/storage-supabase.mjs'
 
-export const AREAS_QUE_ENTREGAN = Object.freeze(['compras', 'rendicion'])
+export const AREAS_QUE_ENTREGAN = Object.freeze(['rendicion'])
 
 /**
  * LA FOTO DEL VALE (dueño, 22/09/2026: «tb registro mediante multimedia»). Se dispara con lo que ESCRIBE
@@ -37,7 +37,7 @@ export const AREAS_QUE_ENTREGAN = Object.freeze(['compras', 'rendicion'])
 export const RE_VALE = /\bvale\b|\bentreg[a-záéíóúñ]*\b|\ble di\b|\bcomprobante de entrega\b/i
 
 export const TEXTO = Object.freeze({
-  CANAL: 'El efectivo se entrega desde el canal de comprobantes. Escribilo ahí.',
+  CANAL: 'El efectivo se entrega desde el canal Efectivo. Escribilo ahí.',
   NO_VERIFICABLE: 'No pude confirmar desde dónde escribís ni quién sos, así que no registré nada. Probá de nuevo en un minuto.',
   SIN_PERSONA: 'No encuentro tu usuario en el padrón, y una entrega queda firmada por quien la hace. Avisale a Administración.',
   SIN_PERMISO: 'Entregar efectivo es de Dirección, Administración o el jefe de obra. No registré nada.',
@@ -154,14 +154,14 @@ export async function atenderVale(d) {
 export const especialista = {
   slug: 'entregas-efectivo',
   agentSlug: 'compras',
-  area: 'compras',
+  area: 'rendicion',
   titulo: 'Efectivo a rendir · entregas',
   descripcion:
     'Registrá la entrega de efectivo escribiéndola: «entregué $250.000 a Rubén Sosa para el galpón 8». '
     + 'Queda firmada a tu nombre, la persona la firma desde el teléfono y sus tickets se rinden contra ella.',
   ejemplos: ['entregué $250.000 a Rubén Sosa para el galpón 8', 'le di $30.000 a Agüero para gasoil'],
   operativo: true,
-  // ATIENDE POR RECLAMO, NO POR CANAL: el dueño del área `compras` es el especialista de comprobantes, y un
+  // ATIENDE POR RECLAMO, NO POR CANAL: el dueño del área `rendicion` es el especialista de rendiciones, y un
   // área tiene que resolver a exactamente uno. Acá sólo llega lo que `reconoce` reclama: un texto que dice
   // que se entregó plata.
   preferidoDeArea: false,
@@ -174,7 +174,7 @@ export const especialista = {
   },
 
   async atender({ texto, intencion, port, actor, log, entregar = registrarEntrega }) {
-    const ruta = intencion ?? await this.reconoce(texto, { area: 'compras' })
+    const ruta = intencion ?? await this.reconoce(texto, { area: 'rendicion' })
     if (ruta?.destino !== 'entregar') return { texto: TEXTO.AYUDA, estado: 'ayuda', privado: false }
 
     // 1. CANAL

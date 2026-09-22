@@ -20,7 +20,7 @@ const SOLO = process.argv.find((a) => a.startsWith('--solo='))?.slice('--solo='.
 
 /** Canal → área canónica (public.area_canonica). Es la ÚNICA lista, y es de instalación:
  *  el runtime la lee de la base, no de acá. */
-/** Canales operativos a instalar: hoy sólo Asistencia. Agregar Compras el día que exista su especialista
+/** Canales operativos a instalar: Asistencia y Efectivo. Agregar Compras el día que exista su especialista
  *  es sumar una entrada acá — no tocar el Director ni el handler. */
 const CANALES = [
   {
@@ -41,10 +41,31 @@ const CANALES = [
       '@os horas extra del 17/01',
     ].join('\n'),
   },
-  // 22/09/2026 — el dueño pidió primero un canal nuevo para las rendiciones y después lo dio de baja:
-  // *«quiero usar el canal "envio de comprobantes" en lugar del nuevo q has creado»*. Las rendiciones entran
-  // por Comprobantes-gastos, que ya está atado al área `compras`; el especialista de comprobantes delega
-  // cuando quien manda la foto tiene una entrega abierta. Por eso acá no hay canal de rendiciones.
+  // ═══ EFECTIVO (22/09/2026, tercera y definitiva) ═══
+  //
+  // El dueño pidió un canal nuevo, después usar el de comprobantes, y finalmente separar de nuevo cuando vio
+  // el costo de mezclar: *«ese es de carga de archivos multimedia para gastos»*. Con un canal propio no hay
+  // nada que adivinar — todo lo que entra acá es efectivo: entregas escritas, fotos de vales y tickets a
+  // rendir— y Comprobantes-gastos vuelve a ser sólo gastos de compras.
+  {
+    nombre: 'Efectivo',
+    slug: 'efectivo',
+    area: 'rendicion',
+    proposito: 'Efectivo a rendir: entregas, vales y los tickets de lo que se gasta con esa plata.',
+    fijado: [
+      'Canal del efectivo a rendir de Echegaray Construcciones.',
+      '',
+      '**Si recibiste plata de la empresa:** mandá acá la foto del ticket de cada gasto. Se carga sola en',
+      'Compras como «A rendir», a la obra de tu entrega. No hace falta mencionar a @os.',
+      'Si tenés más de una entrega abierta, escribí su número (por ejemplo ER-0147) con la foto.',
+      '',
+      '**Si entregás plata (Administración):** escribila en una línea —`entregué $250.000 a Rubén Sosa para el',
+      'galpón 8`— o mandá la foto del vale firmado con la palabra «vale». Queda registrada a tu nombre.',
+      '',
+      'Lo que te queda por rendir lo ves en la app, en Mi efectivo: acá no se publica.',
+      'Los gastos pagados con la caja de la oficina siguen yendo a Comprobantes-gastos, como siempre.',
+    ].join('\n'),
+  },
 ]
 
 const api = async (ruta, opt = {}) => {
