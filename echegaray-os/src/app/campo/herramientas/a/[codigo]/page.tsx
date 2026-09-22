@@ -10,6 +10,9 @@ import { normalizarCodigo } from '@/features/herramientas/logica/codigo'
 import { historial } from '@/features/herramientas/logica/historial'
 import { conLugar } from '@/features/herramientas/logica/lugar'
 import {
+  UNIDAD, seVerifica, textoLectura, textoVerificacion, ultimaLectura, verificacionDe,
+} from '@/features/herramientas/logica/verificacion'
+import {
   ETIQUETA_ESTADO, MOTIVO_BAJA, TONO_ESTADO, autorDe, rotuloUbicacion, ultimoMovimiento,
 } from '@/features/herramientas/logica/parque'
 
@@ -37,6 +40,8 @@ export default async function UnaHerramienta({ params, searchParams }: {
   const inc = p.incDe.get(a.id)?.find((i) => !i.cerrada_en)
   const baja = a.estado === 'baja'
   const renglones = historial(p, a.id)
+  const verificable = seVerifica(a)
+  const verif = verificable ? verificacionDe(p, a.id) : null
 
   return (
     <MarcoTelefono
@@ -66,6 +71,15 @@ export default async function UnaHerramienta({ params, searchParams }: {
             {baja ? `Baja por ${MOTIVO_BAJA[a.baja_motivo ?? ''] ?? '—'}` : ETIQUETA_ESTADO[a.estado]}
           </span>
         </Dato>
+        {verificable && (
+          <Dato rotulo={a.clase === 'rodado' ? 'Kilómetros' : 'Horómetro'}>
+            {p.lecturas ? (
+              <span style={{ fontSize: '14px', ...(ultimaLectura(p, a.id) ? {} : { fontStyle: 'italic', color: V.tenue }) }} data-testid="lectura-actual">
+                {textoLectura(ultimaLectura(p, a.id), UNIDAD[a.clase])}
+              </span>
+            ) : <span style={{ fontSize: '14px', fontStyle: 'italic', color: V.tenue }}>sin la migración</span>}
+          </Dato>
+        )}
         <Dato rotulo="La movió">
           <span style={{ fontSize: '14px', fontStyle: quien ? undefined : 'italic', color: quien ? V.tinta : V.tenue }}>
             {m ? `${quien ?? 'sin registro'} · ${diaMes(m.fecha_hora)}` : 'nunca'}
@@ -80,6 +94,16 @@ export default async function UnaHerramienta({ params, searchParams }: {
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {verificable && verif && (
+          <Link href={conLugar(`/campo/herramientas/a/${encodeURIComponent(a.codigo)}/verificar`, en)} prefetch={false} className="min-h-[52px]" data-testid="ir-verificar"
+            style={{ minHeight: 52, display: 'flex', alignItems: 'center', gap: 10, borderBottom: `1px solid ${V.linea}`, fontSize: '14.5px' }}>
+            {a.clase === 'rodado' ? 'Verificar antes de salir' : 'Verificar antes de arrancar'}
+            <span style={{ marginLeft: 'auto', fontSize: '12.5px', color: verif.tipo === 'hoy' ? V.pos : V.apagado }}>
+              {verif.tipo === 'hoy' ? `hecha ${textoVerificacion(verif)}` : verif.tipo === 'sin_base' ? 'sin la migración' : `última: ${textoVerificacion(verif)}`}
+            </span>
+            <span style={{ color: V.tenue }}>›</span>
+          </Link>
+        )}
         {!baja && (
           <Link href={conLugar(`/campo/herramientas/a/${encodeURIComponent(a.codigo)}/reportar`, en)} prefetch={false} className="min-h-[52px]" data-testid="ir-reportar"
             style={{ minHeight: 52, display: 'flex', alignItems: 'center', borderBottom: `1px solid ${V.linea}`, fontSize: '14.5px' }}>

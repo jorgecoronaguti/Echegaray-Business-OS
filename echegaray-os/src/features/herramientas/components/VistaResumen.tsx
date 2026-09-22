@@ -1,8 +1,9 @@
 // D01 · RESUMEN — lo que necesita una decisión hoy.
 //
 // Desvíos del diseño, todos por decisión del dueño o porque el dato no existe:
-//   · Sin «Nuevo control» (Controles no es de esta etapa) ni «Sin verificar hoy» (la verificación de uso
-//     no existe todavía). Quedan cuatro cifras, no cinco.
+//   · Sin «Nuevo control» (Controles no es de esta etapa).
+//   · «Sin verificar hoy» cuenta rodados y equipos vivos sin verificación de uso con fecha de hoy
+//     (migración 20260922T1200). Sin esa migración dice «sin la migración», no un cero.
 //   · «Papeles de rodados» dice «sin cargar»: los 6 rodados no tienen papeles en la base.
 //   · «Depósito» no existe: Taller y almacén son un solo lugar, «Taller».
 //   · «Necesita una decisión» suma lo que D09 listaba «a resolver» (la migración no tiene pantalla).
@@ -11,6 +12,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { cifras, decisiones, dondeEstaElParque, type Decision } from '../logica/resumen'
 import { diasDesde, ETIQUETA_TIPO, type Parque } from '../logica/parque'
+import { sinVerificarHoy } from '../logica/verificacion'
 import { BotonMover } from './Botones'
 import { COLOR_BARRA, IconoLugar, IcoAviso, IcoLista, IcoObra, IcoReloj, IcoTaller } from './iconos'
 import { bajadaPagina, eyebrow, pagina, tituloBloque, tituloPagina, V } from './estilo'
@@ -21,6 +23,7 @@ export function VistaResumen({ parque, hoy = new Date() }: { parque: Parque; hoy
   const c = cifras(parque, hoy)
   const ds = decisiones(parque, hoy)
   const filas = dondeEstaElParque(parque)
+  const sv = sinVerificarHoy(parque, hoy)
   const max = Math.max(1, ...filas.filter((f) => f.tipo !== 'sin_ubicacion').map((f) => f.activos))
   const partes = [
     c.herramientas ? plural(c.herramientas, 'herramienta', 'herramientas') : null,
@@ -40,13 +43,17 @@ export function VistaResumen({ parque, hoy = new Date() }: { parque: Parque; hoy
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 30, paddingBottom: 22, borderBottom: `1px solid ${V.linea}` }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: 30, paddingBottom: 22, borderBottom: `1px solid ${V.linea}` }}>
         <Cifra rotulo="Requieren mantenimiento" valor={c.requierenMant} tono={c.requierenMant ? V.warn : V.tinta}
           pie={c.requierenMant ? `${c.requierenMantEnObra} ${c.requierenMantEnObra === 1 ? 'sigue' : 'siguen'} en obra` : 'nada reportado'} />
         <Cifra rotulo="En reparación externa" valor={c.reparacionExterna}
           pie={c.externaMas30 ? <span style={{ color: V.neg }}>{c.externaMas30} sin novedad hace más de 30 días</span> : 'ninguna vieja de 30 días'} />
         <Cifra rotulo="Sin ver hace +90 días" valor={c.sinVer90}
           pie={c.nuncaVistos ? `más ${c.nuncaVistos} sin ningún registro nunca` : 'ningún movimiento ni reporte'} />
+        <Link href="/herramientas/rodados" prefetch={false} data-testid="cifra-sin-verificar" className="hover:bg-surface-quiet">
+          <Cifra rotulo="Sin verificar hoy" valor={sv ? sv.sin : null} vacioTexto="sin la migración" tono={sv && sv.sin ? V.warn : V.tinta}
+            pie={sv ? (sv.de ? `de ${sv.de} que se operan con gente` : 'no hay rodados ni equipos cargados') : 'la verificación de uso espera la migración 20260922T1200'} />
+        </Link>
         <Cifra rotulo="Papeles de rodados" valor={null}
           pie={c.rodados ? `${plural(c.rodados, 'rodado', 'rodados')}, ningún papel cargado` : 'no hay rodados cargados'} />
       </div>
@@ -105,12 +112,12 @@ export function VistaResumen({ parque, hoy = new Date() }: { parque: Parque; hoy
   )
 }
 
-function Cifra({ rotulo, valor, tono = V.tinta, pie }: { rotulo: string; valor: number | null; tono?: string; pie: ReactNode }) {
+function Cifra({ rotulo, valor, tono = V.tinta, pie, vacioTexto = 'sin cargar' }: { rotulo: string; valor: number | null; tono?: string; pie: ReactNode; vacioTexto?: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
       <div style={eyebrow}>{rotulo}</div>
       {valor == null ? (
-        <div style={{ fontSize: '19px', fontWeight: 500, fontStyle: 'italic', color: V.tenue, lineHeight: '35px' }}>sin cargar</div>
+        <div style={{ fontSize: '19px', fontWeight: 500, fontStyle: 'italic', color: V.tenue, lineHeight: '35px' }}>{vacioTexto}</div>
       ) : (
         <div style={{ fontSize: '27px', fontWeight: 600, letterSpacing: '-.02em', color: tono }}>{valor}</div>
       )}

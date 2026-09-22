@@ -2,14 +2,17 @@ import Link from 'next/link'
 import { leerParque } from '@/features/herramientas/services/datos'
 import { MarcoTelefono, FilaTelefono, primarioTelefono } from '@/features/herramientas/components/campo/MarcoTelefono'
 import { SinBaseTelefono } from '@/features/herramientas/components/campo/SinBaseTelefono'
-import { IcoAviso, IcoBuscar, IcoEscanear, IcoFlecha, IcoObra, IcoTaller } from '@/features/herramientas/components/iconos'
+import { IcoAviso, IcoBuscar, IcoEscanear, IcoFlecha, IcoLista, IcoObra, IcoTaller } from '@/features/herramientas/components/iconos'
 import { AZUL, V } from '@/features/herramientas/components/estilo'
 import { conLugar, lugaresParaElegir, resolverLugar } from '@/features/herramientas/logica/lugar'
 import { activosEn, conProblema } from '@/features/herramientas/logica/parque'
+import { seVerifica, textoVerificacion, verificacionDe } from '@/features/herramientas/logica/verificacion'
 
 // M01 · INICIO DE CAMPO — caminos por objetivo, y «Escanear» abajo, al alcance del pulgar.
 //
-// Desvíos: sin «Control físico» ni «Verificar el rodado» (etapa 2). Se agrega «Dar de alta una
+// Desvíos: sin «Control físico» (etapa 2). «Verificar el rodado» va por cada rodado o equipo que
+// está HOY en este lugar (la base no asigna un rodado a una persona) y, si no hay ninguno, una fila
+// para elegirlo de la lista. Se agrega «Dar de alta una
 // herramienta» (M14 no tenía entrada propia más que el QR desconocido). Permisos iguales para todos:
 // cualquiera mueve entre cualquier lugar.
 export const dynamic = 'force-dynamic'
@@ -42,6 +45,7 @@ export default async function InicioHerramientasCampo({ searchParams }: { search
 
   const aca = lugar.ubicacionId ? activosEn(p, lugar.ubicacionId) : []
   const prob = aca.filter(conProblema).length
+  const verificables = aca.filter(seVerifica).slice(0, 3)
   return (
     <MarcoTelefono
       titulo={<span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>Herramientas</span>}
@@ -61,6 +65,20 @@ export default async function InicioHerramientasCampo({ searchParams }: { search
           titulo={lugar.esObra ? 'Qué hay en esta obra' : 'Qué hay acá'} bajada={`${aca.length} ${aca.length === 1 ? 'activo' : 'activos'}`} testid="ir-lugar" />
         <FilaTelefono href={conLugar('/campo/herramientas/lugar', lugar.clave)} icono={<IcoFlecha tam={18} color={V.tinta} />} titulo="Mover herramientas" bajada="una o varias" testid="ir-mover" />
         <FilaTelefono href={conLugar('/campo/herramientas/buscar?para=reportar', lugar.clave)} icono={<IcoAviso tam={18} color={V.warn} />} titulo="Reportar un problema" bajada="no mueve nada de lugar" testid="ir-reportar" />
+        {verificables.map((a) => {
+          const v = verificacionDe(p, a.id)
+          return (
+            <FilaTelefono key={a.id} href={conLugar(`/campo/herramientas/a/${encodeURIComponent(a.codigo)}/verificar`, lugar.clave)}
+              icono={<IcoLista tam={18} color={v.tipo === 'hoy' ? V.pos : V.warn} />}
+              titulo={a.clase === 'rodado' ? `Verificar el rodado ${a.patente ?? a.nombre}` : `Verificar ${a.nombre}`}
+              bajada={v.tipo === 'hoy' ? `hecha ${textoVerificacion(v)}` : v.tipo === 'sin_base' ? 'espera la migración' : `sin verificar hoy · última: ${textoVerificacion(v)}`}
+              tonoBajada={v.tipo === 'hoy' ? V.pos : undefined} testid="ir-verificar" />
+          )
+        })}
+        {verificables.length === 0 && (
+          <FilaTelefono href={conLugar('/campo/herramientas/verificar', lugar.clave)} icono={<IcoLista tam={18} color={V.apagado} />}
+            titulo="Verificar un rodado o máquina" bajada="antes de salir o de arrancar" testid="ir-verificar" />
+        )}
         <FilaTelefono href={conLugar('/campo/herramientas/alta', lugar.clave)} icono={<IcoTaller tam={18} color={V.apagado} />} titulo="Dar de alta una herramienta" bajada="tres datos y una foto" ultima testid="ir-alta" />
       </div>
       <div style={{ fontSize: '12.5px', color: V.apagado, lineHeight: 1.5 }}>Ves todo el parque y podés moverlo entre cualquier lugar.</div>

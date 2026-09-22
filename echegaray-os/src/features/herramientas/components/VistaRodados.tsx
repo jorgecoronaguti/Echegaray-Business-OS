@@ -1,27 +1,41 @@
-// D11 · RODADOS, etapa 1 — una fila por unidad con lo que hay: patente, dónde está, estado, qué lleva
-// encima y quién lo movió por última vez (el «a cargo de» del diseño sale del último movimiento).
+// D11 · RODADOS Y MÁQUINAS CON OPERADOR — una fila por unidad con lo que hay: patente, dónde está,
+// estado, qué lleva encima, quién lo movió por última vez (el «a cargo de» del diseño sale del último
+// movimiento), km de la última lectura y la última verificación de uso (migración 20260922T1200).
 //
-// Km, papeles, service y verificación NO existen todavía en la base: se dicen «sin cargar», nunca un
-// número. El listado «Máquinas con operador» es etapa 2 (verificación de uso).
+// Papeles y plan de service NO existen todavía en la base: se dicen «sin cargar», nunca un número.
+//
+// Desvíos del diseño: «Rodados» y «Máquinas con operador» van una debajo de la otra en vez de en dos
+// solapas (con 6 y 0 unidades hoy, la solapa escondía la segunda lista). Todos los rodados piden
+// verificación: la base no sabe cuál es un acoplado que no se maneja, y no se inventa ese dato.
 
 import Link from 'next/link'
 import {
   ETIQUETA_ESTADO_CORTA, TONO_ESTADO, activosEn, quienLaMovio, rotuloUbicacion, ubicacionDelRodado, vivo, type Parque,
 } from '../logica/parque'
-import { COLOR_TONO, MONO, V, bajadaPagina, eyebrow, pagina, tituloPagina, vacio } from './estilo'
+import { numeroAr, sinVerificarHoy, textoLectura, textoVerificacion, ultimaLectura, verificacionDe } from '../logica/verificacion'
+import type { Activo } from '../types'
+import { COLOR_TONO, MONO, V, bajadaPagina, eyebrow, pagina, tituloBloque, tituloPagina, vacio } from './estilo'
 
-const COLS = 'minmax(0,1.3fr) minmax(0,1.2fr) 150px 110px 130px 90px 90px 90px 100px'
+const COLS = 'minmax(0,1.3fr) minmax(0,1.2fr) 150px 110px 130px 100px 90px 90px 110px'
+const COLS_EQ = 'minmax(0,1.3fr) minmax(0,1.2fr) 150px 130px 100px 110px'
 
-export function VistaRodados({ parque }: { parque: Parque }) {
-  const rodados = parque.activos.filter((a) => a.clase === 'rodado' && vivo(a)).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+const plural = (n: number, a: string, b: string) => `${n} ${n === 1 ? a : b}`
+
+export function VistaRodados({ parque, hoy = new Date() }: { parque: Parque; hoy?: Date }) {
+  const orden = (a: Activo, b: Activo) => a.nombre.localeCompare(b.nombre, 'es')
+  const rodados = parque.activos.filter((a) => a.clase === 'rodado' && vivo(a)).sort(orden)
+  const equipos = parque.activos.filter((a) => a.clase === 'equipo' && vivo(a)).sort(orden)
   const sinUbic = rodados.filter((r) => !r.ubicacion_id).length
+  const sv = sinVerificarHoy(parque, hoy)
+  const svRod = sv ? rodados.filter((r) => verificacionDe(parque, r.id, hoy).tipo !== 'hoy').length : null
   return (
     <div style={pagina} data-testid="rodados">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         <h1 style={tituloPagina}>Rodados</h1>
         <div style={bajadaPagina}>
-          {rodados.length} {rodados.length === 1 ? 'unidad' : 'unidades'}
-          {sinUbic ? ` · ${sinUbic} sin ubicación cargada` : ''} · km, papeles y service sin cargar
+          {plural(rodados.length, 'unidad', 'unidades')}
+          {svRod != null ? ` · ${svRod} sin verificar hoy` : ' · verificación sin la migración'}
+          {sinUbic ? ` · ${sinUbic} sin ubicación cargada` : ''} · papeles y service sin cargar
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', overflowX: 'auto' }}>
@@ -34,32 +48,95 @@ export function VistaRodados({ parque }: { parque: Parque }) {
           const u = ubicacionDelRodado(parque, r.id)
           const lleva = u ? activosEn(parque, u.id).length : 0
           const quien = quienLaMovio(parque, r.id)
-          const tono = COLOR_TONO[TONO_ESTADO[r.estado]]
           return (
             <Link key={r.id} href={`/herramientas/inventario?clase=rodado&activo=${encodeURIComponent(r.codigo)}`} prefetch={false} className="hover:bg-surface-quiet" data-testid="fila-rodado"
               style={{ display: 'grid', gridTemplateColumns: COLS, gap: 16, minHeight: 52, alignItems: 'center', borderBottom: i < rodados.length - 1 ? `1px solid ${V.linea}` : undefined, fontSize: '13.5px', minWidth: 1100 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 9 }}>
-                <span style={{ fontWeight: 500 }}>{r.nombre}</span>
-                <span style={{ fontFamily: MONO, fontSize: '11px', color: V.tenue }}>{r.patente ?? r.codigo}</span>
-              </div>
+              <Unidad a={r} />
               <div style={r.ubicacion_id ? { color: V.tintaSuave } : vacio}>{rotuloUbicacion(parque, r.ubicacion_id)}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: tono }}>
-                {r.estado !== 'fuera_servicio' && <span style={{ width: 7, height: 7, borderRadius: '50%', background: tono, flexShrink: 0 }} />}
-                {ETIQUETA_ESTADO_CORTA[r.estado]}{r.estado_asumido ? <span style={{ color: V.tenue, fontSize: '11.5px' }}> · asumido</span> : null}
-              </div>
+              <Estado a={r} />
               <div style={lleva ? { color: V.tintaSuave } : { color: V.tenue }}>{lleva ? `${lleva} ${lleva === 1 ? 'activo' : 'activos'}` : 'nada'}</div>
               <div style={quien ? { color: V.tintaSuave } : vacio}>{quien ?? 'sin registro'}</div>
-              <div style={{ ...vacio, textAlign: 'right' }}>sin cargar</div>
+              <Lectura parque={parque} a={r} unidad="km" />
               <div style={vacio}>sin cargar</div>
               <div style={vacio}>sin cargar</div>
-              <div style={{ ...vacio, textAlign: 'right' }}>nunca</div>
+              <Verificacion parque={parque} a={r} hoy={hoy} />
             </Link>
           )
         })}
       </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="maquinas">
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <h2 style={tituloBloque}>Máquinas con operador</h2>
+          <span style={{ fontSize: '12.5px', color: V.apagado }}>
+            {plural(equipos.length, 'equipo', 'equipos')}
+            {sv && equipos.length ? ` · ${equipos.filter((e) => verificacionDe(parque, e.id, hoy).tipo !== 'hoy').length} sin verificar hoy` : ''}
+          </span>
+        </div>
+        {equipos.length === 0 ? (
+          <div style={{ fontSize: '13px', color: V.apagado }}>No hay equipos cargados: lo que se opera con gente se da de alta con clase «Equipo».</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', overflowX: 'auto' }}>
+            <div style={{ ...eyebrow, display: 'grid', gridTemplateColumns: COLS_EQ, gap: 16, height: 34, alignItems: 'center', borderBottom: `1px solid ${V.linea}`, minWidth: 860 }}>
+              <div>Equipo</div><div>Dónde está</div><div>Estado</div><div>Lo movió</div>
+              <div style={{ textAlign: 'right' }}>Horómetro</div><div style={{ textAlign: 'right' }}>Verificación</div>
+            </div>
+            {equipos.map((e, i) => {
+              const quien = quienLaMovio(parque, e.id)
+              return (
+                <Link key={e.id} href={`/herramientas/inventario?clase=equipo&activo=${encodeURIComponent(e.codigo)}`} prefetch={false} className="hover:bg-surface-quiet" data-testid="fila-equipo"
+                  style={{ display: 'grid', gridTemplateColumns: COLS_EQ, gap: 16, minHeight: 52, alignItems: 'center', borderBottom: i < equipos.length - 1 ? `1px solid ${V.linea}` : undefined, fontSize: '13.5px', minWidth: 860 }}>
+                  <Unidad a={e} />
+                  <div style={e.ubicacion_id ? { color: V.tintaSuave } : vacio}>{rotuloUbicacion(parque, e.ubicacion_id)}</div>
+                  <Estado a={e} />
+                  <div style={quien ? { color: V.tintaSuave } : vacio}>{quien ?? 'sin registro'}</div>
+                  <Lectura parque={parque} a={e} unidad="h" />
+                  <Verificacion parque={parque} a={e} hoy={hoy} />
+                </Link>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
       <div style={{ fontSize: '12.5px', color: V.apagado }}>
-        Km, papeles (VTV, seguro), plan de service y verificación de uso se cargan en la próxima etapa. Hasta entonces no se muestra ningún número.
+        La verificación la carga desde el teléfono quien maneja u opera, antes de salir o de arrancar. Sin verificar no traba el uso: se ve acá. Papeles y plan de service se cargan en la próxima etapa: hasta entonces no se muestra ningún número.
       </div>
     </div>
   )
+}
+
+function Unidad({ a }: { a: Activo }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 9 }}>
+      <span style={{ fontWeight: 500 }}>{a.nombre}</span>
+      <span style={{ fontFamily: MONO, fontSize: '11px', color: V.tenue }}>{a.patente ?? a.codigo}</span>
+    </div>
+  )
+}
+
+function Estado({ a }: { a: Activo }) {
+  const tono = COLOR_TONO[TONO_ESTADO[a.estado]]
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: tono }}>
+      {a.estado !== 'fuera_servicio' && <span style={{ width: 7, height: 7, borderRadius: '50%', background: tono, flexShrink: 0 }} />}
+      {ETIQUETA_ESTADO_CORTA[a.estado]}{a.estado_asumido ? <span style={{ color: V.tenue, fontSize: '11.5px' }}> · asumido</span> : null}
+    </div>
+  )
+}
+
+function Lectura({ parque, a, unidad }: { parque: Parque; a: Activo; unidad: 'km' | 'h' }) {
+  if (!parque.lecturas) return <div style={{ ...vacio, textAlign: 'right' }}>sin la migración</div>
+  const l = ultimaLectura(parque, a.id)
+  // D11 escribe el km sin unidad («148.220») y las horas con ella («412 h»).
+  const t = !l ? textoLectura(l, unidad) : unidad === 'km' ? numeroAr(l.valor) : textoLectura(l, unidad)
+  return <div style={l ? { textAlign: 'right', color: V.tinta } : { ...vacio, textAlign: 'right' }} data-testid="lectura">{t}</div>
+}
+
+function Verificacion({ parque, a, hoy }: { parque: Parque; a: Activo; hoy: Date }) {
+  const v = verificacionDe(parque, a.id, hoy)
+  const estilo = v.tipo === 'nunca' || v.tipo === 'sin_base'
+    ? { ...vacio, textAlign: 'right' as const }
+    : { textAlign: 'right' as const, color: v.tipo === 'hoy' ? V.tinta : v.tipo === 'dias' && v.n > 3 ? V.warn : V.tintaSuave }
+  return <div style={estilo} data-testid="verificacion">{textoVerificacion(v)}</div>
 }
