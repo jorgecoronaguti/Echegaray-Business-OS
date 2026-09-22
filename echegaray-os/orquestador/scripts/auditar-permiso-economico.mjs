@@ -50,6 +50,27 @@ export const LO_ECONOMICO = [
   { que: 'persona_tarifa', sql: 'select count(*)::int n from public.persona_tarifa' },
   { que: 'liquidacion_quincena', sql: 'select count(*)::int n from public.liquidacion_quincena' },
   { que: 'liquidacion_linea', sql: 'select count(*)::int n from public.liquidacion_linea' },
+  // ═══ LA PLATA DE VENTA DEL CRM (22/09/2026) ═══
+  //
+  // Orden del dueño: *«los usuarios jefes de obra no pueden ver los montos contratados de los
+  // clientes en CRM… además de todo lo que implique monto de venta en todo app.ecsas.com.ar»*.
+  // Las doce entran acá el día que se cierran (migración 20260922T3000) porque la que faltaba —el
+  // contratado— ya estaba enmascarada, y el agujero era todo el resto: con el FACTURADO y el COBRADO
+  // de cada cliente en la mano, el contratado se deduce con una resta.
+  { que: 'cobranzas', sql: 'select count(total_bruto)::int n from public.cobranzas' },
+  { que: 'cobranza', sql: 'select count(total)::int n from public.cobranza' },
+  { que: 'cliente_cuenta_corriente', sql: 'select count(cobrado_total)::int n from public.cliente_cuenta_corriente' },
+  { que: 'certificado_cliente', sql: 'select count(monto)::int n from public.certificado_cliente' },
+  { que: 'esquema_pago', sql: 'select count(monto)::int n from public.esquema_pago' },
+  { que: 'recibo_cliente', sql: 'select count(monto)::int n from public.recibo_cliente' },
+  { que: 'cliente_orden', sql: 'select count(importe)::int n from public.cliente_orden' },
+  { que: 'pago_informado', sql: 'select count(monto)::int n from public.pago_informado' },
+  // La caja, donde el cobro del cliente reaparece con su importe y su cliente_id. Las cuatro estaban
+  // en `using (true)`: abiertas hasta para el nivel campo.
+  { que: 'movimientos_caja', sql: 'select count(monto)::int n from public.movimientos_caja' },
+  { que: 'acciones', sql: 'select count(monto)::int n from public.acciones' },
+  { que: 'obligaciones', sql: 'select count(monto_total)::int n from public.obligaciones' },
+  { que: 'aplicaciones_pago', sql: 'select count(monto_aplicado)::int n from public.aplicaciones_pago' },
   { que: 'obra_canonica.monto_contratado', sql: 'select count(monto_contratado)::int n from public.obra_canonica' },
   { que: 'presupuestos.monto_presupuestado', sql: 'select count(monto_presupuestado)::int n from public.presupuestos' },
   { que: 'personas.retribucion_pactada', sql: 'select count(retribucion_pactada)::int n from public.personas' },
