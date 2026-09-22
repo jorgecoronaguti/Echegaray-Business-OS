@@ -14,10 +14,8 @@ import type { EstadoDePapeles, MarcaDeHoy } from './pulsoDelPlantel.ts'
 //    hacerle clic al que sí lleva.
 // 4. Que el plantel se cuente sobre las personas que ya no están.
 
-const persona = (
-  id: string,
-  x: Partial<{ en_la_empresa: boolean; obra_actual_id: string | null; puesto: string | null }> = {},
-) => ({ id, en_la_empresa: true, obra_actual_id: 'o1', ...x })
+const persona = (id: string, x: Partial<{ en_la_empresa: boolean; obra_actual_id: string | null }> = {}) =>
+  ({ id, en_la_empresa: true, obra_actual_id: 'o1', ...x })
 
 const HREF = '/administracion/personas?f=sin_asignar'
 const base = {
@@ -80,31 +78,3 @@ test('nada que reclamar es silencio: cero no se dibuja', () => {
   ]) }), [])
 })
 
-// ═══ A DIRECCIÓN NO SE LE RECLAMA OBRA (22/09/2026) ═══
-//
-// Rodrigo y Jorge entraron al padrón para recibir efectivo a rendir (*«falta q agregues a rodrigo y a
-// mi como receptores de plata»*). Sin esta regla, la señal pasaba de 0 a 2 —medido en la base antes
-// de darlos de alta— con el verbo «Asignar», que nadie iba a poder cumplir nunca: una señal que no
-// puede bajar a cero deja de ser una señal.
-test('Dirección no cuenta en «sin obra asignada»; un obrero sin obra sí', () => {
-  const s = senalesDePersonal({
-    ...base,
-    personas: [
-      persona('rodrigo', { obra_actual_id: null, puesto: 'DIRECCIÓN' }),
-      persona('jorge', { obra_actual_id: null, puesto: 'DIRECCIÓN' }),
-      persona('acosta', { obra_actual_id: null }),
-    ],
-  })
-  const sinObra = s.find((x) => x.clave === 'sin-obra')
-  assert.ok(sinObra, 'la señal desapareció: el obrero sin obra dejó de reclamar')
-  assert.equal(sinObra.numero, 1, 'Dirección volvió a contarse entre los que necesitan obra')
-})
-
-// Y SIN NINGÚN OBRERO SUELTO NO HAY SEÑAL: dos filas de Dirección no encienden nada.
-test('sólo Dirección sin obra no enciende la señal', () => {
-  const s = senalesDePersonal({
-    ...base,
-    personas: [persona('rodrigo', { obra_actual_id: null, puesto: 'DIRECCIÓN' })],
-  })
-  assert.equal(s.find((x) => x.clave === 'sin-obra'), undefined)
-})

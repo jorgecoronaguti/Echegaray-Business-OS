@@ -16,20 +16,47 @@ import { agendaDeCobro, cuando, proximoPorCliente, type AgendaDeCobro, type Cobr
 import { ancho, Cabecera, ENCABEZADO, rotuloMes, Seccion, SinLectura, Valor } from './Piezas'
 import { Torta } from './Torta'
 
-/** Columnas mensuales con el valor arriba y el mes abajo; `partes` se apilan de arriba hacia abajo. */
+/**
+ * Columnas mensuales con el valor arriba y el mes abajo; `partes` se apilan de arriba hacia abajo.
+ *
+ * ═══ EL ANCHO MÍNIMO DE UNA COLUMNA LO FIJA SU ETIQUETA (QA visual, 22/09/2026) ═══
+ *
+ * En 390 px y con nueve meses, la columna quedaba en ~41 px y «$ 18,06 M» mide 53: las etiquetas se
+ * pisaban entre sí —18,06 sobre 19,34 sobre 19,92— y «en curso» salía cortado en «en curs…». Un
+ * número pisado por el de al lado no es un número. Con `minmax(56px, 1fr)` la columna nunca baja del
+ * ancho de su etiqueta y, cuando no entran todas, el gráfico se corre en su propia caja (la página
+ * sigue sin scroll lateral). En pantalla grande no cambia nada: ahí la columna ya mide más de 56.
+ *
+ * ═══ ABRE EN ENERO, Y ASÍ SE QUEDA ═══
+ *
+ * En el teléfono el gráfico arranca en `scrollLeft: 0`, así que lo primero que se ve es enero y el mes
+ * en curso queda a la derecha del borde hasta que se corre. Se probó apoyarlo al final con `dir="rtl"`
+ * en la caja y `dir="ltr"` en la grilla, para no volver cliente un componente de servidor: NO
+ * funciona y es peor. Medido en 390 px (QA visual, 22/09/2026): en un contenedor `rtl` lo scrolleable
+ * es el desborde de la IZQUIERDA, y el de la grilla queda a la derecha, así que el navegador deja de
+ * registrar desborde —`scrollWidth == clientWidth == 358` con contenido de 568—, `scrollLeft` vuelve a
+ * 0 con cualquier valor, y cuatro meses de Nómina y seis de Caja quedan recortados SIN forma de
+ * llegar a ellos. Abrir en enero es un costo chico al lado de perder cuatro meses, y el mes en curso
+ * ya lo dice el cuadro de abajo, que los tiene todos.
+ *
+ * Límite conocido: `overflow-x: auto` computa la `y` en `auto` por spec, así que algo que sobresalga
+ * POR ARRIBA de la grilla se recortaría. Hoy el contenido mide exactamente el alto de la caja.
+ */
 export function Columnas({ meses }: { meses: { mes: string; valor: string | null; color?: string; partes: { alto: number; clase: string }[]; nota?: string }[] }) {
   const cruza = new Set(meses.map((m) => m.mes.slice(0, 4))).size > 1
   return (
-    <div className="grid h-[220px] items-end gap-2 lg:gap-4" style={{ gridTemplateColumns: `repeat(${Math.max(meses.length, 1)}, minmax(0, 1fr))` }}>
-      {meses.map((m) => (
-        <div key={m.mes} className="flex h-full min-w-0 flex-col items-center justify-end gap-2">
-          <div className={`whitespace-nowrap text-[11px] font-semibold lg:text-[12.5px] ${m.valor == null ? 'font-normal text-faint' : m.color ?? 'text-ink'}`}>{m.valor ?? m.nota}</div>
-          <div className="flex w-full max-w-[120px] flex-col overflow-hidden rounded-t-[2px]">
-            {m.partes.map((p, i) => <div key={i} className={p.clase} style={{ height: `${Math.max(0, p.alto)}px` }} />)}
+    <div className="overflow-x-auto lg:overflow-visible">
+      <div className="grid h-[220px] items-end gap-2 lg:gap-4" style={{ gridTemplateColumns: `repeat(${Math.max(meses.length, 1)}, minmax(56px, 1fr))` }}>
+        {meses.map((m) => (
+          <div key={m.mes} className="flex h-full min-w-0 flex-col items-center justify-end gap-2">
+            <div className={`whitespace-nowrap text-[11px] font-semibold lg:text-[12.5px] ${m.valor == null ? 'font-normal text-faint' : m.color ?? 'text-ink'}`}>{m.valor ?? m.nota}</div>
+            <div className="flex w-full max-w-[120px] flex-col overflow-hidden rounded-t-[2px]">
+              {m.partes.map((p, i) => <div key={i} className={p.clase} style={{ height: `${Math.max(0, p.alto)}px` }} />)}
+            </div>
+            <div className="text-[11px] text-faint">{rotuloMes(m.mes, cruza)}</div>
           </div>
-          <div className="text-[11px] text-faint">{rotuloMes(m.mes, cruza)}</div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   )
 }

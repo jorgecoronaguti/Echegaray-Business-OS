@@ -45,7 +45,7 @@ import { modalidadDeLaPersona } from './cobroMensual.ts'
 import { correrQuincena, type Quincena } from './quincena.ts'
 import { leerRegistrosHH } from './registrosHHService.ts'
 import { leerCuilesDelLegajo, leerPresenciasDeLaQuincena } from './lecturasCompartidasDeQuincena.ts'
-import { esJefeDeObra } from './vocabularioPersona.ts'
+import { esJefeDeObra, sinDireccion } from './vocabularioPersona.ts'
 
 export interface DatosDePersona {
   id: string
@@ -233,7 +233,8 @@ export async function getDatosDeLaSolapaHoras(
   // SIN CORTE POR `en_la_empresa`: quién entra en la quincena lo decide `plantelDeLaQuincena`, y
   // `leerCuadroDeLaQuincena` recorta estas personas con ese plantel. Una baja con horas en una quincena
   // vieja se tiene que poder dibujar (dueño, 14/09/2026).
-  const directorioFilas = (directorio.data ?? []) as unknown as FilaDirectorio[]
+  // DIRECCIÓN NO TIENE GRILLA DE HORAS: se va en la lectura, como en todo el módulo Personal.
+  const directorioFilas = sinDireccion((directorio.data ?? []) as unknown as FilaDirectorio[])
   const porPersona: Record<string, DatosDePersona> = {}
   for (const p of directorioFilas) {
     const suyas = filasHH.filter((f) => f.persona_id === p.id)

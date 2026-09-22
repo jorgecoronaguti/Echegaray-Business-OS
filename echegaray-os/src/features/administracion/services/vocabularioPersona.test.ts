@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   agruparPorRolOrganizacional, categoriaVisible, esDireccion, esJefeDeObra, oficioVisible, pareceCategoria,
+  sinDireccion,
 } from './vocabularioPersona.ts'
 
 // EL DEFECTO 4.10, ATRAPADO. La fila del listado escribía `especialidad ?? puesto` debajo del
@@ -165,27 +166,27 @@ test('ni la ausencia de dato ni un puesto parecido convierten a alguien en Direc
   assert.equal(esDireccion('OFICIAL'), false)
 })
 
-// DIRECCIÓN NO DESAPARECE DEL PLANTEL: cambia de rótulo. El plantel es el censo y esconder ahí a dos
-// personas haría mentir al total; lo que estaba mal era llamarlas «Obreros».
-test('con el tercer predicado, Dirección es su propio grupo y va primero', () => {
-  const plantel = [
+// ═══ LA ÚNICA REGLA DEL MÓDULO PERSONAL ═══
+//
+// Dueño, textual: *«a rodrigo y a mi quitanos de todo el modulo "personal"»*. `sinDireccion` es esa
+// regla, y se aplica en la LECTURA de cada pantalla del módulo — no en cada tabla que dibuja— para
+// que la pantalla número nueve no pueda olvidarse.
+test('`sinDireccion` saca a Dirección y no toca a nadie más', () => {
+  const padron = [
     P('ACOSTA', null), P('ECHEGARAY', 'DIRECCIÓN'), P('MALDONADO', 'JEFE DE OBRA'),
-    P('CORONA', 'DIRECCIÓN'), P('ZOGBE', null),
+    P('CORONA', 'direccion'), P('ZOGBE', 'ALBAÑIL'),
   ]
-  const g = agruparPorRolOrganizacional(plantel, esJefe, (p) => esDireccion(p.puesto))
-  assert.deepEqual(g.map((x) => x.clave), ['direccion', 'jefes', 'obreros'])
-  assert.deepEqual(g[0].integrantes.map((p) => p.nombre), ['ECHEGARAY', 'CORONA'])
-  assert.deepEqual(g[2].integrantes.map((p) => p.nombre), ['ACOSTA', 'ZOGBE'],
-    'Dirección volvió a contarse entre los obreros')
-  // «Dirección · 2», no «Direcciones»: el área es una sola aunque sean dos personas.
-  assert.equal(g[0].rotulo, 'Dirección · 2')
-  assert.equal(g[2].rotulo, 'Obreros · 2')
+  assert.deepEqual(sinDireccion(padron).map((p) => p.nombre), ['ACOSTA', 'MALDONADO', 'ZOGBE'])
+  // Una lectura que falló llega como `null`/`undefined`: devuelve lista vacía, nunca explota — pero
+  // quien la llama ya distinguió «no pude leer» de «no hay nadie» antes de llegar acá.
+  assert.deepEqual(sinDireccion(null), [])
+  assert.deepEqual(sinDireccion(undefined), [])
 })
 
-// SIN EL TERCER PREDICADO, NADA CAMBIA. Las pantallas de liquidación agrupan en dos y ahí Dirección
-// no tiene línea: un grupo vacío sería ruido, y este test impide que el tercer grupo se cuele solo.
-test('sin el predicado de Dirección el agrupador sigue partiendo en dos', () => {
-  const g = agruparPorRolOrganizacional([P('ECHEGARAY', 'DIRECCIÓN'), P('ACOSTA', null)], esJefe)
-  assert.deepEqual(g.map((x) => x.clave), ['obreros'])
-  assert.equal(g[0].integrantes.length, 2)
+// EL MODO SILENCIOSO DE FALLAR: una fila SIN la columna `puesto` no se puede juzgar, y pasa. Por eso
+// cada lectura del módulo tiene que pedir `puesto` en su `select` —lo exige
+// `direccionFueraDePersonal.test.ts` columna por columna—, y por eso esto se deja escrito acá.
+test('sin la columna `puesto` la regla no filtra nada: el select tiene que pedirla', () => {
+  assert.deepEqual(sinDireccion([{ nombre: 'ECHEGARAY' } as { nombre: string; puesto?: string | null }])
+    .map((p) => p.nombre), ['ECHEGARAY'])
 })

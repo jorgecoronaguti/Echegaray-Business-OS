@@ -14,7 +14,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { quincenaCerrada } from './quincenaCerradaService.ts'
-import { esDireccion, esJefeDeObra } from './vocabularioPersona.ts'
+import { esJefeDeObra, sinDireccion } from './vocabularioPersona.ts'
 import { getCertificadosDeLicencia } from '../../documentos/services/certificadosDeLicenciaService.ts'
 import { certificadosPorPersonaYDia } from '../../documentos/services/certificadoDeLicencia.ts'
 import type {
@@ -95,13 +95,9 @@ export async function getCargaDelDia(
 
   return {
     data: {
-      personas: ((plantel.data ?? []) as { id: string; nombre_completo: string; categoria: string | null; puesto: string | null }[])
-        // DIRECCIÓN NO SE MARCA PRESENTE NI AUSENTE. Esta lista existe para que el jefe declare el
-        // día de cada uno; a Rodrigo y a Jorge nadie les toma asistencia, y dejarlos acá sería
-        // pedirle todos los días una declaración que no existe —o dejar dos filas «sin marcar»
-        // permanentes, que es un hueco que se lee como olvido. El criterio es `esDireccion(puesto)`,
-        // el mismo rol organizacional que ya separa a los jefes (`vocabularioPersona.ts`).
-        .filter((p) => !esDireccion(p.puesto))
+      // DIRECCIÓN NO SE MARCA PRESENTE NI AUSENTE: no es plantel operativo y nadie le toma
+      // asistencia. `sinDireccion` en la lectura, como en todo el módulo.
+      personas: sinDireccion((plantel.data ?? []) as { id: string; nombre_completo: string; categoria: string | null; puesto: string | null }[])
         .map((p) => ({
           id: p.id,
           nombre: p.nombre_completo,

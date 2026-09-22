@@ -16,6 +16,7 @@
 import { plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
 import { personaDelDirectorio } from './plantelDeLaQuincenaService.ts'
 import { leerSubcontratoDePersonas, subcontratoPorPersona } from './lecturasCompartidasDeQuincena.ts'
+import { sinDireccion } from './vocabularioPersona.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/auth/services/authService'
 import type { DeclaracionPersona, MarcaDia, PersonaSemana } from './asistenciaSemana'
@@ -56,15 +57,18 @@ async function getPlantel(
   supabase: SupabaseClient, desde: string, hasta: string, conActividad: ReadonlySet<string>,
 ): Promise<PersonaSemana[]> {
   const [{ data }, subcontratos] = await Promise.all([
-    supabase.from('persona_directorio').select('id, nombre_completo, categoria, en_la_empresa, fecha_ingreso, fecha_egreso')
+    // `puesto` viaja para poder aplicar `sinDireccion`: sin esa columna el filtro no filtraría nada
+    // y Dirección volvería a la semana sin que ningún test lo note.
+    supabase.from('persona_directorio').select('id, nombre_completo, categoria, en_la_empresa, fecha_ingreso, fecha_egreso, puesto')
       .order('nombre_completo'),
     leerSubcontratoDePersonas(supabase),
   ])
   const deSubcontrato = subcontratoPorPersona(subcontratos)
-  const filas = (data ?? []) as {
+  const filas = sinDireccion((data ?? []) as {
     id: string; nombre_completo: string; categoria: string | null
     en_la_empresa: boolean | null; fecha_ingreso: string | null; fecha_egreso: string | null
-  }[]
+    puesto: string | null
+  }[])
   const vacio = new Set<string>()
   const { activas } = plantelDeLaQuincena(filas.map((p) => ({ ...personaDelDirectorio(p), subcontratoId: deSubcontrato.get(p.id) ?? null, categoria: p.categoria })),
     { desde, hasta }, { conHoras: conActividad, conLinea: vacio, conRecibo: vacio, conJornales: vacio })

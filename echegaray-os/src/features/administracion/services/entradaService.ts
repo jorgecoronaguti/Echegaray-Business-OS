@@ -18,6 +18,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { perteneceAlCorte, type FilaDeConteo } from './personasService.ts'
+import { sinDireccion } from './vocabularioPersona.ts'
 
 export interface Maestro {
   clave: string
@@ -67,12 +68,27 @@ async function cuenta(
 
 const head = { count: 'exact' as const, head: true }
 
-/** Los del plantel sin obra QUE LA NECESITAN: la misma regla del chip «Sin asignar» de Personal. */
-async function contarSinAsignar(supabase: SupabaseClient): Promise<number | null> {
+// ═══ LOS DOS NÚMEROS DE PERSONAL NO PUEDEN SER `head: true` ═══
+//
+// Contar del lado de PostgREST es más barato, pero un `count` no puede mirar el `puesto`, y Dirección
+// no es plantel (dueño, 22/09: *«a rodrigo y a mi quitanos de todo el modulo "personal"»*). Son 19
+// filas de dos columnas: el viaje cuesta lo mismo y los números dejan de contradecir a los que
+// publica la pantalla de Personal, que aplica la misma regla.
+async function filasDelPadron(supabase: SupabaseClient): Promise<FilaDeConteo[] | null> {
   const { data, error } = await supabase.from('persona_directorio')
     .select('en_la_empresa, obra_actual_id, puesto').eq('en_la_empresa', true)
-  if (error) return null
-  return (data as unknown as FilaDeConteo[]).filter((f) => perteneceAlCorte(f, 'sin_asignar')).length
+  return error ? null : sinDireccion(data as unknown as FilaDeConteo[])
+}
+
+/** El plantel del módulo Personal. */
+async function contarPlantel(supabase: SupabaseClient): Promise<number | null> {
+  return (await filasDelPadron(supabase))?.length ?? null
+}
+
+/** Los del plantel sin obra QUE LA NECESITAN: la misma regla del chip «Sin asignar» de Personal. */
+async function contarSinAsignar(supabase: SupabaseClient): Promise<number | null> {
+  const filas = await filasDelPadron(supabase)
+  return filas ? filas.filter((f) => perteneceAlCorte(f, 'sin_asignar')).length : null
 }
 
 export async function getConteos(supabase: SupabaseClient): Promise<Conteos> {
@@ -83,7 +99,7 @@ export async function getConteos(supabase: SupabaseClient): Promise<Conteos> {
     cuenta(supabase.from('clientes').select('*', head)),
     // EL PLANTEL SALE DE LA PERTENENCIA, NO DE LA FECHA: hay bajas sin `fecha_egreso`, y contar por
     // la fecha devolvería al plantel a gente que ya no está.
-    cuenta(supabase.from('persona_directorio').select('*', head).eq('en_la_empresa', true)),
+    contarPlantel(supabase),
     // «SIN OBRA ASIGNADA» ES UN RECLAMO Y DIRECCIÓN NO LO TIENE. Por eso esta cuenta no puede ser un
     // `head: true`: hay que mirar el `puesto` de cada fila para aplicar la MISMA regla que el chip de
     // Personal (`perteneceAlCorte`). Son 19 filas; el viaje cuesta lo mismo y el número deja de
@@ -217,14 +233,16 @@ export async function buscarGlobal(
   const [clientes, personas, proveedores] = await Promise.all([
     supabase.from('clientes').select('slug, nombre_comercial, razon_social')
       .or(`nombre_comercial.ilike.%${t}%,razon_social.ilike.%${t}%`).limit(tope),
-    supabase.from('persona_directorio').select('id, nombre_completo, especialidad, en_la_empresa')
+    // El buscador del área es una puerta al módulo Personal: lo que no está en el módulo no se
+    // ofrece desde acá. `puesto` viaja sólo para poder aplicar la regla.
+    supabase.from('persona_directorio').select('id, nombre_completo, especialidad, en_la_empresa, puesto')
       .ilike('nombre_completo', `%${t}%`).limit(tope),
     supabase.from('proveedores').select('id, nombre, razon_social')
       .or(`nombre.ilike.%${t}%,razon_social.ilike.%${t}%`).limit(tope),
   ])
 
   type C = { slug: string; nombre_comercial: string; razon_social: string | null }
-  type P = { id: string; nombre_completo: string; especialidad: string | null; en_la_empresa: boolean }
+  type P = { id: string; nombre_completo: string; especialidad: string | null; en_la_empresa: boolean; puesto?: string | null }
   type V = { id: string; nombre: string; razon_social: string | null }
 
   return [

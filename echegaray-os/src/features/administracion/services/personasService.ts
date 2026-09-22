@@ -21,7 +21,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   AsignacionDePersona, DocumentoLegajo, Persona, PersonaEnDirectorio, ServiceResult,
 } from '../types'
-import { esDireccion } from './vocabularioPersona.ts'
+import { sinDireccion } from './vocabularioPersona.ts'
 
 // LAS CATORCE COLUMNAS DEL LISTADO, NOMBRADAS UNA POR UNA.
 //
@@ -101,12 +101,9 @@ export async function getDirectorio(
   // El casteo va por `unknown`: al nombrar las columnas, PostgREST deja de inferir la forma de la
   // fila y el cliente la tipa como un error genérico. El contrato de columnas de la vista lo fija
   // `orquestador/lib/vistas-security-invoker.test.mjs`, no este archivo.
-  const filas = (data ?? []) as unknown as PersonaEnDirectorio[]
-  // LA LISTA DEL RECORTE Y SU CHIP CUENTAN LO MISMO. `perteneceAlCorte` ya saca a Dirección de
-  // «Sin asignar»; si la lista no lo hiciera, el chip diría 0 arriba de dos filas — y de las dos
-  // caras del mismo corte, la que se lee como rota es siempre la lista.
-  const recortadas = filtro === 'sin_asignar' ? filas.filter((p) => !esDireccion(p.puesto)) : filas
-  return { data: recortadas, error: null }
+  // DIRECCIÓN NO ES PLANTEL: se va acá, en la lectura, y por eso ninguno de los cuatro recortes
+  // —ni «Inactivos»— puede volver a mostrarla. `vocabularioPersona.sinDireccion`.
+  return { data: sinDireccion((data ?? []) as unknown as PersonaEnDirectorio[]), error: null }
 }
 
 /**
@@ -157,7 +154,9 @@ export async function getConteosDeFiltro(
     conteos: { plantel: null, en_obra: null, sin_asignar: null, inactivos: null },
     filas: [],
   }
-  const filas = (data ?? []) as unknown as FilaDeConteo[]
+  // La MISMA regla que el listado, en la MISMA lectura: si el chip contara a Dirección y la lista no
+  // la mostrara, el número y las filas dejarían de ser dos caras del mismo corte.
+  const filas = sinDireccion((data ?? []) as unknown as FilaDeConteo[])
   return { conteos: contarPorFiltro(filas), filas }
 }
 
@@ -187,11 +186,7 @@ export function perteneceAlCorte(fila: FilaDeConteo, filtro: FiltroPersonal): bo
   if (filtro === 'inactivos') return fila.en_la_empresa === false
   if (fila.en_la_empresa !== true) return false
   if (filtro === 'en_obra') return !sinObra
-  // «SIN ASIGNAR» ES UN RECLAMO, NO UN CENSO: el chip lleva a la lista de quién necesita obra. A
-  // Dirección no se le asigna ninguna —no suma dotación a ninguna obra ni se le imputan horas—, así
-  // que contarla ahí dejaría dos filas que el recorte nunca puede vaciar. Sigue entera en «Plantel»,
-  // que sí es el censo.
-  if (filtro === 'sin_asignar') return sinObra && !esDireccion(fila.puesto)
+  if (filtro === 'sin_asignar') return sinObra
   return true
 }
 

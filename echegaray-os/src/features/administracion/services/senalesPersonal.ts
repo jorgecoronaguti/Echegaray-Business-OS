@@ -54,7 +54,6 @@
 // a ninguna parte enseña a no hacerle clic a la fila de al lado, que sí lleva.
 
 import type { SenalDeTrabajo } from '../../../shared/components/v2/trabajo.ts'
-import { esDireccion } from './vocabularioPersona.ts'
 import type { EstadoDePapeles, MarcaDeHoy } from './pulsoDelPlantel.ts'
 
 /** Lo mínimo de una persona para decidir si reclama algo. */
@@ -62,8 +61,6 @@ export interface FilaDeSenal {
   id: string
   en_la_empresa: boolean
   obra_actual_id: string | null
-  /** El rol organizacional. A Dirección no se le reclama obra: ver `sinObra` más abajo. */
-  puesto?: string | null
 }
 
 export function senalesDePersonal({
@@ -100,11 +97,7 @@ export function senalesDePersonal({
     }
   }
 
-  // A DIRECCIÓN NO SE LE RECLAMA UNA OBRA. La señal dice «no suman a la proyección de dotación de
-  // ninguna obra» y ofrece «Asignar»: para Rodrigo y Jorge eso es un verbo que nadie va a poder
-  // cumplir nunca, y una señal que no puede bajar a cero deja de ser una señal. Medido el
-  // 22/09/2026 antes de darlos de alta: 0 sin obra; con ellos adentro y sin esta línea, 2 fijos.
-  const sinObra = activas.filter((p) => p.obra_actual_id == null && !esDireccion(p.puesto)).length
+  const sinObra = activas.filter((p) => p.obra_actual_id == null).length
   if (sinObra > 0) {
     s.push({
       clave: 'sin-obra', numero: sinObra,

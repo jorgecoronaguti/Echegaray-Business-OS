@@ -17,7 +17,7 @@ import { leerRegistrosHH } from './registrosHHService.ts'
 import { laSesionEsDePrueba, leerCuilesDelLegajo, leerSubcontratoDePersonas, subcontratoPorPersona } from './lecturasCompartidasDeQuincena.ts'
 import { periodoDeRecibo } from './liquidacionCuadros.ts'
 import type { Quincena } from './quincena.ts'
-import { esJefeDeObra } from './vocabularioPersona.ts'
+import { esJefeDeObra, sinDireccion } from './vocabularioPersona.ts'
 
 const sinTabla = (e: { code?: string; message: string }): boolean =>
   e.code === '42P01' || /does not exist/i.test(e.message)
@@ -101,13 +101,18 @@ export async function leerPlantelDeLaQuincena(supabase: SupabaseClient, q: Quinc
     conJornales: new Set(((jornales.data ?? []) as { persona_id: string | null }[]).map((r) => r.persona_id).filter((x): x is string => !!x)),
   }
   const deSubcontrato = subcontratoPorPersona(subcontratos)
-  const personas = ((directorio.data ?? []) as Parameters<typeof personaDelDirectorio>[0][]).map(personaDelDirectorio)
+  // DIRECCIÓN NO ES PLANTEL DE NINGUNA QUINCENA: no se le liquida jornal ni se le cargan horas.
+  // Se va en la LECTURA —una sola vez— y por eso Horas, Liquidación, Recibos, Cierre, Convenios y la
+  // semana de asistencia, que piden todas esta puerta, no pueden volver a mostrarla por separado.
+  const filasDirectorio = sinDireccion(
+    (directorio.data ?? []) as (Parameters<typeof personaDelDirectorio>[0] & { puesto?: string | null })[])
+  const personas = filasDirectorio.map(personaDelDirectorio)
     .map((p) => ({ ...p, subcontratoId: deSubcontrato.get(p.id) ?? null }))
   const { activas, conActividad } = plantelDeLaQuincena(personas, q, actividad, deprueba)
   const filasTarifa = (tarifas.data ?? []) as { persona_id: string; desde: string; valor_hora: number | null; neto_mensual: number | null; origen: string }[]
   const conPresencia = new Set(((presentes.data ?? []) as { persona_id: string }[]).map((r) => r.persona_id))
   const puestos: Record<string, string | null> = Object.fromEntries(
-    ((directorio.data ?? []) as { id: string; puesto?: string | null }[]).map((r) => [r.id, r.puesto ?? null]),
+    filasDirectorio.map((r) => [r.id, r.puesto ?? null]),
   )
   const delCuadro = new Set(activas.filter((p) => {
     // UN JEFE DE LA QUINCENA SIEMPRE TIENE FILA, con o sin tarifa (dueño, 15/09/2026): Liquidación lo manda a

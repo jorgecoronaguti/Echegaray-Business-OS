@@ -9,6 +9,7 @@ import type { Cuadrilla, Integrante, ServiceResult, SinCuadrilla } from '../type
 // mata la prueba con ERR_MODULE_NOT_FOUND antes de la primera aserción.
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
+import { sinDireccion } from './vocabularioPersona.ts'
 
 /**
  * FILTRAR POR TEXTO — en memoria, sobre lo que la consulta ya trajo.
@@ -166,11 +167,13 @@ export async function getSinCuadrilla(
   supabase: SupabaseClient,
 ): Promise<ServiceResult<SinCuadrilla[]>> {
   const { data, error } = await supabase
-    .from('persona_directorio').select('id, nombre_completo, categoria, obra_actual')
+    .from('persona_directorio').select('id, nombre_completo, categoria, obra_actual, puesto')
     .eq('en_la_empresa', true).is('cuadrilla_id', null)
     .order('nombre_completo', { ascending: true })
   if (error) return { data: null, error: error.message }
-  return { data: (data ?? []) as unknown as SinCuadrilla[], error: null }
+  // A DIRECCIÓN NO SE LA PONE EN UNA CUADRILLA: el pool «sin cuadrilla» es de quien puede entrar a
+  // una, y dejarla ahí sería ofrecer un movimiento que nadie va a hacer.
+  return { data: sinDireccion((data ?? []) as unknown as (SinCuadrilla & { puesto?: string | null })[]), error: null }
 }
 
 /** La cuadrilla vigente de cada persona, para el selector de la ficha. */

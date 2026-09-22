@@ -35,6 +35,7 @@ import type { Rol } from '@/features/auth/types'
 import { puedeVerRuta } from '../../auth/types/areas.ts'
 import { cumpleFiltro } from './comprasEstado.ts'
 import { destinosVisibles, type AreaAdmin } from './areasAdmin.ts'
+import { sinDireccion } from './vocabularioPersona.ts'
 
 export type { AreaAdmin } from './areasAdmin.ts'
 
@@ -154,8 +155,12 @@ export async function getConteosHome(supabase: SupabaseClient): Promise<ConteosL
   const [
     personas, proveedores, nombresSinResolver, compras, pendientes, correcciones, tareasTipo, documentos,
   ] = await Promise.all([
-    // EL PLANTEL SALE DE LA PERTENENCIA, NO DE LA FECHA: hay bajas sin `fecha_egreso`.
-    cuenta(supabase.from('persona_directorio').select('*', head).eq('en_la_empresa', true)),
+    // EL PLANTEL SALE DE LA PERTENENCIA, NO DE LA FECHA: hay bajas sin `fecha_egreso`. Y NO por
+    // `head: true`: un `count` no puede mirar el `puesto`, y Dirección no es plantel (dueño, 22/09).
+    // Este número tiene que ser el MISMO que el de la pantalla de Personal.
+    filas<{ puesto: string | null }>(
+      supabase.from('persona_directorio').select('puesto').eq('en_la_empresa', true))
+      .then((f) => (f === null ? null : sinDireccion(f).length)),
     // UNA lectura para dos números: 36 filas de una columna cuestan menos que dos conteos.
     filas<{ cuit: string | null }>(supabase.from('proveedores').select('cuit').eq('activo', true)),
     cuenta(supabase.from('proveedor_nombre_pendiente').select('*', head)),

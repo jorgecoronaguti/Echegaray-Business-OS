@@ -283,7 +283,14 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR, { ahora } =
   // SIN NOMBRE PERO CON CUIT Y NÚMERO, LA FILA ENTRA. El proveedor se completa en Compras eligiéndolo
   // del desplegable; el gasto, en cambio, o entra ahora o no entra nunca. Sin identidad fuerte sí
   // frena: sin nombre y sin CUIT no hay clave, y sin clave no hay barrera de duplicados.
-  if (!normalizar(c.proveedor) && (EXIGIR_PROVEEDOR || !identidadFuerte(c))) {
+  //
+  // Y POR ESO MISMO, UN ÍTEM QUE YA TRAE SU CLAVE NO NECESITA PROVEEDOR (22/09/2026): una línea de la
+  // libreta —«Flete 60.000»— no tiene proveedor ni CUIT, pero su identidad la da lo que la línea dice
+  // (`l:<fecha>|<concepto>|<centavos>`, `libreta-texto.mjs`). Lo que se exigía no era el nombre: era la
+  // clave. Con la clave puesta, exigir el nombre frenaría un gasto real por un dato que el papel —que no
+  // existe— nunca va a dar.
+  const conClavePropia = Boolean(String(item?.clave ?? '').trim())
+  if (!normalizar(c.proveedor) && (EXIGIR_PROVEEDOR || (!identidadFuerte(c) && !conClavePropia))) {
     falta(MOTIVO.PROVEEDOR, 'sin proveedor', 'no pude leer el proveedor')
   }
   if (aNumero(c.neto) == null && aNumero(c.total) == null) {

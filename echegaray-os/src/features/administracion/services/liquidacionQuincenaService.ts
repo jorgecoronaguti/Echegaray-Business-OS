@@ -35,7 +35,7 @@ import {
   laSesionEsDePrueba, leerCuilesDelLegajo, leerPresenciasDeLaQuincena, leerSubcontratoDePersonas, subcontratoPorPersona,
 } from './lecturasCompartidasDeQuincena.ts'
 import { plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
-import { esJefeDeObra } from './vocabularioPersona.ts'
+import { esJefeDeObra, sinDireccion } from './vocabularioPersona.ts'
 import type { EntradaDePresentismo } from './presentismo.ts'
 import { leerGuardadas, ausenciasPorPersona, tardanzasPorPersona, type EstadoDeLaQuincena } from './liquidacionGuardadas.ts'
 import { cuadroSellado, type PersonaSellable } from './liquidacionSellada.ts'
@@ -229,8 +229,10 @@ export async function getLiquidacionDeLaQuincena(
     ((legajo.data ?? []) as { id: string; cuil: string | null }[]).map((r) => [r.id, r.cuil]),
   )
   const deSubcontrato = subcontratoPorPersona(subcontratos)
+  // DIRECCIÓN NO SE LIQUIDA: no es plantel operativo de ninguna quincena. Se va en la lectura, con
+  // la única regla del OS (`vocabularioPersona.sinDireccion`).
   const personas: PersonaDeLiquidacion[] =
-    ((directorio.data ?? []) as
+    sinDireccion((directorio.data ?? []) as
       { id: string; nombre_completo: string; en_la_empresa: boolean; puesto: string | null; fecha_ingreso: string | null; fecha_egreso: string | null }[])
       .map((r) => ({
         id: r.id,

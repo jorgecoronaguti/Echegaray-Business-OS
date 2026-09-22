@@ -100,6 +100,77 @@ export async function getDeuda(
   return { data: { filas, lineas, obras: await nombresDeLasObras(supabase, lineas), canonica, hoy, truncado, notas }, error: null }
 }
 
+/** Lo que la ficha del proveedor necesita para decir arriba cuánto se le debe. */
+export interface DeudaDeUnProveedor {
+  /** `null` = no tiene ninguna compra con saldo: está al día. Nunca un `total: 0`. */
+  fila: DeudaDeProveedor | null
+  /** Sus líneas con saldo, para el detalle. Vacío cuando está al día. */
+  detalle: DetalleDeuda | null
+  hoy: string
+  /** `true` = se alcanzó el tope de filas con saldo: lo que se muestra puede quedar corto. */
+  truncado: boolean
+  /** El descuadre contra `public.proveedor_deuda`, si lo hay. `null` = cierran o no hay con qué cotejar. */
+  cotejo: string | null
+}
+
+/**
+ * LA DEUDA DE UN SOLO PROVEEDOR — la misma que publica «A quién le debo», leída para su ficha.
+ *
+ * ═══ POR QUÉ SE LEEN TODAS LAS COMPRAS CON SALDO Y NO SÓLO LAS SUYAS ═══
+ *
+ * Quién es el acreedor de una fila de Compras NO es una columna: es el texto libre del Sheet pasado
+ * por `proveedor_nombre_resuelto`. Filtrar en Postgres por `proveedor ilike '…'` sería una SEGUNDA
+ * definición de identidad, y dos reglas de «quién es este proveedor» reparten su deuda entre dos
+ * fichas (es el defecto que `deudaProveedores.ts` documenta). Se lee el mismo lote que la sección
+ * —las filas con saldo vivo, 42 el 16/09/2026, con tope en `TOPE_DEUDA`—, se le aplica la MISMA
+ * regla y se toma la fila de este proveedor. El número de la ficha y el de la tabla no pueden
+ * diferir porque son literalmente el mismo cálculo.
+ *
+ * No lee notas ni nombres de obra: la ficha no los dibuja, y pagar ese viaje en cada apertura de
+ * ficha sería cobrar por algo que nadie mira.
+ */
+export async function getDeudaDeUnProveedor(
+  supabase: SupabaseClient, proveedorId: string, hoy: string = hoyISO(),
+): Promise<ServiceResult<DeudaDeUnProveedor>> {
+  const [compras, resueltos, canon] = await Promise.all([
+    supabase.from('compra_sheet').select(COLUMNAS)
+      .gt('saldo_pendiente', 0).not('anulada', 'is', true)
+      .order('fecha_prevista', { ascending: true, nullsFirst: false })
+      .limit(TOPE_DEUDA + 1),
+    supabase.from('proveedor_nombre_resuelto').select('nombre_norm, proveedor_id, proveedor_nombre, estado'),
+    supabase.from('proveedor_deuda').select('deuda').eq('proveedor_id', proveedorId).maybeSingle(),
+  ])
+  // UN ERROR DE LECTURA NO ES «AL DÍA». Sube como error y la ficha escribe por qué no puede saberlo.
+  if (compras.error) return { data: null, error: compras.error.message }
+
+  const leidas = (compras.data ?? []) as unknown as CompraConSaldo[]
+  const truncado = leidas.length > TOPE_DEUDA
+  const visibles = truncado ? leidas.slice(0, TOPE_DEUDA) : leidas
+
+  const puente = new Map<string, ProveedorResuelto>()
+  for (const r of ((resueltos.data ?? []) as unknown as ProveedorResuelto[])) {
+    if (r.nombre_norm) puente.set(r.nombre_norm, r)
+  }
+
+  const lineas = lineasDeDeuda(visibles, puente, hoy)
+  const fila = deudaPorProveedor(lineas, puente, visibles).find((f) => f.clave === proveedorId) ?? null
+  // SIN PUENTE NO HAY FICHA QUE COTEJAR: la clave de un texto sin resolver es `txt:…` y nunca sería
+  // este uuid, así que la ficha de un proveedor cuyo nombre del Sheet no se resolvió dirá «al día»
+  // aunque haya plata a su nombre. Es la misma frontera que la tabla: esa deuda existe, pero sin
+  // acreedor identificado, y vive en «A quién le debo» con su grafía. Se declara en la pantalla.
+  const canonica = canon.error || !canon.data ? null : Number((canon.data as { deuda: number | string }).deuda ?? 0)
+  return {
+    data: {
+      fila,
+      detalle: fila ? detalleDeProveedor(lineas, fila) : null,
+      hoy,
+      truncado,
+      cotejo: fila ? cotejoDeDeuda(fila, canonica) : null,
+    },
+    error: null,
+  }
+}
+
 /**
  * EL NOMBRE DE LA OBRA, SIN EL CÓDIGO INTERNO (dueño, 16/09/2026).
  *
