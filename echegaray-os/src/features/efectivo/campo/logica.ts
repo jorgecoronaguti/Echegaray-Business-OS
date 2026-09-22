@@ -15,6 +15,9 @@
 import type { EntregaSaldo, EstadoTicket, TicketRendicion } from './tipos.ts'
 import { extensionDe } from '../../administracion/services/comprobanteEntrada.ts'
 
+/** La migración que publica el módulo. Mientras no esté aplicada, las pantallas lo dicen. */
+export const MIGRACION_EFECTIVO = '20260922T1500'
+
 const ENTERO = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 })
 
 /** `800000` → `800.000`. Los centavos sólo aparecen si existen. */

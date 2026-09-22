@@ -20,6 +20,9 @@ import { diaYFecha, semanaDe } from '@/features/empleado/services/fecha'
 import { clasificar, estaCompleta, restante } from '@/features/empleado/services/tareas'
 import { estadoEnPantalla, pendientes } from '@/features/empleado/services/documentos'
 import type { MiTarea } from '@/features/empleado/types'
+import { getMiEfectivo } from '@/features/efectivo/campo/datos'
+import { tarjetaDeHoy } from '@/features/efectivo/campo/logica'
+import { TarjetaMiEfectivo, TarjetaRecibir } from '@/features/efectivo/campo/components/TarjetasHoy'
 
 // M02 · HOY — porte literal de `M02 · Hoy.dc.html`.
 //
@@ -70,14 +73,20 @@ export default async function HoyPage() {
   }
 
   const semana = semanaDe(hoy)
-  const [obras, dia, tareas, impedimentos, documentos, horas] = await Promise.all([
+  const [obras, dia, tareas, impedimentos, documentos, horas, efectivo] = await Promise.all([
     getMiObra(supabase),
     getMiDiaDeHoy(supabase, hoy),
     getMisTareas(supabase),
     getMisImpedimentos(supabase),
     getMisDocumentos(supabase),
     getHorasPropias(supabase, semana.desde, semana.hasta),
+    getMiEfectivo(supabase, perfil.data.persona_id),
   ])
+
+  // EFECTIVO A RENDIR (M01): la entrega sin firmar sale ARRIBA —es lo único del día que pide algo con
+  // la plata en la mano—; el acceso a «Mi efectivo», abajo con los otros accesos. Si el módulo todavía
+  // no está publicado no se dibuja nada: Hoy no es el lugar para avisar una migración.
+  const efectivoHoy = efectivo.estado === 'ok' ? tarjetaDeHoy(efectivo.dato.entregas, efectivo.dato.tickets) : null
 
   const obra = obras.data?.[0] ?? null
   const deHoy = clasificar(tareas.data ?? [], hoy).hoy
@@ -108,6 +117,8 @@ export default async function HoyPage() {
         </div>
 
         {error && <div style={{ marginTop: 14 }}><AvisoError testid="hoy-error">{error}</AvisoError></div>}
+
+        {efectivoHoy?.tipo === 'recibir' && <div style={{ marginTop: 16 }}><TarjetaRecibir t={efectivoHoy} /></div>}
 
         <div style={{ marginTop: 16 }}>
           <BloqueAsistencia dia={dia.data} obraId={obra?.id ?? null} tarjeta />
@@ -166,6 +177,10 @@ export default async function HoyPage() {
             testid="acceso-papeles"
           />
         </div>
+
+        {efectivoHoy?.tipo === 'mi-efectivo' && (
+          <div style={{ marginTop: 22 }}><TarjetaMiEfectivo t={efectivoHoy} href="/mi-informacion/efectivo" /></div>
+        )}
 
         <Link
           href="/mi-informacion/horas"
