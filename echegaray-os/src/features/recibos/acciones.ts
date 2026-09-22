@@ -10,7 +10,6 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { PAPEL_MAX_BYTES, TIPOS_DEL_PAPEL, rutaDelPapel } from './logica'
 
 export type Resultado = { ok: true; mensaje?: string } | { ok: false; error: string }
 
@@ -65,32 +64,23 @@ export async function firmarReciboAction(entrada: z.input<typeof firmarSchema>):
   return { ok: true, mensaje: 'Recibo firmado.' }
 }
 
+const papelSchema = z.object({
+  recibo: uuid,
+  ruta: z.string().regex(/^[0-9a-f-]{36}\/recibo\/[0-9a-f-]{36}-\d+\.(jpg|png|webp|heic|heif|pdf)$/, 'Ruta de la foto inválida'),
+})
+
 /**
- * M11: LA FOTO DEL PAPEL FIRMADO. Primero el archivo a la carpeta de quien sube; después la fila. Si la
- * base lo rechaza, el archivo se borra: una foto que nadie apunta es basura en el bucket y, peor, la
- * pantalla diría «enviado» sobre algo que Administración no va a ver nunca.
+ * M11: LA FOTO DEL PAPEL FIRMADO. El archivo ya está en el bucket: lo subió el NAVEGADOR con la sesión
+ * de la persona (`SubirPapel.tsx`), porque el cuerpo de una Server Action tiene 1 MB de techo y Vercel
+ * corta en 4,5 MB (`subidaComprobantes.ts`, 25/08). Acá llega sólo la ruta, y la base comprueba que el
+ * objeto exista y esté en la carpeta de quien llama. Si la base lo rechaza, el que borra es el navegador.
  */
-export async function subirPapelReciboAction(form: FormData): Promise<Resultado> {
-  const recibo = uuid.safeParse(String(form.get('recibo') ?? ''))
-  if (!recibo.success) return { ok: false, error: 'Recibo inválido' }
-  const archivo = form.get('archivo')
-  if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: 'Sacale una foto al recibo firmado.' }
-  if (!(TIPOS_DEL_PAPEL as readonly string[]).includes(archivo.type)) {
-    return { ok: false, error: 'Tiene que ser una foto (JPG, PNG, HEIC) o un PDF.' }
-  }
-  if (archivo.size > PAPEL_MAX_BYTES) return { ok: false, error: 'La foto no puede pesar más de 10 MB.' }
+export async function registrarPapelReciboAction(entrada: z.input<typeof papelSchema>): Promise<Resultado> {
+  const p = papelSchema.safeParse(entrada)
+  if (!p.success) return { ok: false, error: p.error.issues[0].message }
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { ok: false, error: 'Hace falta volver a entrar.' }
-  const ruta = rutaDelPapel(user.id, recibo.data, archivo.type, Date.now())
-  if (!ruta) return { ok: false, error: 'Tipo de archivo no admitido.' }
-  const { error: subida } = await supabase.storage.from('recibos').upload(ruta, archivo, { contentType: archivo.type, upsert: false })
-  if (subida) return error(subida)
-  const { error: e } = await supabase.rpc('subir_papel_recibo_pago', { p_recibo: recibo.data, p_path: ruta })
-  if (e) {
-    await supabase.storage.from('recibos').remove([ruta])
-    return error(e)
-  }
+  const { error: e } = await supabase.rpc('subir_papel_recibo_pago', { p_recibo: p.data.recibo, p_path: p.data.ruta })
+  if (e) return error(e)
   revalidar()
   return { ok: true, mensaje: 'Enviado. Administración lo verifica y lo archiva en tu legajo.' }
 }
