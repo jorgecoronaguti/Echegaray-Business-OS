@@ -31,6 +31,9 @@ export function PanelDevolucion({ e, destino, porImputar, personas, miPersona }:
   const [pendiente, empezar] = useTransition()
   const leido = validarMonto(monto)
   const efecto = efectoDevolucion(leido.ok ? leido.dato : null, e.en_su_poder)
+  // QA 22/09: con más que el saldo la vista previa decía «le quedan −$ 3,50» y los botones seguían activos.
+  const valida = validarDevolucion(monto, e.en_su_poder)
+  const excede = leido.ok && !valida.ok
 
   const registrar = (cerrar: boolean) => {
     const v = validarDevolucion(monto, e.en_su_poder)
@@ -89,7 +92,10 @@ export function PanelDevolucion({ e, destino, porImputar, personas, miPersona }:
         </select>
       </Campo>
 
-      {leido.ok && (efecto.cierra ? (
+      {excede && !valida.ok && (
+        <div style={{ fontSize: '12.5px', color: V.warn, lineHeight: 1.5 }} data-testid="devolucion-excede">{valida.error}</div>
+      )}
+      {leido.ok && !excede && (efecto.cierra ? (
         <div style={{ ...cajaConfirmar, ...CAJA_POS }} data-testid="devolucion-efecto">
           <div style={{ fontSize: '12.5px', fontWeight: 600, color: V.pos }}>La entrega queda en cero y se cierra</div>
           <div style={{ fontSize: '12.5px', color: V.tintaSuave, lineHeight: 1.45 }}>Entran {pesos(leido.dato)} a Efectivo.</div>
@@ -122,10 +128,10 @@ export function PanelDevolucion({ e, destino, porImputar, personas, miPersona }:
       <ErrorPanel texto={error} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 'auto', flexWrap: 'wrap' }}>
-        <button type="button" onClick={() => registrar(true)} disabled={pendiente || e.en_su_poder <= 0} style={{ ...botonOscuroGrande, opacity: pendiente ? 0.6 : 1 }} data-testid="devolucion-cerrar">
+        <button type="button" onClick={() => registrar(true)} disabled={pendiente || excede || e.en_su_poder <= 0} style={{ ...botonOscuroGrande, opacity: pendiente ? 0.6 : 1 }} data-testid="devolucion-cerrar">
           {pendiente ? 'Registrando…' : 'Registrar y cerrar'}
         </button>
-        <button type="button" onClick={() => registrar(false)} disabled={pendiente || e.en_su_poder <= 0} style={botonClaroGrande} data-testid="devolucion-solo">
+        <button type="button" onClick={() => registrar(false)} disabled={pendiente || excede || e.en_su_poder <= 0} style={botonClaroGrande} data-testid="devolucion-solo">
           Sólo registrar
         </button>
       </div>
