@@ -99,13 +99,13 @@ export function DocumentoRecibo({ d, testid = 'documento-recibo' }: { d: DatosDe
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 24, paddingTop: 20, borderTop: `1px solid ${V.linea}` }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ height: 56, borderBottom: `1px solid ${V.lineaFuerte}`, display: 'flex', alignItems: 'flex-end' }}>
+          <div style={{ paddingTop: 40, borderBottom: `1px solid ${V.lineaFuerte}`, display: 'flex', alignItems: 'flex-end' }}>
             {d.trazo ? <Trazo svg={d.trazo} alto={52} testid="recibo-trazo" /> : null}
           </div>
           <div style={{ fontSize: '11.5px', color: V.apagado }}>Firma del trabajador</div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ height: 56, borderBottom: `1px solid ${V.lineaFuerte}` }} />
+          <div style={{ paddingTop: 56, borderBottom: `1px solid ${V.lineaFuerte}` }} />
           <div style={{ fontSize: '11.5px', color: V.apagado }}>Por la empresa · aclaración</div>
         </div>
       </div>
@@ -132,11 +132,11 @@ function Linea({ texto, importe }: { texto: string; importe: string }) {
 
 /** El botón de contorno del diseño (Imprimir, Descargar PDF, Observar). */
 export const BOTON_CONTORNO: CSSProperties = {
-  height: 38, padding: '0 14px', border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, display: 'inline-flex',
+  padding: '9px 14px', lineHeight: '18px', border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, display: 'inline-flex',
   alignItems: 'center', fontSize: '13px', color: V.tintaSuave, background: '#FFFFFF', cursor: 'pointer', textDecoration: 'none',
 }
 /** El botón grafito del diseño (Enviar a firmar, Archivar firmado). */
 export const BOTON_GRAFITO: CSSProperties = {
-  height: 38, padding: '0 18px', background: V.grafito, color: '#FFFFFF', borderRadius: 6, border: 0, display: 'inline-flex',
+  padding: '9px 18px', lineHeight: '18px', background: V.grafito, color: '#FFFFFF', borderRadius: 6, border: 0, display: 'inline-flex',
   alignItems: 'center', fontSize: '13.5px', fontWeight: 500, cursor: 'pointer', textDecoration: 'none',
 }

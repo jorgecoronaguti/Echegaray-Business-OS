@@ -7,6 +7,7 @@
 // Un botón que se apaga sin decir por qué enseña a no confiar en los que sí andan.
 
 import { useState, useTransition } from 'react'
+import { ALTO_V2 } from '@/shared/components/v2/patron'
 import { useRouter } from 'next/navigation'
 import { V } from '@/shared/components/v2/patron'
 import { archivarReciboAction, emitirRecibosAction, observarReciboAction, type Resultado } from '../acciones'
@@ -37,7 +38,7 @@ export function EnviarAFirmar({ desde, hasta, persona = null, activo, porQueNo, 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
       <button type="button" data-testid={testid} onClick={enviar} disabled={!activo || pendiente} title={activo ? undefined : porQueNo}
-        style={{ ...BOTON_GRAFITO, height: 34, padding: '0 16px', fontSize: '13px', opacity: activo && !pendiente ? 1 : 0.45, cursor: activo ? 'pointer' : 'not-allowed' }}>
+        style={{ ...BOTON_GRAFITO, padding: '8px 16px', lineHeight: '18px', fontSize: '13px', opacity: activo && !pendiente ? 1 : 0.45, cursor: activo ? 'pointer' : 'not-allowed' }}>
         {pendiente ? 'Emitiendo…' : 'Enviar a firmar'}
       </button>
       <Mensaje r={r} />
@@ -83,7 +84,7 @@ export function VerificarYArchivar({ recibo, puedeArchivar, porQueNo, puedeObser
       <div style={{ display: 'flex', flexDirection: 'column' }} data-testid="verificar">
         {CONTROLES.map((c, i) => (
           <label key={c.clave} style={{
-            minHeight: 50, display: 'flex', alignItems: 'center', gap: 12, fontSize: '13.5px', cursor: 'pointer',
+            minHeight: ALTO_V2.recibo, display: 'flex', alignItems: 'center', gap: 12, fontSize: '13.5px', cursor: 'pointer',
             borderBottom: i < CONTROLES.length - 1 ? `1px solid ${V.lineaFila}` : undefined,
           }}>
             <input type="checkbox" data-testid={`control-${c.clave}`} checked={!!marcados[c.clave]} disabled={!puedeArchivar}

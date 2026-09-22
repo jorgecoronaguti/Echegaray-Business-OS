@@ -6,6 +6,7 @@
 // Sin tarifa no dice $ 0: dice «no liquida», y el recibo no se puede emitir.
 
 import Link from 'next/link'
+import { ALTO_V2 } from '@/shared/components/v2/patron'
 import type { ReactNode } from 'react'
 import { Aviso } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
@@ -45,7 +46,7 @@ export async function SeccionRecibosDePago({ quincenaPedida, hoy }: { quincenaPe
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <Link href={`${RUTA}/imprimir?quincena=${q.desde}`} data-testid="imprimir-sin-firmar" aria-disabled={sinFirmar === 0}
             style={{
-              height: 34, padding: '0 14px', border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, display: 'flex',
+              padding: '7px 14px', lineHeight: '18px', border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, display: 'flex',
               alignItems: 'center', fontSize: '13px', color: V.tintaSuave, textDecoration: 'none',
               pointerEvents: sinFirmar === 0 ? 'none' : undefined, opacity: sinFirmar === 0 ? 0.45 : 1,
             }}>
@@ -66,7 +67,7 @@ export async function SeccionRecibosDePago({ quincenaPedida, hoy }: { quincenaPe
             <div style={{ textAlign: 'right' }}>En efectivo</div><div style={{ textAlign: 'right' }}>Total</div><div>Recibo</div>
           </div>
           {filas.length === 0 && (
-            <div style={{ minHeight: 54, display: 'flex', alignItems: 'center', fontSize: '13px', color: V.tenue }}>
+            <div style={{ minHeight: ALTO_V2.recibo, display: 'flex', alignItems: 'center', fontSize: '13px', color: V.tenue }}>
               Nadie en la liquidación de esta quincena.
             </div>
           )}
@@ -89,7 +90,7 @@ function Renglon({ f, ultima, desde }: { f: FilaDeRecibo; ultima: boolean; desde
     <Link href={`${RUTA}?quincena=${desde}&persona=${f.personaId}`} data-testid={`recibo-pago-${f.personaId}`}
       title={f.bloqueo ?? f.recibo?.desactualizado ?? undefined}
       style={{
-        display: 'grid', gridTemplateColumns: COLS, gap: 16, minHeight: 54, alignItems: 'center', fontSize: '13.5px',
+        display: 'grid', gridTemplateColumns: COLS, gap: 16, minHeight: ALTO_V2.recibo, alignItems: 'center', fontSize: '13.5px',
         borderBottom: ultima ? undefined : `1px solid ${V.lineaFila}`, color: V.tinta, textDecoration: 'none',
       }}>
       <div style={{ minWidth: 0 }}>

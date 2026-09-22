@@ -10,6 +10,7 @@
 // al 40 % se lee como deshabilitado.
 
 import Link from 'next/link'
+import { ALTO_V2 } from '@/shared/components/v2/patron'
 import { V } from '@/shared/components/v2/patron'
 import { carpetaDelLegajo, diaHora, miles, motivoParaNo, periodoCorto, type FotoDeRecibo } from '../logica'
 import type { ReciboDePago } from '../datos'
@@ -51,9 +52,9 @@ function Lista({ d }: { d: DatosDePagina }) {
       <div style={{ fontSize: '19px', fontWeight: 600 }}>Recibos · quincena {periodoCorto(d.desde, d.hasta)}</div>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {d.filas.map((f) => (
-          <Link key={f.personaId} href={`${RUTA}?quincena=${d.desde}&persona=${f.personaId}`} data-testid={`lista-recibo-${f.personaId}`}
+          <Link key={f.personaId} prefetch={false} href={`${RUTA}?quincena=${d.desde}&persona=${f.personaId}`} data-testid={`lista-recibo-${f.personaId}`}
             style={{
-              minHeight: 48, borderBottom: `1px solid ${V.lineaFila}`, display: 'flex', alignItems: 'center', gap: 12, fontSize: '13.5px',
+              minHeight: ALTO_V2.recibo, borderBottom: `1px solid ${V.lineaFila}`, display: 'flex', alignItems: 'center', gap: 12, fontSize: '13.5px',
               color: V.tinta, textDecoration: 'none', padding: '0 8px',
               background: d.elegida?.personaId === f.personaId ? QUIETO : undefined,
             }}>
