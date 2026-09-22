@@ -507,8 +507,15 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
               // Postgres. Si no cierran, el panel lo dice en vez de elegir un número.
               aviso={filaDeuda ? cotejoDeDeuda(filaDeuda, deudaLeida.canonica.get(filaDeuda.proveedorId ?? '') ?? null) : null}
               cerrarHref={armarHref(sp, { d: undefined })}
+              // ═══ «VER LA FICHA DEL PROVEEDOR» LLEVA A LA FICHA (defecto, dueño 22/09/2026) ═══
+              //
+              // «al hacer click en el menú desplegable "ver ficha del proveedor" no te lleva a la
+              // ficha, te devuelve al listado». Apuntaba a `armarHref({}, { p })`, o sea a ESTA
+              // MISMA pantalla con el panel de edición abierto: el enlace prometía la ficha y
+              // devolvía al listado. La ficha es la ruta `[proveedor]`, que es donde están el
+              // adeudado, las obras y los comprobantes.
               fichaHref={detalleDeuda.proveedorId
-                ? armarHref({}, { p: detalleDeuda.proveedorId })
+                ? `${RUTA}/${detalleDeuda.proveedorId}`
                 : null}
               hrefComprasBase="/administracion/compras?s="
             />

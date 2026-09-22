@@ -14,6 +14,7 @@
 // salió: el papel de cada compra está al lado de la compra (`proveedores/ComprasDelProveedor.tsx`).
 // Lo que se SUBE contra la ficha —contratos, seguros, audiovisual— sigue en «Documentos».
 
+import Link from 'next/link'
 import { ALTO_V2, CAJA_CONTENIDO, FILO_BLOQUEA, V } from '@/shared/components/v2/patron'
 import { BarraDeCostado } from '@/shared/components/v2/segundoNivel'
 import { IconoObra } from '@/shared/components/iconos'
@@ -79,8 +80,22 @@ export function NombresDelProveedor({ nombres }: {
   )
 }
 
-/** A qué obras fue lo que se le compró. `23v2:158-169`. */
-export function ObrasDelProveedor({ filas }: { filas: CompraPorObra[] }) {
+/**
+ * A qué obras fue lo que se le compró. `23v2:158-169`.
+ *
+ * ═══ CADA OBRA SE ABRE Y MUESTRA SUS COMPROBANTES (dueño, 22/09/2026) ═══
+ *
+ * «la sección "obras" q marca los montos, me tiene q permitir abrir una por una y mostrarme cuáles
+ * son esos comprobantes aparejados». Abrir una obra NO es un panel nuevo: es la lista de
+ * comprobantes que la ficha ya tiene, con un filtro más (`?obra=`). Por eso el monto de esta fila y
+ * la suma que la lista publica abajo salen de la misma regla y tienen que dar igual — y por eso el
+ * enlace lleva `anio=todos`: este monto es histórico, y el default de la lista es el año en curso.
+ */
+export function ObrasDelProveedor({ filas, hrefDe }: {
+  filas: CompraPorObra[]
+  /** `undefined` = no se puede abrir (no hay lista de comprobantes que mirar). */
+  hrefDe?: (obra: string | null) => string
+}) {
   return (
     <div data-testid="obras-proveedor">
       {filas.length === 0 && (
@@ -91,7 +106,7 @@ export function ObrasDelProveedor({ filas }: { filas: CompraPorObra[] }) {
       {filas.map((o) => (
         <div
           key={o.obra ?? 'sin-obra'} data-testid="fila-obra"
-          className={CAJA_CONTENIDO}
+          className={`relative ${CAJA_CONTENIDO}`}
           style={{
             display: 'flex', alignItems: 'center', gap: 11, height: ALTO_V2.cara, paddingLeft: 13,
             borderBottom: `1px solid ${V.lineaFila}`,
@@ -101,14 +116,31 @@ export function ObrasDelProveedor({ filas }: { filas: CompraPorObra[] }) {
           <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
             <IconoObra className="h-[15px] w-[15px]" />
           </span>
-          <span
-            className="truncate"
-            style={{ fontSize: '12.5px', fontWeight: 500, color: o.obra ? V.tinta : V.warn, minWidth: 0 }}
-          >
-            {o.obra ?? 'sin obra imputada'}
-          </span>
+          {/* El enlace se estira sobre la fila entera, como en la cartera: `after:inset-0` en vez de
+              anidar la fila dentro de un `<a>`, que rompe el tabulador. */}
+          {hrefDe
+            ? (
+                <Link
+                  href={hrefDe(o.obra)} prefetch={false} data-testid="abrir-obra-proveedor"
+                  className="min-w-0 truncate hover:underline after:absolute after:inset-0 after:content-['']"
+                  style={{ fontSize: '12.5px', fontWeight: 500, color: o.obra ? V.tinta : V.warn }}
+                  title="Ver los comprobantes de esta obra"
+                >
+                  {o.obra ?? 'sin obra imputada'}
+                </Link>
+              )
+            : (
+                <span
+                  className="truncate"
+                  style={{ fontSize: '12.5px', fontWeight: 500, color: o.obra ? V.tinta : V.warn, minWidth: 0 }}
+                >
+                  {o.obra ?? 'sin obra imputada'}
+                </span>
+              )}
           <span style={{ fontSize: '11.5px', color: V.tenue, flexShrink: 0 }}>
-            {o.comprobantes} {o.comprobantes === 1 ? 'comprobante' : 'comprobantes'}
+            {o.comprobantes === 0
+              ? 'ninguno'
+              : `${o.comprobantes} ${o.comprobantes === 1 ? 'comprobante' : 'comprobantes'}`}
           </span>
           <span
             className="font-mono tabular-nums shrink-0"
@@ -174,7 +206,11 @@ export function PaquetesDelProveedor({ filas, error }: {
 }
 
 /** «Dónde se le compra»: el reparto por obra, con barra y participación. `23v2:196-208`. */
-export function RepartoPorObra({ filas }: { filas: CompraPorObra[] }) {
+export function RepartoPorObra({ filas, hrefDe }: {
+  filas: CompraPorObra[]
+  /** El MISMO enlace que la cara «Obras»: una obra se abre igual desde los dos lados. */
+  hrefDe?: (obra: string | null) => string
+}) {
   return (
     <>
       {filas.length === 0 && (
@@ -188,9 +224,22 @@ export function RepartoPorObra({ filas }: { filas: CompraPorObra[] }) {
           style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '7px 0', borderBottom: `1px solid ${V.lineaPanel}` }}
         >
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-            <span className="truncate" style={{ fontSize: '12px', color: o.obra ? V.tinta : V.warn, minWidth: 0 }}>
-              {o.obra ?? 'sin obra imputada'}
-            </span>
+            {hrefDe
+              ? (
+                  <Link
+                    href={hrefDe(o.obra)} prefetch={false} data-testid="abrir-obra-reparto"
+                    className="min-w-0 truncate hover:underline"
+                    style={{ fontSize: '12px', color: o.obra ? V.tinta : V.warn }}
+                    title="Ver los comprobantes de esta obra"
+                  >
+                    {o.obra ?? 'sin obra imputada'}
+                  </Link>
+                )
+              : (
+                  <span className="truncate" style={{ fontSize: '12px', color: o.obra ? V.tinta : V.warn, minWidth: 0 }}>
+                    {o.obra ?? 'sin obra imputada'}
+                  </span>
+                )}
             <span
               className="font-mono tabular-nums shrink-0"
               style={{ marginLeft: 'auto', fontSize: '11.5px', color: V.apagado }}

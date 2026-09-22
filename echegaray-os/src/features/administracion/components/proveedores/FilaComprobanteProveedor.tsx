@@ -74,7 +74,7 @@ export function FilaComprobanteProveedor({ c, papelesSinLeer, proveedorId, opcio
           // UN VÍNCULO POR NOMBRE ES UN CÁLCULO: la compra no trae CUIT. Se dice sin un párrafo.
           title={c.via === 'nombre' ? 'La compra no trae CUIT: se vinculó por el nombre resuelto' : undefined}
         >
-          <span className="truncate" style={{ fontSize: '12.5px', color: c.concepto?.trim() ? V.tinta : V.tenue }}>
+          <span className="truncate" data-testid="concepto-compra" style={{ fontSize: '12.5px', color: c.concepto?.trim() ? V.tinta : V.tenue }}>
             {c.concepto?.trim() || 'sin concepto'}
           </span>
           <span className="shrink-0 font-mono" style={{ fontSize: '10.5px', color: V.inerte }} data-testid="numero-compra">
@@ -112,7 +112,7 @@ export function FilaComprobanteProveedor({ c, papelesSinLeer, proveedorId, opcio
         </span>
 
         {/* SIN IMPORTE NO ES $ 0. */}
-        <span className="font-mono tabular-nums" style={{ fontSize: '12px', textAlign: 'right', color: c.total === null ? V.warn : V.tinta }}>
+        <span className="font-mono tabular-nums" data-testid="importe-compra" style={{ fontSize: '12px', textAlign: 'right', color: c.total === null ? V.warn : V.tinta }}>
           {c.total === null ? 'sin importe' : pesos(c.total)}
         </span>
 

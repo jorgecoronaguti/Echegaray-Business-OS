@@ -62,7 +62,9 @@ import {
   deudaDeLaFicha, tituloDeLaDeuda, tonoDeLaDeuda,
 } from '@/features/administracion/services/deudaEnLaFicha'
 import { getOpcionesDeObra } from '@/features/administracion/services/obraDeCompraService'
-import { comoComprobantes, filtrosDeURL } from '@/features/administracion/services/comprobantesProveedor'
+import {
+  comoComprobantes, filtrosDeURL, SIN_OBRA, TODOS_LOS_ANIOS,
+} from '@/features/administracion/services/comprobantesProveedor'
 import { formatearCuit } from '@/features/administracion/services/identidad'
 import { getDocumentosDelProveedor } from '@/features/administracion/services/documentosProveedorService'
 import { getContactosDelProveedor } from '@/features/administracion/services/contactosProveedorService'
@@ -74,7 +76,9 @@ import { BloqueContactos, type TextosAgenda } from '@/features/clientes/componen
 import {
   NombresDelProveedor, ObrasDelProveedor, PaquetesDelProveedor, QueProvee, RepartoPorObra,
 } from '@/features/administracion/components/ListasProveedorV2'
-import { ComprasDelProveedor } from '@/features/administracion/components/proveedores/ComprasDelProveedor'
+import {
+  ComprasDelProveedor, urlDeComprobantes,
+} from '@/features/administracion/components/proveedores/ComprasDelProveedor'
 import { DeudaDelProveedor } from '@/features/administracion/components/proveedores/DeudaDelProveedor'
 import { DocumentosDelProveedor } from '@/features/administracion/components/proveedores/DocumentosDelProveedor'
 import { getArchivosDeEntidad } from '@/features/documentos/services/carpetaDeEntidadService'
@@ -118,7 +122,12 @@ const TEXTOS_CONTACTOS: Partial<TextosAgenda> = {
   conNotas: true,
 }
 
-type Consulta = { vista?: string; anio?: string; papel?: string; n?: string; contacto?: string; accContacto?: string }
+type Consulta = {
+  vista?: string; anio?: string; papel?: string; estado?: string; obra?: string
+  /** Lo tipeado en el buscador. `n` es el nombre viejo del parámetro, que nunca se leyó bien. */
+  q?: string; n?: string
+  contacto?: string; accContacto?: string
+}
 
 /**
  * LA MISMA DIRECCIÓN CON UN CONTACTO ABIERTO —o cerrado—. Conserva la solapa y los filtros de
@@ -210,6 +219,17 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
     ? await getArchivosDeEntidad(supabase, 'proveedor', proveedor.id)
     : null
   const anioActual = anioDeHoy()
+  const filtros = filtrosDeURL(sp, anioActual)
+  /**
+   * ABRIR UNA OBRA ES FILTRAR LA LISTA DE COMPROBANTES, no abrir un panel aparte (dueño,
+   * 22/09/2026). Va a la cara «Compras» —donde está la lista— con `anio=todos`, porque el monto que
+   * la obra muestra es histórico y el default de la lista es el año en curso: sin esto, el monto de
+   * arriba y la suma de abajo no cerrarían. El estado que ya estuviera puesto se conserva.
+   */
+  const hrefDeObra = (obra: string | null) =>
+    urlDeComprobantes(proveedor.id, filtros, {
+      anio: TODOS_LOS_ANIOS, obra: obra ?? SIN_OBRA, papel: 'todos', texto: null,
+    }, anioActual)
 
   const href = (v: Cara) => `/administracion/proveedores/${proveedor.id}${v === 'compras' ? '' : `?vista=${v}`}`
   const panelDeEdicion = `/administracion/proveedores?p=${proveedor.id}`
@@ -339,7 +359,7 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
           {cara === 'compras' && compras && (
             <ComprasDelProveedor
               proveedorId={proveedor.id} lectura={compras}
-              filtros={filtrosDeURL(sp, anioActual)} anioActual={anioActual}
+              filtros={filtros} anioActual={anioActual}
               opcionesObra={opcionesObra}
             />
           )}
@@ -352,7 +372,7 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
               }))}
             />
           )}
-          {cara === 'obras' && <ObrasDelProveedor filas={porObra} />}
+          {cara === 'obras' && <ObrasDelProveedor filas={porObra} hrefDe={compras ? hrefDeObra : undefined} />}
           {cara === 'paquetes' && (
             <PaquetesDelProveedor filas={paquetes.data ?? []} error={paquetes.error} />
           )}
@@ -420,7 +440,7 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
           <div style={{ marginTop: 22 }}>
             <RotuloPanel>Dónde se le compra</RotuloPanel>
           </div>
-          <RepartoPorObra filas={porObra} />
+          <RepartoPorObra filas={porObra} hrefDe={compras ? hrefDeObra : undefined} />
 
           <div style={{ marginTop: 22 }}>
             <RotuloPanel cuenta={conceptosTotal || undefined}>Qué provee</RotuloPanel>
