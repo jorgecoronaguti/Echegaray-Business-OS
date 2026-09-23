@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getPuenteObras, getHerramientasGlobal, getPedidosGlobal } from '@/features/integraciones/services/operacionGlobalService'
-import { lecturaPedido } from '@/features/integraciones/services/estados'
+import { getPuenteObras, getHerramientasGlobal } from '@/features/integraciones/services/operacionGlobalService'
+import { contarSinEntregar } from '@/features/materiales/logica/pedidos'
+import { leerMaterial } from '@/features/materiales/services/pedidosService'
 import { rotuloDeObra } from '@/shared/utils/obra'
 
 // LO QUE `/campo` NECESITA SABER, EN UNA SOLA LECTURA.
@@ -67,7 +68,9 @@ export async function leerDatosCampo(supabase: SupabaseClient): Promise<DatosCam
       ids.length
         ? supabase.from('obra_restriccion').select('id', { count: 'exact', head: true }).eq('estado', 'abierta').in('obra_id', ids)
         : Promise.resolve({ count: 0, error: null }),
-      getPedidosGlobal(supabase, puente.data),
+      // Los pedidos los lee el módulo Material (23/09/2026): resuelve la obra por id cuando el pedido vino
+      // de la app y por alias cuando vino del Sheet. Sin la migración, la cuenta es `null`, no cero.
+      leerMaterial(supabase),
       getHerramientasGlobal(supabase, puente.data),
     ])
 
@@ -78,12 +81,9 @@ export async function leerDatosCampo(supabase: SupabaseClient): Promise<DatosCam
       obras: mias,
       partesHoy: partes.error ? null : (partes.count ?? 0),
       impedimentosAbiertos: impedimentos.error ? null : (impedimentos.count ?? 0),
-      pedidosSinEntregar:
-        pedidos.error !== null
-          ? null
-          : enMisObras(pedidos.data).filter((p) => lecturaPedido(p.estado).clave !== 'entregado').length,
+      pedidosSinEntregar: pedidos.estado === 'ok' ? contarSinEntregar(pedidos.pedidos, ids) : null,
       herramientasEnObra: herramientas.error !== null ? null : enMisObras(herramientas.data).length,
-      error: partes.error?.message ?? impedimentos.error?.message ?? pedidos.error ?? herramientas.error ?? null,
+      error: partes.error?.message ?? impedimentos.error?.message ?? (pedidos.estado === 'error' ? pedidos.mensaje : null) ?? herramientas.error ?? null,
     }
   } catch (err) {
     return { ...VACIO, error: err instanceof Error ? err.message : 'Error al conectar con Supabase' }

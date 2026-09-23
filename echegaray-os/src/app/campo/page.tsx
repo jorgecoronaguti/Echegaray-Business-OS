@@ -89,7 +89,8 @@ export default async function CampoPage() {
       testid: 'ir-parte',
     },
     {
-      href: '/integraciones/pedidos-materiales',
+      // El módulo Material del teléfono (23/09/2026): antes abría la tabla de escritorio del espejo de AppSheet.
+      href: '/campo/material',
       titulo: 'Material',
       detalle: 'Pedir y ver lo pedido',
       senal: senalPedidos(d.pedidosSinEntregar),
@@ -258,7 +259,7 @@ export default async function CampoPage() {
         ) : (
           <>
             <Link
-              href="/integraciones/pedidos-materiales"
+              href="/campo/material/pedir"
               data-testid="pedir-material"
               className="flex h-[48px] w-full items-center justify-center rounded-control bg-marca text-[15px] font-semibold text-[color:var(--os-on-marca)]"
             >

@@ -28,8 +28,8 @@ export default async function ImpedimentoCampoPage({ searchParams }: { searchPar
       <MarcoCampo titulo="Anotar impedimento">
         <Aviso tono="warn" titulo="Tu usuario no puede anotar impedimentos.">
           Los anota el jefe de obra. Si falta material, pedilo desde{' '}
-          <Link href="/integraciones/pedidos-materiales" className="underline">
-            Pedidos
+          <Link href="/campo/material/pedir" className="underline">
+            Material
           </Link>
           .
         </Aviso>

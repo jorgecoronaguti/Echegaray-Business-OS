@@ -33,6 +33,9 @@ const SOLAPAS = [
   { clave: 'ubicaciones', label: 'Ubicaciones', href: '/herramientas/ubicaciones' },
   { clave: 'movimientos', label: 'Movimientos', href: '/herramientas/movimientos' },
   { clave: 'mantenimiento', label: 'Mantenimiento', href: '/herramientas/mantenimiento' },
+  // MATERIAL (dueño, 23/09/2026): «toda una sección de Material unida a la experiencia mobile, en
+  // computadora, en módulo Herramientas». Mismo nombre que la tarjeta de `/campo` y la fila de M01.
+  { clave: 'material', label: 'Material', href: '/herramientas/material' },
 ] as const
 
 /** Qué solapa enciende una ruta. Etiquetas no tiene solapa propia: cuelga del Inventario (`D14`). */

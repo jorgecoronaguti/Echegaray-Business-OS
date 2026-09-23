@@ -54,6 +54,8 @@ const MAPA: readonly Entrada[] = [
   { prefijo: '/calendario-financiero', que: 'el calendario financiero' },
   { prefijo: '/aprobaciones', que: 'las aprobaciones' },
   { prefijo: '/integraciones/pedidos-materiales', que: 'los pedidos de materiales', cartera: { href: '/integraciones', texto: 'Fuentes' } },
+  { prefijo: '/herramientas/material', que: 'el material pedido', cartera: { href: '/herramientas', texto: 'Herramientas' } },
+  { prefijo: '/campo/material', que: 'el material pedido', cartera: { href: '/campo', texto: 'Campo' } },
   { prefijo: '/integraciones/movimientos', que: 'los movimientos', cartera: { href: '/herramientas/movimientos', texto: 'Movimientos' } },
   { prefijo: '/integraciones/herramientas', que: 'las herramientas', cartera: { href: '/herramientas', texto: 'Herramientas' } },
   { prefijo: '/integraciones', que: 'las fuentes del OS', cartera: ADMIN },

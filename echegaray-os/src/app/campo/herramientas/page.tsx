@@ -62,6 +62,8 @@ export default async function InicioHerramientasCampo({ searchParams }: { search
   const prob = aca.filter(conProblema).length
   const verificables = verificablesDelLugar(p, lugar.ubicacionId)
   const ultimoRec = lugar.ubicacionId ? recuentosDelLugar(p.recuentos, lugar.ubicacionId)[0] ?? null : null
+  // La obra del lugar, para abrir Material ya acotado a ella. Un Taller no pide material.
+  const obraDelLugar = !lugar.esObra ? null : lugar.ubicacionId ? (p.ubicacionPorId.get(lugar.ubicacionId)?.obra_id ?? null) : lugar.clave.startsWith('obra:') ? lugar.clave.slice(5) : null
   return (
     <MarcoTelefono
       titulo={<span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>Herramientas</span>}
@@ -100,7 +102,9 @@ export default async function InicioHerramientasCampo({ searchParams }: { search
           <FilaTelefono href={conLugar('/campo/herramientas/recuento', lugar.clave)} icono={<IcoLista tam={18} color={V.apagado} />} titulo={ACCION.recuento}
             bajada={p.recuentos == null ? 'sin la migración' : ultimoRec ? `último: ${diaMes(ultimoRec.cerrado_en!)}` : 'contar todo contra lo esperado'} testid="ir-recuento" />
         )}
-        <FilaTelefono href={conLugar('/campo/herramientas/movimientos', lugar.clave)} icono={<IcoReloj tam={18} color={V.apagado} />} titulo={ACCION.movimientos} bajada={lugar.esObra ? 'qué entró y salió de esta obra' : 'qué entró y salió de acá'} ultima testid="ir-movimientos" />
+        <FilaTelefono href={conLugar('/campo/herramientas/movimientos', lugar.clave)} icono={<IcoReloj tam={18} color={V.apagado} />} titulo={ACCION.movimientos} bajada={lugar.esObra ? 'qué entró y salió de esta obra' : 'qué entró y salió de acá'} testid="ir-movimientos" />
+        {/* MATERIAL (dueño, 23/09/2026): el mismo módulo que la solapa «Material» de Herramientas en la computadora. */}
+        <FilaTelefono href={obraDelLugar ? `/campo/material?obra=${encodeURIComponent(obraDelLugar)}` : '/campo/material'} icono={<IcoLista tam={18} color={V.apagado} />} titulo="Material" bajada="pedir y ver lo pedido" ultima testid="ir-material" />
       </div>
       <div style={{ fontSize: '12.5px', color: V.apagado, lineHeight: 1.5 }}>Ves todo el parque y podés moverlo entre cualquier lugar.</div>
     </MarcoTelefono>

@@ -6,6 +6,7 @@
 //   node orquestador/scripts/sync-pedidos-materiales.mjs
 import { operadorEmail, getTokenFor } from '../lib/google-oauth.mjs'
 import { query, closePool } from '../lib/db.mjs'
+import { SQL_UPSERT_PEDIDO } from '../lib/pedidos-materiales-sync.mjs'
 
 const SHEET_ID = process.env.ORQ_APPSHEET_PEDIDOS_SHEET_ID || '1yKoO0gUZysWfamTLR38TWn_sfOMZDMeyqHSNSFCWCec'
 const TAB = 'PEDIDOS'
@@ -68,14 +69,10 @@ async function main() {
     const obraTexto = resolverObra(row[iObra]) || null // resuelve OB1 -> ESTRELLA
     const obraId = matchObra(obraTexto)
     if (obraId) conObra++
+    // El SQL vive en `../lib/pedidos-materiales-sync.mjs` y está probado: sólo pisa filas del Sheet,
+    // nunca las de la app (`origen = 'app'`) ni las decididas en el OS (`origen = 'os'`), y no borra.
     await query(
-      `insert into public.pedidos_materiales (id_pedido, obra_texto, obra_id, fecha, material, cantidad, estado, origen, sincronizado_en)
-       values ($1,$2,$3,$4,$5,$6,$7,'appsheet_sheet', now())
-       on conflict (id_pedido) do update set
-         obra_texto=excluded.obra_texto, obra_id=excluded.obra_id, fecha=excluded.fecha,
-         material=excluded.material, cantidad=excluded.cantidad, estado=excluded.estado,
-         sincronizado_en=now()
-       where public.pedidos_materiales.origen = 'appsheet_sheet'`,
+      SQL_UPSERT_PEDIDO,
       [idPedido, obraTexto, obraId, fechaISO(row[iFecha]), row[iMat] ?? null, numOrNull(row[iCant]), (row[iEst] ?? null)],
     )
     n++

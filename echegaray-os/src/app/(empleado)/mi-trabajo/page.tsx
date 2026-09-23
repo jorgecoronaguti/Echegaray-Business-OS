@@ -121,7 +121,7 @@ export default async function MiTrabajoPage({
         <div style={{ marginTop: 28, borderTop: `1px solid ${C.inerte}`, paddingTop: 14 }} data-testid="mas-de-obra">
           <p style={{ fontSize: 11, color: C.faint, letterSpacing: '.06em' }}>TAMBIÉN DESDE ACÁ</p>
           <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: '8px 18px', fontSize: 12.5 }}>
-            <Link href="/integraciones/pedidos-materiales" data-testid="ir-pedidos" style={{ color: C.muted }}>Pedir material →</Link>
+            <Link href="/campo/material" data-testid="ir-pedidos" style={{ color: C.muted }}>Pedir material →</Link>
             <Link href="/herramientas" data-testid="ir-herramientas" style={{ color: C.muted }}>Herramientas →</Link>
             <Link href="/herramientas/movimientos" data-testid="ir-movimientos" style={{ color: C.muted }}>Movimientos →</Link>
             {/* «Parte de campo →» SE RETIRÓ (dueño, 23/09/2026 · mapa de pantallas, duda 4): `/campo` es

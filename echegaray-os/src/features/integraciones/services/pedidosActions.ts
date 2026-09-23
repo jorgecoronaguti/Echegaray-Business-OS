@@ -67,7 +67,7 @@ export async function createPedidoAction(_prev: ActionState, formData: FormData)
 // deshacer, y el sync deja de actualizarlo aunque nadie haya decidido nada en el OS. Los dos campos
 // del deshacer —`esperado` y `origen`— viajan juntos y sólo se honran juntos: `origen` sin `esperado`
 // sería dejar que cualquier formulario reescriba quién manda sobre la fila.
-const ORIGENES = ['appsheet_sheet', 'os'] as const
+const ORIGENES = ['appsheet_sheet', 'os', 'app'] as const
 const deshacerEstadoSchema = z.object({
   esperado: z.enum(['', 'PENDIENTE', 'PEDIDO', 'ENTREGADO']),
   origen: z.enum(ORIGENES).optional(),

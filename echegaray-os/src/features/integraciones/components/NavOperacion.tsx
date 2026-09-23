@@ -18,7 +18,8 @@ export type VistaOperacion = 'pedidos' | 'movimientos' | 'fuentes'
 // deja de apuntar a `/integraciones/movimientos` (la tabla vieja, hoy vista de sólo lectura) y va al
 // historial del módulo Herramientas; la URL vieja redirige ahí. La sección cuelga de Administración.
 const VISTAS: { id: VistaOperacion; label: string; href: string }[] = [
-  { id: 'pedidos', label: 'Pedidos', href: '/integraciones/pedidos-materiales' },
+  // «Material» vive en Herramientas desde el 23/09/2026; `/integraciones/pedidos-materiales` redirige ahí.
+  { id: 'pedidos', label: 'Material', href: '/herramientas/material' },
   { id: 'movimientos', label: 'Movimientos', href: '/herramientas/movimientos' },
   { id: 'fuentes', label: 'Fuentes', href: '/integraciones' },
 ]

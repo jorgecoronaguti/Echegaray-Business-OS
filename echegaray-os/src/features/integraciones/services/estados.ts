@@ -28,25 +28,10 @@ const SIN_ESTADO: Lectura = { tono: 'nulo', label: 'sin estado', clave: 'sin_est
 
 // ─── PEDIDOS DE MATERIALES ──────────────────────────────────────────────────────────────────────
 //
-// La fuente escribe el estado en MAYÚSCULAS y a veces conjugado («ENTREGADO», «entregada»). Se
-// compara por raíz porque el dato viene de un desplegable de AppSheet que ya cambió de grafía una
-// vez, y un `switch` exacto lo dejaría en «sin estado» sin que nadie se entere.
-const PEDIDO: { raiz: string; lectura: Lectura }[] = [
-  { raiz: 'entreg', lectura: { tono: 'pos', label: 'Entregado', clave: 'entregado' } },
-  { raiz: 'pedid', lectura: { tono: 'curso', label: 'Pedido', clave: 'pedido' } },
-  { raiz: 'camino', lectura: { tono: 'curso', label: 'En camino', clave: 'en_camino' } },
-  { raiz: 'pendien', lectura: { tono: 'pendiente', label: 'Pendiente', clave: 'pendiente' } },
-  { raiz: 'cancel', lectura: { tono: 'neg', label: 'Cancelado', clave: 'cancelado' } },
-]
-
-export function lecturaPedido(estado: string | null | undefined): Lectura {
-  const s = (estado ?? '').trim().toLowerCase()
-  if (!s) return SIN_ESTADO
-  const hit = PEDIDO.find((p) => s.includes(p.raiz))
-  // Un estado que la fuente trae y acá no está declarado se MUESTRA tal cual, en grafito: taparlo
-  // con «sin estado» sería borrar un dato real que alguien cargó.
-  return hit?.lectura ?? { tono: 'curso', label: estado as string, clave: s }
-}
+// La lectura vive en `shared/lib/estadoPedidoMaterial` desde el 23/09/2026: el módulo Material la
+// necesita en las dos caras y las features no se importan entre sí. Acá sólo se re-exporta para que
+// la solapa Pedidos de la obra y los tests sigan leyendo el mismo vocabulario.
+export { lecturaPedido } from '../../../shared/lib/estadoPedidoMaterial.ts'
 
 // ─── HERRAMIENTAS ───────────────────────────────────────────────────────────────────────────────
 //
