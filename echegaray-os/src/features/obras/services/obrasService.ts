@@ -10,6 +10,7 @@
 // copia ni se sirve desde acá, sólo se enlaza.
 
 import type { JuegoDeColumnasDelPlan } from './lecturasDeVista'
+import type { AvancePonderado, DiasHabilesObra } from './avancePonderado.ts'
 // CON EXTENSIÓN: `obrasService.test.ts` carga este archivo con `node --test`, que no resuelve rutas sin ella.
 import { manoObraPropiaDe } from './manoObraPropia.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -407,4 +408,127 @@ export function lookahead(actividades: Actividad[], semanas = 6, hoy = new Date(
     // Toca la ventana si empieza dentro, o si empezó antes y todavía no terminó.
     return (ini >= d0 && ini <= d1) || (ini < d0 && (fin ?? ini) >= d0)
   })
+}
+
+// ═══ ERP OBRAS · H2 — LAS VISTAS NUEVAS QUE LEEN EL RESUMEN (03) Y LOS ÍTEMS (04b) ═══
+//
+// Cuatro lecturas chicas, una por vista, sin recalcular nada acá: `obra_avance_ponderado` es EL
+// avance de la obra (ponderado por costo de MO), `obra_dias_habiles` EL día hábil, y
+// `actividad_partes_resumen` es de donde se DERIVA el estado de cada ítem — nunca se elige.
+
+
+const num = (v: unknown): number | null => (v == null || v === '' ? null : Number(v))
+
+/** El avance ponderado de UNA obra. `data: null` sin error = la obra no tiene historias todavía. */
+export async function getAvancePonderado(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResultOpcional<AvancePonderado>> {
+  const { data, error } = await supabase.from('obra_avance_ponderado').select('*').eq('obra_id', obraId).maybeSingle()
+  if (error) return { data: null, error: error.message }
+  if (!data) return { data: null, error: null }
+  const d = data as Record<string, unknown>
+  return {
+    data: {
+      obra_id: String(d.obra_id),
+      metodo: String(d.metodo ?? 'costo_mo'),
+      avance_pct: num(d.avance_pct),
+      costo_mo_total: num(d.costo_mo_total),
+      costo_teorico: num(d.costo_teorico),
+      n_historias: Number(d.n_historias ?? 0),
+      n_historias_sin_costo: Number(d.n_historias_sin_costo ?? 0),
+      pct_sin_peso: num(d.pct_sin_peso),
+      n_items_medidos: Number(d.n_items_medidos ?? 0),
+      n_items: Number(d.n_items ?? 0),
+    },
+    error: null,
+  }
+}
+
+/** El día hábil de la obra: en cuál va y cuántos tiene el plan. */
+export async function getDiasHabilesDeObra(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResultOpcional<DiasHabilesObra>> {
+  const { data, error } = await supabase.from('obra_dias_habiles').select('*').eq('obra_id', obraId).maybeSingle()
+  if (error) return { data: null, error: error.message }
+  if (!data) return { data: null, error: null }
+  const d = data as Record<string, unknown>
+  return {
+    data: { obra_id: String(d.obra_id), dia_habil_actual: num(d.dia_habil_actual), dias_habiles_plan: num(d.dias_habiles_plan) },
+    error: null,
+  }
+}
+
+/** Lo que los partes dicen de cada ítem: de acá sale el ESTADO (derivado, nunca elegido). */
+export interface ResumenDePartes {
+  actividad_id: string
+  /** 0–1. Σ partes < 1 → En progreso; = 1 → Completado. Sin fila → sin parte. */
+  fraccion_acumulada: number
+  dias_reales: number
+  ultimo_parte: string | null
+  parte_hoy: boolean
+}
+
+export async function getResumenDePartes(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResult<ResumenDePartes[]>> {
+  const { data, error } = await supabase.from('actividad_partes_resumen').select('*').eq('obra_id', obraId)
+  if (error) return { data: null, error: error.message }
+  return {
+    data: ((data ?? []) as Record<string, unknown>[]).map((d) => ({
+      actividad_id: String(d.actividad_id),
+      fraccion_acumulada: Number(d.fraccion_acumulada ?? 0),
+      dias_reales: Number(d.dias_reales ?? 0),
+      ultimo_parte: d.ultimo_parte == null ? null : String(d.ultimo_parte),
+      parte_hoy: Boolean(d.parte_hoy),
+    })),
+    error: null,
+  }
+}
+
+/** Cuánto pesa cada historia (nivel 3) y su costo de MO. */
+export interface HistoriaPeso {
+  actividad_id: string
+  costo_mo: number | null
+  peso: number | null
+  sin_costo: boolean
+  avance_pct: number
+  n_medidas: number
+  n_hojas: number
+}
+
+export async function getHistoriasPeso(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResult<HistoriaPeso[]>> {
+  const { data, error } = await supabase.from('obra_historia_peso')
+    .select('actividad_id, costo_mo, peso, sin_costo, avance_pct, n_medidas, n_hojas').eq('obra_id', obraId)
+  if (error) return { data: null, error: error.message }
+  return {
+    data: ((data ?? []) as Record<string, unknown>[]).map((d) => ({
+      actividad_id: String(d.actividad_id),
+      costo_mo: num(d.costo_mo),
+      peso: num(d.peso),
+      sin_costo: Boolean(d.sin_costo),
+      avance_pct: Number(d.avance_pct ?? 0),
+      n_medidas: Number(d.n_medidas ?? 0),
+      n_hojas: Number(d.n_hojas ?? 0),
+    })),
+    error: null,
+  }
+}
+
+/** CUÁNTA GENTE HOY POR ACTIVIDAD (03 «Gente hoy»): las personas distintas anotadas en los partes
+ *  de hoy (`parte_tarea.personas`). Sin parte hoy no hay fila, y la pantalla escribe «—». */
+export async function getGenteHoyPorActividad(
+  supabase: SupabaseClient, obraId: string, hoy: string,
+): Promise<Record<string, number>> {
+  const { data, error } = await supabase.from('parte_tarea').select('actividad_id, personas')
+    .eq('obra_id', obraId).eq('fecha', hoy)
+  if (error || !data) return {}
+  const porActividad = new Map<string, Set<string>>()
+  for (const f of data as { actividad_id: string; personas: string[] | null }[]) {
+    const s = porActividad.get(f.actividad_id) ?? new Set<string>()
+    for (const p of f.personas ?? []) s.add(p)
+    porActividad.set(f.actividad_id, s)
+  }
+  return Object.fromEntries([...porActividad].map(([id, s]) => [id, s.size]))
 }

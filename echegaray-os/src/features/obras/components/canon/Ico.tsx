@@ -124,6 +124,10 @@ export const P = {
   reiniciar: <path d="M3 12a9 9 0 109-9 9 9 0 00-7.5 4M3 4v4h4" />,
   /** Menos del stepper (08). El más ya está arriba como `mas`. */
   menos: <path d="M5 12h14" />,
+  /** Chevron a la izquierda: la miga del teléfono (M04 «‹ Obras / OB-0011»). */
+  izquierda: <path d="M15 6l-6 6 6 6" />,
+  /** Tres líneas decrecientes: el botón de filtros del teléfono (M05). */
+  filtro: <path d="M4 6h16M7 12h10M10 18h4" />,
 } as const
 
 /** Los tres puntos de «más acciones» (01, 02, 03). Es `fill`, no `stroke`: va aparte del resto. */

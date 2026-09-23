@@ -1,43 +1,39 @@
 // LA CABECERA DE LA OBRA — UNA SOLA, PARA TODAS LAS PANTALLAS DE LA OBRA.
 //
-// ═══ PORTE LITERAL DE LA BANDA QUE DIBUJAN LOS MOCKUPS 02, 03, 05 Y 06 ═══
+// ═══ PORTE LITERAL DEL DISEÑO «ERP Obras» (dueño, 23/09/2026) ═══
 //
-// Los cuatro repiten EXACTAMENTE el mismo bloque, y de ahí salen estas medidas:
+// Escritorio (04 · 04b · 03 · Z01 · C01), medido en `/home/jorge/echegaray-design/erp-obras/`:
 //
-//   banda        `background:#FFFFFF; borderBottom:1px solid #E7E6E2; padding:9px 20px 0`
-//   migaja       11,5px `#91918B`, el nombre de la obra en `#3A3A38`
-//   título       21px/600, `letterSpacing:-.01em`, con 5px de aire arriba
-//   pastilla     11,5px/500, radio 12, `padding:2px 10px`
-//   meta         12px `#6B6B67`, 16px de gap, separadores «·» en `#D7D5CF`
-//   solapas      13px, `padding:8px 11px`, activa 600 con `boxShadow:inset 0 -2px 0 #FDC900`
+//   bloque       `padding:18px 30px 0` (22px arriba en el Resumen) · fondo blanco
+//   miga         12,5px `#6B6B67` con la casita de obra (12px) y «Obras /»
+//   título       17px/600 `letterSpacing:-.01em` · 21px en el Resumen (03, Z01)
+//   pastilla     11,5px, radio 12, `padding:2px 10px` (Z01: «Terminada» en `#067647`)
+//   identidad    12px `#3A3A38` con íconos de 13 · separador «·» en `#D7D5CF` · fechas en mono
+//   cifras       eyebrow mono 10,5/.06em/faint + 19px/600 (04b «Avance de obra 13,39%»)
+//   solapas      12,5px `padding:10px 12px`, activa 500 con `inset 0 -2px 0 #30302F`, línea abajo
 //
-// La versión anterior componía `EntityHeader` + `Tabs` del design system y quedaba parecida, no
-// igual: el título medía 20px, la migaja no existía y la línea de identidad no llevaba íconos.
+// Teléfono (M04 · M05 · M06 · MZ1, 390px):
 //
-// ═══ POR QUÉ LA BANDA ES DE ANCHO COMPLETO Y LA PÁGINA NO LE PONE PADDING ═══
+//   bloque       `padding:10px 16px 0`, línea abajo
+//   miga         11,5px faint: «‹ Obras / OB-0011» (el código; sin código, el nombre)
+//   título       17px/600 + estado en texto de 11px (Terminada: pastilla con borde, radio 10)
+//   identidad    12px con íconos de 12
+//   cifras       una línea de 12px con ícono (M06 «Avance ponderado 86%»)
+//   solapas      12,5px `padding:8px 8px` en banda corrible (`margin-right:-16px`), activa 600
 //
-// En los cuatro mockups la banda blanca llega a los dos bordes de la ventana y el aire de 20px va
-// ADENTRO. Envuelta en el contenedor con padding de la página, quedaba una tarjeta blanca flotando
-// con lienzo a los costados — que es lo que se veía hasta hoy. Por eso las seis pantallas de la
-// obra la sacan de su contenedor: es el único cambio que este porte les hace.
+// Las dos versiones se dibujan en el MISMO componente con `hidden md:block` / `md:hidden`: no hay
+// una página del teléfono y otra del escritorio, hay una página y dos anchos.
 //
 // ═══ POR QUÉ RECIBE LA OBRA YA LEÍDA ═══
 //
-// No consulta nada. Las seis páginas ya leen `obra_panel` para lo suyo; una lectura propia acá
-// sería una séptima consulta por visita para repetir un dato que la página tiene en la mano — y el
-// día que las dos lecturas discrepen, el título diría una cosa y el cuerpo otra.
-//
-// ═══ LO QUE ESTA CABECERA NO HACE ═══
-//
-// NO DIBUJA EL TRACKER DE ETAPAS. Los mockups 02 y 03 —que son LA cabecera de la obra— no lo
-// dibujan, y decía dos veces lo mismo: la etapa vigente ya está escrita en la línea de identidad.
-// `CicloDeVida.tsx` NO se borró y sigue exportado: retirar un uso es reversible en una línea.
+// No consulta nada salvo el código interno. Las páginas ya leen `obra_panel` para lo suyo; una
+// lectura propia acá sería una consulta más por visita para repetir un dato que la página tiene en
+// la mano — y el día que las dos lecturas discrepen, el título diría una cosa y el cuerpo otra.
 
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { C, MONO } from './canon/tokens'
 import { Ico, P } from './canon/Ico'
-import { Pastilla } from './canon/Piezas'
 import { fechaCorta } from './formato'
 import { ETAPA_LABEL, type Etapa, type ObraPanel } from '../types'
 import { VISTAS_OBRA, type VistaObra } from '../services/vistasObra'
@@ -52,24 +48,28 @@ export type ObraDeCabecera = Pick<
   ObraPanel,
   'nombre' | 'estado' | 'etapa' | 'cliente_slug' | 'cliente_nombre' | 'cliente_texto'
   | 'fecha_inicio_plan' | 'fecha_fin_plan'
-> & Partial<Pick<ObraPanel, 'jefe_obra'>>
+> & Partial<Pick<ObraPanel, 'jefe_obra' | 'fecha_fin_real'>>
 
 /**
- * Un número que contesta la pregunta de ESTA pantalla, no de la obra.
+ * Una cifra que contesta la pregunta de ESTA pantalla, no de la obra (04b: «Avance de obra»,
+ * «Costo teórico», «Día hábil»).
  *
  * `valor: null` NO se dibuja como 0 ni como un guión: se dibuja con la palabra de `falta` («sin
- * secuencia», «sin cargar»), porque «no lo sé» y «es cero» son dos hechos distintos y confundirlos
- * en una pantalla de plazos ya costó caro.
+ * estructura», «sin inicio real»), porque «no lo sé» y «es cero» son dos hechos distintos.
  */
 export type KpiPantalla = {
   rotulo: string
   valor: ReactNode | null
   falta?: string
+  /** El color de la cifra cuando dice un problema (Plazo «+16 d» en warn). */
+  tono?: 'ink' | 'warn' | 'neg' | 'pos'
 }
 
-/** La pastilla del estado de la obra, con los tres colores del mockup 02. */
-function pastillaDeEstado(estado: string): { t: string; tono: 'pos' | 'curso' | 'neutro' } {
-  if (estado === 'cerrada') return { t: 'Terminada', tono: 'pos' }
+/** Los estados que la ficha conoce, con su rótulo y su color. Terminada/archivada son la Z01. */
+export const ESTADOS_TERMINADA: readonly string[] = ['cerrada', 'terminada', 'archivada']
+
+export function pastillaDeEstado(estado: string): { t: string; tono: 'pos' | 'curso' | 'neutro' } {
+  if (ESTADOS_TERMINADA.includes(estado)) return { t: 'Terminada', tono: 'pos' }
   if (estado === 'activa') return { t: 'En ejecución', tono: 'curso' }
   if (estado === 'pausada') return { t: 'Pausada', tono: 'neutro' }
   // UN ESTADO QUE ESTA PANTALLA NO CONOCE SE MUESTRA COMO VINO: un default de «en ejecución»
@@ -77,163 +77,238 @@ function pastillaDeEstado(estado: string): { t: string; tono: 'pos' | 'curso' | 
   return { t: estado, tono: 'neutro' }
 }
 
-/** El separador «·» tenue que el zip pone entre los campos de la línea meta. */
+const COLOR_ESTADO = { pos: C.pos, curso: C.curso, neutro: C.tintaSuave } as const
+const COLOR_CIFRA = { ink: C.tinta, warn: C.warn, neg: C.neg, pos: C.pos } as const
+
+/** El separador «·» tenue que el diseño pone entre los campos de la línea de identidad. */
 function Punto() {
   return <span style={{ color: C.bordeFuerte }} aria-hidden>·</span>
 }
 
+/** La pastilla de estado del escritorio (Z01: 11,5px, borde `#E7E6E2`, radio 12). */
+function PastillaEstado({ t, tono, radio }: { t: string; tono: 'pos' | 'curso' | 'neutro'; radio: 12 | 10 }) {
+  return (
+    <span data-testid="cabecera-obra" style={{
+      fontSize: radio === 12 ? '11.5px' : '11px', color: COLOR_ESTADO[tono],
+      border: `1px solid ${C.borde}`, borderRadius: `${radio}px`,
+      padding: radio === 12 ? '2px 10px' : '1px 8px', whiteSpace: 'nowrap', lineHeight: 1.4,
+    }}>{t}</span>
+  )
+}
+
 export async function CabeceraDeObra({
   obraId, obra, vistaActiva, pantalla, kpis = [], acciones, alFinalDeLasSolapas,
-  volverA = '/obras', volverLabel = 'Obras',
+  volverA = '/obras', volverLabel = 'Obras', titulo = 17, accionTelefono,
 }: {
   obraId: string
   obra: ObraDeCabecera
-  /**
-   * A dónde vuelve la migaja. Por defecto a la cartera, que es lo que dice el zip («Obras /
-   * Escuela San Juan»): las seis solapas ya llevan a cualquier parte de la obra.
-   */
+  /** A dónde vuelve la miga. Por defecto a la cartera («Obras /»). */
   volverA?: string
   volverLabel?: ReactNode
   /** La solapa de nivel 2 a la que pertenece esta pantalla. El contrato la marca activa aunque la
    *  URL no sea la del workspace: Cronograma y Subcontratos SON Trabajo, Dotación ES Personal. */
   vistaActiva?: VistaObra
-  /** Cómo se llama esta pantalla dentro de la obra. En el workspace no va: la solapa activa ya lo
-   *  dice. En las hijas es lo único que las distingue entre sí, porque comparten solapa activa.
-   *  El zip lo pone en la línea meta (06: «Cierre de la jornada · Sáb 23/08»). */
+  /** Cómo se llama esta pantalla dentro de la obra, cuando no la nombra la solapa activa (las
+   *  hijas: «Dotación y proyección», «Avance masivo»). Va en la línea de cifras. */
   pantalla?: ReactNode
+  /** La línea de cifras de ESTA pantalla (04b). Vacía, no se dibuja. */
   kpis?: KpiPantalla[]
-  /** Lo que se puede hacer desde acá. Lo pone cada página: no son de la obra, son de la pantalla. */
+  /** Lo que se puede hacer desde acá, en el escritorio. Lo pone cada página. */
   acciones?: ReactNode
-  /** Lo que va a la derecha de las solapas, sin ser una. Hoy, el enlace a la economía de la obra
-   *  en Administración (23/09/2026), que la página dibuja sólo para quien ve el precio. La cabecera
-   *  no decide quién lo ve: recibe el nodo o `null`. */
+  /** Lo que va a la derecha de las solapas, sin ser una (hoy, «Economía»). */
   alFinalDeLasSolapas?: ReactNode
+  /** 21px en el Resumen (03, Z01); 17px en el resto (04, 04b, C01). */
+  titulo?: 17 | 21
+  /** La primaria del teléfono va al pie de la pantalla, no acá: la cabecera no la dibuja. Este
+   *  nodo existe para las hijas que quieran algo chico a la derecha del título en 390. */
+  accionTelefono?: ReactNode
 }) {
-  const archivada = obra.estado === 'cerrada'
   const est = pastillaDeEstado(obra.estado)
+  const terminada = ESTADOS_TERMINADA.includes(obra.estado)
   // EL CLIENTE ES UN LINK cuando existe en el eje canónico. Cuando la obra sólo tiene el nombre
   // escrito a mano, se muestra el texto y se dice que falta vincularlo: la ficha no se inventa.
   const cliente = obra.cliente_slug && obra.cliente_nombre ? (
-    <Link href={`/clientes/${obra.cliente_slug}`} prefetch={false} style={{ color: C.tintaSuave }}>
+    <Link href={`/clientes/${obra.cliente_slug}`} prefetch={false} style={{ color: C.tintaMedia }}>
       {obra.cliente_nombre}
     </Link>
   ) : (obra.cliente_nombre ?? obra.cliente_texto ?? null)
-  // EL PLAZO ES UN SOLO CAMPO, NO DOS (zip: «03/08 → 05/09»). Cuando falta UNA de las dos NO se
-  // dibuja media flecha: se nombra cuál falta, porque «empieza el 03/08 y no sé cuándo termina» es
-  // un hecho distinto de «no tiene plan».
+  // EL PLAZO ES UN SOLO CAMPO, NO DOS («14/04 → 05/09»). Cuando falta UNA de las dos NO se dibuja
+  // media flecha: se nombra cuál falta, porque «empieza el 14/04 y no sé cuándo termina» es un
+  // hecho distinto de «no tiene plan».
   const desde = obra.fecha_inicio_plan ? fechaCorta(obra.fecha_inicio_plan) : null
+  const hasta = obra.fecha_fin_plan ? fechaCorta(obra.fecha_fin_plan) : null
+  const plazo = desde && hasta ? `${desde} → ${hasta}` : null
+  const faltaPlazo = desde ? 'sin fecha de fin' : hasta ? 'sin fecha de inicio' : 'sin fechas de plan'
+  // Z01: «14/04 → 05/09 · terminó 14/09». Sólo con fin real; una obra terminada sin fin real lo dice.
+  const termino = terminada
+    ? (obra.fecha_fin_real ? ` · terminó ${fechaCorta(obra.fecha_fin_real)}` : ' · sin fin real')
+    : ''
   // EL CÓDIGO INTERNO LO LEE LA CABECERA, no cada pantalla: son cinco páginas de obra y una sola
   // banda. Si la lectura falla, la banda muestra el nombre solo.
   const codigo = (await codigosDeObra(await createClient(), [obraId])).get(obraId) ?? null
   const rotulo = rotuloDeObra({ nombre: obra.nombre, codigo })
-  const hasta = obra.fecha_fin_plan ? fechaCorta(obra.fecha_fin_plan) : null
-  const plazo = desde && hasta ? `${desde} → ${hasta}` : null
-  const faltaPlazo = desde ? 'sin fecha de fin' : hasta ? 'sin fecha de inicio' : 'sin fechas de plan'
+
+  const identidad = (tamIcono: number, gap: number) => (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: `${gap}px`, fontSize: '12px', color: C.tintaMedia,
+      flexWrap: 'wrap',
+    }} data-testid="cabecera-obra-meta">
+      {cliente != null && (
+        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <Ico d={P.cliente} s={tamIcono} />{cliente}
+          {!obra.cliente_slug && obra.cliente_texto && (
+            <span style={{ color: C.tenue }}>· sin ficha de cliente vinculada</span>
+          )}
+        </span>
+      )}
+      {cliente != null && <Punto />}
+      <span>Etapa: {obra.etapa
+        ? (ETAPA_LABEL[obra.etapa as Etapa] ?? obra.etapa)
+        : <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">sin declarar</span>}</span>
+      <Punto />
+      <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+        <Ico d={P.fecha} s={tamIcono} />
+        {plazo
+          ? <span style={{ fontFamily: MONO }}>{plazo}{termino}</span>
+          : <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">{faltaPlazo}{termino}</span>}
+      </span>
+      {obra.jefe_obra ? (
+        <>
+          <Punto />
+          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <Ico d={P.persona} s={tamIcono} />{obra.jefe_obra}
+          </span>
+        </>
+      ) : (
+        <>
+          <Punto />
+          <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: C.tenue, fontStyle: 'italic' }} data-nulo="">
+            <Ico d={P.persona} s={tamIcono} />sin responsable
+          </span>
+        </>
+      )}
+    </div>
+  )
+
+  const solapas = (telefono: boolean) => (
+    <nav style={{
+      display: 'flex', alignItems: 'stretch',
+      ...(telefono
+        ? { marginTop: '6px', overflowX: 'auto', marginRight: '-16px', scrollbarWidth: 'none' }
+        : { marginTop: '8px', borderBottom: `1px solid ${C.borde}` }),
+    }} data-testid={telefono ? 'tabs-obra-telefono' : 'tabs-obra'}>
+      {VISTAS_OBRA.map((v) => {
+        const activo = vistaActiva === v.id
+        return (
+          <Link key={v.id} href={`/obras/${obraId}?vista=${v.id}`} prefetch={false}
+            data-testid={telefono ? `tab-telefono-${v.id}` : `tab-${v.id}`}
+            aria-current={activo ? 'page' : undefined}
+            style={{
+              fontSize: '12.5px', padding: telefono ? '8px 8px' : '10px 12px', whiteSpace: 'nowrap',
+              color: activo ? C.tinta : C.tintaSuave,
+              fontWeight: activo ? (telefono ? 600 : 500) : 400,
+              boxShadow: activo ? `inset 0 -2px 0 ${C.grafito}` : 'none',
+              ...(telefono ? { minHeight: '44px', display: 'inline-flex', alignItems: 'center' } : {}),
+            }}>{v.label}</Link>
+        )
+      })}
+      {!telefono && alFinalDeLasSolapas}
+    </nav>
+  )
 
   return (
-    <div style={{
-      background: C.superficie, borderBottom: `1px solid ${C.borde}`, padding: '9px 20px 0',
-      flexShrink: 0,
-    }} data-testid="cabecera-obra-banda">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '11.5px', color: C.tenue }}>
-        <Link href={volverA} prefetch={false} style={{ color: C.tenue }}>{volverLabel}</Link>
-        <span aria-hidden>/</span>
-        <span style={{ color: C.tintaMedia }}>{rotulo}</span>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '5px', flexWrap: 'wrap' }}>
-        <h1 style={{
-          fontSize: '21px', fontWeight: 600, color: C.tinta, letterSpacing: '-.01em', margin: 0,
-          lineHeight: 1.25,
-        }}>{rotulo}</h1>
-        <span data-testid="cabecera-obra"><Pastilla tono={est.tono} radio={12} tam={11.5}>{est.t}</Pastilla></span>
-        {/* ARCHIVADA SE DICE EN EL ENCABEZADO: es la única señal de que esta ficha se abrió por su
-            URL y no desde la cartera, y sin ella alguien podría cargar HH o avance sobre una obra
-            archivada sin enterarse. */}
-        {archivada && (
-          <span data-testid="obra-archivada" style={{
-            border: `1px solid ${C.borde}`, borderRadius: '4px', padding: '1px 6px',
-            fontSize: '11px', color: C.tenue,
-          }}>archivada</span>
-        )}
-        {acciones != null && (
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>{acciones}</div>
-        )}
-      </div>
-
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '16px', fontSize: '12px', color: C.tintaSuave,
-        marginTop: '3px', flexWrap: 'wrap',
-      }} data-testid="cabecera-obra-meta">
-        {cliente != null && (
-          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <Ico d={P.cliente} s={13} />{cliente}
-            {!obra.cliente_slug && obra.cliente_texto && (
-              <span style={{ color: C.tenue }}>· sin ficha de cliente vinculada</span>
-            )}
-          </span>
-        )}
-        {cliente != null && <Punto />}
-        <span>Etapa: {obra.etapa
-          ? (ETAPA_LABEL[obra.etapa as Etapa] ?? obra.etapa)
-          : <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">sin declarar</span>}</span>
-        <Punto />
-        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <Ico d={P.fecha} s={13} />
-          {plazo
-            ? <span style={{ fontFamily: MONO }}>{plazo}</span>
-            : <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">{faltaPlazo}</span>}
-        </span>
-        {obra.jefe_obra && (
-          <>
-            <Punto />
-            <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <Ico d={P.persona} s={13} />{obra.jefe_obra}
-            </span>
-          </>
-        )}
-      </div>
-
-      {/* LA LÍNEA DE PANTALLA — el renglón que el zip pone en las hijas (06: «Cierre de la jornada
-          · Sáb 23/08»). El KPI proyectado NO va en amarillo: sobre el fondo claro el amarillo de
-          marca no llega al contraste mínimo de texto, y el rótulo ya dice «Fin proyectado». */}
-      {(pantalla != null || kpis.length > 0) && (
-        <div style={{
-          display: 'flex', alignItems: 'baseline', gap: '16px', fontSize: '12px',
-          marginTop: '3px', flexWrap: 'wrap',
-        }} data-testid="kpis-obra">
-          {pantalla != null && <span style={{ fontWeight: 500, color: C.tinta }}>{pantalla}</span>}
-          {kpis.map((k) => (
-            <span key={k.rotulo} style={{ display: 'inline-flex', alignItems: 'baseline', gap: '6px', whiteSpace: 'nowrap' }}>
-              <span style={{ color: C.tenue }}>{k.rotulo}:</span>
-              {k.valor == null || k.valor === ''
-                ? <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">{k.falta ?? 'sin dato'}</span>
-                : <span style={{ fontFamily: MONO, color: C.tintaMedia }}>{k.valor}</span>}
-            </span>
-          ))}
+    <>
+      {/* ═══ ESCRITORIO (04 · 03 · Z01) ═══ */}
+      <div className="hidden md:block" style={{
+        background: C.superficie, padding: `${titulo === 21 ? 22 : 18}px 30px 0`, flexShrink: 0,
+      }} data-testid="cabecera-obra-banda">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '20px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '11px', minWidth: 0, flexWrap: 'wrap' }}>
+            <Link href={volverA} prefetch={false} style={{
+              fontSize: '12.5px', color: C.tintaSuave, display: 'inline-flex', alignItems: 'center', gap: '4px',
+            }}>
+              <Ico d={P.obra} s={12} />{volverLabel} /
+            </Link>
+            <h1 style={{
+              fontSize: `${titulo}px`, fontWeight: 600, color: C.tinta, margin: 0, lineHeight: 1.25,
+              letterSpacing: titulo === 21 ? '-.015em' : '-.01em',
+            }}>{rotulo}</h1>
+            <span style={{ alignSelf: 'center' }}><PastillaEstado t={est.t} tono={est.tono} radio={12} /></span>
+          </div>
+          {/* A LA DERECHA: las cifras de la pantalla (04b) o sus acciones (03/04). Las cifras
+              ganan el lugar cuando la pantalla las trae; las acciones se corren debajo. */}
+          {kpis.length > 0 ? (
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '34px', flexWrap: 'wrap' }} data-testid="kpis-obra">
+              {kpis.map((k) => (
+                <div key={k.rotulo} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <div style={{
+                    fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue,
+                    textTransform: 'uppercase',
+                  }}>{k.rotulo}</div>
+                  {k.valor == null || k.valor === ''
+                    ? <div style={{ fontSize: '13px', color: C.tenue, fontStyle: 'italic' }} data-nulo="">{k.falta ?? 'sin dato'}</div>
+                    : <div style={{
+                      fontSize: '19px', fontWeight: 600, letterSpacing: '-.01em',
+                      color: COLOR_CIFRA[k.tono ?? 'ink'], fontVariantNumeric: 'tabular-nums',
+                    }}>{k.valor}</div>}
+                </div>
+              ))}
+            </div>
+          ) : acciones != null && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>{acciones}</div>
+          )}
         </div>
-      )}
 
-      {/* NIVEL 2: las CINCO solapas, iguales en todas las pantallas de la obra. `prefetch={false}`
-          porque cinco rutas `force-dynamic` precargadas por página vista son renders que nadie pidió. */}
-      <nav style={{ display: 'flex', alignItems: 'stretch', marginTop: '8px', overflowX: 'auto' }}
-        data-testid="tabs-obra">
-        {VISTAS_OBRA.map((v) => {
-          const activo = vistaActiva === v.id
-          return (
-            <Link key={v.id} href={`/obras/${obraId}?vista=${v.id}`} prefetch={false}
-              data-testid={`tab-${v.id}`} aria-current={activo ? 'page' : undefined}
-              // 44px de alto en el teléfono (objetivo táctil); en escritorio manda el padding del mockup.
-              className="max-md:inline-flex max-md:min-h-11 max-md:items-center"
-              style={{
-                fontSize: '13px', padding: '8px 11px', whiteSpace: 'nowrap',
-                color: activo ? C.tinta : C.tintaSuave, fontWeight: activo ? 600 : 400,
-                boxShadow: activo ? `inset 0 -2px 0 ${C.marca}` : 'none',
-              }}>{v.label}</Link>
-          )
-        })}
-        {alFinalDeLasSolapas}
-      </nav>
-    </div>
+        <div style={{ marginTop: '3px' }}>{identidad(13, 16)}</div>
+
+        {pantalla != null && (
+          <div style={{ fontSize: '12px', fontWeight: 500, color: C.tinta, marginTop: '3px' }}>{pantalla}</div>
+        )}
+        {kpis.length > 0 && acciones != null && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>{acciones}</div>
+        )}
+
+        {solapas(false)}
+      </div>
+
+      {/* ═══ TELÉFONO (M04 · M05 · M06 · MZ1) ═══ */}
+      <div className="md:hidden" style={{
+        background: C.superficie, padding: '10px 16px 0', borderBottom: `1px solid ${C.borde}`, flexShrink: 0,
+      }} data-testid="cabecera-obra-banda-telefono">
+        <Link href={volverA} prefetch={false} style={{
+          fontSize: '11.5px', color: C.tenue, display: 'flex', alignItems: 'center', gap: '3px',
+        }}>
+          <Ico d={P.izquierda} s={11} />{volverLabel} <span style={{ color: C.bordeFuerte }}>/</span> {codigo ?? obra.nombre}
+        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', minWidth: 0 }}>
+          <div style={{
+            fontSize: '17px', fontWeight: 600, letterSpacing: '-.01em', color: C.tinta, minWidth: 0,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{obra.nombre}</div>
+          {terminada
+            ? <PastillaEstado t={est.t} tono={est.tono} radio={10} />
+            : <span style={{ fontSize: '11px', color: COLOR_ESTADO[est.tono], whiteSpace: 'nowrap' }}
+              data-testid="cabecera-obra-telefono">{est.t}</span>}
+          {accionTelefono != null && <span style={{ marginLeft: 'auto' }}>{accionTelefono}</span>}
+        </div>
+        <div style={{ marginTop: '4px' }}>{identidad(12, 6)}</div>
+        {(kpis.length > 0 || pantalla != null) && (
+          <div style={{
+            marginTop: '5px', fontSize: '12px', color: C.tintaMedia, display: 'flex', gap: '12px', flexWrap: 'wrap',
+          }} data-testid="kpis-obra-telefono">
+            {pantalla != null && <span style={{ fontWeight: 500 }}>{pantalla}</span>}
+            {kpis.map((k) => (
+              <span key={k.rotulo} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                <Ico d={P.avance} s={12} />{k.rotulo}{' '}
+                {k.valor == null || k.valor === ''
+                  ? <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">{k.falta ?? 'sin dato'}</span>
+                  : <b style={{ fontWeight: 600, color: COLOR_CIFRA[k.tono ?? 'ink'] }}>{k.valor}</b>}
+              </span>
+            ))}
+          </div>
+        )}
+        {solapas(true)}
+      </div>
+    </>
   )
 }
