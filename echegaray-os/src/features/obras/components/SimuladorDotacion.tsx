@@ -351,7 +351,10 @@ function Plegable({ titulo, n, nota, abierto, alternar, children, testid }: {
 }
 
 /** «Aplicar al plan»: grafito de 34px en el aside (08b), amarilla de 48px al pie del teléfono (M11).
- *  Escribe `dotacion_prevista` de los frentes tocados; sin nada tocado no escribe y lo dice. */
+ *  Escribe `dotacion_prevista` de los frentes tocados; sin nada tocado no escribe y lo dice.
+ *  APAGADA se pinta como el diseño pinta una primaria apagada (C06 «Sellar línea base», MC7 «Guardar
+ *  fechas»): fondo `line` y texto `faint`. La marca al 50 % de opacidad era un amarillo claro que se
+ *  leía como activa. */
 function Aplicar({ dot, puedeAplicar, aplicar, telefono }: {
   dot: [string, number][]; puedeAplicar: boolean; aplicar: AccionFormulario; telefono: boolean
 }) {
@@ -359,12 +362,15 @@ function Aplicar({ dot, puedeAplicar, aplicar, telefono }: {
   const bloqueado = !puedeAplicar || dot.length === 0 || pendiente
   const boton = (
     <button type="submit" disabled={bloqueado} data-testid="aplicar-al-plan" title={!puedeAplicar ? 'Aplicarlo al plan es de Administración y de la jefatura de obra.' : dot.length === 0 ? 'Mové una dotación y se habilita.' : undefined}
+      data-apagada={bloqueado ? '1' : undefined}
       style={telefono ? {
         width: '100%', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '6px', border: 0,
-        background: C.marca, color: C.grafito, fontSize: '14px', fontWeight: 600, cursor: bloqueado ? 'not-allowed' : 'pointer', font: 'inherit', fontFamily: 'inherit', opacity: bloqueado ? .5 : 1,
+        background: bloqueado ? C.borde : C.marca, color: bloqueado ? C.tenue : C.grafito, fontSize: '14px', fontWeight: 600,
+        cursor: bloqueado ? 'not-allowed' : 'pointer', font: 'inherit', fontFamily: 'inherit',
       } : {
-        height: '34px', padding: '0 16px', border: 0, borderRadius: '6px', background: C.grafito, color: C.superficie, font: 'inherit', fontFamily: 'inherit',
-        fontSize: '13px', fontWeight: 500, cursor: bloqueado ? 'not-allowed' : 'pointer', alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '7px', opacity: bloqueado ? .5 : 1,
+        height: '34px', padding: '0 16px', border: 0, borderRadius: '6px', background: bloqueado ? C.borde : C.grafito, color: bloqueado ? C.tenue : C.superficie,
+        font: 'inherit', fontFamily: 'inherit', fontSize: '13px', fontWeight: 500, cursor: bloqueado ? 'not-allowed' : 'pointer', alignSelf: 'flex-start',
+        display: 'inline-flex', alignItems: 'center', gap: '7px',
       }}>
       <Ico d={P.ok} s={telefono ? 15 : 13} />{pendiente ? 'Aplicando…' : 'Aplicar al plan'}
     </button>
