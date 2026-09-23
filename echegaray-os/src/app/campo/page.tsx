@@ -9,6 +9,8 @@ import { leerDatosCampo } from './datos'
 import { IconoAsistencia, IconoHerramienta, IconoMaterial, IconoMovimiento, IconoParte, IconoProblema } from './iconos'
 import { puedeCargarParte } from './permisos'
 import { INICIO_JEFE_TELEFONO } from '@/features/auth/types/navegacion'
+import { barraTelefonoDe } from '@/features/auth/types/barraTelefono'
+import { BarraTelefono } from '@/shared/components/BarraTelefono'
 import { hrefCargaDeAsistencia } from '@/features/administracion/services/cargaDeAsistencia'
 import { senalHerramientas, senalImpedimentos, senalPedidos, senalParte, type Senal } from './senales'
 
@@ -72,8 +74,9 @@ export default async function CampoPage() {
   if (rol === 'campo') redirect('/hoy')
   const escribe = puedeCargarParte(rol)
   // A dónde vuelve la flecha: el jefe a J01 (`/obra/hoy`, que es quien enlaza acá); Dirección y
-  // Administración —que entran con «ver como» o por URL— a su inicio.
-  const volver = rol === 'jefe_obra' ? INICIO_JEFE_TELEFONO : '/'
+  // Administración a su área. Desde el 23/09/2026 su inicio en el teléfono ES esta pantalla, así que
+  // `/` volvía acá mismo; y abajo tienen la barra por nivel (`BarraTelefono`) para moverse.
+  const volver = rol === 'jefe_obra' ? INICIO_JEFE_TELEFONO : '/administracion'
 
   const d = await leerDatosCampo(supabase)
   const donde = d.obras.length === 1 ? d.obras[0].nombre : d.obras.length > 1 ? `${d.obras.length} obras` : null
@@ -152,7 +155,7 @@ export default async function CampoPage() {
   const pendientes = acciones.filter((a) => a.senal?.pendiente && a.pendiente).map((a) => a.pendiente)
 
   return (
-    <div className="flex min-h-screen flex-col bg-surface" data-testid="campo">
+    <div className="flex min-h-screen flex-col bg-surface pb-20 md:pb-0" data-testid="campo">
       {/* La salida es un objetivo táctil como cualquier otro: el botón del sistema mide 24px de alto
           y acá se lo estira a 44 sin tocar el componente compartido, que también vive en escritorio. */}
       <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line px-4 [&_button]:h-[44px] [&_button]:px-2.5">
@@ -272,6 +275,8 @@ export default async function CampoPage() {
           </>
         )}
       </footer>
+      {/* LA BARRA POR NIVEL (dueño, 23/09/2026): Campo es la raíz del teléfono para quien administra. */}
+      <BarraTelefono items={barraTelefonoDe(rol)} />
     </div>
   )
 }
