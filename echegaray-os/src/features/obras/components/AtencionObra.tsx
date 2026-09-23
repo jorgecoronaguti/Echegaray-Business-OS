@@ -1,31 +1,28 @@
-'use client'
-
-import { useState } from 'react'
-import Link from 'next/link'
-import { Tarjeta, CabeceraTarjeta, Chevron } from './TarjetaResumen'
-
-// ATENCIÓN — LO ÚNICO QUE HAY QUE IR A HACER HOY, Y EL VERBO QUE LO HACE.
+// ATENCIÓN — LO ÚNICO QUE HAY QUE IR A HACER HOY, Y EL VERBO QUE LO HACE (M04, 390px).
 //
-// ═══ POR QUÉ EL RENGLÓN DEJÓ DE SER ROJO ENTERO ═══
+// ═══ PORTE LITERAL DE M04 ═══
 //
-// Antes cada ítem era una oración larga pintada de rojo o ámbar de punta a punta. Cinco renglones
-// rojos seguidos no jerarquizan nada: el ojo los lee como un bloque de ruido y el color deja de
-// significar urgencia porque lo tiene todo. El canónico 02 parte la fila en cuatro piezas con pesos
-// distintos —punto de color · QUÉ pasa en tinta · DÓNDE pasa en faint · el VERBO que lo resuelve—
-// y el color queda sólo en el punto y en el verbo, que es donde decide.
+//   bloque   eyebrow «Atención» con el conteo (12px muted) a la derecha, `gap:6px`
+//   fila     `min-height:56px`, `padding-left:10px`, `border-left:2px` rojo o ámbar, línea abajo
+//   ícono    14px del color del tono (bloqueo: círculo con «!» · dato: triángulo)
+//   texto    QUÉ pasa en 13,5 tinta · DÓNDE en 12 muted
+//   verbo    12px/500 del color del tono, a la derecha, sin partir
+//
+// En el escritorio el Resumen (03) no dibuja este bloque: ahí lo que frena la obra es una tabla con
+// Tipo · Qué falta · Responsable · vencimiento. Por eso este componente vive sólo en el teléfono.
 //
 // ═══ EL VERBO NO ES DECORACIÓN ═══
 //
-// «Resolver», «Asignar», «Cargar», «Ver» declaran qué tipo de trabajo espera del otro lado del
-// click. Una alerta que no dice qué se hace con ella es una alerta que se mira y se deja.
+// «Resolver», «Cargar», «Ver» declaran qué tipo de trabajo espera del otro lado del click. Una
+// alerta que no dice qué se hace con ella es una alerta que se mira y se deja.
 //
-// ═══ LOS FILTROS SEPARAN DOS COSAS QUE NO SON LA MISMA ═══
-//
-// «Bloqueos» es la obra frenada por un hecho —un impedimento vencido, un atraso medido—. «Faltan
-// datos» es el OS diciendo que no puede medir: no hay línea base sellada, no hay HH cargadas. Las
-// dos piden trabajo, pero de gente distinta y con urgencia distinta, y mezcladas en una sola lista
-// el faltante administrativo entierra al bloqueo de obra. El filtro es del cliente porque es una
-// lectura, no una consulta: los ítems ya están todos acá y ninguno se pide de nuevo al servidor.
+// Los filtros Todo · Bloqueos · Faltan datos que tenía el bloque no están en M04 y se retiraron; la
+// clase (`bloqueo` / `dato`) sigue viajando en cada ítem porque decide el ícono.
+
+import Link from 'next/link'
+import { C } from './canon/tokens'
+import { Ico, P } from './canon/Ico'
+import { BloqueTelefono } from './TarjetaResumen'
 
 export type ClaseAtencion = 'bloqueo' | 'dato'
 
@@ -35,7 +32,7 @@ export interface ItemAtencion {
   clase: ClaseAtencion
   /** QUÉ pasa, corto. Va en tinta. */
   titulo: string
-  /** DÓNDE pasa: la actividad, el proveedor, la fecha. Va en faint, al lado. */
+  /** DÓNDE pasa: la actividad, el proveedor, la fecha. Va en muted, debajo. */
   contexto?: string
   /** El verbo de la acción, a la derecha. */
   accion: string
@@ -44,102 +41,37 @@ export interface ItemAtencion {
   origen?: string
 }
 
-const PUNTO = { neg: 'bg-neg', warn: 'bg-warn' } as const
-const VERBO = { neg: 'text-neg', warn: 'text-warn' } as const
-
-function IconoAlerta() {
-  return (
-    <svg aria-hidden width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 4l9 16H3z" /><path d="M12 10v4M12 17.5v.01" />
-    </svg>
-  )
-}
-
-function Chip({ activo, texto, n, onClick }: {
-  activo: boolean; texto: string; n: number; onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={activo}
-      data-testid={`filtro-atencion-${texto.toLowerCase().replace(/\s/g, '-')}`}
-      className={`flex items-center gap-1.5 rounded-control border px-2.5 py-[3px] text-[11.5px] transition-colors ${
-        activo
-          ? 'border-accent bg-accent text-white'
-          : 'border-line bg-surface text-muted hover:bg-surface-quiet hover:text-ink'
-      }`}
-    >
-      {texto}
-      <span className={`font-mono text-[10.5px] tabular-nums ${activo ? 'text-white/70' : 'text-faint'}`}>{n}</span>
-    </button>
-  )
-}
-
-/** Los tres cortes del canónico 02. `null` = «Todo». */
-type Corte = null | ClaseAtencion
+const COLOR = { neg: C.neg, warn: C.warn } as const
 
 export function AtencionObra({ items }: { items: ItemAtencion[] }) {
-  const [corte, setCorte] = useState<Corte>(null)
-  const bloqueos = items.filter((i) => i.clase === 'bloqueo').length
-  const datos = items.filter((i) => i.clase === 'dato').length
-  const visibles = corte == null ? items : items.filter((i) => i.clase === corte)
-  const graves = items.filter((i) => i.tono === 'neg').length
-
-  if (items.length === 0) {
-    return (
-      <Tarjeta testid="atencion-obra">
-        <CabeceraTarjeta icono={<span className="text-pos"><IconoAlerta /></span>} titulo="Atención" />
-        <div className="flex items-center gap-2 px-4 py-5 text-[12.5px] text-pos" data-testid="sin-atencion">
-          <svg aria-hidden width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="2.2" strokeLinecap="round"><path d="M5 13l4 4L19 7" /></svg>
-          Nada que atender hoy.
-        </div>
-      </Tarjeta>
-    )
-  }
-
   return (
-    <Tarjeta testid="atencion-obra">
-      <CabeceraTarjeta
-        icono={<span className={graves > 0 ? 'text-neg' : 'text-warn'}><IconoAlerta /></span>}
-        titulo="Atención"
-        cifra={`${items.length} para resolver`}
-        accion={
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
-            <Chip activo={corte == null} texto="Todo" n={items.length} onClick={() => setCorte(null)} />
-            <Chip activo={corte === 'bloqueo'} texto="Bloqueos" n={bloqueos} onClick={() => setCorte('bloqueo')} />
-            <Chip activo={corte === 'dato'} texto="Faltan datos" n={datos} onClick={() => setCorte('dato')} />
-          </div>
-        }
-      />
-      {visibles.length === 0 ? (
-        <p className="px-4 py-5 text-[12.5px] text-faint" data-nulo="">
-          Nada en este corte. Hay {items.length} en «Todo».
-        </p>
+    <BloqueTelefono titulo="Atención" derecha={items.length > 0 ? String(items.length) : undefined} testid="atencion-obra">
+      {items.length === 0 ? (
+        <div style={{ fontSize: '12.5px', color: C.pos, display: 'flex', alignItems: 'center', gap: '6px', minHeight: '40px' }}
+          data-testid="sin-atencion">
+          <Ico d={P.ok} s={14} w={2.2} />Nada que atender hoy.
+        </div>
       ) : (
-        <ul>
-          {visibles.map((i) => (
-            <li key={i.clave} className="border-b border-surface-sunken last:border-b-0">
-              <Link
-                href={i.href} prefetch={false}
-                title={i.origen}
-                data-testid={`atencion-${i.clave}`}
-                className="flex items-center gap-2.5 px-4 py-2.5 transition-colors hover:bg-surface-quiet"
-              >
-                <span aria-hidden className={`h-[7px] w-[7px] shrink-0 rounded-full ${PUNTO[i.tono]}`} />
-                <span className="min-w-0 shrink truncate text-[12.5px] text-ink">{i.titulo}</span>
-                {i.contexto && (
-                  <span className="min-w-0 shrink truncate text-[11.5px] text-faint">{i.contexto}</span>
-                )}
-                <span className={`ml-auto shrink-0 text-[11.5px] font-medium ${VERBO[i.tono]}`}>{i.accion}</span>
-                <Chevron />
-              </Link>
-            </li>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {items.map((i, idx) => (
+            <Link key={i.clave} href={i.href} prefetch={false} title={i.origen} data-testid={`atencion-${i.clave}`}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '10px', minHeight: '56px', paddingLeft: '10px',
+                borderLeft: `2px solid ${COLOR[i.tono]}`,
+                borderBottom: idx < items.length - 1 ? `1px solid ${C.borde}` : 'none',
+              }}>
+              <span style={{ color: COLOR[i.tono], display: 'flex' }}>
+                <Ico d={i.clase === 'bloqueo' ? P.bloqueo : P.alerta} s={14} />
+              </span>
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <div style={{ fontSize: '13.5px', color: C.tinta }}>{i.titulo}</div>
+                {i.contexto && <div style={{ fontSize: '12px', color: C.tintaSuave }}>{i.contexto}</div>}
+              </div>
+              <div style={{ fontSize: '12px', color: COLOR[i.tono], fontWeight: 500, whiteSpace: 'nowrap' }}>{i.accion}</div>
+            </Link>
           ))}
-        </ul>
+        </div>
       )}
-    </Tarjeta>
+    </BloqueTelefono>
   )
 }

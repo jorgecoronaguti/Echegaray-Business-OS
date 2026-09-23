@@ -40,8 +40,9 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import {
-  getActividades, getDiasHabiles, getDocumentos, getEconomiaObra, getObra,
-  getPlanDePersonal, getPlanVsReal, getRestricciones, getUbicacion,
+  getActividades, getAvancePonderado, getDependencias, getDiasHabiles, getDiasHabilesDeObra, getDocumentos,
+  getEconomiaObra, getGenteHoyPorActividad, getObra, getPlanDePersonal, getPlanVsReal, getRestricciones,
+  getUbicacion,
 } from '@/features/obras/services/obrasService'
 import {
   getActividadHH, getAsignaciones, getCausasDesvio, getCuadrillas, getPersonas, getPersonasDeHoy,
@@ -59,12 +60,13 @@ import { getDocumentosSubidos } from '@/features/documentos/services/documentosS
 import { ArchivosDeDrive } from '@/features/documentos/components/ArchivosDeDrive'
 import { DocumentosSubidos } from '@/features/documentos/components/DocumentosSubidos'
 import { borrarHH, imputarHH, imputarHHMasivo } from '@/features/obras/services/actionsHH'
-import { AccionesRapidas } from '@/features/obras/components/AccionesRapidas'
-import { ESTILO_PRIMARIA } from '@/features/obras/components/canon/tokens'
+import { C, ESTILO_PRIMARIA, ESTILO_SECUNDARIA } from '@/features/obras/components/canon/tokens'
 import { Ico, P } from '@/features/obras/components/canon/Ico'
-import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
+import { CabeceraDeObra, ESTADOS_TERMINADA, type KpiPantalla } from '@/features/obras/components/CabeceraDeObra'
 import { CamposObra } from '@/features/obras/components/CamposObra'
 import { TabResumen } from '@/features/obras/components/TabResumen'
+import { ResumenCierre } from '@/features/obras/components/ResumenCierre'
+import { cifraAvance, costoTeorico, diaHabil } from '@/features/obras/services/avancePonderado'
 import { CronogramaDeObra } from '@/features/obras/components/CronogramaDeObra'
 import { lecturasDeVista } from '@/features/obras/services/lecturasDeVista'
 import { separarPlanYSubtareas } from '@/features/obras/services/subtareas'
@@ -89,7 +91,7 @@ import { TabDocumentos } from '@/features/obras/components/TabDocumentos'
 import {
   asignarActividadADocumento, clasificarDocumento, desvincularDocumento, vincularDocumento,
 } from '@/features/obras/services/actionsDocumentos'
-import { BotonAccion, FormAccion } from '@/shared/components/ui'
+import { FormAccion } from '@/shared/components/ui'
 
 import { crearLector } from '@/shared/components/estado/lecturas'
 import { AvisoDeLectura, EstadoError } from '@/shared/components/estado'
@@ -104,10 +106,12 @@ export default async function ObraPage({
     /** La dotación simulada del panel de la tarea (04). Igual que en la 08: la URL es la memoria
      *  del simulador, así que el mismo link abre la misma simulación del otro lado del chat. */
     dot?: string
+    /** `?nueva=1` abre el alta de actividad del árbol: es adonde lleva la primaria de la cabecera. */
+    nueva?: string
   }>
 }) {
   const { obra: obraId } = await params
-  const { vista: vistaRaw, sub, act, filtro, sol, dot } = await searchParams
+  const { vista: vistaRaw, sub, act, filtro, sol, dot, nueva } = await searchParams
   // UNA VISTA QUE VIVE EN OTRA RUTA SE LLEVA AHÍ, NO SE IGNORA. `?vista=dotacion` caía en Resumen
   // sin un solo aviso, y quien seguía ese link concluía que la pantalla no existía.
   const hermana = rutaHermana(vistaRaw, obraId)
@@ -141,11 +145,16 @@ export default async function ObraPage({
   // Cronograma y Resumen: el panel de la actividad muestra su ejecución reciente y «último
   // movimiento» del Resumen es literalmente el último parte.
   const necesita = lecturasDeVista(vista, enTareas ? subTareas : null)
+  const hoyISO = new Date().toISOString().slice(0, 10)
+  // LAS CIFRAS H2 (avance ponderado y día hábil) las dibujan el Resumen (03) y la cabecera de
+  // Ítems (04b). El resto de las solapas no las paga.
+  const conCifras = vista === 'resumen' || esArbol
   const [
     perfilRes, obraRes, actividadesRes, restriccionesRes, planRes, planPersonalRes,
     diasHabilesRes, personasRes, ubicacion, asignacionesRes, causasRes, registrosRes,
     actividadHHRes, cuadrillas, integrantes, partesRes, economiaRes,
     documentosRes, catalogoEquipos, opRes, personasDeHoy, ordenesRes, archivosDrive, subidos,
+    avanceRes, diasHabilesObraRes, dependenciasRes, genteHoy, hhDeCierreRes,
   ] = await Promise.all([
     // COMERCIAL ES PRECIO, y el precio es de Dirección y Administración: el jefe de obra ve el
     // COSTO de su obra, pero no cuánto se vendió — `veEconomia`, no `esAdministracion`.
@@ -193,7 +202,7 @@ export default async function ObraPage({
     vista === 'resumen' ? getEconomiaObra(supabase, obraId) : null,
     // Los papeles los pide la solapa Documentos. El cronograma los pedía para el panel de la
     // actividad, que ya no vive ahí: el detalle de una actividad es de Tareas (mockup 03).
-    vista === 'documentos' ? getDocumentos(supabase, obraId) : null,
+    vista === 'documentos' || vista === 'resumen' ? getDocumentos(supabase, obraId) : null,
     // El catálogo de equipos es AYUDA de carga, no restricción: el campo acepta cualquier texto.
     esParte ? getCatalogoEquipos(supabase) : [],
     // Operación trae sus cuatro listas de una vez: se atan a la obra por el MISMO puente
@@ -218,6 +227,12 @@ export default async function ObraPage({
     // LOS PAPELES QUE SE SUBEN DESDE ACÁ. Pedido del dueño (10/09): la ficha tiene que poder RECIBIR
     // documentos, no sólo listar los que ya estaban en Drive.
     vista === 'documentos' ? getDocumentosSubidos(supabase, 'obra', obraId) : null,
+    conCifras ? getAvancePonderado(supabase, obraId) : null,
+    conCifras ? getDiasHabilesDeObra(supabase, obraId) : null,
+    vista === 'resumen' ? getDependencias(supabase, obraId) : null,
+    vista === 'resumen' ? getGenteHoyPorActividad(supabase, obraId, hoyISO) : {},
+    // Z01 «Lo que dejó la obra»: HH plan/real por rubro, desde `obra_actividad_hh`. Sólo el Resumen.
+    vista === 'resumen' ? getActividadHH(supabase, obraId) : null,
   ])
 
   const rolActual = perfilRes.data?.rol ?? null
@@ -280,8 +295,8 @@ export default async function ObraPage({
   // vive en `CabeceraDeObra` —la MISMA que dibujan Cronograma, Dotación, Subcontratos y Avance
   // masivo— desde el 24/08: era la única cabecera del OS que existía dos veces, y las pantallas
   // hijas se habían quedado con una banda grafito propia que parecía otra aplicación.
-  // `archivada` se sigue calculando acá porque el bloque de archivar del Resumen lo necesita.
-  const archivada = obra.estado === 'cerrada'
+  // TERMINADA/CERRADA/ARCHIVADA: el Resumen es la Z01 (lo que dejó la obra, antes de archivar).
+  const terminada = ESTADOS_TERMINADA.includes(obra.estado)
   // LAS ÓRDENES DEL CLIENTE, YA LISTAS PARA DIBUJAR. La regla —qué es OC, qué es OP, qué es un
   // certificado de retención, y qué se escribe cuando no hay ninguna— vive en una función pura
   // probada; acá sólo se le pasa lo que trajo la consulta. `enNegro` va sin pasar a propósito: la
@@ -289,6 +304,40 @@ export default async function ObraPage({
   const ordenesDeLaObra = vista === 'resumen'
     ? bloqueDeOrdenesDeLaObra(ordenesRes, { obraId })
     : null
+
+  const avance = avanceRes ? lector.leer(avanceRes, null) : null
+  const diasHabilesObra = diasHabilesObraRes ? lector.leer(diasHabilesObraRes, null) : null
+  const nDependencias = dependenciasRes ? (dependenciasRes.data?.length ?? null) : null
+  // LA LÍNEA DE CIFRAS DE ÍTEMS (04b): Avance de obra · Costo teórico · Día hábil.
+  const costo = costoTeorico(avance)
+  const cifrasDeItems: KpiPantalla[] = esArbol ? [
+    { rotulo: 'Avance de obra', valor: cifraAvance(avance), falta: 'sin estructura' },
+    { rotulo: 'Costo teórico', valor: costo.cifra, falta: costo.bajada },
+    {
+      rotulo: 'Día hábil',
+      valor: diasHabilesObra?.dia_habil_actual != null ? diaHabil(diasHabilesObra).replace('día hábil ', '') : null,
+      falta: diaHabil(diasHabilesObra),
+    },
+  ] : []
+  const nuevaActividad = (
+    <Link href={`/obras/${obraId}?vista=tareas&sub=arbol&nueva=1`} prefetch={false}
+      data-testid="cabecera-nueva-actividad"
+      style={{ ...ESTILO_PRIMARIA, height: '32px', padding: '0 14px', fontSize: '13px', color: C.grafito }}>
+      <Ico d={P.mas} s={13} />Nueva actividad
+    </Link>
+  )
+  // LA PUERTA PARA CORREGIR LOS CAMPOS DE LA OBRA. El diseño 03 no la dibuja; va plegada al final
+  // del aside porque sin ella no hay dónde cambiar el estado, la etapa o el jefe de obra.
+  const editarLaObra = (
+    <details data-testid="editar-obra">
+      <summary style={{ cursor: 'pointer', fontSize: '12.5px', color: C.tenue }}>Editar la obra</summary>
+      <div style={{ marginTop: '10px' }}>
+        <FormAccion accion={editarObra.bind(null, obraId)} testid="form-editar-obra" enviar="Guardar la obra" mensajeOk="Obra guardada.">
+          <CamposObra obra={obra} ubicacion={ubicacion} veEconomia={veComercial} />
+        </FormAccion>
+      </div>
+    </details>
+  )
 
   return (
     // EL WORKSPACE NO USA `PageShell`: su encabezado es el de una ENTIDAD —volver, nombre, campos
@@ -304,15 +353,18 @@ export default async function ObraPage({
         obraId={obraId}
         obra={obra}
         vistaActiva={vista}
-        acciones={
+        titulo={vista === 'resumen' ? 21 : 17}
+        kpis={cifrasDeItems}
+        acciones={vista === 'resumen' ? (
           <>
+            {/* 03: «Cargar parte» blanco con borde y «Nueva actividad» amarilla, en ese orden. */}
             <Link href={`/obras/${obraId}?vista=tareas&sub=parte`} prefetch={false}
-              data-testid="cabecera-cargar-parte" style={ESTILO_PRIMARIA}>
-              <Ico d={P.editar} s={14} />Cargar parte
+              data-testid="cabecera-cargar-parte" style={{ ...ESTILO_SECUNDARIA, height: '32px', padding: '0 14px', fontSize: '13px', border: `1px solid ${C.bordeFuerte}` }}>
+              <Ico d={P.editar} s={13} />Cargar parte
             </Link>
-            <AccionesRapidas obraId={obraId} />
+            {puedeEditarPlan && nuevaActividad}
           </>
-        }
+        ) : puedeEditarPlan ? nuevaActividad : null}
         // EL ENLACE A LA PLATA, DISCRETO Y SÓLO PARA QUIEN LA VE. No es una solapa —el dueño la
         // sacó de acá— y no es un botón: es la puerta a la pantalla de Administración de esta obra.
         // Al jefe de obra no se le dibuja, igual que no se le dibujan las rutas de `veEconomia`.
@@ -336,6 +388,7 @@ export default async function ObraPage({
         <WorkspaceTareas
           supabase={supabase} obraId={obraId} act={act} filtro={filtro} sol={sol} dot={dot}
           cuadrillas={cuadrillas} puedeEditar={puedeEditarPlan} veEconomia={veComercial}
+          nueva={nueva === '1'} abiertas={abiertas} nombreObra={obra.nombre}
         />
       )}
 
@@ -386,9 +439,28 @@ export default async function ObraPage({
 
       {/* El resto de las solapas sí vive en un contenedor con aire. Con el árbol o el cronograma en
           pantalla este div queda vacío y sin padding: 40px de aire fantasma se ven. */}
-      <div className={esArbol || esCronograma || esParte || esPlanilla ? '' : 'w-full px-5 pb-6 pt-3.5'}>
+      <div className={esArbol || esCronograma || esParte || esPlanilla || vista === 'resumen' ? '' : 'w-full px-5 pb-6 pt-3.5'}>
 
-      {vista === 'resumen' && (
+      {/* LA OBRA TERMINADA ES OTRA PANTALLA (Z01/MZ1): lo que dejó, qué falta antes de archivar. */}
+      {vista === 'resumen' && terminada && (
+        <ResumenCierre
+          obra={obra}
+          plan={plan}
+          abiertas={abiertas}
+          obraId={obraId}
+          actividades={acts}
+          partes={partes}
+          actividadHH={hhDeCierreRes ? lector.leer(hhDeCierreRes, []) : []}
+          avance={avance}
+          papelesSinClasificar={documentosRes ? documentos.filter((d) => !d.rol).length : null}
+          archivar={archivarObra.bind(null, obraId, true)}
+          reactivar={archivarObra.bind(null, obraId, false)}
+          veComercial={veComercial}
+          editar={editarLaObra}
+        />
+      )}
+
+      {vista === 'resumen' && !terminada && (
         <TabResumen
           obra={obra}
           plan={plan}
@@ -398,42 +470,13 @@ export default async function ObraPage({
           abiertas={abiertas}
           obraId={obraId}
           veComercial={veComercial}
-          // «Próximas 2 semanas» y «último movimiento» son secciones del Resumen en el handoff.
-          // Son props OPCIONALES a propósito —«la página no lo pidió» no es lo mismo que «no viene
-          // nada»— y hasta acá la página no las pedía, así que las dos secciones no existían.
           actividades={acts}
           partes={partes}
-          editar={
-            <details className="rounded-lg border border-line bg-surface" data-testid="editar-obra">
-              <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Editar la obra</summary>
-              <div className="border-t border-line p-4">
-                <FormAccion accion={editarObra.bind(null, obraId)} testid="form-editar-obra" enviar="Guardar la obra" mensajeOk="Obra guardada.">
-                  <CamposObra obra={obra} ubicacion={ubicacion} veEconomia={veComercial} />
-                </FormAccion>
-              </div>
-            </details>
-          }
-          archivar={
-            // Mismo bloque que el de la ficha del cliente, a propósito: archivar es UNA idea en todo
-            // el OS —sale de la vista, no de la historia— y aprenderla dos veces con dos formas
-            // distintas es aprenderla mal.
-            <section>
-              <h2 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-faint">
-                {archivada ? 'Reactivar la obra' : 'Archivar la obra'}
-              </h2>
-              <p className="mb-2.5 text-[13px] text-muted">
-                {archivada
-                  ? 'Vuelve al portafolio y a la ficha del cliente, con su cronograma, sus HH y sus costos intactos.'
-                  : 'Sale del portafolio y de la ficha del cliente. No se borra nada: el cronograma, las HH y los costos quedan enteros, esta página sigue abriendo por su dirección, y se reactiva cuando haga falta.'}
-              </p>
-              <BotonAccion
-                accion={archivarObra}
-                args={[obraId, !archivada]}
-                testid="archivar-obra"
-                tono={archivada ? 'neutral' : 'peligro'}
-              >{archivada ? 'Reactivar' : 'Archivar'}</BotonAccion>
-            </section>
-          }
+          avance={avance}
+          diasHabiles={diasHabilesObra}
+          nDependencias={nDependencias}
+          genteHoy={genteHoy}
+          editar={editarLaObra}
         />
       )}
 
