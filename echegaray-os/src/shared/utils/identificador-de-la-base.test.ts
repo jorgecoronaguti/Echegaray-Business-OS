@@ -59,7 +59,8 @@ test('la ficha del cliente identifica por CUIT y por las obras con su código', 
 test('el alta de obra muestra el CÓDIGO de obra_canonica, no el slug de la URL', () => {
   const fuente = leer(ALTA_OBRA)
   assert.match(fuente, /codigosDeObra\(supabase, \[obraId\]\)/, 'el código dejó de leerse de la base')
-  assert.match(fuente, /\['Código', codigo\]/, 'la ficha del paso 1 dejó de mostrar el código')
+  // Desde el 02b (23/09/2026) el código es un campo de sólo lectura del alta, no una fila de ficha.
+  assert.match(fuente, /rotulo="Código"[^>]*><InputAlta readOnly value=\{v\(codigo\)\}/, 'el alta dejó de mostrar el código')
   assert.ok(
     !/\['Identificador', obraId\]/.test(fuente),
     'volvió «Identificador: <slug>»: el identificador de una obra es su código, que no cambia al renombrarla',

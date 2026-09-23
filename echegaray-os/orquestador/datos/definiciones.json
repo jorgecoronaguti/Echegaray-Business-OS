@@ -365,6 +365,14 @@
         {
           "archivo": "src/features/administracion/services/costoLecturas.ts",
           "porque": "El módulo de costo-hora necesita la mano de obra presupuestada DESGLOSADA por actividad para compararla contra las HH imputadas, y `obra_economia_sheet` sólo publica el total de la obra. No es una segunda definición del total: es otra pregunta sobre las mismas filas."
+        },
+        {
+          "archivo": "src/features/obras/services/obrasService.ts",
+          "porque": "`getHistoriasPeso` lee `obra_historia_peso.costo_mo`: el costo TEÓRICO de mano de obra de cada historia, que es el peso del avance ponderado (H2). No es el costo de la obra ni se suma como tal: es la ponderación de un ítem contra sus hermanos."
+        },
+        {
+          "archivo": "src/features/obras/services/estructuraService.ts",
+          "porque": "`getPonderaciones` lee `obra_actividad.costo_mo` para repartir el peso entre hermanas «por costo teórico» (C05) y para la columna del árbol (C04). Es el costo de un ítem para ponderar, no el costo de la obra."
         }
       ]
     }

@@ -47,7 +47,9 @@ test('marca la paleta cruda de Tailwind donde el OS tiene token', async () => {
 })
 
 test('marca el color escrito en hex a mano', async () => {
-  const salida = await reglas(pantalla('<span className="border-line">x</span>'))
+  // El hex va partido a propósito: el barrido de colores (5f409c1c) lo reemplazó por el token y el
+  // test dejó de probar lo que dice. Partido, ningún codemod lo reconoce como color.
+  const salida = await reglas(pantalla('<span className="border-[#' + 'E7E6E2]">x</span>'))
   assert.ok(salida.includes('shadcn/no-arbitrary-values'), salida.join(', '))
 })
 
