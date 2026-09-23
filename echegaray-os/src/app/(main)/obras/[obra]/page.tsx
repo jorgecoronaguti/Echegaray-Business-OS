@@ -86,11 +86,10 @@ import { ParteDiario } from '@/features/obras/components/parte/ParteDiario'
 import { TabPlanilla } from '@/features/obras/components/planilla/TabPlanilla'
 import { getPartes } from '@/features/obras/services/ejecucionService'
 import { getIntegrantesPorCuadrilla } from '@/features/obras/services/personalService'
-import {
-  asignarActividadAPedido, borrarParte, registrarEjecucion,
-} from '@/features/obras/services/actionsEjecucion'
+import { borrarParte, registrarEjecucion } from '@/features/obras/services/actionsEjecucion'
 import { TabPersonal } from '@/features/obras/components/TabPersonal'
 import { TabOperacion } from '@/features/obras/components/TabOperacion'
+import { NuevoImpedimento } from '@/features/obras/components/operacion/AccionesCabecera'
 import { getOperacionObra, subDeLaUrl, type SubOperacion } from '@/features/obras/services/operacionService'
 import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
 import { getOrdenesDeObra } from '@/features/clientes/services/ordenesCliente'
@@ -423,6 +422,9 @@ export default async function ObraPage({
         ) : esEditorCronograma ? (
           // C06: «Sellar línea base» y «Guardar fechas» junto al nombre; no hay «Nueva actividad».
           <AccionesEditorCronograma />
+        ) : vista === 'operacion' ? (
+          // 09: «Nuevo impedimento» amarilla sólo en Impedimentos; 10 · 11 · 12 no dibujan botón.
+          subOp === 'impedimentos' ? <NuevoImpedimento obraId={obraId} /> : null
         ) : puedeEditarPlan ? nuevaActividad : null}
         lineaDeCifras={enEstructura || obraVacia ? cifrasDeCrear(modoEstructura, obraVacia) : cifrasDelCronograma}
         // EL ENLACE A LA PLATA, DISCRETO Y SÓLO PARA QUIEN LA VE. No es una solapa —el dueño la
@@ -581,24 +583,31 @@ export default async function ObraPage({
         />
       )}
 
+      {/* OPERACIÓN (09–12 · M12–M15): todo nuevo desde el 23/09/2026. Equipos sale del modelo de
+          Herramientas (`operacion.equipos`); Compras sólo para quien ve economía. `?nuevo=1` abre el
+          alta del impedimento (la primaria de la cabecera y la del pie del teléfono llevan ahí). */}
       {vista === 'operacion' && (
         <TabOperacion
           sub={subOp}
           obraId={obraId}
+          nombreObra={obra.nombre}
           errorFuente={opRes?.error ?? null}
           pedidos={operacion?.pedidos ?? []}
-          compras={operacion?.compras ?? { filas: [], total: null, nComprobantes: null, completo: false }}
-          herramientas={operacion?.herramientas ?? []}
-          movimientos={operacion?.movimientos ?? []}
+          compras={operacion?.compras ?? {
+            filas: [], total: null, nComprobantes: null, completo: false, manoDeObra: null, sinImputarEmpresa: null, imputadoEmpresa: null,
+          }}
+          equipos={operacion?.equipos ?? null}
           impedimentos={restr}
           actividades={acts}
+          veEconomia={veComercial}
+          nuevo={nuevo === '1'}
+          hoyIso={hoyISO}
           // `.bind(null, obraId)` Y NO UNA ARROW. Una arrow escrita acá es una función NUEVA
           // creada en el servidor, no la acción: React la rechaza en tiempo de ejecución con
           // «Functions cannot be passed directly to Client Components» y la solapa queda en blanco.
           // Ni el typecheck ni el build lo ven —las firmas son idénticas—; sólo el navegador.
           crearImpedimento={crearImpedimento.bind(null, obraId)}
           liberarImpedimento={liberarImpedimento.bind(null, obraId)}
-          asignarActividadAPedido={asignarActividadAPedido.bind(null, obraId)}
         />
       )}
 
