@@ -411,7 +411,7 @@ function Tarjeta({ rotulo, valor, falta, pie, testid }: {
   testid?: string
 }) {
   return (
-    <div className="rounded-card border border-[#EFEEEA] bg-surface-quiet px-3 py-2.5">
+    <div className="rounded-card border border-surface-sunken bg-surface-quiet px-3 py-2.5">
       <div className="text-[10px] uppercase tracking-[0.05em] text-faint">{rotulo}</div>
       <div data-testid={testid}
         className={`font-mono text-[15px] font-semibold tabular-nums ${valor ? 'text-ink' : 'text-faint'}`}>
@@ -432,7 +432,7 @@ function Dato({ icono, clave, valor, falta, tono }: {
 }) {
   const color = valor ? 'text-ink' : tono === 'neg' ? 'text-neg' : tono === 'warn' ? 'text-warn' : 'text-faint'
   return (
-    <div className="flex items-center gap-2.5 border-b border-[#EFEEEA] py-[7px] last:border-0">
+    <div className="flex items-center gap-2.5 border-b border-surface-sunken py-[7px] last:border-0">
       <span className="flex shrink-0 text-faint">{icono}</span>
       <span className="w-[104px] shrink-0 text-[11.5px] text-muted">{clave}</span>
       <span className={`min-w-0 flex-1 truncate text-right text-[12.5px] ${color}`}>{valor ?? falta}</span>

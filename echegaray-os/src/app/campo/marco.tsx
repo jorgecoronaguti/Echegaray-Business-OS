@@ -55,7 +55,7 @@ export function ElegirObra({ obras, hrefBase }: { obras: ObraDelCampo[]; hrefBas
       <p className="mb-3 text-[12.5px] text-muted">¿De qué obra?</p>
       <ul>
         {obras.map((o, i) => (
-          <li key={o.id} className={i === obras.length - 1 ? '' : 'border-b border-[#EFEEEA]'}>
+          <li key={o.id} className={i === obras.length - 1 ? '' : 'border-b border-surface-sunken'}>
             <Link prefetch={false}
               href={`${hrefBase}?obra=${encodeURIComponent(o.id)}`}
               data-testid="elegir-obra"

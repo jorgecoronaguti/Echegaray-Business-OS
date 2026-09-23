@@ -101,7 +101,7 @@ function Fila({ relacion, otra, puedeEditar, cambiar, quitar }: {
   quitar: AccionFormulario
 }) {
   return (
-    <li className="border-b border-[#EFEEEA] py-1.5 last:border-0">
+    <li className="border-b border-surface-sunken py-1.5 last:border-0">
       <span className="block text-[12.5px] text-ink-soft">{otra}</span>
       <span className="block text-[11px] text-muted">{relacion.relacion}</span>
       {puedeEditar && (

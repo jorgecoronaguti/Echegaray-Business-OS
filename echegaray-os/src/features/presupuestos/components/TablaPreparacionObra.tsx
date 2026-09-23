@@ -190,7 +190,7 @@ function Fila({
       data-marcada={marcada ? '1' : undefined}
       // #FEFCF2 es el amarillo de marca al 6% sobre blanco: el realce de la fila elegida del
       // canónico, más tenue que `marca-soft` porque acá lo llevan ocho filas a la vez.
-      className={`grid min-h-[48px] items-center gap-2.5 border-b border-[#F1F0EC] px-4 py-2 ${
+      className={`grid min-h-[48px] items-center gap-2.5 border-b border-hairline-soft px-4 py-2 ${
         elegible ? 'cursor-pointer' : ''
       } ${marcada ? 'bg-[#FEFCF2]' : 'hover:bg-surface-quiet'}`}
       style={{ gridTemplateColumns: COLS }}

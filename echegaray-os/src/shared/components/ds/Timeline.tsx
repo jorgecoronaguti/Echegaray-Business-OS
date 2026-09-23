@@ -33,7 +33,7 @@ export function Timeline({
   if (eventos.length === 0) return <Vacio>{vacio}</Vacio>
   return (
     <div data-testid={testid}>
-      <ul className="divide-y divide-[#EFEEEA]">
+      <ul className="divide-y divide-surface-sunken">
         {eventos.map((e) => (
           <li key={e.id} className="flex items-baseline gap-3 py-2.5" data-testid="evento">
             {/* 58px: `dd/mm/aa` en mono tabular. Con 52 el año quedaba fuera y la fecha mentía por

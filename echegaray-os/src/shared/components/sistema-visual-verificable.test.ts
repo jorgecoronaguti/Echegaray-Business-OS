@@ -47,7 +47,7 @@ test('marca la paleta cruda de Tailwind donde el OS tiene token', async () => {
 })
 
 test('marca el color escrito en hex a mano', async () => {
-  const salida = await reglas(pantalla('<span className="border-[#E7E6E2]">x</span>'))
+  const salida = await reglas(pantalla('<span className="border-line">x</span>'))
   assert.ok(salida.includes('shadcn/no-arbitrary-values'), salida.join(', '))
 })
 

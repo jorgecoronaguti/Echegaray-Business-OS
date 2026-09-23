@@ -219,7 +219,7 @@ export default async function PartidaPage({
 
 function Fila({ k, v, falta, fuerte }: { k: string; v: string | null; falta: string; fuerte?: boolean }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-[#EFEEEA] py-1.5 last:border-0">
+    <div className="flex items-baseline justify-between gap-3 border-b border-surface-sunken py-1.5 last:border-0">
       <dt className="text-faint">{k}</dt>
       <dd className={`font-mono tabular-nums ${fuerte ? 'font-semibold text-ink' : 'text-ink-soft'}`}>
         {v ?? <span className="font-sans text-faint">{falta}</span>}

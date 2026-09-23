@@ -120,7 +120,7 @@ export function Novedades() {
         {hayPunto(estado) && (
           <span
             data-testid="punto-novedades"
-            className="absolute right-[6px] top-[5px] h-[5px] w-[5px] rounded-[3px] bg-[#B42318]"
+            className="absolute right-[6px] top-[5px] h-[5px] w-[5px] rounded-[3px] bg-neg"
           />
         )}
       </button>

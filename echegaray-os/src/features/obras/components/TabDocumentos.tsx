@@ -167,7 +167,7 @@ function Vincular({
       <summary className="cursor-pointer select-none text-[12.5px] text-muted hover:text-ink">
         Vincular {esCarpeta ? 'carpeta' : 'documento'}
       </summary>
-      <div className="mt-3 hidden w-full border-t border-[#EFEEEA] pt-3.5 group-open:block sm:w-[440px]">
+      <div className="mt-3 hidden w-full border-t border-surface-sunken pt-3.5 group-open:block sm:w-[440px]">
         <FormAccion accion={accion} testid={`${testid}-form`} enviar="Vincular" limpiarAlOk mensajeOk="Vinculado.">
           {/* El tipo viaja en el formulario y el `obra_id` NO: uno es una preferencia de quien
               carga, el otro decide sobre qué obra se escribe. */}

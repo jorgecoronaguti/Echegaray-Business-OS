@@ -104,7 +104,7 @@ export function PanelImpedimento({
 
         {/* EL IMPACTO SE DIBUJA SÓLO SI HAY ATRASO MEDIDO. `null` días no es 0 días: es «no hay
             compromiso vencido», y un recuadro rojo con un 0 adentro alarmaría sobre nada. */}
-        <div className="rounded-lg border border-line bg-[#FAFAF8] px-3 py-2.5" data-testid="impacto-impedimento">
+        <div className="rounded-lg border border-line bg-surface-quiet px-3 py-2.5" data-testid="impacto-impedimento">
           <div className="text-[11.5px] font-semibold text-ink">Impacto</div>
           <div className="mt-2 flex gap-8">
             <div>

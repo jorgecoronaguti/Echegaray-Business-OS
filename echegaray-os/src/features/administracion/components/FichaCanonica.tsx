@@ -143,7 +143,7 @@ export function TiraMetricas({ metricas, testid }: { metricas: MetricaFicha[]; t
         <div
           key={m.rotulo}
           data-metrica={m.rotulo}
-          className="min-w-[164px] flex-1 border-r border-[#EFEEEA] px-4 py-3 last:border-r-0"
+          className="min-w-[164px] flex-1 border-r border-surface-sunken px-4 py-3 last:border-r-0"
         >
           <div className="whitespace-nowrap text-[10.5px] tracking-[0.04em] text-faint">{m.rotulo}</div>
           <div className="mt-0.5 flex flex-wrap items-baseline gap-[7px]">
@@ -182,7 +182,7 @@ export function TarjetaFicha({
       {/* `px-3.5 py-[11px]` = el `padding:11px 14px` del canónico (`23:213`, `26:196`). Era
           `py-2.5` (10px): un píxel por tarjeta que, con cinco tarjetas apiladas en el aside, corre
           el bloque de abajo cinco píxeles respecto de la columna de al lado. */}
-      <div className="flex items-center gap-2.5 border-b border-[#EFEEEA] px-3.5 py-[11px]">
+      <div className="flex items-center gap-2.5 border-b border-surface-sunken px-3.5 py-[11px]">
         {icono && <span className="flex text-muted">{icono}</span>}
         <h2 className="text-[12.5px] font-semibold text-ink">{titulo}</h2>
         {indicador != null && (

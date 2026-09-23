@@ -40,7 +40,7 @@ export function PoolSinCuadrilla({
                 <li
                   key={p.id}
                   data-testid="fila-sin-cuadrilla"
-                  className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-[#EFEEEA] py-1.5 text-[12.5px] last:border-b-0"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-surface-sunken py-1.5 text-[12.5px] last:border-b-0"
                 >
                   <Link href={`/administracion/personas/${p.id}`} prefetch={false} className="min-w-0 flex-1 truncate text-ink hover:underline">
                     {p.nombre_completo}

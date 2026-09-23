@@ -78,7 +78,7 @@ export function Dato({
   ancho?: string
 }) {
   return (
-    <div className="flex items-baseline gap-4 border-b border-[#EFEEEA] py-2.5">
+    <div className="flex items-baseline gap-4 border-b border-surface-sunken py-2.5">
       <span className={`${ancho} shrink-0 text-[12.5px] text-muted`}>{rotulo}</span>
       <span className="min-w-0 flex-1 text-[13px] text-ink">{children}</span>
     </div>

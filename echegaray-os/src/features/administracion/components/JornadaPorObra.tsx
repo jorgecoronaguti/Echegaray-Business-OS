@@ -170,7 +170,7 @@ export function GrupoDeLaJornada({
                   <div
                     key={g.personaId} data-testid="fila-presencia" data-estado={g.estado}
                     data-persona={g.personaId} style={estilo}
-                    className={tono === 'warn' ? 'hover:border-[#E3C99F]' : 'hover:border-[#D7D5CF]'}
+                    className={tono === 'warn' ? 'hover:border-[#E3C99F]' : 'hover:border-line-strong'}
                   >
                     {cuerpo}
                   </div>

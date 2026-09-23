@@ -128,7 +128,7 @@ export function BloqueImpedimentos({
             <IconoCrear className="h-[13px] w-[13px]" />
             Impedimento
           </summary>
-          <div className="mt-3 border-t border-[#EFEEEA] pt-3.5">
+          <div className="mt-3 border-t border-surface-sunken pt-3.5">
             <FormAccion accion={crear} testid="form-impedimento" enviar="Anotar" limpiarAlOk mensajeOk="Impedimento anotado.">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <Campo rotulo="Qué frena el trabajo" className="col-span-2 sm:col-span-4">

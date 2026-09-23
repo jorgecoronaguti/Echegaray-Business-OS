@@ -291,7 +291,7 @@ function MenuUsuario({
         // 27px / radio 14 / #30302F / 10,5px / 600 — medido de los estilos inline del zip
         // (`03 · Obra Tareas.dc.html`). El grafito va en hexadecimal por la misma razón que en
         // `ds/Estado.tsx`: es un valor MEDIDO del mockup, no una decisión que se re-tome acá.
-        className="flex h-[27px] w-[27px] items-center justify-center rounded-full bg-[#30302F] text-[10.5px] font-semibold text-white transition-opacity hover:opacity-85"
+        className="flex h-[27px] w-[27px] items-center justify-center rounded-full bg-accent text-[10.5px] font-semibold text-white transition-opacity hover:opacity-85"
       >
         {iniciales(nombre, email)}
       </button>

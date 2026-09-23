@@ -159,7 +159,7 @@ function Gente({ integrantes, porPersona, fichadosHoy, hrefEditar, nombre }: Des
         return (
           <div
             key={i.id}
-            className={`${GRILLA} ${CAJA_CONTENIDO} hover:bg-[#FAFAF8]`}
+            className={`${GRILLA} ${CAJA_CONTENIDO} hover:bg-surface-quiet`}
             // Ritmo de panel, no de lista: es el desplegable de la cuadrilla dentro de su bloque.
             style={{ height: 34, paddingLeft: 13, borderBottom: `1px solid ${V.lineaPanel}` }}
             data-testid="fila-integrante"
@@ -198,7 +198,7 @@ function Gente({ integrantes, porPersona, fichadosHoy, hrefEditar, nombre }: Des
       })}
       <Link
         href={hrefEditar} prefetch={false} data-testid="editar-cuadrilla"
-        className="hover:text-[#30302F]"
+        className="hover:text-accent"
         style={{ display: 'inline-block', fontSize: '12.5px', fontWeight: 500, color: V.tinta, margin: '10px 0 0 39px' }}
       >
         Editar {nombre} →

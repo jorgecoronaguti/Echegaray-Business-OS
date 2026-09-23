@@ -166,7 +166,7 @@ export function PanelCliente({
                 href={`/obras/${o.obra_id}`}
                 prefetch={false}
                 data-testid="panel-cliente-obra"
-                className="hover:bg-[#FAFAF8]"
+                className="hover:bg-surface-quiet"
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0',
                   borderBottom: `1px solid ${V.lineaPanel}`,

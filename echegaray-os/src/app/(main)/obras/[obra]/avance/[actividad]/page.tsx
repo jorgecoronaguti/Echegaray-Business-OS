@@ -83,7 +83,7 @@ export default async function RegistrarAvancePage({ params }: {
           ) : (
             <ul className="max-w-[560px]">
               {(historial.data ?? []).slice(0, 12).map((h) => (
-                <li key={h.id} className="flex items-baseline gap-2 border-b border-[#EFEEEA] py-1.5 last:border-0">
+                <li key={h.id} className="flex items-baseline gap-2 border-b border-surface-sunken py-1.5 last:border-0">
                   <span className="w-[50px] shrink-0 font-mono text-[10px] tabular-nums text-faint">{fecha(h.fecha)}</span>
                   <span className="flex-1">
                     <span className="block text-[11.5px] text-ink-soft">{h.criterio || h.comentario || 'Avance registrado'}</span>

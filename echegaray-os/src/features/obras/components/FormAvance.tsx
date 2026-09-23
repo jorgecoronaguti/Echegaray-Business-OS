@@ -175,7 +175,7 @@ export function FormAvance({
                 ) : (
                   <ul>
                     {pasos.map((p) => (
-                      <li key={p.id} className="flex items-center gap-2.5 border-b border-[#EFEEEA] py-2 last:border-0">
+                      <li key={p.id} className="flex items-center gap-2.5 border-b border-surface-sunken py-2 last:border-0">
                         <input
                           type="checkbox" name="paso" value={p.id}
                           checked={tildados.has(p.id)}
@@ -341,7 +341,7 @@ export function FormAvanceEmbebido(datos: DatosFormAvance) {
 
 function Firma({ clave, valor }: { clave: string; valor: string }) {
   return (
-    <div className="flex items-baseline justify-between border-b border-[#EFEEEA] py-1.5">
+    <div className="flex items-baseline justify-between border-b border-surface-sunken py-1.5">
       <span className="text-[11.5px] text-faint">{clave}</span>
       <span className="text-[12.5px] text-ink-soft">{valor}</span>
     </div>

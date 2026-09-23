@@ -231,7 +231,7 @@ export function PanelProveedor({
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 20, flexWrap: 'wrap' }}>
         <details data-testid="editar-proveedor" style={{ minWidth: 0, flex: '1 1 100%' }}>
           <summary
-            className="inline-flex cursor-pointer list-none items-center gap-[7px] hover:border-[#D7D5CF]"
+            className="inline-flex cursor-pointer list-none items-center gap-[7px] hover:border-line-strong"
             style={{
               border: `1px solid ${V.linea}`, background: '#FFFFFF', color: V.tinta,
               fontSize: '12.5px', fontWeight: 500, borderRadius: 6, padding: '7px 12px',

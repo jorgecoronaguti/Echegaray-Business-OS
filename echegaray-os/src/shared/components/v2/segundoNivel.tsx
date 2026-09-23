@@ -119,7 +119,7 @@ export function AccionSecundaria({ href, children, icono, testid }: {
 }) {
   return (
     <Link
-      href={href} data-testid={testid} className="hover:border-[#D7D5CF]"
+      href={href} data-testid={testid} className="hover:border-line-strong"
       style={{
         display: 'flex', alignItems: 'center', gap: 7, border: `1px solid ${V.linea}`,
         background: '#FFFFFF', color: V.tinta, fontSize: '12.5px', fontWeight: 500,

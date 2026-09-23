@@ -149,7 +149,7 @@ function Renglon({ f }: { f: FilaObra }) {
       data-etapa={f.etapa ?? ''}
       title={resumen(f)}
       style={{ height: ALTO_FILA }}
-      className="flex w-full items-center gap-2 border-b border-[#EFEEEA] pr-3 transition-colors hover:bg-surface-quiet"
+      className="flex w-full items-center gap-2 border-b border-surface-sunken pr-3 transition-colors hover:bg-surface-quiet"
     >
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-medium text-ink">{f.nombre}</span>
@@ -299,7 +299,7 @@ export function GanttObras({ filas, hoyIso }: { filas: FilaObra[]; hoyIso: strin
   const rotulos = (
     <div
       style={{ height: ALTO_HEAD }}
-      className="sticky top-0 z-10 flex items-center gap-2 border-b border-[#EFEEEA] bg-surface pr-3 text-[10px] font-medium uppercase tracking-[0.06em] text-faint"
+      className="sticky top-0 z-10 flex items-center gap-2 border-b border-surface-sunken bg-surface pr-3 text-[10px] font-medium uppercase tracking-[0.06em] text-faint"
     >
       <span className="flex-1">Obra</span>
       <span className="hidden w-[104px] shrink-0 sm:inline">Etapa</span>
@@ -338,14 +338,14 @@ export function GanttObras({ filas, hoyIso }: { filas: FilaObra[]; hoyIso: strin
       <div ref={cajaRef} data-gantt-caja className="relative max-h-[72vh] overflow-auto overscroll-x-contain border-t border-line">
         <div className="flex w-max">
           {/* ── COLUMNA FIJA: las obras ────────────────────────────────────────── */}
-          <div data-columna-fija className="sticky left-0 z-20 w-[168px] shrink-0 border-r border-[#EFEEEA] bg-surface sm:w-[460px]">
+          <div data-columna-fija className="sticky left-0 z-20 w-[168px] shrink-0 border-r border-surface-sunken bg-surface sm:w-[460px]">
             {rotulos}
             {filas.map((f) => <Renglon key={f.obraId} f={f} />)}
           </div>
 
           {/* ── LÍNEA DE TIEMPO ────────────────────────────────────────────────── */}
           <div className="relative shrink-0" style={{ width: ancho }}>
-            <div className="sticky top-0 z-10 border-b border-[#EFEEEA] bg-surface" style={{ height: ALTO_HEAD }}>
+            <div className="sticky top-0 z-10 border-b border-surface-sunken bg-surface" style={{ height: ALTO_HEAD }}>
               <svg width={ancho} height={ALTO_HEAD} className="block">
                 {meses.map((m) => (
                   <g key={m.label + m.x0}>
@@ -376,7 +376,7 @@ export function GanttObras({ filas, hoyIso }: { filas: FilaObra[]; hoyIso: strin
                     aria-hidden
                   >
                     <rect x={0} y={y} width={ancho} height={ALTO_FILA} className="fill-transparent" />
-                    <line x1={0} y1={y + ALTO_FILA} x2={ancho} y2={y + ALTO_FILA} className="stroke-[#EFEEEA]" />
+                    <line x1={0} y1={y + ALTO_FILA} x2={ancho} y2={y + ALTO_FILA} className="stroke-surface-sunken" />
                     {f.barra
                       ? <BarraObra b={f.barra} y={y} x={x} ancho={ancho} />
                       : (

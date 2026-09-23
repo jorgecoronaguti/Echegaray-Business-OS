@@ -192,7 +192,7 @@ export default async function CampoPage() {
 
         <ul className="mt-5">
           {consultas.map((a, i) => (
-            <li key={a.href} className={i === consultas.length - 1 ? '' : 'border-b border-[#EFEEEA]'}>
+            <li key={a.href} className={i === consultas.length - 1 ? '' : 'border-b border-surface-sunken'}>
               <Link prefetch={false}
                 href={a.href}
                 data-testid={a.testid}

@@ -229,7 +229,7 @@ export function TablaClientes({
                   prefetch={false}
                   role="row"
                   data-testid="fila-obra"
-                  className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} hover:bg-[#FAFAF8]`}
+                  className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} hover:bg-surface-quiet`}
                   data-ordenes={ocDeLaObra.length ? '' : undefined}
                   style={{
                     minHeight: ocDeLaObra.length ? ALTO_V2.hijaConOrdenes : ALTO_V2.hija,

@@ -98,7 +98,7 @@ function FilaRubro({ f, alto, salto, cerrado, alAlternar, casilla }: {
   const g = f.grupo
   return (
     <div
-      className="flex items-center gap-2 border-b border-[#EFEEEA] px-3"
+      className="flex items-center gap-2 border-b border-surface-sunken px-3"
       style={{ height: alto, marginTop: salto }}
     >
       {casilla}
@@ -130,7 +130,7 @@ function FilaActividad({ f, alto, sel, alSeleccionar, casilla, compacta }: {
   const pct = a.avance_pct == null ? null : Math.round(Number(a.avance_pct))
   return (
     <div
-      className={`flex items-center gap-2 border-b border-[#EFEEEA] ${sel ? 'bg-surface-quiet' : 'hover:bg-surface-quiet'}`}
+      className={`flex items-center gap-2 border-b border-surface-sunken ${sel ? 'bg-surface-quiet' : 'hover:bg-surface-quiet'}`}
       style={{ height: alto, ...(sel ? { boxShadow: 'inset 2px 0 0 var(--os-marca)' } : {}) }}
       data-seleccionada={sel ? '' : undefined}
     >
@@ -266,7 +266,7 @@ export function ListaPorFecha({ filas, seleccionada, alSeleccionar }: {
               onClick={() => alSeleccionar(a.id)}
               data-testid="actividad-telefono"
               // 48px de alto real: es un objetivo táctil, no una fila de tabla.
-              className={`flex w-full items-center gap-3 border-b border-[#EFEEEA] py-3 text-left ${
+              className={`flex w-full items-center gap-3 border-b border-surface-sunken py-3 text-left ${
                 seleccionada === a.id ? 'bg-surface-quiet' : ''
               }`}
               style={seleccionada === a.id ? { boxShadow: 'inset 2px 0 0 var(--os-marca)' } : undefined}

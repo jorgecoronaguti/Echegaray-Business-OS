@@ -106,7 +106,7 @@ export function CostadoCuadrillas({ porObra, ventana, sueltos, sinLeerPool, href
       {!sinLeerPool && sueltos.length > 0 && (
         <Link
           href={hrefPool} prefetch={false} data-testid="abrir-pool"
-          className="hover:text-[#30302F]"
+          className="hover:text-accent"
           style={{ display: 'inline-block', fontSize: '12.5px', fontWeight: 500, color: V.tinta, marginTop: 10 }}
         >
           Asignar a una cuadrilla →

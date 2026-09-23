@@ -160,7 +160,7 @@ export default async function NuevaObraPage({
                 ['Cliente', obra.cliente_nombre],
                 ['Ubicación', ubicacion],
               ] as const).map(([k, v]) => (
-                <div key={k} className="flex h-10 items-center justify-between gap-3 border-b border-[#EFEEEA]">
+                <div key={k} className="flex h-10 items-center justify-between gap-3 border-b border-surface-sunken">
                   <dt className="text-muted">{k}</dt>
                   {/* LA AUSENCIA SE ESCRIBE. Un «—» acá se lee igual que un dato corto y hace que
                       una obra sin ubicación cargada parezca una obra con la ubicación puesta. */}

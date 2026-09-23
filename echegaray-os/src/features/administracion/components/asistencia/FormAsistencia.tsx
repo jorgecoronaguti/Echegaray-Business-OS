@@ -216,7 +216,7 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas, pres
                       obras a la vez: sin este renglón, cada jefe cargaba su jornada completa y la
                       persona terminaba con 17,6 hs el mismo día, repartidas, sin un solo aviso. */}
                   {fila.enOtraObra && (
-                    <p className="truncate text-[12px] text-[#B54708]" data-testid="ya-en-otra-obra">
+                    <p className="truncate text-[12px] text-warn" data-testid="ya-en-otra-obra">
                       {/* LA AUSENCIA NO TIENE OBRA QUE NOMBRAR (08/09/2026). Decir «en …» sobre una
                           fila sin obra escribiría un slug o un vacío justo donde hay que entender
                           que esa persona ya está declarada ausente ese día. */}
@@ -321,7 +321,7 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas, pres
           <p className="text-[12.5px] font-medium text-[#B4231F]" data-testid="falta-marcar">{falta}</p>
         )}
         {sinJornada.length > 0 && (
-          <p className="text-[12.5px] text-[#B54708]" data-testid="ausencia-sin-jornada">
+          <p className="text-[12.5px] text-warn" data-testid="ausencia-sin-jornada">
             Esta obra no tiene jornada pactada: una ausencia no se puede medir en horas y no se va a
             registrar. Se carga en la obra.
           </p>

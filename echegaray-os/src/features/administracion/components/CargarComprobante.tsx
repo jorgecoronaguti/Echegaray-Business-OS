@@ -123,7 +123,7 @@ export function CargarComprobante() {
         onClick={() => setAbierto((v) => !v)}
         aria-expanded={abierto}
         data-testid="abrir-carga"
-        className="inline-flex cursor-pointer items-center gap-1.5 rounded-[6px] bg-[#FDC900] px-[11px] py-[6px] text-[12.5px] font-semibold text-[#1F1F1E] transition-colors hover:bg-[#EEBE00]"
+        className="inline-flex cursor-pointer items-center gap-1.5 rounded-[6px] bg-marca px-[11px] py-[6px] text-[12.5px] font-semibold text-[#1F1F1E] transition-colors hover:bg-[#EEBE00]"
       >
         <IcoSubir s={14} />
         Cargar comprobante
@@ -189,7 +189,7 @@ function Acciones({ carga, onCerrar }: { carga: Carga; onCerrar: () => void }) {
         onClick={() => { void carga.enviar() }}
         disabled={carga.subiendo || !carga.elegidos.length}
         data-testid="enviar-carga"
-        className="inline-flex items-center gap-1.5 rounded-[6px] bg-[#FDC900] px-[11px] py-[6px] text-[12.5px] font-semibold text-[#1F1F1E] transition-colors hover:bg-[#EEBE00] disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-[6px] bg-marca px-[11px] py-[6px] text-[12.5px] font-semibold text-[#1F1F1E] transition-colors hover:bg-[#EEBE00] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {carga.subiendo ? 'Subiendo…' : `Cargar${carga.elegidos.length ? ` ${carga.elegidos.length}` : ''}`}
       </button>

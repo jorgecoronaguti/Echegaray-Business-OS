@@ -626,7 +626,7 @@ export default async function ClientePage({ params, searchParams }: {
                   <>
                     <a
                       href={`/portal/vista-previa/${slug}`} target="_blank" rel="noreferrer"
-                      data-testid="ficha-ver-portal" className="hover:border-[#D7D5CF]"
+                      data-testid="ficha-ver-portal" className="hover:border-line-strong"
                       style={{
                         display: 'flex', alignItems: 'center', gap: 7, border: `1px solid ${V.linea}`,
                         background: '#FFFFFF', color: V.tinta, fontSize: '12.5px', fontWeight: 500,

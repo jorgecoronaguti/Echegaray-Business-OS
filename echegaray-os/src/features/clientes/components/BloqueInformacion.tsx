@@ -76,7 +76,7 @@ export function BloqueInformacion({
   return (
     <div className="space-y-3">
       <div data-testid="cliente-informacion">
-        <dl className="divide-y divide-[#EFEEEA] border-t border-line">
+        <dl className="divide-y divide-surface-sunken border-t border-line">
           <Propiedad rotulo="Nombre comercial">{cliente.nombre_comercial}</Propiedad>
           {/* «sin cargar» y no el nombre comercial repetido: la razón social vacía es un dato que
               falta, y repetir el otro campo lo escondería haciéndolo parecer completo. */}
@@ -122,7 +122,7 @@ export function BloqueInformacion({
           </Propiedad>
         </dl>
         {cliente.notas && (
-          <p className="border-t border-[#EFEEEA] py-2.5 text-[12px] leading-relaxed text-muted">{cliente.notas}</p>
+          <p className="border-t border-surface-sunken py-2.5 text-[12px] leading-relaxed text-muted">{cliente.notas}</p>
         )}
       </div>
 
@@ -172,7 +172,7 @@ function Administrar({
 
       {/* ARCHIVAR NO ES BORRAR, y el texto es lo único que lo garantiza antes del clic. Va al pie
           del aside —como en el handoff—, separado por un hairline y sin caja propia. */}
-      <div className="border-t border-[#EFEEEA] pt-3.5">
+      <div className="border-t border-surface-sunken pt-3.5">
         <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-faint">
           {cliente.activo ? 'Archivar cliente' : 'Reactivar cliente'}
         </div>

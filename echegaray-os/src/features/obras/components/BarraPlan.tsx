@@ -190,7 +190,7 @@ export function BarraPlan({
             </FormAccion>
           )}
           {rubros.length > 0 && (
-            <ul className="mt-3 divide-y divide-[#EFEEEA] border-t border-line" data-testid="lista-rubros">
+            <ul className="mt-3 divide-y divide-surface-sunken border-t border-line" data-testid="lista-rubros">
               {rubros.map((r) => <FilaRubro key={r.nombre} r={r} acciones={acciones} />)}
             </ul>
           )}

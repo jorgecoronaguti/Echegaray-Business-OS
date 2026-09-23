@@ -56,7 +56,7 @@ export function SolapaAnalisis({ ficha, economia }: { ficha: FichaTarea; economi
               {filas.map((l) => (
                 <li
                   key={l.id}
-                  className={`grid items-center gap-2 border-b border-[#EFEEEA] py-2 last:border-b-0 ${
+                  className={`grid items-center gap-2 border-b border-surface-sunken py-2 last:border-b-0 ${
                     economia ? 'grid-cols-[1fr_78px_66px_78px]' : 'grid-cols-[1fr_78px]'
                   }`}
                 >
@@ -120,7 +120,7 @@ export function SolapaAnalisis({ ficha, economia }: { ficha: FichaTarea; economi
         <Total rotulo="Mano de obra" v={costo?.costo_mano_obra ?? null} />
         <Total rotulo="Materiales" v={costo?.costo_materiales ?? null} />
         <Total rotulo="Equipos" v={costo?.costo_equipos ?? null} />
-        <div className="mt-1.5 flex items-baseline justify-between gap-3 border-t border-[#EFEEEA] pt-2">
+        <div className="mt-1.5 flex items-baseline justify-between gap-3 border-t border-surface-sunken pt-2">
           <span className="text-[13px] font-semibold text-ink">Costo unitario</span>
           <span className="font-mono text-[15px] font-semibold tabular-nums text-ink">
             {costo?.costo_directo == null ? <Nulo>sin cargar</Nulo> : `$ ${numero(costo.costo_directo, 0)}`}

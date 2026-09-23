@@ -78,7 +78,7 @@ export function FiltrosSuaves({ opciones, conteo, rotulo, testid = 'filtros' }: 
           prefetch={false}
           data-testid={`${testid}-${o.clave}`}
           aria-current={o.activo ? 'true' : undefined}
-          className="hover:bg-[#EFEEEA]"
+          className="hover:bg-surface-sunken"
           style={{
             fontSize: '12px', padding: '4px 9px', borderRadius: 6,
             color: o.activo ? V.tinta : V.apagado,

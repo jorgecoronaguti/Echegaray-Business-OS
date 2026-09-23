@@ -145,7 +145,7 @@ export function ConfiguradorConversion({
           {/* EL MÉTODO VIVE CON LA PLANTILLA, no en un bloque propio: elegir «sin pasos» ya descarta
               «pasos ponderados», y tenerlos separados hacía parecer que eran dos decisiones
               independientes cuando una restringe a la otra. */}
-          <div className="mt-3 border-t border-[#EFEEEA] pt-2.5" data-testid="bloque-metodo">
+          <div className="mt-3 border-t border-surface-sunken pt-2.5" data-testid="bloque-metodo">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <span className="text-[11.5px] text-muted">Las actividades avanzan por</span>
               <div className="flex flex-wrap gap-1.5">

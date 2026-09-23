@@ -413,7 +413,7 @@ function FilaPartida({
         {!congelado && (
           <BotonAccion accion={quitarPartida} args={[p.partida_id, cotizacionId]}
             tono="peligro" testid={`borrar-${p.partida_id}`}
-            className="[&_button]:border-transparent [&_button]:px-1 [&_button]:py-1 [&_button]:text-[#C9C4C2] [&_button:hover]:text-[#B42318]">
+            className="[&_button]:border-transparent [&_button]:px-1 [&_button]:py-1 [&_button]:text-[#C9C4C2] [&_button:hover]:text-neg">
             <span title="Quitar la partida" className="flex items-center">
               <span className="sr-only">Quitar la partida</span>
               <IcoQuitar s={14} />

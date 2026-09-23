@@ -71,8 +71,8 @@ export function FiltrosURL({
           aria-current={o.activo ? 'true' : undefined}
           className={`inline-flex items-center gap-[5px] rounded-[6px] border px-[9px] py-[4px] text-[12px] transition-colors ${
             o.activo
-              ? 'border-[#30302F] bg-[#30302F] text-white'
-              : 'border-[#E7E6E2] bg-white text-[#3A3A38] hover:border-[#C9C4C2]'
+              ? 'border-accent bg-accent text-white'
+              : 'border-line bg-white text-ink-soft hover:border-[#C9C4C2]'
           }`}
         >
           {o.label}

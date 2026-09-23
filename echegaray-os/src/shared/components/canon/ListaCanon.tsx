@@ -112,7 +112,7 @@ export function FilaCanon({
       style={{ ...grilla(cols), height: `${alto}px` }}
       // #F1F0EC y #FEF9E6 van literales: son los valores MEDIDOS del canónico y no existen como
       // token (`--os-marca-soft` es #FEF4CF, más saturado — la selección del mockup es más pálida).
-      className={`grid items-center border-b border-[#F1F0EC] px-[14px] last:border-0 ${
+      className={`grid items-center border-b border-hairline-soft px-[14px] last:border-0 ${
         seleccionada ? 'bg-[#FEF9E6]' : 'hover:bg-surface-quiet'
       } ${onClick ? 'cursor-pointer' : ''} ${className}`}
     >

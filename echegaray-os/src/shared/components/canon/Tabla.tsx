@@ -19,7 +19,7 @@ import { EnvoltorioAncho } from './EnvoltorioAncho'
 // ═══ EL HOVER VA POR CLASE, EL RESTO INLINE ═══
 //
 // `style-hover="background:#FAFAF8"` del mockup no se puede escribir en un objeto `style`. Va como
-// `hover:bg-[#FAFAF8]`. Y por eso la fila NO seleccionada no lleva `background` inline: un
+// `hover:bg-surface-quiet`. Y por eso la fila NO seleccionada no lleva `background` inline: un
 // `background:transparent` en el atributo le gana a cualquier clase de hover y la fila quedaría
 // muerta al pasar el mouse. El mockup escribe `transparent`; acá se omite, que es lo mismo pintado
 // y además deja vivo el hover.
@@ -139,7 +139,7 @@ export function FilaCanon({
         padding: `0 ${padding}px`,
         ...(pintada ? { background: pintada } : null),
       }}
-      className={`${onClick ? 'cursor-pointer' : ''} ${pintada ? '' : 'hover:bg-[#FAFAF8]'}`}
+      className={`${onClick ? 'cursor-pointer' : ''} ${pintada ? '' : 'hover:bg-surface-quiet'}`}
     >
       {children}
     </div>

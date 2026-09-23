@@ -124,7 +124,7 @@ export function BloqueUsuario({
             <li
               key={p.clave}
               data-testid={`permiso-${p.tiene ? 'si' : 'no'}`}
-              className="flex min-w-0 items-baseline justify-between gap-4 border-b border-[#EFEEEA] py-[9px] last:border-0"
+              className="flex min-w-0 items-baseline justify-between gap-4 border-b border-surface-sunken py-[9px] last:border-0"
             >
               <span className="min-w-0">
                 <span className="text-[12.5px] text-ink">{p.clave}</span>

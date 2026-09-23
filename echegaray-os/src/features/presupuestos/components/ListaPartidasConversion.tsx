@@ -59,7 +59,7 @@ export function ListaPartidasConversion({
           const c = conversiones[p.partida_id]
           const activa = seleccionada === p.partida_id
           return (
-            <li key={p.partida_id} className="border-b border-[#EFEEEA]">
+            <li key={p.partida_id} className="border-b border-surface-sunken">
               <Link
                 href={`${hrefBase}?partida=${p.partida_id}`}
                 prefetch={false}

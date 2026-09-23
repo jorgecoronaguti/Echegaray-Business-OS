@@ -278,7 +278,7 @@ export function TabCronograma({
           <summary className="cursor-pointer text-[12.5px] text-muted">
             {archivadas.length} actividad(es) archivadas
           </summary>
-          <ul className="divide-y divide-[#EFEEEA]">
+          <ul className="divide-y divide-surface-sunken">
             {archivadas.map((a) => (
               <li key={a.id} className="flex items-center justify-between gap-3 py-2">
                 <span className="min-w-0 truncate text-[12.5px] text-muted">{a.nombre}</span>

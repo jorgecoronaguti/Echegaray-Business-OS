@@ -178,7 +178,7 @@ function Alta({ titulo, testid, children, primaria = false }: {
           `right-0` lo ancla al botón, que está al final de la banda. */}
       <div className={primaria
         ? 'absolute right-0 z-30 mt-2 w-[560px] max-w-[calc(100vw-2rem)] rounded-card border border-line bg-surface p-4 shadow-pop'
-        : 'mt-3 border-t border-[#EFEEEA] pt-3.5'}
+        : 'mt-3 border-t border-surface-sunken pt-3.5'}
       >
         {children}
       </div>

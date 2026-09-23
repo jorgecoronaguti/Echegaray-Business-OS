@@ -197,7 +197,7 @@ export function BloqueHoras({
         </THead>
         <tbody>
           {registros.length === 0 && (
-            <tr className="h-fila border-b border-[#EFEEEA]">
+            <tr className="h-fila border-b border-surface-sunken">
               <td colSpan={6} className="text-[12.5px] text-faint">
                 Sin horas en este período. Hay {historial.length} imputación(es) en otras fechas.
               </td>
@@ -217,7 +217,7 @@ export function BloqueHoras({
                   <Td num fuerte>{hh(r.horas)}</Td>
                 </Tr>
               ))}
-              <tr className="border-b border-[#EFEEEA]" data-testid="total-tramo">
+              <tr className="border-b border-surface-sunken" data-testid="total-tramo">
                 <td colSpan={5} className="py-1.5 text-[11.5px] text-faint">
                   {/* LA OBRA DEL TRAMO CON SU NOMBRE REAL: es la segunda pregunta de la
                       liquidación —cuántas horas y a qué obra se imputan—, y hasta acá había que
@@ -242,7 +242,7 @@ export function BloqueHoras({
           <p className="mb-1.5 text-[11px] uppercase tracking-[0.06em] text-faint">Por mes</p>
           <ul className="text-[12.5px]">
             {porMes(registros).map((m) => (
-              <li key={m.clave} className="flex justify-between border-b border-[#EFEEEA] py-1.5">
+              <li key={m.clave} className="flex justify-between border-b border-surface-sunken py-1.5">
                 <span className="text-ink">{m.rotulo}</span>
                 <span className="tabular-nums text-muted">
                   {m.dias} {m.dias === 1 ? 'día' : 'días'} · {hh(m.horas)} HH
@@ -338,7 +338,7 @@ export function BloqueDocumentos({
             <li
               key={d.id}
               data-testid="fila-documento"
-              className="flex items-center gap-x-4 gap-y-1 border-b border-[#EFEEEA] py-2.5 last:border-0"
+              className="flex items-center gap-x-4 gap-y-1 border-b border-surface-sunken py-2.5 last:border-0"
             >
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13px] text-ink">
@@ -387,7 +387,7 @@ export function BloqueDocumentos({
           <li
             key={`solicitado-${tipo}`}
             data-testid="fila-documento-solicitado"
-            className="flex items-center gap-x-4 border-b border-[#EFEEEA] py-2.5 last:border-0"
+            className="flex items-center gap-x-4 border-b border-surface-sunken py-2.5 last:border-0"
           >
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[13px] text-ink-soft">{tipo.replace(/_/g, ' ')}</span>

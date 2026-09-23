@@ -36,7 +36,7 @@ const PANEL: React.CSSProperties = {
   border: `1px solid ${V.lineaFuerte}`,
 }
 
-const PRIMARIO = 'inline-flex cursor-pointer items-center gap-1.5 rounded-[6px] bg-[#FDC900] px-[11px]'
+const PRIMARIO = 'inline-flex cursor-pointer items-center gap-1.5 rounded-[6px] bg-marca px-[11px]'
   + ' py-[6px] text-[12.5px] font-semibold text-[#1F1F1E] transition-colors hover:bg-[#EEBE00]'
   + ' disabled:cursor-not-allowed disabled:opacity-50'
 
