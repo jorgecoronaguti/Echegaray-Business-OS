@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: **2026-09-23 ~11:05 (−03)** · `origin/main` = **3c258674**, checkout de producción en ese
+_actualizado: **2026-09-23 ~11:05 (−03)** · `origin/main` = **b64192a3**, checkout de producción en ese
 commit, daemons reiniciados y verificados con `servicios-al-dia.mjs`._
 
 **HECHO 23/09 (mañana), todo publicado:** el canal #efectivo lee la entrega como se escribe (53 frases
@@ -15,9 +15,9 @@ de prueba BORRADOS de la base viva (regla nueva: nunca datos de prueba en app.ec
 **Auditoría externa (hitos):** 1 descartado por el dueño y luego ejecutado a su pedido como «saca economía
 de las obras» · 2, 3, 6 hechos · 4 y 5 son planes en `docs/engineering/PLAN-*.md`.
 
-**EN CURSO (agentes, sin commit al cierre de esta nota):** Herramientas — foto desde el celular rota +
-paridad celular/computadora; códigos únicos por unidad (`activo_unidad`) y ficha de revisión técnica en
-Mantenimiento (`activo_revision`), migraciones 20260923T1500/T1600 sin aplicar hasta revisarlas.
+**Herramientas (publicado b64192a3, migraciones 20260923T1500/T1510 aplicadas):** foto desde el celular
+arreglada (subía dentro de la Server Action), paridad celular/PC, códigos por unidad y ficha de revisión
+técnica en Mantenimiento. Sin QA en navegador ni foto real subida: lo prueba el dueño.
 
 **PENDIENTE del dueño:** aprobar el mapa `docs/engineering/MAPA-DE-PANTALLAS.md` (10 dudas) antes de
 reorganizar la app · cheque 329 $1.086.200 (22/09) sin fila en el registro · N° de comprobante del echeq
