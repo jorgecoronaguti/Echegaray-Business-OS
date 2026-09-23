@@ -124,12 +124,12 @@ export function ConmutadorVista({ vista, telefono, cambiar }: { vista: VistaCart
       window.history.replaceState(window.history.state, '', href + q)
     } : undefined
     return (
-      <a href={href} onClick={alClic} data-testid={`nav-vistas-obras-${k}`} aria-current={activo ? 'page' : undefined}
+      <Link href={href} prefetch={false} onClick={alClic} data-testid={`nav-vistas-obras-${k}`} aria-current={activo ? 'page' : undefined}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: telefono ? '5px' : '6px', fontSize: '12.5px',
           paddingBottom: '2px', textDecoration: 'none', color: activo ? C.tinta : C.tintaSuave,
           fontWeight: activo ? 500 : 400, boxShadow: activo ? `inset 0 -1.5px 0 ${C.tinta}` : undefined,
-        }}><Ico d={d} s={12} />{t}</a>
+        }}><Ico d={d} s={12} />{t}</Link>
     )
   }
   return (

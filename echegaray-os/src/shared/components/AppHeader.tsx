@@ -8,6 +8,7 @@ import { BuscadorGlobal } from './BuscadorGlobal'
 import { Novedades } from './Novedades'
 import { iniciales } from './iniciales'
 import { scrollParaMostrar } from './desplazarSolapa'
+import { useLente } from '@/features/auth/components/useLente'
 
 /** Lo que el servidor le cuenta al header sobre la lente. `puede` sale de `perfiles`, no de la cookie. */
 export type VerComo = { puede: boolean; mirando: string | null }
@@ -271,7 +272,7 @@ function MenuUsuario({
 }) {
   const [abierto, setAbierto] = useState(false)
   const caja = useRef<HTMLDivElement>(null)
-  const aqui = encodeURIComponent(usePathname() ?? '/')
+  const lente = useLente()
 
   // Mismo cierre que `ds/MenuContextual`: clic afuera y Escape. Se repite y no se importa porque
   // aquel componente dibuja un `···` de fila y recibe `items` planos — acá el contenido es el
@@ -331,10 +332,11 @@ function MenuUsuario({
               </div>
               <div className="flex flex-wrap gap-1 px-0.5" data-testid="ver-como-menu">
                 {ROLES_QUE_SE_MIRAN.map((r) => (
-                  <Link
+                  <button
                     key={r.rol}
-                    prefetch={false}
-                    href={`/ver-como?rol=${r.rol}&volver=${aqui}`}
+                    type="button"
+                    disabled={lente.pendiente}
+                    onClick={() => { lente.poner(r.rol); setAbierto(false) }}
                     role="menuitem"
                     data-testid={`menu-ver-como-${r.rol}`}
                     aria-current={verComo.mirando === r.rol ? 'true' : undefined}
@@ -345,7 +347,7 @@ function MenuUsuario({
                     }`}
                   >
                     {r.label}
-                  </Link>
+                  </button>
                 ))}
               </div>
               <div className="px-1.5 pt-1.5 text-[10.5px] leading-snug text-faint">

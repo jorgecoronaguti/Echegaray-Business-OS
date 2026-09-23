@@ -1,7 +1,6 @@
 'use client'
 
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { useLente } from './useLente'
 
 // LA FRANJA DE «VER COMO», DIBUJADA.
 //
@@ -20,8 +19,7 @@ export function BarraVerComo({
   etiqueta: string
   roles: { rol: string; label: string }[]
 }) {
-  const pathname = usePathname() ?? '/'
-  const volver = encodeURIComponent(pathname)
+  const lente = useLente()
 
   return (
     <div
@@ -42,10 +40,11 @@ export function BarraVerComo({
 
       <span className="flex items-center gap-1">
         {roles.map((r) => (
-          <Link
+          <button
             key={r.rol}
-            prefetch={false}
-            href={`/ver-como?rol=${r.rol}&volver=${volver}`}
+            type="button"
+            disabled={lente.pendiente}
+            onClick={() => lente.poner(r.rol)}
             data-testid={`ver-como-${r.rol}`}
             aria-current={r.rol === mirando ? 'true' : undefined}
             className={`rounded-md px-2 py-1 text-[11.5px] ${
@@ -55,18 +54,20 @@ export function BarraVerComo({
             }`}
           >
             {r.label}
-          </Link>
+          </button>
         ))}
       </span>
 
-      <Link
-        prefetch={false}
-        href={`/ver-como?salir=1&volver=${volver}`}
+      <button
+        type="button"
+        disabled={lente.pendiente}
+        onClick={lente.salir}
         data-testid="salir-de-ver-como"
         className="rounded-md border border-ink/40 bg-surface px-2.5 py-1 text-[12px] font-semibold text-ink hover:bg-surface-quiet"
       >
         Salir del modo
-      </Link>
+      </button>
+      {lente.error && <span role="alert" className="text-[11.5px] text-neg">{lente.error}</span>}
     </div>
   )
 }

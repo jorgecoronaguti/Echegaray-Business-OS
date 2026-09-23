@@ -46,7 +46,11 @@ export async function GET(request: NextRequest) {
 
   // APAGAR. Sin preguntas, sin rol, sin base: siempre se puede volver a ser uno mismo.
   if (params.has('salir')) {
-    respuesta.cookies.set(COOKIE_VER_COMO, '', { path: '/', maxAge: 0 })
+    // Se borra con los mismos atributos con que se creó: un borrado con atributos distintos puede
+    // no tocar la cookie original.
+    respuesta.cookies.set(COOKIE_VER_COMO, '', {
+      httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: 0, expires: new Date(0),
+    })
     return respuesta
   }
 
