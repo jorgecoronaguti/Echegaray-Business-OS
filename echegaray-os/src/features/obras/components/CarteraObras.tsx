@@ -1,5 +1,6 @@
 'use client'
 
+
 // ═══ 01 · CARTERA · TABLA — PORTE LITERAL DE `erp-obras/01.html` Y `M01.html` (dueño, 23/09/2026) ═══
 //
 // Cada medida salió de esos dos archivos: 230×32 el buscador, 40px el encabezado, 64px la fila,
@@ -17,7 +18,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { Ico, P } from './canon/Ico'
 import { C, MONO } from './canon/tokens'
 import { Hover } from './canon/Piezas'
@@ -63,6 +64,21 @@ const etapaDe = (o: { etapa: string | null }) => (o.etapa ? ETAPA_LABEL[o.etapa 
 const clienteDe = (o: FilaCartera) => o.cliente_nombre ?? o.cliente_texto
 
 // ═══ EL ESTADO COMPARTIDO DE LAS DOS VISTAS: buscador + chips ═══
+
+/**
+ * EL ENCABEZADO DE LA CARTERA QUEDA FIJO (dueño, 23/09/2026: «el header no puede actualizar siempre y
+ * debe quedar fijo»): título, buscador, Ver y chips se pegan justo debajo de la barra de la app (44 px) y
+ * la lista se desplaza debajo. Los márgenes negativos absorben el padding del contenedor para que el
+ * fondo cubra de borde a borde y no se vea la lista pasar por los costados.
+ */
+export const ENCABEZADO_FIJO: CSSProperties = {
+  position: 'sticky', top: '44px', zIndex: 20, background: C.superficie, display: 'flex', flexDirection: 'column', gap: '20px',
+  margin: '-26px -30px 0', padding: '26px 30px 14px', borderBottom: `1px solid ${C.borde}`,
+}
+export const ENCABEZADO_FIJO_TELEFONO: CSSProperties = {
+  position: 'sticky', top: '44px', zIndex: 20, background: C.superficie, display: 'flex', flexDirection: 'column', gap: '18px',
+  margin: '-16px -16px 0', padding: '16px 16px 12px', borderBottom: `1px solid ${C.borde}`,
+}
 
 export function useFiltroCartera(obras: FilaCartera[]) {
   const [q, setQ] = useState('')
@@ -232,12 +248,14 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
     return (
       <div style={{ background: C.superficie, padding: '16px', paddingBottom: esAdmin ? '96px' : '16px', display: 'flex', flexDirection: 'column', gap: '18px' }}
         data-testid="portafolio-tabla">
+        <div style={ENCABEZADO_FIJO_TELEFONO} data-testid="encabezado-cartera">
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
           <div style={{ fontSize: '19px', fontWeight: 600, color: C.tinta }}>Obras</div>
           <ConmutadorVista vista="tabla" telefono />
         </div>
         <div style={{ display: 'flex' }}>{buscador}</div>
         <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono />
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           {lista.map((o, i) => <FilaTelefono key={o.obra_id} o={o} ultima={i === lista.length - 1} ir={() => router.push(`/obras/${o.obra_id}`)} />)}
           {vacio}
@@ -252,6 +270,8 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
   return (
     <div style={{ background: C.superficie, padding: '26px 30px 34px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}
       data-testid="portafolio-tabla">
+      {/* EL ENCABEZADO QUEDA FIJO bajo la barra de la app (dueño, 23/09/2026): la tabla se desplaza debajo. */}
+      <div style={ENCABEZADO_FIJO} data-testid="encabezado-cartera">
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '24px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
           <div style={{ fontSize: '19px', fontWeight: 600, letterSpacing: '-.01em', color: C.tinta }}>Obras</div>
@@ -269,6 +289,7 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
         <ConmutadorVista vista="tabla" telefono={false} />
         <div style={{ width: '1px', height: '15px', background: C.borde }} />
         <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono={false} />
+      </div>
       </div>
 
       <div style={{ overflowX: 'auto' }}><div style={{ display: 'flex', flexDirection: 'column', minWidth: `${MIN_TABLA}px` }}>

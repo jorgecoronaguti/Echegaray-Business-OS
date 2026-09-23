@@ -26,7 +26,7 @@ import {
   barrasDe, ESCALAS_CARTERA, FUERA_DE_VENTANA, LEYENDA_GANTT, LEYENDA_GANTT_TELEFONO, posicionEn,
   SIN_FECHAS_ESCRITORIO, SIN_FECHAS_TELEFONO, ventanaGantt, type EscalaCartera, type TonoGantt,
 } from '../services/carteraGantt'
-import { ChipsCartera, ConmutadorVista, useFiltroCartera, type FilaCartera } from './CarteraObras'
+import { ChipsCartera, ConmutadorVista, ENCABEZADO_FIJO, ENCABEZADO_FIJO_TELEFONO, useFiltroCartera, type FilaCartera } from './CarteraObras'
 
 const ALTO_FILA = 46
 const ALTO_CABECERA = 36
@@ -55,12 +55,14 @@ export function GanttObras({ obras, hoyIso }: { obras: FilaCartera[]; hoyIso: st
   if (telefono) {
     return (
       <div style={{ background: C.superficie, padding: '16px', display: 'flex', flexDirection: 'column', gap: '18px' }} data-testid="gantt-obras">
+        <div style={ENCABEZADO_FIJO_TELEFONO} data-testid="encabezado-cartera">
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
           <div style={{ fontSize: '19px', fontWeight: 600, color: C.tinta }}>Obras</div>
           <ConmutadorVista vista="gantt" telefono />
         </div>
         <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono
           claves={['todo', 'atraso', 'curso', 'problema', 'previo']} />
+        </div>
         <div style={{ fontSize: '12px', color: C.tintaSuave }} data-testid="bajada-gantt">{bajadaGantt(lista)}</div>
         <div style={{ position: 'relative' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '118px 1fr', gap: '10px', height: '28px', alignItems: 'center', borderBottom: `1px solid ${C.borde}` }}>
@@ -125,6 +127,7 @@ export function GanttObras({ obras, hoyIso }: { obras: FilaCartera[]; hoyIso: st
 
   return (
     <div style={{ background: C.superficie, padding: '26px 30px 34px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }} data-testid="gantt-obras">
+      <div style={ENCABEZADO_FIJO} data-testid="encabezado-cartera">
       <div style={{ display: 'flex', alignItems: 'center', gap: '22px' }}>
         <div style={{ fontSize: '19px', fontWeight: 600, letterSpacing: '-.01em', color: C.tinta }}>Obras</div>
         <ConmutadorVista vista="gantt" telefono={false} />
@@ -144,6 +147,7 @@ export function GanttObras({ obras, hoyIso }: { obras: FilaCartera[]; hoyIso: st
             )
           })}
         </div>
+      </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '300px minmax(0,1fr)', border: `1px solid ${C.borde}`, borderRadius: '8px', overflow: 'hidden' }}>
