@@ -146,6 +146,27 @@ export function pareceEntrega(texto) {
 const RE_PAGO = /\b(pagu[eé]|pago|pagamos|pagaron|abon[eéoó]|transfer[íi]|deposit[éeoó])/i
 const RE_A_ALGUIEN = /(?:^|\s)a\s+([a-záéíóúñ][a-záéíóúñ.'-]{2,})/i
 
+// ═══ EL NÚMERO QUE ABRE EL MENSAJE ES LA PLATA (dueño, 23/09/2026) ═══
+//
+// «150 a rodrigo para maquinaria» y el bot le contestó «escribilo con el signo». Su respuesta: «no
+// funciona, entiende cualquier cosa». Tenía razón: el piso de mil está para que «galpón 8» no se lea
+// como $ 8, y eso pasa cuando el número anda suelto en el medio de la frase. Un número que ABRE el
+// mensaje y va seguido de «a <alguien>» no tiene con qué confundirse: es lo único que puede ser plata.
+//
+// No se adivina la escala: «150» es CIENTO CINCUENTA PESOS. Quien quiera ciento cincuenta mil escribe
+// «150 mil» o «$150.000», que ya se leen. Multiplicar por mil porque parece poco sería inventar plata.
+const RE_MONTO_QUE_ABRE = /^\s*\$?\s*(\d[\d.,]*)\s*(mill?on(?:es)?|mil|k)?\s+a\s+[a-záéíóúñ]/i
+
+/** El monto de «150 a rodrigo…»: el número con el que arranca el mensaje. `null` si no abre así. */
+export function montoQueAbre(texto) {
+  const m = String(texto ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').match(RE_MONTO_QUE_ABRE)
+  if (!m) return null
+  const n = aNumero(m[1])
+  if (n == null || !(n > 0)) return null
+  const escala = m[2] ? (/^k$|^mil$/.test(m[2]) ? 1000 : 1_000_000) : 1
+  return n * escala
+}
+
 /**
  * ¿Parece una entrega escrita sin verbo? Monto + «a <alguien>», sin verbo de pago. El nombre no se valida
  * acá: eso lo hace el padrón.
@@ -175,7 +196,8 @@ export function interpretarEntrega(texto, { personas = [], obras = [] } = {}) {
   // Con verbo o sin verbo entra igual; lo que cambia es quién puede ganarle el mensaje (la confianza con la
   // que el especialista lo reclama), no cómo se lee.
   if (!pareceEntrega(texto) && !pareceEntregaSinVerbo(texto)) return { estado: 'nada' }
-  const monto = leerMonto(texto)
+  // EL NÚMERO QUE ABRE GANA. «150 a rodrigo para maquinaria» no necesita el signo: ver `montoQueAbre`.
+  const monto = montoQueAbre(texto) ?? leerMonto(texto)
   if (monto == null) return { estado: 'pregunta', falta: 'monto' }
 
   const quien = elegirPersona(texto, personas)

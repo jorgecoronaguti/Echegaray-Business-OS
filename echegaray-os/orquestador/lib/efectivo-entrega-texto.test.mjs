@@ -124,17 +124,39 @@ test('«p» de «para» no convierte cualquier frase en destino', () => {
 // «100 a jorge para combustible» fue el primer mensaje real del canal y ningún especialista lo reclamó como
 // entrega: cayó a la libreta de gastos, que lo rechazó. El dueño lo leyó como «el chat no funciona».
 
-test('«100 a jorge para combustible» se reconoce como entrega y pregunta el monto', () => {
-  // El mensaje real del dueño. Antes caía a la libreta, que contestaba «no pude cargarlos»: un callejón.
-  // «100» pelado no se toma como plata a propósito, así que lo correcto es reconocer la entrega y pedir
-  // el signo, no rechazar el mensaje.
+test('«100 a jorge para combustible» se registra entero, sin pedir el signo', () => {
+  // Los dos mensajes reales del dueño, 23/09/2026. El primero caía a la libreta («no pude cargarlos»);
+  // arreglado eso, el segundo se comió un «escribilo con el signo» que tampoco servía de nada. El número
+  // que ABRE el mensaje y va seguido de «a <alguien>» es la plata: no hay otra cosa que pueda ser.
   assert.equal(pareceEntregaSinVerbo('100 a jorge para combustible'), true)
   const r = interpretarEntrega('100 a jorge para combustible', {
     personas: [{ id: 'p1', nombre: 'JORGE CORONA' }], obras: [],
   })
+  assert.equal(r.estado, 'listo')
+  assert.equal(r.monto, 100)
+  assert.equal(r.paraQue, 'combustible')
+
+  const dos = interpretarEntrega('150 a rodrigo para maquinaria', {
+    personas: [{ id: 'p2', nombre: 'RODRIGUEZ RODRIGO' }], obras: [],
+  })
+  assert.equal(dos.estado, 'listo')
+  assert.equal(dos.monto, 150)
+})
+
+test('la escala del número que abre se respeta, y no se inventa', () => {
+  const p = [{ id: 'p1', nombre: 'MALDONADO BATISTA' }]
+  // «150» es CIENTO CINCUENTA. Multiplicar por mil porque parece poco sería fabricar plata.
+  assert.equal(interpretarEntrega('150 a Maldonado para gasoil', { personas: p }).monto, 150)
+  assert.equal(interpretarEntrega('150 mil a Maldonado para gasoil', { personas: p }).monto, 150_000)
+  assert.equal(interpretarEntrega('$150.000 a Maldonado para gasoil', { personas: p }).monto, 150_000)
+})
+
+test('un número suelto en el medio NO se toma como monto: «galpón 8» no es $ 8', () => {
+  const r = interpretarEntrega('entregué plata a Maldonado para el galpón 8', {
+    personas: [{ id: 'p1', nombre: 'MALDONADO BATISTA' }], obras: [],
+  })
   assert.equal(r.estado, 'pregunta')
   assert.equal(r.falta, 'monto')
-  assert.match(textoDePregunta(r), /\$100/)
 })
 
 test('con el signo, la misma frase se registra entera', () => {
