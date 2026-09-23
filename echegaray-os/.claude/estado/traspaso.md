@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: **2026-09-23 ~11:05 (−03)** · `origin/main` = **845956e2**, checkout de producción en ese
+_actualizado: **2026-09-23 ~11:05 (−03)** · `origin/main` = **c71f4713**, checkout de producción en ese
 commit, daemons reiniciados y verificados con `servicios-al-dia.mjs`._
 
 **HECHO 23/09 (mañana), todo publicado:** el canal #efectivo lee la entrega como se escribe (53 frases
@@ -25,8 +25,11 @@ navegador; 6 specs de Playwright siguen el redirect de /campo/asistencia) · cha
 «para qué» · aviso de firma por mensaje directo · registro de cheques deduce el N° de comprobante (385 →
 0006-00008111 + 0006-00008199) · cheque 329 agregado como físico sin beneficiario · GRANT 20260923T2000
 aplicada · direccion-test bloqueada (no borrable: tiene comprobantes) · Arcor e-Cup: FCE 0001-00000054 ENVIADA por el dueño, vence 20/11/2026; falta el N° de transacción y
-falta la fila en Cobranzas (esperando su «cargala») · Herramientas: paridad teléfono↔PC módulo por módulo
-publicada (845956e2), sin QA en navegador; recuento físico del lugar entero no existe (etapa 2).
+falta la fila en Cobranzas (esperando su «cargala») · Herramientas: paridad teléfono↔PC publicada (845956e2); en el teléfono
+Herramientas redirige a /campo/herramientas (c71f4713, `?pc=1` para la de escritorio); recuento físico del
+lugar en construcción (agente, migración 20260923T1700 sin aplicar) · firmas visibles en la ficha de la
+entrega (e2467168) · Corralón Progreso: cuadratura cierra en $721.338,66 (ver memoria corralon-progreso-
+estado-2309); esperando «marcá Compras» y el N° del cheque del 21/10 · bucket herramientas sigue con 0 fotos.
 
 **ROTO a sabiendas:** los e2e que usaban `qa.campo@` / `[PRUEBA E2E] QA Campo` (8 specs) no tienen
 fixture; hay que hacerlos crear y borrar sus datos, no sembrar producción.
