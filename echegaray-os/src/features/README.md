@@ -1,62 +1,40 @@
-# Features - Arquitectura Feature-First
+# `features/` — un dominio de negocio por carpeta
 
-Cada feature es **autocontenida** y contiene toda la lógica relacionada.
+Cada carpeta es un **dominio real de la empresa** (obras, clientes, compras, efectivo, liquidación),
+no una feature de producto ni una pantalla. Si algo no se puede nombrar como lo nombra el negocio, no
+es una feature: es `shared/`.
 
-## Estructura Estándar
+## Cómo se arma una
 
-Usa `.template/` como base para nuevas features:
-
-```bash
-cp -r src/features/.template src/features/mi-nueva-feature
+```
+features/<dominio>/
+  components/   React. Lo que se dibuja.
+  services/     La lógica y las lecturas. Acá vive casi todo el valor.
+  types/        Los tipos del dominio.
 ```
 
-## Features Actuales
+`hooks/` y `store/` sólo si hacen falta. **No hay Zustand ni ningún store global**: el estado de
+servidor lo resuelve el App Router (Server Components y `revalidate`), y el de pantalla, la URL —los
+filtros, la solapa abierta y la entrega elegida son parámetros, para que un enlace abra lo mismo que
+la persona está viendo.
 
-### `auth/`
-Autenticación y gestión de sesiones con Supabase.
-- Login/Signup con Email/Password
-- Gestión de sesión
-- Protección de rutas
+## Las tres reglas que se verifican solas
 
-### `dashboard/`
-Dashboard principal de la aplicación.
-- Navegación principal
-- Widgets y stats
-- Layout del dashboard
+**1. La lógica va en un servicio PURO y probado.** Una función que recibe datos y devuelve datos, con
+su `*.test.ts` al lado (`node --test`). El componente dibuja; no decide. Lo que un test no puede
+tocar porque está adentro de un `.tsx` es lo que después sale mal en producción sin que nadie se
+entere.
 
-## Principios Feature-First
+**2. Un módulo que cruzan el servidor y el cliente NO lleva `'use client'`.** Ya pasó: las columnas de
+una grilla vivían adentro del componente cliente, el Server Component recibía una referencia de
+cliente en vez del string y dibujaba el encabezado sin grilla. Un valor compartido por los dos lados
+va en su propio archivo neutral; un archivo `'use client'` sólo exporta componentes.
 
-1. **Colocalización**: Todo relacionado vive junto
-2. **Autocontenido**: Cada feature debe funcionar independientemente
-3. **No dependencias circulares**: Features no importan de otras features
-4. **Usar `shared/`**: Para código reutilizable entre features
+**3. Una feature no importa de otra.** Lo que dos dominios necesitan es de `shared/` (o de
+Postgres, si es un concepto del negocio). Un import cruzado convierte dos dominios en uno solo y
+después no se puede tocar ninguno.
 
-## Ejemplo: Agregar nueva feature "profile"
+## Antes de crear una carpeta nueva
 
-```bash
-# 1. Copiar template
-cp -r src/features/.template src/features/profile
-
-# 2. Crear componentes
-# src/features/profile/components/ProfileCard.tsx
-# src/features/profile/components/EditProfileForm.tsx
-
-# 3. Crear hooks
-# src/features/profile/hooks/useProfile.ts
-
-# 4. Crear services
-# src/features/profile/services/profileService.ts
-
-# 5. Crear types
-# src/features/profile/types/Profile.ts
-
-# 6. Crear store (si necesario)
-# src/features/profile/store/profileStore.ts
-```
-
-## Reglas de Oro
-
-- ✅ **Sí**: `features/auth/components/LoginForm.tsx` importa de `shared/components/Button.tsx`
-- ❌ **No**: `features/auth/` importa de `features/dashboard/`
-- ✅ **Sí**: Cada feature tiene su propio store local (Zustand)
-- ❌ **No**: Estado global innecesario
+Preguntar qué existe hoy que hace eso y por qué no alcanza. La respuesta va escrita en el commit.
+Dónde vive cada concepto y cuál es su fuente de verdad: **`.claude/MAPA.md`**.

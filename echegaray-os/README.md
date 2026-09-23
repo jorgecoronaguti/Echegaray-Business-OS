@@ -6,7 +6,20 @@ El contexto de negocio, estrategia y reglas de decisión están en el `CLAUDE.md
 
 ## Estado actual
 
-Esqueleto técnico sin módulos de negocio construidos todavía. `src/app/`, `src/features/` y `src/shared/` existen como estructura, pendientes de contenido real.
+En producción en **app.ecsas.com.ar**, con la empresa operando encima. Medido el 23/09/2026:
+
+- **26 dominios de negocio** en `src/features/` — entre ellos `obras`, `clientes`, `administracion`
+  (personal y liquidación), `compras` vía `administracion`, `efectivo` (efectivo a rendir),
+  `herramientas`, `flujo-caja`, `analiticas`, `presupuestos`, `portal` (cliente) y `xsas` (el LLM).
+- **506 archivos de test** con `node --test`, que son la evidencia de cierre (`npm run orq:test`).
+- **El orquestador** (`orquestador/`): 504 scripts, el bot de Mattermost, el circuito de comprobantes
+  (lectura, ARCA, duplicados, freno de mano) y los generadores del Sheet de Flujo de Fondos.
+- **27 timers de systemd** en la VM: Flujo de Caja, sincronizaciones, vigilancia y respaldos.
+- **Postgres (Supabase) es la fuente de verdad** de lo que consumen varias caras; el Sheet sigue siendo
+  la verdad de Compras, Cobranzas, CAJA y Cheques, que se escriben con freno de mano.
+
+**Dónde vive cada cosa, para no recorrer 400 módulos: `.claude/MAPA.md`.** Dice qué archivo toca cada
+tipo de tarea, la fuente de verdad de cada concepto, los comandos y las trampas ya pagadas.
 
 ## Stack técnico
 
@@ -15,7 +28,7 @@ Framework: Next.js (App Router)
 UI: React + TypeScript
 Estilos: Tailwind CSS
 Backend: Supabase (Auth + Postgres + RLS)
-Testing: Playwright CLI
+Testing: node --test (evidencia de cierre) + Playwright (navegador)
 ```
 
 ## Arquitectura Feature-First

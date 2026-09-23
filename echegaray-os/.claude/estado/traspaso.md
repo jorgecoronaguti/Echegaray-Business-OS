@@ -1,6 +1,21 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-16 ~14:40 (−03) · main = producción (2b8f288a) · **nada quedó abierto de esta sesión**_
+_actualizado: **2026-09-23 ~11:40 (−03)** · `origin/main` = **7eb016be** (verificado con `git log`), y el
+checkout de producción `/home/jorge/echegaray-os/produccion/echegaray-os` está en ese mismo commit._
+
+**HECHO en la sesión del 22–23/09** — módulo **Efectivo a rendir COMPLETO y publicado**: todas las
+pantallas del diseño (la última fue D08, la ficha del proveedor con «Pagado en efectivo» y la columna
+«Entrega»), el jefe de obra dejó de ver y de escribir plata de venta, la devolución se firma al
+registrarse y no cierra con un ticket en camino, el recibo se firma y se lee desde el teléfono, las
+entregas de prueba ya se pueden anular aunque tengan vuelto o tickets, y el canal #efectivo entiende
+la entrega escrita como se habla («$100 a Maldonado para combustible»).
+
+**PENDIENTE de personas, no de código:** la primera entrega real (para ver el recorrido en el Sheet) y
+la primera compra rendida real (para ver la cifra y la columna de D08 con datos).
+
+**DECIDIDO NO HACER:** imputar a la entrega los comprobantes que llegan por #comprobantes-gastos (el
+dueño lo ratificó el 23/09: mezclar los canales obliga a adivinar). Queda el riesgo conocido de doble
+descuento si un ticket de plata a rendir entra por el canal equivocado.
 
 ## 1. OBJETIVO GENERAL
 
