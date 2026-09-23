@@ -201,3 +201,17 @@ test('un nombre del padrón con corchetes no rompe la interpretación', () => {
   assert.equal(r.estado, 'listo')
   assert.equal(r.persona.id, 'p1')
 })
+
+test('la obra se reconoce por sus palabras, no por su nombre completo', () => {
+  // «para el salón comercial» iba a Estructura porque se exigía «QP - SALÓN COMERCIAL» entero. Plata
+  // imputada al destino equivocado, en silencio.
+  const obras = [
+    { codigo: 'qp-salon', nombre: 'QP - SALÓN COMERCIAL' },
+    { codigo: 'le-g8', nombre: 'LE - GALPÓN 8' },
+    { codigo: 'le-g9', nombre: 'LE - GALPÓN 9' },
+  ]
+  assert.equal(elegirObra('$50.000 a Maldonado para el salon comercial', obras).obra?.codigo, 'qp-salon')
+  // Con dos obras posibles NO se elige una: se pregunta.
+  assert.equal(elegirObra('$50.000 para el galpón', obras).obra, undefined)
+  assert.equal(elegirObra('$50.000 para el galpón 8', obras).obra?.codigo, 'le-g8')
+})

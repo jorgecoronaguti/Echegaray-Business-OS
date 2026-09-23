@@ -113,6 +113,38 @@ export function elegirObra(texto, obras = []) {
   const porNombre = obras.filter((o) => o.nombre && plano(o.nombre).length >= 4 && t.includes(plano(o.nombre)))
   if (porNombre.length === 1) return { obra: porNombre[0] }
   if (porNombre.length > 1) return { candidatos: porNombre }
+
+  // ═══ NADIE ESCRIBE EL NOMBRE COMPLETO DE LA OBRA (dueño, 23/09/2026) ═══
+  //
+  // Medido contra las obras reales: «50000 a Maldonado para el salón comercial» iba a **Estructura**,
+  // porque arriba se pide que el TEXTO contenga el nombre entero —«qp - salon comercial», con el
+  // prefijo del cliente—. Nadie lo escribe así, y el resultado no era una pregunta: era plata imputada
+  // a Estructura en silencio, que es peor.
+  //
+  // Segunda vuelta: alcanza con que el texto traiga TODAS las palabras de peso del nombre (4 letras o
+  // más, sin el prefijo del cliente y sin las palabras vacías). «salón comercial» encuentra «QP - SALÓN
+  // COMERCIAL»; «galpón» solo NO encuentra «GALPÓN 8» y «GALPÓN 9» —son dos— y ahí se pregunta, que es
+  // lo que corresponde cuando hay dos destinos posibles para la misma plata.
+  const VACIAS = new Set(['para', 'obra', 'los', 'las', 'del', 'con'])
+  const palabrasDe = (nombre) => plano(nombre).split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 4 && !VACIAS.has(w))
+  const porPalabras = obras.filter((o) => {
+    const ws = palabrasDe(o.nombre ?? '')
+    return ws.length > 0 && ws.every((w) => new RegExp(`(^|[^a-z0-9])${w}([^a-z0-9]|$)`).test(t))
+  })
+  if (porPalabras.length === 1) return { obra: porPalabras[0] }
+  if (porPalabras.length > 1) {
+    // EL NÚMERO DE LA OBRA DESEMPATA. «Galpón 8» y «Galpón 9» comparten la única palabra de peso, así
+    // que las dos entran; lo que las distingue es el número, que acá SÍ es un dato del nombre y no un
+    // monto. Si el texto no lo trae, se pregunta: son dos destinos y la plata va a uno solo.
+    const numeroDe = (nombre) => plano(nombre).match(/\b\d+\b/)?.[0] ?? null
+    const conNumero = porPalabras.filter((o) => {
+      const n = numeroDe(o.nombre ?? '')
+      return n !== null && new RegExp(`(^|[^0-9])${n}([^0-9]|$)`).test(t)
+    })
+    if (conNumero.length === 1) return { obra: conNumero[0] }
+    return { candidatos: porPalabras }
+  }
   return {}
 }
 
