@@ -114,6 +114,10 @@ export interface ExtraDeFicha {
   entregadaPor: string | null
   /** Enlace firmado al papel de conformidad, si se subió. */
   papelUrl: string | null
+  /** La firma de conformidad dibujada en el teléfono (SVG), para VERLA en la ficha (dueño, 23/09/2026). */
+  trazo: string | null
+  /** Las dos firmas de cada devolución, por id de devolución. */
+  firmas: Map<string, { entrega: string | null; recibe: string | null }>
   /** Las filas de Compras que rinden esta entrega, por clave. */
   compras: Map<string, FilaDeCompras>
   /**
@@ -130,7 +134,7 @@ export interface ExtraDeFicha {
 export async function leerExtraDeFicha(entregaId: string, claves: string[]): Promise<ExtraDeFicha> {
   const supabase = await createClient()
   const [fila, compras, reclamo] = await Promise.all([
-    supabase.from('efectivo_entrega').select('creada_en, entregada_por, conformidad_papel_url').eq('id', entregaId).maybeSingle(),
+    supabase.from('efectivo_entrega').select('creada_en, entregada_por, conformidad_papel_url, conformidad_trazo').eq('id', entregaId).maybeSingle(),
     claves.length
       ? supabase.from('compra_sheet').select('fila, clave, fecha, proveedor, concepto, tipo, comprobante, total, tipo_pago').in('clave', claves)
       : Promise.resolve({ data: [] as unknown[], error: null }),
@@ -139,11 +143,16 @@ export async function leerExtraDeFicha(entregaId: string, claves: string[]): Pro
     supabase.from('efectivo_aviso').select('pedido_en, enviado_en').eq('entrega_id', entregaId)
       .eq('tipo', 'reclamo').order('pedido_en', { ascending: false }).limit(1).maybeSingle(),
   ])
-  const f = fila.data as { creada_en: string | null; entregada_por: string | null; conformidad_papel_url: string | null } | null
-  const [quien, papel] = await Promise.all([
+  const f = fila.data as { creada_en: string | null; entregada_por: string | null; conformidad_papel_url: string | null; conformidad_trazo: string | null } | null
+  const [quien, papel, firmasDev] = await Promise.all([
     f?.entregada_por ? supabase.from('perfiles').select('nombre').eq('id', f.entregada_por).maybeSingle() : Promise.resolve({ data: null }),
     f?.conformidad_papel_url ? firmar(supabase, f.conformidad_papel_url) : Promise.resolve(null),
+    supabase.from('efectivo_devolucion').select('id, firma_entrega, firma_recibe').eq('entrega_id', entregaId),
   ])
+  const firmas = new Map<string, { entrega: string | null; recibe: string | null }>()
+  for (const d of (firmasDev.data ?? []) as { id: string; firma_entrega: string | null; firma_recibe: string | null }[]) {
+    firmas.set(d.id, { entrega: d.firma_entrega, recibe: d.firma_recibe })
+  }
   const mapa = new Map<string, FilaDeCompras>()
   for (const c of (compras.data ?? []) as FilaDeCompras[]) if (c.clave) mapa.set(c.clave, { ...c, total: c.total == null ? null : Number(c.total) })
   const r = reclamo.data as { pedido_en: string; enviado_en: string | null } | null
@@ -151,6 +160,8 @@ export async function leerExtraDeFicha(entregaId: string, claves: string[]): Pro
     creadaEn: f?.creada_en ?? null,
     entregadaPor: (quien.data as { nombre: string | null } | null)?.nombre ?? null,
     papelUrl: papel,
+    trazo: f?.conformidad_trazo ?? null,
+    firmas,
     compras: mapa,
     reclamo: r ? { pedidoEn: r.pedido_en, enviadoEn: r.enviado_en } : null,
   }

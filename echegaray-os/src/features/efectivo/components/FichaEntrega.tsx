@@ -12,6 +12,7 @@ import {
 import { urlEfectivo, urlFilaDeCompras } from '../logica/url'
 import type { ExtraDeFicha } from '../services/datos'
 import { AnularEntrega, BorrarPrueba, ReclamarRendicion, SubirPapel } from './Botones'
+import { Firma } from './Firma'
 import { ALTO_V2, HOVER_FILA } from '@/shared/components/v2/patron'
 import { COLOR_TONO, FONDO_OBSERVADO, MONO, V, botonClaro, botonOscuro, cifraFicha, eyebrow, punto } from './estilo'
 
@@ -192,7 +193,7 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
             </div>
           </div>
           <Papeles
-            e={e} papelUrl={extra.papelUrl} fotos={comprobantes.filter((c) => c.storage_path).length}
+            e={e} papelUrl={extra.papelUrl} trazo={extra.trazo} firmas={extra.firmas} fotos={comprobantes.filter((c) => c.storage_path).length}
             destino={nombreDestino} devoluciones={devoluciones}
           />
           {/* UNA PRUEBA SE BORRA; UNA ENTREGA REAL SE ANULA. Las dos puertas no conviven por capricho:
@@ -238,8 +239,8 @@ function Cifra({ rotulo, valor, bajada, color, bajadaColor }: { rotulo: string; 
  * Se rotula la fuente REAL y la ruta de la obra se dice como la dice el diseño. El archivado en la
  * carpeta de la obra lo tiene que hacer el orquestador (la web no tiene credenciales de Google).
  */
-function Papeles({ e, papelUrl, fotos, destino, devoluciones }: {
-  e: Entrega; papelUrl: string | null; fotos: number; destino: string; devoluciones: Devolucion[]
+function Papeles({ e, papelUrl, trazo, firmas, fotos, destino, devoluciones }: {
+  e: Entrega; papelUrl: string | null; trazo: string | null; firmas: ExtraDeFicha['firmas']; fotos: number; destino: string; devoluciones: Devolucion[]
 }) {
   // Ritmo de panel: «Papeles» es la columna lateral de la ficha, no una tabla de datos; el diseño (D03) la
   // dibuja a 42 y crece con el botón de subir el papel.
@@ -265,6 +266,12 @@ function Papeles({ e, papelUrl, fotos, destino, devoluciones }: {
             </>
           )}
         </div>
+        {/* LA FIRMA SE VE (dueño, 23/09/2026): el trazo que dibujó en el teléfono, con fecha y hora. */}
+        {trazo && (
+          <div style={{ padding: '8px 0 10px', borderBottom: `1px solid ${V.lineaFila}` }}>
+            <Firma svg={trazo} rotulo={`Conformidad · ${e.persona}${e.conformidad_en ? ` · ${ddmmHora(e.conformidad_en)}` : ''}`} testid="firma-conformidad" />
+          </div>
+        )}
         <div style={{ ...fila, borderBottom: `1px solid ${V.lineaFila}`, color: fotos ? V.tinta : V.tenue }}>
           <span>{fotos} {fotos === 1 ? 'foto' : 'fotos'} de comprobantes</span>
           {fotos > 0 && <span style={fuente}>bucket comprobantes</span>}
@@ -279,6 +286,16 @@ function Papeles({ e, papelUrl, fotos, destino, devoluciones }: {
             <span style={fuente}>{d.recibe ?? 'sin quien la recibió'}</span>
           </div>
         ))}
+        {devoluciones.map((d) => {
+          const f = firmas.get(d.id)
+          if (!f?.entrega && !f?.recibe) return null
+          return (
+            <div key={`firmas-${d.id}`} style={{ display: 'flex', gap: 16, padding: '8px 0 10px', borderBottom: `1px solid ${V.lineaFila}` }}>
+              <Firma svg={f.entrega} rotulo={`Devolvió · ${e.persona}`} testid="firma-devolvio" />
+              <Firma svg={f.recibe} rotulo={`Recibió · ${d.recibe ?? 'Administración'}`} testid="firma-recibio" />
+            </div>
+          )
+        })}
         {/* LA RENDICIÓN CERRADA: el diseño la dibuja apagada hasta que existe. Mientras la entrega está
             abierta no hay nada que cerrar, y una vez cerrada el papel todavía no lo genera nadie: se
             dice así, no se dibuja un enlace que no lleva a ningún lado. */}
