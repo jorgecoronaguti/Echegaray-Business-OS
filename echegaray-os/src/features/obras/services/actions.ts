@@ -426,6 +426,8 @@ const impedimentoSchema = z.object({
   // obligatorios desde el día uno, y por eso el formulario no deja mandar sin ellos.
   responsable: z.string().trim().min(2, 'Un impedimento sin responsable no se resuelve solo'),
   fecha_compromiso: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '¿Para cuándo se compromete?'),
+  // La fecha de NECESIDAD (09: columna «Necesidad», y el orden de la lista). Opcional: no siempre se sabe.
+  fecha_necesidad: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal('')]).optional(),
   actividad_id: z.union([z.string().uuid(), z.literal('')]).optional(),
 })
 
@@ -441,6 +443,7 @@ export async function crearImpedimento(obraId: string, form: FormData): Promise<
     descripcion: d.descripcion,
     responsable: d.responsable,
     fecha_compromiso: d.fecha_compromiso,
+    fecha_necesidad: d.fecha_necesidad || null,
     estado: 'abierta',
   })
   if (error) return { ok: false, error: error.message }
@@ -460,7 +463,7 @@ export async function crearImpedimento(obraId: string, form: FormData): Promise<
 export async function editarImpedimento(
   obraId: string, restriccionId: string, form: FormData,
 ): Promise<Resultado> {
-  const parsed = impedimentoSchema.omit({ actividad_id: true }).safeParse(Object.fromEntries(form))
+  const parsed = impedimentoSchema.omit({ actividad_id: true, fecha_necesidad: true }).safeParse(Object.fromEntries(form))
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
   const d = parsed.data
   const supabase = await createClient()

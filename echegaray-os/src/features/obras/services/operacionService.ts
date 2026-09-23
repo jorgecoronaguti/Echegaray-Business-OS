@@ -44,9 +44,8 @@
 // directa a PostgREST, que es por donde se filtraba de verdad.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getHerramientas, type Herramienta } from '@/features/integraciones/services/herramientasService'
-import { getMovimientos, type MovimientoConHerramienta } from '@/features/integraciones/services/movimientosService'
-import { getPedidosMateriales, type PedidoMaterial } from '@/features/integraciones/services/pedidosMaterialesService'
+import type { PedidoMaterial } from '@/features/integraciones/services/pedidosMaterialesService'
+import { getEquiposDeObra, type EquiposDeObra } from './equiposDeObraService'
 import {
   aliasDeObra, detalleCubreElTotal, indiceDeAlias, obraDeTexto,
 } from '../../../../orquestador/lib/obra-operacion.mjs'
@@ -91,9 +90,13 @@ export interface Imputada {
   obra_canonica_id: string | null
 }
 
-export type PedidoOperacion = PedidoMaterial & Imputada
-export type HerramientaOperacion = Herramienta & Imputada
-export type MovimientoOperacion = MovimientoConHerramienta & Imputada
+/** Un pedido con las columnas que la app agregó (20260923T1900) y quién lo pidió, ya por nombre. */
+export type PedidoOperacion = PedidoMaterial & Imputada & {
+  unidad: string | null
+  nota: string | null
+  /** Quién lo pidió (`creado_por` → `perfiles.nombre`). `null` = no consta: el Sheet no lo trae. */
+  quien: string | null
+}
 
 /** Una compra imputada a la obra, tal como vive en `costos_obra`. */
 export interface CompraObra extends Imputada {
@@ -118,6 +121,12 @@ export interface ComprasObra {
   nComprobantes: number | null
   /** false = el detalle listado no llega al total que declara la base. Se dice, no se disimula. */
   completo: boolean
+  /** `obra_costo_real.costo_mano_de_obra`. `null` sin obra. */
+  manoDeObra: number | null
+  /** Suma de `costos_obra.total` con `obra_id` nulo en toda la empresa (12: «Sin imputar»). `null` = no se leyó. */
+  sinImputarEmpresa: number | null
+  /** Suma de `obra_costo_real.costo_real` de todas las obras (12: «contra $ X imputados a obras»). */
+  imputadoEmpresa: number | null
 }
 
 export interface OperacionObra {
@@ -125,8 +134,8 @@ export interface OperacionObra {
   nombres: string[]
   pedidos: PedidoOperacion[]
   compras: ComprasObra
-  herramientas: HerramientaOperacion[]
-  movimientos: MovimientoOperacion[]
+  /** Del modelo nuevo de Herramientas (11 · M14). `null` en la vista global. */
+  equipos: EquiposDeObra | null
 }
 
 type FilaAlias = { alias: string; obra_id: string | null; clasificacion: string }
@@ -153,43 +162,39 @@ function imputar<T>(
   return obraId ? marcadas.filter((f) => f.obra_canonica_id === obraId) : marcadas
 }
 
-/** Los pedidos de material, del más reciente al más viejo. Sin `obraId`, los de todas las obras. */
+/**
+ * Los pedidos de material, del más reciente al más viejo. Sin `obraId`, los de todas las obras.
+ *
+ * DOS PUERTAS A LA MISMA OBRA (20260923T1900): la app escribe `obra_canonica_id` y ésa es la verdad;
+ * el Sheet sólo trae `obra_texto` y se resuelve por el diccionario. Quién lo pidió sale de
+ * `creado_por` → `perfiles.nombre`; el Sheet no lo trae y queda `null` (la pantalla dice «sin registrar»).
+ */
 export async function getPedidos(
   supabase: SupabaseClient,
   idx: IndiceObras,
   obraId?: string,
 ): Promise<ServiceResult<PedidoOperacion[]>> {
-  const { data, error } = await getPedidosMateriales(supabase)
-  if (error) return { data: null, error }
-  return { data: imputar(data ?? [], idx, (p) => p.obra_texto, obraId), error: null }
-}
-
-/** Las herramientas por su ubicación actual. Sin `obraId`, las de todas las obras visibles. */
-export async function getHerramientasObra(
-  supabase: SupabaseClient,
-  idx: IndiceObras,
-  obraId?: string,
-): Promise<ServiceResult<HerramientaOperacion[]>> {
-  const { data, error } = await getHerramientas(supabase)
-  if (error) return { data: null, error }
-  return { data: imputar(data ?? [], idx, (h) => h.ubicacion_actual, obraId), error: null }
-}
-
-/**
- * Los movimientos de herramienta HACIA una obra.
- *
- * El límite se sube a 2.000 SIEMPRE —también en la vista global— porque `getMovimientos` corta en
- * 200 GLOBALES: si la ficha leyera 2.000 y la lista global 200, la misma obra tendría dos cuentas
- * de movimientos y la global sería la que esconde los viejos.
- */
-export async function getMovimientosObra(
-  supabase: SupabaseClient,
-  idx: IndiceObras,
-  obraId?: string,
-): Promise<ServiceResult<MovimientoOperacion[]>> {
-  const { data, error } = await getMovimientos(supabase, 2000)
-  if (error) return { data: null, error }
-  return { data: imputar(data ?? [], idx, (m) => m.destino, obraId), error: null }
+  const { data, error } = await supabase
+    .from('pedidos_materiales')
+    .select('id_pedido, obra_texto, obra_id, obra_canonica_id, fecha, material, cantidad, unidad, nota, estado, sincronizado_en, actividad_id, origen, creado_por')
+    .order('fecha', { ascending: false, nullsFirst: false })
+  if (error) return { data: null, error: error.message }
+  type Fila = PedidoMaterial & { obra_canonica_id: string | null; unidad: string | null; nota: string | null; creado_por: string | null }
+  const filas = (data ?? []) as Fila[]
+  const marcadas = filas.map((f) => ({
+    ...f,
+    cantidad: f.cantidad == null ? null : Number(f.cantidad),
+    obra_canonica_id: f.obra_canonica_id ?? (obraDeTexto(idx, f.obra_texto) as string | null),
+  }))
+  const propias = obraId ? marcadas.filter((f) => f.obra_canonica_id === obraId) : marcadas
+  const usuarios = [...new Set(propias.map((f) => f.creado_por).filter((u): u is string => Boolean(u)))]
+  // `perfiles` puede estar recortada por RLS: lo que no vuelve queda sin nombre, no inventado.
+  const perfiles = usuarios.length ? await supabase.from('perfiles').select('id, nombre').in('id', usuarios) : null
+  const nombre = new Map(((perfiles?.data ?? []) as { id: string; nombre: string | null }[]).map((p) => [p.id, p.nombre]))
+  return {
+    data: propias.map(({ creado_por, ...f }) => ({ ...f, quien: (creado_por && nombre.get(creado_por)) || null })),
+    error: null,
+  }
 }
 
 /**
@@ -231,19 +236,37 @@ export async function getComprasObra(
     total: c.total == null ? null : Number(c.total),
   }))
 
-  if (!obraId) return { data: { filas, total: null, nComprobantes: null, completo: true }, error: null }
+  if (!obraId) {
+    return {
+      data: { filas, total: null, nComprobantes: null, completo: true, manoDeObra: null, sinImputarEmpresa: null, imputadoEmpresa: null },
+      error: null,
+    }
+  }
 
-  const { data: costo, error: errCosto } = await supabase
-    .from('obra_costo_real')
-    .select('costo_real, n_comprobantes')
-    .eq('obra_id', obraId)
-    .maybeSingle()
-  if (errCosto) return { data: null, error: errCosto.message }
+  // LAS CIFRAS DEL 12 salen de la MISMA vista que el costo de la obra. «Sin imputar en toda la
+  // empresa» es la única que se suma acá, y es porque no hay vista que la publique: son las filas de
+  // Compras sin columna «Obra». Si la lectura falla queda `null`, nunca 0.
+  const [costo, todas, sinObra] = await Promise.all([
+    supabase.from('obra_costo_real').select('costo_real, n_comprobantes, costo_mano_de_obra').eq('obra_id', obraId).maybeSingle(),
+    supabase.from('obra_costo_real').select('costo_real').limit(1000),
+    supabase.from('costos_obra').select('total').is('obra_id', null).limit(5000),
+  ])
+  if (costo.error) return { data: null, error: costo.error.message }
   // La vista devuelve 0 por el `left join` aunque la obra no tenga ninguna compra: un 0 sin
   // comprobantes no es "gastó cero", es "todavía no hay nada imputado", y esa diferencia viaja.
-  const nComprobantes = costo?.n_comprobantes == null ? null : Number(costo.n_comprobantes)
-  const total = nComprobantes ? Number(costo?.costo_real ?? 0) : null
-  return { data: { filas, total, nComprobantes, completo: detalleCubreElTotal(filas, total) }, error: null }
+  const nComprobantes = costo.data?.n_comprobantes == null ? null : Number(costo.data.n_comprobantes)
+  const total = nComprobantes ? Number(costo.data?.costo_real ?? 0) : null
+  const manoDeObra = nComprobantes ? Number(costo.data?.costo_mano_de_obra ?? 0) : null
+  const suma = (xs: unknown[] | null | undefined, k: string) =>
+    xs == null ? null : xs.reduce<number>((acc, f) => acc + Number((f as Record<string, unknown>)[k] ?? 0), 0)
+  return {
+    data: {
+      filas, total, nComprobantes, completo: detalleCubreElTotal(filas, total), manoDeObra,
+      imputadoEmpresa: todas.error ? null : suma(todas.data, 'costo_real'),
+      sinImputarEmpresa: sinObra.error ? null : suma(sinObra.data, 'total'),
+    },
+    error: null,
+  }
 }
 
 /**
@@ -268,22 +291,22 @@ export async function getOperacion(
   const idx = indiceDeAlias(puente.data) as IndiceObras
   const nombres: string[] = obraId ? (aliasDeObra(puente.data, obraId) as string[]) : []
 
-  const [pedidos, compras, herramientas, movimientos] = await Promise.all([
+  const [pedidos, compras, equipos] = await Promise.all([
     getPedidos(supabase, idx, obraId),
     getComprasObra(supabase, obraId),
-    getHerramientasObra(supabase, idx, obraId),
-    getMovimientosObra(supabase, idx, obraId),
+    obraId ? getEquiposDeObra(supabase, obraId) : null,
   ])
-  const fallo = [pedidos, compras, herramientas, movimientos].find((r) => r.error)
+  const fallo = [pedidos, compras, equipos].find((r) => r?.error)
   if (fallo?.error) return { data: null, error: fallo.error }
 
   return {
     data: {
       nombres,
       pedidos: pedidos.data ?? [],
-      compras: compras.data ?? { filas: [], total: null, nComprobantes: null, completo: true },
-      herramientas: herramientas.data ?? [],
-      movimientos: movimientos.data ?? [],
+      compras: compras.data ?? {
+        filas: [], total: null, nComprobantes: null, completo: true, manoDeObra: null, sinImputarEmpresa: null, imputadoEmpresa: null,
+      },
+      equipos: equipos?.data ?? null,
     },
     error: null,
   }
