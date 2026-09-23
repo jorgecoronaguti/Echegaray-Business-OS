@@ -37,7 +37,7 @@ import { proximasDeLaObra } from '../services/resumenDelPlan'
 import { lineasPlanVsReal } from '../services/planVsReal'
 import { hrefDeVista } from '../services/vistasObra'
 import {
-  bajadaAvance, cifraAvance, costoTeorico, type AvancePonderado, type DiasHabilesObra,
+  bajadaAvance, cifraAvance, type AvancePonderado, type DiasHabilesObra,
 } from '../services/avancePonderado'
 import {
   frentesEnCurso, impedimentosQueFrenan, loQueFaltaCargar, personasHoy, plazoDeObra,
@@ -195,7 +195,6 @@ export function TabResumen({
   const frena = impedimentosQueFrenan(abiertas, hoy)
   const frentes = frentesEnCurso(actividades, genteHoy)
   const plazo = plazoDeObra(obra, diasHabiles)
-  const costo = costoTeorico(avance)
   const falta = loQueFaltaCargar({
     historiasSinCosto: avance ? avance.n_historias_sin_costo : null,
     actividadesSinFecha: obra.n_actividades_sin_fecha,
@@ -216,8 +215,8 @@ export function TabResumen({
         data-testid="resumen-obra">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '34px', minWidth: 0 }}>
           <div style={{ display: 'flex', gap: '64px', flexWrap: 'wrap' }} data-testid="cifras-resumen">
+            {/* 03.html dibuja DOS cifras: Avance y Plazo. El costo teórico no está en el diseño (revisión 23/09). */}
             <CifraGrande rotulo="Avance" valor={cifraAvance(avance)} falta="sin estructura" bajada={bajadaAvance(avance)} testid="cifra-avance" />
-            <CifraGrande rotulo="Costo teórico" valor={costo.cifra} falta="sin costo de MO" bajada={costo.bajada} testid="cifra-costo-teorico" />
             <CifraGrande rotulo="Plazo" valor={plazo.valor} falta={plazo.falta} bajada={plazo.bajada} tono={plazo.tono} testid="cifra-plazo" />
           </div>
 
@@ -375,7 +374,11 @@ export function TabResumen({
             bajada={avance ? `${avance.n_items_medidos} de ${avance.n_items} medidos` : 'sin estructura'} />
           <CifraGrande tam={24} rotulo="Plazo" valor={plazo.valor} falta={plazo.falta} tono={plazo.tono}
             bajada={plazo.bajada.replace('fin proyectado', 'proy.')} />
-          <CifraGrande tam={24} rotulo="Costo teórico" valor={costo.cifra} falta="sin costo de MO" bajada={costo.bajada} />
+          {/* M04: «Costo · $ X M · N comprobantes» = costo real de las compras, no el teórico. */}
+          <CifraGrande tam={24} rotulo="Costo"
+            valor={veComercial && economia?.costo_real != null ? plataCorta(economia.costo_real) : null}
+            falta={veComercial ? 'sin comprobantes' : 'no lo ve tu nivel'}
+            bajada={veComercial && economia?.costo_real_n_comprobantes != null ? `${economia.costo_real_n_comprobantes} comprobantes` : ''} />
           <CifraGrande tam={24} rotulo="Personas hoy" valor={personas.valor} falta={personas.falta} bajada={personas.bajada} />
         </div>
         <AtencionObra items={atencion} />

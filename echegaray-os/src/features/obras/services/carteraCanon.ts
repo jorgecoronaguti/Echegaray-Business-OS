@@ -185,7 +185,11 @@ export function colorDeEstado(o: ObraDeCartera): string {
   if (e.tono === 'neg') return '#B42318'
   if (e.tono === 'pos') return '#067647'
   if (e.tono === 'neutro') return '#6B6B67'
-  return colorDePlazo(o)
+  // 01.html: «En ejecución» va en azul (#175CD3); en ámbar sólo cuando el plazo está en ámbar
+  // (+N d ≤ 10). El verde es de la COLUMNA Plazo («en fecha»), nunca del estado: pintar el estado de
+  // verde se leía como «todo en fecha» (revisión visual 23/09/2026).
+  const plazo = colorDePlazo(o)
+  return plazo === '#B54708' ? plazo : '#175CD3'
 }
 
 /** La sub-línea de la fila del teléfono (M01): «Macro · Terminación · atraso». `atraso` va aparte

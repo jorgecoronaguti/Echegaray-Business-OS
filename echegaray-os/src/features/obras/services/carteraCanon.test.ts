@@ -152,7 +152,8 @@ test('la bajada cuenta vivas (no archivadas) y cuántas proyectan después del p
   // El color del estado sigue al plazo: rojo con atraso, ámbar con días, azul en fecha, gris previo.
   assert.equal(canon.colorDeEstado(obra({ fecha_fin_plan: '2026-09-05', forecast_fin: '2026-09-21' })), '#B42318')
   assert.equal(canon.colorDeEstado(obra({ fecha_fin_plan: '2026-09-05', forecast_fin: '2026-09-08' })), '#B54708')
-  assert.equal(canon.colorDeEstado(obra({ fecha_fin_plan: '2026-09-05', forecast_fin: '2026-09-05' })), '#067647')
+  // Contrato del 01.html: el estado «En ejecución» en fecha es AZUL; el verde queda para la columna Plazo.
+  assert.equal(canon.colorDeEstado(obra({ fecha_fin_plan: '2026-09-05', forecast_fin: '2026-09-05' })), '#175CD3')
   assert.equal(canon.colorDeEstado(obra({ etapa: 'previo' })), '#6B6B67')
   assert.deepEqual(canon.sublineaTelefono(obra({ fecha_fin_plan: '2026-09-05', forecast_fin: '2026-09-21' }), 'Macro', 'Terminación'),
     { texto: 'Macro · Terminación', atraso: true })
