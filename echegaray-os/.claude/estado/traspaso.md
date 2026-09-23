@@ -1,5 +1,34 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
+_actualizado: **2026-09-23 ~20:15 (−03)** · `origin/main` = **0e53c2ca**, producción al día._
+
+**PUBLICADO HOY (ERP Obras, todo verificado por captura salvo lo marcado):** H1–H3 · cartera Tabla/Gantt
+agrupada por cliente como el CRM, sin columna Cliente, sin pie, Tabla↔Gantt sin refresco · cabecera/Resumen/
+Ítems/Z01 · Parte diario literal 06/M08 · Planilla 04c · Cronograma 05/C06 · Subcontratos, Personal, Dotación ·
+Crear la estructura C01–C10/MC1–MC11 (migración 20260923T2630 aplicada; SIN captura revisada) · Operación
+09/10/11/12 y Documentos 14 (SIN captura revisada) · menú de la cuenta: Entrar como (sesión real, auditada),
+Seguridad 2FA TOTP, Notificaciones, Sesiones, enlace de acceso en Usuarios (migraciones T2600/2610/2620
+aplicadas) · Ver como arreglado (POST + orden del middleware) · Herramientas: servicio técnico = proveedor.
+
+**ABIERTO**
+- Agente «fotos del parte diario» (tabla `obra_parte_adjunto` + bucket `partes-adjuntos`): cuando entregue,
+  aplicar su migración, publicar, capturar `?vista=tareas&sub=parte` a 1440/390.
+- Agente Documentos: 3 fallos de `geometria-obras.test.ts` (grilla de IndiceDocumentos en teléfono, marco de
+  TabDocumentos, `group` del details de Vincular). Publicar cuando dé verde.
+- Capturas pendientes de MIRAR (ya tomadas): `scratchpad/qa-ola2a/` (C01–C09 + menú) y `scratchpad/qa-op/`
+  (Operación/Documentos). Mirarlas sin agente revisor.
+- Decisión del dueño: obra «terminada» vs «archivada» (hoy `cerrada` hace las dos).
+- Corralón: 3862 y 3428 sin cargar; saldo $2.568,20 desconocido.
+
+**REGLAS APRENDIDAS HOY:** diseño dibujado manda sobre el texto del prompt · nada viejo en Obras, lo no dibujado
+con la skill UI/UX · la página del servidor nunca llama funciones de un módulo `'use client'` (React #441) ·
+antes de publicar la ficha de obra, capturar esa ruta · estado del layout se cambia por POST + router.refresh ·
+ahorro: sin agentes nuevos, sin revisores de capturas, `/clear` entre frentes.
+
+---
+
+_Lo anterior:_
+
 _actualizado: **2026-09-23 ~17:40 (−03)** · `origin/main` = **aadc86e8**, checkout de producción en aadc86e8 (daemons
 reiniciados por `produccion-al-dia.mjs`). Rama `efectivo-a-rendir` rebasada sobre origin/main (sin commits pendientes)._
 
