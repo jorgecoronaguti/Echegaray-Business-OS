@@ -156,7 +156,7 @@ export default async function MiInformacionPage() {
             <Acceso
               href="/mi-informacion/documentos"
               icono="doc"
-              titulo="Mis papeles"
+              titulo="Mis documentos"
               detalle={porResolver > 0
                 ? `${porResolver === 1 ? '1 papel' : `${porResolver} papeles`} para resolver`
                 : `${docs.data?.length ?? 0} en tu legajo`}

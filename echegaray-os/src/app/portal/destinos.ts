@@ -28,9 +28,9 @@ export const DESTINOS: readonly Destino[] = [
   // ES UNA DECISIÓN DE PRODUCTO Y LA FIRMA EL DUEÑO: si con el dato correcto le sigue pareciendo
   // confusa, se vuelve a marcar `masAdelante` y la ruta sigue respondiendo igual.
   { href: '/portal/terminadas', rotulo: 'Terminadas', icono: 'terminadas' },
-  // Se enchufa cuando exista el módulo de Obras. Se dibuja igual: que el cliente vea que viene es
-  // parte del acuerdo, esconderlo lo convertiría en una sorpresa.
-  { href: '/portal/avance', rotulo: 'Avance', icono: 'avance', masAdelante: true },
+  // «AVANCE» SE OCULTA HASTA QUE EXISTA (dueño, 23/09/2026 · mapa de pantallas, duda 10). Se dibujaba
+  // en gris como promesa y no hay página detrás. Cuando el módulo exista vuelve como destino:
+  // `{ href: '/portal/avance', rotulo: 'Avance', icono: 'avance' }`.
 ]
 
 /** Los cinco que navegan. El menú del teléfono es exactamente esto. */

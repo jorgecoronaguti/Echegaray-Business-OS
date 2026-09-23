@@ -8,6 +8,8 @@ import { Aviso, Eyebrow } from '@/shared/components/ds'
 import { leerDatosCampo } from './datos'
 import { IconoAsistencia, IconoHerramienta, IconoMaterial, IconoMovimiento, IconoParte, IconoProblema } from './iconos'
 import { puedeCargarParte } from './permisos'
+import { INICIO_JEFE_TELEFONO } from '@/features/auth/types/navegacion'
+import { hrefCargaDeAsistencia } from '@/features/administracion/services/cargaDeAsistencia'
 import { senalHerramientas, senalImpedimentos, senalPedidos, senalParte, type Senal } from './senales'
 
 // `/campo` — LA ENTRADA DE OBRA EN EL TELÉFONO.
@@ -61,7 +63,17 @@ export default async function CampoPage() {
   const perfil = await getPerfilActual(supabase)
   const nombre = perfil.data?.nombre || user.email || 'Operario'
   const rol = perfil.data?.rol ?? null
+  // ═══ /campo ES DEL JEFE (dueño, 23/09/2026 · mapa de pantallas, duda 4) ═══
+  //
+  // Las seis filas de esta pantalla —parte, material, problema, asistencia, herramientas,
+  // movimientos— las escribe el jefe de obra. El empleado la abría desde `/mi-trabajo` y no podía
+  // hacer nada de eso: su pantalla es `/hoy`. Lo que sí es suyo (herramientas por QR) vive en
+  // `/campo/herramientas` y sigue abriéndose; sólo esta raíz lo manda a su día.
+  if (rol === 'campo') redirect('/hoy')
   const escribe = puedeCargarParte(rol)
+  // A dónde vuelve la flecha: el jefe a J01 (`/obra/hoy`, que es quien enlaza acá); Dirección y
+  // Administración —que entran con «ver como» o por URL— a su inicio.
+  const volver = rol === 'jefe_obra' ? INICIO_JEFE_TELEFONO : '/'
 
   const d = await leerDatosCampo(supabase)
   const donde = d.obras.length === 1 ? d.obras[0].nombre : d.obras.length > 1 ? `${d.obras.length} obras` : null
@@ -101,7 +113,9 @@ export default async function CampoPage() {
       // grilla de TRES en posición fija, y un cuarto los rompe en 3 + 1 huérfano. Mover una decisión
       // de layout ya tomada no es parte de este trabajo — si el dueño quiere la asistencia entre las
       // tres de arriba, se decide qué sale.
-      href: '/campo/asistencia',
+      // LA CARGA ÚNICA (17/09/2026): `/campo/asistencia` redirige a la de Administración desde el
+      // 23/09. La pantalla ya es responsive y elige la obra en el teléfono (`ObraEnTelefono`).
+      href: hrefCargaDeAsistencia({}),
       titulo: 'Asistencia',
       detalle: 'Las horas de cada uno, hoy',
       // SIN SEÑAL A PROPÓSITO: decir «falta cargar la asistencia» exige saber quién está asignado a
@@ -120,7 +134,9 @@ export default async function CampoPage() {
       testid: 'ir-herramientas',
     },
     {
-      href: '/integraciones/movimientos',
+      // El registro vive en el módulo Herramientas del teléfono (M07 «Mover»); el historial de
+      // escritorio es `/herramientas/movimientos`. `/integraciones/movimientos` redirige ahí desde el 23/09.
+      href: '/campo/herramientas/mover',
       titulo: 'Movimientos',
       detalle: 'Registrar un traslado',
       senal: null,
@@ -139,6 +155,17 @@ export default async function CampoPage() {
       {/* La salida es un objetivo táctil como cualquier otro: el botón del sistema mide 24px de alto
           y acá se lo estira a 44 sin tocar el componente compartido, que también vive en escritorio. */}
       <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line px-4 [&_button]:h-[44px] [&_button]:px-2.5">
+        {/* LA VUELTA, VISIBLE Y DE 44 (23/09/2026): esta pantalla no tenía marco ni barra, y el jefe
+            que llegaba desde `/obra/hoy` quedaba sin camino de regreso salvo el gesto del navegador. */}
+        <Link
+          href={volver}
+          prefetch={false}
+          data-testid="volver-campo"
+          aria-label="Volver a Hoy"
+          className="-ml-2 flex h-[44px] min-w-[44px] items-center justify-center px-2 text-[18px] text-muted hover:text-ink"
+        >
+          ‹
+        </Link>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/marca/isotipo.png" alt="" className="h-[22px] w-[22px]" />
         <span className="text-[12.5px] font-semibold tracking-[0.12em] text-ink">ECHEGARAY</span>

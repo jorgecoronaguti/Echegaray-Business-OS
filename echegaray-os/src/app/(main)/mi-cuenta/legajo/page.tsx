@@ -51,6 +51,7 @@ export default async function MiLegajoPage() {
   return (
     <MiCuentaShell
       titulo="Mi legajo"
+      parte="legajo"
       descripcion="Lo que Administración tiene cargado sobre vos. Es de lectura: si algo no coincide, se corrige en Administración."
       campos={[
         { rotulo: 'Categoría', valor: l?.categoria ?? null, falta: 'sin categoría cargada' },

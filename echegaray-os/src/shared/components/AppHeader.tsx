@@ -55,6 +55,7 @@ export function AppHeader({
   rolLabel,
   verUsuarios,
   cargaAsistencia,
+  miObraTelefono = false,
   verComo,
   salir,
 }: {
@@ -68,6 +69,8 @@ export function AppHeader({
   verUsuarios: boolean
   /** Si este rol puede abrir Personal. El atajo a la carga de asistencia cuelga de eso. */
   cargaAsistencia: boolean
+  /** ¿Es jefe de obra? Su obra en el teléfono (`/obra/hoy`, J01) se ofrece desde el menú. */
+  miObraTelefono?: boolean
   /** «Ver como»: si esta persona puede encender la lente, y con qué ojos está mirando ahora. */
   verComo: VerComo
   salir: React.ReactNode
@@ -204,7 +207,7 @@ export function AppHeader({
             </>
           )}
           {email ? (
-            <MenuUsuario nombre={nombre} email={email} rolLabel={rolLabel} verUsuarios={verUsuarios} cargaAsistencia={cargaAsistencia} verComo={verComo} salir={salir} />
+            <MenuUsuario nombre={nombre} email={email} rolLabel={rolLabel} verUsuarios={verUsuarios} cargaAsistencia={cargaAsistencia} miObraTelefono={miObraTelefono} verComo={verComo} salir={salir} />
           ) : (
             <Link href="/login" className="rounded-md px-2.5 py-1.5 text-[13px] text-muted hover:bg-surface-quiet">
               Ingresar
@@ -246,6 +249,7 @@ function MenuUsuario({
   rolLabel,
   verUsuarios,
   cargaAsistencia,
+  miObraTelefono = false,
   verComo,
   salir,
 }: {
@@ -254,6 +258,7 @@ function MenuUsuario({
   rolLabel: string | null
   verUsuarios: boolean
   cargaAsistencia: boolean
+  miObraTelefono?: boolean
   verComo: VerComo
   salir: React.ReactNode
 }) {
@@ -348,6 +353,23 @@ function MenuUsuario({
               de costado. Este menú es lo más parecido a una hamburguesa que el header tiene, y acá
               el atajo es UN toque. `md:hidden` porque en escritorio esos tres toques no son un
               problema y el menú es para configuración, no para trabajo diario. */}
+          {/* ═══ LA OBRA DEL JEFE EN EL TELÉFONO (dueño, 23/09/2026 · mapa de pantallas, duda 3) ═══
+              J01–J06 (`/obra/*`) no tenían ninguna puerta desde la app. Desde el teléfono `/` ya
+              lo lleva solo (`destinoDeLaHome`); este ítem es el enlace VISIBLE para llegar desde
+              cualquier pantalla, en cualquier ancho: en escritorio abre el marco del teléfono, que
+              es lo que el jefe va a ver en la obra. Sólo existe en el HTML del jefe de obra. */}
+          {miObraTelefono && (
+            <Link
+              prefetch={false}
+              href="/obra/hoy"
+              role="menuitem"
+              data-testid="ir-mi-obra"
+              onClick={() => setAbierto(false)}
+              className="flex min-h-[44px] items-center px-3 py-1.5 text-[13px] font-medium text-ink hover:bg-surface-quiet"
+            >
+              Mi obra en el teléfono
+            </Link>
+          )}
           {cargaAsistencia && (
             <Link
               prefetch={false}

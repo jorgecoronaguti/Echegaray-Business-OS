@@ -10,12 +10,16 @@ import { SubTabs } from '@/shared/components/ds'
 // contadores obligaría a tres consultas más por pantalla, y ponerlos en cero sería peor: un «0»
 // afirma que no hay herramientas cuando lo que pasa es que nadie las contó todavía.
 
-export type VistaOperacion = 'pedidos' | 'herramientas' | 'movimientos' | 'fuentes'
+export type VistaOperacion = 'pedidos' | 'movimientos' | 'fuentes'
 
+// ═══ LA BARRA DE FUENTES (dueño, 23/09/2026 · mapa de pantallas, duda 6) ═══
+//
+// «Herramientas» salió: saltaba a otro módulo de nivel 1 desde una barra de nivel 3. «Movimientos»
+// deja de apuntar a `/integraciones/movimientos` (la tabla vieja, hoy vista de sólo lectura) y va al
+// historial del módulo Herramientas; la URL vieja redirige ahí. La sección cuelga de Administración.
 const VISTAS: { id: VistaOperacion; label: string; href: string }[] = [
   { id: 'pedidos', label: 'Pedidos', href: '/integraciones/pedidos-materiales' },
-  { id: 'herramientas', label: 'Herramientas', href: '/herramientas' },
-  { id: 'movimientos', label: 'Movimientos', href: '/integraciones/movimientos' },
+  { id: 'movimientos', label: 'Movimientos', href: '/herramientas/movimientos' },
   { id: 'fuentes', label: 'Fuentes', href: '/integraciones' },
 ]
 

@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { destinoDeLaHome, solapaActiva, solapasDeNav } from './navegacion.ts'
+import { INICIO_JEFE_TELEFONO, destinoDeLaHome, solapaActiva, solapasDeNav } from './navegacion.ts'
+import { INICIO_JEFE_TELEFONO as INICIO_COMPARTIDO } from '../../../shared/auth/areas.ts'
 import { puedeVerRuta } from './areas.ts'
 
 // LA BARRA DE NIVEL 1 — «dónde estoy» en las rutas de primer nivel.
@@ -134,4 +135,34 @@ test('el destino de la home es una solapa que ese rol tiene dibujada, o su panta
     const laPintaUnaSolapa = solapaActiva(destino, solapasDeNav(rol)) !== null
     assert.ok(enLaBarra || laPintaUnaSolapa, `${rol} aterriza en ${destino}, que no enciende ninguna solapa`)
   }
+})
+
+// ═══ EL JEFE DE OBRA EN EL TELÉFONO ENTRA POR SU OBRA (dueño, 23/09/2026 · mapa de pantallas, duda 3) ═══
+//
+// EL DEFECTO: J01–J06 (`/obra/*`) no tenían ninguna puerta. Un jefe que entraba desde el celular
+// aterrizaba en la cartera de clientes de escritorio y sólo llegaba a `/obra/hoy` escribiendo la URL.
+test('el jefe de obra aterriza en /obra/hoy SÓLO desde el teléfono; en escritorio sigue en Administración', () => {
+  assert.equal(destinoDeLaHome('jefe_obra', true), '/obra/hoy')
+  assert.equal(destinoDeLaHome('jefe_obra', false), '/administracion')
+  assert.equal(destinoDeLaHome('jefe_obra'), '/administracion', 'sin dato del dispositivo se cae a escritorio')
+})
+
+test('el teléfono NO cambia el inicio de los demás roles', () => {
+  assert.equal(destinoDeLaHome('direccion', true), '/administracion')
+  assert.equal(destinoDeLaHome('administracion', true), '/administracion')
+  assert.equal(destinoDeLaHome('campo', true), '/hoy')
+  assert.equal(destinoDeLaHome(null, true), '/obras')
+})
+
+test('la raíz del jefe en el teléfono es UNA: sale de shared/auth y J01 enciende Obras', () => {
+  // `features/auth` y `features/jefe` la leen de `shared/auth/areas.ts`: una sola definición.
+  assert.equal(INICIO_JEFE_TELEFONO, INICIO_COMPARTIDO)
+  assert.equal(INICIO_JEFE_TELEFONO, '/obra/hoy')
+  assert.equal(activa('/obra/hoy', 'jefe_obra'), 'obras', 'J01 enciende Obras si alguna vez se dibuja el header')
+})
+
+test('«Fuentes» (/integraciones) cuelga de Administración, no de Obras (dueño, 23/09/2026 · duda 6)', () => {
+  assert.equal(activa('/integraciones'), 'administracion')
+  assert.equal(activa('/integraciones/pedidos-materiales'), 'administracion')
+  assert.equal(activa('/integraciones-x'), null)
 })

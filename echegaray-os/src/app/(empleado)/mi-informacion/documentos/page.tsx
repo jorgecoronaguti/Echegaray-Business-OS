@@ -58,7 +58,7 @@ export default async function MisPapelesPage({
 
   if (!perfil.data?.persona_id) {
     return (
-      <PantallaEmpleado titulo="Mis papeles" volver={{ href: '/mi-informacion', label: 'Yo' }}>
+      <PantallaEmpleado titulo="Mis documentos" volver={{ href: '/mi-informacion', label: 'Yo' }}>
         <SinVinculo que="tus documentos" disponible={perfil.data?.vinculoDisponible !== false} />
       </PantallaEmpleado>
     )
@@ -89,7 +89,8 @@ export default async function MisPapelesPage({
 
   return (
     <PantallaEmpleado
-      titulo="Mis papeles"
+      titulo="Mis documentos"
+      parte="documentos"
       volver={{ href: '/mi-informacion', label: 'Yo' }}
       sub={
         porResolver > 0

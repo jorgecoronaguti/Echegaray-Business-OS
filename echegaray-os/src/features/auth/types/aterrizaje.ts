@@ -70,7 +70,8 @@ const RUTAS_DE_PUERTA = ['/login', '/recuperar', '/contrasena-nueva', '/callback
  * inicios». Arreglar el login inventando una segunda habría reproducido el defecto un nivel más
  * abajo y con mejor letra. Acá no se decide nada: se delega.
  */
-export function inicioDeRol(rol: Rol | null | undefined): string {
+/** @param telefono ¿La petición viene de un teléfono? Sólo cambia el inicio del jefe de obra (J01). */
+export function inicioDeRol(rol: Rol | null | undefined, telefono = false): string {
   // EL CLIENTE NO ES UN EMPLEADO CON MENOS PERMISOS: es alguien de otra empresa, no tiene solapas, y
   // `destinoDeLaHome` —que resuelve por `solapasDeNav()[0]`— le daría una pantalla del OS. No tiene
   // contraseña (entra al portal con su mail) pero SÍ puede tener un `auth.users`, que crea
@@ -81,7 +82,7 @@ export function inicioDeRol(rol: Rol | null | undefined): string {
   // Todo lo demás lo decide la ÚNICA definición de inicio del sistema. Sin rol, `destinoDeLaHome`
   // ya cae al nivel menos privilegiado: el modo de fallar de un default permisivo es aterrizar a
   // alguien en la pantalla del dinero con la sesión ya abierta.
-  return destinoDeLaHome(rol)
+  return destinoDeLaHome(rol, telefono)
 }
 
 /**
@@ -96,8 +97,9 @@ export function inicioDeRol(rol: Rol | null | undefined): string {
 export function aterrizajeDeIngreso(
   rol: Rol | null | undefined,
   volver: string | null | undefined,
+  telefono = false,
 ): string {
-  const inicio = inicioDeRol(rol)
+  const inicio = inicioDeRol(rol, telefono)
   if (!volver) return inicio
 
   const limpio = volver.trim()

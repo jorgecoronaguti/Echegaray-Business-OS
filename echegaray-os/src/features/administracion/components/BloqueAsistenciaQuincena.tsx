@@ -8,6 +8,7 @@ import {
   nombreDia, quincenaDe, rotuloQuincena,
 } from '../services/quincena'
 import { getQuincenaPorObra } from '../services/jornadaPorObraService'
+import { hrefCargaDeAsistencia } from '../services/cargaDeAsistencia'
 import {
   armarQuincenaPorObra, chipsConElegida, diasSinMarcar, filtrarPorObra, OBRA_SIN, personasPorObra, SIN_OBRA,
   totalDeLaQuincena, totalesPorDia,
@@ -159,7 +160,7 @@ export async function BloqueAsistenciaQuincena({
               ? `Ninguna persona de esta quincena coincide con «${q.trim()}».`
               : 'Nadie tiene asignación vigente ni horas cargadas en esta quincena.'}
           {' '}La asistencia se carga por obra, desde{' '}
-          <Link href="/campo/asistencia" className="underline">Campo · Asistencia</Link>.
+          <Link href={hrefCargaDeAsistencia({})} className="underline">Cargar asistencia</Link>.
         </Vacio>
       ) : (
         <GrillaAsistenciaObra

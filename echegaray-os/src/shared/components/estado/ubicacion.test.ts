@@ -49,7 +49,18 @@ test('la raíz no ofrece volver a la raíz', () => {
 test('las subpantallas de personas se nombran por lo que son', () => {
   assert.equal(ubicarPantalla('/administracion/personas/cuadrillas').que, 'las cuadrillas')
   assert.equal(ubicarPantalla('/administracion/personas/en-obra').que, 'quién está hoy en obra')
-  assert.equal(ubicarPantalla('/administracion/personas').que, 'el legajo de personas')
+  // «Personal» es el nombre de la solapa (23/09/2026): el cartel dice lo que la barra dice.
+  assert.equal(ubicarPantalla('/administracion/personas').que, 'Personal')
+  assert.equal(ubicarPantalla('/administracion/personas/asistencia').que, 'la carga de asistencia')
+  assert.equal(ubicarPantalla('/administracion/asistencia').que, 'las correcciones de asistencia')
+  assert.equal(ubicarPantalla('/administracion/asistencia').volver?.href, '/administracion/personas')
+})
+
+test('Fuentes vuelve a Administración, y la pantalla de campo vuelve a Hoy (23/09/2026)', () => {
+  assert.equal(ubicarPantalla('/integraciones').que, 'las fuentes del OS')
+  assert.equal(ubicarPantalla('/integraciones').volver?.href, '/administracion')
+  assert.equal(ubicarPantalla('/integraciones/pedidos-materiales').volver?.texto, 'Fuentes')
+  assert.equal(ubicarPantalla('/campo').volver?.href, '/obra/hoy')
 })
 
 test('las tres pantallas de presupuestos vuelven a su cartera, no al inicio', () => {

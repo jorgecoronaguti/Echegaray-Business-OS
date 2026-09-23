@@ -122,6 +122,13 @@ export const AREA_HREF: Record<Area, string> = {
 // capas leen ESTA constante, así que el destino está escrito una sola vez.
 export const ENTRADA_DE_ADMINISTRACION = '/clientes'
 
+/**
+ * J01: la raíz del jefe de obra en el teléfono. Vive acá —y no en `features/jefe` ni en
+ * `features/auth`— porque la usan las dos y una feature no importa de otra. Desde el 23/09/2026 es
+ * el inicio del jefe cuando entra desde un teléfono (`destinoDeLaHome`).
+ */
+export const INICIO_JEFE_TELEFONO = '/obra/hoy'
+
 /** La ruta a la que `/administracion` manda, o `null` si esta ruta no es la entrada del área. Se
  *  compara el path EXACTO: `/administracion/compras` es una pantalla de verdad y no se toca. */
 export function entradaDeArea(pathname: string): string | null {

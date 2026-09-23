@@ -24,7 +24,8 @@
 // —un presupuesto ES precio— así que al jefe de obra no se le dibuja la sección.
 
 import type { Rol } from './index'
-import { AREA_HREF, AREA_LABEL, areasDe, puedeVerRuta } from './areas.ts'
+import { AREA_HREF, AREA_LABEL, INICIO_JEFE_TELEFONO, areasDe, puedeVerRuta } from './areas.ts'
+export { INICIO_JEFE_TELEFONO }
 
 export interface SolapaNav {
   clave: string
@@ -93,10 +94,21 @@ export function solapasDeNav(rol: Rol | null | undefined): SolapaNav[] {
  * un empleado tres. El destino se decide con el MISMO portero que el middleware: si `puedeVerRuta`
  * dice que no, no se lo manda ahí.
  */
-export function destinoDeLaHome(rol: Rol | null | undefined): string {
+/**
+ * @param telefono ¿La petición viene de un teléfono? (`pareceTelefonoSegun(headers())`). Sólo cambia
+ *   el inicio del jefe de obra. Por defecto `false`: escritorio, que es lo que siempre fue.
+ */
+export function destinoDeLaHome(rol: Rol | null | undefined, telefono = false): string {
   // El empleado no entra por el área: entra por su día. `/obras` —que sería su primera solapa— no
   // está en `CAMPO_RUTAS_PERMITIDAS` y el middleware lo rebotaría igual.
   if (rol === 'campo') return '/hoy'
+  // ═══ EL JEFE DE OBRA EN EL TELÉFONO ENTRA POR SU OBRA (dueño, 23/09/2026) ═══
+  //
+  // J01–J06 (`/obra/*`) existían sin una sola puerta: `destinoDeLaHome('jefe_obra')` lo dejaba en
+  // la cartera de clientes de escritorio, y desde ahí no había enlace a `/obra/hoy`. El dueño
+  // resolvió la duda 3 del mapa de pantallas: en el teléfono su inicio es `/obra/hoy`; en
+  // escritorio sigue en Administración. Es el dispositivo el que decide, no el rol solo.
+  if (rol === 'jefe_obra' && telefono) return INICIO_JEFE_TELEFONO
   // ═══ YA NO HAY HOME ECONÓMICA (27/08/2026) ═══
   //
   // Hasta hoy esto devolvía `/flujo-caja` a quien pudiera abrirla, por la decisión del 09/07. El
@@ -111,8 +123,10 @@ export function solapaActiva(pathname: string, solapas: SolapaNav[]): string | n
   if (/^\/analiticas(\/|$)/.test(pathname)) return 'analiticas'
   // `/h/<código>` es la puerta del QR: abre la ficha de Herramientas.
   if (/^\/(herramientas|h)(\/|$)/.test(pathname)) return 'herramientas'
-  if (/^\/(administracion|clientes|documentos|presupuestos)(\/|$)/.test(pathname)) return 'administracion'
-  if (/^\/(obras|obra|integraciones|campo|hoy|mi-trabajo|mi-informacion)(\/|$)/.test(pathname)) {
+  // `/integraciones` («Fuentes») cuelga de Administración desde el 23/09/2026 (dueño, duda 6 del
+  // mapa de pantallas): es el estado de las conexiones del OS, no una pantalla de obra.
+  if (/^\/(administracion|clientes|documentos|presupuestos|integraciones)(\/|$)/.test(pathname)) return 'administracion'
+  if (/^\/(obras|obra|campo|hoy|mi-trabajo|mi-informacion)(\/|$)/.test(pathname)) {
     return 'obras'
   }
   return null

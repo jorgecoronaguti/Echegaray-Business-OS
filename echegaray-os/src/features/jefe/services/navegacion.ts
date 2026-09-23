@@ -17,6 +17,8 @@
 // Las tres pantallas que se abren DESDE éstas —registrar el avance de una tarea, el avance masivo y
 // el frente— siguen sin barra y vuelven con la flecha.
 
+import { INICIO_JEFE_TELEFONO } from '../../../shared/auth/areas.ts'
+
 export interface Contexto { href: string; label: string; testid: string }
 
 export const CONTEXTOS: Contexto[] = [
@@ -27,7 +29,7 @@ export const CONTEXTOS: Contexto[] = [
 ]
 
 /** La raíz del perfil, y la única ruta a la que se llega sin saber todavía qué obra se mira. */
-export const INICIO = '/obra/hoy'
+export const INICIO = INICIO_JEFE_TELEFONO
 
 /**
  * ¿Qué contexto está encendido? Por prefijo con barra, para que `/obra/tareas-x` no encienda

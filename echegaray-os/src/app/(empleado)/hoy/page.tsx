@@ -172,7 +172,7 @@ export default async function HoyPage() {
           <Acceso
             href="/mi-informacion/documentos"
             icono="doc"
-            texto="Mis papeles"
+            texto="Mis documentos"
             nota={nuevos > 0 ? `${nuevos} ${nuevos === 1 ? 'nuevo' : 'nuevos'}` : nPapeles > 0 ? `${nPapeles} pendiente${nPapeles === 1 ? '' : 's'}` : undefined}
             testid="acceso-papeles"
           />

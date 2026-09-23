@@ -69,6 +69,7 @@ export default async function MisDocumentosPage() {
   return (
     <MiCuentaShell
       titulo="Mis documentos"
+      parte="documentos"
       descripcion="Los papeles de tu legajo. El archivo vive en Drive: acá está el índice, nunca una copia."
     >
       {/* LO CRÍTICO SE VE ANTES QUE LA TABLA. Un apto médico vencido no puede depender de que alguien

@@ -379,7 +379,15 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             vistas={vistasDe('asistencia', sp.quincena, veLaPlata)}
             // LA CARGA ÚNICA (17/09/2026), el mismo botón que en Plantel. SIN la obra: acá `?obra=` es el
             // RÓTULO del chip de la grilla (o el id en modo día), y la pantalla nueva recorta por id.
-            filtros={<EnlaceCargarAsistencia testid="ir-a-cargar-asistencia-horas" />}
+            // SEMANA Y EN OBRA AHORA CUELGAN DE HORAS (dueño, 23/09/2026 · mapa de pantallas, duda 7):
+            // son dos preguntas reales, pero no entradas sueltas: se llega desde acá.
+            filtros={
+              <>
+                <EnlaceCargarAsistencia testid="ir-a-cargar-asistencia-horas" />
+                <NavDiscreta href="/administracion/personas/cuadrillas/asistencia" testid="ir-semana" icono="cuadrilla">Semana por persona</NavDiscreta>
+                <NavDiscreta href="/administracion/personas/en-obra" testid="ir-en-obra-horas" icono="persona">En obra ahora</NavDiscreta>
+              </>
+            }
             // EL BUSCADOR ES DE LA GRILLA. En la carga del día el bloque muestra UNA obra y su
             // gente —seis o siete nombres en una pantalla de 390px—: buscar ahí no filtra nada y
             // le come una línea entera a la única vista que se usa parado en la obra.

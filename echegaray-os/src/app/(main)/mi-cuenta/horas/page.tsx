@@ -61,7 +61,7 @@ export default async function MisHorasPage({ searchParams }: { searchParams: Pro
   const url = (p: Periodo) => `/mi-cuenta/horas?periodo=${p}`
 
   return (
-    <MiCuentaShell titulo="Mis horas">
+    <MiCuentaShell titulo="Mis horas" parte="horas">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         <Filtros
           testid="periodo"

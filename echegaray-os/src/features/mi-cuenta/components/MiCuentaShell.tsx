@@ -9,7 +9,9 @@
 // cuando hay legajo. Cada campo dice su ausencia POR SU NOMBRE: un guión suelto no distingue «no
 // tiene cuadrilla» de «nadie la cargó».
 
+import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { VERSIONES_DE_CUENTA, type ParteDeCuenta } from '@/shared/utils/cuentaPropia'
 import { Num, Volver } from '@/shared/components/ds'
 import { PageShell } from '@/shared/components/ui'
 import { NavMiCuenta } from './NavMiCuenta'
@@ -28,6 +30,7 @@ export function MiCuentaShell({
   descripcion,
   campos,
   volver = true,
+  parte,
   children,
 }: {
   titulo: string
@@ -35,8 +38,12 @@ export function MiCuentaShell({
   campos?: CampoIdentidad[]
   /** La raíz no vuelve a sí misma. */
   volver?: boolean
+  /** Qué parte de la cuenta es (legajo, horas, documentos): con eso se ofrece la MISMA pantalla en
+   *  su versión del teléfono, sólo por debajo de `lg`. Ver `shared/utils/cuentaPropia.ts`. */
+  parte?: ParteDeCuenta
   children: ReactNode
 }) {
+  const telefono = parte ? VERSIONES_DE_CUENTA[parte].telefono : null
   return (
     <PageShell
       eyebrow={volver ? <Volver href="/mi-cuenta">Mi cuenta</Volver> : undefined}
@@ -61,6 +68,13 @@ export function MiCuentaShell({
       )}
 
       <NavMiCuenta />
+      {/* LAS DOS CARAS SE ENLAZAN (dueño, 23/09/2026 · duda 8): desde el teléfono, esta misma pantalla
+          se mira mejor en su versión de barra inferior. En escritorio el enlace no se dibuja. */}
+      {telefono && (
+        <Link href={telefono} prefetch={false} data-testid="ir-version-telefono" className="mt-3 inline-flex min-h-[44px] items-center text-[12.5px] text-muted underline lg:hidden">
+          Ver en la versión del teléfono
+        </Link>
+      )}
       <div className="mt-7">{children}</div>
     </PageShell>
   )

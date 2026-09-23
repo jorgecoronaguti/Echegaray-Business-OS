@@ -74,6 +74,7 @@ export default async function MisHorasPage({ searchParams }: { searchParams: Pro
   return (
     <PantallaEmpleado
       titulo="Mis horas"
+      parte="horas"
       sub={basico.data?.nombre ?? user.email ?? 'mi legajo'}
       franja={
         <div style={{ margin: '8px -12px -10px' }}>

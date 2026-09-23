@@ -43,7 +43,7 @@ export default async function MiLegajoPage() {
   const l = legajo.data
 
   return (
-    <PantallaEmpleado titulo="Mi legajo" volver={{ href: '/mi-informacion', label: 'Mi información' }}>
+    <PantallaEmpleado titulo="Mi legajo" volver={{ href: '/mi-informacion', label: 'Mi información' }} parte="legajo">
       {legajo.error && <Aviso tono="neg" titulo="No se pudo leer tu legajo." testid="legajo-error">{legajo.error}</Aviso>}
 
       {l && (

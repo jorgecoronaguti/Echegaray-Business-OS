@@ -26,28 +26,11 @@ import { enlaceConservando } from './enlaceDeVista.ts'
 
 export type ModoAsistencia = 'dia' | 'quincena'
 
-/** El `sec-ch-ua-mobile` de los navegadores basados en Chromium: `?1` teléfono, `?0` escritorio. */
-const PISTA_CHROMIUM = '?1'
-
-/** Lo que mandan los que NO tienen client hints: Safari de iPhone/iPad y Firefox de Android. */
-const PISTA_UA = /Mobi|Android|iPhone|iPod|iPad/i
-
-/**
- * ¿Esto es un teléfono?
- *
- * `sec-ch-ua-mobile` primero porque es la respuesta declarada por el navegador; el User-Agent es el
- * respaldo para los que no la mandan. Ante el silencio de las dos, ESCRITORIO: es lo que la
- * pantalla hacía hasta hoy, y equivocarse hacia lo conocido es más barato que equivocarse hacia lo
- * nuevo.
- */
-export function pareceTelefono(
-  chUaMobile: string | null | undefined, userAgent: string | null | undefined,
-): boolean {
-  const ch = (chUaMobile ?? '').trim()
-  if (ch === PISTA_CHROMIUM) return true
-  if (ch !== '') return false
-  return PISTA_UA.test(userAgent ?? '')
-}
+// `pareceTelefono` vive en `shared/utils/dispositivo.ts` desde el 23/09/2026: la necesita también el
+// inicio del jefe de obra (`destinoDeLaHome`), y una feature no importa de otra. Se re-exporta para
+// no mover a quien ya la importaba de acá.
+import { pareceTelefono } from '../../../shared/utils/dispositivo.ts'
+export { pareceTelefono }
 
 /**
  * El modo final. Lo que pidió la URL le gana a la adivinanza SIEMPRE: quien escribió `?modo=` ya

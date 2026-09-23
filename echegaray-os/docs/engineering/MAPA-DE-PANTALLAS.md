@@ -182,3 +182,83 @@ ninguna pantalla aprobada: se mueven entradas, se unifican duplicados y se retir
 8. `/mi-cuenta/{legajo,horas,documentos}` para el operario: ¿se le muestra sólo `/mi-informacion/*` (teléfono) y se cierra la versión escritorio?
 9. `/mi-informacion/efectivo/devolver` no tiene enlace interno: ¿se llega sólo por el aviso del bot, como `firmar`?
 10. `/portal/avance` está anunciado «más adelante» en el portal del cliente: ¿queda en el menú del cliente como promesa o se oculta hasta que exista?
+
+## (e) Lo que se hizo el 23/09
+
+El dueño aprobó la propuesta (c) con «hacelo» y resolvió las diez dudas de (d). Todo lo de abajo está en código,
+con `typecheck` limpio, `eslint` sin errores en los archivos tocados y 118 tests `node --test` en verde (los de
+navegación, aterrizaje, áreas, ubicación, portal, campo, empleado, jefe y los dos módulos nuevos de `shared`).
+Nada de base, RLS, cálculos ni datos. Ningún archivo ni ruta se borró.
+
+### Mapa definitivo
+
+| | Escritorio (D/A/J) | Teléfono |
+|---|---|---|
+| Inicio `/` | D/A/J → `/administracion` → `/clientes` | O → `/hoy` · **J → `/obra/hoy`** (por `sec-ch-ua-mobile`/User-Agent, `shared/utils/dispositivo.ts`) · C → `/portal` |
+| Nivel 1 | Administración · Obras · Analíticas (D/A) · Herramientas | J: barra Hoy · Tareas · Avance · Gente (`/obra/*`) · O: Hoy · Trabajo · Horas · Yo |
+| Administración (nivel 2) | Clientes · Personal · Compras · Impuestos (D/A) · Presupuestos (D/A) · **Documentos (D/A)** · **Fuentes** | — |
+| Personal | Plantel · **Horas** (`?vista=asistencia`, con enlaces «Cargar asistencia», «Semana por persona», «En obra ahora») · Liquidación (D/A) · Cargar día · Correcciones (migas a Personal) | Horas en modo día (ya existía) |
+| Fuentes (`/integraciones`) | Pedidos (`/integraciones/pedidos-materiales`) · Movimientos (→ `/herramientas/movimientos`) · Fuentes | — |
+| Obras | `/obras` (Tabla · Gantt) · `/obras/[obra]` 5 vistas · Economía en `/administracion/obras/[obra]` | J: `/obra/hoy` → Avance masivo · **Campo** (Parte · Problema · Herramientas · «todo lo de campo») · Efectivo |
+| Campo `/campo` | (igual, sin header: se llega por «ver como» o URL) | **Del jefe**: flecha «‹» a `/obra/hoy` (D/A a `/`); O es redirigido a `/hoy`. Filas: Parte · Material · Problema · Asistencia (→ carga única) · Herramientas · Movimientos (→ M07 Mover) |
+| Cuenta propia | `/mi-cuenta/{legajo,horas,documentos}` con enlace «Ver en la versión del teléfono» (< `lg`) | `/mi-informacion/{legajo,horas,documentos}` con enlace «Ver en la versión de escritorio» (≥ `lg`). Nombres unificados: «Mis documentos» (antes «Mis papeles») |
+| Menú de usuario | Ver como (D) · **Mi obra en el teléfono (J)** · Cargar asistencia (< `md`) · Mi cuenta · Usuarios (D/A) · Salir | — |
+| Portal cliente | Inicio · Pagos · Facturas · Documentos · Terminadas (**Avance ya no se dibuja**) | idem |
+
+### Movidas / unificadas / retiradas de navegación
+
+- **Movidas**: `/documentos` y `/integraciones` («Fuentes») entran a la barra de Administración (`areasAdmin.ts · DESTINOS`,
+  7 destinos); `solapaActiva('/integraciones')` = Administración. «Semana por persona» y «En obra ahora» se enlazan desde Horas.
+  `/campo` cuelga de `/obra/hoy`. Correcciones (`/administracion/asistencia`) vuelve a Personal (migas) y en la obra se llama
+  «Correcciones de asistencia», no «Asistencia».
+- **Unificadas**: carga del día = una sola (`/administracion/personas/asistencia`); movimientos = uno solo (`/herramientas/movimientos`);
+  detección de teléfono = una sola (`shared/utils/dispositivo.ts`, antes duplicada en `vistaDeAsistencia.ts`); raíz del jefe =
+  una sola (`shared/auth/areas.ts · INICIO_JEFE_TELEFONO`, la leen `features/auth` y `features/jefe`); las dos caras de la cuenta
+  propia = un mapa (`shared/utils/cuentaPropia.ts`).
+- **Retiradas de toda navegación** (rutas intactas): `/campo/asistencia` (redirige), `/integraciones/movimientos` (redirige),
+  «Herramientas» de `NavOperacion`, «Parte de campo →» de `/mi-trabajo`, «Avance» del portal, `/os`, `/aprobaciones`, `/reportes`,
+  `/calendario-financiero`, `/xsas`, `/descargas` (ya no tenían enlace; confirmado que se quedan sin él).
+
+### Diferencias desktop/mobile que quedan, y por qué
+
+- J: inicio `/obra/hoy` sólo en teléfono; en escritorio Administración (decisión 3). El menú de usuario ofrece «Mi obra en el
+  teléfono» en cualquier ancho para que la puerta sea visible también desde escritorio.
+- `/campo/*` sigue sin header ni barra inferior: es el árbol de herramientas M01–M14 aprobado el 21/09; la vuelta ahora es
+  explícita en cada nivel (sub-pantalla → «Campo» → «Hoy»).
+- Cuenta propia en dos árboles (decisión 8): se cruzan con enlaces por ancho, sin redirects.
+- Avance masivo sigue con dos formularios (`/obras/[obra]/avance-masivo` y `/obra/avance-masivo`): por dispositivo, sin puente;
+  no era una duda y no se tocó.
+
+### Rutas afectadas y redirecciones
+
+| Ruta | Qué pasa ahora |
+|---|---|
+| `/` | J desde teléfono → `/obra/hoy`; resto igual (`destinoDeLaHome(rol, telefono)`; login y recuperación pasan por lo mismo) |
+| `/campo/asistencia?obra=&dia=` | `redirect()` de Next a `/administracion/personas/asistencia?obra=&dia=` (`hrefCargaDeAsistencia`) |
+| `/integraciones/movimientos` | `redirect()` a `/herramientas/movimientos` |
+| `/campo` | rol `campo` → `redirect('/hoy')`; jefe/D/A la ven con flecha de vuelta |
+| `/integraciones`, `/integraciones/pedidos-materiales` | mismas rutas, títulos «Fuentes» y «Pedidos de materiales», solapa Fuentes encendida |
+| `/documentos` | misma ruta, ahora con solapa (D/A) |
+
+### Sin acceso, candidatas a retiro (ningún `Link`/`redirect` en `src/` salvo entre ellas)
+
+`/os` (sólo desde un reporte generado), `/aprobaciones`, `/reportes`, `/calendario-financiero` (sólo desde `/os`), `/xsas`
+(sólo por URL externa del bot), `/descargas` (nadie), `/obras/[obra]/cronograma`, `/integraciones/herramientas`,
+`/mi-trabajo/tareas` (redirects sin quien los enlace). `MovimientosGlobal` y `getMovimientosGlobal` (feature integraciones)
+quedaron sin consumidor tras el redirect: código muerto, no borrado.
+
+### Lo que NO se hizo, y por qué
+
+- No se renombró `/administracion/asistencia` → `/administracion/personas/correcciones`: son 12 referencias en `src/`
+  (`revalidatePath`, enlaces, home de administración) más seis specs de Playwright; el nombre engañoso se corrigió donde se lee
+  (migas, subtab de la obra, `ubicacion.ts`) sin mover la URL. Si el dueño lo quiere, es una tarea aparte con redirect.
+- No se tocó `CAMPO_RUTAS_PERMITIDAS` (permisos del middleware): `/campo/herramientas` se abre por QR desde el rol campo y
+  `/integraciones/movimientos` sigue permitida porque ahora redirige a un módulo que ya puede ver.
+- La solapa «Administración» sigue aterrizando en `/clientes`: no existe un resumen de Administración (se retiró el 09/09 por
+  REALIDAD ÚNICA) y el nombre de nivel 1 lo fijó el dueño. La pantalla lo dice con las dos barras (Administración › Clientes).
+- No se borraron los redirects fósiles ni las pantallas huérfanas: la decisión 2 dice retirar de la navegación, no borrar.
+- `/presupuestos/[presupuesto]` ya tenía «Cartera» en `BarraIdentidad` y la partida ya tenía migas (hallazgo 24 estaba mal).
+- `/mi-informacion/efectivo` ya enlazaba «Devolver efectivo» (`ir-devolver`, decisión 9): verificado, no había nada que agregar.
+- Specs de Playwright que apuntan a `/campo/asistencia` (`tests/asistencia-por-obra`, `asistencia-admin-movil`,
+  `horas-declaran-presencia`, `presente-carga-horas-por-defecto`, `design-v2-conformidad`, `shell-dos-areas`) van a seguir el
+  redirect; no se corrieron (la suite satura la VM) y hay que revisarlas antes de firmar.

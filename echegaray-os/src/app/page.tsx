@@ -1,7 +1,9 @@
 import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { destinoDeLaHome } from '@/features/auth/types/navegacion'
 import { getPerfilActual } from '@/features/auth/services/authService'
+import { pareceTelefonoSegun } from '@/shared/utils/dispositivo'
 
 // LA RAÍZ — «inicio» tiene que significar algo distinto para cada nivel.
 //
@@ -20,5 +22,7 @@ export default async function Home() {
   // Sin perfil se cae al nivel MENOS privilegiado, igual que la navegación: el modo de fallar de un
   // default permisivo acá es aterrizar a alguien en la pantalla del dinero.
   const { data: perfil } = await getPerfilActual(supabase, user.id)
-  redirect(destinoDeLaHome(perfil?.rol))
+  // El teléfono sólo cambia el inicio del jefe de obra (J01, dueño 23/09/2026). Esta página es un
+  // redirect por petición, sin caché compartida: mirar el dispositivo acá no envenena a nadie.
+  redirect(destinoDeLaHome(perfil?.rol, pareceTelefonoSegun(await headers())))
 }

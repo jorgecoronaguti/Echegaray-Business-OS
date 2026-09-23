@@ -251,13 +251,26 @@ export default async function JefeHoyPage({
           Pedir material y subir foto todavía no tienen dónde escribir: los pedidos se cargan en la
           app de materiales y la foto viaja como enlace al registrar un avance.
         </p>
+        {/* ═══ CAMPO CUELGA DE HOY (dueño, 23/09/2026 · mapa de pantallas, duda 4) ═══
+            `/campo` (parte diario, impedimento, asistencia, herramientas por QR) es del jefe y no tenía
+            entrada desde su propio perfil: se enlazaba sólo desde `/mi-trabajo`, la pantalla del
+            empleado, que no puede escribir nada de eso. Son los mismos accesos de 88px de arriba. */}
+        <RotuloSeccion icono="obra" margenArriba={20}>Campo</RotuloSeccion>
+        <div style={{ display: 'flex', gap: 10, marginTop: 10 }} data-testid="accesos-campo">
+          <Acceso href="/campo/parte" icono="nota" texto="Parte de hoy" />
+          <Acceso href="/campo/impedimento" icono="bloqueo" texto="Problema" />
+          <Acceso href="/campo/herramientas" icono="equipo" texto="Herramientas" />
+        </div>
+        <Link href="/campo" prefetch={false} data-testid="ir-campo" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, marginTop: 4, fontSize: 12.5, color: C.muted, textDecoration: 'underline' }}>
+          Todo lo de campo: asistencia y movimientos
+        </Link>
       </div>
     </>
   )
 }
 
 /** Uno de los tres accesos de 88px. Sin `href` queda apagado: el motivo se escribe debajo del bloque. */
-function Acceso({ href, icono, texto }: { href?: string; icono: 'masivo' | 'pedido' | 'foto'; texto: string }) {
+function Acceso({ href, icono, texto }: { href?: string; icono: 'masivo' | 'pedido' | 'foto' | 'nota' | 'bloqueo' | 'equipo'; texto: string }) {
   const estilo = {
     flex: 1, background: C.surface, border: `1px solid ${C.linea}`, borderRadius: R.tarjeta,
     padding: '14px 8px', display: 'flex', flexDirection: 'column' as const, alignItems: 'center',

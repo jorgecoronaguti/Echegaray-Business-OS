@@ -123,8 +123,9 @@ export default async function MiTrabajoPage({
           <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: '8px 18px', fontSize: 12.5 }}>
             <Link href="/integraciones/pedidos-materiales" data-testid="ir-pedidos" style={{ color: C.muted }}>Pedir material →</Link>
             <Link href="/herramientas" data-testid="ir-herramientas" style={{ color: C.muted }}>Herramientas →</Link>
-            <Link href="/integraciones/movimientos" data-testid="ir-movimientos" style={{ color: C.muted }}>Movimientos →</Link>
-            <Link href="/campo" data-testid="ir-campo" style={{ color: C.muted }}>Parte de campo →</Link>
+            <Link href="/herramientas/movimientos" data-testid="ir-movimientos" style={{ color: C.muted }}>Movimientos →</Link>
+            {/* «Parte de campo →» SE RETIRÓ (dueño, 23/09/2026 · mapa de pantallas, duda 4): `/campo` es
+                del jefe de obra; el empleado no puede escribir un parte ni un impedimento. */}
           </div>
         </div>
       </PantallaEmpleado>

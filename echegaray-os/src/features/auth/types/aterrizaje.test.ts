@@ -141,3 +141,15 @@ test('un volver que sale del sitio cae al inicio: la URL no es un trampolín', (
     )
   }
 })
+
+// ═══ EL DISPOSITIVO VIAJA CON EL ATERRIZAJE (23/09/2026) ═══
+test('desde el teléfono el jefe entra por /obra/hoy, y sigue siendo la MISMA definición que la home', () => {
+  assert.equal(inicioDeRol('jefe_obra', true), destinoDeLaHome('jefe_obra', true))
+  assert.equal(inicioDeRol('jefe_obra', true), '/obra/hoy')
+  assert.equal(aterrizajeDeIngreso('jefe_obra', null, true), '/obra/hoy')
+  // El `volver` sigue ganando cuando el rol puede abrirlo: el deep link no se pierde por ser teléfono.
+  assert.equal(aterrizajeDeIngreso('jefe_obra', '/mi-cuenta', true), '/mi-cuenta')
+  // Y para el resto el teléfono no mueve nada.
+  assert.equal(aterrizajeDeIngreso('direccion', null, true), destinoDeLaHome('direccion'))
+  assert.equal(aterrizajeDeIngreso('campo', null, true), '/hoy')
+})

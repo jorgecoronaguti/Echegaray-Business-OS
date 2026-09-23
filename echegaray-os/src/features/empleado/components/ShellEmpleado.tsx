@@ -1,9 +1,12 @@
 'use client'
 
+import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { VERSIONES_DE_CUENTA, type ParteDeCuenta } from '@/shared/utils/cuentaPropia'
 import type { ReactNode } from 'react'
 import { CONTEXTOS, contextoActivo, esRaiz } from './shell-logica'
 import { MarcoMovil, BarraContextos, TopBarDetalle } from '@/shared/components/movil/Piezas'
+import { C } from '@/shared/components/movil/tokens'
 import type { NombreIcono } from '@/shared/components/movil/Iconos'
 
 // NO se re-exporta `inicialesDe` acá: este módulo es de cliente, y re-exportar una función pura
@@ -76,11 +79,14 @@ export function ShellEmpleado({ children }: { children: ReactNode }) {
  * invariante no queda en la buena voluntad: la mide `pantallas-empleado.test.ts`.
  */
 export function PantallaEmpleado({
-  titulo, sub, volver, children, acciones, franja,
+  titulo, sub, volver, children, acciones, franja, parte,
 }: {
   titulo: string
   sub?: ReactNode
   volver?: { href: string; label: string }
+  /** Qué parte de la cuenta es (legajo, horas, documentos): con eso se ofrece la MISMA pantalla en
+   *  su versión de escritorio, sólo desde `lg`. Ver `shared/utils/cuentaPropia.ts`. */
+  parte?: ParteDeCuenta
   children: ReactNode
   /** El objetivo de 44 de la derecha del topbar: historial, buscar, «más». */
   acciones?: ReactNode
@@ -90,6 +96,13 @@ export function PantallaEmpleado({
   return (
     <>
       <TopBarDetalle volver={volver} titulo={titulo} sub={sub} accion={acciones} extra={franja} />
+      {/* LAS DOS CARAS SE ENLAZAN (dueño, 23/09/2026 · duda 8): en una pantalla ancha esta misma
+          pantalla existe con header y tabla; en el teléfono el enlace no se dibuja. */}
+      {parte && (
+        <Link href={VERSIONES_DE_CUENTA[parte].escritorio} prefetch={false} data-testid="ir-version-escritorio" className="hidden lg:block" style={{ padding: '10px 16px 0', fontSize: 12.5, color: C.muted, textDecoration: 'underline' }}>
+          Ver en la versión de escritorio
+        </Link>
+      )}
       <div style={{ padding: '16px 16px 24px' }}>{children}</div>
     </>
   )

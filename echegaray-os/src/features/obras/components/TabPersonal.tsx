@@ -301,7 +301,8 @@ export function TabPersonal({
               items={[
                 { label: 'Hoy en obra', activo: true, testid: 'sub-hoy-en-obra' },
                 { href: `/obras/${obraId}/dotacion`, label: 'Dotación', testid: 'sub-dotacion' },
-                { href: '/administracion/asistencia', label: 'Asistencia', testid: 'sub-asistencia' },
+                // El nombre de lo que abre (23/09/2026): la cola de correcciones, no la carga.
+                { href: '/administracion/asistencia', label: 'Correcciones de asistencia', testid: 'sub-asistencia' },
               ]}
             />
           }

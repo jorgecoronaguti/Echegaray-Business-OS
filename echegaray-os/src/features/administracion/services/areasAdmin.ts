@@ -27,7 +27,7 @@
 //     v4 elimina además la banda de señales: lo que falta se marca en la fila que lo tiene.
 //   · DOCUMENTOS era un repositorio general de archivos. Los papeles se leen colgados de su obra,
 //     su persona, su cliente o su proveedor —donde ya viven las fichas—; un catálogo transversal no
-//     contesta ninguna pregunta del día.
+//     contesta ninguna pregunta del día. (VOLVIÓ el 23/09/2026 por decisión del dueño: ver abajo.)
 //   · BASE MAESTRA se fue a Presupuestos: tareas tipo y recursos no son administración, son la
 //     materia con la que se cotiza. Se enlaza desde `/presupuestos`.
 //
@@ -122,6 +122,17 @@ export const DESTINOS: readonly Destino[] = [
     clave: 'presupuestos', titulo: 'Presupuestos', href: '/presupuestos', grupo: 'registro',
     absorbe: ['/administracion/base-maestra'],
   },
+  // ═══ DOCUMENTOS Y FUENTES ENTRAN A LA BARRA (dueño, 23/09/2026 · mapa de pantallas, dudas 1 y 6) ═══
+  //
+  // `/documentos` (el archivo de la empresa) estaba HUÉRFANA: ninguna barra ni enlace la abría desde
+  // el 26/08. El dueño decidió que se queda y que se enlaza desde Administración. Sigue en
+  // `RUTAS_SOLO_ECONOMIA`, así que `destinosVisibles` no se la dibuja al jefe de obra.
+  //
+  // `/integraciones` se titulaba «Operación» y colgaba de Obras sin estar en ninguna barra. Es el
+  // estado de las conexiones del OS con AppSheet y Drive —«Fuentes»—, y eso es administración, no
+  // obra. Sus subrutas (Pedidos de materiales) encienden esta misma solapa por prefijo.
+  { clave: 'documentos', titulo: 'Documentos', href: '/documentos', grupo: 'registro' },
+  { clave: 'fuentes', titulo: 'Fuentes', href: '/integraciones', grupo: 'registro' },
 ] as const
 
 /**

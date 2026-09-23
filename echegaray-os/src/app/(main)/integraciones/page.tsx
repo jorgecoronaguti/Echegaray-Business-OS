@@ -44,7 +44,7 @@ export default async function IntegracionesPage() {
 
   return (
     <PageShell
-      title="Operación"
+      title="Fuentes"
       subtitle="Dónde y cómo se conecta el OS con los sistemas de la empresa, y qué falta para desbloquear cada uno. El estado y la salud los escribe el propio OS."
     >
       <div className="space-y-5">

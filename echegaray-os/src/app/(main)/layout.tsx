@@ -88,6 +88,8 @@ async function HeaderConUsuario() {
       // MISMA PUERTA QUE LA PANTALLA. Si el rol no puede abrir Personal, el menú no le ofrece un
       // atajo que el middleware va a rebotar: un ítem que no puede funcionar enseña que la app miente.
       cargaAsistencia={puedeVerRuta(rol, '/administracion/personas')}
+      // La obra en el teléfono (J01) es del jefe de obra: para los demás el ítem no existe en el HTML.
+      miObraTelefono={rol === 'jefe_obra'}
       // «VER COMO» (dueño, 22/09/2026). Va con el rol REAL, no con el mirado: preguntando por el
       // mirado, un Dirección que se puso los ojos de `campo` perdería el menú desde el que salir.
       verComo={verComo}

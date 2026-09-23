@@ -2,13 +2,15 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { DESTINOS, NAVEGABLES, destinoActivo } from './destinos.ts'
 
-test('el menú son cinco destinos; sólo Avance se dibuja sin navegar', () => {
+test('el menú son cinco destinos y ninguno es una promesa', () => {
   // Terminadas volvió el 10/09/2026: se había frenado porque decidía «obra terminada» con
   // `public.obras` mientras el cronograma vive en `obra_canonica`, y le contestaba «0 obras» a
-  // clientes que sí las tienen. Ahora lee la canónica. Avance sigue en gris: no existe el módulo.
+  // clientes que sí las tienen. Ahora lee la canónica. Avance SE OCULTÓ el 23/09/2026 (dueño, duda 10
+  // del mapa de pantallas): no existe el módulo y no se dibuja hasta que exista.
   assert.equal(NAVEGABLES.length, 5)
   assert.deepEqual(NAVEGABLES.map((d) => d.rotulo), ['Inicio', 'Pagos', 'Facturas', 'Documentos', 'Terminadas'])
-  assert.equal(DESTINOS.find((d) => d.rotulo === 'Avance')?.masAdelante, true, 'Avance se dibuja pero no navega')
+  assert.equal(DESTINOS.find((d) => d.rotulo === 'Avance'), undefined, 'Avance no se dibuja hasta que exista')
+  assert.equal(DESTINOS.length, NAVEGABLES.length, 'nada del menú está en gris')
   assert.equal(DESTINOS.find((d) => d.rotulo === 'Terminadas')?.masAdelante, undefined)
 })
 

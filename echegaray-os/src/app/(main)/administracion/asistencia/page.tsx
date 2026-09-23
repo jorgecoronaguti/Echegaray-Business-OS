@@ -63,7 +63,7 @@ export default async function CorreccionesAsistenciaPage({ searchParams }: {
   if (!esAdministracion(perfil.data?.rol ?? null)) {
     return (
       <PantallaV2>
-        <Migas volverA="/administracion" padre="Trabajo" actual="Correcciones de asistencia" />
+        <Migas volverA="/administracion/personas" padre="Personal" actual="Correcciones de asistencia" />
         <div style={{ padding: '16px 20px' }}>
           <Aviso tono="info">Esta pantalla es de Administración.</Aviso>
         </div>
@@ -88,7 +88,7 @@ export default async function CorreccionesAsistenciaPage({ searchParams }: {
 
   return (
     <PantallaV2>
-      <Migas volverA="/administracion" padre="Trabajo" actual="Correcciones de asistencia" />
+      <Migas volverA="/administracion/personas" padre="Personal" actual="Correcciones de asistencia" />
 
       {/* EL NÚMERO GRANDE ES LA COLA, NO LO RESUELTO: se abre esta pantalla para saber cuánto falta. */}
       <TitularDeCola

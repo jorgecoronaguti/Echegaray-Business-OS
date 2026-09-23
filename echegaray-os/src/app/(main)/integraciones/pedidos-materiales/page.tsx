@@ -53,8 +53,8 @@ export default async function PedidosMaterialesPage() {
 
   return (
     <PageShell
-      title="Operación"
-      subtitle="Lo pedido, lo que hay en obra y lo que se movió, en todas las obras. Cada fila dice a qué obra pertenece."
+      title="Pedidos de materiales"
+      subtitle="Lo pedido en todas las obras, desde la app de AppSheet. Cada fila dice a qué obra pertenece."
       right={
         <a
           href={APPSHEET_URL}

@@ -4,6 +4,9 @@
 // (`cuadrilla_panel`, `presencia_del_dia`, `periodo_hh_panel`) y con una sola ruta las tres
 // consultas correrían siempre, para mostrar una. Además así cada vista se puede compartir por su
 // URL, que es como Administración pasa un problema a Dirección.
+//
+// «Asistencia» (la semana por persona) se enlaza también desde Horas (`/administracion/personas
+// ?vista=asistencia`) desde el 23/09/2026: no es una entrada suelta, es una vista de Personal.
 
 import { SubTabs } from '@/shared/components/ds'
 
