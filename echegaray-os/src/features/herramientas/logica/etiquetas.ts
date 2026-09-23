@@ -5,6 +5,7 @@
 // layout en píxeles sale corrido según el zoom del navegador y la etiqueta queda cortada por el QR.
 
 import type { Activo } from '../types.ts'
+import type { Unidad } from './unidades.ts'
 
 export const HOJA = { ancho: 210, alto: 297 } as const
 export const ETIQUETA = { ancho: 50, alto: 25 } as const
@@ -45,24 +46,42 @@ export function hojas<T>(items: T[]): T[][] {
 
 export type MotivoCola = 'nunca_impresa' | 'alta_desde_obra' | 'pedida'
 
+export interface ItemEtiqueta {
+  activo: Activo
+  motivo: MotivoCola
+  /** Lo que va impreso: el código del activo o, si se pidió una unidad (BAL-001/3), el de la unidad. */
+  codigo: string
+}
+
 /**
  * La cola: lo pedido explícitamente (desde el inventario o una ficha) primero y en el orden pedido;
  * después lo vivo que nunca se imprimió, con las altas desde obra adelante. Sin repetidos; la baja no.
+ * Un código de unidad pedido (BAL-001/3, migración 20260923T1500) imprime la etiqueta de ESA unidad con el
+ * nombre del lote: sólo entra por pedido, nunca por «nunca impresa» (el lote es el que lleva esa marca).
  */
-export function colaDeEtiquetas(activos: Activo[], pedidos: string[] = []): { activo: Activo; motivo: MotivoCola }[] {
+export function colaDeEtiquetas(activos: Activo[], pedidos: string[] = [], unidades: readonly Unidad[] = []): ItemEtiqueta[] {
   const porCodigo = new Map(activos.map((a) => [a.codigo, a]))
+  const unidadPorCodigo = new Map(unidades.map((u) => [u.codigo, u]))
   const vistos = new Set<string>()
-  const out: { activo: Activo; motivo: MotivoCola }[] = []
+  const out: ItemEtiqueta[] = []
   for (const c of pedidos) {
+    const u = unidadPorCodigo.get(c)
+    if (u) {
+      const lote = activos.find((a) => a.id === u.activo_id)
+      if (!lote || lote.estado === 'baja' || u.estado === 'baja' || vistos.has(u.codigo)) continue
+      vistos.add(u.codigo)
+      out.push({ activo: lote, motivo: 'pedida', codigo: u.codigo })
+      continue
+    }
     const a = porCodigo.get(c)
     if (!a || a.estado === 'baja' || vistos.has(a.id)) continue
     vistos.add(a.id)
-    out.push({ activo: a, motivo: 'pedida' })
+    out.push({ activo: a, motivo: 'pedida', codigo: a.codigo })
   }
   const pendientes = activos
     .filter((a) => a.estado !== 'baja' && !a.etiqueta_impresa_en && !vistos.has(a.id))
     .sort((x, y) => Number(y.alta_desde_obra) - Number(x.alta_desde_obra) || x.codigo.localeCompare(y.codigo))
-  for (const a of pendientes) out.push({ activo: a, motivo: a.alta_desde_obra ? 'alta_desde_obra' : 'nunca_impresa' })
+  for (const a of pendientes) out.push({ activo: a, motivo: a.alta_desde_obra ? 'alta_desde_obra' : 'nunca_impresa', codigo: a.codigo })
   return out
 }
 

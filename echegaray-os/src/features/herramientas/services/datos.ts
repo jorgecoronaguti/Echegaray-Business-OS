@@ -15,6 +15,8 @@ import { codigosDeObra } from '@/shared/services/codigosDeObra'
 import { armarParque, type Parque } from '../logica/parque'
 import { faltaMigracion } from '../logica/falta-migracion'
 import { COLUMNAS_PAPEL, type Papel } from '../logica/papeles'
+import { COLUMNAS_REVISION, COLUMNAS_REVISION_VIGENTE, type Revision, type RevisionVigente } from '../logica/revision'
+import { COLUMNAS_UNIDAD, type Unidad } from '../logica/unidades'
 import {
   COLUMNAS_ACTIVO, COLUMNAS_AJUSTE, COLUMNAS_EXISTENCIA, COLUMNAS_INCIDENCIA, COLUMNAS_LECTURA, COLUMNAS_MOVIMIENTO, COLUMNAS_UBICACION,
   type Activo, type Ajuste, type Existencia, type Incidencia, type LecturaUso, type Movimiento, type ObraIndice, type Ubicacion,
@@ -68,10 +70,14 @@ export async function leerOperadores(): Promise<{ id: string; nombre: string }[]
   }
 }
 
+function numerosDeRevision<T extends Revision>(r: T): T {
+  return { ...r, lectura: r.lectura == null ? null : Number(r.lectura), costo: r.costo == null ? null : Number(r.costo) }
+}
+
 export async function leerParque(): Promise<Lectura> {
   try {
     const supabase = await createClient()
-    const [activos, ubicaciones, movimientos, incidencias, obras, perfiles, usuario, categorias, lecturas, existencias, ajustes, papeles] = await Promise.all([
+    const [activos, ubicaciones, movimientos, incidencias, obras, perfiles, usuario, categorias, lecturas, existencias, ajustes, papeles, unidades, revisiones, vigentes] = await Promise.all([
       supabase.from('activo').select(COLUMNAS_ACTIVO).order('codigo').limit(TOPE),
       supabase.from('ubicacion').select(COLUMNAS_UBICACION).limit(TOPE),
       supabase.from('activo_movimiento').select(COLUMNAS_MOVIMIENTO).order('fecha_hora', { ascending: false }).limit(TOPE),
@@ -84,7 +90,13 @@ export async function leerParque(): Promise<Lectura> {
       supabase.from('activo_existencia').select(COLUMNAS_EXISTENCIA).limit(TOPE),
       supabase.from('activo_ajuste').select(COLUMNAS_AJUSTE).order('creado_en', { ascending: false }).limit(TOPE),
       supabase.from('activo_papel_vigente').select(COLUMNAS_PAPEL).limit(TOPE),
+      supabase.from('activo_unidad').select(COLUMNAS_UNIDAD).order('codigo').limit(TOPE),
+      supabase.from('activo_revision').select(COLUMNAS_REVISION).order('fecha', { ascending: false }).limit(TOPE),
+      supabase.from('activo_revision_vigente').select(COLUMNAS_REVISION_VIGENTE).limit(TOPE),
     ])
+    // Las unidades con código (20260923T1500) y la revisión (20260923T1510): sin esas tablas el resto del
+    // módulo anda igual y la ficha dice «sin la migración», nunca «ninguna» ni «al día».
+    for (const r of [unidades, revisiones, vigentes]) if (r.error && !faltaMigracion(r.error)) return { estado: 'error', mensaje: r.error.message }
     // Las existencias por lugar son de 20260922T1300: sin esa tabla, cada activo está entero en su lugar.
     if (existencias.error && !faltaMigracion(existencias.error)) return { estado: 'error', mensaje: existencias.error.message }
     for (const r of [activos, ubicaciones, movimientos, incidencias]) {
@@ -120,6 +132,12 @@ export async function leerParque(): Promise<Lectura> {
         ajustes: ajustes.error ? [] : ((ajustes.data ?? []) as unknown as Ajuste[]),
         papeles: papeles.error ? null : ((papeles.data ?? []) as unknown as Papel[]).map((p) => ({
           ...p, dias: p.dias == null ? null : Number(p.dias),
+        })),
+        unidades: unidades.error ? null : ((unidades.data ?? []) as unknown as Unidad[]),
+        // `lectura` y `costo` son numeric: PostgREST los manda como string; se normalizan al leer.
+        revisiones: revisiones.error ? null : ((revisiones.data ?? []) as unknown as Revision[]).map(numerosDeRevision),
+        revisionesVigentes: vigentes.error ? null : ((vigentes.data ?? []) as unknown as RevisionVigente[]).map((r) => ({
+          ...numerosDeRevision(r), dias: r.dias == null ? null : Number(r.dias),
         })),
       }),
       yo: { id: usuario?.id ?? null, nombre: perfil?.data?.nombre ?? null },

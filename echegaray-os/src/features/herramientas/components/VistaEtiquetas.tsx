@@ -39,15 +39,15 @@ export function VistaEtiquetas({ pedidos }: { pedidos: string[] }) {
   const { parque, avisar, refrescar } = useHerramientas()
   const soloPedidos = pedidos.length > 0
   const cola = useMemo(() => {
-    const c = colaDeEtiquetas(parque.activos, pedidos)
+    const c = colaDeEtiquetas(parque.activos, pedidos, parque.unidades ?? [])
     return soloPedidos ? c.filter((x) => x.motivo === 'pedida') : c
-  }, [parque.activos, pedidos, soloPedidos])
+  }, [parque.activos, parque.unidades, pedidos, soloPedidos])
   const pendientes = colaDeEtiquetas(parque.activos).length
   const [impreso, setImpreso] = useState(false)
   const [todos, setTodos] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [marcando, setMarcando] = useState(false)
-  const ejemplo = cola[0]?.activo ?? null
+  const ejemplo = cola[0] ?? null
 
   function imprimir() {
     window.print()
@@ -56,7 +56,8 @@ export function VistaEtiquetas({ pedidos }: { pedidos: string[] }) {
   async function marcar() {
     setMarcando(true)
     setError(null)
-    const r = await marcarEtiquetasImpresasAction(cola.map((x) => x.activo.id))
+    // Una unidad (BAL-001/3) marca impreso su lote: la marca vive en el activo, no en la unidad.
+    const r = await marcarEtiquetasImpresasAction([...new Set(cola.map((x) => x.activo.id))])
     setMarcando(false)
     if (!r.ok) return setError(r.error)
     avisar(`${r.dato} ${r.dato === 1 ? 'etiqueta quedó marcada impresa' : 'etiquetas quedaron marcadas impresas'}.`)
@@ -120,10 +121,10 @@ export function VistaEtiquetas({ pedidos }: { pedidos: string[] }) {
             <div>Activo</div><div>Código</div><div style={{ textAlign: 'right' }}>Etiqueta</div>
           </div>
           {cola.length === 0 && <div style={{ fontSize: '13px', color: V.apagado, padding: '10px 0' }}>No hay etiquetas pendientes: todo lo vivo tiene la suya.</div>}
-          {lista.map(({ activo: a, motivo }) => (
-            <div key={a.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 100px 120px', gap: 14, minHeight: 36, alignItems: 'center', borderBottom: `1px solid ${V.linea}`, fontSize: '13px' }}>
+          {lista.map(({ activo: a, motivo, codigo }) => (
+            <div key={codigo} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 100px 120px', gap: 14, minHeight: 36, alignItems: 'center', borderBottom: `1px solid ${V.linea}`, fontSize: '13px' }}>
               <div>{a.nombre}</div>
-              <div style={{ fontFamily: MONO, fontSize: '12px', color: V.apagado }}>{a.codigo}</div>
+              <div style={{ fontFamily: MONO, fontSize: '12px', color: V.apagado }}>{codigo}</div>
               <div style={{ textAlign: 'right', color: a.etiqueta_impresa_en && motivo === 'pedida' ? V.apagado : MOTIVO[motivo].c }}>
                 {a.etiqueta_impresa_en && motivo === 'pedida' ? 'reimprimir' : MOTIVO[motivo].t}
               </div>
@@ -141,7 +142,7 @@ export function VistaEtiquetas({ pedidos }: { pedidos: string[] }) {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={tituloBloque}>La etiqueta</div>
-          {ejemplo ? <Etiqueta codigo={ejemplo.codigo} nombre={ejemplo.nombre} escala={4.2} borde /> : <div style={{ fontSize: '12.5px', color: V.tenue }}>Sin etiquetas en cola.</div>}
+          {ejemplo ? <Etiqueta codigo={ejemplo.codigo} nombre={ejemplo.activo.nombre} escala={4.2} borde /> : <div style={{ fontSize: '12.5px', color: V.tenue }}>Sin etiquetas en cola.</div>}
           <div style={{ fontSize: '12.5px', color: V.apagado, lineHeight: 1.55 }}>
             50 × 25 mm. El código va también en texto: si el QR se arruina, se puede tipear a mano. Es la razón por la que nada del módulo depende del escáner.
           </div>
@@ -151,11 +152,11 @@ export function VistaEtiquetas({ pedidos }: { pedidos: string[] }) {
       <div className="hojas-etiquetas" aria-hidden>
         {hojas(cola).map((h, i) => (
           <div key={i} className="hoja-a4" style={{ position: 'relative', width: '210mm', height: '297mm', overflow: 'hidden' }}>
-            {h.map(({ activo: a }, j) => {
+            {h.map(({ activo: a, codigo }, j) => {
               const c = casilleros()[j]
               return (
-                <div key={a.id} style={{ position: 'absolute', left: `${c.x}mm`, top: `${c.y}mm` }}>
-                  <Etiqueta codigo={a.codigo} nombre={a.nombre} escala={1} unidad="mm" />
+                <div key={codigo} style={{ position: 'absolute', left: `${c.x}mm`, top: `${c.y}mm` }}>
+                  <Etiqueta codigo={codigo} nombre={a.nombre} escala={1} unidad="mm" />
                 </div>
               )
             })}

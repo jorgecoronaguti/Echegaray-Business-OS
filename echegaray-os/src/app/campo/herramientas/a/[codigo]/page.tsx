@@ -4,16 +4,21 @@ import { MarcoTelefono, primarioTelefono } from '@/features/herramientas/compone
 import { SinBaseTelefono } from '@/features/herramientas/components/campo/SinBaseTelefono'
 import { CodigoDesconocido } from '@/features/herramientas/components/campo/CodigoDesconocido'
 import { SacarFoto } from '@/features/herramientas/components/campo/SacarFoto'
+import { UnPapel } from '@/features/herramientas/components/Ficha'
 import { COLOR_TONO, MONO, SUPERFICIE, V } from '@/features/herramientas/components/estilo'
-import { diaMes, diaMesAnio } from '@/features/herramientas/components/formato'
+import { diaMes, diaMesAnio, mesAnio, pesos } from '@/features/herramientas/components/formato'
 import { normalizarCodigo } from '@/features/herramientas/logica/codigo'
 import { historial } from '@/features/herramientas/logica/historial'
 import { conLugar } from '@/features/herramientas/logica/lugar'
+import { partesDeUnidad } from '@/features/herramientas/logica/unidades'
+import { seRevisa } from '@/features/herramientas/logica/revision'
+import { Unidades } from '@/features/herramientas/components/Unidades'
 import {
   UNIDAD, seVerifica, textoLectura, textoVerificacion, ultimaLectura, verificacionDe,
 } from '@/features/herramientas/logica/verificacion'
+import { papelesDe } from '@/features/herramientas/logica/papeles'
 import {
-  ETIQUETA_ESTADO, MOTIVO_BAJA, TONO_ESTADO, autorDe, rotuloUbicacion, ultimoMovimiento,
+  ETIQUETA_ESTADO, MOTIVO_BAJA, TONO_ESTADO, autorDe, lugaresDe, rotuloUbicacion, ultimoMovimiento,
 } from '@/features/herramientas/logica/parque'
 
 // M03 · UNA HERRAMIENTA — dónde está, cómo está, qué hacer. Es lo que abre el QR en el teléfono.
@@ -32,7 +37,9 @@ export default async function UnaHerramienta({ params, searchParams }: {
   const volver = conLugar('/campo/herramientas', en)
   if (lectura.estado !== 'ok') return <SinBaseTelefono lectura={lectura} volver={volver} />
   const p = lectura.parque
-  const a = p.activos.find((x) => x.codigo === c)
+  // El QR de una unidad (BAL-001/3, migración 20260923T1500) abre la ficha de su lote.
+  const unidad = partesDeUnidad(c)
+  const a = p.activos.find((x) => x.codigo === c) ?? (unidad ? p.activos.find((x) => x.codigo === unidad.lote) : undefined)
   if (!a) return <CodigoDesconocido codigo={c} en={en ?? null} />
 
   const m = ultimoMovimiento(p, a.id)
@@ -42,6 +49,15 @@ export default async function UnaHerramienta({ params, searchParams }: {
   const renglones = historial(p, a.id)
   const verificable = seVerifica(a)
   const verif = verificable ? verificacionDe(p, a.id) : null
+  // Lo mismo que muestra la ficha de escritorio (paridad, dueño 23/09): compra, unidades por lugar,
+  // etiqueta y papeles. Sólo lectura acá; se editan desde la computadora.
+  const compra = [
+    a.compra_fecha ? `Comprada ${mesAnio(a.compra_fecha)}` : null,
+    a.compra_precio != null ? pesos(a.compra_precio) : null,
+    a.numero_serie ? `serie ${a.numero_serie}` : null,
+  ].filter(Boolean)
+  const reparto = !baja && a.cantidad > 1 ? lugaresDe(p, a.id) : []
+  const papeles = p.papeles ? papelesDe(p.papeles, a.id) : []
 
   return (
     <MarcoTelefono
@@ -59,6 +75,7 @@ export default async function UnaHerramienta({ params, searchParams }: {
           <div style={{ fontSize: '13px', color: a.categoria ? V.apagado : V.tenue, fontStyle: a.categoria ? undefined : 'italic' }}>
             {a.clase === 'rodado' ? `Rodado · ${a.patente ?? 'sin patente'}` : a.categoria ?? 'sin categoría'}
           </div>
+          {unidad && <div style={{ fontSize: '13px', color: V.apagado }} data-testid="unidad-escaneada">Unidad <span style={{ fontFamily: MONO }}>{c}</span> de {a.cantidad}</div>}
         </div>
       </div>
 
@@ -85,7 +102,35 @@ export default async function UnaHerramienta({ params, searchParams }: {
             {m ? `${quien ?? 'sin registro'} · ${diaMes(m.fecha_hora)}` : 'nunca'}
           </span>
         </Dato>
+        <Dato rotulo="Compra">
+          <span style={{ fontSize: '14px', ...(compra.length ? {} : { fontStyle: 'italic', color: V.tenue }) }} data-testid="ficha-compra">
+            {compra.length ? compra.join(' · ') : 'sin cargar'}
+          </span>
+        </Dato>
+        <Dato rotulo="Etiqueta">
+          <span style={{ fontSize: '14px', ...(a.etiqueta_impresa_en ? {} : { fontStyle: 'italic', color: V.tenue }) }}>
+            {a.etiqueta_impresa_en ? `impresa el ${diaMesAnio(a.etiqueta_impresa_en)}` : 'sin imprimir'}
+          </span>
+        </Dato>
       </div>
+
+      {reparto.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="ficha-reparto">
+          <div style={{ fontSize: '13px', color: V.apagado }}>Dónde están las {a.cantidad} unidades</div>
+          {reparto.map((e) => (
+            <div key={e.ubicacion_id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: '14px' }}>
+              <span>{rotuloUbicacion(p, e.ubicacion_id)}</span><span style={{ fontFamily: MONO }}>{e.cantidad}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {papeles.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="ficha-papeles">
+          <div style={{ fontSize: '13px', color: V.apagado }}>Papeles</div>
+          {papeles.map((pa) => <UnPapel key={pa.id} p={pa} />)}
+        </div>
+      )}
 
       {inc?.texto && (
         <div style={{ fontSize: '13.5px', color: V.tintaSuave, lineHeight: 1.5, borderLeft: `2px solid ${V.linea}`, paddingLeft: 12 }}>
@@ -102,6 +147,12 @@ export default async function UnaHerramienta({ params, searchParams }: {
               {verif.tipo === 'hoy' ? `hecha ${textoVerificacion(verif)}` : verif.tipo === 'sin_base' ? 'sin la migración' : `última: ${textoVerificacion(verif)}`}
             </span>
             <span style={{ color: V.tenue }}>›</span>
+          </Link>
+        )}
+        {seRevisa(a) && (
+          <Link href={conLugar(`/campo/herramientas/a/${encodeURIComponent(a.codigo)}/revision`, en)} prefetch={false} className="min-h-[52px]" data-testid="ir-revision"
+            style={{ minHeight: 52, display: 'flex', alignItems: 'center', borderBottom: `1px solid ${V.linea}`, fontSize: '14.5px' }}>
+            Ficha de revisión <span style={{ marginLeft: 'auto', color: V.tenue }}>›</span>
           </Link>
         )}
         {!baja && (
@@ -124,6 +175,7 @@ export default async function UnaHerramienta({ params, searchParams }: {
           </div>
         </details>
         {!baja && <SacarFoto activo={a.id} />}
+        <Unidades activo={a} unidades={p.unidades} variante="telefono" />
       </div>
     </MarcoTelefono>
   )

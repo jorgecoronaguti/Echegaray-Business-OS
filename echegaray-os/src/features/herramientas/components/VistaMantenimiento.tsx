@@ -16,12 +16,14 @@ import {
 } from '../logica/verificacion'
 import { useHerramientas } from './Espacio'
 import { Ficha } from './Ficha'
+import { FichaRevision } from './FichaRevision'
+import { RevisionesMantenimiento } from './RevisionesMantenimiento'
 import { SUPERFICIE, V, bajadaPagina, eyebrow, tituloPagina } from './estilo'
 
 const COLS = 'minmax(0,1.3fr) minmax(0,1fr) minmax(0,1.2fr) 80px'
 const ORDEN: GrupoMant[] = ['en_obra', 'en_taller', 'externa', 'otros']
 
-export function VistaMantenimiento({ activo }: { activo: string | null }) {
+export function VistaMantenimiento({ activo, revision }: { activo: string | null; revision: string | null }) {
   const { parque, abierto: panel } = useHerramientas()
   // Con un panel abierto (mover, alta, reportar…) el panel ocupa la derecha: la ficha se esconde para
   // que el listado no quede apretado entre las dos columnas.
@@ -32,6 +34,8 @@ export function VistaMantenimiento({ activo }: { activo: string | null }) {
   const total = ORDEN.reduce((s, g) => s + cola[g].length, 0)
   const viejo = Math.max(0, ...ORDEN.flatMap((g) => cola[g].map((x) => x.dias)))
   const elegido = activo ? parque.activos.find((a) => a.codigo === activo) ?? null : null
+  // `?revision=<código>` abre la ficha de revisión (RTO, service, seguro, inspección) en vez de la del activo.
+  const revisado = revision ? parque.activos.find((a) => a.codigo === revision) ?? null : null
 
   return (
     <div style={{ display: 'flex', alignItems: 'stretch', minHeight: 640 }}>
@@ -69,12 +73,15 @@ export function VistaMantenimiento({ activo }: { activo: string | null }) {
             })}
           </div>
         ))}
+        <RevisionesMantenimiento parque={parque} elegido={revisado?.codigo ?? null} />
         <SeOperanConGente parque={parque} />
       </div>
       <div style={{ width: 2, background: V.linea }} />
-      {!conPanel && elegido && (
+      {!conPanel && (elegido || revisado) && (
       <div style={{ width: 430, flexShrink: 0, padding: '22px 24px 28px', background: '#FFFFFF', position: 'sticky', top: 83, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 83px)', overflowY: 'auto', borderLeft: `1px solid ${V.linea}` }}>
-        <Ficha id={elegido.id} onCerrar={() => router.replace(ruta, { scroll: false })} />
+        {elegido
+          ? <Ficha id={elegido.id} onCerrar={() => router.replace(ruta, { scroll: false })} />
+          : <FichaRevision id={revisado!.id} onCerrar={() => router.replace(ruta, { scroll: false })} />}
       </div>
       )}
     </div>

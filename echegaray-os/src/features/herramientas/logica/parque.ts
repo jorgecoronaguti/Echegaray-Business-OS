@@ -7,6 +7,8 @@
 
 import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 import type { Papel } from './papeles.ts'
+import type { Revision, RevisionVigente } from './revision.ts'
+import type { Unidad } from './unidades.ts'
 import type { Activo, Ajuste, EstadoActivo, Existencia, Incidencia, LecturaUso, Movimiento, ObraIndice, TipoUbicacion, Ubicacion } from '../types.ts'
 
 export interface DatosParque {
@@ -38,6 +40,15 @@ export interface DatosParque {
    * `null`/ausente = la tabla todavía no existe: la pantalla dice «sin cargar», nunca «al día».
    */
   papeles?: Papel[] | null
+  /**
+   * Las unidades con código propio de cada lote (`activo_unidad`, migración 20260923T1500).
+   * `null`/ausente = la tabla todavía no existe: la ficha dice «sin la migración», nunca «ninguna».
+   */
+  unidades?: Unidad[] | null
+  /** El historial de revisiones (`activo_revision`, 20260923T1510). `null`/ausente = sin la migración. */
+  revisiones?: Revision[] | null
+  /** La vigente por tipo con sus días (`activo_revision_vigente`). `null`/ausente = sin la migración. */
+  revisionesVigentes?: RevisionVigente[] | null
 }
 
 export interface Parque extends DatosParque {
