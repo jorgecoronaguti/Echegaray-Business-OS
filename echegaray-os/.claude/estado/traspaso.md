@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: **2026-09-23 ~14:10 (−03)** · `origin/main` = **37ff3016**, checkout de producción en caa02ffa
+_actualizado: **2026-09-23 ~14:10 (−03)** · `origin/main` = **f554f3ac** (+ este traspaso), checkout de producción en f554f3ac
 (daemons reiniciados por `produccion-al-dia.mjs`)._
 
 **MOBILE POR NIVEL (dueño 13:00: «hace todas las vistas mobile · por nivel de usuario»), publicado:** barra de
@@ -8,8 +8,9 @@ abajo por rol en `(main)` y `/campo` (`barraTelefono.ts` + test, `BarraTelefono.
 `CTRL` 48 px, solapas de ficha corribles (`v2/BarraCorrible`); tres agentes dejaron a 390 Administración,
 Clientes/Presupuestos/Base maestra, Obras/Herramientas (sus informes: rutas y qué se ve, en el transcript). Mapa
 sección f. **QA visual: `next dev` NO respondió en la VM (25 min compilando)**; se apagó y las capturas van
-contra producción con `zzz-qa390.mjs` (sesión del dueño por enlace mágico, sólo lectura) — PENDIENTE de correr
-cuando Vercel esté Ready y corregir lo que se vea. Corralón cerrado en Compras (7 filas Pagado, pendiente $0,
+contra producción con `zzz-qa390.mjs` (sesión del dueño por enlace mágico, sólo lectura) — HECHO: 22 capturas contra producción
+(qa-390 del scratchpad), ninguna se corre de costado; corregidos presupuesto/ficha persona/Pendientes/filtros de Compras
+(f554f3ac, recapturado OK). Queda «QA PRUEBA — no usar» (COT-2026-003) en Presupuestos: el borrado quedó bloqueado, avisado al dueño. Corralón cerrado en Compras (7 filas Pagado, pendiente $0,
 cheque 330 número INFERIDO). Material sin columna Origen.
 
 **HECHO 23/09 (mañana), todo publicado:** el canal #efectivo lee la entrega como se escribe (53 frases
