@@ -38,7 +38,12 @@ import { SubirDocumentoProveedor } from './SubirDocumentoProveedor'
 
 const COLS = 'grid-cols-[minmax(0,1.6fr)_minmax(0,120px)_minmax(0,70px)_minmax(0,1fr)_minmax(0,130px)]'
   + ' max-[1249px]:grid-cols-[minmax(0,1.6fr)_minmax(0,120px)_minmax(0,70px)_minmax(0,130px)]'
+  // A 390px las tres pistas fijas (120 + 70 + 130 más los huecos) ya pasaban el ancho: el nombre
+  // del documento —lo único que identifica el papel— quedaba en cero. En el teléfono la categoría
+  // se suelta y la fecha y la baja miden lo justo.
+  + ' max-[767px]:grid-cols-[minmax(0,1fr)_auto_auto]'
 const SOLO_ANCHO = 'max-[1249px]:hidden'
+const SOLO_TABLET = 'max-[767px]:hidden'
 
 /** `panel` = el lateral de la cartera (344px). `ficha` = la cara Documentos de la ficha completa. */
 export type VarianteDocumentos = 'ficha' | 'panel'
@@ -68,7 +73,7 @@ export function DocumentosDelProveedor({ proveedorId, documentos, truncado, erro
               </div>
               <div className={`grid gap-[14px] ${COLS}`} style={{ ...ENCABEZADO, paddingLeft: 13 }}>
                 <RotuloCol>Documento</RotuloCol>
-                <RotuloCol>Categoría</RotuloCol>
+                <span className={`grid ${SOLO_TABLET}`}><RotuloCol>Categoría</RotuloCol></span>
                 <RotuloCol derecha>Fecha</RotuloCol>
                 <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Quién</RotuloCol></span>
                 <RotuloCol derecha>{' '}</RotuloCol>
@@ -169,7 +174,7 @@ function FilaAncha({ documento: d }: { documento: DocumentoProveedor }) {
         </span>
       </span>
 
-      <span className="truncate" style={{ fontSize: '12px', color: V.tintaSuave }}>
+      <span className={`truncate ${SOLO_TABLET}`} style={{ fontSize: '12px', color: V.tintaSuave }}>
         {ROTULO_CATEGORIA[d.categoria] ?? d.categoria}
       </span>
 

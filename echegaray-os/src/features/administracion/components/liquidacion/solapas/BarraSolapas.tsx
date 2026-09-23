@@ -30,7 +30,7 @@ export function BarraSolapas({ activa, hrefDe, escala }: {
     <div
       data-testid="solapas-liquidacion"
       style={{
-        display: 'flex', alignItems: 'center', gap: 16, padding: '11px 0',
+        display: 'flex', alignItems: 'center', gap: 16, rowGap: 8, padding: '11px 0', flexWrap: 'wrap',
         fontSize: '13px', borderBottom: `1px solid ${V.linea}`, position: 'relative',
       }}
     >

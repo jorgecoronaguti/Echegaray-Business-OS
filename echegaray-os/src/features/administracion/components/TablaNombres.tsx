@@ -21,6 +21,9 @@ import type { NombrePendiente, NombreResuelto } from '../types'
 const COLS
   = 'grid-cols-[minmax(220px,1.6fr)_minmax(0,90px)_minmax(0,140px)_minmax(0,110px)]'
   + ' max-[1249px]:grid-cols-[minmax(200px,1.6fr)_minmax(0,1fr)_minmax(0,104px)]'
+  // A 390px los 200px del texto más los 104 de «Vincular» dejaban ~25px para el importe. El texto
+  // cede (es el que se trunca) y el importe y la acción miden lo que miden.
+  + ' max-[767px]:grid-cols-[minmax(0,1fr)_auto_auto]'
 const SOLO_ANCHO = 'max-[1249px]:hidden'
 
 export function TablaNombres({ pendientes, seleccionado, hrefDe }: {

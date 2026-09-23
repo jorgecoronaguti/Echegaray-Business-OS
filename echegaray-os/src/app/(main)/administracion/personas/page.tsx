@@ -416,6 +416,18 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             />
           ) : (
             <div style={{ padding: '10px 20px 24px' }}>
+              {/* LA GRILLA DE LA QUINCENA SE USA EN COMPUTADORA. En el teléfono la pantalla ya cae en
+                  la carga del día (`modoDeAsistencia`); si alguien fuerza `modo=quincena`, la grilla
+                  rueda por dentro de su cinta pero dieciséis columnas de días en 390px no se leen. El
+                  aviso va ARRIBA, donde se entra, y el enlace lleva a la alternativa del teléfono. */}
+              <div className="pb-3 md:hidden">
+                <Aviso tono="info" testid="quincena-en-computadora">
+                  Esta grilla se usa en computadora.{' '}
+                  <Link prefetch={false} href={hrefDia({ obra: sp.obra, dia: sp.dia })} className="underline">
+                    Cargar la asistencia de un día
+                  </Link>
+                </Aviso>
+              </div>
               <BloqueAsistenciaQuincena
                 quincenaPedida={sp.quincena} hoy={hoy} q={sp.q} obra={sp.obra}
                 hrefDe={(quincena) => hrefAsistenciaCon(sp, { quincena })}
