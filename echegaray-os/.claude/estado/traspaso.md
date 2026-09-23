@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: **2026-09-23 ~11:05 (−03)** · `origin/main` = **b64192a3**, checkout de producción en ese
+_actualizado: **2026-09-23 ~11:05 (−03)** · `origin/main` = **14b37ebb**, checkout de producción en ese
 commit, daemons reiniciados y verificados con `servicios-al-dia.mjs`._
 
 **HECHO 23/09 (mañana), todo publicado:** el canal #efectivo lee la entrega como se escribe (53 frases
@@ -19,9 +19,13 @@ de las obras» · 2, 3, 6 hechos · 4 y 5 son planes en `docs/engineering/PLAN-*
 arreglada (subía dentro de la Server Action), paridad celular/PC, códigos por unidad y ficha de revisión
 técnica en Mantenimiento. Sin QA en navegador ni foto real subida: lo prueba el dueño.
 
-**PENDIENTE del dueño:** aprobar el mapa `docs/engineering/MAPA-DE-PANTALLAS.md` (10 dudas) antes de
-reorganizar la app · cheque 329 $1.086.200 (22/09) sin fila en el registro · N° de comprobante del echeq
-385 · si se borra también `jorge.o.corona+direccion-test@gmail.com` · aplicar 20260923T2000 (GRANT).
+**Tarde del 23/09, también publicado:** reorganización de la navegación según el mapa (sección e de
+`docs/engineering/MAPA-DE-PANTALLAS.md`; dudas resueltas por mí con el «hacelo» del dueño; SIN QA en
+navegador; 6 specs de Playwright siguen el redirect de /campo/asistencia) · chat #efectivo registra sin
+«para qué» · aviso de firma por mensaje directo · registro de cheques deduce el N° de comprobante (385 →
+0006-00008111 + 0006-00008199) · cheque 329 agregado como físico sin beneficiario · GRANT 20260923T2000
+aplicada · direccion-test bloqueada (no borrable: tiene comprobantes) · Arcor e-Cup: FCE 0001-00000054 en
+carga por el dueño, vence 20/11/2026; falta el N° de transacción para asentarlo en la cobranza.
 
 **ROTO a sabiendas:** los e2e que usaban `qa.campo@` / `[PRUEBA E2E] QA Campo` (8 specs) no tienen
 fixture; hay que hacerlos crear y borrar sus datos, no sembrar producción.
