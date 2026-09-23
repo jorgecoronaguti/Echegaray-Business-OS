@@ -9,6 +9,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { cantidadVisible, candidatos, categorias, cuentaPorEstado, filtrar, queryDe, sugerencias, totales, type Filtros, type FiltroEstado } from '../logica/inventario'
 import { ETIQUETA_ESTADO_CORTA, MOTIVO_BAJA, TONO_ESTADO, quienLaMovio, rotuloLugares, rotuloUbicacion, textoVisto, vistoEn, rotuloRodado, type Parque } from '../logica/parque'
+import { ACCION } from '../logica/acciones-lugar'
 import { editarActivoAction } from '../services/acciones'
 import type { Activo } from '../types'
 import { useHerramientas } from './Espacio'
@@ -82,7 +83,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
               Armar envío a obra
             </button>
             <button type="button" onClick={() => abrir({ tipo: 'alta' })} style={{ ...botonSecundario, height: 28, fontSize: '12.5px', padding: '0 10px' }} data-testid="nuevo-activo">
-              Nuevo activo
+              {ACCION.alta}
             </button>
           </div>
         </div>
@@ -137,7 +138,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
                 Mover o asignar a obra
               </button>
             )}
-            {vivosSel.length > 0 && <button type="button" onClick={() => abrir({ tipo: 'reportar', ids: vivosSel })} style={{ color: V.tintaSuave }}>Reportar problema</button>}
+            {vivosSel.length > 0 && <button type="button" onClick={() => abrir({ tipo: 'reportar', ids: vivosSel })} style={{ color: V.tintaSuave }}>{ACCION.reportar}</button>}
             {vivosSel.length > 0 && (
               <button type="button" style={{ color: V.tintaSuave }} data-testid="imprimir-seleccion"
                 onClick={() => router.push(`/herramientas/etiquetas?codigos=${encodeURIComponent(vivosSel.map((id) => parque.activoPorId.get(id)!.codigo).join(','))}`)}>
@@ -175,7 +176,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
         <div style={{ display: 'flex', flexDirection: 'column', marginTop: -18 }} role="table" aria-label="Inventario">
           {lista.length === 0 && (
             <div style={{ fontSize: '13.5px', color: V.apagado, padding: '18px 0' }} data-testid="inventario-vacio">
-              {parque.activos.length === 0 ? 'Todavía no hay activos cargados. Se cargan con «Nuevo activo».' : 'Nada coincide con estos filtros.'}
+              {parque.activos.length === 0 ? 'Todavía no hay activos cargados. Se cargan con «Dar de alta una herramienta».' : 'Nada coincide con estos filtros.'}
             </div>
           )}
           {lista.map((a) => (

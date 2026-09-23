@@ -2,11 +2,12 @@ import Link from 'next/link'
 import { leerParque } from '@/features/herramientas/services/datos'
 import { MarcoTelefono, FilaTelefono, primarioTelefono } from '@/features/herramientas/components/campo/MarcoTelefono'
 import { SinBaseTelefono } from '@/features/herramientas/components/campo/SinBaseTelefono'
-import { IcoAviso, IcoBuscar, IcoEscanear, IcoFlecha, IcoLista, IcoObra, IcoTaller } from '@/features/herramientas/components/iconos'
+import { IcoAviso, IcoBuscar, IcoEscanear, IcoFlecha, IcoLista, IcoObra, IcoReloj, IcoTaller } from '@/features/herramientas/components/iconos'
 import { AZUL, V } from '@/features/herramientas/components/estilo'
+import { ACCION, rotuloQueHay, rotuloVerificar, verificablesDelLugar } from '@/features/herramientas/logica/acciones-lugar'
 import { conLugar, lugaresParaElegir, resolverLugar } from '@/features/herramientas/logica/lugar'
 import { activosEn, conProblema } from '@/features/herramientas/logica/parque'
-import { seVerifica, textoVerificacion, verificacionDe } from '@/features/herramientas/logica/verificacion'
+import { textoVerificacion, verificacionDe } from '@/features/herramientas/logica/verificacion'
 
 // M01 · INICIO DE CAMPO — caminos por objetivo, y «Escanear» abajo, al alcance del pulgar.
 //
@@ -15,6 +16,18 @@ import { seVerifica, textoVerificacion, verificacionDe } from '@/features/herram
 // para elegirlo de la lista. Se agrega «Dar de alta una
 // herramienta» (M14 no tenía entrada propia más que el QR desconocido). Permisos iguales para todos:
 // cualquiera mueve entre cualquier lugar.
+//
+// PARIDAD CON LA COMPUTADORA (dueño, 23/09/2026). Cada fila de acá existe en Ubicaciones de escritorio
+// con el mismo nombre (`DetalleLugar`); los rótulos salen de `logica/acciones-lugar`. Lo que la PC tiene
+// y acá NO, con su motivo:
+//   · Resumen (D01): tablero para administrar; en obra no se decide con él.
+//   · Planilla y Etiquetas: se imprimen; el teléfono no tiene impresora.
+//   · Rodados y Maquinarias: son el Inventario filtrado por clase para COMPARAR columnas (km, papeles,
+//     horómetro); acá la clase es un chip dentro de «Qué hay» y cada activo abre su ficha.
+//   · Mantenimiento: la cola de lo que está mal, para planificar desde la oficina; en obra la revisión
+//     se carga por activo (M03 → «Ficha de revisión»).
+//   · Movimientos: SÍ le faltaba una lectura al que está parado en el lugar («¿qué se llevaron de acá?»):
+//     va abajo como «Movimientos», sólo lectura, del lugar elegido.
 export const dynamic = 'force-dynamic'
 
 export default async function InicioHerramientasCampo({ searchParams }: { searchParams: Promise<{ en?: string }> }) {
@@ -45,7 +58,7 @@ export default async function InicioHerramientasCampo({ searchParams }: { search
 
   const aca = lugar.ubicacionId ? activosEn(p, lugar.ubicacionId) : []
   const prob = aca.filter(conProblema).length
-  const verificables = aca.filter(seVerifica).slice(0, 3)
+  const verificables = verificablesDelLugar(p, lugar.ubicacionId)
   return (
     <MarcoTelefono
       titulo={<span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>Herramientas</span>}
@@ -60,26 +73,27 @@ export default async function InicioHerramientasCampo({ searchParams }: { search
         </div>
       </div>
       <div>
-        <FilaTelefono href={conLugar('/campo/herramientas/buscar', lugar.clave)} icono={<IcoBuscar tam={18} color={AZUL} />} titulo="Buscar una herramienta" bajada="por nombre o código" testid="ir-buscar" />
+        <FilaTelefono href={conLugar('/campo/herramientas/buscar', lugar.clave)} icono={<IcoBuscar tam={18} color={AZUL} />} titulo={ACCION.buscar} bajada="por nombre o código" testid="ir-buscar" />
         <FilaTelefono href={conLugar('/campo/herramientas/lugar', lugar.clave)} icono={lugar.esObra ? <IcoObra tam={18} color={V.pos} /> : <IcoTaller tam={18} color={V.warn} />}
-          titulo={lugar.esObra ? 'Qué hay en esta obra' : 'Qué hay acá'} bajada={`${aca.length} ${aca.length === 1 ? 'activo' : 'activos'}`} testid="ir-lugar" />
-        <FilaTelefono href={conLugar('/campo/herramientas/lugar', lugar.clave)} icono={<IcoFlecha tam={18} color={V.tinta} />} titulo="Mover herramientas" bajada="una o varias" testid="ir-mover" />
-        <FilaTelefono href={conLugar('/campo/herramientas/buscar?para=reportar', lugar.clave)} icono={<IcoAviso tam={18} color={V.warn} />} titulo="Reportar un problema" bajada="no mueve nada de lugar" testid="ir-reportar" />
+          titulo={rotuloQueHay(lugar.esObra)} bajada={`${aca.length} ${aca.length === 1 ? 'activo' : 'activos'}`} testid="ir-lugar" />
+        <FilaTelefono href={conLugar('/campo/herramientas/lugar', lugar.clave)} icono={<IcoFlecha tam={18} color={V.tinta} />} titulo={ACCION.mover} bajada="una o varias" testid="ir-mover" />
+        <FilaTelefono href={conLugar('/campo/herramientas/buscar?para=reportar', lugar.clave)} icono={<IcoAviso tam={18} color={V.warn} />} titulo={ACCION.reportar} bajada="no mueve nada de lugar" testid="ir-reportar" />
         {verificables.map((a) => {
           const v = verificacionDe(p, a.id)
           return (
             <FilaTelefono key={a.id} href={conLugar(`/campo/herramientas/a/${encodeURIComponent(a.codigo)}/verificar`, lugar.clave)}
               icono={<IcoLista tam={18} color={v.tipo === 'hoy' ? V.pos : V.warn} />}
-              titulo={a.clase === 'rodado' ? `Verificar el rodado ${a.patente ?? a.nombre}` : `Verificar ${a.nombre}`}
+              titulo={rotuloVerificar(a)}
               bajada={v.tipo === 'hoy' ? `hecha ${textoVerificacion(v)}` : v.tipo === 'sin_base' ? 'sin la migración' : `sin verificar hoy · última: ${textoVerificacion(v)}`}
               tonoBajada={v.tipo === 'hoy' ? V.pos : undefined} testid="ir-verificar" />
           )
         })}
         {verificables.length === 0 && (
           <FilaTelefono href={conLugar('/campo/herramientas/verificar', lugar.clave)} icono={<IcoLista tam={18} color={V.apagado} />}
-            titulo="Verificar un rodado o máquina" bajada="antes de salir o de arrancar" testid="ir-verificar" />
+            titulo={ACCION.verificarElegir} bajada="antes de salir o de arrancar" testid="ir-verificar" />
         )}
-        <FilaTelefono href={conLugar('/campo/herramientas/alta', lugar.clave)} icono={<IcoTaller tam={18} color={V.apagado} />} titulo="Dar de alta una herramienta" bajada="tres datos y una foto" ultima testid="ir-alta" />
+        <FilaTelefono href={conLugar('/campo/herramientas/alta', lugar.clave)} icono={<IcoTaller tam={18} color={V.apagado} />} titulo={ACCION.alta} bajada="tres datos y una foto" testid="ir-alta" />
+        <FilaTelefono href={conLugar('/campo/herramientas/movimientos', lugar.clave)} icono={<IcoReloj tam={18} color={V.apagado} />} titulo={ACCION.movimientos} bajada={lugar.esObra ? 'qué entró y salió de esta obra' : 'qué entró y salió de acá'} ultima testid="ir-movimientos" />
       </div>
       <div style={{ fontSize: '12.5px', color: V.apagado, lineHeight: 1.5 }}>Ves todo el parque y podés moverlo entre cualquier lugar.</div>
     </MarcoTelefono>

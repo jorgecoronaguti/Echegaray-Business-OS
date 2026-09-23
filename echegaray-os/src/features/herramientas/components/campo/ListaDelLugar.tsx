@@ -7,6 +7,7 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
+import { textoMoverDelLugar } from '../../logica/acciones-lugar'
 import { MONO, V } from '../estilo'
 import { IcoRodado } from '../iconos'
 import { primarioTelefono, secundarioTelefono } from './MarcoTelefono'
@@ -64,7 +65,7 @@ export function ListaDelLugar({ items, en }: { items: ItemLugar[]; en: string })
       </div>
       <div style={{ position: 'sticky', bottom: 0, marginTop: 'auto', margin: '0 -16px -18px', padding: '12px 16px 18px', borderTop: `1px solid ${V.linea}`, background: '#FFFFFF', display: 'flex', gap: 10 }}>
         {sel.length > 0 ? (
-          <Link href={moverHref} prefetch={false} style={primarioTelefono} data-testid="mover-marcadas">Mover {sel.length === 1 ? '1' : `las ${sel.length}`}</Link>
+          <Link href={moverHref} prefetch={false} style={primarioTelefono} data-testid="mover-marcadas">{textoMoverDelLugar(sel.length, items.length)}</Link>
         ) : (
           <button type="button" disabled style={{ ...primarioTelefono, opacity: 0.45 }}>Marcá qué mover</button>
         )}

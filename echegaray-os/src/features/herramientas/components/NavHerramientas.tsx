@@ -88,7 +88,8 @@ export function NavHerramientas({ cuentas, derecha }: { cuentas: CuentasNav; der
           role="search"
           onSubmit={(e) => {
             e.preventDefault()
-            // Un código tipeado abre su ficha: es el «Escanear» de la computadora (paridad, dueño 23/09).
+            // Un código tipeado abre su ficha: es el «Escanear» de la computadora (paridad, dueño 23/09), y
+            // el campo se llama así para que el que viene del teléfono lo encuentre.
             router.push(destinoDeBusqueda(q))
           }}
           style={{
@@ -98,8 +99,8 @@ export function NavHerramientas({ cuentas, derecha }: { cuentas: CuentasNav; der
         >
           <IcoBuscar tam={13} />
           <input
-            value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar activo, obra o código"
-            aria-label="Buscar activo, obra o código" data-testid="buscar-herramientas"
+            value={q} onChange={(e) => setQ(e.target.value)} placeholder="Escanear: tipeá el código de la etiqueta, o buscá"
+            aria-label="Escanear (tipear el código) o buscar" data-testid="buscar-herramientas"
             style={{ border: 0, outline: 'none', fontSize: '12.5px', color: V.tinta, width: '100%', background: 'transparent' }}
           />
         </form>}

@@ -6,11 +6,12 @@
 //   · con problema y fuera del Taller → «Mover al taller» es la primaria;
 //   · con problema → «Enviar a reparación externa» (etapa 1: es un ESTADO; el remito y el presupuesto
 //     son etapa 2) y «Marcar operativa»;
-//   · operativa → «Mover» y «Reportar problema».
+//   · operativa → «Mover» y «Reportar un problema» (los nombres del teléfono, M03).
 // La baja es texto rojo abajo: la única acción que no se deshace no compite con las demás.
 
 import Link from 'next/link'
 import { useState, type ReactNode } from 'react'
+import { ACCION } from '../logica/acciones-lugar'
 import { historial, operadorDe } from '../logica/historial'
 import type { Activo } from '../types'
 import {
@@ -152,7 +153,7 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
               <button type="button" disabled={enviando} style={btn(false)} onClick={() => estado('reparacion_externa')}>Enviar a reparación externa</button>
             )}
             {problema && <button type="button" disabled={enviando} style={btn(false)} onClick={() => estado('operativo')} data-testid="marcar-operativa">Marcar operativa</button>}
-            {!problema && <button type="button" style={btn(false)} onClick={() => abrir({ tipo: 'reportar', ids: [id] })}>Reportar problema</button>}
+            {!problema && <button type="button" style={btn(false)} onClick={() => abrir({ tipo: 'reportar', ids: [id] })}>{ACCION.reportar}</button>}
             {a.estado_asumido && !problema && (
               <button type="button" disabled={enviando} style={btn(false)} onClick={() => estado('operativo')} data-testid="confirmar-operativa">Confirmar operativa</button>
             )}

@@ -5,11 +5,15 @@
 // El código son tres letras que salen del nombre (AMO-007) y se pueden cambiar, guiado (`CampoCodigo`);
 // el número lo asigna la base bajo candado, así que la vista previa nunca choca con otra alta. Al
 // terminar, el activo queda en la cola de etiquetas (D14) por no tener `etiqueta_impresa_en`.
+//
+// Es el mismo «Dar de alta una herramienta» del teléfono (M14): desde Ubicaciones entra en el lugar
+// elegido (`destinoInicial`), como en obra entra donde está parado el teléfono.
 
 import Link from 'next/link'
 import { useMemo, useRef, useState } from 'react'
 import { claveDestino, destinos } from '../logica/mover'
 import { prefijoDeNombre } from '../logica/codigo'
+import { ACCION } from '../logica/acciones-lugar'
 import { darDeAltaAction } from '../services/acciones'
 import { subirFotoDeActivo } from '../services/subida-foto'
 import type { Clase } from '../types'
@@ -22,7 +26,7 @@ const CLASES: { v: Clase; t: string }[] = [
   { v: 'herramienta', t: 'Herramienta' }, { v: 'equipo', t: 'Maquinaria' }, { v: 'rodado', t: 'Rodado' },
 ]
 
-export function PanelAlta({ onHecho }: { onHecho: (t: string) => void }) {
+export function PanelAlta({ destinoInicial, onHecho }: { destinoInicial?: string; onHecho: (t: string) => void }) {
   const { parque, obras, cerrar, refrescar } = useHerramientas()
   const opciones = useMemo(() => destinos(parque, obras), [parque, obras])
   const taller = opciones.find((o) => o.grupo === 'taller')
@@ -30,7 +34,7 @@ export function PanelAlta({ onHecho }: { onHecho: (t: string) => void }) {
   const cats = parque.categorias ?? []
   const [categoria, setCategoria] = useState('')
   const [clase, setClase] = useState<Clase>('herramienta')
-  const [destino, setDestino] = useState(taller ? claveDestino(taller) : '')
+  const [destino, setDestino] = useState(destinoInicial ?? (taller ? claveDestino(taller) : ''))
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
   const [ultimo, setUltimo] = useState<string | null>(null)
@@ -80,7 +84,7 @@ export function PanelAlta({ onHecho }: { onHecho: (t: string) => void }) {
 
   return (
     <PanelLateral
-      testid="panel-alta" titulo="Nuevo activo" onCerrar={cerrar}
+      testid="panel-alta" titulo={ACCION.alta} onCerrar={cerrar}
       pie={
         <>
           <button type="button" data-testid="dar-de-alta" disabled={enviando} onClick={() => enviar(false)} style={botonPrimarioGrande}>
