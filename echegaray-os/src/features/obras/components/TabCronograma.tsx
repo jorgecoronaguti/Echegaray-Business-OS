@@ -10,9 +10,11 @@
 //         conectores de dependencia; HOY en amarillo; leyenda en una línea al pie.
 //   M07   Semana · Mes en cajas de 32; lista 112 px | 1fr con barras de 14 px; HOY amarilla; pie con
 //         línea base y dependencias.
-//   C06   Día · Semana · Mes; «Fechas · el plan como se carga»; 21+ columnas de días hábiles de
-//         ESTA obra; barras de 16 px con extremos arrastrables; «sin fechas · arrastrá para fijar»;
-//         «Sellar línea base» apagado con motivo mientras el checklist trabe; «Guardar fechas».
+//   C06   Día · Semana · Mes en la banda; 21+ columnas de días hábiles de ESTA obra; barras de 16 px
+//         con extremos arrastrables; «sin fechas · arrastrá para fijar»; «Sellar línea base» apagado
+//         con motivo mientras el checklist trabe y «Guardar fechas» van EN LA CABECERA DE LA OBRA,
+//         junto al nombre (`EditorCronogramaContexto`): el editor publica su estado y la cabecera
+//         dibuja los botones. Sin provider, los dibuja acá, en la banda.
 //   MC7   una fila por ítem con dos fechas de 76×40 en mono; «Guardar fechas» de 48 px sobre la barra.
 //
 // LO QUE SE RETIRÓ: la franja de cinco cifras, las capas encendibles y las archivadas plegadas de
@@ -20,7 +22,7 @@
 
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useMemo, useRef, useState, type CSSProperties, type PointerEvent as PE } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as PE } from 'react'
 import type { ResultadoAccion } from '@/shared/components/ui'
 import type { Actividad } from '../types'
 import {
@@ -33,6 +35,7 @@ import { useAnchoVentana } from './useAnchoVentana'
 import { C, MONO } from './canon/tokens'
 import { Ico, P } from './canon/Ico'
 import { SubNavTrabajo } from './SubNavTrabajo'
+import { AccionesEditorCronograma, useEditorCronograma, type EstadoEditorCronograma } from './EditorCronogramaContexto'
 
 const ALTO_FILA = 36
 const ALTO_FILA_EDITOR = 40
@@ -335,6 +338,25 @@ function Editor({ obraId, filas, dependencias, isodows, feriados, hoy, fallas, g
   const semanas = useMemo(() => semanasDe(dias), [dias])
   const ed = useEdicion(filas, guardarFechas, sellar)
   const motivo = motivoSellarApagado(filas)
+  // LAS ACCIONES VAN EN LA CABECERA (C06). El editor sigue siendo el dueño del estado: publica una
+  // foto cuando cambia algo que los botones necesitan, y las funciones se leen por ref para que la
+  // foto no se reescriba en cada render.
+  const ctx = useEditorCronograma()
+  const publicar = ctx?.publicar
+  const accionesRef = useRef({ sellar: ed.sellarAhora, guardar: ed.guardar })
+  useEffect(() => { accionesRef.current = { sellar: ed.sellarAhora, guardar: ed.guardar } })
+  const sellarDesdeCabecera = useCallback(() => { void accionesRef.current.sellar() }, [])
+  const guardarDesdeCabecera = useCallback(() => { void accionesRef.current.guardar() }, [])
+  const puedeSellar = sellar != null
+  const nCambios = ed.cambios.length
+  const estadoEditor: EstadoEditorCronograma = {
+    motivo, puedeSellar, cambios: nCambios, pendiente: ed.pendiente, sellar: sellarDesdeCabecera, guardar: guardarDesdeCabecera,
+  }
+  useEffect(() => {
+    if (!publicar) return
+    publicar({ motivo, puedeSellar, cambios: nCambios, pendiente: ed.pendiente, sellar: sellarDesdeCabecera, guardar: guardarDesdeCabecera })
+  }, [publicar, motivo, puedeSellar, nCambios, ed.pendiente, sellarDesdeCabecera, guardarDesdeCabecera])
+  useEffect(() => () => { publicar?.(null) }, [publicar])
   const n = dias.length
   const hoyIdx = indiceDe(dias, hoy, 'inicio')
   const arrastre = useRef<{ id: string; extremo: 'inicio' | 'fin' | 'barra'; x0: number; ancho: number; base: FechasEditadas } | null>(null)
@@ -377,21 +399,8 @@ function Editor({ obraId, filas, dependencias, isodows, feriados, hoy, fallas, g
             <button type="button" style={caja(false, true)} disabled title="En el editor se trabaja por día hábil">Semana</button>
             <button type="button" style={caja(false, true)} disabled title="En el editor se trabaja por día hábil">Mes</button>
           </div>
-          <span style={{ fontSize: '12px', color: C.tintaSuave, display: 'inline-flex', gap: '5px', alignItems: 'center' }}>
-            <Ico d={P.fecha} s={13} />Fechas · el plan como se carga
-          </span>
-          <button type="button" data-testid="sellar-linea-base" disabled={motivo != null || !sellar || ed.pendiente} title={motivo ?? 'Sellar la línea base de toda la obra'}
-            onClick={ed.sellarAhora} style={{
-              height: '32px', padding: '0 14px', border: 0, borderRadius: '6px', font: 'inherit', fontSize: '13px', fontWeight: 600,
-              background: motivo != null || !sellar ? C.borde : C.superficie, color: motivo != null || !sellar ? C.tenue : C.tinta,
-              cursor: motivo != null || !sellar ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: '7px',
-              boxShadow: motivo != null || !sellar ? 'none' : `inset 0 0 0 1px ${C.bordeFuerte}`,
-            }}><Ico d={P.base} s={14} />Sellar línea base</button>
-          <button type="button" data-testid="guardar-fechas" disabled={ed.cambios.length === 0 || ed.pendiente} onClick={ed.guardar} style={{
-            height: '32px', padding: '0 14px', border: 0, borderRadius: '6px', font: 'inherit', fontSize: '13px', fontWeight: 600,
-            background: ed.cambios.length ? C.marca : C.borde, color: ed.cambios.length ? C.grafito : C.tenue, cursor: ed.cambios.length ? 'pointer' : 'default',
-            display: 'inline-flex', alignItems: 'center', gap: '7px',
-          }}><Ico d={P.ok} s={14} />{ed.pendiente ? 'Guardando…' : 'Guardar fechas'}</button>
+          {/* Sin provider (la página no envolvió la pantalla), las acciones se dibujan acá. */}
+          {!ctx && <AccionesEditorCronograma estado={estadoEditor} />}
         </div>
       } />
       <Falla fallas={fallas} />

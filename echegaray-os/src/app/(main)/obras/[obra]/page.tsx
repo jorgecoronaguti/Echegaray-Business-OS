@@ -68,6 +68,9 @@ import { TabResumen } from '@/features/obras/components/TabResumen'
 import { ResumenCierre } from '@/features/obras/components/ResumenCierre'
 import { cifraAvance, costoTeorico, diaHabil } from '@/features/obras/services/avancePonderado'
 import { CronogramaDeObra } from '@/features/obras/components/CronogramaDeObra'
+import { AccionesEditorCronograma, EditorCronogramaProvider } from '@/features/obras/components/EditorCronogramaContexto'
+import { cifrasDelEditor } from '@/features/obras/services/cifrasEditor'
+import { Fragment } from 'react'
 import { lecturasDeVista } from '@/features/obras/services/lecturasDeVista'
 import { separarPlanYSubtareas } from '@/features/obras/services/subtareas'
 import { hrefEconomia, resolverVistaObra, rutaHermana } from '@/features/obras/services/vistasObra'
@@ -108,10 +111,13 @@ export default async function ObraPage({
     dot?: string
     /** `?nueva=1` abre el alta de actividad del árbol: es adonde lleva la primaria de la cabecera. */
     nueva?: string
+    /** `?editar=1` en Cronograma abre el editor de fechas (C06): la cabecera cambia sus acciones y
+     *  suma la línea de cifras. Lo lee también `TabCronograma` por `useSearchParams`. */
+    editar?: string
   }>
 }) {
   const { obra: obraId } = await params
-  const { vista: vistaRaw, sub, act, filtro, sol, dot, nueva } = await searchParams
+  const { vista: vistaRaw, sub, act, filtro, sol, dot, nueva, editar } = await searchParams
   // UNA VISTA QUE VIVE EN OTRA RUTA SE LLEVA AHÍ, NO SE IGNORA. `?vista=dotacion` caía en Resumen
   // sin un solo aviso, y quien seguía ese link concluía que la pantalla no existía.
   const hermana = rutaHermana(vistaRaw, obraId)
@@ -126,6 +132,7 @@ export default async function ObraPage({
   const enTareas = vista === 'tareas'
   const esArbol = enTareas && subTareas === 'arbol'
   const esCronograma = enTareas && subTareas === 'gantt'
+  const esEditorCronograma = esCronograma && editar === '1'
   const esParte = enTareas && subTareas === 'parte'
   const esPlanilla = enTareas && subTareas === 'planilla'
 
@@ -228,7 +235,8 @@ export default async function ObraPage({
     // documentos, no sólo listar los que ya estaban en Drive.
     vista === 'documentos' ? getDocumentosSubidos(supabase, 'obra', obraId) : null,
     conCifras ? getAvancePonderado(supabase, obraId) : null,
-    conCifras ? getDiasHabilesDeObra(supabase, obraId) : null,
+    // El editor del cronograma (C06) dibuja «Días hábiles: 21» en la cabecera: la misma vista.
+    conCifras || esEditorCronograma ? getDiasHabilesDeObra(supabase, obraId) : null,
     vista === 'resumen' ? getDependencias(supabase, obraId) : null,
     vista === 'resumen' ? getGenteHoyPorActividad(supabase, obraId, hoyISO) : {},
     // Z01 «Lo que dejó la obra»: HH plan/real por rubro, desde `obra_actividad_hh`. Sólo el Resumen.
@@ -345,11 +353,22 @@ export default async function ObraPage({
     </details>
   )
 
+  // C06: LAS ACCIONES DEL EDITOR VAN EN LA CABECERA, y el estado que las enciende lo tiene el editor
+  // (client) montado más abajo. El provider los conecta; sólo existe con `?editar=1`.
+  const Envoltorio = esEditorCronograma ? EditorCronogramaProvider : Fragment
+  const cifrasDelCronograma = esEditorCronograma
+    ? cifrasDelEditor({
+      fechaInicioPlan: obra.fecha_inicio_plan, fechaFinPlan: obra.fecha_fin_plan, actividades: acts,
+      diasHabilesPlan: diasHabilesObra?.dias_habiles_plan ?? null,
+    })
+    : []
+
   return (
     // EL WORKSPACE NO USA `PageShell`: su encabezado es el de una ENTIDAD —volver, nombre, campos
     // rotulados y ciclo de vida— y sus dos barras de navegación tienen que quedar pegadas al
     // contenido, sin el margen de una página de lectura. El marco (fondo y padding de pantalla) es
     // el mismo: 16px en el teléfono, 40px en escritorio.
+    <Envoltorio>
     <div className="min-h-screen bg-canvas">
       {/* LA BANDA VA DE BORDE A BORDE (mockups 02/03/05/06): su aire de 20px es interno.
           La primaria de la obra es «Cargar parte» —la del mockup 02— y al lado el «···» con las
@@ -370,7 +389,11 @@ export default async function ObraPage({
             </Link>
             {puedeEditarPlan && nuevaActividad}
           </>
+        ) : esEditorCronograma ? (
+          // C06: «Sellar línea base» y «Guardar fechas» junto al nombre; no hay «Nueva actividad».
+          <AccionesEditorCronograma />
         ) : puedeEditarPlan ? nuevaActividad : null}
+        lineaDeCifras={cifrasDelCronograma}
         // EL ENLACE A LA PLATA, DISCRETO Y SÓLO PARA QUIEN LA VE. No es una solapa —el dueño la
         // sacó de acá— y no es un botón: es la puerta a la pantalla de Administración de esta obra.
         // Al jefe de obra no se le dibuja, igual que no se le dibujan las rutas de `veEconomia`.
@@ -569,5 +592,6 @@ export default async function ObraPage({
       )}
       </div>
     </div>
+    </Envoltorio>
   )
 }
