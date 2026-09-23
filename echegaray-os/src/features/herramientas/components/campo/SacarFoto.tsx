@@ -1,34 +1,56 @@
 'use client'
 
-// «Sacar una foto» (M03): abre la cámara trasera y la sube al bucket `herramientas`. La foto se guarda
-// en la ficha por `editar_activo` (no toca ubicación ni estado).
+// «Sacar una foto» (M03): abre la cámara trasera, sube la foto al bucket `herramientas` DESDE EL
+// NAVEGADOR (`services/subida-foto.ts`) y la guarda en la ficha por `editar_activo` con la ruta.
+// No toca ubicación ni estado.
+//
+// La misma pieza sirve en la ficha de escritorio (`variante="escritorio"`): ahí no hay cámara trasera
+// —`capture` se ignora— y el botón elige un archivo. Una sola implementación para las dos caras: la
+// foto de la ficha se cambia igual desde la obra y desde la oficina (paridad, dueño 23/09).
 
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 import { cambiarFotoAction } from '../../services/acciones'
+import { subirFotoDeActivo } from '../../services/subida-foto'
 import { V } from '../estilo'
 
-export function SacarFoto({ activo }: { activo: string }) {
+const GUARDADA = 'Foto guardada.'
+const SUBIENDO = 'Subiendo…'
+
+export function SacarFoto({ activo, variante = 'telefono', onGuardada }: {
+  activo: string
+  variante?: 'telefono' | 'escritorio'
+  /** Escritorio: qué hacer después de guardar (refrescar el parque del espacio). */
+  onGuardada?: () => void
+}) {
   const input = useRef<HTMLInputElement>(null)
   const router = useRouter()
   const [estado, setEstado] = useState<string | null>(null)
   async function subir(f: File) {
-    setEstado('Subiendo…')
-    const fd = new FormData()
-    fd.set('activo', activo)
-    fd.set('foto', f)
-    const r = await cambiarFotoAction(fd)
-    setEstado(r.ok ? 'Foto guardada.' : r.error)
-    if (r.ok) router.refresh()
+    setEstado(SUBIENDO)
+    const s = await subirFotoDeActivo(f, activo)
+    if (!s.ok) return setEstado(s.error)
+    try {
+      const r = await cambiarFotoAction({ activo, ruta: s.ruta })
+      setEstado(r.ok ? GUARDADA : r.error)
+      if (r.ok) (onGuardada ?? router.refresh)()
+    } catch (e) {
+      setEstado(e instanceof Error ? e.message : 'No se pudo guardar la foto')
+    }
   }
+  const telefono = variante === 'telefono'
+  const colorEstado = estado === GUARDADA ? V.pos : estado === SUBIENDO ? V.apagado : V.neg
   return (
     <>
       <button type="button" onClick={() => input.current?.click()} data-testid="sacar-foto"
-        style={{ minHeight: 52, display: 'flex', alignItems: 'center', fontSize: '14.5px', width: '100%', textAlign: 'left' }}>
-        Sacar una foto <span style={{ marginLeft: 'auto', color: V.tenue }}>›</span>
+        style={telefono
+          ? { minHeight: 52, display: 'flex', alignItems: 'center', fontSize: '14.5px', width: '100%', textAlign: 'left' }
+          : { fontSize: '12px', color: V.apagado, textAlign: 'left' }}>
+        {telefono ? <>Sacar una foto <span style={{ marginLeft: 'auto', color: V.tenue }}>›</span></> : 'Cambiar la foto'}
       </button>
-      <input ref={input} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f) }} />
-      {estado && <div role="status" style={{ fontSize: '12.5px', color: estado === 'Foto guardada.' ? V.pos : estado === 'Subiendo…' ? V.apagado : V.neg }}>{estado}</div>}
+      <input ref={input} type="file" accept="image/*" capture="environment" hidden data-testid="sacar-foto-archivo"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f); e.target.value = '' }} />
+      {estado && <div role="status" style={{ fontSize: telefono ? '12.5px' : '12px', color: colorEstado }}>{estado}</div>}
     </>
   )
 }

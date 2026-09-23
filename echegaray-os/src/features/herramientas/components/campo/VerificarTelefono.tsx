@@ -33,6 +33,8 @@ export interface PropsVerificar {
   operadores: { id: string; nombre: string }[]
   yo: string | null
   volverA: string
+  /** Escritorio (`PanelVerificar`): en vez de navegar a `volverA`, cerrar el panel. */
+  onVolver?: () => void
 }
 
 const COPIA: Record<ClaseVerificable, { titulo: string; bajada: string; rotuloLectura: string; regla: string }> = {
@@ -50,7 +52,7 @@ const COPIA: Record<ClaseVerificable, { titulo: string; bajada: string; rotuloLe
   },
 }
 
-export function VerificarTelefono({ activo, anterior, ultima, operadores, yo, volverA }: PropsVerificar) {
+export function VerificarTelefono({ activo, anterior, ultima, operadores, yo, volverA, onVolver }: PropsVerificar) {
   const router = useRouter()
   const clase = activo.clase
   const unidad = UNIDAD[clase]
@@ -88,7 +90,7 @@ export function VerificarTelefono({ activo, anterior, ultima, operadores, yo, vo
     router.refresh()
   }
 
-  if (hecho) return <Resultado hecho={hecho} clase={clase} volverA={volverA} />
+  if (hecho) return <Resultado hecho={hecho} clase={clase} volverA={volverA} onVolver={onVolver} />
 
   return (
     <>
@@ -192,7 +194,7 @@ function Opcion({ activa, tono, onClick, testid, children }: {
   )
 }
 
-function Resultado({ hecho, clase, volverA }: { hecho: { criticos: string[]; otros: string[] }; clase: ClaseVerificable; volverA: string }) {
+function Resultado({ hecho, clase, volverA, onVolver }: { hecho: { criticos: string[]; otros: string[] }; clase: ClaseVerificable; volverA: string; onVolver?: () => void }) {
   const router = useRouter()
   const critico = hecho.criticos.length > 0
   const lista = (l: string[]) => l.map((x) => x.toLowerCase()).join(', ')
@@ -210,7 +212,7 @@ function Resultado({ hecho, clase, volverA }: { hecho: { criticos: string[]; otr
         {critico && hecho.otros.length > 0 && <div style={{ fontSize: '13px', color: V.apagado }}>También mal en {lista(hecho.otros)}.</div>}
       </div>
       <div style={{ position: 'sticky', bottom: 0, margin: 'auto -16px -18px', padding: '12px 16px 18px', borderTop: `1px solid ${V.linea}`, background: '#FFFFFF', display: 'flex' }}>
-        <button type="button" onClick={() => { router.push(volverA); router.refresh() }} style={primarioTelefono} data-testid="volver-ficha">Volver</button>
+        <button type="button" onClick={() => { if (onVolver) return onVolver(); router.push(volverA); router.refresh() }} style={primarioTelefono} data-testid="volver-ficha">Volver</button>
       </div>
     </>
   )

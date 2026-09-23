@@ -9,6 +9,7 @@
 
 import { useState } from 'react'
 import { cambiarCodigoAction, cambiarFotoAction, editarActivoAction } from '../services/acciones'
+import { subirFotoDeActivo } from '../services/subida-foto'
 import { problemaDelPrefijo } from '../logica/codigo'
 import { lugaresDe } from '../logica/parque'
 import { CampoCodigo } from './CampoCodigo'
@@ -60,10 +61,9 @@ export function PanelEditar({ id, onHecho }: { id: string; onHecho: (t: string) 
       },
     })
     if (r.ok && foto) {
-      const fd = new FormData()
-      fd.set('activo', a.id)
-      fd.set('foto', foto)
-      const f = await cambiarFotoAction(fd)
+      // La foto va del navegador al bucket; a la acción llega sólo la ruta (`logica/foto.ts`).
+      const s = await subirFotoDeActivo(foto, a.id)
+      const f = s.ok ? await cambiarFotoAction({ activo: a.id, ruta: s.ruta }) : s
       if (!f.ok) {
         setEnviando(false)
         return setError(`Los datos se guardaron, la foto no: ${f.error}`)

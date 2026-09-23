@@ -4,7 +4,7 @@ import type { Activo, Clase, EstadoActivo } from '../types.ts'
 import { nombresRepetidos } from './resumen.ts'
 import { lugaresDe, rotuloLugares, rotuloUbicacion, vivo, type Parque } from './parque.ts'
 import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
-import { normalizarCodigo } from './codigo.ts'
+import { FORMATO_CODIGO, normalizarCodigo } from './codigo.ts'
 
 export type FiltroClase = Clase | 'todo'
 export type FiltroEstado = 'todos' | EstadoActivo
@@ -133,6 +133,19 @@ export function queryDe(f: Partial<Filtros> & { activo?: string | null }): strin
   if (f.activo) q.set('activo', f.activo)
   const s = q.toString()
   return s ? `?${s}` : ''
+}
+
+/**
+ * A DÓNDE LLEVA EL BUSCADOR DE LA BARRA. Lo que en el teléfono hace «Escanear» (leer la etiqueta y
+ * abrir la ficha) en la computadora se hace tipeando el código impreso: si lo tipeado ES un código del
+ * sistema, se abre su ficha además de filtrar la lista; si no, sólo se filtra. Vacío vuelve al Inventario.
+ */
+export function destinoDeBusqueda(q: string): string {
+  const t = q.trim()
+  if (!t) return '/herramientas/inventario'
+  const codigo = normalizarCodigo(t)
+  const esCodigo = !!codigo && FORMATO_CODIGO.test(codigo)
+  return `/herramientas/inventario${queryDe({ clase: 'todo', q: esCodigo ? codigo : t, activo: esCodigo ? codigo : null })}`
 }
 
 /**

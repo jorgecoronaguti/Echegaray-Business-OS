@@ -11,6 +11,7 @@ import { useMemo, useRef, useState } from 'react'
 import { claveDestino, destinos } from '../logica/mover'
 import { prefijoDeNombre } from '../logica/codigo'
 import { darDeAltaAction } from '../services/acciones'
+import { subirFotoDeActivo } from '../services/subida-foto'
 import type { Clase } from '../types'
 import { useHerramientas } from './Espacio'
 import { CampoCodigo } from './CampoCodigo'
@@ -49,6 +50,14 @@ export function PanelAlta({ onHecho }: { onHecho: (t: string) => void }) {
     if (clase !== 'rodado' && !categoria) return setError('Elegí la categoría')
     setEnviando(true)
     setError(null)
+    // La foto va del navegador al bucket; a la acción llega sólo la ruta (`logica/foto.ts`).
+    const foto = fd.get('foto')
+    fd.delete('foto')
+    if (foto instanceof File && foto.size > 0) {
+      const s = await subirFotoDeActivo(foto, 'alta')
+      if (!s.ok) { setEnviando(false); return setError(s.error) }
+      fd.set('foto', s.ruta)
+    }
     const r = await darDeAltaAction(fd)
     setEnviando(false)
     if (!r.ok) return setError(r.error)

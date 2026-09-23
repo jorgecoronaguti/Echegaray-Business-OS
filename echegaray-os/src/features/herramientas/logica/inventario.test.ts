@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { armarParque } from './parque.ts'
-import { candidatos, categorias, sugerencias, totales, cuentaPorEstado, filtrar, filtrosDeURL, queryDe } from './inventario.ts'
+import { candidatos, categorias, destinoDeBusqueda, sugerencias, totales, cuentaPorEstado, filtrar, filtrosDeURL, queryDe } from './inventario.ts'
 import { faltaMigracion } from './falta-migracion.ts'
 import { activo, ubicacion } from './fixture.test-util.ts'
 
@@ -88,4 +88,12 @@ test('totales de lo que se ve: activos, unidades (los lotes cuentan lo que dicen
   assert.equal(t.unidades, 11, '3 sueltos + 8 del lote')
   assert.deepEqual(t.porTipo, [{ tipo: 'taller', activos: 1 }, { tipo: 'obra', activos: 1 }, { tipo: 'sin', activos: 2 }])
   assert.deepEqual(t.porObra, [{ u: 'u-o', rotulo: 'OB-0012 · PISOS ARCOR', activos: 1 }], 'cada obra por separado, con su filtro')
+})
+
+test('el buscador de la barra abre la ficha cuando lo tipeado es un código, y si no sólo filtra', () => {
+  assert.equal(destinoDeBusqueda('her 42'), '/herramientas/inventario?clase=todo&q=HER-0042&activo=HER-0042')
+  assert.equal(destinoDeBusqueda('  AMO-007 '), '/herramientas/inventario?clase=todo&q=AMO-007&activo=AMO-007')
+  assert.equal(destinoDeBusqueda('amoladora'), '/herramientas/inventario?clase=todo&q=amoladora')
+  assert.equal(destinoDeBusqueda('ecs-7741-qx'), '/herramientas/inventario?clase=todo&q=ecs-7741-qx')
+  assert.equal(destinoDeBusqueda('   '), '/herramientas/inventario')
 })

@@ -15,6 +15,8 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { faltaMigracion, MIGRACION } from '../logica/falta-migracion'
 import { normalizarCodigo } from '../logica/codigo'
+import { leerOperadores } from './datos'
+import { esRutaDeFoto, urlPublicaDeFoto } from '../logica/foto'
 
 export type Resultado<T = null> = { ok: true; dato: T; mensaje?: string } | { ok: false; error: string }
 
@@ -131,45 +133,34 @@ export async function darDeBajaParcialAction(entrada: z.input<typeof bajaParcial
   })
 }
 
-async function subirFoto(file: File, carpeta: string): Promise<Resultado<string>> {
-  if (!file.type.startsWith('image/')) return { ok: false, error: 'La foto tiene que ser una imagen' }
-  if (file.size > 12 * 1024 * 1024) return { ok: false, error: 'La foto pesa más de 12 MB' }
-  try {
-    const supabase = await createClient()
-    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
-    const ruta = `activos/${carpeta.replace(/[^A-Za-z0-9_-]/g, '_')}/${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('herramientas').upload(ruta, file, { contentType: file.type, upsert: false })
-    if (error) return { ok: false, error: `No se pudo subir la foto: ${error.message}` }
-    return { ok: true, dato: supabase.storage.from('herramientas').getPublicUrl(ruta).data.publicUrl }
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'No se pudo subir la foto' }
-  }
-}
-
-function archivo(v: FormDataEntryValue | null): File | null {
-  return v instanceof File && v.size > 0 ? v : null
+/**
+ * LA FOTO NO PASA POR ACÁ. El navegador la pone en el bucket `herramientas` con la sesión del usuario
+ * (`services/subida-foto.ts`) y esta capa recibe SÓLO la ruta del objeto: el cuerpo de una Server Action
+ * tiene 1 MB de techo (4,5 MB en Vercel) y una foto de celular pesa más. Ver `logica/foto.ts`.
+ */
+function urlDeFoto(ruta: unknown): Resultado<string | null> {
+  if (ruta == null || ruta === '') return { ok: true, dato: null }
+  if (!esRutaDeFoto(ruta)) return { ok: false, error: 'La foto no quedó bien subida. Probá de nuevo.' }
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!base) return { ok: false, error: 'Falta la URL de Supabase en el servidor.' }
+  return { ok: true, dato: urlPublicaDeFoto(base, ruta) }
 }
 
 const reportarSchema = z.object({
   activo: uuid,
   tipo: z.enum(['fallando', 'no_anda', 'no_encontrada'], { message: 'Elegí qué le pasa' }),
   texto: z.string().trim().max(400).optional(),
+  /** Ruta de la foto ya subida al bucket (`subirFotoDeActivo`), o nada. */
+  foto: z.string().max(200).optional(),
 })
 
-export async function reportarProblemaAction(form: FormData): Promise<Resultado<string>> {
-  const p = reportarSchema.safeParse({
-    activo: form.get('activo'), tipo: form.get('tipo'), texto: form.get('texto') || undefined,
-  })
+export async function reportarProblemaAction(entrada: z.input<typeof reportarSchema>): Promise<Resultado<string>> {
+  const p = reportarSchema.safeParse(entrada)
   if (!p.success) return { ok: false, error: p.error.issues[0].message }
-  let foto: string | null = null
-  const f = archivo(form.get('foto'))
-  if (f) {
-    const s = await subirFoto(f, `incidencias/${p.data.activo}`)
-    if (!s.ok) return s
-    foto = s.dato
-  }
+  const foto = urlDeFoto(p.data.foto)
+  if (!foto.ok) return foto
   return rpc<string>('reportar_problema_activo', {
-    p_activo: p.data.activo, p_tipo: p.data.tipo, p_texto: p.data.texto || null, p_foto_url: foto,
+    p_activo: p.data.activo, p_tipo: p.data.tipo, p_texto: p.data.texto || null, p_foto_url: foto.dato,
   })
 }
 
@@ -206,6 +197,11 @@ export async function registrarVerificacionAction(entrada: z.input<typeof verifi
     return { ok: false, error: 'Falta aplicar la migración 20260922T1200 de la verificación de uso: todavía no se puede registrar.' }
   }
   return r
+}
+
+/** Quiénes pueden figurar como operador de una máquina; lo pide el panel de verificación de escritorio. */
+export async function leerOperadoresAction(): Promise<{ id: string; nombre: string }[]> {
+  return leerOperadores()
 }
 
 const estadoSchema = z.object({
@@ -265,17 +261,12 @@ export async function darDeAltaAction(form: FormData): Promise<Resultado<{ id: s
     if (!d.ok) return d
     ubicacion = d.dato
   }
-  let foto: string | null = null
-  const f = archivo(form.get('foto'))
-  if (f) {
-    const s = await subirFoto(f, codigo ?? 'alta')
-    if (!s.ok) return s
-    foto = s.dato
-  }
+  const foto = urlDeFoto(form.get('foto'))
+  if (!foto.ok) return foto
   const r = await rpc<string>('dar_de_alta_activo', {
     p_clase: p.data.clase, p_nombre: p.data.nombre, p_ubicacion: ubicacion, p_categoria: p.data.categoria || null,
     p_codigo: codigo, p_patente: p.data.clase === 'rodado' ? p.data.patente || null : null,
-    p_alta_desde_obra: p.data.desdeObra, p_foto_url: foto, p_cantidad: p.data.cantidad,
+    p_alta_desde_obra: p.data.desdeObra, p_foto_url: foto.dato, p_cantidad: p.data.cantidad,
   })
   if (!r.ok) return r
   try {
@@ -307,14 +298,14 @@ export async function editarActivoAction(entrada: z.input<typeof editarSchema>):
   return rpc<null>('editar_activo', { p_activo: p.data.activo, p_datos: p.data.datos })
 }
 
-export async function cambiarFotoAction(form: FormData): Promise<Resultado> {
-  const id = uuid.safeParse(form.get('activo'))
+/** Guarda en la ficha la foto que el navegador ya subió al bucket. */
+export async function cambiarFotoAction(entrada: { activo: string; ruta: string }): Promise<Resultado> {
+  const id = uuid.safeParse(entrada.activo)
   if (!id.success) return { ok: false, error: 'Falta el activo' }
-  const f = archivo(form.get('foto'))
-  if (!f) return { ok: false, error: 'Elegí una foto' }
-  const s = await subirFoto(f, id.data)
-  if (!s.ok) return s
-  return rpc<null>('editar_activo', { p_activo: id.data, p_datos: { foto_url: s.dato } })
+  if (!esRutaDeFoto(entrada.ruta)) return { ok: false, error: 'La foto no quedó bien subida. Probá de nuevo.' }
+  const foto = urlDeFoto(entrada.ruta)
+  if (!foto.ok) return foto
+  return rpc<null>('editar_activo', { p_activo: id.data, p_datos: { foto_url: foto.dato } })
 }
 
 /** Marca impresas las etiquetas de una tanda. Una por una: `editar_activo` recibe un activo. */

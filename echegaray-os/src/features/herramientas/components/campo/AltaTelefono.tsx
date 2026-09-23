@@ -10,6 +10,7 @@
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 import { darDeAltaAction } from '../../services/acciones'
+import { subirFotoDeActivo } from '../../services/subida-foto'
 import { FORMATO_CODIGO, prefijoDeNombre } from '../../logica/codigo'
 import { CampoCodigo } from '../CampoCodigo'
 import { MONO, V, eyebrow } from '../estilo'
@@ -46,7 +47,12 @@ export function AltaTelefono({ codigo, lugares, lugarInicial, en }: {
     fd.set('codigo', leido ?? letras)
     if (lugar) fd.set('destino', lugar)
     fd.set('desde_obra', '1')
-    if (foto) fd.set('foto', foto)
+    // La foto va del teléfono al bucket; a la acción llega sólo la ruta (`logica/foto.ts`).
+    if (foto) {
+      const s = await subirFotoDeActivo(foto, 'alta')
+      if (!s.ok) { setEnviando(false); return setError(s.error) }
+      fd.set('foto', s.ruta)
+    }
     const r = await darDeAltaAction(fd)
     setEnviando(false)
     if (!r.ok) return setError(r.error)

@@ -5,6 +5,7 @@
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 import { reportarProblemaAction } from '../../services/acciones'
+import { subirFotoDeActivo } from '../../services/subida-foto'
 import type { TipoIncidencia } from '../../types'
 import { TIPOS } from '../PanelReportar'
 import { V, eyebrow } from '../estilo'
@@ -23,12 +24,14 @@ export function ReportarTelefono({ activo, nombre, volverA }: { activo: string; 
     if (!tipo) return
     setEnviando(true)
     setError(null)
-    const fd = new FormData()
-    fd.set('activo', activo)
-    fd.set('tipo', tipo)
-    fd.set('texto', texto)
-    if (foto) fd.set('foto', foto)
-    const r = await reportarProblemaAction(fd)
+    // La foto va del teléfono al bucket; a la acción llega sólo la ruta (`logica/foto.ts`).
+    let ruta: string | undefined
+    if (foto) {
+      const s = await subirFotoDeActivo(foto, `incidencias/${activo}`)
+      if (!s.ok) { setEnviando(false); return setError(s.error) }
+      ruta = s.ruta
+    }
+    const r = await reportarProblemaAction({ activo, tipo, texto, foto: ruta }).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : 'No se pudo reportar' }))
     setEnviando(false)
     if (!r.ok) return setError(r.error)
     router.push(volverA)

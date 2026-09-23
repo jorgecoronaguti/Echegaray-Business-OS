@@ -23,7 +23,10 @@ import { NOMBRE_PAPEL, enlaceDrive, estadoDePapel, papelesDe, type Papel } from 
 import { ajustarExistenciaAction, cambiarEstadoAction } from '../services/acciones'
 import { useHerramientas } from './Espacio'
 import { QR } from './QR'
-import { COLOR_TONO, eyebrow, MONO, SUPERFICIE, V, vacio } from './estilo'
+import { ResumenRevision } from './FichaRevision'
+import { Unidades } from './Unidades'
+import { SacarFoto } from './campo/SacarFoto'
+import { AZUL, COLOR_TONO, eyebrow, MONO, SUPERFICIE, V, vacio } from './estilo'
 import { diaMes, diaMesAnio, mesAnio, pesos } from './formato'
 
 const btn = (primario: boolean) => ({
@@ -88,11 +91,15 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
       </div>
 
       <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-        <div style={{ width: 118, height: 88, border: `1px solid ${V.linea}`, borderRadius: 6, background: SUPERFICIE, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11.5px', color: V.tenue, overflow: 'hidden', flexShrink: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0, width: 118 }}>
+          <div style={{ width: 118, height: 88, border: `1px solid ${V.linea}`, borderRadius: 6, background: SUPERFICIE, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11.5px', color: V.tenue, overflow: 'hidden' }}>
           {a.foto_url ? (
             // eslint-disable-next-line @next/next/no-img-element -- foto pública del bucket `herramientas`, tamaño libre
             <img src={a.foto_url} alt={a.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : 'sin foto'}
+          </div>
+          {/* La misma pieza que «Sacar una foto» en el teléfono (M03): la foto de la ficha se cambia desde las dos caras. */}
+          {a.estado !== 'baja' && <SacarFoto activo={a.id} variante="escritorio" onGuardada={refrescar} />}
         </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', border: `1px solid ${V.linea}`, borderRadius: 6, background: SUPERFICIE }}>
@@ -115,6 +122,8 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
       </div>
 
       {a.estado !== 'baja' && a.cantidad > 1 && <Reparto id={a.id} />}
+      {/* Códigos por unidad del lote (23/09): se piden cuando hacen falta, nunca los 580 de golpe. */}
+      <Unidades activo={a} unidades={parque.unidades} onHecho={refrescar} />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={eyebrow}>Estado</div>
@@ -164,7 +173,9 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
 
       <Papeles id={a.id} clase={a.clase} />
 
-      {seVerifica(a) && <Uso id={a.id} clase={a.clase} codigo={a.codigo} />}
+      <ResumenRevision id={a.id} />
+
+      {seVerifica(a) && <Uso id={a.id} clase={a.clase} />}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 4, borderTop: `1px solid ${V.linea}` }}>
         <div style={{ ...eyebrow, paddingTop: 10 }}>Historial</div>
@@ -223,7 +234,8 @@ function Papeles({ id, clase }: { id: string; clase: Activo['clase'] }) {
   )
 }
 
-function UnPapel({ p }: { p: Papel }) {
+/** Un papel del rodado, con su vencimiento y su enlace a Drive. Lo usa también la ficha del teléfono. */
+export function UnPapel({ p }: { p: Papel }) {
   const e = estadoDePapel(p)
   const color = e.tono === 'neg' ? V.neg : e.tono === 'warn' ? V.warn : e.tono === 'pos' ? V.pos : V.tenue
   const enlace = enlaceDrive(p)
@@ -252,9 +264,9 @@ function UnPapel({ p }: { p: Papel }) {
   )
 }
 
-/** D03 «Uso»: el km (u horas) de la última lectura y la última verificación, con quién la hizo. */
-function Uso({ id, clase, codigo }: { id: string; clase: 'rodado' | 'equipo'; codigo: string }) {
-  const { parque } = useHerramientas()
+/** D03 «Uso»: el km (u horas) de la última lectura y la última verificación, con quién la hizo. Verificar abre el panel (el mismo M10/M13 del teléfono). */
+function Uso({ id, clase }: { id: string; clase: 'rodado' | 'equipo' }) {
+  const { parque, abrir } = useHerramientas()
   const fila = (rotulo: string, valor: ReactNode, testid?: string) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: '12.5px' }} data-testid={testid}>
       <span style={{ color: V.apagado }}>{rotulo}</span><span style={{ textAlign: 'right' }}>{valor}</span>
@@ -276,9 +288,9 @@ function Uso({ id, clase, codigo }: { id: string; clase: 'rodado' | 'equipo'; co
           {fila('Última verificación', <span style={ult ? { color: v.tipo === 'hoy' ? V.tinta : V.warn } : vacio}>
             {textoVerificacion(v)}{quien ? ` · ${quien}` : ''}{ult && ult.criticos_mal.length ? ' · no pasó' : ''}
           </span>, 'ficha-verificacion')}
-          <Link href={`/campo/herramientas/a/${encodeURIComponent(codigo)}/verificar`} prefetch={false} style={{ fontSize: '12px', color: '#175CD3' }}>
-            Verificar (pantalla de teléfono)
-          </Link>
+          <button type="button" onClick={() => abrir({ tipo: 'verificar', id })} style={{ fontSize: '12px', color: AZUL, textAlign: 'left' }} data-testid="abrir-verificar">
+            {clase === 'rodado' ? 'Verificar antes de salir' : 'Verificar antes de arrancar'}
+          </button>
         </>
       )}
     </div>

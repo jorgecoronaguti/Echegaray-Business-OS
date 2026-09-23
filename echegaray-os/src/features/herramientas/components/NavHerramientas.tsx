@@ -19,6 +19,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { destinoDeBusqueda } from '../logica/inventario'
 import { IcoBuscar } from './iconos'
 import { MONO, V } from './estilo'
 
@@ -87,8 +88,8 @@ export function NavHerramientas({ cuentas, derecha }: { cuentas: CuentasNav; der
           role="search"
           onSubmit={(e) => {
             e.preventDefault()
-            const t = q.trim()
-            router.push(t ? `/herramientas/inventario?clase=todo&q=${encodeURIComponent(t)}` : '/herramientas/inventario')
+            // Un código tipeado abre su ficha: es el «Escanear» de la computadora (paridad, dueño 23/09).
+            router.push(destinoDeBusqueda(q))
           }}
           style={{
             width: 250, height: 28, padding: '0 10px', border: `1px solid ${V.lineaFuerte}`, borderRadius: 6,

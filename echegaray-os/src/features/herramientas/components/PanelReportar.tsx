@@ -3,8 +3,9 @@
 // REPORTAR UN PROBLEMA desde escritorio — lo mismo que M07: cambia el estado, NUNCA la ubicación.
 // «No la encuentro» no da de baja: deja un reporte para que alguien la busque.
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { reportarProblemaAction } from '../services/acciones'
+import { subirFotoDeActivo } from '../services/subida-foto'
 import type { TipoIncidencia } from '../types'
 import { useHerramientas } from './Espacio'
 import { Bloque, ErrorPanel, PanelLateral } from './PanelLateral'
@@ -21,8 +22,10 @@ export function PanelReportar({ ids, onHecho }: { ids: string[]; onHecho: (t: st
   const activos = ids.map((id) => parque.activoPorId.get(id)).filter((a) => a && a.estado !== 'baja')
   const [tipo, setTipo] = useState<TipoIncidencia | null>(null)
   const [texto, setTexto] = useState('')
+  const [foto, setFoto] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
+  const input = useRef<HTMLInputElement>(null)
 
   async function enviar() {
     if (!tipo) return
@@ -30,11 +33,15 @@ export function PanelReportar({ ids, onHecho }: { ids: string[]; onHecho: (t: st
     setError(null)
     let hechos = 0
     for (const a of activos) {
-      const fd = new FormData()
-      fd.set('activo', a!.id)
-      fd.set('tipo', tipo)
-      fd.set('texto', texto)
-      const r = await reportarProblemaAction(fd)
+      // La foto va del navegador al bucket; a la acción llega sólo la ruta (`logica/foto.ts`). Una por
+      // reporte: si se reportan varios con la misma foto, cada incidencia lleva su copia.
+      let ruta: string | undefined
+      if (foto) {
+        const s = await subirFotoDeActivo(foto, `incidencias/${a!.id}`)
+        if (!s.ok) { setEnviando(false); return setError(hechos ? `Se reportaron ${hechos} de ${activos.length}. ${s.error}` : s.error) }
+        ruta = s.ruta
+      }
+      const r = await reportarProblemaAction({ activo: a!.id, tipo, texto, foto: ruta })
       if (!r.ok) {
         setEnviando(false)
         return setError(hechos ? `Se reportaron ${hechos} de ${activos.length}. ${r.error}` : r.error)
@@ -73,6 +80,12 @@ export function PanelReportar({ ids, onHecho }: { ids: string[]; onHecho: (t: st
       </Bloque>
       <Bloque rotulo="Contalo en una línea">
         <textarea value={texto} onChange={(e) => setTexto(e.target.value)} maxLength={400} rows={3} style={{ border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, padding: 10, fontSize: '13.5px' }} />
+        {/* La misma foto que M07 en el teléfono: desde la computadora se elige un archivo. */}
+        <button type="button" onClick={() => input.current?.click()} data-testid="foto-reporte"
+          style={{ height: 38, border: `1px dashed ${V.lineaFuerte}`, borderRadius: 6, fontSize: '13px', color: foto ? V.pos : V.tinta }}>
+          {foto ? 'Foto lista · cambiar' : 'Agregar foto'}
+        </button>
+        <input ref={input} type="file" accept="image/*" hidden onChange={(e) => setFoto(e.target.files?.[0] ?? null)} />
         <div style={{ fontSize: '12.5px', color: V.apagado, borderLeft: `2px solid ${V.linea}`, paddingLeft: 12 }}>No se mueve: sigue donde está. El taller decide si la retira.</div>
       </Bloque>
       <ErrorPanel texto={error} />
