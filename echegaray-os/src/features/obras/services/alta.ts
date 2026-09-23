@@ -206,3 +206,39 @@ export function debeFijarMonto(
   if (antes === null || ahora === null) return antes !== ahora
   return Number(antes) !== Number(ahora)
 }
+
+// ═══ LA BANDA DE PASOS DEL DISEÑO 02b / M03: número mono y tilde en los hechos ═══
+//
+// Un paso está HECHO cuando la obra ya tiene el dato que ese paso carga. No es «visitado»: saltar
+// el paso de fechas no lo tilda. `confirmar` no carga nada y por eso nunca lleva tilde.
+
+export interface DatosParaPasos {
+  jefe_obra: string | null
+  fecha_inicio_plan: string | null
+  fecha_fin_plan: string | null
+  /** `undefined` = quien mira no ve el contrato: el paso no se afirma hecho ni pendiente. */
+  monto_contratado?: number | null
+  drive_carpeta_id: string | null
+  personasAsignadas: number
+  actividades: number
+}
+
+export function pasosHechos(obra: DatosParaPasos | null): Set<PasoAlta> {
+  const hechos = new Set<PasoAlta>()
+  if (!obra) return hechos
+  hechos.add('informacion')
+  if (obra.jefe_obra) hechos.add('responsable')
+  if (obra.fecha_inicio_plan || obra.fecha_fin_plan) hechos.add('fechas')
+  if (obra.monto_contratado != null) hechos.add('contrato')
+  if (obra.drive_carpeta_id) hechos.add('drive')
+  if (obra.personasAsignadas > 0) hechos.add('equipo')
+  if (obra.actividades > 0) hechos.add('cronograma')
+  return hechos
+}
+
+/** El subtítulo del alta (02b): con obra, literal del diseño; sin obra, qué crea la obra. */
+export function subtituloAlta(hayObra: boolean): string {
+  return hayObra
+    ? 'La obra ya está guardada. Cada paso escribe sobre ella.'
+    : 'Nombre y cliente crean la obra. Todo lo demás se puede cargar después.'
+}

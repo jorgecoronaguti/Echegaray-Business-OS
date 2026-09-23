@@ -1,36 +1,29 @@
-// ALTA DE OBRA EN PASOS — la puerta por la que nace una obra.
+// ALTA DE OBRA EN PASOS — la puerta por la que nace una obra (diseño ERP Obras 02b / M03).
 //
 // ═══ POR QUÉ NO ES UN MODAL ═══
 //
-// El alta que existía era un `<details>` dentro de la ficha del cliente: un formulario largo, todo o
-// nada, que se perdía entero si el administrador se iba a la mitad. Acá cada paso GUARDA. La obra
-// existe desde el primer paso —nombre y cliente— y el resto edita esa misma fila, así que cerrar la
-// pestaña no pierde nada: se vuelve por `/obras/nueva?obra=<id>` o directamente por la ficha.
+// Cada paso GUARDA. La obra existe desde el primer paso —nombre y cliente— y el resto edita esa
+// misma fila, así que cerrar la pestaña no pierde nada: se vuelve por `/obras/nueva?obra=<id>` o
+// directamente por la ficha. La puerta vieja NO se retira: `crearObra` desde la ficha del cliente
+// sigue siendo el atajo para quien ya tiene todo a mano.
 //
-// Esa puerta vieja NO se retira: `crearObra` desde la ficha del cliente sigue siendo el atajo para
-// quien ya tiene todo a mano. Las dos escriben en `obra_canonica` con las mismas reglas.
+// ═══ EL CHECKLIST VIVE AL COSTADO, NO AL FINAL ═══
 //
-// ═══ EL CHECKLIST VIVE AL COSTADO, NO AL FINAL (Design Handoff V2, §1i) ═══
-//
-// Estaba sólo en el paso 8. El handoff lo pone como panel derecho PERMANENTE, y el cambio no es de
-// composición: mientras se tipea el paso 3 se ve, sin navegar, que Personal y Drive siguen vacíos.
-// Un checklist que aparece recién al final llega tarde para lo único que sirve — decidir si vale la
-// pena seguir cargando ahora o volver mañana. Y aparece en cuanto la obra existe: antes no hay fila
-// que medir, y siete líneas en «pendiente» sobre una obra que todavía no se creó no son un estado,
-// son ruido.
+// Aside de 380px «Estado de preparación · N de M pendientes», en cuanto la obra existe: mientras se
+// tipea el paso 3 se ve, sin navegar, que Personal y Drive siguen vacíos.
 //
 // ═══ QUÉ NO HACE ═══
 //
 // No inventa un solo dato. No pone la fecha de inicio en hoy, no elige un jefe de obra, no deja el
 // contrato en cero. Lo que el dueño no tipea queda en NULL, y el checklist lo dice con todas las
-// letras. Un default cómodo acá se convierte en un desvío calculado contra una ficción tres meses
-// después.
+// letras: «Lo pendiente no bloquea: la obra ya está en la cartera, en Previo.»
 //
 // ═══ EL ORDEN DEL PEDIDO, CON UNA FUSIÓN DECLARADA ═══
 //
-// El dueño pidió: Información → Cliente → Responsable → Fechas → Contrato → Drive → Equipo →
-// Cronograma → Confirmar. «Información» y «Cliente» van en un solo paso porque juntos son el mínimo
-// con el que la fila puede existir; el porqué está escrito en `services/alta.ts`.
+// Información → Responsable → Fechas → Contrato → Drive → Equipo → Cronograma → Confirmar.
+// «Información» y «Cliente» van juntos porque son el mínimo con el que la fila puede existir; el
+// porqué está en `services/alta.ts`. LOS `name` DE LOS CAMPOS son contrato con `altaSchema` y
+// `ESQUEMA_PASO`: cambiar uno acá sin cambiarlo allá hace que el campo deje de guardarse.
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
@@ -42,18 +35,20 @@ import { getAsignaciones, getPersonas } from '@/features/obras/services/personal
 import { crearActividad } from '@/features/obras/services/actions'
 import { asignarPersona } from '@/features/obras/services/actionsPersonal'
 import { crearBorradorObra, guardarPasoObra } from '@/features/obras/services/actionsAlta'
-import { esPasoQueGuarda, resolverPaso, urlPaso } from '@/features/obras/services/alta'
+import { esPasoQueGuarda, pasoSiguiente, pasosHechos, resolverPaso, subtituloAlta, urlPaso } from '@/features/obras/services/alta'
 import {
-  CampoDrive, CampoJefeObra, CampoMontoContratado, CampoNombre, CamposFechasPlan, CampoUbicacion,
-} from '@/features/obras/components/CamposObra'
-import { BarraDePasos, LinkPaso, Paso } from '@/features/obras/components/PasosAlta'
+  BandaDePasos, CabeceraAlta, CampoAlta, CuerpoYAside, EnlacePaso, FormPaso, GrillaCampos, InputAlta, MarcoAlta,
+  PrimariaEnlace, SelectAlta, TituloPaso,
+} from '@/features/obras/components/PasosAlta'
 import { ChecklistPreparacion } from '@/features/obras/components/ChecklistPreparacion'
-import { Aviso, Ayuda, BotonEnlace, CAMPO, Campo, Nulo, Volver } from '@/shared/components/ds'
-import { FormAccion, PageShell } from '@/shared/components/ui'
+import { Aviso } from '@/shared/components/ds'
+import { C } from '@/features/obras/components/canon/tokens'
 import { codigosDeObra } from '@/shared/services/codigosDeObra'
 import { rotuloDeObra } from '@/shared/utils/obra'
 
 export const dynamic = 'force-dynamic'
+
+const v = (x: string | number | null | undefined) => (x == null ? '' : String(x))
 
 export default async function NuevaObraPage({
   searchParams,
@@ -68,17 +63,16 @@ export default async function NuevaObraPage({
   // final. Falla al nivel MENOS privilegiado: sin perfil legible, no se entra.
   const perfil = await getPerfilActual(supabase)
   const esAdmin = esAdministracion(perfil.data?.rol ?? null)
-  // El monto contratado es PRECIO, no operación: desde la 5000 sólo `ve_economia()` puede fijarlo
-  // (`fijar_monto_contratado`). Sin esto el paso «contrato» le pediría al jefe de obra un número que
-  // la base le va a rechazar.
+  // El monto contratado es PRECIO: desde la 5000 sólo `ve_economia()` puede fijarlo.
   const veContrato = veEconomia(perfil.data?.rol ?? null)
   if (!esAdmin) {
     return (
-      <PageShell eyebrow={<Volver href="/obras">Obras</Volver>} title="Nueva obra">
+      <MarcoAlta conPrimariaFija={false}>
+        <CabeceraAlta titulo="Nueva obra" subtitulo="" volverHref="/obras" volverTexto="Obras" />
         <Aviso tono="warn">
           Las obras las da de alta Administración. Si necesitás una obra nueva, pedila y aparece en tu portafolio.
         </Aviso>
-      </PageShell>
+      </MarcoAlta>
     )
   }
 
@@ -88,223 +82,187 @@ export default async function NuevaObraPage({
   const obraId = obra?.obra_id ?? null
   const paso = resolverPaso(pasoParam, Boolean(obraId))
   // EL CÓDIGO DE LA OBRA (`OB-0008`), leído de `obra_canonica` y no derivado del nombre ni del id.
-  // Se pide aparte —igual que en la cabecera de la ficha— porque `obra_panel` no lo publica y un
-  // `select` que nombre una columna inexistente falla entero (ver `codigosDeObra`).
   const codigo = obraId ? (await codigosDeObra(supabase, [obraId])).get(obraId) ?? null : null
   const rotulo = obra ? rotuloDeObra({ nombre: obra.nombre, codigo }) : null
 
-  // Cada paso pide SÓLO lo suyo: el alta se abre desde una oficina y desde un teléfono, y ocho
-  // consultas para pintar un campo de texto es ocho consultas para nadie.
-  const clientes = paso === 'informacion' && !obraId ? (await getClientes(supabase)).data ?? [] : []
-  const ubicacion = paso === 'informacion' && obraId ? await getUbicacion(supabase, obraId) : null
-  const personas = paso === 'equipo' && obraId ? (await getPersonas(supabase)).data ?? [] : []
-  const asignaciones = paso === 'equipo' && obraId ? (await getAsignaciones(supabase, obraId)).data ?? [] : []
-  const actividades = paso === 'cronograma' && obraId ? (await getActividades(supabase, obraId)).data ?? [] : []
+  // Cada paso pide SÓLO lo suyo; los dos conteos de la banda (equipo, cronograma) son `head` y
+  // salen juntos con lo del paso.
+  const [clientes, ubicacion, personas, asignaciones, actividades, nAsignadas, nActividades] = await Promise.all([
+    paso === 'informacion' && !obraId ? getClientes(supabase).then((r) => r.data ?? []) : [],
+    paso === 'informacion' && obraId ? getUbicacion(supabase, obraId) : null,
+    paso === 'equipo' && obraId ? getPersonas(supabase).then((r) => r.data ?? []) : [],
+    paso === 'equipo' && obraId ? getAsignaciones(supabase, obraId).then((r) => r.data ?? []) : [],
+    paso === 'cronograma' && obraId ? getActividades(supabase, obraId).then((r) => r.data ?? []) : [],
+    obraId ? supabase.from('obra_asignacion').select('id', { count: 'exact', head: true }).eq('obra_id', obraId).then((r) => r.count ?? 0) : 0,
+    obraId ? supabase.from('obra_actividad').select('id', { count: 'exact', head: true }).eq('obra_id', obraId).eq('archivada', false).then((r) => r.count ?? 0) : 0,
+  ])
   const vivas = actividades.filter((a) => !a.archivada)
+  const hechos = pasosHechos(obra ? {
+    jefe_obra: obra.jefe_obra, fecha_inicio_plan: obra.fecha_inicio_plan, fecha_fin_plan: obra.fecha_fin_plan,
+    monto_contratado: veContrato ? obra.monto_contratado : undefined, drive_carpeta_id: obra.drive_carpeta_id,
+    personasAsignadas: nAsignadas, actividades: nActividades,
+  } : null)
 
+  const siguiente = pasoSiguiente(paso)
+  const enlaces = obraId && (
+    <>
+      {siguiente && paso !== 'confirmar' && (
+        <EnlacePaso href={urlPaso(obraId, siguiente)} testid={`saltar-${paso}`}>Saltar este paso</EnlacePaso>
+      )}
+      {paso !== 'informacion' && (
+        <EnlacePaso href={urlPaso(obraId, 'informacion')} testid="volver-informacion">Volver al principio</EnlacePaso>
+      )}
+    </>
+  )
   return (
-    <PageShell
-      eyebrow={<Volver href={obraId ? `/obras/${obraId}` : '/obras'}>{obraId ? rotulo : 'Obras'}</Volver>}
-      title={rotulo ?? 'Nueva obra'}
-      subtitle={obra
-        ? 'La obra ya está guardada. Cada paso escribe sobre ella: podés salir y volver cuando quieras.'
-        : 'Nombre y cliente crean la obra. Todo lo demás se puede cargar después, y el panel de al lado dice qué falta.'}
-    >
+    <MarcoAlta conPrimariaFija>
+      <CabeceraAlta
+        titulo={rotulo ?? 'Nueva obra'}
+        subtitulo={subtituloAlta(Boolean(obra))}
+        volverHref={obraId ? `/obras/${obraId}` : '/obras'}
+        volverTexto="Obras"
+      />
       {error && <Aviso tono="neg">No pude leer la obra: {error}</Aviso>}
       {obraParam && !obra && !error && (
         <Aviso tono="warn">No existe la obra «{obraParam}». <Link className="underline" href="/obras/nueva" prefetch={false}>Empezar una nueva</Link>.</Aviso>
       )}
 
-      <BarraDePasos obraId={obraId} actual={paso} />
+      <BandaDePasos obraId={obraId} actual={paso} hechos={hechos} />
 
-      <div className="flex flex-wrap items-start gap-x-12 gap-y-10">
-        {/* ── 1 · INFORMACIÓN Y CLIENTE ─────────────────────────────────────── */}
-        {paso === 'informacion' && !obraId && (
-          <Paso paso="informacion">
-            <FormAccion accion={crearBorradorObra} testid="form-alta-obra" enviar="Crear la obra y seguir">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <CampoNombre />
-                <Campo rotulo="Cliente" className="sm:col-span-2" ayuda="La obra cuelga del cliente: es la jerarquía del módulo.">
-                  <select name="cliente_id" required defaultValue="" className={CAMPO}>
+      <CuerpoYAside
+        cuerpo={<>
+          <TituloPaso paso={paso} />
+
+          {/* ── 1 · INFORMACIÓN Y CLIENTE ───────────────────────────────────── */}
+          {paso === 'informacion' && !obraId && (
+            <FormPaso accion={crearBorradorObra} testid="form-alta-obra" enviar="Crear la obra y seguir">
+              <GrillaCampos>
+                <CampoAlta rotulo="Nombre de la obra"><InputAlta name="nombre" required minLength={2} maxLength={120} /></CampoAlta>
+                <CampoAlta rotulo="Cliente">
+                  <SelectAlta name="cliente_id" required defaultValue="">
                     <option value="" disabled>elegí un cliente</option>
                     {clientes.filter((c) => c.activo).map((c) => (
                       <option key={c.cliente_id} value={c.cliente_id}>{c.nombre_comercial}</option>
                     ))}
-                  </select>
-                </Campo>
-                <CampoUbicacion />
+                  </SelectAlta>
+                </CampoAlta>
+                <CampoAlta rotulo="Ubicación"><InputAlta name="ubicacion" maxLength={200} placeholder="dónde queda" /></CampoAlta>
+              </GrillaCampos>
+            </FormPaso>
+          )}
+
+          {/* Volver al paso 1 con la obra ya creada NO reabre el formulario: el identificador sale del
+              nombre y ya quedó fijo en la URL. Renombrar es una edición de la ficha, no un paso del alta. */}
+          {paso === 'informacion' && obraId && obra && (
+            <>
+              <GrillaCampos>
+                <CampoAlta rotulo="Nombre de la obra"><InputAlta readOnly value={obra.nombre} /></CampoAlta>
+                <CampoAlta rotulo="Código" mono><InputAlta readOnly value={v(codigo)} /></CampoAlta>
+                <CampoAlta rotulo="Cliente"><InputAlta readOnly value={v(obra.cliente_nombre)} /></CampoAlta>
+                <CampoAlta rotulo="Ubicación"><InputAlta readOnly value={v(ubicacion)} /></CampoAlta>
+              </GrillaCampos>
+              <p style={{ fontSize: '12px', color: C.tenue, margin: 0 }}>
+                El nombre y la ubicación se editan desde <Link className="underline" href={`/obras/${obraId}?vista=resumen`} prefetch={false}>la ficha de la obra</Link>.
+              </p>
+              <PrimariaEnlace href={urlPaso(obraId, 'responsable')} testid="seguir-responsable">Guardar y seguir</PrimariaEnlace>
+            </>
+          )}
+
+          {/* ── 2 a 5 · LOS PASOS QUE ESCRIBEN UNA COLUMNA ──────────────────── */}
+          {obraId && obra && esPasoQueGuarda(paso) && (
+            <FormPaso accion={guardarPasoObra.bind(null, obraId, paso)} testid={`form-paso-${paso}`} enlaces={enlaces}>
+              <GrillaCampos>
+                {paso === 'responsable' && (
+                  <CampoAlta rotulo="Jefe de obra"><InputAlta name="jefe_obra" defaultValue={v(obra.jefe_obra)} maxLength={120} /></CampoAlta>
+                )}
+                {paso === 'fechas' && (
+                  <>
+                    <CampoAlta rotulo="Inicio previsto" mono><InputAlta type="date" name="fecha_inicio_plan" defaultValue={v(obra.fecha_inicio_plan)} /></CampoAlta>
+                    <CampoAlta rotulo="Fin previsto" mono><InputAlta type="date" name="fecha_fin_plan" defaultValue={v(obra.fecha_fin_plan)} /></CampoAlta>
+                  </>
+                )}
+                {/* `veEconomia` decide si el campo EXISTE: la clave ausente no es un vacío (ver `actionsAlta`). */}
+                {paso === 'contrato' && veContrato && (
+                  <CampoAlta rotulo="Monto contratado ($)" mono>
+                    <InputAlta type="number" name="monto_contratado" min={0} step="0.01" defaultValue={v(obra.monto_contratado)} />
+                  </CampoAlta>
+                )}
+                {paso === 'drive' && (
+                  <CampoAlta rotulo="Carpeta de Drive (id)"><InputAlta name="drive_carpeta_id" defaultValue={v(obra.drive_carpeta_id)} maxLength={80} /></CampoAlta>
+                )}
+              </GrillaCampos>
+            </FormPaso>
+          )}
+
+          {/* ── 6 · EQUIPO ──────────────────────────────────────────────────── */}
+          {paso === 'equipo' && obraId && (
+            <>
+              <p style={{ fontSize: '13px', margin: 0 }} data-testid="equipo-cuenta">
+                {asignaciones.length === 0
+                  ? 'Todavía no hay nadie asignado.'
+                  : `${asignaciones.length} ${asignaciones.length === 1 ? 'persona asignada' : 'personas asignadas'}: ${asignaciones.map((a) => a.persona_nombre ?? 'sin persona').join(', ')}`}
+              </p>
+              {/* MISMA acción que la solapa Personal de la obra: acá cambia el formulario, no la regla. */}
+              <FormPaso accion={asignarPersona.bind(null, obraId)} testid="form-alta-equipo" enviar="Asignar" limpiarAlOk mensajeOk="Asignada." enlaces={enlaces}>
+                <GrillaCampos>
+                  <CampoAlta rotulo="Persona">
+                    <SelectAlta name="persona_id" required defaultValue="">
+                      <option value="" disabled>elegí del plantel</option>
+                      {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
+                    </SelectAlta>
+                  </CampoAlta>
+                  <CampoAlta rotulo="Rol">
+                    <SelectAlta name="rol" defaultValue="integrante">
+                      <option value="integrante">integrante</option>
+                      <option value="responsable">responsable</option>
+                    </SelectAlta>
+                  </CampoAlta>
+                  <CampoAlta rotulo="Cuadrilla"><InputAlta name="cuadrilla" maxLength={80} /></CampoAlta>
+                </GrillaCampos>
+              </FormPaso>
+            </>
+          )}
+
+          {/* ── 7 · CRONOGRAMA ──────────────────────────────────────────────── */}
+          {paso === 'cronograma' && obraId && (
+            <>
+              <p style={{ fontSize: '13px', margin: 0 }} data-testid="cronograma-cuenta">
+                {vivas.length === 0
+                  ? 'Todavía no hay ninguna actividad.'
+                  : `${vivas.length} ${vivas.length === 1 ? 'actividad cargada' : 'actividades cargadas'}.`}
+                {' '}<Link className="underline" href={`/obras/${obraId}?vista=cronograma`} prefetch={false}>Abrir el cronograma completo</Link>.
+              </p>
+              <FormPaso accion={crearActividad.bind(null, obraId)} testid="form-alta-actividad" enviar="Agregar actividad" limpiarAlOk mensajeOk="Actividad agregada." enlaces={enlaces}>
+                <GrillaCampos>
+                  <CampoAlta rotulo="Actividad"><InputAlta name="nombre" required minLength={2} maxLength={200} placeholder="" /></CampoAlta>
+                  <CampoAlta rotulo="Sección"><InputAlta name="seccion" maxLength={120} placeholder="opcional" /></CampoAlta>
+                  <CampoAlta rotulo="Inicio previsto" mono><InputAlta type="date" name="inicio_plan" /></CampoAlta>
+                  <CampoAlta rotulo="Fin previsto" mono><InputAlta type="date" name="fin_plan" /></CampoAlta>
+                  <CampoAlta rotulo="HH plan" mono><InputAlta type="number" name="hh_plan" min={0} step="0.5" /></CampoAlta>
+                </GrillaCampos>
+              </FormPaso>
+            </>
+          )}
+
+          {/* ── 8 · CONFIRMAR ───────────────────────────────────────────────── */}
+          {paso === 'confirmar' && obraId && (
+            <>
+              <p style={{ fontSize: '13px', margin: 0 }}>
+                La obra ya existe y está en la cartera. Lo que falte lo dice el panel de al lado, y nada de eso la bloquea.
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
+                <PrimariaEnlace href={`/obras/${obraId}`} testid="ir-a-la-obra">Ir a la obra</PrimariaEnlace>
+                {enlaces}
               </div>
-            </FormAccion>
-          </Paso>
+            </>
+          )}
+        </>}
+        aside={obraId && (
+          // El MISMO componente que la solapa Resumen, con la MISMA lectura. Si acá se calculara
+          // aparte, el alta podría despedirse diciendo «todo listo» sobre una obra a medio preparar.
+          <ChecklistPreparacion obraId={obraId} />
         )}
-
-        {/* Volver al paso 1 con la obra ya creada NO reabre el formulario: el identificador de la obra
-            sale del nombre y ya quedó fijo en la URL, en los vínculos y en las imputaciones. Renombrar
-            es una edición de la ficha, no un paso del alta. */}
-        {paso === 'informacion' && obraId && obra && (
-          <Paso
-            paso="informacion"
-            pie={<LinkPaso obraId={obraId} paso="responsable" testid="seguir-responsable" fuerte>Siguiente</LinkPaso>}
-          >
-            <dl className="border-t border-line text-[13px]">
-              {([
-                ['Nombre', obra.nombre],
-                // ═══ ACÁ DECÍA «Identificador: qp-salon-comercial» ═══
-                //
-                // Era `obra_id`: el slug que la app fabrica del nombre para armar la URL. El
-                // identificador de una obra es `obra_canonica.codigo` («OB-0008»), que no cambia
-                // nunca aunque la obra se renombre, y es el que viaja al Sheet, al bot y al resto
-                // de las pantallas. Sin código —la migración todavía no aplicada— se escribe la
-                // ausencia: un slug puesto en su lugar se leería como si fuera el código.
-                ['Código', codigo],
-                ['Cliente', obra.cliente_nombre],
-                ['Ubicación', ubicacion],
-              ] as const).map(([k, v]) => (
-                <div key={k} className="flex h-10 items-center justify-between gap-3 border-b border-surface-sunken">
-                  <dt className="text-muted">{k}</dt>
-                  {/* LA AUSENCIA SE ESCRIBE. Un «—» acá se lee igual que un dato corto y hace que
-                      una obra sin ubicación cargada parezca una obra con la ubicación puesta. */}
-                  <dd className="min-w-0 truncate text-ink">{v ?? <Nulo>sin cargar</Nulo>}</dd>
-                </div>
-              ))}
-            </dl>
-            <p className="mt-3 text-[12px] text-faint">
-              El nombre y la ubicación se editan desde <Link className="underline" href={`/obras/${obraId}?vista=resumen`} prefetch={false}>la ficha de la obra</Link>.
-            </p>
-          </Paso>
-        )}
-
-        {/* ── 2 a 5 · LOS PASOS QUE ESCRIBEN UNA COLUMNA ────────────────────── */}
-        {obraId && obra && esPasoQueGuarda(paso) && (
-          <Paso
-            paso={paso}
-            pie={<>
-              <LinkPaso obraId={obraId} paso="informacion" testid="volver-informacion">Volver al principio</LinkPaso>
-              <Link
-                href={urlPaso(obraId, paso === 'responsable' ? 'fechas' : paso === 'fechas' ? 'contrato' : paso === 'contrato' ? 'drive' : 'equipo')} prefetch={false}
-                data-testid={`saltar-${paso}`}
-                className="text-muted underline underline-offset-2 transition-colors hover:text-ink"
-              >Saltar este paso</Link>
-            </>}
-          >
-            <FormAccion
-              accion={guardarPasoObra.bind(null, obraId, paso)}
-              testid={`form-paso-${paso}`}
-              enviar="Guardar y seguir"
-            >
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {paso === 'responsable' && <CampoJefeObra valor={obra.jefe_obra} />}
-                {paso === 'fechas' && <CamposFechasPlan inicio={obra.fecha_inicio_plan} fin={obra.fecha_fin_plan} />}
-                {paso === 'contrato' && veContrato && <CampoMontoContratado valor={obra.monto_contratado} />}
-                {paso === 'drive' && <CampoDrive valor={obra.drive_carpeta_id} />}
-              </div>
-            </FormAccion>
-          </Paso>
-        )}
-
-        {/* ── 6 · EQUIPO ────────────────────────────────────────────────────── */}
-        {paso === 'equipo' && obraId && (
-          <Paso
-            paso="equipo"
-            pie={<LinkPaso obraId={obraId} paso="cronograma" testid="seguir-cronograma" fuerte>Siguiente</LinkPaso>}
-          >
-            <p className="mb-4 text-[13px] text-ink" data-testid="equipo-cuenta">
-              {asignaciones.length === 0
-                ? 'Todavía no hay nadie asignado.'
-                : `${asignaciones.length} ${asignaciones.length === 1 ? 'persona asignada' : 'personas asignadas'}: ${asignaciones.map((a) => a.persona_nombre ?? 'sin persona').join(', ')}`}
-            </p>
-            {/* MISMA acción que la solapa Personal de la obra: acá cambia el formulario, no la regla.
-                Duplicar la escritura sería duplicar el índice único, el mensaje de error y la RLS. */}
-            <FormAccion accion={asignarPersona.bind(null, obraId)} testid="form-alta-equipo" enviar="Asignar" limpiarAlOk mensajeOk="Asignada.">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Campo rotulo="Persona" className="sm:col-span-2">
-                  <select name="persona_id" required defaultValue="" className={CAMPO}>
-                    <option value="" disabled>elegí del plantel</option>
-                    {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
-                  </select>
-                </Campo>
-                <Campo rotulo="Rol">
-                  <select name="rol" defaultValue="integrante" className={CAMPO}>
-                    <option value="integrante">integrante</option>
-                    <option value="responsable">responsable</option>
-                  </select>
-                </Campo>
-                <Campo rotulo="Cuadrilla"><input name="cuadrilla" maxLength={80} className={CAMPO} /></Campo>
-              </div>
-            </FormAccion>
-          </Paso>
-        )}
-
-        {/* ── 7 · CRONOGRAMA ────────────────────────────────────────────────── */}
-        {paso === 'cronograma' && obraId && (
-          <Paso
-            paso="cronograma"
-            pie={<>
-              <LinkPaso obraId={obraId} paso="confirmar" testid="seguir-confirmar" fuerte>Siguiente</LinkPaso>
-              <Link href={`/obras/${obraId}?vista=cronograma`} prefetch={false} className="text-muted underline underline-offset-2 transition-colors hover:text-ink">
-                Abrir el cronograma completo
-              </Link>
-            </>}
-          >
-            <p className="mb-4 text-[13px] text-ink" data-testid="cronograma-cuenta">
-              {vivas.length === 0
-                ? 'Todavía no hay ninguna actividad.'
-                : `${vivas.length} ${vivas.length === 1 ? 'actividad cargada' : 'actividades cargadas'}.`}
-            </p>
-            <FormAccion accion={crearActividad.bind(null, obraId)} testid="form-alta-actividad" enviar="Agregar actividad" limpiarAlOk mensajeOk="Actividad agregada.">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Campo rotulo="Actividad" className="sm:col-span-2">
-                  <input name="nombre" required minLength={2} maxLength={200} className={CAMPO} />
-                </Campo>
-                <Campo rotulo="Sección" className="sm:col-span-2" ayuda="Opcional. Agrupa las actividades del cronograma.">
-                  <input name="seccion" maxLength={120} className={CAMPO} />
-                </Campo>
-                <Campo rotulo="Inicio previsto"><input type="date" name="inicio_plan" className={CAMPO} /></Campo>
-                <Campo rotulo="Fin previsto"><input type="date" name="fin_plan" className={CAMPO} /></Campo>
-                <Campo rotulo="HH plan" className="sm:col-span-2" ayuda="Vacío = sin cargar. Sin HH plan no hay desvío de HH que medir.">
-                  <input type="number" name="hh_plan" min={0} step="0.5" className={CAMPO} />
-                </Campo>
-              </div>
-            </FormAccion>
-          </Paso>
-        )}
-
-        {/* ── 8 · CONFIRMAR ─────────────────────────────────────────────────── */}
-        {paso === 'confirmar' && obraId && (
-          <Paso
-            paso="confirmar"
-            pie={<BotonEnlace href={`/obras/${obraId}`} variante="primaria" data-testid="ir-a-la-obra">Ir a la obra</BotonEnlace>}
-          >
-            {/* EL CHECKLIST NO SE REPITE ACÁ: es el panel de la derecha, el mismo que acompañó los
-                siete pasos anteriores. Dos copias de la misma lista en la misma pantalla son dos
-                lugares donde puede decir cosas distintas. */}
-            {/* 22/08/2026 · Se recorta a las dos frases que son ESTADO —la obra existe, y dónde
-                mirar lo que falta—. La explicación de por qué nada bloquea era la misma que el
-                panel de al lado repetía tres líneas más abajo. */}
-            <p className="text-[13px] text-ink">
-              La obra ya existe y está en la cartera. Lo que falte lo dice el panel de al lado, y
-              nada de eso la bloquea.
-            </p>
-          </Paso>
-        )}
-
-        {/* ── EL PANEL DE PREPARACIÓN ───────────────────────────────────────── */}
-        {obraId && (
-          <aside className="w-full min-w-0 md:min-w-[320px] md:flex-1 md:basis-[360px]">
-            {/* El MISMO componente que la solapa Resumen, con la MISMA lectura. Si acá se calculara
-                aparte, el alta podría despedirse diciendo «todo listo» sobre una obra que el Resumen
-                muestra a medio preparar. */}
-            <ChecklistPreparacion obraId={obraId} />
-            {/* 22/08/2026 · El párrafo acompañaba al checklist en los OCHO pasos del alta. Qué es
-                la lista se pregunta una vez; que lo pendiente no bloquea ya se lee en el paso de
-                confirmación, que es donde alguien podría creer que sí. */}
-            <Ayuda titulo="Qué es esta lista" testid="ayuda-checklist-alta">
-              Lo pendiente no bloquea nada: la obra ya existe y está en la cartera. Aparece igual en
-              el Resumen hasta que no falte nada — no es un tablero, es un checklist que se agota.
-            </Ayuda>
-          </aside>
-        )}
-      </div>
-    </PageShell>
+      />
+    </MarcoAlta>
   )
 }

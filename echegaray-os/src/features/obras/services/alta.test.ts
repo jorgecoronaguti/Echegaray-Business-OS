@@ -90,3 +90,20 @@ test('el paso «contrato» ya no devuelve columna para el update', () => {
   assert.deepEqual(columnasDelPaso('contrato', { monto_contratado: 7500000 }), {})
   assert.deepEqual(columnasDelPaso('drive', { drive_carpeta_id: 'abc' }), { drive_carpeta_id: 'abc' })
 })
+
+test('la banda tilda los pasos que ya tienen su dato, nunca «confirmar» ni los visitados sin dato', async () => {
+  const { pasosHechos } = await import('./alta.ts')
+  assert.deepEqual([...pasosHechos(null)], [])
+  const base = {
+    jefe_obra: null, fecha_inicio_plan: null, fecha_fin_plan: null, drive_carpeta_id: null,
+    personasAsignadas: 0, actividades: 0,
+  }
+  assert.deepEqual([...pasosHechos(base)], ['informacion'])
+  assert.deepEqual(
+    [...pasosHechos({ ...base, jefe_obra: 'D. Olivera', fecha_inicio_plan: '2026-10-06', drive_carpeta_id: 'abc', personasAsignadas: 2, actividades: 3, monto_contratado: 100 })],
+    ['informacion', 'responsable', 'fechas', 'contrato', 'drive', 'equipo', 'cronograma'],
+  )
+  // Sin ver el contrato (undefined) el paso no se tilda; un $0 tipeado SÍ es un dato.
+  assert.equal(pasosHechos({ ...base, monto_contratado: undefined }).has('contrato'), false)
+  assert.equal(pasosHechos({ ...base, monto_contratado: 0 }).has('contrato'), true)
+})

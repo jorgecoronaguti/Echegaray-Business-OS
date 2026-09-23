@@ -37,8 +37,8 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { veEconomia } from '@/features/auth/types/areas'
-import { Eyebrow } from '@/shared/components/ds'
 import { Tarjeta, CabeceraTarjeta, BarraFina } from './TarjetaResumen'
+import { ListaPreparacion } from './PasosAlta'
 import { getPreparacion } from '../services/preparacionService'
 import { loQueFalta, preparacionDeObra, type LineaPreparacion } from '../services/preparacion'
 
@@ -134,17 +134,12 @@ export async function ChecklistPreparacion({
     )
   }
 
-  if (!plegado) {
-    return (
-      <section data-testid="preparacion">
-        <div className="mb-2.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-          <Eyebrow>Estado de preparación</Eyebrow>
-          <span className="text-[11.5px] text-faint" data-testid="preparacion-cuenta">{resumenTexto}</span>
-        </div>
-        {lista}
-      </section>
-    )
-  }
+  // EN EL ALTA (02b / M03) LA LISTA ES LA DEL DISEÑO: filas de 40px (44 en el teléfono), tilde
+  // verde o «·», título de 104px, el faltante concreto y el chevron sólo donde hay trabajo. Las
+  // líneas son las MISMAS siete de `preparacionDeObra`: el diseño rotula sus filas por paso
+  // (Cliente, Fechas, Equipo…) y el OS por lo que se controla (Cronograma, Línea base, Personal…);
+  // se conserva la regla, que es una sola para el alta y el Resumen.
+  if (!plegado) return <ListaPreparacion lineas={lineas} pendientes={faltan.length} />
 
   return (
     <details data-testid="preparacion" className="border-t border-line">
