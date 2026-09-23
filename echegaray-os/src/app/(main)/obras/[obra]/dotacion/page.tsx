@@ -42,7 +42,6 @@ import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
 import { SimuladorDotacion } from '@/features/obras/components/SimuladorDotacion'
 import { TablaRubrosHH } from '@/features/obras/components/TablaRubrosHH'
 import { Callout } from '@/shared/components/ui'
-import { Ayuda, Plegable } from '@/shared/components/ds'
 import { CalendarioObra } from '../../../../../../orquestador/lib/calendario-obra.mjs'
 
 export const dynamic = 'force-dynamic'
@@ -129,7 +128,7 @@ export default async function DotacionObraPage(
   return (
     // LA MISMA CABECERA QUE EL WORKSPACE (24/08 · C-CANON §12): una obra es un workspace, y la
     // banda grafito propia de esta pantalla la hacía parecer otra aplicación.
-    <main className="min-h-screen bg-canvas pb-10">
+    <main className="min-h-screen bg-surface pb-10">
       {/* LA BANDA VA DE BORDE A BORDE (mockups 02/03/05/06): el aire de 20px es
           suyo, adentro. Envuelta en el padding de la página quedaba flotando. */}
       <>
@@ -168,6 +167,9 @@ export default async function DotacionObraPage(
           sus días técnicos descontados — la versión de la barra lateral corría sobre las HH de toda
           la obra y sin días técnicos, así que las dos podían contestar distinto a la misma
           pregunta. Los límites subieron a la columna derecha, donde el mockup los dibuja. */}
+      {/* ═══ EL CUERPO ES EL DEL DISEÑO 08b / M11: tabla de frentes + aside, y debajo los plegables ═══
+          «Plan · Real · Proyección por rubro» y «Capacidad ponderada» son filas plegables de 44px
+          dentro del simulador; la tabla de rubros la dibuja el servidor y viaja como nodo. */}
       <SimuladorDotacion
         obraId={obraId}
         frentes={frentes}
@@ -175,54 +177,18 @@ export default async function DotacionObraPage(
         jornada={crono.jornada}
         habiles={habiles}
         idxFinPlan={idxFinPlan}
+        finPlan={finPlan}
+        desde={desde}
+        noLaborables={insumos.noLaborables.map((x) => String(x).slice(0, 10))}
         disponibles={disponibles}
+        capacidad={(capacidad.data ?? []).map((c) => ({ nombre: c.nombre, factor: c.factor }))}
+        rubros={<TablaRubrosHH filas={rubros} />}
+        nRubros={rubros.length}
         puedeAplicar={puedeAplicar}
         // `.bind`, no una arrow: una función creada en un Server Component no cruza a un
         // componente cliente, compila igual y deja la pantalla en blanco en producción.
         aplicar={aplicarDotacionAlPlan.bind(null, obraId)}
       />
-
-      {/* ═══ EL RESPALDO VA PLEGADO, DEBAJO DEL SIMULADOR (24/08 · canónico 08) ═══
-          La tabla de rubros mide más alto que el simulador entero y se lee UNA vez —para entender
-          de dónde salió el número— no cada vez que se mueve la dotación. Los factores de capacidad
-          son de la misma clase: explican por qué cuatro personas no son cuatro, y esa explicación
-          se necesita el primer día, no en cada carga de la pantalla. El mockup no dibuja ninguna de
-          las dos; sacarlas del todo habría borrado de dónde salen los números de arriba. */}
-      <div className="flex flex-col gap-4 px-5 pb-6">
-        <Plegable titulo="Plan · Real · Proyección por rubro" testid="rubros-hh-plegable"
-          cuenta={rubros.length}>
-          {/* 22/08/2026 · De dónde sale la proyección baja a la ayuda. Lo que no se puede esconder
-              —que un rubro sin base NO tiene proyección— sigue escrito en la tabla misma, celda por
-              celda: la honestidad va en el dato, no en un párrafo encima del dato. */}
-          <TablaRubrosHH filas={rubros} />
-          <Ayuda titulo="De dónde sale la proyección" testid="ayuda-proyeccion-rubros">
-            Usa el rendimiento observado donde hay avance y HH reales; donde no lo hay, dice{' '}
-            <em>sin base</em>. Nunca el plan disfrazado de proyección.
-          </Ayuda>
-        </Plegable>
-
-        <Plegable titulo="Capacidad ponderada" testid="capacidad-plegable"
-          cuenta={capacidad.data?.length ?? 0}>
-          <Ayuda titulo="Por qué no se cuentan cabezas" testid="ayuda-capacidad">
-            Dos oficiales y dos ayudantes son cuatro personas y 3,2 de capacidad. Contar cabezas
-            para dividir HH deja el plan un 20 % optimista.
-          </Ayuda>
-          {capacidad.data?.length
-            ? (
-              <ul className="flex flex-col gap-1">
-                {capacidad.data.map((c) => (
-                  <li key={c.nombre} className="flex items-baseline justify-between gap-3">
-                    <span className="text-[12px] text-ink-soft">{c.nombre}</span>
-                    <span className="text-[12px] text-ink tnum">
-                      {c.factor.toLocaleString('es-AR', { minimumFractionDigits: 1 })}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              )
-            : <p className="text-[12px] text-warn">No pude leer los factores de capacidad.</p>}
-        </Plegable>
-      </div>
     </main>
   )
 }

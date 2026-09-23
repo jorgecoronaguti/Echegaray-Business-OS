@@ -329,3 +329,33 @@ test('sin ningún frente con días no hay fin simulado ni desvío: no se publica
   assert.equal(r.fin, null)
   assert.equal(r.desvioDias, null)
 })
+
+// ═══ LOS TEXTOS DEL DISEÑO 08b / M11 (23/09/2026) ═══
+
+test('08b · las sub-líneas del frente: actividades, «sin cuadrilla», y «sin HH del análisis» en ámbar', async () => {
+  const { sublineaFrente, sublineaFrenteTelefono, textoDiasTecnicos } = await import('./dotacion.ts')
+  assert.deepEqual(sublineaFrente({ nActividades: 6, hhRestantes: 1240, subtitulo: '2 sin cuadrilla', subtituloTono: 'warn' }), { texto: '6 actividades · 2 sin cuadrilla', tono: 'muted' })
+  assert.deepEqual(sublineaFrente({ nActividades: 1, hhRestantes: 10, subtitulo: 'Pisos', subtituloTono: 'faint' }), { texto: '1 actividad', tono: 'muted' })
+  assert.deepEqual(sublineaFrente({ nActividades: 2, hhRestantes: null, subtitulo: null, subtituloTono: 'faint' }), { texto: 'sin HH del análisis', tono: 'warn' })
+  assert.deepEqual(sublineaFrenteTelefono({ nActividades: 6, hhRestantes: 1240, diasTecnicos: 7 }), { texto: '6 act. · 1.240 h · curado 7 d', sinBase: false })
+  assert.deepEqual(sublineaFrenteTelefono({ nActividades: 3, hhRestantes: 620, diasTecnicos: 0 }), { texto: '3 act. · 620 h', sinBase: false })
+  assert.equal(sublineaFrenteTelefono({ nActividades: 2, hhRestantes: null, diasTecnicos: 0 }).sinBase, true)
+  assert.equal(textoDiasTecnicos(7), '7 curado')
+  assert.equal(textoDiasTecnicos(0), null)
+})
+
+test('08b · el fin proyectado lo manda el frente más largo, y la bajada dice cuánto después del plan', async () => {
+  const { finProyectadoDe, bajadaFinProyectado, noLaborablesProximos, diasHastaFecha } = await import('./dotacion.ts')
+  const habiles = ['2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25', '2026-09-28']
+  const fp = finProyectadoDe([{ nombre: 'Sector B', dias: 5 }, { nombre: 'Sector C', dias: 2 }, { nombre: 'Sin base', dias: null }], 2, habiles)
+  assert.deepEqual(fp, { fecha: '28/09/2026', manda: 'Sector B', desvioDias: 2, despues: true })
+  assert.equal(bajadaFinProyectado(fp, '2026-09-24'), 'plan 24/09 · 2 días después · manda Sector B')
+  assert.equal(bajadaFinProyectado(fp, '2026-09-24', true), 'plan 24/09 · +2 d · manda Sector B')
+  // Sin ninguna simulación no hay fecha: ni «sin base» se convierte en un día.
+  assert.deepEqual(finProyectadoDe([{ nombre: 'x', dias: null }], 2, habiles), { fecha: null, manda: null, desvioDias: null, despues: false })
+  assert.equal(bajadaFinProyectado(finProyectadoDe([{ nombre: 'x', dias: 1 }], null, habiles), null), 'sin fin de plan · manda x')
+  assert.equal(noLaborablesProximos(['2026-09-01', '2026-10-10', '2026-10-12', '2026-11-20'], '2026-09-22'), '10/10 · 12/10')
+  assert.equal(noLaborablesProximos([], '2026-09-22'), null)
+  assert.equal(diasHastaFecha(habiles, '2026-09-25'), 4)
+  assert.equal(diasHastaFecha(habiles, '2026-09-26'), null)
+})

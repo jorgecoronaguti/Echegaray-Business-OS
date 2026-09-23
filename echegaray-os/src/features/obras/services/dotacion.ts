@@ -467,3 +467,87 @@ function agregar(hijas: FilaCronograma[]): Omit<FilaRubro, 'nivel' | 'nombre'> {
     desvioHH: fc == null || hhPlan == null ? null : fc - hhPlan,
   }
 }
+
+// ═══ LOS TEXTOS DEL DISEÑO ERP OBRAS 08b / M11 (dueño, 23/09/2026) — PUROS ═══
+
+const fmt = (v: number) => Math.round(v).toLocaleString('es-AR')
+const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+const ddmmaaaa = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
+
+/** «6 actividades · 2 sin cuadrilla» (08b) — o «sin HH del análisis» en ámbar cuando no hay base. */
+export function sublineaFrente(f: Pick<Frente, 'nActividades' | 'hhRestantes' | 'subtitulo' | 'subtituloTono'>): { texto: string; tono: 'muted' | 'warn' } {
+  if (f.hhRestantes == null) return { texto: 'sin HH del análisis', tono: 'warn' }
+  const acts = `${f.nActividades} ${f.nActividades === 1 ? 'actividad' : 'actividades'}`
+  return f.subtitulo && f.subtituloTono === 'warn'
+    ? { texto: `${acts} · ${f.subtitulo}`, tono: 'muted' }
+    : { texto: acts, tono: 'muted' }
+}
+
+/** «6 act. · 1.240 h · curado 7 d» (M11). Sin base: «2 act. · sin HH del análisis». */
+export function sublineaFrenteTelefono(f: Pick<Frente, 'nActividades' | 'hhRestantes' | 'diasTecnicos'>): { texto: string; sinBase: boolean } {
+  const acts = `${f.nActividades} act.`
+  if (f.hhRestantes == null) return { texto: `${acts} · `, sinBase: true }
+  const partes = [acts, `${fmt(f.hhRestantes)} h`]
+  if (f.diasTecnicos > 0) partes.push(`curado ${f.diasTecnicos} d`)
+  return { texto: partes.join(' · '), sinBase: false }
+}
+
+/** «7 curado» en la columna Días técnicos; «—» cuando no hay. */
+export function textoDiasTecnicos(d: number): string | null {
+  return d > 0 ? `${d} curado` : null
+}
+
+export interface FinProyectado {
+  /** dd/mm/aaaa del fin proyectado, o `null` sin base. */
+  fecha: string | null
+  /** El frente que manda (el de más días). */
+  manda: string | null
+  /** Días hábiles contra el fin de plan: > 0 después, < 0 antes. `null` sin plan o sin proyección. */
+  desvioDias: number | null
+  /** Se proyecta DESPUÉS del plan: se pinta en ámbar. */
+  despues: boolean
+}
+
+/** El fin proyectado con esta dotación: el frente más largo manda. */
+export function finProyectadoDe(
+  sims: readonly { nombre: string; dias: number | null }[],
+  idxFinPlan: number | null,
+  habiles: readonly string[],
+): FinProyectado {
+  let manda: { nombre: string; dias: number } | null = null
+  for (const s of sims) {
+    if (s.dias == null || s.dias <= 0) continue
+    if (!manda || s.dias > manda.dias) manda = { nombre: s.nombre, dias: s.dias }
+  }
+  if (!manda) return { fecha: null, manda: null, desvioDias: null, despues: false }
+  const iso = habiles[manda.dias - 1] ?? null
+  const desvio = idxFinPlan == null ? null : (manda.dias - 1) - idxFinPlan
+  return { fecha: iso ? ddmmaaaa(iso) : null, manda: manda.nombre, desvioDias: desvio, despues: desvio != null && desvio > 0 }
+}
+
+/** «plan 05/09 · 37 días después · manda Sector B» (08b) · «plan 05/09 · +37 d · manda Sector B» (M11). */
+export function bajadaFinProyectado(fp: FinProyectado, finPlanIso: string | null, telefono = false): string {
+  const partes: string[] = []
+  partes.push(finPlanIso ? `plan ${ddmm(finPlanIso)}` : 'sin fin de plan')
+  if (fp.desvioDias != null) {
+    const d = Math.abs(fp.desvioDias)
+    if (fp.desvioDias === 0) partes.push('en fecha')
+    else if (telefono) partes.push(`${fp.desvioDias > 0 ? '+' : '−'}${d} d`)
+    else partes.push(`${d} ${d === 1 ? 'día' : 'días'} ${fp.desvioDias > 0 ? 'después' : 'antes'}`)
+  }
+  if (fp.manda) partes.push(`manda ${fp.manda}`)
+  return partes.join(' · ')
+}
+
+/** Los próximos no laborables desde `desdeIso`: «10/10 · 12/10». `null` = ninguno cargado. */
+export function noLaborablesProximos(noLaborables: readonly string[], desdeIso: string, n = 2): string | null {
+  const prox = [...new Set(noLaborables.map((x) => x.slice(0, 10)))].filter((x) => x >= desdeIso).sort().slice(0, n)
+  return prox.length ? prox.map(ddmm).join(' · ') : null
+}
+
+/** El índice de día hábil (1-based = «días») de una fecha objetivo dentro del calendario que mandó el
+ *  servidor. `null` si no es un día hábil de la ventana: no se inventa un plazo. */
+export function diasHastaFecha(habiles: readonly string[], fechaIso: string): number | null {
+  const i = habiles.indexOf(fechaIso.slice(0, 10))
+  return i < 0 ? null : i + 1
+}
