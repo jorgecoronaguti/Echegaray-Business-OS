@@ -175,13 +175,15 @@ async function middlewareConBackend(request: NextRequest) {
       response.cookies.delete(COOKIE_VER_COMO)
       mirando = null
     }
+    // `/ver-como` PASA ANTES del corte de escrituras: apagar la lente es un POST (23/09/2026) y con
+    // el corte primero el «Salir del modo» recibía 403 y la franja quedaba pegada para siempre.
+    if (pathname === RUTA_VER_COMO || pathname.startsWith(RUTA_VER_COMO + '/')) return response
     if (mirando && esPeticionDeEscritura(request.method)) {
       return new NextResponse(
         'Estás mirando la aplicación como otro rol («ver como»). Con la lente puesta no se escribe: ni con la identidad imitada ni con la propia. Salí del modo y repetí la acción.',
         { status: 403, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } },
       )
     }
-    if (pathname === RUTA_VER_COMO || pathname.startsWith(RUTA_VER_COMO + '/')) return response
 
     // El rol viene de la base o de la cookie que la base selló: la forma la garantiza `perfiles`.
     const perfil = mirando ? { rol: mirando as Rol } : rol ? { rol: rol as Rol } : null
