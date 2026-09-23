@@ -223,6 +223,8 @@ export async function CabeceraDeObra({
           return (
             <Link key={v.id} href={`/obras/${obraId}?vista=${v.id}`} prefetch={false}
               data-testid={`tab-${v.id}`} aria-current={activo ? 'page' : undefined}
+              // 44px de alto en el teléfono (objetivo táctil); en escritorio manda el padding del mockup.
+              className="max-md:inline-flex max-md:min-h-11 max-md:items-center"
               style={{
                 fontSize: '13px', padding: '8px 11px', whiteSpace: 'nowrap',
                 color: activo ? C.tinta : C.tintaSuave, fontWeight: activo ? 600 : 400,

@@ -39,6 +39,7 @@ export function SubNavTrabajo({ obraId, sub, derecha }: {
         {items.map((i) => (
           <Link key={i.id} href={i.href} prefetch={false} data-testid={`sub-${i.id}`}
             aria-current={i.activo ? 'page' : undefined}
+            className="max-md:inline-flex max-md:min-h-11 max-md:items-center"
             style={{
               fontSize: '12.5px', padding: '9px 10px', whiteSpace: 'nowrap',
               color: i.activo ? C.tinta : C.tintaSuave, fontWeight: i.activo ? 600 : 400,

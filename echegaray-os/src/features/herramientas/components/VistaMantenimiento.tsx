@@ -78,7 +78,7 @@ export function VistaMantenimiento({ activo, revision }: { activo: string | null
       </div>
       <div style={{ width: 2, background: V.linea }} />
       {!conPanel && (elegido || revisado) && (
-      <div style={{ width: 430, flexShrink: 0, padding: '22px 24px 28px', background: '#FFFFFF', position: 'sticky', top: 83, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 83px)', overflowY: 'auto', borderLeft: `1px solid ${V.linea}` }}>
+      <div style={{ width: 430, maxWidth: '100%', flexShrink: 0, padding: '22px 24px 28px', background: '#FFFFFF', position: 'sticky', top: 83, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 83px)', overflowY: 'auto', borderLeft: `1px solid ${V.linea}` }}>
         {elegido
           ? <Ficha id={elegido.id} onCerrar={() => router.replace(ruta, { scroll: false })} />
           : <FichaRevision id={revisado!.id} onCerrar={() => router.replace(ruta, { scroll: false })} />}

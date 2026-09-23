@@ -69,7 +69,7 @@ export function NavObras() {
             href={v.href} prefetch={false}
             data-testid={`nav-vistas-obras-${v.id}`}
             aria-current={activa ? 'page' : undefined}
-            className={`shrink-0 pb-[2px] text-[12.5px] transition-colors ${
+            className={`inline-flex shrink-0 items-center pb-[2px] text-[12.5px] transition-colors max-md:min-h-11 ${
               activa ? 'font-medium text-ink shadow-[inset_0_-1.5px_0_var(--os-ink)]' : 'text-muted hover:text-ink'
             }`}
           >{v.label}</Link>

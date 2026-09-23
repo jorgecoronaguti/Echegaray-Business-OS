@@ -24,7 +24,9 @@ export function PanelLateral({ titulo, subtitulo, onCerrar, pie, children, testi
       data-testid={testid} aria-label={titulo}
       className="max-md:fixed max-md:inset-0 max-md:z-40 max-md:w-full"
       style={{
-        width: 520, flexShrink: 0, background: '#FFFFFF', borderLeft: `1px solid ${V.lineaFuerte}`,
+        // `maxWidth`: el estilo en línea le gana a `max-md:w-full`, y 520 fijos en un teléfono con
+        // `?pc=1` corrían la página de costado (dueño, 23/09/2026).
+        width: 520, maxWidth: '100%', flexShrink: 0, background: '#FFFFFF', borderLeft: `1px solid ${V.lineaFuerte}`,
         padding: '24px 26px 26px', display: 'flex', flexDirection: 'column', gap: 22,
         // Fijo como la cabecera (dueño, 22/09): debajo del header de la app (44) y de las solapas (39).
         position: 'sticky', top: 83, zIndex: 15, alignSelf: 'flex-start', height: 'calc(100vh - 83px)', overflowY: 'auto',

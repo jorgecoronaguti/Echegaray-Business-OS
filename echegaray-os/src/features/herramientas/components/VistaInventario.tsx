@@ -192,7 +192,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
       <div style={{ width: 2, background: V.linea }} />
       {/* La ficha sólo ocupa lugar cuando hay una abierta, y se cierra con la × (dueño, 22/09). */}
       {!conPanel && activo && (
-      <div style={{ width: 430, flexShrink: 0, padding: '22px 24px 28px', background: '#FFFFFF', position: 'sticky', top: 83, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 83px)', overflowY: 'auto', borderLeft: `1px solid ${V.linea}` }}>
+      <div style={{ width: 430, maxWidth: '100%', flexShrink: 0, padding: '22px 24px 28px', background: '#FFFFFF', position: 'sticky', top: 83, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 83px)', overflowY: 'auto', borderLeft: `1px solid ${V.linea}` }}>
         {abierto ? <Ficha id={abierto.id} onCerrar={() => ir({}, null)} /> : (
           <div style={{ fontSize: '13px', color: V.tenue, paddingTop: 4 }} data-testid="ficha-vacia">{activo} no está en el inventario. <button type="button" onClick={() => ir({}, null)} style={{ textDecoration: 'underline' }}>cerrar</button></div>
         )}

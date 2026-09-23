@@ -33,7 +33,7 @@ export function VistaUbicaciones({ parque, ubicacion, filtro }: {
   const sinUbic = parque.activos.filter((a) => vivo(a) && !a.ubicacion_id).length
   return (
     <div style={{ display: 'flex', alignItems: 'stretch', minHeight: 620 }}>
-      <div style={{ width: 330, flexShrink: 0, padding: '22px 20px 28px', borderRight: `1px solid ${V.linea}`, display: 'flex', flexDirection: 'column', gap: 16 }} data-testid="arbol-ubicaciones">
+      <div style={{ width: 330, maxWidth: '100%', flexShrink: 0, padding: '22px 20px 28px', borderRight: `1px solid ${V.linea}`, display: 'flex', flexDirection: 'column', gap: 16 }} data-testid="arbol-ubicaciones">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h1 style={{ fontSize: '14px', fontWeight: 600 }}>Ubicaciones</h1>
           <NuevaUbicacion />
