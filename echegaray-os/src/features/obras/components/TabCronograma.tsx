@@ -355,7 +355,7 @@ function Editor({ obraId, filas, dependencias, isodows, feriados, hoy, fallas, g
     ed.poner(a.id, moverExtremo(dias, a.base, a.extremo, delta))
   }
   const soltar = () => { arrastre.current = null }
-  const fijar = (e: PE<HTMLDivElement>, f: FilaPlan) => {
+  const fijar = (e: { currentTarget: HTMLDivElement; clientX: number }, f: FilaPlan) => {
     if (!f.actividadId) return
     const rect = e.currentTarget.getBoundingClientRect()
     const i = Math.max(0, Math.min(n - 1, Math.floor(((e.clientX - rect.left) / rect.width) * n)))
