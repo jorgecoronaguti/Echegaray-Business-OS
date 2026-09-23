@@ -32,6 +32,7 @@ import {
 import { diaMes, diaMesAnio } from '../../services/operacionCanon'
 import { EYEBROW, Falta, FilaPastillas, PastillaM } from '../operacion/piezas'
 import { CeldaCategoriaDocumento } from '../CeldaCategoriaDocumento'
+import { RotuloEstable } from '../RotuloEstable'
 
 const COLS = 'minmax(0,1.7fr) 130px minmax(0,1fr) 150px 96px'
 
@@ -88,7 +89,7 @@ export function IndiceDocumentos({ documentos, actividades, asignar, clasificar,
               font: 'inherit', fontSize: '12.5px', border: 'none', background: 'none', padding: 0, cursor: 'pointer',
               display: 'inline-flex', alignItems: 'center', gap: '6px', color: c.activo ? C.tinta : C.tintaSuave, fontWeight: c.activo ? 500 : 400,
             }}>
-              <Ico d={c.icono} s={12} />{c.label}
+              <Ico d={c.icono} s={12} /><RotuloEstable texto={c.label} peso={500} />
               <span style={{ fontFamily: MONO, fontSize: '10.5px', color: C.tenue, fontWeight: 400 }}>{c.n}</span>
             </button>
           ))}

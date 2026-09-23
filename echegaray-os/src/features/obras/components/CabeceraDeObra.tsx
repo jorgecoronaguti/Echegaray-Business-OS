@@ -30,6 +30,7 @@
 // lectura propia acá sería una consulta más por visita para repetir un dato que la página tiene en
 // la mano — y el día que las dos lecturas discrepen, el título diría una cosa y el cuerpo otra.
 
+import { RotuloEstable } from './RotuloEstable'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { C, MONO } from './canon/tokens'
@@ -232,7 +233,7 @@ export async function CabeceraDeObra({
               fontWeight: activo ? (telefono ? 600 : 500) : 400,
               boxShadow: activo ? `inset 0 -2px 0 ${C.grafito}` : 'none',
               ...(telefono ? { minHeight: '44px', display: 'inline-flex', alignItems: 'center' } : {}),
-            }}>{v.label}</Link>
+            }}><RotuloEstable texto={v.label} peso={telefono ? 600 : 500} /></Link>
         )
       })}
       {!telefono && alFinalDeLasSolapas}

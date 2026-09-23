@@ -18,6 +18,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { C, MONO } from './canon/tokens'
 import { pantallasDeTrabajo, type PantallaDeTrabajo } from '../services/vistasObra'
+import { RotuloEstable } from './RotuloEstable'
 
 export function SubNavTrabajo({ obraId, sub, derecha, alFinal, contadores = {} }: {
   obraId: string
@@ -45,7 +46,7 @@ export function SubNavTrabajo({ obraId, sub, derecha, alFinal, contadores = {} }
                 color: i.activo ? C.tinta : C.tintaSuave, fontWeight: i.activo ? 500 : 400,
                 boxShadow: i.activo ? `inset 0 -1.5px 0 ${C.tinta}` : 'none',
               }}>
-              {i.label}
+              <RotuloEstable texto={i.label} peso={500} />
               {contadores[i.id] != null && (
                 <span style={{ fontFamily: MONO, fontSize: '11px', color: C.tenue, marginLeft: '5px' }}>
                   {contadores[i.id]}
@@ -79,7 +80,7 @@ export function SubNavTrabajo({ obraId, sub, derecha, alFinal, contadores = {} }
               display: 'inline-flex', alignItems: 'center',
               color: i.activo ? C.tinta : C.tintaSuave, fontWeight: i.activo ? 600 : 400,
               boxShadow: i.activo ? `inset 0 -2px 0 ${C.grafito}` : 'none',
-            }}>{i.label}</Link>
+            }}><RotuloEstable texto={i.label} peso={600} /></Link>
         ))}
       </div>
     </>

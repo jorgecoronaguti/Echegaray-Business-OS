@@ -13,6 +13,7 @@ import { C, MONO } from '../canon/tokens'
 import { Ico, P } from '../canon/Ico'
 import { SUBS_OPERACION, type SubOperacion } from '../../services/subsOperacion'
 import { FilaPastillas, PastillaM } from './piezas'
+import { RotuloEstable } from '../RotuloEstable'
 
 const ROTULO: Record<SubOperacion, string> = { impedimentos: 'Impedimentos', pedidos: 'Pedidos', equipos: 'Equipos', compras: 'Compras' }
 const ICONO: Record<SubOperacion, React.ReactNode> = { impedimentos: P.bloqueo, pedidos: P.material, equipos: P.equipo, compras: P.compra }
@@ -46,7 +47,7 @@ export function SubsOperacion({ obraId, sub, cuenta, veEconomia }: {
               color: i.activo ? C.tinta : C.tintaSuave, fontWeight: i.activo ? 500 : 400,
               boxShadow: i.activo ? `inset 0 -1.5px 0 ${C.tinta}` : 'none',
             }}>
-            <Ico d={ICONO[i.id]} s={12} />{i.label}
+            <Ico d={ICONO[i.id]} s={12} /><RotuloEstable texto={i.label} peso={500} />
             {i.n != null && <span style={{ color: C.tenue, fontWeight: 400, fontFamily: MONO, fontSize: '11px' }}>{i.n}</span>}
           </Link>
         ))}
