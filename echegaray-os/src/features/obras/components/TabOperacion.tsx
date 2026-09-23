@@ -45,7 +45,6 @@ import { Aviso, Buscador, CAMPO, Estado, FilaTotal, Nulo, SubTabs, Tabla, Td, Th
 import { IconoBloqueo, IconoCompra, IconoDinero, IconoHerramienta } from '@/shared/components/iconos'
 import { AvisoDeLectura } from '@/shared/components/estado'
 import { estadoInfo } from '@/features/integraciones/services/herramientasService'
-import { impedimentoDeClima } from '../../../../orquestador/lib/obra-operacion.mjs'
 import type {
   HerramientaOperacion, MovimientoOperacion, PedidoOperacion,
 } from '../services/operacionService'
@@ -65,20 +64,11 @@ const ICONO = 'h-[14px] w-[14px]'
  * del mismo rediseño: un icono de una sola pantalla no justifica un conflicto de merge. Si una
  * segunda pantalla lo necesita, ahí sube — y ahí deja de ser local.
  */
-function IconoClima({ className = '' }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" />
-    </svg>
-  )
-}
 
 const SUBS: { id: SubOperacion; label: string; icono: ReactNode; buscar: string }[] = [
   { id: 'impedimentos', label: 'Impedimentos', icono: <IconoBloqueo className={ICONO} />, buscar: 'Buscar impedimento' },
   { id: 'pedidos', label: 'Pedidos', icono: <IconoCompra className={ICONO} />, buscar: 'Buscar material' },
   { id: 'equipos', label: 'Equipos', icono: <IconoHerramienta className={ICONO} />, buscar: 'Buscar equipo o responsable' },
-  { id: 'clima', label: 'Clima', icono: <IconoClima className={ICONO} />, buscar: 'Buscar evento de clima' },
   { id: 'compras', label: 'Compras', icono: <IconoDinero className={ICONO} />, buscar: 'Buscar proveedor o concepto' },
 ]
 
@@ -367,7 +357,6 @@ export function TabOperacion({
   // Sacarlo de la lista principal para que no se repita escondería una obra parada por lluvia
   // detrás de una pestaña que nadie abre: la lista de lo que frena la obra tiene que estar completa.
   // Clima es una lente sobre esos mismos datos, no un cajón aparte.
-  const deClima = impedimentos.filter((r) => impedimentoDeClima(r) as boolean)
   const abiertos = impedimentos.filter((r) => r.estado !== 'liberada').length
   const cuenta: Record<SubOperacion, number> = {
     pedidos: pedidos.length,
@@ -377,7 +366,6 @@ export function TabOperacion({
     // el historial de cómo llegaron, y un número que crece con cada viaje diría «hay 40 equipos»
     // cuando hay tres que fueron y volvieron.
     equipos: herramientas.length,
-    clima: deClima.filter((r) => r.estado !== 'liberada').length,
     // EL CONTADOR DE IMPEDIMENTOS CUENTA LOS ABIERTOS, no el total: los demás cuentan filas porque
     // una fila de compra o de pedido no se «cierra», y un impedimento liberado ya no frena nada.
     // Publicar el total pondría un número que sube para siempre al lado de otros que describen
@@ -411,7 +399,7 @@ export function TabOperacion({
         {/* El buscador NO aparece sobre los impedimentos ni sobre el clima: esos dos bloques
             escriben, tienen sus propios chips de filtro y rara vez pasan de una docena de filas. Un
             campo de texto ahí es una fila de interfaz que no hace nada. */}
-        {sub !== 'impedimentos' && sub !== 'clima' && !errorFuente && (
+        {sub !== 'impedimentos' && !errorFuente && (
           <div className="ml-auto flex items-center gap-2">
             {/* En CAJA: sobre el #FAFAF8 de la banda el hairline inferior del buscador de lista
                 no se ve y el campo queda flotando sin decir dónde empieza. 206px es la medida del
@@ -435,7 +423,7 @@ export function TabOperacion({
       {/* CUATRO LISTAS VACÍAS NO SON «no hay nada»: son «no pude leer». Se dice cuál es, con el
           mensaje de la fuente, y sólo sobre los bloques que dependen de ella — Impedimentos sale de
           Postgres y no se entera de que el Sheet está caído. */}
-      {errorFuente && sub !== 'impedimentos' && sub !== 'clima' && (
+      {errorFuente && sub !== 'impedimentos' && (
         <AvisoDeLectura mensaje={errorFuente} que="la operación de esta obra" testid="operacion-lectura-fallida" />
       )}
       {!errorFuente && sub === 'pedidos' && (
@@ -465,19 +453,7 @@ export function TabOperacion({
           liberar={liberarImpedimento}
         />
       )}
-      {/* CLIMA es el mismo bloque con el mismo formulario, filtrado por motivo. Un componente aparte
-          para «lo mismo pero con tipo clima» habría dado dos altas del mismo dato que el día que a
-          una se le agregue un campo se contestan distinto. */}
-      {sub === 'clima' && (
-        <BloqueImpedimentos
-          impedimentos={deClima}
-          actividades={actividades}
-          crear={crearImpedimento}
-          liberar={liberarImpedimento}
-          tipoInicial="clima"
-          vacio="Sin registros de clima en esta obra."
-        />
-      )}
+      {/* CLIMA YA NO ES SUB-SOLAPA (H1 ERP Obras, 23/09/2026): sus registros siguen en Impedimentos con tipo clima. */}
     </div>
   )
 }

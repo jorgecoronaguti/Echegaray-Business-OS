@@ -110,3 +110,8 @@ test('una vista del workspace NO se desvía a otra ruta', () => {
     assert.equal(rutaHermana(v, 'quattropani'), null, `${v} no tiene ruta hermana`)
   }
 })
+
+// ═══ H1 DEL DISEÑO ERP OBRAS (23/09/2026) ═══
+test('el árbol de Trabajo se rotula «Ítems»; el id `arbol` no cambia (marcadores, chat, tests)', () => {
+  assert.equal(SUBS_TAREAS.find((s) => s.id === 'arbol')?.label, 'Ítems')
+})

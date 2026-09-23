@@ -102,7 +102,8 @@ export const hrefSubcontratos = (obraId: string) => `/obras/${obraId}/subcontrat
  *  Lista, Tablero y Próximos se retiraron el 22/08/2026 (overhaul UX): eran representaciones del
  *  mismo dataset y sus URLs caen en el Cronograma vía `SUB_ALIAS`. */
 export const SUBS_TAREAS = [
-  { id: 'arbol', label: 'Tareas' },
+  // «Ítems» (diseño ERP Obras, 23/09/2026 · H1): el árbol Rubro › Sector › Ítem. El id sigue siendo `arbol`.
+  { id: 'arbol', label: 'Ítems' },
   { id: 'gantt', label: 'Cronograma' },
   { id: 'parte', label: 'Parte diario' },
 ] as const

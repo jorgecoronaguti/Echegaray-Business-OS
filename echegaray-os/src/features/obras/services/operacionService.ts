@@ -75,21 +75,9 @@ import type { ServiceResult } from '../types'
 // capacidad real y única —el detalle del costo imputado a la obra contra el total que declara
 // `obra_costo_real`— y no vive en ninguna otra pantalla de la ficha. Sacarla para parecerse al
 // dibujo habría borrado una capacidad; queda última porque es la que menos se abre en el día.
-export const SUBS_OPERACION = ['impedimentos', 'pedidos', 'equipos', 'clima', 'compras'] as const
-export type SubOperacion = (typeof SUBS_OPERACION)[number]
-
-/**
- * Las URLs viejas siguen andando. `?sub=herramientas` y `?sub=movimientos` están en marcadores, en
- * enlaces pegados en Mattermost y en los tests de navegador: caer al sub por defecto dejaría a
- * alguien mirando Impedimentos convencido de que su enlace apuntaba ahí.
- */
-const SUB_LEGACY: Record<string, SubOperacion> = { herramientas: 'equipos', movimientos: 'equipos' }
-
-/** El sub que pide la URL, o el primero. Único lugar donde se traduce el query string. */
-export function subDeLaUrl(sub: string | undefined): SubOperacion {
-  if (!sub) return SUBS_OPERACION[0]
-  return SUBS_OPERACION.find((x) => x === sub) ?? SUB_LEGACY[sub] ?? SUBS_OPERACION[0]
-}
+// Los subs de Operación y la traducción de la URL viven en `subsOperacion.ts` (puro, sin alias
+// `@/`, para que `node --test` los pueda mirar). Se reexportan para no mover a nadie.
+export { SUBS_OPERACION, subDeLaUrl, type SubOperacion } from './subsOperacion.ts'
 
 /** El diccionario `obra_alias` dado vuelta. Opaco a propósito: sólo lo entiende `obraDeTexto`. */
 export type IndiceObras = Map<string, string | symbol>
