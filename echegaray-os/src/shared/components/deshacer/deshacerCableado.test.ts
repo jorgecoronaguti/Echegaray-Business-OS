@@ -348,7 +348,7 @@ test('(D1) LA AFIRMACIÓN NOMBRA LO PROTEGIDO Y LO QUE NO, Y LAS TRES SUPERFICIE
   assert.ok(!/TODA escritura de deshacer o\s*\/\/\s*rehacer viaja con `esperado`/.test(pila), 'MUTACIÓN: volvió la afirmación falsa')
   // Las superficies SIN comprobación de servidor están nombradas, y existen: un nombre que ya no existe
   // haría que el texto mintiera en silencio.
-  for (const n of ['EditorCeldaAsistencia', 'CeldasDelEspejo', 'FilaWbs', 'PanelTarea', 'CeldaCategoriaDocumento', 'PanelDocumento', 'FormularioParte']) {
+  for (const n of ['EditorCeldaAsistencia', 'CeldasDelEspejo', 'FilaWbs', 'PanelTarea', 'CeldaCategoriaDocumento', 'IndiceDocumentos']) {
     assert.match(pila, new RegExp('`' + n + '`'), `la afirmación no nombra ${n}`)
     assert.ok(archivos(SRC).some((p) => p.endsWith(`/${n}.tsx`)), `${n} ya no existe: la afirmación quedó vieja`)
   }

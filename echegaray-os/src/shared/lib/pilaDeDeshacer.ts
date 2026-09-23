@@ -40,8 +40,10 @@
 //   · EL VACIADO DE HORAS NO SE COMPRUEBA: `corregirJornada` no recibe `esperado`. Por eso esa celda NO está
 //     marcada `protegido`, y la pila nunca la manda a vaciar ni deshaciendo ni rehaciendo.
 //   · SIN COMPROBACIÓN DE SERVIDOR: los consumidores de `InlineEdit` que pasan un `guardar` de un solo argumento
-//     (`EditorCeldaAsistencia`, `CeldasDelEspejo`, `FilaWbs`, `PanelTarea`, `CeldaCategoriaDocumento`,
-//     `PanelDocumento`) y `FormularioParte`. Ahí frena sólo la celda viva (la pantalla, que puede estar
+//     (`EditorCeldaAsistencia`, `CeldasDelEspejo`, `FilaWbs`, `PanelTarea`, `CeldaCategoriaDocumento`) y
+//     `IndiceDocumentos` (la actividad del documento). `PanelDocumento` y `FormularioParte` dejaron de existir el
+//     23/09/2026 (ERP Obras): el parte diario del 06 escribe por `guardarParteDiario` sin pasar por la pila.
+//     Ahí frena sólo la celda viva (la pantalla, que puede estar
 //     atrasada), y por eso esos pasos NUNCA escriben un vacío: ver `protegido` y `motivoParaNoRestaurar`.
 //
 // ═══ NUNCA SE VACÍA UNA CELDA (auditoría del 18/09/2026) ═══
