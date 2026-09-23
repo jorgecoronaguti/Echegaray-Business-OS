@@ -161,9 +161,14 @@ export function textoPendiente(a: Actividad): string {
 // DISEÑO ERP OBRAS · 06 «Parte diario» y M08 (dueño, 23/09/2026).
 //
 // Lo que sigue son las DECISIONES de esa pantalla: qué renglones se dibujan, cómo se escribe cada
-// cifra («960 / 1.100 · 87%», «30% declarado», «12 esperados · 10 marcados · 2 sin marcar»), cómo se
+// cifra («960 / 1.100», «30% declarado», «12 esperados · 10 marcados · 2 sin marcar»), cómo se
 // nombra el día («lunes 07/09/2026», «Lun 21/09») y cómo se lee el formulario que guarda TODO el
 // parte de una vez. La forma la ponen `components/parte/`.
+//
+// «NO QUIERO LAYOUT NUEVO» (dueño, 23/09/2026): la 06 dibuja CUATRO columnas —Actividad · Producción
+// hoy · Acumulado · Comentario—, «Quién vino» en chips de sólo lectura y un aside con la novedad y la
+// primaria. Lo que la 06 no dibuja («% ítem», «Quién y con qué», equipos, destino de la novedad,
+// horas editables) salió de acá el mismo día.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
 const DIAS_LARGO = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
@@ -210,20 +215,6 @@ export function renglonesDelParte(actividades: readonly Actividad[]): Actividad[
 export const estaBloqueada = (a: Actividad): boolean =>
   a.estado_operativo === 'bloqueada' || a.impedimentos_abiertos > 0
 
-/** «Rubro › Épica» debajo del nombre (11,5 px faint). Sin estructura, nada: no se inventa un rubro. */
-export function rutaDeTarea(a: { seccion: string | null; rubro: string | null }): string | null {
-  const partes = [a.seccion, a.rubro].filter((x): x is string => Boolean(x && x.trim()))
-  const unicas = partes.filter((p, i) => partes.indexOf(p) === i)
-  return unicas.length ? unicas.join(' › ') : null
-}
-
-/** Lo que sabe el resumen de partes por tarea (`actividad_partes_resumen`). */
-export interface ResumenPartes {
-  actividad_id: string
-  fraccion_acumulada: number | null
-  dias_reales: number
-}
-
 export interface CeldaAcumulado {
   texto: string
   /** El manual se escribe en tono de aviso: «30% declarado» es lo que alguien dijo, no lo que se midió. */
@@ -244,16 +235,6 @@ export function celdaAcumulado(a: Actividad): CeldaAcumulado {
   return { texto: `${pctEntero(a.avance_pct)} declarado`, tono: 'warn' }
 }
 
-/**
- * % ÍTEM: la fracción acumulada de los partes cuando existe; si no, el avance de la actividad. Sin
- * ninguna de las dos, «sin parte».
- */
-export function celdaPctItem(a: Actividad, resumen: ResumenPartes | undefined): string {
-  if (resumen?.fraccion_acumulada != null) return pctEntero(resumen.fraccion_acumulada * 100)
-  if (a.avance_pct != null) return pctEntero(a.avance_pct)
-  return 'sin parte'
-}
-
 /** La bajada de la M08: «890 de 1.100 m³» o «30% declarado» o «sin registrar». */
 export function bajadaHecho(a: Actividad): string {
   if (a.metodo_avance === 'cantidad' && a.cantidad_ejecutada != null && a.cantidad_objetivo != null) {
@@ -266,6 +247,37 @@ export function bajadaHecho(a: Actividad): string {
 export const unidadDelInput = (a: Actividad): string =>
   a.metodo_avance === 'cantidad' ? (a.unidad ?? 'un') : '%'
 
+/** Los dos textos fijos de la columna Comentario de la 06, copiados del diseño. */
+export const TEXTO_BLOQUEADA = 'No se cargó producción.'
+export const TEXTO_A_OJO = 'Se mide a ojo: no hay cantidad objetivo cargada.'
+
+/**
+ * LA COLUMNA COMENTARIO DE LA 06 no siempre es un input:
+ *   · bloqueada  → «Sin hormigón. No se cargó producción.»: el motivo del impedimento cuando se conoce
+ *                  (el comentario del parte del día) y el texto fijo del diseño.
+ *   · a ojo      → «Se mide a ojo: no hay cantidad objetivo cargada.» — la que se declara en % porque
+ *                  no tiene cantidad objetivo. El diseño la dibuja como texto, no como input.
+ *   · el resto   → el input «opcional», con lo ya guardado ese día.
+ */
+export type CeldaComentario =
+  | { tipo: 'input'; valor: string }
+  | { tipo: 'texto'; texto: string }
+
+export function celdaComentario(a: Actividad, guardado: string | null | undefined): CeldaComentario {
+  if (estaBloqueada(a)) {
+    const motivo = guardado?.trim()
+    return { tipo: 'texto', texto: motivo ? `${motivo} ${TEXTO_BLOQUEADA}` : TEXTO_BLOQUEADA }
+  }
+  if (a.metodo_avance !== 'cantidad' && a.cantidad_objetivo == null) return { tipo: 'texto', texto: TEXTO_A_OJO }
+  return { tipo: 'input', valor: guardado ?? '' }
+}
+
+/** La bajada de la fecha grande de la M08: «sin parte cargado» o cuántos frentes ya tienen parte. */
+export function bajadaDelDia(nConParte: number): string {
+  if (nConParte === 0) return 'sin parte cargado'
+  return `${nConParte} ${nConParte === 1 ? 'frente' : 'frentes'} con parte`
+}
+
 // ── QUIÉN VINO ─────────────────────────────────────────────────────────────────────────────────
 
 export interface ChipGente {
@@ -274,6 +286,8 @@ export interface ChipGente {
   /** «9 hs», «ausente» o «sin marcar». */
   estado: 'horas' | 'ausente' | 'sin_marcar'
   horas: number | null
+  /** «Cuadrilla 1 · oficial» (M08): la cuadrilla de la asignación y la categoría del legajo. */
+  bajada: string
 }
 
 /** «R. Quiroga» — inicial del nombre y apellido, como el diseño. «Quiroga Rodolfo» → «R. Quiroga». */
@@ -290,12 +304,30 @@ export function nombreCorto(nombreCompleto: string): string {
 /** Las horas de la jornada de una persona, en «9 hs» / «4,5 hs». */
 export const textoHoras = (h: number) => `${h.toLocaleString('es-AR', { maximumFractionDigits: 1 })} hs`
 
+/** Las horas solas, como en el cuadro de 64 px de la M08: «9», «4,5». */
+export const cifraHoras = (h: number) => h.toLocaleString('es-AR', { maximumFractionDigits: 1 })
+
+/** «Cuadrilla 1 · oficial». Sin cuadrilla o sin categoría se dice, no se inventa. */
+export function bajadaDePersona(cuadrilla: string | null, categoria: string | null): string {
+  const c = cuadrilla?.trim()
+  const k = categoria?.replace(/_/g, ' ').trim().toLowerCase()
+  return `${c ? (/^\d+$/.test(c) ? `Cuadrilla ${c}` : c) : 'sin cuadrilla'} · ${k || 'sin categoría'}`
+}
+
+export interface PersonaEsperada {
+  id: string
+  nombre_completo: string
+  cuadrilla: string | null
+  categoria: string | null
+}
+
 /**
- * QUIÉN VINO: el plantel de la obra contra las horas de `registros_hh` de ese día. Sin registro es
- * «sin marcar» (aviso); ausencia o licencia es «ausente»; el resto son horas trabajadas.
+ * QUIÉN VINO: los ESPERADOS son el plantel asignado a la obra (no todo el legajo), contra las horas
+ * de `registros_hh` de ese día. Sin registro es «sin marcar» (aviso); ausencia o licencia es
+ * «ausente»; el resto son horas trabajadas. Sólo lectura: las horas se cargan por Personal.
  */
 export function chipsDeGente(
-  personas: readonly { id: string; nombre_completo: string }[],
+  personas: readonly PersonaEsperada[],
   registros: readonly { fecha: string | null; horas: number; tipo_hora: string; persona_id: string | null }[] | undefined,
   dia: string,
 ): ChipGente[] {
@@ -307,10 +339,11 @@ export function chipsDeGente(
     horas.set(r.persona_id, (horas.get(r.persona_id) ?? 0) + r.horas)
   }
   return personas.map((p) => {
+    const base = { id: p.id, nombre: nombreCorto(p.nombre_completo), bajada: bajadaDePersona(p.cuadrilla, p.categoria) }
     const h = horas.get(p.id)
-    if (h != null && h > 0) return { id: p.id, nombre: nombreCorto(p.nombre_completo), estado: 'horas', horas: h }
-    if (ausentes.has(p.id)) return { id: p.id, nombre: nombreCorto(p.nombre_completo), estado: 'ausente', horas: null }
-    return { id: p.id, nombre: nombreCorto(p.nombre_completo), estado: 'sin_marcar', horas: null }
+    if (h != null && h > 0) return { ...base, estado: 'horas', horas: h }
+    if (ausentes.has(p.id)) return { ...base, estado: 'ausente', horas: null }
+    return { ...base, estado: 'sin_marcar', horas: null }
   })
 }
 
@@ -322,60 +355,63 @@ export function resumenGente(chips: readonly ChipGente[], conSinMarcar = true): 
   return conSinMarcar ? `${base} · ${sin} sin marcar` : base
 }
 
-// ── EQUIPOS EN LA OBRA HOY ────────────────────────────────────────────────────────────────────
-
-export interface ActivoEnObra { id: string; nombre: string; codigo: string; clase: string }
-
-/** «en 2 tareas» / «en 1 tarea» / «sin uso hoy». */
-export function usoDelActivo(activoId: string, usadosPorTarea: ReadonlyMap<string, ReadonlySet<string>>): string {
-  let n = 0
-  for (const set of usadosPorTarea.values()) if (set.has(activoId)) n++
-  if (n === 0) return 'sin uso hoy'
-  return `en ${n} ${n === 1 ? 'tarea' : 'tareas'}`
+/**
+ * El plantel esperado de la obra a partir de sus asignaciones vigentes ese día. Una persona con dos
+ * asignaciones (responsable e integrante) es UNA persona; la cuadrilla es la primera que la nombra.
+ */
+export function esperadosDeAsignaciones(
+  asignaciones: readonly { persona_id: string; persona_nombre: string | null; persona_categoria: string | null; cuadrilla: string | null; desde: string | null; hasta: string | null }[],
+  dia: string,
+): PersonaEsperada[] {
+  const vistos = new Map<string, PersonaEsperada>()
+  for (const a of asignaciones) {
+    if (a.desde && a.desde > dia) continue
+    if (a.hasta && a.hasta < dia) continue
+    const previo = vistos.get(a.persona_id)
+    if (previo) { if (!previo.cuadrilla && a.cuadrilla) previo.cuadrilla = a.cuadrilla; continue }
+    vistos.set(a.persona_id, {
+      id: a.persona_id, nombre_completo: a.persona_nombre ?? 'sin nombre', cuadrilla: a.cuadrilla, categoria: a.persona_categoria,
+    })
+  }
+  return [...vistos.values()].sort((x, y) => x.nombre_completo.localeCompare(y.nombre_completo, 'es'))
 }
 
 // ── LO QUE VIAJA EN EL FORMULARIO ─────────────────────────────────────────────────────────────
-
-export type DestinoNovedad = 'impedimento' | 'pedido' | 'nota'
-export const DESTINOS_NOVEDAD: readonly DestinoNovedad[] = ['impedimento', 'pedido', 'nota']
-export const DESTINO_LABEL: Record<DestinoNovedad, string> = {
-  impedimento: 'Impedimento', pedido: 'Pedido', nota: 'Sólo nota',
-}
+//
+// La 06 manda, por renglón, «Producción hoy» y «Comentario»; y aparte la novedad del día. Nada
+// más: ni personas, ni activos, ni horas (las horas entran por Personal).
 
 export interface RenglonLeido {
   actividad_id: string
-  /** Lo tipeado en «Hecho hoy», ya como número. */
-  hecho: number
-  personas: string[]
-  activos: string[]
+  /** Lo tipeado en «Producción hoy», ya como número. */
+  produccion: number
+  /** Lo tipeado en «Comentario» («opcional»); vacío = null. */
+  comentario: string | null
 }
 
 export interface ParteLeido {
   renglones: RenglonLeido[]
-  /** Renglones cuyo «Hecho hoy» no se pudo leer como número: se dicen, no se guardan a medias. */
+  /** Renglones cuyo «Producción hoy» no se pudo leer como número: se dicen, no se guardan a medias. */
   ilegibles: { actividad_id: string; texto: string }[]
 }
 
 const UUID = '[0-9a-f-]{36}'
-const HECHO = new RegExp(`^hecho_(${UUID})$`)
-const PERSONAS = new RegExp(`^personas_(${UUID})$`)
-const ACTIVOS = new RegExp(`^activos_(${UUID})$`)
+const PRODUCCION = new RegExp(`^produccion_(${UUID})$`)
 
-/** Un renglón sin «Hecho hoy» NO es un parte, aunque tenga gente: no hay hecho que registrar. */
+/** Un renglón sin «Producción hoy» NO es un parte, aunque tenga comentario: no hay hecho que registrar. */
 export function leerParteDiario(entradas: Iterable<[string, FormDataEntryValue]>): ParteLeido {
   const todas = [...entradas].filter((e): e is [string, string] => typeof e[1] === 'string')
-  const lista = (re: RegExp, id: string) => {
-    const fila = todas.find(([k]) => { const m = re.exec(k); return m?.[1] === id })
-    return fila ? fila[1].split(',').map((s) => s.trim()).filter(Boolean) : []
-  }
+  const comentarios = new Map<string, string>()
+  for (const [k, v] of todas) if (k.startsWith('comentario_')) comentarios.set(k.slice('comentario_'.length), v)
   const renglones: RenglonLeido[] = []
   const ilegibles: ParteLeido['ilegibles'] = []
   for (const [k, v] of todas) {
-    const m = HECHO.exec(k)
+    const m = PRODUCCION.exec(k)
     if (!m || v.trim() === '') continue
     const l = leerNumeroEsAR(v)
     if (!l.ok || l.valor == null || l.valor < 0) { ilegibles.push({ actividad_id: m[1], texto: v }); continue }
-    renglones.push({ actividad_id: m[1], hecho: l.valor, personas: lista(PERSONAS, m[1]), activos: lista(ACTIVOS, m[1]) })
+    const c = comentarios.get(m[1])?.trim()
+    renglones.push({ actividad_id: m[1], produccion: l.valor, comentario: c ? c : null })
   }
   return { renglones, ilegibles }
 }

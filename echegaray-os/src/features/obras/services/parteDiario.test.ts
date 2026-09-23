@@ -173,9 +173,15 @@ test('el pendiente del desplegable no es negativo y sin objetivo dice «sin medi
 })
 
 // ═══ DISEÑO ERP OBRAS · 06 / M08 ═══
+//
+// EL CONTRATO CAMBIÓ POR DECISIÓN DEL DUEÑO (23/09/2026, «no quiero layout nuevo»): la 06 dibuja
+// Actividad · Producción hoy · Acumulado · Comentario y «Quién vino» de sólo lectura. Se retiraron
+// «% ítem», la ruta «Rubro › Épica», los activos y el destino de la novedad; el formulario manda
+// `produccion_<id>` y `comentario_<id>`, no `hecho_`/`personas_`/`activos_`/`hh_`.
 import {
-  bajadaHecho, celdaAcumulado, celdaPctItem, chipsDeGente, fechaCortaDia, fechaLarga, filaDeEjecucion,
-  leerParteDiario, nombreCorto, renglonesDelParte, resumenGente, rutaDeTarea, usoDelActivo,
+  bajadaDePersona, bajadaDelDia, bajadaHecho, celdaAcumulado, celdaComentario, chipsDeGente, cifraHoras,
+  esperadosDeAsignaciones, fechaCortaDia, fechaLarga, filaDeEjecucion, leerParteDiario, nombreCorto,
+  renglonesDelParte, resumenGente, TEXTO_A_OJO, TEXTO_BLOQUEADA,
 } from './parteDiario.ts'
 
 test('el día se nombra como el diseño: «lunes 07/09/2026» y «Lun 21/09»', () => {
@@ -204,21 +210,30 @@ test('acumulado: «960 / 1.100» medido, «30% declarado» en aviso, y «sin reg
   assert.equal(bajadaHecho(act({ metodo_avance: 'cantidad', cantidad_ejecutada: 890, cantidad_objetivo: 1100, unidad: 'm³' })), '890 de 1.100 m³')
 })
 
-test('% ítem sale de los partes; sin partes, del avance; sin nada, «sin parte»', () => {
-  assert.equal(celdaPctItem(act({ avance_pct: 50 }), { actividad_id: 'x', fraccion_acumulada: 0.873, dias_reales: 4 }), '87%')
-  assert.equal(celdaPctItem(act({ avance_pct: 50 }), undefined), '50%')
-  assert.equal(celdaPctItem(act({ avance_pct: null }), undefined), 'sin parte')
+test('comentario (06): input «opcional» con lo guardado; la bloqueada y la que se mide a ojo llevan el texto fijo del diseño', () => {
+  assert.deepEqual(celdaComentario(act({ metodo_avance: 'cantidad', cantidad_objetivo: 1100 }), 'faltó cemento'),
+    { tipo: 'input', valor: 'faltó cemento' })
+  assert.deepEqual(celdaComentario(act({ metodo_avance: 'cantidad', cantidad_objetivo: 1100 }), null), { tipo: 'input', valor: '' })
+  assert.deepEqual(celdaComentario(act({ estado_operativo: 'bloqueada' }), 'Sin hormigón.'),
+    { tipo: 'texto', texto: `Sin hormigón. ${TEXTO_BLOQUEADA}` })
+  assert.deepEqual(celdaComentario(act({ impedimentos_abiertos: 1 }), null), { tipo: 'texto', texto: TEXTO_BLOQUEADA })
+  assert.deepEqual(celdaComentario(act({ metodo_avance: 'manual', cantidad_objetivo: null }), null), { tipo: 'texto', texto: TEXTO_A_OJO })
+  assert.equal(TEXTO_A_OJO, 'Se mide a ojo: no hay cantidad objetivo cargada.')
 })
 
-test('la ruta es «Rubro › Épica» y no repite ni inventa', () => {
-  assert.equal(rutaDeTarea({ seccion: 'Estructura', rubro: 'Losa' }), 'Estructura › Losa')
-  assert.equal(rutaDeTarea({ seccion: 'Losa', rubro: 'Losa' }), 'Losa')
-  assert.equal(rutaDeTarea({ seccion: null, rubro: null }), null)
+test('la bajada de la fecha grande (M08): «sin parte cargado» o cuántos frentes ya tienen parte', () => {
+  assert.equal(bajadaDelDia(0), 'sin parte cargado')
+  assert.equal(bajadaDelDia(1), '1 frente con parte')
+  assert.equal(bajadaDelDia(3), '3 frentes con parte')
 })
 
-test('quién vino: horas, ausente y sin marcar, con el resumen del diseño', () => {
+test('quién vino: horas, ausente y sin marcar, con el resumen del diseño y la bajada «Cuadrilla 1 · oficial»', () => {
   const chips = chipsDeGente(
-    [{ id: 'p1', nombre_completo: 'QUIROGA Rodolfo' }, { id: 'p2', nombre_completo: 'RUIZ Carlos' }, { id: 'p3', nombre_completo: 'GÓMEZ Sara' }],
+    [
+      { id: 'p1', nombre_completo: 'QUIROGA Rodolfo', cuadrilla: '1', categoria: 'oficial' },
+      { id: 'p2', nombre_completo: 'RUIZ Carlos', cuadrilla: 'Cuadrilla Norte', categoria: 'medio_oficial' },
+      { id: 'p3', nombre_completo: 'GÓMEZ Sara', cuadrilla: null, categoria: null },
+    ],
     [
       { fecha: '2026-09-07', horas: 9, tipo_hora: 'normal', persona_id: 'p1' },
       { fecha: '2026-09-07', horas: 8, tipo_hora: 'ausencia', persona_id: 'p2' },
@@ -226,29 +241,44 @@ test('quién vino: horas, ausente y sin marcar, con el resumen del diseño', () 
     ],
     '2026-09-07',
   )
-  assert.deepEqual(chips.map((c) => [c.nombre, c.estado, c.horas]),
-    [['R. Quiroga', 'horas', 9], ['C. Ruiz', 'ausente', null], ['S. Gómez', 'sin_marcar', null]])
+  assert.deepEqual(chips.map((c) => [c.nombre, c.estado, c.horas, c.bajada]), [
+    ['R. Quiroga', 'horas', 9, 'Cuadrilla 1 · oficial'],
+    ['C. Ruiz', 'ausente', null, 'Cuadrilla Norte · medio oficial'],
+    ['S. Gómez', 'sin_marcar', null, 'sin cuadrilla · sin categoría'],
+  ])
   assert.equal(resumenGente(chips), '3 esperados · 2 marcados · 1 sin marcar')
   assert.equal(resumenGente(chips, false), '3 esperados · 2 marcados')
   assert.equal(nombreCorto('Ana'), 'Ana')
+  assert.equal(bajadaDePersona('2', 'AYUDANTE'), 'Cuadrilla 2 · ayudante')
+  assert.equal(cifraHoras(4.5), '4,5')
 })
 
-test('el activo dice en cuántas tareas se usa hoy, o «sin uso hoy»', () => {
-  const uso = new Map([['t1', new Set(['e1'])], ['t2', new Set(['e1', 'e2'])]])
-  assert.equal(usoDelActivo('e1', uso), 'en 2 tareas')
-  assert.equal(usoDelActivo('e2', uso), 'en 1 tarea')
-  assert.equal(usoDelActivo('e3', uso), 'sin uso hoy')
+test('los esperados son el plantel asignado a la obra ese día: una persona una vez, sin las asignaciones vencidas', () => {
+  const base = { persona_categoria: 'oficial', cuadrilla: null as string | null, desde: null as string | null, hasta: null as string | null }
+  const esperados = esperadosDeAsignaciones([
+    { ...base, persona_id: 'p1', persona_nombre: 'QUIROGA Rodolfo', cuadrilla: '1' },
+    { ...base, persona_id: 'p1', persona_nombre: 'QUIROGA Rodolfo', cuadrilla: '2' },
+    { ...base, persona_id: 'p2', persona_nombre: 'ACOSTA Luis', hasta: '2026-09-01' },
+    { ...base, persona_id: 'p3', persona_nombre: 'VERA Ana', desde: '2026-09-10' },
+    { ...base, persona_id: 'p4', persona_nombre: 'MOLINA Juan', desde: '2026-09-01', hasta: '2026-09-30' },
+  ], '2026-09-07')
+  assert.deepEqual(esperados.map((e) => [e.id, e.cuadrilla]), [['p4', null], ['p1', '1']])
 })
 
-test('el formulario del parte se lee renglón por renglón; lo ilegible se dice y no se guarda', () => {
+test('el formulario del parte se lee renglón por renglón: producción y comentario; lo ilegible se dice y no se guarda', () => {
   const id = '11111111-1111-1111-1111-111111111111'
   const id2 = '22222222-2222-2222-2222-222222222222'
+  const id3 = '33333333-3333-3333-3333-333333333333'
   const leido = leerParteDiario([
-    [`hecho_${id}`, '1.500,5'], [`personas_${id}`, 'p1,p2'], [`activos_${id}`, ''],
-    [`hecho_${id2}`, 'abc'], ['hecho_x', '3'], ['fecha', '2026-09-07'],
+    [`produccion_${id}`, '1.500,5'], [`comentario_${id}`, '  faltó cemento '],
+    [`produccion_${id2}`, 'abc'], [`comentario_${id2}`, 'x'],
+    [`produccion_${id3}`, ''], [`comentario_${id3}`, 'sólo comentario, sin producción'],
+    ['produccion_x', '3'], ['fecha', '2026-09-07'],
   ])
-  assert.deepEqual(leido.renglones, [{ actividad_id: id, hecho: 1500.5, personas: ['p1', 'p2'], activos: [] }])
+  assert.deepEqual(leido.renglones, [{ actividad_id: id, produccion: 1500.5, comentario: 'faltó cemento' }])
   assert.deepEqual(leido.ilegibles, [{ actividad_id: id2, texto: 'abc' }])
+  assert.deepEqual(leerParteDiario([[`produccion_${id}`, '70'], [`comentario_${id}`, '   ']]).renglones,
+    [{ actividad_id: id, produccion: 70, comentario: null }])
 })
 
 test('cantidad escribe cantidad y deja la fracción a la vista; manual escribe fracción declarada', () => {

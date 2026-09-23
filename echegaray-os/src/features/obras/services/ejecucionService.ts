@@ -164,7 +164,16 @@ export function pendienteDe(
 // → `activo`). Nunca `herramientas`/`movimientos_herramienta`: ése es el espejo viejo del Sheet.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-import type { ActivoEnObra, ResumenPartes } from './parteDiario.ts'
+/** Lo que sabe el resumen de partes por tarea (`actividad_partes_resumen`). Lo consume la planilla (04c);
+ *  el parte diario del 06 no lo dibuja y por eso no lo lee. */
+export interface ResumenPartes {
+  actividad_id: string
+  fraccion_acumulada: number | null
+  dias_reales: number
+}
+
+/** Un activo ubicado hoy en la obra, por el modelo de Herramientas. */
+export interface ActivoEnObra { id: string; nombre: string; codigo: string; clase: string }
 
 export async function getResumenPartes(
   supabase: SupabaseClient, obraId: string,
