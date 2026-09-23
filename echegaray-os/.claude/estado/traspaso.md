@@ -1,21 +1,30 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: **2026-09-23 ~11:40 (−03)** · `origin/main` = **7eb016be** (verificado con `git log`), y el
-checkout de producción `/home/jorge/echegaray-os/produccion/echegaray-os` está en ese mismo commit._
+_actualizado: **2026-09-23 ~11:05 (−03)** · `origin/main` = **3c258674**, checkout de producción en ese
+commit, daemons reiniciados y verificados con `servicios-al-dia.mjs`._
 
-**HECHO en la sesión del 22–23/09** — módulo **Efectivo a rendir COMPLETO y publicado**: todas las
-pantallas del diseño (la última fue D08, la ficha del proveedor con «Pagado en efectivo» y la columna
-«Entrega»), el jefe de obra dejó de ver y de escribir plata de venta, la devolución se firma al
-registrarse y no cierra con un ticket en camino, el recibo se firma y se lee desde el teléfono, las
-entregas de prueba ya se pueden anular aunque tengan vuelto o tickets, y el canal #efectivo entiende
-la entrega escrita como se habla («$100 a Maldonado para combustible»).
+**HECHO 23/09 (mañana), todo publicado:** el canal #efectivo lee la entrega como se escribe (53 frases
+medidas) y entiende la respuesta a su pregunta · anular/borrar/descartar desde la app encola «Estado =
+Cancelado» en la fila de Compras (migración 20260923T1400 aplicada; el worker de la cola la escribe) ·
+los daemons se reinician solos al publicar (`produccion-al-dia.mjs`; chequeo `servicios-al-dia.mjs`) ·
+Economía salió de Obras → `/administracion/obras/<obra>` · migración de GRANT para el 30/10 escrita, SIN
+aplicar (el dueño pidió no correr migraciones remotas en esa tarea) · extracto Santander al 23/09 cargado
+(saldo $36.505.852) y echeqs emitidos sincronizados (385 nuevo, 375/376 debitados) · personas y usuarios
+de prueba BORRADOS de la base viva (regla nueva: nunca datos de prueba en app.ecsas.com.ar).
 
-**PENDIENTE de personas, no de código:** la primera entrega real (para ver el recorrido en el Sheet) y
-la primera compra rendida real (para ver la cifra y la columna de D08 con datos).
+**Auditoría externa (hitos):** 1 descartado por el dueño y luego ejecutado a su pedido como «saca economía
+de las obras» · 2, 3, 6 hechos · 4 y 5 son planes en `docs/engineering/PLAN-*.md`.
 
-**DECIDIDO NO HACER:** imputar a la entrega los comprobantes que llegan por #comprobantes-gastos (el
-dueño lo ratificó el 23/09: mezclar los canales obliga a adivinar). Queda el riesgo conocido de doble
-descuento si un ticket de plata a rendir entra por el canal equivocado.
+**EN CURSO (agentes, sin commit al cierre de esta nota):** Herramientas — foto desde el celular rota +
+paridad celular/computadora; códigos únicos por unidad (`activo_unidad`) y ficha de revisión técnica en
+Mantenimiento (`activo_revision`), migraciones 20260923T1500/T1600 sin aplicar hasta revisarlas.
+
+**PENDIENTE del dueño:** aprobar el mapa `docs/engineering/MAPA-DE-PANTALLAS.md` (10 dudas) antes de
+reorganizar la app · cheque 329 $1.086.200 (22/09) sin fila en el registro · N° de comprobante del echeq
+385 · si se borra también `jorge.o.corona+direccion-test@gmail.com` · aplicar 20260923T2000 (GRANT).
+
+**ROTO a sabiendas:** los e2e que usaban `qa.campo@` / `[PRUEBA E2E] QA Campo` (8 specs) no tienen
+fixture; hay que hacerlos crear y borrar sus datos, no sembrar producción.
 
 ## 1. OBJETIVO GENERAL
 
