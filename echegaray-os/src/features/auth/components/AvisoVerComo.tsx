@@ -3,7 +3,7 @@ import { getPerfilReal } from '@/features/auth/services/authService'
 import { estadoVerComo } from '@/features/auth/services/verComo'
 import { ROL_LABEL } from '@/features/auth/types'
 import { ROLES_MIRABLES } from '@/lib/auth/ver-como'
-import { BarraVerComo } from './BarraVerComo'
+import { BarraVerComo } from './BarraVerComo.tsx'
 
 // EL AVISO QUE NO SE PUEDE OLVIDAR.
 //

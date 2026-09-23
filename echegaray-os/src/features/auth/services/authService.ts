@@ -1,7 +1,6 @@
 import { cache } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Perfil } from '@/features/auth/types'
-import { conLaLente } from './verComo'
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
 
@@ -126,6 +125,12 @@ async function leerPerfil(supabase: SupabaseClient, id: string): Promise<Service
 export async function getPerfilActual(supabase: SupabaseClient, userId?: string): Promise<ServiceResult<Perfil | null>> {
   const real = await getPerfilReal(supabase, userId)
   if (real.error) return real
+  // LA LENTE SE CARGA ACÁ ADENTRO, NO ARRIBA. `verComo.ts` importa `next/headers`, que sólo existe
+  // dentro del runtime de Next: importarlo en la cabecera de este módulo rompió seis archivos de
+  // test —`node --test` no puede resolver ese export condicional— y ninguno hablaba de la lente.
+  // El import dinámico deja el costo donde se usa: en una request de servidor, que es el único lugar
+  // donde hay cookies que leer.
+  const { conLaLente } = await import('./verComo.ts')
   return { data: await conLaLente(real.data), error: null }
 }
 
