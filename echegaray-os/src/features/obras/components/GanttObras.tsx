@@ -26,7 +26,8 @@ import {
   barrasDe, ESCALAS_CARTERA, FUERA_DE_VENTANA, LEYENDA_GANTT, LEYENDA_GANTT_TELEFONO, posicionEn,
   SIN_FECHAS_ESCRITORIO, SIN_FECHAS_TELEFONO, ventanaGantt, type EscalaCartera, type TonoGantt,
 } from '../services/carteraGantt'
-import type { FilaCartera } from './CarteraObras'
+import { CabeceraCliente, type FilaCartera } from './CarteraObras'
+import type { GrupoDeCliente } from '../services/carteraCanon'
 
 const ALTO_FILA = 46
 const ALTO_CABECERA = 36
@@ -68,7 +69,9 @@ export function SelectorEscala({ escala, setEscala }: { escala: EscalaCartera; s
  * son los de `CarteraObras`, que no se vuelven a dibujar al pasar de Tabla a Gantt (dueño, 23/09/2026:
  * «cuando voy de tabla a gantt el diseño cambia, refresca, está mal»). El filtro también es el mismo.
  */
-export function CuerpoGantt({ lista, total, hoyIso, telefono, escala }: {
+export function CuerpoGantt({ grupos, lista, total, hoyIso, telefono, escala }: {
+  /** Los mismos grupos del CRM que dibuja la Tabla (dueño, 23/09/2026): cliente → obra → adicional. */
+  grupos: GrupoDeCliente<FilaCartera>[]
   lista: FilaCartera[]
   total: number
   hoyIso: string
@@ -77,6 +80,12 @@ export function CuerpoGantt({ lista, total, hoyIso, telefono, escala }: {
 }) {
   const router = useRouter()
   const ventana = ventanaGantt(hoyIso, telefono ? 'telefono' : escala)
+  type Renglon = { tipo: 'cliente'; clave: string; nombre: string | null; slug: string | null; n: number } | { tipo: 'obra'; o: FilaCartera; nivel: 0 | 1 }
+  const renglones: Renglon[] = grupos.flatMap((g) => [
+    { tipo: 'cliente' as const, clave: g.clave, nombre: g.nombre, slug: g.slug, n: g.filas.length },
+    ...g.filas.map((f) => ({ tipo: 'obra' as const, o: f.obra, nivel: f.nivel })),
+  ])
+  const ALTO_CLIENTE = telefono ? 40 : 36
   const xHoy = posicionEn(ventana, hoyIso)
 
   if (telefono) {
@@ -90,13 +99,21 @@ export function CuerpoGantt({ lista, total, hoyIso, telefono, escala }: {
               {ventana.meses.map((m) => <span key={m.label}>{m.label}</span>)}
             </div>
           </div>
-          {lista.map((o, i) => {
+          {renglones.map((r, i) => {
+            const ultima = i === renglones.length - 1
+            if (r.tipo === 'cliente') {
+              return (
+                <div key={`c:${r.clave}`} style={{ display: 'grid', gridTemplateColumns: '118px 1fr', gap: '10px', alignItems: 'center', borderBottom: ultima ? undefined : `1px solid ${C.borde}` }}>
+                  <div style={{ gridColumn: '1 / -1' }}><CabeceraCliente nombre={r.nombre} slug={r.slug} n={r.n} telefono /></div>
+                </div>
+              )
+            }
+            const o = r.o
             const b = barrasDe(o, ventana)
-            const ultima = i === lista.length - 1
             return (
-              <div key={o.obra_id} data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id} onClick={() => router.push(hrefDe(o.obra_id))}
+              <div key={o.obra_id} data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id} data-nivel={r.nivel} onClick={() => router.push(hrefDe(o.obra_id))}
                 style={{ display: 'grid', gridTemplateColumns: '118px 1fr', gap: '10px', height: '44px', alignItems: 'center', borderBottom: ultima ? undefined : `1px solid ${C.borde}`, cursor: 'pointer' }}>
-                <div style={{ fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: esPrevio(o) ? C.tintaSuave : C.tinta }}>{rotuloDeObra(o)}</div>
+                <div style={{ fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: esPrevio(o) ? C.tintaSuave : C.tinta, paddingLeft: r.nivel ? '10px' : 0 }}>{r.nivel ? '└ ' : ''}{rotuloDeObra(o)}</div>
                 {b == null
                   ? <div style={{ fontSize: '11.5px', color: C.tenue, fontStyle: 'italic' }} data-testid="obra-sin-plan">{SIN_FECHAS_TELEFONO}</div>
                   : b.fueraDeVentana
@@ -152,13 +169,17 @@ export function CuerpoGantt({ lista, total, hoyIso, telefono, escala }: {
             height: `${ALTO_CABECERA}px`, display: 'flex', alignItems: 'center', padding: '0 14px', background: C.tenueFondo,
             borderBottom: `1px solid ${C.borde}`, fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase',
           }}>Obra</div>
-          {lista.map((o, i) => (
-            <Link key={o.obra_id} href={hrefDe(o.obra_id)} prefetch={false} data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id}
+          {renglones.map((r, i) => r.tipo === 'cliente' ? (
+            <div key={`c:${r.clave}`} style={{ height: `${ALTO_CLIENTE}px`, display: 'flex', alignItems: 'center', padding: '0 14px', borderBottom: i === renglones.length - 1 ? undefined : `1px solid ${C.borde}` }}>
+              <div style={{ width: '100%' }}><CabeceraCliente nombre={r.nombre} slug={r.slug} n={r.n} /></div>
+            </div>
+          ) : (
+            <Link key={r.o.obra_id} href={hrefDe(r.o.obra_id)} prefetch={false} data-testid={`fila-obra-${r.o.obra_id}`} data-obra={r.o.obra_id} data-nivel={r.nivel}
               style={{
-                height: `${ALTO_FILA}px`, display: 'flex', alignItems: 'center', padding: '0 14px', fontSize: '13px', textDecoration: 'none',
-                borderBottom: i === lista.length - 1 ? undefined : `1px solid ${C.borde}`, color: esPrevio(o) ? C.tintaSuave : C.tinta,
+                height: `${ALTO_FILA}px`, display: 'flex', alignItems: 'center', padding: `0 14px 0 ${r.nivel ? 36 : 14}px`, fontSize: '13px', textDecoration: 'none',
+                borderBottom: i === renglones.length - 1 ? undefined : `1px solid ${C.borde}`, color: esPrevio(r.o) ? C.tintaSuave : C.tinta,
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              }}>{rotuloDeObra(o)}</Link>
+              }}>{r.nivel ? <span style={{ color: C.tenue, marginRight: '6px' }}>└</span> : null}{rotuloDeObra(r.o)}</Link>
           ))}
           {lista.length === 0 && <div style={{ height: `${ALTO_FILA}px`, display: 'flex', alignItems: 'center', padding: '0 14px', fontSize: '12.5px', color: C.tintaSuave }}>Nada coincide.</div>}
         </div>
@@ -169,9 +190,11 @@ export function CuerpoGantt({ lista, total, hoyIso, telefono, escala }: {
           {xHoy >= 0 && xHoy <= 100 && (
             <div data-testid="linea-hoy-obras" style={{ position: 'absolute', left: `${xHoy}%`, top: `${ALTO_CABECERA}px`, bottom: 0, width: '1px', background: C.marca }} />
           )}
-          {lista.map((o, i) => {
+          {renglones.map((r, i) => {
+            const borde = i === renglones.length - 1 ? undefined : `1px solid ${C.borde}`
+            if (r.tipo === 'cliente') return <div key={`c:${r.clave}`} style={{ height: `${ALTO_CLIENTE}px`, borderBottom: borde, background: C.tenueFondo }} />
+            const o = r.o
             const b = barrasDe(o, ventana)
-            const borde = i === lista.length - 1 ? undefined : `1px solid ${C.borde}`
             if (b == null || b.fueraDeVentana) {
               return (
                 <div key={o.obra_id} style={{ height: `${ALTO_FILA}px`, position: 'relative', borderBottom: borde, display: 'flex', alignItems: 'center', paddingLeft: '16px', fontSize: '12.5px', color: C.tenue }}

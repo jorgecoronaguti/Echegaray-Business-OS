@@ -68,6 +68,7 @@ export default async function ObrasPage({
     nombre: o.nombre,
     codigo: codigos.get(o.obra_id) ?? null,
     cliente_slug: o.cliente_slug,
+    obra_padre_id: o.obra_padre_id ?? null,
     cliente_nombre: o.cliente_nombre,
     cliente_texto: o.cliente_texto,
     estado: o.estado,

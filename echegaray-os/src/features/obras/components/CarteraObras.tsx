@@ -18,7 +18,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { CuerpoGantt, SelectorEscala } from './GanttObras'
 import type { EscalaCartera } from '../services/carteraGantt'
 import { Ico, P } from './canon/Ico'
@@ -30,7 +30,7 @@ import { rotuloDeObra } from '@/shared/utils/obra'
 import { ETAPA_LABEL, type Etapa } from '../types'
 import {
   bajadaCartera, coincideTexto, colorDeBarra, colorDeEstado, colorDePlazo, entraEnFiltro, esPrevio,
-  estadoDeCartera, FILTROS_CARTERA, sublineaTelefono, textoArchivadas, textoDePlazo, textoSeMuestran,
+  estadoDeCartera, FILTROS_CARTERA, agruparPorCliente, SIN_CLIENTE, sublineaTelefono, textoArchivadas, textoDePlazo, textoSeMuestran,
   type FiltroCartera,
 } from '../services/carteraCanon'
 
@@ -44,6 +44,8 @@ export interface FilaCartera {
   cliente_slug: string | null
   cliente_nombre: string | null
   cliente_texto: string | null
+  /** La obra mayor de la que es adicional (`obra_canonica.obra_padre_id`): se dibuja debajo de ella. */
+  obra_padre_id?: string | null
   estado: string
   etapa: string | null
   avance_pct: number | null
@@ -54,7 +56,9 @@ export interface FilaCartera {
   impedimentos: number | null
 }
 
-const GRID = 'minmax(0,1.5fr) minmax(0,.85fr) 104px 128px 78px'
+// SIN COLUMNA CLIENTE (dueño, 23/09/2026): la cartera se lee como el CRM, agrupada por cliente con el
+// adicional debajo de su obra mayor; el cliente es el encabezado del grupo, no una celda.
+const GRID = 'minmax(0,2.35fr) 104px 128px 78px'
 /** Por debajo de esto la grilla de escritorio scrollea POR DENTRO (entre los 640px del teléfono y una
  *  ventana angosta): 310px de columnas fijas + 88px de gaps dejan a OBRA por encima de 160px. La página
  *  nunca se corre de costado. */
@@ -222,6 +226,7 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
   const router = useRouter()
   const telefono = esAngosto(useAnchoVentana())
   const { q, setQ, filtro, setFiltro, lista, cuentas, sinImpedimentos, limpiar } = useFiltroCartera(obras)
+  const grupos = useMemo(() => agruparPorCliente(lista), [lista])
   const [vista, setVista] = useState<VistaCartera>(vistaInicial)
   const [escala, setEscala] = useState<EscalaCartera>('trimestre')
   const esGantt = vista === 'gantt'
@@ -283,9 +288,14 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
         <div style={{ display: 'flex' }}>{buscador}</div>
         <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono />
         </div>
-        {esGantt ? <CuerpoGantt lista={lista} total={obras.length} hoyIso={hoyIso} telefono escala={escala} /> : (
+        {esGantt ? <CuerpoGantt grupos={grupos} lista={lista} total={obras.length} hoyIso={hoyIso} telefono escala={escala} /> : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {lista.map((o, i) => <FilaTelefono key={o.obra_id} o={o} ultima={i === lista.length - 1} ir={() => router.push(`/obras/${o.obra_id}`)} />)}
+            {grupos.map((g) => (
+              <Fragment key={g.clave}>
+                <CabeceraCliente nombre={g.nombre} slug={g.slug} n={g.filas.length} telefono />
+                {g.filas.map((f, i) => <FilaTelefono key={f.obra.obra_id} o={f.obra} nivel={f.nivel} ultima={i === g.filas.length - 1} ir={() => router.push(`/obras/${f.obra.obra_id}`)} />)}
+              </Fragment>
+            ))}
             {vacio}
           </div>
         )}
@@ -322,16 +332,21 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
       </div>
       </div>
 
-      {esGantt ? <CuerpoGantt lista={lista} total={obras.length} hoyIso={hoyIso} telefono={false} escala={escala} /> : (<>
+      {esGantt ? <CuerpoGantt grupos={grupos} lista={lista} total={obras.length} hoyIso={hoyIso} telefono={false} escala={escala} /> : (<>
       <div style={{ overflowX: 'auto' }}><div style={{ display: 'flex', flexDirection: 'column', minWidth: `${MIN_TABLA}px` }}>
         <div style={{
           display: 'grid', gridTemplateColumns: GRID, gap: '22px', height: '40px', alignItems: 'center',
           borderBottom: `1px solid ${C.borde}`, fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em',
           color: C.tenue, textTransform: 'uppercase',
         }}>
-          <div>Obra</div><div>Cliente</div><div>Etapa</div><div>Avance</div><div style={{ textAlign: 'right' }}>Plazo</div>
+          <div>Obra</div><div>Etapa</div><div>Avance</div><div style={{ textAlign: 'right' }}>Plazo</div>
         </div>
-        {lista.map((o) => <Fila key={o.obra_id} o={o} ir={() => router.push(`/obras/${o.obra_id}`)} />)}
+        {grupos.map((g) => (
+          <Fragment key={g.clave}>
+            <CabeceraCliente nombre={g.nombre} slug={g.slug} n={g.filas.length} />
+            {g.filas.map((f) => <Fila key={f.obra.obra_id} o={f.obra} nivel={f.nivel} ir={() => router.push(`/obras/${f.obra.obra_id}`)} />)}
+          </Fragment>
+        ))}
         {vacio}
       </div></div>
 
@@ -349,30 +364,40 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
   )
 }
 
-/** UNA FILA DE 64px del 01: nombre + estado en color, cliente, etapa, barra 64×4 + %, plazo. */
-function Fila({ o, ir }: { o: FilaCartera; ir: () => void }) {
+/** EL ENCABEZADO DEL GRUPO: el cliente, como en el CRM. Enlaza a su ficha cuando la tiene. */
+export function CabeceraCliente({ nombre, slug, n, telefono = false }: { nombre: string | null; slug: string | null; n: number; telefono?: boolean }) {
+  const texto = nombre ?? SIN_CLIENTE
+  return (
+    <div data-testid="cabecera-cliente" data-cliente={slug ?? ''} style={{
+      display: 'flex', alignItems: 'center', gap: '10px', minHeight: telefono ? '40px' : '36px', padding: telefono ? '10px 0 4px' : '0',
+      borderBottom: `1px solid ${C.borde}`, background: telefono ? undefined : C.tenueFondo,
+      fontSize: telefono ? '12px' : '11.5px', fontWeight: 600, letterSpacing: '.02em', color: nombre ? C.tinta : C.tenue,
+    }}>
+      {slug && nombre
+        ? <Link href={`/clientes/${slug}`} prefetch={false} style={{ color: C.tinta, textDecoration: 'none' }}>{texto}</Link>
+        : <span data-nulo={nombre ? undefined : ''}>{texto}</span>}
+      <span style={{ fontFamily: MONO, fontSize: '11px', fontWeight: 400, color: C.tenue }}>{n}</span>
+    </div>
+  )
+}
+
+/** UNA FILA DE 64px del 01: nombre + estado en color, etapa, barra 64×4 + %, plazo. El adicional va con sangría. */
+function Fila({ o, ir, nivel = 0 }: { o: FilaCartera; ir: () => void; nivel?: 0 | 1 }) {
   const e = estadoDeCartera(o)
   const previo = esPrevio(o)
-  const cliente = clienteDe(o)
   return (
-    <Hover data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id} onClick={ir}
+    <Hover data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id} data-nivel={nivel} onClick={ir}
       base={{
         display: 'grid', gridTemplateColumns: GRID, gap: '22px', height: '64px', alignItems: 'center',
         borderBottom: `1px solid ${C.borde}`, fontSize: '13.5px', cursor: 'pointer', color: C.tinta,
       }}
       hover={{ background: C.tenueFondo }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, paddingLeft: nivel ? '22px' : 0 }}>
         <Link href={`/obras/${o.obra_id}`} prefetch={false} onClick={(ev) => ev.stopPropagation()}
           style={{ fontWeight: 500, color: C.tinta, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {rotuloDeObra(o)}
+          {nivel ? <span style={{ color: C.tenue, marginRight: '6px' }}>└</span> : null}{rotuloDeObra(o)}
         </Link>
-        <div style={{ fontSize: '12px', color: colorDeEstado(o) }} data-testid="estado-obra">{e.t}</div>
-      </div>
-      {/* SIN FICHA NO HAY ENLACE: un link a `/clientes/null` es una promesa que termina en 404. */}
-      <div style={{ color: C.tintaMedia, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {o.cliente_slug && o.cliente_nombre
-          ? <Link href={`/clientes/${o.cliente_slug}`} prefetch={false} onClick={(ev) => ev.stopPropagation()} style={{ color: C.tintaMedia, textDecoration: 'none' }}>{o.cliente_nombre}</Link>
-          : cliente ?? <span style={{ color: C.tenue }} data-nulo="">sin cliente declarado</span>}
+        <div style={{ fontSize: '12px', color: colorDeEstado(o) }} data-testid="estado-obra">{e.t}{nivel ? <span style={{ color: C.tenue }}> · adicional</span> : null}</div>
       </div>
       <div style={{ color: C.tintaSuave }}>{etapaDe(o) ?? <span style={{ color: C.tenue }} data-nulo="">sin etapa</span>}</div>
       {previo || o.avance_pct == null
@@ -404,14 +429,15 @@ function Plazo({ o, telefono = false }: { o: FilaCartera; telefono?: boolean }) 
 }
 
 /** UNA FILA DE 62px de M01: nombre + «Cliente · Etapa · atraso», barra 56×4 + % + plazo de 44px. */
-function FilaTelefono({ o, ir, ultima }: { o: FilaCartera; ir: () => void; ultima: boolean }) {
+function FilaTelefono({ o, ir, ultima, nivel = 0 }: { o: FilaCartera; ir: () => void; ultima: boolean; nivel?: 0 | 1 }) {
   const previo = esPrevio(o)
-  const sub = sublineaTelefono(o, clienteDe(o), etapaDe(o))
+  // El cliente ya es el encabezado del grupo: la sublínea dice la etapa (y «adicional» si lo es).
+  const sub = sublineaTelefono(o, nivel ? 'adicional' : null, etapaDe(o))
   return (
-    <div data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id} onClick={ir} role="link" tabIndex={0}
+    <div data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id} data-nivel={nivel} onClick={ir} role="link" tabIndex={0}
       onKeyDown={(ev) => { if (ev.key === 'Enter') ir() }}
       style={{
-        minHeight: '62px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', cursor: 'pointer',
+        minHeight: '62px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', cursor: 'pointer', paddingLeft: nivel ? '16px' : 0,
         borderBottom: ultima ? undefined : `1px solid ${C.borde}`, color: C.tinta,
       }}>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>

@@ -24,6 +24,7 @@
 /** Lo mínimo de una obra que estas reglas necesitan. Un subconjunto a propósito: no se recompilan
  *  cuando `obra_panel` agregue una columna. */
 import { coincideObra } from '../../../shared/utils/obra.ts'
+import { jerarquiaDeObras, type FilaDeObra, type ObraConPadre } from '../../clientes/services/obrasAdicionales.ts'
 
 export interface ObraDeCartera {
   estado: string
@@ -197,4 +198,49 @@ export function colorDeEstado(o: ObraDeCartera): string {
 export function sublineaTelefono(o: ObraDeCartera, cliente: string | null, etapaRotulo: string | null): { texto: string; atraso: boolean } {
   const partes = [cliente, etapaRotulo].filter((x): x is string => !!x)
   return { texto: partes.join(' · '), atraso: estadoDeCartera(o).tono === 'neg' }
+}
+
+
+// ═══ LA CARTERA SE LEE COMO EL CRM: POR CLIENTE, CON EL ADICIONAL DEBAJO DE SU OBRA MAYOR ═══
+//
+// Dueño, 23/09/2026: «que la vista Tabla tenga el mismo orden y jerarquía que el CRM de clientes,
+// con la UI que tiene ahora; por lo tanto sacar la columna Cliente. Lo mismo con la vista Gantt».
+// El CRM ordena clientes por obras activas (más arriba el que más tiene) y después por nombre, y
+// debajo de cada uno sus obras en el orden del índice con el adicional colgado de su obra mayor
+// (`jerarquiaDeObras`, la misma función). Acá se reproduce ESE criterio sobre las filas que la
+// cartera ya trae, sin otra consulta.
+
+export interface ObraAgrupable extends ObraDeCartera, ObraConPadre {
+  cliente_slug: string | null
+  cliente_nombre: string | null
+  cliente_texto: string | null
+}
+
+export interface GrupoDeCliente<T extends ObraAgrupable> {
+  /** Clave estable para React y para el test: slug, o el texto, o «sin-cliente». */
+  clave: string
+  nombre: string | null
+  slug: string | null
+  filas: FilaDeObra<T>[]
+}
+
+export const SIN_CLIENTE = 'sin cliente declarado'
+
+export function agruparPorCliente<T extends ObraAgrupable>(obras: T[]): GrupoDeCliente<T>[] {
+  const grupos = new Map<string, { nombre: string | null; slug: string | null; obras: T[] }>()
+  for (const o of obras) {
+    const nombre = o.cliente_nombre ?? o.cliente_texto ?? null
+    const clave = o.cliente_slug ?? (nombre ? `texto:${nombre}` : 'sin-cliente')
+    const g = grupos.get(clave) ?? { nombre, slug: o.cliente_slug ?? null, obras: [] }
+    g.obras.push(o)
+    grupos.set(clave, g)
+  }
+  const activas = (g: { obras: T[] }) => g.obras.filter((o) => o.estado === 'activa').length
+  return [...grupos.entries()]
+    .sort(([ka, a], [kb, b]) =>
+      // El que no tiene cliente va al final: no es un cliente, es un dato que falta.
+      Number(ka === 'sin-cliente') - Number(kb === 'sin-cliente')
+      || activas(b) - activas(a)
+      || (a.nombre ?? '').localeCompare(b.nombre ?? '', 'es'))
+    .map(([clave, g]) => ({ clave, nombre: g.nombre, slug: g.slug, filas: jerarquiaDeObras(g.obras) }))
 }

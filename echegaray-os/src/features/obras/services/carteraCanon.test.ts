@@ -159,3 +159,18 @@ test('la bajada cuenta vivas (no archivadas) y cuántas proyectan después del p
     { texto: 'Macro · Terminación', atraso: true })
   assert.deepEqual(canon.sublineaTelefono(obra(), null, 'Desarrollo'), { texto: 'Desarrollo', atraso: false })
 })
+
+
+test('la cartera se agrupa como el CRM: clientes por obras activas y nombre, adicionales bajo su obra mayor, sin cliente al final', () => {
+  const o = (id: string, cliente: string | null, extra: Partial<canon.ObraAgrupable> = {}): canon.ObraAgrupable => ({
+    obra_id: id, estado: 'activa', etapa: 'desarrollo', fecha_fin_plan: null, forecast_fin: null, avance_pct: null,
+    cliente_slug: cliente ? cliente.toLowerCase() : null, cliente_nombre: cliente, cliente_texto: null, ...extra,
+  })
+  const g = canon.agruparPorCliente([
+    o('a1', 'Arcor'), o('m1', 'Messina'), o('m2', 'Messina', { obra_padre_id: 'm1' }), o('m3', 'Messina'),
+    o('x1', null), o('s1', 'San Francisco'), o('s2', 'San Francisco'), o('s3', 'San Francisco', { estado: 'cerrada' }),
+  ])
+  assert.deepEqual(g.map((x) => x.nombre), ['Messina', 'San Francisco', 'Arcor', null], 'Messina 3 activas > San Francisco 2 > Arcor 1 > sin cliente')
+  assert.deepEqual(g[0].filas.map((f) => [f.obra.obra_id, f.nivel]), [['m1', 0], ['m2', 1], ['m3', 0]], 'el adicional cuelga de su obra mayor')
+  assert.equal(g[3].clave, 'sin-cliente')
+})

@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+
 // ═══ ÍTEMS · `?vista=tareas&sub=arbol` — PORTE LITERAL DE «04» + «04b» (1440) Y «M05» (390) ═══
 //
 // Una sola pantalla: la TABLA del 04b (Rubro › Épica › Historia › Tarea › Subtarea, con el peso
@@ -312,10 +314,10 @@ export function TabTareas({
       )}
       {vacia && puedeEditar && (
         <div className="flex md:hidden" style={{ position: 'fixed', left: 0, right: 0, bottom: '64px', padding: '12px 16px 18px', background: C.superficie, borderTop: `1px solid ${C.borde}`, zIndex: 20 }}>
-          <a href={`/obras/${obraId}?vista=tareas&sub=arbol&crear=mano`} data-testid="primaria-nueva-actividad"
+          <Link href={`/obras/${obraId}?vista=tareas&sub=arbol&crear=mano`} prefetch={false} data-testid="primaria-nueva-actividad"
             style={{ ...ESTILO_PRIMARIA, width: '100%', height: '48px', justifyContent: 'center', fontSize: '14px', gap: '8px', color: C.grafito, textDecoration: 'none' }}>
             <Ico d={P.mas} s={15} />Nueva actividad
-          </a>
+          </Link>
         </div>
       )}
       {!enEstructura && !vacia && (<>

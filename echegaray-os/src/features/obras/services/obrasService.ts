@@ -24,13 +24,13 @@ import type {
 export type FilaDeCartera = Pick<
   ObraPanel,
   'obra_id' | 'nombre' | 'cliente_slug' | 'cliente_nombre' | 'cliente_texto' | 'estado' | 'etapa'
-  | 'avance_pct' | 'fecha_inicio_plan' | 'fecha_fin_plan' | 'forecast_fin' | 'monto_contratado'
+  | 'avance_pct' | 'fecha_inicio_plan' | 'fecha_fin_plan' | 'forecast_fin' | 'monto_contratado' | 'obra_padre_id'
 >
 
 /** Las columnas pedidas, en el orden del tipo. Una definición para la consulta y para el test. */
 export const COLUMNAS_CARTERA =
   'obra_id,nombre,cliente_slug,cliente_nombre,cliente_texto,estado,etapa,avance_pct,'
-  + 'fecha_inicio_plan,fecha_fin_plan,forecast_fin,monto_contratado'
+  + 'fecha_inicio_plan,fecha_fin_plan,forecast_fin,monto_contratado,obra_padre_id'
 
 /**
  * LA CARTERA DE OBRAS — la consulta de `/obras`, con las doce columnas que la tabla dibuja.
