@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: **2026-09-23 ~11:05 (−03)** · `origin/main` = **14b37ebb**, checkout de producción en ese
+_actualizado: **2026-09-23 ~11:05 (−03)** · `origin/main` = **845956e2**, checkout de producción en ese
 commit, daemons reiniciados y verificados con `servicios-al-dia.mjs`._
 
 **HECHO 23/09 (mañana), todo publicado:** el canal #efectivo lee la entrega como se escribe (53 frases
@@ -24,8 +24,9 @@ técnica en Mantenimiento. Sin QA en navegador ni foto real subida: lo prueba el
 navegador; 6 specs de Playwright siguen el redirect de /campo/asistencia) · chat #efectivo registra sin
 «para qué» · aviso de firma por mensaje directo · registro de cheques deduce el N° de comprobante (385 →
 0006-00008111 + 0006-00008199) · cheque 329 agregado como físico sin beneficiario · GRANT 20260923T2000
-aplicada · direccion-test bloqueada (no borrable: tiene comprobantes) · Arcor e-Cup: FCE 0001-00000054 en
-carga por el dueño, vence 20/11/2026; falta el N° de transacción para asentarlo en la cobranza.
+aplicada · direccion-test bloqueada (no borrable: tiene comprobantes) · Arcor e-Cup: FCE 0001-00000054 ENVIADA por el dueño, vence 20/11/2026; falta el N° de transacción y
+falta la fila en Cobranzas (esperando su «cargala») · Herramientas: paridad teléfono↔PC módulo por módulo
+publicada (845956e2), sin QA en navegador; recuento físico del lugar entero no existe (etapa 2).
 
 **ROTO a sabiendas:** los e2e que usaban `qa.campo@` / `[PRUEBA E2E] QA Campo` (8 specs) no tienen
 fixture; hay que hacerlos crear y borrar sus datos, no sembrar producción.
