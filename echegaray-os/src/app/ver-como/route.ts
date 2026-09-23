@@ -34,15 +34,28 @@ function destinoSeguro(volver: string | null, base: string): URL {
   return new URL(limpio, base)
 }
 
+// GET redirige (enlaces viejos, la barra de direcciones); POST contesta JSON y es lo que usan la
+// franja y el menú (`useLente`): después del POST el cliente hace `router.refresh()`, que vuelve a
+// dibujar el layout con la cookie nueva. Con un <Link> al GET, el router del cliente reusaba el
+// layout ya dibujado y la franja quedaba pegada (dueño, 23/09/2026: «se me quedó pegado en jefe de obra»).
 export async function GET(request: NextRequest) {
+  return aplicar(request, 'redirigir')
+}
+export async function POST(request: NextRequest) {
+  return aplicar(request, 'json')
+}
+
+async function aplicar(request: NextRequest, modo: 'redirigir' | 'json') {
   const params = request.nextUrl.searchParams
   const destino = destinoSeguro(params.get('volver'), request.url)
 
   const supabase = await createClient()
   const user = await getUsuarioActual(supabase)
-  if (!user) return NextResponse.redirect(new URL('/login', request.url))
+  if (!user) {
+    return modo === 'json' ? NextResponse.json({ error: 'Sin sesión.' }, { status: 401 }) : NextResponse.redirect(new URL('/login', request.url))
+  }
 
-  const respuesta = NextResponse.redirect(destino)
+  const respuesta = modo === 'json' ? NextResponse.json({ ok: true }) : NextResponse.redirect(destino)
 
   // APAGAR. Sin preguntas, sin rol, sin base: siempre se puede volver a ser uno mismo.
   if (params.has('salir')) {
