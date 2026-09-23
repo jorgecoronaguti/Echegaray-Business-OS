@@ -57,8 +57,6 @@ import {
 import { getCatalogoEquipos } from '@/features/obras/services/recursosService'
 import { getArchivosDeEntidad } from '@/features/documentos/services/carpetaDeEntidadService'
 import { getDocumentosSubidos } from '@/features/documentos/services/documentosSubidosService'
-import { ArchivosDeDrive } from '@/features/documentos/components/ArchivosDeDrive'
-import { DocumentosSubidos } from '@/features/documentos/components/DocumentosSubidos'
 import { borrarHH, imputarHH, imputarHHMasivo } from '@/features/obras/services/actionsHH'
 import { C, ESTILO_PRIMARIA, ESTILO_SECUNDARIA } from '@/features/obras/components/canon/tokens'
 import { Ico, P } from '@/features/obras/components/canon/Ico'
@@ -86,10 +84,12 @@ import { ParteDiario } from '@/features/obras/components/parte/ParteDiario'
 import { TabPlanilla } from '@/features/obras/components/planilla/TabPlanilla'
 import { getPartes } from '@/features/obras/services/ejecucionService'
 import { getIntegrantesPorCuadrilla } from '@/features/obras/services/personalService'
-import { borrarParte, registrarEjecucion } from '@/features/obras/services/actionsEjecucion'
+import {
+  asignarActividadAPedido, borrarParte, registrarEjecucion,
+} from '@/features/obras/services/actionsEjecucion'
 import { TabPersonal } from '@/features/obras/components/TabPersonal'
 import { TabOperacion } from '@/features/obras/components/TabOperacion'
-import { NuevoImpedimento } from '@/features/obras/components/operacion/AccionesCabecera'
+import { AccionesDocumentos, NuevoImpedimento } from '@/features/obras/components/operacion/AccionesCabecera'
 import { getOperacionObra, subDeLaUrl, type SubOperacion } from '@/features/obras/services/operacionService'
 import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
 import { getOrdenesDeObra } from '@/features/clientes/services/ordenesCliente'
@@ -122,10 +122,12 @@ export default async function ObraPage({
     /** C01–C09 (crear la estructura): `?crear=presupuesto|planilla|mano`, `&panel=ponderacion|frentes|
      *  subtareas` sobre `act`, `?sel=1` (acciones masivas) y `&nuevo=<padre>` (la ficha nueva). */
     crear?: string; panel?: string; sel?: string; nuevo?: string
+    /** Documentos (14): `?vincular=archivo|carpeta` abre el formulario de vincular arriba del índice. */
+    vincular?: string
   }>
 }) {
   const { obra: obraId } = await params
-  const { vista: vistaRaw, sub, act, filtro, sol, dot, nueva, editar, crear, panel, sel, nuevo } = await searchParams
+  const { vista: vistaRaw, sub, act, filtro, sol, dot, nueva, editar, crear, panel, sel, nuevo, vincular } = await searchParams
   const modoEstructura: ModoEstructura = {
     crear: crear === 'presupuesto' || crear === 'planilla' || crear === 'mano' ? crear : null,
     panel: panel === 'ponderacion' || panel === 'frentes' || panel === 'subtareas' ? panel : null,
@@ -425,6 +427,9 @@ export default async function ObraPage({
         ) : vista === 'operacion' ? (
           // 09: «Nuevo impedimento» amarilla sólo en Impedimentos; 10 · 11 · 12 no dibujan botón.
           subOp === 'impedimentos' ? <NuevoImpedimento obraId={obraId} /> : null
+        ) : vista === 'documentos' ? (
+          // 14: «Vincular documento» · «Vincular carpeta» en texto y «Abrir carpeta» amarilla.
+          <AccionesDocumentos obraId={obraId} carpetaDriveId={obra.drive_carpeta_id} />
         ) : puedeEditarPlan ? nuevaActividad : null}
         lineaDeCifras={enEstructura || obraVacia ? cifrasDeCrear(modoEstructura, obraVacia) : cifrasDelCronograma}
         // EL ENLACE A LA PLATA, DISCRETO Y SÓLO PARA QUIEN LA VE. No es una solapa —el dueño la
@@ -608,33 +613,28 @@ export default async function ObraPage({
           // Ni el typecheck ni el build lo ven —las firmas son idénticas—; sólo el navegador.
           crearImpedimento={crearImpedimento.bind(null, obraId)}
           liberarImpedimento={liberarImpedimento.bind(null, obraId)}
+          asignarActividadAPedido={asignarActividadAPedido.bind(null, obraId)}
         />
       )}
 
+      {/* DOCUMENTOS (14 · M17): todo nuevo desde el 23/09/2026. Los papeles del cliente, el índice y
+          los dos bloques del pie (subidos desde acá · en la carpeta de Drive) los dibuja la solapa. */}
       {vista === 'documentos' && (
         <TabDocumentos
+          obraId={obraId}
           documentos={documentos}
           ordenes={ordenesRes}
           veEconomia={veComercial}
           actividades={acts}
           carpetaDriveId={obra.drive_carpeta_id}
+          subidos={subidos}
+          archivosDrive={archivosDrive}
+          vincularAbierto={vincular === 'archivo' || vincular === 'carpeta' ? vincular : null}
           vincular={vincularDocumento.bind(null, obraId)}
           desvincular={desvincularDocumento.bind(null, obraId)}
           asignarActividad={asignarActividadADocumento.bind(null, obraId)}
           clasificar={clasificarDocumento.bind(null, obraId)}
         />
-      )}
-
-      {vista === 'documentos' && subidos && (
-        <div className="mt-8">
-          <DocumentosSubidos datos={subidos} tipo="obra" entidadId={obraId} testid="obra-documentos-subidos" />
-        </div>
-      )}
-
-      {vista === 'documentos' && archivosDrive && (
-        <div className="mt-8">
-          <ArchivosDeDrive datos={archivosDrive} tipo="obra" rol={rolActual} testid="obra-archivos-drive" />
-        </div>
       )}
       </div>
     </div>
