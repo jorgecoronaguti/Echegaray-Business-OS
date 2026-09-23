@@ -52,13 +52,15 @@ export interface Props {
   plegar: (clave: string) => void
   altoFila: number
   altoCabecera: number
+  /** 340 en escritorio (mockup 07); en el teléfono la achica `anchoTablaCronograma`. */
+  ancho?: number
 }
 
 export function TablaCronogramaObra({
-  filas, seleccionada, alSeleccionar, cerrados, plegar, altoFila, altoCabecera = ALTO_CABECERA,
+  filas, seleccionada, alSeleccionar, cerrados, plegar, altoFila, altoCabecera = ALTO_CABECERA, ancho = 340,
 }: Props) {
   return (
-    <div style={{ width: '340px', flexShrink: 0, borderRight: `1px solid ${C.borde}` }}>
+    <div style={{ width: `${ancho}px`, flexShrink: 0, borderRight: `1px solid ${C.borde}` }}>
       <div style={{
         height: altoCabecera, borderBottom: `1px solid ${C.borde}`, background: C.tenueFondo,
         display: 'flex', alignItems: 'flex-end', padding: '0 14px 9px',

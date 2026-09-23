@@ -33,7 +33,7 @@ const v = (x: string | number | null | undefined) => (x == null ? '' : String(x)
 
 export function CampoNombre({ valor }: { valor?: string | null }) {
   return (
-    <Campo rotulo="Nombre de la obra" className="col-span-2">
+    <Campo rotulo="Nombre de la obra" className="sm:col-span-2">
       <input name="nombre" defaultValue={v(valor)} required minLength={2} maxLength={120} className={CAMPO} />
     </Campo>
   )
@@ -44,7 +44,7 @@ export function CampoNombre({ valor }: { valor?: string | null }) {
    vacío en la recarga — el peor de los defectos, porque parece que anduvo. */
 export function CampoUbicacion({ valor }: { valor?: string | null }) {
   return (
-    <Campo rotulo="Ubicación" className="col-span-2">
+    <Campo rotulo="Ubicación" className="sm:col-span-2">
       <input name="ubicacion" defaultValue={v(valor)} maxLength={200} className={CAMPO} placeholder="dónde queda" />
     </Campo>
   )
@@ -69,7 +69,7 @@ export function CamposFechasPlan({ inicio, fin }: { inicio?: string | null; fin?
 
 export function CampoMontoContratado({ valor }: { valor?: number | null }) {
   return (
-    <Campo rotulo="Monto contratado ($)" className="col-span-2" ayuda="Vacío = no cargado. No es lo mismo que un contrato de $0.">
+    <Campo rotulo="Monto contratado ($)" className="sm:col-span-2" ayuda="Vacío = no cargado. No es lo mismo que un contrato de $0.">
       <input type="number" name="monto_contratado" min={0} step="0.01" defaultValue={v(valor)} className={CAMPO} />
     </Campo>
   )
@@ -77,7 +77,7 @@ export function CampoMontoContratado({ valor }: { valor?: number | null }) {
 
 export function CampoDrive({ valor }: { valor?: string | null }) {
   return (
-    <Campo rotulo="Carpeta de Drive" className="col-span-2" ayuda="El id de la carpeta, no su nombre. Los archivos no se copian: se enlazan.">
+    <Campo rotulo="Carpeta de Drive" className="sm:col-span-2" ayuda="El id de la carpeta, no su nombre. Los archivos no se copian: se enlazan.">
       <input name="drive_carpeta_id" defaultValue={v(valor)} maxLength={80} className={CAMPO} />
     </Campo>
   )
@@ -95,7 +95,7 @@ export function CamposObra({ obra, ubicacion, veEconomia = false }: {
   obra?: ObraPanel; ubicacion?: string | null; veEconomia?: boolean
 }) {
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <CampoNombre valor={obra?.nombre} />
       <CampoUbicacion valor={ubicacion} />
       <CampoJefeObra valor={obra?.jefe_obra} />
@@ -104,7 +104,7 @@ export function CamposObra({ obra, ubicacion, veEconomia = false }: {
           {ESTADOS.map((e) => <option key={e} value={e}>{e}</option>)}
         </select>
       </Campo>
-      <Campo rotulo="Etapa" className="col-span-2" ayuda="Sin declarar es una respuesta válida: no se elige una por defecto.">
+      <Campo rotulo="Etapa" className="sm:col-span-2" ayuda="Sin declarar es una respuesta válida: no se elige una por defecto.">
         <select name="etapa" defaultValue={v(obra?.etapa)} className={CAMPO}>
           <option value="">sin declarar</option>
           {ETAPAS.map((e) => <option key={e} value={e}>{ETAPA_LABEL[e]}</option>)}

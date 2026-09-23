@@ -37,6 +37,8 @@ import {
 } from '../services/simulacionFrente'
 import { celdasDelImpacto, estadoDelImpacto, type InsumosImpacto } from '../services/impactoDotacion'
 import { C } from './canon/tokens'
+import { useAnchoVentana } from './useAnchoVentana'
+import { anchoMinimoImpactoDotacion, anchoSimuladorDotacion } from '../services/anchoPantalla'
 import { Ico, P } from './canon/Ico'
 import { Hover } from './canon/Piezas'
 import { Campos, Modos, SelectorDeFrente } from './canon/CamposDotacion'
@@ -153,6 +155,10 @@ export function SimuladorDotacion({
     disponibles,
   }
 
+  // EN EL TELÉFONO LAS DOS COLUMNAS SE APILAN (dueño, 23/09/2026): 428px fijos más un mínimo de
+  // 420 no entran en 390 y la página se corría de costado. La regla vive en `anchoPantalla.ts`.
+  const anchoVentana = useAnchoVentana()
+
   return (
     <div style={{
       display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '14px 20px 24px',
@@ -162,7 +168,7 @@ export function SimuladorDotacion({
       <div
         data-testid="simulador-dotacion"
         style={{
-          width: '428px', flexShrink: 0, background: C.superficie, border: `1px solid ${C.borde}`,
+          width: anchoSimuladorDotacion(anchoVentana), maxWidth: '100%', flexShrink: 0, background: C.superficie, border: `1px solid ${C.borde}`,
           borderRadius: '10px', padding: '16px',
         }}
       >
@@ -200,7 +206,7 @@ export function SimuladorDotacion({
             )}
       </div>
 
-      <div style={{ flex: 1, minWidth: '420px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div style={{ flex: 1, minWidth: anchoMinimoImpactoDotacion(anchoVentana), display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <ImpactoSimulacion estado={estadoDelImpacto(insumos)} celdas={celdasDelImpacto(insumos)} />
         <DotacionPorSemana faltante={disponibles == null ? 'plantel sin dato' : `plantel de obra: ${disponibles}`} />
         <LimitesReales filas={limitesDe(frentes, frente, disponibles)} />

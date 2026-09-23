@@ -45,6 +45,7 @@ import {
 } from '../services/avance'
 import { METODO_CORTO } from '../types'
 import type { ResultadoMasivo } from '../services/actionsMasivas'
+import { ANCHO_MINIMO_TABLA_MASIVA } from '../services/anchoPantalla'
 
 const GRID = '18px minmax(0,1.6fr) 132px 140px minmax(0,260px) 116px'
 const ROTULO: React.CSSProperties = { fontSize: '10px', color: C.tenue, letterSpacing: '.05em' }
@@ -190,6 +191,10 @@ export function AvanceMasivo({ obraId, nodos, aplicarEnLote }: {
         )}
 
         <Tarjeta testid="tabla-masiva">
+          {/* LA GRILLA SCROLLEA POR DENTRO DE LA TARJETA; LA PÁGINA NUNCA DE COSTADO (dueño,
+              23/09/2026): seis columnas con 406px fijos no entran en un teléfono de 390. */}
+          <div style={{ overflowX: 'auto' }}>
+          <div style={{ minWidth: `${ANCHO_MINIMO_TABLA_MASIVA}px` }}>
           <div style={{
             display: 'grid', gridTemplateColumns: GRID, gap: '10px', alignItems: 'center',
             height: '40px', borderBottom: `1px solid ${C.borde}`, background: C.tenueFondo,
@@ -317,6 +322,8 @@ export function AvanceMasivo({ obraId, nodos, aplicarEnLote }: {
               }}>Ver todo</button>
             </div>
           )}
+          </div>
+          </div>
         </Tarjeta>
       </div>
 

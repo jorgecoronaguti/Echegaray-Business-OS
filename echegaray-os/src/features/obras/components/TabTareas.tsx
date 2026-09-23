@@ -33,11 +33,12 @@
 // el mismo link siga abriendo la misma tarea. Las escrituras siguen pasando por sus server actions.
 
 import Link from 'next/link'
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useMemo, useState } from 'react'
 import { CTRL, FormAccion, type AccionFormulario } from '@/shared/components/ui'
 import { FormNuevaActividad } from './FormActividad'
 import { hh as fmtHH, porcentaje } from './formato'
 import { COLS_CON_FECHAS, COLS_SIN_FECHAS, FilaWbs } from './FilaWbs'
+import { useAnchoVentana } from './useAnchoVentana'
 import { ALTO_CABECERA, GanttTareas } from './GanttTareas'
 import { barraDe, escalaDe, rangoDeObra, t, tramosDeContenedores } from '../services/gantt'
 import { PanelTarea, type AccionesDelPanel } from './PanelTarea'
@@ -57,21 +58,6 @@ import type { PanelDeObra } from '../services/panelObraService'
 import type { Persona } from '../types'
 import { armarContexto, armarVinculacion } from '../services/contextoTarea'
 import { resolverSolapa, type Solapa } from '../services/solapasTarea'
-
-/** El ancho de la ventana, sin `setState` dentro de un efecto. El zip decide con `window.innerWidth`
- *  y no con puntos de corte de CSS, así que el ancho tiene que ser un dato de React. */
-const suscribirAncho = (cb: () => void) => {
-  window.addEventListener('resize', cb)
-  return () => window.removeEventListener('resize', cb)
-}
-const anchoActual = () => window.innerWidth
-/** En el servidor no hay ventana: se asume escritorio, que es donde vive esta pantalla. La primera
- *  pintura del navegador corrige el valor sin parpadeo perceptible. */
-const anchoServidor = () => 1600
-
-function useAnchoVentana(): number {
-  return useSyncExternalStore(suscribirAncho, anchoActual, anchoServidor)
-}
 
 /** La dotación con la que arranca la simulación: la prevista del plan, acotada al tope. */
 function dotacionInicial(n: NodoObra, pedida: string | null): number {

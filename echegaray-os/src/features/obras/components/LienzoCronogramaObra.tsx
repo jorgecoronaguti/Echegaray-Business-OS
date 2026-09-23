@@ -31,6 +31,8 @@ import { tramoDe, type EscalaCronograma } from '../services/escalaCronograma'
 import { bandasDePeriodo, divisionesDe, type DivisionEscala } from '../services/bandaCronograma'
 import type { FilaPlan } from '../services/cronogramaPlan'
 import { TablaCronogramaObra } from './TablaCronogramaObra'
+import { useAnchoVentana } from './useAnchoVentana'
+import { anchoTablaCronograma } from '../services/anchoPantalla'
 import { C, MONO } from './canon/tokens'
 
 /** El alto de la fila y el de la cabecera los leen las DOS columnas —la tabla y el lienzo— desde
@@ -96,6 +98,10 @@ export function LienzoCronogramaObra({
     () => divisionesDe(escala.columnas, hoy, diasHabiles),
     [escala.columnas, hoy, diasHabiles],
   )
+  // EN EL TELÉFONO LA COLUMNA DE ACTIVIDADES SE ACHICA (dueño, 23/09/2026): con 340px fijos a 390
+  // de ventana el lienzo quedaba en 8px y la pantalla era una lista sin barras. La regla vive en
+  // `anchoPantalla.ts`; el lienzo sigue scrolleando por dentro y la página nunca de costado.
+  const anchoTabla = anchoTablaCronograma(useAnchoVentana())
   return (
     <div data-testid="cronograma" style={{
       background: C.superficie, border: `1px solid ${C.borde}`, borderRadius: '10px',
@@ -104,6 +110,7 @@ export function LienzoCronogramaObra({
       <TablaCronogramaObra
         filas={alaVista} seleccionada={seleccionada} alSeleccionar={alSeleccionar}
         cerrados={cerrados} plegar={plegar} altoFila={ALTO_FILA} altoCabecera={ALTO_HEAD}
+        ancho={anchoTabla}
       />
       {/* EL SCROLL ES DEL LIENZO, NO DE LA PÁGINA: la tabla de actividades queda quieta. Leer una
           barra de noviembre sin ver de qué actividad es no sirve de nada. */}

@@ -122,9 +122,9 @@ export default async function NuevaObraPage({
         {paso === 'informacion' && !obraId && (
           <Paso paso="informacion">
             <FormAccion accion={crearBorradorObra} testid="form-alta-obra" enviar="Crear la obra y seguir">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <CampoNombre />
-                <Campo rotulo="Cliente" className="col-span-2" ayuda="La obra cuelga del cliente: es la jerarquía del módulo.">
+                <Campo rotulo="Cliente" className="sm:col-span-2" ayuda="La obra cuelga del cliente: es la jerarquía del módulo.">
                   <select name="cliente_id" required defaultValue="" className={CAMPO}>
                     <option value="" disabled>elegí un cliente</option>
                     {clientes.filter((c) => c.activo).map((c) => (
@@ -192,7 +192,7 @@ export default async function NuevaObraPage({
               testid={`form-paso-${paso}`}
               enviar="Guardar y seguir"
             >
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {paso === 'responsable' && <CampoJefeObra valor={obra.jefe_obra} />}
                 {paso === 'fechas' && <CamposFechasPlan inicio={obra.fecha_inicio_plan} fin={obra.fecha_fin_plan} />}
                 {paso === 'contrato' && veContrato && <CampoMontoContratado valor={obra.monto_contratado} />}
@@ -216,8 +216,8 @@ export default async function NuevaObraPage({
             {/* MISMA acción que la solapa Personal de la obra: acá cambia el formulario, no la regla.
                 Duplicar la escritura sería duplicar el índice único, el mensaje de error y la RLS. */}
             <FormAccion accion={asignarPersona.bind(null, obraId)} testid="form-alta-equipo" enviar="Asignar" limpiarAlOk mensajeOk="Asignada.">
-              <div className="grid grid-cols-2 gap-3">
-                <Campo rotulo="Persona" className="col-span-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Campo rotulo="Persona" className="sm:col-span-2">
                   <select name="persona_id" required defaultValue="" className={CAMPO}>
                     <option value="" disabled>elegí del plantel</option>
                     {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
@@ -252,16 +252,16 @@ export default async function NuevaObraPage({
                 : `${vivas.length} ${vivas.length === 1 ? 'actividad cargada' : 'actividades cargadas'}.`}
             </p>
             <FormAccion accion={crearActividad.bind(null, obraId)} testid="form-alta-actividad" enviar="Agregar actividad" limpiarAlOk mensajeOk="Actividad agregada.">
-              <div className="grid grid-cols-2 gap-3">
-                <Campo rotulo="Actividad" className="col-span-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Campo rotulo="Actividad" className="sm:col-span-2">
                   <input name="nombre" required minLength={2} maxLength={200} className={CAMPO} />
                 </Campo>
-                <Campo rotulo="Sección" className="col-span-2" ayuda="Opcional. Agrupa las actividades del cronograma.">
+                <Campo rotulo="Sección" className="sm:col-span-2" ayuda="Opcional. Agrupa las actividades del cronograma.">
                   <input name="seccion" maxLength={120} className={CAMPO} />
                 </Campo>
                 <Campo rotulo="Inicio previsto"><input type="date" name="inicio_plan" className={CAMPO} /></Campo>
                 <Campo rotulo="Fin previsto"><input type="date" name="fin_plan" className={CAMPO} /></Campo>
-                <Campo rotulo="HH plan" className="col-span-2" ayuda="Vacío = sin cargar. Sin HH plan no hay desvío de HH que medir.">
+                <Campo rotulo="HH plan" className="sm:col-span-2" ayuda="Vacío = sin cargar. Sin HH plan no hay desvío de HH que medir.">
                   <input type="number" name="hh_plan" min={0} step="0.5" className={CAMPO} />
                 </Campo>
               </div>
@@ -290,7 +290,7 @@ export default async function NuevaObraPage({
 
         {/* ── EL PANEL DE PREPARACIÓN ───────────────────────────────────────── */}
         {obraId && (
-          <aside className="min-w-[320px] flex-1 basis-[360px]">
+          <aside className="w-full min-w-0 md:min-w-[320px] md:flex-1 md:basis-[360px]">
             {/* El MISMO componente que la solapa Resumen, con la MISMA lectura. Si acá se calculara
                 aparte, el alta podría despedirse diciendo «todo listo» sobre una obra que el Resumen
                 muestra a medio preparar. */}

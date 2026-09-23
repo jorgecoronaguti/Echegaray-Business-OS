@@ -57,14 +57,14 @@ export function CamposActividad({ a, personas, hh, rubros = [] }: {
   a?: Actividad; personas: Persona[]; hh?: ActividadHH; rubros?: string[]
 }) {
   return (
-    <div className="grid grid-cols-2 gap-2.5">
-      <Campo label="Actividad" ancho="col-span-2">
+    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+      <Campo label="Actividad" ancho="sm:col-span-2">
         <input name="nombre" defaultValue={fmt(a?.nombre)} required minLength={2} maxLength={200} className={CTRL} />
       </Campo>
       {!a && (
         // EL RUBRO SE ELIGE DE LOS QUE YA EXISTEN, y el campo libre queda para el que no está.
         // Escribiéndolo a mano cada vez, «Mampostería» y «MAMPOSTERIA» terminan siendo dos grupos.
-        <Campo label="Rubro" ancho="col-span-2" ayuda="Agrupa la actividad en el cronograma. Se puede cambiar después.">
+        <Campo label="Rubro" ancho="sm:col-span-2" ayuda="Agrupa la actividad en el cronograma. Se puede cambiar después.">
           <input name="seccion" maxLength={120} list="rubros-obra" className={CTRL} placeholder="opcional" data-testid="alta-rubro" />
           <datalist id="rubros-obra">
             {rubros.map((r) => <option key={r} value={r} />)}
@@ -77,11 +77,11 @@ export function CamposActividad({ a, personas, hh, rubros = [] }: {
       <Campo label="Avance %"><input type="number" name="pct" min={0} max={100} step={1} defaultValue={fmt(a?.pct)} className={CTRL} /></Campo>
       <Campo label="HH plan"><input type="number" name="hh_plan" min={0} step="0.5" defaultValue={fmt(a?.hh_plan)} className={CTRL} /></Campo>
       <HHReal {...(hh ? { hh } : {})} />
-      <Campo label="Responsable" ancho="col-span-2"><SelectResponsable personas={personas} valor={a?.responsable_id ?? null} /></Campo>
-      <Campo label="Cuadrilla" ancho="col-span-2"><input name="cuadrilla" defaultValue={fmt(a?.cuadrilla)} maxLength={120} className={CTRL} /></Campo>
-      <Campo label="Notas" ancho="col-span-2"><input name="comentario" defaultValue={fmt(a?.comentario)} maxLength={400} className={CTRL} /></Campo>
+      <Campo label="Responsable" ancho="sm:col-span-2"><SelectResponsable personas={personas} valor={a?.responsable_id ?? null} /></Campo>
+      <Campo label="Cuadrilla" ancho="sm:col-span-2"><input name="cuadrilla" defaultValue={fmt(a?.cuadrilla)} maxLength={120} className={CTRL} /></Campo>
+      <Campo label="Notas" ancho="sm:col-span-2"><input name="comentario" defaultValue={fmt(a?.comentario)} maxLength={400} className={CTRL} /></Campo>
       {!a && (
-        <label className="col-span-2 flex items-center gap-2 text-[12px] text-muted">
+        <label className="sm:col-span-2 flex items-center gap-2 text-[12px] text-muted">
           <input type="checkbox" name="es_hito" className="h-3.5 w-3.5" /> Es un hito (una fecha, sin duración)
         </label>
       )}
