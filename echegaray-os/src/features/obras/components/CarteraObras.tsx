@@ -30,7 +30,7 @@ import { rotuloDeObra } from '@/shared/utils/obra'
 import { ETAPA_LABEL, type Etapa } from '../types'
 import {
   bajadaCartera, coincideTexto, colorDeBarra, colorDeEstado, colorDePlazo, entraEnFiltro, esPrevio,
-  estadoDeCartera, FILTROS_CARTERA, agruparPorCliente, SIN_CLIENTE, sublineaTelefono, textoArchivadas, textoDePlazo, textoSeMuestran,
+  estadoDeCartera, FILTROS_CARTERA, agruparPorCliente, SIN_CLIENTE, sublineaTelefono, textoDePlazo,
   type FiltroCartera,
 } from '../services/carteraCanon'
 
@@ -230,7 +230,6 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
   const [vista, setVista] = useState<VistaCartera>(vistaInicial)
   const [escala, setEscala] = useState<EscalaCartera>('trimestre')
   const esGantt = vista === 'gantt'
-  const archivadasTexto = textoArchivadas(archivadas)
 
   const buscador = (
     <div style={{
@@ -254,13 +253,8 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
     </div>
   )
 
-  const pieArchivadas = archivadasTexto && (
-    <div style={{ fontSize: '12px', color: C.tenue }} data-testid="pie-archivadas">
-      {conArchivadas
-        ? <>Se muestran también las {archivadas} archivadas · <Link prefetch={false} href="/obras" style={{ color: C.tenue }}>Ocultarlas</Link></>
-        : <>{archivadasTexto} · <Link prefetch={false} href="/obras?archivadas=1" data-testid="ver-archivadas" style={{ color: C.tenue }}>Verlas</Link></>}
-    </div>
-  )
+  // EL PIE SE QUITÓ (dueño, 23/09/2026: «esto está como footer del módulo Obras, no tiene sentido si no
+  // funciona, quitarlo»): ni «Se muestran N de M», ni la nota del atraso, ni «N archivadas · Verlas».
 
   const vacio = lista.length === 0 && (
     <div style={{ padding: '26px 0', fontSize: '12.5px', color: C.tintaSuave }}>
@@ -300,7 +294,6 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
           </div>
         )}
         {sinDatoLinea}
-        {pieArchivadas}
         {esAdmin && <PrimariaNuevaObra telefono />}
       </div>
     )
@@ -350,16 +343,8 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
         {vacio}
       </div></div>
 
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '26px', fontSize: '12.5px', color: C.tintaSuave }} data-testid="pie-cartera">
-        <span>{textoSeMuestran(lista.length, obras.length)}</span>
-        <span>
-          El atraso es <span style={{ fontFamily: MONO, fontSize: '12px' }}>forecast_fin − fecha_fin_plan</span>, nunca negativo.
-          Sin las dos fechas: sin plan, no cero.
-        </span>
-      </div>
       </>)}
       {sinDatoLinea}
-      {pieArchivadas}
     </div>
   )
 }
