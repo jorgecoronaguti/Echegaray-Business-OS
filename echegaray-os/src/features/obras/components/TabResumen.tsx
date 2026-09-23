@@ -12,8 +12,9 @@
 // ═══ M04 · TELÉFONO ═══
 //
 //   cuatro azulejos 2×2 (Avance · Plazo con día hábil · Costo teórico · Personas hoy), Atención,
-//   Próximas 2 semanas. SIN Órdenes del cliente. La primaria «Cargar parte» de 48px al pie, sobre
-//   la barra del teléfono.
+//   Próximas 2 semanas, Órdenes del cliente (filas de 48px: rótulo + «fecha · PDF en Drive», importe
+//   con «c/IVA» a la derecha). La primaria «Cargar parte» de 48px al pie, sobre la barra del
+//   teléfono: el cuerpo deja libres sus 78px (12 + 48 + 18) más los 64 de la barra.
 //
 // Las CIFRAS salen de `obra_avance_ponderado` y `obra_dias_habiles` (H2) a través de
 // `avancePonderado.ts`; el plazo de `obra_panel.forecast_fin`/`fecha_fin_plan`. NULL nunca es 0.
@@ -123,6 +124,44 @@ function ProximasTelefono({ actividades, obraId, hoy }: { actividades: Actividad
   )
 }
 
+/** M04 «Órdenes del cliente»: filas de 48px, rótulo 500 + «14/04/2026 · PDF en Drive», importe a la
+ *  derecha con «c/IVA» en 11px. Sin ninguna, el vacío lo dice el dominio (`vacioOC`). */
+function OrdenesTelefono({ ordenes, veComercial }: { ordenes: BloqueOrdenes; veComercial: boolean }) {
+  const lineas = [...ordenes.oc, ...ordenes.op]
+  return (
+    <BloqueTelefono titulo="Órdenes del cliente" testid="ordenes-de-la-obra-telefono">
+      {ordenes.fallo ? (
+        <div style={{ fontSize: '12.5px', color: C.warn }}>No se pudieron leer las órdenes del cliente.</div>
+      ) : lineas.length === 0 ? (
+        <div style={{ fontSize: '13.5px', minHeight: '40px', display: 'flex', alignItems: 'center' }}><SinDato>{ordenes.vacioOC}</SinDato></div>
+      ) : (
+        <div>
+          {lineas.map((o, i) => (
+            <a key={o.clave} href={o.href} target="_blank" rel="noreferrer" title={o.title} data-testid={`orden-telefono-${o.clave}`} style={{
+              minHeight: '48px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', color: C.tinta,
+              borderBottom: i < lineas.length - 1 ? `1px solid ${C.borde}` : 'none',
+            }}>
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <div><span style={{ fontWeight: 500 }}>{o.rotulo}</span></div>
+                <div style={{ fontSize: '12px', color: C.tintaSuave }}>
+                  {o.fecha ? fecha(o.fecha) : <SinDato>sin fecha</SinDato>}{' · '}{o.enDrive ? 'PDF en Drive' : 'PDF en el OS'}
+                </div>
+              </div>
+              <div style={{ flexShrink: 0, textAlign: 'right', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end', fontVariantNumeric: 'tabular-nums' }}>
+                {veComercial
+                  ? (o.importe != null
+                    ? <>{plataCorta(o.importe)}<span style={{ fontSize: '11px', color: C.tenue }}>c/IVA</span></>
+                    : <SinDato>importe sin leer</SinDato>)
+                  : <SinDato>importe reservado</SinDato>}
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+    </BloqueTelefono>
+  )
+}
+
 export function TabResumen({
   obra, plan, economia = null, abiertas, obraId, editar, veComercial = true,
   actividades = [], partes = [], personasDeHoy = null, ordenes = null,
@@ -209,7 +248,8 @@ export function TabResumen({
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }} data-testid="frentes-en-curso">
-            <TituloBloque meta={vivas.length > 0 ? `${frentes.length} de ${vivas.length} actividades` : undefined}>Los frentes en curso</TituloBloque>
+            {/* 03: «4 de 42 actividades» SIEMPRE al lado del título — con la obra vacía dice «0 de 0». */}
+            <TituloBloque meta={`${frentes.length} de ${vivas.length} actividades`}>Los frentes en curso</TituloBloque>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{
                 display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 130px 110px 92px 88px', gap: '20px', height: '32px',
@@ -325,7 +365,10 @@ export function TabResumen({
       </div>
 
       {/* ═══ M04 · TELÉFONO ═══ */}
-      <div className="flex md:hidden" style={{ padding: '16px 16px 100px', flexDirection: 'column', gap: '16px' }}
+      {/* El pie: 64px de la barra del teléfono + 78px de la primaria fija (12 + 48 + 18) + 16 de aire.
+          El `pb-20` del layout ya cubre la barra, pero el bloque plegado «Editar la obra» quedaba
+          debajo de la primaria: el aire se declara acá, entero, sin depender del layout. */}
+      <div className="flex md:hidden" style={{ padding: '16px 16px 158px', flexDirection: 'column', gap: '16px' }}
         data-testid="resumen-obra-telefono">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }} data-testid="azulejos-resumen">
           <CifraGrande tam={24} rotulo="Avance" valor={cifraAvance(avance)} falta="sin estructura"
@@ -337,6 +380,7 @@ export function TabResumen({
         </div>
         <AtencionObra items={atencion} />
         <ProximasTelefono actividades={actividades} obraId={obraId} hoy={hoy} />
+        {ordenes && <OrdenesTelefono ordenes={ordenes} veComercial={veComercial} />}
         <div>{editar}</div>
       </div>
       <div className="md:hidden" style={{
