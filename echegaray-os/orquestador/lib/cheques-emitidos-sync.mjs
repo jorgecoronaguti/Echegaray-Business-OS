@@ -177,3 +177,26 @@ export function filaRegistro(c) {
   f[COL.unidad] = c.obra ?? ''
   return f
 }
+
+// ═══ EL N° DE COMPROBANTE SE DEDUCE CUANDO EL CHEQUE PAGA TODO LO PENDIENTE (dueño, 23/09/2026) ═══
+//
+// El echeq 385 a Robles Pinturerías por $279.083,72 entró sin N° de comprobante, y el dueño: «es el total
+// de lo pendiente, tenés que tener la habilidad de saber eso». Tenía razón: Compras ya sabía que Robles
+// tenía dos facturas pendientes que sumaban exactamente eso. Si las facturas pendientes del mismo CUIT
+// suman el importe del cheque al centavo, el cheque las paga a todas y el N° es la lista de ellas. Si no
+// cierra al centavo, no se adivina: queda vacío y se avisa, como antes.
+/**
+ * @param {{contraparte_cuit?:string, importe:number}} cheque
+ * @param {Array<{cuit?:string, comprobante?:string, saldo_pendiente?:number}>} pendientes filas de compra_sheet con saldo
+ * @returns {string|null} «0006-00008111 + 0006-00008199», o null
+ */
+export function comprobantesQueCubre(cheque, pendientes = []) {
+  const cuit = String(cheque?.contraparte_cuit ?? '').replace(/\D/g, '')
+  if (!cuit) return null
+  const mias = pendientes.filter((p) => String(p?.cuit ?? '').replace(/\D/g, '') === cuit && Number(p?.saldo_pendiente) > 0)
+  if (!mias.length) return null
+  const suma = mias.reduce((s, p) => s + Number(p.saldo_pendiente), 0)
+  if (Math.abs(suma - Number(cheque.importe)) > 0.01) return null
+  const nros = mias.map((p) => String(p.comprobante ?? '').trim()).filter(Boolean)
+  return nros.length === mias.length ? nros.join(' + ') : null
+}

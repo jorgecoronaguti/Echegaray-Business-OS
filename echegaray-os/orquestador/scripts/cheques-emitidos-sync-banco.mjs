@@ -57,7 +57,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
-import { planSync, filaRegistro, verificarEncabezado, sinComprobante, COL, norm } from '../lib/cheques-emitidos-sync.mjs'
+import { planSync, filaRegistro, verificarEncabezado, sinComprobante, comprobantesQueCubre, COL, norm } from '../lib/cheques-emitidos-sync.mjs'
 import { conciliarDebitosDeCheques } from '../lib/cheques-debito-banco.mjs'
 import { fusionarDebitado, huerfanosDeDebito, anotarHuerfanos, numerosQueElBancoDesmiente } from '../lib/cheques-debitado-fusion.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
@@ -158,7 +158,7 @@ async function main() {
     if (!norm(r?.[COL.numero])) return
     registro.push({
       fila, tipo: r[COL.tipo], numero: r[COL.numero], debitado: r[COL.debitado],
-      proveedor: r[COL.proveedor], monto: parseMonto(r[COL.monto]), nroComp: r[COL.nroComp],
+      proveedor: r[COL.proveedor], monto: parseMonto(r[COL.monto]), nroComp: r[COL.nroComp], cuit: r[COL.cuit],
     })
   })
   console.log(`registro: ${registro.length} cheque(s) desde la fila ${filaHdr + 1}, última con dato ${ultima}`)
@@ -250,10 +250,30 @@ async function main() {
   avisarSinComprobante(p)
 
   if (DRY) { console.log('\n(--dry) no escribí nada.'); return }
-  if (!p.updates.length && !p.agregar.length) { console.log('\nnada que sincronizar: el registro ya coincide con la base.'); return }
-
   const data = p.updates.map((u) => ({ range: `${PESTANA}!K${u.fila}`, values: [[u.a]] }))
-  if (p.agregar.length) data.push({ range: `${PESTANA}!A${ultima + 1}`, values: p.agregar.map(filaRegistro) })
+  // EL N° DE COMPROBANTE SE DEDUCE cuando las facturas pendientes del CUIT suman el cheque al centavo
+  // (dueño, 23/09/2026: «es el total de lo pendiente, tenés que tener la habilidad de saber eso»). Vale
+  // para los que entran ahora y para los que ya estaban en el registro sin número y sin debitar.
+  const { rows: pendientes } = await query(
+    `select cuit, comprobante, saldo_pendiente from public.compra_sheet
+      where coalesce(saldo_pendiente, 0) > 0 and not coalesce(anulada, false) and cuit is not null`)
+  const deducidos = []
+  const filasNuevas = p.agregar.map((c) => {
+    const f = filaRegistro(c)
+    const nro = comprobantesQueCubre(c, pendientes)
+    if (nro) { f[COL.nroComp] = nro; deducidos.push(`${c.instrumento} ${norm(c.numero)} → ${nro}`) }
+    return f
+  })
+  for (const r of registro) {
+    if (String(r.nroComp ?? '').trim() || String(r.debitado ?? '').trim().toUpperCase() === 'SI') continue
+    const nro = comprobantesQueCubre({ contraparte_cuit: r.cuit, importe: r.monto }, pendientes)
+    if (!nro) continue
+    data.push({ range: `${PESTANA}!${String.fromCharCode(65 + COL.nroComp)}${r.fila}`, values: [[nro]] })
+    deducidos.push(`fila ${r.fila} ${r.tipo} ${norm(r.numero)} → ${nro}`)
+  }
+  if (deducidos.length) console.log(`\nN° de comprobante deducido de Compras (las pendientes del CUIT suman el cheque):\n  ${deducidos.join('\n  ')}`)
+  if (p.agregar.length) data.push({ range: `${PESTANA}!A${ultima + 1}`, values: filasNuevas })
+  if (!data.length) { console.log('\nnada que sincronizar: el registro ya coincide con la base.'); return }
   // REGLA 0 — NO APLICA, Y ESTÁ DECIDIDO: respetar: false.
   // Escribe un HECHO verificado contra el banco, celda por celda, en la columna de estado — no un
   // rótulo redactado por nadie. Respetar acá sería dejar que una edición a mano contradiga al banco.

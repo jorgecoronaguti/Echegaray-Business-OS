@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   norm, debitadoDe, instrumentoDe, clave, planSync, filaRegistro, verificarEncabezado, aFechaAR,
-  sinComprobante, COL,
+  sinComprobante, COL, comprobantesQueCubre,
 } from './cheques-emitidos-sync.mjs'
 
 const ORIGEN_ECHEQ = 'Santander Empresas · pantalla ECHEQs Emitidos (PDF 30/07/2026 09:06)'
@@ -188,4 +188,17 @@ test('verificarEncabezado ABORTA si el dueño insertó una columna y todo se cor
   assert.ok(p.length >= 2, 'lo detecta en más de una columna')
   assert.ok(p.some((s) => /columna F/.test(s)), 'F ya no dice Monto')
   assert.ok(p.some((s) => /columna K/.test(s)), 'K ya no dice DEBITADO — ahí iba a escribir el sync')
+})
+
+test('comprobantesQueCubre: si las pendientes del CUIT suman el cheque al centavo, ése es el N°', () => {
+  const pend = [
+    { cuit: '30-71135522-3', comprobante: '0006-00008111', saldo_pendiente: 112349.35 },
+    { cuit: '30711355223', comprobante: '0006-00008199', saldo_pendiente: 166734.37 },
+    { cuit: '30711355223', comprobante: '0006-00009000', saldo_pendiente: 0 },
+    { cuit: '30999999999', comprobante: '0001-00000001', saldo_pendiente: 279083.72 },
+  ]
+  assert.equal(comprobantesQueCubre({ contraparte_cuit: '30711355223', importe: 279083.72 }, pend), '0006-00008111 + 0006-00008199')
+  // Un peso de diferencia no se adivina.
+  assert.equal(comprobantesQueCubre({ contraparte_cuit: '30711355223', importe: 279084.72 }, pend), null)
+  assert.equal(comprobantesQueCubre({ contraparte_cuit: null, importe: 279083.72 }, pend), null)
 })
