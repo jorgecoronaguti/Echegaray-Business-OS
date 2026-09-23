@@ -66,12 +66,7 @@ const TELEFONO_UTIL = 350
  * excepción es una deuda con nombre y fecha, no un permiso: si aparece una grilla ancha nueva, la
  * regla se pone roja y hay que decidir.
  */
-const PENDIENTES: Record<string, string> = {
-  'src/features/obras/components/AvanceMasivo.tsx':
-    '06 · Avance masivo: 406px rígidos y el nombre de la actividad en `1.6fr`. La auditoría del '
-    + '24/08 lo midió FIEL a 1280 y no lo probó a 390; el arreglo es el mismo envoltorio, pero '
-    + 'esta pantalla escribe avance real y no se toca sin verla en un navegador.',
-}
+const PENDIENTES: Record<string, string> = {}
 
 test('una grilla que no entra en un teléfono scrollea por dentro, no mueve la página', () => {
   const archivos = DIRS.flatMap((d) => fuentes(join(RAIZ, d)))

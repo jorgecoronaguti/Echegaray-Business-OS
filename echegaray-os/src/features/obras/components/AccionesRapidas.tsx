@@ -20,7 +20,7 @@ import { C } from './canon/tokens'
 import { IcoMas } from './canon/Ico'
 
 const ITEMS = (obraId: string) => [
-  { label: 'Registrar avance', href: `/obras/${obraId}/avance-masivo`, testid: 'accion-avance' },
+  { label: 'Registrar avance', href: `/obras/${obraId}?vista=tareas&sub=arbol&sel=1`, testid: 'accion-avance' },
   { label: 'Parte diario', href: `/obras/${obraId}?vista=tareas&sub=parte`, testid: 'accion-parte' },
   { label: 'Nueva actividad', href: `/obras/${obraId}?vista=tareas&sub=gantt`, testid: 'accion-actividad' },
   { label: 'Asignar persona', href: `/obras/${obraId}?vista=personal`, testid: 'accion-persona' },
