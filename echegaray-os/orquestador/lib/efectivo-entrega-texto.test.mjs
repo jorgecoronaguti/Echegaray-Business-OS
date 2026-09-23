@@ -170,3 +170,12 @@ test('si el nombre no está en el padrón, el bot dice las DOS salidas y no un c
   assert.match(t, /entregaste/)
   assert.match(t, /libreta/)
 })
+
+test('un nombre del padrón con corchetes no rompe la interpretación', () => {
+  // Medido contra el padrón real el 23/09/2026: «[PRUEBA E2E] QA Campo» hacía que `new RegExp` tirara
+  // «Unmatched )» y se caía la lectura del mensaje entero — el bot no contestaba nada a nadie.
+  const personas = [{ id: 'x', nombre: '[PRUEBA E2E] QA Campo' }, { id: 'p1', nombre: 'MALDONADO BATISTA EMILIANO' }]
+  const r = interpretarEntrega('$100 a Maldonado para combustible', { personas, obras: [] })
+  assert.equal(r.estado, 'listo')
+  assert.equal(r.persona.id, 'p1')
+})

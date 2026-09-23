@@ -70,13 +70,20 @@ function aNumero(crudo) {
 }
 
 /** Cuántas palabras del nombre de la persona aparecen en el texto. El apellido pesa doble. */
+// UN NOMBRE DEL PADRÓN NO ES UNA EXPRESIÓN REGULAR. Medido el 23/09/2026 contra el padrón real: la
+// persona de prueba se llama «[PRUEBA E2E] QA Campo», y su corchete hacía que `new RegExp` tirara
+// «Unmatched )» — la excepción no la agarraba nadie y se caía la interpretación ENTERA del mensaje, con
+// lo cual el bot no contestaba nada a nadie. Un apellido con un punto, un paréntesis o un guion hace lo
+// mismo. Se escapa antes de armar el patrón.
+const escapar = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
 function puntajePersona(t, nombre) {
   const partes = plano(nombre).split(/[ ,]+/).filter((p) => p.length >= 3)
   if (!partes.length) return 0
   // En el padrón el nombre viene «APELLIDO Nombre» o «Apellido, Nombre»: la primera palabra es el apellido.
   let puntos = 0
   partes.forEach((p, i) => {
-    if (new RegExp(`(^| )${p}( |$|[.,])`).test(t)) puntos += i === 0 ? 2 : 1
+    if (new RegExp(`(^| )${escapar(p)}( |$|[.,])`).test(t)) puntos += i === 0 ? 2 : 1
   })
   return puntos
 }
