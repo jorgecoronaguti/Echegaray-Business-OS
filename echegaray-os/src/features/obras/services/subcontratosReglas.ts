@@ -423,3 +423,60 @@ export const faltaEnLaBase = (mensaje: string | null | undefined): boolean =>
 export const mensajeDeObjetoFaltante = (que: string, mensaje: string): string =>
   `${que} todavía no existe en la base: la migración 20260821T5000 está en el repositorio pero no `
   + `aplicada, así que esto NO significa que falten los datos. (${mensaje})`
+
+// ═══ LAS DOS CELDAS DEL DISEÑO ERP OBRAS 07 / M09 (dueño, 23/09/2026) ═══
+
+export type TonoPapeles = 'neg' | 'warn' | 'pos' | 'faint'
+
+/**
+ * LA COLUMNA «PAPELES» (07): «sin CUIT» / «ART sin cargar» en rojo cuando algo BLOQUEA el inicio,
+ * «ART vencida» / «Contrato firmado: sin cargar» en ámbar cuando sólo avisa, «al día» en verde
+ * cuando no falta nada. Un paquete terminado o anulado ya no tiene papeles que frenen: «—».
+ */
+export function papelesDe(p: { estado: EstadoSubcontrato; revision: RevisionDocumental }): { texto: string; tono: TonoPapeles } {
+  if (p.estado === 'terminado' || p.estado === 'anulado') return { texto: '—', tono: 'faint' }
+  if (p.revision.bloqueos.length > 0) return { texto: p.revision.bloqueos[0], tono: 'neg' }
+  if (p.revision.avisos.length > 0) return { texto: p.revision.avisos[0], tono: 'warn' }
+  return { texto: 'al día', tono: 'pos' }
+}
+
+export type TonoEstadoTelefono = 'curso' | 'neg' | 'muted' | 'pos' | 'faint'
+
+/** El estado a la derecha de la fila del teléfono (M09): «en curso» · «sin poder iniciar» ·
+ *  «propuesto» · «contratado» · «terminado» · «anulado». Un papel que bloquea le gana al guardado. */
+export function estadoTelefono(p: { estado: EstadoSubcontrato; revision: RevisionDocumental }): { texto: string; tono: TonoEstadoTelefono } {
+  if (p.estado !== 'terminado' && p.estado !== 'anulado' && p.revision.bloqueos.length > 0) {
+    return { texto: 'sin poder iniciar', tono: 'neg' }
+  }
+  switch (p.estado) {
+    case 'en_curso': return { texto: 'en curso', tono: 'curso' }
+    case 'previsto': return { texto: 'propuesto', tono: 'muted' }
+    case 'contratado': return { texto: 'contratado', tono: 'muted' }
+    case 'terminado': return { texto: 'terminado', tono: 'pos' }
+    case 'anulado': return { texto: 'anulado', tono: 'faint' }
+  }
+}
+
+/** «Estructura · 2 actividades» — la sub-línea del paquete (07). Sin rubro, sólo la cuenta. */
+export function sublineaPaquete(p: { rubro: string | null; vinculos: unknown[] }): string {
+  const n = p.vinculos.length
+  const cuenta = `${n} ${n === 1 ? 'actividad' : 'actividades'}`
+  return p.rubro ? `${p.rubro} · ${cuenta}` : cuenta
+}
+
+/** «Pisos del Sur SRL · 4 personas» — la sub-línea del teléfono (M09). */
+export function sublineaTelefonoPaquete(p: { proveedor: string | null; personas_externas: number }): string {
+  const n = p.personas_externas
+  return `${p.proveedor ?? 'sin tercero'} · ${n} ${n === 1 ? 'persona' : 'personas'}`
+}
+
+/** Lo que frena un paquete, para el bloque «qué lo frena» (M09): primero los bloqueos (rojo), después
+ *  los avisos (ámbar). Vacío = nada que mostrar. */
+export function queLoFrena(p: { estado: EstadoSubcontrato; revision: RevisionDocumental; vinculos: unknown[] }): { texto: string; tono: 'neg' | 'warn' }[] {
+  if (p.estado === 'terminado' || p.estado === 'anulado') return []
+  return [
+    ...p.revision.bloqueos.map((texto) => ({ texto, tono: 'neg' as const })),
+    ...(p.vinculos.length === 0 ? [{ texto: 'Sin actividad vinculada', tono: 'neg' as const }] : []),
+    ...p.revision.avisos.map((texto) => ({ texto, tono: 'warn' as const })),
+  ]
+}

@@ -229,3 +229,29 @@ test('cero certificado CARGADO sí es un hecho y se publica como cero', () => {
   assert.equal(r.total, 0, 'el 0 cargado se perdió: se trató un dato real como si faltara')
   assert.equal(r.motivo, null)
 })
+
+// ═══ LAS CELDAS DEL DISEÑO 07 / M09 (23/09/2026) ═══
+
+test('«Papeles»: rojo si bloquea, ámbar si avisa, verde al día, «—» cuando ya terminó', async () => {
+  const { papelesDe, estadoTelefono, sublineaPaquete, sublineaTelefonoPaquete, queLoFrena } = await import('./subcontratosReglas.ts')
+  const vacia = { filas: [], bloqueos: [], avisos: [] }
+  const bloq = { filas: [], bloqueos: ['ART sin cargar'], avisos: ['Contrato firmado: sin cargar'] }
+  const aviso = { filas: [], bloqueos: [], avisos: ['ART: vence 30/09'] }
+  assert.deepEqual(papelesDe({ estado: 'en_curso', revision: bloq }), { texto: 'ART sin cargar', tono: 'neg' })
+  assert.deepEqual(papelesDe({ estado: 'en_curso', revision: aviso }), { texto: 'ART: vence 30/09', tono: 'warn' })
+  assert.deepEqual(papelesDe({ estado: 'en_curso', revision: vacia }), { texto: 'al día', tono: 'pos' })
+  assert.deepEqual(papelesDe({ estado: 'terminado', revision: bloq }), { texto: '—', tono: 'faint' })
+  assert.deepEqual(estadoTelefono({ estado: 'en_curso', revision: bloq }), { texto: 'sin poder iniciar', tono: 'neg' })
+  assert.deepEqual(estadoTelefono({ estado: 'en_curso', revision: vacia }), { texto: 'en curso', tono: 'curso' })
+  assert.deepEqual(estadoTelefono({ estado: 'previsto', revision: vacia }), { texto: 'propuesto', tono: 'muted' })
+  assert.deepEqual(estadoTelefono({ estado: 'terminado', revision: bloq }), { texto: 'terminado', tono: 'pos' })
+  assert.equal(sublineaPaquete({ rubro: 'Estructura', vinculos: [1, 2] }), 'Estructura · 2 actividades')
+  assert.equal(sublineaPaquete({ rubro: null, vinculos: [1] }), '1 actividad')
+  assert.equal(sublineaTelefonoPaquete({ proveedor: null, personas_externas: 3 }), 'sin tercero · 3 personas')
+  assert.deepEqual(queLoFrena({ estado: 'en_curso', revision: bloq, vinculos: [] }), [
+    { texto: 'ART sin cargar', tono: 'neg' },
+    { texto: 'Sin actividad vinculada', tono: 'neg' },
+    { texto: 'Contrato firmado: sin cargar', tono: 'warn' },
+  ])
+  assert.deepEqual(queLoFrena({ estado: 'anulado', revision: bloq, vinculos: [] }), [])
+})

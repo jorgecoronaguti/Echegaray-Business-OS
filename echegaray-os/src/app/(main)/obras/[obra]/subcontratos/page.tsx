@@ -45,6 +45,8 @@ import { WorkspaceSubcontratos } from '@/features/obras/components/WorkspaceSubc
 import { FormNuevoPaquete } from '@/features/obras/components/FormNuevoPaquete'
 import { Aviso } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
+import Link from 'next/link'
+import { C } from '@/features/obras/components/canon/tokens'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,10 +54,10 @@ export default async function SubcontratosObraPage({
   params, searchParams,
 }: {
   params: Promise<{ obra: string }>
-  searchParams: Promise<{ sel?: string }>
+  searchParams: Promise<{ sel?: string; nuevo?: string }>
 }) {
   const { obra: obraId } = await params
-  const { sel } = await searchParams
+  const { sel, nuevo } = await searchParams
   const supabase = await createClient()
 
   const economia = veEconomia((await getPerfilActual(supabase)).data?.rol ?? null)
@@ -71,12 +73,10 @@ export default async function SubcontratosObraPage({
     return <EstadoError mensaje={error ?? 'sin datos'} que="los subcontratos de la obra" />
   }
 
-  const bloqueados = data.paquetes.filter((p) => p.revision.bloqueos.length > 0)
-
   return (
     // LA MISMA CABECERA QUE EL WORKSPACE (24/08 · C-CANON §12). La banda grafito propia hacía de
     // esta pantalla otra aplicación, y desde acá no se podía saltar a otra solapa de la obra.
-    <main className="min-h-screen bg-canvas pb-10">
+    <main className="min-h-screen bg-surface pb-10">
       {/* LA BANDA VA DE BORDE A BORDE (mockups 02/03/05/06): el aire de 20px es
           suyo, adentro. Envuelta en el padding de la página quedaba flotando. */}
       <>
@@ -87,41 +87,45 @@ export default async function SubcontratosObraPage({
           // actividades que ya existen, mirado desde el lado del tercero que lo ejecuta.
           vistaActiva="tareas"
           pantalla="Subcontratos"
-          kpis={[
-            { rotulo: 'Paquetes', valor: `${data.paquetes.length}` },
-            // El 0 acá SÍ es un hecho medido —ninguno bloqueado—, no un dato que falta.
-            { rotulo: 'Sin poder iniciar', valor: `${bloqueados.length}` },
-            {
-              rotulo: 'Gente de terceros',
-              valor: `${data.paquetes.reduce((t, p) => t + p.personas_externas, 0)}`,
-            },
-          ]}
+          // LA PRIMARIA DEL 07 VA EN LA CABECERA, a la derecha del título: «Nuevo paquete» de 32px.
+          // Abre el alta (una sola definición: `FormNuevoPaquete`) por `?nuevo=1`.
+          acciones={
+            <Link href={`/obras/${obraId}/subcontratos?nuevo=1`} prefetch={false} data-testid="nuevo-paquete" style={{
+              height: '32px', padding: '0 14px', borderRadius: '6px', background: C.marca, color: C.grafito, fontSize: '13px',
+              fontWeight: 600, display: 'inline-flex', alignItems: 'center', textDecoration: 'none',
+            }}>Nuevo paquete</Link>
+          }
         />
       </>
 
-      <div className="flex flex-col gap-4 px-4 pt-4 lg:px-10">
-        {/* Nivel 3: las CUATRO del canónico 07, emitidas en un solo lugar. Eran dos escritas acá
-            —Actividades y Subcontratos— y desde esta pantalla no había forma de llegar al parte
-            diario ni al cronograma sin volver al workspace. */}
-        <SubNavTrabajo obraId={obraId} sub="subcontratos" />
+      {/* Nivel 3: las CUATRO del 07 (Tareas · Cronograma · Parte diario · Subcontratos), emitidas en
+          un solo lugar. */}
+      <SubNavTrabajo obraId={obraId} sub="subcontratos" />
 
-        {data.avisos.map((a) => (
-          <Aviso key={a} tono="warn" titulo="Falta parte de esta pantalla" testid="aviso-lectura">
-            {a}
-          </Aviso>
-        ))}
+      {data.avisos.length > 0 && (
+        <div className="flex flex-col gap-3 px-4 pt-4 lg:px-[30px]">
+          {data.avisos.map((a) => (
+            <Aviso key={a} tono="warn" titulo="Falta parte de esta pantalla" testid="aviso-lectura">
+              {a}
+            </Aviso>
+          ))}
+        </div>
+      )}
 
-        <FormNuevoPaquete
-          actividades={data.actividades}
-          economia={economia}
-          accion={crearPaquete.bind(null, obraId)}
-        />
-
+      <>
         <WorkspaceSubcontratos
           paquetes={data.paquetes}
           economia={economia}
           obraId={obraId}
           selInicial={sel ?? null}
+          nuevoInicial={nuevo === '1'}
+          formularioNuevo={
+            <FormNuevoPaquete
+              actividades={data.actividades}
+              economia={economia}
+              accion={crearPaquete.bind(null, obraId)}
+            />
+          }
           /* `.bind(null, obraId)` Y NO UNA ARROW: una arrow escrita acá es una función nueva
              creada en el servidor, no la acción. React la rechaza en tiempo de ejecución y la
              pantalla queda en blanco — ni el typecheck ni el build lo ven. */
@@ -133,7 +137,7 @@ export default async function SubcontratosObraPage({
             estado: cambiarEstadoPaquete.bind(null, obraId),
           }}
         />
-      </div>
+      </>
     </main>
   )
 }

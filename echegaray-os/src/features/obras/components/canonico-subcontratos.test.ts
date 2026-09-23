@@ -19,48 +19,35 @@ const DIR = dirname(fileURLToPath(import.meta.url))
 const fuente = (archivo: string) => readFileSync(join(DIR, archivo), 'utf8')
 const pagina = (ruta: string) => readFileSync(join(DIR, '../../../app/(main)/obras', ruta), 'utf8')
 
-test('el buscador y los chips NO dependen de cuántos paquetes haya (canónico 10)', () => {
-  const src = fuente('WorkspaceSubcontratos.tsx')
-
-  // El defecto que atrapa: volver a condicionar la barra a `paquetes.length > 1`. La obra con un
-  // solo paquete dejaba de ser la pantalla dibujada, y nadie descubría que se podía buscar hasta
-  // que ya había demasiado para buscar a ojo.
-  assert.equal(/paquetes\.length > 1\s*&&/.test(src), false,
-    'el buscador/los chips volvieron a esconderse con pocos paquetes')
-  assert.match(src, /placeholder="Buscar paquete o proveedor"/)
-  assert.match(src, /testid="filtros-subcontratos"/)
-})
-
-test('los tres chips se llaman Todo · En curso · Problemas, como el mockup', () => {
-  const src = fuente('WorkspaceSubcontratos.tsx')
-  assert.match(src, /todo: 'Todo', curso: 'En curso', problema: 'Problemas'/)
-})
-
-test('la tabla lleva las CINCO columnas del canónico y el pie las cubre todas', () => {
+test('07 · la tabla lleva las SEIS columnas del diseño ERP Obras y la plata sólo con permiso', () => {
   const src = fuente('TablaSubcontratos.tsx')
-
-  // Proveedor · Trabajo · Estado · Avance · Contrato. El plazo salió: el mockup dibuja cinco.
-  assert.equal(/<Th num>Plazo<\/Th>/.test(src), false, 'volvió la columna Plazo')
-  for (const col of ['Proveedor', 'Trabajo', 'Estado', 'Avance', 'Contrato']) {
-    assert.match(src, new RegExp(`<Th[^>]*>${col}</Th>`), `falta la columna ${col}`)
+  for (const col of ['Paquete', 'Subcontratista', 'Actividades', 'Papeles']) {
+    assert.match(src, new RegExp(`<div[^>]*>${col}</div>`), `falta la columna ${col}`)
   }
-
-  // EL DEFECTO CARO DE SACAR UNA COLUMNA es el `colSpan` que queda largo: el pie de totales se
-  // desborda una celda y la fila entera se corre. Se cuenta lo que hay y se compara con lo escrito.
-  const encabezado = src.slice(src.indexOf('<THead>'), src.indexOf('</THead>'))
-  const columnas = (encabezado.match(/<Th[\s>]/g) ?? []).length
-  const conEconomia = (encabezado.match(/economia && <Th/g) ?? []).length
-  const span = src.match(/colSpan=\{economia \? (\d+) : (\d+)\}/)
-  assert.ok(span, 'el pie perdió su colSpan condicional')
-  assert.equal(Number(span[1]), columnas, 'el colSpan con economía no cubre las columnas dibujadas')
-  assert.equal(Number(span[2]), columnas - conEconomia, 'el colSpan sin economía no cubre las columnas')
+  // Contratado y Certificado existen SÓLO con `economia`: no se dibujan en gris, no se dibujan.
+  assert.match(src, /\{economia && <div style=\{\{ textAlign: 'right' \}\}>Contratado<\/div>\}/)
+  assert.match(src, /\{economia && <div style=\{\{ textAlign: 'right' \}\}>Certificado<\/div>\}/)
+  // Las dos grillas —con y sin plata— tienen que ser distintas: la misma grilla con dos columnas
+  // menos deja dos huecos donde iba la plata.
+  assert.match(src, /GRID_CON = 'minmax\(0,1\.2fr\) minmax\(0,1fr\) 108px 132px 132px 116px'/)
+  assert.match(src, /GRID_SIN = 'minmax\(0,1\.2fr\) minmax\(0,1fr\) 108px 116px'/)
 })
 
-test('un paquete sin precio dice «sin monto» en warn, no en gris (canónico 10)', () => {
+test('07 · un paquete sin precio dice «sin precio cargado» en faint, nunca $ 0', () => {
   const src = fuente('TablaSubcontratos.tsx')
+  assert.match(src, /sin precio cargado/)
+  // Ningún literal «$ 0» dibujado: la ausencia se escribe con palabras.
+  assert.equal(/['>]\$ 0['<]/.test(src), false)
+})
 
-  // Un trabajo por ejecutar sin contrato no es un dato que todavía no llegó: es un problema.
-  assert.match(src, /className="text-warn">sin monto</)
+test('07 · el diseño no lleva buscador ni chips: la tabla es la pantalla', () => {
+  const src = fuente('WorkspaceSubcontratos.tsx')
+  assert.equal(/placeholder="Buscar paquete o proveedor"/.test(src), false, 'volvió el buscador que el diseño 07 no dibuja')
+  assert.equal(/testid="filtros-subcontratos"/.test(src), false, 'volvieron los chips que el diseño 07 no dibuja')
+  // Lo que sí dibuja: «qué lo frena» y la nota de gente propia, literales.
+  assert.match(src, /qué lo frena/)
+  assert.match(src, /Con gente propia: /)
+  assert.match(src, /sin análisis de costo/)
 })
 
 test('propio vs subcontrato vive DENTRO del panel, no debajo de la lista', () => {

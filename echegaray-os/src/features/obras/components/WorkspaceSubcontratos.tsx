@@ -1,202 +1,155 @@
 'use client'
 
-// ═══ 10 · OBRA SUBCONTRATISTAS — LISTA + PANEL, UN SOLO WORKSPACE ═══
+// ═══ 07 · SUBCONTRATOS — LA TABLA, LO QUE FRENA, Y EL PANEL DEL PAQUETE ELEGIDO ═══
 //
-// Design canónico 23/08: lista compacta a la izquierda, panel del paquete a la derecha, y arriba
-// una sola fila con la primaria, el aviso de lo que hay que resolver, el buscador y los filtros.
+// Porte literal de `erp-obras/07.html` y `M09.html` (dueño, 23/09/2026): la tabla de paquetes, debajo
+// los bloques «<Tercero> · qué lo frena» (filas de 56px con borde izquierdo rojo o ámbar y «Ver»), y
+// la nota «Con gente propia: sin análisis de costo». La primaria «Nuevo paquete» va en la cabecera
+// de la obra en escritorio y fija al pie de 48px en el teléfono.
 //
-// ELEGIR UN PAQUETE ES ESTADO DEL CLIENTE. Antes cada clic era un `Link` a `?sel=`: una obra con
-// seis paquetes hacía seis renders completos de una ruta `force-dynamic` para mostrar datos que ya
-// habían viajado enteros en el primer render. La URL se sigue sincronizando con `replaceState`
-// —el mismo enlace sigue abriendo el mismo paquete y se manda por chat— pero sin ir al servidor.
+// ELEGIR UN PAQUETE ES ESTADO DEL CLIENTE. La URL se sigue sincronizando con `replaceState`
+// (`?sel=`): el mismo enlace abre el mismo paquete y se manda por chat. El panel del paquete —con
+// sus solapas de certificaciones, documentos y personal— no está dibujado en el 07 y se conserva:
+// es la única puerta a esas escrituras.
 //
-// EL BUSCADOR Y LOS FILTROS TAMBIÉN SON CLIENTE, por lo mismo: son seis a treinta filas ya
-// cargadas y filtrar es un `filter` en memoria. Nada que ahorrar con un viaje de red.
-//
-// LAS ESCRITURAS NO CAMBIAN: siguen siendo las server actions que llegan por props, que revalidan
-// y vuelven con los datos nuevos.
+// LAS ESCRITURAS NO CAMBIAN: siguen siendo las server actions que llegan por props.
 
-import { useMemo, useState } from 'react'
-import Link from 'next/link'
-import { Buscador, SubTabs, Vacio } from '@/shared/components/ds'
-import { IconoProblema } from '@/shared/components/iconos'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Ico, P } from './canon/Ico'
+import { C, MONO } from './canon/tokens'
+import { useAnchoVentana } from './useAnchoVentana'
+import { esAngosto } from '../services/anchoPantalla'
 import { TablaSubcontratos } from './TablaSubcontratos'
 import { PanelSubcontrato, type AccionesPaquete } from './PanelSubcontrato'
-import { armarComparacion, necesitaResolverse } from '../services/subcontratosReglas'
+import { armarComparacion, queLoFrena } from '../services/subcontratosReglas'
 import type { Paquete } from '../services/subcontratosService'
 
-type Filtro = 'todo' | 'curso' | 'problema'
-
-// Los tres rótulos son los del canónico 10, literales. «Para resolver» era la misma idea con otra
-// palabra, y con eso la pastilla del filtro y el botón de arriba decían cosas distintas del mismo
-// número.
-const FILTRO_LABEL: Record<Filtro, string> = {
-  todo: 'Todo', curso: 'En curso', problema: 'Problemas',
-}
-
-const enCurso = (p: Paquete) => p.estado === 'en_curso'
-
-const coincide = (p: Paquete, q: string) =>
-  `${p.proveedor ?? ''} ${p.nombre} ${p.rubro ?? ''} ${p.vinculos.map((v) => v.actividad).join(' ')}`
-    .toLowerCase().includes(q)
-
 export function WorkspaceSubcontratos({
-  paquetes, economia, obraId, selInicial, acciones,
+  paquetes, economia, obraId, selInicial, acciones, formularioNuevo, nuevoInicial = false,
 }: {
   paquetes: Paquete[]
   economia: boolean
   obraId: string
   selInicial: string | null
   acciones: AccionesPaquete
+  /** El `<FormNuevoPaquete>` del servidor: una sola definición del alta, abierta desde acá. */
+  formularioNuevo: ReactNode
+  /** `?nuevo=1`: la primaria de la cabecera pide el formulario abierto. */
+  nuevoInicial?: boolean
 }) {
-  const [query, setQuery] = useState('')
-  const [filtro, setFiltro] = useState<Filtro>('todo')
+  const telefono = esAngosto(useAnchoVentana())
   const [sel, setSel] = useState<string | null>(selInicial)
+  const [nuevo, setNuevo] = useState(nuevoInicial)
+  const cajaNuevo = useRef<HTMLDivElement>(null)
+
+  // EL PLEGABLE DEL ALTA SE ABRE SOLO cuando alguien pidió «Nuevo paquete»: el formulario es el
+  // mismo `<details>` de siempre, sin segunda definición del alta.
+  useEffect(() => {
+    if (!nuevo) return
+    const det = cajaNuevo.current?.querySelector('details')
+    if (det) det.open = true
+    cajaNuevo.current?.scrollIntoView({ block: 'nearest' })
+  }, [nuevo])
 
   const sincronizarUrl = (id: string | null) => {
     const p = new URLSearchParams(window.location.search)
     if (id) p.set('sel', id); else p.delete('sel')
+    p.delete('nuevo')
     const qs = p.toString()
     window.history.replaceState(null, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`)
   }
   const elegir = (id: string) => {
-    const nuevo = id === sel ? null : id
-    setSel(nuevo)
-    sincronizarUrl(nuevo)
+    const siguiente = id === sel ? null : id
+    setSel(siguiente)
+    sincronizarUrl(siguiente)
   }
-
-  // Limpiar borra el texto Y el filtro: dejar el filtro puesto después de limpiar la búsqueda es la
-  // manera de que alguien crea que la obra tiene un solo paquete.
-  const limpiar = () => { setQuery(''); setFiltro('todo') }
-
-  const nProblema = useMemo(() => paquetes.filter(necesitaResolverse).length, [paquetes])
-  const nCurso = useMemo(() => paquetes.filter(enCurso).length, [paquetes])
-
-  const visibles = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return paquetes.filter((p) => {
-      if (q && !coincide(p, q)) return false
-      if (filtro === 'curso') return enCurso(p)
-      if (filtro === 'problema') return necesitaResolverse(p)
-      return true
-    })
-  }, [paquetes, query, filtro])
 
   const seleccionado = sel ? paquetes.find((p) => p.id === sel) ?? null : null
   const comparacion = useMemo(
     () => (seleccionado ? armarComparacion(insumosDe(seleccionado), economia) : null),
     [seleccionado, economia],
   )
+  const frenados = paquetes.map((p) => ({ p, frenos: queLoFrena(p) })).filter((x) => x.frenos.length > 0)
+
+  const bloquesQueFrenan = frenados.map(({ p, frenos }) => (
+    <div key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }} data-testid={`que-lo-frena-${p.id}`}>
+      <div style={{ fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase' }}>
+        {p.proveedor ?? p.nombre} · qué lo frena
+      </div>
+      {frenos.map((f, i) => (
+        <div key={i} style={{
+          display: 'flex', alignItems: 'center', gap: '10px', minHeight: '56px', borderBottom: `1px solid ${C.borde}`,
+          paddingLeft: '10px', borderLeft: `2px solid ${f.tono === 'neg' ? C.neg : C.warn}`,
+        }}>
+          <span style={{ color: f.tono === 'neg' ? C.neg : C.warn, display: 'flex' }}><Ico d={f.tono === 'neg' ? P.bloqueo : P.doc} s={14} /></span>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <div style={{ fontSize: '13.5px', color: C.tinta }}>{f.texto}</div>
+            <div style={{ fontSize: '12px', color: C.tintaSuave }}>{p.nombre}</div>
+          </div>
+          <button type="button" onClick={() => { setSel(p.id); sincronizarUrl(p.id) }}
+            style={{ fontSize: '12px', color: f.tono === 'neg' ? C.neg : C.warn, fontWeight: 500, whiteSpace: 'nowrap', border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit', fontFamily: 'inherit' }}>
+            Ver
+          </button>
+        </div>
+      ))}
+    </div>
+  ))
+
+  const nota = (
+    <div style={{ fontSize: '12px', color: C.tenue }}>
+      Con gente propia: <span style={{ color: C.tenue, fontStyle: 'italic' }}>sin análisis de costo</span>
+    </div>
+  )
+
+  const panel = seleccionado && (
+    <PanelSubcontrato
+      paquete={seleccionado}
+      economia={economia}
+      obraId={obraId}
+      comparacion={comparacion ?? []}
+      onCerrar={() => { setSel(null); sincronizarUrl(null) }}
+      acciones={acciones}
+    />
+  )
+
+  const formulario = nuevo && <div ref={cajaNuevo} data-testid="caja-nuevo-paquete">{formularioNuevo}</div>
+
+  if (telefono) {
+    return (
+      <div style={{ padding: '16px', paddingBottom: '96px', display: 'flex', flexDirection: 'column', gap: '14px', background: C.superficie }} data-testid="subcontratos">
+        {formulario}
+        <TablaSubcontratos paquetes={paquetes} seleccionado={sel} economia={economia} onSeleccionar={elegir} telefono />
+        {panel}
+        {bloquesQueFrenan}
+        {nota}
+        <div style={{ position: 'fixed', left: 0, right: 0, bottom: '64px', padding: '12px 16px 18px', background: C.superficie, borderTop: `1px solid ${C.borde}`, zIndex: 19 }}>
+          <button type="button" onClick={() => setNuevo(true)} data-testid="nuevo-paquete" style={{
+            width: '100%', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '6px',
+            background: C.marca, color: C.grafito, fontSize: '14px', fontWeight: 600, border: 0, cursor: 'pointer', font: 'inherit', fontFamily: 'inherit',
+          }}><Ico d={P.mas} s={15} />Nuevo paquete</button>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <>
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-        {/* LO QUE FRENA VA ARRIBA Y ES UN BOTÓN, no un cartel: leerlo sin poder ir a verlo obliga a
-            buscar a mano cuál de los seis es. */}
-        {nProblema > 0 && (
-          <button
-            type="button"
-            onClick={() => setFiltro('problema')}
-            data-testid="ir-a-problemas"
-            className="inline-flex items-center gap-1.5 rounded-control border border-neg/25 bg-neg-soft px-2.5 py-1 text-[12.5px] font-medium text-neg"
-          >
-            <IconoProblema className="h-[14px] w-[14px]" />
-            {nProblema} para resolver
-          </button>
-        )}
-
-        {/* EL BUSCADOR Y LOS CHIPS VAN SIEMPRE (canónico 10, orden del dueño 24/08). Estaban
-            condicionados a `paquetes.length > 1`: la barra cambiaba de forma según cuántos paquetes
-            hubiera, y la pantalla de una obra con un solo paquete no era la pantalla dibujada. El
-            costo de mostrarlos con una fila es una fila que filtra una fila; el de esconderlos es
-            que nadie sabe que se puede buscar hasta que ya hay demasiado para buscar. */}
-        <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2">
-          <div className="flex items-center gap-2">
-            <Buscador
-              value={query}
-              onChange={setQuery}
-              placeholder="Buscar paquete o proveedor"
-              testid="buscar-paquete"
-              className="w-[228px]"
-            />
-            {query && (
-              <>
-                <span className="font-mono text-[11px] tabular-nums text-faint">{visibles.length}</span>
-                <button type="button" onClick={limpiar}
-                  data-testid="limpiar-busqueda" className="text-[12px] text-faint hover:text-ink">✕</button>
-              </>
-            )}
-          </div>
-
-          <SubTabs
-            testid="filtros-subcontratos"
-            items={(['todo', 'curso', 'problema'] as Filtro[]).map((f) => ({
-              onClick: () => setFiltro(f),
-              label: FILTRO_LABEL[f],
-              cuenta: f === 'todo' ? paquetes.length : f === 'curso' ? nCurso : nProblema,
-              activo: filtro === f,
-              testid: `filtro-${f}`,
-            }))}
-          />
-        </div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_384px]">
-        <div className="flex min-w-0 flex-col gap-6">
-          {/* «NO HAY NINGUNO» Y «NINGUNO COINCIDE» SON DOS COSAS DISTINTAS. Dejar que la tabla
-              dibujara su vacío con la lista filtrada le diría a alguien que la obra no tiene
-              subcontratos porque escribió mal un apellido. */}
-          {paquetes.length > 0 && visibles.length === 0 ? (
-            <Vacio accion={
-              <button type="button" onClick={limpiar} data-testid="ver-todos-los-paquetes"
-                className="text-[13px] font-medium text-ink hover:underline">Ver todo</button>
-            }>
-              Ningún paquete coincide.
-            </Vacio>
-          ) : (
-            <TablaSubcontratos
-              paquetes={visibles}
-              seleccionado={sel}
-              economia={economia}
-              onSeleccionar={elegir}
-            />
+    <div style={{ padding: '22px 30px 32px', display: 'flex', flexDirection: 'column', gap: '26px', background: C.superficie }} data-testid="subcontratos">
+      {formulario}
+      <div style={{ display: 'grid', gridTemplateColumns: seleccionado ? 'minmax(0,1fr) 384px' : 'minmax(0,1fr)', gap: '26px', alignItems: 'start' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '26px', minWidth: 0 }}>
+          <TablaSubcontratos paquetes={paquetes} seleccionado={sel} economia={economia} onSeleccionar={elegir} />
+          {bloquesQueFrenan.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', maxWidth: '88ch' }}>{bloquesQueFrenan}</div>
           )}
+          {nota}
         </div>
-
-        {seleccionado ? (
-          /* LA COMPARACIÓN VIAJA AL PANEL (canónico 10): estaba debajo de la lista, o sea a media
-             pantalla de distancia del paquete que compara, y cuando la lista crecía se iba abajo
-             del pliegue. Es la decisión de subcontratar o no: va pegada al paquete. */
-          <PanelSubcontrato
-            paquete={seleccionado}
-            economia={economia}
-            obraId={obraId}
-            comparacion={comparacion ?? []}
-            onCerrar={() => { setSel(null); sincronizarUrl(null) }}
-            acciones={acciones}
-          />
-        ) : (
-          /* 22/08/2026 · «Tocá un paquete para ver…» se borró: la lista de la izquierda es
-             clicleable y el panel aparece al tocarla — describir el gesto no lo enseña, lo repite.
-             El enlace a las actividades SÍ queda: es la única forma de salir de acá sin volver
-             por el menú, y no se deduce de ninguna otra cosa de la pantalla. */
-          <aside className="rounded-card border border-line bg-surface p-4">
-            <Link
-              href={`/obras/${obraId}?vista=tareas&sub=arbol`}
-              prefetch={false}
-              className="text-[12.5px] font-medium text-ink hover:underline"
-            >
-              Ver las actividades de la obra
-            </Link>
-          </aside>
-        )}
+        {panel}
       </div>
-    </>
+    </div>
   )
 }
 
-/** Los insumos de la comparación, tal como los espera `armarComparacion`. Se arma acá porque la
- *  selección dejó de vivir en el servidor: es la misma función pura, llamada del otro lado. */
+/** Los insumos de la comparación, tal como los espera `armarComparacion`. */
 const insumosDe = (p: Paquete) => ({
   paquete: {
     cantidad: p.cantidad,
