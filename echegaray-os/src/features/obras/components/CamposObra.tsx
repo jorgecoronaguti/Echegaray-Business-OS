@@ -101,7 +101,7 @@ export function CamposObra({ obra, ubicacion, veEconomia = false }: {
       <CampoJefeObra valor={obra?.jefe_obra} />
       <Campo rotulo="Estado">
         <select name="estado" defaultValue={v(obra?.estado) || 'activa'} className={CAMPO}>
-          {ESTADOS.map((e) => <option key={e} value={e}>{e}</option>)}
+          {ESTADOS.map((e) => <option key={e} value={e}>{e === 'cerrada' ? 'archivada' : e}</option>)}
         </select>
       </Campo>
       <Campo rotulo="Etapa" className="sm:col-span-2" ayuda="Sin declarar es una respuesta válida: no se elige una por defecto.">

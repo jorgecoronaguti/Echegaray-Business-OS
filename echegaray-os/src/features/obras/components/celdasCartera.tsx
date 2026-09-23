@@ -137,7 +137,7 @@ export function Avance({ pct, total }: { pct: number | null; total: number }) {
  * nunca es lo que se vino a leer.
  */
 export function EstadoObra({ estado, semaforo }: { estado: string; semaforo: Semaforo }) {
-  if (estado === 'cerrada') return <Estado tono="pos" clave="cerrada">terminada</Estado>
+  if (estado === 'cerrada') return <Estado tono="pos" clave="cerrada">archivada</Estado>
   // PAUSADA VA EN PUNTO HUECO, no en rojo: parar una obra puede ser una decisión tomada, no un
   // problema. Lo que sí es un problema —que no avance sin que nadie lo haya decidido— lo dice el
   // atraso de la de al lado.

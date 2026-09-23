@@ -43,7 +43,7 @@ test('el texto de PLAZO es el del zip: «+16 d» · «en fecha» · «sin plan»
 })
 
 test('el estado sigue el orden del zip y agrega «Pausada», que la base tiene y el mockup no', () => {
-  assert.deepEqual(estadoDeCartera(obra({ estado: 'cerrada' })), { t: 'Terminada', tono: 'pos' })
+  assert.deepEqual(estadoDeCartera(obra({ estado: 'cerrada' })), { t: 'Archivada', tono: 'pos' })
   assert.deepEqual(estadoDeCartera(obra({ etapa: 'previo' })), { t: 'Previo', tono: 'neutro' })
   assert.deepEqual(estadoDeCartera(obra({ estado: 'pausada' })), { t: 'Pausada', tono: 'neutro' })
   // Umbral del zip: > 10 días pinta el estado; por debajo lo dice la columna PLAZO en ámbar.
@@ -56,7 +56,7 @@ test('el estado sigue el orden del zip y agrega «Pausada», que la base tiene y
     { t: 'En ejecución', tono: 'curso' },
   )
   // Una obra cerrada gana sobre cualquier atraso arrastrado: ya terminó.
-  assert.equal(estadoDeCartera(obra({ estado: 'cerrada', fecha_fin_plan: '2026-01-01', forecast_fin: '2026-09-01' })).t, 'Terminada')
+  assert.equal(estadoDeCartera(obra({ estado: 'cerrada', fecha_fin_plan: '2026-01-01', forecast_fin: '2026-09-01' })).t, 'Archivada')
 })
 
 test('«Con problema» no esconde obras cuando la lectura de impedimentos se cayó', () => {

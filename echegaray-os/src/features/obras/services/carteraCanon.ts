@@ -78,7 +78,7 @@ export type TonoCartera = 'pos' | 'curso' | 'warn' | 'neg' | 'neutro'
  * columna PLAZO en ámbar, no en el estado. No es un umbral inventado acá.
  */
 export function estadoDeCartera(o: ObraDeCartera): { t: string; tono: TonoCartera } {
-  if (o.estado === 'cerrada') return { t: 'Terminada', tono: 'pos' }
+  if (o.estado === 'cerrada') return { t: 'Archivada', tono: 'pos' }
   if (esPrevio(o)) return { t: 'Previo', tono: 'neutro' }
   if (o.estado === 'pausada') return { t: 'Pausada', tono: 'neutro' }
   if (o.estado !== 'activa') return { t: o.estado, tono: 'neutro' }
