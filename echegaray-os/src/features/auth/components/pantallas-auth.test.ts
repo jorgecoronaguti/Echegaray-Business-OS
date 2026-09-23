@@ -33,7 +33,8 @@ import { join } from 'node:path'
 
 const DIR = new URL('.', import.meta.url).pathname
 
-/** Los formularios de las tres rutas sin sesión: login, recuperar, contraseña nueva. */
+/** Los formularios de la puerta: login, recuperar, contraseña nueva y, desde el 23/09/2026, el
+ *  segundo paso (código de la app): la sesión ya existe pero es `aal1` y no abre nada todavía. */
 const FORMULARIOS = readdirSync(DIR).filter((n) => n.endsWith('Form.tsx'))
 
 // Clases de utilidad que afirman un color o una medida FUERA de los tokens del OS. `bg-black` y
@@ -50,10 +51,10 @@ const PROHIBIDAS = [
   /className="rounded border/,
 ]
 
-test('hay tres formularios sin sesión que mirar', () => {
+test('hay cuatro formularios de la puerta que mirar', () => {
   // Si alguien los renombra o los mueve, las reglas de abajo pasarían en verde sin mirar nada.
   assert.equal(
-    FORMULARIOS.length, 3,
+    FORMULARIOS.length, 4,
     `se encontraron ${FORMULARIOS.length} formularios sin sesión: ${FORMULARIOS.join(', ')}`,
   )
 })

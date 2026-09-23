@@ -12,6 +12,9 @@ import {
 import { aterrizajeDeIngreso, inicioDeRol } from '../types/aterrizaje'
 import { pareceTelefonoSegun } from '@/shared/utils/dispositivo'
 import { urlDeRecuperacion } from './recuperacion'
+import { cookies } from 'next/headers'
+import { COOKIE_MFA, RUTA_DOS_PASOS, sellarExigeDosPasos } from '@/lib/auth/mfa'
+import { VIDA_ROL_SEGUNDOS, secretoDelRol } from '@/lib/auth/rol-cache'
 
 export type ActionState = { error: string | null }
 
@@ -37,6 +40,23 @@ export async function loginAction(_prev: ActionState, formData: FormData): Promi
   if (error) return { error: mensajeDeAuth(error.message) }
 
   revalidatePath('/', 'layout')
+
+  // ═══ EL SEGUNDO PASO, SI LA CUENTA LO TIENE (23/09/2026) ═══
+  //
+  // Recién entrada, la sesión es `aal1`. Si la cuenta tiene un factor verificado, `nextLevel` dice
+  // `aal2` y se va a la pantalla del código antes de aterrizar en ningún lado. La cookie `os_mfa` se
+  // sella acá para que el middleware no tenga que preguntarlo de nuevo (ver `lib/auth/mfa.ts`).
+  const { data: nivel } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+  const secreto = secretoDelRol()
+  if (secreto && data.user) {
+    ;(await cookies()).set(COOKIE_MFA, await sellarExigeDosPasos(data.user.id, nivel?.nextLevel === 'aal2' ? 'si' : 'no', secreto), {
+      httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: VIDA_ROL_SEGUNDOS,
+    })
+  }
+  if (nivel?.nextLevel === 'aal2' && nivel.currentLevel !== 'aal2') {
+    const volver = formData.get('volver')?.toString()
+    redirect(volver ? `${RUTA_DOS_PASOS}?volver=${encodeURIComponent(volver)}` : RUTA_DOS_PASOS)
+  }
 
   // ═══ EL ATERRIZAJE ES UNA REGLA, Y VIVE EN UN SOLO LUGAR (08/09/2026) ═══
   //

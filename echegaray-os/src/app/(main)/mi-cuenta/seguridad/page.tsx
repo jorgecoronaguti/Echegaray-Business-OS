@@ -12,10 +12,11 @@
 // «Email de recuperación» tampoco existe como concepto separado en este sistema: la recuperación va
 // al email de acceso. Se dice, en vez de dibujar un campo que no guarda nada.
 //
-// ═══ LOS DOS PASOS SE LEEN DE VERDAD ═══
+// ═══ LOS DOS PASOS SE LEEN DE VERDAD, Y SE ACTIVAN DESDE ACÁ (23/09/2026) ═══
 //
-// `user.factors` viene en el objeto de sesión: si hay un factor verificado, está activo. No se
-// asume ni se pregunta aparte.
+// `mfa.listFactors()` dice qué factores TOTP verificados tiene la cuenta; el bloque `DosPasos` los
+// crea, confirma y quita contra el servidor de Auth, y el middleware exige el código a toda sesión
+// `aal1` de una cuenta que los tenga (ver `lib/auth/mfa.ts`).
 //
 // ═══ ÉSTA ES LA ÚNICA PANTALLA QUE LE PREGUNTA AL SERVIDOR DE AUTH (25/08/2026) ═══
 //
@@ -28,6 +29,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { MiCuentaShell, Dato } from '@/features/mi-cuenta/components/MiCuentaShell'
 import { CambiarContrasena } from '@/features/mi-cuenta/components/CambiarContrasena'
+import { DosPasos } from '@/features/mi-cuenta/components/DosPasos'
 import { Aviso, Estado, Nulo, Num } from '@/shared/components/ds'
 
 export const dynamic = 'force-dynamic'
@@ -48,8 +50,11 @@ export default async function SeguridadPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return <MiCuentaShell titulo="Seguridad"><Aviso tono="neg">Tu sesión venció. Volvé a entrar.</Aviso></MiCuentaShell>
 
-  const factores = user.factors ?? []
-  const dosPasos = factores.some((f) => f.status === 'verified')
+  // LOS FACTORES SE PIDEN A `mfa.listFactors()`, no sólo a `user.factors`: es la lista que Auth
+  // considera vigente, y es la misma que consulta el middleware para exigir el código.
+  const { data: lista } = await supabase.auth.mfa.listFactors()
+  const factores = (lista?.totp ?? []).filter((f) => f.status === 'verified')
+  const dosPasos = factores.length > 0
   const ultimoIngreso = cuando(user.last_sign_in_at)
   const emailConfirmado = Boolean(user.email_confirmed_at)
 
@@ -90,14 +95,12 @@ export default async function SeguridadPage() {
           </div>
         </section>
 
-        <section className="min-w-0 space-y-5">
-          {!dosPasos && (
-            <Aviso tono="warn" titulo="Tu cuenta entra sólo con contraseña" testid="sin-dos-pasos">
-              La verificación en dos pasos todavía no está habilitada en el OS. Cuando lo esté, se
-              activa desde acá. Mientras tanto, lo que protege la cuenta es que la contraseña no se
-              comparta y no se repita en otro lado.
-            </Aviso>
-          )}
+        <section className="min-w-0 space-y-7">
+          {/* LOS DOS PASOS SE ACTIVAN ACÁ (23/09/2026). Antes esta columna decía «todavía no está
+              habilitada en el OS»; ahora el bloque lee los factores reales y los cambia en Auth. */}
+          <DosPasos
+            factores={factores.map((f) => ({ id: f.id, nombre: f.friendly_name ?? null, desde: cuando(f.created_at) }))}
+          />
           <div>
             <h2 className="mb-2 text-[11px] font-medium tracking-[0.04em] text-faint">Acceso desde el teléfono</h2>
             <p className="max-w-[460px] text-[12.5px] leading-relaxed text-muted">
