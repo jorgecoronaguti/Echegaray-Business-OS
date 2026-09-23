@@ -22,6 +22,27 @@ import type { Asignacion, Persona, ServiceResult } from '../types'
  * uno con su `.is('fecha_egreso', null)` — y esa condición dejaba entrar a las 15 personas que se
  * fueron sin baja documentada, porque su fecha de egreso no consta en ningún papel.
  */
+/**
+ * «RUBÉN QUIROGA» → «Rubén Quiroga». El diseño (08) escribe los nombres en Título y en el plantel
+ * hay legajos cargados en MAYÚSCULAS. Sólo se toca lo que viene TODO en mayúsculas: un nombre ya
+ * escrito con su forma («de la Fuente», «McCoy») se respeta tal cual. Las partículas «de», «del»,
+ * «y», «la», «las», «los», «e» quedan en minúscula salvo al principio.
+ */
+export function nombreEnTitulo(nombre: string | null): string | null {
+  if (nombre == null) return null
+  const limpio = nombre.trim().replace(/\s+/g, ' ')
+  if (limpio === '' || limpio !== limpio.toLocaleUpperCase('es-AR') || limpio === limpio.toLocaleLowerCase('es-AR')) return nombre
+  const PARTICULAS = new Set(['de', 'del', 'y', 'la', 'las', 'los', 'e'])
+  const capital = (t: string) => t.charAt(0).toLocaleUpperCase('es-AR') + t.slice(1)
+  return limpio
+    .toLocaleLowerCase('es-AR')
+    .split(' ')
+    .map((palabra, i) => (i > 0 && PARTICULAS.has(palabra)
+      ? palabra
+      : palabra.split('-').map(capital).join('-')))
+    .join(' ')
+}
+
 export async function getPersonas(supabase: SupabaseClient): Promise<ServiceResult<Persona[]>> {
   const { data, error } = await supabase
     .from('persona_plantel')
@@ -31,7 +52,7 @@ export async function getPersonas(supabase: SupabaseClient): Promise<ServiceResu
     .select('id, nombre_completo, categoria, especialidad, fecha_egreso')
     .order('nombre_completo', { ascending: true })
   if (error) return { data: null, error: error.message }
-  return { data: (data ?? []) as Persona[], error: null }
+  return { data: ((data ?? []) as Persona[]).map((p) => ({ ...p, nombre_completo: nombreEnTitulo(p.nombre_completo) ?? p.nombre_completo })), error: null }
 }
 
 /** El catálogo de causas de desvío para la hora improductiva (§19, 22/08). Sólo las activas. */
@@ -105,7 +126,7 @@ async function plantelDe(supabase: SupabaseClient, personaIds: (string | null)[]
   const { data } = await supabase
     .from('persona_plantel').select('id, nombre_completo, especialidad, categoria').in('id', ids)
   for (const p of (data ?? []) as Fila[]) {
-    m.set(p.id, { nombre_completo: p.nombre_completo, especialidad: p.especialidad, categoria: p.categoria })
+    m.set(p.id, { nombre_completo: nombreEnTitulo(p.nombre_completo), especialidad: p.especialidad, categoria: p.categoria })
   }
   return m
 }

@@ -43,3 +43,17 @@ test('los legajos sin categoría se cuentan sobre las asignaciones vigentes', ()
   assert.equal(sublineaPersonalTelefono({ cuadrilla: 'Cuadrilla 1', rol: 'responsable', persona_categoria: 'oficial' }, 'Oficial'), 'Cuadrilla 1 · oficial · responsable')
   assert.equal(sublineaPersonalTelefono({ cuadrilla: null, rol: 'integrante', persona_categoria: null }, null), 'sin cuadrilla')
 })
+
+test('un legajo en MAYÚSCULAS se muestra en Título (08), respetando partículas y lo ya escrito con su forma', async () => {
+  const { nombreEnTitulo } = await import('./personalService.ts')
+  assert.equal(nombreEnTitulo('RUBÉN QUIROGA'), 'Rubén Quiroga')
+  assert.equal(nombreEnTitulo('JUAN DE LA FUENTE'), 'Juan de la Fuente')
+  assert.equal(nombreEnTitulo('MARÍA DEL CARMEN PÉREZ Y GÓMEZ'), 'María del Carmen Pérez y Gómez')
+  assert.equal(nombreEnTitulo('DE LOS SANTOS, JOSÉ'), 'De los Santos, José')
+  assert.equal(nombreEnTitulo('ÁNGEL GARCÍA-LÓPEZ'), 'Ángel García-López')
+  // Ya escrito con su forma: no se toca (una «Mc» o una partícula puesta a mano se perdería).
+  assert.equal(nombreEnTitulo('Rubén Quiroga'), 'Rubén Quiroga')
+  assert.equal(nombreEnTitulo('juan pérez'), 'juan pérez')
+  assert.equal(nombreEnTitulo(null), null)
+  assert.equal(nombreEnTitulo(''), '')
+})
