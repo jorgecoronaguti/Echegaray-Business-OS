@@ -60,11 +60,10 @@ import { getDocumentosSubidos } from '@/features/documentos/services/documentosS
 import { borrarHH, imputarHH, imputarHHMasivo } from '@/features/obras/services/actionsHH'
 import { C, ESTILO_PRIMARIA, ESTILO_SECUNDARIA } from '@/features/obras/components/canon/tokens'
 import { Ico, P } from '@/features/obras/components/canon/Ico'
-import { CabeceraDeObra, ESTADOS_TERMINADA, type KpiPantalla } from '@/features/obras/components/CabeceraDeObra'
+import { CabeceraDeObra, ESTADOS_TERMINADA } from '@/features/obras/components/CabeceraDeObra'
 import { CamposObra } from '@/features/obras/components/CamposObra'
 import { TabResumen } from '@/features/obras/components/TabResumen'
 import { ResumenCierre } from '@/features/obras/components/ResumenCierre'
-import { cifraAvance, costoTeorico, diaHabil } from '@/features/obras/services/avancePonderado'
 import { CronogramaDeObra } from '@/features/obras/components/CronogramaDeObra'
 import { AccionesEditorCronograma, EditorCronogramaProvider } from '@/features/obras/components/EditorCronogramaContexto'
 import { cifrasDelEditor } from '@/features/obras/services/cifrasEditor'
@@ -333,8 +332,6 @@ export default async function ObraPage({
   const avance = avanceRes ? lector.leer(avanceRes, null) : null
   const diasHabilesObra = diasHabilesObraRes ? lector.leer(diasHabilesObraRes, null) : null
   const nDependencias = dependenciasRes ? (dependenciasRes.data?.length ?? null) : null
-  // LA LÍNEA DE CIFRAS DE ÍTEMS (04b): Avance de obra · Costo teórico · Día hábil.
-  const costo = costoTeorico(avance)
   // ═══ CREAR LA ESTRUCTURA (C01–C10) ═══
   // Con `?crear=`, `&panel=` o `?sel=1`, o con la obra sin trabajo cargado, la cabecera deja los KPI
   // grandes y dibuja la línea de cifras de esa pantalla (que la pantalla publica) y su primaria.
@@ -343,15 +340,6 @@ export default async function ObraPage({
   const modoConPrimariaPropia = modoEstructura.crear === 'presupuesto' || modoEstructura.crear === 'planilla' || modoEstructura.panel === 'ponderacion'
   // C10: la obra en Previo muestra el checklist «Listo para producir» en lugar del Resumen.
   const esListoParaProducir = vista === 'resumen' && !terminada && obra.etapa === 'previo'
-  const cifrasDeItems: KpiPantalla[] = esArbol && !enEstructura && !obraVacia ? [
-    { rotulo: 'Avance de obra', valor: cifraAvance(avance), falta: 'sin estructura' },
-    { rotulo: 'Costo teórico', valor: costo.cifra, falta: costo.bajada },
-    {
-      rotulo: 'Día hábil',
-      valor: diasHabilesObra?.dia_habil_actual != null ? diaHabil(diasHabilesObra).replace('día hábil ', '') : null,
-      falta: diaHabil(diasHabilesObra),
-    },
-  ] : []
   // UNA SOLA PRIMARIA AMARILLA POR PANTALLA: el 03 y el 04 dibujan «Nueva actividad» amarilla en la
   // cabecera; el parte, personal, subcontratos y el editor del cronograma tienen la suya abajo
   // («Guardar el parte», «Asignar persona», «Nuevo paquete», «Guardar fechas»), así que ahí va con borde.
@@ -403,8 +391,11 @@ export default async function ObraPage({
         obraId={obraId}
         obra={obra}
         vistaActiva={vista}
-        titulo={vista === 'resumen' ? 21 : 17}
-        kpis={cifrasDeItems}
+        // LA CABECERA NO CAMBIA AL CAMBIAR DE SOLAPA (dueño, 23/09/2026: «esas secciones al ser
+        // seleccionadas no pueden ir variando su diseño»): el mismo título, la misma identidad y
+        // ninguna fila de cifras que aparezca en una solapa y no en otra. Las cifras sólo viven en los
+        // modos de crear la estructura (?crear= · &panel= · ?sel=1), que se abren por una acción.
+        titulo={21}
         acciones={esListoParaProducir ? (
           <PrimariaViva />
         ) : enEstructura || obraVacia ? (
@@ -431,7 +422,7 @@ export default async function ObraPage({
           // 14: «Vincular documento» · «Vincular carpeta» en texto y «Abrir carpeta» amarilla.
           <AccionesDocumentos obraId={obraId} carpetaDriveId={obra.drive_carpeta_id} />
         ) : puedeEditarPlan ? nuevaActividad : null}
-        lineaDeCifras={enEstructura || obraVacia ? cifrasDeCrear(modoEstructura, obraVacia) : cifrasDelCronograma}
+        lineaDeCifras={enEstructura ? cifrasDeCrear(modoEstructura, obraVacia) : cifrasDelCronograma}
         // EL ENLACE A LA PLATA, DISCRETO Y SÓLO PARA QUIEN LA VE. No es una solapa —el dueño la
         // sacó de acá— y no es un botón: es la puerta a la pantalla de Administración de esta obra.
         // Al jefe de obra no se le dibuja, igual que no se le dibujan las rutas de `veEconomia`.
