@@ -149,9 +149,10 @@ export function TabOperacion({
   return (
     <div className="flex flex-col" data-testid="tab-operacion">
       <SubsOperacion obraId={obraId} sub={actual} cuenta={cuenta} veEconomia={veEconomia} />
-      {/* El cuerpo: 24/30/32 en escritorio (el marco de la página ya pone 20 por lado y 24 abajo);
-          16 por lado en el teléfono (M: `padding 16`), donde el marco pone 20. */}
-      <div className="-mx-1 pt-4 md:mx-0 md:px-2.5 md:pb-2 md:pt-6">
+      {/* El cuerpo: 24/30/32 en escritorio (el marco de la página ya pone 20 por lado y 24 abajo). En el
+          teléfono queda el marco de 20: el M dibuja 16, y achicar el marco con un `-mx-` distinto de
+          `-mx-5` saca contenido del documento (`geometria-obras.test.ts`). */}
+      <div className="pt-4 md:px-2.5 md:pb-2 md:pt-6">
         {errorFuente && actual !== 'impedimentos' && (
           <AvisoDeLectura mensaje={errorFuente} que="la operación de esta obra" testid="operacion-lectura-fallida" />
         )}

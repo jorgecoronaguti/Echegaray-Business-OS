@@ -35,7 +35,7 @@ export function BloquesInferiores({ obraId, subidos, archivos, documentos, carpe
 
   return (
     <>
-      <div className="hidden md:grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '52px', alignItems: 'start', paddingTop: '6px', borderTop: `1px solid ${C.borde}` }}
+      <div className="hidden md:grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '52px', alignItems: 'start', padding: '6px 10px 0', borderTop: `1px solid ${C.borde}` }}
         data-testid="bloques-inferiores-documentos">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingTop: '18px' }} data-testid="obra-documentos-subidos">
           <TituloBloque titulo="Subidos desde acá" meta={subidos === null ? 'no se pudo leer' : `${filasSubidas.length} · la ficha también recibe papel`} derecha={subir} />

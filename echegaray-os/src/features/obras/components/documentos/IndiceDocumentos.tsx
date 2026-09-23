@@ -77,10 +77,12 @@ export function IndiceDocumentos({ documentos, actividades, asignar, clasificar,
     <>
       {/* ═══ ESCRITORIO (14) ═══ */}
       <div className="hidden md:flex" style={{ flexDirection: 'column' }} data-testid="indice-documentos">
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '14px', fontSize: '12.5px', margin: '0 -30px', padding: '7px 30px',
+        {/* A sangre con `-mx-5 px-5` (el marco real de la ficha); los 10px hasta los 30 del 14 van adentro. */}
+        <div className="-mx-5 px-5" style={{
+          paddingTop: '7px', paddingBottom: '7px',
           background: C.tenueFondo, borderTop: `1px solid ${C.borde}`, borderBottom: `1px solid ${C.borde}`,
-        }} data-testid="chips-categoria-documento">
+        }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '12.5px', padding: '0 10px' }} data-testid="chips-categoria-documento">
           {chipItems.map((c) => (
             <button key={c.id ?? 'todo'} type="button" onClick={() => setChip(c.id)} data-testid={c.testid} aria-pressed={c.activo} style={{
               font: 'inherit', fontSize: '12.5px', border: 'none', background: 'none', padding: 0, cursor: 'pointer',
@@ -99,9 +101,10 @@ export function IndiceDocumentos({ documentos, actividades, asignar, clasificar,
               data-testid="buscar-documento-obra" style={{ border: 'none', background: 'transparent', outline: 'none', width: '100%', font: 'inherit', color: C.tinta }} />
           </label>
         </div>
+        </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 300px', gap: '44px', alignItems: 'start', paddingTop: '18px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column' }} data-testid="tabla-documentos">
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 300px', gap: '44px', alignItems: 'start', padding: '18px 10px 0' }}>
+          <div style={{ overflowX: 'auto', minWidth: 0 }}><div style={{ display: 'flex', flexDirection: 'column', minWidth: '760px' }} data-testid="tabla-documentos">
             <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: '20px', height: '34px', alignItems: 'center', borderBottom: `1px solid ${C.borde}`, ...EYEBROW }}>
               <div>Nombre</div><div>Relación</div><div>Actividad</div><div>Categoría</div><div style={{ textAlign: 'right' }}>Fecha</div>
             </div>
@@ -133,7 +136,7 @@ export function IndiceDocumentos({ documentos, actividades, asignar, clasificar,
                 </div>
               )
             })}
-          </div>
+          </div></div>
 
           <aside style={{ display: 'flex', flexDirection: 'column', gap: '24px' }} data-testid="panel-documentos">
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

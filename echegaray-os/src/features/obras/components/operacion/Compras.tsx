@@ -51,7 +51,7 @@ export function Compras({ compras }: { compras: ComprasObra }) {
             { texto: compras.imputadoEmpresa == null ? 'imputado a obras sin dato' : `contra ${cifraM(compras.imputadoEmpresa)} imputados a obras`, color: C.tintaSuave }, 'cifra-sin-imputar')}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column' }} data-testid="tabla-compras">
+        <div style={{ overflowX: 'auto' }}><div style={{ display: 'flex', flexDirection: 'column', minWidth: '900px' }} data-testid="tabla-compras">
           <GridCab columnas={COLS} celdas={[{ t: 'Fecha' }, { t: 'Proveedor' }, { t: 'Concepto' }, { t: 'Comprobante' }, { t: 'Total', der: true }, { t: 'Papel', der: true }]} />
           {vacio}
           {compras.filas.map((c, i) => (
@@ -64,7 +64,7 @@ export function Compras({ compras }: { compras: ComprasObra }) {
               <Celda tono="tenue" sub der>—</Celda>
             </GridFila>
           ))}
-        </div>
+        </div></div>
 
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '32px', fontSize: '12.5px', color: C.tintaSuave, flexWrap: 'wrap' }} data-testid="pie-compras">
           <span>Se muestran {compras.filas.length} de {compras.nComprobantes ?? 'sin conteo'}.</span>

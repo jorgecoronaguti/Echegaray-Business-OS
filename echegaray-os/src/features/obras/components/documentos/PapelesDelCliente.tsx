@@ -38,9 +38,10 @@ export function PapelesDelCliente({ ordenes, veEconomia }: { ordenes: OrdenDetal
 
   return (
     <>
-      <div className="hidden md:flex" style={{ flexDirection: 'column', gap: '10px' }} data-testid="papeles-del-cliente">
+      <div className="hidden md:flex" style={{ flexDirection: 'column', gap: '10px', padding: '0 10px' }} data-testid="papeles-del-cliente">
         <TituloBloque titulo="Papeles del cliente" meta="bajados del mail · viven en el OS, no en Drive" />
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div style={{ overflowX: 'auto' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: '820px' }}>
           {filas.map((o, i) => {
             const ret = retencionAdjunta(o.numeroCorto, o.retenciones.length)
             return (
@@ -57,6 +58,7 @@ export function PapelesDelCliente({ ordenes, veEconomia }: { ordenes: OrdenDetal
               </GridFila>
             )
           })}
+        </div>
         </div>
       </div>
 

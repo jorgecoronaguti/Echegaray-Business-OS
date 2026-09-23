@@ -33,7 +33,7 @@ export function Pedidos({ pedidos, actividades, actividadDe }: {
     <>
       {/* ═══ ESCRITORIO (10) ═══ */}
       <div className="hidden md:flex" style={{ flexDirection: 'column', gap: '24px' }} data-testid="pedidos-escritorio">
-        <div style={{ display: 'flex', flexDirection: 'column' }} data-testid="tabla-pedidos">
+        <div style={{ overflowX: 'auto' }}><div style={{ display: 'flex', flexDirection: 'column', minWidth: '900px' }} data-testid="tabla-pedidos">
           <GridCab columnas={COLS} celdas={[{ t: 'Fecha' }, { t: 'Qué se pidió' }, { t: 'Cant.', der: true }, { t: 'Quién lo pidió' }, { t: 'Estado' }, { t: 'Se convirtió en' }]} />
           {vacio}
           {pedidos.map((p, i) => {
@@ -54,7 +54,7 @@ export function Pedidos({ pedidos, actividades, actividadDe }: {
               </GridFila>
             )
           })}
-        </div>
+        </div></div>
       </div>
 
       {/* ═══ TELÉFONO (M13) ═══ */}

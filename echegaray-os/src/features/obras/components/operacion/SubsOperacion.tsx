@@ -2,7 +2,7 @@
 //
 // Escritorio: dentro del bloque blanco de la cabecera, `gap 14` de las solapas, texto 12,5 con su
 // icono de 12 y el conteo en faint; la activa 500 con `inset 0 -1.5px 0 #1F1F1E`. Es la misma banda que
-// `SubNavTrabajo`, y se dibuja acá con `-mx-5 -mt-3.5` porque la página la monta dentro del marco de 20px.
+// `SubNavTrabajo`, y se dibuja acá con `-mx-5 px-5 -mt-3.5` porque la página la monta dentro del marco de 20px.
 //
 // Teléfono: la fila corrible de pastillas de 36px (M12), sin icono grande ni banda gris.
 //
@@ -33,9 +33,12 @@ export function SubsOperacion({ obraId, sub, cuenta, veEconomia }: {
   }))
   return (
     <>
-      <div className="-mx-5 -mt-3.5 hidden md:flex" data-testid="subs-operacion" style={{
-        background: C.superficie, alignItems: 'center', gap: '16px', padding: '14px 30px 2px', fontSize: '12.5px', flexShrink: 0,
+      {/* A sangre con `-mx-5 px-5` (el marco real); los 10px que faltan hasta los 30 del diseño van
+          en el `nav` de adentro. */}
+      <div className="-mx-5 -mt-3.5 hidden px-5 md:flex" data-testid="subs-operacion" style={{
+        background: C.superficie, paddingTop: '14px', paddingBottom: '2px', flexShrink: 0,
       }}>
+      <nav style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '12.5px', paddingLeft: '10px' }}>
         {items.map((i) => (
           <Link key={i.id} href={i.href} prefetch={false} data-testid={`sub-${i.id}`} aria-current={i.activo ? 'page' : undefined}
             style={{
@@ -47,6 +50,7 @@ export function SubsOperacion({ obraId, sub, cuenta, veEconomia }: {
             {i.n != null && <span style={{ color: C.tenue, fontWeight: 400, fontFamily: MONO, fontSize: '11px' }}>{i.n}</span>}
           </Link>
         ))}
+      </nav>
       </div>
 
       <div className="flex md:hidden">

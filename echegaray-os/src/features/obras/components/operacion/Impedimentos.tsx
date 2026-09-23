@@ -114,7 +114,7 @@ export function Impedimentos({ impedimentos, actividades, crear, liberar, nuevo,
           <div style={{ marginLeft: 'auto', fontSize: '12.5px', color: C.tintaSuave }}>Ordenados por fecha de necesidad, no por cuándo se cargaron.</div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column' }} data-testid="tabla-impedimentos">
+        <div style={{ overflowX: 'auto', marginLeft: '-16px', paddingLeft: '16px' }}><div style={{ display: 'flex', flexDirection: 'column', minWidth: '980px' }} data-testid="tabla-impedimentos">
           <GridCab columnas={COLS} celdas={[{ t: 'Tipo' }, { t: 'Qué falta' }, { t: 'Traba' }, { t: 'Responsable' }, { t: 'Necesidad' }, { t: 'Compromiso' }, { t: 'Estado' }]} />
           {visibles.length === 0 && (
             <div style={{ padding: '18px 0', fontSize: '13px', color: C.tenue }} data-testid="impedimentos-vacio">
@@ -143,7 +143,7 @@ export function Impedimentos({ impedimentos, actividades, crear, liberar, nuevo,
               </div>
             )
           })}
-        </div>
+        </div></div>
 
         <div style={{ display: 'flex', gap: '56px', alignItems: 'flex-start' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '60ch' }}>

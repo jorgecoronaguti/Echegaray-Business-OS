@@ -49,10 +49,11 @@ export function TabDocumentos({
   vincularAbierto?: TipoDrive | null
 }) {
   return (
-    // El cuerpo del 14: `padding 22px 30px 32px` (el marco de la página pone 20 por lado y 24 abajo);
-    // 16 por lado en el teléfono.
-    <div className="-mx-1 flex flex-col gap-[14px] pt-0.5 md:mx-0 md:gap-[26px] md:px-2.5 md:pb-2 md:pt-2" data-testid="tab-documentos">
-      {vincularAbierto && <FormVincular tipo={vincularAbierto} accion={vincular} />}
+    // El cuerpo del 14: `padding 22px 30px 32px`. El marco de la página pone 20 por lado y 24 abajo;
+    // los 10 que faltan los pone cada bloque, para que la banda de chips sangre con `-mx-5 px-5`.
+    // En el teléfono queda el marco de 20 (M17 dibuja 16): ver `geometria-obras.test.ts`.
+    <div className="flex flex-col gap-[14px] pt-0.5 md:gap-[26px] md:pb-2 md:pt-2" data-testid="tab-documentos">
+      {vincularAbierto && <div className="md:px-2.5"><FormVincular tipo={vincularAbierto} accion={vincular} /></div>}
       <PapelesDelCliente ordenes={ordenes} veEconomia={veEconomia} />
       <IndiceDocumentos documentos={documentos} actividades={actividades}
         asignar={actividades.length > 0 ? asignarActividad : undefined} clasificar={clasificar} desvincular={desvincular} />

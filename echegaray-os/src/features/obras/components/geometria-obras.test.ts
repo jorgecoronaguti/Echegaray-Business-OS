@@ -188,17 +188,14 @@ test('Tareas dibuja como secundarias las dos vistas que no están en el canónic
   )
 })
 
-test('los dos «Vincular» de Documentos no ocupan ancho mientras están plegados', () => {
-  const fuente = codigo(readFileSync(join(RAIZ, 'src/features/obras/components/TabDocumentos.tsx'), 'utf8'))
-  const bloque = fuente.slice(fuente.indexOf('<details'), fuente.indexOf('</details>'))
-  assert.match(bloque, /<details className="group\b/, 'el `<details>` perdió el `group`')
-  assert.match(
-    bloque, /className="[^"]*\bhidden\b[^"]*group-open:block[^"]*w-\[440px\]/,
-    'el formulario de 440px volvió a estar en el layout con el panel cerrado. Dos de estos suman '
-    + '880px que empujan la ficha de obra hacia el costado. `hidden group-open:block` lo saca del '
-    + 'documento SIN desmontarlo: lo que se tipeó sigue ahí al volver a abrir.',
-  )
-  // LA REGLA ES ESTRECHA A PROPÓSITO: hay otros `<details>` en obras con paneles anchos —06, 09 y
-  // el alta de obra— y ninguno se midió en un navegador. Una regla general los pondría rojos hoy y
-  // obligaría a cambiar a ciegas cuatro pantallas que nadie miró. Se amplía cuando se midan.
+test('los dos «Vincular» de Documentos no ocupan ancho mientras están cerrados', () => {
+  // DESDE EL DISEÑO 14 (ERP Obras, 23/09/2026) «Vincular documento» y «Vincular carpeta» son dos
+  // enlaces de texto en la cabecera de la obra, y el formulario se abre por `?vincular=archivo|carpeta`
+  // arriba del índice. Ya no hay `<details>` plegado: cerrado, el formulario NO SE MONTA, que es la
+  // versión fuerte de lo que esta regla cuidaba (880px de formularios empujando la ficha de costado).
+  const tab = codigo(readFileSync(join(RAIZ, 'src/features/obras/components/TabDocumentos.tsx'), 'utf8'))
+  assert.doesNotMatch(tab, /<details/, 'volvió un `<details>` a Documentos: el 14 abre el formulario por URL')
+  assert.match(tab, /\{vincularAbierto && [^{}]{0,60}<FormVincular\b/, 'el formulario de vincular se monta aunque nadie lo abrió')
+  const form = codigo(readFileSync(join(RAIZ, 'src/features/obras/components/documentos/FormVincular.tsx'), 'utf8'))
+  assert.doesNotMatch(form, /w-\[\d{3,}px\]|width:\s*'\d{3,}px'/, 'el formulario de vincular fija un ancho: en el teléfono desborda')
 })
