@@ -106,6 +106,8 @@ export const SUBS_TAREAS = [
   { id: 'arbol', label: 'Ítems' },
   { id: 'gantt', label: 'Cronograma' },
   { id: 'parte', label: 'Parte diario' },
+  // PLANILLA (diseño ERP Obras 04c, 23/09/2026): tarea × día hábil con la fracción de cada parte. Sólo escritorio.
+  { id: 'planilla', label: 'Planilla' },
 ] as const
 export type SubTareas = (typeof SUBS_TAREAS)[number]['id']
 
@@ -150,6 +152,8 @@ const ALIAS: Record<string, { vista: VistaObra; sub: SubTareas }> = {
   cronograma: { vista: 'tareas', sub: 'gantt' },
   gantt: { vista: 'tareas', sub: 'gantt' },
   ejecucion: { vista: 'tareas', sub: 'parte' },
+  // `?vista=items` (diseño 04b): es el árbol de Ítems del workspace de Trabajo.
+  items: { vista: 'tareas', sub: 'arbol' },
 }
 
 /** Las sub-vistas retiradas: sus URLs viejas abren el Cronograma, que es donde vive lo que

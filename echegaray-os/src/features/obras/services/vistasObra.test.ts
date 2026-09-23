@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  resolverVistaObra, rutaHermana, SUBS_TAREAS, VISTAS_OBRA, hrefCronograma, hrefDeVista, hrefDotacion,
+  resolverVistaObra, rutaHermana, SUBS_TAREAS, pantallasDeTrabajo, VISTAS_OBRA, hrefCronograma, hrefDeVista, hrefDotacion,
   hrefEconomia, hrefSubcontratos,
 } from './vistasObra.ts'
 
@@ -92,7 +92,7 @@ test('«Subcontratos» es una pantalla aparte, no una sub-vista del workspace', 
 // con nada, y «Gantt» nombraba la herramienta en vez del trabajo. La distinción con la secuencia
 // CALCULADA (camino crítico, `/obras/<obra>/cronograma`) vive como enlace dentro de la vista.
 test('el workspace queda en tres sub-vistas: Tareas, Cronograma y Parte diario', () => {
-  assert.deepEqual(SUBS_TAREAS.map((s) => s.id), ['arbol', 'gantt', 'parte'])
+  assert.deepEqual(SUBS_TAREAS.map((s) => s.id), ['arbol', 'gantt', 'parte', 'planilla'])
   assert.equal(SUBS_TAREAS.find((s) => s.id === 'gantt')?.label, 'Cronograma')
   assert.deepEqual(resolverVistaObra('cronograma', undefined), { vista: 'tareas', sub: 'gantt' })
 })
@@ -114,4 +114,10 @@ test('una vista del workspace NO se desvía a otra ruta', () => {
 // ═══ H1 DEL DISEÑO ERP OBRAS (23/09/2026) ═══
 test('el árbol de Trabajo se rotula «Ítems»; el id `arbol` no cambia (marcadores, chat, tests)', () => {
   assert.equal(SUBS_TAREAS.find((s) => s.id === 'arbol')?.label, 'Ítems')
+})
+
+test('`?vista=items` (diseño 04b) abre el árbol de Ítems; `sub=planilla` es una pantalla de Trabajo', () => {
+  assert.deepEqual(resolverVistaObra('items', undefined), { vista: 'tareas', sub: 'arbol' })
+  assert.deepEqual(resolverVistaObra('tareas', 'planilla'), { vista: 'tareas', sub: 'planilla' })
+  assert.deepEqual(pantallasDeTrabajo('x', 'planilla').map((p) => p.id), ['arbol', 'gantt', 'parte', 'planilla', 'subcontratos'])
 })

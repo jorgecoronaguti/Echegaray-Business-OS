@@ -72,6 +72,7 @@ import { hrefEconomia, resolverVistaObra, rutaHermana } from '@/features/obras/s
 import { SubNavTrabajo } from '@/features/obras/components/SubNavTrabajo'
 import { WorkspaceTareas } from '@/features/obras/components/WorkspaceTareas'
 import { ParteDiario } from '@/features/obras/components/parte/ParteDiario'
+import { TabPlanilla } from '@/features/obras/components/planilla/TabPlanilla'
 import { getPartes } from '@/features/obras/services/ejecucionService'
 import { getIntegrantesPorCuadrilla } from '@/features/obras/services/personalService'
 import {
@@ -122,6 +123,7 @@ export default async function ObraPage({
   const esArbol = enTareas && subTareas === 'arbol'
   const esCronograma = enTareas && subTareas === 'gantt'
   const esParte = enTareas && subTareas === 'parte'
+  const esPlanilla = enTareas && subTareas === 'planilla'
 
   // ═══ TODAS LAS LECTURAS DE LA VISTA SALEN JUNTAS (22/08/2026) ═══
   //
@@ -324,7 +326,9 @@ export default async function ObraPage({
       {/* NIVEL 3 DE TRABAJO — la banda `#FAFAF8` del zip, de borde a borde. En el árbol la dibuja
           `TabTareas` y en el parte diario `ParteDiario`, porque ahí comparten renglón con lo suyo:
           el buscador y los filtros en uno, el navegador de día en el otro. */}
-      {vista === 'tareas' && !esArbol && !esCronograma && !esParte && <SubNavTrabajo obraId={obraId} sub={subTareas} />}
+      {vista === 'tareas' && !esArbol && !esCronograma && !esParte && !esPlanilla && <SubNavTrabajo obraId={obraId} sub={subTareas} />}
+      {/* PLANILLA (diseño ERP Obras 04c): tarea × día hábil. Lee `planilla_obra` (migración 20260923T2310). */}
+      {esPlanilla && <TabPlanilla obraId={obraId} />}
 
       {/* LA 03 SE DIBUJA DE BORDE A BORDE: el canónico le da a la lista, al Gantt y al panel el
           ancho entero de la ventana, y el padding de 20px es interno de cada banda. */}
@@ -382,7 +386,7 @@ export default async function ObraPage({
 
       {/* El resto de las solapas sí vive en un contenedor con aire. Con el árbol o el cronograma en
           pantalla este div queda vacío y sin padding: 40px de aire fantasma se ven. */}
-      <div className={esArbol || esCronograma || esParte ? '' : 'w-full px-5 pb-6 pt-3.5'}>
+      <div className={esArbol || esCronograma || esParte || esPlanilla ? '' : 'w-full px-5 pb-6 pt-3.5'}>
 
       {vista === 'resumen' && (
         <TabResumen

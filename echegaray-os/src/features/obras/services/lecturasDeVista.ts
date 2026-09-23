@@ -78,7 +78,7 @@
 export const PERSONAL_SE_DIBUJA = true
 
 /** Las sub-vistas de la solapa Tareas. `null` cuando la solapa activa no es Tareas. */
-export type SubTareas = 'arbol' | 'gantt' | 'parte' | null
+export type SubTareas = 'arbol' | 'gantt' | 'parte' | 'planilla' | null
 
 /** Los tres recortes de `obra_plan_vs_real` que se piden hoy. `resumen` es la vista entera: no es
  *  que nadie lo haya mirado, es que el Resumen dibuja `forecast_fin` y medirlo dio el mismo costo
