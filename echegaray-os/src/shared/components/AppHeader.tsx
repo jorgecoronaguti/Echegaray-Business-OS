@@ -154,7 +154,10 @@ export function AppHeader({
             «Presupuestos» quedaba tapado por el icono de búsqueda. `barra-corrible` (globals.css)
             hace que la caja recorte y se corra por dentro. A 1280 y 1440 el contenido entra y
             `overflow-x: auto` no dibuja ni recorta nada: la geometría de escritorio no se toca. */}
-        <nav ref={barra} className={`barra-corrible h-full min-w-0 items-stretch ${solapasSoloEscritorio ? 'hidden md:flex' : 'flex'}`} data-testid="nav-areas">
+        {/* CON BARRA DE ABAJO EN EL TELÉFONO las solapas se guardan bajo `md` (23/09/2026). El envoltorio
+            es `contents`: no cambia la geometría de escritorio, sólo apaga el nav en el teléfono. */}
+        <div className={solapasSoloEscritorio ? 'contents max-md:hidden' : 'contents'}>
+        <nav ref={barra} className="barra-corrible flex h-full min-w-0 items-stretch" data-testid="nav-areas">
           {solapas.length === 1 ? (
             <span className="flex h-full items-center px-3 text-[13px] font-medium text-muted">{solapas[0].label}</span>
           ) : (
@@ -187,6 +190,7 @@ export function AppHeader({
             ))
           )}
         </nav>
+        </div>
 
         {/* EL USUARIO ES UN AVATAR, NO UNA LÍNEA DE TEXTO (mockup 00/01/02/03 · orden del dueño 24/08).
             Acá vivía `[email · rol]` + el botón «Cerrar sesión» escritos en el header. En el correo

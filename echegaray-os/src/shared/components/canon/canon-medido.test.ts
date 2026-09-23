@@ -86,7 +86,7 @@ test('la fila NO seleccionada no lleva background inline, o el hover queda muert
   // El mockup escribe `background:transparent`. Copiarlo literal a un objeto `style` le gana a
   // `hover:bg-[#FAFAF8]` —inline > clase— y la fila deja de responder al mouse. Se omite.
   assert.match(src, /\.\.\.\(pintada \? \{ background: pintada \} : null\)/)
-  assert.match(src, /pintada \? '' : 'hover:bg-\[#FAFAF8\]'/)
+  assert.match(src, /pintada \? '' : 'hover:bg-surface-quiet'/)
 })
 
 test('el pie de totales vive DENTRO de la caja, a la derecha y con 26px entre pares', () => {
