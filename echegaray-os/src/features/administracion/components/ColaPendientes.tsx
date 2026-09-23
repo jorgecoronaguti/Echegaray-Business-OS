@@ -113,7 +113,10 @@ export function ColaPendientes({ cola, activa, resumen, alAbrir }: {
         <span className="ml-auto text-[11px] text-faint">por importe</span>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
+      {/* EN EL TELÉFONO la cola va ARRIBA de la decisión, apilada: sin tope de alto, treinta textos
+          mandaban la decisión a dos pantallas de scroll. Con 38vh se ven cinco o seis y el resto
+          rueda por dentro; en escritorio el alto lo da la columna. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto max-lg:max-h-[38vh]">
         {cola.map((g) => (
           <Entrada key={g.clave} g={g} activa={g.clave === activa} alAbrir={() => alAbrir(g.clave)} />
         ))}

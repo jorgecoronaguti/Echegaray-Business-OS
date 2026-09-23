@@ -128,18 +128,22 @@ function Obra({ o, elegida, alElegir }: { o: ObraElegible; elegida: boolean; alE
  *
  * Las dos variantes son la MISMA cadena menos la primera pista, para que no puedan divergir.
  */
-const COLS_FILAS = 'grid-cols-[120px_100px_minmax(0,1.6fr)_minmax(0,1fr)_140px]'
+const COLS_FILAS = 'md:grid-cols-[120px_100px_minmax(0,1.6fr)_minmax(0,1fr)_140px]'
 /** La misma cadena MENOS la primera pista: el grupo de una sola fuente no dibuja TIPO. */
-const COLS_SIN_TIPO = 'grid-cols-[100px_minmax(0,1.6fr)_minmax(0,1fr)_140px]'
+const COLS_SIN_TIPO = 'md:grid-cols-[100px_minmax(0,1.6fr)_minmax(0,1fr)_140px]'
 /** Las dos van literales y enteras: Tailwind escanea el archivo y no compila una clase que se arma
  *  concatenando en runtime — `grid-cols-[${...}]` deja la fila sin ninguna grilla. */
+// A 390px las pistas fijas (120 + 100 + 140 más cuatro huecos de 28) suman 470px: la fila empujaba
+// la página de costado. Abajo de 768 la fila son DOS pistas —descripción e importe— y la fecha, el
+// tipo y el recurso bajan a un renglón bajo la descripción. La misma información, sin desborde.
+const COLS_TELEFONO = 'grid-cols-[minmax(0,1fr)_auto]'
 const gridDe = (conTipo: boolean) =>
-  `grid gap-[28px] pl-4 ${conTipo ? COLS_FILAS : COLS_SIN_TIPO}`
+  `grid gap-3 pl-4 md:gap-[28px] ${COLS_TELEFONO} ${conTipo ? COLS_FILAS : COLS_SIN_TIPO}`
 
 /** El encabezado del mockup: 40px, versalitas de 10.5px, y NINGÚN filo debajo (`33:115`). */
 function CabeceraFilas({ conTipo }: { conTipo: boolean }) {
   return (
-    <div className={`${gridDe(conTipo)} h-10 items-center text-[10.5px] font-semibold uppercase tracking-[0.07em] text-faint`}>
+    <div className={`${gridDe(conTipo)} hidden h-10 items-center text-[10.5px] font-semibold uppercase tracking-[0.07em] text-faint md:grid`}>
       {conTipo && <span>Tipo</span>}
       <span>Fecha</span>
       <span>Descripción</span>
@@ -153,15 +157,21 @@ function FilaQueSeMueve({ f, conTipo }: { f: GrupoPendiente['filas'][number]; co
   return (
     <div data-testid="fila-detalle" className={`${gridDe(conTipo)} min-h-[66px] items-center border-b border-line`}>
       {conTipo && (
-        <span className="truncate text-[11.5px] text-muted" data-testid="fila-tipo">
+        <span className="hidden truncate text-[11.5px] text-muted md:block" data-testid="fila-tipo">
           {ETIQUETA_TIPO[f.tipo]}
         </span>
       )}
-      <span className={`truncate font-mono text-[11.5px] tabular-nums ${f.fecha ? 'text-muted' : 'text-faint'}`}>
+      <span className={`hidden truncate font-mono text-[11.5px] tabular-nums md:block ${f.fecha ? 'text-muted' : 'text-faint'}`}>
         {f.fecha ? fechaCorta(f.fecha) : 'sin fecha'}
       </span>
       <span className="flex min-w-0 flex-col gap-1">
         <span className="truncate text-[12px] text-ink">{f.descripcion}</span>
+        {/* EN EL TELÉFONO la fecha, el tipo y el recurso viven acá, bajo la descripción: sus
+            columnas están apagadas (`md:block`) y sin este renglón la fila los perdería. */}
+        <span className="truncate text-[11px] text-muted md:hidden" data-testid="fila-detalle-telefono">
+          {[f.fecha ? fechaCorta(f.fecha) : 'sin fecha', conTipo ? ETIQUETA_TIPO[f.tipo] : null, f.recurso ?? 'sin recurso']
+            .filter(Boolean).join(' · ')}
+        </span>
         {/* LA TRAZABILIDAD ES LA TABLA MÁS EL IDENTIFICADOR: sin el segundo, «salió de compras» no
             permite ir a buscar el comprobante y confirmarlo. */}
         <span className="truncate font-mono text-[10.5px] text-faint">
@@ -170,7 +180,7 @@ function FilaQueSeMueve({ f, conTipo }: { f: GrupoPendiente['filas'][number]; co
       </span>
       {/* SIN RECURSO NO ES UN GUIÓN: en una compra es el proveedor que nadie escribió, y es
           exactamente lo que hace falta para saber de quién es el costo. */}
-      <span className={`truncate text-[11.5px] ${f.recurso ? 'text-ink-soft' : 'text-faint'}`} data-testid="fila-recurso">
+      <span className={`hidden truncate text-[11.5px] md:block ${f.recurso ? 'text-ink-soft' : 'text-faint'}`} data-testid="fila-recurso">
         {f.recurso ?? 'sin recurso'}
       </span>
       {/* UNA FILA QUE MUEVE UN RECURSO Y NO PLATA NO VALE $ 0. */}
