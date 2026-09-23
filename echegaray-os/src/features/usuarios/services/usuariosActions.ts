@@ -210,6 +210,60 @@ export async function regenerarClave(usuarioId: string): Promise<ResultadoClave>
   return { ok: true, email: usuario.email, clave, sinAcceso: usuario.estado !== 'activo' }
 }
 
+// ── ENLACE DE ACCESO ────────────────────────────────────────────────────────────────────────────
+
+export type ResultadoEnlace =
+  | { ok: true; email: string; enlace: string; sinAcceso: boolean }
+  | { ok: false; error: string }
+
+/**
+ * UN ENLACE QUE ENTRA DIRECTO, PARA PASARLE A LA PERSONA POR CHAT (23/09/2026).
+ *
+ * Es la «invitación» y el «reenviar invitación» de este sistema: no hay SMTP, así que
+ * `inviteUserByEmail` mandaría un correo que no llega. `generateLink` NO manda nada: devuelve el
+ * `hashed_token` de un enlace mágico, y el enlace se arma contra `/callback`, que lo canjea por una
+ * sesión (`verifyOtp`). Es de un solo uso y vence solo (lo decide Auth, una hora por defecto).
+ *
+ * SÓLO DIRECCIÓN, por lo mismo que la contraseña: quien tiene el enlace entra con él. Se muestra
+ * una vez y no se guarda en ningún lado.
+ */
+export async function enlaceDeAcceso(usuarioId: string): Promise<ResultadoEnlace> {
+  const puerta = await soloDireccion()
+  if (!puerta.ok) return { ok: false, error: puerta.error }
+  const contexto = await cuentaEnJuego(puerta.admin, puerta.actorId, usuarioId)
+  if (!contexto) return { ok: false, error: 'No encontré esa cuenta.' }
+  const { usuario } = contexto
+  if (!usuario.email) return { ok: false, error: 'Esa cuenta no tiene correo: no hay con qué entrar.' }
+
+  const { data, error } = await puerta.admin.auth.admin.generateLink({ type: 'magiclink', email: usuario.email })
+  if (error || !data?.properties?.hashed_token) return { ok: false, error: error?.message ?? 'No pude generar el enlace.' }
+  const { siteUrl } = await import('@/lib/site-url')
+  const enlace = `${siteUrl()}/callback?token_hash=${encodeURIComponent(data.properties.hashed_token)}&type=magiclink&next=%2F`
+  return { ok: true, email: usuario.email, enlace, sinAcceso: usuario.estado !== 'activo' }
+}
+
+// ── DOS PASOS DE OTRA CUENTA ────────────────────────────────────────────────────────────────────
+
+/**
+ * LE QUITA LOS DOS PASOS A UNA CUENTA QUE PERDIÓ EL TELÉFONO. Es la única salida cuando la persona
+ * no tiene la app de códigos: sin esto queda afuera para siempre. Sólo Dirección, y la cuenta vuelve
+ * a entrar sólo con contraseña hasta que la persona los active de nuevo desde Mi cuenta.
+ */
+export async function quitarDosPasosDe(usuarioId: string): Promise<Resultado & { quitados?: number }> {
+  const puerta = await soloDireccion()
+  if (!puerta.ok) return { ok: false, error: puerta.error }
+  const { data, error } = await puerta.admin.auth.admin.mfa.listFactors({ userId: usuarioId })
+  if (error) return { ok: false, error: error.message }
+  let quitados = 0
+  for (const f of data?.factors ?? []) {
+    const { error: dErr } = await puerta.admin.auth.admin.mfa.deleteFactor({ id: f.id, userId: usuarioId })
+    if (dErr) return { ok: false, error: dErr.message }
+    quitados++
+  }
+  revalidatePath(PATH)
+  return { ok: true, quitados }
+}
+
 // ── EDICIÓN ─────────────────────────────────────────────────────────────────────────────────────
 
 export async function editarUsuario(usuarioId: string, form: FormData): Promise<Resultado> {

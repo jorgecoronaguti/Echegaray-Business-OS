@@ -22,8 +22,8 @@ import { ROL_LABEL, type Rol } from '@/features/auth/types'
 import { AREA_LABEL } from '@/features/auth/types/areas'
 import { motivoParaNoRegenerarClave, ROLES_DE_AREA } from '../services/reglas'
 import {
-  asignarObra, cambiarAcceso, cambiarRol, editarUsuario, quitarObra, regenerarClave, vincularPersona,
-  type ResultadoClave,
+  asignarObra, cambiarAcceso, cambiarRol, editarUsuario, enlaceDeAcceso, quitarDosPasosDe, quitarObra, regenerarClave,
+  vincularPersona, type ResultadoClave, type ResultadoEnlace,
 } from '../services/usuariosActions'
 import { permisosEfectivos, type ObraElegible, type PersonaVinculable, type UsuarioGestion } from '../types'
 import { Credencial } from './Credencial'
@@ -80,6 +80,87 @@ function Contrasena({ u, rolActor }: { u: UsuarioGestion; rolActor: Rol | null }
           )}
         </>
       )}
+    </section>
+  )
+}
+
+/**
+ * ENLACE DE ACCESO — la invitación y el «reenviar invitación» de este sistema (23/09/2026).
+ *
+ * No hay SMTP: un correo de invitación no llegaría. El enlace se genera acá, se copia y se le pasa a la
+ * persona por el chat de siempre; entra directo, una sola vez, y después cambia su contraseña desde
+ * Mi cuenta. Sólo Dirección, como la contraseña: quien tiene el enlace entra.
+ */
+function EnlaceDeAcceso({ u, rolActor }: { u: UsuarioGestion; rolActor: Rol | null }) {
+  const impedimento = motivoParaNoRegenerarClave(rolActor)
+  const [resultado, setResultado] = useState<ResultadoEnlace | null>(null)
+  const [copiado, setCopiado] = useState(false)
+  const [enCurso, empezar] = useTransition()
+  if (impedimento) return null
+  return (
+    <section data-testid="panel-enlace">
+      <Eyebrow className="mb-2">Enlace de acceso</Eyebrow>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={enCurso}
+          data-testid="generar-enlace"
+          onClick={() => empezar(async () => { setCopiado(false); setResultado(await enlaceDeAcceso(u.id)) })}
+          className="rounded-control border border-line bg-surface px-3 py-1.5 text-[13px] text-ink hover:bg-surface-sunken disabled:opacity-50"
+        >
+          {enCurso ? 'Generando…' : u.ultimoIngreso ? 'Generar enlace de acceso' : 'Generar enlace de invitación'}
+        </button>
+        <span className="text-[11px] text-faint">Entra directo, una vez, sin contraseña. Vence solo.</span>
+      </div>
+      {resultado && !resultado.ok && <p className="mt-1.5 text-[12px] text-neg" data-testid="error-enlace">{resultado.error}</p>}
+      {resultado?.ok && (
+        <div className="mt-2 rounded-control border border-pos/30 bg-pos-soft p-2.5" data-testid="enlace-generado">
+          <p className="text-[12px] font-medium text-pos">Pasale este enlace a {resultado.email}:</p>
+          <pre className="mt-1.5 whitespace-pre-wrap break-all rounded bg-surface p-2 text-[11px] text-ink">{resultado.enlace}</pre>
+          <button
+            type="button"
+            onClick={() => { navigator.clipboard?.writeText(resultado.enlace); setCopiado(true) }}
+            className="mt-1.5 rounded-control border border-line bg-surface px-2 py-1 text-[11px] text-muted hover:bg-surface-sunken"
+          >
+            {copiado ? 'Copiado' : 'Copiar'}
+          </button>
+          <p className="mt-1.5 text-[11px] text-muted">No se vuelve a mostrar. Si se pierde, generá otro.</p>
+          {resultado.sinAcceso && (
+            <p className="mt-1.5 text-[11px] font-medium text-warn">Ojo: esta cuenta no tiene acceso. El enlace no le va a servir hasta que se lo devuelvas acá abajo.</p>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** QUITARLE LOS DOS PASOS a quien perdió el teléfono. Sólo Dirección. */
+function DosPasosDeLaCuenta({ u, rolActor }: { u: UsuarioGestion; rolActor: Rol | null }) {
+  const impedimento = motivoParaNoRegenerarClave(rolActor)
+  const [mensaje, setMensaje] = useState<{ ok: boolean; texto: string } | null>(null)
+  const [enCurso, empezar] = useTransition()
+  if (impedimento) return null
+  return (
+    <section data-testid="panel-dos-pasos">
+      <Eyebrow className="mb-2">Verificación en dos pasos</Eyebrow>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={enCurso}
+          data-testid="quitar-dos-pasos-de"
+          onClick={() => empezar(async () => {
+            const r = await quitarDosPasosDe(u.id)
+            setMensaje(r.ok
+              ? { ok: true, texto: r.quitados ? `Listo: se quitaron ${r.quitados}. Vuelve a entrar sólo con contraseña.` : 'Esta cuenta no tenía dos pasos activos.' }
+              : { ok: false, texto: r.error })
+          })}
+          className="rounded-control border border-line bg-surface px-3 py-1.5 text-[13px] text-ink hover:bg-surface-sunken disabled:opacity-50"
+        >
+          {enCurso ? 'Quitando…' : 'Quitar los dos pasos'}
+        </button>
+        <span className="text-[11px] text-faint">Para quien perdió el teléfono con la app de códigos.</span>
+      </div>
+      {mensaje && <p className={`mt-1.5 text-[12px] ${mensaje.ok ? 'text-muted' : 'text-neg'}`} data-testid="dos-pasos-de-resultado">{mensaje.texto}</p>}
     </section>
   )
 }
@@ -295,6 +376,10 @@ export function PanelUsuario({
         <ObrasDeLaCuenta u={u} obras={obras} />
 
         <Contrasena u={u} rolActor={rolActor} />
+
+        <EnlaceDeAcceso u={u} rolActor={rolActor} />
+
+        <DosPasosDeLaCuenta u={u} rolActor={rolActor} />
 
         <section>
           <Eyebrow className="mb-2">Acceso</Eyebrow>

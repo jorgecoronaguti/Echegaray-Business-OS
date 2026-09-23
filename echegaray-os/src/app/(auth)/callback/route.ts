@@ -27,10 +27,24 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code')
   const vencido = new URL(`${RUTA_RECUPERAR}?vencido=1`, origin)
 
+  // ═══ EL ENLACE DE ACCESO QUE ARMA USUARIOS (23/09/2026) ═══
+  //
+  // `generateLink` en `/administracion/usuarios` no manda correo (no hay SMTP): devuelve el
+  // `hashed_token`, y el enlace que Dirección le pasa a la persona es
+  // `/callback?token_hash=…&type=magiclink`. Se canjea con `verifyOtp`, que escribe la sesión igual
+  // que el canje PKCE de abajo; el token es de un solo uso y vence solo (Auth lo controla). Un token
+  // usado o vencido cae en el mismo destino que un `code` muerto.
+  const tokenHash = searchParams.get('token_hash')
+  const supabase = await createClient()
+  if (tokenHash && searchParams.get('type') === 'magiclink') {
+    const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'magiclink' })
+    if (error) return NextResponse.redirect(vencido)
+    return NextResponse.redirect(new URL(destinoSeguro(searchParams.get('next')), origin))
+  }
+
   // Supabase también vuelve por acá cuando el enlace ya no sirve, pero con `error` en vez de `code`.
   if (!code || searchParams.get('error')) return NextResponse.redirect(vencido)
 
-  const supabase = await createClient()
   const { error } = await supabase.auth.exchangeCodeForSession(code)
   if (error) return NextResponse.redirect(vencido)
 
