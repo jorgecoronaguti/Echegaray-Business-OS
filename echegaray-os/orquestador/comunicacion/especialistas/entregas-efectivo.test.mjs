@@ -166,3 +166,27 @@ test('si la foto no se pudo guardar, se dice: la entrega quedó sin su papel', a
   })
   assert.match(r.texto, /sin el papel/)
 })
+
+// ═══ LA RESPUESTA A LA PREGUNTA DEL BOT (dueño, 23/09/2026) ═══
+import { pendienteDe, recordarPendiente } from './entregas-efectivo.mjs'
+
+test('lo que el bot preguntó se recuerda por persona y canal, diez minutos', () => {
+  const actor = { plataforma_user_id: 'u1', channel_id: 'c1' }
+  recordarPendiente(actor, '$100 a jorge', 1_000)
+  assert.equal(pendienteDe(actor, 2_000), '$100 a jorge')
+  assert.equal(pendienteDe({ plataforma_user_id: 'u2', channel_id: 'c1' }, 2_000), null, 'otra persona no hereda la pregunta')
+  assert.equal(pendienteDe(actor, 1_000 + 11 * 60_000), null, 'a los diez minutos se olvida')
+  recordarPendiente(actor, '$100 a jorge', 1_000)
+  recordarPendiente(actor, null)
+  assert.equal(pendienteDe(actor, 2_000), null)
+})
+
+test('con una pregunta abierta, el mensaje siguiente se reclama aunque solo no diga nada', async () => {
+  const actor = { plataforma_user_id: 'u9', channel_id: 'c9' }
+  recordarPendiente(actor, '$100 a jorge')
+  const r = await especialista.reconoce('para combustible', { area: 'rendicion', actor })
+  assert.equal(r?.destino, 'entregar')
+  assert.equal(r?.completa, true)
+  recordarPendiente(actor, null)
+  assert.equal(await especialista.reconoce('para combustible', { area: 'rendicion', actor }), null)
+})

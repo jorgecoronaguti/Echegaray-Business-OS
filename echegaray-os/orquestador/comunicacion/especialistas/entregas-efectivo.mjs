@@ -29,6 +29,28 @@ import { subirAStorage } from '../../lib/storage-supabase.mjs'
 
 export const AREAS_QUE_ENTREGAN = Object.freeze(['rendicion'])
 
+// ═══ LA PREGUNTA QUE QUEDÓ ABIERTA (dueño, 23/09/2026: «no contempla todos los casos») ═══
+//
+// El bot pregunta «¿a qué obra?» y la persona contesta «galpón 8». Ese segundo mensaje, solo, no es una
+// entrega para nadie: caía a la libreta. Acá se guarda, por persona y canal, el texto al que le faltó
+// algo, y el mensaje siguiente se lee PEGADO al anterior. Vive en memoria del worker a propósito: son
+// diez minutos, y si el proceso se reinicia el bot vuelve a preguntar, que es lo peor que puede pasar.
+const PENDIENTE_MIN = 10
+const pendientes = new Map()
+const claveDe = (actor) => actor?.plataforma_user_id && actor?.channel_id ? `${actor.channel_id}:${actor.plataforma_user_id}` : null
+export function pendienteDe(actor, ahora = Date.now()) {
+  const k = claveDe(actor)
+  const p = k ? pendientes.get(k) : null
+  if (!p) return null
+  if (ahora - p.en > PENDIENTE_MIN * 60_000) { pendientes.delete(k); return null }
+  return p.texto
+}
+export function recordarPendiente(actor, texto, ahora = Date.now()) {
+  const k = claveDe(actor)
+  if (!k) return
+  if (texto == null) pendientes.delete(k); else pendientes.set(k, { texto, en: ahora })
+}
+
 /**
  * LA FOTO DEL VALE (dueño, 22/09/2026: «tb registro mediante multimedia»). Se dispara con lo que ESCRIBE
  * quien manda la foto, no con lo que el modelo crea que ve: en ese canal el 99 % de las fotos son facturas,
@@ -59,7 +81,7 @@ export async function padronDeEntregas(port) {
     `select id, nombre_completo as nombre from public.personas
       where en_la_empresa and not coalesce(es_prueba, false) order by nombre_completo`)
   const obras = await port.query(
-    `select id, codigo, nombre from public.obra_canonica
+    `select id, codigo, nombre, cliente_texto from public.obra_canonica
       where estado = 'activa' and fusionada_en is null order by nombre`)
   return { personas: personas?.rows ?? [], obras: obras?.rows ?? [] }
 }
@@ -171,6 +193,11 @@ export const especialista = {
     if (!AREAS_QUE_ENTREGAN.includes(ctx.area)) return null
     // Con adjuntos manda la foto: eso es un comprobante o una rendición, no una entrega escrita.
     if ((ctx.fileIds?.length ?? 0) > 0) return null
+    // LA RESPUESTA A MI PREGUNTA. Si a esta persona, en este canal, le acabo de preguntar algo («¿cuánto?»,
+    // «¿a qué obra?»), su próximo mensaje es la respuesta y no una entrega nueva: «galpón 8» solo no lo
+    // reconoce nadie, y sin esto caía a la libreta. Se reclama con 0,9: le gana a la libreta y a la
+    // sospecha sin verbo, y pierde sólo contra un texto que otro reconozca con certeza total.
+    if (pendienteDe(ctx.actor)) return { destino: 'entregar', confianza: 0.9, completa: true }
     if (pareceEntrega(texto)) return { destino: 'entregar', confianza: 1 }
     // SIN VERBO —«100 a jorge para combustible»— es una sospecha, no una certeza: la misma forma puede ser
     // un pago a un proveedor. 0,5 le gana a la red de abajo de la libreta (0,2) y pierde contra cualquiera
@@ -205,11 +232,22 @@ export const especialista = {
     }
     if (!yo?.perfil_id) return { texto: TEXTO.SIN_PERSONA, estado: 'rechazado_sin_perfil', privado: false }
 
-    const leido = interpretarEntrega(texto, padron)
+    // LA RESPUESTA SE PEGA A LA PREGUNTA. Si quedó algo abierto y este mensaje no es una entrega entera
+    // por sí mismo, se lee «lo anterior + esto»: «$100 a jorge» + «para combustible» = la entrega completa.
+    const anterior = pendienteDe(actor)
+    const solo = interpretarEntrega(texto, padron)
+    // Con el verbo escrito de nuevo es una entrega nueva, no la respuesta: se empieza de cero.
+    const pegado = anterior && solo.estado !== 'listo' && !pareceEntrega(texto)
+      ? interpretarEntrega(`${anterior} ${texto}`, padron) : null
+    const leido = pegado && (pegado.estado === 'listo' || solo.estado === 'nada') ? pegado : solo
+    const textoLeido = leido === pegado ? `${anterior} ${texto}` : texto
     if (leido.estado === 'nada') return { texto: TEXTO.AYUDA, estado: 'ayuda', privado: false }
     if (leido.estado === 'pregunta') {
+      // Lo que falta se pregunta, y el texto queda esperando la respuesta. «varias» no se guarda: son dos.
+      recordarPendiente(actor, leido.falta === 'varias' ? null : textoLeido)
       return { texto: textoDePregunta(leido), estado: `pregunta_${leido.falta}`, privado: false }
     }
+    recordarPendiente(actor, null)
 
     try {
       const codigo = await entregar({

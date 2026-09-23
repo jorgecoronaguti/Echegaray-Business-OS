@@ -90,8 +90,9 @@ test('lo que falta se pregunta con nombre y apellido, y sin publicar plata de na
   const t = textoDePregunta(ambigua)
   assert.match(t, /SOSA RUBEN DARIO/)
   assert.doesNotMatch(t, /\$/, 'la pregunta no publica importes')
-  // Sin ningún número no es una entrega: es una charla.
-  assert.equal(interpretarEntrega('entregué mucha plata a Aguero', { personas: PERSONAS }).estado, 'nada')
+  // Sin número pero con el verbo y la persona ES una entrega a la que le falta el monto: se pregunta cuánto.
+  // Antes era «nada» y caía a la libreta, que contestaba «no pude cargarlos» (dueño, 23/09/2026).
+  assert.equal(interpretarEntrega('entregué mucha plata a Aguero', { personas: PERSONAS }).falta, 'monto')
   // Con número pero sin monto válido, se pregunta el monto en vez de registrar cero.
   assert.equal(interpretarEntrega('entregué $0 a Aguero para el galpón 8', { personas: PERSONAS, obras: OBRAS }).falta, 'monto')
 })
@@ -214,4 +215,66 @@ test('la obra se reconoce por sus palabras, no por su nombre completo', () => {
   // Con dos obras posibles NO se elige una: se pregunta.
   assert.equal(elegirObra('$50.000 para el galpón', obras).obra, undefined)
   assert.equal(elegirObra('$50.000 para el galpón 8', obras).obra?.codigo, 'le-g8')
+})
+
+// ═══ «NO CONTEMPLA TODOS LOS CASOS» (dueño, 23/09/2026) — medido con 53 frases contra el padrón real ═══
+
+const PADRON_REAL = {
+  personas: [{ id: 'j', nombre: 'CORONA GUTIERREZ JORGE' }, { id: 'r', nombre: 'ECHEGARAY RODRIGO' }, { id: 't', nombre: 'TELLO JUAN ALBERTO' }],
+  obras: [
+    { id: 'qp', codigo: 'OB-0008', nombre: 'QP - SALÓN COMERCIAL', cliente_texto: 'Quattropani - Melisa García SAS' },
+    { id: 'm1', codigo: 'OB-0021', nombre: 'ME - PLAYÓN DE AZUFRE', cliente_texto: 'MESSINA' },
+    { id: 'm2', codigo: 'OB-0022', nombre: 'ME - PLAYÓN DILUCIÓN DE ÁCIDO', cliente_texto: 'MESSINA' },
+  ],
+}
+const lee = (t) => interpretarEntrega(t, PADRON_REAL)
+
+test('el monto se escribe como sale: «pesos», el signo atrás, en palabras', () => {
+  assert.equal(lee('100 pesos a jorge para combustible').monto, 100)
+  assert.equal(lee('100$ a jorge para combustible').monto, 100)
+  assert.equal(lee('cien mil a jorge para combustible').monto, 100_000)
+  assert.equal(lee('doscientos cincuenta mil a jorge para gasoil').monto, 250_000)
+  assert.equal(lee('un millon y medio a jorge para materiales').monto, 1_500_000)
+  // «150 mil» sigue siendo ciento cincuenta mil, no el «mil» en palabras.
+  assert.equal(lee('150 mil a jorge para gasoil').monto, 150_000)
+})
+
+test('un número chico es plata salvo que tenga al lado algo que diga que no', () => {
+  assert.equal(lee('le entregue 100 a jorge para combustible').monto, 100)
+  assert.equal(lee('entregué a jorge 100 para combustible').monto, 100)
+  assert.equal(lee('di 100 a jorge para nafta').monto, 100)
+  // «galpón 8» y «120 m2» no son plata: el número del galpón y una medida.
+  assert.equal(lee('entregue plata a jorge para el galpon 8').falta, 'monto')
+  const r = lee('100 a jorge para pisos 120 m2')
+  assert.equal(r.estado, 'listo'); assert.equal(r.monto, 100)
+})
+
+test('la persona se busca antes del «para»: «para pagarle a tello» es el destino, no quien recibe', () => {
+  const r = lee('100 a jorge para pagarle a tello')
+  assert.equal(r.persona.id, 'j')
+  assert.equal(r.paraQue, 'pagarle a tello')
+})
+
+test('el destino se acepta como se dice: por, x, coma, guión, o pegado al nombre, o adelante', () => {
+  for (const t of ['100 a jorge por combustible', '100 a jorge x combustible', '100 a jorge, combustible',
+    '100 a jorge - combustible', '100 a jorge combustible', 'combustible 100 a jorge']) {
+    const r = lee(t)
+    assert.equal(r.estado, 'listo', t); assert.equal(r.paraQue, 'combustible', t)
+  }
+  // «para que rinda» es el nombre del circuito, no un destino: se pregunta.
+  assert.equal(lee('Entregarle $100 a Jorge para que rinda').falta, 'destino')
+})
+
+test('la obra se encuentra por el cliente; con varias obras del cliente se pregunta cuál', () => {
+  assert.equal(lee('100 a jorge para la obra de quattropani').obra.id, 'qp')
+  assert.equal(lee('100 a jorge para messina').falta, 'obra_ambigua')
+  assert.equal(lee('100 a jorge para el playon de azufre').obra.id, 'm1')
+})
+
+test('dos entregas en un mensaje no se registran a medias; sin monto se pregunta cuánto; «al jorge» vale', () => {
+  assert.equal(lee('100 a jorge y 50 a rodrigo').falta, 'varias')
+  assert.equal(lee('le di plata a jorge').falta, 'monto')
+  assert.equal(lee('100 al jorge para combustible').persona.id, 'j')
+  // Un pago a un proveedor con verbo de pago sigue sin ser entrega.
+  assert.equal(lee('pagué 100 a tello por el flete').estado, 'nada')
 })
