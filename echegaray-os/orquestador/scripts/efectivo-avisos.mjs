@@ -140,11 +140,25 @@ export function textoDelPedido({ username, texto }) {
   return username ? `@${username} ${texto}` : texto
 }
 
-export async function drenarAvisos(port, { dry = false, publicar = publicarYReleer, log = console, tope = 20 } = {}) {
+/** El canal directo con el dueño (el mismo destinatario que avisar-al-dueno.mjs). */
+async function canalDirectoConElDueno() {
+  const base = String(delEntorno('MM_BASE_URL') ?? '').replace(/\/+$/, '')
+  const token = delEntorno('MM_BOT_TOKEN')
+  if (!base || !token) return null
+  const r = await fetch(`${base}/api/v4/users/username/${process.env.ORQ_DUENO_MM ?? 'jorge'}`, { headers: { Authorization: `Bearer ${token}` } })
+  if (!r.ok) return null
+  return canalDirectoCon((await r.json())?.id)
+}
+
+/**
+ * A DÓNDE VA CADA AVISO (dueño, 23/09/2026): la anulación a la persona, la firma al dueño, el reclamo y
+ * el pedido de dato al canal. Sin usuario de Mattermost para la persona, cae al canal con la mención.
+ */
+export async function drenarAvisos(port, { dry = false, publicar = publicarYReleer, directo = canalDirectoCon, directoDueno = canalDirectoConElDueno, log = console, tope = 20 } = {}) {
   let pend
   try {
     const { rows } = await port.query(
-      `select a.id, a.tipo, a.texto, i.plataforma_username as username
+      `select a.id, a.tipo, a.texto, a.destino, i.plataforma_username as username, i.plataforma_user_id as mm_user_id
          from public.efectivo_aviso a
          join public.efectivo_entrega e on e.id = a.entrega_id
          left join public.perfiles pf on pf.persona_id = e.persona_id
@@ -167,11 +181,14 @@ export async function drenarAvisos(port, { dry = false, publicar = publicarYRele
   }
   let enviados = 0
   for (const a of pend) {
-    const texto = textoDelPedido(a)
-    if (dry) { log.info?.(`[dry] ${a.tipo}: ${texto.split('\n')[0]}`); continue }
+    const dm = a.destino === 'persona' && a.mm_user_id ? await directo(a.mm_user_id).catch(() => null)
+      : a.destino === 'dueno' ? await directoDueno().catch(() => null) : null
+    // En el directo no hace falta la mención; el que va al canal la lleva adelante.
+    const texto = dm ? a.texto : textoDelPedido(a)
+    if (dry) { log.info?.(`[dry] ${a.tipo} → ${dm ? a.destino : 'canal'}: ${texto.split('\n')[0]}`); continue }
     let post = null
     try {
-      post = await publicar(canal, texto)
+      post = await publicar(dm ?? canal, texto)
     } catch (err) {
       await port.query('select public.efectivo_aviso_fallo($1, $2)', [a.id, String(err?.message ?? err)])
       log.warn?.(`efectivo: no pude mandar el ${a.tipo}: ${err?.message ?? err}`)
