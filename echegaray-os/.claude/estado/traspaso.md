@@ -1,7 +1,16 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: **2026-09-23 ~11:05 (−03)** · `origin/main` = **9aac89ea**, checkout de producción en ese
-commit, daemons reiniciados y verificados con `servicios-al-dia.mjs`._
+_actualizado: **2026-09-23 ~14:10 (−03)** · `origin/main` = **37ff3016**, checkout de producción en caa02ffa
+(daemons reiniciados por `produccion-al-dia.mjs`)._
+
+**MOBILE POR NIVEL (dueño 13:00: «hace todas las vistas mobile · por nivel de usuario»), publicado:** barra de
+abajo por rol en `(main)` y `/campo` (`barraTelefono.ts` + test, `BarraTelefono.tsx`), header sin solapas bajo `md`,
+`CTRL` 48 px, solapas de ficha corribles (`v2/BarraCorrible`); tres agentes dejaron a 390 Administración,
+Clientes/Presupuestos/Base maestra, Obras/Herramientas (sus informes: rutas y qué se ve, en el transcript). Mapa
+sección f. **QA visual: `next dev` NO respondió en la VM (25 min compilando)**; se apagó y las capturas van
+contra producción con `zzz-qa390.mjs` (sesión del dueño por enlace mágico, sólo lectura) — PENDIENTE de correr
+cuando Vercel esté Ready y corregir lo que se vea. Corralón cerrado en Compras (7 filas Pagado, pendiente $0,
+cheque 330 número INFERIDO). Material sin columna Origen.
 
 **HECHO 23/09 (mañana), todo publicado:** el canal #efectivo lee la entrega como se escribe (53 frases
 medidas) y entiende la respuesta a su pregunta · anular/borrar/descartar desde la app encola «Estado =
