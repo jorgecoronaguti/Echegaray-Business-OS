@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: **2026-09-23 ~11:05 (−03)** · `origin/main` = **c71f4713**, checkout de producción en ese
+_actualizado: **2026-09-23 ~11:05 (−03)** · `origin/main` = **d2416204**, checkout de producción en ese
 commit, daemons reiniciados y verificados con `servicios-al-dia.mjs`._
 
 **HECHO 23/09 (mañana), todo publicado:** el canal #efectivo lee la entrega como se escribe (53 frases
@@ -28,8 +28,12 @@ aplicada · direccion-test bloqueada (no borrable: tiene comprobantes) · Arcor 
 falta la fila en Cobranzas (esperando su «cargala») · Herramientas: paridad teléfono↔PC publicada (845956e2); en el teléfono
 Herramientas redirige a /campo/herramientas (c71f4713, `?pc=1` para la de escritorio); recuento físico del
 lugar en construcción (agente, migración 20260923T1700 sin aplicar) · firmas visibles en la ficha de la
-entrega (e2467168) · Corralón Progreso: cuadratura cierra en $721.338,66 (ver memoria corralon-progreso-
-estado-2309); esperando «marcá Compras» y el N° del cheque del 21/10 · bucket herramientas sigue con 0 fotos.
+entrega (e2467168) · Corralón: cuadratura cierra en $721.338,66; borrador a Ariel en Gmail (r2877218322583338095); el dueño
+emite 2 eCheq por la deuda actual ($498.120,12 al 26/10 y $223.218,54 al 06/11) → cargar en Cheques
+Emitidos y marcar las 6 filas cuando pase los números · Robles: 859 y 926 Pagado con echeq 385 (leído de
+vuelta) · Arcor: FCE 54 cargada en Cobranzas (ID 99) · avisos: anulación→persona, firma→dueño (T1800/T1810
+aplicadas) · admin en teléfono entra por /campo · Documentos y Fuentes fuera de la barra · Material dentro
+de Herramientas EN CURSO (agente, migración T1900 sin aplicar) · bucket herramientas sigue con 0 fotos.
 
 **ROTO a sabiendas:** los e2e que usaban `qa.campo@` / `[PRUEBA E2E] QA Campo` (8 specs) no tienen
 fixture; hay que hacerlos crear y borrar sus datos, no sembrar producción.
