@@ -1,29 +1,21 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: **2026-09-23 ~20:15 (−03)** · `origin/main` = **0e53c2ca**, producción al día._
+_actualizado: **2026-09-23 ~21:30 (−03)** · `origin/main` = **71de7e27**._
 
-**PUBLICADO HOY (ERP Obras, todo verificado por captura salvo lo marcado):** H1–H3 · cartera Tabla/Gantt
-agrupada por cliente como el CRM, sin columna Cliente, sin pie, Tabla↔Gantt sin refresco · cabecera/Resumen/
-Ítems/Z01 · Parte diario literal 06/M08 · Planilla 04c · Cronograma 05/C06 · Subcontratos, Personal, Dotación ·
-Crear la estructura C01–C10/MC1–MC11 (migración 20260923T2630 aplicada; SIN captura revisada) · Operación
-09/10/11/12 y Documentos 14 (SIN captura revisada) · menú de la cuenta: Entrar como (sesión real, auditada),
-Seguridad 2FA TOTP, Notificaciones, Sesiones, enlace de acceso en Usuarios (migraciones T2600/2610/2620
-aplicadas) · Ver como arreglado (POST + orden del middleware) · Herramientas: servicio técnico = proveedor.
+**PUBLICADO ESTA TANDA:** Documentos geometría (6/6) · cerrada se lee «Archivada» (dueño: un solo estado) ·
+cabecera de obra IGUAL en todas las solapas (título 21, sin cifras por solapa) · fotos del parte
+(migración T2700 APLICADA y verificada: tabla+RLS+bucket privado 100 MB) · Resumen con cifras HH y Asignados
+(misma fuente que Personal) · Personal «Costo de esas horas» desde costo_de_obras_a_la_fecha · 3 tests viejos
+arreglados (excepción costo_mo por ítem en definiciones.json, hex, código del alta). Capturas 1440/390 OK.
 
 **ABIERTO**
-- Agente «fotos del parte diario» (tabla `obra_parte_adjunto` + bucket `partes-adjuntos`): cuando entregue,
-  aplicar su migración, publicar, capturar `?vista=tareas&sub=parte` a 1440/390.
-- Agente Documentos: 3 fallos de `geometria-obras.test.ts` (grilla de IndiceDocumentos en teléfono, marco de
-  TabDocumentos, `group` del details de Vincular). Publicar cuando dé verde.
-- Capturas pendientes de MIRAR (ya tomadas): `scratchpad/qa-ola2a/` (C01–C09 + menú) y `scratchpad/qa-op/`
-  (Operación/Documentos). Mirarlas sin agente revisor.
-- Decisión del dueño: obra «terminada» vs «archivada» (hoy `cerrada` hace las dos).
-- Corralón: 3862 y 3428 sin cargar; saldo $2.568,20 desconocido.
-
-**REGLAS APRENDIDAS HOY:** diseño dibujado manda sobre el texto del prompt · nada viejo en Obras, lo no dibujado
-con la skill UI/UX · la página del servidor nunca llama funciones de un módulo `'use client'` (React #441) ·
-antes de publicar la ficha de obra, capturar esa ruta · estado del layout se cambia por POST + router.refresh ·
-ahorro: sin agentes nuevos, sin revisores de capturas, `/clear` entre frentes.
+- HH: Personal cuenta 931 h en QP; el costo valoriza 789 (la diferencia ≈ presencia por defecto, 125 h).
+  Decisión del dueño: ¿la presencia presunta es HH de la obra?
+- Ninguna de las 3.822 filas de registros_hh tiene actividad: Ítems/frentes siempre «sin HH».
+- escrituraCondicional.test (RLS) falla: necesita cuenta de nivel campo y no se crean usuarios de prueba en vivo.
+- Fotos del parte: falta primera foto real para verificar el efecto (fila + objeto en el bucket).
+- Capturas viejas sin mirar: C01–C09, menú de la cuenta, Operación.
+- Corralón: 3862 y 3428 sin cargar.
 
 ---
 
