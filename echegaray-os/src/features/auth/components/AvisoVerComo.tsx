@@ -1,9 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
-import { getPerfilReal } from '@/features/auth/services/authService'
+import { getPerfilReal, getUsuarioActual } from '@/features/auth/services/authService'
 import { estadoVerComo } from '@/features/auth/services/verComo'
+import { entradaPrestada } from '@/features/auth/services/entrarComo'
 import { ROL_LABEL } from '@/features/auth/types'
 import { ROLES_MIRABLES } from '@/lib/auth/ver-como'
 import { BarraVerComo } from './BarraVerComo.tsx'
+import { BarraEntrarComo } from './BarraEntrarComo.tsx'
 
 // EL AVISO QUE NO SE PUEDE OLVIDAR.
 //
@@ -20,9 +22,30 @@ import { BarraVerComo } from './BarraVerComo.tsx'
 // Se dibuja en los TRES marcos porque la lente cruza los tres: `(main)` es el escritorio,
 // `(empleado)` es el teléfono del obrero y `(jefe)` el del jefe de obra — y justamente a esos dos
 // se llega SÓLO con la lente puesta.
+//
+// ═══ «ENTRAR COMO» VA POR EL MISMO LUGAR (23/09/2026) ═══
+//
+// Cuando la sesión es PRESTADA —Dirección entró como otro usuario, sesión real— la franja es la otra
+// (`BarraEntrarComo`) y se decide primero: una sesión prestada nunca es de Dirección, así que la
+// lente no puede estar puesta a la vez. Los dos avisos salen de este mismo componente para que los tres
+// marcos sigan montando UNA cosa.
 export async function AvisoVerComo() {
   const supabase = await createClient()
-  const { data: perfilReal } = await getPerfilReal(supabase)
+  const user = await getUsuarioActual(supabase)
+  if (!user) return null
+  const { data: perfilReal } = await getPerfilReal(supabase, user.id)
+
+  const prestada = await entradaPrestada(user.id)
+  if (prestada) {
+    return (
+      <BarraEntrarComo
+        nombre={perfilReal?.nombre?.trim() || user.email || 'esta cuenta'}
+        nivel={perfilReal ? ROL_LABEL[perfilReal.rol] : 'sin nivel'}
+        vencida={prestada.vencida}
+      />
+    )
+  }
+
   const estado = await estadoVerComo(perfilReal)
   if (!estado.mirando) return null
 

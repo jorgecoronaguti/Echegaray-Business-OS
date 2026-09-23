@@ -353,6 +353,20 @@ function MenuUsuario({
               <div className="px-1.5 pt-1.5 text-[10.5px] leading-snug text-faint">
                 Lente de pantalla: no prueba los permisos de la base, y con ella puesta no se escribe.
               </div>
+              {/* ═══ «ENTRAR COMO» — LA SESIÓN REAL (dueño, 23/09/2026) ═══
+                  La lente no alcanza para «ver EXACTAMENTE lo que ve ese nivel, con los permisos
+                  reales de la base, y poder operar». Eso es entrar con la sesión de esa persona, y
+                  se elige a quién en una pantalla propia: la lista de cuentas no cabe en un menú. */}
+              <Link
+                prefetch={false}
+                href="/mi-cuenta/entrar-como"
+                role="menuitem"
+                data-testid="ir-entrar-como"
+                onClick={() => setAbierto(false)}
+                className="mt-1.5 flex min-h-[36px] items-center rounded-md px-1.5 text-[13px] font-medium text-ink hover:bg-surface-quiet"
+              >
+                Entrar como…
+              </Link>
             </div>
           )}
           {/* ═══ EL ATAJO DEL TELÉFONO (08/09/2026) ═══

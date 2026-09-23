@@ -14,6 +14,10 @@ import { COOKIE_ROL, VIDA_ROL_SEGUNDOS, leerRol, sellarRol, secretoDelRol } from
 import {
   COOKIE_VER_COMO, ROL_QUE_MIRA, RUTA_VER_COMO, esPeticionDeEscritura, leerVerComo,
 } from '@/lib/auth/ver-como'
+import { COOKIE_ENTRAR_COMO, RUTA_ENTRAR_COMO, leerEntrarComo } from '@/lib/auth/entrar-como'
+import {
+  COOKIE_MFA, RUTA_DOS_PASOS, leerExigeDosPasos, necesitaSegundoPaso, sellarExigeDosPasos,
+} from '@/lib/auth/mfa'
 
 // Refresca la sesión de Supabase en cada request -- sin esto, un usuario logueado
 // puede quedar con un token vencido en Server Components y verse "deslogueado" sin
@@ -138,6 +142,51 @@ async function middlewareConBackend(request: NextRequest) {
     // está, venció o no cierra — y en ese caso se vuelve a sellar. El porqué entero y la regla de
     // seguridad («la puerta, no la cerradura») están en lib/auth/rol-cache.ts.
     const secreto = secretoDelRol()
+
+    // ═══ «ENTRAR COMO» PASA SIEMPRE, Y ANTES QUE TODO (23/09/2026) ═══
+    //
+    // Es la ruta que abre la sesión real de otro usuario y la que la devuelve. Tiene que poder
+    // tocarse desde cualquier rol (el que vuelve es el rol PRESTADO, que puede ser `campo`), con la
+    // lente puesta (entrar la apaga) y con una sesión `aal1` (volver a Dirección se hace por enlace
+    // mágico y Dirección pone su código después). La ruta misma comprueba contra `perfiles` quién
+    // puede entrar; acá sólo se la deja pasar. Ver `lib/auth/entrar-como.ts`.
+    if (pathname === RUTA_ENTRAR_COMO) return response
+    // La sesión prestada, si ésta lo es: la franja la dibuja el layout; acá sólo exime del segundo
+    // paso (la sesión se abrió por enlace mágico, no hay código que pedirle a Dirección por el otro).
+    const prestada = secreto
+      ? await leerEntrarComo(request.cookies.get(COOKIE_ENTRAR_COMO)?.value, { uidSesion: user.id }, secreto)
+      : null
+
+    // ═══ LOS DOS PASOS SE EXIGEN EN LA PUERTA (23/09/2026) ═══
+    //
+    // Una sesión `aal1` de una cuenta que tiene TOTP verificado no ve ninguna pantalla hasta poner el
+    // código: se la manda a `/login/dos-pasos`. Si esto no estuviera acá, activar los dos pasos sería
+    // decorativo — quien tiene la contraseña entraría igual con sólo no pasar por esa pantalla. Si la
+    // cuenta exige o no el segundo paso viaja en una cookie firmada (5 minutos) y se pregunta al
+    // servidor de Auth cuando no está: un viaje cada cinco minutos por sesión sin segundo factor.
+    // `/ver-como` sigue pasando (apagar la lente siempre se puede); las rutas públicas y `/login/*`
+    // no llegan a este bloque.
+    const aal = sesion?.claims?.aal
+    if (secreto && aal !== 'aal2' && !prestada && pathname !== RUTA_VER_COMO) {
+      let exige = await leerExigeDosPasos(request.cookies.get(COOKIE_MFA)?.value, user.id, secreto)
+      if (exige === null) {
+        const { data: factores, error } = await supabase.auth.mfa.listFactors()
+        if (!error) {
+          exige = factores.totp.some((f) => f.status === 'verified') ? 'si' : 'no'
+          response.cookies.set(COOKIE_MFA, await sellarExigeDosPasos(user.id, exige, secreto), {
+            httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: VIDA_ROL_SEGUNDOS,
+          })
+        }
+      }
+      if (necesitaSegundoPaso(aal, exige)) {
+        const url = request.nextUrl.clone()
+        url.pathname = RUTA_DOS_PASOS
+        url.search = ''
+        url.searchParams.set('volver', pathname)
+        return NextResponse.redirect(url)
+      }
+    }
+
     let rol = secreto ? await leerRol(request.cookies.get(COOKIE_ROL)?.value, { uid: user.id }, secreto) : null
     if (rol === null) {
       const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle()
