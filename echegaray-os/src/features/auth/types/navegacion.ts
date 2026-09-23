@@ -109,6 +109,12 @@ export function destinoDeLaHome(rol: Rol | null | undefined, telefono = false): 
   // resolvió la duda 3 del mapa de pantallas: en el teléfono su inicio es `/obra/hoy`; en
   // escritorio sigue en Administración. Es el dispositivo el que decide, no el rol solo.
   if (rol === 'jefe_obra' && telefono) return INICIO_JEFE_TELEFONO
+  // ═══ EN EL TELÉFONO, TAMBIÉN DIRECCIÓN Y ADMINISTRACIÓN ENTRAN POR CAMPO (dueño, 23/09/2026) ═══
+  //
+  // «Ésa es la vista con mi usuario admin»: la cartera de Clientes de escritorio dibujada en el celular.
+  // El teléfono es para operar (parte, material, problema, asistencia, herramientas, movimientos); la
+  // computadora es para administrar. Con el mismo usuario, el dispositivo elige la cara.
+  if ((rol === 'direccion' || rol === 'administracion') && telefono) return '/campo'
   // ═══ YA NO HAY HOME ECONÓMICA (27/08/2026) ═══
   //
   // Hasta hoy esto devolvía `/flujo-caja` a quien pudiera abrirla, por la decisión del 09/07. El

@@ -147,9 +147,11 @@ test('el jefe de obra aterriza en /obra/hoy SÓLO desde el teléfono; en escrito
   assert.equal(destinoDeLaHome('jefe_obra'), '/administracion', 'sin dato del dispositivo se cae a escritorio')
 })
 
-test('el teléfono NO cambia el inicio de los demás roles', () => {
-  assert.equal(destinoDeLaHome('direccion', true), '/administracion')
-  assert.equal(destinoDeLaHome('administracion', true), '/administracion')
+test('el teléfono manda a operar: dirección y administración entran por Campo; los demás no cambian', () => {
+  // Dueño, 23/09/2026: «ésa es la vista con mi usuario admin» (Clientes de escritorio en el celular).
+  assert.equal(destinoDeLaHome('direccion', true), '/campo')
+  assert.equal(destinoDeLaHome('administracion', true), '/campo')
+  assert.equal(destinoDeLaHome('direccion', false), '/administracion')
   assert.equal(destinoDeLaHome('campo', true), '/hoy')
   assert.equal(destinoDeLaHome(null, true), '/obras')
 })
