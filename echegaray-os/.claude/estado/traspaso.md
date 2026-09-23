@@ -1,5 +1,37 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
+_actualizado: **2026-09-23 ~17:40 (−03)** · `origin/main` = **aadc86e8**, checkout de producción en aadc86e8 (daemons
+reiniciados por `produccion-al-dia.mjs`). Rama `efectivo-a-rendir` rebasada sobre origin/main (sin commits pendientes)._
+
+**ERP OBRAS · OLA 1 PUBLICADA (aadc86e8), capturas en curso.** Diseño partido por pantalla en
+`/home/jorge/echegaray-design/erp-obras/<LABEL>.html` (1440) y `M<n>.html` (390). Tres agentes hicieron: A cabecera
++ nivel 3 + Resumen 03/M04 + Ítems 04/04b/M05 + Z01/MZ1 (f5463312, fc47fb0a, efd25ce3) · B Parte 06/M08 + Planilla 04c
++ Cronograma 05/M07/C06/MC7 (186631ee, f9bb7b7a, ea2b24d7; pg test erp-obras-parte-diario 4/4) · C Cartera 01/02 +
+Nueva obra 02b + Subcontratos 07 + Personal 08 + Dotación 08b (5697ca34, bc94afbe, ec483600, d88c4832, ddba71e1).
+Validado en el árbol completo: tsc 0 errores, eslint 0, node --test obras 740/740. **Sin evidencia visual todavía**:
+capturas a 1440 y 390 contra producción con `scratchpad/cap-ola1.sh` (14 rutas, obra `quattropani`) → leerlas con un
+agente contra los .html del diseño y corregir. **Desvíos declarados por los agentes (revisar con el dueño):** 06.html
+trae el layout viejo y B implementó la especificación del prompt; rótulo de obra con código (regla 14/09); umbral de
+atraso >10 d rojo (diseño incoherente); Z01 «terminada» vs «cerrada» (hoy `cerrada` ya archiva; separar exige tocar
+actions/CamposObra); Sellar/Guardar fechas en la banda del cronograma y no en la cabecera; «Editar la obra» plegado en
+el aside; Ítems sin Gantt lateral ni 6 KPI; gutter 30 px en A vs 20 px en B. **Ola 2 pendiente:** 09/M12 Impedimentos,
+10/M13 Pedidos, 12/M15 Compras, 14/M17 Documentos, 11/11b/11c/M14 Equipos sobre features/herramientas, C01–C10 /
+MC1–MC11 (C06/MC7 ya), H11 teléfono, H12 auditor de cierre (H2, H5, H8), traspaso final.
+
+**HERRAMIENTAS · servicio técnico = proveedor (a360d67a, publicado):** migración 20260923T2400 aplicada (rubro
+«Servicio técnico», `ubicacion.proveedor_id`, `ubicacion_de_proveedor`, `crear_ubicacion` sólo terceros, semilla «sin
+identificar» archivada); elector compartido en Ubicaciones → Nueva y Mover → «Servicio técnico…»; «Planilla» sólo en
+obra/taller/rodado. Pendiente: que «Enviar a reparación externa» (Ficha) pregunte a qué servicio técnico va; captura
+de Ubicaciones a 1440 en la misma tanda.
+
+**CORRALÓN PROGRESO:** recibo 0010-78 (23/09) cuadra 5/6 con Compras; 3862 ($13.195,02) y 3428 ($56.220) pagadas
+pero SIN CARGAR (Ariel las entrega en mano); saldo que informa el proveedor $2.568,20 DESCONOCIDO. Recibos 10-78 y
+10-46 guardados en la carpeta del proveedor (proveedor_documento). Avisado por bot.
+
+---
+
+_Lo anterior (14:10):_
+
 _actualizado: **2026-09-23 ~14:10 (−03)** · `origin/main` = **f554f3ac** (+ este traspaso), checkout de producción en f554f3ac
 (daemons reiniciados por `produccion-al-dia.mjs`)._
 
