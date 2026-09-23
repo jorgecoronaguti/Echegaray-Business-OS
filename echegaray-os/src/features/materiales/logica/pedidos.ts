@@ -172,6 +172,7 @@ export function textoCantidad(cantidad: number | null, unidad: string | null): s
 }
 
 /** De dónde vino la fila, para leerlo en una palabra. */
+/** Sin uso en pantalla desde el 23/09/2026 (dueño: «quitar columna Origen»). Queda para el detalle. */
 export function rotuloOrigen(origen: string | null): string {
   if (origen === 'app') return 'App'
   if (origen === 'os') return 'OS'

@@ -6,7 +6,7 @@ import { Aviso, Boton, Drawer, Estado, Filtros, Tabla, Td, Th, THead, Tr, Vacio 
 import { diaMesAnioISO } from '@/shared/utils/fecha'
 import { PASOS_PEDIDO } from '@/shared/lib/estadoPedidoMaterial'
 import {
-  FILTROS_ESTADO, hrefMaterialEscritorio, rotuloOrigen, rotuloUrgencia, textoCantidad, type Filtro, type Pedido,
+  FILTROS_ESTADO, hrefMaterialEscritorio, rotuloUrgencia, textoCantidad, type Filtro, type Pedido,
 } from '../logica/pedidos'
 import { cambiarEstadoPedido } from '../services/acciones'
 import { FormPedirMaterial, type ObraElegible } from './FormPedirMaterial'
@@ -88,7 +88,7 @@ export function MaterialEscritorio({
           {total === 0 ? 'Todavía no hay pedidos.' : 'Nada con este filtro.'}
         </Vacio>
       ) : (
-        <Tabla testid="tabla-material" minWidth={820}>
+        <Tabla testid="tabla-material" minWidth={720}>
           <THead>
             <Th>Fecha</Th>
             <Th>Obra</Th>
@@ -97,7 +97,6 @@ export function MaterialEscritorio({
             <Th>Para cuándo</Th>
             <Th>Estado</Th>
             <Th>Nota</Th>
-            <Th>Origen</Th>
           </THead>
           <tbody>
             {pedidos.map((p) => (
@@ -126,7 +125,6 @@ export function MaterialEscritorio({
                   </span>
                 </Td>
                 <Td><span className="block max-w-[260px] truncate" title={p.nota ?? undefined}>{p.nota ?? ''}</span></Td>
-                <Td><span className="text-faint">{rotuloOrigen(p.origen)}</span></Td>
               </Tr>
             ))}
           </tbody>
