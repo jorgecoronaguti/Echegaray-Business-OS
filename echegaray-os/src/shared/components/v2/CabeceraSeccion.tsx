@@ -108,8 +108,10 @@ export function CabeceraSeccion({ vistas, buscador, alta, accion, filtros, espac
             >
               {v.titulo}
             </span>
+            {/* EN EL TELÉFONO EL SUBTÍTULO CON CIFRAS NO SE DIBUJA (dueño, 23/09/2026): envolvía al lado del
+                título en dos renglones de números. Desde `md` vuelve. */}
             {v.subtitulo && (
-              <span style={{ fontSize: '12px', color: V.tenue }}>{v.subtitulo}</span>
+              <span className="max-md:hidden" style={{ fontSize: '12px', color: V.tenue }}>{v.subtitulo}</span>
             )}
             {v.cuenta !== null && (
               <span

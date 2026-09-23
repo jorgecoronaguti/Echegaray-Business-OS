@@ -50,7 +50,9 @@ function Cifra({ principal, secundaria, tam, titulo, testid, apagado = false }: 
   return (
     <span className="flex flex-col items-end justify-center font-mono tabular-nums" data-testid={testid} title={titulo} style={{ ...NUM, gap: 1 }}>
       <span style={{ fontSize: tam, color: apagado ? V.tenue : V.tinta }}>{principal}</span>
-      {secundaria && <span style={{ fontSize: '10.5px', color: V.tenue }}>{secundaria}</span>}
+      {/* EN EL TELÉFONO LA SECUNDARIA NO SE DIBUJA (dueño, 23/09/2026): «+ $ 10,0 M · 1 adicional = $ 112,5 M»
+          partido en tres líneas es ilegible; queda una cifra por fila y el detalle vive en el `title` y en la ficha. */}
+      {secundaria && <span className="max-md:hidden" style={{ fontSize: '10.5px', color: V.tenue }}>{secundaria}</span>}
     </span>
   )
 }

@@ -248,8 +248,10 @@ export function TablaClientes({
                       <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
                         <IconoObra className="h-[13px] w-[13px]" />
                       </span>
-                      <span className="truncate" style={{ fontSize: '12px', color: TONO.textoObra, minWidth: 96 }}>{o.nombre}</span>
-                      {fila.esAdicional && <MarcaAdicional huerfano={fila.huerfano} />}
+                      {/* EN EL TELÉFONO EL NOMBRE SE LEE ENTERO (dueño, 23/09/2026): se corta en dos
+                          líneas en vez de truncarse; en escritorio sigue en una línea con «…». */}
+                      <span className="truncate max-md:line-clamp-2 max-md:whitespace-normal" style={{ fontSize: '12px', color: TONO.textoObra, minWidth: 96 }}>{o.nombre}</span>
+                      {fila.esAdicional && <span className="shrink-0"><MarcaAdicional huerfano={fila.huerfano} /></span>}
                     </span>
                     {/* EN EL TELÉFONO LAS OC NO SE LISTAN (dueño, 23/09/2026: «infinitos números»): se
                         leen en la ficha del cliente. `contents` no cambia la geometría de escritorio. */}
