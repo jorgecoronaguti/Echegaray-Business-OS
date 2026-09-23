@@ -127,7 +127,8 @@ export function RecursosCartera({
         </BotonMarca>
       </BandaBaseMaestra>
 
-      <div style={{ ...PAGINA.cuerpo, paddingTop: 14 }}>
+      {/* `flexWrap`: en el teléfono la ficha (CajaPanel) baja debajo de la tabla en vez de estrangularla. */}
+      <div style={{ ...PAGINA.cuerpo, paddingTop: 14, flexWrap: 'wrap' }}>
         <TarjetaTabla testid="tabla-recursos" cols={cols}>
           <EncabezadoCanon
             cols={cols}

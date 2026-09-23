@@ -59,11 +59,16 @@ export function Cifra({
 
 /** La caja del panel: 372px en `18`, 392px en `17`. El resto es idéntico. */
 export function CajaPanel({ ancho, children, testid }: { ancho: number; children: ReactNode; testid: string }) {
+  // EL ANCHO SÓLO RIGE DESDE 768 px. Por debajo el panel ocupa la pantalla entera y baja DEBAJO de
+  // la tabla (el cuerpo envuelve): 392 px fijos al lado de una tabla de 350 dejaban la tabla en cero.
+  // El ancho viaja en una variable CSS porque Tailwind no compila una clase armada en runtime.
   return (
     <aside
       data-testid={testid}
+      className="w-full max-md:mt-3 md:ml-3 md:[width:var(--ancho-panel)]"
       style={{
-        width: ancho, flexShrink: 0, marginLeft: 12, background: C.superficie,
+        ['--ancho-panel' as string]: `${ancho}px`,
+        flexShrink: 0, background: C.superficie,
         border: `1px solid ${C.linea}`, borderRadius: 10, display: 'flex', flexDirection: 'column',
         overflow: 'hidden', alignSelf: 'flex-start', maxWidth: '100%',
       }}
