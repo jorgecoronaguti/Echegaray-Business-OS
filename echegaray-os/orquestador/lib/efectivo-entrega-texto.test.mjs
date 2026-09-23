@@ -77,11 +77,12 @@ test('sin obra pero con destino, la entrega es de Estructura y el destino queda 
   assert.equal(r.paraQue, 'gasoil')
 })
 
-test('sin destino NO se registra: una entrega sin imputación es plata que sale sin rastro', () => {
-  const r = interpretarEntrega('entregué $30.000 a Aguero', { personas: PERSONAS, obras: OBRAS })
-  assert.equal(r.estado, 'pregunta')
-  assert.equal(r.falta, 'destino')
-  assert.match(textoDePregunta(r), /obra|gasoil/)
+test('sin destino TAMBIÉN se registra: va a Estructura sin concepto, y los tickets dicen en qué se gastó', () => {
+  // Dueño, 23/09/2026: «me pide sí o sí que diga para qué es, y ése es otro caso de uso».
+  const r = interpretarEntrega('entregué $10.000 a aguero', { personas: PERSONAS, obras: OBRAS })
+  assert.equal(r.estado, 'listo')
+  assert.equal(r.obra, null)
+  assert.equal(r.paraQue, null)
 })
 
 test('lo que falta se pregunta con nombre y apellido, y sin publicar plata de nadie', () => {
@@ -261,8 +262,9 @@ test('el destino se acepta como se dice: por, x, coma, guión, o pegado al nombr
     const r = lee(t)
     assert.equal(r.estado, 'listo', t); assert.equal(r.paraQue, 'combustible', t)
   }
-  // «para que rinda» es el nombre del circuito, no un destino: se pregunta.
-  assert.equal(lee('Entregarle $100 a Jorge para que rinda').falta, 'destino')
+  // «para que rinda» es el nombre del circuito, no un destino: se registra sin concepto.
+  const sin = lee('Entregarle $100 a Jorge para que rinda')
+  assert.equal(sin.estado, 'listo'); assert.equal(sin.paraQue, null)
 })
 
 test('la obra se encuentra por el cliente; con varias obras del cliente se pregunta cuál', () => {

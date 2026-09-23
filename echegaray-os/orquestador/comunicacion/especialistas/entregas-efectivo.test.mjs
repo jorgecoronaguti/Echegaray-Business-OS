@@ -68,7 +68,6 @@ test('ante la duda NO registra: pregunta y no llama a la base', async () => {
     ['entregué $10.000 a sosa para el galpón 8', 'pregunta_persona_ambigua'],
     // El número del galpón no es plata: pregunta el monto en vez de registrar $ 8.
     ['entregué plata a aguero para el galpón 8', 'pregunta_monto'],
-    ['entregué $10.000 a aguero', 'pregunta_destino'],
     ['entregué $10.000 a quien sea para el galpón 8', 'pregunta_persona'],
   ]) {
     let llamo = false

@@ -340,11 +340,13 @@ export function interpretarEntrega(texto, { personas = [], obras = [] } = {}) {
   const donde = elegirObra(texto, obras)
   if (donde.candidatos) return { estado: 'pregunta', falta: 'obra_ambigua', candidatos: donde.candidatos }
   const paraQue = leerParaQue(texto, quien.persona)
-  // OBRA O ESTRUCTURA, NUNCA LAS DOS Y NUNCA NINGUNA (lo exige la base). Sin obra nombrada, la entrega es de
-  // Estructura y el «para qué» dice a qué se destina. Sin obra NI «para qué» no se registra: una entrega sin
-  // destino es plata que sale del cajón sin poder imputarse después.
-  if (!donde.obra && !paraQue) return { estado: 'pregunta', falta: 'destino' }
-  return { estado: 'listo', monto, persona: quien.persona, obra: donde.obra ?? null, paraQue }
+  // OBRA O ESTRUCTURA, NUNCA LAS DOS (lo exige la base). Sin obra nombrada, la entrega es de Estructura.
+  // ═══ SIN «PARA QUÉ» TAMBIÉN SE REGISTRA (dueño, 23/09/2026) ═══
+  // «Me pide sí o sí que diga para qué es, y ése es otro caso de uso». Tenía razón: «$100 a Jorge» es
+  // plata que sale del cajón a nombre de alguien, y lo que se compra con ella lo dicen los tickets cuando
+  // se rinden. Exigir el destino era inventar una regla que el cajón no tiene. Queda Estructura sin
+  // concepto; la obra la trae cada ticket al rendirse.
+  return { estado: 'listo', monto, persona: quien.persona, obra: donde.obra ?? null, paraQue: paraQue ?? null }
 }
 
 /** El pesos de siempre, para hablar igual que las pantallas. */
@@ -376,5 +378,6 @@ export function textoDePregunta(r) {
     return ['No sé a qué obra va. Repetilo con el código:', '',
       ...r.candidatos.map((o) => `- **${o.codigo ?? '—'}** ${o.nombre}`)].join('\n')
   }
+  // 'destino' ya no se pregunta (23/09/2026): queda por si un llamador viejo lo manda.
   return 'Falta para qué es: una obra («para el galpón 8») o el destino del gasto («para gasoil»).'
 }

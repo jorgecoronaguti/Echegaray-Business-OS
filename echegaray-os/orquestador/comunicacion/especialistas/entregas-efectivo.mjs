@@ -141,7 +141,6 @@ export async function atenderVale(d) {
   const donde = elegirObra(dondeBuscar, padron.obras)
   if (donde.candidatos) return { texto: textoDePregunta({ falta: 'obra_ambigua', candidatos: donde.candidatos }), estado: 'pregunta_obra_ambigua', privado: false }
   const paraQue = v.paraQue ?? leerParaQue(texto)
-  if (!donde.obra && !paraQue) return { texto: textoDePregunta({ falta: 'destino' }), estado: 'pregunta_destino', privado: false }
 
   const guardar = d.guardarVale ?? registrarEntregaConVale
   try {
@@ -159,7 +158,7 @@ export async function atenderVale(d) {
       texto: [
         textoRegistrada({
           codigo, monto, persona: quien.persona.nombre,
-          destino: donde.obra ? donde.obra.nombre : `Estructura · ${paraQue}`,
+          destino: donde.obra ? donde.obra.nombre : paraQue ? `Estructura · ${paraQue}` : 'Estructura (a rendir con los tickets)',
         }),
         papel ? 'Guardé la foto del vale como la conformidad en papel.' : 'No pude guardar la foto: la entrega quedó registrada igual, sin el papel.',
       ].join('\n'),
@@ -261,7 +260,7 @@ export const especialista = {
       return {
         texto: textoRegistrada({
           codigo, monto: leido.monto, persona: leido.persona.nombre,
-          destino: leido.obra ? leido.obra.nombre : `Estructura · ${leido.paraQue}`,
+          destino: leido.obra ? leido.obra.nombre : leido.paraQue ? `Estructura · ${leido.paraQue}` : 'Estructura (a rendir con los tickets)',
         }),
         estado: 'entregada',
         privado: false,
