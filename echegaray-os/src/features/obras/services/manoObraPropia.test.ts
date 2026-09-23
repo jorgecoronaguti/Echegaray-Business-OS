@@ -18,7 +18,7 @@ test('la fila de la obra se lee con importe, estimado y horas sin dato', () => {
     { obra_id: 'otra', mano_obra: 1 },
     { obra_id: 'quattropani', mano_obra: '3572782.1', mano_obra_estimada: '3572782.1', horas_sin_tarifa: null, puede_ver_tarifas: true },
   ], 'quattropani')
-  assert.deepEqual(m, { importe: 3572782.1, estimado: 3572782.1, horasSinDato: 0, puedeVer: true })
+  assert.deepEqual(m, { importe: 3572782.1, estimado: 3572782.1, horasSinDato: 0, horasValorizadas: null, puedeVer: true })
 })
 
 test('sin permiso no se dibuja; sin fila es «—»; sin respuesta es «no pude leer»', () => {

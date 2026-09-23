@@ -16,8 +16,9 @@
 //
 // ═══ LO QUE NO SE CALCULA, NO SE CALCULA ═══
 //
-// «Costo de esas horas: no se calcula» mientras haya legajos sin categoría de convenio: un costo con
-// la mitad de las categorías adivinadas es un número fabricado con apariencia de cálculo.
+// «Costo de esas horas» lee la definición única (`costo_de_obras_a_la_fecha`): recibos + negro de las
+// horas valorizadas. Las horas sin tarifa NO se adivinan: no suman y se dicen en la bajada («N h sin
+// tarifa»). Hasta el 23/09/2026 decía «no se calcula» siempre, aun con todas las categorías cargadas.
 //
 // ═══ LAS CARGAS QUE EL DISEÑO NO DIBUJA SIGUEN ACÁ, PLEGADAS ═══
 //
@@ -33,7 +34,7 @@ import {
 import { Aviso, CAMPO, Campo, Nulo, Plegable, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import type { ActividadHH, RegistroHH } from '../services/personalService'
 import {
-  bajadaCosto, ddmm, hhAcumuladas, hhDeSemana, hhSemanaPorPersona, horasPorSemana, legajosSinCategoria,
+  ddmm, hhAcumuladas, hhDeSemana, hhSemanaPorPersona, horasPorSemana,
   lunesDeSemana, numeroDeSemana, rotuloSemana, sublineaPersonalTelefono,
 } from '../services/personalService'
 import { horasDeHoy, hoyEnObra } from '../services/presenciaObra'
@@ -42,6 +43,8 @@ import type { PlanDePersonal } from '../services/obrasService'
 import { etiquetaCategoria } from '@/features/administracion/types'
 import { FormIndividual, FormMasiva, TablaHoras, TablaProductividad } from './PersonalHH'
 import { horasPorAsignado } from '../services/productividadHH'
+import { plataCorta } from './formato'
+import type { ManoObraPropia } from '../types/economia'
 import { C, MONO } from './canon/tokens'
 import { Ico, P } from './canon/Ico'
 import { TabPersonalTelefono, type FilaPersonalTelefono } from './TabPersonalTelefono'
@@ -178,7 +181,11 @@ function TablaAsignaciones({ asignaciones, actividadDe, porAsignado, cerrar, qui
 export async function TabPersonal({
   obraId, plan, asignaciones, personas, cuadrillas, actividades, actividadHH, registros,
   asignar, cerrar, quitar, imputar, imputarMasivo, borrarHoras, causas = [],
+  manoObra = null, veComercial = false,
 }: {
+  /** `costo_de_obras_a_la_fecha` de esta obra (la definición única de Economía y el CRM) · `null` = no se pudo leer. */
+  manoObra?: ManoObraPropia | null
+  veComercial?: boolean
   /** LA OBRA, RECIBIDA Y NO DEDUCIDA: una obra recién abierta no tiene de dónde adivinarla. */
   obraId: string
   plan: PlanDePersonal | null
@@ -207,7 +214,6 @@ export async function TabPersonal({
   const hhTotal = hhAcumuladas(registros)
   const porPersonaSemana = hhSemanaPorPersona(registros, lunes)
   const semanas = horasPorSemana(registros, hoy)
-  const legajos = legajosSinCategoria(asignaciones)
 
   // LA PRESENCIA DE HOY, LEÍDA UNA VEZ. Un control que no pudo mirar no dice «no está»: con la
   // lectura caída los azulejos dicen «sin lectura» y ninguna fila afirma presente ni ausente.
@@ -242,7 +248,16 @@ export async function TabPersonal({
               <Cifra rotulo="Asignados" valor={String(vigentes.length)} falta="—" />
               <Cifra rotulo="HH esta semana" valor={hhSemana == null ? null : n(hhSemana)} falta="sin registrar" />
               <Cifra rotulo="HH acumuladas" valor={hhTotal == null ? null : n(hhTotal)} falta="sin registrar" />
-              <Cifra rotulo="Costo de esas horas" valor={null} falta="no se calcula" bajada={bajadaCosto(legajos)} />
+              {/* El costo sale de la definición única (recibos + negro de las horas valorizadas); las
+                  horas sin tarifa no suman y se dicen. Antes decía «no se calcula» siempre. */}
+              <Cifra rotulo="Costo de esas horas"
+                valor={veComercial && manoObra?.puedeVer && manoObra.importe != null ? plataCorta(manoObra.importe) : null}
+                falta={!veComercial || manoObra?.puedeVer === false ? 'no lo ve tu nivel' : manoObra == null ? 'no se pudo leer' : 'sin horas valorizadas'}
+                bajada={!veComercial || !manoObra?.puedeVer ? '' : [
+                  manoObra.horasValorizadas != null ? `${manoObra.horasValorizadas.toLocaleString('es-AR')} h valorizadas` : null,
+                  manoObra.estimado ? `${plataCorta(manoObra.estimado)} estimado` : null,
+                  manoObra.horasSinDato > 0 ? `${manoObra.horasSinDato} h sin tarifa` : null,
+                ].filter(Boolean).join(' · ') || 'todo con recibo'} />
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

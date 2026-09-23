@@ -59,7 +59,7 @@ test('el cronograma no paga NINGUNA de las cinco: dibuja el plan y los días há
   const l = lecturasDeVista('tareas', 'gantt')
   assert.deepEqual(l, {
     personas: false, cuadrillas: false, partes: false, plan: false, planColumnas: null,
-    restricciones: false, personal: false,
+    restricciones: false, personal: false, equipo: false,
   })
 })
 
@@ -67,7 +67,8 @@ test('ninguna solapa lee las cinco cosas: la matriz cobra por vista, no de fábr
   for (const [v, s] of SOLAPAS) {
     const l = lecturasDeVista(v, s)
     // `planColumnas` no se cuenta: no es una lectura más, es CÓMO se pide `plan`, que ya está.
-    const n = Object.entries(l).filter(([k, x]) => k !== 'planColumnas' && x).length
+    // `equipo` tampoco: son dos de las cuatro de `personal`, que en Personal ya se contaron.
+    const n = Object.entries(l).filter(([k, x]) => k !== 'planColumnas' && k !== 'equipo' && x).length
     assert.ok(n < 5, `${v}/${s} pide las cinco lecturas — si eso es correcto, hay que medirlo y decirlo acá`)
   }
 })
@@ -215,8 +216,10 @@ test('las cuatro lecturas propias de Personal pasan por la matriz, no por la vis
     fuente, /vista === 'personal' \?/,
     'una lectura de Personal volvió a decidirse sola, fuera de lecturasDeVista',
   )
-  for (const lectura of ['getAsignaciones', 'getCausasDesvio', 'getActividadHH']) {
+  for (const lectura of ['getCausasDesvio', 'getActividadHH']) {
     assert.match(fuente, new RegExp(`necesita\\.personal \\? ${lectura}\\(`), `${lectura} no pasa por la matriz`)
   }
-  assert.match(fuente, /necesita\.personal \|\| esParte \? getRegistrosHH\(/)
+  // Asignaciones y HH también las lee el Resumen (cifras HH y Asignados, 23/09/2026): `equipo`.
+  assert.match(fuente, /necesita\.equipo \? getAsignaciones\(/)
+  assert.match(fuente, /necesita\.equipo \|\| esParte \? getRegistrosHH\(/)
 })

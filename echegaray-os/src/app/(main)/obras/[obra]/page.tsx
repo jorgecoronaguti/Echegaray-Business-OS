@@ -41,7 +41,7 @@ import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import {
   getActividades, getAvancePonderado, getDependencias, getDiasHabiles, getDiasHabilesDeObra, getDocumentos,
-  getEconomiaObra, getGenteHoyPorActividad, getObra, getPlanDePersonal, getPlanVsReal, getRestricciones,
+  getEconomiaObra, getGenteHoyPorActividad, getManoObraPropia, getObra, getPlanDePersonal, getPlanVsReal, getRestricciones,
   getUbicacion,
 } from '@/features/obras/services/obrasService'
 import {
@@ -176,6 +176,7 @@ export default async function ObraPage({
     actividadHHRes, cuadrillas, integrantes, partesRes, economiaRes,
     documentosRes, catalogoEquipos, opRes, personasDeHoy, ordenesRes, archivosDrive, subidos,
     avanceRes, nItemsRes, diasHabilesObraRes, dependenciasRes, genteHoy, hhDeCierreRes,
+    manoObraRes,
   ] = await Promise.all([
     // COMERCIAL ES PRECIO, y el precio es de Dirección y Administración: el jefe de obra ve el
     // COSTO de su obra, pero no cuánto se vendió — `veEconomia`, no `esAdministracion`.
@@ -208,9 +209,9 @@ export default async function ObraPage({
     // `statement timeout`. Con el render repuesto vuelven a salir, y siguen colgadas del MISMO
     // interruptor —`PERSONAL_SE_DIBUJA`, en `lecturasDeVista`— para que nunca puedan volver a
     // separarse del render. Acá no se decide: acá se obedece.
-    necesita.personal ? getAsignaciones(supabase, obraId) : null,
+    necesita.equipo ? getAsignaciones(supabase, obraId) : null,
     necesita.personal ? getCausasDesvio(supabase) : null,
-    necesita.personal || esParte ? getRegistrosHH(supabase, obraId) : null,
+    necesita.equipo || esParte ? getRegistrosHH(supabase, obraId) : null,
     // Plan contra real por actividad: la publica Personal. El cronograma dejó de pedirla el 24/08
     // junto con el panel de la actividad — la 07 dibuja plazo, y las HH son de Personal.
     necesita.personal ? getActividadHH(supabase, obraId) : null,
@@ -257,6 +258,8 @@ export default async function ObraPage({
     vista === 'resumen' ? getGenteHoyPorActividad(supabase, obraId, hoyISO) : {},
     // Z01 «Lo que dejó la obra»: HH plan/real por rubro, desde `obra_actividad_hh`. Sólo el Resumen.
     vista === 'resumen' ? getActividadHH(supabase, obraId) : null,
+    // «Costo de esas horas» (08): la definición única de la mano de obra, la de Economía y el CRM.
+    necesita.personal ? getManoObraPropia(supabase, obraId) : null,
   ])
 
   const rolActual = perfilRes.data?.rol ?? null
@@ -540,6 +543,8 @@ export default async function ObraPage({
           diasHabiles={diasHabilesObra}
           nDependencias={nDependencias}
           genteHoy={genteHoy}
+          asignaciones={asignacionesRes ? lector.leer(asignacionesRes, null) : null}
+          registrosHH={registrosRes ? lector.leer(registrosRes, null) : null}
           editar={editarLaObra}
         />
       )}
@@ -576,6 +581,8 @@ export default async function ObraPage({
           imputar={imputarHH.bind(null, obraId)}
           imputarMasivo={imputarHHMasivo.bind(null, obraId)}
           borrarHoras={borrarHH.bind(null, obraId)}
+          manoObra={manoObraRes ? lector.leer(manoObraRes, null) : null}
+          veComercial={veComercial}
         />
       )}
 

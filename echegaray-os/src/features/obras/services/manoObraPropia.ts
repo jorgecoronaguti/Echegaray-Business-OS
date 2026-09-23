@@ -25,6 +25,7 @@ export function manoObraPropiaDe(data: unknown, obraId: string): ManoObraPropia 
     importe: num(r.mano_obra),
     estimado: num(r.mano_obra_estimada),
     horasSinDato: num(r.horas_sin_tarifa) ?? 0,
+    horasValorizadas: num(r.horas_valorizadas),
     puedeVer: r.puede_ver_tarifas !== false,
   }
 }

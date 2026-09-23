@@ -40,10 +40,11 @@ import {
   bajadaAvance, cifraAvance, type AvancePonderado, type DiasHabilesObra,
 } from '../services/avancePonderado'
 import {
-  frentesEnCurso, impedimentosQueFrenan, loQueFaltaCargar, personasHoy, plazoDeObra,
+  asignadosDelResumen, frentesEnCurso, hhDelResumen, impedimentosQueFrenan, loQueFaltaCargar, personasHoy, plazoDeObra,
   sinMetodoDeMedicion, ultimaActividad,
 } from '../services/resumenObra'
 import type { PersonasDeHoy } from '../services/personalService'
+import type { Asignacion } from '../types'
 import type { BloqueOrdenes } from '../services/ordenesDeLaObra'
 import { fecha, fechaCorta, plataCorta } from './formato'
 
@@ -166,6 +167,7 @@ export function TabResumen({
   obra, plan, economia = null, abiertas, obraId, editar, veComercial = true,
   actividades = [], partes = [], personasDeHoy = null, ordenes = null,
   hoy = new Date().toISOString().slice(0, 10), avance, diasHabiles, nDependencias, genteHoy,
+  asignaciones = null, registrosHH = null,
 }: {
   obra: ObraPanel
   plan: PlanVsReal | null
@@ -189,6 +191,10 @@ export function TabResumen({
   nDependencias: number | null
   /** Personas distintas en los partes de hoy, por actividad. */
   genteHoy: Record<string, number>
+  /** `obra_asignacion` de la obra · `null` = no se pudo leer. */
+  asignaciones?: readonly Asignacion[] | null
+  /** `registros_hh` de la obra (la misma lectura que Personal) · `null` = no se pudo leer. */
+  registrosHH?: Parameters<typeof hhDelResumen>[0] | null
 }) {
   const vivas = actividades.filter((a) => a.tipo !== 'resumen' && !a.archivada && !a.actividad_padre_id)
   const actividadDe = new Map(actividades.map((a) => [a.id, { nombre: a.nombre, unidad: a.unidad }]))
@@ -207,6 +213,8 @@ export function TabResumen({
   const finProyectadoTarde = obra.forecast_fin != null && obra.fecha_fin_plan != null && obra.forecast_fin > obra.fecha_fin_plan
   const atencion = [...itemsDeImpedimentos(abiertas, obraId, hoy), ...itemsDelPlan(plan, economia, veComercial, obraId)]
   const personas = personasHoy(personasDeHoy)
+  const hh = hhDelResumen(registrosHH, hoy)
+  const asignados = asignadosDelResumen(asignaciones)
 
   return (
     <>
@@ -215,9 +223,12 @@ export function TabResumen({
         data-testid="resumen-obra">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '34px', minWidth: 0 }}>
           <div style={{ display: 'flex', gap: '64px', flexWrap: 'wrap' }} data-testid="cifras-resumen">
-            {/* 03.html dibuja DOS cifras: Avance y Plazo. El costo teórico no está en el diseño (revisión 23/09). */}
+            {/* 03.html dibuja Avance y Plazo; HH y Asignados se suman por pedido del dueño (23/09/2026)
+                con la misma fuente que la solapa Personal. El costo teórico no está en el diseño. */}
             <CifraGrande rotulo="Avance" valor={cifraAvance(avance)} falta="sin estructura" bajada={bajadaAvance(avance)} testid="cifra-avance" />
             <CifraGrande rotulo="Plazo" valor={plazo.valor} falta={plazo.falta} bajada={plazo.bajada} tono={plazo.tono} testid="cifra-plazo" />
+            <CifraGrande rotulo={hh.rotulo} valor={hh.valor} falta={hh.falta} bajada={hh.bajada} testid="cifra-hh" />
+            <CifraGrande rotulo={asignados.rotulo} valor={asignados.valor} falta={asignados.falta} bajada={asignados.bajada} testid="cifra-asignados" />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }} data-testid="lo-que-frena">
@@ -380,6 +391,8 @@ export function TabResumen({
             falta={veComercial ? 'sin comprobantes' : 'no lo ve tu nivel'}
             bajada={veComercial && economia?.costo_real_n_comprobantes != null ? `${economia.costo_real_n_comprobantes} comprobantes` : ''} />
           <CifraGrande tam={24} rotulo="Personas hoy" valor={personas.valor} falta={personas.falta} bajada={personas.bajada} />
+          <CifraGrande tam={24} rotulo={hh.rotulo} valor={hh.valor} falta={hh.falta} bajada={hh.bajada} />
+          <CifraGrande tam={24} rotulo={asignados.rotulo} valor={asignados.valor} falta={asignados.falta} bajada={asignados.bajada} />
         </div>
         <AtencionObra items={atencion} />
         <ProximasTelefono actividades={actividades} obraId={obraId} hoy={hoy} />

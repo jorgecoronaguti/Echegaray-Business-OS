@@ -23,6 +23,9 @@ export interface ManoObraPropia {
   estimado: number | null
   /** Horas FALTA_DATO que no suman. */
   horasSinDato: number
+  /** Las horas que la definición valorizó · `null` = no lo informó. Puede ser menos que las HH de
+   *  Personal: la presencia por defecto no se valoriza. */
+  horasValorizadas?: number | null
   /** `false` = el rol no lee recibos ni tarifas: la línea no se dibuja. */
   puedeVer: boolean
 }

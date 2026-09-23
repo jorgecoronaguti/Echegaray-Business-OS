@@ -6,7 +6,7 @@
 // NULL nunca es 0: cada función devuelve `null` donde no hay dato y la palabra que lo dice.
 
 import { diaHabil, type DiasHabilesObra } from './avancePonderado.ts'
-import type { ActividadHH } from './personalService.ts'
+import { hhAcumuladas, hhDeSemana, lunesDeSemana, type ActividadHH } from './personalService.ts'
 import { METODO_CORTO, TIPO_RESTRICCION_LABEL, type Actividad, type ParteEjecucion, type Restriccion } from '../types/index.ts'
 
 export type Tono = 'ink' | 'warn' | 'neg' | 'pos' | 'faint'
@@ -120,6 +120,31 @@ export function hhDeCierre(p: { hh_real: number | null; hh_plan: number | null }
     rotulo: 'HH', valor: numAR(p.hh_real), falta: '',
     bajada: `plan ${numAR(p.hh_plan)} · ${d > 0 ? '+' : ''}${numAR(d, 1)} %`, tono: 'ink',
   }
+}
+
+/**
+ * «HH» del Resumen: las acumuladas de la obra con las de esta semana debajo. La MISMA fuente y las
+ * MISMAS funciones que la solapa Personal (`registros_hh` de la obra, sin ausencias), para que las
+ * dos pantallas digan el mismo número (dueño, 23/09/2026: «las obras ya tienen personal asignado y
+ * carga de HH, se debe ver reflejado»). `null` = no se pudo leer, que no es lo mismo que cero.
+ */
+export function hhDelResumen(registros: Parameters<typeof hhAcumuladas>[0] | null, hoyIso: string): Cifra {
+  if (registros == null) return { rotulo: 'HH', valor: null, falta: 'no se pudo leer', bajada: '', tono: 'faint' }
+  const total = hhAcumuladas(registros)
+  if (total == null) return { rotulo: 'HH', valor: null, falta: 'sin horas cargadas', bajada: '', tono: 'faint' }
+  const semana = hhDeSemana(registros, lunesDeSemana(hoyIso))
+  return {
+    rotulo: 'HH', valor: numAR(total), falta: '',
+    bajada: semana == null ? 'sin horas esta semana' : `${numAR(semana)} esta semana`, tono: 'ink',
+  }
+}
+
+/** «Asignados» del Resumen: las asignaciones vigentes (sin `hasta`), como la cifra de Personal. */
+export function asignadosDelResumen(asignaciones: readonly { hasta: string | null }[] | null): Cifra {
+  if (asignaciones == null) return { rotulo: 'Asignados', valor: null, falta: 'no se pudo leer', bajada: '', tono: 'faint' }
+  const vigentes = asignaciones.filter((a) => !a.hasta).length
+  if (vigentes === 0) return { rotulo: 'Asignados', valor: null, falta: 'nadie asignado', bajada: '', tono: 'faint' }
+  return { rotulo: 'Asignados', valor: String(vigentes), falta: '', bajada: vigentes === 1 ? 'persona en la obra' : 'personas en la obra', tono: 'ink' }
 }
 
 // ── LOS FRENTES EN CURSO ────────────────────────────────────────────────────

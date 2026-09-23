@@ -113,6 +113,9 @@ export type LecturasDeVista = {
    *  `causa_desvio`, `registros_hh` y `obra_actividad_hh`. Van juntas porque las dibuja un solo
    *  componente: si no se monta, ninguna de las cuatro tiene destino. Ver `PERSONAL_SE_DIBUJA`. */
   personal: boolean
+  /** `obra_asignacion` y `registros_hh` sin lo demás de Personal: el Resumen dibuja las cifras
+   *  HH y Asignados con la misma fuente que Personal (dueño, 23/09/2026). */
+  equipo: boolean
 }
 
 /**
@@ -140,6 +143,7 @@ export function lecturasDeVista(vista: string, sub: SubTareas): LecturasDeVista 
     planColumnas: juegoDeColumnas(vista),
     restricciones: vista === 'resumen' || vista === 'operacion',
     personal: enPersonal,
+    equipo: enPersonal || vista === 'resumen',
   }
 }
 

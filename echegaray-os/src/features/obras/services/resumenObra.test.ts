@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  hhDelResumen, asignadosDelResumen,
   antesDeArchivar, frentesEnCurso, hhDeCierre, hhPorRubro, impedimentosQueFrenan, loQueFaltaCargar,
   margenDeCierre, personasHoy, plazoDeObra, plazoFinal, sinMetodoDeMedicion, ultimaActividad,
 } from './resumenObra.ts'
@@ -170,4 +171,20 @@ test('Z01: el checklist no bloquea y cada paso dice qué falta y adónde ir', ()
 test('Z01: el margen sin costo objetivo no es un número', () => {
   assert.deepEqual(margenDeCierre({ monto_contratado: 231, costo_presupuestado: null, costo_real: 181 }), { texto: 'sin base · costo objetivo sin cargar', tono: 'faint' })
   assert.equal(margenDeCierre({ monto_contratado: 200, costo_presupuestado: 150, costo_real: 180 }).texto, '10 % sobre contrato')
+})
+
+test('HH del Resumen: misma cuenta que Personal, sin ausencias, con la semana debajo', () => {
+  const r = (fecha_inicio_semana: string, horas: number, tipo_hora = 'normal') => ({ persona_id: 'p', fecha_inicio_semana, horas, tipo_hora })
+  const c = hhDelResumen([r('2026-09-21', 9), r('2026-09-21', 9), r('2026-09-14', 45), r('2026-09-14', 9, 'ausencia')], '2026-09-23')
+  assert.equal(c.valor, '63')
+  assert.equal(c.bajada, '18 esta semana')
+  assert.equal(hhDelResumen([], '2026-09-23').falta, 'sin horas cargadas')
+  assert.equal(hhDelResumen(null, '2026-09-23').falta, 'no se pudo leer')
+  assert.equal(hhDelResumen([r('2026-09-14', 45)], '2026-09-23').bajada, 'sin horas esta semana')
+})
+
+test('Asignados del Resumen: sólo las vigentes; nadie asignado no es 0', () => {
+  assert.equal(asignadosDelResumen([{ hasta: null }, { hasta: null }, { hasta: '2026-09-01' }]).valor, '2')
+  assert.equal(asignadosDelResumen([{ hasta: '2026-09-01' }]).falta, 'nadie asignado')
+  assert.equal(asignadosDelResumen(null).falta, 'no se pudo leer')
 })

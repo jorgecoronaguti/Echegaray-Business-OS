@@ -13,6 +13,7 @@ import type { JuegoDeColumnasDelPlan } from './lecturasDeVista'
 import type { AvancePonderado, DiasHabilesObra } from './avancePonderado.ts'
 // CON EXTENSIÓN: `obrasService.test.ts` carga este archivo con `node --test`, que no resuelve rutas sin ella.
 import { manoObraPropiaDe } from './manoObraPropia.ts'
+import type { ManoObraPropia } from '../types/economia.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   Actividad, Dependencia, DocumentoObra, EconomiaObra, ObraPanel, PlanVsReal, Restriccion,
@@ -218,6 +219,18 @@ export async function getEconomiaObra(
   // Un error de la RPC no rompe el panel: la línea queda en null («no pude leer») y el resto se dibuja.
   const mano_obra_propia = mo.error ? null : manoObraPropiaDe(mo.data, obraId)
   return { data: { ...(eco.data as EconomiaObra), mano_obra_propia }, error: null }
+}
+
+/**
+ * «Costo de esas horas» de la solapa Personal: la MISMA definición única que Economía y el CRM
+ * (`costo_de_obras_a_la_fecha`). Quién ve tarifas lo decide la función (`puedeVer`), no la pantalla.
+ */
+export async function getManoObraPropia(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResult<ManoObraPropia | null>> {
+  const { data, error } = await supabase.rpc('costo_de_obras_a_la_fecha', { p_obras: [obraId] })
+  if (error) return { data: null, error: error.message }
+  return { data: manoObraPropiaDe(data, obraId), error: null }
 }
 
 /** Las SIETE columnas que la cartera dibuja de `obra_plan_vs_real`, y ninguna más.

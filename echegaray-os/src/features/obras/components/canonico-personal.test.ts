@@ -60,7 +60,9 @@ test('08 · las cuatro cifras del diseño, y el costo NO se calcula', () => {
   for (const r of ['Asignados', 'HH esta semana', 'HH acumuladas', 'Costo de esas horas']) {
     assert.match(src, new RegExp(`rotulo="${r}"`), `falta la cifra ${r}`)
   }
-  assert.match(src, /falta="no se calcula" bajada=\{bajadaCosto\(legajos\)\}/)
+  // El costo sale de la definición única (costo_de_obras_a_la_fecha), nunca «no se calcula» fijo.
+  assert.doesNotMatch(src, /falta="no se calcula"/)
+  assert.match(src, /manoObra\.importe != null \? plataCorta\(manoObra\.importe\)/)
   // Las seis columnas de «Quién está asignado», literales.
   assert.match(src, /<div>Persona<\/div><div>Categoría<\/div><div>Cuadrilla<\/div><div>Rol<\/div><div style=\{\{ textAlign: 'right' \}\}>HH sem\.<\/div><div>Desde<\/div>/)
   assert.match(src, /Horas por semana/)
