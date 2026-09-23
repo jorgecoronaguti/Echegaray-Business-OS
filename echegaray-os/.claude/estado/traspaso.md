@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: **2026-09-23 ~11:05 (−03)** · `origin/main` = **d2416204**, checkout de producción en ese
+_actualizado: **2026-09-23 ~11:05 (−03)** · `origin/main` = **9aac89ea**, checkout de producción en ese
 commit, daemons reiniciados y verificados con `servicios-al-dia.mjs`._
 
 **HECHO 23/09 (mañana), todo publicado:** el canal #efectivo lee la entrega como se escribe (53 frases
@@ -29,11 +29,12 @@ falta la fila en Cobranzas (esperando su «cargala») · Herramientas: paridad t
 Herramientas redirige a /campo/herramientas (c71f4713, `?pc=1` para la de escritorio); recuento físico del
 lugar en construcción (agente, migración 20260923T1700 sin aplicar) · firmas visibles en la ficha de la
 entrega (e2467168) · Corralón: cuadratura cierra en $721.338,66; borrador a Ariel en Gmail (r2877218322583338095); el dueño
-emite 2 eCheq por la deuda actual ($498.120,12 al 26/10 y $223.218,54 al 06/11) → cargar en Cheques
+emite 2 eCheq por la deuda actual ($500.000 al 23/10 y $221.338,66 al 06/11; borrador Gmail r366573467686833884) → cargar en Cheques
 Emitidos y marcar las 6 filas cuando pase los números · Robles: 859 y 926 Pagado con echeq 385 (leído de
 vuelta) · Arcor: FCE 54 cargada en Cobranzas (ID 99) · avisos: anulación→persona, firma→dueño (T1800/T1810
 aplicadas) · admin en teléfono entra por /campo · Documentos y Fuentes fuera de la barra · Material dentro
-de Herramientas EN CURSO (agente, migración T1900 sin aplicar) · bucket herramientas sigue con 0 fotos.
+de Herramientas PUBLICADO (9aac89ea, migración T1900 aplicada; sin QA en navegador; 3 specs e2e
+apuntan a la URL vieja de Pedidos) · bucket herramientas sigue con 0 fotos.
 
 **ROTO a sabiendas:** los e2e que usaban `qa.campo@` / `[PRUEBA E2E] QA Campo` (8 specs) no tienen
 fixture; hay que hacerlos crear y borrar sus datos, no sembrar producción.
