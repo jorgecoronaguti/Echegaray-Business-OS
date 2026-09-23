@@ -1,183 +1,89 @@
-// PERSONAL DE LA OBRA — quién está, con qué rol, y cuántas horas lleva.
+// ═══ 08 · OBRA PERSONAL — PORTE LITERAL DE `erp-obras/08.html` Y `M10.html` (dueño, 23/09/2026) ═══
 //
-// ═══ LA FORMA LA FIJA EL HANDOFF APROBADO (design/screens/obras.md §1e) ═══
-//
-//   Titular en UNA línea · asignaciones · plan contra real por actividad · horas imputadas.
-//   Las altas van por ACCIÓN DISCRETA, no por formulario permanente en pantalla.
-//
-// Los tres formularios de carga estaban esparcidos entre las tablas, cada uno en su recuadro: la
-// pantalla se leía como cuatro bloques de escritura con algunas tablas en el medio, cuando lo que
-// se hace acá casi siempre es MIRAR. Ahora los tres viven en una fila de acciones debajo de la
-// tabla de asignaciones, plegados, y se abren donde están.
+// Cuatro cifras de 26px —Asignados · HH esta semana · HH acumuladas · Costo de esas horas («no se
+// calcula» + cuántos legajos sin categoría de convenio)—, la tabla «Quién está asignado» (Persona ·
+// Categoría · Cuadrilla · Rol · HH sem. · Desde, filas de 56px) y el aside de 320px con «Horas por
+// semana» (barras de 6px, «sin reg.» punteado). La primaria es «Asignar persona» y se abre acá
+// mismo. En el teléfono (M10): dos azulejos, pastillas Hoy · Asignados · Sin fichar · Horas y filas
+// de 56px con presente / sin fichar y las horas de hoy.
 //
 // ═══ ES LA MISMA RELACIÓN QUE MUESTRA LA FICHA DE LA PERSONA ═══
 //
-// Esta solapa NO es un segundo maestro de personas: es la vista de recursos humanos DE ESTA OBRA.
-// Lee `obra_asignacion` —la misma tabla que lee `/administracion/personas/<id>`— y `registros_hh`,
-// que es la única fuente de las horas. Ninguna de las dos pantallas guarda un resumen propio, y por
-// eso no pueden decir cosas distintas.
+// Esta solapa NO es un segundo maestro de personas: lee `obra_asignacion` —la misma tabla que lee
+// `/administracion/personas/<id>`— y `registros_hh`, la única fuente de las horas. Ninguna de las
+// dos pantallas guarda un resumen propio, y por eso no pueden decir cosas distintas. La presencia
+// de hoy se lee UNA vez (`getPresencia`) y alimenta los azulejos y las filas del teléfono.
 //
-// ═══ LAS DOS PUNTAS DE LAS HH, Y EL DESVÍO SÓLO CUANDO ESTÁN LAS DOS ═══
+// ═══ LO QUE NO SE CALCULA, NO SE CALCULA ═══
 //
-// HH plan es la suma de `obra_actividad.hh_plan`; HH real es la suma de `registros_hh`. Las dos las
-// publica `obra_plan_vs_real`, que también anula el desvío cuando falta una. Acá no se vuelve a
-// sumar: se muestra lo que la vista publicó y, debajo, las filas que lo respaldan.
+// «Costo de esas horas: no se calcula» mientras haya legajos sin categoría de convenio: un costo con
+// la mitad de las categorías adivinadas es un número fabricado con apariencia de cálculo.
+//
+// ═══ LAS CARGAS QUE EL DISEÑO NO DIBUJA SIGUEN ACÁ, PLEGADAS ═══
+//
+// Cerrar y quitar asignaciones, imputar horas (individual y a la cuadrilla), plan contra real por
+// actividad y el detalle de horas imputadas no están en el 08 pero son las únicas puertas a esas
+// escrituras: viven debajo, en filas plegables de 44px, sin competir con lo que se mira.
 
-import { Suspense } from 'react'
+import { createClient } from '@/lib/supabase/server'
+import { getPresencia } from '@/features/administracion/services/presenciaService'
 import {
   BotonAccion, FormAccion, type AccionFormulario, type ResultadoAccion,
 } from '@/shared/components/ui'
-import {
-  Aviso, CAMPO, Campo, Nulo, Plegable, SubTabs, Tabla, Td, Th, THead, Tr, Vacio,
-} from '@/shared/components/ds'
-import { TablaEsqueleto } from '@/shared/components/carga'
-import { HoyEnObra } from './HoyEnObra'
+import { Aviso, CAMPO, Campo, Nulo, Plegable, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import type { ActividadHH, RegistroHH } from '../services/personalService'
+import {
+  bajadaCosto, ddmm, hhAcumuladas, hhDeSemana, hhSemanaPorPersona, horasPorSemana, legajosSinCategoria,
+  lunesDeSemana, numeroDeSemana, rotuloSemana, sublineaPersonalTelefono,
+} from '../services/personalService'
+import { horasDeHoy, hoyEnObra } from '../services/presenciaObra'
 import type { Actividad, Asignacion, Persona } from '../types'
 import type { PlanDePersonal } from '../services/obrasService'
 import { etiquetaCategoria } from '@/features/administracion/types'
 import { FormIndividual, FormMasiva, TablaHoras, TablaProductividad } from './PersonalHH'
 import { horasPorAsignado } from '../services/productividadHH'
-import { desvio } from './formato'
+import { C, MONO } from './canon/tokens'
+import { Ico, P } from './canon/Ico'
+import { TabPersonalTelefono, type FilaPersonalTelefono } from './TabPersonalTelefono'
 
-/**
- * EL TITULAR, EN UNA LÍNEA.
- *
- * El dueño lo dibujó así: *"12 personas · HH plan 12.400 · HH real 8.540 (312 registros) · 148 HH
- * extras · +850 HH"*, y agregó *"sin KPIs decorativos"*. Eran cuatro recuadros con borde; ahora es
- * un renglón. Las mismas cifras ocupan un tercio del alto y se leen de un vistazo.
- *
- * NINGUNA SE INVENTA. Sin plan cargado no dice «0 HH»: dice «HH plan sin cargar», y el desvío
- * directamente no aparece. Un cero donde falta un dato convierte una obra sin planificar en una
- * obra perfectamente cumplida.
- */
-function Titular({ plan, asignaciones, registros }: {
-  plan: PlanDePersonal | null; asignaciones: Asignacion[]; registros: RegistroHH[]
-}) {
-  const hhPlan = plan?.hh_plan ?? null
-  const hhReal = plan?.hh_real ?? null
-  const dif = hhPlan != null && hhReal != null ? hhReal - hhPlan : null
-  const vigentes = asignaciones.filter((a) => !a.hasta)
-  const n = (x: number) => Math.round(x).toLocaleString('es-AR')
-  // LAS EXTRAS SALEN DE LOS MISMOS REGISTROS, no de un contador aparte: son las horas de la obra,
-  // desagregadas por clase. Se nombran sólo si las hubo — «0 extras» en toda obra sin extras es
-  // ruido que tapa a la que sí las tuvo.
-  const extras = registros
-    .filter((r) => r.tipo_hora === 'extra_50' || r.tipo_hora === 'extra_100')
-    .reduce((t, r) => t + r.horas, 0)
+const GRID = 'minmax(0,1fr) 130px 120px 108px 82px 96px'
+/** Por debajo de esto la tabla scrollea POR DENTRO (536px fijos + 100px de gaps). */
+const MIN_TABLA = 800
+const n = (x: number) => Math.round(x).toLocaleString('es-AR')
+const EYEBROW: React.CSSProperties = { fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase' }
 
-  const partes = [
-    vigentes.length === 0 ? 'nadie asignado' : `${vigentes.length} ${vigentes.length === 1 ? 'persona' : 'personas'}`,
-    hhPlan == null ? 'HH plan sin cargar' : `HH plan ${n(hhPlan)}`,
-    hhReal == null
-      ? 'HH real sin imputar'
-      : `HH real ${n(hhReal)} (${registros.length} ${registros.length === 1 ? 'registro' : 'registros'})`,
-    ...(extras > 0 ? [`${n(extras)} HH extras`] : []),
-  ]
-
+function Cifra({ rotulo, valor, falta, bajada }: { rotulo: string; valor: string | null; falta: string; bajada?: string }) {
   return (
-    <p className="text-[13px] text-muted" data-testid="titular-personal">
-      {partes.join(' · ')}
-      {dif != null && (
-        <>
-          {' · '}
-          {/* ROJO SÓLO PARA UN PROBLEMA REAL: pasarse del plan de horas lo es. Estar por debajo no
-              se pinta de verde —puede ser que falte imputar—, así que queda neutro. */}
-          <span className={dif > 0 ? 'font-medium text-neg' : 'font-medium text-ink'}>
-            {dif > 0 ? '+' : '−'}{n(Math.abs(dif))} HH
-          </span>
-          <span className="text-faint"> {desvio(plan?.desvio_hh_pct)} vs plan</span>
-        </>
-      )}
-    </p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }} data-testid={`cifra-${rotulo.toLowerCase().replace(/\s+/g, '-')}`}>
+      <div style={EYEBROW}>{rotulo}</div>
+      <div style={{ fontSize: '26px', fontWeight: 600, letterSpacing: '-.02em', color: valor == null ? C.tenue : C.tinta, fontVariantNumeric: 'tabular-nums' }}>
+        {valor ?? <span data-nulo="">{falta}</span>}
+      </div>
+      {bajada && <div style={{ fontSize: '12.5px', color: C.tintaSuave }}>{bajada}</div>}
+    </div>
   )
 }
 
-function TablaAsignaciones({ asignaciones, actividadDe, porAsignado, cerrar, quitar }: {
-  asignaciones: Asignacion[]
-  actividadDe: Map<string, string>
-  porAsignado: Map<string, number>
-  cerrar: (asignacionId: string) => Promise<ResultadoAccion>
-  quitar: (asignacionId: string) => Promise<ResultadoAccion>
-}) {
-  return (
-    <Tabla testid="tabla-personal" minWidth={720}>
-      <THead>
-        <Th>Persona</Th><Th>Rol / categoría</Th><Th>Cuadrilla</Th><Th>Actividad</Th>
-        <Th num>HH</Th><Th num />
-      </THead>
-      <tbody>
-        {asignaciones.map((a) => (
-          <Tr key={a.id} {...{ 'data-testid': 'fila-asignacion' }}>
-            <Td fuerte>
-              {/* Sin persona en el legajo se MARCA en `warn` y no se rellena: la asignación existe,
-                  el legajo la perdió, y eso es trabajo pendiente de alguien. */}
-              {a.persona_nombre ?? <span className="text-warn">persona borrada del legajo</span>}
-              {a.persona_especialidad && (
-                <span className="block text-[11px] text-faint">{a.persona_especialidad}</span>
-              )}
-            </Td>
-            {/* ROL Y CATEGORÍA JUNTOS: son la misma pregunta —«¿qué hace acá?»— y separarlos
-                gastaba una columna en un dato de una palabra. */}
-            <Td>
-              {a.rol}
-              {a.persona_categoria && (
-                <span className="block text-[11px] text-faint">{etiquetaCategoria(a.persona_categoria)}</span>
-              )}
-            </Td>
-            <Td>{a.cuadrilla ?? <Nulo>sin cuadrilla</Nulo>}</Td>
-            <Td>
-              {a.actividad_id
-                ? (actividadDe.get(a.actividad_id) ?? <Nulo>actividad archivada</Nulo>)
-                : 'toda la obra'}
-              {/* La asignación cerrada no se esconde —es la historia de la obra— pero se dice con
-                  una palabra en vez de gastar una columna de fechas en el listado operativo. */}
-              {a.hasta && <span className="block text-[11px] text-faint">hasta {a.hasta}</span>}
-            </Td>
-            <Td num fuerte>
-              {porAsignado.get(a.id)?.toLocaleString('es-AR', { maximumFractionDigits: 1 })
-                ?? <Nulo>sin imputar</Nulo>}
-            </Td>
-            <Td num>
-              {/* CERRAR conserva el período; QUITAR borra la fila y sólo sirve para el alta hecha
-                  por error. Si las dos hicieran lo mismo, cada rotación borraría el pasado. */}
-              {a.hasta
-                ? <BotonAccion accion={quitar} args={[a.id]} testid="quitar-asignacion" tono="peligro">Quitar</BotonAccion>
-                : <BotonAccion accion={cerrar} args={[a.id]} testid="cerrar-asignacion">Cerrar</BotonAccion>}
-            </Td>
-          </Tr>
-        ))}
-      </tbody>
-    </Tabla>
-  )
-}
-
-/**
- * UN ALTA COMO ACCIÓN DISCRETA. Cerrada es un enlace más de la fila de acciones; abierta baja su
- * panel debajo. Sin estado de cliente: lo resuelve `<details>`, y por eso la pantalla entera sigue
- * siendo un componente de servidor.
- */
-function Alta({ titulo, testid, children, primaria = false }: {
-  titulo: string; testid: string; children: React.ReactNode
-  /** La PRIMARIA de la pantalla (canónico 09): amarillo de marca, en la banda. Es la misma
-   *  mecánica —`<details>`, sin estado de cliente—, no un componente aparte: dos formas de abrir el
-   *  mismo panel se desincronizan en el primer cambio. */
-  primaria?: boolean
+/** UN ALTA COMO ACCIÓN DISCRETA: la primaria «Asignar persona» abre su panel acá mismo. Sin estado
+ *  de cliente: lo resuelve `<details>`, y por eso la solapa entera sigue siendo de servidor. */
+function Alta({ titulo, testid, children, primaria = false, telefono = false }: {
+  titulo: string; testid: string; children: React.ReactNode; primaria?: boolean; telefono?: boolean
 }) {
   return (
     <details className={primaria ? 'relative min-w-0' : 'w-full min-w-0 sm:w-auto'} data-testid={testid}>
       <summary
         className={primaria
-          ? 'flex cursor-pointer select-none items-center gap-1.5 rounded-[6px] bg-marca px-[11px] py-[6px] text-[12.5px] font-semibold text-[color:var(--os-on-marca)] hover:brightness-[0.97] [&::-webkit-details-marker]:hidden'
+          ? telefono
+            ? 'flex h-12 cursor-pointer select-none items-center justify-center gap-2 rounded-[6px] bg-marca text-[14px] font-semibold text-[color:var(--os-on-marca)] [&::-webkit-details-marker]:hidden'
+            : 'inline-flex h-8 cursor-pointer select-none items-center gap-1.5 rounded-[6px] bg-marca px-[14px] text-[13px] font-semibold text-[color:var(--os-on-marca)] hover:brightness-[0.97] [&::-webkit-details-marker]:hidden'
           : 'cursor-pointer select-none text-[12.5px] text-muted hover:text-ink'}
       >
-        {titulo}
+        {telefono && <Ico d={P.mas} s={15} />}{titulo}
       </summary>
-      {/* ABIERTA DESDE LA BANDA, EL PANEL BAJA SOBRE EL CONTENIDO y no empuja la lista: la banda
-          mide 34px de alto y un formulario de seis campos adentro la convertiría en un bloque.
-          `right-0` lo ancla al botón, que está al final de la banda. */}
       <div className={primaria
-        ? 'absolute right-0 z-30 mt-2 w-[560px] max-w-[calc(100vw-2rem)] rounded-card border border-line bg-surface p-4 shadow-pop'
+        ? telefono
+          ? 'absolute bottom-full left-0 right-0 z-30 mb-2 max-h-[70vh] overflow-auto rounded-card border border-line bg-surface p-4 shadow-pop'
+          : 'absolute right-0 z-30 mt-2 w-[560px] max-w-[calc(100vw-2rem)] rounded-card border border-line bg-surface p-4 shadow-pop'
         : 'mt-3 border-t border-surface-sunken pt-3.5'}
       >
         {children}
@@ -186,13 +92,8 @@ function Alta({ titulo, testid, children, primaria = false }: {
   )
 }
 
-/**
- * ASIGNAR UNA PERSONA A ESTA OBRA — el formulario, en un componente propio.
- *
- * Vivía escrito dentro del plegable. Se saca porque ahora lo usa la PRIMARIA de la banda, y dos
- * copias del mismo formulario se separan en el primer campo que se agregue: una obra donde el rol
- * se puede elegir desde un lado y no desde el otro.
- */
+/** ASIGNAR UNA PERSONA A ESTA OBRA — el formulario, UNA sola definición para el escritorio y el
+ *  teléfono (el `<details>` cambia; el formulario no). */
 function FormAsignar({ personas, cuadrillas, actividades, asignar }: {
   personas: Persona[]
   cuadrillas: { id: string; nombre: string; integrantes: number }[]
@@ -224,10 +125,7 @@ function FormAsignar({ personas, cuadrillas, actividades, asignar }: {
           </select>
         </Campo>
         <Campo rotulo="Desde"><input type="date" name="desde" className={CAMPO} /></Campo>
-        <Campo
-          rotulo="Actividad" className="col-span-2 sm:col-span-3"
-          ayuda="Opcional: en blanco queda asignado a la obra entera."
-        >
+        <Campo rotulo="Actividad" className="col-span-2 sm:col-span-3" ayuda="Opcional: en blanco queda asignado a la obra entera.">
           <select name="actividad_id" defaultValue="" className={CAMPO}>
             <option value="">toda la obra</option>
             {actividades.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
@@ -241,22 +139,48 @@ function FormAsignar({ personas, cuadrillas, actividades, asignar }: {
   )
 }
 
-export function TabPersonal({
+function TablaAsignaciones({ asignaciones, actividadDe, porAsignado, cerrar, quitar }: {
+  asignaciones: Asignacion[]
+  actividadDe: Map<string, string>
+  porAsignado: Map<string, number>
+  cerrar: (asignacionId: string) => Promise<ResultadoAccion>
+  quitar: (asignacionId: string) => Promise<ResultadoAccion>
+}) {
+  return (
+    <Tabla testid="tabla-personal" minWidth={720}>
+      <THead>
+        <Th>Persona</Th><Th>Rol / categoría</Th><Th>Cuadrilla</Th><Th>Actividad</Th><Th num>HH</Th><Th num />
+      </THead>
+      <tbody>
+        {asignaciones.map((a) => (
+          <Tr key={a.id} {...{ 'data-testid': 'fila-asignacion' }}>
+            <Td fuerte>{a.persona_nombre ?? <span className="text-warn">persona borrada del legajo</span>}</Td>
+            <Td>{a.rol}{a.persona_categoria && <span className="block text-[11px] text-faint">{etiquetaCategoria(a.persona_categoria)}</span>}</Td>
+            <Td>{a.cuadrilla ?? <Nulo>sin cuadrilla</Nulo>}</Td>
+            <Td>
+              {a.actividad_id ? (actividadDe.get(a.actividad_id) ?? <Nulo>actividad archivada</Nulo>) : 'toda la obra'}
+              {a.hasta && <span className="block text-[11px] text-faint">hasta {a.hasta}</span>}
+            </Td>
+            <Td num fuerte>{porAsignado.get(a.id)?.toLocaleString('es-AR', { maximumFractionDigits: 1 }) ?? <Nulo>sin imputar</Nulo>}</Td>
+            <Td num>
+              {/* CERRAR conserva el período; QUITAR borra la fila y sólo sirve para el alta hecha por error. */}
+              {a.hasta
+                ? <BotonAccion accion={quitar} args={[a.id]} testid="quitar-asignacion" tono="peligro">Quitar</BotonAccion>
+                : <BotonAccion accion={cerrar} args={[a.id]} testid="cerrar-asignacion">Cerrar</BotonAccion>}
+            </Td>
+          </Tr>
+        ))}
+      </tbody>
+    </Tabla>
+  )
+}
+
+export async function TabPersonal({
   obraId, plan, asignaciones, personas, cuadrillas, actividades, actividadHH, registros,
   asignar, cerrar, quitar, imputar, imputarMasivo, borrarHoras, causas = [],
 }: {
-  /** LA OBRA, RECIBIDA Y NO DEDUCIDA. Hasta el 25/08 salía de `plan?.obra_id ?? asignaciones[0]
-   *  ?.obra_id ?? actividades[0]?.obra_id`, porque la solapa no estaba montada y agregarle un
-   *  parámetro obligaba a tocar un `page.tsx` que en esa tanda tenía otro dueño. La deducción falla
-   *  justo donde más duele: una obra recién abierta —sin línea base, sin nadie asignado y sin
-   *  actividades— daba `null`, y con `null` no se dibujaba la banda, así que no había buscador, no
-   *  había filtros y, sobre todo, no había «+ Asignar persona». La pantalla desde la que se asigna
-   *  a la primera persona era la única que no dejaba asignar a nadie. */
+  /** LA OBRA, RECIBIDA Y NO DEDUCIDA: una obra recién abierta no tiene de dónde adivinarla. */
   obraId: string
-  /** LAS CUATRO COLUMNAS QUE ESTA SOLAPA DIBUJA (`obra_id`, `hh_plan`, `hh_real`, `desvio_hh_pct`),
-   *  no la vista entera: pedir `obra_plan_vs_real` completa cuesta el doble de trabajo en la base y
-   *  era parte de por qué esta pantalla se caía por `statement timeout`. El tipo es un `Pick<>` a
-   *  propósito — leer acá una columna que no esté en `COLUMNAS_PLAN.personal` no compila. */
   plan: PlanDePersonal | null
   asignaciones: Asignacion[]
   personas: Persona[]
@@ -272,101 +196,166 @@ export function TabPersonal({
   imputarMasivo: AccionFormulario
   borrarHoras: (registroId: string) => Promise<ResultadoAccion>
 }) {
+  void plan
+  const hoy = new Date().toISOString().slice(0, 10)
+  const lunes = lunesDeSemana(hoy)
+  const vigentes = asignaciones.filter((a) => !a.hasta)
   const porAsignado = horasPorAsignado(asignaciones, registros)
   const actividadDe = new Map(actividades.map((a) => [a.id, a.nombre]))
   const sinPersona = registros.filter((r) => !r.persona_id).length
+  const hhSemana = hhDeSemana(registros, lunes)
+  const hhTotal = hhAcumuladas(registros)
+  const porPersonaSemana = hhSemanaPorPersona(registros, lunes)
+  const semanas = horasPorSemana(registros, hoy)
+  const legajos = legajosSinCategoria(asignaciones)
+
+  // LA PRESENCIA DE HOY, LEÍDA UNA VEZ. Un control que no pudo mirar no dice «no está»: con la
+  // lectura caída los azulejos dicen «sin lectura» y ninguna fila afirma presente ni ausente.
+  const supabase = await createClient()
+  const presencia = await getPresencia(supabase, hoy, obraId)
+  const r = presencia.data ? hoyEnObra(asignaciones, presencia.data) : null
+  const horasHoy = horasDeHoy(registros, hoy)
+  const presentesPorPersona = new Map<string, boolean>()
+  if (r) for (const g of r.grupos) for (const f of g.filas) presentesPorPersona.set(f.personaId, f.marca != null)
+
+  const filasTelefono: FilaPersonalTelefono[] = vigentes.map((a) => ({
+    personaId: a.persona_id,
+    nombre: a.persona_nombre ?? 'persona borrada del legajo',
+    sublinea: sublineaPersonalTelefono(a, a.persona_categoria ? etiquetaCategoria(a.persona_categoria) : null),
+    presente: r ? (presentesPorPersona.get(a.persona_id) ?? false) : null,
+    horasHoy: horasHoy.porPersona.get(a.persona_id) ?? null,
+  }))
+  const cuadrillasSemana = new Set(vigentes.map((a) => a.cuadrilla).filter(Boolean)).size
+
+  const formulario = <FormAsignar personas={personas} cuadrillas={cuadrillas} actividades={actividades} asignar={asignar} />
 
   return (
     <div className="flex flex-col gap-6">
-      <Titular plan={plan} asignaciones={asignaciones} registros={registros} />
+      {/* ═══ ESCRITORIO (08) ═══ */}
+      <div className="hidden md:block" style={{ padding: '4px 10px 8px' }} data-testid="personal-escritorio">
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '14px' }}>
+          <Alta titulo="Asignar persona" testid="alta-asignacion" primaria>{formulario}</Alta>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: '52px', alignItems: 'start' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '30px', minWidth: 0 }}>
+            <div style={{ display: 'flex', gap: '76px', flexWrap: 'wrap' }} data-testid="cifras-personal">
+              <Cifra rotulo="Asignados" valor={String(vigentes.length)} falta="—" />
+              <Cifra rotulo="HH esta semana" valor={hhSemana == null ? null : n(hhSemana)} falta="sin registrar" />
+              <Cifra rotulo="HH acumuladas" valor={hhTotal == null ? null : n(hhTotal)} falta="sin registrar" />
+              <Cifra rotulo="Costo de esas horas" valor={null} falta="no se calcula" bajada={bajadaCosto(legajos)} />
+            </div>
 
-      {/* ═══ LA BANDA DEL CANÓNICO 09: NAVEGACIÓN, BUSCADOR, PASTILLAS Y LA PRIMARIA ═══
-          Las tres maneras de mirar a la gente de la obra van DENTRO de la banda, con el buscador y
-          los filtros: el canónico dibuja UNA sola. Sólo se dibujan las que TIENEN A DÓNDE IR —un
-          sub-tab que no navega es un botón muerto—. «Asistencia» sale de la obra: esa pantalla es
-          de Administración y todavía no acepta un filtro por obra; el día que lo acepte, este href
-          es lo único que cambia. */}
-      <Suspense fallback={<TablaEsqueleto cols={5} filas={4} />}>
-        {/* LOS REGISTROS VIAJAN, NO SE VUELVEN A LEER. La columna de horas del canónico y el KPI
-            de HH imputadas salen de los MISMOS registros que dibujan la tabla de abajo: una
-            segunda lectura podría llegar un segundo después y publicar dos totales distintos de
-            la misma jornada en la misma pantalla. */}
-        <HoyEnObra
-          obraId={obraId}
-          asignaciones={asignaciones}
-          registros={registros}
-          navegacion={
-            <SubTabs
-              testid="subtabs-personal"
-              items={[
-                { label: 'Hoy en obra', activo: true, testid: 'sub-hoy-en-obra' },
-                { href: `/obras/${obraId}/dotacion`, label: 'Dotación', testid: 'sub-dotacion' },
-                // El nombre de lo que abre (23/09/2026): la cola de correcciones, no la carga.
-                { href: '/administracion/asistencia', label: 'Correcciones de asistencia', testid: 'sub-asistencia' },
-              ]}
-            />
-          }
-          /* LA PRIMARIA DE LA PANTALLA, EN LA BANDA Y ABIERTA ACÁ MISMO (canónico 09). Estaba dos
-             niveles adentro —dentro del plegable «Quién trabaja en esta obra», dentro de un
-             `<details>`—: asignar a alguien a la obra es LO que se hace en esta solapa y había
-             que descubrirlo. No navega a ninguna parte: baja su panel debajo de la banda. */
-          accion={
-            <Alta titulo="+ Asignar persona" testid="alta-asignacion" primaria>
-              <FormAsignar
-                personas={personas} cuadrillas={cuadrillas} actividades={actividades} asignar={asignar}
-              />
-            </Alta>
-          }
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '14px' }}>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: C.tinta }}>Quién está asignado</div>
+                <div style={{ fontSize: '12.5px', color: C.tintaSuave }}>{rotuloSemana(hoy)}</div>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: `${MIN_TABLA}px` }} data-testid="tabla-asignados">
+                  <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: '20px', height: '32px', alignItems: 'center', borderBottom: `1px solid ${C.borde}`, ...EYEBROW }}>
+                    <div>Persona</div><div>Categoría</div><div>Cuadrilla</div><div>Rol</div><div style={{ textAlign: 'right' }}>HH sem.</div><div>Desde</div>
+                  </div>
+                  {vigentes.map((a, i) => {
+                    const hh = porPersonaSemana.get(a.persona_id)
+                    return (
+                      <div key={a.id} data-testid={`fila-asignado-${a.id}`} style={{
+                        display: 'grid', gridTemplateColumns: GRID, gap: '20px', height: '56px', alignItems: 'center', fontSize: '13.5px', color: C.tinta,
+                        borderBottom: i === vigentes.length - 1 ? undefined : `1px solid ${C.borde}`,
+                      }}>
+                        <div style={{ fontWeight: a.rol === 'responsable' ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {a.persona_nombre ?? <span style={{ color: C.warn }}>persona borrada del legajo</span>}
+                        </div>
+                        <div style={{ color: a.persona_categoria ? C.tintaMedia : C.warn }}>{a.persona_categoria ? etiquetaCategoria(a.persona_categoria) : 'sin categoría'}</div>
+                        <div style={{ color: a.cuadrilla ? C.tintaMedia : C.tenue }}>{a.cuadrilla ?? 'sin cuadrilla'}</div>
+                        <div style={{ color: C.tintaMedia }}>{a.rol === 'responsable' ? 'Responsable' : 'Integrante'}</div>
+                        <div style={{ textAlign: 'right', color: hh == null ? C.tenue : C.tinta, fontVariantNumeric: 'tabular-nums' }}>
+                          {hh == null ? <span data-nulo="">sin registrar</span> : hh.toLocaleString('es-AR', { maximumFractionDigits: 1 })}
+                        </div>
+                        <div style={{ color: C.tintaSuave, fontSize: '12.5px' }}>{a.desde ? ddmm(a.desde) : <span data-nulo="">sin fecha</span>}</div>
+                      </div>
+                    )
+                  })}
+                  {vigentes.length === 0 && (
+                    <div style={{ padding: '18px 0', fontSize: '12.5px', color: C.tintaSuave }}>Nadie tiene una asignación vigente en esta obra. Se asigna con «Asignar persona».</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <aside style={{ display: 'flex', flexDirection: 'column', gap: '26px', paddingLeft: '34px', borderLeft: `1px solid ${C.borde}` }} data-testid="horas-por-semana">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
+              <div style={EYEBROW}>Horas por semana</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '9px', fontSize: '13.5px' }}>
+                {semanas.map((s) => (
+                  <div key={s.rotulo} style={{ display: 'flex', alignItems: 'center', gap: '11px' }}>
+                    <span style={{ width: '52px', color: C.tintaSuave, fontSize: '12.5px' }}>{s.rotulo}</span>
+                    {s.horas == null
+                      ? <span style={{ flex: 1, height: '6px', borderRadius: '3px', background: C.tenueFondo, border: `1px dashed ${C.bordeFuerte}`, boxSizing: 'border-box' }} />
+                      : (
+                        <span style={{ flex: 1, height: '6px', borderRadius: '3px', background: C.borde, overflow: 'hidden' }}>
+                          <span style={{ display: 'block', width: `${s.pct ?? 0}%`, height: '100%', background: C.grafito }} />
+                        </span>
+                      )}
+                    <span style={{ width: '38px', textAlign: 'right', color: s.horas == null ? C.tenue : C.tinta, fontSize: s.horas == null ? '12px' : undefined, fontVariantNumeric: 'tabular-nums' }}>
+                      {s.horas == null ? 'sin reg.' : n(s.horas)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
+              <div style={EYEBROW}>La frontera</div>
+              <div style={{ fontSize: '12.5px', color: C.tintaSuave, lineHeight: 1.5 }}>
+                Esta solapa no administra legajos: la categoría de convenio y el legajo se cargan en Administración.
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      {/* ═══ TELÉFONO (M10) ═══ */}
+      <div className="md:hidden">
+        <TabPersonalTelefono
+          filas={filasTelefono}
+          azulejos={{
+            presentes: r ? r.enObra + r.cerraron : null,
+            asignados: vigentes.length,
+            sinFichar: r ? r.sinFichar : null,
+            numeroSemana: numeroDeSemana(hoy),
+            hhSemana,
+            personasSemana: porPersonaSemana.size,
+            cuadrillas: cuadrillasSemana,
+          }}
+          primaria={<Alta titulo="Asignar persona" testid="alta-asignacion-telefono" primaria telefono>{formulario}</Alta>}
         />
-      </Suspense>
+      </div>
 
-      {/* ═══ EL CUERPO DE LA PANTALLA ES «HOY EN OBRA»; LO DEMÁS SE ABRE (24/08 · canónico 09) ═══
-          Las tres tablas de abajo medían cuatro pantallas de alto debajo de lo único que se mira
-          todos los días —quién está hoy y cuántas horas lleva—. No se pierde nada: la asignación,
-          el plan contra real y el detalle de las horas siguen acá, a un clic, con su contador en la
-          fila cerrada para que se vea cuánto hay adentro sin abrir. */}
-      <Plegable titulo="Quién trabaja en esta obra" cuenta={asignaciones.length}
-        testid="plegable-asignaciones">
+      {/* ═══ LAS CARGAS QUE EL 08 NO DIBUJA, PLEGADAS ═══ */}
+      <Plegable titulo="Asignaciones: cerrar o quitar" cuenta={asignaciones.length} testid="plegable-asignaciones">
         {asignaciones.length === 0
-          ? <Vacio>Nadie tiene una asignación en esta obra. Se asigna con «+ Asignar persona».</Vacio>
-          : (
-              <TablaAsignaciones
-                asignaciones={asignaciones} actividadDe={actividadDe}
-                porAsignado={porAsignado} cerrar={cerrar} quitar={quitar}
-              />
-            )}
-
+          ? <Vacio>Nadie tiene una asignación en esta obra. Se asigna con «Asignar persona».</Vacio>
+          : <TablaAsignaciones asignaciones={asignaciones} actividadDe={actividadDe} porAsignado={porAsignado} cerrar={cerrar} quitar={quitar} />}
         <div className="mt-3.5 flex flex-wrap items-start gap-x-6 gap-y-3">
           <Alta titulo="+ Imputar horas" testid="alta-hh">
-            <FormIndividual personas={personas} asignadas={asignaciones.map((a) => a.persona_id)}
-              actividades={actividades} imputar={imputar} causas={causas} />
+            <FormIndividual personas={personas} asignadas={asignaciones.map((a) => a.persona_id)} actividades={actividades} imputar={imputar} causas={causas} />
           </Alta>
-
           <Alta titulo="+ Imputar a la cuadrilla" testid="alta-hh-masiva">
             <FormMasiva asignaciones={asignaciones} actividades={actividades} imputarMasivo={imputarMasivo} />
           </Alta>
         </div>
       </Plegable>
 
-      <Plegable titulo="Plan contra real por actividad" cuenta={actividadHH.length}
-        testid="plegable-plan-vs-real">
+      <Plegable titulo="Plan contra real por actividad" cuenta={actividadHH.length} testid="plegable-plan-vs-real">
         <TablaProductividad actividades={actividadHH} />
       </Plegable>
 
-      <Plegable
-        titulo="Horas imputadas a esta obra" cuenta={registros.length}
-        testid="plegable-horas"
-        {...(sinPersona > 0
-          ? { alerta: `${sinPersona} ${sinPersona === 1 ? 'registro sin persona' : 'registros sin persona'}` }
-          : {})}
-      >
+      <Plegable titulo="Horas imputadas a esta obra" cuenta={registros.length} testid="plegable-horas"
+        {...(sinPersona > 0 ? { alerta: `${sinPersona} ${sinPersona === 1 ? 'registro sin persona' : 'registros sin persona'}` } : {})}>
         <TablaHoras registros={registros} borrarHoras={borrarHoras} />
-        {/* La advertencia se queda porque evita un error real —creer que a alguien le faltan
-            horas— pero en una línea: el porqué largo vive en la ayuda, no en la pantalla. */}
         {sinPersona > 0 && (
           <p className="mt-2.5 text-[11px] text-faint">
-            {sinPersona} {sinPersona === 1 ? 'registro sin persona' : 'registros sin persona'}: son horas
-            reales sin dueño conocido.
+            {sinPersona} {sinPersona === 1 ? 'registro sin persona' : 'registros sin persona'}: son horas reales sin dueño conocido.
           </p>
         )}
       </Plegable>

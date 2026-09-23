@@ -43,15 +43,27 @@ test('el buscador de la banda es el de CAJA, no el hairline de arriba de una tab
   assert.match(ds, /variante = 'linea'/)
 })
 
-test('asignar una persona se abre EN LA BANDA, no navegando a otra pantalla', () => {
+test('08 · asignar una persona se abre AHÍ MISMO con la primaria de 32px (48 en el teléfono)', () => {
   const src = fuente('TabPersonal.tsx')
   // El pedido del dueño, literal: «si quiero editar edite ahí mismo, no me sirve que me cargue y me
   // lleve a otro lado». El defecto que atrapa: que la primaria vuelva a ser un `<details>` gris
   // dentro del plegable, dos niveles abajo del pliegue.
-  assert.match(src, /accion=\{\s*\n\s*<Alta titulo="\+ Asignar persona" testid="alta-asignacion" primaria>/)
-  assert.match(src, /bg-marca px-\[11px\] py-\[6px\]/)
+  assert.match(src, /<Alta titulo="Asignar persona" testid="alta-asignacion" primaria>/)
+  assert.match(src, /<Alta titulo="Asignar persona" testid="alta-asignacion-telefono" primaria telefono>/)
+  assert.match(src, /h-8 cursor-pointer select-none items-center gap-1\.5 rounded-\[6px\] bg-marca px-\[14px\]/)
   // Y el formulario es UNO: dos copias se separan en el primer campo que se agregue.
   assert.equal((src.match(/testid="form-asignar"/g) ?? []).length, 1)
+})
+
+test('08 · las cuatro cifras del diseño, y el costo NO se calcula', () => {
+  const src = fuente('TabPersonal.tsx')
+  for (const r of ['Asignados', 'HH esta semana', 'HH acumuladas', 'Costo de esas horas']) {
+    assert.match(src, new RegExp(`rotulo="${r}"`), `falta la cifra ${r}`)
+  }
+  assert.match(src, /falta="no se calcula" bajada=\{bajadaCosto\(legajos\)\}/)
+  // Las seis columnas de «Quién está asignado», literales.
+  assert.match(src, /<div>Persona<\/div><div>Categoría<\/div><div>Cuadrilla<\/div><div>Rol<\/div><div style=\{\{ textAlign: 'right' \}\}>HH sem\.<\/div><div>Desde<\/div>/)
+  assert.match(src, /Horas por semana/)
 })
 
 test('las pastillas y la lista filtran con la MISMA regla, que vive fuera del componente', () => {
@@ -160,15 +172,15 @@ test('Personal se monta DENTRO del marco con aire, que es lo que su banda descue
   assert.ok(src.indexOf('<TabPersonal') > marco, 'TabPersonal se montó fuera del marco con aire')
 })
 
-test('«Hoy en obra» se dibuja UNA sola vez, y adentro de la solapa', () => {
-  // El defecto que atrapa: reponer el render copiando `HoyEnObra` a la página y dejarlo también
-  // dentro de `TabPersonal`. Serían dos lecturas de `presencia_del_dia` en la misma pantalla,
-  // llegando en momentos distintos, publicando dos jornadas distintas de la misma obra.
-  const fuentes = ['TabPersonal.tsx', 'HoyEnObra.tsx', 'ListaHoyEnObra.tsx'].map(fuente).join('\n')
-  const todo = fuentes + '\n' + page()
-  assert.equal((todo.match(/<HoyEnObra[\s/>]/g) ?? []).length, 1)
-  assert.equal((todo.match(/<ListaHoyEnObra[\s/>]/g) ?? []).length, 1)
-  assert.match(fuente('TabPersonal.tsx'), /<HoyEnObra/, '«Hoy en obra» salió de la solapa Personal')
+test('la presencia de hoy se lee UNA sola vez, y adentro de la solapa', () => {
+  // El defecto que atrapa: leer `presencia_del_dia` dos veces en la misma pantalla —por
+  // `HoyEnObra` y por la solapa—, llegando en momentos distintos y publicando dos jornadas
+  // distintas de la misma obra. Desde el diseño 08/M10 la solapa la lee ella (`getPresencia`) y
+  // `HoyEnObra` ya no se monta acá.
+  const src = fuente('TabPersonal.tsx')
+  assert.equal((src.match(/getPresencia\(/g) ?? []).length, 1)
+  assert.equal((src.match(/<HoyEnObra[\s/>]/g) ?? []).length, 0)
+  assert.equal((page().match(/<HoyEnObra[\s/>]/g) ?? []).length, 0)
 })
 
 test('la obra la RECIBE la solapa, no la adivina de la primera fila que encuentre', () => {

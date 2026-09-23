@@ -254,3 +254,106 @@ export async function getPersonasDeHoy(
     presentes: p.error ? null : p.count ?? null,
   }
 }
+
+// ═══ LAS CIFRAS DEL DISEÑO ERP OBRAS 08 / M10 (dueño, 23/09/2026) — PURAS, SIN BASE ═══
+//
+// Asignados · HH esta semana · HH acumuladas · Costo de esas horas («no se calcula» + cuántos
+// legajos sin categoría de convenio) · «Horas por semana» de las últimas cinco. Todo sale de los
+// registros que la solapa ya leyó; nada se vuelve a pedir ni se inventa: sin registros es `null`.
+
+const DIA_MS = 86_400_000
+const ms = (iso: string) => Date.parse(`${iso.slice(0, 10)}T00:00:00Z`)
+const isoDe = (t: number) => new Date(t).toISOString().slice(0, 10)
+export const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+
+/** El lunes de la semana de `hoyIso` (UTC, sin huso del navegador). */
+export function lunesDeSemana(hoyIso: string): string {
+  const t = ms(hoyIso)
+  const dow = new Date(t).getUTCDay() // 0 = domingo
+  return isoDe(t - ((dow + 6) % 7) * DIA_MS)
+}
+
+/** «semana del 07/09 al 12/09» — lunes a sábado, como lo escribe el diseño. */
+export function rotuloSemana(hoyIso: string): string {
+  const lunes = lunesDeSemana(hoyIso)
+  return `semana del ${ddmm(lunes)} al ${ddmm(isoDe(ms(lunes) + 5 * DIA_MS))}`
+}
+
+type RegistroSemana = Pick<RegistroHH, 'persona_id' | 'fecha_inicio_semana' | 'horas' | 'tipo_hora'>
+
+/** Las horas TRABAJADAS: una ausencia tiene horas cargadas y no es trabajo. */
+const trabajada = (tipo: string) => !/^ausen/i.test(tipo)
+
+/** HH de una semana (por su lunes). `null` = ningún registro esa semana, nunca 0. */
+export function hhDeSemana(registros: readonly RegistroSemana[], lunesIso: string): number | null {
+  let total: number | null = null
+  for (const r of registros) {
+    if (r.fecha_inicio_semana?.slice(0, 10) !== lunesIso || !trabajada(r.tipo_hora)) continue
+    total = (total ?? 0) + r.horas
+  }
+  return total
+}
+
+/** HH acumuladas de la obra. `null` sin un solo registro. */
+export function hhAcumuladas(registros: readonly RegistroSemana[]): number | null {
+  const t = registros.filter((r) => trabajada(r.tipo_hora))
+  return t.length ? t.reduce((a, r) => a + r.horas, 0) : null
+}
+
+/** HH de la semana por persona, para la columna «HH sem.». */
+export function hhSemanaPorPersona(registros: readonly RegistroSemana[], lunesIso: string): Map<string, number> {
+  const m = new Map<string, number>()
+  for (const r of registros) {
+    if (!r.persona_id || r.fecha_inicio_semana?.slice(0, 10) !== lunesIso || !trabajada(r.tipo_hora)) continue
+    m.set(r.persona_id, (m.get(r.persona_id) ?? 0) + r.horas)
+  }
+  return m
+}
+
+export interface SemanaConHoras {
+  /** dd/mm del lunes. */
+  rotulo: string
+  /** `null` = sin registro esa semana: el diseño dibuja la barra punteada y «sin reg.». */
+  horas: number | null
+  /** 0–100 sobre la semana más alta de la serie. */
+  pct: number | null
+}
+
+/** «Horas por semana»: las últimas `n` semanas, la actual primero. */
+export function horasPorSemana(registros: readonly RegistroSemana[], hoyIso: string, n = 5): SemanaConHoras[] {
+  const lunes = lunesDeSemana(hoyIso)
+  const semanas = Array.from({ length: n }, (_, i) => isoDe(ms(lunes) - i * 7 * DIA_MS))
+  const horas = semanas.map((l) => hhDeSemana(registros, l))
+  const max = Math.max(0, ...horas.filter((h): h is number => h != null))
+  return semanas.map((l, i) => ({
+    rotulo: ddmm(l),
+    horas: horas[i],
+    pct: horas[i] == null || max === 0 ? null : Math.round((horas[i]! / max) * 100),
+  }))
+}
+
+/** «24 de 30 legajos sin categoría de convenio» sobre las asignaciones vigentes. */
+export function legajosSinCategoria(asignaciones: readonly { hasta: string | null; persona_categoria: string | null }[]): { sin: number; total: number } {
+  const vigentes = asignaciones.filter((a) => !a.hasta)
+  return { sin: vigentes.filter((a) => !a.persona_categoria).length, total: vigentes.length }
+}
+
+/** La bajada de «Costo de esas horas»: el diseño la escribe literal. */
+export function bajadaCosto(l: { sin: number; total: number }): string {
+  return `${l.sin} de ${l.total} legajos sin categoría de convenio`
+}
+
+/** «Cuadrilla 1 · oficial · responsable» — la sub-línea de la fila del teléfono (M10). */
+export function sublineaPersonalTelefono(a: { cuadrilla: string | null; rol: string; persona_categoria: string | null }, categoria: string | null): string {
+  return [a.cuadrilla ?? 'sin cuadrilla', categoria?.toLowerCase() ?? null, a.rol === 'responsable' ? 'responsable' : null]
+    .filter((x): x is string => !!x).join(' · ')
+}
+
+/** El número de semana ISO, para el azulejo «Semana 38» (M10). */
+export function numeroDeSemana(hoyIso: string): number {
+  const d = new Date(ms(hoyIso))
+  const dow = (d.getUTCDay() + 6) % 7
+  d.setUTCDate(d.getUTCDate() - dow + 3)
+  const primerJueves = new Date(Date.UTC(d.getUTCFullYear(), 0, 4))
+  return 1 + Math.round(((d.getTime() - primerJueves.getTime()) / DIA_MS - 3 + ((primerJueves.getUTCDay() + 6) % 7)) / 7)
+}
