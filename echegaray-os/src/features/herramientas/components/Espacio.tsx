@@ -18,6 +18,7 @@ import { DialogoBaja } from './DialogoBaja'
 import { PanelReportar } from './PanelReportar'
 import { PanelEditar } from './PanelEditar'
 import { PanelVerificar } from './PanelVerificar'
+import { PanelRecuento } from './PanelRecuento'
 
 export interface Yo { id: string | null; nombre: string | null }
 
@@ -29,6 +30,7 @@ type PanelAbierto =
   | { tipo: 'reportar'; ids: string[] }
   | { tipo: 'editar'; id: string }
   | { tipo: 'verificar'; id: string }
+  | { tipo: 'recuento'; ubicacionId: string }
   | null
 
 interface Ctx {
@@ -94,6 +96,7 @@ export function EspacioHerramientas({ datos, obras, yo, children }: {
         {abierto?.tipo === 'reportar' && <PanelReportar ids={abierto.ids} onHecho={hecho} />}
         {abierto?.tipo === 'editar' && <PanelEditar id={abierto.id} onHecho={hecho} />}
         {abierto?.tipo === 'verificar' && <PanelVerificar key={abierto.id} id={abierto.id} onHecho={hecho} />}
+        {abierto?.tipo === 'recuento' && <PanelRecuento key={abierto.ubicacionId} ubicacionId={abierto.ubicacionId} onHecho={hecho} />}
       </div>
       {abierto?.tipo === 'baja' && <DialogoBaja id={abierto.id} onHecho={hecho} />}
     </Contexto.Provider>

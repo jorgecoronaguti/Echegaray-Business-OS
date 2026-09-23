@@ -7,6 +7,7 @@
 
 import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 import type { Papel } from './papeles.ts'
+import type { Recuento, RecuentoLinea } from './recuento.ts'
 import type { Revision, RevisionVigente } from './revision.ts'
 import type { Unidad } from './unidades.ts'
 import type { Activo, Ajuste, EstadoActivo, Existencia, Incidencia, LecturaUso, Movimiento, ObraIndice, TipoUbicacion, Ubicacion } from '../types.ts'
@@ -49,6 +50,10 @@ export interface DatosParque {
   revisiones?: Revision[] | null
   /** La vigente por tipo con sus días (`activo_revision_vigente`). `null`/ausente = sin la migración. */
   revisionesVigentes?: RevisionVigente[] | null
+  /** Los recuentos físicos por lugar (`activo_recuento`, 20260923T1700). `null`/ausente = sin la migración. */
+  recuentos?: Recuento[] | null
+  /** Las líneas de cada recuento (`activo_recuento_linea`). `null`/ausente = sin la migración. */
+  recuentoLineas?: RecuentoLinea[] | null
 }
 
 export interface Parque extends DatosParque {

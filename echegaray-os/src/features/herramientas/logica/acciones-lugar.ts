@@ -45,6 +45,7 @@ export const ACCION = {
   reportar: 'Reportar un problema',
   verificarElegir: 'Verificar un rodado o máquina',
   alta: 'Dar de alta una herramienta',
+  recuento: 'Recuento del lugar',
   escanear: 'Escanear',
   movimientos: 'Movimientos',
 } as const

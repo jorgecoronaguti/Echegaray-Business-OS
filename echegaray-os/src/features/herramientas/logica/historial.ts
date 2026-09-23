@@ -6,12 +6,13 @@
 import type { LecturaUso } from '../types.ts'
 import { autorDe, rotuloUbicacion, MOTIVO_BAJA, type Parque } from './parque.ts'
 import { ITEMS, numeroAr } from './verificacion.ts'
+import { lineasDe } from './recuento.ts'
 
 export interface Renglon {
   fecha: string
   texto: string
   nota: string | null
-  tipo: 'movimiento' | 'reporte' | 'alta' | 'baja' | 'cierre' | 'verificacion'
+  tipo: 'movimiento' | 'reporte' | 'alta' | 'baja' | 'cierre' | 'verificacion' | 'recuento'
 }
 
 /** Quién manejó u operó: la persona elegida en M13 o, si no se eligió, el usuario que la cargó. */
@@ -67,6 +68,20 @@ export function historial(p: Parque, activoId: string): Renglon[] {
       ? `Recuento en ${donde}: ${j.antes} → ${j.despues}`
       : `Baja de ${j.antes - j.despues} u. en ${donde} por ${MOTIVO_BAJA[j.motivo] ?? j.motivo}`
     out.push({ fecha: j.creado_en, texto: `${texto}${quien ? ` · ${quien}` : ''}`, nota: j.detalle, tipo: j.motivo === 'recuento' ? 'movimiento' : 'baja' })
+  }
+  // Un recuento del lugar (20260923T1700) que se guardó SIN ajustar dejó la diferencia como evidencia y
+  // ninguna fila en `activo_ajuste`: se muestra desde sus líneas. El que sí ajustó ya está arriba, por el ajuste.
+  for (const r of p.recuentos ?? []) {
+    if (!r.cerrado_en || r.aplicado) continue
+    const l = lineasDe(p.recuentoLineas, r.id).find((x) => x.activo_id === activoId)
+    if (!l || l.contado == null || l.diferencia === 0) continue
+    const quien = r.cerrado_por ? p.nombres[r.cerrado_por] : null
+    out.push({
+      fecha: r.cerrado_en,
+      texto: `Recuento en ${rotuloUbicacion(p, r.ubicacion_id)}: se esperaban ${l.esperado}, se contaron ${l.contado} · sin ajustar${quien ? ` · ${quien}` : ''}`,
+      nota: l.nota,
+      tipo: 'recuento',
+    })
   }
   for (const i of p.incDe.get(activoId) ?? []) {
     const quien = i.usuario_id ? p.nombres[i.usuario_id] : null

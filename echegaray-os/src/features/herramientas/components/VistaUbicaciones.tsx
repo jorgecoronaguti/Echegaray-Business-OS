@@ -1,7 +1,7 @@
 // D04 · UBICACIONES — el parque por dónde está.
 //
-// Desvíos: sin «Control físico» ni la columna «Último control» (los controles no son de esta etapa); en
-// su lugar va quién lo trajo, que sale del último movimiento. «Depósito» no existe: Taller y almacén
+// «Control físico» es la acción «Recuento del lugar» de `DetalleLugar` (23/09); sin la columna «Último
+// control» por fila: en su lugar va quién lo trajo, que sale del último movimiento. «Depósito» no existe: Taller y almacén
 // son un solo lugar. Las obras se nombran por el índice (`rotuloDeObra`).
 //
 // El árbol de la izquierda es el «¿Dónde estás?» del teléfono (M01); el lugar elegido (`DetalleLugar`)

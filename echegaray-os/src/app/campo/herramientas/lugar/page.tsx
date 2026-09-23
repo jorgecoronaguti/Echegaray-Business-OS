@@ -1,7 +1,10 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { leerParque } from '@/features/herramientas/services/datos'
-import { MarcoTelefono } from '@/features/herramientas/components/campo/MarcoTelefono'
+import { FilaTelefono, MarcoTelefono } from '@/features/herramientas/components/campo/MarcoTelefono'
+import { IcoLista } from '@/features/herramientas/components/iconos'
+import { ACCION } from '@/features/herramientas/logica/acciones-lugar'
+import { recuentoAbierto, recuentosDelLugar } from '@/features/herramientas/logica/recuento'
 import { SinBaseTelefono } from '@/features/herramientas/components/campo/SinBaseTelefono'
 import { ListaDelLugar, type ItemLugar } from '@/features/herramientas/components/campo/ListaDelLugar'
 import { V } from '@/features/herramientas/components/estilo'
@@ -9,7 +12,8 @@ import { diaMes } from '@/features/herramientas/components/formato'
 import { conLugar, resolverLugar } from '@/features/herramientas/logica/lugar'
 import { ETIQUETA_ESTADO, activosEn, cantidadEn, conProblema, llegoEn, ubicacionDelRodado } from '@/features/herramientas/logica/parque'
 
-// M05 · QUÉ HAY EN ESTA OBRA (o en el Taller) — ver por ubicación y marcar qué mover.
+// M05 · QUÉ HAY EN ESTA OBRA (o en el Taller) — ver por ubicación, marcar qué mover, y entrar al
+// «Recuento del lugar» («Control físico»): contar todo contra lo esperado.
 export const dynamic = 'force-dynamic'
 
 export default async function LugarCampo({ searchParams }: { searchParams: Promise<{ en?: string }> }) {
@@ -33,12 +37,20 @@ export default async function LugarCampo({ searchParams }: { searchParams: Promi
       lleva: u ? activosEn(p, u.id).length : 0,
     }
   })
+  const ultimoRec = recuentosDelLugar(p.recuentos, lugar.ubicacionId ?? '')[0] ?? null
+  const abiertoRec = lugar.ubicacionId ? recuentoAbierto(p.recuentos, lugar.ubicacionId) : null
   return (
     <MarcoTelefono titulo={lugar.rotulo} volver={conLugar('/campo/herramientas', lugar.clave)}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <h1 style={{ fontSize: '18px', fontWeight: 600 }} data-testid="cuenta-lugar">{aca.length} {aca.length === 1 ? 'activo' : 'activos'}</h1>
         <Link href="/campo/herramientas" prefetch={false} style={{ fontSize: '13px', color: V.apagado }}>Cambiar ubicación</Link>
       </div>
+      {aca.length > 0 && (
+        <FilaTelefono href={conLugar('/campo/herramientas/recuento', lugar.clave)} icono={<IcoLista tam={18} color={abiertoRec ? V.warn : V.apagado} />}
+          titulo={ACCION.recuento}
+          bajada={p.recuentos == null ? 'sin la migración' : abiertoRec ? `abierto desde el ${diaMes(abiertoRec.iniciado_en)}` : ultimoRec ? `último: ${diaMes(ultimoRec.cerrado_en!)}${ultimoRec.aplicado ? ' · ajustó el inventario' : ' · sin ajustar'}` : 'contar todo contra lo esperado'}
+          ultima testid="ir-recuento" />
+      )}
       <ListaDelLugar items={items} en={lugar.clave} />
     </MarcoTelefono>
   )

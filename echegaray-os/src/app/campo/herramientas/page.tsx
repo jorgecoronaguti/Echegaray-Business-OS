@@ -4,14 +4,16 @@ import { MarcoTelefono, FilaTelefono, primarioTelefono } from '@/features/herram
 import { SinBaseTelefono } from '@/features/herramientas/components/campo/SinBaseTelefono'
 import { IcoAviso, IcoBuscar, IcoEscanear, IcoFlecha, IcoLista, IcoObra, IcoReloj, IcoTaller } from '@/features/herramientas/components/iconos'
 import { AZUL, V } from '@/features/herramientas/components/estilo'
+import { diaMes } from '@/features/herramientas/components/formato'
 import { ACCION, rotuloQueHay, rotuloVerificar, verificablesDelLugar } from '@/features/herramientas/logica/acciones-lugar'
 import { conLugar, lugaresParaElegir, resolverLugar } from '@/features/herramientas/logica/lugar'
+import { recuentosDelLugar } from '@/features/herramientas/logica/recuento'
 import { activosEn, conProblema } from '@/features/herramientas/logica/parque'
 import { textoVerificacion, verificacionDe } from '@/features/herramientas/logica/verificacion'
 
 // M01 · INICIO DE CAMPO — caminos por objetivo, y «Escanear» abajo, al alcance del pulgar.
 //
-// Desvíos: sin «Control físico» (etapa 2). «Verificar el rodado» va por cada rodado o equipo que
+// «Control físico» es «Recuento del lugar» (23/09). «Verificar el rodado» va por cada rodado o equipo que
 // está HOY en este lugar (la base no asigna un rodado a una persona) y, si no hay ninguno, una fila
 // para elegirlo de la lista. Se agrega «Dar de alta una
 // herramienta» (M14 no tenía entrada propia más que el QR desconocido). Permisos iguales para todos:
@@ -59,6 +61,7 @@ export default async function InicioHerramientasCampo({ searchParams }: { search
   const aca = lugar.ubicacionId ? activosEn(p, lugar.ubicacionId) : []
   const prob = aca.filter(conProblema).length
   const verificables = verificablesDelLugar(p, lugar.ubicacionId)
+  const ultimoRec = lugar.ubicacionId ? recuentosDelLugar(p.recuentos, lugar.ubicacionId)[0] ?? null : null
   return (
     <MarcoTelefono
       titulo={<span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>Herramientas</span>}
@@ -93,6 +96,10 @@ export default async function InicioHerramientasCampo({ searchParams }: { search
             titulo={ACCION.verificarElegir} bajada="antes de salir o de arrancar" testid="ir-verificar" />
         )}
         <FilaTelefono href={conLugar('/campo/herramientas/alta', lugar.clave)} icono={<IcoTaller tam={18} color={V.apagado} />} titulo={ACCION.alta} bajada="tres datos y una foto" testid="ir-alta" />
+        {aca.length > 0 && (
+          <FilaTelefono href={conLugar('/campo/herramientas/recuento', lugar.clave)} icono={<IcoLista tam={18} color={V.apagado} />} titulo={ACCION.recuento}
+            bajada={p.recuentos == null ? 'sin la migración' : ultimoRec ? `último: ${diaMes(ultimoRec.cerrado_en!)}` : 'contar todo contra lo esperado'} testid="ir-recuento" />
+        )}
         <FilaTelefono href={conLugar('/campo/herramientas/movimientos', lugar.clave)} icono={<IcoReloj tam={18} color={V.apagado} />} titulo={ACCION.movimientos} bajada={lugar.esObra ? 'qué entró y salió de esta obra' : 'qué entró y salió de acá'} ultima testid="ir-movimientos" />
       </div>
       <div style={{ fontSize: '12.5px', color: V.apagado, lineHeight: 1.5 }}>Ves todo el parque y podés moverlo entre cualquier lugar.</div>

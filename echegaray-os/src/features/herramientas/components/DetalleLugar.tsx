@@ -3,8 +3,10 @@
 // D04 · EL LUGAR ELEGIDO EN UBICACIONES — lo que hay, y LAS MISMAS ACCIONES QUE EL TELÉFONO PARADO AHÍ
 // (M01): «Mover» (lo marcado, o todo), «Reportar un problema» (lo marcado), «Verificar el rodado …» /
 // «Verificar …» por cada rodado o máquina que está acá (o elegirlo de la lista si no hay ninguno) y
-// «Dar de alta una herramienta» (entra en este lugar). Paridad funcional, dueño 23/09/2026: «en app
-// mobile encontré módulos que en compu no están». Los rótulos salen de `logica/acciones-lugar`.
+// «Dar de alta una herramienta» (entra en este lugar) y «Recuento del lugar» (M05 «Control físico»,
+// 23/09: contar todo contra lo esperado y cerrar ajustando o guardando la evidencia). Paridad funcional,
+// dueño 23/09/2026: «en app mobile encontré módulos que en compu no están». Los rótulos salen de
+// `logica/acciones-lugar`. Los recuentos cerrados del lugar se listan abajo, del más nuevo al más viejo.
 //
 // Es cliente porque marca casillas y abre paneles; el parque lo toma del espacio de trabajo (el mismo
 // objeto que miran los paneles). «Planilla» queda sólo acá: imprimir es de escritorio.
@@ -17,10 +19,11 @@ import {
 } from '../logica/parque'
 import type { TipoUbicacion } from '../types'
 import { textoVerificacion, verificacionDe } from '../logica/verificacion'
+import { lineasDe, recuentoAbierto, recuentosDelLugar, resumenCerrado, textoResumen } from '../logica/recuento'
 import { useHerramientas } from './Espacio'
 import { IcoFlecha, IcoRodado } from './iconos'
 import { COLOR_TONO, MONO, SUPERFICIE, V, botonPrimario, botonSecundario, eyebrow, vacio } from './estilo'
-import { diaMes } from './formato'
+import { diaMes, fechaHora } from './formato'
 
 export type FiltroLugar = 'todo' | 'problema' | 'viejas'
 
@@ -60,6 +63,8 @@ export function DetalleLugar({ ubicacionId, filtro }: { ubicacionId: string; fil
   const verificables = verificablesDelLugar(parque, u.id)
   const paraElegir = verificables.length === 0 ? verificablesDelParque(parque) : []
   const marcar = (id: string) => setSel((s) => (s.includes(id) ? s.filter((y) => y !== id) : [...s, id]))
+  const recuentos = recuentosDelLugar(parque.recuentos, u.id)
+  const abiertoRec = recuentoAbierto(parque.recuentos, u.id)
 
   return (
     <>
@@ -108,6 +113,13 @@ export function DetalleLugar({ ubicacionId, filtro }: { ubicacionId: string; fil
         )}
         <button type="button" data-testid="nuevo-activo" onClick={() => abrir({ tipo: 'alta', destino: `u:${u.id}` })} style={botonSecundario}>
           {ACCION.alta}
+        </button>
+        <button type="button" data-testid="recuento-desde-aca" disabled={aca.length === 0} onClick={() => abrir({ tipo: 'recuento', ubicacionId: u.id })}
+          title={aca.length ? undefined : 'No hay nada registrado acá: no hay qué contar'} style={{ ...botonSecundario, opacity: aca.length ? 1 : 0.55 }}>
+          {ACCION.recuento}
+          <span style={{ fontSize: '11.5px', color: abiertoRec ? V.warn : V.apagado }}>
+            {parque.recuentos == null ? 'sin la migración' : abiertoRec ? `abierto desde el ${diaMes(abiertoRec.iniciado_en)}` : recuentos[0] ? `último: ${diaMes(recuentos[0].cerrado_en!)}` : 'nunca'}
+          </span>
         </button>
       </div>
 
@@ -171,6 +183,25 @@ export function DetalleLugar({ ubicacionId, filtro }: { ubicacionId: string; fil
         {lista.length} de {aca.length}{aca.some((a) => a.clase === 'rodado') ? ' · el rodado va primero' : ''}.
         {u.tipo === 'obra' && aca.length > 0 && ` Si la obra deja de estar activa, la base manda ${aca.length === 1 ? 'éste' : `los ${aca.length}`} al Taller.`}
       </div>
+
+      {recuentos.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 6, borderTop: `1px solid ${V.linea}` }} data-testid="recuentos-del-lugar">
+          <div style={{ ...eyebrow, paddingTop: 8 }}>Recuentos del lugar</div>
+          {recuentos.slice(0, 8).map((r) => {
+            const res = resumenCerrado(lineasDe(parque.recuentoLineas, r.id))
+            const quien = r.cerrado_por ? parque.nombres[r.cerrado_por] : null
+            return (
+              <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '120px minmax(0,1fr)', gap: 12, fontSize: '12.5px' }} data-testid="recuento-cerrado">
+                <div style={{ color: V.tenue }}>{fechaHora(r.cerrado_en!)}</div>
+                <div style={{ color: V.tintaSuave }}>
+                  {textoResumen(res)} de {res.total} · <span style={{ color: r.aplicado ? V.pos : res.conDiferencia ? V.warn : V.apagado }}>{r.aplicado ? 'inventario ajustado' : 'guardado sin ajustar'}</span>{quien ? ` · ${quien}` : ''}
+                  {r.observaciones && <div style={{ color: V.tenue }}>{r.observaciones}</div>}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </>
   )
 }

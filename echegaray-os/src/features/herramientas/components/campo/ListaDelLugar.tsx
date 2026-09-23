@@ -2,8 +2,8 @@
 
 // M05 · QUÉ HAY EN ESTA OBRA — la lista del lugar con casillas; «Mover» lleva lo marcado a M06.
 //
-// Desvío: sin «Control físico» (etapa 2): la primaria es Mover. Sin «no visto en el último control»
-// (no hay controles todavía).
+// La primaria es Mover; «Control físico» es la fila «Recuento del lugar» de la pantalla (23/09). Sin «no
+// visto en el último control» por fila: el recuento se lee entero en la ficha del lugar.
 
 import Link from 'next/link'
 import { useState } from 'react'

@@ -15,6 +15,7 @@ import { codigosDeObra } from '@/shared/services/codigosDeObra'
 import { armarParque, type Parque } from '../logica/parque'
 import { faltaMigracion } from '../logica/falta-migracion'
 import { COLUMNAS_PAPEL, type Papel } from '../logica/papeles'
+import { COLUMNAS_RECUENTO, COLUMNAS_RECUENTO_LINEA, type Recuento, type RecuentoLinea } from '../logica/recuento'
 import { COLUMNAS_REVISION, COLUMNAS_REVISION_VIGENTE, type Revision, type RevisionVigente } from '../logica/revision'
 import { COLUMNAS_UNIDAD, type Unidad } from '../logica/unidades'
 import {
@@ -77,7 +78,7 @@ function numerosDeRevision<T extends Revision>(r: T): T {
 export async function leerParque(): Promise<Lectura> {
   try {
     const supabase = await createClient()
-    const [activos, ubicaciones, movimientos, incidencias, obras, perfiles, usuario, categorias, lecturas, existencias, ajustes, papeles, unidades, revisiones, vigentes] = await Promise.all([
+    const [activos, ubicaciones, movimientos, incidencias, obras, perfiles, usuario, categorias, lecturas, existencias, ajustes, papeles, unidades, revisiones, vigentes, recuentos, recuentoLineas] = await Promise.all([
       supabase.from('activo').select(COLUMNAS_ACTIVO).order('codigo').limit(TOPE),
       supabase.from('ubicacion').select(COLUMNAS_UBICACION).limit(TOPE),
       supabase.from('activo_movimiento').select(COLUMNAS_MOVIMIENTO).order('fecha_hora', { ascending: false }).limit(TOPE),
@@ -93,10 +94,13 @@ export async function leerParque(): Promise<Lectura> {
       supabase.from('activo_unidad').select(COLUMNAS_UNIDAD).order('codigo').limit(TOPE),
       supabase.from('activo_revision').select(COLUMNAS_REVISION).order('fecha', { ascending: false }).limit(TOPE),
       supabase.from('activo_revision_vigente').select(COLUMNAS_REVISION_VIGENTE).limit(TOPE),
+      supabase.from('activo_recuento').select(COLUMNAS_RECUENTO).order('iniciado_en', { ascending: false }).limit(TOPE),
+      supabase.from('activo_recuento_linea').select(COLUMNAS_RECUENTO_LINEA).limit(TOPE),
     ])
     // Las unidades con código (20260923T1500) y la revisión (20260923T1510): sin esas tablas el resto del
     // módulo anda igual y la ficha dice «sin la migración», nunca «ninguna» ni «al día».
-    for (const r of [unidades, revisiones, vigentes]) if (r.error && !faltaMigracion(r.error)) return { estado: 'error', mensaje: r.error.message }
+    // El recuento físico del lugar (20260923T1700) igual: sin sus tablas, «sin la migración».
+    for (const r of [unidades, revisiones, vigentes, recuentos, recuentoLineas]) if (r.error && !faltaMigracion(r.error)) return { estado: 'error', mensaje: r.error.message }
     // Las existencias por lugar son de 20260922T1300: sin esa tabla, cada activo está entero en su lugar.
     if (existencias.error && !faltaMigracion(existencias.error)) return { estado: 'error', mensaje: existencias.error.message }
     for (const r of [activos, ubicaciones, movimientos, incidencias]) {
@@ -139,6 +143,8 @@ export async function leerParque(): Promise<Lectura> {
         revisionesVigentes: vigentes.error ? null : ((vigentes.data ?? []) as unknown as RevisionVigente[]).map((r) => ({
           ...numerosDeRevision(r), dias: r.dias == null ? null : Number(r.dias),
         })),
+        recuentos: recuentos.error ? null : ((recuentos.data ?? []) as unknown as Recuento[]),
+        recuentoLineas: recuentoLineas.error ? null : ((recuentoLineas.data ?? []) as unknown as RecuentoLinea[]),
       }),
       yo: { id: usuario?.id ?? null, nombre: perfil?.data?.nombre ?? null },
     }
