@@ -30,8 +30,11 @@ export const dynamic = 'force-dynamic'
 
 export default async function ObrasPage({
   searchParams,
+  vistaInicial = 'tabla',
 }: {
   searchParams: Promise<{ archivadas?: string }>
+  /** `/obras/gantt` monta esta misma página abierta en el Gantt: un solo encabezado, dos cuerpos. */
+  vistaInicial?: 'tabla' | 'gantt'
 }) {
   const { archivadas: verArchivadas } = await searchParams
   const conArchivadas = verArchivadas === '1'
@@ -91,6 +94,8 @@ export default async function ObrasPage({
         sinDato={senales.sinDato
           .filter((s) => s.senal === 'los impedimentos abiertos')
           .map((s) => `No pude leer ${s.senal}: ${s.error}`)}
+        hoyIso={hoyIso}
+        vistaInicial={vistaInicial}
       />
     </>
   )

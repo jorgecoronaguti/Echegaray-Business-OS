@@ -16,7 +16,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState, type CSSProperties } from 'react'
+import type { CSSProperties } from 'react'
 import { C, MONO } from './canon/tokens'
 import { useAnchoVentana } from './useAnchoVentana'
 import { esAngosto } from '../services/anchoPantalla'
@@ -26,7 +26,7 @@ import {
   barrasDe, ESCALAS_CARTERA, FUERA_DE_VENTANA, LEYENDA_GANTT, LEYENDA_GANTT_TELEFONO, posicionEn,
   SIN_FECHAS_ESCRITORIO, SIN_FECHAS_TELEFONO, ventanaGantt, type EscalaCartera, type TonoGantt,
 } from '../services/carteraGantt'
-import { ChipsCartera, ConmutadorVista, ENCABEZADO_FIJO, ENCABEZADO_FIJO_TELEFONO, useFiltroCartera, type FilaCartera } from './CarteraObras'
+import type { FilaCartera } from './CarteraObras'
 
 const ALTO_FILA = 46
 const ALTO_CABECERA = 36
@@ -44,25 +44,44 @@ const rayado = (color: string): string =>
 
 const hrefDe = (id: string) => `/obras/${id}?vista=cronograma`
 
-export function GanttObras({ obras, hoyIso }: { obras: FilaCartera[]; hoyIso: string }) {
+/** Mes · Trimestre · Año (02): va en el encabezado fijo de la cartera cuando la vista es Gantt. */
+export function SelectorEscala({ escala, setEscala }: { escala: EscalaCartera; setEscala: (e: EscalaCartera) => void }) {
+  return (
+    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '14px', fontSize: '12.5px', color: C.tintaSuave }}>
+      {ESCALAS_CARTERA.map((e) => {
+        const activa = escala === e.k
+        return (
+          <button key={e.k} type="button" onClick={() => setEscala(e.k)} aria-pressed={activa} data-testid={`escala-${e.k}`}
+            style={{
+              border: 'none', background: 'none', padding: 0, paddingBottom: '2px', cursor: 'pointer', font: 'inherit', fontFamily: 'inherit',
+              fontSize: '12.5px', color: activa ? C.tinta : C.tintaSuave, fontWeight: activa ? 500 : 400,
+              boxShadow: activa ? `inset 0 -1.5px 0 ${C.tinta}` : undefined,
+            }}>{e.t}</button>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * EL CUERPO DEL GANTT DE LA CARTERA (02 / M02). Sin encabezado propio: título, buscador, Ver y chips
+ * son los de `CarteraObras`, que no se vuelven a dibujar al pasar de Tabla a Gantt (dueño, 23/09/2026:
+ * «cuando voy de tabla a gantt el diseño cambia, refresca, está mal»). El filtro también es el mismo.
+ */
+export function CuerpoGantt({ lista, total, hoyIso, telefono, escala }: {
+  lista: FilaCartera[]
+  total: number
+  hoyIso: string
+  telefono: boolean
+  escala: EscalaCartera
+}) {
   const router = useRouter()
-  const telefono = esAngosto(useAnchoVentana())
-  const { filtro, setFiltro, lista, cuentas, sinImpedimentos } = useFiltroCartera(obras)
-  const [escala, setEscala] = useState<EscalaCartera>('trimestre')
   const ventana = ventanaGantt(hoyIso, telefono ? 'telefono' : escala)
   const xHoy = posicionEn(ventana, hoyIso)
 
   if (telefono) {
     return (
-      <div style={{ background: C.superficie, padding: '16px', display: 'flex', flexDirection: 'column', gap: '18px' }} data-testid="gantt-obras">
-        <div style={ENCABEZADO_FIJO_TELEFONO} data-testid="encabezado-cartera">
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: '19px', fontWeight: 600, color: C.tinta }}>Obras</div>
-          <ConmutadorVista vista="gantt" telefono />
-        </div>
-        <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono
-          claves={['todo', 'atraso', 'curso', 'problema', 'previo']} />
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }} data-testid="gantt-obras">
         <div style={{ fontSize: '12px', color: C.tintaSuave }} data-testid="bajada-gantt">{bajadaGantt(lista)}</div>
         <div style={{ position: 'relative' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '118px 1fr', gap: '10px', height: '28px', alignItems: 'center', borderBottom: `1px solid ${C.borde}` }}>
@@ -126,30 +145,7 @@ export function GanttObras({ obras, hoyIso }: { obras: FilaCartera[]; hoyIso: st
   })
 
   return (
-    <div style={{ background: C.superficie, padding: '26px 30px 34px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }} data-testid="gantt-obras">
-      <div style={ENCABEZADO_FIJO} data-testid="encabezado-cartera">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '22px' }}>
-        <div style={{ fontSize: '19px', fontWeight: 600, letterSpacing: '-.01em', color: C.tinta }}>Obras</div>
-        <ConmutadorVista vista="gantt" telefono={false} />
-        <div style={{ width: '1px', height: '15px', background: C.borde }} />
-        <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono={false}
-          claves={['todo', 'curso', 'atraso', 'problema']} />
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '14px', fontSize: '12.5px', color: C.tintaSuave }}>
-          {ESCALAS_CARTERA.map((e) => {
-            const activa = escala === e.k
-            return (
-              <button key={e.k} type="button" onClick={() => setEscala(e.k)} aria-pressed={activa} data-testid={`escala-${e.k}`}
-                style={{
-                  border: 'none', background: 'none', padding: 0, paddingBottom: '2px', cursor: 'pointer', font: 'inherit', fontFamily: 'inherit',
-                  fontSize: '12.5px', color: activa ? C.tinta : C.tintaSuave, fontWeight: activa ? 500 : 400,
-                  boxShadow: activa ? `inset 0 -1.5px 0 ${C.tinta}` : undefined,
-                }}>{e.t}</button>
-            )
-          })}
-        </div>
-      </div>
-      </div>
-
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} data-testid="gantt-obras">
       <div style={{ display: 'grid', gridTemplateColumns: '300px minmax(0,1fr)', border: `1px solid ${C.borde}`, borderRadius: '8px', overflow: 'hidden' }}>
         <div style={{ borderRight: `1px solid ${C.borde}` }} data-columna-fija>
           <div style={{
@@ -205,7 +201,7 @@ export function GanttObras({ obras, hoyIso }: { obras: FilaCartera[]; hoyIso: st
           </span>
         ))}
         <span style={{ marginLeft: 'auto' }}>
-          No hay línea base útil: el sellado copió el plan y da desvío 0 en las {obras.length} obras. La proyección sale de{' '}
+          No hay línea base útil: el sellado copió el plan y da desvío 0 en las {total} obras. La proyección sale de{' '}
           <span style={{ fontFamily: MONO, fontSize: '12px' }}>forecast_fin</span>.
         </span>
       </div>

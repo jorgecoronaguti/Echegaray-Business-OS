@@ -19,6 +19,8 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { CuerpoGantt, SelectorEscala } from './GanttObras'
+import type { EscalaCartera } from '../services/carteraGantt'
 import { Ico, P } from './canon/Ico'
 import { C, MONO } from './canon/tokens'
 import { Hover } from './canon/Piezas'
@@ -100,23 +102,41 @@ export function useFiltroCartera(obras: FilaCartera[]) {
 }
 
 /** «Ver Tabla · Gantt» (01/02) — en el teléfono sin la palabra «Ver» (M01/M02). */
-export function ConmutadorVista({ vista, telefono }: { vista: 'tabla' | 'gantt'; telefono: boolean }) {
-  const item = (k: 'tabla' | 'gantt', t: string, d: ReactNode, href: string) => {
+export type VistaCartera = 'tabla' | 'gantt'
+const HREF_VISTA: Record<VistaCartera, string> = { tabla: '/obras', gantt: '/obras/gantt' }
+
+/**
+ * TABLA · GANTT SIN VOLVER AL SERVIDOR (dueño, 23/09/2026: «cuando voy de tabla a gantt el diseño
+ * cambia, refresca, está mal»). Las dos vistas son la misma página con los mismos datos: el clic
+ * cambia el estado y reescribe la URL con `history.replaceState` (el App Router la sincroniza), así el
+ * encabezado no se vuelve a dibujar. El `<a>` conserva su href real para abrir en otra pestaña y para
+ * las rutas que otros enlaces ya apuntan (`/obras/gantt` sigue existiendo).
+ */
+export function ConmutadorVista({ vista, telefono, cambiar }: { vista: VistaCartera; telefono: boolean; cambiar?: (v: VistaCartera) => void }) {
+  const item = (k: VistaCartera, t: string, d: ReactNode, href: string) => {
     const activo = vista === k
+    const alClic = cambiar ? (e: React.MouseEvent) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+      e.preventDefault()
+      if (activo) return
+      cambiar(k)
+      const q = window.location.search
+      window.history.replaceState(window.history.state, '', href + q)
+    } : undefined
     return (
-      <Link href={href} prefetch={false} data-testid={`nav-vistas-obras-${k}`} aria-current={activo ? 'page' : undefined}
+      <a href={href} onClick={alClic} data-testid={`nav-vistas-obras-${k}`} aria-current={activo ? 'page' : undefined}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: telefono ? '5px' : '6px', fontSize: '12.5px',
           paddingBottom: '2px', textDecoration: 'none', color: activo ? C.tinta : C.tintaSuave,
           fontWeight: activo ? 500 : 400, boxShadow: activo ? `inset 0 -1.5px 0 ${C.tinta}` : undefined,
-        }}><Ico d={d} s={12} />{t}</Link>
+        }}><Ico d={d} s={12} />{t}</a>
     )
   }
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: telefono ? '12px' : '7px' }} data-testid="nav-vistas-obras">
       {!telefono && <span style={{ fontSize: '12px', color: C.tenue }}>Ver</span>}
-      {item('tabla', 'Tabla', P.tabla, '/obras')}
-      {item('gantt', 'Gantt', P.tiempo, '/obras/gantt')}
+      {item('tabla', 'Tabla', P.tabla, HREF_VISTA.tabla)}
+      {item('gantt', 'Gantt', P.tiempo, HREF_VISTA.gantt)}
     </div>
   )
 }
@@ -186,7 +206,7 @@ export function PrimariaNuevaObra({ telefono }: { telefono: boolean }) {
   )
 }
 
-export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDato }: {
+export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDato, hoyIso, vistaInicial = 'tabla' }: {
   obras: FilaCartera[]
   /** Cuántas quedaron fuera de la lista por archivadas. */
   archivadas: number
@@ -194,10 +214,17 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
   esAdmin: boolean
   /** Lo que no se pudo mirar, dicho con todas las letras debajo de la tabla. */
   sinDato: string[]
+  /** El día, fijado en el servidor: la línea de HOY del Gantt no depende del reloj del navegador. */
+  hoyIso: string
+  /** Con qué vista se abre (`/obras` → tabla, `/obras/gantt` → gantt); después manda el conmutador. */
+  vistaInicial?: VistaCartera
 }) {
   const router = useRouter()
   const telefono = esAngosto(useAnchoVentana())
   const { q, setQ, filtro, setFiltro, lista, cuentas, sinImpedimentos, limpiar } = useFiltroCartera(obras)
+  const [vista, setVista] = useState<VistaCartera>(vistaInicial)
+  const [escala, setEscala] = useState<EscalaCartera>('trimestre')
+  const esGantt = vista === 'gantt'
   const archivadasTexto = textoArchivadas(archivadas)
 
   const buscador = (
@@ -251,15 +278,17 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
         <div style={ENCABEZADO_FIJO_TELEFONO} data-testid="encabezado-cartera">
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
           <div style={{ fontSize: '19px', fontWeight: 600, color: C.tinta }}>Obras</div>
-          <ConmutadorVista vista="tabla" telefono />
+          <ConmutadorVista vista={vista} telefono cambiar={setVista} />
         </div>
         <div style={{ display: 'flex' }}>{buscador}</div>
         <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono />
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {lista.map((o, i) => <FilaTelefono key={o.obra_id} o={o} ultima={i === lista.length - 1} ir={() => router.push(`/obras/${o.obra_id}`)} />)}
-          {vacio}
-        </div>
+        {esGantt ? <CuerpoGantt lista={lista} total={obras.length} hoyIso={hoyIso} telefono escala={escala} /> : (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {lista.map((o, i) => <FilaTelefono key={o.obra_id} o={o} ultima={i === lista.length - 1} ir={() => router.push(`/obras/${o.obra_id}`)} />)}
+            {vacio}
+          </div>
+        )}
         {sinDatoLinea}
         {pieArchivadas}
         {esAdmin && <PrimariaNuevaObra telefono />}
@@ -286,12 +315,14 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '22px' }}>
-        <ConmutadorVista vista="tabla" telefono={false} />
+        <ConmutadorVista vista={vista} telefono={false} cambiar={setVista} />
         <div style={{ width: '1px', height: '15px', background: C.borde }} />
         <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono={false} />
+        {esGantt && <SelectorEscala escala={escala} setEscala={setEscala} />}
       </div>
       </div>
 
+      {esGantt ? <CuerpoGantt lista={lista} total={obras.length} hoyIso={hoyIso} telefono={false} escala={escala} /> : (<>
       <div style={{ overflowX: 'auto' }}><div style={{ display: 'flex', flexDirection: 'column', minWidth: `${MIN_TABLA}px` }}>
         <div style={{
           display: 'grid', gridTemplateColumns: GRID, gap: '22px', height: '40px', alignItems: 'center',
@@ -311,6 +342,7 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
           Sin las dos fechas: sin plan, no cero.
         </span>
       </div>
+      </>)}
       {sinDatoLinea}
       {pieArchivadas}
     </div>
