@@ -22,7 +22,7 @@
 // Buscar, filtrar, plegar, abrir el panel y cambiar de solapa son estado del CLIENTE (<200 ms): el
 // material del panel vino en bloque con el árbol y la URL se sincroniza con `replaceState`.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CTRL, FormAccion, type AccionFormulario } from '@/shared/components/ui'
 import { FormNuevaActividad } from './FormActividad'
 import { PanelTarea, type AccionesDelPanel } from './PanelTarea'
@@ -46,6 +46,10 @@ import {
 } from './items/filasDeItems'
 import { TablaItems } from './items/TablaItems'
 import { ListaItems } from './items/ListaItems'
+import { EstadoVacio } from './items/crear/EstadoVacio'
+import { Estructura, esModoEstructura, type AccionesEstructura, type DatosEstructura, type ModoEstructura } from './items/crear/Estructura'
+import { cifrasDelArbol, publicarCifras } from './items/crear/estadoCabecera'
+import { millones, resumenDeEstructura, rotuloProblema, type Ponderaciones } from '../services/estructura'
 
 function dotacionInicial(n: NodoObra, pedida: string | null): number {
   const p = pedida == null ? null : Number(pedida)
@@ -76,10 +80,14 @@ export function TabTareas({
   panelDeObra, relaciones, docsPorActividad, actInicial, solInicial, dotInicial, malImputados,
   puedeEditar, personas, integrantesPorCuadrilla, nombrePorPersona,
   equiposPorActividad, notasPorActividad, autor, accionesBarra, accionesPanel, nuevaInicial = false,
-  nombreObra = null,
+  nombreObra = null, modo, estructura, accionesEstructura,
 }: {
   obraId: string
   nodos: NodoObra[]
+  /** C01–C09 (crear la estructura): qué pantalla de armado se mira. */
+  modo: ModoEstructura
+  estructura: DatosEstructura & { ponds: Ponderaciones; lineaBaseSellada: boolean }
+  accionesEstructura: AccionesEstructura
   filtro: VistaArbol
   cuadrillas: { id: string; nombre: string }[]
   historias: HistoriaPeso[]
@@ -106,7 +114,21 @@ export function TabTareas({
   nuevaInicial?: boolean
   nombreObra?: string | null
 }) {
-  const [alta, setAlta] = useState<'' | 'actividad' | 'rubro'>(nuevaInicial && puedeEditar ? 'actividad' : '')
+  const [alta, setAlta] = useState<'' | 'actividad' | 'rubro'>(nuevaInicial && puedeEditar && nodos.length > 0 ? 'actividad' : '')
+  // ═══ CREAR LA ESTRUCTURA (C01–C09) ═══
+  // Sin trabajo cargado se dibuja la C01 (o, con `?nueva=1`, se arma a mano); con `?crear=`, `&panel=`
+  // o `?sel=1` la pantalla de armado reemplaza a la tabla. Las cifras de la cabecera las publica esto.
+  const modoEfectivo: ModoEstructura = nodos.length === 0 && nuevaInicial && !esModoEstructura(modo) ? { ...modo, crear: 'mano' } : modo
+  const enEstructura = esModoEstructura(modoEfectivo)
+  const vacia = nodos.length === 0 && !enEstructura
+  useEffect(() => {
+    if (!enEstructura && !vacia) return
+    const r = resumenDeEstructura(nodos, estructura.ponds)
+    publicarCifras(cifrasDelArbol({
+      nItems: r.nItems, sinMetodo: r.sinMetodo, sinFechas: r.sinFechas, hhPlan: r.hhPlan, problema: rotuloProblema(r.problemaPonderacion),
+      costoMo: millones(r.costoMo), costoTeorico: null, diasHabiles: estructura.obra.diasHabiles,
+    }))
+  }, [nodos, estructura.ponds, estructura.obra.diasHabiles, enEstructura, vacia])
   const [query, setQuery] = useState('')
   const [verHasta, setVerHasta] = useState<VerHasta>('tarea')
   const [agrupar, setAgrupar] = useState<Agrupar>('rubro')
@@ -224,14 +246,20 @@ export function TabTareas({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <SubNavTrabajo obraId={obraId} sub="arbol"
-        derecha={
+        derecha={enEstructura || vacia ? undefined :
           <>
             <Opciones rotulo="Ver hasta" opciones={VER_HASTA} valor={verHasta} alElegir={elegirVerHasta} testid="ver-hasta" />
             <span aria-hidden style={{ width: '1px', height: '14px', background: C.borde, margin: '0 4px' }} />
             <Opciones rotulo="Agrupar por" opciones={AGRUPAR} valor={agrupar} alElegir={elegirAgrupar} testid="agrupar-por" />
           </>
         }
-        alFinal={
+        alFinal={vacia || (enEstructura && modoEfectivo.crear !== 'mano') ? undefined : enEstructura ? (
+          <>
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar" data-testid="buscar-tarea"
+              style={{ width: '200px', height: '28px', padding: '0 10px', border: `1px solid ${C.bordeFuerte}`, borderRadius: '6px', font: 'inherit', fontSize: '12px', background: C.superficie, color: C.tinta }} />
+            <span style={{ fontSize: '12px', color: C.tintaSuave, display: 'inline-flex', gap: '5px', alignItems: 'center' }}><Ico d={P.expandir} s={12} />Hasta tarea</span>
+          </>
+        ) :
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar actividades" data-testid="buscar-tarea"
             style={{
               width: '190px', height: '29px', padding: '0 10px', border: `1px solid ${C.bordeFuerte}`, borderRadius: '6px',
@@ -274,6 +302,23 @@ export function TabTareas({
         </p>
       )}
 
+      {enEstructura && (
+        <Estructura obraId={obraId} nodos={nodos} ponds={estructura.ponds} modo={modoEfectivo} datos={estructura} acciones={accionesEstructura} query={query} />
+      )}
+      {vacia && (
+        <EstadoVacio obraId={obraId} lineaBaseSellada={estructura.lineaBaseSellada} diasHabiles={estructura.obra.diasHabiles}
+          plazo={estructura.obra.inicio && estructura.obra.fin ? `${estructura.obra.inicio.slice(8, 10)}/${estructura.obra.inicio.slice(5, 7)} → ${estructura.obra.fin.slice(8, 10)}/${estructura.obra.fin.slice(5, 7)}` : null}
+          presupuesto={estructura.presupuesto ? { rotulo: estructura.presupuesto.rotulo, nPartidas: estructura.presupuesto.partidas.length } : null} />
+      )}
+      {vacia && puedeEditar && (
+        <div className="flex md:hidden" style={{ position: 'fixed', left: 0, right: 0, bottom: '64px', padding: '12px 16px 18px', background: C.superficie, borderTop: `1px solid ${C.borde}`, zIndex: 20 }}>
+          <a href={`/obras/${obraId}?vista=tareas&sub=arbol&crear=mano`} data-testid="primaria-nueva-actividad"
+            style={{ ...ESTILO_PRIMARIA, width: '100%', height: '48px', justifyContent: 'center', fontSize: '14px', gap: '8px', color: C.grafito, textDecoration: 'none' }}>
+            <Ico d={P.mas} s={15} />Nueva actividad
+          </a>
+        </div>
+      )}
+      {!enEstructura && !vacia && (<>
       {/* ═══ ESCRITORIO: tabla + panel de 400px ═══ */}
       <div className="hidden md:grid" style={{ gridTemplateColumns: abierta ? 'minmax(0,1fr) 400px' : 'minmax(0,1fr)', alignItems: 'start' }}>
         <TablaItems filas={filas} abierta={sel} alAbrir={(id) => abrir(id)} vacio={vacio} />
@@ -313,6 +358,7 @@ export function TabTareas({
           </div>
         )}
       </div>
+      </>)}
     </div>
   )
 }

@@ -29,12 +29,22 @@ import { esVistaArbol, type VistaArbol } from '../services/vistaArbol'
 import { editarCampoDeTarea } from '../services/actionsAvance'
 import { cambiarRelacion, dividirEnFrentes, quitarRelacion } from '../services/actionsEstructura'
 import { vincularActividadAEstandar } from '../services/actionsVinculacion'
+import { getDiasHabilesDeObra } from '../services/obrasService'
+import { getEstadosDeSubtareas, getPonderaciones, getPresupuestoDeLaObra, hayLineaBase } from '../services/estructuraService'
+import {
+  aplicarAccionMasiva, convertirPartidasDesdeLaObra, crearEstructuraDesdePlanilla, crearItem, guardarPonderacion, guardarSubtareas,
+} from '../services/actionsCrear'
+import type { ModoEstructura } from './items/crear/Estructura'
 
 export async function WorkspaceTareas({
   supabase, obraId, act, filtro, sol, dot, cuadrillas, puedeEditar, veEconomia, nueva = false, abiertas = [],
-  nombreObra = null,
+  nombreObra = null, modo, obra,
 }: {
   supabase: SupabaseClient
+  /** C01–C09: qué pantalla de armado se está mirando (`?crear=` · `&panel=` · `?sel=1` · `&nuevo=`). */
+  modo: ModoEstructura
+  /** El plazo de la obra: lo necesitan la planilla (C03), la conversión (C02) y la ficha nueva (C04). */
+  obra: { inicio: string | null; fin: string | null }
   obraId: string
   act: string | undefined
   filtro: string | undefined
@@ -56,12 +66,16 @@ export async function WorkspaceTareas({
   // ERP OBRAS · H2: el peso de cada historia (`obra_historia_peso`) y lo que dicen los partes de
   // cada ítem (`actividad_partes_resumen`) viajan con el árbol: de ahí salen Pond., % ítem, Avance
   // obra y el ESTADO —derivado, nunca elegido—.
-  const [arbolRes, malImputados, relacionesRes, historiasRes, partesRes] = await Promise.all([
+  const [arbolRes, malImputados, relacionesRes, historiasRes, partesRes, pondsRes, diasRes, lineaBase] = await Promise.all([
     getArbol(supabase, obraId),
     getAvancesSobreContenedor(supabase, obraId),
     getRelaciones(supabase, obraId),
     getHistoriasPeso(supabase, obraId),
     getResumenDePartes(supabase, obraId),
+    // C04/C05: el peso a mano y el costo de MO por ítem. Una lectura chica; la pagan todas las vistas del árbol.
+    getPonderaciones(supabase, obraId),
+    getDiasHabilesDeObra(supabase, obraId),
+    hayLineaBase(supabase, obraId),
   ])
   // NO EXISTE y NO PUDE LEER son dos cosas distintas: una lista vacía por error dibujada como «no
   // hay nada» hace que un problema de permisos parezca una obra sin trabajo.
@@ -73,6 +87,13 @@ export async function WorkspaceTareas({
     )
   }
   const arbol = arbolRes.data
+  // C01/C02/C04: el presupuesto vinculado se lee sólo cuando se va a dibujar (la obra vacía, la conversión
+  // o la ficha nueva); C08: los estados de las subtareas sólo con ese panel abierto.
+  const [presupuestoRes, subtareaEstados] = await Promise.all([
+    arbol.length === 0 || modo.crear === 'presupuesto' || modo.crear === 'mano'
+      ? getPresupuestoDeLaObra(supabase, obraId) : Promise.resolve(null),
+    modo.panel === 'subtareas' && modo.act ? getEstadosDeSubtareas(supabase, obraId, modo.act) : Promise.resolve({}),
+  ])
 
   // La segunda tanda necesita los ids del árbol; junta el material del panel y los papeles.
   // Las personas sólo se leen si esta cara va a OFRECER el alta: quien no puede crear no necesita
@@ -123,6 +144,28 @@ export async function WorkspaceTareas({
       impedimentos={abiertas}
       nuevaInicial={nueva}
       nombreObra={nombreObra}
+      modo={modo}
+      estructura={{
+        ponds: pondsRes.data ?? {},
+        presupuesto: presupuestoRes?.data ?? null,
+        presupuestoError: presupuestoRes?.error ?? null,
+        obra: { nombre: nombreObra ?? obraId, inicio: obra.inicio, fin: obra.fin, diasHabiles: diasRes.data?.dias_habiles_plan ?? null },
+        lineaBaseSellada: lineaBase === true,
+        subtareaEstados,
+        cuadrillas,
+        personas: personasRes.data ?? [],
+        avancesPor: Object.fromEntries(Object.entries(panel.historial).map(([k, v]) => [k, v.length])),
+        pasosPor: Object.fromEntries(Object.entries(panel.pasos).map(([k, v]) => [k, v.length])),
+      }}
+      accionesEstructura={{
+        convertir: convertirPartidasDesdeLaObra.bind(null, obraId),
+        crearPlanilla: crearEstructuraDesdePlanilla.bind(null, obraId),
+        crearItem: crearItem.bind(null, obraId),
+        guardarPonderacion: guardarPonderacion.bind(null, obraId),
+        dividir: dividirEnFrentes.bind(null, obraId),
+        guardarSubtareas: guardarSubtareas.bind(null, obraId),
+        aplicarMasiva: aplicarAccionMasiva.bind(null, obraId),
+      }}
       panelDeObra={panel}
       relaciones={relacionesRes.data ?? []}
       docsPorActividad={docsPorActividad}

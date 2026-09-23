@@ -76,6 +76,12 @@ import { separarPlanYSubtareas } from '@/features/obras/services/subtareas'
 import { hrefEconomia, resolverVistaObra, rutaHermana } from '@/features/obras/services/vistasObra'
 import { SubNavTrabajo } from '@/features/obras/components/SubNavTrabajo'
 import { WorkspaceTareas } from '@/features/obras/components/WorkspaceTareas'
+import { esModoEstructura, type ModoEstructura } from '@/features/obras/components/items/crear/Estructura'
+import { cifrasDeCrear } from '@/features/obras/components/items/crear/cabeceraDeCrear'
+import { PrimariaViva } from '@/features/obras/components/items/crear/CabeceraViva'
+import { ListoParaProducirCarga } from '@/features/obras/components/items/crear/ListoParaProducirCarga'
+import { contarItemsDeObra } from '@/features/obras/services/estructuraService'
+import { sellarYProducir } from '@/features/obras/services/actionsCrear'
 import { ParteDiario } from '@/features/obras/components/parte/ParteDiario'
 import { TabPlanilla } from '@/features/obras/components/planilla/TabPlanilla'
 import { getPartes } from '@/features/obras/services/ejecucionService'
@@ -114,10 +120,18 @@ export default async function ObraPage({
     /** `?editar=1` en Cronograma abre el editor de fechas (C06): la cabecera cambia sus acciones y
      *  suma la línea de cifras. Lo lee también `TabCronograma` por `useSearchParams`. */
     editar?: string
+    /** C01–C09 (crear la estructura): `?crear=presupuesto|planilla|mano`, `&panel=ponderacion|frentes|
+     *  subtareas` sobre `act`, `?sel=1` (acciones masivas) y `&nuevo=<padre>` (la ficha nueva). */
+    crear?: string; panel?: string; sel?: string; nuevo?: string
   }>
 }) {
   const { obra: obraId } = await params
-  const { vista: vistaRaw, sub, act, filtro, sol, dot, nueva, editar } = await searchParams
+  const { vista: vistaRaw, sub, act, filtro, sol, dot, nueva, editar, crear, panel, sel, nuevo } = await searchParams
+  const modoEstructura: ModoEstructura = {
+    crear: crear === 'presupuesto' || crear === 'planilla' || crear === 'mano' ? crear : null,
+    panel: panel === 'ponderacion' || panel === 'frentes' || panel === 'subtareas' ? panel : null,
+    act: act ?? null, sel: sel === '1', nuevo: nuevo ?? null,
+  }
   // UNA VISTA QUE VIVE EN OTRA RUTA SE LLEVA AHÍ, NO SE IGNORA. `?vista=dotacion` caía en Resumen
   // sin un solo aviso, y quien seguía ese link concluía que la pantalla no existía.
   const hermana = rutaHermana(vistaRaw, obraId)
@@ -161,7 +175,7 @@ export default async function ObraPage({
     diasHabilesRes, personasRes, ubicacion, asignacionesRes, causasRes, registrosRes,
     actividadHHRes, cuadrillas, integrantes, partesRes, economiaRes,
     documentosRes, catalogoEquipos, opRes, personasDeHoy, ordenesRes, archivosDrive, subidos,
-    avanceRes, diasHabilesObraRes, dependenciasRes, genteHoy, hhDeCierreRes,
+    avanceRes, nItemsRes, diasHabilesObraRes, dependenciasRes, genteHoy, hhDeCierreRes,
   ] = await Promise.all([
     // COMERCIAL ES PRECIO, y el precio es de Dirección y Administración: el jefe de obra ve el
     // COSTO de su obra, pero no cuánto se vendió — `veEconomia`, no `esAdministracion`.
@@ -235,6 +249,8 @@ export default async function ObraPage({
     // documentos, no sólo listar los que ya estaban en Drive.
     vista === 'documentos' ? getDocumentosSubidos(supabase, 'obra', obraId) : null,
     conCifras ? getAvancePonderado(supabase, obraId) : null,
+    // C01: la obra sin estructura se dibuja distinto, y la cabecera cambia con ella (un `head` chico).
+    esArbol ? contarItemsDeObra(supabase, obraId) : null,
     // El editor del cronograma (C06) dibuja «Días hábiles: 21» en la cabecera: la misma vista.
     conCifras || esEditorCronograma ? getDiasHabilesDeObra(supabase, obraId) : null,
     vista === 'resumen' ? getDependencias(supabase, obraId) : null,
@@ -318,7 +334,15 @@ export default async function ObraPage({
   const nDependencias = dependenciasRes ? (dependenciasRes.data?.length ?? null) : null
   // LA LÍNEA DE CIFRAS DE ÍTEMS (04b): Avance de obra · Costo teórico · Día hábil.
   const costo = costoTeorico(avance)
-  const cifrasDeItems: KpiPantalla[] = esArbol ? [
+  // ═══ CREAR LA ESTRUCTURA (C01–C10) ═══
+  // Con `?crear=`, `&panel=` o `?sel=1`, o con la obra sin trabajo cargado, la cabecera deja los KPI
+  // grandes y dibuja la línea de cifras de esa pantalla (que la pantalla publica) y su primaria.
+  const enEstructura = esArbol && (esModoEstructura(modoEstructura) || (nueva === '1' && nItemsRes === 0))
+  const obraVacia = esArbol && nItemsRes === 0
+  const modoConPrimariaPropia = modoEstructura.crear === 'presupuesto' || modoEstructura.crear === 'planilla' || modoEstructura.panel === 'ponderacion'
+  // C10: la obra en Previo muestra el checklist «Listo para producir» en lugar del Resumen.
+  const esListoParaProducir = vista === 'resumen' && !terminada && obra.etapa === 'previo'
+  const cifrasDeItems: KpiPantalla[] = esArbol && !enEstructura && !obraVacia ? [
     { rotulo: 'Avance de obra', valor: cifraAvance(avance), falta: 'sin estructura' },
     { rotulo: 'Costo teórico', valor: costo.cifra, falta: costo.bajada },
     {
@@ -380,7 +404,14 @@ export default async function ObraPage({
         vistaActiva={vista}
         titulo={vista === 'resumen' ? 21 : 17}
         kpis={cifrasDeItems}
-        acciones={vista === 'resumen' ? (
+        acciones={esListoParaProducir ? (
+          <PrimariaViva />
+        ) : enEstructura || obraVacia ? (
+          <>
+            <PrimariaViva />
+            {!modoConPrimariaPropia && puedeEditarPlan && nuevaActividad}
+          </>
+        ) : vista === 'resumen' ? (
           <>
             {/* 03: «Cargar parte» blanco con borde y «Nueva actividad» amarilla, en ese orden. */}
             <Link href={`/obras/${obraId}?vista=tareas&sub=parte`} prefetch={false}
@@ -393,7 +424,7 @@ export default async function ObraPage({
           // C06: «Sellar línea base» y «Guardar fechas» junto al nombre; no hay «Nueva actividad».
           <AccionesEditorCronograma />
         ) : puedeEditarPlan ? nuevaActividad : null}
-        lineaDeCifras={cifrasDelCronograma}
+        lineaDeCifras={enEstructura || obraVacia ? cifrasDeCrear(modoEstructura, obraVacia) : cifrasDelCronograma}
         // EL ENLACE A LA PLATA, DISCRETO Y SÓLO PARA QUIEN LA VE. No es una solapa —el dueño la
         // sacó de acá— y no es un botón: es la puerta a la pantalla de Administración de esta obra.
         // Al jefe de obra no se le dibuja, igual que no se le dibujan las rutas de `veEconomia`.
@@ -418,6 +449,7 @@ export default async function ObraPage({
           supabase={supabase} obraId={obraId} act={act} filtro={filtro} sol={sol} dot={dot}
           cuadrillas={cuadrillas} puedeEditar={puedeEditarPlan} veEconomia={veComercial}
           nueva={nueva === '1'} abiertas={abiertas} nombreObra={obra.nombre}
+          modo={modoEstructura} obra={{ inicio: obra.fecha_inicio_plan, fin: obra.fecha_fin_plan }}
         />
       )}
 
@@ -489,7 +521,12 @@ export default async function ObraPage({
         />
       )}
 
-      {vista === 'resumen' && !terminada && (
+      {esListoParaProducir && (
+        <ListoParaProducirCarga supabase={supabase} obraId={obraId} obra={obra} puedeSellar={puedeEditarPlan}
+          sellar={sellarYProducir.bind(null, obraId)} editar={editarLaObra} />
+      )}
+
+      {vista === 'resumen' && !terminada && !esListoParaProducir && (
         <TabResumen
           obra={obra}
           plan={plan}
