@@ -20,7 +20,8 @@
 import { canalOficialDeArea } from '../../lib/canal-de-area.mjs'
 import { comoUsuario } from '../../lib/como-usuario.mjs'
 import {
-  elegirObra, elegirPersona, interpretarEntrega, leerMonto, leerParaQue, pareceEntrega, pesos, textoDePregunta,
+  elegirObra, elegirPersona, interpretarEntrega, leerMonto, leerParaQue, pareceEntrega,
+  pareceEntregaSinVerbo, pesos, textoDePregunta,
 } from '../../lib/efectivo-entrega-texto.mjs'
 import { leerVale } from '../../lib/efectivo-vale-vision.mjs'
 import { bajarAdjunto } from '../comprobantes/flujo.mjs'
@@ -170,7 +171,12 @@ export const especialista = {
     if (!AREAS_QUE_ENTREGAN.includes(ctx.area)) return null
     // Con adjuntos manda la foto: eso es un comprobante o una rendición, no una entrega escrita.
     if ((ctx.fileIds?.length ?? 0) > 0) return null
-    return pareceEntrega(texto) ? { destino: 'entregar', confianza: 1 } : null
+    if (pareceEntrega(texto)) return { destino: 'entregar', confianza: 1 }
+    // SIN VERBO —«100 a jorge para combustible»— es una sospecha, no una certeza: la misma forma puede ser
+    // un pago a un proveedor. 0,5 le gana a la red de abajo de la libreta (0,2) y pierde contra cualquiera
+    // que reconozca el mensaje de verdad. Quién decide al final es el padrón, en `interpretarEntrega`.
+    if (pareceEntregaSinVerbo(texto)) return { destino: 'entregar', confianza: 0.5 }
+    return null
   },
 
   async atender({ texto, intencion, port, actor, log, entregar = registrarEntrega }) {

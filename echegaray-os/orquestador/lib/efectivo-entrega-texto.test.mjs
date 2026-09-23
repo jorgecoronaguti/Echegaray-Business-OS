@@ -3,7 +3,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  elegirObra, elegirPersona, interpretarEntrega, leerMonto, leerParaQue, pareceEntrega, textoDePregunta,
+  elegirObra, elegirPersona, interpretarEntrega, leerMonto, leerParaQue, pareceEntrega,
+  pareceEntregaSinVerbo, textoDePregunta,
 } from './efectivo-entrega-texto.mjs'
 
 const PERSONAS = [
@@ -116,4 +117,56 @@ test('sin acentos, abreviado y a las apuradas', () => {
 test('«p» de «para» no convierte cualquier frase en destino', () => {
   // «pagado» empieza con p y no es «para»: el destino sale de una palabra suelta, no de un prefijo.
   assert.equal(leerParaQue('entregue $5.000 a aguero pagado ayer'), null)
+})
+
+// ═══ LA ENTREGA ESCRITA SIN VERBO (dueño, 23/09/2026) ═══
+//
+// «100 a jorge para combustible» fue el primer mensaje real del canal y ningún especialista lo reclamó como
+// entrega: cayó a la libreta de gastos, que lo rechazó. El dueño lo leyó como «el chat no funciona».
+
+test('«100 a jorge para combustible» se reconoce como entrega y pregunta el monto', () => {
+  // El mensaje real del dueño. Antes caía a la libreta, que contestaba «no pude cargarlos»: un callejón.
+  // «100» pelado no se toma como plata a propósito, así que lo correcto es reconocer la entrega y pedir
+  // el signo, no rechazar el mensaje.
+  assert.equal(pareceEntregaSinVerbo('100 a jorge para combustible'), true)
+  const r = interpretarEntrega('100 a jorge para combustible', {
+    personas: [{ id: 'p1', nombre: 'JORGE CORONA' }], obras: [],
+  })
+  assert.equal(r.estado, 'pregunta')
+  assert.equal(r.falta, 'monto')
+  assert.match(textoDePregunta(r), /\$100/)
+})
+
+test('con el signo, la misma frase se registra entera', () => {
+  const r = interpretarEntrega('$100 a jorge para combustible', {
+    personas: [{ id: 'p1', nombre: 'JORGE CORONA' }], obras: [],
+  })
+  assert.equal(r.estado, 'listo')
+  assert.equal(r.monto, 100)
+  assert.equal(r.persona.id, 'p1')
+  assert.equal(r.paraQue, 'combustible')
+})
+
+test('un PAGO a proveedor no se confunde con una entrega', () => {
+  for (const t of ['pagué 100 a jorge', 'abone 250.000 a Tello', 'transferí 50000 a Corralón']) {
+    assert.equal(pareceEntregaSinVerbo(t), false, t)
+  }
+})
+
+test('una línea de libreta sin «a alguien» no se toca', () => {
+  assert.equal(pareceEntregaSinVerbo('P. Tello 18/9 2.640.000'), false)
+  assert.equal(pareceEntregaSinVerbo('Flete 60.000'), false)
+})
+
+test('con verbo sigue siendo entrega, y la forma sin verbo no lo pisa', () => {
+  assert.equal(pareceEntrega('entregué $250.000 a Rubén Sosa para el galpón 8'), true)
+  assert.equal(pareceEntregaSinVerbo('entregué $250.000 a Rubén Sosa'), false)
+})
+
+test('si el nombre no está en el padrón, el bot dice las DOS salidas y no un callejón', () => {
+  const r = interpretarEntrega('$100 a fulano para combustible', { personas: [], obras: [] })
+  assert.equal(r.falta, 'persona')
+  const t = textoDePregunta(r)
+  assert.match(t, /entregaste/)
+  assert.match(t, /libreta/)
 })

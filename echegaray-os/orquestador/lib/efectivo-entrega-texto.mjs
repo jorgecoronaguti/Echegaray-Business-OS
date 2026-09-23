@@ -123,6 +123,38 @@ export function pareceEntrega(texto) {
   return RE_ENTREGA.test(t) && /\d/.test(t)
 }
 
+// ═══ LA ENTREGA SIN VERBO — «100 a jorge para combustible» (dueño, 23/09/2026) ═══
+//
+// La primera vez que el dueño usó el canal para arrancar el circuito escribió eso, sin ningún verbo. Ningún
+// especialista lo reclamó como entrega: cayó a la libreta de gastos, que lo rechazó con «no pude cargarlos».
+// Su lectura fue «el chat no funciona», y tenía razón en el efecto.
+//
+// Así se habla de verdad cuando se saca plata del cajón: el monto, a quién, y para qué. Pero SIN el verbo la
+// misma forma puede ser un pago a un proveedor —«100 a Tello», que es libreta—, y ahí el que decide no es
+// esta expresión sino el PADRÓN: `interpretarEntrega` sólo registra si el nombre resuelve a una persona del
+// plantel. Por eso esto devuelve una sospecha y no una certeza, y el especialista la reclama con confianza
+// media: alcanza para ganarle a la red de abajo de la libreta (0,2) y no para secuestrar el canal.
+//
+// Un verbo de PAGO descarta la sospecha: «pagué 100 a jorge» es un pago, aunque Jorge esté en el padrón.
+const RE_PAGO = /\b(pagu[eé]|pago|pagamos|pagaron|abon[eéoó]|transfer[íi]|deposit[éeoó])/i
+const RE_A_ALGUIEN = /(?:^|\s)a\s+([a-záéíóúñ][a-záéíóúñ.'-]{2,})/i
+
+/**
+ * ¿Parece una entrega escrita sin verbo? Monto + «a <alguien>», sin verbo de pago. El nombre no se valida
+ * acá: eso lo hace el padrón.
+ */
+export function pareceEntregaSinVerbo(texto) {
+  const t = String(texto ?? '')
+  if (!/\d/.test(t) || RE_PAGO.test(t)) return false
+  if (RE_ENTREGA.test(t)) return false
+  // NO SE EXIGE QUE EL MONTO SE LEA. «100 a jorge para combustible» no da monto a propósito —un número
+  // pelado abajo de mil no es plata, si no «galpón 8» se registraba como $ 8—, y ése fue exactamente el
+  // mensaje que el dueño escribió. Si acá se exigiera el monto, ese texto volvería a caer en la libreta y
+  // volvería a contestar «no pude cargarlos». Reconocerlo y PREGUNTAR el signo es la única salida que no
+  // deja a la persona adivinando.
+  return RE_A_ALGUIEN.test(t)
+}
+
 /**
  * NÚCLEO PURO. Lee el mensaje y dice qué se registra, o qué falta preguntar.
  *
@@ -133,7 +165,9 @@ export function pareceEntrega(texto) {
  *          |{estado:'nada'}}
  */
 export function interpretarEntrega(texto, { personas = [], obras = [] } = {}) {
-  if (!pareceEntrega(texto)) return { estado: 'nada' }
+  // Con verbo o sin verbo entra igual; lo que cambia es quién puede ganarle el mensaje (la confianza con la
+  // que el especialista lo reclama), no cómo se lee.
+  if (!pareceEntrega(texto) && !pareceEntregaSinVerbo(texto)) return { estado: 'nada' }
   const monto = leerMonto(texto)
   if (monto == null) return { estado: 'pregunta', falta: 'monto' }
 
@@ -156,8 +190,20 @@ export const pesos = (n) => `$ ${Number(n ?? 0).toLocaleString('es-AR', { minimu
 
 /** Qué contesta el bot cuando falta algo. Nunca publica saldos: el canal lo ve todo el grupo. */
 export function textoDePregunta(r) {
-  if (r.falta === 'monto') return 'No entendí cuánto entregaste. Escribilo con el signo, por ejemplo: entregué **$250.000** a Rubén Sosa para el galpón 8.'
-  if (r.falta === 'persona') return 'No encuentro a quién se lo entregaste en el padrón. Escribí el apellido como figura en el legajo.'
+  if (r.falta === 'monto') {
+    // Un número pelado abajo de mil no se toma como plata (si no, «galpón 8» era $ 8). Se dice qué escribir.
+    return ['No entendí cuánto. Escribilo con el signo: «**$100** a Maldonado para combustible».', '',
+      'Sin el signo sólo leo montos de mil para arriba, porque un número suelto suele ser el número de una '
+      + 'obra y no la plata.'].join('\n')
+  }
+  if (r.falta === 'persona') {
+    // NUNCA UN CALLEJÓN SIN SALIDA: quien escribe «100 a jorge» puede estar entregando plata o pagándole a
+    // un proveedor, y el bot no sabe cuál. Se dicen las dos salidas, con su forma exacta.
+    return ['No encuentro a esa persona en el padrón.', '',
+      'Si le **entregaste** plata para que rinda, escribí el apellido como figura en el legajo: '
+      + '«$100.000 a Maldonado para gasoil».',
+      'Si fue un **pago a un proveedor**, escribilo como la libreta: «Tello 23/9 100.000».'].join('\n')
+  }
   if (r.falta === 'persona_ambigua') {
     return ['Hay más de una persona con ese nombre. Repetilo con el apellido completo:', '',
       ...r.candidatos.map((p) => `- ${p.nombre}`)].join('\n')
