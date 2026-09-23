@@ -10,7 +10,7 @@ Clientes/Presupuestos/Base maestra, Obras/Herramientas (sus informes: rutas y qu
 sección f. **QA visual: `next dev` NO respondió en la VM (25 min compilando)**; se apagó y las capturas van
 contra producción con `zzz-qa390.mjs` (sesión del dueño por enlace mágico, sólo lectura) — HECHO: 22 capturas contra producción
 (qa-390 del scratchpad), ninguna se corre de costado; corregidos presupuesto/ficha persona/Pendientes/filtros de Compras
-(f554f3ac, recapturado OK). Queda «QA PRUEBA — no usar» (COT-2026-003) en Presupuestos: el borrado quedó bloqueado, avisado al dueño. Corralón cerrado en Compras (7 filas Pagado, pendiente $0,
+(f554f3ac, recapturado OK). «QA PRUEBA — no usar» (COT-2026-003) BORRADO entero con permiso del dueño (triggers de cotizaciones/cotizacion_partida apagados sólo en la transacción; verificados activos). Material: «Borrar» en las dos caras (borrado lógico `borrado_en`, RPC `borrar_pedido_material`, policy de lectura lo excluye, migración 20260923T2200 aplicada y probada con rollback). Clientes en el teléfono: sin línea Mat./Sub./MO ni OC por obra (dueño: «infinitos números»). Corralón cerrado en Compras (7 filas Pagado, pendiente $0,
 cheque 330 número INFERIDO). Material sin columna Origen.
 
 **HECHO 23/09 (mañana), todo publicado:** el canal #efectivo lee la entrega como se escribe (53 frases
