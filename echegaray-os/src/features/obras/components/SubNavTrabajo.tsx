@@ -65,8 +65,10 @@ export function SubNavTrabajo({ obraId, sub, derecha, alFinal, contadores = {} }
         {alFinal != null && <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>{alFinal}</div>}
       </div>
 
-      <div className="md:hidden" data-testid="subnav-trabajo-telefono" style={{
-        display: 'flex', padding: '0 16px', background: C.tenueFondo, borderBottom: `1px solid ${C.borde}`,
+      {/* `flex md:hidden` por CLASE: un `display` inline le ganaría al `md:hidden` y la banda del
+          teléfono se dibujaría también en escritorio (capturas 23/09: sub-solapas dos veces). */}
+      <div className="flex md:hidden" data-testid="subnav-trabajo-telefono" style={{
+        padding: '0 16px', background: C.tenueFondo, borderBottom: `1px solid ${C.borde}`,
         overflowX: 'auto', flexShrink: 0, scrollbarWidth: 'none',
       }}>
         {items.map((i) => (

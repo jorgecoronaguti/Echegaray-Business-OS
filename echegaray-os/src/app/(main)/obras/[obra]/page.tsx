@@ -319,10 +319,16 @@ export default async function ObraPage({
       falta: diaHabil(diasHabilesObra),
     },
   ] : []
+  // UNA SOLA PRIMARIA AMARILLA POR PANTALLA: el 03 y el 04 dibujan «Nueva actividad» amarilla en la
+  // cabecera; el parte, personal, subcontratos y el editor del cronograma tienen la suya abajo
+  // («Guardar el parte», «Asignar persona», «Nuevo paquete», «Guardar fechas»), así que ahí va con borde.
+  const conPrimariaPropia = vista === 'personal' || (vista === 'tareas' && !esArbol)
   const nuevaActividad = (
     <Link href={`/obras/${obraId}?vista=tareas&sub=arbol&nueva=1`} prefetch={false}
       data-testid="cabecera-nueva-actividad"
-      style={{ ...ESTILO_PRIMARIA, height: '32px', padding: '0 14px', fontSize: '13px', color: C.grafito }}>
+      style={conPrimariaPropia
+        ? { ...ESTILO_SECUNDARIA, height: '32px', padding: '0 14px', fontSize: '13px', border: `1px solid ${C.bordeFuerte}` }
+        : { ...ESTILO_PRIMARIA, height: '32px', padding: '0 14px', fontSize: '13px', color: C.grafito }}>
       <Ico d={P.mas} s={13} />Nueva actividad
     </Link>
   )

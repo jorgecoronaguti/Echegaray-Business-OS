@@ -325,7 +325,7 @@ export function TabResumen({
       </div>
 
       {/* ═══ M04 · TELÉFONO ═══ */}
-      <div className="md:hidden" style={{ padding: '16px 16px 100px', display: 'flex', flexDirection: 'column', gap: '16px' }}
+      <div className="flex md:hidden" style={{ padding: '16px 16px 100px', flexDirection: 'column', gap: '16px' }}
         data-testid="resumen-obra-telefono">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }} data-testid="azulejos-resumen">
           <CifraGrande tam={24} rotulo="Avance" valor={cifraAvance(avance)} falta="sin estructura"

@@ -213,7 +213,7 @@ export function ResumenCierre({
       </div>
 
       {/* ═══ MZ1 · TELÉFONO ═══ */}
-      <div className="md:hidden" style={{ padding: '16px 16px 100px', display: 'flex', flexDirection: 'column', gap: '16px' }}
+      <div className="flex md:hidden" style={{ padding: '16px 16px 100px', flexDirection: 'column', gap: '16px' }}
         data-testid="resumen-cierre-telefono">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }}>{cifras(24)}</div>
         <BloqueTelefono titulo="Cierre" testid="cierre-telefono">

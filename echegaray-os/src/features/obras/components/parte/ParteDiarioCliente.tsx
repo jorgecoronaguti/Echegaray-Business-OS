@@ -32,6 +32,7 @@ import { useAnchoVentana } from '../useAnchoVentana'
 import { C, MONO } from '../canon/tokens'
 import { Ico, P } from '../canon/Ico'
 import { SubNavTrabajo } from '../SubNavTrabajo'
+import { legible } from '@/features/empleado/services/fecha'
 
 const EYEBROW: CSSProperties = {
   fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase',
@@ -320,7 +321,7 @@ function Formulario({
                 <span style={{ color: C.tenue, display: 'flex' }}><Ico d={P.persona} s={14} /></span>
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <div style={{ fontSize: '14px' }}>{c.nombre}</div>
-                  <div style={{ fontSize: '12px', color: C.tintaSuave }}>{p?.categoria ?? p?.especialidad ?? 'sin categoría'}</div>
+                  <div style={{ fontSize: '12px', color: C.tintaSuave }}>{legible(p?.categoria ?? p?.especialidad) ?? 'sin categoría'}</div>
                 </div>
                 {c.estado === 'ausente'
                   ? <span style={{ fontSize: '12px', color: C.tintaSuave }}>ausente</span>
