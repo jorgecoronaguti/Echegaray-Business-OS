@@ -40,6 +40,9 @@ import { vincularDocumento } from './actionsDocumentos'
 import { leerMedicion, metodoTrasMedir } from './medicionEnLote'
 import { filaDeEjecucion, leerParteDiario, type DestinoNovedad } from './parteDiario'
 import { agregarNota } from './actionsNotas'
+import { getPerfilActual } from '@/features/auth/services/authService'
+import { esAdministracion } from '@/features/auth/types/areas'
+import type { Rol } from '@/features/auth/types'
 
 const parteSchema = z.object({
   actividad_id: z.string().uuid('Elegí la actividad'),
@@ -534,4 +537,60 @@ export async function guardarParteDiario(obraId: string, form: FormData): Promis
 
   revalidatePath(`/obras/${obraId}`)
   return { ok: true, mensaje: `Parte del ${d.fecha}: ${efectos.join(' · ')}.` }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// GUARDAR FECHAS DEL CRONOGRAMA — C06 / MC7 (diseño ERP Obras, 23/09/2026).
+//
+// El editor arrastra extremos en días hábiles y manda SÓLO lo que cambió (`inicio_<id>` / `fin_<id>`).
+// La duración se vuelve a contar en la base con `dias_habiles(obra, inicio, fin)` —la única
+// definición de día hábil de la obra— y la fila queda `editado_a_mano`, como en `editarDuracion`.
+// Es de Administración y de la jefatura: la misma guarda que `actionsPlan`.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const ISO = /^\d{4}-\d{2}-\d{2}$/
+
+export async function guardarFechasPlan(obraId: string, form: FormData): Promise<Resultado> {
+  const cambios = new Map<string, { inicio?: string | null; fin?: string | null }>()
+  for (const [k, v] of form.entries()) {
+    const m = /^(inicio|fin)_([0-9a-f-]{36})$/.exec(k)
+    if (!m || typeof v !== 'string') continue
+    const valor = v.trim() === '' ? null : v.trim()
+    if (valor != null && !ISO.test(valor)) return { ok: false, error: `No entendí la fecha «${v}».` }
+    cambios.set(m[2], { ...(cambios.get(m[2]) ?? {}), [m[1]]: valor })
+  }
+  if (cambios.size === 0) return { ok: true, mensaje: 'No había fechas que cambiar.' }
+
+  const supabase = await createClient()
+  const perfil = await getPerfilActual(supabase)
+  if (perfil.error || !perfil.data || !esAdministracion((perfil.data as { rol?: Rol | null }).rol ?? null)) {
+    return { ok: false, error: 'Reprogramar el plan de la obra es de Administración y de la jefatura de obra.' }
+  }
+
+  const ids = [...cambios.keys()]
+  const { data: actuales, error: eLectura } = await supabase.from('obra_actividad')
+    .select('id, inicio_plan, fin_plan').eq('obra_id', obraId).eq('archivada', false).in('id', ids)
+  if (eLectura) return { ok: false, error: eLectura.message }
+  const porId = new Map((actuales ?? []).map((a) => [(a as { id: string }).id, a as { inicio_plan: string | null; fin_plan: string | null }]))
+  if (porId.size !== ids.length) return { ok: false, error: 'Alguna de esas actividades no es de esta obra.' }
+
+  let tocadas = 0
+  for (const [id, c] of cambios) {
+    const actual = porId.get(id)!
+    const inicio = c.inicio === undefined ? actual.inicio_plan : c.inicio
+    const fin = c.fin === undefined ? actual.fin_plan : c.fin
+    if (inicio && fin && fin < inicio) return { ok: false, error: 'El fin no puede ser antes que el inicio.' }
+    let dias: number | null = null
+    if (inicio && fin) {
+      const { data } = await supabase.rpc('dias_habiles', { p_obra_id: obraId, p_desde: inicio, p_hasta: fin })
+      dias = data == null ? null : Number(data)
+    }
+    const { error } = await supabase.from('obra_actividad')
+      .update({ inicio_plan: inicio, fin_plan: fin, dias_plan: dias, editado_a_mano: true })
+      .eq('id', id).eq('obra_id', obraId)
+    if (error) return { ok: false, error: error.message }
+    tocadas++
+  }
+  revalidatePath(`/obras/${obraId}`)
+  return { ok: true, mensaje: `${tocadas} ${tocadas === 1 ? 'fecha guardada' : 'fechas guardadas'}.` }
 }

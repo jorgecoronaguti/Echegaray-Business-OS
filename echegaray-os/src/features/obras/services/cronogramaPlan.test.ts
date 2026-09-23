@@ -128,3 +128,87 @@ test('sin línea base sellada el resumen lo dice con null, no con la fecha del p
   ])
   assert.equal(resumenDelCronograma(filas).finBase, null)
 })
+
+// ═══ DISEÑO ERP OBRAS · 05 / M07 / C06 / MC7 ═══
+import {
+  bajadaDuracion, cambiosDeFechas, conFechas, diasHabilesDelEditor, diasHabilesEntre, indiceDe, mesesDeVentana,
+  motivoSellarApagado, moverExtremo, posPct, rotuloColumna, semanasDe, textoPrecedencia, tonoDeFila, tramoVista,
+  ventanaVista,
+} from './cronogramaPlan.ts'
+
+const HOY = '2026-09-07'
+const filaDe = (p: Partial<Actividad> & { id: string; nombre: string }) => filasDelPlan([act(p)])[1]
+
+test('el tono de la barra se deriva: plan, ejecutado, atrasada (vencida o proyectada), técnico', () => {
+  assert.equal(tonoDeFila(filaDe({ id: 'a', nombre: 'a', inicio_plan: '2026-09-10', fin_plan: '2026-09-12' }), HOY), 'plan')
+  assert.equal(tonoDeFila(filaDe({ id: 'a', nombre: 'a', inicio_plan: '2026-09-01', fin_plan: '2026-09-12', avance_pct: 40 }), HOY), 'ejecutado')
+  assert.equal(tonoDeFila(filaDe({ id: 'a', nombre: 'a', inicio_plan: '2026-08-20', fin_plan: '2026-09-01', avance_pct: 60 }), HOY), 'atrasada')
+  assert.equal(tonoDeFila(filaDe({ id: 'a', nombre: 'a', inicio_plan: '2026-09-01', fin_plan: '2026-09-12', forecast_fin: '2026-09-20', avance_pct: 10 }), HOY), 'atrasada')
+  assert.equal(tonoDeFila(filaDe({ id: 'a', nombre: 'a', inicio_plan: '2026-08-20', fin_plan: '2026-09-01', avance_pct: 100 }), HOY), 'ejecutado')
+  assert.equal(tonoDeFila(filaDe({ id: 'a', nombre: 'a', inicio_plan: '2026-08-20', fin_plan: '2026-09-01', tiempo_tecnico: true }), HOY), 'tecnico')
+})
+
+test('la ventana por semana arranca el lunes, rotula «17 ago» y marca la columna de hoy', () => {
+  const v = ventanaVista([{ inicio: '2026-08-19', fin: '2026-09-24' }], 'semana', HOY)!
+  assert.equal(v.desde, '2026-08-17')
+  assert.deepEqual(v.columnas.slice(0, 3).map((c) => c.rotulo), ['17 ago', '24 ago', '31 ago'])
+  assert.equal(v.columnas.find((c) => c.esHoy)?.rotulo, '7 sep')
+  assert.equal(v.columnas.length, 6)
+  assert.equal(rotuloColumna('2026-07-01', 'trimestre'), 'jul–sep')
+  assert.equal(mesesDeVentana(v), 'ago · sep')
+  const t = tramoVista(v, '2026-08-24', '2026-08-30')
+  assert.ok(t && Math.abs(t.izqPct - (7 / 42) * 100) < 0.01 && Math.abs(t.anchoPct - (7 / 42) * 100) < 0.01)
+  assert.equal(posPct(v, '2026-08-17'), 0)
+  assert.equal(posPct(v, '2026-12-01'), null)
+  assert.equal(ventanaVista([{ inicio: null, fin: null }], 'mes', HOY), null)
+  assert.equal(ventanaVista([{ inicio: '2026-09-01', fin: '2026-09-02' }], 'mes', HOY)!.columnas.length, 3, 'mínimo tres períodos')
+})
+
+test('el editor tiene al menos 21 días hábiles DE LA OBRA, con sus semanas rotuladas', () => {
+  const dias = diasHabilesDelEditor([{ inicio: '2026-08-26', fin: '2026-09-02' }], HOY, [1, 2, 3, 4, 5], new Set(['2026-08-31']))
+  assert.equal(dias[0], '2026-08-24')
+  assert.equal(dias.length, 21)
+  assert.equal(dias.includes('2026-08-31'), false)
+  assert.equal(dias.includes('2026-08-29'), false, 'un sábado no es columna en una obra de lunes a viernes')
+  assert.deepEqual(semanasDe(dias).slice(0, 2), [{ rotulo: 'Sem 24/08', desdeIdx: 0, n: 5 }, { rotulo: 'Sem 31/08', desdeIdx: 5, n: 4 }])
+  assert.equal(indiceDe(dias, '2026-08-29', 'inicio'), 5, 'un sábado como inicio cae al hábil siguiente (el 31/08 es feriado: 01/09)')
+  assert.equal(indiceDe(dias, '2026-08-29', 'fin'), 4, 'un sábado como fin cae al hábil anterior')
+  assert.equal(diasHabilesEntre(dias, '2026-08-24', '2026-08-28'), 5)
+  assert.equal(diasHabilesEntre(dias, null, '2026-08-28'), null)
+})
+
+test('mover un extremo cuenta en días hábiles y no cruza el otro extremo', () => {
+  const dias = diasHabilesDelEditor([{ inicio: '2026-08-24', fin: '2026-09-11' }], HOY, [1, 2, 3, 4, 5], new Set())
+  const a = { inicio: '2026-08-24', fin: '2026-08-28' }
+  assert.deepEqual(moverExtremo(dias, a, 'fin', 2), { inicio: '2026-08-24', fin: '2026-09-01' })
+  assert.deepEqual(moverExtremo(dias, a, 'inicio', 6), { inicio: '2026-09-01', fin: '2026-09-01' })
+  assert.deepEqual(moverExtremo(dias, a, 'barra', 5), { inicio: '2026-08-31', fin: '2026-09-04' })
+  assert.deepEqual(moverExtremo(dias, { inicio: null, fin: null }, 'barra', 3), { inicio: '2026-08-27', fin: '2026-08-27' })
+  assert.deepEqual(moverExtremo(dias, a, 'inicio', -9), { inicio: '2026-08-24', fin: '2026-08-28' })
+})
+
+test('sellar se apaga con el motivo del diseño; con fechas se cuenta «14 de 17»', () => {
+  const filas = filasDelPlan([
+    act({ id: 'a', nombre: 'a', seccion: 'S', inicio_plan: '2026-09-01', fin_plan: '2026-09-02' }),
+    act({ id: 'b', nombre: 'b', seccion: 'S' }),
+    act({ id: 'c', nombre: 'c', seccion: 'S' }),
+  ])
+  assert.equal(motivoSellarApagado(filas), 'Sellar está apagado: 2 ítems sin fechas.')
+  assert.deepEqual(conFechas(filas), { con: 1, total: 3 })
+  assert.equal(motivoSellarApagado(filas.filter((f) => f.nombre !== 'b' && f.nombre !== 'c')), null)
+  assert.equal(textoPrecedencia(filas, [{ origen_id: 'a', destino_id: 'b' }]), '2 de 3 actividades con precedencia cargada. El resto solo tiene fechas.')
+})
+
+test('la bajada del MC7 y sólo lo cambiado viaja a la base', () => {
+  const dias = diasHabilesDelEditor([{ inicio: '2026-08-24', fin: '2026-09-11' }], HOY, [1, 2, 3, 4, 5], new Set())
+  const filas = filasDelPlan([
+    act({ id: 'a', nombre: 'Demolición', seccion: 'S', inicio_plan: '2026-08-24', fin_plan: '2026-08-28' }),
+    act({ id: 'b', nombre: 'Curado', seccion: 'S', inicio_plan: '2026-09-07', fin_plan: '2026-09-07', tiempo_tecnico: true }),
+    act({ id: 'c', nombre: 'Montaje', seccion: 'S' }),
+  ])
+  assert.equal(bajadaDuracion(fila(filas, 'Demolición'), dias), '5 días hábiles')
+  assert.equal(bajadaDuracion(fila(filas, 'Curado'), dias), '1 día técnicos')
+  assert.equal(bajadaDuracion(fila(filas, 'Montaje'), dias), 'sin fechas')
+  const cambios = cambiosDeFechas(filas, { a: { inicio: '2026-08-24', fin: '2026-08-28' }, c: { inicio: '2026-09-01', fin: '2026-09-03' } })
+  assert.deepEqual(cambios, [{ actividadId: 'c', inicio: '2026-09-01', fin: '2026-09-03' }])
+})

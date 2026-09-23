@@ -1,304 +1,547 @@
 'use client'
 
-// ═══ ESTE COMPONENTE YA NO TIENE PANTALLA (24/08/2026 · porte del canónico 07) ═══
+// ═══ EL CRONOGRAMA — 05 (1440) · M07 (390) · C06 (`&editar=1`, 1440) · MC7 (`&editar=1`, 390) ═══
 //
-// La vista «Cronograma» del workspace la dibuja `CronogramaDeObra.tsx`, que es el porte literal del
-// mockup `07 · Obra Cronograma.dc.html`: tabla de actividad y desvío, Gantt con las tres capas, y
-// nada más. Este archivo —y con él `Gantt.tsx`, `PanelActividad.tsx` y la `BarraMasiva`— queda sin
-// nadie que lo renderice.
+// Porte literal del diseño ERP Obras (dueño, 23/09/2026). UN solo cronograma: ver y editar son la
+// misma pantalla con las mismas filas (`filasDelPlan`).
 //
-// NO SE BORRÓ, y hay que decir por qué: es el único lugar del OS donde existen las ACCIONES EN LOTE
-// del plan (responsable, HH plan y sellado por selección), la lista de actividades archivadas con su
-// «Restaurar», y los filtros del plan. Nada de eso está en el canónico 07 y todo eso pertenece al
-// árbol de Tareas (mockup 03), que es el que dibuja las casillas de selección. Mudarlo es una
-// decisión de producto —y de otro frente—, no un efecto colateral de portar una pantalla.
+//   05    banda de nivel 3 con Semana · Mes · Trimestre a la derecha; grilla 270 px | 1fr; filas de
+//         36 px; barra clara = plan, llena = ejecutado, roja = atrasada, punteada = tiempo técnico;
+//         conectores de dependencia; HOY en amarillo; leyenda en una línea al pie.
+//   M07   Semana · Mes en cajas de 32; lista 112 px | 1fr con barras de 14 px; HOY amarilla; pie con
+//         línea base y dependencias.
+//   C06   Día · Semana · Mes; «Fechas · el plan como se carga»; 21+ columnas de días hábiles de
+//         ESTA obra; barras de 16 px con extremos arrastrables; «sin fechas · arrastrá para fijar»;
+//         «Sellar línea base» apagado con motivo mientras el checklist trabe; «Guardar fechas».
+//   MC7   una fila por ítem con dos fechas de 76×40 en mono; «Guardar fechas» de 48 px sobre la barra.
 //
-// Mientras tanto: el sellado de la línea base de TODA la obra sí sobrevive, en la banda de nivel 3
-// del cronograma nuevo (`SellarLineaBase`), porque sin él la línea base no se puede sellar desde
-// ninguna parte y sin línea base no hay desvío que medir.
-
-// PLANIFICACIÓN — UNA solapa con cuatro maneras de mirar LAS MISMAS actividades.
-//
-// ═══ POR QUÉ NO HAY UNA SOLAPA «PLANIFICACIÓN» Y OTRA «GANTT» ═══
-//
-// Eran dos solapas principales sobre el mismo cronograma: la primera lo dibujaba entero y la segunda
-// mostraba el recorte de lo que viene. Separadas obligaban a volver al nivel de arriba para cruzar
-// dos vistas del mismo trabajo, y hacían parecer que había dos planes. Son una herramienta con
-// cuatro zooms, y por eso viven juntas.
-//
-// LAS ACTIVIDADES SON LAS MISMAS Y SE FILTRAN UNA SOLA VEZ, ACÁ. Gantt, Lista, Tablero y Próximos
-// reciben la lista YA recortada: si cada vista filtrara con su propia regla, cambiar de solapa
-// cambiaría lo que se ve sin que nadie haya tocado el filtro.
-//
-// ═══ QUÉ VIVE ACÁ Y POR QUÉ ═══
-//
-// La barra de vista (48px) necesita saber si el panel está cerrado —para ofrecer `Detalle ‹`— y qué
-// escala tiene el calendario. Por eso la selección de actividad, el estado del panel y la escala
-// viven en este nivel y no adentro del Gantt: el control y el estado que gobierna tienen que estar
-// en el mismo lugar, o hace falta un canal de vuelta que nadie mantiene.
-//
-// ═══ LA SUB-VISTA Y LA VENTANA VIAJAN EN LA URL; LA SELECCIÓN DE UNA BARRA NO ═══
-//
-// «Estoy mirando el Gantt» y «estoy mirando las próximas dos semanas» son VISTAS: se mandan por
-// mensaje, se abren de nuevo mañana y tienen que volver iguales. Van en la query. Seleccionar una
-// barra NO: en el Gantt se toca una actividad tras otra para comparar fechas, y una vuelta al
-// servidor por clic haría el cronograma pegajoso justo en lo que más se usa.
+// LO QUE SE RETIRÓ: la franja de cinco cifras, las capas encendibles y las archivadas plegadas de
+// la versión anterior — no están dibujadas.
 
 import Link from 'next/link'
-import { useMemo, useState, useSyncExternalStore } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { Franja, type Metrica } from '@/shared/components/ds'
-import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
-import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
-import type { ActividadHH } from '../services/personalService'
-import { Gantt } from './Gantt'
-// LAS SUB-VISTAS VIVEN EN UN MÓDULO NEUTRAL: la página, que es un Server Component, también las
-// necesita, y un valor exportado desde un archivo `'use client'` no cruza esa frontera.
-import { type SubVista, type Ventana } from '../services/subvistas'
-import { hrefCronograma } from '../services/vistasObra'
-import { BarraPlan, type AccionesPlan } from './BarraPlan'
-import { resumenDelPlan, type ResumenDelPlan } from '../services/resumenDelPlan'
-import { aplicarFiltro, FILTRO_VACIO, hayFiltro, type FiltroPlan } from '../services/filtroPlan'
-import { rubrosDe } from '../services/rubros'
-import type { Escala } from '../services/escala'
-import { FormNuevaActividad } from './FormActividad'
-import type { AccionesCronograma, DatosDeActividad } from './PanelActividad'
-import { SellarLineaBase, type AccionesEnLote } from './AccionesMasivas'
+import { useSearchParams } from 'next/navigation'
+import { useMemo, useRef, useState, type CSSProperties, type PointerEvent as PE } from 'react'
+import type { ResultadoAccion } from '@/shared/components/ui'
+import type { Actividad } from '../types'
+import {
+  bajadaDuracion, cambiosDeFechas, conFechas, diasHabilesDelEditor, ESCALA_LABEL, ESCALAS_VISTA, filasDelPlan,
+  fraccionLlena, indiceDe, mesesDeVentana, motivoSellarApagado, moverExtremo, pares, posPct, semanasDe,
+  textoPrecedencia, tonoDeFila, tramoVista, ventanaVista, type EscalaVista, type FechasEditadas, type FilaPlan,
+} from '../services/cronogramaPlan'
+import { conectoresDe } from '../services/conectoresGantt'
+import { useAnchoVentana } from './useAnchoVentana'
+import { C, MONO } from './canon/tokens'
+import { Ico, P } from './canon/Ico'
+import { SubNavTrabajo } from './SubNavTrabajo'
 
-// ═══ HAY DOS COLUMNAS O NO LAS HAY ═══
-//
-// El panel se elige solo en ESCRITORIO. En el teléfono no es una columna: es una hoja que sube y
-// tapa el cronograma, y abrirla sola deja al jefe de obra mirando una ficha que no pidió, con el
-// fondo comiéndose el primer toque. Se lee con `useSyncExternalStore` y no con un efecto que
-// escribe estado: el servidor contesta `false` —sin panel en la primera pintura, sin desajuste de
-// hidratación— y el navegador corrige en el mismo render, sin una vuelta extra.
-const MQ = '(min-width: 1024px)'
-const suscribirAncho = (avisar: () => void) => {
-  const m = window.matchMedia(MQ)
-  m.addEventListener('change', avisar)
-  return () => m.removeEventListener('change', avisar)
-}
+const ALTO_FILA = 36
+const ALTO_FILA_EDITOR = 40
+const EYEBROW: CSSProperties = { fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase' }
 
-const n = (v: number | null, dec = 0) =>
-  v == null ? null : v.toLocaleString('es-AR', { maximumFractionDigits: dec })
-
-/** La franja de seis cifras del pie. Sale de las MISMAS actividades que se acaban de dibujar. */
-function metricasDelPlan(r: ResumenDelPlan, semanas: number): Metrica[] {
-  const sinCargar = <span className="text-[13px] font-normal text-faint">sin cargar</span>
-  return [
-    { etiqueta: 'Avance físico', valor: r.avance == null ? sinCargar : `${r.avance}%` },
-    {
-      etiqueta: 'HH consumidas',
-      valor: n(r.hhReal, 1) ?? sinCargar,
-      contexto: r.hhPlan == null ? 'sin plan de HH' : `de ${n(r.hhPlan, 1)} previstas`,
-    },
-    {
-      etiqueta: 'Desvío HH',
-      valor: r.desvioHH == null ? sinCargar : `${r.desvioHH > 0 ? '+' : ''}${n(r.desvioHH, 1)}`,
-      contexto: r.desvioHH == null ? 'falta una punta' : 'contra el plan',
-      // Rojo SÓLO cuando es un problema real: gastar horas de más. Por debajo del plan no es rojo.
-      ...(r.desvioHH != null && r.desvioHH > 0 ? { tono: 'neg' as const } : {}),
-    },
-    { etiqueta: 'Actividades', valor: String(r.actividades), contexto: `${r.enCurso} en curso` },
-    {
-      etiqueta: 'Impedimentos',
-      valor: String(r.impedimentosAbiertos),
-      contexto: r.impedimentosVencidos > 0 ? `${r.impedimentosVencidos} vencido(s)` : 'ninguno vencido',
-      ...(r.impedimentosVencidos > 0 ? { tono: 'neg' as const } : {}),
-    },
-    { etiqueta: `Próximas ${semanas} sem.`, valor: String(r.proximas), contexto: 'por arrancar o cerrar' },
-  ]
-}
-
-export function TabCronograma({
-  actividades,
-  obraId,
-  archivadas = [],
-  restricciones = [],
-  dependencias = [],
-  personas = [],
-  acciones,
-  masivas,
-  accionesPlan = {},
-  yaSellada = false,
-  restaurarActividad,
-  sub,
-  semanas,
-  actividadAbierta = null,
-  hoy,
-  hhPorActividad,
-  datosPorActividad,
-  anchoTabla,
-  anchoPanel,
-}: {
-  /** El cronograma vivo: las NO archivadas, en el orden del tracker. */
-  actividades: Actividad[]
+interface Props {
   obraId: string
-  /** Las archivadas, para poder devolverlas. Si no se pasan, no se dibuja la lista. */
-  archivadas?: Actividad[]
-  restricciones?: Restriccion[]
-  dependencias?: Dependencia[]
-  personas?: Persona[]
-  /** Sin `acciones` todo el cronograma queda de sólo lectura. */
-  acciones?: AccionesCronograma
-  masivas?: AccionesEnLote
-  /** Crear, renombrar, ordenar y archivar rubros. */
-  accionesPlan?: AccionesPlan
-  yaSellada?: boolean
-  /** `archivarActividad` atada a la obra: se la llama con `(id, false)` para restaurar. */
-  restaurarActividad?: (actividadId: string, archivada: boolean) => Promise<ResultadoAccion>
-  sub?: SubVista
-  semanas?: Ventana
-  /** Query `act`: qué actividad abrir al entrar. Después la selección es local. */
-  actividadAbierta?: string | null
-  /** Sólo para poder fijar el día en un test. En la pantalla es hoy. */
-  hoy?: Date
-  hhPorActividad?: Map<string, ActividadHH>
-  datosPorActividad?: Map<string, DatosDeActividad>
-  /** Los anchos del split, leídos de la cookie por el servidor. */
-  anchoTabla?: number
-  anchoPanel?: number
-}) {
-  const router = useRouter()
-  const params = useSearchParams()
-  const [subLocal, setSubLocal] = useState<SubVista>(sub ?? 'gantt')
-  const [semanasLocal] = useState<Ventana>(semanas ?? '2')
-  // EL FILTRO NO VIAJA EN LA URL. Es estado de trabajo —«mostrame lo mío ahora»— y no una vista que
-  // se comparte: un enlace mandado por chat que llega con un recorte que el que lo abre no puso es
-  // la manera más rápida de leer mal una obra.
-  const [filtro, setFiltro] = useState<FiltroPlan>(FILTRO_VACIO)
-  const [escala, setEscala] = useState<Escala>('semana')
-  const [selId, setSelId] = useState<string | null>(actividadAbierta)
-  const [panelCerrado, setPanelCerrado] = useState(false)
+  actividades: Actividad[]
+  dependencias: { origen_id: string; destino_id: string }[]
+  isodows: number[]
+  feriados: string[]
+  actividadAbierta: string | null
+  hoy: string
+  guardarFechas: (form: FormData) => Promise<ResultadoAccion>
+  sellar?: () => Promise<ResultadoAccion>
+  fallas: string[]
+}
 
-  const subActual = sub ?? subLocal
-  const ventanaActual = semanas ?? semanasLocal
+export function TabCronograma(props: Props) {
+  const editar = useSearchParams().get('editar') === '1'
+  const telefono = useAnchoVentana() < 768
+  const filas = useMemo(() => filasDelPlan(props.actividades), [props.actividades])
+  if (editar) return telefono ? <EditorTelefono {...props} filas={filas} /> : <Editor {...props} filas={filas} />
+  return telefono ? <VistaTelefono {...props} filas={filas} /> : <Vista {...props} filas={filas} />
+}
 
-  const rubros = useMemo(() => rubrosDe(actividades), [actividades])
-  const nombresDeRubro = useMemo(() => rubros.map((r) => r.nombre), [rubros])
-  const visibles = useMemo(() => aplicarFiltro(actividades, filtro), [actividades, filtro])
+const Falla = ({ fallas }: { fallas: string[] }) => fallas.length > 0 && (
+  <div data-testid="cronograma-lectura-fallida" style={{ padding: '10px 30px 0', fontSize: '12.5px', color: C.neg }}>
+    No se pudo leer parte del cronograma: {fallas.join(' · ')}
+  </div>
+)
 
-  // ═══ EL WORKSPACE ARRANCA PARTIDO ═══
-  //
-  // El objetivo se dibuja CON una actividad seleccionada y la pantalla arrancaba sin ninguna: se
-  // entraba a una tabla ancha con un calendario al lado, y el panel —que es un tercio de lo que el
-  // dueño pidió— sólo aparecía si adivinaba que había que tocar una fila. La elegida por defecto es
-  // la primera CON FECHA: una sin fechas abre un panel que no puede mostrar el plan.
-  const esEscritorio = useSyncExternalStore(suscribirAncho, () => window.matchMedia(MQ).matches, () => false)
-  const primeraConFecha = useMemo(
-    () => actividades.find((a) => a.inicio_plan && a.tipo !== 'resumen') ?? null,
-    [actividades],
-  )
-  const seleccion = selId ?? (esEscritorio ? (primeraConFecha?.id ?? null) : null)
+const colorDeTono = (t: ReturnType<typeof tonoDeFila>) => (t === 'atrasada' ? C.neg : C.grafito)
 
-  /** Se reescribe SÓLO el parámetro que cambió: el resto de la query queda como estaba. */
-  const irA = (clave: string, valor: string) => {
-    const p = new URLSearchParams(params.toString())
-    p.set(clave, valor)
-    router.replace(`?${p.toString()}`, { scroll: false })
-  }
-  const cambiarSub = (v: SubVista) => { setSubLocal(v); irA('sub', v) }
+// ═══════════════════════════════ 05 · VISTA ═══════════════════════════════
 
-  const resumen = resumenDelPlan(
-    visibles, restricciones, (hoy ?? new Date()).toISOString().slice(0, 10), Number(ventanaActual),
-  )
+function Vista({ obraId, filas, dependencias, hoy, fallas, actividadAbierta }: Props & { filas: FilaPlan[] }) {
+  const [escala, setEscala] = useState<EscalaVista>('semana')
+  const ventana = useMemo(() => ventanaVista(pares(filas), escala, hoy), [filas, escala, hoy])
+  const tramos = useMemo(() => filas.map((f) => (ventana ? tramoVista(ventana, f.inicio, f.fin) : null)), [filas, ventana])
+  const conectores = useMemo(() => conectoresDe(
+    filas.map((f, i) => ({ actividadId: f.actividadId, tramo: tramos[i] })), dependencias, { altoFila: ALTO_FILA },
+  ), [filas, tramos, dependencias])
+  const atrasadaDe = useMemo(() => new Map(filas.filter((f) => f.actividadId).map((f) => [f.actividadId as string, tonoDeFila(f, hoy) === 'atrasada'])), [filas, hoy])
+  const hoyPct = ventana ? posPct(ventana, hoy) : null
 
   return (
-    <div className="flex min-h-0 flex-col">
-      <BarraPlan
-        rubros={rubros}
-        personas={personas}
-        filtro={filtro}
-        alFiltrar={setFiltro}
-        acciones={accionesPlan}
-        sub={subActual}
-        alCambiarSub={cambiarSub}
-        detalleCerrado={subActual === 'gantt' && (panelCerrado || seleccion === null)}
-        alAbrirDetalle={() => {
-          setPanelCerrado(false)
-          if (!seleccion) {
-            const primera = primeraConFecha ?? actividades[0]
-            if (primera) setSelId(primera.id)
-          }
-        }}
-        escala={escala}
-        alCambiarEscala={setEscala}
-        // La distinción que antes cargaba el rótulo «Gantt»: lo CALCULADO desde la secuencia —el
-        // camino crítico— vive en su pantalla, y desde acá se llega con un clic.
-        extra={
-          <Link href={hrefCronograma(obraId)} prefetch={false} data-testid="ir-camino-critico"
-            className="hidden text-[12.5px] text-muted hover:text-ink md:inline">
-            Camino crítico →
-          </Link>
-        }
-        {...(acciones ? { sellar: <SellarLineaBase sellar={acciones.sellar} yaSellada={yaSellada} /> } : {})}
-        {...(acciones
-          ? { alta: <FormNuevaActividad personas={personas} crear={acciones.crear} rubros={nombresDeRubro} /> }
-          : {})}
-      />
-
-      {/* CUÁNTO SE ESTÁ ESCONDIENDO. Un cronograma filtrado que parece completo es cómo se lee mal
-          una obra: si hay recorte, se dice cuántas filas quedaron afuera. */}
-      {hayFiltro(filtro) && (
-        <p className="pb-2 text-[12px] text-muted" data-testid="aviso-filtro">
-          Mostrando {visibles.filter((a) => a.tipo !== 'resumen').length} de{' '}
-          {actividades.filter((a) => a.tipo !== 'resumen').length} actividades.
-        </p>
-      )}
-
-      {subActual === 'gantt' && (
-        // El workspace ocupa el alto que queda entre la barra de vista y la franja. No es `100vh`
-        // entero: arriba viven el header global, el encabezado de la obra y sus dos barras.
-        <div className="flex h-[70vh] min-h-[420px] flex-col lg:h-[calc(100vh-330px)]">
-          <Gantt
-            actividades={visibles}
-            restricciones={restricciones}
-            dependencias={dependencias}
-            personas={personas}
-            {...(acciones ? { acciones } : {})}
-            {...(masivas ? { masivas } : {})}
-            seleccionada={seleccion}
-            alSeleccionar={(id) => { setSelId(id); setPanelCerrado(false) }}
-            panelAbierto={!panelCerrado}
-            alCerrarPanel={() => setPanelCerrado(true)}
-            escala={escala}
-            {...(hhPorActividad ? { hhPorActividad } : {})}
-            {...(datosPorActividad ? { datosPorActividad } : {})}
-            rubros={nombresDeRubro}
-            obraId={obraId}
-            {...(anchoTabla ? { anchoTablaInicial: anchoTabla } : {})}
-            {...(anchoPanel ? { anchoPanelInicial: anchoPanel } : {})}
-            {...(hoy ? { hoy } : {})}
-          />
+    <>
+      <SubNavTrabajo obraId={obraId} sub="gantt" derecha={
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '12.5px', color: C.tintaSuave }}>
+          {ESCALAS_VISTA.map((e) => (
+            <button key={e} type="button" data-testid={`escala-${e}`} aria-pressed={escala === e} onClick={() => setEscala(e)} style={{
+              border: 'none', background: 'none', padding: '0 0 2px', font: 'inherit', cursor: 'pointer',
+              color: escala === e ? C.tinta : C.tintaSuave, fontWeight: escala === e ? 500 : 400,
+              boxShadow: escala === e ? `inset 0 -1.5px 0 ${C.tinta}` : 'none',
+            }}>{ESCALA_LABEL[e]}</button>
+          ))}
+          {/* La puerta al editor (C06). El diseño la pone en la cabecera de la obra, que es de otro frente. */}
+          <Link prefetch={false} href={`/obras/${obraId}?vista=tareas&sub=gantt&editar=1`} data-testid="cronograma-editar"
+            style={{ color: C.tintaSuave, textDecoration: 'underline', marginLeft: '6px' }}>Editar fechas</Link>
         </div>
-      )}
-
-      {subActual === 'gantt' && archivadas.length > 0 && restaurarActividad && (
-        <details className="border-t border-line py-2" data-testid="actividades-archivadas">
-          <summary className="cursor-pointer text-[12.5px] text-muted">
-            {archivadas.length} actividad(es) archivadas
-          </summary>
-          <ul className="divide-y divide-surface-sunken">
-            {archivadas.map((a) => (
-              <li key={a.id} className="flex items-center justify-between gap-3 py-2">
-                <span className="min-w-0 truncate text-[12.5px] text-muted">{a.nombre}</span>
-                <BotonAccion accion={restaurarActividad} args={[a.id, false]} testid="restaurar-actividad">
-                  Restaurar
-                </BotonAccion>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-
-      {/* AL PIE Y NO ARRIBA: el plan es el trabajo y va primero. Estas cifras se leen al terminar de
-          mirarlo, y salen de las MISMAS actividades que se acaban de dibujar —filtradas incluidas,
-          porque una franja que cuenta lo que la pantalla no muestra contradice a la pantalla.
-          Desde el mockup 07 es una TARJETA de celdas, así que el aire de arriba lo pone quien la
-          coloca: el componente no trae margen propio. */}
-      <div className="pt-3">
-        <Franja testid="franja-obra" metricas={metricasDelPlan(resumen, Number(ventanaActual))} />
+      } />
+      <Falla fallas={fallas} />
+      <div data-testid="cronograma-obra" style={{ padding: '26px 30px 32px', display: 'flex', flexDirection: 'column', gap: '22px' }}>
+        {!ventana
+          ? <SinFechas obraId={obraId} n={filas.filter((f) => f.nivel !== 0).length} />
+          : (
+            <div style={{ display: 'grid', gridTemplateColumns: '270px minmax(0,1fr)' }}>
+              <div>
+                <div style={{ height: '26px' }} />
+                {filas.map((f) => {
+                  const tono = tonoDeFila(f, hoy)
+                  return f.nivel === 0
+                    ? (
+                      <div key={f.clave} style={{ height: `${ALTO_FILA}px`, display: 'flex', alignItems: 'center', fontSize: '10.5px', letterSpacing: '.08em', textTransform: 'uppercase', color: C.tenue, overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                        <span style={{ fontFamily: MONO, letterSpacing: 0, marginRight: '8px' }}>{numeroDeRubro(filas, f)}</span>{f.nombre}
+                      </div>
+                      )
+                    : (
+                      <div key={f.clave} data-testid={`fila-${f.actividadId}`} style={{
+                        height: `${ALTO_FILA}px`, display: 'flex', alignItems: 'center', paddingLeft: '14px', fontSize: '13px',
+                        color: tono === 'atrasada' ? C.neg : f.sinPlan ? C.tintaSuave : C.tinta,
+                        fontWeight: f.actividadId === actividadAbierta ? 600 : 400,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>{f.nombre}</div>
+                      )
+                })}
+              </div>
+              <div style={{ position: 'relative' }}>
+                <div style={{ height: '26px', display: 'grid', gridTemplateColumns: `repeat(${ventana.columnas.length},1fr)` }}>
+                  {ventana.columnas.map((c) => (
+                    <div key={c.iso} style={{ fontSize: '11px', color: c.esHoy ? C.tinta : C.tenue, fontWeight: c.esHoy ? 500 : 400, whiteSpace: 'nowrap' }}>{c.rotulo}</div>
+                  ))}
+                </div>
+                {hoyPct != null && (
+                  <div data-testid="linea-hoy" style={{ position: 'absolute', left: `${hoyPct}%`, top: '20px', bottom: '10px', width: '1px', background: C.marca }} />
+                )}
+                <div style={{ position: 'relative' }}>
+                  <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 2 }}>
+                    {conectores.conectores.map((k) => {
+                      const destino = k.clave.split('->')[1]
+                      const color = atrasadaDe.get(destino) ? C.neg : C.fantasma
+                      return (
+                        <span key={k.clave} data-testid="conector">
+                          {k.segmentos.map((s, i) => (
+                            <div key={i} style={{
+                              position: 'absolute', left: `${s.izqPct}%`, top: `${s.topPx}px`,
+                              width: s.altoPx === 0 ? `${s.anchoPct}%` : '1px', height: s.altoPx === 0 ? '1px' : `${s.altoPx}px`, background: color,
+                            }} />
+                          ))}
+                          <div style={{
+                            position: 'absolute', left: `calc(${k.flecha.izqPct}% - 5px)`, top: `${k.flecha.topPx - 3}px`, width: 0, height: 0,
+                            borderTop: '3px solid transparent', borderBottom: '3px solid transparent', borderLeft: `5px solid ${color}`,
+                          }} />
+                        </span>
+                      )
+                    })}
+                  </div>
+                  {filas.map((f, i) => {
+                    const t = tramos[i]
+                    const tono = tonoDeFila(f, hoy)
+                    if (f.nivel === 0) {
+                      return (
+                        <div key={f.clave} style={{ height: `${ALTO_FILA}px`, position: 'relative' }}>
+                          {t && <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '17px', width: `${t.anchoPct}%`, height: '2px', background: C.fantasma }} />}
+                        </div>
+                      )
+                    }
+                    if (!t) {
+                      return <div key={f.clave} style={{ height: `${ALTO_FILA}px`, display: 'flex', alignItems: 'center', fontSize: '12px', color: C.tenue }}>sin fechas</div>
+                    }
+                    const proyeccion = tono === 'atrasada' && f.finForecast && f.fin && f.finForecast > f.fin && ventana
+                      ? tramoVista(ventana, f.fin, f.finForecast) : null
+                    return (
+                      <div key={f.clave} data-testid={`barra-${f.actividadId}`} style={{ height: `${ALTO_FILA}px`, position: 'relative' }}>
+                        {tono === 'tecnico'
+                          ? <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '15px', width: `${t.anchoPct}%`, height: '6px', borderRadius: '3px', background: C.superficie, border: `1px dashed ${C.bordeFuerte}`, boxSizing: 'border-box' }} />
+                          : (
+                            <>
+                              <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '15px', width: `${t.anchoPct}%`, height: '6px', borderRadius: '3px', background: C.borde }} />
+                              {fraccionLlena(f) > 0 && (
+                                <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '15px', width: `${t.anchoPct * fraccionLlena(f)}%`, height: '6px', borderRadius: '3px', background: colorDeTono(tono) }} />
+                              )}
+                              {proyeccion && (
+                                <div style={{
+                                  position: 'absolute', left: `${proyeccion.izqPct}%`, top: '15px', width: `${proyeccion.anchoPct}%`, height: '6px', borderRadius: '3px',
+                                  background: `repeating-linear-gradient(45deg, ${C.neg}, ${C.neg} 3px, ${C.negBorde} 3px, ${C.negBorde} 6px)`,
+                                }} />
+                              )}
+                            </>
+                            )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+            )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '30px', fontSize: '12px', color: C.tenue }}>
+          <span>Barra clara: plan · llena: ejecutado · roja: atrasada · punteada: tiempo técnico</span>
+          <span style={{ marginLeft: 'auto' }} data-testid="cronograma-precedencia">{textoPrecedencia(filas, dependencias)}</span>
+        </div>
       </div>
+    </>
+  )
+}
+
+/** «1», «2», «3»: la posición del rubro entre los rubros. */
+function numeroDeRubro(filas: readonly FilaPlan[], f: FilaPlan): number {
+  return filas.filter((x) => x.nivel === 0).indexOf(f) + 1
+}
+
+function SinFechas({ obraId, n }: { obraId: string; n: number }) {
+  return (
+    <div data-testid="cronograma-sin-fechas" style={{ fontSize: '13px', color: C.tintaSuave }}>
+      {n === 0
+        ? 'Esta obra todavía no tiene actividades cargadas.'
+        : `Ninguna de las ${n} actividades tiene fechas de plan: no hay barras que dibujar.`}{' '}
+      <Link prefetch={false} href={`/obras/${obraId}?vista=tareas&sub=gantt&editar=1`} style={{ color: C.tinta, fontWeight: 500, textDecoration: 'underline' }}>
+        Cargar las fechas
+      </Link>
     </div>
+  )
+}
+
+// ═══════════════════════════════ M07 · TELÉFONO ═══════════════════════════════
+
+function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { filas: FilaPlan[] }) {
+  const [escala, setEscala] = useState<EscalaVista>('semana')
+  const ventana = useMemo(() => ventanaVista(pares(filas), escala, hoy), [filas, escala, hoy])
+  const actos = filas.filter((f) => f.nivel !== 0)
+  const hoyPct = ventana ? posPct(ventana, hoy) : null
+  const con = new Set(dependencias.flatMap((d) => [d.origen_id, d.destino_id]))
+  const nDeps = actos.filter((f) => f.actividadId && con.has(f.actividadId)).length
+  const selladas = actos.filter((f) => f.inicioBase || f.finBase).length
+  const caja = (activo: boolean): CSSProperties => ({
+    height: '32px', padding: '0 10px', display: 'flex', alignItems: 'center', border: `1px solid ${activo ? C.grafito : C.borde}`,
+    borderRadius: '6px', fontWeight: activo ? 500 : 400, color: activo ? C.tinta : C.tintaSuave, background: C.superficie, font: 'inherit', cursor: 'pointer',
+  })
+  return (
+    <>
+      <SubNavTrabajo obraId={obraId} sub="gantt" />
+      <Falla fallas={fallas} />
+      <div data-testid="cronograma-obra" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: '6px', fontSize: '12.5px' }}>
+            {(['semana', 'mes'] as EscalaVista[]).map((e) => (
+              <button key={e} type="button" data-testid={`escala-${e}`} aria-pressed={escala === e} onClick={() => setEscala(e)} style={caja(escala === e)}>{ESCALA_LABEL[e]}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: '12px', color: C.tintaSuave, fontFamily: MONO }}>{ventana ? mesesDeVentana(ventana) : 'sin fechas'}</div>
+        </div>
+        {!ventana
+          ? <SinFechas obraId={obraId} n={actos.length} />
+          : (
+            <div style={{ position: 'relative' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '112px 1fr', gap: '8px', height: '26px', alignItems: 'center', borderBottom: `1px solid ${C.borde}` }}>
+                <div />
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${ventana.columnas.length},1fr)`, fontFamily: MONO, fontSize: '10px', color: C.tenue }}>
+                  {ventana.columnas.map((c) => <span key={c.iso}>{escala === 'semana' ? c.iso.slice(8, 10) : c.rotulo}</span>)}
+                </div>
+              </div>
+              {actos.map((f, i) => {
+                const t = tramoVista(ventana, f.inicio, f.fin)
+                const tono = tonoDeFila(f, hoy)
+                const relleno = tono === 'atrasada' ? C.neg : tono === 'ejecutado' ? C.curso : C.grafito
+                return (
+                  <div key={f.clave} data-testid={`fila-${f.actividadId}`} style={{
+                    display: 'grid', gridTemplateColumns: '112px 1fr', gap: '8px', height: '44px', alignItems: 'center',
+                    borderBottom: i === actos.length - 1 ? 'none' : `1px solid ${C.borde}`,
+                  }}>
+                    <div style={{ fontSize: '12.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.nombre}</div>
+                    {t
+                      ? (
+                        <div style={{ position: 'relative', height: '100%' }}>
+                          <div style={{
+                            position: 'absolute', left: `${t.izqPct}%`, width: `${t.anchoPct}%`, top: '15px', height: '14px', borderRadius: '3px',
+                            background: tono === 'tecnico' ? C.superficie : C.borde, overflow: 'hidden',
+                            border: tono === 'tecnico' ? `1px dashed ${C.bordeFuerte}` : 'none', boxSizing: 'border-box',
+                          }}>
+                            {tono !== 'tecnico' && <div style={{ width: `${fraccionLlena(f) * 100}%`, height: '100%', background: relleno }} />}
+                          </div>
+                        </div>
+                        )
+                      : <div style={{ fontSize: '11.5px', color: C.tenue, fontStyle: 'italic' }}>sin fechas</div>}
+                  </div>
+                )
+              })}
+              {hoyPct != null && (
+                <div data-testid="linea-hoy" style={{ position: 'absolute', left: `calc(120px + (100% - 120px)*${hoyPct / 100})`, top: 0, bottom: 0, width: '1px', background: C.marca }} />
+              )}
+            </div>
+            )}
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: C.tintaSuave }}>
+          <span>Línea base: <span style={{ color: C.tenue, fontStyle: 'italic' }}>{selladas > 0 ? 'copia del plan' : 'sin sellar'}</span></span>
+          <span>Dependencias: {nDeps} de {actos.length}</span>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ═══════════════════════════════ C06 · EDITOR ═══════════════════════════════
+
+function useEdicion(filas: FilaPlan[], guardarFechas: Props['guardarFechas'], sellar?: Props['sellar']) {
+  const [editadas, setEditadas] = useState<Record<string, FechasEditadas>>({})
+  const [estado, setEstado] = useState<ResultadoAccion | null>(null)
+  const [pendiente, setPendiente] = useState(false)
+  const fechasDe = (f: FilaPlan): FechasEditadas => (f.actividadId && editadas[f.actividadId]) || { inicio: f.inicio, fin: f.fin }
+  const poner = (id: string, v: FechasEditadas) => setEditadas((e) => ({ ...e, [id]: v }))
+  const cambios = cambiosDeFechas(filas, editadas)
+  async function guardar() {
+    const fd = new FormData()
+    for (const c of cambios) { fd.set(`inicio_${c.actividadId}`, c.inicio ?? ''); fd.set(`fin_${c.actividadId}`, c.fin ?? '') }
+    setPendiente(true)
+    const r = await guardarFechas(fd)
+    setPendiente(false)
+    setEstado(r)
+    if (r.ok) setEditadas({})
+  }
+  async function sellarAhora() {
+    if (!sellar) return
+    setPendiente(true)
+    const r = await sellar()
+    setPendiente(false)
+    setEstado(r)
+  }
+  return { editadas, fechasDe, poner, cambios, estado, pendiente, guardar, sellarAhora }
+}
+
+const Resultado = ({ estado }: { estado: ResultadoAccion | null }) => estado != null && (
+  <span data-testid={estado.ok ? 'fechas-ok' : 'fechas-error'} style={{ fontSize: '12px', color: estado.ok ? C.pos : C.neg }}>
+    {estado.ok ? estado.mensaje ?? 'Guardado.' : estado.error}
+  </span>
+)
+
+function Editor({ obraId, filas, dependencias, isodows, feriados, hoy, fallas, guardarFechas, sellar }: Props & { filas: FilaPlan[] }) {
+  const setFeriados = useMemo(() => new Set(feriados), [feriados])
+  const dias = useMemo(() => diasHabilesDelEditor(pares(filas), hoy, isodows, setFeriados), [filas, hoy, isodows, setFeriados])
+  const semanas = useMemo(() => semanasDe(dias), [dias])
+  const ed = useEdicion(filas, guardarFechas, sellar)
+  const motivo = motivoSellarApagado(filas)
+  const n = dias.length
+  const hoyIdx = indiceDe(dias, hoy, 'inicio')
+  const arrastre = useRef<{ id: string; extremo: 'inicio' | 'fin' | 'barra'; x0: number; ancho: number; base: FechasEditadas } | null>(null)
+  const filaRef = useRef<HTMLDivElement | null>(null)
+
+  const empezar = (e: PE<HTMLElement>, f: FilaPlan, extremo: 'inicio' | 'fin' | 'barra') => {
+    if (!f.actividadId) return
+    const celda = (e.currentTarget.closest('[data-celdas]') as HTMLElement | null)
+    if (!celda) return
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    arrastre.current = { id: f.actividadId, extremo, x0: e.clientX, ancho: celda.getBoundingClientRect().width / n, base: ed.fechasDe(f) }
+  }
+  const mover = (e: PE<HTMLElement>) => {
+    const a = arrastre.current
+    if (!a) return
+    const delta = Math.round((e.clientX - a.x0) / a.ancho)
+    ed.poner(a.id, moverExtremo(dias, a.base, a.extremo, delta))
+  }
+  const soltar = () => { arrastre.current = null }
+  const fijar = (e: PE<HTMLDivElement>, f: FilaPlan) => {
+    if (!f.actividadId) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const i = Math.max(0, Math.min(n - 1, Math.floor(((e.clientX - rect.left) / rect.width) * n)))
+    ed.poner(f.actividadId, { inicio: dias[i], fin: dias[i] })
+  }
+
+  const caja = (activo: boolean, apagado = false): CSSProperties => ({
+    height: '32px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px', border: `1px solid ${activo ? C.grafito : C.borde}`,
+    borderRadius: '6px', fontSize: '12.5px', fontWeight: activo ? 500 : 400, color: apagado ? C.apagado : activo ? C.tinta : C.tintaSuave,
+    background: C.superficie, font: 'inherit', cursor: apagado ? 'default' : 'pointer',
+  })
+
+  return (
+    <>
+      <SubNavTrabajo obraId={obraId} sub="gantt" derecha={
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button type="button" style={caja(true)} data-testid="escala-dia" aria-pressed>Día</button>
+            <button type="button" style={caja(false, true)} disabled title="En el editor se trabaja por día hábil">Semana</button>
+            <button type="button" style={caja(false, true)} disabled title="En el editor se trabaja por día hábil">Mes</button>
+          </div>
+          <span style={{ fontSize: '12px', color: C.tintaSuave, display: 'inline-flex', gap: '5px', alignItems: 'center' }}>
+            <Ico d={P.fecha} s={13} />Fechas · el plan como se carga
+          </span>
+          <button type="button" data-testid="sellar-linea-base" disabled={motivo != null || !sellar || ed.pendiente} title={motivo ?? 'Sellar la línea base de toda la obra'}
+            onClick={ed.sellarAhora} style={{
+              height: '32px', padding: '0 14px', border: 0, borderRadius: '6px', font: 'inherit', fontSize: '13px', fontWeight: 600,
+              background: motivo != null || !sellar ? C.borde : C.superficie, color: motivo != null || !sellar ? C.tenue : C.tinta,
+              cursor: motivo != null || !sellar ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: '7px',
+              boxShadow: motivo != null || !sellar ? 'none' : `inset 0 0 0 1px ${C.bordeFuerte}`,
+            }}><Ico d={P.base} s={14} />Sellar línea base</button>
+          <button type="button" data-testid="guardar-fechas" disabled={ed.cambios.length === 0 || ed.pendiente} onClick={ed.guardar} style={{
+            height: '32px', padding: '0 14px', border: 0, borderRadius: '6px', font: 'inherit', fontSize: '13px', fontWeight: 600,
+            background: ed.cambios.length ? C.marca : C.borde, color: ed.cambios.length ? C.grafito : C.tenue, cursor: ed.cambios.length ? 'pointer' : 'default',
+            display: 'inline-flex', alignItems: 'center', gap: '7px',
+          }}><Ico d={P.ok} s={14} />{ed.pendiente ? 'Guardando…' : 'Guardar fechas'}</button>
+        </div>
+      } />
+      <Falla fallas={fallas} />
+      <div data-testid="cronograma-editor" style={{ padding: '16px 20px 30px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {(motivo || ed.estado) && (
+          <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: C.tintaSuave }}>
+            {motivo && <span data-testid="sellar-motivo">{motivo}</span>}
+            <Resultado estado={ed.estado} />
+          </div>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', height: '30px', alignItems: 'center', borderBottom: `1px solid ${C.borde}` }}>
+          <div style={{ ...EYEBROW, paddingLeft: '4px' }}>Ítem</div>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${n},1fr)`, fontFamily: MONO, fontSize: '10.5px', color: C.tenue }}>
+            {dias.map((d, i) => {
+              const lunes = semanas.some((s) => s.desdeIdx === i)
+              return <div key={d} style={{ textAlign: 'center', color: lunes ? C.tintaMedia : C.tenue, fontWeight: lunes ? 500 : 400 }}>{d.slice(8, 10)}</div>
+            })}
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', height: '22px', alignItems: 'center', marginTop: '-14px' }}>
+          <div />
+          <div style={{ display: 'grid', gridTemplateColumns: semanas.map((s) => `${s.n}fr`).join(' '), ...EYEBROW, fontSize: '10px' }}>
+            {semanas.map((s) => <div key={s.rotulo}>{s.n >= 3 ? s.rotulo : dias[s.desdeIdx].slice(8, 10)}</div>)}
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', position: 'relative', marginTop: '-14px' }} ref={filaRef}>
+          {filas.map((f) => {
+            const v = ed.fechasDe(f)
+            const i0 = v.inicio ? indiceDe(dias, v.inicio, 'inicio') : null
+            const i1 = v.fin ? indiceDe(dias, v.fin, 'fin') : i0
+            const conBarra = i0 != null && i1 != null
+            const esRubro = f.nivel === 0
+            return (
+              <div key={f.clave} data-testid={f.actividadId ? `fila-${f.actividadId}` : undefined} style={{
+                display: 'grid', gridTemplateColumns: '300px 1fr', height: `${ALTO_FILA_EDITOR}px`, alignItems: 'center', borderBottom: `1px solid ${C.bordeTarjeta}`,
+              }}>
+                <div style={{
+                  paddingLeft: esRubro ? '4px' : '52px', fontSize: esRubro ? '12.5px' : '13px', fontWeight: esRubro ? 600 : 400,
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', gap: '8px', alignItems: 'center',
+                }}>
+                  {esRubro ? `${numeroDeRubro(filas, f)} · ${f.nombre}` : f.nombre}
+                  {!esRubro && f.nHijas > 0 && <span style={{ fontSize: '11px', color: C.tenue }}>{f.nHijas} subtareas</span>}
+                  {f.esTiempoTecnico && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: C.warn }}><Ico d={P.hh} s={11} />tiempo técnico</span>}
+                </div>
+                <div data-celdas style={{ position: 'relative', height: '100%', display: 'grid', gridTemplateColumns: `repeat(${n},1fr)` }}
+                  onPointerMove={mover} onPointerUp={soltar} onPointerCancel={soltar}
+                  onDoubleClick={(e) => !conBarra && !esRubro && fijar(e, f)}
+                  onPointerDown={(e) => { if (!conBarra && !esRubro && e.target === e.currentTarget) fijar(e, f) }}>
+                  {dias.map((d, i) => (
+                    <div key={d} style={{ borderLeft: `1px solid ${semanas.some((s) => s.desdeIdx === i) ? C.borde : C.bordeLista}`, pointerEvents: 'none' }} />
+                  ))}
+                  {conBarra
+                    ? (
+                      <div data-testid={f.actividadId ? `barra-${f.actividadId}` : undefined}
+                        onPointerDown={(e) => !esRubro && empezar(e, f, 'barra')} style={{
+                          position: 'absolute', top: '12px', height: '16px', left: `calc(${i0}/${n}*100% + 2px)`, width: `calc(${i1 - i0 + 1}/${n}*100% - 4px)`,
+                          borderRadius: '3px', background: esRubro ? C.apagado : f.esTiempoTecnico ? C.superficie : C.grafito,
+                          border: f.esTiempoTecnico ? `1px dashed ${C.bordeFuerte}` : 'none', boxSizing: 'border-box',
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 3px', cursor: esRubro ? 'default' : 'grab', touchAction: 'none',
+                        }}>
+                        {!esRubro && (
+                          <>
+                            <span onPointerDown={(e) => { e.stopPropagation(); empezar(e, f, 'inicio') }} aria-label="Mover el inicio" style={{ width: '4px', height: '10px', borderRadius: '1px', background: C.superficie, opacity: .55, cursor: 'ew-resize' }} />
+                            <span onPointerDown={(e) => { e.stopPropagation(); empezar(e, f, 'fin') }} aria-label="Mover el fin" style={{ width: '4px', height: '10px', borderRadius: '1px', background: C.superficie, opacity: .55, cursor: 'ew-resize' }} />
+                          </>
+                        )}
+                      </div>
+                      )
+                    : (
+                      <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', paddingLeft: '8px', fontSize: '12px', color: C.tenue, fontStyle: 'italic', pointerEvents: 'none' }}>
+                        {esRubro ? 'sin fechas' : 'sin fechas · arrastrá para fijar'}
+                      </div>
+                      )}
+                </div>
+              </div>
+            )
+          })}
+          {hoyIdx != null && (
+            <div data-testid="linea-hoy" style={{ position: 'absolute', top: 0, bottom: 0, left: `calc(300px + (100% - 300px)*${hoyIdx}/${n})`, width: '1px', background: C.marca, pointerEvents: 'none' }} />
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: '28px', fontSize: '12px', color: C.tintaSuave }}>
+          <span>Los extremos se arrastran; la duración es en días hábiles de esta obra.</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Ico d={P.dep} s={12} />Dependencias · {dependencias.length}</span>
+          <span>La línea base se escribe una sola vez; después mover fechas mide desvío.</span>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ═══════════════════════════════ MC7 · EDITOR EN EL TELÉFONO ═══════════════════════════════
+
+function EditorTelefono({ obraId, filas, isodows, feriados, hoy, fallas, guardarFechas, sellar }: Props & { filas: FilaPlan[] }) {
+  const setFeriados = useMemo(() => new Set(feriados), [feriados])
+  const dias = useMemo(() => diasHabilesDelEditor(pares(filas), hoy, isodows, setFeriados), [filas, hoy, isodows, setFeriados])
+  const ed = useEdicion(filas, guardarFechas, sellar)
+  const actos = filas.filter((f) => f.nivel !== 0)
+  const cf = conFechas(filas)
+  const primera = actos.find((f) => f.inicio)
+  const ultima = [...actos].reverse().find((f) => f.fin)
+  const habiles = primera?.inicio && ultima?.fin ? dias.filter((d) => d >= primera.inicio! && d <= ultima.fin!).length : null
+  const campo: CSSProperties = {
+    width: '76px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${C.bordeFuerte}`,
+    borderRadius: '6px', fontFamily: MONO, fontSize: '13px', background: C.superficie, color: C.tinta, padding: '0 4px', boxSizing: 'border-box',
+  }
+  return (
+    <>
+      <SubNavTrabajo obraId={obraId} sub="gantt" />
+      <Falla fallas={fallas} />
+      <div data-testid="cronograma-editor" style={{ padding: '16px 16px 96px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <div style={{ fontSize: '12.5px', color: C.tintaSuave }}>
+            Con fechas <b style={{ fontWeight: 600, color: C.tinta }}>{cf.con} de {cf.total}</b>{habiles != null && ` · ${habiles} días hábiles`}
+          </div>
+          <div style={{ fontSize: '12px', color: C.tintaSuave, display: 'inline-flex', gap: '5px', alignItems: 'center' }}><Ico d={P.fecha} s={12} />Fechas · el plan</div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {actos.map((f) => {
+            const v = ed.fechasDe(f)
+            const bajada = bajadaDuracion({ ...f, inicio: v.inicio, fin: v.fin }, dias)
+            const aviso = bajada === 'sin fechas' || f.esTiempoTecnico
+            return (
+              <div key={f.clave} data-testid={`fila-${f.actividadId}`} style={{ minHeight: '60px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: `1px solid ${C.bordeTarjeta}` }}>
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <div style={{ fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.nombre}</div>
+                  <div style={{ fontSize: '12px', color: aviso ? C.warn : C.tintaSuave }}>{bajada}</div>
+                </div>
+                <input type="date" aria-label={`Inicio de ${f.nombre}`} value={v.inicio ?? ''} data-testid={`inicio-${f.actividadId}`}
+                  onChange={(e) => f.actividadId && ed.poner(f.actividadId, { inicio: e.target.value || null, fin: v.fin && e.target.value && v.fin < e.target.value ? e.target.value : v.fin })}
+                  style={{ ...campo, color: v.inicio ? C.tinta : C.tenue }} />
+                <input type="date" aria-label={`Fin de ${f.nombre}`} value={v.fin ?? ''} data-testid={`fin-${f.actividadId}`}
+                  onChange={(e) => f.actividadId && ed.poner(f.actividadId, { inicio: v.inicio && e.target.value && e.target.value < v.inicio ? e.target.value : v.inicio, fin: e.target.value || null })}
+                  style={{ ...campo, color: v.fin ? C.tinta : C.tenue }} />
+              </div>
+            )
+          })}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: C.tintaSuave }}>
+          <Ico d={P.info} s={12} />La línea base se escribe una sola vez; después mover fechas mide desvío.
+        </div>
+        <Resultado estado={ed.estado} />
+        <div style={{ position: 'fixed', left: 0, right: 0, bottom: '64px', padding: '12px 16px 18px', background: C.superficie, borderTop: `1px solid ${C.borde}`, zIndex: 10, margin: '0 auto', maxWidth: '430px' }}>
+          <button type="button" data-testid="guardar-fechas" disabled={ed.cambios.length === 0 || ed.pendiente} onClick={ed.guardar} style={{
+            width: '100%', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '6px',
+            background: ed.cambios.length ? C.marca : C.borde, color: ed.cambios.length ? C.grafito : C.tenue, fontSize: '14px', fontWeight: 600,
+            border: 'none', fontFamily: 'inherit', cursor: ed.cambios.length ? 'pointer' : 'default',
+          }}><Ico d={P.ok} s={15} />{ed.pendiente ? 'Guardando…' : 'Guardar fechas'}</button>
+        </div>
+      </div>
+    </>
   )
 }
