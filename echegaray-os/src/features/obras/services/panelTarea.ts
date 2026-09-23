@@ -288,9 +288,8 @@ export interface CandidataADividir {
 export function motivoNoDividir(a: CandidataADividir): string | null {
   if (a.esContenedor || a.tieneHijas) return 'ya es un contenedor, y sus frentes se agregan adentro.'
   if (a.tipo === 'hito') return 'un hito marca una fecha y no lleva trabajo: no hay nada que repartir.'
-  if (a.cotizacionPartidaId) {
-    return 'salió de convertir una partida del presupuesto, y los frentes de una partida los declara la conversión — que es la dueña de que la cantidad cierre contra la partida original.'
-  }
+  // VENIR DE UNA PARTIDA YA NO IMPIDE DIVIDIR (diseño C07, 23/09/2026): «Viene de partida 01.05 · la
+  // partida sigue en el contenedor». La partida queda en el contenedor; los frentes llevan su código.
   if (a.tipoPadre != null && a.tipoPadre !== 'resumen') {
     return 'es una subtarea de otra actividad, y una subtarea no lleva subtareas.'
   }

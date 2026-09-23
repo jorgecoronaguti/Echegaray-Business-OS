@@ -48,6 +48,12 @@ export const C = {
   marcaHover: '#EEBE00',
   /** El fondo de fila seleccionada del árbol y del avance masivo. */
   marcaSuave: '#FEF9E6',
+  /** La fila que se está creando o que entra en la selección (C04 · C07 · C09 · MC2 · MC10). */
+  marcaFila: '#FFF8D6',
+  /** El borde de un botón sobre la barra grafito de acciones masivas (C09 · MC10). */
+  sobreGrafitoBorde: 'rgba(255,255,255,.25)',
+  /** El texto tenue sobre la barra grafito («Esc»). */
+  sobreGrafitoTenue: 'rgba(255,255,255,.7)',
   grafito: '#30302F',
 
   pos: '#067647',

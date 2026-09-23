@@ -159,7 +159,7 @@ test('con avance registrado NO se divide: quedaría colgado de un contenedor', (
 
 test('los pasos también bloquean, y la partida de origen manda a la conversión', () => {
   assert.match(motivoNoDividir(candidata({ nPasos: 5 })) ?? '', /pasos/)
-  assert.match(motivoNoDividir(candidata({ cotizacionPartidaId: 'abc' })) ?? '', /conversión/)
+  assert.equal(motivoNoDividir(candidata({ cotizacionPartidaId: 'abc' })), null)
 })
 
 test('el motivo más de fondo gana: contenedor antes que avances', () => {
