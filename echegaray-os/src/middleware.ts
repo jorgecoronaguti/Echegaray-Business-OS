@@ -7,6 +7,8 @@ import {
 } from '@/features/obras/services/vistaRecordada'
 import { destinoPorRol } from '@/features/portal/types'
 import { trazar } from '@/lib/supabase/traza'
+import { pareceTelefonoSegun } from '@/shared/utils/dispositivo'
+import { rutaTelefonoDeHerramientas } from '@/features/herramientas/logica/rutaTelefono'
 import { TOPE_MS_MIDDLEWARE, esFallaDeBackend, fetchConTope } from '@/lib/supabase/fetch-con-tope'
 import { COOKIE_ROL, VIDA_ROL_SEGUNDOS, leerRol, sellarRol, secretoDelRol } from '@/lib/auth/rol-cache'
 import {
@@ -27,6 +29,13 @@ import {
  * (login, estáticos) siguen pasando: no dependen de Supabase para dibujarse.
  */
 export async function middleware(request: NextRequest) {
+  // HERRAMIENTAS EN EL TELÉFONO ES LA VERSIÓN DE CAMPO (dueño, 23/09/2026: la de escritorio se
+  // dibujaba encimada en el celular). Antes de tocar la base: la ruta de escritorio va a su equivalente
+  // de `/campo/herramientas`. `?pc=1` deja ver la de escritorio a propósito.
+  if (pareceTelefonoSegun(request.headers) && !request.nextUrl.searchParams.has('pc')) {
+    const destino = rutaTelefonoDeHerramientas(request.nextUrl.pathname, request.nextUrl.search)
+    if (destino) return NextResponse.redirect(new URL(destino, request.url))
+  }
   try {
     return await middlewareConBackend(request)
   } catch (e) {
