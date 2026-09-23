@@ -278,7 +278,7 @@ test('economía: el certificado cargado persiste, suma en los totales y cada nú
 
   try {
     await entrar(page)
-    await abrir(page, `/obras/${OBRA}?vista=economia`, 'economia-costo')
+    await abrir(page, `/administracion/obras/${OBRA}`, 'economia-costo')
 
     // LO QUE FALTA SE DICE CON PALABRAS. Esta obra no tiene presupuesto: publicar un 0% de desvío
     // significaría «vamos en presupuesto», que es exactamente lo contrario de la verdad.
@@ -425,7 +425,8 @@ test('el resumen publica los desvíos con su origen, y cada uno lleva a la solap
 
   // Y se puede TOCAR para ir al dato: una alerta que no se puede rastrear se deja de mirar.
   await bloque.getByRole('link').filter({ hasText: /presupuesto/i }).first().click()
-  await page.waitForURL(/vista=economia/)
+  // La economía vive en Administración desde el 23/09/2026; la línea de costo lleva allá.
+  await page.waitForURL(/\/administracion\/obras\//)
   // Economía pasó de tres tablas de tres columnas a los cuatro bloques del MVP.
   await expect(page.getByRole('heading', { name: 'Costo', exact: true })).toBeVisible()
 })
@@ -512,7 +513,7 @@ test('ninguna pantalla nueva empuja la página de costado en el teléfono', asyn
     `/obras/${OBRA}`,
     `/obras/${OBRA}?vista=cronograma`,
     `/obras/${OBRA}?vista=personal`,
-    `/obras/${OBRA}?vista=economia`,
+    `/administracion/obras/${OBRA}`,
     `/obras/${OBRA}?vista=cronograma&sub=proximos`,
     `/obras/${OBRA}?vista=operacion`,
     `/obras/${OBRA}?vista=operacion&sub=impedimentos`,
@@ -549,7 +550,7 @@ test('ninguna pantalla nueva empuja la página de costado en el teléfono', asyn
     ['/clientes/la-estrella?vista=contactos', 'alta-contacto'],
     ['/clientes/la-estrella?vista=documentos', 'alta-documento'],
     [`/obras/${OBRA}?vista=personal`, 'alta-asignacion'],
-    [`/obras/${OBRA}?vista=economia`, 'alta-certificado'],
+    [`/administracion/obras/${OBRA}`, 'alta-certificado'],
     [`/obras/${OBRA}?vista=operacion&sub=impedimentos`, 'alta-impedimento'],
     [`/obras/${OBRA}`, 'editar-obra'],
   ]

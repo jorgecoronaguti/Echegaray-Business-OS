@@ -13,6 +13,7 @@ import { Titular } from './TitularObra'
 import { AtencionObra, type ItemAtencion } from './AtencionObra'
 import { proximasDeLaObra } from '../services/resumenDelPlan'
 import { lineasPlanVsReal } from '../services/planVsReal'
+import { hrefDeVista } from '../services/vistasObra'
 import type { PersonasDeHoy } from '../services/personalService'
 import type { BloqueOrdenes } from '../services/ordenesDeLaObra'
 import { fecha } from './formato'
@@ -112,7 +113,7 @@ function itemsDelPlan(
       // El verbo declara qué tipo de trabajo espera del otro lado: un dato que falta se CARGA,
       // un desvío medido se VA A VER — nadie «resuelve» un número mirándolo.
       accion: l.tono === 'falta' ? 'Cargar' : 'Ver',
-      href: `/obras/${obraId}?vista=${l.vista}`,
+      href: hrefDeVista(obraId, l.vista),
       origen: l.origen,
     }))
 }

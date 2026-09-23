@@ -34,8 +34,10 @@ const admin = () => createClient(URL, SRV, { auth: { persistSession: false } })
  * El tope sigue existiendo y sigue siendo lo que este test protege: siete y ni una más. Lo que
  * cambió es el número, no la regla — el handoff es el contrato más nuevo que firmó el dueño.
  */
+// «ECONOMÍA» SALIÓ DE LA OBRA (23/09/2026, dueño: «saca economía de las obras»): vive en
+// `/administracion/obras/<obra>` y la ficha sólo la enlaza para quien ve el precio.
 const SOLAPAS = [
-  'Resumen', 'Tareas', 'Personal', 'Operación', 'Economía', 'Documentos',
+  'Resumen', 'Tareas', 'Personal', 'Operación', 'Documentos',
 ] as const
 
 // ═══ CAMBIO DE CONTRATO (21/08/2026): SEIS SOLAPAS, Y «EJECUCIÓN» NO ES UNA ═══
@@ -210,7 +212,8 @@ test('Operación reúne las cinco vistas en una sola solapa', async ({ page }) =
 test('Economía muestra los cuatro bloques y ningún nombre de tabla', async ({ page }) => {
   test.setTimeout(120000)
   await entrar(page)
-  await page.goto(`/obras/${OBRA}?vista=economia`)
+  // La pantalla es la misma; cambió de área (23/09/2026). La URL vieja redirige acá.
+  await page.goto(`/administracion/obras/${OBRA}`)
   for (const b of ['Contrato', 'Costo', 'Certificación', 'Resultado']) {
     await expect(page.getByRole('heading', { name: b, exact: true })).toBeVisible()
   }

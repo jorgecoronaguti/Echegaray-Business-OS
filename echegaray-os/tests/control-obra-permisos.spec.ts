@@ -178,16 +178,20 @@ async function entrarComoJefe(page: Page) {
 test('la pantalla tampoco le ofrece lo que la base le va a negar', async ({ page }) => {
   // UN CONTROL QUE NO PUEDE FUNCIONAR ES PEOR QUE UN CONTROL QUE NO ESTÁ: el que aprieta «Cargar
   // certificado» y recibe un error cree que el sistema falló, no que no le corresponde.
+  //
+  // DESDE EL 23/09/2026 LA ECONOMÍA NO ESTÁ EN LA OBRA («saca economía de las obras»): vive en
+  // Administración y sólo entra quien ve el precio. Al jefe la ficha no le dibuja el enlace y la
+  // pantalla le dice de quién es, en vez de mostrarle un contrato «sin cargar» que sí está cargado.
   await entrarComoJefe(page)
-  await page.goto('/obras/san-francisco?vista=economia')
+  await page.goto('/obras/san-francisco')
+  await expect(page.getByTestId('tabs-obra')).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByTestId('tab-economia')).toHaveCount(0)
+  await expect(page.getByTestId('enlace-economia')).toHaveCount(0)
 
-  // Lo suyo: el costo presupuestado, lo gastado y el desvío entre los dos.
-  await expect(page.getByTestId('economia-costo')).toBeVisible({ timeout: 20_000 })
-
-  // Lo que no: contrato, certificación y el formulario de certificado.
+  await page.goto('/administracion/obras/san-francisco')
+  await expect(page.getByTestId('sin-permiso')).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByTestId('economia-costo')).toHaveCount(0)
   await expect(page.getByTestId('economia-contrato')).toHaveCount(0)
-  await expect(page.getByTestId('economia-certificacion')).toHaveCount(0)
-  await expect(page.getByTestId('economia-resultado')).toHaveCount(0)
   await expect(page.getByTestId('alta-certificado')).toHaveCount(0)
 })
 

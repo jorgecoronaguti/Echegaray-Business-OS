@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  resolverVistaObra, rutaHermana, SUBS_TAREAS, hrefCronograma, hrefDotacion, hrefSubcontratos,
+  resolverVistaObra, rutaHermana, SUBS_TAREAS, VISTAS_OBRA, hrefCronograma, hrefDeVista, hrefDotacion,
+  hrefEconomia, hrefSubcontratos,
 } from './vistasObra.ts'
 
 // LAS URLS VIEJAS ESTÁN EN LINKS MANDADOS POR CHAT, EN MARCADORES Y EN LOS TESTS. Ninguna puede
@@ -40,10 +41,32 @@ test('una vista inventada a mano cae en Resumen, no en una pantalla en blanco', 
   assert.equal(resolverVistaObra(undefined, undefined).vista, 'resumen')
 })
 
-test('las seis solapas siguen resolviendo a sí mismas', () => {
-  for (const v of ['resumen', 'tareas', 'personal', 'operacion', 'economia', 'documentos']) {
+test('las cinco solapas siguen resolviendo a sí mismas', () => {
+  for (const v of ['resumen', 'tareas', 'personal', 'operacion', 'documentos']) {
     assert.equal(resolverVistaObra(v, undefined).vista, v)
   }
+})
+
+// ═══ «ECONOMÍA» SALIÓ DE LA OBRA (23/09/2026) ═══
+// El dueño: «saca economía de las obras». La solapa no existe más; la pantalla sí, en
+// Administración, y la URL vieja —que está en links de chat, marcadores y eventos del CRM— va a
+// parar ahí, no a Resumen en silencio.
+test('Economía no es solapa de la obra, y `?vista=economia` lleva a Administración', () => {
+  assert.equal(VISTAS_OBRA.some((v) => v.id === ('economia' as string)), false)
+  assert.equal(hrefEconomia('quattropani'), '/administracion/obras/quattropani')
+  assert.equal(rutaHermana('economia', 'quattropani'), '/administracion/obras/quattropani')
+  // Si alguien la volviera a meter en VISTAS_OBRA, `resolverVistaObra` la aceptaría y la página
+  // no tendría nada que dibujar: cae en Resumen como cualquier vista desconocida.
+  assert.equal(resolverVistaObra('economia', undefined).vista, 'resumen')
+})
+
+test('un destino nombrado desde un dato se traduce en un solo lugar', () => {
+  // Las líneas de plan contra real y el CRM guardan `vista` como nombre; los tres sitios que las
+  // dibujaban armaban `?vista=` a mano y un `?vista=economia` a mano hoy cae en Resumen.
+  assert.equal(hrefDeVista('messina', 'economia'), '/administracion/obras/messina')
+  assert.equal(hrefDeVista('messina', 'compras'), '/obras/messina?vista=operacion&sub=compras')
+  assert.equal(hrefDeVista('messina', 'personal'), '/obras/messina?vista=personal')
+  assert.equal(hrefDeVista('messina', 'gantt'), '/obras/messina?vista=gantt')
 })
 
 test('el cronograma, la dotación y los subcontratos tienen su URL, y no se escribe a mano', () => {
@@ -83,7 +106,7 @@ test('`?vista=dotacion` lleva a la 08, no cae en Resumen en silencio', () => {
 })
 
 test('una vista del workspace NO se desvía a otra ruta', () => {
-  for (const v of ['resumen', 'tareas', 'personal', 'operacion', 'economia', 'documentos', 'gantt', undefined]) {
+  for (const v of ['resumen', 'tareas', 'personal', 'operacion', 'documentos', 'gantt', undefined]) {
     assert.equal(rutaHermana(v, 'quattropani'), null, `${v} no tiene ruta hermana`)
   }
 })

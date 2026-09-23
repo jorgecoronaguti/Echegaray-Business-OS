@@ -18,11 +18,14 @@ import { COLUMNAS_PLAN } from './obrasService.ts'
 
 const RAIZ = new URL('../../../..', import.meta.url).pathname
 const PAGE = RAIZ + 'src/app/(main)/obras/[obra]/page.tsx'
+/** La economía de la obra vive en Administración desde el 23/09/2026 («saca economía de las
+ *  obras»). Es la misma `TabEconomia` con el mismo recorte del plan, mudada de página. */
+const PAGE_ECONOMIA = RAIZ + 'src/app/(main)/administracion/obras/[obra]/page.tsx'
 
-/** Las ocho combinaciones vista/sub que el workspace sabe dibujar. */
+/** Las siete combinaciones vista/sub que el workspace sabe dibujar. Economía ya no está. */
 const SOLAPAS: Array<[string, SubTareas]> = [
   ['resumen', null], ['tareas', 'arbol'], ['tareas', 'gantt'], ['tareas', 'parte'],
-  ['personal', null], ['operacion', null], ['economia', null], ['documentos', null],
+  ['personal', null], ['operacion', null], ['documentos', null],
 ]
 
 test('el plan sólo lo leen las solapas que lo DIBUJAN', () => {
@@ -31,8 +34,17 @@ test('el plan sólo lo leen las solapas que lo DIBUJAN', () => {
   // el mismo día con el render. La lista se sigue leyendo del interruptor, no de una constante
   // escrita a mano, para que las dos cosas no puedan discrepar.
   const conPlan = SOLAPAS.filter(([v, s]) => lecturasDeVista(v, s).plan).map(([v]) => v).sort()
-  assert.deepEqual(conPlan, PERSONAL_SE_DIBUJA
-    ? ['economia', 'personal', 'resumen'] : ['economia', 'resumen'])
+  assert.deepEqual(conPlan, PERSONAL_SE_DIBUJA ? ['personal', 'resumen'] : ['resumen'])
+})
+
+test('«economia» ya no es una vista del workspace: no pide el plan ni ninguna otra lectura', () => {
+  // EL DEFECTO QUE ATRAPA: que alguien reponga `vista === 'economia'` en la matriz. La solapa se
+  // fue a Administración el 23/09/2026 y `?vista=economia` redirige allá antes de llegar acá; si
+  // llegara, no hay componente que dibuje lo que se leyó.
+  const l = lecturasDeVista('economia', null)
+  assert.equal(l.plan, false)
+  assert.equal(l.planColumnas, null)
+  assert.equal(Object.values(l).some(Boolean), false)
 })
 
 test('las restricciones sólo las leen Resumen y Operación', () => {
@@ -112,7 +124,6 @@ const DIBUJA = {
 
 test('sólo las solapas que dibujan el plan piden un juego de columnas', () => {
   assert.equal(lecturasDeVista('resumen', null).planColumnas, 'resumen')
-  assert.equal(lecturasDeVista('economia', null).planColumnas, 'economia')
   assert.equal(
     lecturasDeVista('personal', null).planColumnas, PERSONAL_SE_DIBUJA ? 'personal' : null,
   )
@@ -125,6 +136,8 @@ test('sólo las solapas que dibujan el plan piden un juego de columnas', () => {
 })
 
 test('Personal y Economía NO piden la vista entera — es la mitad del trabajo de la base', () => {
+  // Economía sigue acá aunque ya no sea solapa: su recorte lo consume la pantalla de
+  // Administración, y el ahorro medido se pierde igual si alguien vuelve a pedir `*`.
   for (const juego of ['personal', 'economia'] as const) {
     assert.notEqual(
       COLUMNAS_PLAN[juego], '*',
@@ -146,10 +159,22 @@ test('el Resumen pide la vista entera, y eso está declarado — no es un olvido
 test('cada solapa consume el recorte que pidió, y no el de otra', () => {
   const fuente = readFileSync(PAGE, 'utf8')
   assert.match(fuente, /necesita\.planColumnas === 'personal' \? getPlanDePersonal\(/)
-  assert.match(fuente, /necesita\.planColumnas === 'economia' \? getPlanDeEconomia\(/)
+  // La economía SALIÓ del workspace (23/09/2026): ni el recorte, ni los certificados, ni el
+  // componente pueden volver a este archivo sin que el dueño lo pida de nuevo.
+  assert.doesNotMatch(fuente, /getPlanDeEconomia|getCertificados|<TabEconomia/, 'la economía volvió a la ficha de la obra')
+  assert.doesNotMatch(fuente, /vista === 'economia'/, 'el workspace volvió a decidir algo por la vista economia')
+})
+
+test('la pantalla de Administración consume el recorte de Economía, y no la vista entera', () => {
+  const fuente = readFileSync(PAGE_ECONOMIA, 'utf8')
+  assert.match(fuente, /getPlanDeEconomia\(supabase, obraId\)/, 'la economía dejó de pedir su recorte')
+  assert.doesNotMatch(fuente, /getPlanVsReal\(/, 'la economía pide la vista entera: son 9.413 buffers contra 4.577')
   // El defecto que esto atrapa: TabEconomia recibía `plan` (la vista entera del Resumen) mientras
   // su propia consulta recortada quedaba sin consumir — el ahorro medido no habría llegado nunca.
-  assert.match(fuente, /<TabEconomia\s+plan=\{planEconomia\}/, 'TabEconomia dejó de usar su recorte')
+  assert.match(fuente, /<TabEconomia\s+plan=\{plan\}/, 'TabEconomia dejó de recibir el recorte')
+  // Y la puerta: sólo quien ve el precio. La base es la cerradura; esto es lo que evita el cartel
+  // «nadie cargó el contrato» sobre una obra que sí lo tiene.
+  assert.match(fuente, /if \(!veEconomia\(perfil\.data\?\.rol \?\? null\)\)/, 'la pantalla dejó de cerrarse por veEconomia')
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════

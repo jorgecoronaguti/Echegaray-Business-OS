@@ -131,3 +131,16 @@ test('una obra sin fecha de ninguna clase NO entra con la fecha de otra cosa', (
     'sin ninguna fecha, la obra NO entra con la de otra cosa ni al final de la lista')
   assert.equal(sinFecha, 1, 'lo descartado se CUENTA: la pantalla dice cuántos quedaron afuera')
 })
+
+test('un certificado lleva a la economía de su obra, que vive en Administración (23/09/2026)', () => {
+  // EL DEFECTO QUE ATRAPA: `?vista=economia` a mano, que hoy cae en Resumen. La ruta es la misma
+  // que `hrefEconomia` en `features/obras/services/vistasObra.ts`; se repite porque una feature no
+  // importa de otra, y este test es lo que impide que las dos copias se separen.
+  const f = { ...VACIO, obras: [], certificados: [{
+    id: 'c1', numero: '3', obra_id: 'quattropani', obra_nombre: 'Quattropani',
+    fecha_certificacion: '2026-08-15', monto_certificado: 1500000,
+    fecha_facturacion: null, monto_facturado: null, fecha_cobranza: null, monto_cobrado: null,
+  }] } as unknown as Parameters<typeof construirLineaDeTiempo>[0]
+  const cert = construirLineaDeTiempo(f).eventos.find((e) => e.clave === 'cert-c1')
+  assert.equal(cert?.href, '/administracion/obras/quattropani')
+})

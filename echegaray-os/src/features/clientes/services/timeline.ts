@@ -251,7 +251,10 @@ function deLosCertificados(f: FuentesActividad, out: EventoCliente[]): number {
   let sin = 0
   for (const c of f.certificados) {
     const n = c.numero ? `N° ${c.numero}` : 'sin número'
-    const href = c.obra_id ? `/obras/${c.obra_id}?vista=economia` : null
+    // LA ECONOMÍA DE LA OBRA VIVE EN ADMINISTRACIÓN (23/09/2026): la ruta es la de `hrefEconomia`
+    // en `features/obras/services/vistasObra.ts`, escrita acá a mano porque una feature no importa
+    // de otra. El test de al lado la clava; si la ruta cambia, se ponen rojos los dos.
+    const href = c.obra_id ? `/administracion/obras/${c.obra_id}` : null
     sin += agregar(out, c.fecha_certificacion, {
       clave: `cert-${c.id}`, tipo: 'certificacion',
       titulo: `Certificación ${n} · ${c.obra_nombre}`, detalle: null, monto: c.monto_certificado,

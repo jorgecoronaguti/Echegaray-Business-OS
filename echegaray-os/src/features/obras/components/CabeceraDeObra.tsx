@@ -83,7 +83,7 @@ function Punto() {
 }
 
 export async function CabeceraDeObra({
-  obraId, obra, vistaActiva, pantalla, kpis = [], acciones,
+  obraId, obra, vistaActiva, pantalla, kpis = [], acciones, alFinalDeLasSolapas,
   volverA = '/obras', volverLabel = 'Obras',
 }: {
   obraId: string
@@ -104,6 +104,10 @@ export async function CabeceraDeObra({
   kpis?: KpiPantalla[]
   /** Lo que se puede hacer desde acá. Lo pone cada página: no son de la obra, son de la pantalla. */
   acciones?: ReactNode
+  /** Lo que va a la derecha de las solapas, sin ser una. Hoy, el enlace a la economía de la obra
+   *  en Administración (23/09/2026), que la página dibuja sólo para quien ve el precio. La cabecera
+   *  no decide quién lo ve: recibe el nodo o `null`. */
+  alFinalDeLasSolapas?: ReactNode
 }) {
   const archivada = obra.estado === 'cerrada'
   const est = pastillaDeEstado(obra.estado)
@@ -210,8 +214,8 @@ export async function CabeceraDeObra({
         </div>
       )}
 
-      {/* NIVEL 2: las SEIS solapas, iguales en las seis pantallas. `prefetch={false}` porque seis
-          rutas `force-dynamic` precargadas por página vista son seis renders que nadie pidió. */}
+      {/* NIVEL 2: las CINCO solapas, iguales en todas las pantallas de la obra. `prefetch={false}`
+          porque cinco rutas `force-dynamic` precargadas por página vista son renders que nadie pidió. */}
       <nav style={{ display: 'flex', alignItems: 'stretch', marginTop: '8px', overflowX: 'auto' }}
         data-testid="tabs-obra">
         {VISTAS_OBRA.map((v) => {
@@ -226,6 +230,7 @@ export async function CabeceraDeObra({
               }}>{v.label}</Link>
           )
         })}
+        {alFinalDeLasSolapas}
       </nav>
     </div>
   )

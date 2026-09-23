@@ -27,7 +27,9 @@ export const VISTAS_OBRA = [
   { id: 'tareas', label: 'Trabajo' },
   { id: 'personal', label: 'Personal' },
   { id: 'operacion', label: 'Operación' },
-  { id: 'economia', label: 'Economía' },
+  // «ECONOMÍA» DEJÓ DE SER SOLAPA (23/09/2026). El dueño: «saca economía de las obras». Obras es
+  // operación; la plata vive en Administración —`hrefEconomia`— y la ficha sólo la enlaza para
+  // quien la ve. La URL vieja `?vista=economia` redirige ahí (ver `rutaHermana`).
   { id: 'documentos', label: 'Documentos' },
 ] as const
 export type VistaObra = (typeof VISTAS_OBRA)[number]['id']
@@ -50,6 +52,26 @@ export const hrefCronograma = (obraId: string) => `/obras/${obraId}?vista=tareas
 /** La pantalla 08, por la misma razón. */
 export const hrefDotacion = (obraId: string) => `/obras/${obraId}/dotacion`
 
+/** La economía de la obra —contrato, costo, certificación y margen— vive en Administración desde
+ *  el 23/09/2026. Es la MISMA pantalla que era la solapa; sólo cambió de área. */
+export const hrefEconomia = (obraId: string) => `/administracion/obras/${obraId}`
+
+/**
+ * A DÓNDE LLEVA UNA «VISTA» NOMBRADA DESDE UN DATO. Las líneas de plan contra real y los eventos
+ * del CRM guardan el destino como nombre de vista (`'personal'`, `'economia'`, `'gantt'`), y hasta
+ * hoy los tres sitios que las dibujaban armaban `?vista=` a mano. Con Economía fuera del workspace
+ * un `?vista=economia` escrito a mano manda a Resumen: acá se traduce una sola vez.
+ *
+ *   `economia`  → la pantalla de Administración.
+ *   `compras`   → Operación › Compras: lo que un jefe de obra SÍ ve de su costo.
+ *   el resto    → la solapa (o alias) del workspace, como siempre.
+ */
+export function hrefDeVista(obraId: string, vista: string): string {
+  if (vista === 'economia') return hrefEconomia(obraId)
+  if (vista === 'compras') return `/obras/${obraId}?vista=operacion&sub=compras`
+  return `/obras/${obraId}?vista=${vista}`
+}
+
 /**
  * LAS VISTAS QUE NO SON SOLAPAS PERO LA GENTE ESCRIBE COMO SI LO FUERAN.
  *
@@ -64,7 +86,11 @@ export const hrefDotacion = (obraId: string) => `/obras/${obraId}/dotacion`
  * `resolverVistaObra` como siempre.
  */
 export function rutaHermana(vistaRaw: string | undefined, obraId: string): string | null {
-  return vistaRaw === 'dotacion' ? hrefDotacion(obraId) : null
+  if (vistaRaw === 'dotacion') return hrefDotacion(obraId)
+  // `?vista=economia` está en links de chat, en marcadores y en eventos del CRM ya escritos: va a
+  // donde vive ahora, no a Resumen en silencio.
+  if (vistaRaw === 'economia') return hrefEconomia(obraId)
+  return null
 }
 
 /** La pantalla 10. Cuelga de Tareas —un paquete es una porción del alcance de actividades que ya

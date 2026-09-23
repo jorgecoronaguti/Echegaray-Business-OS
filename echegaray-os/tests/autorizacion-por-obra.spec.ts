@@ -466,19 +466,19 @@ test('los maestros los escribe quien administra, y nadie más', async () => {
 // La protección sigue estando en Postgres —la columna ni llega—; esto mide que el cartel tampoco
 // mienta. Y mide el CASO POSITIVO en la misma pasada: costo y certificación SÍ se dibujan, porque un
 // test que sólo comprueba ausencias se pone verde con la pantalla rota.
+//
+// DESDE EL 23/09/2026 («saca economía de las obras») la pantalla vive en Administración y el jefe de
+// obra no entra: no hay Economía recortada que pueda mentirle. Lo que se mide es que la puerta
+// diga de quién es la pantalla, y que ningún bloque de plata viaje en el HTML que recibe.
 test('Economía no le inventa una explicación al jefe de obra, y le deja lo suyo', async ({ page }) => {
   test.setTimeout(120000)
   await entrarComo(page, JEFE.email, JEFE.password)
   await page.goto('/obras/san-francisco?vista=economia')
-
+  // La URL vieja lleva a Administración, y ahí la puerta está cerrada para él.
+  await page.waitForURL(/\/administracion\/obras\/san-francisco/)
+  await expect(page.getByTestId('sin-permiso'), 'la pantalla no dijo de quién es').toBeVisible()
   await expect(page.getByTestId('economia-costo'),
-    'el jefe no ve el costo de su obra: se enmascaró de más').toBeVisible()
-  // LA CERTIFICACIÓN NO: esta aserción decía lo contrario y estaba mal desde el 19/08. Medido con
-  // el token del jefe: `obra_plan_vs_real` le manda certificado, facturado y cobrado en NULL, y
-  // `certificados_select` es `ve_economia()`, o sea cero filas. Dibujarle el bloque sería mostrarle
-  // cuatro guiones con la explicación «todavía no hay ninguno cargado» sobre una obra que sí puede
-  // tenerlos — la explicación falsa de una ausencia, que es lo único que este sistema no puede
-  // hacer. Si algún día tiene que verla, primero se mueve la policy; la pantalla va detrás.
+    'la Economía se le dibujó a un jefe de obra: salió de la obra el 23/09/2026').toHaveCount(0)
   await expect(page.getByTestId('economia-certificacion'),
     'el bloque Certificación se le dibujó a un jefe de obra, que no recibe ni un dato de adentro').toHaveCount(0)
   await expect(page.getByTestId('economia-contrato'),

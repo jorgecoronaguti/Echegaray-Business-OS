@@ -1,8 +1,16 @@
-// EL WORKSPACE DE LA OBRA — seis solapas, y todo cuelga de `obra_id`.
+// EL WORKSPACE DE LA OBRA — cinco solapas, y todo cuelga de `obra_id`.
 //
 // ═══ LAS SOLAPAS SON LAS DEFINITIVAS DEL MVP (18/08/2026) ═══
 //
-//     Resumen · Cronograma · Personal · Operación · Economía · Documentos
+//     Resumen · Cronograma · Personal · Operación · Documentos
+//
+// ═══ «ECONOMÍA» SALIÓ DE LA OBRA (23/09/2026) ═══
+//
+// El dueño: «saca economía de las obras». Obras es OPERACIÓN; la plata —contrato, costo objetivo,
+// certificación, margen— es de Administración y vive en `/administracion/obras/<obra>`, que es la
+// MISMA `TabEconomia` sin cambiar una línea. Acá queda un enlace discreto al final de las solapas
+// para quien ve economía, y `?vista=economia` redirige allá (`rutaHermana`). Lo que el Resumen ya
+// dibujaba de plata (`CamposObra` y la línea de margen con `veEconomia`) no cambia de alcance.
 //
 // Cambió respecto de las de ayer, y cada cambio es un pedido explícito del dueño:
 //   · «Gantt» → «Cronograma». La solapa no es la herramienta que usa: es el trabajo que contiene.
@@ -14,7 +22,7 @@
 //     principal separado por cada concepto"*. Contesta una sola pregunta: qué se pidió, qué se
 //     compró y qué recursos se movieron para esta obra.
 //
-// No se agregan más solapas principales. Seis es el tope declarado.
+// No se agregan más solapas principales. Seis fue el tope declarado; hoy son cinco.
 //
 // LAS URLES VIEJAS SIGUEN ANDANDO. `?vista=gantt` y `?vista=planificacion` estaban en links
 // mandados por chat, en marcadores y en los tests: redirigen a `cronograma` en vez de caer en el
@@ -32,14 +40,13 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import {
-  getActividades, getDiasHabiles, getDocumentos, getEconomiaObra, getObra, getPlanDeEconomia,
+  getActividades, getDiasHabiles, getDocumentos, getEconomiaObra, getObra,
   getPlanDePersonal, getPlanVsReal, getRestricciones, getUbicacion,
 } from '@/features/obras/services/obrasService'
 import {
   getActividadHH, getAsignaciones, getCausasDesvio, getCuadrillas, getPersonas, getPersonasDeHoy,
   getRegistrosHH,
 } from '@/features/obras/services/personalService'
-import { getCertificados } from '@/features/obras/services/contratoService'
 import {
   archivarActividad, archivarObra, crearImpedimento, editarObra, liberarImpedimento, sellarBaseline,
 } from '@/features/obras/services/actions'
@@ -52,7 +59,6 @@ import { getDocumentosSubidos } from '@/features/documentos/services/documentosS
 import { ArchivosDeDrive } from '@/features/documentos/components/ArchivosDeDrive'
 import { DocumentosSubidos } from '@/features/documentos/components/DocumentosSubidos'
 import { borrarHH, imputarHH, imputarHHMasivo } from '@/features/obras/services/actionsHH'
-import { borrarCertificado, crearCertificado } from '@/features/obras/services/actionsContrato'
 import { AccionesRapidas } from '@/features/obras/components/AccionesRapidas'
 import { ESTILO_PRIMARIA } from '@/features/obras/components/canon/tokens'
 import { Ico, P } from '@/features/obras/components/canon/Ico'
@@ -62,7 +68,7 @@ import { TabResumen } from '@/features/obras/components/TabResumen'
 import { CronogramaDeObra } from '@/features/obras/components/CronogramaDeObra'
 import { lecturasDeVista } from '@/features/obras/services/lecturasDeVista'
 import { separarPlanYSubtareas } from '@/features/obras/services/subtareas'
-import { resolverVistaObra, rutaHermana } from '@/features/obras/services/vistasObra'
+import { hrefEconomia, resolverVistaObra, rutaHermana } from '@/features/obras/services/vistasObra'
 import { SubNavTrabajo } from '@/features/obras/components/SubNavTrabajo'
 import { WorkspaceTareas } from '@/features/obras/components/WorkspaceTareas'
 import { ParteDiario } from '@/features/obras/components/parte/ParteDiario'
@@ -78,8 +84,6 @@ import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
 import { getOrdenesDeObra } from '@/features/clientes/services/ordenesCliente'
 import { bloqueDeOrdenesDeLaObra } from '@/features/obras/services/ordenesDeLaObra'
 import { getPerfilActual } from '@/features/auth/services/authService'
-import { TabEconomia } from '@/features/obras/components/TabEconomia'
-import { EfectivoEnManos } from '@/features/efectivo/components/EfectivoEnManos'
 import { TabDocumentos } from '@/features/obras/components/TabDocumentos'
 import {
   asignarActividadADocumento, clasificarDocumento, desvincularDocumento, vincularDocumento,
@@ -136,9 +140,9 @@ export default async function ObraPage({
   // movimiento» del Resumen es literalmente el último parte.
   const necesita = lecturasDeVista(vista, enTareas ? subTareas : null)
   const [
-    perfilRes, obraRes, actividadesRes, restriccionesRes, planRes, planPersonalRes, planEconomiaRes,
+    perfilRes, obraRes, actividadesRes, restriccionesRes, planRes, planPersonalRes,
     diasHabilesRes, personasRes, ubicacion, asignacionesRes, causasRes, registrosRes,
-    actividadHHRes, cuadrillas, integrantes, partesRes, certificadosRes, economiaRes,
+    actividadHHRes, cuadrillas, integrantes, partesRes, economiaRes,
     documentosRes, catalogoEquipos, opRes, personasDeHoy, ordenesRes, archivosDrive, subidos,
   ] = await Promise.all([
     // COMERCIAL ES PRECIO, y el precio es de Dirección y Administración: el jefe de obra ve el
@@ -147,19 +151,19 @@ export default async function ObraPage({
     getObra(supabase, obraId),
     getActividades(supabase, obraId),
     // Restricciones y plan DEJARON DE SER INCONDICIONALES (24/08): `obra_plan_vs_real` es la
-    // consulta más cara del workspace —864 ms medidos contra PostgREST— y sólo la miran Resumen,
-    // Personal y Economía. Las otras tres solapas la pagaban para tirarla. Ver `lecturasDeVista`.
+    // consulta más cara del workspace —864 ms medidos contra PostgREST— y sólo la miran Resumen
+    // y Personal. Las otras solapas la pagaban para tirarla. Ver `lecturasDeVista`.
     necesita.restricciones ? getRestricciones(supabase, obraId) : null,
-    // ═══ EL PLAN SE PIDE EN TRES RECORTES, NO EN UNO (25/08/2026) ═══
-    // QUÉ COLUMNAS pide cada solapa lo decide la MATRIZ, no este archivo. Personal y Economía no
-    // dibujan ni una fecha del plan, y no pedirlas le saca la mitad del trabajo a la consulta que
-    // hacía caer la pantalla con `canceling statement due to statement timeout`. Sale UNA sola de
-    // las tres: las otras dos son `null` porque `planColumnas` es uno solo. Y son tres lecturas
-    // separadas para que cada solapa reciba su tipo exacto — un `Pick<>` que no compila si alguien
-    // dibuja una columna que no pidió. Medido y explicado en `lecturasDeVista`.
+    // ═══ EL PLAN SE PIDE EN RECORTES, NO ENTERO (25/08/2026) ═══
+    // QUÉ COLUMNAS pide cada solapa lo decide la MATRIZ, no este archivo. Personal no dibuja ni
+    // una fecha del plan, y no pedirlas le saca la mitad del trabajo a la consulta que hacía caer
+    // la pantalla con `canceling statement due to statement timeout`. Sale UNA sola: la otra es
+    // `null` porque `planColumnas` es uno solo. Y son lecturas separadas para que cada solapa
+    // reciba su tipo exacto — un `Pick<>` que no compila si alguien dibuja una columna que no
+    // pidió. El tercer recorte, `economia`, lo pide la pantalla de Administración desde el
+    // 23/09/2026. Medido y explicado en `lecturasDeVista`.
     necesita.planColumnas === 'resumen' ? getPlanVsReal(supabase, obraId) : null,
     necesita.planColumnas === 'personal' ? getPlanDePersonal(supabase, obraId) : null,
-    necesita.planColumnas === 'economia' ? getPlanDeEconomia(supabase, obraId) : null,
     // Los días que ESTA obra trabaja: los sombrea el cronograma y nadie más. Reemplaza a las
     // precedencias, que hasta el 24/08 se traían acá para dibujar flechas que el canónico 07 no
     // tiene — y que en la base son CERO filas en todas las obras.
@@ -181,10 +185,10 @@ export default async function ObraPage({
     necesita.cuadrillas ? getCuadrillas(supabase) : [],
     esParte ? getIntegrantesPorCuadrilla(supabase) : {},
     necesita.partes ? getPartes(supabase, obraId) : null,
-    vista === 'economia' ? getCertificados(supabase, obraId) : null,
-    // EL PANEL ECONÓMICO TAMBIÉN EN RESUMEN: la línea de margen del resumen sale de acá desde el
-    // 22/08. Antes se armaba con `contratado − costo real` del plan, que no es margen.
-    vista === 'economia' || vista === 'resumen' ? getEconomiaObra(supabase, obraId) : null,
+    // EL PANEL ECONÓMICO EN RESUMEN: la línea de margen del resumen sale de acá desde el 22/08.
+    // Antes se armaba con `contratado − costo real` del plan, que no es margen. Es la misma
+    // lectura que hace la pantalla de Administración; acá alimenta sólo esa línea.
+    vista === 'resumen' ? getEconomiaObra(supabase, obraId) : null,
     // Los papeles los pide la solapa Documentos. El cronograma los pedía para el panel de la
     // actividad, que ya no vive ahí: el detalle de una actividad es de Tareas (mockup 03).
     vista === 'documentos' ? getDocumentos(supabase, obraId) : null,
@@ -231,13 +235,11 @@ export default async function ObraPage({
   const actividades = lector.leer(actividadesRes, [] as NonNullable<typeof actividadesRes.data>)
   const restricciones = restriccionesRes ? lector.leer(restriccionesRes, [] as NonNullable<typeof restriccionesRes.data>) : []
   // El plan conserva su `null`: «esta obra no tiene línea base» es un hecho distinto de «no se
-  // pudo leer el plan», y aplanarlo a un objeto vacío borraría esa diferencia. Son tres porque son
-  // tres recortes distintos de la misma vista, y cada solapa recibe el suyo con su forma exacta.
+  // pudo leer el plan», y aplanarlo a un objeto vacío borraría esa diferencia. Son dos porque son
+  // dos recortes distintos de la misma vista, y cada solapa recibe el suyo con su forma exacta.
   const plan = planRes ? lector.leer<NonNullable<typeof planRes.data> | null>(planRes, null) : null
-  const planEconomia = planEconomiaRes
-    ? lector.leer<NonNullable<typeof planEconomiaRes.data> | null>(planEconomiaRes, null) : null
   // El recorte de cuatro columnas que dibuja el titular de Personal. Conserva su `null` por el mismo
-  // motivo que los otros dos: «esta obra no tiene línea base» no es «no se pudo leer el plan», y
+  // motivo que el otro: «esta obra no tiene línea base» no es «no se pudo leer el plan», y
   // `TabPersonal` sabe decir «HH plan sin cargar» en vez de un cero que la daría por cumplida.
   const planPersonal = planPersonalRes
     ? lector.leer<NonNullable<typeof planPersonalRes.data> | null>(planPersonalRes, null) : null
@@ -248,7 +250,6 @@ export default async function ObraPage({
   const registros = registrosRes ? lector.leer(registrosRes, []) : []
   const actividadHH = actividadHHRes ? lector.leer(actividadHHRes, []) : []
   const partes = partesRes ? lector.leer(partesRes, []) : []
-  const certificados = certificadosRes ? lector.leer(certificadosRes, []) : []
   const economia = economiaRes ? lector.leer(economiaRes, null) : null
   const documentos = documentosRes ? lector.leer(documentosRes, []) : []
   const operacion = opRes?.data ?? null
@@ -310,6 +311,15 @@ export default async function ObraPage({
             <AccionesRapidas obraId={obraId} />
           </>
         }
+        // EL ENLACE A LA PLATA, DISCRETO Y SÓLO PARA QUIEN LA VE. No es una solapa —el dueño la
+        // sacó de acá— y no es un botón: es la puerta a la pantalla de Administración de esta obra.
+        // Al jefe de obra no se le dibuja, igual que no se le dibujan las rutas de `veEconomia`.
+        alFinalDeLasSolapas={veComercial ? (
+          <Link href={hrefEconomia(obraId)} prefetch={false} data-testid="enlace-economia"
+            className="ml-auto self-center whitespace-nowrap px-[11px] py-2 text-[12px] text-faint hover:text-ink">
+            Economía
+          </Link>
+        ) : null}
       />
       {/* NIVEL 3 DE TRABAJO — la banda `#FAFAF8` del zip, de borde a borde. En el árbol la dibuja
           `TabTareas` y en el parte diario `ParteDiario`, porque ahí comparten renglón con lo suyo:
@@ -478,19 +488,6 @@ export default async function ObraPage({
           asignarActividadAPedido={asignarActividadAPedido.bind(null, obraId)}
         />
       )}
-
-      {vista === 'economia' && (
-        <TabEconomia
-          plan={planEconomia}
-          economia={economia}
-          certificados={certificados}
-          crearCert={crearCertificado.bind(null, obraId)}
-          borrarCert={borrarCertificado.bind(null, obraId)}
-          veComercial={veComercial}
-        />
-      )}
-      {/* D10 · efectivo en manos de esta obra: proyección aparte, no suma a consumido (features/efectivo). */}
-      {vista === 'economia' && <div className="pb-8"><EfectivoEnManos obra={obraId} /></div>}
 
       {vista === 'documentos' && (
         <TabDocumentos

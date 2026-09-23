@@ -210,7 +210,7 @@ test('ninguna pantalla del módulo empuja la página de costado en el teléfono'
   // Medido el 18/08/2026: el OS entero salía 568px de ancho contra 390 de pantalla, porque el email
   // del usuario en el nav tenía `whitespace-nowrap`. La tabla ancha SÍ puede desplazarse —dentro de
   // su propio contenedor—, pero el cuerpo de la página no.
-  for (const ruta of ['/clientes', '/clientes/la-estrella', '/obras', '/obras/le-comedor', '/obras/le-comedor?vista=cronograma', '/obras/le-comedor?vista=personal', '/obras/le-comedor?vista=economia']) {
+  for (const ruta of ['/clientes', '/clientes/la-estrella', '/obras', '/obras/le-comedor', '/obras/le-comedor?vista=cronograma', '/obras/le-comedor?vista=personal', '/administracion/obras/le-comedor']) {
     await page.goto(ruta)
     await page.waitForTimeout(400)
     const { doc, win } = await page.evaluate(() => ({

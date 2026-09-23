@@ -17,7 +17,8 @@
 // que el filtro no ahorra trabajo y encima empuja al planificador a un plan peor. Ese es el número
 // que se pagaba en las TRES solapas que ni siquiera miran el resultado.
 //
-// `plan` lo consumen Resumen, Personal y Economía —y nadie más—. `restricciones` las consumen
+// `plan` lo consumen Resumen y Personal —y nadie más; Economía se mudó a Administración el
+// 23/09/2026—. `restricciones` las consumen
 // Resumen, Cronograma y Operación. Verificado contra el JSX del `page.tsx`: son las únicas que
 // reciben la prop.
 //
@@ -81,7 +82,11 @@ export type SubTareas = 'arbol' | 'gantt' | 'parte' | null
 
 /** Los tres recortes de `obra_plan_vs_real` que se piden hoy. `resumen` es la vista entera: no es
  *  que nadie lo haya mirado, es que el Resumen dibuja `forecast_fin` y medirlo dio el mismo costo
- *  que `select *` (9.405 contra 9.413 buffers). */
+ *  que `select *` (9.405 contra 9.413 buffers).
+ *
+ *  `economia` SIGUE SIENDO UN JUEGO aunque ya no sea una solapa (23/09/2026): lo pide la pantalla
+ *  de Administración (`/administracion/obras/<obra>`), que es la misma `TabEconomia` mudada de
+ *  área. Esta matriz nunca lo devuelve: el workspace no dibuja economía. */
 export type JuegoDeColumnasDelPlan = 'resumen' | 'personal' | 'economia'
 
 /** Qué tiene que leer el workspace para dibujar esta solapa. Todo lo que diga `false` es una
@@ -93,7 +98,8 @@ export type LecturasDeVista = {
   cuadrillas: boolean
   /** Los partes de ejecución. El parte diario y «último movimiento» del Resumen. */
   partes: boolean
-  /** `obra_plan_vs_real`. LA MÁS CARA: 864 ms medidos. Sólo Resumen, Personal y Economía. */
+  /** `obra_plan_vs_real`. LA MÁS CARA: 864 ms medidos. Sólo Resumen y Personal — Economía dejó
+   *  de ser solapa el 23/09/2026 y paga su recorte desde Administración. */
   plan: boolean
   /** QUÉ COLUMNAS de `obra_plan_vs_real` dibuja esta solapa. `null` cuando no la pide.
    *
@@ -130,7 +136,7 @@ export function lecturasDeVista(vista: string, sub: SubTareas): LecturasDeVista 
     personas: enPersonal || esParte,
     cuadrillas: enPersonal || esParte || esArbol,
     partes: esParte || vista === 'resumen',
-    plan: vista === 'resumen' || enPersonal || vista === 'economia',
+    plan: vista === 'resumen' || enPersonal,
     planColumnas: juegoDeColumnas(vista),
     restricciones: vista === 'resumen' || vista === 'operacion',
     personal: enPersonal,
@@ -145,6 +151,7 @@ export function lecturasDeVista(vista: string, sub: SubTareas): LecturasDeVista 
 function juegoDeColumnas(vista: string): JuegoDeColumnasDelPlan | null {
   if (vista === 'resumen') return 'resumen'
   if (vista === 'personal') return PERSONAL_SE_DIBUJA ? 'personal' : null
-  if (vista === 'economia') return 'economia'
+  // `economia` no está a propósito: `?vista=economia` ya no llega acá (redirige a Administración
+  // desde `rutaHermana`), y si llegara no tiene solapa que dibujar.
   return null
 }

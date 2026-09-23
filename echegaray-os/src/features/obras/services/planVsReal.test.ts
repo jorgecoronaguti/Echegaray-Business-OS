@@ -65,6 +65,15 @@ test('ninguna línea se publica sin origen ni sin a dónde ir a mirarla', () => 
   }
 })
 
+test('la línea de costo manda a cada uno a donde SÍ puede ver su costo', () => {
+  // La economía de la obra vive en Administración (23/09/2026) y el jefe de obra no entra. Su
+  // costo son los comprobantes imputados, en Operación › Compras: mandarlo a una pantalla que le
+  // va a decir «sin permiso» es un enlace que lleva a nada.
+  const costo = (veComercial: boolean) => lineasPlanVsReal(VACIA, veComercial).find((l) => l.clave === 'costo')!
+  assert.equal(costo(true).vista, 'economia')
+  assert.equal(costo(false).vista, 'compras')
+})
+
 test('el nivel Obras no arma la línea de margen: el número no existe de ese lado', () => {
   assert.equal(lineasPlanVsReal(VACIA, false).some((l) => l.clave === 'margen'), false)
   assert.equal(lineasPlanVsReal(VACIA, true).some((l) => l.clave === 'margen'), true)

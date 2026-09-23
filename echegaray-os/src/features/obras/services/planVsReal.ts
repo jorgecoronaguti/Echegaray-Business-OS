@@ -118,13 +118,19 @@ export function lineasPlanVsReal(p: PlanVsReal, veComercial = true, eco: Economi
   }
 
   // ── COSTO ──────────────────────────────────────────────────────────────────
+  //
+  // A DÓNDE LLEVA LA LÍNEA DE COSTO depende de quién la mira (23/09/2026). La economía de la obra
+  // vive en Administración y sólo entra quien ve el precio; el jefe de obra sigue viendo su costo,
+  // pero donde lo tiene: los comprobantes imputados, en Operación › Compras. Mandarlo a una
+  // pantalla que le va a decir «sin permiso» sería un enlace que lleva a nada.
+  const destinoDelCosto = veComercial ? 'economia' : 'compras'
   if (p.desvio_costo_pct != null) {
     l.push({
       clave: 'costo',
       tono: p.desvio_costo_pct > 10 ? 'alerta' : p.desvio_costo_pct > 0 ? 'atencion' : 'ok',
       titulo: `Costo real ${desvio(p.desvio_costo_pct)} contra el presupuesto (${plata(p.costo_real)} contra ${plata(p.costo_presupuestado)})`,
       origen: 'Compras (comprobantes imputados) contra presupuestos.costo_directo_presupuestado',
-      vista: 'economia',
+      vista: destinoDelCosto,
     })
   } else {
     l.push({
@@ -134,7 +140,7 @@ export function lineasPlanVsReal(p: PlanVsReal, veComercial = true, eco: Economi
         ? 'No hay desvío de costo: esta obra no tiene presupuesto cargado'
         : 'No hay desvío de costo: ningún comprobante de Compras está imputado a esta obra',
       origen: 'presupuestos y Compras por obra',
-      vista: 'economia',
+      vista: destinoDelCosto,
     })
   }
 
