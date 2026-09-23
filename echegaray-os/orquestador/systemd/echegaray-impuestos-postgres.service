@@ -13,7 +13,7 @@ WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
 # DATABASE_URL y la cuenta de servicio de Google viven acá. El script abre Google con scopes de sólo
 # lectura: no escribe el Sheet aunque corra desde producción.
 EnvironmentFile=%h/.config/echegaray-orq/worker.env
-ExecStartPre=-/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/produccion-al-dia.mjs
+ExecStartPre=-/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/produccion-al-dia.mjs --unit=%n
 ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/impuestos-a-postgres.mjs --aplicar
 StandardOutput=journal
 StandardError=journal

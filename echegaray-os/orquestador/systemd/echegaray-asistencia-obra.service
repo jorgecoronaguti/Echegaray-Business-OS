@@ -15,7 +15,7 @@ WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
 EnvironmentFile=%h/.config/echegaray-orq/worker.env
 # 45 s no alcanza para 245 filas + catálogos cuando Drive está lento; 180 s ya es el default del resto.
 Environment=ORQ_GOOGLE_FETCH_TIMEOUT_MS=180000
-ExecStartPre=-/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/produccion-al-dia.mjs
+ExecStartPre=-/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/produccion-al-dia.mjs --unit=%n
 # ═══ LA VENTANA SON 45 DÍAS, NO TODA LA HISTORIA ═══
 # ASISTENCIA hoy cubre un mes (08/08→07/09). Correr sobre todo el año leería el mismo Sheet y no
 # encontraría planilla para 2025: sólo sumaría ruido. 45 días cubre las tres quincenas vivas —la en

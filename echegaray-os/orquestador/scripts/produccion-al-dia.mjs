@@ -14,10 +14,21 @@
 // El trabajo desaparecía sin un error, sin un log rojo y sin que nadie se enterara hasta abrir el
 // Sheet. Es el peor tipo de falla: silenciosa y que borra trabajo hecho.
 //
+// ═══ EL SEGUNDO DEFECTO, MEDIDO EL 23/09/2026 ═══
+//
+// Avanzar el checkout arregla a los TIMERS (arrancan de cero en cada corrida y leen el disco), pero
+// no a los DAEMONS: el worker del Work Fabric, el consumidor del bot, la puerta de XSAS… llevan el
+// código viejo en memoria, systemd los muestra `active`, y nadie se entera de que el bot contesta
+// con la lógica de ayer hasta que falla algo que ya estaba arreglado. Ese día se reiniciaron a mano.
+//
+// Por eso, cuando este script AVANZA el checkout, reinicia los daemons cuyo código vive en el repo
+// (lista única: `DAEMONS_DEL_REPO`). Reinicia sólo los que están `active`: un `systemctl restart`
+// sobre uno parado lo ARRANCA, y los que están parados lo están a propósito (Balanz, claude-remote).
+//
 // ═══ POR QUÉ UN SCRIPT Y NO UN `git pull` EN EL UNIT ═══
 //
 // Porque tiene reglas, y una regla dentro de una línea de shell en un `.service` no se puede probar
-// ni leer. Las reglas son tres:
+// ni leer. Las reglas son cuatro:
 //
 //   1. `--ff-only`. Si producción divergió, NO se fuerza: se avisa y se sigue con lo que hay. Un
 //      merge automático en el checkout que escribe el Sheet es exactamente cómo se pierde una
@@ -25,11 +36,59 @@
 //   2. Si el árbol está sucio, NO se toca. Alguien puede estar depurando ahí.
 //   3. NUNCA frena el pipeline. Si no hay red, si GitHub no responde o si el fetch falla, se corre
 //      con el código que haya: es peor no actualizar el Flujo de Caja que actualizarlo con código de
-//      ayer. El aviso queda en el log del servicio.
+//      ayer. El aviso queda en el log del servicio. Lo mismo si un reinicio falla: se loguea y sigue.
+//   4. NUNCA se reinicia a sí mismo. Este script corre en el `ExecStartPre` de un unit; reiniciar ese
+//      unit desde adentro mata este mismo proceso a mitad de camino. Hoy los units que lo invocan son
+//      oneshot y no están en la lista, pero la regla existe para el día que alguien lo agregue al
+//      ExecStartPre de un daemon.
+//
+// ═══ CÓMO SABE QUÉ UNIT LO ESTÁ EJECUTANDO ═══
+//
+// Tres vías, en este orden; la primera que dé un nombre gana:
+//   a) `--unit=<nombre>` en la línea de comando. En un `.service` se escribe `--unit=%n` y systemd
+//      lo expande al nombre completo del unit (es lo que hacen los units versionados en
+//      `orquestador/systemd/`).
+//   b) La variable de entorno `PRODUCCION_AL_DIA_UNIT` (para probar a mano o desde otro envoltorio).
+//   c) `INVOCATION_ID`, que systemd le pone a cada proceso que lanza: se busca entre los units
+//      `echegaray-*` el que tenga ese mismo `InvocationID`. Cubre a los units instalados ANTES de que
+//      existiera `--unit=%n`, que siguen sin ese argumento en `~/.config/systemd/user`.
+// Si ninguna vía da un nombre (corrida a mano fuera de systemd), no hay unit propio que proteger.
+//
+// Uso:  node orquestador/scripts/produccion-al-dia.mjs [ruta-del-checkout] [--unit=<unit>]
+// Chequeo de sólo lectura (¿qué daemon arrancó antes del último cambio del checkout?):
+//       node orquestador/scripts/servicios-al-dia.mjs
 
 import { execFileSync } from 'node:child_process'
 
-const REPO = process.argv[2] ?? '/home/jorge/echegaray-os/produccion/echegaray-os'
+const args = process.argv.slice(2)
+const REPO = args.find((a) => !a.startsWith('--')) ?? '/home/jorge/echegaray-os/produccion/echegaray-os'
+
+/**
+ * LOS DAEMONS DE LARGA DURACIÓN CUYO CÓDIGO VIVE EN ESTE REPO — ÚNICO LUGAR DONDE SE LISTAN.
+ *
+ * Criterio para estar acá: `Type=simple` con `Restart=`, `WorkingDirectory` en el checkout de
+ * producción y un `ExecStart` que carga código del repo en memoria. Un timer/oneshot NO va: arranca
+ * de cero en cada corrida y ya lee el código nuevo. El orden es el de reinicio: primero el motor,
+ * después lo que habla con la gente, para que cuando el bot vuelva el motor ya esté con el código
+ * nuevo y no reciba una directiva con la lógica vieja.
+ *
+ * Los que NO están, y por qué:
+ *   · echegaray-os-tunnel: corre `os-tunnel.sh` (bash + cloudflared). Reiniciarlo ROTA las URLs de
+ *     los túneles y deja a Vercel sin puerta hasta que se republican; el script cambia una vez cada
+ *     meses. No vale pagar ese corte en cada avance del checkout.
+ *   · echegaray-balanz-remoto: `Restart=on-failure`, hoy parado a propósito («Balanz: dejalo»).
+ *     Un restart lo arrancaría. La regla «sólo activos» lo cubre igual, pero no se lista.
+ *   · echegaray-claude-remote: parado a propósito tras 58.422 reinicios fallidos por una ruta rota;
+ *     además su código no es de este repo (es el binario `claude`).
+ */
+export const DAEMONS_DEL_REPO = Object.freeze([
+  { unit: 'echegaray-orq-worker.service', porQue: 'Work Fabric: ejecuta las tareas con orquestador/worker.mjs; atrapa SIGTERM y drena (TimeoutStopSec=90)' },
+  { unit: 'echegaray-orq-interactive.service', porQue: 'motor interactivo (:8790): las directivas de la extensión pasan por orquestador/interactive-server.mjs' },
+  { unit: 'echegaray-comunicacion-worker.service', porQue: 'puente Communication Service ↔ Work Fabric: orquestador/comunicacion/worker-comunicacion.mjs' },
+  { unit: 'echegaray-comunicacion-ws.service', porQue: 'consumidor WebSocket del bot @xsas: orquestador/comunicacion/mattermost-ws-consumer.mjs (parsers de mensajes viven acá)' },
+  { unit: 'echegaray-xsas-gateway.service', porQue: 'puerta única de XSAS (:8791) + endpoint entrante de Mattermost: orquestador/comunicacion/servidor-entrante.mjs' },
+  { unit: 'echegaray-asistencia-http.service', porQue: 'asistencia nativa en Mattermost (slash command + acciones): orquestador/comunicacion/servidor-asistencia.mjs' },
+])
 
 /** NÚCLEO PURO: qué hacer, dado el estado del checkout. Separado para poder probarlo sin git. */
 export function decidir({ sucio, alDia, puedeAvanzar }) {
@@ -39,15 +98,103 @@ export function decidir({ sucio, alDia, puedeAvanzar }) {
   return { accion: 'avanzar', porQue: 'avance directo, sin merge' }
 }
 
+/**
+ * NÚCLEO PURO: qué daemons reiniciar, dado el HEAD de antes y el de después, el unit que está
+ * ejecutando este script y el `ActiveState` de cada daemon. Separado para probarlo sin systemd.
+ *
+ * @param {{ antes: string, despues: string, unitActual?: string|null, estados: Record<string, string|undefined>, daemons?: ReadonlyArray<{unit: string, porQue: string}> }} p
+ * @returns {{ reiniciar: string[], omitidos: Array<{ unit: string, porQue: string }> }}
+ */
+export function decidirReinicios({ antes, despues, unitActual = null, estados, daemons = DAEMONS_DEL_REPO }) {
+  // Si el HEAD no se movió, el código en memoria es el mismo que el del disco: no hay nada que hacer.
+  if (antes === despues) return { reiniciar: [], omitidos: [] }
+  const reiniciar = []
+  const omitidos = []
+  for (const { unit } of daemons) {
+    const estado = estados?.[unit]
+    if (unit === unitActual) {
+      omitidos.push({ unit, porQue: 'es el unit que está ejecutando este script (ExecStartPre): reiniciarlo mataría este proceso' })
+    } else if (estado === undefined) {
+      // Sin dato no se actúa: un restart a ciegas puede arrancar algo que estaba parado a propósito.
+      omitidos.push({ unit, porQue: 'no pude leer su ActiveState: no se reinicia a ciegas' })
+    } else if (estado !== 'active') {
+      omitidos.push({ unit, porQue: `está ${estado}: un restart lo arrancaría, y si está parado es a propósito` })
+    } else {
+      reiniciar.push(unit)
+    }
+  }
+  return { reiniciar, omitidos }
+}
+
 function git(args) {
   return execFileSync('git', ['-C', REPO, ...args], { encoding: 'utf8' }).trim()
 }
 
+function systemctl(args) {
+  return execFileSync('systemctl', ['--user', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+}
+
+/** `ActiveState` de cada daemon de la lista, en una sola llamada a systemctl. */
+export function leerEstados(unidades) {
+  const salida = systemctl(['show', '--property=Id,ActiveState', ...unidades])
+  return parsearShow(salida, 'ActiveState')
+}
+
+/** Parsea la salida de `systemctl show -p Id,<prop> u1 u2…` (bloques separados por línea vacía). */
+export function parsearShow(salida, propiedad) {
+  const out = {}
+  for (const bloque of salida.split(/\n\s*\n/)) {
+    const id = bloque.match(/^Id=(.+)$/m)?.[1]
+    const valor = bloque.match(new RegExp(`^${propiedad}=(.*)$`, 'm'))?.[1]
+    if (id && valor !== undefined) out[id] = valor
+  }
+  return out
+}
+
+/** Nombre del unit que ejecuta este proceso, por las tres vías del encabezado. `null` si no hay. */
+function unitActual() {
+  const porArg = args.find((a) => a.startsWith('--unit='))?.slice('--unit='.length)
+  if (porArg) return porArg
+  if (process.env.PRODUCCION_AL_DIA_UNIT) return process.env.PRODUCCION_AL_DIA_UNIT
+  const invocacion = process.env.INVOCATION_ID
+  if (!invocacion) return null
+  try {
+    const porInvocacion = parsearShow(systemctl(['show', '--property=Id,InvocationID', 'echegaray-*']), 'InvocationID')
+    return Object.entries(porInvocacion).find(([, id]) => id === invocacion)?.[0] ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Reinicia en orden, uno por uno, y loguea cada resultado. Un fallo no frena a los demás ni al pipeline. */
+function reiniciarDaemons({ antes, despues }) {
+  let estados
+  try {
+    estados = leerEstados(DAEMONS_DEL_REPO.map((d) => d.unit))
+  } catch (e) {
+    console.warn(`producción-al-día: no pude leer el estado de los daemons (${String(e?.message ?? e).slice(0, 120)}) — quedan con el código viejo en memoria; correr servicios-al-dia.mjs`)
+    return
+  }
+  const propio = unitActual()
+  const { reiniciar, omitidos } = decidirReinicios({ antes, despues, unitActual: propio, estados })
+  for (const { unit, porQue } of omitidos) console.log(`producción-al-día: no reinicio ${unit} — ${porQue}`)
+  for (const unit of reiniciar) {
+    const t0 = Date.now()
+    try {
+      systemctl(['restart', unit])
+      console.log(`producción-al-día: reinicié ${unit} → ${despues.slice(0, 8)} (${Date.now() - t0} ms)`)
+    } catch (e) {
+      console.warn(`producción-al-día: FALLÓ el reinicio de ${unit} (${String(e?.stderr ?? e?.message ?? e).trim().slice(0, 160)}) — sigue con el código viejo en memoria`)
+    }
+  }
+}
+
 function main() {
   let estado
+  let local
   try {
     git(['fetch', '--quiet', 'origin'])
-    const local = git(['rev-parse', 'HEAD'])
+    local = git(['rev-parse', 'HEAD'])
     const remoto = git(['rev-parse', 'origin/main'])
     estado = {
       sucio: git(['status', '--porcelain']).length > 0,
@@ -67,7 +214,10 @@ function main() {
   const { accion, porQue } = decidir(estado)
   if (accion === 'avanzar') {
     git(['merge', '--ff-only', 'origin/main'])
+    const despues = git(['rev-parse', 'HEAD'])
     console.log(`producción-al-día: actualizado a ${git(['log', '--oneline', '-1'])}`)
+    // El disco ya tiene el código nuevo; los daemons todavía no. Esto es lo que faltaba el 23/09.
+    reiniciarDaemons({ antes: local, despues })
     return
   }
   console.log(`producción-al-día: ${accion} — ${porQue}`)

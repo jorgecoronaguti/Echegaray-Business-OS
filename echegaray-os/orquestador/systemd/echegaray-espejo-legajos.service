@@ -17,7 +17,7 @@ WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
 # Credenciales fuera del repo: DATABASE_URL, GOOGLE_SA_KEY_PATH, ORQ_GOOGLE_IMPERSONATE viven acá.
 EnvironmentFile=%h/.config/echegaray-orq/worker.env
 # El checkout de producción se pone al día antes de escribir (mismo patrón que echegaray-flujo-caja).
-ExecStartPre=-/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/produccion-al-dia.mjs
+ExecStartPre=-/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/produccion-al-dia.mjs --unit=%n
 ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/legajos-sincronizar.mjs --aplicar
 StandardOutput=journal
 StandardError=journal
