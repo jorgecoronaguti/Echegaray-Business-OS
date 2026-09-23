@@ -39,9 +39,24 @@ cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
 # se construye. Nunca se salta por no poder averiguar.
 git rev-parse --verify --quiet HEAD^ >/dev/null 2>&1 || { echo "sin HEAD^: se construye"; exit 1; }
 
+# ═══ LA BASE DEL DIFF ES EL ÚLTIMO DESPLIEGUE, NO EL COMMIT ANTERIOR (23/09/2026) ═══
+#
+# Medido: entraron siete commits juntos a `main` —cinco con cambios de `src/`— y el último era un
+# documento. Vercel comparó HEAD^..HEAD, vio sólo el `.md`, y CANCELÓ el build: la app quedó con código
+# viejo mientras `origin/main` y la VM ya tenían el nuevo. Un push de varios commits es lo normal acá.
+# Vercel expone `VERCEL_GIT_PREVIOUS_SHA`: el commit del último despliegue exitoso de esta rama. Ésa es
+# la base correcta; si no está (primer despliegue) o no existe en el clon, se cae a HEAD^ como antes.
+BASE="HEAD^"
+if [ -n "${VERCEL_GIT_PREVIOUS_SHA:-}" ] && git rev-parse --verify --quiet "${VERCEL_GIT_PREVIOUS_SHA}^{commit}" >/dev/null 2>&1; then
+  BASE="$VERCEL_GIT_PREVIOUS_SHA"
+  echo "base del diff: último despliegue ${BASE:0:8}"
+else
+  echo "base del diff: HEAD^ (sin VERCEL_GIT_PREVIOUS_SHA utilizable)"
+fi
+
 # `--quiet` sale 0 cuando NO hay diferencias. Los `:(exclude)` se restan de `.`, así que "no hay
 # diferencias" significa: todo lo que cambió cae en lo que no llega al navegador.
-if git diff --quiet HEAD^ HEAD -- . \
+if git diff --quiet "$BASE" HEAD -- . \
   ':(exclude)tests' \
   ':(exclude)qa-shots' \
   ':(exclude)test-results' \
