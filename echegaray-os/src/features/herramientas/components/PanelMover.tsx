@@ -20,6 +20,7 @@ import { sugerencias } from '../logica/inventario'
 import { contieneEnAlguno } from '@/shared/utils/busqueda'
 import { crearUbicacionAction, moverExistenciasAction } from '../services/acciones'
 import { useHerramientas } from './Espacio'
+import { ElegirServicioTecnico } from './ElegirServicioTecnico'
 import { Bloque, ErrorPanel, PanelLateral } from './PanelLateral'
 import { IcoRodado } from './iconos'
 import { botonPrimarioGrande, botonSecundarioGrande, campo, chip, V } from './estilo'
@@ -50,7 +51,9 @@ export function PanelMover({ idsIniciales, destinoInicial, origenInicial, onHech
   const [todos, setTodos] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
-  const [nuevo, setNuevo] = useState<{ tipo: 'tercero' | 'servicio_tecnico'; nombre: string; contacto: string } | null>(null)
+  const [nuevo, setNuevo] = useState<{ tipo: 'tercero'; nombre: string; contacto: string } | null>(null)
+  // Un servicio técnico es un proveedor (20260923T2400): se elige o se carga en Proveedores.
+  const [eligiendoServicio, setEligiendoServicio] = useState(false)
 
   const activos = items.map((it) => it.activo)
   const unidades = items.reduce((s, it) => s + it.cantidad, 0)
@@ -182,9 +185,18 @@ export function PanelMover({ idsIniciales, destinoInicial, origenInicial, onHech
               {o.grupo === 'rodado' ? o.rotulo.split(' ').pop() : o.rotulo}
             </button>
           ))}
-          <button type="button" onClick={() => setNuevo({ tipo: 'tercero', nombre: '', contacto: '' })} style={chip}>Tercero…</button>
+          <button type="button" onClick={() => { setNuevo({ tipo: 'tercero', nombre: '', contacto: '' }); setEligiendoServicio(false) }} style={chip}>Tercero…</button>
+          <button type="button" onClick={() => { setEligiendoServicio(true); setNuevo(null) }} style={chip} data-testid="servicio-tecnico-chip">Servicio técnico…</button>
         </div>
         {nuevo && <NuevoLugar nuevo={nuevo} setNuevo={setNuevo} crear={crear} enviando={enviando} />}
+        {eligiendoServicio && (
+          <div style={{ padding: 12, border: `1px solid ${V.linea}`, borderRadius: 6 }}>
+            <ElegirServicioTecnico
+              alListo={(id) => { setDestino(`u:${id}`); setEligiendoServicio(false); refrescar() }}
+              alCancelar={() => setEligiendoServicio(false)}
+            />
+          </div>
+        )}
         {w.adentroDeSiMismo && <div style={{ fontSize: '12.5px', color: V.neg }}>{w.adentroDeSiMismo.nombre} no puede moverse adentro de sí mismo: sacalo de la lista o elegí otro destino.</div>}
         {w.yaEstan.length > 0 && <div style={{ fontSize: '12.5px', color: V.apagado }}>{w.yaEstan.length === 1 ? 'Uno ya está' : `${w.yaEstan.length} ya están`} ahí: no se registra movimiento para {w.yaEstan.length === 1 ? 'ese' : 'esos'}.</div>}
       </Bloque>
@@ -304,21 +316,14 @@ const GRUPO: Record<OpcionDestino['grupo'], string> = {
 }
 
 function NuevoLugar({ nuevo, setNuevo, crear, enviando }: {
-  nuevo: { tipo: 'tercero' | 'servicio_tecnico'; nombre: string; contacto: string }
-  setNuevo: (n: { tipo: 'tercero' | 'servicio_tecnico'; nombre: string; contacto: string } | null) => void
+  nuevo: { tipo: 'tercero'; nombre: string; contacto: string }
+  setNuevo: (n: { tipo: 'tercero'; nombre: string; contacto: string } | null) => void
   crear: () => void
   enviando: boolean
 }) {
   return (
     <div data-testid="nuevo-lugar" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, border: `1px solid ${V.linea}`, borderRadius: 6 }}>
-      <div style={{ display: 'flex', gap: 14, fontSize: '13px' }}>
-        {(['tercero', 'servicio_tecnico'] as const).map((t) => (
-          <label key={t} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input type="radio" checked={nuevo.tipo === t} onChange={() => setNuevo({ ...nuevo, tipo: t })} />
-            {t === 'tercero' ? 'Tercero (préstamo, alquiler)' : 'Servicio técnico'}
-          </label>
-        ))}
-      </div>
+      <div style={{ fontSize: '13px' }}>Tercero (préstamo, alquiler)</div>
       <input value={nuevo.nombre} onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })} placeholder="Nombre" style={campo} />
       <input value={nuevo.contacto} onChange={(e) => setNuevo({ ...nuevo, contacto: e.target.value })} placeholder="Contacto (opcional)" style={campo} />
       <div style={{ display: 'flex', gap: 8 }}>

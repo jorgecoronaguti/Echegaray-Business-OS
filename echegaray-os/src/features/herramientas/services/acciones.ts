@@ -17,6 +17,7 @@ import { faltaMigracion, MIGRACION } from '../logica/falta-migracion'
 import { normalizarCodigo } from '../logica/codigo'
 import { leerOperadores } from './datos'
 import { esRutaDeFoto, urlPublicaDeFoto } from '../logica/foto'
+import { crearProveedor } from '@/features/administracion/services/proveedoresActions'
 
 export type Resultado<T = null> = { ok: true; dato: T; mensaje?: string } | { ok: false; error: string }
 
@@ -332,8 +333,10 @@ export async function marcarEtiquetasImpresasAction(activos: string[]): Promise<
   return { ok: true, dato: hechas }
 }
 
+// Un tercero suelto (un préstamo a un conocido). Un servicio técnico ya no entra por acá: es un
+// proveedor (`servicioTecnicoAction`, 20260923T2400).
 const ubicacionSchema = z.object({
-  tipo: z.enum(['servicio_tecnico', 'tercero']),
+  tipo: z.enum(['tercero']),
   nombre: z.string().trim().min(2, 'El nombre es obligatorio').max(120),
   contacto: z.string().trim().max(200).optional(),
 })
@@ -342,6 +345,35 @@ export async function crearUbicacionAction(entrada: z.input<typeof ubicacionSche
   const p = ubicacionSchema.safeParse(entrada)
   if (!p.success) return { ok: false, error: p.error.issues[0].message }
   return rpc<string>('crear_ubicacion', { p_tipo: p.data.tipo, p_nombre: p.data.nombre, p_contacto: p.data.contacto || null })
+}
+
+const servicioTecnicoSchema = z.union([
+  z.object({ proveedorId: uuid }),
+  z.object({ nombre: z.string().trim().min(2, 'El nombre es obligatorio').max(120), cuit: z.string().trim().max(13).optional() }),
+])
+
+/**
+ * UN SERVICIO TÉCNICO ES UN PROVEEDOR (dueño, 23/09/2026). Se elige uno existente o se carga uno
+ * nuevo en Proveedores (misma puerta que la ficha: el CUIT y el nombre repetidos se rechazan ahí) y
+ * la base trae o crea su lugar (`ubicacion_de_proveedor`), clasificándolo como «Servicio técnico»
+ * si todavía no tenía rubro. Devuelve el id del lugar.
+ */
+export async function servicioTecnicoAction(entrada: z.input<typeof servicioTecnicoSchema>): Promise<Resultado<string>> {
+  const p = servicioTecnicoSchema.safeParse(entrada)
+  if (!p.success) return { ok: false, error: p.error.issues[0].message }
+  let proveedorId: string
+  if ('proveedorId' in p.data) {
+    proveedorId = p.data.proveedorId
+  } else {
+    const form = new FormData()
+    form.set('nombre', p.data.nombre)
+    if (p.data.cuit) form.set('cuit', p.data.cuit.replace(/\D/g, ''))
+    const r = await crearProveedor(form)
+    if (!r.ok) return { ok: false, error: r.error }
+    if (!r.id) return { ok: false, error: 'Se cargó el proveedor pero la base no devolvió su id.' }
+    proveedorId = r.id
+  }
+  return rpc<string>('ubicacion_de_proveedor', { p_proveedor: proveedorId, p_tipo: 'servicio_tecnico' })
 }
 
 export type SugerenciaCodigo =

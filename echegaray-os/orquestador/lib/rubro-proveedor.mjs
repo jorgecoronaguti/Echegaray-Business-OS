@@ -24,6 +24,10 @@
 export const RUBROS = [
   'Materiales', 'Subcontratista', 'Fletes', 'Combustible', 'Equipos',
   'Servicios de obra', 'Seguridad e higiene',
+  // Servicio técnico (20260923T2400): el taller que repara herramientas y equipos. Como Fletes, la
+  // deducción por compras nunca lo produce; lo declara una persona o lo pone Herramientas al usar el
+  // proveedor como lugar de reparación.
+  'Servicio técnico',
 ]
 
 /**

@@ -13,7 +13,7 @@ export function activo(p: Partial<Activo> & Pick<Activo, 'id' | 'codigo' | 'nomb
 }
 
 export function ubicacion(p: Partial<Ubicacion> & Pick<Ubicacion, 'id' | 'tipo'>): Ubicacion {
-  return { nombre: null, obra_id: null, activo_id: null, contacto: null, archivada: false, ...p }
+  return { nombre: null, obra_id: null, activo_id: null, contacto: null, archivada: false, proveedor_id: null, ...p }
 }
 
 export function mov(p: Partial<Movimiento> & Pick<Movimiento, 'id' | 'activo_id' | 'destino_id' | 'fecha_hora'>): Movimiento {

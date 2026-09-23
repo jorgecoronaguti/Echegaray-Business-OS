@@ -19,8 +19,8 @@ import { COLUMNAS_RECUENTO, COLUMNAS_RECUENTO_LINEA, type Recuento, type Recuent
 import { COLUMNAS_REVISION, COLUMNAS_REVISION_VIGENTE, type Revision, type RevisionVigente } from '../logica/revision'
 import { COLUMNAS_UNIDAD, type Unidad } from '../logica/unidades'
 import {
-  COLUMNAS_ACTIVO, COLUMNAS_AJUSTE, COLUMNAS_EXISTENCIA, COLUMNAS_INCIDENCIA, COLUMNAS_LECTURA, COLUMNAS_MOVIMIENTO, COLUMNAS_UBICACION,
-  type Activo, type Ajuste, type Existencia, type Incidencia, type LecturaUso, type Movimiento, type ObraIndice, type Ubicacion,
+  COLUMNAS_ACTIVO, COLUMNAS_AJUSTE, COLUMNAS_EXISTENCIA, COLUMNAS_INCIDENCIA, COLUMNAS_LECTURA, COLUMNAS_MOVIMIENTO, COLUMNAS_PROVEEDOR_LUGAR, COLUMNAS_UBICACION,
+  type Activo, type Ajuste, type Existencia, type Incidencia, type LecturaUso, type Movimiento, type ObraIndice, type ProveedorLugar, type Ubicacion,
 } from '../types'
 
 export type Lectura =
@@ -78,7 +78,7 @@ function numerosDeRevision<T extends Revision>(r: T): T {
 export async function leerParque(): Promise<Lectura> {
   try {
     const supabase = await createClient()
-    const [activos, ubicaciones, movimientos, incidencias, obras, perfiles, usuario, categorias, lecturas, existencias, ajustes, papeles, unidades, revisiones, vigentes, recuentos, recuentoLineas] = await Promise.all([
+    const [activos, ubicaciones, movimientos, incidencias, obras, perfiles, usuario, categorias, lecturas, existencias, ajustes, papeles, unidades, revisiones, vigentes, recuentos, recuentoLineas, proveedores] = await Promise.all([
       supabase.from('activo').select(COLUMNAS_ACTIVO).order('codigo').limit(TOPE),
       supabase.from('ubicacion').select(COLUMNAS_UBICACION).limit(TOPE),
       supabase.from('activo_movimiento').select(COLUMNAS_MOVIMIENTO).order('fecha_hora', { ascending: false }).limit(TOPE),
@@ -96,6 +96,8 @@ export async function leerParque(): Promise<Lectura> {
       supabase.from('activo_revision_vigente').select(COLUMNAS_REVISION_VIGENTE).limit(TOPE),
       supabase.from('activo_recuento').select(COLUMNAS_RECUENTO).order('iniciado_en', { ascending: false }).limit(TOPE),
       supabase.from('activo_recuento_linea').select(COLUMNAS_RECUENTO_LINEA).limit(TOPE),
+      // Un servicio técnico es un proveedor (20260923T2400): el lugar toma su nombre de acá.
+      supabase.from('proveedores').select(COLUMNAS_PROVEEDOR_LUGAR).eq('activo', true).order('nombre').limit(TOPE),
     ])
     // Las unidades con código (20260923T1500) y la revisión (20260923T1510): sin esas tablas el resto del
     // módulo anda igual y la ficha dice «sin la migración», nunca «ninguna» ni «al día».
@@ -129,6 +131,7 @@ export async function leerParque(): Promise<Lectura> {
         incidencias: (incidencias.data ?? []) as unknown as Incidencia[],
         obras,
         nombres,
+        proveedores: proveedores.error ? [] : ((proveedores.data ?? []) as unknown as ProveedorLugar[]),
         categorias: ((categorias.data ?? []) as { nombre: string }[]).map((c) => c.nombre),
         lecturas: lecs,
         personas,

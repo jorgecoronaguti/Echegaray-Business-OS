@@ -9,7 +9,9 @@
 // `logica/acciones-lugar`. Los recuentos cerrados del lugar se listan abajo, del más nuevo al más viejo.
 //
 // Es cliente porque marca casillas y abre paneles; el parque lo toma del espacio de trabajo (el mismo
-// objeto que miran los paneles). «Planilla» queda sólo acá: imprimir es de escritorio.
+// objeto que miran los paneles). «Planilla» queda sólo acá: imprimir es de escritorio, y sólo en un
+// lugar propio (obra, taller, rodado): en un servicio técnico o un tercero no hay nada que tildar
+// (dueño, 23/09: «un botón de planilla que ingresando no tiene mucha utilidad»).
 
 import Link from 'next/link'
 import { useState } from 'react'
@@ -18,6 +20,7 @@ import {
   ETIQUETA_ESTADO_CORTA, TONO_ESTADO, activosEn, autorDe, cantidadEn, conProblema, diasDesde, llegoEn, rotuloUbicacion,
 } from '../logica/parque'
 import type { TipoUbicacion } from '../types'
+import { encimaDelProveedor, esLugarImprimible } from '../logica/servicioTecnico'
 import { textoVerificacion, verificacionDe } from '../logica/verificacion'
 import { lineasDe, recuentoAbierto, recuentosDelLugar, resumenCerrado, textoResumen } from '../logica/recuento'
 import { useHerramientas } from './Espacio'
@@ -43,8 +46,10 @@ export function DetalleLugar({ ubicacionId, filtro }: { ubicacionId: string; fil
   const lista = filtro === 'problema' ? aca.filter(conProblema) : filtro === 'viejas' ? aca.filter((a) => viejo(a.id)) : aca
   const obra = u.obra_id ? parque.obraPorId.get(u.obra_id) : null
   const rodado = u.activo_id ? parque.activoPorId.get(u.activo_id) : null
+  const proveedor = u.proveedor_id ? parque.proveedorPorId.get(u.proveedor_id) ?? null : null
   const encima = [
     SINGULAR[u.tipo],
+    ...(proveedor ? encimaDelProveedor(proveedor) : []),
     obra?.cliente ? `cliente ${obra.cliente}` : null,
     obra?.estado ? obra.estado : null,
     rodado ? `el rodado está en ${rotuloUbicacion(parque, rodado.ubicacion_id)}` : null,
@@ -78,10 +83,17 @@ export function DetalleLugar({ ubicacionId, filtro }: { ubicacionId: string; fil
             {aca.length} {aca.length === 1 ? 'activo' : 'activos'}{unidadesAca !== aca.length ? ` · ${unidadesAca} unidades` : ''}{conProb ? ` · ${conProb} con problema` : ''}
           </div>
         </div>
-        {/* Sólo escritorio: imprimir la planilla del lugar. En el teléfono no hay impresora. */}
-        <Link href={`/herramientas/planilla?u=${u.id}`} prefetch={false} data-testid="ver-planilla" style={botonSecundario}>
-          Planilla
-        </Link>
+        {/* Sólo escritorio: imprimir el control físico del lugar. En el teléfono no hay impresora. */}
+        {esLugarImprimible(u.tipo) && (
+          <Link href={`/herramientas/planilla?u=${u.id}`} prefetch={false} data-testid="ver-planilla" style={botonSecundario}>
+            Planilla
+          </Link>
+        )}
+        {proveedor && (
+          <Link href={`/administracion/proveedores/${proveedor.id}`} prefetch={false} data-testid="ver-proveedor" style={botonSecundario}>
+            Ficha del proveedor
+          </Link>
+        )}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }} data-testid="acciones-del-lugar">

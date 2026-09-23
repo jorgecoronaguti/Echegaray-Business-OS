@@ -10,7 +10,7 @@ import type { Papel } from './papeles.ts'
 import type { Recuento, RecuentoLinea } from './recuento.ts'
 import type { Revision, RevisionVigente } from './revision.ts'
 import type { Unidad } from './unidades.ts'
-import type { Activo, Ajuste, EstadoActivo, Existencia, Incidencia, LecturaUso, Movimiento, ObraIndice, TipoUbicacion, Ubicacion } from '../types.ts'
+import type { Activo, Ajuste, EstadoActivo, Existencia, Incidencia, LecturaUso, Movimiento, ObraIndice, ProveedorLugar, TipoUbicacion, Ubicacion } from '../types.ts'
 
 export interface DatosParque {
   activos: Activo[]
@@ -20,6 +20,8 @@ export interface DatosParque {
   incidencias: Incidencia[]
   /** usuario_id → nombre del perfil. */
   nombres: Record<string, string>
+  /** Los proveedores (20260923T2400): un servicio técnico es uno de ellos y el lugar toma su nombre. */
+  proveedores?: ProveedorLugar[]
   /** Las categorías posibles, en su orden (`activo_categoria`). La lista es cerrada: no se tipea otra. */
   categorias?: string[]
   /**
@@ -62,6 +64,7 @@ export interface Parque extends DatosParque {
   activoPorId: Map<string, Activo>
   ubicacionPorId: Map<string, Ubicacion>
   obraPorId: Map<string, ObraIndice>
+  proveedorPorId: Map<string, ProveedorLugar>
   /** Movimientos de cada activo, del más nuevo al más viejo. */
   movsDe: Map<string, Movimiento[]>
   /** Incidencias de cada activo, de la más nueva a la más vieja. */
@@ -122,6 +125,7 @@ export function armarParque(d: DatosParque): Parque {
     lecDe,
     activoPorId: new Map(d.activos.map((a) => [a.id, a])),
     ubicacionPorId: new Map(d.ubicaciones.map((u) => [u.id, u])),
+    proveedorPorId: new Map((d.proveedores ?? []).map((x) => [x.id, x])),
     obraPorId: new Map(d.obras.map((o) => [o.id, o])),
     movsDe,
     incDe,
@@ -151,6 +155,10 @@ export function rotuloUbicacion(p: Parque, id: string | null | undefined): strin
   if (u.tipo === 'rodado') {
     const r = u.activo_id ? p.activoPorId.get(u.activo_id) : undefined
     return r ? rotuloRodado(r) : 'rodado'
+  }
+  if (u.proveedor_id) {
+    const pr = p.proveedorPorId.get(u.proveedor_id)
+    if (pr) return pr.nombre
   }
   return u.nombre ?? u.tipo
 }

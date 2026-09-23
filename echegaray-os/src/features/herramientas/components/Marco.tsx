@@ -52,6 +52,7 @@ function datosPlanos(p: Parque): DatosParque {
     activos: p.activos, ubicaciones: p.ubicaciones, obras: p.obras, movimientos: p.movimientos, incidencias: p.incidencias,
     nombres: p.nombres, categorias: p.categorias, lecturas: p.lecturas, personas: p.personas, existencias: p.existencias, ajustes: p.ajustes, papeles: p.papeles,
     unidades: p.unidades, revisiones: p.revisiones, revisionesVigentes: p.revisionesVigentes, recuentos: p.recuentos, recuentoLineas: p.recuentoLineas,
+    proveedores: p.proveedores,
   } satisfies Record<keyof DatosParque, unknown>
 }
 

@@ -45,6 +45,17 @@ export interface Ubicacion {
   activo_id: string | null
   contacto: string | null
   archivada: boolean
+  /** El proveedor que ES este lugar (servicio técnico o tercero, 20260923T2400): el nombre sale de ahí. */
+  proveedor_id?: string | null
+}
+
+/** Lo que Herramientas necesita de un proveedor para nombrarlo como lugar y ofrecerlo como servicio técnico. */
+export interface ProveedorLugar {
+  id: string
+  nombre: string
+  cuit: string | null
+  rubro: string | null
+  rubro_deducido: string | null
 }
 
 export interface Movimiento {
@@ -98,7 +109,8 @@ export interface ObraIndice {
 
 export const COLUMNAS_ACTIVO =
   'id, codigo, clase, nombre, cantidad, categoria, patente, numero_serie, foto_url, compra_fecha, compra_precio, ubicacion_id, estado, estado_nota, estado_desde, estado_por, estado_asumido, baja_motivo, baja_detalle, baja_en, alta_desde_obra, etiqueta_impresa_en, legado_id, creado_en'
-export const COLUMNAS_UBICACION = 'id, tipo, nombre, obra_id, activo_id, contacto, archivada'
+export const COLUMNAS_UBICACION = 'id, tipo, nombre, obra_id, activo_id, contacto, archivada, proveedor_id'
+export const COLUMNAS_PROVEEDOR_LUGAR = 'id, nombre, cuit, rubro, rubro_deducido'
 export const COLUMNAS_MOVIMIENTO =
   'id, activo_id, origen_id, destino_id, fecha_hora, usuario_id, usuario_texto, lote_id, nota, corrige_a, importado, cantidad'
 export const COLUMNAS_EXISTENCIA = 'activo_id, ubicacion_id, cantidad'
