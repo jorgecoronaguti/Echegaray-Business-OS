@@ -28,9 +28,9 @@ aplicada · direccion-test bloqueada (no borrable: tiene comprobantes) · Arcor 
 falta la fila en Cobranzas (esperando su «cargala») · Herramientas: paridad teléfono↔PC publicada (845956e2); en el teléfono
 Herramientas redirige a /campo/herramientas (c71f4713, `?pc=1` para la de escritorio); recuento físico del
 lugar en construcción (agente, migración 20260923T1700 sin aplicar) · firmas visibles en la ficha de la
-entrega (e2467168) · Corralón: cuadratura cierra en $721.338,66; borrador a Ariel en Gmail (r2877218322583338095); el dueño
-emite 2 eCheq por la deuda actual ($500.000 al 23/10 y $221.338,66 al 06/11; borrador Gmail r366573467686833884) → cargar en Cheques
-Emitidos y marcar las 6 filas cuando pase los números · Robles: 859 y 926 Pagado con echeq 385 (leído de
+entrega (e2467168) · Corralón: eCheq 386/387 cargados (base + registro con N° comprobante), 5 filas de Compras Pagado y PDF
+atados; quedan 7 filas del recibo ($636.461,86) hasta decidir el cheque del 21/10; borrador a Ariel como
+respuesta en el hilo (r-6669080881674116612) · Sersolin: eCheq 388 → fila 922 Pagado, PDF atado · Robles: 859 y 926 Pagado con echeq 385 (leído de
 vuelta) · Arcor: FCE 54 cargada en Cobranzas (ID 99) · avisos: anulación→persona, firma→dueño (T1800/T1810
 aplicadas) · admin en teléfono entra por /campo · Documentos y Fuentes fuera de la barra · Material dentro
 de Herramientas PUBLICADO (9aac89ea, migración T1900 aplicada; sin QA en navegador; 3 specs e2e
