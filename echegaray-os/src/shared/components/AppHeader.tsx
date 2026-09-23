@@ -56,6 +56,7 @@ export function AppHeader({
   verUsuarios,
   cargaAsistencia,
   miObraTelefono = false,
+  solapasSoloEscritorio = false,
   verComo,
   salir,
 }: {
@@ -71,6 +72,8 @@ export function AppHeader({
   cargaAsistencia: boolean
   /** ¿Es jefe de obra? Su obra en el teléfono (`/obra/hoy`, J01) se ofrece desde el menú. */
   miObraTelefono?: boolean
+  /** Con la barra de abajo del teléfono (`BarraTelefono`), las solapas se dibujan sólo desde `md`. */
+  solapasSoloEscritorio?: boolean
   /** «Ver como»: si esta persona puede encender la lente, y con qué ojos está mirando ahora. */
   verComo: VerComo
   salir: React.ReactNode
@@ -151,7 +154,7 @@ export function AppHeader({
             «Presupuestos» quedaba tapado por el icono de búsqueda. `barra-corrible` (globals.css)
             hace que la caja recorte y se corra por dentro. A 1280 y 1440 el contenido entra y
             `overflow-x: auto` no dibuja ni recorta nada: la geometría de escritorio no se toca. */}
-        <nav ref={barra} className="barra-corrible flex h-full min-w-0 items-stretch" data-testid="nav-areas">
+        <nav ref={barra} className={`barra-corrible h-full min-w-0 items-stretch ${solapasSoloEscritorio ? 'hidden md:flex' : 'flex'}`} data-testid="nav-areas">
           {solapas.length === 1 ? (
             <span className="flex h-full items-center px-3 text-[13px] font-medium text-muted">{solapas[0].label}</span>
           ) : (

@@ -8,6 +8,8 @@ import { solapasDeNav } from '@/features/auth/types/navegacion'
 import { LogoutButton } from '@/features/auth/components/LogoutButton'
 import { AvisoVerComo } from '@/features/auth/components/AvisoVerComo'
 import { AppHeader } from '@/shared/components/AppHeader'
+import { BarraTelefono } from '@/shared/components/BarraTelefono'
+import { barraTelefonoDe } from '@/features/auth/types/barraTelefono'
 import { HeaderEsqueleto } from '@/shared/components/carga'
 import { DeshacerProvider } from '@/shared/components/deshacer/DeshacerProvider'
 import { ProveedorTiempoReal } from '@/shared/tiempo-real/ProveedorTiempoReal'
@@ -68,7 +70,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       <DeshacerProvider>
         {/* TIEMPO REAL (dueño, 15/09/2026): un canal por pestaña; cada pantalla declara sus tablas. */}
         <ProveedorTiempoReal>
-          <main>{children}</main>
+          {/* EN EL TELÉFONO la barra de abajo (`BarraTelefono`, sólo `< md`) tapa los últimos 64px:
+              el contenido los deja libres. En escritorio no hay barra y no hay hueco. */}
+          <main className="pb-20 md:pb-0">{children}</main>
         </ProveedorTiempoReal>
       </DeshacerProvider>
     </div>
@@ -77,9 +81,13 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
 async function HeaderConUsuario() {
   const { nombre, email, rolLabel, rol, verComo } = await loadUsuario()
+  const barra = barraTelefonoDe(rol)
   return (
+    <>
     <AppHeader
       solapas={solapasDeNav(rol)}
+      // Con barra de abajo, las solapas del header no se dibujan en el teléfono: una navegación de nivel 1, no dos.
+      solapasSoloEscritorio={barra.length > 0}
       nombre={nombre}
       email={email}
       rolLabel={rolLabel}
@@ -95,6 +103,10 @@ async function HeaderConUsuario() {
       verComo={verComo}
       salir={<LogoutButton />}
     />
+    {/* LA BARRA DEL TELÉFONO PARA QUIEN ADMINISTRA (dueño, 23/09/2026): Campo · Admin. · Obras ·
+        Datos · Herram. Qué ve cada rol lo decide `barraTelefonoDe`, puro y probado. */}
+    <BarraTelefono items={barra} />
+    </>
   )
 }
 
