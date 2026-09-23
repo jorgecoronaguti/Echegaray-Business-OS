@@ -10,16 +10,18 @@
 
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
-import { cambiarFotoAction } from '../../services/acciones'
+import { cambiarFotoAction, quitarFotoAction } from '../../services/acciones'
 import { subirFotoDeActivo } from '../../services/subida-foto'
 import { V } from '../estilo'
 
 const GUARDADA = 'Foto guardada.'
 const SUBIENDO = 'Subiendo…'
 
-export function SacarFoto({ activo, variante = 'telefono', onGuardada }: {
+export function SacarFoto({ activo, variante = 'telefono', onGuardada, tieneFoto = false }: {
   activo: string
   variante?: 'telefono' | 'escritorio'
+  /** Con foto puesta se ofrece «Quitar la foto»: la ficha queda sin foto (dueño, 23/09/2026). */
+  tieneFoto?: boolean
   /** Escritorio: qué hacer después de guardar (refrescar el parque del espacio). */
   onGuardada?: () => void
 }) {
@@ -38,8 +40,14 @@ export function SacarFoto({ activo, variante = 'telefono', onGuardada }: {
       setEstado(e instanceof Error ? e.message : 'No se pudo guardar la foto')
     }
   }
+  async function quitar() {
+    setEstado('Quitando…')
+    const r = await quitarFotoAction({ activo })
+    setEstado(r.ok ? 'Foto quitada.' : r.error)
+    if (r.ok) (onGuardada ?? router.refresh)()
+  }
   const telefono = variante === 'telefono'
-  const colorEstado = estado === GUARDADA ? V.pos : estado === SUBIENDO ? V.apagado : V.neg
+  const colorEstado = estado === GUARDADA || estado === 'Foto quitada.' ? V.pos : estado === SUBIENDO ? V.apagado : V.neg
   return (
     <>
       <button type="button" onClick={() => input.current?.click()} data-testid="sacar-foto"
@@ -50,6 +58,14 @@ export function SacarFoto({ activo, variante = 'telefono', onGuardada }: {
       </button>
       <input ref={input} type="file" accept="image/*" capture="environment" hidden data-testid="sacar-foto-archivo"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f); e.target.value = '' }} />
+      {tieneFoto && (
+        <button type="button" onClick={quitar} data-testid="quitar-foto"
+          style={telefono
+            ? { minHeight: 52, display: 'flex', alignItems: 'center', fontSize: '14.5px', width: '100%', textAlign: 'left', color: V.neg }
+            : { fontSize: '12px', color: V.neg, textAlign: 'left' }}>
+          Quitar la foto{telefono && <span style={{ marginLeft: 'auto', color: V.tenue }}>›</span>}
+        </button>
+      )}
       {estado && <div role="status" style={{ fontSize: telefono ? '12.5px' : '12px', color: colorEstado }}>{estado}</div>}
     </>
   )

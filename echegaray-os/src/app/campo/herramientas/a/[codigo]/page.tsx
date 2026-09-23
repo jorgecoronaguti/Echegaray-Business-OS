@@ -174,7 +174,7 @@ export default async function UnaHerramienta({ params, searchParams }: {
             ))}
           </div>
         </details>
-        {!baja && <SacarFoto activo={a.id} />}
+        {!baja && <SacarFoto activo={a.id} tieneFoto={!!a.foto_url} />}
         <Unidades activo={a} unidades={p.unidades} variante="telefono" />
       </div>
     </MarcoTelefono>

@@ -298,6 +298,17 @@ export async function editarActivoAction(entrada: z.input<typeof editarSchema>):
   return rpc<null>('editar_activo', { p_activo: p.data.activo, p_datos: p.data.datos })
 }
 
+/**
+ * QUITAR LA FOTO (dueño, 23/09/2026: «me tenés que permitir borrar la foto, dejarlo sin foto»). Se vacía
+ * `foto_url`; el archivo queda en el bucket (no se borra lo que ya se guardó; la ficha simplemente deja
+ * de mostrarlo). `editar_activo` con `foto_url: ''` lo lleva a null.
+ */
+export async function quitarFotoAction(entrada: { activo: string }): Promise<Resultado> {
+  const id = uuid.safeParse(entrada.activo)
+  if (!id.success) return { ok: false, error: 'Falta el activo' }
+  return rpc<null>('editar_activo', { p_activo: id.data, p_datos: { foto_url: '' } })
+}
+
 /** Guarda en la ficha la foto que el navegador ya subió al bucket. */
 export async function cambiarFotoAction(entrada: { activo: string; ruta: string }): Promise<Resultado> {
   const id = uuid.safeParse(entrada.activo)

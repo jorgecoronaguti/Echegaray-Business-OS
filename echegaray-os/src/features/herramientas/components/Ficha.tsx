@@ -100,7 +100,7 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
           ) : 'sin foto'}
           </div>
           {/* La misma pieza que «Sacar una foto» en el teléfono (M03): la foto de la ficha se cambia desde las dos caras. */}
-          {a.estado !== 'baja' && <SacarFoto activo={a.id} variante="escritorio" onGuardada={refrescar} />}
+          {a.estado !== 'baja' && <SacarFoto activo={a.id} variante="escritorio" onGuardada={refrescar} tieneFoto={!!a.foto_url} />}
         </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', border: `1px solid ${V.linea}`, borderRadius: 6, background: SUPERFICIE }}>
