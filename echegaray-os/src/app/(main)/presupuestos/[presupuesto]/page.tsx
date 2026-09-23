@@ -307,8 +307,10 @@ function BarraIdentidad({ presupuesto, nVersiones, acciones }: {
   return (
     <div
       data-testid="barra-presupuesto"
-      className="flex flex-none items-center gap-3 overflow-hidden border-b border-line px-4 sm:px-5"
-      style={{ height: BARRA - 1, background: C.superficie }}
+      // A 390 (capturado el 23/09/2026) las acciones no entraban en 44px y se dibujaban encima del
+      // encabezado: bajo `xl` la barra envuelve y crece; desde `xl` mide BARRA-1 y el split la resta.
+      className="flex flex-none flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-4 py-2 sm:px-5 xl:h-[44px] xl:flex-nowrap xl:overflow-hidden xl:py-0"
+      style={{ background: C.superficie }}
     >
       <Link href="/presupuestos" className="text-[12px] text-muted">Cartera</Link>
       <span className="text-[12px] text-faint">/</span>

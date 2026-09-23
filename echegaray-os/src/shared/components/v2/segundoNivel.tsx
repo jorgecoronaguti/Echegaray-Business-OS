@@ -173,7 +173,10 @@ export function TituloDeFicha({ titulo, bajada, mono, tonoBajada, acciones, junt
       // la fila no entraba y «Nuevo trabajo» quedaba 119 px fuera de la pantalla, sin poder tocarse.
       style={{ display: 'flex', alignItems: 'flex-start', gap: 20, padding: '12px 20px 0', flexWrap: 'wrap' }}
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
+      {/* EN EL TELÉFONO EL TÍTULO OCUPA LA LÍNEA ENTERA y las acciones bajan (capturado 23/09/2026: con
+          «Editar legajo» y «Dar de baja» al lado, el nombre quedaba en una columna de 130 px y la bajada
+          en seis renglones). Desde `sm` vuelve a compartir la línea. */}
+      <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 11, flexWrap: 'wrap' }}>
           <h1 style={{ fontSize: '24px', fontWeight: 600, color: V.tinta, letterSpacing: '-.015em', lineHeight: 1.15 }}>
             {titulo}
@@ -513,10 +516,13 @@ export function TitularDeCola({ numero, titulo, resumen, derecha, tono, testid =
 }) {
   return (
     <div
+      // EN EL TELÉFONO LA NOTA DE LA DERECHA BAJA (capturado 23/09/2026): a 390 el titular quedaba en
+      // una columna de 160 px con el título en cuatro renglones. Envuelve y la nota pasa a línea propia.
+      className="flex-wrap sm:flex-nowrap"
       style={{ display: 'flex', alignItems: 'flex-end', gap: 16, padding: '14px 20px 18px' }}
       data-testid={testid}
     >
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 11 }}>
+      <div className="min-w-0" style={{ display: 'flex', alignItems: 'baseline', gap: 11 }}>
         <span
           className="font-mono tabular-nums"
           style={{
@@ -536,6 +542,7 @@ export function TitularDeCola({ numero, titulo, resumen, derecha, tono, testid =
       </div>
       {derecha != null && (
         <div
+          className="max-sm:basis-full max-sm:text-left"
           style={{
             marginLeft: 'auto', fontSize: '11.5px', lineHeight: 1.55, color: V.tenue,
             maxWidth: 330, textAlign: 'right', textWrap: 'pretty',

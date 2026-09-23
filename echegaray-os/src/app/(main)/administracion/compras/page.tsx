@@ -54,6 +54,7 @@
 // visión, los tres cruces, el freno de mano de Sheets y el registro de idempotencia. Un circuito,
 // dos puertas. El estado de cada archivo vuelve leyendo esa misma fila.
 
+import { PlegadoEnTelefono } from '@/shared/components/PlegadoEnTelefono'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
@@ -395,6 +396,9 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                 {/* LOS CRITERIOS VAN DEBAJO DE LOS CHIPS Y SOBRE LA LISTA, en la misma columna que
                     recortan. El chip elige la población («los que faltan pagar») y esto la recorta
                     («de DUPEC, en agosto, arriba de $500.000»): el orden visual dice el orden lógico. */}
+                {/* EN EL TELÉFONO LOS FILTROS ARRANCAN PLEGADOS (capturado 23/09/2026: once controles
+                    antes de la primera compra). En escritorio se ven siempre. */}
+                <PlegadoEnTelefono rotulo={hayCriterios(criterios) ? 'Filtros · hay criterios puestos' : 'Filtros'} testid="filtros-plegados">
                 <FiltrosComprasSheet
                   accion={RUTA}
                   q={sp.q}
@@ -403,6 +407,7 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                   extra={{ f: filtro === 'todo' ? undefined : filtro, s: sp.s, todo: verTodo ? '1' : undefined }}
                   limpiarHref={hayCriterios(criterios) ? hrefSinCriterios() : undefined}
                 />
+                </PlegadoEnTelefono>
                 <TablaComprasSheet
                   filas={recorte.enPantalla}
                   seleccionada={filaAbierta?.fila}
