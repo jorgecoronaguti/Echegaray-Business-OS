@@ -50,9 +50,30 @@ async function mm(ruta, { metodo = 'GET', cuerpo = null } = {}) {
   return res.json()
 }
 
-export async function avisar(texto) {
+/**
+ * ¿EL DUEÑO APAGÓ LOS AVISOS DEL SISTEMA? (Mi cuenta › Notificaciones, tipo `sistema`). Se pregunta a
+ * la base; si la base no contesta, se avisa igual: este canal existe para cuando algo anda mal, y un
+ * avisador que calla porque no pudo preguntar es peor que uno que molesta.
+ */
+async function elDuenoQuiereAvisos() {
+  try {
+    const [{ getPool }, { debeAvisarA, usuarioDelDueno }] = await Promise.all([
+      import('../lib/db.mjs'), import('../lib/notificaciones.mjs'),
+    ])
+    const pool = getPool()
+    const uid = await usuarioDelDueno(pool, USUARIO)
+    return await debeAvisarA(pool, uid, 'sistema', 'mattermost_dm')
+  } catch {
+    return true
+  }
+}
+
+export async function avisar(texto, { respetarPreferencia = true } = {}) {
   const cuerpo = String(texto ?? '').trim()
   if (!cuerpo) throw new Error('no hay nada que avisar')
+  if (respetarPreferencia && !(await elDuenoQuiereAvisos())) {
+    return { ok: false, silenciado: true, para: USUARIO, postId: null, canal: null }
+  }
   const bot = delEntorno('MM_BOT_USER_ID')
   if (!bot) throw new Error('sin MM_BOT_USER_ID')
   const dueno = await mm(`/api/v4/users/username/${USUARIO}`)
@@ -67,6 +88,7 @@ async function main() {
   const arg = process.argv.slice(2).join(' ').trim()
   const texto = arg || readFileSync(0, 'utf8')
   const r = await avisar(texto)
+  if (r.silenciado) { console.log(`NO avisado: @${r.para} apagó los avisos del sistema en Mi cuenta › Notificaciones`); return }
   console.log(`avisado a @${r.para} · post ${r.postId}`)
 }
 

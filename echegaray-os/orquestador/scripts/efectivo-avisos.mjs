@@ -21,6 +21,7 @@
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { debeAvisarA, usuarioDelDueno } from '../lib/notificaciones.mjs'
 
 export const URL_APP = process.env.ORQ_APP_URL || 'https://app.ecsas.com.ar'
 
@@ -75,7 +76,7 @@ export async function pendientesDeAviso(port) {
   try {
     const { rows } = await port.query(
       `select e.id, e.codigo, coalesce(o.nombre, 'Estructura') as destino, i.plataforma_username as username,
-              i.plataforma_user_id as mm_user_id
+              i.plataforma_user_id as mm_user_id, pf.id as usuario_id
          from public.efectivo_entrega e
          left join public.obra_canonica o on o.id = e.obra_id
          left join public.perfiles pf on pf.persona_id = e.persona_id
@@ -105,8 +106,10 @@ export async function avisarEntregas(port, { dry = false, publicar = publicarYRe
   if (!canal) { log.warn?.(`efectivo: ${pend.length} entrega(s) sin avisar — no hay canal atado a rendicion ni a compras`); return { avisadas: 0, sinCanal: pend.length } }
   let avisadas = 0
   for (const e of pend) {
-    // DIRECTO si la persona tiene usuario; si no, al canal con la mención. En el directo no hace falta el @.
-    const dm = e.mm_user_id ? await directo(e.mm_user_id).catch(() => null) : null
+    // DIRECTO si la persona tiene usuario Y no apagó este aviso (Mi cuenta › Notificaciones); si no,
+    // al canal con la mención: la firma hace falta igual. En el directo no hace falta el @.
+    const quiereDm = await debeAvisarA(port, e.usuario_id, 'efectivo_firma', 'mattermost_dm')
+    const dm = e.mm_user_id && quiereDm ? await directo(e.mm_user_id).catch(() => null) : null
     const texto = textoDelAviso({ username: dm ? null : e.username, codigo: e.codigo, destino: e.destino, entregaId: e.id, directo: !!dm })
     if (dry) { log.info?.(`[dry] ${e.codigo} (${dm ? 'directo' : 'canal'}): ${texto.split('\n')[0]}`); continue }
     const post = await publicar(dm ?? canal, texto).catch((err) => { log.warn?.(`efectivo: no pude avisar ${e.codigo}: ${err.message}`); return null })
@@ -158,7 +161,8 @@ export async function drenarAvisos(port, { dry = false, publicar = publicarYRele
   let pend
   try {
     const { rows } = await port.query(
-      `select a.id, a.tipo, a.texto, a.destino, i.plataforma_username as username, i.plataforma_user_id as mm_user_id
+      `select a.id, a.tipo, a.texto, a.destino, i.plataforma_username as username, i.plataforma_user_id as mm_user_id,
+              pf.id as usuario_id
          from public.efectivo_aviso a
          join public.efectivo_entrega e on e.id = a.entrega_id
          left join public.perfiles pf on pf.persona_id = e.persona_id
@@ -180,9 +184,17 @@ export async function drenarAvisos(port, { dry = false, publicar = publicarYRele
     return { enviados: 0, sinCanal: pend.length }
   }
   let enviados = 0
+  const dueno = await usuarioDelDueno(port)
   for (const a of pend) {
-    const dm = a.destino === 'persona' && a.mm_user_id ? await directo(a.mm_user_id).catch(() => null)
-      : a.destino === 'dueno' ? await directoDueno().catch(() => null) : null
+    // LA PREFERENCIA SE RESPETA (Mi cuenta › Notificaciones): un DM apagado cae al canal, como cuando
+    // no hay usuario de Mattermost. Los tipos del canal (reclamo, pedido de dato) no se apagan.
+    const tipoAviso = a.tipo === 'anulacion' ? 'efectivo_anulacion' : a.tipo === 'firmada' ? 'efectivo_firmada' : null
+    const quiereDm = tipoAviso
+      ? await debeAvisarA(port, a.destino === 'dueno' ? dueno : a.usuario_id, tipoAviso, 'mattermost_dm')
+      : true
+    const dm = !quiereDm ? null
+      : a.destino === 'persona' && a.mm_user_id ? await directo(a.mm_user_id).catch(() => null)
+        : a.destino === 'dueno' ? await directoDueno().catch(() => null) : null
     // En el directo no hace falta la mención; el que va al canal la lleva adelante.
     const texto = dm ? a.texto : textoDelPedido(a)
     if (dry) { log.info?.(`[dry] ${a.tipo} → ${dm ? a.destino : 'canal'}: ${texto.split('\n')[0]}`); continue }

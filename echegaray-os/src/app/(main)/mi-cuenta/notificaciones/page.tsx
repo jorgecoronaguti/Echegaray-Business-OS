@@ -1,49 +1,75 @@
-// NOTIFICACIONES — qué avisa el OS y por dónde.
+// NOTIFICACIONES — qué avisa el OS, por dónde, y qué quiero recibir.
 //
-// ═══ POR QUÉ ESTA PANTALLA NO TIENE UN SOLO INTERRUPTOR ═══
+// ═══ LOS INTERRUPTORES EXISTEN PORQUE EXISTE DÓNDE GUARDARLOS (23/09/2026) ═══
 //
-// El handoff incluye la solapa. Antes de dibujarla se fue a buscar dónde se guardaría lo que se
-// elija, y NO EXISTE: no hay tabla de preferencias, ni de suscripciones, ni una columna en
-// `perfiles`. Dibujar seis interruptores que se apagan al recargar sería un mockup —lo que el brief
-// prohíbe explícitamente— y, peor, alguien apagaría un aviso creyendo que lo apagó.
+// Hasta hoy esta pantalla decía «elegirlo todavía no se puede»: no había tabla. Ahora la hay
+// (`usuario_preferencia_notificacion`, migración 20260923T2610) y los emisores la consultan antes de
+// mandar (`debeAvisar` en `orquestador/lib/notificaciones.mjs`). Apagar acá apaga de verdad; sin fila
+// se avisa, así que un aviso nuevo llega hasta que alguien lo apague.
 //
-// Lo que sí se puede hacer, y es lo que hace, es DECIR LA VERDAD: qué se avisa hoy, por qué canal, y
-// que elegirlo todavía no se puede. Eso convierte una solapa vacía en una respuesta.
-//
-// Cuando exista el modelo —una tabla `preferencia_aviso` por usuario y por tipo—, esta pantalla se
-// llena y la explicación se va. La deuda queda escrita acá y no en la cabeza de alguien.
+// El único canal con interruptor es el mensaje directo del bot: es el único por el que el OS le
+// habla a una persona. El correo se dice como lo que es —sólo lo de la cuenta— y no tiene
+// interruptor, porque no hay aviso que apagar por ahí.
 
+import { createClient } from '@/lib/supabase/server'
+import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { MiCuentaShell, Dato } from '@/features/mi-cuenta/components/MiCuentaShell'
+import { PreferenciasAviso } from '@/features/mi-cuenta/components/PreferenciasAviso'
+import { esCanal, esTipo, tiposPara, type Preferencia } from '@/features/mi-cuenta/services/notificaciones'
 import { Aviso } from '@/shared/components/ds'
 
 export const dynamic = 'force-dynamic'
 
-export default function NotificacionesPage() {
-  return (
-    <MiCuentaShell
-      titulo="Notificaciones"
-      descripcion="Qué te avisa el OS, y por dónde."
-    >
-      <div className="max-w-[620px]">
-        <Aviso tono="info" titulo="Todavía no se puede elegir qué recibir" testid="sin-preferencias">
-          El OS no guarda preferencias de aviso por persona: no hay dónde. Poner interruptores acá
-          daría la sensación de haber apagado algo que se seguiría mandando igual. Cuando existan, se
-          configuran desde esta pantalla.
-        </Aviso>
+export default async function NotificacionesPage() {
+  const supabase = await createClient()
+  const user = await getUsuarioActual(supabase)
+  if (!user) return <MiCuentaShell titulo="Notificaciones"><Aviso tono="neg">Tu sesión venció. Volvé a entrar.</Aviso></MiCuentaShell>
+  const { data: perfil } = await getPerfilActual(supabase, user.id)
 
-        <h2 className="mb-2 mt-8 text-[11px] font-medium tracking-[0.04em] text-faint">Lo que el OS avisa hoy</h2>
-        <div className="border-t border-line">
-          <Dato rotulo="Chat interno" ancho="w-[170px]">
-            Los mensajes del canal de tu obra y lo que se ancle a una actividad o a un impedimento.
-          </Dato>
-          <Dato rotulo="Reportes" ancho="w-[170px]">
-            Los reportes automáticos se publican dentro del OS. No se envían por email ni por
-            WhatsApp sin autorización explícita.
-          </Dato>
-          <Dato rotulo="Tu email" ancho="w-[170px]">
-            Sólo lo de la cuenta: verificar un cambio de email y recuperar la contraseña.
-          </Dato>
-        </div>
+  // Las propias, por RLS. Sin migración (42P01) la pantalla lo dice en vez de dibujar interruptores.
+  const { data: filas, error } = await supabase
+    .from('usuario_preferencia_notificacion').select('tipo, canal, activo')
+  const prefs: Preferencia[] = (filas ?? [])
+    .filter((f) => esTipo(f.tipo) && esCanal(f.canal))
+    .map((f) => ({ tipo: f.tipo, canal: f.canal, activo: Boolean(f.activo) }))
+  const sinTabla = error?.code === '42P01'
+
+  return (
+    <MiCuentaShell titulo="Notificaciones" descripcion="Qué te avisa el OS, por dónde, y cuáles querés recibir.">
+      <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
+        <section className="min-w-0">
+          <h2 className="mb-2 text-[11px] font-medium tracking-[0.04em] text-faint">Mensajes directos del bot</h2>
+          {sinTabla ? (
+            <Aviso tono="warn" titulo="Todavía no se puede elegir" testid="sin-preferencias">
+              Falta aplicar la migración <code className="font-mono">20260923T2610_preferencias_de_aviso_por_usuario.sql</code>.
+              Hasta entonces el OS avisa todo a todos.
+            </Aviso>
+          ) : error ? (
+            <Aviso tono="neg">{error.message}</Aviso>
+          ) : (
+            <PreferenciasAviso tipos={tiposPara(perfil?.rol)} iniciales={prefs} />
+          )}
+          <p className="mt-3 max-w-[460px] text-[11.5px] leading-relaxed text-faint">
+            Le llegan a tu usuario de Mattermost. Si no tenés uno atado a tu correo, el aviso de firma
+            sale por el canal de Efectivo con tu mención.
+          </p>
+        </section>
+
+        <section className="min-w-0">
+          <h2 className="mb-2 text-[11px] font-medium tracking-[0.04em] text-faint">Lo que no se elige</h2>
+          <div className="border-t border-line">
+            <Dato rotulo="Chat interno" ancho="w-[150px]">
+              Los mensajes del canal de tu obra y lo que se ancle a una actividad o a un impedimento.
+            </Dato>
+            <Dato rotulo="Dentro del OS" ancho="w-[150px]">
+              Los pendientes de la campanita y los reportes automáticos se publican adentro de la app.
+            </Dato>
+            <Dato rotulo="Tu correo" ancho="w-[150px]">
+              Sólo lo de la cuenta: verificar un cambio de email y recuperar la contraseña. El OS no
+              manda avisos por correo.
+            </Dato>
+          </div>
+        </section>
       </div>
     </MiCuentaShell>
   )
