@@ -185,6 +185,36 @@ const eslintConfig = [
     },
   },
   {
+    // ═══ UNA FEATURE NO IMPORTA DE OTRA (auditoría externa del 23/09/2026) ═══
+    //
+    // Medido con rg ese día: 78 imports a `features/auth`, 53 a `features/administracion`, 46 a
+    // `features/obras`. Los de auth eran, casi todos, el Rol y las reglas de permiso —eso se mudó a
+    // `shared/auth`, que es donde va un concepto que cruzan todos los dominios—. Los demás siguen, y
+    // cada uno convierte dos dominios en uno solo: después no se puede tocar ninguno sin romper el
+    // otro.
+    //
+    // VA EN `warn` Y NO EN `error` A PROPÓSITO: hay más de cien y romper el lint hoy obliga a un
+    // refactor grande en el medio de la operación. El warning marca lo que se agrega de acá en
+    // adelante, que es lo que se quiere frenar. Los imports a `features/auth/types*` quedan
+    // permitidos: son las puertas que mantienen vivos los enlaces viejos hacia `shared/auth`.
+    files: ['src/features/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['warn', {
+        patterns: [{
+          group: ['@/features/*', '../../*/services/*', '../../*/components/*'],
+          message:
+            'Una feature no importa de otra: lo compartido va en src/shared/ (o en Postgres, si es un '
+            + 'concepto del negocio). Los tipos de identidad y permisos están en @/shared/auth.',
+        }],
+      }],
+    },
+  },
+  {
+    // Las puertas de compatibilidad SÍ reexportan de otro lado: es su único trabajo.
+    files: ['src/features/auth/types/index.ts', 'src/features/auth/types/areas.ts'],
+    rules: { 'no-restricted-imports': 'off' },
+  },
+  {
     // EL DESIGN SYSTEM SE ESTILIZA A SÍ MISMO. Un componente que no puede declarar su propio
     // color, su propio alto ni un `ring-[3px]` no es un componente: es una plantilla.
     files: ['src/shared/components/**'],
