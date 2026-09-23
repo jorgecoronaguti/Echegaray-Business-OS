@@ -65,6 +65,24 @@ export type KpiPantalla = {
   tono?: 'ink' | 'warn' | 'neg' | 'pos'
 }
 
+/**
+ * Una cifra EN LÍNEA: rótulo y valor en mono, del tamaño del texto de identidad (12px).
+ *
+ * Es la segunda forma de cifra del diseño y no la misma que `KpiPantalla`: C06 la dibuja en el
+ * escritorio («Plazo: 24/08 → 22/09 · Días hábiles: 21 · Con fechas: 14 de 17 · Línea base: sin
+ * sellar») y M09/M11 en el teléfono («Paquetes 3 · Sin poder iniciar 1 · Terceros 7»). `valor: null`
+ * se escribe con la palabra de `falta`, en itálica tenue, nunca como 0.
+ */
+export type CifraEnLinea = {
+  rotulo: string
+  valor: ReactNode | null
+  falta?: string
+  /** `neg` cuando la cifra es un problema real (M09 «Sin poder iniciar 1» en rojo). */
+  tono?: 'ink' | 'warn' | 'neg' | 'pos'
+  /** C06 «Línea base: sin sellar»: el valor mismo es una ausencia y va en itálica tenue. */
+  italica?: boolean
+}
+
 /** Los estados que la ficha conoce, con su rótulo y su color. Terminada/archivada son la Z01. */
 export const ESTADOS_TERMINADA: readonly string[] = ['cerrada', 'terminada', 'archivada']
 
@@ -98,7 +116,7 @@ function PastillaEstado({ t, tono, radio }: { t: string; tono: 'pos' | 'curso' |
 
 export async function CabeceraDeObra({
   obraId, obra, vistaActiva, pantalla, kpis = [], acciones, alFinalDeLasSolapas,
-  volverA = '/obras', volverLabel = 'Obras', titulo = 17, accionTelefono,
+  volverA = '/obras', volverLabel = 'Obras', titulo = 17, accionTelefono, lineaDeCifras = [], cifrasTelefono = [],
 }: {
   obraId: string
   obra: ObraDeCabecera
@@ -113,6 +131,11 @@ export async function CabeceraDeObra({
   pantalla?: ReactNode
   /** La línea de cifras de ESTA pantalla (04b). Vacía, no se dibuja. */
   kpis?: KpiPantalla[]
+  /** ESCRITORIO (C06): cifras en línea debajo de la identidad, «Rótulo: valor». Vacía, no se dibuja. */
+  lineaDeCifras?: CifraEnLinea[]
+  /** TELÉFONO (M09 · M11): «Rótulo valor» en mono, después del nombre de la pantalla. Vacía, no se
+   *  dibuja. Va aparte de `kpis` porque el 07 de escritorio NO dibuja estos contadores. */
+  cifrasTelefono?: CifraEnLinea[]
   /** Lo que se puede hacer desde acá, en el escritorio. Lo pone cada página. */
   acciones?: ReactNode
   /** Lo que va a la derecha de las solapas, sin ser una (hoy, «Economía»). */
@@ -264,6 +287,21 @@ export async function CabeceraDeObra({
         {pantalla != null && (
           <div style={{ fontSize: '12px', fontWeight: 500, color: C.tinta, marginTop: '3px' }}>{pantalla}</div>
         )}
+        {lineaDeCifras.length > 0 && (
+          <div style={{ display: 'flex', gap: '16px', fontSize: '12px', marginTop: '3px', alignItems: 'baseline', flexWrap: 'wrap' }}
+            data-testid="linea-de-cifras">
+            {lineaDeCifras.map((k) => (
+              <span key={k.rotulo} style={{ display: 'inline-flex', gap: '6px', alignItems: 'baseline' }}>
+                <span style={{ color: C.tenue }}>{k.rotulo}:</span>
+                {k.valor == null || k.valor === ''
+                  ? <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">{k.falta ?? 'sin dato'}</span>
+                  : k.italica
+                    ? <span style={{ color: C.tenue, fontStyle: 'italic' }}>{k.valor}</span>
+                    : <span style={{ fontFamily: MONO, color: k.tono && k.tono !== 'ink' ? COLOR_CIFRA[k.tono] : C.tintaMedia }}>{k.valor}</span>}
+              </span>
+            ))}
+          </div>
+        )}
         {kpis.length > 0 && acciones != null && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>{acciones}</div>
         )}
@@ -292,11 +330,20 @@ export async function CabeceraDeObra({
           {accionTelefono != null && <span style={{ marginLeft: 'auto' }}>{accionTelefono}</span>}
         </div>
         <div style={{ marginTop: '4px' }}>{identidad(12, 6)}</div>
-        {(kpis.length > 0 || pantalla != null) && (
+        {(kpis.length > 0 || cifrasTelefono.length > 0 || pantalla != null) && (
           <div style={{
             marginTop: '5px', fontSize: '12px', color: C.tintaMedia, display: 'flex', gap: '12px', flexWrap: 'wrap',
           }} data-testid="kpis-obra-telefono">
-            {pantalla != null && <span style={{ fontWeight: 500 }}>{pantalla}</span>}
+            {pantalla != null && <span style={{ fontWeight: 500, color: C.tinta }}>{pantalla}</span>}
+            {/* M09/M11: «Paquetes 3» — rótulo en texto, valor en mono; rojo sólo un problema real. */}
+            {cifrasTelefono.map((k) => (
+              <span key={k.rotulo} style={{ display: 'inline-flex', gap: '5px', alignItems: 'baseline' }} data-testid={`cifra-telefono-${k.rotulo}`}>
+                <span>{k.rotulo}</span>
+                {k.valor == null || k.valor === ''
+                  ? <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">{k.falta ?? 'sin dato'}</span>
+                  : <span style={{ fontFamily: MONO, color: k.tono && k.tono !== 'ink' ? COLOR_CIFRA[k.tono] : C.tintaMedia }}>{k.valor}</span>}
+              </span>
+            ))}
             {kpis.map((k) => (
               <span key={k.rotulo} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
                 <Ico d={P.avance} s={12} />{k.rotulo}{' '}

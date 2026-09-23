@@ -480,3 +480,19 @@ export function queLoFrena(p: { estado: EstadoSubcontrato; revision: RevisionDoc
     ...p.revision.avisos.map((texto) => ({ texto, tono: 'warn' as const })),
   ]
 }
+
+/** Los tres contadores de la cabecera del teléfono (M09): «Paquetes 3 · Sin poder iniciar 1 ·
+ *  Terceros 7». Un paquete anulado no cuenta en nada; uno terminado cuenta como paquete pero ya no
+ *  trae gente ni puede estar «sin poder iniciar». `sinPoderIniciar` es el mismo criterio que la fila
+ *  (`estadoTelefono`): un papel que bloquea. */
+export function contadoresSubcontratos(
+  paquetes: readonly { estado: EstadoSubcontrato; revision: RevisionDocumental; personas_externas: number }[],
+): { paquetes: number; sinPoderIniciar: number; terceros: number } {
+  const vivos = paquetes.filter((p) => p.estado !== 'anulado')
+  const enPie = vivos.filter((p) => p.estado !== 'terminado')
+  return {
+    paquetes: vivos.length,
+    sinPoderIniciar: enPie.filter((p) => p.revision.bloqueos.length > 0).length,
+    terceros: enPie.reduce((s, p) => s + p.personas_externas, 0),
+  }
+}

@@ -255,3 +255,18 @@ test('«Papeles»: rojo si bloquea, ámbar si avisa, verde al día, «—» cuan
   ])
   assert.deepEqual(queLoFrena({ estado: 'anulado', revision: bloq, vinculos: [] }), [])
 })
+
+test('los contadores de la cabecera del teléfono (M09): paquetes, sin poder iniciar, terceros', async () => {
+  const { contadoresSubcontratos } = await import('./subcontratosReglas.ts')
+  const vacia = { filas: [], bloqueos: [], avisos: [] }
+  const bloq = { filas: [], bloqueos: ['ART sin cargar'], avisos: [] }
+  assert.deepEqual(contadoresSubcontratos([]), { paquetes: 0, sinPoderIniciar: 0, terceros: 0 })
+  assert.deepEqual(contadoresSubcontratos([
+    { estado: 'en_curso', revision: vacia, personas_externas: 4 },
+    { estado: 'contratado', revision: bloq, personas_externas: 3 },
+    // Terminado: es un paquete, pero ni trae gente ni está frenado.
+    { estado: 'terminado', revision: bloq, personas_externas: 5 },
+    // Anulado: no cuenta en nada.
+    { estado: 'anulado', revision: bloq, personas_externas: 9 },
+  ]), { paquetes: 3, sinPoderIniciar: 1, terceros: 7 })
+})
