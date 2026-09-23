@@ -60,7 +60,8 @@ export function solapasDeNav(rol: Rol | null | undefined): SolapaNav[] {
   const areas = areasDe(rol).map((a) => ({ clave: a, label: AREA_LABEL[a], href: AREA_HREF[a] }))
   const destinos = [ANALITICAS].filter((d) => puedeVerRuta(rol, d.href))
   const herramientas = rol && rol !== 'cliente' ? [HERRAMIENTAS] : []
-  return [...areas, ...destinos, ...herramientas]
+  // HERRAMIENTAS ANTES QUE ANALÍTICAS (dueño, 23/09/2026: «cambiar de lugar analíticas con herramientas»).
+  return [...areas, ...herramientas, ...destinos]
 }
 
 /**

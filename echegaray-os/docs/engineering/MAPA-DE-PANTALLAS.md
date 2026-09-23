@@ -270,7 +270,7 @@ las que ya existían como producto propio (`/hoy`·`/mi-*` del empleado, `/obra/
 
 | Nivel | Inicio en el teléfono | Barra de abajo (`< md`, `BarraTelefono` · `barraTelefonoDe(rol)`) | Header |
 |---|---|---|---|
-| Dirección / Administración | `/campo` | Campo · Admin. · Obras · Datos · Herram. | sin solapas (están en la barra); lupa, campana y avatar quedan |
+| Dirección / Administración | `/campo` | Campo · Admin. · Obras · Herram. · Datos | sin solapas (están en la barra); lupa, campana y avatar quedan |
 | Jefe de obra | `/obra/hoy` | Mi obra · Campo · Admin. · Obras · Herram. (en `(main)` y en `/campo`) | idem |
 | Empleado | `/hoy` | la suya (Hoy · Trabajo · Horas · Yo) | no entra a `(main)` salvo `/mi-cuenta` |
 | Cliente | `/portal` | la del portal | — |

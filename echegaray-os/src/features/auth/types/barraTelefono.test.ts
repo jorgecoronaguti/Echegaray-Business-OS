@@ -6,7 +6,7 @@ import { puedeVerRuta } from './areas.ts'
 const claves = (rol: Parameters<typeof barraTelefonoDe>[0]) => barraTelefonoDe(rol).map((i) => i.clave)
 
 test('Dirección y Administración: cinco destinos, Campo primero (en el teléfono se opera)', () => {
-  assert.deepEqual(claves('direccion'), ['campo', 'administracion', 'obras', 'analiticas', 'herramientas'])
+  assert.deepEqual(claves('direccion'), ['campo', 'administracion', 'obras', 'herramientas', 'analiticas'])
   assert.deepEqual(claves('administracion'), claves('direccion'))
 })
 

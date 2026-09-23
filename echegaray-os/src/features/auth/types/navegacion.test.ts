@@ -23,9 +23,10 @@ const activa = (ruta: string, rol: Parameters<typeof solapasDeNav>[0] = 'direcci
 // la regla que la corrección del 24/08 había fijado para todas las rutas de primer nivel.
 // ═══ HERRAMIENTAS, AL FINAL (dueño, 21/09/2026) ═══
 // «Administración · Obras · Analíticas · Herramientas», y para todos los niveles con los mismos permisos.
-test('Administración ve CUATRO solapas: Presupuestos es sección del área y Herramientas va al final', () => {
-  assert.deepEqual(claves('direccion'), ['administracion', 'obras', 'analiticas', 'herramientas'])
-  assert.deepEqual(claves('administracion'), ['administracion', 'obras', 'analiticas', 'herramientas'])
+// ═══ HERRAMIENTAS ANTES QUE ANALÍTICAS (dueño, 23/09/2026) ═══
+test('Administración ve CUATRO solapas: Presupuestos es sección del área y Herramientas va antes que Analíticas', () => {
+  assert.deepEqual(claves('direccion'), ['administracion', 'obras', 'herramientas', 'analiticas'])
+  assert.deepEqual(claves('administracion'), ['administracion', 'obras', 'herramientas', 'analiticas'])
   assert.ok(!claves('direccion').includes('presupuestos'), 'no puede volver a la barra de la aplicación sin una decisión del dueño')
 })
 

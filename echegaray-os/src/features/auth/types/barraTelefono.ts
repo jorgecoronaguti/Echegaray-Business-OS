@@ -41,13 +41,13 @@ const MI_OBRA: ItemBarraTelefono = { clave: 'mi-obra', href: INICIO_JEFE_TELEFON
 /**
  * QUÉ BARRA VE CADA NIVEL EN EL TELÉFONO dentro de las pantallas de escritorio.
  *
- * - Dirección y Administración: Campo · Admin. · Obras · Datos · Herram.
+ * - Dirección y Administración: Campo · Admin. · Obras · Herram. · Datos (Herramientas antes, dueño 23/09)
  * - Jefe de obra: Mi obra · Campo · Admin. · Obras · Herram. (Analíticas no la ve: es precio).
  * - Empleado, cliente o sin perfil: NINGUNA. El empleado tiene la suya en `/hoy`; sin perfil se
  *   falla cerrado, igual que `solapasDeNav`.
  */
 export function barraTelefonoDe(rol: Rol | null | undefined): ItemBarraTelefono[] {
-  if (rol === 'direccion' || rol === 'administracion') return [CAMPO, ADMIN, OBRAS, ANALITICAS, HERRAMIENTAS]
+  if (rol === 'direccion' || rol === 'administracion') return [CAMPO, ADMIN, OBRAS, HERRAMIENTAS, ANALITICAS]
   if (rol === 'jefe_obra') return [MI_OBRA, CAMPO, ADMIN, OBRAS, HERRAMIENTAS]
   return []
 }
