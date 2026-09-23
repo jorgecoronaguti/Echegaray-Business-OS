@@ -3,6 +3,7 @@ paths:
   - "orquestador/**/*.test.mjs"
   - ".claude/hooks/*.test.mjs"
   - "scripts/**/*.test.mjs"
+  - "supabase/migrations/*.test.mjs"
   - "tests/*.spec.ts"
 ---
 

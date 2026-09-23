@@ -20,4 +20,4 @@ export TMPDIR
 trap 'rm -rf "$TMPDIR"' EXIT INT TERM
 
 node --test --test-concurrency="${ECOS_TEST_CONCURRENCIA:-2}" "$@" \
-  'orquestador/**/*.test.mjs' '.claude/hooks/*.test.mjs' 'scripts/**/*.test.mjs' 'src/**/*.test.ts'
+  'orquestador/**/*.test.mjs' '.claude/hooks/*.test.mjs' 'scripts/**/*.test.mjs' 'supabase/migrations/*.test.mjs' 'src/**/*.test.ts'
