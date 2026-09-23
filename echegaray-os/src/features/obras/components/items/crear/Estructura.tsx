@@ -32,17 +32,8 @@ import type { PresupuestoDeLaObra } from '../../../services/estructuraService'
 import type { Persona } from '../../../types'
 import type { AccionFormulario } from '@/shared/components/ui/FormAccion'
 
-export type ModoCrear = 'presupuesto' | 'planilla' | 'mano'
-export type PanelEstructura = 'ponderacion' | 'frentes' | 'subtareas'
-
-export interface ModoEstructura {
-  crear: ModoCrear | null
-  panel: PanelEstructura | null
-  act: string | null
-  sel: boolean
-  /** El padre del ítem nuevo (`?nuevo=<id>` · `raiz`). */
-  nuevo: string | null
-}
+import { esModoEstructura, type ModoCrear, type ModoEstructura, type PanelEstructura } from './modo'
+export { esModoEstructura, type ModoCrear, type ModoEstructura, type PanelEstructura }
 
 export interface AccionesEstructura {
   convertir: AccionFormulario
@@ -66,9 +57,6 @@ export interface DatosEstructura {
   pasosPor: Record<string, number>
 }
 
-export function esModoEstructura(m: ModoEstructura): boolean {
-  return m.crear != null || (m.panel != null && m.act != null) || m.sel
-}
 
 export function Estructura({ obraId, nodos, ponds, modo, datos, acciones, query = '' }: {
   obraId: string

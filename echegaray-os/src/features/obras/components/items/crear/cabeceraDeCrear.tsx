@@ -12,7 +12,7 @@
 
 import type { CifraEnLinea } from '../../CabeceraDeObra'
 import { CifraViva } from './CabeceraViva'
-import type { ModoEstructura } from './Estructura'
+import type { ModoEstructura } from './modo'
 
 const viva = (rotulo: string, clave: string, falta: string, italica = false): CifraEnLinea => ({
   rotulo, valor: <CifraViva clave={clave} falta={falta} />, italica,
