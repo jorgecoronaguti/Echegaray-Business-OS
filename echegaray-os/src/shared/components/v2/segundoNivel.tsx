@@ -15,6 +15,7 @@
 // Los valores salieron de LEER los `style=""` inline del `.dc.html`, donde el atributo ES el valor
 // computado. Cada uno cita su línea.
 
+import { BarraCorrible } from './BarraCorrible'
 import Link from 'next/link'
 import type { CSSProperties, ReactNode } from 'react'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
@@ -362,7 +363,9 @@ export function SolapasDeFicha({ solapas, linea = true, grafito = false, derecha
         borderBottom: linea ? `1px solid ${V.linea}` : undefined,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'stretch', gap: linea ? 2 : 18, flexWrap: 'wrap' }} data-testid={testid}>
+      {/* UNA LÍNEA QUE SE CORRE, NO UNA CASCADA (23/09/2026): a 390 las nueve solapas de la ficha del
+          cliente caían en tres renglones. `BarraCorrible` scrollea por dentro y muestra la activa. */}
+      <BarraCorrible style={{ gap: linea ? 2 : 18 }} testid={testid}>
         {solapas.map((s) => (
           <Link
             key={s.clave} href={s.href} prefetch={false} data-testid={`solapa-${s.clave}`}
@@ -389,7 +392,7 @@ export function SolapasDeFicha({ solapas, linea = true, grafito = false, derecha
             )}
           </Link>
         ))}
-      </div>
+      </BarraCorrible>
       {derecha && (
         <div style={{ marginLeft: 'auto', fontSize: '11.5px', color: V.tenue, alignSelf: 'center' }}>
           {derecha}
