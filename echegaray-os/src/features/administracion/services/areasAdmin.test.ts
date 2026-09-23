@@ -19,28 +19,26 @@ test('son SIETE destinos en DOS grupos: Presupuestos volvió al área, Proveedor
     // PRESUPUESTOS VA ÚLTIMO (dueño, 21/09/2026: «mover "presupuestos" a después de impuestos»).
     // El orden lo fijó él mirando la barra, así que es el orden y no una consecuencia de otra cosa:
     // si alguien lo mueve, esto da rojo y tiene que venir con una decisión suya.
-    // DOCUMENTOS Y FUENTES, AL FINAL (dueño, 23/09/2026 · mapa de pantallas, dudas 1 y 6): las dos
-    // estaban huérfanas y él decidió que cuelgan de Administración.
-    ['Clientes', 'Personal', 'Compras', 'Impuestos', 'Presupuestos', 'Documentos', 'Fuentes'],
+    // Documentos y Fuentes NO están: el dueño las sacó de la barra el 23/09/2026 («quitalas de todo»).
+    ['Clientes', 'Personal', 'Compras', 'Impuestos', 'Presupuestos'],
   )
   assert.equal(DESTINOS.some((d) => d.clave === 'proveedores'), false)
   assert.deepEqual([...new Set(DESTINOS.map((d) => d.grupo))], ['quien', 'registro'])
 })
 
-test('«Trabajo» no es destino y «Base maestra» no tiene solapa propia; «Documentos» volvió el 23/09', () => {
-  // Es una decisión declarada del handoff v4, no un olvido: si alguien los devuelve a la barra,
-  // esto se pone rojo y hay que discutirlo. Documentos volvió por decisión del dueño (duda 1 del
-  // mapa de pantallas): estaba huérfana y se queda.
+test('«Trabajo», «Base maestra», «Documentos» y «Fuentes» no son destinos de la barra', () => {
+  // Decisiones declaradas, no olvidos: si alguien los devuelve a la barra, esto se pone rojo y hay
+  // que discutirlo. Documentos y Fuentes las sacó el dueño el 23/09/2026 («quitalas de todo»).
   const claves = DESTINOS.map((d) => d.clave)
   assert.ok(!claves.includes('trabajo'))
   assert.ok(!claves.includes('base-maestra'), 'no vuelve como solapa: la absorbió Presupuestos')
-  assert.ok(claves.includes('documentos'))
-  assert.ok(claves.includes('fuentes'))
+  assert.ok(!claves.includes('documentos'))
+  assert.ok(!claves.includes('fuentes'))
 })
 
 test('el filo va SÓLO donde cambia el grupo, y sobre la lista ya filtrada por rol', () => {
   const todas = [...DESTINOS]
-  assert.deepEqual(todas.map((_, i) => hayFiloAntes(todas, i)), [false, false, true, false, false, false, false])
+  assert.deepEqual(todas.map((_, i) => hayFiloAntes(todas, i)), [false, false, true, false, false])
 
   // El filo se calcula sobre la lista YA filtrada: nunca puede quedar uno abriendo la barra, que
   // es lo que pasaría el día que un destino sea sólo de quien ve economía y el cálculo mire la
@@ -50,13 +48,13 @@ test('el filo va SÓLO donde cambia el grupo, y sobre la lista ya filtrada por r
   }
 })
 
-test('el jefe de obra ve los cuatro sin precio: Clientes, Personal, Compras y Fuentes', () => {
+test('el jefe de obra ve los tres sin precio: Clientes, Personal y Compras', () => {
   // Una compra es COSTO, no PRECIO. Lo que el jefe no ve es cuánto se vendió la obra, y eso no está
   // en ninguna de estas tres pantallas. Proveedores no salió de su alcance: entró a Compras, y que
   // siga viéndolo lo comprueba `seccionesDeCompras.test.ts` sobre las cuatro secciones.
   assert.deepEqual(
     destinosVisibles('jefe_obra').map((d) => d.clave),
-    ['clientes', 'personas', 'compras', 'fuentes'],
+    ['clientes', 'personas', 'compras'],
   )
   assert.ok(!destinosVisibles('jefe_obra').some((d) => d.clave === 'documentos'), '/documentos sigue en RUTAS_SOLO_ECONOMIA')
 })
@@ -128,12 +126,11 @@ test('lo que ya no es un destino no enciende ninguna solapa', () => {
   // `/administracion/base-maestra` SÍ enciende, desde el 21/09: la absorbió Presupuestos, porque
   // tareas tipo y recursos son la materia con la que se cotiza.
   assert.equal(areaActiva('/administracion/base-maestra/recursos'), 'presupuestos')
-  assert.equal(areaActiva('/documentos'), 'documentos')
-  assert.equal(areaActiva('/integraciones'), 'fuentes')
-  assert.equal(areaActiva('/integraciones/pedidos-materiales'), 'fuentes', 'Pedidos cuelga de Fuentes por prefijo')
+  assert.equal(areaActiva('/documentos'), null, 'sin solapa desde el 23/09')
+  assert.equal(areaActiva('/integraciones'), null, 'sin solapa desde el 23/09')
   assert.equal(areaActiva('/administracion/usuarios'), null)
   assert.equal(areaActiva('/obras'), null)
-  assert.equal(DESTINOS.length, 7)
+  assert.equal(DESTINOS.length, 5)
 })
 
 test('las dos pantallas del portal se retiraron: ya no encienden nada', () => {
