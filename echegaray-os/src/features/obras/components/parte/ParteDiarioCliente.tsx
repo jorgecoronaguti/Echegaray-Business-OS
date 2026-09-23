@@ -12,11 +12,15 @@
 //                         hoy · Acumulado · Comentario (grilla 1fr 132 116 1fr, filas de 60, input de
 //                         62×30, comentario «opcional» de 30); y debajo «Quién vino» en chips de 38
 //   aside de 380 px       «Novedades del día» (textarea de 88) y la primaria «Guardar el parte» de 38
+//   + (23/09, dueño)      «Fotos y registro del día» debajo de Novedades: grilla de miniaturas 3 por
+//                         fila con descripción, «Agregar fotos» secundario. La 06 no lo dibuja: se
+//                         diseñó con la skill de UI/UX sobre sus medidas (`FotosDelParte`).
 //
 // LO QUE DIBUJA LA M08: la fecha grande con cuadros de 44 y «sin parte cargado», «Frentes en curso»
 // con el cuadro mono de 84×36 a la derecha («no se registra» en la bloqueada), «Gente» en filas de
 // 56 con el cuadro de 64 de horas o «sin marcar», y «Registrar el parte» de 48 sobre la barra. La
-// M08 no dibuja comentario ni novedad: no van en el teléfono.
+// M08 no dibuja comentario ni novedad: no van en el teléfono. Sí va «Fotos» antes del pie (23/09):
+// «Sacar foto» y «Elegir de la galería», dos secundarios de 48; la primaria sigue siendo la del parte.
 //
 // LO QUE NO ESTÁ: clima (el dueño lo retiró), selector de estado (se deriva), «% ítem», «Quién y
 // con qué», equipos, destino de la novedad, horas editables (las horas entran por Personal).
@@ -24,7 +28,7 @@
 // TODO EL PARTE ES UN SOLO FORMULARIO: los renglones y la novedad viajan juntos a `guardarParteDiario`.
 // El que carga a las 18:30 aprieta una vez.
 
-import { startTransition, useActionState, useMemo, useState, type CSSProperties, type FormEvent } from 'react'
+import { startTransition, useActionState, useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import type { ResultadoAccion } from '@/shared/components/ui'
 import type { Actividad, Asignacion, ParteEjecucion } from '../../types'
 import type { HoraDeJornada } from '../../services/ejecucionService'
@@ -37,6 +41,7 @@ import { useAnchoVentana } from '../useAnchoVentana'
 import { C, MONO } from '../canon/tokens'
 import { Ico, P } from '../canon/Ico'
 import { SubNavTrabajo } from '../SubNavTrabajo'
+import { FotosDelParte } from './FotosDelParte'
 
 const EYEBROW: CSSProperties = {
   fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase',
@@ -61,13 +66,15 @@ interface Props {
   hoy: string
   registrosHH?: HoraDeJornada[]
   fallas: string[]
+  /** Quién mira: decide si el visor ofrece «Borrar». `null` = sin perfil legible; no se ofrece. */
+  usuario: { id: string; esAdministracion: boolean } | null
   guardar: (form: FormData) => Promise<ResultadoAccion>
 }
 
 /** Lo ya guardado ese día por actividad: la producción (sumada si hubo más de un parte) y el comentario. */
 type Cargado = Map<string, { produccion: number | null; comentario: string | null }>
 
-export function ParteDiarioCliente({ obraId, actividades, partes, asignaciones, hoy, registrosHH, fallas, guardar }: Props) {
+export function ParteDiarioCliente({ obraId, actividades, partes, asignaciones, hoy, registrosHH, fallas, usuario, guardar }: Props) {
   const telefono = useAnchoVentana() < 768
   const [dia, setDia] = useState(hoy)
   const renglones = useMemo(() => renglonesDelParte(actividades), [actividades])
@@ -102,6 +109,7 @@ export function ParteDiarioCliente({ obraId, actividades, partes, asignaciones, 
       <Formulario
         key={dia} dia={dia} hoy={hoy} cambiarDia={setDia} telefono={telefono}
         renglones={renglones} chips={chips} cargado={cargado} guardar={guardar}
+        fotos={<FotosDelParte obraId={obraId} dia={dia} frentes={renglones} usuario={usuario} telefono={telefono} />}
       />
     </div>
   )
@@ -130,7 +138,7 @@ function NavFecha({ dia, hoy, cambiar }: { dia: string; hoy: string; cambiar: (d
   )
 }
 
-function Formulario({ dia, hoy, cambiarDia, telefono, renglones, chips, cargado, guardar }: {
+function Formulario({ dia, hoy, cambiarDia, telefono, renglones, chips, cargado, guardar, fotos }: {
   dia: string
   hoy: string
   cambiarDia: (d: string) => void
@@ -139,6 +147,8 @@ function Formulario({ dia, hoy, cambiarDia, telefono, renglones, chips, cargado,
   chips: ReturnType<typeof chipsDeGente>
   cargado: Cargado
   guardar: (form: FormData) => Promise<ResultadoAccion>
+  /** El bloque «Fotos y registro del día» / «Fotos», ya armado: se monta una vez por día como el resto. */
+  fotos: ReactNode
 }) {
   const [estado, ejecutar, pendiente] = useActionState<ResultadoAccion | null, FormData>(
     (_p, datos) => guardar(datos), null)
@@ -259,6 +269,8 @@ function Formulario({ dia, hoy, cambiarDia, telefono, renglones, chips, cargado,
             </div>
           ))}
         </div>
+        {/* «Fotos» antes del pie (dueño, 23/09/2026). */}
+        {fotos}
         {resultado}
 
         <div style={{
@@ -379,6 +391,8 @@ function Formulario({ dia, hoy, cambiarDia, telefono, renglones, chips, cargado,
               borderRadius: '6px', font: 'inherit', fontSize: '13px', resize: 'none', background: C.superficie, color: C.tinta,
             }} />
         </div>
+        {/* «Fotos y registro del día» debajo de Novedades (dueño, 23/09/2026). */}
+        {fotos}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
           <button type="submit" disabled={pendiente} data-testid="form-ejecucion-enviar" style={{
             height: '38px', border: 0, borderRadius: '6px', background: C.marca, color: C.grafito, font: 'inherit',

@@ -9,6 +9,10 @@
 // «% ítem», ni destino de la novedad. Por eso acá NO se leen `actividad_partes_resumen`, la gente ni
 // los equipos de los partes, ni los activos de Herramientas. Lo que no se dibuja no se lee.
 //
+// FOTOS Y REGISTRO DEL DÍA (dueño, 23/09/2026): el bloque multimedia se dibuja en el aside de la 06 y
+// antes del pie de la M08. Las filas las pide el cliente por día (`adjuntosDelDia`) porque la fecha
+// se cambia sin recargar; acá sólo se resuelve quién es el usuario para ofrecer «Borrar».
+//
 // `registrar`, `borrarParte`, `equipos`, `cuadrillas` e `integrantes` siguen llegando de la página y
 // NO SE USAN: el parte del diseño se guarda entero con `guardarParteDiario`, y la cuadrilla de cada
 // persona sale de su asignación. Se aceptan para no tocar la página, y se dice.
@@ -18,6 +22,8 @@ import type { AccionFormulario, ResultadoAccion } from '@/shared/components/ui'
 import type { Actividad, ParteEjecucion, Persona } from '../../types'
 import type { HoraDeJornada } from '../../services/ejecucionService'
 import { getAsignaciones } from '../../services/personalService'
+import { getPerfilActual } from '@/features/auth/services/authService'
+import { esAdministracion } from '@/shared/auth/areas'
 import { guardarParteDiario } from '../../services/actionsEjecucion'
 import { ParteDiarioCliente } from './ParteDiarioCliente'
 
@@ -37,8 +43,11 @@ export async function ParteDiario({
   borrarParte?: (parteId: string) => Promise<ResultadoAccion>
 }) {
   const supabase = await createClient()
-  const asignaciones = await getAsignaciones(supabase, obraId)
+  // El perfil decide sólo qué BOTÓN se ofrece en el visor de fotos («Borrar»: quien subió o
+  // Administración); la cerradura es la policy de `obra_parte_adjunto`.
+  const [asignaciones, perfil] = await Promise.all([getAsignaciones(supabase, obraId), getPerfilActual(supabase)])
   const fallas = asignaciones.error ? [asignaciones.error] : []
+  const usuario = perfil.data ? { id: perfil.data.id, esAdministracion: esAdministracion(perfil.data.rol) } : null
   return (
     <ParteDiarioCliente
       obraId={obraId}
@@ -48,6 +57,7 @@ export async function ParteDiario({
       hoy={hoy}
       registrosHH={registrosHH}
       fallas={fallas}
+      usuario={usuario}
       guardar={guardarParteDiario.bind(null, obraId)}
     />
   )
