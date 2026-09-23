@@ -262,3 +262,22 @@ quedaron sin consumidor tras el redirect: código muerto, no borrado.
 - Specs de Playwright que apuntan a `/campo/asistencia` (`tests/asistencia-por-obra`, `asistencia-admin-movil`,
   `horas-declaran-presencia`, `presente-carga-horas-por-defecto`, `design-v2-conformidad`, `shell-dos-areas`) van a seguir el
   redirect; no se corrieron (la suite satura la VM) y hay que revisarlas antes de firmar.
+
+## f. Teléfono por nivel de usuario (dueño, 23/09/2026: «hacé todas las vistas mobile por nivel de usuario»)
+
+**Principio**: una sola pantalla por concepto, con clases responsive; no hay pantallas «mobile» duplicadas salvo
+las que ya existían como producto propio (`/hoy`·`/mi-*` del empleado, `/obra/*` del jefe, `/campo/*`).
+
+| Nivel | Inicio en el teléfono | Barra de abajo (`< md`, `BarraTelefono` · `barraTelefonoDe(rol)`) | Header |
+|---|---|---|---|
+| Dirección / Administración | `/campo` | Campo · Admin. · Obras · Datos · Herram. | sin solapas (están en la barra); lupa, campana y avatar quedan |
+| Jefe de obra | `/obra/hoy` | Mi obra · Campo · Admin. · Obras · Herram. (en `(main)` y en `/campo`) | idem |
+| Empleado | `/hoy` | la suya (Hoy · Trabajo · Horas · Yo) | no entra a `(main)` salvo `/mi-cuenta` |
+| Cliente | `/portal` | la del portal | — |
+
+- Herramientas en el teléfono es siempre `/campo/herramientas/*` (middleware; `?pc=1` fuerza escritorio).
+- Pantallas de escritorio a 390: la página nunca se corre de costado; lo ancho scrollea por dentro (`Tabla minWidth`,
+  `CintaHorizontal`, lienzos); paneles laterales bajan debajo o van en `Drawer`; solapas de nivel 2/3 en una línea corrible
+  (`v2/BarraCorrible`, `CabeceraSeccion`); controles compartidos (`CTRL`) de 48 px y letra 16 bajo `md`.
+- Con aviso «se usa en computadora»: Horas por quincena forzada desde el teléfono (`quincena-en-computadora`). Nada más.
+- Sin versión cómoda (usable con scroll interno): Rodados y Maquinarias de escritorio con `?pc=1`, Gantt de obras.
