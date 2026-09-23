@@ -113,7 +113,7 @@ export async function entregasAbiertasDe(port, mmUserId) {
   const yo = r?.rows?.[0]
   if (!yo?.persona_id) return { perfilId: yo?.perfil_id ?? null, personaId: null, esPrueba: false, abiertas: [] }
   const e = await port.query(
-    `select e.id, e.codigo, e.estructura, o.nombre as obra, o.codigo as obra_codigo
+    `select e.id, e.codigo, e.estructura, e.es_prueba, o.nombre as obra, o.codigo as obra_codigo
        from public.efectivo_entrega e left join public.obra_canonica o on o.id = e.obra_id
       where e.persona_id = $1 and e.anulada_en is null and e.cerrada_en is null
       order by e.fecha, e.numero`, [yo.persona_id])
@@ -169,6 +169,19 @@ export const especialista = {
     const { entrega, motivo } = elegirEntrega(yo.abiertas, texto)
     if (motivo === 'ninguna') return { texto: TEXTO.SIN_ENTREGA, estado: 'rechazado_sin_entrega', privado: false }
     if (!entrega) return { texto: textoAmbigua(yo.abiertas), estado: 'pregunta_entrega', privado: false }
+    // UNA ENTREGA DECLARADA PRUEBA NO ESCRIBE COMPRAS (dueño, 23/09/2026). Es la misma razón por la que
+    // no escribe una persona de prueba: la fila iría a la pestaña real, con su espejo y su descuento de
+    // caja, y después no hay puerta para sacarla. Se contesta —callar es peor— y no se carga nada.
+    if (entrega.es_prueba) {
+      return {
+        texto: [`**${entrega.codigo}** está declarada prueba: no cargo nada en Compras.`, '',
+          'Podés seguir probando el circuito —la foto, la lectura, la firma— y borrar la entrega entera '
+          + 'desde su ficha cuando termines. Para que un ticket entre de verdad, hacelo sobre una '
+          + 'entrega sin la marca de prueba.'].join('\n'),
+        estado: 'rechazado_entrega_prueba',
+        privado: false,
+      }
+    }
 
     // EL POST, NO EL HILO (auditoría 22/09/2026): con el hilo como clave, un segundo ticket mandado en el
     // mismo hilo chocaba contra el primero y quedaba vinculado a su entrega sin registrarse.

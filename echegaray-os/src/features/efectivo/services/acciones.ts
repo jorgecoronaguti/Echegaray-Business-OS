@@ -47,9 +47,12 @@ export async function entregarEfectivoAction(entrada: z.input<typeof entregarSch
   const v = validarEntrega(p.data)
   if (!v.ok) return { ok: false, error: v.error }
   if (!z.string().uuid().safeParse(v.dato.persona).success) return { ok: false, error: 'Elegí a quién se le entrega.' }
+  // LA SOBRECARGA DE 7, SIEMPRE. `p_es_prueba` en false hace exactamente lo mismo que la de 6, y con un
+  // solo camino no hay manera de que la prueba se cree por una puerta y se lea por otra.
   return rpc<string>('entregar_efectivo', {
     p_persona: v.dato.persona, p_obra: v.dato.obra, p_estructura: v.dato.estructura,
     p_monto: v.dato.monto, p_para_que: v.dato.paraQue, p_fecha: null,
+    p_es_prueba: v.dato.esPrueba,
   })
 }
 
@@ -108,11 +111,23 @@ export async function cerrarEntregaAction(entrega: string): Promise<Resultado> {
 
 const motivoSchema = z.object({ id: uuid, motivo: texto(400).min(1, 'Escribí el motivo') })
 
-/** Sólo un error de carga, antes de que tenga rendiciones o devoluciones (lo exige la base). */
+/** Un error de carga. Desde la 20260923T0100 anular también borra la devolución y descarta los tickets
+ *  en camino; lo único que la base sigue negando es anular con un comprobante ya cargado en Compras. */
 export async function anularEntregaAction(entrada: z.input<typeof motivoSchema>): Promise<Resultado> {
   const p = motivoSchema.safeParse(entrada)
   if (!p.success) return { ok: false, error: p.error.issues[0].message }
   return rpc<null>('anular_entrega_efectivo', { p_entrega: p.data.id, p_motivo: p.data.motivo })
+}
+
+/**
+ * BORRAR UNA PRUEBA, ENTERA. Sólo si la entrega se declaró prueba al crearla: la base lo exige y acá no
+ * se pregunta de nuevo, se deja que conteste ella (un permiso que se valida en dos lugares se
+ * desincroniza en uno). Una entrega real no se borra nunca — se anula, y el rastro queda.
+ */
+export async function borrarEntregaDePruebaAction(entrada: { id: string }): Promise<Resultado<string>> {
+  const p = z.object({ id: uuid }).safeParse(entrada)
+  if (!p.success) return { ok: false, error: p.error.issues[0].message }
+  return rpc<string>('borrar_entrega_de_prueba', { p_entrega: p.data.id })
 }
 
 /**

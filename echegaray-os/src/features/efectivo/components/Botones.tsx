@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import { useRef, useState, useTransition } from 'react'
 import type { Entrega } from '../types'
 import { entregasCsv } from '../logica/entregas'
-import { anularEntregaAction, reclamarRendicionAction } from '../services/acciones'
+import { anularEntregaAction, borrarEntregaDePruebaAction, reclamarRendicionAction } from '../services/acciones'
 import { subirConformidadEnPapel } from '../services/subida'
 import { ACCEPT_PAGO } from '@/features/administracion/services/comprobanteDePago'
 import { V, botonClaro, campo } from './estilo'
@@ -131,6 +131,61 @@ export function AnularEntrega({ entrega, volverHref, devuelto = false, tickets =
         </span>
       )}
       {error && <span role="alert" style={{ fontSize: '12px', color: V.neg }}>{error}</span>}
+    </span>
+  )
+}
+
+/**
+ * BORRAR UNA PRUEBA. Sólo se dibuja si la entrega se declaró prueba al crearla, y la base lo vuelve a
+ * exigir: una entrega real no se borra desde ninguna puerta.
+ *
+ * PIDE ESCRIBIR EL CÓDIGO. Borrar no se deshace, y un botón que borra al primer clic borra la entrega
+ * de al lado tarde o temprano. Tipear «ER-0007» tarda tres segundos y no hay forma de hacerlo sin
+ * querer.
+ */
+export function BorrarPrueba({ entrega, codigo, volverHref }: {
+  entrega: string
+  codigo: string
+  volverHref: string
+}) {
+  const router = useRouter()
+  const [abierto, setAbierto] = useState(false)
+  const [escrito, setEscrito] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [pendiente, empezar] = useTransition()
+
+  if (!abierto) {
+    return (
+      <button
+        type="button" onClick={() => setAbierto(true)} data-testid="borrar-prueba"
+        style={{ fontSize: '12.5px', color: V.neg, textDecoration: 'underline', textUnderlineOffset: 2 }}
+      >
+        Borrar esta prueba
+      </button>
+    )
+  }
+  const borrar = () => empezar(async () => {
+    const r = await borrarEntregaDePruebaAction({ id: entrega })
+    if (!r.ok) { setError(r.error); return }
+    router.push(volverHref)
+  })
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <input
+        value={escrito} onChange={(e) => setEscrito(e.target.value)} placeholder={codigo} maxLength={12}
+        style={{ ...campo, height: 30, width: 130 }} aria-label={`Escribí ${codigo} para borrar`}
+      />
+      <button
+        type="button" onClick={borrar} disabled={pendiente || escrito.trim().toUpperCase() !== codigo}
+        style={{ ...botonClaro, height: 30, color: V.neg }} data-testid="borrar-prueba-confirmar"
+      >
+        {pendiente ? 'Borrando…' : 'Borrar del todo'}
+      </button>
+      <button type="button" onClick={() => setAbierto(false)} style={{ fontSize: '12.5px', color: V.apagado }}>Cancelar</button>
+      <span style={{ flexBasis: '100%', fontSize: '12px', color: V.apagado }}>
+        Escribí <strong>{codigo}</strong> para confirmar. No se puede deshacer: no queda nada en la app.
+      </span>
+      {error && <span role="alert" style={{ fontSize: '12px', color: V.neg, flexBasis: '100%' }}>{error}</span>}
     </span>
   )
 }

@@ -11,7 +11,7 @@ import {
 } from '../logica/entregas'
 import { urlEfectivo, urlFilaDeCompras } from '../logica/url'
 import type { ExtraDeFicha } from '../services/datos'
-import { AnularEntrega, ReclamarRendicion, SubirPapel } from './Botones'
+import { AnularEntrega, BorrarPrueba, ReclamarRendicion, SubirPapel } from './Botones'
 import { ALTO_V2, HOVER_FILA } from '@/shared/components/v2/patron'
 import { COLOR_TONO, FONDO_OBSERVADO, MONO, V, botonClaro, botonOscuro, cifraFicha, eyebrow, punto } from './estilo'
 
@@ -56,6 +56,7 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
   const porImputar = pendientes.reduce((s, c) => s + (totalLeido(c) ?? 0), 0)
   const filas = filasDeLaFicha(comprobantes, rendiciones, extra.compras)
   const abierta = e.estado === 'abierta'
+  const esPrueba = e.es_prueba === true
   const primero = pendientes.at(-1) ?? null
   // ANULAR ES «ESTA ENTREGA NO DEBIÓ EXISTIR», y eso no deja de ser cierto porque haya un vuelto
   // registrado o un ticket sacado: la base (20260923T0100) borra la devolución y descarta los
@@ -64,6 +65,20 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
   const anulable = abierta && e.filas_rendidas === 0
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }} data-testid="ficha-entrega" data-codigo={e.codigo}>
+      {/* LO PRIMERO QUE SE LEE. Una prueba que se confunde con una entrega real ensucia el número de
+          plata en la calle que alguien va a mirar para decidir. */}
+      {esPrueba && (
+        <div
+          data-testid="ficha-es-prueba"
+          style={{
+            border: `1px solid ${V.warn}`, borderRadius: 10, padding: '10px 14px', background: '#FDF6EE',
+            fontSize: '12.5px', color: V.warn, lineHeight: 1.45,
+          }}
+        >
+          <strong>Esta entrega es una prueba.</strong> No sale de la CAJA, sus tickets no se cargan en
+          Compras, y se puede borrar entera.
+        </div>
+      )}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between" style={{ columnGap: 30 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
           <div style={{
@@ -178,6 +193,9 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
             e={e} papelUrl={extra.papelUrl} fotos={comprobantes.filter((c) => c.storage_path).length}
             destino={nombreDestino} devoluciones={devoluciones}
           />
+          {/* UNA PRUEBA SE BORRA; UNA ENTREGA REAL SE ANULA. Las dos puertas no conviven por capricho:
+              lo que nunca tocó la caja ni Compras puede desaparecer, lo que sí tocó deja rastro. */}
+          {e.es_prueba && <BorrarPrueba entrega={e.id} codigo={e.codigo} volverHref={urlEfectivo({})} />}
           {anulable && (
             <AnularEntrega
               entrega={e.id} volverHref={urlEfectivo({})}

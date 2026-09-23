@@ -84,6 +84,10 @@ export function esperando(c: Pick<Comprobante, 'estado'>): boolean {
  * la cuenta. «Lista para cerrar» es en su poder = 0 con todo imputado. Si rindió MÁS de lo entregado, la
  * cuenta queda negativa y se dice: es plata que la empresa le debe a la persona.
  */
+/** Una entrega declarada prueba lo dice SIEMPRE y en primer lugar: si se confunde con una real, el
+ *  número de «en la calle» que alguien lea en la lista está mal. */
+export const esPruebaDe = (e: Pick<Entrega, 'es_prueba'>) => e.es_prueba === true
+
 export function estadoDeEntrega(e: Entrega, comprobantes: readonly Pick<Comprobante, 'estado'>[]): { texto: string; tono: Tono } {
   if (e.estado === 'anulada') return { texto: 'Anulada', tono: 'apagado' }
   if (e.estado === 'cerrada') return { texto: `Cerrada ${ddmm(e.cerrada_en)}`.trim(), tono: 'apagado' }

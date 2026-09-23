@@ -24,12 +24,14 @@ export interface Entrega {
   cerrada_en: string | null
   anulada_en: string | null
   anulada_motivo: string | null
+  /** Declarada prueba al crearla: no llega a la CAJA ni a Compras, y se puede borrar entera. */
+  es_prueba: boolean
 }
 
 export const COLUMNAS_ENTREGA = [
   'id', 'codigo', 'persona_id', 'persona', 'obra_id', 'obra', 'estructura', 'fecha', 'entregado', 'rendido',
   'filas_rendidas', 'devuelto', 'en_su_poder', 'conformidad', 'estado', 'para_que', 'conformidad_en', 'cerrada_en',
-  'anulada_en', 'anulada_motivo',
+  'anulada_en', 'anulada_motivo', 'es_prueba',
 ].join(', ')
 
 /** El estado que ve la gente, derivado por la vista `efectivo_comprobante_estado` — nunca tipeado. */

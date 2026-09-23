@@ -15,6 +15,8 @@ export interface BorradorEntrega {
   obra: string
   monto: string
   paraQue: string
+  /** Declarada prueba: no toca la CAJA ni Compras, y después se borra entera. */
+  esPrueba?: boolean
 }
 
 export interface EntregaValida {
@@ -23,6 +25,7 @@ export interface EntregaValida {
   estructura: boolean
   monto: number
   paraQue: string | null
+  esPrueba: boolean
 }
 
 export type Validacion<T> = { ok: true; dato: T } | { ok: false; error: string; campo: string }
@@ -48,6 +51,9 @@ export function validarEntrega(b: BorradorEntrega): Validacion<EntregaValida> {
       estructura: b.destino === 'estructura',
       monto: m.dato,
       paraQue: b.paraQue.trim() || null,
+      // Se declara al crearla y no se puede cambiar después: una entrega que ya salió a la caja no
+      // puede volverse prueba para poder borrarla.
+      esPrueba: b.esPrueba === true,
     },
   }
 }

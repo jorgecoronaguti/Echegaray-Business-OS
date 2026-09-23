@@ -16,7 +16,7 @@ const entrega = (x: Partial<Entrega> = {}): Entrega => ({
   id: 'e1', codigo: 'ER-0147', persona_id: 'p-sosa', persona: 'Rubén Sosa', obra_id: 'OB-8', obra: 'Galpón 8',
   estructura: false, fecha: '2026-09-16', entregado: 1_200_000, rendido: 840_300, filas_rendidas: 11, devuelto: 0,
   en_su_poder: 359_700, conformidad: true, estado: 'abierta', para_que: null, conformidad_en: '2026-09-16T12:12:00Z',
-  cerrada_en: null, anulada_en: null, anulada_motivo: null, ...x,
+  cerrada_en: null, anulada_en: null, anulada_motivo: null, es_prueba: false, ...x,
 })
 
 const comp = (estado: Comprobante['estado'], x: Partial<Comprobante> = {}): Comprobante => ({
@@ -204,7 +204,7 @@ const borrador = { persona: 'p-sosa', destino: 'obra' as const, obra: 'OB-8', mo
 
 test('entrega válida: el monto se lee en es-AR y el para qué se recorta', () => {
   assert.deepEqual(validarEntrega(borrador), {
-    ok: true, dato: { persona: 'p-sosa', obra: 'OB-8', estructura: false, monto: 800_000, paraQue: 'Áridos' },
+    ok: true, dato: { persona: 'p-sosa', obra: 'OB-8', estructura: false, monto: 800_000, paraQue: 'Áridos', esPrueba: false },
   })
   const e = validarEntrega({ ...borrador, destino: 'estructura', obra: 'OB-8', paraQue: '' })
   assert.ok(e.ok)
@@ -316,4 +316,18 @@ test('«anuladas» es un filtro válido de la URL y «abiertas» sigue siendo el
   assert.equal(filtroDeLista('anuladas'), 'anuladas')
   assert.equal(filtroDeLista('cualquiera'), 'abiertas')
   assert.equal(filtroDeLista(null), 'abiertas')
+})
+
+test('una entrega declarada prueba lo lleva escrito hasta la base', () => {
+  // El dueño va a probar el módulo entero con gente y obras reales. Si la marca se pierde en el camino,
+  // la prueba sale de la CAJA de verdad y después no hay puerta para sacarla.
+  const v = validarEntrega({
+    persona: 'p-sosa', destino: 'estructura', obra: '', monto: '1.000', paraQue: 'prueba', esPrueba: true,
+  })
+  assert.equal(v.ok, true)
+  assert.equal(v.ok && v.dato.esPrueba, true)
+
+  // Y sin el check, jamás: el default no puede ser «prueba» ni por omisión.
+  const real = validarEntrega({ persona: 'p-sosa', destino: 'estructura', obra: '', monto: '1.000', paraQue: '' })
+  assert.equal(real.ok && real.dato.esPrueba, false)
 })
