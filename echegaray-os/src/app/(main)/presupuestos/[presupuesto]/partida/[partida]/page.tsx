@@ -125,7 +125,8 @@ export default async function PartidaPage({
           izquierda `flex:1;minWidth:520px` y a la derecha 392px, así que debajo de ~930px el panel
           baja solo en vez de estrangular la tabla de insumos. */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 20px 24px', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: MIN_COLUMNA_FICHA }}>
+          {/* `min(…, 100%)`: a 390 px el mínimo de 520 arrastraba la página de costado. */}
+          <div style={{ flex: 1, minWidth: `min(${MIN_COLUMNA_FICHA}px, 100%)` }}>
             {/* EL TOGGLE «Usa base maestra ↔ Análisis propio» SE FUE, y no por prolijidad: era un
                 control dibujado sobre una capacidad que la base no tiene. Una pantalla con un
                 interruptor apagado promete que existe la otra posición. El canon 16 no lo dibuja y
@@ -159,7 +160,7 @@ export default async function PartidaPage({
             )}
           </div>
 
-          <aside style={{ width: PANEL.analisis, flexShrink: 0, minWidth: 0 }}>
+          <aside style={{ width: `min(${PANEL.analisis}px, 100%)`, flexShrink: 0, minWidth: 0 }}>
             {/* ═══ EL COSTO UNITARIO, ARMADO (Design 23/08 · pantalla 16) ═══
                 Eran cuatro barras de incidencia con su porcentaje. La incidencia sigue —ahora en la
                 cabecera de cada sección de la izquierda, al lado de su subtotal— y este bloque pasa

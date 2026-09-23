@@ -47,9 +47,9 @@ export function ComposerInicial({ enviando, error, onEnviar }: {
   const enviar = () => { if (puedeEnviar) onEnviar(mensaje.trim(), archivos) }
 
   return (
-    <div className="flex flex-1 items-center justify-center px-20 py-16" data-testid="composer-inicial">
+    <div className="flex flex-1 items-center justify-center px-5 py-8 sm:px-10 sm:py-12 lg:px-20 lg:py-16" data-testid="composer-inicial">
       <div className="w-full" style={{ maxWidth: 700 }}>
-        <h2 className="m-0 text-[32px] font-semibold" style={{ letterSpacing: '-.022em', color: C.tinta }}>
+        <h2 className="m-0 text-[26px] font-semibold sm:text-[32px]" style={{ letterSpacing: '-.022em', color: C.tinta }}>
           Contame qué hay que cotizar
         </h2>
         <p className="mt-3.5 max-w-[580px] text-[14.5px] leading-[1.7]" style={{ color: C.tintaSuave, textWrap: 'pretty' }}>
@@ -119,7 +119,7 @@ function ZonaDeArchivos({ onAbrir, onSoltar }: { onAbrir: () => void; onSoltar: 
       onDragLeave={() => setSobre(false)}
       onDrop={(e) => { e.preventDefault(); setSobre(false); if (e.dataTransfer.files.length) onSoltar(e.dataTransfer.files) }}
       data-testid="zona-archivos"
-      className="mt-[34px] flex cursor-pointer flex-col items-center gap-4 rounded-[10px] border border-dashed px-10 py-11"
+      className="mt-[34px] flex cursor-pointer flex-col items-center gap-4 rounded-[10px] border border-dashed px-5 py-8 text-center sm:px-10 sm:py-11"
       style={{ borderColor: sobre ? C.grafito : C.lineaFuerte, background: C.superficieTenue }}
     >
       <IconoSubir />

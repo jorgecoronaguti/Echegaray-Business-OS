@@ -36,11 +36,11 @@ export function ConversacionLectura({
 
   return (
     <div
-      className="flex h-[480px] flex-none flex-col border-b border-line xl:h-auto xl:w-[912px] xl:border-b-0 xl:border-r"
+      className="flex h-[380px] flex-none flex-col border-b border-line md:h-[480px] xl:h-auto xl:w-[912px] xl:border-b-0 xl:border-r"
       style={{ minHeight: 0 }}
       data-testid="columna-conversacion"
     >
-      <div className="flex flex-none items-start gap-6" style={{ padding: '24px 34px 0' }}>
+      <div className="flex flex-none flex-wrap items-start gap-x-6 gap-y-3 px-4 pt-5 sm:px-[34px] sm:pt-6">
         <span className="flex-1" style={{ fontSize: 17.5, fontWeight: 600, letterSpacing: '-.014em', color: C.tinta }}>
           Razonamiento del cotizador
         </span>
@@ -63,7 +63,7 @@ export function ConversacionLectura({
         )}
       </div>
 
-      <div className="flex flex-none items-center gap-4" style={{ padding: '20px 34px 16px', borderBottom: `1px solid ${C.lineaFila}` }}>
+      <div className="flex flex-none items-center gap-4 px-4 pb-4 pt-5 sm:px-[34px]" style={{ borderBottom: `1px solid ${C.lineaFila}` }}>
         <span className="flex-1 overflow-hidden rounded" style={{ height: 3, background: C.lineaFila }}>
           <span className="block h-full" style={{ width: `${progreso.pctAncho}%`, background: progreso.completo ? C.marca : C.grafito }} />
         </span>
@@ -72,7 +72,7 @@ export function ConversacionLectura({
         </span>
       </div>
 
-      <div className="flex flex-1 flex-col overflow-auto" style={{ padding: '0 34px 40px', minHeight: 0 }} data-testid="lista-pasos">
+      <div className="flex flex-1 flex-col overflow-auto px-4 pb-10 sm:px-[34px]" style={{ minHeight: 0 }} data-testid="lista-pasos">
         {pasos.map((p, i) => (
           <TurnoPaso
             key={p.id} paso={p} esUltimo={i === pasos.length - 1}

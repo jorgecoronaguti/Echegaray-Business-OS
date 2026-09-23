@@ -68,6 +68,8 @@ import { C } from '@/shared/components/canon'
 export const dynamic = 'force-dynamic'
 
 /** El alto de la barra de identidad, en píxeles. Se usa para calcular el de las dos columnas. */
+/** Alto de la barra de identidad. El `45px` del `xl:h-[calc(…)]` del split es ESTE número: Tailwind
+ *  no compila una clase armada en runtime, así que va literal y se ata acá. */
 const BARRA = 45
 
 export default async function PresupuestoPage({
@@ -169,12 +171,15 @@ export default async function PresupuestoPage({
       {/* LAS DOS COLUMNAS. A partir de 1280 cada una tiene su propio scroll y el conjunto ocupa
           exactamente la ventana: la conversación no se va de pantalla al recorrer 68 partidas, que
           es lo que hacía la versión apilada. Debajo de 1280 se apila, con la conversación arriba. */}
+      {/* EN EL TELÉFONO (< 768) EL PRESUPUESTO VA PRIMERO Y LA CONVERSACIÓN ABAJO: quien abre desde
+          el celular quiere ver el precio y las partidas, no 520 px de chat antes del dato. La altura
+          fija de la ventana sólo rige desde `xl`, donde las dos columnas scrollean por dentro; apilado,
+          la página scrollea entera y ningún bloque se recorta. */}
       <div
-        className="relative flex min-w-0 flex-col xl:flex-row"
-        style={{ height: `calc(100dvh - var(--os-header-h) - ${BARRA}px)` }}
+        className="relative flex min-w-0 flex-col xl:h-[calc(100dvh-var(--os-header-h)-45px)] xl:flex-row"
       >
         <div
-          className="flex h-[520px] flex-none border-b border-line xl:h-auto xl:w-[648px] xl:border-b-0 xl:border-r"
+          className="flex h-[440px] flex-none border-b border-line max-md:order-last max-md:border-b-0 max-md:border-t md:h-[520px] xl:h-auto xl:w-[648px] xl:border-b-0 xl:border-r"
           data-testid="columna-conversacion"
         >
           <Conversacion
@@ -225,7 +230,7 @@ export default async function PresupuestoPage({
                 de la izquierda no se puede alcanzar scrolleando: la columna PARTIDA quedaba
                 cortada contra el borde y no había forma de llegar a ella. Con márgenes automáticos
                 el desborde arranca en el borde izquierdo, que es de donde se lee. */}
-            <div className="px-5 py-6">
+            <div className="px-4 py-5 sm:px-5 sm:py-6">
               {url.vista === 'oferta' ? (
                 <VistaOferta
                   oferta={ofertaDe(vivo.partidas, vivo.cascada)}
@@ -302,7 +307,7 @@ function BarraIdentidad({ presupuesto, nVersiones, acciones }: {
   return (
     <div
       data-testid="barra-presupuesto"
-      className="flex flex-none items-center gap-3 overflow-hidden border-b border-line px-5"
+      className="flex flex-none items-center gap-3 overflow-hidden border-b border-line px-4 sm:px-5"
       style={{ height: BARRA - 1, background: C.superficie }}
     >
       <Link href="/presupuestos" className="text-[12px] text-muted">Cartera</Link>
@@ -310,13 +315,15 @@ function BarraIdentidad({ presupuesto, nVersiones, acciones }: {
       <span className="truncate text-[13px] font-semibold text-ink">
         {presupuesto.obra_nombre ?? 'sin objeto'}
       </span>
-      <span className="truncate text-[12px] text-muted">{presupuesto.cliente ?? 'sin cliente'}</span>
-      <span className="font-mono text-[11.5px] tabular-nums text-faint">
+      {/* A 390 px sólo caben la miga, el nombre y las acciones: cliente, número y estado se leen en
+          el cuerpo (encabezado vivo y lista) y acá se esconden por debajo de `sm`. */}
+      <span className="hidden truncate text-[12px] text-muted sm:inline">{presupuesto.cliente ?? 'sin cliente'}</span>
+      <span className="hidden font-mono text-[11.5px] tabular-nums text-faint sm:inline">
         {presupuesto.numero ?? 'sin número'} · rev {presupuesto.version}
         {!presupuesto.vigente && ' · reemplazada'}
         {nVersiones > 1 && ` · ${nVersiones} versiones`}
       </span>
-      <span className="whitespace-nowrap text-[11.5px] text-muted">{e.label}</span>
+      <span className="hidden whitespace-nowrap text-[11.5px] text-muted sm:inline">{e.label}</span>
       <div className="flex-1" />
       {acciones}
     </div>
@@ -379,7 +386,7 @@ function Costos({
     // superpone con la descripción y la columna COSTO queda cortada contra el borde. Con el mínimo, el
     // contenedor scrollea de lado y la tabla conserva sus proporciones. Es una limitación real de
     // poner 648 px fijos al lado de una tabla ancha, y se resuelve scrolleando, no comprimiendo.
-    <div className="mx-auto flex w-full min-w-[900px] max-w-[1000px] flex-col gap-7">
+    <div className="mx-auto flex w-full max-w-[1000px] flex-col gap-7 xl:min-w-[900px]">
       {subFuera.n > 0 && (
         // HUECO DEL MODELO, MEDIDO EL 21/08/2026 — no una precaución teórica. La vista valoriza con
         // `coalesce(costo_unitario, analisis)` y una subcontratada no tiene ninguno de los dos: su
