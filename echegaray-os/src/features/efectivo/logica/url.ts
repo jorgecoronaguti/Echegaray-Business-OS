@@ -1,6 +1,6 @@
 // LA URL DE «EFECTIVO A RENDIR». Todo el estado vive acá: se comparte con un enlace y vuelve con «atrás».
 //
-//   /administracion/compras?vista=a-rendir                       D01 la lista (f=todas|obra recorta)
+//   /administracion/compras?vista=a-rendir                       D01 la lista (f=todas|obra|anuladas recorta)
 //   …&panel=entregar                                             D02 sobre D01
 //   …&entrega=ER-0147                                            D03 la ficha
 //   …&entrega=ER-0147&panel=devolucion                           D06 sobre D03
@@ -9,7 +9,7 @@
 export const RUTA = '/administracion/compras'
 
 export interface EstadoURL {
-  f?: 'abiertas' | 'todas' | 'obra'
+  f?: 'abiertas' | 'todas' | 'obra' | 'anuladas'
   entrega?: string | null
   panel?: 'entregar' | 'devolucion' | null
   comprobante?: string | null

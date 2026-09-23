@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { Comprobante, Entrega, Rendicion } from '../types.ts'
 import {
-  actividadDe, conteosDeCampanita, diasDeEntrega, diasEntre, entregasCsv, estadoDeEntrega, filasDeLaFicha, ordenarLista, pesos, quienTieneEfectivo, ROTULO_COMPROBANTE, queFalta, resumir,
+  actividadDe, conteosDeCampanita, diasDeEntrega, diasEntre, entregasCsv, estadoDeEntrega, filasDeLaFicha, filtroDeLista, ordenarLista, pesos, quienTieneEfectivo, ROTULO_COMPROBANTE, queFalta, resumir,
   sinRendirDe, totalLeido,
 } from './entregas.ts'
 import {
@@ -291,4 +291,29 @@ test('otros errores: check, clave foránea y lo desconocido', () => {
   assert.match(mensajeDeError({ code: '23503', message: 'fk' }), /ya no existe/)
   assert.equal(mensajeDeError({ code: 'XX', message: '' }), 'No se pudo registrar. Probá de nuevo.')
   assert.equal(pesos(-1500), '−$ 1.500')
+})
+
+// ═══ LO ANULADO NO SE MEZCLA CON LO QUE OCURRIÓ (dueño, 22/09/2026) ═══
+//
+// Las pruebas del módulo dejaron tres entregas anuladas que no había forma de sacar de la vista, y
+// «Todas» las ponía al lado de las cerradas. Una anulada no es una entrega que terminó: es una que no
+// existió. Si vuelve a colarse en «Todas», estos dos se ponen rojos.
+
+test('«Todas» muestra lo que ocurrió; las anuladas tienen su propio cajón', () => {
+  const lista = [
+    entrega({ id: 'a1', codigo: 'ER-0201' }),
+    entrega({ id: 'a2', codigo: 'ER-0202', estado: 'cerrada', en_su_poder: 0 }),
+    entrega({ id: 'a3', codigo: 'ER-0203', estado: 'anulada', en_su_poder: 0 }),
+  ]
+  const todas = ordenarLista(lista, 'todas')[0].entregas.map((e) => e.codigo)
+  assert.deepEqual(todas, ['ER-0201', 'ER-0202'])
+
+  const anuladas = ordenarLista(lista, 'anuladas')[0].entregas.map((e) => e.codigo)
+  assert.deepEqual(anuladas, ['ER-0203'])
+})
+
+test('«anuladas» es un filtro válido de la URL y «abiertas» sigue siendo el default', () => {
+  assert.equal(filtroDeLista('anuladas'), 'anuladas')
+  assert.equal(filtroDeLista('cualquiera'), 'abiertas')
+  assert.equal(filtroDeLista(null), 'abiertas')
 })

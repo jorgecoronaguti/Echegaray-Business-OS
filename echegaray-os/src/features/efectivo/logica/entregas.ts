@@ -126,10 +126,10 @@ export function resumir(
   }
 }
 
-export type FiltroLista = 'abiertas' | 'todas' | 'obra'
+export type FiltroLista = 'abiertas' | 'todas' | 'obra' | 'anuladas'
 
 export function filtroDeLista(v: string | null | undefined): FiltroLista {
-  return v === 'todas' || v === 'obra' ? v : 'abiertas'
+  return v === 'todas' || v === 'obra' || v === 'anuladas' ? v : 'abiertas'
 }
 
 /** Destino económico en dos líneas: la obra y su cliente, o «Estructura · sin obra». */
@@ -139,14 +139,26 @@ export function destinoDe(e: Pick<Entrega, 'estructura' | 'obra' | 'obra_id'>, c
 }
 
 /**
- * LA LISTA DE D01. «Abiertas» es lo que decide hoy; «Todas» suma las cerradas y anuladas; «Por obra»
- * son todas las abiertas agrupadas por destino (Estructura al final).
+ * LA LISTA DE D01. «Abiertas» es lo que decide hoy; «Todas» suma las cerradas; «Por obra» son todas
+ * las abiertas agrupadas por destino (Estructura al final).
+ *
+ * ═══ LO ANULADO NO ESTÁ EN NINGUNA DE LAS TRES (dueño, 22/09/2026) ═══
+ *
+ * Una entrega anulada es una que NO EXISTIÓ: su monto no es plata en la calle, su persona no debe
+ * nada y su obra no gastó. Mezclarla con las cerradas —que sí ocurrieron y sí terminaron— hace que
+ * la lista de «Todas» no se pueda leer de un saque, y fue justo lo que pasó con las pruebas del
+ * módulo: tres entregas anuladas que no había forma de sacar de la vista. Se ven pidiéndolas, en su
+ * propio chip.
  */
 export function ordenarLista(entregas: readonly Entrega[], filtro: FiltroLista): { grupo: string | null; entregas: Entrega[] }[] {
   const porCodigo = (a: Entrega, b: Entrega) => b.codigo.localeCompare(a.codigo)
+  if (filtro === 'anuladas') {
+    return [{ grupo: null, entregas: entregas.filter((e) => e.estado === 'anulada').sort(porCodigo) }]
+  }
   if (filtro === 'todas') {
-    const rango = (e: Entrega) => (e.estado === 'abierta' ? 0 : e.estado === 'cerrada' ? 1 : 2)
-    return [{ grupo: null, entregas: [...entregas].sort((a, b) => rango(a) - rango(b) || porCodigo(a, b)) }]
+    const vivas = entregas.filter((e) => e.estado !== 'anulada')
+    const rango = (e: Entrega) => (e.estado === 'abierta' ? 0 : 1)
+    return [{ grupo: null, entregas: [...vivas].sort((a, b) => rango(a) - rango(b) || porCodigo(a, b)) }]
   }
   const abiertas = entregas.filter((e) => e.estado === 'abierta').sort(porCodigo)
   if (filtro === 'abiertas') return [{ grupo: null, entregas: abiertas }]

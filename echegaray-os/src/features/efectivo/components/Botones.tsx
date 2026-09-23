@@ -90,7 +90,14 @@ export function ReclamarRendicion({ entrega, ultimo }: { entrega: string; ultimo
 }
 
 /** ANULAR — sólo un error de carga y con motivo. La base rechaza si ya tiene rendiciones o devoluciones. */
-export function AnularEntrega({ entrega, volverHref }: { entrega: string; volverHref: string }) {
+export function AnularEntrega({ entrega, volverHref, devuelto = false, tickets = 0 }: {
+  entrega: string
+  volverHref: string
+  /** La entrega tiene un vuelto registrado: anularla lo borra, y eso se dice antes. */
+  devuelto?: boolean
+  /** Tickets todavía en camino: la anulación los descarta con su motivo. */
+  tickets?: number
+}) {
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
   const [motivo, setMotivo] = useState('')
@@ -115,6 +122,14 @@ export function AnularEntrega({ entrega, volverHref }: { entrega: string; volver
         {pendiente ? 'Anulando…' : 'Anular'}
       </button>
       <button type="button" onClick={() => setAbierto(false)} style={{ fontSize: '12.5px', color: V.apagado }}>Cancelar</button>
+      {(devuelto || tickets > 0) && (
+        <span style={{ fontSize: '12px', color: V.apagado, flexBasis: '100%' }} data-testid="anular-arrastra">
+          {[
+            devuelto ? 'se borra la devolución registrada' : null,
+            tickets > 0 ? `${tickets} ticket${tickets === 1 ? '' : 's'} queda${tickets === 1 ? '' : 'n'} descartado${tickets === 1 ? '' : 's'}` : null,
+          ].filter(Boolean).join(' · ')}
+        </span>
+      )}
       {error && <span role="alert" style={{ fontSize: '12px', color: V.neg }}>{error}</span>}
     </span>
   )

@@ -59,9 +59,11 @@ export function ListaEntregas({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: '13.5px', fontWeight: 600 }}>{filtro === 'todas' ? 'Todas las entregas' : 'Entregas abiertas'}</div>
+        <div style={{ fontSize: '13.5px', fontWeight: 600 }}>{filtro === 'todas' ? 'Todas las entregas' : filtro === 'anuladas' ? 'Entregas anuladas' : 'Entregas abiertas'}</div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }} data-testid="efectivo-recortes">
-          {([['abiertas', 'Abiertas'], ['todas', 'Todas'], ['obra', 'Por obra']] as const).map(([f, t]) => (
+          {/* «Anuladas» va último y sin número: no es un estado de trabajo, es el cajón de lo que no
+              existió. Se entra cuando se lo busca. */}
+          {([['abiertas', 'Abiertas'], ['todas', 'Todas'], ['obra', 'Por obra'], ['anuladas', 'Anuladas']] as const).map(([f, t]) => (
             <Link key={f} href={urlEfectivo({ f })} prefetch={false} scroll={false} style={chip(filtro === f)} aria-current={filtro === f ? 'true' : undefined}>
               {t}
             </Link>

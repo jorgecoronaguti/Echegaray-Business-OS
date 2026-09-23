@@ -57,7 +57,11 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
   const filas = filasDeLaFicha(comprobantes, rendiciones, extra.compras)
   const abierta = e.estado === 'abierta'
   const primero = pendientes.at(-1) ?? null
-  const anulable = abierta && e.filas_rendidas === 0 && e.devuelto === 0
+  // ANULAR ES «ESTA ENTREGA NO DEBIÓ EXISTIR», y eso no deja de ser cierto porque haya un vuelto
+  // registrado o un ticket sacado: la base (20260923T0100) borra la devolución y descarta los
+  // tickets en camino. Lo único que lo impide es un comprobante YA CARGADO EN COMPRAS —esa fila vive
+  // en el Sheet y se deshace descartando el comprobante—, y de eso avisa el botón antes de intentar.
+  const anulable = abierta && e.filas_rendidas === 0
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }} data-testid="ficha-entrega" data-codigo={e.codigo}>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between" style={{ columnGap: 30 }}>
@@ -174,7 +178,15 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
             e={e} papelUrl={extra.papelUrl} fotos={comprobantes.filter((c) => c.storage_path).length}
             destino={nombreDestino} devoluciones={devoluciones}
           />
-          {anulable && <AnularEntrega entrega={e.id} volverHref={urlEfectivo({})} />}
+          {anulable && (
+            <AnularEntrega
+              entrega={e.id} volverHref={urlEfectivo({})}
+              // Lo que se va a deshacer, DICHO ANTES de apretar: nadie anula a ciegas una entrega
+              // que ya tiene plata devuelta.
+              devuelto={e.devuelto > 0}
+              tickets={pendientes.length}
+            />
+          )}
           {e.estado === 'anulada' && e.anulada_motivo && (
             <div style={{ fontSize: '12.5px', color: V.apagado }}>Anulada: {e.anulada_motivo}</div>
           )}
