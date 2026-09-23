@@ -391,8 +391,8 @@ export function TabResumen({
             falta={veComercial ? 'sin comprobantes' : 'no lo ve tu nivel'}
             bajada={veComercial && economia?.costo_real_n_comprobantes != null ? `${economia.costo_real_n_comprobantes} comprobantes` : ''} />
           <CifraGrande tam={24} rotulo="Personas hoy" valor={personas.valor} falta={personas.falta} bajada={personas.bajada} />
+          {/* HH sí; Asignados no: «Personas hoy · N de M» ya dice cuántos hay asignados. */}
           <CifraGrande tam={24} rotulo={hh.rotulo} valor={hh.valor} falta={hh.falta} bajada={hh.bajada} />
-          <CifraGrande tam={24} rotulo={asignados.rotulo} valor={asignados.valor} falta={asignados.falta} bajada={asignados.bajada} />
         </div>
         <AtencionObra items={atencion} />
         <ProximasTelefono actividades={actividades} obraId={obraId} hoy={hoy} />
