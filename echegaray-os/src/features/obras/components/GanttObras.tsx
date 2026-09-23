@@ -1,418 +1,210 @@
 'use client'
 
-// EL GANTT DE CARTERA — UN RENGLÓN POR OBRA. La cartera entera en una pantalla.
+// ═══ 02 · CARTERA · GANTT — PORTE LITERAL DE `erp-obras/02.html` Y `M02.html` (dueño, 23/09/2026) ═══
 //
-// El dueño, textual: *"NO quiero las 344 actividades de todas las obras desplegadas. Quiero UN
-// RENGLÓN POR OBRA"* · *"Cada barra representa: inicio global de la obra → fin global de la obra"* ·
-// *"Click en una obra → abre el Gantt detallado DE ESA OBRA."*
+// Una fila por obra de 46px; columna fija de 300px con «Obra»; el lienzo con los meses de la ventana
+// («Mes · Trimestre · Año»); barra clara del plan, llena de lo ejecutado (azul, roja con atraso),
+// rayada la proyección más allá del plan; la línea de HOY en el amarillo de la marca. La obra sin
+// fechas lo dice con palabras: «sin fechas cargadas — no se dibuja una barra inventada».
 //
-// ═══ POR QUÉ ES UN COMPONENTE PROPIO Y NO `<Gantt>` CON OTRO EJE ═══
+// En el teléfono (M02): 118px de nombre + lienzo, filas de 44px con UNA barra por obra en el color
+// del estado, «+N d» al lado, la pastilla «HOY» y la leyenda en una línea.
 //
-// `<Gantt>` está construido sobre `Actividad[]` y su unidad es la actividad: panel lateral que edita
-// una, selección en lote, precedencias entre dos, agrupación con cabeceras plegables. Para que
-// dibujara obras habría que fabricarle objetos `Actividad` sintéticos con las fechas agregadas —
-// filas con un `id` que no existe en `obra_actividad`, que su panel abriría y su selección en lote
-// intentaría editar. Inventar la forma de un dato para reusar un componente es peor que escribir el
-// componente: el que viene después no puede distinguir la fila real de la fabricada.
-//
-// LO QUE SÍ SE COMPARTE ES LA ESCALA, que es donde está la aritmética que se equivoca en silencio:
-// `services/escala.ts` — la misma función `construirEscala` que posiciona las barras del Gantt de la
-// obra posiciona éstas. Si mañana se corrige el ancho de un mes, se corrige para las dos pantallas.
-//
-// ═══ LAS TRES COLUMNAS DE LA IZQUIERDA SON OBRA+CLIENTE · ETAPA · PLAZO ═══
-//
-// Es el handoff aprobado (`design/screens/obras.md` §1h). Antes eran Obra · Cliente · Etapa ·
-// Avance, en cuatro columnas de una línea. Dos cambios y los dos tienen razón:
-//
-//   · OBRA Y CLIENTE SE APILAN en una celda. El cliente no es una columna que se compare: es de
-//     quién es la barra. Apilado en 11px `faint` bajo el nombre ocupa cero ancho extra y libera
-//     lugar para el PLAZO, que sí es la pregunta de esta pantalla.
-//   · EL AVANCE SE VA A LA DERECHA, pegado al final de su barra. Ahí es donde el ojo ya está
-//     mirando cuando quiere saber cuánto lleva; en la columna fija obligaba a cruzar la pantalla
-//     entera de ida y de vuelta.
-//
-// ═══ ESTA PANTALLA NO HABLA DE PLATA ═══
-//
-// Ni una columna de dinero, ni siquiera enmascarada: la lectura no las pide (ver `COLUMNAS_PLAZO`).
-// Un Gantt es una pregunta sobre el tiempo.
-//
-// ═══ EL COLOR DICE EL ESTADO, NO EL CALENDARIO (20/08) ═══
-//
-// El dueño: *"No pintar rojo sólo porque la fecha fin pasó"* · *"que el rojo vuelva a significar
-// «requiere atención»"*. Antes la barra se ponía roja con `fin < hoy && avance < 100`, y con eso
-// Comedor (93%) y Galpón 9 (96%) —dos obras que están cerrando bien— salían del mismo color que
-// Salón Comercial, que va 0%. Cuatro de cinco rojas: el rojo dejó de señalar nada.
-//
-// Ahora el color sale de `desvioDePlazo`, que compara el avance contra el calendario ya consumido.
-// La REGLA vive en el servicio, no acá: este archivo sólo la pinta. El amarillo de la marca se usa
-// donde lo usa el logo: la línea de HOY. Hoy no es un problema y pintarlo de rojo era decir que sí.
+// LA GEOMETRÍA ES DE `services/carteraGantt.ts` (pura, probada): acá sólo se pinta. Y LOS DATOS SON
+// LOS DE LA TABLA: mismas filas, mismos filtros, mismo `forecast_fin`. Dos dibujos del mismo plazo
+// con dos reglas es la forma en que dos pantallas empiezan a contestar distinto sobre la misma obra.
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState, useEffect, useRef } from 'react'
-import { Ayuda } from '@/shared/components/ds'
-import { construirEscala, diasDeVentana, escalaQueEntra, type Escala } from '../services/escala'
-import { fmtCorto, PALABRA_SEMAFORO, plazoCorto, UMBRAL_ATRASO, ventana, type Barra, type FilaObra, type Semaforo } from '../services/ganttObras'
-import { ETAPA_LABEL } from '../types'
+import { useState, type CSSProperties } from 'react'
+import { C, MONO } from './canon/tokens'
+import { useAnchoVentana } from './useAnchoVentana'
+import { esAngosto } from '../services/anchoPantalla'
+import { rotuloDeObra } from '@/shared/utils/obra'
+import { bajadaGantt, esPrevio } from '../services/carteraCanon'
+import {
+  barrasDe, ESCALAS_CARTERA, FUERA_DE_VENTANA, LEYENDA_GANTT, LEYENDA_GANTT_TELEFONO, posicionEn,
+  SIN_FECHAS_ESCRITORIO, SIN_FECHAS_TELEFONO, ventanaGantt, type EscalaCartera, type TonoGantt,
+} from '../services/carteraGantt'
+import { ChipsCartera, ConmutadorVista, useFiltroCartera, type FilaCartera } from './CarteraObras'
 
-/** 48px por renglón: la celda de la izquierda apila nombre de obra y cliente, y las dos líneas
- *  tienen que respirar. El lienzo usa EXACTAMENTE el mismo número — si se separan, la barra deja de
- *  estar en la fila de su obra y el Gantt miente sin dar ningún error. */
-const ALTO_FILA = 48
-/** El encabezado de las dos mitades. Los meses del lienzo y los rótulos de la columna fija comparten
- *  altura por la misma razón que las filas. */
-const ALTO_HEAD = 40
+const ALTO_FILA = 46
+const ALTO_CABECERA = 36
 
-/** EL ESTADO EN UN LUGAR: el color de la barra, el del punto y la palabra del detalle salen de acá.
- *  Tres tablas separadas se desincronizan el día que alguien agrega un estado. LA PALABRA no se
- *  escribe acá: sale de `PALABRA_SEMAFORO`, porque el Resumen de la obra nombra el mismo estado. */
-const ESTADO: Record<Semaforo, { fill: string; punto: string; texto: string; palabra: string }> = {
-  al_dia:         { fill: 'fill-accent', punto: 'bg-accent',      texto: 'text-muted', palabra: PALABRA_SEMAFORO.al_dia },
-  atraso_menor:   { fill: 'fill-warn',   punto: 'bg-warn',        texto: 'text-warn',  palabra: PALABRA_SEMAFORO.atraso_menor },
-  atraso_critico: { fill: 'fill-neg',    punto: 'bg-neg',         texto: 'text-neg',   palabra: PALABRA_SEMAFORO.atraso_critico },
-  sin_datos:      { fill: 'fill-faint',  punto: 'bg-line-strong', texto: 'text-faint', palabra: PALABRA_SEMAFORO.sin_datos },
+/** El color lleno de cada tono, en escritorio (azul en curso) y en el teléfono (grafito en plazo). */
+const LLENO: Record<TonoGantt, string> = {
+  curso: C.curso, warn: C.warn, neg: C.neg, pos: C.pos, plan: C.bordeFuerte,
 }
+const LLENO_TELEFONO: Record<TonoGantt, string> = { ...LLENO, curso: C.grafito }
 
-/** TERMINADA ES VERDE, y es el único verde de la pantalla. `COMPONENTS.md` §Gantt row: *"relleno
- *  grafito (verde si 100%…)"*, y `COLOR.md`: verde sólo estado positivo REAL. Una obra al 100% lo
- *  es; una al 60% "yendo bien" no, y por eso el resto es grafito. */
-const completa = (b: Barra) => b.avancePct != null && b.avancePct >= 100
-const fillDe = (b: Barra) => (completa(b) ? 'fill-pos' : ESTADO[b.desvio.semaforo].fill)
+/** LA BARRA RAYADA del diseño: `repeating-linear-gradient(45deg, ámbar, ámbar 3px, claro 3px, claro 6px)`.
+ *  El tono claro se saca aclarando el mismo color con blanco: no hay un segundo hex. */
+const rayado = (color: string): string =>
+  `repeating-linear-gradient(45deg, ${color}, ${color} 3px, rgba(255,255,255,.4) 3px, rgba(255,255,255,.4) 6px), ${color}`
 
-const hrefDe = (obraId: string) => `/obras/${obraId}?vista=cronograma`
+const hrefDe = (id: string) => `/obras/${id}?vista=cronograma`
 
-/** El resumen de una obra en texto, para el `title` del renglón y para los lectores de pantalla. */
-const etapaDe = (f: FilaObra) => (f.etapa ? ETAPA_LABEL[f.etapa] : 'etapa sin declarar')
-
-function resumen(f: FilaObra): string {
-  const quien = `${f.nombre}${f.clienteNombre ? ` · ${f.clienteNombre}` : ''} · ${etapaDe(f)}`
-  if (!f.barra) return `${quien}: ${f.motivo}`
-  const b = f.barra
-  const base = b.base ? ` · línea base ${fmtCorto(b.base.inicio)} → ${fmtCorto(b.base.fin)}` : ' · sin línea base sellada'
-  const av = b.avancePct == null ? ' · sin avance publicado' : ` · avance ${b.avancePct}%`
-  const d = b.desvio
-  // «estimado» NO ES UNA MULETILLA: el avance esperado supone que el trabajo se reparte parejo
-  // sobre el calendario, y ninguna obra avanza así. Decir «26 días de atraso» a secas convertiría
-  // una estimación en un hecho, que es exactamente lo que no se hace acá.
-  const estado = d.brechaPuntos == null
-    ? ` · ${ESTADO[d.semaforo].palabra}`
-    : ` · ${ESTADO[d.semaforo].palabra}: ${b.avancePct}% contra ${d.avanceEsperadoPct}% esperado por calendario (ESTIMACIÓN)`
-      + (d.brechaPuntos > 0
-          ? ` — ${d.brechaPuntos} puntos, unos ${d.atrasoDias} día${d.atrasoDias === 1 ? '' : 's'} de trabajo`
-          : '')
-  return `${quien}: plan ${fmtCorto(b.inicio)} → ${fmtCorto(b.fin)}${base}${av}${estado}`
-}
-
-/**
- * LA LEYENDA NOMBRA LOS ESTADOS, Y ADEMÁS DICE CON QUÉ REGLA SE PINTAN.
- *
- * Un semáforo cuyo criterio no está escrito en ningún lado no se puede discutir: cada uno le
- * inventa un significado al rojo y el color deja de ser un acuerdo. La regla entra en una línea y
- * hace que el color rinda cuentas — incluyendo que el avance esperado contra el que se mide es una
- * ESTIMACIÓN, no un dato de la obra.
- */
-function Leyenda({ hayBase, estados }: { hayBase: boolean; estados: Set<Semaforo> }) {
-  const orden: Semaforo[] = ['al_dia', 'atraso_menor', 'atraso_critico', 'sin_datos']
-  return (
-    <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-[11.5px] text-muted">
-      {/* SÓLO LOS ESTADOS QUE LA PANTALLA ESTÁ DIBUJANDO. Nombrar «atraso crítico» un día en que
-          ninguna obra lo está manda a buscar una barra roja que no existe. */}
-      {orden.filter((e) => estados.has(e)).map((e) => (
-        <span key={e} className="inline-flex items-center gap-1.5">
-          <i className={`h-1.5 w-1.5 shrink-0 rounded-full ${ESTADO[e].punto}`} />{ESTADO[e].palabra}
-        </span>
-      ))}
-      {/* LA LÍNEA BASE SÓLO SE NOMBRA SI ALGUNA OBRA LA TIENE. Una leyenda que explica una marca que
-          no aparece en ninguna fila manda a buscarla. */}
-      {hayBase && <span className="inline-flex items-center gap-1.5"><i className="h-[3px] w-4 rounded-sm bg-line-strong" />línea base</span>}
-      <span className="inline-flex items-center gap-1.5"><i className="h-3 w-0.5 bg-marca" />hoy</span>
-    </div>
-  )
-}
-
-/**
- * EL RENGLÓN DE LA COLUMNA FIJA: obra + cliente · etapa · plazo.
- *
- * TODO EL RENGLÓN ES UN ENLACE A LA OBRA, y por eso el cliente NO es un segundo enlace acá adentro:
- * un `<a>` dentro de otro `<a>` es marcado inválido y el navegador lo desarma solo. La puerta a la
- * ficha CRM del cliente está en la cartera, que es la vista que existe para eso; acá el cliente es
- * el dato que dice de quién es la barra. En pantallas angostas se ocultan etapa y plazo —la obra y
- * su barra son lo que no puede faltar— y siguen estando en el `title`.
- */
-function Renglon({ f }: { f: FilaObra }) {
-  const sem = f.barra ? f.barra.desvio.semaforo : 'sin_datos'
-  return (
-    <Link
-      href={hrefDe(f.obraId)} prefetch={false}
-      data-testid="obra-gantt"
-      data-obra={f.obraId}
-      data-etapa={f.etapa ?? ''}
-      title={resumen(f)}
-      style={{ height: ALTO_FILA }}
-      className="flex w-full items-center gap-2 border-b border-surface-sunken pr-3 transition-colors hover:bg-surface-quiet"
-    >
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-medium text-ink">{f.nombre}</span>
-        {/* SIN CLIENTE SE ESCRIBE, no se deja un guión: un «—» acá y un «—» en la columna de al lado
-            no significan lo mismo y se leen igual. */}
-        <span className="block truncate text-[11px] text-faint" data-testid="cliente-gantt">
-          {f.clienteNombre ?? 'sin cliente declarado'}
-        </span>
-      </span>
-      {/* «etapa sin declarar» EN GRIS Y CON ESAS PALABRAS: es el mismo texto que usa la cartera.
-          Poner un default como «Desarrollo» presentaría un dato fabricado como estado del ciclo de
-          vida de una obra real. */}
-      <span
-        className={`hidden w-[104px] shrink-0 truncate text-[12px] sm:inline ${f.etapa ? 'text-muted' : 'text-faint'}`}
-        data-testid="etapa-gantt"
-      >{etapaDe(f)}</span>
-      {/* EL PLAZO SON LAS DOS FECHAS, CON EL PUNTO DEL SEMÁFORO AL LADO. El punto ordena la
-          atención; las fechas dicen cuándo. Con «20/07 → 31/12 / −39 pts» se ve de un vistazo
-          cuándo arranca, cuándo termina y que debería ir por 86, sin pasar el mouse por encima ni
-          abrir la ficha. Escribía sólo el fin: ver `plazoCorto` en el servicio. */}
-      <span className="hidden w-[150px] shrink-0 items-center gap-2 sm:flex" data-testid="plazo-gantt">
-        <i className={`h-1.5 w-1.5 shrink-0 rounded-full ${ESTADO[sem].punto}`} aria-hidden />
-        {f.barra ? (
-          <span className="min-w-0 leading-tight">
-            <span className="block font-mono text-[12px] tabular-nums text-muted">{plazoCorto(f.barra)}</span>
-            <span className={`block truncate text-[11px] ${ESTADO[sem].texto}`}>
-              {f.barra.desvio.brechaPuntos != null && f.barra.desvio.brechaPuntos > 0
-                ? `−${f.barra.desvio.brechaPuntos} pts estimados`
-                : ESTADO[sem].palabra}
-            </span>
-          </span>
-        ) : (
-          // EL MOTIVO CONCRETO SE ESCRIBE UNA SOLA VEZ, Y ES SOBRE EL LIENZO —donde el ojo va a
-          // buscar la barra que no está—. Acá iba el mismo texto, así que «sin cronograma cargado»
-          // aparecía dos veces en la misma fila: la repetición no agrega nada y ensancha la columna
-          // fija a costa del calendario.
-          <span className="text-[11.5px] text-faint">sin plazo</span>
-        )}
-      </span>
-    </Link>
-  )
-}
-
-/** La barra de una obra: plan, línea base cuando exista, avance proporcional cuando exista, y el
- *  porcentaje escrito al final — que es donde el ojo ya está cuando quiere saber cuánto lleva. */
-function BarraObra({ b, y, x, ancho }: { b: Barra; y: number; x: (iso: string) => number; ancho: number }) {
-  const x0 = x(b.inicio)
-  const w = Math.max(3, x(b.fin) - x0)
-  const color = fillDe(b)
-  // La etiqueta se corre a la izquierda de la barra cuando no entra a la derecha: escrita fuera del
-  // lienzo no se ve, y una barra sin su número obliga a cruzar la pantalla para leerlo.
-  const cabeADerecha = x0 + w + 42 < ancho
-  return (
-    <>
-      <rect x={x0} y={y + 14} width={w} height={14} rx={3} className={color} opacity={0.22}
-            data-testid="barra-obra" data-semaforo={b.desvio.semaforo} />
-      {b.avancePct != null && b.avancePct > 0 && (
-        <rect x={x0} y={y + 14} width={Math.max(2, (w * Math.min(100, b.avancePct)) / 100)} height={14} rx={3} className={color} />
-      )}
-      {/* LA LÍNEA BASE VA DEBAJO Y FINA: es la referencia contra la que se compara el plan, no otro
-          plan. Sólo aparece con sus dos puntas selladas. */}
-      {b.base && (
-        <rect x={x(b.base.inicio)} y={y + 30} width={Math.max(3, x(b.base.fin) - x(b.base.inicio))} height={3} rx={1}
-              className="fill-line-strong" data-testid="linea-base-obra" />
-      )}
-      {/* SIN AVANCE PUBLICADO NO SE ESCRIBE UN 0%: se dice que no está cargado. */}
-      <text
-        x={cabeADerecha ? x0 + w + 8 : Math.max(2, x0 - 8)}
-        y={y + 25}
-        textAnchor={cabeADerecha ? 'start' : 'end'}
-        fontSize={11}
-        className={b.avancePct == null ? 'fill-faint' : 'fill-muted'}
-        data-testid="avance-gantt"
-      >
-        {b.avancePct == null ? 'sin avance' : `${b.avancePct}%`}
-      </text>
-    </>
-  )
-}
-
-/**
- * @param hoyIso EL DÍA LO FIJA EL SERVIDOR y viaja como texto. Si este componente leyera el reloj
- * del navegador, la línea de hoy y el orden de los renglones —que el servidor ya calculó— podrían
- * discrepar alrededor de la medianoche, y React además marcaría el desajuste de hidratación.
- */
-export function GanttObras({ filas, hoyIso }: { filas: FilaObra[]; hoyIso: string }) {
+export function GanttObras({ obras, hoyIso }: { obras: FilaCartera[]; hoyIso: string }) {
   const router = useRouter()
-  // LA ESCALA ELEGIDA A MANO PISA A LA CALCULADA, Y SÓLO SI SE ELIGE UNA. `null` = «todavía nadie
-  // dijo nada», y entonces manda la que hace entrar la cartera (`escalaQueEntra`): un Gantt de la
-  // cartera se abre mostrando la cartera. Guardar 'semana' de arranque era lo que dejaba el 59% de
-  // las barras fuera de la pantalla cuando las obras llegan a fin de año.
-  const [escalaElegida, setEscalaElegida] = useState<Escala | null>(null)
-  // SE MIDE EL LUGAR REAL, no se supone. El lienzo tiene que llenar lo que le queda al lado de la
-  // columna fija; cuánto es eso depende de la ventana del navegador y cambia al rotar el teléfono o
-  // arrastrar el borde, así que se observa en vez de calcularse una vez. Mientras no se midió vale 0
-  // y manda la escala elegida: nunca se dibuja más chico de lo que corresponde.
-  const cajaRef = useRef<HTMLDivElement>(null)
-  const [anchoLibre, setAnchoLibre] = useState(0)
-  useEffect(() => {
-    const caja = cajaRef.current
-    if (!caja || typeof ResizeObserver === 'undefined') return
-    const medir = () => {
-      const fija = caja.querySelector('[data-columna-fija]')
-      setAnchoLibre(Math.max(0, caja.clientWidth - (fija?.clientWidth ?? 0)))
-    }
-    medir()
-    const obs = new ResizeObserver(medir)
-    obs.observe(caja)
-    return () => obs.disconnect()
-  }, [])
-  const rango = useMemo(() => ventana(filas, hoyIso), [filas, hoyIso])
-  const escala: Escala = escalaElegida
-    ?? (rango ? escalaQueEntra(diasDeVentana(rango.desde, rango.hasta), anchoLibre) : 'semana')
-  const hayBase = filas.some((f) => f.barra?.base)
-  const estados = useMemo(
-    () => new Set(filas.filter((f) => f.barra).map((f) => f.barra!.desvio.semaforo)),
-    [filas],
-  )
+  const telefono = esAngosto(useAnchoVentana())
+  const { filtro, setFiltro, lista, cuentas, sinImpedimentos } = useFiltroCartera(obras)
+  const [escala, setEscala] = useState<EscalaCartera>('trimestre')
+  const ventana = ventanaGantt(hoyIso, telefono ? 'telefono' : escala)
+  const xHoy = posicionEn(ventana, hoyIso)
 
-  // LA ESCALA ES UNA SUB-VISTA, NO UN BOTÓN. `COMPONENTS.md` §Secondary tabs: texto con subrayado
-  // ink, sin pastillas rellenas. Era un par de botones con fondo grafito, que en esta pantalla
-  // competía con las barras —que también son grafito— por la misma atención.
-  const controles = (
-    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 pb-3">
-      <Leyenda hayBase={hayBase} estados={estados} />
-      <div className="flex items-center gap-3.5">
-        <span className="text-[12px] text-faint">Escala</span>
-        {(['semana', 'mes'] as Escala[]).map((e) => (
-          <button
-            key={e}
-            type="button"
-            onClick={() => setEscalaElegida(e)}
-            aria-pressed={escala === e}
-            data-testid={`escala-${e}`}
-            className={`pb-[2px] text-[12.5px] capitalize transition-colors ${
-              escala === e ? 'font-medium text-ink shadow-[inset_0_-1.5px_0_var(--os-ink)]' : 'text-muted hover:text-ink'
-            }`}
-          >{e}</button>
-        ))}
-      </div>
-    </div>
-  )
-
-  // LA CABECERA DE LA COLUMNA FIJA. Los tres rótulos son los del handoff y están en 10px versalitas
-  // `faint`, igual que el `<Th>` de cualquier tabla del OS: la columna fija de un Gantt es una tabla
-  // aunque no esté hecha de `<td>`.
-  const rotulos = (
-    <div
-      style={{ height: ALTO_HEAD }}
-      className="sticky top-0 z-10 flex items-center gap-2 border-b border-surface-sunken bg-surface pr-3 text-[10px] font-medium uppercase tracking-[0.06em] text-faint"
-    >
-      <span className="flex-1">Obra</span>
-      <span className="hidden w-[104px] shrink-0 sm:inline">Etapa</span>
-      <span className="hidden w-[150px] shrink-0 sm:inline">Plazo</span>
-    </div>
-  )
-
-  if (!rango) {
+  if (telefono) {
     return (
-      <div data-testid="gantt-obras">
-        {controles}
-        <div className="border-t border-line">
-          {rotulos}
-          {filas.map((f) => <Renglon key={f.obraId} f={f} />)}
+      <div style={{ background: C.superficie, padding: '16px', display: 'flex', flexDirection: 'column', gap: '18px' }} data-testid="gantt-obras">
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: '19px', fontWeight: 600, color: C.tinta }}>Obras</div>
+          <ConmutadorVista vista="gantt" telefono />
         </div>
-        <p className="mt-3 text-[12px] text-muted">
-          Ninguna obra visible tiene fechas de plan: sin fechas no hay eje de tiempo que dibujar.
-        </p>
+        <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono
+          claves={['todo', 'atraso', 'curso', 'problema', 'previo']} />
+        <div style={{ fontSize: '12px', color: C.tintaSuave }} data-testid="bajada-gantt">{bajadaGantt(lista)}</div>
+        <div style={{ position: 'relative' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '118px 1fr', gap: '10px', height: '28px', alignItems: 'center', borderBottom: `1px solid ${C.borde}` }}>
+            <div />
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${ventana.meses.length},1fr)`, fontFamily: MONO, fontSize: '10px', color: C.tenue, textTransform: 'uppercase' }}>
+              {ventana.meses.map((m) => <span key={m.label}>{m.label}</span>)}
+            </div>
+          </div>
+          {lista.map((o, i) => {
+            const b = barrasDe(o, ventana)
+            const ultima = i === lista.length - 1
+            return (
+              <div key={o.obra_id} data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id} onClick={() => router.push(hrefDe(o.obra_id))}
+                style={{ display: 'grid', gridTemplateColumns: '118px 1fr', gap: '10px', height: '44px', alignItems: 'center', borderBottom: ultima ? undefined : `1px solid ${C.borde}`, cursor: 'pointer' }}>
+                <div style={{ fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: esPrevio(o) ? C.tintaSuave : C.tinta }}>{rotuloDeObra(o)}</div>
+                {b == null
+                  ? <div style={{ fontSize: '11.5px', color: C.tenue, fontStyle: 'italic' }} data-testid="obra-sin-plan">{SIN_FECHAS_TELEFONO}</div>
+                  : b.fueraDeVentana
+                    ? <div style={{ fontSize: '11.5px', color: C.tenue, fontStyle: 'italic' }} data-nulo="">{FUERA_DE_VENTANA}</div>
+                    : (
+                      <div style={{ position: 'relative', height: '100%' }}>
+                        <div data-testid="barra-obra" data-tono={b.tono} style={{
+                          position: 'absolute', left: `${b.plan.left}%`, width: `${b.plan.width}%`, top: '15px', height: '14px',
+                          borderRadius: '3px', background: LLENO_TELEFONO[b.tono],
+                        }} />
+                        {b.rotuloAtraso && (
+                          <div style={{ position: 'absolute', left: `calc(${Math.min(88, b.plan.left + b.plan.width)}% + 6px)`, top: '14px', fontSize: '11px', color: LLENO[b.tono], whiteSpace: 'nowrap' }}>
+                            {b.rotuloAtraso}
+                          </div>
+                        )}
+                      </div>
+                    )}
+              </div>
+            )
+          })}
+          {xHoy >= 0 && xHoy <= 100 && (
+            <>
+              <div data-testid="linea-hoy-obras" style={{ position: 'absolute', left: `calc(128px + (100% - 128px)*${xHoy / 100})`, top: 0, bottom: 0, width: '1px', background: C.marca }} />
+              <div style={{
+                position: 'absolute', left: `calc(128px + (100% - 128px)*${xHoy / 100} - 12px)`, top: '-2px', fontFamily: MONO,
+                fontSize: '9.5px', color: C.grafito, background: C.marca, padding: '1px 4px', borderRadius: '3px',
+              }}>HOY</div>
+            </>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: '14px', fontSize: '11.5px', color: C.tintaSuave, flexWrap: 'wrap' }}>
+          {LEYENDA_GANTT_TELEFONO.map((t, i) => (
+            <span key={t} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ width: '10px', height: '6px', borderRadius: '2px', background: [C.grafito, C.warn, C.neg][i] }} />{t}
+            </span>
+          ))}
+        </div>
       </div>
     )
   }
 
-  const { ancho, x, meses, ticks } = construirEscala(rango.desde, rango.hasta, escala, anchoLibre)
-  const alto = filas.length * ALTO_FILA
-  const xHoy = x(hoyIso)
-  const hoyVisible = xHoy >= 0 && xHoy <= ancho
+  const celdaMes = (actual: boolean, ultimo: boolean): CSSProperties => ({
+    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11.5px',
+    color: actual ? C.tinta : C.tintaSuave, fontWeight: actual ? 500 : 400,
+    borderRight: ultimo ? undefined : `1px solid ${C.borde}`,
+  })
 
   return (
-    <div data-testid="gantt-obras">
-      {controles}
-
-      {/* SIN CAJA: hairline superior y los divisores de fila, como cualquier tabla del OS.
-          UN SOLO CONTENEDOR CON SCROLL, y el desplazamiento pasa ACÁ ADENTRO: en un teléfono de
-          390px la página no se corre de costado, se corre el Gantt. `overscroll-x-contain` evita
-          que al llegar al borde el gesto arrastre la pantalla entera. */}
-      <div ref={cajaRef} data-gantt-caja className="relative max-h-[72vh] overflow-auto overscroll-x-contain border-t border-line">
-        <div className="flex w-max">
-          {/* ── COLUMNA FIJA: las obras ────────────────────────────────────────── */}
-          <div data-columna-fija className="sticky left-0 z-20 w-[168px] shrink-0 border-r border-surface-sunken bg-surface sm:w-[460px]">
-            {rotulos}
-            {filas.map((f) => <Renglon key={f.obraId} f={f} />)}
-          </div>
-
-          {/* ── LÍNEA DE TIEMPO ────────────────────────────────────────────────── */}
-          <div className="relative shrink-0" style={{ width: ancho }}>
-            <div className="sticky top-0 z-10 border-b border-surface-sunken bg-surface" style={{ height: ALTO_HEAD }}>
-              <svg width={ancho} height={ALTO_HEAD} className="block">
-                {meses.map((m) => (
-                  <g key={m.label + m.x0}>
-                    <line x1={m.x0} y1={0} x2={m.x0} y2={ALTO_HEAD} className="stroke-line" />
-                    <text x={m.x0 + 6} y={15} fontSize={11} className="fill-muted capitalize">{m.label}</text>
-                  </g>
-                ))}
-                {ticks.map((t) => <text key={t.x} x={t.x + 2} y={32} fontSize={10} className="fill-faint">{t.label}</text>)}
-              </svg>
-            </div>
-
-            <svg width={ancho} height={alto} className="block">
-              {meses.map((m) => <line key={'g' + m.x0} x1={m.x0} y1={0} x2={m.x0} y2={alto} className="stroke-line/70" />)}
-              {hoyVisible && (
-                <line x1={xHoy} y1={0} x2={xHoy} y2={alto} className="stroke-marca" strokeWidth={2} data-testid="linea-hoy-obras" />
-              )}
-
-              {filas.map((f, i) => {
-                const y = i * ALTO_FILA
-                return (
-                  <g
-                    key={f.obraId}
-                    onClick={() => router.push(hrefDe(f.obraId))}
-                    className="cursor-pointer"
-                    // El renglón de la izquierda ya es un enlace real y es el que usan el teclado y
-                    // los lectores de pantalla. Esto es el mismo destino para el que hace click
-                    // sobre la barra, que es donde se está mirando.
-                    aria-hidden
-                  >
-                    <rect x={0} y={y} width={ancho} height={ALTO_FILA} className="fill-transparent" />
-                    <line x1={0} y1={y + ALTO_FILA} x2={ancho} y2={y + ALTO_FILA} className="stroke-surface-sunken" />
-                    {f.barra
-                      ? <BarraObra b={f.barra} y={y} x={x} ancho={ancho} />
-                      : (
-                          // LA AUSENCIA SE ESCRIBE. Va acá y no en la columna de la izquierda porque
-                          // es acá donde el ojo va a buscar la barra que no está.
-                          <text x={6} y={y + 28} fontSize={11} className="fill-faint" data-testid="obra-sin-plan">{f.motivo}</text>
-                        )}
-                  </g>
-                )
-              })}
-            </svg>
-          </div>
+    <div style={{ background: C.superficie, padding: '26px 30px 34px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }} data-testid="gantt-obras">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '22px' }}>
+        <div style={{ fontSize: '19px', fontWeight: 600, letterSpacing: '-.01em', color: C.tinta }}>Obras</div>
+        <ConmutadorVista vista="gantt" telefono={false} />
+        <div style={{ width: '1px', height: '15px', background: C.borde }} />
+        <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono={false}
+          claves={['todo', 'curso', 'atraso', 'problema']} />
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '14px', fontSize: '12.5px', color: C.tintaSuave }}>
+          {ESCALAS_CARTERA.map((e) => {
+            const activa = escala === e.k
+            return (
+              <button key={e.k} type="button" onClick={() => setEscala(e.k)} aria-pressed={activa} data-testid={`escala-${e.k}`}
+                style={{
+                  border: 'none', background: 'none', padding: 0, paddingBottom: '2px', cursor: 'pointer', font: 'inherit', fontFamily: 'inherit',
+                  fontSize: '12.5px', color: activa ? C.tinta : C.tintaSuave, fontWeight: activa ? 500 : 400,
+                  boxShadow: activa ? `inset 0 -1.5px 0 ${C.tinta}` : undefined,
+                }}>{e.t}</button>
+            )
+          })}
         </div>
       </div>
 
-      {/* LA REGLA DEL COLOR, ESCRITA. Un semáforo cuyo criterio no está en ningún lado no se puede
-          discutir, y el que lo mira le inventa un significado al rojo. Los cuatro umbrales salen de
-          `UMBRAL_ATRASO`, que es de donde los lee la función que pinta: si mañana cambian, este
-          párrafo cambia solo. */}
-      {/* 22/08/2026 · SEIS LÍNEAS PERMANENTES DEBAJO DEL GRÁFICO PASARON A LA AYUDA. El criterio no
-          se tira —sigue entero, y sigue leyendo `UMBRAL_ATRASO`—, pero es una leyenda: se consulta
-          cuando alguien discute un color, no cada vez que se abre la cartera de obras. Lo que sí
-          queda a la vista es que el avance esperado es una ESTIMACIÓN, porque eso cambia cómo se
-          lee CADA barra y no se puede esconder detrás de un clic. */}
-      <p className="mt-3 max-w-[900px] text-[11.5px] leading-relaxed text-faint" data-testid="regla-semaforo">
-        El avance esperado es una <strong className="font-medium text-muted">ESTIMACIÓN</strong>:
-        ordena la atención, no afirma cuánto se atrasó una obra.
-      </p>
-      <Ayuda titulo="Cómo se pinta el semáforo" testid="ayuda-semaforo">
-        La obra sin fechas de plan no dibuja barra: no se le inventa un inicio, se dice el motivo. El
-        rojo no es «se pasó la fecha»: es una brecha de más de {UMBRAL_ATRASO.criticoPuntos} puntos
-        contra el avance esperado, o más de {UMBRAL_ATRASO.criticoDias} días de atraso —ámbar a partir
-        de {UMBRAL_ATRASO.menorPuntos} puntos o {UMBRAL_ATRASO.menorDias} días—. Terminada al 100% va
-        al día aunque haya cerrado tarde. El avance esperado supone que el trabajo se reparte parejo
-        sobre el calendario, y ninguna obra avanza así.
-      </Ayuda>
+      <div style={{ display: 'grid', gridTemplateColumns: '300px minmax(0,1fr)', border: `1px solid ${C.borde}`, borderRadius: '8px', overflow: 'hidden' }}>
+        <div style={{ borderRight: `1px solid ${C.borde}` }} data-columna-fija>
+          <div style={{
+            height: `${ALTO_CABECERA}px`, display: 'flex', alignItems: 'center', padding: '0 14px', background: C.tenueFondo,
+            borderBottom: `1px solid ${C.borde}`, fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase',
+          }}>Obra</div>
+          {lista.map((o, i) => (
+            <Link key={o.obra_id} href={hrefDe(o.obra_id)} prefetch={false} data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id}
+              style={{
+                height: `${ALTO_FILA}px`, display: 'flex', alignItems: 'center', padding: '0 14px', fontSize: '13px', textDecoration: 'none',
+                borderBottom: i === lista.length - 1 ? undefined : `1px solid ${C.borde}`, color: esPrevio(o) ? C.tintaSuave : C.tinta,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>{rotuloDeObra(o)}</Link>
+          ))}
+          {lista.length === 0 && <div style={{ height: `${ALTO_FILA}px`, display: 'flex', alignItems: 'center', padding: '0 14px', fontSize: '12.5px', color: C.tintaSuave }}>Nada coincide.</div>}
+        </div>
+        <div style={{ position: 'relative' }}>
+          <div style={{ height: `${ALTO_CABECERA}px`, display: 'grid', gridTemplateColumns: `repeat(${ventana.meses.length},1fr)`, background: C.tenueFondo, borderBottom: `1px solid ${C.borde}` }}>
+            {ventana.meses.map((m, i) => <div key={m.label} style={celdaMes(m.actual, i === ventana.meses.length - 1)}>{m.label}</div>)}
+          </div>
+          {xHoy >= 0 && xHoy <= 100 && (
+            <div data-testid="linea-hoy-obras" style={{ position: 'absolute', left: `${xHoy}%`, top: `${ALTO_CABECERA}px`, bottom: 0, width: '1px', background: C.marca }} />
+          )}
+          {lista.map((o, i) => {
+            const b = barrasDe(o, ventana)
+            const borde = i === lista.length - 1 ? undefined : `1px solid ${C.borde}`
+            if (b == null || b.fueraDeVentana) {
+              return (
+                <div key={o.obra_id} style={{ height: `${ALTO_FILA}px`, position: 'relative', borderBottom: borde, display: 'flex', alignItems: 'center', paddingLeft: '16px', fontSize: '12.5px', color: C.tenue }}
+                  data-testid={b == null ? 'obra-sin-plan' : undefined} data-nulo="">
+                  {b == null ? SIN_FECHAS_ESCRITORIO : FUERA_DE_VENTANA}
+                </div>
+              )
+            }
+            const tramo = (t: { left: number; width: number }, fondo: string): CSSProperties => ({
+              position: 'absolute', left: `${t.left}%`, top: '17px', width: `${t.width}%`, height: '12px', borderRadius: '3px', background: fondo,
+            })
+            return (
+              <div key={o.obra_id} onClick={() => router.push(hrefDe(o.obra_id))} style={{ height: `${ALTO_FILA}px`, position: 'relative', borderBottom: borde, cursor: 'pointer' }}>
+                <div style={tramo(b.plan, LLENO.plan)} data-testid="barra-plan" />
+                {b.ejecutado && b.ejecutado.width > 0 && <div style={tramo(b.ejecutado, LLENO[b.tono])} data-testid="barra-obra" data-tono={b.tono} />}
+                {b.proyeccion && b.proyeccion.width > 0 && <div style={tramo(b.proyeccion, rayado(LLENO[b.tono]))} data-testid="barra-proyeccion" />}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '26px', fontSize: '12.5px', color: C.tintaSuave }} data-testid="leyenda-gantt">
+        {LEYENDA_GANTT.map((t, i) => (
+          <span key={t} style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+            <span style={{ width: '22px', height: '8px', borderRadius: '2px', background: [C.bordeFuerte, C.curso, rayado(C.warn)][i] }} />{t}
+          </span>
+        ))}
+        <span style={{ marginLeft: 'auto' }}>
+          No hay línea base útil: el sellado copió el plan y da desvío 0 en las {obras.length} obras. La proyección sale de{' '}
+          <span style={{ fontFamily: MONO, fontSize: '12px' }}>forecast_fin</span>.
+        </span>
+      </div>
     </div>
   )
 }

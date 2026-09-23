@@ -1,34 +1,34 @@
 'use client'
 
-// ═══ 01 · OBRAS CARTERA — PORTE LITERAL DE «01 · Obras Cartera.dc.html» ═══
+// ═══ 01 · CARTERA · TABLA — PORTE LITERAL DE `erp-obras/01.html` Y `M01.html` (dueño, 23/09/2026) ═══
 //
-// Cada medida de este archivo salió de ese mockup y no del design system: 246px el buscador, 38px
-// el encabezado, 48px la fila, `minmax(0,1.5fr) minmax(0,1.1fr) 152px 148px 82px 108px 44px 52px
-// 26px` la grilla, 10px el radio de la tarjeta. Las cuatro entregas anteriores tradujeron esos
-// valores al DS y el dueño las rechazó las cuatro: «estructura parecida, aspecto distinto».
+// Cada medida salió de esos dos archivos: 230×32 el buscador, 40px el encabezado, 64px la fila,
+// `minmax(0,1.5fr) minmax(0,.85fr) 104px 128px 78px` la grilla con 22px de separación, 64×4 la barra
+// de avance. En el teléfono (M01): buscador de 44px, pastillas de 36px, filas de 62px y la primaria
+// «Nueva obra» de 48px al pie, sobre la barra. Cambiar un número sin abrir el mockup es volver a
+// empezar: las cuatro entregas anteriores se rechazaron por «estructura parecida, aspecto distinto».
 //
-// ═══ QUÉ CAMBIA RESPECTO DE LA CARTERA QUE HABÍA ═══
+// LO QUE EL DISEÑO NO DIBUJA, NO ESTÁ: ni Jefe, ni Traba, ni HH, ni HOY, ni el «···». La cartera es
+// para encontrar y abrir una obra. Buscar y filtrar son estado del CLIENTE: son trece filas ya
+// cargadas y una vuelta al servidor por tecla haría pegajosa la primera pantalla del día.
 //
-// El zip dibuja NUEVE columnas —obra, cliente, estado, avance, plazo, HH, hoy, ⚠ y el «···»— y no
-// dibuja ni ETAPA ni CONTRATADO ni COSTO REAL como columnas. Contratado sobrevive donde el zip lo
-// pone: en el pie, que es donde se lee una vez y no trece.
-//
-// Buscar y filtrar son estado del CLIENTE, como en el mockup: son trece
-// filas ya cargadas y una vuelta al servidor por tecla haría pegajosa la primera pantalla del día.
-// La URL deja de gobernar la vista y por eso esta pantalla ya no ordena por columna: el zip no
-// tiene encabezados que ordenen, y sostener el orden por URL con el filtro en el cliente eran dos
-// memorias de la misma pantalla.
+// LA CABECERA (título, Ver Tabla · Gantt, chips) SE EXPORTA porque el 02 la repite igual sobre el
+// calendario: una sola definición de los filtros para las dos vistas de la misma cartera.
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState } from 'react'
-import { Ico, IcoMas, P } from './canon/Ico'
-import { C, ESTILO_PRIMARIA, MONO } from './canon/tokens'
-import { Barra, Buscador, Chip, Hover, Pastilla, Tarjeta } from './canon/Piezas'
+import { useMemo, useState, type ReactNode } from 'react'
+import { Ico, P } from './canon/Ico'
+import { C, MONO } from './canon/tokens'
+import { Hover } from './canon/Piezas'
+import { useAnchoVentana } from './useAnchoVentana'
+import { esAngosto } from '../services/anchoPantalla'
 import { rotuloDeObra } from '@/shared/utils/obra'
+import { ETAPA_LABEL, type Etapa } from '../types'
 import {
-  coincideTexto, colorDeBarra, colorDePlazo, diasDeAtraso, entraEnFiltro, esPrevio, estadoDeCartera,
-  FILTROS_CARTERA, textoDePlazo, type FiltroCartera,
+  bajadaCartera, coincideTexto, colorDeBarra, colorDeEstado, colorDePlazo, entraEnFiltro, esPrevio,
+  estadoDeCartera, FILTROS_CARTERA, sublineaTelefono, textoArchivadas, textoDePlazo, textoSeMuestran,
+  type FiltroCartera,
 } from '../services/carteraCanon'
 
 /** Lo que la página le entrega ya leído. Un tipo propio y no `ObraPanel`: así se ve de un vistazo
@@ -47,85 +47,28 @@ export interface FilaCartera {
   fecha_inicio_plan: string | null
   fecha_fin_plan: string | null
   forecast_fin: string | null
-  monto_contratado: number | null
-  hh_plan: number | null
-  hh_real: number | null
-  /** `null` = no se pudo leer si hay parte de hoy. Vacío ≠ «no cargó». */
-  conParte: boolean | null
   /** `null` = no se pudo leer. Un control que no pudo mirar no dice «no hay». */
   impedimentos: number | null
 }
 
-const GRID = 'minmax(0,1.5fr) minmax(0,1.1fr) 152px 148px 82px 108px 44px 52px 26px'
-
-/**
- * EL ANCHO POR DEBAJO DEL CUAL ESTA GRILLA DEJA DE SER LEGIBLE — 1.000px, y sale de sumar el GRID
- * de arriba, no del monitor de nadie: 612px de columnas fijas + 80px de los ocho gaps de 10px +
- * 28px del padding lateral = 720px que no ceden nunca. Lo único que se reparten `1.5fr` y `1.1fr`
- * es el resto, así que con 1.000px OBRA mide 161px y CLIENTE 118px, y con menos OBRA se va a cero.
- *
- * Eso es lo que pasaba en un teléfono de 390px: las dos columnas flexibles colapsaban, el nombre de
- * la obra y el cliente desaparecían, y los tres rótulos del encabezado se apilaban en el mismo
- * punto —se leía «OBRESTAADO»—. La cartera es la puerta de entrada al módulo desde el celular.
- *
- * NO SE DIBUJA UNA LISTA MÓVIL: el zip no tiene una y esta pantalla es un porte literal. La grilla
- * se queda igual y SCROLLEA POR DENTRO. El número es 1.000 y no los 1.240 que mide la tarjeta a
- * 1.280: la barra vertical se come ~15px del viewport, así que 1.240 haría aparecer una barra
- * horizontal en la pantalla del dueño —justo la fidelidad que este mínimo existe para proteger—.
- * A 1.280 y a 1.440 la tarjeta es más ancha que 1.000 y acá no cambia absolutamente nada.
- */
-const MIN_TABLA = 1000
-const ROTULO: React.CSSProperties = {
-  fontSize: '10px', color: C.tenue, letterSpacing: '.05em', paddingBottom: '8px',
+const GRID = 'minmax(0,1.5fr) minmax(0,.85fr) 104px 128px 78px'
+/** Por debajo de esto la grilla de escritorio scrollea POR DENTRO (entre los 640px del teléfono y una
+ *  ventana angosta): 310px de columnas fijas + 88px de gaps dejan a OBRA por encima de 160px. La página
+ *  nunca se corre de costado. */
+const MIN_TABLA = 660
+const ICONO_CHIP: Record<FiltroCartera, ReactNode> = {
+  todo: P.todo, curso: P.hh, atraso: P.alerta, problema: P.bloqueo, previo: P.previo,
 }
-const N = (x: number) => Math.round(x).toLocaleString('es-AR')
+const etapaDe = (o: { etapa: string | null }) => (o.etapa ? ETAPA_LABEL[o.etapa as Etapa] ?? o.etapa : null)
+const clienteDe = (o: FilaCartera) => o.cliente_nombre ?? o.cliente_texto
 
-/**
- * LA TABLA SCROLLEA POR DENTRO; LA PÁGINA NUNCA DE COSTADO (regla de geometría del porte).
- *
- * `overflowX:'auto'` no dibuja nada mientras el contenido entra: en escritorio esto es un `div` de
- * más y ni una barra. El pie de la tarjeta queda AFUERA a propósito —envuelve solo y se lee sin
- * arrastrar la tabla—.
- */
-function Ancha({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ overflowX: 'auto' }}>
-      <div style={{ minWidth: `${MIN_TABLA}px` }}>{children}</div>
-    </div>
-  )
-}
+// ═══ EL ESTADO COMPARTIDO DE LAS DOS VISTAS: buscador + chips ═══
 
-/** «$ 29,6 M» — el `M()` del mockup, sin inventar precisión. */
-function millones(v: number): string {
-  return `$ ${(v / 1_000_000).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} M`
-}
-
-/** HH del zip: «612 / 1.496». Sin plan no se escribe «/ 0», y sin imputar no es cero horas. */
-function textoHH(f: FilaCartera): { t: string; alerta: boolean } {
-  if (f.hh_real == null && f.hh_plan == null) return { t: 'sin plan', alerta: true }
-  if (f.hh_real == null) return { t: `sin imputar / ${N(f.hh_plan as number)}`, alerta: false }
-  if (f.hh_plan == null) return { t: `${N(f.hh_real)} / sin plan`, alerta: true }
-  return { t: `${N(f.hh_real)} / ${N(f.hh_plan)}`, alerta: f.hh_real > f.hh_plan }
-}
-
-export function CarteraObras({ obras, personasHoy, sinDato, esAdmin, pie }: {
-  obras: FilaCartera[]
-  /** `null` = nadie fichó o no se pudo leer; la página ya distinguió los dos casos en `pie`. */
-  personasHoy: number | null
-  /** Lo que no se pudo mirar, dicho con todas las letras debajo de la tabla. */
-  sinDato: string[]
-  esAdmin: boolean
-  /** La línea de archivadas y de contratos sin cargar: información real que el mockup no dibuja. */
-  pie?: React.ReactNode
-}) {
-  const router = useRouter()
+export function useFiltroCartera(obras: FilaCartera[]) {
   const [q, setQ] = useState('')
   const [filtro, setFiltro] = useState<FiltroCartera>('todo')
-
-  const limpiar = () => { setQ(''); setFiltro('todo') }
-
   const lista = useMemo(
-    () => obras.filter((o) => coincideTexto(o.nombre, o.cliente_nombre ?? o.cliente_texto, q, o.codigo ?? null)
+    () => obras.filter((o) => coincideTexto(o.nombre, clienteDe(o), q, o.codigo ?? null)
       && entraEnFiltro(o, filtro, o.impedimentos)),
     [obras, q, filtro],
   )
@@ -134,260 +77,309 @@ export function CarteraObras({ obras, personasHoy, sinDato, esAdmin, pie }: {
   const cuentas = useMemo(() => Object.fromEntries(
     FILTROS_CARTERA.map((f) => [f.k, obras.filter((o) => entraEnFiltro(o, f.k, o.impedimentos)).length]),
   ) as Record<FiltroCartera, number>, [obras])
-  // UN CONTROL QUE NO PUDO MIRAR NO DICE CUÁNTOS. Con la lectura de impedimentos caída, el filtro
-  // deja pasar todo —mostrar de más antes que esconder trabajo trabado— pero su chip NO puede
-  // publicar ese número: diría «Con problema 13» sobre una cartera donde nadie contó nada.
+  // UN CONTROL QUE NO PUDO MIRAR NO DICE CUÁNTOS: con la lectura de impedimentos caída el chip
+  // «Con problema» deja pasar todo, pero no publica un número que nadie contó.
   const sinImpedimentos = obras.some((o) => o.impedimentos == null)
+  return { q, setQ, filtro, setFiltro, lista, cuentas, sinImpedimentos, limpiar: () => { setQ(''); setFiltro('todo') } }
+}
 
-  const enCurso = lista.filter((o) => o.estado === 'activa' && !esPrevio(o)).length
-  const conContrato = lista.filter((o) => o.monto_contratado != null)
-  const totalContratado = conContrato.reduce((s, o) => s + (o.monto_contratado ?? 0), 0)
+/** «Ver Tabla · Gantt» (01/02) — en el teléfono sin la palabra «Ver» (M01/M02). */
+export function ConmutadorVista({ vista, telefono }: { vista: 'tabla' | 'gantt'; telefono: boolean }) {
+  const item = (k: 'tabla' | 'gantt', t: string, d: ReactNode, href: string) => {
+    const activo = vista === k
+    return (
+      <Link href={href} prefetch={false} data-testid={`nav-vistas-obras-${k}`} aria-current={activo ? 'page' : undefined}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: telefono ? '5px' : '6px', fontSize: '12.5px',
+          paddingBottom: '2px', textDecoration: 'none', color: activo ? C.tinta : C.tintaSuave,
+          fontWeight: activo ? 500 : 400, boxShadow: activo ? `inset 0 -1.5px 0 ${C.tinta}` : undefined,
+        }}><Ico d={d} s={12} />{t}</Link>
+    )
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: telefono ? '12px' : '7px' }} data-testid="nav-vistas-obras">
+      {!telefono && <span style={{ fontSize: '12px', color: C.tenue }}>Ver</span>}
+      {item('tabla', 'Tabla', P.tabla, '/obras')}
+      {item('gantt', 'Gantt', P.tiempo, '/obras/gantt')}
+    </div>
+  )
+}
+
+/** Los chips de filtro: subrayados en escritorio (01/02), pastillas de 36px en el teléfono (M01/M02). */
+export function ChipsCartera({ filtro, setFiltro, cuentas, sinImpedimentos, telefono, claves }: {
+  filtro: FiltroCartera
+  setFiltro: (f: FiltroCartera) => void
+  cuentas: Record<FiltroCartera, number>
+  sinImpedimentos: boolean
+  telefono: boolean
+  /** Qué chips dibuja esta vista: el 02 no lleva «Previo». */
+  claves?: readonly FiltroCartera[]
+}) {
+  const chips = FILTROS_CARTERA.filter((f) => !claves || claves.includes(f.k))
+  return (
+    <div style={telefono
+      ? { display: 'flex', gap: '8px', overflowX: 'auto', marginRight: '-16px', paddingRight: '16px', scrollbarWidth: 'none' }
+      : { display: 'flex', alignItems: 'center', gap: '18px', fontSize: '12.5px' }}
+      data-testid="filtros-obras">
+      {chips.map((f) => {
+        const activo = filtro === f.k
+        const n = f.k === 'problema' && sinImpedimentos ? null : cuentas[f.k]
+        return (
+          <button key={f.k} type="button" onClick={() => setFiltro(f.k)} aria-pressed={activo}
+            data-testid={`filtro-${f.k}`} data-activo={activo ? '1' : undefined}
+            title={f.k === 'problema' && sinImpedimentos ? 'No se pudieron leer los impedimentos' : f.tip}
+            style={telefono ? {
+              height: '36px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px',
+              whiteSpace: 'nowrap', border: `1px solid ${activo ? C.grafito : C.borde}`, borderRadius: '6px',
+              fontSize: '12.5px', fontWeight: activo ? 500 : 400, color: activo ? C.tinta : C.tintaSuave,
+              background: C.superficie, cursor: 'pointer', font: 'inherit', fontFamily: 'inherit', flexShrink: 0,
+            } : {
+              display: 'inline-flex', alignItems: 'center', gap: '6px', border: 'none', padding: 0, paddingBottom: '2px',
+              background: 'none', font: 'inherit', fontFamily: 'inherit', fontSize: '12.5px', cursor: 'pointer',
+              color: activo ? C.tinta : C.tintaSuave, fontWeight: activo ? 500 : 400,
+              boxShadow: activo ? `inset 0 -1.5px 0 ${C.grafito}` : undefined,
+            }}>
+            <Ico d={ICONO_CHIP[f.k]} s={12} />{f.t}
+            {n != null && (
+              <span style={telefono
+                ? { fontFamily: MONO, fontSize: '11px', color: C.tenue }
+                : { color: C.tenue, fontWeight: 400 }}>{n}</span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** La primaria «Nueva obra»: 32px arriba a la derecha (01) · 48px al pie sobre la barra (M01). */
+export function PrimariaNuevaObra({ telefono }: { telefono: boolean }) {
+  const boton = (
+    <Link href="/obras/nueva" prefetch={false} data-testid="alta-obra-nueva" style={{
+      height: telefono ? '48px' : '32px', padding: telefono ? 0 : '0 14px', borderRadius: '6px', background: C.marca,
+      color: C.grafito, fontSize: telefono ? '14px' : '13px', fontWeight: 600, display: 'flex', alignItems: 'center',
+      justifyContent: 'center', gap: telefono ? '8px' : '7px', textDecoration: 'none', whiteSpace: 'nowrap',
+    }}><Ico d={P.mas} s={telefono ? 15 : 13} />Nueva obra</Link>
+  )
+  if (!telefono) return boton
+  return (
+    <div style={{
+      position: 'fixed', left: 0, right: 0, bottom: '64px', padding: '12px 16px 18px', background: C.superficie,
+      borderTop: `1px solid ${C.borde}`, zIndex: 19,
+    }}>{boton}</div>
+  )
+}
+
+export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDato }: {
+  obras: FilaCartera[]
+  /** Cuántas quedaron fuera de la lista por archivadas. */
+  archivadas: number
+  conArchivadas: boolean
+  esAdmin: boolean
+  /** Lo que no se pudo mirar, dicho con todas las letras debajo de la tabla. */
+  sinDato: string[]
+}) {
+  const router = useRouter()
+  const telefono = esAngosto(useAnchoVentana())
+  const { q, setQ, filtro, setFiltro, lista, cuentas, sinImpedimentos, limpiar } = useFiltroCartera(obras)
+  const archivadasTexto = textoArchivadas(archivadas)
+
+  const buscador = (
+    <div style={{
+      width: telefono ? undefined : '230px', flex: telefono ? 1 : undefined, height: telefono ? '44px' : '32px',
+      padding: telefono ? '0 12px' : '0 11px', border: `1px solid ${C.bordeFuerte}`, borderRadius: '6px',
+      background: C.superficie, display: 'flex', alignItems: 'center', gap: telefono ? '8px' : '7px', color: C.tenue,
+    }}>
+      <Ico d={P.buscar} s={telefono ? 14 : 13} />
+      <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar obra o cliente"
+        aria-label="Buscar obra o cliente" data-testid="buscar-obra"
+        style={{
+          border: 'none', background: 'transparent', outline: 'none', fontFamily: 'inherit', width: '100%', padding: 0,
+          fontSize: telefono ? '13.5px' : '13px', color: C.tinta,
+        }} />
+      {q.length > 0 && (
+        <button type="button" onClick={limpiar} aria-label="Limpiar la búsqueda" data-testid="buscar-obra-limpiar"
+          style={{ display: 'flex', color: C.tenue, cursor: 'pointer', border: 'none', background: 'none', padding: 0 }}>
+          <Ico d={P.cerrar} s={13} />
+        </button>
+      )}
+    </div>
+  )
+
+  const pieArchivadas = archivadasTexto && (
+    <div style={{ fontSize: '12px', color: C.tenue }} data-testid="pie-archivadas">
+      {conArchivadas
+        ? <>Se muestran también las {archivadas} archivadas · <Link prefetch={false} href="/obras" style={{ color: C.tenue }}>Ocultarlas</Link></>
+        : <>{archivadasTexto} · <Link prefetch={false} href="/obras?archivadas=1" data-testid="ver-archivadas" style={{ color: C.tenue }}>Verlas</Link></>}
+    </div>
+  )
+
+  const vacio = lista.length === 0 && (
+    <div style={{ padding: '26px 0', fontSize: '12.5px', color: C.tintaSuave }}>
+      Nada coincide.{' '}
+      <button type="button" onClick={limpiar} data-testid="ver-todo"
+        style={{ color: C.tinta, fontWeight: 500, cursor: 'pointer', textDecoration: 'underline', border: 'none', background: 'none', font: 'inherit', padding: 0 }}>
+        Ver todo
+      </button>
+    </div>
+  )
+
+  const sinDatoLinea = sinDato.length > 0 && (
+    <p style={{ fontSize: '12px', color: C.warn, margin: 0 }} data-testid="senales-sin-dato">{sinDato.join(' · ')}</p>
+  )
+
+  if (telefono) {
+    return (
+      <div style={{ background: C.superficie, padding: '16px', paddingBottom: esAdmin ? '96px' : '16px', display: 'flex', flexDirection: 'column', gap: '18px' }}
+        data-testid="portafolio-tabla">
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: '19px', fontWeight: 600, color: C.tinta }}>Obras</div>
+          <ConmutadorVista vista="tabla" telefono />
+        </div>
+        <div style={{ display: 'flex' }}>{buscador}</div>
+        <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono />
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {lista.map((o, i) => <FilaTelefono key={o.obra_id} o={o} ultima={i === lista.length - 1} ir={() => router.push(`/obras/${o.obra_id}`)} />)}
+          {vacio}
+        </div>
+        {sinDatoLinea}
+        {pieArchivadas}
+        {esAdmin && <PrimariaNuevaObra telefono />}
+      </div>
+    )
+  }
 
   return (
-    <div style={{ background: C.lienzo, display: 'flex', flexDirection: 'column', flex: 1 }}>
-      {/* LA BARRA DE TÍTULO: 14px 20px 10px, y el conmutador y la primaria pegados a la derecha. */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 20px 10px',
-        flexShrink: 0, flexWrap: 'wrap',
-      }}>
-        <div style={{ fontSize: '19px', fontWeight: 600, color: C.tinta }}>Obras</div>
-        <Buscador valor={q} alCambiar={setQ} alLimpiar={limpiar} ancho={246}
-          placeholder="Buscar obra o cliente" testid="buscar-obra" />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-          {FILTROS_CARTERA.map((f) => (
-            <Chip key={f.k} activo={filtro === f.k} onClick={() => setFiltro(f.k)}
-              titulo={f.k === 'problema' && sinImpedimentos ? 'No se pudieron leer los impedimentos' : f.tip}
-              n={f.k === 'problema' && sinImpedimentos ? null : String(cuentas[f.k])}
-              icono={<Ico s={14} d={
-                f.k === 'todo' ? P.todo : f.k === 'curso' ? P.hh
-                  : f.k === 'atraso' ? P.alerta : f.k === 'problema' ? P.bloqueo : P.previo
-              } />}>{f.t}</Chip>
-          ))}
+    <div style={{ background: C.superficie, padding: '26px 30px 34px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}
+      data-testid="portafolio-tabla">
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '24px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+          <div style={{ fontSize: '19px', fontWeight: 600, letterSpacing: '-.01em', color: C.tinta }}>Obras</div>
+          <div style={{ fontSize: '13px', color: C.tintaSuave }} data-testid="bajada-cartera">{bajadaCartera(obras)}</div>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          {/* ═══ EL GANTT SE VE Y SE LLAMA GANTT (07/09/2026) ═══
-              El dueño: *"necesito la vista gantt de todas las obras, esto ha sido quitado por vos"*.
-              Acá había un cuadradito de 28px sin una palabra, cuyo `title` sólo aparece si el mouse
-              se queda quieto encima —y en un teléfono no aparece nunca—: el único camino visible al
-              Gantt era ninguno. Y no llevaba al Gantt: conmutaba a una SEGUNDA línea de tiempo
-              dibujada dentro de esta pantalla, con otras fechas y sin semáforo ni marca de hoy.
-              Ahora es un enlace con su nombre a `/obras/gantt`, que es la vista de la cartera sobre
-              el calendario: una sola definición del plazo, y un camino que se ve. */}
-          <Link prefetch={false} href="/obras/gantt" data-testid="conmutar-vista" title="Ver la cartera sobre el calendario"
-            style={{
-              height: '28px', padding: '0 10px', borderRadius: '6px', border: `1px solid ${C.borde}`,
-              background: C.superficie, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              gap: '6px', fontSize: '12.5px', color: C.tintaMedia, textDecoration: 'none',
-            }}>
-            <Ico d={P.tiempo} s={15} />Gantt
-          </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {buscador}
           {/* SÓLO ADMINISTRACIÓN CREA OBRAS: la RLS lo rechaza igual, y un botón que falla es peor
               que un botón que no está. */}
-          {esAdmin && (
-            <Link prefetch={false} href="/obras/nueva" data-testid="alta-obra-nueva" style={ESTILO_PRIMARIA}>
-              <Ico d={P.mas} s={14} w={2.2} />Nueva obra
-            </Link>
-          )}
+          {esAdmin && <PrimariaNuevaObra telefono={false} />}
         </div>
       </div>
 
-      <div style={{ padding: '0 20px 20px' }}>
-        {(
-          <Tarjeta testid="portafolio-tabla">
-            <Ancha>
-              <div style={{
-                display: 'grid', gridTemplateColumns: GRID, gap: '10px', alignItems: 'end',
-                height: '38px', borderBottom: `1px solid ${C.borde}`, background: C.tenueFondo,
-                padding: '0 14px',
-              }}>
-                <span style={ROTULO}>OBRA</span>
-                <span style={ROTULO}>CLIENTE</span>
-                <span style={ROTULO}>ESTADO</span>
-                <span style={ROTULO}>AVANCE</span>
-                <span style={{ ...ROTULO, textAlign: 'right' }}>PLAZO</span>
-                <span style={{ ...ROTULO, textAlign: 'right' }}>HH</span>
-                <span style={{ ...ROTULO, textAlign: 'center' }}>HOY</span>
-                {/* EL ENCABEZADO DEL TRIÁNGULO ES EL TRIÁNGULO, como en el canon: la palabra
-                    «Impedimentos» pedía tres veces el ancho de la columna que rotula. */}
-                <span style={{ ...ROTULO, textAlign: 'center', color: C.tenue }} title="Impedimentos abiertos">
-                  <Ico d={P.alerta} s={12} style={{ margin: '0 auto' }} />
-                </span>
-                <span />
-              </div>
-
-              {lista.map((o) => <Fila key={o.obra_id} o={o} ir={() => router.push(`/obras/${o.obra_id}`)} />)}
-
-              {lista.length === 0 && (
-                <div style={{ padding: '26px 14px', fontSize: '12.5px', color: C.tintaSuave }}>
-                  Nada coincide.{' '}
-                  <button type="button" onClick={limpiar} data-testid="ver-todo"
-                    style={{
-                      color: C.tinta, fontWeight: 500, cursor: 'pointer', textDecoration: 'underline',
-                      border: 'none', background: 'none', font: 'inherit', padding: 0,
-                    }}>Ver todo</button>
-                </div>
-              )}
-            </Ancha>
-
-            {/* EL PIE DEL ZIP: cuenta lo que SE VE. Filtrada la cartera, un total que hable de obras
-                fuera de la pantalla no se puede verificar mirándola. */}
-            <div style={{
-              display: 'flex', gap: '26px', justifyContent: 'flex-end', padding: '11px 16px',
-              background: C.tenueFondo, flexWrap: 'wrap',
-            }} data-testid="pie-cartera">
-              <Cifra r="OBRAS" v={String(lista.length)} />
-              <Cifra r="EN EJECUCIÓN" v={String(enCurso)} />
-              {/* «PERSONAS HOY 0» ERA LA AUSENCIA DISFRAZADA DE HECHO: cero marcas es «sin fichar»
-                  —incluye al que no tiene teléfono— y quién faltó lo declara el jefe. */}
-              <Cifra r="PERSONAS HOY" v={personasHoy == null ? null : String(personasHoy)} falta="sin fichar"
-                titulo="Personas con entrada fichada hoy en las obras de esta lista. Sale de `presencia_del_dia`." />
-              {esAdmin && (
-                <Cifra r="CONTRATADO"
-                  v={conContrato.length === 0 ? null : millones(totalContratado)}
-                  falta="sin cargar"
-                  titulo={`${conContrato.length} de ${lista.length} obras con monto contratado cargado`}
-                  sufijo={conContrato.length > 0 && conContrato.length < lista.length
-                    ? `de ${conContrato.length} de ${lista.length}` : undefined} />
-              )}
-            </div>
-          </Tarjeta>
-        )}
-
-        {/* LO QUE NO SE PUDO MIRAR SE DICE. Sin esta línea una lectura caída se ve exactamente igual
-            que una cartera sin partes y sin impedimentos: ninguna señal dibujada. */}
-        {sinDato.length > 0 && (
-          <p style={{ marginTop: '12px', fontSize: '12px', color: C.warn }} data-testid="senales-sin-dato">
-            {sinDato.join(' · ')}
-          </p>
-        )}
-        {pie}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '22px' }}>
+        <ConmutadorVista vista="tabla" telefono={false} />
+        <div style={{ width: '1px', height: '15px', background: C.borde }} />
+        <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono={false} />
       </div>
-    </div>
-  )
-}
 
-/** Una celda del pie: rótulo 11px tenue, número 12px mono. */
-function Cifra({ r, v, falta, titulo, sufijo }: {
-  r: string; v: string | null; falta?: string; titulo?: string; sufijo?: string
-}) {
-  return (
-    <div title={titulo}>
-      <span style={{ fontSize: '11px', color: C.tenue }}>{r} </span>
-      {v === null
-        ? <span style={{ fontSize: '12px', color: C.tenue, fontStyle: 'italic' }} data-nulo="">{falta ?? 'sin dato'}</span>
-        : <span style={{ fontFamily: MONO, fontSize: '12px', color: C.tinta }}>{v}</span>}
-      {sufijo && <span style={{ marginLeft: '6px', fontSize: '11px', color: C.tenue }}>{sufijo}</span>}
-    </div>
-  )
-}
+      <div style={{ overflowX: 'auto' }}><div style={{ display: 'flex', flexDirection: 'column', minWidth: `${MIN_TABLA}px` }}>
+        <div style={{
+          display: 'grid', gridTemplateColumns: GRID, gap: '22px', height: '40px', alignItems: 'center',
+          borderBottom: `1px solid ${C.borde}`, fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em',
+          color: C.tenue, textTransform: 'uppercase',
+        }}>
+          <div>Obra</div><div>Cliente</div><div>Etapa</div><div>Avance</div><div style={{ textAlign: 'right' }}>Plazo</div>
+        </div>
+        {lista.map((o) => <Fila key={o.obra_id} o={o} ir={() => router.push(`/obras/${o.obra_id}`)} />)}
+        {vacio}
+      </div></div>
 
-/** UNA FILA DE 48px. El nombre y el cliente son enlaces de verdad —se abren en pestaña nueva y se
- *  copian—; el resto de la fila navega a la obra con un clic, como el `cursor:pointer` del zip. */
-function Fila({ o, ir }: { o: FilaCartera; ir: () => void }) {
-  const e = estadoDeCartera(o)
-  const d = diasDeAtraso(o)
-  const hh = textoHH(o)
-  const previo = esPrevio(o)
-  return (
-    <Hover data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id}
-      onClick={ir}
-      base={{
-        display: 'grid', gridTemplateColumns: GRID, gap: '10px', alignItems: 'center',
-        height: '48px', borderBottom: `1px solid ${C.bordeFila}`, padding: '0 14px', cursor: 'pointer',
-      }}
-      hover={{ background: C.tenueFondo }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0 }}>
-        <span style={{ display: 'flex', color: C.tenue, flexShrink: 0 }}><Ico d={P.obra} s={15} /></span>
-        <Link href={`/obras/${o.obra_id}`} prefetch={false} onClick={(ev) => ev.stopPropagation()}
-          style={{
-            fontSize: '12.5px', fontWeight: 500, color: C.tinta, overflow: 'hidden',
-            textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{rotuloDeObra(o)}</Link>
-      </div>
-      {/* SIN FICHA NO HAY ENLACE: una obra puede tener el cliente escrito a mano y sin fila en
-          `clientes`. Un link a `/clientes/null` es una promesa que termina en 404. */}
-      <span style={{
-        fontSize: '12px', color: C.tintaMedia, minWidth: 0, overflow: 'hidden',
-        textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>
-        {o.cliente_slug && o.cliente_nombre
-          ? <Link href={`/clientes/${o.cliente_slug}`} prefetch={false} onClick={(ev) => ev.stopPropagation()}
-              style={{ color: C.tintaMedia }}>{o.cliente_nombre}</Link>
-          : (o.cliente_nombre ?? o.cliente_texto
-              ?? <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">sin cliente declarado</span>)}
-      </span>
-      <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
-        <Pastilla tono={e.tono}>{e.t}</Pastilla>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <Barra pct={previo ? 0 : o.avance_pct} color={colorDeBarra(o)} />
-        <span style={{
-          fontFamily: MONO, fontSize: '11.5px', width: '38px', textAlign: 'right',
-          color: o.avance_pct == null || previo ? C.tenue : o.avance_pct >= 100 ? C.pos : C.tinta,
-        }}>{previo || o.avance_pct == null ? '—' : `${o.avance_pct}%`}</span>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '5px' }}>
-        {d !== null && d > 0 && (
-          <span style={{ display: 'flex', color: colorDePlazo(o), flexShrink: 0 }}
-            title={`${d} días de atraso proyectado`}><Ico d={P.alerta} s={14} /></span>
-        )}
-        <span style={{ fontFamily: MONO, fontSize: '11.5px', color: colorDePlazo(o), whiteSpace: 'nowrap' }}>
-          {textoDePlazo(o)}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '26px', fontSize: '12.5px', color: C.tintaSuave }} data-testid="pie-cartera">
+        <span>{textoSeMuestran(lista.length, obras.length)}</span>
+        <span>
+          El atraso es <span style={{ fontFamily: MONO, fontSize: '12px' }}>forecast_fin − fecha_fin_plan</span>, nunca negativo.
+          Sin las dos fechas: sin plan, no cero.
         </span>
       </div>
-      <span style={{
-        fontFamily: MONO, fontSize: '11.5px', textAlign: 'right',
-        color: hh.alerta ? C.warn : C.tintaMedia,
-      }}>{hh.t}</span>
-      {/* HOY: el check afirma que hoy se cargó parte; el reloj afirma que TODAVÍA no. Ninguno de
-          los dos dice que la obra esté parada. Con la lectura caída, la celda queda vacía. */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
-        {o.conParte === true && (
-          <span title="Parte de hoy cargado" style={{ display: 'flex', color: C.pos }} data-testid="senal-hoy">
-            <Ico d={P.ok} s={14} w={2.4} />
-          </span>
-        )}
-        {o.conParte === false && o.estado === 'activa' && (
-          <span title="Todavía no se cargó parte de ejecución hoy. No dice que la obra esté parada."
-            style={{ display: 'flex', color: C.warn }} data-testid="senal-sin-parte">
-            <Ico d={P.hh} s={14} />
-          </span>
-        )}
+      {sinDatoLinea}
+      {pieArchivadas}
+    </div>
+  )
+}
+
+/** UNA FILA DE 64px del 01: nombre + estado en color, cliente, etapa, barra 64×4 + %, plazo. */
+function Fila({ o, ir }: { o: FilaCartera; ir: () => void }) {
+  const e = estadoDeCartera(o)
+  const previo = esPrevio(o)
+  const cliente = clienteDe(o)
+  return (
+    <Hover data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id} onClick={ir}
+      base={{
+        display: 'grid', gridTemplateColumns: GRID, gap: '22px', height: '64px', alignItems: 'center',
+        borderBottom: `1px solid ${C.borde}`, fontSize: '13.5px', cursor: 'pointer', color: C.tinta,
+      }}
+      hover={{ background: C.tenueFondo }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+        <Link href={`/obras/${o.obra_id}`} prefetch={false} onClick={(ev) => ev.stopPropagation()}
+          style={{ fontWeight: 500, color: C.tinta, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {rotuloDeObra(o)}
+        </Link>
+        <div style={{ fontSize: '12px', color: colorDeEstado(o) }} data-testid="estado-obra">{e.t}</div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-        {o.impedimentos != null && o.impedimentos > 0 && (
-          <span title={`${o.impedimentos} puntos para resolver`} data-testid="senal-impedimentos"
-            data-impedimentos={o.impedimentos}
-            style={{ display: 'flex', alignItems: 'center', gap: '3px', color: C.warn }}>
-            <Ico d={P.alerta} s={14} />
-            <span style={{ fontFamily: MONO, fontSize: '11px' }}>{o.impedimentos}</span>
-          </span>
-        )}
-        {o.impedimentos === 0 && <span style={{ fontSize: '11px', color: C.fantasma }} data-nulo="">—</span>}
+      {/* SIN FICHA NO HAY ENLACE: un link a `/clientes/null` es una promesa que termina en 404. */}
+      <div style={{ color: C.tintaMedia, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {o.cliente_slug && o.cliente_nombre
+          ? <Link href={`/clientes/${o.cliente_slug}`} prefetch={false} onClick={(ev) => ev.stopPropagation()} style={{ color: C.tintaMedia, textDecoration: 'none' }}>{o.cliente_nombre}</Link>
+          : cliente ?? <span style={{ color: C.tenue }} data-nulo="">sin cliente declarado</span>}
       </div>
-      {/* EL «···» DEL ZIP LLEVA A LA OBRA. No abre un menú: acá no hay una acción por fila que el
-          OS pueda ejecutar hoy, y un menú vacío es peor que un ícono que hace lo obvio. */}
-      <Link href={`/obras/${o.obra_id}`} prefetch={false} title="Abrir la obra"
-        aria-label={`Abrir ${rotuloDeObra(o)}`} onClick={(ev) => ev.stopPropagation()}
-        style={{ display: 'flex', color: C.fantasma, justifyContent: 'center' }}>
-        <IcoMas />
-      </Link>
+      <div style={{ color: C.tintaSuave }}>{etapaDe(o) ?? <span style={{ color: C.tenue }} data-nulo="">sin etapa</span>}</div>
+      {previo || o.avance_pct == null
+        ? <div style={{ color: C.tenue, fontSize: '12.5px' }} data-nulo="">{previo ? 'sin actividades' : 'sin avance cargado'}</div>
+        : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+            <div style={{ width: '64px', height: '4px', borderRadius: '2px', background: C.borde, overflow: 'hidden' }}>
+              <div style={{ width: `${Math.min(100, Math.max(0, o.avance_pct))}%`, height: '100%', background: colorDeBarra(o) }} />
+            </div>
+            <span style={{ fontSize: '12.5px', fontVariantNumeric: 'tabular-nums' }}>{o.avance_pct}%</span>
+          </div>
+        )}
+      <Plazo o={o} />
     </Hover>
   )
 }
 
-// ═══ LA LÍNEA DE TIEMPO (el `esTiempo` del mockup) ═══
-//
-// El zip la dibuja con seis meses fijos y el mes corriente resaltado. Acá los meses salen del
-// rango REAL de las obras visibles: una cartera que arranca en marzo y termina en diciembre no
-// entra en seis meses, y recortarla escondería obras enteras.
+function Plazo({ o, telefono = false }: { o: FilaCartera; telefono?: boolean }) {
+  const t = textoDePlazo(o)
+  const color = colorDePlazo(o)
+  const conDias = t.startsWith('+')
+  return (
+    <div style={{
+      textAlign: 'right', color, fontWeight: conDias ? 500 : 400, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
+      fontSize: telefono ? (conDias ? '13px' : '12px') : undefined, width: telefono ? '44px' : undefined,
+      fontStyle: telefono && t === 'sin plan' ? 'italic' : undefined,
+    }} data-testid="plazo-obra">{t}</div>
+  )
+}
 
-// ═══ LA SEGUNDA LÍNEA DE TIEMPO SE RETIRA (07/09/2026) ═══
-//
-// Acá vivían `mesesDelRango` y `LineaDeTiempo`: un Gantt propio de esta pantalla, con su propio
-// rango de meses y su propia regla de fin (`forecast_fin ?? fecha_fin_plan`). El Gantt de la cartera
-// ya existe en `/obras/gantt` y lee `obra_plan_vs_real`, que es de donde salen los plazos de la
-// tabla de arriba. Dos dibujos del mismo plazo con dos reglas distintas es la forma en que dos
-// pantallas empiezan a contestar distinto sobre la misma obra — y ninguna de las dos tenía cómo
-// enterarse. Lo que se conserva es el CAMINO: el control de la barra de herramientas, ahora con su
-// nombre, lleva a la vista que sí tiene eje, escalas, marca de hoy y semáforo.
+/** UNA FILA DE 62px de M01: nombre + «Cliente · Etapa · atraso», barra 56×4 + % + plazo de 44px. */
+function FilaTelefono({ o, ir, ultima }: { o: FilaCartera; ir: () => void; ultima: boolean }) {
+  const previo = esPrevio(o)
+  const sub = sublineaTelefono(o, clienteDe(o), etapaDe(o))
+  return (
+    <div data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id} onClick={ir} role="link" tabIndex={0}
+      onKeyDown={(ev) => { if (ev.key === 'Enter') ir() }}
+      style={{
+        minHeight: '62px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', cursor: 'pointer',
+        borderBottom: ultima ? undefined : `1px solid ${C.borde}`, color: C.tinta,
+      }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rotuloDeObra(o)}</div>
+        <div style={{ fontSize: '12px', color: C.tintaSuave }}>
+          {sub.texto}{sub.atraso && <> · <span style={{ color: C.neg }}>atraso</span></>}
+        </div>
+      </div>
+      <div style={{ flexShrink: 0, textAlign: 'right', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
+        {previo || o.avance_pct == null
+          ? <span style={{ fontSize: '12px', color: C.tenue, fontStyle: 'italic' }} data-nulo="">no se puede medir</span>
+          : (
+            <>
+              <div style={{ width: '56px', height: '4px', borderRadius: '2px', background: C.borde, overflow: 'hidden' }}>
+                <div style={{ width: `${Math.min(100, Math.max(0, o.avance_pct))}%`, height: '100%', background: colorDeBarra(o) }} />
+              </div>
+              <span style={{ fontSize: '13px', fontVariantNumeric: 'tabular-nums' }}>{o.avance_pct}%</span>
+            </>
+          )}
+        <Plazo o={o} telefono />
+      </div>
+    </div>
+  )
+}

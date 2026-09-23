@@ -144,3 +144,53 @@ export function colorDePlazo(o: ObraDeCartera): string {
   if (d > 0) return '#B54708'
   return '#067647'
 }
+
+// ═══ LOS TEXTOS FIJOS DEL DISEÑO ERP OBRAS 01 / M01 (dueño, 23/09/2026) ═══
+//
+// Se copian literales del `.html` aprobado: la bajada del título, el pie de la tabla, la línea de
+// archivadas. Son funciones y no cadenas en el JSX porque el número que llevan adentro es un dato
+// (cuántas vivas, cuántas con fin proyectado después del plan) y eso sí se prueba con `node --test`.
+
+/** «11 vivas · 4 con fin proyectado después del plan» — la bajada bajo el título «Obras». */
+export function bajadaCartera(obras: ObraDeCartera[]): string {
+  const vivas = obras.filter((o) => o.estado !== 'cerrada')
+  const conAtraso = vivas.filter((o) => (diasDeAtraso(o) ?? 0) > 0).length
+  return `${vivas.length} viva${vivas.length === 1 ? '' : 's'} · ${conAtraso} con fin proyectado después del plan`
+}
+
+/** «Se muestran 8 de 11.» — el pie de la tabla, sobre lo que SE VE contra lo que hay en la lista. */
+export function textoSeMuestran(visibles: number, total: number): string {
+  return `Se muestran ${visibles} de ${total}.`
+}
+
+/** «3 archivadas fuera de esta lista» (M01). `null` = no hay archivadas y la línea no se dibuja. */
+export function textoArchivadas(n: number): string | null {
+  if (n <= 0) return null
+  return `${n} archivada${n === 1 ? '' : 's'} fuera de esta lista`
+}
+
+/** «11 obras, 9 con fechas de plan» — la bajada del Gantt en el teléfono (M02). */
+export function bajadaGantt(obras: { fecha_inicio_plan: string | null; fecha_fin_plan: string | null }[]): string {
+  const conPlan = obras.filter((o) => o.fecha_inicio_plan && o.fecha_fin_plan).length
+  return `${obras.length} obra${obras.length === 1 ? '' : 's'}, ${conPlan} con fechas de plan`
+}
+
+/**
+ * EL COLOR DEL ESTADO DEBAJO DEL NOMBRE (01, fila): el mismo semáforo que la columna PLAZO. El
+ * diseño pinta «En ejecución · atraso» en rojo y «Previo» en gris; el ámbar es el mismo que el «+N d»
+ * de la columna de al lado, para que las dos celdas de la fila no se contradigan.
+ */
+export function colorDeEstado(o: ObraDeCartera): string {
+  const e = estadoDeCartera(o)
+  if (e.tono === 'neg') return '#B42318'
+  if (e.tono === 'pos') return '#067647'
+  if (e.tono === 'neutro') return '#6B6B67'
+  return colorDePlazo(o)
+}
+
+/** La sub-línea de la fila del teléfono (M01): «Macro · Terminación · atraso». `atraso` va aparte
+ *  porque el diseño lo pinta en rojo. */
+export function sublineaTelefono(o: ObraDeCartera, cliente: string | null, etapaRotulo: string | null): { texto: string; atraso: boolean } {
+  const partes = [cliente, etapaRotulo].filter((x): x is string => !!x)
+  return { texto: partes.join(' · '), atraso: estadoDeCartera(o).tono === 'neg' }
+}

@@ -4,6 +4,7 @@ import {
   coincideTexto, colorDeBarra, colorDePlazo, diasDeAtraso, entraEnFiltro, esPrevio,
   estadoDeCartera, textoDePlazo, type ObraDeCartera,
 } from './carteraCanon.ts'
+import * as canon from './carteraCanon.ts'
 
 const obra = (o: Partial<ObraDeCartera> = {}): ObraDeCartera => ({
   estado: 'activa', etapa: 'desarrollo', fecha_fin_plan: null, forecast_fin: null,
@@ -127,4 +128,33 @@ test('la cartera NO vuelve a pintar el plazo con el desvío contra la línea bas
       `${ruta} volvió a leer desvio_plazo_dias: compara el plan contra su propia línea base`,
     )
   }
+})
+
+// ═══ LOS TEXTOS DEL DISEÑO 01 / M01 (23/09/2026) ═══
+
+test('la bajada cuenta vivas (no archivadas) y cuántas proyectan después del plan', () => {
+  const lista = [
+    obra({ fecha_fin_plan: '2026-09-05', forecast_fin: '2026-09-21' }),
+    obra({ fecha_fin_plan: '2026-09-05', forecast_fin: '2026-09-05' }),
+    obra({ estado: 'cerrada', fecha_fin_plan: '2026-01-01', forecast_fin: '2026-03-01' }),
+    obra({ etapa: 'previo' }),
+  ]
+  assert.equal(canon.bajadaCartera(lista), '3 vivas · 1 con fin proyectado después del plan')
+  assert.equal(canon.bajadaCartera([obra()]), '1 viva · 0 con fin proyectado después del plan')
+  assert.equal(canon.textoSeMuestran(8, 11), 'Se muestran 8 de 11.')
+  assert.equal(canon.textoArchivadas(0), null)
+  assert.equal(canon.textoArchivadas(1), '1 archivada fuera de esta lista')
+  assert.equal(canon.textoArchivadas(3), '3 archivadas fuera de esta lista')
+  assert.equal(canon.bajadaGantt([
+    { fecha_inicio_plan: '2026-01-01', fecha_fin_plan: '2026-02-01' },
+    { fecha_inicio_plan: '2026-01-01', fecha_fin_plan: null },
+  ]), '2 obras, 1 con fechas de plan')
+  // El color del estado sigue al plazo: rojo con atraso, ámbar con días, azul en fecha, gris previo.
+  assert.equal(canon.colorDeEstado(obra({ fecha_fin_plan: '2026-09-05', forecast_fin: '2026-09-21' })), '#B42318')
+  assert.equal(canon.colorDeEstado(obra({ fecha_fin_plan: '2026-09-05', forecast_fin: '2026-09-08' })), '#B54708')
+  assert.equal(canon.colorDeEstado(obra({ fecha_fin_plan: '2026-09-05', forecast_fin: '2026-09-05' })), '#067647')
+  assert.equal(canon.colorDeEstado(obra({ etapa: 'previo' })), '#6B6B67')
+  assert.deepEqual(canon.sublineaTelefono(obra({ fecha_fin_plan: '2026-09-05', forecast_fin: '2026-09-21' }), 'Macro', 'Terminación'),
+    { texto: 'Macro · Terminación', atraso: true })
+  assert.deepEqual(canon.sublineaTelefono(obra(), null, 'Desarrollo'), { texto: 'Desarrollo', atraso: false })
 })
