@@ -62,7 +62,9 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
   // registrado o un ticket sacado: la base (20260923T0100) borra la devolución y descarta los
   // tickets en camino. Lo único que lo impide es un comprobante YA CARGADO EN COMPRAS —esa fila vive
   // en el Sheet y se deshace descartando el comprobante—, y de eso avisa el botón antes de intentar.
-  const anulable = abierta && e.filas_rendidas === 0
+  // Desde la migración 20260923T1400 una entrega con filas rendidas TAMBIÉN se anula: la base encola la
+  // cancelación de cada fila de Compras y el worker la escribe. Antes había que vaciarlas a mano.
+  const anulable = abierta
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }} data-testid="ficha-entrega" data-codigo={e.codigo}>
       {/* LO PRIMERO QUE SE LEE. Una prueba que se confunde con una entrega real ensucia el número de
@@ -203,6 +205,7 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
               // que ya tiene plata devuelta.
               devuelto={e.devuelto > 0}
               tickets={pendientes.length}
+              filas={e.filas_rendidas}
             />
           )}
           {e.estado === 'anulada' && e.anulada_motivo && (

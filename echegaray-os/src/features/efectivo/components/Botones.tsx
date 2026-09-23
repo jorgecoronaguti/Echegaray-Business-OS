@@ -90,13 +90,15 @@ export function ReclamarRendicion({ entrega, ultimo }: { entrega: string; ultimo
 }
 
 /** ANULAR — sólo un error de carga y con motivo. La base rechaza si ya tiene rendiciones o devoluciones. */
-export function AnularEntrega({ entrega, volverHref, devuelto = false, tickets = 0 }: {
+export function AnularEntrega({ entrega, volverHref, devuelto = false, tickets = 0, filas = 0 }: {
   entrega: string
   volverHref: string
   /** La entrega tiene un vuelto registrado: anularla lo borra, y eso se dice antes. */
   devuelto?: boolean
   /** Tickets todavía en camino: la anulación los descarta con su motivo. */
   tickets?: number
+  /** Filas de Compras que sus rendiciones escribieron: la anulación las pasa a «Cancelado» (23/09/2026). */
+  filas?: number
 }) {
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
@@ -122,11 +124,12 @@ export function AnularEntrega({ entrega, volverHref, devuelto = false, tickets =
         {pendiente ? 'Anulando…' : 'Anular'}
       </button>
       <button type="button" onClick={() => setAbierto(false)} style={{ fontSize: '12.5px', color: V.apagado }}>Cancelar</button>
-      {(devuelto || tickets > 0) && (
+      {(devuelto || tickets > 0 || filas > 0) && (
         <span style={{ fontSize: '12px', color: V.apagado, flexBasis: '100%' }} data-testid="anular-arrastra">
           {[
             devuelto ? 'se borra la devolución registrada' : null,
             tickets > 0 ? `${tickets} ticket${tickets === 1 ? '' : 's'} queda${tickets === 1 ? '' : 'n'} descartado${tickets === 1 ? '' : 's'}` : null,
+            filas > 0 ? `${filas} fila${filas === 1 ? '' : 's'} de Compras pasa${filas === 1 ? '' : 'n'} a Cancelado (la escribe el worker en minutos)` : null,
           ].filter(Boolean).join(' · ')}
         </span>
       )}

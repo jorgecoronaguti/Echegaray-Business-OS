@@ -360,3 +360,56 @@ test('el worker NO reencola solo: procesarCola no toca los rechazados', async ()
   await procesarCola({ port, google, fileId: 'F', dry: false })
   assert.ok(port.sqls.every((s) => !/sin_huella/.test(s)))
 })
+
+// ═══ ANULAR DESDE LA APP SACA LA FILA DE COMPRAS (dueño, 23/09/2026) ═══
+//
+// Una entrega de efectivo anulada encola `tipo = 'anular'` por cada fila que sus rendiciones escribieron.
+// El worker pone «Estado = Cancelado» en ESA fila —y sólo si es «A rendir»— con la misma huella de siempre.
+
+const A_RENDIR = { ...COMPRA, 'Tipo pago': 'A rendir', Estado: 'Pagado' }
+const ANULAR = { ...CAMBIO, id: 'an-1', tipo: 'anular', valor_anterior: 'Pagado', valor_nuevo: 'Cancelado' }
+function googleConFila(valores) {
+  const g = dobleGoogle()
+  const leer = g.readSheetValues.bind(g)
+  g.readSheetValues = async (id, rango, opts) => {
+    if (rango.includes(':') && rango !== rangoEncabezado('Compras')) { g.lecturas.push({ rango, opts }); return [filaDe(COMPRAS_CON_OBRA, valores)] }
+    return leer(id, rango, opts)
+  }
+  return g
+}
+
+test('anular: escribe SÓLO Estado = Cancelado en la fila A rendir, relee y cierra', async () => {
+  const google = googleConFila(A_RENDIR); const port = doblePort()
+  const r = await aplicarCambio({ port, google, fileId: 'F', cambio: ANULAR, encabezado: COMPRAS_CON_OBRA })
+  assert.equal(r, 'aplicado')
+  assert.equal(google.escrituras.length, 1)
+  const col = COMPRAS_CON_OBRA.indexOf('Estado')
+  assert.ok(col >= 0)
+  const [esc] = google.escrituras[0].data
+  assert.match(esc.range, /^Compras![A-Z]+57$/)
+  assert.deepEqual(esc.values, [['Cancelado']])
+  assert.match(google.escrituras[0].opts.confirmacion.motivo, /cancelada/)
+  assert.equal(ultimo(port).params[1], 'aplicado')
+})
+
+test('anular: una fila que NO es A rendir la cargó una persona y se RECHAZA sin escribir', async () => {
+  const google = googleConFila({ ...COMPRA, 'Tipo pago': 'Efectivo', Estado: 'Pagado' }); const port = doblePort()
+  const r = await aplicarCambio({ port, google, fileId: 'F', cambio: ANULAR, encabezado: COMPRAS_CON_OBRA })
+  assert.equal(r, 'rechazado')
+  assert.equal(google.escrituras.length, 0)
+  assert.match(ultimo(port).params[2], /no_es_a_rendir/)
+})
+
+test('anular: si la fila ya dice Cancelado no se vuelve a escribir', async () => {
+  const google = googleConFila({ ...A_RENDIR, Estado: 'Cancelado' }); const port = doblePort()
+  const r = await aplicarCambio({ port, google, fileId: 'F', cambio: ANULAR, encabezado: COMPRAS_CON_OBRA })
+  assert.equal(r, 'aplicado')
+  assert.equal(google.escrituras.length, 0)
+})
+
+test('anular: si la fila ya es otra compra, se RECHAZA', async () => {
+  const google = googleConFila({ ...A_RENDIR, 'N° Comprobante': '0001-00000001' }); const port = doblePort()
+  const r = await aplicarCambio({ port, google, fileId: 'F', cambio: ANULAR, encabezado: COMPRAS_CON_OBRA })
+  assert.equal(r, 'rechazado')
+  assert.equal(google.escrituras.length, 0)
+})

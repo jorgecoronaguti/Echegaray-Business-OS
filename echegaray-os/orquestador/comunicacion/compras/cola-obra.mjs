@@ -41,6 +41,7 @@
 // Todo entra inyectado (`port`, `google`): se prueba con dobles, sin Postgres ni Google.
 import { planificarObra, relecturaConfirma } from '../../lib/bisturi-compras-obra.mjs'
 import { planificarPago, relecturaConfirmaPago } from '../../lib/bisturi-compras-pago.mjs'
+import { planificarAnulacion } from '../../lib/bisturi-compras-anulacion.mjs'
 import { planificarObraCobranza } from '../../lib/bisturi-cobranzas-obra.mjs'
 import { contratoDeColumnas, filaACompra } from '../../lib/compras-fila.mjs'
 import { rangoEncabezado, rangoFilas } from '../../lib/columnas-por-encabezado.mjs'
@@ -117,6 +118,8 @@ export const pestanaDe = (cambio) => (cambio?.pestana === 'Cobranzas' ? 'Cobranz
 
 /** ¿Es un pago? Sin columna `tipo` (cola anterior a T1700 del 16/09) todo cambio es de Obra. */
 export const esPago = (cambio) => cambio?.tipo === 'pago'
+/** ¿Es la anulación de una fila que escribió una rendición de efectivo? (23/09/2026) Una sola celda: Estado. */
+export const esAnulacion = (cambio) => cambio?.tipo === 'anular'
 
 const PLANIFICADOR = Object.freeze({ Compras: planificarObra, Cobranzas: planificarObraCobranza })
 
@@ -164,11 +167,13 @@ export async function decidir({ port, google, fileId, cambio, encabezado, obras,
   // acá sólo se prueba que la fila siga siendo la misma compra y que las celdas no hayan cambiado.
   const plan = esPago(cambio)
     ? planificarPago({ cambio, encabezado, fila, respaldo })
+    : esAnulacion(cambio)
+    ? planificarAnulacion({ cambio, encabezado, fila, respaldo })
     : PLANIFICADOR[pestana]({
       cambio, encabezado, fila, respaldo,
       obras: obras ?? await leerObras(port), clienteAlias: clienteAlias ?? await leerClienteAlias(port),
     })
-  return { ...plan, actor, pestana, esPago: esPago(cambio) }
+  return { ...plan, actor, pestana, esPago: esPago(cambio), esAnulacion: esAnulacion(cambio) }
 }
 
 /** Sólo lectura: cuántos cambios quedaron `rechazado` por `sin_huella` (los que hoy se pueden reintentar). */
@@ -275,7 +280,9 @@ async function escribirYReleer({ port, google, fileId, cambio, plan }) {
   const r = await google.batchUpdateValues(
     fileId,
     [{ range: plan.celda, values: [[plan.valor]] }],
-    { confirmacion: { actor: plan.actor, motivo: `obra de la fila de ${plan.pestana} elegida en la app por ${plan.actor} (cambio ${cambio.id})` } },
+    { confirmacion: { actor: plan.actor, motivo: plan.esAnulacion
+      ? `fila ${cambio.fila} de Compras cancelada: la entrega de efectivo que rendía se anuló en la app por ${plan.actor} (cambio ${cambio.id})`
+      : `obra de la fila de ${plan.pestana} elegida en la app por ${plan.actor} (cambio ${cambio.id})` } },
   )
   const frenado = await frenoOCandado({ port, cambio, r, celda: plan.celda, vacia: plan.valor === '' })
   if (frenado) return frenado
