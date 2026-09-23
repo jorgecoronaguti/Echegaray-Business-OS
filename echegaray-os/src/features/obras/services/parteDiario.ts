@@ -156,3 +156,235 @@ export function textoPendiente(a: Actividad): string {
   const p = pendienteDe(a)
   return p ? `${dec2(p.cantidad)} ${p.unidad}`.trim() : 'sin medición'
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// DISEÑO ERP OBRAS · 06 «Parte diario» y M08 (dueño, 23/09/2026).
+//
+// Lo que sigue son las DECISIONES de esa pantalla: qué renglones se dibujan, cómo se escribe cada
+// cifra («960 / 1.100 · 87%», «30% declarado», «12 esperados · 10 marcados · 2 sin marcar»), cómo se
+// nombra el día («lunes 07/09/2026», «Lun 21/09») y cómo se lee el formulario que guarda TODO el
+// parte de una vez. La forma la ponen `components/parte/`.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const DIAS_LARGO = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
+const DIAS_CORTO = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+
+const partesDe = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number)
+  return { y, m, d, dow: new Date(Date.UTC(y, m - 1, d)).getUTCDay() }
+}
+const dd = (n: number) => String(n).padStart(2, '0')
+
+/** «lunes 07/09/2026» — el navegador de fecha de la 06. */
+export function fechaLarga(iso: string): string {
+  const { y, m, d, dow } = partesDe(iso)
+  return `${DIAS_LARGO[dow]} ${dd(d)}/${dd(m)}/${y}`
+}
+
+/** «Lun 21/09» — la fecha grande de la M08. */
+export function fechaCortaDia(iso: string): string {
+  const { m, d, dow } = partesDe(iso)
+  return `${DIAS_CORTO[dow]} ${dd(d)}/${dd(m)}`
+}
+
+/** Un entero con punto de miles, sin decimales de más: «1.100», «960», «12,5». */
+export const cifra = (n: number) => n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
+
+/** El porcentaje entero pegado al signo: «87%». */
+export const pctEntero = (n: number) => `${Math.round(n)}%`
+
+/**
+ * UN RENGLÓN POR FRENTE EN CURSO. Es lo que dice el subtítulo de la 06, y por eso NO se listan las
+ * pendientes: el parte carga lo que se está haciendo. Entra la que está en curso o bloqueada (un
+ * frente con impedimento abierto sigue siendo un frente en curso: se dibuja, sin input, con el borde
+ * rojo), y la que tiene avance empezado sin terminar aunque nadie la haya declarado.
+ */
+export function renglonesDelParte(actividades: readonly Actividad[]): Actividad[] {
+  return actividades
+    .filter((a) => a.tipo !== 'resumen' && !a.archivada)
+    .filter((a) => a.estado_operativo === 'en_curso' || a.estado_operativo === 'bloqueada' || enCurso(a))
+    .sort((a, b) => a.orden - b.orden)
+}
+
+/** Bloqueada = tiene un impedimento abierto. Se deriva; nadie la elige. */
+export const estaBloqueada = (a: Actividad): boolean =>
+  a.estado_operativo === 'bloqueada' || a.impedimentos_abiertos > 0
+
+/** «Rubro › Épica» debajo del nombre (11,5 px faint). Sin estructura, nada: no se inventa un rubro. */
+export function rutaDeTarea(a: { seccion: string | null; rubro: string | null }): string | null {
+  const partes = [a.seccion, a.rubro].filter((x): x is string => Boolean(x && x.trim()))
+  const unicas = partes.filter((p, i) => partes.indexOf(p) === i)
+  return unicas.length ? unicas.join(' › ') : null
+}
+
+/** Lo que sabe el resumen de partes por tarea (`actividad_partes_resumen`). */
+export interface ResumenPartes {
+  actividad_id: string
+  fraccion_acumulada: number | null
+  dias_reales: number
+}
+
+export interface CeldaAcumulado {
+  texto: string
+  /** El manual se escribe en tono de aviso: «30% declarado» es lo que alguien dijo, no lo que se midió. */
+  tono: 'normal' | 'warn' | 'mudo'
+}
+
+/**
+ * ACUMULADO: «960 / 1.100» (cantidad), «30% declarado» (manual, warn) o «sin registrar».
+ * Nunca «0 / 1.100»: cero ejecutado y nada cargado son dos cosas distintas.
+ */
+export function celdaAcumulado(a: Actividad): CeldaAcumulado {
+  if (a.metodo_avance === 'cantidad') {
+    if (a.cantidad_ejecutada == null) return { texto: 'sin registrar', tono: 'mudo' }
+    if (a.cantidad_objetivo == null) return { texto: cifra(a.cantidad_ejecutada), tono: 'normal' }
+    return { texto: `${cifra(a.cantidad_ejecutada)} / ${cifra(a.cantidad_objetivo)}`, tono: 'normal' }
+  }
+  if (a.avance_pct == null) return { texto: 'sin registrar', tono: 'mudo' }
+  return { texto: `${pctEntero(a.avance_pct)} declarado`, tono: 'warn' }
+}
+
+/**
+ * % ÍTEM: la fracción acumulada de los partes cuando existe; si no, el avance de la actividad. Sin
+ * ninguna de las dos, «sin parte».
+ */
+export function celdaPctItem(a: Actividad, resumen: ResumenPartes | undefined): string {
+  if (resumen?.fraccion_acumulada != null) return pctEntero(resumen.fraccion_acumulada * 100)
+  if (a.avance_pct != null) return pctEntero(a.avance_pct)
+  return 'sin parte'
+}
+
+/** La bajada de la M08: «890 de 1.100 m³» o «30% declarado» o «sin registrar». */
+export function bajadaHecho(a: Actividad): string {
+  if (a.metodo_avance === 'cantidad' && a.cantidad_ejecutada != null && a.cantidad_objetivo != null) {
+    return `${cifra(a.cantidad_ejecutada)} de ${cifra(a.cantidad_objetivo)} ${a.unidad ?? ''}`.trim()
+  }
+  return celdaAcumulado(a).texto
+}
+
+/** La unidad del input: la de la actividad, o «%» cuando se declara a mano. */
+export const unidadDelInput = (a: Actividad): string =>
+  a.metodo_avance === 'cantidad' ? (a.unidad ?? 'un') : '%'
+
+// ── QUIÉN VINO ─────────────────────────────────────────────────────────────────────────────────
+
+export interface ChipGente {
+  id: string
+  nombre: string
+  /** «9 hs», «ausente» o «sin marcar». */
+  estado: 'horas' | 'ausente' | 'sin_marcar'
+  horas: number | null
+}
+
+/** «R. Quiroga» — inicial del nombre y apellido, como el diseño. «Quiroga Rodolfo» → «R. Quiroga». */
+export function nombreCorto(nombreCompleto: string): string {
+  const partes = nombreCompleto.trim().split(/\s+/)
+  if (partes.length < 2) return nombreCompleto.trim()
+  // Los legajos vienen «APELLIDO Nombre»; el diseño escribe «N. Apellido».
+  const apellido = partes[0]
+  const nombre = partes[partes.length - 1]
+  const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
+  return `${nombre.charAt(0).toUpperCase()}. ${capital(apellido)}`
+}
+
+/** Las horas de la jornada de una persona, en «9 hs» / «4,5 hs». */
+export const textoHoras = (h: number) => `${h.toLocaleString('es-AR', { maximumFractionDigits: 1 })} hs`
+
+/**
+ * QUIÉN VINO: el plantel de la obra contra las horas de `registros_hh` de ese día. Sin registro es
+ * «sin marcar» (aviso); ausencia o licencia es «ausente»; el resto son horas trabajadas.
+ */
+export function chipsDeGente(
+  personas: readonly { id: string; nombre_completo: string }[],
+  registros: readonly { fecha: string | null; horas: number; tipo_hora: string; persona_id: string | null }[] | undefined,
+  dia: string,
+): ChipGente[] {
+  const horas = new Map<string, number>()
+  const ausentes = new Set<string>()
+  for (const r of registros ?? []) {
+    if (r.fecha !== dia || !r.persona_id) continue
+    if (r.tipo_hora === 'ausencia' || r.tipo_hora === 'licencia') { ausentes.add(r.persona_id); continue }
+    horas.set(r.persona_id, (horas.get(r.persona_id) ?? 0) + r.horas)
+  }
+  return personas.map((p) => {
+    const h = horas.get(p.id)
+    if (h != null && h > 0) return { id: p.id, nombre: nombreCorto(p.nombre_completo), estado: 'horas', horas: h }
+    if (ausentes.has(p.id)) return { id: p.id, nombre: nombreCorto(p.nombre_completo), estado: 'ausente', horas: null }
+    return { id: p.id, nombre: nombreCorto(p.nombre_completo), estado: 'sin_marcar', horas: null }
+  })
+}
+
+/** «12 esperados · 10 marcados · 2 sin marcar» (06) y «7 esperados · 5 marcados» (M08). */
+export function resumenGente(chips: readonly ChipGente[], conSinMarcar = true): string {
+  const marcados = chips.filter((c) => c.estado !== 'sin_marcar').length
+  const sin = chips.length - marcados
+  const base = `${chips.length} esperados · ${marcados} marcados`
+  return conSinMarcar ? `${base} · ${sin} sin marcar` : base
+}
+
+// ── EQUIPOS EN LA OBRA HOY ────────────────────────────────────────────────────────────────────
+
+export interface ActivoEnObra { id: string; nombre: string; codigo: string; clase: string }
+
+/** «en 2 tareas» / «en 1 tarea» / «sin uso hoy». */
+export function usoDelActivo(activoId: string, usadosPorTarea: ReadonlyMap<string, ReadonlySet<string>>): string {
+  let n = 0
+  for (const set of usadosPorTarea.values()) if (set.has(activoId)) n++
+  if (n === 0) return 'sin uso hoy'
+  return `en ${n} ${n === 1 ? 'tarea' : 'tareas'}`
+}
+
+// ── LO QUE VIAJA EN EL FORMULARIO ─────────────────────────────────────────────────────────────
+
+export type DestinoNovedad = 'impedimento' | 'pedido' | 'nota'
+export const DESTINOS_NOVEDAD: readonly DestinoNovedad[] = ['impedimento', 'pedido', 'nota']
+export const DESTINO_LABEL: Record<DestinoNovedad, string> = {
+  impedimento: 'Impedimento', pedido: 'Pedido', nota: 'Sólo nota',
+}
+
+export interface RenglonLeido {
+  actividad_id: string
+  /** Lo tipeado en «Hecho hoy», ya como número. */
+  hecho: number
+  personas: string[]
+  activos: string[]
+}
+
+export interface ParteLeido {
+  renglones: RenglonLeido[]
+  /** Renglones cuyo «Hecho hoy» no se pudo leer como número: se dicen, no se guardan a medias. */
+  ilegibles: { actividad_id: string; texto: string }[]
+}
+
+const UUID = '[0-9a-f-]{36}'
+const HECHO = new RegExp(`^hecho_(${UUID})$`)
+const PERSONAS = new RegExp(`^personas_(${UUID})$`)
+const ACTIVOS = new RegExp(`^activos_(${UUID})$`)
+
+/** Un renglón sin «Hecho hoy» NO es un parte, aunque tenga gente: no hay hecho que registrar. */
+export function leerParteDiario(entradas: Iterable<[string, FormDataEntryValue]>): ParteLeido {
+  const todas = [...entradas].filter((e): e is [string, string] => typeof e[1] === 'string')
+  const lista = (re: RegExp, id: string) => {
+    const fila = todas.find(([k]) => { const m = re.exec(k); return m?.[1] === id })
+    return fila ? fila[1].split(',').map((s) => s.trim()).filter(Boolean) : []
+  }
+  const renglones: RenglonLeido[] = []
+  const ilegibles: ParteLeido['ilegibles'] = []
+  for (const [k, v] of todas) {
+    const m = HECHO.exec(k)
+    if (!m || v.trim() === '') continue
+    const l = leerNumeroEsAR(v)
+    if (!l.ok || l.valor == null || l.valor < 0) { ilegibles.push({ actividad_id: m[1], texto: v }); continue }
+    renglones.push({ actividad_id: m[1], hecho: l.valor, personas: lista(PERSONAS, m[1]), activos: lista(ACTIVOS, m[1]) })
+  }
+  return { renglones, ilegibles }
+}
+
+/** Qué escribe un renglón según el método: cantidad → `cantidad`; manual → `fraccion` + `declarada`. */
+export function filaDeEjecucion(metodo: string, hecho: number): {
+  cantidad: number | null; avance_pct: number | null; fraccion: number | null; declarada: boolean
+} {
+  if (metodo === 'cantidad') return { cantidad: hecho, avance_pct: null, fraccion: null, declarada: false }
+  const pct = Math.min(100, hecho)
+  return { cantidad: null, avance_pct: pct, fraccion: pct / 100, declarada: true }
+}

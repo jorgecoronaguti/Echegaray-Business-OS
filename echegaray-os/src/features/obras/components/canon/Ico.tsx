@@ -128,6 +128,12 @@ export const P = {
   izquierda: <path d="M15 6l-6 6 6 6" />,
   /** Tres líneas decrecientes: el botón de filtros del teléfono (M05). */
   filtro: <path d="M4 6h16M7 12h10M10 18h4" />,
+  /** Impresora: «Imprimir» de la planilla (04c). */
+  imprimir: <><path d="M6 9V3h12v6" /><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><path d="M6 14h12v7H6z" /></>,
+  /** Flecha hacia abajo a una bandeja: «Exportar» de la planilla (04c). */
+  descargar: <path d="M12 4v12M8 12l4 4 4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />,
+  /** Por ciento: el toggle «Fracción %» de la planilla (04c). */
+  porcentaje: <><path d="M19 5L5 19" /><circle cx="7" cy="7" r="2.5" /><circle cx="17" cy="17" r="2.5" /></>,
 } as const
 
 /** Los tres puntos de «más acciones» (01, 02, 03). Es `fill`, no `stroke`: va aparte del resto. */

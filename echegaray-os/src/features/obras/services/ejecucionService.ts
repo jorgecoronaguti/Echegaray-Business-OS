@@ -154,3 +154,82 @@ export function pendienteDe(
     unidad: a.unidad ?? '',
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LO QUE LEE LA 06 «PARTE DIARIO» ADEMÁS DE LOS PARTES (diseño ERP Obras, 23/09/2026).
+//
+// Cuatro lecturas chicas, cada una de SU fuente: el % del ítem por partes (`actividad_partes_resumen`),
+// quién estuvo en cada parte (`obra_ejecucion_persona`), con qué (`obra_ejecucion_equipo.activo_id`)
+// y qué activos están HOY en la obra según Herramientas (`ubicacion` tipo obra → `activo_existencia`
+// → `activo`). Nunca `herramientas`/`movimientos_herramienta`: ése es el espejo viejo del Sheet.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+import type { ActivoEnObra, ResumenPartes } from './parteDiario.ts'
+
+export async function getResumenPartes(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResult<ResumenPartes[]>> {
+  const { data, error } = await supabase.from('actividad_partes_resumen')
+    .select('actividad_id, fraccion_acumulada, dias_reales').eq('obra_id', obraId).limit(2000)
+  if (error) return { data: null, error: error.message }
+  return {
+    data: (data ?? []).map((r) => {
+      const f = r as { actividad_id: string; fraccion_acumulada: number | string | null; dias_reales: number }
+      return { ...f, fraccion_acumulada: f.fraccion_acumulada == null ? null : Number(f.fraccion_acumulada) }
+    }),
+    error: null,
+  }
+}
+
+export interface GenteDeParte { ejecucion_id: string; persona_id: string; horas: number | null }
+
+export async function getGenteDePartes(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResult<GenteDeParte[]>> {
+  const { data, error } = await supabase.from('obra_ejecucion_persona')
+    .select('ejecucion_id, persona_id, horas').eq('obra_id', obraId).limit(5000)
+  if (error) return { data: null, error: error.message }
+  return {
+    data: (data ?? []).map((r) => {
+      const f = r as { ejecucion_id: string; persona_id: string; horas: number | string | null }
+      return { ...f, horas: f.horas == null ? null : Number(f.horas) }
+    }),
+    error: null,
+  }
+}
+
+export interface EquipoDeParte { ejecucion_id: string; activo_id: string | null; equipo: string }
+
+export async function getEquiposDePartes(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResult<EquipoDeParte[]>> {
+  const { data, error } = await supabase.from('obra_ejecucion_equipo')
+    .select('ejecucion_id, activo_id, equipo').eq('obra_id', obraId).limit(5000)
+  if (error) return { data: null, error: error.message }
+  return { data: (data ?? []) as EquipoDeParte[], error: null }
+}
+
+/** Los activos ubicados en la obra, por el modelo de Herramientas. Sin ubicación de obra: lista vacía. */
+export async function getActivosEnObra(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResult<ActivoEnObra[]>> {
+  const { data: ubic, error: eU } = await supabase.from('ubicacion')
+    .select('id').eq('tipo', 'obra').eq('obra_id', obraId).maybeSingle()
+  if (eU) return { data: null, error: eU.message }
+  if (!ubic) return { data: [], error: null }
+  const { data, error } = await supabase.from('activo_existencia')
+    .select('activo_id, activo:activo_id(id, nombre, codigo, clase, estado)')
+    .eq('ubicacion_id', (ubic as { id: string }).id).limit(500)
+  if (error) return { data: null, error: error.message }
+  const activos: ActivoEnObra[] = []
+  for (const fila of data ?? []) {
+    // PostgREST devuelve el embebido como objeto (FK a uno); el tipo generado lo cree lista. Se lee por `unknown`.
+    const crudo = (fila as unknown as { activo: unknown }).activo
+    const a = (Array.isArray(crudo) ? crudo[0] : crudo) as { id: string; nombre: string; codigo: string; clase: string; estado: string } | null | undefined
+    if (!a || a.estado === 'baja') continue
+    activos.push({ id: a.id, nombre: a.nombre, codigo: a.codigo, clase: a.clase })
+  }
+  // Equipos y rodados primero —son «con qué» se trabaja—, después la herramienta, por nombre.
+  const peso = (c: string) => (c === 'equipo' ? 0 : c === 'rodado' ? 1 : 2)
+  return { data: activos.sort((x, y) => peso(x.clase) - peso(y.clase) || x.nombre.localeCompare(y.nombre, 'es')), error: null }
+}

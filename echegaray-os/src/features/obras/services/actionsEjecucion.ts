@@ -38,6 +38,8 @@ import { leerEquipos, rotuloEquipo } from './equiposDelParte'
 import { crearImpedimento } from './actions'
 import { vincularDocumento } from './actionsDocumentos'
 import { leerMedicion, metodoTrasMedir } from './medicionEnLote'
+import { filaDeEjecucion, leerParteDiario, type DestinoNovedad } from './parteDiario'
+import { agregarNota } from './actionsNotas'
 
 const parteSchema = z.object({
   actividad_id: z.string().uuid('Elegí la actividad'),
@@ -366,4 +368,170 @@ export async function asignarActividadAPedido(
   }
   revalidatePath(`/obras/${obraId}`)
   return { ok: true }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL PARTE DIARIO ENTERO DE UNA VEZ — diseño ERP Obras 06 / M08 (dueño, 23/09/2026).
+//
+// Un renglón por frente en curso, «Quién vino» con horas, y una novedad con destino. Todo viaja
+// en UN formulario y se guarda con UNA acción:
+//
+//   hecho_<actividad>    → obra_ejecucion (cantidad → la fracción la deduce `parte_tarea`;
+//                          manual → fraccion + declarada = true)
+//   personas_<actividad> → obra_ejecucion_persona (horas = las de «Quién vino» de esa persona)
+//   activos_<actividad>  → obra_ejecucion_equipo.activo_id (rótulo = nombre del activo)
+//   hh_<persona>         → registros_hh, por la MISMA acción que Personal (`imputarHHMasivo`): las
+//                          horas de la liquidación tienen una sola fuente
+//   novedad + destino    → Impedimento: obra_restriccion (`crearImpedimento`, mismos campos)
+//                          Pedido: pedidos_materiales por `pedir_material` + actividad_id
+//                          Sólo nota: obra_actividad_nota
+//
+// EL MISMO DÍA SE CORRIGE, NO SE DUPLICA: si ya hay un parte web de esa actividad en esa fecha, se
+// actualiza —y su gente y sus activos se reemplazan—. Volver a guardar no suma dos veces.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const parteDiarioSchema = z.object({
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elegí el día'),
+  novedad: z.string().trim().max(1000).optional(),
+  novedad_destino: z.enum(['impedimento', 'pedido', 'nota']).optional(),
+  novedad_actividad: z.union([z.string().uuid(), z.literal('')]).optional(),
+})
+
+export async function guardarParteDiario(obraId: string, form: FormData): Promise<Resultado> {
+  const parsed = parteDiarioSchema.safeParse({
+    fecha: form.get('fecha'), novedad: form.get('novedad') ?? '',
+    novedad_destino: form.get('novedad_destino') || undefined,
+    novedad_actividad: form.get('novedad_actividad') ?? '',
+  })
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+  const d = parsed.data
+  const leido = leerParteDiario(form.entries())
+  if (leido.ilegibles.length > 0) {
+    const cuales = leido.ilegibles.slice(0, 3).map((i) => `«${i.texto}»`).join(', ')
+    return { ok: false, error: `No entendí ${cuales}: escribí un número, con coma para los decimales. No se guardó nada.` }
+  }
+  const hayHoras = [...form.keys()].some((k) => /^hh_[0-9a-f-]{36}$/.test(k) && String(form.get(k) ?? '').trim() !== '')
+  const novedad = (d.novedad ?? '').trim()
+  if (leido.renglones.length === 0 && !hayHoras && !novedad) {
+    return { ok: false, error: 'El parte está vacío: cargá lo hecho, las horas o una novedad.' }
+  }
+
+  const supabase = await createClient()
+  const { data: actsData, error: errActs } = await supabase.from('obra_actividad_control')
+    .select('actividad_id, nombre, metodo_avance, unidad, cantidad_objetivo, obra_id')
+    .eq('obra_id', obraId).limit(2000)
+  if (errActs) return { ok: false, error: errActs.message }
+  const acts = new Map((actsData ?? []).map((a) => {
+    const f = a as { actividad_id: string; nombre: string; metodo_avance: string; unidad: string | null }
+    return [f.actividad_id, f]
+  }))
+
+  // Las horas de cada persona, para colgarlas del parte de cada tarea en la que estuvo.
+  const horasDe = new Map<string, number>()
+  for (const [k, v] of form.entries()) {
+    const m = /^hh_([0-9a-f-]{36})$/.exec(k)
+    if (!m || typeof v !== 'string' || !v.trim()) continue
+    const h = Number(v.trim().replace(',', '.'))
+    if (Number.isFinite(h) && h > 0) horasDe.set(m[1], h)
+  }
+
+  const activosPedidos = [...new Set(leido.renglones.flatMap((r) => r.activos))]
+  const nombreActivo = new Map<string, string>()
+  if (activosPedidos.length > 0) {
+    const { data } = await supabase.from('activo').select('id, nombre').in('id', activosPedidos)
+    for (const a of data ?? []) nombreActivo.set((a as { id: string }).id, (a as { nombre: string }).nombre)
+  }
+
+  const efectos: string[] = []
+  let guardados = 0
+  for (const r of leido.renglones) {
+    const a = acts.get(r.actividad_id)
+    if (!a) { efectos.push('un renglón no es de esta obra y no se guardó'); continue }
+    const fila = filaDeEjecucion(a.metodo_avance, r.hecho)
+    const { data: previo } = await supabase.from('obra_ejecucion').select('id')
+      .eq('obra_id', obraId).eq('actividad_id', r.actividad_id).eq('fecha', d.fecha).eq('fuente', 'web')
+      .order('creado_en', { ascending: false }).limit(1).maybeSingle()
+    let parteId: string
+    if (previo) {
+      parteId = (previo as { id: string }).id
+      const { error } = await supabase.from('obra_ejecucion').update({ ...fila }).eq('id', parteId)
+      if (error) return { ok: false, error: `«${a.nombre}»: ${error.message}` }
+      await supabase.from('obra_ejecucion_persona').delete().eq('ejecucion_id', parteId)
+      await supabase.from('obra_ejecucion_equipo').delete().eq('ejecucion_id', parteId).not('activo_id', 'is', null)
+    } else {
+      const { data: nuevo, error } = await supabase.from('obra_ejecucion').insert({
+        obra_id: obraId, actividad_id: r.actividad_id, fecha: d.fecha, fuente: 'web', ...fila,
+      }).select('id').single()
+      if (error) return { ok: false, error: `«${a.nombre}»: ${error.message}` }
+      parteId = (nuevo as { id: string }).id
+    }
+    // Cargar un avance a mano es elegir el método, igual que en `registrarEjecucion`.
+    if (fila.declarada && a.metodo_avance === 'manual') {
+      await supabase.from('obra_actividad').update({ metodo_avance: 'partes' }).eq('id', r.actividad_id)
+    }
+    if (r.personas.length > 0) {
+      const { error } = await supabase.from('obra_ejecucion_persona').insert(
+        r.personas.map((p) => ({ ejecucion_id: parteId, obra_id: obraId, persona_id: p, horas: horasDe.get(p) ?? null })))
+      if (error) efectos.push(`la gente de «${a.nombre}» NO se guardó: ${error.message}`)
+    }
+    if (r.activos.length > 0) {
+      const { error } = await supabase.from('obra_ejecucion_equipo').insert(
+        r.activos.map((id) => ({ ejecucion_id: parteId, obra_id: obraId, activo_id: id, equipo: nombreActivo.get(id) ?? 'activo', horas: null })))
+      if (error) efectos.push(`los equipos de «${a.nombre}» NO se guardaron: ${error.message}`)
+    }
+    guardados++
+  }
+  if (guardados > 0) efectos.unshift(`${guardados} ${guardados === 1 ? 'renglón' : 'renglones'}`)
+
+  if (hayHoras) {
+    const fHH = new FormData()
+    fHH.set('fecha', d.fecha)
+    fHH.set('tipo_hora', 'normal')
+    for (const [k, v] of form.entries()) if (/^hh_[0-9a-f-]{36}$/.test(k)) fHH.set(k, v)
+    const r = await imputarHHMasivo(obraId, fHH)
+    efectos.push(r.ok ? (r.mensaje ?? 'horas cargadas') : `las horas NO se cargaron: ${r.error}`)
+  }
+
+  if (novedad) {
+    const destino: DestinoNovedad = d.novedad_destino ?? 'nota'
+    const actividadId = d.novedad_actividad || leido.renglones[0]?.actividad_id || ''
+    if (destino === 'impedimento') {
+      const fImp = new FormData()
+      fImp.set('descripcion', novedad)
+      fImp.set('tipo', String(form.get('impedimento_tipo') ?? 'otro'))
+      fImp.set('responsable', String(form.get('impedimento_responsable') ?? '').trim())
+      fImp.set('fecha_compromiso', String(form.get('impedimento_compromiso') ?? ''))
+      fImp.set('actividad_id', actividadId)
+      const r = await crearImpedimento(obraId, fImp)
+      efectos.push(r.ok ? 'impedimento anotado' : `el impedimento NO se anotó: ${r.error}`)
+    } else if (destino === 'pedido') {
+      const material = String(form.get('pedido_material') ?? '').trim()
+      const cantidad = String(form.get('pedido_cantidad') ?? '').trim().replace(',', '.')
+      const unidad = String(form.get('pedido_unidad') ?? '').trim()
+      const urgencia = String(form.get('pedido_urgencia') ?? 'semana')
+      if (!material) efectos.push('el pedido NO se hizo: falta decir qué material')
+      else {
+        const { data: grupo, error } = await supabase.rpc('pedir_material', {
+          p_obra: obraId, p_items: [{ material, cantidad, unidad }], p_urgencia: urgencia, p_nota: novedad,
+        })
+        if (error) efectos.push(`el pedido NO se hizo: ${error.message}`)
+        else {
+          if (actividadId) await supabase.from('pedidos_materiales').update({ actividad_id: actividadId }).eq('pedido_grupo', grupo as string)
+          efectos.push('pedido de material hecho')
+        }
+      }
+    } else {
+      if (!actividadId) efectos.push('la nota NO se guardó: no hay tarea a la que colgarla')
+      else {
+        // La MISMA acción que el panel de la tarea: una sola definición de qué es una nota y quién la firma.
+        const fNota = new FormData()
+        fNota.set('texto', novedad)
+        const r = await agregarNota(obraId, actividadId, fNota)
+        efectos.push(r.ok ? 'nota guardada' : `la nota NO se guardó: ${r.error}`)
+      }
+    }
+  }
+
+  revalidatePath(`/obras/${obraId}`)
+  return { ok: true, mensaje: `Parte del ${d.fecha}: ${efectos.join(' · ')}.` }
 }
