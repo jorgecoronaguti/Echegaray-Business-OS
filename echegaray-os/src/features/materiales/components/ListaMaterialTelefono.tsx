@@ -2,15 +2,22 @@ import { Estado } from '@/shared/components/ds'
 import { TarjetaLista, mono } from '@/shared/components/movil/Piezas'
 import { C, diaMes } from '@/shared/components/movil/tokens'
 import { rotuloUrgencia, textoCantidad, type Grupo } from '../logica/pedidos'
+import { BorrarPedido } from './BorrarPedido'
 
 // MATERIAL EN EL TELÉFONO — lo pedido, para OPERAR: una tarjeta por pedido, sus ítems adentro, el
 // estado en una pastilla. No hay filtros ni selector de estado: el jefe mira si llegó y pide lo que
-// falta; el estado lo mueve Administración desde la computadora.
+// falta; el estado lo mueve Administración desde la computadora. Lo que SÍ se hace acá es BORRAR un
+// pedido equivocado (dueño, 23/09/2026): al pie de la tarjeta, con confirmación en el lugar.
 //
 // Las piezas son las del mockup del teléfono (`shared/components/movil`): tarjeta de radio 14,
 // divisor entre filas más claro que el borde, cifra en mono.
 
-export function ListaMaterialTelefono({ grupos, variasObras }: { grupos: Grupo[]; variasObras: boolean }) {
+export function ListaMaterialTelefono({ grupos, variasObras, puedeBorrar = false }: {
+  grupos: Grupo[]
+  variasObras: boolean
+  /** Borrar es de quien administra (Dirección, Administración, jefe): al operario no se le ofrece. */
+  puedeBorrar?: boolean
+}) {
   return (
     <div className="space-y-3" data-testid="lista-material">
       {grupos.map((g) => (
@@ -45,6 +52,11 @@ export function ListaMaterialTelefono({ grupos, variasObras }: { grupos: Grupo[]
           </ul>
           {g.nota && (
             <div style={{ padding: '8px 14px 10px', fontSize: 12.5, color: C.muted, borderTop: `1px solid ${C.divisor}` }}>{g.nota}</div>
+          )}
+          {puedeBorrar && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 6px 2px', borderTop: `1px solid ${C.divisor}` }}>
+              <BorrarPedido ids={g.items.map((it) => it.id_pedido)} que={g.items.length > 1 ? 'este pedido entero' : 'este pedido'} variante="telefono" />
+            </div>
           )}
         </TarjetaLista>
       ))}

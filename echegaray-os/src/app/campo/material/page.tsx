@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getUsuarioActual } from '@/features/auth/services/authService'
+import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { Aviso, Vacio } from '@/shared/components/ds'
 import { ListaMaterialTelefono } from '@/features/materiales/components/ListaMaterialTelefono'
 import { agruparPedidos, hrefPedirTelefono } from '@/features/materiales/logica/pedidos'
@@ -27,7 +27,9 @@ export default async function MaterialCampoPage({ searchParams }: { searchParams
   const user = await getUsuarioActual(supabase)
   if (!user) redirect('/login')
 
-  const [campo, lectura] = await Promise.all([leerDatosCampo(supabase), leerMaterial(supabase)])
+  const [campo, lectura, perfil] = await Promise.all([leerDatosCampo(supabase), leerMaterial(supabase), getPerfilActual(supabase)])
+  // Borrar un pedido es de quien administra (la RPC lo exige igual); al operario no se le dibuja el botón.
+  const puedeBorrar = perfil.data?.rol != null && perfil.data.rol !== 'campo' && perfil.data.rol !== 'cliente'
   const pedida = (await searchParams).obra
   const obra = campo.obras.length === 1 ? campo.obras[0] : campo.obras.find((o) => o.id === pedida) ?? null
   const ids = obra ? [obra.id] : campo.obras.map((o) => o.id)
@@ -79,7 +81,7 @@ export default async function MaterialCampoPage({ searchParams }: { searchParams
       {grupos.length === 0 ? (
         <Vacio>Nada pedido todavía{obra ? ` para ${obra.nombre}` : ''}.</Vacio>
       ) : (
-        <ListaMaterialTelefono grupos={grupos} variasObras={!obra && campo.obras.length > 1} />
+        <ListaMaterialTelefono grupos={grupos} variasObras={!obra && campo.obras.length > 1} puedeBorrar={puedeBorrar} />
       )}
       {pie}
     </MarcoCampo>

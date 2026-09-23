@@ -79,3 +79,20 @@ export async function cambiarEstadoPedido(idPedido: string, estado: string): Pro
   revalidar()
   return { error: null, ok: true }
 }
+
+const borrarSchema = z.array(z.string().trim().min(1)).min(1, 'No se dijo qué pedido borrar')
+
+/** Borra uno o varios ítems (borrado lógico: `borrar_pedido_material`). Lo llama «Borrar» en las dos caras. */
+export async function borrarPedidos(ids: string[]): Promise<EstadoForm> {
+  const parsed = borrarSchema.safeParse(ids)
+  if (!parsed.success) return { error: parsed.error.issues[0].message }
+  try {
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('borrar_pedido_material', { p_ids: parsed.data })
+    if (error) return { error: error.message }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Error al conectar con Supabase' }
+  }
+  revalidar()
+  return { error: null, ok: true }
+}

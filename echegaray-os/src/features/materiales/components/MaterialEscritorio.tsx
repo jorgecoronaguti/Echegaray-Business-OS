@@ -9,6 +9,7 @@ import {
   FILTROS_ESTADO, hrefMaterialEscritorio, rotuloUrgencia, textoCantidad, type Filtro, type Pedido,
 } from '../logica/pedidos'
 import { cambiarEstadoPedido } from '../services/acciones'
+import { BorrarPedido } from './BorrarPedido'
 import { FormPedirMaterial, type ObraElegible } from './FormPedirMaterial'
 
 // MATERIAL EN LA COMPUTADORA — la lista de todas las obras para ADMINISTRAR: filtrar, cambiar el
@@ -97,6 +98,7 @@ export function MaterialEscritorio({
             <Th>Para cuándo</Th>
             <Th>Estado</Th>
             <Th>Nota</Th>
+            <Th> </Th>
           </THead>
           <tbody>
             {pedidos.map((p) => (
@@ -125,6 +127,8 @@ export function MaterialEscritorio({
                   </span>
                 </Td>
                 <Td><span className="block max-w-[260px] truncate" title={p.nota ?? undefined}>{p.nota ?? ''}</span></Td>
+                {/* BORRAR (dueño, 23/09/2026): por ítem, con confirmación en la fila. */}
+                <Td num><BorrarPedido ids={[p.id_pedido]} que="este ítem" /></Td>
               </Tr>
             ))}
           </tbody>

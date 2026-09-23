@@ -135,7 +135,9 @@ function LineaAngosta({ f, sufijo, sangria }: { f: CostoDeFila; sufijo: 'obra' |
     </span>
   )
   return (
-    <span className={`col-span-full -mt-[10px] flex flex-wrap items-baseline gap-x-[6px] ${SOLO_ANGOSTO}`}
+    // EN EL TELÉFONO NO SE DIBUJA (dueño, 23/09/2026: «infinitos números, todo junto, no se entiende
+    // nada»). Bajo `md` la cartera muestra cliente, estado y contratado; el costo se lee en la ficha.
+    <span className={`col-span-full -mt-[10px] flex flex-wrap items-baseline gap-x-[6px] max-md:hidden ${SOLO_ANGOSTO}`}
       data-testid={`costo-angosto-${sufijo}`} data-estado={f.estado}
       style={{ fontSize: '11px', color: V.apagado, paddingLeft: sangria, minWidth: 0 }}>
       <span>Mat.</span>{cifra(f.materiales, false, f.tituloMateriales)}

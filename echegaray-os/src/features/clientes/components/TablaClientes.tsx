@@ -251,7 +251,11 @@ export function TablaClientes({
                       <span className="truncate" style={{ fontSize: '12px', color: TONO.textoObra, minWidth: 96 }}>{o.nombre}</span>
                       {fila.esAdicional && <MarcaAdicional huerfano={fila.huerfano} />}
                     </span>
-                    <OrdenesDeLaObra ordenes={ocDeLaObra} veEconomia={veEconomia} />
+                    {/* EN EL TELÉFONO LAS OC NO SE LISTAN (dueño, 23/09/2026: «infinitos números»): se
+                        leen en la ficha del cliente. `contents` no cambia la geometría de escritorio. */}
+                    <span className="contents max-md:hidden">
+                      <OrdenesDeLaObra ordenes={ocDeLaObra} veEconomia={veEconomia} />
+                    </span>
                   </span>
                   <ContratadoDelTrabajo o={o} veEconomia={veEconomia} consolidado={consolidado} />
                   <CostoDeLaObra costos={costos} obraId={o.obra_id} veEconomia={veEconomia} />
