@@ -15,11 +15,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { TabTareas } from './TabTareas'
 import { getArbol, getAvancesSobreContenedor, getRelaciones } from '../services/tareasService'
 import { getPanelDeObra } from '../services/panelObraService'
-import { getDocumentos } from '../services/obrasService'
+import { getDocumentos, getHistoriasPeso, getResumenDePartes } from '../services/obrasService'
 import { getIntegrantesPorCuadrilla, getPersonas } from '../services/personalService'
 import { getEquiposPorActividad, getNotas } from '../services/recursosService'
 import { getPerfilActual } from '@/features/auth/services/authService'
-import { crearActividad } from '../services/actions'
+import { crearActividad, liberarImpedimento } from '../services/actions'
+import type { Restriccion } from '../types'
 import { registrarAvance } from '../services/actionsAvance'
 import { agregarNota } from '../services/actionsNotas'
 import { crearRubro } from '../services/actionsRubro'
@@ -30,7 +31,8 @@ import { cambiarRelacion, dividirEnFrentes, quitarRelacion } from '../services/a
 import { vincularActividadAEstandar } from '../services/actionsVinculacion'
 
 export async function WorkspaceTareas({
-  supabase, obraId, act, filtro, sol, dot, cuadrillas, puedeEditar, veEconomia,
+  supabase, obraId, act, filtro, sol, dot, cuadrillas, puedeEditar, veEconomia, nueva = false, abiertas = [],
+  nombreObra = null,
 }: {
   supabase: SupabaseClient
   obraId: string
@@ -44,12 +46,22 @@ export async function WorkspaceTareas({
   puedeEditar: boolean
   /** Quien no ve economía no ve la partida de origen, y la lectura ni se hace. */
   veEconomia: boolean
+  /** `?nueva=1`: la primaria «Nueva actividad» de la cabecera llega con el alta abierta. */
+  nueva?: boolean
+  /** Los impedimentos abiertos de la obra (ya leídos por la página): el panel dibuja los suyos. */
+  abiertas?: Restriccion[]
+  nombreObra?: string | null
 }) {
   const vista: VistaArbol = esVistaArbol(filtro) ? filtro : 'todo'
-  const [arbolRes, malImputados, relacionesRes] = await Promise.all([
+  // ERP OBRAS · H2: el peso de cada historia (`obra_historia_peso`) y lo que dicen los partes de
+  // cada ítem (`actividad_partes_resumen`) viajan con el árbol: de ahí salen Pond., % ítem, Avance
+  // obra y el ESTADO —derivado, nunca elegido—.
+  const [arbolRes, malImputados, relacionesRes, historiasRes, partesRes] = await Promise.all([
     getArbol(supabase, obraId),
     getAvancesSobreContenedor(supabase, obraId),
     getRelaciones(supabase, obraId),
+    getHistoriasPeso(supabase, obraId),
+    getResumenDePartes(supabase, obraId),
   ])
   // NO EXISTE y NO PUDE LEER son dos cosas distintas: una lista vacía por error dibujada como «no
   // hay nada» hace que un problema de permisos parezca una obra sin trabajo.
@@ -106,6 +118,11 @@ export async function WorkspaceTareas({
       // casillas en esta lista y sí dibuja la pantalla «06 · Avance masivo» entera para eso.
       // `aplicarEnLote` sigue existiendo y sigue siendo la MISMA acción — la usa la 06.
       malImputados={malImputados}
+      historias={historiasRes.data ?? []}
+      partesResumen={partesRes.data ?? []}
+      impedimentos={abiertas}
+      nuevaInicial={nueva}
+      nombreObra={nombreObra}
       panelDeObra={panel}
       relaciones={relacionesRes.data ?? []}
       docsPorActividad={docsPorActividad}
@@ -136,6 +153,7 @@ export async function WorkspaceTareas({
         // `obra_id` del lado del servidor antes de escribir.
         registrarAvance: registrarAvance.bind(null, obraId),
         agregarNota: agregarNota.bind(null, obraId),
+        liberarImpedimento: liberarImpedimento.bind(null, obraId),
       }}
     />
   )

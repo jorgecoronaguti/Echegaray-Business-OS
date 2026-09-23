@@ -1,87 +1,91 @@
 'use client'
 
-// ═══ 03 · OBRA TAREAS — PORTE LITERAL DE «03 · Obra Tareas.dc.html» ═══
+// ═══ ÍTEMS · `?vista=tareas&sub=arbol` — PORTE LITERAL DE «04» + «04b» (1440) Y «M05» (390) ═══
 //
-// El mockup arma la pantalla en cuatro bandas, y así está armada acá:
+// Una sola pantalla: la TABLA del 04b (Rubro › Épica › Historia › Tarea › Subtarea, con el peso
+// por costo de MO y el estado derivado de los partes) y el PANEL del 04 (400px, fondo quiet) que
+// se abre al elegir una fila. En el nivel 3 conviven «Ver hasta: Historia · Tarea · Subtarea» del
+// 04b y «Agrupar por: Rubro · Responsable · Estado» + «Filtrar actividades» del 04.
 //
-//   1. la barra de nivel 3 (`SubNavTrabajo`) con buscador de 222px, los cuatro filtros con su
-//      número y el conmutador de dependencias de 28×28;
-//   2. la barra de acciones (`padding:10px 20px`): la primaria amarilla, «Rubro», y a la derecha
-//      expandir/colapsar como dos íconos;
-//   3. UNA SOLA tarjeta blanca que contiene la lista, el divisor arrastrable de 5px y el Gantt —no
-//      dos tarjetas hermanas—, y al lado el panel de la tarea con su propio divisor de 12px;
-//   4. la franja de seis KPI como tarjeta aparte (`margin:0 20px 20px`).
+// En 390 (M05): buscador de 44px + botón de filtros con globo, y la lista por grupo con chevrones;
+// la primaria «Nueva actividad» de 48px al pie. El panel se abre a pantalla completa sobre la lista.
 //
-// ═══ LOS TRES CORTES POR ANCHO SON LOS DEL MOCKUP ═══
+// ═══ QUÉ SALIÓ (23/09/2026 · fidelidad al diseño) ═══
 //
-//   `verPanel = w >= 1040` · `verGantt = w >= 1180` · `verFechas = !verGantt`
-//
-// No son media queries de Tailwind aproximadas: el zip decide con `window.innerWidth` y por eso
-// acá se lee el ancho real. Debajo de 1180 la lista se ensancha y RECUPERA la columna PLAZO — el
-// dato no se pierde nunca, cambia de lugar.
-//
-// ═══ QUÉ SALIÓ DE ESTA PANTALLA ═══
-//
-// · LA SELECCIÓN MÚLTIPLE Y SU BARRA DE LOTE. El canónico no dibuja casillas acá y sí dibuja la
-//   pantalla «06 · Avance masivo» entera para eso, con su casilla de 18px y su barra fija. Dos
-//   mecanismos para lo mismo terminan contestando distinto; el enlace a la 06 está en la barra.
-// · «IMPORTAR COTIZACIÓN». El zip lo dibuja y el OS no tiene hoy ese flujo: un botón muerto es peor
-//   que su ausencia. Queda declarado, no silenciado.
+// · El Gantt al lado de la lista y la franja de seis KPI: el diseño no los dibuja acá. El
+//   cronograma es `sub=gantt`; las cifras de la obra van en la cabecera (Avance de obra · Costo
+//   teórico · Día hábil).
+// · Los chips de filtro (Todo · En curso · Crítico · Bloqueadas · …): en el escritorio el 04 no
+//   los dibuja; quedan en el cajón de filtros del teléfono (M05), donde el diseño sí pone el botón.
+// · El divisor arrastrable: el panel mide 400px.
 //
 // Buscar, filtrar, plegar, abrir el panel y cambiar de solapa son estado del CLIENTE (<200 ms): el
-// material del panel vino en bloque con el árbol y la URL se sincroniza con `replaceState` para que
-// el mismo link siga abriendo la misma tarea. Las escrituras siguen pasando por sus server actions.
+// material del panel vino en bloque con el árbol y la URL se sincroniza con `replaceState`.
 
-import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { CTRL, FormAccion, type AccionFormulario } from '@/shared/components/ui'
 import { FormNuevaActividad } from './FormActividad'
-import { hh as fmtHH, porcentaje } from './formato'
-import { COLS_CON_FECHAS, COLS_SIN_FECHAS, FilaWbs } from './FilaWbs'
-import { useAnchoVentana } from './useAnchoVentana'
-import { ALTO_CABECERA, GanttTareas } from './GanttTareas'
-import { barraDe, escalaDe, rangoDeObra, t, tramosDeContenedores } from '../services/gantt'
 import { PanelTarea, type AccionesDelPanel } from './PanelTarea'
 import { SubNavTrabajo } from './SubNavTrabajo'
 import { C, ESTILO_PRIMARIA, ESTILO_SECUNDARIA } from './canon/tokens'
 import { Ico, P } from './canon/Ico'
-import { Buscador, Chip, Tarjeta } from './canon/Piezas'
-import { Divisor, IconoBarra, Kpi, KpiDesvio, useDivisores } from './TabTareasPiezas'
-import { rollup, totalObra, type NodoObra } from '../services/wbs'
+import { Chip } from './canon/Piezas'
+import { rollup, type NodoObra } from '../services/wbs'
 import {
-  conteoDeVistas, contenedores, filasVisibles, VISTA_ARBOL_LABEL, VISTAS_PRIMARIAS,
-  VISTAS_SECUNDARIAS, type VistaArbol,
+  conteoDeVistas, filasVisibles, VISTA_ARBOL_LABEL, VISTAS_PRIMARIAS, VISTAS_SECUNDARIAS, type VistaArbol,
 } from '../services/vistaArbol'
 import type { AvanceMalImputado, RelacionLegible } from '../services/tareasService'
 import type { EquipoEnActividad, NotaActividad } from '../services/recursosService'
 import type { PanelDeObra } from '../services/panelObraService'
-import type { Persona } from '../types'
+import type { HistoriaPeso, ResumenDePartes } from '../services/obrasService'
+import type { Persona, Restriccion } from '../types'
 import { armarContexto, armarVinculacion } from '../services/contextoTarea'
 import { resolverSolapa, type Solapa } from '../services/solapasTarea'
+import {
+  AGRUPAR, agruparFilas, filasDeItems, filtrarPorTexto, VER_HASTA, type Agrupar, type VerHasta,
+} from './items/filasDeItems'
+import { TablaItems } from './items/TablaItems'
+import { ListaItems } from './items/ListaItems'
 
-/** La dotación con la que arranca la simulación: la prevista del plan, acotada al tope. */
 function dotacionInicial(n: NodoObra, pedida: string | null): number {
   const p = pedida == null ? null : Number(pedida)
-  const base = p != null && Number.isInteger(p) && p >= 0 && p <= 99
-    ? p
-    : Math.max(0, Math.round(n.dotacion_prevista ?? 0))
+  const base = p != null && Number.isInteger(p) && p >= 0 && p <= 99 ? p : Math.max(0, Math.round(n.dotacion_prevista ?? 0))
   return n.tope_frente != null ? Math.min(base, n.tope_frente) : base
 }
 
-const ROTULO_COL: React.CSSProperties = {
-  fontSize: '10px', color: C.tenue, letterSpacing: '.05em', paddingBottom: '9px',
+/** Un conmutador de texto del nivel 3 (04: «Ver hasta Historia · Tarea · Subtarea»). */
+function Opciones<T extends string>({ rotulo, opciones, valor, alElegir, testid }: {
+  rotulo: string; opciones: readonly { id: T; label: string }[]; valor: T; alElegir: (v: T) => void; testid: string
+}) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }} data-testid={testid}>
+      <span style={{ color: C.tenue }}>{rotulo}</span>
+      {opciones.map((o) => (
+        <button key={o.id} type="button" onClick={() => alElegir(o.id)} aria-pressed={valor === o.id}
+          data-testid={`${testid}-${o.id}`} style={{
+            border: 'none', background: 'none', padding: 0, font: 'inherit', cursor: 'pointer',
+            color: valor === o.id ? C.tinta : C.tintaSuave, fontWeight: valor === o.id ? 500 : 400,
+          }}>{o.label}</button>
+      ))}
+    </span>
+  )
 }
 
 export function TabTareas({
-  obraId, nodos, filtro, cuadrillas,
+  obraId, nodos, filtro, cuadrillas, historias, partesResumen, impedimentos,
   panelDeObra, relaciones, docsPorActividad, actInicial, solInicial, dotInicial, malImputados,
   puedeEditar, personas, integrantesPorCuadrilla, nombrePorPersona,
-  equiposPorActividad, notasPorActividad, autor, accionesBarra, accionesPanel,
+  equiposPorActividad, notasPorActividad, autor, accionesBarra, accionesPanel, nuevaInicial = false,
+  nombreObra = null,
 }: {
   obraId: string
   nodos: NodoObra[]
   filtro: VistaArbol
   cuadrillas: { id: string; nombre: string }[]
+  historias: HistoriaPeso[]
+  partesResumen: ResumenDePartes[]
+  /** Los impedimentos ABIERTOS de la obra: el panel dibuja los de su actividad («Lo que la traba»). */
+  impedimentos: Restriccion[]
   malImputados: AvanceMalImputado[]
   panelDeObra: PanelDeObra
   relaciones: RelacionLegible[]
@@ -91,33 +95,23 @@ export function TabTareas({
   dotInicial: string | null
   puedeEditar: boolean
   personas: Persona[]
-  /** El material del canónico 04: quién integra cada cuadrilla, cómo se llama cada persona, qué
-   *  equipos aparecieron en los partes y qué se anotó. Todo por OBRA — cambiar de actividad no
-   *  puede costar una consulta. */
   integrantesPorCuadrilla: Record<string, string[]>
   nombrePorPersona: Record<string, string>
   equiposPorActividad: Record<string, EquipoEnActividad[]>
   notasPorActividad: Record<string, NotaActividad[]>
-  /** Quién firma el avance que se registre desde el panel. */
   autor: string | null
   accionesBarra: { crearActividad: AccionFormulario; crearRubro: AccionFormulario }
   accionesPanel: AccionesDelPanel
+  /** `?nueva=1`: la primaria de la cabecera abre el alta al llegar. */
+  nuevaInicial?: boolean
+  nombreObra?: string | null
 }) {
-  const ancho = useAnchoVentana()
-  const verPanel = ancho >= 1040
-  const verGantt = ancho >= 1180
-  const verFechas = !verGantt
-
-  const [alta, setAlta] = useState<'' | 'actividad' | 'rubro'>('')
+  const [alta, setAlta] = useState<'' | 'actividad' | 'rubro'>(nuevaInicial && puedeEditar ? 'actividad' : '')
   const [query, setQuery] = useState('')
-  const [plegados, setPlegados] = useState<ReadonlySet<string>>(new Set())
-  const [verDeps, setVerDeps] = useState(true)
+  const [verHasta, setVerHasta] = useState<VerHasta>('tarea')
+  const [agrupar, setAgrupar] = useState<Agrupar>('rubro')
+  const [filtrosAbiertos, setFiltrosAbiertos] = useState(false)
 
-  // ═══ SELECCIÓN, SOLAPA Y DOTACIÓN: ESTADO CLIENTE CON LA URL DE ESPEJO ═══
-  // QUÉ FILA SE ESTÁ EDITANDO. UNA sola: dos filas abiertas a la vez en una lista de 350 es la
-  // manera de guardar en la actividad equivocada. No va a la URL — no es un lugar de la pantalla,
-  // es un gesto a medio hacer.
-  const [editando, setEditando] = useState<string | null>(null)
   const [sel, setSel] = useState<string | null>(actInicial)
   const [solapa, setSolapa] = useState<Solapa>(resolverSolapa(solInicial))
   const [dot, setDot] = useState<Record<string, number>>({})
@@ -129,38 +123,32 @@ export function TabTareas({
     }
     window.history.replaceState(null, '', `${window.location.pathname}?${p.toString()}`)
   }
-  const abrir = (id: string, s?: Solapa) => {
-    setSel(id)
-    if (s) setSolapa(s)
-    sincronizarUrl({ act: id, sol: s ?? solapa })
-  }
+  const abrir = (id: string, s?: Solapa) => { setSel(id); if (s) setSolapa(s); sincronizarUrl({ act: id, sol: s ?? solapa }) }
   const cerrar = () => { setSel(null); sincronizarUrl({ act: null, sol: null, dot: null }) }
   const cambiarSolapa = (s: Solapa) => { setSolapa(s); sincronizarUrl({ sol: s }) }
 
-  // El filtro es estado cliente (22/08): navegarlo re-montaba la página y el skeleton se comía el
-  // scroll. La URL sigue siendo compartible.
   const [filtroLocal, setFiltroLocal] = useState<VistaArbol>(filtro)
   const [filtroDeLaUrl, setFiltroDeLaUrl] = useState<VistaArbol>(filtro)
   if (filtro !== filtroDeLaUrl) { setFiltroDeLaUrl(filtro); setFiltroLocal(filtro) }
-  const elegirFiltro = (v: VistaArbol) => { setFiltroLocal(v); sincronizarUrl({ filtro: v }) }
+  const elegirFiltro = (v: VistaArbol) => { setFiltroLocal(v); sincronizarUrl({ filtro: v === 'todo' ? null : v }) }
   const limpiar = () => { setQuery(''); elegirFiltro('todo') }
+  const elegirVerHasta = (v: VerHasta) => { setVerHasta(v); sincronizarUrl({ hasta: v === 'tarea' ? null : v }) }
+  const elegirAgrupar = (v: Agrupar) => { setAgrupar(v); sincronizarUrl({ agrupar: v === 'rubro' ? null : v }) }
 
-  const agregados = useMemo(() => rollup(nodos), [nodos])
-  const total = useMemo(() => totalObra(nodos, agregados), [nodos, agregados])
   const hoy = useMemo(() => new Date().toISOString().slice(0, 10), [])
-  const filas = useMemo(
-    () => filasVisibles(nodos, agregados, { vista: filtroLocal, query, plegados, hoy }),
-    [nodos, agregados, filtroLocal, query, plegados, hoy],
-  )
+  const agregados = useMemo(() => rollup(nodos), [nodos])
   const cuentas = useMemo(() => conteoDeVistas(nodos, agregados, hoy), [nodos, agregados, hoy])
-  const rango = useMemo(() => rangoDeObra(nodos, hoy), [nodos, hoy])
-  const escala = useMemo(() => (rango ? escalaDe(rango, t(hoy)) : null), [rango, hoy])
-  const tramos = useMemo(() => tramosDeContenedores(nodos), [nodos])
+  const todas = useMemo(() => filasDeItems(nodos, historias, partesResumen, verHasta), [nodos, historias, partesResumen, verHasta])
+  const filas = useMemo(() => {
+    let f = todas
+    if (filtroLocal !== 'todo') {
+      const dentro = new Set(filasVisibles(nodos, agregados, { vista: filtroLocal, query: '', plegados: new Set(), hoy }).map((x) => x.nodo.id))
+      f = f.filter((x) => dentro.has(x.id))
+    }
+    return agruparFilas(filtrarPorTexto(f, query), agrupar)
+  }, [todas, filtroLocal, nodos, agregados, hoy, query, agrupar])
+
   const abierta = sel ? nodos.find((n) => n.id === sel) ?? null : null
-  // LAS HIJAS MEDIBLES DE UNA AGRUPADORA. El panel las usa para ofrecer un salto en vez de un
-  // cartel: sobre un rubro el avance no se registra, pero la actividad donde SÍ se registra queda
-  // a un clic. Se calcula sobre el árbol ya aplanado —`camino` empieza con el del padre—, así que
-  // sirve para cualquier profundidad, no sólo para las hijas directas.
   const hijasEjecutables = useMemo(() => {
     if (!abierta?.es_contenedor) return []
     const dentro = new Set([abierta.id])
@@ -171,240 +159,159 @@ export function TabTareas({
     }
     return salida
   }, [abierta, nodos])
-  // La franja cuenta sobre TODAS las actividades de la obra, no sobre las visibles: un filtro
-  // puesto no cambia cuántas actividades tiene la obra ni cuántos problemas hay abiertos.
-  const enCurso = useMemo(
-    () => nodos.filter((n) => !n.es_contenedor && n.estado === 'en_curso').length, [nodos],
-  )
-  const problemas = useMemo(
-    () => nodos.reduce((s, n) => s + (n.es_contenedor ? 0 : n.impedimentos_abiertos), 0), [nodos],
+  const filtrosActivos = (filtroLocal === 'todo' ? 0 : 1) + (query ? 1 : 0)
+  const vacio = (
+    <>
+      {nodos.length === 0 ? 'Esta obra todavía no tiene trabajo cargado.' : query ? `Nada coincide con «${query}».` : 'Ninguna actividad entra en esta vista.'}{' '}
+      {(query || filtroLocal !== 'todo') && (
+        <button type="button" onClick={limpiar} style={{
+          color: C.tinta, fontWeight: 500, cursor: 'pointer', textDecoration: 'underline', border: 'none', background: 'none', font: 'inherit', padding: 0,
+        }}>Ver todo</button>
+      )}
+    </>
   )
 
-  const plegar = (id: string) => setPlegados((p) => {
-    const s = new Set(p)
-    if (s.has(id)) s.delete(id); else s.add(id)
-    return s
-  })
+  const panel = abierta && (
+    <PanelTarea
+      obraId={obraId}
+      nodo={abierta}
+      solapa={solapa}
+      alCambiarSolapa={cambiarSolapa}
+      alCerrar={cerrar}
+      alAbrirActividad={(id) => abrir(id)}
+      pasos={panelDeObra.pasos[abierta.id] ?? []}
+      historial={panelDeObra.historial[abierta.id] ?? []}
+      relaciones={relaciones}
+      documentos={docsPorActividad[abierta.id] ?? []}
+      cuadrillas={cuadrillas}
+      integrantesPorCuadrilla={integrantesPorCuadrilla}
+      nombrePorPersona={nombrePorPersona}
+      equipos={equiposPorActividad[abierta.id] ?? []}
+      notas={notasPorActividad[abierta.id] ?? []}
+      autor={autor}
+      contexto={armarContexto(abierta, panelDeObra)}
+      vinculacion={armarVinculacion(abierta, panelDeObra)}
+      dotacion={dot[abierta.id] ?? dotacionInicial(abierta, sel === actInicial ? dotInicial : null)}
+      alCambiarDotacion={(n) => {
+        const tope = abierta.tope_frente
+        const v = Math.max(0, tope != null ? Math.min(n, tope) : Math.min(n, 99))
+        setDot((p) => ({ ...p, [abierta.id]: v }))
+        sincronizarUrl({ dot: String(v) })
+      }}
+      puedeEditar={puedeEditar}
+      acciones={accionesPanel}
+      hijasEjecutables={hijasEjecutables}
+      impedimentos={impedimentos.filter((r) => r.actividad_id === abierta.id)}
+      estadoDerivado={filas.find((f) => f.id === abierta.id)?.estado ?? todas.find((f) => f.id === abierta.id)?.estado ?? 'sin_parte'}
+      pctDerivado={todas.find((f) => f.id === abierta.id)?.pctItem ?? null}
+      rubro={abierta.nivel === 0 ? null : abierta.camino.split(' › ')[0]}
+      nombreObra={nombreObra}
+    />
+  )
 
-  const hayGantt = verGantt && escala != null && filas.length > 0
-  const hayPanel = abierta != null && verPanel
-  const { anchoTabla, anchoPanel, arrastrando, iniciar } = useDivisores()
+  const chips = (
+    <>
+      {VISTAS_PRIMARIAS.map((v) => (
+        <Chip key={v} activo={filtroLocal === v} onClick={() => elegirFiltro(v)} n={String(cuentas[v])}>{VISTA_ARBOL_LABEL[v]}</Chip>
+      ))}
+      <span aria-hidden data-testid="filete-filtros" style={{ width: '1px', height: '20px', background: C.borde, flexShrink: 0 }} />
+      {VISTAS_SECUNDARIAS.map((v) => (
+        <Chip key={v} secundario activo={filtroLocal === v} onClick={() => elegirFiltro(v)} n={String(cuentas[v])}>{VISTA_ARBOL_LABEL[v]}</Chip>
+      ))}
+    </>
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <SubNavTrabajo obraId={obraId} sub="arbol" derecha={
-        <>
-          <Buscador valor={query} alCambiar={setQuery} alLimpiar={limpiar} ancho={222}
-            placeholder="Buscar actividad" testid="buscar-tarea" />
-          {/* CADA FILTRO DICE CUÁNTO HAY DETRÁS (canónico 03). Las cuatro del diseño primero; las
-              otras dos, detrás — se conservan porque contestan preguntas reales de todos los días
-              (atrasadas, sin asignar) y no compiten por la mirada con las que resumen la obra.
-              «No compiten» era hasta hoy una intención escrita en un comentario: las seis se
-              dibujaban idénticas. Ahora las dos de atrás van en `secundario` y detrás de un filete
-              vertical, que es lo único que separa dos grupos de controles en la banda del 03. */}
-          {VISTAS_PRIMARIAS.map((v) => (
-            <Chip key={v} activo={filtroLocal === v} onClick={() => elegirFiltro(v)}
-              n={String(cuentas[v])}>{VISTA_ARBOL_LABEL[v]}</Chip>
-          ))}
-          <span aria-hidden data-testid="filete-filtros"
-            style={{ width: '1px', height: '20px', background: C.borde, flexShrink: 0 }} />
-          {VISTAS_SECUNDARIAS.map((v) => (
-            <Chip key={v} secundario activo={filtroLocal === v} onClick={() => elegirFiltro(v)}
-              n={String(cuentas[v])}>{VISTA_ARBOL_LABEL[v]}</Chip>
-          ))}
-          <button type="button" onClick={() => setVerDeps((x) => !x)} title="Dependencias"
-            aria-pressed={verDeps} data-testid="conmutar-dependencias"
-            style={{
-              width: '28px', height: '28px', borderRadius: '6px',
-              border: `1px solid ${verDeps ? C.grafito : C.borde}`,
-              background: verDeps ? C.grafito : C.superficie,
-              color: verDeps ? C.superficie : C.tintaSuave,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-            }}>
-            <Ico d={P.dep} s={15} />
-          </button>
-        </>
-      } />
-
-      {/* ═══ BARRA DE ACCIONES: lo que se HACE a la izquierda; lo que cambia cómo se MIRA, a la
-          derecha. Una sola primaria: crear trabajo es lo que se hace acá. ═══ */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', flexShrink: 0, flexWrap: 'wrap' }}>
-        {puedeEditar && (
+      <SubNavTrabajo obraId={obraId} sub="arbol"
+        derecha={
           <>
-            <button type="button" data-testid="abrir-alta-actividad" style={ESTILO_PRIMARIA}
-              onClick={() => setAlta((p) => (p === 'actividad' ? '' : 'actividad'))}>
-              <Ico d={P.mas} s={14} w={2.2} />Nueva actividad
-            </button>
-            <button type="button" data-testid="abrir-alta-rubro" style={ESTILO_SECUNDARIA}
-              onClick={() => setAlta((p) => (p === 'rubro' ? '' : 'rubro'))}>
-              <Ico d={P.mas} s={14} />Rubro
-            </button>
+            <Opciones rotulo="Ver hasta" opciones={VER_HASTA} valor={verHasta} alElegir={elegirVerHasta} testid="ver-hasta" />
+            <span aria-hidden style={{ width: '1px', height: '14px', background: C.borde, margin: '0 4px' }} />
+            <Opciones rotulo="Agrupar por" opciones={AGRUPAR} valor={agrupar} alElegir={elegirAgrupar} testid="agrupar-por" />
           </>
-        )}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <Link prefetch={false} href={`/obras/${obraId}/avance-masivo`} data-testid="ir-avance-masivo" style={ESTILO_SECUNDARIA}>
-            Avance masivo
-          </Link>
-          <IconoBarra titulo="Expandir todo" testid="expandir" d={P.expandir} onClick={() => setPlegados(new Set())} />
-          <IconoBarra titulo="Colapsar todo" testid="colapsar" d={P.colapsar}
-            onClick={() => setPlegados(new Set(contenedores(nodos)))} />
-        </div>
-      </div>
+        }
+        alFinal={
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar actividades" data-testid="buscar-tarea"
+            style={{
+              width: '190px', height: '29px', padding: '0 10px', border: `1px solid ${C.bordeFuerte}`, borderRadius: '6px',
+              font: 'inherit', fontSize: '12.5px', background: C.superficie, color: C.tinta,
+            }} />
+        }
+      />
 
       {alta === 'actividad' && (
-        <div style={{ margin: '0 20px 12px', border: `1px solid ${C.borde}`, borderRadius: '10px', background: C.superficie, padding: '12px' }}
+        <div className="max-md:mx-4 md:mx-[30px]" style={{ margin: '12px 0', border: `1px solid ${C.borde}`, borderRadius: '10px', background: C.superficie, padding: '12px' }}
           data-testid="alta-actividad">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: C.tinta }}>Nueva actividad</span>
+            <button type="button" onClick={() => setAlta('rubro')} data-testid="abrir-alta-rubro" style={{ ...ESTILO_SECUNDARIA, marginLeft: 'auto' }}>
+              <Ico d={P.mas} s={13} />Rubro
+            </button>
+            <button type="button" onClick={() => setAlta('')} aria-label="Cerrar" style={{ border: 'none', background: 'none', color: C.tenue, cursor: 'pointer', display: 'flex', padding: 0 }}>
+              <Ico d={P.cerrar} s={15} />
+            </button>
+          </div>
           <FormNuevaActividad personas={personas} crear={accionesBarra.crearActividad}
             rubros={nodos.filter((n) => n.es_contenedor).map((n) => n.nombre)} />
         </div>
       )}
       {alta === 'rubro' && (
-        <div style={{ margin: '0 20px 12px', border: `1px solid ${C.borde}`, borderRadius: '10px', background: C.superficie, padding: '12px' }}
+        <div className="max-md:mx-4 md:mx-[30px]" style={{ margin: '12px 0', border: `1px solid ${C.borde}`, borderRadius: '10px', background: C.superficie, padding: '12px' }}
           data-testid="alta-rubro-tareas">
-          <FormAccion accion={accionesBarra.crearRubro} testid="form-nuevo-rubro"
-            enviar="Crear rubro" limpiarAlOk mensajeOk="Rubro creado.">
-            <input name="nombre" required minLength={2} maxLength={120} className={CTRL}
-              placeholder="Nombre del rubro" />
+          <FormAccion accion={accionesBarra.crearRubro} testid="form-nuevo-rubro" enviar="Crear rubro" limpiarAlOk mensajeOk="Rubro creado.">
+            <input name="nombre" required minLength={2} maxLength={120} className={CTRL} placeholder="Nombre del rubro" />
           </FormAccion>
         </div>
       )}
 
-      {/* LOS AVANCES CARGADOS CONTRA UN CONTENEDOR NO SE ESCONDEN: trabajo declarado real que quedó
-          fuera de todo total. */}
       {malImputados.length > 0 && (
-        <p data-testid="avances-mal-imputados" style={{
-          margin: '0 20px 10px', borderLeft: `3px solid ${C.warn}`, background: C.warnFondo,
-          padding: '8px 12px', fontSize: '12px', color: C.warn,
+        <p data-testid="avances-mal-imputados" className="max-md:mx-4 md:mx-[30px]" style={{
+          margin: '0 0 10px', borderLeft: `3px solid ${C.warn}`, background: C.warnFondo, padding: '8px 12px', fontSize: '12px', color: C.warn,
         }}>
-          {malImputados.length} avance(s) quedaron cargados contra un contenedor antes de que la
-          regla existiera: {malImputados.slice(0, 3).map((m) => m.actividad).join(' · ')}
-          {malImputados.length > 3 ? ' …' : ''}. Hay que reimputarlos a la actividad que corresponde.
+          {malImputados.length} avance(s) quedaron cargados contra un contenedor antes de que la regla existiera:{' '}
+          {malImputados.slice(0, 3).map((m) => m.actividad).join(' · ')}{malImputados.length > 3 ? ' …' : ''}. Hay que reimputarlos a la actividad que corresponde.
         </p>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'stretch', gap: 0, padding: '0 20px 16px', minHeight: 0 }}>
-        <Tarjeta style={{ flex: 1, minWidth: 0, display: 'flex' }}>
-          <div style={{
-            width: hayGantt ? `${anchoTabla}px` : 'auto',
-            flex: hayGantt ? '0 0 auto' : '1',
-            minWidth: 0,
-          }} data-testid="tabla-wbs">
-            <div style={{
-              display: 'grid', gridTemplateColumns: verFechas ? COLS_CON_FECHAS : COLS_SIN_FECHAS,
-              alignItems: 'end', height: `${ALTO_CABECERA}px`, borderBottom: `1px solid ${C.borde}`,
-              background: C.tenueFondo, padding: '0 10px',
-            }}>
-              <span style={ROTULO_COL}>ACTIVIDAD</span>
-              <span style={ROTULO_COL}>ESTADO</span>
-              {verFechas && <span style={{ ...ROTULO_COL, textAlign: 'right' }}>PLAZO</span>}
-              <span style={{ ...ROTULO_COL, textAlign: 'right' }}>%</span>
-            </div>
-            {filas.map((f) => (
-              <FilaWbs
-                key={f.nodo.id}
-                fila={f}
-                abierta={sel === f.nodo.id}
-                verFechas={verFechas}
-                alPlegar={() => plegar(f.nodo.id)}
-                alAbrir={(s) => abrir(f.nodo.id, s)}
-                puedeEditar={puedeEditar}
-                alEditar={() => setEditando(f.nodo.id)}
-                edicion={editando === f.nodo.id ? {
-                  editarCampo: (campo, valor) => accionesPanel.editarCampo(f.nodo.id, campo, valor),
-                  cuadrillas,
-                  alTerminar: () => setEditando(null),
-                } : null}
-              />
-            ))}
-            {filas.length === 0 && (
-              <div style={{ padding: '24px 14px', fontSize: '12.5px', color: C.tintaSuave }} data-testid="wbs-vacio">
-                {query ? `Nada coincide con «${query}».` : 'Ninguna actividad entra en esta vista.'}{' '}
-                <button type="button" onClick={limpiar} style={{
-                  color: C.tinta, fontWeight: 500, cursor: 'pointer', textDecoration: 'underline',
-                  border: 'none', background: 'none', font: 'inherit', padding: 0,
-                }}>Ver todo</button>
-              </div>
-            )}
-          </div>
-
-          {hayGantt && escala && (
-            <>
-              <Divisor ancho={5} activo={arrastrando === 'tabla'} alArrastrar={iniciar('tabla')}
-                titulo="Arrastrar para ensanchar la lista" />
-              <GanttTareas
-                escala={escala}
-                relaciones={relaciones}
-                verDeps={verDeps}
-                filas={filas.map((f) => {
-                  const b = barraDe(f, escala, hoy, tramos)
-                  return {
-                    id: f.nodo.id,
-                    barra: b,
-                    motivo: b ? null : 'sin fechas de plan',
-                    abierta: sel === f.nodo.id,
-                    alAbrir: () => abrir(f.nodo.id),
-                  }
-                })}
-              />
-            </>
-          )}
-        </Tarjeta>
-
-        {hayPanel && abierta && (
-          <>
-            <Divisor ancho={12} activo={arrastrando === 'panel'} alArrastrar={iniciar('panel')}
-              titulo="Arrastrar para ensanchar el panel" manija />
-            <div style={{ width: `${anchoPanel}px`, flexShrink: 0 }}>
-              <PanelTarea
-                obraId={obraId}
-                nodo={abierta}
-                solapa={solapa}
-                alCambiarSolapa={cambiarSolapa}
-                alCerrar={cerrar}
-                alAbrirActividad={(id) => abrir(id)}
-                pasos={panelDeObra.pasos[abierta.id] ?? []}
-                historial={panelDeObra.historial[abierta.id] ?? []}
-                relaciones={relaciones}
-                documentos={docsPorActividad[abierta.id] ?? []}
-                cuadrillas={cuadrillas}
-                integrantesPorCuadrilla={integrantesPorCuadrilla}
-                nombrePorPersona={nombrePorPersona}
-                equipos={equiposPorActividad[abierta.id] ?? []}
-                notas={notasPorActividad[abierta.id] ?? []}
-                autor={autor}
-                contexto={armarContexto(abierta, panelDeObra)}
-                vinculacion={armarVinculacion(abierta, panelDeObra)}
-                dotacion={dot[abierta.id] ?? dotacionInicial(abierta, sel === actInicial ? dotInicial : null)}
-                alCambiarDotacion={(n) => {
-                  const tope = abierta.tope_frente
-                  const v = Math.max(0, tope != null ? Math.min(n, tope) : Math.min(n, 99))
-                  setDot((p) => ({ ...p, [abierta.id]: v }))
-                  sincronizarUrl({ dot: String(v) })
-                }}
-                puedeEditar={puedeEditar}
-                acciones={accionesPanel}
-                hijasEjecutables={hijasEjecutables}
-              />
-            </div>
-          </>
+      {/* ═══ ESCRITORIO: tabla + panel de 400px ═══ */}
+      <div className="hidden md:grid" style={{ gridTemplateColumns: abierta ? 'minmax(0,1fr) 400px' : 'minmax(0,1fr)', alignItems: 'start' }}>
+        <TablaItems filas={filas} abierta={sel} alAbrir={(id) => abrir(id)} vacio={vacio} />
+        {abierta && (
+          <aside style={{ borderLeft: `1px solid ${C.borde}`, background: C.tenueFondo, minHeight: '100%', alignSelf: 'stretch' }} data-testid="panel-tarea-marco">
+            {panel}
+          </aside>
         )}
       </div>
 
-      {/* LA FRANJA DE SEIS KPI (canónico 03): lo que decide si la obra está bien, sin scrollear. */}
-      <div data-testid="franja-tareas" style={{
-        display: 'flex', gap: 0, margin: '0 20px 20px', background: C.superficie,
-        border: `1px solid ${C.borde}`, borderRadius: '10px', overflow: 'hidden', flexShrink: 0,
-        flexWrap: 'wrap',
-      }}>
-        <Kpi t="Avance físico" v={porcentaje(total.avance_pct)} s="sobre HH plan" />
-        <Kpi t="HH plan" v={fmtHH(total.hh_plan)} s="" />
-        <Kpi t="HH reales" v={fmtHH(total.hh_real)} s="imputadas" />
-        <KpiDesvio plan={total.hh_plan} real={total.hh_real} />
-        <Kpi t="Actividades" v={String(total.n_actividades)}
-          s={[`${enCurso} en curso`, total.n_sin_analisis > 0 ? `${total.n_sin_analisis} sin análisis` : null]
-            .filter(Boolean).join(' · ')} />
-        <Kpi t="Problemas" v={String(problemas)} s="para resolver"
-          color={problemas > 0 ? C.warn : C.pos} />
+      {/* ═══ TELÉFONO (M05): lista por grupo; el panel tapa la lista ═══ */}
+      <div className="md:hidden">
+        <ListaItems filas={filas} query={query} alBuscar={setQuery} filtrosActivos={filtrosActivos}
+          alAbrirFiltros={() => setFiltrosAbiertos((x) => !x)} alAbrir={(id) => abrir(id)} vacio={vacio} />
+        {filtrosAbiertos && (
+          <div style={{ position: 'fixed', left: 0, right: 0, bottom: '64px', background: C.superficie, borderTop: `1px solid ${C.borde}`, padding: '12px 16px', zIndex: 25 }}
+            data-testid="filtros-telefono">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>{chips}</div>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '10px', fontSize: '12px', color: C.tintaSuave, flexWrap: 'wrap' }}>
+              <Opciones rotulo="Ver hasta" opciones={VER_HASTA} valor={verHasta} alElegir={elegirVerHasta} testid="ver-hasta-telefono" />
+              <Opciones rotulo="Agrupar" opciones={AGRUPAR} valor={agrupar} alElegir={elegirAgrupar} testid="agrupar-telefono" />
+            </div>
+          </div>
+        )}
+        {abierta && (
+          <div style={{ position: 'fixed', top: '44px', left: 0, right: 0, bottom: '64px', overflowY: 'auto', background: C.tenueFondo, zIndex: 30 }}
+            data-testid="panel-tarea-telefono">
+            {panel}
+          </div>
+        )}
+        {puedeEditar && !abierta && (
+          <div style={{ position: 'fixed', left: 0, right: 0, bottom: '64px', padding: '12px 16px 18px', background: C.superficie, borderTop: `1px solid ${C.borde}`, zIndex: 20 }}>
+            <button type="button" onClick={() => { setAlta('actividad'); window.scrollTo({ top: 0 }) }} data-testid="primaria-nueva-actividad"
+              style={{ ...ESTILO_PRIMARIA, width: '100%', height: '48px', justifyContent: 'center', fontSize: '14px', gap: '8px', color: C.grafito }}>
+              <Ico d={P.mas} s={15} />Nueva actividad
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

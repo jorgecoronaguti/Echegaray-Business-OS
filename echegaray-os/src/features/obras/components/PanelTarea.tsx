@@ -40,22 +40,22 @@ import Link from 'next/link'
 import { InlineEdit } from '@/shared/components/ds'
 import { C, ESTILO_PRIMARIA, ESTILO_SECUNDARIA, MONO } from './canon/tokens'
 import { Ico, P } from './canon/Ico'
-import { Pastilla } from './canon/Piezas'
 import {
   BotonIcono, Celda, Cuadro, FilaPlegable, FilaRecurso, Impedimento, Titulo,
 } from './panel/PanelPiezas'
 import {
   EjecucionReciente, SolapaAvance, SolapaDocumentos, SolapaHistorial,
 } from './panel/PanelSolapas'
-import { fecha, porcentaje } from './formato'
-import { METODO_LABEL } from '../types'
+import { fecha, fechaCorta, porcentaje } from './formato'
+import { METODO_LABEL, TIPO_RESTRICCION_LABEL, type Restriccion } from '../types'
+import type { EstadoItem } from './items/filasDeItems'
 import type { NodoObra } from '../services/wbs'
 import type { PasoDeActividad, RegistroAvance, RelacionLegible } from '../services/tareasService'
 import type { ContextoTarea } from '../services/panelTareaService'
 import type { VinculacionTarea } from '../services/vinculacionTareaService'
 import { factorDeEsfuerzo, motivoNoDividir } from '../services/panelTarea'
 import { ultimoTramoDelCamino } from '../services/frente'
-import { estadoDeFila, type ClaveEstado } from '../services/vistaArbol'
+import { estadoDeFila } from '../services/vistaArbol'
 import { SOLAPAS, type Solapa } from '../services/solapasTarea'
 import type { AccionFormulario } from '@/shared/components/ui/FormAccion'
 import { PanelTareaRecursos } from './PanelTareaRecursos'
@@ -70,9 +70,12 @@ import { oracionDeActividad } from '../services/nombreDeActividad'
 
 type ResultadoInline = { ok: true } | { ok: false; error: string }
 
-const TONO: Record<ClaveEstado, 'neg' | 'pos' | 'warn' | 'curso' | 'neutro'> = {
-  impedimento: 'neg', hecha: 'pos', en_curso_critica: 'warn', en_curso: 'curso',
-  sin_analisis: 'warn', sin_cuadrilla: 'warn', sin_plan: 'neutro', pendiente: 'neutro',
+/** El rótulo y el color del estado derivado (04: «Bloqueada» en rojo a la derecha). */
+const ROTULO_DERIVADO = { bloqueada: 'Bloqueada', sin_parte: 'Sin parte', en_progreso: 'En progreso', completado: 'Completada' } as const
+const COLOR_DERIVADO = { bloqueada: C.neg, sin_parte: C.tintaSuave, en_progreso: C.curso, completado: C.pos } as const
+
+function Falta({ children }: { children: React.ReactNode }) {
+  return <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">{children}</span>
 }
 
 export interface AccionesDelPanel {
@@ -85,6 +88,8 @@ export interface AccionesDelPanel {
   /** REGISTRAR AVANCE SIN IRSE DE LA PANTALLA. Ausente = no hay primaria, y se dice por qué. */
   registrarAvance?: (actividadId: string, form: FormData) => ReturnType<AccionFormulario>
   agregarNota?: (actividadId: string, form: FormData) => ReturnType<AccionFormulario>
+  /** «Liberar el impedimento» (04): la MISMA acción que usa Operación. */
+  liberarImpedimento?: (restriccionId: string) => Promise<{ ok: boolean; error?: string }>
 }
 
 export function PanelTarea({
@@ -92,7 +97,8 @@ export function PanelTarea({
   pasos, historial, relaciones, documentos, cuadrillas,
   integrantesPorCuadrilla = {}, nombrePorPersona = {}, equipos = [], notas = [], autor = null,
   contexto, vinculacion, dotacion, alCambiarDotacion, puedeEditar, acciones,
-  hijasEjecutables = [],
+  hijasEjecutables = [], impedimentos = [], estadoDerivado = 'sin_parte', pctDerivado = null,
+  rubro = null, nombreObra = null,
 }: {
   obraId: string
   nodo: NodoObra
@@ -122,6 +128,14 @@ export function PanelTarea({
   /** Las actividades medibles que cuelgan de esta agrupadora. Es lo que hace que la agrupadora
    *  ofrezca un salto en vez de un cartel. */
   hijasEjecutables?: { id: string; nombre: string }[]
+  /** Los impedimentos ABIERTOS de esta actividad: «Lo que la traba». */
+  impedimentos?: Restriccion[]
+  /** El estado DERIVADO de los partes (`actividad_partes_resumen`). Nunca se elige. */
+  estadoDerivado?: EstadoItem
+  pctDerivado?: number | null
+  /** «Estructura · Pisos ARCOR»: el rubro y la obra, para la sub-línea del 04. */
+  rubro?: string | null
+  nombreObra?: string | null
 }) {
   const antes = relaciones.filter((r) => r.destino_id === nodo.id)
   const despues = relaciones.filter((r) => r.origen_id === nodo.id)
@@ -138,122 +152,144 @@ export function PanelTarea({
   // base rechaza con un trigger.
   const puedeRegistrar = puedeEditar && !nodo.es_contenedor && acciones.registrarAvance != null
   const hoyISO = new Date().toISOString().slice(0, 10)
+  const estadoPanel: keyof typeof ROTULO_DERIVADO = impedimentos.length > 0 || nodo.impedimentos_abiertos > 0 ? 'bloqueada' : estadoDerivado
 
   return (
     <aside data-testid="panel-tarea" style={{
-      background: C.superficie, border: `1px solid ${C.borde}`, borderRadius: '10px',
-      display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%',
+      display: 'flex', flexDirection: 'column', gap: '20px', padding: '18px 24px 30px', minHeight: '100%',
     }}>
-      <div style={{ padding: '14px 16px 0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {puedeRegistrar ? (
-            <button type="button" onClick={() => alCambiarSolapa('avance')} data-testid="panel-registrar-avance"
-              style={{ ...ESTILO_PRIMARIA, padding: '7px 13px' }}>
-              <Ico d={P.editar} s={14} />Registrar avance
+      {/* ═══ LA CABECERA DEL PANEL (04): «Rubro · Obra» en 11,5 faint, el estado DERIVADO a la
+          derecha en 12/500, el nombre en 17/600. El estado sale de los partes, nunca de un selector. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+          <div style={{ fontSize: '11.5px', color: C.tenue, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            data-testid="panel-sublinea">
+            {[rubro, nombreObra].filter(Boolean).join(' · ') || frente || ''}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+            <span data-testid="panel-estado" data-clave={est.clave} data-estado={estadoDerivado}
+              style={{ fontSize: '12px', fontWeight: 500, color: COLOR_DERIVADO[estadoPanel] }}>{ROTULO_DERIVADO[estadoPanel]}</span>
+            <button type="button" onClick={alCerrar} data-testid="cerrar-panel" aria-label="Cerrar el panel"
+              style={{ display: 'flex', color: C.tenue, cursor: 'pointer', border: 'none', background: 'none', padding: 0 }}>
+              <Ico d={P.cerrar} s={15} />
             </button>
-          ) : nodo.es_contenedor ? (
-            // LA AGRUPADORA NO TIENE BOTÓN, TIENE UN CAMINO. El mockup 03 no selecciona agrupadoras
-            // y el 04 dibuja una actividad; el cartel de la pantalla vieja llegaba después de un
-            // viaje. Acá el hecho se dice en el lugar y la acción queda a un clic.
-            <p data-testid="panel-agrupadora" style={{
-              margin: 0, fontSize: '11.5px', color: C.tintaSuave, flex: 1, minWidth: 0,
-            }}>
-              El avance se registra en las actividades que agrupa y sube solo.
-              {hijasEjecutables.length > 0 && (
-                <>
-                  {' '}
-                  <button type="button" onClick={() => alAbrirActividad(hijasEjecutables[0].id)}
-                    data-testid="panel-ir-a-hija"
-                    style={{
-                      border: 'none', background: 'none', padding: 0, cursor: 'pointer',
-                      color: C.tinta, fontWeight: 500, textDecoration: 'underline', font: 'inherit',
-                    }}>
-                    Ir a «{oracionDeActividad(hijasEjecutables[0].nombre)}»
-                  </button>
-                </>
-              )}
-            </p>
-          ) : (
-            <p data-testid="panel-sin-permiso" style={{ margin: 0, fontSize: '11.5px', color: C.tintaSuave, flex: 1 }}>
-              No tenés permiso para registrar avance en esta obra.
-            </p>
-          )}
-          {/* DOS ÍCONOS, DOS DESTINOS DISTINTOS, LOS DOS ADENTRO DEL PANEL. El clip abre los papeles
-              de la actividad; la cámara abre el registro de avance, porque la evidencia es de UN
-              registro y no de la actividad entera. */}
-          <BotonIcono titulo="Documentos de la actividad" testid="panel-adjuntar-evidencia"
-            d={P.adjuntar} onClick={() => alCambiarSolapa('documentos')} />
-          {puedeRegistrar && (
-            <BotonIcono titulo="Foto o evidencia" testid="panel-foto-evidencia"
-              d={P.foto} onClick={() => alCambiarSolapa('avance')} />
-          )}
-          <button type="button" onClick={alCerrar} data-testid="cerrar-panel" aria-label="Cerrar el panel"
-            style={{
-              marginLeft: 'auto', display: 'flex', color: C.tenue, cursor: 'pointer',
-              border: 'none', background: 'none', padding: 0, flexShrink: 0,
-            }}>
-            <Ico d={P.cerrar} s={15} />
-          </button>
+          </div>
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginTop: '12px' }}>
-          {/* El mismo criterio que la fila del árbol: se LEE en oración, se GUARDA como se cargó. */}
-          <h2 style={{
-            fontSize: '15.5px', fontWeight: 600, color: C.tinta, lineHeight: 1.3, flex: 1,
-            minWidth: 0, margin: 0,
-          }}>{oracionDeActividad(nodo.nombre)}</h2>
-          <span style={{ flexShrink: 0 }} data-testid="panel-estado" data-clave={est.clave}>
-            <Pastilla tono={TONO[est.clave]}>{est.label}</Pastilla>
-          </span>
-        </div>
-
-        {/* LA SUB-LÍNEA DEL ZIP: frente · cuadrilla · código. Lo que no está cargado NO deja su
-            ícono huérfano: se omite entero. */}
-        <div data-testid="panel-sublinea" style={{
-          display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11.5px',
-          color: C.tintaSuave, marginTop: '4px', flexWrap: 'wrap',
-        }}>
-          {frente && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Ico d={P.obra} s={12.5} />{frente}
-            </span>
-          )}
-          {frente && nodo.cuadrilla && <span style={{ color: C.bordeFuerte }} aria-hidden>·</span>}
-          {nodo.cuadrilla && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Ico d={P.cuadrilla} s={12.5} />{nodo.cuadrilla}
-            </span>
-          )}
-          {(frente || nodo.cuadrilla) && nodo.partida_codigo && (
-            <span style={{ color: C.bordeFuerte }} aria-hidden>·</span>
-          )}
-          {nodo.partida_codigo && <span style={{ fontFamily: MONO }}>{nodo.partida_codigo}</span>}
-        </div>
-
-        {/* LAS SEIS SOLAPAS EN UNA FILA. En 404px no entran las seis: la fila es deslizable y la
-            barra se oculta —15px de barra sobre 24px de fila se comen la solapa activa—. Se
-            descartó recortar a las cuatro del mockup 03: `SOLAPAS` gobierna también el `?sol=` de
-            la URL, y sacar dos rompería links compartidos por una razón de ancho. */}
-        <nav data-testid="solapas-tarea" style={{
-          display: 'flex', alignItems: 'stretch', marginTop: '11px',
-          borderBottom: `1px solid ${C.borde}`, overflowX: 'auto', scrollbarWidth: 'none',
-        }}>
-          {SOLAPAS.map(([id, label]) => (
-            <button key={id} type="button" onClick={() => alCambiarSolapa(id)} data-testid={`sol-${id}`}
-              aria-current={solapa === id ? 'true' : undefined}
-              style={{
-                fontSize: '12px', padding: '7px 8px', whiteSpace: 'nowrap', cursor: 'pointer',
-                border: 'none', background: 'none', font: 'inherit',
-                color: solapa === id ? C.tinta : C.tintaSuave, fontWeight: solapa === id ? 600 : 400,
-                boxShadow: solapa === id ? `inset 0 -2px 0 ${C.marca}` : 'none',
-              }}>{label}</button>
-          ))}
-        </nav>
+        <h2 style={{ fontSize: '17px', fontWeight: 600, letterSpacing: '-.01em', color: C.tinta, lineHeight: 1.3, margin: 0 }}>
+          {oracionDeActividad(nodo.nombre)}
+        </h2>
+        {nodo.es_contenedor && (
+          <p data-testid="panel-agrupadora" style={{ margin: 0, fontSize: '11.5px', color: C.tintaSuave }}>
+            El avance se registra en las actividades que agrupa y sube solo.
+            {hijasEjecutables.length > 0 && (
+              <>
+                {' '}
+                <button type="button" onClick={() => alAbrirActividad(hijasEjecutables[0].id)} data-testid="panel-ir-a-hija"
+                  style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: C.tinta, fontWeight: 500, textDecoration: 'underline', font: 'inherit' }}>
+                  Ir a «{oracionDeActividad(hijasEjecutables[0].nombre)}»
+                </button>
+              </>
+            )}
+          </p>
+        )}
+        {!nodo.es_contenedor && !puedeEditar && (
+          <p data-testid="panel-sin-permiso" style={{ margin: 0, fontSize: '11.5px', color: C.tintaSuave }}>
+            No tenés permiso para registrar avance en esta obra.
+          </p>
+        )}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px 16px' }}>
+      {/* LAS SOLAPAS (04): 12px, `padding:7px 9px 8px`, la activa 500 con `inset 0 -2px 0 #30302F`,
+          la línea de abajo sale hasta los bordes del panel (`margin:0 -24px; padding:0 24px`). */}
+      <nav data-testid="solapas-tarea" style={{
+        display: 'flex', alignItems: 'stretch', borderBottom: `1px solid ${C.borde}`, margin: '0 -24px', padding: '0 24px',
+        overflowX: 'auto', scrollbarWidth: 'none',
+      }}>
+        {SOLAPAS.map(([id, label]) => (
+          <button key={id} type="button" onClick={() => alCambiarSolapa(id)} data-testid={`sol-${id}`}
+            aria-current={solapa === id ? 'true' : undefined}
+            style={{
+              fontSize: '12px', padding: '7px 9px 8px', whiteSpace: 'nowrap', cursor: 'pointer',
+              border: 'none', background: 'none', font: 'inherit',
+              color: solapa === id ? C.tinta : C.tintaSuave, fontWeight: solapa === id ? 500 : 400,
+              boxShadow: solapa === id ? `inset 0 -2px 0 ${C.grafito}` : 'none',
+            }}>{label}</button>
+        ))}
+      </nav>
+      <div style={{ flex: 1, minWidth: 0 }}>
         {solapa === 'resumen' && (
           <section data-testid="panel-general">
+            {/* ═══ EL RESUMEN DEL 04: diez renglones clave · valor en 13,5, gap 11. ═══ */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '11px', fontSize: '13.5px' }} data-testid="panel-resumen-kv">
+              {[
+                ['Medición', nodo.metodo_avance ? METODO_LABEL[nodo.metodo_avance] : <Falta>sin método</Falta>],
+                ['Avance', pctDerivado != null
+                  ? <>{porcentaje(pctDerivado)} <span style={{ fontSize: '12px', color: C.tenue }}>de {historial.length} {historial.length === 1 ? 'parte' : 'partes'}</span></>
+                  : <Falta>sin parte</Falta>],
+                ['Plan', nodo.inicio_plan && nodo.fin_plan ? `${fechaCorta(nodo.inicio_plan)} → ${fechaCorta(nodo.fin_plan)}` : <Falta>sin plan</Falta>],
+                ['Proyectado', contexto.diasHastaFinPlan != null
+                  ? <span style={{ color: contexto.diasHastaFinPlan < 0 ? C.warn : C.tinta }}>{contexto.diasHastaFinPlan < 0 ? `${-contexto.diasHastaFinPlan} d después del plan` : `${contexto.diasHastaFinPlan} d hábiles por delante`}</span>
+                  : <Falta>sin proyección</Falta>],
+                ['Responsable', nodo.responsable ?? <Falta>sin asignar</Falta>],
+                ['Cuadrilla prevista', nodo.cuadrilla ?? <Falta>sin asignar</Falta>],
+                ['HH real', nodo.hh_real != null
+                  ? <>{Math.round(nodo.hh_real).toLocaleString('es-AR')} {nodo.hh_plan != null && <span style={{ fontSize: '12px', color: C.tenue }}>de {Math.round(nodo.hh_plan).toLocaleString('es-AR')} plan</span>}</>
+                  : <Falta>sin imputar</Falta>],
+                ['Partida', nodo.partida_codigo ?? <Falta>sin partida</Falta>],
+                ['Análisis', nodo.analisis_id ? 'vinculado' : <Falta>sin vincular</Falta>],
+                ['Productividad', nodo.cantidad_ejecutada != null && nodo.hh_real
+                  ? `${(nodo.cantidad_ejecutada / nodo.hh_real).toLocaleString('es-AR', { maximumFractionDigits: 2 })}${nodo.unidad ? ` ${nodo.unidad}` : ''}/HH`
+                  : <Falta>sin producción física</Falta>],
+              ].map(([k, v]) => (
+                <div key={String(k)} style={{ display: 'flex', justifyContent: 'space-between', gap: '16px' }}>
+                  <span style={{ color: C.tintaSuave }}>{k}</span>
+                  <span style={{ textAlign: 'right', color: C.tinta }}>{v}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* ═══ LO QUE LA TRABA (04): los impedimentos abiertos de ESTA actividad, y la primaria
+                «Liberar el impedimento». Con impedimento, ésa es la única primaria del panel. ═══ */}
+            {impedimentos.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '9px', paddingTop: '20px' }} data-testid="panel-lo-que-la-traba">
+                <div style={{ fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase' }}>Lo que la traba</div>
+                {impedimentos.map((r) => (
+                  <div key={r.id} style={{ borderLeft: `2px solid ${C.neg}`, paddingLeft: '12px', display: 'flex', flexDirection: 'column', gap: '3px' }}
+                    data-testid={`traba-${r.id}`}>
+                    <div style={{ fontSize: '13.5px', color: C.tinta }}>{r.descripcion}</div>
+                    <div style={{ fontSize: '12.5px', color: C.tintaSuave }}>
+                      {TIPO_RESTRICCION_LABEL[r.tipo] ?? r.tipo} · {r.responsable ?? 'sin responsable'}
+                      {r.fecha_compromiso ? ` · comprometido ${fechaCorta(r.fecha_compromiso)}${r.fecha_compromiso < hoyISO ? ', vencido' : ''}` : ' · sin fecha de compromiso'}
+                    </div>
+                  </div>
+                ))}
+                {puedeEditar && acciones.liberarImpedimento && (
+                  <form action={async () => { await acciones.liberarImpedimento?.(impedimentos[0].id) }} style={{ marginTop: '11px' }}>
+                    <button type="submit" data-testid="panel-liberar-impedimento" style={{
+                      ...ESTILO_PRIMARIA, width: '100%', height: '36px', justifyContent: 'center', fontSize: '13px', color: C.grafito,
+                    }}>Liberar el impedimento</button>
+                  </form>
+                )}
+              </div>
+            )}
+
+            {puedeRegistrar && (
+              <div style={{ marginTop: '20px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button type="button" onClick={() => alCambiarSolapa('avance')} data-testid="panel-registrar-avance"
+                  style={impedimentos.length > 0 ? { ...ESTILO_SECUNDARIA, height: '32px' } : { ...ESTILO_PRIMARIA, height: '36px', flex: 1, justifyContent: 'center', fontSize: '13px', color: C.grafito }}>
+                  <Ico d={P.editar} s={14} />Registrar avance
+                </button>
+                <BotonIcono titulo="Documentos de la actividad" testid="panel-adjuntar-evidencia" d={P.adjuntar} onClick={() => alCambiarSolapa('documentos')} />
+                <BotonIcono titulo="Foto o evidencia" testid="panel-foto-evidencia" d={P.foto} onClick={() => alCambiarSolapa('avance')} />
+              </div>
+            )}
+
+            {/* LO QUE EL PANEL YA SABÍA HACER —corregir el plan en la celda, la cuadrilla, la
+                dotación simulada, dividir en frentes— sigue acá, plegado: el 04 no lo dibuja arriba
+                y retirarlo dejaría sin puerta a lo que hoy se edita desde este panel. */}
+            <details style={{ marginTop: '20px' }} data-testid="panel-plan-recursos">
+              <summary style={{ cursor: 'pointer', fontSize: '12.5px', color: C.tenue }}>Plan, recursos y edición</summary>
+            <div style={{ marginTop: '12px' }}>
             {/* PLAN | REAL, enfrentados. El plan se corrige en la celda — donde se lee. */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <Cuadro rotulo="PLAN" tono="plan">
@@ -378,7 +414,7 @@ export function PanelTarea({
             </div>
 
             {/* EL PROBLEMA NO SE ESCONDE: visible aunque su solapa esté cerrada. */}
-            {nodo.impedimentos_abiertos > 0 && (
+            {nodo.impedimentos_abiertos > 0 && impedimentos.length === 0 && (
               <Impedimento testid="panel-impedimento"
                 href={`/obras/${obraId}?vista=operacion&sub=impedimentos`}
                 titulo={`${nodo.impedimentos_abiertos} impedimento(s) abiertos`}
@@ -416,6 +452,8 @@ export function PanelTarea({
                 />
               </div>
             )}
+            </div>
+            </details>
           </section>
         )}
 
