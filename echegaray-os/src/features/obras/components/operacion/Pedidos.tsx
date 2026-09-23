@@ -17,7 +17,12 @@ import { C } from '../canon/tokens'
 
 const COLS = '94px minmax(0,1.6fr) 90px 130px 128px 132px'
 
-export function Pedidos({ pedidos, actividades }: { pedidos: PedidoOperacion[]; actividades: Actividad[] }) {
+export function Pedidos({ pedidos, actividades, actividadDe }: {
+  pedidos: PedidoOperacion[]
+  actividades: Actividad[]
+  /** El selector de actividad del pedido (superficie del deshacer, vive en `TabOperacion`). */
+  actividadDe?: (p: PedidoOperacion) => React.ReactNode
+}) {
   const nombreDe = (id: string | null) => (id ? actividades.find((a) => a.id === id)?.nombre ?? null : null)
   const vacio = pedidos.length === 0 && (
     <div style={{ padding: '18px 0', fontSize: '13px', color: C.tenue }} data-testid="pedidos-vacio">
@@ -38,7 +43,10 @@ export function Pedidos({ pedidos, actividades }: { pedidos: PedidoOperacion[]; 
               <GridFila key={p.id_pedido} columnas={COLS} alto={58} ultima={i === pedidos.length - 1} sangria={0}
                 testid={`pedido-${p.id_pedido}`}>
                 <Celda tono="suave">{diaMes(p.fecha) ?? <Falta>sin fecha</Falta>}</Celda>
-                <Celda>{p.material ?? <Falta>sin material declarado</Falta>}</Celda>
+                <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <Celda>{p.material ?? <Falta>sin material declarado</Falta>}</Celda>
+                  {actividadDe?.(p)}
+                </div>
                 <Celda der>{p.cantidad == null ? <Falta>sin cantidad</Falta> : cantidadPedido(p.cantidad, p.unidad)}</Celda>
                 <Celda tono="media">{p.quien ?? <Falta>sin registrar</Falta>}</Celda>
                 <Celda tono={e.tono}>{e.texto}</Celda>
