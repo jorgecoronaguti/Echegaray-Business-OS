@@ -55,8 +55,15 @@ test('la fila mide 36px y las DOS columnas leen el mismo número', () => {
   assert.match(tabla, /height: altoFila/)
 })
 
-test('la columna de actividades mide los 340px del mockup', () => {
-  assert.match(fuente('TablaCronogramaObra.tsx'), /width: '340px', flexShrink: 0/)
+test('la columna de actividades mide los 340px del mockup en escritorio, y en el teléfono la achica anchoPantalla', () => {
+  // El ancho es un prop con el 340 del mockup por defecto: en escritorio no cambia nada. El
+  // teléfono (dueño, 23/09/2026) lo baja desde `anchoTablaCronograma`, que se prueba aparte.
+  const tabla = fuente('TablaCronogramaObra.tsx')
+  assert.match(tabla, /ancho = 340,/)
+  assert.match(tabla, /width: `\$\{ancho\}px`, flexShrink: 0/)
+  const lienzo = fuente('LienzoCronogramaObra.tsx')
+  assert.match(lienzo, /anchoTablaCronograma\(useAnchoVentana\(\)\)/)
+  assert.match(lienzo, /ancho=\{anchoTabla\}/)
 })
 
 test('las tres capas van en las alturas medidas del mockup', () => {
