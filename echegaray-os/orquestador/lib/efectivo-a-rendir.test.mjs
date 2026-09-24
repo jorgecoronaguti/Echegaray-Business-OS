@@ -155,7 +155,7 @@ test('SIN IDENTIDAD TODAVÍA, EL AVISO BUSCA A LA PERSONA POR EMAIL Y VA POR DIR
 
 test('la firma se avisa también en el canal Efectivo, sin monto (dueño 24/09/2026)', async () => {
   const { readFileSync } = await import('node:fs')
-  const sql = readFileSync(new URL('../../supabase/migrations/20260924T2100_la_firma_se_avisa_en_el_canal_efectivo.sql', import.meta.url), 'utf8')
+  const sql = readFileSync(new URL('../../supabase/migrations/20260924T2105_la_firma_se_avisa_en_el_canal_efectivo.sql', import.meta.url), 'utf8')
   const canal = sql.slice(sql.lastIndexOf("'firmada', 'canal'"))
   assert.ok(sql.includes("'firmada', 'dueno'"), 'el directo al dueño sigue')
   assert.ok(canal.length > 20, 'hay aviso al canal')
