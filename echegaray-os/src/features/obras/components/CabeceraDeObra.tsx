@@ -246,7 +246,9 @@ export async function CabeceraDeObra({
       <div className="hidden md:block" style={{
         background: C.superficie, padding: `${titulo === 21 ? 22 : 18}px 30px 0`, flexShrink: 0,
       }} data-testid="cabecera-obra-banda">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '20px', flexWrap: 'wrap' }}>
+        {/* LA FILA DEL TÍTULO MIDE LO MISMO CON O SIN BOTÓN (32px): Equipos, Compras y Pedidos no dibujan
+            primaria, y sin este piso el título subía 4px al pasar de Impedimentos a Equipos. */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '20px', flexWrap: 'wrap', minHeight: '32px' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '11px', minWidth: 0, flexWrap: 'wrap' }}>
             <Link href={volverA} prefetch={false} style={{
               fontSize: '12.5px', color: C.tintaSuave, display: 'inline-flex', alignItems: 'center', gap: '4px',

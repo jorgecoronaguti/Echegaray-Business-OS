@@ -135,9 +135,9 @@ export function CrearDesdePresupuesto({ obraId, presupuesto, error, inicioObra, 
                   return (
                     <div key={g.rubro} data-testid={`rubro-partidas-${g.rubro}`}>
                       <button type="button" onClick={() => plegar(g.rubro)} style={{
-                        font: 'inherit', width: '100%', height: '38px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: `1px solid ${C.borde}`,
+                        font: 'inherit', border: 'none', width: '100%', height: '38px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: `1px solid ${C.borde}`,
                         fontSize: '12px', letterSpacing: '.06em', textTransform: 'uppercase', fontWeight: 600, color: C.tinta,
-                        background: 'none', border: 'none', borderBottomStyle: 'solid', padding: 0, cursor: 'pointer', textAlign: 'left',
+                        background: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
                       }}>
                         <span style={{ color: C.tenue, display: 'flex' }}><Ico d={abierto ? P.abajo : P.derecha} s={12} /></span>
                         <span>{g.rotulo}</span>
@@ -210,7 +210,7 @@ export function CrearDesdePresupuesto({ obraId, presupuesto, error, inicioObra, 
                   </div>
                   {g.partidas.map((p) => (
                     <button key={p.id} type="button" onClick={() => !p.convertida && !p.sinCantidad && alternar(p.id)} data-testid={`partida-telefono-${p.id}`}
-                      style={{ font: 'inherit', width: '100%', minHeight: '52px', display: 'flex', alignItems: 'center', gap: '12px', borderBottom: `1px solid ${C.bordeTarjeta}`, fontSize: '14px', background: 'none', border: 'none', borderBottomStyle: 'solid', padding: 0, textAlign: 'left', color: C.tinta, cursor: 'pointer' }}>
+                      style={{ font: 'inherit', border: 'none', width: '100%', minHeight: '52px', display: 'flex', alignItems: 'center', gap: '12px', borderBottom: `1px solid ${C.bordeTarjeta}`, fontSize: '14px', background: 'none', padding: 0, textAlign: 'left', color: C.tinta, cursor: 'pointer' }}>
                       <Casilla marcada={elegidas.has(p.id)} onClick={() => alternar(p.id)} etiqueta={`Elegir ${p.descripcion}`} tam={16} apagada={p.convertida || p.sinCantidad} />
                       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
                         <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

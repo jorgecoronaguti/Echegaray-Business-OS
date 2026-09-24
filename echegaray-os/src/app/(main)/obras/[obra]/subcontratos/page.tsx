@@ -35,7 +35,6 @@ import { getObra } from '@/features/obras/services/obrasService'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { veEconomia } from '@/features/auth/types/areas'
 import { getSubcontratos } from '@/features/obras/services/subcontratosService'
-import { contadoresSubcontratos } from '@/features/obras/services/subcontratosReglas'
 import {
   agregarPersonaExterna, cambiarEstadoPaquete, crearPaquete, fijarPrecioPaquete, registrarAporte,
   registrarDocumento,
@@ -48,6 +47,7 @@ import { Aviso } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
 import Link from 'next/link'
 import { C } from '@/features/obras/components/canon/tokens'
+import { hrefEconomia } from '@/features/obras/services/vistasObra'
 
 export const dynamic = 'force-dynamic'
 
@@ -74,8 +74,6 @@ export default async function SubcontratosObraPage({
     return <EstadoError mensaje={error ?? 'sin datos'} que="los subcontratos de la obra" />
   }
 
-  // M09: los tres contadores de la cabecera del teléfono. El 07 de escritorio no los dibuja.
-  const contadores = contadoresSubcontratos(data.paquetes)
 
   return (
     // LA MISMA CABECERA QUE EL WORKSPACE (24/08 · C-CANON §12). La banda grafito propia hacía de
@@ -90,13 +88,15 @@ export default async function SubcontratosObraPage({
           // Subcontratos ES Trabajo (contrato 10): un paquete es una porción del alcance de
           // actividades que ya existen, mirado desde el lado del tercero que lo ejecuta.
           vistaActiva="tareas"
-          pantalla="Subcontratos"
-          cifrasTelefono={[
-            { rotulo: 'Paquetes', valor: String(contadores.paquetes) },
-            // Rojo sólo cuando hay uno frenado de verdad: un 0 en rojo diría un problema que no existe.
-            { rotulo: 'Sin poder iniciar', valor: String(contadores.sinPoderIniciar), tono: contadores.sinPoderIniciar > 0 ? 'neg' : 'ink' },
-            { rotulo: 'Terceros', valor: String(contadores.terceros) },
-          ]}
+          // LA CABECERA ES LA MISMA QUE EN LAS SOLAPAS (dueño, 23/09/2026): título 21, sin rótulo de
+          // pantalla ni cifras propias.
+          titulo={21}
+          alFinalDeLasSolapas={economia ? (
+            <Link href={hrefEconomia(obraId)} prefetch={false} data-testid="enlace-economia"
+              className="ml-auto self-center whitespace-nowrap px-[11px] py-2 text-[12px] text-faint hover:text-ink">
+              Economía
+            </Link>
+          ) : null}
           // LA PRIMARIA DEL 07 VA EN LA CABECERA, a la derecha del título: «Nuevo paquete» de 32px.
           // Abre el alta (una sola definición: `FormNuevoPaquete`) por `?nuevo=1`.
           acciones={

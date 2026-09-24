@@ -337,8 +337,8 @@ function Plegable({ titulo, n, nota, abierto, alternar, children, testid }: {
   return (
     <div data-testid={testid} data-abierto={abierto ? '1' : undefined}>
       <button type="button" onClick={alternar} aria-expanded={abierto} style={{
-        font: 'inherit', width: '100%', height: '44px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: `1px solid ${C.borde}`,
-        fontSize: '13px', border: 'none', borderBottomStyle: 'solid', background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', color: C.tinta, textAlign: 'left',
+        font: 'inherit', border: 'none', width: '100%', height: '44px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: `1px solid ${C.borde}`,
+        fontSize: '13px', background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', color: C.tinta, textAlign: 'left',
       }}>
         <span style={{ color: C.tenue, display: 'flex' }}><Ico d={abierto ? P.abajo : P.derecha} s={13} /></span>
         <span style={{ fontWeight: 500 }}>{titulo}</span>

@@ -37,7 +37,9 @@ import {
 } from '@/features/obras/services/dotacion'
 import { aplicarDotacionAlPlan } from '@/features/obras/services/actionsPlan'
 import { getPerfilActual } from '@/features/auth/services/authService'
-import { esAdministracion } from '@/features/auth/types/areas'
+import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
+import Link from 'next/link'
+import { hrefEconomia } from '@/features/obras/services/vistasObra'
 import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
 import { SimuladorDotacion } from '@/features/obras/components/SimuladorDotacion'
 import { TablaRubrosHH } from '@/features/obras/components/TablaRubrosHH'
@@ -138,16 +140,24 @@ export default async function DotacionObraPage(
           // Dotación ES Personal — así lo marca el contrato (08): la pregunta que contesta es con
           // cuánta gente se llega, y esa es la solapa donde vive el plantel de la obra.
           vistaActiva="personal"
-          pantalla="Dotación y proyección"
-          kpis={[
-            { rotulo: 'HH plan', valor: n0(hhPlan), falta: 'sin cargar' },
-            { rotulo: 'Real', valor: n0(hhReal), falta: 'sin registro' },
-            // Sin HH plan no hay base para proyectar: dice «sin base», nunca 0 — un 0 acá se leería
-            // «no falta trabajo», que es la afirmación contraria a la verdadera.
-            { rotulo: 'Proyectadas', valor: n0(hhProy), falta: 'sin base' },
-          ]}
+          // LA CABECERA ES LA MISMA QUE EN LAS SOLAPAS (dueño, 23/09/2026): título 21, sin rótulo de
+          // pantalla ni cifras propias. Las tres cifras de HH van arriba del cuerpo.
+          titulo={21}
+          alFinalDeLasSolapas={veEconomia(perfil.data?.rol ?? null) ? (
+            <Link href={hrefEconomia(obraId)} prefetch={false} data-testid="enlace-economia"
+              className="ml-auto self-center whitespace-nowrap px-[11px] py-2 text-[12px] text-faint hover:text-ink">
+              Economía
+            </Link>
+          ) : null}
         />
       </>
+
+      <div data-testid="cifras-dotacion" className="flex flex-wrap gap-x-6 gap-y-1 px-5 pt-3.5 text-[12.5px] text-muted lg:px-[30px]">
+        <span className="font-medium text-ink">Dotación y proyección</span>
+        <span>HH plan <b className="font-medium text-ink">{hhPlan == null ? <i className="font-normal text-faint">sin cargar</i> : n0(hhPlan)}</b></span>
+        <span>Real <b className="font-medium text-ink">{hhReal == null ? <i className="font-normal text-faint">sin registro</i> : n0(hhReal)}</b></span>
+        <span>Proyectadas <b className="font-medium text-ink">{hhProy == null ? <i className="font-normal text-faint">sin base</i> : n0(hhProy)}</b></span>
+      </div>
 
       {hhPlan == null && (
         <div className="px-5 pt-3.5">

@@ -26,6 +26,7 @@
 // actividad y el detalle de horas imputadas no están en el 08 pero son las únicas puertas a esas
 // escrituras: viven debajo, en filas plegables de 44px, sin competir con lo que se mira.
 
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getPresencia } from '@/features/administracion/services/presenciaService'
 import {
@@ -181,8 +182,10 @@ function TablaAsignaciones({ asignaciones, actividadDe, porAsignado, cerrar, qui
 export async function TabPersonal({
   obraId, plan, asignaciones, personas, cuadrillas, actividades, actividadHH, registros,
   asignar, cerrar, quitar, imputar, imputarMasivo, borrarHoras, causas = [],
-  manoObra = null, veComercial = false,
+  manoObra = null, veComercial = false, abrirAsignar = false,
 }: {
+  /** `?asignar=1`: la primaria de la cabecera abrió el formulario de asignar. */
+  abrirAsignar?: boolean
   /** `costo_de_obras_a_la_fecha` de esta obra (la definición única de Economía y el CRM) · `null` = no se pudo leer. */
   manoObra?: ManoObraPropia | null
   veComercial?: boolean
@@ -239,9 +242,16 @@ export async function TabPersonal({
     <div className="flex flex-col gap-6">
       {/* ═══ ESCRITORIO (08) ═══ */}
       <div className="hidden md:block" style={{ padding: '4px 10px 8px' }} data-testid="personal-escritorio">
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '14px' }}>
-          <Alta titulo="Asignar persona" testid="alta-asignacion" primaria>{formulario}</Alta>
-        </div>
+        {/* LA PRIMARIA VIVE EN LA CABECERA (08); acá sólo se abre su formulario, arriba de todo. */}
+        {abrirAsignar && (
+          <div data-testid="alta-asignacion" style={{ marginBottom: '22px', padding: '16px', border: `1px solid ${C.borde}`, borderRadius: '8px', background: C.superficie, maxWidth: '640px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '12px' }}>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: C.tinta }}>Asignar persona</div>
+              <Link href={`/obras/${obraId}?vista=personal`} prefetch={false} style={{ fontSize: '12.5px', color: C.tintaSuave }}>Cerrar</Link>
+            </div>
+            {formulario}
+          </div>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: '52px', alignItems: 'start' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '30px', minWidth: 0 }}>
             <div style={{ display: 'flex', gap: '76px', flexWrap: 'wrap' }} data-testid="cifras-personal">

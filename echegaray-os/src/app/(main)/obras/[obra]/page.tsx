@@ -123,10 +123,13 @@ export default async function ObraPage({
     crear?: string; panel?: string; sel?: string; nuevo?: string
     /** Documentos (14): `?vincular=archivo|carpeta` abre el formulario de vincular arriba del índice. */
     vincular?: string
+    /** Personal (08): `?asignar=1` abre el formulario de asignar arriba de la solapa; lo abre la
+     *  primaria «Asignar persona» de la cabecera, como dibuja el 08. */
+    asignar?: string
   }>
 }) {
   const { obra: obraId } = await params
-  const { vista: vistaRaw, sub, act, filtro, sol, dot, nueva, editar, crear, panel, sel, nuevo, vincular } = await searchParams
+  const { vista: vistaRaw, sub, act, filtro, sol, dot, nueva, editar, crear, panel, sel, nuevo, vincular, asignar } = await searchParams
   const modoEstructura: ModoEstructura = {
     crear: crear === 'presupuesto' || crear === 'planilla' || crear === 'mano' ? crear : null,
     panel: panel === 'ponderacion' || panel === 'frentes' || panel === 'subtareas' ? panel : null,
@@ -421,6 +424,12 @@ export default async function ObraPage({
         ) : vista === 'operacion' ? (
           // 09: «Nuevo impedimento» amarilla sólo en Impedimentos; 10 · 11 · 12 no dibujan botón.
           subOp === 'impedimentos' ? <NuevoImpedimento obraId={obraId} /> : null
+        ) : vista === 'personal' ? (
+          // 08: «Asignar persona» amarilla en la cabecera; «Nueva actividad» no se dibuja.
+          <Link href={`/obras/${obraId}?vista=personal&asignar=1`} prefetch={false} data-testid="cabecera-asignar-persona"
+            style={{ ...ESTILO_PRIMARIA, height: '32px', padding: '0 14px', fontSize: '13px', color: C.grafito }}>
+            Asignar persona
+          </Link>
         ) : vista === 'documentos' ? (
           // 14: «Vincular documento» · «Vincular carpeta» en texto y «Abrir carpeta» amarilla.
           <AccionesDocumentos obraId={obraId} carpetaDriveId={obra.drive_carpeta_id} />
@@ -564,6 +573,7 @@ export default async function ObraPage({
       {vista === 'personal' && (
         <TabPersonal
           obraId={obraId}
+          abrirAsignar={asignar === '1'}
           plan={planPersonal}
           asignaciones={asignaciones}
           personas={personas}

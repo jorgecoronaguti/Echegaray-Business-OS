@@ -68,9 +68,9 @@ export function ListaItems({ filas, query, alBuscar, filtrosActivos, alAbrirFilt
           return (
             <div key={g.id} data-testid={`grupo-${g.id}`}>
               <button type="button" onClick={() => plegar(g.id)} style={{
-                font: 'inherit', width: '100%', height: '40px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px',
+                font: 'inherit', border: 'none', width: '100%', height: '40px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px',
                 borderBottom: abierto || gi < grupos.length - 1 ? `1px solid ${C.borde}` : 'none',
-                background: 'none', border: 'none', borderBottomStyle: 'solid', padding: 0, cursor: 'pointer', color: C.tinta,
+                background: 'none', padding: 0, cursor: 'pointer', color: C.tinta,
               }}>
                 <span style={{ color: C.tenue, display: 'flex' }}><Ico d={abierto ? P.abajo : P.derecha} s={13} /></span>
                 <span style={{ fontWeight: 600 }}>{g.nombre}</span>
@@ -81,9 +81,9 @@ export function ListaItems({ filas, query, alBuscar, filtrosActivos, alAbrirFilt
               </button>
               {abierto && g.filas.map((f) => (
                 <button key={f.id} type="button" onClick={() => alAbrir(f.id)} data-testid={`item-telefono-${f.id}`} style={{
-                  width: '100%', minHeight: '56px', display: 'flex', alignItems: 'center', gap: '10px', paddingLeft: '20px',
-                  borderBottom: `1px solid ${C.borde}`, background: 'none', border: 'none', borderBottomStyle: 'solid',
-                  padding: '0 0 0 20px', cursor: 'pointer', font: 'inherit', textAlign: 'left', color: C.tinta,
+                  font: 'inherit', border: 'none', width: '100%', minHeight: '56px', display: 'flex', alignItems: 'center', gap: '10px',
+                  borderBottom: `1px solid ${C.borde}`, background: 'none',
+                  padding: '0 0 0 20px', cursor: 'pointer', textAlign: 'left', color: C.tinta,
                 }}>
                   <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px', padding: '8px 0' }}>
                     <div style={{ fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>

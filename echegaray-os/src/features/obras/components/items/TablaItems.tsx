@@ -2,8 +2,9 @@
 
 // LA TABLA DE ÍTEMS — PORTE LITERAL DE «04b · Obra · Trabajo · Ítems» (1440).
 //
-//   columnas   `minmax(0,1fr) 104px 70px 94px 94px 100px 66px 92px` · gap 16
-//              Ítem · Uni · cant · Pond. · MO · Plan · Días real/teór · % ítem · Avance obra
+//   columnas   `minmax(0,1fr) 104px 70px 94px 100px 66px 92px` · gap 16 (las del 04b; el costo de MO va
+//              al lado del nombre de la historia, no en una columna propia)
+//              Ítem · Uni · cant · Pond. · Plan · Días real/teór · % ítem · Avance obra
 //   cabecera   32px, eyebrow mono 10,5/.06em faint, línea abajo
 //   rubro      38px, 11,5px/600 uppercase .06em, el número en mono faint a la izquierda; sin línea
 //   épica      32px, 12px muted, sangría 16
@@ -22,7 +23,7 @@
 import { C, MONO } from '../canon/tokens'
 import { contarItems, type FilaItem } from './filasDeItems'
 
-export const COLS_ITEMS = 'minmax(0,1fr) 104px 70px 94px 94px 100px 66px 92px'
+export const COLS_ITEMS = 'minmax(0,1fr) 104px 70px 94px 100px 66px 92px'
 const SANGRIA: Record<FilaItem['nivel'], number> = { rubro: 0, epica: 16, historia: 32, tarea: 48, subtarea: 64 }
 
 const pct = (n: number | null, dec = 1) => n == null ? null : `${n.toLocaleString('es-AR', { maximumFractionDigits: dec })}%`
@@ -67,9 +68,6 @@ function FilaContenedor({ f, alAbrir, abierta }: { f: FilaItem; alAbrir: () => v
       <div style={{ textAlign: 'right', fontSize: '12px', color: C.tenue, letterSpacing: 0, textTransform: 'none', fontVariantNumeric: 'tabular-nums' }}>
         {f.nivel === 'historia' && f.peso != null ? pct(f.peso * 100) : ''}
       </div>
-      <div style={{ fontSize: '12px', color: C.tenue, fontFamily: MONO, letterSpacing: 0, textTransform: 'none' }}>
-        {f.nivel === 'historia' && f.costoMo != null ? pesos(f.costoMo) : ''}
-      </div>
       {celdasVacias(2)}
       <div style={{ textAlign: 'right', fontSize: '12px', letterSpacing: 0, textTransform: 'none', fontVariantNumeric: 'tabular-nums', color: f.pctItem != null && f.pctItem < 100 ? C.curso : color }}>
         {!rubro && f.pctItem != null ? pct(f.pctItem, 0) : ''}
@@ -107,7 +105,6 @@ function FilaHoja({ f, alAbrir, abierta }: { f: FilaItem; alAbrir: () => void; a
       </div>
       <div style={f.uniCant ? gris : sinDato}>{f.uniCant ?? 'sin cargar'}</div>
       <div style={{ ...(f.peso != null ? gris : sinDato), textAlign: 'right' }}>{f.peso != null ? pct(f.peso * 100) : '—'}</div>
-      <div />
       <div style={f.plan ? gris : sinDato}>{f.plan ?? 'sin plan'}</div>
       <div style={{ fontSize: '12.5px', color: f.diasWarn ? C.warn : f.diasReales == null && f.diasTeoricos == null ? C.tenue : f.diasReales == null ? C.tenue : C.tinta }}>
         {f.diasReales ?? '—'} / {f.diasTeoricos ?? '—'}
@@ -139,7 +136,7 @@ export function TablaItems({ filas, abierta, alAbrir, vacio }: {
         borderBottom: `1px solid ${C.borde}`, fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em',
         color: C.tenue, textTransform: 'uppercase',
       }} role="row">
-        <div>Ítem</div><div>Uni · cant</div><div style={{ textAlign: 'right' }}>Pond.</div><div>MO</div><div>Plan</div>
+        <div>Ítem</div><div>Uni · cant</div><div style={{ textAlign: 'right' }}>Pond.</div><div>Plan</div>
         <div>Días real/teór</div><div style={{ textAlign: 'right' }}>% ítem</div><div style={{ textAlign: 'right' }}>Avance obra</div>
       </div>
       {filas.length === 0 && <div style={{ padding: '24px 0', fontSize: '12.5px', color: C.tintaSuave }} data-testid="wbs-vacio">{vacio}</div>}

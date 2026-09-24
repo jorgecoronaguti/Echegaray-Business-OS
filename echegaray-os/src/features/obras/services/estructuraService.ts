@@ -100,7 +100,9 @@ export async function getEstadosDeSubtareas(
 /** ¿La obra ya tiene línea base sellada? (C01 «Línea base: sin sellar»). null = no se pudo leer. */
 export async function hayLineaBase(supabase: SupabaseClient, obraId: string): Promise<boolean | null> {
   const { count, error } = await supabase.from('obra_actividad').select('id', { count: 'exact', head: true })
-    .eq('obra_id', obraId).not('sellada_en', 'is', null)
+    // Sólo las VIVAS: QP tenía una sellada entre las 5 archivadas y la C01 decía «Línea base: sellada»
+    // en una obra sin un solo ítem, mientras el Resumen decía «sin sellar».
+    .eq('obra_id', obraId).eq('archivada', false).not('sellada_en', 'is', null)
   if (error) return null
   return (count ?? 0) > 0
 }
