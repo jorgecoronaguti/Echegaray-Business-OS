@@ -83,12 +83,27 @@ const REPO = args.find((a) => !a.startsWith('--')) ?? '/home/jorge/echegaray-os/
  */
 export const DAEMONS_DEL_REPO = Object.freeze([
   { unit: 'echegaray-orq-worker.service', porQue: 'Work Fabric: ejecuta las tareas con orquestador/worker.mjs; atrapa SIGTERM y drena (TimeoutStopSec=90)' },
-  { unit: 'echegaray-orq-interactive.service', porQue: 'motor interactivo (:8790): las directivas de la extensión pasan por orquestador/interactive-server.mjs' },
-  { unit: 'echegaray-comunicacion-worker.service', porQue: 'puente Communication Service ↔ Work Fabric: orquestador/comunicacion/worker-comunicacion.mjs' },
-  { unit: 'echegaray-comunicacion-ws.service', porQue: 'consumidor WebSocket del bot @xsas: orquestador/comunicacion/mattermost-ws-consumer.mjs (parsers de mensajes viven acá)' },
-  { unit: 'echegaray-xsas-gateway.service', porQue: 'puerta única de XSAS (:8791) + endpoint entrante de Mattermost: orquestador/comunicacion/servidor-entrante.mjs' },
-  { unit: 'echegaray-asistencia-http.service', porQue: 'asistencia nativa en Mattermost (slash command + acciones): orquestador/comunicacion/servidor-asistencia.mjs' },
+  { unit: 'echegaray-orq-interactive.service', atiendePersonas: true, porQue: 'motor interactivo (:8790): las directivas de la extensión pasan por orquestador/interactive-server.mjs' },
+  { unit: 'echegaray-comunicacion-worker.service', atiendePersonas: true, porQue: 'puente Communication Service ↔ Work Fabric: orquestador/comunicacion/worker-comunicacion.mjs' },
+  { unit: 'echegaray-comunicacion-ws.service', atiendePersonas: true, porQue: 'consumidor WebSocket del bot @xsas: orquestador/comunicacion/mattermost-ws-consumer.mjs (parsers de mensajes viven acá)' },
+  { unit: 'echegaray-xsas-gateway.service', atiendePersonas: true, porQue: 'puerta única de XSAS (:8791) + endpoint entrante de Mattermost: orquestador/comunicacion/servidor-entrante.mjs' },
+  { unit: 'echegaray-asistencia-http.service', atiendePersonas: true, porQue: 'asistencia nativa en Mattermost (slash command + acciones): orquestador/comunicacion/servidor-asistencia.mjs' },
 ])
+
+// ═══ EL TERCER DEFECTO (dueño, 23/09/2026: «nunca podés tirar el chat, es vital para la empresa») ═══
+//
+// Cada avance del checkout reiniciaba TODOS los daemons, aunque el commit fuera sólo de la web
+// (`src/`): un día de publicaciones seguidas cortó el chat varias veces, con una respuesta en curso
+// perdida en cada corte. Dos reglas nuevas:
+//   1. Sólo se reinicia un daemon DESACTUALIZADO: arrancó antes del último commit que tocó su código
+//      (`CODIGO_DE_DAEMONS`). Un cambio de pantalla no toca al bot.
+//   2. Los que ATIENDEN PERSONAS (chat, bot, XSAS, asistencia) se reinician sólo en la VENTANA de
+//      madrugada. Fuera de ella quedan con el código anterior en memoria y el log lo dice; como la
+//      regla 1 se evalúa en CADA corrida, la primera corrida dentro de la ventana los pone al día.
+//      Un arreglo urgente del chat se reinicia a mano, sabiendo que corta.
+export const CODIGO_DE_DAEMONS = Object.freeze(['orquestador', 'package.json', 'package-lock.json'])
+/** Horas locales (−03) en las que se puede reiniciar lo que atiende personas: [desde, hasta). */
+export const VENTANA_DE_REINICIO = Object.freeze({ desde: 2, hasta: 5 })
 
 /** NÚCLEO PURO: qué hacer, dado el estado del checkout. Separado para poder probarlo sin git. */
 export function decidir({ sucio, alDia, puedeAvanzar }) {
@@ -105,14 +120,21 @@ export function decidir({ sucio, alDia, puedeAvanzar }) {
  * @param {{ antes: string, despues: string, unitActual?: string|null, estados: Record<string, string|undefined>, daemons?: ReadonlyArray<{unit: string, porQue: string}> }} p
  * @returns {{ reiniciar: string[], omitidos: Array<{ unit: string, porQue: string }> }}
  */
-export function decidirReinicios({ antes, despues, unitActual = null, estados, daemons = DAEMONS_DEL_REPO }) {
-  // Si el HEAD no se movió, el código en memoria es el mismo que el del disco: no hay nada que hacer.
-  if (antes === despues) return { reiniciar: [], omitidos: [] }
+export function decidirReinicios({ antes, despues, unitActual = null, estados, daemons = DAEMONS_DEL_REPO, desactualizados, hora }) {
+  // Sin la lectura por daemon, la regla vieja: si el HEAD no se movió, no hay nada que hacer.
+  if (desactualizados === undefined && antes === despues) return { reiniciar: [], omitidos: [] }
+  const enVentana = hora === undefined || (hora >= VENTANA_DE_REINICIO.desde && hora < VENTANA_DE_REINICIO.hasta)
   const reiniciar = []
   const omitidos = []
-  for (const { unit } of daemons) {
+  for (const { unit, atiendePersonas } of daemons) {
     const estado = estados?.[unit]
-    if (unit === unitActual) {
+    if (desactualizados !== undefined && desactualizados[unit] !== true) {
+      // Al día o sin dato: no se reinicia (sin dato tampoco: un corte del chat no se paga a ciegas).
+      if (desactualizados[unit] === undefined) omitidos.push({ unit, porQue: 'no pude saber si corre código viejo: no se reinicia a ciegas' })
+      continue
+    } else if (atiendePersonas && !enVentana) {
+      omitidos.push({ unit, porQue: `atiende personas: se reinicia entre las ${VENTANA_DE_REINICIO.desde} y las ${VENTANA_DE_REINICIO.hasta} h, sigue con el código anterior hasta entonces` })
+    } else if (unit === unitActual) {
       omitidos.push({ unit, porQue: 'es el unit que está ejecutando este script (ExecStartPre): reiniciarlo mataría este proceso' })
     } else if (estado === undefined) {
       // Sin dato no se actúa: un restart a ciegas puede arrancar algo que estaba parado a propósito.
@@ -166,6 +188,25 @@ function unitActual() {
   }
 }
 
+/**
+ * Por daemon: ¿arrancó antes del último commit que tocó `CODIGO_DE_DAEMONS`? `undefined` si no se pudo
+ * leer (ni el commit ni el arranque): la regla de arriba no reinicia a ciegas.
+ */
+function leerDesactualizados(unidades) {
+  const out = {}
+  try {
+    const ultimo = Number(git(['log', '-1', '--format=%ct', 'HEAD', '--', ...CODIGO_DE_DAEMONS]))
+    const arranques = parsearShow(execFileSync('systemctl', ['--user', 'show', '--timestamp=unix', '--property=Id,ActiveEnterTimestamp', ...unidades], { encoding: 'utf8' }), 'ActiveEnterTimestamp')
+    for (const u of unidades) {
+      const t = Number(String(arranques[u] ?? '').replace('@', ''))
+      if (Number.isFinite(ultimo) && ultimo > 0 && Number.isFinite(t) && t > 0) out[u] = t < ultimo
+    }
+  } catch (e) {
+    console.warn(`producción-al-día: no pude medir qué daemon corre código viejo (${String(e?.message ?? e).slice(0, 120)})`)
+  }
+  return out
+}
+
 /** Reinicia en orden, uno por uno, y loguea cada resultado. Un fallo no frena a los demás ni al pipeline. */
 function reiniciarDaemons({ antes, despues }) {
   let estados
@@ -176,7 +217,9 @@ function reiniciarDaemons({ antes, despues }) {
     return
   }
   const propio = unitActual()
-  const { reiniciar, omitidos } = decidirReinicios({ antes, despues, unitActual: propio, estados })
+  const desactualizados = leerDesactualizados(DAEMONS_DEL_REPO.map((d) => d.unit))
+  const hora = Number(new Intl.DateTimeFormat('es-AR', { hour: 'numeric', hourCycle: 'h23', timeZone: 'America/Argentina/San_Juan' }).format(new Date()))
+  const { reiniciar, omitidos } = decidirReinicios({ antes, despues, unitActual: propio, estados, desactualizados, hora })
   for (const { unit, porQue } of omitidos) console.log(`producción-al-día: no reinicio ${unit} — ${porQue}`)
   for (const unit of reiniciar) {
     const t0 = Date.now()
@@ -221,6 +264,8 @@ function main() {
     return
   }
   console.log(`producción-al-día: ${accion} — ${porQue}`)
+  // Al día: igual se mira si quedó un daemon con código viejo (el que se difirió fuera de la ventana).
+  if (accion === 'nada') reiniciarDaemons({ antes: local, despues: local })
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main()

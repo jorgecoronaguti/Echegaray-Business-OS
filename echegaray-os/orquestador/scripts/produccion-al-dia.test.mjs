@@ -7,7 +7,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { decidir, decidirReinicios, parsearShow, DAEMONS_DEL_REPO } from './produccion-al-dia.mjs'
+import { decidir, decidirReinicios, parsearShow, DAEMONS_DEL_REPO, VENTANA_DE_REINICIO } from './produccion-al-dia.mjs'
 
 test('al día no hace nada: no se toca un checkout que ya está donde tiene que estar', () => {
   assert.equal(decidir({ sucio: false, alDia: true, puedeAvanzar: true }).accion, 'nada')
@@ -135,4 +135,34 @@ test('parsearShow lee bloques de `systemctl show -p Id,<prop> u1 u2…` y tolera
     'echegaray-balanz-remoto.service': 'inactive',
     'echegaray-xsas-gateway.service': '',
   })
+})
+
+// ═══ EL TERCER DEFECTO (dueño, 23/09/2026: «nunca podés tirar el chat, es vital para la empresa») ═══
+
+const TODOS_VIEJOS = Object.fromEntries(DAEMONS_DEL_REPO.map((d) => [d.unit, true]))
+const CHAT = DAEMONS_DEL_REPO.filter((d) => d.atiendePersonas).map((d) => d.unit)
+
+test('un commit que no tocó el código de los daemons no reinicia a nadie, aunque el HEAD se mueva', () => {
+  const alDia = Object.fromEntries(DAEMONS_DEL_REPO.map((d) => [d.unit, false]))
+  const r = decidirReinicios({ ...MOVIO, estados: ACTIVOS, desactualizados: alDia, hora: 3 })
+  assert.deepEqual(r.reiniciar, [])
+})
+
+test('en horario de trabajo el chat y el bot NO se reinician; el worker (drena) sí', () => {
+  const r = decidirReinicios({ ...MOVIO, estados: ACTIVOS, desactualizados: TODOS_VIEJOS, hora: 15 })
+  assert.ok(CHAT.length >= 4, 'la lista marca quién atiende personas')
+  for (const u of CHAT) assert.ok(!r.reiniciar.includes(u), `${u} se reinició en horario de trabajo`)
+  assert.deepEqual(r.reiniciar, ['echegaray-orq-worker.service'])
+  for (const o of r.omitidos) assert.match(o.porQue, /atiende personas/)
+})
+
+test('en la ventana de madrugada se pone al día lo diferido, aunque el HEAD ya no se mueva', () => {
+  const r = decidirReinicios({ antes: 'aaaa1111', despues: 'aaaa1111', estados: ACTIVOS, desactualizados: TODOS_VIEJOS, hora: VENTANA_DE_REINICIO.desde })
+  assert.deepEqual(r.reiniciar, DAEMONS_DEL_REPO.map((d) => d.unit))
+})
+
+test('sin saber si un daemon corre código viejo, no se lo corta', () => {
+  const r = decidirReinicios({ ...MOVIO, estados: ACTIVOS, desactualizados: {}, hora: 3 })
+  assert.deepEqual(r.reiniciar, [])
+  for (const o of r.omitidos) assert.match(o.porQue, /a ciegas/)
 })
