@@ -8,7 +8,7 @@ import {
   rejilla, medidaDe, ubicar, plataSinColumna, dobleConteoDelAncla,
   valorPorDosPuertas, rubrosEnOtros, bordesEntreVistas, RUBRO_CARTERA,
 } from './cash-flow-conectividad.mjs'
-import { filaDeConcepto } from './cash-flow-matriz.mjs'
+import { filaDeConcepto, letra } from './cash-flow-matriz.mjs'
 import { claveSub, OTROS } from './cash-flow-rubros.mjs'
 import { deCobranzas } from './libro-extractores.mjs'
 
@@ -19,11 +19,16 @@ const mov = (o) => ({ signo: -1, importe: 0, estado: 'REAL', rubro: 'Materiales 
 
 // ══ LA GEOMETRÍA: DÓNDE CAE CADA MÉTODO DE PAGO ═══════════════════════════════════════════════════
 
-test('la rejilla de 2026 son 53 semanas y 12 meses, y las dos CUBREN EL MISMO PERÍODO', () => {
+test('la rejilla de 2026 son 58 columnas de semana y 13 de mes, y las dos CUBREN EL MISMO PERÍODO', () => {
   const s = rejilla('semana', ANIO)
   const m = rejilla('mes', ANIO)
-  assert.equal(s.length, 53)
-  assert.equal(m.length, 12)
+  // Desde el 24/09/2026 las dos vistas muestran hasta el 31/01/2027 (el pedido del dueño: $45,4M de
+  // pagos de enero que no se veían en ninguna), en un bloque a la derecha del TOTAL: 53 + 5 semanas
+  // (la del 28/12 a los dos lados, cada una con su año) y 12 + 1 meses.
+  assert.equal(s.length, 58)
+  assert.equal(m.length, 13)
+  assert.equal(letra(m[12].col), 'O', 'enero de 2027 va después del TOTAL (N)')
+  assert.equal(letra(s[53].col), 'BD', 'la primera semana de 2027 va después del TOTAL (BC)')
   // ═══ ESTO CAMBIÓ EL 13/08/2026 Y NO ES UN AJUSTE PARA QUE PASE ═══
   //
   // Acá se exigía `s[0].desde === 46020` (el lunes 29/12/2025) y que el semanal se derramara sobre
@@ -34,6 +39,7 @@ test('la rejilla de 2026 son 53 semanas y 12 meses, y las dos CUBREN EL MISMO PE
   assert.equal(s[0].desde, 46023, 'la primera columna arranca el 1/1/2026, aunque su semana arranque el 29/12')
   assert.equal(m[0].desde, 46023)
   assert.equal(s[s.length - 1].hasta, m[m.length - 1].hasta, 'las dos vistas terminan en el mismo instante')
+  assert.equal(m[m.length - 1].hasta, 46419, 'y ese instante es el 1/2/2027')
 })
 
 test('cada método de pago de Compras cae en la fila que le corresponde, con su rubro', () => {
@@ -65,15 +71,19 @@ test('Cobranzas: cobrado a "Ingresos reales", esperado a proyectados, el valor a
 
 // ══ EL DEFECTO 1: PLATA QUE NO ESTÁ EN NINGUNA COLUMNA ════════════════════════════════════════════
 
-test('EL DEFECTO: un proyectado de 2027 no cae en NINGUNA columna del cuadro 2026', () => {
-  // Medido en vivo: tres quincenas de jornales y una cuota de impuestos con fecha 2027, $23.358.443
-  // en total. No dan #REF! ni cero: simplemente no existen en el cuadro. El Mensual no las muestra.
+test('EL DEFECTO: un proyectado posterior al horizonte no cae en NINGUNA columna del cuadro', () => {
+  // Medido en vivo el 06/08: tres quincenas de jornales y una cuota de impuestos con fecha 2027,
+  // $23.358.443 en total, no existían en el cuadro. Desde el 24/09/2026 enero de 2027 SÍ tiene columna
+  // (el 13 y el 23/01 caen en «ene 27»); el defecto que se mide sigue siendo el mismo, un día después
+  // del borde nuevo: 4/02 y 19/02/2027.
   const libro = [
     mov({ fecha: 46237, importe: 1000, estado: 'PROYECTADO' }),
-    mov({ fecha: 46400, importe: 21079943, estado: 'PROYECTADO', origen: 'Jornales por Quincena' }),
-    mov({ fecha: 46410, importe: 2278500, estado: 'PROYECTADO', origen: 'Impuestos y Financieros' }),
+    mov({ fecha: 46400, importe: 5, estado: 'PROYECTADO', origen: 'Jornales por Quincena' }),
+    mov({ fecha: 46422, importe: 21079943, estado: 'PROYECTADO', origen: 'Jornales por Quincena' }),
+    mov({ fecha: 46437, importe: 2278500, estado: 'PROYECTADO', origen: 'Impuestos y Financieros' }),
   ]
   const v = plataSinColumna(libro, 'mes', ANIO)
+  assert.ok(!v.movimientos.some((m) => m.fecha === 46400), 'el 13/01/2027 ya tiene columna: «ene 27»')
   assert.equal(v.filas, 2)
   assert.equal(Math.round(v.neto), -23358443)
   assert.deepEqual(v.porOrigen.map((o) => o.origen), ['Jornales por Quincena', 'Impuestos y Financieros'])
@@ -82,18 +92,22 @@ test('EL DEFECTO: un proyectado de 2027 no cae en NINGUNA columna del cuadro 202
 })
 
 test('las semanas ISO del cuadro TOCAN el año vecino: cuánto hay ahí se mide', () => {
-  // $11.259.575 de nómina proyectada de enero de 2027 caen en el rango de fechas de la semana 53 del
-  // cuadro semanal (que llega hasta el 3/01/2027) y en ninguna columna del mensual.
+  // Hasta el 24/09/2026 el derrame medido era de ENERO: $11.259.575 de nómina de 2027 en el rango de la
+  // semana del 28/12. Desde entonces enero está en las dos vistas y el único derrame que queda es el de
+  // la PRIMERA semana, 29–31/12/2025, que el Semanal toca y ninguna columna suma.
   //
   // ESTO YA NO EXPLICA UNA DIFERENCIA ENTRE LOS DOS TOTAL (13/08/2026): la ventana de la columna de
   // borde se recorta en el 1° de enero (`cash-flow-borde-anio.mjs`), así que esa plata no está en el
   // TOTAL del semanal tampoco. Lo que la función mide sigue siendo cierto y sigue sirviendo — es la
   // plata del año vecino que el rango del cuadro roza — pero dejó de ser la excusa de un desvío.
-  const libro = [mov({ fecha: 46389, importe: 11259575, estado: 'PROYECTADO', origen: 'Jornales por Quincena' })]
+  const libro = [
+    mov({ fecha: 46021, importe: 11259575, estado: 'PROYECTADO', origen: 'Jornales por Quincena' }),
+    mov({ fecha: 46389, importe: 7, estado: 'PROYECTADO', origen: 'Jornales por Quincena' }),
+  ]
   const b = bordesEntreVistas(libro, ANIO)
-  assert.equal(b.soloSemanal.length, 1)
+  assert.equal(b.soloSemanal.length, 1, 'el 02/01/2027 ya no es derrame: está en las dos vistas')
   assert.equal(Math.round(b.neto), -11259575)
-  assert.ok(b.semanal.desde < b.mensual.desde && b.semanal.hasta > b.mensual.hasta)
+  assert.ok(b.semanal.desde < b.mensual.desde && b.semanal.hasta === b.mensual.hasta)
 })
 
 // ══ EL DEFECTO 2: EL SALDO DECLARADO YA LO TIENE, Y LA COLUMNA LO CUENTA OTRA VEZ ═════════════════

@@ -33,6 +33,15 @@
 // Lo que `bordesEntreVistas` mide sigue siendo real y ya no es una excusa: son los movimientos del año
 // vecino que las semanas ISO del cuadro TOCAN y que ninguna columna suma. Pertenecen al otro ejercicio.
 //
+// ═══ Y DESDE EL 24/09/2026, ENERO DEL AÑO SIGUIENTE DESPUÉS DEL TOTAL ═══
+//
+// El dueño midió $45,4M de pagos de enero de 2027 —obligaciones de diciembre— que no se veían en
+// ninguna vista, y fijó dónde van: *«después de los totales del 2026»*. Las 53 semanas del ejercicio
+// siguen en B..BB, el «TOTAL 2026» en BC (suma sólo esas), y a su derecha las cinco semanas de enero
+// de 2027: la del 28/12 otra vez —ahora sumando del 1 al 3/01— y las del 04, 11, 18 y 25/01. El saldo
+// corre de la BB a la BD saltando el TOTAL, y el PISO DEL PERÍODO mira también enero, que es cuando se
+// pagan los sueldos y las cargas de diciembre.
+//
 // Lo que se paga por el año entero: hay scroll horizontal. Se compensa con la columna A congelada y
 // el atajo "📅 hoy", que salta a la columna de la semana corriente.
 //
@@ -55,16 +64,17 @@
 import { ESTADOS_PENDIENTES } from './cash-flow-medidas.mjs'
 import {
   COL, FILA,
-  conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos, footprintDe,
+  conceptosDe, filaDeConcepto, colTotal, columnasDeLaVista, columnasDelTotal, colsDelSiguiente, rotuloTotal,
+  filaGraficos, footprintDe,
   medidasDeLaMatriz, bloquesDeMedida, formulasDeMedida,
   expresionVentana, formulaMayorImporte, formulaMayorContraparte,
-  ventanas, celda, rangoFila, serialDeFecha, ROTULO_HOY, ROTULO_CONCEPTO,
+  celda, rangoFila, serialDeFecha, ROTULO_HOY, ROTULO_CONCEPTO,
 } from './cash-flow-matriz.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { bloquesDeCliente, filaTituloPorCliente, formulasPorCliente } from './cash-flow-por-cliente.mjs'
 import { expresionInicioCorrido } from './cash-flow-ancla-saldo.mjs'
 import { columnasDelPasado, atajoDelPeriodo, indiceDeLetra } from './cash-flow-hoy.mjs'
-import { acotarAlEjercicio, bordeDelEjercicio, expresionAcotada } from './cash-flow-borde-anio.mjs'
+import { horizonteDeLaVista, expresionAcotada, recorteDe } from './cash-flow-borde-anio.mjs'
 import {
   expresionInvertido, glosaConInvertido, muestraSemanal, GLOSA_SIN_ANCLA,
 } from './cash-flow-invertido.mjs'
@@ -110,14 +120,20 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
     const f = filas[fila - 1] || (filas[fila - 1] = [])
     f[col] = valor
   }
-  const n = columnasDeTiempo(TIPO, ejercicio)
+  const columnas = columnasDeLaVista(TIPO, ejercicio)
+  const n = columnas.length
   const cT = colTotal(TIPO, ejercicio)
-  const semanas = ventanas(TIPO, { anio: ejercicio })
+  const semanas = columnas.map((c) => c.ventana)
   const footprint = footprintDe(TIPO, ejercicio)
   const fila = Object.fromEntries(conceptosDe(TIPO).map((c) => [c.clave, filaDeConcepto(TIPO, c.clave)]))
   const meta = {
     pestana: PESTANA_SEMANAL, tipo: TIPO, anio: ejercicio, ancho: footprint.cols, footprint,
-    cab: { fila: FILA.cabecera, col0: COL.tiempo0, n, colTotal: cT },
+    // `n` columnas de tiempo en `cols` (su índice en la hoja, en orden de lectura); las `nTotal` primeras
+    // son del ejercicio y las suma el TOTAL; `siguiente` son las del año que viene, a su derecha.
+    cab: {
+      fila: FILA.cabecera, col0: COL.tiempo0, n, colTotal: cT, nTotal: columnasDelTotal(TIPO, ejercicio),
+      cols: columnas.map((c) => c.col), siguiente: colsDelSiguiente(TIPO, ejercicio),
+    },
     fila, hero: { rotulo: FILA.heroRotulo, valor: FILA.heroValor, nota: FILA.heroNota, slots: SLOTS_HERO },
     bloques: bloquesDeMedida(TIPO),
     clientes: { titulo: filaTituloPorCliente(TIPO), bloques: bloquesDeCliente(TIPO) },
@@ -126,13 +142,15 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
     //
     // Son dos cosas distintas y confundirlas costó $13,07M de egresos de enero de 2027 metidos en el
     // año 2026. `ventanas` son los lunes —de ahí sale el rótulo de la columna—; `efectivas` es lo que
-    // cada columna SUMA, recortado en el borde del año. Ver cash-flow-borde-anio.mjs.
+    // cada columna SUMA, recortado a su año. Ver cash-flow-borde-anio.mjs. Desde el 24/09/2026 la semana
+    // del 28/12 está DOS veces en `ventanas` —a cada lado del TOTAL— y una sola vez en cada día de
+    // `efectivas`: por eso lo que busca "hoy" mira las efectivas.
     ventanas: semanas,
-    efectivas: acotarAlEjercicio(semanas, ejercicio),
-    cubre: bordeDelEjercicio(ejercicio),
+    efectivas: columnas.map(({ ancla, desde, hasta }) => ({ ancla, desde, hasta })),
+    cubre: horizonteDeLaVista(ejercicio),
     // QUÉ SE PLIEGA AL ABRIR. Sale de `hoy`, que el llamador inyecta: el pliegue tiene que poder
     // probarse moviendo la fecha, no esperando al lunes. Ver cash-flow-hoy.mjs.
-    plegar: columnasDelPasado(semanas, hoy, { col0: COL.tiempo0 }),
+    plegar: columnasDelPasado(columnas, hoy, { cols: columnas.map((c) => c.col) }),
   }
 
   // ── 1 y 2. El título, de dónde sale todo, y el atajo a la semana corriente ───────────────────────
@@ -153,14 +171,14 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
 
   // ── La cabecera: el concepto y los lunes del ejercicio ───────────────────────────────────────────
   poner(FILA.cabecera, 0, ROTULO_CONCEPTO)
-  semanas.forEach((v, j) => poner(FILA.cabecera, COL.tiempo0 + j, serialDeFecha(v.desde)))
-  poner(FILA.cabecera, cT, 'TOTAL')
+  semanas.forEach((v, j) => poner(FILA.cabecera, meta.cab.cols[j], serialDeFecha(v.desde)))
+  poner(FILA.cabecera, cT, rotuloTotal(TIPO, ejercicio))
 
   // ── Las siete filas de concepto ──────────────────────────────────────────────────────────────────
   for (const c of conceptosDe(TIPO)) poner(fila[c.clave], 0, c.rotulo)
-  for (let j = 0; j < n; j++) columnaDeSemana(poner, meta, j, { refSaldo, refFecha, n })
+  for (let j = 0; j < n; j++) columnaDeSemana(poner, meta, j, { refSaldo, refFecha })
   for (const c of conceptosDe(TIPO)) {
-    if (c.total) poner(fila[c.clave], cT, `=SUM(${rangoFila(fila[c.clave], COL.tiempo0, COL.tiempo0 + n - 1)})`)
+    if (c.total) poner(fila[c.clave], cT, `=SUM(${rangoFila(fila[c.clave], COL.tiempo0, COL.tiempo0 + meta.cab.nTotal - 1)})`)
   }
 
   meta.filaFin = filas.length
@@ -205,8 +223,13 @@ function bloqueHero(poner, meta, refs) {
   // buscar dónde está cada cosa. Y el Semanal tiene el mismo riesgo: CAJA HOY y el PISO DEL PERÍODO son
   // los dos importes del mismo tamaño.
   const G = meta.hero.nota
-  const rangoFinal = rangoFila(meta.fila.saldoFinal, meta.cab.col0, meta.cab.col0 + meta.cab.n - 1)
-  const rangoCab = rangoFila(meta.cab.fila, meta.cab.col0, meta.cab.col0 + meta.cab.n - 1)
+  // DE LA PRIMERA SEMANA A LA ÚLTIMA DE ENERO DEL AÑO SIGUIENTE (24/09/2026). El rango atraviesa la
+  // columna TOTAL, y está bien: en la fila del saldo final esa celda va VACÍA (un stock no se totaliza)
+  // y MIN/MATCH ignoran las vacías. Partirlo en dos rangos rompería el INDEX/MATCH de la glosa, que
+  // necesita la cabecera y el saldo con la misma forma.
+  const ultimaCol = meta.cab.cols[meta.cab.n - 1]
+  const rangoFinal = rangoFila(meta.fila.saldoFinal, meta.cab.col0, ultimaCol)
+  const rangoCab = rangoFila(meta.cab.fila, meta.cab.col0, ultimaCol)
 
   poner(R, s1, ROTULOS_HERO[0])
   poner(V, s1, refSaldo ? `=N(${refSaldo})` : '')
@@ -245,21 +268,25 @@ function bloqueHero(poner, meta, refs) {
 }
 
 /** Una columna de semana: las cuatro medidas del libro, el resultado y los dos saldos. */
-function columnaDeSemana(poner, meta, j, { refSaldo, refFecha, n }) {
-  const col = meta.cab.col0 + j
+function columnaDeSemana(poner, meta, j, { refSaldo, refFecha }) {
+  const col = meta.cab.cols[j]
   const cab = celda(col, meta.cab.fila)
-  // LA VENTANA SE RECORTA EN EL BORDE DEL AÑO, y sólo en las dos columnas que lo tocan. La primera
-  // semana del ejercicio arranca en diciembre del anterior y la última se derrama sobre enero del
-  // siguiente: sin el recorte, la columna del 28/12 se llevaba al año los movimientos del 01/01/2027 —
-  // y con ellos el TOTAL y, peor, el PISO DEL PERÍODO. Ver cash-flow-borde-anio.mjs.
-  const { desde, hasta } = expresionAcotada(expresionVentana(cab, meta.tipo),
-    { anio: meta.anio, primera: j === 0, ultima: j === n - 1 })
+  // LA VENTANA SE RECORTA EN EL BORDE DE SU AÑO, y sólo en la columna que lo cruza: la primera semana
+  // del ejercicio (29/12/2025 → desde el 1/1), la última (28/12 → hasta el 31/12) y, desde el
+  // 24/09/2026, la primera del año siguiente (28/12 otra vez → desde el 1/1/2027). Sin el recorte, el
+  // TOTAL 2026 sumaría días de 2027 y la misma plata aparecería a los dos lados. Qué columna se recorta
+  // lo deciden las fechas, no la posición. Ver cash-flow-borde-anio.mjs.
+  const { desde, hasta } = expresionAcotada(expresionVentana(cab, meta.tipo), recorteDe({ ventana: meta.ventanas[j], ...meta.efectivas[j] }))
   const f = meta.fila
+  // LA CADENA SALTA EL TOTAL: el vecino de una columna es la columna de tiempo de al lado, no la de la
+  // hoja. La primera semana de enero arranca en el cierre de la última de diciembre.
+  const anteriorCol = j === 0 ? null : meta.cab.cols[j - 1]
+  const siguienteCol = j === meta.cab.n - 1 ? null : meta.cab.cols[j + 1]
 
   poner(f.saldoInicial, col, inicioDeLaSemana({
-    desde, hasta, refSaldo, refFecha, anterior: j === 0 ? null : celda(col - 1, f.saldoFinal),
+    desde, hasta, refSaldo, refFecha, anterior: anteriorCol === null ? null : celda(anteriorCol, f.saldoFinal),
     // Para despejar el pasado hacia atrás, igual que el mensual: la última columna no tiene siguiente.
-    siguiente: j === meta.cab.n - 1 ? null : celda(col + 1, f.saldoInicial),
+    siguiente: siguienteCol === null ? null : celda(siguienteCol, f.saldoInicial),
     resultadoDelPeriodo: celda(col, f.resultado),
   }))
   // Cada medida trae su subtotal Y su apertura por rubro, de la misma función que usa el mensual.
@@ -358,8 +385,10 @@ function inicioDeLaSemana({ desde, hasta, refSaldo, refFecha, anterior = null, s
  */
 export function vinculoHoy(gid, meta, hoy = new Date()) {
   return atajoDelPeriodo({
-    gid, prefijo: ROTULO_HOY.semana, ventanas: meta.ventanas, hoy,
-    col0: meta.cab.col0, filaCabecera: meta.cab.fila,
+    // LAS EFECTIVAS Y NO LOS LUNES: la semana del 28/12 está a los dos lados del TOTAL, y el 02/01 es
+    // de la columna de la derecha. Cada día está en UNA sola efectiva.
+    gid, prefijo: ROTULO_HOY.semana, ventanas: meta.efectivas, hoy,
+    col0: meta.cab.col0, cols: meta.cab.cols, filaCabecera: meta.cab.fila,
     // El lunes de la ventana, como lo lee una persona: "10/08". Es la misma fecha del encabezado.
     // getUTCDate y NO getDate: las ventanas son medianoche UTC y esta VM corre en -03, así que el
     // getter local devuelve el DÍA ANTERIOR — el lunes 10/08 se rotulaba "09/08" y el atajo decía una

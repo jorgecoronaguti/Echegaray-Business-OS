@@ -40,7 +40,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { PASOS, esReporte, frenaElPipeline } from '../lib/flujo-caja-pasos.mjs'
 import { guardiaDeGeneradores } from '../lib/guardia-generadores.mjs'
-import { FILA, ROTULO_HOY } from '../lib/cash-flow-matriz.mjs'
+import { FILA, ROTULO_HOY, colTotal, colsDelSiguiente } from '../lib/cash-flow-matriz.mjs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { MARCA_ALERTA } from '../lib/glifos.mjs'
@@ -249,11 +249,20 @@ async function verificarPresentacion(bloqueadas = new Set()) {
   // probar el atajo "IR A HOY"). Si el dueño tomó una pestaña, NO se la toca ni para verificarla:
   // saltó justo el candado y, sobre una pestaña que él restauró más corta, el A200 se salía de la
   // grilla y tiraba la corrida entera. La pestaña del dueño es suya: no se lee ni se escribe.
-  for (const [pestaña, hasta] of [['Cash Flow Mensual', 13], ['Cash Flow Semanal', 54]]) {
+  // LAS COLUMNAS DE PERÍODO SALEN DE LA GEOMETRÍA DEL GENERADOR (24/09/2026). Eran 13 y 54 tipeados
+  // —hasta el TOTAL—; desde que enero del año siguiente va a la DERECHA del TOTAL, un tope tipeado
+  // habría dejado sin medir justo las columnas nuevas. Se miden las del ejercicio (hasta el TOTAL) y
+  // las del año siguiente, y el TOTAL no, que tiene su propio ancho.
+  const AÑO_CF = Number(process.env.ORQ_CF_ANIO || 2026)
+  for (const [pestaña, tipo] of [['Cash Flow Mensual', 'mes'], ['Cash Flow Semanal', 'semana']]) {
     if (bloqueadas.has(pestaña)) { console.log(`   🔒 ${pestaña}: bajo tu control, no la verifico ni la toco.`); continue }
     const w = await google.getColumnWidths(ID, pestaña).catch(() => [])
     // Las columnas de período tienen que medir todas lo mismo. Una distinta = alguien la tocó.
-    const raras = anchosRaros(w, hasta).map((c) => ({ col: letra(c.i), px: c.px }))
+    const siguiente = new Set(colsDelSiguiente(tipo, AÑO_CF))
+    const raras = [
+      ...anchosRaros(w, colTotal(tipo, AÑO_CF)),
+      ...w.map((px, i) => ({ i, px })).filter((c) => siguiente.has(c.i) && c.px !== ANCHOS.tiempo),
+    ].map((c) => ({ col: letra(c.i), px: c.px }))
     if (raras.length) {
       hubo = true
       console.log(`   ⚠ ${pestaña}: columnas de período con ancho distinto de ${ANCHOS.tiempo}px → ${raras.map((c) => `${c.col}=${c.px}`).join(' ')}`)

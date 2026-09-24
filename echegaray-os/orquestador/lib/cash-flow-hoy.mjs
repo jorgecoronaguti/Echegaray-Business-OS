@@ -68,12 +68,14 @@ export function indiceDeHoy(ventanas = [], hoy = new Date()) {
  * @param {Date} hoy inyectado SIEMPRE por el llamador: un `new Date()` acá haría el pliegue intesteable
  * @returns {{inicio:number, fin:number}|null}
  */
-export function columnasDelPasado(ventanas = [], hoy = new Date(), { col0 = COL.tiempo0 } = {}) {
+export function columnasDelPasado(ventanas = [], hoy = new Date(), { col0 = COL.tiempo0, cols = null } = {}) {
   const t = new Date(hoy).getTime()
   let k = 0
   while (k < ventanas.length && new Date(ventanas[k].hasta).getTime() <= t) k++
   if (k === 0 || k >= ventanas.length) return null
-  return { inicio: col0, fin: col0 + k }
+  // `cols` (24/09/2026): la columna de la hoja de cada ventana, cuando no son contiguas — el TOTAL del
+  // ejercicio queda en el medio y las del año siguiente van a su derecha.
+  return { inicio: cols ? cols[0] : col0, fin: cols ? cols[k - 1] + 1 : col0 + k }
 }
 
 /**
@@ -210,13 +212,15 @@ export const rangoEnLetras = (r) => (r ? `${letra(r.inicio)}..${letra(r.fin - 1)
  * @param {(d:Date)=>string} rotularFecha cómo se lee la fecha del período ("10/08", "ago 26")
  * @returns {{texto:string, uri:string}|null} null si hoy cae fuera del ejercicio que muestra la vista
  */
-export function atajoDelPeriodo({ gid, prefijo, ventanas = [], hoy = new Date(), col0 = COL.tiempo0, filaCabecera = FILA.cabecera, rotularFecha }) {
+export function atajoDelPeriodo({ gid, prefijo, ventanas = [], hoy = new Date(), col0 = COL.tiempo0, cols = null, filaCabecera = FILA.cabecera, rotularFecha }) {
   if (gid === null || gid === undefined) return null
   const j = indiceDeHoy(ventanas, hoy)
   if (j < 0) return null // el ejercicio del cuadro no contiene hoy: no se inventa un destino
-  const col = letra(col0 + j)
+  // `cols` y `ancla` (24/09/2026): con el TOTAL en el medio la columna no es `col0 + j`, y una ventana
+  // recortada (la del 28/12 partida a cada lado del TOTAL) se rotula con su lunes, como su encabezado.
+  const col = letra(cols ? cols[j] : col0 + j)
   return {
-    texto: `${prefijo}${col}  ·  ${rotularFecha(new Date(ventanas[j].desde))}`,
+    texto: `${prefijo}${col}  ·  ${rotularFecha(new Date(ventanas[j].ancla ?? ventanas[j].desde))}`,
     uri: `#gid=${gid}&range=${col}${filaCabecera}`,
   }
 }

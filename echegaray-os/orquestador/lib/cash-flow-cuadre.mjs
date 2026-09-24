@@ -104,9 +104,23 @@ export function totalesDeVista(valores = [], meta) {
       continue
     }
     totales.set(f.clave, n)
+    // Y LO QUE VIENE DESPUÉS DEL TOTAL (24/09/2026): las columnas del año siguiente no entran en el
+    // TOTAL del ejercicio, así que se suman aparte y se comparan aparte — con clave propia, para que un
+    // desvío de enero no se esconda adentro del año ni el año adentro de enero.
+    const siguiente = meta.cab.siguiente ?? []
+    if (!siguiente.length) continue
+    const malas = siguiente.filter((c) => numeroDe(fila[c]) === null)
+    if (malas.length) {
+      problemas.push(`${meta.pestana} · ${f.rotulo}: una columna del año siguiente no es un número ("${String(fila[malas[0]] ?? '').slice(0, 20)}")`)
+      continue
+    }
+    totales.set(claveSiguiente(f.clave), siguiente.reduce((acc, c) => acc + numeroDe(fila[c]), 0))
   }
   return { pestana: meta.pestana, tipo: meta.tipo, totales, problemas }
 }
+
+/** La clave con la que se compara lo que una fila muestra DESPUÉS del TOTAL (el año siguiente). */
+export const claveSiguiente = (clave) => `${clave}@siguiente`
 
 /**
  * ¿CUADRAN? PURA.
@@ -126,11 +140,24 @@ export function cuadre(a, b, { tolerancia = TOLERANCIA } = {}) {
   }
   const lineas = []
   for (const f of filasDeCuadre(a.tipo)) {
-    const x = a.totales.get(f.clave)
-    const y = b.totales.get(f.clave)
-    if (x === undefined || y === undefined) continue // ya está reportado como problema
-    const delta = x - y
-    lineas.push({ clave: f.clave, rotulo: f.rotulo, [a.pestana]: x, [b.pestana]: y, delta, ok: Math.abs(delta) <= tolerancia })
+    // El TOTAL del ejercicio y, si las dos vistas lo muestran, lo del año siguiente. Si UNA lo tiene y
+    // la otra no, es un problema: las dos tienen que cubrir el mismo horizonte (lo exige la guarda).
+    const pares = [[f.clave, f.rotulo]]
+    const ks = claveSiguiente(f.clave)
+    if (a.totales.has(ks) || b.totales.has(ks)) pares.push([ks, `${f.rotulo} (año siguiente)`])
+    for (const [k, rotulo] of pares) {
+      const x = a.totales.get(k)
+      const y = b.totales.get(k)
+      if (x === undefined && y === undefined) continue // ya está reportado como problema
+      if (x === undefined || y === undefined) {
+        if (k === ks && a.totales.has(f.clave) && b.totales.has(f.clave)) {
+          problemas.push(`${rotulo}: ${x === undefined ? a.pestana : b.pestana} no muestra el año siguiente y la otra vista sí`)
+        }
+        continue
+      }
+      const delta = x - y
+      lineas.push({ clave: k, rotulo, [a.pestana]: x, [b.pestana]: y, delta, ok: Math.abs(delta) <= tolerancia })
+    }
   }
   const fuera = lineas.filter((l) => !l.ok)
   const peor = fuera.slice().sort((p, q) => Math.abs(q.delta) - Math.abs(p.delta))[0] ?? null

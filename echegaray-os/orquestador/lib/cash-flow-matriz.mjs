@@ -297,6 +297,82 @@ export const medidaDe = (claveMedida) => MEDIDAS[CONCEPTOS.find((c) => c.clave =
 export const MESES_DEL_ANIO = 12
 
 /**
+ * ═══ LAS VISTAS SE ASOMAN A ENERO DEL AÑO SIGUIENTE (24/09/2026) ═══
+ *
+ * Las dos vistas terminaban el 31/12 y el dueño lo midió en plata: $45,4M de pagos fechados en enero
+ * de 2027 —la segunda quincena de diciembre y la oficina/dirección de diciembre el 01/01, las cargas
+ * de diciembre el 10/01, IVA e IIBB de diciembre el 18–19/01— no aparecían en NINGUNA pestaña. Son
+ * obligaciones de 2026 que se pagan en 2027, y el cierre de diciembre se leía sin ellas: *«ok, armame
+ * eso»*.
+ *
+ * Y LA FORMA LA DECIDIÓ ÉL: *«si vas a crear el 2027 hacelo después de los totales del 2026 en semana y
+ * mensual cash flow»*. Cada vista es entonces DOS BLOQUES separados por el TOTAL:
+ *
+ *     Concepto │ columnas del ejercicio │ TOTAL 2026 │ columnas del año siguiente (hasta el 31/01)
+ *
+ * El TOTAL es del ejercicio y no suma nada de 2027. En el Semanal eso obliga a partir la semana del
+ * 28/12: su parte de 2026 (28–31/12) cierra el bloque del año y su parte de 2027 (1–3/01) abre el
+ * siguiente — cada una rotulada con su lunes y recortada a su año, igual que la primera columna del
+ * ejercicio (29/12/2025 → desde el 1/1) desde el 13/08. El saldo corre de una a otra saltando el TOTAL.
+ *
+ * Un solo número, acá (`MESES_DEL_SIGUIENTE`), del que salen el ancho de las dos pestañas, sus
+ * ventanas y su borde. La geometría entera sale de `columnasDeLaVista`.
+ */
+export const MESES_DEL_SIGUIENTE = 1
+
+/** Las columnas del Mensual: el ejercicio y el asomo al año siguiente. */
+export const MESES_DE_LA_VISTA = MESES_DEL_ANIO + MESES_DEL_SIGUIENTE
+
+/** El primer día que las vistas YA NO muestran: el 1/2 del año siguiente. Excluido, como todo `hasta`. */
+export const finDeLaVista = (anio) => new Date(Date.UTC(anio + 1, MESES_DEL_SIGUIENTE, 1))
+
+const anioPorDefecto = (anio) => anio ?? new Date().getUTCFullYear()
+const maxFecha = (a, b) => (a.getTime() > b.getTime() ? a : b)
+const minFecha = (a, b) => (a.getTime() < b.getTime() ? a : b)
+
+/**
+ * NÚCLEO PURO: LAS COLUMNAS DE TIEMPO DE UNA VISTA, en el orden en que se leen, con su lugar en la hoja.
+ *
+ * Cada una trae:
+ *   · `ventana` — el período del calendario (el lunes y su semana, o el mes): de ahí sale el rótulo;
+ *   · `desde`/`hasta` — lo que la columna SUMA, recortado a su año y al horizonte (`finDeLaVista`);
+ *   · `ancla` — el lunes (o el 1°) que muestra el encabezado, aunque `desde` sea otro día;
+ *   · `bloque` — el año al que pertenece; `col` — su índice 0-based en la hoja.
+ *
+ * El bloque del ejercicio ocupa desde la B; después va el TOTAL; después, el del año siguiente.
+ */
+export function columnasDeLaVista(tipo, anio = null) {
+  const a = anioPorDefecto(anio)
+  const fin = finDeLaVista(a)
+  const bloques = [
+    { anio: a, inicio: new Date(Date.UTC(a, 0, 1)), fin: new Date(Date.UTC(a + 1, 0, 1)) },
+    { anio: a + 1, inicio: new Date(Date.UTC(a + 1, 0, 1)), fin },
+  ]
+  const out = []
+  for (const b of bloques) {
+    if (b.fin.getTime() <= b.inicio.getTime()) continue
+    const crudas = tipo === 'mes'
+      ? mesesEntre(b.inicio, b.fin)
+      : semanasEntre(b.inicio, new Date(b.fin.getTime() - DIA_MS))
+    for (const v of crudas) {
+      out.push({ bloque: b.anio, ventana: v, ancla: new Date(v.desde), desde: maxFecha(v.desde, b.inicio), hasta: minFecha(v.hasta, b.fin) })
+    }
+  }
+  const k = out.filter((c) => c.bloque === a).length
+  out.forEach((c, i) => { c.col = COL.tiempo0 + i + (i < k ? 0 : 1) })
+  return out
+}
+
+/** Los meses calendario de [inicio, fin). PURA. */
+function mesesEntre(inicio, fin) {
+  const out = []
+  for (let d = new Date(inicio); d.getTime() < fin.getTime(); d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1))) {
+    out.push({ desde: new Date(d), hasta: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)) })
+  }
+  return out
+}
+
+/**
  * CUÁNTAS COLUMNAS DE TIEMPO TIENE CADA VISTA — y por qué la semanal ya no es un número fijo.
  *
  * ═══ EL SEMANAL DEJÓ DE SER RODANTE (06/08/2026) ═══
@@ -305,17 +381,50 @@ export const MESES_DEL_ANIO = 12
  * rechazado el rodante en la vista de líneas: *"las semanas del año 2026, no lo que viene"*. Un
  * rodante mete columnas de 2027 en un cuadro del ejercicio, y esconde las semanas ya cerradas —que
  * son justamente contra las que se compara lo que viene—. Ahora las dos vistas cubren EXACTAMENTE el
- * mismo período: el año calendario. Es la condición para que compararlas signifique algo.
+ * mismo período: el año calendario y, desde el 24/09/2026, enero del siguiente — DESPUÉS del TOTAL,
+ * en su propio bloque. Es la condición para que compararlas signifique algo.
  *
- * El largo NO se puede constantizar: depende del año. 2026 son 53 semanas (la primera es la del lunes
- * 29/12/2025, que contiene el 1° de enero); un año que empieza domingo y es bisiesto son 54.
+ * El largo NO se puede constantizar: depende del año. 2026 son 53 semanas del ejercicio (la primera es
+ * la del lunes 29/12/2025) y 5 del año siguiente (28/12/2026 —desde el 1/1— a 25/01/2027): 58.
  */
-export const columnasDeTiempo = (tipo, anio = null) =>
-  (tipo === 'mes' ? MESES_DEL_ANIO : semanasDelAnio(anio ?? new Date().getUTCFullYear()).length)
+export const columnasDeTiempo = (tipo, anio = null) => columnasDeLaVista(tipo, anio).length
 
-/** La columna de TOTAL: la que sigue a la última de tiempo. */
-export const colTotal = (tipo, anio = null) => COL.tiempo0 + columnasDeTiempo(tipo, anio)
+/** Cuántas columnas de tiempo suma el TOTAL: las del ejercicio, que son las que están a su izquierda. */
+export const columnasDelTotal = (tipo, anio = null) => {
+  const a = anioPorDefecto(anio)
+  return columnasDeLaVista(tipo, a).filter((c) => c.bloque === a).length
+}
 
+/** La columna de TOTAL: la que sigue a la última del ejercicio. Las del año siguiente van después. */
+export const colTotal = (tipo, anio = null) => COL.tiempo0 + columnasDelTotal(tipo, anio)
+
+/** El encabezado de la columna TOTAL: dice de qué año es, porque a su derecha hay columnas de otro. PURA. */
+export const rotuloTotal = (tipo, anio) => `TOTAL ${anio}`
+
+/**
+ * LAS COLUMNAS DEL AÑO SIGUIENTE — las que están a la derecha del TOTAL y no entran en él. PURA.
+ */
+export const colsDelSiguiente = (tipo, anio = null) => {
+  const a = anioPorDefecto(anio)
+  return columnasDeLaVista(tipo, a).filter((c) => c.bloque !== a).map((c) => c.col)
+}
+
+/**
+ * LOS TRAMOS CONTIGUOS DE COLUMNAS DE TIEMPO, como [inicio, fin) 0-based. PURA.
+ *
+ * Son dos —el ejercicio y el año siguiente— con el TOTAL en el medio. Todo lo que pinta, dibuja o
+ * valida "las columnas de tiempo" lo hace por tramo: un rango único de la B a la última se llevaría
+ * el TOTAL puesto (un gráfico con el total del año como si fuera una semana más, por ejemplo).
+ */
+export function tramosDeTiempo(cols = []) {
+  const out = []
+  for (const c of cols) {
+    const t = out[out.length - 1]
+    if (t && t.fin === c) t.fin = c + 1
+    else out.push({ inicio: c, fin: c + 1 })
+  }
+  return out
+}
 /**
  * DÓNDE Y CUÁNTO OCUPAN LOS GRÁFICOS, medido en filas y columnas del propio cuadro.
  *
@@ -392,19 +501,39 @@ const semanaDe = (lunes) => ({ desde: lunes, hasta: new Date(lunes.getTime() + 7
  * mal significa una columna de más (vacía y sumada al TOTAL) o una de menos (días sin columna).
  */
 export function semanasDelAnio(anio) {
-  const primera = lunesDe(new Date(Date.UTC(anio, 0, 1)))
-  const ultima = lunesDe(new Date(Date.UTC(anio, 11, 31)))
+  return semanasEntre(new Date(Date.UTC(anio, 0, 1)), new Date(Date.UTC(anio, 11, 31)))
+}
+
+/** Las semanas ISO de la que contiene `primerDia` a la que contiene `ultimoDia`, ambos incluidos. PURA. */
+function semanasEntre(primerDia, ultimoDia) {
+  const primera = lunesDe(primerDia)
+  const ultima = lunesDe(ultimoDia)
   const n = Math.round((ultima.getTime() - primera.getTime()) / (7 * DIA_MS)) + 1
   return Array.from({ length: n }, (_, i) => semanaDe(new Date(primera.getTime() + i * 7 * DIA_MS)))
+}
+
+/**
+ * NÚCLEO PURO: LAS SEMANAS ISO DEL HORIZONTE, SIN PARTIR — del lunes que contiene el 1/1 del ejercicio
+ * al que contiene el último día que muestran las vistas (`finDeLaVista` − 1). Para 2026 son 57: del
+ * 29/12/2025 al 25/01/2027. Son las del calendario, una vez cada una: la base (`flujo_periodo`) las
+ * usa como clave de período. Las COLUMNAS del Semanal son otra cosa —la semana del 28/12 aparece dos
+ * veces, partida a cada lado del TOTAL—: ésas salen de `columnasDeLaVista`.
+ */
+export function semanasDeLaVista(anio) {
+  return semanasEntre(new Date(Date.UTC(anio, 0, 1)), new Date(finDeLaVista(anio).getTime() - DIA_MS))
 }
 
 /**
  * NÚCLEO PURO: las ventanas de una vista. `desde` incluida, `hasta` EXCLUIDA — el mismo criterio que
  * `terminoLibro`, y por eso un movimiento no puede caer en dos columnas.
  *
- * Para la vista semanal hay dos modos y ninguno tiene default: `anio` da el EJERCICIO (lo que muestra
- * la pestaña) y `hoy`+`n` da un rodante (lo que usan los controles que miran hacia adelante). Un
+ * Para la vista semanal hay dos modos y ninguno tiene default: `anio` da lo que muestra la pestaña
+ * del ejercicio y `hoy`+`n` da un rodante (lo que usan los controles que miran hacia adelante). Un
  * default silencioso acá fue exactamente lo que puso columnas de 2027 en un cuadro rotulado 2026.
+ *
+ * Con `anio`, devuelven el HORIZONTE, no el año pelado (24/09/2026): trece meses y las semanas ISO
+ * hasta la que contiene el 31/01 siguiente, cada período una vez. Lo que cada columna de la pestaña
+ * suma —con el TOTAL en el medio y la semana del 28/12 partida— lo dice `columnasDeLaVista`.
  *
  * @param {'semana'|'mes'} tipo
  * @param {{hoy?:Date, anio?:number, n?:number}} p
@@ -413,11 +542,11 @@ export function semanasDelAnio(anio) {
 export function ventanas(tipo, { hoy = new Date(), anio = null, n = null } = {}) {
   if (tipo === 'mes') {
     const a = anio ?? hoy.getUTCFullYear()
-    return Array.from({ length: MESES_DEL_ANIO }, (_, m) => ({
+    return Array.from({ length: MESES_DE_LA_VISTA }, (_, m) => ({
       desde: new Date(Date.UTC(a, m, 1)), hasta: new Date(Date.UTC(a, m + 1, 1)),
     }))
   }
-  if (anio !== null) return semanasDelAnio(anio)
+  if (anio !== null) return semanasDeLaVista(anio)
   if (!n) throw new Error('una vista semanal necesita el año del ejercicio (anio) o el largo del rodante (n)')
   const l0 = lunesDe(hoy)
   return Array.from({ length: n }, (_, i) => semanaDe(new Date(l0.getTime() + i * 7 * DIA_MS)))

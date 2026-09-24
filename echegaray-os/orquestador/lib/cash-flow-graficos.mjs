@@ -46,7 +46,7 @@
 //   forma documentada y la primera corrida real desde el árbol principal lo confirma o lo desmiente.
 // · Un waterfall NO acepta más de un `sourceRange` por eje, ni `color` dentro de `connectorLineStyle`.
 
-import { GRAFICO } from './cash-flow-matriz.mjs'
+import { GRAFICO, tramosDeTiempo } from './cash-flow-matriz.mjs'
 import { ANCHOS, ALTO_FILA } from './cash-flow-piel-matriz.mjs'
 
 /**
@@ -273,9 +273,27 @@ export const TITULO_ENTRA_SALE = `${MARCA}Lo que entra y lo que sale, mes a mes`
 export const TITULO_TENDENCIA = `${MARCA}Tendencia del resultado neto`
 export const TITULO_LIQUIDEZ_SEM = `${MARCA}Liquidez proyectada, semana a semana`
 
-/** Una FILA de la matriz (de la primera columna de tiempo hasta la última) como fuente de serie. */
-const filaMatriz = (sheetId, meta, fila) =>
-  fuente(rango(sheetId, fila, fila, meta.cab.col0 + 1, meta.cab.col0 + meta.cab.n))
+/**
+ * Una FILA de la matriz como fuente de serie — y QUÉ tramo de ella, que desde el 24/09/2026 importa.
+ *
+ * Enero del año siguiente va a la derecha de la columna TOTAL. Un gráfico no puede saltearla: medido
+ * ese día contra una copia del archivo, la API exige que varias `sources` de una serie sean CONTIGUAS
+ * («each sourceRange across the domain & series must be in order and contiguous») y rechaza una celda
+ * suelta como tramo («ranges require all rows or all columns to have length of 1»). Quedan dos casos:
+ *
+ *   · FLUJOS (lo que entra y sale, el resultado): sólo el ejercicio, hasta la columna anterior al
+ *     TOTAL. Cruzarlo metería el total del año como si fuera un mes más —una barra doce veces más alta
+ *     que aplasta el gráfico entero—. Son los dos gráficos del Mensual: resumen el año, como su TOTAL.
+ *   · STOCKS (el saldo final): la fila entera, CRUZANDO el TOTAL. En esa fila la celda del TOTAL va
+ *     vacía —un stock no se totaliza—, así que la línea muestra un corte justo en el cambio de año y
+ *     sigue con enero. Es el gráfico de liquidez del Semanal, y enero es cuando se pagan los sueldos y
+ *     las cargas de diciembre: cortarlo en el 31/12 escondería el piso.
+ */
+const filaMatriz = (sheetId, meta, fila, { cruzaTotal = false } = {}) => {
+  const cols = meta.cab.cols ?? Array.from({ length: meta.cab.n }, (_, j) => meta.cab.col0 + j)
+  const fin = cruzaTotal ? cols[cols.length - 1] + 1 : tramosDeTiempo(cols)[0].fin
+  return fuente(rango(sheetId, fila, fila, meta.cab.col0 + 1, fin))
+}
 
 // ═══ DÓNDE SE ANCLAN, Y POR QUÉ SE MIDEN EN COLUMNAS ═══
 //
@@ -303,8 +321,8 @@ export function graficoLiquidezSemanal(sheetId, meta) {
       basicChart: {
         chartType: 'LINE', legendPosition: 'NO_LEGEND',
         axis: ejes('Saldo proyectado'),
-        domains: [{ domain: filaMatriz(sheetId, meta, meta.cab.fila) }],
-        series: [{ series: filaMatriz(sheetId, meta, meta.fila.saldoFinal), targetAxis: 'LEFT_AXIS', color: ACENTO, lineStyle: { width: 2, type: 'SOLID' } }],
+        domains: [{ domain: filaMatriz(sheetId, meta, meta.cab.fila, { cruzaTotal: true }) }],
+        series: [{ series: filaMatriz(sheetId, meta, meta.fila.saldoFinal, { cruzaTotal: true }), targetAxis: 'LEFT_AXIS', color: ACENTO, lineStyle: { width: 2, type: 'SOLID' } }],
         headerCount: 0,
       },
     }, sheetId, meta.grafico.fila - 1, ALTO_PX, colAncla('semana'), ANCHO_PX('semana'))

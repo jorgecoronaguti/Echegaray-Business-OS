@@ -25,42 +25,50 @@ const en = (filas, f, c) => String((filas[f - 1] || [])[c] ?? '')
 /** El texto de una fórmula sin lo que va entre comillas: los patrones de número llevan comas legítimas. */
 const fueraDeComillas = (s) => String(s).replace(/"[^"]*"/g, '""')
 
-test('EL AÑO ENTERO: 53 columnas de semana más TOTAL, y todas las filas de concepto en orden', () => {
+test('EL AÑO ENTERO, SU TOTAL Y DESPUÉS ENERO: 53 + TOTAL + 5, y todas las filas de concepto en orden', () => {
   const { filas, meta } = armar()
   assert.equal(meta.pestana, PESTANA_SEMANAL)
-  // Eran trece semanas rodantes desde hoy: escondían la historia del ejercicio y metían columnas de 2027.
-  assert.equal(meta.cab.n, 53)
+  // Eran trece semanas rodantes desde hoy: escondían la historia del ejercicio. Después fueron las 53 del
+  // año, y desde el 24/09/2026 hay cinco más de enero de 2027 —las obligaciones de diciembre ($45,4M)
+  // no estaban en ninguna vista— DESPUÉS del TOTAL, que es donde el dueño las pidió.
+  assert.equal(meta.cab.n, 58)
+  assert.equal(meta.cab.nTotal, 53, 'el TOTAL suma las 53 del ejercicio y ninguna de 2027')
   assert.equal(meta.cab.colTotal, colTotal('semana', ANIO))
+  assert.equal(letra(meta.cab.colTotal), 'BC', 'el TOTAL no se movió')
+  assert.deepEqual(meta.cab.siguiente.map(letra), ['BD', 'BE', 'BF', 'BG', 'BH'])
   assert.deepEqual(meta.footprint, footprintDe('semana', ANIO))
-  assert.equal(meta.footprint.cols, 55)
+  assert.equal(meta.footprint.cols, 60)
   assert.equal(en(filas, meta.cab.fila, 0), 'Concepto')
-  assert.equal(en(filas, meta.cab.fila, meta.cab.colTotal), 'TOTAL')
+  assert.equal(en(filas, meta.cab.fila, meta.cab.colTotal), 'TOTAL 2026')
   assert.deepEqual(
     conceptosDe('semana').map((c) => en(filas, meta.fila[c.clave], 0)),
     conceptosDe('semana').map((c) => c.rotulo))
 })
 
-test('la primera columna es el lunes 29/12/2025 y la última contiene el 31/12/2026', () => {
+test('la primera columna es el lunes 29/12/2025 y la última contiene el 31/01/2027', () => {
   const { filas, meta } = armar()
   const cab = filas[meta.cab.fila - 1]
   assert.equal(cab[meta.cab.col0], serialDeFecha(new Date(Date.UTC(2025, 11, 29))),
     'la primera semana es la que CONTIENE el 1° de enero, y arranca en diciembre')
-  const ultima = semanasDelAnio(ANIO).at(-1)
-  assert.equal(cab[meta.cab.col0 + meta.cab.n - 1], serialDeFecha(ultima.desde))
-  const finDeAnio = new Date(Date.UTC(2026, 11, 31))
-  assert.ok(ultima.desde <= finDeAnio && finDeAnio < ultima.hasta)
+  assert.equal(cab[meta.cab.cols[meta.cab.n - 1]], serialDeFecha(new Date(Date.UTC(2027, 0, 25))))
+  // Las 53 del año siguen en su lugar: la del 28/12 es la columna BB, como antes.
+  assert.equal(cab[meta.cab.col0 + 52], serialDeFecha(semanasDelAnio(ANIO).at(-1).desde))
+  assert.equal(letra(meta.cab.col0 + 52), 'BB')
+  // Y la primera después del TOTAL es OTRA VEZ el 28/12: su parte de 2027 (1 al 3/01).
+  assert.equal(cab[meta.cab.siguiente[0]], serialDeFecha(new Date(Date.UTC(2026, 11, 28))))
 })
 
 test('los encabezados de tiempo son SERIALES de fecha, nunca texto', () => {
   const { filas, meta } = armar()
   for (let j = 0; j < meta.cab.n; j++) {
-    const v = (filas[meta.cab.fila - 1] || [])[meta.cab.col0 + j]
+    const v = (filas[meta.cab.fila - 1] || [])[meta.cab.cols[j]]
     assert.equal(typeof v, 'number', `la columna ${j + 1} escribe un texto donde va la fecha`)
     assert.ok(v > 45900 && v < 47000, `${v} no es un serial del ejercicio`)
   }
-  // Lunes consecutivos: el serial del siguiente es el anterior más siete.
-  const seriales = filas[meta.cab.fila - 1].slice(meta.cab.col0, meta.cab.col0 + meta.cab.n)
-  for (let j = 1; j < seriales.length; j++) assert.equal(seriales[j] - seriales[j - 1], 7)
+  // Lunes consecutivos DENTRO de cada bloque: el serial del siguiente es el anterior más siete. Entre
+  // bloques se repite el 28/12, que está partido a los dos lados del TOTAL.
+  const seriales = meta.cab.cols.map((c) => filas[meta.cab.fila - 1][c])
+  for (let j = 1; j < seriales.length; j++) assert.equal(seriales[j] - seriales[j - 1], j === meta.cab.nTotal ? 0 : 7)
 })
 
 // ═══ ESTA PRUEBA CAMBIÓ DE SIGNO EL 21/09/2026, Y EL DUEÑO ES QUIEN LA CAMBIÓ ═══
@@ -93,12 +101,13 @@ test('LA HISTORIA SE RECONSTRUYE Y SE DECLARA: antes del corte el saldo se despe
 
 test('la cadena de saldos: cada semana encadena con el cierre de la anterior, y hay UN solo ancla', () => {
   const { filas, meta } = armar()
-  const ini = (j) => en(filas, meta.fila.saldoInicial, meta.cab.col0 + j)
+  const ini = (j) => en(filas, meta.fila.saldoInicial, meta.cab.cols[j])
   // La primera columna no tiene anterior: su rama "encadena" es "" y no la celda de la izquierda —a la
   // izquierda está el rótulo, y N("Saldo inicial") daría 0 sin avisar.
   assert.ok(ini(0).endsWith(';""))'), ini(0).slice(-40))
   for (let j = 1; j < meta.cab.n; j++) {
-    const col = letra(meta.cab.col0 + j - 1)
+    // La anterior en el TIEMPO, no en la hoja: la primera de 2027 encadena con la BB, saltando el TOTAL.
+    const col = letra(meta.cab.cols[j - 1])
     assert.ok(ini(j).endsWith(`;IF(N($${col}$${meta.fila.saldoFinal})=0;"";$${col}$${meta.fila.saldoFinal})))`),
       `la semana ${j + 1} no encadena con el cierre de la anterior: es el defecto que dejó cinco semanas con el mismo saldo`)
   }
@@ -150,17 +159,17 @@ test('LA APERTURA POR RUBRO en la pestaña: cada subtotal trae sus rubros y su "
   }
 })
 
-test('la columna TOTAL suma los flujos y NO suma los saldos: 53 stocks sumados no son un stock', () => {
+test('la columna TOTAL suma los flujos del ejercicio y NO suma los saldos: 53 stocks sumados no son un stock', () => {
   const { filas, meta } = armar()
   const T = meta.cab.colTotal
-  const ultima = letra(meta.cab.col0 + meta.cab.n - 1)
+  const ultima = letra(meta.cab.col0 + meta.cab.nTotal - 1)
   for (const cc of conceptosDe('semana')) {
     const v = en(filas, meta.fila[cc.clave], T)
     if (cc.total) {
       assert.ok(v.startsWith('=SUM($B$') && v.includes(`:$${ultima}$${meta.fila[cc.clave]}`), `${cc.rotulo}: ${v}`)
     } else assert.equal(v, '', `${cc.rotulo} no se puede totalizar`)
   }
-  assert.equal(ultima, 'BB', 'con 53 semanas la matriz llega a BB, y String.fromCharCode(65+i) miente pasada la Z')
+  assert.equal(ultima, 'BB', 'el TOTAL suma las 53 del ejercicio (B..BB): String.fromCharCode(65+i) miente pasada la Z')
 })
 
 test('cero números pegados: toda celda de plata es fórmula', () => {
@@ -250,7 +259,10 @@ test('el hero: el mayor pago y el mayor cobro llevan el MISMO filtro de estados 
 
 test('el hero lee el propio cuadro: el piso sale de la fila de saldo final, no de otro cálculo', () => {
   const { filas, meta } = armar()
-  const ultima = letra(meta.cab.col0 + meta.cab.n - 1)
+  // Hasta la última semana de ENERO del año siguiente: el rango atraviesa el TOTAL, cuyo saldo va vacío.
+  const ultima = letra(meta.cab.cols[meta.cab.n - 1])
+  assert.equal(ultima, 'BH')
+  assert.equal(en(filas, meta.fila.saldoFinal, meta.cab.colTotal), '', 'el TOTAL no lleva saldo: si lo llevara, el MIN lo tomaría')
   const piso = en(filas, meta.hero.valor, meta.hero.slots[1])
   assert.equal(piso, `=MIN($B$${meta.fila.saldoFinal}:$${ultima}$${meta.fila.saldoFinal})`)
   const cuando = en(filas, meta.hero.nota, meta.hero.slots[1])

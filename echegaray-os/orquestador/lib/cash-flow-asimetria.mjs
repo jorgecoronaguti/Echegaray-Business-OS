@@ -220,7 +220,8 @@ export function mesesDesdeLaPestana(valores = [], meta) {
 
   const meses = []
   for (let j = 0; j < meta.cab.n; j++) {
-    const col = meta.cab.col0 + j
+    // La columna de la hoja y no `col0 + j`: desde el 24/09/2026 el TOTAL está entre diciembre y enero.
+    const col = meta.cab.cols?.[j] ?? meta.cab.col0 + j
     meses.push({
       mes: meta.rotulos[j],
       egresoRealPorRubro: porRubro('egresoReal', col),

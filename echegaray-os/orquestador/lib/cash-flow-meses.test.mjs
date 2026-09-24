@@ -28,13 +28,20 @@ const armar = (opts = {}) => grillaMeses({ anio: 2026, refs: REFS, ...opts })
 const en = (filas, f, c) => String((filas[f - 1] || [])[c] ?? '')
 const fueraDeComillas = (s) => String(s).replace(/"[^"]*"/g, '""')
 
-test('doce columnas de mes más TOTAL, y las filas de concepto en orden', () => {
+test('doce columnas de mes, enero del año siguiente y el TOTAL del ejercicio, y las filas de concepto en orden', () => {
   const { filas, meta } = armar()
   assert.equal(meta.pestana, PESTANA_MENSUAL)
-  assert.equal(meta.cab.n, 12)
+  // 24/09/2026, pedido del dueño: «si vas a crear el 2027 hacelo después de los totales del 2026».
+  // B..M son 2026, N el TOTAL (del ejercicio, como siempre) y O «ene 27».
+  assert.equal(meta.cab.n, 13)
+  assert.equal(meta.cab.nTotal, 12)
   assert.equal(meta.cab.colTotal, colTotal('mes', 2026))
+  assert.equal(letra(meta.cab.colTotal), 'N')
+  assert.deepEqual(meta.cab.siguiente.map(letra), ['O'])
   assert.equal(en(filas, meta.cab.fila, 0), 'Concepto')
-  assert.equal(en(filas, meta.cab.fila, meta.cab.colTotal), 'TOTAL')
+  assert.equal(en(filas, meta.cab.fila, meta.cab.colTotal), 'TOTAL 2026')
+  assert.equal((filas[meta.cab.fila - 1] || [])[meta.cab.siguiente[0]], Math.round((Date.UTC(2027, 0, 1) - Date.UTC(1899, 11, 30)) / 86400000),
+    'la columna O es el 1/1/2027')
   assert.deepEqual(
     conceptosDe('mes').map((c) => en(filas, meta.fila[c.clave], 0)),
     conceptosDe('mes').map((c) => c.rotulo))
@@ -109,11 +116,41 @@ test('LOS MESES ANTERIORES AL CORTE SE DESPEJAN HACIA ATRÁS, no quedan vacíos'
   assert.ok(en(filas, meta.fila.saldoFinal, meta.cab.col0).startsWith(`=IF(N($B$${meta.fila.saldoInicial})=0;""`))
 })
 
-test('el ÚLTIMO mes no tiene de dónde despejar: si el corte cae fuera del año, va vacío', () => {
+test('el ÚLTIMO mes no tiene de dónde despejar: si el corte cae fuera del horizonte, va vacío', () => {
   const { filas, meta } = armar()
-  const dic = en(filas, meta.fila.saldoInicial, meta.cab.col0 + meta.cab.n - 1)
-  // Su rama "anterior al corte" es `""` y no una referencia a la columna N, que no existe.
-  assert.ok(dic.startsWith('=IF(EOMONTH($M$7;0)+1<=CAJA_FECHA_SALDO;"";'), dic)
+  const ultimo = en(filas, meta.fila.saldoInicial, meta.cab.cols[meta.cab.n - 1])
+  // Su rama "anterior al corte" es `""` y no una referencia a la columna P, que no existe.
+  assert.ok(ultimo.startsWith('=IF(EOMONTH($O$7;0)+1<=CAJA_FECHA_SALDO;"";'), ultimo)
+  // Y diciembre ya no es el último: despeja de enero (O), saltando el TOTAL (N).
+  const dic = en(filas, meta.fila.saldoInicial, meta.cab.col0 + 11)
+  assert.ok(dic.includes(`$O$${meta.fila.saldoInicial}`), dic)
+  assert.ok(!dic.includes(`$N$${meta.fila.saldoInicial}`), 'el TOTAL no es un mes: la cadena no pasa por él')
+})
+
+test('ENERO DEL AÑO SIGUIENTE: encadena con diciembre saltando el TOTAL, que no lo suma, y el titular sigue en el 31/12', () => {
+  const { filas, meta } = armar()
+  const O = meta.cab.siguiente[0]
+  assert.ok(en(filas, meta.fila.saldoInicial, O).includes(`$M$${meta.fila.saldoFinal}`), 'enero arranca en el cierre de diciembre')
+  for (const c of conceptosDe('mes').filter((x) => x.total)) {
+    assert.equal(en(filas, meta.fila[c.clave], meta.cab.colTotal), `=SUM($B$${meta.fila[c.clave]}:$M$${meta.fila[c.clave]})`,
+      `${c.rotulo}: el TOTAL 2026 suma de enero a diciembre, sin la columna de 2027`)
+    assert.ok(en(filas, meta.fila[c.clave], O).startsWith('='), `${c.rotulo}: enero de 2027 también se calcula`)
+  }
+  // «CIERRE PROYECTADO AL 31/12» es el saldo de DICIEMBRE (M), no el de la última columna (O).
+  const cierre = en(filas, meta.hero.valor, meta.hero.slots[3])
+  assert.equal(cierre, `=N($M$${meta.fila.saldoFinal})`)
+  // La variación contra el mes anterior de enero mira a diciembre, no al TOTAL; contra presupuesto,
+  // «—» (no hay presupuesto de 2027 cargado y la fórmula lo busca por fecha, no por posición).
+  assert.equal(en(filas, meta.fila.variacionMesAnterior, O), `=N($O$${meta.fila.resultado})-N($M$${meta.fila.resultado})`)
+  assert.ok(en(filas, meta.fila.variacionPresupuesto, O).startsWith('=IFERROR('))
+  // El TOTAL no lleva saldos: son stocks.
+  assert.equal(en(filas, meta.fila.saldoFinal, meta.cab.colTotal), '')
+})
+
+test('los rangos con nombre siguen siendo los DOCE meses del ejercicio (B..M)', () => {
+  // CF_MESES/CF_INICIO/CF_CIERRE los leen el anexo de CAJA y la base alineados enero…diciembre.
+  const { meta } = armar()
+  for (const d of destinosNombrados(meta).filter((x) => x.cols > 1)) assert.deepEqual([d.col, d.cols], [2, 12], d.name)
 })
 
 test('LA CADENA HACIA ATRÁS ES ACÍCLICA: ningún inicio anterior al corte lee su propio cierre', () => {

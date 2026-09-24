@@ -12,6 +12,8 @@ import {
   conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos, footprintDe,
   bloqueDeMedida, bloquesDeMedida, formulasDeMedida, medidasDeLaMatriz,
   ventanas, ventanasDiarias, particionExacta, expresionVentana, semanasDelAnio,
+  semanasDeLaVista, finDeLaVista, MESES_DE_LA_VISTA, columnasDelTotal,
+  columnasDeLaVista, colsDelSiguiente, rotuloTotal, tramosDeTiempo,
   formulaMayorImporte, formulaMayorContraparte, serialDeFecha, lunesDe, letra,
 } from './cash-flow-matriz.mjs'
 import { ESTADOS_PENDIENTES, MEDIDAS } from './cash-flow-medidas.mjs'
@@ -33,7 +35,42 @@ test('EL AÑO ENTERO: 53 semanas de 2026, la primera contiene el 1° de enero y 
   for (const s of v) assert.equal(s.desde.getUTCDay(), 1, 'toda semana arranca el lunes')
   assert.deepEqual(particionExacta(v, v[0].desde, v[52].hasta).huecos, [],
     'un hueco entre dos semanas es un movimiento que no cae en ninguna columna')
-  assert.equal(ventanas('semana', { anio: 2026 }).length, 53)
+})
+
+test('LA VISTA SE ASOMA A ENERO: 57 semanas en el Semanal de 2026, la última contiene el 31/01/2027', () => {
+  // Pedido del dueño del 24/09/2026: $45,4M de pagos de enero de 2027 no aparecían en ninguna vista.
+  const v = ventanas('semana', { anio: 2026 })
+  assert.equal(v.length, 57)
+  assert.equal(v.length, semanasDeLaVista(2026).length)
+  assert.deepEqual(v.slice(0, 53).map((x) => x.desde.getTime()), semanasDelAnio(2026).map((x) => x.desde.getTime()),
+    'las 53 del año siguen siendo las mismas: sólo se agregan cuatro a la derecha')
+  const fin = new Date(Date.UTC(2027, 0, 31))
+  assert.ok(v.at(-1).desde <= fin && fin < v.at(-1).hasta, 'la última semana tiene que contener el 31/01')
+  assert.equal(finDeLaVista(2026).toISOString().slice(0, 10), '2027-02-01')
+  assert.deepEqual(particionExacta(v, v[0].desde, v.at(-1).hasta).huecos, [])
+})
+
+test('LAS COLUMNAS: el ejercicio, el TOTAL y DESPUÉS el año siguiente (pedido del dueño, 24/09/2026)', () => {
+  // «si vas a crear el 2027 hacelo después de los totales del 2026 en semana y mensual cash flow»
+  const u = (d) => d.toISOString().slice(0, 10)
+  const mes = columnasDeLaVista('mes', 2026)
+  assert.equal(colTotal('mes', 2026), 13, 'el TOTAL sigue en la N')
+  assert.deepEqual(mes.map((c) => c.col), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14], 'B..M, TOTAL en N, ene 27 en O')
+  assert.equal(u(mes.at(-1).desde), '2027-01-01')
+  assert.equal(rotuloTotal('mes', 2026), 'TOTAL 2026')
+
+  const sem = columnasDeLaVista('semana', 2026)
+  assert.equal(columnasDelTotal('semana', 2026), 53)
+  assert.equal(colTotal('semana', 2026), 54, 'el TOTAL sigue en la BC')
+  assert.deepEqual(colsDelSiguiente('semana', 2026), [55, 56, 57, 58, 59], 'BD..BH')
+  // LA SEMANA DEL 28/12 ESTÁ A LOS DOS LADOS DEL TOTAL, cada una con su parte de año.
+  const s2812 = sem.filter((c) => u(c.ancla) === '2026-12-28')
+  assert.equal(s2812.length, 2)
+  assert.deepEqual(s2812.map((c) => [u(c.desde), u(c.hasta), c.col]), [['2026-12-28', '2027-01-01', 53], ['2027-01-01', '2027-01-04', 55]])
+  // Y lo que suman las columnas, en orden, parte el horizonte sin huecos ni solapamientos.
+  assert.deepEqual(particionExacta(sem, new Date(Date.UTC(2026, 0, 1)), finDeLaVista(2026)).huecos, [])
+  assert.deepEqual(particionExacta(mes, new Date(Date.UTC(2026, 0, 1)), finDeLaVista(2026)).huecos, [])
+  assert.deepEqual(tramosDeTiempo(sem.map((c) => c.col)), [{ inicio: 1, fin: 54 }, { inicio: 55, fin: 60 }])
 })
 
 test('una vista semanal sin año ni largo de rodante NO se construye con un default silencioso', () => {
@@ -44,10 +81,14 @@ test('una vista semanal sin año ni largo de rodante NO se construye con un defa
   assert.equal(rodante[0].desde.getTime(), lunesDe(HOY).getTime())
 })
 
-test('los doce meses del ejercicio parten el año exacto, con EOMONTH y no con +30', () => {
+test('los trece meses de la vista parten el horizonte exacto, con EOMONTH y no con +30', () => {
+  // Doce del ejercicio y enero del siguiente (24/09/2026). El TOTAL suma sólo los doce: `columnasDelTotal`.
   const v = ventanas('mes', { anio: 2026 })
-  assert.equal(v.length, 12)
-  const r = particionExacta(v, new Date(Date.UTC(2026, 0, 1)), new Date(Date.UTC(2027, 0, 1)))
+  assert.equal(v.length, MESES_DE_LA_VISTA)
+  assert.equal(v.length, 13)
+  assert.equal(columnasDelTotal('mes', 2026), 12)
+  assert.equal(v[12].desde.toISOString().slice(0, 10), '2027-01-01')
+  const r = particionExacta(v, new Date(Date.UTC(2026, 0, 1)), finDeLaVista(2026))
   assert.deepEqual(r.huecos, [])
   assert.equal(v[1].hasta.getUTCDate(), 1, 'febrero termina el 1/3, no el 3/3')
   assert.ok(expresionVentana('$B$7', 'mes').hasta.includes('EOMONTH'))
@@ -163,11 +204,13 @@ test('"Otros" SE DESPEJA del subtotal: un rubro nuevo del Libro aparece ahí en 
 })
 
 test('el footprint declarado es el que la matriz ocupa de verdad: ni una columna de más', () => {
-  for (const [tipo, n] of [['semana', 53], ['mes', 12]]) {
+  for (const [tipo, n] of [['semana', 58], ['mes', 13]]) {
     const fp = footprintDe(tipo, 2026)
     assert.equal(columnasDeTiempo(tipo, 2026), n)
     assert.equal(fp.cols, 1 + n + 1, `${tipo}: concepto + tiempo + TOTAL`)
-    assert.equal(colTotal(tipo, 2026), fp.cols - 1)
+    // El TOTAL cierra el bloque del ejercicio; lo que queda a su derecha es el año siguiente.
+    assert.equal(colTotal(tipo, 2026), 1 + columnasDelTotal(tipo, 2026))
+    assert.equal(columnasDeLaVista(tipo, 2026).at(-1).col, fp.cols - 1, `${tipo}: la última columna de tiempo es la última de la hoja`)
     // El alto tiene que alojar el cuadro Y LA ZONA DE GRÁFICOS entera: `anchorCell` es una celda real
     // (si la hoja no llega, addChart devuelve 400) y si el achique no la contemplara, deleteDimension
     // amputaría los gráficos recién dibujados.

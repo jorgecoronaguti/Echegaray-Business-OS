@@ -19,6 +19,15 @@
 //   sobre las filas 7, 8 y 14 y las columnas B..M. Los consume el anexo de CAJA y la proyección de
 //   comisiones bancarias: son el contrato de esta vista con el resto del archivo.
 //
+// ═══ ENERO DEL AÑO SIGUIENTE, DESPUÉS DEL TOTAL (24/09/2026) ═══
+//
+// El dueño midió $45,4M de pagos de enero de 2027 —la segunda quincena y la oficina/dirección de
+// diciembre, las cargas de diciembre, IVA e IIBB de diciembre— que no se veían en ninguna vista, y
+// decidió dónde van: *«si vas a crear el 2027 hacelo después de los totales del 2026»*. B..M siguen
+// siendo los doce meses, N sigue siendo el TOTAL —ahora rotulado «TOTAL 2026», porque a su derecha hay
+// un mes de otro año— y la O es «ene 27». El TOTAL no suma enero y las cuatro tarjetas del año siguen
+// saliendo de él. El saldo de enero arranca en el cierre de diciembre, saltando el TOTAL.
+//
 // ═══ LO QUE SE FUE, Y ADÓNDE ═══
 //
 // El costo financiero estimado del año (interés del descubierto, comisiones, impuesto al cheque) vive
@@ -27,7 +36,8 @@
 
 import {
   COL, FILA,
-  conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos, footprintDe,
+  conceptosDe, filaDeConcepto, colTotal, columnasDeLaVista, columnasDelTotal, colsDelSiguiente, rotuloTotal,
+  filaGraficos, footprintDe, MESES_DEL_ANIO,
   medidasDeLaMatriz, bloquesDeMedida, formulasDeMedida,
   expresionVentana, ventanas, celda, rangoFila, serialDeFecha, rotuloMes, ROTULO_HOY, ROTULO_CONCEPTO,
 } from './cash-flow-matriz.mjs'
@@ -38,7 +48,7 @@ import { expresionInicio } from './cash-flow-ancla-saldo.mjs'
 import { NOMBRE_MESES } from './cash-flow-lineas.mjs'
 import { NOMBRES as PRESUPUESTO } from './cash-flow-presupuesto.mjs'
 import { columnasDelPasado, atajoDelPeriodo, indiceDeLetra } from './cash-flow-hoy.mjs'
-import { acotarAlEjercicio, bordeDelEjercicio } from './cash-flow-borde-anio.mjs'
+import { horizonteDeLaVista } from './cash-flow-borde-anio.mjs'
 import {
   expresionInvertido, glosaDeCierre, glosaConInvertido, muestraSemanal, IMPORTE_MUESTRA, GLOSA_SIN_ANCLA,
 } from './cash-flow-invertido.mjs'
@@ -47,8 +57,9 @@ import {
 export const PESTANA_MENSUAL = 'Cash Flow Mensual'
 const TIPO = 'mes'
 
-/** Los doce primeros-de-mes del ejercicio. La fecha ES el contrato de la ventana de cada columna. */
-export const mesesDelAnio = (anio) => ventanas(TIPO, { anio }).map((v) => v.desde)
+/** Los doce primeros-de-mes del ejercicio. La fecha ES el contrato de la ventana de cada columna.
+ *  Sin el asomo al año siguiente: son los del ejercicio, los que suma el TOTAL y publica CF_MESES. */
+export const mesesDelAnio = (anio) => ventanas(TIPO, { anio }).slice(0, MESES_DEL_ANIO).map((v) => v.desde)
 
 /** Dónde arranca cada una de las cuatro cifras del hero. */
 const SLOTS_HERO = Object.freeze([0, 3, 7, 11])
@@ -139,26 +150,32 @@ export function grillaMeses({ anio = 2026, refs = {}, gid = null, hoy = new Date
     const row = filas[f - 1] || (filas[f - 1] = [])
     row[col] = valor
   }
-  const n = columnasDeTiempo(TIPO)
-  const cT = colTotal(TIPO)
-  const meses = ventanas(TIPO, { anio })
+  const columnas = columnasDeLaVista(TIPO, anio)
+  const n = columnas.length
+  const cT = colTotal(TIPO, anio)
+  const meses = columnas.map((c) => c.ventana)
   const footprint = footprintDe(TIPO, anio)
   const fila = Object.fromEntries(conceptosDe(TIPO).map((c) => [c.clave, filaDeConcepto(TIPO, c.clave)]))
   const meta = {
     pestana: PESTANA_MENSUAL, tipo: TIPO, anio, ancho: footprint.cols, footprint,
-    cab: { fila: FILA.cabecera, col0: COL.tiempo0, n, colTotal: cT },
+    // `n` columnas de tiempo (13: el ejercicio y enero del siguiente) en `cols`, su índice en la hoja;
+    // las `nTotal` primeras (B..M) las suma el TOTAL (N); `siguiente` es la O, a su derecha.
+    cab: {
+      fila: FILA.cabecera, col0: COL.tiempo0, n, colTotal: cT, nTotal: columnasDelTotal(TIPO, anio),
+      cols: columnas.map((c) => c.col), siguiente: colsDelSiguiente(TIPO, anio),
+    },
     fila, hero: { rotulo: FILA.heroRotulo, valor: FILA.heroValor, nota: FILA.heroNota, slots: SLOTS_HERO },
     bloques: bloquesDeMedida(TIPO),
     clientes: { titulo: filaTituloPorCliente(TIPO), bloques: bloquesDeCliente(TIPO) },
     grafico: { fila: filaGraficos(TIPO), col: COL.tiempo0 },
     ventanas: meses, rotulos: meses.map((v) => rotuloMes(v.desde)),
-    // LOS DOCE MESES YA CUBREN EL EJERCICIO EXACTO: `efectivas` es idéntico a `ventanas` y ningún mes
-    // se recorta. Se publica igual porque el control de cuadre compara la COBERTURA de las dos vistas
+    // LOS MESES YA CUBREN EL HORIZONTE EXACTO: `efectivas` es idéntico a `ventanas` y ningún mes se
+    // recorta. Se publica igual porque el control de cuadre compara la COBERTURA de las dos vistas
     // antes de escribir una celda, y una vista que no declara qué cubre no se puede comparar con nada.
-    efectivas: acotarAlEjercicio(meses, anio), cubre: bordeDelEjercicio(anio),
+    efectivas: columnas.map(({ ancla, desde, hasta }) => ({ ancla, desde, hasta })), cubre: horizonteDeLaVista(anio),
     // Los meses YA CERRADOS se pliegan igual que las semanas terminadas: doce columnas se recorren de
     // un vistazo, pero la pestaña sigue abriendo en enero y lo que se decide está de agosto en adelante.
-    plegar: columnasDelPasado(meses, hoy, { col0: COL.tiempo0 }),
+    plegar: columnasDelPasado(meses, hoy, { cols: columnas.map((c) => c.col) }),
   }
 
   poner(FILA.titulo, 0, PESTANA_MENSUAL)  // el año lo dice el subtítulo y cada encabezado de mes
@@ -173,13 +190,14 @@ export function grillaMeses({ anio = 2026, refs = {}, gid = null, hoy = new Date
   bloqueHero(poner, meta, refs)
 
   poner(FILA.cabecera, 0, ROTULO_CONCEPTO)
-  meses.forEach((v, j) => poner(FILA.cabecera, COL.tiempo0 + j, serialDeFecha(v.desde)))
-  poner(FILA.cabecera, cT, 'TOTAL')
+  meses.forEach((v, j) => poner(FILA.cabecera, meta.cab.cols[j], serialDeFecha(v.desde)))
+  // «TOTAL 2026» y no «TOTAL»: a su derecha está enero del año siguiente, que se ve pero NO se suma.
+  poner(FILA.cabecera, cT, rotuloTotal(TIPO, anio))
 
   for (const c of conceptosDe(TIPO)) poner(fila[c.clave], 0, c.rotulo)
   for (let j = 0; j < n; j++) columnaDeMes(poner, meta, j, { refSaldo, refFecha })
   for (const c of conceptosDe(TIPO)) {
-    if (c.total) poner(fila[c.clave], cT, `=SUM(${rangoFila(fila[c.clave], COL.tiempo0, COL.tiempo0 + n - 1)})`)
+    if (c.total) poner(fila[c.clave], cT, `=SUM(${rangoFila(fila[c.clave], COL.tiempo0, COL.tiempo0 + meta.cab.nTotal - 1)})`)
   }
 
   meta.filaFin = filas.length
@@ -227,8 +245,8 @@ export function formulaSubtitulo(refFecha, primerMes) {
  */
 export function vinculoHoy(gid, meta, hoy = new Date()) {
   return atajoDelPeriodo({
-    gid, prefijo: ROTULO_HOY.mes, ventanas: meta.ventanas, hoy,
-    col0: meta.cab.col0, filaCabecera: meta.cab.fila,
+    gid, prefijo: ROTULO_HOY.mes, ventanas: meta.efectivas, hoy,
+    col0: meta.cab.col0, cols: meta.cab.cols, filaCabecera: meta.cab.fila,
     // El mismo rótulo corto que ya usan los encabezados del cuadro: "ago 26".
     rotularFecha: (d) => rotuloMes(d),
   })
@@ -280,7 +298,10 @@ function bloqueHero(poner, meta, refs = {}) {
   const invertido = expresionInvertido(refCaja)
   // El cierre del año es el saldo final de DICIEMBRE, no la suma de los saldos: sumar doce stocks no
   // da un stock. Los meses anteriores al corte van vacíos, así que sumarlos daría cualquier cosa.
-  const diciembre = celda(meta.cab.col0 + meta.cab.n - 1, meta.fila.saldoFinal)
+  // DICIEMBRE ES EL ÚLTIMO MES DEL EJERCICIO, no la última columna: desde el 24/09/2026 hay enero del
+  // año siguiente después del TOTAL, y «CIERRE PROYECTADO AL 31/12» con el saldo de enero sería un
+  // titular que dice una fecha y muestra otra.
+  const diciembre = celda(meta.cab.cols[meta.cab.nTotal - 1], meta.fila.saldoFinal)
   const cierre = glosaDeCierre({ refCierre: diciembre, exprInvertido: invertido })
 
   // LAS CUATRO DEL DUEÑO: ingresos, egresos, resultado y caja a fin de año. Cada una de AÑO COMPLETO
@@ -353,7 +374,10 @@ export function glosaPartida(dichoA, refA, dichoB, refB, cola = '') {
 
 /** Una columna de mes: el ancla o el eslabón, las cuatro medidas, el resultado, el saldo y las variaciones. */
 function columnaDeMes(poner, meta, j, { refSaldo, refFecha }) {
-  const col = meta.cab.col0 + j
+  const col = meta.cab.cols[j]
+  // LA CADENA SALTA EL TOTAL (24/09/2026): el vecino de «ene 27» es diciembre (M), no el TOTAL (N).
+  const anteriorCol = j === 0 ? null : meta.cab.cols[j - 1]
+  const siguienteCol = j === meta.cab.n - 1 ? null : meta.cab.cols[j + 1]
   const cab = celda(col, meta.cab.fila)
   const { desde, hasta } = expresionVentana(cab, meta.tipo)
   const f = meta.fila
@@ -368,7 +392,7 @@ function columnaDeMes(poner, meta, j, { refSaldo, refFecha }) {
       // al cierre del propio mes para no cerrar un ciclo de referencias — el por qué está en
       // `expresionInicio`, junto a la aritmética. El último mes no tiene siguiente: va vacío, y el
       // vacío se propaga solo hacia la izquierda cuando el corte cae fuera del ejercicio.
-      siguiente: j === meta.cab.n - 1 ? null : celda(col + 1, f.saldoInicial),
+      siguiente: siguienteCol === null ? null : celda(siguienteCol, f.saldoInicial),
       resultadoDelPeriodo: celda(col, f.resultado),
       // SIN TECHO EN EL CORTE (06/08): la línea de "posteriores al corte" del total NO tiene techo,
       // así que un REAL fechado DESPUÉS del corte ya está adentro del saldo declarado. Restarlo sólo
@@ -376,7 +400,7 @@ function columnaDeMes(poner, meta, j, { refSaldo, refFecha }) {
       // (medidos por el verificador de conectividad). Se resta TODO el REAL desde el arranque del
       // período ancla en adelante; la cadena lo re-suma exactamente una vez en la columna que le toca.
       yaVividoEnElAncla: terminoLibro({ desde, estados: ['REAL'], medida: 'neto' }),
-      anterior: j === 0 ? null : celda(col - 1, f.saldoFinal),
+      anterior: anteriorCol === null ? null : celda(anteriorCol, f.saldoFinal),
     })
     : '')
   // Subtotal + apertura por rubro, de la misma función que usa el semanal: las dos vistas no pueden
@@ -402,7 +426,7 @@ function columnaDeMes(poner, meta, j, { refSaldo, refFecha }) {
   poner(f.variacionPresupuesto, col, formulaVariacionPresupuesto(cab, celda(col, f.resultado)))
   poner(f.variacionMesAnterior, col, j === 0
     ? ''
-    : `=N(${celda(col, f.resultado)})-N(${celda(col - 1, f.resultado)})`)
+    : `=N(${celda(col, f.resultado)})-N(${celda(anteriorCol, f.resultado)})`)
 }
 
 /**
@@ -462,7 +486,10 @@ export const NOMBRES_VISTA = Object.freeze({
  */
 export function destinosNombrados(meta) {
   const col = meta.cab.col0 + 1 // los destinos se declaran 1-indexados
-  const cols = meta.cab.n
+  // LOS DOCE DEL EJERCICIO, no las trece columnas (24/09/2026). Sus consumidores —el anexo de CAJA, la
+  // proyección de comisiones, la base— los leen alineados B=enero…M=diciembre del año; enero del
+  // siguiente se ve en la pestaña pero no entra en el contrato.
+  const cols = meta.cab.nTotal
   return [
     { name: NOMBRES_VISTA.meses, fila: meta.cab.fila, col, filas: 1, cols },
     { name: NOMBRES_VISTA.inicio, fila: meta.fila.saldoInicial, col, filas: 1, cols },

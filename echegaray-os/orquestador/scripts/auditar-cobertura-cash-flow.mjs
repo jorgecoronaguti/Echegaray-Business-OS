@@ -27,7 +27,7 @@ import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import { endososDeCartera } from '../lib/libro-endosos.mjs'
 import { ref as refPestana } from '../lib/partir-pestana.mjs'
 import { letra } from '../lib/cash-flow-matriz.mjs'
-import { totalesDeVista } from '../lib/cash-flow-cuadre.mjs'
+import { totalesDeVista, claveSiguiente } from '../lib/cash-flow-cuadre.mjs'
 import { grillaSemanal } from '../lib/cash-flow-semanas.mjs'
 import { grillaMeses } from '../lib/cash-flow-meses.mjs'
 import { RUBROS_EGRESO } from '../lib/cash-flow-rubros.mjs'
@@ -35,7 +35,7 @@ import {
   CENSADAS, EXCLUSIONES_COBRANZAS, EXCLUSIONES_COMPRAS, SIN_CENSO_DE_FILA,
   censoDeCobranzas, censoDeCompras, coberturaDeFuente, cuadreContraElLibro, filasCubiertas, listaDeFilas,
   fueraDeLaVentana, marcarEndosos, medidasDesdeElLibro, origenesSinDeclarar, resumenDeCobertura,
-  ventanaDelEjercicio,
+  ventanaDeLasVistas, ventanaDelEjercicio,
 } from '../lib/cobertura-archivo.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -106,7 +106,7 @@ async function main() {
     throw new Error(`el censo arma "${armadas}" y CENSADAS declara "${[...CENSADAS].join('|')}": `
       + 'el inventario de fuentes y lo que se mide dejaron de ser lo mismo')
   }
-  const ventana = ventanaDelEjercicio(AÑO)
+  const ventana = ventanaDeLasVistas(AÑO)
   const fuera = fueraDeLaVentana(movs, ventana)
   const desvios = await eslabon3({ google, movs, ventana })
   const r = resumenDeCobertura({ fuentes, fuera, sinCenso: SIN_CENSO_DE_FILA, desvios })
@@ -128,7 +128,13 @@ async function main() {
  * si difieren, la vista dejó de decir lo que el Libro dice.
  */
 async function eslabon3({ google, movs, ventana }) {
-  const propios = medidasDesdeElLibro(movs, ventana, RUBROS_EGRESO)
+  // DOS COMPARACIONES DESDE EL 24/09/2026: el TOTAL de cada vista es del EJERCICIO, y lo del año
+  // siguiente vive en columnas a su derecha, fuera del TOTAL (pedido del dueño). Se compara cada parte
+  // contra el libro sumado sobre SU ventana; una sola comparación sobre todo el horizonte dejaría que
+  // un peso de enero metido en el TOTAL se compensara con uno que falta en enero.
+  const ejercicio = ventanaDelEjercicio(AÑO)
+  const propios = medidasDesdeElLibro(movs, ejercicio, RUBROS_EGRESO)
+  const propiosSiguiente = medidasDesdeElLibro(movs, { desde: ejercicio.hasta, hasta: ventana.hasta }, RUBROS_EGRESO)
   const metas = [
     grillaSemanal({ hoy: new Date(), anio: AÑO, refs: {} }).meta,
     grillaMeses({ anio: AÑO, refs: {}, hoy: new Date() }).meta,
@@ -141,6 +147,8 @@ async function eslabon3({ google, movs, ventana }) {
     const t = totalesDeVista(v ?? [], meta)
     for (const p of t.problemas) fuera.push({ pestana: meta.pestana, medida: '(no se pudo leer)', publicado: 0, libro: 0, delta: 0, nota: p })
     fuera.push(...cuadreContraElLibro(meta.pestana, t.totales, propios))
+    const siguiente = new Map(Object.keys(propiosSiguiente).map((k) => [k, t.totales.get(claveSiguiente(k)) ?? 0]))
+    fuera.push(...cuadreContraElLibro(`${meta.pestana} · año siguiente`, siguiente, propiosSiguiente))
   }
   return fuera.filter((f) => f.nota || Math.abs(f.delta) > 1)
 }
@@ -160,7 +168,7 @@ function informe(r, movs) {
   for (const s of r.sinCenso) console.log(`  ${s.pestana}: sin censo de fila — ${s.porque}`)
 
   console.log('\nESLABÓN 2 · el movimiento ¿cae en alguna columna de las dos vistas?')
-  if (!r.fuera.n) console.log(`  ✓ los ${movs.length} movimientos caen dentro del ejercicio`)
+  if (!r.fuera.n) console.log(`  ✓ los ${movs.length} movimientos caen dentro de lo que muestran las vistas`)
   for (const g of r.fuera.porOrigen) {
     console.log(`  ▲ ${g.clave} — ${g.n} movimiento(s), ${peso(g.monto)}`)
   }
@@ -177,7 +185,7 @@ function informe(r, movs) {
   console.log(`        NO llega a ninguna celda de ningún Cash Flow: ${peso(r.noLlegaALaVista)}`)
   console.log(`          · ${peso(r.hueco)} por filas de origen que no producen movimiento`)
   console.log(`          · ${peso(r.perdidaDeVentana)} por movimientos con fecha que ninguna vista abre ya`)
-  console.log(`          · ${peso(r.frontera)} de frontera: obligaciones del ejercicio que se pagan en el siguiente`)
+  console.log(`          · ${peso(r.frontera)} de frontera: lo que se paga después del último día que muestran las vistas`)
   console.log('        (la frontera se informa y NO enciende el rojo: el Cash Flow es percibido)')
   if (r.ok) console.log('\n✓ toda la plata censada llega a las dos vistas (ver los límites declarados en lib/cobertura-archivo.mjs)')
   else console.log('\n⛔ hay plata del archivo que ningún Cash Flow muestra.')

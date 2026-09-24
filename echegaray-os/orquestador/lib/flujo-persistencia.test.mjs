@@ -160,12 +160,15 @@ test('un rubro que el libro emite y el cuadro no lista cae en "Otros" y SE VE', 
 // LOS PERÍODOS
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-test('filasDePeriodo mensual: doce totales, ventanas contiguas y sin solapamiento', () => {
+test('filasDePeriodo mensual: los mismos trece meses que la pestaña, contiguos y sin solapamiento', () => {
+  // Trece desde el 24/09/2026: la base cubre exactamente lo que muestran las columnas, enero del año
+  // siguiente incluido (su saldo entra NULL: CF_INICIO/CF_CIERRE publican los doce del ejercicio).
   const filas = filasDePeriodo([mov({ clave: 'a' })], { granularidad: 'mes', anio: 2026 })
   const totales = filas.filter((f) => f.nivel === 'total')
-  assert.equal(totales.length, 12)
+  assert.equal(totales.length, 13)
   assert.equal(totales[0].periodo_inicio, '2026-01-01')
   assert.equal(totales[11].periodo_fin, '2027-01-01')
+  assert.equal(totales[12].periodo_fin, '2027-02-01')
   for (let i = 1; i < totales.length; i++) {
     assert.equal(totales[i].periodo_inicio, totales[i - 1].periodo_fin, 'hay un hueco entre dos meses')
   }

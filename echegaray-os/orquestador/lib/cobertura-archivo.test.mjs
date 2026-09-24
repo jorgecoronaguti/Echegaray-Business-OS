@@ -18,10 +18,12 @@ import {
   CENSADAS, EXCLUSIONES_COBRANZAS, EXCLUSIONES_COMPRAS, SIN_CENSO_DE_FILA,
   censoDeCobranzas, censoDeCompras, coberturaDeFuente, cuadreContraElLibro, filasCubiertas,
   fueraDeLaVentana, marcarEndosos, medidasDesdeElLibro, origenesSinDeclarar, resumenDeCobertura,
-  serialDe, ventanaDelEjercicio,
+  serialDe, ventanaDelEjercicio, ventanaDeLasVistas,
 } from './cobertura-archivo.mjs'
 
-const V = ventanaDelEjercicio(2026)
+// LA VENTANA DE LAS VISTAS, NO LA DEL EJERCICIO (24/09/2026): desde que el dueño pidió ver los $45,4M
+// de pagos de enero de 2027, las dos pestañas muestran hasta el 31/01 del año siguiente.
+const V = ventanaDeLasVistas(2026)
 const mov = (o) => ({ origen: 'Compras', fila: 1, importe: 1, fecha: serialDe(2026, 6, 1), rubro: '', estado: 'REAL', ...o })
 
 // Las columnas que devolvería `columnasDeCompras` sobre el encabezado real; acá se fijan a mano para
@@ -33,20 +35,25 @@ const hojaCompras = (filas) => [[], [], [], ...filas]
 /** Cobranzas con 4 de relleno: los datos arrancan en la 5. */
 const hojaCobranzas = (filas) => [[], [], [], [], ...filas]
 
-test('la ventana del ejercicio es el año entero y ni un día más', () => {
+test('la ventana del ejercicio es el año entero; la de las vistas, hasta el 31/01 siguiente', () => {
+  assert.deepEqual(ventanaDelEjercicio(2026), { desde: serialDe(2026, 1, 1), hasta: serialDe(2027, 1, 1) })
   assert.equal(V.desde, serialDe(2026, 1, 1))
-  assert.equal(V.hasta, serialDe(2027, 1, 1))
+  assert.equal(V.hasta, serialDe(2027, 2, 1))
 })
 
-test('ESLABÓN 2 · una quincena fechada el 01/01/2027 no la muestra ninguna celda', () => {
+test('ESLABÓN 2 · la quincena del 01/01/2027 YA SE VE; lo del 01/02/2027 no lo muestra ninguna celda', () => {
+  // El 06/09 se midieron 3 quincenas por $14.992.277 fechadas el 01/01/2027 fuera de las dos vistas.
+  // Desde el 24/09/2026 enero tiene columna: la frontera se corrió al 1/2.
   const movs = [
     mov({ origen: 'Jornales por Quincena', fila: 'Quincenas proyectadas:9', importe: 14_992_277, fecha: serialDe(2027, 1, 1) }),
-    mov({ importe: 1_000_000, fecha: serialDe(2026, 12, 31) }),
+    mov({ origen: 'Jornales por Quincena', fila: 'Quincenas proyectadas:10', importe: 3_000_000, fecha: serialDe(2027, 2, 1) }),
+    mov({ importe: 1_000_000, fecha: serialDe(2027, 1, 31) }),
   ]
   const r = fueraDeLaVentana(movs, V)
-  assert.equal(r.n, 1, 'el 31/12 está DENTRO y el 01/01 del año siguiente está afuera')
-  assert.equal(r.monto, 14_992_277)
-  assert.match(r.porOrigen[0].clave, /Jornales por Quincena · posterior al ejercicio/)
+  assert.equal(r.n, 1, 'el 01/01 y el 31/01 están DENTRO y el 01/02 está afuera')
+  assert.equal(r.monto, 3_000_000)
+  assert.equal(r.frontera, 3_000_000, 'lo posterior a las vistas es frontera, no pérdida')
+  assert.match(r.porOrigen[0].clave, /Jornales por Quincena · posterior a lo que muestran las vistas/)
 })
 
 test('ESLABÓN 2 · un movimiento anterior al ejercicio tampoco se ve, y se nombra distinto', () => {
@@ -247,10 +254,11 @@ test('un desvío del eslabón 3 solo ya deja el resumen en rojo', () => {
 })
 
 test('LA FRONTERA NO ES UN HUECO: la nómina de diciembre que se paga en enero se informa, no se grita', () => {
-  // Criterio PERCIBIDO: un pago del 01/01/2027 no es caja de 2026. Exigirle al cuadro del ejercicio
-  // que lo muestre sería mezclar dos ventanas de tiempo. Se informa con su monto y no enciende el rojo.
+  // Criterio PERCIBIDO: un pago de 2027 no es caja de 2026. Desde el 24/09/2026 enero de 2027 se VE
+  // (a la derecha del TOTAL); lo que queda afuera es lo del 01/02/2027 en adelante, que se informa con
+  // su monto y no enciende el rojo.
   const r = fueraDeLaVentana([
-    mov({ origen: 'Jornales por Quincena', importe: 9_000_000, fecha: serialDe(2027, 1, 1) }),
+    mov({ origen: 'Jornales por Quincena', importe: 9_000_000, fecha: serialDe(2027, 2, 1) }),
     mov({ origen: 'Compras', importe: 250_000, fecha: serialDe(2025, 11, 30) }),
   ], V)
   assert.equal(r.monto, 9_250_000)
@@ -262,7 +270,7 @@ test('LA FRONTERA NO ES UN HUECO: la nómina de diciembre que se paga en enero s
 
   const soloFrontera = resumenDeCobertura({
     fuentes: [],
-    fuera: fueraDeLaVentana([mov({ importe: 9_000_000, fecha: serialDe(2027, 1, 1) })], V),
+    fuera: fueraDeLaVentana([mov({ importe: 9_000_000, fecha: serialDe(2027, 2, 1) })], V),
   })
   assert.equal(soloFrontera.ok, true, 'la frontera sola NO puede dejar el control rojo para siempre')
   assert.equal(soloFrontera.frontera, 9_000_000, 'pero sigue publicada con su monto')

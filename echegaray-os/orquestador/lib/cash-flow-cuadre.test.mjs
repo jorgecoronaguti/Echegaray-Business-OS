@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { cuadre, filasDeCuadre, guardaDeCobertura, totalesDeVista, TOLERANCIA } from './cash-flow-cuadre.mjs'
+import { cuadre, claveSiguiente, filasDeCuadre, guardaDeCobertura, totalesDeVista, TOLERANCIA } from './cash-flow-cuadre.mjs'
 import { ventanas } from './cash-flow-matriz.mjs'
 import { grillaSemanal, PESTANA_SEMANAL } from './cash-flow-semanas.mjs'
 import { grillaMeses, PESTANA_MENSUAL } from './cash-flow-meses.mjs'
@@ -22,13 +22,17 @@ const AQUI = path.dirname(fileURLToPath(import.meta.url))
 const META_SEM = grillaSemanal({ hoy: HOY, anio: ANIO, refs: REFS }).meta
 const META_MES = grillaMeses({ anio: ANIO, refs: REFS, hoy: HOY }).meta
 
-/** El rectángulo que devolvería la pestaña: rótulo en A, número en la columna TOTAL. */
-function hoja(meta, { valor = () => 1000, salvo = {} } = {}) {
+/**
+ * El rectángulo que devolvería la pestaña: rótulo en A, número en la columna TOTAL y, en el Mensual,
+ * lo que muestra enero del año siguiente (`fuera`, cero por defecto) en su columna, fuera del TOTAL.
+ */
+function hoja(meta, { valor = () => 1000, salvo = {}, fuera = () => 0 } = {}) {
   const filas = []
   for (const f of filasDeCuadre(meta.tipo)) {
     const row = []
     row[0] = f.rotulo
     row[meta.cab.colTotal] = Object.hasOwn(salvo, f.clave) ? salvo[f.clave] : valor(f)
+    for (const c of meta.cab.siguiente) row[c] = fuera(f)
     filas[f.fila - 1] = row
   }
   return filas
@@ -45,6 +49,26 @@ test('dos vistas iguales cuadran, y se comparan TODAS las filas totalizables (no
   for (const c of ['egresoProyectado', 'ingresoReal', 'resultado']) assert.ok(claves.includes(c), c)
   assert.ok(claves.some((c) => c.startsWith('cliente::')), 'los clientes también tienen que cuadrar')
   assert.ok(claves.some((c) => c.includes('::')), 'y la apertura por rubro')
+})
+
+test('ENERO DEL AÑO SIGUIENTE, DESPUÉS DEL TOTAL: se compara APARTE del TOTAL 2026', () => {
+  // Pedido del dueño del 24/09/2026: «si vas a crear el 2027 hacelo después de los totales del 2026».
+  // Los dos TOTAL son del ejercicio; lo del año siguiente vive a su derecha y se compara con clave propia.
+  assert.equal(META_MES.cab.siguiente.length, 1, 'el Mensual: «ene 27»')
+  assert.equal(META_SEM.cab.siguiente.length, 5, 'el Semanal: 28/12 (desde el 1/1), 04, 11, 18 y 25/01')
+  assert.ok(META_SEM.cab.siguiente.every((c) => c > META_SEM.cab.colTotal))
+  const sem = leer(META_SEM, { fuera: () => 60 })
+  const mes = leer(META_MES, { fuera: () => 300 })
+  // Las cinco semanas suman 300 y el mes 300: cuadra, y se comparó dos veces por fila.
+  const r = cuadre(sem, mes)
+  assert.equal(r.ok, true, JSON.stringify(r.problemas))
+  assert.ok(r.lineas.some((l) => l.clave === claveSiguiente('resultado')))
+  // Un peso de enero metido en el TOTAL no se compensa con el que falta en enero: rojo en las dos.
+  const corrido = cuadre(leer(META_SEM, { valor: () => 1060, fuera: () => 48 }), mes)
+  assert.equal(corrido.ok, false)
+  assert.ok(corrido.fuera.some((l) => l.clave === 'resultado') && corrido.fuera.some((l) => l.clave === claveSiguiente('resultado')))
+  // Una celda del año siguiente que no es número es un problema, no un cero.
+  assert.equal(cuadre(sem, leer(META_MES, { fuera: () => '#REF!' })).ok, false)
 })
 
 test('EL DESVÍO REAL DEL 13/08 PONE EL CONTROL EN ROJO Y LO NOMBRA', () => {

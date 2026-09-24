@@ -43,6 +43,7 @@
 // control en verde. Eso lo tiene que medir un control de importe, que hoy no existe.
 //
 // NÚCLEO PURO: no toca la red, no lee el Sheet, no sabe de Google.
+import { finDeLaVista } from './cash-flow-matriz.mjs'
 import { PESTANA_PRENDARIO } from './libro-extractores-banco-obligaciones.mjs'
 
 /** Serial de Sheets (base 30/12/1899) de una fecha UTC. */
@@ -58,11 +59,22 @@ export const serialDe = (anio, mes, dia) =>
  */
 export const ventanaDelEjercicio = (anio) => ({ desde: serialDe(anio, 1, 1), hasta: serialDe(anio + 1, 1, 1) })
 
+/**
+ * LA VENTANA QUE LAS DOS VISTAS MUESTRAN (24/09/2026): el ejercicio y su asomo al año siguiente, hasta
+ * el 31/01 incluido. Es la que usa el control desde que el dueño pidió ver los $45,4M de pagos de enero
+ * de 2027: un movimiento del 01/01/2027 ya tiene columna en las dos pestañas y dejó de ser frontera.
+ * Sale de `finDeLaVista`, el mismo número que abre las columnas: si el horizonte cambia, cambia acá.
+ */
+export const ventanaDeLasVistas = (anio) => ({
+  desde: serialDe(anio, 1, 1),
+  hasta: serialDe(finDeLaVista(anio).getUTCFullYear(), finDeLaVista(anio).getUTCMonth() + 1, finDeLaVista(anio).getUTCDate()),
+})
+
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const txt = (v) => String(v ?? '').trim()
 
-/** El motivo que NO es un defecto: el ejercicio siguiente todavía no tiene cuadro. Ver `fueraDeLaVentana`. */
-export const POSTERIOR = 'posterior al ejercicio'
+/** El motivo que NO es un defecto: lo que viene después del horizonte todavía no tiene columna. Ver `fueraDeLaVentana`. */
+export const POSTERIOR = 'posterior a lo que muestran las vistas'
 
 /**
  * ESLABÓN 2 · la plata del Libro que no cae en NINGUNA columna de NINGUNA vista.
@@ -102,6 +114,9 @@ export function fueraDeLaVentana(movs = [], { desde, hasta } = {}) {
     // ventanas de tiempo (regla de oro 3). Se INFORMA con su monto —el año cierra debiéndolo— pero no
     // enciende el rojo: un control que grita por algo correcto se deja de mirar, y entonces tampoco se
     // ve el grito que importa.
+    //
+    // DESDE EL 24/09/2026 esa nómina de diciembre YA SE VE: las vistas muestran hasta el 31/01 del año
+    // siguiente (`ventanaDeLasVistas`). La frontera pasó a ser lo que cae del 01/02 en adelante.
     //
     // Lo ANTERIOR al ejercicio sí es pérdida: es plata con fecha de un año que ninguna vista abre ya, y
     // no la va a mostrar nunca. Una fecha que no es número, igual — ninguna fórmula la suma.

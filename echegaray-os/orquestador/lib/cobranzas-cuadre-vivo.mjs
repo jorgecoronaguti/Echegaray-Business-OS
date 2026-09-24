@@ -14,6 +14,7 @@ import { auditar, columnasDelCobro } from './cobranzas-en-cashflow.mjs'
 import { lectorDeEncabezados, rangoFilas } from './columnas-por-encabezado.mjs'
 import { LADOS, frasePorCulpable } from './cobranzas-lado.mjs'
 import { PESTANA_MENSUAL } from './cash-flow-meses.mjs'
+import { footprintDe, letra } from './cash-flow-matriz.mjs'
 import { leerTipoCambio, RANGO_TC } from './tipo-cambio.mjs'
 import { ref as refPestana } from './partir-pestana.mjs'
 
@@ -23,8 +24,12 @@ export const RANGO_COBRANZAS = rangoFilas('Cobranzas', 5, 400)
 /** La réplica del extracto, ABIERTA HACIA ABAJO: el corte del cruce sale del último movimiento que
  *  haya, no de una altura tipeada que se queda corta la primera vez que el banco manda más filas. */
 export const RANGO_BANCO = '_BANCO_RAW!A1:F'
-/** El cuadro se lee DESDE LA FILA 1: `ubicarCuadro` busca sus anclas de texto adentro, no cuenta filas. */
-export const rangoMensual = (pestana = PESTANA_MENSUAL) => `${refPestana(pestana)}!A1:N40`
+/** El cuadro se lee DESDE LA FILA 1: `ubicarCuadro` busca sus anclas de texto adentro, no cuenta filas.
+ *  Y HASTA LA ÚLTIMA COLUMNA DE LA VISTA, que sale de la geometría del generador: era `N` tipeada —el
+ *  TOTAL— y desde el 24/09/2026 hay un mes más a su derecha («ene 27», la O). Los meses los reconoce
+ *  `mesesDelCuadro` por su fecha —el TOTAL es texto y no cuenta—, así que leer de más no suma nada;
+ *  leer de menos dejaría un mes afuera sin avisar. */
+export const rangoMensual = (pestana = PESTANA_MENSUAL) => `${refPestana(pestana)}!A1:${letra(footprintDe('mes').cols - 1)}40`
 
 /**
  * Leer las tres fuentes y auditar. No escribe nada: no pide `scopes`.

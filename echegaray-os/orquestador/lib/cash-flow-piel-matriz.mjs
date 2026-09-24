@@ -29,7 +29,16 @@
 import { MONEDA_CUERPO, MONEDA_TOTAL } from './formato-statement.mjs'
 import { spansDelHero } from './cash-flow-hero-cabe.mjs'
 import { INK, MUTED, HAIR, ACENTO, BLANCO } from './estilo-statement.mjs'
-import { FILA, letra } from './cash-flow-matriz.mjs'
+import { FILA, letra, tramosDeTiempo } from './cash-flow-matriz.mjs'
+
+/**
+ * LOS TRAMOS DE TIEMPO DE UNA VISTA (24/09/2026): el ejercicio y, a la derecha del TOTAL, el año
+ * siguiente. Todo lo que es "de las columnas de tiempo" se pinta por tramo, para no pintar el TOTAL
+ * como una fecha. Un meta sin `cols` (los tests viejos) es un solo tramo hasta el TOTAL.
+ */
+const tramosDe = (meta) => (meta.cab.cols?.length
+  ? tramosDeTiempo(meta.cab.cols)
+  : [{ inicio: meta.cab.col0, fin: meta.cab.colTotal }])
 
 const FUENTE = 'Arial'
 
@@ -153,7 +162,7 @@ export function pielMatriz({ sheetId, meta, filasHoja = 0, colsHoja = 0 }) {
     updateDimensionProperties: { range: { sheetId, dimension, startIndex: i0, endIndex: i1 }, properties: { pixelSize }, fields: 'pixelSize' },
   })
   dim('COLUMNS', 0, 1, ANCHOS.concepto)
-  dim('COLUMNS', col0, colUltima, ANCHOS.tiempo)
+  for (const t of tramosDe(meta)) dim('COLUMNS', t.inicio, t.fin, ANCHOS.tiempo)
   dim('COLUMNS', colUltima, colUltima + 1, ANCHOS.total)
   // El alto se RESETEA en todo el footprint, no sólo en las filas nuevas: una fila que quedó de 42px
   // en un layout anterior sigue de 42px para siempre, y una matriz con dos alturas se lee como dos
@@ -370,8 +379,10 @@ function formatoCuerpo({ push, celdas, reglaFina, rango, meta, col0, colUltima }
     { backgroundColor: GRIS_SUAVE, textFormat: txt(MUTED, { bold: true, size: 9 }) })
   // La fecha va CENTRADA sobre su columna: es el título de la columna, no un dato alineado con los
   // importes de abajo. Alineada a la derecha, con 53 columnas angostas, se leía pegada a la vecina.
-  celdas(meta.cab.fila, col0, colUltima, 'userEnteredFormat(numberFormat,horizontalAlignment)',
-    { numberFormat: { type: 'DATE', pattern: patron }, horizontalAlignment: 'CENTER' })
+  for (const t of tramosDe(meta)) {
+    celdas(meta.cab.fila, t.inicio, t.fin, 'userEnteredFormat(numberFormat,horizontalAlignment)',
+      { numberFormat: { type: 'DATE', pattern: patron }, horizontalAlignment: 'CENTER' })
+  }
   celdas(meta.cab.fila, colUltima, colUltima + 1, 'userEnteredFormat(numberFormat,horizontalAlignment)',
     { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'CENTER' })
   reglaFina(meta.cab.fila, 'bottom')
@@ -381,7 +392,9 @@ function formatoCuerpo({ push, celdas, reglaFina, rango, meta, col0, colUltima }
   // sale del patrón — un "—" tipeado sería un texto donde tiene que haber un número.
   push(rango(FILA.concepto - 1, filaFin, 0, 1), 'userEnteredFormat(textFormat,horizontalAlignment)',
     { textFormat: txt(INK, { size: 10 }), horizontalAlignment: 'LEFT' })
-  push(rango(FILA.concepto - 1, filaFin, col0, colUltima + 1), 'userEnteredFormat(numberFormat,horizontalAlignment)',
+  // Hasta el borde del footprint, no hasta el TOTAL: desde el 24/09/2026 a su derecha están las
+  // columnas del año siguiente, que son plata igual que las de la izquierda.
+  push(rango(FILA.concepto - 1, filaFin, col0, meta.footprint.cols), 'userEnteredFormat(numberFormat,horizontalAlignment)',
     { numberFormat: MONEDA_CUERPO, horizontalAlignment: 'RIGHT' })
   // La columna TOTAL, con su propio fondo. Sólo el fondo: el resto lo ponen las filas, y si se pisara
   // acá la negrita del saldo final se perdería justo en la celda que cierra el cuadro.
@@ -424,7 +437,7 @@ function formatoCuerpo({ push, celdas, reglaFina, rango, meta, col0, colUltima }
   celdas(f.resultado, 0, meta.footprint.cols, 'userEnteredFormat.textFormat', { textFormat: txt(INK, { bold: true, size: 10 }) })
   reglaFina(f.resultado, 'top')
   celdas(f.saldoFinal, 0, meta.footprint.cols, 'userEnteredFormat.textFormat', { textFormat: txt(ACENTO, { bold: true, size: 10 }) })
-  celdas(f.saldoFinal, col0, colUltima + 1, 'userEnteredFormat(textFormat,numberFormat)',
+  celdas(f.saldoFinal, col0, meta.footprint.cols, 'userEnteredFormat(textFormat,numberFormat)',
     { textFormat: txt(ACENTO, { bold: true, size: 10 }), numberFormat: MONEDA_TOTAL })
   reglaFina(f.saldoFinal, 'top')
 }
@@ -449,7 +462,8 @@ export function reglasCondicionales({ sheetId, meta, refMinima = null }) {
   const porNombre = refMinima ? `INDIRECT("${refMinima}")` : null
   const f = meta.fila
   const c0 = meta.cab.col0
-  const c1 = meta.cab.colTotal + 1
+  // Hasta el final del footprint: el TOTAL y, desde el 24/09/2026, las columnas del año siguiente.
+  const c1 = Math.max(meta.cab.colTotal + 1, meta.footprint?.cols ?? 0)
   // `letra` y no `String.fromCharCode(65+i)`: con el semanal a 53 semanas la matriz llega a BC, y la
   // aritmética corta devolvía un carácter cualquiera pasada la Z — una regla condicional apuntando a
   // una celda que no existe no da error, simplemente no pinta nunca.
@@ -512,30 +526,35 @@ export function reglasCondicionales({ sheetId, meta, refMinima = null }) {
  * no compite con las de tinta: aquéllas pintan el TEXTO y ésta el FONDO. Se ven juntas.
  */
 export function reglaPeriodoEnCurso({ sheetId, meta }) {
-  const primera = `${letra(meta.cab.col0)}$${meta.cab.fila}`
-  const dentro = meta.tipo === 'mes'
-    ? `AND(${primera}<=TODAY();EOMONTH(${primera};0)>=TODAY())`
-    : `AND(${primera}<=TODAY();${primera}+7>TODAY())`
-  return [{
-    addConditionalFormatRule: {
-      rule: {
-        // Del encabezado hasta el saldo final: la columna entera que se lee, sin la columna TOTAL
-        // (que no es un período y no puede ser "hoy") ni el bloque por cliente de más abajo.
-        ranges: [{
-          sheetId,
-          startRowIndex: meta.cab.fila - 1,
-          endRowIndex: meta.fila.saldoFinal,
-          startColumnIndex: meta.cab.col0,
-          endColumnIndex: meta.cab.colTotal,
-        }],
-        booleanRule: {
-          condition: { type: 'CUSTOM_FORMULA', values: [{ userEnteredValue: `=${dentro}` }] },
-          format: { backgroundColor: EN_CURSO },
+  // UNA REGLA POR TRAMO (24/09/2026): el ejercicio y el año siguiente, con el TOTAL en el medio. Una
+  // sola regla con dos rangos NO sirve: Sheets ajusta la fórmula relativa contra el PRIMER rango, y la
+  // marca del segundo tramo miraría la cabecera equivocada.
+  return tramosDe(meta).map((t) => {
+    const primera = `${letra(t.inicio)}$${meta.cab.fila}`
+    const dentro = meta.tipo === 'mes'
+      ? `AND(${primera}<=TODAY();EOMONTH(${primera};0)>=TODAY())`
+      : `AND(${primera}<=TODAY();${primera}+7>TODAY())`
+    return {
+      addConditionalFormatRule: {
+        rule: {
+          // Del encabezado hasta el saldo final: la columna entera que se lee, sin la columna TOTAL
+          // (que no es un período y no puede ser "hoy") ni el bloque por cliente de más abajo.
+          ranges: [{
+            sheetId,
+            startRowIndex: meta.cab.fila - 1,
+            endRowIndex: meta.fila.saldoFinal,
+            startColumnIndex: t.inicio,
+            endColumnIndex: t.fin,
+          }],
+          booleanRule: {
+            condition: { type: 'CUSTOM_FORMULA', values: [{ userEnteredValue: `=${dentro}` }] },
+            format: { backgroundColor: EN_CURSO },
+          },
         },
+        index: 0,
       },
-      index: 0,
-    },
-  }]
+    }
+  })
 }
 
 /** Los requests para borrar TODAS las reglas condicionales de una pestaña, de atrás para adelante. */

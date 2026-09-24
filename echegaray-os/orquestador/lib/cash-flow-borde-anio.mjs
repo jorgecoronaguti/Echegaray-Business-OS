@@ -46,9 +46,29 @@
 // `particionExacta(efectivas, 1/1/anio, 1/1/anio+1)` es verdadera para las DOS vistas, que es la
 // condición declarada en cash-flow-matriz para que no puedan discrepar.
 //
+// ═══ ENERO DEL AÑO SIGUIENTE, EN SU PROPIO BLOQUE (24/09/2026) ═══
+//
+// El recorte en el 1/1 dejó un costo que el dueño midió después: $45,4M de pagos de enero de 2027
+// —obligaciones de diciembre que vencen en enero— no aparecían en ninguna pestaña. Pidió verlos, y
+// pidió DÓNDE: *«si vas a crear el 2027 hacelo después de los totales del 2026»*. Así que el recorte
+// en el 1/1 SE QUEDA —el TOTAL 2026 no suma un peso de 2027— y lo que se agrega es un segundo bloque a
+// la derecha del TOTAL, hasta el 31/01 (`finDeLaVista`).
+//
+// La semana del 28/12 queda en los DOS bloques: a la izquierda del TOTAL suma del 28 al 31/12 y a la
+// derecha, del 1 al 3/01. Es exactamente el tratamiento que ya tenía la primera columna del ejercicio
+// (la del 29/12/2025, que suma desde el 1/1), aplicado del otro lado. Las dos vistas cubren el mismo
+// horizonte [1/1/2026, 1/2/2027) y lo parten sin huecos ni solapamientos; lo verifica la guarda de
+// cobertura antes de escribir.
+//
+// Qué columna se recorta lo deciden las FECHAS (`recorteDe`), no la posición: para 2026 son tres —la
+// primera del ejercicio, la última del ejercicio y la primera del año siguiente—. La última del año
+// siguiente (25/01/2027) termina justo el 1/2 y no lleva nada.
+//
 // LA COLUMNA SIGUE ROTULADA CON SU LUNES, y está bien: el encabezado dice de qué semana se habla
 // (28/12) y la ventana dice qué parte de esa semana pertenece al ejercicio (28 al 31). Mover el
 // encabezado al 1/1 sería peor —dos columnas arrancarían el mismo día y el filtro se solaparía—.
+
+import { finDeLaVista } from './cash-flow-matriz.mjs'
 
 /** El ejercicio como intervalo semi-abierto [1/1/anio, 1/1/anio+1). PURA. */
 export function bordeDelEjercicio(anio) {
@@ -56,41 +76,44 @@ export function bordeDelEjercicio(anio) {
 }
 
 /**
- * LAS VENTANAS EFECTIVAS: las mismas, recortadas al ejercicio. PURA.
- *
- * Devuelve objetos nuevos (no muta) y conserva el `ancla` —el lunes original— porque es lo que el
- * encabezado muestra y lo que las fórmulas usan como punto de partida.
- *
- * @param {Array<{desde:Date, hasta:Date}>} ventanas
- * @param {number} anio
+ * LO QUE LAS VISTAS CUBREN: [1/1/anio, finDeLaVista) — el ejercicio más su asomo al año siguiente
+ * (24/09/2026). Es el intervalo que las dos pestañas tienen que cubrir igual. PURA.
  */
-export function acotarAlEjercicio(ventanas = [], anio) {
-  const { inicio, fin } = bordeDelEjercicio(anio)
-  const max = (a, b) => (a.getTime() > b.getTime() ? a : b)
-  const min = (a, b) => (a.getTime() < b.getTime() ? a : b)
-  return ventanas.map((v) => ({
-    ancla: new Date(v.desde),
-    desde: max(new Date(v.desde), inicio),
-    hasta: min(new Date(v.hasta), fin),
-  }))
+export function horizonteDeLaVista(anio) {
+  return { inicio: new Date(Date.UTC(anio, 0, 1)), fin: finDeLaVista(anio) }
 }
 
 /**
- * LA EXPRESIÓN DE VENTANA, ACOTADA AL EJERCICIO. PURA.
+ * EL RECORTE DE UNA COLUMNA: qué borde de su ventana de calendario NO suma. PURA.
  *
- * Sólo toca los bordes: pedirle el recorte a las 51 columnas del medio alargaría 51 fórmulas para
- * envolver una comparación que ya es verdadera. Las de los meses no lo necesitan NUNCA —enero arranca
- * el 1/1 y diciembre termina el 31/12 por construcción— y por eso el mensual no llama a esto.
+ * `desde`/`hasta` son las fechas del recorte (o null si ese lado no se recorta). Recibe una columna de
+ * `columnasDeLaVista` —que ya trae su ventana de calendario y lo que suma— y compara las dos.
+ */
+export function recorteDe(columna) {
+  const t = (d) => new Date(d).getTime()
+  return {
+    desde: t(columna.desde) > t(columna.ventana.desde) ? new Date(columna.desde) : null,
+    hasta: t(columna.hasta) < t(columna.ventana.hasta) ? new Date(columna.hasta) : null,
+  }
+}
+
+/**
+ * LA EXPRESIÓN DE VENTANA, RECORTADA DONDE LA COLUMNA LO PIDE. PURA.
  *
- * `DATE(a;1;1)` y no un serial tipeado: un número mágico en una fórmula no se puede leer en la celda.
+ * Sólo toca los bordes: pedirle el recorte a las columnas del medio alargaría decenas de fórmulas
+ * para envolver una comparación que ya es verdadera. Las de los meses no lo necesitan NUNCA —un mes
+ * arranca el 1° y termina el 1° del siguiente por construcción— y por eso el mensual no llama a esto.
+ *
+ * `DATE(a;m;d)` y no un serial tipeado: un número mágico en una fórmula no se puede leer en la celda.
  * El separador `;` es el del archivo (locale es_AR), como todo argumento de fórmula del repo.
  *
  * @param {{desde:string, hasta:string}} exp la de `expresionVentana`
- * @param {{anio:number, primera?:boolean, ultima?:boolean}} p
+ * @param {{desde?:Date|null, hasta?:Date|null}} recorte el de `recorteDe`
  */
-export function expresionAcotada(exp, { anio, primera = false, ultima = false } = {}) {
+export function expresionAcotada(exp, { desde = null, hasta = null } = {}) {
+  const fecha = (d) => `DATE(${d.getUTCFullYear()};${d.getUTCMonth() + 1};${d.getUTCDate()})`
   return {
-    desde: primera ? `MAX(${exp.desde};DATE(${anio};1;1))` : exp.desde,
-    hasta: ultima ? `MIN(${exp.hasta};DATE(${anio + 1};1;1))` : exp.hasta,
+    desde: desde ? `MAX(${exp.desde};${fecha(desde)})` : exp.desde,
+    hasta: hasta ? `MIN(${exp.hasta};${fecha(hasta)})` : exp.hasta,
   }
 }

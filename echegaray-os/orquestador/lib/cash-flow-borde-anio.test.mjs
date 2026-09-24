@@ -1,64 +1,80 @@
-// EL BORDE DEL AÑO — que enero de 2027 no entre en el ejercicio 2026, ni diciembre de 2025.
+// EL BORDE DEL AÑO — que el TOTAL 2026 no se lleve un peso de 2027 ni de 2025, y que enero de 2027 se
+// vea igual, DESPUÉS del TOTAL.
 //
-// El defecto que estos tests mantienen muerto: la última columna del Semanal ("28/12") sumaba hasta el
-// 3/1/2027 y se llevaba al año dos movimientos del 01/01/2027 ($13.073.317). El TOTAL del año quedaba
-// $13,07M peor que el del Mensual y —lo que importa— el PISO DEL PERÍODO caía sobre esa columna
-// contaminada: el dueño leía un piso que no existía.
+// Dos defectos que estos tests mantienen muertos:
 //
-// Revertir `expresionAcotada` en cash-flow-semanas.mjs pone en rojo "la última columna corta en el
-// 1/1" y "las 53 columnas particionan exactamente el ejercicio".
+//   13/08/2026 · la última columna del Semanal ("28/12") sumaba hasta el 3/1/2027 y se llevaba al año
+//   dos movimientos del 01/01/2027 ($13.073.317). El TOTAL del año quedaba $13,07M peor que el del
+//   Mensual y el PISO DEL PERÍODO caía sobre esa columna contaminada.
+//
+//   24/09/2026 · con el recorte, $45,4M de pagos de enero de 2027 —obligaciones de diciembre— no se
+//   veían en NINGUNA vista. El dueño: «si vas a crear el 2027 hacelo después de los totales del 2026».
+//   Enero va en un bloque a la derecha del TOTAL, y la semana del 28/12 queda partida: 28–31/12 a la
+//   izquierda, 1–3/01 a la derecha.
+//
+// Sacar el recorte de la semana del 28/12 pone en rojo "el TOTAL 2026 no suma el 01/01/2027"; perder el
+// bloque de enero pone en rojo "el F931 de diciembre tiene columna".
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { acotarAlEjercicio, bordeDelEjercicio, expresionAcotada } from './cash-flow-borde-anio.mjs'
-import { COL, celda, expresionVentana, particionExacta, ventanas, colTotal, FILA } from './cash-flow-matriz.mjs'
+import { bordeDelEjercicio, horizonteDeLaVista, expresionAcotada, recorteDe } from './cash-flow-borde-anio.mjs'
+import {
+  COL, celda, expresionVentana, particionExacta, ventanas, colTotal, FILA, serialDeFecha, columnasDeLaVista, letra,
+} from './cash-flow-matriz.mjs'
 import { grillaSemanal } from './cash-flow-semanas.mjs'
 import { grillaMeses } from './cash-flow-meses.mjs'
 
 const ANIO = 2026
 const REFS = { saldo: 'CAJA_TOTAL_DISPONIBLE', fecha: 'CAJA_FECHA_SALDO', minima: 'CAJA_MINIMA' }
 const HOY = new Date(Date.UTC(2026, 7, 13))
-const SEMANAS = ventanas('semana', { anio: ANIO })
 const u = (d) => new Date(d).toISOString().slice(0, 10)
 
-test('las semanas ISO SE DERRAMAN sobre los dos años vecinos: es el hecho que causó el desvío', () => {
-  // Si esto dejara de ser cierto, el recorte sobraría. Se prueba para que el porqué no dependa del
-  // comentario: la primera semana de 2026 arranca el lunes 29/12/2025 y la última termina el 4/1/2027.
-  assert.equal(u(SEMANAS[0].desde), '2025-12-29')
-  assert.equal(u(SEMANAS[SEMANAS.length - 1].hasta), '2027-01-04')
-  assert.equal(SEMANAS.length, 53)
+test('el ejercicio es el año; lo que las vistas muestran llega al 31/01 siguiente', () => {
+  assert.deepEqual([u(bordeDelEjercicio(ANIO).inicio), u(bordeDelEjercicio(ANIO).fin)], ['2026-01-01', '2027-01-01'])
+  assert.deepEqual([u(horizonteDeLaVista(ANIO).inicio), u(horizonteDeLaVista(ANIO).fin)], ['2026-01-01', '2027-02-01'])
 })
 
-test('acotar deja el ejercicio exacto y conserva el lunes como ancla del encabezado', () => {
-  const e = acotarAlEjercicio(SEMANAS, ANIO)
-  assert.equal(u(e[0].desde), '2026-01-01', 'la primera columna no suma diciembre de 2025')
-  assert.equal(u(e[0].ancla), '2025-12-29', 'pero la columna se sigue rotulando con su lunes')
-  assert.equal(u(e[52].hasta), '2027-01-01', 'la última columna corta antes del 1/1/2027')
-  assert.equal(u(e[52].desde), '2026-12-28', 'y sigue mostrando la semana del 28/12, que SÍ es 2026')
-  // Las 51 del medio quedan intactas: recortar donde no hace falta sería alargar 51 fórmulas.
-  for (let i = 1; i < 52; i++) assert.deepEqual([u(e[i].desde), u(e[i].hasta)], [u(SEMANAS[i].desde), u(SEMANAS[i].hasta)])
+test('las semanas ISO SE DERRAMAN sobre los años vecinos: es el hecho que obliga a recortar', () => {
+  const s = ventanas('semana', { anio: ANIO })
+  assert.equal(u(s[0].desde), '2025-12-29')
+  const s2812 = s.find((v) => u(v.desde) === '2026-12-28')
+  assert.equal(u(s2812.hasta), '2027-01-04', 'la semana del 28/12 tiene días de los dos años')
 })
 
-test('LA CONDICIÓN QUE HACE QUE LAS DOS VISTAS NO PUEDAN DISCREPAR: partición exacta del ejercicio', () => {
-  const { inicio, fin } = bordeDelEjercicio(ANIO)
+test('el recorte lo deciden las fechas: primera del ejercicio, última del ejercicio y primera del siguiente', () => {
+  const cols = columnasDeLaVista('semana', ANIO)
+  const conRecorte = cols.map((c) => ({ c, r: recorteDe(c) })).filter(({ r }) => r.desde || r.hasta)
+  assert.deepEqual(conRecorte.map(({ c, r }) => [letra(c.col), r.desde && u(r.desde), r.hasta && u(r.hasta)]), [
+    ['B', '2026-01-01', null], // 29/12/2025 → desde el 1/1
+    ['BB', null, '2027-01-01'], // 28/12 → hasta el 31/12: el TOTAL 2026 no se lleva el 01/01/2027
+    ['BD', '2027-01-01', null], // 28/12 otra vez, después del TOTAL → del 1 al 3/01
+  ])
+  // El mensual no recorta nada: un mes arranca el 1° y termina el 1° del siguiente.
+  assert.ok(columnasDeLaVista('mes', ANIO).every((c) => !recorteDe(c).desde && !recorteDe(c).hasta))
+})
+
+test('LA CONDICIÓN QUE HACE QUE LAS DOS VISTAS NO PUEDAN DISCREPAR: partición exacta del horizonte y del ejercicio', () => {
+  const { inicio, fin } = horizonteDeLaVista(ANIO)
+  const ej = bordeDelEjercicio(ANIO)
   for (const meta of [grillaSemanal({ hoy: HOY, anio: ANIO, refs: REFS }).meta, grillaMeses({ anio: ANIO, refs: REFS, hoy: HOY }).meta]) {
     const p = particionExacta(meta.efectivas, inicio, fin)
     assert.ok(p.ok, `${meta.pestana}: ${p.huecos.join('; ')}`)
     assert.deepEqual([meta.cubre.inicio.getTime(), meta.cubre.fin.getTime()], [inicio.getTime(), fin.getTime()])
+    // Lo que suma el TOTAL (las columnas a su izquierda) es EXACTAMENTE el ejercicio.
+    const q = particionExacta(meta.efectivas.slice(0, meta.cab.nTotal), ej.inicio, ej.fin)
+    assert.ok(q.ok, `${meta.pestana} · TOTAL: ${q.huecos.join('; ')}`)
   }
-  // Sin acotar, la partición NO es exacta: es el defecto, escrito como test.
-  const sinAcotar = particionExacta(SEMANAS, inicio, fin)
-  assert.equal(sinAcotar.ok, false)
+  // Sin recortar, la partición NO es exacta: es el defecto, escrito como test.
+  assert.equal(particionExacta(ventanas('semana', { anio: ANIO }), inicio, fin).ok, false)
 })
 
-test('la expresión sólo se envuelve en los bordes, y con DATE en el locale del archivo', () => {
-  const cab = 'BB$7'
-  const v = expresionVentana(cab, 'semana')
-  assert.deepEqual(expresionAcotada(v, { anio: ANIO }), v, 'una columna del medio no se toca')
-  assert.equal(expresionAcotada(v, { anio: ANIO, ultima: true }).hasta, 'MIN(BB$7+7;DATE(2027;1;1))')
-  assert.equal(expresionAcotada(v, { anio: ANIO, primera: true }).desde, 'MAX(BB$7;DATE(2026;1;1))')
+test('la expresión sólo se envuelve donde hay recorte, y con DATE en el locale del archivo', () => {
+  const v = expresionVentana('BB$7', 'semana')
+  assert.deepEqual(expresionAcotada(v, {}), v, 'una columna del medio no se toca')
+  assert.equal(expresionAcotada(v, { hasta: new Date(Date.UTC(2027, 0, 1)) }).hasta, 'MIN(BB$7+7;DATE(2027;1;1))')
+  assert.equal(expresionAcotada(v, { desde: new Date(Date.UTC(2026, 0, 1)) }).desde, 'MAX(BB$7;DATE(2026;1;1))')
   // El separador es `;` (es_AR). Con `,` la fórmula entra como texto y la columna deja de sumar.
-  assert.ok(!expresionAcotada(v, { anio: ANIO, ultima: true }).hasta.includes(','))
+  assert.ok(!expresionAcotada(v, { hasta: new Date(Date.UTC(2027, 0, 1)) }).hasta.includes(','))
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -67,16 +83,28 @@ test('la expresión sólo se envuelve en los bordes, y con DATE en el locale del
 
 const grillaDe2026 = () => grillaSemanal({ hoy: HOY, anio: ANIO, refs: REFS })
 
-test('UN MOVIMIENTO DEL 01/01/2027 NO ENTRA Y UNO DEL 30/12/2026 SÍ — en la fórmula de la columna', () => {
+test('EL TOTAL 2026 NO SUMA EL 01/01/2027: la última semana del ejercicio corta en el 31/12', () => {
   const { filas, meta } = grillaDe2026()
-  const ultima = meta.cab.col0 + meta.cab.n - 1
+  const ultima = meta.cab.col0 + meta.cab.nTotal - 1
   const f = String(filas[meta.fila.egresoProyectado - 1][ultima])
   const cab = celda(ultima, FILA.cabecera)
-  // El techo de la última columna es el 1/1/2027, no el lunes+7 (que sería el 4/1/2027).
   assert.ok(f.includes(`<MIN(${cab}+7;DATE(2027;1;1))`), f)
-  assert.ok(!f.includes(`<${cab}+7`), 'sin el MIN, el 01/01/2027 vuelve a caer adentro')
-  // Y el piso de esa columna sigue siendo su lunes: el 28, 29, 30 y 31/12 pertenecen al ejercicio.
+  assert.ok(!f.includes(`<${cab}+7`), 'sin el MIN, el 01/01/2027 vuelve a caer adentro del año')
   assert.ok(f.includes(`>=${cab}`), f)
+  // Y el TOTAL suma hasta esa columna, ni una más.
+  const t = String(filas[meta.fila.egresoProyectado - 1][colTotal('semana', ANIO)])
+  assert.equal(t, `=SUM($B$${meta.fila.egresoProyectado}:$${letra(ultima)}$${meta.fila.egresoProyectado})`)
+})
+
+test('EL 01/01/2027 SE VE DESPUÉS DEL TOTAL: la semana del 28/12 reaparece, del 1 al 3/01', () => {
+  const { filas, meta } = grillaDe2026()
+  const primera = meta.cab.siguiente[0]
+  assert.equal(primera, colTotal('semana', ANIO) + 1)
+  const f = String(filas[meta.fila.egresoProyectado - 1][primera])
+  const cab = celda(primera, FILA.cabecera)
+  assert.ok(f.includes(`>=MAX(${cab};DATE(2027;1;1))`), f)
+  assert.ok(f.includes(`<${cab}+7`), f)
+  assert.equal(filas[FILA.cabecera - 1][primera], serialDeFecha(new Date(Date.UTC(2026, 11, 28))), 'rotulada con su lunes')
 })
 
 test('la primera columna no arrastra diciembre de 2025', () => {
@@ -85,27 +113,36 @@ test('la primera columna no arrastra diciembre de 2025', () => {
   assert.ok(f.includes(`>=MAX(${celda(meta.cab.col0, FILA.cabecera)};DATE(2026;1;1))`), f)
 })
 
-test('la sección POR CLIENTE se acota igual: si no, los clientes no cuadran con el Mensual', () => {
+test('la sección POR CLIENTE se recorta igual que su columna: si no, los clientes no cuadran con el Mensual', () => {
   const { filas, meta } = grillaDe2026()
-  const ultima = meta.cab.col0 + meta.cab.n - 1
   const bloque = meta.clientes.bloques[0]
-  const f = String(filas[bloque.medidas[0].fila - 1][ultima])
-  assert.ok(f.includes('DATE(2027;1;1)'), `la fila del cliente sigue sumando enero de 2027: ${f.slice(0, 160)}`)
+  const ultima = meta.cab.col0 + meta.cab.nTotal - 1
+  assert.ok(String(filas[bloque.medidas[0].fila - 1][ultima]).includes('DATE(2027;1;1)'), 'la última del año corta en el 31/12')
+  assert.ok(String(filas[bloque.medidas[0].fila - 1][meta.cab.siguiente[0]]).includes('MAX('), 'la primera de 2027 arranca el 1/1')
 })
 
-test('EL PISO NO SE CALCULA SOBRE UNA COLUMNA CONTAMINADA: el rango es el del ejercicio', () => {
-  // El piso es `MIN` sobre la fila de saldo final de las columnas de tiempo. Lo que lo arregla no es el
-  // rango —que ya era el correcto— sino que la última columna deje de hundirse con plata de 2027. Acá
-  // se ata lo que se puede atar en la grilla: que el MIN barre TODAS las columnas de tiempo y ninguna
-  // más, y que la última de ellas es la que acaba de acotarse.
+test('EL PISO MIRA HASTA LA ÚLTIMA SEMANA DE ENERO, y el TOTAL no le aporta nada', () => {
+  // Los sueldos de diciembre se pagan el 01/01 y las cargas el 10/01: un piso que terminara en el 31/12
+  // se perdería justo la semana en que la caja más baja.
   const { filas, meta } = grillaDe2026()
   const piso = String(filas[meta.hero.valor - 1][meta.hero.slots[1]])
-  const ultima = celda(meta.cab.col0 + meta.cab.n - 1, meta.fila.saldoFinal)
+  const ultima = celda(meta.cab.cols[meta.cab.n - 1], meta.fila.saldoFinal)
+  assert.equal(u(meta.ventanas[meta.cab.n - 1].desde), '2027-01-25')
   assert.ok(piso.startsWith('=MIN('), piso)
   assert.ok(piso.includes(`:${ultima})`), `el piso tiene que llegar hasta la última columna de tiempo: ${piso}`)
-  assert.ok(!piso.includes(celda(colTotal('semana', ANIO), meta.fila.saldoFinal)), 'la columna TOTAL no es un período')
-  // Y la última columna del saldo final encadena con la de al lado, así que hereda el arreglo.
-  const saldo = String(filas[meta.fila.saldoFinal - 1][meta.cab.col0 + meta.cab.n - 1])
-  assert.ok(saldo.includes(celda(meta.cab.col0 + meta.cab.n - 1, meta.fila.resultado)), saldo)
+  assert.equal(String(filas[meta.fila.saldoFinal - 1][colTotal('semana', ANIO)] ?? ''), '', 'el TOTAL no tiene saldo que el MIN pueda tomar')
+  // La primera semana de 2027 encadena con la última de 2026, saltando el TOTAL.
+  const ini = String(filas[meta.fila.saldoInicial - 1][meta.cab.siguiente[0]])
+  assert.ok(ini.includes(celda(meta.cab.col0 + meta.cab.nTotal - 1, meta.fila.saldoFinal)), ini)
   assert.equal(COL.tiempo0, 1)
+})
+
+test('EL F931 DE DICIEMBRE (10/01/2027) TIENE COLUMNA EN LAS DOS VISTAS, y está a la derecha del TOTAL', () => {
+  // El caso del pedido: $15.970.972 de cargas de diciembre con fecha de pago 10/01/2027.
+  const fecha = serialDeFecha(new Date(Date.UTC(2027, 0, 10)))
+  for (const meta of [grillaDe2026().meta, grillaMeses({ anio: ANIO, refs: REFS, hoy: HOY }).meta]) {
+    const j = meta.efectivas.map((v, i) => (serialDeFecha(v.desde) <= fecha && fecha < serialDeFecha(v.hasta) ? i : -1)).filter((i) => i >= 0)
+    assert.equal(j.length, 1, `${meta.pestana}: el 10/01/2027 cae en ${j.length} columnas`)
+    assert.ok(meta.cab.cols[j[0]] > meta.cab.colTotal, `${meta.pestana}: 2027 va después del TOTAL`)
+  }
 })

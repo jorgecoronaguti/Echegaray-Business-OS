@@ -86,15 +86,18 @@ function vista(tipo) {
     hoja, hojas: { [LIBRO.pestana]: libroModelado() }, nombres: NOMBRES, hoy: new Date(Date.UTC(2026, 8, 10)),
   })
   const n = columnasDeTiempo(tipo, ANIO)
+  // LA COLUMNA DE LA HOJA DE CADA PERÍODO, no `col0 + j`: desde el 24/09/2026 el TOTAL del ejercicio va
+  // en el medio y enero del año siguiente a su derecha.
+  const cols = g.meta.cab.cols
   return {
     ...g,
     valor,
     n,
-    ultima: COL.tiempo0 + n - 1,
+    cols,
+    ultima: cols[n - 1],
     total: colTotal(tipo, ANIO),
     // La columna cuya ventana CONTIENE el corte: la del ancla, la única que arranca del saldo real.
-    ancla: ventanas(tipo, { anio: ANIO })
-      .findIndex((v) => serialDeFecha(v.desde) <= CORTE && CORTE < serialDeFecha(v.hasta)) + COL.tiempo0,
+    ancla: cols[g.meta.efectivas.findIndex((v) => serialDeFecha(v.desde) <= CORTE && CORTE < serialDeFecha(v.hasta))],
   }
 }
 
@@ -113,9 +116,10 @@ function vista(tipo) {
  * celda que lo publica.
  */
 function cierreDelEjercicio(v, tipo) {
-  const w = v.meta.efectivas ?? ventanas(tipo, { anio: ANIO })
+  // Las columnas del EJERCICIO (las que suma el TOTAL): enero del año siguiente queda afuera del cierre.
+  const w = v.meta.efectivas.slice(0, v.meta.cab.nTotal)
   const periodos = w.map((x, j) => ({
-    desde: x.desde, hasta: x.hasta, neto: v.valor(v.meta.fila.resultado, COL.tiempo0 + j),
+    desde: x.desde, hasta: x.hasta, neto: v.valor(v.meta.fila.resultado, v.cols[j]),
   }))
   // `cadenaEsperada` compara FECHAS, no seriales: el corte va como Date o el ancla se leería en 1970.
   const cadena = cadenaEsperada(periodos, { saldo: CAJA, fecha: FECHA_CORTE })
@@ -143,7 +147,7 @@ test('el vencido entra ENTERO en la columna del ancla, y en NINGUNA otra', () =>
     // La columna del ancla trae los dos vencidos (el de su ventana y el de la semana anterior).
     assert.equal(Math.round(enAncla), VENCIDO_TOTAL, `${tipo}: la columna del ancla tiene que traer los dos vencidos`)
     // Y NINGUNA columna anterior lo muestra: ahí es donde se perdía.
-    for (let col = COL.tiempo0; col < v.ancla; col++) {
+    for (const col of v.cols.filter((c) => c < v.ancla)) {
       assert.equal(Math.round(v.valor(fila, col)), 0,
         `${tipo}: la columna ${letra(col)} publica un vencido que no le toca`)
     }
@@ -168,15 +172,16 @@ test('la sub-línea del rubro se mueve con su subtotal: el vencido no reaparece 
 test('el gemelo JS reparte el vencido igual que la fórmula: el mismo número, celda por celda', () => {
   for (const tipo of ['mes', 'semana']) {
     const v = vista(tipo)
-    const grilla = ventanas(tipo, { anio: ANIO })
+    // Lo que cada COLUMNA suma (recortada a su año), con su letra real en la hoja.
+    const grilla = v.meta.efectivas
     let sumaJs = 0
     for (let j = 0; j < v.n; j++) {
       const desde = serialDeFecha(grilla[j].desde)
       const hasta = serialDeFecha(grilla[j].hasta)
       const js = medidasDeVentana(MOVIMIENTOS, desde, hasta, { ancla: CORTE }).egreso_proyectado
-      const hoja = v.valor(v.meta.fila.egresoProyectado, COL.tiempo0 + j)
+      const hoja = v.valor(v.meta.fila.egresoProyectado, v.cols[j])
       assert.equal(Math.round(js), Math.round(hoja),
-        `${tipo} columna ${letra(COL.tiempo0 + j)}: Postgres dice ${js} y la hoja ${hoja}`)
+        `${tipo} columna ${letra(v.cols[j])}: Postgres dice ${js} y la hoja ${hoja}`)
       sumaJs += js
     }
     assert.equal(Math.round(sumaJs), VENCIDO_TOTAL + 2_000_000, `${tipo}: el gemelo JS también suma el vencido una vez`)

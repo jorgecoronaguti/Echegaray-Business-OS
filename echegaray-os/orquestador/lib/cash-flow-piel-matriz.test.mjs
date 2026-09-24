@@ -43,7 +43,14 @@ test('los anchos: el concepto ancho, las columnas de tiempo angostas, el total u
   assert.equal(cols[0].updateDimensionProperties.properties.pixelSize, ANCHOS.concepto)
   assert.equal(cols[1].updateDimensionProperties.range.startIndex, meta.cab.col0)
   assert.equal(cols[1].updateDimensionProperties.properties.pixelSize, ANCHOS.tiempo)
-  assert.equal(cols[2].updateDimensionProperties.range.startIndex, meta.cab.colTotal)
+  assert.equal(cols[1].updateDimensionProperties.range.endIndex, meta.cab.colTotal)
+  // El año siguiente, a la derecha del TOTAL (24/09/2026), también es tiempo: mismo ancho angosto.
+  assert.equal(cols[2].updateDimensionProperties.range.startIndex, meta.cab.colTotal + 1)
+  assert.equal(cols[2].updateDimensionProperties.range.endIndex, meta.footprint.cols)
+  assert.equal(cols[2].updateDimensionProperties.properties.pixelSize, ANCHOS.tiempo)
+  const total = cols.find((c) => c.updateDimensionProperties.range.startIndex === meta.cab.colTotal)
+  assert.equal(total.updateDimensionProperties.range.endIndex, meta.cab.colTotal + 1)
+  assert.equal(total.updateDimensionProperties.properties.pixelSize, ANCHOS.total)
 })
 
 test('el encabezado de tiempo se formatea como FECHA: la celda es un serial y tiene que leerse como día', () => {
@@ -55,6 +62,12 @@ test('el encabezado de tiempo se formatea como FECHA: la celda es un serial y ti
     assert.ok(r, 'la fila de encabezados tiene que tener formato de fecha')
     assert.equal(r.repeatCell.cell.userEnteredFormat.numberFormat.pattern, patron)
     assert.equal(r.repeatCell.range.endColumnIndex, meta.cab.colTotal, 'el TOTAL no es una fecha')
+    // Y las columnas del año siguiente, a la derecha del TOTAL, sí lo son.
+    const sig = req.find((x) => x.repeatCell?.range?.startRowIndex === meta.cab.fila - 1
+      && x.repeatCell.range.startColumnIndex === meta.cab.colTotal + 1
+      && x.repeatCell.cell.userEnteredFormat?.numberFormat?.type === 'DATE')
+    assert.ok(sig, `${meta.tipo}: el año siguiente también tiene su encabezado como fecha`)
+    assert.equal(sig.repeatCell.range.endColumnIndex, meta.footprint.cols)
   }
 })
 
@@ -82,7 +95,8 @@ test('la regla del déficit ancla la FILA y deja correr la columna: una regla po
     assert.ok(!f.includes(`$B$${meta.fila.saldoFinal}`), `la columna no puede ir fija: ${f}`)
     const r = s.addConditionalFormatRule.rule.ranges[0]
     assert.equal(r.startColumnIndex, meta.cab.col0)
-    assert.equal(r.endColumnIndex, meta.cab.colTotal + 1)
+    // Hasta el final: el año siguiente va a la derecha del TOTAL y su saldo también puede ir abajo de cero.
+    assert.equal(r.endColumnIndex, meta.footprint.cols)
   }
 })
 
@@ -120,7 +134,11 @@ test('sin caja mínima definida se marca el déficit igual: el piso es opcional,
 
 test('la columna del período en curso se marca, y la ventana es la MISMA que suma la columna', () => {
   const sem = reglaPeriodoEnCurso({ sheetId: 7, meta: semanal() })
-  assert.equal(sem.length, 1, 'una sola regla: la marca es un tono, no un juego de reglas')
+  // Una regla POR TRAMO —el ejercicio y el año siguiente, con el TOTAL en el medio—: con dos rangos en
+  // una sola regla, Sheets ajusta la fórmula relativa contra el primero y la marca del segundo mira mal.
+  assert.equal(sem.length, 2, 'una regla por tramo de tiempo')
+  const f2 = sem[1].addConditionalFormatRule.rule.booleanRule.condition.values[0].userEnteredValue
+  assert.ok(f2.includes(`BD$${semanal().cab.fila}`), `el segundo tramo mira su propia cabecera: ${f2}`)
   const fSem = sem[0].addConditionalFormatRule.rule.booleanRule.condition.values[0].userEnteredValue
   // Semi-abierta [lunes, lunes+7): con `<=` del lado derecho el lunes siguiente caería en dos semanas.
   assert.ok(fSem.includes('+7>TODAY()'), fSem)
@@ -152,16 +170,17 @@ test('la marca ESTÁ en el juego de reglas que se escribe: una regla que nadie m
       const c = r.addConditionalFormatRule.rule.booleanRule.format.backgroundColor
       return c && c.red === EN_CURSO.red && c.green === EN_CURSO.green && c.blue === EN_CURSO.blue
     })
-    assert.equal(marca.length, 1, `${meta.tipo}: la columna del período en curso no se marca`)
+    assert.equal(marca.length, 2, `${meta.tipo}: la columna del período en curso no se marca en los dos tramos`)
   }
 })
 
 test('la marca no alcanza la columna TOTAL: un total no es un período y no puede ser "hoy"', () => {
   const meta = semanal()
-  const [r] = reglaPeriodoEnCurso({ sheetId: 7, meta })
+  const [r, r2] = reglaPeriodoEnCurso({ sheetId: 7, meta })
   const rango = r.addConditionalFormatRule.rule.ranges[0]
   assert.equal(rango.startColumnIndex, meta.cab.col0)
   assert.equal(rango.endColumnIndex, meta.cab.colTotal, 'la columna TOTAL queda fuera de la marca')
+  assert.equal(r2.addConditionalFormatRule.rule.ranges[0].startColumnIndex, meta.cab.colTotal + 1, 'y el año siguiente arranca después')
   assert.equal(rango.startRowIndex, meta.cab.fila - 1, 'arranca en el encabezado: la fecha también se marca')
   assert.equal(rango.endRowIndex, meta.fila.saldoFinal, 'termina en el saldo final, la fila que decide')
 })
@@ -239,14 +258,30 @@ test('LA PIEL DE LA MATRIZ: encabezado pintado, subtotales en negrita, sub-líne
   }
 })
 
+test('los gráficos del mensual son de FLUJOS: leen el ejercicio y NUNCA la columna TOTAL', () => {
+  // Cruzar el TOTAL mete el total del año como un mes más; enero del año siguiente se lee en la tabla.
+  const meta = mensual()
+  for (const g of [graficoEntradasSalidas(7, meta), graficoTendencia(7, meta)]) {
+    const spec = g.addChart.chart.spec.basicChart
+    for (const f of [spec.domains[0].domain, ...spec.series.map((x) => x.series)].flatMap((x) => x.sourceRange.sources)) {
+      assert.deepEqual([f.startColumnIndex, f.endColumnIndex], [meta.cab.col0, meta.cab.colTotal])
+    }
+  }
+})
+
 test('el gráfico del semanal se ancla DEBAJO del cuadro, en la columna B, y entra en la hoja', () => {
   const meta = semanal()
   const g = graficoLiquidezSemanal(7, meta)
-  const serie = g.addChart.chart.spec.basicChart.series[0].series.sourceRange.sources[0]
+  const fuentes = g.addChart.chart.spec.basicChart.series[0].series.sourceRange.sources
+  const serie = fuentes[0]
   assert.equal(serie.startRowIndex, meta.fila.saldoFinal - 1, 'lee la FILA de saldo final de la matriz')
   assert.equal(serie.endRowIndex, meta.fila.saldoFinal)
   assert.equal(serie.startColumnIndex, meta.cab.col0)
-  assert.equal(serie.endColumnIndex, meta.cab.col0 + meta.cab.n, 'la fila ENTERA: las semanas en blanco son huecos, no un corte')
+  // La fila ENTERA —las semanas en blanco son huecos, no un corte— hasta la última de ENERO del año
+  // siguiente, cruzando el TOTAL: en la fila del saldo esa celda va vacía y la línea sólo se corta ahí.
+  // (La API no deja saltearla: varias fuentes tienen que ser contiguas — medido contra una copia.)
+  assert.equal(fuentes.length, 1)
+  assert.equal(serie.endColumnIndex, meta.footprint.cols)
   const dominio = g.addChart.chart.spec.basicChart.domains[0].domain.sourceRange.sources[0]
   assert.equal(dominio.startRowIndex, meta.cab.fila - 1, 'el eje son los encabezados de tiempo')
   const pos = g.addChart.chart.position.overlayPosition

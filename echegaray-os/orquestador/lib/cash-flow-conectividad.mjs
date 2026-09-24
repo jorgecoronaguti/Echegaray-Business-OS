@@ -47,10 +47,9 @@
 // NÚCLEO PURO: no lee Google, no escribe nada. Todo se prueba en frío.
 
 import {
-  COL, ventanas, conceptosDe, filaDeConcepto, letra, serialDeFecha,
+  ventanas, columnasDeLaVista, conceptosDe, filaDeConcepto, letra, serialDeFecha,
 } from './cash-flow-matriz.mjs'
 import { OTROS, claveSub, rubrosDeApertura, ladoDe } from './cash-flow-rubros.mjs'
-import { acotarAlEjercicio } from './cash-flow-borde-anio.mjs'
 
 /** Los estados que van a la línea "proyectado". Espejo de ESTADOS_PENDIENTES, en forma de test. */
 const PENDIENTE = new Set(['PROYECTADO', 'VENCIDO', 'COMPROMETIDO'])
@@ -63,10 +62,14 @@ const PENDIENTE = new Set(['PROYECTADO', 'VENCIDO', 'COMPROMETIDO'])
  * semanal para un movimiento del 01/01/2027 que ninguna columna suma — un diagnóstico que dice que
  * la plata está en el cuadro cuando no está es peor que no tenerlo, y encima contradiría al mismo
  * diagnóstico corrido sobre el mensual, que sí lo reporta.
+ *
+ * Desde el 24/09/2026 las columnas llegan al 31/01 del año siguiente, en un bloque a la derecha del
+ * TOTAL: un movimiento del 01/01/2027 ya tiene columna en las dos pestañas. La rejilla es la de
+ * `columnasDeLaVista`, con la letra real de cada columna (el TOTAL queda en el medio).
  */
 export function rejilla(tipo, anio) {
-  return acotarAlEjercicio(ventanas(tipo, { anio }), anio).map((v, i) => ({
-    i, desde: serialDeFecha(v.desde), hasta: serialDeFecha(v.hasta), col: COL.tiempo0 + i,
+  return columnasDeLaVista(tipo, anio).map((v, i) => ({
+    i, desde: serialDeFecha(v.desde), hasta: serialDeFecha(v.hasta), col: v.col,
   }))
 }
 

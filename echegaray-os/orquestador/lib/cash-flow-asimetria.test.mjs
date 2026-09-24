@@ -190,9 +190,9 @@ function pestanaFalsa(valorPorRubro = () => 0) {
   for (const b of meta.bloques) {
     for (const r of b.rubros) {
       poner(r.fila, 0, `    · ${r.rubro}`)
-      for (let j = 0; j < meta.cab.n; j++) poner(r.fila, meta.cab.col0 + j, valorPorRubro(b.clave, r.rubro, j))
+      for (let j = 0; j < meta.cab.n; j++) poner(r.fila, meta.cab.cols[j], valorPorRubro(b.clave, r.rubro, j))
     }
-    for (let j = 0; j < meta.cab.n; j++) poner(b.subtotal, meta.cab.col0 + j, 0)
+    for (let j = 0; j < meta.cab.n; j++) poner(b.subtotal, meta.cab.cols[j], 0)
   }
   return { filas, meta }
 }
@@ -201,7 +201,11 @@ test('el lector arma un mes por columna y verifica el rótulo de cada rubro', ()
   const { filas, meta } = pestanaFalsa((clave, rubro) => (clave === 'egresoProyectado' && rubro === RUBRO_JORNALES ? 7 : 0))
   const { meses, problemas } = mesesDesdeLaPestana(filas, meta)
   assert.deepEqual(problemas, [])
-  assert.equal(meses.length, 12)
+  // Trece desde el 24/09/2026: los doce del ejercicio y enero del año siguiente —a la derecha del
+  // TOTAL—, donde se pagan la última quincena y las cargas de diciembre.
+  assert.equal(meses.length, 13)
+  assert.equal(meses.at(-1).mes, meta.rotulos[12])
+  assert.match(meses.at(-1).mes, /2027/)
   assert.equal(meses[0].egresoProyectadoPorRubro[RUBRO_JORNALES], 7)
   assert.equal(meses[0].mes, meta.rotulos[0])
 })
