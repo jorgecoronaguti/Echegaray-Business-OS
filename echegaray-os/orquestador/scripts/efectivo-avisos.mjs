@@ -83,6 +83,8 @@ export async function pendientesDeAviso(port) {
          left join auth.users u on u.id = pf.id
          left join comunicacion.identidades i on lower(i.email) = lower(u.email) and i.plataforma = 'mattermost' and i.activo
         where e.avisada_en is null and e.anulada_en is null and e.cerrada_en is null
+          -- Una entrega de prueba no avisa a nadie (dueño, 24/09/2026), igual que no entra al Sheet.
+          and not e.es_prueba
         order by e.creada_en`)
     return rows
   } catch (e) {
@@ -169,7 +171,7 @@ export async function drenarAvisos(port, { dry = false, publicar = publicarYRele
          left join auth.users u on u.id = pf.id
          left join comunicacion.identidades i
                 on lower(i.email) = lower(u.email) and i.plataforma = 'mattermost' and i.activo
-        where a.enviado_en is null and a.intentos < 5
+        where a.enviado_en is null and a.intentos < 5 and not e.es_prueba
         order by a.pedido_en limit $1`, [tope])
     pend = rows
   } catch (e) {
