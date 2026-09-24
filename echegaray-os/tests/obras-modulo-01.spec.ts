@@ -14,8 +14,8 @@ import { ATERRIZAJE } from './util/login'
 // Esto entra por donde entra el dueño: navegador, sesión real, rol real. Si vuelven a faltar los
 // permisos, o si el guard de sesión se rompe, acá se pone en rojo antes que en el teléfono de nadie.
 
-const EMAIL = 'jorge.o.corona+direccion-test-1783513222134@gmail.com'
-const PASSWORD = 'TestPassword123!'
+const EMAIL = (process.env.E2E_ADMIN_EMAIL ?? 'jorge.o.corona+direccion-test-1783513222134@gmail.com')
+const PASSWORD = (process.env.E2E_ADMIN_PASSWORD ?? 'TestPassword123!')
 
 async function entrar(page: import('@playwright/test').Page) {
   await page.goto('/login')

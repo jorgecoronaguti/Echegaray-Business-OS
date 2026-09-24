@@ -5,8 +5,8 @@ import { test, expect } from '@playwright/test'
 // Estas pruebas navegan la app REAL autenticada: son la Fase 2 (QA visual) y la Fase 3 (QA funcional)
 // del pedido, que no se pueden dar por hechas leyendo el código.
 
-const EMAIL = 'jorge.o.corona+direccion-test-1783513222134@gmail.com'
-const PASSWORD = 'TestPassword123!'
+const EMAIL = (process.env.E2E_ADMIN_EMAIL ?? 'jorge.o.corona+direccion-test-1783513222134@gmail.com')
+const PASSWORD = (process.env.E2E_ADMIN_PASSWORD ?? 'TestPassword123!')
 
 async function entrar(page: import('@playwright/test').Page) {
   await page.goto('/login')

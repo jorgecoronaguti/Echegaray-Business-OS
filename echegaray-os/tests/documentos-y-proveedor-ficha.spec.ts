@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { JEFE as IDENTIDAD_JEFE } from './util/identidades'
 
 // 23 · PROVEEDOR FICHA y 27 · DOCUMENTOS — la pantalla y el permiso, medidos por separado.
 //
@@ -14,8 +15,8 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 const SUPA = process.env.NEXT_PUBLIC_SUPABASE_URL as string
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
 
-const DIRECCION = { email: 'jorge.o.corona+direccion-test-1783513222134@gmail.com', clave: 'TestPassword123!' }
-const JEFE = { email: 'qa.jefe.obra@ecsas.com.ar', clave: 'TestJefe123!' }
+const DIRECCION = { email: (process.env.E2E_ADMIN_EMAIL ?? 'jorge.o.corona+direccion-test-1783513222134@gmail.com'), clave: (process.env.E2E_ADMIN_PASSWORD ?? 'TestPassword123!') }
+const JEFE = { email: IDENTIDAD_JEFE.email, clave: IDENTIDAD_JEFE.password }
 
 async function sesion(quien: { email: string; clave: string }): Promise<SupabaseClient> {
   const c = createClient(SUPA, ANON, { auth: { persistSession: false } })

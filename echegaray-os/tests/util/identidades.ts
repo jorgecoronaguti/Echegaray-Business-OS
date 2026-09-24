@@ -27,14 +27,19 @@ export const URL = process.env.NEXT_PUBLIC_SUPABASE_URL as string
 export const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
 export const SRV = process.env.SUPABASE_SERVICE_ROLE_KEY as string
 
-/** Nivel campo: rol `campo`, acotado a UNA obra por `usuario_obra`. Lo crea `asegurarCampo()`. */
-export const CAMPO = { email: 'qa.campo@ecsas.com.ar', password: 'TestCampo123!' }
+/** Nivel campo: rol `campo`, acotado a UNA obra por `usuario_obra`. La cuenta la crea y la borra el
+ *  globalSetup (`cuentas-de-la-corrida.ts`); `asegurarCampo()` le asigna la obra. */
+export const CAMPO = {
+  email: process.env.E2E_CAMPO_EMAIL ?? 'qa.campo@ecsas.com.ar', password: process.env.E2E_CAMPO_PASSWORD ?? 'TestCampo123!',
+}
 /** Nivel jefe de obra: desde el 19/08/2026 es Administración, salvo el precio. */
-export const JEFE = { email: 'qa.jefe.obra@ecsas.com.ar', password: 'TestJefe123!' }
+export const JEFE = {
+  email: process.env.E2E_JEFE_EMAIL ?? 'qa.jefe.obra@ecsas.com.ar', password: process.env.E2E_JEFE_PASSWORD ?? 'TestJefe123!',
+}
 /** Dirección. */
 export const ADMIN = {
-  email: 'jorge.o.corona+direccion-test-1783513222134@gmail.com',
-  password: 'TestPassword123!',
+  email: (process.env.E2E_ADMIN_EMAIL ?? 'jorge.o.corona+direccion-test-1783513222134@gmail.com'),
+  password: (process.env.E2E_ADMIN_PASSWORD ?? 'TestPassword123!'),
 }
 
 export function servicio(): SupabaseClient {
@@ -144,7 +149,7 @@ export async function conCuentaEfimera<T>(
   const id = data.user.id
   try {
     const { error: pErr } = await admin.from('perfiles')
-      .upsert({ id, rol, nombre: `QA efímera ${rol}` }, { onConflict: 'id' })
+      .upsert({ id, rol, nombre: `QA efímera ${rol}`, es_prueba: true }, { onConflict: 'id' })
     if (pErr) throw new Error(`perfil de ${email}: ${pErr.message}`)
     if (obra) {
       const { error: aErr } = await admin.from('usuario_obra').insert({ usuario_id: id, obra_canonica_id: obra, papel: 'jefe' })

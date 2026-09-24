@@ -78,7 +78,11 @@ test('la persona SIGUE viendo su propia entrega — la trampa de cerrar de más'
   const { data: perfil } = await admin.from('perfiles').select('persona_id').eq('es_prueba', true)
     .eq('rol', 'campo').limit(1).maybeSingle()
   const mia = perfil?.persona_id
-  expect(mia, 'la identidad CAMPO tiene que estar vinculada a una persona').toBeTruthy()
+  // LA CUENTA DE CAMPO ES EFÍMERA DESDE EL 24/09 Y NACE SIN PERSONA. Armarle una entrega no se hace: un
+  // INSERT en `efectivo_entrega` dispara el aviso por Mattermost y la réplica `_EFECTIVO_RAW` lo copia al
+  // Sheet real sin mirar `es_prueba`. Esta mitad queda SIN MEDIR —dicho en rojo en el reporte, no callado—
+  // hasta que esos dos lectores filtren `es_prueba`.
+  test.skip(!mia, 'SIN MEDIR: la cuenta de campo efímera no tiene persona, y crear una entrega de prueba escribiría en el Sheet real (efectivo-raw-pestana no filtra es_prueba)')
   const { data: suyas } = await admin.from('efectivo_entrega').select('id').eq('persona_id', mia!)
   test.skip(!suyas?.length, 'la persona de prueba no tiene ninguna entrega: no hay nada que medir')
 

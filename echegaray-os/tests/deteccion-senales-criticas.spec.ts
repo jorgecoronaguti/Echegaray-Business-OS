@@ -6,8 +6,8 @@ import { createClient } from '@supabase/supabase-js'
 // dos ramas (acciones vencidas, fuentes críticas atrasadas) y la idempotencia (correr
 // dos veces no duplica el mismo hallazgo).
 
-const EMAIL = 'jorge.o.corona+direccion-test-1783513222134@gmail.com'
-const PASSWORD = 'TestPassword123!'
+const EMAIL = (process.env.E2E_ADMIN_EMAIL ?? 'jorge.o.corona+direccion-test-1783513222134@gmail.com')
+const PASSWORD = (process.env.E2E_ADMIN_PASSWORD ?? 'TestPassword123!')
 
 test.describe('detectar_senales_criticas_transversales', () => {
   test('detecta una acción vencida real y no la duplica en una segunda corrida', async () => {

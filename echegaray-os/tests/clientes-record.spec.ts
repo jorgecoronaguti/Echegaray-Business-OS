@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { conBase, entrar, laFila, limpiar, MARCA } from './util/obras-e2e'
 import { entrarComo } from './util/login'
+import { JEFE } from './util/identidades'
 
 // EL CLIENTE COMO RECORD — la lista que sirve para encontrarlo y la pantalla que lo muestra entero.
 //
@@ -331,7 +332,7 @@ test('nota manual: se escribe, queda en Postgres y sigue ahí después de recarg
 // `autorizacion-por-obra.spec.ts`: la pantalla no es la evidencia del permiso.
 test('el jefe de obra administra el record del cliente, porque es Administración', async ({ page }) => {
   test.setTimeout(120000)
-  await entrarComo(page, 'qa.jefe.obra@ecsas.com.ar', 'TestJefe123!')
+  await entrarComo(page, JEFE.email, JEFE.password)
 
   const sb = await conBase()
   const { data } = await sb.from('clientes').select('slug').not('slug', 'is', null).limit(1).single()

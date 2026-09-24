@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
-import { servicio, asegurarCampo, obraConDatos } from './util/identidades'
+import { servicio, asegurarCampo, obraConDatos, CAMPO, JEFE } from './util/identidades'
 
 // ADMINISTRACIÓN: PERSONAS Y PROVEEDORES — LA CERRADURA, MEDIDA CONTRA POSTGREST.
 //
@@ -43,11 +43,9 @@ const SRV = process.env.SUPABASE_SERVICE_ROLE_KEY as string
 // la RLS acota es `campo`**, y con ése se miden ahora las pruebas negativas. Nada se relajó: la
 // mitad negativa quedó igual de estricta con la identidad correcta, y se agregó la mitad positiva
 // —que el jefe SÍ llega— para que revertir el modelo en silencio se ponga rojo acá.
-const JEFE = { email: 'qa.jefe.obra@ecsas.com.ar', password: 'TestJefe123!' }
-const CAMPO = { email: 'qa.campo@ecsas.com.ar', password: 'TestCampo123!' }
 const ADMIN = {
-  email: 'jorge.o.corona+direccion-test-1783513222134@gmail.com',
-  password: 'TestPassword123!',
+  email: (process.env.E2E_ADMIN_EMAIL ?? 'jorge.o.corona+direccion-test-1783513222134@gmail.com'),
+  password: (process.env.E2E_ADMIN_PASSWORD ?? 'TestPassword123!'),
 }
 
 async function entrar(email: string, password: string): Promise<string> {

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { entrarComo } from './util/login'
 
 // QA VISUAL PUNTUAL del arreglo de cortes por ancho (08/09/2026). No es un control permanente.
-const CUENTA = { email: 'jorge.o.corona+direccion-test-1783513222134@gmail.com', password: 'TestPassword123!' }
+const CUENTA = { email: (process.env.E2E_ADMIN_EMAIL ?? 'jorge.o.corona+direccion-test-1783513222134@gmail.com'), password: (process.env.E2E_ADMIN_PASSWORD ?? 'TestPassword123!') }
 const PANTALLAS: [string, string][] = [
   ['compras', '/administracion/compras'],
   ['plantel', '/administracion/personas'],

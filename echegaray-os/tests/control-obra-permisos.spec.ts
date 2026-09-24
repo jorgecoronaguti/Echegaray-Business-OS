@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { MARCA } from './util/obras-e2e'
+import { JEFE } from './util/identidades'
 
 // PERMISOS DE CONTROL DE OBRA — MEDIDOS CONTRA POSTGREST CON TOKENS REALES.
 //
@@ -28,7 +29,7 @@ const admin = (): SupabaseClient => createClient(URL, SRV, { auth: { persistSess
 async function comoJefe(): Promise<SupabaseClient> {
   const c = createClient(URL, ANON, { auth: { persistSession: false } })
   const { error } = await c.auth.signInWithPassword({
-    email: 'qa.jefe.obra@ecsas.com.ar', password: 'TestJefe123!',
+    email: JEFE.email, password: JEFE.password,
   })
   expect(error, error?.message).toBeNull()
   return c
@@ -169,8 +170,8 @@ test('EL COSTO SÍ, EL PRECIO NO — la línea exacta que pidió el dueño', asy
 /** Entrar con el usuario de prueba de Jefe de Obra. `entrar()` de `util` usa el de Dirección. */
 async function entrarComoJefe(page: Page) {
   await page.goto('/login')
-  await page.getByLabel(/correo|email/i).fill('qa.jefe.obra@ecsas.com.ar')
-  await page.getByLabel(/contraseñ|password/i).fill('TestJefe123!')
+  await page.getByLabel(/correo|email/i).fill(JEFE.email)
+  await page.getByLabel(/contraseñ|password/i).fill(JEFE.password)
   await page.getByRole('button', { name: /ingresar|entrar|iniciar/i }).click()
   await page.waitForURL(/obras|administracion/, { timeout: 20_000 })
 }

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
-const EMAIL = 'jorge.o.corona+direccion-test-1783513222134@gmail.com'
-const PASSWORD = 'TestPassword123!'
+const EMAIL = (process.env.E2E_ADMIN_EMAIL ?? 'jorge.o.corona+direccion-test-1783513222134@gmail.com')
+const PASSWORD = (process.env.E2E_ADMIN_PASSWORD ?? 'TestPassword123!')
 const RUTAS = ["/administracion"]
 test('medir', async ({ page }) => {
   test.setTimeout(900000)

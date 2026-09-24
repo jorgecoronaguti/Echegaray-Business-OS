@@ -74,6 +74,8 @@ const esLocal = BASE.includes('localhost')
 
 export default defineConfig({
   testDir: './tests',
+  // Campo y jefe nacen y mueren con la corrida: no quedan usuarios de prueba en la base viva.
+  globalSetup: './tests/util/cuentas-de-la-corrida.ts',
   // UN SOLO WORKER, A PROPÓSITO (17/09). Sin `workers`, Playwright abre un Chromium por núcleo: cuatro
   // navegadores de ~600 MB más el `next dev` de ~2 GB, en una VM de 7 GB que además corre el OS
   // productivo. Ese día la máquina se quedó sin RAM ni swap. El navegador es un cupo de `ecos`

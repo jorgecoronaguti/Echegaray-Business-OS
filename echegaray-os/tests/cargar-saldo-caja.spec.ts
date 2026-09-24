@@ -22,8 +22,8 @@ import { createClient } from '@supabase/supabase-js'
 // SALTEA explícitamente contra producción, y el que corre contra el dev server verifica lo único que
 // se puede verificar sin tocar el archivo: que la acción quede encolada.
 
-const EMAIL = 'jorge.o.corona+direccion-test-1783513222134@gmail.com'
-const PASSWORD = 'TestPassword123!'
+const EMAIL = (process.env.E2E_ADMIN_EMAIL ?? 'jorge.o.corona+direccion-test-1783513222134@gmail.com')
+const PASSWORD = (process.env.E2E_ADMIN_PASSWORD ?? 'TestPassword123!')
 const NOTA_TEST = 'test-e2e-cargar-saldo (borrar)'
 
 const CONTRA_PRODUCCION = /app\.ecsas\.com\.ar/.test(process.env.E2E_BASE_URL ?? '')

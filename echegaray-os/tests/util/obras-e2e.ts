@@ -9,8 +9,8 @@ import { MARCA_PRUEBA } from './rastro'
 // concreta: la LIMPIEZA tiene que ser una sola. Dos copias del borrado se desincronizan, y la que
 // se queda vieja deja filas de prueba en el Gantt que mira el dueño.
 
-export const EMAIL = 'jorge.o.corona+direccion-test-1783513222134@gmail.com'
-export const PASSWORD = 'TestPassword123!'
+export const EMAIL = (process.env.E2E_ADMIN_EMAIL ?? 'jorge.o.corona+direccion-test-1783513222134@gmail.com')
+export const PASSWORD = (process.env.E2E_ADMIN_PASSWORD ?? 'TestPassword123!')
 
 /** Todo lo que crean estos recorridos lleva esta marca en el nombre: hace el borrado inequívoco.
  *  Se REEXPORTA desde `rastro.ts`, que es donde vive la definición y donde está escrito por qué es

@@ -12,8 +12,8 @@ import { entrarComo } from './util/login'
 // EN LA NAVEGACIÓN, y que las rutas SIGAN RESPONDIENDO. Un test que sólo mirara lo primero se pondría
 // verde el día que alguien borre las páginas.
 
-const EMAIL = 'jorge.o.corona+direccion-test-1783513222134@gmail.com'
-const PASSWORD = 'TestPassword123!'
+const EMAIL = (process.env.E2E_ADMIN_EMAIL ?? 'jorge.o.corona+direccion-test-1783513222134@gmail.com')
+const PASSWORD = (process.env.E2E_ADMIN_PASSWORD ?? 'TestPassword123!')
 
 /** Los seis grupos del header viejo. Ninguno puede volver a la navegación. */
 const CATEGORIAS_VIEJAS = ['01 · Obras', 'OS', 'Finanzas', 'Reportes', 'Conexiones']

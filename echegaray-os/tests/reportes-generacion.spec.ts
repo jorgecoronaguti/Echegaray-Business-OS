@@ -9,8 +9,8 @@ import { ATERRIZAJE } from './util/login'
 // delete por diseño (los reportes no se borran), y una generación más en el
 // historial es exactamente lo que el sistema haría en producción.
 
-const EMAIL = 'jorge.o.corona+direccion-test-1783513222134@gmail.com'
-const PASSWORD = 'TestPassword123!'
+const EMAIL = (process.env.E2E_ADMIN_EMAIL ?? 'jorge.o.corona+direccion-test-1783513222134@gmail.com')
+const PASSWORD = (process.env.E2E_ADMIN_PASSWORD ?? 'TestPassword123!')
 
 test('las definiciones seed existen y el Diario de Dirección se genera y publica', async ({ page }) => {
   test.setTimeout(90000)

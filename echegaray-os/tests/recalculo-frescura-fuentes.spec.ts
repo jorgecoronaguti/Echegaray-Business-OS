@@ -6,8 +6,8 @@ import { createClient } from '@supabase/supabase-js'
 // periódica supera el umbral esperado -- sin que nadie tenga que actualizar el estado
 // a mano. Este test verifica el mecanismo en sí (no solo que la página cargue).
 
-const EMAIL = 'jorge.o.corona+direccion-test-1783513222134@gmail.com'
-const PASSWORD = 'TestPassword123!'
+const EMAIL = (process.env.E2E_ADMIN_EMAIL ?? 'jorge.o.corona+direccion-test-1783513222134@gmail.com')
+const PASSWORD = (process.env.E2E_ADMIN_PASSWORD ?? 'TestPassword123!')
 
 test('recalcular_frescura_fuentes escala una fuente mensual vencida y no toca las demás', async () => {
   const supabase = createClient(

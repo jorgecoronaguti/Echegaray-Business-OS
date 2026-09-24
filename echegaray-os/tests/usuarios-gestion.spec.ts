@@ -37,8 +37,8 @@ const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
 const SRV = process.env.SUPABASE_SERVICE_ROLE_KEY as string
 
 const ADMIN = {
-  email: 'jorge.o.corona+direccion-test-1783513222134@gmail.com',
-  password: 'TestPassword123!',
+  email: (process.env.E2E_ADMIN_EMAIL ?? 'jorge.o.corona+direccion-test-1783513222134@gmail.com'),
+  password: (process.env.E2E_ADMIN_PASSWORD ?? 'TestPassword123!'),
 }
 /** Toda cuenta de este recorrido lleva este prefijo: hace el borrado inequívoco. */
 const PREFIJO = 'zz.e2e.usuarios'

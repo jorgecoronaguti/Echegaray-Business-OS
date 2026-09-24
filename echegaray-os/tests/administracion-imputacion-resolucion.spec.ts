@@ -21,8 +21,8 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 const URL_SB = process.env.NEXT_PUBLIC_SUPABASE_URL as string
 const SRV = process.env.SUPABASE_SERVICE_ROLE_KEY as string
 const ADMIN = {
-  email: 'jorge.o.corona+direccion-test-1783513222134@gmail.com',
-  password: 'TestPassword123!',
+  email: (process.env.E2E_ADMIN_EMAIL ?? 'jorge.o.corona+direccion-test-1783513222134@gmail.com'),
+  password: (process.env.E2E_ADMIN_PASSWORD ?? 'TestPassword123!'),
 }
 const MARCA = 'ZZ-E2E'
 const OBRA_DESTINO = 'le-comedor'

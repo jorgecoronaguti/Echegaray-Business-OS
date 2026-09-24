@@ -24,6 +24,7 @@
 import { expect, test } from '@playwright/test'
 import { conBase, entrar } from './util/obras-e2e'
 import { entrarComo } from './util/login'
+import { JEFE } from './util/identidades'
 
 interface FilaPanel {
   obra_id: string
@@ -163,7 +164,7 @@ test('la obra sin ficha de cliente muestra el texto, no un enlace roto', async (
 // dibuje, y que la palabra no viaje en el HTML del server component, que se lee con las devtools.
 test('el resumen de un jefe de obra no trae la columna Contratado, ni la palabra', async ({ page }) => {
   test.setTimeout(120000)
-  await entrarComo(page, 'qa.jefe.obra@ecsas.com.ar', 'TestJefe123!')
+  await entrarComo(page, JEFE.email, JEFE.password)
   await page.goto('/obras')
 
   const tabla = page.getByTestId('portafolio-tabla')

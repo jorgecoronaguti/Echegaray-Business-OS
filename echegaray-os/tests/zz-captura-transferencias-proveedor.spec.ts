@@ -6,7 +6,7 @@
 import { test, expect } from '@playwright/test'
 import { entrarComo, ATERRIZAJE } from './util/login'
 
-const ADMIN = { email: 'jorge.o.corona+direccion-test-1783513222134@gmail.com', password: 'TestPassword123!' }
+const ADMIN = { email: (process.env.E2E_ADMIN_EMAIL ?? 'jorge.o.corona+direccion-test-1783513222134@gmail.com'), password: (process.env.E2E_ADMIN_PASSWORD ?? 'TestPassword123!') }
 // MASS CONSULTORA: dos comprobantes de transferencia traídos del mail el 09/09/2026.
 const PROVEEDOR = 'fc804fd6-1528-424e-be9f-47aeb1fdc638'
 
