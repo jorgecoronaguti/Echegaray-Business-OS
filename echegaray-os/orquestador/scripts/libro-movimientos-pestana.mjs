@@ -101,7 +101,7 @@ import { CODIGO_FRENO } from '../lib/flujo-caja-pasos.mjs'
 import { pathToFileURL } from 'node:url'
 import { realpathSync } from 'node:fs'
 import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
-import { NOMBRES_PUENTE, serieDelPuente } from '../lib/nomina-puente.mjs'
+import { NOMBRES_PUENTE, NOMBRES_NOMINA_BASE, serieDelPuente, sacDesdeNomina } from '../lib/nomina-puente.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = '_MOVIMIENTOS'
@@ -618,7 +618,9 @@ export async function extraerDeLasFuentes(google, corte) {
     anio: anioDelLibro,
   })
   for (const a of sac.avisos) console.warn(`  ⚠ ${a}`)
-  fuentes['Nómina · SAC'] = sac.movimientos
+  // El proyectado del SAC sigue a Nómina en vivo (ver `sacDesdeNomina`); sin Nómina, lo de antes.
+  const totalMes = serieDelPuente(await google.readSheetValues(ID, NOMBRES_NOMINA_BASE.total, { render: 'UNFORMATTED_VALUE' }).catch(() => null))
+  fuentes['Nómina · SAC'] = sac.movimientos.map((m) => sacDesdeNomina(m, totalMes))
 
   return {
     colEstadoCompras,

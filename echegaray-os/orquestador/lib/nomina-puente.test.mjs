@@ -104,3 +104,14 @@ test('jornales y oficina: la fecha del libro apunta a «Se paga el» de Jornales
   const out = deOficina({ pago, pagado: col(doce(() => '')), proyectado: col(doce(() => 1)), pactado: col(doce(() => null)) }, serial('2026-09-24'), { nomina: doce((i) => (i === 9 ? 5 : 0)) })
   assert.equal(out.find((m) => m.importeNomina === '=INDEX(NOMINA_CF_OFICINA;1;10)').fechaFormula, '=INDEX(OFICINA_PAGO;10;1)')
 })
+
+test('SAC vivo: 50% del mejor mes DEVENGADO del semestre según Nómina, con fórmula al total de cada mes', async () => {
+  const { sacDesdeNomina } = await import('./nomina-puente.mjs')
+  const mov = Object.freeze({ importe: 13_402_838, estado: 'PROYECTADO', origen: { fila: 'semestre 2' } })
+  const total = doce((i) => (i === 9 ? 24_597_797 : i >= 6 ? 20_000_000 : 1))
+  const s = sacDesdeNomina(mov, total)
+  assert.equal(s.importe, 12_298_898.5)
+  assert.equal(s.importeFormula, '=MAX(INDEX(NOMINA_MES_TOTAL;1;7);INDEX(NOMINA_MES_TOTAL;1;8);INDEX(NOMINA_MES_TOTAL;1;9);INDEX(NOMINA_MES_TOTAL;1;10);INDEX(NOMINA_MES_TOTAL;1;11);INDEX(NOMINA_MES_TOTAL;1;12))/2')
+  assert.equal(sacDesdeNomina({ ...mov, estado: 'REAL' }, total).importeFormula, undefined) // lo pagado no se toca
+  assert.equal(sacDesdeNomina(mov, null), mov) // sin Nómina, lo de antes
+})

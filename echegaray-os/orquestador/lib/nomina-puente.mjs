@@ -222,3 +222,26 @@ export function vivoDeCargas(mov, { b, o, neto, i }) {
 
 /** La fecha viva de un renglón de «Jornales por Quincena» (rango vertical, renglón i base 0). */
 export const fechaViva = (rango, i) => `=INDEX(${rango};${i + 1};1)`
+
+/**
+ * EL AGUINALDO PROYECTADO, VIVO SOBRE NÓMINA (dueño, 24/09/2026: «quiero todo en tiempo real»). PURO.
+ *
+ * 50 % de la mayor remuneración mensual DEVENGADA del semestre (LCT 121): el TOTAL del cuadro 1 de
+ * Nómina de cada mes (obreros, jefes, oficina, desvinculados — sin los retiros de Dirección, que no
+ * son remuneración). Antes se medía sobre lo PAGADO por fecha de caja, y el mes que juntaba la
+ * quincena del mes anterior inflaba la base. Mismo límite que antes: es el agregado de la empresa,
+ * no la mejor remuneración de cada persona.
+ *
+ * @param {object} mov el movimiento PROYECTADO del SAC (origen.fila = 'semestre 1' | 'semestre 2')
+ * @param {Array<number>|null} totalMes los doce totales de Nómina (NOMINA_MES_TOTAL)
+ */
+export function sacDesdeNomina(mov, totalMes) {
+  const sem = /semestre (1|2)/.exec(String(mov?.origen?.fila ?? ''))?.[1]
+  if (!Array.isArray(totalMes) || mov?.estado === 'REAL' || !sem) return mov
+  const meses = sem === '1' ? [1, 2, 3, 4, 5, 6] : [7, 8, 9, 10, 11, 12]
+  const mejor = Math.max(...meses.map((m) => Number(totalMes[m - 1]) || 0))
+  if (!(mejor > 0)) return mov
+  const formula = `=MAX(${meses.map((m) => `INDEX(${NOMBRES_NOMINA_BASE.total};1;${m})`).join(';')})/2`
+  return Object.freeze({ ...mov, importe: r2(mejor / 2), importeFormula: formula,
+    concepto: `SAC · semestre ${sem} · 50% del mejor mes de Nómina` })
+}
