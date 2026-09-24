@@ -40,8 +40,15 @@
 // llegando a Clientes en vez de dar 404. Lento, pero no roto.
 
 import { redirect } from 'next/navigation'
-import { ENTRADA_DE_ADMINISTRACION } from '@/features/auth/types/areas'
+import { entradaDeArea } from '@/features/auth/types/areas'
+import { createClient } from '@/lib/supabase/server'
+import { getPerfilActual } from '@/features/auth/services/authService'
 
-export default function AdministracionPage() {
-  redirect(ENTRADA_DE_ADMINISTRACION)
+// EL RESPALDO DICE LO MISMO QUE EL MIDDLEWARE, POR NIVEL (24/09/2026). Decía `/clientes` fijo: cuando el
+// middleware no interceptaba (la vuelta del login), el jefe de obra caía en Clientes —cerrada para él
+// desde ese día—, rebotaba a Obras y no llegaba nunca a Personal ni a la carga de asistencia.
+export default async function AdministracionPage() {
+  const supabase = await createClient()
+  const rol = (await getPerfilActual(supabase)).data?.rol ?? null
+  redirect(entradaDeArea('/administracion', rol) ?? '/administracion/personas')
 }
