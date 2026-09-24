@@ -188,7 +188,7 @@ test('chequesDelRegistro lee el registro por su geometría, no desde la fila 1',
   ]
   const r = chequesDelRegistro(filas, { fila0: 4 })
   assert.equal(r.length, 2)
-  assert.deepEqual(r[0], { fila: 4, instrumento: 'echeq', numero: '366', proveedor: 'DUPEC', importe: 635020, comprobante: '', fechaPago: 46254, debitado: false, marca: '≈ INFERIDO' })
+  assert.deepEqual(r[0], { fila: 4, instrumento: 'echeq', numero: '366', proveedor: 'DUPEC', cuit: '', importe: 635020, comprobante: '', fechaPago: 46254, debitado: false, marca: '≈ INFERIDO' })
   assert.equal(r[1].debitado, true)
   assert.equal(r[1].instrumento, 'cheque')
 })
@@ -213,4 +213,25 @@ test('EL CORTE NO ENTRA EN EL CRUCE: un cheque vivo lo es aunque su factura sea 
   // Sin ventana no hay cruce por importe, pero la LLAVE no depende de la fecha: cruza igual.
   assert.equal(r.porCheque.get(101).confianza, CONFIANZA.comprobante)
   assert.ok(CORTE > 0)
+})
+
+test('EL CUIT DESEMPATA EL NOMBRE (24/09/2026): «Machuca Hector» en el registro, «Machuca Cesar Hector» en Compras', () => {
+  // Cheques Emitidos f138/f139 (echeq 379 y 378) y Compras f858, leídos del archivo vivo el 24/09.
+  const cheques = [
+    { fila: 138, instrumento: 'echeq', numero: '379', proveedor: 'Machuca Hector', cuit: '20259382735', importe: 2116500, comprobante: '0002-00000343', fechaPago: 46290, debitado: false },
+    { fila: 139, instrumento: 'echeq', numero: '378', proveedor: 'Machuca Hector', cuit: '20259382735', importe: 444465, comprobante: '0002-00000343', fechaPago: 46290, debitado: false },
+  ]
+  const compras = [{ fila: 858, proveedor: 'Machuca Cesar Hector', comprobante: '0002-00000343', total: 2560965, fecha: 46290, instrumento: 'echeq', rubro: 'Materiales Civil', cuit: '20-25938273-5' }]
+  const r = cruzar(cheques, compras)
+  assert.equal(r.sinCruce.length, 0)
+  assert.deepEqual([...r.porCheque.keys()].sort(), [138, 139])
+  assert.equal(r.porCheque.get(138).confianza, CONFIANZA.comprobante)
+  // Sin CUIT de un lado no se adivina: el nombre distinto deja al cheque sin cruzar.
+  const sinCuit = cruzar(cheques.map((c) => ({ ...c, cuit: '' })), compras)
+  assert.equal(sinCuit.porCheque.size, 0)
+})
+
+test('chequesDelRegistro lee el CUIT de la columna D, con o sin guiones', () => {
+  const filas = [['ECHEQ', '379', '', 20259382735, 'Machuca Hector', 2116500, 'FA', '0002-00000343', 46290, 'septiembre 26', 'No']]
+  assert.equal(chequesDelRegistro(filas, { fila0: 1 })[0].cuit, '20259382735')
 })

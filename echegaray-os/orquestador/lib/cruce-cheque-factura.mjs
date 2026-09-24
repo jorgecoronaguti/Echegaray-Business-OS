@@ -155,6 +155,9 @@ function agrupar(cheques = [], norm) {
  * Se indexa CON el proveedor: "1-36" puede ser de dos proveedores distintos, y el N° de comprobante
  * solo no identifica una factura — identifica una factura DE ALGUIEN.
  */
+/** Los dígitos de un CUIT, venga con guiones o como número; '' si no tiene los 11. */
+const soloDigitos = (v) => { const d = String(v ?? '').replace(/\D/g, ''); return d.length === 11 ? d : '' }
+
 function indicePorComprobante(compras, norm) {
   const idx = new Map()
   for (const f of compras) {
@@ -194,7 +197,15 @@ export function cruzar(cheques = [], compras = [], { norm = normNombre, ventanaD
   for (const ch of vivos) {
     const k = normComprobante(ch.comprobante)
     if (!esLlaveUtil(k)) { restantes.push(ch); continue }
-    const cand = idx.get(`${norm(ch.proveedor)}|${k}`) ?? []
+    // EL CUIT DESEMPATA EL NOMBRE (24/09/2026). El registro dice «Machuca Hector» y Compras «Machuca
+    // Cesar Hector»: mismo CUIT, misma factura 0002-00000343, y el cruce por nombre no los juntaba — el
+    // libro contó los $2.560.965 dos veces (la factura como Materiales y los dos echeq como Cheques
+    // emitidos) y CAJA mostró deuda que no existe. Si el nombre no encuentra la factura, la busca por
+    // N° de comprobante con el MISMO CUIT de los dos lados; sin CUIT en alguno, no se adivina.
+    let cand = idx.get(`${norm(ch.proveedor)}|${k}`) ?? []
+    if (!cand.length && ch.cuit) {
+      cand = conProv.filter((f) => normComprobante(f.comprobante) === k && soloDigitos(f.cuit) === ch.cuit)
+    }
     if (cand.length === 1) { anotar(ch, cand, CONFIANZA.comprobante); continue }
     if (cand.length > 1) { ambiguos.push({ cheque: ch, porque: SIN_CRUCE.ambiguo, candidatas: cand.map((f) => f.fila) }); continue }
     // El N° existe y NO está en Compras. No se descarta acá: la clave (c) todavía puede explicarlo
@@ -377,6 +388,7 @@ export function chequesDelRegistro(filas = [], { fila0, colMarca = 12 } = {}) {
       instrumento: /echeq/i.test(String(f[0] ?? '')) ? 'echeq' : 'cheque',
       numero: String(f[1] ?? '').trim(),
       proveedor: String(f[4] ?? '').trim(),
+      cuit: soloDigitos(f[3]),
       importe,
       comprobante: String(f[7] ?? '').trim(),
       fechaPago: num(f[8]),
