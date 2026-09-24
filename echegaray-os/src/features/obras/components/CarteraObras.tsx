@@ -349,17 +349,15 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
   )
 }
 
-/** EL ENCABEZADO DEL GRUPO: el cliente, como en el CRM. Enlaza a su ficha cuando la tiene. */
-/** `plano`: sin caja propia (fondo, borde, alto), para cuando la banda la pone quien la contiene —el Gantt—. */
-export function CabeceraCliente({ nombre, slug, n, telefono = false, plano = false }: { nombre: string | null; slug: string | null; n: number; telefono?: boolean; plano?: boolean }) {
+/** EL ENCABEZADO DEL GRUPO: el cliente, como en el CRM. Enlaza a su ficha cuando la tiene. El Gantt
+ *  lo dibuja igual, de borde a borde (dueño, 24/09/2026). */
+export function CabeceraCliente({ nombre, slug, n, telefono = false }: { nombre: string | null; slug: string | null; n: number; telefono?: boolean }) {
   const texto = nombre ?? SIN_CLIENTE
   return (
     <div data-testid="cabecera-cliente" data-cliente={slug ?? ''} style={{
       display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0,
-      ...(plano ? {} : {
-        minHeight: telefono ? '40px' : '36px', padding: telefono ? '10px 0 4px' : '0',
-        borderBottom: `1px solid ${C.borde}`, background: telefono ? undefined : C.tenueFondo,
-      }),
+      minHeight: telefono ? '40px' : '36px', padding: telefono ? '10px 0 4px' : '0',
+      borderBottom: `1px solid ${C.borde}`, background: telefono ? undefined : C.tenueFondo,
       fontSize: telefono ? '12px' : '11.5px', fontWeight: 600, letterSpacing: '.02em', color: nombre ? C.tinta : C.tenue,
     }}>
       {slug && nombre
@@ -372,7 +370,6 @@ export function CabeceraCliente({ nombre, slug, n, telefono = false, plano = fal
 
 /** UNA FILA DE 64px del 01: nombre + estado en color, etapa, barra 64×4 + %, plazo. El adicional va con sangría. */
 function Fila({ o, ir, nivel = 0 }: { o: FilaCartera; ir: () => void; nivel?: 0 | 1 }) {
-  const e = estadoDeCartera(o)
   const previo = esPrevio(o)
   return (
     <Hover data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id} data-nivel={nivel} onClick={ir}
@@ -381,13 +378,7 @@ function Fila({ o, ir, nivel = 0 }: { o: FilaCartera; ir: () => void; nivel?: 0 
         borderBottom: `1px solid ${C.borde}`, fontSize: '13.5px', cursor: 'pointer', color: C.tinta,
       }}
       hover={{ background: C.tenueFondo }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, paddingLeft: nivel ? '22px' : 0 }}>
-        <Link href={`/obras/${o.obra_id}`} prefetch={false} onClick={(ev) => ev.stopPropagation()}
-          style={{ fontWeight: 500, color: C.tinta, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {nivel ? <span style={{ color: C.tenue, marginRight: '6px' }}>└</span> : null}{rotuloDeObra(o)}
-        </Link>
-        <div style={{ fontSize: '12px', color: colorDeEstado(o) }} data-testid="estado-obra">{e.t}{nivel ? <span style={{ color: C.tenue }}> · adicional</span> : null}</div>
-      </div>
+      <CeldaObra o={o} nivel={nivel} />
       <div style={{ color: C.tintaSuave }}>{etapaDe(o) ?? <span style={{ color: C.tenue }} data-nulo="">sin etapa</span>}</div>
       {previo || o.avance_pct == null
         ? <div style={{ color: C.tenue, fontSize: '12.5px' }} data-nulo="">{previo ? 'sin actividades' : 'sin avance cargado'}</div>
@@ -401,6 +392,21 @@ function Fila({ o, ir, nivel = 0 }: { o: FilaCartera; ir: () => void; nivel?: 0 
         )}
       <Plazo o={o} />
     </Hover>
+  )
+}
+
+/** LA CELDA OBRA del 01: nombre (500) + estado en color. Se exporta porque la columna fija del Gantt
+ *  es ESTA MISMA celda (dueño, 24/09/2026: «el Gantt tiene que respetar el diseño de la Tabla»). */
+export function CeldaObra({ o, nivel = 0, href = `/obras/${o.obra_id}` }: { o: FilaCartera; nivel?: 0 | 1; href?: string }) {
+  const e = estadoDeCartera(o)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, paddingLeft: nivel ? '22px' : 0 }}>
+      <Link href={href} prefetch={false} onClick={(ev) => ev.stopPropagation()} title={rotuloDeObra(o)}
+        style={{ fontWeight: 500, color: C.tinta, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {nivel ? <span style={{ color: C.tenue, marginRight: '6px' }}>└</span> : null}{rotuloDeObra(o)}
+      </Link>
+      <div style={{ fontSize: '12px', color: colorDeEstado(o) }} data-testid="estado-obra">{e.t}{nivel ? <span style={{ color: C.tenue }}> · adicional</span> : null}</div>
+    </div>
   )
 }
 
@@ -420,8 +426,6 @@ function Plazo({ o, telefono = false }: { o: FilaCartera; telefono?: boolean }) 
 /** UNA FILA DE 62px de M01: nombre + «Cliente · Etapa · atraso», barra 56×4 + % + plazo de 44px. */
 function FilaTelefono({ o, ir, ultima, nivel = 0 }: { o: FilaCartera; ir: () => void; ultima: boolean; nivel?: 0 | 1 }) {
   const previo = esPrevio(o)
-  // El cliente ya es el encabezado del grupo: la sublínea dice la etapa (y «adicional» si lo es).
-  const sub = sublineaTelefono(o, nivel ? 'adicional' : null, etapaDe(o))
   return (
     <div data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id} data-nivel={nivel} onClick={ir} role="link" tabIndex={0}
       onKeyDown={(ev) => { if (ev.key === 'Enter') ir() }}
@@ -429,12 +433,7 @@ function FilaTelefono({ o, ir, ultima, nivel = 0 }: { o: FilaCartera; ir: () => 
         minHeight: '62px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', cursor: 'pointer', paddingLeft: nivel ? '16px' : 0,
         borderBottom: ultima ? undefined : `1px solid ${C.borde}`, color: C.tinta,
       }}>
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rotuloDeObra(o)}</div>
-        <div style={{ fontSize: '12px', color: C.tintaSuave }}>
-          {sub.texto}{sub.atraso && <> · <span style={{ color: C.neg }}>atraso</span></>}
-        </div>
-      </div>
+      <NombreTelefono o={o} nivel={nivel} />
       <div style={{ flexShrink: 0, textAlign: 'right', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
         {previo || o.avance_pct == null
           ? <span style={{ fontSize: '12px', color: C.tenue, fontStyle: 'italic' }} data-nulo="">no se puede medir</span>
@@ -447,6 +446,25 @@ function FilaTelefono({ o, ir, ultima, nivel = 0 }: { o: FilaCartera; ir: () => 
             </>
           )}
         <Plazo o={o} telefono />
+      </div>
+    </div>
+  )
+}
+
+/** EL NOMBRE DE M01: obra (500) + «Etapa · atraso». Se exporta: el M02 lo dibuja igual en su columna fija. */
+export function NombreTelefono({ o, nivel = 0, unaLinea = false }: {
+  o: FilaCartera
+  nivel?: 0 | 1
+  /** En los 118px del M02 la sublínea no puede partirse en dos: la fila crecería y la barra se correría. */
+  unaLinea?: boolean
+}) {
+  // El cliente ya es el encabezado del grupo: la sublínea dice la etapa (y «adicional» si lo es).
+  const sub = sublineaTelefono(o, nivel ? 'adicional' : null, etapaDe(o))
+  return (
+    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rotuloDeObra(o)}</div>
+      <div style={{ fontSize: '12px', color: C.tintaSuave, ...(unaLinea ? { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}) }}>
+        {sub.texto}{sub.atraso && <> · <span style={{ color: C.neg }}>atraso</span></>}
       </div>
     </div>
   )
