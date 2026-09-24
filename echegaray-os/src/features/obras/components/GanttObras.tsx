@@ -2,7 +2,7 @@
 
 // ═══ 02 · CARTERA · GANTT — PORTE LITERAL DE `erp-obras/02.html` Y `M02.html` (dueño, 23/09/2026) ═══
 //
-// Una fila por obra de 64px con la columna «Obra» de la Tabla (dueño, 24/09/2026); columna fija de 300px; el lienzo con los meses de la ventana
+// Una fila por obra de 64px con la columna «Obra» de la Tabla (dueño, 24/09/2026); columna fija de 360px (el adicional con sangría entra entero); el lienzo con los meses de la ventana
 // («Mes · Trimestre · Año»); barra clara del plan, llena de lo ejecutado (azul, roja con atraso),
 // rayada la proyección más allá del plan; la línea de HOY en el amarillo de la marca. La obra sin
 // fechas lo dice con palabras: «sin fechas cargadas — no se dibuja una barra inventada».
@@ -31,7 +31,7 @@ import type { GrupoDeCliente } from '../services/carteraCanon'
 const ALTO_FILA = 64
 const ALTO_FILA_TELEFONO = 62
 const ALTO_CABECERA = 40
-const ANCHO_OBRA = 300
+const ANCHO_OBRA = 360
 const GAP = 22
 const COLS = `${ANCHO_OBRA}px minmax(0,1fr)`
 /** Como `MIN_TABLA`: por debajo el lienzo scrollea por dentro y la página no se corre de costado. */
