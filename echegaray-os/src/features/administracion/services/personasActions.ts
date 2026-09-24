@@ -25,6 +25,8 @@ const opcional = z.string().trim().optional()
 
 const personaSchema = z.object({
   nombre_completo: z.string().trim().min(3, 'El nombre completo es obligatorio'),
+  // Cómo se la nombra en la app (dueño 24/09). Vacío = se usa el legajo (src/shared/personas).
+  nombre_para_mostrar: z.string().trim().max(80, 'El nombre para mostrar es muy largo').optional(),
   dni: soloDigitos.refine((v) => v === '' || (v.length >= 7 && v.length <= 8), 'El DNI tiene 7 u 8 dígitos').optional(),
   cuil: soloDigitos.refine((v) => v === '' || v.length === 11, 'El CUIL tiene 11 dígitos').optional(),
   fecha_nacimiento: fechaISO,
@@ -57,6 +59,7 @@ const v = (x: string | undefined) => (x && x.trim() ? x.trim() : null)
 function aFila(d: Partial<z.infer<typeof personaSchema>>) {
   return {
     nombre_completo: d.nombre_completo as string,
+    nombre_para_mostrar: v(d.nombre_para_mostrar),
     dni: v(d.dni), cuil: v(d.cuil), fecha_nacimiento: v(d.fecha_nacimiento),
     nacionalidad: v(d.nacionalidad), telefono: v(d.telefono), email: v(d.email),
     domicilio: v(d.domicilio), contacto_emergencia: v(d.contacto_emergencia),
@@ -93,7 +96,7 @@ export async function crearPersona(form: FormData): Promise<Resultado> {
  */
 const GRUPOS = {
   identidad: personaSchema.pick({
-    nombre_completo: true, dni: true, cuil: true, fecha_nacimiento: true, nacionalidad: true,
+    nombre_completo: true, nombre_para_mostrar: true, dni: true, cuil: true, fecha_nacimiento: true, nacionalidad: true,
     telefono: true, email: true, domicilio: true,
     contacto_emergencia: true, contacto_emergencia_telefono: true,
   }),
@@ -134,6 +137,18 @@ export async function editarPersona(
   if (soloDelGrupo.fecha_egreso) soloDelGrupo.en_la_empresa = false
 
   const supabase = await createClient()
+  // EL NOMBRE PARA MOSTRAR QUE ALGUIEN CAMBIÓ pasa a ser «manual»: la precarga (cuenta, JORNALES o la
+  // heurística) ya no lo pisa, y la lista de revisión sabe que una persona lo firmó. Guardar el panel
+  // sin tocarlo NO lo marca: se compara con lo guardado.
+  if ('nombre_para_mostrar' in soloDelGrupo) {
+    const { data: antes } = await supabase.from('personas').select('nombre_para_mostrar').eq('id', personaId).maybeSingle()
+    const previo = (antes as { nombre_para_mostrar: string | null } | null)?.nombre_para_mostrar ?? null
+    if ((soloDelGrupo.nombre_para_mostrar ?? null) !== previo) {
+      soloDelGrupo.nombre_para_mostrar_fuente = soloDelGrupo.nombre_para_mostrar ? 'manual' : null
+    } else {
+      delete soloDelGrupo.nombre_para_mostrar
+    }
+  }
   const { error } = await supabase.from('personas').update(soloDelGrupo).eq('id', personaId)
   if (error) return { ok: false, error: error.message }
   revalidatePath('/administracion/personas')

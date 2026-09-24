@@ -102,7 +102,7 @@ function Responsable({ personas, correr }: { personas: Persona[]; correr: (p: st
           className={CTRL}
         >
           <option value="">— quitar el responsable —</option>
-          {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>)}
+          {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p)}</option>)}
         </select>
       </label>
       {personas.length === 0 && (

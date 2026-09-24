@@ -346,13 +346,13 @@ export function repartirHorasPorObra(
 export async function getPersonasProyectables(
   supabase: SupabaseClient, tarifas: ReadonlyMap<string, number>,
 ): Promise<{ personas: PersonaProyectable[]; error: Falla | null }> {
-  const r = await supabase.from('personas').select('id, nombre_completo, en_la_empresa, es_prueba')
+  const r = await supabase.from('personas').select('id, nombre_completo, nombre_para_mostrar, en_la_empresa, es_prueba')
   if (r.error) return { personas: [], error: { que: 'el plantel', error: r.error.message } }
   const personas = (r.data ?? [])
     .filter((p) => p.en_la_empresa === true && p.es_prueba !== true)
     .map((p): PersonaProyectable => ({
       personaId: String(p.id),
-      nombre: nombreDePersona(p.nombre_completo),
+      nombre: nombreDePersona(p),
       valorHora: tarifas.get(String(p.id)) ?? null,
     }))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))

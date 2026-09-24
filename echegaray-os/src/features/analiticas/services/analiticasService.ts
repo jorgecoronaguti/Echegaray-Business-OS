@@ -250,7 +250,7 @@ export async function leerNominaPagada(supabase: SupabaseClient, anio: number): 
       .order('id').range(a, b)),
     leerPaginado((a, b) => supabase.from('recibo_sueldo_linea')
       .select('id, persona_id, periodo, neto').order('id').range(a, b)),
-    supabase.from('persona_directorio').select('id, nombre_completo'),
+    supabase.from('persona_directorio').select('id, nombre_completo, nombre_para_mostrar'),
   ])
   if (quincenas.error || !quincenas.data?.length || !lineas || !recibos) return null
   return pagoDeNomina({

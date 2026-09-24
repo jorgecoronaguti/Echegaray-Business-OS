@@ -110,7 +110,7 @@ export default async function MiInformacionPage() {
           </span>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 18, fontWeight: 600, color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {nombreDePersonaONull(l?.nombre_completo) ?? user.email ?? 'sin nombre cargado'}
+              {nombreDePersonaONull(l) ?? user.email ?? 'sin nombre cargado'}
             </div>
             <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {legible(l?.categoria) ?? legible(l?.puesto) ?? 'sin categoría cargada'}

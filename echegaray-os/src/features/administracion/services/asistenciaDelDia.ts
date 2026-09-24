@@ -264,7 +264,7 @@ export function asistenciaDelDia(
     vistas.add(e.id)
     filas.push({
       personaId: e.id,
-      nombre: nombreDePersona(e.nombre_completo),
+      nombre: nombreDePersona(e),
       categoria: e.categoria,
       obraId: donde?.obra_id ?? e.obra_actual_id,
       obra: donde?.obra ?? e.obra_actual,

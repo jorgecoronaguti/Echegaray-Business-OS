@@ -11,7 +11,7 @@ import type { ServiceResult } from '@/features/auth/services/authService'
 import type { Esperado, FilaPresencia } from './presencia'
 import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 
-const COLUMNAS = 'persona_id, nombre_completo, categoria, puesto, fecha, obra_id, obra, entrada,'
+const COLUMNAS = 'persona_id, nombre_completo, nombre_para_mostrar, categoria, puesto, fecha, obra_id, obra, entrada,'
   + ' salida, incidencias, motivo, lat, lon, precision_m, origen, estado'
 
 /** La migración que crea la vista. Si falta, la pantalla lo dice CON SU NOMBRE en vez de mostrarse
@@ -82,7 +82,7 @@ async function presenciaCargada(
   const ids = [...new Set(filas.map((a) => a.persona_id))]
   const obras = [...new Set(filas.map((a) => a.obra_canonica_id).filter((o): o is string => !!o))]
   const [dir, obs] = await Promise.all([
-    supabase.from('persona_directorio').select('id, nombre_completo, categoria, puesto').in('id', ids),
+    supabase.from('persona_directorio').select('id, nombre_completo, nombre_para_mostrar, categoria, puesto').in('id', ids),
     obras.length ? supabase.from('obra_canonica').select('id, nombre, codigo').in('id', obras) : Promise.resolve({ data: [] }),
   ])
   const persona = new Map(((dir.data ?? []) as { id: string; nombre_completo: string; categoria: string | null; puesto: string | null }[]).map((p) => [p.id, p]))
@@ -115,7 +115,7 @@ export async function getEsperados(
 ): Promise<ServiceResult<Esperado[]>> {
   let consulta = supabase
     .from('persona_directorio')
-    .select('id, nombre_completo, categoria, obra_actual_id, obra_actual, cuadrilla')
+    .select('id, nombre_completo, nombre_para_mostrar, categoria, obra_actual_id, obra_actual, cuadrilla')
     .eq('en_la_empresa', true)
     .not('obra_actual_id', 'is', null)
   if (obraId) consulta = consulta.eq('obra_actual_id', obraId)

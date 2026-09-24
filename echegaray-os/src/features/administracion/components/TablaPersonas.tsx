@@ -257,7 +257,7 @@ export function TablaPersonas({
                   que lee quien prueba para saber QUIÉN está en la lista, y la fila completa incluye
                   el oficio, la obra y las HH. */}
               <span data-testid="abrir-persona" className="truncate" style={{ fontSize: '12.5px', fontWeight: 500, color: V.tinta }}>
-                {nombreDePersona(p.nombre_completo)}
+                {nombreDePersona(p)}
               </span>
             </span>
 
@@ -485,7 +485,7 @@ function FilaTelefono({ p, conBaja, asistencia, ficho, hh, acciones }: {
           <IconoPersona className="h-4 w-4" />
         </span>
         <span className="min-w-0 flex-1 truncate" style={{ fontSize: '14.5px', fontWeight: 500, color: V.tinta }}>
-          {nombreDePersona(p.nombre_completo)}
+          {nombreDePersona(p)}
         </span>
         {!conBaja && (
           <span className="flex shrink-0 items-center gap-1" data-testid="hoy-persona-telefono" data-estado={asistencia?.presencia}>
@@ -547,7 +547,7 @@ function AccionesHoy({ p, oferta, fecha, inicial, tactil = false }: {
                       {oferta === 'boton' && (
                         <BotonPresenteHoy
                           personaId={p.id}
-                          nombre={nombreDePersona(p.nombre_completo)}
+                          nombre={nombreDePersona(p)}
                           obraId={p.obra_actual_id as string}
                           fecha={fecha}
                           tactil={tactil}
@@ -558,7 +558,7 @@ function AccionesHoy({ p, oferta, fecha, inicial, tactil = false }: {
                       {oferta === 'boton' && (
                         <MarcaTardanzaHoy
                           personaId={p.id}
-                          nombre={nombreDePersona(p.nombre_completo)}
+                          nombre={nombreDePersona(p)}
                           fecha={fecha}
                           tactil={tactil}
                           obraSinMarcar={p.obra_actual_id as string}
@@ -569,7 +569,7 @@ function AccionesHoy({ p, oferta, fecha, inicial, tactil = false }: {
                       {oferta === 'quitar' && (
                         <BotonQuitarPresente
                           personaId={p.id}
-                          nombre={nombreDePersona(p.nombre_completo)}
+                          nombre={nombreDePersona(p)}
                           fecha={fecha}
                           tactil={tactil}
                         />
@@ -581,7 +581,7 @@ function AccionesHoy({ p, oferta, fecha, inicial, tactil = false }: {
                       {oferta === 'quitar' && (
                         <MarcaTardanzaHoy
                           personaId={p.id}
-                          nombre={nombreDePersona(p.nombre_completo)}
+                          nombre={nombreDePersona(p)}
                           fecha={fecha}
                           tactil={tactil}
                           inicial={inicial}

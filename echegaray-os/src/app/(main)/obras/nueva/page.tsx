@@ -209,7 +209,7 @@ export default async function NuevaObraPage({
                   <CampoAlta rotulo="Persona">
                     <SelectAlta name="persona_id" required defaultValue="">
                       <option value="" disabled>elegí del plantel</option>
-                      {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>)}
+                      {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p)}</option>)}
                     </SelectAlta>
                   </CampoAlta>
                   <CampoAlta rotulo="Rol">

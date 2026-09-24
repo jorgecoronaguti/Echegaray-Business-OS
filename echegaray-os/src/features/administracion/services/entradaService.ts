@@ -21,6 +21,7 @@ import { perteneceAlCorte, type FilaDeConteo } from './personasService.ts'
 import { sinDireccion } from './vocabularioPersona.ts'
 import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 import { nombreDeCliente } from '../../../shared/clientes/nombre.ts'
+import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
 
 export interface Maestro {
   clave: string
@@ -232,16 +233,22 @@ export async function buscarGlobal(
   const t = terminoSeguro(q)
   if (t.length < 2) return []
 
-  const [clientes, personas, proveedores] = await Promise.all([
-    supabase.from('clientes').select('slug, nombre_comercial, razon_social')
-      .or(`nombre_comercial.ilike.%${t}%,razon_social.ilike.%${t}%`).limit(tope),
+  // LOS TRES MAESTROS SON CHICOS (5 clientes, ~80 personas, ~100 proveedores) y se filtran EN MEMORIA
+  // con `contieneEnAlguno`: sin tildes, sin mayúsculas, palabra por palabra y en cualquier orden. Con
+  // `ilike` «javier sanchez» no encontraba a «Javier Sánchez - San Francisco - IMOTOR» (dueño 24/09:
+  // «que lo busquemos como sea») ni «emiliano maldonado» a su legajo.
+  const [cli, per, prov] = await Promise.all([
+    supabase.from('clientes').select('slug, nombre_comercial, razon_social, cuit'),
     // El buscador del área es una puerta al módulo Personal: lo que no está en el módulo no se
     // ofrece desde acá. `puesto` viaja sólo para poder aplicar la regla.
-    supabase.from('persona_directorio').select('id, nombre_completo, especialidad, en_la_empresa, puesto')
-      .ilike('nombre_completo', `%${t}%`).limit(tope),
-    supabase.from('proveedores').select('id, nombre, razon_social')
-      .or(`nombre.ilike.%${t}%,razon_social.ilike.%${t}%`).limit(tope),
+    supabase.from('persona_directorio').select('id, nombre_completo, nombre_para_mostrar, especialidad, en_la_empresa, puesto'),
+    supabase.from('proveedores').select('id, nombre, razon_social, cuit'),
   ])
+  const filtrar = <T,>(r: { data: unknown }, campos: (x: T) => (string | null | undefined)[]) =>
+    ({ data: ((r.data ?? []) as T[]).filter((x) => contieneEnAlguno(campos(x), t)).slice(0, tope) })
+  const clientes = filtrar<{ nombre_comercial: string; razon_social: string | null; cuit?: string | null }>(cli, (c) => [c.nombre_comercial, c.razon_social, c.cuit])
+  const personas = filtrar<{ nombre_completo: string; nombre_para_mostrar?: string | null }>(per, (p) => [p.nombre_completo, p.nombre_para_mostrar])
+  const proveedores = filtrar<{ nombre: string; razon_social: string | null; cuit?: string | null }>(prov, (v) => [v.nombre, v.razon_social, v.cuit])
 
   type C = { slug: string; nombre_comercial: string; razon_social: string | null }
   type P = { id: string; nombre_completo: string; especialidad: string | null; en_la_empresa: boolean; puesto?: string | null }
@@ -253,7 +260,7 @@ export async function buscarGlobal(
       maestro: 'Cliente' as const, href: `/clientes/${c.slug}`,
     })),
     ...((personas.data ?? []) as P[]).map((p) => ({
-      clave: `persona-${p.id}`, nombre: nombreDePersona(p.nombre_completo),
+      clave: `persona-${p.id}`, nombre: nombreDePersona(p),
       // Que alguien ya no esté en el plantel es lo primero que hay que saber al encontrarlo.
       detalle: p.en_la_empresa ? p.especialidad : 'ya no está en el plantel',
       maestro: 'Persona' as const, href: `/administracion/personas/${p.id}`,

@@ -89,7 +89,7 @@ export async function getExposicionDeLaQuincena(
 ): Promise<ExposicionDeLaQuincena> {
   const [legajo, tarifas, escala, cct, recibos] = await Promise.all([
     supabase.from('persona_legajo')
-      .select('id, nombre_completo, cuil, convenio_colectivo, categoria, en_la_empresa'),
+      .select('id, nombre_completo, nombre_para_mostrar, cuil, convenio_colectivo, categoria, en_la_empresa'),
     supabase.from('persona_tarifa')
       .select('persona_id, desde, valor_hora, neto_mensual, origen').lte('desde', q.hasta),
     supabase.from('convenio_escala')
@@ -209,7 +209,7 @@ function personasDelPlantel(
     const aComparar = valorHoraAComparar(recibo?.valorHora ?? null, vigente?.valorHora ?? null)
     return {
       personaId: p.id,
-      nombre: nombreDePersona(p.nombre_completo),
+      nombre: nombreDePersona(p),
       convenio: p.convenio_colectivo,
       categoria: p.categoria,
       valorHora: aComparar.valorHora,

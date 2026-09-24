@@ -14,9 +14,9 @@
 //     `perfiles.persona_id`, resuelto en la base por `nombres_de_usuarios()` (migración
 //     20260924T2100). Sin persona, su `perfiles.nombre`. Persona ≠ Usuario: no se fusionan, se
 //     resuelve el nombre por el vínculo.
-//   · El FORMATO es uno: el legajo en oración, en su orden («Maldonado Batista Emiliano Miguel»).
-//     No se da vuelta a «Nombre Apellido» porque el legajo no dice dónde terminan los apellidos
-//     («Corona Gutierrez Jorge» son dos; «Quiroga Sebastian Adolfo», uno): darlo vuelta es adivinar.
+//   · Lo que se MUESTRA es `personas.nombre_para_mostrar` («Emiliano Maldonado»; dueño 24/09: «sí»),
+//     un dato curado que se corrige en la ficha (migraciones 20260924T2200/2210). Sin él, el legajo en
+//     oración. El legajo completo (`nombreLegal`) queda para la ficha, los recibos y los papeles legales.
 //
 // Ninguna pantalla formatea un nombre de persona por su cuenta: lo fija
 // `src/shared/personas/nombre-en-pantallas.test.ts`.
@@ -24,17 +24,35 @@ import { oracion } from '../utils/texto.ts'
 
 export const SIN_NOMBRE = 'sin nombre en el legajo'
 
-/** El nombre para mostrar de una persona, desde su legajo. «MALDONADO BATISTA EMILIANO MIGUEL» →
- *  «Maldonado Batista Emiliano Miguel». Vacío → `SIN_NOMBRE` (se dice, no se inventa). */
-export function nombreDePersona(nombreCompleto: string | null | undefined): string {
-  const limpio = String(nombreCompleto ?? '').trim().replace(/\s+/g, ' ')
-  return limpio ? oracion(limpio) : SIN_NOMBRE
+/** Lo que una pantalla tiene de una persona: la fila (con `nombre_para_mostrar`, el nombre curado) o,
+ *  cuando sólo viajó un texto, ese texto. */
+export interface PersonaConNombre { nombre_para_mostrar?: string | null; nombre_completo?: string | null }
+type Entrada = string | PersonaConNombre | null | undefined
+
+const limpiar = (s: string | null | undefined) => String(s ?? '').trim().replace(/\s+/g, ' ')
+
+/** El nombre para mostrar de una persona. Con la fila: su `nombre_para_mostrar` («Emiliano Maldonado»,
+ *  curado en la ficha); sin él, el legajo en oración. Con un texto: ese texto en oración. Vacío →
+ *  `SIN_NOMBRE` (se dice, no se inventa). */
+export function nombreDePersona(p: Entrada): string {
+  return nombreDePersonaONull(p) ?? SIN_NOMBRE
 }
 
 /** Igual que `nombreDePersona`, pero `null` cuando no hay nombre (para caer en otro dato). */
-export function nombreDePersonaONull(nombreCompleto: string | null | undefined): string | null {
-  const limpio = String(nombreCompleto ?? '').trim()
-  return limpio ? nombreDePersona(limpio) : null
+export function nombreDePersonaONull(p: Entrada): string | null {
+  if (p != null && typeof p === 'object') {
+    const curado = limpiar(p.nombre_para_mostrar)
+    if (curado) return curado
+    return nombreLegal(p.nombre_completo)
+  }
+  return nombreLegal(p)
+}
+
+/** El nombre LEGAL (el legajo) en oración: «Maldonado Batista Emiliano Miguel». Para la ficha, los
+ *  recibos y los papeles legales, donde el nombre para mostrar no alcanza. */
+export function nombreLegal(nombreCompleto: string | null | undefined): string | null {
+  const l = limpiar(nombreCompleto)
+  return l ? oracion(l) : null
 }
 
 /** Una fila de `nombres_de_usuarios()`: el nombre ya viene resuelto por el vínculo. */

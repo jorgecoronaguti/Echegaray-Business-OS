@@ -98,7 +98,7 @@ export function ListaPersonal({ a, personas, reales, obraId }: {
   /** La obra, para llevar a la solapa donde el personal se asigna de verdad. */
   obraId?: string
 }) {
-  const nombreDe = (id: string) => nombreDePersonaONull(personas.find((p) => p.id === id)?.nombre_completo) ?? id
+  const nombreDe = (id: string) => nombreDePersonaONull(personas.find((p) => p.id === id)) ?? id
   const responsable = a.responsable_id ? nombreDe(a.responsable_id) : null
   const prevista = a.cuadrilla_prevista ?? a.cuadrilla
   const hhTotal = reales.reduce((s, r) => s + r.horas, 0)

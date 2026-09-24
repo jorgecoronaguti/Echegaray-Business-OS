@@ -45,3 +45,10 @@ test('`q` VACÍA viaja igual: si se omite, la vista recordada resucita la búsqu
   assert.equal(urlDeBusqueda('/obras', undefined, ''), '/obras?q=')
   assert.equal(urlDeBusqueda('/obras', { etapa: 'terminacion' }, '   '), '/obras?etapa=terminacion&q=')
 })
+
+test('un cliente se encuentra por cualquier parte de su nombre, en cualquier orden, sin tildes (dueño 24/09)', () => {
+  const sf = 'Javier Sánchez - San Francisco - IMOTOR'
+  for (const q of ['san francisco', 'imotor', 'javier sanchez', 'SANCHEZ javier', 'Sánchez', 'francisco imotor']) assert.ok(contiene(sf, q), q)
+  assert.equal(contiene(sf, 'messina'), false)
+  assert.equal(contiene(sf, 'san messina'), false, 'cada palabra tiene que estar')
+})

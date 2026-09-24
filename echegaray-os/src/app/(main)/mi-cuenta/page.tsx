@@ -88,7 +88,7 @@ export default async function MiCuentaPage() {
           telefono={perfil.data?.telefono ?? null}
           avatarUrl={perfil.data?.avatar_url ?? null}
           cargo={rol ? ROL_LABEL[rol] : null}
-          legajoNombre={nombreDePersonaONull(legajo.data?.nombre_completo) ?? null}
+          legajoNombre={nombreDePersonaONull(legajo.data) ?? null}
           legajoAlta={legajo.data?.fecha_ingreso ?? null}
           vinculoDisponible={perfil.data?.vinculoDisponible ?? true}
         />

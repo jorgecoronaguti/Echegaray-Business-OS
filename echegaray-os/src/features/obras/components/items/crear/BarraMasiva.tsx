@@ -129,7 +129,7 @@ export function CajaMasiva({ ids, datos, aplicar, alAplicado, accion, setAccion 
     switch (accion) {
       case 'mover': return sel(datos.contenedores, 'a la raíz (rubro)', 'masiva-mover')
       case 'cuadrilla': return sel(datos.cuadrillas, 'quitar la cuadrilla', 'masiva-cuadrilla')
-      case 'responsable': return sel(datos.personas.map((p) => ({ id: p.id, nombre: nombreDePersona(p.nombre_completo) })), 'quitar el responsable', 'masiva-responsable')
+      case 'responsable': return sel(datos.personas.map((p) => ({ id: p.id, nombre: nombreDePersona(p) })), 'quitar el responsable', 'masiva-responsable')
       case 'fechas': return <div style={{ display: 'flex', gap: '6px' }}>{CORRIMIENTOS.map((c) => <Chip key={c.id} activo={dias === c.dias} onClick={() => setDias(c.dias)} alto={alto === 44 ? 36 : 32} testid={`correr-${c.id}`}>{c.label}</Chip>)}</div>
       case 'metodo': return <div style={{ display: 'flex', gap: '6px' }}>{(['cantidad', 'pasos', 'manual'] as const).map((m) => <Chip key={m} activo={(valor || 'cantidad') === m} onClick={() => setValor(m)} alto={alto === 44 ? 36 : 32} testid={`metodo-masivo-${m}`}>{m === 'cantidad' ? 'Cantidad' : m === 'pasos' ? 'Pasos' : 'Manual'}</Chip>)}</div>
       case 'ponderacion': return <input value={valor} onChange={(e) => setValor(e.target.value)} inputMode="decimal" placeholder="%" aria-label="Ponderación" data-testid="masiva-ponderacion" style={{ ...estiloControl(alto, true), width: '90px', color: claro ? C.superficie : C.tinta, background: 'transparent', borderColor: claro ? C.sobreGrafitoBorde : C.bordeFuerte }} />

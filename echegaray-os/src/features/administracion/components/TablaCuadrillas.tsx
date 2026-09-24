@@ -174,7 +174,7 @@ function Gente({ integrantes, porPersona, fichadosHoy, hrefEditar, nombre }: Des
                 }}
               />
               <span className="truncate" style={{ fontSize: '12px', color: V.tinta }}>
-                {nombreDePersonaONull(i.nombre_completo) ?? 'sin nombre en el legajo'}
+                {nombreDePersonaONull(i) ?? 'sin nombre en el legajo'}
               </span>
               <span style={{ fontSize: '11px', color: V.lupa, flexShrink: 0 }}>
                 {i.categoria ?? 'sin categoría'}

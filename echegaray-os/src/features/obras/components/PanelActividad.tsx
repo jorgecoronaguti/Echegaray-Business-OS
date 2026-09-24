@@ -154,7 +154,7 @@ export function PanelActividad({
   const [editando, setEditando] = useState(false)
   const [registrando, setRegistrando] = useState(false)
   const responsable = a.responsable_id
-    ? nombreDePersonaONull(personas.find((p) => p.id === a.responsable_id)?.nombre_completo)
+    ? nombreDePersonaONull(personas.find((p) => p.id === a.responsable_id))
     : null
   const desvio = desvioHH(a, hh)
   const hhReal = hh?.hh_real ?? a.hh_real

@@ -56,8 +56,8 @@ export async function listarUsuarios(admin: SupabaseClient): Promise<ServiceResu
     // El nombre de la persona vinculada. Se pide aparte y no con un join anidado: `perfiles` puede
     // apuntar a una persona dada de baja, y un join interno la haría desaparecer de la lista —
     // que es justo el caso en el que alguien necesita ver el vínculo para deshacerlo.
-    const { data: personas } = await admin.from('personas').select('id, nombre_completo')
-    const nombrePersona = new Map((personas ?? []).map((x) => [x.id as string, nombreDePersona(x.nombre_completo as string)]))
+    const { data: personas } = await admin.from('personas').select('id, nombre_completo, nombre_para_mostrar')
+    const nombrePersona = new Map((personas ?? []).map((x) => [x.id as string, nombreDePersona(x as { nombre_completo?: string | null; nombre_para_mostrar?: string | null })]))
     if (pErr) return { data: null, error: pErr.message }
 
     const perfilDe = new Map((perfiles ?? []).map((p) => [p.id as string, p]))
@@ -159,7 +159,7 @@ export async function listarPersonasVinculables(
     .filter((p) => p.en_la_empresa !== false)
     .map((p) => ({
       id: p.id as string,
-      nombre: nombreDePersona(p.nombre_completo as string),
+      nombre: nombreDePersona(p as { nombre_completo?: string | null; nombre_para_mostrar?: string | null }),
       tomadaPor: tomada.get(p.id as string) ?? null,
     }))
 }

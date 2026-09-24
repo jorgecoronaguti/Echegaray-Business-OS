@@ -125,8 +125,8 @@ async function nombresDeResponsables(
 ): Promise<Map<string, string>> {
   if (ids.length === 0) return new Map()
   const { data } = await supabase
-    .from('persona_plantel').select('id, nombre_completo').in('id', ids)
-  return new Map((data ?? []).map((p) => [p.id as string, nombreDePersona(p.nombre_completo as string)]))
+    .from('persona_plantel').select('id, nombre_completo, nombre_para_mostrar').in('id', ids)
+  return new Map((data ?? []).map((p) => [p.id as string, nombreDePersona(p as { nombre_completo?: string | null; nombre_para_mostrar?: string | null })]))
 }
 
 /**

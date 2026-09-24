@@ -69,9 +69,9 @@ export async function getIntegrantes(
     // peso al integrante. Sin ella el panel mostraría cinco nombres y una capacidad de 4,2 sin poder
     // explicar de dónde sale.
     const { data: personas } = await supabase
-      .from('persona_plantel').select('id, nombre_completo, categoria').in('id', ids)
+      .from('persona_plantel').select('id, nombre_completo, nombre_para_mostrar, categoria').in('id', ids)
     for (const p of (personas ?? []) as { id: string; nombre_completo: string; categoria: string | null }[]) {
-      persona.set(p.id, { nombre_completo: nombreDePersona(p.nombre_completo), categoria: p.categoria })
+      persona.set(p.id, { nombre_completo: nombreDePersona(p), categoria: p.categoria })
     }
   }
   return {
@@ -168,7 +168,7 @@ export async function getSinCuadrilla(
   supabase: SupabaseClient,
 ): Promise<ServiceResult<SinCuadrilla[]>> {
   const { data, error } = await supabase
-    .from('persona_directorio').select('id, nombre_completo, categoria, obra_actual, puesto')
+    .from('persona_directorio').select('id, nombre_completo, nombre_para_mostrar, categoria, obra_actual, puesto')
     .eq('en_la_empresa', true).is('cuadrilla_id', null)
     .order('nombre_completo', { ascending: true })
   if (error) return { data: null, error: error.message }

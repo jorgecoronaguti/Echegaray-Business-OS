@@ -310,7 +310,7 @@ async function leerVinculos(
       .from('documentacion_legajo')
       // `id` viaja porque es lo que la acción de fijar el vencimiento necesita para saber QUÉ fila
       // escribe. Sin él, el panel tendría que buscarla por (persona, tipo) y elegir una de varias.
-      .select('id, drive_file_id, tipo_documento, fecha_vencimiento, persona_id, personas(nombre_completo)')
+      .select('id, drive_file_id, tipo_documento, fecha_vencimiento, persona_id, personas(nombre_completo, nombre_para_mostrar)')
       .in('drive_file_id', ids),
     supabase
       .from('cliente_documento')

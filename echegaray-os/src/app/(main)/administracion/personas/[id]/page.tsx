@@ -111,7 +111,7 @@ import { formatearCuit, formatearDni } from '@/features/administracion/services/
 import { etiquetaCategoria } from '@/features/administracion/types'
 import { pareceCategoria } from '@/features/administracion/services/vocabularioPersona'
 import { fecha } from '@/features/obras/components/formato'
-import { nombreDePersona } from '../../../../../shared/personas/nombre.ts'
+import { nombreDePersona, nombreLegal } from '../../../../../shared/personas/nombre.ts'
 
 export const dynamic = 'force-dynamic'
 
@@ -396,7 +396,10 @@ export default async function FichaPersonaPage({
 
   // EL SUBTÍTULO DEL MOCKUP: oficio · convenio · desde cuándo. El oficio es lo que sabe hacer y la
   // categoría lo que cobra: cuando el oficio no está cargado, el que habla es la categoría.
+  const legal = nombreLegal(persona.nombre_completo)
   const bajada = [
+    // El nombre LEGAL (el legajo) queda a la vista cuando el título dice el nombre para mostrar.
+    legal && legal !== nombreDePersona(persona) ? legal : null,
     persona.especialidad?.trim()
       ?? (persona.categoria ? etiquetaCategoria(persona.categoria) : 'sin oficio cargado'),
     persona.convenio_colectivo?.trim() || null,
@@ -405,13 +408,13 @@ export default async function FichaPersonaPage({
 
   return (
     <PantallaV2>
-      <Migas volverA="/administracion/personas" padre="Personal" actual={nombreDePersona(persona.nombre_completo)} />
+      <Migas volverA="/administracion/personas" padre="Personal" actual={nombreDePersona(persona)} />
 
       {/* EL NOMBRE SE DIBUJA EN ORACIÓN. Llega gritado desde el legajo («CRISTIAN AGÜERO») porque así
           lo escriben las planillas de jornales. El DATO no se toca: `oracion` es de dibujo, y el
           nombre que viaja al recibo, al alta temprana y al IERIC sigue siendo el guardado. */}
       <TituloDeFicha
-        titulo={nombreDePersona(persona.nombre_completo)}
+        titulo={nombreDePersona(persona)}
         bajada={bajada}
         junto={
           <>
@@ -693,7 +696,7 @@ export default async function FichaPersonaPage({
           ? (
               <PanelEdicion
                 titulo={editar === 'identidad' ? 'Editar identidad' : 'Editar datos laborales'}
-                subtitulo={nombreDePersona(persona.nombre_completo)}
+                subtitulo={nombreDePersona(persona)}
                 accion={editarPersona.bind(null, id, editar)}
                 cerrarHref={href(vista)}
                 testid={`panel-editar-${editar}`}

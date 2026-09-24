@@ -82,7 +82,7 @@ export async function getEslabonesDeLaQuincena(
   supabase: SupabaseClient, q: Quincena,
 ): Promise<EslabonesDeLaQuincena> {
   const [legajo, tarifas, recibos, adelantos, estudio, banco, directorio] = await Promise.all([
-    supabase.from('persona_legajo').select('id, nombre_completo, cuil, en_la_empresa'),
+    supabase.from('persona_legajo').select('id, nombre_completo, nombre_para_mostrar, cuil, en_la_empresa'),
     supabase.from('persona_tarifa')
       .select('persona_id, desde, valor_hora, neto_mensual, origen').lte('desde', q.hasta),
     supabase.from('nomina_recibo_neto').select('cuil, periodo, neto, fecha_pago'),
@@ -126,7 +126,7 @@ export async function getEslabonesDeLaQuincena(
   // recibo del estudio. Ver `identidadDePrueba.ts`.
   const delPlantel = sinIdentidadesDePrueba(
     (legajo.data ?? []) as { nombre_completo?: string | null; email?: string | null }[],
-    (r) => ({ nombre: nombreDePersona(r.nombre_completo), email: r.email }),
+    (r) => ({ nombre: nombreDePersona(r), email: r.email }),
   )
   const personas = armarPersonas(
     q, delPlantel, tarifas.data, recibos.data, adelantos.data, estudio.data, hayExtracto, directorio.data,
@@ -192,7 +192,7 @@ function armarPersonas(
         : false
       return {
         personaId: p.id,
-        nombre: nombreDePersona(p.nombre_completo),
+        nombre: nombreDePersona(p),
         valorHora: vigente?.valorHora ?? null,
         netoMensual: vigente?.netoMensual ?? null,
         origenTarifa: vigente?.origen ?? null,

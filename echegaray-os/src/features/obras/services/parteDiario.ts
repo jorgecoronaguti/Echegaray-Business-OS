@@ -329,7 +329,7 @@ export function chipsDeGente(
     horas.set(r.persona_id, (horas.get(r.persona_id) ?? 0) + r.horas)
   }
   return personas.map((p) => {
-    const base = { id: p.id, nombre: nombreDePersona(p.nombre_completo), bajada: bajadaDePersona(p.cuadrilla, p.categoria) }
+    const base = { id: p.id, nombre: nombreDePersona(p), bajada: bajadaDePersona(p.cuadrilla, p.categoria) }
     const h = horas.get(p.id)
     if (h != null && h > 0) return { ...base, estado: 'horas', horas: h }
     if (ausentes.has(p.id)) return { ...base, estado: 'ausente', horas: null }

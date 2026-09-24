@@ -23,6 +23,7 @@ import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 import { codigosDeObra } from '../../../shared/services/codigosDeObra.ts'
 import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 import { nombresDeClientes } from '../../../shared/clientes/nombresDeClientes.ts'
+import { nombresDePersonas } from '../../../shared/personas/nombresDePersonas.ts'
 
 const TOPE = 5_000
 /** Lo que dura el enlace firmado a una foto o al papel: se abre en el momento, no se comparte. */
@@ -71,7 +72,7 @@ export async function leerEfectivo(): Promise<LecturaEfectivo> {
       // LA VISTA, NO LA TABLA: el estado del comprobante de devolución (las dos firmas) tiene UNA sola
       // definición y vive en `efectivo_devolucion_estado` (20260922T2900).
       supabase.from('efectivo_devolucion_estado').select(COLUMNAS_DEVOLUCION).limit(TOPE),
-      supabase.from('personas').select('id, nombre_completo, puesto').eq('en_la_empresa', true).eq('es_prueba', false)
+      supabase.from('personas').select('id, nombre_completo, nombre_para_mostrar, puesto').eq('en_la_empresa', true).eq('es_prueba', false)
         .order('nombre_completo').limit(1000),
       leerObras(supabase),
       supabase.rpc('mi_persona_id'),
@@ -101,11 +102,13 @@ export async function leerEfectivo(): Promise<LecturaEfectivo> {
     const clienteDeObra: Record<string, string> = {}
     for (const o of obras) if (o.cliente) clienteDeObra[o.id] = o.cliente
     const num = (v: unknown) => Number(v ?? 0)
+    // La vista trae el legajo; se muestra el nombre para mostrar de esa persona (src/shared/personas).
+    const nombres = await nombresDePersonas(supabase, ((entregas.data ?? []) as unknown as Entrega[]).map((e) => e.persona_id))
     return {
       estado: 'ok',
       datos: {
         entregas: ((entregas.data ?? []) as unknown as Entrega[]).map((e) => ({
-          ...e, persona: nombreDePersona(e.persona), entregado: num(e.entregado), rendido: num(e.rendido), devuelto: num(e.devuelto),
+          ...e, persona: nombres.get(e.persona_id) ?? nombreDePersona(e.persona), entregado: num(e.entregado), rendido: num(e.rendido), devuelto: num(e.devuelto),
           en_su_poder: num(e.en_su_poder), filas_rendidas: num(e.filas_rendidas),
         })),
         comprobantes: (comprobantes.data ?? []) as unknown as Comprobante[],
@@ -113,7 +116,7 @@ export async function leerEfectivo(): Promise<LecturaEfectivo> {
         devoluciones: deLasEntregas((devoluciones.data ?? []) as unknown as Devolucion[]).map((d) => ({ ...d, monto: num(d.monto) })),
         personas: ((personas.data ?? []) as { id: string; nombre_completo: string | null; puesto: string | null }[])
           .filter((p) => p.nombre_completo)
-          .map((p) => ({ id: p.id, nombre: nombreDePersona(p.nombre_completo), puesto: p.puesto, obraActual: obraHoy.get(p.id) ?? null })),
+          .map((p) => ({ id: p.id, nombre: nombreDePersona(p), puesto: p.puesto, obraActual: obraHoy.get(p.id) ?? null })),
         obras,
         clienteDeObra,
         miPersona: typeof mia.data === 'string' ? mia.data : null,
@@ -216,11 +219,12 @@ export async function leerEnManos(obra?: string): Promise<LecturaEnManos> {
     if (faltaMigracion(error)) return { estado: 'falta_migracion' }
     if (error) return { estado: 'error', mensaje: error.message }
     const num = (v: unknown) => Number(v ?? 0)
+    const nombres = await nombresDePersonas(supabase, ((data ?? []) as unknown as Entrega[]).map((e) => e.persona_id))
     return {
       estado: 'ok',
       hoy: diaAR(new Date().toISOString()),
       entregas: ((data ?? []) as unknown as Entrega[]).map((e) => ({
-        ...e, persona: nombreDePersona(e.persona), entregado: num(e.entregado), rendido: num(e.rendido), devuelto: num(e.devuelto), en_su_poder: num(e.en_su_poder),
+        ...e, persona: nombres.get(e.persona_id) ?? nombreDePersona(e.persona), entregado: num(e.entregado), rendido: num(e.rendido), devuelto: num(e.devuelto), en_su_poder: num(e.en_su_poder),
       })),
     }
   } catch (err) {

@@ -102,6 +102,9 @@ const DESESCALADA_DECLARADA = {
     'domicilio', 'contacto_emergencia', 'contacto_emergencia_telefono', 'categoria', 'especialidad',
     'puesto', 'convenio_colectivo', 'art', 'obra_social', 'fecha_ingreso', 'fecha_egreso',
     'en_la_empresa', 'legajo',
+    // El nombre con que se la nombra en la app (dueño 24/09/2026, migración 20260924T2200). No es
+    // sensible: es el mismo nombre, curado.
+    'nombre_para_mostrar',
   ],
   // `mi_cuadrilla` publica DOS columnas de la persona y ninguna más: nombre y rol. El handoff lo
   // dice literal —«los integrantes se listan por nombre y rol, sin acceso a legajos ni documentos de
@@ -110,8 +113,10 @@ const DESESCALADA_DECLARADA = {
   // el que su lista de columnas está fijada acá.
   mi_cuadrilla: [
     'cuadrilla_id', 'cuadrilla', 'nombre_completo', 'rol', 'es_responsable', 'soy_yo',
+    'nombre_para_mostrar',
   ],
-  persona_plantel: ['id', 'nombre_completo', 'categoria', 'especialidad', 'fecha_egreso'],
+  // + `nombre_para_mostrar` (24/09/2026): el nombre curado de la persona, al final de cada vista.
+  persona_plantel: ['id', 'nombre_completo', 'categoria', 'especialidad', 'fecha_egreso', 'nombre_para_mostrar'],
   persona_legajo: [
     'id', 'nombre_completo', 'dni', 'cuil', 'fecha_nacimiento', 'nacionalidad',
     'telefono', 'email', 'domicilio', 'contacto_emergencia', 'contacto_emergencia_telefono',
@@ -120,6 +125,7 @@ const DESESCALADA_DECLARADA = {
     // El número de la nómina y si sigue en la empresa. Ninguno es sensible —el legajo ya publica
     // DNI y CUIL, que sí lo son— y los dos son de Administración por el portero de la vista.
     'legajo', 'en_la_empresa',
+    'nombre_para_mostrar',
   ],
 }
 

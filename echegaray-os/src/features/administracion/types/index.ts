@@ -54,7 +54,10 @@ export function esCategoriaDeConvenio(valor: string | null): boolean {
  *  dato adivinado con cara de dato cargado es peor que un campo que falta. */
 export interface Persona {
   id: string
+  /** El legajo: el nombre LEGAL (recibos, alta, ARCA). */
   nombre_completo: string
+  /** Cómo se la nombra en la app (curado; vacío = el legajo). Ver src/shared/personas/nombre.ts. */
+  nombre_para_mostrar?: string | null
   /** El número de la nómina (pestaña PERSONAL de NUEVA ASISTENCIA). Es la clave con la que liquida
    *  JORNALES. Falta en quien ya no está: la nómina vigente no lo tiene. */
   legajo: string | null
@@ -85,6 +88,8 @@ export interface Persona {
 export interface PersonaEnDirectorio {
   id: string
   nombre_completo: string
+  /** Cómo se la nombra en la app (curado; vacío = el legajo). */
+  nombre_para_mostrar?: string | null
   categoria: string | null
   especialidad: string | null
   puesto: string | null

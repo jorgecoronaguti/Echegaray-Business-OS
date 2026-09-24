@@ -59,7 +59,7 @@ async function getPlantel(
   const [{ data }, subcontratos] = await Promise.all([
     // `puesto` viaja para poder aplicar `sinDireccion`: sin esa columna el filtro no filtraría nada
     // y Dirección volvería a la semana sin que ningún test lo note.
-    supabase.from('persona_directorio').select('id, nombre_completo, categoria, en_la_empresa, fecha_ingreso, fecha_egreso, puesto')
+    supabase.from('persona_directorio').select('id, nombre_completo, nombre_para_mostrar, categoria, en_la_empresa, fecha_ingreso, fecha_egreso, puesto')
       .order('nombre_completo'),
     leerSubcontratoDePersonas(supabase),
   ])

@@ -34,7 +34,7 @@ export function personaDelDirectorio(r: {
   fecha_ingreso?: string | null; fecha_egreso?: string | null
 }): PersonaDelDirectorio {
   return {
-    id: r.id, nombre: nombreDePersonaONull(r.nombre_completo) ?? '', enLaEmpresa: r.en_la_empresa === true,
+    id: r.id, nombre: nombreDePersonaONull(r) ?? '', enLaEmpresa: r.en_la_empresa === true,
     fechaIngreso: r.fecha_ingreso ? String(r.fecha_ingreso).slice(0, 10) : null,
     fechaEgreso: r.fecha_egreso ? String(r.fecha_egreso).slice(0, 10) : null,
   }
@@ -60,7 +60,7 @@ export interface PlantelLeido {
 /** LAS SEIS LECTURAS EN UNA TANDA, y la regla. */
 export async function leerPlantelDeLaQuincena(supabase: SupabaseClient, q: Quincena): Promise<PlantelLeido> {
   const [directorio, registros, lineas, recibos, jornales, cuiles, deprueba, tarifas, presentes, subcontratos] = await Promise.all([
-    supabase.from('persona_directorio').select('id, nombre_completo, en_la_empresa, fecha_ingreso, fecha_egreso, puesto'),
+    supabase.from('persona_directorio').select('id, nombre_completo, nombre_para_mostrar, en_la_empresa, fecha_ingreso, fecha_egreso, puesto'),
     leerRegistrosHH(supabase, { desde: q.desde, hasta: q.hasta, columnas: 'persona_id, fecha' }),
     supabase.from('liquidacion_quincena').select('liquidacion_linea(persona_id)').eq('desde', q.desde).eq('hasta', q.hasta),
     supabase.from('recibo_sueldo_linea').select('persona_id, cuil').eq('periodo', periodoDeRecibo(q)),

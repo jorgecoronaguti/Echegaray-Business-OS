@@ -222,7 +222,7 @@ export function BarraPlan({
               <select value={filtro.responsable} onChange={(e) => alFiltrar({ ...filtro, responsable: e.target.value })} className={CTRL} data-testid="filtro-responsable">
                 <option value="">todos</option>
                 <option value="sin">sin responsable</option>
-                {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>)}
+                {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p)}</option>)}
               </select>
             </Campo>
           </div>

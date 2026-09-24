@@ -1,0 +1,86 @@
+-- PRECARGA DEL NOMBRE PARA MOSTRAR (dueño, 24/09/2026: «sí» a «Emiliano Maldonado» en vez de «Maldonado
+-- Batista Emiliano Miguel»). Generada por un script de un solo uso sobre los datos de ese día, con la
+-- MEJOR fuente disponible por persona, en este orden:
+--   1. cuenta     · el nombre de su cuenta de usuario (perfiles.nombre), salvo la cuenta de demo;
+--   2. jornales   · el nombre de pila que usa la planilla JORNALES (jornales_bloque_persona.nombre_planilla),
+--                   verificado contra el legajo, + el primer apellido del legajo;
+--   3. heuristica · primer nombre + primer apellido deducidos del legajo (confianza BAJA: en un legajo
+--                   de 3 palabras no se sabe si son 1 apellido + 2 nombres o al revés).
+-- Los recibos NO son fuente: llevan el nombre legal, el mismo del legajo.
+-- `and nombre_para_mostrar is null`: nunca pisa lo que alguien ya corrigió a mano.
+update public.personas set nombre_para_mostrar = 'Cristian Aguero', nombre_para_mostrar_fuente = 'jornales' where id = '1ff87d94-0b78-4308-aff5-e0f4c6fbd553' and nombre_para_mostrar is null; -- AGUERO CRISTIAN DOMINGO
+update public.personas set nombre_para_mostrar = 'Emanuel Alaniz', nombre_para_mostrar_fuente = 'jornales' where id = '17fdcfb1-281a-40c5-bc3c-eeb0b1abc5b6' and nombre_para_mostrar is null; -- ALANIZ EMANUEL ARIEL
+update public.personas set nombre_para_mostrar = 'Carlos Castillo', nombre_para_mostrar_fuente = 'jornales' where id = '82d2cb78-9411-4a5e-851c-cc9d8e66e0b7' and nombre_para_mostrar is null; -- CASTILLO BENITEZ JUAN CARLOS
+update public.personas set nombre_para_mostrar = 'Jorge Corona Gutierrez', nombre_para_mostrar_fuente = 'cuenta' where id = 'afbb6549-ea0c-40c1-88a6-107eb08b4447' and nombre_para_mostrar is null; -- CORONA GUTIERREZ JORGE
+update public.personas set nombre_para_mostrar = 'Rodrigo Echegaray', nombre_para_mostrar_fuente = 'cuenta' where id = 'f1e5a5c6-4acd-4f35-8f86-af9b0dc28905' and nombre_para_mostrar is null; -- ECHEGARAY RODRIGO
+update public.personas set nombre_para_mostrar = 'Carlos Gonzalez', nombre_para_mostrar_fuente = 'jornales' where id = 'bf59433b-fde2-438e-beb4-8b6910926d44' and nombre_para_mostrar is null; -- GONZALEZ CARLOS SAMUEL
+update public.personas set nombre_para_mostrar = 'Emiliano Gonzalez', nombre_para_mostrar_fuente = 'jornales' where id = 'e3e21a50-5235-40de-b265-e8a1ab64ab90' and nombre_para_mostrar is null; -- GONZALEZ TOBARES EMILIANO
+update public.personas set nombre_para_mostrar = 'Juan Gonzalez', nombre_para_mostrar_fuente = 'jornales' where id = 'a7af0d4d-d79d-4ee0-bb87-c636fc76a3e3' and nombre_para_mostrar is null; -- GONZALEZ TOBARES JUAN GUILLERMO
+update public.personas set nombre_para_mostrar = 'Emiliano Maldonado', nombre_para_mostrar_fuente = 'cuenta' where id = '02533578-fcdb-43d4-b124-ced0ea0dab9a' and nombre_para_mostrar is null; -- MALDONADO BATISTA EMILIANO MIGUEL
+update public.personas set nombre_para_mostrar = 'Juan Pablo Nievas', nombre_para_mostrar_fuente = 'cuenta' where id = '518df458-3dc7-40ef-b49b-d33d26c1d4d3' and nombre_para_mostrar is null; -- NIEVAS VILLEGAS JUAN PABLO
+update public.personas set nombre_para_mostrar = 'Eduardo Ochoa', nombre_para_mostrar_fuente = 'jornales' where id = '67129902-4c36-4610-a58f-f4dc5454aed6' and nombre_para_mostrar is null; -- OCHOA EDUARDO ARIEL
+update public.personas set nombre_para_mostrar = 'Marcelo Pastran', nombre_para_mostrar_fuente = 'jornales' where id = '1fee0bee-a2ef-4470-9afc-e4a0bbfa768d' and nombre_para_mostrar is null; -- PASTRAN MARCELO IVAN
+update public.personas set nombre_para_mostrar = 'Jairo Petina', nombre_para_mostrar_fuente = 'jornales' where id = '61947a1c-71a6-4295-8932-158c80ec30f8' and nombre_para_mostrar is null; -- PETINA RODRIGUEZ JAIRO EMANUEL
+update public.personas set nombre_para_mostrar = 'Alexander Quiroga', nombre_para_mostrar_fuente = 'jornales' where id = 'cb03b834-b0a7-4645-acc8-20f7ef218555' and nombre_para_mostrar is null; -- QUIROGA ALEXANDER SEBASTIAN
+update public.personas set nombre_para_mostrar = 'Sebastian Quiroga', nombre_para_mostrar_fuente = 'jornales' where id = '48703f23-6bc3-4d95-a08c-b7a4a739bf50' and nombre_para_mostrar is null; -- QUIROGA SEBASTIAN ADOLFO
+update public.personas set nombre_para_mostrar = 'Sebastian Reta', nombre_para_mostrar_fuente = 'jornales' where id = 'b7f61a6e-8c14-43f7-832b-fbed3c03fdd6' and nombre_para_mostrar is null; -- RETA RAMON HECTOR SEBASTIAN
+update public.personas set nombre_para_mostrar = 'Diego Rosales', nombre_para_mostrar_fuente = 'jornales' where id = '4d0372ce-f299-4034-9c7f-846ddd0b8765' and nombre_para_mostrar is null; -- ROSALES DIEGO JOSE
+update public.personas set nombre_para_mostrar = 'Juan Tello', nombre_para_mostrar_fuente = 'jornales' where id = '7c4875a8-2a54-49a5-962d-21105423c7b9' and nombre_para_mostrar is null; -- TELLO JUAN ALBERTO
+update public.personas set nombre_para_mostrar = 'Leonardo Zogbe', nombre_para_mostrar_fuente = 'jornales' where id = '04c6c965-b50c-4cde-9eb0-4fa944483ef1' and nombre_para_mostrar is null; -- ZOGBE RAMOS WALTER LEONARDO
+update public.personas set nombre_para_mostrar = 'Diego Aballay', nombre_para_mostrar_fuente = 'heuristica' where id = '58168449-cbb4-4ca9-901e-39d2674394d9' and nombre_para_mostrar is null; -- ABALLAY DIEGO
+update public.personas set nombre_para_mostrar = 'Jose Aballay', nombre_para_mostrar_fuente = 'heuristica' where id = 'f8b4776e-e7fe-4e14-b784-ffd3c0e92ca3' and nombre_para_mostrar is null; -- ABALLAY JOSE
+update public.personas set nombre_para_mostrar = 'Leandro Aguirre', nombre_para_mostrar_fuente = 'jornales' where id = '0d1b4567-534a-4d45-93a2-08f567205813' and nombre_para_mostrar is null; -- AGUIRRE LEANDRO
+update public.personas set nombre_para_mostrar = 'Santiago Ahumada', nombre_para_mostrar_fuente = 'jornales' where id = '36b66956-aea0-452c-acc5-a9335375e8d3' and nombre_para_mostrar is null; -- AHUMADA SANTIAGO
+update public.personas set nombre_para_mostrar = 'Alejandro Avila', nombre_para_mostrar_fuente = 'heuristica' where id = '93dfb9f3-971e-417f-9efa-bf22be4bf7ba' and nombre_para_mostrar is null; -- AVILA ALEJANDRO LUIS
+update public.personas set nombre_para_mostrar = 'Maximiliano Balmaceda', nombre_para_mostrar_fuente = 'heuristica' where id = '8b63eaff-a639-4423-b0e6-76d4d7dd3f28' and nombre_para_mostrar is null; -- BALMACEDA GONZALEZ MAXIMILIANO A
+update public.personas set nombre_para_mostrar = 'Juan Bazan', nombre_para_mostrar_fuente = 'jornales' where id = 'eaf3313a-ecfd-4c9d-8527-7ee3ac83b916' and nombre_para_mostrar is null; -- BAZAN JUAN
+update public.personas set nombre_para_mostrar = 'Rodrigo Bronia', nombre_para_mostrar_fuente = 'jornales' where id = '31b5a856-3e4f-4f8b-97fe-0f7d2e294546' and nombre_para_mostrar is null; -- BRONIA JOFRE RODRIGO EMANUEL
+update public.personas set nombre_para_mostrar = 'Jonathan Bustos', nombre_para_mostrar_fuente = 'heuristica' where id = '322ab3cc-9ab2-4283-b4a9-5004852c39ac' and nombre_para_mostrar is null; -- BUSTOS OROSCO JONATHAN ERICK
+update public.personas set nombre_para_mostrar = 'Cesar Capelli', nombre_para_mostrar_fuente = 'heuristica' where id = '2dc1eb40-2e52-4ce6-adb1-a1545714d7da' and nombre_para_mostrar is null; -- CAPELLI CESAR
+update public.personas set nombre_para_mostrar = 'Gerson Castro', nombre_para_mostrar_fuente = 'heuristica' where id = '78802957-ac55-4d4f-9dad-93685f7326be' and nombre_para_mostrar is null; -- CASTRO GALVAN GERSON ULISES
+update public.personas set nombre_para_mostrar = 'Heber Castro', nombre_para_mostrar_fuente = 'heuristica' where id = '2802b05f-420a-4ec1-80f2-91ebae4ab3fc' and nombre_para_mostrar is null; -- CASTRO GALVAN HEBER LUCAS
+update public.personas set nombre_para_mostrar = 'Juan Castro', nombre_para_mostrar_fuente = 'heuristica' where id = '8cee8ce6-4e7b-4b8b-a64c-92e72c3c5efb' and nombre_para_mostrar is null; -- CASTRO JUAN MARCELO
+update public.personas set nombre_para_mostrar = 'Roberto Castro', nombre_para_mostrar_fuente = 'jornales' where id = '310b5e90-6335-44a2-859e-210847972326' and nombre_para_mostrar is null; -- CASTRO ROBERTO
+update public.personas set nombre_para_mostrar = 'Javier Contreras', nombre_para_mostrar_fuente = 'heuristica' where id = '4bd25b10-74b5-4ba0-a106-a31d252d69e9' and nombre_para_mostrar is null; -- CONTRERAS JAVIER
+update public.personas set nombre_para_mostrar = 'Braian Diaz', nombre_para_mostrar_fuente = 'jornales' where id = '93d13cca-4751-49cc-8494-61e14d9368f0' and nombre_para_mostrar is null; -- DIAZ BRAIAN
+update public.personas set nombre_para_mostrar = 'Carlos Diaz', nombre_para_mostrar_fuente = 'heuristica' where id = 'aba25379-a74a-41dc-9da3-9f19c8f7fd67' and nombre_para_mostrar is null; -- DIAZ CARLOS
+update public.personas set nombre_para_mostrar = 'Ramon Diaz', nombre_para_mostrar_fuente = 'heuristica' where id = '45934936-5f81-4656-b4f6-6d4cb5577f3e' and nombre_para_mostrar is null; -- DIAZ RAMON ORLANDO
+update public.personas set nombre_para_mostrar = 'Butierrez Facundo', nombre_para_mostrar_fuente = 'heuristica' where id = 'ed47f3ef-f222-4561-8fa0-7e639d315bec' and nombre_para_mostrar is null; -- FACUNDO BUTIERREZ
+update public.personas set nombre_para_mostrar = 'Javier Fernandez', nombre_para_mostrar_fuente = 'jornales' where id = 'ec3f6b5f-239e-4300-b4ff-f1c2a38a9bac' and nombre_para_mostrar is null; -- FERNANDEZ JAVIER
+update public.personas set nombre_para_mostrar = 'Alejandro Ferreyra', nombre_para_mostrar_fuente = 'heuristica' where id = '1c9ee7ec-a80e-4a20-9db1-c0863bdb545b' and nombre_para_mostrar is null; -- FERREYRA ALEJANDRO
+update public.personas set nombre_para_mostrar = 'Ezequiel Ferreyra', nombre_para_mostrar_fuente = 'heuristica' where id = 'ca63f348-d5c2-4b24-85e7-18a10d822b45' and nombre_para_mostrar is null; -- FERREYRA EZEQUIEL
+update public.personas set nombre_para_mostrar = 'Rodolfo Ferreyra', nombre_para_mostrar_fuente = 'heuristica' where id = '66d3f4bc-fb0e-4a7c-a914-7748a8ab6706' and nombre_para_mostrar is null; -- FERREYRA RODOLFO
+update public.personas set nombre_para_mostrar = 'Alejandro Flores', nombre_para_mostrar_fuente = 'heuristica' where id = '61c6fc62-6cd6-40da-9dad-60a28bc8fefb' and nombre_para_mostrar is null; -- FLORES ALEJANDRO NAZARENO
+update public.personas set nombre_para_mostrar = 'Guadalupe Galvan', nombre_para_mostrar_fuente = 'jornales' where id = '5a54808d-adef-415b-bc15-20c7073b4aee' and nombre_para_mostrar is null; -- GALVAN GUADALUPE
+update public.personas set nombre_para_mostrar = 'Abel Gonzales', nombre_para_mostrar_fuente = 'heuristica' where id = 'c267f77a-ff35-4551-864c-aed021f66161' and nombre_para_mostrar is null; -- GONZALES ABEL VALENTIN
+update public.personas set nombre_para_mostrar = 'Alejandro Gordillo', nombre_para_mostrar_fuente = 'heuristica' where id = '8ea81af1-ba17-432e-b739-1f12e4c552c1' and nombre_para_mostrar is null; -- GORDILLO ALEJANDRO
+update public.personas set nombre_para_mostrar = 'Pablo Isaguirre', nombre_para_mostrar_fuente = 'heuristica' where id = '28e64911-e536-43ae-a965-ebdd6423a253' and nombre_para_mostrar is null; -- ISAGUIRRE PABLO MARCOS
+update public.personas set nombre_para_mostrar = 'Ismael Jofre', nombre_para_mostrar_fuente = 'jornales' where id = '04be96ba-4208-4646-a7ea-5c7a7a608103' and nombre_para_mostrar is null; -- JOFRE ISMAEL
+update public.personas set nombre_para_mostrar = 'Sergio Lara', nombre_para_mostrar_fuente = 'jornales' where id = 'af1631a0-0f60-4e2c-bfc3-4834d6834c60' and nombre_para_mostrar is null; -- LARA SERGIO
+update public.personas set nombre_para_mostrar = 'Julio Moreno', nombre_para_mostrar_fuente = 'heuristica' where id = '78bc2148-2302-4576-b787-e48d469747a9' and nombre_para_mostrar is null; -- MORENO JULIO MIGUEL
+update public.personas set nombre_para_mostrar = 'Facundo Narbaez', nombre_para_mostrar_fuente = 'heuristica' where id = 'b736992b-ffd7-4b12-89e1-25165798c580' and nombre_para_mostrar is null; -- NARBAEZ FACUNDO S
+update public.personas set nombre_para_mostrar = 'Matias Navarro', nombre_para_mostrar_fuente = 'jornales' where id = '2fedd608-ab28-45c6-bcc6-e031885d2bbd' and nombre_para_mostrar is null; -- NAVARRO MATIAS JESUS
+update public.personas set nombre_para_mostrar = 'Ignacio Nievas', nombre_para_mostrar_fuente = 'jornales' where id = 'd25bc84f-bc3e-4f88-b4d0-2465a2089776' and nombre_para_mostrar is null; -- NIEVAS IGNACIO
+update public.personas set nombre_para_mostrar = 'Nicolas Ochoa', nombre_para_mostrar_fuente = 'heuristica' where id = 'ac4173b2-1874-4bbe-b68e-13770a1e07e3' and nombre_para_mostrar is null; -- OCHOA NICOLAS
+update public.personas set nombre_para_mostrar = 'Jaime Olivar', nombre_para_mostrar_fuente = 'heuristica' where id = '1e364e7f-71c5-44e7-a2a6-b4c60c320804' and nombre_para_mostrar is null; -- OLIVAR JAIME
+update public.personas set nombre_para_mostrar = 'Jose Olivar', nombre_para_mostrar_fuente = 'heuristica' where id = 'eb03101f-7a64-4d7d-b1ee-0d96c33c6000' and nombre_para_mostrar is null; -- OLIVAR JOSE RAMON
+update public.personas set nombre_para_mostrar = 'Ruben Palacios', nombre_para_mostrar_fuente = 'heuristica' where id = '1831cf88-5f5f-4aad-9d31-f6eaa42b2de6' and nombre_para_mostrar is null; -- PALACIOS RUBEN
+update public.personas set nombre_para_mostrar = 'Alexander Peralta', nombre_para_mostrar_fuente = 'heuristica' where id = 'c8bfbd76-e23a-44a5-8493-8d44cff6b594' and nombre_para_mostrar is null; -- PERALTA ALEXANDER RICARDO
+update public.personas set nombre_para_mostrar = 'Ricardo Peralta', nombre_para_mostrar_fuente = 'heuristica' where id = '42c99e48-f429-45eb-8be8-fd109a299f2f' and nombre_para_mostrar is null; -- PERALTA RICARDO
+update public.personas set nombre_para_mostrar = 'Luis Poblete', nombre_para_mostrar_fuente = 'heuristica' where id = '8ceb86d2-faed-4bec-b3ec-86951fb71225' and nombre_para_mostrar is null; -- POBLETE LUIS
+update public.personas set nombre_para_mostrar = 'Jeremias Posse', nombre_para_mostrar_fuente = 'heuristica' where id = '655828d4-707f-4d1d-b51b-35871795e3c1' and nombre_para_mostrar is null; -- POSSE OROSCO JEREMIAS GABRIEL
+update public.personas set nombre_para_mostrar = 'Julio Quiroga', nombre_para_mostrar_fuente = 'heuristica' where id = 'af5b629a-6d71-4439-b92d-f977ec3640bf' and nombre_para_mostrar is null; -- QUIROGA JULIO CESAR
+update public.personas set nombre_para_mostrar = 'Mauricio Quiroga', nombre_para_mostrar_fuente = 'jornales' where id = 'bba061ce-3681-4a6d-a5d7-5335fbc0d659' and nombre_para_mostrar is null; -- QUIROGA MAURICIO
+update public.personas set nombre_para_mostrar = 'Facundo Quiroz', nombre_para_mostrar_fuente = 'heuristica' where id = '57960478-e253-42ac-834c-16a5b493a075' and nombre_para_mostrar is null; -- QUIROZ FACUNDO MIGUEL
+update public.personas set nombre_para_mostrar = 'Facundo Ramos', nombre_para_mostrar_fuente = 'heuristica' where id = '96067b81-c1b6-44fd-ba4c-c1ac48980a84' and nombre_para_mostrar is null; -- RAMOS FACUNDO
+update public.personas set nombre_para_mostrar = 'Fernando Rios', nombre_para_mostrar_fuente = 'jornales' where id = 'f0e1a2fe-c321-4c9e-b8a1-3d41e9e53b98' and nombre_para_mostrar is null; -- RIOS FERNANDO
+update public.personas set nombre_para_mostrar = 'Carlos Rosales', nombre_para_mostrar_fuente = 'heuristica' where id = 'a3fda1c9-e9f8-4e6c-ab70-2d9ff89d366f' and nombre_para_mostrar is null; -- ROSALES CARLOS ENRIQUE
+update public.personas set nombre_para_mostrar = 'Ivan Rosales', nombre_para_mostrar_fuente = 'heuristica' where id = '0805d266-f645-4b21-8a26-33b157149c25' and nombre_para_mostrar is null; -- ROSALES IVAN
+update public.personas set nombre_para_mostrar = 'Facundo Ruartes', nombre_para_mostrar_fuente = 'heuristica' where id = '71c3cdb1-a3ab-4281-9e44-b246685621f5' and nombre_para_mostrar is null; -- RUARTES FACUNDO OSCAR
+update public.personas set nombre_para_mostrar = 'Mauricio Saavedra', nombre_para_mostrar_fuente = 'heuristica' where id = '273215c4-57e2-45bc-95ee-6cd1c0f63ab1' and nombre_para_mostrar is null; -- SAAVEDRA MAURICIO MIGUEL
+update public.personas set nombre_para_mostrar = 'Carlos Salinas', nombre_para_mostrar_fuente = 'heuristica' where id = 'b555c1be-28d3-4647-a9b7-f8b9a2734f66' and nombre_para_mostrar is null; -- SALINAS CARLOS
+update public.personas set nombre_para_mostrar = 'Leonardo Sanchez', nombre_para_mostrar_fuente = 'heuristica' where id = '9ebf35a8-ccd3-4611-b477-837d15ffdddd' and nombre_para_mostrar is null; -- SANCHEZ ACOSTA LEONARDO G
+update public.personas set nombre_para_mostrar = 'Walter Santander', nombre_para_mostrar_fuente = 'jornales' where id = '5f9765d7-7021-4811-bf7a-5e5ad5596c76' and nombre_para_mostrar is null; -- SANTANDER WALTER
+update public.personas set nombre_para_mostrar = 'Raul Sosa', nombre_para_mostrar_fuente = 'jornales' where id = 'b8c1cad7-af7e-48b6-ba60-d17181032a8d' and nombre_para_mostrar is null; -- SOSA NESTOR RAUL
+update public.personas set nombre_para_mostrar = 'Isaias Videla', nombre_para_mostrar_fuente = 'jornales' where id = 'a6706975-41da-4dce-9e24-826752b978ed' and nombre_para_mostrar is null; -- VIDELA ISAIAS
+update public.personas set nombre_para_mostrar = 'Santiago Videla', nombre_para_mostrar_fuente = 'heuristica' where id = 'f00aa51e-1d59-449c-9d9f-dcf7585dac24' and nombre_para_mostrar is null; -- VIDELA SANTIAGO

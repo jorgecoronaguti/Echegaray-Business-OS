@@ -121,7 +121,7 @@ function FormAsignar({ personas, cuadrillas, actividades, asignar }: {
         <Campo rotulo="Persona" className="col-span-2">
           <select name="persona_id" required className={CAMPO} defaultValue="">
             <option value="" disabled>elegir del legajo</option>
-            {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>)}
+            {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p)}</option>)}
           </select>
         </Campo>
         <Campo rotulo="Rol">

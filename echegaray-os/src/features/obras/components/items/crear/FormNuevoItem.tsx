@@ -154,7 +154,7 @@ export function FormNuevoItem({
           <Campo rotulo="Responsable" alto={alto}>
             <select value={responsableId} onChange={(e) => setResponsableId(e.target.value)} data-testid="nuevo-responsable" style={estiloControl(alto)}>
               <option value="">sin asignar</option>
-              {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>)}
+              {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p)}</option>)}
             </select>
           </Campo>
           <Campo rotulo="Comentario" alto={alto}>

@@ -70,7 +70,7 @@ export function horaDe(iso: string | null): string | null {
 
 const deFila = (f: FilaPresencia): GenteEnObra => ({
   personaId: f.persona_id,
-  nombre: nombreDePersona(f.nombre_completo),
+  nombre: nombreDePersona(f),
   rol: f.categoria ?? f.puesto ?? null,
   entrada: horaDe(f.entrada),
   estado: f.estado,

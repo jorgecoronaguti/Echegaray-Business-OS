@@ -200,7 +200,7 @@ export default async function JefePersonasPage({
                       </span>
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontSize: 14, color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {nombreDePersona(p.nombre_completo)}
+                          {nombreDePersona(p)}
                         </div>
                         <div style={{
                           display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, marginTop: 1,
@@ -225,7 +225,7 @@ export default async function JefePersonasPage({
                           target="_blank"
                           rel="noreferrer"
                           data-testid="ver-ubicacion"
-                          aria-label={`Ver en el mapa dónde marcó ${nombreDePersona(p.nombre_completo)}`}
+                          aria-label={`Ver en el mapa dónde marcó ${nombreDePersona(p)}`}
                           style={{
                             width: 44, height: 44, marginRight: -9, borderRadius: 22, display: 'flex',
                             alignItems: 'center', justifyContent: 'center', color: C.muted, flexShrink: 0,
@@ -272,7 +272,7 @@ export default async function JefePersonasPage({
                   </span>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontSize: 14, color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {nombreDePersona(e.nombre_completo)}
+                      {nombreDePersona(e)}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: C.warn, marginTop: 1 }}>
                       <Icono nombre="reloj" tamano={13} />

@@ -30,10 +30,10 @@ export async function getPersonas(supabase: SupabaseClient): Promise<ServiceResu
     // SIN `puesto`: `persona_plantel` publica CINCO columnas y ninguna más — el contrato lo fija
     // `orquestador/lib/vistas-security-invoker.test.mjs`. Pedir una columna que la vista no tiene
     // no devuelve null: devuelve error, y el selector de asignación queda VACÍO sin decir por qué.
-    .select('id, nombre_completo, categoria, especialidad, fecha_egreso')
+    .select('id, nombre_completo, nombre_para_mostrar, categoria, especialidad, fecha_egreso')
     .order('nombre_completo', { ascending: true })
   if (error) return { data: null, error: error.message }
-  return { data: ((data ?? []) as Persona[]).map((p) => ({ ...p, nombre_completo: nombreDePersonaONull(p.nombre_completo) ?? p.nombre_completo })), error: null }
+  return { data: ((data ?? []) as Persona[]).map((p) => ({ ...p, nombre_completo: nombreDePersonaONull(p) ?? p.nombre_completo })), error: null }
 }
 
 /** El catálogo de causas de desvío para la hora improductiva (§19, 22/08). Sólo las activas. */
@@ -105,9 +105,9 @@ async function plantelDe(supabase: SupabaseClient, personaIds: (string | null)[]
   const m = new Map<string, Omit<Fila, 'id'>>()
   if (ids.length === 0) return m
   const { data } = await supabase
-    .from('persona_plantel').select('id, nombre_completo, especialidad, categoria').in('id', ids)
+    .from('persona_plantel').select('id, nombre_completo, nombre_para_mostrar, especialidad, categoria').in('id', ids)
   for (const p of (data ?? []) as Fila[]) {
-    m.set(p.id, { nombre_completo: nombreDePersonaONull(p.nombre_completo), especialidad: p.especialidad, categoria: p.categoria })
+    m.set(p.id, { nombre_completo: nombreDePersonaONull(p), especialidad: p.especialidad, categoria: p.categoria })
   }
   return m
 }

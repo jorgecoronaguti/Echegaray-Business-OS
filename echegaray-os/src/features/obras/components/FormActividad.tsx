@@ -26,7 +26,7 @@ function SelectResponsable({ personas, valor }: { personas: Persona[]; valor: st
   return (
     <select name="responsable_id" defaultValue={valor ?? ''} className={CTRL}>
       <option value="">sin responsable asignado</option>
-      {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>)}
+      {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p)}</option>)}
     </select>
   )
 }

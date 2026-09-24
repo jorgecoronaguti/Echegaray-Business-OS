@@ -77,7 +77,7 @@ export async function getCargaDelDia(
 ): Promise<{ data: DatosDeLaCarga | null; error: string | null }> {
   const [plantel, presencias, horas, asignaciones, obras, cierre, certificados, codigos] = await Promise.all([
     // EL PLANTEL ES `en_la_empresa`, no la fecha de egreso — mismo criterio que la solapa Plantel.
-    supabase.from('persona_directorio').select('id, nombre_completo, categoria, puesto')
+    supabase.from('persona_directorio').select('id, nombre_completo, nombre_para_mostrar, categoria, puesto')
       .eq('en_la_empresa', true).order('nombre_completo'),
     leerPresencias(supabase, fecha),
     supabase.from('registros_hh').select('persona_id, obra_canonica_id, horas, tipo_hora')
@@ -104,7 +104,7 @@ export async function getCargaDelDia(
       personas: sinDireccion((plantel.data ?? []) as { id: string; nombre_completo: string; categoria: string | null; puesto: string | null }[])
         .map((p) => ({
           id: p.id,
-          nombre: nombreDePersona(p.nombre_completo),
+          nombre: nombreDePersona(p),
           categoria: (p.categoria ?? '').trim().replace('_', ' ') || null,
           esJefe: esJefeDeObra(p.puesto),
         })),

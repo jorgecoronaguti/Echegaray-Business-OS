@@ -141,7 +141,7 @@ export function conVinculos(
   for (const l of legajos) {
     sumar(l.drive_file_id, {
       clase: 'persona',
-      nombre: nombreDePersona(l.personas?.nombre_completo),
+      nombre: nombreDePersona(l.personas),
       detalle: etiquetaLegajo(l.tipo_documento),
       href: l.persona_id ? `/administracion/personas/${l.persona_id}` : null,
       legajoId: l.id,

@@ -18,6 +18,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { faltaMigracion } from '../../herramientas/logica/falta-migracion'
 import type { DevolucionEstado, EntregaSaldo, TicketRendicion } from './tipos'
 import { nombreDePersona, nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
+import { nombresDePersonas } from '../../../shared/personas/nombresDePersonas.ts'
 
 export type Lectura<T> =
   | { estado: 'ok'; dato: T }
@@ -52,7 +53,9 @@ export async function getMisEntregas(supabase: SupabaseClient, personaId: string
     .neq('estado', 'anulada')
     .order('fecha', { ascending: true })
   if (error) return faltaMigracion(error) ? { estado: 'sin-publicar' } : { estado: 'error', error: error.message }
+  const nombres = await nombresDePersonas(supabase, [personaId])
   const entregas = ((data ?? []) as unknown as Record<string, unknown>[]).map(numerosDeEntrega)
+    .map((e) => ({ ...e, persona: nombres.get(e.persona_id) ?? e.persona }))
   return { estado: 'ok', dato: await conQuienEntrego(supabase, entregas) }
 }
 

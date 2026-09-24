@@ -25,8 +25,13 @@ export function plano(s: string | null | undefined): string {
  * en blanco apenas se borra el campo— y por eso está declarado acá y probado.
  */
 export function contiene(texto: string | null | undefined, q: string): boolean {
-  const buscado = plano(q)
-  return buscado === '' || plano(texto).includes(buscado)
+  // PALABRA POR PALABRA Y EN CUALQUIER ORDEN (dueño 24/09, sobre «Javier Sánchez - San Francisco -
+  // IMOTOR»: «que lo busquemos como sea»). «sanchez javier», «imotor» o «san francisco» lo encuentran;
+  // cada palabra tiene que estar, así que filtrar sigue filtrando.
+  const palabras = plano(q).split(/\s+/).filter(Boolean)
+  if (!palabras.length) return true
+  const donde = plano(texto)
+  return palabras.every((p) => donde.includes(p))
 }
 
 /** Busca sobre varios campos como si fueran uno solo: «juan albañil» encuentra al Juan albañil. */

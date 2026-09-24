@@ -46,10 +46,19 @@ export function CamposIdentidad({ persona }: { persona: Persona | null }) {
       {/* UN SOLO CAMPO, y no `nombre` + `apellido`: las 30 fichas reales están cargadas como un
           texto único («PEREZ JUAN CARLOS») y partirlo obliga a adivinar dónde termina el apellido.
           El motivo vive acá, en el código, y no como un párrafo permanente debajo del campo. */}
-      <Campo label="Nombre y apellido" ancho="col-span-2">
+      <Campo label="Nombre y apellido (legajo)" ancho="col-span-2">
         <input
           name="nombre_completo" required maxLength={200} className={CTRL}
           defaultValue={persona?.nombre_completo ?? ''} data-testid="persona-nombre"
+        />
+      </Campo>
+      {/* EL NOMBRE CON QUE SE LA LLAMA EN TODA LA APP (dueño 24/09). El de arriba es el legal y va a
+          recibos y papeles; éste es el que ven las pantallas. Vacío = se usa el legajo. */}
+      <Campo label="Nombre para mostrar" ancho="col-span-2" ayuda="Como se la nombra en la app: «Emiliano Maldonado».">
+        <input
+          name="nombre_para_mostrar" maxLength={80} className={CTRL}
+          defaultValue={persona?.nombre_para_mostrar ?? ''}
+          data-testid="persona-nombre-para-mostrar"
         />
       </Campo>
       <Texto name="dni" label="DNI" valor={persona?.dni ?? null} max={12} />

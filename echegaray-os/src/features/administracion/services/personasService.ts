@@ -22,6 +22,7 @@ import type {
   AsignacionDePersona, DocumentoLegajo, Persona, PersonaEnDirectorio, ServiceResult,
 } from '../types'
 import { sinDireccion } from './vocabularioPersona.ts'
+import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
 
 // LAS CATORCE COLUMNAS DEL LISTADO, NOMBRADAS UNA POR UNA.
 //
@@ -31,11 +32,11 @@ import { sinDireccion } from './vocabularioPersona.ts'
 // el asterisco se la lleva al navegador sin que nadie lo decida. La lista explícita convierte esa
 // garantía en algo que este archivo sostiene solo.
 const COLUMNAS_DIRECTORIO =
-  'id, nombre_completo, categoria, especialidad, puesto, legajo, fecha_ingreso, fecha_egreso, ' +
+  'id, nombre_completo, nombre_para_mostrar, categoria, especialidad, puesto, legajo, fecha_ingreso, fecha_egreso, ' +
   'cuadrilla_id, cuadrilla, obra_actual_id, obra_actual, rol_en_obra, asignada_desde, en_la_empresa'
 
 const COLUMNAS_FICHA =
-  'id, nombre_completo, dni, cuil, fecha_nacimiento, nacionalidad, telefono, email, domicilio, ' +
+  'id, nombre_completo, nombre_para_mostrar, dni, cuil, fecha_nacimiento, nacionalidad, telefono, email, domicilio, ' +
   'contacto_emergencia, contacto_emergencia_telefono, fecha_ingreso, fecha_egreso, ' +
   'convenio_colectivo, categoria, especialidad, puesto, modalidad_liquidacion, notas, ' +
   'legajo, en_la_empresa, drive_folder_id'
@@ -88,16 +89,18 @@ export async function getDirectorio(
 
   // Las comas separan condiciones en un `or` de PostgREST: un término con coma partiría el filtro
   // en dos y devolvería resultados de más.
+  // EL TEXTO SE FILTRA EN MEMORIA, no con `ilike`: `ilike` no ignora las tildes ni el orden de las
+  // palabras, y el nombre para mostrar («Emiliano Maldonado») no está en el legajo («MALDONADO
+  // BATISTA EMILIANO MIGUEL»). El plantel son decenas de filas. El documento sigue por la base.
   const busqueda = q?.replace(/[,()]/g, ' ').trim()
-  if (busqueda) {
-    const ids = await idsPorDocumento(supabase, busqueda)
-    const condiciones = [`nombre_completo.ilike.%${busqueda}%`, `cuadrilla.ilike.%${busqueda}%`]
-    if (ids.length > 0) condiciones.push(`id.in.(${ids.join(',')})`)
-    consulta = consulta.or(condiciones.join(','))
-  }
+  const ids = busqueda ? new Set(await idsPorDocumento(supabase, busqueda)) : null
 
-  const { data, error } = await consulta.order('nombre_completo', { ascending: true })
+  const { data: todas, error } = await consulta.order('nombre_completo', { ascending: true })
   if (error) return { data: null, error: error.message }
+  const data = busqueda
+    ? ((todas ?? []) as unknown as (PersonaEnDirectorio & { cuadrilla?: string | null })[]).filter((p) =>
+      ids?.has(p.id) || contieneEnAlguno([p.nombre_completo, p.nombre_para_mostrar, p.cuadrilla], busqueda))
+    : todas
   // El casteo va por `unknown`: al nombrar las columnas, PostgREST deja de inferir la forma de la
   // fila y el cliente la tipa como un error genérico. El contrato de columnas de la vista lo fija
   // `orquestador/lib/vistas-security-invoker.test.mjs`, no este archivo.

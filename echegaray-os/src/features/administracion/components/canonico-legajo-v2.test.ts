@@ -42,7 +42,7 @@ test('el legajo abre con la miga y el nombre, sin slab y sin PageShell', () => {
 })
 
 test('el nombre se dibuja en oración pero el dato no se toca', () => {
-  assert.match(codigoPagina(), /nombreDePersona\(persona\.nombre_completo\)/)
+  assert.match(codigoPagina(), /nombreDePersona\(persona\)/)
 })
 
 test('dar de baja y reincorporar van por `args`, nunca por una arrow', () => {

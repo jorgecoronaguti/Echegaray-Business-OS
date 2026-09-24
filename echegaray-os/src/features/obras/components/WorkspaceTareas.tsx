@@ -119,7 +119,7 @@ export async function WorkspaceTareas({
       getPerfilActual(supabase),
     ])
   const nombrePorPersona: Record<string, string> = {}
-  for (const p of personasRes.data ?? []) nombrePorPersona[p.id] = nombreDePersona(p.nombre_completo)
+  for (const p of personasRes.data ?? []) nombrePorPersona[p.id] = nombreDePersona(p)
   const docsPorActividad: Record<string, { id: string; nombre: string; url: string }[]> = {}
   for (const d of documentosRes.data ?? []) {
     if (!d.actividad_id) continue

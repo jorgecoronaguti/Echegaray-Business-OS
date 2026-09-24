@@ -138,7 +138,7 @@ export async function getDatosDeLaSolapaHoras(
   const [directorio, personas, tarifas, hh, mensuales, presencias, legajos, adelantos, cabeceras, correcciones] =
     await Promise.all([
       supabase.from('persona_directorio').select(
-        'id, nombre_completo, en_la_empresa, categoria, especialidad, puesto, fecha_ingreso, ' +
+        'id, nombre_completo, nombre_para_mostrar, en_la_empresa, categoria, especialidad, puesto, fecha_ingreso, ' +
         'fecha_egreso, cuadrilla, obra_actual, rol_en_obra, asignada_desde, legajo'),
       // ═══ EL LEGAJO SE LEE POR `persona_legajo`, NUNCA POR `personas` ═══
       //
@@ -252,7 +252,7 @@ export async function getDatosDeLaSolapaHoras(
   return {
     personas: directorioFilas.map((p) => ({
       id: p.id,
-      nombre: nombreDePersona(p.nombre_completo),
+      nombre: nombreDePersona(p),
       // EL MISMO CORTE QUE EL PLANTEL Y LA ASISTENCIA: `esJefeDeObra(puesto)`, una sola definición.
       esJefe: esJefeDeObra(p.puesto),
       valorHora: tarifaDe.get(p.id)?.valorHora ?? null,
@@ -341,7 +341,7 @@ function armarPersona(
   const convenio = l?.convenio_colectivo ?? null
   return {
     id: p.id,
-    nombre: nombreDePersona(p.nombre_completo),
+    nombre: nombreDePersona(p),
     numeroLegajo: p.legajo == null ? null : String(p.legajo),
     valorHora,
     convenio,

@@ -241,12 +241,12 @@ export function FormIndividual({
             <option value="" disabled>elegir del plantel</option>
             {acá.length > 0 && (
               <optgroup label="En esta obra">
-                {acá.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>)}
+                {acá.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p)}</option>)}
               </optgroup>
             )}
             {resto.length > 0 && (
               <optgroup label={acá.length > 0 ? 'Resto del plantel' : 'Plantel'}>
-                {resto.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>)}
+                {resto.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p)}</option>)}
               </optgroup>
             )}
           </select>

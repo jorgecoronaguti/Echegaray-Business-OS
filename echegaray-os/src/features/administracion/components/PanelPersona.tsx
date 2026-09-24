@@ -125,7 +125,7 @@ export function PanelPersona({
             {esAlta ? 'Nueva persona' : egresada ? 'Ya no está en el plantel' : 'En el plantel'}
           </p>
           <p className="truncate text-[14px] font-semibold text-ink">
-            {nombreDePersonaONull(persona?.nombre_completo) ?? 'Cargar una persona'}
+            {nombreDePersonaONull(persona) ?? 'Cargar una persona'}
           </p>
         </div>
         <Link href={cerrarHref} data-testid="cerrar-panel" className="shrink-0 text-[12px] text-muted hover:text-ink">

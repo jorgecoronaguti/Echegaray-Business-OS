@@ -53,7 +53,7 @@ async function leerObras(supabase: SupabaseClient): Promise<ObraIndice[]> {
 async function nombresDePersonas(supabase: SupabaseClient, lecs: LecturaUso[] | null): Promise<Record<string, string>> {
   const ids = [...new Set((lecs ?? []).map((l) => l.operador_persona_id).filter((x): x is string => !!x))]
   if (!ids.length) return {}
-  const { data } = await supabase.from('personas').select('id, nombre_completo').in('id', ids)
+  const { data } = await supabase.from('personas').select('id, nombre_completo, nombre_para_mostrar').in('id', ids)
   const out: Record<string, string> = {}
   for (const p of (data ?? []) as { id: string; nombre_completo: string | null }[]) if (p.nombre_completo) out[p.id] = p.nombre_completo
   return out
@@ -63,10 +63,10 @@ async function nombresDePersonas(supabase: SupabaseClient, lecs: LecturaUso[] | 
 export async function leerOperadores(): Promise<{ id: string; nombre: string }[]> {
   try {
     const supabase = await createClient()
-    const { data } = await supabase.from('personas').select('id, nombre_completo')
+    const { data } = await supabase.from('personas').select('id, nombre_completo, nombre_para_mostrar')
       .eq('en_la_empresa', true).order('nombre_completo').limit(500)   // las de prueba las esconde la RLS de personas
     return ((data ?? []) as { id: string; nombre_completo: string | null }[])
-      .filter((p) => p.nombre_completo).map((p) => ({ id: p.id, nombre: nombreDePersona(p.nombre_completo) }))
+      .filter((p) => p.nombre_completo).map((p) => ({ id: p.id, nombre: nombreDePersona(p) }))
   } catch {
     return []
   }

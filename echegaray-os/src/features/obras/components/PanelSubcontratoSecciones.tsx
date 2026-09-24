@@ -182,7 +182,7 @@ export function PersonalExterno({ paquete, accion, hoyISO }: {
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-[10px] font-medium text-muted">
                 {iniciales(g.nombre_completo)}
               </span>
-              <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-soft">{nombreDePersona(g.nombre_completo)}</span>
+              <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-soft">{nombreDePersona(g)}</span>
               <Estado tono={sinArt ? 'neg' : 'pos'} clave={sinArt ? 'sin_art' : 'alta_ok'}>
                 {sinArt ? 'sin ART' : (g.alta_afip ? 'alta ok' : 'ART ok')}
               </Estado>

@@ -106,7 +106,7 @@ export function hoyEnObra(asignaciones: AsignadoDeObra[], marcas: MarcaDelDia[])
     const marca = porPersona.get(a.persona_id) ?? null
     lista.push({
       personaId: a.persona_id,
-      nombre: nombreDePersona(a.persona_nombre ?? marca?.nombre_completo),
+      nombre: a.persona_nombre ? nombreDePersona(a.persona_nombre) : nombreDePersona(marca),
       rol: marca?.categoria ?? marca?.puesto ?? a.rol,
       marca,
       asignado: true,
@@ -122,7 +122,7 @@ export function hoyEnObra(asignaciones: AsignadoDeObra[], marcas: MarcaDelDia[])
     const lista = filasPorCuadrilla.get(SIN_CUADRILLA) ?? []
     lista.push({
       personaId,
-      nombre: nombreDePersona(marca.nombre_completo),
+      nombre: nombreDePersona(marca),
       rol: marca.categoria ?? marca.puesto,
       marca,
       asignado: false,

@@ -64,7 +64,7 @@ export async function TabPlanilla({ obraId }: { obraId: string }) {
           estado_operativo: String(c.estado_operativo ?? ''),
         }))}
         historias={historias.data ?? []}
-        personas={(personas.data ?? []).map((p) => ({ id: p.id, nombre: nombreDePersona(p.nombre_completo) }))}
+        personas={(personas.data ?? []).map((p) => ({ id: p.id, nombre: nombreDePersona(p) }))}
         activos={(activos.data ?? []).map((a) => ({ id: a.id, nombre: a.nombre }))}
         fallas={fallas}
       />

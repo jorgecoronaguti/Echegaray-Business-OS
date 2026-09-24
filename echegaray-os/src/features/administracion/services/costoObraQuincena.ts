@@ -145,7 +145,7 @@ export async function getCostoObraQuincena(
     supabase.rpc('costo_mo_quincena', { p_desde: q.desde }),
     supabase.from('obra_canonica').select('id, nombre'),
     getManoDeObraPresupuestada(supabase),
-    supabase.from('persona_directorio').select('id, nombre_completo'),
+    supabase.from('persona_directorio').select('id, nombre_completo, nombre_para_mostrar'),
     codigosDeObra(supabase, null),
   ])
   const errores: Falla[] = []
@@ -157,7 +157,7 @@ export async function getCostoObraQuincena(
   }
   if (oep.error) errores.push(oep.error)
   const rotulos = new Map((canonicas.data ?? []).map((o) => [String(o.id), rotuloDeObra({ nombre: String(o.nombre ?? o.id), codigo: codigos.get(String(o.id)) })]))
-  const nombres = new Map((personas.data ?? []).map((p) => [String(p.id), nombreDePersonaONull(p.nombre_completo as string | null) ?? '']))
+  const nombres = new Map((personas.data ?? []).map((p) => [String(p.id), nombreDePersonaONull(p as { nombre_completo?: string | null; nombre_para_mostrar?: string | null }) ?? '']))
   const presupuesto = oep.presupuesto
   const filas = filasDeCosto(costo.data)
   return {

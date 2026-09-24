@@ -8,7 +8,7 @@ import { PantallaEmpleado, Seccion } from '@/features/empleado/components/ShellE
 import { Dato, Fila, Nada } from '@/features/empleado/components/Filas'
 import { getMiLegajo } from '@/features/empleado/services/empleadoService'
 import { legible } from '@/features/empleado/services/fecha'
-import { nombreDePersona } from '../../../../shared/personas/nombre.ts'
+import { nombreLegal } from '../../../../shared/personas/nombre.ts'
 
 // «MI LEGAJO» — identidad, situación laboral e historial de asignaciones.
 //
@@ -51,7 +51,7 @@ export default async function MiLegajoPage() {
         <>
           <Seccion titulo="IDENTIDAD">
             <div data-testid="identidad">
-              <Dato rotulo="Nombre" valor={nombreDePersona(l.nombre_completo)} />
+              <Dato rotulo="Nombre" valor={(nombreLegal(l.nombre_completo) ?? 'sin nombre en el legajo')} />
               <Dato rotulo="DNI" valor={l.dni} />
               <Dato rotulo="CUIL" valor={l.cuil} />
               <Dato rotulo="Nacimiento" valor={dmy(l.fecha_nacimiento)} />

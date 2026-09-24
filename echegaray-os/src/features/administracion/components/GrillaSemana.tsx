@@ -74,7 +74,7 @@ export function GrillaSemana({ filas, dias }: { filas: FilaSemana[]; dias: strin
                   prefetch={false}
                   className="text-[13px] text-ink hover:underline"
                 >
-                  {nombreDePersona(f.persona.nombre_completo)}
+                  {nombreDePersona(f.persona)}
                 </Link>
               </Td>
               {f.celdas.map((c) => <CeldaDia key={c.fecha} c={c} />)}

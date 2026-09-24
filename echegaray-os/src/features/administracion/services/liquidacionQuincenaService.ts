@@ -152,7 +152,7 @@ export async function getLiquidacionDeLaQuincena(
       // decidiera por su cuenta quién es jefe, habría tantas respuestas como pantallas.
       // `fecha_ingreso` Y `fecha_egreso` VIAJAN: el plantel de la quincena es el que TUVO, no el de hoy
       // (`plantelDeLaQuincena`). `persona_directorio` publica las bajas; `persona_plantel` no.
-      supabase.from('persona_directorio').select('id, nombre_completo, en_la_empresa, puesto, fecha_ingreso, fecha_egreso'),
+      supabase.from('persona_directorio').select('id, nombre_completo, nombre_para_mostrar, en_la_empresa, puesto, fecha_ingreso, fecha_egreso'),
       // El CUIL es la llave del recibo y del giro. Vive en `persona_legajo`, que lleva su portero
       // adentro: es el único camino de la web a ese campo (ver `personasService.ts`).
       // POR LA PUERTA COMPARTIDA (`lecturasCompartidasDeQuincena.ts`): la solapa Horas pide estas
@@ -237,7 +237,7 @@ export async function getLiquidacionDeLaQuincena(
       { id: string; nombre_completo: string; en_la_empresa: boolean; puesto: string | null; fecha_ingreso: string | null; fecha_egreso: string | null }[])
       .map((r) => ({
         id: r.id,
-        nombre: nombreDePersona(r.nombre_completo),
+        nombre: nombreDePersona(r),
         cuil: cuilPorPersona.get(r.id) ?? null,
         enLaEmpresa: r.en_la_empresa !== false,
         fechaIngreso: r.fecha_ingreso ? String(r.fecha_ingreso).slice(0, 10) : null,

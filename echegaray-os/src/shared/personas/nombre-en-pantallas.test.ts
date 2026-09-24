@@ -10,9 +10,18 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { diccionarioDeUsuarios, nombreDePersona, nombreDePersonaONull, nombreDePila, nombreDeUsuario, SIN_NOMBRE } from './nombre.ts'
+import { diccionarioDeUsuarios, nombreDePersona, nombreDePersonaONull, nombreDePila, nombreDeUsuario, nombreLegal, SIN_NOMBRE } from './nombre.ts'
 
-test('el legajo se escribe en oración y en su orden, uno solo para todas las pantallas', () => {
+test('con la fila, manda el nombre para mostrar; sin él, el legajo (dueño 24/09: «Emiliano Maldonado»)', () => {
+  const emi = { nombre_completo: 'MALDONADO BATISTA EMILIANO MIGUEL', nombre_para_mostrar: 'Emiliano Maldonado' }
+  assert.equal(nombreDePersona(emi), 'Emiliano Maldonado')
+  assert.equal(nombreDePersona({ ...emi, nombre_para_mostrar: '  ' }), 'Maldonado Batista Emiliano Miguel')
+  assert.equal(nombreDePersona({ ...emi, nombre_para_mostrar: null }), 'Maldonado Batista Emiliano Miguel')
+  assert.equal(nombreLegal(emi.nombre_completo), 'Maldonado Batista Emiliano Miguel', 'el legal sigue a mano para recibos y fichas')
+  assert.equal(nombreDePersona({ nombre_completo: null, nombre_para_mostrar: null }), SIN_NOMBRE)
+})
+
+test('el legajo (sin nombre para mostrar) se escribe en oración y en su orden', () => {
   assert.equal(nombreDePersona('MALDONADO BATISTA EMILIANO MIGUEL'), 'Maldonado Batista Emiliano Miguel')
   assert.equal(nombreDePersona('NIEVAS VILLEGAS JUAN PABLO'), 'Nievas Villegas Juan Pablo')
   assert.equal(nombreDePersona('CORONA GUTIERREZ JORGE'), 'Corona Gutierrez Jorge')
@@ -88,6 +97,9 @@ test('ningún servicio publica el legajo crudo como «nombre» de una persona', 
 
 test('nadie formatea un nombre por su cuenta: ni oracion() sobre el legajo, ni cortes, ni otro nombreCorto', () => {
   assert.deepEqual(hallazgos(/oracion\([^)]*nombre_completo/), [], 'oracion(nombre_completo): usar nombreDePersona')
+  // Pasarle el legajo SUELTO saltea el nombre para mostrar: se le pasa la fila (o nombreLegal si se
+  // quiere el nombre legal a propósito).
+  assert.deepEqual(hallazgos(/nombreDePersona(ONull)?\([\w.?!]*\.nombre_completo\b/), [], 'nombreDePersona(x.nombre_completo): pasar la fila x')
   assert.deepEqual(hallazgos(/(function|const)\s+(nombreCorto|nombreEnTitulo|nombreParaMostrar|primerNombre|nombreDePila|nombreDePersona)\b\s*[=(]/), [],
     'formateador de nombres propio')
   assert.deepEqual(hallazgos(/nombre[\w?.]*\)?\.split\((' '|\/\\s\+\/)\)(\[0\]|\.slice\(-1\))/), [], 'corte de un nombre a mano')

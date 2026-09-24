@@ -13,6 +13,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { aplicarFiltro, FILTROS, type Filtrable, type FiltroCompras, type Imputacion } from './comprasEstado'
 import { proveedoresPorCuit } from '../../../shared/proveedores/nombresDeProveedores.ts'
 import { nombrePorCuit } from '../../../shared/proveedores/nombre.ts'
+import { contiene } from '../../../shared/utils/busqueda.ts'
 
 /**
  * UN CONTADOR DE POSTGREST, VISTO POR SU MÍNIMO.
@@ -123,9 +124,14 @@ export async function getCompras(
     if (seguro) {
       // Se busca por lo que dice el papel que la persona tiene delante: proveedor, CUIT, número y la
       // obra a la que se imputó.
+      // Y POR EL NOMBRE QUE LA PANTALLA MUESTRA: «corralon progreso» tiene que encontrar los papeles
+      // que ARCA emite a nombre de «PEREZ GARCIA MARISOL BIBIANA». Se traducen a sus CUIT por el maestro
+      // (sin tildes, en cualquier orden) y se suman al `or`.
+      const cuits = [...(await proveedoresPorCuit(supabase))].filter(([, n]) => contiene(n, seguro)).map(([c]) => c)
       consulta = consulta.or(
         `emisor_nombre.ilike.%${seguro}%,numero.ilike.%${seguro}%,` +
-        `emisor_cuit.ilike.%${seguro}%,obra_texto.ilike.%${seguro}%`,
+        `emisor_cuit.ilike.%${seguro}%,obra_texto.ilike.%${seguro}%` +
+        (cuits.length ? `,emisor_cuit.in.(${cuits.join(',')})` : ''),
       )
     }
   }

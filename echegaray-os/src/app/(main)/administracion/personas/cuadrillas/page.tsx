@@ -255,7 +255,7 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
                     <select name="responsable_id" defaultValue="" className={CTRL}>
                       <option value="">sin responsable</option>
                       {(plantel.data ?? []).map((p) => (
-                        <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>
+                        <option key={p.id} value={p.id}>{nombreDePersona(p)}</option>
                       ))}
                     </select>
                   </Campo>

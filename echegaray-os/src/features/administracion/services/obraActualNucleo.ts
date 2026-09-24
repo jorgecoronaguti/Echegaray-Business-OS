@@ -119,7 +119,7 @@ export async function cambiarObraActualCon(
   // LA PERSONA TIENE QUE EXISTIR EN EL PLANTEL. `persona_plantel` publica sólo a quien está en la
   // empresa: asignar a alguien dado de baja le imputaría horas a un legajo cerrado.
   const persona = await supabase.from('persona_plantel')
-    .select('id, nombre_completo').eq('id', personaId).maybeSingle()
+    .select('id, nombre_completo, nombre_para_mostrar').eq('id', personaId).maybeSingle()
   if (persona.error) return { ok: false, error: persona.error.message }
   if (!persona.data) return { ok: false, error: 'Esa persona no está en el plantel o no la ves.' }
 

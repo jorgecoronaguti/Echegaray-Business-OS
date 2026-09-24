@@ -365,7 +365,7 @@ async function plantelDe(
   if (ids.length === 0) return {}
   const [{ data }, subcontratos] = await Promise.all([
     supabase.from('persona_directorio')
-      .select('id, nombre_completo, especialidad, categoria, en_la_empresa, fecha_ingreso, fecha_egreso').in('id', ids),
+      .select('id, nombre_completo, nombre_para_mostrar, especialidad, categoria, en_la_empresa, fecha_ingreso, fecha_egreso').in('id', ids),
     leerSubcontratoDePersonas(supabase),
   ])
   const deSubcontrato = subcontratoPorPersona(subcontratos)

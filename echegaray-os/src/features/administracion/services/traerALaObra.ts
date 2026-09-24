@@ -68,7 +68,7 @@ export function candidatosParaTraer({ plantel, asignaciones, nombresDeObra, obra
 
   const salida: CandidatoParaTraer[] = []
   for (const p of plantel) {
-    const nombre = nombreDePersonaONull(p.nombre_completo) ?? ''
+    const nombre = nombreDePersonaONull(p) ?? ''
     if (!nombre) continue
     const obras = dondeEsta.get(p.id) ?? []
     if (obras.includes(obraId)) continue

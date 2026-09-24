@@ -85,7 +85,7 @@ export interface FilaLinea {
 /** Una línea de `recibo_sueldo_linea`: el recibo real del estudio. */
 export interface FilaRecibo { persona_id: string; periodo: string; neto: unknown }
 /** `persona_directorio`: sólo el nombre, para el detalle del mes. */
-export interface FilaPersona { id: string; nombre_completo: unknown }
+export interface FilaPersona { id: string; nombre_completo: unknown; nombre_para_mostrar?: unknown }
 
 export type EstadoMesPagado = 'cerrado' | 'parcial' | 'sin_cerrar'
 
@@ -277,7 +277,7 @@ export function pagoDeNomina(d: {
     p.conRecibo = true
   }
 
-  const nombres = new Map(d.personas.map((p) => [p.id, nombreDePersona(texto(p.nombre_completo))]))
+  const nombres = new Map(d.personas.map((p) => [p.id, nombreDePersona({ nombre_completo: texto(p.nombre_completo), nombre_para_mostrar: p.nombre_para_mostrar == null ? null : texto(p.nombre_para_mostrar) })]))
   const nombreDe = (id: string): string => nombres.get(id) ?? 'sin nombre en el directorio'
   const porPersona = new Map<string, PersonaPagada[]>()
   const avisos = {

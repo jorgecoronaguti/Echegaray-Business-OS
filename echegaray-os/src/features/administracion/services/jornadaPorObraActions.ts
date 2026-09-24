@@ -695,7 +695,7 @@ async function nombresDe(
 ): Promise<string[]> {
   if (personaIds.length === 0) return []
   const { data, error } = await supabase.from('persona_directorio')
-    .select('nombre_completo').in('id', personaIds)
+    .select('nombre_completo, nombre_para_mostrar').in('id', personaIds)
   if (error) return []
   return ((data ?? []) as { nombre_completo: string | null }[])
     .map((p) => p.nombre_completo).filter((n): n is string => Boolean(n))
