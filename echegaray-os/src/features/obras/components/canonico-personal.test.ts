@@ -43,17 +43,14 @@ test('el buscador de la banda es el de CAJA, no el hairline de arriba de una tab
   assert.match(ds, /variante = 'linea'/)
 })
 
-test('08 · asignar una persona se abre AHÍ MISMO (la primaria del escritorio vive en la cabecera; 48 en el teléfono)', () => {
+test('08 · asignar una persona se abre AHÍ MISMO con la primaria de 32px (48 en el teléfono)', () => {
   const src = fuente('TabPersonal.tsx')
   // El pedido del dueño, literal: «si quiero editar edite ahí mismo, no me sirve que me cargue y me
-  // lleve a otro lado». El defecto que atrapa: que la primaria vuelva a ser un `<details>` gris
-  // dentro del plegable, dos niveles abajo del pliegue.
-  //
-  // 24/09/2026 · la afirmación vieja buscaba un `<Alta … testid="alta-asignacion" primaria>` en la
-  // solapa, que ya no existía: desde el 08 la primaria del escritorio es la de la cabecera de obra y
-  // abre el formulario acá con `?asignar=1`. El test estaba rojo contra el código vigente.
-  assert.match(src, /\{abrirAsignar && \(\s*\n\s*<div data-testid="alta-asignacion"/)
+  // lleve a otro lado». Por eso la primaria NO va en la cabecera como enlace (24/09/2026 se probó y
+  // se volvió atrás: recargaba la página): es un `<details>` que abre el formulario en el lugar.
+  assert.match(src, /<Alta titulo="Asignar persona" testid="alta-asignacion" primaria>/)
   assert.match(src, /<Alta titulo="Asignar persona" testid="alta-asignacion-telefono" primaria telefono>/)
+  assert.doesNotMatch(src, /abrirAsignar/)
   // Y el formulario es UNO: dos copias se separan en el primer campo que se agregue.
   assert.equal((src.match(/testid="form-asignar"/g) ?? []).length, 1)
 })
