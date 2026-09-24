@@ -195,3 +195,30 @@ export function seriesConNomina({ propia = [], declarado = [], deNomina = null }
     conNomina: true,
   }
 }
+
+const r2 = (n) => Math.round(n * 100) / 100
+
+/**
+ * LOS RENGLONES DE CARGAS SOCIALES, VIVOS (dueño, 24/09/2026: «necesito que los cash flows se
+ * actualicen si toco algo yo de manera manual en tiempo real»). La celda del libro apunta a la de la
+ * pestaña: la FECHA a `CARGAS_MES_FECHAS`; el IMPORTE a Nómina si es proyección, o al «Total declarado»
+ * si es DDJJ (menos lo que el banco ya cubrió, que es un hecho y queda fijo). PURO.
+ *
+ * @param {object} mov el movimiento ya armado
+ * @param {{b:{que:string, puente:string|null}, o:{estado:string, importe:number}, neto:{importe:number, parcial:boolean}, i:number}} x
+ */
+export function vivoDeCargas(mov, { b, o, neto, i }) {
+  if (!(i >= 0 && i < 12)) return mov
+  const m = i + 1
+  let importeFormula
+  if (o.estado === 'PROYECTADO' && b.puente && !neto.parcial) importeFormula = formulaDelPuente(b.puente, m)
+  else if (o.estado === 'COMPROMETIDO') {
+    const rango = b.que === 'F931' ? 'CARGAS_MES_F931_DECLARADO' : 'CARGAS_MES_GREMIALES_DECLARADO'
+    const cubierto = r2(o.importe - neto.importe)
+    importeFormula = cubierto >= 0.01 ? `=MAX(0;INDEX(${rango};1;${m})-${cubierto})` : `=INDEX(${rango};1;${m})`
+  }
+  return Object.freeze({ ...mov, ...(importeFormula ? { importeFormula } : {}), fechaFormula: `=INDEX(CARGAS_MES_FECHAS;1;${m})` })
+}
+
+/** La fecha viva de un renglón de «Jornales por Quincena» (rango vertical, renglón i base 0). */
+export const fechaViva = (rango, i) => `=INDEX(${rango};${i + 1};1)`

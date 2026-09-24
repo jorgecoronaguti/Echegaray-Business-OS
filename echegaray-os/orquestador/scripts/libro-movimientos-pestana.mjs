@@ -857,7 +857,10 @@ async function escribirYVerificar(google, consolidado, colEstadoCompras = null, 
     // Las filas proyectadas de nómina y cargas apuntan al cuadro 6 de «Nómina» (`importeNomina`): el
     // dueño edita Nómina y el Cash Flow cambia en el momento. Una fila que el banco ya promovió a REAL
     // deja la fórmula: el hecho manda sobre la proyección.
-    .map((m) => [m.fecha, m.signo, m.importeVivo ?? (m.estado !== 'REAL' ? m.importeNomina : null) ?? celdaImporte(fuenteViva(m), colsVivas), m.moneda, m.concepto, m.rubro, m.actividad,
+    // Fecha e importe VIVOS (24/09/2026, «que los cash flows se actualicen en tiempo real»): los renglones
+    // que salen de Nómina, Cargas Sociales o Jornales apuntan a su celda fuente. REAL no: manda el hecho.
+    .map((m) => [(m.estado !== 'REAL' && m.fechaFormula) || m.fecha, m.signo,
+      m.importeVivo ?? (m.estado !== 'REAL' ? (m.importeFormula ?? m.importeNomina) : null) ?? celdaImporte(fuenteViva(m), colsVivas), m.moneda, m.concepto, m.rubro, m.actividad,
       celdaEstado(fuenteViva(m), colEstadoCompras),
       m.instrumento, m.contraparte, m.cuit, m.comprobante, m.obra, m.origen.pestana, m.origen.fila ?? '', m.clave,
       m.cliente])]
@@ -909,16 +912,17 @@ async function escribirYVerificar(google, consolidado, colEstadoCompras = null, 
   let ajusteNomina = 0
   let nominaRota = 0
   ordenados.forEach((m, i) => {
-    if (m.importeVivo || !m.importeNomina || m.estado === 'REAL') return
+    const formula = m.importeFormula ?? m.importeNomina
+    if (m.importeVivo || !formula || m.estado === 'REAL') return
     const val = Number(releido?.[i]?.[2])
     if (!Number.isFinite(val) || val < -0.01) {
       nominaRota++
-      console.log(`  ✗ Nómina f${i + 2}: la fórmula ${m.importeNomina} rindió ${JSON.stringify(releido?.[i]?.[2])}.`)
+      console.log(`  ✗ f${i + 2}: la fórmula ${formula} rindió ${JSON.stringify(releido?.[i]?.[2])}.`)
       return
     }
     ajusteNomina += m.signo * (val - m.importe)
   })
-  if (Math.abs(ajusteNomina) >= 1) console.log(`  · Nómina se editó durante la corrida: ${pesos(ajusteNomina)} de diferencia, vale lo del Sheet`)
+  if (Math.abs(ajusteNomina) >= 1) console.log(`  · una pestaña fuente se editó durante la corrida: ${pesos(ajusteNomina)} de diferencia, vale lo del Sheet`)
   ordenados.forEach((m, i) => {
     if (!m.importeVivo) return
     const val = Number(releido?.[i]?.[2])

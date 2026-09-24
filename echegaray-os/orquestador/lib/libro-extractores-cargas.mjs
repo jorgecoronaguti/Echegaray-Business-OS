@@ -44,7 +44,7 @@ import { cubiertoDelBanco } from './cargas-pagos-banco.mjs'
 import { columnasDeCompras, estaPagada } from './libro-extractores-compras.mjs'
 import { total as rotuloTotal } from './patron-pestana.mjs'
 import { fila as rangoFila } from './rangos-con-nombre.mjs'
-import { NOMBRES_PUENTE, formulaDelPuente, seriesConNomina } from './nomina-puente.mjs'
+import { NOMBRES_PUENTE, seriesConNomina, vivoDeCargas } from './nomina-puente.mjs'
 
 /** La pestaña de la que sale la serie. Es el `origen.pestana` de cada movimiento. */
 export const PESTANA_CARGAS = 'Cargas Sociales'
@@ -410,7 +410,7 @@ export function deCargasSociales({ fechas, f931, gremiales, declarado, gremiales
         // el año. Y con el mes adentro, el nombre sobrevive a que la pestaña se reordene.
         origen: { pestana: PESTANA_CARGAS, fila: o.fila },
       })
-      out.push(b.puente && o.estado === 'PROYECTADO' && !neto.parcial && i < 12 ? Object.freeze({ ...mov, importeNomina: formulaDelPuente(b.puente, i + 1) }) : mov)
+      out.push(vivoDeCargas(mov, { b, o, neto, i }))
     }
   }
   return out

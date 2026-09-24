@@ -77,8 +77,30 @@ test('cargas: el «declarado» que repite la proyección es proyección y toma N
   const sep = out.find((m) => /nómina de sep-26/.test(m.concepto))
   assert.equal(sep.importe, 10_000_000)
   assert.equal(sep.estado, 'PROYECTADO')
-  assert.equal(sep.importeNomina, '=INDEX(NOMINA_CF_F931;1;9)')
+  assert.equal(sep.importeFormula, '=INDEX(NOMINA_CF_F931;1;9)')
   const oct = out.find((m) => /nómina de oct-26/.test(m.concepto))
   assert.equal(oct.importe, 9_999_999) // la DDJJ manda
-  assert.equal(oct.importeNomina, undefined)
+  assert.equal(oct.importeFormula, '=INDEX(CARGAS_MES_F931_DECLARADO;1;10)') // la DDJJ, viva a su celda
+})
+
+test('cargas vivas: la fecha apunta a CARGAS_MES_FECHAS; la DDJJ al declarado (menos lo que cubrió el banco); la proyección a Nómina', async () => {
+  const { vivoDeCargas } = await import('./nomina-puente.mjs')
+  const mov = Object.freeze({ importe: 100, estado: 'COMPROMETIDO' })
+  const decl = vivoDeCargas(mov, { b: { que: 'F931', puente: 'NOMINA_CF_F931' }, o: { estado: 'COMPROMETIDO', importe: 100 }, neto: { importe: 100, parcial: false }, i: 7 })
+  assert.equal(decl.importeFormula, '=INDEX(CARGAS_MES_F931_DECLARADO;1;8)')
+  assert.equal(decl.fechaFormula, '=INDEX(CARGAS_MES_FECHAS;1;8)')
+  const parcial = vivoDeCargas(mov, { b: { que: 'gremiales', puente: null }, o: { estado: 'COMPROMETIDO', importe: 2374397.18 }, neto: { importe: 219055.92, parcial: true }, i: 7 })
+  assert.equal(parcial.importeFormula, '=MAX(0;INDEX(CARGAS_MES_GREMIALES_DECLARADO;1;8)-2155341.26)')
+  const proy = vivoDeCargas(mov, { b: { que: 'F931', puente: 'NOMINA_CF_F931' }, o: { estado: 'PROYECTADO', importe: 5 }, neto: { importe: 5, parcial: false }, i: 9 })
+  assert.equal(proy.importeFormula, '=INDEX(NOMINA_CF_F931;1;10)')
+  assert.equal(vivoDeCargas(mov, { b: { que: 'F931' }, o: { estado: 'PROYECTADO', importe: 1 }, neto: { importe: 1 }, i: 12 }), mov)
+})
+
+test('jornales y oficina: la fecha del libro apunta a «Se paga el» de Jornales por Quincena', () => {
+  const proy = { pago: col([serial('2026-10-16')]), hasta: col([serial('2026-10-15')]), total: col([1]) }
+  const [q] = deJornalesQuincenas({ proyectadas: proy }, serial('2026-09-24'), { nomina: doce((i) => (i === 9 ? 2 : 0)), aviso: () => {} })
+  assert.equal(q.fechaFormula, '=INDEX(JORNALES_PROY_PAGO;1;1)')
+  const pago = col(doce((i) => serial(`2026-${String(Math.min(i + 2, 12)).padStart(2, '0')}-01`)))
+  const out = deOficina({ pago, pagado: col(doce(() => '')), proyectado: col(doce(() => 1)), pactado: col(doce(() => null)) }, serial('2026-09-24'), { nomina: doce((i) => (i === 9 ? 5 : 0)) })
+  assert.equal(out.find((m) => m.importeNomina === '=INDEX(NOMINA_CF_OFICINA;1;10)').fechaFormula, '=INDEX(OFICINA_PAGO;10;1)')
 })

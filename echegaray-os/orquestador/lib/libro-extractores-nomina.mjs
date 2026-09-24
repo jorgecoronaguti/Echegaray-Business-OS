@@ -25,7 +25,7 @@ import { movimiento, SALE, estadoContraCorte } from './libro-movimientos.mjs'
 import { isoDeSerial } from './libro-extractores-fechas.mjs'
 import { estadoDeEgreso } from './caja-canales.mjs'
 import { respaldoEnLote } from './libro-respaldo-banco.mjs'
-import { NOMBRES_PUENTE, formulaDelPuente } from './nomina-puente.mjs'
+import { NOMBRES_PUENTE, formulaDelPuente, fechaViva } from './nomina-puente.mjs'
 // El criterio de "¿esta quincena se pagó?", cruzado contra el extracto. Vive afuera porque lo usan
 // DOS: este extractor (para decidir el estado) y scripts/jornales-evidencia-pago.mjs (para mostrarle
 // la evidencia al dueño). Escrito dos veces, el libro y la tabla podrían decir cosas distintas.
@@ -276,7 +276,8 @@ export function deJornalesQuincenas({ reales = {}, proyectadas = {} } = {}, cort
       estado: estadoContraCorte('PROYECTADO', fecha, corte),
       origen: { pestana: PESTANA_NOMINA, fila: filaDe('Quincenas proyectadas', i) },
     })
-    out.push(desdeNomina ? conFormulaDeNomina(mov, formulaDelPuente(NOMBRES_PUENTE.jornales, m, partes.get(m))) : mov)
+    const vivo = num(proy.pago[i]) !== null ? { ...mov, fechaFormula: fechaViva('JORNALES_PROY_PAGO', i) } : mov
+    out.push(desdeNomina ? conFormulaDeNomina(vivo, formulaDelPuente(NOMBRES_PUENTE.jornales, m, partes.get(m))) : Object.freeze(vivo))
   }
   return out
 }
@@ -316,7 +317,7 @@ export function conFormulaDeNomina(mov, formula) {
  */
 const MARCA_SIN_PACTADO = '▲ parcial sin lo pactado del mes'
 
-function deBloqueMensual({ pago, pagado, proyectado, pactado }, corte, { bloque, aviso, extracto, nomina = null, puente = null }) {
+function deBloqueMensual({ pago, pagado, proyectado, pactado }, corte, { bloque, aviso, extracto, nomina = null, puente = null, rangoPago = null }) {
   const P = columna(pago); const G = columna(pagado); const Y = columna(proyectado); const K = columna(pactado)
   const out = []
   for (let i = 0; i < Math.max(P.length, G.length, Y.length); i++) {
@@ -327,7 +328,8 @@ function deBloqueMensual({ pago, pagado, proyectado, pactado }, corte, { bloque,
     const deNomina = nomina && nomina[i] != null && i < 12
     const proy = deNomina ? Math.round((nomina[i] + (real ?? 0)) * 100) / 100 : num(Y[i])
     const pact = deNomina ? proy : num(K[i])
-    const conPuente = (mov) => (deNomina ? conFormulaDeNomina(mov, formulaDelPuente(puente, i + 1)) : mov)
+    const conPuente = (mov) => (deNomina
+      ? conFormulaDeNomina({ ...mov, ...(rangoPago ? { fechaFormula: fechaViva(rangoPago, i) } : {}) }, formulaDelPuente(puente, i + 1)) : mov)
     if (fecha === null) continue
     const comun = {
       signo: SALE,
@@ -481,7 +483,7 @@ const avisoPorDefecto = (m) => console.warn(m)
 
 /** OFICINA (bloque "Oficina 26" de la planilla) → sueldos de administración. */
 export function deOficina(bloque = {}, corte = null, { aviso = avisoPorDefecto, extracto = null, nomina = null } = {}) {
-  return deBloqueMensual(bloque, corte, { bloque: 'Oficina', aviso, extracto, nomina, puente: NOMBRES_PUENTE.oficina })
+  return deBloqueMensual(bloque, corte, { bloque: 'Oficina', aviso, extracto, nomina, puente: NOMBRES_PUENTE.oficina, rangoPago: 'OFICINA_PAGO' })
 }
 
 /**
@@ -496,7 +498,7 @@ export function deOficina(bloque = {}, corte = null, { aviso = avisoPorDefecto, 
  * pestaña los proyecta desde el 01/08 y ésta es la puerta por la que entran al libro.
  */
 export function deDireccion(bloque = {}, corte = null, { aviso = avisoPorDefecto, extracto = null, nomina = null } = {}) {
-  return deBloqueMensual(bloque, corte, { bloque: 'Dirección', aviso, extracto, nomina, puente: NOMBRES_PUENTE.direccion })
+  return deBloqueMensual(bloque, corte, { bloque: 'Dirección', aviso, extracto, nomina, puente: NOMBRES_PUENTE.direccion, rangoPago: 'DIRECCION_PAGO' })
 }
 
 /**
