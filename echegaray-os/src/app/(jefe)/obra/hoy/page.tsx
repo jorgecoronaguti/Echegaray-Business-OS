@@ -257,7 +257,7 @@ export default async function JefeHoyPage({
             empleado, que no puede escribir nada de eso. Son los mismos accesos de 88px de arriba. */}
         <RotuloSeccion icono="obra" margenArriba={20}>Trabajo</RotuloSeccion>
         <div style={{ display: 'flex', gap: 10, marginTop: 10 }} data-testid="accesos-campo">
-          <Acceso href="/campo/parte" icono="nota" texto="Parte de hoy" />
+          <Acceso href="/obra/avance-masivo" icono="nota" texto="Parte de hoy" />
           <Acceso href="/campo/impedimento" icono="bloqueo" texto="Problema" />
           <Acceso href="/campo/herramientas" icono="equipo" texto="Herramientas" />
         </div>

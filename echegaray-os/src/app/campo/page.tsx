@@ -83,7 +83,7 @@ export default async function CampoPage() {
 
   const acciones: Acceso[] = [
     {
-      href: '/campo/parte',
+      href: '/obra/avance-masivo',
       titulo: 'Parte',
       pendiente: 'Falta el parte de hoy',
       detalle: 'Cuánto se hizo y qué pasó',
@@ -253,7 +253,7 @@ export default async function CampoPage() {
       <footer className="sticky bottom-0 border-t border-line bg-surface px-4 py-3.5">
         {escribe ? (
           <Link
-            href="/campo/parte"
+            href="/obra/avance-masivo"
             data-testid="cargar-parte"
             className="flex h-[48px] w-full items-center justify-center rounded-control bg-marca text-[15px] font-semibold text-[color:var(--os-on-marca)]"
           >
