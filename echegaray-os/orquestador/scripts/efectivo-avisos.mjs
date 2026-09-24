@@ -55,6 +55,23 @@ function delEntorno(clave) {
   } catch { return null }
 }
 
+/**
+ * EL USUARIO DE MATTERMOST POR EL EMAIL, cuando la tabla de identidades todavía no lo tiene (24/09/2026).
+ * Esa tabla se llena cuando la persona LE ESCRIBE al bot: Emiliano nunca le había escrito, no figuraba, y el
+ * aviso de ER-0020 salió al canal en vez de por directo (dueño: «manda el mensaje al canal efectivo en lugar
+ * del chat directo a la persona»). El email es el de la cuenta de la app, que es el mismo con que entra a
+ * Mattermost; si Mattermost no lo conoce, no hay directo posible y el aviso va al canal, como antes.
+ */
+export async function usuarioMattermostPorEmail(email) {
+  const base = String(delEntorno('MM_BASE_URL') ?? '').replace(/\/+$/, '')
+  const token = delEntorno('MM_BOT_TOKEN')
+  if (!base || !token || !email) return null
+  const r = await fetch(`${base}/api/v4/users/email/${encodeURIComponent(String(email).trim().toLowerCase())}`, { headers: { Authorization: `Bearer ${token}` } })
+  if (!r.ok) return null
+  const u = await r.json()
+  return u?.id && !u.delete_at ? { id: u.id, username: u.username ?? null } : null
+}
+
 /** Publica y RELEE el post. Devuelve el id sólo si se pudo leer de vuelta. */
 async function publicarYReleer(channelId, message) {
   const base = String(delEntorno('MM_BASE_URL') ?? '').replace(/\/+$/, '')
@@ -76,7 +93,7 @@ export async function pendientesDeAviso(port) {
   try {
     const { rows } = await port.query(
       `select e.id, e.codigo, coalesce(o.nombre, 'Estructura') as destino, i.plataforma_username as username,
-              i.plataforma_user_id as mm_user_id, pf.id as usuario_id
+              i.plataforma_user_id as mm_user_id, pf.id as usuario_id, u.email
          from public.efectivo_entrega e
          left join public.obra_canonica o on o.id = e.obra_id
          left join public.perfiles pf on pf.persona_id = e.persona_id
@@ -93,7 +110,7 @@ export async function pendientesDeAviso(port) {
   }
 }
 
-export async function avisarEntregas(port, { dry = false, publicar = publicarYReleer, directo = canalDirectoCon, log = console } = {}) {
+export async function avisarEntregas(port, { dry = false, publicar = publicarYReleer, directo = canalDirectoCon, porEmail = usuarioMattermostPorEmail, log = console } = {}) {
   const pend = await pendientesDeAviso(port)
   if (!pend) return { avisadas: 0, sinMigracion: true }
   if (!pend.length) return { avisadas: 0 }
@@ -111,8 +128,10 @@ export async function avisarEntregas(port, { dry = false, publicar = publicarYRe
     // DIRECTO si la persona tiene usuario Y no apagó este aviso (Mi cuenta › Notificaciones); si no,
     // al canal con la mención: la firma hace falta igual. En el directo no hace falta el @.
     const quiereDm = await debeAvisarA(port, e.usuario_id, 'efectivo_firma', 'mattermost_dm')
-    const dm = e.mm_user_id && quiereDm ? await directo(e.mm_user_id).catch(() => null) : null
-    const texto = textoDelAviso({ username: dm ? null : e.username, codigo: e.codigo, destino: e.destino, entregaId: e.id, directo: !!dm })
+    // Sin identidad todavía, se la busca por el email de su cuenta (ver `usuarioMattermostPorEmail`).
+    const mm = e.mm_user_id ? { id: e.mm_user_id, username: e.username } : await porEmail(e.email).catch(() => null)
+    const dm = mm?.id && quiereDm ? await directo(mm.id).catch(() => null) : null
+    const texto = textoDelAviso({ username: dm ? null : (e.username ?? mm?.username ?? null), codigo: e.codigo, destino: e.destino, entregaId: e.id, directo: !!dm })
     if (dry) { log.info?.(`[dry] ${e.codigo} (${dm ? 'directo' : 'canal'}): ${texto.split('\n')[0]}`); continue }
     const post = await publicar(dm ?? canal, texto).catch((err) => { log.warn?.(`efectivo: no pude avisar ${e.codigo}: ${err.message}`); return null })
     if (!post) continue

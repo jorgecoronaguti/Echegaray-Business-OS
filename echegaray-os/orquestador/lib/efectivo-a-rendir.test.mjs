@@ -132,3 +132,32 @@ test('el pipeline escribe _EFECTIVO_RAW ANTES que _CAJA_ANEXO (el anexo la lee p
   const j = PASOS.findIndex(([s]) => s === 'caja-anexo-pestana.mjs')
   assert.ok(i >= 0 && j >= 0 && i < j, `orden: réplica ${i}, anexo ${j}`)
 })
+
+test('SIN IDENTIDAD TODAVÍA, EL AVISO BUSCA A LA PERSONA POR EMAIL Y VA POR DIRECTO, NO AL CANAL (24/09/2026, ER-0020)', async () => {
+  const { avisarEntregas } = await import('../scripts/efectivo-avisos.mjs')
+  const fila = { id: 'e20', codigo: 'ER-0020', destino: 'Estructura', username: null, mm_user_id: null, usuario_id: 'u-emi', email: 'hys@ecsas.com.ar' }
+  const port = { async query(sql) { if (/efectivo_entrega e/.test(sql)) return { rows: [fila] }; if (/canales_area/.test(sql)) return { rows: [{ channel_id: 'canal-efectivo' }] }; return { rows: [] } } }
+  const buscados = []; const destinos = []
+  const r = await avisarEntregas(port, {
+    log: {},
+    porEmail: async (email) => { buscados.push(email); return { id: 'mm-emiliano', username: 'emiliano' } },
+    directo: async (mmId) => `dm-con-${mmId}`,
+    publicar: async (canal) => { destinos.push(canal); return 'post' },
+  })
+  assert.equal(r.avisadas, 1)
+  assert.deepEqual(buscados, ['hys@ecsas.com.ar'])
+  assert.deepEqual(destinos, ['dm-con-mm-emiliano'], 'fue al directo, no al canal')
+  // Y si Mattermost no lo conoce, el aviso cae al canal con la mención: la firma hace falta igual.
+  const destinos2 = []
+  await avisarEntregas(port, { log: {}, porEmail: async () => null, publicar: async (c) => { destinos2.push(c); return 'p' } })
+  assert.deepEqual(destinos2, ['canal-efectivo'])
+})
+
+test('la firma se avisa también en el canal Efectivo, sin monto (dueño 24/09/2026)', async () => {
+  const { readFileSync } = await import('node:fs')
+  const sql = readFileSync(new URL('../../supabase/migrations/20260924T2100_la_firma_se_avisa_en_el_canal_efectivo.sql', import.meta.url), 'utf8')
+  const canal = sql.slice(sql.lastIndexOf("'firmada', 'canal'"))
+  assert.ok(sql.includes("'firmada', 'dueno'"), 'el directo al dueño sigue')
+  assert.ok(canal.length > 20, 'hay aviso al canal')
+  assert.ok(!canal.slice(0, canal.indexOf('v_quien')).includes('_efectivo_pesos'), 'el aviso del canal no dice el monto')
+})
