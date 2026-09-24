@@ -11,6 +11,7 @@
 import type { Actividad, ParteEjecucion } from '../types/index.ts'
 import { pendienteDe } from './ejecucionService.ts'
 import { leerNumeroEsAR } from '../../../shared/lib/numeroEsAR.ts'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 /** Dos decimales SIEMPRE, como el mockup: «0,43 / 1,08 m³», «2,84 / 2,84 m³». Un «96» al lado de un
  *  «71,04» hace leer dos escalas distintas en la misma celda. */
@@ -290,17 +291,6 @@ export interface ChipGente {
   bajada: string
 }
 
-/** «R. Quiroga» — inicial del nombre y apellido, como el diseño. «Quiroga Rodolfo» → «R. Quiroga». */
-export function nombreCorto(nombreCompleto: string): string {
-  const partes = nombreCompleto.trim().split(/\s+/)
-  if (partes.length < 2) return nombreCompleto.trim()
-  // Los legajos vienen «APELLIDO Nombre»; el diseño escribe «N. Apellido».
-  const apellido = partes[0]
-  const nombre = partes[partes.length - 1]
-  const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
-  return `${nombre.charAt(0).toUpperCase()}. ${capital(apellido)}`
-}
-
 /** Las horas de la jornada de una persona, en «9 hs» / «4,5 hs». */
 export const textoHoras = (h: number) => `${h.toLocaleString('es-AR', { maximumFractionDigits: 1 })} hs`
 
@@ -339,7 +329,7 @@ export function chipsDeGente(
     horas.set(r.persona_id, (horas.get(r.persona_id) ?? 0) + r.horas)
   }
   return personas.map((p) => {
-    const base = { id: p.id, nombre: nombreCorto(p.nombre_completo), bajada: bajadaDePersona(p.cuadrilla, p.categoria) }
+    const base = { id: p.id, nombre: nombreDePersona(p.nombre_completo), bajada: bajadaDePersona(p.cuadrilla, p.categoria) }
     const h = horas.get(p.id)
     if (h != null && h > 0) return { ...base, estado: 'horas', horas: h }
     if (ausentes.has(p.id)) return { ...base, estado: 'ausente', horas: null }

@@ -18,6 +18,7 @@ import type { ServiceResult } from '@/features/auth/services/authService'
 import type { EstadoUsuario, ObraDeUsuario, ObraElegible, UsuarioGestion } from '../types'
 import { codigosDeObra } from '@/shared/services/codigosDeObra'
 import { rotuloDeObra } from '@/shared/utils/obra'
+import { nombreDePersona, nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 
 /**
  * EL BLOQUEO, LEÍDO DEL USUARIO DE AUTH.
@@ -56,7 +57,7 @@ export async function listarUsuarios(admin: SupabaseClient): Promise<ServiceResu
     // apuntar a una persona dada de baja, y un join interno la haría desaparecer de la lista —
     // que es justo el caso en el que alguien necesita ver el vínculo para deshacerlo.
     const { data: personas } = await admin.from('personas').select('id, nombre_completo')
-    const nombrePersona = new Map((personas ?? []).map((x) => [x.id as string, x.nombre_completo as string]))
+    const nombrePersona = new Map((personas ?? []).map((x) => [x.id as string, nombreDePersona(x.nombre_completo as string)]))
     if (pErr) return { data: null, error: pErr.message }
 
     const perfilDe = new Map((perfiles ?? []).map((p) => [p.id as string, p]))
@@ -91,7 +92,10 @@ export async function listarUsuarios(admin: SupabaseClient): Promise<ServiceResu
               nombre: nombrePersona.get(perfil.persona_id as string) ?? (perfil.persona_id as string),
             }
           : null,
-        nombre: (perfil?.nombre as string | undefined) ?? null,
+        // El nombre para mostrar es el de su persona (src/shared/personas); sin persona, el de la cuenta.
+        nombre: (perfil?.persona_id ? nombrePersona.get(perfil.persona_id as string) : null)
+          ?? nombreDePersonaONull(perfil?.nombre as string | undefined),
+        nombreCuenta: (perfil?.nombre as string | undefined) ?? null,
         email: u.email ?? null,
         rol,
         area: areaDe(rol),
@@ -155,7 +159,7 @@ export async function listarPersonasVinculables(
     .filter((p) => p.en_la_empresa !== false)
     .map((p) => ({
       id: p.id as string,
-      nombre: p.nombre_completo as string,
+      nombre: nombreDePersona(p.nombre_completo as string),
       tomadaPor: tomada.get(p.id as string) ?? null,
     }))
 }

@@ -18,6 +18,7 @@ import { laSesionEsDePrueba, leerCuilesDelLegajo, leerSubcontratoDePersonas, sub
 import { periodoDeRecibo } from './liquidacionCuadros.ts'
 import type { Quincena } from './quincena.ts'
 import { esJefeDeObra, sinDireccion } from './vocabularioPersona.ts'
+import { nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 
 const sinTabla = (e: { code?: string; message: string }): boolean =>
   e.code === '42P01' || /does not exist/i.test(e.message)
@@ -33,7 +34,7 @@ export function personaDelDirectorio(r: {
   fecha_ingreso?: string | null; fecha_egreso?: string | null
 }): PersonaDelDirectorio {
   return {
-    id: r.id, nombre: (r.nombre_completo ?? '').trim(), enLaEmpresa: r.en_la_empresa === true,
+    id: r.id, nombre: nombreDePersonaONull(r.nombre_completo) ?? '', enLaEmpresa: r.en_la_empresa === true,
     fechaIngreso: r.fecha_ingreso ? String(r.fecha_ingreso).slice(0, 10) : null,
     fechaEgreso: r.fecha_egreso ? String(r.fecha_egreso).slice(0, 10) : null,
   }

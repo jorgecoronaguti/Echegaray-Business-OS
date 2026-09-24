@@ -55,6 +55,7 @@ import { C, MONO } from './canon/tokens'
 import { Ico, P } from './canon/Ico'
 import { AccionFila } from './canon/AccionFila'
 import { TabPersonalTelefono, type FilaPersonalTelefono } from './TabPersonalTelefono'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 /** Las seis columnas del 08 y, al final, 16px para el chevron que dice «esta fila se abre». */
 const GRID = 'minmax(0,1fr) 130px 120px 108px 82px 96px 16px'
@@ -120,7 +121,7 @@ function FormAsignar({ personas, cuadrillas, actividades, asignar }: {
         <Campo rotulo="Persona" className="col-span-2">
           <select name="persona_id" required className={CAMPO} defaultValue="">
             <option value="" disabled>elegir del legajo</option>
-            {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
+            {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>)}
           </select>
         </Campo>
         <Campo rotulo="Rol">

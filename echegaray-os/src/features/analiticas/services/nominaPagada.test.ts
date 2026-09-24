@@ -49,7 +49,7 @@ test('blanco es el neto del recibo y negro es el resto de lo cobrado; el total n
   assert.deepEqual(r.total, { blanco: 453969, negro: 273531, total: 727500, meses: 1 })
   assert.equal(r.pctNegro, 273531 / 727500)
   assert.deepEqual(r.porPersona.get('2026-04'), [{
-    personaId: 'p1', nombre: 'NIEVAS VILLEGAS JUAN PABLO', blanco: 453969, negro: 273531, total: 727500,
+    personaId: 'p1', nombre: 'Nievas Villegas Juan Pablo', blanco: 453969, negro: 273531, total: 727500,
     sinRecibo: false, sinLinea: false, reciboMayor: null,
   }])
 })
@@ -121,7 +121,7 @@ test('el mes en curso se mide por lo ENTREGADO: banco es blanco, efectivo es neg
   assert.deepEqual([r.avisos.mesesPorRegistro, r.avisos.sinPagoRegistrado, r.avisos.mesesSinCerrar], [1, 1, 1])
   // El detalle del mes en curso marca de dónde sale su reparto, y el mensualizado sin pago no se dibuja como cobrado.
   assert.deepEqual(r.porPersona.get('2026-09')?.map((p) => [p.nombre, p.blanco, p.negro, p.porCanal]),
-    [['ZOGBE RAMOS WALTER LEONARDO', 294795.5, 327765.78, true]])
+    [['Zogbe Ramos Walter Leonardo', 294795.5, 327765.78, true]])
   // Y el detalle abre en el mes en curso, que es lo que el dueño mira.
   assert.equal(mesDelDetalle(r, null), '2026-09')
 })

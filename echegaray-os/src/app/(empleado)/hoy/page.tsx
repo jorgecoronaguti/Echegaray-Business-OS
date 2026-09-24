@@ -23,6 +23,7 @@ import type { MiTarea } from '@/features/empleado/types'
 import { getMiEfectivo } from '@/features/efectivo/campo/datos'
 import { tarjetaDeHoy } from '@/features/efectivo/campo/logica'
 import { TarjetaMiEfectivo, TarjetaRecibir } from '@/features/efectivo/campo/components/TarjetasHoy'
+import { nombreDePila } from '../../../shared/personas/nombre.ts'
 
 // M02 · HOY — porte literal de `M02 · Hoy.dc.html`.
 //
@@ -109,7 +110,7 @@ export default async function HoyPage() {
 
       <div style={{ padding: '16px 16px 24px' }}>
         <div style={{ fontSize: 22, fontWeight: 600, color: C.ink }}>
-          Hola, {(perfilBasico.data?.nombre ?? user.email ?? '').split(' ')[0] || 'que tal'}
+          Hola, {nombreDePila(perfilBasico.data?.nombre, user.email) || 'que tal'}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: C.muted, marginTop: 2 }}>
           <Icono nombre="fecha" tamano={14} />

@@ -17,6 +17,7 @@ import { Eyebrow, Nulo, Num } from '@/shared/components/ds'
 import type { Cuadrilla, Integrante } from '../types'
 import type { CapacidadCuadrilla } from '../services/cuadrillasService'
 import type { CategoriaCapacidad } from '@/features/obras/services/cronogramaObraService'
+import { nombreDePersona, nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 
 interface Plantel { id: string; nombre_completo: string }
 interface Obra { id: string; nombre: string }
@@ -64,7 +65,7 @@ function CamposCuadrilla({ cuadrilla, plantel }: { cuadrilla: Cuadrilla | null; 
       <Campo label="Responsable / capataz" ancho="col-span-2" ayuda="Una persona del legajo, no un texto.">
         <select name="responsable_id" defaultValue={cuadrilla?.responsable_id ?? ''} className={CTRL}>
           <option value="">sin responsable</option>
-          {plantel.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
+          {plantel.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>)}
         </select>
       </Campo>
       <Campo label="Notas" ancho="col-span-2">
@@ -149,7 +150,7 @@ export function PanelCuadrilla({
                 {vigentes.map((i) => (
                   <li key={i.id} className="flex items-baseline gap-2.5 text-[12.5px]">
                     <Link prefetch={false} href={`/administracion/personas/${i.persona_id}`} className="min-w-0 flex-1 truncate text-ink hover:underline">
-                      {i.nombre_completo ?? i.persona_id}
+                      {nombreDePersonaONull(i.nombre_completo) ?? i.persona_id}
                     </Link>
                     <Peso categoria={i.categoria} factores={factores} />
                     {/* EL PERÍODO, NO UNA MARCA DE PERTENENCIA: desde cuándo está es lo que hace que
@@ -176,7 +177,7 @@ export function PanelCuadrilla({
               >
                 <select name="persona_id" required defaultValue="" className={CTRL}>
                   <option value="" disabled>elegir del plantel</option>
-                  {plantel.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
+                  {plantel.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>)}
                 </select>
               </Campo>
               <Campo label="Desde"><input type="date" name="desde" className={CTRL} /></Campo>
@@ -190,7 +191,7 @@ export function PanelCuadrilla({
             <ul className="mt-2 space-y-1" data-testid="integrantes-historial">
               {salidos.map((i) => (
                 <li key={i.id} className="flex items-baseline justify-between gap-3 text-[11px] text-faint">
-                  <span className="min-w-0 truncate">{i.nombre_completo ?? i.persona_id}</span>
+                  <span className="min-w-0 truncate">{nombreDePersonaONull(i.nombre_completo) ?? i.persona_id}</span>
                   <Num className="shrink-0 text-[11px] text-faint">{i.desde} → {i.hasta}</Num>
                 </li>
               ))}

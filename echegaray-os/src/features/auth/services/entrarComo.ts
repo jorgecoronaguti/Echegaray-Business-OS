@@ -5,6 +5,7 @@ import { secretoDelRol } from '@/lib/auth/rol-cache'
 import { COOKIE_ENTRAR_COMO, NIVELES_ENTRABLES, leerEntrarComo, type EntradaPrestada } from '@/lib/auth/entrar-como'
 import { ROL_LABEL, type Rol } from '@/features/auth/types'
 import { estadoDeCuenta } from '@/features/usuarios/services/usuariosService'
+import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
 
 // «ENTRAR COMO», DEL LADO DEL SERVIDOR QUE DIBUJA.
 //
@@ -47,8 +48,12 @@ export interface GrupoEntrable {
 export async function cuentasEntrables(admin: SupabaseClient, actorId: string): Promise<GrupoEntrable[]> {
   const { data: auth, error } = await admin.auth.admin.listUsers({ perPage: 1000 })
   if (error) throw new Error(error.message)
-  const { data: perfiles } = await admin.from('perfiles').select('id, rol, nombre')
-  const perfilDe = new Map((perfiles ?? []).map((p) => [p.id as string, p as { rol: Rol; nombre: string | null }]))
+  const [{ data: perfiles }, nombres] = await Promise.all([
+    admin.from('perfiles').select('id, rol'),
+    // El nombre de su persona, resuelto por el vínculo (src/shared/personas).
+    nombresDeUsuarios(admin),
+  ])
+  const perfilDe = new Map((perfiles ?? []).map((p) => [p.id as string, p as { rol: Rol }]))
 
   const grupos = new Map<Rol | null, CuentaEntrable[]>()
   for (const u of auth?.users ?? []) {
@@ -59,7 +64,7 @@ export async function cuentasEntrables(admin: SupabaseClient, actorId: string): 
     const cuenta: CuentaEntrable = {
       id: u.id,
       email: u.email ?? null,
-      nombre: perfil?.nombre ?? null,
+      nombre: nombres.get(u.id) ?? null,
       rol,
       estado: estadoDeCuenta(u),
       ultimoIngreso: u.last_sign_in_at ?? null,

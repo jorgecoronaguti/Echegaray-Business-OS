@@ -17,6 +17,7 @@ import { FormAccion, type AccionFormulario } from '@/shared/components/ui'
 import { plata } from './formato'
 import type { AportePaquete, Paquete } from '../services/subcontratosService'
 import type { EstadoDocumento } from '../services/subcontratosReglas'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 const TONO_DOC: Record<EstadoDocumento, 'pos' | 'neg' | 'warn' | 'pendiente'> = {
   ok: 'pos', vencido: 'neg', por_vencer: 'warn', falta: 'neg',
@@ -181,7 +182,7 @@ export function PersonalExterno({ paquete, accion, hoyISO }: {
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-[10px] font-medium text-muted">
                 {iniciales(g.nombre_completo)}
               </span>
-              <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-soft">{g.nombre_completo}</span>
+              <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-soft">{nombreDePersona(g.nombre_completo)}</span>
               <Estado tono={sinArt ? 'neg' : 'pos'} clave={sinArt ? 'sin_art' : 'alta_ok'}>
                 {sinArt ? 'sin ART' : (g.alta_afip ? 'alta ok' : 'ART ok')}
               </Estado>

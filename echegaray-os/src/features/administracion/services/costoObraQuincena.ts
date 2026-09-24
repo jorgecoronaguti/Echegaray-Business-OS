@@ -16,6 +16,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Quincena } from './quincena.ts'
 import { getManoDeObraPresupuestada, type Falla } from './costoLecturas.ts'
+import { nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 
 export type { Falla }
 
@@ -153,7 +154,7 @@ export async function getCostoObraQuincena(
   }
   if (oep.error) errores.push(oep.error)
   const rotulos = new Map((canonicas.data ?? []).map((o) => [String(o.id), String(o.nombre ?? o.id)]))
-  const nombres = new Map((personas.data ?? []).map((p) => [String(p.id), String(p.nombre_completo ?? '')]))
+  const nombres = new Map((personas.data ?? []).map((p) => [String(p.id), nombreDePersonaONull(p.nombre_completo as string | null) ?? '']))
   const presupuesto = oep.presupuesto
   const filas = filasDeCosto(costo.data)
   return {

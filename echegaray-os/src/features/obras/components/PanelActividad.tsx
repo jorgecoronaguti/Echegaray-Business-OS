@@ -44,6 +44,7 @@ import {
 import { AvanceRapido, CamposActividad } from './FormActividad'
 import { n2 } from './PanelPrimitivas'
 import { fecha } from './formato'
+import { nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 
 export type AccionesCronograma = {
   crear: (form: FormData) => Promise<ResultadoAccion>
@@ -153,7 +154,7 @@ export function PanelActividad({
   const [editando, setEditando] = useState(false)
   const [registrando, setRegistrando] = useState(false)
   const responsable = a.responsable_id
-    ? (personas.find((p) => p.id === a.responsable_id)?.nombre_completo ?? null)
+    ? nombreDePersonaONull(personas.find((p) => p.id === a.responsable_id)?.nombre_completo)
     : null
   const desvio = desvioHH(a, hh)
   const hhReal = hh?.hh_real ?? a.hh_real

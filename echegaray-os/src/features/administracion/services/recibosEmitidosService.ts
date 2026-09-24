@@ -11,6 +11,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { esEstado } from '@/shared/recibo/ciclo'
 import type { ReciboEnElLegajo, RenglonesSellados } from './reciboEmitido.ts'
+import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
 
 const numero = (v: unknown): number | null =>
   v == null || !Number.isFinite(Number(v)) ? null : Number(v)
@@ -60,11 +61,7 @@ export async function getRecibosEmitidos(
   // que aparecen en lo que se va a dibujar. Sin nombre cargado queda `null` y la pantalla escribe «sin
   // identificar», que es más honesto que un uuid con pinta de nombre.
   const ids = [...new Set(filas.map((f) => f.emitido_por).filter((v): v is string => typeof v === 'string'))]
-  const nombres = new Map<string, string>()
-  if (ids.length > 0) {
-    const { data: perfiles } = await supabase.from('perfiles').select('id, nombre').in('id', ids)
-    for (const q of perfiles ?? []) if (q.nombre) nombres.set(q.id as string, q.nombre as string)
-  }
+  const nombres = ids.length > 0 ? await nombresDeUsuarios(supabase) : new Map<string, string>()
   const recibos = filas.map((f): ReciboEnElLegajo => ({
     id: String(f.id),
     codigo: typeof f.codigo === 'string' ? f.codigo : null,

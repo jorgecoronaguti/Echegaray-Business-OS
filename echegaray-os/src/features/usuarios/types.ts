@@ -61,8 +61,12 @@ export interface UsuarioGestion {
    * tener persona (una casilla de sistema no es un empleado). La pantalla lo escribe.
    */
   persona: PersonaVinculada | null
-  /** El nombre del perfil. Vacío cuando la cuenta existe en auth pero nadie le cargó perfil. */
+  /** El nombre para mostrar (src/shared/personas): el de su persona si está vinculada, o el de la
+   *  cuenta. Es el MISMO que ven las demás pantallas. */
   nombre: string | null
+  /** El nombre de la CUENTA (`perfiles.nombre`), el que se edita acá. Sólo manda cuando la cuenta no
+   *  tiene persona; con persona, el nombre es el del legajo. */
+  nombreCuenta: string | null
   email: string | null
   /** `null` = cuenta sin perfil: cae al nivel MENOS privilegiado, igual que en `areaDe()`. */
   rol: Rol | null

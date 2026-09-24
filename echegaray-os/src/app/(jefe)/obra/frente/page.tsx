@@ -14,6 +14,7 @@ import { hhDeLaObra } from '@/features/jefe/services/progreso'
 import { conObra } from '@/features/jefe/services/navegacion'
 import { iniciales } from '@/features/jefe/services/personas'
 import { getEsperados, getPresencia } from '@/features/administracion/services/presenciaService'
+import { nombreDePersonaONull } from '../../../../shared/personas/nombre.ts'
 
 // J06 · EL FRENTE — el contenedor del árbol, con el mismo vocabulario que la pantalla de una tarea.
 //
@@ -79,7 +80,7 @@ export default async function JefeFrentePage({
     if (!idsDelFrente.has(h.actividad_id)) continue
     horasPorPersona.set(h.persona_id, (horasPorPersona.get(h.persona_id) ?? 0) + h.horas)
   }
-  const nombreDe = new Map((esperados.data ?? []).map((e) => [e.id, e.nombre_completo]))
+  const nombreDe = new Map((esperados.data ?? []).map((e) => [e.id, nombreDePersonaONull(e.nombre_completo)]))
   const marcaDe = new Map((presencia.data ?? []).map((p) => [p.persona_id, p]))
   const finPlan = finDelFrente(tareas)
   // Las horas del frente salen de la MISMA regla que las de la obra en J03: sin una sola tarea que
@@ -240,7 +241,7 @@ export default async function JefeFrentePage({
         ) : (
           <div style={{ marginTop: 9, display: 'flex', alignItems: 'center', gap: 0 }} data-testid="frente-gente">
             {[...horasPorPersona.keys()].slice(0, 6).map((personaId, i) => {
-              const nombre = nombreDe.get(personaId) ?? marcaDe.get(personaId)?.nombre_completo ?? 'Sin nombre'
+              const nombre = nombreDe.get(personaId) ?? nombreDePersonaONull(marcaDe.get(personaId)?.nombre_completo) ?? 'Sin nombre'
               // El verde es SÓLO para una marca real. Sin marca el círculo es neutro: no es «no
               // fichó», es que el fichaje desde el celular todavía no está en uso.
               const fichado = !!marcaDe.get(personaId)?.entrada

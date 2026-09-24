@@ -18,6 +18,8 @@ import {
   COLUMNAS_COMPROBANTE, COLUMNAS_DEVOLUCION, COLUMNAS_ENTREGA,
   type Comprobante, type Devolucion, type Entrega, type FilaDeCompras, type ObraOpcion, type PersonaOpcion, type Rendicion,
 } from '../types'
+import { nombresDeUsuarios as nombresDeUsuariosTodos } from '../../../shared/personas/nombresDeUsuarios.ts'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 const TOPE = 5_000
 /** Lo que dura el enlace firmado a una foto o al papel: se abre en el momento, no se comparte. */
@@ -90,14 +92,14 @@ export async function leerEfectivo(): Promise<LecturaEfectivo> {
       estado: 'ok',
       datos: {
         entregas: ((entregas.data ?? []) as unknown as Entrega[]).map((e) => ({
-          ...e, entregado: num(e.entregado), rendido: num(e.rendido), devuelto: num(e.devuelto),
+          ...e, persona: nombreDePersona(e.persona), entregado: num(e.entregado), rendido: num(e.rendido), devuelto: num(e.devuelto),
           en_su_poder: num(e.en_su_poder), filas_rendidas: num(e.filas_rendidas),
         })),
         comprobantes: (comprobantes.data ?? []) as unknown as Comprobante[],
         rendiciones: deLasEntregas((rendiciones.data ?? []) as unknown as Rendicion[]).map((r) => ({ ...r, monto: num(r.monto) })),
         devoluciones: deLasEntregas((devoluciones.data ?? []) as unknown as Devolucion[]).map((d) => ({ ...d, monto: num(d.monto) })),
         personas: ((personas.data ?? []) as { id: string; nombre_completo: string | null; puesto: string | null }[])
-          .filter((p) => p.nombre_completo).map((p) => ({ id: p.id, nombre: p.nombre_completo as string, puesto: p.puesto })),
+          .filter((p) => p.nombre_completo).map((p) => ({ id: p.id, nombre: nombreDePersona(p.nombre_completo), puesto: p.puesto })),
         obras,
         clienteDeObra,
         miPersona: typeof mia.data === 'string' ? mia.data : null,
@@ -145,7 +147,7 @@ export async function leerExtraDeFicha(entregaId: string, claves: string[]): Pro
   ])
   const f = fila.data as { creada_en: string | null; entregada_por: string | null; conformidad_papel_url: string | null; conformidad_trazo: string | null } | null
   const [quien, papel, firmasDev] = await Promise.all([
-    f?.entregada_por ? supabase.from('perfiles').select('nombre').eq('id', f.entregada_por).maybeSingle() : Promise.resolve({ data: null }),
+    f?.entregada_por ? nombresDeUsuariosTodos(supabase) : Promise.resolve(new Map<string, string>()),
     f?.conformidad_papel_url ? firmar(supabase, f.conformidad_papel_url) : Promise.resolve(null),
     supabase.from('efectivo_devolucion').select('id, firma_entrega, firma_recibe').eq('entrega_id', entregaId),
   ])
@@ -158,7 +160,7 @@ export async function leerExtraDeFicha(entregaId: string, claves: string[]): Pro
   const r = reclamo.data as { pedido_en: string; enviado_en: string | null } | null
   return {
     creadaEn: f?.creada_en ?? null,
-    entregadaPor: (quien.data as { nombre: string | null } | null)?.nombre ?? null,
+    entregadaPor: (f?.entregada_por && quien.get(f.entregada_por)) || null,
     papelUrl: papel,
     trazo: f?.conformidad_trazo ?? null,
     firmas,
@@ -204,7 +206,7 @@ export async function leerEnManos(obra?: string): Promise<LecturaEnManos> {
       estado: 'ok',
       hoy: diaAR(new Date().toISOString()),
       entregas: ((data ?? []) as unknown as Entrega[]).map((e) => ({
-        ...e, entregado: num(e.entregado), rendido: num(e.rendido), devuelto: num(e.devuelto), en_su_poder: num(e.en_su_poder),
+        ...e, persona: nombreDePersona(e.persona), entregado: num(e.entregado), rendido: num(e.rendido), devuelto: num(e.devuelto), en_su_poder: num(e.en_su_poder),
       })),
     }
   } catch (err) {

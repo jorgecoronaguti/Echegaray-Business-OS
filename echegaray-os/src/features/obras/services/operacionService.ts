@@ -50,6 +50,7 @@ import {
   aliasDeObra, detalleCubreElTotal, indiceDeAlias, obraDeTexto,
 } from '../../../../orquestador/lib/obra-operacion.mjs'
 import type { ServiceResult } from '../types'
+import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
 
 // IMPEDIMENTOS ES EL QUINTO (20/08). El dueño puso los cinco bloques en Operación: *"PEDIDOS,
 // COMPRAS, HERRAMIENTAS, MOVIMIENTOS, IMPEDIMENTOS"*. Los cuatro primeros son LECTURA de fuentes que
@@ -188,9 +189,8 @@ export async function getPedidos(
   }))
   const propias = obraId ? marcadas.filter((f) => f.obra_canonica_id === obraId) : marcadas
   const usuarios = [...new Set(propias.map((f) => f.creado_por).filter((u): u is string => Boolean(u)))]
-  // `perfiles` puede estar recortada por RLS: lo que no vuelve queda sin nombre, no inventado.
-  const perfiles = usuarios.length ? await supabase.from('perfiles').select('id, nombre').in('id', usuarios) : null
-  const nombre = new Map(((perfiles?.data ?? []) as { id: string; nombre: string | null }[]).map((p) => [p.id, p.nombre]))
+  // Quién: el nombre de su persona, resuelto por el vínculo (src/shared/personas). Sin él, sin nombre.
+  const nombre = usuarios.length ? await nombresDeUsuarios(supabase) : new Map<string, string>()
   return {
     data: propias.map(({ creado_por, ...f }) => ({ ...f, quien: (creado_por && nombre.get(creado_por)) || null })),
     error: null,

@@ -5,6 +5,7 @@ import { getActivosEnObra } from '../../services/ejecucionService'
 import { SubNavTrabajo } from '../SubNavTrabajo'
 import { PlanillaGrilla } from './PlanillaGrilla'
 import type { CeldaPlanilla, ControlDeTarea, NodoWbs } from './planillaObra.ts'
+import { nombreDePersona } from '../../../../shared/personas/nombre.ts'
 
 // 04c · TRABAJO · PLANILLA (diseño ERP Obras, 23/09/2026) — tarea × día hábil con la fracción de cada
 // parte. SÓLO ESCRITORIO: en el teléfono se dice «Esta planilla se usa en computadora» con la puerta
@@ -63,7 +64,7 @@ export async function TabPlanilla({ obraId }: { obraId: string }) {
           estado_operativo: String(c.estado_operativo ?? ''),
         }))}
         historias={historias.data ?? []}
-        personas={(personas.data ?? []).map((p) => ({ id: p.id, nombre: p.nombre_completo }))}
+        personas={(personas.data ?? []).map((p) => ({ id: p.id, nombre: nombreDePersona(p.nombre_completo) }))}
         activos={(activos.data ?? []).map((a) => ({ id: a.id, nombre: a.nombre }))}
         fallas={fallas}
       />

@@ -25,6 +25,7 @@ import { ALTO_V2, CAJA_CONTENIDO, V } from '@/shared/components/v2/patron'
 import { IconoCuadrilla } from '@/shared/components/iconos'
 import type { Cuadrilla, Integrante } from '../types'
 import type { Fichaje } from '../services/hhPorPeriodo'
+import { nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 
 /** HH sin decimales: el mockup escribe «486 HH», y media hora no cambia una decisión de dotación. */
 const horas = (n: number) => `${n.toLocaleString('es-AR', { maximumFractionDigits: 0 })} HH`
@@ -173,7 +174,7 @@ function Gente({ integrantes, porPersona, fichadosHoy, hrefEditar, nombre }: Des
                 }}
               />
               <span className="truncate" style={{ fontSize: '12px', color: V.tinta }}>
-                {i.nombre_completo ?? 'sin nombre en el legajo'}
+                {nombreDePersonaONull(i.nombre_completo) ?? 'sin nombre en el legajo'}
               </span>
               <span style={{ fontSize: '11px', color: V.lupa, flexShrink: 0 }}>
                 {i.categoria ?? 'sin categoría'}

@@ -30,7 +30,9 @@ export function RevisarComprobante({ e, c, cola, fotoUrl, fila, destino }: {
   const sumaCola = cola.reduce((s, x) => s + (totalLeido(x) ?? 0), 0)
   const estado = ROTULO_COMPROBANTE[c.estado]
   const volver = urlEfectivo({ entrega: e.codigo })
-  const nombreCorto = e.persona.split(/\s+/).slice(-1)[0] ?? e.persona
+  // El nombre entero, el mismo de la lista (src/shared/personas): «Miguel» a secas era el ÚLTIMO
+  // nombre del legajo, y hay dos Emilianos en el plantel.
+  const quien = e.persona
   const caja = { height: 34, padding: '0 11px', border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, display: 'flex', alignItems: 'center', fontSize: '13.5px', background: SUPERFICIE, minWidth: 0 } as const
   const dato = (rotulo: string, valor: React.ReactNode, nota?: React.ReactNode, mono = false) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
@@ -65,7 +67,7 @@ export function RevisarComprobante({ e, c, cola, fotoUrl, fila, destino }: {
             </div>
             <div style={{ fontSize: '17px', fontWeight: 600 }}>Lo que leyó el sistema</div>
             <div style={{ fontSize: '12.5px', color: V.apagado }}>
-              El sistema lo carga solo a Compras. Si algo quedó mal, se corrige en la fila de Compras; si falta un dato, se le pide a {nombreCorto}.
+              El sistema lo carga solo a Compras. Si algo quedó mal, se corrige en la fila de Compras; si falta un dato, se le pide a {quien}.
             </div>
           </div>
 
@@ -89,7 +91,7 @@ export function RevisarComprobante({ e, c, cola, fotoUrl, fila, destino }: {
             <Link href={siguiente ? urlEfectivo({ entrega: e.codigo, comprobante: siguiente.id }) : volver} prefetch={false} style={botonOscuroGrande} data-testid="revisar-seguir">
               {siguiente ? 'Seguir' : 'Volver a la entrega'}
             </Link>
-            {esperando(c) && c.estado !== 'respondido' && <ObservarComprobante id={c.id} persona={nombreCorto} />}
+            {esperando(c) && c.estado !== 'respondido' && <ObservarComprobante id={c.id} persona={quien} />}
             {esperando(c) && <DescartarComprobante id={c.id} alTerminar={volver} />}
             {siguiente && (
               <span style={{ marginLeft: 'auto', fontSize: '12.5px', color: V.apagado }}>

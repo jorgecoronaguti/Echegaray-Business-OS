@@ -19,6 +19,7 @@ import { ListaEntrarComo } from '@/features/auth/components/ListaEntrarComo'
 import { ROL_LABEL, type Rol } from '@/features/auth/types'
 import { MiCuentaShell } from '@/features/mi-cuenta/components/MiCuentaShell'
 import { Aviso, Nulo, Num, Tabla, THead, Th, Tr, Td } from '@/shared/components/ds'
+import { nombresDeUsuarios } from '../../../../shared/personas/nombresDeUsuarios.ts'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,10 +65,7 @@ export default async function EntrarComoPage() {
     .order('entro_en', { ascending: false })
     .limit(20)
   const ids = Array.from(new Set((huellas ?? []).flatMap((h) => [h.direccion_id as string, h.objetivo_id as string])))
-  const { data: nombres } = ids.length
-    ? await supabase.from('perfiles').select('id, nombre').in('id', ids)
-    : { data: [] as { id: string; nombre: string | null }[] }
-  const nombreDe = new Map((nombres ?? []).map((n) => [n.id as string, (n.nombre as string | null) ?? null]))
+  const nombreDe: Map<string, string | null> = ids.length ? await nombresDeUsuarios(supabase) : new Map()
   const sinTabla = hErr?.code === '42P01'
 
   return (

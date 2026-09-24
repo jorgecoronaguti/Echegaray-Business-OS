@@ -23,6 +23,7 @@ import { C, MONO } from './canon/tokens'
 import { Ico, P } from './canon/Ico'
 import { Pastilla } from './canon/Piezas'
 import { AccionFila } from './canon/AccionFila'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 const hh = (n: number | null) => (n == null ? '—' : n.toLocaleString('es-AR', { maximumFractionDigits: 1 }))
 const pct = (n: number | null) => (n == null ? '—' : `${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 1 })}%`)
@@ -240,12 +241,12 @@ export function FormIndividual({
             <option value="" disabled>elegir del plantel</option>
             {acá.length > 0 && (
               <optgroup label="En esta obra">
-                {acá.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
+                {acá.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>)}
               </optgroup>
             )}
             {resto.length > 0 && (
               <optgroup label={acá.length > 0 ? 'Resto del plantel' : 'Plantel'}>
-                {resto.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
+                {resto.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>)}
               </optgroup>
             )}
           </select>

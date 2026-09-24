@@ -13,6 +13,7 @@ import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '../types'
 import type { DocumentoProveedor } from './documentosProveedor'
+import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
 
 /** Tope de documentos listados. Si se alcanza, la pantalla lo dice en vez de recortar en silencio. */
 export const TOPE_DOCUMENTOS = 100
@@ -79,9 +80,8 @@ async function nombresDeQuienesSubieron(
   const nombres = new Map<string, string>()
   const uids = [...new Set(filas.map((d) => d.subido_por))]
   if (!uids.length) return nombres
-  const { data } = await supabase.from('perfiles').select('id, nombre').in('id', uids)
-  for (const p of data ?? []) {
-    if (p.nombre) nombres.set(String(p.id), String(p.nombre))
-  }
+  // El nombre de su persona, resuelto por el vínculo (src/shared/personas).
+  const todos = await nombresDeUsuarios(supabase)
+  for (const id of uids) { const n = todos.get(String(id)); if (n) nombres.set(String(id), n) }
   return nombres
 }

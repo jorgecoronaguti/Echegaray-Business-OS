@@ -51,6 +51,7 @@ import { entradaDeBlanco } from './sueldoBlancoNegro.ts'
 import { baseDelEstimado, leerFeriadosDeLaQuincena } from './reciboEstimadoService.ts'
 import { REGLAS_GENERADAS } from './reglasDelRecibo.generadas.ts'
 import type { Quincena } from './quincena.ts'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 /** Un cuadro con sus líneas ya pisadas por lo que el dueño escribió a mano. */
 export interface CuadroConOverrides extends Omit<CuadroDeLiquidacion, 'lineas'> {
@@ -236,7 +237,7 @@ export async function getLiquidacionDeLaQuincena(
       { id: string; nombre_completo: string; en_la_empresa: boolean; puesto: string | null; fecha_ingreso: string | null; fecha_egreso: string | null }[])
       .map((r) => ({
         id: r.id,
-        nombre: r.nombre_completo,
+        nombre: nombreDePersona(r.nombre_completo),
         cuil: cuilPorPersona.get(r.id) ?? null,
         enLaEmpresa: r.en_la_empresa !== false,
         fechaIngreso: r.fecha_ingreso ? String(r.fecha_ingreso).slice(0, 10) : null,

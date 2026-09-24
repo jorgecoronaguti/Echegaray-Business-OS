@@ -46,6 +46,8 @@ import { correrQuincena, type Quincena } from './quincena.ts'
 import { leerRegistrosHH } from './registrosHHService.ts'
 import { leerCuilesDelLegajo, leerPresenciasDeLaQuincena } from './lecturasCompartidasDeQuincena.ts'
 import { esJefeDeObra, sinDireccion } from './vocabularioPersona.ts'
+import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 export interface DatosDePersona {
   id: string
@@ -250,7 +252,7 @@ export async function getDatosDeLaSolapaHoras(
   return {
     personas: directorioFilas.map((p) => ({
       id: p.id,
-      nombre: p.nombre_completo,
+      nombre: nombreDePersona(p.nombre_completo),
       // EL MISMO CORTE QUE EL PLANTEL Y LA ASISTENCIA: `esJefeDeObra(puesto)`, una sola definición.
       esJefe: esJefeDeObra(p.puesto),
       valorHora: tarifaDe.get(p.id)?.valorHora ?? null,
@@ -339,7 +341,7 @@ function armarPersona(
   const convenio = l?.convenio_colectivo ?? null
   return {
     id: p.id,
-    nombre: p.nombre_completo,
+    nombre: nombreDePersona(p.nombre_completo),
     numeroLegajo: p.legajo == null ? null : String(p.legajo),
     valorHora,
     convenio,
@@ -397,12 +399,7 @@ function armarPersona(
 async function nombresDePerfil(
   supabase: SupabaseClient, ids: (string | null)[],
 ): Promise<Map<string, string>> {
-  const unicos = [...new Set(ids.filter(Boolean))] as string[]
-  const m = new Map<string, string>()
-  if (unicos.length === 0) return m
-  const { data } = await supabase.from('perfiles').select('id, nombre').in('id', unicos)
-  for (const p of (data ?? []) as { id: string; nombre: string | null }[]) {
-    if (p.nombre) m.set(p.id, p.nombre)
-  }
-  return m
+  // El nombre de su persona, resuelto por el vínculo (src/shared/personas).
+  if (!ids.some(Boolean)) return new Map()
+  return nombresDeUsuarios(supabase)
 }

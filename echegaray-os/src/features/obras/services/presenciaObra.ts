@@ -17,6 +17,7 @@
 //    en su propio grupo: esconderlo dejaría a una persona trabajando fuera de la pantalla.
 
 import { esTrabajada } from './tipoHora.ts'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 /** Lo mínimo de una marca. Es un subconjunto de `FilaPresencia` a propósito: esta regla no tiene por
  *  qué recompilarse cuando la vista agregue una columna. */
@@ -105,7 +106,7 @@ export function hoyEnObra(asignaciones: AsignadoDeObra[], marcas: MarcaDelDia[])
     const marca = porPersona.get(a.persona_id) ?? null
     lista.push({
       personaId: a.persona_id,
-      nombre: a.persona_nombre ?? marca?.nombre_completo ?? 'sin nombre en el legajo',
+      nombre: nombreDePersona(a.persona_nombre ?? marca?.nombre_completo),
       rol: marca?.categoria ?? marca?.puesto ?? a.rol,
       marca,
       asignado: true,
@@ -121,7 +122,7 @@ export function hoyEnObra(asignaciones: AsignadoDeObra[], marcas: MarcaDelDia[])
     const lista = filasPorCuadrilla.get(SIN_CUADRILLA) ?? []
     lista.push({
       personaId,
-      nombre: marca.nombre_completo,
+      nombre: nombreDePersona(marca.nombre_completo),
       rol: marca.categoria ?? marca.puesto,
       marca,
       asignado: false,

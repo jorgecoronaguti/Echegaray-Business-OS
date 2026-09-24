@@ -30,6 +30,7 @@ import { horasEsperadasDeQuincena } from './liquidacionQuincena.ts'
 import { tarifaVigenteAl, type TarifaVigente } from './liquidacionQuincena.ts'
 import type { Quincena } from './quincena.ts'
 import { sinIdentidadesDePrueba } from './identidadDePrueba.ts'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 /** Una fila de la escala del CCT que el OS ya tiene cargada, lista para prellenar el formulario. */
 export interface SugerenciaDeEscala {
@@ -134,7 +135,7 @@ export async function getExposicionDeLaQuincena(
   const personas = personasDelPlantel(
     sinIdentidadesDePrueba(
       (legajo.data ?? []) as { nombre_completo?: string | null; email?: string | null }[],
-      (r) => ({ nombre: r.nombre_completo, email: r.email }),
+      (r) => ({ nombre: r.nombre_completo, email: r.email }), // crudo: el filtro de prueba mira el legajo tal cual
     ),
     tarifas.data, q, recibos.filas, plantel,
   )
@@ -208,7 +209,7 @@ function personasDelPlantel(
     const aComparar = valorHoraAComparar(recibo?.valorHora ?? null, vigente?.valorHora ?? null)
     return {
       personaId: p.id,
-      nombre: p.nombre_completo,
+      nombre: nombreDePersona(p.nombre_completo),
       convenio: p.convenio_colectivo,
       categoria: p.categoria,
       valorHora: aComparar.valorHora,

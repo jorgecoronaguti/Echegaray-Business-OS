@@ -13,6 +13,7 @@
 import Link from 'next/link'
 import { Estado, Num, Tabla, Td, Th, THead, Tr } from '@/shared/components/ds'
 import { etiquetaDia, type Celda, type FilaSemana } from '../services/asistenciaSemana'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 const HORAS = (n: number) => n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 1 })
 
@@ -73,7 +74,7 @@ export function GrillaSemana({ filas, dias }: { filas: FilaSemana[]; dias: strin
                   prefetch={false}
                   className="text-[13px] text-ink hover:underline"
                 >
-                  {f.persona.nombre_completo}
+                  {nombreDePersona(f.persona.nombre_completo)}
                 </Link>
               </Td>
               {f.celdas.map((c) => <CeldaDia key={c.fecha} c={c} />)}

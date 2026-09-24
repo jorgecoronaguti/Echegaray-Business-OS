@@ -16,6 +16,7 @@ import type { ImputacionHH, ServiceResult } from '../types'
 // dejar dos formas de importar lo mismo en la misma línea.
 import { esTrabajada, porTipo, type TipoHora } from '../../obras/services/tipoHora.ts'
 import { rotuloDeObra } from '../../../shared/utils/obra.ts'
+import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
 
 /** Cuánto suma cada clave, y en cuántas imputaciones. Sirve para HH por obra y HH por actividad. */
 export interface TotalHH {
@@ -87,14 +88,9 @@ export function seCorrigio(creado: string | null, actualizado: string | null): b
 async function nombresDePerfil(
   supabase: SupabaseClient, ids: (string | null)[],
 ): Promise<Map<string, string>> {
-  const unicos = [...new Set(ids.filter(Boolean))] as string[]
-  const m = new Map<string, string>()
-  if (unicos.length === 0) return m
-  const { data } = await supabase.from('perfiles').select('id, nombre').in('id', unicos)
-  for (const p of (data ?? []) as { id: string; nombre: string | null }[]) {
-    if (p.nombre) m.set(p.id, p.nombre)
-  }
-  return m
+  // El nombre de su persona, resuelto por el vínculo (src/shared/personas).
+  if (!ids.some(Boolean)) return new Map()
+  return nombresDeUsuarios(supabase)
 }
 
 /** Las horas TRABAJADAS del período pedido. `desde`/`hasta` en ISO, ambas inclusive.

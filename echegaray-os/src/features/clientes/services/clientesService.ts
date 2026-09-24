@@ -18,6 +18,7 @@ import {
 } from './clientesFilas.ts'
 import { avisoDeNotasPendiente, faltaLaTablaDeNotas } from './notaPendiente'
 import { construirLineaDeTiempo } from './timeline'
+import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
 
 /**
  * La cartera COMPLETA: activos y archivados, en una sola lectura.
@@ -27,13 +28,22 @@ import { construirLineaDeTiempo } from './timeline'
  * probado en `orquestador/lib/cliente-cartera.test.mjs`.
  */
 export async function getClientes(supabase: SupabaseClient): Promise<ServiceResult<ClientePanel[]>> {
-  const { data, error } = await supabase
-    .from('cliente_panel')
-    .select('*')
-    .order('n_obras_activas', { ascending: false })
-    .order('nombre_comercial', { ascending: true })
+  const [{ data, error }, nombres] = await Promise.all([
+    supabase
+      .from('cliente_panel')
+      .select('*')
+      .order('n_obras_activas', { ascending: false })
+      .order('nombre_comercial', { ascending: true }),
+    nombresDeUsuarios(supabase),
+  ])
   if (error) return { data: null, error: error.message }
-  return { data: armarClientes(data ?? []), error: null }
+  return { data: armarClientes(data ?? []).map((c) => conResponsable(c, nombres)), error: null }
+}
+
+/** El «Responsable interno» se llama como su persona (src/shared/personas), no como su cuenta:
+ *  `cliente_panel.responsable_nombre` es `perfiles.nombre`, y ésa es la copia que diverge. */
+function conResponsable(c: ClientePanel, nombres: Map<string, string>): ClientePanel {
+  return c.responsable_id ? { ...c, responsable_nombre: nombres.get(c.responsable_id) ?? c.responsable_nombre } : c
 }
 
 
@@ -67,13 +77,16 @@ export async function getObrasPorCliente(
 
 
 export async function getCliente(supabase: SupabaseClient, slug: string): Promise<ServiceResultOpcional<ClientePanel>> {
-  const { data, error } = await supabase.from('cliente_panel').select('*').eq('slug', slug).maybeSingle()
+  const [{ data, error }, nombres] = await Promise.all([
+    supabase.from('cliente_panel').select('*').eq('slug', slug).maybeSingle(),
+    nombresDeUsuarios(supabase),
+  ])
   if (error) return { data: null, error: error.message }
   // NO EXISTE NO ES UN ERROR: la ficha ya distingue las dos ramas —`if (error)` dibuja el fallo con
   // el mensaje de la base, `if (!cliente) notFound()` dibuja el 404— pero devolver la ausencia como
   // error hacía que la segunda no se alcanzara nunca. Mismo defecto que tenía `getObra`.
   if (!data) return { data: null, error: null }
-  return { data: normalizar(data as Record<string, unknown>), error: null }
+  return { data: conResponsable(normalizar(data as Record<string, unknown>), nombres), error: null }
 }
 
 /** Las obras del cliente. Salen de `obra_panel`: el mismo costo y el mismo avance que /obras. */
@@ -127,10 +140,14 @@ export async function getContactos(supabase: SupabaseClient, clienteId: string):
  * es el que se está corrigiendo.
  */
 export async function getResponsables(supabase: SupabaseClient): Promise<ServiceResult<Responsable[]>> {
-  const { data, error } = await supabase
-    .from('perfiles').select('id, nombre, rol').eq('es_prueba', false).order('nombre')
+  const [{ data, error }, nombres] = await Promise.all([
+    supabase.from('perfiles').select('id, rol').eq('es_prueba', false),
+    nombresDeUsuarios(supabase),
+  ])
   if (error) return { data: null, error: error.message }
-  return { data: (data ?? []) as Responsable[], error: null }
+  // El nombre de su persona, resuelto por el vínculo (src/shared/personas), no el de la cuenta.
+  const responsables = ((data ?? []) as Omit<Responsable, 'nombre'>[]).map((r) => ({ ...r, nombre: nombres.get(r.id) ?? '' }) as Responsable)
+  return { data: responsables.sort((a, b) => (a.nombre ?? '').localeCompare(b.nombre ?? '', 'es')), error: null }
 }
 
 export async function getDocumentosCliente(
@@ -192,11 +209,10 @@ export async function getNotasCliente(
   if (error) return { notas: [], aviso: faltaLaTablaDeNotas(error) ? avisoDeNotasPendiente() : error.message }
 
   const autores = [...new Set((data ?? []).map((n) => n.autor_id as string).filter(Boolean))]
-  let perfiles: unknown[] = []
-  if (autores.length) {
-    const leidos = await supabase.from('perfiles').select('id, nombre').in('id', autores)
-    perfiles = leidos.data ?? []
-  }
+  // El nombre de su persona, resuelto por el vínculo (src/shared/personas).
+  const perfiles: unknown[] = autores.length
+    ? [...(await nombresDeUsuarios(supabase))].map(([id, nombre]) => ({ id, nombre }))
+    : []
   return { notas: armarNotasCliente(data ?? [], perfiles), aviso: null }
 }
 

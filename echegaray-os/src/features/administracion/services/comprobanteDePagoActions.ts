@@ -17,6 +17,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { TIPOS_PAGO } from './comprobanteDePago'
+import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
 
 const BUCKET = 'comprobantes'
 /** Diez minutos: alcanza para mirar un papel y no para dejar un enlace vivo en un chat. */
@@ -111,10 +112,8 @@ async function nombresDe(
 ): Promise<Map<string, string>> {
   const unicos = [...new Set(ids.filter((x): x is string => Boolean(x)))]
   if (!unicos.length) return new Map()
-  const { data } = await supabase.from('perfiles').select('id, nombre').in('id', unicos)
-  return new Map(((data ?? []) as { id: string; nombre: string | null }[])
-    .filter((p) => p.nombre)
-    .map((p) => [p.id, p.nombre as string]))
+  // El nombre de su persona, resuelto por el vínculo (src/shared/personas).
+  return nombresDeUsuarios(supabase)
 }
 
 /**

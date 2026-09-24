@@ -28,6 +28,7 @@ import { MiCuentaShell } from '@/features/mi-cuenta/components/MiCuentaShell'
 import { FormaPerfil } from '@/features/mi-cuenta/components/FormaPerfil'
 import { PieMovil } from '@/features/mi-cuenta/components/PieMovil'
 import { Aviso, Nulo } from '@/shared/components/ds'
+import { nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,7 +88,7 @@ export default async function MiCuentaPage() {
           telefono={perfil.data?.telefono ?? null}
           avatarUrl={perfil.data?.avatar_url ?? null}
           cargo={rol ? ROL_LABEL[rol] : null}
-          legajoNombre={legajo.data?.nombre_completo ?? null}
+          legajoNombre={nombreDePersonaONull(legajo.data?.nombre_completo) ?? null}
           legajoAlta={legajo.data?.fecha_ingreso ?? null}
           vinculoDisponible={perfil.data?.vinculoDisponible ?? true}
         />

@@ -19,6 +19,7 @@ import { inicioDeMes, valorHoraDeCosto } from './costoHora.ts'
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { leerRegistrosHH } from './registrosHHService.ts'
 import type { Quincena } from './quincena.ts'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 export interface Falla { que: string; error: string }
 
@@ -351,7 +352,7 @@ export async function getPersonasProyectables(
     .filter((p) => p.en_la_empresa === true && p.es_prueba !== true)
     .map((p): PersonaProyectable => ({
       personaId: String(p.id),
-      nombre: String(p.nombre_completo ?? ''),
+      nombre: nombreDePersona(p.nombre_completo),
       valorHora: tarifas.get(String(p.id)) ?? null,
     }))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))

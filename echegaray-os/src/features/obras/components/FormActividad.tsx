@@ -18,6 +18,7 @@ import { BotonAccion, Campo, CTRL, FormAccion } from '@/shared/components/ui'
 import type { Actividad, Persona } from '../types'
 import type { ActividadHH } from '../services/personalService'
 import type { AccionesCronograma } from './PanelActividad'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 const fmt = (v: string | number | null | undefined) => (v == null ? '' : String(v))
 
@@ -25,7 +26,7 @@ function SelectResponsable({ personas, valor }: { personas: Persona[]; valor: st
   return (
     <select name="responsable_id" defaultValue={valor ?? ''} className={CTRL}>
       <option value="">sin responsable asignado</option>
-      {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
+      {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>)}
     </select>
   )
 }

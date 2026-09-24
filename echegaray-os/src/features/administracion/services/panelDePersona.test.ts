@@ -53,7 +53,7 @@ test('un día sin correcciones no dice que lo corrigieron', () => {
 
 test('el rastro nombra a quien corrigió último y el valor con el que el día nació', () => {
   const r = rastroDelDia([corr({})])
-  assert.equal(r.texto, 'corrigió J. Corona el 08/09 · era 9')
+  assert.equal(r.texto, 'corrigió Jorge Corona el 08/09 · era 9')
   assert.equal(r.original, 9)
 })
 
@@ -66,7 +66,7 @@ test('DOS correcciones: «era» sigue siendo el original, no el valor intermedio
   ])
   assert.equal(r.veces, 2)
   assert.equal(r.original, 9, 'el original es el de la PRIMERA corrección')
-  assert.match(r.texto ?? '', /^corrigió A\. Laura el 09\/09 · era 9$/)
+  assert.match(r.texto ?? '', /^corrigió Ana Laura el 09\/09 · era 9$/)
 })
 
 test('el original puede ser «sin cargar»: un día que nació vacío y alguien completó', () => {

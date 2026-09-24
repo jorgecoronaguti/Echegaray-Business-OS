@@ -17,7 +17,9 @@ import { ANCHO_PANEL_OBSERVADO, V, botonClaroGrande, cajaConfirmar, panel, punto
 export function PanelObservado({ c, e, destino }: { c: Comprobante; e: Entrega; destino: string }) {
   const volver = urlEfectivo({ entrega: e.codigo })
   const total = totalLeido(c)
-  const nombreCorto = e.persona.split(/\s+/).slice(-1)[0] ?? e.persona
+  // El nombre entero, el mismo de la lista (src/shared/personas): «Miguel» a secas era el ÚLTIMO
+  // nombre del legajo, y hay dos Emilianos en el plantel.
+  const quien = e.persona
   const fila = { minHeight: 46, display: 'flex', alignItems: 'center', gap: 12, fontSize: '13.5px' } as const
   const faltas = queFalta(c)
   return (
@@ -61,11 +63,11 @@ export function PanelObservado({ c, e, destino }: { c: Comprobante; e: Entrega; 
       )}
 
       <div style={cajaConfirmar}>
-        <div style={{ fontSize: '12.5px', fontWeight: 600 }}>Pedirle el dato a {nombreCorto}</div>
+        <div style={{ fontSize: '12.5px', fontWeight: 600 }}>Pedirle el dato a {quien}</div>
         <div style={{ fontSize: '12.5px', color: V.tintaSuave, lineHeight: 1.45 }}>
-          El pedido queda escrito en el comprobante, con la foto. Lo contesta {nombreCorto} o Administración.
+          El pedido queda escrito en el comprobante, con la foto. Lo contesta {quien} o Administración.
         </div>
-        <ObservarComprobante id={c.id} persona={nombreCorto} abierto grande={false} />
+        <ObservarComprobante id={c.id} persona={quien} abierto grande={false} />
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 'auto', flexWrap: 'wrap' }}>

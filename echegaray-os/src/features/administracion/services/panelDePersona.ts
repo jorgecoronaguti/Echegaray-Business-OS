@@ -88,13 +88,6 @@ function diaYMes(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : `${dosDigitos(d.getUTCDate())}/${dosDigitos(d.getUTCMonth() + 1)}`
 }
 
-/** «Jorge Corona» → «J. Corona». El nombre entero no entra en 210 px y el apellido es el que importa. */
-export function nombreCorto(nombre: string | null): string {
-  if (!nombre) return 'alguien'
-  const partes = nombre.trim().split(/\s+/)
-  return partes.length < 2 ? nombre : `${partes[0][0]}. ${partes.slice(1).join(' ')}`
-}
-
 const horasDichas = (n: number | null): string =>
   n == null ? 'sin cargar' : n.toLocaleString('es-AR', { maximumFractionDigits: 1 })
 
@@ -113,7 +106,7 @@ export function rastroDelDia(correcciones: readonly CorreccionDeDia[]): RastroDe
   const orden = [...correcciones].sort((a, b) => a.corregidoEn.localeCompare(b.corregidoEn))
   const ultima = orden[orden.length - 1]
   return {
-    texto: `corrigió ${nombreCorto(ultima.autor)} el ${diaYMes(ultima.corregidoEn)} · era ${horasDichas(orden[0].horasAntes)}`,
+    texto: `corrigió ${ultima.autor?.trim() || 'alguien'} el ${diaYMes(ultima.corregidoEn)} · era ${horasDichas(orden[0].horasAntes)}`,
     original: orden[0].horasAntes,
     veces: orden.length,
   }

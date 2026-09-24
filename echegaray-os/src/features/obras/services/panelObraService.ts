@@ -20,6 +20,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { PasoDeActividad, RegistroAvance } from './tareasService'
 import type { OpcionEstandar, SugerenciaEstandar } from './vinculacionTareaService'
 import { estadoVinculacion } from './vinculacionEstandar'
+import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
 
 export interface PartidaDeOrigen {
   id: string
@@ -144,11 +145,7 @@ export async function getPanelDeObra(
   // Los nombres de quien firmó cada registro, en una sola lectura extra.
   const ejec = (ejecRes.data ?? []) as Record<string, unknown>[]
   const autorIds = [...new Set(ejec.map((r) => r.creado_por as string | null).filter(Boolean))] as string[]
-  const nombres = new Map<string, string>()
-  if (autorIds.length > 0) {
-    const { data: usuarios } = await supabase.from('perfiles').select('id, nombre').in('id', autorIds)
-    for (const u of usuarios ?? []) nombres.set(u.id as string, u.nombre as string)
-  }
+  const nombres = autorIds.length > 0 ? await nombresDeUsuarios(supabase) : new Map<string, string>()
   const historial: Record<string, RegistroAvance[]> = {}
   for (const r of ejec) {
     const fila: RegistroAvance = {

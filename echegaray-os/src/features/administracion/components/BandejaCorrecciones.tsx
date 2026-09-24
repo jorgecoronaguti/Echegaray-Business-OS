@@ -26,6 +26,7 @@ import type { CorreccionEnBandeja } from '../services/correccionAsistenciaServic
 import { hora } from '@/features/empleado/services/asistencia'
 import { horaCorta } from '@/features/empleado/services/correccion'
 import { dm } from '@/features/empleado/services/fecha'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 const COLS
   = 'grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,120px)]'
@@ -81,7 +82,7 @@ export function ColaDeCorrecciones({ filas, abierta, hrefDe, vacio }: {
                 {/* Sin legajo al lado del nombre: `personas.legajo` no tiene grant para
                     `authenticated` y nombrarla en la vista la haría fallar entera. */}
                 <span className="block truncate" style={{ fontSize: '12.5px', fontWeight: 500, color: V.tinta }}>
-                  {c.nombre_completo}
+                  {nombreDePersona(c.nombre_completo)}
                 </span>
                 <span className="block font-mono" style={{ fontSize: '11px', color: V.lupa, marginTop: 1 }}>
                   {dm(c.fecha)}
@@ -144,7 +145,7 @@ export function PanelCorreccion({ c, cerrarHref }: { c: CorreccionEnBandeja; cer
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: '16px', fontWeight: 600, color: V.tinta, lineHeight: 1.25 }}>
-            {c.nombre_completo}
+            {nombreDePersona(c.nombre_completo)}
           </div>
           <div style={{ fontSize: '12px', color: V.apagado, marginTop: 3 }}>
             {dm(c.fecha)} · pide {c.tipo === 'salida' ? 'la salida' : 'la entrada'}

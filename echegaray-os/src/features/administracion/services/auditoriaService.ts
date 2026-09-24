@@ -10,6 +10,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { decirCambios, type CambioCrudo, type CambioDicho } from './auditoriaCambios'
+import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
 
 export interface Bitacora {
   cambios: CambioDicho[]
@@ -71,22 +72,9 @@ async function nombresDeAutores(
   const nombres = new Map<string, string>()
   if (ids.length === 0) return nombres
 
-  const { data: perfiles } = await sesion.from('perfiles').select('id, nombre, persona_id').in('id', ids)
-  const sinNombre = (perfiles ?? [])
-    .filter((p) => !p.nombre && p.persona_id)
-    .map((p) => p.persona_id as string)
-
-  const dePersona = new Map<string, string>()
-  if (sinNombre.length > 0) {
-    const { data: personas } = await sesion.from('personas').select('id, nombre_completo').in('id', sinNombre)
-    for (const p of personas ?? []) dePersona.set(p.id as string, p.nombre_completo as string)
-  }
-
-  for (const p of perfiles ?? []) {
-    const nombre = (p.nombre as string | null) ?? dePersona.get(p.persona_id as string) ?? null
-    // Un perfil sin nombre Y sin persona no se mete en el mapa: `autorDicho` escribe «sin
-    // identificar», que es más honesto que un uuid recortado con pinta de nombre.
-    if (nombre) nombres.set(p.id as string, nombre)
-  }
+  // El nombre de su persona, resuelto por el vínculo (src/shared/personas). Un autor que no está
+  // en el diccionario no se mete: `autorDicho` escribe «sin identificar», no un uuid recortado.
+  const todos = await nombresDeUsuarios(sesion)
+  for (const id of ids) { const n = todos.get(id); if (n) nombres.set(id, n) }
   return nombres
 }

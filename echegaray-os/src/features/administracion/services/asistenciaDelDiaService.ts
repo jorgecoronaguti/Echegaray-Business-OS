@@ -12,6 +12,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/auth/services/authService'
 import type { RegistroDelDia } from './asistenciaDelDia'
+import { nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 
 const COLUMNAS = 'persona_id, horas, tipo_hora, notas, obra_canonica_id,'
   + ' obra_canonica(nombre), personas(nombre_completo, categoria)'
@@ -39,7 +40,7 @@ export async function getRegistrosDelDia(
   return {
     data: ((data ?? []) as unknown as FilaCruda[]).map((f) => ({
       persona_id: f.persona_id,
-      nombre: f.personas?.nombre_completo ?? null,
+      nombre: nombreDePersonaONull(f.personas?.nombre_completo) ?? null,
       categoria: f.personas?.categoria ?? null,
       obra_id: f.obra_canonica_id,
       obra: f.obra_canonica?.nombre ?? null,

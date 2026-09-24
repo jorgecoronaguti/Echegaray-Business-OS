@@ -22,6 +22,7 @@ import { MiCuentaShell, Dato } from '@/features/mi-cuenta/components/MiCuentaShe
 import { SinVinculo } from '@/features/mi-cuenta/components/SinVinculo'
 import { Aviso, Estado, Nulo, Num, Tabla, THead, Th, Tr, Td, Vacio } from '@/shared/components/ds'
 import { fecha } from '@/features/obras/components/formato'
+import { nombreDePersona } from '../../../../shared/personas/nombre.ts'
 
 export const dynamic = 'force-dynamic'
 
@@ -66,7 +67,7 @@ export default async function MiLegajoPage() {
         <section className="max-w-[560px]" data-testid="ficha-legajo">
           <h2 className="mb-2 text-[11px] font-medium tracking-[0.04em] text-faint">Ficha</h2>
           <div className="border-t border-line">
-            <Dato rotulo="Nombre">{l.nombre_completo}</Dato>
+            <Dato rotulo="Nombre">{nombreDePersona(l.nombre_completo)}</Dato>
             <Dato rotulo="Número de legajo">{l.legajo ? <Num>{l.legajo}</Num> : <Nulo>sin número asignado</Nulo>}</Dato>
             <Dato rotulo="Categoría">{l.categoria ?? <Nulo>sin categoría cargada</Nulo>}</Dato>
             <Dato rotulo="Especialidad">{l.especialidad ?? <Nulo>sin especialidad cargada</Nulo>}</Dato>

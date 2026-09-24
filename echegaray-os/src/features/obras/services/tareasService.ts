@@ -21,6 +21,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Actividad, ServiceResult } from '../types'
 import type { NodoObra, RolEstructura } from './wbs'
+import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 interface FilaWbs {
   actividad_id: string
@@ -124,7 +126,7 @@ async function nombresDeResponsables(
   if (ids.length === 0) return new Map()
   const { data } = await supabase
     .from('persona_plantel').select('id, nombre_completo').in('id', ids)
-  return new Map((data ?? []).map((p) => [p.id as string, p.nombre_completo as string]))
+  return new Map((data ?? []).map((p) => [p.id as string, nombreDePersona(p.nombre_completo as string)]))
 }
 
 /**
@@ -246,12 +248,8 @@ export async function getHistorial(
     .order('fecha', { ascending: false }).order('creado_en', { ascending: false })
   if (error) return { data: null, error: error.message }
   const ids = [...new Set((data ?? []).map((r) => r.creado_por as string | null).filter(Boolean))] as string[]
-  const nombres = new Map<string, string>()
-  if (ids.length > 0) {
-    const { data: usuarios } = await supabase
-      .from('perfiles').select('id, nombre').in('id', ids)
-    for (const u of usuarios ?? []) nombres.set(u.id as string, u.nombre as string)
-  }
+  // Quién: el nombre de su persona, resuelto por el vínculo (src/shared/personas).
+  const nombres = ids.length > 0 ? await nombresDeUsuarios(supabase) : new Map<string, string>()
   const filas: RegistroAvance[] = (data ?? []).map((r) => ({
     id: r.id as string,
     fecha: r.fecha as string,

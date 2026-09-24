@@ -58,6 +58,7 @@ import { getPersonas } from '@/features/obras/services/personalService'
 import { getPortafolio } from '@/features/obras/services/obrasService'
 import { getCapacidadPonderada, type CategoriaCapacidad } from '@/features/obras/services/cronogramaObraService'
 import type { Cuadrilla } from '@/features/administracion/types'
+import { nombreDePersona } from '../../../../../shared/personas/nombre.ts'
 
 export const dynamic = 'force-dynamic'
 
@@ -254,7 +255,7 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
                     <select name="responsable_id" defaultValue="" className={CTRL}>
                       <option value="">sin responsable</option>
                       {(plantel.data ?? []).map((p) => (
-                        <option key={p.id} value={p.id}>{p.nombre_completo}</option>
+                        <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>
                       ))}
                     </select>
                   </Campo>

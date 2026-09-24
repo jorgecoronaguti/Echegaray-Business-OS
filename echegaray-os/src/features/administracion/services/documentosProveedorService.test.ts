@@ -51,6 +51,9 @@ function baseFalsa(
   const { error = null, perfiles = [{ id: UID, nombre: 'Rodrigo' }] } = opciones
   const consultas: Consulta[] = []
   const cliente = {
+    // Quién subió: `nombres_de_usuarios()` resuelve el nombre por el vínculo usuario → persona.
+    rpc: (fn: string) => Promise.resolve(fn === 'nombres_de_usuarios' && perfiles
+      ? { data: perfiles, error: null } : { data: null, error: { message: 'denied' } }),
     from: (tabla: string) => ({
       select: (columnas: string) => {
         const c: Consulta = { tabla, columnas, filtros: [], nulos: [], ordenes: [] }

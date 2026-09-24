@@ -8,6 +8,7 @@ import type {
   ClaseVinculo, Documento, EstadoVigencia, Vinculo,
 } from '../types'
 import { hayCoincidencia } from './resaltado.ts'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 /** Una fila de `documentacion_legajo` con la persona embebida por PostgREST. */
 export interface VinculoLegajo {
@@ -139,7 +140,7 @@ export function conVinculos(
   for (const l of legajos) {
     sumar(l.drive_file_id, {
       clase: 'persona',
-      nombre: l.personas?.nombre_completo?.trim() || 'persona sin nombre',
+      nombre: nombreDePersona(l.personas?.nombre_completo),
       detalle: etiquetaLegajo(l.tipo_documento),
       href: l.persona_id ? `/administracion/personas/${l.persona_id}` : null,
       legajoId: l.id,

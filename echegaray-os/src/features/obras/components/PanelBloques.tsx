@@ -13,6 +13,7 @@ import { METODO_LABEL, UNIDADES } from '../types'
 import type { EquipoEnActividad, PersonaEnActividad } from '../services/recursosService'
 import { n2, Plegable } from './PanelPrimitivas'
 import { fecha } from './formato'
+import { nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CÓMO SE MIDE — y las lecturas que acompañan a Plan | Real
@@ -97,7 +98,7 @@ export function ListaPersonal({ a, personas, reales, obraId }: {
   /** La obra, para llevar a la solapa donde el personal se asigna de verdad. */
   obraId?: string
 }) {
-  const nombreDe = (id: string) => personas.find((p) => p.id === id)?.nombre_completo ?? id
+  const nombreDe = (id: string) => nombreDePersonaONull(personas.find((p) => p.id === id)?.nombre_completo) ?? id
   const responsable = a.responsable_id ? nombreDe(a.responsable_id) : null
   const prevista = a.cuadrilla_prevista ?? a.cuadrilla
   const hhTotal = reales.reduce((s, r) => s + r.horas, 0)

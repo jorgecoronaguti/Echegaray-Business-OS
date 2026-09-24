@@ -34,6 +34,7 @@ import type { Escala } from '../services/escala'
 import { cuantosFiltros, type FiltroPlan } from '../services/filtroPlan'
 import { SUBVISTAS, type SubVista } from '../services/subvistas'
 import { ESTADO_LABEL, COLUMNAS_TABLERO } from '../types'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 export interface AccionesPlan {
   crearRubro?: AccionFormulario
@@ -221,7 +222,7 @@ export function BarraPlan({
               <select value={filtro.responsable} onChange={(e) => alFiltrar({ ...filtro, responsable: e.target.value })} className={CTRL} data-testid="filtro-responsable">
                 <option value="">todos</option>
                 <option value="sin">sin responsable</option>
-                {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
+                {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>)}
               </select>
             </Campo>
           </div>

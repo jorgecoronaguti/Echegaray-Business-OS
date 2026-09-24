@@ -25,6 +25,7 @@ import type { Quincena } from './quincena.ts'
 import { esJefeDeObra } from './vocabularioPersona.ts'
 import { ordenarComoPersonal } from './ordenDePersonal.ts'
 import { sinIdentidadesDePrueba } from './identidadDePrueba.ts'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 /** El estado del recibo del estudio en Documentos del legajo. */
 export type ChipRecibo = 'cargado' | 'solicitado'
@@ -125,7 +126,7 @@ export async function getEslabonesDeLaQuincena(
   // recibo del estudio. Ver `identidadDePrueba.ts`.
   const delPlantel = sinIdentidadesDePrueba(
     (legajo.data ?? []) as { nombre_completo?: string | null; email?: string | null }[],
-    (r) => ({ nombre: r.nombre_completo, email: r.email }),
+    (r) => ({ nombre: nombreDePersona(r.nombre_completo), email: r.email }),
   )
   const personas = armarPersonas(
     q, delPlantel, tarifas.data, recibos.data, adelantos.data, estudio.data, hayExtracto, directorio.data,
@@ -191,7 +192,7 @@ function armarPersonas(
         : false
       return {
         personaId: p.id,
-        nombre: p.nombre_completo,
+        nombre: nombreDePersona(p.nombre_completo),
         valorHora: vigente?.valorHora ?? null,
         netoMensual: vigente?.netoMensual ?? null,
         origenTarifa: vigente?.origen ?? null,

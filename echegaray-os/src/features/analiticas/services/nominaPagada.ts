@@ -1,3 +1,4 @@
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 // LO QUE SE LE PAGÓ A LA GENTE EN EL AÑO, EN BLANCO Y EN NEGRO, SIN CARGAS SOCIALES.
 //
 // Dueño, 22/09/2026: *«la sección "nómina" del módulo de analíticas no es de utilidad así como está;
@@ -276,7 +277,7 @@ export function pagoDeNomina(d: {
     p.conRecibo = true
   }
 
-  const nombres = new Map(d.personas.map((p) => [p.id, texto(p.nombre_completo)]))
+  const nombres = new Map(d.personas.map((p) => [p.id, nombreDePersona(texto(p.nombre_completo))]))
   const nombreDe = (id: string): string => nombres.get(id) ?? 'sin nombre en el directorio'
   const porPersona = new Map<string, PersonaPagada[]>()
   const avisos = {

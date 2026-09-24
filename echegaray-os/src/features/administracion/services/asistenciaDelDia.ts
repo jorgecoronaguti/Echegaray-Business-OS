@@ -142,6 +142,7 @@ export interface AsistenciaDelDia extends ConteoDelDia {
 
 // El «código · nombre» lo arma sólo el helper único; `rotulo` decide qué texto usar sin nombre.
 import { rotuloDeObra } from '../../../shared/utils/obra.ts'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 const rotulo = (id: string | null, nombre: string | null): string =>
   nombre?.trim() || id || 'Sin obra imputada'
@@ -263,7 +264,7 @@ export function asistenciaDelDia(
     vistas.add(e.id)
     filas.push({
       personaId: e.id,
-      nombre: e.nombre_completo,
+      nombre: nombreDePersona(e.nombre_completo),
       categoria: e.categoria,
       obraId: donde?.obra_id ?? e.obra_actual_id,
       obra: donde?.obra ?? e.obra_actual,

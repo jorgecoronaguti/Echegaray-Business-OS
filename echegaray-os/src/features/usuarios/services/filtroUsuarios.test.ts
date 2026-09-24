@@ -7,7 +7,7 @@ import type { UsuarioGestion } from '../types.ts'
 // donde esté, y contarla diría que hay más gente mirando la economía de la empresa que la que hay.
 
 const cuenta = (p: Partial<UsuarioGestion>): UsuarioGestion => ({
-  id: 'u1', persona: null, nombre: 'Ana Laura', email: 'ana@ecsas.com.ar',
+  id: 'u1', persona: null, nombre: 'Ana Laura', nombreCuenta: 'Ana Laura', email: 'ana@ecsas.com.ar',
   rol: 'administracion', area: 'administracion', estado: 'activo', obras: [],
   ultimoIngreso: null, creado: null,
   ...p,

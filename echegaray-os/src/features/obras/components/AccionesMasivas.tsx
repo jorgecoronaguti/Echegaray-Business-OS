@@ -26,6 +26,7 @@ import type { Persona } from '../types'
 import { CTRL, type ResultadoAccion } from '@/shared/components/ui'
 import { Ayuda } from '@/shared/components/ds'
 import type { EntradaHH, ResultadoMasivo } from '../services/actionsMasivas'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 export type AccionesEnLote = {
   responsable: (ids: string[], personaId: string) => Promise<ResultadoMasivo>
@@ -101,7 +102,7 @@ function Responsable({ personas, correr }: { personas: Persona[]; correr: (p: st
           className={CTRL}
         >
           <option value="">— quitar el responsable —</option>
-          {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
+          {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>)}
         </select>
       </label>
       {personas.length === 0 && (

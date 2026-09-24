@@ -10,6 +10,7 @@ import type { Cuadrilla, Integrante, ServiceResult, SinCuadrilla } from '../type
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
 import { sinDireccion } from './vocabularioPersona.ts'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 /**
  * FILTRAR POR TEXTO — en memoria, sobre lo que la consulta ya trajo.
@@ -70,7 +71,7 @@ export async function getIntegrantes(
     const { data: personas } = await supabase
       .from('persona_plantel').select('id, nombre_completo, categoria').in('id', ids)
     for (const p of (personas ?? []) as { id: string; nombre_completo: string; categoria: string | null }[]) {
-      persona.set(p.id, { nombre_completo: p.nombre_completo, categoria: p.categoria })
+      persona.set(p.id, { nombre_completo: nombreDePersona(p.nombre_completo), categoria: p.categoria })
     }
   }
   return {

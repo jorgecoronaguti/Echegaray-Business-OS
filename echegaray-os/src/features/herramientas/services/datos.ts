@@ -18,6 +18,8 @@ import { COLUMNAS_PAPEL, type Papel } from '../logica/papeles'
 import { COLUMNAS_RECUENTO, COLUMNAS_RECUENTO_LINEA, type Recuento, type RecuentoLinea } from '../logica/recuento'
 import { COLUMNAS_REVISION, COLUMNAS_REVISION_VIGENTE, type Revision, type RevisionVigente } from '../logica/revision'
 import { COLUMNAS_UNIDAD, type Unidad } from '../logica/unidades'
+import { nombresDeUsuariosPlano } from '../../../shared/personas/nombresDeUsuarios.ts'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 import {
   COLUMNAS_ACTIVO, COLUMNAS_AJUSTE, COLUMNAS_EXISTENCIA, COLUMNAS_INCIDENCIA, COLUMNAS_LECTURA, COLUMNAS_MOVIMIENTO, COLUMNAS_PROVEEDOR_LUGAR, COLUMNAS_UBICACION,
   type Activo, type Ajuste, type Existencia, type Incidencia, type LecturaUso, type Movimiento, type ObraIndice, type ProveedorLugar, type Ubicacion,
@@ -65,7 +67,7 @@ export async function leerOperadores(): Promise<{ id: string; nombre: string }[]
     const { data } = await supabase.from('personas').select('id, nombre_completo')
       .eq('en_la_empresa', true).order('nombre_completo').limit(500)   // las de prueba las esconde la RLS de personas
     return ((data ?? []) as { id: string; nombre_completo: string | null }[])
-      .filter((p) => p.nombre_completo).map((p) => ({ id: p.id, nombre: p.nombre_completo as string }))
+      .filter((p) => p.nombre_completo).map((p) => ({ id: p.id, nombre: nombreDePersona(p.nombre_completo) }))
   } catch {
     return []
   }
@@ -78,13 +80,13 @@ function numerosDeRevision<T extends Revision>(r: T): T {
 export async function leerParque(): Promise<Lectura> {
   try {
     const supabase = await createClient()
-    const [activos, ubicaciones, movimientos, incidencias, obras, perfiles, usuario, categorias, lecturas, existencias, ajustes, papeles, unidades, revisiones, vigentes, recuentos, recuentoLineas, proveedores] = await Promise.all([
+    const [activos, ubicaciones, movimientos, incidencias, obras, nombresUsuarios, usuario, categorias, lecturas, existencias, ajustes, papeles, unidades, revisiones, vigentes, recuentos, recuentoLineas, proveedores] = await Promise.all([
       supabase.from('activo').select(COLUMNAS_ACTIVO).order('codigo').limit(TOPE),
       supabase.from('ubicacion').select(COLUMNAS_UBICACION).limit(TOPE),
       supabase.from('activo_movimiento').select(COLUMNAS_MOVIMIENTO).order('fecha_hora', { ascending: false }).limit(TOPE),
       supabase.from('activo_incidencia').select(COLUMNAS_INCIDENCIA).order('creado_en', { ascending: false }).limit(TOPE),
       leerObras(supabase),
-      supabase.from('perfiles').select('id, nombre'),
+      nombresDeUsuariosPlano(supabase),
       getUsuarioActual(supabase),
       supabase.from('activo_categoria').select('nombre').order('orden'),
       supabase.from('activo_lectura_uso').select(COLUMNAS_LECTURA).order('fecha_hora', { ascending: false }).limit(TOPE),
@@ -109,8 +111,8 @@ export async function leerParque(): Promise<Lectura> {
       if (faltaMigracion(r.error)) return { estado: 'falta_migracion' }
       if (r.error) return { estado: 'error', mensaje: r.error.message }
     }
-    const nombres: Record<string, string> = {}
-    for (const p of (perfiles.data ?? []) as { id: string; nombre: string | null }[]) if (p.nombre) nombres[p.id] = p.nombre
+    // Quién movió algo: el nombre de su persona, resuelto por el vínculo (src/shared/personas).
+    const nombres: Record<string, string> = nombresUsuarios
     const perfil = usuario ? await getPerfilActual(supabase, usuario.id) : null
     // La verificación de uso es de 20260922T1200: si esa tabla todavía no existe, el resto del módulo
     // anda igual y la verificación dice «sin la migración» (null), nunca «nunca».
@@ -149,7 +151,7 @@ export async function leerParque(): Promise<Lectura> {
         recuentos: recuentos.error ? null : ((recuentos.data ?? []) as unknown as Recuento[]),
         recuentoLineas: recuentoLineas.error ? null : ((recuentoLineas.data ?? []) as unknown as RecuentoLinea[]),
       }),
-      yo: { id: usuario?.id ?? null, nombre: perfil?.data?.nombre ?? null },
+      yo: { id: usuario?.id ?? null, nombre: (usuario?.id && nombresUsuarios[usuario.id]) || perfil?.data?.nombre || null },
     }
   } catch (err) {
     return { estado: 'error', mensaje: err instanceof Error ? err.message : 'Error al conectar con Supabase' }

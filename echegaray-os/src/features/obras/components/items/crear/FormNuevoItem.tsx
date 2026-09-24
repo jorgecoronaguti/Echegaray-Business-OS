@@ -22,6 +22,7 @@ import { ROTULO_NIVEL, type NivelEstructura } from '../../../services/estructura
 import type { PartidaParaConvertir } from '../../../services/partidasParaConvertir'
 import { UNIDADES, type Persona } from '../../../types'
 import type { AccionFormulario } from '@/shared/components/ui/FormAccion'
+import { nombreDePersona } from '../../../../../shared/personas/nombre.ts'
 
 export interface PadreNuevo { id: string | null; nombre: string; camino: string; abuelo: string | null }
 
@@ -153,7 +154,7 @@ export function FormNuevoItem({
           <Campo rotulo="Responsable" alto={alto}>
             <select value={responsableId} onChange={(e) => setResponsableId(e.target.value)} data-testid="nuevo-responsable" style={estiloControl(alto)}>
               <option value="">sin asignar</option>
-              {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
+              {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p.nombre_completo)}</option>)}
             </select>
           </Campo>
           <Campo rotulo="Comentario" alto={alto}>

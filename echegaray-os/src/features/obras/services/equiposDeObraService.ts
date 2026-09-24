@@ -10,6 +10,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '../types'
 import type { ActivoDibujable, MovimientoDibujable } from './operacionCanon'
+import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
 
 export interface EquiposDeObra {
   /** La obra no tiene ubicación en Herramientas todavía: no hay nada que listar y se dice así. */
@@ -66,15 +67,15 @@ export async function getEquiposDeObra(supabase: SupabaseClient, obraId: string)
   const [otros, ubics, perfiles] = await Promise.all([
     faltan.length ? supabase.from('activo').select('id, nombre, codigo, clase, estado').in('id', faltan) : null,
     lugares.size ? supabase.from('ubicacion').select('id, tipo, nombre, obra_id, activo_id').in('id', [...lugares]) : null,
-    // `perfiles` puede estar recortada por RLS a la fila propia: lo que no vuelve queda «sin registrar».
-    usuarios.length ? supabase.from('perfiles').select('id, nombre').in('id', usuarios) : null,
+    // Quién: el nombre de su persona, resuelto por el vínculo (src/shared/personas).
+    usuarios.length ? nombresDeUsuarios(supabase) : null,
   ])
   for (const a of (otros?.data ?? []) as FilaActivo[]) activosPorId.set(a.id, a)
   const ubicPorId = new Map(((ubics?.data ?? []) as FilaUbic[]).map((u) => [u.id, u]))
   const obrasRef = [...ubicPorId.values()].map((u) => u.obra_id).filter((o): o is string => Boolean(o))
   const obras = obrasRef.length ? await supabase.from('obra_canonica').select('id, nombre').in('id', obrasRef) : null
   const nombreObra = new Map(((obras?.data ?? []) as { id: string; nombre: string }[]).map((o) => [o.id, o.nombre]))
-  const nombrePerfil = new Map(((perfiles?.data ?? []) as { id: string; nombre: string | null }[]).map((p) => [p.id, p.nombre]))
+  const nombrePerfil = perfiles ?? new Map<string, string>()
 
   const rotuloLugar = (id: string | null): string | null => {
     if (!id) return null

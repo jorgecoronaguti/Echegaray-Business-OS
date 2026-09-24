@@ -17,6 +17,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { faltaMigracion } from '../../herramientas/logica/falta-migracion'
 import type { DevolucionEstado, EntregaSaldo, TicketRendicion } from './tipos'
+import { nombreDePersona, nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 
 export type Lectura<T> =
   | { estado: 'ok'; dato: T }
@@ -36,6 +37,7 @@ function numerosDeEntrega(e: Record<string, unknown>): EntregaSaldo {
   const n = (k: string) => Number(e[k] ?? 0)
   return {
     ...(e as unknown as EntregaSaldo),
+    persona: nombreDePersonaONull(e.persona as string | null),
     entregado: n('entregado'), rendido: n('rendido'), filas_rendidas: n('filas_rendidas'),
     devuelto: n('devuelto'), en_su_poder: n('en_su_poder'),
   }
@@ -87,11 +89,14 @@ export async function perfilesDeUsuarios(
 ): Promise<Map<string, { nombre: string; persona: string | null }>> {
   const limpios = ids.filter(Boolean)
   if (!limpios.length) return new Map()
-  const { data, error } = await supabase.from('perfiles').select('id, nombre, persona_id').in('id', limpios)
+  // El nombre de su persona, resuelto por el vínculo en la base (`nombres_de_usuarios`), y con el
+  // formato único de src/shared/personas: el mismo que ve Administración en cualquier otra pantalla.
+  const { data, error } = await supabase.rpc('nombres_de_usuarios')
   if (error) return new Map()
+  const pedidos = new Set(limpios)
   return new Map(((data ?? []) as { id: string; nombre: string | null; persona_id: string | null }[])
-    .filter((p) => p.nombre?.trim())
-    .map((p) => [p.id, { nombre: p.nombre!.trim(), persona: p.persona_id ?? null }]))
+    .filter((p) => pedidos.has(p.id) && p.nombre?.trim())
+    .map((p) => [p.id, { nombre: nombreDePersona(p.nombre), persona: p.persona_id ?? null }]))
 }
 
 /** Sólo los nombres, que es lo que piden M07 y la ficha. */

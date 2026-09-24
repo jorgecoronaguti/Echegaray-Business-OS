@@ -22,6 +22,7 @@
 // con la lista dibujada debajo, y ahí la fracción diría una cosa y las tarjetas otra.
 
 import type { Esperado, FilaPresencia } from './presencia.ts'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 export interface GenteEnObra {
   personaId: string
@@ -69,7 +70,7 @@ export function horaDe(iso: string | null): string | null {
 
 const deFila = (f: FilaPresencia): GenteEnObra => ({
   personaId: f.persona_id,
-  nombre: f.nombre_completo,
+  nombre: nombreDePersona(f.nombre_completo),
   rol: f.categoria ?? f.puesto ?? null,
   entrada: horaDe(f.entrada),
   estado: f.estado,

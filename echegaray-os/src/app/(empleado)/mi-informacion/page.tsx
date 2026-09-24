@@ -18,6 +18,7 @@ import { pendientes } from '@/features/empleado/services/documentos'
 import { legible, mesDe, mesLargo } from '@/features/empleado/services/fecha'
 import { getMiEfectivo } from '@/features/efectivo/campo/datos'
 import { pesos, resumenMiEfectivo } from '@/features/efectivo/campo/logica'
+import { nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 
 // M09 · YO — porte literal de `M09 · Yo.dc.html`.
 //
@@ -109,7 +110,7 @@ export default async function MiInformacionPage() {
           </span>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 18, fontWeight: 600, color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {l?.nombre_completo ?? user.email ?? 'sin nombre cargado'}
+              {nombreDePersonaONull(l?.nombre_completo) ?? user.email ?? 'sin nombre cargado'}
             </div>
             <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {legible(l?.categoria) ?? legible(l?.puesto) ?? 'sin categoría cargada'}

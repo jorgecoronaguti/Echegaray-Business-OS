@@ -20,6 +20,7 @@ import type { FiltroPersonas } from '@/features/jefe/services/personasFiltro'
 import { getEsperados, getPresencia } from '@/features/administracion/services/presenciaService'
 import { agrupar, lecturaDePunto, mapa } from '@/features/administracion/services/presencia'
 import { RelojDeJornada } from '@/features/administracion/components/RelojDeJornada'
+import { nombreDePersona } from '../../../../shared/personas/nombre.ts'
 
 // J05 · QUIÉN ESTÁ HOY — porte literal de `J05 · Jefe Personas.dc.html`.
 //
@@ -199,7 +200,7 @@ export default async function JefePersonasPage({
                       </span>
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontSize: 14, color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {p.nombre_completo}
+                          {nombreDePersona(p.nombre_completo)}
                         </div>
                         <div style={{
                           display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, marginTop: 1,
@@ -224,7 +225,7 @@ export default async function JefePersonasPage({
                           target="_blank"
                           rel="noreferrer"
                           data-testid="ver-ubicacion"
-                          aria-label={`Ver en el mapa dónde marcó ${p.nombre_completo}`}
+                          aria-label={`Ver en el mapa dónde marcó ${nombreDePersona(p.nombre_completo)}`}
                           style={{
                             width: 44, height: 44, marginRight: -9, borderRadius: 22, display: 'flex',
                             alignItems: 'center', justifyContent: 'center', color: C.muted, flexShrink: 0,
@@ -271,7 +272,7 @@ export default async function JefePersonasPage({
                   </span>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontSize: 14, color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {e.nombre_completo}
+                      {nombreDePersona(e.nombre_completo)}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: C.warn, marginTop: 1 }}>
                       <Icono nombre="reloj" tamano={13} />

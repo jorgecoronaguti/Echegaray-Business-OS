@@ -1,3 +1,4 @@
+import { nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
 // TRAER A ALGUIEN A ESTA OBRA — a quién se puede ofrecer, sin base de datos.
 //
 // El dueño (08/09/2026, tarde), textual: *«al comenzar el día tengo que marcar la asistencia de las
@@ -67,7 +68,7 @@ export function candidatosParaTraer({ plantel, asignaciones, nombresDeObra, obra
 
   const salida: CandidatoParaTraer[] = []
   for (const p of plantel) {
-    const nombre = (p.nombre_completo ?? '').trim()
+    const nombre = nombreDePersonaONull(p.nombre_completo) ?? ''
     if (!nombre) continue
     const obras = dondeEsta.get(p.id) ?? []
     if (obras.includes(obraId)) continue

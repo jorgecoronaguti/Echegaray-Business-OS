@@ -35,6 +35,7 @@ import {
   aplicarAccionMasiva, convertirPartidasDesdeLaObra, crearEstructuraDesdePlanilla, crearItem, guardarPonderacion, guardarSubtareas,
 } from '../services/actionsCrear'
 import type { ModoEstructura } from './items/crear/Estructura'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 export async function WorkspaceTareas({
   supabase, obraId, act, filtro, sol, dot, cuadrillas, puedeEditar, veEconomia, nueva = false, abiertas = [],
@@ -118,7 +119,7 @@ export async function WorkspaceTareas({
       getPerfilActual(supabase),
     ])
   const nombrePorPersona: Record<string, string> = {}
-  for (const p of personasRes.data ?? []) nombrePorPersona[p.id] = p.nombre_completo
+  for (const p of personasRes.data ?? []) nombrePorPersona[p.id] = nombreDePersona(p.nombre_completo)
   const docsPorActividad: Record<string, { id: string; nombre: string; url: string }[]> = {}
   for (const d of documentosRes.data ?? []) {
     if (!d.actividad_id) continue

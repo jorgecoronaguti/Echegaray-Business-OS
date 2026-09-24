@@ -109,9 +109,9 @@ import { cerrarAsignacionDePersona } from '@/features/administracion/services/as
 import { desvincularDocumento, vincularDocumento } from '@/features/administracion/services/documentosActions'
 import { formatearCuit, formatearDni } from '@/features/administracion/services/identidad'
 import { etiquetaCategoria } from '@/features/administracion/types'
-import { oracion } from '@/shared/utils/texto'
 import { pareceCategoria } from '@/features/administracion/services/vocabularioPersona'
 import { fecha } from '@/features/obras/components/formato'
+import { nombreDePersona } from '../../../../../shared/personas/nombre.ts'
 
 export const dynamic = 'force-dynamic'
 
@@ -405,13 +405,13 @@ export default async function FichaPersonaPage({
 
   return (
     <PantallaV2>
-      <Migas volverA="/administracion/personas" padre="Personal" actual={oracion(persona.nombre_completo)} />
+      <Migas volverA="/administracion/personas" padre="Personal" actual={nombreDePersona(persona.nombre_completo)} />
 
       {/* EL NOMBRE SE DIBUJA EN ORACIÓN. Llega gritado desde el legajo («CRISTIAN AGÜERO») porque así
           lo escriben las planillas de jornales. El DATO no se toca: `oracion` es de dibujo, y el
           nombre que viaja al recibo, al alta temprana y al IERIC sigue siendo el guardado. */}
       <TituloDeFicha
-        titulo={oracion(persona.nombre_completo)}
+        titulo={nombreDePersona(persona.nombre_completo)}
         bajada={bajada}
         junto={
           <>
@@ -693,7 +693,7 @@ export default async function FichaPersonaPage({
           ? (
               <PanelEdicion
                 titulo={editar === 'identidad' ? 'Editar identidad' : 'Editar datos laborales'}
-                subtitulo={oracion(persona.nombre_completo)}
+                subtitulo={nombreDePersona(persona.nombre_completo)}
                 accion={editarPersona.bind(null, id, editar)}
                 cerrarHref={href(vista)}
                 testid={`panel-editar-${editar}`}

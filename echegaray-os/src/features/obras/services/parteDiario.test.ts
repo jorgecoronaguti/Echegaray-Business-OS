@@ -180,7 +180,7 @@ test('el pendiente del desplegable no es negativo y sin objetivo dice «sin medi
 // `produccion_<id>` y `comentario_<id>`, no `hecho_`/`personas_`/`activos_`/`hh_`.
 import {
   bajadaDePersona, bajadaDelDia, bajadaHecho, celdaAcumulado, celdaComentario, chipsDeGente, cifraHoras,
-  esperadosDeAsignaciones, fechaCortaDia, fechaLarga, filaDeEjecucion, leerParteDiario, nombreCorto,
+  esperadosDeAsignaciones, fechaCortaDia, fechaLarga, filaDeEjecucion, leerParteDiario,
   renglonesDelParte, resumenGente, TEXTO_A_OJO, TEXTO_BLOQUEADA,
 } from './parteDiario.ts'
 
@@ -230,9 +230,9 @@ test('la bajada de la fecha grande (M08): «sin parte cargado» o cuántos frent
 test('quién vino: horas, ausente y sin marcar, con el resumen del diseño y la bajada «Cuadrilla 1 · oficial»', () => {
   const chips = chipsDeGente(
     [
-      { id: 'p1', nombre_completo: 'QUIROGA Rodolfo', cuadrilla: '1', categoria: 'oficial' },
-      { id: 'p2', nombre_completo: 'RUIZ Carlos', cuadrilla: 'Cuadrilla Norte', categoria: 'medio_oficial' },
-      { id: 'p3', nombre_completo: 'GÓMEZ Sara', cuadrilla: null, categoria: null },
+      { id: 'p1', nombre_completo: 'QUIROGA RODOLFO', cuadrilla: '1', categoria: 'oficial' },
+      { id: 'p2', nombre_completo: 'RUIZ CARLOS', cuadrilla: 'Cuadrilla Norte', categoria: 'medio_oficial' },
+      { id: 'p3', nombre_completo: 'GÓMEZ SARA', cuadrilla: null, categoria: null },
     ],
     [
       { fecha: '2026-09-07', horas: 9, tipo_hora: 'normal', persona_id: 'p1' },
@@ -242,13 +242,14 @@ test('quién vino: horas, ausente y sin marcar, con el resumen del diseño y la 
     '2026-09-07',
   )
   assert.deepEqual(chips.map((c) => [c.nombre, c.estado, c.horas, c.bajada]), [
-    ['R. Quiroga', 'horas', 9, 'Cuadrilla 1 · oficial'],
-    ['C. Ruiz', 'ausente', null, 'Cuadrilla Norte · medio oficial'],
-    ['S. Gómez', 'sin_marcar', null, 'sin cuadrilla · sin categoría'],
+    // El nombre es el del legajo, con el formato único (src/shared/personas): «R. Quiroga» salía de
+    // adivinar cuál palabra del legajo es el nombre de pila, y con «QUIROGA SEBASTIAN ADOLFO» daba «A.».
+    ['Quiroga Rodolfo', 'horas', 9, 'Cuadrilla 1 · oficial'],
+    ['Ruiz Carlos', 'ausente', null, 'Cuadrilla Norte · medio oficial'],
+    ['Gómez Sara', 'sin_marcar', null, 'sin cuadrilla · sin categoría'],
   ])
   assert.equal(resumenGente(chips), '3 esperados · 2 marcados · 1 sin marcar')
   assert.equal(resumenGente(chips, false), '3 esperados · 2 marcados')
-  assert.equal(nombreCorto('Ana'), 'Ana')
   assert.equal(bajadaDePersona('2', 'AYUDANTE'), 'Cuadrilla 2 · ayudante')
   assert.equal(cifraHoras(4.5), '4,5')
 })

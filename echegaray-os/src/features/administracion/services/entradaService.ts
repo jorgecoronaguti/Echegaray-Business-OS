@@ -19,6 +19,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { perteneceAlCorte, type FilaDeConteo } from './personasService.ts'
 import { sinDireccion } from './vocabularioPersona.ts'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 export interface Maestro {
   clave: string
@@ -251,7 +252,7 @@ export async function buscarGlobal(
       maestro: 'Cliente' as const, href: `/clientes/${c.slug}`,
     })),
     ...((personas.data ?? []) as P[]).map((p) => ({
-      clave: `persona-${p.id}`, nombre: p.nombre_completo,
+      clave: `persona-${p.id}`, nombre: nombreDePersona(p.nombre_completo),
       // Que alguien ya no esté en el plantel es lo primero que hay que saber al encontrarlo.
       detalle: p.en_la_empresa ? p.especialidad : 'ya no está en el plantel',
       maestro: 'Persona' as const, href: `/administracion/personas/${p.id}`,

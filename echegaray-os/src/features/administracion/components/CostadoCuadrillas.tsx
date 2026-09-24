@@ -12,6 +12,7 @@ import Link from 'next/link'
 import { RotuloPanel, V } from '@/shared/components/v2/patron'
 import { BarraDeCostado } from '@/shared/components/v2/segundoNivel'
 import type { SinCuadrilla } from '../types'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 const horas = (n: number) => `${n.toLocaleString('es-AR', { maximumFractionDigits: 0 })} HH`
 
@@ -95,7 +96,7 @@ export function CostadoCuadrillas({ porObra, ventana, sueltos, sinLeerPool, href
               >
                 <span aria-hidden style={{ width: 6, height: 6, borderRadius: 3, background: V.warn, flexShrink: 0 }} />
                 <span className="truncate" style={{ fontSize: '12px', color: V.tinta, minWidth: 0 }}>
-                  {s.nombre_completo}
+                  {nombreDePersona(s.nombre_completo)}
                 </span>
                 <span style={{ marginLeft: 'auto', fontSize: '11px', color: V.tenue, flexShrink: 0 }}>
                   {s.categoria ?? 'sin categoría'}

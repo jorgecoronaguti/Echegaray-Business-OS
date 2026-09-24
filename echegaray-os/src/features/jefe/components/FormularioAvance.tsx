@@ -13,6 +13,7 @@ import type { ActividadDelJefe, Impedimento, ParteDeTarea, PasoDeActividad } fro
 import { plazoDe, produccionDe, rendimientoDe } from '../services/tarea'
 import { avancePorPasos } from '@/features/obras/services/avance'
 import type { Esperado } from '@/features/administracion/services/presencia'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 // J06 · EL FRENTE (una tarea) — porte literal de `J06 · Jefe Frente.dc.html`.
 //
@@ -357,7 +358,7 @@ export function FormularioAvance({
               >
                 <span style={{ minWidth: 0, flex: 1 }}>
                   <span style={{ display: 'block', fontSize: 14, color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {p.nombre_completo}
+                    {nombreDePersona(p.nombre_completo)}
                   </span>
                   <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginTop: 1 }}>
                     {p.categoria ?? 'sin categoría'}
@@ -369,7 +370,7 @@ export function FormularioAvance({
                   value={gente[p.id] ?? ''}
                   onChange={(e) => setGente({ ...gente, [p.id]: e.target.value })}
                   placeholder="—"
-                  aria-label={`Horas de ${p.nombre_completo}`}
+                  aria-label={`Horas de ${nombreDePersona(p.nombre_completo)}`}
                   style={{
                     height: 48, width: 72, flexShrink: 0, borderRadius: R.controlChico,
                     border: `1px solid ${C.linea}`, background: C.quiet, textAlign: 'center',

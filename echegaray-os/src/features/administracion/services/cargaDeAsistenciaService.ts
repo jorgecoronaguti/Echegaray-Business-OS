@@ -21,6 +21,7 @@ import type {
   AsignacionDelDia, HoraDelDiaConObra, PersonaDeLaCarga, PresenciaDelDiaConObra,
 } from './cargaDeAsistencia.ts'
 import type { EstadoPresencia } from './presenciaDelDia.ts'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 export interface ObraDeLaCarga { id: string; nombre: string; activa: boolean }
 
@@ -100,7 +101,7 @@ export async function getCargaDelDia(
       personas: sinDireccion((plantel.data ?? []) as { id: string; nombre_completo: string; categoria: string | null; puesto: string | null }[])
         .map((p) => ({
           id: p.id,
-          nombre: p.nombre_completo,
+          nombre: nombreDePersona(p.nombre_completo),
           categoria: (p.categoria ?? '').trim().replace('_', ' ') || null,
           esJefe: esJefeDeObra(p.puesto),
         })),

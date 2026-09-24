@@ -18,6 +18,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { BUCKET_POR_TIPO, type Categoria, type TipoEntidad } from './subidaDeDocumento'
 import { diasCubiertos, type DiaDeclarado } from './certificadoDeLicencia'
+import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
 
 /** Diez minutos. El mismo que ya usan los papeles del proveedor. */
 const VIGENCIA = 600
@@ -109,8 +110,9 @@ async function nombresDeQuienesSubieron(
   const nombres = new Map<string, string>()
   const uids = [...new Set(filas.map((f) => f.subido_por).filter(Boolean))]
   if (!uids.length) return nombres
-  const { data } = await supabase.from('perfiles').select('id, nombre').in('id', uids)
-  for (const p of data ?? []) if (p.nombre) nombres.set(String(p.id), String(p.nombre))
+  // El nombre de su persona, resuelto por el vínculo (src/shared/personas).
+  const todos = await nombresDeUsuarios(supabase)
+  for (const id of uids) { const n = id ? todos.get(String(id)) : undefined; if (n) nombres.set(String(id), n) }
   return nombres
 }
 

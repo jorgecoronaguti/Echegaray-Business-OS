@@ -13,6 +13,7 @@ import { barraTelefonoDe } from '@/features/auth/types/barraTelefono'
 import { BarraTelefono } from '@/shared/components/BarraTelefono'
 import { hrefCargaDeAsistencia } from '@/features/administracion/services/cargaDeAsistencia'
 import { senalHerramientas, senalImpedimentos, senalPedidos, senalParte, type Senal } from './senales'
+import { nombreDePila } from '../../shared/personas/nombre.ts'
 
 // `/campo` — LA ENTRADA DE OBRA EN EL TELÉFONO.
 //
@@ -63,7 +64,6 @@ export default async function CampoPage() {
   const user = await getUsuarioActual(supabase)
   if (!user) redirect('/login')
   const perfil = await getPerfilActual(supabase)
-  const nombre = perfil.data?.nombre || user.email || 'Operario'
   const rol = perfil.data?.rol ?? null
   // ═══ /campo ES DEL JEFE (dueño, 23/09/2026 · mapa de pantallas, duda 4) ═══
   //
@@ -182,7 +182,7 @@ export default async function CampoPage() {
       <div className="px-4 pt-[18px]">
         <div className="text-[11.5px] text-faint">{donde ?? 'sin obra asignada'}</div>
         <h1 className="mt-1 text-[20px] font-semibold tracking-[-0.01em] text-ink">
-          Hola, {nombre.split(' ')[0]}
+          Hola, {nombreDePila(perfil.data?.nombre, user.email) || 'Operario'}
         </h1>
         {pendientes.length > 0 && (
           <p className="mt-1 text-[13px] text-warn" data-testid="pendientes-hoy">

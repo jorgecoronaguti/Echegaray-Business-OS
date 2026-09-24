@@ -118,7 +118,7 @@ test('el día se agrupa por obra y los tres conteos cierran contra la gente dibu
   assert.equal(uno.presentes + uno.ausentes + uno.licencias + uno.sinMarcar, uno.gente.length,
     'el conteo de presencia no puede decir otra cosa que la lista')
   assert.equal(uno.conHoras + uno.sinHoras, uno.gente.length, 'el conteo de carga tampoco')
-  assert.deepEqual(uno.gente.map((g) => g.nombre), ['AGUERO C', 'BENITEZ L', 'CORONA M'])
+  assert.deepEqual(uno.gente.map((g) => g.nombre), ['Aguero C', 'Benitez L', 'Corona M'], 'el legajo se dibuja con nombreDePersona')
 })
 
 test('quien cargó horas en una obra a la que ya no está asignado igual aparece', () => {

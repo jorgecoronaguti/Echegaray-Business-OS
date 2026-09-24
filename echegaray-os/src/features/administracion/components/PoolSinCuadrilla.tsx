@@ -16,6 +16,7 @@ import { CTRL, FormAccion, type AccionFormulario } from '@/shared/components/ui'
 import { Eyebrow, Nulo } from '@/shared/components/ds'
 import type { SinCuadrilla } from '../types'
 import type { CategoriaCapacidad } from '@/features/obras/services/cronogramaObraService'
+import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 export function PoolSinCuadrilla({
   personas, cuadrillas, factores, asignar,
@@ -43,7 +44,7 @@ export function PoolSinCuadrilla({
                   className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-surface-sunken py-1.5 text-[12.5px] last:border-b-0"
                 >
                   <Link href={`/administracion/personas/${p.id}`} prefetch={false} className="min-w-0 flex-1 truncate text-ink hover:underline">
-                    {p.nombre_completo}
+                    {nombreDePersona(p.nombre_completo)}
                   </Link>
                   <span className="shrink-0 text-[11px] text-muted">
                     {nombreDe(p.categoria) ?? <Nulo>sin categoría</Nulo>}
@@ -69,7 +70,7 @@ export function PoolSinCuadrilla({
                           <input type="hidden" name="persona_id" value={p.id} />
                           <select
                             name="cuadrilla_id" required defaultValue=""
-                            aria-label={`Cuadrilla para ${p.nombre_completo}`}
+                            aria-label={`Cuadrilla para ${nombreDePersona(p.nombre_completo)}`}
                             className={`${CTRL} mt-0 w-[190px]`}
                           >
                             <option value="" disabled>elegir cuadrilla</option>

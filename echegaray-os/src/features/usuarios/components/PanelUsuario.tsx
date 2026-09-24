@@ -346,7 +346,7 @@ export function PanelUsuario({
             <FormAccion accion={(form) => editarUsuario(u.id, form)} testid="form-datos" mensajeOk="Guardado.">
               <div className="grid grid-cols-2 gap-2.5">
                 <Campo label="Nombre" ancho="col-span-2">
-                  <input name="nombre" defaultValue={u.nombre ?? ''} required minLength={2} maxLength={80} className={CTRL} />
+                  <input name="nombre" defaultValue={u.nombreCuenta ?? ''} required minLength={2} maxLength={80} className={CTRL} />
                 </Campo>
                 <Campo label="Correo" ancho="col-span-2" ayuda="Es con lo que entra al sistema.">
                   <input name="email" type="email" defaultValue={u.email ?? ''} required className={CTRL} />
