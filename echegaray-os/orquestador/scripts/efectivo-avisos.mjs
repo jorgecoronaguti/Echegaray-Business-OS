@@ -340,18 +340,26 @@ export async function rellenarOrigenDesdeElChat(port) {
   }
 }
 
+/**
+ * UN TICK, EN ORDEN: primero el hilo, después la ida (que encola su constancia al hilo) y al final la cola,
+ * que la publica en el mismo tick. Es lo que corre el timer (`procesar-comprobantes-web.mjs`, cada 15 s):
+ * el 24/09 el relleno quedó escrito acá y el timer llamaba a las otras dos sueltas — no corría nunca.
+ */
+export async function cicloDeAvisos(port, { dry = false, log = console } = {}) {
+  let hilos = 0
+  if (!dry) {
+    try { hilos = await rellenarOrigenDesdeElChat(port) } catch (e) { log.warn?.(`efectivo: no pude rellenar los hilos: ${e?.message ?? e}`) }
+  }
+  const entregas = await avisarEntregas(port, { dry, log })
+  const pedidos = await drenarAvisos(port, { dry, log })
+  return { hilos, entregas, pedidos }
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const db = await import('../lib/db.mjs')
   const port = { query: (...a) => db.query(...a) }
   const dry = process.argv.includes('--dry')
-  // EN ORDEN: primero el hilo, después la ida (que encola su constancia) y al final la cola, que la publica en
-  // el mismo tick.
-  ;(async () => {
-    const hilos = dry ? 0 : await rellenarOrigenDesdeElChat(port)
-    const e = await avisarEntregas(port, { dry })
-    const a = await drenarAvisos(port, { dry })
-    return { hilos, entregas: e, pedidos: a }
-  })()
+  cicloDeAvisos(port, { dry })
     .then((r) => console.log(JSON.stringify(r)))
     .catch((e) => { console.error('ERROR:', e.message); process.exitCode = 1 })
     .finally(() => db.closePool?.())

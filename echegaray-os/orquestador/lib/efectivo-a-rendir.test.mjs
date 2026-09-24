@@ -285,3 +285,21 @@ test('el hilo de una entrega hecha por chat se rellena desde la respuesta «Regi
   const sinColumna = { async query() { throw Object.assign(new Error('no existe'), { code: '42703' }) } }
   assert.equal(await rellenarOrigenDesdeElChat(sinColumna), null)
 })
+
+test('EL TIMER CORRE EL CICLO ENTERO: relleno del hilo → ida → cola (24/09: el relleno no lo llamaba nadie)', async () => {
+  const { readFileSync } = await import('node:fs')
+  // Se lee el fuente: importar el script del timer ejecuta su main().
+  const timer = readFileSync(new URL('../scripts/procesar-comprobantes-web.mjs', import.meta.url), 'utf8')
+  assert.match(timer, /cicloDeAvisos\(port/)
+  assert.doesNotMatch(timer, /avisarEntregas\(|drenarAvisos\(/, 'nada suelto que se saltee el relleno')
+  const { cicloDeAvisos } = await import('../scripts/efectivo-avisos.mjs')
+  const orden = []
+  const port = { async query(sql) {
+    if (/comunicacion\.outbox/.test(sql)) orden.push('hilo')
+    else if (/from public\.efectivo_entrega e/.test(sql)) orden.push('ida')
+    else if (/from public\.efectivo_aviso a/.test(sql)) orden.push('cola')
+    return { rows: [], rowCount: 0 }
+  } }
+  await cicloDeAvisos(port, { log: {} })
+  assert.deepEqual(orden, ['hilo', 'ida', 'cola'])
+})
