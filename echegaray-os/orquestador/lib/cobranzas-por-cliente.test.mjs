@@ -18,10 +18,10 @@ test('"cobrado" se define por el ESTADO, no por tener fecha', () => {
 
 test('las columnas de Cobranzas salen del rótulo: G/M/O hoy, G/N/P con «Obra» insertada en H', () => {
   const antes = filaCliente('$AC65', '$AF$90', cols, 65, COB)
-  assert.equal(antes.facturado, '=SUMIF($G$5:$G$400;$AC65;$M$5:$M$400)', 'antes de la inserción, la fórmula de hoy al carácter')
-  assert.equal(antes.cobrado, '=SUMIFS($M$5:$M$400;$G$5:$G$400;$AC65;$O$5:$O$400;"Cobrado")')
+  assert.equal(antes.facturado, '=SUMIFS($M$5:$M$400;$G$5:$G$400;$AC65)-SUMIFS($M$5:$M$400;$G$5:$G$400;$AC65;$AA$5:$AA$400;"USD")+SUMIFS($M$5:$M$400;$G$5:$G$400;$AC65;$AA$5:$AA$400;"USD")*TIPO_CAMBIO_USD', 'antes de la inserción, al carácter')
+  assert.equal(antes.cobrado, '=SUMIFS($M$5:$M$400;$G$5:$G$400;$AC65;$O$5:$O$400;"Cobrado")-SUMIFS($M$5:$M$400;$G$5:$G$400;$AC65;$O$5:$O$400;"Cobrado";$AA$5:$AA$400;"USD")+SUMIFS($M$5:$M$400;$G$5:$G$400;$AC65;$O$5:$O$400;"Cobrado";$AA$5:$AA$400;"USD")*TIPO_CAMBIO_USD')
   const despues = filaCliente('$AD65', '$AG$90', { facturado: '$AG', cobrado: '$AH' }, 65, COB_OBRA)
-  assert.equal(despues.cobrado, '=SUMIFS($N$5:$N$400;$G$5:$G$400;$AD65;$P$5:$P$400;"Cobrado")')
+  assert.equal(despues.cobrado, '=SUMIFS($N$5:$N$400;$G$5:$G$400;$AD65;$P$5:$P$400;"Cobrado")-SUMIFS($N$5:$N$400;$G$5:$G$400;$AD65;$P$5:$P$400;"Cobrado";$AB$5:$AB$400;"USD")+SUMIFS($N$5:$N$400;$G$5:$G$400;$AD65;$P$5:$P$400;"Cobrado";$AB$5:$AB$400;"USD")*TIPO_CAMBIO_USD')
   assert.equal(COBRANZAS_CON_OBRA[13], 'TOTAL a cobrar (neto de retenciones)')
   assert.equal(COBRANZAS_CON_OBRA[15], 'Estado')
   assert.equal(formulaClientes(COB_OBRA), '=IFERROR(SORT(UNIQUE(FILTER($G$5:$G$400;$G$5:$G$400<>"")));"")')

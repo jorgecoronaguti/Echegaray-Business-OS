@@ -38,7 +38,7 @@ const rotuloDe = (encabezado, letra) => encabezado[[...letra].reduce((a, c) => a
 
 test('CAJA · posteriores al corte: hoy el texto de siempre, con «Obra» cada rango en su rótulo', () => {
   assert.equal(formulaCobrosPosteriores('$F$19', MAPAS_HOY.cob),
-    "SUMIFS('Cobranzas'!$M$5:$M;'Cobranzas'!$O$5:$O;\"Cobrado\";'Cobranzas'!$N$5:$N;\"<>Echeq\";'Cobranzas'!$N$5:$N;\"<>Cheque\";'Cobranzas'!$N$5:$N;\"<>Efectivo\";'Cobranzas'!$Q$5:$Q;\">\"&$F$19)")
+    "SUMIFS('Cobranzas'!$M$5:$M;'Cobranzas'!$O$5:$O;\"Cobrado\";'Cobranzas'!$N$5:$N;\"<>Echeq\";'Cobranzas'!$N$5:$N;\"<>Cheque\";'Cobranzas'!$N$5:$N;\"<>Efectivo\";'Cobranzas'!$AA$5:$AA;\"<>USD\";'Cobranzas'!$Q$5:$Q;\">\"&$F$19)")
   const cob = formulaCobrosPosteriores('$F$19', MAPAS_CON_OBRA.cob)
   assert.match(cob, /^SUMIFS\('Cobranzas'!\$N\$5:\$N;'Cobranzas'!\$P\$5:\$P;"Cobrado";'Cobranzas'!\$O\$5:\$O;"<>Echeq"/)
   assert.match(cob, /'Cobranzas'!\$R\$5:\$R;">"&\$F\$19\)$/)

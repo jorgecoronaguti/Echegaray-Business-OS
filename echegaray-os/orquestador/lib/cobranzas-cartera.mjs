@@ -35,12 +35,14 @@
 // retenciones. Cada función recibe `cols`, resueltas contra la fila 4 leída en esa corrida.
 
 import { exigirColumnas } from './cobranzas-columnas.mjs'
+import { factorMoneda } from './cobranzas-contrato.mjs'
+import { RANGO_TC } from './caja-disponibilidades.mjs'
 
 /** Dónde vive la cartera en `Cobranzas`: la GEOMETRÍA. Se lee, NUNCA se escribe: es fuente. */
 export const COB = Object.freeze({ pestaña: 'Cobranzas', primera: 5, ultima: 400 })
 
 /** Las columnas que usan estas fórmulas, por clave de `COBRANZAS_OS`. */
-export const COLUMNAS_CARTERA = Object.freeze(['cliente', 'total', 'estado', 'fechaCobro'])
+export const COLUMNAS_CARTERA = Object.freeze(['cliente', 'total', 'estado', 'fechaCobro', 'moneda'])
 
 /** Los cinco estados reales de la columna Estado, con el texto EXACTO que está cargado en el Sheet. */
 export const ESTADOS = {
@@ -73,8 +75,11 @@ export const rango = (col) => `${COB.pestaña}!$${col.letra}$${COB.primera}:$${c
 export const esAlgunoDe = (cols, claves) =>
   `(${claves.map((k) => `(${rango(cc(cols).estado)}="${ESTADOS[k]}")`).join('+')}>0)`
 
-/** NÚCLEO PURO: el importe de la fila, con las celdas no numéricas en cero. */
+/** NÚCLEO PURO: el importe de la fila EN PESOS, con las celdas no numéricas en cero. Una fila con
+ *  Moneda = USD se multiplica por el tipo de cambio (24/09/2026): la cartera vencida de CAJA sumaba el
+ *  número de la columna, y un pendiente de U$S 3.500 habría entrado como $3.500. */
 export const importe = (cols) => `IF(ISNUMBER(${rango(cc(cols).total)});${rango(cc(cols).total)};0)`
+  + `*${factorMoneda({ moneda: rango(cc(cols).moneda), tc: RANGO_TC })}`
 
 /** Las condiciones de estado y ventana de fecha de cobro, compartidas por el monto y la cantidad. */
 function condiciones(cols, clave, { desde = null, hasta = null } = {}) {

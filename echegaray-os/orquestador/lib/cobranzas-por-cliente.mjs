@@ -22,13 +22,15 @@
 // distinta: al Facturado se lo reclama, al Proyectado se lo confirma.
 
 import { exigirColumnas } from './cobranzas-columnas.mjs'
+import { sumaConUSD, totalConUSD } from './cobranzas-contrato.mjs'
+import { RANGO_TC } from './caja-disponibilidades.mjs'
 
 /**
  * Las columnas de Cobranzas que usa el cuadro, por CLAVE de `COBRANZAS_OS`. Hasta el 14/09 eran
  * `{ cliente: '$G', total: '$M', estado: '$O' }`: con «Obra» insertada en H el cuadro habría sumado
  * «Retenciones / descuentos» por cliente filtrando por «Forma de Cobro» = "Cobrado", o sea cero.
  */
-export const COLUMNAS_CUADRO = Object.freeze(['cliente', 'total', 'estado', 'fechaCobro', 'fechaVenta'])
+export const COLUMNAS_CUADRO = Object.freeze(['cliente', 'total', 'estado', 'fechaCobro', 'fechaVenta', 'moneda'])
 /** Hasta qué fila se lee. El mismo tope que el resto del archivo — ver FIN_COB en cash-flow-lineas. */
 export const FIN = 400
 export const INICIO = 5
@@ -51,12 +53,19 @@ export const NO_COBRADO = ['Facturado', 'Pendiente', 'Proyectado']
  * @returns {{facturas:string, facturado:string, cobrado:string, pendiente:string, porcentaje:string}}
  */
 export function filaCliente(celdaCliente, celdaTotalFacturado, cols, fila, cob) {
-  const { cliente, total, estado } = exigirColumnas(cob, ['cliente', 'total', 'estado'], 'filaCliente')
+  const { cliente, total, estado, moneda } = exigirColumnas(cob, ['cliente', 'total', 'estado', 'moneda'], 'filaCliente')
+  // ═══ LOS DÓLARES VALUADOS, NO SUMADOS COMO PESOS (24/09/2026) ═══
+  //
+  // El dueño: «estás mezclando dólares con pesos y puede estar impactando mal todo el Sheet». Acá era
+  // cierto: `SUMIF(cliente;x;N)` sumaba las filas con Moneda = USD de Quattropani —U$S 15.400 del
+  // anticipo y 3 × U$S 3.500 de las certificaciones 2/9 a 4/9— como $25.900. Ahora cada suma es la
+  // frase de `sumaConUSD`: todo, menos los dólares mal contados, más los dólares × TIPO_CAMBIO_USD.
+  const enPesos = (criterios) => sumaConUSD({ rango: r(total), criterios, moneda: r(moneda), tc: RANGO_TC })
   return {
     facturas: `=COUNTIF(${r(cliente)};${celdaCliente})`,
-    facturado: `=SUMIF(${r(cliente)};${celdaCliente};${r(total)})`,
+    facturado: `=${enPesos(`${r(cliente)};${celdaCliente}`)}`,
     // POR ESTADO. Era ISNUMBER de la fecha de cobro, y por eso todo figuraba cobrado.
-    cobrado: `=SUMIFS(${r(total)};${r(cliente)};${celdaCliente};${r(estado)};"Cobrado")`,
+    cobrado: `=${enPesos(`${r(cliente)};${celdaCliente};${r(estado)};"Cobrado"`)}`,
     pendiente: `=${cols.facturado}${fila}-${cols.cobrado}${fila}`,
     // EL PORCENTAJE SE FORMATEA EN LA FÓRMULA, no con el formato de la celda.
     //
@@ -67,6 +76,17 @@ export function filaCliente(celdaCliente, celdaTotalFacturado, cols, fila, cob) 
     // pelear con el formato de celda, el número sale ya escrito como corresponde.
     porcentaje: `=IF(${celdaTotalFacturado}=0;"";TEXT(${cols.facturado}${fila}/${celdaTotalFacturado};"0.0%"))`,
   }
+}
+
+/**
+ * NÚCLEO PURO: el control «¿el cuadro ve TODA la pestaña?» — el total de la pestaña, en PESOS, menos
+ * el total del cuadro. Tiene que valuar igual que las filas: con `SUM(N)` pelado, los U$S 25.900 de
+ * Quattropani habrían entrado de un lado como dólares valuados y del otro como pesos, y el control
+ * habría dado distinto de cero sin que faltara ningún cobro.
+ */
+export function formulaControlTotal(cob, celdaTotalFacturado) {
+  const { total, moneda } = exigirColumnas(cob, ['total', 'moneda'], 'formulaControlTotal')
+  return `=${totalConUSD({ rango: r(total), moneda: r(moneda), tc: RANGO_TC })}-${celdaTotalFacturado}`
 }
 
 /**

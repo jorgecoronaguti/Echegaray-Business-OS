@@ -40,7 +40,7 @@ test('la ventana de vencidos es EXCLUYENTE y exige que la fecha sea número', ()
   // Y la cantidad usa EXACTAMENTE la misma condición que el monto: un total sin su cantidad no se
   // puede auditar, y dos condiciones distintas darían un promedio inventado.
   const c = formulaCantidadEstado(COB_HOY, 'pendiente', { hasta: 'TODAY()' })
-  assert.equal(c.replace('*1)', ')'), f.replace('*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))', ')'))
+  assert.equal(c.replace('*1)', ')'), f.replace('*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0)*IF(Cobranzas!$AA$5:$AA$400="USD";TIPO_CAMBIO_USD;1))', ')'))
 })
 
 test('LA LISTA BLANCA SE PAGA CON UN CONTADOR: un sexto estado no puede pasar en silencio', () => {

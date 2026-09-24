@@ -29,7 +29,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
-import { COLUMNAS_CUADRO, FIN, filaCliente, formulaClientes, rangoCuadro } from '../lib/cobranzas-por-cliente.mjs'
+import { COLUMNAS_CUADRO, FIN, filaCliente, formulaClientes, formulaControlTotal, rangoCuadro } from '../lib/cobranzas-por-cliente.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 import { exigirColumnas, leerColumnasCobranzas } from '../lib/cobranzas-columnas.mjs'
 import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
@@ -59,6 +59,16 @@ export function ubicarCuadro(filaCab = []) {
     throw new Error(`${PESTAÑA}: el encabezado del cuadro por cliente («Cliente» · «Nombre canónico») ${que} en la fila ${F_CAB}. No uso una columna de respaldo.`)
   }
   return hits[0]
+}
+
+/**
+ * NÚCLEO PURO: las columnas de DATOS de la pestaña (con rótulo en la fila 4) que el cuadro taparía si
+ * se escribiera empezando en `c0`. Vacío = el cuadro está en tierra de nadie y se puede escribir.
+ */
+export function columnasDeDatosBajoElCuadro(fila4 = [], c0) {
+  return fila4.slice(c0, c0 + ENCABEZADO_CUADRO.length)
+    .map((t, j) => (String(t ?? '').trim() ? `${L(c0 + j)}4 «${String(t).trim()}»` : null))
+    .filter(Boolean)
 }
 
 /**
@@ -119,7 +129,7 @@ export function grilla(cob, c0) {
   // quedarse corto —o alguien carga un cliente con el nombre en blanco— este número deja de ser $0.
   filas.push([])
   filas.push(['⇒ Control: ¿el cuadro ve TODA la pestaña?', '', '',
-    `=SUM(${rangoCuadro(cob.total)})-${COLS.facturado}${F_TOTAL}`, '', '', '',
+    formulaControlTotal(cob, `${COLS.facturado}${F_TOTAL}`), '', '', '',
     'Tiene que ser $0. Distinto de cero = hay cobros cargados que este cuadro no está mirando.'])
   return filas
 }
@@ -134,6 +144,16 @@ async function main() {
   const cob = await leerColumnasCobranzas(google, ID, COLUMNAS_CUADRO)
   const [filaCab = []] = await google.readSheetValues(ID, rangoFilas(PESTAÑA, F_CAB, F_CAB))
   const C0 = ubicarCuadro(filaCab)
+  // ═══ EL CUADRO NO PUEDE VIVIR SOBRE UNA COLUMNA DE DATOS (24/09/2026) ═══
+  //
+  // Medido en vivo: el encabezado del cuadro está en AD64 y AD4 dice «Asignación» —una columna de
+  // carga del dueño, con valores en las filas 20 a 47—, y el filtro básico de la pestaña (A4:AH) cubre
+  // AD:AH. Ordenar o filtrar los cobros mueve y oculta pedazos del cuadro; así se perdió la fórmula de
+  // AD65 y el cuadro quedó mostrando cero. Escribirlo ahí de nuevo sería pisarle la columna al dueño:
+  // se niega, y dónde vive el cuadro lo decide él.
+  const [fila4 = []] = await google.readSheetValues(ID, rangoFilas(PESTAÑA, 4, 4))
+  const pisadas = columnasDeDatosBajoElCuadro(fila4, C0)
+  if (pisadas.length) throw new Error(`el cuadro por cliente caería sobre columnas de datos de ${PESTAÑA} (${pisadas.join(', ')}): NO escribo. Hay que mudarlo fuera de la zona de carga y del filtro.`)
 
   const filas = grilla(cob, C0)
   const ancho = filas.reduce((m, f) => Math.max(m, f.length), 0)

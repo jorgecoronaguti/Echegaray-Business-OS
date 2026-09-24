@@ -210,6 +210,11 @@ export function formulaCobrosPosteriores(corte, c) {
     // El efectivo va a la caja física (T06), no al banco: se excluye para que la partición por canal
     // no deje ningún cobro contado dos veces. Ver el encabezado de este archivo.
     + `${rango(c.hoja, c.forma, c.desde)};"<>Efectivo";`
+    // Y LOS DÓLARES TAMPOCO (24/09/2026): una transferencia en dólares no es plata de la cuenta en
+    // pesos. Es la misma partición por moneda que el efectivo (`formulaCobrosEfectivoPosteriores`), y
+    // el mismo criterio `"<>USD"` que en esa fórmula ya prueba el archivo vivo: las celdas vacías lo
+    // cumplen. Hoy no cambia un peso —las cuatro filas en USD son efectivo— y por eso va ahora.
+    + `${rango(c.hoja, c.moneda, c.desde)};"<>USD";`
     + `${rango(c.hoja, c.fecha, c.desde)};">"&${corte})`
 }
 

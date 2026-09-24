@@ -31,6 +31,8 @@
 // concepto. Los dos controles se complementan; ninguno reemplaza al otro.
 
 import { exigirColumnas } from './cobranzas-columnas.mjs'
+import { factorMoneda } from './cobranzas-contrato.mjs'
+import { RANGO_TC } from './caja-disponibilidades.mjs'
 
 /** Las columnas de Cobranzas que definen la identidad DURA de un cobro. El concepto queda afuera a
  *  propósito: es texto libre y dos redacciones distintas de lo mismo lo harían inútil.
@@ -81,8 +83,12 @@ export function esIndistinguible(cols, pestana = 'Cobranzas', f0 = 5, f1 = 400) 
  */
 export function plataEnJuego(cols, pestana = 'Cobranzas', f0 = 5, f1 = 400) {
   const { monto } = letrasClave(cols)
+  // EN PESOS (24/09/2026): el trío de Quattropani (U$S 3.500 × 3, mismo día y forma) es indistinguible
+  // por los datos duros y entraba acá como $5.250. Es plata: se valúa como en cualquier suma.
+  const { moneda } = exigirColumnas(cols, ['moneda'], 'plataEnJuego')
   const m = `${pestana}!$${monto}$${f0}:$${monto}$${f1}`
-  return `SUMPRODUCT((${esIndistinguible(cols, pestana, f0, f1)})*IF(ISNUMBER(${m});${m};0))/2`
+  const fx = factorMoneda({ moneda: `${pestana}!$${moneda.letra}$${f0}:$${moneda.letra}$${f1}`, tc: RANGO_TC })
+  return `SUMPRODUCT((${esIndistinguible(cols, pestana, f0, f1)})*IF(ISNUMBER(${m});${m};0)*${fx})/2`
 }
 
 /**

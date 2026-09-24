@@ -43,10 +43,17 @@ import { cruzarConElBanco, textoDeRespaldo, desmiente, MARCA_SIN_RESPALDO } from
 import { corteDelExtracto } from '../lib/libro-respaldo-banco.mjs'
 import { RANGO_BANCO } from '../lib/cobranzas-cuadre-vivo.mjs'
 import { leerTipoCambio } from '../lib/tipo-cambio.mjs'
+import { factorMoneda, totalConUSD } from '../lib/cobranzas-contrato.mjs'
+import { RANGO_TC } from '../lib/caja-disponibilidades.mjs'
+import { COLUMNAS_IMPORTE, pedidosDeFormato } from '../lib/cobranzas-formato-moneda.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cobranzas'
 const DRY = process.argv.includes('--dry')
+// BISTURÍ (24/09/2026): reescribe SÓLO la columna del número del control —fórmula y formato— y el
+// formato por moneda de los importes, sin borrar la zona ni rehacer el cruce con el banco. Existe para
+// publicar un cambio de fórmula sin la corrida entera; la corrida del pipeline hace lo mismo y más.
+const SOLO_NUMERO = process.argv.includes('--solo-numero')
 
 // Los rangos de datos, iguales a los que usa el cash flow.
 const F0 = 5, F1 = 200
@@ -65,7 +72,7 @@ const F0 = 5, F1 = 200
 // $10.000.000 a LA ESTRELLA el mismo día— y el dueño avisó que son DOS CONCEPTOS DISTINTOS. Tenía
 // razón: yo miraba tres columnas de una planilla que tiene diez. Un cobro se identifica por su
 // comprobante, su orden de compra o su concepto; si alguno difiere, son cobros distintos y punto.
-export const COLUMNAS_CONTROL = Object.freeze(['cliente', 'total', 'fechaCobro', 'estado', 'comprobante', 'oc', 'concepto'])
+export const COLUMNAS_CONTROL = Object.freeze(['cliente', 'total', 'fechaCobro', 'estado', 'comprobante', 'oc', 'concepto', 'moneda'])
 
 /** El rango de datos cerrado (`$G$5:$G$200`) de una columna RESUELTA. */
 const rd = (col) => `$${col.letra}$${F0}:$${col.letra}$${F1}`
@@ -216,10 +223,16 @@ export const MARCAS_FILA = Object.freeze({
   proyeccionGemela: `${ALERTA} Proyección con gemela ya facturada — dar de baja una`,
 })
 
-/** Los siete rangos de datos del control, resueltos. */
+/** Los rangos de datos del control, resueltos. `V` es el IMPORTE EN PESOS de cada fila: el número si
+ *  es número, por el tipo de cambio si la fila dice USD (24/09/2026: los U$S 25.900 de Quattropani se
+ *  sumaban como $25.900 en todas las líneas de plata del control). */
 const rangosDatos = (cols) => {
   const c = exigirColumnas(cols, COLUMNAS_CONTROL, 'cobranzas-control')
-  return { G: rd(c.cliente), M: rd(c.total), Q: rd(c.fechaCobro), O: rd(c.estado), E: rd(c.comprobante), H: rd(c.oc), I: rd(c.concepto) }
+  const M = rd(c.total), MON = rd(c.moneda)
+  return {
+    G: rd(c.cliente), M, Q: rd(c.fechaCobro), O: rd(c.estado), E: rd(c.comprobante), H: rd(c.oc), I: rd(c.concepto),
+    MON, V: `IF(ISNUMBER(${M});${M};0)*${factorMoneda({ moneda: MON, tc: RANGO_TC })}`,
+  }
 }
 
 /** @param {Record<string,{letra:string}>} cols columnas de Cobranzas resueltas contra la fila 4 viva */
@@ -243,7 +256,7 @@ export function marcaPorFila(cols, liberadas = []) {
  */
 export function bloque(cols, zona) {
   if (!Number.isInteger(zona?.flag)) throw new Error('bloque: falta la zona del control ubicada por su rótulo (ubicarZona)')
-  const { G, M, Q, O, E, H, I } = rangosDatos(cols)
+  const { G, M, Q, O, E, H, I, MON, V } = rangosDatos(cols)
   const INDIST = esIndistinguible(cols, PESTAÑA, F0, F1)
   const PLATA = plataEnJuego(cols, PESTAÑA, F0, F1)
   const VB = rangoVeredicto(zona)
@@ -258,12 +271,12 @@ export function bloque(cols, zona) {
     L(FIRMA),
     L('Se recalcula solo. Si algo da distinto de cero, es trabajo pendiente, no un error del control.'),
     L(''),
-    L('Total bruto cargado', `=SUM(${M})`, 'Todo lo que hay en la pestaña.'),
-    L('Lo que toma el Cash Flow', `=SUMPRODUCT((${G}<>"")*IF(ISNUMBER(${M});${M};0))`, 'Tiene que ser el mismo número: si no, hay cobros que el cash flow no está viendo.'),
+    L('Total bruto cargado', `=${totalConUSD({ rango: M, moneda: MON, tc: RANGO_TC })}`, 'Todo lo que hay en la pestaña.'),
+    L('Lo que toma el Cash Flow', `=SUMPRODUCT((${G}<>"")*${V})`, 'Tiene que ser el mismo número: si no, hay cobros que el cash flow no está viendo.'),
     L('⇒ Diferencia (tiene que ser $0)', `=$${letra(C_CTRL + 1)}$4-$${letra(C_CTRL + 1)}$5`, ''),
     L(''),
-    L('Cobros sin fecha de cobro', `=SUMPRODUCT((${G}<>"")*(${Q}="")*IF(ISNUMBER(${M});${M};0))`, 'Están cargados pero no caen en ninguna semana del cash flow.'),
-    L('Cobros sin cliente', `=SUMPRODUCT((${G}="")*IF(ISNUMBER(${M});${M};0))`, 'El cash flow los clasifica por unidad de negocio; sin cliente no se sabe de qué obra son.'),
+    L('Cobros sin fecha de cobro', `=SUMPRODUCT((${G}<>"")*(${Q}="")*${V})`, 'Están cargados pero no caen en ninguna semana del cash flow.'),
+    L('Cobros sin cliente', `=SUMPRODUCT((${G}="")*${V})`, 'El cash flow los clasifica por unidad de negocio; sin cliente no se sabe de qué obra son.'),
     L(''),
     L(`${ALERTA} POSIBLES DUPLICADOS`),
     // ═══ LAS NOTAS ENTRAN EN SU COLUMNA, Y ESO CAMBIÓ LO QUE DICEN (15/08) ═══
@@ -292,12 +305,31 @@ export function bloque(cols, zona) {
     // preguntándole al banco. El contador sale de la columna BB por FÓRMULA, no de un número pegado
     // por el script: se recalcula solo cuando el cruce vuelve a correr.
     L(`${ALERTA} Cobrado que el extracto NO confirma`,
-      `=SUMPRODUCT((LEFT(${VB};${MARCA_ALERTA_RESPALDO.length})=${txt(MARCA_ALERTA_RESPALDO)})*IF(ISNUMBER(${M});${M};0))`,
+      `=SUMPRODUCT((LEFT(${VB};${MARCA_ALERTA_RESPALDO.length})=${txt(MARCA_ALERTA_RESPALDO)})*${V})`,
       // Se sacó "hasta saberlo, es devengado, no caja": es la conclusión que el rótulo ya declara.
       'El Cash Flow lo cuenta como ingreso REAL. O falta el movimiento del banco, o el cobro no entró.'),
-    L('Facturado y todavía no cobrado', `=SUMPRODUCT((${O}="Facturado")*IF(ISNUMBER(${M});${M};0))`, 'Plata emitida que la empresa está financiando.'),
-    L('Proyectado (todavía ni facturado)', `=SUMPRODUCT((${O}="Proyectado")*IF(ISNUMBER(${M});${M};0))`, 'ESTIMACIÓN. Si una proyección ya se facturó, hay que darla de baja o queda contada dos veces.'),
+    L('Facturado y todavía no cobrado', `=SUMPRODUCT((${O}="Facturado")*${V})`, 'Plata emitida que la empresa está financiando.'),
+    L('Proyectado (todavía ni facturado)', `=SUMPRODUCT((${O}="Proyectado")*${V})`, 'ESTIMACIÓN. Si una proyección ya se facturó, hay que darla de baja o queda contada dos veces.'),
   ]
+}
+
+/**
+ * NÚCLEO PURO: la columna del NÚMERO del control, fórmula y formato juntos en cada celda.
+ *
+ * El formato va celda por celda, con updateCells, NO con repeatCell. Con repeatCell sobre el rango
+ * entero, seis celdas quedaban sin formato y otras sí — no contiguas. LA CAUSA, MEDIDA EL 24/09/2026:
+ * el filtro básico de Cobranzas (A4:AH) oculta filas, y `repeatCell` saltea las filas ocultas por un
+ * filtro aunque responda `replies:[{}]`. Ver lib/cobranzas-formato-moneda.mjs.
+ */
+export function celdasDelNumero(b) {
+  const MONEDA = { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }, horizontalAlignment: 'RIGHT' }
+  const CANTIDAD = { numberFormat: { type: 'NUMBER', pattern: '0' }, horizontalAlignment: 'RIGHT' }
+  return b.map(([, formula, , unidad]) => ({
+    values: [{
+      ...(formula ? { userEnteredValue: { formulaValue: formula } } : {}),
+      userEnteredFormat: unidad === 'cantidad' ? CANTIDAD : MONEDA,
+    }],
+  }))
 }
 
 /**
@@ -423,6 +455,22 @@ async function main() {
 
   const hoja = (await google.getSheetMeta(ID)).find((s) => s.title === PESTAÑA)
 
+  if (SOLO_NUMERO) {
+    // Los rótulos vivos tienen que ser los del bloque, renglón por renglón: si no, la columna del
+    // número quedaría al lado de otra línea y el control diría una cosa con el número de otra.
+    const vivos = await google.readSheetValues(ID, `${PESTAÑA}!${letra(C_CTRL)}1:${letra(C_CTRL)}${b.length}`)
+    const distintos = b.map(([rot], i) => [i + 1, String(rot ?? '').trim(), String(vivos[i]?.[0] ?? '').trim()]).filter(([, a, v]) => a !== v)
+    if (distintos.length) throw new Error(`--solo-numero: los rótulos de ${letra(C_CTRL)} no son los del bloque (${distintos.map(([f]) => f).join(', ')}): corré el control entero`)
+    const res = await google.spreadsheetBatchUpdate(ID, [{ updateCells: {
+      range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: b.length, startColumnIndex: C_CTRL + 1, endColumnIndex: C_CTRL + 2 },
+      rows: celdasDelNumero(b), fields: 'userEnteredValue,userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+    } }])
+    if (res?.protegido || res?.frenados?.length) throw new Error(`--solo-numero: la escritura no pasó (${JSON.stringify(res).slice(0, 160)})`)
+    await formatoSegunMoneda(google, { encabezado, hoja })
+    imprimirControl(await google.readSheetValues(ID, `${PESTAÑA}!${letra(C_CTRL)}1:${letra(C_CTRL + 1)}${b.length}`))
+    return
+  }
+
   // Nunca más escribir sobre una columna sin haber mirado TODA su altura.
   //
   // Pero el control se rehace todos los días, así que la zona va a tener contenido: el MÍO. Se
@@ -505,14 +553,7 @@ async function main() {
   // contiguas, así que no era un rango mal calculado. No encontré la causa; lo que sí es cierto es
   // que mandando valor y formato juntos en la misma celda funciona siempre. Preferí una escritura
   // que anda a seguir gastando en entender por qué la otra no.
-  const MONEDA = { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }, horizontalAlignment: 'RIGHT' }
-  const CANTIDAD = { numberFormat: { type: 'NUMBER', pattern: '0' }, horizontalAlignment: 'RIGHT' }
-  const celdas = b.map(([, formula, , unidad]) => ({
-    values: [{
-      ...(formula ? { userEnteredValue: { formulaValue: formula } } : {}),
-      userEnteredFormat: unidad === 'cantidad' ? CANTIDAD : MONEDA,
-    }],
-  }))
+  const celdas = celdasDelNumero(b)
   await google.spreadsheetBatchUpdate(ID, [
     { updateCells: { range: rg(0, b.length, C_CTRL + 1, C_CTRL + 2), rows: celdas, fields: 'userEnteredValue,userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment' } },
     { repeatCell: { range: rg(3, 4, C_FLAG, C_FLAG + 1), cell: { userEnteredFormat: { backgroundColor: { red: 0.17, green: 0.25, blue: 0.37 }, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } } } }, fields: 'userEnteredFormat' } },
@@ -540,14 +581,47 @@ async function main() {
     })),
   ])
 
+  await formatoSegunMoneda(google, { encabezado, hoja })
+
   const v = await google.readSheetValues(ID, `${PESTAÑA}!${letra(C_CTRL)}1:${letra(C_CTRL + 1)}${b.length}`)
   console.log('\nCONTROL:')
-  for (const f of v) if (f?.[0] && f?.[1] !== undefined) console.log(`  ${String(f[0]).slice(0, 42).padEnd(44)}${String(f[1] ?? '').padStart(16)}`)
+  imprimirControl(v)
   const marcas = await google.readSheetValues(ID, `${PESTAÑA}!A${F0}:${letra(C_FLAG)}${F1}`)
   console.log('\nFILAS MARCADAS:')
   marcas.forEach((celdas, i) => {
     if (celdas?.[C_FLAG]) console.log(`  fila ${i + F0} | ${String(celdas[cols.cliente.indice] ?? '').slice(0, 26).padEnd(28)} ${String(celdas[cols.total.indice] ?? '').padStart(14)}  ${celdas[C_FLAG]}`)
   })
+}
+
+/** El control tal como quedó en la pestaña: rótulo y número, leídos después de escribir. */
+function imprimirControl(v = []) {
+  for (const f of v) if (f?.[0] && f?.[1] !== undefined) console.log(`  ${String(f[0]).slice(0, 42).padEnd(44)}${String(f[1] ?? '').padStart(16)}`)
+}
+
+/**
+ * LOS IMPORTES DE UNA FILA EN DÓLARES SE VEN EN DÓLARES (24/09/2026). El porqué —y por qué es
+ * `updateCells` celda por celda— está en lib/cobranzas-formato-moneda.mjs.
+ *
+ * VA CON `yaGuardado` Y ES A PROPÓSITO. La guarda de formato respeta «un formato que yo no puse», y
+ * el de pesos de K:N lo puso el dueño para la columna entera: sin la excepción, la fila en dólares
+ * seguiría dibujándose en pesos para siempre. El alcance es exactamente el que la pidió: sólo el
+ * prefijo del patrón (`"$ "` ↔ `"U$S "`), sólo en los cinco importes, y sólo donde la columna Moneda
+ * —que escribe el dueño— dice otra cosa que el dibujo.
+ */
+async function formatoSegunMoneda(google, { encabezado, hoja }) {
+  const imp = columnasCobranzas(encabezado, [...COLUMNAS_IMPORTE, 'moneda'])
+  const columnas = COLUMNAS_IMPORTE.map((k) => imp[k].indice)
+  const c0 = Math.min(...columnas), c1 = Math.max(...columnas)
+  const hasta = Math.max(F0, Number(hoja?.rows) || F1)
+  const [monedas, fmt] = await Promise.all([
+    google.readSheetValues(ID, `${PESTAÑA}!${imp.moneda.letra}${F0}:${imp.moneda.letra}${hasta}`),
+    google.readSheetUserFormats(ID, `${PESTAÑA}!${letra(c0)}${F0}:${letra(c1)}${hasta}`),
+  ])
+  const { pedidos, celdas } = pedidosDeFormato({ monedas, formatos: fmt?.filas ?? [], sheetId: hoja.sheetId, desde: F0, colInicio: c0, columnas })
+  if (!pedidos.length) return console.log('\nMONEDA: los importes ya se ven en la moneda de su fila.')
+  const res = await google.spreadsheetBatchUpdate(ID, pedidos, { yaGuardado: true })
+  if (res?.protegido) throw new Error('el formato por moneda no se escribió (protegido): no lo doy por hecho')
+  console.log(`\nMONEDA: ${celdas.length} importe(s) pasan a dibujarse en la moneda de su fila: ${celdas.map((c) => `${letra(c.col)}${c.fila}`).join(' ')}`)
 }
 
 // ═══ SÓLO CUANDO SE LO INVOCA COMO COMANDO (13/08) ═══

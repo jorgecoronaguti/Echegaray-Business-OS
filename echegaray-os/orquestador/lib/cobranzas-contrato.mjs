@@ -330,6 +330,31 @@ export function sumaConUSD({ rango, criterios, moneda, tc }) {
   return `SUMIFS(${rango};${criterios})-${enUSD}+${enUSD}*${tc}`
 }
 
+/**
+ * LA MISMA FRASE SIN FILTRO: el total de una columna de Cobranzas con los dólares valuados.
+ *
+ * POR QUÉ HACE FALTA APARTE (24/09/2026). `SUMIFS` exige al menos un criterio, y los controles que
+ * miran «todo lo que hay en la pestaña» no tienen ninguno: escribían `SUM(N)` y sumaban U$S 15.400 +
+ * U$S 10.500 de Quattropani como $25.900. Es la misma forma —todo, menos los dólares mal contados,
+ * más los valuados— y por la misma razón: un TC vacío hace que los dólares aporten 0, no que resten.
+ */
+export function totalConUSD({ rango, moneda, tc }) {
+  const enUSD = `SUMIF(${moneda};"${MONEDA_USD}";${rango})`
+  return `SUM(${rango})-${enUSD}+${enUSD}*${tc}`
+}
+
+/**
+ * EL FACTOR DE CADA FILA para las sumas que se escriben con `SUMPRODUCT`: el TC en dólares, 1 en pesos.
+ *
+ * `SUMPRODUCT(cond*IF(ISNUMBER(N);N;0))` es el idioma de los controles de Cobranzas y del anexo de
+ * CAJA; multiplicarle este factor es `sumaConUSD` escrita fila por fila. Compara por IGUALDAD con
+ * "USD" —el mismo criterio positivo de `sumaConUSD`—, así que una celda vacía es pesos por
+ * construcción y un TC en blanco deja los dólares en 0, nunca contados como pesos.
+ */
+export function factorMoneda({ moneda, tc }) {
+  return `IF(${moneda}="${MONEDA_USD}";${tc};1)`
+}
+
 /** ¿Este texto contiene la aguja? Sin distinguir mayúsculas — el archivo escribe "Playon Azufre" en
  *  el Concepto y "Playon de Azufre" en la OC. */
 const contiene = (texto, aguja) => String(texto ?? '').toLowerCase().includes(String(aguja ?? '').toLowerCase())

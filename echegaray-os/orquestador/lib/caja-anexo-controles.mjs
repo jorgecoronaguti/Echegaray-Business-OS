@@ -219,7 +219,7 @@ export function bloqueTrazabilidad(h, { yaRevisados = decisionesDe(CONTROLES.cob
   const { push } = h
   const cob = h.refs?.columnas?.cobranzas
   const cmp = mapaCompras(h.refs?.columnas?.compras)
-  const { formaCobro, estado, fechaCobro, total, cliente } = exigirColumnas(cob, ['formaCobro', 'estado', 'fechaCobro', 'total', 'cliente'], 'bloqueTrazabilidad')
+  const { formaCobro, estado, fechaCobro, total, cliente, moneda } = exigirColumnas(cob, ['formaCobro', 'estado', 'fechaCobro', 'total', 'cliente', 'moneda'], 'bloqueTrazabilidad')
   const r = (col) => rangoHasta('Cobranzas', col, 400)
   const M = r(total)
   // La MISMA definición de "dos cobros que no se pueden distinguir" que usa la pestaña Cobranzas.
@@ -236,7 +236,15 @@ export function bloqueTrazabilidad(h, { yaRevisados = decisionesDe(CONTROLES.cob
   push(['A7 · TRAZABILIDAD DEL EFECTIVO — todo lo cobrado contra depósitos, gastos y el cajón'])
   // SÓLO LO "COBRADO": un cobro en estado "Proyectado" no es efectivo en la caja. Y hasta HOY: un
   // "Cobrado" con fecha futura (un valor endosado, una carga adelantada) no es billete en la mano.
-  const CONEF = `(${r(formaCobro)}="Efectivo")*(${r(estado)}="Cobrado")*(${r(fechaCobro)}<=TODAY())`
+  //
+  // Y SÓLO LOS PESOS (24/09/2026). Esta identidad es la del CAJÓN EN PESOS: la cierra el arqueo en
+  // pesos. Los cobros con Moneda = USD van a la caja en dólares (`celdaCajaDolares`, CAJA «Efectivo en
+  // dólares») y no pasan por acá. Sumarlos era contar U$S 25.900 de Quattropani como $25.900 y, con
+  // el trío de U$S 3.500 indistinguible, restarle al efectivo $5.250 «cargados dos veces». Es la misma
+  // partición que ya usan los cobros posteriores al arqueo: `<>USD` del lado de los pesos, `=USD` del
+  // de los dólares. Se escribe como comparación dentro del SUMPRODUCT —no como criterio de SUMIFS—, así
+  // que una celda vacía es pesos sin depender de cómo Sheets lea un criterio negativo.
+  const CONEF = `(${r(formaCobro)}="Efectivo")*(${r(estado)}="Cobrado")*(${r(fechaCobro)}<=TODAY())*(${r(moneda)}<>"USD")`
   const fCob = push(['Cobrado en EFECTIVO — historia completa (Cobranzas)', '', '', '',
     `=SUMPRODUCT(${CONEF}*IF(ISNUMBER(${M});${M};0))`,
     '', ''])
