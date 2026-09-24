@@ -2,11 +2,14 @@
 # CADA MINUTO. Del otro lado hay una persona mirando la pantalla con el papel todavía en la mano: la
 # demora tiene que sentirse como «está leyendo», no como «se perdió». `AccuracySec` al segundo porque
 # el default de systemd (1 min) convertiría este minuto en dos.
-Description=Echegaray OS - Cola de comprobantes de la web (cada minuto)
+# CADA 15 s DESDE EL 24/09/2026: esta misma vuelta manda los avisos de firma del efectivo a rendir, y con 60 s
+# el aviso llegaba casi un minuto después de entregar la plata (dueño: «no manda a tiempo los mensajes de
+# firma»). Una vuelta sin trabajo tarda ~1 s: cuatro por minuto no cargan la máquina.
+Description=Echegaray OS - Cola de comprobantes y avisos de efectivo (cada 15 s)
 
 [Timer]
 OnBootSec=90s
-OnUnitInactiveSec=60s
+OnUnitInactiveSec=15s
 AccuracySec=1s
 # NO `Persistent`: si la VM estuvo apagada, no tiene sentido "recuperar" las corridas perdidas — la
 # cola está en Postgres y la próxima corrida la vacía igual.
