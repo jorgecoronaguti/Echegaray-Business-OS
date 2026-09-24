@@ -127,4 +127,17 @@ test('los jefes de «Oficina» se reconocen por nombre aunque se escriban distin
   const c = cuadroPuente(ubicarNomina(g), { filasOficina: [25, 26] })
   assert.match(c.filas[2][11], /-N\(L\$28\)-\(N\(L\$25\)\+N\(L\$26\)\)-SUMPRODUCT/) // jornales sin los jefes
   assert.match(c.filas[3][11], /N\(L\$28\)\+\(N\(L\$25\)\+N\(L\$26\)\)-N\(INDEX\(OFICINA_PAGADO;9;1\)\)/) // van con Oficina
+  // Un mes cerrado (pagado y sin proyección) no debe nada: la guarda va antes de la cuenta.
+  assert.match(c.filas[3][4], /^=IF\(AND\(N\(INDEX\(OFICINA_PAGADO;2;1\)\)>0;N\(INDEX\(OFICINA_PROYECTADO;2;1\)\)=0\);0;/)
+  assert.match(c.filas[4][4], /^=IF\(AND\(N\(INDEX\(DIRECCION_PAGADO;2;1\)\)>0;N\(INDEX\(DIRECCION_PROYECTADO;2;1\)\)=0\);0;/)
+})
+
+test('sin «Desvinculados en el año», la lista de personas termina antes de «Oficina»', async () => {
+  const { ubicarNomina } = await import('./nomina-puente.mjs')
+  const g = []
+  g[3] = ['Parámetros']; g[7] = ['1 · NÓMINA 2026']; g[8] = ['Persona']; g[9] = ['Aguero']; g[25] = ['Nievas Juan Pablo']
+  g[26] = ['Oficina']; g[27] = ['TOTAL']; g[32] = ['2 · CARGAS']; g[54] = ['TOTAL']; g[74] = ['TOTAL DIRECCIÓN']
+  const u = ubicarNomina(g)
+  assert.deepEqual(u.falta, [])
+  assert.equal(u.ultimaPersona, 26); assert.equal(u.filaOficina, 27); assert.equal(u.filaTotal, 28)
 })

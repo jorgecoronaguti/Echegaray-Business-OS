@@ -97,15 +97,18 @@ export function ubicarNomina(grilla = []) {
   const iParam = desde(0, (t) => t === 'Parámetros')
   const iSec1 = desde(0, (t) => /^1 · NÓMINA/i.test(t))
   const iPersona1 = desde(Math.max(0, iSec1), (t) => t === 'Persona')
-  const iDesv1 = desde(Math.max(0, iPersona1), (t) => t === 'Desvinculados en el año')
-  const iOfi1 = desde(Math.max(0, iDesv1), (t) => t === 'Oficina')
+  // «Desvinculados en el año» SE RETIRÓ DEL CUADRO 1 (dueño, 24/09/2026: «confunde y suma en el total»).
+  // Si todavía está, la lista de personas termina antes de él; si no, antes de «Oficina».
+  const iOfi1 = desde(Math.max(0, iPersona1), (t) => t === 'Oficina')
+  const iDesv = desde(Math.max(0, iPersona1), (t) => t === 'Desvinculados en el año')
+  const iDesv1 = iDesv >= 0 && iDesv < iOfi1 ? iDesv : iOfi1
   const iTot1 = desde(Math.max(0, iOfi1), (t) => t === 'TOTAL')
   const iSec2 = desde(Math.max(0, iTot1), (t) => /^2 · CARGAS/i.test(t))
   const iTot2 = desde(Math.max(0, iSec2), (t) => t === 'TOTAL')
   const iDir = desde(0, (t) => t === 'TOTAL DIRECCIÓN')
   const iPuente = desde(0, (t) => t === ROTULO_PUENTE)
   const pares = { 'Parámetros': iParam, '1 · NÓMINA': iSec1, 'Persona (cuadro 1)': iPersona1,
-    'Desvinculados en el año (cuadro 1)': iDesv1, 'Oficina (cuadro 1)': iOfi1, 'TOTAL (cuadro 1)': iTot1,
+    'Oficina (cuadro 1)': iOfi1, 'TOTAL (cuadro 1)': iTot1,
     '2 · CARGAS': iSec2, 'TOTAL (cuadro 2)': iTot2, 'TOTAL DIRECCIÓN': iDir }
   for (const [k, v] of Object.entries(pares)) if (v < 0) falta.push(k)
   if (falta.length) return { falta }
@@ -160,8 +163,12 @@ export function cuadroPuente(u, { anio = 2026, filasOficina = [] } = {}) {
   const jefes = (X) => (filasOficina.length ? filasOficina.map((r) => `N(${X}$${r})`).join('+') : '0')
   const f = {
     jornales: (X, m) => `=MAX(0;N(${X}$${u.filaTotal})-N(${X}$${u.filaOficina})-(${jefes(X)})-SUMPRODUCT(IFERROR((MONTH(JORNALES_REAL_HASTA)=${m})*(YEAR(JORNALES_REAL_HASTA)=${anio})*JORNALES_REAL_TOTAL;0)))`,
-    oficina: (X, m) => `=MAX(0;N(${X}$${u.filaOficina})+(${jefes(X)})-N(INDEX(OFICINA_PAGADO;${m};1)))`,
-    direccion: (X, m) => `=MAX(0;N(${X}$${u.filaDireccion})-N(INDEX(DIRECCION_PAGADO;${m};1)))`,
+    // UN MES QUE JORNALES YA CERRÓ NO DEBE NADA (24/09/2026): con pagado y sin proyección, lo que
+    // diga Nómina de ese mes es historia, no deuda. Sin esta guarda, febrero publicaba $665.000 «por
+    // pagar» (los $3,6 M tipeados de los jefes contra lo que de verdad se pagó) y el libro lo emitía
+    // VENCIDO. Agosto —pagado en parte, con el resto proyectado a mano— sigue abierto.
+    oficina: (X, m) => `=IF(AND(N(INDEX(OFICINA_PAGADO;${m};1))>0;N(INDEX(OFICINA_PROYECTADO;${m};1))=0);0;MAX(0;N(${X}$${u.filaOficina})+(${jefes(X)})-N(INDEX(OFICINA_PAGADO;${m};1))))`,
+    direccion: (X, m) => `=IF(AND(N(INDEX(DIRECCION_PAGADO;${m};1))>0;N(INDEX(DIRECCION_PROYECTADO;${m};1))=0);0;MAX(0;N(${X}$${u.filaDireccion})-N(INDEX(DIRECCION_PAGADO;${m};1))))`,
     f931: (X) => `=LET(t;N(${X}$${u.filaTotalCargas});s;${$('H')}*COUNTIF(${personas(X)};">0");`
       + `rf;${$('D')}+${$('E')}+${$('F')}+${$('G')};`
       + `rg;${$('I')}+(CARGAS_PROPORCION_PRIMER_ANIO*${$('J')}+(1-CARGAS_PROPORCION_PRIMER_ANIO)*${$('K')})*(1+${$('L')}+${$('M')});`
