@@ -79,9 +79,7 @@ test('LAS DOS DEFINICIONES SON LA MISMA FUNCIÓN — sólo cambian de columna', 
   const baseIibb = ventasFacturadasDelMes(2026, 9, 'neto', { cob: COB_HOY, hoy: '2026-09-04' })
   // Idénticas salvo la columna que suman: si alguien vuelve a escribir una de las dos por su cuenta,
   // esta igualdad se rompe.
-  // (La guarda «ya está en ARCA» mira las DOS columnas —neto e IVA— en las dos: se la saca antes de comparar.)
-  const sinGuarda = (f) => f.replace(/\(COUNTIFS\([^=]*?"Ventas".*?\)=0\)/g, '<ya-en-arca>')
-  assert.equal(sinGuarda(debito).replaceAll('Cobranzas!$K$5:$K', '<medida>'), sinGuarda(baseIibb).replaceAll('Cobranzas!$J$5:$J', '<medida>'))
+  assert.equal(debito.replaceAll('Cobranzas!$K$5:$K', '<medida>'), baseIibb.replaceAll('Cobranzas!$J$5:$J', '<medida>'))
   for (const f of [debito, baseIibb]) {
     assert.match(f, /Cobranzas!\$B\$5:\$B="B"/, 'sólo lo facturado — la orden permanente del dueño')
     assert.match(f, /Cobranzas!\$P\$5:\$P>=DATE\(2026;9;1\)/, 'la ventana es la de EMISIÓN de la factura')
@@ -170,23 +168,21 @@ test('la fórmula del mes CERRADO exige comprobante y la del futuro suma las ven
   assert.doesNotMatch(oct, /N\(Cobranzas!\$Q\$5:\$Q\)<DATE/)
 })
 
-// ═══ UNA FACTURA YA EMITIDA EN ARCA NO SE VUELVE A PROYECTAR (24/09/2026) ═══
+// ═══ DOS MITADES DE LA MISMA OC: UNA FACTURADA, LA OTRA NO (24/09/2026, caso real) ═══
 //
-// MEDIDO: la fila 93 de Cobranzas (MESSINA, fecha de factura 31/08, cobro 30/09, IVA $855.334,56, neto
-// $4.073.021,70) no tiene cargado el N° de comprobante, así que la fórmula la tomaba como «vencida sin
-// emitir» y la sumaba al débito de SEPTIEMBRE. Pero es la FA 1-227 del 21/08, que está en _ARCA_RAW y en
-// la F.2051 de agosto: el débito de septiembre salía $855.335 más alto (y la base de IIBB $4.073.022).
-// Una fila B sin número cuyo neto y cuyo IVA coinciden (±$1) con una venta de _ARCA_RAW ya está emitida.
-test('una B «vencida sin emitir» que coincide en neto e IVA con una venta de ARCA no se proyecta', () => {
+// Fila 45: «PLANTA DE BSA - 26M3 A FAVOR H-17 - 50%», N° 01-00000227, factura 18/08, IVA $855.334,56.
+// Fila 93: «PLANTA DE BSA - 50%», SIN número, factura 31/08, mismo neto e IVA, cobro 30/09. Misma OC.
+// Se llegó a excluir la 93 por coincidir en importe con la FA 227 de ARCA: era un error, la 227 ya está
+// atada por número a la 45. La 93 es el 50% sin facturar y su IVA va a septiembre, el mes de su cobro.
+test('la mitad SIN número de una OC se proyecta aunque su importe coincida con la mitad ya facturada', () => {
   const f = ventasFacturadasDelMes(2026, 9, 'iva', { hoy: '2026-09-24', cob: COB_HOY })
-  const terminos = f.split('SUMPRODUCT(').slice(1)
-  const vencidas = terminos.filter((t) => /=""\)\*ISNUMBER/.test(t))
-  assert.ok(vencidas.length >= 1, 'hay términos de vencidas sin emitir')
-  for (const t of vencidas) {
-    assert.match(t, /COUNTIFS\(_ARCA_RAW!\$B\$4:\$B;"Ventas";_ARCA_RAW!\$K\$4:\$K;">="&/, 'mira el neto de ARCA')
-    assert.match(t, /_ARCA_RAW!\$L\$4:\$L;"<="&/, 'y el IVA de ARCA')
-    assert.match(t, /\)=0\)/, 'excluye la fila si ARCA ya la tiene')
-  }
-  // Lo facturado por «Fecha de Factura» del mes no se toca: esa fila puede estar emitida o no.
-  assert.doesNotMatch(terminos[0], /COUNTIFS/)
+  assert.doesNotMatch(f, /COUNTIFS|_ARCA_RAW/, 'ninguna fila de Cobranzas se da por emitida por su importe')
+  const I = Object.fromEntries(Object.entries(COB_HOY).map(([k, v]) => [k, v?.indice]))
+  const fila = (o) => { const r = []; for (const [k, v] of Object.entries(o)) r[I[k]] = v; return r }
+  const ser = (y, m, d) => (Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 864e5
+  const f45 = fila({ categoria: 'B', comprobante: '01-00000227', fechaFactura: ser(2026, 8, 18), fechaCobro: ser(2026, 9, 3), neto: 4073021.7, iva: 855334.557 })
+  const f93 = fila({ categoria: 'B', comprobante: '', fechaFactura: ser(2026, 8, 31), fechaCobro: ser(2026, 9, 30), neto: 4073021.7, iva: 855334.557 })
+  const porMes = ventasPorMesDeEmision([f45, f93], '2026-09-24', COB_HOY)
+  assert.equal(Math.round(porMes['2026-09']?.iva ?? 0), 855335, 'la 93 va a septiembre por su cobro')
+  assert.equal(Math.round(porMes['2026-08']?.iva ?? 0), 855335, 'la 45, facturada, queda en agosto')
 })
