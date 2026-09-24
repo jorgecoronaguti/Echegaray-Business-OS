@@ -115,7 +115,10 @@ export function destinoDeLaHome(rol: Rol | null | undefined, telefono = false): 
   // «Ésa es la vista con mi usuario admin»: la cartera de Clientes de escritorio dibujada en el celular.
   // El teléfono es para operar (parte, material, problema, asistencia, herramientas, movimientos); la
   // computadora es para administrar. Con el mismo usuario, el dispositivo elige la cara.
-  if ((rol === 'direccion' || rol === 'administracion') && telefono) return '/campo'
+  // 24/09/2026 el dueño eligió para Administración una barra de gestión propia (Obras · Personal ·
+  // Compras · Datos · Más): su inicio en el teléfono pasa a ser Obras, el primero de la barra. Trabajo
+  // (`/campo`) sigue a un toque, dentro de «Más».
+  if ((rol === 'direccion' || rol === 'administracion') && telefono) return '/obras'
   // ═══ YA NO HAY HOME ECONÓMICA (27/08/2026) ═══
   //
   // Hasta hoy esto devolvía `/flujo-caja` a quien pudiera abrirla, por la decisión del 09/07. El

@@ -18,24 +18,11 @@ export interface ItemBarraTelefono {
   href: string
   label: string
   /** Nombre del icono del set del teléfono (`shared/components/movil/Iconos.tsx`). */
-  icono: 'obra' | 'lista' | 'plano' | 'avance' | 'llave' | 'casa' | 'tarea' | 'gente'
+  icono: 'obra' | 'lista' | 'plano' | 'avance' | 'llave' | 'casa' | 'tarea' | 'gente' | 'pedido' | 'mas'
   /** Rutas que encienden este ítem además de su `href` (por prefijo). */
   enciende?: readonly string[]
 }
 
-const CAMPO: ItemBarraTelefono = { clave: 'campo', href: '/campo', label: 'Trabajo', icono: 'obra' }
-const ADMIN: ItemBarraTelefono = {
-  clave: 'administracion', href: '/administracion', label: 'Admin.', icono: 'lista',
-  // Las mismas rutas que encienden la solapa Administración del header (`navegacion.ts`).
-  enciende: ['/clientes', '/presupuestos', '/documentos', '/integraciones', '/mi-cuenta'],
-}
-const OBRAS: ItemBarraTelefono = { clave: 'obras', href: '/obras', label: 'Obras', icono: 'plano' }
-const ANALITICAS: ItemBarraTelefono = { clave: 'analiticas', href: '/analiticas', label: 'Datos', icono: 'avance' }
-// En el teléfono Herramientas ES la versión de campo: el middleware desvía `/herramientas/*` igual,
-// pero ir derecho ahorra el rebote.
-const HERRAMIENTAS: ItemBarraTelefono = {
-  clave: 'herramientas', href: '/campo/herramientas', label: 'Herram.', icono: 'llave', enciende: ['/herramientas', '/h'],
-}
 // EL JEFE DE OBRA TIENE UNA SOLA BARRA EN TODO EL TELÉFONO (dueño, 24/09/2026: «hay mezclas entre
 // pantallas y usuarios»). Antes veía Hoy · Tareas · Avance · Gente dentro de Mi obra y otra distinta
 // (Mi obra · Trabajo · Admin. · Obras · Herram.) apenas salía: la barra cambiaba entera según dónde
@@ -48,16 +35,31 @@ const JEFE: ItemBarraTelefono[] = [
   { clave: 'jefe-gente', href: '/obra/personas', label: 'Gente', icono: 'gente', enciende: ['/administracion/personas/asistencia'] },
 ]
 
+// ADMINISTRACIÓN EN EL TELÉFONO: UNA BARRA DE GESTIÓN (dueño, 24/09/2026, opción B: «Obras · Personal
+// · Compras · Datos · Más, con las pantallas de escritorio adaptadas»). Reemplaza a Trabajo · Admin. ·
+// Obras · Herram. · Datos, que mezclaba la pantalla del jefe con la de gestión. Lo que no entra en
+// cuatro va en «Más» (`/mas`): Clientes, Presupuestos, Impuestos, Herramientas, Trabajo y la cuenta.
+const GESTION: ItemBarraTelefono[] = [
+  { clave: 'obras', href: '/obras', label: 'Obras', icono: 'plano' },
+  { clave: 'personal', href: '/administracion/personas', label: 'Personal', icono: 'gente', enciende: ['/administracion/asistencia'] },
+  { clave: 'compras', href: '/administracion/compras', label: 'Compras', icono: 'pedido', enciende: ['/administracion/proveedores'] },
+  { clave: 'analiticas', href: '/analiticas', label: 'Datos', icono: 'avance' },
+  {
+    clave: 'mas', href: '/mas', label: 'Más', icono: 'mas',
+    enciende: ['/clientes', '/presupuestos', '/administracion/impuestos', '/administracion/usuarios', '/herramientas', '/h', '/campo', '/mi-cuenta', '/documentos', '/integraciones'],
+  },
+]
+
 /**
  * QUÉ BARRA VE CADA NIVEL EN EL TELÉFONO dentro de las pantallas de escritorio.
  *
- * - Dirección y Administración: Campo · Admin. · Obras · Herram. · Datos (Herramientas antes, dueño 23/09)
+ * - Dirección y Administración: Obras · Personal · Compras · Datos · Más (dueño 24/09, opción B).
  * - Jefe de obra: Hoy · Tareas · Avance · Gente, la misma de J01 en todas las pantallas.
  * - Empleado, cliente o sin perfil: NINGUNA. El empleado tiene la suya en `/hoy`; sin perfil se
  *   falla cerrado, igual que `solapasDeNav`.
  */
 export function barraTelefonoDe(rol: Rol | null | undefined): ItemBarraTelefono[] {
-  if (rol === 'direccion' || rol === 'administracion') return [CAMPO, ADMIN, OBRAS, HERRAMIENTAS, ANALITICAS]
+  if (rol === 'direccion' || rol === 'administracion') return GESTION
   if (rol === 'jefe_obra') return JEFE
   return []
 }

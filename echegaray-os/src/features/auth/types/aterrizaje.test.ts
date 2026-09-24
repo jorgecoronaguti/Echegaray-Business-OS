@@ -149,13 +149,13 @@ test('desde el teléfono el jefe entra por /obra/hoy, y sigue siendo la MISMA de
   assert.equal(aterrizajeDeIngreso('jefe_obra', null, true), '/obra/hoy')
   // El `volver` sigue ganando cuando el rol puede abrirlo: el deep link no se pierde por ser teléfono.
   assert.equal(aterrizajeDeIngreso('jefe_obra', '/mi-cuenta', true), '/mi-cuenta')
-  // Dirección y Administración en el teléfono también van a operar (Campo); el empleado, a su día.
-  assert.equal(aterrizajeDeIngreso('direccion', null, true), '/campo')
+  // Dirección y Administración en el teléfono entran por Obras (barra de gestión); el empleado, a su día.
+  assert.equal(aterrizajeDeIngreso('direccion', null, true), '/obras')
   assert.equal(aterrizajeDeIngreso('campo', null, true), '/hoy')
 })
 
-test('en el teléfono, dirección y administración entran por Campo; en escritorio, por Administración', () => {
-  assert.equal(destinoDeLaHome('direccion', true), '/campo')
-  assert.equal(destinoDeLaHome('administracion', true), '/campo')
-  assert.notEqual(destinoDeLaHome('direccion', false), '/campo')
+test('en el teléfono, dirección y administración entran por Obras; en escritorio, por Administración', () => {
+  assert.equal(destinoDeLaHome('direccion', true), '/obras')
+  assert.equal(destinoDeLaHome('administracion', true), '/obras')
+  assert.notEqual(destinoDeLaHome('direccion', false), '/obras')
 })

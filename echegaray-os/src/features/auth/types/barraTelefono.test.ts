@@ -5,8 +5,8 @@ import { puedeVerRuta } from './areas.ts'
 
 const claves = (rol: Parameters<typeof barraTelefonoDe>[0]) => barraTelefonoDe(rol).map((i) => i.clave)
 
-test('Dirección y Administración: cinco destinos, Campo primero (en el teléfono se opera)', () => {
-  assert.deepEqual(claves('direccion'), ['campo', 'administracion', 'obras', 'herramientas', 'analiticas'])
+test('Dirección y Administración: barra de gestión Obras · Personal · Compras · Datos · Más (dueño 24/09, B)', () => {
+  assert.deepEqual(claves('direccion'), ['obras', 'personal', 'compras', 'analiticas', 'mas'])
   assert.deepEqual(claves('administracion'), claves('direccion'))
 })
 
@@ -34,17 +34,18 @@ test('a lo sumo cinco: más no entran en 390 px con el pulgar', () => {
 
 test('cuál se enciende: el href más largo gana y las rutas de Administración encienden Admin.', () => {
   const b = barraTelefonoDe('direccion')
-  assert.equal(itemActivoDeBarra('/campo', b), 'campo')
-  assert.equal(itemActivoDeBarra('/campo/parte', b), 'campo')
-  assert.equal(itemActivoDeBarra('/campo/herramientas/buscar', b), 'herramientas')
-  assert.equal(itemActivoDeBarra('/herramientas/inventario?pc=1', b), 'herramientas')
-  assert.equal(itemActivoDeBarra('/h/HER-0042', b), 'herramientas')
-  assert.equal(itemActivoDeBarra('/administracion/compras', b), 'administracion')
-  assert.equal(itemActivoDeBarra('/clientes/la-estrella', b), 'administracion')
-  assert.equal(itemActivoDeBarra('/presupuestos', b), 'administracion')
-  assert.equal(itemActivoDeBarra('/mi-cuenta/legajo', b), 'administracion')
   assert.equal(itemActivoDeBarra('/obras/x/dotacion', b), 'obras')
+  assert.equal(itemActivoDeBarra('/administracion/personas/asistencia', b), 'personal')
+  assert.equal(itemActivoDeBarra('/administracion/asistencia', b), 'personal')
+  assert.equal(itemActivoDeBarra('/administracion/compras', b), 'compras')
+  assert.equal(itemActivoDeBarra('/administracion/proveedores/x', b), 'compras')
   assert.equal(itemActivoDeBarra('/analiticas', b), 'analiticas')
+  assert.equal(itemActivoDeBarra('/mas', b), 'mas')
+  assert.equal(itemActivoDeBarra('/clientes/la-estrella', b), 'mas')
+  assert.equal(itemActivoDeBarra('/presupuestos', b), 'mas')
+  assert.equal(itemActivoDeBarra('/campo/herramientas/buscar', b), 'mas')
+  assert.equal(itemActivoDeBarra('/h/HER-0042', b), 'mas')
+  assert.equal(itemActivoDeBarra('/mi-cuenta/legajo', b), 'mas')
   assert.equal(itemActivoDeBarra('/obras-viejas', b), null)
   assert.equal(itemActivoDeBarra('/', b), null)
   const j = barraTelefonoDe('jefe_obra')
