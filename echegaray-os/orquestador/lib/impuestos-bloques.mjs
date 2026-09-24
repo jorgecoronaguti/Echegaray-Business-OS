@@ -232,14 +232,24 @@ export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy, cob }) {
       return m === mesEnCurso ? nuncaMenosQue(formulaDebitoArca(periodo(m)), cob) : cob
     },
     'F.2051 presentada; cerrado sin presentar: lo emitido según ARCA. Proyectado: mes en curso MAX(ARCA; facturas B de Cobranzas del mes), futuros las facturas B por «Fecha de Factura» y las vencidas sin emitir por su fecha de cobro.', { meses })
+  // CRÉDITO PROYECTADO (dueño 24/09/2026: «estimarlo… más realista»): compras con factura del Libro + IVA de
+  // los materiales por obra aún no cargados; sin materiales, MAX(compras; promedio de las 6 últimas DDJJ sin
+  // los meses > 2 × mediana). El promedio reemplaza, no se suma: un mes normal ya contiene sus compras.
+  const ult6 = mesesOf.slice(-6)
+  const rangoProm = ult6.length === 6 && ult6[5] - ult6[0] === 5 ? `${cmes(ult6[0])}${fCred}:${cmes(ult6[5])}${fCred}` : null
+  const promedio = rangoProm ? `AVERAGE(FILTER(${rangoProm};${rangoProm}<=2*MEDIAN(${rangoProm})))` : '0'
+  const creditoProyectado = (m) => {
+    const compras = formulaCreditoProyectado(proy.brutoCredito(m)).slice(1)
+    const mat = formulaCreditoProyectado(proy.brutoMateriales?.(m) ?? ['0']).slice(1)
+    return `=LET(c;${compras};x;${mat};IF(x>0;c+x;MAX(c;${promedio})))`
+  }
   G.mensual('Crédito fiscal · IVA de las compras',
     (m) => {
       if (cerradoArca(m)) return formulaCreditoArca(periodo(m))
       if (!esProy(m)) return ofOAjeno(m, 'credito')
-      const lib = formulaCreditoProyectado(proy.brutoCredito(m))
-      return m === mesEnCurso ? nuncaMenosQue(formulaCreditoArca(periodo(m)), lib) : lib
+      return m === mesEnCurso ? nuncaMenosQue(formulaCreditoArca(periodo(m)), creditoProyectado(m)) : creditoProyectado(m)
     },
-    'F.2051; cerrado sin presentar: libro de compras de ARCA. Proyectado: mes en curso MAX(ARCA; compras con factura del Libro), futuros las compras con factura del Libro.', { meses })
+    'F.2051; cerrado sin presentar: ARCA. Proyectado: compras con factura del Libro + IVA de los materiales proyectados por obra; sin materiales, MAX(compras; promedio de las últimas 6 DDJJ sin atípicos). Mes en curso: MAX(ARCA; eso).', { meses })
   G.mensual('Retenciones y percepciones · ya pagado',
     (m) => {
       if (porMesOf.has(m) || m <= ancla) return ofOAjeno(m, 'retenciones_percep')
@@ -260,7 +270,7 @@ export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy, cob }) {
   const estado = (m) => {
     if (porMesOf.has(m)) return 'presentada'
     if (m <= ancla) return AJENO
-    if (esProy(m)) return 'proyectado'
+    if (esProy(m)) return (proy?.sinMateriales ?? []).includes(m) ? 'proy. · promedio' : 'proyectado'
     if (sinVentas.includes(m)) return 'sin ventas'
     return 'ARCA'
   }
@@ -485,10 +495,5 @@ export function bloqueDeudaFinanciera(G, { anio }) {
   return { fCuota, fSalida, fPrendPend }
 }
 
-// ═══ LA SECCIÓN «SUPUESTOS Y HUECOS» SE ELIMINÓ (09/09/2026: «minimalismo extremo») — LO QUE DECÍA ═══
-//   · Tasa municipal de Seguridad e Higiene y Sellos: sin una fila en Compras ni en el banco (DESCONOCIDO).
-//   · Anticipo de Ganancias: último cargado en abril; si sigue vigente son ~$144.427/mes sin proyectar.
-//   · Vencimiento de IIBB San Juan: SUPUESTO, día 16 (`IIBB_SUPUESTO` en vencimientos-fiscales.mjs).
-//   · IVA e IIBB no se cargan en Compras: el cash flow los ve por ESTA pestaña; cargarlos duplicaría.
-//   · Un texto donde va el saldo de IVA se descarta del ancla y se imprime en el log de la corrida.
-//   · La alícuota de IVA vive en «Parámetros» (ALICUOTA_IVA), ver `asegurarParametros`.
+// HUECOS (sección eliminada el 09/09/2026): Seguridad e Higiene y Sellos sin dato; Anticipo de Ganancias sin
+// filas desde mayo; IIBB vence día 16 SUPUESTO; IVA e IIBB no van a Compras; alícuota en «Parámetros».

@@ -16,7 +16,7 @@
 //   node orquestador/scripts/impuestos-pestana.mjs [--dry]
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
-import { ventasFacturadasDelMes, creditoDeComprasDelMes, RUBROS_CREDITO_LIBRO, planDeVentas } from '../lib/impuestos-base-libro.mjs'
+import { ventasFacturadasDelMes, creditoDeComprasDelMes, RUBROS_CREDITO_LIBRO, planDeVentas, materialesProyectadosDelMes, RUBRO_MATERIALES_PROYECTADOS } from '../lib/impuestos-base-libro.mjs'
 import { conciliarCobranzasConArca, informarConciliacion } from '../lib/cobranzas-vs-arca.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { posicionIvaCompleta } from '../lib/posicion-iva.mjs'
@@ -297,6 +297,10 @@ async function planDeProyeccionIva(google, ivaOficial, hoy, cols) {
     bases,
     // La base de la proyección sale del Libro, no del Cash Flow por posición: ver `basesDelLibro`.
     brutoDebito: (m) => [ventasFacturadasDelMes(AÑO, m, 'iva', { hoy, cob: cols })], brutoCredito: (m) => [creditoDeComprasDelMes(AÑO, m)],
+    brutoMateriales: (m) => [materialesProyectadosDelMes(AÑO, m)],
+    // Los meses a proyectar sin materiales de obra en el Libro: su crédito cae al promedio y la fila de
+    // estado lo dice. Se decide con el Libro leído en esta corrida.
+    sinMateriales: mesesAProyectar.filter((m) => !movs.some((x) => enMes(x, m) && x.rubro === RUBRO_MATERIALES_PROYECTADOS && x.importe > 0)),
     sinBase: ventas.sinBase(mesesAProyectar),
     supuesto: supuestoDelMes({ cobranzas: LINEAS_DEBITO, compras: LINEAS_CREDITO })
       + ` Arranca del saldo a favor de ${MES[(ultimoMesConDato ?? 1) - 1]} ($${Math.round(libreDisp ?? 0).toLocaleString('es-AR')}).`

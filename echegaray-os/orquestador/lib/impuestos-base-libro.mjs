@@ -261,6 +261,19 @@ export function planDeVentas(filas = [], anio, hoy, cols) {
   }
 }
 
+/** El rubro del Libro con los materiales que el plan de cada obra todavía no tiene en Compras. */
+export const RUBRO_MATERIALES_PROYECTADOS = 'Materiales de obra proyectados'
+
+/**
+ * EL TÉRMINO DE LOS MATERIALES PROYECTADOS POR OBRA (dueño, 24/09/2026: «el 21% de los materiales que el
+ * Cash Flow ya proyecta por obra; más realista»). Son las filas `obra_egreso_proyectado` del Libro: cada
+ * una es MAX(0; previsto − lo ya cargado en Compras para esa obra), neteada contra `Compras!P` («Total»,
+ * CON IVA) — por eso es un bruto y el IVA se extrae con a/(1+a), y por eso no se cuenta dos veces con
+ * las compras con factura del término de arriba. Devuelve el término sin `=`, en positivo.
+ */
+export const materialesProyectadosDelMes = (anio, m) =>
+  `-(${terminoLibro({ ...ventanaDelMes(anio, m), rubros: [RUBRO_MATERIALES_PROYECTADOS] })})`
+
 /** El término del CRÉDITO del mes: las compras con factura, netas de notas de crédito. */
 export const creditoDeComprasDelMes = (anio, m) =>
   `-(${terminoLibro({ ...ventanaDelMes(anio, m), rubros: RUBROS_CREDITO_LIBRO })})`

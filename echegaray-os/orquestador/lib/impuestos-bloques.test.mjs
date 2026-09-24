@@ -312,3 +312,26 @@ test('un mes calculado por una persona también es dato cerrado', () => {
 test('sin ningún mes cerrado no se inventa una posición', () => {
   assert.equal(mesDelSaldoVigente({ ddjj: [], ajeno: [], arca: [], 'arca-parcial': [7], proyeccion: [8], vacio: [] }), 0)
 })
+
+// ═══ EL CRÉDITO PROYECTADO SE ESTIMA (dueño, 24/09/2026) ═══
+// «para los meses sin compras cargadas, usar el promedio de IVA de compras de los últimos meses, o el 21%
+// de los materiales que el Cash Flow ya proyecta por obra». Antes el crédito proyectado eran SÓLO las
+// compras con factura del Libro: noviembre y diciembre daban $0,7 M contra ~$2,6 M de un mes normal.
+test('crédito proyectado = compras con factura + IVA de materiales por obra; sin materiales, promedio sin atípicos', () => {
+  const G = crearGrilla(2026)
+  const iva = bloqueIva(G, {
+    anio: 2026, hoy: '2026-09-24', arca: { meses: [9] }, cob: COB_HOY,
+    ivaOficial: [1, 2, 3, 4, 5, 6, 7, 8].map((m) => ({ periodo: `2026-0${m}`, debito: 1, credito: 1, a_pagar_efectivo: 0, libre_disp: 1 })),
+    proy: { meses: [9, 10, 11, 12], ultimoMesConDato: 8, sinMateriales: [11, 12],
+      brutoDebito: (m) => [`BRUTO_DEB_${m}`], brutoCredito: (m) => [`BRUTO_CRE_${m}`], brutoMateriales: (m) => [`MAT_${m}`] },
+  })
+  const oct = String(celda(G, iva.fCred, 10))
+  assert.match(oct, /BRUTO_CRE_10/)
+  assert.match(oct, /MAT_10/, 'los materiales proyectados por obra entran al crédito')
+  assert.match(oct, /ALICUOTA_IVA\/\(1\+ALICUOTA_IVA\)/, 'bruto con IVA: se extrae con a/(1+a)')
+  // El promedio mira las ÚLTIMAS SEIS DDJJ (mar–ago = D..I) de la MISMA fila, sin los meses > 2 × mediana.
+  assert.match(oct, new RegExp(`AVERAGE\\(FILTER\\(D${iva.fCred}:I${iva.fCred};D${iva.fCred}:I${iva.fCred}<=2\\*MEDIAN`))
+  assert.match(String(celda(G, iva.fCred, 9)), /^=MAX\(SUMPRODUCT/, 'el mes en curso nunca baja de ARCA')
+  assert.equal(celda(G, iva.fDDJJ, 11), 'proy. · promedio', 'el mes sin materiales declara que usa el promedio')
+  assert.equal(celda(G, iva.fDDJJ, 10), 'proyectado')
+})
