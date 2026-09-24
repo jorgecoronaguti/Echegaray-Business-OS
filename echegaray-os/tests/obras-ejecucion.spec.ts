@@ -216,9 +216,11 @@ test('personal: la persona asignada sigue asignada después de recargar, y se pu
     await expect(page.getByTestId('form-asignar-ok')).toBeVisible({ timeout: 30000 })
 
     await recargar(page, 'tabla-personal')
-    const fila = page.getByTestId('tabla-personal').locator('tr', { hasText: persona })
+  // 24/09/2026 · la tabla genérica de asignaciones se retiró: cerrar y quitar viven en la fila de
+  // «Quién está asignado» (08), que se abre tocándola; las cerradas van plegadas en «Cerradas».
+    const fila = page.getByTestId('fila-asignacion').filter({ hasText: persona })
     await expect(fila).toBeVisible()
-    await expect(fila).toContainText('responsable')
+    await expect(fila).toContainText('Responsable')
 
     // Y no se puede asignar dos veces a lo mismo: el índice único lo impide y el error se MUESTRA
     // traducido, en vez de tragarse un "duplicate key value violates unique constraint".
@@ -235,8 +237,9 @@ test('personal: la persona asignada sigue asignada después de recargar, y se pu
     // que esa persona imputó mientras estuvo en la obra. Quitar es para el alta hecha por error, y
     // por eso sólo aparece DESPUÉS de cerrar.
     await recargar(page, 'tabla-personal')
-    await page.getByTestId('tabla-personal').locator('tr', { hasText: persona })
-      .getByTestId('cerrar-asignacion').click()
+    const vigente = page.getByTestId('fila-asignacion').filter({ hasText: persona })
+    await vigente.locator('summary').click()
+    await vigente.getByTestId('cerrar-asignacion').click()
     // 60 s Y NO 30: la que se corta bajo la carga de la suite no es sólo la pantalla, también esta
     // lectura directa a Postgres — y cuando se corta, `single()` devuelve `data: null`, que este
     // test leía como «cerrar no escribió la fecha de fin». Un rojo que acusa al producto de un
@@ -250,17 +253,19 @@ test('personal: la persona asignada sigue asignada después de recargar, y se pu
     }).toPass({ timeout: 60000 })
 
     await recargar(page, 'tabla-personal')
-    await page.getByTestId('tabla-personal').locator('tr', { hasText: persona })
-      .getByTestId('quitar-asignacion').click()
+    await page.getByTestId('asignaciones-cerradas').locator('summary').first().click()
+    const cerrada = page.getByTestId('asignaciones-cerradas').getByTestId('fila-asignacion').filter({ hasText: persona })
+    await cerrada.locator('summary').click()
+    await cerrada.getByTestId('quitar-asignacion').click()
     await expect(async () => {
       const { count, error } = await sb.from('obra_asignacion')
         .select('id', { count: 'exact', head: true }).eq('obra_id', OBRA).ilike('notas', `%${MARCA}%`)
       expect(error?.message, 'la lectura de control no llegó a la base').toBeUndefined()
       expect(count).toBe(0)
     }).toPass({ timeout: 60000 })
-    // Ya no hay tabla: el ancla de la recarga pasa a ser el titular, que la solapa dibuja siempre.
-    await recargar(page, 'titular-personal')
-    await expect(page.getByTestId('tabla-personal')).toHaveCount(0)
+    // La tabla del 08 se dibuja siempre (con su estado vacío): lo que se cuenta es la FILA.
+    await recargar(page, 'tabla-personal')
+    await expect(page.getByTestId('fila-asignacion').filter({ hasText: persona })).toHaveCount(0)
   } finally {
     await limpiar(sb, MARCA)
     await salir(sb)

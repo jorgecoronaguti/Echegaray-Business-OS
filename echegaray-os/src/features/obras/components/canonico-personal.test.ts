@@ -43,16 +43,48 @@ test('el buscador de la banda es el de CAJA, no el hairline de arriba de una tab
   assert.match(ds, /variante = 'linea'/)
 })
 
-test('08 · asignar una persona se abre AHÍ MISMO con la primaria de 32px (48 en el teléfono)', () => {
+test('08 · asignar una persona se abre AHÍ MISMO (la primaria del escritorio vive en la cabecera; 48 en el teléfono)', () => {
   const src = fuente('TabPersonal.tsx')
   // El pedido del dueño, literal: «si quiero editar edite ahí mismo, no me sirve que me cargue y me
   // lleve a otro lado». El defecto que atrapa: que la primaria vuelva a ser un `<details>` gris
   // dentro del plegable, dos niveles abajo del pliegue.
-  assert.match(src, /<Alta titulo="Asignar persona" testid="alta-asignacion" primaria>/)
+  //
+  // 24/09/2026 · la afirmación vieja buscaba un `<Alta … testid="alta-asignacion" primaria>` en la
+  // solapa, que ya no existía: desde el 08 la primaria del escritorio es la de la cabecera de obra y
+  // abre el formulario acá con `?asignar=1`. El test estaba rojo contra el código vigente.
+  assert.match(src, /\{abrirAsignar && \(\s*\n\s*<div data-testid="alta-asignacion"/)
   assert.match(src, /<Alta titulo="Asignar persona" testid="alta-asignacion-telefono" primaria telefono>/)
-  assert.match(src, /h-8 cursor-pointer select-none items-center gap-1\.5 rounded-\[6px\] bg-marca px-\[14px\]/)
   // Y el formulario es UNO: dos copias se separan en el primer campo que se agregue.
   assert.equal((src.match(/testid="form-asignar"/g) ?? []).length, 1)
+})
+
+test('08 · las cargas que el diseño no dibuja hablan su lenguaje, y ninguna se perdió (24/09/2026)', () => {
+  const src = fuente('TabPersonal.tsx')
+  const hh = fuente('PersonalHH.tsx')
+  const tel = fuente('TabPersonalTelefono.tsx')
+  // El defecto que atrapa: volver a los tres `Plegable` del DS genérico al pie, con una SEGUNDA
+  // tabla de asignaciones que repetía la de «Quién está asignado».
+  assert.doesNotMatch(src, /<Plegable|<Tabla[\s>]|function TablaAsignaciones/)
+  assert.doesNotMatch(hh, /<Tabla[\s>]|<Tr[\s>]|<BotonAccion/)
+  // Cerrar y quitar viven en la fila del 08 (escritorio) y en la hoja de la fila (teléfono).
+  assert.match(src, /testid="cerrar-asignacion"/)
+  assert.match(src, /testid="quitar-asignacion"/)
+  assert.match(tel, /testid="cerrar-asignacion-telefono"/)
+  assert.match(tel, /testid="quitar-asignacion-telefono"/)
+  assert.match(src, /cerradas\.map\(\(a, i\) => \(\s*\n\s*<FilaAsignado/, 'las cerradas perdieron su fila y con ella «Quitar»')
+  // Las dos imputaciones y el borrado de horas siguen siendo puertas.
+  assert.match(src, /<Imputar titulo="Imputar horas" testid="alta-hh"/)
+  assert.match(src, /<Imputar titulo="Imputar a la cuadrilla" testid="alta-hh-masiva"/)
+  assert.match(src, /<TablaHoras registros=\{registros\} borrarHoras=\{borrarHoras\} \/>/)
+  assert.match(src, /<TablaProductividad actividades=\{actividadHH\} \/>/)
+  assert.match(hh, /testid="borrar-hh"/)
+  // Las filas se reordenan por áreas en el teléfono: la lista de horas se dibuja UNA vez y el botón
+  // de quitar no se duplica entre las dos caras.
+  assert.equal((src.match(/<TablaHoras /g) ?? []).length, 1)
+  // Sin colores crudos: todo sale de `canon/tokens`.
+  for (const [nombre, texto] of [['TabPersonal', src], ['PersonalHH', hh], ['TabPersonalTelefono', tel]]) {
+    assert.doesNotMatch(texto, /#[0-9A-Fa-f]{6}\b/, `${nombre} tiene un hex suelto`)
+  }
 })
 
 test('08 · las cuatro cifras del diseño, y el costo NO se calcula', () => {

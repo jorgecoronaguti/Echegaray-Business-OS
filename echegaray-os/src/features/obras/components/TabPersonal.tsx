@@ -20,18 +20,24 @@
 // horas valorizadas. Las horas sin tarifa NO se adivinan: no suman y se dicen en la bajada («N h sin
 // tarifa»). Hasta el 23/09/2026 decía «no se calcula» siempre, aun con todas las categorías cargadas.
 //
-// ═══ LAS CARGAS QUE EL DISEÑO NO DIBUJA SIGUEN ACÁ, PLEGADAS ═══
+// ═══ LAS CARGAS QUE EL DISEÑO NO DIBUJA, EN SU MISMO LENGUAJE (dueño, 24/09/2026) ═══
 //
 // Cerrar y quitar asignaciones, imputar horas (individual y a la cuadrilla), plan contra real por
 // actividad y el detalle de horas imputadas no están en el 08 pero son las únicas puertas a esas
-// escrituras: viven debajo, en filas plegables de 44px, sin competir con lo que se mira.
+// escrituras. Hasta el 24/09 vivían al pie en tres `Plegable` del DS genérico, con una segunda
+// tabla de asignaciones que repetía la de arriba. Ahora:
+//   · cerrar / quitar viven EN la fila de «Quién está asignado»: se toca la fila y se abre su
+//     detalle debajo (actividad, horas en la obra, notas y la acción). Las cerradas —que el 08 no
+//     muestra porque no están asignadas— van plegadas debajo, «Cerradas · N», con «Quitar».
+//   · en el teléfono la fila del M10 abre una hoja con lo mismo y la acción al pie (44px).
+//   · imputar horas es una acción secundaria —botón blanco— en la cabecera de «Horas imputadas».
+//   · «Plan contra real» y «Horas imputadas» son secciones con el eyebrow y las filas del 08.
+// Nada se quitó: las mismas seis escrituras, con los mismos formularios.
 
 import { createClient } from '@/lib/supabase/server'
 import { getPresencia } from '@/features/administracion/services/presenciaService'
-import {
-  BotonAccion, FormAccion, type AccionFormulario, type ResultadoAccion,
-} from '@/shared/components/ui'
-import { Aviso, CAMPO, Campo, Nulo, Plegable, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
+import { FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
+import { Aviso, CAMPO, Campo } from '@/shared/components/ds'
 import type { ActividadHH, RegistroHH } from '../services/personalService'
 import {
   ddmm, hhAcumuladas, hhDeSemana, hhSemanaPorPersona, horasPorSemana,
@@ -47,11 +53,13 @@ import { plataCorta } from './formato'
 import type { ManoObraPropia } from '../types/economia'
 import { C, MONO } from './canon/tokens'
 import { Ico, P } from './canon/Ico'
+import { AccionFila } from './canon/AccionFila'
 import { TabPersonalTelefono, type FilaPersonalTelefono } from './TabPersonalTelefono'
 
-const GRID = 'minmax(0,1fr) 130px 120px 108px 82px 96px'
-/** Por debajo de esto la tabla scrollea POR DENTRO (536px fijos + 100px de gaps). */
-const MIN_TABLA = 800
+/** Las seis columnas del 08 y, al final, 16px para el chevron que dice «esta fila se abre». */
+const GRID = 'minmax(0,1fr) 130px 120px 108px 82px 96px 16px'
+/** Por debajo de esto la tabla scrollea POR DENTRO (552px fijos + 120px de gaps). */
+const MIN_TABLA = 820
 const n = (x: number) => Math.round(x).toLocaleString('es-AR')
 const EYEBROW: React.CSSProperties = { fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase' }
 
@@ -142,39 +150,110 @@ function FormAsignar({ personas, cuadrillas, actividades, asignar }: {
   )
 }
 
-function TablaAsignaciones({ asignaciones, actividadDe, porAsignado, cerrar, quitar }: {
-  asignaciones: Asignacion[]
-  actividadDe: Map<string, string>
-  porAsignado: Map<string, number>
+const hh1 = (x: number) => x.toLocaleString('es-AR', { maximumFractionDigits: 1 })
+
+/** Un dato del detalle de la fila: rótulo tenue y valor, en una línea. */
+function Dato({ rotulo, children, nulo = false }: { rotulo: string; children: React.ReactNode; nulo?: boolean }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '6px', minWidth: 0 }}>
+      <span style={{ color: C.tenue }}>{rotulo}</span>
+      <span style={{ color: nulo ? C.tenue : C.tintaMedia, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
+    </span>
+  )
+}
+
+/**
+ * UNA FILA DE «QUIÉN ESTÁ ASIGNADO» QUE SE ABRE AHÍ MISMO.
+ *
+ * DECISIÓN QUE EL 08 NO CUBRE (24/09/2026): la fila es el `<summary>` de un `<details>`. Tocarla
+ * despliega debajo su detalle —actividad, horas en la obra, notas— y la única acción que le
+ * corresponde: CERRAR si está vigente (escribe `hasta` y conserva el período), QUITAR si ya está
+ * cerrada (borra la fila; es para el alta hecha por error). Un menú flotante quedaría recortado por
+ * el `overflow-x` de la tabla; la banda debajo no, y no mueve nada de lo que se estaba mirando.
+ * Sin estado de cliente: la solapa sigue siendo de servidor.
+ */
+function FilaAsignado({ a, ultima, hhSemana, hhObra, actividad, cerrar, quitar }: {
+  a: Asignacion
+  ultima: boolean
+  hhSemana: number | undefined
+  hhObra: number | undefined
+  /** `null` = toda la obra · `undefined` = la actividad ya no está (archivada). */
+  actividad: string | null | undefined
   cerrar: (asignacionId: string) => Promise<ResultadoAccion>
   quitar: (asignacionId: string) => Promise<ResultadoAccion>
 }) {
+  const cerrada = !!a.hasta
   return (
-    <Tabla testid="tabla-personal" minWidth={720}>
-      <THead>
-        <Th>Persona</Th><Th>Rol / categoría</Th><Th>Cuadrilla</Th><Th>Actividad</Th><Th num>HH</Th><Th num />
-      </THead>
-      <tbody>
-        {asignaciones.map((a) => (
-          <Tr key={a.id} {...{ 'data-testid': 'fila-asignacion' }}>
-            <Td fuerte>{a.persona_nombre ?? <span className="text-warn">persona borrada del legajo</span>}</Td>
-            <Td>{a.rol}{a.persona_categoria && <span className="block text-[11px] text-faint">{etiquetaCategoria(a.persona_categoria)}</span>}</Td>
-            <Td>{a.cuadrilla ?? <Nulo>sin cuadrilla</Nulo>}</Td>
-            <Td>
-              {a.actividad_id ? (actividadDe.get(a.actividad_id) ?? <Nulo>actividad archivada</Nulo>) : 'toda la obra'}
-              {a.hasta && <span className="block text-[11px] text-faint">hasta {a.hasta}</span>}
-            </Td>
-            <Td num fuerte>{porAsignado.get(a.id)?.toLocaleString('es-AR', { maximumFractionDigits: 1 }) ?? <Nulo>sin imputar</Nulo>}</Td>
-            <Td num>
-              {/* CERRAR conserva el período; QUITAR borra la fila y sólo sirve para el alta hecha por error. */}
-              {a.hasta
-                ? <BotonAccion accion={quitar} args={[a.id]} testid="quitar-asignacion" tono="peligro">Quitar</BotonAccion>
-                : <BotonAccion accion={cerrar} args={[a.id]} testid="cerrar-asignacion">Cerrar</BotonAccion>}
-            </Td>
-          </Tr>
-        ))}
-      </tbody>
-    </Tabla>
+    <details className="group" data-testid="fila-asignacion" style={{ borderBottom: ultima ? undefined : `1px solid ${C.borde}` }}>
+      <summary data-testid={`fila-asignado-${a.id}`}
+        className="cursor-pointer list-none hover:bg-surface-quiet [&::-webkit-details-marker]:hidden"
+        style={{ display: 'grid', gridTemplateColumns: GRID, gap: '20px', height: '56px', alignItems: 'center', fontSize: '13.5px', color: cerrada ? C.tintaSuave : C.tinta }}>
+        <div style={{ fontWeight: a.rol === 'responsable' && !cerrada ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {a.persona_nombre ?? <span style={{ color: C.warn }}>persona borrada del legajo</span>}
+        </div>
+        <div style={{ color: a.persona_categoria ? C.tintaMedia : C.warn }}>{a.persona_categoria ? etiquetaCategoria(a.persona_categoria) : 'sin categoría'}</div>
+        <div style={{ color: a.cuadrilla ? C.tintaMedia : C.tenue }}>{a.cuadrilla ?? 'sin cuadrilla'}</div>
+        <div style={{ color: C.tintaMedia }}>{a.rol === 'responsable' ? 'Responsable' : 'Integrante'}</div>
+        <div style={{ textAlign: 'right', color: hhSemana == null ? C.tenue : C.tinta, fontVariantNumeric: 'tabular-nums' }}>
+          {hhSemana == null ? <span data-nulo="">sin registrar</span> : hh1(hhSemana)}
+        </div>
+        <div style={{ color: C.tintaSuave, fontSize: '12.5px', whiteSpace: 'nowrap' }}>
+          {a.desde ? ddmm(a.desde) : <span data-nulo="">sin fecha</span>}
+          {cerrada && <> → {ddmm(a.hasta as string)}</>}
+        </div>
+        <span className="transition-transform group-open:rotate-90" style={{ display: 'flex', color: C.fantasma }}><Ico d={P.derecha} s={14} /></span>
+      </summary>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '28px', flexWrap: 'wrap', padding: '2px 0 16px', fontSize: '12.5px' }} data-testid="detalle-asignacion">
+        <Dato rotulo="Actividad" nulo={actividad === undefined}>{actividad === null ? 'toda la obra' : actividad ?? 'actividad archivada'}</Dato>
+        <Dato rotulo="HH en la obra" nulo={hhObra == null}>{hhObra == null ? 'sin imputar' : hh1(hhObra)}</Dato>
+        {a.notas && <Dato rotulo="Notas">{a.notas}</Dato>}
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '12px' }}>
+          <span style={{ color: C.tenue }}>{cerrada ? 'borra la fila: sólo para un alta por error' : 'conserva el período y sus horas'}</span>
+          {cerrada
+            ? <AccionFila accion={quitar} args={[a.id]} testid="quitar-asignacion" tono="peligro">Quitar</AccionFila>
+            : <AccionFila accion={cerrar} args={[a.id]} testid="cerrar-asignacion">Cerrar asignación</AccionFila>}
+        </span>
+      </div>
+    </details>
+  )
+}
+
+/** El título de sección del 08 («Quién está asignado»): 14px/600, la bajada en 12,5 y lo de la derecha. */
+function Seccion({ titulo, bajada, alerta, derecha, testid, children }: {
+  titulo: string; bajada?: string; alerta?: string; derecha?: React.ReactNode; testid: string; children: React.ReactNode
+}) {
+  return (
+    <section style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }} data-testid={testid}>
+      <div className="flex flex-wrap items-baseline gap-x-3.5 gap-y-2.5">
+        <div style={{ fontSize: '14px', fontWeight: 600, color: C.tinta }}>{titulo}</div>
+        {bajada && <div style={{ fontSize: '12.5px', color: C.tintaSuave }}>{bajada}</div>}
+        {alerta && <div style={{ fontSize: '12.5px', color: C.warn }} data-testid={`${testid}-alerta`}>{alerta}</div>}
+        {derecha && <div className="w-full md:ml-auto md:w-auto">{derecha}</div>}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+/**
+ * IMPUTAR HORAS, COMO ACCIÓN SECUNDARIA — dos botones blancos (la secundaria del zip) en la cabecera
+ * de «Horas imputadas». Escritorio: el formulario flota debajo, anclado a la derecha. Teléfono: dos
+ * botones de 44px a todo el ancho, uno sobre otro, y el formulario se abre en el lugar.
+ * `name` hace que abrir uno cierre el otro: dos formularios de horas abiertos a la vez se pisan.
+ */
+function Imputar({ titulo, testid, icono, children }: { titulo: string; testid: string; icono: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <details name="imputar-horas" className="w-full min-w-0 md:w-auto" data-testid={testid}>
+      <summary className="flex h-11 cursor-pointer list-none items-center justify-center gap-1.5 whitespace-nowrap rounded-[6px] px-[11px] md:h-8 [&::-webkit-details-marker]:hidden"
+        style={{ border: `1px solid ${C.borde}`, background: C.superficie, fontSize: '12.5px', color: C.tintaMedia }}>
+        <Ico d={icono} s={13} />{titulo}
+      </summary>
+      <div className="mt-3 md:absolute md:shadow-pop md:right-0 md:top-full md:z-30 md:mt-2 md:w-[600px] md:max-w-[calc(100vw-2rem)]"
+        style={{ padding: '16px', border: `1px solid ${C.borde}`, borderRadius: '8px', background: C.superficie }}>
+        <div style={{ fontSize: '14px', fontWeight: 600, color: C.tinta, marginBottom: '12px' }}>{titulo}</div>
+        {children}
+      </div>
+    </details>
   )
 }
 
@@ -207,6 +286,7 @@ export async function TabPersonal({
   const hoy = new Date().toISOString().slice(0, 10)
   const lunes = lunesDeSemana(hoy)
   const vigentes = asignaciones.filter((a) => !a.hasta)
+  const cerradas = asignaciones.filter((a) => a.hasta)
   const porAsignado = horasPorAsignado(asignaciones, registros)
   const actividadDe = new Map(actividades.map((a) => [a.id, a.nombre]))
   const sinPersona = registros.filter((r) => !r.persona_id).length
@@ -224,19 +304,33 @@ export async function TabPersonal({
   const presentesPorPersona = new Map<string, boolean>()
   if (r) for (const g of r.grupos) for (const f of g.filas) presentesPorPersona.set(f.personaId, f.marca != null)
 
-  const filasTelefono: FilaPersonalTelefono[] = vigentes.map((a) => ({
-    personaId: a.persona_id,
-    nombre: a.persona_nombre ?? 'persona borrada del legajo',
-    sublinea: sublineaPersonalTelefono(a, a.persona_categoria ? etiquetaCategoria(a.persona_categoria) : null),
-    presente: r ? (presentesPorPersona.get(a.persona_id) ?? false) : null,
-    horasHoy: horasHoy.porPersona.get(a.persona_id) ?? null,
-  }))
+  /** `null` = toda la obra · `undefined` = la actividad ya no está (archivada). */
+  const actividadDeAsignacion = (a: Asignacion) => (a.actividad_id ? actividadDe.get(a.actividad_id) : null)
+  const filaTelefono = (a: Asignacion): FilaPersonalTelefono => {
+    const act = actividadDeAsignacion(a)
+    return {
+      asignacionId: a.id,
+      personaId: a.persona_id,
+      nombre: a.persona_nombre ?? 'persona borrada del legajo',
+      sublinea: sublineaPersonalTelefono(a, a.persona_categoria ? etiquetaCategoria(a.persona_categoria) : null),
+      presente: a.hasta ? null : r ? (presentesPorPersona.get(a.persona_id) ?? false) : null,
+      horasHoy: a.hasta ? null : (horasHoy.porPersona.get(a.persona_id) ?? null),
+      actividad: act === null ? 'toda la obra' : act ?? 'actividad archivada',
+      hhObra: porAsignado.get(a.id) ?? null,
+      desde: a.desde ? ddmm(a.desde) : null,
+      hasta: a.hasta ? ddmm(a.hasta) : null,
+      notas: a.notas,
+    }
+  }
+  const filasTelefono = vigentes.map(filaTelefono)
+  const cerradasTelefono = cerradas.map(filaTelefono)
   const cuadrillasSemana = new Set(vigentes.map((a) => a.cuadrilla).filter(Boolean)).size
 
   const formulario = <FormAsignar personas={personas} cuadrillas={cuadrillas} actividades={actividades} asignar={asignar} />
 
   return (
-    <div className="flex flex-col gap-6">
+    // En el teléfono el pie fijo («Asignar persona», 78px) tapa lo último: el aire va al final de todo.
+    <div className="flex flex-col gap-6 pb-20 md:pb-0">
       {/* ═══ ESCRITORIO (08) ═══ */}
       <div className="hidden md:block" style={{ padding: '4px 10px 8px' }} data-testid="personal-escritorio">
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '14px' }}>
@@ -266,32 +360,32 @@ export async function TabPersonal({
                 <div style={{ fontSize: '12.5px', color: C.tintaSuave }}>{rotuloSemana(hoy)}</div>
               </div>
               <div style={{ overflowX: 'auto' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', minWidth: `${MIN_TABLA}px` }} data-testid="tabla-asignados">
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: `${MIN_TABLA}px` }} data-testid="tabla-personal">
                   <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: '20px', height: '32px', alignItems: 'center', borderBottom: `1px solid ${C.borde}`, ...EYEBROW }}>
-                    <div>Persona</div><div>Categoría</div><div>Cuadrilla</div><div>Rol</div><div style={{ textAlign: 'right' }}>HH sem.</div><div>Desde</div>
+                    <div>Persona</div><div>Categoría</div><div>Cuadrilla</div><div>Rol</div><div style={{ textAlign: 'right' }}>HH sem.</div><div>Desde</div><div />
                   </div>
-                  {vigentes.map((a, i) => {
-                    const hh = porPersonaSemana.get(a.persona_id)
-                    return (
-                      <div key={a.id} data-testid={`fila-asignado-${a.id}`} style={{
-                        display: 'grid', gridTemplateColumns: GRID, gap: '20px', height: '56px', alignItems: 'center', fontSize: '13.5px', color: C.tinta,
-                        borderBottom: i === vigentes.length - 1 ? undefined : `1px solid ${C.borde}`,
-                      }}>
-                        <div style={{ fontWeight: a.rol === 'responsable' ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {a.persona_nombre ?? <span style={{ color: C.warn }}>persona borrada del legajo</span>}
-                        </div>
-                        <div style={{ color: a.persona_categoria ? C.tintaMedia : C.warn }}>{a.persona_categoria ? etiquetaCategoria(a.persona_categoria) : 'sin categoría'}</div>
-                        <div style={{ color: a.cuadrilla ? C.tintaMedia : C.tenue }}>{a.cuadrilla ?? 'sin cuadrilla'}</div>
-                        <div style={{ color: C.tintaMedia }}>{a.rol === 'responsable' ? 'Responsable' : 'Integrante'}</div>
-                        <div style={{ textAlign: 'right', color: hh == null ? C.tenue : C.tinta, fontVariantNumeric: 'tabular-nums' }}>
-                          {hh == null ? <span data-nulo="">sin registrar</span> : hh.toLocaleString('es-AR', { maximumFractionDigits: 1 })}
-                        </div>
-                        <div style={{ color: C.tintaSuave, fontSize: '12.5px' }}>{a.desde ? ddmm(a.desde) : <span data-nulo="">sin fecha</span>}</div>
-                      </div>
-                    )
-                  })}
+                  {vigentes.map((a, i) => (
+                    <FilaAsignado key={a.id} a={a} ultima={i === vigentes.length - 1}
+                      hhSemana={porPersonaSemana.get(a.persona_id)} hhObra={porAsignado.get(a.id)}
+                      actividad={actividadDeAsignacion(a)} cerrar={cerrar} quitar={quitar} />
+                  ))}
                   {vigentes.length === 0 && (
                     <div style={{ padding: '18px 0', fontSize: '12.5px', color: C.tintaSuave }}>Nadie tiene una asignación vigente en esta obra. Se asigna con «Asignar persona».</div>
+                  )}
+                  {/* LAS CERRADAS: el 08 no las dibuja porque ya no están asignadas, pero son el
+                      período que respalda sus horas y la única puerta a «Quitar». Plegadas. */}
+                  {cerradas.length > 0 && (
+                    <details className="group/cerradas" data-testid="asignaciones-cerradas" style={{ borderTop: `1px solid ${C.borde}` }}>
+                      <summary className="flex h-11 cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden" style={{ fontSize: '12.5px', color: C.tintaSuave }}>
+                        <span className="transition-transform group-open/cerradas:rotate-90" style={{ display: 'flex' }}><Ico d={P.derecha} s={12} /></span>
+                        Cerradas <span style={{ fontFamily: MONO, fontSize: '11px', color: C.tenue }}>{cerradas.length}</span>
+                      </summary>
+                      {cerradas.map((a, i) => (
+                        <FilaAsignado key={a.id} a={a} ultima={i === cerradas.length - 1}
+                          hhSemana={porPersonaSemana.get(a.persona_id)} hhObra={porAsignado.get(a.id)}
+                          actividad={actividadDeAsignacion(a)} cerrar={cerrar} quitar={quitar} />
+                      ))}
+                    </details>
                   )}
                 </div>
               </div>
@@ -342,38 +436,38 @@ export async function TabPersonal({
             personasSemana: porPersonaSemana.size,
             cuadrillas: cuadrillasSemana,
           }}
+          cerradas={cerradasTelefono}
+          cerrar={cerrar}
+          quitar={quitar}
           primaria={<Alta titulo="Asignar persona" testid="alta-asignacion-telefono" primaria telefono>{formulario}</Alta>}
         />
       </div>
 
-      {/* ═══ LAS CARGAS QUE EL 08 NO DIBUJA, PLEGADAS ═══ */}
-      <Plegable titulo="Asignaciones: cerrar o quitar" cuenta={asignaciones.length} testid="plegable-asignaciones">
-        {asignaciones.length === 0
-          ? <Vacio>Nadie tiene una asignación en esta obra. Se asigna con «Asignar persona».</Vacio>
-          : <TablaAsignaciones asignaciones={asignaciones} actividadDe={actividadDe} porAsignado={porAsignado} cerrar={cerrar} quitar={quitar} />}
-        <div className="mt-3.5 flex flex-wrap items-start gap-x-6 gap-y-3">
-          <Alta titulo="+ Imputar horas" testid="alta-hh">
-            <FormIndividual personas={personas} asignadas={asignaciones.map((a) => a.persona_id)} actividades={actividades} imputar={imputar} causas={causas} />
-          </Alta>
-          <Alta titulo="+ Imputar a la cuadrilla" testid="alta-hh-masiva">
-            <FormMasiva asignaciones={asignaciones} actividades={actividades} imputarMasivo={imputarMasivo} />
-          </Alta>
-        </div>
-      </Plegable>
+      {/* ═══ PLAN CONTRA REAL Y HORAS IMPUTADAS — UNA sola vez para las dos caras ═══
+          El 08 no las dibuja. Van debajo, a todo el ancho, con el título de sección del 08; las
+          filas se reordenan solas en el teléfono (ver `PersonalHH`). Imputar horas es la
+          secundaria de la sección de horas: botón blanco, no amarillo — la primaria es asignar. */}
+      <div className="flex flex-col gap-[30px] md:px-[10px]" data-testid="personal-cargas">
+        <Seccion titulo="Horas imputadas" testid="seccion-horas"
+          bajada={registros.length === 0 ? undefined : `${registros.length} ${registros.length === 1 ? 'registro' : 'registros'}`}
+          alerta={sinPersona > 0 ? `${sinPersona} ${sinPersona === 1 ? 'registro sin persona' : 'registros sin persona'}` : undefined}
+          derecha={(
+            <div className="flex flex-col gap-2 md:relative md:flex-row">
+              <Imputar titulo="Imputar horas" testid="alta-hh" icono={P.hh}>
+                <FormIndividual personas={personas} asignadas={asignaciones.map((a) => a.persona_id)} actividades={actividades} imputar={imputar} causas={causas} />
+              </Imputar>
+              <Imputar titulo="Imputar a la cuadrilla" testid="alta-hh-masiva" icono={P.cuadrilla}>
+                <FormMasiva asignaciones={asignaciones} actividades={actividades} imputarMasivo={imputarMasivo} />
+              </Imputar>
+            </div>
+          )}>
+          <TablaHoras registros={registros} borrarHoras={borrarHoras} />
+        </Seccion>
 
-      <Plegable titulo="Plan contra real por actividad" cuenta={actividadHH.length} testid="plegable-plan-vs-real">
-        <TablaProductividad actividades={actividadHH} />
-      </Plegable>
-
-      <Plegable titulo="Horas imputadas a esta obra" cuenta={registros.length} testid="plegable-horas"
-        {...(sinPersona > 0 ? { alerta: `${sinPersona} ${sinPersona === 1 ? 'registro sin persona' : 'registros sin persona'}` } : {})}>
-        <TablaHoras registros={registros} borrarHoras={borrarHoras} />
-        {sinPersona > 0 && (
-          <p className="mt-2.5 text-[11px] text-faint">
-            {sinPersona} {sinPersona === 1 ? 'registro sin persona' : 'registros sin persona'}: son horas reales sin dueño conocido.
-          </p>
-        )}
-      </Plegable>
+        <Seccion titulo="Plan contra real por actividad" testid="seccion-plan-vs-real">
+          <TablaProductividad actividades={actividadHH} />
+        </Seccion>
+      </div>
     </div>
   )
 }

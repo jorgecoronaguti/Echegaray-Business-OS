@@ -181,8 +181,8 @@ test('5-7 · cuadrilla, asignación a obra, y la MISMA relación vista desde la 
 
   // 7 · LA MISMA RELACIÓN, VISTA DESDE LA OBRA. No es otro maestro de personas: es la misma fila.
   await page.goto(`/obras/${OBRA}?vista=personal`)
-  await expect(page.getByTestId('tabla-personal').locator('tr', { hasText: PERSONA })).toBeVisible()
-  await expect(page.getByTestId('tabla-personal').locator('tr', { hasText: PERSONA }))
+  await expect(page.getByTestId('fila-asignacion').filter({ hasText: PERSONA })).toBeVisible()
+  await expect(page.getByTestId('fila-asignacion').filter({ hasText: PERSONA }))
     .toContainText(CUADRILLA)
   await capturar(page, '3-obra-personal')
 

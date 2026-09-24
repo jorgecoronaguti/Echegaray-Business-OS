@@ -112,7 +112,10 @@ test('la misma hora, cargada una vez, se lee desde la obra y desde la persona', 
 
   // ── 5 · CERRAR LA ASIGNACIÓN CONSERVA EL HISTORIAL ──────────────────────
   await page.goto(`/obras/${OBRA}?vista=personal`)
-  const fila = page.getByTestId('tabla-personal').locator('tr', { hasText: MARCA })
+  // 24/09/2026 · la tabla genérica de asignaciones se retiró: cerrar y quitar viven en la fila de
+  // «Quién está asignado» (08), que se abre tocándola; las cerradas van plegadas en «Cerradas».
+  const fila = page.getByTestId('fila-asignacion').filter({ hasText: MARCA })
+  await fila.locator('summary').click()
   await fila.getByTestId('cerrar-asignacion').click()
   // La persona sale de la obra y el período queda escrito: la fila sigue, con su fecha de fin.
   await expect(page.getByTestId('tabla-personal')).toContainText(MARCA)
@@ -121,13 +124,15 @@ test('la misma hora, cargada una vez, se lee desde la obra y desde la persona', 
   //
   // Se borra RE-CONSULTANDO cada vez: `all()` devuelve una foto del DOM, y el primer borrado la
   // invalida entera. Con la foto vieja se borra uno y se cree que se borraron todos.
-  const conMarca = () => page.getByTestId('tabla-hh').locator('tr', { hasText: MARCA })
+  const conMarca = () => page.getByTestId('fila-hh').filter({ hasText: MARCA })
   for (let quedan = await conMarca().count(); quedan > 0; quedan--) {
     await conMarca().first().getByTestId('borrar-hh').click()
     await expect(conMarca()).toHaveCount(quedan - 1)
   }
-  await page.getByTestId('tabla-personal').locator('tr', { hasText: MARCA })
-    .getByTestId('quitar-asignacion').click()
+  await page.getByTestId('asignaciones-cerradas').locator('summary').first().click()
+  const cerrada = page.getByTestId('asignaciones-cerradas').getByTestId('fila-asignacion').filter({ hasText: MARCA })
+  await cerrada.locator('summary').click()
+  await cerrada.getByTestId('quitar-asignacion').click()
 
   await page.reload()
   // `not.toContainText` sobre un locator QUE NO EXISTE falla. Y al sacar la última asignación la

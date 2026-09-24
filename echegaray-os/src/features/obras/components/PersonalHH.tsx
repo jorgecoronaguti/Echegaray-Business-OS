@@ -12,12 +12,17 @@
 // actividad sin planificar en una actividad perfectamente cumplida, que es la mentira más cara que
 // puede decir esta pantalla.
 
-import { FormAccion, BotonAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
-import { Ayuda, CAMPO, Campo, Estado, Nulo, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
-import type { ActividadHH, RegistroHH } from '../services/personalService'
+import type { CSSProperties } from 'react'
+import { FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
+import { Ayuda, CAMPO, Campo, Vacio } from '@/shared/components/ds'
+import { ddmm, type ActividadHH, type RegistroHH } from '../services/personalService'
 import type { Actividad, Asignacion, Persona } from '../types'
 import { senalProductividad } from '../services/productividadHH'
 import { TIPOS_HORA, TIPO_HORA_LABEL, type TipoHora } from '../services/tipoHora'
+import { C, MONO } from './canon/tokens'
+import { Ico, P } from './canon/Ico'
+import { Pastilla } from './canon/Piezas'
+import { AccionFila } from './canon/AccionFila'
 
 const hh = (n: number | null) => (n == null ? '—' : n.toLocaleString('es-AR', { maximumFractionDigits: 1 }))
 const pct = (n: number | null) => (n == null ? '—' : `${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 1 })}%`)
@@ -25,41 +30,116 @@ const pct = (n: number | null) => (n == null ? '—' : `${Number(n).toLocaleStri
 // `lecturaProductividad` vive en `services/productividadHH.ts` y no acá: `node --test` no sabe leer
 // `.tsx`, y una regla que decide si la pantalla dice la verdad tiene que poder probarse.
 
+// ═══ LAS DOS LISTAS, EN EL LENGUAJE DEL 08 (dueño, 24/09/2026) ═══
+//
+// El 08 y el M10 no dibujan «Plan contra real» ni «Horas imputadas»: se escriben con la gramática que
+// sí dibujan —eyebrow mono de 10,5 en mayúsculas arriba, filas de 44px con divisor `bordeTarjeta`,
+// números a la derecha— en vez de la tabla del DS genérico que tenían. Una sola marca por lista: en
+// el teléfono la misma fila se reordena por áreas de grilla (52px, nombre arriba y el resto en la
+// sublínea), así el botón de quitar existe UNA vez y ningún testid se duplica entre las dos caras.
+
+/** Cuántas filas de horas se ven sin tocar nada. El resto, detrás de «Ver las N anteriores». */
+export const HORAS_A_LA_VISTA = 20
+
+const FILA_BASE: CSSProperties = { borderBottom: `1px solid ${C.bordeTarjeta}`, fontSize: '13.5px', color: C.tinta }
+const CABECERA: CSSProperties = {
+  borderBottom: `1px solid ${C.borde}`, height: '32px', alignItems: 'center',
+  fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase',
+}
+const NULO: CSSProperties = { color: C.tenue }
+const SUBLINEA: CSSProperties = { fontSize: '12px', color: C.tintaSuave }
+
+// Las áreas de grilla: en el teléfono dos renglones, en el escritorio una sola línea con columnas.
+const PROD_GRILLA = 'grid gap-x-5 gap-y-0.5 py-2 md:py-0 min-h-[52px] md:min-h-[44px] items-center '
+  + "grid-cols-[minmax(0,1fr)_auto] [grid-template-areas:'n_r'_'s_x'] "
+  + "md:grid-cols-[minmax(0,1fr)_72px_82px_82px_150px] md:[grid-template-areas:'n_a_p_r_x']"
+const PROD_CABECERA = "hidden md:grid gap-x-5 md:grid-cols-[minmax(0,1fr)_72px_82px_82px_150px]"
+
 export function TablaProductividad({ actividades }: { actividades: ActividadHH[] }) {
   // Las que no tienen ni plan ni horas no dicen nada y ensucian la lectura de las que sí.
   const conAlgo = actividades.filter((a) => a.hh_plan != null || a.hh_real != null)
   if (conAlgo.length === 0) {
     return (
-      <Vacio>
-        {/* 22/08/2026 · «Planificación» dejó de ser un lugar: el plan se edita en Cronograma, sobre
-            las MISMAS actividades. Mandar a una pestaña que no existe es mandar a nadie. */}
-        Ninguna actividad tiene HH plan cargadas ni horas imputadas. Las HH plan se cargan en
-        Cronograma, sobre la actividad; las horas, con «+ Imputar horas».
-      </Vacio>
+      <div style={{ padding: '14px 0', fontSize: '12.5px', color: C.tintaSuave }} data-testid="productividad-vacia">
+        {/* 22/08/2026 · el plan se edita en Cronograma, sobre las MISMAS actividades. */}
+        Ninguna actividad tiene HH plan ni horas imputadas. Las HH plan se cargan en Cronograma.
+      </div>
     )
   }
   return (
-    <Tabla testid="tabla-productividad" minWidth={620}>
-      <THead>
-        {/* La columna ya no se llama «Lectura» ni contiene una frase: contiene la EXCEPCIÓN, y en la
-            actividad que va como se esperaba queda vacía a propósito (Design 23/08). */}
-        <Th>Actividad</Th><Th num>Avance</Th><Th num>HH plan</Th><Th num>HH real</Th><Th />
-      </THead>
-      <tbody>
-        {conAlgo.map((a) => {
-          const senal = senalProductividad(a)
-          return (
-            <Tr key={a.actividad_id} compacta {...{ 'data-testid': 'fila-productividad' }}>
-              <Td fuerte>{a.nombre}</Td>
-              <Td num className="text-muted">{a.avance_pct == null ? <Nulo>sin medir</Nulo> : pct(a.avance_pct)}</Td>
-              <Td num className="text-muted">{a.hh_plan == null ? <Nulo>sin cargar</Nulo> : hh(a.hh_plan)}</Td>
-              <Td num fuerte>{a.hh_real == null ? <Nulo>sin imputar</Nulo> : hh(a.hh_real)}</Td>
-              <Td>{senal && <Estado tono={senal.tono} clave={senal.texto}>{senal.texto}</Estado>}</Td>
-            </Tr>
-          )
-        })}
-      </tbody>
-    </Tabla>
+    <div style={{ display: 'flex', flexDirection: 'column' }} data-testid="tabla-productividad">
+      <div className={PROD_CABECERA} style={CABECERA}>
+        <div>Actividad</div><div style={{ textAlign: 'right' }}>Avance</div><div style={{ textAlign: 'right' }}>HH plan</div>
+        <div style={{ textAlign: 'right' }}>HH real</div><div />
+      </div>
+      {conAlgo.map((a) => {
+        const senal = senalProductividad(a)
+        const avance = a.avance_pct == null ? null : pct(a.avance_pct)
+        const plan = a.hh_plan == null ? null : hh(a.hh_plan)
+        return (
+          <div key={a.actividad_id} className={PROD_GRILLA} style={FILA_BASE} data-testid="fila-productividad">
+            <div className="[grid-area:n]" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.nombre}</div>
+            <div className="hidden md:block [grid-area:a]" style={{ textAlign: 'right', color: avance ? C.tintaMedia : C.tenue, fontVariantNumeric: 'tabular-nums' }}>
+              {avance ?? <span data-nulo="">sin medir</span>}
+            </div>
+            <div className="hidden md:block [grid-area:p]" style={{ textAlign: 'right', color: plan ? C.tintaMedia : C.tenue, fontVariantNumeric: 'tabular-nums' }}>
+              {plan ?? <span data-nulo="">sin cargar</span>}
+            </div>
+            <div className="[grid-area:r]" style={{ textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums', ...(a.hh_real == null ? NULO : {}) }}>
+              {a.hh_real == null ? <span data-nulo="" style={{ fontWeight: 400 }}>sin imputar</span> : hh(a.hh_real)}
+            </div>
+            {/* En el teléfono avance y plan bajan a la sublínea: son contexto, la cifra es la real. */}
+            <div className="md:hidden [grid-area:s]" style={SUBLINEA}>
+              {avance ? `avance ${avance}` : 'avance sin medir'} · {plan ? `plan ${plan} h` : 'plan sin cargar'}
+            </div>
+            {/* La columna contiene la EXCEPCIÓN; la actividad que va como se esperaba queda vacía (Design 23/08). */}
+            <div className="[grid-area:x] justify-self-end md:justify-self-start">
+              {senal && (senal.tono === 'nulo'
+                ? <span style={{ fontSize: '12px', color: C.tenue }} data-clave={senal.texto}>{senal.texto}</span>
+                : <Pastilla tono={senal.tono}>{senal.texto}</Pastilla>)}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+const HORAS_GRILLA = 'group grid gap-x-5 gap-y-0.5 py-2 md:py-0 min-h-[52px] md:min-h-[44px] items-center '
+  + "grid-cols-[minmax(0,1fr)_auto] [grid-template-areas:'p_h'_'s_q'] "
+  + "md:grid-cols-[72px_minmax(0,1fr)_minmax(0,1fr)_96px_64px_72px] md:[grid-template-areas:'d_p_a_t_h_q']"
+const HORAS_CABECERA = 'hidden md:grid gap-x-5 md:grid-cols-[72px_minmax(0,1fr)_minmax(0,1fr)_96px_64px_72px]'
+
+function FilaHoras({ r, borrarHoras }: { r: RegistroHH; borrarHoras: (registroId: string) => Promise<ResultadoAccion> }) {
+  // Las filas legacy no tienen día: su grano es la semana, y se dice así en vez de inventarles un
+  // lunes que nadie cargó.
+  const dia = r.fecha ? ddmm(r.fecha) : `sem. ${ddmm(r.fecha_inicio_semana)}`
+  // La normal no se rotula: es el 95% de las filas y la excepción es lo que tiene que saltar.
+  const tipo = r.tipo_hora && r.tipo_hora !== 'normal' ? TIPO_HORA_LABEL[r.tipo_hora as TipoHora] : ''
+  return (
+    <div className={HORAS_GRILLA} style={FILA_BASE} data-testid="fila-hh">
+      <div className="hidden md:block [grid-area:d]" style={{ fontSize: '12.5px', color: C.tintaSuave, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{dia}</div>
+      {/* EL REGISTRO SIN PERSONA SE MARCA, NO SE ADOPTA: son horas reales sin dueño conocido, y
+          ponerle el texto legacy como si fuera un nombre le inventaría uno. */}
+      <div className="[grid-area:p]" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {r.persona_id
+          ? r.persona_nombre
+          : <span style={{ color: C.warn }}>sin persona{r.trabajador_o_cuadrilla && <span style={{ fontSize: '11.5px', color: C.tenue }}> · carga vieja «{r.trabajador_o_cuadrilla}»</span>}</span>}
+      </div>
+      <div className="hidden md:block [grid-area:a]" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: r.actividad_nombre ? C.tintaMedia : C.tenue }}>
+        {r.actividad_nombre ?? 'toda la obra'}
+      </div>
+      <div className="hidden md:block [grid-area:t]" style={{ fontSize: '12.5px', color: C.tintaMedia }}>{tipo}</div>
+      <div className="[grid-area:h]" style={{ textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{hh(r.horas)}</div>
+      <div className="md:hidden [grid-area:s]" style={{ ...SUBLINEA, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {[dia, r.actividad_nombre ?? 'toda la obra', tipo].filter(Boolean).join(' · ')}
+      </div>
+      {/* Escritorio: aparece al pasar (son cientos de filas y quitar es la excepción). Teléfono: no
+          hay «pasar», queda a la vista en la sublínea, del lado derecho. */}
+      <div className="[grid-area:q] justify-self-end transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
+        <AccionFila accion={borrarHoras} args={[r.id]} testid="borrar-hh" tono="peligro">Quitar</AccionFila>
+      </div>
+    </div>
   )
 }
 
@@ -70,53 +150,28 @@ export function TablaHoras({
   borrarHoras: (registroId: string) => Promise<ResultadoAccion>
 }) {
   if (registros.length === 0) {
-    return <Vacio>Sin horas imputadas a esta obra. Se cargan con «+ Imputar horas».</Vacio>
+    return <div style={{ padding: '14px 0', fontSize: '12.5px', color: C.tintaSuave }} data-testid="hh-vacia">Sin horas imputadas a esta obra.</div>
   }
+  // Llegan ordenadas de la más reciente a la más vieja (`getRegistrosHH`): las primeras son las que
+  // se corrigen; el resto no se esconde, se pliega.
+  const vista = registros.slice(0, HORAS_A_LA_VISTA)
+  const resto = registros.slice(HORAS_A_LA_VISTA)
   return (
-    <Tabla testid="tabla-hh" minWidth={600}>
-      <THead>
-        <Th>Día</Th><Th>Persona</Th><Th>Actividad</Th><Th>Tipo</Th><Th num>Horas</Th><Th num />
-      </THead>
-      <tbody>
-        {registros.map((r) => (
-          <Tr key={r.id} compacta className="group" {...{ 'data-testid': 'fila-hh' }}>
-            <Td num className="whitespace-nowrap text-muted">
-              {/* Las filas legacy no tienen día: su grano es la semana, y se dice así en vez de
-                  inventarles un lunes que nadie cargó. */}
-              {r.fecha ?? `semana del ${r.fecha_inicio_semana}`}
-            </Td>
-            {/* EL REGISTRO SIN PERSONA SE MARCA, NO SE ADOPTA. Son horas reales aunque no se sepa
-                de quién: `warn` es exactamente eso —un dato que falta y bloquea—, y ponerle el
-                texto legacy como si fuera un nombre le inventaría dueño. */}
-            <Td fuerte>
-              {r.persona_id
-                ? r.persona_nombre
-                : (
-                    <span className="text-warn">
-                      sin persona
-                      {r.trabajador_o_cuadrilla && (
-                        <span className="block text-[10px] text-faint">
-                          carga vieja: «{r.trabajador_o_cuadrilla}»
-                        </span>
-                      )}
-                    </span>
-                  )}
-            </Td>
-            <Td>{r.actividad_nombre ?? <Nulo>toda la obra</Nulo>}</Td>
-            {/* La normal no se rotula: es el 95% de las filas y ponerle una etiqueta a cada una
-                haría que la excepción —que es lo que hay que ver— dejara de saltar a la vista. */}
-            <Td>{r.tipo_hora && r.tipo_hora !== 'normal' ? TIPO_HORA_LABEL[r.tipo_hora as TipoHora] : ''}</Td>
-            <Td num fuerte>{hh(r.horas)}</Td>
-            <Td num>
-              {/* En hover: son cientos de filas y quitar horas es la excepción, no la lectura. */}
-              <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                <BotonAccion accion={borrarHoras} args={[r.id]} testid="borrar-hh" tono="peligro">Quitar</BotonAccion>
-              </span>
-            </Td>
-          </Tr>
-        ))}
-      </tbody>
-    </Tabla>
+    <div style={{ display: 'flex', flexDirection: 'column' }} data-testid="tabla-hh">
+      <div className={HORAS_CABECERA} style={CABECERA}>
+        <div>Día</div><div>Persona</div><div>Actividad</div><div>Tipo</div><div style={{ textAlign: 'right' }}>Horas</div><div />
+      </div>
+      {vista.map((r) => <FilaHoras key={r.id} r={r} borrarHoras={borrarHoras} />)}
+      {resto.length > 0 && (
+        <details className="group/resto" data-testid="hh-anteriores">
+          <summary className="flex h-11 cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden" style={{ fontSize: '12.5px', color: C.tintaSuave }}>
+            <span className="transition-transform group-open/resto:rotate-90" style={{ display: 'flex' }}><Ico d={P.derecha} s={12} /></span>
+            Ver las {resto.length} anteriores
+          </summary>
+          {resto.map((r) => <FilaHoras key={r.id} r={r} borrarHoras={borrarHoras} />)}
+        </details>
+      )}
+    </div>
   )
 }
 
