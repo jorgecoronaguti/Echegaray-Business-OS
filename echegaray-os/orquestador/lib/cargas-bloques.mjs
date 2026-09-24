@@ -39,6 +39,7 @@ import { ROTULOS_CARGAS, NOMBRES_CARGAS, RUBRO_PLANES, RUBRO_GREMIALES } from '.
 import { MES, cm, REALES, MESES_REALES, SIN_DDJJ, mesesDeCalibracion, VENTANA_CALIBRACION, MESES_CON_SAC } from './cargas-grilla.mjs'
 import { notaSupuesto } from './proyeccion-convenio.mjs'
 import { ALERTA } from './glifos.mjs'
+import { NOMBRES_PUENTE, NOMBRES_NOMINA_BASE } from './nomina-puente.mjs'
 // EL BLOQUE «PAGADO» SE MUDÓ A SU PROPIO ARCHIVO el 11/09/2026 (el techo de 500 líneas, y una fuente
 // distinta: lee el Libro). Se RE-EXPORTA para que sus tres llamadores sigan pidiéndolo acá: el
 // generador no tiene por qué saber en qué archivo vive cada bloque.
@@ -193,10 +194,15 @@ export function bloqueProyeccion(G, {
   const fRemProy = G.n() + 1
   const fSac = fRemProy + 1
   const conSac = proyMeses.includes(12)
+  // ═══ «NÓMINA» MANDA (dueño, 24/09/2026 — ver lib/nomina-puente.mjs) ═══
+  // La remuneración que se proyecta es la de Nómina: su neto del mes × el % en blanco, llevado a bruto
+  // con los aportes. Si Nómina no publica sus rangos, vuelve la cuenta de antes (jornales × relación).
+  const remDeJornales = (m) => `IFERROR((${jornalesDelMes(`DATE(${anio};${m};1)`)})*$${cm(desdeProy)}$${fRelacion};0)`
+  const remDeNomina = (m) => `IFERROR(INDEX(${NOMBRES_NOMINA_BASE.total};1;${m})*NOMINA_PCT_BLANCO/(1-${NOMBRES_NOMINA_BASE.aportes});${remDeJornales(m)})`
   const fRemProyReal = G.mensual('Remuneración proyectada', (m) => (m < desdeProy
     ? `=N(${cm(m)}$${fRem})`
-    : `=IFERROR((${jornalesDelMes(`DATE(${anio};${m};1)`)})*$${cm(desdeProy)}$${fRelacion};0)${conSac && m === 12 ? `+N(${cm(m)}$${fSac})` : ''}`),
-  `Jornales proyectados × la relación de arriba; en los meses con DDJJ, la remuneración declarada. En diciembre incluye el aguinaldo de la fila de abajo. ${notaSupuesto(baseJornales)}`, { meses: gremMeses })
+    : `=${remDeNomina(m)}${conSac && m === 12 ? `+N(${cm(m)}$${fSac})` : ''}`),
+  `Lo que dice «Nómina» del mes × el % en blanco, llevado a bruto con los aportes (si Nómina no está, jornales proyectados × la relación de arriba); en los meses con DDJJ, la remuneración declarada. En diciembre incluye el aguinaldo de la fila de abajo. ${notaSupuesto(baseJornales)}`, { meses: gremMeses })
   if (fRemProyReal !== fRemProy) throw new Error(`la fila de «Remuneración proyectada» quedó en ${fRemProyReal} y la cité como ${fRemProy}`)
   // ═══ EL MES PROMEDIO DEL SEMESTRE, NO EL MEJOR — Y NO ES DESCUIDO (21/09/2026) ═══
   //
@@ -252,10 +258,27 @@ export function bloqueProyeccion(G, {
    * lee cada subtotal por su nombre. Con un solo total, los gremiales se mudarían a la línea de
    * cargas sociales: el consolidado seguiría bien y las dos líneas dirían cosas falsas.
    */
-  const bloqueProyectado = (conceptos, meses) => {
+  const bloqueProyectado = (conceptos, meses, puente) => {
     const desde = G.n() + 1
-    for (const c of conceptos) {
-      const origen = c.de === 'declarado' ? filaDecl[c.codigo] : filaPag[c.rotulo]
+    // ═══ EL SUBTOTAL ES EL DE «NÓMINA», AL PESO (24/09/2026) ═══
+    // Desde que Nómina manda, el Cash Flow lee el F931 y los gremiales de su cuadro 6. Si esta pestaña
+    // siguiera con su propia cuenta, el mismo mes tendría dos números. Cada renglón se queda con su
+    // PARTE del total de Nómina según la cadena de siempre (alícuotas medidas en las DDJJ): la suma da
+    // exactamente el cuadro 6 y el detalle sigue diciendo qué es aportes, contribuciones, ART, FCL…
+    // Sin el cuadro 6, IFERROR devuelve la cuenta de antes.
+    const conBase = conceptos.map((c) => ({ c, origen: c.de === 'declarado' ? filaDecl[c.codigo] : filaPag[c.rotulo] }))
+    const cadenas = conBase.filter((x) => x.origen).map((x) => ({ ...x, p: proyeccionDeConcepto(x.c, {
+      filaOrigen: x.origen, fRem, fEmp, reales: (fila) => REALES(fila, desdeProy), colMes: cm, fRemProy, fDot,
+      celdaProporcion: RANGO_PROPORCION_PRIMER_ANIO,
+    }) }))
+    const expr = (p, m) => String(p.celda(m)).replace(/^=/, '')
+    const deNomina = (p) => (m) => {
+      const f = p.celda(m)
+      if (m < desdeProy || typeof f !== 'string' || !f.startsWith('=')) return f
+      const suma = cadenas.map((x) => `(${expr(x.p, m)})`).join('+')
+      return `=IFERROR((${expr(p, m)})/(${suma})*INDEX(${puente};1;${m});${expr(p, m)})`
+    }
+    for (const { c, origen } of conBase) {
       // UN CONCEPTO SIN BASE NO SE PROYECTA EN CERO EN SILENCIO: se anota y se denuncia abajo. Que
       // falte una fila de la proyección tiene que verse, porque el titular de la pestaña la suma.
       if (!origen) { sinBase.push(c.rotulo); continue }
@@ -263,13 +286,10 @@ export function bloqueProyeccion(G, {
       // como texto POR FÓRMULA: así lo que se lee en la grilla son pesos —no una mezcla de pesos y
       // porcentajes en la misma columna— y la regla sigue siendo auditable de un vistazo, con el valor
       // que efectivamente se aplicó y no el que había el día que corrió el generador.
-      const p = proyeccionDeConcepto(c, {
-        // El rango real llega YA atado al mes desde el que se proyecta: la cadena mide sus cinco
-        // alícuotas sobre él y no tiene por qué saber cuántos meses hay declarados.
-        filaOrigen: origen, fRem, fEmp, reales: (fila) => REALES(fila, desdeProy), colMes: cm, fRemProy, fDot,
-        celdaProporcion: RANGO_PROPORCION_PRIMER_ANIO,
-      })
-      G.mensual(c.rotulo, p.celda, p.origen, { meses })
+      // El rango real llega YA atado al mes desde el que se proyecta: la cadena mide sus cinco
+      // alícuotas sobre él y no tiene por qué saber cuántos meses hay declarados.
+      const { p } = cadenas.find((x) => x.c === c)
+      G.mensual(c.rotulo, puente ? deNomina(p) : p.celda, p.origen, { meses })
     }
     return { desde, hasta: G.n() }
   }
@@ -277,10 +297,10 @@ export function bloqueProyeccion(G, {
   const subtotal = (rotulo, { desde, hasta }, origen, meses) => G.mensual(rotulo,
     (m) => (hasta >= desde ? `=SUM(${cm(m)}${desde}:${cm(m)}${hasta})` : '=0'), origen, { meses })
 
-  const bDecl = bloqueProyectado(CONCEPTOS_CADENA.filter((c) => c.de === 'declarado'), proyMeses)
+  const bDecl = bloqueProyectado(CONCEPTOS_CADENA.filter((c) => c.de === 'declarado'), proyMeses, NOMBRES_PUENTE.f931)
   const fSubF931 = subtotal(ROTULOS_CARGAS.f931, bDecl,
     'Los seis conceptos de la DDJJ. Es la línea "Nómina · Cargas sociales" del cash flow, y el Libro la lee por CARGAS_MES_F931.', proyMeses)
-  const bGrem = bloqueProyectado(CONCEPTOS_CADENA.filter((c) => c.de !== 'declarado'), gremMeses)
+  const bGrem = bloqueProyectado(CONCEPTOS_CADENA.filter((c) => c.de !== 'declarado'), gremMeses, NOMBRES_PUENTE.gremiales)
   const fSubGremiales = subtotal(ROTULOS_CARGAS.gremiales, bGrem,
     'Lo que NO declara la DDJJ y se paga aparte. Es la línea "Nómina · Gremiales" del cash flow, y el Libro la lee por CARGAS_MES_GREMIALES. Empieza antes que el F931 cuando la boleta de UOCRA viene más atrasada que la DDJJ de ARCA.', gremMeses)
   const fProyTot = G.mensual(rotuloTotal('Total devengado en el mes'), (m) => `=${cm(m)}${fSubF931}+${cm(m)}${fSubGremiales}`,

@@ -15,7 +15,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { bloquear, desbloquear, estaBloqueada } from '../lib/pestana-bloqueada.mjs'
 import { pedidos } from '../lib/rangos-nombrados.mjs'
-import { NOMBRES_PUENTE, ROTULOS_FILAS_PUENTE, ubicarNomina, cuadroPuente } from '../lib/nomina-puente.mjs'
+import { NOMBRES_PUENTE, NOMBRES_NOMINA_BASE, ROTULOS_FILAS_PUENTE, ubicarNomina, cuadroPuente } from '../lib/nomina-puente.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Nómina'
@@ -42,7 +42,12 @@ async function main() {
     if (res?.protegido) throw new Error(`la guarda no dejó escribir el cuadro 6: ${res.motivo ?? 'sin motivo'}`)
     const existentes = await google.getNamedRanges(ID)
     const lista = Array.isArray(existentes) ? existentes : existentes?.namedRanges ?? []
-    const destinos = orden.map((k) => ({ name: NOMBRES_PUENTE[k], fila: filaDe(k), col: 4, cols: 12 }))
+    const destinos = [
+      ...orden.map((k) => ({ name: NOMBRES_PUENTE[k], fila: filaDe(k), col: 4, cols: 12 })),
+      // Lo que «Cargas Sociales» lee para seguir a Nómina (remuneración proyectada).
+      { name: NOMBRES_NOMINA_BASE.total, fila: u.filaTotal, col: 4, cols: 12 },
+      { name: NOMBRES_NOMINA_BASE.aportes, fila: u.filaParametros, col: 4 },
+    ]
     await google.spreadsheetBatchUpdate(ID, pedidos(hoja.sheetId, destinos, lista))
   } finally {
     if (candada) await bloquear({ query }, ID, PESTAÑA, { motivo: 'el dueño edita — re-candada tras escribir el cuadro 6 (puente al Cash Flow)', por: 'OS' })

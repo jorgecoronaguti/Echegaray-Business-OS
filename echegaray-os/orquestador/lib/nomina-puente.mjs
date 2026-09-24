@@ -38,6 +38,9 @@ export const NOMBRES_PUENTE = Object.freeze({
   gremiales: 'NOMINA_CF_GREMIALES',
 })
 
+/** Dos celdas de Nómina que otras pestañas leen para seguirla: el total del mes y el % de aportes. */
+export const NOMBRES_NOMINA_BASE = Object.freeze({ total: 'NOMINA_MES_TOTAL', aportes: 'NOMINA_PARAM_APORTES' })
+
 export const ROTULO_PUENTE = '6 · LO QUE VA AL CASH FLOW · LO QUE FALTA PAGAR DE CADA MES'
 export const ROTULOS_FILAS_PUENTE = Object.freeze({
   jornales: 'Jornales de obra',
@@ -169,4 +172,26 @@ export function cuadroPuente(u, { anio = 2026 } = {}) {
     filas.push([ROTULOS_FILAS_PUENTE[k], '', '', ...COLS_MES.map((X, i) => f[k](X, i + 1)), `=SUM(D${fila}:O${fila})`])
   }
   return { filas, filaInicio: base, filaDe, orden }
+}
+
+/**
+ * Las dos series de un rubro de cargas (proyección y «declarado») con Nómina adentro. PURO.
+ *
+ * · La proyección de los doce meses pasa a ser la de Nómina.
+ * · «TOTAL DECLARADO» NO ES UNA DDJJ CUANDO REPITE LA PROYECCIÓN: «Cargas Sociales» rellena ese
+ *   renglón con la proyección del mes sin DDJJ (`=IF(N(J45)=0;"sin DDJJ";J45)`) y el libro lo tomaba
+ *   como COMPROMETIDO, así lo proyectado entraba como un hecho y el puente no tenía por dónde pasar.
+ *   Un declarado idéntico a la proyección propia del mismo mes se descarta; una DDJJ distinta gana.
+ * Sin Nómina, todo queda como estaba.
+ *
+ * @returns {{importes:Array, declarado:Array, conNomina:boolean}}
+ */
+export function seriesConNomina({ propia = [], declarado = [], deNomina = null } = {}) {
+  if (!Array.isArray(deNomina)) return { importes: propia, declarado, conNomina: false }
+  const n = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+  return {
+    importes: propia.map((v, i) => (i < 12 ? deNomina[i] : v)),
+    declarado: declarado.map((d, i) => (n(d) !== null && n(propia[i]) !== null && Math.abs(n(d) - n(propia[i])) < 1 ? null : d)),
+    conNomina: true,
+  }
 }

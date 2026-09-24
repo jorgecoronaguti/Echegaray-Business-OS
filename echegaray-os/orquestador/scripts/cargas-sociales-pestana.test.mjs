@@ -198,8 +198,14 @@ test('B13 · IERIC y FODECO multiplican la DOTACIÓN, no la remuneración', () =
     const f = filaProyCS(new RegExp(`^${r}$`))
     assert.ok(f, `desapareció la fila de ${r}`)
     const c = String(f[8])
-    assert.match(c, new RegExp(`\\*I\\$${dot}$`), `${r} volvió a proyectarse sobre la masa salarial`)
-    assert.doesNotMatch(c, new RegExp(`\\$${rem}\\b`))
+    // Desde que «Nómina» manda (24/09/2026) la celda es su PARTE del subtotal de Nómina:
+    // `=IFERROR((propia)/(suma de la cadena)*INDEX(NOMINA_CF_GREMIALES;…);propia)`. La suma mezcla
+    // conceptos de masa y de dotación a propósito; lo que no puede volver es que la PROPIA —el
+    // numerador y la cuenta de respaldo— multiplique la masa salarial.
+    const propia = c.match(/^=IFERROR\(\((.*?)\)\/\(/)?.[1] ?? c
+    assert.match(propia, new RegExp(`\\*I\\$${dot}$`), `${r} volvió a proyectarse sobre la masa salarial`)
+    assert.doesNotMatch(propia, new RegExp(`\\$${rem}\\b`))
+    assert.match(c, new RegExp(`\\*I\\$${dot}\\)$`), `${r}: la cuenta de respaldo dejó de ser por dotación`)
   }
   assert.match(textoCS, new RegExp(RANGO_IERIC))
 })
