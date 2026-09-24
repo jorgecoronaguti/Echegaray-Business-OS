@@ -7,7 +7,8 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { decidir, decidirReinicios, parsearShow, DAEMONS_DEL_REPO, VENTANA_DE_REINICIO } from './produccion-al-dia.mjs'
+import { readFileSync } from 'node:fs'
+import { decidir, decidirReinicios, parsearShow, argumentosDeReinicio, DAEMONS_DEL_REPO, VENTANA_DE_REINICIO } from './produccion-al-dia.mjs'
 
 test('al día no hace nada: no se toca un checkout que ya está donde tiene que estar', () => {
   assert.equal(decidir({ sucio: false, alDia: true, puedeAvanzar: true }).accion, 'nada')
@@ -165,4 +166,42 @@ test('sin saber si un daemon corre código viejo, no se lo corta', () => {
   const r = decidirReinicios({ ...MOVIO, estados: ACTIVOS, desactualizados: {}, hora: 3 })
   assert.deepEqual(r.reiniciar, [])
   for (const o of r.omitidos) assert.match(o.porQue, /a ciegas/)
+})
+
+// ═══ EL WORKER DEL WORK FABRIC (24/09/2026: «está lento todo… se queda clavado») ═══
+//
+// Se reinició 12 veces ese día y se sospechó de él. Medido: ninguna respuesta a una persona pasó por
+// él (los mensajes del bot son de la cola `comunicacion`, del worker de comunicación) y los 12 cortes
+// fueron con nada en vuelo. La decisión: NO atiende personas —se pone al día en horario—, pero el
+// reinicio tiene que esperar la tarea en curso de verdad, no matarla a los 90 s.
+
+test('el orq-worker NO atiende personas: se pone al día en horario de trabajo', () => {
+  const orq = DAEMONS_DEL_REPO.find((d) => d.unit === 'echegaray-orq-worker.service')
+  assert.ok(orq, 'el orq-worker está en la lista')
+  assert.notEqual(orq.atiendePersonas, true)
+  const r = decidirReinicios({ ...MOVIO, estados: ACTIVOS, desactualizados: TODOS_VIEJOS, hora: 15 })
+  assert.ok(r.reiniciar.includes('echegaray-orq-worker.service'))
+})
+
+test('el orq-worker se reinicia SIN BLOQUEAR: drena su tarea sin frenar al pipeline que corre este script', () => {
+  assert.deepEqual(argumentosDeReinicio('echegaray-orq-worker.service'), ['restart', '--no-block', 'echegaray-orq-worker.service'])
+  // Los que salen en milisegundos siguen con `restart` bloqueante: el log dice si el reinicio anduvo.
+  for (const d of DAEMONS_DEL_REPO.filter((x) => x.atiendePersonas)) {
+    assert.deepEqual(argumentosDeReinicio(d.unit), ['restart', d.unit])
+  }
+})
+
+test('el unit del orq-worker espera la tarea más larga posible antes de matarla (TimeoutStopSec > ENGINE_TIMEOUT)', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  // El worker drena en SIGTERM, pero con TimeoutStopSec=90 systemd lo mataba a mitad de una tarea del
+  // razonador (hasta 20 min): el lease de 15 min la dejaba colgada y después se repetía entera.
+  const unit = readFileSync(new URL('../systemd/echegaray-orq-worker.service', import.meta.url), 'utf8')
+  const espera = Number(unit.match(/^TimeoutStopSec=(\d+)$/m)?.[1])
+  // El techo de una tarea se lee de donde se define (lib/config.mjs), no se copia: si alguien lo sube,
+  // este test pide subir también la espera del unit.
+  const config = readFileSync(new URL('../lib/config.mjs', import.meta.url), 'utf8')
+  const expr = config.match(/ENGINE_TIMEOUT_MS:[^\n]*\.default\(([\d\s*]+)\)/)?.[1]
+  assert.ok(expr, 'no encontré el default de ENGINE_TIMEOUT_MS en lib/config.mjs')
+  const motor = expr.split('*').reduce((a, n) => a * Number(n.trim()), 1)
+  assert.ok(espera * 1000 > motor, `TimeoutStopSec=${espera} s mata una tarea que puede durar ${motor / 1000} s`)
 })

@@ -16,9 +16,13 @@ EnvironmentFile=-%h/.config/echegaray-orq/anthropic.env
 ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/worker.mjs
 Restart=always
 RestartSec=5
-# drenado ordenado: el worker atrapa SIGTERM y termina las tareas en vuelo
+# drenado ordenado: el worker atrapa SIGTERM y termina las tareas en vuelo.
+# 1260 s = ENGINE_TIMEOUT_MS (20 min, el techo de una tarea del razonador) + 1 min de margen. Con 90 s
+# systemd mataba a mitad una tarea larga: su lease (15 min) la dejaba colgada y después se repetía
+# entera, con su costo de API. Un stop sin nada en vuelo sigue tardando ~1 ms. produccion-al-dia.mjs
+# lo reinicia con --no-block para no quedarse esperando este tiempo (24/09/2026).
 KillSignal=SIGTERM
-TimeoutStopSec=90
+TimeoutStopSec=1260
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=orq-worker

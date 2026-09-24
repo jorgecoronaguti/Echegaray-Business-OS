@@ -82,7 +82,7 @@ const REPO = args.find((a) => !a.startsWith('--')) ?? '/home/jorge/echegaray-os/
  *     además su código no es de este repo (es el binario `claude`).
  */
 export const DAEMONS_DEL_REPO = Object.freeze([
-  { unit: 'echegaray-orq-worker.service', porQue: 'Work Fabric: ejecuta las tareas con orquestador/worker.mjs; atrapa SIGTERM y drena (TimeoutStopSec=90)' },
+  { unit: 'echegaray-orq-worker.service', sinBloquear: true, porQue: 'Work Fabric: ejecuta las tareas con orquestador/worker.mjs; atrapa SIGTERM y drena la tarea en curso antes de salir (TimeoutStopSec=1260 > ENGINE_TIMEOUT de 20 min)' },
   { unit: 'echegaray-orq-interactive.service', atiendePersonas: true, porQue: 'motor interactivo (:8790): las directivas de la extensión pasan por orquestador/interactive-server.mjs' },
   { unit: 'echegaray-comunicacion-worker.service', atiendePersonas: true, porQue: 'puente Communication Service ↔ Work Fabric: orquestador/comunicacion/worker-comunicacion.mjs' },
   { unit: 'echegaray-comunicacion-ws.service', atiendePersonas: true, porQue: 'consumidor WebSocket del bot @xsas: orquestador/comunicacion/mattermost-ws-consumer.mjs (parsers de mensajes viven acá)' },
@@ -102,6 +102,26 @@ export const DAEMONS_DEL_REPO = Object.freeze([
 //      regla 1 se evalúa en CADA corrida, la primera corrida dentro de la ventana los pone al día.
 //      Un arreglo urgente del chat se reinicia a mano, sabiendo que corta.
 export const CODIGO_DE_DAEMONS = Object.freeze(['orquestador', 'package.json', 'package-lock.json'])
+//
+// ═══ EL WORKER DEL WORK FABRIC NO ATIENDE PERSONAS, PERO DRENA DE VERDAD (24/09/2026) ═══
+//
+// El dueño: «está lento todo… se queda clavado». Ese día `echegaray-orq-worker` se reinició 12 veces
+// por avances del checkout y la sospecha fue que los reinicios cortaban respuestas. Medido:
+//   · Ninguna respuesta a una persona pasó por él. Los mensajes del bot van por la cola
+//     `comunicacion`, que la procesa `echegaray-comunicacion-worker`. En 30 días el orq-worker corrió
+//     `scheduled_directive` (agenda), `direction` (vigilancia) y un `cotizacion.plano`; el único camino
+//     con una persona esperando —`specialist`, que encola `interactive-server.mjs` para un pedido
+//     profundo— tuvo CERO tareas.
+//   · Los 12 cortes fueron «shutdown solicitado → shutdown completo» en ~1 ms: nada en vuelo.
+//   · Un solo SIGKILL en 30 días (13/09, con la base caída).
+// Por eso NO se marca `atiendePersonas`: dejarlo con código viejo hasta las 2 h pagaría la vigilancia
+// y la agenda con lógica de ayer para proteger un camino que no se usa.
+//
+// Lo que sí era un agujero: el worker drena (espera la tarea en curso) pero systemd lo mataba a los
+// 90 s, y una tarea del razonador puede durar hasta 20 min (`ENGINE_TIMEOUT_MS`). Matada a mitad, su
+// lease (15 min) la deja colgada y después se repite entera, con su costo de API. El unit ahora espera
+// 1260 s, y como un `systemctl restart` BLOQUEA hasta que el viejo sale, se pide con `--no-block`
+// (`sinBloquear`): el pipeline que corre este script en su ExecStartPre no queda 20 min esperando.
 /** Horas locales (−03) en las que se puede reiniciar lo que atiende personas: [desde, hasta). */
 export const VENTANA_DE_REINICIO = Object.freeze({ desde: 2, hasta: 5 })
 
@@ -146,6 +166,17 @@ export function decidirReinicios({ antes, despues, unitActual = null, estados, d
     }
   }
   return { reiniciar, omitidos }
+}
+
+/**
+ * Argumentos de `systemctl --user` para reiniciar un daemon. Con `sinBloquear`, `--no-block`: systemd
+ * encola el reinicio y este script sigue; el daemon termina su tarea en curso y recién ahí vuelve con el
+ * código nuevo. Sin él, `restart` espera a que el proceso viejo salga (lo correcto para los que salen
+ * en milisegundos: el log dice si el reinicio anduvo).
+ */
+export function argumentosDeReinicio(unit, daemons = DAEMONS_DEL_REPO) {
+  const d = daemons.find((x) => x.unit === unit)
+  return d?.sinBloquear ? ['restart', '--no-block', unit] : ['restart', unit]
 }
 
 function git(args) {
@@ -224,8 +255,10 @@ function reiniciarDaemons({ antes, despues }) {
   for (const unit of reiniciar) {
     const t0 = Date.now()
     try {
-      systemctl(['restart', unit])
-      console.log(`producción-al-día: reinicié ${unit} → ${despues.slice(0, 8)} (${Date.now() - t0} ms)`)
+      const argumentos = argumentosDeReinicio(unit)
+      systemctl(argumentos)
+      const como = argumentos.includes('--no-block') ? 'pedí el reinicio (sin bloquear: drena su tarea en curso)' : 'reinicié'
+      console.log(`producción-al-día: ${como} ${unit} → ${despues.slice(0, 8)} (${Date.now() - t0} ms)`)
     } catch (e) {
       console.warn(`producción-al-día: FALLÓ el reinicio de ${unit} (${String(e?.stderr ?? e?.message ?? e).trim().slice(0, 160)}) — sigue con el código viejo en memoria`)
     }
