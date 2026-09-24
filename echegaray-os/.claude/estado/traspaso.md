@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: **2026-09-24 (−03)** · `origin/main` = **c5d99d90** (código en b43babb9, deploy Vercel OK)._
+_actualizado: **2026-09-24 mediodía (−03)** · `origin/main` = ver `git log -1` (código en aef02369)._
 _Historia anterior: `git show c5d99d90:echegaray-os/.claude/estado/traspaso.md` — NO leerla salvo que haga falta._
 
 ## 0. CÓMO ARRANCAR LA SESIÓN (leer primero)
@@ -73,6 +73,19 @@ masivo (/campo/parte → /obra/avance-masivo) · puedeVerRuta compara sin query.
 Regla: antes de cerrar/mover una ruta, recorrido real con sesión del usuario real (enlace mágico, lectura).
 
 ## 2. OTROS ABIERTOS
+
+**24/09 mediodía (publicado y verificado salvo lo marcado):**
+- Teléfono: jefe con UNA barra (J01) en todo el teléfono + «Cargar asistencia» en Gente; Administración opción B
+  (Obras · Personal · Compras · Datos · Más, `/mas`, entra por Obras); barra de áreas nivel 2 oculta bajo `md`.
+  **Falta:** adaptar a 390 Personal y Compras de escritorio (usables, cargadas).
+- Efectivo: gestión sólo Administración en la base (20260924T1900); pruebas borradas (ER-0004/12/14/16/17/18) y
+  `borrar_entrega_de_prueba` arrastra avisos/rendiciones (T1910); avisos excluyen `es_prueba`. ER-0005 queda anulada.
+- Proveedores: tocar un proveedor abre la ficha. Neumagom: eCheq 382/383 atados a Compras f981 (ficha «+2») y
+  «FA 0002-00004213» en Cheques Emitidos f142/f143 (snapshot 4a4d390b). Otro eCheq Neumagom $317.000 (03/10) sin factura.
+- Gantt de Obras: banda de cliente de borde a borde y «…» en nombres largos.
+- Nómina: publicados los 3 arreglos de la rama `cargas-sociales-y-nomina` (aef02369) → entran al Sheet en la
+  corrida de las 12:50: **verificar después**. Conectar Nómina al Cash Flow espera la decisión A/B y 50% vs 38,6%
+  (memoria `nomina-dos-proyecciones-2409`).
 
 - Corralón Progreso: facturas 3862 ($13.195,02) y 3428 ($56.220) pagadas y SIN CARGAR (las trae Ariel en mano);
   saldo del proveedor $2.568,20 DESCONOCIDO.
