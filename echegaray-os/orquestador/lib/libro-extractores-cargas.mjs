@@ -44,6 +44,7 @@ import { cubiertoDelBanco } from './cargas-pagos-banco.mjs'
 import { columnasDeCompras, estaPagada } from './libro-extractores-compras.mjs'
 import { total as rotuloTotal } from './patron-pestana.mjs'
 import { fila as rangoFila } from './rangos-con-nombre.mjs'
+import { NOMBRES_PUENTE, formulaDelPuente } from './nomina-puente.mjs'
 
 /** La pestaña de la que sale la serie. Es el `origen.pestana` de cada movimiento. */
 export const PESTANA_CARGAS = 'Cargas Sociales'
@@ -352,12 +353,28 @@ function netoDelBanco(o, banco, { mes, rubro, devengado, aviso, anotarCubierto }
  */
 export function deCargasSociales({ fechas, f931, gremiales, declarado, gremialesDeclarado } = {}, corte = null,
   { mesesPagados = new Set(), mesesFinanciados = new Set(), aviso = () => {},
-    pagosDelBanco = new Map(), anotarCubierto = () => {} } = {}) {
+    pagosDelBanco = new Map(), anotarCubierto = () => {}, nomina = null } = {}) {
   const F = serie(fechas)
   const D = serie(declarado)
+  // «NÓMINA» MANDA SOBRE LA PROYECCIÓN (24/09/2026, ver lib/nomina-puente.mjs): el mes devengado i que
+  // no tiene DDJJ ni boleta toma el importe del puente, y su celda del libro es la fórmula al puente.
+  // Lo declarado, lo pagado en Compras y lo cubierto por el banco siguen igual: el hecho gana.
+  const conNomina = (propia, deNomina) => (Array.isArray(deNomina) ? propia.map((v, i) => (i < 12 ? deNomina[i] : v)) : propia)
+  // «TOTAL DECLARADO» NO ES UNA DDJJ CUANDO REPITE LA PROYECCIÓN. La pestaña rellena el renglón de
+  // declarado con la proyección del mes que todavía no tiene DDJJ (`=IF(N(J45)=0;"sin DDJJ";J45)`), y
+  // el libro lo tomaba como COMPROMETIDO: lo proyectado entraba como un hecho y el puente de Nómina no
+  // tenía por dónde pasar. Con Nómina leída, un declarado idéntico a la proyección del mismo mes es la
+  // proyección; una DDJJ de verdad (distinta) sigue ganando.
+  const sinEco = (decl, propia, deNomina) => (!Array.isArray(deNomina) ? decl
+    : decl.map((d, i) => (num(d) !== null && num(propia[i]) !== null && Math.abs(num(d) - num(propia[i])) < 1 ? null : d)))
+  const f931Propia = serie(f931)
+  const gremPropia = serie(gremiales)
   const bloques = [
-    { importes: serie(f931), declarado: D, rubro: RUBRO_CARGAS, que: 'F931' },
-    { importes: serie(gremiales), declarado: serie(gremialesDeclarado), rubro: RUBRO_GREMIALES, que: 'gremiales' },
+    { importes: conNomina(f931Propia, nomina?.f931), declarado: sinEco(D, f931Propia, nomina?.f931), rubro: RUBRO_CARGAS, que: 'F931',
+      puente: Array.isArray(nomina?.f931) ? NOMBRES_PUENTE.f931 : null },
+    { importes: conNomina(gremPropia, nomina?.gremiales), declarado: sinEco(serie(gremialesDeclarado), gremPropia, nomina?.gremiales),
+      rubro: RUBRO_GREMIALES, que: 'gremiales',
+      puente: Array.isArray(nomina?.gremiales) ? NOMBRES_PUENTE.gremiales : null },
   ]
   const out = []
   for (let i = 0; i < F.length; i++) {
@@ -394,7 +411,8 @@ export function deCargasSociales({ fechas, f931, gremiales, declarado, gremiales
       const banco = pagosDelBanco.get(`${devengado}·${b.rubro}`) ?? null
       const neto = netoDelBanco(o, banco, { mes, rubro: b.rubro, devengado, aviso, anotarCubierto })
       if (!neto) continue
-      out.push(movimiento({
+      const vivo = b.puente && o.estado === 'PROYECTADO' && !neto.parcial && i < 12
+      const mov = movimiento({
         fecha,
         signo: SALE,
         importe: neto.importe,
@@ -408,7 +426,8 @@ export function deCargasSociales({ fechas, f931, gremiales, declarado, gremiales
         // no hay comprobante— colapsaría los movimientos en uno y quedaría un mes de cargas en todo
         // el año. Y con el mes adentro, el nombre sobrevive a que la pestaña se reordene.
         origen: { pestana: PESTANA_CARGAS, fila: o.fila },
-      }))
+      })
+      out.push(vivo ? Object.freeze({ ...mov, importeNomina: formulaDelPuente(b.puente, i + 1) }) : mov)
     }
   }
   return out

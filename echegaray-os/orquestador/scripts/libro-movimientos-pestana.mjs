@@ -101,6 +101,7 @@ import { CODIGO_FRENO } from '../lib/flujo-caja-pasos.mjs'
 import { pathToFileURL } from 'node:url'
 import { realpathSync } from 'node:fs'
 import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
+import { NOMBRES_PUENTE, serieDelPuente } from '../lib/nomina-puente.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = '_MOVIMIENTOS'
@@ -181,6 +182,16 @@ export async function extraerDeLasFuentes(google, corte) {
   // —el de las filas equivocadas— sin marcar un solo error.
   const leidos = await Promise.all(NOMBRES_NOMINA.map((n) => leer(n)))
   const R = Object.fromEntries(NOMBRES_NOMINA.map((n, i) => [n, leidos[i]]))
+
+  // ═══ «NÓMINA» MANDA SOBRE LO PROYECTADO (dueño, 24/09/2026) — ver lib/nomina-puente.mjs ═══
+  // Lectura BLANDA: sin el cuadro 6 de Nómina, cada línea vuelve a su proyección de antes y se grita.
+  // Incompleto y gritado se puede decidir; un libro que no se escribe deja el Cash Flow congelado.
+  const puente = {}
+  for (const [k, nombre] of Object.entries(NOMBRES_PUENTE)) {
+    const v = await google.readSheetValues(ID, nombre, { render: 'UNFORMATTED_VALUE' }).catch(() => null)
+    puente[k] = serieDelPuente(v)
+    if (!puente[k]) console.warn(`  ⚠ no pude leer ${nombre} (cuadro 6 de «Nómina»): esa línea proyecta como antes, no desde Nómina.`)
+  }
 
   // ═══ LO PACTADO DE CADA MES DE OFICINA Y DIRECCIÓN (18/09/2026) ═══
   //
@@ -343,6 +354,7 @@ export async function extraerDeLasFuentes(google, corte) {
       aviso: (m) => console.warn(`  · ${m}`),
       pagosDelBanco: porPeriodo,
       anotarCubierto: (c) => cubiertosPorBanco.add(c),
+      nomina: { f931: puente.f931, gremiales: puente.gremiales },
     },
   )
   const declarados = cargas.filter((m) => / · declarado /.test(String(m.origen?.fila ?? '')))
@@ -566,13 +578,13 @@ export async function extraerDeLasFuentes(google, corte) {
           total: R.JORNALES_REAL_TOTAL, banco: R.JORNALES_REAL_BANCO,
         },
         proyectadas: { pago: R.JORNALES_PROY_PAGO, hasta: R.JORNALES_PROY_HASTA, total: R.JORNALES_PROY_TOTAL },
-      }, corte, { extracto, aviso: (m) => console.warn(`  ⚠ ${m}`) }),
+      }, corte, { extracto, aviso: (m) => console.warn(`  ⚠ ${m}`), nomina: puente.jornales }),
       Oficina: deOficina({ pago: R.OFICINA_PAGO, pagado: R.OFICINA_PAGADO, proyectado: R.OFICINA_PROYECTADO,
         pactado: pactados.oficina },
-        corte, { extracto }),
+        corte, { extracto, nomina: puente.oficina }),
       Dirección: deDireccion({ pago: R.DIRECCION_PAGO, pagado: R.DIRECCION_PAGADO, proyectado: R.DIRECCION_PROYECTADO,
         pactado: pactados.direccion },
-        corte, { extracto }),
+        corte, { extracto, nomina: puente.direccion }),
       // LAS OBLIGACIONES QUE EL EXTRACTO PRUEBA Y COMPRAS YA NO LLEVA (prendario, gremiales, F931 y la
       // cuota de plan). No emite nada cuya fila siga viva en Compras: durante la transición el REAL
       // sale de Compras, y cuando la fila se marca ELIMINADO sale de acá. Nunca de las dos.
@@ -842,7 +854,10 @@ async function escribirYVerificar(google, consolidado, colEstadoCompras = null, 
     // origen no es Compras y `celdaImporte` la dejaría pegada.
     // El espejo de un gasto «A rendir» mira la MISMA fila de Compras que el gasto (`fuenteViva`): cuando
     // el dueño marca «Pagado», el gasto y su vuelta al fondo se promueven juntos.
-    .map((m) => [m.fecha, m.signo, m.importeVivo ?? celdaImporte(fuenteViva(m), colsVivas), m.moneda, m.concepto, m.rubro, m.actividad,
+    // Las filas proyectadas de nómina y cargas apuntan al cuadro 6 de «Nómina» (`importeNomina`): el
+    // dueño edita Nómina y el Cash Flow cambia en el momento. Una fila que el banco ya promovió a REAL
+    // deja la fórmula: el hecho manda sobre la proyección.
+    .map((m) => [m.fecha, m.signo, m.importeVivo ?? (m.estado !== 'REAL' ? m.importeNomina : null) ?? celdaImporte(fuenteViva(m), colsVivas), m.moneda, m.concepto, m.rubro, m.actividad,
       celdaEstado(fuenteViva(m), colEstadoCompras),
       m.instrumento, m.contraparte, m.cuit, m.comprobante, m.obra, m.origen.pestana, m.origen.fila ?? '', m.clave,
       m.cliente])]
@@ -888,6 +903,22 @@ async function escribirYVerificar(google, consolidado, colEstadoCompras = null, 
   // exacta al peso para todas las demás filas. Un valor fuera del rango sí es una escritura rota.
   let ajusteNeteo = 0
   let neteoFuera = 0
+  // LAS FILAS DE NÓMINA SON FÓRMULA AL PUENTE: releídas valen lo que Nómina dice AHORA. Si el dueño
+  // editó entre la lectura y la escritura, la diferencia es suya y se declara; un valor no numérico sí
+  // es una escritura rota.
+  let ajusteNomina = 0
+  let nominaRota = 0
+  ordenados.forEach((m, i) => {
+    if (m.importeVivo || !m.importeNomina || m.estado === 'REAL') return
+    const val = Number(releido?.[i]?.[2])
+    if (!Number.isFinite(val) || val < -0.01) {
+      nominaRota++
+      console.log(`  ✗ Nómina f${i + 2}: la fórmula ${m.importeNomina} rindió ${JSON.stringify(releido?.[i]?.[2])}.`)
+      return
+    }
+    ajusteNomina += m.signo * (val - m.importe)
+  })
+  if (Math.abs(ajusteNomina) >= 1) console.log(`  · Nómina se editó durante la corrida: ${pesos(ajusteNomina)} de diferencia, vale lo del Sheet`)
   ordenados.forEach((m, i) => {
     if (!m.importeVivo) return
     const val = Number(releido?.[i]?.[2])
@@ -902,8 +933,8 @@ async function escribirYVerificar(google, consolidado, colEstadoCompras = null, 
   if (ajusteNeteo !== 0) {
     console.log(`  · neteo de Obras ya absorbido por Compras al releer: ${pesos(ajusteNeteo)} (facturas reales que ya entraron)`)
   }
-  const totalMemoria = sumar(consolidado, {}).total + ajusteNeteo
-  const cierra = Math.abs(totalArchivo - totalMemoria) < 1 && neteoFuera === 0
+  const totalMemoria = sumar(consolidado, {}).total + ajusteNeteo + ajusteNomina
+  const cierra = Math.abs(totalArchivo - totalMemoria) < 1 && neteoFuera === 0 && nominaRota === 0
   console.log(`\nQUEDÓ ESCRITO: ${filasArchivo} movimiento(s) en ${PESTAÑA}`)
   console.log(`  total releído del archivo : ${pesos(totalArchivo)}`)
   console.log(`  total calculado en memoria: ${pesos(totalMemoria)}`)
