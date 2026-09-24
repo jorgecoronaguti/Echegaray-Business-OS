@@ -48,7 +48,7 @@ export const VENTANA = { atras: 45, adelante: 95, conPasado: ['iva', 'iibb'] }
 //
 // `DATE(a;m;d)` es explícito y no depende del locale de quien mire, y la celda se declara con formato
 // de fecha —la misma solución, letra por letra, que usa «Próximo vencimiento» en «Cargas Sociales».
-const fecha = (iso) => `=DATE(${Number(iso.slice(0, 4))};${Number(iso.slice(5, 7))};${Number(iso.slice(8, 10))})`
+// DESDE EL 24/09/2026 LA C DICE «desde dd/mm»: con el prefijo, Sheets no la parsea como fecha.
 
 /**
  * NÚCLEO PURO: qué obligaciones entran al calendario, con la celda de la que sale cada importe.
@@ -193,9 +193,19 @@ export const ALTO_HERO = 5
  * C es texto. Buscarla por su número —"la primera del hero"— es cómo una referencia se queda
  * apuntando a la fila de al lado el día que el hero cambia de orden, sin dar un solo error.
  */
-export const ROTULO_A_PAGAR_30 = 'A pagar en 30 días'
+export const ROTULO_A_PAGAR_30 = 'A pagar próximos 30 días'
 
-export const ROTULO_PROYECCION_MES = 'Proyección a fin de mes (estimación)'
+// ═══ LA CABECERA DICE QUÉ ES CADA NÚMERO Y SI SALE PLATA (dueño, 24/09/2026) ═══
+//
+// *«¿qué es eso de proyección, estimación, a favor? No sé si es positivo o negativo, no se entiende»*.
+// Cada renglón nombra lo que suma y si es plata que SALE (1, 2, 4) o que NO sale (3: un saldo a favor
+// no se paga, ya está restado). Sin paréntesis, sin signos: las cuatro cifras son positivas.
+// CORTOS, QUE ENTREN ENTEROS EN LA COLUMNA A CON EL IMPORTE AL LADO (≤ 40 caracteres): el dueño vio
+// «… plan F931 y pre» y «… no se pa» cortados. En la C sólo la fecha del primer vencimiento.
+export const ROTULO_DEUDA_CUOTAS = 'Deuda en cuotas'
+export const ROTULO_SALDO_A_FAVOR = 'A favor en ARCA y Rentas · no se paga'
+export const rotuloImpuestosDelMes = (mes) => `Impuestos de ${mes} · estimado`
+export const MESES_LARGOS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
 
 /**
  * LAS CARGAS SOCIALES DE LA SECCIÓN 6 COMO VENCIMIENTOS DEL CALENDARIO (24/09/2026). Traen su fecha de
@@ -275,16 +285,15 @@ export function filasDeLaPosicion({ cal, refs }) {
   // una buena pregunta y el hero de tres filas no la contesta más: sigue siendo derivable de la
   // sección 1 —la primera columna con importe en «IVA a pagar»— pero hay que leerla mes por mes.
   // Se retira por orden explícita sobre la FORMA del hero, no porque el dato sobre.
-  F.push([rotuloTotal(ROTULO_A_PAGAR_30), formulaVentana(conCelda, 30), prox ? fecha(prox.fecha) : ''])
-  F.push([rotuloTotal('Deuda fiscal y financiera'),
-    formulaDeudaPendiente(refs.prendPend, refs.planesPend)])
+  // LA VENTANA DE 30 DÍAS SUMA LA MISMA CELDA QUE LA TABLA: si el IVA o el IIBB del mes en curso vencen
+  // adentro, entra su proyección del mes entero —es lo que se va a pagar— y el rótulo lo dice.
+  const ddmm = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+  F.push([rotuloTotal(ROTULO_A_PAGAR_30), formulaVentana(conCelda, 30), prox ? `desde ${ddmm(prox.fecha)}` : ''])
+  F.push([rotuloTotal(ROTULO_DEUDA_CUOTAS), formulaDeudaPendiente(refs.prendPend, refs.planesPend)])
   // LAS DOS CELDAS DEL SALDO A FAVOR APUNTAN A CELDAS QUE ESCRIBE UNA PERSONA (el mes ajeno del
-  // cuadro de IVA), así que no pueden asumir que ahí hay un número: el 17/08 había una leyenda y esta
-  // fila publicó #VALUE! en la primera pantalla. Ver `formulaSaldoAFavor`.
-  F.push([rotuloTotal('A favor en el fisco'), formulaSaldoAFavor(refs.saldoIva, refs.saldoIibb)])
-  // LA PROYECCIÓN, APARTE Y ROTULADA (24/09/2026): el total del mes en curso de la sección de
-  // proyección. No se suma a nada de arriba: es otra pregunta —cuánto va a costar el mes entero—.
-  F.push([rotuloTotal(ROTULO_PROYECCION_MES), refs.proyeccion ? `=${refs.proyeccion}` : '=0'])
+  // cuadro de IVA), así que no pueden asumir que ahí hay un número. Ver `formulaSaldoAFavor`.
+  F.push([rotuloTotal(ROTULO_SALDO_A_FAVOR), formulaSaldoAFavor(refs.saldoIva, refs.saldoIibb)])
+  F.push([rotuloTotal(rotuloImpuestosDelMes(refs.mesEnCursoLargo ?? '')), refs.proyeccion ? `=${refs.proyeccion}` : '=0'])
   F.push([])
   return F
 }

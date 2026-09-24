@@ -42,11 +42,11 @@ import {
 } from '../lib/impuestos-fuentes.mjs'
 import {
   bloqueIva, mesDeLaUltimaDDJJ, bloqueIibb, bloqueRetenciones, bloqueOtros, bloqueDeudaFinanciera,
+  ROTULO_SALDO_IVA, ROTULO_SALDO_IVA_VIEJO,
 } from '../lib/impuestos-bloques.mjs'
-import { bloqueProyeccion } from '../lib/impuestos-proyeccion.mjs'
 import {
   obligacionesDelCalendario, mesesDeCadaObligacion, altoDeLaPosicion, filasDeLaPosicion, verificarReferenciasDelHero,
-  ALTO_HERO, ROTULO_A_PAGAR_30, hallazgoDeVencimiento, conDecisionesDelDueno, obligacionesDeCargas,
+  ALTO_HERO, hallazgoDeVencimiento, conDecisionesDelDueno, obligacionesDeCargas, MESES_LARGOS,
 } from '../lib/impuestos-posicion.mjs'
 // Lo que el dueño ya decidió sobre un vencimiento puntual. Ver lib/decisiones-hallazgos.mjs.
 import { CONTROLES, decidir, explicarDecisiones } from '../lib/decisiones-hallazgos.mjs'
@@ -57,9 +57,6 @@ import { alicuotaVigente, publicarAlicuotaEnParametros, ROTULO_ALICUOTA } from '
 // EL PARÁMETRO VIVE EN «Parámetros» Y LO ASEGURA EL MISMO MECANISMO QUE LOS DE JORNALES Y CARGAS:
 // crea la fila si falta, nunca pisa un valor cargado, y reapunta el rango con nombre por rótulo.
 import { asegurarParametros } from './jornales-pestana.mjs'
-// EL CUADRO DE PLANES DEL F931 VIVE EN «Cargas Sociales» (09/09/2026): de acá salen el nombre del
-// rango que se lee y el MISMO lector que arma aquel cuadro — el paralelo se borró para no tener dos.
-import { NOMBRES_CARGAS } from '../lib/libro-extractores-cargas.mjs'
 import { planesDePago } from '../lib/cargas-planes.mjs'
 import { elLayoutCambio, invalidarHuellasDeFormato } from '../lib/huella-formato-layout.mjs'
 import { bloqueCargasSociales, leerPosicionCargas, rotuloCarga, marcaCarga } from '../lib/impuestos-cargas-bloque.mjs'
@@ -144,32 +141,27 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy, cob
   ], { compacto: true })])
   G.blanco()
 
-  // QUÉ MESES TIENE CADA OBLIGACIÓN. Desde el 24/09/2026 el calendario lee lo REGISTRADO (la opción A
-  // del dueño): los meses de IVA e IIBB salen de los bloques, abajo; de acá sólo queda `mesesOf`.
+  // QUÉ MESES TIENE CADA OBLIGACIÓN: los de IVA e IIBB salen de los bloques; de acá sólo queda `mesesOf`.
   const { mesesOf } = mesesDeCadaObligacion({ ivaOficial, proy, iibb, planes })
-  // EL ESPACIO DEL HERO YA NO DEPENDE DE CUÁNTOS VENCIMIENTOS HAYA: la reserva es constante.
   const alto = altoDeLaPosicion()
   const base = G.reservar(alto)
 
-  // ── EL DETALLE: LO REGISTRADO ──────────────────────────────────────────────────────────────────
+  // ── EL DETALLE: UNA TABLA POR IMPUESTO, LO PAGADO Y LO PROYECTADO EN LAS MISMAS FILAS ──────────
   const iva = bloqueIva(G, { anio, ivaOficial, proy, arca, hoy, cob })
   const ibb = bloqueIibb(G, { anio, iibb, proy, hoy, cob })
   bloqueRetenciones(G, { anio, cob })
-  bloqueOtros(G, { anio, C })
+  const otros = bloqueOtros(G, { anio, C, hoy })
   const deuda = bloqueDeudaFinanciera(G, { anio, C })
   // La 6 es lo que falta pagar de cargas sociales (F931 y cuotas de plan), desde Postgres (17/09/2026).
+  // LA SECCIÓN 7 APARTE SE RETIRÓ (dueño, 24/09/2026 a la tarde): lo proyectado vive en las mismas
+  // filas que lo pagado, en las secciones 1, 2 y 4, con el mes marcado «· proy.» en el encabezado.
   const cs = cargas ? bloqueCargasSociales(G, { filas: cargas, n: 6 }) : null
-  // ── LA PROYECCIÓN A FIN DE MES, APARTE (24/09/2026) ───────────────────────────────────────────
-  const pr = bloqueProyeccion(G, { n: cs ? 7 : 6, anio, iva, ibb, proy, hoy, cob })
 
   // ── LA POSICIÓN, RECIÉN AHORA ──────────────────────────────────────────────────────────────────
   //
-  // «A PAGAR EN 30 DÍAS» TIENE UNA SOLA DEFINICIÓN, LA MISMA QUE LA APP (dueño, 24/09/2026): lo
-  // PENDIENTE con vencimiento entre hoy y hoy + 30 días — IVA e IIBB registrados, la cuota del
-  // prendario, el F931 y las cuotas de plan de la sección 6. El impuesto al cheque entra con lo que
-  // tiene pendiente, que es cero: el banco lo debita en el acto. Lo vencido sin pago no se suma: se
-  // marca aparte. Las cuotas de plan ya NO entran por el rango de «Cargas Sociales»: están en la 6
-  // con su vencimiento, y contarlas por los dos lados las sumaría dos veces.
+  // «TENÉS QUE PAGAR EN 30 DÍAS»: lo que vence entre hoy y hoy + 30 — IVA e IIBB (del mes en curso, su
+  // proyección del mes entero, y el rótulo lo dice), la cuota del prendario, el F931 y las cuotas de plan
+  // de la sección 6 (no por el rango de «Cargas Sociales»: se sumarían dos veces). Lo vencido no suma.
   const calCrudo = [
     ...obligacionesDelCalendario({
       hoy, anio, meses: { iva: iva.meses, iibb: ibb.meses, prendario: M12 },
@@ -183,39 +175,47 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy, cob
   const cal = conDecisionesDelDueno(calCrudo, new Map(decVenc.silenciados.map((s) => [s.clave, s.decision])))
   // El saldo a favor es el de la ÚLTIMA DDJJ presentada. Ver `mesDeLaUltimaDDJJ`.
   const mesSaldoIva = mesDeLaUltimaDDJJ(iva.porOrigen) || mesesOf[mesesOf.length - 1] || 0
+  // LA DEUDA EN CUOTAS SUMA LAS CUOTAS DE PLAN DE LA SECCIÓN 6 (24/09/2026), no `CARGAS_PLANES_SIN_PAGAR`:
+  // ese rango lee el Libro, sin cronograma del plan W303094: daba $0 con la cuota 3/3 pendiente.
+  const cuotasDePlan = (cs?.filas ?? []).filter((f) => /^Cuota /.test(f.rotulo)).map((f) => `$B$${f.fila}`)
+  const mesCur = iva.mesEnCurso || ibb.mesEnCurso
   const refs = {
     saldoIva: mesSaldoIva ? `$${cmes(mesSaldoIva)}$${iva.fLibre}` : '0',
     saldoIibb: ibb.ultimoReal ? `$${cmes(ibb.ultimoReal)}$${ibb.fSaldo}` : '0',
     prendPend: `$B$${deuda.fPrendPend}`,
-    planesPend: NOMBRES_CARGAS.planesSinPagar,
-    proyeccion: pr.mesesTot.includes(pr.mesEnCurso) ? `$${cmes(pr.mesEnCurso)}$${pr.fTotalP}` : null,
+    planesPend: cuotasDePlan.length ? cuotasDePlan.join('+') : '0',
+    // IVA + IIBB + impuesto al cheque del mes en curso, de la MISMA columna de las tablas de arriba.
+    proyeccion: mesCur ? [iva.fAPagar, ibb.fAPagar, otros.fCheque].map((f) => `N($${cmes(mesCur)}$${f})`).join('+') : null,
+    mesEnCursoLargo: mesCur ? MESES_LARGOS[mesCur - 1] : '',
   }
   const hero = filasDeLaPosicion({ cal, refs })
   G.fijar(base, alto, hero)
   // EL CONTROL SE HACE CONTRA LO ESCRITO, no contra otra cuenta con las mismas constantes.
   verificarReferenciasDelHero(hero, G.filas)
 
-  // LOS MESES PROYECTADOS: GRIS ITÁLICA, NO FONDO ÁMBAR (09/09/2026). El porqué, en la piel.
-  // TODA LA SECCIÓN DE PROYECCIÓN SE DIBUJA COMO ESTIMACIÓN (gris itálica); lo registrado, en tinta.
+  // LOS MESES PROYECTADOS DE LAS SECCIONES 1, 2 Y 4: GRIS ITÁLICA, además del «· proy.» del encabezado.
   const proyectadas = []
-  for (const f of pr.filas) for (const m of M12) proyectadas.push({ fila: f, mes: m })
+  for (const m of iva.mesesProy) for (const f of iva.filasProy) proyectadas.push({ fila: f, mes: m })
+  for (const m of ibb.proyectados) for (const f of ibb.filasProy) proyectadas.push({ fila: f, mes: m })
+  for (const m of otros.proyectados) for (const f of otros.filasProy) proyectadas.push({ fila: f, mes: m })
 
   return {
     filas: G.filas,
     // El bloque que la piel jerarquiza distinto del resto: los tres totales con los que se decide.
     hero: { desde: base + 1, hasta: base + ALTO_HERO },
     alicuotas: [ibb.fAli],
-    textos: [iva.fDDJJ, pr.fEstadoP],
+    textos: [iva.fDDJJ],
     // La FECHA que el hero publica al lado del importe: un dato, no plata. La fila se BUSCA por su
     // rótulo, nunca por su posición dentro del hero.
-    fechasCelda: [{ fila: base + 1 + hero.findIndex((f) => String(f?.[0] ?? '').includes(ROTULO_A_PAGAR_30)), col: 2 }],
+    // La columna C del hero es TEXTO («desde 07/10 · …», «a agosto · …»): ya no hay celda de fecha.
+    fechasCelda: [],
     proyectadas,
     // El título, la frescura y el hero ENTERO quedan congelados: la posición no se va al scrollear.
     // Sale del hero, no de un número tipeado.
     congeladas: base + ALTO_HERO,
     cal,
     refs,
-    filasCalendario: { iva: pr.fIvaP, iibb: pr.fIibbP },
+    filasCalendario: { iva: iva.fAPagar, iibb: ibb.fAPagar },
     // De dónde sale cada mes del cuadro 4. Se devuelve para poder EXHIBIRLO: un cuadro que cambió de
     // fuente sin decirlo es la forma más barata de que nadie lo revise.
     origenIva: iva.porOrigen,
@@ -239,7 +239,7 @@ async function planDeProyeccionIva(google, ivaOficial, hoy, cols) {
   const previo = await google.readSheetValues(ID, `${PESTAÑA}!A1:N140`, { render: 'UNFORMATTED_VALUE' })
   const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
   const filaDe = (rot) => previo.findIndex((f) => norm(f?.[0]) === norm(rot))
-  const iL = filaDe('Saldo de libre disponibilidad (acumulado)')
+  const iL = [ROTULO_SALDO_IVA, ROTULO_SALDO_IVA_VIEJO].map(filaDe).find((i) => i >= 0) ?? -1
   const crudoLibre = iL >= 0
     ? ((await google.readSheetValues(ID, `${PESTAÑA}!B${iL + 1}:M${iL + 1}`, { render: 'FORMULA' }))[0] ?? [])
     : []

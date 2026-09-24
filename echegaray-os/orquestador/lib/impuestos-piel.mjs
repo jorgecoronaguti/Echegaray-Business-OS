@@ -119,6 +119,14 @@ export function requestsDeJerarquia(sheetId, g) {
  * @param {object} g la grilla armada: {filas, hero, alicuotas, textos, fechasCelda, proyectadas, congeladas}
  * @param {number} filasHoja cuántas filas tiene hoy la pestaña
  */
+/**
+ * SIN ROJO Y SIN PARÉNTESIS (dueño, 24/09/2026: «no sé si es positivo o negativo»). Todas las filas de la
+ * pestaña son montos que se pagan o saldos a favor, y todas son ≥ 0 por construcción (MAX(0;…)). Un
+ * negativo —que sólo puede ser un error de dato— se ve con su signo menos, sin color que haya que
+ * interpretar; el cero es «—».
+ */
+export const FORMATO_PLATA = '"$"#,##0;-"$"#,##0;"—"'
+
 export async function formatear(google, fileId, sheetId, g, filasHoja = 0) {
   // SIN NOTAS. El dueño: "quitá las notas de impuestos y financieros, son confusas". Veintiocho
   // triangulitos amarillos son veintiocho invitaciones a interrumpir la lectura. La trazabilidad no
@@ -134,7 +142,7 @@ export async function formatear(google, fileId, sheetId, g, filasHoja = 0) {
   // abajo sin volver a leer el encabezado en cada bloque. El cero se dibuja "—": un guión es "no hay
   // nada que pagar ese día", y un $0 se lee como un importe que alguien calculó.
   fmt(r(3, n, 1, 14), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-    { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }, horizontalAlignment: 'RIGHT' })
+    { numberFormat: { type: 'CURRENCY', pattern: FORMATO_PLATA }, horizontalAlignment: 'RIGHT' })
   // La columna A rebalsa sobre las celdas vacías de su derecha: así un título de sección no se parte.
   fmt(r(0, n, 0, 1), 'userEnteredFormat.wrapStrategy', { wrapStrategy: 'OVERFLOW_CELL' })
 

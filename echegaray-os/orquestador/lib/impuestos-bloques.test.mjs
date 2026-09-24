@@ -10,8 +10,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { origenDelMes, ORIGEN, bloqueIva, bloqueIibb, mesDelSaldoVigente } from './impuestos-bloques.mjs'
-import { bloqueProyeccion } from './impuestos-proyeccion.mjs'
+import { origenDelMes, ORIGEN, bloqueIva, bloqueIibb, bloqueOtros, mesDelSaldoVigente } from './impuestos-bloques.mjs'
+import { CALENDARIO_IMPUESTOS } from './cash-flow-lineas.mjs'
+import { ROTULO as ROTULO_IMPUESTO_CHEQUE } from './impuesto-cheque.mjs'
 import { crearGrilla } from './impuestos-grilla.mjs'
 import { COB_HOY } from './columnas-caja.fixture.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
@@ -185,36 +186,54 @@ test('LA NOTA DE CRÉDITO RESTA también en el IVA — el signo entra en la suma
   }
 })
 
-test('LO REGISTRADO Y LA PROYECCIÓN, APARTE: el mes en curso registrado es sólo ARCA; el MAX vive en la sección 7', () => {
-  // Opción A del dueño (24/09/2026). Antes la celda del mes en curso era MAX(ARCA parcial; Libro) y
-  // septiembre publicaba $9,6 M de IVA a pagar con $0,39 M registrados. Lo registrado es el hecho.
+test('UNA SOLA TABLA: el mes en curso y los futuros son PROYECCIÓN en la misma fila que lo registrado', () => {
+  // El dueño, 24/09/2026 a la tarde: «no me hagas tablas abajo, poneme lo proyectado en la misma tabla
+  // de lo que ya se pagó». Julio cerrado sale de ARCA; agosto (en curso) es MAX(ARCA; facturas B) del
+  // mes entero; septiembre en adelante, las facturas B. Todo en la fila del débito de la sección 1.
   const { G, iva } = armarBloque({ arca: { meses: [7, 8] }, hoy: '2026-08-07' })
-  const deb = String(celda(G, iva.fDeb, 8))
-  assert.ok(!deb.startsWith('=MAX('), `el registrado de agosto no mezcla la proyección: "${deb.slice(0, 40)}"`)
-  assert.match(deb, /_ARCA_RAW/)
-  assert.doesNotMatch(deb, /BRUTO_DEB_/)
-  assert.equal(celda(G, iva.fDeb, 9), VACIO, 'un mes futuro no tiene registrado: queda vacío')
-  // La proyección del mes entero, en su sección, con el MAX de los dos términos.
-  const ibb = bloqueIibb(G, { anio: 2026, iibb: [{ periodo: '2026-07', base: 1 }], proy: { meses: [8, 9, 10, 11, 12], sinBase: [] }, hoy: '2026-08-07', cob: COB_HOY })
-  const pr = bloqueProyeccion(G, { n: 7, anio: 2026, iva, ibb, proy: { brutoDebito: (m) => [`BRUTO_DEB_${m}`], brutoCredito: (m) => [`BRUTO_CRE_${m}`] }, hoy: '2026-08-07', cob: COB_HOY })
-  const debP = String(celda(G, pr.fDebP, 8))
-  assert.match(debP, /^=MAX\(/)
-  assert.match(debP, /_ARCA_RAW/)
-  assert.match(debP, /BRUTO_DEB_8/)
-  assert.match(String(celda(G, pr.fCredP, 8)), /BRUTO_CRE_8/)
-  // El «a pagar» proyectado del mes en curso resta las retenciones YA sufridas (fila registrada).
-  assert.match(String(celda(G, pr.fIvaP, 8)), new RegExp(`N\\(I${iva.fRet}\\)`))
-  // El mes CERRADO repite lo registrado (referencia), para que el Libro siga leyendo la fila entera.
-  assert.equal(celda(G, pr.fIvaP, 7), `=H${iva.fAPagar}`)
+  const jul = String(celda(G, iva.fDeb, 7))
+  assert.match(jul, /_ARCA_RAW/)
+  assert.doesNotMatch(jul, /BRUTO_DEB_/, 'el mes cerrado es lo registrado, sin proyección')
+  const ago = String(celda(G, iva.fDeb, 8))
+  assert.match(ago, /^=MAX\(/)
+  assert.match(ago, /_ARCA_RAW/)
+  assert.match(ago, /BRUTO_DEB_8/)
+  assert.match(String(celda(G, iva.fCred, 8)), /BRUTO_CRE_8/)
+  assert.match(String(celda(G, iva.fDeb, 9)), /BRUTO_DEB_9/, 'el futuro se proyecta en la misma fila')
+  // El «a pagar» del mes en curso resta las retenciones YA sufridas; el futuro no tiene retenciones.
+  assert.match(String(celda(G, iva.fAPagar, 8)), new RegExp(`N\\(I${iva.fRet}\\)`))
+  assert.match(String(celda(G, iva.fRet, 8)), /Cobranzas/)
+  assert.equal(celda(G, iva.fRet, 9), VACIO, 'proyectar retenciones sería inventarlas')
+  // La fila «a pagar» ES la que leen el Libro, los cash flow y la app: su rótulo es el del contrato.
+  assert.equal(G.filas[iva.fAPagar - 1][0], CALENDARIO_IMPUESTOS.rotulos.iva)
+  assert.deepEqual(iva.mesesProy, [8, 9, 10, 11, 12])
 })
 
-test('la fila de procedencia distingue ARCA del parcial; los meses futuros no tienen registrado', () => {
-  const { G, iva } = armarBloque({ arca: { meses: [7, 8] } })
+test('el encabezado marca los meses proyectados y la fila de estado los nombra', () => {
+  const { G, iva } = armarBloque({ arca: { meses: [7, 8] }, hoy: '2026-08-07' })
+  const cab = G.filas[iva.fCabecera - 1]
+  assert.equal(cab[7], "'jul-26", 'julio está cerrado: sin marca')
+  assert.equal(cab[8], "'ago-26 · proy.")
+  assert.equal(cab[12], "'dic-26 · proy.")
   assert.equal(celda(G, iva.fDDJJ, 7), 'ARCA')
-  assert.equal(celda(G, iva.fDDJJ, 8), 'parcial')
-  assert.equal(celda(G, iva.fDDJJ, 9), VACIO, 'la proyección se rotula en su propia sección')
+  assert.equal(celda(G, iva.fDDJJ, 8), 'proyectado')
   assert.equal(celda(G, iva.fDDJJ, 3), 'presentada')
-  for (const m of [3, 7, 8]) assert.doesNotMatch(String(celda(G, iva.fDDJJ, m)), /[▲⚠✓·]/)
+  for (const m of [3, 7, 8]) assert.doesNotMatch(String(celda(G, iva.fDDJJ, m)), /[▲⚠✓·()]/)
+})
+
+test('IIBB e impuesto al cheque: misma fila para lo pagado y lo proyectado, con los rótulos que lee el Libro', () => {
+  const G = crearGrilla(2026)
+  const ibb = bloqueIibb(G, { anio: 2026, iibb: [{ periodo: '2026-07', base: 1 }], proy: { meses: [8, 9, 10], sinBase: [] }, hoy: '2026-08-07', cob: COB_HOY })
+  assert.equal(G.filas[ibb.fAPagar - 1][0], CALENDARIO_IMPUESTOS.rotulos.iibb)
+  assert.match(String(celda(G, ibb.fBase, 8)), /^=MAX\(/, 'el mes en curso: MAX(ARCA; facturas B)')
+  assert.match(String(celda(G, ibb.fBase, 9)), /Cobranzas/)
+  assert.equal(celda(G, ibb.fRet, 9), VACIO)
+  const C = { total: 'P', detalle: 'K', fechaPrev: 'R' }
+  const o = bloqueOtros(G, { anio: 2026, C, hoy: '2026-08-07' })
+  assert.equal(G.filas[o.fCheque - 1][0], ROTULO_IMPUESTO_CHEQUE)
+  assert.doesNotMatch(String(celda(G, o.fCheque, 7)), /MAX\(/, 'julio cerrado: lo que el banco debitó, sin estimación')
+  assert.match(String(celda(G, o.fCheque, 8)), /^=MAX\(/, 'el mes en curso: MAX(debitado; proyectado)')
+  assert.equal(G.filas.filter((f) => f[0] === ROTULO_IMPUESTO_CHEQUE).length, 1, 'una sola fila del impuesto al cheque')
 })
 
 test('el arrastre del mes ARCA usa la MISMA aritmética que la proyección', () => {
@@ -237,13 +256,10 @@ test('el mes del DUEÑO se preserva: ni fórmula de ARCA ni celda vaciada', () =
   assert.notEqual(celda(G, iva.fDeb, 7), VACIO)
 })
 
-test('sin comprobantes en ARCA, lo registrado del mes en curso es CERO de ARCA, no la proyección', () => {
-  // Con ARCA vacío, agosto (en curso) sigue siendo lo registrado —una fórmula que hoy da 0— y la
-  // proyección del Libro no se cuela en la fila del hecho.
+test('sin comprobantes en ARCA, el mes en curso es la proyección de Cobranzas (el MAX no baja de ARCA)', () => {
   const { G, iva } = armarBloque({ arca: { meses: [] } })
   assert.match(String(celda(G, iva.fDeb, 8)), /_ARCA_RAW/)
-  assert.doesNotMatch(String(celda(G, iva.fDeb, 8)), /BRUTO_DEB_/)
-  assert.equal(celda(G, iva.fDeb, 9), VACIO)
+  assert.match(String(celda(G, iva.fDeb, 8)), /BRUTO_DEB_8/)
 })
 
 // ── EL BLOQUE DE HUECOS SE ELIMINÓ, Y ESO NO PUEDE VOLVER SOLO (09/09/2026) ──────────────────────

@@ -259,7 +259,7 @@ test('LA POSICIÓN VA PRIMERO, Y ENTRA EN CUATRO RENGLONES', () => {
   // renglones antes del primer número que él usa—. El 09/09 se fueron además el titular y las cuatro
   // sub-líneas: quedan tres «⇒ rótulo | cifra» y el separador, como en las pestañas hermanas.
   const g = armar()
-  const primero = filaDe(g, /^⇒ A pagar en 30 días$/)
+  const primero = filaDe(g, /^⇒ A pagar próximos 30 días$/)
   const detalle = filaDe(g, /^1 · IVA$/)
   assert.ok(primero > 0 && detalle > primero, `orden real: hero ${primero}, detalle ${detalle}`)
   assert.equal(detalle - primero, 5, 'entre el primer renglón y el primer cuadro van sólo las otras tres filas y el aire')
@@ -269,12 +269,14 @@ test('LA POSICIÓN VA PRIMERO, Y ENTRA EN CUATRO RENGLONES', () => {
   assert.ok(g.congeladas < detalle, 'congelar el detalle además de la posición se come media pantalla')
 })
 
-test('el hero se declara entero y son CUATRO totales —el último, la proyección rotulada—, sin titular ni sub-líneas', () => {
+test('el hero se declara entero y son CUATRO totales que dicen qué son, sin paréntesis, sin titular ni sub-líneas', () => {
   // La piel recibe el rango del hero y le da a esas filas su peso de lectura. Si el rango se queda
   // corto —o largo— el peso cae en el renglón de al lado sin dar un solo error.
   const g = armar()
   const delHero = rotulos(g).slice(g.hero.desde - 1, g.hero.hasta).filter(Boolean)
-  assert.deepEqual(delHero, ['⇒ A pagar en 30 días', '⇒ Deuda fiscal y financiera', '⇒ A favor en el fisco', '⇒ Proyección a fin de mes (estimación)'])
+  // Dueño, 24/09/2026: «¿qué es eso de proyección, estimación, a favor? no sé si es positivo o negativo».
+  assert.deepEqual(delHero, ['⇒ A pagar próximos 30 días', '⇒ Deuda en cuotas', '⇒ A favor en ARCA y Rentas · no se paga', '⇒ Impuestos de agosto · estimado'])
+  for (const r of delHero) assert.doesNotMatch(r, /[()]/, `sin paréntesis: «${r}»`)
   for (const f of g.filas.slice(g.hero.desde - 1, g.hero.hasta)) {
     if (f[0] && f[0] !== VACIO) assert.ok(String(f[1]).startsWith('='), 'cada cifra es una referencia, no un pegado')
   }
@@ -314,13 +316,14 @@ test('LAS CINCO SECCIONES SE LLAMAN POR SU CONCEPTO, SIN PREGUNTAS NI EXPLICACI�
   //
   // Y LA NUMERACIÓN CORRE SIN HUECOS: la sección 6 se eliminó entera, así que la última es la 5. Un
   // hueco en la numeración es lo que hace dudar de si falta un bloque.
-  // Y LA PROYECCIÓN VA EN SU PROPIA SECCIÓN, LA ÚLTIMA (opción A del dueño, 24/09/2026): lo registrado
-  // arriba, la estimación del mes entero abajo, rotulada como tal.
+  // Y LA PROYECCIÓN NO TIENE SECCIÓN PROPIA (dueño, 24/09/2026 a la tarde: «no me hagas tablas abajo,
+  // poneme lo proyectado en la misma tabla de lo que ya se pagó»): vive en las filas de la 1, la 2 y la 4.
   const secciones = rotulos(armar()).filter((r) => /^\d+ · /.test(r))
   assert.deepEqual(secciones, [
     '1 · IVA', '2 · INGRESOS BRUTOS SAN JUAN', '3 · RETENCIONES SUFRIDAS',
-    '4 · OTROS IMPUESTOS', '5 · DEUDA FINANCIERA', '6 · PROYECCIÓN A FIN DE MES (ESTIMACIÓN)',
+    '4 · OTROS IMPUESTOS', '5 · DEUDA FINANCIERA',
   ])
+  assert.equal(rotulos(armar()).some((r) => /PROYECCIÓN A FIN DE MES|Total proyectado/i.test(r)), false, 'la sección 7 aparte se retiró')
 })
 
 test('NADA DEBAJO DEL ÚLTIMO BLOQUE', () => {
@@ -331,10 +334,9 @@ test('NADA DEBAJO DEL ÚLTIMO BLOQUE', () => {
   const ultima = rotulos(g).reduce((acc, r, i) => (r ? i : acc), -1)
   const rotulosSinFrescura = rotulos(g).filter((_, i) => i !== 1 && !rotulos(g)[i].startsWith('='))
   assert.deepEqual(rotulosSinFrescura.filter((r) => /[▲✓]/.test(r)), [])
-  // El último bloque es la proyección (24/09/2026) y termina en su total.
-  const fTotal = filaDe(g, /^⇒ Total proyectado$/)
-  assert.ok(fTotal > filaDe(g, /^Prendario · cuotas por vencer$/), 'la proyección va después de lo registrado')
-  assert.equal(ultima + 1, fTotal, `después de la fila ${fTotal} hay contenido en la ${ultima + 1}`)
+  // El último bloque (sin cargas) es la deuda financiera y termina en «cuotas por vencer».
+  const fUlt = filaDe(g, /^Prendario · cuotas por vencer$/)
+  assert.equal(ultima + 1, fUlt, `después de la fila ${fUlt} hay contenido en la ${ultima + 1}`)
   // Y ni un ▲ en un RÓTULO: el dueño los nombró uno por uno. La fila 2 queda afuera y es la única
   // excepción: es la fórmula de frescura, que muestra «▲ hace N días» SÓLO cuando una fuente se
   // quedó atrás — un aviso que aparece por excepción, no un glifo dibujado todos los días. Es el
@@ -356,24 +358,21 @@ test('con meses de ARCA la pestaña sigue cumpliendo su gramática y su contrato
   assert.equal(g.filasCalendario.iva, armar().filasCalendario.iva)
 })
 
-test('el mes EN CURSO queda vinculado a ARCA y se declara como parcial', () => {
-  // La pregunta del dueño: "la columna del mes en curso se debe actualizar sola". Se actualiza porque
-  // es una fórmula contra _ARCA_RAW, no un número que quedó pegado el día que corrió el generador.
-  // HOY es 06/08/2026, así que agosto es el mes en curso.
+test('el mes EN CURSO es la proyección del mes entero, en la MISMA fila, y nunca baja de ARCA', () => {
+  // HOY es 06/08/2026, así que agosto es el mes en curso: MAX(ARCA; facturas B) en la fila del débito
+  // de la sección 1 —la misma que muestra lo presentado de enero a junio—, rotulado «proyectado».
   const g = armar({ arca: { meses: [7, 8] } })
-  const fDDJJ = filaDe(g, /^DDJJ presentada$/)
-  assert.equal(g.filas[fDDJJ - 1][8], 'parcial')
-  const debito = String(g.filas[filaDe(g, /^Débito fiscal del período$/) - 1][8])
-  assert.match(debito, /_ARCA_RAW/, 'agosto sale de la réplica de comprobantes')
-  // Opción A (24/09/2026): lo registrado es SÓLO ARCA; el MAX con la proyección del Libro vive en la
-  // sección de proyección, rotulada como estimación.
-  assert.doesNotMatch(debito, /^=MAX\(/, 'lo registrado no se mezcla con la proyección')
-  assert.match(String(g.filas[filaDe(g, /^IVA · débito fiscal$/) - 1][8]), /^=MAX\(/, 'la proyección del mes entero nunca queda por debajo de lo registrado')
-  // Julio, en cambio, es del dueño (ancla = 7): cadena vacía, que es lo que `fusionar()` preserva.
-  assert.equal(g.filas[fDDJJ - 1][7], '')
-  // Y los meses de ARCA quedan en gris itálica igual que la proyección: no son la DDJJ oficial.
-  assert.ok(g.proyectadas.some((x) => x.mes === 8 && x.fila === filaDe(g, /^IVA · débito fiscal$/)), 'la proyección se dibuja como estimación')
-  assert.ok(!g.proyectadas.some((x) => x.fila === fDDJJ), 'lo registrado, en tinta')
+  const fEstado = filaDe(g, /^Estado del mes$/)
+  assert.equal(g.filas[fEstado - 1][8], 'proyectado')
+  const fDeb = filaDe(g, /^Débito fiscal · IVA de las ventas$/)
+  const debito = String(g.filas[fDeb - 1][8])
+  assert.match(debito, /^=MAX\(/, 'la proyección del mes entero nunca queda por debajo de lo registrado')
+  assert.match(debito, /_ARCA_RAW/)
+  // Julio es del dueño (ancla = 7): cadena vacía, que es lo que `fusionar()` preserva.
+  assert.equal(g.filas[fEstado - 1][7], '')
+  // Lo proyectado en gris itálica, celda por celda; lo presentado, en tinta.
+  assert.ok(g.proyectadas.some((x) => x.mes === 8 && x.fila === fDeb), 'la proyección se dibuja como estimación')
+  assert.ok(!g.proyectadas.some((x) => x.fila === fDeb && x.mes <= 6), 'lo presentado, en tinta')
 })
 
 test('LA ALÍCUOTA YA NO ES UNA FILA DE ESTA PESTAÑA: es un parámetro del dueño', () => {
@@ -389,7 +388,7 @@ test('LA ALÍCUOTA YA NO ES UNA FILA DE ESTA PESTAÑA: es un parámetro del due�
   assert.equal(g.filaAlicuotaIva, undefined, 'el generador ya no declara una fila de alícuota')
   // El rango con nombre lo sigue leyendo la proyección de IVA: si alguien reemplazara el nombre por
   // un 0,21 tipeado en la fórmula, la alícuota dejaría de ser editable sin que nada se rompa.
-  const cred = String(g.filas[filaDe(g, /^IVA · crédito fiscal$/) - 1][10])
+  const cred = String(g.filas[filaDe(g, /^Crédito fiscal · IVA de las compras$/) - 1][10])
   assert.match(cred, new RegExp(RANGO_ALICUOTA_IVA), 'la proyección sigue leyendo el rango con nombre')
   // Y el parámetro que se publica en «Parámetros» declara el MISMO rótulo por el que se lo busca.
   const p = parametroAlicuota(0.21)
@@ -409,7 +408,7 @@ test('IIBB PROYECTA de julio en adelante: seis meses en blanco era el hueco', ()
   // Antes salía de las cobranzas del Libro y el bloque de al lado de las facturas emitidas: dos
   // definiciones de «las ventas del mes» a tres filas de distancia. En septiembre una decía $71,1M y
   // la otra $183,7M.
-  const base = g.filas[filaDe(g, /^IIBB · base imponible$/) - 1]
+  const base = g.filas[filaDe(g, /^Base imponible · ventas netas$/) - 1]
   assert.match(String(base[9]), /Cobranzas!\$B\$5:\$B="B"/, 'sólo lo facturado, como el débito')
   assert.match(String(base[9]), /Cobranzas!\$J\$5:\$J/, 'la base imponible es el NETO de la factura')
   assert.doesNotMatch(String(base[9]), /_MOVIMIENTOS/, 'la base dejó de ser un percibido')
@@ -425,15 +424,14 @@ test('un mes FUTURO sin facturas cargadas no proyecta NINGUNO de los dos lados',
   const g = armar({ proy: { ...armar().proy ?? {}, meses: [8, 9, 10, 11, 12], ultimoMesConDato: 7, libreDisp: 7050036,
     alicuotaVigente: 0.21, brutoDebito: (m) => [`BRUTO_DEB_${m}`], brutoCredito: (m) => [`BRUTO_CRE_${m}`],
     supuesto: 'el supuesto', sinBase: [11, 12] } })
-  for (const rot of [/^IVA · débito fiscal$/, /^IVA · crédito fiscal$/, /^IIBB · base imponible$/, /^⇒ IVA a pagar en efectivo$/]) {
+  for (const rot of [/^Débito fiscal · IVA de las ventas$/, /^Crédito fiscal · IVA de las compras$/, /^Base imponible · ventas netas$/, /^⇒ IVA a pagar en efectivo$/]) {
     const f = g.filas[filaDe(g, rot) - 1]
     for (const mes of [11, 12]) assert.equal(f[mes], VACIO, `${rot} tiene que quedar vacío en el mes ${mes}`)
   }
-  // Y EL HUECO SE DECLARA: una columna vacía sin explicación se lee como «no debo nada». Desde el
-  // 24/09/2026 lo dice la fila de estado de la proyección (lo registrado no tiene meses futuros).
-  const proc = g.filas[filaDe(g, /^Estado de la proyección$/) - 1]
+  // Y EL HUECO SE DECLARA: una columna vacía sin explicación se lee como «no debo nada».
+  const proc = g.filas[filaDe(g, /^Estado del mes$/) - 1]
   for (const mes of [11, 12]) assert.equal(String(proc[mes]), 'sin ventas')
-  assert.equal(String(proc[9]), 'estimación')
+  assert.equal(String(proc[9]), 'proyectado')
 })
 
 test('los meses proyectados se marcan por CELDA, nunca por columna entera', () => {
@@ -532,7 +530,7 @@ test('el residuo de un layout anterior se limpia de punta a punta (grilla → hu
   // celda que la escritura dejaba vacía. El residuo de I20:M20 seguía visible con este test en verde.
   const { preservarNoVacias } = await import('../lib/no-borrar.mjs')
   const g = armar()
-  const idxCal = g.filas.findIndex((f) => /^⇒ Deuda fiscal y financiera/.test(String(f[0] ?? '')))
+  const idxCal = g.filas.findIndex((f) => /^⇒ Deuda en cuotas/.test(String(f[0] ?? '')))
   assert.ok(idxCal > 0, 'tiene que haber una fila angosta del hero')
   // ═══ LAS HUELLAS SE SELLAN DEL LAYOUT VIEJO, QUE ES LO QUE PASA EN PRODUCCIÓN (09/09/2026) ═══
   //
@@ -555,9 +553,9 @@ test('el residuo de un layout anterior se limpia de punta a punta (grilla → hu
   for (let j = 8; j <= 12; j++) {
     assert.equal(enPestana[idxCal][j], '', `la columna ${j + 1} de la fila del calendario tiene que quedar vacía`)
   }
-  // Y el texto sigue vivo donde SÍ va: la fila de la DDJJ presentada.
-  const idxDDJJ = g.filas.findIndex((f) => String(f[0] ?? '').trim() === 'DDJJ presentada')
-  assert.equal(enPestana[idxDDJJ][8], 'parcial')
+  // Y el texto sigue vivo donde SÍ va: la fila de estado del mes.
+  const idxDDJJ = g.filas.findIndex((f) => String(f[0] ?? '').trim() === 'Estado del mes')
+  assert.equal(enPestana[idxDDJJ][8], 'proyectado')
 })
 
 test('un rótulo con un importe al lado tiene que ENTRAR en su columna', () => {
@@ -571,7 +569,9 @@ test('un rótulo con un importe al lado tiene que ENTRAR en su columna', () => {
   //
   // 87 = 500 px / (10 px × 0,57), la misma cuenta que hace el auditor con el ancho real de la columna
   // A de esta pestaña (`ANCHO_ROTULO`).
-  const CABEN = Math.floor(ANCHO_ROTULO / (10 * 0.57))
+  // MEDIDO EN EL RENDER (24/09/2026): a 300 px el dueño vio cortado «… plan F931 y pre» (45 caracteres).
+  // La cuenta del auditor (0,57 em por carácter) da 52 y dejaba pasar ese corte: el tope es 42.
+  const CABEN = Math.min(42, Math.floor(ANCHO_ROTULO / (10 * 0.57)))
   const largos = armar().filas
     .map((f, i) => ({ fila: i + 1, a: String(f[0] ?? ''), b: String(f[1] ?? '') }))
     .filter((x) => x.a && x.a !== VACIO && x.b && x.b !== VACIO && !x.a.startsWith('='))
@@ -609,7 +609,7 @@ const CARGAS = [
   { impuesto: 'cargas_sociales', periodo: '2026-08', concepto: 'ddjj', fuente: 'ddjj_contador', estado: 'pagado', vencimiento: '2026-09-10', vencimiento_confianza: 'supuesto', determinado: 8331697.69, creditos: null, a_pagar: 8331697.69, saldo_a_favor: null, pagado: 8331697.69, pendiente: 0, datos_al: null, detalle: null },
 ]
 
-test('con el bloque de cargas sociales la pestaña cumple patrón, diseño y contrato, y el bloque va antes de la proyección', () => {
+test('con el bloque de cargas sociales la pestaña cumple patrón, diseño y contrato, y es el último', () => {
   const g = armar({ cargas: CARGAS })
   assert.deepEqual(auditarPatron(comoSeVe(g)), [])
   assert.ok(contratoDeRotulos(g.filas, CALENDARIO_IMPUESTOS.rotulos).ok)
@@ -621,8 +621,11 @@ test('con el bloque de cargas sociales la pestaña cumple patrón, diseño y con
   const d = r.indexOf('1 · IVA')
   assert.deepEqual(g.filas.slice(d, i), sin.filas.slice(d, i), 'el bloque no corre ni una fila de lo registrado')
   assert.deepEqual(r.slice(i + 1, i + 4), ['F931 sep-26', 'Cuota 3/3 · Plan F931 W303094', '⇒ Cargas sociales pendientes'])
-  // La proyección va después, numerada 7 (24/09/2026).
-  assert.ok(r.indexOf('7 · PROYECCIÓN A FIN DE MES (ESTIMACIÓN)') > i + 3)
+  // No hay sección 7: la proyección vive en las tablas de arriba (24/09/2026).
+  assert.equal(r.some((x) => /^7 · /.test(x)), false)
+  // Y la deuda en cuotas suma la cuota de plan de ESTA sección (la base), no CARGAS_PLANES_SIN_PAGAR.
+  const deuda = g.filas.find((f) => /^⇒ Deuda en cuotas/.test(String(f[0])))
+  assert.match(String(deuda[1]), new RegExp(`\\$B\\$${i + 3}`), 'la cuota 3/3 del plan entra a la deuda')
   vaciarColumnaDeProsa(g.filas, ANCHO_PESTANA - 1)
   const mal = auditarDiseno(g.filas.map((f) => (f || []).map((c) => (c === VACIO ? '' : c))), { pestana: 'Impuestos y Financieros' })
   assert.deepEqual(mal, [], mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n'))

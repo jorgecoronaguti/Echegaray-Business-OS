@@ -66,7 +66,11 @@ export function crearGrilla(anio) {
     return push(c)
   }
 
-  const cabecera = () => push(['Concepto', ...MES.map((m) => `'${m}-${String(anio).slice(2)}`), 'Total', 'De dónde sale'])
+  // LOS MESES PROYECTADOS SE MARCAN EN EL ENCABEZADO (24/09/2026): «sep-26 · proy.». Con lo pagado y lo
+  // proyectado en la misma tabla, el encabezado es lo que dice qué columna es un hecho y cuál una
+  // estimación, sin una nota ni una tabla aparte.
+  const cabecera = ({ proyectados = [] } = {}) => push(['Concepto',
+    ...MES.map((m, i) => `'${m}-${String(anio).slice(2)}${proyectados.includes(i + 1) ? ' · proy.' : ''}`), 'Total', 'De dónde sale'])
   const blanco = () => push()
 
   /** Reserva n filas en blanco y devuelve el índice 0-based de la primera. */

@@ -17,6 +17,7 @@
 import { terminoLibro } from './libro-sumas.mjs'
 import { exigirColumnas } from './cobranzas-columnas.mjs'
 import { rangoAbierto } from './columnas-por-encabezado.mjs'
+import { R as ARCA } from './arca-formula.mjs'
 
 /** Los cuatro rubros del libro que dan crédito fiscal: compras con factura. */
 export const RUBROS_CREDITO_LIBRO = ['Materiales Civil', 'Materiales Mantenimiento', 'Estructura', 'Servicios recurrentes']
@@ -145,7 +146,12 @@ export function ventasFacturadasDelMes(anio, m, medida = 'iva', { hoy, cob } = {
   const esElEnCurso = anio === enCurso.anio && m === enCurso.mes
   const B = `(${VENTA.categoria}="B")`
   const porFactura = `ISNUMBER(${VENTA.fecha})*(${VENTA.fecha}>=${desde})*(${VENTA.fecha}<${hasta})`
-  const vencidaSinEmitir = `(${VENTA.comprobante}="")*ISNUMBER(${VENTA.fecha})*(${VENTA.fecha}<${enCurso.inicio})`
+  // YA EMITIDA AUNQUE LE FALTE EL NÚMERO (24/09/2026): una B sin N° cuyo neto y cuyo IVA coinciden (±$1)
+  // con una venta de _ARCA_RAW ya está en ARCA —y en la DDJJ de su mes—. Medido: la FA 1-227 del 21/08
+  // (fila 93, IVA $855.335) se sumaba otra vez al débito de septiembre por no tener el número cargado.
+  const enArca = (c) => `${ARCA}!$${c}$4:$${c};">="&(N(${VENTA[c === 'K' ? 'neto' : 'iva']})-1);${ARCA}!$${c}$4:$${c};"<="&(N(${VENTA[c === 'K' ? 'neto' : 'iva']})+1)`
+  const noEstaEnArca = `(COUNTIFS(${ARCA}!$B$4:$B;"Ventas";${enArca('K')};${enArca('L')})=0)`
+  const vencidaSinEmitir = `(${VENTA.comprobante}="")*ISNUMBER(${VENTA.fecha})*(${VENTA.fecha}<${enCurso.inicio})*${noEstaEnArca}`
   const terminos = cerrado
     ? [`${B}*(${VENTA.comprobante}<>"")*${porFactura}`]
     : [

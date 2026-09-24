@@ -139,7 +139,7 @@ test('LA LÍNEA «Financiero» NO PUEDE SALIR DE ESTA PESTAÑA, y por eso el red
   // YA NO por el rango con nombre de «Cargas Sociales»: por los dos lados se sumaría dos veces.
   const g = grilla({ ...ARGS, cargas: [{ impuesto: 'cargas_sociales', periodo: '2026-06', concepto: 'Plan F931 W303094 · cuota 3/3', fuente: 'manual',
     estado: 'estimado', vencimiento: '2026-09-16', vencimiento_confianza: 'supuesto', a_pagar: 2494876, pagado: 0, pendiente: 2494876, detalle: null }] })
-  const hero = g.filas.find((f) => /^⇒ A pagar en 30 días/.test(String(f[0] ?? '')))
+  const hero = g.filas.find((f) => /^⇒ A pagar próximos 30 días/.test(String(f[0] ?? '')))
   const fCuota = g.filas.findIndex((f) => /^Cuota 3\/3 · Plan F931 W303094/.test(String(f[0] ?? ''))) + 1
   assert.ok(fCuota > 0)
   assert.match(String(hero[1]), new RegExp(`\\$B\\$${fCuota}`))

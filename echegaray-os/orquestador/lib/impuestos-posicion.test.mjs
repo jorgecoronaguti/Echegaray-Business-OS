@@ -7,12 +7,13 @@ import {
 } from './impuestos-posicion.mjs'
 import { CONTROLES, decisionesDe, aplicarDecisiones } from './decisiones-hallazgos.mjs'
 import { NOMBRES_CARGAS } from './libro-extractores-cargas.mjs'
+import { VACIO as VACIO_H } from './preservar-anotaciones.mjs'
 import { vencimientoIva, vencimientoIibb } from './vencimientos-fiscales.mjs'
 
 // `planesPend` NO se tipea: sale del módulo que publica el nombre en «Cargas Sociales». Con el
 // texto escrito a mano en los dos lados, un renombre allá deja esta celda en #NAME? sin que nada acá
 // se ponga rojo — y el hero publicaría «no debo nada» con el mismo aspecto de siempre.
-const REFS = { saldoIva: '$H$56', saldoIibb: '$G$66', prendPend: '$B$92', planesPend: NOMBRES_CARGAS.planesSinPagar, proyeccion: '$J$95' }
+const REFS = { saldoIva: '$H$56', saldoIibb: '$G$66', prendPend: '$B$92', planesPend: '$B$101', proyeccion: 'N($J$14)+N($J$24)+N($J$36)', mesSaldo: 'agosto', mesSiguiente: 'sep.', mesEnCursoLargo: 'septiembre' }
 
 const HOY = '2026-08-06'
 // Las filas del detalle tal como quedan en la pestaña reconstruida. La del PLAN es una función y no
@@ -86,14 +87,18 @@ test('el HERO referencia el detalle: no recalcula nada por su cuenta', () => {
     assert.ok(!/\$?[A-N]\$?\d+:\$?[A-N]?\$?\d*/.test(f), `el hero no barre un rango: ${f}`)
     assert.ok(!/SUM\(|AVERAGE|COUNTIFS?\(/.test(f), `el hero no agrega: ${f}`)
   }
-  assert.match(porRotulo(hero, /A favor en el fisco/)[1], /^=IF\(COUNT\(\$H\$56;\$G\$66\)=2;\$H\$56\+\$G\$66;/,
+  assert.match(porRotulo(hero, /A favor en ARCA/)[1], /^=IF\(COUNT\(\$H\$56;\$G\$66\)=2;\$H\$56\+\$G\$66;/,
     'a favor = libre disponibilidad de IVA + saldo de IIBB, y sólo si los dos son importes')
   // ═══ LA DEUDA CRUZA LAS DOS PESTAÑAS Y NO DUPLICA NINGUNA (09/09/2026) ═══
   //
   // El prendario sale de la fila de ESTA pestaña que lo mide; las cuotas de planes, del rango con
   // nombre que publica «Cargas Sociales», que es la dueña del cuadro de F931. Si alguien volviera a
   // traer acá una fila mensual de planes, tendría que cambiar esta referencia — y el rojo lo dice.
-  assert.equal(porRotulo(hero, /Deuda fiscal y financiera/)[1], `=$B$92+${NOMBRES_CARGAS.planesSinPagar}`)
+  // DESDE EL 24/09/2026 LAS CUOTAS DE PLAN SALEN DE LA SECCIÓN 6 (la base), no de CARGAS_PLANES_SIN_PAGAR:
+  // aquel rango lee el Libro, que no tiene el cronograma del plan W303094, y daba $0 con la cuota 3/3
+  // pendiente. Una referencia al rango con nombre acá vuelve a esconder esa cuota.
+  assert.equal(porRotulo(hero, /Deuda en cuotas/)[1], '=$B$92+$B$101')
+  assert.doesNotMatch(porRotulo(hero, /Deuda en cuotas/)[1], new RegExp(NOMBRES_CARGAS.planesSinPagar))
 })
 
 test('EL HERO SON CUATRO RENGLONES, SIN TITULAR Y SIN UNA SOLA SUB-LÍNEA', () => {
@@ -114,12 +119,16 @@ test('EL HERO SON CUATRO RENGLONES, SIN TITULAR Y SIN UNA SOLA SUB-LÍNEA', () =
   assert.equal(hero.some((f) => /^LA POSICIÓN/.test(String(f[0] ?? ''))), false, 'el titular se retiró')
   // El orden decide la lectura: primero lo que hay que pagar, después lo que se debe, al final lo
   // que se tiene a favor — que es lo único que no dispara una decisión de tesorería.
-  // Y la PROYECCIÓN A FIN DE MES va última y rotulada como estimación (opción A, 24/09/2026): es otra
-  // pregunta —cuánto cuesta el mes entero— y no se suma a ninguna de las de arriba.
+  // Y LOS IMPUESTOS DEL MES ENTERO van últimos, rotulados «estimado» (dueño, 24/09/2026: «¿qué es eso de
+  // proyección, estimación, a favor?»): cada rótulo dice qué es y si sale plata, sin paréntesis.
   assert.deepEqual(conRotulo.map((f) => String(f[0])), [
-    '⇒ A pagar en 30 días', '⇒ Deuda fiscal y financiera', '⇒ A favor en el fisco', '⇒ Proyección a fin de mes (estimación)',
+    '⇒ A pagar próximos 30 días', '⇒ Deuda en cuotas', '⇒ A favor en ARCA y Rentas · no se paga', '⇒ Impuestos de septiembre · estimado',
   ])
-  assert.equal(porRotulo(hero, /Proyección a fin de mes/)[1], '=$J$95', 'referencia el total proyectado del mes en curso')
+  // Enteros en la columna A con el importe al lado: el dueño vio «… plan F931 y pre» cortado (24/09).
+  for (const f of conRotulo) assert.ok(String(f[0]).length <= 40, `«${f[0]}» no entra en la columna A`)
+  for (const f of conRotulo) assert.doesNotMatch(String(f[0]), /[()]/, `sin paréntesis: «${f[0]}»`)
+  assert.equal(porRotulo(hero, /Impuestos de septiembre/)[1], '=N($J$14)+N($J$24)+N($J$36)', 'suma la columna del mes en curso de las tablas')
+  for (const f of conRotulo.slice(1)) assert.ok([undefined, '', ' ::VACIO:: '].includes(f[2]) || !String(f[2]).trim() || f[2] === VACIO_H, `sin texto en la C: «${f[2]}»`)
 })
 
 test('la fecha del primer vencimiento sube a la columna C: es el dato que decide', () => {
@@ -131,13 +140,9 @@ test('la fecha del primer vencimiento sube a la columna C: es el dato que decide
   // esta pestaña la B es plata: un texto ahí lo dibuja el formato de moneda como un importe que no
   // se ve, el defecto `texto_en_numero` que el auditor de pantalla ya cuenta.
   const f = porRotulo(heroDe(), new RegExp(ROTULO_A_PAGAR_30))
-  // ═══ VA COMO FECHA, NO COMO «07/08» (09/09/2026) ═══
-  //
-  // MEDIDO en la copia: con la cadena, la celda quedaba en **46281** —Sheets parsea «07/08» como
-  // fecha y guarda el serial, y el formato TEXT que tenía declarado dibujaba ese número crudo—. Con
-  // `DATE(a;m;d)` la celda es una fecha de verdad y la piel la formatea `dd/mm/yyyy`.
-  assert.equal(f[2], '=DATE(2026;8;7)', 'el prendario del 07/08 es el primero que viene')
-  assert.equal(String(f[2]).includes(','), false, 'es-AR: el separador de argumentos es «;»')
+  // DESDE EL 24/09/2026 LA C ES TEXTO: «desde dd/mm» y, si el IVA o el IIBB del mes en curso vencen en la
+  // ventana, que van estimados. «desde 07/08 · …» no es una fecha que Sheets pueda parsear.
+  assert.equal(f[2], 'desde 07/08', 'el prendario del 07/08 es el primero que viene: sólo la fecha')
   assert.ok(String(f[1]).startsWith('='), 'la B sigue siendo el importe de la ventana')
   // Y sin ningún vencimiento en la ventana, la celda queda vacía en vez de inventar una fecha.
   const sinCal = filasDeLaPosicion({ cal: [], refs: REFS })
@@ -215,9 +220,6 @@ test('«A PAGAR EN 30 DÍAS» SUMA LAS CELDAS DEL DETALLE, no las de un cuadro i
     assert.ok(/^\$[A-N]\$\d+$/.test(t) || /^INDEX\(CARGAS_MES_PLANES;\d+\)$/.test(t),
       `${t} no es ni una celda del detalle ni el rango con nombre de Cargas Sociales`)
   }
-  // Y la cuota previsional sigue contando: si desapareciera, la ventana bajaría sin decirlo.
-  assert.ok(terminos.some((t) => t.includes('CARGAS_MES_PLANES')),
-    'la cuota de planes de F931 tiene que seguir dentro de «A pagar en 30 días»')
 })
 
 test('el hero entra en una pantalla: cuatro mensajes, cuatro números', () => {
@@ -234,7 +236,7 @@ test('UNA REFERENCIA A UNA FILA VACÍA DEVUELVE 0 SIN DAR ERROR — la guarda ti
   // que quedó sin escribir, Sheets devuelve 0, y el hero publica "no hay nada que pagar" con
   // exactamente el mismo aspecto de siempre. Sin error, sin #REF, sin negativo imposible.
   const hero = posicion()
-  const todas = Array.from({ length: 100 }, (_, i) => [`fila ${i + 1}`])
+  const todas = Array.from({ length: 120 }, (_, i) => [`fila ${i + 1}`])
   assert.doesNotThrow(() => verificarReferenciasDelHero(hero, todas))
   // Se vacía UNA de las filas que el hero referencia: la guarda tiene que ponerse roja.
   const referida = verificarReferenciasDelHero(hero, todas)[0]
