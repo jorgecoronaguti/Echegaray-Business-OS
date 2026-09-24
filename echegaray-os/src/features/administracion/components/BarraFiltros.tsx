@@ -112,7 +112,7 @@ export function CampoFiltro({
   testid?: string
 }) {
   return (
-    <label className="flex min-w-0 basis-32 flex-col text-[11px] text-faint">
+    <label className="flex min-w-0 basis-32 flex-col text-[11px] text-faint max-md:grow">
       {label}
       <input
         type={tipo}
@@ -142,7 +142,7 @@ export function SelectFiltro({
   testid?: string
 }) {
   return (
-    <label className="flex min-w-0 basis-36 flex-col text-[11px] text-faint max-md:flex-1">
+    <label className="flex min-w-0 basis-36 flex-col text-[11px] text-faint max-md:grow">
       {label}
       <select name={name} defaultValue={valor ?? ''} className={CTRL} data-testid={testid}>
         {opciones.map((o) => (
