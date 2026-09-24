@@ -37,10 +37,18 @@ export async function getPresencia(
     }
     return { data: null, error: error.message }
   }
+  const gps = ((data ?? []) as unknown as FilaPresencia[])
+  // ═══ LA ASISTENCIA CARGADA TAMBIÉN ES PRESENCIA (dueño, 24/09/2026) ═══
+  // Esta vista lee sólo las fichadas con GPS (`asistencia_marca`), y hoy nadie ficha: el jefe carga
+  // «Está» en Cargar asistencia (`asistencia_dia`). El «Hoy» del jefe decía «0 en obra de 3 · 3 personas
+  // sin registrar» con los tres cargados presentes — «está mezclando lógicas, tablas, todo mal», dueño.
+  // Una fichada manda (trae la hora); sin fichada, lo cargado cuenta: presente = en obra (o jornada
+  // cerrada si no es hoy) y ausente = declarado, que deja de figurar como «sin registrar».
+  const cargada = await presenciaCargada(supabase, fecha, obraId, new Set(gps.map((g) => g.persona_id)))
   // `lat`, `lon` y `precision_m` son numeric: llegan como TEXTO. Sin este Number, una comparación
   // de precisión ordenaría «400» antes que «12» y el enlace al mapa saldría con comillas adentro.
   return {
-    data: ((data ?? []) as unknown as FilaPresencia[]).map((f) => ({
+    data: [...gps, ...cargada].map((f) => ({
       ...f,
       lat: f.lat == null ? null : Number(f.lat),
       lon: f.lon == null ? null : Number(f.lon),
@@ -48,6 +56,51 @@ export async function getPresencia(
     })),
     error: null,
   }
+}
+
+/** La fecha de hoy en San Juan, como la guarda la base. */
+const hoySanJuan = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Argentina/San_Juan', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date())
+
+/**
+ * LO QUE CARGÓ EL JEFE EN «CARGAR ASISTENCIA», como filas de presencia, para quien no fichó con GPS.
+ * Un ausente declarado vuelve con estado `sin_registrar`: no entra en ningún grupo de los que se ven
+ * como «vino», y sale de «sin registrar» porque el jefe ya dijo qué pasó. Si la lectura falla, no se
+ * inventa nada: se devuelve vacío y la pantalla queda como antes.
+ */
+async function presenciaCargada(
+  supabase: SupabaseClient, fecha: string, obraId: string | null | undefined, conFichada: Set<string>,
+): Promise<FilaPresencia[]> {
+  let q = supabase.from('asistencia_dia').select('persona_id, fecha, obra_canonica_id, estado, origen').eq('fecha', fecha)
+  if (obraId) q = q.eq('obra_canonica_id', obraId)
+  const { data, error } = await q
+  if (error || !data?.length) return []
+  const filas = (data as { persona_id: string; fecha: string; obra_canonica_id: string | null; estado: string | null; origen: string | null }[])
+    .filter((a) => !conFichada.has(a.persona_id))
+  if (!filas.length) return []
+  const ids = [...new Set(filas.map((a) => a.persona_id))]
+  const obras = [...new Set(filas.map((a) => a.obra_canonica_id).filter((o): o is string => !!o))]
+  const [dir, obs] = await Promise.all([
+    supabase.from('persona_directorio').select('id, nombre_completo, categoria, puesto').in('id', ids),
+    obras.length ? supabase.from('obra_canonica').select('id, nombre, codigo').in('id', obras) : Promise.resolve({ data: [] }),
+  ])
+  const persona = new Map(((dir.data ?? []) as { id: string; nombre_completo: string; categoria: string | null; puesto: string | null }[]).map((p) => [p.id, p]))
+  const obra = new Map(((obs.data ?? []) as { id: string; nombre: string; codigo?: string | null }[]).map((o) => [o.id, o]))
+  const esHoy = fecha === hoySanJuan()
+  return filas.map((a) => {
+    const p = persona.get(a.persona_id)
+    const o = a.obra_canonica_id ? obra.get(a.obra_canonica_id) : undefined
+    const presente = (a.estado ?? '').toLowerCase() === 'presente'
+    return {
+      persona_id: a.persona_id, nombre_completo: p?.nombre_completo ?? '', categoria: p?.categoria ?? null,
+      puesto: p?.puesto ?? null, fecha: a.fecha, obra_id: a.obra_canonica_id,
+      obra: o ? rotuloDeObra({ codigo: o.codigo ?? null, nombre: o.nombre }) : null,
+      entrada: null, salida: null, incidencias: 0, motivo: null, lat: null, lon: null, precision_m: null,
+      origen: 'cargada por el jefe',
+      estado: presente ? (esHoy ? 'activo' : 'cerrada') : 'sin_registrar',
+    } satisfies FilaPresencia
+  })
 }
 
 /**
