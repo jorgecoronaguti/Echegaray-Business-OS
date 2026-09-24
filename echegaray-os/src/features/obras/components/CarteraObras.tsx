@@ -350,12 +350,16 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
 }
 
 /** EL ENCABEZADO DEL GRUPO: el cliente, como en el CRM. Enlaza a su ficha cuando la tiene. */
-export function CabeceraCliente({ nombre, slug, n, telefono = false }: { nombre: string | null; slug: string | null; n: number; telefono?: boolean }) {
+/** `plano`: sin caja propia (fondo, borde, alto), para cuando la banda la pone quien la contiene —el Gantt—. */
+export function CabeceraCliente({ nombre, slug, n, telefono = false, plano = false }: { nombre: string | null; slug: string | null; n: number; telefono?: boolean; plano?: boolean }) {
   const texto = nombre ?? SIN_CLIENTE
   return (
     <div data-testid="cabecera-cliente" data-cliente={slug ?? ''} style={{
-      display: 'flex', alignItems: 'center', gap: '10px', minHeight: telefono ? '40px' : '36px', padding: telefono ? '10px 0 4px' : '0',
-      borderBottom: `1px solid ${C.borde}`, background: telefono ? undefined : C.tenueFondo,
+      display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0,
+      ...(plano ? {} : {
+        minHeight: telefono ? '40px' : '36px', padding: telefono ? '10px 0 4px' : '0',
+        borderBottom: `1px solid ${C.borde}`, background: telefono ? undefined : C.tenueFondo,
+      }),
       fontSize: telefono ? '12px' : '11.5px', fontWeight: 600, letterSpacing: '.02em', color: nombre ? C.tinta : C.tenue,
     }}>
       {slug && nombre

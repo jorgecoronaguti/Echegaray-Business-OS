@@ -170,16 +170,22 @@ export function CuerpoGantt({ grupos, lista, total, hoyIso, telefono, escala }: 
             borderBottom: `1px solid ${C.borde}`, fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase',
           }}>Obra</div>
           {renglones.map((r, i) => r.tipo === 'cliente' ? (
-            <div key={`c:${r.clave}`} style={{ height: `${ALTO_CLIENTE}px`, display: 'flex', alignItems: 'center', padding: '0 14px', borderBottom: i === renglones.length - 1 ? undefined : `1px solid ${C.borde}` }}>
-              <div style={{ width: '100%' }}><CabeceraCliente nombre={r.nombre} slug={r.slug} n={r.n} /></div>
+            // LA BANDA DEL CLIENTE VA DE BORDE A BORDE, como su gemela del lado de las barras (dueño,
+            // 24/09/2026, captura): la caja gris de la Tabla quedaba metida en el relleno de 14px.
+            <div key={`c:${r.clave}`} style={{ height: `${ALTO_CLIENTE}px`, display: 'flex', alignItems: 'center', padding: '0 14px', background: C.tenueFondo, borderBottom: i === renglones.length - 1 ? undefined : `1px solid ${C.borde}` }}>
+              <CabeceraCliente nombre={r.nombre} slug={r.slug} n={r.n} plano />
             </div>
           ) : (
             <Link key={r.o.obra_id} href={hrefDe(r.o.obra_id)} prefetch={false} data-testid={`fila-obra-${r.o.obra_id}`} data-obra={r.o.obra_id} data-nivel={r.nivel}
               style={{
                 height: `${ALTO_FILA}px`, display: 'flex', alignItems: 'center', padding: `0 14px 0 ${r.nivel ? 36 : 14}px`, fontSize: '13px', textDecoration: 'none',
                 borderBottom: i === renglones.length - 1 ? undefined : `1px solid ${C.borde}`, color: esPrevio(r.o) ? C.tintaSuave : C.tinta,
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              }}>{r.nivel ? <span style={{ color: C.tenue, marginRight: '6px' }}>└</span> : null}{rotuloDeObra(r.o)}</Link>
+              }} title={rotuloDeObra(r.o)}>
+              {r.nivel ? <span style={{ color: C.tenue, marginRight: '6px', flexShrink: 0 }}>└</span> : null}
+              {/* LOS «…» VAN EN UN SPAN: un texto suelto dentro de un flex no recibe `textOverflow` y el
+                  nombre largo se cortaba seco contra la línea de la columna. */}
+              <span style={{ minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{rotuloDeObra(r.o)}</span>
+            </Link>
           ))}
           {lista.length === 0 && <div style={{ height: `${ALTO_FILA}px`, display: 'flex', alignItems: 'center', padding: '0 14px', fontSize: '12.5px', color: C.tintaSuave }}>Nada coincide.</div>}
         </div>
