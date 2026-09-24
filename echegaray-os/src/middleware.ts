@@ -140,7 +140,12 @@ async function middlewareConBackend(request: NextRequest) {
   if (!user && !esRutaPublica(pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    url.searchParams.set('volver', pathname)
+    // EL VOLVER LLEVA LA QUERY ENTERA (24/09/2026). Antes guardaba sólo el path y los parámetros de la
+    // ruta quedaban sueltos en /login: el enlace de firma del efectivo
+    // (`/mi-informacion/efectivo/firmar?entrega=<id>`) volvía después de entrar SIN la entrega, y la
+    // pantalla no sabía qué firmar — «no guarda las firmas, no reconoce», dueño.
+    url.search = ''
+    url.searchParams.set('volver', pathname + request.nextUrl.search)
     return NextResponse.redirect(url)
   }
 
@@ -200,7 +205,7 @@ async function middlewareConBackend(request: NextRequest) {
         const url = request.nextUrl.clone()
         url.pathname = RUTA_DOS_PASOS
         url.search = ''
-        url.searchParams.set('volver', pathname)
+        url.searchParams.set('volver', pathname + request.nextUrl.search)
         return NextResponse.redirect(url)
       }
     }
