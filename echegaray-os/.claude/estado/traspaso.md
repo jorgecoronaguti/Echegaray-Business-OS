@@ -57,12 +57,19 @@ redirect fijo a /clientes y arreglada (bfa6dd14, verificada con sesión de Emili
 confinado (293cbc99) · «Campo» se dice «Trabajo», operario sin raíz /campo (a48f4800) · revisión 1440 y 390
 contra diseño con arreglos (f2604814, a48f4800) · borrados de prueba hechos.
 
-**Pendiente propio, UNO A LA VEZ, en este orden (plan mandado al dueño, post f1puowit):**
-1. Personal: rediseñar con la skill los 3 plegables viejos (asignaciones, imputar horas, horas imputadas).
-2. Un solo avance masivo: «Parte» de Trabajo del jefe → el de Mi obra.
-3. Diseñar Planilla (04c), detalle de actividad y registro de avance.
-4. React #418 en C02 (crear desde presupuesto).
-5. C04/MC3/C10 cuando QP tenga estructura real.
+**24/09 noche (main 0f48af08):** jefe = sólo Personal sin Liquidación (Clientes/Compras/Proveedores/Impuestos/
+Presupuestos/gestión de Efectivo → /obras), verificado con sesión de Emiliano · guardado de asistencia probado con
+su sesión (fila de mañana creada y borrada, 0 restos) — si él sigue fallando es página vieja: se le pidió recargar y
+captura (DM n8tkk56q) · Personal: 3 plegables rediseñados, «Asignar persona» en el lugar, «Quitar» horas discreto
+con confirmación · panel de la tarea (avance, dependencias, rendimiento, notas) en lenguaje nuevo · un solo avance
+masivo (/campo/parte → /obra/avance-masivo) · puedeVerRuta compara sin query.
+
+**Pendiente:**
+1. React #418 en C02: descartados cabecera, fechas, números; el diff SSR/cliente con JS apagado no sirve (streaming).
+   Sin impacto visible. Para ubicarlo: build sin minificar local.
+2. C04/MC3/C10 cuando QP tenga estructura real (el dueño decidió estructura desde cero).
+3. e2e tocados por el agente de Personal (obras-ejecucion, personal-hh, hh-fuente-canonica) sin correr.
+4. «Plan, recursos y edición» (plegable compartido) y BloqueNotas del cronograma: estilo viejo, compartidos fuera de Obras.
 Regla: antes de cerrar/mover una ruta, recorrido real con sesión del usuario real (enlace mágico, lectura).
 
 ## 2. OTROS ABIERTOS
