@@ -52,8 +52,18 @@ prueba, cuenta `…direccion-test…` · confirmación de firma de efectivo: YA 
 Rodrigo no la recibió) — no se tocó.
 **Sin respuesta:** presencia por defecto ¿cuenta como HH? · filtrar `es_prueba` en efectivo-raw/avisos.
 
-**Pendiente propio:** escrituras reales con el dueño (foto, parte, impedimento, asignar, crear/sellar, archivar) cuando QP tenga estructura ·
-C10 sólo se ve en etapa Previo: revisar con la primera obra nueva.
+**24/09 tarde (main 293cbc99):** Clientes sólo Administración (fef20635) · asistencia de jefes rota por
+redirect fijo a /clientes y arreglada (bfa6dd14, verificada con sesión de Emiliano, avisados por DM) · portal
+confinado (293cbc99) · «Campo» se dice «Trabajo», operario sin raíz /campo (a48f4800) · revisión 1440 y 390
+contra diseño con arreglos (f2604814, a48f4800) · borrados de prueba hechos.
+
+**Pendiente propio, UNO A LA VEZ, en este orden (plan mandado al dueño, post f1puowit):**
+1. Personal: rediseñar con la skill los 3 plegables viejos (asignaciones, imputar horas, horas imputadas).
+2. Un solo avance masivo: «Parte» de Trabajo del jefe → el de Mi obra.
+3. Diseñar Planilla (04c), detalle de actividad y registro de avance.
+4. React #418 en C02 (crear desde presupuesto).
+5. C04/MC3/C10 cuando QP tenga estructura real.
+Regla: antes de cerrar/mover una ruta, recorrido real con sesión del usuario real (enlace mágico, lectura).
 
 ## 2. OTROS ABIERTOS
 
