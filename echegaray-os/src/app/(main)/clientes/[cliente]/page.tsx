@@ -424,7 +424,6 @@ export default async function ClientePage({ params, searchParams }: {
 
   /** El detalle del trabajo, DENTRO del CRM. Es una función y no una arrow creada en el JSX: una
    *  arrow pasada a un componente compila, pasa `build` y revienta con React #419. */
-  const hrefTrabajo = (obraId: string) => url({ trabajo: obraId })
 
   const recorteCobranza = esRecorteCobranza(q.cob) ? q.cob : 'todo'
   /** El recorte de Cobranzas en la URL. Función declarada y no arrow en el JSX: una arrow creada en
@@ -880,7 +879,6 @@ export default async function ClientePage({ params, searchParams }: {
                   costos={ficha.costosPorObra}
                   hrefDesgloseHH={hrefDesgloseHH}
                   hrefDetalle={hrefDetalle}
-                  hrefTrabajo={hrefTrabajo}
                   vacio={cerradas.length === 0
                     ? 'Este cliente no tiene ningún trabajo. Se crea desde arriba, colgado de este cliente.'
                     : 'Ningún trabajo en curso. Los terminados están abajo.'}
@@ -903,7 +901,6 @@ export default async function ClientePage({ params, searchParams }: {
                     costos={ficha.costosPorObra}
                     hrefDesgloseHH={hrefDesgloseHH}
                     hrefDetalle={hrefDetalle}
-                    hrefTrabajo={hrefTrabajo}
                     titulo={`Terminados · ${cerradas.length}`}
                     vacio=""
                   />

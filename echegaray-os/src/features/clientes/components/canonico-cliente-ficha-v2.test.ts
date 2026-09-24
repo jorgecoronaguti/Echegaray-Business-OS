@@ -120,15 +120,14 @@ test('la ficha no dibuja el avance de obra, y en su pista va el COSTO', () => {
     'las celdas de costo tienen que callar cuando no se pudieron leer, y sólo verlas quien ve economía')
 })
 
-test('el trabajo se abre en el CRM y el ERP no se repite debajo de cada fila', () => {
+test('la obra se abre en el ERP (dueño, 24/09/2026) y el ERP no se repite debajo de cada fila', () => {
   const src = codigoListas()
-  assert.match(src, /href=\{hrefTrabajo \? hrefTrabajo\(o\.obra_id\) : `\/obras\/\$\{o\.obra_id\}`\}/)
-  // El enlace al ERP colgaba de CADA trabajo y nombraba el módulo del que hay que separarse en toda
-  // la pantalla (dueño, 10/09/2026 18:12). Existe UNA vez: dentro del detalle del trabajo.
+  assert.match(src, /href=\{`\/obras\/\$\{o\.obra_id\}`\}/)
+  assert.doesNotMatch(src, /hrefTrabajo/)
+  // El enlace nombrado al ERP colgaba de CADA trabajo (dueño, 10/09/2026 18:12): la fila entera ya
+  // lleva ahí, no hace falta repetirlo.
   assert.doesNotMatch(src, /Ver en Obras →/)
-  // Y la página tiene que pasarle el destino: sin eso la fila cae al ERP por el respaldo.
-  assert.match(codigoPagina(), /hrefTrabajo=\{hrefTrabajo\}/)
-  assert.match(codigoPagina(), /const hrefTrabajo = \(obraId: string\) => url\(\{ trabajo: obraId \}\)/)
+  assert.doesNotMatch(codigoPagina(), /hrefTrabajo=\{hrefTrabajo\}/)
 })
 
 test('el detalle del trabajo se lee sólo si es de ESTE cliente', () => {

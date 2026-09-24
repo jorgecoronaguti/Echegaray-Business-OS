@@ -170,13 +170,12 @@ const SANGRIA = 16
 
 /** TRABAJO · INICIO · HH · MATERIALES · MANO DE OBRA · CONTRATADO · [acciones]. */
 export function ObrasDelCliente({
-  obras, veEconomia, vacio, economia = null, papeles = null, titulo, hrefTrabajo,
+  obras, veEconomia, vacio, economia = null, papeles = null, titulo,
   horas = null, costos = null, hrefDesgloseHH, hrefDetalle,
 }: {
   obras: ObraPanel[]
   /** Adónde va la fila: el detalle del trabajo DENTRO del CRM. Sin esto, al ERP — que es de donde
    *  el dueño mandó separar esta pantalla. */
-  hrefTrabajo?: (obraId: string) => string
   /** Los papeles del cliente ya agrupados. `null` = no se pudieron leer o no hay ninguno; en los
    *  dos casos la celda queda vacía, y quien dice «no pude leerlos» es la página. */
   papeles?: PapelesDelCliente | null
@@ -284,9 +283,10 @@ export function ObrasDelCliente({
         return (
         <Link
           key={o.obra_id}
-          // EL TRABAJO SE ABRE EN EL CRM. Iba a `/obras/<id>`: un clic y el dueño estaba en el ERP
-          // sin haber pedido irse. El puente al módulo Obras está, nombrado, en la fila.
-          href={hrefTrabajo ? hrefTrabajo(o.obra_id) : `/obras/${o.obra_id}`}
+          // LA OBRA SE ABRE EN EL ERP (dueño, 24/09/2026: «si estando dentro del cliente hago click en la
+          // obra, me tiene que llevar al ERP obra en esa obra»). Da vuelta la decisión del 10/09, que la
+          // abría en el CRM. El detalle de costos sigue a un clic desde sus celdas.
+          href={`/obras/${o.obra_id}`}
           prefetch={false} data-testid="fila-obra-cliente"
           className={`grid items-center ${CAJA_CONTENIDO} ${COLS_OBRAS} ${AIRE_DERECHO} hover:bg-[#F2F1ED]`}
           style={{
