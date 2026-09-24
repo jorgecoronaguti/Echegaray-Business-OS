@@ -119,6 +119,18 @@ async function middlewareConBackend(request: NextRequest) {
   // importes y los nombres de los clientes: esa ruta no pasa por Supabase, lee el Sheet con una
   // service account desde el servidor, así que el RLS —que tapaba al resto— no la cubría.
   // Se guarda a dónde iba para devolverlo ahí después de entrar.
+  // ── EL CLIENTE NO SALE DEL PORTAL (dueño, 24/09/2026: «no quiero que haciendo para atrás el cliente
+  // acceda a toda la plataforma de gestión»). Quien trae la cookie del portal y NO tiene sesión del OS
+  // es un cliente: cualquier ruta de gestión —el login del OS incluido— lo devuelve a su portal. Un
+  // empleado que comparte el aparato sale primero del portal (`/portal/salir` borra la cookie).
+  // Los archivos estáticos (`/marca/isotipo.png`) y la API siguen su camino.
+  if (!user && request.cookies.has('portal_sesion') && !pathname.startsWith('/portal')
+    && !pathname.startsWith('/api/') && !/\.[a-z0-9]+$/i.test(pathname)) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/portal'
+    url.search = ''
+    return NextResponse.redirect(url)
+  }
   if (!user && !esRutaPublica(pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'

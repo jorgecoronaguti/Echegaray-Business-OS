@@ -59,7 +59,6 @@ export function Formulario() {
 
       {/* Cuando el mail no está habilitado el botón sigue ahí: el cliente corrige y reintenta. */}
       <BotonPrimario pendiente={pendiente}>Entrar</BotonPrimario>
-      <PuertaDeAdentro />
     </form>
   )
 }
@@ -103,30 +102,8 @@ function Cabecera() {
   )
 }
 
-/**
- * ═══ LA ÚNICA LÍNEA DE ESTE MÓDULO QUE NO LE HABLA AL CLIENTE (08/09/2026) ═══
- *
- * Y está acá porque el cruce pasa de verdad: alguien de adentro que abre `/portal/login` NO es
- * rebotado —`destinoPorRol` deja pasar la puerta y la salida del portal a propósito, para que el
- * dueño pueda cerrar la sesión de una vista previa sin terminar dentro de su propio sistema—, así
- * que ve esta pantalla, pone su mail de trabajo y recibe «Ese mail no está habilitado». El único
- * rebotado es el nivel campo, y va a parar a `/hoy` sin que nadie le diga por qué.
- *
- * Es una línea de 12,5px al pie, debajo de la acción, sin icono y sin color: para el cliente es
- * ruido que puede ignorar de un vistazo; para el empleado es la salida. Es lo mínimo que cierra el
- * cruce en la dirección que faltaba, y es lo único que cambia en `src/app/portal/**`.
- */
-function PuertaDeAdentro() {
-  return (
-    <p className="mt-6 max-w-[380px] text-[12.5px] text-faint">
-      ¿Trabajás en Echegaray?{' '}
-      {/* `<a>` y no `<Link>`: se cruza de aplicación. El portal y el OS no comparten sesión ni
-          layout, y prefetchear una ruta del OS desde la puerta del cliente sería traer bytes de un
-          sistema que él no usa. */}
-      <a href="/login" className="text-muted underline underline-offset-2">Entrá por acá</a>
-    </p>
-  )
-}
+// «¿Trabajás en Echegaray? Entrá por acá» SE RETIRÓ (dueño, 24/09/2026): el portal no tiene ninguna
+// puerta hacia el sistema de gestión. El empleado entra por app.ecsas.com.ar/login como siempre.
 
 function BotonPrimario({ pendiente, children }: { pendiente: boolean; children: string }) {
   return (

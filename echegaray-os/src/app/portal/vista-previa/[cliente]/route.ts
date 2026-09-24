@@ -29,7 +29,9 @@ export const dynamic = 'force-dynamic'
 export async function GET(_req: Request, { params }: { params: Promise<{ cliente: string }> }) {
   const supabase = await createClient()
   const [usuario, perfil] = await Promise.all([getUsuarioActual(supabase), getPerfilActual(supabase)])
-  if (!usuario || !veEconomia(perfil.data?.rol)) redirect('/login?volver=/clientes')
+  // Sin sesión del OS esto lo abre alguien de afuera: vuelve al ingreso del PORTAL, nunca al del OS.
+  if (!usuario) redirect('/portal/login')
+  if (!veEconomia(perfil.data?.rol)) redirect('/obras')
 
   const { cliente } = await params
   // POR SLUG O POR ID, PERO NO CON UN `or(...)`. `id` es `uuid`: pedirle a PostgREST
