@@ -15,7 +15,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { bloquear, desbloquear, estaBloqueada } from '../lib/pestana-bloqueada.mjs'
 import { pedidos } from '../lib/rangos-nombrados.mjs'
-import { NOMBRES_PUENTE, NOMBRES_NOMINA_BASE, ROTULOS_FILAS_PUENTE, ubicarNomina, cuadroPuente } from '../lib/nomina-puente.mjs'
+import { NOMBRES_PUENTE, NOMBRES_NOMINA_BASE, ROTULOS_FILAS_PUENTE, ubicarNomina, cuadroPuente, filasDeOficina } from '../lib/nomina-puente.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Nómina'
@@ -27,7 +27,16 @@ async function main() {
   const grilla = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:A300`, { render: 'UNFORMATTED_VALUE' })
   const u = ubicarNomina(grilla)
   if (u.falta.length) throw new Error(`no encuentro en «${PESTAÑA}»: ${u.falta.join(' · ')}. No escribo nada.`)
-  const { filas, filaInicio, filaDe, orden } = cuadroPuente(u)
+  // Quiénes del cuadro 1 son de «Oficina» (ver `filasDeOficina`): se leen los dos lados por nombre.
+  const [espejoOfi, nombresNom] = await Promise.all([
+    google.readSheetValues(ID, "'_J_OFICINA'!B1:B400", { render: 'UNFORMATTED_VALUE' }).catch(() => []),
+    google.readSheetValues(ID, `'${PESTAÑA}'!A${u.primeraPersona}:A${u.ultimaPersona}`, { render: 'UNFORMATTED_VALUE' }),
+  ])
+  const deOficina = [...new Set(espejoOfi.map((r) => String(r?.[0] ?? '').trim()).filter((n) => n && !/^obrero$/i.test(n)))]
+  const personas = nombresNom.map((r, i) => ({ fila: u.primeraPersona + i, nombre: String(r?.[0] ?? '') }))
+  const filasOficina = filasDeOficina(personas, deOficina)
+  console.log(`  de Oficina (se pagan por mes, no por quincena): ${filasOficina.map((r) => `f${r} ${personas.find((p) => p.fila === r)?.nombre}`).join(' · ') || 'nadie'}`)
+  const { filas, filaInicio, filaDe, orden } = cuadroPuente(u, { filasOficina })
   const rango = `'${PESTAÑA}'!A${filaInicio}:P${filaInicio + filas.length - 1}`
   console.log(`cuadro 6 → ${rango} (${u.filaPuente ? 'reescribe el que ya está' : 'nuevo, al pie'})`)
   console.log(`  anclas: parámetros f${u.filaParametros} · personas f${u.primeraPersona}–${u.ultimaPersona} · Oficina f${u.filaOficina} · TOTAL f${u.filaTotal} · cargas f${u.filaTotalCargas} · Dirección f${u.filaDireccion}`)
@@ -38,6 +47,27 @@ async function main() {
   const candada = await estaBloqueada({ query }, ID, PESTAÑA).catch(() => false)
   if (candada) await desbloquear({ query }, ID, PESTAÑA)
   try {
+    // LA FILA «Oficina» NO REPITE A LOS QUE YA ESTÁN POR NOMBRE (24/09/2026). Trae de Jornales el
+    // bloque Oficina, que son esas mismas personas: sin la resta, Nómina los sumaba dos veces en su
+    // TOTAL, en sus cargas y en el Cash Flow. Idempotente: si la fórmula ya resta, no se toca.
+    if (filasOficina.length) {
+      const COLS = ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O']
+      const actual = (await google.readSheetValues(ID, `'${PESTAÑA}'!D${u.filaOficina}:O${u.filaOficina}`, { render: 'FORMULA' }))?.[0] ?? []
+      const nueva = COLS.map((X, i) => {
+        const f = String(actual[i] ?? '')
+        const resta = filasOficina.map((r) => `N(${X}$${r})`).join('+')
+        if (!f || f.includes(`-(${resta})`)) return f
+        const base = f.startsWith('=') ? f.slice(1) : (f === '' ? '0' : f)
+        return `=MAX(0;IFERROR(${base};0)-(${resta}))`
+      })
+      if (nueva.some((f, i) => f !== String(actual[i] ?? ''))) {
+        const { tomarSnapshot } = await import('../lib/sheet-snapshot.mjs')
+        console.log(`  snapshot → ${await tomarSnapshot({ google, fileId: ID, pestana: PESTAÑA, tool: 'nomina-puente-cash-flow', directive: 'fila Oficina sin repetir a los jefes (doble conteo)' }) ?? 'no se pudo'}`)
+        const r0 = await google.updateSheetValues(ID, `'${PESTAÑA}'!D${u.filaOficina}:O${u.filaOficina}`, [nueva], { yaGuardado: true })
+        if (r0?.protegido) throw new Error(`la guarda no dejó corregir la fila Oficina: ${r0.motivo ?? ''}`)
+        console.log(`  ✓ fila ${u.filaOficina} «Oficina» ya no repite a los jefes`)
+      }
+    }
     const res = await google.updateSheetValues(ID, rango, filas, { yaGuardado: true })
     if (res?.protegido) throw new Error(`la guarda no dejó escribir el cuadro 6: ${res.motivo ?? 'sin motivo'}`)
     const existentes = await google.getNamedRanges(ID)

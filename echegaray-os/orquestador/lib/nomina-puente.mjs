@@ -44,7 +44,7 @@ export const NOMBRES_NOMINA_BASE = Object.freeze({ total: 'NOMINA_MES_TOTAL', ap
 export const ROTULO_PUENTE = '6 · LO QUE VA AL CASH FLOW · LO QUE FALTA PAGAR DE CADA MES'
 export const ROTULOS_FILAS_PUENTE = Object.freeze({
   jornales: 'Jornales de obra',
-  oficina: 'Oficina',
+  oficina: 'Oficina y jefes (mensual)',
   direccion: 'Dirección · retiros',
   f931: 'Cargas · F931',
   gremiales: 'Cargas · gremiales',
@@ -145,7 +145,7 @@ const COLS_MES = ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O']
  * @param {{anio?:number}} [o]
  * @returns {{filas:Array<Array<string>>, rotulos:Array<string>}}
  */
-export function cuadroPuente(u, { anio = 2026 } = {}) {
+export function cuadroPuente(u, { anio = 2026, filasOficina = [] } = {}) {
   const p = u.filaParametros
   const $ = (col) => `$${col}$${p}`
   const personas = (X) => `${X}$${u.primeraPersona}:${X}$${u.ultimaPersona}`
@@ -155,9 +155,12 @@ export function cuadroPuente(u, { anio = 2026 } = {}) {
   // La fila de F931 dentro del cuadro: la de gremiales la necesita (total − F931).
   const base = (u.filaPuente ?? (u.ultimaUsada + 3))
   const filaDe = (k) => base + 2 + orden.indexOf(k)
+  // Las personas del cuadro 1 que son de «Oficina» (los jefes, ver `filasDeOficina`): se pagan por mes
+  // con Oficina, no por quincena. Van a la línea de sueldos de administración y salen de jornales.
+  const jefes = (X) => (filasOficina.length ? filasOficina.map((r) => `N(${X}$${r})`).join('+') : '0')
   const f = {
-    jornales: (X, m) => `=MAX(0;N(${X}$${u.filaTotal})-N(${X}$${u.filaOficina})-SUMPRODUCT(IFERROR((MONTH(JORNALES_REAL_HASTA)=${m})*(YEAR(JORNALES_REAL_HASTA)=${anio})*JORNALES_REAL_TOTAL;0)))`,
-    oficina: (X, m) => `=MAX(0;N(${X}$${u.filaOficina})-N(INDEX(OFICINA_PAGADO;${m};1)))`,
+    jornales: (X, m) => `=MAX(0;N(${X}$${u.filaTotal})-N(${X}$${u.filaOficina})-(${jefes(X)})-SUMPRODUCT(IFERROR((MONTH(JORNALES_REAL_HASTA)=${m})*(YEAR(JORNALES_REAL_HASTA)=${anio})*JORNALES_REAL_TOTAL;0)))`,
+    oficina: (X, m) => `=MAX(0;N(${X}$${u.filaOficina})+(${jefes(X)})-N(INDEX(OFICINA_PAGADO;${m};1)))`,
     direccion: (X, m) => `=MAX(0;N(${X}$${u.filaDireccion})-N(INDEX(DIRECCION_PAGADO;${m};1)))`,
     f931: (X) => `=LET(t;N(${X}$${u.filaTotalCargas});s;${$('H')}*COUNTIF(${personas(X)};">0");`
       + `rf;${$('D')}+${$('E')}+${$('F')}+${$('G')};`
@@ -244,4 +247,33 @@ export function sacDesdeNomina(mov, totalMes) {
   const formula = `=MAX(${meses.map((m) => `INDEX(${NOMBRES_NOMINA_BASE.total};1;${m})`).join(';')})/2`
   return Object.freeze({ ...mov, importe: r2(mejor / 2), importeFormula: formula,
     concepto: `SAC · semestre ${sem} · 50% del mejor mes de Nómina` })
+}
+
+/**
+ * ¿Qué personas del cuadro 1 de Nómina son las de «Oficina» de Jornales? (24/09/2026). PURO.
+ *
+ * EL DOBLE CONTEO QUE ESTO CIERRA: el bloque «Oficina» de «Jornales por Quincena» son los dos jefes
+ * de obra (Emi Maldonado y Juan Pablo Nievas), y Nómina los tenía DOS veces — por nombre (filas de
+ * persona, $1,8 M c/u) y en el renglón «Oficina» ($3,6 M, traído de Jornales). El Cash Flow los
+ * contaba en jornales y en sueldos de administración, con sus cargas: −$27 M al cierre sin que el
+ * dueño tocara nada. Los nombres no se escriben igual en las dos planillas («Emi Maldonado» /
+ * «Maldonado Emiliano»): coinciden si comparten un apellido y el nombre de una es prefijo del de la
+ * otra.
+ *
+ * @param {Array<{fila:number, nombre:string}>} personas las filas de persona del cuadro 1
+ * @param {Array<string>} deOficina los nombres del espejo `_J_OFICINA`
+ * @returns {Array<number>} las filas (1-based) que son de Oficina
+ */
+export function filasDeOficina(personas = [], deOficina = []) {
+  const tok = (n) => String(n ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-zñ]+/).filter((t) => t.length > 1)
+  const casa = (a, b) => {
+    const A = tok(a); const B = tok(b)
+    if (A.length < 2 || B.length < 2) return false
+    const comunes = A.filter((t) => B.includes(t))
+    if (!comunes.length) return false
+    const restoA = A.filter((t) => !comunes.includes(t)); const restoB = B.filter((t) => !comunes.includes(t))
+    if (!restoA.length || !restoB.length) return comunes.length >= 2
+    return restoA.some((x) => restoB.some((y) => x.startsWith(y) || y.startsWith(x)))
+  }
+  return personas.filter((p) => deOficina.some((o) => casa(p.nombre, o))).map((p) => p.fila)
 }

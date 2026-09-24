@@ -34,7 +34,7 @@ test('Nómina se ubica por rótulo y el cuadro 6 apunta a sus filas', () => {
   const c = cuadroPuente(u)
   assert.equal(c.filaInicio, 92) // al pie, dos filas libres debajo de la última usada (89)
   assert.equal(c.filas[0][0], ROTULO_PUENTE)
-  assert.match(c.filas[2][3], /^=MAX\(0;N\(D\$29\)-N\(D\$28\)-SUMPRODUCT/)
+  assert.match(c.filas[2][3], /^=MAX\(0;N\(D\$29\)-N\(D\$28\)-\(0\)-SUMPRODUCT/) // sin jefes de Oficina, resta 0
   assert.match(c.filas[6][14], /N\(O\$56\)-N\(O97\)/) // gremiales = total de cargas − F931 (fila 97)
   assert.deepEqual(ubicarNomina([['nada']]).falta.length > 0, true)
 })
@@ -114,4 +114,17 @@ test('SAC vivo: 50% del mejor mes DEVENGADO del semestre según Nómina, con fó
   assert.equal(s.importeFormula, '=MAX(INDEX(NOMINA_MES_TOTAL;1;7);INDEX(NOMINA_MES_TOTAL;1;8);INDEX(NOMINA_MES_TOTAL;1;9);INDEX(NOMINA_MES_TOTAL;1;10);INDEX(NOMINA_MES_TOTAL;1;11);INDEX(NOMINA_MES_TOTAL;1;12))/2')
   assert.equal(sacDesdeNomina({ ...mov, estado: 'REAL' }, total).importeFormula, undefined) // lo pagado no se toca
   assert.equal(sacDesdeNomina(mov, null), mov) // sin Nómina, lo de antes
+})
+
+test('los jefes de «Oficina» se reconocen por nombre aunque se escriban distinto, y salen de jornales', async () => {
+  const { filasDeOficina, cuadroPuente, ubicarNomina } = await import('./nomina-puente.mjs')
+  const personas = [{ fila: 10, nombre: 'Aguero Cristian' }, { fila: 25, nombre: 'Maldonado Emiliano' }, { fila: 26, nombre: 'Nievas Juan Pablo' }]
+  assert.deepEqual(filasDeOficina(personas, ['Emi Maldonado', 'Ignacio Nievas', 'Juan Pablo Nievas']), [25, 26])
+  assert.deepEqual(filasDeOficina(personas, ['Ignacio Nievas']), []) // mismo apellido, otra persona
+  const g = []
+  g[3] = ['Parámetros']; g[7] = ['1 · NÓMINA 2026']; g[8] = ['Persona']; g[26] = ['Desvinculados en el año']; g[27] = ['Oficina']; g[28] = ['TOTAL']
+  g[33] = ['2 · CARGAS']; g[55] = ['TOTAL']; g[75] = ['TOTAL DIRECCIÓN']
+  const c = cuadroPuente(ubicarNomina(g), { filasOficina: [25, 26] })
+  assert.match(c.filas[2][11], /-N\(L\$28\)-\(N\(L\$25\)\+N\(L\$26\)\)-SUMPRODUCT/) // jornales sin los jefes
+  assert.match(c.filas[3][11], /N\(L\$28\)\+\(N\(L\$25\)\+N\(L\$26\)\)-N\(INDEX\(OFICINA_PAGADO;9;1\)\)/) // van con Oficina
 })
