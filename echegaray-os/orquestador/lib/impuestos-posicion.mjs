@@ -185,7 +185,7 @@ export function conDecisionesDelDueno(cal = [], liberados = new Map()) {
 // cuatro sub-líneas que glosaban al total de arriba. Las hermanas ya rediseñadas —«Cargas Sociales»
 // y «Nómina»— abren con dos o tres renglones «⇒ rótulo | cifra» y nada más. Son tres filas y el
 // separador.
-export const ALTO_HERO = 4
+export const ALTO_HERO = 5
 
 /**
  * El rótulo de la línea que publica una FECHA al lado del importe. Vive acá, al lado de donde se
@@ -194,6 +194,26 @@ export const ALTO_HERO = 4
  * apuntando a la fila de al lado el día que el hero cambia de orden, sin dar un solo error.
  */
 export const ROTULO_A_PAGAR_30 = 'A pagar en 30 días'
+
+export const ROTULO_PROYECCION_MES = 'Proyección a fin de mes (estimación)'
+
+/**
+ * LAS CARGAS SOCIALES DE LA SECCIÓN 6 COMO VENCIMIENTOS DEL CALENDARIO (24/09/2026). Traen su fecha de
+ * la base (`impuesto_posicion.vencimiento`), la misma que usa la app, así «A pagar en 30 días» suma lo
+ * mismo en los dos lados. Sólo lo que vence de hoy en adelante y dentro de la ventana del calendario:
+ * lo vencido sin pago sigue a la vista en la sección 6, no se suma al titular.
+ * @param {{filas?:{fila:number, vencimiento:string|null, rotulo:string}[]}|null} cs lo que devolvió bloqueCargasSociales
+ */
+export function obligacionesDeCargas(cs, hoy) {
+  return (cs?.filas ?? [])
+    .filter((f) => f.vencimiento)
+    .map((f) => {
+      const dias = diasEntre(hoy, f.vencimiento)
+      return { tipo: 'cargas', periodo: f.vencimiento.slice(0, 7), concepto: f.rotulo, mes: Number(f.vencimiento.slice(5, 7)),
+        celda: `$B$${f.fila}`, fecha: f.vencimiento, dias, vencido: dias < 0, confianza: f.confianza ?? null, fuente: 'impuesto_posicion' }
+    })
+    .filter((o) => o.dias >= 0 && o.dias <= VENTANA.adelante)
+}
 
 /**
  * Cuántas filas ocupa la posición entera. Se necesita ANTES de escribir el detalle, para reservarlas.
@@ -262,6 +282,9 @@ export function filasDeLaPosicion({ cal, refs }) {
   // cuadro de IVA), así que no pueden asumir que ahí hay un número: el 17/08 había una leyenda y esta
   // fila publicó #VALUE! en la primera pantalla. Ver `formulaSaldoAFavor`.
   F.push([rotuloTotal('A favor en el fisco'), formulaSaldoAFavor(refs.saldoIva, refs.saldoIibb)])
+  // LA PROYECCIÓN, APARTE Y ROTULADA (24/09/2026): el total del mes en curso de la sección de
+  // proyección. No se suma a nada de arriba: es otra pregunta —cuánto va a costar el mes entero—.
+  F.push([rotuloTotal(ROTULO_PROYECCION_MES), refs.proyeccion ? `=${refs.proyeccion}` : '=0'])
   F.push([])
   return F
 }

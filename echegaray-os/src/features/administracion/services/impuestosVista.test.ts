@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { PosicionImpuesto } from './impuestos.ts'
-import { agenda, columnasConDato, decision, estadoCorto, rotuloSaldo, enDias, estadoLlano, nombreLlano, porImpuesto, urgenciaDe, vistaDe } from './impuestosVista.ts'
+import { agenda, columnasConDato, decision, estadoCorto, rotuloSaldo, enDias, estadoLlano, nombreLlano, porImpuesto, proyeccionDelMes, urgenciaDe, vistaDe } from './impuestosVista.ts'
+import { CONCEPTO_PROYECCION, separarProyeccion } from './impuestos.ts'
 
 const fila = (x: Partial<PosicionImpuesto>): PosicionImpuesto => ({
   impuesto: 'iva', periodo: '2026-08', concepto: 'ddjj', fuente: 'ddjj_contador', estado: 'presentado',
@@ -23,9 +24,9 @@ const PROD = [
   fila({ impuesto: 'ganancias', periodo: '2026-03', concepto: 'anticipo', fuente: 'manual', estado: 'pagado', pagado: 100, pendiente: 5000 }),
 ]
 
-test('la decisión de arriba: cargas y vencido son PARTE del total, no se suman al lado', () => {
+test('la decisión de arriba: cargas son PARTE del total; lo vencido va aparte (una sola definición con la hoja, 24/09/2026)', () => {
   const d = decision(PROD, HOY)
-  assert.equal(d.total, 8166095 + 2494876 + 870434 + 1000)
+  assert.equal(d.total, 8166095 + 2494876 + 870434, 'a pagar en 30 días = lo que vence de hoy a 30 días, sin lo vencido')
   assert.equal(d.cargas.total, 8166095 + 2494876)
   assert.ok(d.cargas.total < d.total, 'la versión vieja las mostraba como dos cifras hermanas')
   assert.deepEqual(d.vencido, { total: 1000, cantidad: 1 })
@@ -36,7 +37,8 @@ test('la decisión de arriba: cargas y vencido son PARTE del total, no se suman 
 test('lo estimado se dice arriba según el ESTADO: «de eso, estimado» o «todo estimado»', () => {
   const d = decision(PROD, HOY)
   assert.deepEqual(d.estimado, { total: 8166095 + 2494876 + 870434, cantidad: 3 })
-  assert.equal(d.todoEstimado, false, 'el IIBB de agosto está declarado')
+  assert.equal(d.todoEstimado, true, 'en la ventana todo es estimado: el IIBB declarado de agosto está vencido y va aparte')
+  assert.equal(decision([...PROD, fila({ impuesto: 'iibb', periodo: '2026-08', vencimiento: '2026-09-30', pendiente: 5 })], HOY).todoEstimado, false, 'un declarado dentro de la ventana lo desmiente')
   const soloEst = decision(PROD.filter((f) => f.estado === 'estimado'), HOY)
   assert.equal(soloEst.todoEstimado, true)
   const fuenteDdjjPeroEstimado = decision([fila({ fuente: 'ddjj_contador', estado: 'estimado', vencimiento: '2026-09-20', pendiente: 7 })], HOY)
@@ -127,4 +129,21 @@ test('?ver= es entrada del usuario: lo desconocido abre el resumen', () => {
   assert.equal(vistaDe(undefined), 'resumen')
   assert.equal(vistaDe('<script>'), 'resumen')
   assert.equal(vistaDe(['iva', 'iibb']), 'resumen')
+})
+
+test('la proyección a fin de mes se separa de lo registrado y no entra a ningún total (opción A, 24/09/2026)', () => {
+  const proy = [
+    fila({ periodo: '2026-09', concepto: CONCEPTO_PROYECCION, fuente: 'calculo', estado: 'estimado', a_pagar: 8327076, pendiente: 8327076 }),
+    fila({ impuesto: 'iibb', periodo: '2026-09', concepto: CONCEPTO_PROYECCION, fuente: 'calculo', estado: 'estimado', a_pagar: 1643129, pendiente: 1643129 }),
+  ]
+  const prendario = fila({ impuesto: 'prendario', periodo: '2026-10', concepto: 'cuota', fuente: 'calculo', estado: 'estimado', vencimiento: '2026-10-07', pendiente: 1280712.77 })
+  const { registrado, proyeccion } = separarProyeccion([...PROD, ...proy, prendario])
+  assert.equal(proyeccion.length, 2)
+  assert.equal(decision(registrado, HOY).total, 8166095 + 2494876 + 870434 + 1280712.77, 'la cuota del prendario entra; la proyección no')
+  assert.equal(decision([...PROD, ...proy], HOY).total, 8166095 + 2494876 + 870434, 'aunque llegue mezclada, la proyección no suma')
+  const p = proyeccionDelMes(proyeccion)
+  assert.equal(p.periodo, '2026-09')
+  assert.equal(p.total, 8327076 + 1643129)
+  assert.equal(proyeccionDelMes(proyeccion, ['iva']).total, 8327076)
+  assert.equal(nombreLlano(prendario), 'Prendario Ford (Santander) · octubre 2026 · cuota')
 })

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  VENTANA, obligacionesDelCalendario, altoDeLaPosicion, filasDeLaPosicion,
+  VENTANA, obligacionesDelCalendario, altoDeLaPosicion, filasDeLaPosicion, obligacionesDeCargas,
   diasAlProximo, ALTO_HERO, ROTULO_A_PAGAR_30,
   verificarReferenciasDelHero, hallazgoDeVencimiento, conDecisionesDelDueno,
 } from './impuestos-posicion.mjs'
@@ -12,7 +12,7 @@ import { vencimientoIva, vencimientoIibb } from './vencimientos-fiscales.mjs'
 // `planesPend` NO se tipea: sale del módulo que publica el nombre en «Cargas Sociales». Con el
 // texto escrito a mano en los dos lados, un renombre allá deja esta celda en #NAME? sin que nada acá
 // se ponga rojo — y el hero publicaría «no debo nada» con el mismo aspecto de siempre.
-const REFS = { saldoIva: '$H$56', saldoIibb: '$G$66', prendPend: '$B$92', planesPend: NOMBRES_CARGAS.planesSinPagar }
+const REFS = { saldoIva: '$H$56', saldoIibb: '$G$66', prendPend: '$B$92', planesPend: NOMBRES_CARGAS.planesSinPagar, proyeccion: '$J$95' }
 
 const HOY = '2026-08-06'
 // Las filas del detalle tal como quedan en la pestaña reconstruida. La del PLAN es una función y no
@@ -75,7 +75,7 @@ const porRotulo = (filas, re) => filas.find((f) => re.test(String(f[0] ?? '')))
 test('el HERO referencia el detalle: no recalcula nada por su cuenta', () => {
   const hero = heroDe()
   const formulas = hero.map((f) => String(f[1] ?? '')).filter((x) => x.startsWith('='))
-  assert.equal(formulas.length, 3, 'las tres filas del hero son fórmula, ninguna un número pegado')
+  assert.equal(formulas.length, 4, 'las cuatro filas del hero son fórmula, ninguna un número pegado')
   for (const f of formulas) {
     assert.ok(!/SUMIFS?\(/.test(f), `el hero no vuelve a sumar Compras: ${f}`)
     assert.ok(!/Compras!|_BANCO_RAW|_MOVIMIENTOS/.test(f), `el hero no toca una fuente: ${f}`)
@@ -96,7 +96,7 @@ test('el HERO referencia el detalle: no recalcula nada por su cuenta', () => {
   assert.equal(porRotulo(hero, /Deuda fiscal y financiera/)[1], `=$B$92+${NOMBRES_CARGAS.planesSinPagar}`)
 })
 
-test('EL HERO SON TRES RENGLONES, SIN TITULAR Y SIN UNA SOLA SUB-LÍNEA', () => {
+test('EL HERO SON CUATRO RENGLONES, SIN TITULAR Y SIN UNA SOLA SUB-LÍNEA', () => {
   // ═══ LO QUE ESTE TEST FIJA (09/09/2026) ═══
   //
   // El dueño, sobre las cuatro pestañas: *«minimalismo extremo, sin aclaraciones ni explicaciones de
@@ -105,7 +105,7 @@ test('EL HERO SON TRES RENGLONES, SIN TITULAR Y SIN UNA SOLA SUB-LÍNEA', () => 
   // rojo antes de que la escritura toque el archivo.
   const hero = heroDe()
   const conRotulo = hero.filter((f) => String(f[0] ?? '').trim())
-  assert.equal(conRotulo.length, 3, `el hero tiene ${conRotulo.length} renglones con rótulo`)
+  assert.equal(conRotulo.length, 4, `el hero tiene ${conRotulo.length} renglones con rótulo`)
   for (const f of conRotulo) {
     assert.match(String(f[0]), /^⇒ /, `todo renglón del hero es un total: «${f[0]}»`)
     assert.doesNotMatch(String(f[0]), /^\s{2,}·/, 'ninguna sub-línea')
@@ -114,9 +114,12 @@ test('EL HERO SON TRES RENGLONES, SIN TITULAR Y SIN UNA SOLA SUB-LÍNEA', () => 
   assert.equal(hero.some((f) => /^LA POSICIÓN/.test(String(f[0] ?? ''))), false, 'el titular se retiró')
   // El orden decide la lectura: primero lo que hay que pagar, después lo que se debe, al final lo
   // que se tiene a favor — que es lo único que no dispara una decisión de tesorería.
+  // Y la PROYECCIÓN A FIN DE MES va última y rotulada como estimación (opción A, 24/09/2026): es otra
+  // pregunta —cuánto cuesta el mes entero— y no se suma a ninguna de las de arriba.
   assert.deepEqual(conRotulo.map((f) => String(f[0])), [
-    '⇒ A pagar en 30 días', '⇒ Deuda fiscal y financiera', '⇒ A favor en el fisco',
+    '⇒ A pagar en 30 días', '⇒ Deuda fiscal y financiera', '⇒ A favor en el fisco', '⇒ Proyección a fin de mes (estimación)',
   ])
+  assert.equal(porRotulo(hero, /Proyección a fin de mes/)[1], '=$J$95', 'referencia el total proyectado del mes en curso')
 })
 
 test('la fecha del primer vencimiento sube a la columna C: es el dato que decide', () => {
@@ -217,13 +220,13 @@ test('«A PAGAR EN 30 DÍAS» SUMA LAS CELDAS DEL DETALLE, no las de un cuadro i
     'la cuota de planes de F931 tiene que seguir dentro de «A pagar en 30 días»')
 })
 
-test('el hero entra en una pantalla: tres mensajes, tres números', () => {
+test('el hero entra en una pantalla: cuatro mensajes, cuatro números', () => {
   const hero = posicion()
   assert.equal(hero.length, ALTO_HERO)
   const mensajes = hero.filter((f) => /^⇒/.test(String(f[0] ?? ''))).length
   const conImporte = hero.filter((f) => String(f[1] ?? '').startsWith('=')).length
-  assert.equal(mensajes, 3, 'tres y no más: es lo que se lee sin bajar la vista')
-  assert.equal(conImporte, 3, 'un número por mensaje, ni uno suelto')
+  assert.equal(mensajes, 4, 'cuatro y no más: es lo que se lee sin bajar la vista')
+  assert.equal(conImporte, 4, 'un número por mensaje, ni uno suelto')
 })
 
 test('UNA REFERENCIA A UNA FILA VACÍA DEVUELVE 0 SIN DAR ERROR — la guarda tiene que gritar', () => {
@@ -257,4 +260,17 @@ test('la decisión del dueño sigue pegada al vencimiento — ahora la ve el inf
   // Y sólo ÉSE: se libera un vencimiento, no el control entero.
   const otros = c.filter((o) => o.vencido && hallazgoDeVencimiento(o).clave !== clave)
   for (const o of otros) assert.equal(o.decisionDelDueno, undefined, o.concepto)
+})
+
+test('las cargas de la sección 6 entran al calendario con la fecha de la BASE; lo vencido no suma (24/09/2026)', () => {
+  const cs = { filas: [
+    { fila: 47, vencimiento: '2026-10-10', rotulo: 'F931 sep-26', confianza: 'supuesto' },
+    { fila: 48, vencimiento: '2026-10-16', rotulo: 'Cuota 3/3 · Plan F931 W303094', confianza: 'supuesto' },
+    { fila: 49, vencimiento: '2026-09-01', rotulo: 'F931 ago-26 vencido' },
+  ] }
+  const o = obligacionesDeCargas(cs, '2026-09-24')
+  assert.deepEqual(o.map((x) => [x.celda, x.dias]), [['$B$47', 16], ['$B$48', 22]], 'lo vencido queda en la sección 6, no en el titular')
+  const hero = filasDeLaPosicion({ cal: o, refs: REFS })
+  assert.equal(hero[0][1], '=$B$47+$B$48')
+  assert.deepEqual(obligacionesDeCargas(null, '2026-09-24'), [])
 })

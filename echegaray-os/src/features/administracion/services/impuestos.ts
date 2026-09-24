@@ -14,6 +14,8 @@
 
 export type Impuesto =
   | 'iva' | 'iibb' | 'ganancias' | 'bienes_personales' | 'cargas_sociales' | 'impuesto_cheque' | 'sellos' | 'otro'
+  /** La cuota del prendario Ford: no es impuesto, pero entra a «A pagar en 30 días» igual que en la hoja (24/09/2026). */
+  | 'prendario'
 
 export interface PosicionImpuesto {
   impuesto: Impuesto
@@ -30,7 +32,7 @@ export interface PosicionImpuesto {
   pagado: number
   pendiente: number | null
   datos_al: string | null
-  detalle: { parcial?: boolean; creditos_parciales?: boolean } | null
+  detalle: { parcial?: boolean; creditos_parciales?: boolean; proyeccion?: boolean; celda?: string } | null
 }
 
 export interface PagoSinImputar {
@@ -51,11 +53,23 @@ export interface Sincronizacion {
 
 export const NOMBRE_IMPUESTO: Record<Impuesto, string> = {
   iva: 'IVA', iibb: 'IIBB San Juan', ganancias: 'Ganancias', bienes_personales: 'Bienes Personales',
-  cargas_sociales: 'F931', impuesto_cheque: 'Imp. al cheque', sellos: 'Sellos', otro: 'Otro',
+  cargas_sociales: 'F931', impuesto_cheque: 'Imp. al cheque', sellos: 'Sellos', otro: 'Otro', prendario: 'Prendario',
 }
 
 /** El orden de lectura: lo que más plata mueve primero. */
-const ORDEN: Impuesto[] = ['iva', 'iibb', 'cargas_sociales', 'ganancias', 'bienes_personales', 'impuesto_cheque', 'sellos', 'otro']
+const ORDEN: Impuesto[] = ['iva', 'iibb', 'cargas_sociales', 'ganancias', 'bienes_personales', 'impuesto_cheque', 'sellos', 'otro', 'prendario']
+
+// ═══ LO REGISTRADO Y LA PROYECCIÓN, APARTE (dueño, 24/09/2026 — «opción A») ═══
+//
+// La base guarda, además de lo registrado, la PROYECCIÓN A FIN DE MES que calcula la pestaña
+// «Impuestos y Financieros» (IVA, IIBB e impuesto al cheque del mes entero), con este concepto y sin
+// vencimiento. No es deuda: se separa ANTES de cualquier cuenta, así ningún total la mezcla.
+export const CONCEPTO_PROYECCION = 'proyección a fin de mes'
+
+export function separarProyeccion(filas: PosicionImpuesto[]) {
+  const esProy = (f: PosicionImpuesto) => f.concepto === CONCEPTO_PROYECCION
+  return { registrado: filas.filter((f) => !esProy(f)), proyeccion: filas.filter(esProy) }
+}
 
 export const NOMBRE_FUENTE: Record<PosicionImpuesto['fuente'], string> = {
   ddjj_contador: 'DDJJ', arca: 'ARCA', calculo: 'cálculo', manual: 'Compras',
@@ -71,21 +85,30 @@ const dias = (desde: string, hasta: string) =>
 export interface Vencimiento extends PosicionImpuesto { dias: number }
 
 /**
- * LO QUE HAY QUE PAGAR EN 30 DÍAS. Entra lo que tiene vencimiento en la ventana y NO está saldado:
- * `pendiente > 0`, o `pendiente` null —el importe no se conoce, y un vencimiento sin importe se muestra
- * como tal en vez de desaparecer—. `total` suma sólo lo conocido y `sinImporte` cuenta lo que no.
+ * LO QUE HAY QUE PAGAR EN 30 DÍAS — UNA SOLA DEFINICIÓN, LA MISMA QUE LA HOJA (dueño, 24/09/2026): lo
+ * PENDIENTE con vencimiento entre hoy y hoy + 30 días (F931, cuotas de plan, IVA, IIBB, la cuota del
+ * prendario; el impuesto al cheque se debita en el acto y no queda pendiente). `pendiente > 0`, o
+ * `pendiente` null —el importe no se conoce, y un vencimiento sin importe se muestra como tal en vez de
+ * desaparecer—. `total` suma sólo lo conocido y DENTRO de la ventana.
+ *
+ * LO VENCIDO SIN PAGO (hasta 45 días atrás) sigue en `lista` y se informa en `vencido`, pero NO entra a
+ * `total`: es una alarma aparte, no «lo que vence en 30 días». Así el titular de la app y el de la hoja
+ * cuentan lo mismo (la hoja no puede saber qué se pagó de un vencimiento pasado).
  */
 export function aPagarProximos(filas: PosicionImpuesto[], hoy: string) {
   const lista: Vencimiento[] = filas
-    .filter((f) => f.vencimiento && f.estado !== 'pagado' && (f.pendiente === null || f.pendiente > 0))
+    .filter((f) => f.vencimiento && f.estado !== 'pagado' && f.concepto !== CONCEPTO_PROYECCION && (f.pendiente === null || f.pendiente > 0))
     .map((f) => ({ ...f, dias: dias(hoy, f.vencimiento as string) }))
     .filter((f) => f.dias <= DIAS_ADELANTE && f.dias >= -DIAS_VENCIDO)
     .sort((a, b) => a.dias - b.dias)
+  const enVentana = lista.filter((f) => f.dias >= 0)
+  const vencidas = lista.filter((f) => f.dias < 0)
   return {
     lista,
-    total: lista.reduce((s, f) => s + (f.pendiente ?? 0), 0),
-    sinImporte: lista.filter((f) => f.pendiente === null).length,
-    vencidos: lista.filter((f) => f.dias < 0).length,
+    total: enVentana.reduce((s, f) => s + (f.pendiente ?? 0), 0),
+    sinImporte: enVentana.filter((f) => f.pendiente === null).length,
+    vencidos: vencidas.length,
+    totalVencido: vencidas.reduce((s, f) => s + (f.pendiente ?? 0), 0),
   }
 }
 

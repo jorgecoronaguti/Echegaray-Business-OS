@@ -114,3 +114,36 @@ test('IIBB: el vencimiento impreso en la DDJJ manda y queda verificado (agosto v
   const [sinFecha] = obligacionesIibbDDJJ([IIBB_AGO])
   assert.equal(sinFecha.vencimiento_confianza, 'supuesto', 'sin fecha impresa sigue la regla, y dice que es supuesta')
 })
+
+test('la cuota del prendario: importe del ÚLTIMO débito real, sólo cuotas futuras, día del cronograma', async () => {
+  const { obligacionesPrendario } = await import('./impuestos-registro.mjs')
+  const plan = { dia_de_debito: 7, ultima_cuota: { periodo: '2026-12' }, concepto_en_el_extracto: 'Prestamos prendarios - 0179-039101464204' }
+  const banco = [
+    { fecha: '2026-08-07', concepto: 'Prestamos prendarios - 0179-039101464204', importe: '-1281778.38' },
+    { fecha: '2026-09-07', concepto: 'Prestamos prendarios - 0179-039101464204', importe: '-1280712.77' },
+    { fecha: '2026-09-08', concepto: 'Transferencia a terceros', importe: '-5000' },
+  ]
+  const o = obligacionesPrendario(banco, plan, { datosAl: '2026-09-23' })
+  assert.deepEqual(o.map((x) => [x.periodo, x.vencimiento, x.a_pagar]), [
+    ['2026-10', '2026-10-07', 1280712.77], ['2026-11', '2026-11-07', 1280712.77], ['2026-12', '2026-12-07', 1280712.77],
+  ])
+  assert.ok(o.every((x) => x.impuesto === 'prendario' && x.estado === 'estimado' && x.vencimiento_confianza === 'supuesto'))
+  assert.deepEqual(obligacionesPrendario([], plan), [], 'sin débito real no se inventa la cuota')
+  assert.deepEqual(obligacionesPrendario(banco, null), [], 'sin cronograma no se proyecta')
+})
+
+test('la proyección a fin de mes se COPIA de la pestaña, del mes en curso, sin vencimiento', async () => {
+  const { obligacionesProyeccion, CONCEPTO_PROYECCION } = await import('./impuestos-registro.mjs')
+  const rot = { iva: '⇒ IVA a pagar en efectivo', iibb: '⇒ IIBB a pagar en el mes', cheque: 'Impuesto al cheque (Ley 25.413)' }
+  const filas = [['Impuestos y Financieros']]
+  filas[54] = [rot.iva, 0, 0, 0, 0, 0, 0, 0, 0, 8327269.4, 5575035, 0, 0]
+  filas[58] = [rot.iibb, 0, 0, 0, 0, 0, 0, 0, 432764.9, 1643148.2, 0, 0, 0]
+  filas[60] = [rot.cheque, 0, 0, 0, 0, 0, 0, 0, 0, 3356206.1, 0, 0, 0]
+  const o = obligacionesProyeccion(filas, rot, '2026-09-24')
+  assert.deepEqual(o.map((x) => [x.impuesto, x.periodo, x.a_pagar, x.detalle.celda]), [
+    ['iva', '2026-09', 8327269.4, 'J55'], ['iibb', '2026-09', 1643148.2, 'J59'], ['impuesto_cheque', '2026-09', 3356206.1, 'J61'],
+  ])
+  assert.ok(o.every((x) => x.concepto === CONCEPTO_PROYECCION && x.vencimiento === null && x.estado === 'estimado'))
+  assert.throws(() => obligacionesProyeccion([['Otra pestaña']], rot, '2026-09-24'), /no es «Impuestos y Financieros»/)
+  assert.throws(() => obligacionesProyeccion([['Impuestos y Financieros']], rot, '2026-09-24'), /no encontré la fila/)
+})

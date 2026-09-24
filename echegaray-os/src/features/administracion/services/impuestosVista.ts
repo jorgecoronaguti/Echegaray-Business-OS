@@ -32,7 +32,7 @@ export const TITULO_VISTA: Record<Vista, string> = {
 
 export const IMPUESTOS_DE_VISTA: Record<Exclude<Vista, 'resumen' | 'historial'>, Impuesto[]> = {
   iva: ['iva'], iibb: ['iibb'], cargas: ['cargas_sociales'], ganancias: ['ganancias'],
-  otros: ['bienes_personales', 'impuesto_cheque', 'sellos', 'otro'],
+  otros: ['bienes_personales', 'impuesto_cheque', 'sellos', 'otro', 'prendario'],
 }
 
 export type VistaImpuesto = keyof typeof IMPUESTOS_DE_VISTA
@@ -45,6 +45,7 @@ export const vistaDeImpuesto = (i: Impuesto): VistaImpuesto =>
 export const NOMBRE_LLANO: Record<Impuesto, string> = {
   iva: 'IVA', iibb: 'Ingresos Brutos San Juan', cargas_sociales: 'Cargas sociales (F931)', ganancias: 'Ganancias',
   bienes_personales: 'Bienes Personales', impuesto_cheque: 'Impuesto al cheque', sellos: 'Sellos', otro: 'Otro impuesto',
+  prendario: 'Prendario Ford (Santander)',
 }
 
 /** De dónde sale el número, dicho como lo diría administración. */
@@ -165,12 +166,14 @@ export function agenda(lista: Vencimiento[]) {
 export function decision(filas: PosicionImpuesto[], hoy: string) {
   const p = aPagarProximos(filas, hoy)
   const vencidas = p.lista.filter((f) => f.dias < 0)
-  const cargas = p.lista.filter((f) => f.impuesto === 'cargas_sociales')
-  const estimadas = p.lista.filter((f) => f.estado === 'estimado')
+  const enVentana = p.lista.filter((f) => f.dias >= 0)
+  const cargas = enVentana.filter((f) => f.impuesto === 'cargas_sociales')
+  const estimadas = enVentana.filter((f) => f.estado === 'estimado')
   return {
     lista: p.lista,
+    /** Lo pendiente que vence de hoy a 30 días. Lo vencido NO está adentro: va en `vencido`. */
     total: p.total,
-    cantidad: p.lista.length,
+    cantidad: enVentana.length,
     sinImporte: p.sinImporte,
     vencido: { total: vencidas.reduce((s, f) => s + (f.pendiente ?? 0), 0), cantidad: vencidas.length },
     cargas: { total: cargas.reduce((s, f) => s + (f.pendiente ?? 0), 0), cantidad: cargas.length },
@@ -180,9 +183,20 @@ export function decision(filas: PosicionImpuesto[], hoy: string) {
      * deuda declarada.
      */
     estimado: { total: estimadas.reduce((s, f) => s + (f.pendiente ?? 0), 0), cantidad: estimadas.length },
-    todoEstimado: p.lista.length > 0 && estimadas.length === p.lista.length,
+    todoEstimado: enVentana.length > 0 && estimadas.length === enVentana.length,
     proximo: p.lista.find((f) => f.dias >= 0) ?? null,
   }
+}
+
+/**
+ * LA PROYECCIÓN A FIN DE MES (ESTIMACIÓN), por impuesto y en total: la copia de la sección 7 de la
+ * pestaña. Se muestra aparte y rotulada; no se suma a ningún número de arriba.
+ */
+export function proyeccionDelMes(proyeccion: PosicionImpuesto[], impuestos?: Impuesto[]) {
+  const propias = proyeccion.filter((f) => !impuestos || impuestos.includes(f.impuesto))
+  const periodo = propias.reduce<string | null>((u, f) => (u === null || f.periodo > u ? f.periodo : u), null)
+  const delMes = propias.filter((f) => f.periodo === periodo)
+  return { periodo, filas: delMes, total: delMes.reduce((s, f) => s + (f.a_pagar ?? 0), 0) }
 }
 
 /**

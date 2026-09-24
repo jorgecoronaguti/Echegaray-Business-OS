@@ -248,3 +248,89 @@ export function obligacionesIibbEstimadas({ libro, ddjjs = [], creditos = {}, da
   }
   return out
 }
+
+// ═══ LA CUOTA DEL PRENDARIO — «A PAGAR EN 30 DÍAS» TIENE UNA SOLA DEFINICIÓN (dueño, 24/09/2026) ═══
+//
+// La pestaña «Impuestos y Financieros» suma la cuota del prendario Ford a «A pagar en 30 días» y la app
+// no la tenía: el mismo titular daba dos números. No es un impuesto, pero es una salida con fecha que el
+// dueño decidió ver en el mismo total. Se calcula IGUAL que el Libro (`dePrendarioFuturo`): el importe
+// es el del ÚLTIMO débito real del extracto (la cuota es variable, UVA/tasa: escribir un número fijo
+// sería fabricarlo) y el cronograma —día de débito y última cuota— sale de `datos/prestamo-prendario.json`.
+// Se emiten sólo las cuotas FUTURAS: la pagada la prueba el extracto.
+/**
+ * @param {Array<{fecha:string|Date, concepto:string, importe:number|string}>} banco banco_movimientos
+ * @param {{dia_de_debito:number, ultima_cuota:{periodo:string}, concepto_en_el_extracto:string}} plan
+ * @param {{datosAl?:string|null}} [o]
+ */
+export function obligacionesPrendario(banco = [], plan = null, { datosAl = null } = {}) {
+  if (!plan?.dia_de_debito || !plan?.ultima_cuota?.periodo || !plan?.concepto_en_el_extracto) return []
+  const prefijo = String(plan.concepto_en_el_extracto).split(' - ')[0].trim().toLowerCase()
+  const iso = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d ?? '').slice(0, 10))
+  const reales = banco
+    .filter((m) => String(m.concepto ?? '').trim().toLowerCase().startsWith(prefijo) && Number(m.importe) < 0)
+    .sort((a, b) => iso(a.fecha).localeCompare(iso(b.fecha)))
+  const ultimo = reales.at(-1)
+  if (!ultimo) return []
+  const cuota = c2(Math.abs(Number(ultimo.importe)))
+  const out = []
+  let [anio, mes] = iso(ultimo.fecha).slice(0, 7).split('-').map(Number)
+  mes += 1
+  if (mes > 12) { mes = 1; anio += 1 }
+  const fin = plan.ultima_cuota.periodo
+  for (let p = `${anio}-${String(mes).padStart(2, '0')}`; p <= fin;) {
+    out.push({
+      impuesto: 'prendario', periodo: p, concepto: 'cuota', fuente: 'calculo', lector: 'banco',
+      estado: 'estimado', vencimiento: `${p}-${String(plan.dia_de_debito).padStart(2, '0')}`, vencimiento_confianza: 'supuesto',
+      determinado: cuota, base_imponible: null, creditos: null, saldo_favor_anterior: null,
+      a_pagar: cuota, saldo_a_favor: null, presentada_el: null, comprobante: null,
+      documento: 'banco_movimientos · prestamo-prendario.json', datos_al: datosAl,
+      detalle: { importe_del_debito_del: iso(ultimo.fecha), dia_de_debito: plan.dia_de_debito, ultima_cuota: fin },
+    })
+    mes += 1
+    if (mes > 12) { mes = 1; anio += 1 }
+    p = `${anio}-${String(mes).padStart(2, '0')}`
+  }
+  return out
+}
+
+// ═══ LA PROYECCIÓN A FIN DE MES — LA COPIA DE LA PESTAÑA, APARTE DE LO REGISTRADO (24/09/2026) ═══
+//
+// Lo registrado lo calcula esta base (ARCA, banco, DDJJ). La PROYECCIÓN del mes entero la calcula la
+// pestaña —es la que tiene el Libro y las facturas por emitir de Cobranzas— y acá se COPIA, rotulada
+// `concepto = 'proyección a fin de mes'`, sin vencimiento: no es una deuda, es una estimación. Así la
+// app muestra el mismo número que la hoja, y no una segunda cuenta que pueda diferir.
+export const CONCEPTO_PROYECCION = 'proyección a fin de mes'
+
+/**
+ * @param {any[][]} filas la pestaña «Impuestos y Financieros» entera, UNFORMATTED_VALUE
+ * @param {{iva:string, iibb:string, cheque:string}} rotulos los rótulos de las tres filas de la sección 7
+ * @param {string} hoy YYYY-MM-DD — define el mes en curso (columna B = enero)
+ */
+export function obligacionesProyeccion(filas = [], rotulos, hoy) {
+  const anio = Number(String(hoy).slice(0, 4))
+  const m = Number(String(hoy).slice(5, 7))
+  const titulo = String(filas?.[0]?.[0] ?? '')
+  if (!/impuestos y financieros/i.test(titulo)) throw new Error('obligacionesProyeccion: la lectura no es «Impuestos y Financieros»')
+  const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim()
+  const fila = (rotulo) => {
+    const i = filas.findIndex((f) => norm(f?.[0]) === norm(rotulo))
+    return i < 0 ? null : i
+  }
+  const periodo = `${anio}-${String(m).padStart(2, '0')}`
+  const out = []
+  for (const [impuesto, rotulo] of [['iva', rotulos.iva], ['iibb', rotulos.iibb], ['impuesto_cheque', rotulos.cheque]]) {
+    const i = fila(rotulo)
+    if (i === null) throw new Error(`obligacionesProyeccion: no encontré la fila «${rotulo}» en la pestaña`)
+    const v = filas[i]?.[m]
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue
+    out.push({
+      impuesto, periodo, concepto: CONCEPTO_PROYECCION, fuente: 'calculo', lector: 'hoja_impuestos',
+      estado: 'estimado', vencimiento: null, vencimiento_confianza: null,
+      determinado: c2(Math.max(0, v)), base_imponible: null, creditos: null, saldo_favor_anterior: null,
+      a_pagar: c2(Math.max(0, v)), saldo_a_favor: null, presentada_el: null, comprobante: null,
+      documento: `Impuestos y Financieros!${String.fromCharCode(65 + m)}${i + 1}`, datos_al: hoy,
+      detalle: { proyeccion: true, celda: `${String.fromCharCode(65 + m)}${i + 1}` },
+    })
+  }
+  return out
+}

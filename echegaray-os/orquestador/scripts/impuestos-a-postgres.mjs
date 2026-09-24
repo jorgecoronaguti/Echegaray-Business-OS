@@ -31,7 +31,18 @@ import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import {
   obligacionesIvaDDJJ, obligacionesIibbDDJJ, obligacionesF931, libroPorPeriodo,
   obligacionesIvaCalculadas, obligacionesIibbEstimadas, obligacionesGananciasDDJJ,
+  obligacionesPrendario, obligacionesProyeccion,
 } from '../lib/impuestos-registro.mjs'
+import { readFileSync } from 'node:fs'
+import { CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
+import { ROTULO as ROTULO_IMPUESTO_CHEQUE } from '../lib/impuesto-cheque.mjs'
+
+// El cronograma del prendario (día de débito, última cuota): el mismo archivo que usa el Libro.
+const PLAN_PRENDARIO = JSON.parse(readFileSync(new URL('../datos/prestamo-prendario.json', import.meta.url), 'utf8'))
+/** Los rótulos de la sección «Proyección a fin de mes» de la pestaña: los mismos que lee el Libro. */
+const ROTULOS_PROYECCION = { iva: CALENDARIO_IMPUESTOS.rotulos.iva, iibb: CALENDARIO_IMPUESTOS.rotulos.iibb, cheque: ROTULO_IMPUESTO_CHEQUE }
+/** El día en San Juan (UTC−3): el mes en curso de la proyección. */
+const hoyAR = () => new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)
 import {
   pagosDelBanco, pagosDeCompras, pagosDeCobranzas, sinPagosRepetidos, creditosPorPeriodo, conEstadoDePago, declaradasCubiertasPorBanco,
   obligacionesDeDebitosBancarios,
@@ -81,7 +92,12 @@ export async function leerFuentes(google) {
   // Los planes no leen nada propio: su cronograma son las filas de Compras y sus pagos, el extracto.
   estado.planes_f931 = estado.compras?.ok ? { ok: true, leidas: estado.compras.leidas } : { ok: false, error: 'compras no leyó' }
   const cargas = await leer(estado, 'cargas_pestana', () => google.readSheetValues(ID, "'Cargas Sociales'!A1:N120", { render: 'UNFORMATTED_VALUE' }))
-  return { estado, ddjjIva, ddjjIibb, ddjjGanancias, veps, f931, cobranzas, arca, banco, compras, cargas }
+  // LA PROYECCIÓN A FIN DE MES SE COPIA DE LA PESTAÑA (24/09/2026): se valida al leer —rótulos
+  // presentes— para que una pestaña a medio escribir no pase por lectura buena.
+  const hoy = hoyAR()
+  const proyeccion = await leer(estado, 'hoja_impuestos', async () => obligacionesProyeccion(
+    await google.readSheetValues(ID, "'Impuestos y Financieros'!A1:N200", { render: 'UNFORMATTED_VALUE' }), ROTULOS_PROYECCION, hoy))
+  return { estado, ddjjIva, ddjjIibb, ddjjGanancias, veps, f931, cobranzas, arca, banco, compras, cargas, proyeccion, hoy }
 }
 
 /** Las filas de las dos tablas, a partir de lo leído. Sin E/S. */
@@ -118,7 +134,10 @@ export function construir(f) {
     ...obligacionesIibbEstimadas({ libro, ddjjs: f.ddjjIibb ?? [], creditos: creditosPorPeriodo(pagos, 'iibb'), datosAl: arcaAl }),
     ...deCompras.obligaciones,
     ...obligacionesDeDebitosBancarios(pagos, { datosAl: bancoAl }),
+    ...obligacionesPrendario(f.banco ?? [], PLAN_PRENDARIO, { datosAl: bancoAl }),
   ], pagos)
+  // Las filas de proyección van DESPUÉS del estado de pago: no son deuda y ningún pago las salda.
+  obligaciones.push(...(f.proyeccion ?? []))
   // HASTA DÓNDE LLEGA CADA FUENTE — lo que la pantalla publica como frescura. Una DDJJ cubre hasta el
   // fin de su período; ARCA y el banco, hasta su último movimiento. No es la hora de la corrida.
   const hasta = (lista) => lista.map((o) => o.datos_al).filter(Boolean).sort().at(-1) ?? null

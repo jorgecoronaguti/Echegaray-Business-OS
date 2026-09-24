@@ -35,7 +35,7 @@ import { resolverColumnas } from '../lib/compras-columnas.mjs'
 // POR TEXTO en la columna A, así que el texto es el contrato y tiene una sola definición.
 import { CALENDARIO_IMPUESTOS, CUADRO } from '../lib/cash-flow-lineas.mjs'
 import { formulaUltimaFecha, formulaUltimoPeriodo, rotuloPorFuente, DIAS_AVISO_MENSUAL } from '../lib/fecha-de-frescura.mjs'
-import { crearGrilla, ANCHO, MES, cmes } from '../lib/impuestos-grilla.mjs'
+import { crearGrilla, ANCHO, MES, M12, cmes } from '../lib/impuestos-grilla.mjs'
 import {
   IIBB_RAW, IIBB_COL, IIBB_FILA0, ARCA_RAW, ARCA_FILA0, BANCO_RAW,
   leerIIBB, leerIVA, leerRetenciones, ventasProyectadas, escribirIIBBRaw, leerColumnasImpuestos, leerFilasCobranzas, leerEncabezadoCompras,
@@ -43,9 +43,10 @@ import {
 import {
   bloqueIva, mesDeLaUltimaDDJJ, bloqueIibb, bloqueRetenciones, bloqueOtros, bloqueDeudaFinanciera,
 } from '../lib/impuestos-bloques.mjs'
+import { bloqueProyeccion } from '../lib/impuestos-proyeccion.mjs'
 import {
   obligacionesDelCalendario, mesesDeCadaObligacion, altoDeLaPosicion, filasDeLaPosicion, verificarReferenciasDelHero,
-  ALTO_HERO, ROTULO_A_PAGAR_30, hallazgoDeVencimiento, conDecisionesDelDueno,
+  ALTO_HERO, ROTULO_A_PAGAR_30, hallazgoDeVencimiento, conDecisionesDelDueno, obligacionesDeCargas,
 } from '../lib/impuestos-posicion.mjs'
 // Lo que el dueño ya decidió sobre un vencimiento puntual. Ver lib/decisiones-hallazgos.mjs.
 import { CONTROLES, decidir, explicarDecisiones } from '../lib/decisiones-hallazgos.mjs'
@@ -143,58 +144,51 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy, cob
   ], { compacto: true })])
   G.blanco()
 
-  // QUÉ MESES TIENE CADA OBLIGACIÓN — se necesita ANTES de escribir el detalle. El porqué y la
-  // cuenta, en `mesesDeCadaObligacion`, al lado del calendario que los consume.
-  const { mesesOf, ...mesesDelCalendario } = mesesDeCadaObligacion({ ivaOficial, proy, iibb, planes })
-  // EL ESPACIO DEL HERO YA NO DEPENDE DE CUÁNTOS VENCIMIENTOS HAYA: el calendario dejó de ocupar
-  // filas (ver `filasDeLaPosicion`), así que la reserva es constante y no puede quedar corta.
+  // QUÉ MESES TIENE CADA OBLIGACIÓN. Desde el 24/09/2026 el calendario lee lo REGISTRADO (la opción A
+  // del dueño): los meses de IVA e IIBB salen de los bloques, abajo; de acá sólo queda `mesesOf`.
+  const { mesesOf } = mesesDeCadaObligacion({ ivaOficial, proy, iibb, planes })
+  // EL ESPACIO DEL HERO YA NO DEPENDE DE CUÁNTOS VENCIMIENTOS HAYA: la reserva es constante.
   const alto = altoDeLaPosicion()
   const base = G.reservar(alto)
 
-  // ── EL DETALLE ─────────────────────────────────────────────────────────────────────────────────
-  const iva = bloqueIva(G, { anio, ivaOficial, proy, arca, hoy })
+  // ── EL DETALLE: LO REGISTRADO ──────────────────────────────────────────────────────────────────
+  const iva = bloqueIva(G, { anio, ivaOficial, proy, arca, hoy, cob })
   const ibb = bloqueIibb(G, { anio, iibb, proy, hoy, cob })
   bloqueRetenciones(G, { anio, cob })
   bloqueOtros(G, { anio, C })
-  // El cuadro de planes se retiró: vive en «Cargas Sociales». Desde el 09/09/2026 tampoco queda la
-  // fila mensual de la cuota — era la misma serie de aquella pestaña, publicada dos veces.
   const deuda = bloqueDeudaFinanciera(G, { anio, C })
-  // La 6 es lo que falta pagar de cargas sociales, desde Postgres (17/09/2026); la vieja 6 sigue eliminada.
+  // La 6 es lo que falta pagar de cargas sociales (F931 y cuotas de plan), desde Postgres (17/09/2026).
   const cs = cargas ? bloqueCargasSociales(G, { filas: cargas, n: 6 }) : null
+  // ── LA PROYECCIÓN A FIN DE MES, APARTE (24/09/2026) ───────────────────────────────────────────
+  const pr = bloqueProyeccion(G, { n: cs ? 7 : 6, anio, iva, ibb, proy, hoy, cob })
 
   // ── LA POSICIÓN, RECIÉN AHORA ──────────────────────────────────────────────────────────────────
-  const calCrudo = obligacionesDelCalendario({
-    hoy, anio, meses: mesesDelCalendario,
-    // La cuota de los planes ya no tiene fila acá: entra al calendario por el rango con nombre que
-    // publica «Cargas Sociales», dentro de la fórmula del hero. Es lo que impide que «A pagar en 30
-    // días» se olvide de una cuota de F931 que sí hay que pagar.
-    filas: {
-      iva: iva.fAPagar,
-      iibb: ibb.fAPagar,
-      plan: (m) => `INDEX(${NOMBRES_CARGAS.planes};${m})`,
-      prendario: deuda.fCuota,
-    },
-  })
-  // ═══ LO QUE EL DUEÑO YA MIRÓ NO VUELVE A GRITAR (13/08) ═══
   //
-  // El IIBB del 16/07 y el IVA del 21/07 salían "⚠ VENCIDO" cada dos horas después de que él dijera
-  // "no afectan". El hecho no se borra —siguen vencidos, siguen en el calendario con su importe— pero
-  // la marca pasa a decir quién los revisó y cuándo. Se libera ESE impuesto de ESE período con ESA
-  // fecha de vencimiento: si ARCA o la DGR mueven la fecha, la decisión caduca sola y el ⚠ vuelve.
+  // «A PAGAR EN 30 DÍAS» TIENE UNA SOLA DEFINICIÓN, LA MISMA QUE LA APP (dueño, 24/09/2026): lo
+  // PENDIENTE con vencimiento entre hoy y hoy + 30 días — IVA e IIBB registrados, la cuota del
+  // prendario, el F931 y las cuotas de plan de la sección 6. El impuesto al cheque entra con lo que
+  // tiene pendiente, que es cero: el banco lo debita en el acto. Lo vencido sin pago no se suma: se
+  // marca aparte. Las cuotas de plan ya NO entran por el rango de «Cargas Sociales»: están en la 6
+  // con su vencimiento, y contarlas por los dos lados las sumaría dos veces.
+  const calCrudo = [
+    ...obligacionesDelCalendario({
+      hoy, anio, meses: { iva: iva.meses, iibb: ibb.meses, prendario: M12 },
+      filas: { iva: iva.fAPagar, iibb: ibb.fAPagar, prendario: deuda.fCuota },
+    }),
+    ...obligacionesDeCargas(cs, hoy),
+  ].sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : String(a.concepto).localeCompare(String(b.concepto))))
   const decVenc = decidir(CONTROLES.vencimientoVencido,
     calCrudo.filter((o) => o.vencido).map(hallazgoDeVencimiento), { hoy })
   explicarDecisiones(decVenc, console.log, { detalle: (h) => `el vencimiento ${h.clave} (${h.forma.fecha})` })
   const cal = conDecisionesDelDueno(calCrudo, new Map(decVenc.silenciados.map((s) => [s.clave, s.decision])))
-  // El saldo a favor es el del ÚLTIMO MES CERRADO, no el del último del cuadro: de agosto en adelante
-  // es proyección y el hero dice la posición HOY. Sale de la CASCADA, no del ancla, que contesta otra
-  // pregunta y publicaba el saldo de un mes anterior al último cerrado. Ver `mesDeLaUltimaDDJJ`.
+  // El saldo a favor es el de la ÚLTIMA DDJJ presentada. Ver `mesDeLaUltimaDDJJ`.
   const mesSaldoIva = mesDeLaUltimaDDJJ(iva.porOrigen) || mesesOf[mesesOf.length - 1] || 0
   const refs = {
     saldoIva: mesSaldoIva ? `$${cmes(mesSaldoIva)}$${iva.fLibre}` : '0',
     saldoIibb: ibb.ultimoReal ? `$${cmes(ibb.ultimoReal)}$${ibb.fSaldo}` : '0',
     prendPend: `$B$${deuda.fPrendPend}`,
-    // Ya no es una celda de esta pestaña: es el rango con nombre que publica «Cargas Sociales».
     planesPend: NOMBRES_CARGAS.planesSinPagar,
+    proyeccion: pr.mesesTot.includes(pr.mesEnCurso) ? `$${cmes(pr.mesEnCurso)}$${pr.fTotalP}` : null,
   }
   const hero = filasDeLaPosicion({ cal, refs })
   G.fijar(base, alto, hero)
@@ -202,16 +196,16 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy, cob
   verificarReferenciasDelHero(hero, G.filas)
 
   // LOS MESES PROYECTADOS: GRIS ITÁLICA, NO FONDO ÁMBAR (09/09/2026). El porqué, en la piel.
+  // TODA LA SECCIÓN DE PROYECCIÓN SE DIBUJA COMO ESTIMACIÓN (gris itálica); lo registrado, en tinta.
   const proyectadas = []
-  for (const m of proy?.meses ?? []) for (const f of [iva.fDeb, iva.fCred, iva.fAPagar, iva.fLibre, iva.fDDJJ]) proyectadas.push({ fila: f, mes: m })
-  for (const m of ibb.proyectados) for (const f of [ibb.fBase, ibb.fAli, ibb.fImp, ibb.fRet, ibb.fAPagar, ibb.fSaldo]) proyectadas.push({ fila: f, mes: m })
+  for (const f of pr.filas) for (const m of M12) proyectadas.push({ fila: f, mes: m })
 
   return {
     filas: G.filas,
     // El bloque que la piel jerarquiza distinto del resto: los tres totales con los que se decide.
     hero: { desde: base + 1, hasta: base + ALTO_HERO },
     alicuotas: [ibb.fAli],
-    textos: [iva.fDDJJ],
+    textos: [iva.fDDJJ, pr.fEstadoP],
     // La FECHA que el hero publica al lado del importe: un dato, no plata. La fila se BUSCA por su
     // rótulo, nunca por su posición dentro del hero.
     fechasCelda: [{ fila: base + 1 + hero.findIndex((f) => String(f?.[0] ?? '').includes(ROTULO_A_PAGAR_30)), col: 2 }],
@@ -221,7 +215,7 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy, cob
     congeladas: base + ALTO_HERO,
     cal,
     refs,
-    filasCalendario: { iva: iva.fAPagar, iibb: ibb.fAPagar },
+    filasCalendario: { iva: pr.fIvaP, iibb: pr.fIibbP },
     // De dónde sale cada mes del cuadro 4. Se devuelve para poder EXHIBIRLO: un cuadro que cambió de
     // fuente sin decirlo es la forma más barata de que nadie lo revise.
     origenIva: iva.porOrigen,

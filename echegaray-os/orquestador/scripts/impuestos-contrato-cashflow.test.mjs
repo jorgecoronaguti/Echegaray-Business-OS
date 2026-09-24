@@ -45,7 +45,7 @@ const IMPUESTOS = { real: 1_023_684, proyectado: 11_800_936 }
 const FINANCIERO = { real: 15_781_442, proyectado: 3_848_432 }
 
 const C = { total: 'O', concepto: 'L', fecha: 'AD', rubro: 'AB', fechaPrev: 'Q', detalle: 'K' }
-const armar = () => grilla({
+const ARGS = {
   anio: 2026,
   cob: COB_HOY,
   C,
@@ -60,7 +60,8 @@ const armar = () => grilla({
     meses: [8, 9, 10, 11, 12], ultimoMesConDato: 7, libreDisp: 7050036, alicuotaVigente: 0.21,
     brutoDebito: (m) => [`BRUTO_DEB_${m}`], brutoCredito: (m) => [`BRUTO_CRE_${m}`], supuesto: 'el supuesto',
   },
-})
+}
+const armar = () => grilla(ARGS)
 
 /** El serial de Sheets de una fecha ISO — la misma cuenta que hace el extractor. */
 const serial = (iso) => {
@@ -133,10 +134,16 @@ test('LA LÍNEA «Financiero» NO PUEDE SALIR DE ESTA PESTAÑA, y por eso el red
   const colA = armar().filas.map((f) => String(f[0] ?? '').trim())
   assert.equal(colA.includes('Planes previsionales F931'), false,
     'la fila de planes se retiró: su cuadro es el de «Cargas Sociales», una sola vez')
-  // La cuota SÍ sigue contando donde tiene que contar: dentro de «A pagar en 30 días» del hero, leída
-  // por el rango con nombre de aquella pestaña. Si desapareciera de ahí, la ventana bajaría ~$2,49M.
-  const hero = armar().filas.find((f) => /^⇒ A pagar en 30 días/.test(String(f[0] ?? '')))
-  assert.match(String(hero[1]), /CARGAS_MES_PLANES/)
+  // La cuota SÍ sigue contando donde tiene que contar: dentro de «A pagar en 30 días» del hero. Desde
+  // el 24/09/2026 entra por la sección 6 (la base, con su vencimiento: la misma fila que ve la app) y
+  // YA NO por el rango con nombre de «Cargas Sociales»: por los dos lados se sumaría dos veces.
+  const g = grilla({ ...ARGS, cargas: [{ impuesto: 'cargas_sociales', periodo: '2026-06', concepto: 'Plan F931 W303094 · cuota 3/3', fuente: 'manual',
+    estado: 'estimado', vencimiento: '2026-09-16', vencimiento_confianza: 'supuesto', a_pagar: 2494876, pagado: 0, pendiente: 2494876, detalle: null }] })
+  const hero = g.filas.find((f) => /^⇒ A pagar en 30 días/.test(String(f[0] ?? '')))
+  const fCuota = g.filas.findIndex((f) => /^Cuota 3\/3 · Plan F931 W303094/.test(String(f[0] ?? ''))) + 1
+  assert.ok(fCuota > 0)
+  assert.match(String(hero[1]), new RegExp(`\\$B\\$${fCuota}`))
+  assert.doesNotMatch(String(hero[1]), /CARGAS_MES_PLANES/)
 })
 
 test('el extractor ROMPE si no le dan las dos filas: una fila muerta devolvería $0 sin error', () => {

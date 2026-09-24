@@ -75,6 +75,14 @@ export const ivaDelPeriodo = (periodo, libro) =>
   `SUMPRODUCT((${R}!$A$4:$A="${periodo}")*(${R}!$B$4:$B="${libro}")*${IVA})`
 
 /** DÉBITO fiscal del período según los comprobantes EMITIDOS que ARCA tiene. */
+/**
+ * El NETO GRAVADO de las ventas de un período según ARCA, con su signo (las notas de crédito restan).
+ * Es la base imponible de IIBB del mes sin DDJJ: la misma que suma la base de datos (`libroPorPeriodo`,
+ * `neto_ventas`), así la pestaña y la app no pueden diferir. Sin '=' inicial: va dentro de otra fórmula.
+ */
+export const formulaNetoVentasArca = (periodo) =>
+  `SUMPRODUCT((${R}!$A$4:$A="${periodo}")*(${R}!$B$4:$B="Ventas")*IF(ISNUMBER(${R}!$K$4:$K);${R}!$K$4:$K;0)*IF(ISNUMBER(${R}!$F$4:$F);${R}!$F$4:$F;0))`
+
 export const formulaDebitoArca = (periodo) => `=${ivaDelPeriodo(periodo, 'Ventas')}`
 
 /**

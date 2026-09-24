@@ -10,7 +10,7 @@
 import Link from 'next/link'
 import { plata } from '@/shared/utils/format'
 import { ddmm, type frescura, type PosicionImpuesto } from '../../services/impuestos'
-import { nombreLlano, TITULO_VISTA, type decision, type porImpuesto, type Vista } from '../../services/impuestosVista'
+import { NOMBRE_LLANO, nombreLlano, TITULO_VISTA, mesLargo, type decision, type porImpuesto, type proyeccionDelMes, type Vista } from '../../services/impuestosVista'
 import { MarcaEstimado, SaldoAFavor, Vence } from './piezas'
 import { SolapaVisible } from './SolapaVisible'
 
@@ -102,10 +102,30 @@ export function NumeroClave({ d }: { d: DatosDecision }) {
           ? <span data-metrica="Estimado">todo estimado</span>
           : d.estimado.cantidad > 0 && <span data-metrica="Estimado">de eso, estimado <span className="font-mono tabular-nums">{plata(d.estimado.total)}</span></span>}
         {d.vencido.cantidad > 0 && (
-          <span data-metrica="Vencido" className="text-neg">vencido sin pago <span className="font-mono tabular-nums">{plata(d.vencido.total)}</span></span>
+          <span data-metrica="Vencido" className="text-neg">además, vencido sin pago <span className="font-mono tabular-nums">{plata(d.vencido.total)}</span></span>
         )}
         {d.sinImporte > 0 && <span className="text-warn">{d.sinImporte} sin importe, no sumado</span>}
       </p>
+    </div>
+  )
+}
+
+/**
+ * LA PROYECCIÓN A FIN DE MES, APARTE (dueño, 24/09/2026). Es la estimación del mes entero que calcula la
+ * pestaña «Impuestos y Financieros» (su sección 7): se rotula como estimación y NO se suma al número de
+ * arriba, que es lo registrado. Sin filas no se dibuja.
+ */
+export function ProyeccionFinDeMes({ p }: { p: ReturnType<typeof proyeccionDelMes> }) {
+  if (!p.filas.length || !p.periodo) return null
+  return (
+    <div data-testid="impuestos-proyeccion" data-metrica="Proyección a fin de mes" className="text-[13px] text-muted">
+      <span>Proyección a fin de {mesLargo(p.periodo).split(' ')[0]} · estimación </span>
+      <span className="font-mono tabular-nums text-ink">{plata(p.total)}</span>
+      {p.filas.length > 1 && (
+        <span className="ml-2 text-faint">
+          ({p.filas.map((f) => `${NOMBRE_LLANO[f.impuesto]} ${plata(f.a_pagar ?? 0)}`).join(' · ')})
+        </span>
+      )}
     </div>
   )
 }

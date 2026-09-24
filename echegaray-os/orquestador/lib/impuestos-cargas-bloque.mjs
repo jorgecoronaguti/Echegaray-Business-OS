@@ -67,11 +67,15 @@ export function bloqueCargasSociales(G, { filas, n }) {
   if (!pend.length) {
     const f = G.lista('Nada pendiente', [], ORIGEN)
     G.blanco()
-    return { fTotal: null, pendientes: pend, indivisible: { desde: fSeccion, hasta: f } }
+    return { fTotal: null, pendientes: pend, filas: [], indivisible: { desde: fSeccion, hasta: f } }
   }
   const d0 = G.n() + 1
+  // CADA FILA DEVUELVE SU NÚMERO Y SU VENCIMIENTO: el hero la suma a «A pagar en 30 días» por la fecha
+  // de la base, la misma que usa la app (24/09/2026).
+  const vencimientos = []
   for (const f of pend) {
-    G.lista(rotuloCarga(f), [f.pendiente ?? 'sin importe', f.vencimiento ? `vence ${ddmm(f.vencimiento)}` : 'sin vencimiento', marcaCarga(f)], ORIGEN)
+    const fila = G.lista(rotuloCarga(f), [f.pendiente ?? 'sin importe', f.vencimiento ? `vence ${ddmm(f.vencimiento)}` : 'sin vencimiento', marcaCarga(f)], ORIGEN)
+    if (typeof f.pendiente === 'number') vencimientos.push({ fila, vencimiento: f.vencimiento ?? null, rotulo: rotuloCarga(f), confianza: f.vencimiento_confianza ?? null })
   }
   const fTotal = G.lista(rotuloTotal('Cargas sociales pendientes'), [`=SUM(B${d0}:B${G.n()})`], 'Suma de las filas de arriba.')
   G.blanco()
@@ -79,5 +83,5 @@ export function bloqueCargasSociales(G, { filas, n }) {
   // aterrizan sobre coordenadas donde un layout viejo dejó huellas activas. Sin la declaración,
   // `aplicarHuella` leía «huella mía + celda vacía» como «la vaciaste vos», suprimía rótulo, importe
   // y vencimiento, y el «⇒» sumaba dos celdas vacías. Ver `enBloqueIndivisible`.
-  return { fTotal, pendientes: pend, indivisible: { desde: fSeccion, hasta: fTotal } }
+  return { fTotal, pendientes: pend, filas: vencimientos, indivisible: { desde: fSeccion, hasta: fTotal } }
 }

@@ -25,14 +25,14 @@ import { C } from '@/shared/components/canon'
 import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { plata } from '@/shared/utils/format'
-import { frescura, hoyAR, porPeriodo, type PagoSinImputar, type PosicionImpuesto } from '@/features/administracion/services/impuestos'
+import { frescura, hoyAR, porPeriodo, separarProyeccion, type PagoSinImputar, type PosicionImpuesto } from '@/features/administracion/services/impuestos'
 import { getPosicion, getSinImputar, getUltimaSincronizacion } from '@/features/administracion/services/impuestosService'
 import { cargasSociales } from '@/features/administracion/services/impuestosCargas'
 import {
-  decision, IMPUESTOS_DE_VISTA, porImpuesto, TITULO_VISTA, vistaDe, type VistaImpuesto,
+  decision, IMPUESTOS_DE_VISTA, porImpuesto, proyeccionDelMes, TITULO_VISTA, vistaDe, type VistaImpuesto,
 } from '@/features/administracion/services/impuestosVista'
 import {
-  AvisoSinIdentificar, CifrasDeImpuesto, DatosAl, LineaFrescura, NumeroClave, Solapas, type Solapa,
+  AvisoSinIdentificar, CifrasDeImpuesto, DatosAl, LineaFrescura, NumeroClave, ProyeccionFinDeMes, Solapas, type Solapa,
 } from '@/features/administracion/components/impuestos/Decision'
 import { Agenda, ProximosCortos } from '@/features/administracion/components/impuestos/Agenda'
 import { GraficoImpuesto, GraficoResumen } from '@/features/administracion/components/impuestos/graficos'
@@ -47,7 +47,8 @@ const HISTORIAL = `${RUTA}?ver=historial`
 const ANCLA_SIN_IDENTIFICAR = 'sin-identificar'
 
 type Resumen = ReturnType<typeof porImpuesto>
-interface Datos { filas: PosicionImpuesto[]; pagos: PagoSinImputar[]; hoy: string; resumen: Resumen; fr: ReturnType<typeof frescura> }
+/** `filas` es lo REGISTRADO; `proyeccion`, la estimación a fin de mes de la pestaña — nunca se mezclan. */
+interface Datos { filas: PosicionImpuesto[]; proyeccion: PosicionImpuesto[]; pagos: PagoSinImputar[]; hoy: string; resumen: Resumen; fr: ReturnType<typeof frescura> }
 
 export default async function ImpuestosPage({ searchParams }: { searchParams: Promise<{ ver?: string | string[] }> }) {
   const vista = vistaDe((await searchParams).ver)
@@ -66,7 +67,8 @@ export default async function ImpuestosPage({ searchParams }: { searchParams: Pr
   // El reloj entra una sola vez, acá: las reglas de los servicios son puras y se prueban sin esperar.
   const ahora = new Date()
   const hoy = hoyAR(ahora)
-  const datos: Datos = { filas: posicion.data, pagos: sinImputar.data ?? [], hoy, resumen: porImpuesto(posicion.data, hoy), fr: frescura(sinc.data, ahora) }
+  const { registrado, proyeccion } = separarProyeccion(posicion.data)
+  const datos: Datos = { filas: registrado, proyeccion, pagos: sinImputar.data ?? [], hoy, resumen: porImpuesto(registrado, hoy), fr: frescura(sinc.data, ahora) }
   const solapas: Solapa[] = [
     { vista: 'resumen' },
     ...datos.resumen.map((r) => ({ vista: r.vista, cuenta: r.vencidas || undefined, alerta: r.vencidas > 0 })),
@@ -97,6 +99,7 @@ function Resumen({ d }: { d: Datos }) {
   return (
     <>
       <div className="mt-8"><NumeroClave d={dec} /></div>
+      <div className="mt-4"><ProyeccionFinDeMes p={proyeccionDelMes(d.proyeccion)} /></div>
       <div className="mt-10"><GraficoResumen filas={d.filas} hoy={d.hoy} /></div>
       <Seccion testid="bloque-vencimientos" titulo="Próximos vencimientos">
         <ProximosCortos lista={dec.lista} verTodos={HISTORIAL} vacio="Nada vence en los próximos 30 días." />
@@ -116,6 +119,7 @@ function DeUnImpuesto({ vista, d }: { vista: VistaImpuesto; d: Datos }) {
   return (
     <>
       {r && <div className="mt-8"><CifrasDeImpuesto r={r} /></div>}
+      <div className="mt-4"><ProyeccionFinDeMes p={proyeccionDelMes(d.proyeccion, IMPUESTOS_DE_VISTA[vista])} /></div>
       <div className="mt-10"><GraficoImpuesto filas={d.filas} vista={vista} hoy={d.hoy} /></div>
       {proximos.cantidad > 0 && (
         <Seccion testid="bloque-vencimientos" titulo="Próximos vencimientos" resumen={plata(proximos.total)}>

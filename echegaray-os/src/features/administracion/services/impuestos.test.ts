@@ -8,7 +8,7 @@ const fila = (x: Partial<PosicionImpuesto>): PosicionImpuesto => ({
   saldo_a_favor: null, pagado: 0, pendiente: null, datos_al: null, detalle: null, ...x,
 })
 
-test('a pagar en 30 días: entra lo vencido sin pago y lo de importe desconocido; no entra lo pagado ni lo lejano', () => {
+test('a pagar en 30 días: lo que vence de hoy a 30 días; lo vencido sin pago se lista y se informa aparte; no entra lo pagado ni lo lejano', () => {
   const r = aPagarProximos([
     fila({ impuesto: 'iibb', vencimiento: '2026-09-16', pendiente: 432764.9 }),
     fila({ impuesto: 'iibb', periodo: '2026-09', vencimiento: '2026-10-16', pendiente: null, estado: 'estimado' }),
@@ -19,7 +19,8 @@ test('a pagar en 30 días: entra lo vencido sin pago y lo de importe desconocido
     fila({ vencimiento: '2026-06-01', pendiente: 9 }),
   ], '2026-09-16')
   assert.deepEqual(r.lista.map((f) => [f.periodo, f.dias]), [['2026-07', -27], ['2026-08', 0], ['2026-09', 30]])
-  assert.equal(r.total, 433764.9, 'el importe desconocido no se suma como cero ni se inventa')
+  assert.equal(r.total, 432764.9, 'lo vencido NO entra al total (va aparte) y el importe desconocido no se suma como cero')
+  assert.equal(r.totalVencido, 1000)
   assert.equal(r.sinImporte, 1)
   assert.equal(r.vencidos, 1)
 })
