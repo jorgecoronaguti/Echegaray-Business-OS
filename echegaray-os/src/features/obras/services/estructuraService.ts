@@ -5,6 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '../types'
 import type { Ponderaciones } from './estructura'
+import { versionQueVale } from './versionDelPresupuesto'
 import { partidasParaConvertir, type PartidaParaConvertir } from './partidasParaConvertir'
 
 const num = (v: unknown): number | null => (v == null || v === '' ? null : Number(v))
@@ -47,8 +48,7 @@ export async function getPresupuestoDeLaObra(
     .eq('obra_canonica_id', obraId)
     .order('version', { ascending: false })
   if (eC) return { data: null, error: eC.message }
-  const lista = (versiones ?? []) as { estado: string | null; vigente: boolean | null }[]
-  const cab = lista.find((v) => v.estado === 'adjudicada') ?? lista.find((v) => v.vigente) ?? lista[0] ?? null
+  const cab = versionQueVale((versiones ?? []) as { estado: string | null; vigente: boolean | null; version: number }[])
   if (!cab) return { data: null, error: null }
   const c = cab as { id: string; numero: string | null; version: number; estado: string | null; congelada_en: string | null }
 

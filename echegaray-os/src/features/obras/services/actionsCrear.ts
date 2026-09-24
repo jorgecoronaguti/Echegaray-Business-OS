@@ -21,6 +21,7 @@ import { sellarBaseline, type Resultado } from './actions'
 import { leerPlanilla } from './planillaPegada'
 import { correrDiasHabiles, METODOS_REPARTO, vistaPreviaFrentes } from './estructura'
 import { conservaLaCantidad } from './panelTarea'
+import { versionQueVale } from './versionDelPresupuesto'
 
 type Cliente = Awaited<ReturnType<typeof createClient>>
 
@@ -74,10 +75,11 @@ export async function convertirPartidasDesdeLaObra(obraId: string, form: FormDat
   const inicio = (obra?.fecha_inicio_plan as string | null) ?? null
   if (!inicio) return { ok: false, error: 'La obra no tiene inicio previsto: la conversión necesita una fecha para no crear actividades que parezcan planificadas. Cargalo en la ficha.' }
 
-  const { data: cab, error: eC } = await supabase.from('cotizaciones')
-    .select('id, estado, congelada_en').eq('obra_canonica_id', obraId)
-    .order('vigente', { ascending: false }).order('version', { ascending: false }).limit(1).maybeSingle()
+  // La misma regla que la pantalla C02: la versión adjudicada, no la última editada.
+  const { data: versiones, error: eC } = await supabase.from('cotizaciones')
+    .select('id, estado, congelada_en, vigente, version').eq('obra_canonica_id', obraId)
   if (eC) return { ok: false, error: eC.message }
+  const cab = versionQueVale((versiones ?? []) as { id: string; estado: string | null; congelada_en: string | null; vigente: boolean | null; version: number }[])
   if (!cab) return { ok: false, error: 'Esta obra no tiene presupuesto vinculado.' }
   if (cab.estado !== 'adjudicada') return { ok: false, error: 'El presupuesto todavía no está adjudicado.' }
   if (!cab.congelada_en) return { ok: false, error: 'Congelá el presupuesto antes de convertir: el plan sale del costo que se ofertó.' }
