@@ -4,7 +4,7 @@ import { esRutaCampoPermitida, esRutaPublica, type Rol } from '@/features/auth/t
 import {
   destinoDeRebote, entradaDeArea, fichaDeGestionPara, puedeVerRuta, veEconomia,
 } from '@/features/auth/types/areas'
-import { COOKIE_OBRA, VIDA_OBRA_SEGUNDOS, obraDeCookieValida } from '@/features/jefe/services/obraRecordada'
+import { COOKIE_OBRA, VIDA_OBRA_SEGUNDOS, obraDeCookieValida } from '@/shared/utils/obraRecordada'
 import {
   CLAVE_LIMPIAR, cookieDeVista, queryARestaurar,
 } from '@/features/obras/services/vistaRecordada'
@@ -387,11 +387,14 @@ async function middlewareConBackend(request: NextRequest) {
   // obra del orden alfabético, vacía, y eso se leía como «se rompió». Cada vez que una pantalla de su
   // producto se abre CON obra, se guarda; `contextoDeObra` la usa cuando la URL no trae ninguna.
   // Se guarda en la respuesta de la misma petición: sirve para el documento y para la navegación RSC.
-  if (user && request.method === 'GET' && (pathname.startsWith('/obra/') || pathname.startsWith('/campo/'))) {
+  // Sólo en `/obra/*`: es donde el jefe ELIGE; Dirección y Administración no llegan ahí sin la lente.
+  // NO es httpOnly a propósito: es un id de obra, no una credencial, y las barras del navegador la leen
+  // para que sus enlaces a `/obra/*` la lleven (ver `conObraRecordada`).
+  if (user && request.method === 'GET' && pathname.startsWith('/obra/')) {
     const obra = obraDeCookieValida(request.nextUrl.searchParams.get('obra'))
     if (obra && request.cookies.get(COOKIE_OBRA)?.value !== obra) {
       response.cookies.set(COOKIE_OBRA, obra, {
-        httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: VIDA_OBRA_SEGUNDOS,
+        httpOnly: false, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: VIDA_OBRA_SEGUNDOS,
       })
     }
   }

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Vacio } from '@/shared/components/ds'
+import { VolverDeCampo } from './VolverDeCampo'
 import type { ObraDelCampo } from './datos'
 
 // EL MARCO DE LAS PANTALLAS DE CAMPO. Una columna, 16px de padding, sin nada que sobre.
@@ -25,18 +26,8 @@ export function MarcoCampo({
       <div className="mx-auto w-full max-w-[560px] px-4 py-5">
         {/* La migaja es texto de 12px, pero el OBJETIVO que abre son 44: se toca con el pulgar,
             parado, y una flecha de 16px de alto se falla más veces de las que se acierta. */}
-        {volver ?? (
-          <Link
-            href="/campo"
-            data-testid="volver"
-            className="-ml-1 inline-flex min-h-[44px] items-center px-1 text-[12px] text-muted hover:text-ink"
-          >
-            {/* «← Volver», no «← Trabajo» (24/09/2026): `/campo` es el hub de Administración; al jefe lo
-                devuelve a su «Hoy» y al operario a su día (el middleware decide), y ninguno de los dos
-                tiene una pantalla que se llame «Trabajo». */}
-            ← Volver
-          </Link>
-        )}
+        {/* «← Volver», no «← Trabajo» (24/09/2026): ver `VolverDeCampo`. */}
+        {volver ?? <VolverDeCampo />}
         <h1 className="mt-2 text-[20px] font-semibold tracking-[-0.01em] text-ink">{titulo}</h1>
         {subtitulo && <p className="mt-1 text-[12.5px] text-muted">{subtitulo}</p>}
         <div className="mt-5">{children}</div>

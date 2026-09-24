@@ -22,7 +22,7 @@ import type { EstadoFecha } from '@/features/obras/types'
 import type { NodoArbol } from './frentes.ts'
 import { codigosDeObra } from '../../../shared/services/codigosDeObra.ts'
 import type { Metodo, TareaDelDia } from './medicion.ts'
-import { obrasAsignadasVigentes } from './obraRecordada.ts'
+import { obrasAsignadasVigentes } from '../../../shared/utils/obraRecordada.ts'
 
 /** Una obra en el selector del encabezado. Sin un solo importe. */
 export interface ObraDelJefe {

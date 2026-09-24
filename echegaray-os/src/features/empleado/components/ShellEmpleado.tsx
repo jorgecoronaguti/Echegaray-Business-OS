@@ -7,6 +7,8 @@ import type { ReactNode } from 'react'
 import { CONTEXTOS, contextoActivo, esRaiz } from './shell-logica'
 import { MarcoMovil, BarraContextos, TopBarDetalle } from '@/shared/components/movil/Piezas'
 import { C } from '@/shared/components/movil/tokens'
+import { useObraRecordada } from '@/shared/hooks/useObraRecordada'
+import { conObraRecordada } from '@/shared/utils/obraRecordada'
 import type { NombreIcono } from '@/shared/components/movil/Iconos'
 
 // NO se re-exporta `inicialesDe` acá: este módulo es de cliente, y re-exportar una función pura
@@ -56,6 +58,7 @@ export function ShellEmpleado({ children, barraPropia = null }: {
   const ruta = usePathname() ?? ''
   const activo = contextoActivo(ruta)
   const raiz = esRaiz(ruta)
+  const obra = useObraRecordada()
 
   return (
     <MarcoMovil conBarra={raiz}>
@@ -63,7 +66,7 @@ export function ShellEmpleado({ children, barraPropia = null }: {
       {raiz && (
         <BarraContextos
           testid={barraPropia ? 'barra-jefe' : 'barra-contextos'}
-          items={barraPropia ? barraPropia.map((b) => ({ ...b, activo: false })) : CONTEXTOS.map((c) => ({
+          items={barraPropia ? barraPropia.map((b) => ({ ...b, href: conObraRecordada(b.href, obra), activo: false })) : CONTEXTOS.map((c) => ({
             href: c.href,
             label: c.label,
             icono: ICONO[c.href] ?? 'casa',

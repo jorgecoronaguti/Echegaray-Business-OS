@@ -1,7 +1,9 @@
 // LA OBRA QUE EL JEFE ESTÁ MIRANDO, RECORDADA ENTRE PANTALLAS (dueño, 24/09/2026).
 //
-// Lógica pura: la usan el middleware (que la guarda) y `contextoDeObra` (que la lee). Sin imports de
-// Next ni de Supabase para que `node --test` la pruebe y el runtime del middleware la cargue.
+// Lógica pura: la usan el middleware (que la guarda), `contextoDeObra` (que la lee en el servidor) y las
+// barras del teléfono (que la leen en el navegador para que sus enlaces lleven la obra). Vive en
+// `shared` porque la usan tres capas. Sin imports de Next ni de Supabase: `node --test` la prueba y el
+// runtime del middleware la carga.
 //
 // ═══ POR QUÉ UNA COOKIE Y NO SÓLO LA URL ═══
 //
@@ -42,4 +44,42 @@ export function obrasAsignadasVigentes(
     .filter((f) => (dia(f.desde) === null || dia(f.desde)! <= hoy) && (dia(f.hasta) === null || dia(f.hasta)! >= hoy))
     .sort((a, b) => (dia(b.desde) ?? '').localeCompare(dia(a.desde) ?? ''))
   return [...new Set(vigentes.map((f) => f.obra_id as string))]
+}
+
+/**
+ * La obra recordada leída de `document.cookie` (la cookie NO es httpOnly a propósito: es un id de
+ * obra, no una credencial, y las barras del navegador la necesitan para armar sus enlaces).
+ */
+export function leerObraRecordada(cookies: string | null | undefined): string | null {
+  for (const par of (cookies ?? '').split(';')) {
+    const i = par.indexOf('=')
+    if (i === -1) continue
+    if (par.slice(0, i).trim() !== COOKIE_OBRA) continue
+    try {
+      return obraDeCookieValida(decodeURIComponent(par.slice(i + 1)))
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+/**
+ * ═══ UN ENLACE A LA OBRA DEL JEFE LLEVA LA OBRA (24/09/2026) ═══
+ *
+ * Next guarda en el navegador lo que dibujó cada URL durante 60 s (`staleTimes.dynamic`). Un enlace
+ * PELADO a `/obra/hoy` reusaba lo dibujado para la obra anterior aunque la cookie ya dijera otra: el
+ * jefe elegía QP, pasaba por Asistencia, tocaba «Hoy» y veía otra vez SF (medido en producción con
+ * Juan Pablo Nievas). Con la obra en el enlace, la URL es distinta y no hay nada viejo que reusar.
+ *
+ * Sólo toca rutas `/obra/*` sin `obra=`; todo lo demás vuelve igual.
+ */
+export function conObraRecordada(href: string, obra: string | null | undefined): string {
+  if (!obra) return href
+  const [ruta, query = ''] = href.split('?')
+  if (ruta !== '/obra' && !ruta.startsWith('/obra/')) return href
+  const q = new URLSearchParams(query)
+  if (q.has('obra')) return href
+  q.set('obra', obra)
+  return `${ruta}?${q.toString()}`
 }

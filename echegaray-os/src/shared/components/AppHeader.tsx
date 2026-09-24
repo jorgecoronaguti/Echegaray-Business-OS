@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
+import { useObraRecordada } from '../hooks/useObraRecordada'
+import { conObraRecordada } from '../utils/obraRecordada'
 import { solapaActiva, type SolapaNav } from '@/features/auth/types/navegacion'
 import { BuscadorGlobal } from './BuscadorGlobal'
 import { Novedades } from './Novedades'
@@ -80,6 +82,11 @@ export function AppHeader({
   salir: React.ReactNode
 }) {
   const pathname = usePathname()
+  // EL ISOTIPO DEL JEFE VA A SU OBRA, CON LA OBRA (24/09/2026). `/` lo manda igual a `/obra/hoy`, pero
+  // por dos saltos y sin obra en la URL: Next reusaba lo dibujado para la obra anterior. `miObraTelefono`
+  // es «es jefe de obra» (lo decide el servidor con el rol).
+  const obraRecordada = useObraRecordada()
+  const inicio = miObraTelefono ? conObraRecordada('/obra/hoy', obraRecordada) : '/'
   // Cuál está encendida lo decide `navegacion.ts`, que es puro y está probado: acá vivía una
   // expresión regular en un componente de cliente, o sea una regla de navegación que `node --test`
   // no podía mirar. Fue exactamente la que se rompió el 24/08.
@@ -115,7 +122,7 @@ export function AppHeader({
             el componente no necesita saber cuál es la home de cada rol. */}
         <Link
           prefetch={false}
-          href="/"
+          href={inicio}
           className="mr-3 flex shrink-0 items-center gap-2"
           data-testid="marca"
           aria-label="Echegaray Construcciones — inicio"
@@ -273,6 +280,7 @@ function MenuUsuario({
   const [abierto, setAbierto] = useState(false)
   const caja = useRef<HTMLDivElement>(null)
   const lente = useLente()
+  const obraRecordada = useObraRecordada()
 
   // Mismo cierre que `ds/MenuContextual`: clic afuera y Escape. Se repite y no se importa porque
   // aquel componente dibuja un `···` de fila y recibe `items` planos — acá el contenido es el
@@ -384,7 +392,7 @@ function MenuUsuario({
           {miObraTelefono && (
             <Link
               prefetch={false}
-              href="/obra/hoy"
+              href={conObraRecordada('/obra/hoy', obraRecordada)}
               role="menuitem"
               data-testid="ir-mi-obra"
               onClick={() => setAbierto(false)}

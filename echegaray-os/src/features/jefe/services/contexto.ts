@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 import { getObrasAsignadasHoy, getObrasDelJefe, type ObraDelJefe } from './jefeService.ts'
 import { obraElegida, obrasDelSelector } from './navegacion.ts'
-import { COOKIE_OBRA, obraDeCookieValida } from './obraRecordada.ts'
+import { COOKIE_OBRA, obraDeCookieValida } from '../../../shared/utils/obraRecordada.ts'
 import { ETAPAS, ETAPA_LABEL, type Etapa } from '@/features/obras/types'
 
 export interface Contexto {

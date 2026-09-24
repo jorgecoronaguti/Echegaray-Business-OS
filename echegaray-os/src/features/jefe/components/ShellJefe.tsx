@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { CONTEXTOS, contextoActivo, conObra } from '../services/navegacion'
 import { MarcoMovil, BarraContextos } from '@/shared/components/movil/Piezas'
 import type { NombreIcono } from '@/shared/components/movil/Iconos'
+import { useObraRecordada } from '@/shared/hooks/useObraRecordada'
 
 // EL MARCO DEL JEFE DE OBRA EN EL TELÉFONO — porte literal de J01 (`J01 · Jefe Hoy.dc.html`).
 //
@@ -45,7 +46,10 @@ export function ShellJefe({ children }: { children: ReactNode }) {
   // volvería dinámica toda pantalla sólo para encender un rótulo.
   const pathname = usePathname() ?? ''
   const params = useSearchParams()
-  const obraId = params?.get('obra') ?? null
+  // Sin obra en la URL, la barra lleva la recordada (24/09/2026): un enlace pelado reusaba lo que Next
+  // guardó de otra obra (`staleTimes.dynamic`). Ver `conObraRecordada`.
+  const recordada = useObraRecordada()
+  const obraId = params?.get('obra') ?? recordada
   // `/obra/avance` son dos pantallas: J03 con barra, y el formulario de UNA tarea sin ella. El
   // porqué está en `navegacion.ts`; acá sólo se le pasa cuál de las dos es.
   const conActividad = !!params?.get('actividad')

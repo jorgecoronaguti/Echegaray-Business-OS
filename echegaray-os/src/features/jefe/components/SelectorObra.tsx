@@ -1,6 +1,8 @@
 'use client'
 
-import { usePathname, useRouter } from 'next/navigation'
+import { useEffect } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useObraRecordada } from '@/shared/hooks/useObraRecordada'
 import { conObra } from '../services/navegacion'
 import type { ObraDelJefe } from '../services/jefeService'
 import { C } from '@/shared/components/movil/tokens'
@@ -24,6 +26,21 @@ import { rotuloDeObra } from '@/shared/utils/obra'
 export function SelectorObra({ obras, actual }: { obras: ObraDelJefe[]; actual: ObraDelJefe }) {
   const router = useRouter()
   const pathname = usePathname() ?? '/obra/hoy'
+  const params = useSearchParams()
+  const recordada = useObraRecordada()
+
+  // ═══ LA PANTALLA VIEJA SE CORRIGE SOLA (24/09/2026) ═══
+  //
+  // Next reusa durante 60 s lo que dibujó para una URL (`staleTimes.dynamic`). Si se llega a
+  // `/obra/hoy` PELADO —la flecha de una pantalla de trabajo, un rebote— después de haber elegido otra
+  // obra, puede aparecer lo dibujado para la anterior. Sin obra en la URL, la elegida (cookie) manda:
+  // si difiere de la que se ve y el jefe la tiene, se reemplaza la URL por la de esa obra.
+  useEffect(() => {
+    if (params?.get('obra')) return
+    if (!recordada || recordada === actual.id) return
+    if (!obras.some((o) => o.id === recordada)) return
+    router.replace(conObra(pathname, recordada))
+  }, [params, recordada, actual.id, obras, pathname, router])
 
   if (obras.length <= 1) {
     return (
