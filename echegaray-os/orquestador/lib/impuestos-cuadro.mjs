@@ -216,12 +216,20 @@ export const formulaIibbDeterminado = (celdaBase, celdaAlicuota) =>
  * impuesto al cheque —las del extracto y las proyectadas—, que además es lo correcto: el impuesto no
  * se tributa sobre su propio débito.
  */
-export function formulaImpuestoChequeProyectado(anio, m) {
+export function formulaImpuestoChequeProyectado(anio, m, { soloPendiente = false } = {}) {
   const v = { desde: `DATE(${anio};${m};1)`, hasta: `EOMONTH(DATE(${anio};${m};1);0)+1` }
   // (1-ISNUMBER) y no NOT(): NOT no se expande sobre un array dentro de SUMPRODUCT.
   const sinSiMismo = `(1-ISNUMBER(SEARCH("${MARCA_25413}";${rangoLibro(LIBRO.col.concepto)})))`
-  const movimiento = terminoLibro({ ...v, medida: 'magnitud', extra: [sinSiMismo] })
-  return `=(${movimiento})*${ALICUOTA_25413}*2`
+  // ═══ 0,6 % UNA VEZ, SÓLO LO QUE PASA POR EL BANCO (24/09/2026) ═══
+  // MEDIDO contra _BANCO_RAW: lo debitado es el 0,600 % de (débitos + créditos) del banco en jun, jul y
+  // ago. Esta fórmula cobraba ×2 sobre TODO el Libro, efectivo incluido: 3,9 / 2,9 / 1,8 veces lo real.
+  // Cada movimiento es un débito O un crédito (se grava una vez) y el efectivo no toca la cuenta.
+  // Con el modelo nuevo, hacia atrás: −12,9 % / −4,6 % / −28,6 %; el residuo son los traslados de
+  // fondos propios y Balanz, que el banco grava y el Libro no proyecta.
+  const extra = [sinSiMismo, `(${rangoLibro(LIBRO.col.instrumento)}<>"efectivo")`]
+  if (soloPendiente) extra.push(`(${rangoLibro(LIBRO.col.estado)}<>"REAL")`)
+  const movimiento = terminoLibro({ ...v, medida: 'magnitud', extra })
+  return `=(${movimiento})*${ALICUOTA_25413}`
 }
 
 /** NÚCLEO PURO: lo que el banco YA debitó por Ley 25.413 en el mes, del extracto. */
@@ -231,14 +239,12 @@ export function formulaImpuestoChequeReal(hoja, anio, m) {
 }
 
 /**
- * NÚCLEO PURO: el impuesto del mes = lo REAL si el extracto llega hasta ahí, y si no lo PROYECTADO.
- *
- * MAX y no una elección por mes: lo que el banco ya cobró es un hecho y no puede quedar afuera; la
- * proyección manda donde todavía no hay extracto. Es el mismo criterio que `formulaInteresMes` del
- * descubierto, y por la misma razón — una línea de costo nunca subestima.
+ * NÚCLEO PURO: el impuesto del mes en curso o futuro = lo que el banco YA debitó + el 0,6 % de lo que
+ * todavía tiene que pasar por la cuenta (filas del Libro no REAL). Sin MAX: un MAX con un total que ya
+ * contenía lo debitado dejaba afuera o duplicaba según qué lado ganara.
  */
 export const formulaImpuestoCheque = (hoja, anio, m) =>
-  `=MAX(${formulaImpuestoChequeReal(hoja, anio, m).slice(1)};${formulaImpuestoChequeProyectado(anio, m).slice(1)})`
+  `=${formulaImpuestoChequeReal(hoja, anio, m).slice(1)}+${formulaImpuestoChequeProyectado(anio, m, { soloPendiente: true }).slice(1)}`
 
 // ═══ EL CUADRO DE FINANCIAMIENTO SE FUE, Y CON ÉL `filasFinanciamiento` (04/09/2026) ═══
 //

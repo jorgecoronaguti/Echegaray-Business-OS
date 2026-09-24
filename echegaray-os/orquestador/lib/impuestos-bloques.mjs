@@ -403,7 +403,7 @@ export function bloqueRetenciones(G, { anio, cob }) {
 export function bloqueOtros(G, { anio, C, hoy }) {
   G.push([seccion(4, 'Otros impuestos')])
   // EL IMPUESTO AL CHEQUE EN UNA SOLA FILA (24/09/2026): los meses cerrados, lo que el banco DEBITÓ; el
-  // mes en curso y los futuros, MAX(lo debitado; el 0,6 % proyectado sobre el Libro). El rótulo es el de
+  // mes en curso y los futuros, lo debitado + 0,6 % de lo que falta pasar por el banco (`formulaImpuestoCheque`). El rótulo es el de
   // la Ley 25.413 que el Libro busca; el Libro sólo lee del mes en curso en adelante y le resta lo ya
   // debitado. Un mes sin extracto (antes del 28/05/2026) queda en cero: no hay dato del banco.
   const mesEnCurso = mesEnCursoDe(anio, hoy)
@@ -412,7 +412,7 @@ export function bloqueOtros(G, { anio, C, hoy }) {
   const o0 = G.n() + 1
   const fCheque = G.mensual(ROTULO_IMPUESTO_CHEQUE,
     (m) => (proyectados.includes(m) ? formulaImpuestoCheque(BANCO_RAW, anio, m) : formulaImpuestoChequeReal(BANCO_RAW, anio, m)),
-    'Cerrado: extracto del Santander (_BANCO_RAW), naturaleza «Impuesto al cheque», anulaciones restadas. Proyectado: MAX(lo debitado; 0,6 % de cada lado del movimiento del Libro).')
+    'Cerrado: extracto del Santander (_BANCO_RAW), anulaciones restadas. Proyectado: lo debitado + 0,6 % de los movimientos no REAL del Libro que no son efectivo.')
   const fGanancias = G.mensual('Anticipo de Ganancias', (m) =>
     `=SUMIFS(${rango(C.total)};${rango(C.detalle)};"*Anticipo de Ganancias*";${rango(C.fechaPrev)};">="&DATE(${anio};${m};1);${rango(C.fechaPrev)};"<="&EOMONTH(DATE(${anio};${m};1);0))`,
   'Compras · concepto "Anticipo de Ganancias", por su fecha prevista de pago. Es pago a cuenta del impuesto anual: se recupera recién en la DDJJ.')

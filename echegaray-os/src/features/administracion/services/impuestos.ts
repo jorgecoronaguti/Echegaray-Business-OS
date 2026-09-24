@@ -71,6 +71,22 @@ export function separarProyeccion(filas: PosicionImpuesto[]) {
   return { registrado: filas.filter((f) => !esProy(f)), proyeccion: filas.filter(esProy) }
 }
 
+/**
+ * UNA SOLA TABLA, TAMBIÉN EN LA APP (dueño, 24/09/2026: «poneme lo proyectado en la misma tabla de lo que
+ * ya se pagó»). El IVA y el IIBB del mes en curso que todavía no están presentados (`estado = 'estimado'`)
+ * toman el importe de la proyección del mes entero que calcula la hoja — lo que se va a pagar al vencer —,
+ * conservando su vencimiento y su marca de estimado. Así «A pagar en 30 días» es el mismo número en la hoja
+ * y en la app. Un período presentado o pagado no se toca.
+ */
+export function conProyeccionDelMes(registrado: PosicionImpuesto[], proyeccion: PosicionImpuesto[]) {
+  const proy = new Map(proyeccion.map((p) => [`${p.impuesto}|${p.periodo}`, p]))
+  return registrado.map((f) => {
+    const p = proy.get(`${f.impuesto}|${f.periodo}`)
+    if (!p || f.concepto !== 'ddjj' || f.estado !== 'estimado' || p.a_pagar === null) return f
+    return { ...f, a_pagar: p.a_pagar, pendiente: Math.max(0, p.a_pagar - (f.pagado ?? 0)), detalle: { ...(f.detalle ?? {}), proyeccion: true, celda: p.detalle?.celda } }
+  })
+}
+
 export const NOMBRE_FUENTE: Record<PosicionImpuesto['fuente'], string> = {
   ddjj_contador: 'DDJJ', arca: 'ARCA', calculo: 'cálculo', manual: 'Compras',
 }

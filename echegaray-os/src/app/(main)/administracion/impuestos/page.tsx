@@ -25,7 +25,7 @@ import { C } from '@/shared/components/canon'
 import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { plata } from '@/shared/utils/format'
-import { frescura, hoyAR, porPeriodo, separarProyeccion, type PagoSinImputar, type PosicionImpuesto } from '@/features/administracion/services/impuestos'
+import { conProyeccionDelMes, frescura, hoyAR, porPeriodo, separarProyeccion, type PagoSinImputar, type PosicionImpuesto } from '@/features/administracion/services/impuestos'
 import { getPosicion, getSinImputar, getUltimaSincronizacion } from '@/features/administracion/services/impuestosService'
 import { cargasSociales } from '@/features/administracion/services/impuestosCargas'
 import {
@@ -68,7 +68,10 @@ export default async function ImpuestosPage({ searchParams }: { searchParams: Pr
   const ahora = new Date()
   const hoy = hoyAR(ahora)
   const { registrado, proyeccion } = separarProyeccion(posicion.data)
-  const datos: Datos = { filas: registrado, proyeccion, pagos: sinImputar.data ?? [], hoy, resumen: porImpuesto(registrado, hoy), fr: frescura(sinc.data, ahora) }
+  // El IVA y el IIBB del mes en curso sin presentar llevan la proyección del mes entero: el mismo número
+  // que la hoja en «A pagar en 30 días» (24/09/2026). Ver `conProyeccionDelMes`.
+  const vigente = conProyeccionDelMes(registrado, proyeccion)
+  const datos: Datos = { filas: vigente, proyeccion, pagos: sinImputar.data ?? [], hoy, resumen: porImpuesto(vigente, hoy), fr: frescura(sinc.data, ahora) }
   const solapas: Solapa[] = [
     { vista: 'resumen' },
     ...datos.resumen.map((r) => ({ vista: r.vista, cuenta: r.vencidas || undefined, alerta: r.vencidas > 0 })),

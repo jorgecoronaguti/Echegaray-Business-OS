@@ -138,16 +138,20 @@ test('los rangos de _IIBB_RAW son ABIERTOS — el tope en la fila 40 ya dejaba a
 
 // ══ LEY 25.413 — DENTRO DEL MODELO ════════════════════════════════════════════════════════════════
 
-test('el impuesto al cheque se deriva del movimiento bancario proyectado, no de un promedio', () => {
+test('el impuesto al cheque se deriva del movimiento BANCARIO proyectado: 0,6 % una vez, sin efectivo', () => {
+  // MEDIDO el 24/09/2026 contra _BANCO_RAW: lo debitado es el 0,600 % de (débitos + créditos) del banco en
+  // junio, julio y agosto. El modelo anterior cobraba 1,2 % (×2) sobre TODO el Libro, efectivo incluido, y
+  // daba 3,9 / 2,9 / 1,8 veces lo real. Cada movimiento es un débito O un crédito: se grava una vez.
   const p = formulaImpuestoChequeProyectado(2026, 10)
   assert.ok(p.includes('_MOVIMIENTOS'), 'el driver es el movimiento del Libro')
-  assert.ok(p.includes('*0.006*2'), '0,6% de CADA lado: entra y sale')
-  assert.ok(!/AVERAGEIF/i.test(p), 'AVERAGEIF era el bloque muerto de la versión anterior')
-  // La fila viva toma el MAYOR entre lo que el banco ya cobró y lo proyectado: nunca subestima.
+  assert.ok(p.includes('*0.006') && !p.includes('*0.006*2'), '0,6 % una vez por movimiento, no ×2')
+  assert.match(p, /<>"efectivo"/, 'el efectivo no pasa por el banco')
+  assert.ok(!/AVERAGEIF/i.test(p))
+  // El mes en curso y los futuros: lo ya debitado MÁS lo que falta pasar por el banco (no REAL). Sin MAX.
   const f = formulaImpuestoCheque('_BANCO_RAW', 2026, 10)
-  assert.ok(f.startsWith('=MAX('))
+  assert.ok(!f.startsWith('=MAX('), 'lo debitado + lo pendiente, no el mayor de dos totales')
   assert.ok(f.includes('Impuesto al cheque'), 'lo real sale del extracto')
-  assert.ok(f.includes('_MOVIMIENTOS'), 'lo proyectado sale del Libro')
+  assert.match(f, /<>"REAL"/, 'lo proyectado es sólo lo que todavía no pasó por el banco')
 })
 
 // ══ FINANCIAMIENTO — EL DEFECTO L ═════════════════════════════════════════════════════════════════

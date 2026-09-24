@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { PosicionImpuesto } from './impuestos.ts'
 import { agenda, columnasConDato, decision, estadoCorto, rotuloSaldo, enDias, estadoLlano, nombreLlano, porImpuesto, proyeccionDelMes, urgenciaDe, vistaDe } from './impuestosVista.ts'
-import { CONCEPTO_PROYECCION, separarProyeccion } from './impuestos.ts'
+import { CONCEPTO_PROYECCION, conProyeccionDelMes, separarProyeccion } from './impuestos.ts'
 
 const fila = (x: Partial<PosicionImpuesto>): PosicionImpuesto => ({
   impuesto: 'iva', periodo: '2026-08', concepto: 'ddjj', fuente: 'ddjj_contador', estado: 'presentado',
@@ -146,4 +146,25 @@ test('la proyección a fin de mes se separa de lo registrado y no entra a ningú
   assert.equal(p.total, 8327076 + 1643129)
   assert.equal(proyeccionDelMes(proyeccion, ['iva']).total, 8327076)
   assert.equal(nombreLlano(prendario), 'Prendario Ford (Santander) · octubre 2026 · cuota')
+})
+
+test('«A pagar en 30 días» usa la proyección del mes entero para el IVA y el IIBB del mes en curso — el mismo número que la hoja (24/09/2026)', () => {
+  // La hoja suma en su ventana la celda del mes en curso de la tabla, que es la proyección del mes entero.
+  // La app sumaba lo registrado hasta hoy: 13.454.633 contra 15.427.874 el mismo día.
+  const proy = [
+    fila({ periodo: '2026-09', concepto: CONCEPTO_PROYECCION, fuente: 'calculo', estado: 'estimado', a_pagar: 2032650, pendiente: 2032650, detalle: { proyeccion: true, celda: 'J14' } }),
+    fila({ impuesto: 'iibb', periodo: '2026-09', concepto: CONCEPTO_PROYECCION, fuente: 'calculo', estado: 'estimado', a_pagar: 1010980, pendiente: 1010980, detalle: { proyeccion: true, celda: 'J24' } }),
+  ]
+  const { registrado, proyeccion } = separarProyeccion([...PROD, ...proy])
+  const vigente = conProyeccionDelMes(registrado, proyeccion)
+  // Al 24/09 el IVA de septiembre (vence 20/10) cae en la ventana de 30 días.
+  assert.equal(decision(vigente, '2026-09-24').total, 8166095 + 2494876 + 1010980 + 2032650)
+  assert.equal(decision(registrado, '2026-09-24').total, 8166095 + 2494876 + 870434 + 625446, 'sin proyección, lo registrado')
+  // El vencimiento, el período y la marca de estimado se conservan; sólo cambia el importe.
+  const iva = vigente.find((f) => f.impuesto === 'iva' && f.periodo === '2026-09')
+  assert.equal(iva?.vencimiento, '2026-10-20')
+  assert.equal(iva?.estado, 'estimado')
+  // Un período presentado no se toca aunque tenga proyección.
+  const pres = fila({ periodo: '2026-08', estado: 'presentado', vencimiento: '2026-09-21', a_pagar: 0, pendiente: 0 })
+  assert.equal(conProyeccionDelMes([pres], [fila({ periodo: '2026-08', concepto: CONCEPTO_PROYECCION, a_pagar: 99 })])[0].pendiente, 0)
 })

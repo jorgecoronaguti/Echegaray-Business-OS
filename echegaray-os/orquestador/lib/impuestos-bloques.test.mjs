@@ -232,7 +232,7 @@ test('IIBB e impuesto al cheque: misma fila para lo pagado y lo proyectado, con 
   const o = bloqueOtros(G, { anio: 2026, C, hoy: '2026-08-07' })
   assert.equal(G.filas[o.fCheque - 1][0], ROTULO_IMPUESTO_CHEQUE)
   assert.doesNotMatch(String(celda(G, o.fCheque, 7)), /MAX\(/, 'julio cerrado: lo que el banco debitó, sin estimación')
-  assert.match(String(celda(G, o.fCheque, 8)), /^=MAX\(/, 'el mes en curso: MAX(debitado; proyectado)')
+  assert.match(String(celda(G, o.fCheque, 8)), /_BANCO_RAW.*\+.*<>"REAL"/, 'el mes en curso: lo debitado + lo que falta pasar por el banco')
   assert.equal(G.filas.filter((f) => f[0] === ROTULO_IMPUESTO_CHEQUE).length, 1, 'una sola fila del impuesto al cheque')
 })
 

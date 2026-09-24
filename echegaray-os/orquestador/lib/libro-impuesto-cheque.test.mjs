@@ -98,9 +98,11 @@ test('la proyección de la pestaña NO se cobra impuesto a sí misma', () => {
     A2: serialDe('2026-10-05'), C2: 1000000, E2: 'Pago a proveedor',
     A3: serialDe('2026-10-31'), C3: OCT, E3: `${ROTULO} · 10/2026`,
     A4: serialDe('2026-10-20'), C4: 300000, E4: 'Impuesto Ley 25.413 Debito 0,6%',
+    // Un cobro en efectivo: no pasa por el banco, no paga el impuesto (24/09/2026).
+    A5: serialDe('2026-10-12'), C5: 5000000, E5: 'Cobro en efectivo', I5: 'efectivo',
   }
   const base = evaluarFormula(f, { hojas: { _MOVIMIENTOS }, hoy: new Date(Date.UTC(2026, 8, 10)) })
-  assert.equal(Math.round(base), Math.round(1000000 * 0.006 * 2), 'sólo el movimiento comercial paga')
+  assert.equal(Math.round(base), Math.round(1000000 * 0.006), 'sólo el movimiento bancario paga, y una vez')
 })
 
 test('los renglones de IIBB y el IVA cerrado viajan como FÓRMULA a su celda; el IVA en curso y el cheque, no (ciclo)', () => {
