@@ -5,6 +5,10 @@ _Historia anterior: `git show c5d99d90:echegaray-os/.claude/estado/traspaso.md` 
 
 ## 0. CÓMO ARRANCAR LA SESIÓN (leer primero)
 
+**MANDATO DEL DUEÑO: terminar TODO lo pendiente de las secciones 1 y 2, sin frenar.** No se cierra la sesión
+con pendientes propios abiertos: cada ítem termina publicado y verificado en producción. Lo que espera al dueño
+se le pide UNA vez por el bot con la pregunta lista para contestar, y mientras tanto se sigue con lo demás.
+
 **Modelo: Opus** (`claude --model opus` o `/model opus` → claude-opus-5-5). No usar Fast ni Haiku para este módulo:
 toca plata, RLS y producción.
 
