@@ -18,11 +18,17 @@ import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { destinosVisibles } from '../services/areasAdmin'
 import { BarraAreas } from './BarraAreas'
+import { barraTelefonoDe } from '@/features/auth/types/barraTelefono'
 
 export async function NavAdministracion() {
   const supabase = await createClient()
   const perfil = await getPerfilActual(supabase)
-  const areas = destinosVisibles(perfil.data?.rol ?? null)
+  const rol = perfil.data?.rol ?? null
+  const areas = destinosVisibles(rol)
     .map((d) => ({ ...d, cuenta: null, aviso: null }))
+  // EN EL TELÉFONO, QUIEN TIENE BARRA DE ABAJO NO VE ESTA (dueño, 24/09/2026: «hay mezclas entre
+  // pantallas»). Personal · Compras · Impuestos · Presupuestos arriba repetía la barra de gestión y
+  // «Más»: dos navegaciones para el mismo salto. Misma regla de ancho que la barra (`md`).
+  if (barraTelefonoDe(rol).length > 0) return <div className="hidden md:block"><BarraAreas areas={areas} /></div>
   return <BarraAreas areas={areas} />
 }
