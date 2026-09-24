@@ -9,8 +9,7 @@ const VISTAS = ['/clientes', '/presupuestos', '/administracion/usuarios', '/admi
 
 test('el jefe de obra NO ve Usuarios, Presupuestos ni Clientes (Clientes: dueño 24/09/2026)', () => {
   const suyas = VISTAS.filter((v) => puedeVerRuta('jefe_obra', v))
-  assert.deepEqual(suyas, ['/administracion/personas',
-    '/administracion/proveedores', '/administracion/pendientes'])
+  assert.deepEqual(suyas, ['/administracion/personas', '/administracion/pendientes'], 'Proveedores es sección de Compras (dueño, 24/09/2026: el jefe no entra a Clientes, Compras, Impuestos, Presupuestos ni Liquidación)')
 })
 
 test('dirección y administración ven las seis', () => {

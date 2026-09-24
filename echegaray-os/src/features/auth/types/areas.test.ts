@@ -29,12 +29,11 @@ test('Dirección y Administración abren todo', () => {
 test('EL JEFE DE OBRA ENTRA A ADMINISTRACIÓN', () => {
   // Personas, legajos, cuadrillas, clientes, proveedores y pendientes: todo eso es administrar los
   // maestros, y es su trabajo. Antes rebotaba en la puerta y la pantalla ni se dibujaba.
-  for (const r of ['/administracion', '/administracion/personas', '/administracion/proveedores',
-    '/administracion/clientes', '/administracion/pendientes']) {
+  for (const r of ['/administracion', '/administracion/personas', '/administracion/pendientes']) {
     assert.equal(puedeVerRuta('jefe_obra', r), true, `un jefe de obra no pudo abrir ${r}`)
   }
-  // CLIENTES NO (dueño, 24/09/2026): ni la cartera ni la ficha.
-  for (const r of ['/clientes', '/clientes/arcor']) {
+  // CLIENTES Y COMPRAS NO (dueño, 24/09/2026: el jefe no entra a Clientes, Compras, Impuestos, Presupuestos ni Liquidación).
+  for (const r of ['/clientes', '/clientes/arcor', '/administracion/compras', '/administracion/proveedores', '/administracion/proveedores/abc']) {
     assert.equal(puedeVerRuta('jefe_obra', r), false, `un jefe de obra pudo abrir ${r}`)
     assert.equal(puedeVerRuta('campo', r), false, `un operario pudo abrir ${r}`)
   }
@@ -60,11 +59,10 @@ test('NI AL ARCHIVO TRANSVERSAL: ahí están los libros de sueldos y el archivo 
   assert.equal(puedeVerRuta('direccion', '/documentos'), true)
 })
 
-test('la ficha de un proveedor SÍ la abre el jefe de obra: es costo, no precio', () => {
-  // El dueño, 19/08: ve el costo de su obra y lo que se lleva gastado. La base recorta las filas
-  // (`ve_obra_texto`), así que la ficha le muestra sus comprobantes y nada más.
-  assert.equal(puedeVerRuta('jefe_obra', '/administracion/proveedores/abc-123'), true)
-  assert.equal(puedeVerRuta('jefe_obra', '/administracion/proveedores/abc-123?vista=comprobantes'), true)
+test('la ficha de un proveedor NO la abre el jefe de obra: Proveedores es sección de Compras', () => {
+  // Hasta el 24/09/2026 la abría (costo, no precio). El dueño cerró Compras entera al jefe.
+  assert.equal(puedeVerRuta('jefe_obra', '/administracion/proveedores/abc-123'), false)
+  assert.equal(puedeVerRuta('direccion', '/administracion/proveedores/abc-123'), true)
 })
 
 test('NI A GESTIONAR USUARIOS, que es la puerta a todo lo anterior', () => {

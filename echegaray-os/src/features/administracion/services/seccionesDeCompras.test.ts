@@ -107,7 +107,7 @@ test('las cuatro secciones encienden la solapa Compras de la barra del área', (
   assert.equal(areaActiva('/administracion/proveedores/abc-123?vista=documentos'), 'compras')
 })
 
-test('la fila y la puerta usan el MISMO portero: el jefe de obra ve las cuatro', () => {
+test('la fila y la puerta usan el MISMO portero: el jefe de obra no ve ninguna (dueño, 24/09/2026: el jefe no entra a Clientes, Compras, Impuestos, Presupuestos ni Liquidación)', () => {
   // Una compra es COSTO, no PRECIO: el jefe de obra ve el costo de su obra, y el proveedor al que se
   // le compró. Si mañana alguien agrega una sección económica y se olvida de la lista, el jefe la ve
   // dibujada y el middleware lo rebota — un enlace que existe, se puede apretar y lleva a nada.
@@ -115,12 +115,12 @@ test('la fila y la puerta usan el MISMO portero: el jefe de obra ve las cuatro',
     const suya = puedeVerRuta('jefe_obra', s.href)
     if (suya) continue
     assert.ok(
-      RUTAS_SOLO_ECONOMIA.some((r) => s.href === r || s.href.startsWith(`${r}/`)),
+      RUTAS_SOLO_ECONOMIA.some((r) => { const p = s.href.split(/[?#]/)[0]; return p === r || p.startsWith(`${r}/`) }),
       `${s.href} no se le dibuja al jefe pero no está declarada en RUTAS_SOLO_ECONOMIA`,
     )
   }
   assert.deepEqual(
     SECCIONES_COMPRAS.filter((s) => puedeVerRuta('jefe_obra', s.href)).map((s) => s.clave),
-    ['compras', 'proveedores', 'deuda', 'resolver', 'efectivo'],
+    [],
   )
 })

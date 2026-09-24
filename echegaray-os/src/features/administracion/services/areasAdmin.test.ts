@@ -54,7 +54,7 @@ test('el jefe de obra ve Personal y Compras; Clientes es sólo de Administració
   // siga viéndolo lo comprueba `seccionesDeCompras.test.ts` sobre las cuatro secciones.
   assert.deepEqual(
     destinosVisibles('jefe_obra').map((d) => d.clave),
-    ['personas', 'compras'],
+    ['personas'], // (dueño, 24/09/2026: el jefe no entra a Clientes, Compras, Impuestos, Presupuestos ni Liquidación)
   )
   assert.ok(!destinosVisibles('jefe_obra').some((d) => d.clave === 'documentos'), '/documentos sigue en RUTAS_SOLO_ECONOMIA')
 })

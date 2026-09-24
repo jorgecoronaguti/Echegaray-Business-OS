@@ -143,7 +143,7 @@ test('el jefe de obra ve los TRES destinos: Proveedores se fue adentro de Compra
   // 16/09/2026. No perdió el acceso a proveedores: lo abre como sección de Compras, y el jefe ve las
   // cuatro secciones (`seccionesDeCompras.test.ts`). Lo que ya no existe es la solapa suelta.
   const suyas = areasDeAdministracion(CERO, 'jefe_obra').map((a) => a.clave)
-  assert.deepEqual(suyas, ['personas', 'compras'], 'Clientes es sólo de Administración (dueño, 24/09/2026)')
+  assert.deepEqual(suyas, ['personas'], '(dueño, 24/09/2026: el jefe no entra a Clientes, Compras, Impuestos, Presupuestos ni Liquidación)')
   // Y tampoco le llegan señales a una pantalla que no puede abrir.
   for (const s of senalesDeTrabajo(con({ proveedoresSinCuit: 1, comprasSinImputar: 1 }), 'jefe_obra')) {
     assert.ok(!s.href.startsWith('/presupuestos') && !s.href.startsWith('/documentos'))
@@ -230,6 +230,6 @@ test('efectivo: sin medir no se dibuja; medido va con su filtro; sin «rendició
   assert.ok(senalesDeTrabajo(con({ efectivoPorImputar: null }), 'direccion').some((s) => s.clave === 'efectivo-por-imputar' && s.numero === null))
   // Y no cambia «no pude leer nada»: las siete de siempre siguen mandando.
   assert.equal(atencionNoLeida({ ...NADA, efectivoPorImputar: 3 }), true)
-  // El jefe de obra ve Compras: le llegan.
-  assert.ok(chipsDeAtencion(con({ efectivoPorImputar: 1 }), 'jefe_obra').some((c) => c.clave === 'efectivo-por-imputar'))
+  // El jefe de obra ya no ve Compras (dueño, 24/09/2026: el jefe no entra a Clientes, Compras, Impuestos, Presupuestos ni Liquidación): no le llegan.
+  assert.ok(!chipsDeAtencion(con({ efectivoPorImputar: 1 }), 'jefe_obra').some((c) => c.clave === 'efectivo-por-imputar'))
 })

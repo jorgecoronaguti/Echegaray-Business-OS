@@ -196,6 +196,12 @@ export const RUTAS_SOLO_ECONOMIA = [
   // 19/08: ni la cartera ni la ficha. La base sigue devolviendo el nombre del cliente de una obra
   // (lo necesita la cabecera de la obra); lo que se cierra es la sección.
   '/clientes',
+  // COMPRAS (con Proveedores y Efectivo a rendir, que son secciones suyas) TAMPOCO (dueño, 24/09/2026:
+  // «jefe de obra de crm admin no tiene acceso a clientes, compras, impuestos y presupuestos, tampoco a
+  // liquidación»). Al jefe le queda Personal sin Liquidación; el costo de su obra lo ve en la obra misma
+  // (Operación › Compras), que lee otra ruta.
+  '/administracion/compras',
+  '/administracion/proveedores',
   // `/administracion/cronograma` y `/administracion/portal` estuvieron acá menos de un día
   // (26/08/2026): eran dos pantallas del portal que duplicaban lo que la ficha del cliente ya
   // administraba en sus solapas 31 y 32. Se retiraron con sus rutas. Quién entra al portal y qué ve
@@ -218,7 +224,10 @@ export const RUTAS_SOLO_ECONOMIA = [
  * contacto, qué documentos hay. Eso es información de ejecución y se abre, en modo lectura (los
  * formularios no se dibujan, y la RLS rechaza la escritura de todos modos).
  */
-export function puedeVerRuta(rol: Rol | null | undefined, pathname: string): boolean {
+export function puedeVerRuta(rol: Rol | null | undefined, ruta: string): boolean {
   if (veEconomia(rol)) return true
+  // SE COMPARA EL PATH, SIN QUERY NI ANCLA (24/09/2026): la navegación pregunta con el href entero
+  // («/administracion/proveedores?vista=deuda») y así una sección cerrada se le dibujaba al jefe.
+  const pathname = ruta.split(/[?#]/)[0]
   return !RUTAS_SOLO_ECONOMIA.some((r) => pathname === r || pathname.startsWith(r + '/'))
 }
