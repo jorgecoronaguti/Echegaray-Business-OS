@@ -142,6 +142,7 @@ import {
   NOMBRES_DIRECCION, formulaProyectadoMes, formulaEstadoMes, leerColumnasRetiros, retirosDeDireccion,
 } from '../lib/direccion-retiros.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
+import { condicionesPagoNC, refsPagosNC, RUBROS_PAGOS_NC } from '../lib/pagos-no-compra.mjs'
 import { quincenaConAumento } from '../lib/proyeccion-convenio.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -763,11 +764,17 @@ export function grilla({
   const o0 = filas.length + 1
   MESES.forEach((nombre, i) => {
     const bs = bloquesOfi.filter((b) => b.mes === i + 1)
+    // LO QUE LA PLANILLA NO TIENE (24/09/2026): el resto de un mes pagado que JORNALES no cargó entra
+    // por `_PAGOS_NO_COMPRA_RAW` con rubro «Oficina · sueldo» y su período, igual que Dirección. Va
+    // envuelto: si esa pestaña falta, lo que la planilla sí sabe no se pierde.
+    const nc = `IFERROR(SUMPRODUCT(${condicionesPagoNC(RUBROS_PAGOS_NC.oficina, periodoDe(AÑO, i + 1)).join('*')}`
+      + `*IF(ISNUMBER(${refsPagosNC.importe});${refsPagosNC.importe};0));0)`
     const pagado = bs.length
       // Un mes puede venir partido en dos bloques en la planilla (un pago a mitad de mes y otro a
       // fin): se suman, porque lo que se cobra es el mes.
-      ? `=${bs.map((b) => `SUM('${ESPEJO_OFI}'!Z${b.inicio}:Z${b.fin})`).join('+')}`
-      : VACIO
+      ? `=${bs.map((b) => `SUM('${ESPEJO_OFI}'!Z${b.inicio}:Z${b.fin})`).join('+')}+${nc}`
+      // Sin bloque en la planilla sigue vacío mientras no haya pago cargado: vacío es «proyección».
+      : `=IF(${nc}=0;"";${nc})`
     // Los meses sin cargar se proyectan sobre el último mes cargado, ajustado por inflación. Son dos
     // sueldos fijos: no hay horas ni jornal que modelar, y estimarlo por hora sería inventar una
     // precisión que no existe. La base y el ajuste se ven los dos en pantalla.

@@ -42,6 +42,10 @@ export const RUBROS_PAGOS_NC = Object.freeze({
   direccion: 'Dirección · retiro',
   sac: 'SAC · efectivo',
   gremiales: 'Gremiales',
+  // El resto de un mes de Oficina que la planilla JORNALES no tiene cargado (24/09/2026: agosto
+  // figuraba con la primera semana sola y el dueño confirmó «se pagó todo el mes de agosto trabajado»).
+  // El bloque Oficina de «Jornales por Quincena» lo suma a lo que trae la planilla, por período.
+  oficina: 'Oficina · sueldo',
 })
 
 /** Los rangos abiertos de cada columna, como los citan las fórmulas de otras pestañas. */
