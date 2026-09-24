@@ -181,3 +181,13 @@ test('más pendientes que débitos del mismo importe = ambiguo: no se cubre ning
   assert.equal(avisos.length, 1)
   assert.match(avisos[0], /ambiguo/)
 })
+
+test('RESUMEN DEBITADO UN DÍA ANTES DE LA FECHA DE LA CUOTA (24/09/2026): la cuota «2/9» la pagó el débito del 01/09', async () => {
+  const { cubiertaPorResumen: cubierta } = await import('./libro-respaldo-banco.mjs')
+  // Tarjeta de Credito f50 (Pinturería Córdoba, cuota 2/3) vence 46267 = 02/09; el extracto debitó el
+  // resumen el 46266 = 01/09 por $2.208.958. El débito anterior (03/08 = 46237) no la cubre.
+  const pagos = [{ fecha: 46237 }, { fecha: 46266 }]
+  assert.equal(cubierta(46267, pagos), 46266)
+  // La cuota 3 («2/10») no la cubre el débito del 01/09: 31 días antes es el ciclo anterior.
+  assert.equal(cubierta(46297, pagos), null)
+})

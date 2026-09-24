@@ -171,9 +171,16 @@ export function pagosDeResumen(filas = [], { fila0 = FILA0_BANCO } = {}) {
  * @param {Array<{fecha:number}>} pagos los débitos de resumen, de `pagosDeResumen`
  * @returns {number|null} el serial del débito que la contiene, o null si todavía no se debitó
  */
+/** Cuántos días ANTES del vencimiento de la cuota puede caer el débito del resumen que la paga. */
+export const TOLERANCIA_RESUMEN_DIAS = 7
+
 export function cubiertaPorResumen(vencimiento, pagos = []) {
   if (!Number.isFinite(vencimiento) || vencimiento <= 0) return null
-  const cubre = pagos.filter((p) => p.fecha >= vencimiento).sort((a, b) => a.fecha - b.fecha)
+  // UN DÉBITO UNOS DÍAS ANTES TAMBIÉN LA CONTIENE (24/09/2026). La fecha de la cuota en la pestaña es el
+  // día de la compra repetido cada mes (6/7 → «2/9»), no el vencimiento del resumen: el de agosto venció
+  // y se debitó el 01/09 ($2.208.958) y la cuota «2/9» de Pinturería Córdoba quedó VENCIDA en CAJA con
+  // la plata ya salida. Siete días no alcanzan a tocar el débito del ciclo anterior (~30 días antes).
+  const cubre = pagos.filter((p) => p.fecha >= vencimiento - TOLERANCIA_RESUMEN_DIAS).sort((a, b) => a.fecha - b.fecha)
   return cubre.length ? cubre[0].fecha : null
 }
 
