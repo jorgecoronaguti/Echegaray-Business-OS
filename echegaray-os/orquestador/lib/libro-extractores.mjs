@@ -543,7 +543,12 @@ export function debitosDeImpuestoAlCheque(cargos = [], anio) {
     const d = new Date(Date.UTC(1899, 11, 30) + Math.round(Number(mv.fecha) || 0) * 86400000)
     if (d.getUTCFullYear() !== anio) continue
     const m = d.getUTCMonth() + 1
-    porMes[m] = (porMes[m] ?? 0) + Math.abs(Number(mv.importe) || 0)
+    // LA ANULACIÓN RESTA (24/09/2026). «Anul imp ley 25.413» es el banco DEVOLVIENDO un débito: entra
+    // con signo ENTRA. Sumarla en valor absoluto la contaba como otro débito, y el neteo del mes en
+    // curso restaba de más: en septiembre, $4.602,54 (dos veces las tres anulaciones del mes) que el
+    // renglón proyectado dejaba de cubrir.
+    const sentido = Number(mv.signo) > 0 ? -1 : 1
+    porMes[m] = (porMes[m] ?? 0) + sentido * Math.abs(Number(mv.importe) || 0)
   }
   return porMes
 }

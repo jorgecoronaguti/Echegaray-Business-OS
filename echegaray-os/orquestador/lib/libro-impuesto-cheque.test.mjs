@@ -77,6 +77,14 @@ test('lo ya debitado se mide con la palabra del BANCO, no con el rótulo lindo d
   assert.deepEqual(debitosDeImpuestoAlCheque(cargos, ANIO), { 8: 999999, 9: 200000 })
 })
 
+test('la anulación del banco RESTA de lo ya debitado: no es otro débito', () => {
+  const cargos = [
+    { concepto: 'Impuesto ley 25.413 debito 0,6%', fecha: serialDe('2026-09-03'), importe: 14211.39, signo: -1 },
+    { concepto: 'Anul imp ley 25.413 debito 0,6%', fecha: serialDe('2026-09-03'), importe: 88.05, signo: 1 },
+  ]
+  assert.equal(Math.round(debitosDeImpuestoAlCheque(cargos, ANIO)[9] * 100), Math.round((14211.39 - 88.05) * 100))
+})
+
 test('sin la fila ubicada por rótulo, el extractor ROMPE — no devuelve $0 en silencio', () => {
   assert.throws(() => deImpuestoAlCheque(impuestos(), {}, ANIO, CORTE), new RegExp(ROTULO.replace(/[()."]/g, '.')))
   assert.throws(() => deImpuestosCalendario(impuestos(), { filaIva: 12, filaIibb: 22 }, ANIO, CORTE), /rótulo/)
