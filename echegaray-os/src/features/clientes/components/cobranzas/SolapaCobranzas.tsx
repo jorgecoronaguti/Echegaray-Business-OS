@@ -56,9 +56,9 @@ import { V } from '@/shared/components/v2/patron'
 import { CifrasDeFicha, type CifraDeFicha } from '@/shared/components/v2/segundoNivel'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
 import {
-  agruparCobranzas, filasSinImporte, ordenarPorCobro, partirEnSecciones, proximoCobro, recortar,
+  agruparCobranzas, filasSinImporte, ordenarPorCobro, partirEnSecciones, recortar,
   totalDeFilas, totalesDeCobranzas, totalPorCircuito, vencidoDeFilas,
-  type FilaCobranza, type RecorteCobranza,
+  type EnSuMoneda, type FilaCobranza, type RecorteCobranza,
 } from '../../services/cobranzasCliente'
 import type { Orden } from '../../services/papelesCliente'
 import { OrdenesDeLaObra } from '../OrdenesDeLaObra'
@@ -77,8 +77,24 @@ const AYUDA_POR_COBRAR = 'Lo que falta cobrar, con IVA: las filas que no están 
 const AYUDA_VENCIDO = 'De lo que falta cobrar, lo que ya pasó su plazo: EMISIÓN + 30 días, el reloj '
   + 'de la pestaña OBRAS. No es «pasó la fecha de cobro», que se re-tipea cada vez que un cobro se '
   + 'posterga y está condenado a cero por construcción.'
-const AYUDA_PROXIMO = 'La próxima fecha de cobro pendiente y la suma de TODO lo que cae ese día. Es '
-  + 'una PREVISIÓN: la prueba de que entró es el extracto del banco.'
+const AYUDA_COBRADO_BLANCO = 'Lo COBRADO de las filas «B» (con factura), con IVA. Criterio PERCIBIDO: sólo lo que ya '
+  + 'entró. Lo cobrado en dólares se suma valuado al tipo de cambio de la planilla.'
+const AYUDA_COBRADO_NEGRO = 'Lo COBRADO de las filas «N» (sin factura ni IVA). Criterio PERCIBIDO: sólo lo que ya '
+  + 'entró. Lo cobrado en dólares se suma valuado al tipo de cambio de la planilla.'
+
+const usd = (n: number) => `U$S ${Math.round(n).toLocaleString('es-AR')}`
+
+/**
+ * UNA CIFRA EN SU MONEDA. Todo en dólares → «U$S 10.500», con los pesos en la ayuda. Mixta → pesos, y el
+ * rótulo dice cuánto de eso entró en dólares. Sin dólares → pesos, como siempre.
+ */
+function enSuMoneda(rotulo: string, m: EnSuMoneda, falta: string, titulo: string): CifraDeFicha {
+  if (m.pesos == null) return { rotulo, valor: null, falta, titulo }
+  if (!m.usd) return { rotulo, valor: pesos(m.pesos), falta, titulo }
+  return m.soloUsd
+    ? { rotulo, valor: usd(m.usd), falta, titulo: `${titulo} Equivale a ${pesos(m.pesos)}.` }
+    : { rotulo: `${rotulo} · incluye ${usd(m.usd)}`, valor: pesos(m.pesos), falta, titulo }
+}
 
 /** Una cifra de plata, o el motivo por el que no hay ninguna. Nunca un cero por una ausencia. */
 function cifra(
@@ -126,7 +142,6 @@ export function SolapaCobranzas({
   // números distintos en la misma pantalla es exactamente el defecto que esta pestaña vino a matar.
   // El rótulo lleva el recorte pegado para que nadie tenga que deducir de qué población habla.
   const total = totalesDeCobranzas(visibles)
-  const proximo = proximoCobro(visibles)
   const { porCobrar, cobrado, anuladas } = partirEnSecciones(visibles)
   const RECORTADO: Record<string, string> = { pendiente: 'por cobrar', cobrado: 'cobrado', b: 'B', n: 'N' }
   /** El recorte pegado al rótulo — salvo cuando el rótulo YA lo dice: «Por cobrar · por cobrar»
@@ -136,32 +151,23 @@ export function SolapaCobranzas({
     return !r || rotulo.toLowerCase().startsWith(r.toLowerCase()) ? rotulo : `${rotulo} · ${r}`
   }
 
+  // ═══ CUATRO CIFRAS Y NINGUNA MÁS (dueño, 24/09/2026: «muchos datos sin sentido, necesito saber cuánto
+  // cobré en negro, cuánto en blanco, cuánto fue lo que se contrató y cuánto falta cobrar») ═══
+  // Se fueron Vencido, Próximo cobro y Facturado (B) de la cabecera: siguen en las bandas de abajo, donde
+  // se leen fila por fila. La plata en dólares se dice en dólares: si todo lo de una cifra es U$S, la
+  // cifra es U$S y el valor en pesos va en la ayuda; si es mixta, el rótulo dice cuánto trae en U$S.
   const cifras: CifraDeFicha[] = [
-    // LAS TRES PRIMERAS SON LA RESPUESTA A «¿cuánto me debe hoy y cuándo entra lo próximo?».
-    cifra(conRecorte('Por cobrar'), total.pendiente, 'nada pendiente', AYUDA_POR_COBRAR),
-    cifra(conRecorte('Vencido'), total.vencido, 'nada vencido', AYUDA_VENCIDO, 'warn'),
-    {
-      // EL MEDIO VA EN EL RÓTULO Y NO EN EL VALOR: el valor es cifra —mono tabular— y el medio es
-      // una palabra. Mezclarlos en una celda es exactamente lo que la regla del módulo prohíbe.
-      // Sin medio único en el día, el rótulo NO elige uno: ver `proximoCobro`.
-      rotulo: proximo?.medio ? `Próximo cobro · ${proximo.medio}` : conRecorte('Próximo cobro'),
-      valor: proximo
-        ? `${dia(proximo.fecha)}${proximo.importe != null ? ` · ${pesos(proximo.importe)}` : ''}`
-        : null,
-      falta: 'sin cobros previstos',
-      titulo: AYUDA_PROXIMO,
-    },
-    // Y ESTAS TRES SON EL MARCO, NO LA RESPUESTA: de dónde viene la relación y cuánto lleva.
     {
       rotulo: 'Contratado',
       valor: contratadoUsd != null
-        ? `U$S ${Math.round(contratadoUsd).toLocaleString('es-AR')}`
+        ? usd(contratadoUsd)
         : contratado != null ? pesos(contratado) : null,
       falta: 'sin precio en OBRAS',
       titulo: AYUDA_CONTRATADO,
     },
-    cifra(conRecorte('Facturado (B)'), total.facturado, 'ninguna fila B', AYUDA_FACTURADO),
-    cifra(conRecorte('Cobrado c/IVA'), total.cobrado, 'nada cobrado todavía', AYUDA_COBRADO),
+    enSuMoneda(conRecorte('Cobrado en blanco'), total.cobradoBlanco, 'nada cobrado en blanco', AYUDA_COBRADO_BLANCO),
+    enSuMoneda(conRecorte('Cobrado en negro'), total.cobradoNegro, 'nada cobrado en negro', AYUDA_COBRADO_NEGRO),
+    enSuMoneda(conRecorte('Falta cobrar'), total.pendienteEnSuMoneda, 'nada pendiente', AYUDA_POR_COBRAR),
   ]
 
   return (

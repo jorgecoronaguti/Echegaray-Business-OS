@@ -44,6 +44,10 @@ export interface FilaCobranza {
   esta_vencida: boolean
   fecha_cobro: string | null
   forma_cobro: string | null
+  /** `USD` cuando la cobranza es en dólares; vacío = pesos. `total_bruto` es SIEMPRE el valor en pesos. */
+  moneda?: string | null
+  /** El total EN SU MONEDA (U$S para las filas en dólares). Lo agrega la migración 20260924T2000. */
+  total_bruto_origen?: number | null
   /**
    * EL PAPEL QUE RESPALDA LA FILA cuando no hay factura (`cobranza_comprobante`, 11/09/2026): la
    * nota firmada de Rodrigo por los tres cobros en efectivo de Messina. Opcionales porque la vista
@@ -55,7 +59,7 @@ export interface FilaCobranza {
 }
 
 /** Lo que la vista publica desde siempre. Sin esto no hay pantalla. */
-const COLUMNAS_BASE = 'cobranza_id, obra_id, imputacion, fila, categoria, fecha_emision, factura, numero_comprobante, concepto, orden_compra, monto_neto, iva, retenciones, total_bruto, estado, esta_cobrada, esta_cancelada, esta_vencida, fecha_cobro, forma_cobro'
+const COLUMNAS_BASE = 'cobranza_id, obra_id, imputacion, fila, categoria, fecha_emision, factura, numero_comprobante, concepto, orden_compra, monto_neto, iva, retenciones, total_bruto, estado, esta_cobrada, esta_cancelada, esta_vencida, fecha_cobro, forma_cobro, moneda, total_bruto_origen'
 /** El papel que respalda una fila sin factura. Lo agrega la migración `20260911T0920`. */
 const COLUMNAS_RESPALDO = 'respaldo_drive_id, respaldo_titulo, respaldo_nota'
 const COLUMNAS = `${COLUMNAS_BASE}, ${COLUMNAS_RESPALDO}`
@@ -99,6 +103,23 @@ export async function getCobranzasDelCliente(
 // LOS TOTALES — qué suma cada uno, dicho una sola vez
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
+/** B = blanco (con factura). Todo lo demás —N, vacío— es negro: no pasa por ARCA. */
+const esBlanco = (f: FilaCobranza) => (f.categoria ?? '').trim().toUpperCase() === 'B'
+const esUsd = (f: FilaCobranza) => (f.moneda ?? '').trim().toUpperCase() === 'USD'
+
+/** Una suma en pesos y, de ella, lo que es en dólares (en U$S). `soloUsd` = toda la plata es en dólares. */
+export interface EnSuMoneda { pesos: number | null; usd: number | null; soloUsd: boolean }
+
+function enSuMoneda(filas: readonly FilaCobranza[]): EnSuMoneda {
+  const conImporte = filas.filter((f) => f.total_bruto != null)
+  const enUsd = conImporte.filter(esUsd)
+  return {
+    pesos: suma(filas.map((f) => f.total_bruto)),
+    usd: suma(enUsd.map((f) => f.total_bruto_origen ?? null)),
+    soloUsd: conImporte.length > 0 && enUsd.length === conImporte.length,
+  }
+}
+
 export interface TotalesCobranza {
   /** Lo FACTURADO: las filas `B`, que son las que tienen comprobante. Criterio DEVENGADO. */
   facturado: number | null
@@ -108,6 +129,11 @@ export interface TotalesCobranza {
   pendiente: number | null
   /** De lo pendiente, lo que la vista publica vencido: Pendiente con fecha de cobro ya pasada. */
   vencido: number | null
+  /** LO COBRADO, PARTIDO EN BLANCO (B) Y NEGRO (N), en pesos; y de cada uno, cuánto entró en dólares. */
+  cobradoBlanco: EnSuMoneda
+  cobradoNegro: EnSuMoneda
+  /** Lo que falta cobrar, con cuánto es en dólares. */
+  pendienteEnSuMoneda: EnSuMoneda
   /** Cuántas filas se sumaron —sin las anuladas—, para que un total diga de dónde sale. */
   filas: number
   /** Cuántas quedaron afuera por anuladas. Se dice: una fila que no se ve ni se cuenta desaparece. */
@@ -128,11 +154,15 @@ function suma(valores: (number | null)[]): number | null {
 export function totalesDeCobranzas(filas: readonly FilaCobranza[]): TotalesCobranza {
   const vivas = filas.filter((f) => !f.esta_cancelada)
   const pendientes = vivas.filter((f) => !f.esta_cobrada)
+  const cobradas = vivas.filter((f) => f.esta_cobrada)
   return {
     facturado: suma(vivas.filter((f) => f.categoria === 'B').map((f) => f.total_bruto)),
     cobrado: suma(vivas.filter((f) => f.esta_cobrada).map((f) => f.total_bruto)),
     pendiente: suma(pendientes.map((f) => f.total_bruto)),
     vencido: suma(vivas.filter((f) => f.esta_vencida).map((f) => f.total_bruto)),
+    cobradoBlanco: enSuMoneda(cobradas.filter(esBlanco)),
+    cobradoNegro: enSuMoneda(cobradas.filter((f) => !esBlanco(f))),
+    pendienteEnSuMoneda: enSuMoneda(pendientes),
     filas: vivas.length,
     anuladas: filas.length - vivas.length,
   }

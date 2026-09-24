@@ -61,9 +61,15 @@ test('la tira de cifras mide LO QUE SE ESTÁ VIENDO, no la pestaña entera', () 
   // la cabecera arriba de una banda que decía $18.750.000: dos rótulos iguales, dos números.
   const cabecera = FUENTE.slice(0, FUENTE.indexOf('function Seccion('))
   assert.ok(cabecera.includes('totalesDeCobranzas(visibles)'), 'la cabecera volvió a medir sin el recorte')
-  assert.ok(cabecera.includes('proximoCobro(visibles)'))
+  // «Próximo cobro» salió de la cabecera (dueño, 24/09/2026: cuatro cifras y ninguna más).
   assert.ok(
-    !cabecera.includes('totalesDeCobranzas(filas)') && !cabecera.includes('proximoCobro(filas)'),
+    !cabecera.includes('totalesDeCobranzas(filas)'),
     'quedó una medición sobre la pestaña entera conviviendo con las bandas recortadas',
   )
+})
+
+test('la cabecera son CUATRO cifras: contratado, cobrado en blanco, cobrado en negro y falta cobrar (dueño 24/09)', () => {
+  const cabecera = FUENTE.slice(0, FUENTE.indexOf('function Seccion('))
+  for (const r of ['Contratado', 'Cobrado en blanco', 'Cobrado en negro', 'Falta cobrar']) assert.ok(cabecera.includes(`'${r}'`), r)
+  for (const r of ["'Vencido'", "'Facturado (B)'", "'Cobrado c/IVA'", "'Por cobrar'"]) assert.ok(!cabecera.includes(`conRecorte(${r})`), `volvió ${r} a la cabecera`)
 })
