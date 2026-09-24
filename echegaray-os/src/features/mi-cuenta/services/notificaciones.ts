@@ -4,7 +4,7 @@
 // Un test de cada lado exige que las claves coincidan: la pantalla no ofrece interruptores para
 // avisos que nadie manda ni deja sin interruptor un aviso que sí se manda.
 
-export type TipoAviso = 'efectivo_firma' | 'efectivo_anulacion' | 'efectivo_firmada' | 'sistema'
+export type TipoAviso = 'efectivo_firma' | 'efectivo_anulacion' | 'sistema'
 export type CanalAviso = 'mattermost_dm' | 'correo'
 
 export interface DefTipo {
@@ -18,7 +18,6 @@ export interface DefTipo {
 export const TIPOS: readonly DefTipo[] = [
   { clave: 'efectivo_firma', titulo: 'Efectivo para firmar', detalle: 'Te entregaron efectivo a rendir: el enlace para confirmar y firmar.', para: 'persona' },
   { clave: 'efectivo_anulacion', titulo: 'Entrega anulada', detalle: 'Se anuló una entrega de efectivo a tu nombre, con el motivo.', para: 'persona' },
-  { clave: 'efectivo_firmada', titulo: 'Efectivo firmado', detalle: 'Alguien firmó la plata que recibió: quién, cuánto y cuándo.', para: 'dueno' },
   { clave: 'sistema', titulo: 'Avisos del sistema', detalle: 'Despliegues, controles y lo que el OS necesita decirle al dueño.', para: 'dueno' },
 ]
 

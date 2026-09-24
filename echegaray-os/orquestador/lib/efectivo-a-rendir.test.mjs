@@ -153,11 +153,135 @@ test('SIN IDENTIDAD TODAVÍA, EL AVISO BUSCA A LA PERSONA POR EMAIL Y VA POR DIR
   assert.deepEqual(destinos2, ['canal-efectivo'])
 })
 
-test('la firma se avisa también en el canal Efectivo, sin monto (dueño 24/09/2026)', async () => {
+// ═══ TODO EN EL HILO DEL CANAL EFECTIVO (dueño 24/09/2026) ═══
+// «La persona firmó el recibo y no me emitió notificación ni de ida ni de que ya estaba firmado. Todo esto
+// pase en el canal efectivo, en el hilo de cada escritura». ER-0020: el directo al dueño salió y se perdió.
+
+test('la migración: la firma y la anulación van al canal sin monto, y el directo al dueño se retiró', async () => {
   const { readFileSync } = await import('node:fs')
-  const sql = readFileSync(new URL('../../supabase/migrations/20260924T2105_la_firma_se_avisa_en_el_canal_efectivo.sql', import.meta.url), 'utf8')
-  const canal = sql.slice(sql.lastIndexOf("'firmada', 'canal'"))
-  assert.ok(sql.includes("'firmada', 'dueno'"), 'el directo al dueño sigue')
-  assert.ok(canal.length > 20, 'hay aviso al canal')
-  assert.ok(!canal.slice(0, canal.indexOf('v_quien')).includes('_efectivo_pesos'), 'el aviso del canal no dice el monto')
+  const sql = readFileSync(new URL('../../supabase/migrations/20260924T2200_la_entrega_contesta_en_su_hilo.sql', import.meta.url), 'utf8')
+  const cuerpo = sql.slice(sql.indexOf('create or replace function'))
+  assert.ok(!cuerpo.includes("'dueno'"), 'ya no se encola nada para el dueño')
+  assert.match(sql, /add column if not exists origen_post_id text/)
+  // Cada insert al canal, desde su «'canal'» hasta su v_quien, no nombra el monto.
+  const alCanal = cuerpo.split("'canal',").slice(1).map((t) => t.slice(0, t.indexOf('v_quien')))
+  assert.equal(alCanal.length, 2, 'firma y anulación')
+  for (const t of alCanal) {
+    assert.ok(!/monto|_efectivo_pesos/.test(t), `el canal no dice el monto: ${t.slice(0, 80)}`)
+    assert.ok(t.includes('{persona}'), 'nombra a la persona por mención')
+  }
+  // El directo a la persona por la anulación se queda.
+  assert.match(cuerpo, /'anulacion', 'persona'/)
+})
+
+/** Un puerto que contesta la cola y registra cada sentencia. */
+function colaFalsa(filas) {
+  const q = []
+  return {
+    q,
+    async query(sql, params) {
+      q.push({ sql, params })
+      if (/from public\.efectivo_aviso a/.test(sql)) return { rows: filas }
+      if (/canales_area/.test(sql)) return { rows: [{ channel_id: 'canal-efectivo' }] }
+      return { rows: [], rowCount: 0 }
+    },
+  }
+}
+
+test('LA FIRMA SALE EN EL HILO DEL REGISTRO, con la mención y sin monto; NADA por directo al dueño', async () => {
+  const { drenarAvisos } = await import('../scripts/efectivo-avisos.mjs')
+  const port = colaFalsa([{
+    id: 'a1', tipo: 'firmada', destino: 'canal', texto: '✓ {persona} firmó la conformidad de **ER-0020** · 16:23',
+    username: null, mm_user_id: null, usuario_id: 'u-emi', email: 'hys@ecsas.com.ar', nombre: 'MALDONADO BATISTA EMILIANO MIGUEL',
+    codigo: 'ER-0020', origen_post_id: '1iekghqpj78y5bntwixeofh86e',
+  }])
+  const posts = []; const directos = []
+  const r = await drenarAvisos(port, {
+    log: {},
+    porEmail: async () => ({ id: 'mm-emi', username: 'emiliano' }),
+    directo: async (id) => { directos.push(id); return `dm-${id}` },
+    publicar: async (canal, texto, root) => { posts.push({ canal, texto, root }); return 'post-firma' },
+  })
+  assert.equal(r.enviados, 1)
+  assert.deepEqual(posts, [{ canal: 'canal-efectivo', texto: '✓ @emiliano firmó la conformidad de **ER-0020** · 16:23', root: '1iekghqpj78y5bntwixeofh86e' }])
+  assert.deepEqual(directos, [], 'no se abrió ningún directo')
+  assert.doesNotMatch(posts[0].texto, /\$|\d{1,3}\.\d{3}/, 'sin monto')
+  assert.ok(port.q.some((x) => /efectivo_aviso_enviado/.test(x.sql) && x.params[1] === 'post-firma'))
+})
+
+test('una entrega de la web (sin hilo) avisa SUELTA en el canal, con el código ER y el nombre si no hay usuario', async () => {
+  const { drenarAvisos } = await import('../scripts/efectivo-avisos.mjs')
+  const port = colaFalsa([{
+    id: 'a2', tipo: 'firmada', destino: 'canal', texto: '✓ {persona} firmó la conformidad de **ER-0030** · 10:05',
+    username: null, email: null, nombre: 'PEREZ JUAN', codigo: 'ER-0030', origen_post_id: null,
+  }])
+  const posts = []
+  await drenarAvisos(port, { log: {}, porEmail: async () => null, publicar: async (canal, texto, root) => { posts.push({ canal, texto, root }); return 'p' } })
+  assert.deepEqual(posts, [{ canal: 'canal-efectivo', texto: '✓ PEREZ JUAN firmó la conformidad de **ER-0030** · 10:05', root: null }])
+})
+
+test('un directo al dueño que quedó encolado de antes NO sale: se descarta diciendo por qué', async () => {
+  const { drenarAvisos } = await import('../scripts/efectivo-avisos.mjs')
+  const port = colaFalsa([{ id: 'a3', tipo: 'firmada', destino: 'dueno', texto: '**ER-0020** firmada: X recibió $ 20.000,00', codigo: 'ER-0020' }])
+  const posts = []
+  const r = await drenarAvisos(port, { log: {}, publicar: async (...a) => { posts.push(a); return 'p' }, directo: async () => 'dm' })
+  assert.equal(r.enviados, 0)
+  assert.deepEqual(posts, [])
+  const d = port.q.find((x) => /set intentos = 5/.test(x.sql))
+  assert.ok(d && d.params[0] === 'a3' && /retiró/.test(d.params[1]))
+})
+
+test('la anulación: a la persona por directo (con monto) y al hilo sin monto; sin directo, el monto NO cae al canal', async () => {
+  const { drenarAvisos } = await import('../scripts/efectivo-avisos.mjs')
+  const persona = { id: 'a4', tipo: 'anulacion', destino: 'persona', texto: 'Se anuló la entrega de efectivo **ER-0019** ($ 2.000,00): error', username: 'rodrigo', mm_user_id: 'mm-rod', usuario_id: 'u-rod', codigo: 'ER-0019', origen_post_id: 'hilo-19' }
+  const canal = { id: 'a5', tipo: 'anulacion', destino: 'canal', texto: '✕ **ER-0019** de {persona} anulada: error\nNo se rinden tickets contra esa entrega.', username: 'rodrigo', usuario_id: 'u-rod', codigo: 'ER-0019', origen_post_id: 'hilo-19' }
+  const posts = []
+  const publicar = async (c, texto, root) => { posts.push({ c, texto, root }); return `p${posts.length}` }
+  await drenarAvisos(colaFalsa([persona, canal]), { log: {}, directo: async (id) => `dm-${id}`, publicar })
+  assert.deepEqual(posts, [
+    { c: 'dm-mm-rod', texto: persona.texto, root: null },
+    { c: 'canal-efectivo', texto: '✕ **ER-0019** de @rodrigo anulada: error\nNo se rinden tickets contra esa entrega.', root: 'hilo-19' },
+  ])
+  // Sin usuario de Mattermost: el directo no sale y el texto con monto tampoco va al canal.
+  const posts2 = []
+  const port2 = colaFalsa([{ ...persona, mm_user_id: null }])
+  await drenarAvisos(port2, { log: {}, publicar: async (...a) => { posts2.push(a); return 'p' } })
+  assert.deepEqual(posts2, [])
+  assert.ok(port2.q.some((x) => /set intentos = 5/.test(x.sql) && /monto/.test(x.params[1])))
+})
+
+test('LA IDA: con directo, la constancia «📨 Le pedí la firma» se encola al hilo en la misma sentencia que marca avisada', async () => {
+  const { avisarEntregas, horaSanJuan } = await import('../scripts/efectivo-avisos.mjs')
+  const ahora = new Date('2026-09-24T19:22:10Z')
+  assert.equal(horaSanJuan(ahora), '16:22')
+  const fila = { id: 'e20', codigo: 'ER-0020', destino: 'Estructura', username: null, mm_user_id: null, usuario_id: 'u-emi', email: 'hys@ecsas.com.ar', nombre: 'MALDONADO BATISTA EMILIANO MIGUEL', entregada_por: 'u-jorge', origen_post_id: 'hilo-20' }
+  const q = []
+  const port = { async query(sql, params) { q.push({ sql, params }); if (/efectivo_entrega e/.test(sql)) return { rows: [fila] }; if (/canales_area/.test(sql)) return { rows: [{ channel_id: 'canal-efectivo' }] }; return { rows: [] } } }
+  const posts = []
+  await avisarEntregas(port, { log: {}, ahora: () => ahora, porEmail: async () => ({ id: 'mm-emi', username: 'emiliano' }), directo: async (id) => `dm-${id}`, publicar: async (c, t, root) => { posts.push({ c, root }); return 'post-dm' } })
+  assert.deepEqual(posts, [{ c: 'dm-mm-emi', root: null }], 'el enlace va por directo, fuera de todo hilo')
+  const marca = q.find((x) => /avisada_en = now\(\)/.test(x.sql))
+  assert.match(marca.sql, /insert into public\.efectivo_aviso[\s\S]*'pedido_firma', 'canal'/)
+  assert.equal(marca.params[2], '📨 Le pedí la firma de **ER-0020** a @emiliano por mensaje directo · 16:22')
+  // Sin Mattermost: el pedido mismo va al HILO y dice por qué no fue por directo; no se encola otra constancia.
+  const q2 = []; const posts2 = []
+  const port2 = { async query(sql, params) { q2.push({ sql, params }); return port.query(sql, params) } }
+  await avisarEntregas(port2, { log: {}, ahora: () => ahora, porEmail: async () => null, publicar: async (c, t, root) => { posts2.push({ c, t, root }); return 'p' } })
+  assert.equal(posts2[0].c, 'canal-efectivo')
+  assert.equal(posts2[0].root, 'hilo-20')
+  assert.match(posts2[0].t, /^📨 No le pude pedir la firma de \*\*ER-0020\*\* a MALDONADO BATISTA EMILIANO MIGUEL por mensaje directo \(no tiene usuario de Mattermost\)/)
+  assert.match(posts2[0].t, /firmar\?entrega=e20/)
+  assert.doesNotMatch(posts2[0].t, /\$/)
+  assert.ok(!q2.some((x) => /pedido_firma/.test(x.sql)))
+})
+
+test('el hilo de una entrega hecha por chat se rellena desde la respuesta «Registrado» del outbox', async () => {
+  const { rellenarOrigenDesdeElChat } = await import('../scripts/efectivo-avisos.mjs')
+  const q = []
+  assert.equal(await rellenarOrigenDesdeElChat({ async query(sql) { q.push(sql); return { rowCount: 1 } } }), 1)
+  assert.match(q[0], /Registrado: \\\*\\\*\(ER-\[0-9\]\+\)\\\*\\\*/)
+  assert.match(q[0], /origen_post_id is null/)
+  assert.match(q[0], /between e\.creada_en and e\.creada_en \+ interval '10 minutes'/)
+  const sinColumna = { async query() { throw Object.assign(new Error('no existe'), { code: '42703' }) } }
+  assert.equal(await rellenarOrigenDesdeElChat(sinColumna), null)
 })

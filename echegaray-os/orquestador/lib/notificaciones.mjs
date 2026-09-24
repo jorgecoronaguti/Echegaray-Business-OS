@@ -9,13 +9,15 @@
 // test de cada lado exige que las claves coincidan: un tipo que la pantalla ofrece y ningún emisor
 // consulta sería un interruptor pintado.
 
-/** @typedef {'efectivo_firma'|'efectivo_anulacion'|'efectivo_firmada'|'sistema'} TipoAviso */
+/** @typedef {'efectivo_firma'|'efectivo_anulacion'|'sistema'} TipoAviso */
 /** @typedef {'mattermost_dm'|'correo'} CanalAviso */
 
+// `efectivo_firmada` (directo al dueño cuando alguien firma) se RETIRÓ el 24/09/2026: el dueño pidió que la
+// firma se diga en el hilo del canal Efectivo, y ese directo es el que se le perdió. Las filas viejas de la
+// preferencia quedan en la tabla sin efecto; el CHECK de la 2610 las sigue aceptando.
 export const TIPOS = Object.freeze([
   { clave: 'efectivo_firma', titulo: 'Efectivo para firmar', detalle: 'Te entregaron efectivo a rendir: el enlace para confirmar y firmar.', para: 'persona' },
   { clave: 'efectivo_anulacion', titulo: 'Entrega anulada', detalle: 'Se anuló una entrega de efectivo a tu nombre, con el motivo.', para: 'persona' },
-  { clave: 'efectivo_firmada', titulo: 'Efectivo firmado', detalle: 'Alguien firmó la plata que recibió: quién, cuánto y cuándo.', para: 'dueno' },
   { clave: 'sistema', titulo: 'Avisos del sistema', detalle: 'Despliegues, controles y lo que el OS necesita decirle al dueño.', para: 'dueno' },
 ])
 

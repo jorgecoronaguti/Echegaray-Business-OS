@@ -189,3 +189,27 @@ test('con una pregunta abierta, el mensaje siguiente se reclama aunque solo no d
   recordarPendiente(actor, null)
   assert.equal(await especialista.reconoce('para combustible', { area: 'rendicion', actor }), null)
 })
+
+test('LA ENTREGA RECUERDA EL HILO DONDE SE REGISTRÓ (dueño 24/09/2026: «todo en el hilo de cada escritura»)', async () => {
+  const base = portFalso()
+  const escritos = []
+  const port = { async query(sql, params) { if (/origen_post_id/.test(sql)) { escritos.push({ sql, params }); return { rows: [] } } return base.query(sql) } }
+  const r = await especialista.atender({
+    texto: 'le di $30.000 a aguero para gasoil', port, actor: { ...actor, root_post_id: 'raiz-del-hilo' },
+    entregar: async () => 'ER-0021',
+  })
+  assert.equal(r.estado, 'entregada')
+  assert.equal(escritos.length, 1)
+  assert.match(escritos[0].sql, /update public\.efectivo_entrega set origen_post_id = \$2 where codigo = \$1 and origen_post_id is null/)
+  assert.deepEqual(escritos[0].params, ['ER-0021', 'raiz-del-hilo'])
+  assert.match(r.texto, /en este hilo/)
+  // Sin post (no vino del chat) no se escribe nada; y si la base falla, la entrega queda registrada igual.
+  const sinHilo = []
+  await especialista.atender({ texto: 'le di $30.000 a aguero para gasoil', port: { async query(sql, p) { if (/origen_post_id/.test(sql)) sinHilo.push(p); return base.query(sql) } }, actor, entregar: async () => 'ER-0022' })
+  assert.deepEqual(sinHilo, [])
+  const falla = await especialista.atender({
+    texto: 'le di $30.000 a aguero para gasoil', actor: { ...actor, root_post_id: 'r' }, entregar: async () => 'ER-0023',
+    port: { async query(sql) { if (/origen_post_id/.test(sql)) throw new Error('42703'); return base.query(sql) } },
+  })
+  assert.equal(falla.estado, 'entregada')
+})

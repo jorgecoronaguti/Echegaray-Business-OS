@@ -98,6 +98,22 @@ export async function perfilDeMattermost(port, mmUserId) {
   return r?.rows?.[0] ?? null
 }
 
+/**
+ * LA ENTREGA RECUERDA SU HILO (dueño, 24/09/2026: «todo esto pase en el canal efectivo, en el hilo de cada
+ * escritura»). La raíz del hilo del mensaje que la registró queda en `origen_post_id`, y ahí el drenador
+ * (`scripts/efectivo-avisos.mjs`) contesta la ida, la firma y la anulación. Se escribe con el puerto del OS,
+ * no como el usuario: es un dato del chat, no de la entrega. Si falla, la entrega queda igual: el drenador
+ * la rellena desde la respuesta «Registrado» del outbox.
+ */
+export async function recordarHilo(port, codigo, actor) {
+  const hilo = actor?.root_post_id ?? null
+  if (!hilo || !codigo) return false
+  try {
+    await port.query('update public.efectivo_entrega set origen_post_id = $2 where codigo = $1 and origen_post_id is null', [codigo, String(hilo)])
+    return true
+  } catch { return false }
+}
+
 /** Lo que el bot contesta cuando la entrega quedó registrada. Sin saldos y sin el monto de otras entregas. */
 export function textoRegistrada({ codigo, monto, persona, destino }) {
   return [
@@ -105,6 +121,7 @@ export function textoRegistrada({ codigo, monto, persona, destino }) {
     `Destino: ${destino}`,
     '',
     'Le avisé para que firme la conformidad desde su teléfono. Los tickets que mande se rinden contra esta entrega.',
+    'Lo que pase con esta entrega (el pedido de firma, la firma, una anulación) te lo cuento en este hilo.',
   ].join('\n')
 }
 
@@ -154,6 +171,7 @@ export async function atenderVale(d) {
       fecha: v.fecha,
       archivo: { data: bajado.data, mediaType: bajado.mediaType, nombre: bajado.nombre },
     })
+    await recordarHilo(port, codigo, actor)
     return {
       texto: [
         textoRegistrada({
@@ -257,6 +275,7 @@ export const especialista = {
         monto: leido.monto,
         paraQue: leido.paraQue,
       })
+      await recordarHilo(port, codigo, actor)
       return {
         texto: textoRegistrada({
           codigo, monto: leido.monto, persona: leido.persona.nombre,
