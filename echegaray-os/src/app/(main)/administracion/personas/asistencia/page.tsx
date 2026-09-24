@@ -26,7 +26,7 @@ import { esAdministracion } from '@/features/auth/types/areas'
 import { Aviso } from '@/shared/components/ds'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
 import { Migas, PantallaV2 } from '@/shared/components/v2/segundoNivel'
-import { hoyEnObra } from '@/features/jefe/services/contexto'
+import { contextoDeObra, hoyEnObra } from '@/features/jefe/services/contexto'
 import { correrDia, diaDeCarga, rotuloDelDia, TOKEN_DIA } from '@/features/administracion/services/diaDeJornada'
 import { jornadaPorDefecto } from '@/features/administracion/services/jornadaPorDefecto'
 import { hs } from '@/features/administracion/services/jornadaPorObra'
@@ -43,6 +43,9 @@ import { ObraEnTelefono } from '@/features/administracion/components/asistencia/
 
 export const dynamic = 'force-dynamic'
 
+/** El chip «Todas las obras»: explícito, para que no se confunda con «entró sin obra». */
+const OBRA_TODAS = 'todas'
+
 export default async function CargarAsistenciaPage({ searchParams }: {
   searchParams: Promise<{ dia?: string; obra?: string }>
 }) {
@@ -55,7 +58,16 @@ export default async function CargarAsistenciaPage({ searchParams }: {
   const sp = await searchParams
   const hoy = hoyEnObra()
   const fecha = diaDeCarga(sp.dia, hoy)
-  const obraFiltro = sp.obra?.trim() || null
+  // EL JEFE ENTRA CON SU OBRA (24/09/2026): desde Personal llegaba sin `?obra=` y veía «Todas las obras»,
+  // 6.000 px de gente ajena. Se resuelve como en su «Hoy» —la elegida, si no la asignada— y se pone en
+  // la URL: la URL es la que manda y la que distingue lo que Next guarda de una obra y de otra.
+  // «Todas las obras» sigue a un toque: su chip lleva `obra=todas`.
+  const pedida = sp.obra?.trim() || null
+  if (!pedida && rol === 'jefe_obra') {
+    const { obra } = await contextoDeObra(null)
+    if (obra) redirect(hrefCargaDeAsistencia({ dia: sp.dia, obra: obra.id, hoy }))
+  }
+  const obraFiltro = pedida === OBRA_TODAS ? null : pedida
   const carga = await getCargaDelDia(supabase, fecha)
 
   const cabecera = (
@@ -72,13 +84,13 @@ export default async function CargarAsistenciaPage({ searchParams }: {
           <div className="min-w-0 flex-1">
             <ElegirDia
               dia={fecha} rotulo={rotuloDelDia(fecha)}
-              hrefAyer={hrefCargaDeAsistencia({ dia: correrDia(fecha, -1), obra: obraFiltro, hoy })}
-              hrefManana={hrefCargaDeAsistencia({ dia: correrDia(fecha, 1), obra: obraFiltro, hoy })}
-              plantilla={hrefCargaDeAsistencia({ dia: TOKEN_DIA, obra: obraFiltro })}
+              hrefAyer={hrefCargaDeAsistencia({ dia: correrDia(fecha, -1), obra: pedida, hoy })}
+              hrefManana={hrefCargaDeAsistencia({ dia: correrDia(fecha, 1), obra: pedida, hoy })}
+              plantilla={hrefCargaDeAsistencia({ dia: TOKEN_DIA, obra: pedida })}
             />
           </div>
           {fecha !== hoy && (
-            <Link prefetch={false} href={hrefCargaDeAsistencia({ obra: obraFiltro })} data-testid="ir-a-hoy" className="inline-flex min-h-[44px] items-center px-2 text-[12.5px] text-muted underline hover:text-ink">
+            <Link prefetch={false} href={hrefCargaDeAsistencia({ obra: pedida })} data-testid="ir-a-hoy" className="inline-flex min-h-[44px] items-center px-2 text-[12.5px] text-muted underline hover:text-ink">
               Hoy
             </Link>
           )}
@@ -110,7 +122,7 @@ export default async function CargarAsistenciaPage({ searchParams }: {
     .sort((a, b) => (nombres[a] ?? a).localeCompare(nombres[b] ?? b, 'es'))
 
   const opcionesDeObra = [
-    { clave: 'todas', etiqueta: 'Todas las obras', href: hrefCargaDeAsistencia({ dia: fecha, hoy }), activo: !obraFiltro },
+    { clave: 'todas', etiqueta: 'Todas las obras', href: hrefCargaDeAsistencia({ dia: fecha, obra: OBRA_TODAS, hoy }), activo: !obraFiltro },
     ...chips.map((id) => ({ clave: id, etiqueta: nombres[id] ?? id, cuenta: conteo.get(id), href: hrefCargaDeAsistencia({ dia: fecha, obra: id, hoy }), activo: obraFiltro === id })),
     ...(conteo.has(OBRA_SIN_OBRA)
       ? [{ clave: OBRA_SIN_OBRA, etiqueta: NOMBRE_SIN_OBRA, cuenta: conteo.get(OBRA_SIN_OBRA), href: hrefCargaDeAsistencia({ dia: fecha, obra: OBRA_SIN_OBRA, hoy }), activo: obraFiltro === OBRA_SIN_OBRA }]
