@@ -40,6 +40,7 @@ import { ConfiguradorConversion } from '@/features/presupuestos/components/Confi
 import { PreparacionObra } from '@/features/presupuestos/components/PreparacionObra'
 import { Aviso, Ayuda, EntityHeader, Plegable } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
+import { clienteDeObra } from '../../../../../shared/clientes/nombre.ts'
 
 export const dynamic = 'force-dynamic'
 
@@ -149,7 +150,7 @@ export default async function ConvertirPage({
         obra={{
           id: obra?.obra_id ?? null,
           nombre: obra?.nombre ?? presupuesto.obra_nombre ?? null,
-          cliente: obra?.cliente_nombre ?? obra?.cliente_texto ?? presupuesto.cliente ?? null,
+          cliente: clienteDeObra(obra) ?? presupuesto.cliente ?? null,
           jefeObra: obra?.jefe_obra ?? null,
           inicio: obra?.fecha_inicio_plan ?? null,
           fin: obra?.fecha_fin_plan ?? null,

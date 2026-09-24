@@ -22,6 +22,7 @@ import type { EconomiaDeObra } from '../../clientes/services/economiaObras.ts'
 import type { EstadoObra } from './filtros.ts'
 import { millones } from './formato.ts'
 import { RUBROS_COMPARABLES, SIN_PRESUPUESTO, type PresupuestoArmado, type Rubro } from './presupuesto.ts'
+import { clienteDeObra } from '../../../shared/clientes/nombre.ts'
 
 /** La fila de `obra_panel` que el módulo usa. */
 export interface ObraPanel {
@@ -201,7 +202,7 @@ export function armarObra(
   return {
     id: p.obra_id, nombre: p.nombre, clienteId: p.cliente_id, clienteSlug: p.cliente_slug,
     orden: p.orden ?? null, padreId: p.obra_padre_id ?? null,
-    clienteNombre: p.cliente_nombre ?? p.cliente_slug, estado: estadoDe(p),
+    clienteNombre: clienteDeObra(p) ?? 'cliente sin nombre', estado: estadoDe(p),
     contrato: {
       manoObra: e?.contrato_mano_obra ?? null,
       materiales: e?.contrato_materiales ?? null,

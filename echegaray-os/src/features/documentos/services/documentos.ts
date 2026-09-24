@@ -9,6 +9,7 @@ import type {
 } from '../types'
 import { hayCoincidencia } from './resaltado.ts'
 import { nombreDePersona } from '../../../shared/personas/nombre.ts'
+import { nombreDeCliente } from '../../../shared/clientes/nombre.ts'
 
 /** Una fila de `documentacion_legajo` con la persona embebida por PostgREST. */
 export interface VinculoLegajo {
@@ -150,7 +151,7 @@ export function conVinculos(
   for (const d of documentosCliente) {
     sumar(d.drive_file_id, {
       clase: 'cliente',
-      nombre: d.clientes?.nombre_comercial?.trim() || 'cliente sin nombre',
+      nombre: nombreDeCliente(d.clientes) ?? 'cliente sin nombre',
       detalle: d.rol?.trim() || null,
       href: d.clientes?.slug ? `/clientes/${d.clientes.slug}` : null,
       // `cliente_documento` NO tiene columna de vencimiento: sus cinco columnas son cliente_id,

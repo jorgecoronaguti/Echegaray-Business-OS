@@ -22,6 +22,8 @@ import type {
 } from './cargaDeAsistencia.ts'
 import type { EstadoPresencia } from './presenciaDelDia.ts'
 import { nombreDePersona } from '../../../shared/personas/nombre.ts'
+import { codigosDeObra } from '../../../shared/services/codigosDeObra.ts'
+import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 
 export interface ObraDeLaCarga { id: string; nombre: string; activa: boolean }
 
@@ -73,7 +75,7 @@ async function leerPresencias(
 export async function getCargaDelDia(
   supabase: SupabaseClient, fecha: string,
 ): Promise<{ data: DatosDeLaCarga | null; error: string | null }> {
-  const [plantel, presencias, horas, asignaciones, obras, cierre, certificados] = await Promise.all([
+  const [plantel, presencias, horas, asignaciones, obras, cierre, certificados, codigos] = await Promise.all([
     // EL PLANTEL ES `en_la_empresa`, no la fecha de egreso — mismo criterio que la solapa Plantel.
     supabase.from('persona_directorio').select('id, nombre_completo, categoria, puesto')
       .eq('en_la_empresa', true).order('nombre_completo'),
@@ -84,6 +86,7 @@ export async function getCargaDelDia(
     supabase.from('obra_canonica').select('id, nombre, estado').order('nombre'),
     quincenaCerrada(supabase, fecha),
     getCertificadosDeLicencia(supabase, { desde: fecha, hasta: fecha }),
+    codigosDeObra(supabase, null),
   ])
   if (plantel.error) return { data: null, error: `No pude leer el plantel: ${plantel.error.message}` }
   if (presencias.error) return { data: null, error: `No pude leer la presencia del día: ${presencias.error}` }
@@ -110,7 +113,7 @@ export async function getCargaDelDia(
         .map((h) => ({ ...h, horas: Number(h.horas) })),
       asignaciones: asignaciones.error ? [] : (asignaciones.data ?? []) as AsignacionDelDia[],
       obras: ((obras.data ?? []) as { id: string; nombre: string; estado: string | null }[])
-        .map((o) => ({ id: o.id, nombre: o.nombre, activa: o.estado === 'activa' })),
+        .map((o) => ({ id: o.id, nombre: rotuloDeObra({ nombre: o.nombre, codigo: codigos.get(o.id) }), activa: o.estado === 'activa' })),
       cierre,
       certificados: Object.fromEntries(Object.entries(certificadosPorPersonaYDia(certificados.data, [fecha]))
         .map(([clave, nombre]) => [clave.split('|')[0], nombre])),

@@ -11,6 +11,7 @@ import { contarOrdenesDeObra, getPonderaciones } from '../../../services/estruct
 import { getAvancePonderado, getDiasHabilesDeObra } from '../../../services/obrasService'
 import type { ObraPanel } from '../../../types'
 import { C } from '../../canon/tokens'
+import { clienteDeObra } from '../../../../../shared/clientes/nombre.ts'
 
 export async function ListoParaProducirCarga({ supabase, obraId, obra, puedeSellar, sellar, editar }: {
   supabase: SupabaseClient
@@ -32,7 +33,7 @@ export async function ListoParaProducirCarga({ supabase, obraId, obra, puedeSell
   }
   const preparacion = listoParaProducir({
     obraId,
-    clienteNombre: obra.cliente_nombre ?? obra.cliente_texto ?? null,
+    clienteNombre: clienteDeObra(obra),
     nOrdenes,
     jefeObra: obra.jefe_obra ?? null,
     inicioPlan: obra.fecha_inicio_plan,

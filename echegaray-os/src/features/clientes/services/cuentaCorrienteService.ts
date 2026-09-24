@@ -13,6 +13,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult, ServiceResultOpcional } from '@/features/obras/types'
 import type { CambioCobranza, CertificadoCliente, CuentaCorriente } from '../types'
 import { nombresDeObra } from './nombresDeObra.ts'
+import { nombreDeCliente } from '../../../shared/clientes/nombre.ts'
 
 /**
  * La cuenta corriente de UN cliente.
@@ -47,7 +48,7 @@ function normalizarCuenta(row: Record<string, unknown>): CuentaCorriente {
   const opc = (k: string): number | null => (row[k] == null ? null : Number(row[k]))
   return {
     cliente_id: String(row.cliente_id),
-    nombre_comercial: String(row.nombre_comercial ?? ''),
+    nombre_comercial: nombreDeCliente(row as { nombre_comercial?: string | null }) ?? '',
     saldo: num('saldo'),
     vencido: num('vencido'),
     por_vencer: num('por_vencer'),

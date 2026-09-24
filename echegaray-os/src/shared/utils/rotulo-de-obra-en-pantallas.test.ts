@@ -35,6 +35,14 @@ const PANTALLAS: [string, string, string][] = [
   ['Herramientas, pedidos y movimientos · columna Obra', 'features/integraciones/services/operacionGlobalService.ts', 'rotuloDeObra('],
   ['Obras · alta en pasos (cabecera y ficha del paso 1)', 'app/(main)/obras/nueva/page.tsx', 'rotuloDeObra('],
   ['Usuarios · a qué obra entra cada uno, y el catálogo para asignar', 'features/usuarios/services/usuariosService.ts', 'rotuloDeObra('],
+  // Sumadas el 24/09/2026 («noto nombres distintos en distintas secciones de la app»): decían el nombre
+  // pelado de la obra al lado de pantallas que ya decían «OB-0008 · QP - SALÓN COMERCIAL».
+  ['Efectivo · obra de la entrega y el desplegable para entregar', 'features/efectivo/services/datos.ts', 'rotuloDeObra('],
+  ['Obras · equipos: de dónde vino y adónde fue', 'features/obras/services/equiposDeObraService.ts', 'rotuloDeObra('],
+  ['Horas · productividad por actividad', 'features/administracion/services/productividadHHService.ts', 'rotuloDeObra('],
+  ['Liquidación · costo de mano de obra por obra', 'features/administracion/services/costoObraQuincena.ts', 'rotuloDeObra('],
+  ['Asistencia · cargar el día (desplegable de obra)', 'features/administracion/services/cargaDeAsistenciaService.ts', 'rotuloDeObra('],
+  ['Presupuestos · convertir en una obra existente', 'features/presupuestos/services/conversionService.ts', 'rotuloDeObra('],
 ]
 
 const IMPORTA = /import \{[^}]*\b(rotuloDeObra|nombresDeObra)\b[^}]*\} from '[^']*(shared\/utils\/obra|clientes\/services\/nombresDeObra)(\.ts)?'/

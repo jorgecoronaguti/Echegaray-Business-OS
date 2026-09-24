@@ -41,6 +41,7 @@ import { VISTAS_OBRA, type VistaObra } from '../services/vistasObra'
 import { createClient } from '@/lib/supabase/server'
 import { codigosDeObra } from '@/shared/services/codigosDeObra'
 import { rotuloDeObra } from '@/shared/utils/obra'
+import { clienteDeObra } from '../../../shared/clientes/nombre.ts'
 
 /** Lo único que la cabecera necesita de la obra. Un `Pick` y no `ObraPanel` entero: así se ve de un
  *  vistazo qué la rompe si un día la vista cambia, y una página puede armarlo sin traer las 40
@@ -158,7 +159,7 @@ export async function CabeceraDeObra({
     <Link href={`/clientes/${obra.cliente_slug}`} prefetch={false} style={{ color: C.tintaMedia }}>
       {obra.cliente_nombre}
     </Link>
-  ) : (obra.cliente_nombre ?? obra.cliente_texto ?? null)
+  ) : clienteDeObra(obra)
   // EL PLAZO ES UN SOLO CAMPO, NO DOS («14/04 → 05/09»). Cuando falta UNA de las dos NO se dibuja
   // media flecha: se nombra cuál falta, porque «empieza el 14/04 y no sé cuándo termina» es un
   // hecho distinto de «no tiene plan».

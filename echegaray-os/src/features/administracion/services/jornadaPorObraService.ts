@@ -28,6 +28,8 @@ import {
 } from './traerALaObra.ts'
 import { leerRegistrosHH } from './registrosHHService.ts'
 import { esJefeDeObra } from './vocabularioPersona.ts'
+import { nombresDeClientes } from '../../../shared/clientes/nombresDeClientes.ts'
+import { clienteDeObra } from '../../../shared/clientes/nombre.ts'
 
 export interface ObraDeLaJornada {
   id: string
@@ -200,7 +202,7 @@ export async function getNoLaborables(
 export async function getQuincenaPorObra(
   supabase: SupabaseClient, desde: string, hasta: string,
 ): Promise<{ data: DatosQuincenaPorObra | null; error: string | null }> {
-  const [asignaciones, registros, obras, noLaborables, plantel, presencias, certificados] = await Promise.all([
+  const [asignaciones, registros, obras, clientesPorId, noLaborables, plantel, presencias, certificados] = await Promise.all([
     getAsignaciones(supabase),
     // `notas` viaja porque ahí está la CLAVE DEL MOTIVO (`enfermedad`, `falta`…): es lo que
     // convierte una casilla «L» muda en una que dice de qué licencia se trata.
@@ -217,7 +219,8 @@ export async function getQuincenaPorObra(
     leerRegistrosHH(supabase, {
       desde, hasta, columnas: 'persona_id, obra_canonica_id, fecha, horas, tipo_hora, notas',
     }),
-    supabase.from('obra_canonica').select('id, nombre, estado, cliente_texto'),
+    supabase.from('obra_canonica').select('id, nombre, estado, cliente_id, cliente_texto'),
+    nombresDeClientes(supabase),
     getNoLaborables(supabase, desde, hasta),
     // EL PLANTEL DE LA QUINCENA, LA MISMA LECTURA QUE LIQUIDACIÓN (QA, 14/09/2026): sin él las filas salían
     // de las asignaciones reconstruidas y una quincena de marzo mostraba a quien ingresó en septiembre.
@@ -237,14 +240,14 @@ export async function getQuincenaPorObra(
   if (obras.error) return { data: null, error: obras.error.message }
 
   const catalogo = (obras.data ?? []) as {
-    id: string; nombre: string; estado: string | null; cliente_texto: string | null
+    id: string; nombre: string; estado: string | null; cliente_id: string | null; cliente_texto: string | null
   }[]
   // EL RÓTULO SALE DE LA BASE, NO DEL ID. `cliente_texto` es el nombre del cliente tal como está
   // cargado en `obra_canonica`; es lo que la columna OBRA muestra cuando la persona no tiene
   // ninguna obra activa. Sin este viaje la pantalla no tendría con qué escribir «San Francisco» y
   // caería en `sf-mamposteria`, que es lo que el dueño rechazó.
   const rotulos: Record<string, ObraRotulo> = Object.fromEntries(catalogo.map((o) => [o.id, {
-    id: o.id, nombre: o.nombre, cliente: (o.cliente_texto ?? '').trim() || null, estado: o.estado,
+    id: o.id, nombre: o.nombre, cliente: (o.cliente_id && clientesPorId.get(o.cliente_id)) || clienteDeObra({ cliente_texto: o.cliente_texto }), estado: o.estado,
   }]))
   // SÓLO LAS ACTIVAS SE PUEDEN MARCAR. Una obra cerrada aparecía en la grilla con sus celdas
   // editables y sus días sin marcar sumando al «1 día sin marcar»: la pantalla reclamaba cargar

@@ -9,6 +9,7 @@ import { Nulo, Num } from '@/shared/components/ds'
 import { Tarjeta, CabeceraTarjeta, Chevron } from './TarjetaResumen'
 import type { ObraPanel, ParteEjecucion, PlanVsReal } from '@/features/obras/types'
 import { fecha } from './formato'
+import { clienteDeObra } from '../../../shared/clientes/nombre.ts'
 
 /**
  * LA FICHA DEL ASIDE — qué obra es ésta.
@@ -37,7 +38,7 @@ function FilaFicha({ k, v, href }: { k: string; v: React.ReactNode; href?: strin
 
 export function Ficha({ obra, plan }: { obra: ObraPanel; plan: PlanVsReal | null }) {
   const filas: { k: string; v: React.ReactNode; href?: string }[] = [
-    { k: 'Cliente', v: obra.cliente_nombre ?? obra.cliente_texto ?? <Nulo>sin cliente declarado</Nulo> },
+    { k: 'Cliente', v: clienteDeObra(obra) ?? <Nulo>sin cliente declarado</Nulo> },
     { k: 'Responsable', v: obra.jefe_obra ?? <Nulo>sin jefe de obra</Nulo>, href: `/obras/${obra.obra_id}?vista=personal` },
     {
       k: 'Actividades',

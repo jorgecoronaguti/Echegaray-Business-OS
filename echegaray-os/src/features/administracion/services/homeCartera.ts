@@ -36,6 +36,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ClientePanel } from '@/features/clientes/types'
 import type { EconomiaDeObra } from '../../clientes/services/economiaObras.ts'
 import type { EconomiaDeCliente } from '../../clientes/services/economiaCliente.ts'
+import { nombreDeCliente } from '../../../shared/clientes/nombre.ts'
 
 /** Una obra `activa`, tal como la lee la cartera. Es un subconjunto de `obra_panel`. */
 export interface ObraDeCartera {
@@ -689,7 +690,7 @@ export function armarCartera({
     return {
       cliente_id: c.cliente_id,
       slug: c.slug,
-      nombre: c.nombre_comercial,
+      nombre: nombreDeCliente(c) ?? '',
       tieneContrato,
       obras: c.n_obras,
       nEnCurso: ec?.n_obras_en_curso ?? null,

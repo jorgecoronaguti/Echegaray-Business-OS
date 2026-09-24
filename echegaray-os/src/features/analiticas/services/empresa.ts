@@ -7,6 +7,7 @@
 import type { CuentaCorriente } from '../../clientes/types/cobranzas.ts'
 import { documentosDeCobranzas } from '../../clientes/services/documentoDeCobranza.ts'
 import { bandasAntiguedad, planDeCobranza, type ClaveBanda } from '../../clientes/services/reglasCobranza.ts'
+import { nombreDeCliente } from '../../../shared/clientes/nombre.ts'
 
 const n = (v: unknown): number | null => {
   if (v == null || v === '') return null
@@ -189,7 +190,7 @@ export function cobranza(cuenta: unknown[], filasCobranzas: unknown[] | null = n
     const vencido = n(r.vencido) ?? 0
     const propios = docs.filter((d) => d.cliente_id === r.cliente_id)
     return [{
-      clienteId: r.cliente_id, nombre: String(r.nombre_comercial ?? ''), saldo, vencido,
+      clienteId: r.cliente_id, nombre: nombreDeCliente(r) ?? '', saldo, vencido,
       porVencer: fila.aging_por_vencer, masDe60: fila.aging_61_90 + fila.aging_mas_90,
       tramo: viejo?.clave ?? null, rotuloTramo: viejo?.rotulo ?? null,
       estado: vencido > 0 ? 'vencido' : 'alDia',

@@ -11,6 +11,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '../types'
 import type { ActivoDibujable, MovimientoDibujable } from './operacionCanon'
 import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
+import { codigosDeObra } from '../../../shared/services/codigosDeObra.ts'
+import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 
 export interface EquiposDeObra {
   /** La obra no tiene ubicación en Herramientas todavía: no hay nada que listar y se dice así. */
@@ -73,8 +75,11 @@ export async function getEquiposDeObra(supabase: SupabaseClient, obraId: string)
   for (const a of (otros?.data ?? []) as FilaActivo[]) activosPorId.set(a.id, a)
   const ubicPorId = new Map(((ubics?.data ?? []) as FilaUbic[]).map((u) => [u.id, u]))
   const obrasRef = [...ubicPorId.values()].map((u) => u.obra_id).filter((o): o is string => Boolean(o))
-  const obras = obrasRef.length ? await supabase.from('obra_canonica').select('id, nombre').in('id', obrasRef) : null
-  const nombreObra = new Map(((obras?.data ?? []) as { id: string; nombre: string }[]).map((o) => [o.id, o.nombre]))
+  const [obras, codigos] = obrasRef.length
+    ? await Promise.all([supabase.from('obra_canonica').select('id, nombre').in('id', obrasRef), codigosDeObra(supabase, obrasRef)])
+    : [null, new Map<string, string>()]
+  const nombreObra = new Map(((obras?.data ?? []) as { id: string; nombre: string }[])
+    .map((o) => [o.id, rotuloDeObra({ nombre: o.nombre, codigo: codigos.get(o.id) })]))
   const nombrePerfil = perfiles ?? new Map<string, string>()
 
   const rotuloLugar = (id: string | null): string | null => {

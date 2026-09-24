@@ -20,6 +20,9 @@ import {
 } from '../types'
 import { nombresDeUsuarios as nombresDeUsuariosTodos } from '../../../shared/personas/nombresDeUsuarios.ts'
 import { nombreDePersona } from '../../../shared/personas/nombre.ts'
+import { codigosDeObra } from '../../../shared/services/codigosDeObra.ts'
+import { rotuloDeObra } from '../../../shared/utils/obra.ts'
+import { nombresDeClientes } from '../../../shared/clientes/nombresDeClientes.ts'
 
 const TOPE = 5_000
 /** Lo que dura el enlace firmado a una foto o al papel: se abre en el momento, no se comparte. */
@@ -46,13 +49,14 @@ export type LecturaEfectivo =
   | { estado: 'error'; mensaje: string }
 
 async function leerObras(supabase: SupabaseClient): Promise<ObraOpcion[]> {
-  const [obras, clientes] = await Promise.all([
+  const [obras, clientes, codigos] = await Promise.all([
     supabase.from('obra_canonica').select('id, nombre, estado, cliente_id').is('fusionada_en', null),
-    supabase.from('clientes').select('id, nombre_comercial'),
+    nombresDeClientes(supabase),
+    codigosDeObra(supabase, null),
   ])
-  const cliente = new Map(((clientes.data ?? []) as { id: string; nombre_comercial: string | null }[]).map((c) => [c.id, c.nombre_comercial]))
+  const cliente = clientes
   return ((obras.data ?? []) as { id: string; nombre: string | null; estado: string | null; cliente_id: string | null }[])
-    .map((o) => ({ id: o.id, nombre: o.nombre ?? o.id, cliente: o.cliente_id ? (cliente.get(o.cliente_id) ?? null) : null, activa: o.estado === 'activa' }))
+    .map((o) => ({ id: o.id, nombre: rotuloDeObra({ nombre: o.nombre ?? o.id, codigo: codigos.get(o.id) }), cliente: o.cliente_id ? (cliente.get(o.cliente_id) ?? null) : null, activa: o.estado === 'activa' }))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
 }
 

@@ -17,6 +17,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Quincena } from './quincena.ts'
 import { getManoDeObraPresupuestada, type Falla } from './costoLecturas.ts'
 import { nombreDePersonaONull } from '../../../shared/personas/nombre.ts'
+import { codigosDeObra } from '../../../shared/services/codigosDeObra.ts'
+import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 
 export type { Falla }
 
@@ -139,11 +141,12 @@ export async function getCostoObraQuincena(
   supabase: SupabaseClient, q: Quincena,
 ): Promise<{ lineas: LineaDeCostoObra[]; selladoEn: string | null; reabierta: boolean; errores: Falla[] }> {
   // EL PRESUPUESTO POR LA PUERTA DE COSTO-HORA (`costoLecturas.ts`, excepción declarada en definiciones.json).
-  const [costo, canonicas, oep, personas] = await Promise.all([
+  const [costo, canonicas, oep, personas, codigos] = await Promise.all([
     supabase.rpc('costo_mo_quincena', { p_desde: q.desde }),
     supabase.from('obra_canonica').select('id, nombre'),
     getManoDeObraPresupuestada(supabase),
     supabase.from('persona_directorio').select('id, nombre_completo'),
+    codigosDeObra(supabase, null),
   ])
   const errores: Falla[] = []
   if (costo.error) {
@@ -153,7 +156,7 @@ export async function getCostoObraQuincena(
     })
   }
   if (oep.error) errores.push(oep.error)
-  const rotulos = new Map((canonicas.data ?? []).map((o) => [String(o.id), String(o.nombre ?? o.id)]))
+  const rotulos = new Map((canonicas.data ?? []).map((o) => [String(o.id), rotuloDeObra({ nombre: String(o.nombre ?? o.id), codigo: codigos.get(String(o.id)) })]))
   const nombres = new Map((personas.data ?? []).map((p) => [String(p.id), nombreDePersonaONull(p.nombre_completo as string | null) ?? '']))
   const presupuesto = oep.presupuesto
   const filas = filasDeCosto(costo.data)

@@ -25,6 +25,7 @@
  *  cuando `obra_panel` agregue una columna. */
 import { coincideObra } from '../../../shared/utils/obra.ts'
 import { jerarquiaDeObras, type FilaDeObra, type ObraConPadre } from '../../clientes/services/obrasAdicionales.ts'
+import { clienteDeObra } from '../../../shared/clientes/nombre.ts'
 
 export interface ObraDeCartera {
   estado: string
@@ -229,7 +230,7 @@ export const SIN_CLIENTE = 'sin cliente declarado'
 export function agruparPorCliente<T extends ObraAgrupable>(obras: T[]): GrupoDeCliente<T>[] {
   const grupos = new Map<string, { nombre: string | null; slug: string | null; obras: T[] }>()
   for (const o of obras) {
-    const nombre = o.cliente_nombre ?? o.cliente_texto ?? null
+    const nombre = clienteDeObra(o)
     const clave = o.cliente_slug ?? (nombre ? `texto:${nombre}` : 'sin-cliente')
     const g = grupos.get(clave) ?? { nombre, slug: o.cliente_slug ?? null, obras: [] }
     g.obras.push(o)

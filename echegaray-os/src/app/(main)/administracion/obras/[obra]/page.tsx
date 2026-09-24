@@ -41,6 +41,7 @@ import { Aviso } from '@/shared/components/ds'
 import { AvisoDeLectura, EstadoError } from '@/shared/components/estado'
 import { crearLector } from '@/shared/components/estado/lecturas'
 import { Migas, PantallaV2, TituloDeFicha } from '@/shared/components/v2/segundoNivel'
+import { clienteDeObra } from '../../../../../shared/clientes/nombre.ts'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,7 +88,7 @@ export default async function EconomiaDeObraPage({ params }: { params: Promise<{
       <Migas volverA={`/obras/${obraId}`} ambito="Obras" padre={rotulo} actual="Economía" />
       <TituloDeFicha
         titulo={rotulo}
-        bajada={obra.cliente_nombre ?? obra.cliente_texto ?? 'sin cliente vinculado'}
+        bajada={clienteDeObra(obra) ?? 'sin cliente vinculado'}
       />
       <div className="px-5 pb-6 pt-4">
         {lector.falla() && (

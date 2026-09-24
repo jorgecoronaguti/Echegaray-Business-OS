@@ -13,6 +13,7 @@
 import type {
   ClientePanel, DocumentoCliente, FuentesActividad, NotaCliente, ObraDePanel,
 } from '../types'
+import { nombreDeCliente } from '../../../shared/clientes/nombre.ts'
 
 /** PostgREST devuelve `null` y `undefined` de formas que la pantalla no debe distinguir. */
 export function normalizar(row: Record<string, unknown>): ClientePanel {
@@ -137,7 +138,7 @@ export function armarFuentesActividad(fuentes: {
       .map((a) => [a.drive_file_id as string, a.name as string]))
   return {
     cliente: {
-      nombre: fuentes.ficha.nombre_comercial as string,
+      nombre: nombreDeCliente(fuentes.ficha as { nombre_comercial?: string | null }) ?? '',
       creado_en: (fuentes.ficha.created_at as string) ?? null,
       actualizado_en: (fuentes.ficha.updated_at as string) ?? null,
     },

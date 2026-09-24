@@ -29,6 +29,7 @@
 import { ETAPAS, type Etapa } from '../types/index.ts'
 import type { Semaforo } from './ganttObras.ts'
 import { plano } from '../../../shared/utils/busqueda.ts'
+import { clienteDeObra } from '../../../shared/clientes/nombre.ts'
 
 export interface FiltroObras {
   /** Etapa exacta, o `null` = todas. */
@@ -98,7 +99,7 @@ export interface ObraFiltrable {
  * un solo lugar, del que leen el filtro y —por su propia vía— la columna.
  */
 export function clienteVisible(o: ObraFiltrable): string {
-  return (o.cliente_nombre ?? o.cliente_texto ?? '').trim()
+  return clienteDeObra(o) ?? ''
 }
 
 /**

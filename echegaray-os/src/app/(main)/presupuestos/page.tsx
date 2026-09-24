@@ -33,6 +33,7 @@ import { EstadoError } from '@/shared/components/estado'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
 import { PageShell, FormAccion } from '@/shared/components/ui'
 import { BotonMarca, BotonPlano, C, IcoCerrar, IcoMas, TARJETA } from '@/shared/components/canon'
+import { nombreDeCliente } from '../../../shared/clientes/nombre.ts'
 
 export const dynamic = 'force-dynamic'
 
@@ -80,7 +81,7 @@ export default async function PresupuestosPage({
     .from('clientes').select('id, nombre_comercial').order('nombre_comercial', { ascending: true })
   const clientes = (clientesData ?? []).map((c) => ({
     id: String((c as { id: unknown }).id),
-    nombre: String((c as { nombre_comercial: unknown }).nombre_comercial ?? ''),
+    nombre: nombreDeCliente(c as { nombre_comercial?: string | null }) ?? '',
   }))
 
   const abierta = nuevo === '1'

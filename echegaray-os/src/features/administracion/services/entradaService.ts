@@ -20,6 +20,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { perteneceAlCorte, type FilaDeConteo } from './personasService.ts'
 import { sinDireccion } from './vocabularioPersona.ts'
 import { nombreDePersona } from '../../../shared/personas/nombre.ts'
+import { nombreDeCliente } from '../../../shared/clientes/nombre.ts'
 
 export interface Maestro {
   clave: string
@@ -248,7 +249,7 @@ export async function buscarGlobal(
 
   return [
     ...((clientes.data ?? []) as C[]).map((c) => ({
-      clave: `cliente-${c.slug}`, nombre: c.nombre_comercial, detalle: c.razon_social,
+      clave: `cliente-${c.slug}`, nombre: nombreDeCliente(c) ?? 'cliente sin nombre', detalle: c.razon_social,
       maestro: 'Cliente' as const, href: `/clientes/${c.slug}`,
     })),
     ...((personas.data ?? []) as P[]).map((p) => ({

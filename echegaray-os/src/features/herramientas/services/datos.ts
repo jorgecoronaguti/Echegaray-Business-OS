@@ -24,6 +24,7 @@ import {
   COLUMNAS_ACTIVO, COLUMNAS_AJUSTE, COLUMNAS_EXISTENCIA, COLUMNAS_INCIDENCIA, COLUMNAS_LECTURA, COLUMNAS_MOVIMIENTO, COLUMNAS_PROVEEDOR_LUGAR, COLUMNAS_UBICACION,
   type Activo, type Ajuste, type Existencia, type Incidencia, type LecturaUso, type Movimiento, type ObraIndice, type ProveedorLugar, type Ubicacion,
 } from '../types'
+import { nombresDeClientes } from '../../../shared/clientes/nombresDeClientes.ts'
 
 export type Lectura =
   | { estado: 'ok'; parque: Parque; obras: ObraIndice[]; yo: { id: string | null; nombre: string | null } }
@@ -36,11 +37,9 @@ async function leerObras(supabase: SupabaseClient): Promise<ObraIndice[]> {
   const [obras, codigos, clientes] = await Promise.all([
     supabase.from('obra_canonica').select('id, nombre, estado, cliente_id').is('fusionada_en', null),
     codigosDeObra(supabase, null),
-    supabase.from('clientes').select('id, nombre_comercial'),
+    nombresDeClientes(supabase),
   ])
-  const nombreCliente = new Map(
-    ((clientes.data ?? []) as { id: string; nombre_comercial: string | null }[]).map((c) => [c.id, c.nombre_comercial]),
-  )
+  const nombreCliente = clientes
   return ((obras.data ?? []) as { id: string; nombre: string | null; estado: string | null; cliente_id: string | null }[]).map((o) => ({
     id: o.id,
     codigo: codigos.get(o.id) ?? null,

@@ -21,6 +21,7 @@ import { ETAPAS, ETAPA_LABEL, type ObraPanel } from '@/features/obras/types'
 import type { PlazoYHHDeCartera } from '@/features/obras/services/obrasService'
 import { PALABRA_SEMAFORO, type Semaforo } from '@/features/obras/services/ganttObras'
 import { tituloImpedimentos } from '@/features/obras/services/senalesCartera'
+import { clienteDeObra } from '../../../shared/clientes/nombre.ts'
 
 /**
  * `dd/mm` A PARTIR DEL TEXTO ISO, sin `new Date` y sin `Intl`. Dos razones, las dos ya pagadas:
@@ -269,7 +270,7 @@ export function Cliente({ o }: { o: ObraPanel }) {
       </Link>
     )
   }
-  const texto = o.cliente_nombre ?? o.cliente_texto
+  const texto = clienteDeObra(o)
   if (texto) return <span className="text-ink-soft">{texto}</span>
   return <Nulo>sin cliente declarado</Nulo>
 }

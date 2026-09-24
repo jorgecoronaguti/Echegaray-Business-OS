@@ -33,6 +33,7 @@ import {
   estadoDeCartera, FILTROS_CARTERA, agruparPorCliente, SIN_CLIENTE, sublineaTelefono, textoDePlazo,
   type FiltroCartera,
 } from '../services/carteraCanon'
+import { clienteDeObra } from '../../../shared/clientes/nombre.ts'
 
 /** Lo que la página le entrega ya leído. Un tipo propio y no `ObraPanel`: así se ve de un vistazo
  *  qué necesita esta pantalla, y qué se rompe el día que la vista cambie. */
@@ -67,7 +68,7 @@ const ICONO_CHIP: Record<FiltroCartera, ReactNode> = {
   todo: P.todo, curso: P.hh, atraso: P.alerta, problema: P.bloqueo, previo: P.previo,
 }
 const etapaDe = (o: { etapa: string | null }) => (o.etapa ? ETAPA_LABEL[o.etapa as Etapa] ?? o.etapa : null)
-const clienteDe = (o: FilaCartera) => o.cliente_nombre ?? o.cliente_texto
+const clienteDe = (o: FilaCartera) => clienteDeObra(o)
 
 // ═══ EL ESTADO COMPARTIDO DE LAS DOS VISTAS: buscador + chips ═══
 

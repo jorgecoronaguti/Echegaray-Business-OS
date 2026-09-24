@@ -30,6 +30,7 @@ import { ETAPAS } from '../types/index.ts'
 // de cualquier tabla del OS, y escribirlas de nuevo en cada una es cómo se llega a que dos tablas
 // traten al nulo distinto. Acá queda sólo lo que ES del portafolio: qué campos hay y qué significan.
 import { ordenarPor, proximaDireccion as proximaGenerica, type Direccion } from '../../../shared/services/orden.ts'
+import { clienteDeObra } from '../../../shared/clientes/nombre.ts'
 
 export type { Direccion }
 
@@ -99,7 +100,7 @@ export type DesvioDeObra = (obraId: string) => number | null
 export function valorDe(o: FilaOrdenable, campo: CampoOrden, desvio: DesvioDeObra): string | number | null {
   switch (campo) {
     case 'nombre': return o.nombre?.trim() || null
-    case 'cliente': return (o.cliente_nombre ?? o.cliente_texto)?.trim() || null
+    case 'cliente': return clienteDeObra(o)
     case 'etapa': return ordenDeEtapa(o.etapa)
     case 'avance': return o.avance_pct ?? null
     case 'plazo': return desvio(o.obra_id)

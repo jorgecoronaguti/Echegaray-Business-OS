@@ -23,6 +23,8 @@ import {
   type ActividadConHH, type LineaProductividad, type ResumenProductividad,
 } from './productividadHH.ts'
 import type { Quincena } from './quincena.ts'
+import { codigosDeObra } from '../../../shared/services/codigosDeObra.ts'
+import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 
 export interface ProductividadDeLaQuincena {
   lineas: LineaProductividad[]
@@ -56,12 +58,13 @@ interface FilaActividad {
 export async function getProductividadDeLaQuincena(
   supabase: SupabaseClient, q: Quincena,
 ): Promise<ProductividadDeLaQuincena> {
-  const [hh, actividades, obras] = await Promise.all([
+  const [hh, actividades, obras, codigos] = await Promise.all([
     supabase.from('registros_hh')
       .select('actividad_id, horas, tipo_hora')
       .gte('fecha', q.desde).lte('fecha', q.hasta),
     supabase.from('obra_actividad').select('id, nombre, obra_id, hh_plan, pct'),
     supabase.from('obra_canonica').select('id, nombre'),
+    codigosDeObra(supabase, null),
   ])
 
   const errores: { que: string; error: string }[] = []
@@ -80,7 +83,7 @@ export async function getProductividadDeLaQuincena(
   anotar('las obras', obras.error)
 
   const nombreObra = new Map(
-    ((obras.data ?? []) as { id: string; nombre: string }[]).map((o) => [o.id, o.nombre]),
+    ((obras.data ?? []) as { id: string; nombre: string }[]).map((o) => [o.id, rotuloDeObra({ nombre: o.nombre, codigo: codigos.get(o.id) })]),
   )
   const porActividad = new Map(
     ((actividades.data ?? []) as FilaActividad[]).map((a) => [a.id, a]),

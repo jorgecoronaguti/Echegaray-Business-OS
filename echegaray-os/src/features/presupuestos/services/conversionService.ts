@@ -7,6 +7,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/obras/types'
 import type { Plantilla } from '../types'
+import { codigosDeObra } from '../../../shared/services/codigosDeObra.ts'
+import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 
 type Fila = Record<string, unknown>
 const txt = (v: unknown): string | null => (v == null ? null : String(v))
@@ -111,13 +113,15 @@ export interface ObraDestino {
 
 /** Las obras a las que se puede convertir. La conversión escribe adentro de una obra existente. */
 export async function getObrasDestino(supabase: SupabaseClient): Promise<ServiceResult<ObraDestino[]>> {
-  const { data, error } = await supabase
-    .from('obra_canonica').select('id, nombre, estado').order('nombre', { ascending: true })
+  const [{ data, error }, codigos] = await Promise.all([
+    supabase.from('obra_canonica').select('id, nombre, estado').order('nombre', { ascending: true }),
+    codigosDeObra(supabase, null),
+  ])
   if (error) return { data: null, error: error.message }
   return {
     data: (data ?? []).map((x) => {
       const r = x as Fila
-      return { id: String(r.id), nombre: txt(r.nombre) ?? String(r.id), estado: txt(r.estado) }
+      return { id: String(r.id), nombre: rotuloDeObra({ nombre: txt(r.nombre) ?? String(r.id), codigo: codigos.get(String(r.id)) }), estado: txt(r.estado) }
     }),
     error: null,
   }
