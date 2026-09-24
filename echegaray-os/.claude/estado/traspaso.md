@@ -1,6 +1,11 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: **2026-09-23 ~21:30 (−03)** · `origin/main` = **71de7e27**._
+_actualizado: **2026-09-23 ~22:15 (−03)** · `origin/main` = **b43babb9**, deploy Vercel OK._
+
+**+22:15:** chat ya no se reinicia al publicar (9bb8b375, sólo 2–5 h) · Compras en pesos < $100k · Documentos
+roles del OS → Contrato · C02/convertir toman la versión ADJUDICADA (QP v3) · tsc por el portero moría por memoria
+(falso verde; 2 deploys fallidos, arreglado). ABIERTO extra: 17 activos «PRUEBA E2E» en Herramientas (borrado
+frenado por permisos, espera OK del dueño) · QP v3 no congelada y sus 26 partidas sin HH ni costo.
 
 **PUBLICADO ESTA TANDA:** Documentos geometría (6/6) · cerrada se lee «Archivada» (dueño: un solo estado) ·
 cabecera de obra IGUAL en todas las solapas (título 21, sin cifras por solapa) · fotos del parte
