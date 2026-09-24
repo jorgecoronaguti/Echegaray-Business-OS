@@ -108,13 +108,16 @@ const esBlanco = (f: FilaCobranza) => (f.categoria ?? '').trim().toUpperCase() =
 const esUsd = (f: FilaCobranza) => (f.moneda ?? '').trim().toUpperCase() === 'USD'
 
 /** Una suma en pesos y, de ella, lo que es en dólares (en U$S). `soloUsd` = toda la plata es en dólares. */
-export interface EnSuMoneda { pesos: number | null; usd: number | null; soloUsd: boolean }
+export interface EnSuMoneda { pesos: number | null; ars: number | null; usd: number | null; soloUsd: boolean }
 
 function enSuMoneda(filas: readonly FilaCobranza[]): EnSuMoneda {
   const conImporte = filas.filter((f) => f.total_bruto != null)
   const enUsd = conImporte.filter(esUsd)
   return {
     pesos: suma(filas.map((f) => f.total_bruto)),
+    // LO QUE ENTRÓ EN PESOS, sin la valuación de lo que entró en dólares (dueño, 24/09/2026: «necesito que
+    // sea todo bien especificado lo cobrado en ARS y lo cobrado en USD»).
+    ars: suma(conImporte.filter((f) => !esUsd(f)).map((f) => f.total_bruto)),
     usd: suma(enUsd.map((f) => f.total_bruto_origen ?? null)),
     soloUsd: conImporte.length > 0 && enUsd.length === conImporte.length,
   }

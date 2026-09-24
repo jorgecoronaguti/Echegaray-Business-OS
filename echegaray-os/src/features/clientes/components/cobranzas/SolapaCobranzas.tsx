@@ -85,15 +85,14 @@ const AYUDA_COBRADO_NEGRO = 'Lo COBRADO de las filas «N» (sin factura ni IVA).
 const usd = (n: number) => `U$S ${Math.round(n).toLocaleString('es-AR')}`
 
 /**
- * UNA CIFRA EN SU MONEDA. Todo en dólares → «U$S 10.500», con los pesos en la ayuda. Mixta → pesos, y el
- * rótulo dice cuánto de eso entró en dólares. Sin dólares → pesos, como siempre.
+ * UNA CIFRA EN SU MONEDA: lo que entró en pesos y lo que entró en dólares, cada uno en la suya y sin sumarlos
+ * («$ 84.581.019 + U$S 15.400»; dueño, 24/09/2026). El total valuado en pesos va en la ayuda.
  */
 function enSuMoneda(rotulo: string, m: EnSuMoneda, falta: string, titulo: string): CifraDeFicha {
   if (m.pesos == null) return { rotulo, valor: null, falta, titulo }
   if (!m.usd) return { rotulo, valor: pesos(m.pesos), falta, titulo }
-  return m.soloUsd
-    ? { rotulo, valor: usd(m.usd), falta, titulo: `${titulo} Equivale a ${pesos(m.pesos)}.` }
-    : { rotulo: `${rotulo} · incluye ${usd(m.usd)}`, valor: pesos(m.pesos), falta, titulo }
+  const partes = [m.ars ? pesos(m.ars) : null, usd(m.usd)].filter(Boolean)
+  return { rotulo, valor: partes.join(' + '), falta, titulo: `${titulo} Todo junto, valuado en pesos: ${pesos(m.pesos)}.` }
 }
 
 /** Una cifra de plata, o el motivo por el que no hay ninguna. Nunca un cero por una ausencia. */
