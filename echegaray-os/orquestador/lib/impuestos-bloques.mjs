@@ -270,12 +270,12 @@ export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy, cob }) {
   const estado = (m) => {
     if (porMesOf.has(m)) return 'presentada'
     if (m <= ancla) return AJENO
-    if (esProy(m)) return (proy?.sinMateriales ?? []).includes(m) ? 'proy. · promedio' : 'proyectado'
+    if (esProy(m)) return (proy?.sinMateriales ?? []).includes(m) ? 'promedio' : 'proyectado'
     if (sinVentas.includes(m)) return 'sin ventas'
     return 'ARCA'
   }
   const fDDJJ = G.mensual('Estado del mes', estado,
-    '«presentada»: F.2051 ante ARCA. «ARCA»: cerrado sin presentar, sobre comprobantes reales. «proyectado»: estimación del mes entero. «sin ventas»: mes futuro sin facturas cargadas.',
+    '«presentada»: F.2051 ante ARCA. «ARCA»: cerrado sin presentar, sobre comprobantes reales. «proyectado»: estimación del mes entero; «promedio»: crédito por promedio, sin materiales proyectados. «sin ventas»: mes futuro sin facturas cargadas.',
     { meses: [...meses, ...sinVentas].sort((a, b) => a - b), totaliza: false })
   G.blanco()
   const todos = [...new Set([...meses, ...sinVentas])].sort((a, b) => a - b)

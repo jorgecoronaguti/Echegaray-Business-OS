@@ -332,6 +332,6 @@ test('crédito proyectado = compras con factura + IVA de materiales por obra; si
   // El promedio mira las ÚLTIMAS SEIS DDJJ (mar–ago = D..I) de la MISMA fila, sin los meses > 2 × mediana.
   assert.match(oct, new RegExp(`AVERAGE\\(FILTER\\(D${iva.fCred}:I${iva.fCred};D${iva.fCred}:I${iva.fCred}<=2\\*MEDIAN`))
   assert.match(String(celda(G, iva.fCred, 9)), /^=MAX\(SUMPRODUCT/, 'el mes en curso nunca baja de ARCA')
-  assert.equal(celda(G, iva.fDDJJ, 11), 'proy. · promedio', 'el mes sin materiales declara que usa el promedio')
+  assert.equal(celda(G, iva.fDDJJ, 11), 'promedio', 'el mes sin materiales declara que usa el promedio (entra en 100 px)')
   assert.equal(celda(G, iva.fDDJJ, 10), 'proyectado')
 })
