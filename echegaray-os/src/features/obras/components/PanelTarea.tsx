@@ -44,7 +44,7 @@ import {
   BotonIcono, Celda, Cuadro, FilaPlegable, FilaRecurso, Impedimento, Titulo,
 } from './panel/PanelPiezas'
 import {
-  EjecucionReciente, SolapaAvance, SolapaDocumentos, SolapaHistorial,
+  EjecucionReciente, NotasTarea, SolapaAvance, SolapaDocumentos, SolapaHistorial,
 } from './panel/PanelSolapas'
 import { fecha, fechaCorta, porcentaje } from './formato'
 import { METODO_LABEL, TIPO_RESTRICCION_LABEL, type Restriccion } from '../types'
@@ -60,7 +60,6 @@ import { SOLAPAS, type Solapa } from '../services/solapasTarea'
 import type { AccionFormulario } from '@/shared/components/ui/FormAccion'
 import { PanelTareaRecursos } from './PanelTareaRecursos'
 import { FormAvanceEmbebido } from './FormAvance'
-import { BloqueNotas } from './PanelGestion'
 import { cuadrillaDeLaTarea, iniciales } from '../services/contextoTarea'
 import type { EquipoEnActividad, NotaActividad } from '../services/recursosService'
 import { PanelTareaRendimiento } from './PanelTareaRendimiento'
@@ -309,7 +308,7 @@ export function PanelTarea({
                 <Celda k="Ejecutado" falta="sin medir" v={nodo.cantidad_ejecutada != null
                   ? `${nodo.cantidad_ejecutada.toLocaleString('es-AR', { maximumFractionDigits: 2 })}${nodo.unidad ? ` ${nodo.unidad}` : ''}`
                   : null} />
-                <Celda k="Avance" v={porcentaje(nodo.avance_pct)} falta="—"
+                <Celda k="Avance" v={porcentaje(nodo.avance_pct)} falta="sin avance"
                   color={nodo.avance_pct != null ? C.pos : undefined} />
                 <Celda k="HH reales" v={nodo.hh_real != null ? Math.round(nodo.hh_real).toLocaleString('es-AR') : null}
                   falta="sin imputar" />
@@ -431,7 +430,7 @@ export function PanelTarea({
             {(acciones.agregarNota || notas.length > 0) && (
               <section style={{ marginTop: '16px' }} data-testid="panel-notas">
                 <Titulo>Notas</Titulo>
-                <BloqueNotas notas={notas}
+                <NotasTarea notas={notas}
                   {...(puedeEditar && acciones.agregarNota
                     ? { agregar: acciones.agregarNota.bind(null, nodo.id) }
                     : {})} />

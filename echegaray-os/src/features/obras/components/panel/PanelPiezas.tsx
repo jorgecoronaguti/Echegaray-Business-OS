@@ -131,15 +131,19 @@ export function Impedimento({ titulo, detalle, href, testid }: {
 }
 
 /** Una cifra con rótulo chico: el bloque de HH del panel. */
-export function Cifra({ rotulo, valor, falta, alerta = false }: {
+export function Cifra({ rotulo, valor, falta, alerta = false, sub }: {
   rotulo: string; valor: string | null; falta: string; alerta?: boolean
+  /** De dónde sale la cifra («del análisis», «por asistencia»): 11px tenue, debajo. */
+  sub?: string
 }) {
   return (
     <div>
       <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.05em', color: C.tenue }}>{rotulo}</div>
-      <div style={{ fontFamily: MONO, fontSize: '15px', fontWeight: 600, color: alerta ? C.warn : C.tinta }}>
-        {valor ?? <span style={{ fontFamily: 'inherit', fontSize: '12px', fontWeight: 400, color: C.tenue, fontStyle: 'italic' }} data-nulo="">{falta}</span>}
+      {/* EL FALTANTE NO VA EN MONO: `fontFamily:'inherit'` adentro de un bloque mono hereda la mono. */}
+      <div style={{ fontFamily: valor == null ? undefined : MONO, fontSize: '15px', fontWeight: 600, color: alerta ? C.warn : C.tinta }}>
+        {valor ?? <span style={{ fontSize: '12px', fontWeight: 400, color: C.tenue, fontStyle: 'italic' }} data-nulo="">{falta}</span>}
       </div>
+      {sub && <div style={{ fontSize: '11px', color: C.tenue, marginTop: '1px' }}>{sub}</div>}
     </div>
   )
 }
@@ -157,5 +161,80 @@ export function BotonIcono({ titulo, testid, d, onClick }: {
       }}>
       <Ico d={d} s={15} />
     </button>
+  )
+}
+
+// ═══ LAS PIEZAS DE LAS SOLAPAS QUE EL ZIP NO DIBUJA (24/09/2026) ═══
+//
+// El 04 dibuja sólo el Resumen. Avance, Dependencias, Rendimiento y la dotación plegada se
+// diseñaron con lo que el 04 ya fija: el eyebrow mono de «Lo que la traba», la fila de lista con
+// `bordeLista`, el texto secundario 12px muted y el plegable con chevron. Viven acá para que las
+// cuatro solapas se lean como una sola pantalla.
+
+/** El rótulo de sección del 04 («LO QUE LA TRABA»): mono 10,5 / .06em / mayúsculas / faint. */
+export function Eyebrow({ children, derecha }: { children: ReactNode; derecha?: ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px', marginBottom: '6px' }}>
+      <div style={{ fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase' }}>{children}</div>
+      {derecha != null && <div style={{ fontSize: '11.5px', color: C.tenue }}>{derecha}</div>}
+    </div>
+  )
+}
+
+/** Texto secundario de una solapa: 12px muted, 1,5 de interlínea. Nunca más de dos renglones. */
+export function Nota({ children, testid, tono }: { children: ReactNode; testid?: string; tono?: 'warn' | 'neg' }) {
+  return (
+    <p data-testid={testid} style={{
+      margin: 0, fontSize: '12px', lineHeight: 1.5, color: tono === 'warn' ? C.warn : tono === 'neg' ? C.neg : C.tintaSuave,
+    }}>{children}</p>
+  )
+}
+
+/** Un plegable dentro de una solapa: chevron 12 + rótulo 12px. Lo que se toca poco, a un clic. */
+export function Plegado({ rotulo, children, testid, fuerte = false }: {
+  rotulo: ReactNode; children: ReactNode; testid?: string; fuerte?: boolean
+}) {
+  return (
+    <details data-testid={testid}>
+      <summary style={{
+        display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: 'pointer', listStyle: 'none',
+        fontSize: fuerte ? '12.5px' : '12px', fontWeight: fuerte ? 500 : 400, color: fuerte ? C.tinta : C.tintaSuave,
+      }}>
+        <span style={{ display: 'flex', color: C.tenue }}><Ico d={P.derecha} s={12} /></span>
+        {rotulo}
+      </summary>
+      <div style={{ marginTop: '10px' }}>{children}</div>
+    </details>
+  )
+}
+
+/** Un enlace de texto de una solapa: 12,5/500 tinta con flecha, como «Ver historial». */
+export const ESTILO_ENLACE: CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '12.5px', fontWeight: 500, color: C.tinta,
+  textDecoration: 'none', cursor: 'pointer',
+}
+
+/** Una fila clave · valor de lista (cadena de esfuerzo, restricciones): clave 12,5 con su fuente
+ *  debajo en 11 faint, valor mono a la derecha. Un valor ausente se dice con su palabra. */
+export function FilaDato({ clave, fuente, valor, falta = 'sin dato', destacado = false, color }: {
+  clave: ReactNode; fuente?: ReactNode; valor: ReactNode | null; falta?: string; destacado?: boolean; color?: string
+}) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', padding: '8px 0',
+      borderBottom: `1px solid ${C.bordeLista}`,
+    }}>
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: '12.5px', color: destacado ? C.tinta : C.tintaMedia }}>{clave}</span>
+        {fuente && <span style={{ display: 'block', fontSize: '11px', color: C.tenue, marginTop: '1px' }}>{fuente}</span>}
+      </span>
+      <span style={{
+        flexShrink: 0, textAlign: 'right', fontFamily: valor == null ? undefined : MONO, fontSize: '12.5px',
+        // Destacar es peso, no color: el ámbar es sólo para un problema (regla del dueño).
+        fontWeight: destacado ? 600 : 400, color: color ?? C.tinta,
+      }}>
+        {valor ?? <span style={{ fontSize: '11.5px', fontWeight: 400, fontStyle: 'italic', color: C.tenue }} data-nulo="">{falta}</span>}
+      </span>
+    </div>
   )
 }

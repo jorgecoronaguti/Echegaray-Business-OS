@@ -1,4 +1,11 @@
+'use client'
+
 // 04 · SOLAPA RECURSOS Y HH — el mismo motor de la 08, sobre UNA actividad.
+//
+// LENGUAJE ERP OBRAS (24/09/2026): vive plegado en la fila «Dotación» del Resumen y el zip no lo
+// dibuja. Se arma con las piezas del 04: eyebrow mono, stepper de 30 con borde `borde` (el mismo alto
+// que los botones-ícono del panel), la duración en mono 18/600, el aviso con ícono y la cuenta
+// inversa en la caja gris del cuadro PLAN (`tenueFondo` + `bordeTarjeta`, radio 8).
 //
 // ═══ NO HAY UNA SEGUNDA MATEMÁTICA ACÁ ═══
 //
@@ -8,12 +15,12 @@
 // se hiciera la cuenta «a mano», el panel y la pantalla de dotación contestarían distinto sobre la
 // misma actividad y ninguna de las dos sería verificable.
 //
-// ═══ LA DOTACIÓN VIAJA EN LA URL, Y ESO ES A PROPÓSITO ═══
+// ═══ LA DOTACIÓN ES ESTADO DEL CLIENTE, Y NO ES UN PLAN ═══
 //
-// `?dot=` igual que en la 08: sin estado en el navegador, el mismo link abre la misma simulación
-// del otro lado del chat. Y mientras está en la URL NO es un plan: aplicarla al plan es la 08, que
-// escribe `dotacion_prevista` sobre el frente entero.
+// Mover el stepper simula; aplicarla al plan es la 08, que escribe `dotacion_prevista` sobre el
+// frente entero.
 
+import type { CSSProperties } from 'react'
 import { hh as fmtHH } from './formato'
 import { dotacionNecesaria, duracionDias } from '../services/dotacion'
 import { hhRestantes } from '../services/cronogramaMotor'
@@ -21,6 +28,9 @@ import { restriccionesDe } from '../services/panelTarea'
 import { MAGNITUD, produccionDeCuadrilla } from '@/features/base-maestra/services/vocabulario'
 import type { NodoObra } from '../services/wbs'
 import type { ContextoTarea } from '../services/panelTareaService'
+import { C, MONO } from './canon/tokens'
+import { Aviso, Falta } from './items/crear/Piezas'
+import { Eyebrow, FilaDato, Nota } from './panel/PanelPiezas'
 
 /** La jornada por defecto es la misma que la de la base (`obra_canonica.jornada_horas`, default 8).
  *  Se usa sólo para poder mostrar una duración cuando la obra no se pudo leer, y en ese caso la
@@ -67,35 +77,37 @@ export function PanelTareaRecursos({ nodo, contexto, dotacion, alCambiarDotacion
   const produccion = produccionDeCuadrilla(esfuerzo, contexto.capacidadCuadrilla, contexto.jornadaHoras)
 
   return (
-    <section data-testid="panel-recursos">
-      <h3 className="mb-1.5 text-[12.5px] font-semibold text-ink">Dotación → duración</h3>
-      <div className="flex flex-wrap items-center gap-3">
-        <Stepper valor={dotacion} alCambiar={alCambiarDotacion} enTope={enTope} nombre={nodo.nombre} />
-        <div className="ml-auto text-right">
-          <div className="text-[10px] uppercase tracking-[0.05em] text-faint">Duración</div>
-          <div className="font-mono text-[18px] font-semibold tabular-nums text-ink" data-testid="duracion-simulada">
-            {dias == null
-              ? <span className="font-sans text-[12.5px] font-normal text-faint">{hh == null ? 'sin HH' : 'sin gente'}</span>
-              : `${n1(dias)} d`}
+    <section data-testid="panel-recursos" style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '4px' }}>
+      <div>
+        <Eyebrow>Dotación → duración</Eyebrow>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <Stepper valor={dotacion} alCambiar={alCambiarDotacion} enTope={enTope} nombre={nodo.nombre} />
+          <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+            <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.05em', color: C.tenue }}>Duración</div>
+            <div data-testid="duracion-simulada" style={{
+              fontFamily: dias == null ? undefined : MONO, fontSize: dias == null ? '12.5px' : '18px', fontWeight: dias == null ? 400 : 600, color: C.tinta,
+            }}>
+              {dias == null ? <Falta>{hh == null ? 'sin HH' : 'sin gente'}</Falta> : `${n1(dias)} d`}
+            </div>
           </div>
         </div>
       </div>
+
       {/* EL NÚMERO VIENE CON SU BASE. «14 días» calculados sobre el plan y «14 días» calculados
           sobre el rendimiento observado no valen lo mismo, y a simple vista son iguales. */}
-      <p className="mt-1.5 text-[11.5px] text-muted">
+      <Nota>
         {hh == null
           ? 'Sin HH cargadas no hay duración que calcular: lo que falta es la carga, no el trabajo.'
           : (
             <>
-              Sobre {fmtHH(hh)} HH que faltan · base: <strong className="font-normal text-ink-soft">{baseHH}</strong>
+              Sobre <span style={{ fontFamily: MONO, color: C.tinta }}>{fmtHH(hh)}</span> HH que faltan · base:{' '}
+              <span style={{ color: C.tintaMedia }}>{baseHH}</span>
               {diasTecnicos > 0 && <> · {diasTecnicos} d técnicos que no se comprimen</>}
             </>
           )}
-      </p>
+      </Nota>
       {enTope && (
-        <p className="mt-2 border-l-[3px] border-warn bg-warn-soft px-3 py-2 text-[12px] text-warn">
-          Tope del frente: {nodo.tope_frente} personas. Más gente no acorta el plazo.
-        </p>
+        <Aviso tono="warn" tam={12}>Tope del frente: {nodo.tope_frente} personas. Más gente no acorta el plazo.</Aviso>
       )}
 
       {/* PRODUCCIÓN DE CUADRILLA — la cuarta magnitud, y la única que un jefe de obra puede
@@ -104,39 +116,30 @@ export function PanelTareaRecursos({ nodo, contexto, dotacion, alCambiarDotacion
           capacidad ponderada y jornada): con uno estimado sería un objetivo inventado, y un
           objetivo inventado se persigue igual que uno medido. */}
       {produccion !== null && (
-        <p className="mt-2 text-[11.5px] text-muted" data-testid="produccion-cuadrilla">
+        <Nota testid="produccion-cuadrilla">
           {MAGNITUD.produccion.rotulo}:{' '}
-          <strong className="font-mono font-normal tabular-nums text-ink-soft">
+          <span style={{ fontFamily: MONO, color: C.tinta }}>
             {produccion.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
-          </strong>{' '}
+          </span>{' '}
           {MAGNITUD.produccion.unidad(nodo.unidad)}
-        </p>
+        </Nota>
       )}
 
       <AlReves nodo={nodo} contexto={contexto} hh={hh} jornada={jornada} />
 
-      <div className="mt-4 border-t border-line pt-3">
-        <h3 className="mb-1.5 text-[12.5px] font-semibold text-ink">Restricciones que respeta el cálculo</h3>
+      <div style={{ borderTop: `1px solid ${C.borde}`, paddingTop: '12px' }}>
+        <Eyebrow>Restricciones que respeta el cálculo</Eyebrow>
         {restricciones.length === 0
           ? (
-            <p className="text-[12px] leading-relaxed text-muted">
-              Esta actividad no declara ninguna: sin tope de frente, sin tiempo técnico y sin jornada
-              leída, la duración sale de dividir las HH por la gente y nada la limita. Eso no es un
-              plan sin restricciones — es un plan al que nadie se las cargó.
-            </p>
+            <Nota>
+              Esta actividad no declara ninguna —sin tope de frente, sin tiempo técnico, sin jornada leída—: es un
+              plan al que nadie se las cargó, no un plan sin restricciones.
+            </Nota>
           )
           : (
-            <ul data-testid="restricciones-calculo">
-              {restricciones.map((r) => (
-                <li key={r.clave} className="flex items-baseline justify-between gap-3 border-b border-[#EFEEEA] py-1.5 last:border-0">
-                  <span className="min-w-0">
-                    <span className="block text-[12px] text-ink-soft">{r.clave}</span>
-                    <span className="block text-[10.5px] text-faint">{r.fuente}</span>
-                  </span>
-                  <span className="shrink-0 text-right font-mono text-[11.5px] tabular-nums text-muted">{r.valor}</span>
-                </li>
-              ))}
-            </ul>
+            <div data-testid="restricciones-calculo">
+              {restricciones.map((r) => <FilaDato key={r.clave} clave={r.clave} fuente={r.fuente} valor={r.valor} />)}
+            </div>
           )}
       </div>
     </section>
@@ -148,24 +151,25 @@ export function PanelTareaRecursos({ nodo, contexto, dotacion, alCambiarDotacion
 function Stepper({ valor, alCambiar, enTope, nombre }: {
   valor: number; alCambiar: (n: number) => void; enTope: boolean; nombre: string
 }) {
-  const caja = 'flex h-[30px] w-[30px] items-center justify-center border border-line text-[14px]'
+  const caja = (lado: 'izq' | 'der', activo: boolean): CSSProperties => ({
+    font: 'inherit', width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    border: `1px solid ${C.borde}`, background: C.superficie, padding: 0, fontSize: '14px',
+    color: activo ? C.tintaMedia : C.fantasma, cursor: activo ? 'pointer' : 'default',
+    borderRadius: lado === 'izq' ? '6px 0 0 6px' : '0 6px 6px 0',
+  })
   return (
-    <div className="flex items-center" data-testid="stepper-dotacion">
+    <div style={{ display: 'flex', alignItems: 'center' }} data-testid="stepper-dotacion">
       {valor > 0
-        ? (
-          <button type="button" onClick={() => alCambiar(valor - 1)} aria-label={`Quitar una persona de ${nombre}`}
-            className={`${caja} rounded-l-control text-ink-soft hover:bg-surface-quiet`}>−</button>
-        )
-        : <span className={`${caja} rounded-l-control text-faint`} aria-hidden>−</span>}
-      <span className="flex h-[30px] w-[38px] items-center justify-center border-y border-line font-mono text-[14px] font-semibold tabular-nums text-ink">
-        {valor}
-      </span>
+        ? <button type="button" onClick={() => alCambiar(valor - 1)} aria-label={`Quitar una persona de ${nombre}`} style={caja('izq', true)}>−</button>
+        : <span aria-hidden style={caja('izq', false)}>−</span>}
+      <span style={{
+        width: '38px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        borderTop: `1px solid ${C.borde}`, borderBottom: `1px solid ${C.borde}`,
+        fontFamily: MONO, fontSize: '14px', fontWeight: 600, color: C.tinta,
+      }}>{valor}</span>
       {enTope
-        ? <span className={`${caja} rounded-r-control text-faint`} title="Más gente no acorta el plazo">+</span>
-        : (
-          <button type="button" onClick={() => alCambiar(valor + 1)} aria-label={`Sumar una persona a ${nombre}`}
-            className={`${caja} rounded-r-control text-ink-soft hover:bg-surface-quiet`}>+</button>
-        )}
+        ? <span title="Más gente no acorta el plazo" style={caja('der', false)}>+</span>
+        : <button type="button" onClick={() => alCambiar(valor + 1)} aria-label={`Sumar una persona a ${nombre}`} style={caja('der', true)}>+</button>}
     </div>
   )
 }
@@ -189,31 +193,33 @@ function AlReves({ nodo, contexto, hh, jornada }: {
   const dias = contexto.diasHastaFinPlan
   const necesaria = dotacionNecesaria(hh, dias, jornada, nodo.tope_frente)
   return (
-    <div className="mt-3 rounded-card border border-line bg-surface-quiet px-3 py-2.5" data-testid="cuenta-inversa">
-      <p className="mb-1 text-[11.5px] text-muted">Al revés: fijá la fecha</p>
+    <div data-testid="cuenta-inversa" style={{
+      background: C.tenueFondo, border: `1px solid ${C.bordeTarjeta}`, borderRadius: '8px', padding: '10px 12px',
+      display: 'flex', flexDirection: 'column', gap: '4px',
+    }}>
+      <div style={{ fontSize: '10px', letterSpacing: '.05em', color: C.tenue }}>AL REVÉS: FIJÁ LA FECHA</div>
       {!nodo.fin_plan && (
-        <p className="text-[12px] text-muted">
-          Esta actividad no tiene fin de plan: sin una fecha comprometida no hay cuenta inversa que
-          hacer.
-        </p>
+        <div style={{ fontSize: '12px' }}><Falta>Sin fin de plan: sin una fecha comprometida no hay cuenta inversa que hacer.</Falta></div>
       )}
       {nodo.fin_plan && dias == null && (
-        <p className="text-[12px] text-warn">
-          El fin de plan ({enCriollo(nodo.fin_plan)}) ya pasó, o no pude contar los días hábiles que
-          faltan. Una fecha vencida no se contesta con una dotación.
-        </p>
+        <Nota tono="warn">
+          El fin de plan ({enCriollo(nodo.fin_plan)}) ya pasó, o no pude contar los días hábiles que faltan. Una
+          fecha vencida no se contesta con una dotación.
+        </Nota>
       )}
       {nodo.fin_plan && dias != null && (
-        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span className="text-[12.5px] text-ink-soft">Terminar el {enCriollo(nodo.fin_plan)}</span>
-          <span className="text-[10.5px] text-faint">{dias} d hábiles</span>
-          <span className="text-[12.5px] text-ink-soft">→</span>
-          <span className={`font-mono text-[13.5px] font-semibold tabular-nums ${necesaria == null ? 'text-neg' : 'text-ink'}`}>
-            {hh == null
-              ? <span className="font-sans text-[12px] font-normal text-faint">sin HH</span>
-              : (necesaria == null ? 'no alcanza' : `${necesaria} pers.`)}
-          </span>
-        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 8px' }}>
+          <span style={{ fontSize: '12.5px', color: C.tintaMedia }}>Terminar el <span style={{ fontFamily: MONO }}>{enCriollo(nodo.fin_plan)}</span></span>
+          <span style={{ fontSize: '11px', color: C.tenue }}>{dias} d hábiles</span>
+          <span style={{ fontSize: '12.5px', color: C.tenue }}>→</span>
+          {hh == null
+            ? <span style={{ fontSize: '12px' }}><Falta>sin HH</Falta></span>
+            : (
+              <span style={{ fontFamily: MONO, fontSize: '13.5px', fontWeight: 600, color: necesaria == null ? C.neg : C.tinta }}>
+                {necesaria == null ? 'no alcanza' : `${necesaria} pers.`}
+              </span>
+            )}
+        </div>
       )}
     </div>
   )

@@ -2,15 +2,18 @@
 
 // ═══ 05 · REGISTRAR AVANCE — los métodos, el criterio y la firma ═══
 //
-// UNA SOLA DEFINICIÓN, DOS ENVASES (orden del dueño 24/08). La pantalla entera de
-// `/obras/[obra]/avance/[actividad]` y el formulario embebido en el panel lateral de la tarea son
-// EL MISMO componente con `variante`: lo que cambia es el envase —el título y las dos columnas—,
-// nunca la regla. Duplicar el formulario para el panel sería duplicar el criterio del método
-// manual, la resta del acumulado y la firma: tres reglas que ya tienen su gemela en la base y que
-// nadie volvería a corregir en los dos lados.
+// LENGUAJE ERP OBRAS (24/09/2026). El zip no dibuja la solapa Avance del panel de 400px (el 04 sólo
+// dibuja el Resumen): se diseñó con las piezas medidas del 04 y de C01–C10 — eyebrow mono, chips de
+// 32 con borde grafito al activo, controles de 32/44 con borde `bordeFuerte`, filas de lista con
+// `bordeLista`, avisos con ícono y el número grande en mono. Ningún color fuera de `canon/tokens`.
+// La primaria sigue siendo la de `FormAccion` (la amarilla del sistema): es la pieza que garantiza
+// que el error del servidor se vea siempre, y reescribirla acá sería una segunda copia de esa regla.
 //
-// Lo que la variante `panel` NO trae es el chrome de página: ni cabecera de obra, ni contenedor, ni
-// el historial. Eso lo pone quien la embebe.
+// UNA SOLA DEFINICIÓN, DOS ENVASES (orden del dueño 24/08). La pantalla entera de
+// `/obras/[obra]/avance/[actividad]` (hoy redirige al panel) y el formulario embebido en el panel
+// lateral de la tarea son EL MISMO componente con `variante`: lo que cambia es el envase —el título
+// y las dos columnas—, nunca la regla. Duplicar el formulario sería duplicar el criterio del método
+// manual, la resta del acumulado y la firma: tres reglas que ya tienen su gemela en la base.
 //
 // ═══ EL CRITERIO DEL MÉTODO MANUAL ═══
 //
@@ -25,10 +28,13 @@
 // duplicaría todo lo anterior. La resta la hace `deltaDeCantidad` en el servidor, y acá se muestran
 // las dos puntas —«anterior 65 %» y «ahora 74 %»— para que se vea qué se está por escribir.
 
-import { useState } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import { useEstadoDelServidor } from '@/shared/tiempo-real/useEstadoDelServidor'
 import { FormAccion } from '@/shared/components/ui'
-import { IconoFoto, IconoProblema } from '@/shared/components/iconos'
+import { C, MONO } from './canon/tokens'
+import { Ico, P } from './canon/Ico'
+import { Aviso, Chip, EYEBROW, Falta, estiloControl } from './items/crear/Piezas'
+import { Cifra } from './panel/PanelPiezas'
 import { avancePorCantidad, hhProyectadas, proyeccionExcedida } from '../services/avance'
 import { hh as fmtHH, porcentaje } from './formato'
 import type { PasoDeActividad } from '../services/tareasService'
@@ -55,10 +61,26 @@ export interface DatosFormAvance {
   registrar: (form: FormData) => Promise<{ ok: true; mensaje?: string } | { ok: false; error: string }>
 }
 
+/** Un bloque del formulario: título 12px/600 (el `Titulo` del panel) y, si va después de otro, la
+ *  línea `borde` arriba con 16 de aire. */
+function Bloque({ titulo, derecha, children, testid, id, linea = false }: {
+  titulo: ReactNode; derecha?: ReactNode; children: ReactNode; testid?: string; id?: string; linea?: boolean
+}) {
+  return (
+    <section id={id} data-testid={testid} style={linea ? { borderTop: `1px solid ${C.borde}`, paddingTop: '16px' } : undefined}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+        <div style={{ fontSize: '12px', fontWeight: 600, color: C.tinta }}>{titulo}</div>
+        {derecha}
+      </div>
+      {children}
+    </section>
+  )
+}
+
 export function FormAvance({
   nodo, pasos, cuadrillas, autor, hoy, registrar, variante = 'pagina',
 }: DatosFormAvance & {
-  /** `panel`: sin título propio y en una sola columna, para un cajón de ~412px. */
+  /** `panel`: sin título propio y en una sola columna, para el cajón de 400px. */
   variante?: 'pagina' | 'panel'
 }) {
   // LO QUE MUESTRA LO GUARDADO SIGUE A LO GUARDADO. Si otro registra el avance desde el teléfono,
@@ -86,70 +108,68 @@ export function FormAvance({
   const resultante = metodo === 'pasos' ? avancePasos : metodo === 'cantidad' ? avanceCant : Number(declarado)
   const faltaCriterio = metodo === 'manual' && criterio.trim() === ''
   const proy = hhProyectadas(nodo.hh_real, resultante)
+  const nombreMetodo = METODOS.find(([m]) => m === metodo)?.[1] ?? metodo
 
   if (esContenedor) {
     return (
-      <p className="border-l-[3px] border-warn bg-warn-soft px-3.5 py-3 text-[13px] text-warn"
-        data-testid="es-contenedor">
-        «{nodo.nombre}» agrupa a otras actividades: el avance se registra en las que agrupa, y de
-        ahí sube solo.
-      </p>
+      <div data-testid="es-contenedor">
+        <Aviso tono="warn" tam={12}>
+          «{nodo.nombre}» agrupa a otras actividades: el avance se registra en las que agrupa, y de ahí sube solo.
+        </Aviso>
+      </div>
     )
   }
 
   const enPanel = variante === 'panel'
+  const grilla: CSSProperties = enPanel
+    ? { display: 'grid', gap: '20px' }
+    : { display: 'grid', gap: '24px', gridTemplateColumns: 'minmax(0,1fr) 300px', alignItems: 'start' }
 
   return (
-    <div>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        {/* EN EL PANEL EL TÍTULO YA ESTÁ ARRIBA: repetirlo empuja el número grande fuera de la
-            vista, que es justo lo único que este bloque tiene que mostrar primero. */}
-        {!enPanel && (
-          <div>
-            <h1 className="text-[20px] font-semibold text-ink">{nodo.nombre}</h1>
-            <p className="text-[12px] text-muted">
-              {/* La ruta sólo si agrega algo: en una actividad de la raíz, `camino` es el nombre. */}
-              {nodo.camino !== nodo.nombre && nodo.camino}
-              {nodo.cantidad_objetivo !== null && (
-                <span className="ml-2 font-mono text-[11px] text-faint">
-                  {nodo.cantidad_objetivo} {nodo.unidad ?? ''}
-                </span>
-              )}
-            </p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* EN EL PANEL EL TÍTULO YA ESTÁ ARRIBA: repetirlo empuja el número grande fuera de la
+          vista, que es justo lo único que este bloque tiene que mostrar primero. */}
+      {!enPanel && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <h1 style={{ margin: 0, fontSize: '17px', fontWeight: 600, letterSpacing: '-.01em', color: C.tinta }}>{nodo.nombre}</h1>
+          <div style={{ fontSize: '12px', color: C.tintaSuave }}>
+            {/* La ruta sólo si agrega algo: en una actividad de la raíz, `camino` es el nombre. */}
+            {nodo.camino !== nodo.nombre && nodo.camino}
+            {nodo.cantidad_objetivo !== null && (
+              <span style={{ marginLeft: '8px', fontFamily: MONO, fontSize: '11.5px', color: C.tenue }}>
+                {nodo.cantidad_objetivo} {nodo.unidad ?? ''}
+              </span>
+            )}
           </div>
-        )}
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <div className="text-[10.5px] uppercase tracking-[0.05em] text-faint">Avance</div>
-            <div className="font-mono text-[30px] font-semibold leading-none tabular-nums text-ink" data-testid="avance-resultante">
-              {porcentaje(resultante) ?? 'sin base'}
-            </div>
+        </div>
+      )}
+
+      {/* EL MÉTODO A LA IZQUIERDA, EL NÚMERO QUE SE VA A ESCRIBIR A LA DERECHA. */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div style={EYEBROW}>Método</div>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            {METODOS.map(([id, label]) => (
+              <Chip key={id} activo={metodo === id} onClick={() => setMetodo(id)} testid={`metodo-${id}`}>{label}</Chip>
+            ))}
           </div>
-          <div>
-            <div className="mb-1 text-[10.5px] uppercase tracking-[0.05em] text-faint">Método</div>
-            <div className="flex gap-1.5">
-              {METODOS.map(([id, label]) => (
-                <button
-                  key={id} type="button" onClick={() => setMetodo(id)} aria-pressed={metodo === id}
-                  data-testid={`metodo-${id}`}
-                  className={`rounded-control border px-2.5 py-1 text-[12px] ${
-                    metodo === id ? 'border-marca bg-marca-soft text-ink' : 'border-line text-muted hover:text-ink'
-                  }`}
-                >{label}</button>
-              ))}
-            </div>
-          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
+          <div style={EYEBROW}>Avance</div>
+          {porcentaje(resultante) != null
+            ? <div data-testid="avance-resultante" style={{ fontFamily: MONO, fontSize: '24px', fontWeight: 600, lineHeight: 1, color: C.tinta }}>{porcentaje(resultante)}</div>
+            : <div data-testid="avance-resultante" data-nulo="" style={{ fontSize: '12.5px', fontStyle: 'italic', color: C.tenue, lineHeight: '24px' }}>sin base</div>}
         </div>
       </div>
 
       {/* LA CONVERSIÓN SE DICE ANTES DE HACERLA. 141 actividades vivas se miden sumando partes
           diarios; registrar acá las pasa a otro método, y eso cambia de dónde sale su número. */}
       {nodo.metodo_avance === 'partes' && (
-        <p className="mb-3 flex items-start gap-2 border-l-[3px] border-warn bg-warn-soft px-3 py-2 text-[12px] text-warn" data-testid="aviso-partes">
-          <IconoProblema className="mt-[1px] h-[14px] w-[14px] shrink-0" />
-          Venía sumando sus partes diarios: registrar acá la pasa a
-          «{METODOS.find(([m]) => m === metodo)?.[1]}» y su porcentaje sale de otro lado.
-        </p>
+        <div data-testid="aviso-partes">
+          <Aviso tono="warn" tam={12}>
+            Venía sumando sus partes diarios: registrar acá la pasa a «{nombreMetodo}» y su porcentaje sale de otro lado.
+          </Aviso>
+        </div>
       )}
 
       <FormAccion
@@ -163,19 +183,22 @@ export function FormAvance({
         <input type="hidden" name="metodo" value={metodo} />
         <input type="hidden" name="fecha" value={hoy} />
 
-        <div className={enPanel ? 'grid gap-5' : 'grid gap-6 lg:grid-cols-[1fr_300px]'}>
-          <div>
+        <div style={grilla}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', minWidth: 0 }}>
             {metodo === 'pasos' && (
-              <section data-testid="cuerpo-pasos">
-                <h2 className="mb-1.5 text-[13px] font-semibold text-ink">Pasos ejecutados</h2>
+              <Bloque titulo="Pasos ejecutados" testid="cuerpo-pasos"
+                derecha={pasos.length > 0 ? <span style={{ fontSize: '11.5px', color: C.tenue }}>peso</span> : undefined}>
                 {pasos.length === 0 ? (
-                  <p className="text-[12.5px] text-muted">
-                    Sin pasos cargados no hay peso que sumar. Elegí otro método o cargá la secuencia.
-                  </p>
+                  <div style={{ fontSize: '12.5px', color: C.tintaSuave }}>
+                    <Falta>Sin pasos cargados</Falta>: no hay peso que sumar. Elegí otro método o cargá la secuencia.
+                  </div>
                 ) : (
-                  <ul>
+                  <div>
                     {pasos.map((p) => (
-                      <li key={p.id} className="flex items-center gap-2.5 border-b border-surface-sunken py-2 last:border-0">
+                      <label key={p.id} style={{
+                        display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 0',
+                        borderBottom: `1px solid ${C.bordeLista}`, cursor: 'pointer',
+                      }}>
                         <input
                           type="checkbox" name="paso" value={p.id}
                           checked={tildados.has(p.id)}
@@ -186,139 +209,148 @@ export function FormAvance({
                           })}
                           aria-label={p.nombre}
                           data-testid={`paso-${p.orden}`}
-                          className="h-[18px] w-[18px] shrink-0 accent-marca"
+                          style={{ width: '16px', height: '16px', margin: 0, flexShrink: 0, accentColor: C.grafito, cursor: 'pointer' }}
                         />
-                        <span className="flex-1 text-[13.5px] text-ink-soft">{p.nombre}</span>
+                        <span style={{
+                          flex: 1, minWidth: 0, fontSize: '13px', color: tildados.has(p.id) ? C.tinta : C.tintaMedia,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>{p.nombre}</span>
                         {p.tiempo_tecnico && (
-                          <span className="text-[11px] text-warn">
+                          <span style={{ fontSize: '11px', color: C.warn, flexShrink: 0 }}>
                             tiempo técnico{p.dias_tecnicos ? ` · ${p.dias_tecnicos} d` : ''}
                           </span>
                         )}
-                        <span className="w-10 text-right font-mono text-[12.5px] tabular-nums text-muted">{p.peso}</span>
-                      </li>
+                        <span style={{ width: '40px', textAlign: 'right', fontFamily: MONO, fontSize: '12px', color: C.tintaSuave, flexShrink: 0 }}>{p.peso}</span>
+                      </label>
                     ))}
-                  </ul>
+                    <div style={{ marginTop: '10px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '12px', color: C.tintaSuave }}>Suma de pesos ejecutados</span>
+                      {porcentaje(avancePasos) != null
+                        ? <span style={{ fontFamily: MONO, fontSize: '15px', fontWeight: 600, color: C.tinta }}>{porcentaje(avancePasos)}</span>
+                        : <span style={{ fontSize: '12.5px' }}><Falta>sin base</Falta></span>}
+                    </div>
+                  </div>
                 )}
-                {pasos.length > 0 && (
-                  <p className="mt-2 flex items-baseline justify-between">
-                    <span className="text-[12px] text-faint">Suma de pesos ejecutados</span>
-                    <span className="font-mono text-[16px] font-semibold tabular-nums text-ink">{porcentaje(avancePasos)}</span>
-                  </p>
-                )}
-              </section>
+              </Bloque>
             )}
 
             {metodo === 'cantidad' && (
-              <section data-testid="cuerpo-cantidad">
-                <h2 className="mb-1.5 text-[13px] font-semibold text-ink">Cantidad ejecutada acumulada</h2>
-                <div className="flex items-center gap-2">
+              <Bloque titulo="Cantidad ejecutada acumulada" testid="cuerpo-cantidad">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                   <input
                     type="number" step="any" min={0} name="cantidad_ejecutada"
                     value={acumulada} onChange={(e) => setAcumulada(e.target.value)}
                     aria-label="Cantidad ejecutada acumulada"
                     data-testid="campo-cantidad"
-                    className="h-11 w-[180px] rounded-control border border-line-strong px-2.5 font-mono text-[17px] font-semibold tabular-nums text-ink"
+                    style={{ ...estiloControl(44, true), width: '160px', fontSize: '16px', fontWeight: 600 }}
                   />
-                  <span className="text-[13px] text-muted">{nodo.unidad ?? ''}</span>
-                  <span className="text-[12.5px] text-faint">
+                  <span style={{ fontSize: '13px', color: C.tintaSuave }}>{nodo.unidad ?? ''}</span>
+                  <span style={{ fontSize: '12.5px', color: C.tenue }}>
                     {nodo.cantidad_objetivo === null
-                      ? 'sin cantidad objetivo: no hay porcentaje que calcular'
+                      ? <Falta>sin cantidad objetivo: no hay porcentaje que calcular</Falta>
                       : `de ${nodo.cantidad_objetivo} ${nodo.unidad ?? ''}`}
                   </span>
                 </div>
-                <p className="mt-2 text-[12px] text-muted">
-                  anterior {porcentaje(nodo.avance_pct) ?? 'sin avance'} · ahora{' '}
-                  <span className="font-medium text-ink">{porcentaje(avanceCant) ?? 'sin base'}</span>
-                </p>
-              </section>
+                <div style={{ marginTop: '8px', fontSize: '12px', color: C.tintaSuave }}>
+                  anterior {porcentaje(nodo.avance_pct) ?? <Falta>sin avance</Falta>} · ahora{' '}
+                  <span style={{ fontWeight: 500, color: C.tinta }}>{porcentaje(avanceCant) ?? <Falta>sin base</Falta>}</span>
+                </div>
+              </Bloque>
             )}
 
             {metodo === 'manual' && (
-              <section data-testid="cuerpo-manual">
+              <Bloque titulo="Avance declarado" testid="cuerpo-manual">
                 {/* SIN PÁRRAFO DE APOYO: que el método manual sea para lo que no se mide por unidad
                     ya lo dice el selector de método, y la regla que sí importa —el criterio— está
                     donde se incumple, al lado del campo. */}
-                <h2 className="mb-2 text-[13px] font-semibold text-ink">Avance declarado</h2>
                 <input type="hidden" name="avance_pct" value={declarado} />
-                <div className="flex flex-wrap gap-1.5">
-                  {ESCALONES.map((v) => (
-                    <button
-                      key={v} type="button" onClick={() => setDeclarado(String(v))}
-                      aria-pressed={declarado === String(v)} data-testid={`escalon-${v}`}
-                      className={`flex-1 rounded-control border px-3 py-2 font-mono text-[14px] font-semibold tabular-nums ${
-                        declarado === String(v) ? 'border-marca bg-marca-soft text-ink' : 'border-line text-muted hover:text-ink'
-                      }`}
-                    >{v} %</button>
-                  ))}
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {ESCALONES.map((v) => {
+                    const activo = declarado === String(v)
+                    return (
+                      <button
+                        key={v} type="button" onClick={() => setDeclarado(String(v))}
+                        aria-pressed={activo} data-testid={`escalon-${v}`}
+                        style={{
+                          font: 'inherit', flex: 1, height: '36px', borderRadius: '6px', cursor: 'pointer',
+                          border: `1px solid ${activo ? C.grafito : C.borde}`, background: C.superficie,
+                          fontFamily: MONO, fontSize: '13px', fontWeight: activo ? 600 : 400, color: activo ? C.tinta : C.tintaSuave,
+                        }}
+                      >{v} %</button>
+                    )
+                  })}
                 </div>
-                <label className="mt-3 block">
-                  <span className="mb-1 block text-[12.5px] text-ink-soft">Criterio · obligatorio</span>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '12px' }}>
+                  <span style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: C.tintaSuave }}>
+                    <span>Criterio</span>
+                    <span style={{ color: faltaCriterio ? C.warn : C.tenue }}>obligatorio</span>
+                  </span>
                   <textarea
                     name="criterio" rows={3} value={criterio} onChange={(e) => setCriterio(e.target.value)}
                     placeholder="Con qué criterio se declara este porcentaje"
                     data-testid="campo-criterio"
-                    className={`w-full rounded-control border px-2.5 py-2 text-[13px] text-ink ${
-                      faltaCriterio ? 'border-warn' : 'border-line-strong'
-                    }`}
+                    style={{
+                      ...estiloControl(32), height: 'auto', padding: '8px 10px', lineHeight: 1.45, resize: 'vertical',
+                      border: `1px solid ${faltaCriterio ? C.warn : C.bordeFuerte}`,
+                    }}
                   />
                 </label>
-              </section>
+              </Bloque>
             )}
 
             {/* HH NO ES AVANCE: van al lado, con su propio rótulo. Es la regla del modelo, y por eso
-                el rótulo se conserva aunque el resto de la pantalla haya perdido palabras. */}
-            <section className="mt-5 border-t border-line pt-3" data-testid="hh-consumidas">
-              <h2 className="mb-1.5 text-[13px] font-semibold text-ink">
-                HH consumidas <span className="font-normal text-faint">— no es avance</span>
-              </h2>
-              <div className="grid grid-cols-3 gap-3">
+                el rótulo se conserva aunque el resto de la pantalla haya perdido palabras. La
+                proyección usa el avance QUE SE ESTÁ POR ESCRIBIR, no el guardado. */}
+            <Bloque linea testid="hh-consumidas"
+              titulo={<>HH consumidas <span style={{ fontWeight: 400, color: C.tenue }}>— no es avance</span></>}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                 <Cifra rotulo="Plan" valor={fmtHH(nodo.hh_plan)} falta="sin cargar" sub="del análisis" />
-                <Cifra rotulo="Real" valor={fmtHH(nodo.hh_real)} falta="sin registro" sub="cargadas por asistencia" />
+                <Cifra rotulo="Real" valor={fmtHH(nodo.hh_real)} falta="sin registro" sub="por asistencia" />
                 <Cifra rotulo="Proyectadas" valor={fmtHH(proy)} falta="sin base" sub="al ritmo actual"
                   alerta={proyeccionExcedida(proy, nodo.hh_plan)} />
               </div>
-            </section>
+            </Bloque>
 
-            {/* El `id` es el destino de «Adjuntar evidencia» del panel de la tarea (04): esta es la
-                pantalla donde la evidencia se carga, porque la evidencia es de UN registro de
-                avance y no de la actividad entera. */}
-            <section id="evidencia" className="mt-5 border-t border-line pt-3">
-              <h2 className="mb-1.5 text-[13px] font-semibold text-ink">Evidencia</h2>
-              {/* NO HAY SUBIDA DE ARCHIVOS EN EL OS: el archivo vive en Drive y acá se guarda el
-                  enlace, igual que en Documentos. Un cargador propio sería una segunda copia del
-                  mismo papel, y la que se desactualiza es siempre la copia. */}
-              <span className="flex items-center gap-2 rounded-control border border-line-strong px-2.5">
-                <IconoFoto className="h-[15px] w-[15px] shrink-0 text-faint" />
+            {/* El `id` es el destino de «Foto o evidencia» del panel de la tarea (04): la evidencia es
+                de UN registro de avance y no de la actividad entera.
+                NO HAY SUBIDA DE ARCHIVOS EN EL OS: el archivo vive en Drive y acá se guarda el
+                enlace, igual que en Documentos. Un cargador propio sería una segunda copia del
+                mismo papel, y la que se desactualiza es siempre la copia. */}
+            <Bloque linea id="evidencia" titulo="Evidencia">
+              <span style={{ ...estiloControl(32), display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'flex', color: C.tenue, flexShrink: 0 }}><Ico d={P.foto} s={15} /></span>
                 <input
                   type="url" name="evidencia" placeholder="Enlace de Drive de la foto o el remito"
                   aria-label="Enlace de la evidencia" data-testid="campo-evidencia"
-                  className="h-control w-full bg-transparent text-[13px] text-ink outline-none placeholder:text-faint"
+                  style={{
+                    font: 'inherit', border: 'none', flex: 1, minWidth: 0, height: '100%', outline: 'none',
+                    background: 'transparent', fontSize: '13px', color: C.tinta, padding: 0,
+                  }}
                 />
               </span>
-            </section>
+            </Bloque>
           </div>
 
-          <aside>
-            <h2 className="mb-1.5 text-[13px] font-semibold text-ink">Queda firmado con</h2>
+          <aside style={enPanel ? { borderTop: `1px solid ${C.borde}`, paddingTop: '16px' } : undefined}>
+            <div style={{ ...EYEBROW, marginBottom: '6px' }}>Queda firmado con</div>
             <Firma clave="Autor" valor={autor} />
-            <Firma clave="Fecha" valor={hoy.split('-').reverse().join('/')} />
-            <label className="mt-2 block">
-              <span className="mb-1 block text-[11.5px] text-faint">Cuadrilla</span>
-              <select name="cuadrilla_id" data-testid="campo-cuadrilla"
-                className="h-control w-full rounded-control border border-line-strong px-2 text-[12.5px] text-ink">
+            <Firma clave="Fecha" valor={hoy.split('-').reverse().join('/')} mono />
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '5px', margin: '10px 0 4px' }}>
+              <span style={{ fontSize: '12px', color: C.tintaSuave }}>Cuadrilla</span>
+              <select name="cuadrilla_id" data-testid="campo-cuadrilla" style={{ ...estiloControl(32), fontSize: '12.5px' }}>
                 <option value="">sin cuadrilla declarada</option>
                 {cuadrillas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </select>
             </label>
-            <Firma clave="Método" valor={METODOS.find(([m]) => m === metodo)?.[1] ?? metodo} />
+            <Firma clave="Método" valor={nombreMetodo} />
             <Firma clave="Origen" valor="panel de escritorio" />
 
             {faltaCriterio && (
-              <p data-testid="aviso-criterio"
-                className="mt-3 border-l-[3px] border-warn bg-warn-soft px-3 py-2 text-[12px] text-warn">
-                El método manual exige un criterio escrito. Sin eso el porcentaje no se puede
-                interpretar después.
-              </p>
+              <div data-testid="aviso-criterio" style={{ marginTop: '12px' }}>
+                <Aviso tono="warn" tam={12}>
+                  El método manual exige un criterio escrito: sin eso el porcentaje no se puede interpretar después.
+                </Aviso>
+              </div>
             )}
           </aside>
         </div>
@@ -339,25 +371,15 @@ export function FormAvanceEmbebido(datos: DatosFormAvance) {
   return <FormAvance {...datos} variante="panel" />
 }
 
-function Firma({ clave, valor }: { clave: string; valor: string }) {
+/** Una fila de la firma: rótulo 11,5 muted a la izquierda, valor 12,5 a la derecha. */
+function Firma({ clave, valor, mono = false }: { clave: string; valor: string; mono?: boolean }) {
   return (
-    <div className="flex items-baseline justify-between border-b border-surface-sunken py-1.5">
-      <span className="text-[11.5px] text-faint">{clave}</span>
-      <span className="text-[12.5px] text-ink-soft">{valor}</span>
-    </div>
-  )
-}
-
-function Cifra({ rotulo, valor, falta, sub, alerta = false }: {
-  rotulo: string; valor: string | null; falta: string; sub: string; alerta?: boolean
-}) {
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-[0.05em] text-faint">{rotulo}</div>
-      <div className={`font-mono text-[22px] font-semibold tabular-nums ${alerta ? 'text-warn' : 'text-ink'}`}>
-        {valor ?? <span className="font-sans text-[13px] font-normal text-faint">{falta}</span>}
-      </div>
-      <div className="text-[11px] text-muted">{sub}</div>
+    <div style={{
+      display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', padding: '7px 0',
+      borderBottom: `1px solid ${C.bordeLista}`,
+    }}>
+      <span style={{ fontSize: '11.5px', color: C.tintaSuave }}>{clave}</span>
+      <span style={{ fontSize: '12.5px', color: C.tinta, fontFamily: mono ? MONO : undefined, textAlign: 'right' }}>{valor}</span>
     </div>
   )
 }

@@ -98,7 +98,8 @@ test('05 · el formulario de avance es UNO SOLO: la página y el panel comparten
   // En el panel el título de la tarea ya está arriba: repetirlo empuja el número grande fuera de
   // la vista, que es lo único que el bloque tiene que mostrar primero.
   assert.match(form, /\{!enPanel && \(/)
-  assert.match(form, /enPanel \? 'grid gap-5' : 'grid gap-6 lg:grid-cols-\[1fr_300px\]'/)
+  // En el panel, una sola columna; en la página, el cuerpo y la firma de 300px lado a lado.
+  assert.match(form, /enPanel\s*\?\s*\{ display: 'grid', gap: '20px' \}\s*:\s*\{[^}]*gridTemplateColumns: 'minmax\(0,1fr\) 300px'/)
 })
 
 test('05 · la guarda de contenedor vive en el componente, no en la página', () => {

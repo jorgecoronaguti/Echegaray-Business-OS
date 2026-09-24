@@ -16,6 +16,9 @@ import { METODO_LABEL } from '../../types'
 import type { NodoObra } from '../../services/wbs'
 import { avancePorPasos, hhProyectadas, proyeccionExcedida } from '../../services/avance'
 import type { PasoDeActividad, RegistroAvance } from '../../services/tareasService'
+import type { NotaActividad } from '../../services/recursosService'
+import { FormAccion, type AccionFormulario } from '@/shared/components/ui'
+import { estiloControl } from '../items/crear/Piezas'
 
 /** Una fila de lista del panel: `padding:9px 0; borderBottom:1px solid #F5F4F0`. */
 function Fila({ children, testid }: { children: ReactNode; testid?: string }) {
@@ -48,13 +51,20 @@ export function SolapaAvance({ nodo, pasos, formulario }: {
   const avancePasos = avancePorPasos(pasos.map((p) => ({ peso: Number(p.peso), hecho: p.hecho_en !== null })))
   const proy = hhProyectadas(nodo.hh_real, nodo.avance_pct)
   const metodo = METODO_LABEL[nodo.metodo_avance]
+  // CON FORMULARIO, EL FORMULARIO ES LA SOLAPA (24/09/2026). El formulario ya dibuja el método, los
+  // pasos con su peso, el avance resultante y las HH consumidas —con la proyección sobre el avance
+  // QUE SE ESTÁ POR ESCRIBIR—. Debajo se repetían las mismas cuatro cosas en lectura, con el mismo
+  // `data-testid="hh-consumidas"` dos veces y dos «avance resultante» que podían no coincidir
+  // mientras se tildaba. La lectura queda para quien no puede escribir (sin permiso, agrupadora).
+  if (formulario) {
+    return (
+      <section data-testid="panel-avance-solapa">
+        <div data-testid="panel-form-avance">{formulario}</div>
+      </section>
+    )
+  }
   return (
     <section data-testid="panel-avance-solapa">
-      {formulario && (
-        <div style={{ marginBottom: '16px', borderBottom: `1px solid ${C.borde}`, paddingBottom: '16px' }}
-          data-testid="panel-form-avance">{formulario}</div>
-      )}
-
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <div style={{ fontSize: '12px', fontWeight: 600, color: C.tinta }}>Método</div>
         <Pastilla tono={nodo.metodo_avance === 'pasos' ? 'curso' : 'neutro'}>{metodo}</Pastilla>
@@ -93,7 +103,7 @@ export function SolapaAvance({ nodo, pasos, formulario }: {
           <div style={{ marginTop: '14px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
             <span style={{ fontSize: '11.5px', color: C.tintaSuave }}>Avance resultante</span>
             <span style={{ fontFamily: MONO, fontSize: '17px', fontWeight: 600, color: C.tinta }}>
-              {porcentaje(avancePasos) ?? 'sin base'}
+              {porcentaje(avancePasos) ?? <SinValor texto="sin base" />}
             </span>
           </div>
           <div style={{ height: '6px', background: C.barraCanal, borderRadius: '3px', marginTop: '6px', overflow: 'hidden' }}>
@@ -150,7 +160,7 @@ export function SolapaHistorial({ historial }: { historial: RegistroAvance[] }) 
             </div>
           </div>
           <span style={{ fontFamily: MONO, fontSize: '11.5px', color: C.tintaMedia, flexShrink: 0 }}>
-            {h.avance_pct !== null ? porcentaje(h.avance_pct) : h.cantidad !== null ? String(h.cantidad) : '—'}
+            {h.avance_pct !== null ? porcentaje(h.avance_pct) : h.cantidad !== null ? String(h.cantidad) : <SinValor />}
           </span>
         </div>
       ))}
@@ -223,7 +233,7 @@ export function EjecucionReciente({ historial, hoyISO, alVerHistorial }: {
           }}>
             <span style={{ fontFamily: MONO, fontSize: '11px', color: C.tintaSuave }}>{fecha(h.fecha)}</span>
             <span style={{ fontFamily: MONO, fontSize: '11.5px', color: C.tinta }}>
-              {h.avance_pct !== null ? porcentaje(h.avance_pct) : h.cantidad !== null ? String(h.cantidad) : '—'}
+              {h.avance_pct !== null ? porcentaje(h.avance_pct) : h.cantidad !== null ? String(h.cantidad) : <SinValor />}
             </span>
             <span style={{
               fontSize: '11px', color: C.tintaMedia, textAlign: 'right', overflow: 'hidden',
@@ -239,5 +249,47 @@ export function EjecucionReciente({ historial, hoyISO, alVerHistorial }: {
         </button>
       </div>
     </section>
+  )
+}
+
+/** UN VALOR QUE NO LLEGÓ, dicho con su palabra en itálica faint — nunca un «—» que se lee «cero».
+ *  Va en sans aunque lo envuelva una celda mono: la palabra no es una cifra. */
+function SinValor({ texto = 'sin dato' }: { texto?: string }) {
+  return (
+    <span data-nulo="" style={{
+      fontFamily: 'var(--font-plex-sans), sans-serif', fontSize: '11px', fontWeight: 400, fontStyle: 'italic', color: C.tenue,
+    }}>{texto}</span>
+  )
+}
+
+/**
+ * LAS NOTAS DE LA ACTIVIDAD (24/09/2026) — mismo contrato que `BloqueNotas` del cronograma (misma
+ * acción, mismos `data-testid`), dibujado con las filas del 04: texto 12,5, «quién · cuándo» en 11
+ * faint, línea `bordeLista`. `BloqueNotas` sigue vivo para el panel del Gantt, que no es de este
+ * rediseño.
+ */
+export function NotasTarea({ notas, agregar }: { notas: NotaActividad[]; agregar?: AccionFormulario }) {
+  if (!agregar && notas.length === 0) return null
+  return (
+    <div data-testid="bloque-notas">
+      {notas.length === 0
+        ? <div style={{ fontSize: '12.5px', padding: '4px 0' }}><SinValor texto="Ninguna." /></div>
+        : notas.slice(0, 8).map((n) => (
+          <div key={n.id} data-testid="nota-actividad" style={{ padding: '8px 0', borderBottom: `1px solid ${C.bordeLista}` }}>
+            <div style={{ fontSize: '12.5px', color: C.tinta, whiteSpace: 'pre-wrap' }}>{n.texto}</div>
+            <div style={{ fontSize: '11px', color: C.tenue, marginTop: '2px' }}>
+              {n.autor ?? 'sin firma'} · {fecha(n.creado_en.slice(0, 10))}
+            </div>
+          </div>
+        ))}
+      {agregar && (
+        <div style={{ marginTop: '10px' }}>
+          <FormAccion accion={agregar} testid="form-nota" enviar="Agregar" limpiarAlOk mensajeOk="Nota agregada.">
+            <input name="texto" required minLength={2} maxLength={1000} placeholder="Agregar nota…" data-testid="nota-texto"
+              style={estiloControl(32)} />
+          </FormAccion>
+        </div>
+      )}
+    </div>
   )
 }

@@ -1,4 +1,11 @@
+'use client'
+
 // 04 · SOLAPA DEPENDENCIAS — qué habilita a esta actividad, a quién habilita ella, y cómo se cambia.
+//
+// LENGUAJE ERP OBRAS (24/09/2026): el zip no dibuja esta solapa. Se arma con las piezas del 04 —dos
+// eyebrows mono («Antes de esto» / «Después de esto») como «Lo que la traba», filas con `bordeLista`,
+// el editor plegado con chevron y la secundaria blanca «Vincular otra actividad» (ESTILO_SECUNDARIA,
+// que tokens.ts ya anota como «04 · Vincular actividad»).
 //
 // ═══ LA SIGLA NO SE MUESTRA: SE EDITA ═══
 //
@@ -17,6 +24,10 @@ import Link from 'next/link'
 import { FormAccion } from '@/shared/components/ui'
 import type { RelacionLegible } from '../services/tareasService'
 import type { AccionFormulario } from '@/shared/components/ui/FormAccion'
+import { C, ESTILO_SECUNDARIA } from './canon/tokens'
+import { Ico, P } from './canon/Ico'
+import { Falta, estiloControl } from './items/crear/Piezas'
+import { Eyebrow, Nota, Plegado } from './panel/PanelPiezas'
 
 const RELACIONES: [string, string][] = [
   ['FS', 'FS · empieza cuando la otra termina'],
@@ -41,52 +52,40 @@ export function PanelTareaDependencias({
   quitarRelacion: (dependenciaId: string, form: FormData) => ReturnType<AccionFormulario>
 }) {
   return (
-    <section data-testid="panel-dependencias">
-      <h3 className="mb-1.5 text-[12.5px] font-semibold text-ink">Antes de esto</h3>
-      {antes.length === 0
-        ? <p className="text-[12.5px] text-muted">Nadie declaró qué tiene que pasar antes.</p>
-        : (
-          <ul>
-            {antes.map((r) => (
-              <Fila key={r.id} relacion={r} otra={r.origen} puedeEditar={puedeEditar}
-                cambiar={cambiarRelacion.bind(null, r.id)} quitar={quitarRelacion.bind(null, r.id)} />
-            ))}
-          </ul>
-        )}
+    <section data-testid="panel-dependencias" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div>
+        <Eyebrow derecha={antes.length > 0 ? antes.length : undefined}>Antes de esto</Eyebrow>
+        {antes.length === 0
+          ? <div style={{ fontSize: '12.5px', padding: '4px 0' }}><Falta>Nadie declaró qué tiene que pasar antes.</Falta></div>
+          : antes.map((r) => (
+            <Fila key={r.id} relacion={r} otra={r.origen} puedeEditar={puedeEditar}
+              cambiar={cambiarRelacion.bind(null, r.id)} quitar={quitarRelacion.bind(null, r.id)} />
+          ))}
+      </div>
 
-      <div className="mt-3">
-        <h3 className="mb-1.5 text-[12.5px] font-semibold text-ink">Después de esto</h3>
+      <div>
+        <Eyebrow derecha={despues.length > 0 ? despues.length : undefined}>Después de esto</Eyebrow>
         {despues.length === 0
-          ? <p className="text-[12.5px] text-muted">Nada depende de esta actividad todavía.</p>
-          : (
-            <ul>
-              {despues.map((r) => (
-                <Fila key={r.id} relacion={r} otra={r.destino} puedeEditar={puedeEditar}
-                  cambiar={cambiarRelacion.bind(null, r.id)} quitar={quitarRelacion.bind(null, r.id)} />
-              ))}
-            </ul>
-          )}
+          ? <div style={{ fontSize: '12.5px', padding: '4px 0' }}><Falta>Nada depende de esta actividad todavía.</Falta></div>
+          : despues.map((r) => (
+            <Fila key={r.id} relacion={r} otra={r.destino} puedeEditar={puedeEditar}
+              cambiar={cambiarRelacion.bind(null, r.id)} quitar={quitarRelacion.bind(null, r.id)} />
+          ))}
       </div>
 
       {/* SIN PRECEDENCIAS NO HAY CAMINO CRÍTICO. Deducirlo de las fechas sería inventar una
           secuencia: dos actividades consecutivas pueden serlo sólo porque comparten cuadrilla. */}
       {antes.length === 0 && despues.length === 0 && (
-        <p className="mt-3 text-[11.5px] leading-relaxed text-muted">
-          Sin una sola precedencia declarada en la obra no hay camino crítico que calcular, y por eso
-          ninguna actividad se muestra como crítica.
-        </p>
+        <Nota>Sin precedencias declaradas no hay camino crítico que calcular: ninguna actividad se marca crítica.</Nota>
       )}
 
-      <Link href={hrefVincular} prefetch={false} data-testid="ir-vincular"
-        className="mt-3 inline-block text-[12.5px] font-medium text-ink hover:underline">
-        Vincular otra actividad
-      </Link>
-      {/* DECLARAR UNA PRECEDENCIA NUEVA ES EL CRONOGRAMA, y no este cajón de 412 px: elegir contra
+      {/* DECLARAR UNA PRECEDENCIA NUEVA ES EL CRONOGRAMA, y no este cajón de 400 px: elegir contra
           qué actividad se ata exige ver la lista entera de la obra y las fechas de cada una. Acá se
-          cambia y se quita lo que YA está declarado, que es lo que se puede decidir mirando una
-          sola actividad.
-          22/08/2026 · La línea que explicaba eso se borró: el enlace de arriba YA lleva al
-          cronograma, así que el párrafo describía el destino de un enlace que se lee solo. */}
+          cambia y se quita lo que YA está declarado. */}
+      <Link href={hrefVincular} prefetch={false} data-testid="ir-vincular"
+        style={{ ...ESTILO_SECUNDARIA, width: 'fit-content', textDecoration: 'none' }}>
+        <Ico d={P.dep} s={14} />Vincular otra actividad
+      </Link>
     </section>
   )
 }
@@ -101,39 +100,43 @@ function Fila({ relacion, otra, puedeEditar, cambiar, quitar }: {
   quitar: AccionFormulario
 }) {
   return (
-    <li className="border-b border-surface-sunken py-1.5 last:border-0">
-      <span className="block text-[12.5px] text-ink-soft">{otra}</span>
-      <span className="block text-[11px] text-muted">{relacion.relacion}</span>
+    <div style={{ padding: '9px 0', borderBottom: `1px solid ${C.bordeLista}` }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '9px' }}>
+        <span style={{ display: 'flex', color: C.tenue, marginTop: '2px', flexShrink: 0 }}><Ico d={P.dep} s={14} /></span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: '13px', color: C.tinta }}>{otra}</div>
+          <div style={{ fontSize: '12px', color: C.tintaSuave, marginTop: '1px' }}>{relacion.relacion}</div>
+        </div>
+      </div>
       {puedeEditar && (
-        <details className="mt-1" data-testid={`cambiar-relacion-${relacion.id}`}>
-          <summary className="cursor-pointer text-[11.5px] text-faint hover:text-ink">Cambiar relación</summary>
-          <div className="mt-1.5 flex flex-col gap-1.5">
-            <FormAccion accion={cambiar} enviar="Guardar la relación" mensajeOk="Relación cambiada.">
-              <div className="flex flex-wrap items-end gap-1.5">
-                <label className="min-w-0 flex-1">
-                  <span className="mb-0.5 block text-[10.5px] text-faint">Relación</span>
-                  <select name="tipo" defaultValue={relacion.tipo}
-                    className="h-control w-full rounded-control border border-line-strong px-1.5 text-[12px] text-ink">
-                    {RELACIONES.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
-                  </select>
-                </label>
-                <label className="w-[84px]">
-                  <span className="mb-0.5 block text-[10.5px] text-faint">Demora (d)</span>
-                  <input type="number" name="lag_dias" min={-365} max={365} step={1}
-                    defaultValue={relacion.lag_dias}
-                    className="h-control w-full rounded-control border border-line-strong px-1.5 text-[12px] text-ink" />
-                </label>
-              </div>
-            </FormAccion>
-            <FormAccion accion={quitar} enviar="Quitar la precedencia" mensajeOk="Precedencia quitada.">
-              <p className="text-[10.5px] text-muted">
-                Quitarla no borra trabajo: suelta el arrastre. Esta actividad deja de esperar a
-                «{otra}» y el cronograma deja de moverla cuando la otra se mueve.
-              </p>
-            </FormAccion>
-          </div>
-        </details>
+        <div style={{ marginTop: '6px', paddingLeft: '23px' }}>
+          <Plegado rotulo="Cambiar relación" testid={`cambiar-relacion-${relacion.id}`}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <FormAccion accion={cambiar} enviar="Guardar la relación" mensajeOk="Relación cambiada.">
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '5px', flex: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: '12px', color: C.tintaSuave }}>Relación</span>
+                    <select name="tipo" defaultValue={relacion.tipo} style={{ ...estiloControl(32), fontSize: '12.5px' }}>
+                      {RELACIONES.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+                    </select>
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: '84px', flexShrink: 0 }}>
+                    <span style={{ fontSize: '12px', color: C.tintaSuave }}>Demora (d)</span>
+                    <input type="number" name="lag_dias" min={-365} max={365} step={1}
+                      defaultValue={relacion.lag_dias} style={estiloControl(32, true)} />
+                  </label>
+                </div>
+              </FormAccion>
+              <FormAccion accion={quitar} enviar="Quitar la precedencia" mensajeOk="Precedencia quitada.">
+                <Nota>
+                  Quitarla no borra trabajo: suelta el arrastre. Esta actividad deja de esperar a «{otra}» y
+                  el cronograma deja de moverla cuando la otra se mueve.
+                </Nota>
+              </FormAccion>
+            </div>
+          </Plegado>
+        </div>
       )}
-    </li>
+    </div>
   )
 }

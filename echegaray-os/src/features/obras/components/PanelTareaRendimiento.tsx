@@ -1,4 +1,11 @@
+'use client'
+
 // 04 · SOLAPA ESFUERZO — el mismo número en cinco momentos, uno debajo del otro.
+//
+// LENGUAJE ERP OBRAS (24/09/2026): el 04 nombra la solapa pero no la dibuja. Se arma con el eyebrow
+// mono del 04, filas `FilaDato` (clave con su fuente debajo, valor mono a la derecha) y la ausencia
+// dicha con su palabra en itálica faint. «Real observado» se destaca por peso, no en ámbar: el ámbar
+// es sólo para un problema, y un esfuerzo real no lo es por existir.
 //
 // ═══ ACÁ NO SE ACEPTA NI SE VERSIONA NADA ═══
 //
@@ -19,6 +26,8 @@ import type { ContextoTarea } from '../services/panelTareaService'
 import type { VinculacionTarea } from '../services/vinculacionTareaService'
 import type { AccionFormulario } from '@/shared/components/ui/FormAccion'
 import { VincularEstandar } from './VincularEstandar'
+import { Ico, P } from './canon/Ico'
+import { ESTILO_ENLACE, Eyebrow, FilaDato, Nota } from './panel/PanelPiezas'
 
 const n2 = (v: number | null) =>
   (v == null ? null : v.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
@@ -52,49 +61,36 @@ export function PanelTareaRendimiento({ nodo, contexto, vinculacion, vincular, p
   })
 
   return (
-    <section data-testid="panel-rendimiento">
+    <section data-testid="panel-rendimiento" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       {/* ESFUERZO, NO RENDIMIENTO: los cinco eslabones son hs/unidad y MEJORAN CUANDO BAJAN. Ver
           `features/base-maestra/services/vocabulario.ts`, que es donde viven las cuatro magnitudes
           y el porqué. La clave de la solapa sigue siendo `rendimiento`: viaja en la URL. */}
-      <h3 className="mb-1.5 text-[12.5px] font-semibold text-ink">
-        {MAGNITUD.esfuerzo.rotulo} en {MAGNITUD.esfuerzo.unidad(nodo.unidad)}
-      </h3>
-      <ul data-testid="cadena-rendimiento">
-        {cadena.map((e) => (
-          <li key={e.clave} className="flex items-baseline justify-between gap-3 border-b border-[#EFEEEA] py-1.5 last:border-0">
-            <span className={`min-w-0 text-[12px] ${e.destacado ? 'text-ink' : 'text-ink-soft'}`}>
-              {e.clave}
-              <span className="block text-[10.5px] text-faint">{e.fuente}</span>
-            </span>
-            <span className={`shrink-0 text-right font-mono text-[12.5px] tabular-nums ${
-              e.valor == null ? 'text-faint' : (e.destacado ? 'font-semibold text-warn' : 'text-ink-soft')
-            }`}>
-              {n2(e.valor) ?? <span className="font-sans text-[11.5px]">{e.falta}</span>}
-            </span>
-          </li>
-        ))}
-      </ul>
+      <div>
+        <Eyebrow>{MAGNITUD.esfuerzo.rotulo} en {MAGNITUD.esfuerzo.unidad(nodo.unidad)}</Eyebrow>
+        <div data-testid="cadena-rendimiento">
+          {cadena.map((e) => (
+            <FilaDato key={e.clave} clave={e.clave} fuente={e.fuente} valor={n2(e.valor)} falta={e.falta}
+              destacado={e.destacado} />
+          ))}
+        </div>
+      </div>
 
       {/* SIN LAS DOS PUNTAS NO HAY ESFUERZO REAL, y decirlo importa: es la fila que decide si la
           obra está aprendiendo algo o sólo consumiendo horas. */}
-      <p className="mt-3 text-[11.5px] leading-relaxed text-muted">
-        El esfuerzo real necesita producción física Y horas imputadas. Con una sola de las dos hay
-        una punta, no una medición.
-      </p>
+      <Nota>El esfuerzo real necesita producción física y horas imputadas: con una sola hay una punta, no una medición.</Nota>
 
       {nodo.tarea_tipo_id
         ? (
           <Link href={`/administracion/base-maestra/tareas?t=${nodo.tarea_tipo_id}`} prefetch={false}
-            data-testid="ver-en-base-maestra"
-            className="mt-2 inline-block text-[12.5px] font-medium text-ink hover:underline">
-            Ver en Base Maestra
+            data-testid="ver-en-base-maestra" style={ESTILO_ENLACE}>
+            Ver en Base Maestra <Ico d={P.flecha} s={12} />
           </Link>
         )
         : (
-          <p className="mt-2 text-[11.5px] text-muted">
-            Esta actividad no está vinculada a una tarea tipo, así que lo que pase acá no le enseña
-            nada a la base maestra: el histórico se arma por tarea tipo, no por nombre.
-          </p>
+          <Nota>
+            Sin tarea tipo vinculada, lo que pase acá no le enseña nada a la base maestra: el histórico se arma
+            por tarea tipo, no por nombre.
+          </Nota>
         )}
 
       {/* HASTA EL 22/08/2026 ESTA FRASE NO TENÍA CÓMO RESOLVERSE. Decía el problema —las 350
