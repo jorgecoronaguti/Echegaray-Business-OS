@@ -199,3 +199,9 @@ test('Inicio real de respaldo: el primer parte manda; sin partes, la semana de l
   assert.deepEqual(inicioRealDeRespaldo([], hh), { fecha: '2026-08-24', origen: 'semana de la primera HH' })
   assert.equal(inicioRealDeRespaldo([], null), null)
 })
+
+test('Plazo: sin día hábil pero con primer parte, dice cuándo inició y no «sin inicio real»', () => {
+  const p = plazoDeObra({ forecast_fin: '2026-12-30', fecha_fin_plan: '2026-12-30' }, null, { fecha: '2026-08-20', origen: 'primer parte' })
+  assert.match(p.bajada, /^inició 20\/08 \(primer parte\)/)
+  assert.match(plazoDeObra({ forecast_fin: '2026-12-30', fecha_fin_plan: '2026-12-30' }, null).bajada, /^sin inicio real/)
+})

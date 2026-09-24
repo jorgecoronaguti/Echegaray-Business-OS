@@ -65,8 +65,12 @@ export interface Cifra {
 /** «+16 d» contra el plan, con «día hábil A de B · fin proyectado 21/09 · plan 05/09». */
 export function plazoDeObra(
   obra: { forecast_fin: string | null; fecha_fin_plan: string | null }, dh: DiasHabilesObra | null,
+  inicioRespaldo: { fecha: string; origen: string } | null = null,
 ): Cifra {
-  const habil = diaHabil(dh)
+  // Sin día hábil de la vista pero con un primer hecho en la obra, se dice cuándo arrancó: «sin inicio
+  // real» al lado de un aside que dice «20/08 · primer parte» era la misma pantalla contradiciéndose.
+  const habil = (!dh || dh.dia_habil_actual == null) && inicioRespaldo
+    ? `inició ${ddmm(inicioRespaldo.fecha)} (${inicioRespaldo.origen})` : diaHabil(dh)
   if (!obra.fecha_fin_plan) {
     return { rotulo: 'Plazo', valor: null, falta: 'sin plan', bajada: `${habil} · sin fecha de fin plan`, tono: 'faint' }
   }

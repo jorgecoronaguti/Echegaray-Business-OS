@@ -206,7 +206,6 @@ export function TabResumen({
   ])
   const frena = impedimentosQueFrenan(abiertas, hoy)
   const frentes = frentesEnCurso(actividades, genteHoy)
-  const plazo = plazoDeObra(obra, diasHabiles)
   const falta = loQueFaltaCargar({
     historiasSinCosto: avance ? avance.n_historias_sin_costo : null,
     actividadesSinFecha: obra.n_actividades_sin_fecha,
@@ -221,6 +220,7 @@ export function TabResumen({
   const personas = personasHoy(personasDeHoy)
   const hh = hhDelResumen(registrosHH, hoy)
   const inicioRespaldo = obra.fecha_inicio_real ? null : inicioRealDeRespaldo(partes, registrosHH)
+  const plazo = plazoDeObra(obra, diasHabiles, inicioRespaldo)
   const asignados = asignadosDelResumen(asignaciones)
 
   return (
