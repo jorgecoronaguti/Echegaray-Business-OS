@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { CSSProperties, ReactNode } from 'react'
 import { C, HOVER_SUAVE, R, ALTO_BARRA } from './tokens'
 import { Icono, type NombreIcono } from './Iconos'
+import { MenuIniciales } from './MenuIniciales'
 
 // LAS PIEZAS DEL TELÉFONO, PORTADAS DEL `.dc.html` — no una capa sobre el Design System.
 //
@@ -79,16 +80,7 @@ export function TopBarMarca({
           {contexto}
         </div>
       </div>
-      <div
-        data-testid="iniciales"
-        style={{
-          width: 34, height: 34, borderRadius: 17, background: C.grafito, color: C.surface,
-          fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-        }}
-      >
-        {iniciales}
-      </div>
+      <MenuIniciales iniciales={iniciales} />
     </div>
   )
 }
