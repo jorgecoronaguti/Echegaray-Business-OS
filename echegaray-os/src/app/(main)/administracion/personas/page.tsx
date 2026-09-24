@@ -498,10 +498,13 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   const chipsDeObra = obrasDelCorte(filasDelPadron, filtro, obraElegida)
   const sinObra = sinObraDelCorte(filasDelPadron, filtro)
   const pulso = armarPulso(marcas, hh, papeles, presencia, tardanzasQuincena, quincena, hoy)
-  const abierta = sp.nueva === '1'
   // EL PERFIL YA ESTÁ EN MEMORIA: `getPerfilActual` memoiza por usuario (`recordar`), así que esto
   // no es un sexto viaje a la base — es la misma lectura que hace la barra de navegación.
   const rolActual = (await getPerfilActual(supabase)).data?.rol
+  // EL ALTA DE PERSONAS ES DE ADMINISTRACIÓN (dueño, 24/09/2026: el jefe de obra veía «Nueva persona»
+  // → «sacalo»). El jefe sigue viendo el plantel y cargando asistencia; no da de alta gente.
+  const puedeAlta = veEconomia(rolActual)
+  const abierta = puedeAlta && sp.nueva === '1'
 
   return (
     <Marco>
@@ -542,11 +545,11 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             oculto: { f: filtro === 'plantel' ? undefined : filtro, obra: obraElegida },
             testid: 'buscar-persona',
           }}
-          alta={{
+          alta={puedeAlta ? {
             href: armarHref(sp, { f: filtro, nueva: abierta ? undefined : '1' }),
             etiqueta: abierta ? 'Cancelar' : 'Nueva persona',
             testid: 'nueva-persona',
-          }}
+          } : undefined}
           filtros={
             // NAVEGACIÓN, NO ACCIONES: «En obra ahora» y «Cuadrillas» son otras dos distancias de la
             // misma pregunta y viven DENTRO de Personal, no como secciones nuevas. Por eso van en

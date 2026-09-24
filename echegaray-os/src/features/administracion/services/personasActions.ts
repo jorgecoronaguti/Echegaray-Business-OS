@@ -13,6 +13,8 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { getPerfilActual } from '@/features/auth/services/authService'
+import { veEconomia } from '@/features/auth/types/areas'
 
 export type Resultado = { ok: true; id?: string; mensaje?: string } | { ok: false; error: string }
 
@@ -71,6 +73,8 @@ export async function crearPersona(form: FormData): Promise<Resultado> {
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
 
   const supabase = await createClient()
+  // Misma puerta que el botón (dueño, 24/09/2026): el alta de personas es de Administración.
+  if (!veEconomia((await getPerfilActual(supabase)).data?.rol)) return { ok: false, error: 'El alta de personas la hace Administración.' }
   const { data, error } = await supabase.from('personas').insert(aFila(parsed.data)).select('id').single()
   if (error) return { ok: false, error: error.message }
   revalidatePath('/administracion/personas')
