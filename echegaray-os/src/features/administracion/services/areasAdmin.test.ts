@@ -48,13 +48,13 @@ test('el filo va SÓLO donde cambia el grupo, y sobre la lista ya filtrada por r
   }
 })
 
-test('el jefe de obra ve los tres sin precio: Clientes, Personal y Compras', () => {
+test('el jefe de obra ve Personal y Compras; Clientes es sólo de Administración (dueño, 24/09/2026)', () => {
   // Una compra es COSTO, no PRECIO. Lo que el jefe no ve es cuánto se vendió la obra, y eso no está
   // en ninguna de estas tres pantallas. Proveedores no salió de su alcance: entró a Compras, y que
   // siga viéndolo lo comprueba `seccionesDeCompras.test.ts` sobre las cuatro secciones.
   assert.deepEqual(
     destinosVisibles('jefe_obra').map((d) => d.clave),
-    ['clientes', 'personas', 'compras'],
+    ['personas', 'compras'],
   )
   assert.ok(!destinosVisibles('jefe_obra').some((d) => d.clave === 'documentos'), '/documentos sigue en RUTAS_SOLO_ECONOMIA')
 })
@@ -145,5 +145,5 @@ test('las rutas retiradas del portal ya no figuran entre las del dinero', () => 
   const soloEconomia: readonly string[] = RUTAS_SOLO_ECONOMIA
   assert.ok(!soloEconomia.includes('/administracion/portal'))
   assert.ok(!soloEconomia.includes('/administracion/cronograma'))
-  assert.equal(puedeVerRuta('jefe_obra', '/clientes'), true)
+  assert.equal(puedeVerRuta('jefe_obra', '/clientes'), false, 'Clientes es sólo de Administración (24/09/2026)')
 })

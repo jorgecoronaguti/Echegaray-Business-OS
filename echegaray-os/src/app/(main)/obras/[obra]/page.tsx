@@ -349,7 +349,8 @@ export default async function ObraPage({
   // UNA SOLA PRIMARIA AMARILLA POR PANTALLA: el 03 y el 04 dibujan «Nueva actividad» amarilla en la
   // cabecera; el parte, personal, subcontratos y el editor del cronograma tienen la suya abajo
   // («Guardar el parte», «Asignar persona», «Nuevo paquete», «Guardar fechas»), así que ahí va con borde.
-  const conPrimariaPropia = vista === 'personal' || (vista === 'tareas' && !esArbol)
+  const enPersonal = vista === 'personal'
+  const conPrimariaPropia = enPersonal || (vista === 'tareas' && !esArbol)
   const nuevaActividad = (
     <Link href={`/obras/${obraId}?vista=tareas&sub=arbol&nueva=1`} prefetch={false}
       data-testid="cabecera-nueva-actividad"
@@ -397,6 +398,7 @@ export default async function ObraPage({
         obraId={obraId}
         obra={obra}
         vistaActiva={vista}
+        enlazarCliente={veComercial}
         // LA CABECERA NO CAMBIA AL CAMBIAR DE SOLAPA (dueño, 23/09/2026: «esas secciones al ser
         // seleccionadas no pueden ir variando su diseño»): el mismo título, la misma identidad y
         // ninguna fila de cifras que aparezca en una solapa y no en otra. Las cifras sólo viven en los
@@ -424,7 +426,7 @@ export default async function ObraPage({
         ) : vista === 'operacion' ? (
           // 09: «Nuevo impedimento» amarilla sólo en Impedimentos; 10 · 11 · 12 no dibujan botón.
           subOp === 'impedimentos' ? <NuevoImpedimento obraId={obraId} /> : null
-        ) : vista === 'personal' ? (
+        ) : enPersonal ? (
           // 08: «Asignar persona» amarilla en la cabecera; «Nueva actividad» no se dibuja.
           <Link href={`/obras/${obraId}?vista=personal&asignar=1`} prefetch={false} data-testid="cabecera-asignar-persona"
             style={{ ...ESTILO_PRIMARIA, height: '32px', padding: '0 14px', fontSize: '13px', color: C.grafito }}>

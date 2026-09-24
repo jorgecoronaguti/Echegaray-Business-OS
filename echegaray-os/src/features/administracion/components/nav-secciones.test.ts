@@ -7,9 +7,9 @@ import { puedeVerRuta, RUTAS_SOLO_ECONOMIA } from '../../auth/types/areas.ts'
 const VISTAS = ['/clientes', '/presupuestos', '/administracion/usuarios', '/administracion/personas',
   '/administracion/proveedores', '/administracion/pendientes']
 
-test('el jefe de obra NO ve Usuarios ni Presupuestos: son la puerta a la economía', () => {
+test('el jefe de obra NO ve Usuarios, Presupuestos ni Clientes (Clientes: dueño 24/09/2026)', () => {
   const suyas = VISTAS.filter((v) => puedeVerRuta('jefe_obra', v))
-  assert.deepEqual(suyas, ['/clientes', '/administracion/personas',
+  assert.deepEqual(suyas, ['/administracion/personas',
     '/administracion/proveedores', '/administracion/pendientes'])
 })
 

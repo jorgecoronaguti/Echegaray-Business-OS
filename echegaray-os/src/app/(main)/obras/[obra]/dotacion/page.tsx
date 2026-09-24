@@ -143,6 +143,7 @@ export default async function DotacionObraPage(
           // LA CABECERA ES LA MISMA QUE EN LAS SOLAPAS (dueño, 23/09/2026): título 21, sin rótulo de
           // pantalla ni cifras propias. Las tres cifras de HH van arriba del cuerpo.
           titulo={21}
+          enlazarCliente={veEconomia(perfil.data?.rol ?? null)}
           alFinalDeLasSolapas={veEconomia(perfil.data?.rol ?? null) ? (
             <Link href={hrefEconomia(obraId)} prefetch={false} data-testid="enlace-economia"
               className="ml-auto self-center whitespace-nowrap px-[11px] py-2 text-[12px] text-faint hover:text-ink">

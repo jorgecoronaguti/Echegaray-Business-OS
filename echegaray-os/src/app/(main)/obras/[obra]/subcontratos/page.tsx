@@ -91,6 +91,7 @@ export default async function SubcontratosObraPage({
           // LA CABECERA ES LA MISMA QUE EN LAS SOLAPAS (dueño, 23/09/2026): título 21, sin rótulo de
           // pantalla ni cifras propias.
           titulo={21}
+          enlazarCliente={economia}
           alFinalDeLasSolapas={economia ? (
             <Link href={hrefEconomia(obraId)} prefetch={false} data-testid="enlace-economia"
               className="ml-auto self-center whitespace-nowrap px-[11px] py-2 text-[12px] text-faint hover:text-ink">

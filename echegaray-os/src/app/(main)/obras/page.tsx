@@ -22,7 +22,7 @@ import { codigosDeObra } from '@/shared/services/codigosDeObra'
 import { RecordarVista } from '@/features/obras/components/RecordarVista'
 import { CarteraObras, type FilaCartera } from '@/features/obras/components/CarteraObras'
 import { getPerfilActual } from '@/features/auth/services/authService'
-import { esAdministracion } from '@/features/auth/types/areas'
+import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
 import { getSenalesCartera } from '@/features/obras/services/senalesCarteraService'
 import { EstadoError } from '@/shared/components/estado'
 
@@ -67,7 +67,8 @@ export default async function ObrasPage({
     obra_id: o.obra_id,
     nombre: o.nombre,
     codigo: codigos.get(o.obra_id) ?? null,
-    cliente_slug: o.cliente_slug,
+    // CLIENTES ES SÓLO DE ADMINISTRACIÓN (dueño, 24/09/2026): para el resto el nombre va sin enlace.
+    cliente_slug: veEconomia(perfil.data?.rol ?? null) ? o.cliente_slug : null,
     obra_padre_id: o.obra_padre_id ?? null,
     cliente_nombre: o.cliente_nombre,
     cliente_texto: o.cliente_texto,

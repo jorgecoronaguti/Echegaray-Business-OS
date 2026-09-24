@@ -116,7 +116,7 @@ function PastillaEstado({ t, tono, radio }: { t: string; tono: 'pos' | 'curso' |
 }
 
 export async function CabeceraDeObra({
-  obraId, obra, vistaActiva, pantalla, kpis = [], acciones, alFinalDeLasSolapas,
+  obraId, obra, vistaActiva, pantalla, kpis = [], acciones, alFinalDeLasSolapas, enlazarCliente = false,
   volverA = '/obras', volverLabel = 'Obras', titulo = 17, accionTelefono, lineaDeCifras = [], cifrasTelefono = [],
 }: {
   obraId: string
@@ -141,6 +141,9 @@ export async function CabeceraDeObra({
   acciones?: ReactNode
   /** Lo que va a la derecha de las solapas, sin ser una (hoy, «Economía»). */
   alFinalDeLasSolapas?: ReactNode
+  /** Clientes es sólo de Administración (dueño, 24/09/2026): el nombre del cliente enlaza a su ficha
+   *  sólo para quien la puede abrir. Falla cerrado. */
+  enlazarCliente?: boolean
   /** 21px en el Resumen (03, Z01); 17px en el resto (04, 04b, C01). */
   titulo?: 17 | 21
   /** La primaria del teléfono va al pie de la pantalla, no acá: la cabecera no la dibuja. Este
@@ -151,7 +154,7 @@ export async function CabeceraDeObra({
   const terminada = ESTADOS_TERMINADA.includes(obra.estado)
   // EL CLIENTE ES UN LINK cuando existe en el eje canónico. Cuando la obra sólo tiene el nombre
   // escrito a mano, se muestra el texto y se dice que falta vincularlo: la ficha no se inventa.
-  const cliente = obra.cliente_slug && obra.cliente_nombre ? (
+  const cliente = enlazarCliente && obra.cliente_slug && obra.cliente_nombre ? (
     <Link href={`/clientes/${obra.cliente_slug}`} prefetch={false} style={{ color: C.tintaMedia }}>
       {obra.cliente_nombre}
     </Link>

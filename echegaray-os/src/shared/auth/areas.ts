@@ -131,9 +131,14 @@ export const INICIO_JEFE_TELEFONO = '/obra/hoy'
 
 /** La ruta a la que `/administracion` manda, o `null` si esta ruta no es la entrada del área. Se
  *  compara el path EXACTO: `/administracion/compras` es una pantalla de verdad y no se toca. */
-export function entradaDeArea(pathname: string): string | null {
-  return pathname === AREA_HREF.administracion ? ENTRADA_DE_ADMINISTRACION : null
+export function entradaDeArea(pathname: string, rol?: Rol | null): string | null {
+  if (pathname !== AREA_HREF.administracion) return null
+  // Clientes es sólo de Dirección y Administración (dueño, 24/09/2026): el jefe de obra entra por Personal.
+  return veEconomia(rol) ? ENTRADA_DE_ADMINISTRACION : ENTRADA_DE_ADMINISTRACION_SIN_CLIENTES
 }
+
+/** Donde entra a Administración quien no ve Clientes (jefe de obra). */
+export const ENTRADA_DE_ADMINISTRACION_SIN_CLIENTES = '/administracion/personas'
 
 /**
  * ═══ LAS RUTAS QUE EL NIVEL «OBRAS» NO PUEDE ABRIR ═══
@@ -186,6 +191,11 @@ export const RUTAS_SOLO_ECONOMIA = [
   // los archivos con vínculo propio (su legajo, sus obras, los del cliente si administra). La ruta
   // y la base ya no se contradicen.
   '/documentos',
+  // CLIENTES ES SÓLO DE ADMINISTRACIÓN (dueño, 24/09/2026: «los niveles de usuario que no sean
+  // administración no pueden ver la sección clientes del módulo CRM admin»). Revierte la apertura del
+  // 19/08: ni la cartera ni la ficha. La base sigue devolviendo el nombre del cliente de una obra
+  // (lo necesita la cabecera de la obra); lo que se cierra es la sección.
+  '/clientes',
   // `/administracion/cronograma` y `/administracion/portal` estuvieron acá menos de un día
   // (26/08/2026): eran dos pantallas del portal que duplicaban lo que la ficha del cliente ya
   // administraba en sus solapas 31 y 32. Se retiraron con sus rutas. Quién entra al portal y qué ve
@@ -194,7 +204,10 @@ export const RUTAS_SOLO_ECONOMIA = [
 ] as const
 
 /**
- * ═══ LA EXCEPCIÓN, Y POR QUÉ ES UNA SOLA (19/08/2026) ═══
+ * ═══ LA EXCEPCIÓN DEL 19/08/2026 SE RETIRÓ EL 24/09/2026 ═══ (el dueño cerró Clientes entero a quien
+ * no es Administración; lo de abajo queda como historia de por qué existió).
+ *
+ * ═══ LA EXCEPCIÓN, Y POR QUÉ ERA UNA SOLA (19/08/2026) ═══
  *
  * El dueño corrigió la política: *"Un usuario Obras debe poder consultar clientes, contactos… VER
  * INFORMACIÓN OPERATIVA ≠ ADMINISTRAR EL MAESTRO."*
@@ -205,10 +218,7 @@ export const RUTAS_SOLO_ECONOMIA = [
  * contacto, qué documentos hay. Eso es información de ejecución y se abre, en modo lectura (los
  * formularios no se dibujan, y la RLS rechaza la escritura de todos modos).
  */
-const FICHA_DE_CLIENTE = /^\/clientes\/[^/]+/
-
 export function puedeVerRuta(rol: Rol | null | undefined, pathname: string): boolean {
   if (veEconomia(rol)) return true
-  if (FICHA_DE_CLIENTE.test(pathname)) return true
   return !RUTAS_SOLO_ECONOMIA.some((r) => pathname === r || pathname.startsWith(r + '/'))
 }

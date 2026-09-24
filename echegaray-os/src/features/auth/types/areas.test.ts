@@ -30,8 +30,13 @@ test('EL JEFE DE OBRA ENTRA A ADMINISTRACIÓN', () => {
   // Personas, legajos, cuadrillas, clientes, proveedores y pendientes: todo eso es administrar los
   // maestros, y es su trabajo. Antes rebotaba en la puerta y la pantalla ni se dibujaba.
   for (const r of ['/administracion', '/administracion/personas', '/administracion/proveedores',
-    '/administracion/clientes', '/administracion/pendientes', '/clientes', '/clientes/arcor']) {
+    '/administracion/clientes', '/administracion/pendientes']) {
     assert.equal(puedeVerRuta('jefe_obra', r), true, `un jefe de obra no pudo abrir ${r}`)
+  }
+  // CLIENTES NO (dueño, 24/09/2026): ni la cartera ni la ficha.
+  for (const r of ['/clientes', '/clientes/arcor']) {
+    assert.equal(puedeVerRuta('jefe_obra', r), false, `un jefe de obra pudo abrir ${r}`)
+    assert.equal(puedeVerRuta('campo', r), false, `un operario pudo abrir ${r}`)
   }
   assert.equal(areaDe('jefe_obra'), 'administracion')
   assert.deepEqual(areasDe('jefe_obra'), ['administracion', 'obras'])

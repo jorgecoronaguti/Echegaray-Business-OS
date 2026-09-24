@@ -143,7 +143,7 @@ test('el jefe de obra ve los TRES destinos: Proveedores se fue adentro de Compra
   // 16/09/2026. No perdió el acceso a proveedores: lo abre como sección de Compras, y el jefe ve las
   // cuatro secciones (`seccionesDeCompras.test.ts`). Lo que ya no existe es la solapa suelta.
   const suyas = areasDeAdministracion(CERO, 'jefe_obra').map((a) => a.clave)
-  assert.deepEqual(suyas, ['clientes', 'personas', 'compras'])
+  assert.deepEqual(suyas, ['personas', 'compras'], 'Clientes es sólo de Administración (dueño, 24/09/2026)')
   // Y tampoco le llegan señales a una pantalla que no puede abrir.
   for (const s of senalesDeTrabajo(con({ proveedoresSinCuit: 1, comprasSinImputar: 1 }), 'jefe_obra')) {
     assert.ok(!s.href.startsWith('/presupuestos') && !s.href.startsWith('/documentos'))

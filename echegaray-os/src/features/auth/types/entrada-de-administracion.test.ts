@@ -27,7 +27,10 @@ import { readFileSync } from 'node:fs'
 import { AREA_HREF, ENTRADA_DE_ADMINISTRACION, entradaDeArea } from './areas.ts'
 
 test('la entrada del área manda a Clientes, y sólo el path exacto', () => {
-  assert.equal(entradaDeArea('/administracion'), ENTRADA_DE_ADMINISTRACION)
+  assert.equal(entradaDeArea('/administracion', 'direccion'), ENTRADA_DE_ADMINISTRACION)
+  assert.equal(entradaDeArea('/administracion', 'administracion'), ENTRADA_DE_ADMINISTRACION)
+  // Clientes es sólo de Administración (dueño, 24/09/2026): el jefe entra por Personal.
+  assert.equal(entradaDeArea('/administracion', 'jefe_obra'), '/administracion/personas')
   assert.equal(ENTRADA_DE_ADMINISTRACION, '/clientes')
   // Las pantallas de verdad del área no se tocan: si `entradaDeArea` las atrapara, Compras y Personal
   // dejarían de existir y el middleware las mandaría a Clientes.

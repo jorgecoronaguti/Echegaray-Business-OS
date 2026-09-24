@@ -274,7 +274,7 @@ async function middlewareConBackend(request: NextRequest) {
     //
     // El porqué completo, con la medición del meta refresh de 1 s que esto reemplaza, en
     // `features/auth/types/areas.ts · ENTRADA_DE_ADMINISTRACION`.
-    const entrada = entradaDeArea(pathname)
+    const entrada = entradaDeArea(pathname, perfil?.rol)
     if (entrada) {
       const url = request.nextUrl.clone()
       url.pathname = entrada

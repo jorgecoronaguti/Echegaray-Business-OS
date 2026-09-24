@@ -82,7 +82,7 @@ test('un rol ausente o desconocido cae al nivel menos privilegiado, no al del di
 
 test('se respeta el volver cuando el rol PUEDE ver esa ruta', () => {
   assert.equal(aterrizajeDeIngreso('direccion', '/reportes'), '/reportes')
-  assert.equal(aterrizajeDeIngreso('jefe_obra', '/clientes/abc'), '/clientes/abc')
+  assert.equal(aterrizajeDeIngreso('direccion', '/clientes/abc'), '/clientes/abc')
   assert.equal(aterrizajeDeIngreso('campo', '/mi-cuenta'), '/mi-cuenta')
   // La query sobrevive entera: `/obras?estado=activas` es la vista que se quiso abrir, no `/obras`.
   assert.equal(aterrizajeDeIngreso('jefe_obra', '/obras?estado=activas'), '/obras?estado=activas')
