@@ -22,6 +22,9 @@ export const diaMesAnio = (iso: string | null | undefined): string | null =>
 export function cifraM(n: number | null | undefined): string {
   if (n == null) return '—'
   if (n === 0) return '$ 0,00'
+  // Debajo de $ 100.000 la cifra en millones es «$ 0,01 M» para un clavo y una cuchara: no se lee.
+  // El diseño escribe en M desde $ 0,84 M; lo chico va en pesos enteros.
+  if (Math.abs(n) < 100_000) return `$ ${Math.round(n).toLocaleString('es-AR')}`
   return `$ ${(n / 1e6).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} M`
 }
 

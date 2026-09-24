@@ -82,6 +82,12 @@ const EQUIVALENCIAS: Record<string, Categoria> = {
   plano: CATEGORIAS.PLANOS,
   contrato: CATEGORIAS.CONTRATO,
   certificaciones: CATEGORIAS.CONTRATO,
+  // Los roles que escribe el propio OS (CRM/cotizador) son papeles comerciales (23/09/2026: el
+  // índice mostraba un grupo «cotizacion_interna» con el nombre crudo de la base).
+  cotizacion: CATEGORIAS.CONTRATO,
+  cotizacion_interna: CATEGORIAS.CONTRATO,
+  orden_compra: CATEGORIAS.CONTRATO,
+  resumen_recotizacion: CATEGORIAS.CONTRATO,
   seguridad: CATEGORIAS.SEGURIDAD,
   evidencia: CATEGORIAS.EVIDENCIA,
 }
@@ -99,7 +105,9 @@ export function categoriaDeclarada(rol: string | null): string {
   const canonica = CATEGORIAS_CANONICAS.find((c) => normalizar(c) === n)
   // Se muestra el rótulo canónico, no lo que se escribió: acá el vocabulario SÍ es cerrado, y
   // «seguridad» y «Seguridad e higiene» tienen que ser una sola fila de la pantalla.
-  return canonica ?? EQUIVALENCIAS[n] ?? bruto
+  if (canonica ?? EQUIVALENCIAS[n]) return (canonica ?? EQUIVALENCIAS[n]) as string
+  // Un rol de máquina desconocido (`snake_case`) se lee como palabras, nunca crudo.
+  return /^[a-z0-9]+(_[a-z0-9]+)+$/.test(bruto) ? (bruto.charAt(0).toUpperCase() + bruto.slice(1)).replace(/_/g, ' ') : bruto
 }
 
 export interface GrupoDocumentos {

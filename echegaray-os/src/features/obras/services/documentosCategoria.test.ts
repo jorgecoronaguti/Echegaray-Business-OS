@@ -130,3 +130,10 @@ test('sin texto ni chip no filtra nada: la lista completa es la lista completa',
   const docs = [doc('a.pdf', CATEGORIAS.PLANOS), doc('b.pdf', null)]
   assert.equal(porCategoriaFiltrado(docs as never, '   ').length, porCategoria(docs as never).length)
 })
+
+test('los roles que escribe el OS caen en Contrato y cliente; un snake_case desconocido nunca se ve crudo', () => {
+  assert.equal(categoriaDeclarada('cotizacion_interna'), CATEGORIAS.CONTRATO)
+  assert.equal(categoriaDeclarada('orden_compra'), CATEGORIAS.CONTRATO)
+  assert.equal(categoriaDeclarada('acta_de_medicion'), 'Acta de medicion')
+  assert.equal(categoriaDeclarada('Acta de medición'), 'Acta de medición')
+})
