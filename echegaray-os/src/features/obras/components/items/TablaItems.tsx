@@ -109,7 +109,7 @@ function FilaHoja({ f, alAbrir, abierta }: { f: FilaItem; alAbrir: () => void; a
       <div style={{ fontSize: '12.5px', color: f.diasWarn ? C.warn : f.diasReales == null && f.diasTeoricos == null ? C.tenue : f.diasReales == null ? C.tenue : C.tinta }}>
         {f.diasReales ?? '—'} / {f.diasTeoricos ?? '—'}
       </div>
-      <div style={{ textAlign: 'right', fontSize: '12.5px', color: f.pctItem == null ? C.tenue : f.pctItem < 100 ? C.curso : C.tinta }}>
+      <div style={{ textAlign: 'right', fontSize: '12.5px', whiteSpace: 'nowrap', color: f.pctItem == null ? C.tenue : f.pctItem < 100 ? C.curso : C.tinta }}>
         {f.pctItem == null ? 'sin registrar' : pct(f.pctItem, 1)}
       </div>
       <div style={{ textAlign: 'right', fontSize: '12.5px', color: f.avanceObra == null ? C.tenue : C.tinta }}>

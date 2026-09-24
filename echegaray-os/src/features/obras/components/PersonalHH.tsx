@@ -137,7 +137,7 @@ function FilaHoras({ r, borrarHoras }: { r: RegistroHH; borrarHoras: (registroId
       {/* Escritorio: aparece al pasar (son cientos de filas y quitar es la excepción). Teléfono: no
           hay «pasar», queda a la vista en la sublínea, del lado derecho. */}
       <div className="[grid-area:q] justify-self-end transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
-        <AccionFila accion={borrarHoras} args={[r.id]} testid="borrar-hh" tono="peligro">Quitar</AccionFila>
+        <AccionFila accion={borrarHoras} args={[r.id]} testid="borrar-hh" tono="discreto" confirmar="Sí, quitar">Quitar</AccionFila>
       </div>
     </div>
   )
