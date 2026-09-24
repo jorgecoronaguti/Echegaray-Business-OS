@@ -74,14 +74,18 @@ function Grupo({ rotulo, opciones, testid }: {
 }) {
   if (opciones.length === 0) return null
   return (
-    <div data-testid={testid} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span style={{ fontSize: '12px', fontWeight: 600, color: V.tintaSuave }}>
+    // EN EL TELÉFONO (24/09/2026) el grupo toma el renglón entero, el rótulo se calla —las opciones ya
+    // dicen qué son— y el período elegido ocupa el centro: «← anterior» se partía en dos renglones.
+    <div data-testid={testid} className="max-md:w-full" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span className="max-md:hidden" style={{ fontSize: '12px', fontWeight: 600, color: V.tintaSuave }}>
         {rotulo}
       </span>
       {opciones.map((o) => (
         // LA CLAVE ES EL RÓTULO, NO EL ENLACE: dos opciones pueden apuntar al mismo lugar (Recibos las
         // armaba todas con `#`) y React avisaba claves repetidas en cada carga (QA, 14/09/2026).
-        <Link key={o.texto} href={o.href} prefetch={false} style={{
+        <Link key={o.texto} href={o.href} prefetch={false} className={o.activo && testid === 'espejo-quincenas'
+          ? 'max-md:inline-flex max-md:min-h-[40px] max-md:flex-1 max-md:items-center max-md:justify-center max-md:text-center'
+          : 'max-md:inline-flex max-md:min-h-[40px] max-md:items-center max-md:whitespace-nowrap'} style={{
           fontSize: '12px', textDecoration: 'none', padding: '4px 8px', borderRadius: 4,
           color: o.activo ? V.tinta : V.apagado,
           background: o.activo ? '#F1F0EC' : 'transparent',

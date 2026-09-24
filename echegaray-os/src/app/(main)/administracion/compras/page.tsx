@@ -340,7 +340,7 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
         <EntradasSubidas entradas={entradas.data ?? []} />
       </div>
 
-      <div className="max-md:!px-4" style={{ padding: '0 20px 20px' }}>
+      <div className="max-md:!px-4 max-md:!pt-3" style={{ padding: '0 20px 20px' }}>
         {filtro === 'sueltos' ? (
           <div style={{ background: C.superficie, border: `1px solid ${C.linea}`, borderRadius: 10, overflow: 'hidden' }}>
             <AdjuntosSueltos adjuntos={listado.data.sueltos} />

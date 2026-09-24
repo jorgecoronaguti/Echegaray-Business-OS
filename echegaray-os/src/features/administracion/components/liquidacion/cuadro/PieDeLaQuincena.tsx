@@ -17,7 +17,8 @@ import { cierreDeTotales } from '../../../services/cuadroDeJornales'
 import type { TotalGeneral, TotalesDeJornaleros, TotalesDeMensuales } from '../../../services/liquidacionPorTipo'
 
 const Cifra = ({ rotulo, valor, testid, tono }: { rotulo: string; valor: ReactNode; testid: string; tono?: string }) => (
-  <span data-testid={testid} style={{ whiteSpace: 'nowrap', color: tono }}>
+  // En el teléfono una cifra puede partirse: «A pagar hoy: efectivo … · banco …» mide más que la pantalla.
+  <span data-testid={testid} className="max-md:!whitespace-normal" style={{ whiteSpace: 'nowrap', color: tono }}>
     {/* EL RÓTULO, TENUE (limpieza 17/09/2026): quince pares rótulo+cifra con el rótulo casi tan oscuro como la cifra
         obligaban a leer la tira entera. El ORDEN y las cifras no cambian: se intentó reordenarlo el 17/09 y el dueño
         lo rechazó («rompiste el diseño… rehacer eso»). */}
