@@ -70,8 +70,8 @@ test.describe('las dos pantallas, con los datos que hay', () => {
   test('la ficha del proveedor abre desde la cartera y muestra su identidad', async ({ page }) => {
     await entrar(page, DIRECCION)
     await page.goto('/administracion/proveedores')
+    // Tocar el proveedor abre la ficha directo (dueño, 24/09/2026), sin pasar por el panel.
     await page.getByTestId('abrir-proveedor').first().click()
-    await page.getByTestId('abrir-ficha-proveedor').click()
     await expect(page.getByTestId('titulo-ficha')).toBeVisible()
     // El CUIT no puede dibujarse vacío: o está, o dice «sin CUIT». El v2 lo pone bajo el nombre y
     // repetido en el costado, que es el renglón que se afirma acá.

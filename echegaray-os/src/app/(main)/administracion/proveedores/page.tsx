@@ -402,7 +402,10 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                     <TablaProveedores
                       proveedores={lista}
                       seleccionado={seleccionado?.id}
-                      hrefDe={(id) => armarHref(sp, { p: id, editcuit: undefined })}
+                      // TOCAR UN PROVEEDOR ABRE SU FICHA (dueño, 24/09/2026: «si se hace click en algún
+                      // proveedor se debe ver directamente la ficha»). Antes abría el panel lateral
+                      // (`?p=`), que sigue existiendo para el alta y por URL.
+                      hrefDe={(id) => `/administracion/proveedores/${id}`}
                       hrefCuitDe={(id) => armarHref(sp, { p: id, editcuit: id })}
                       limpiarHref={armarHref(sp, { q: undefined, cuit: undefined, tipo: undefined, activo: undefined })}
                       comprado={comprado}
