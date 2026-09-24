@@ -48,7 +48,7 @@ export async function getPresupuestoDeLaObra(
     .eq('obra_canonica_id', obraId)
     .order('version', { ascending: false })
   if (eC) return { data: null, error: eC.message }
-  const cab = versionQueVale((versiones ?? []) as { estado: string | null; vigente: boolean | null; version: number }[])
+  const cab = versionQueVale((versiones ?? []) as { id: string; numero: string | null; version: number; estado: string | null; congelada_en: string | null; vigente: boolean | null }[])
   if (!cab) return { data: null, error: null }
   const c = cab as { id: string; numero: string | null; version: number; estado: string | null; congelada_en: string | null }
 
