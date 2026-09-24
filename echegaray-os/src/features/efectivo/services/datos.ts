@@ -63,7 +63,7 @@ async function leerObras(supabase: SupabaseClient): Promise<ObraOpcion[]> {
 export async function leerEfectivo(): Promise<LecturaEfectivo> {
   try {
     const supabase = await createClient()
-    const [perfil, entregas, comprobantes, rendiciones, devoluciones, personas, obras, mia] = await Promise.all([
+    const [perfil, entregas, comprobantes, rendiciones, devoluciones, personas, obras, mia, asignaciones] = await Promise.all([
       getPerfilActual(supabase),
       supabase.from('efectivo_entrega_saldo').select(COLUMNAS_ENTREGA).order('fecha', { ascending: false }).limit(TOPE),
       supabase.from('efectivo_comprobante_estado').select(COLUMNAS_COMPROBANTE).order('enviado_en', { ascending: false }).limit(TOPE),
@@ -75,7 +75,16 @@ export async function leerEfectivo(): Promise<LecturaEfectivo> {
         .order('nombre_completo').limit(1000),
       leerObras(supabase),
       supabase.rpc('mi_persona_id'),
+      // LA OBRA DONDE ESTÁ HOY cada persona, para no volver a preguntarla al entregarle plata (dueño
+      // 24/09: «hay datos que los pide muchas veces y ya están»). Las asignaciones vigentes; si hay
+      // más de una, la más reciente.
+      supabase.from('obra_asignacion').select('persona_id, obra_id, desde').is('hasta', null)
+        .order('desde', { ascending: false, nullsFirst: false }).limit(2000),
     ])
+    const obraHoy = new Map<string, string>()
+    for (const a of (asignaciones.data ?? []) as { persona_id: string | null; obra_id: string | null }[]) {
+      if (a.persona_id && a.obra_id && !obraHoy.has(a.persona_id)) obraHoy.set(a.persona_id, a.obra_id)
+    }
     // LA PUERTA, no la cerradura: la RLS de las tablas es la que decide qué filas salen.
     if (!esAdministracion(perfil.data?.rol ?? null)) return { estado: 'sin_permiso' }
     for (const r of [entregas, comprobantes, rendiciones, devoluciones]) {
@@ -103,7 +112,8 @@ export async function leerEfectivo(): Promise<LecturaEfectivo> {
         rendiciones: deLasEntregas((rendiciones.data ?? []) as unknown as Rendicion[]).map((r) => ({ ...r, monto: num(r.monto) })),
         devoluciones: deLasEntregas((devoluciones.data ?? []) as unknown as Devolucion[]).map((d) => ({ ...d, monto: num(d.monto) })),
         personas: ((personas.data ?? []) as { id: string; nombre_completo: string | null; puesto: string | null }[])
-          .filter((p) => p.nombre_completo).map((p) => ({ id: p.id, nombre: nombreDePersona(p.nombre_completo), puesto: p.puesto })),
+          .filter((p) => p.nombre_completo)
+          .map((p) => ({ id: p.id, nombre: nombreDePersona(p.nombre_completo), puesto: p.puesto, obraActual: obraHoy.get(p.id) ?? null })),
         obras,
         clienteDeObra,
         miPersona: typeof mia.data === 'string' ? mia.data : null,

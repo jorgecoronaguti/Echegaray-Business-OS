@@ -168,10 +168,14 @@ export function TablaCompras({
                 prefetch={false}
                 data-testid="abrir-compra"
                 className="block truncate hover:underline"
-                style={{ fontSize: '12.5px', color: c.emisor_nombre?.trim() ? C.tinta : C.tenue }}
+                style={{ fontSize: '12.5px', color: c.proveedor ? C.tinta : C.tenue }}
               >
-                {c.emisor_nombre?.trim() || 'sin proveedor'}
+                {c.proveedor || 'sin proveedor'}
               </Link>
+              {/* El titular fiscal de ARCA, al lado y apagado: es el dato, no el nombre (src/shared/proveedores). */}
+              {c.emisor_nombre?.trim() && c.emisor_nombre.trim() !== c.proveedor && (
+                <span className="block truncate" style={{ fontSize: '10.5px', color: C.tenue }}>{c.emisor_nombre.trim()}</span>
+              )}
             </span>
 
             <span style={{ minWidth: 0 }}>

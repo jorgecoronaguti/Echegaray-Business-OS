@@ -343,7 +343,10 @@ export function PanelCompra({
         >✕</Link>
       </div>
       <p className="mt-1 truncate text-[12.5px] text-muted">
-        {compra.emisor_nombre?.trim() || <Nulo>sin proveedor</Nulo>}
+        {compra.proveedor || <Nulo>sin proveedor</Nulo>}
+        {compra.emisor_nombre?.trim() && compra.emisor_nombre.trim() !== compra.proveedor && (
+          <span className="ml-2 text-[11px] text-faint">{compra.emisor_nombre.trim()}</span>
+        )}
         {compra.emisor_cuit && <span className="ml-2 font-mono text-[11px] text-faint">CUIT {compra.emisor_cuit}</span>}
       </p>
 

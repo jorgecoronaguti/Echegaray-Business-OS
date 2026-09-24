@@ -11,6 +11,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { aplicarFiltro, FILTROS, type Filtrable, type FiltroCompras, type Imputacion } from './comprasEstado'
+import { proveedoresPorCuit } from '../../../shared/proveedores/nombresDeProveedores.ts'
+import { nombrePorCuit } from '../../../shared/proveedores/nombre.ts'
 
 /**
  * UN CONTADOR DE POSTGREST, VISTO POR SU MÍNIMO.
@@ -56,7 +58,12 @@ export interface ComprobanteCompra {
   comprobante: string | null
   cae: string | null
   emisor_cuit: string | null
+  /** El titular fiscal que trae el comprobante de ARCA («PEREZ GARCIA MARISOL BIBIANA»). Es el dato
+   *  fiscal: se muestra como detalle, no como el nombre del proveedor. */
   emisor_nombre: string | null
+  /** El nombre del proveedor, resuelto por CUIT en el maestro (src/shared/proveedores): «Corralon
+   *  Progreso». Sin maestro para ese CUIT, el del papel. Lo llena el servicio, no la vista. */
+  proveedor?: string | null
   moneda: string | null
   imp_total: number | null
   neto_gravado: number | null
@@ -131,7 +138,8 @@ export async function getCompras(
     .limit(TOPE)
 
   if (error) return { data: null, error: error.message }
-  const filas = (data ?? []) as unknown as ComprobanteCompra[]
+  const maestro = await proveedoresPorCuit(supabase)
+  const filas = ((data ?? []) as unknown as ComprobanteCompra[]).map((c) => conProveedor(c, maestro))
   const total = count ?? filas.length
   return { data: { filas, total, truncado: total > filas.length }, error: null }
 }
@@ -208,6 +216,14 @@ export async function getObrasDelEmisor(
 
 /** Un comprobante por su id, para el panel. `null` = no existe o la base no lo publica. */
 export async function getCompra(supabase: SupabaseClient, id: string): Promise<ComprobanteCompra | null> {
-  const { data } = await supabase.from('comprobante_compra').select(COLUMNAS).eq('id', id).maybeSingle()
-  return (data as unknown as ComprobanteCompra) ?? null
+  const [{ data }, maestro] = await Promise.all([
+    supabase.from('comprobante_compra').select(COLUMNAS).eq('id', id).maybeSingle(),
+    proveedoresPorCuit(supabase),
+  ])
+  return data ? conProveedor(data as unknown as ComprobanteCompra, maestro) : null
+}
+
+/** El proveedor se llama como en el maestro, resuelto por CUIT; el titular de ARCA queda al lado. */
+function conProveedor(c: ComprobanteCompra, maestro: ReadonlyMap<string, string>): ComprobanteCompra {
+  return { ...c, proveedor: nombrePorCuit(maestro, c.emisor_cuit, c.emisor_nombre) }
 }

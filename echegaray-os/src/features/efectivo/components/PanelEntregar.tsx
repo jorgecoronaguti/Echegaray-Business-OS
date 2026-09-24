@@ -35,6 +35,13 @@ export function PanelEntregar({ personas, obras, entregas, cerrarHref }: {
   const debe = useMemo(() => (b.persona ? sinRendirDe(b.persona, entregas) : null), [b.persona, entregas])
   const monto = (() => { const m = validarMonto(b.monto); return m.ok ? m.dato : null })()
   const activas = obras.filter((o) => o.activa)
+  // LA OBRA YA SE SABE: la persona está asignada a una. Se propone sola (si está activa y no se eligió
+  // otra); se puede cambiar. Un dato que la base ya tiene no se vuelve a preguntar.
+  const conObraDe = (id: string): Partial<BorradorEntrega> => {
+    const suya = personas.find((p) => p.id === id)?.obraActual ?? null
+    const propone = !b.obra && b.destino === 'obra' && suya && activas.some((o) => o.id === suya)
+    return propone ? { persona: id, obra: suya } : { persona: id }
+  }
 
   const confirmar = () => {
     const v = validarEntrega(b)
@@ -52,7 +59,7 @@ export function PanelEntregar({ personas, obras, entregas, cerrarHref }: {
 
       <Campo rotulo="A quién">
         <select
-          value={b.persona} onChange={(e) => set({ persona: e.target.value })} style={{ ...campo, borderColor: V.grafito }}
+          value={b.persona} onChange={(e) => set(conObraDe(e.target.value))} style={{ ...campo, borderColor: V.grafito }}
           data-testid="entregar-persona" aria-label="A quién"
         >
           <option value="">Elegí a la persona</option>

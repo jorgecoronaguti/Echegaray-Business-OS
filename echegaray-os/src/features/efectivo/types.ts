@@ -141,6 +141,8 @@ export interface PersonaOpcion {
   id: string
   nombre: string
   puesto: string | null
+  /** La obra donde está asignada HOY (`persona_directorio.obra_actual_id`): el panel la propone sola. */
+  obraActual?: string | null
 }
 
 export interface ObraOpcion {
