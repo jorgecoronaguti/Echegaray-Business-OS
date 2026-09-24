@@ -38,11 +38,17 @@ export interface PresupuestoDeLaObra {
 export async function getPresupuestoDeLaObra(
   supabase: SupabaseClient, obraId: string,
 ): Promise<ServiceResult<PresupuestoDeLaObra | null>> {
-  const { data: cab, error: eC } = await supabase.from('cotizaciones')
+  // LA VERSIÓN QUE SE VENDIÓ, NO LA ÚLTIMA QUE SE EDITÓ (23/09/2026): QP tiene la v3 adjudicada y una
+  // v4 borrador vigente (recotización en curso). Tomar la vigente bloqueaba la conversión con «el
+  // presupuesto no está adjudicado». El plan de obra sale de lo adjudicado; sin ninguna adjudicada,
+  // se muestra la vigente y la pantalla dice por qué no se puede convertir.
+  const { data: versiones, error: eC } = await supabase.from('cotizaciones')
     .select('id, numero, version, estado, congelada_en, vigente')
     .eq('obra_canonica_id', obraId)
-    .order('vigente', { ascending: false }).order('version', { ascending: false }).limit(1).maybeSingle()
+    .order('version', { ascending: false })
   if (eC) return { data: null, error: eC.message }
+  const lista = (versiones ?? []) as { estado: string | null; vigente: boolean | null }[]
+  const cab = lista.find((v) => v.estado === 'adjudicada') ?? lista.find((v) => v.vigente) ?? lista[0] ?? null
   if (!cab) return { data: null, error: null }
   const c = cab as { id: string; numero: string | null; version: number; estado: string | null; congelada_en: string | null }
 
