@@ -40,11 +40,14 @@ export const PARTE_VACIA = Object.freeze({
   trabados: [],   // {nombre, motivo} — no se pudo cargar y NO se pregunta nada
   reintentando: 0, // leídos y guardados: Google no contestó al cargarlos y el worker lo reintenta solo
   avisos: [],     // texto suelto: lo que rompió y hay que decir sí o sí
+  // «Imputado a ER-0020 (@x) · a rendir» (24/09/2026): sólo cuando el mensaje escribió el número de una
+  // entrega de efectivo. Sin número queda vacío y el mensaje sale idéntico al de siempre.
+  imputaciones: [],
 })
 
 /** Una parte nueva, con las listas propias (nunca las de `PARTE_VACIA`). */
 export function parteVacia() {
-  return { ...PARTE_VACIA, ilegibles: [], sinImputar: [], trabados: [], avisos: [] }
+  return { ...PARTE_VACIA, ilegibles: [], sinImputar: [], trabados: [], avisos: [], imputaciones: [] }
 }
 
 /**
@@ -71,6 +74,7 @@ export function sumarPartes(a, b) {
     // dos hallazgos. Se colapsa por TEXTO EXACTO y sólo por texto exacto: dos avisos que difieren en
     // un número son dos hallazgos distintos y los dos salen.
     avisos: sinRepetir([...(x.avisos ?? []), ...(y.avisos ?? [])]),
+    imputaciones: sinRepetir([...(x.imputaciones ?? []), ...(y.imputaciones ?? [])]),
   }
 }
 
@@ -175,6 +179,9 @@ export function textoTanda(p = {}, { enVuelo = 0 } = {}) {
   } else {
     l.push('✔ **Listo, terminé.** No había nada para cargar.')
   }
+
+  // 1b) A QUÉ ENTREGA DE EFECTIVO SE IMPUTÓ, si el mensaje escribió su número. Sin número, nada.
+  for (const i of a.imputaciones ?? []) l.push(`ℹ ${i}`)
 
   // 2) CUÁNTOS YA ESTABAN. El segundo número que pidió, y el que evita que los mande de nuevo.
   if (a.yaEstaban > 0) {

@@ -4,6 +4,7 @@
 //   …&panel=entregar                                             D02 sobre D01
 //   …&entrega=ER-0147                                            D03 la ficha
 //   …&entrega=ER-0147&panel=devolucion                           D06 sobre D03
+//   …&entrega=ER-0147&panel=imputar                              imputar una compra ya cargada (24/09/2026)
 //   …&entrega=ER-0147&comprobante=<id>                           D04 revisar (D05 si está observado)
 
 export const RUTA = '/administracion/compras'
@@ -11,7 +12,7 @@ export const RUTA = '/administracion/compras'
 export interface EstadoURL {
   f?: 'abiertas' | 'todas' | 'obra' | 'anuladas'
   entrega?: string | null
-  panel?: 'entregar' | 'devolucion' | null
+  panel?: 'entregar' | 'devolucion' | 'imputar' | null
   comprobante?: string | null
 }
 

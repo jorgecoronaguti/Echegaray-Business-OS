@@ -48,6 +48,8 @@ import { urlConSecreto } from '../secreto-compartido.mjs'
 import { puedeCargarComprobantes } from '../comprobantes/guarda.mjs'
 import { conLaTanda } from '../comprobantes/tanda.mjs'
 import * as repo from '../comprobantes/repositorio.mjs'
+import { parteVacia } from '../../lib/comprobantes/parte.mjs'
+import { cerrarTicket, imputacionPedida, registrarTicket, textoDeObra } from '../comprobantes/imputacion-a-entrega.mjs'
 
 /** URL de callback de los botones. Distinta de la de asistencia: son dos dominios distintos. */
 export const URL_ACCION_BASE = process.env.COMPROBANTES_ACCION_URL
@@ -162,7 +164,9 @@ export const especialista = {
     return await reclamoDeRespuesta(texto, ctx)
   },
 
-  async atender({ texto, intencion, port, actor, google, fileIds = [], postId, mattermost, config, log }) {
+  // `procesar` y `tanda` son inyectables para que los tests prueben QUÉ se le manda al circuito; en
+  // producción son siempre el circuito real y la tanda real.
+  async atender({ texto, intencion, port, actor, google, fileIds = [], postId, mattermost, config, log, procesar = procesarComprobantes, tanda = conLaTanda }) {
     const ruta = intencion ?? await this.reconoce(texto, { fileIds, area: 'compras', port, actor })
 
     // Una respuesta escrita a la pregunta abierta. No baja archivos, no gasta un token de visión: es
@@ -190,6 +194,15 @@ export const especialista = {
     // obligaba a adivinar —quién tiene entrega abierta, qué palabra trae el mensaje— y cada regla de esas
     // tenía su caso de imputación equivocada. Ver `especialistas/rendiciones.mjs`.
     const url = urlAccion(config?.env ?? process.env)
+
+    // ═══ NÚMERO EXPLÍCITO = RENDICIÓN (dueño, 24/09/2026) ═══
+    //
+    // La única excepción a lo de arriba, y no adivina: sólo un mensaje que ESCRIBE el número de una
+    // entrega («ER-0020») va a esa entrega, como «A rendir». Sin número, `imputacionPedida` devuelve null
+    // sin tocar la base y todo sigue exactamente como antes. Ver `comprobantes/imputacion-a-entrega.mjs`.
+    const imputacion = await imputacionPedida({ port, texto, actor })
+    if (imputacion && !imputacion.ok) return { texto: imputacion.texto, estado: `rechazado_${imputacion.motivo}`, privado: false }
+
     // ═══ UN SOLO MENSAJE PARA TODA LA TANDA (13/08) ═══
     //
     // Textual: «solo quiero q confirme q termino todo». Cada post con fotos es una tarea distinta y
@@ -199,14 +212,16 @@ export const especialista = {
     //
     // Sin la migración de tandas aplicada esto no hace nada y se responde como siempre: el deploy y
     // la migración no siempre caen juntos.
-    return await conLaTanda({ port, mattermost, log }, {
+    return await tanda({ port, mattermost, log }, {
       plataforma: actor?.plataforma ?? 'mattermost',
       userId: actor?.plataforma_user_id,
       channelId: actor?.channel_id,
       postId: postId ?? actor?.root_post_id ?? null,
       rootPostId: actor?.root_post_id ?? postId ?? null,
       recibidos: fileIds.length,
-    }, () => cargar({ texto, port, actor, google, fileIds, postId, mattermost, log, url }))
+    }, () => (imputacion
+      ? cargarImputado({ port, actor, google, fileIds, postId, mattermost, log, url, procesar, imputacion })
+      : cargar({ texto, port, actor, google, fileIds, postId, mattermost, log, url, procesar })))
   },
 
   skillDe(intencion) {
@@ -225,8 +240,8 @@ export const especialista = {
  * Lo único que este especialista sigue decidiendo es lo suyo: de dónde salen los archivos (un post
  * de Mattermost) y qué se publica después.
  */
-async function cargar({ texto, port, actor, google, fileIds, postId, mattermost, log, url }) {
-  const r = await procesarComprobantes({ port, google, log, url, mattermost }, {
+async function cargar({ texto, port, actor, google, fileIds, postId, mattermost, log, url, procesar = procesarComprobantes }) {
+  const r = await procesar({ port, google, log, url, mattermost }, {
     fileIds,
     // Lo que la persona escribió al mandar la foto. Es de donde sale la obra cuando el papel no
     // la dice, que es el caso normal: una factura de proveedor no sabe a qué obra se imputa.
@@ -245,6 +260,34 @@ async function cargar({ texto, port, actor, google, fileIds, postId, mattermost,
   return { texto: r.texto, estado: r.estado, fajoId: r.fajoId, parte: r.parte, privado: false }
 }
 
+/**
+ * EL MISMO CIRCUITO, CON EL NÚMERO DE ENTREGA ESCRITO (24/09/2026). Lo que cambia es sólo lo que el canal
+ * Efectivo ya hace con un ticket: se registra antes de cargar, se fuerza «A rendir» y pagado, la obra es la
+ * de la entrega y, después de escribir, se ata la fila a la entrega. La guarda del canal de compras y el
+ * escritor son los de siempre.
+ *
+ * EL POST, NO EL HILO: el vínculo empareja por post (`vincular_rendiciones_pendientes`), y un segundo
+ * ticket en el mismo hilo no puede quedar atado a la entrega del primero.
+ */
+async function cargarImputado({ port, actor, google, fileIds, postId, mattermost, log, url, procesar, imputacion }) {
+  const { entrega, remitente } = imputacion
+  const post = postId ?? actor?.root_post_id ?? null
+  await registrarTicket(port, { entregaId: entrega.id, post, perfilId: remitente.perfilId })
+  const r = await procesar({ port, google, log, url, mattermost }, {
+    fileIds,
+    texto: textoDeObra(entrega),
+    forzar: { formaPago: 'A rendir', pagado: true },
+    actor,
+    channelId: actor?.channel_id,
+    rootPostId: actor?.root_post_id ?? post,
+    postId: post,
+    ahora: new Date(),
+  })
+  const { linea } = await cerrarTicket(port, { entrega, post, r, log })
+  const parte = { ...parteVacia(), ...(r.parte ?? {}), imputaciones: [linea] }
+  return { texto: [linea, '', r.texto].join('\n'), estado: r.estado, fajoId: r.fajoId, parte, privado: false }
+}
+
 function ayuda() {
   return {
     texto: [
@@ -255,6 +298,8 @@ function ayuda() {
       '3. Te contesto en qué fila quedó, cuánto sumó la tanda y qué te quedó por completar.',
       '',
       'Podés mandar varias fotos juntas, o varios posts seguidos: entra todo.',
+      'Si lo pagaste con **efectivo a rendir**, escribí el número de la entrega junto con la foto (por ejemplo '
+      + '**ER-0020**): lo cargo como «A rendir» y baja el saldo de esa entrega. Sin número es una compra común.',
       'Si el comprobante no dice a qué obra va, escribila a mano en el papel antes de la foto — o dejala así: '
       + 'cargo igual con la celda vacía y te digo la fila para que la completes. **Nunca invento una obra.**',
       'Sólo te pregunto cuando no puedo resolverlo solo: un proveedor que no está en la lista, un posible '

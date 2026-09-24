@@ -132,6 +132,10 @@ export interface Rendicion {
   adelanto_expresion?: string | null
   /** El nombre para mostrar del empleado, resuelto al leer. Decorativo. */
   adelanto_persona?: string | null
+  /** `ticket` = la escribió un ticket; `reimputada` = compra ya cargada imputada a mano (migración 20260924T2300). */
+  origen?: 'ticket' | 'reimputada'
+  /** reimputada: el pedido a la cola de Compras que cambia su Tipo pago. */
+  cambio_id?: string | null
 }
 
 export const COLUMNAS_RENDICION = 'id, entrega_id, compra_clave, monto, imputada_en, comprobante_id, adelanto_persona_id, adelanto_quincena, adelanto_expresion'

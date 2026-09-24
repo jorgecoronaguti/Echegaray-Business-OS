@@ -140,3 +140,26 @@ test('una cola sin celdas no escribe nada', () => {
   assert.equal(r.accion, 'rechazar')
   assert.equal(r.motivo, 'sin_celdas')
 })
+
+// ═══ IMPUTAR A UNA ENTREGA DE EFECTIVO (24/09/2026) ═══ La base (`_efectivo_encolar_tipo_pago`, migración
+// 20260924T2300) encola UNA celda con esta forma exacta. El worker la tiene que escribir en «Tipo pago» sin
+// tocar ninguna otra, y NO pisarla si alguien cambió esa celda en el Sheet mientras tanto.
+const aRendir = { rotulo: 'Tipo pago', especie: 'texto', valor: 'A rendir', anterior: 'Efectivo', escribir: 'A rendir' }
+
+test('imputar a una entrega: una sola celda, «Tipo pago» ← «A rendir»', () => {
+  const r = planificarPago({ cambio: cambio({ celdas: [aRendir] }), encabezado: COMPRAS_CON_OBRA, fila: filaViva({ 'Tipo pago': 'Efectivo' }) })
+  assert.equal(r.accion, 'escribir')
+  assert.deepEqual(r.celdas.map((c) => [c.celda, c.escribir]), [['Compras!Q57', 'A rendir']])
+  assert.equal(relecturaConfirmaPago(compraDe(filaViva({ 'Tipo pago': 'A rendir' })), r.celdas).ok, true)
+})
+
+test('imputar a una entrega: si el Sheet ya no dice «Efectivo», no se pisa; si ya dice «A rendir», se cierra', () => {
+  const editada = planificarPago({ cambio: cambio({ celdas: [aRendir] }), encabezado: COMPRAS_CON_OBRA, fila: filaViva({ 'Tipo pago': 'Transferencia' }) })
+  assert.equal(editada.accion, 'rechazar')
+  const ya = planificarPago({ cambio: cambio({ celdas: [aRendir] }), encabezado: COMPRAS_CON_OBRA, fila: filaViva({ 'Tipo pago': 'A rendir' }) })
+  assert.equal(ya.accion, 'ya_aplicado')
+  // Y el inverso (deshacer) es la misma celda al revés.
+  const inverso = { ...aRendir, valor: 'Efectivo', anterior: 'A rendir', escribir: 'Efectivo' }
+  const d = planificarPago({ cambio: cambio({ celdas: [inverso] }), encabezado: COMPRAS_CON_OBRA, fila: filaViva({ 'Tipo pago': 'A rendir' }) })
+  assert.deepEqual(d.celdas.map((c) => [c.celda, c.escribir]), [['Compras!Q57', 'Efectivo']])
+})
