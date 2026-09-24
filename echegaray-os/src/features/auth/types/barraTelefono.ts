@@ -23,7 +23,7 @@ export interface ItemBarraTelefono {
   enciende?: readonly string[]
 }
 
-const CAMPO: ItemBarraTelefono = { clave: 'campo', href: '/campo', label: 'Campo', icono: 'obra' }
+const CAMPO: ItemBarraTelefono = { clave: 'campo', href: '/campo', label: 'Trabajo', icono: 'obra' }
 const ADMIN: ItemBarraTelefono = {
   clave: 'administracion', href: '/administracion', label: 'Admin.', icono: 'lista',
   // Las mismas rutas que encienden la solapa Administración del header (`navegacion.ts`).

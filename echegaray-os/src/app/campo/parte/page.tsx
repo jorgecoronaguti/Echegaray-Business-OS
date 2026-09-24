@@ -50,7 +50,7 @@ export default async function ParteCampoPage({ searchParams }: { searchParams: P
       <MarcoCampo titulo="Parte del día">
         <Aviso tono="warn" titulo="Tu usuario no puede cargar el parte.">
           Lo carga el jefe de obra. Material y herramientas sí:{' '}
-          <Link href="/campo" className="underline">volver a Campo</Link>.
+          <Link href="/campo" className="underline">volver a Trabajo</Link>.
         </Aviso>
       </MarcoCampo>
     )

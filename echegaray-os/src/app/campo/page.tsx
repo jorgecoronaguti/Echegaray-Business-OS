@@ -173,7 +173,7 @@ export default async function CampoPage() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/marca/isotipo.png" alt="" className="h-[22px] w-[22px]" />
         <span className="text-[12.5px] font-semibold tracking-[0.12em] text-ink">ECHEGARAY</span>
-        <span className="text-[11px] text-faint">Campo</span>
+        <span className="text-[11px] text-faint">Trabajo</span>
         <span className="ml-auto text-[12px] text-muted">
           <LogoutButton />
         </span>

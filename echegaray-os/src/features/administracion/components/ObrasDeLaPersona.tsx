@@ -104,7 +104,7 @@ export function ObrasDeLaPersona({ obras, programados = [], hrefAsignaciones }: 
             <p className="px-3.5 py-3 text-[12px] text-faint" data-testid="obras-persona-vacio">
               {/* NO ES «NO TRABAJÓ EN NINGUNA OBRA»: es que no hay horas imputadas a su nombre. */}
               Sin horas imputadas a su nombre en ninguna obra. Se cargan desde la solapa Personal de
-              la obra o desde Campo · Asistencia.
+              la obra o desde Trabajo · Asistencia.
             </p>
           )
         : obras.map((o) => (

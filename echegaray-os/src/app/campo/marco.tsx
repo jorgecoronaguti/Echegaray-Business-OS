@@ -31,7 +31,7 @@ export function MarcoCampo({
             data-testid="volver"
             className="-ml-1 inline-flex min-h-[44px] items-center px-1 text-[12px] text-muted hover:text-ink"
           >
-            ← Campo
+            ← Trabajo
           </Link>
         )}
         <h1 className="mt-2 text-[20px] font-semibold tracking-[-0.01em] text-ink">{titulo}</h1>

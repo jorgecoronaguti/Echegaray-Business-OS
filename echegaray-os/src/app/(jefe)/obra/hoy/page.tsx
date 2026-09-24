@@ -255,14 +255,14 @@ export default async function JefeHoyPage({
             `/campo` (parte diario, impedimento, asistencia, herramientas por QR) es del jefe y no tenía
             entrada desde su propio perfil: se enlazaba sólo desde `/mi-trabajo`, la pantalla del
             empleado, que no puede escribir nada de eso. Son los mismos accesos de 88px de arriba. */}
-        <RotuloSeccion icono="obra" margenArriba={20}>Campo</RotuloSeccion>
+        <RotuloSeccion icono="obra" margenArriba={20}>Trabajo</RotuloSeccion>
         <div style={{ display: 'flex', gap: 10, marginTop: 10 }} data-testid="accesos-campo">
           <Acceso href="/campo/parte" icono="nota" texto="Parte de hoy" />
           <Acceso href="/campo/impedimento" icono="bloqueo" texto="Problema" />
           <Acceso href="/campo/herramientas" icono="equipo" texto="Herramientas" />
         </div>
         <Link href="/campo" prefetch={false} data-testid="ir-campo" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, marginTop: 4, fontSize: 12.5, color: C.muted, textDecoration: 'underline' }}>
-          Todo lo de campo: asistencia y movimientos
+          Todo lo de trabajo: asistencia y movimientos
         </Link>
       </div>
     </>

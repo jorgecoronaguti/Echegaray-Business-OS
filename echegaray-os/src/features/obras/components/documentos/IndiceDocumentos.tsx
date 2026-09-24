@@ -58,6 +58,9 @@ export function IndiceDocumentos({ documentos, actividades, asignar, clasificar,
 }) {
   const [query, setQuery] = useState('')
   const [chip, setChip] = useState<string | null>(null)
+  // Teléfono: los grupos que la persona tocó. «Sin clasificar» arranca abierto y el resto cerrado; tocar invierte.
+  const [abiertosTel, setAbiertosTel] = useState<Set<string>>(new Set())
+  const alternarTel = (k: string) => setAbiertosTel((prev) => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n })
   const grupos = useMemo(() => porCategoriaFiltrado(documentos, query, chip), [documentos, query, chip])
   const cuentas = useMemo(() => {
     const m = new Map<string, number>()
@@ -173,19 +176,39 @@ export function IndiceDocumentos({ documentos, actividades, asignar, clasificar,
         </FilaPastillas>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           {grupos.length === 0 && <div style={{ padding: '14px 0', fontSize: '13px', color: C.tenue }}>{documentos.length === 0 ? 'Todavía no hay ningún documento vinculado a esta obra.' : 'Ningún documento coincide.'}</div>}
-          {grupos.flatMap((g) => g.docs).map((d, i, xs) => (
-            <div key={d.drive_file_id} style={{ height: '44px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: i === xs.length - 1 ? 'none' : `1px solid ${C.borde}`, fontSize: '13px' }}
-              data-testid="fila-documento-telefono">
-              <span style={{ color: C.tenue, display: 'flex' }}><Ico d={ICONO[categoriaDeclarada(d.rol)] ?? P.doc} s={13} /></span>
-              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                <a href={urlDeDrive(d.drive_file_id, d.tipo)} target="_blank" rel="noreferrer" style={{ fontSize: '13.5px', color: C.tinta, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {d.name ?? d.drive_file_id}
-                </a>
-                <div style={{ fontSize: '11px', color: C.tenue }}>{etiquetaDeTipo(d.tipo, d.mime_type, d.name)} · {diaMes(d.modified_time) ?? 'sin fecha'}</div>
+          {/* M17: LOS MISMOS GRUPOS QUE EL 14, plegables. Abierto de entrada sólo «Sin clasificar», que es el
+              que pide trabajo; tocar la cabecera abre o cierra. Era una lista plana sin grupos. */}
+          {grupos.map(({ categoria, docs }) => {
+            const sin = categoria === SIN_CLASIFICAR
+            const abierto = abiertosTel.has(categoria) !== sin
+            const resumen = resumenGrupo(categoria, docs)
+            return (
+              <div key={categoria} data-testid={`grupo-documentos-telefono-${sin ? 'sin-clasificar' : categoria}`}>
+                <button type="button" onClick={() => alternarTel(categoria)} aria-expanded={abierto} style={{
+                  font: 'inherit', border: 'none', width: '100%', height: '44px', display: 'flex', alignItems: 'center', gap: '8px', padding: 0,
+                  borderBottom: `1px solid ${C.borde}`, background: 'none', cursor: 'pointer', color: C.tinta, textAlign: 'left', fontSize: '13px',
+                }}>
+                  <span style={{ color: C.tenue, display: 'flex' }}><Ico d={abierto ? P.abajo : P.derecha} s={12} /></span>
+                  <span style={{ color: C.tenue, display: 'flex' }}><Ico d={ICONO[categoria] ?? P.doc} s={13} /></span>
+                  <span style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{categoria}</span>
+                  <span style={{ fontFamily: MONO, fontSize: '11px', color: C.tenue }}>{docs.length}</span>
+                  {resumen && <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: resumen.alerta ? C.warn : C.tintaSuave, whiteSpace: 'nowrap' }}>{resumen.texto}</span>}
+                </button>
+                {abierto && docs.map((d) => (
+                  <div key={d.drive_file_id} style={{ height: '48px', display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '20px', borderBottom: `1px solid ${C.bordeTarjeta}`, fontSize: '13px' }}
+                    data-testid="fila-documento-telefono">
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                      <a href={urlDeDrive(d.drive_file_id, d.tipo)} target="_blank" rel="noreferrer" style={{ fontSize: '13.5px', color: C.tinta, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {d.name ?? d.drive_file_id}
+                      </a>
+                      <div style={{ fontSize: '11px', color: C.tenue }}>{etiquetaDeTipo(d.tipo, d.mime_type, d.name)} · {diaMes(d.modified_time) ?? 'sin fecha'}</div>
+                    </div>
+                    <span style={{ fontSize: '11.5px', color: C.tintaSuave, whiteSpace: 'nowrap' }}>{RELACION[d.origen]}</span>
+                  </div>
+                ))}
               </div>
-              <span style={{ fontSize: '11.5px', color: C.tintaSuave, whiteSpace: 'nowrap' }}>{RELACION[d.origen]}</span>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
     </>

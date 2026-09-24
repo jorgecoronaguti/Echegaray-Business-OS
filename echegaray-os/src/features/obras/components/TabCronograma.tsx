@@ -251,9 +251,12 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
         {!ventana
           ? <SinFechas obraId={obraId} n={actos.length} />
           : (
-            <div style={{ position: 'relative' }}>
+            // CADA SEMANA MIDE 40px Y EL GRÁFICO SE CORRE DE COSTADO (M07): repartir 14 semanas en 270px
+            // dejaba las tareas de una semana como cuadraditos de 20px. El nombre queda fijo a la izquierda.
+            <div style={{ overflowX: 'auto', margin: '0 -16px', padding: '0 16px' }} data-testid="cronograma-telefono-scroll">
+            <div style={{ position: 'relative', minWidth: `${120 + ventana.columnas.length * (escala === 'semana' ? 40 : 56)}px` }}>
               <div style={{ display: 'grid', gridTemplateColumns: '112px 1fr', gap: '8px', height: '26px', alignItems: 'center', borderBottom: `1px solid ${C.borde}` }}>
-                <div />
+                <div style={{ position: 'sticky', left: 0, background: C.lienzo, height: '100%', zIndex: 1 }} />
                 <div style={{ display: 'grid', gridTemplateColumns: `repeat(${ventana.columnas.length},1fr)`, fontFamily: MONO, fontSize: '10px', color: C.tenue }}>
                   {ventana.columnas.map((c) => <span key={c.iso}>{escala === 'semana' ? c.iso.slice(8, 10) : c.rotulo}</span>)}
                 </div>
@@ -267,7 +270,7 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
                     display: 'grid', gridTemplateColumns: '112px 1fr', gap: '8px', height: '44px', alignItems: 'center',
                     borderBottom: i === actos.length - 1 ? 'none' : `1px solid ${C.borde}`,
                   }}>
-                    <div style={{ fontSize: '12.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.nombre}</div>
+                    <div style={{ fontSize: '12.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, background: C.lienzo, zIndex: 1, alignSelf: 'stretch', display: 'flex', alignItems: 'center' }}>{f.nombre}</div>
                     {t
                       ? (
                         <div style={{ position: 'relative', height: '100%' }}>
@@ -287,6 +290,7 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
               {hoyPct != null && (
                 <div data-testid="linea-hoy" style={{ position: 'absolute', left: `calc(120px + (100% - 120px)*${hoyPct / 100})`, top: 0, bottom: 0, width: '1px', background: C.marca }} />
               )}
+            </div>
             </div>
             )}
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: C.tintaSuave }}>
@@ -492,6 +496,21 @@ function Editor({ obraId, filas, dependencias, isodows, feriados, hoy, fallas, g
   )
 }
 
+/** MC7: la fecha se LEE «24/08» en mono dentro de la caja de 76×40, como la dibuja el diseño. El
+ *  `<input type="date">` nativo no entra en 76px (mostraba «22 / 2026», sin el mes): va encima,
+ *  invisible y del mismo tamaño, así que tocar la caja abre el selector del teléfono. */
+function FechaCorta({ etiqueta, valor, testid, estilo, alCambiar }: {
+  etiqueta: string; valor: string | null; testid: string; estilo: CSSProperties; alCambiar: (v: string | null) => void
+}) {
+  return (
+    <label style={{ ...estilo, position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: valor ? C.tinta : C.tenue }}>
+      {valor ? `${valor.slice(8, 10)}/${valor.slice(5, 7)}` : '—'}
+      <input type="date" aria-label={etiqueta} value={valor ?? ''} data-testid={testid} onChange={(e) => alCambiar(e.target.value || null)}
+        style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', border: 0, padding: 0, cursor: 'pointer' }} />
+    </label>
+  )
+}
+
 // ═══════════════════════════════ MC7 · EDITOR EN EL TELÉFONO ═══════════════════════════════
 
 function EditorTelefono({ obraId, filas, isodows, feriados, hoy, fallas, guardarFechas, sellar }: Props & { filas: FilaPlan[] }) {
@@ -529,12 +548,10 @@ function EditorTelefono({ obraId, filas, isodows, feriados, hoy, fallas, guardar
                   <div style={{ fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.nombre}</div>
                   <div style={{ fontSize: '12px', color: aviso ? C.warn : C.tintaSuave }}>{bajada}</div>
                 </div>
-                <input type="date" aria-label={`Inicio de ${f.nombre}`} value={v.inicio ?? ''} data-testid={`inicio-${f.actividadId}`}
-                  onChange={(e) => f.actividadId && ed.poner(f.actividadId, { inicio: e.target.value || null, fin: v.fin && e.target.value && v.fin < e.target.value ? e.target.value : v.fin })}
-                  style={{ ...campo, color: v.inicio ? C.tinta : C.tenue }} />
-                <input type="date" aria-label={`Fin de ${f.nombre}`} value={v.fin ?? ''} data-testid={`fin-${f.actividadId}`}
-                  onChange={(e) => f.actividadId && ed.poner(f.actividadId, { inicio: v.inicio && e.target.value && e.target.value < v.inicio ? e.target.value : v.inicio, fin: e.target.value || null })}
-                  style={{ ...campo, color: v.fin ? C.tinta : C.tenue }} />
+                <FechaCorta etiqueta={`Inicio de ${f.nombre}`} valor={v.inicio} testid={`inicio-${f.actividadId}`} estilo={campo}
+                  alCambiar={(x) => f.actividadId && ed.poner(f.actividadId, { inicio: x, fin: v.fin && x && v.fin < x ? x : v.fin })} />
+                <FechaCorta etiqueta={`Fin de ${f.nombre}`} valor={v.fin} testid={`fin-${f.actividadId}`} estilo={campo}
+                  alCambiar={(x) => f.actividadId && ed.poner(f.actividadId, { inicio: v.inicio && x && x < v.inicio ? x : v.inicio, fin: x })} />
               </div>
             )
           })}
