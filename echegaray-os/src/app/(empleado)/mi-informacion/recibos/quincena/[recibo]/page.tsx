@@ -55,6 +55,20 @@ export default async function MiReciboDeQuincenaPage({ params }: { params: Promi
       volver={{ href: '/mi-informacion/recibos', label: 'Recibos' }}>
       <div data-testid="mi-recibo-quincena" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ background: C.surface, border: `1px solid ${C.linea}`, borderRadius: 14, padding: 18, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* EL LOGO, ARRIBA (dueño, 24/09/2026: «no me gusta que no hagas todos los recibos que emite la
+              plataforma, sea interno o a clientes, sin que le pongas el logo arriba»). El mismo archivo y la
+              misma forma que el papel de Liquidación (`HojaDelRecibo`): `<img>` a `/marca/logo.png`, que el
+              middleware deja pasar para el nivel campo. El PNG trae margen transparente alrededor del dibujo
+              (x 73–503, y 39–363 de 578×432): los márgenes negativos alinean el DIBUJO al borde del papel. */}
+          <div data-testid="mi-recibo-cabecera" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, paddingBottom: 14, borderBottom: `1px solid ${C.divisorSuave}` }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/marca/logo.png" alt="Echegaray Construcciones S.A.S." height={72}
+              style={{ height: 72, width: 'auto', display: 'block', margin: '-6px 0 -11px -12px' }} />
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: C.ink }}>Recibo de pago</div>
+              <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>{periodoCorto(r)}</div>
+            </div>
+          </div>
           <div>
             <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, letterSpacing: '.06em', color: C.faint, textTransform: 'uppercase' }}>
               Total a cobrar

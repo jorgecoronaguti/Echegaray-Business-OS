@@ -19,7 +19,7 @@ texto real —no una imagen— así que el propio motor documental del OS despu�
 
   python3 recibo-cliente-pdf.py <datos.json> <salida.pdf>
 """
-import sys, json
+import sys, json, os
 import fitz
 
 TINTA = (0.188, 0.188, 0.184)      # el grafito de la marca
@@ -30,6 +30,19 @@ VERDE = (0.15, 0.45, 0.28)
 
 M = 48                              # margen
 ANCHO, ALTO = 595, 842              # A4
+
+# EL LOGO, ARRIBA A LA IZQUIERDA (dueño, 24/09/2026: «no me gusta que no hagas todos los recibos que
+# emite la plataforma, sea interno o a clientes, sin que le pongas el logo arriba»). Es el MISMO archivo
+# que sirve la app (`public/marca/logo.png`, 578×432): no una copia que se desactualiza. Sin el archivo
+# el recibo NO sale — un recibo a un cliente sin la marca es justo lo que el dueño rechazó.
+LOGO = os.environ.get("ORQ_LOGO_PNG") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "public", "marca", "logo.png")
+# El PNG trae un margen TRANSPARENTE alrededor del dibujo (medido: el trazo ocupa x 73–503, y 39–363
+# de 578×432). Se escala por el DIBUJO y se corre el marco para que el dibujo —no el margen invisible—
+# quede alineado al margen del recibo; si no, el logo se ve sangrado hacia adentro.
+LOGO_PX = (578, 432)
+LOGO_DIBUJO = (73, 39, 503, 363)
+LOGO_ALTO = 58                      # pt de dibujo visible
 
 
 def pesos(n):
@@ -74,15 +87,21 @@ def dibujar(d, salida):
     h = Hoja(doc)
 
     # ── CABECERA ──
-    h.p.draw_rect(fitz.Rect(M, M - 6, M + 3, M + 26), color=ACENTO, fill=ACENTO)
-    h.y = M + 6
-    h.texto(M + 12, "ECHEGARAY CONSTRUCCIONES S.A.S.", 11, TINTA, True)
-    h.y += 13
-    h.texto(M + 12, "CUIT 30-71630464-3", 8, APAGADO)
+    # El logo ya trae el nombre de la empresa; la razón social y el CUIT van igual escritos debajo,
+    # chicos: son texto real del PDF (el motor documental los lee) y lo que identifica al emisor.
+    if not os.path.isfile(LOGO):
+        raise FileNotFoundError(f"falta el logo en {LOGO}: el recibo no sale sin la marca")
+    esc = LOGO_ALTO / (LOGO_DIBUJO[3] - LOGO_DIBUJO[1])
+    x0, y0 = M - LOGO_DIBUJO[0] * esc, (M - 8) - LOGO_DIBUJO[1] * esc
+    h.p.insert_image(fitz.Rect(x0, y0, x0 + LOGO_PX[0] * esc, y0 + LOGO_PX[1] * esc), filename=LOGO)
+    h.y = M - 8 + LOGO_ALTO + 16
+    h.texto(M, "ECHEGARAY CONSTRUCCIONES S.A.S. · CUIT 30-71630464-3", 7.5, APAGADO)
+    fin_izq = h.y
     h.y = M + 6
     h.texto(M, f"RECIBO N° {d['numero']}", 11, TINTA, True, ancho=ANCHO - 2 * M, derecha=True)
     h.y += 13
     h.texto(M, fecha_ar(d["fecha"]), 8, APAGADO, ancho=ANCHO - 2 * M, derecha=True)
+    h.y = fin_izq - 12
 
     h.y += 26
     h.regla()

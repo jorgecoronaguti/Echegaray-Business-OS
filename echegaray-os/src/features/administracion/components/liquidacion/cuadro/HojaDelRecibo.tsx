@@ -74,9 +74,12 @@ export function HojaDelRecibo({ hoja, nombre, categoria, quincena, recibo, borde
           {/* EL LOGO, ARRIBA (dueño, 22/09/2026). Ya trae el nombre de la empresa, así que no se repite
               escrito. Va como `<img>` y no como `next/image` a propósito: lo que se imprime es una COPIA
               del HTML de este recuadro, y el marcado que genera `next/image` (srcset, carga diferida) no
-              sobrevive a esa copia — saldría el hueco vacío. */}
+              sobrevive a esa copia — saldría el hueco vacío.
+              El PNG trae margen TRANSPARENTE alrededor del dibujo (x 73–503, y 39–363 de 578×432): los
+              márgenes negativos alinean el dibujo al borde del texto; sin ellos el logo se ve sangrado
+              hacia adentro (dueño, 24/09/2026: el logo arriba a la izquierda en todo recibo). */}
           <img src="/marca/logo.png" alt="Echegaray Construcciones S.A.S." height={92}
-            style={{ height: 92, width: 'auto', display: 'block' }} />
+            style={{ height: 92, width: 'auto', display: 'block', margin: '-8px 0 -9px -15px' }} />
           <div style={{ fontSize: '11.5px', color: '#6B6B69', marginTop: 6 }}>San Juan · Argentina</div>
         </div>
         <div style={{ textAlign: 'right' }}>
