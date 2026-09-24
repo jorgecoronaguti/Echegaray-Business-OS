@@ -43,6 +43,7 @@ import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
 import { IconoCuadrilla, IconoPersona } from '@/shared/components/iconos'
 import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
+import { PlegadoEnTelefono } from '@/shared/components/PlegadoEnTelefono'
 import { NotaBloque, V } from '@/shared/components/v2/patron'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { BloqueAsistenciaQuincena } from '@/features/administracion/components/BloqueAsistenciaQuincena'
@@ -346,7 +347,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             espacioPanel={false}
             vistas={vistasDe('liquidacion', sp.quincena, veLaPlata)}
           />
-          <div style={{ padding: '0 20px 24px' }}>
+          <div className="max-md:!px-4" style={{ padding: '0 20px 24px' }}>
             <BarraSolapas
               activa={solapa.clave}
               hrefDe={(clave) => hrefSolapa(sp, { solapa: clave })}
@@ -415,7 +416,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
               hrefQuincena={hrefAsistenciaCon(sp, { obra: undefined, modo: 'quincena' })}
             />
           ) : (
-            <div style={{ padding: '10px 20px 24px' }}>
+            <div className="max-md:!px-4" style={{ padding: '10px 20px 24px' }}>
               {/* LA GRILLA DE LA QUINCENA SE USA EN COMPUTADORA. En el teléfono la pantalla ya cae en
                   la carga del día (`modoDeAsistencia`); si alguien fuerza `modo=quincena`, la grilla
                   rueda por dentro de su cinta pero dieciséis columnas de días en 390px no se leen. El
@@ -519,7 +520,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           { clave: 'hh', que: 'las horas del mes', error: hh?.error },
           { clave: 'papeles', que: 'los papeles del legajo', error: papeles?.error },
         ].filter((f) => f.error).map((f) => (
-          <div key={f.clave} style={{ padding: '12px 20px 0' }}>
+          <div key={f.clave} className="max-md:!px-4" style={{ padding: '12px 20px 0' }}>
             <Aviso tono="info" testid={`sin-lectura-${f.clave}`} titulo={`No pude leer ${f.que}`}>
               {f.error}
             </Aviso>
@@ -560,9 +561,19 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           }
         />
 
-        <div style={{ padding: '10px 20px 24px' }}>
+        <div className="max-md:!px-4" style={{ padding: '10px 20px 24px' }}>
           <div className="flex flex-col lg:flex-row lg:items-stretch">
             <div className="min-w-0 flex-1">
+              {/* EN EL TELÉFONO LOS DOS RECORTES SON UN SOLO CONTROL (dueño, 24/09/2026). A 390px las dos
+                  hileras —corte y obra— ocupaban siete renglones antes de la primera persona. El botón
+                  dice lo que está puesto; en escritorio no existe y las dos filas se ven como siempre. */}
+              <PlegadoEnTelefono
+                rotulo="Filtros"
+                resumen={`${FILTROS.find((f) => f.valor === filtro)?.etiqueta ?? 'Plantel'} · ${
+                  obraElegida ? (chipsDeObra.find((c) => c.clave === obraElegida)?.etiqueta ?? obraElegida) : 'todas las obras'
+                } · ${personas.length}/${conteos[filtro] ?? personas.length}`}
+                testid="filtros-plantel"
+              >
               <FiltrosSuaves
                 testid="filtro"
                 conteo={{ n: personas.length, total: conteos[filtro] ?? personas.length }}
@@ -590,6 +601,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
                 filtro={filtro}
                 hrefDe={(cambios) => armarHref(sp, cambios)}
               />
+              </PlegadoEnTelefono>
 
               <TablaPersonas
                 personas={personas}
@@ -654,7 +666,7 @@ function NavDiscreta({ href, children, testid, icono }: {
       href={href}
       prefetch={false}
       data-testid={testid}
-      className="hover:text-[#1F1F1E]"
+      className="hover:text-[#1F1F1E] max-md:min-h-[44px] max-md:!text-[13.5px]"
       style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '12.5px', color: V.apagado }}
     >
       <Icono className="h-[15px] w-[15px]" />

@@ -48,6 +48,7 @@ import {
   seccionDeProveedores, seccionesDeCompras,
 } from '@/features/administracion/services/seccionesDeCompras'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
+import { PlegadoEnTelefono } from '@/shared/components/PlegadoEnTelefono'
 import { BarraFiltros, SelectFiltro } from '@/features/administracion/components/BarraFiltros'
 import { NotaBloque, V } from '@/shared/components/v2/patron'
 import { pesos } from '@/shared/components/canon/formato'
@@ -319,17 +320,32 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
       />
 
       {errorSeleccionado && (
-        <div style={{ padding: '12px 20px 0' }} data-testid="proveedor-seleccionado-error">
+        <div className="max-md:!px-4" style={{ padding: '12px 20px 0' }} data-testid="proveedor-seleccionado-error">
           <Aviso tono="neg" titulo="No pude abrir ese proveedor">{errorSeleccionado}</Aviso>
         </div>
       )}
 
-      <div style={{ padding: '10px 20px 24px' }}>
+      <div className="max-md:!px-4" style={{ padding: '10px 20px 24px' }}>
         <div className="flex flex-col lg:flex-row lg:items-stretch">
-          <div className="min-w-0 flex-1">
+          {/* CON UN PANEL ABIERTO, EL TELÉFONO MUESTRA SÓLO EL PANEL (24/09/2026): apilado debajo de la
+              lista quedaba a noventa filas del dedo que lo abrió. Su cruz vuelve a la lista. */}
+          <div className={`min-w-0 flex-1 ${panelAbierto ? 'max-md:hidden' : ''}`}>
             {maestro
               ? (
                   <>
+                    {/* EN EL TELÉFONO, UN SOLO CONTROL PARA TODOS LOS RECORTES (dueño, 24/09/2026). A 390px
+                        eran un segundo buscador, dos desplegables, «Filtrar» y dos hileras de pastillas
+                        antes del primer proveedor. El botón dice lo puesto; en escritorio no existe. */}
+                    <PlegadoEnTelefono
+                      rotulo="Filtros"
+                      resumen={[
+                        soloSinCuit ? 'Sin CUIT' : soloSub ? 'Subcontratistas' : activo === 'activos' ? 'Activos' : activo === 'archivados' ? 'Archivados' : 'Todos',
+                        sp.rubro || null,
+                        sp.deuda === 'con' ? 'con deuda' : sp.deuda === 'sin' ? 'sin deuda' : null,
+                        `${lista.length}/${porFiltro.length}`,
+                      ].filter(Boolean).join(' · ')}
+                      testid="filtros-proveedores-plegados"
+                    >
                     <BarraFiltros
                       accion={RUTA}
                       q={sp.q}
@@ -390,6 +406,7 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                           : []),
                       ]}
                     />
+                    </PlegadoEnTelefono>
 
                     {(resolucion?.error || subcontratistas?.error) && (
                       <p style={{ marginBottom: 10, fontSize: '12px', color: V.warn }} data-testid="cartera-sin-derivados">

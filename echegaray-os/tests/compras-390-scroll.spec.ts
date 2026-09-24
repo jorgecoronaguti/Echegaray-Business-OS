@@ -26,14 +26,20 @@ const RUTA = '/administracion/compras'
 const TELEFONO = { width: 390, height: 844 }
 
 test.describe('Compras en el teléfono', () => {
-  test('la tabla scrollea adentro de su cinta y la página queda quieta', async ({ page }) => {
+  // ═══ DESDE EL 24/09/2026 EL TELÉFONO NO DIBUJA LA GRILLA ═══
+  //
+  // El dueño: «es un desastre todo lo relacionado a mobile». A 390px la grilla en dos columnas era el
+  // proveedor y un desplegable de obra cortado por fila. Ahora el teléfono dibuja una LISTA
+  // (`lista-compras-telefono`) y la grilla queda sólo desde 768px. Lo que se exige es lo mismo que
+  // antes —la página no se corre de costado— más que la lista esté y cada fila entre en la pantalla.
+  test('en el teléfono es una lista, entra entera y la página queda quieta', async ({ page }) => {
     test.setTimeout(120000)
     await entrarComo(page, ADMIN.email, ADMIN.password)
     await page.setViewportSize(TELEFONO)
     await page.goto(RUTA)
-    await expect(page.getByTestId('tabla-compras-sheet')).toBeVisible()
+    await expect(page.getByTestId('lista-compras-telefono')).toBeVisible()
+    await expect(page.getByTestId('cinta-compras')).toBeHidden()
 
-    // 1 · LA PÁGINA NO SE VA DE COSTADO. Misma regla que `shell-dos-areas.spec.ts`.
     const pagina = await page.evaluate(() => ({
       doc: document.documentElement.scrollWidth,
       body: document.body.scrollWidth,
@@ -44,43 +50,14 @@ test.describe('Compras en el teléfono', () => {
       `la página se desplaza de costado (${pagina.doc}px de documento y ${pagina.body} de body en una pantalla de ${pagina.win}px)`,
     ).toBeLessThanOrEqual(pagina.win)
 
-    // 2 · EL CORTE POR ANCHO LLEGÓ AL NAVEGADOR: a 390px la fila dibuja DOS pistas, no nueve.
-    // Este aserto reemplaza al de «la cinta desborda» del 08/09: mientras las variantes de ancho
-    // estuvieron apagadas en el build, la fila traía sus nueve columnas y el desborde era la prueba
-    // del defecto, no del arreglo. Lo que hay que exigir es el corte; el desborde pasó a ser una
-    // consecuencia que puede o no darse.
-    const pistas = await page.getByTestId('compra-proveedor').first()
-      // `closest('[role="row"]')` y no `parentElement`: entre la celda y la fila hay un `<Link>`
-      // con `display: contents`, que no tiene grilla propia y devolvería una sola pista siempre.
-      .evaluate((el) => getComputedStyle(el.closest('[role="row"]')!).gridTemplateColumns.split(' ').length)
-    expect(
-      pistas,
-      `a 390px la fila dibuja ${pistas} columnas: el corte por ancho no llegó al CSS servido (ver cortes-por-ancho-llegan-al-css.test.ts)`,
-    ).toBe(2)
-
-    // 3 · Y EL DATO NO SE RECORTA: si algo sobra del ancho visible, la cinta lo desplaza.
-    const cinta = page.getByTestId('cinta-compras')
-    const medida = await cinta.evaluate((el) => ({
-      dentro: el.scrollWidth,
-      visible: el.clientWidth,
-      desborde: getComputedStyle(el).overflowX,
-    }))
-    if (medida.dentro > medida.visible) {
-      expect(
-        medida.desborde,
-        `sobran ${medida.dentro - medida.visible}px adentro de la cinta y no se pueden desplazar: el dato se está recortando`,
-      ).toMatch(/auto|scroll/)
-    }
-
-    // 4 · AL FINAL DEL RECORRIDO LA FILA SIGUE TENIENDO DUEÑO: Proveedor queda a la vista.
-    await cinta.evaluate((el) => { el.scrollLeft = el.scrollWidth })
-    await page.waitForTimeout(200)
-    const proveedor = page.getByTestId('compra-proveedor').first()
-    await expect(proveedor).toBeVisible()
-    const caja = await proveedor.boundingBox()
-    expect(caja, 'la celda de proveedor no tiene caja').not.toBeNull()
-    expect(caja!.x, 'el proveedor se fue por la izquierda al llegar al final del scroll').toBeGreaterThanOrEqual(-1)
+    const fila = page.getByTestId('compra-telefono').first()
+    await expect(fila).toBeVisible()
+    const caja = await fila.boundingBox()
+    expect(caja, 'la fila de compra no tiene caja').not.toBeNull()
+    expect(caja!.x).toBeGreaterThanOrEqual(-1)
     expect(caja!.x + caja!.width).toBeLessThanOrEqual(TELEFONO.width + 1)
+    // El objetivo táctil: la fila entera, y no menos de 44px.
+    expect(caja!.height).toBeGreaterThanOrEqual(44)
 
     await page.screenshot({ path: 'tests/qa-shots/compras-390-scroll.png', fullPage: false })
   })

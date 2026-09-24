@@ -57,6 +57,7 @@
 // Y lo que la tabla no muestra TAMPOCO SE LE PIDE A LA BASE: `personasService` sigue nombrando sus
 // columnas una por una, así que ni DNI, ni CUIL, ni retribución viajan al navegador.
 
+import { Fragment, type ReactNode } from 'react'
 import Link from 'next/link'
 import { IconoPersona } from '@/shared/components/iconos'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
@@ -175,7 +176,7 @@ export function TablaPersonas({
 
   return (
     <div data-testid="tabla-personas">
-      <div className={`grid ${cols}`} style={{ ...ENCABEZADO, gap: conBaja ? 14 : GAP }}>
+      <div className={`grid ${cols} max-md:!hidden`} style={{ ...ENCABEZADO, gap: conBaja ? 14 : GAP }}>
         <RotuloCol>Persona</RotuloCol>
         {/* «CATEGORÍA», NO «PUESTO» (07/09/2026, pedido del dueño). El campo guarda la categoría de
             convenio —oficial, ayudante, oficial especializado—, que es lo que decide la tarifa; el
@@ -224,13 +225,21 @@ export function TablaPersonas({
             })
           : 'nada'
         return (
+          <Fragment key={p.id}>
+          <FilaTelefono
+            p={p}
+            conBaja={conBaja}
+            asistencia={asistencia}
+            ficho={ficho}
+            hh={!conPulso || !pulso?.hhDisponible ? null : pulso.hh.has(p.id) ? `${horasVisibles(pulso.hh.get(p.id) ?? 0)} h quinc.` : 'sin HH'}
+            acciones={marcar ? <AccionesHoy p={p} oferta={oferta} fecha={marcar.fecha} inicial={pulso?.tardanzas.get(p.id)} tactil /> : null}
+          />
           <Link
-            key={p.id}
             href={`/administracion/personas/${p.id}`}
             prefetch={false}
             role="row"
             data-testid="fila-persona"
-            className={`grid items-center ${CAJA_CONTENIDO} ${cols} hover:bg-[#F2F1ED] max-[1249px]:!h-auto max-[1249px]:py-2`}
+            className={`grid items-center ${CAJA_CONTENIDO} ${cols} hover:bg-[#F2F1ED] max-[1249px]:!h-auto max-[1249px]:py-2 max-md:!hidden`}
             style={{
               gap: conBaja ? 14 : GAP,
               height: ALTO_V2.fila,
@@ -347,6 +356,7 @@ export function TablaPersonas({
                   </>
                 )}
           </Link>
+          </Fragment>
         )
           })}
         </div>
@@ -431,6 +441,86 @@ function CeldaHoy({ clasificacion, ficho }: { clasificacion: ClasificacionDelDia
           sirve». La columna HOY dice sólo la presencia; la cantidad ya tiene su columna (HH QUINCENA) y su
           pantalla (Asistencia). */}
     </>
+  )
+}
+
+/**
+ * LA FILA DEL TELÉFONO (dueño, 24/09/2026: «es un desastre todo lo relacionado a mobile»).
+ *
+ * Debajo de `md` la grilla de escritorio no se aprieta: se reemplaza por esta fila de lista. Los
+ * mismos datos y las mismas acciones, en tres renglones que no se truncan entre sí:
+ *
+ *   1. el nombre y, a la derecha, el ESTADO de hoy («● presente», «sin marcar»);
+ *   2. la obra —ámbar si no tiene— y las horas de la quincena, apagadas;
+ *   3. las acciones de hoy en tres botones parejos de 44px (Presente/quitar · Llegó tarde · Salió antes).
+ *
+ * Antes eran botones de anchos distintos que envolvían en dos renglones distintos por persona, con la
+ * obra cortada a la derecha del nombre. Los botones son LOS MISMOS componentes que la columna HOY; la
+ * grilla de abajo sólo les pareja el ancho y el alto (`[&_button]`), sin tocar su lógica.
+ */
+function FilaTelefono({ p, conBaja, asistencia, ficho, hh, acciones }: {
+  p: PersonaEnDirectorio
+  conBaja: boolean
+  asistencia: ClasificacionDelDia | null
+  ficho: boolean
+  /** El texto de las horas, o `null` cuando la columna no aplica (inactivos) o no se leyó. */
+  hh: string | null
+  acciones: ReactNode
+}) {
+  const obra = p.obra_actual_id ? (p.obra_actual ?? p.obra_actual_id) : 'sin asignar'
+  return (
+    <Link
+      href={`/administracion/personas/${p.id}`}
+      prefetch={false}
+      data-testid="fila-persona-telefono"
+      className="flex flex-col gap-1 py-3 active:bg-surface-sunken md:!hidden"
+      style={{
+        borderBottom: `1px solid ${V.lineaFila}`,
+        boxShadow: !conBaja && p.en_la_empresa && !p.obra_actual_id ? FILO_BLOQUEA : undefined,
+        paddingLeft: !conBaja && p.en_la_empresa && !p.obra_actual_id ? 10 : 0,
+      }}
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
+          <IconoPersona className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1 truncate" style={{ fontSize: '14.5px', fontWeight: 500, color: V.tinta }}>
+          {oracion(p.nombre_completo)}
+        </span>
+        {!conBaja && (
+          <span className="flex shrink-0 items-center gap-1" data-testid="hoy-persona-telefono" data-estado={asistencia?.presencia}>
+            {asistencia
+              ? <CeldaHoy clasificacion={asistencia} ficho={ficho} />
+              : <span style={{ fontSize: '12px', color: V.lupa }}>sin lectura</span>}
+          </span>
+        )}
+      </span>
+      <span className="flex min-w-0 items-baseline gap-2 pl-6" style={{ fontSize: '12.5px' }}>
+        <span className="min-w-0 truncate" style={{ color: p.obra_actual_id ? V.tintaSuave : conBaja ? V.lupa : V.warn }}>
+          {obra}
+        </span>
+        {conBaja
+          ? (
+              <span className="ml-auto shrink-0 font-mono tabular-nums" style={{ fontSize: '12px', color: p.fecha_egreso ? V.apagado : V.warn }}>
+                {fechaCorta(p.fecha_egreso) ?? 'sin papel de baja'}
+              </span>
+            )
+          : hh && (
+              <span className="ml-auto shrink-0 font-mono tabular-nums" style={{ fontSize: '12px', color: V.apagado }} data-testid="hh-quincena-telefono">
+                {hh}
+              </span>
+            )}
+      </span>
+      {acciones && (
+        <span
+          className={'mt-1 grid grid-cols-3 gap-2 pl-6 [&:empty]:hidden [&_button]:!h-11 [&_button]:!w-full [&_button]:!rounded-[10px]'
+            + ' [&_button]:!px-1 [&_button]:!text-[13px] [&_[role=group]]:col-span-2 [&_[role=group]]:!grid [&_[role=group]]:grid-cols-2 [&_[role=group]]:!gap-2'}
+          data-testid="acciones-hoy-telefono"
+        >
+          {acciones}
+        </span>
+      )}
+    </Link>
   )
 }
 

@@ -9,7 +9,14 @@ import { scrollParaMostrar } from '../desplazarSolapa'
 // (`barra-corrible`, globals.css) y al montar se corre lo justo para que la solapa con
 // `aria-current="page"` quede a la vista — la misma regla que `AppHeader`. En escritorio entra todo
 // y no se corre nada.
-export function BarraCorrible({ children, style, testid }: { children: ReactNode; style?: CSSProperties; testid?: string }) {
+export function BarraCorrible({ children, style, testid, className }: {
+  children: ReactNode
+  style?: CSSProperties
+  testid?: string
+  /** Clases extra. `CabeceraSeccion` la apaga en escritorio con `md:!contents`: ahí las solapas siguen
+   *  siendo hijas de su fila de siempre y la banda sólo existe en el teléfono. */
+  className?: string
+}) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const nav = ref.current
@@ -20,7 +27,7 @@ export function BarraCorrible({ children, style, testid }: { children: ReactNode
     if (nuevo != null) nav.scrollLeft = nuevo
   }, [])
   return (
-    <div ref={ref} className="barra-corrible" style={{ display: 'flex', alignItems: 'stretch', minWidth: 0, ...style }} data-testid={testid}>
+    <div ref={ref} className={className ? `barra-corrible ${className}` : 'barra-corrible'} style={{ display: 'flex', alignItems: 'stretch', minWidth: 0, ...style }} data-testid={testid}>
       {children}
     </div>
   )

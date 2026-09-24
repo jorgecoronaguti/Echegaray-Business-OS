@@ -71,11 +71,12 @@ test('en el Plantel la tardanza se ofrece sobre un presente y, desde el 17/09, d
   // (`boton`) la tardanza va directa y declara presente en esa obra; nunca sobre ausencia ni sin obra.
   assert.match(src, /oferta === 'boton' && \(\s*<MarcaTardanzaHoy[\s\S]{0,400}obraSinMarcar=\{p\.obra_actual_id as string\}/)
   assert.doesNotMatch(src, /oferta === 'sin_obra' && \(\s*<MarcaTardanzaHoy/)
-  // UNA SOLA DEFINICIÓN DE LAS ACCIONES (`AccionesHoy`) Y DOS LUGARES (17/09/2026): la columna HOY en
-  // escritorio y el bloque táctil debajo del nombre en el teléfono. Quitar el del teléfono deja otra
-  // vez sin forma de marcar asistencia debajo de 1250 px.
+  // UNA SOLA DEFINICIÓN DE LAS ACCIONES (`AccionesHoy`) Y TRES LUGARES: la columna HOY en escritorio,
+  // el bloque táctil debajo del nombre entre 768 y 1249 px (17/09/2026) y la fila de lista del
+  // teléfono (24/09/2026). Quitar cualquiera deja un ancho sin forma de marcar asistencia.
   const lugares = src.match(/<AccionesHoy p=\{p\} oferta=\{oferta\} fecha=\{marcar\.fecha\} inicial=\{pulso\?\.tardanzas\.get\(p\.id\)\}/g) ?? []
-  assert.equal(lugares.length, 2, 'las acciones de hoy tienen que estar en escritorio y en el teléfono')
+  assert.equal(lugares.length, 3, 'las acciones de hoy tienen que estar en escritorio, en angosto y en el teléfono')
+  assert.match(src, /<FilaTelefono[\s\S]{0,600}acciones=\{marcar \? <AccionesHoy[^>]*tactil \/> : null\}/)
   assert.match(src, /data-testid="hoy-persona-movil"[\s\S]{0,400}<AccionesHoy[^>]*tactil \/>/)
   // La columna HOY creció para que los cuatro controles entren en una línea.
   assert.match(src, /_130px_260px_90px_70px_90px\]/)

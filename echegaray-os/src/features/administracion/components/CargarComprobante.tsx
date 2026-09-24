@@ -123,7 +123,8 @@ export function CargarComprobante() {
         onClick={() => setAbierto((v) => !v)}
         aria-expanded={abierto}
         data-testid="abrir-carga"
-        className="inline-flex cursor-pointer items-center gap-1.5 rounded-[6px] bg-marca px-[11px] py-[6px] text-[12.5px] font-semibold text-[#1F1F1E] transition-colors hover:bg-[#EEBE00]"
+        // EN EL TELÉFONO, LA PRIMARIA DE 48px A TODO EL ANCHO (24/09/2026). Desde `md`, el botón de siempre.
+        className="inline-flex cursor-pointer items-center gap-1.5 rounded-[6px] bg-marca px-[11px] py-[6px] text-[12.5px] font-semibold text-[#1F1F1E] transition-colors hover:bg-[#EEBE00] max-md:min-h-[48px] max-md:w-full max-md:justify-center max-md:rounded-[12px] max-md:text-[15px]"
       >
         <IcoSubir s={14} />
         Cargar comprobante
@@ -140,7 +141,9 @@ function PanelDeCarga({ carga, onCerrar }: { carga: Carga; onCerrar: () => void 
   const [encima, setEncima] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   return (
-    <div style={PANEL} data-testid="panel-carga">
+    // En el teléfono el panel baja al flujo, a todo el ancho: flotando a la derecha de un botón de
+    // ancho completo tapaba la lista con un recuadro de 86vw.
+    <div style={PANEL} className="max-md:!static max-md:mt-2 max-md:!w-full max-md:!max-w-none" data-testid="panel-carga">
       <ZonaDeArrastre
         encima={encima}
         pendiente={carga.subiendo}

@@ -330,17 +330,17 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
         vistas={seccionesDeCompras('compras', { compras: todas.length })}
         filtros={(
           // EL CONTROL CONTRA ARCA NO DESAPARECE: es otra pregunta y tiene su puerta.
-          <Link href={`${RUTA}?f=arca`} data-testid="ir-control-arca" className="text-[12px] text-faint underline underline-offset-2">
+          <Link href={`${RUTA}?f=arca`} data-testid="ir-control-arca" className="text-[12px] text-faint underline underline-offset-2 max-md:inline-flex max-md:min-h-[44px] max-md:items-center max-md:text-[13.5px]">
             Control ARCA
           </Link>
         )}
       />
 
-      <div style={{ padding: '0 20px' }}>
+      <div className="max-md:!px-4" style={{ padding: '0 20px' }}>
         <EntradasSubidas entradas={entradas.data ?? []} />
       </div>
 
-      <div style={{ padding: '0 20px 20px' }}>
+      <div className="max-md:!px-4" style={{ padding: '0 20px 20px' }}>
         {filtro === 'sueltos' ? (
           <div style={{ background: C.superficie, border: `1px solid ${C.linea}`, borderRadius: 10, overflow: 'hidden' }}>
             <AdjuntosSueltos adjuntos={listado.data.sueltos} />
@@ -355,9 +355,21 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                   debajo del split, así que al abrir el panel la nota quedaba cruzando por debajo de
                   los dos y decía «6 de 882» a lo ancho de una pantalla donde la lista ocupa la
                   mitad: el número se leía como si describiera el panel también. */}
-              <div className="min-w-0 flex-1">
+              {/* CON UNA COMPRA ABIERTA, EL TELÉFONO MUESTRA SÓLO EL PANEL (24/09/2026). Apilado debajo
+                  quedaba a doscientas filas de distancia del dedo que lo abrió; la cruz del panel vuelve
+                  a la lista. Desde `md` la lista sigue al lado, como siempre. */}
+              <div className={`min-w-0 flex-1 ${filaAbierta ? 'max-md:hidden' : ''}`}>
                 {/* LOS RECORTES VIVEN SOBRE LA LISTA QUE RECORTAN (`v4A:208`), no en la cabecera:
                     con el panel abierto, un chip arriba del split gobierna visualmente los dos. */}
+                {/* EN EL TELÉFONO, LOS RECORTES Y LOS CRITERIOS SON UN SOLO CONTROL (dueño, 24/09/2026).
+                    Antes eran tres hileras de pastillas más el botón «Filtros» de los criterios: dos
+                    niveles de filtro antes de la primera compra. El botón dice qué está puesto; en
+                    escritorio no existe y todo se ve como siempre. */}
+                <PlegadoEnTelefono
+                  rotulo="Filtros"
+                  resumen={`${ROTULO_SHEET[filtro]} · ${recorte.enPantalla.length}/${todas.length}${hayCriterios(criterios) ? ' · con criterios' : ''}`}
+                  testid="filtros-plegados"
+                >
                 <FiltrosSheet
                   conteos={conteos} activo={filtro} hrefDe={href} sueltos={listado.data.sueltos.length}
                   conteo={{ n: recorte.enPantalla.length, total: todas.length }}
@@ -380,7 +392,7 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                     concluía que el gasto no se había cargado. Al pie sigue estando el resto de las
                     declaraciones; ésta sube porque es la que cambia lo que se está mirando. */}
                 {recorte.ocultas > 0 && (
-                  <p className="text-[11.5px] text-faint" style={{ marginTop: -2, marginBottom: 8 }} data-testid="compras-recortada">
+                  <p className="text-[11.5px] text-faint max-md:!hidden" style={{ marginTop: -2, marginBottom: 8 }} data-testid="compras-recortada">
                     mostrando <Num>{recorte.enPantalla.length}</Num> de <Num>{visibles.length}</Num>
                     {' · '}
                     <Link
@@ -398,7 +410,6 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                     («de DUPEC, en agosto, arriba de $500.000»): el orden visual dice el orden lógico. */}
                 {/* EN EL TELÉFONO LOS FILTROS ARRANCAN PLEGADOS (capturado 23/09/2026: once controles
                     antes de la primera compra). En escritorio se ven siempre. */}
-                <PlegadoEnTelefono rotulo={hayCriterios(criterios) ? 'Filtros · hay criterios puestos' : 'Filtros'} testid="filtros-plegados">
                 <FiltrosComprasSheet
                   accion={RUTA}
                   q={sp.q}
@@ -408,6 +419,21 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                   limpiarHref={hayCriterios(criterios) ? hrefSinCriterios() : undefined}
                 />
                 </PlegadoEnTelefono>
+                {/* EL RECORTE SE DECLARA TAMBIÉN EN EL TELÉFONO, fuera del plegado: es lo que cambia lo
+                    que se está mirando y no puede quedar detrás de un toque. */}
+                {recorte.ocultas > 0 && (
+                  <p className="text-[12.5px] text-faint md:hidden" style={{ marginBottom: 8 }} data-testid="compras-recortada-telefono">
+                    mostrando <Num>{recorte.enPantalla.length}</Num> de <Num>{visibles.length}</Num>
+                    {' · '}
+                    <Link
+                      prefetch={false}
+                      href={urlSheet({ todo: true })}
+                      className="inline-flex min-h-[44px] items-center underline underline-offset-2"
+                    >
+                      ver todas
+                    </Link>
+                  </p>
+                )}
                 <TablaComprasSheet
                   filas={recorte.enPantalla}
                   seleccionada={filaAbierta?.fila}

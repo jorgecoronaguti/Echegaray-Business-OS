@@ -134,7 +134,7 @@ export function TablaProveedores({
 }) {
   return (
     <div data-testid="tabla-proveedores">
-      <div className={`grid ${COLS}`} style={{ ...ENCABEZADO, gap: GAP }}>
+      <div className={`grid ${COLS} max-md:!hidden`} style={{ ...ENCABEZADO, gap: GAP }}>
         <RotuloCol>Proveedor</RotuloCol>
         <RotuloCol>CUIT</RotuloCol>
         <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Tipo</RotuloCol></span>
@@ -162,7 +162,9 @@ export function TablaProveedores({
             role="row"
             data-testid="fila-proveedor"
             data-seleccionada={elegido ? '' : undefined}
-            className={`relative grid items-center ${CAJA_CONTENIDO} ${COLS} ${elegido ? '' : 'hover:bg-[#F2F1ED]'}`}
+            // EN EL TELÉFONO LA FILA CRECE A DOS RENGLONES (24/09/2026): nombre y CUIT arriba, y abajo el
+            // tipo y lo adeudado, que en escritorio son columnas y a 390 no se veían en ningún lado.
+            className={`relative grid items-center ${CAJA_CONTENIDO} ${COLS} ${elegido ? '' : 'hover:bg-[#F2F1ED]'} max-md:!h-auto max-md:!gap-y-1 max-md:py-3`}
             style={{
               gap: GAP,
               height: ALTO_V2.fila,
@@ -183,7 +185,7 @@ export function TablaProveedores({
                 href={hrefDe(p.id)}
                 prefetch={false}
                 data-testid="abrir-proveedor"
-                className="min-w-0 truncate after:absolute after:inset-0 after:content-['']"
+                className="min-w-0 truncate after:absolute after:inset-0 after:content-[''] max-md:!text-[14.5px]"
                 style={{ fontSize: '12.5px', fontWeight: 500, color: V.tinta }}
               >
                 {p.nombre}
@@ -308,6 +310,20 @@ export function TablaProveedores({
               data-testid="ultima-compra"
             >
               {c ? (fechaCortaConAnio(c.ultima) ?? 'sin fecha') : comprado ? '—' : 'sin leer'}
+            </span>
+
+            {/* EL SEGUNDO RENGLÓN DEL TELÉFONO: las mismas palabras y las mismas ausencias que las
+                columnas TIPO y ADEUDADO, que desde `md` son las que se ven. */}
+            <span className="col-span-full hidden min-w-0 items-baseline gap-2 pl-6 max-md:flex" style={{ fontSize: '12.5px' }} data-testid="segundo-renglon-proveedor">
+              <span className="min-w-0 truncate" style={{ color: esSub || rubro.declarado ? V.tintaSuave : V.tenue }}>
+                {esSub ? 'Subcontratista' : subcontratistas ? rubro.texto : 'sin leer'}
+              </span>
+              <span
+                className="ml-auto shrink-0 font-mono tabular-nums"
+                style={{ fontSize: '12px', color: !deudas ? V.cuentaApagada : debe?.deuda ? V.tinta : V.cuentaApagada, fontWeight: debe?.deuda ? 600 : 400 }}
+              >
+                {!deudas ? 'sin leer' : !debe?.deuda ? 'al día' : debe.deuda < 0 ? `a favor ${pesos(-debe.deuda) ?? ''}` : `debe ${pesos(debe.deuda) ?? ''}`}
+              </span>
             </span>
           </div>
         )

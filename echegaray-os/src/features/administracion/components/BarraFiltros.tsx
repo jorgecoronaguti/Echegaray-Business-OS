@@ -81,7 +81,8 @@ export function BarraFiltros({
       {!compacta && <button
         type="submit"
         data-testid={testid ? `${testid}-aplicar` : undefined}
-        className="rounded-control border border-line px-3 py-1.5 text-[12px] text-muted hover:bg-slate-50"
+        // En el teléfono, un botón de 44px a todo el ancho: el de 28px no se encontraba con el dedo.
+        className="rounded-control border border-line px-3 py-1.5 text-[12px] text-muted hover:bg-slate-50 max-md:min-h-[44px] max-md:basis-full max-md:bg-surface max-md:text-[14px] max-md:text-ink"
       >
         Filtrar
       </button>}
@@ -141,7 +142,7 @@ export function SelectFiltro({
   testid?: string
 }) {
   return (
-    <label className="flex min-w-0 basis-36 flex-col text-[11px] text-faint">
+    <label className="flex min-w-0 basis-36 flex-col text-[11px] text-faint max-md:flex-1">
       {label}
       <select name={name} defaultValue={valor ?? ''} className={CTRL} data-testid={testid}>
         {opciones.map((o) => (

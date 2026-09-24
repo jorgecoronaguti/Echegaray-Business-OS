@@ -62,6 +62,9 @@ export function BuscadorFilo({ accion, q, placeholder, oculto, testid = 'buscar'
       onSubmit={(e) => e.preventDefault()}
       aria-busy={navegando || undefined}
       data-testid={`${testid}-form`}
+      // EN EL TELÉFONO ES EL CAMPO DE J02 (24/09/2026): caja de borde fuerte, radio 10, 44px de alto y
+      // a todo el ancho. Un filo de 216px sin caja no se encuentra con el dedo. Desde `md`, nada cambia.
+      className={`max-md:!min-h-[44px] max-md:!w-full max-md:!gap-2 max-md:!rounded-[10px] max-md:!border max-md:!px-[11px] max-md:!py-0 max-md:bg-surface ${texto ? 'max-md:!border-accent' : 'max-md:!border-line-strong'}`}
       style={{
         display: 'flex', alignItems: 'center', gap: 7, width: 216, maxWidth: '100%',
         // El filo dice si hay un filtro puesto. `22v2:388`.
@@ -70,7 +73,7 @@ export function BuscadorFilo({ accion, q, placeholder, oculto, testid = 'buscar'
     >
       {Object.entries(oculto ?? {}).map(([k, v]) => (v ? <input key={k} type="hidden" name={k} value={v} /> : null))}
       <span style={{ display: 'flex', color: V.lupa, flexShrink: 0 }}>
-        <IconoBuscar className="h-[13px] w-[13px]" />
+        <IconoBuscar className="h-[13px] w-[13px] max-md:h-4 max-md:w-4" />
       </span>
       <input
         type="search"
@@ -80,6 +83,8 @@ export function BuscadorFilo({ accion, q, placeholder, oculto, testid = 'buscar'
         placeholder={placeholder}
         aria-label={placeholder}
         data-testid={testid}
+        // 16px en el teléfono: con menos, iOS agranda la página al tocar el campo.
+        className="max-md:!text-[16px]"
         style={{
           border: 'none', background: 'transparent', fontSize: '12px',
           color: V.tinta, width: '100%', padding: 0, outline: 'none',

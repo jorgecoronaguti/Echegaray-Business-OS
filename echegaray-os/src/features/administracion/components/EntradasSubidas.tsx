@@ -73,12 +73,14 @@ function FilaEntrada({ entrada }: { entrada: EntradaComprobante }) {
   const cargados = entrada.resultado?.comprobantes ?? null
   return (
     <div
-      className="flex items-center gap-3"
+      // En el teléfono el archivo toma su renglón y lo demás baja: cuatro datos en 358px se truncaban
+      // a tres letras cada uno.
+      className="flex items-center gap-3 max-md:flex-wrap max-md:gap-y-1"
       style={{ borderBottom: `1px solid ${C.lineaFila}`, padding: '8px 14px' }}
       data-testid="fila-entrada"
       data-estado={entrada.estado}
     >
-      <span className="min-w-0 flex-1 truncate text-[12px]" style={{ color: C.tinta }}>{entrada.nombre_archivo}</span>
+      <span className="min-w-0 flex-1 truncate text-[12px] max-md:basis-full max-md:text-[13px]" style={{ color: C.tinta }}>{entrada.nombre_archivo}</span>
       <span className="min-w-0 flex-[2] truncate text-[11.5px]" style={{ color: C.apagado }} title={entrada.motivo ?? r.ayuda}>
         {entrada.motivo ?? r.ayuda}
       </span>

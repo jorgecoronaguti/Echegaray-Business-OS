@@ -298,6 +298,15 @@ export function TablaComprasSheet({
 }) {
   return (
     <div data-testid="tabla-compras-sheet">
+      {/* EN EL TELÉFONO, UNA LISTA Y NO LA GRILLA (dueño, 24/09/2026). La grilla a 390 era el
+          proveedor con el importe abajo y un desplegable de obra por fila: doscientos `select` en una
+          columna de 170px, todos cortados («OB-0011 · SF - PIS…»). Ahora cada compra es un renglón que
+          se toca entero: quién y cuánto arriba; estado, fecha y obra abajo. La obra se cambia en el
+          panel, con el mismo editor (`EditorObraDeCompra`) — el mismo dato, sin el control apretado. */}
+      <div className="md:hidden" data-testid="lista-compras-telefono">
+        {filas.map((f) => <FilaCompraTelefono key={f.fila} f={f} elegida={seleccionada === f.fila} destino={hrefDe(f.fila)} />)}
+      </div>
+      <div className="max-md:hidden">
       <CintaHorizontal
         testid="cinta-compras"
         cabecera={(
@@ -478,6 +487,7 @@ export function TablaComprasSheet({
         )
       })}
       </CintaHorizontal>
+      </div>
 
       {!filas.length && (
         <div data-testid="compras-vacio" style={{ padding: '24px 2px', fontSize: '12.5px', color: V.apagado }}>
@@ -485,6 +495,59 @@ export function TablaComprasSheet({
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * UNA COMPRA EN EL TELÉFONO. Dos renglones: proveedor e importe (lo que decide) y, apagados, estado,
+ * fecha del comprobante y obra. La deuda parcial y la obra que no cierra con el rubro se siguen
+ * diciendo, con las mismas reglas que la grilla. Toda la fila abre el panel de la compra.
+ */
+function FilaCompraTelefono({ f, elegida, destino }: { f: FilaConPapel; elegida: boolean; destino: string }) {
+  const estado = pastillaDe(f.estado)
+  const fecha = fechaDdMmAa(f.fecha)
+  return (
+    <Link
+      href={destino}
+      prefetch={false}
+      scroll={false}
+      data-testid="compra-telefono"
+      data-fila={f.fila}
+      className="flex flex-col gap-1 py-3 active:bg-surface-sunken"
+      style={{
+        borderBottom: `1px solid ${V.lineaFila}`,
+        boxShadow: elegida ? FILO_ELEGIDA : undefined,
+        paddingLeft: elegida ? 10 : 0,
+      }}
+    >
+      <span className="flex min-w-0 items-baseline gap-3">
+        <span className="min-w-0 flex-1 truncate" style={{ fontSize: '14.5px', fontWeight: 500, color: f.proveedor ? V.tinta : V.tenue }}>
+          {f.proveedor ?? 'sin proveedor'}
+        </span>
+        <span className="shrink-0 font-mono tabular-nums" style={{ fontSize: '14px' }}>
+          <Importe f={f} />
+        </span>
+      </span>
+      <span className="flex min-w-0 items-baseline gap-1.5" style={{ fontSize: '12.5px', color: V.apagado }}>
+        <span className="shrink-0" style={{ color: estado.color }}>{estado.texto}</span>
+        {fecha && <><span aria-hidden>·</span><span className="shrink-0 font-mono tabular-nums" style={{ fontSize: '12px' }}>{fecha}</span></>}
+        <span aria-hidden>·</span>
+        {/* La misma palabra y el mismo color que el desplegable de la grilla (`ObraEnLinea`). */}
+        <span className="min-w-0 truncate" style={{ color: f.obra?.rotulo ? V.tintaSuave : V.neg }}>
+          {f.obra?.origen === 'inferida' && f.obra.rotulo ? `(inferida) ${f.obra.rotulo}` : (f.obra?.rotulo || 'sin imputar')}
+        </span>
+        {f.obra?.inconsistencia && (
+          <span title={f.obra.inconsistencia} className="flex shrink-0 self-center" style={{ color: V.neg }}>
+            <IconoProblema className="h-[13px] w-[13px]" />
+          </span>
+        )}
+        {f.saldo_pendiente != null && f.saldo_pendiente > 0 && (
+          <span className="ml-auto shrink-0 font-mono tabular-nums" style={{ fontSize: '11.5px', color: V.warn }}>
+            debe {pesos(f.saldo_pendiente)}
+          </span>
+        )}
+      </span>
+    </Link>
   )
 }
 

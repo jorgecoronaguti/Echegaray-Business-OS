@@ -61,7 +61,7 @@ export function FiltrosSuaves({ opciones, conteo, rotulo, testid = 'filtros' }: 
   testid?: string
 }) {
   return (
-    <div data-testid={testid} style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: 10, flexWrap: 'wrap' }}>
+    <div data-testid={testid} className="max-md:!gap-1.5" style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: 10, flexWrap: 'wrap' }}>
       {rotulo && (
         <span style={{ fontSize: '11.5px', color: V.tenue, marginRight: 3 }} data-testid={`${testid}-rotulo`}>
           {rotulo}
@@ -78,7 +78,9 @@ export function FiltrosSuaves({ opciones, conteo, rotulo, testid = 'filtros' }: 
           prefetch={false}
           data-testid={`${testid}-${o.clave}`}
           aria-current={o.activo ? 'true' : undefined}
-          className="hover:bg-surface-sunken"
+          // EN EL TELÉFONO, LA PASTILLA DE M03 (24/09/2026): 36px de alto y texto de 13 — un chip de 22px
+          // no es un blanco para el dedo. El fondo del activo y el peso no cambian: es la misma señal.
+          className="hover:bg-surface-sunken max-md:!inline-flex max-md:min-h-[36px] max-md:items-center max-md:!rounded-[16px] max-md:!px-3 max-md:!text-[13px]"
           style={{
             fontSize: '12px', padding: '4px 9px', borderRadius: 6,
             color: o.activo ? V.tinta : V.apagado,

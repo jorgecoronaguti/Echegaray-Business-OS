@@ -87,7 +87,9 @@ function vistaLista({ d, sp, abiertas, cabecera }: { d: DatosEfectivo; sp: Param
   const entregando = sp.panel === 'entregar'
   const puestos = Object.fromEntries(d.personas.map((p) => [p.id, p.puesto]))
   const accion = (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+    // EN EL TELÉFONO, «Entregar efectivo» arriba y a todo el ancho, «Exportar» debajo (24/09/2026). El
+    // color es el del diseño de la sección (`botonOscuro`); sólo cambian el ancho y el alto.
+    <span className="max-md:!flex max-md:!flex-col-reverse max-md:!items-stretch max-md:!gap-2 max-md:[&>*]:!min-h-[48px] max-md:[&>*]:!w-full max-md:[&>*]:!justify-center max-md:[&>*]:!text-[15px]" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
       <BotonExportar entregas={d.entregas} hoy={d.hoy} />
       <Link href={urlEfectivo({ f: filtro, panel: 'entregar' })} prefetch={false} scroll={false} style={botonOscuro} data-testid="abrir-entregar">
         <span aria-hidden style={{ fontSize: '15px', lineHeight: 1 }}>+</span> Entregar efectivo
@@ -102,7 +104,8 @@ function vistaLista({ d, sp, abiertas, cabecera }: { d: DatosEfectivo; sp: Param
           mide lo que mide EL PANEL, no lo que mide el del patrón. */}
       {cabecera(entregando ? undefined : accion, abiertas, entregando && ANCHO_PANEL)}
       <div className="flex flex-col lg:flex-row lg:items-start">
-        <div className="min-w-0 flex-1" style={{ padding: '22px 20px 34px', display: 'flex', flexDirection: 'column', gap: 24, opacity: entregando ? 0.4 : 1 }}>
+        {/* Con el panel abierto, el teléfono muestra sólo el panel: apilado debajo quedaba fuera de la vista. */}
+        <div className={`min-w-0 flex-1 max-md:!px-4 ${entregando ? 'max-md:hidden' : ''}`} style={{ padding: '22px 20px 34px', display: 'flex', flexDirection: 'column', gap: 24, opacity: entregando ? 0.4 : 1 }}>
           <Tarjetas r={resumir(d.entregas, d.comprobantes, d.rendiciones, d.hoy)} />
           <ListaEntregas
             entregas={d.entregas} comprobantes={d.comprobantes} filtro={filtro} hoy={d.hoy} puestos={puestos} clienteDeObra={d.clienteDeObra}
@@ -155,7 +158,7 @@ async function vistaFicha({ d, entrega: e, sp, abiertas, cabecera }: {
         devolviendo ? ANCHO_PANEL : observado ? ANCHO_PANEL_OBSERVADO : false,
       )}
       <div className="flex flex-col lg:flex-row lg:items-start">
-        <div className="min-w-0 flex-1" style={{ padding: '22px 20px 34px', opacity: devolviendo || observado ? 0.4 : 1 }}>
+        <div className={`min-w-0 flex-1 max-md:!px-4 ${devolviendo || observado ? 'max-md:hidden' : ''}`} style={{ padding: '22px 20px 34px', opacity: devolviendo || observado ? 0.4 : 1 }}>
           <FichaEntrega e={e} comprobantes={comprobantes} rendiciones={rendiciones} devoluciones={devoluciones} extra={extra} cliente={cliente} />
         </div>
         {devolviendo && (

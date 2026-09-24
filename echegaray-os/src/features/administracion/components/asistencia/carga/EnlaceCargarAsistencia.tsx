@@ -8,7 +8,7 @@ export function EnlaceCargarAsistencia({ obra, testid = 'ir-a-cargar-asistencia'
   return (
     <Link
       prefetch={false} href={hrefCargaDeAsistencia({ obra })} data-testid={testid}
-      className="inline-flex min-h-[44px] items-center rounded-control md:min-h-[36px] border border-ink px-3 text-[12.5px] font-medium text-ink hover:bg-surface-sunken"
+      className="inline-flex min-h-[44px] items-center rounded-control md:min-h-[36px] border border-ink px-3 text-[12.5px] font-medium text-ink hover:bg-surface-sunken max-md:min-h-[48px] max-md:w-full max-md:justify-center max-md:rounded-[12px] max-md:text-[15px]"
     >
       Cargar asistencia
     </Link>

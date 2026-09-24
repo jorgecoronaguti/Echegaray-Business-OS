@@ -23,6 +23,7 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { IconoCrear } from '@/shared/components/iconos'
+import { BarraCorrible } from './BarraCorrible'
 import { BuscadorFilo } from './BuscadorFilo'
 import { V } from './patron'
 
@@ -39,6 +40,22 @@ export interface SubVista {
   activa: boolean
   href: string
 }
+
+// ═══ EN EL TELÉFONO LA CABECERA SE APILA (dueño, 24/09/2026: «es un desastre todo lo relacionado a mobile») ═══
+//
+// A 390px las cinco secciones de Compras caían en TRES renglones, el buscador de 216px quedaba
+// flotando y el amarillo era un botón de 30px de alto. Bajo `md` la cabecera se reordena sin cambiar
+// una sola pieza de lugar en el DOM:
+//
+//   1. las solapas, en UNA línea que se corre por dentro (`BarraCorrible`) y se abre mostrando la
+//      activa — la misma banda que ya usan las fichas;
+//   2. el buscador, a todo el ancho y con 44px de alto;
+//   3. la navegación discreta (`filtros`), en un renglón que envuelve;
+//   4. la acción primaria, amarilla, a todo el ancho y con 48px.
+//
+// TODO VA POR CLASES `max-md:`, y las que pisan un estilo en línea llevan `!`. Desde `md` la banda es
+// `display: contents` y los envoltorios también: el escritorio sigue dibujando exactamente la fila de
+// siempre, píxel por píxel.
 
 export function CabeceraSeccion({ vistas, buscador, alta, accion, filtros, espacioPanel, testid = 'vistas-seccion' }: {
   /** Una sola = el título de la sección, sin subrayado de solapa. Dos o más = el nivel 3. */
@@ -76,20 +93,27 @@ export function CabeceraSeccion({ vistas, buscador, alta, accion, filtros, espac
   testid?: string
 }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'stretch', padding: '26px 20px 0' }}>
+    <div className="max-md:!px-4 max-md:!pt-4" style={{ display: 'flex', alignItems: 'stretch', padding: '26px 20px 0' }}>
       <div
+        className="max-md:!flex-col max-md:!flex-nowrap max-md:!items-stretch max-md:!gap-3"
         style={{
           flex: 1, minWidth: 0, display: 'flex', alignItems: 'center',
           gap: 18, flexWrap: 'wrap', rowGap: 12,
         }}
         data-testid={testid}
       >
+        <BarraCorrible
+          className="md:!contents max-md:-mx-4 max-md:px-4"
+          style={{ gap: 20 }}
+          testid={`${testid}-banda`}
+        >
         {vistas.map((v) => (
           <Link prefetch={false}
             key={v.clave}
             href={v.href}
             data-testid={`vista-${v.clave}`}
             aria-current={v.activa ? 'page' : undefined}
+            className="max-md:shrink-0 max-md:!pb-2.5 max-md:!pt-1"
             style={{
               display: 'flex', alignItems: 'baseline', gap: 7, paddingBottom: 6,
               // El subrayado dice CUÁL de las sub-vistas está abierta. Con una sola no hay cuál:
@@ -105,6 +129,7 @@ export function CabeceraSeccion({ vistas, buscador, alta, accion, filtros, espac
                 fontWeight: v.activa ? 600 : 500,
                 color: v.activa ? V.tinta : V.tenue, letterSpacing: '-.01em',
               }}
+              className="max-md:whitespace-nowrap"
             >
               {v.titulo}
             </span>
@@ -123,8 +148,12 @@ export function CabeceraSeccion({ vistas, buscador, alta, accion, filtros, espac
             )}
           </Link>
         ))}
+        </BarraCorrible>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div
+          className="max-md:!ml-0 max-md:!flex-col max-md:!items-stretch max-md:!gap-3 max-md:empty:!hidden"
+          style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}
+        >
           {buscador && (
             <BuscadorFilo
               accion={buscador.accion}
@@ -134,13 +163,18 @@ export function CabeceraSeccion({ vistas, buscador, alta, accion, filtros, espac
               testid={buscador.testid ?? 'buscar'}
             />
           )}
-          {filtros}
+          {/* La navegación discreta: en el teléfono, un renglón propio que envuelve. */}
+          {filtros && (
+            <div className="md:contents max-md:flex max-md:flex-wrap max-md:items-center max-md:gap-x-4 max-md:gap-y-1">
+              {filtros}
+            </div>
+          )}
           {!alta && accion}
           {alta && (
             <Link
               href={alta.href}
               data-testid={alta.testid ?? 'nuevo'}
-              className="hover:bg-[#EEBE00]"
+              className="hover:bg-[#EEBE00] max-md:!min-h-[48px] max-md:!justify-center max-md:!rounded-[12px] max-md:!text-[15px]"
               style={{
                 display: 'flex', alignItems: 'center', gap: 6, background: V.marca, color: V.tinta,
                 fontSize: '12.5px', fontWeight: 600, borderRadius: 6, padding: '6px 11px',
