@@ -212,14 +212,10 @@ test('D3: UN DESHACER LEGÍTIMO SOBRE UN NÚMERO CON MILES SE ESCRIBE (antes dab
 // sesión que no escribió reciba «la cambió otra persona», o que la fila cambie sin que la escritura entrara.
 
 test('RLS: UNA SESIÓN QUE NO PUEDE ESCRIBIR NUNCA RECIBE «LA CAMBIÓ OTRA PERSONA»', async () => {
-  const { CAMPO, JEFE } = await import('../../../tests/util/identidades.ts')
-  const sesiones: Array<[string, SupabaseClient]> = [
-    ['sin sesión', await sesionDe()],
-    ['campo', await sesionDe(CAMPO.email, CAMPO.password)],
-    ['jefe de obra', await sesionDe(JEFE.email, JEFE.password)],
-  ]
+  const { conCuentaEfimera } = await import('../../../tests/util/identidades.ts')
+  const admin = await base()
   const medido: string[] = []
-  for (const [quien, sb] of sesiones) {
+  const medir = async (quien: string, sb: SupabaseClient) => {
     const id = await fila({ estado: 'PENDIENTE' })
     const r = await actualizarSiSigueIgual(sb, {
       tabla: 'pedidos_materiales', donde: { id_pedido: id }, campo: 'estado', esperado: 'PENDIENTE',
@@ -233,6 +229,11 @@ test('RLS: UNA SESIÓN QUE NO PUEDE ESCRIBIR NUNCA RECIBE «LA CAMBIÓ OTRA PERS
     else assert.equal(despues, 'PENDIENTE', `${quien}: no escribió y la fila cambió igual`)
     await sb.auth.signOut({ scope: 'local' }).catch(() => {})
   }
+  await medir('sin sesión', await sesionDe())
+  // Las cuentas de campo y jefe nacen y mueren acá: no quedan usuarios de prueba en la base viva.
+  await conCuentaEfimera(admin, 'campo', 'quattropani', async (c) => medir('campo', await sesionDe(c.email, c.password)))
+  await conCuentaEfimera(admin, 'jefe_obra', null, async (c) => medir('jefe de obra', await sesionDe(c.email, c.password)))
   // Lo medido queda en la salida del test: es la evidencia de qué hace cada rol, no una suposición.
   console.log(`RLS medido sobre pedidos_materiales.estado:\n  ${medido.join('\n  ')}`)
 })
+

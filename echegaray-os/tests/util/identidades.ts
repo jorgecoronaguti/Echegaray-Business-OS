@@ -123,3 +123,37 @@ export async function asegurarCampo(admin: SupabaseClient, obra: string): Promis
   if (aErr) throw new Error(`asignación de ${CAMPO.email}: ${aErr.message}`)
   return id
 }
+
+// ═══ CUENTA EFÍMERA (24/09/2026) ═══
+//
+// `qa.campo@` y `qa.jefe.obra@` se borraron el 23/09: el dueño no quiere usuarios de prueba en la app
+// viva. Una prueba que necesita un rol lo crea, lo usa y lo borra en el mismo `finally`: correo único
+// por corrida, perfil con el rol, obra asignada si hace falta. Si la prueba revienta, igual se borra.
+
+export interface CuentaEfimera { id: string; email: string; password: string }
+
+export async function conCuentaEfimera<T>(
+  admin: SupabaseClient, rol: 'campo' | 'jefe_obra', obra: string | null,
+  usar: (c: CuentaEfimera) => Promise<T>,
+): Promise<T> {
+  const marca = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+  const email = `qa.efimera+${rol}-${marca}@ecsas.com.ar`
+  const password = `Ef-${marca}-${Math.random().toString(36).slice(2, 10)}!`
+  const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true })
+  if (error || !data?.user) throw new Error(`no pude crear la cuenta efímera ${email}: ${error?.message}`)
+  const id = data.user.id
+  try {
+    const { error: pErr } = await admin.from('perfiles')
+      .upsert({ id, rol, nombre: `QA efímera ${rol}` }, { onConflict: 'id' })
+    if (pErr) throw new Error(`perfil de ${email}: ${pErr.message}`)
+    if (obra) {
+      const { error: aErr } = await admin.from('usuario_obra').insert({ usuario_id: id, obra_canonica_id: obra, papel: 'jefe' })
+      if (aErr) throw new Error(`asignación de ${email}: ${aErr.message}`)
+    }
+    return await usar({ id, email, password })
+  } finally {
+    await admin.from('usuario_obra').delete().eq('usuario_id', id)
+    const { error: dErr } = await admin.auth.admin.deleteUser(id)
+    if (dErr) throw new Error(`LA CUENTA EFÍMERA ${email} QUEDÓ VIVA: ${dErr.message}`)
+  }
+}
