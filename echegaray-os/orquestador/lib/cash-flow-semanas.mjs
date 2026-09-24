@@ -171,7 +171,12 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
 
   // ── La cabecera: el concepto y los lunes del ejercicio ───────────────────────────────────────────
   poner(FILA.cabecera, 0, ROTULO_CONCEPTO)
-  semanas.forEach((v, j) => poner(FILA.cabecera, meta.cab.cols[j], serialDeFecha(v.desde)))
+  // EL ENCABEZADO ES EL PRIMER DÍA QUE LA COLUMNA SUMA (24/09/2026), no el lunes de su semana. El dueño
+  // vio «28/12» a los dos lados del TOTAL y leyó —con razón— la misma semana dos veces: la de la
+  // derecha sumaba del 1 al 3/01 pero decía otra cosa. Ahora dice «01/01». Mismo criterio para la
+  // primera del ejercicio: «01/01» y no «29/12» del año anterior. Una columna no puede decir una fecha
+  // y sumar otra.
+  meta.efectivas.forEach((v, j) => poner(FILA.cabecera, meta.cab.cols[j], serialDeFecha(v.desde)))
   poner(FILA.cabecera, cT, rotuloTotal(TIPO, ejercicio))
 
   // ── Las siete filas de concepto ──────────────────────────────────────────────────────────────────
@@ -276,7 +281,12 @@ function columnaDeSemana(poner, meta, j, { refSaldo, refFecha }) {
   // 24/09/2026, la primera del año siguiente (28/12 otra vez → desde el 1/1/2027). Sin el recorte, el
   // TOTAL 2026 sumaría días de 2027 y la misma plata aparecería a los dos lados. Qué columna se recorta
   // lo deciden las fechas, no la posición. Ver cash-flow-borde-anio.mjs.
-  const { desde, hasta } = expresionAcotada(expresionVentana(cab, meta.tipo), recorteDe({ ventana: meta.ventanas[j], ...meta.efectivas[j] }))
+  // El encabezado es el primer día que la columna suma (ver arriba), así que el único recorte posible es
+  // el FINAL: la columna que termina antes del lunes siguiente (el 31/12, o el 3/01 de la que arranca el
+  // 1/01) lleva su `MIN`. Se decide comparando con la semana de 7 días que arranca en el encabezado.
+  const e = meta.efectivas[j]
+  const { desde, hasta } = expresionAcotada(expresionVentana(cab, meta.tipo),
+    recorteDe({ ventana: { desde: e.desde, hasta: new Date(new Date(e.desde).getTime() + 7 * 86400000) }, ...e }))
   const f = meta.fila
   // LA CADENA SALTA EL TOTAL: el vecino de una columna es la columna de tiempo de al lado, no la de la
   // hoja. La primera semana de enero arranca en el cierre de la última de diciembre.
@@ -387,7 +397,8 @@ export function vinculoHoy(gid, meta, hoy = new Date()) {
   return atajoDelPeriodo({
     // LAS EFECTIVAS Y NO LOS LUNES: la semana del 28/12 está a los dos lados del TOTAL, y el 02/01 es
     // de la columna de la derecha. Cada día está en UNA sola efectiva.
-    gid, prefijo: ROTULO_HOY.semana, ventanas: meta.efectivas, hoy,
+    // Sin `ancla`: el atajo se rotula con el primer día que suma la columna, igual que su encabezado.
+    gid, prefijo: ROTULO_HOY.semana, ventanas: meta.efectivas.map(({ desde, hasta }) => ({ desde, hasta })), hoy,
     col0: meta.cab.col0, cols: meta.cab.cols, filaCabecera: meta.cab.fila,
     // El lunes de la ventana, como lo lee una persona: "10/08". Es la misma fecha del encabezado.
     // getUTCDate y NO getDate: las ventanas son medianoche UTC y esta VM corre en -03, así que el

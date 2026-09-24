@@ -56,8 +56,8 @@ function esperadoDe(libro, { rubro, real, entra }, { desde: d, hasta }, fechaSal
 }
 
 /**
- * `ventana(col)` → [desde, hasta) de una columna. La del Semanal se RECORTA a su año: a la izquierda
- * del TOTAL, al ejercicio (la primera semana arranca el lunes 29/12 del año anterior y la del 28/12
+ * `ventana(col)` → [desde, hasta) de una columna. La del Semanal va del encabezado (el primer día que
+ * suma) al lunes siguiente, recortada a su año: a la izquierda del TOTAL, al ejercicio (la del 28/12
  * corta en el 31/12); a la derecha, del 1/1 del año siguiente al último día que muestran las vistas.
  *
  * Y EL TOTAL TAMBIÉN SE AUDITA contra el libro sumado sobre el EJERCICIO (`total`): es la prueba de que
@@ -114,13 +114,16 @@ async function main() {
   const finAnio = serial(fechaDe(inicio).getUTCFullYear() + 1, 0, 1)
   const total = { desde: inicio, hasta: finAnio }
   const a = auditar('Cash Flow Mensual', men, libro, fechaSaldo, (c) => ({ desde: c.d, hasta: finMes(c.d) }), total)
+  // La semana de una columna termina en el LUNES SIGUIENTE a su encabezado —desde el 24/09/2026 el
+  // encabezado es el primer día que suma, y el 01/01 no es lunes— y nunca pasa el borde de su año.
+  const lunesSiguiente = (d) => d + 7 - ((fechaDe(d).getUTCDay() + 6) % 7)
   const b = auditar('Cash Flow Semanal', sem, libro, fechaSaldo, (c) => (c.siguiente
-    ? { desde: Math.max(c.d, finAnio), hasta: Math.min(c.d + 7, fin) }
-    : { desde: Math.max(c.d, inicio), hasta: Math.min(c.d + 7, finAnio) }), total)
+    ? { desde: Math.max(c.d, finAnio), hasta: Math.min(lunesSiguiente(c.d), fin) }
+    : { desde: Math.max(c.d, inicio), hasta: Math.min(lunesSiguiente(c.d), finAnio) }), total)
   // Y LAS DOS VISTAS TIENEN QUE TERMINAR EN EL MISMO DÍA: si el Semanal se cortara antes que el Mensual,
   // la comparación celda por celda seguiría en verde y la plata del hueco no estaría en el Semanal.
   const { cols: colsSem } = columnasDe(sem)
-  const finSem = colsSem.length ? Math.min(colsSem.at(-1).d + 7, fin) : null
+  const finSem = colsSem.length ? Math.min(lunesSiguiente(colsSem.at(-1).d), fin) : null
   if (finSem !== fin) {
     console.log(`\n✗ el Semanal termina el ${iso(finSem - 1)} y el Mensual el ${iso(fin - 1)}: no muestran el mismo período`)
     process.exitCode = 1

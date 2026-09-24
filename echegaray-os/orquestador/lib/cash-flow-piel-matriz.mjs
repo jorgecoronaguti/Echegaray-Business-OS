@@ -531,9 +531,13 @@ export function reglaPeriodoEnCurso({ sheetId, meta }) {
   // marca del segundo tramo miraría la cabecera equivocada.
   return tramosDe(meta).map((t) => {
     const primera = `${letra(t.inicio)}$${meta.cab.fila}`
+    // La semana termina en el lunes siguiente o en el 1/1 siguiente, lo que llegue antes: desde el
+    // 24/09/2026 el encabezado es el primer día que la columna suma (el 01/01 no es lunes), y la del
+    // 28/12 corta en el 31/12. Es la MISMA ventana que suma la columna: si fuera `+7`, del 4 al 7/01
+    // quedarían marcadas dos columnas.
     const dentro = meta.tipo === 'mes'
       ? `AND(${primera}<=TODAY();EOMONTH(${primera};0)>=TODAY())`
-      : `AND(${primera}<=TODAY();${primera}+7>TODAY())`
+      : `AND(${primera}<=TODAY();MIN(${primera}+7-WEEKDAY(${primera};3);DATE(YEAR(${primera})+1;1;1))>TODAY())`
     return {
       addConditionalFormatRule: {
         rule: {

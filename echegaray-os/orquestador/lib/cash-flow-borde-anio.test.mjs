@@ -96,21 +96,29 @@ test('EL TOTAL 2026 NO SUMA EL 01/01/2027: la última semana del ejercicio corta
   assert.equal(t, `=SUM($B$${meta.fila.egresoProyectado}:$${letra(ultima)}$${meta.fila.egresoProyectado})`)
 })
 
-test('EL 01/01/2027 SE VE DESPUÉS DEL TOTAL: la semana del 28/12 reaparece, del 1 al 3/01', () => {
+test('EL 01/01/2027 SE VE DESPUÉS DEL TOTAL: la zona 2027 arranca el 01/01, rotulada 01/01, hasta el 3/01', () => {
+  // El dueño (24/09/2026): «estás haciendo mal el mes de enero» — veía «28/12» a los dos lados del
+  // TOTAL y leía la misma semana dos veces. La columna dice el primer día que suma.
   const { filas, meta } = grillaDe2026()
   const primera = meta.cab.siguiente[0]
   assert.equal(primera, colTotal('semana', ANIO) + 1)
+  assert.equal(filas[FILA.cabecera - 1][primera], serialDeFecha(new Date(Date.UTC(2027, 0, 1))), 'rotulada 01/01, no 28/12')
+  assert.equal(filas[FILA.cabecera - 1][primera + 1], serialDeFecha(new Date(Date.UTC(2027, 0, 4))))
   const f = String(filas[meta.fila.egresoProyectado - 1][primera])
   const cab = celda(primera, FILA.cabecera)
-  assert.ok(f.includes(`>=MAX(${cab};DATE(2027;1;1))`), f)
-  assert.ok(f.includes(`<${cab}+7`), f)
-  assert.equal(filas[FILA.cabecera - 1][primera], serialDeFecha(new Date(Date.UTC(2026, 11, 28))), 'rotulada con su lunes')
+  assert.ok(f.includes(`>=${cab})`), f)
+  assert.ok(f.includes(`<MIN(${cab}+7;DATE(2027;1;4))`), `sin el MIN se pisaría con la semana del 04/01: ${f.slice(0, 200)}`)
+  // Ningún encabezado se repite: cada columna es un tramo distinto del calendario.
+  const cabs = meta.cab.cols.map((c) => filas[FILA.cabecera - 1][c])
+  assert.equal(new Set(cabs).size, cabs.length)
 })
 
-test('la primera columna no arrastra diciembre de 2025', () => {
+test('la primera columna no arrastra diciembre de 2025: arranca y se rotula el 01/01', () => {
   const { filas, meta } = grillaDe2026()
+  assert.equal(filas[FILA.cabecera - 1][meta.cab.col0], serialDeFecha(new Date(Date.UTC(2026, 0, 1))))
   const f = String(filas[meta.fila.ingresoReal - 1][meta.cab.col0])
-  assert.ok(f.includes(`>=MAX(${celda(meta.cab.col0, FILA.cabecera)};DATE(2026;1;1))`), f)
+  const cab = celda(meta.cab.col0, FILA.cabecera)
+  assert.ok(f.includes(`>=${cab})`) && f.includes(`<MIN(${cab}+7;DATE(2026;1;5))`), f)
 })
 
 test('la sección POR CLIENTE se recorta igual que su columna: si no, los clientes no cuadran con el Mensual', () => {
@@ -118,7 +126,7 @@ test('la sección POR CLIENTE se recorta igual que su columna: si no, los client
   const bloque = meta.clientes.bloques[0]
   const ultima = meta.cab.col0 + meta.cab.nTotal - 1
   assert.ok(String(filas[bloque.medidas[0].fila - 1][ultima]).includes('DATE(2027;1;1)'), 'la última del año corta en el 31/12')
-  assert.ok(String(filas[bloque.medidas[0].fila - 1][meta.cab.siguiente[0]]).includes('MAX('), 'la primera de 2027 arranca el 1/1')
+  assert.ok(String(filas[bloque.medidas[0].fila - 1][meta.cab.siguiente[0]]).includes('DATE(2027;1;4)'), 'la primera de 2027 corta el 3/01')
 })
 
 test('EL PISO MIRA HASTA LA ÚLTIMA SEMANA DE ENERO, y el TOTAL no le aporta nada', () => {

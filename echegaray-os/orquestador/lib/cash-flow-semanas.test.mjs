@@ -45,17 +45,18 @@ test('EL AÑO ENTERO, SU TOTAL Y DESPUÉS ENERO: 53 + TOTAL + 5, y todas las fil
     conceptosDe('semana').map((c) => c.rotulo))
 })
 
-test('la primera columna es el lunes 29/12/2025 y la última contiene el 31/01/2027', () => {
+test('la primera columna es el 01/01/2026 y la última contiene el 31/01/2027', () => {
   const { filas, meta } = armar()
   const cab = filas[meta.cab.fila - 1]
-  assert.equal(cab[meta.cab.col0], serialDeFecha(new Date(Date.UTC(2025, 11, 29))),
-    'la primera semana es la que CONTIENE el 1° de enero, y arranca en diciembre')
+  // Desde el 24/09/2026 el encabezado es el primer día que la columna SUMA: la semana que contiene el
+  // 1° de enero arranca el 29/12 del año anterior, pero esta columna sólo suma desde el 1/1.
+  assert.equal(cab[meta.cab.col0], serialDeFecha(new Date(Date.UTC(2026, 0, 1))))
   assert.equal(cab[meta.cab.cols[meta.cab.n - 1]], serialDeFecha(new Date(Date.UTC(2027, 0, 25))))
   // Las 53 del año siguen en su lugar: la del 28/12 es la columna BB, como antes.
   assert.equal(cab[meta.cab.col0 + 52], serialDeFecha(semanasDelAnio(ANIO).at(-1).desde))
   assert.equal(letra(meta.cab.col0 + 52), 'BB')
-  // Y la primera después del TOTAL es OTRA VEZ el 28/12: su parte de 2027 (1 al 3/01).
-  assert.equal(cab[meta.cab.siguiente[0]], serialDeFecha(new Date(Date.UTC(2026, 11, 28))))
+  // Y la primera después del TOTAL es el 01/01/2027 (1 al 3/01), no otra vez el 28/12.
+  assert.equal(cab[meta.cab.siguiente[0]], serialDeFecha(new Date(Date.UTC(2027, 0, 1))))
 })
 
 test('los encabezados de tiempo son SERIALES de fecha, nunca texto', () => {
@@ -65,10 +66,12 @@ test('los encabezados de tiempo son SERIALES de fecha, nunca texto', () => {
     assert.equal(typeof v, 'number', `la columna ${j + 1} escribe un texto donde va la fecha`)
     assert.ok(v > 45900 && v < 47000, `${v} no es un serial del ejercicio`)
   }
-  // Lunes consecutivos DENTRO de cada bloque: el serial del siguiente es el anterior más siete. Entre
-  // bloques se repite el 28/12, que está partido a los dos lados del TOTAL.
+  // Crecientes y sin repetir; de lunes a lunes salvo los tramos partidos (01/01/2026, 28/12 y 01/01/2027).
   const seriales = meta.cab.cols.map((c) => filas[meta.cab.fila - 1][c])
-  for (let j = 1; j < seriales.length; j++) assert.equal(seriales[j] - seriales[j - 1], j === meta.cab.nTotal ? 0 : 7)
+  for (let j = 1; j < seriales.length; j++) {
+    assert.ok(seriales[j] > seriales[j - 1], `la columna ${j + 1} no avanza`)
+    if (j !== 1 && j !== meta.cab.nTotal && j !== meta.cab.nTotal + 1) assert.equal(seriales[j] - seriales[j - 1], 7)
+  }
 })
 
 // ═══ ESTA PRUEBA CAMBIÓ DE SIGNO EL 21/09/2026, Y EL DUEÑO ES QUIEN LA CAMBIÓ ═══

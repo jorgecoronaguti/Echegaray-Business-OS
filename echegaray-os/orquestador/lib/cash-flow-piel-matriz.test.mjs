@@ -140,8 +140,9 @@ test('la columna del período en curso se marca, y la ventana es la MISMA que su
   const f2 = sem[1].addConditionalFormatRule.rule.booleanRule.condition.values[0].userEnteredValue
   assert.ok(f2.includes(`BD$${semanal().cab.fila}`), `el segundo tramo mira su propia cabecera: ${f2}`)
   const fSem = sem[0].addConditionalFormatRule.rule.booleanRule.condition.values[0].userEnteredValue
-  // Semi-abierta [lunes, lunes+7): con `<=` del lado derecho el lunes siguiente caería en dos semanas.
-  assert.ok(fSem.includes('+7>TODAY()'), fSem)
+  // Semi-abierta [encabezado, lunes siguiente) y sin pasar el 1/1: con `<=` del lado derecho, o con `+7`
+  // desde un 01/01 que no es lunes, un día caería en dos columnas.
+  assert.ok(fSem.includes('+7-WEEKDAY(') && fSem.includes(';3);DATE(YEAR(') && fSem.includes('>TODAY()'), fSem)
   assert.ok(fSem.includes('<=TODAY()'), fSem)
 
   const mes = reglaPeriodoEnCurso({ sheetId: 7, meta: mensual() })
