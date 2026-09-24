@@ -584,6 +584,7 @@ export function deImpuestosCalendario(filas = [], { filaIva, filaIibb, filaChequ
       + 'ubicadas por rótulo y el año. Una fila muerta devolvería $0 sin un solo error.')
   }
   const out = [...deImpuestoAlCheque(filas, { filaCheque }, anio, corte, extra)]
+  const vivo = vivoSegunCorte(corte)(anio)
   for (const [clave, fila] of [['IVA', filaIva], ['IIBB', filaIibb]]) {
     const f = filas[fila - 1] ?? []
     for (let m = 1; m <= 12; m++) {
@@ -602,7 +603,7 @@ export function deImpuestosCalendario(filas = [], { filaIva, filaIibb, filaChequ
       // y el "próximo vencimiento" del hero pasan a apuntar al día correcto en vez de al día 20.
       const periodo = `${anio}-${String(m).padStart(2, '0')}`
       const fecha = serialDe((clave === 'IVA' ? vencimientoIva(periodo) : vencimientoIibb(periodo)).fecha)
-      out.push(movimiento({
+      const mov = movimiento({
         fecha,
         signo: SALE,
         importe,
@@ -611,10 +612,39 @@ export function deImpuestosCalendario(filas = [], { filaIva, filaIibb, filaChequ
         rubro: 'Impuestos',
         estado: estadoContraCorte('PROYECTADO', fecha, corte),
         origen: { pestana: 'Impuestos y Financieros', fila: `${colMesDelAnio(m)}${fila}` },
-      }))
+      })
+      out.push(vivo(clave, m) ? Object.freeze({ ...mov, importeNomina: formulaVivaImpuestos(`${colMesDelAnio(m)}${fila}`) }) : mov)
     }
   }
   return out
+}
+
+/**
+ * LA FÓRMULA QUE ATA EL RENGLÓN DEL LIBRO A SU CELDA DE «Impuestos y Financieros» (24/09/2026).
+ * El dueño: «necesito que los cash flows se actualicen si toco algo yo de manera manual en tiempo real».
+ * Una referencia directa a la celda: si el dueño inserta filas, Sheets la corre sola; si el generador
+ * cambia el layout, el Libro se regenera en la misma corrida. N(): un texto donde va plata rinde 0, no
+ * #VALUE! en el cash flow. Viaja en `importeNomina`, el campo que `escribirYVerificar` ya escribe como
+ * fórmula en la columna C de los renglones no REALES (mecanismo del puente de Nómina, f0045047).
+ */
+export const formulaVivaImpuestos = (celda) => `=N('Impuestos y Financieros'!${celda})`
+
+/**
+ * ¿QUÉ RENGLONES PUEDEN SER FÓRMULA SIN CREAR UNA REFERENCIA CIRCULAR? (medido en una copia, 24/09/2026)
+ *
+ * · IIBB, todos los meses: su proyección sale de Cobranzas, _ARCA_RAW y _IIBB_RAW. No toca el Libro.
+ * · IVA, sólo los meses CERRADOS antes del corte: su celda es una referencia a lo registrado (DDJJ/ARCA).
+ * · IVA del mes en curso y futuros, NO: el crédito fiscal proyectado se calcula SOBRE `_MOVIMIENTOS`
+ *   (compras con factura del Libro), así que el renglón del IVA apuntando a esa celda es un ciclo. Probado
+ *   en la copia: `_MOVIMIENTOS!C` = `'Impuestos y Financieros'!J55` dio #REF! y arrastró el crédito, el
+ *   impuesto al cheque y el total proyectado. Siguen como valor hasta que el crédito proyectado no lea el
+ *   Libro.
+ * · Impuesto al cheque, NO: su proyección es el 0,6 % de TODO el movimiento del Libro, él incluido.
+ */
+function vivoSegunCorte(corte) {
+  const mesCorte = Number.isFinite(corte) ? new Date(Date.UTC(1899, 11, 30) + corte * 86400000).getUTCMonth() + 1 : 0
+  const anioCorte = Number.isFinite(corte) ? new Date(Date.UTC(1899, 11, 30) + corte * 86400000).getUTCFullYear() : 0
+  return (anio) => (clave, m) => clave === 'IIBB' || (clave === 'IVA' && anio === anioCorte && m < mesCorte) || (clave === 'IVA' && anio < anioCorte)
 }
 
 /**

@@ -102,3 +102,19 @@ test('la proyección de la pestaña NO se cobra impuesto a sí misma', () => {
   const base = evaluarFormula(f, { hojas: { _MOVIMIENTOS }, hoy: new Date(Date.UTC(2026, 8, 10)) })
   assert.equal(Math.round(base), Math.round(1000000 * 0.006 * 2), 'sólo el movimiento comercial paga')
 })
+
+test('los renglones de IIBB y el IVA cerrado viajan como FÓRMULA a su celda; el IVA en curso y el cheque, no (ciclo)', () => {
+  const filas = impuestos()
+  // fila 55: IVA (agosto cerrado 100, septiembre en curso 200); fila 59: IIBB (agosto 300, septiembre 400)
+  while (filas.length < 59) filas.push([''])
+  filas[54] = ['⇒ IVA a pagar en efectivo', 0, 0, 0, 0, 0, 0, 0, 100, 200, 0, 0, 0]
+  filas[58] = ['⇒ IIBB a pagar en el mes', 0, 0, 0, 0, 0, 0, 0, 300, 400, 0, 0, 0]
+  const ms = deImpuestosCalendario(filas, { filaIva: 55, filaIibb: 59, filaCheque: 34 }, ANIO, CORTE)
+  const de = (re) => ms.find((m) => re.test(m.concepto))
+  assert.equal(de(/^IIBB a pagar · período 09/).importeNomina, "=N('Impuestos y Financieros'!J59)")
+  assert.equal(de(/^IIBB a pagar · período 08/).importeNomina, "=N('Impuestos y Financieros'!I59)")
+  assert.equal(de(/^IVA a pagar · período 08/).importeNomina, "=N('Impuestos y Financieros'!I55)", 'el IVA cerrado apunta a lo registrado: sin ciclo')
+  assert.equal(de(/^IVA a pagar · período 09/).importeNomina, undefined, 'el IVA en curso lee el crédito proyectado del Libro: fórmula = ciclo')
+  assert.ok(ms.filter((m) => m.concepto.startsWith(ROTULO)).every((m) => m.importeNomina === undefined), 'el cheque se proyecta sobre el Libro entero')
+  assert.equal(de(/^IIBB a pagar · período 09/).importe, 400, 'el valor en memoria sigue siendo el de la celda')
+})
