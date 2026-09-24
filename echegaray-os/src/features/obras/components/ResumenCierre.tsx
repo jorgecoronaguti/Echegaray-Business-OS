@@ -68,7 +68,7 @@ function BotonCierre({ accion, filo, alto, children, testid }: {
 
 export function ResumenCierre({
   obra, plan, abiertas, obraId, actividades, partes, actividadHH, avance, papelesSinClasificar,
-  archivar, reactivar, veComercial = true, editar,
+  archivar, reactivar, veComercial = true, editar, puedeArchivar = true,
 }: {
   obra: ObraPanel
   plan: PlanVsReal | null
@@ -84,6 +84,8 @@ export function ResumenCierre({
   reactivar: () => Promise<ResultadoAccion>
   veComercial?: boolean
   editar?: ReactNode
+  /** Archivar y reactivar son de Administración (dueño, 24/09/2026): el jefe ve el bloque, no el botón. */
+  puedeArchivar?: boolean
 }) {
   const yaArchivada = obra.estado === 'cerrada' || obra.estado === 'archivada'
   const actividadDe = new Map(actividades.map((a) => [a.id, a]))
@@ -203,7 +205,7 @@ export function ResumenCierre({
 
           <BloqueAside titulo="Archivar la obra" testid="archivar-la-obra">
             <div style={{ fontSize: '13px', color: C.tintaMedia, lineHeight: 1.55 }}>{textoArchivar}</div>
-            {yaArchivada
+            {!puedeArchivar ? null : yaArchivada
               ? <BotonCierre accion={reactivar} filo="neutro" alto={34} testid="archivar-obra">Reactivar</BotonCierre>
               : <BotonCierre accion={archivar} filo="rojo" alto={34} testid="archivar-obra">Archivar</BotonCierre>}
             <div style={{ fontSize: '12px', color: C.tenue }}>En la cartera queda en «archivadas fuera de esta lista · Verlas».</div>
@@ -239,6 +241,7 @@ export function ResumenCierre({
         </BloqueTelefono>
         {editar != null && <div>{editar}</div>}
       </div>
+      {puedeArchivar && (
       <div className="md:hidden" style={{
         position: 'fixed', left: 0, right: 0, bottom: '64px', padding: '12px 16px 18px', background: C.superficie,
         borderTop: `1px solid ${C.borde}`, zIndex: 20,
@@ -247,6 +250,7 @@ export function ResumenCierre({
           ? <BotonCierre accion={reactivar} filo="neutro" alto={48} testid="archivar-obra-telefono">Reactivar la obra</BotonCierre>
           : <BotonCierre accion={archivar} filo="rojo" alto={48} testid="archivar-obra-telefono">Archivar la obra</BotonCierre>}
       </div>
+      )}
     </>
   )
 }

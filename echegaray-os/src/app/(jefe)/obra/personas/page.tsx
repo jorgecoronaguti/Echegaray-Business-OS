@@ -118,6 +118,20 @@ export default async function JefePersonasPage({
           <Icono nombre="gente" tamano={20} grosor={2.4} />
           Cargar asistencia
         </Link>
+        {/* PERSONAL ES VITAL PARA EL JEFE (dueño, 24/09/2026): el plantel y las horas de todos viven en
+            Personal, y desde su barra no había camino. Sin Liquidación: eso lo cierra la pantalla. */}
+        <Link
+          href="/administracion/personas"
+          prefetch={false}
+          data-testid="ir-plantel"
+          style={{
+            width: '100%', minHeight: 48, borderRadius: R.control, border: `1px solid ${C.linea}`, background: C.surface,
+            color: C.ink, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14,
+            fontSize: 14.5, fontWeight: 500, textDecoration: 'none',
+          }}
+        >
+          Plantel y horas
+        </Link>
 
         {r.sinCerrar > 0 && (
           <div

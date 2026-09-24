@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { hrefCargaDeAsistencia } from '@/features/administracion/services/cargaDeAsistencia'
+import { hrefPedirTelefono } from '@/features/materiales/logica/pedidos'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { inicialesDe } from '@/features/empleado/components/shell-logica'
@@ -242,30 +243,41 @@ export default async function JefeHoyPage({
             AppSheet). «Subir foto» sigue apagado: la foto viaja como enlace al registrar un avance. */}
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }} data-testid="accesos-jefe">
           <Acceso href={conObra('/obra/avance-masivo', obra.id)} icono="masivo" texto="Avance masivo" />
-          <Acceso href="/campo/material/pedir" icono="pedido" texto="Pedir material" />
+          <Acceso href={hrefPedirTelefono(obra.id)} icono="pedido" texto="Pedir material" />
           <Acceso icono="foto" texto="Subir foto" />
         </div>
         <p style={{ marginTop: 8, fontSize: 11, color: C.faint, lineHeight: 1.5 }}>
           Subir foto todavía no tiene dónde escribir: la foto viaja como enlace al registrar un avance.
         </p>
-        {/* ═══ CAMPO CUELGA DE HOY (dueño, 23/09/2026 · mapa de pantallas, duda 4) ═══
-            `/campo` (parte diario, impedimento, asistencia, herramientas por QR) es del jefe y no tenía
-            entrada desde su propio perfil: se enlazaba sólo desde `/mi-trabajo`, la pantalla del
-            empleado, que no puede escribir nada de eso. Son los mismos accesos de 88px de arriba. */}
+        {/* ═══ TODO EL TRABAJO DEL JEFE CUELGA DE HOY (dueño, 24/09/2026) ═══
+            `/campo` («Trabajo») era un segundo «Hoy» con su propio saludo, su grilla y su «Cerrar
+            sesión», y su flecha volvía a J01 SIN la obra. Se retiró para el jefe: lo que tenía y acá
+            faltaba —los pedidos de material y los movimientos de herramientas— vive ahora acá, y cada
+            acceso lleva la obra que el jefe ya eligió arriba: ninguna pantalla vuelve a preguntar
+            «¿de qué obra?». */}
         <RotuloSeccion icono="obra" margenArriba={20}>Trabajo</RotuloSeccion>
         <div style={{ display: 'flex', gap: 10, marginTop: 10 }} data-testid="accesos-campo">
           {/* «Parte de hoy» llevaba al mismo avance masivo que el acceso de arriba: dos botones, una pantalla. */}
           <Acceso href={hrefCargaDeAsistencia({ obra: obra.id })} icono="nota" texto="Asistencia" />
-          <Acceso href="/campo/impedimento" icono="bloqueo" texto="Problema" />
-          <Acceso href="/campo/herramientas" icono="equipo" texto="Herramientas" />
+          <Acceso href={`/campo/impedimento?obra=${encodeURIComponent(obra.id)}`} icono="bloqueo" texto="Problema" />
+          <Acceso href={`/campo/herramientas?en=${encodeURIComponent(`obra:${obra.id}`)}`} icono="equipo" texto="Herramientas" />
         </div>
-        <Link href="/campo" prefetch={false} data-testid="ir-campo" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, marginTop: 4, fontSize: 12.5, color: C.muted, textDecoration: 'underline' }}>
-          Todo lo de trabajo: material y movimientos
-        </Link>
+        <div style={{ display: 'flex', gap: 18, marginTop: 4, flexWrap: 'wrap' }}>
+          <Link href={`/campo/material?obra=${encodeURIComponent(obra.id)}`} prefetch={false} data-testid="ir-material" style={enlaceSecundario}>
+            Material pedido
+          </Link>
+          <Link href={`/campo/herramientas/lugar?en=${encodeURIComponent(`obra:${obra.id}`)}`} prefetch={false} data-testid="ir-movimientos" style={enlaceSecundario}>
+            Mover herramientas de esta obra
+          </Link>
+        </div>
       </div>
     </>
   )
 }
+
+const enlaceSecundario = {
+  display: 'inline-flex', alignItems: 'center', minHeight: 44, fontSize: 12.5, color: C.muted, textDecoration: 'underline',
+} as const
 
 /** Uno de los tres accesos de 88px. Sin `href` queda apagado: el motivo se escribe debajo del bloque. */
 function Acceso({ href, icono, texto }: { href?: string; icono: 'masivo' | 'pedido' | 'foto' | 'nota' | 'bloqueo' | 'equipo'; texto: string }) {

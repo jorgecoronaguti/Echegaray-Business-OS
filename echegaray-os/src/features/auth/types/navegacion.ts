@@ -57,7 +57,10 @@ const HERRAMIENTAS: SolapaNav = { clave: 'herramientas', label: 'Herramientas', 
  * nombre del área, que es información y no un botón que no lleva a ningún lado.
  */
 export function solapasDeNav(rol: Rol | null | undefined): SolapaNav[] {
-  const areas = areasDe(rol).map((a) => ({ clave: a, label: AREA_LABEL[a], href: AREA_HREF[a] }))
+  // LA SOLAPA «OBRAS» DEL JEFE LLEVA A SU OBRA (24/09/2026): la cartera `/obras` ya no es suya
+  // (`RUTAS_CERRADAS_AL_JEFE_EXACTAS`), y una solapa que rebota enseña que la barra miente.
+  const hrefDe = (a: keyof typeof AREA_HREF) => (a === 'obras' && rol === 'jefe_obra' ? INICIO_JEFE_TELEFONO : AREA_HREF[a])
+  const areas = areasDe(rol).map((a) => ({ clave: a, label: AREA_LABEL[a], href: hrefDe(a) }))
   const destinos = [ANALITICAS].filter((d) => puedeVerRuta(rol, d.href))
   const herramientas = rol && rol !== 'cliente' ? [HERRAMIENTAS] : []
   // HERRAMIENTAS ANTES QUE ANALÍTICAS (dueño, 23/09/2026: «cambiar de lugar analíticas con herramientas»).
@@ -96,35 +99,25 @@ export function solapasDeNav(rol: Rol | null | undefined): SolapaNav[] {
  * dice que no, no se lo manda ahí.
  */
 /**
- * @param telefono ¿La petición viene de un teléfono? (`pareceTelefonoSegun(headers())`). Sólo cambia
- *   el inicio del jefe de obra. Por defecto `false`: escritorio, que es lo que siempre fue.
+ * ═══ EL INICIO NO DEPENDE DEL APARATO (dueño, 24/09/2026) ═══
+ *
+ * Del 23/09 al 24/09 esta función recibía `telefono` y el jefe entraba a `/obra/hoy` sólo si el
+ * navegador se declaraba teléfono; en otro caso, a Administración. Medido en producción a 390 px: un
+ * iPad (Safari se presenta como Mac) o el «Solicitar sitio de escritorio» del iPhone mandaban al jefe
+ * a Personal y a Dirección a Clientes — el mismo usuario, en el mismo teléfono, aterrizaba en dos
+ * lugares según una opción del navegador. El dueño: «el inicio del jefe y de Administración no
+ * depende de la detección del aparato». Cada nivel tiene UN inicio:
+ *
+ *   empleado        → `/hoy` (su día)
+ *   jefe de obra    → `/obra/hoy` (J01, su obra)
+ *   Dirección/Adm.  → `/obras` (la cartera, primera de su barra)
+ *   sin perfil      → la primera solapa del nivel menos privilegiado (`/obras`, que el middleware
+ *                     rebota si hace falta)
  */
-export function destinoDeLaHome(rol: Rol | null | undefined, telefono = false): string {
-  // El empleado no entra por el área: entra por su día. `/obras` —que sería su primera solapa— no
-  // está en `CAMPO_RUTAS_PERMITIDAS` y el middleware lo rebotaría igual.
+export function destinoDeLaHome(rol: Rol | null | undefined): string {
   if (rol === 'campo') return '/hoy'
-  // ═══ EL JEFE DE OBRA EN EL TELÉFONO ENTRA POR SU OBRA (dueño, 23/09/2026) ═══
-  //
-  // J01–J06 (`/obra/*`) existían sin una sola puerta: `destinoDeLaHome('jefe_obra')` lo dejaba en
-  // la cartera de clientes de escritorio, y desde ahí no había enlace a `/obra/hoy`. El dueño
-  // resolvió la duda 3 del mapa de pantallas: en el teléfono su inicio es `/obra/hoy`; en
-  // escritorio sigue en Administración. Es el dispositivo el que decide, no el rol solo.
-  if (rol === 'jefe_obra' && telefono) return INICIO_JEFE_TELEFONO
-  // ═══ EN EL TELÉFONO, TAMBIÉN DIRECCIÓN Y ADMINISTRACIÓN ENTRAN POR CAMPO (dueño, 23/09/2026) ═══
-  //
-  // «Ésa es la vista con mi usuario admin»: la cartera de Clientes de escritorio dibujada en el celular.
-  // El teléfono es para operar (parte, material, problema, asistencia, herramientas, movimientos); la
-  // computadora es para administrar. Con el mismo usuario, el dispositivo elige la cara.
-  // 24/09/2026 el dueño eligió para Administración una barra de gestión propia (Obras · Personal ·
-  // Compras · Datos · Más): su inicio en el teléfono pasa a ser Obras, el primero de la barra. Trabajo
-  // (`/campo`) sigue a un toque, dentro de «Más».
-  if ((rol === 'direccion' || rol === 'administracion') && telefono) return '/obras'
-  // ═══ YA NO HAY HOME ECONÓMICA (27/08/2026) ═══
-  //
-  // Hasta hoy esto devolvía `/flujo-caja` a quien pudiera abrirla, por la decisión del 09/07. El
-  // dueño la retiró: *«hay una de flujo-caja que está deprecada y se accede por error o saliendo de
-  // una página»*. Sin destino especial, cada nivel entra por la primera solapa de su área — que es
-  // la que la barra ya pinta como activa, así que entrar y volver son el mismo lugar.
+  if (rol === 'jefe_obra') return INICIO_JEFE_TELEFONO
+  if (rol === 'direccion' || rol === 'administracion') return '/obras'
   return solapasDeNav(rol)[0].href
 }
 

@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { barraTelefonoDe, itemActivoDeBarra } from './barraTelefono.ts'
 import { puedeVerRuta } from './areas.ts'
+import { esRutaCampoPermitida } from './index.ts'
 
 const claves = (rol: Parameters<typeof barraTelefonoDe>[0]) => barraTelefonoDe(rol).map((i) => i.clave)
 
@@ -15,8 +16,17 @@ test('el jefe de obra tiene UNA barra en todo el teléfono: la de J01 (dueño 24
   assert.equal(barraTelefonoDe('jefe_obra')[0].href, '/obra/hoy')
 })
 
-test('empleado, cliente y sin perfil: sin barra (fallar cerrado)', () => {
-  assert.deepEqual(claves('campo'), [])
+// CAMBIO DE CONTRATO (24/09/2026): el empleado tenía «ninguna» porque su barra vive en su app. Pero
+// abre `/mi-cuenta` (su perfil y su contraseña, sin copia en su app) y ahí quedaba sin barra y sin
+// salida. Ahora ve la MISMA de su app.
+test('el empleado ve en el escritorio la misma barra de su app: Hoy · Trabajo · Horas · Yo', () => {
+  assert.deepEqual(barraTelefonoDe('campo').map((i) => i.label), ['Hoy', 'Trabajo', 'Horas', 'Yo'])
+  assert.deepEqual(barraTelefonoDe('campo').map((i) => i.href), ['/hoy', '/mi-trabajo', '/mi-informacion/horas', '/mi-informacion'])
+  assert.equal(itemActivoDeBarra('/mi-cuenta', barraTelefonoDe('campo')), 'op-yo')
+  for (const i of barraTelefonoDe('campo')) assert.equal(esRutaCampoPermitida(i.href), true, `campo → ${i.href}`)
+})
+
+test('cliente y sin perfil: sin barra (fallar cerrado)', () => {
   assert.deepEqual(claves('cliente'), [])
   assert.deepEqual(claves(null), [])
   assert.deepEqual(claves(undefined), [])
@@ -53,5 +63,8 @@ test('cuál se enciende: el href más largo gana y las rutas de Administración 
   assert.equal(itemActivoDeBarra('/obra/avance-masivo', j), 'jefe-hoy')
   assert.equal(itemActivoDeBarra('/campo/herramientas', j), 'jefe-hoy')
   assert.equal(itemActivoDeBarra('/administracion/personas/asistencia', j), 'jefe-gente')
+  // Personal entero es «Gente» para el jefe (24/09/2026): Plantel, Horas y cuadrillas.
+  assert.equal(itemActivoDeBarra('/administracion/personas', j), 'jefe-gente')
+  assert.equal(itemActivoDeBarra('/administracion/personas/cuadrillas', j), 'jefe-gente')
   assert.equal(itemActivoDeBarra('/obras', j), null)
 })

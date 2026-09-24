@@ -44,3 +44,17 @@ test('sin nada guardado no se redirige: no se inventa una vista', () => {
 test('un parámetro ajeno a la vista sobrevive a la restauración', () => {
   assert.equal(queryARestaurar(p('nueva=1'), 'orden=etapa&dir=desc'), 'orden=etapa&dir=desc&nueva=1')
 })
+
+// ═══ «ARCHIVADAS» YA NO ES UNA FORMA DE MIRAR (dueño, 24/09/2026) ═══
+//
+// Recordada, cada regreso a `/obras` abría la cartera con las 18 obras cerradas: el «listado gigante
+// de obras activas y no activas». Ver las cerradas es una consulta puntual, y una cookie vieja que
+// todavía la traiga no la puede volver a imponer.
+test('las archivadas no se guardan ni se restauran, ni desde una cookie vieja', () => {
+  assert.equal(preferenciaDe(new URLSearchParams('archivadas=1')), null)
+  assert.equal(preferenciaDe(new URLSearchParams('archivadas=1&orden=nombre')), 'orden=nombre')
+  assert.equal(queryARestaurar(new URLSearchParams(''), 'archivadas=1'), null, 'una cookie que sólo traía archivadas no restaura nada')
+  assert.equal(queryARestaurar(new URLSearchParams(''), 'archivadas=1&orden=nombre'), 'orden=nombre')
+  // Sin claves que restaurar no hay redirección: devolver la misma query sería un 307 en bucle.
+  assert.equal(queryARestaurar(new URLSearchParams('nueva=1'), 'archivadas=1'), null)
+})

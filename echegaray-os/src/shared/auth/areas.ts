@@ -123,11 +123,72 @@ export const AREA_HREF: Record<Area, string> = {
 export const ENTRADA_DE_ADMINISTRACION = '/clientes'
 
 /**
- * J01: la raíz del jefe de obra en el teléfono. Vive acá —y no en `features/jefe` ni en
- * `features/auth`— porque la usan las dos y una feature no importa de otra. Desde el 23/09/2026 es
- * el inicio del jefe cuando entra desde un teléfono (`destinoDeLaHome`).
+ * J01: la raíz del jefe de obra. Vive acá —y no en `features/jefe` ni en `features/auth`— porque la
+ * usan las dos y una feature no importa de otra.
+ *
+ * El nombre dice «teléfono» por historia: del 23/09 al 24/09/2026 fue el inicio del jefe SÓLO cuando
+ * el aparato se detectaba como teléfono. Desde el 24/09/2026 es su inicio en cualquier aparato (el
+ * dueño: «el inicio no depende de la detección del aparato»; un iPad o el «sitio de escritorio» del
+ * iPhone mandaban al jefe a Personal y al dueño a Clientes). Se conserva el nombre para no mover los
+ * trece lugares que ya lo importan.
  */
 export const INICIO_JEFE_TELEFONO = '/obra/hoy'
+
+/**
+ * ═══ LO QUE EL JEFE DE OBRA YA NO ABRE (dueño, 24/09/2026) ═══
+ *
+ * Textual, aprobando el mapa del teléfono: el jefe «deja de tener acciones de Administración en la
+ * app» —Nueva obra, Reactivar, Gantt, Más, Fuentes— y «se retira /campo para el jefe: todo queda en
+ * su Hoy (J01)». Conserva Personal (Plantel, Horas, Cargar asistencia; sin Liquidación) y su efectivo.
+ *
+ * NO son rutas del dinero —Dirección y Administración las siguen abriendo, y el jefe no ve precio en
+ * ninguna—: son las que duplicaban su «Hoy» o le daban una cartera que no es suya. Por eso es una lista
+ * aparte de `RUTAS_SOLO_ECONOMIA` y no se mezcla con ella.
+ *
+ *   EXACTAS  `/obras` (la cartera; la FICHA `/obras/<obra>` sigue abierta: ahí se arma la
+ *            planificación de su obra, que J01 no edita) y `/campo` (el hub «Trabajo»; sus pantallas
+ *            `/campo/material`, `/campo/impedimento`, `/campo/herramientas` son las que cuelgan de J01).
+ *   PREFIJO  el Gantt de la cartera, el alta de obra, «Más», «Fuentes» y el día del operario
+ *            (`/hoy`, `/mi-trabajo`), que el jefe abría y le cambiaba la barra por la del empleado.
+ */
+export const RUTAS_CERRADAS_AL_JEFE_EXACTAS = ['/obras', '/campo'] as const
+export const RUTAS_CERRADAS_AL_JEFE = [
+  '/obras/gantt', '/obras/nueva', '/mas', '/integraciones', '/hoy', '/mi-trabajo',
+] as const
+
+function cerradaAlJefe(pathname: string): boolean {
+  if ((RUTAS_CERRADAS_AL_JEFE_EXACTAS as readonly string[]).includes(pathname)) return true
+  return RUTAS_CERRADAS_AL_JEFE.some((r) => pathname === r || pathname.startsWith(r + '/'))
+}
+
+/**
+ * A DÓNDE REBOTA QUIEN ABRE UNA RUTA QUE NO ES DE SU NIVEL.
+ *
+ * Hasta el 24/09/2026 era `/obras` para todos, y para el jefe eso era el «listado gigante»: la cartera
+ * entera de escritorio —con las archivadas, si alguna vez las había pedido— cada vez que tocaba
+ * Clientes, Compras o un enlace viejo. Ahora rebota a SU inicio, que es su obra.
+ */
+export function destinoDeRebote(rol: Rol | null | undefined): string {
+  return rol === 'jefe_obra' ? INICIO_JEFE_TELEFONO : AREA_HREF.obras
+}
+
+/**
+ * DIRECCIÓN Y ADMINISTRACIÓN EN `/obra/*` SIN «VER COMO» (dueño, 24/09/2026).
+ *
+ * `/obra/*` es el producto del jefe (J01–J06). Quien administra llegaba ahí por un enlace y quedaba con
+ * la barra del jefe y la obra que el orden alfabético elegía. Va a la ficha de esa obra, que es su
+ * pantalla; el parte masivo, al parte de la ficha. Sin obra en la URL, a la cartera.
+ *
+ * `null` si la ruta no es del jefe.
+ */
+export function fichaDeGestionPara(pathname: string, obra: string | null | undefined): string | null {
+  if (pathname !== '/obra' && !pathname.startsWith('/obra/')) return null
+  const id = (obra ?? '').trim()
+  if (!id || !/^[a-z0-9][a-z0-9-]{0,99}$/i.test(id)) return AREA_HREF.obras
+  const base = `${AREA_HREF.obras}/${encodeURIComponent(id)}`
+  if (pathname.startsWith('/obra/avance-masivo')) return `${base}?vista=tareas&sub=parte`
+  return base
+}
 
 /** La ruta a la que `/administracion` manda, o `null` si esta ruta no es la entrada del área. Se
  *  compara el path EXACTO: `/administracion/compras` es una pantalla de verdad y no se toca. */
@@ -229,5 +290,6 @@ export function puedeVerRuta(rol: Rol | null | undefined, ruta: string): boolean
   // SE COMPARA EL PATH, SIN QUERY NI ANCLA (24/09/2026): la navegación pregunta con el href entero
   // («/administracion/proveedores?vista=deuda») y así una sección cerrada se le dibujaba al jefe.
   const pathname = ruta.split(/[?#]/)[0]
+  if (rol === 'jefe_obra' && cerradaAlJefe(pathname)) return false
   return !RUTAS_SOLO_ECONOMIA.some((r) => pathname === r || pathname.startsWith(r + '/'))
 }

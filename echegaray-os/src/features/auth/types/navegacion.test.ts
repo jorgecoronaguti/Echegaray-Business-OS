@@ -112,18 +112,38 @@ test('nadie aterriza en /flujo-caja: la ruta se retiró', () => {
   assert.equal(destinoDeLaHome(null), '/obras')
 })
 
-test('quien administra aterriza en su área', () => {
-  assert.equal(destinoDeLaHome('direccion'), '/administracion')
-  assert.equal(destinoDeLaHome('administracion'), '/administracion')
+// ═══ CAMBIO DE CONTRATO (dueño, 24/09/2026): UN NIVEL, UN INICIO, EN CUALQUIER APARATO ═══
+//
+// Hasta hoy Dirección y Administración entraban a `/administracion` (→ Clientes) en escritorio y a
+// `/obras` en el teléfono, y el jefe a `/administracion` (→ Personal) en escritorio y a `/obra/hoy` en
+// el teléfono. Medido en producción: un iPad o el «sitio de escritorio» del iPhone mandaban al jefe a
+// Personal y al dueño a Clientes, en el mismo teléfono. El dueño: «el inicio no depende de la
+// detección del aparato». La función ya no recibe el aparato.
+test('quien administra aterriza en Obras, la primera de su barra, desde cualquier aparato', () => {
+  assert.equal(destinoDeLaHome('direccion'), '/obras')
+  assert.equal(destinoDeLaHome('administracion'), '/obras')
 })
 
 test('el resto aterriza en su propia entrada, no en la del dinero', () => {
-  assert.equal(destinoDeLaHome('jefe_obra'), '/administracion', 'su área es Administración, no Obras')
+  assert.equal(destinoDeLaHome('jefe_obra'), '/obra/hoy', 'su inicio es su obra (J01), no Personal')
   assert.equal(destinoDeLaHome('campo'), '/hoy')
   // Sin perfil se cae al nivel MENOS privilegiado, igual que `solapasDeNav`: el modo de fallar de
   // un default permisivo acá es aterrizar a un desconocido en la pantalla de la plata.
   assert.equal(destinoDeLaHome(null), '/obras')
   assert.equal(destinoDeLaHome(undefined), '/obras')
+})
+
+test('destinoDeLaHome NO recibe el aparato: el inicio no puede volver a depender del User-Agent', () => {
+  // Si alguien le devuelve el segundo parámetro, este test lo nombra: la regla del 24/09 es que
+  // el mismo usuario entra al mismo lugar desde un teléfono, un iPad o una computadora.
+  assert.equal(destinoDeLaHome.length, 1)
+})
+
+test('la solapa «Obras» del jefe lleva a su obra: la cartera ya no es suya', () => {
+  const obras = solapasDeNav('jefe_obra').find((s) => s.clave === 'obras')
+  assert.equal(obras?.href, '/obra/hoy')
+  assert.equal(puedeVerRuta('jefe_obra', obras!.href), true)
+  assert.equal(solapasDeNav('direccion').find((s) => s.clave === 'obras')?.href, '/obras')
 })
 
 test('el destino de la home es una solapa que ese rol tiene dibujada, o su pantalla propia', () => {
@@ -136,25 +156,6 @@ test('el destino de la home es una solapa que ese rol tiene dibujada, o su panta
     const laPintaUnaSolapa = solapaActiva(destino, solapasDeNav(rol)) !== null
     assert.ok(enLaBarra || laPintaUnaSolapa, `${rol} aterriza en ${destino}, que no enciende ninguna solapa`)
   }
-})
-
-// ═══ EL JEFE DE OBRA EN EL TELÉFONO ENTRA POR SU OBRA (dueño, 23/09/2026 · mapa de pantallas, duda 3) ═══
-//
-// EL DEFECTO: J01–J06 (`/obra/*`) no tenían ninguna puerta. Un jefe que entraba desde el celular
-// aterrizaba en la cartera de clientes de escritorio y sólo llegaba a `/obra/hoy` escribiendo la URL.
-test('el jefe de obra aterriza en /obra/hoy SÓLO desde el teléfono; en escritorio sigue en Administración', () => {
-  assert.equal(destinoDeLaHome('jefe_obra', true), '/obra/hoy')
-  assert.equal(destinoDeLaHome('jefe_obra', false), '/administracion')
-  assert.equal(destinoDeLaHome('jefe_obra'), '/administracion', 'sin dato del dispositivo se cae a escritorio')
-})
-
-test('en el teléfono dirección y administración entran por Obras, el primero de su barra (dueño 24/09); los demás no cambian', () => {
-  // Dueño, 23/09/2026: «ésa es la vista con mi usuario admin» (Clientes de escritorio en el celular).
-  assert.equal(destinoDeLaHome('direccion', true), '/obras')
-  assert.equal(destinoDeLaHome('administracion', true), '/obras')
-  assert.equal(destinoDeLaHome('direccion', false), '/administracion')
-  assert.equal(destinoDeLaHome('campo', true), '/hoy')
-  assert.equal(destinoDeLaHome(null, true), '/obras')
 })
 
 test('la raíz del jefe en el teléfono es UNA: sale de shared/auth y J01 enciende Obras', () => {

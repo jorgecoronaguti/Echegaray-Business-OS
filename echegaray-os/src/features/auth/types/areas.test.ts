@@ -15,7 +15,9 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { puedeVerRuta, areaDe, esAdministracion, areasDe, veEconomia } from './areas.ts'
+import {
+  puedeVerRuta, areaDe, esAdministracion, areasDe, veEconomia, liquidaSueldos, destinoDeRebote, fichaDeGestionPara,
+} from './areas.ts'
 
 test('Dirección y Administración abren todo', () => {
   for (const rol of ['direccion', 'administracion'] as const) {
@@ -71,10 +73,45 @@ test('NI A GESTIONAR USUARIOS, que es la puerta a todo lo anterior', () => {
   assert.equal(puedeVerRuta('jefe_obra', '/administracion/usuarios/nuevo'), false)
 })
 
-test('el nivel Obras trabaja sus obras', () => {
-  for (const r of ['/obras', '/obras/san-francisco', '/obras/san-francisco?vista=economia']) {
+test('el nivel Obras trabaja sus obras: la FICHA sí, la cartera no (24/09/2026)', () => {
+  for (const r of ['/obras/san-francisco', '/obras/san-francisco?vista=economia', '/obra/hoy', '/obra/tareas?obra=x']) {
     assert.equal(puedeVerRuta('jefe_obra', r), true, `un jefe de obra no pudo abrir ${r}`)
   }
+  // CAMBIO DE CONTRATO (dueño, 24/09/2026): el jefe «deja de tener acciones de Administración» —
+  // Nueva obra, Gantt, Más, Fuentes— y se le retira `/campo`. La cartera `/obras` era, además, el
+  // «listado gigante de obras activas y no activas» de la queja. Dirección y Administración, igual.
+  for (const r of ['/obras', '/obras?archivadas=1', '/obras/gantt', '/obras/nueva', '/mas', '/integraciones', '/integraciones/x', '/campo', '/hoy', '/mi-trabajo', '/mi-trabajo/reportar']) {
+    assert.equal(puedeVerRuta('jefe_obra', r), false, `un jefe de obra pudo abrir ${r}`)
+    assert.equal(puedeVerRuta('direccion', r), true, `Dirección no pudo abrir ${r}`)
+  }
+  // Lo que cuelga de su «Hoy» sigue abierto: son las pantallas de trabajo de J01.
+  for (const r of ['/campo/material', '/campo/material/pedir', '/campo/impedimento', '/campo/herramientas', '/campo/herramientas/mover', '/mi-informacion', '/mi-informacion/efectivo', '/mi-cuenta']) {
+    assert.equal(puedeVerRuta('jefe_obra', r), true, `un jefe de obra no pudo abrir ${r}`)
+  }
+})
+
+test('LO VITAL: el jefe sigue llegando a Personal y a Cargar asistencia; Liquidación no', () => {
+  for (const r of ['/administracion', '/administracion/personas', '/administracion/personas?vista=asistencia', '/administracion/personas/asistencia', '/administracion/personas/cuadrillas', '/administracion/personas/en-obra']) {
+    assert.equal(puedeVerRuta('jefe_obra', r), true, `un jefe de obra no pudo abrir ${r}`)
+  }
+  assert.equal(liquidaSueldos('jefe_obra'), false)
+})
+
+test('quien no puede abrir una ruta rebota a SU inicio, no a la cartera', () => {
+  assert.equal(destinoDeRebote('jefe_obra'), '/obra/hoy')
+  assert.equal(destinoDeRebote('direccion'), '/obras')
+  assert.equal(destinoDeRebote(null), '/obras')
+  assert.equal(puedeVerRuta('jefe_obra', destinoDeRebote('jefe_obra')), true, 'el rebote del jefe no puede rebotar')
+})
+
+test('Dirección y Administración en /obra/* van a la ficha de esa obra (24/09/2026)', () => {
+  assert.equal(fichaDeGestionPara('/obra/hoy', 'quattropani'), '/obras/quattropani')
+  assert.equal(fichaDeGestionPara('/obra/tareas', 'san-francisco'), '/obras/san-francisco')
+  assert.equal(fichaDeGestionPara('/obra/avance-masivo', 'quattropani'), '/obras/quattropani?vista=tareas&sub=parte')
+  assert.equal(fichaDeGestionPara('/obra/hoy', null), '/obras', 'sin obra, a la cartera')
+  assert.equal(fichaDeGestionPara('/obra/hoy', '../../x'), '/obras', 'un id raro no arma una URL')
+  assert.equal(fichaDeGestionPara('/obras/quattropani', 'x'), null, 'la ficha no es del jefe')
+  assert.equal(fichaDeGestionPara('/obrador', 'x'), null)
 })
 
 test('el rol CAMPO sigue afuera de todo lo administrativo', () => {

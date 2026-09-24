@@ -1,3 +1,7 @@
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import { getPerfilActual } from '@/features/auth/services/authService'
+import { aterrizajeDeIngreso } from '@/features/auth/types/aterrizaje'
 import { LoginForm } from '@/features/auth/components/LoginForm'
 import { MarcoAuth } from '@/features/auth/components/MarcoAuth'
 
@@ -24,6 +28,20 @@ export default async function LoginPage({
   searchParams: Promise<{ volver?: string; cerraste?: string }>
 }) {
   const { volver, cerraste } = await searchParams
+  // ═══ CON LA SESIÓN ABIERTA, LA PUERTA NO SE DIBUJA (dueño, 24/09/2026) ═══
+  //
+  // El middleware deja pasar `/login` sin mirar la sesión (tiene que poder dibujarse para quien no
+  // entró), y esta pantalla tampoco la miraba: un jefe que volvía por un marcador viejo o por el
+  // «atrás» del teléfono veía el formulario de ingreso con la sesión viva y creía que la app lo había
+  // echado. Ahora va a donde iría después de entrar —el `volver`, si su nivel lo abre; si no, su inicio—
+  // por la MISMA función que el login (`aterrizajeDeIngreso`). La cuenta con dos pasos pendientes la
+  // frena el middleware en el destino, igual que siempre.
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) {
+    const { data: perfil } = await getPerfilActual(supabase, user.id)
+    redirect(aterrizajeDeIngreso(perfil?.rol, volver ?? null))
+  }
   return (
     <MarcoAuth
       titulo="Entrá al OS de Echegaray"

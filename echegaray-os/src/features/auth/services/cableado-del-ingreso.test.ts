@@ -120,3 +120,13 @@ test('cada puerta enlaza a la otra: el cruce quedó cerrado en las dos direccion
     'la puerta del cliente dejó de ofrecerle la salida a quien trabaja en Echegaray',
   )
 })
+
+// ── CON LA SESIÓN ABIERTA, LA PUERTA NO SE DIBUJA (dueño, 24/09/2026)
+//
+// Un jefe que volvía por un marcador o por el «atrás» veía el formulario de ingreso con la sesión viva
+// y creía que la app lo había echado. La pantalla lo manda adentro por la MISMA regla del login.
+test('la pantalla de login con sesión redirige por aterrizajeDeIngreso, no a una ruta propia', () => {
+  const src = codigo(PANTALLA)
+  assert.match(src, /redirect\(\s*aterrizajeDeIngreso\(/, 'el login con sesión abierta vuelve a dibujar el formulario')
+  assert.doesNotMatch(src, /redirect\(\s*'/, 'el login eligió un destino escrito a mano')
+})

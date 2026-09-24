@@ -5,8 +5,10 @@
 
 import { ZONA_OBRA } from './zona.ts'
 import { createClient } from '@/lib/supabase/server'
-import { getObrasDelJefe, type ObraDelJefe } from './jefeService.ts'
-import { obraElegida } from './navegacion.ts'
+import { cookies } from 'next/headers'
+import { getObrasAsignadasHoy, getObrasDelJefe, type ObraDelJefe } from './jefeService.ts'
+import { obraElegida, obrasDelSelector } from './navegacion.ts'
+import { COOKIE_OBRA, obraDeCookieValida } from './obraRecordada.ts'
 import { ETAPAS, ETAPA_LABEL, type Etapa } from '@/features/obras/types'
 
 export interface Contexto {
@@ -33,9 +35,15 @@ export function hoyEnObra(): string {
 
 export async function contextoDeObra(pedida: string | null | undefined): Promise<Contexto> {
   const supabase = await createClient()
-  const obras = await getObrasDelJefe(supabase)
-  const lista = obras.data ?? []
-  const id = obraElegida(lista, pedida)
+  const [obras, asignadas, jar] = await Promise.all([
+    getObrasDelJefe(supabase),
+    // `getClaims` verifica la firma en el proceso: no es un viaje más a Auth.
+    supabase.auth.getClaims().then(({ data }) => getObrasAsignadasHoy(supabase, data?.claims?.sub, hoyEnObra())),
+    cookies(),
+  ])
+  // SÓLO ACTIVAS, LAS SUYAS PRIMERO (dueño, 24/09/2026): ver `obrasDelSelector`.
+  const lista = obrasDelSelector(obras.data ?? [], asignadas)
+  const id = obraElegida(lista, pedida, obraDeCookieValida(jar.get(COOKIE_OBRA)?.value), asignadas)
   return {
     supabase,
     obras: lista,

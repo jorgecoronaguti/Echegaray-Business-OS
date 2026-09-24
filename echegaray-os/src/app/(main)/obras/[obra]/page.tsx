@@ -359,7 +359,9 @@ export default async function ObraPage({
   )
   // LA PUERTA PARA CORREGIR LOS CAMPOS DE LA OBRA. El diseño 03 no la dibuja; va plegada al final
   // del aside porque sin ella no hay dónde cambiar el estado, la etapa o el jefe de obra.
-  const editarLaObra = (
+  // ES DE ADMINISTRACIÓN (dueño, 24/09/2026): cambia el estado, la etapa y el jefe de la obra. El jefe
+  // de obra deja de tenerla, igual que Archivar y Reactivar; la planificación sigue siendo suya.
+  const editarLaObra = !veComercial ? null : (
     <details data-testid="editar-obra">
       <summary style={{ cursor: 'pointer', fontSize: '12.5px', color: C.tenue }}>Editar la obra</summary>
       <div style={{ marginTop: '10px' }}>
@@ -521,6 +523,7 @@ export default async function ObraPage({
           reactivar={archivarObra.bind(null, obraId, false)}
           veComercial={veComercial}
           editar={editarLaObra}
+          puedeArchivar={veComercial}
         />
       )}
 

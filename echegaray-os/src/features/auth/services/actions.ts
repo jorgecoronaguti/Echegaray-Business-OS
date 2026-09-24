@@ -3,14 +3,12 @@
 import { mensajeDeAuth } from './mensajeDeAuth'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
-import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { siteUrl } from '@/lib/site-url'
 import {
   contrasenaNuevaInputSchema, loginInputSchema, recuperarInputSchema, type Rol,
 } from '../types'
 import { aterrizajeDeIngreso, inicioDeRol } from '../types/aterrizaje'
-import { pareceTelefonoSegun } from '@/shared/utils/dispositivo'
 import { urlDeRecuperacion } from './recuperacion'
 import { cookies } from 'next/headers'
 import { COOKIE_MFA, RUTA_DOS_PASOS, sellarExigeDosPasos } from '@/lib/auth/mfa'
@@ -69,9 +67,8 @@ export async function loginAction(_prev: ActionState, formData: FormData): Promi
   // del MISMO `destinoDeLaHome` que la home, y el `volver` se respeta sólo si ese rol puede ver esa
   // ruta —si no, se aterriza directo en su inicio y no hay cadena de redirecciones.
   const rol = await rolDe(supabase, data.user?.id)
-  // El dispositivo decide sólo para el jefe de obra (teléfono → `/obra/hoy`); ver `destinoDeLaHome`.
-  const telefono = pareceTelefonoSegun(await headers())
-  redirect(aterrizajeDeIngreso(rol, formData.get('volver')?.toString() ?? null, telefono))
+  // El aparato ya no decide el inicio (24/09/2026): ver `destinoDeLaHome`.
+  redirect(aterrizajeDeIngreso(rol, formData.get('volver')?.toString() ?? null))
 }
 
 // ═══ EL ALTA LIBRE SE FUE (27/08/2026), Y LA PUERTA DE VERDAD SIGUE ABIERTA ═══
@@ -155,7 +152,7 @@ export async function contrasenaNuevaAction(_prev: ActionState, formData: FormDa
   // adentro. Sin `volver` — el camino acá empezó en un enlace del correo, no en una pantalla que se
   // quiso abrir.
   const rol = await rolDe(supabase, user.id)
-  redirect(inicioDeRol(rol, pareceTelefonoSegun(await headers())))
+  redirect(inicioDeRol(rol))
 }
 
 /**

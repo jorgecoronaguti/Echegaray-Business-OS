@@ -18,7 +18,7 @@ export interface ItemBarraTelefono {
   href: string
   label: string
   /** Nombre del icono del set del teléfono (`shared/components/movil/Iconos.tsx`). */
-  icono: 'obra' | 'lista' | 'plano' | 'avance' | 'llave' | 'casa' | 'tarea' | 'gente' | 'pedido' | 'mas'
+  icono: 'obra' | 'lista' | 'plano' | 'avance' | 'llave' | 'casa' | 'tarea' | 'gente' | 'pedido' | 'mas' | 'reloj'
   /** Rutas que encienden este ítem además de su `href` (por prefijo). */
   enciende?: readonly string[]
 }
@@ -32,7 +32,19 @@ const JEFE: ItemBarraTelefono[] = [
   { clave: 'jefe-hoy', href: INICIO_JEFE_TELEFONO, label: 'Hoy', icono: 'casa', enciende: ['/obra/avance-masivo', '/obra/frente', '/obra/efectivo', '/campo'] },
   { clave: 'jefe-tareas', href: '/obra/tareas', label: 'Tareas', icono: 'tarea' },
   { clave: 'jefe-avance', href: '/obra/avance', label: 'Avance', icono: 'avance' },
-  { clave: 'jefe-gente', href: '/obra/personas', label: 'Gente', icono: 'gente', enciende: ['/administracion/personas/asistencia'] },
+  // Personal entero (Plantel, Horas, Cargar asistencia) enciende Gente desde el 24/09/2026: es donde el
+  // jefe lo busca, y dentro de Personal ninguna otra de las cuatro le corresponde.
+  { clave: 'jefe-gente', href: '/obra/personas', label: 'Gente', icono: 'gente', enciende: ['/administracion/personas'] },
+]
+
+// EL OPERARIO, FUERA DE SU APP (24/09/2026). Su barra vive en `ShellEmpleado`; ésta es la MISMA para
+// las pocas pantallas de escritorio que abre (su perfil y su contraseña en `/mi-cuenta`), que hasta hoy
+// lo dejaban sin barra y sin otra salida que el «atrás» del navegador.
+const OPERARIO: ItemBarraTelefono[] = [
+  { clave: 'op-hoy', href: '/hoy', label: 'Hoy', icono: 'casa' },
+  { clave: 'op-trabajo', href: '/mi-trabajo', label: 'Trabajo', icono: 'tarea' },
+  { clave: 'op-horas', href: '/mi-informacion/horas', label: 'Horas', icono: 'reloj' },
+  { clave: 'op-yo', href: '/mi-informacion', label: 'Yo', icono: 'gente', enciende: ['/mi-cuenta'] },
 ]
 
 // ADMINISTRACIÓN EN EL TELÉFONO: UNA BARRA DE GESTIÓN (dueño, 24/09/2026, opción B: «Obras · Personal
@@ -55,12 +67,13 @@ const GESTION: ItemBarraTelefono[] = [
  *
  * - Dirección y Administración: Obras · Personal · Compras · Datos · Más (dueño 24/09, opción B).
  * - Jefe de obra: Hoy · Tareas · Avance · Gente, la misma de J01 en todas las pantallas.
- * - Empleado, cliente o sin perfil: NINGUNA. El empleado tiene la suya en `/hoy`; sin perfil se
- *   falla cerrado, igual que `solapasDeNav`.
+ * - Empleado: la de su app (Hoy · Trabajo · Horas · Yo), para cuando abre `/mi-cuenta` (24/09/2026).
+ * - Cliente o sin perfil: NINGUNA; se falla cerrado, igual que `solapasDeNav`.
  */
 export function barraTelefonoDe(rol: Rol | null | undefined): ItemBarraTelefono[] {
   if (rol === 'direccion' || rol === 'administracion') return GESTION
   if (rol === 'jefe_obra') return JEFE
+  if (rol === 'campo') return OPERARIO
   return []
 }
 

@@ -24,7 +24,7 @@ import { readdirSync, statSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { CAMPO_RUTAS_PERMITIDAS } from './index.ts'
-import { RUTAS_SOLO_ECONOMIA } from './areas.ts'
+import { RUTAS_CERRADAS_AL_JEFE, RUTAS_CERRADAS_AL_JEFE_EXACTAS, RUTAS_SOLO_ECONOMIA } from './areas.ts'
 import { PREFIJOS_DE_PANTALLA } from '../../../shared/components/estado/ubicacion.ts'
 
 const APP = join(dirname(fileURLToPath(import.meta.url)), '../../../app')
@@ -77,6 +77,12 @@ const ESTATICOS = ['/marca', '/icon.png', '/echegaray-os-extension.zip']
 test('las rutas del dinero existen todas', () => {
   for (const r of RUTAS_SOLO_ECONOMIA) {
     assert.equal(contesta(r), true, `${r} está declarada como ruta del dinero y no existe ninguna pantalla ahí`)
+  }
+})
+
+test('las rutas que se le cerraron al jefe existen todas (24/09/2026)', () => {
+  for (const r of [...RUTAS_CERRADAS_AL_JEFE, ...RUTAS_CERRADAS_AL_JEFE_EXACTAS]) {
+    assert.equal(contesta(r), true, `${r} está cerrada al jefe y no existe ninguna pantalla ahí`)
   }
 })
 

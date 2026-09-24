@@ -20,7 +20,13 @@
 /** Las claves de la URL que definen "cómo quiero ver esto". Nada más se recuerda. */
 // `atraso` está acá por la misma razón que `etapa`: es una elección de cómo se quiere ver la
 // cartera. Sin él, filtrar por atraso y volver mañana devolvía la cartera entera sin decir por qué.
-export const CLAVES_VISTA = ['orden', 'dir', 'etapa', 'q', 'archivadas', 'escala', 'atraso'] as const
+//
+// `archivadas` SALIÓ el 24/09/2026. Ver las obras cerradas es una consulta puntual, no una forma de
+// mirar la cartera: recordada, cada vez que alguien volvía a `/obras` —el jefe, por cada rebote de una
+// pantalla cerrada— se abría «Todo 26» con las 18 archivadas, el «listado gigante de obras activas y
+// no activas» de la queja del dueño. Una cookie vieja que todavía la traiga no la restaura: ver
+// `queryARestaurar`.
+export const CLAVES_VISTA = ['orden', 'dir', 'etapa', 'q', 'escala', 'atraso'] as const
 export type ClaveVista = typeof CLAVES_VISTA[number]
 
 /** Una cookie por vista: el Gantt y el Resumen se miran distinto y no comparten preferencia. */
@@ -52,7 +58,12 @@ export function preferenciaDe(params: URLSearchParams): string | null {
 export function queryARestaurar(params: URLSearchParams, guardada: string | null): string | null {
   if (!guardada) return null
   if (CLAVES_VISTA.some((k) => params.has(k))) return null
-  const destino = new URLSearchParams(guardada)
+  // Sólo las claves de vista de HOY: una preferencia guardada antes de que una clave saliera de la
+  // lista (`archivadas`, 24/09/2026) no la vuelve a imponer.
+  const destino = new URLSearchParams()
+  for (const [k, v] of new URLSearchParams(guardada)) if ((CLAVES_VISTA as readonly string[]).includes(k)) destino.set(k, v)
+  // Sin nada que restaurar no se redirige: devolver la misma query haría un 307 a la misma URL, en bucle.
+  if (destino.toString() === '') return null
   // Lo que ya venía en la URL y no es preferencia de vista se conserva: un `?nueva=1` o cualquier
   // parámetro futuro no puede desaparecer porque había una vista guardada.
   for (const [k, v] of params) if (!destino.has(k)) destino.set(k, v)

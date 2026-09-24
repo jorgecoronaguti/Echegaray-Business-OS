@@ -31,7 +31,10 @@ export function MarcoCampo({
             data-testid="volver"
             className="-ml-1 inline-flex min-h-[44px] items-center px-1 text-[12px] text-muted hover:text-ink"
           >
-            ← Trabajo
+            {/* «← Volver», no «← Trabajo» (24/09/2026): `/campo` es el hub de Administración; al jefe lo
+                devuelve a su «Hoy» y al operario a su día (el middleware decide), y ninguno de los dos
+                tiene una pantalla que se llame «Trabajo». */}
+            ← Volver
           </Link>
         )}
         <h1 className="mt-2 text-[20px] font-semibold tracking-[-0.01em] text-ink">{titulo}</h1>

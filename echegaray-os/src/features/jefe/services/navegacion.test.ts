@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { CONTEXTOS, conObra, contextoActivo, obraElegida, volverDe } from './navegacion.ts'
+import { CONTEXTOS, conObra, contextoActivo, obraElegida, obrasDelSelector, volverDe } from './navegacion.ts'
 
 test('EL CONTEXTO SE ENCIENDE POR PREFIJO CON BARRA, no por «empieza con»', () => {
   // El defecto que atrapa: `startsWith('/obra/tareas')` enciende «Tareas» estando en
@@ -60,6 +60,32 @@ test('UNA OBRA QUE NO ES SUYA CAE A LA PRIMERA SUYA, no a una pantalla vacía', 
 
 test('SIN NINGUNA OBRA DEVUELVE NULL: no se inventa una', () => {
   assert.equal(obraElegida([], 'san-francisco'), null)
+  assert.equal(obraElegida([], null, 'quattropani', ['quattropani']), null)
+})
+
+// ═══ LA OBRA POR DEFECTO ES LA ASIGNADA, Y SE RECUERDA (dueño, 24/09/2026) ═══
+//
+// Medido en producción antes del cambio: Emiliano (asignado a QP - SALÓN COMERCIAL) y Juan Pablo
+// (asignado a SF - PISOS INDUSTRIALES) entraban los dos a «ME - ADICIONAL TERCER MURO», la primera del
+// orden alfabético, sin tareas ni plantel. Y al tocar la barra fuera de `/obra/*` volvían a ella.
+test('ORDEN: la pedida, la recordada, la asignada y recién después la primera', () => {
+  const activas = [{ id: 'messina-adicional-tercer-muro' }, { id: 'pisos-industriales' }, { id: 'quattropani' }]
+  assert.equal(obraElegida(activas, null, null, ['quattropani']), 'quattropani', 'la primera vez, su obra asignada')
+  assert.equal(obraElegida(activas, null, 'pisos-industriales', ['quattropani']), 'pisos-industriales', 'la que eligió después gana a la asignada')
+  assert.equal(obraElegida(activas, 'messina-adicional-tercer-muro', 'pisos-industriales', ['quattropani']), 'messina-adicional-tercer-muro', 'la URL manda siempre')
+  assert.equal(obraElegida(activas, null, 'cerrada-vieja', ['quattropani']), 'quattropani', 'una recordada que ya no está se salta')
+  assert.equal(obraElegida(activas, null, null, ['la-estrella', 'quattropani']), 'quattropani', 'se salta la asignada que no está en la lista')
+  assert.equal(obraElegida(activas, null, null, []), 'messina-adicional-tercer-muro', 'sin nada, la primera: último recurso')
+})
+
+test('EL SELECTOR: sólo activas, y las asignadas primero', () => {
+  const todas = [
+    { id: 'arcor', estado: 'cerrada' }, { id: 'messina-adicional-tercer-muro', estado: 'activa' },
+    { id: 'pisos-industriales', estado: 'activa' }, { id: 'quattropani', estado: 'activa' }, { id: 'pausada-x', estado: 'pausada' },
+  ]
+  assert.deepEqual(obrasDelSelector(todas, ['quattropani']).map((o) => o.id), ['quattropani', 'messina-adicional-tercer-muro', 'pisos-industriales'])
+  assert.deepEqual(obrasDelSelector(todas).map((o) => o.id), ['messina-adicional-tercer-muro', 'pisos-industriales', 'quattropani'])
+  assert.ok(!obrasDelSelector(todas).some((o) => o.estado !== 'activa'), 'una cerrada o pausada no se ofrece')
 })
 
 test('LA FLECHA VUELVE A UN DESTINO DECLARADO, con la obra puesta', () => {

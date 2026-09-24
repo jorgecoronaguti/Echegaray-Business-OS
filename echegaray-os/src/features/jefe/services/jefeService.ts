@@ -22,6 +22,7 @@ import type { EstadoFecha } from '@/features/obras/types'
 import type { NodoArbol } from './frentes.ts'
 import { codigosDeObra } from '../../../shared/services/codigosDeObra.ts'
 import type { Metodo, TareaDelDia } from './medicion.ts'
+import { obrasAsignadasVigentes } from './obraRecordada.ts'
 
 /** Una obra en el selector del encabezado. Sin un solo importe. */
 export interface ObraDelJefe {
@@ -66,6 +67,26 @@ export async function getObrasDelJefe(supabase: SupabaseClient): Promise<Service
   })
   const peso = (o: ObraDelJefe) => (o.estado === 'activa' ? 0 : o.estado === 'pausada' ? 1 : 2)
   return { data: filas.sort((a, b) => peso(a) - peso(b) || a.nombre.localeCompare(b.nombre, 'es')), error: null }
+}
+
+/**
+ * LAS OBRAS ASIGNADAS HOY A LA PERSONA DE QUIEN ENTRÓ, la más reciente primero (dueño, 24/09/2026:
+ * «la obra por defecto es la que tiene ASIGNADA»). Sale de `obra_asignacion` vigente, el mismo eje que
+ * usa `ve_obra()` para el resto de los niveles. Si algo falla devuelve `[]`: la obra por defecto cae a
+ * la siguiente regla (`obraElegida`), nunca a un error en la pantalla del día.
+ */
+export async function getObrasAsignadasHoy(supabase: SupabaseClient, uid: string | null | undefined, hoy: string): Promise<string[]> {
+  if (!uid) return []
+  const { data: perfil } = await supabase.from('perfiles').select('persona_id').eq('id', uid).maybeSingle()
+  const personaId = (perfil as { persona_id?: string | null } | null)?.persona_id
+  if (!personaId) return []
+  const { data, error } = await supabase
+    .from('obra_asignacion')
+    .select('obra_id, desde, hasta')
+    .eq('persona_id', personaId)
+    .limit(200)
+  if (error) return []
+  return obrasAsignadasVigentes((data ?? []) as { obra_id: string | null; desde: string | null; hasta: string | null }[], hoy)
 }
 
 /** El árbol de la obra, en orden constructivo. `ruta_orden` es un arreglo: ordena por rama. */

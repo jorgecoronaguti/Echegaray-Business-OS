@@ -60,18 +60,59 @@ export function conObra(href: string, obraId: string | null | undefined, extra?:
 }
 
 /**
- * La obra que hay que mostrar: la pedida si el jefe la tiene, y si no la primera de las suyas.
+ * La obra que hay que mostrar, en este orden (dueño, 24/09/2026):
+ *
+ *   1. la PEDIDA en la URL, si el jefe la tiene — un enlace es un enlace;
+ *   2. la RECORDADA (cookie `os_obra`), la última que abrió — cambiar de pantalla no le cambia la obra;
+ *   3. la ASIGNADA hoy a su persona (`obra_asignacion` vigente) — la primera vez entra a SU obra;
+ *   4. la primera de la lista, como último recurso.
+ *
+ * Hasta el 24/09 era 1 → 4: sin `?obra=` caía la primera ACTIVA del orden alfabético. Los dos jefes
+ * entraban a «ME - ADICIONAL TERCER MURO» —sin tareas ni plantel— estando asignados a QP - SALÓN
+ * COMERCIAL y a SF - PISOS INDUSTRIALES.
  *
  * ═══ UNA OBRA QUE NO ESTÁ EN LA LISTA NO SE ABRE «VACÍA» ═══
  *
  * Devolver la pedida a ciegas dibujaría una pantalla sin una sola fila —la base no le va a dar
  * nada— y eso se lee como «esta obra no tiene tareas», que es exactamente lo contrario de lo que
- * pasó. Se cae a la primera suya, que es una obra real, y la pantalla dice cuál está mirando.
+ * pasó. Cada candidato se acepta sólo si está en la lista; si no, se prueba el siguiente.
  */
-export function obraElegida(disponibles: { id: string }[], pedida: string | null | undefined): string | null {
+export function obraElegida(
+  disponibles: { id: string }[],
+  pedida: string | null | undefined,
+  recordada?: string | null,
+  asignadas?: readonly string[],
+): string | null {
   if (disponibles.length === 0) return null
-  if (pedida && disponibles.some((o) => o.id === pedida)) return pedida
+  const tiene = (id: string | null | undefined) => !!id && disponibles.some((o) => o.id === id)
+  if (tiene(pedida)) return pedida as string
+  if (tiene(recordada)) return recordada as string
+  const asignada = (asignadas ?? []).find((id) => tiene(id))
+  if (asignada) return asignada
   return disponibles[0].id
+}
+
+/**
+ * LAS OBRAS DEL SELECTOR: sólo las ACTIVAS, las suyas primero (dueño, 24/09/2026).
+ *
+ * La base le da al jefe TODAS las obras (`ve_obra()`: «el jefe de obra opera todas»), y el selector de
+ * J01 las listaba todas: 26 en la rueda del teléfono, 18 de ellas cerradas. Es el «listado gigante de
+ * obras activas y no activas» de la queja. La base no cambia —el jefe sigue pudiendo leer cualquier
+ * obra—: lo que cambia es lo que se le ofrece para trabajar hoy.
+ */
+export function obrasDelSelector<T extends { id: string; estado: string }>(
+  obras: readonly T[],
+  asignadas: readonly string[] = [],
+): T[] {
+  const orden = (o: T) => {
+    const i = asignadas.indexOf(o.id)
+    return i === -1 ? asignadas.length : i
+  }
+  return obras
+    .filter((o) => o.estado === 'activa')
+    .map((o, i) => ({ o, i }))
+    .sort((a, b) => orden(a.o) - orden(b.o) || a.i - b.i)
+    .map(({ o }) => o)
 }
 
 /**

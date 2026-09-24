@@ -45,13 +45,12 @@ test('HAY UNA SOLA DEFINICIÓN DE INICIO: el ingreso y la home coinciden en LOS 
   }
 })
 
-test('el jefe de obra entra por Administración, que es su área desde el 19/08', () => {
-  // No es una preferencia de esta pantalla: `areasDe('jefe_obra')` devuelve ['administracion',
-  // 'obras'] porque `es_administracion()` lo incluye desde la migración 20260819T4900, y su primera
-  // solapa —la que la barra pinta activa— es Administración. Entrar por `/obras` lo dejaba parado en
-  // una solapa que la navegación NO pintaba como activa.
-  assert.equal(inicioDeRol('jefe_obra'), '/administracion')
-  assert.equal(aterrizajeDeIngreso('jefe_obra', null), '/administracion')
+// ═══ CAMBIO DE CONTRATO (dueño, 24/09/2026) ═══
+// Hasta hoy el jefe entraba por Administración (→ Personal) salvo que el navegador se declarara
+// teléfono. El dueño fijó UN inicio por nivel, sin mirar el aparato: el del jefe es su obra (J01).
+test('el jefe de obra entra por su obra (J01), en cualquier aparato', () => {
+  assert.equal(inicioDeRol('jefe_obra'), '/obra/hoy')
+  assert.equal(aterrizajeDeIngreso('jefe_obra', null), '/obra/hoy')
 })
 
 test('el cliente no aterriza adentro del OS ni cuando entra por la puerta de adentro', () => {
@@ -63,11 +62,10 @@ test('el cliente no aterriza adentro del OS ni cuando entra por la puerta de ade
 
 test('cada rol aterriza donde el dueño lo pidió', () => {
   assert.equal(aterrizajeDeIngreso('campo', null), '/hoy')
-  // La pantalla que la navegación trata como inicio para los tres: `solapasDeNav()[0]`, la solapa
-  // que la barra pinta como activa al entrar. NO es `/obras`, que es donde caían hasta hoy.
-  assert.equal(aterrizajeDeIngreso('jefe_obra', null), '/administracion')
-  assert.equal(aterrizajeDeIngreso('administracion', null), '/administracion')
-  assert.equal(aterrizajeDeIngreso('direccion', null), '/administracion')
+  // 24/09/2026: el jefe a su obra; quien administra a Obras, la primera de su barra de gestión.
+  assert.equal(aterrizajeDeIngreso('jefe_obra', null), '/obra/hoy')
+  assert.equal(aterrizajeDeIngreso('administracion', null), '/obras')
+  assert.equal(aterrizajeDeIngreso('direccion', null), '/obras')
 })
 
 test('un rol ausente o desconocido cae al nivel menos privilegiado, no al del dinero', () => {
@@ -85,7 +83,8 @@ test('se respeta el volver cuando el rol PUEDE ver esa ruta', () => {
   assert.equal(aterrizajeDeIngreso('direccion', '/clientes/abc'), '/clientes/abc')
   assert.equal(aterrizajeDeIngreso('campo', '/mi-cuenta'), '/mi-cuenta')
   // La query sobrevive entera: `/obras?estado=activas` es la vista que se quiso abrir, no `/obras`.
-  assert.equal(aterrizajeDeIngreso('jefe_obra', '/obras?estado=activas'), '/obras?estado=activas')
+  assert.equal(aterrizajeDeIngreso('direccion', '/obras?estado=activas'), '/obras?estado=activas')
+  assert.equal(aterrizajeDeIngreso('jefe_obra', '/obra/tareas?obra=quattropani'), '/obra/tareas?obra=quattropani')
 })
 
 test('NO se respeta el volver cuando el rol NO puede ver esa ruta: se aterriza en su inicio', () => {
@@ -93,9 +92,14 @@ test('NO se respeta el volver cuando el rol NO puede ver esa ruta: se aterriza e
   // termina de recorrer: el redirect de una Server Action viaja por RSC y la barra se queda en la
   // ruta que no se puede abrir.
   assert.equal(puedeVerRuta('jefe_obra', '/reportes'), false)
-  assert.equal(aterrizajeDeIngreso('jefe_obra', '/reportes'), '/administracion')
-  assert.equal(aterrizajeDeIngreso('jefe_obra', '/administracion/usuarios'), '/administracion')
-  assert.equal(aterrizajeDeIngreso('jefe_obra', '/presupuestos'), '/administracion')
+  assert.equal(aterrizajeDeIngreso('jefe_obra', '/reportes'), '/obra/hoy')
+  assert.equal(aterrizajeDeIngreso('jefe_obra', '/administracion/usuarios'), '/obra/hoy')
+  assert.equal(aterrizajeDeIngreso('jefe_obra', '/presupuestos'), '/obra/hoy')
+  // EL «LISTADO GIGANTE» (24/09/2026): si la sesión vencía estando en la cartera, el jefe volvía a
+  // entrar y aterrizaba otra vez en `/obras`. La cartera ya no es suya: vuelve a su obra.
+  assert.equal(aterrizajeDeIngreso('jefe_obra', '/obras'), '/obra/hoy')
+  assert.equal(aterrizajeDeIngreso('jefe_obra', '/obras?archivadas=1'), '/obra/hoy')
+  assert.equal(aterrizajeDeIngreso('jefe_obra', '/campo'), '/obra/hoy')
 })
 
 test('el nivel campo tiene su propia lista y también manda acá', () => {
@@ -112,8 +116,8 @@ test('el nivel campo tiene su propia lista y también manda acá', () => {
 test('el portal del cliente NUNCA es el aterrizaje de alguien de adentro', () => {
   // Un empleado dentro de /portal ve la pantalla vacía —las consultas filtran por
   // `cliente_de_sesion()`, que para él es NULL— y concluye que el cliente no tiene nada cargado.
-  assert.equal(aterrizajeDeIngreso('direccion', '/portal'), '/administracion')
-  assert.equal(aterrizajeDeIngreso('direccion', '/portal/login'), '/administracion')
+  assert.equal(aterrizajeDeIngreso('direccion', '/portal'), '/obras')
+  assert.equal(aterrizajeDeIngreso('direccion', '/portal/login'), '/obras')
   assert.equal(aterrizajeDeIngreso('campo', '/portal/obra/x'), '/hoy')
   // `/portales` NO es el portal: se compara el segmento, no el prefijo de texto.
   assert.equal(aterrizajeDeIngreso('direccion', '/portales'), '/portales')
@@ -122,7 +126,7 @@ test('el portal del cliente NUNCA es el aterrizaje de alguien de adentro', () =>
 test('volver a la propia puerta es un bucle y no se hace', () => {
   for (const puerta of ['/login', '/recuperar', '/contrasena-nueva', '/callback', '/callback?code=x']) {
     assert.equal(
-      aterrizajeDeIngreso('direccion', puerta), '/administracion',
+      aterrizajeDeIngreso('direccion', puerta), '/obras',
       `${puerta} devolvió a la persona a la puerta que acaba de cruzar`,
     )
   }
@@ -136,26 +140,20 @@ test('un volver que sale del sitio cae al inicio: la URL no es un trampolín', (
     'evil.com', 'javascript:alert(1)', '',
   ]) {
     assert.equal(
-      aterrizajeDeIngreso('direccion', trampa), '/administracion',
+      aterrizajeDeIngreso('direccion', trampa), '/obras',
       `«${trampa}» se aceptó como destino después de entrar`,
     )
   }
 })
 
-// ═══ EL DISPOSITIVO VIAJA CON EL ATERRIZAJE (23/09/2026) ═══
-test('desde el teléfono el jefe entra por /obra/hoy, y sigue siendo la MISMA definición que la home', () => {
-  assert.equal(inicioDeRol('jefe_obra', true), destinoDeLaHome('jefe_obra', true))
-  assert.equal(inicioDeRol('jefe_obra', true), '/obra/hoy')
-  assert.equal(aterrizajeDeIngreso('jefe_obra', null, true), '/obra/hoy')
-  // El `volver` sigue ganando cuando el rol puede abrirlo: el deep link no se pierde por ser teléfono.
-  assert.equal(aterrizajeDeIngreso('jefe_obra', '/mi-cuenta', true), '/mi-cuenta')
-  // Dirección y Administración en el teléfono entran por Obras (barra de gestión); el empleado, a su día.
-  assert.equal(aterrizajeDeIngreso('direccion', null, true), '/obras')
-  assert.equal(aterrizajeDeIngreso('campo', null, true), '/hoy')
-})
-
-test('en el teléfono, dirección y administración entran por Obras; en escritorio, por Administración', () => {
-  assert.equal(destinoDeLaHome('direccion', true), '/obras')
-  assert.equal(destinoDeLaHome('administracion', true), '/obras')
-  assert.notEqual(destinoDeLaHome('direccion', false), '/obras')
+// ═══ EL APARATO YA NO VIAJA CON EL ATERRIZAJE (24/09/2026) ═══
+//
+// Del 23/09 al 24/09 `inicioDeRol` y `aterrizajeDeIngreso` recibían «¿es un teléfono?». Se retiró con
+// la decisión del dueño de un inicio por nivel; si vuelve el parámetro, estos lo nombran.
+test('el ingreso no recibe el aparato', () => {
+  assert.equal(inicioDeRol.length, 1)
+  assert.equal(aterrizajeDeIngreso.length, 2)
+  // El `volver` sigue ganando cuando el rol puede abrirlo: el deep link no se pierde.
+  assert.equal(aterrizajeDeIngreso('jefe_obra', '/mi-cuenta'), '/mi-cuenta')
+  assert.equal(aterrizajeDeIngreso('jefe_obra', '/administracion/personas'), '/administracion/personas')
 })

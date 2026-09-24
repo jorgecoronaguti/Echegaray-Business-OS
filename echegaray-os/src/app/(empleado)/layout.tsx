@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getUsuarioActual } from '@/features/auth/services/authService'
+import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
+import { barraTelefonoDe } from '@/features/auth/types/barraTelefono'
 import { ShellEmpleado } from '@/features/empleado/components/ShellEmpleado'
 import { AvisoVerComo } from '@/features/auth/components/AvisoVerComo'
 
@@ -20,6 +21,13 @@ export default async function EmpleadoLayout({ children }: { children: React.Rea
   const supabase = await createClient()
   const user = await getUsuarioActual(supabase)
   if (!user) redirect('/login')
+  // EL JEFE TAMBIÉN ABRE «MI INFORMACIÓN» (su legajo, sus recibos, su efectivo), y ahí le aparecía la
+  // barra del operario —Hoy · Trabajo · Horas · Yo— que lo mandaba al día de un empleado. Desde el
+  // 24/09/2026 ve la suya: una sola barra en todo el teléfono.
+  const { data: perfil } = await getPerfilActual(supabase, user.id)
+  const barraDelJefe = perfil?.rol === 'jefe_obra'
+    ? barraTelefonoDe('jefe_obra').map((i) => ({ href: i.href, label: i.label, icono: i.icono, testid: `barra-${i.clave}` }))
+    : null
 
   // NI LAS INICIALES NI LA OBRA VIAJAN POR ACÁ. El topbar de marca lo dibuja M02 —M09 abre con la
   // ficha de la persona y M03…M08 con su topbar de detalle—, así que leerlos en el marco obligaba a
@@ -32,7 +40,7 @@ export default async function EmpleadoLayout({ children }: { children: React.Rea
       <div className="sticky top-0 z-40">
         <AvisoVerComo />
       </div>
-      <ShellEmpleado>{children}</ShellEmpleado>
+      <ShellEmpleado barraPropia={barraDelJefe}>{children}</ShellEmpleado>
     </>
   )
 }

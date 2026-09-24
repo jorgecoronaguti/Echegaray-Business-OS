@@ -1,7 +1,10 @@
 import { createServerClient, type SetAllCookies } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { esRutaCampoPermitida, esRutaPublica, type Rol } from '@/features/auth/types'
-import { entradaDeArea, puedeVerRuta } from '@/features/auth/types/areas'
+import {
+  destinoDeRebote, entradaDeArea, fichaDeGestionPara, puedeVerRuta, veEconomia,
+} from '@/features/auth/types/areas'
+import { COOKIE_OBRA, VIDA_OBRA_SEGUNDOS, obraDeCookieValida } from '@/features/jefe/services/obraRecordada'
 import {
   CLAVE_LIMPIAR, cookieDeVista, queryARestaurar,
 } from '@/features/obras/services/vistaRecordada'
@@ -36,6 +39,9 @@ export async function middleware(request: NextRequest) {
   // HERRAMIENTAS EN EL TELÉFONO ES LA VERSIÓN DE CAMPO (dueño, 23/09/2026: la de escritorio se
   // dibujaba encimada en el celular). Antes de tocar la base: la ruta de escritorio va a su equivalente
   // de `/campo/herramientas`. `?pc=1` deja ver la de escritorio a propósito.
+  // Esto sólo alcanza al navegador que SE DECLARA teléfono. El que se presenta como computadora en una
+  // pantalla angosta (iPad, «sitio de escritorio») lo resuelve el propio layout de Herramientas por
+  // ANCHO (`HerramientasAlTelefono`, 24/09/2026): el servidor no puede saber el ancho.
   if (pareceTelefonoSegun(request.headers) && !request.nextUrl.searchParams.has('pc')) {
     const destino = rutaTelefonoDeHerramientas(request.nextUrl.pathname, request.nextUrl.search)
     if (destino) return NextResponse.redirect(new URL(destino, request.url))
@@ -272,6 +278,17 @@ async function middlewareConBackend(request: NextRequest) {
       return NextResponse.redirect(url)
     }
 
+    // ── EL OPERARIO NO SALE A LAS COPIAS DE ESCRITORIO DE LO SUYO (dueño, 24/09/2026).
+    //
+    // `/mi-cuenta/horas`, `/legajo` y `/documentos` son la versión de escritorio de pantallas que el
+    // operario ya tiene en su app (`/mi-informacion/*`, con su barra). Abiertas desde el teléfono lo
+    // dejaban en un header de escritorio y sin barra. `/mi-cuenta` a secas (foto, contacto) y
+    // `/seguridad` (contraseña) NO tienen copia en su app: se quedan, con su barra abajo.
+    if (perfil?.rol === 'campo') {
+      const suya = /^\/mi-cuenta\/(horas|legajo|documentos)(\/.*)?$/.exec(pathname)
+      if (suya) return NextResponse.redirect(new URL(`/mi-informacion/${suya[1]}${suya[2] ?? ''}`, request.url))
+    }
+
     if (perfil?.rol === 'campo' && !esRutaCampoPermitida(pathname)) {
       const url = request.nextUrl.clone()
       url.pathname = '/hoy'
@@ -296,6 +313,16 @@ async function middlewareConBackend(request: NextRequest) {
       url.search = ''
       return NextResponse.redirect(url)
     }
+    // ── DIRECCIÓN Y ADMINISTRACIÓN NO USAN EL PRODUCTO DEL JEFE (dueño, 24/09/2026).
+    //
+    // `/obra/*` (J01–J06) es la pantalla del jefe: quien administra llegaba por un enlace y quedaba con
+    // la barra del jefe y una obra elegida por orden alfabético. Va a la ficha de esa obra. Con la lente
+    // «ver como» puesta sí entra: para eso existe la lente. Se mira el rol REAL, no el mirado.
+    if (!mirando && veEconomia(rol as Rol | null)) {
+      const ficha = fichaDeGestionPara(pathname, request.nextUrl.searchParams.get('obra'))
+      if (ficha) return NextResponse.redirect(new URL(ficha, request.url))
+    }
+
     // ── EL NIVEL «OBRAS» NO ENTRA A LO DE ADMINISTRACIÓN (18/08/2026).
     //
     // Dos niveles y sólo dos: Administración (dirección + administración) ve todo; Obras (jefe de
@@ -308,9 +335,12 @@ async function middlewareConBackend(request: NextRequest) {
     // salgan del servidor. Redirigir sin RLS sería seguridad cosmética.
     if (!puedeVerRuta(perfil?.rol, pathname)) {
       // /presupuestos YA NO PASA (dueño, 24/09/2026): el jefe no entra a Presupuestos, igual que al resto
-      // de lo cerrado; rebota a Obras como Clientes, Compras e Impuestos.
+      // de lo cerrado.
+      // EL REBOTE VA AL INICIO DEL NIVEL, NO A `/obras` (24/09/2026). Para el jefe `/obras` era el
+      // «listado gigante» de la queja del dueño: la cartera entera, con las archivadas si alguna vez las
+      // había pedido. Ahora vuelve a su obra (`destinoDeRebote`).
       const url = request.nextUrl.clone()
-      url.pathname = '/obras'
+      url.pathname = destinoDeRebote(perfil?.rol)
       url.search = ''
       return NextResponse.redirect(url)
     }
@@ -347,6 +377,22 @@ async function middlewareConBackend(request: NextRequest) {
       const url = request.nextUrl.clone()
       url.search = restaurar
       return NextResponse.redirect(url)
+    }
+  }
+
+  // ═══ LA OBRA QUE EL JEFE ESTÁ MIRANDO SE RECUERDA (dueño, 24/09/2026) ═══
+  //
+  // La obra viaja en `?obra=` y se perdía en cuanto el jefe tocaba algo que no la llevaba —la barra
+  // en Personal, el logo, la flecha de Trabajo, «Mi obra» del menú—: volvía a «Hoy» con la primera
+  // obra del orden alfabético, vacía, y eso se leía como «se rompió». Cada vez que una pantalla de su
+  // producto se abre CON obra, se guarda; `contextoDeObra` la usa cuando la URL no trae ninguna.
+  // Se guarda en la respuesta de la misma petición: sirve para el documento y para la navegación RSC.
+  if (user && request.method === 'GET' && (pathname.startsWith('/obra/') || pathname.startsWith('/campo/'))) {
+    const obra = obraDeCookieValida(request.nextUrl.searchParams.get('obra'))
+    if (obra && request.cookies.get(COOKIE_OBRA)?.value !== obra) {
+      response.cookies.set(COOKIE_OBRA, obra, {
+        httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: VIDA_OBRA_SEGUNDOS,
+      })
     }
   }
 

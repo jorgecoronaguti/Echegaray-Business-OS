@@ -41,7 +41,15 @@ const ICONO: Record<string, NombreIcono> = {
   '/mi-informacion': 'gente',
 }
 
-export function ShellEmpleado({ children }: { children: ReactNode }) {
+/**
+ * `barraPropia`: los destinos de OTRA barra para quien no es operario (hoy, el jefe de obra en
+ * «Mi información»). Se dibuja en los mismos lugares que la del operario y ninguno se enciende: las
+ * pantallas de este perfil no son ninguno de sus cuatro contextos.
+ */
+export function ShellEmpleado({ children, barraPropia = null }: {
+  children: ReactNode
+  barraPropia?: { href: string; label: string; icono: NombreIcono; testid: string }[] | null
+}) {
   // La ruta la pone el navegador, no el servidor: un layout de App Router no recibe el pathname, y
   // pasarlo por `headers()` obligaría a que TODA pantalla del perfil fuera dinámica sólo para
   // pintar una pestaña.
@@ -54,8 +62,8 @@ export function ShellEmpleado({ children }: { children: ReactNode }) {
       <div data-testid="shell-empleado">{children}</div>
       {raiz && (
         <BarraContextos
-          testid="barra-contextos"
-          items={CONTEXTOS.map((c) => ({
+          testid={barraPropia ? 'barra-jefe' : 'barra-contextos'}
+          items={barraPropia ? barraPropia.map((b) => ({ ...b, activo: false })) : CONTEXTOS.map((c) => ({
             href: c.href,
             label: c.label,
             icono: ICONO[c.href] ?? 'casa',
