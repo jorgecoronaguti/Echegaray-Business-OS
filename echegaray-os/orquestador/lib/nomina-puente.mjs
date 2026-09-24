@@ -39,7 +39,7 @@ export const NOMBRES_PUENTE = Object.freeze({
 })
 
 /** Dos celdas de Nómina que otras pestañas leen para seguirla: el total del mes y el % de aportes. */
-export const NOMBRES_NOMINA_BASE = Object.freeze({ total: 'NOMINA_MES_TOTAL', aportes: 'NOMINA_PARAM_APORTES' })
+export const NOMBRES_NOMINA_BASE = Object.freeze({ total: 'NOMINA_MES_TOTAL', aportes: 'NOMINA_PARAM_APORTES', personas: 'NOMINA_PERSONAS' })
 
 export const ROTULO_PUENTE = '6 · LO QUE VA AL CASH FLOW · LO QUE FALTA PAGAR DE CADA MES'
 export const ROTULOS_FILAS_PUENTE = Object.freeze({

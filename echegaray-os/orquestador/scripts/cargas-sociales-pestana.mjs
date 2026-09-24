@@ -49,7 +49,7 @@ import { bloqueDelPlantel } from '../lib/jornales-piso-uocra.mjs'
 import { asegurarParametros, ultimoDiaCargado, PESTAÑA as PESTAÑA_JORNALES } from './jornales-pestana.mjs'
 import { baseDeJornales } from '../lib/proyeccion-convenio.mjs'
 import { ANCHO, COL_ORIGEN, crearGrilla, desdeQueMesSeProyecta, ecoDeLaProyeccion } from '../lib/cargas-grilla.mjs'
-import { bloqueDeclarado, bloquePagado, bloqueProyeccion, bloquePlanes } from '../lib/cargas-bloques.mjs'
+import { bloqueDeclarado, bloquePagado, bloqueProyeccion, bloquePlanes, seccionPorEmpleado } from '../lib/cargas-bloques.mjs'
 import { planesDePago } from '../lib/cargas-planes.mjs'
 import { formatear } from '../lib/cargas-piel.mjs'
 
@@ -355,9 +355,9 @@ async function main() {
   // de defecto deja de existir en vez de quedar cubierta por un test.
   const g = grilla({ periodos, conceptos, ps, C, baseJornales, periodosUocra })
   let { filas } = g
+  filas = [...filas, ...seccionPorEmpleado(await google.readSheetValues(ID, "'Nómina'!A1:A150", { render: 'UNFORMATTED_VALUE' }).catch(() => []))] // 5 · cargas por empleado, vivas desde Nómina
   const { rangos, avisos } = g
-  // LOS HALLAZGOS, EN LA CORRIDA Y NO EN LA PESTAÑA: es donde los ve quien puede resolverlos.
-  for (const a of (avisos ?? [])) console.warn(`  ${a}`)
+  for (const a of (avisos ?? [])) console.warn(`  ${a}`) // los hallazgos, en la corrida: ahí los ve quien puede resolverlos
   console.log(`grilla: ${filas.length} filas × ${ANCHO} columnas — un solo ancho para toda la pestaña`)
   if (DRY) return
 

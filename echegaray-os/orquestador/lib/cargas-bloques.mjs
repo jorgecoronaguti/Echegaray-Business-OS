@@ -36,7 +36,7 @@ import {
   proyeccionDeConcepto, jornalesDelMes,
 } from './cargas-cadena.mjs'
 import { ROTULOS_CARGAS, NOMBRES_CARGAS, RUBRO_PLANES, RUBRO_GREMIALES } from './libro-extractores-cargas.mjs'
-import { MES, cm, REALES, MESES_REALES, SIN_DDJJ, mesesDeCalibracion, VENTANA_CALIBRACION, MESES_CON_SAC } from './cargas-grilla.mjs'
+import { MES, cm, REALES, MESES_REALES, SIN_DDJJ, mesesDeCalibracion, VENTANA_CALIBRACION, MESES_CON_SAC, ANCHO } from './cargas-grilla.mjs'
 import { notaSupuesto } from './proyeccion-convenio.mjs'
 import { ALERTA } from './glifos.mjs'
 import { NOMBRES_PUENTE, NOMBRES_NOMINA_BASE } from './nomina-puente.mjs'
@@ -234,9 +234,13 @@ export function bloqueProyeccion(G, {
   // Y AL LADO, EL CONTROL CONTRA OTRA FUENTE. La regla del archivo: un control nunca se valida contra
   // la misma información que produce. La dotación de la DDJJ y el plantel de la planilla de jornales
   // vienen de dos lugares distintos; si se separan mucho, uno de los dos está mal.
+  // LA DOTACIÓN PROYECTADA ES EL PLANTEL DE NÓMINA, NO EL DE LA ÚLTIMA DDJJ (dueño, 24/09/2026: «tenemos
+  // 17 empleados, ¿por qué me seguís considerando 25?»). La DDJJ de agosto declara 25 porque cuenta a
+  // los que se fueron en el mes; lo que se va a pagar por persona (seguro de vida, IERIC, FODECO) es de
+  // los que cobran: las personas con sueldo en ese mes de Nómina. Sin Nómina, la última DDJJ como antes.
   const fDot = G.mensual('Dotación proyectada', (m) => (m < desdeProy
     ? `=N(${cm(m)}$${fEmp})`
-    : `=IFERROR(INDEX(${REALES(fEmp, desdeProy)};COUNT(${REALES(fEmp, desdeProy)}));"")`),
+    : `=IFERROR(COUNTIF(INDEX(${NOMBRES_NOMINA_BASE.personas};0;${m});">0");IFERROR(INDEX(${REALES(fEmp, desdeProy)};COUNT(${REALES(fEmp, desdeProy)}));""))`),
   'El ÚLTIMO mes con DDJJ, no el promedio: un promedio no fue cierto ningún mes y acá multiplica costos por persona. En los meses que ya tienen DDJJ, la dotación declarada de ese mes.', { meses: gremMeses, totaliza: false })
   // ═══ LAS DOS FILAS DE «·» QUE ESTABAN ACÁ SE FUERON (09/09/2026) ═══
   //
@@ -447,4 +451,26 @@ export function bloquePlanes(G, { ps, C }) {
   // barrido no alcanzó no se pudo medir sin escribir la pestaña, así que esto se declara como lo que
   // es —un cinturón además de los tirantes— y no como el diagnóstico.
   return { fCuotasTot, fControl, fSinPagar, moneda: [[q0, q1]], pies: [], avisos: [aviso] }
+}
+
+/**
+ * 5 · LAS CARGAS POR EMPLEADO SE VEN EN «Cargas Sociales», NO EN «Nómina» (dueño, 24/09/2026: «¿por qué no
+ * movés ese cuadro de cargas sociales de Nómina a la pestaña Cargas Sociales?»). PURO.
+ *
+ * El cálculo por persona sigue pegado a los sueldos (cuadro 2 de Nómina, oculto): moverlo rompería las
+ * referencias a cada sueldo y al % en blanco. Esta sección lo MUESTRA vivo con una sola fórmula que
+ * derrama: tocar un sueldo en Nómina mueve esta tabla, la proyección y el Cash Flow en el mismo instante.
+ *
+ * @param {Array<Array>} colNomina la columna A de «Nómina» (para ubicar el cuadro 2 por su rótulo)
+ * @returns {Array<Array>} las filas a agregar al pie de la grilla ([] si no encuentra el cuadro)
+ */
+export function seccionPorEmpleado(colNomina = []) {
+  const A = colNomina.map((r) => String(r?.[0] ?? '').trim())
+  const iC2 = A.findIndex((t) => /^2 · CARGAS/i.test(t))
+  const iT2 = A.findIndex((t, i) => i > iC2 && t === 'TOTAL')
+  if (iC2 < 0 || iT2 <= iC2) return []
+  const vacia = () => Array.from({ length: ANCHO }, () => VACIO)
+  const tit = vacia(); tit[0] = '5 · CARGAS POR EMPLEADO · SALEN DE LOS SUELDOS DE NÓMINA'
+  const tabla = vacia(); tabla[0] = `=ARRAYFORMULA('Nómina'!A${iC2 + 2}:P${iT2 + 1})`
+  return [vacia(), tit, tabla, ...Array.from({ length: iT2 - iC2 - 1 }, vacia)]
 }

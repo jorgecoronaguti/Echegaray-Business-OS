@@ -77,6 +77,9 @@ async function main() {
       // Lo que «Cargas Sociales» lee para seguir a Nómina (remuneración proyectada).
       { name: NOMBRES_NOMINA_BASE.total, fila: u.filaTotal, col: 4, cols: 12 },
       { name: NOMBRES_NOMINA_BASE.aportes, fila: u.filaParametros, col: 4 },
+      // Las personas del cuadro 1, mes por mes: la dotación que proyecta «Cargas Sociales» (dueño 24/09:
+      // «tenemos 17 empleados, ¿por qué me seguís considerando 25?»).
+      { name: NOMBRES_NOMINA_BASE.personas, fila: u.primeraPersona, col: 4, cols: 12, filas: u.ultimaPersona - u.primeraPersona + 1 },
     ]
     await google.spreadsheetBatchUpdate(ID, pedidos(hoja.sheetId, destinos, lista))
   } finally {
