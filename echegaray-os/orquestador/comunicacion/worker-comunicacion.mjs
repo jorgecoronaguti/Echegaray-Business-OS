@@ -32,7 +32,24 @@ import { crearLatido, esConexionPerdida, SALIDA_CONEXION_PERDIDA } from '../lib/
 
 const IDLE_MS = Number(process.env.COMM_WORKER_IDLE_MS ?? 2000)
 const BUSY_MS = Number(process.env.COMM_WORKER_BUSY_MS ?? 200)
-const MAX_IDLE_MS = 15_000
+// TECHO DE LA ESPERA OCIOSA — cuánto puede tardar un mensaje en empezar a procesarse.
+//
+// ═══ EL DEFECTO, MEDIDO EL 24/09/2026 ═══
+//
+// El dueño: «está lento todo… se queda clavado». Con el techo en 15 s, un worker ocioso estiraba la
+// siesta 2 → 3 → 4,5 → … → 15 s, y el mensaje que llegaba en ese rato esperaba a que se despertara:
+// los tres mensajes del dueño en #efectivo de ese día («2000 a rodrigo» 15:39:01, «1560983 a
+// emiliano» 15:39:07, «20000 a emiliano maldonado» 16:19:45) entraron al inbox en el mismo segundo y
+// el worker los tomó a las 15:39:17 y 16:19:57 — 10 a 16 s dormido — para resolverlos en ~1,2 s.
+// Respuesta en el canal a los 12–18 s, de los que el trabajo real era uno.
+//
+// El costo de despertar seguido es un tick ocioso: cinco consultas chicas e indexadas (leases de las
+// dos colas, claim de inbox, del Work Fabric y del outbox). Con 3 s son ~2 por segundo contra una
+// base que no las siente; con 15 s se pagaba en la cara de la persona que escribe.
+const MAX_IDLE_MS = Number(process.env.COMM_WORKER_MAX_IDLE_MS ?? 3000)
+// Los ERRORES sí se espacian hasta 15 s: un tick que falla siempre igual no tiene por qué llenar el
+// log cada 3 s, y ahí no hay nadie esperando una respuesta que el próximo tick vaya a dar.
+const MAX_ERROR_MS = 15_000
 // Cada cuánto se barren los formularios de asistencia vencidos. Ver crearVencedorPeriodico.
 const VENCER_MS = Number(process.env.COMM_WORKER_VENCER_MS ?? VENCER_INTERVALO_MS_DEFAULT)
 // Cada cuánto se buscan recordatorios internos vencidos. Ver crearEntregador.
@@ -91,7 +108,7 @@ async function tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos, re
  *  Mattermost, y el cuelgue sólo se podía observar en producción a las 23 horas. */
 export async function correrBucle({
   tick, latido, log: reg = log, dormir = sleep, debeParar = () => parar,
-  idleMs = IDLE_MS, busyMs = BUSY_MS, maxIdleMs = MAX_IDLE_MS,
+  idleMs = IDLE_MS, busyMs = BUSY_MS, maxIdleMs = MAX_IDLE_MS, maxErrorMs = MAX_ERROR_MS,
 } = {}) {
   let espera = idleMs
   while (!debeParar() && !latido?.muerto) {
@@ -103,8 +120,8 @@ export async function correrBucle({
       // entero en ese estado. Se sale con código ≠ 0 y systemd levanta un proceso limpio.
       if (latido?.fatalSiEsConexionPerdida(e, 'tick')) return { salida: SALIDA_CONEXION_PERDIDA }
       reg?.error?.('tick falló (se reintenta el próximo ciclo)', { error: String(e?.message ?? e) })
-      await dormir(Math.min(espera, maxIdleMs))
-      espera = Math.min(espera * 2, maxIdleMs)
+      await dormir(Math.min(espera, maxErrorMs))
+      espera = Math.min(espera * 2, maxErrorMs)
       continue
     }
     // El latido se toca DESPUÉS del tick completo: mide trabajo terminado, no empezado.
@@ -113,7 +130,9 @@ export async function correrBucle({
       espera = busyMs // hubo trabajo: seguí pronto
       reg?.info?.('tick con trabajo', r)
     } else {
-      espera = Math.min(Math.round(espera * 1.5), maxIdleMs) // ocioso: backoff suave
+      // Ocioso: backoff suave con techo corto (ver MAX_IDLE_MS). Si `espera` venía de un error (hasta
+      // 15 s), el `min` la baja al techo en el primer tick bueno: vuelve al ritmo de atender.
+      espera = Math.min(Math.round(espera * 1.5), maxIdleMs)
     }
     await dormir(espera)
   }
@@ -189,6 +208,7 @@ async function main() {
     else log.error('pool: error inesperado (no es corte de conexión)', { error: String(err?.message ?? err) })
   })
   log.info('worker-comunicacion arrancado', {
+    espera_ociosa_max_ms: MAX_IDLE_MS,
     vencer_sesiones_ms: VENCER_MS, recordatorios_ms: RECORDATORIOS_MS, fajos_mudos_ms: MUDOS_MS,
     reintento_fajos_ms: REINTENTO_MS, repesca_ms: REPESCA_MS,
     latido_ms: latido.toleranciaMs,
