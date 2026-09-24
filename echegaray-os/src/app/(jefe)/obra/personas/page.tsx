@@ -1,3 +1,5 @@
+import Link from 'next/link'
+import { hrefCargaDeAsistencia } from '@/features/administracion/services/cargaDeAsistencia'
 import { SinObra } from '@/features/jefe/components/SinObra'
 import { C, R } from '@/shared/components/movil/tokens'
 import { Icono } from '@/shared/components/movil/Iconos'
@@ -100,6 +102,22 @@ export default async function JefePersonasPage({
 
       <div style={{ padding: '14px 16px 24px' }}>
         {primerError && <AvisoError testid="jefe-personas-error">{primerError}</AvisoError>}
+
+        {/* LA CARGA DE ASISTENCIA VIVE EN GENTE (dueño, 24/09/2026: el jefe tiene una sola barra y la
+            asistencia es vital). Antes sólo se llegaba por Trabajo › Asistencia o por el menú. */}
+        <Link
+          href={hrefCargaDeAsistencia({ obra: obra.id })}
+          prefetch={false}
+          data-testid="cargar-asistencia"
+          style={{
+            width: '100%', minHeight: 52, borderRadius: R.control, background: C.marca, color: C.ink,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, marginBottom: 14,
+            fontSize: 16, fontWeight: 600, textDecoration: 'none',
+          }}
+        >
+          <Icono nombre="gente" tamano={20} grosor={2.4} />
+          Cargar asistencia
+        </Link>
 
         {r.sinCerrar > 0 && (
           <div

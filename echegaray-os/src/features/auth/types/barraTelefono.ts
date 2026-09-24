@@ -18,7 +18,7 @@ export interface ItemBarraTelefono {
   href: string
   label: string
   /** Nombre del icono del set del teléfono (`shared/components/movil/Iconos.tsx`). */
-  icono: 'obra' | 'lista' | 'plano' | 'avance' | 'llave' | 'casa'
+  icono: 'obra' | 'lista' | 'plano' | 'avance' | 'llave' | 'casa' | 'tarea' | 'gente'
   /** Rutas que encienden este ítem además de su `href` (por prefijo). */
   enciende?: readonly string[]
 }
@@ -36,19 +36,29 @@ const ANALITICAS: ItemBarraTelefono = { clave: 'analiticas', href: '/analiticas'
 const HERRAMIENTAS: ItemBarraTelefono = {
   clave: 'herramientas', href: '/campo/herramientas', label: 'Herram.', icono: 'llave', enciende: ['/herramientas', '/h'],
 }
-const MI_OBRA: ItemBarraTelefono = { clave: 'mi-obra', href: INICIO_JEFE_TELEFONO, label: 'Mi obra', icono: 'casa', enciende: ['/obra'] }
+// EL JEFE DE OBRA TIENE UNA SOLA BARRA EN TODO EL TELÉFONO (dueño, 24/09/2026: «hay mezclas entre
+// pantallas y usuarios»). Antes veía Hoy · Tareas · Avance · Gente dentro de Mi obra y otra distinta
+// (Mi obra · Trabajo · Admin. · Obras · Herram.) apenas salía: la barra cambiaba entera según dónde
+// tocara. Ahora es la de J01 en todos lados. Trabajo, Herramientas y Material cuelgan de Hoy; la carga
+// de asistencia enciende Gente, que es donde el jefe la busca.
+const JEFE: ItemBarraTelefono[] = [
+  { clave: 'jefe-hoy', href: INICIO_JEFE_TELEFONO, label: 'Hoy', icono: 'casa', enciende: ['/obra/avance-masivo', '/obra/frente', '/obra/efectivo', '/campo'] },
+  { clave: 'jefe-tareas', href: '/obra/tareas', label: 'Tareas', icono: 'tarea' },
+  { clave: 'jefe-avance', href: '/obra/avance', label: 'Avance', icono: 'avance' },
+  { clave: 'jefe-gente', href: '/obra/personas', label: 'Gente', icono: 'gente', enciende: ['/administracion/personas/asistencia'] },
+]
 
 /**
  * QUÉ BARRA VE CADA NIVEL EN EL TELÉFONO dentro de las pantallas de escritorio.
  *
  * - Dirección y Administración: Campo · Admin. · Obras · Herram. · Datos (Herramientas antes, dueño 23/09)
- * - Jefe de obra: Mi obra · Campo · Admin. · Obras · Herram. (Analíticas no la ve: es precio).
+ * - Jefe de obra: Hoy · Tareas · Avance · Gente, la misma de J01 en todas las pantallas.
  * - Empleado, cliente o sin perfil: NINGUNA. El empleado tiene la suya en `/hoy`; sin perfil se
  *   falla cerrado, igual que `solapasDeNav`.
  */
 export function barraTelefonoDe(rol: Rol | null | undefined): ItemBarraTelefono[] {
   if (rol === 'direccion' || rol === 'administracion') return [CAMPO, ADMIN, OBRAS, HERRAMIENTAS, ANALITICAS]
-  if (rol === 'jefe_obra') return [MI_OBRA, CAMPO, ADMIN, OBRAS, HERRAMIENTAS]
+  if (rol === 'jefe_obra') return JEFE
   return []
 }
 

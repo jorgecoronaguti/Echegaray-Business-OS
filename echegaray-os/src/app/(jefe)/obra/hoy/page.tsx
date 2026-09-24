@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { hrefCargaDeAsistencia } from '@/features/administracion/services/cargaDeAsistencia'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { inicialesDe } from '@/features/empleado/components/shell-logica'
@@ -237,19 +238,15 @@ export default async function JefeHoyPage({
           })}
         </div>
 
-        {/* LOS TRES ACCESOS DEL MOCKUP, con la geometría medida y la verdad puesta al lado.
-            «Avance masivo» existe y escribe. «Pedir material» y «Subir foto» NO tienen dónde
-            escribir en este OS —los pedidos viven en la app de AppSheet y las fotos cuelgan de un
-            avance como enlace de Drive, no como carga— así que van apagados y con el motivo escrito
-            debajo. Un acceso que no lleva a ningún lado enseña que la pantalla miente. */}
+        {/* LOS TRES ACCESOS DEL MOCKUP. «Pedir material» escribe desde el 21/09 (módulo Material, sin
+            AppSheet). «Subir foto» sigue apagado: la foto viaja como enlace al registrar un avance. */}
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }} data-testid="accesos-jefe">
           <Acceso href={conObra('/obra/avance-masivo', obra.id)} icono="masivo" texto="Avance masivo" />
-          <Acceso icono="pedido" texto="Pedir material" />
+          <Acceso href="/campo/material/pedir" icono="pedido" texto="Pedir material" />
           <Acceso icono="foto" texto="Subir foto" />
         </div>
         <p style={{ marginTop: 8, fontSize: 11, color: C.faint, lineHeight: 1.5 }}>
-          Pedir material y subir foto todavía no tienen dónde escribir: los pedidos se cargan en la
-          app de materiales y la foto viaja como enlace al registrar un avance.
+          Subir foto todavía no tiene dónde escribir: la foto viaja como enlace al registrar un avance.
         </p>
         {/* ═══ CAMPO CUELGA DE HOY (dueño, 23/09/2026 · mapa de pantallas, duda 4) ═══
             `/campo` (parte diario, impedimento, asistencia, herramientas por QR) es del jefe y no tenía
@@ -257,12 +254,13 @@ export default async function JefeHoyPage({
             empleado, que no puede escribir nada de eso. Son los mismos accesos de 88px de arriba. */}
         <RotuloSeccion icono="obra" margenArriba={20}>Trabajo</RotuloSeccion>
         <div style={{ display: 'flex', gap: 10, marginTop: 10 }} data-testid="accesos-campo">
-          <Acceso href="/obra/avance-masivo" icono="nota" texto="Parte de hoy" />
+          {/* «Parte de hoy» llevaba al mismo avance masivo que el acceso de arriba: dos botones, una pantalla. */}
+          <Acceso href={hrefCargaDeAsistencia({ obra: obra.id })} icono="nota" texto="Asistencia" />
           <Acceso href="/campo/impedimento" icono="bloqueo" texto="Problema" />
           <Acceso href="/campo/herramientas" icono="equipo" texto="Herramientas" />
         </div>
         <Link href="/campo" prefetch={false} data-testid="ir-campo" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, marginTop: 4, fontSize: 12.5, color: C.muted, textDecoration: 'underline' }}>
-          Todo lo de trabajo: asistencia y movimientos
+          Todo lo de trabajo: material y movimientos
         </Link>
       </div>
     </>

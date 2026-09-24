@@ -10,8 +10,8 @@ test('Dirección y Administración: cinco destinos, Campo primero (en el teléfo
   assert.deepEqual(claves('administracion'), claves('direccion'))
 })
 
-test('el jefe de obra entra por su obra y no ve Analíticas (es precio)', () => {
-  assert.deepEqual(claves('jefe_obra'), ['mi-obra', 'campo', 'administracion', 'obras', 'herramientas'])
+test('el jefe de obra tiene UNA barra en todo el teléfono: la de J01 (dueño 24/09)', () => {
+  assert.deepEqual(barraTelefonoDe('jefe_obra').map((i) => i.label), ['Hoy', 'Tareas', 'Avance', 'Gente'])
   assert.equal(barraTelefonoDe('jefe_obra')[0].href, '/obra/hoy')
 })
 
@@ -48,6 +48,9 @@ test('cuál se enciende: el href más largo gana y las rutas de Administración 
   assert.equal(itemActivoDeBarra('/obras-viejas', b), null)
   assert.equal(itemActivoDeBarra('/', b), null)
   const j = barraTelefonoDe('jefe_obra')
-  assert.equal(itemActivoDeBarra('/obra/tareas', j), 'mi-obra')
-  assert.equal(itemActivoDeBarra('/obras', j), 'obras')
+  assert.equal(itemActivoDeBarra('/obra/tareas', j), 'jefe-tareas')
+  assert.equal(itemActivoDeBarra('/obra/avance-masivo', j), 'jefe-hoy')
+  assert.equal(itemActivoDeBarra('/campo/herramientas', j), 'jefe-hoy')
+  assert.equal(itemActivoDeBarra('/administracion/personas/asistencia', j), 'jefe-gente')
+  assert.equal(itemActivoDeBarra('/obras', j), null)
 })
