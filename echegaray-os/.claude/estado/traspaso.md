@@ -45,13 +45,14 @@ de respaldo («20/08/26 · primer parte» en QP) · tests: cuentas efímeras cam
 del 22/08, con 3 partes cargados) están ARCHIVADAS; no hay registro de quién/cuándo. El módulo no se usa en obra en
 curso hasta que QP tenga estructura → decisiones 2 y 3 del dueño bloquean. Pedidos: 17 en total, último 28/07.
 
-**Espera al dueño:** 1) borrar 17 activos «PRUEBA E2E» + obras `prueba-e2e` y `zz-e2e-celda…` · 2) QP: congelar v3 y
-reconvertir (o restaurar las 5 archivadas) · 3) QP: 26 partidas sin HH ni costo · 4) presencia por defecto ¿cuenta como
-HH? · 5) HH → actividad (3.822 filas sin `actividad_id`) · 6) cuenta `jorge.o.corona+direccion-test…` está BANEADA:
-¿se borra? · 7) `efectivo-raw-pestana` y avisos no filtran `es_prueba` (por eso efectivo-rls mide sólo la mitad).
+**Decidido por el dueño 24/09:** estructura de TODAS las obras desde cero (no restaurar las 5 archivadas de QP ni
+reconvertir la v3) · HH quedan en la obra sin actividad hasta armar la imputación por actividad · borrados y
+verificados: 17 activos PRUEBA E2E (+33 mov.), obras `prueba-e2e` y `zz-e2e-celda…`, 7 retiros de asistencia de
+prueba, cuenta `…direccion-test…` · confirmación de firma de efectivo: YA va al DM del dueño (verificado ER-0016/17/18,
+Rodrigo no la recibió) — no se tocó.
+**Sin respuesta:** presencia por defecto ¿cuenta como HH? · filtrar `es_prueba` en efectivo-raw/avisos.
 
-**Pendiente propio:** Plazo del Resumen dice «sin inicio real» cuando el aside ya muestra el respaldo (unificar) ·
-escrituras reales con el dueño (foto, parte, impedimento, asignar, crear/sellar, archivar) cuando QP tenga estructura ·
+**Pendiente propio:** escrituras reales con el dueño (foto, parte, impedimento, asignar, crear/sellar, archivar) cuando QP tenga estructura ·
 C10 sólo se ve en etapa Previo: revisar con la primera obra nueva.
 
 ## 2. OTROS ABIERTOS
