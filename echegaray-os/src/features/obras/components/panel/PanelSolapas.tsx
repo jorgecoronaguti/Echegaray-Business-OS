@@ -232,10 +232,9 @@ export function EjecucionReciente({ historial, hoyISO, alVerHistorial }: {
           </div>
         ))}
         <button type="button" onClick={alVerHistorial} data-testid="ver-historial" style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '7px',
+          font: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '7px',
           fontSize: '11.5px', color: C.tintaMedia, cursor: 'pointer', border: 'none',
-          background: 'none', width: '100%', font: 'inherit',
-        }}>
+          background: 'none', width: '100%', }}>
           Ver historial <Ico d={P.flecha} s={12} />
         </button>
       </div>

@@ -84,11 +84,11 @@ export type CifraEnLinea = {
   italica?: boolean
 }
 
-/** Los estados que la ficha conoce, con su rótulo y su color. Terminada/archivada son la Z01. */
+/** Los estados que la ficha conoce, con su rótulo y su color. El cierre es uno solo y se lee «Archivada», igual que en la cartera (dueño 23/09). */
 export const ESTADOS_TERMINADA: readonly string[] = ['cerrada', 'terminada', 'archivada']
 
 export function pastillaDeEstado(estado: string): { t: string; tono: 'pos' | 'curso' | 'neutro' } {
-  if (ESTADOS_TERMINADA.includes(estado)) return { t: 'Terminada', tono: 'pos' }
+  if (ESTADOS_TERMINADA.includes(estado)) return { t: 'Archivada', tono: 'pos' }
   if (estado === 'activa') return { t: 'En ejecución', tono: 'curso' }
   if (estado === 'pausada') return { t: 'Pausada', tono: 'neutro' }
   // UN ESTADO QUE ESTA PANTALLA NO CONOCE SE MUESTRA COMO VINO: un default de «en ejecución»

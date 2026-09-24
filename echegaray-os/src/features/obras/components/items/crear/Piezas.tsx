@@ -34,10 +34,10 @@ export function Chip({ activo, apagado = false, onClick, icono, children, testid
   return (
     <button type="button" onClick={onClick} disabled={apagado} aria-pressed={activo} data-testid={testid} title={titulo}
       style={{
-        height: `${alto}px`, padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap',
+        font: 'inherit', height: `${alto}px`, padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap',
         border: `1px solid ${activo ? C.grafito : C.borde}`, borderRadius: '6px', fontSize: '12.5px',
         fontWeight: activo ? 500 : 400, color: activo ? C.tinta : C.tintaSuave, background: C.superficie,
-        cursor: apagado ? 'default' : 'pointer', font: 'inherit', opacity: apagado ? 0.5 : 1, flexShrink: 0,
+        cursor: apagado ? 'default' : 'pointer', opacity: apagado ? 0.5 : 1, flexShrink: 0,
       }}>
       {icono}{children}
     </button>
@@ -118,9 +118,9 @@ export function PiePrimaria({ rotulo, icono, onClick, apagada = false, nota, tes
     }}>
       <button type="button" onClick={onClick} disabled={apagada || pendiente} data-testid={testid} aria-disabled={apagada}
         style={{
-          height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '6px',
+          font: 'inherit', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '6px',
           background: apagada ? C.borde : C.marca, color: apagada ? C.tenue : C.grafito, fontSize: '14px', fontWeight: 600,
-          border: 0, font: 'inherit', width: '100%', cursor: apagada ? 'default' : 'pointer', opacity: pendiente ? 0.7 : 1,
+          border: 0, width: '100%', cursor: apagada ? 'default' : 'pointer', opacity: pendiente ? 0.7 : 1,
         }}>
         {icono}{pendiente ? 'Guardando…' : rotulo}
       </button>

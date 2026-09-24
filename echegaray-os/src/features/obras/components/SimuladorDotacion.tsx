@@ -183,9 +183,9 @@ export function SimuladorDotacion({
             const activa = pregunta === q.k
             return (
               <button key={q.k} type="button" onClick={() => setPregunta(q.k)} aria-pressed={activa} data-testid={`pregunta-${q.k}`} style={{
-                height: '36px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', flexShrink: 0,
+                font: 'inherit', height: '36px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', flexShrink: 0,
                 border: `1px solid ${activa ? C.grafito : C.borde}`, borderRadius: '6px', fontSize: '12.5px', fontWeight: activa ? 500 : 400,
-                color: activa ? C.tinta : C.tintaSuave, background: C.superficie, cursor: 'pointer', font: 'inherit', fontFamily: 'inherit',
+                color: activa ? C.tinta : C.tintaSuave, background: C.superficie, cursor: 'pointer', fontFamily: 'inherit',
               }}>{q.corta}</button>
             )
           })}
@@ -337,8 +337,8 @@ function Plegable({ titulo, n, nota, abierto, alternar, children, testid }: {
   return (
     <div data-testid={testid} data-abierto={abierto ? '1' : undefined}>
       <button type="button" onClick={alternar} aria-expanded={abierto} style={{
-        width: '100%', height: '44px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: `1px solid ${C.borde}`,
-        fontSize: '13px', border: 'none', borderBottomStyle: 'solid', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit', fontFamily: 'inherit', color: C.tinta, textAlign: 'left',
+        font: 'inherit', width: '100%', height: '44px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: `1px solid ${C.borde}`,
+        fontSize: '13px', border: 'none', borderBottomStyle: 'solid', background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', color: C.tinta, textAlign: 'left',
       }}>
         <span style={{ color: C.tenue, display: 'flex' }}><Ico d={abierto ? P.abajo : P.derecha} s={13} /></span>
         <span style={{ fontWeight: 500 }}>{titulo}</span>
@@ -364,9 +364,9 @@ function Aplicar({ dot, puedeAplicar, aplicar, telefono }: {
     <button type="submit" disabled={bloqueado} data-testid="aplicar-al-plan" title={!puedeAplicar ? 'Aplicarlo al plan es de Administración y de la jefatura de obra.' : dot.length === 0 ? 'Mové una dotación y se habilita.' : undefined}
       data-apagada={bloqueado ? '1' : undefined}
       style={telefono ? {
-        width: '100%', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '6px', border: 0,
+        font: 'inherit', width: '100%', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '6px', border: 0,
         background: bloqueado ? C.borde : C.marca, color: bloqueado ? C.tenue : C.grafito, fontSize: '14px', fontWeight: 600,
-        cursor: bloqueado ? 'not-allowed' : 'pointer', font: 'inherit', fontFamily: 'inherit',
+        cursor: bloqueado ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
       } : {
         height: '34px', padding: '0 16px', border: 0, borderRadius: '6px', background: bloqueado ? C.borde : C.grafito, color: bloqueado ? C.tenue : C.superficie,
         font: 'inherit', fontFamily: 'inherit', fontSize: '13px', fontWeight: 500, cursor: bloqueado ? 'not-allowed' : 'pointer', alignSelf: 'flex-start',

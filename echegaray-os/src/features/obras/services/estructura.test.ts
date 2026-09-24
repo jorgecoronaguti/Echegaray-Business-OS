@@ -95,6 +95,7 @@ test('C07 · la vista previa reparte la cantidad y la suma se conserva', () => {
   ])
   assert.ok(razonesParaDividir({ ...t2, tiene_hijas: false }, 0, 0, true).every((r) => r.ok))
   assert.equal(razonesParaDividir({ ...t2, tiene_hijas: false, metodo_avance: 'pasos' }, 0, 0, false)[2].texto, 'Se mide por pasos')
+  assert.equal(razonesParaDividir({ ...t2, metodo_avance: 'manual' }, 0, 0, true)[2].texto, 'Se mide a mano, no por pasos')
 })
 
 test('C08 · el texto de pasos y los rótulos de plan', () => {

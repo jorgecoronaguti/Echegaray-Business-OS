@@ -231,8 +231,8 @@ function FilaDocumento({ d, ultima, actividades, nombreDe, asignar, clasificar, 
     setEditaAct(false); router.refresh()
   })
   const SELECT: React.CSSProperties = {
-    height: '26px', padding: '0 8px', border: `1px solid ${C.bordeFuerte}`, borderRadius: '6px', fontSize: '12.5px', color: C.tintaSuave,
-    background: C.superficie, font: 'inherit', width: '100%',
+    font: 'inherit', height: '26px', padding: '0 8px', border: `1px solid ${C.bordeFuerte}`, borderRadius: '6px', fontSize: '12.5px', color: C.tintaSuave,
+    background: C.superficie, width: '100%',
   }
   return (
     <div className="group" data-testid="fila-documento-obra" style={{

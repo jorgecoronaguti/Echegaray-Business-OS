@@ -85,10 +85,9 @@ export function Chip({ activo, onClick, titulo, icono, n, secundario = false, ch
     <button type="button" onClick={onClick} title={titulo} aria-pressed={activo}
       data-activo={activo ? '1' : undefined} data-secundario={secundario ? '1' : undefined}
       style={{
-        display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px',
+        font: 'inherit', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px',
         border: `1px solid ${c.borde}`, background: c.fondo, color: c.texto,
-        borderRadius: '6px', padding: '4px 9px', cursor: 'pointer', font: 'inherit',
-        fontFamily: 'inherit', lineHeight: 1.4,
+        borderRadius: '6px', padding: '4px 9px', cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1.4,
       }}>
       {icono}
       {children}

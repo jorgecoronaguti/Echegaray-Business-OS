@@ -133,7 +133,7 @@ export function ArbolEstructura({
     }
     return escritorio ? (
       <button key={`agregar-${padreId ?? 'raiz'}`} type="button" onClick={() => alPedirNuevo?.(padreId)} data-testid={`agregar-en-${padreId ?? 'raiz'}`}
-        style={{ height: '40px', display: 'flex', alignItems: 'center', gap: '9px', paddingLeft: `${sangria}px`, fontSize: '13px', color: C.tintaSuave, background: 'none', border: 'none', font: 'inherit', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+        style={{ font: 'inherit', height: '40px', display: 'flex', alignItems: 'center', gap: '9px', paddingLeft: `${sangria}px`, fontSize: '13px', color: C.tintaSuave, background: 'none', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
         <span style={{ width: '12px' }} />
         <span style={{ color: C.tenue, display: 'flex' }}><Ico d={P.mas} s={12} /></span>
         <span>{rotulo}</span>
@@ -143,7 +143,7 @@ export function ArbolEstructura({
       </button>
     ) : (
       <button key={`agregar-tel-${padreId ?? 'raiz'}`} type="button" onClick={() => alPedirNuevo?.(padreId)} data-testid={`agregar-telefono-en-${padreId ?? 'raiz'}`}
-        style={{ height: '44px', display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: `${sangriaTel}px`, fontSize: '13px', color: C.tintaSuave, background: 'none', border: 'none', font: 'inherit', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+        style={{ font: 'inherit', height: '44px', display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: `${sangriaTel}px`, fontSize: '13px', color: C.tintaSuave, background: 'none', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
         <span style={{ color: C.tenue, display: 'flex' }}><Ico d={P.mas} s={12} /></span>{rotulo}
       </button>
     )

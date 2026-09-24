@@ -138,10 +138,10 @@ export function PastillaM({ activa, onClick, href, icono, n, testid, children }:
   children: ReactNode
 }) {
   const estilo: CSSProperties = {
-    height: '36px', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap',
+    font: 'inherit', height: '36px', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap',
     border: `1px solid ${activa ? C.grafito : C.borde}`, borderRadius: '6px', fontSize: '12.5px',
     fontWeight: activa ? 500 : 400, color: activa ? C.tinta : C.tintaSuave, background: C.superficie,
-    cursor: 'pointer', font: 'inherit', flexShrink: 0,
+    cursor: 'pointer', flexShrink: 0,
   }
   const cuerpo = (
     <>

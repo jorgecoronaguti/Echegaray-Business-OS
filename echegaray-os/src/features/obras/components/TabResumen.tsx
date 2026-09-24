@@ -40,7 +40,7 @@ import {
   bajadaAvance, cifraAvance, type AvancePonderado, type DiasHabilesObra,
 } from '../services/avancePonderado'
 import {
-  asignadosDelResumen, frentesEnCurso, hhDelResumen, impedimentosQueFrenan, loQueFaltaCargar, personasHoy, plazoDeObra,
+  asignadosDelResumen, frentesEnCurso, hhDelResumen, impedimentosQueFrenan, inicioRealDeRespaldo, loQueFaltaCargar, personasHoy, plazoDeObra,
   sinMetodoDeMedicion, ultimaActividad,
 } from '../services/resumenObra'
 import type { PersonasDeHoy } from '../services/personalService'
@@ -165,7 +165,7 @@ function OrdenesTelefono({ ordenes, veComercial }: { ordenes: BloqueOrdenes; veC
 
 export function TabResumen({
   obra, plan, economia = null, abiertas, obraId, editar, veComercial = true,
-  actividades = [], partes = [], personasDeHoy = null, ordenes = null,
+  actividades = [], archivadas = [], partes = [], personasDeHoy = null, ordenes = null,
   hoy = new Date().toISOString().slice(0, 10), avance, diasHabiles, nDependencias, genteHoy,
   asignaciones = null, registrosHH = null,
 }: {
@@ -179,6 +179,9 @@ export function TabResumen({
   editar: ReactNode
   veComercial?: boolean
   actividades?: Actividad[]
+  /** Las archivadas sólo nombran los partes viejos: un parte cargado sobre una actividad que
+   *  después se archivó se leía «actividad sin nombre». */
+  archivadas?: Actividad[]
   partes?: ParteEjecucion[]
   personasDeHoy?: PersonasDeHoy | null
   /** `null` = la página no las pidió. Una obra sin OC sí se dibuja: «Sin OC registrada». */
@@ -197,7 +200,10 @@ export function TabResumen({
   registrosHH?: Parameters<typeof hhDelResumen>[0] | null
 }) {
   const vivas = actividades.filter((a) => a.tipo !== 'resumen' && !a.archivada && !a.actividad_padre_id)
-  const actividadDe = new Map(actividades.map((a) => [a.id, { nombre: a.nombre, unidad: a.unidad }]))
+  const actividadDe = new Map([
+    ...archivadas.map((a) => [a.id, { nombre: `${a.nombre} (archivada)`, unidad: a.unidad }] as const),
+    ...actividades.map((a) => [a.id, { nombre: a.nombre, unidad: a.unidad }] as const),
+  ])
   const frena = impedimentosQueFrenan(abiertas, hoy)
   const frentes = frentesEnCurso(actividades, genteHoy)
   const plazo = plazoDeObra(obra, diasHabiles)
@@ -214,6 +220,7 @@ export function TabResumen({
   const atencion = [...itemsDeImpedimentos(abiertas, obraId, hoy), ...itemsDelPlan(plan, economia, veComercial, obraId)]
   const personas = personasHoy(personasDeHoy)
   const hh = hhDelResumen(registrosHH, hoy)
+  const inicioRespaldo = obra.fecha_inicio_real ? null : inicioRealDeRespaldo(partes, registrosHH)
   const asignados = asignadosDelResumen(asignaciones)
 
   return (
@@ -307,7 +314,7 @@ export function TabResumen({
               {veComercial && (
                 <FilaKV k="Contratado" v={obra.monto_contratado != null ? plataCorta(obra.monto_contratado) : <SinDato>sin cargar</SinDato>} />
               )}
-              <FilaKV k="Inicio real" v={obra.fecha_inicio_real ? fecha(obra.fecha_inicio_real) : <SinDato>sin arrancar</SinDato>} />
+              <FilaKV k="Inicio real" v={obra.fecha_inicio_real ? fecha(obra.fecha_inicio_real) : inicioRespaldo ? `${fecha(inicioRespaldo.fecha)} · ${inicioRespaldo.origen}` : <SinDato>sin arrancar</SinDato>} />
               <FilaKV k="Fin plan" v={obra.fecha_fin_plan ? fecha(obra.fecha_fin_plan) : <SinDato>sin plan</SinDato>} />
               <FilaKV k="Fin proyectado" tono={finProyectadoTarde ? 'warn' : 'ink'}
                 v={obra.forecast_fin ? fecha(obra.forecast_fin) : <SinDato>sin proyección</SinDato>} />

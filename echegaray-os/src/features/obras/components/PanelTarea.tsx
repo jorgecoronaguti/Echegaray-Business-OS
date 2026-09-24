@@ -185,7 +185,7 @@ export function PanelTarea({
               <>
                 {' '}
                 <button type="button" onClick={() => alAbrirActividad(hijasEjecutables[0].id)} data-testid="panel-ir-a-hija"
-                  style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: C.tinta, fontWeight: 500, textDecoration: 'underline', font: 'inherit' }}>
+                  style={{ font: 'inherit', border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: C.tinta, fontWeight: 500, textDecoration: 'underline' }}>
                   Ir a «{oracionDeActividad(hijasEjecutables[0].nombre)}»
                 </button>
               </>
@@ -209,9 +209,8 @@ export function PanelTarea({
           <button key={id} type="button" onClick={() => alCambiarSolapa(id)} data-testid={`sol-${id}`}
             aria-current={solapa === id ? 'true' : undefined}
             style={{
-              fontSize: '12px', padding: '7px 9px 8px', whiteSpace: 'nowrap', cursor: 'pointer',
-              border: 'none', background: 'none', font: 'inherit',
-              color: solapa === id ? C.tinta : C.tintaSuave, fontWeight: solapa === id ? 500 : 400,
+              font: 'inherit', fontSize: '12px', padding: '7px 9px 8px', whiteSpace: 'nowrap', cursor: 'pointer',
+              border: 'none', background: 'none', color: solapa === id ? C.tinta : C.tintaSuave, fontWeight: solapa === id ? 500 : 400,
               boxShadow: solapa === id ? `inset 0 -2px 0 ${C.grafito}` : 'none',
             }}>{label}</button>
         ))}

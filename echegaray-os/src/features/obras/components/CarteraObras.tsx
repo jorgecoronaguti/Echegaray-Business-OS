@@ -169,10 +169,10 @@ export function ChipsCartera({ filtro, setFiltro, cuentas, sinImpedimentos, tele
             data-testid={`filtro-${f.k}`} data-activo={activo ? '1' : undefined}
             title={f.k === 'problema' && sinImpedimentos ? 'No se pudieron leer los impedimentos' : f.tip}
             style={telefono ? {
-              height: '36px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px',
+              font: 'inherit', height: '36px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px',
               whiteSpace: 'nowrap', border: `1px solid ${activo ? C.grafito : C.borde}`, borderRadius: '6px',
               fontSize: '12.5px', fontWeight: activo ? 500 : 400, color: activo ? C.tinta : C.tintaSuave,
-              background: C.superficie, cursor: 'pointer', font: 'inherit', fontFamily: 'inherit', flexShrink: 0,
+              background: C.superficie, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
             } : {
               display: 'inline-flex', alignItems: 'center', gap: '6px', border: 'none', padding: 0, paddingBottom: '2px',
               background: 'none', font: 'inherit', fontFamily: 'inherit', fontSize: '12.5px', cursor: 'pointer',
@@ -260,7 +260,7 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
     <div style={{ padding: '26px 0', fontSize: '12.5px', color: C.tintaSuave }}>
       Nada coincide.{' '}
       <button type="button" onClick={limpiar} data-testid="ver-todo"
-        style={{ color: C.tinta, fontWeight: 500, cursor: 'pointer', textDecoration: 'underline', border: 'none', background: 'none', font: 'inherit', padding: 0 }}>
+        style={{ font: 'inherit', color: C.tinta, fontWeight: 500, cursor: 'pointer', textDecoration: 'underline', border: 'none', background: 'none', padding: 0 }}>
         Ver todo
       </button>
     </div>

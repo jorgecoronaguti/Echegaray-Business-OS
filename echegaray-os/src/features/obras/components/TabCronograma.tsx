@@ -232,8 +232,8 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
   const nDeps = actos.filter((f) => f.actividadId && con.has(f.actividadId)).length
   const selladas = actos.filter((f) => f.inicioBase || f.finBase).length
   const caja = (activo: boolean): CSSProperties => ({
-    height: '32px', padding: '0 10px', display: 'flex', alignItems: 'center', border: `1px solid ${activo ? C.grafito : C.borde}`,
-    borderRadius: '6px', fontWeight: activo ? 500 : 400, color: activo ? C.tinta : C.tintaSuave, background: C.superficie, font: 'inherit', cursor: 'pointer',
+    font: 'inherit', height: '32px', padding: '0 10px', display: 'flex', alignItems: 'center', border: `1px solid ${activo ? C.grafito : C.borde}`,
+    borderRadius: '6px', fontWeight: activo ? 500 : 400, color: activo ? C.tinta : C.tintaSuave, background: C.superficie, cursor: 'pointer',
   })
   return (
     <>
@@ -385,9 +385,9 @@ function Editor({ obraId, filas, dependencias, isodows, feriados, hoy, fallas, g
   }
 
   const caja = (activo: boolean, apagado = false): CSSProperties => ({
-    height: '32px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px', border: `1px solid ${activo ? C.grafito : C.borde}`,
+    font: 'inherit', height: '32px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px', border: `1px solid ${activo ? C.grafito : C.borde}`,
     borderRadius: '6px', fontSize: '12.5px', fontWeight: activo ? 500 : 400, color: apagado ? C.apagado : activo ? C.tinta : C.tintaSuave,
-    background: C.superficie, font: 'inherit', cursor: apagado ? 'default' : 'pointer',
+    background: C.superficie, cursor: apagado ? 'default' : 'pointer',
   })
 
   return (

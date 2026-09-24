@@ -538,6 +538,7 @@ export default async function ObraPage({
           obraId={obraId}
           veComercial={veComercial}
           actividades={acts}
+          archivadas={archivadas}
           partes={partes}
           avance={avance}
           diasHabiles={diasHabilesObra}

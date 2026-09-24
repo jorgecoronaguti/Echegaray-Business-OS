@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  hhDelResumen, asignadosDelResumen,
+  hhDelResumen, asignadosDelResumen, inicioRealDeRespaldo,
   antesDeArchivar, frentesEnCurso, hhDeCierre, hhPorRubro, impedimentosQueFrenan, loQueFaltaCargar,
   margenDeCierre, personasHoy, plazoDeObra, plazoFinal, sinMetodoDeMedicion, ultimaActividad,
 } from './resumenObra.ts'
@@ -187,4 +187,15 @@ test('Asignados del Resumen: sólo las vigentes; nadie asignado no es 0', () => 
   assert.equal(asignadosDelResumen([{ hasta: null }, { hasta: null }, { hasta: '2026-09-01' }]).valor, '2')
   assert.equal(asignadosDelResumen([{ hasta: '2026-09-01' }]).falta, 'nadie asignado')
   assert.equal(asignadosDelResumen(null).falta, 'no se pudo leer')
+})
+
+test('Inicio real de respaldo: el primer parte manda; sin partes, la semana de la primera HH; nada, null', () => {
+  const hh = [
+    { fecha_inicio_semana: '2026-08-24', tipo_hora: 'normal' },
+    { fecha_inicio_semana: '2026-08-17', tipo_hora: 'ausencia' },
+    { fecha_inicio_semana: '2026-08-31', tipo_hora: 'normal' },
+  ]
+  assert.deepEqual(inicioRealDeRespaldo([{ fecha: '2026-08-22T03:00:00Z' }, { fecha: '2026-08-20' }], hh), { fecha: '2026-08-20', origen: 'primer parte' })
+  assert.deepEqual(inicioRealDeRespaldo([], hh), { fecha: '2026-08-24', origen: 'semana de la primera HH' })
+  assert.equal(inicioRealDeRespaldo([], null), null)
 })

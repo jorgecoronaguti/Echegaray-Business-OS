@@ -69,7 +69,7 @@ export function BarraMasiva({ n, accion, setAccion, alSalir, resultado }: {
 
       <div className="flex md:hidden" style={{ justifyContent: 'space-between', alignItems: 'center', padding: '16px 16px 12px' }}>
         <div style={{ fontSize: '14px', fontWeight: 600, color: C.tinta }}>{n} {n === 1 ? 'seleccionada' : 'seleccionadas'}</div>
-        <button type="button" onClick={alSalir} data-testid="masiva-salir-telefono" style={{ fontSize: '12.5px', color: C.tintaSuave, display: 'inline-flex', gap: '5px', alignItems: 'center', background: 'none', border: 'none', font: 'inherit', cursor: 'pointer' }}>
+        <button type="button" onClick={alSalir} data-testid="masiva-salir-telefono" style={{ font: 'inherit', fontSize: '12.5px', color: C.tintaSuave, display: 'inline-flex', gap: '5px', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer' }}>
           <Ico d={P.cerrar} s={12} />Salir
         </button>
       </div>
@@ -157,7 +157,7 @@ export function CajaMasiva({ ids, datos, aplicar, alAplicado, accion, setAccion 
             <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', scrollbarWidth: 'none' }}>{controles(44, true)}</div>
             {aclaracion && <div style={{ fontSize: '12px', color: C.sobreGrafitoTenue }}>{aclaracion}</div>}
             {error && <div style={{ fontSize: '12px', color: C.marca }}>{error}</div>}
-            <button type="button" onClick={enviar} disabled={pendiente} data-testid="masiva-aplicar-telefono" style={{ height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '6px', background: C.marca, color: C.grafito, fontSize: '14px', fontWeight: 600, border: 0, font: 'inherit', cursor: 'pointer' }}>
+            <button type="button" onClick={enviar} disabled={pendiente} data-testid="masiva-aplicar-telefono" style={{ font: 'inherit', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '6px', background: C.marca, color: C.grafito, fontSize: '14px', fontWeight: 600, border: 0, cursor: 'pointer' }}>
               <Ico d={P.ok} s={15} />{pendiente ? 'Aplicando…' : `Aplicar a ${n}`}
             </button>
           </div>
@@ -165,7 +165,7 @@ export function CajaMasiva({ ids, datos, aplicar, alAplicado, accion, setAccion 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
           {ACCIONES.filter((a) => a.id !== 'responsable').map((a) => (
             <button key={a.id} type="button" onClick={() => { setAccion(accion === a.id ? null : a.id); setValor('') }} data-testid={`masiva-telefono-${a.id}`} aria-pressed={accion === a.id}
-              style={{ height: '44px', display: 'flex', alignItems: 'center', gap: '8px', padding: '0 12px', border: `1px solid ${accion === a.id ? C.superficie : C.sobreGrafitoBorde}`, borderRadius: '6px', fontSize: '13px', background: 'transparent', color: C.superficie, font: 'inherit', cursor: 'pointer' }}>
+              style={{ font: 'inherit', height: '44px', display: 'flex', alignItems: 'center', gap: '8px', padding: '0 12px', border: `1px solid ${accion === a.id ? C.superficie : C.sobreGrafitoBorde}`, borderRadius: '6px', fontSize: '13px', background: 'transparent', color: C.superficie, cursor: 'pointer' }}>
               <Ico d={a.d} s={13} />{a.label}
             </button>
           ))}

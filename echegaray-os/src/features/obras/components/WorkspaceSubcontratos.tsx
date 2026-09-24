@@ -87,7 +87,7 @@ export function WorkspaceSubcontratos({
             <div style={{ fontSize: '12px', color: C.tintaSuave }}>{p.nombre}</div>
           </div>
           <button type="button" onClick={() => { setSel(p.id); sincronizarUrl(p.id) }}
-            style={{ fontSize: '12px', color: f.tono === 'neg' ? C.neg : C.warn, fontWeight: 500, whiteSpace: 'nowrap', border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit', fontFamily: 'inherit' }}>
+            style={{ font: 'inherit', fontSize: '12px', color: f.tono === 'neg' ? C.neg : C.warn, fontWeight: 500, whiteSpace: 'nowrap', border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}>
             Ver
           </button>
         </div>
@@ -124,8 +124,8 @@ export function WorkspaceSubcontratos({
         {nota}
         <div style={{ position: 'fixed', left: 0, right: 0, bottom: '64px', padding: '12px 16px 18px', background: C.superficie, borderTop: `1px solid ${C.borde}`, zIndex: 19 }}>
           <button type="button" onClick={() => setNuevo(true)} data-testid="nuevo-paquete" style={{
-            width: '100%', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '6px',
-            background: C.marca, color: C.grafito, fontSize: '14px', fontWeight: 600, border: 0, cursor: 'pointer', font: 'inherit', fontFamily: 'inherit',
+            font: 'inherit', width: '100%', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '6px',
+            background: C.marca, color: C.grafito, fontSize: '14px', fontWeight: 600, border: 0, cursor: 'pointer', fontFamily: 'inherit',
           }}><Ico d={P.mas} s={15} />Nuevo paquete</button>
         </div>
       </div>

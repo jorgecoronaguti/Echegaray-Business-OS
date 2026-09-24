@@ -86,6 +86,23 @@ export function plazoDeObra(
   }
 }
 
+/**
+ * «Inicio real» cuando la vista no lo trae. La vista lo arma con partes y HH imputadas a actividades
+ * VIVAS; en QP los partes quedaron sobre actividades archivadas y ninguna HH tiene actividad, y la
+ * obra se leía «sin arrancar» con 931 h trabajadas. Acá manda el primer hecho de la obra: el parte más
+ * viejo (sea de la actividad que sea) y, sin partes, la semana de la primera HH. Dice de dónde sale.
+ */
+export function inicioRealDeRespaldo(
+  partes: readonly { fecha: string }[],
+  registros: readonly { fecha_inicio_semana: string | null; tipo_hora: string }[] | null,
+): { fecha: string; origen: string } | null {
+  const primerParte = partes.map((p) => p.fecha.slice(0, 10)).sort()[0]
+  if (primerParte) return { fecha: primerParte, origen: 'primer parte' }
+  const semana = (registros ?? []).filter((r) => r.fecha_inicio_semana && !/^ausen/i.test(r.tipo_hora))
+    .map((r) => r.fecha_inicio_semana!.slice(0, 10)).sort()[0]
+  return semana ? { fecha: semana, origen: 'semana de la primera HH' } : null
+}
+
 /** Z01 «Plazo final»: «+9 d» con «terminó 14/09 · plan 05/09». */
 export function plazoFinal(obra: { fecha_fin_real: string | null; fecha_fin_plan: string | null }): Cifra {
   if (!obra.fecha_fin_real) return { rotulo: 'Plazo final', valor: null, falta: 'sin fin real', bajada: obra.fecha_fin_plan ? `plan ${ddmm(obra.fecha_fin_plan)}` : 'sin plan', tono: 'faint' }

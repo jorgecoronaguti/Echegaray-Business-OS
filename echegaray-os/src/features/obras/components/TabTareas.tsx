@@ -189,7 +189,7 @@ export function TabTareas({
       {nodos.length === 0 ? 'Esta obra todavía no tiene trabajo cargado.' : query ? `Nada coincide con «${query}».` : 'Ninguna actividad entra en esta vista.'}{' '}
       {(query || filtroLocal !== 'todo') && (
         <button type="button" onClick={limpiar} style={{
-          color: C.tinta, fontWeight: 500, cursor: 'pointer', textDecoration: 'underline', border: 'none', background: 'none', font: 'inherit', padding: 0,
+          font: 'inherit', color: C.tinta, fontWeight: 500, cursor: 'pointer', textDecoration: 'underline', border: 'none', background: 'none', padding: 0,
         }}>Ver todo</button>
       )}
     </>

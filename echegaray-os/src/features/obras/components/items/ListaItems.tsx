@@ -68,9 +68,9 @@ export function ListaItems({ filas, query, alBuscar, filtrosActivos, alAbrirFilt
           return (
             <div key={g.id} data-testid={`grupo-${g.id}`}>
               <button type="button" onClick={() => plegar(g.id)} style={{
-                width: '100%', height: '40px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px',
+                font: 'inherit', width: '100%', height: '40px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px',
                 borderBottom: abierto || gi < grupos.length - 1 ? `1px solid ${C.borde}` : 'none',
-                background: 'none', border: 'none', borderBottomStyle: 'solid', padding: 0, cursor: 'pointer', font: 'inherit', color: C.tinta,
+                background: 'none', border: 'none', borderBottomStyle: 'solid', padding: 0, cursor: 'pointer', color: C.tinta,
               }}>
                 <span style={{ color: C.tenue, display: 'flex' }}><Ico d={abierto ? P.abajo : P.derecha} s={13} /></span>
                 <span style={{ fontWeight: 600 }}>{g.nombre}</span>

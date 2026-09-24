@@ -86,9 +86,8 @@ function SelectActividad({
         data-testid="pedido-actividad"
         aria-label="Para la actividad"
         style={{
-          height: '26px', maxWidth: '220px', border: `1px solid ${C.bordeFuerte}`, borderRadius: '6px', padding: '0 6px',
-          fontSize: '12px', color: C.tintaSuave, background: C.superficie, font: 'inherit',
-        }}
+          font: 'inherit', height: '26px', maxWidth: '220px', border: `1px solid ${C.bordeFuerte}`, borderRadius: '6px', padding: '0 6px',
+          fontSize: '12px', color: C.tintaSuave, background: C.superficie, }}
         onChange={async (e) => {
           const anterior = elegida
           const nuevo = e.target.value

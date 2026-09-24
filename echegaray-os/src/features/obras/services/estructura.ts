@@ -258,6 +258,9 @@ export function textoDeFrentes(cantidad: number | null, unidad: string | null, l
   return `Los ${num(cantidad, 2)} ${unidad ?? ''} se reparten en partes iguales y la suma se conserva. ${cola}`.replace('  ', ' ')
 }
 
+// El método real de la actividad: una «manual» no se mide por cantidad y decirlo mentía.
+const COMO_SE_MIDE: Record<string, string> = { cantidad: 'por cantidad', partes: 'por partes', manual: 'a mano' }
+
 export interface RazonDividir { ok: boolean; texto: string }
 
 /** «Se puede porque» (C07/MC8). Con una en falso la primaria no se ofrece. */
@@ -272,7 +275,7 @@ export function razonesParaDividir(
       ok: n.metodo_avance !== 'pasos' && nPasos === 0 && n.tipo !== 'hito',
       texto: n.tipo === 'hito' ? 'Es un hito: no lleva trabajo'
         : n.metodo_avance === 'pasos' || nPasos > 0 ? 'Se mide por pasos'
-          : largo ? 'Se mide por cantidad, no por pasos' : 'Se mide por cantidad',
+          : largo ? `Se mide ${COMO_SE_MIDE[n.metodo_avance ?? ''] ?? 'sin método'}, no por pasos` : `Se mide ${COMO_SE_MIDE[n.metodo_avance ?? ''] ?? 'sin método'}`,
     },
   ]
   if (n.partida_codigo) {
