@@ -8,6 +8,9 @@
 // última copia, corre las dos sincronizaciones que alimentan la app:
 //   · sync-flujo-fondos.mjs     `_MOVIMIENTOS` (valores ya recalculados) → public.flujo_*
 //   · impuestos-a-postgres.mjs  «Impuestos y Financieros»               → public.impuesto_posicion
+//   · sync-cobranzas.mjs        «Cobranzas»                             → public.cobranzas (CRM y portal)
+//     (24/09/2026: el dueño marcó cobrado un pago de Quattropani y la ficha del cliente siguió
+//     mostrando lo viejo hasta la corrida horaria: la cobranza es lo que el dueño más mira)
 //
 // NO rehace el libro ni ninguna pestaña: eso sigue siendo la corrida de 2 h. Si la corrida grande
 // está en marcha, no se pisa con ella (candado de archivo). Una versión que no se pudo leer no
@@ -26,6 +29,7 @@ const CANDADO = join(DIR, 'corriendo.lock')
 const PASOS = [
   ['orquestador/scripts/sync-flujo-fondos.mjs'],
   ['orquestador/scripts/impuestos-a-postgres.mjs', '--aplicar'],
+  ['orquestador/scripts/sync-cobranzas.mjs'],
 ]
 
 function tomarCandado() {
