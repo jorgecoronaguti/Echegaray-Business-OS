@@ -6,9 +6,11 @@ import { esRutaCampoPermitida } from './index.ts'
 
 const claves = (rol: Parameters<typeof barraTelefonoDe>[0]) => barraTelefonoDe(rol).map((i) => i.clave)
 
-test('Dirección y Administración: barra de gestión Obras · Personal · Compras · Datos · Más (dueño 24/09, B)', () => {
+test('Dirección y Administración: barra de gestión Obras · Personal · Compras · Analíticas · Más (dueño 24/09, B)', () => {
   assert.deepEqual(claves('direccion'), ['obras', 'personal', 'compras', 'analiticas', 'mas'])
   assert.deepEqual(claves('administracion'), claves('direccion'))
+  // «Analíticas» para todos, nunca «Datos» (dueño, 24/09/2026).
+  assert.equal(barraTelefonoDe('direccion').find((i) => i.clave === 'analiticas')?.label, 'Analíticas')
 })
 
 test('el jefe de obra tiene UNA barra en todo el teléfono: la de J01 (dueño 24/09)', () => {

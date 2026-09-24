@@ -51,11 +51,12 @@ const OPERARIO: ItemBarraTelefono[] = [
 // · Compras · Datos · Más, con las pantallas de escritorio adaptadas»). Reemplaza a Trabajo · Admin. ·
 // Obras · Herram. · Datos, que mezclaba la pantalla del jefe con la de gestión. Lo que no entra en
 // cuatro va en «Más» (`/mas`): Clientes, Presupuestos, Impuestos, Herramientas, Trabajo y la cuenta.
+// LA SECCIÓN SE LLAMA «ANALÍTICAS» PARA TODOS (dueño, 24/09/2026: «siempre es analíticas para todos los usuarios, no te habilité a hacer el cambio de ponerle datos»).
 const GESTION: ItemBarraTelefono[] = [
   { clave: 'obras', href: '/obras', label: 'Obras', icono: 'plano' },
   { clave: 'personal', href: '/administracion/personas', label: 'Personal', icono: 'gente', enciende: ['/administracion/asistencia'] },
   { clave: 'compras', href: '/administracion/compras', label: 'Compras', icono: 'pedido', enciende: ['/administracion/proveedores'] },
-  { clave: 'analiticas', href: '/analiticas', label: 'Datos', icono: 'avance' },
+  { clave: 'analiticas', href: '/analiticas', label: 'Analíticas', icono: 'avance' },
   {
     clave: 'mas', href: '/mas', label: 'Más', icono: 'mas',
     enciende: ['/clientes', '/presupuestos', '/administracion/impuestos', '/administracion/usuarios', '/herramientas', '/h', '/campo', '/mi-cuenta', '/documentos', '/integraciones'],
@@ -65,7 +66,7 @@ const GESTION: ItemBarraTelefono[] = [
 /**
  * QUÉ BARRA VE CADA NIVEL EN EL TELÉFONO dentro de las pantallas de escritorio.
  *
- * - Dirección y Administración: Obras · Personal · Compras · Datos · Más (dueño 24/09, opción B).
+ * - Dirección y Administración: Obras · Personal · Compras · Analíticas · Más (dueño 24/09, opción B; «Analíticas», nunca «Datos»).
  * - Jefe de obra: Hoy · Tareas · Avance · Gente, la misma de J01 en todas las pantallas.
  * - Empleado: la de su app (Hoy · Trabajo · Horas · Yo), para cuando abre `/mi-cuenta` (24/09/2026).
  * - Cliente o sin perfil: NINGUNA; se falla cerrado, igual que `solapasDeNav`.
