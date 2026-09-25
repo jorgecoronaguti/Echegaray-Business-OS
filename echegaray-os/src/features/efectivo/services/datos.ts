@@ -15,7 +15,7 @@ import { esAdministracion } from '@/features/auth/types/areas'
 import { conteosDeCampanita, diaAR } from '../logica/entregas'
 import { faltaMigracion } from '../logica/formularios'
 import {
-  COLUMNAS_COMPROBANTE, COLUMNAS_DEVOLUCION, COLUMNAS_ENTREGA,
+  COLUMNAS_COMPROBANTE, COLUMNAS_DEVOLUCION, COLUMNAS_ENTREGA, COLUMNAS_RENDICION,
   type Comprobante, type Devolucion, type Entrega, type FilaDeCompras, type ObraOpcion, type PersonaOpcion, type Rendicion,
 } from '../types'
 import { nombresDeUsuarios as nombresDeUsuariosTodos } from '../../../shared/personas/nombresDeUsuarios.ts'
@@ -68,7 +68,7 @@ export async function leerEfectivo(): Promise<LecturaEfectivo> {
       getPerfilActual(supabase),
       supabase.from('efectivo_entrega_saldo').select(COLUMNAS_ENTREGA).order('fecha', { ascending: false }).limit(TOPE),
       supabase.from('efectivo_comprobante_estado').select(COLUMNAS_COMPROBANTE).order('enviado_en', { ascending: false }).limit(TOPE),
-      supabase.from('efectivo_rendicion').select('id, entrega_id, compra_clave, monto, imputada_en, comprobante_id').limit(TOPE),
+      supabase.from('efectivo_rendicion').select(COLUMNAS_RENDICION).limit(TOPE),
       // LA VISTA, NO LA TABLA: el estado del comprobante de devolución (las dos firmas) tiene UNA sola
       // definición y vive en `efectivo_devolucion_estado` (20260922T2900).
       supabase.from('efectivo_devolucion_estado').select(COLUMNAS_DEVOLUCION).limit(TOPE),
@@ -103,7 +103,11 @@ export async function leerEfectivo(): Promise<LecturaEfectivo> {
     for (const o of obras) if (o.cliente) clienteDeObra[o.id] = o.cliente
     const num = (v: unknown) => Number(v ?? 0)
     // La vista trae el legajo; se muestra el nombre para mostrar de esa persona (src/shared/personas).
-    const nombres = await nombresDePersonas(supabase, ((entregas.data ?? []) as unknown as Entrega[]).map((e) => e.persona_id))
+    // Y EL EMPLEADO DE CADA ADELANTO DE SUELDO (20260925T1100): la ficha lo nombra en la fila.
+    const nombres = await nombresDePersonas(supabase, [
+      ...((entregas.data ?? []) as unknown as Entrega[]).map((e) => e.persona_id),
+      ...((rendiciones.data ?? []) as unknown as Rendicion[]).map((r) => r.adelanto_persona_id),
+    ])
     return {
       estado: 'ok',
       datos: {
@@ -112,7 +116,10 @@ export async function leerEfectivo(): Promise<LecturaEfectivo> {
           en_su_poder: num(e.en_su_poder), filas_rendidas: num(e.filas_rendidas),
         })),
         comprobantes: (comprobantes.data ?? []) as unknown as Comprobante[],
-        rendiciones: deLasEntregas((rendiciones.data ?? []) as unknown as Rendicion[]).map((r) => ({ ...r, monto: num(r.monto) })),
+        rendiciones: deLasEntregas((rendiciones.data ?? []) as unknown as Rendicion[]).map((r) => ({
+          ...r, monto: num(r.monto),
+          adelanto_persona: r.adelanto_persona_id ? (nombres.get(r.adelanto_persona_id) ?? null) : null,
+        })),
         devoluciones: deLasEntregas((devoluciones.data ?? []) as unknown as Devolucion[]).map((d) => ({ ...d, monto: num(d.monto) })),
         personas: ((personas.data ?? []) as { id: string; nombre_completo: string | null; puesto: string | null }[])
           .filter((p) => p.nombre_completo)

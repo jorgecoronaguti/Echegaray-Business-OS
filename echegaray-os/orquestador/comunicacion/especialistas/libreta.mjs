@@ -29,6 +29,8 @@ import { claveDeLinea, interpretarLibreta, TEXTO_JORNALES } from '../../lib/libr
 import { escribirFajo } from '../comprobantes/escritura.mjs'
 import * as repo from '../comprobantes/repositorio.mjs'
 import { perfilDeMattermost } from './entregas-efectivo.mjs'
+import { elegirEmpleado, senalDeAdelanto } from '../../lib/adelanto-sueldo-texto.mjs'
+import { padronDeAdelantos } from './adelantos-sueldo.mjs'
 
 export const AREA_LIBRETA = 'rendicion'
 
@@ -100,6 +102,19 @@ export const especialista = {
     if (ctx.area !== AREA_LIBRETA) return null
     // Con adjuntos manda la foto: eso es un ticket o un vale, no una línea escrita.
     if ((ctx.fileIds?.length ?? 0) > 0) return null
+    // UN ADELANTO DE SUELDO NO ES UN GASTO DE COMPRAS (dueño, 25/09/2026). «adelanto 20 mil a Emiliano» y «pagué
+    // 7600 a Nievas a cuenta» se leían como renglones de libreta y entraban a Compras como Efectivo: CAJA restaba
+    // un billete que ya había salido con la entrega, y el sueldo del empleado no se enteraba. Los atiende
+    // `adelantos-sueldo`. «a cuenta» sin nadie del plantel sigue siendo de la libreta (un proveedor).
+    const senal = senalDeAdelanto(texto)
+    if (senal === 'fuerte') return null
+    if (senal === 'debil' && ctx.port) {
+      try {
+        const { padron } = await padronDeAdelantos(ctx.port)
+        const q = elegirEmpleado(texto, padron)
+        if (q.persona || q.candidatos?.length) return null
+      } catch { /* sin padrón, la libreta sigue como siempre */ }
+    }
     const leidas = interpretarLibreta(texto)
     if (leidas.some((l) => l.estado === 'listo' || l.estado === 'jornales')) {
       return { destino: 'libreta', confianza: 1, leidas }

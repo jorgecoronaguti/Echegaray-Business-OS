@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import { useRef, useState, useTransition } from 'react'
 import type { Entrega } from '../types'
 import { entregasCsv } from '../logica/entregas'
-import { anularEntregaAction, borrarEntregaDePruebaAction, reclamarRendicionAction } from '../services/acciones'
+import { anularEntregaAction, borrarEntregaDePruebaAction, quitarAdelantoRendidoAction, reclamarRendicionAction } from '../services/acciones'
 import { subirConformidadEnPapel } from '../services/subida'
 import { ACCEPT_PAGO } from '@/features/administracion/services/comprobanteDePago'
 import { V, botonClaro, campo } from './estilo'
@@ -188,6 +188,41 @@ export function BorrarPrueba({ entrega, codigo, volverHref }: {
       <span style={{ flexBasis: '100%', fontSize: '12px', color: V.apagado }}>
         Escribí <strong>{codigo}</strong> para confirmar. No se puede deshacer: no queda nada en la app.
       </span>
+      {error && <span role="alert" style={{ fontSize: '12px', color: V.neg, flexBasis: '100%' }}>{error}</span>}
+    </span>
+  )
+}
+
+/**
+ * QUITAR UN ADELANTO DE SUELDO (20260925T1100) — la fila «En Liquidación» de la ficha. Pide el motivo, como anular:
+ * saca el importe de «Pagado efectivo» del empleado y se lo devuelve al saldo de la entrega.
+ */
+export function QuitarAdelanto({ rendicion }: { rendicion: string }) {
+  const router = useRouter()
+  const [abierto, setAbierto] = useState(false)
+  const [motivo, setMotivo] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [pendiente, empezar] = useTransition()
+  if (!abierto) {
+    return (
+      <button type="button" onClick={() => setAbierto(true)} style={{ fontSize: '12px', color: V.apagado, textDecoration: 'underline', textUnderlineOffset: 2 }} data-testid="quitar-adelanto">
+        Quitar
+      </button>
+    )
+  }
+  const quitar = () => empezar(async () => {
+    const r = await quitarAdelantoRendidoAction({ id: rendicion, motivo })
+    if (!r.ok) { setError(r.error); return }
+    setAbierto(false)
+    router.refresh()
+  })
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo" maxLength={400} style={{ ...campo, height: 28, width: 180 }} aria-label="Motivo para quitar el adelanto" />
+      <button type="button" onClick={quitar} disabled={pendiente || !motivo.trim()} style={{ ...botonClaro, height: 28, color: V.neg }} data-testid="quitar-adelanto-confirmar">
+        {pendiente ? 'Quitando…' : 'Quitar de Liquidación'}
+      </button>
+      <button type="button" onClick={() => setAbierto(false)} style={{ fontSize: '12px', color: V.apagado }}>Cancelar</button>
       {error && <span role="alert" style={{ fontSize: '12px', color: V.neg, flexBasis: '100%' }}>{error}</span>}
     </span>
   )

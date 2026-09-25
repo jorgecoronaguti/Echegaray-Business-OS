@@ -18,6 +18,12 @@
 // movimientos de caja: la entrega SALE (importe negativo), la devolución ENTRA (positivo). Las
 // entregas anuladas no aparecen: nunca salió plata.
 //
+// ═══ EL ADELANTO DE SUELDO (25/09/2026) ═══
+//
+// Un adelanto pagado con la plata de una entrega (canal Efectivo, migración 20260925T1100) aparece como
+// «Adelanto de sueldo», POSITIVO: vuelve del fondo a rendir porque el sueldo de la quincena lo resta entero
+// cuando se paga. Sin esa vuelta, el billete saldría de CAJA dos veces.
+//
 //   node orquestador/scripts/efectivo-raw-pestana.mjs [--dry]
 //   ORQ_CASHFLOW_ID=<copia> node orquestador/scripts/efectivo-raw-pestana.mjs   ← probar en una copia
 
@@ -57,7 +63,8 @@ export function grilla(movs, corte) {
     [`${datos.length} movimiento(s) · neto para la caja física ${Math.round(neto).toLocaleString('es-AR')}. `
       + 'NO se carga a mano: la reescribe el agente desde la base (efectivo_entrega / efectivo_devolucion). '
       + 'La entrega SALE de la caja y la devolución ENTRA. Lo rendido NO está acá: es la fila de Compras con '
-      + 'Tipo pago «A rendir», y no vuelve a restar de la caja.'],
+      + 'Tipo pago «A rendir», y no vuelve a restar de la caja. «Adelanto de sueldo» es lo pagado a un empleado '
+      + 'con la plata de la entrega: vuelve del fondo porque la quincena lo resta entero al pagarse.'],
     COLUMNAS.map(([n]) => n),
     ...datos,
   ]

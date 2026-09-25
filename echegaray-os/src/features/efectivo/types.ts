@@ -42,8 +42,12 @@ export const COLUMNAS_ENTREGA = [
 // fila de Compras porque espera que la persona confirme que lo leído está bien. El escritorio tiene que
 // conocer este estado aunque no lo produzca: sin él, `ROTULO_COMPROBANTE[estado]` queda en `undefined` y la
 // fila de D03 y la cabecera de D04 se rompen al leer `.texto` de nada.
+//
+// `en_liquidacion` (20260925T1100) no lo produce ningún ticket: es la fila de la ficha de un ADELANTO DE SUELDO
+// pagado con la plata de la entrega y escrito en el canal Efectivo. No hay papel ni fila de Compras: el pago está
+// en Liquidación, en «Pagado efectivo» del empleado.
 export type EstadoComprobante =
-  | 'leyendo' | 'a_confirmar' | 'en_compras' | 'observado' | 'respondido' | 'duplicado' | 'error' | 'descartado'
+  | 'leyendo' | 'a_confirmar' | 'en_compras' | 'en_liquidacion' | 'observado' | 'respondido' | 'duplicado' | 'error' | 'descartado'
 
 /** Lo que el worker guardó de cada comprobante leído (`comprobante_entrada.resultado.comprobantes[]`). */
 export interface LeidoDelPapel {
@@ -122,7 +126,15 @@ export interface Rendicion {
   monto: number
   imputada_en: string
   comprobante_id: string | null
+  /** Adelanto de sueldo (20260925T1100): a quién, de qué quincena y qué se sumó a su celda. `null` = fila de Compras. */
+  adelanto_persona_id?: string | null
+  adelanto_quincena?: string | null
+  adelanto_expresion?: string | null
+  /** El nombre para mostrar del empleado, resuelto al leer. Decorativo. */
+  adelanto_persona?: string | null
 }
+
+export const COLUMNAS_RENDICION = 'id, entrega_id, compra_clave, monto, imputada_en, comprobante_id, adelanto_persona_id, adelanto_quincena, adelanto_expresion'
 
 /** La fila de Compras que rinde (lo que se mira de `compra_sheet`). La verdad del gasto es ésa. */
 export interface FilaDeCompras {

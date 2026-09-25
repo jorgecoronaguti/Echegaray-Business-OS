@@ -83,7 +83,10 @@ export function deEfectivoARendir(filas = [], { aviso = () => {} } = {}) {
   for (let i = RENDIR.desde - 1; i < (filas?.length ?? 0); i++) {
     const f = filas[i] ?? []
     const tipo = txt(f[c.movimiento])
-    if (tipo !== 'Entrega' && tipo !== 'Devolución') continue
+    // EL ADELANTO DE SUELDO (25/09/2026) VUELVE DEL FONDO como la devolución: el sueldo en efectivo de la quincena
+    // sale entero por Nómina al pagarse, y ese entero lo incluye. Ver `MOVIMIENTOS_QUE_VUELVEN` en CAJA.
+    const esAdelanto = tipo === 'Adelanto de sueldo'
+    if (tipo !== 'Entrega' && tipo !== 'Devolución' && !esAdelanto) continue
     const fecha = num(f[c.fecha])
     const importe = num(f[c.importe])
     if (fecha === null || importe === null) {
@@ -98,7 +101,9 @@ export function deEfectivoARendir(filas = [], { aviso = () => {} } = {}) {
       // y el signo lo decide el TIPO: una entrega con importe positivo tipeado no puede entrar al cajón.
       signo: tipo === 'Entrega' ? SALE : ENTRA,
       importe: Math.abs(importe),
-      concepto: `${tipo} a rendir ${entrega} · ${persona}`.trim(),
+      concepto: esAdelanto
+        ? `Adelanto de sueldo pagado de ${entrega} · ${persona} → ${txt(f[indiceDeColumna('D')]).replace(/^Sueldo de /, '')}`.trim()
+        : `${tipo} a rendir ${entrega} · ${persona}`.trim(),
       contraparte: persona,
       rubro: RUBRO_FONDOS_A_RENDIR,
       estado: 'REAL',

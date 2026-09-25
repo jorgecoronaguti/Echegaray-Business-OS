@@ -46,6 +46,15 @@ test('la entrega SALE con ventana inclusiva; la devolución ENTRA desde el día 
   for (const x of [e, d]) assert.ok(!x.includes(','), 'es-AR: separador ;')
 })
 
+test('el adelanto de sueldo pagado con la entrega vuelve del fondo igual que una devolución (25/09/2026)', () => {
+  const d = formulaDevolucionesARendirPosteriores('$F$9')
+  assert.match(d, /_EFECTIVO_RAW!\$E\$4:\$E="Adelanto de sueldo"/)
+  assert.match(d, /\(\(_EFECTIVO_RAW!\$E\$4:\$E="Devolución"\)\+\(_EFECTIVO_RAW!\$E\$4:\$E="Adelanto de sueldo"\)\)/)
+  assert.ok(!d.includes(','), 'es-AR: separador ;')
+  // La entrega NO cambia: sigue restando entera el día que sale.
+  assert.doesNotMatch(formulaEntregasARendirPosteriores('$F$9'), /Adelanto/)
+})
+
 test('la réplica y las fórmulas hablan de las mismas columnas', () => {
   assert.equal(COL.fecha, RENDIR.fecha)
   assert.equal(COL.movimiento, RENDIR.movimiento)

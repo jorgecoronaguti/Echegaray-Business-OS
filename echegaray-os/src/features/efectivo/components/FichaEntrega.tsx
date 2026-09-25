@@ -11,7 +11,7 @@ import {
 } from '../logica/entregas'
 import { urlEfectivo, urlFilaDeCompras } from '../logica/url'
 import type { ExtraDeFicha } from '../services/datos'
-import { AnularEntrega, BorrarPrueba, ReclamarRendicion, SubirPapel } from './Botones'
+import { AnularEntrega, BorrarPrueba, QuitarAdelanto, ReclamarRendicion, SubirPapel } from './Botones'
 import { Firma } from './Firma'
 import { ALTO_V2, HOVER_FILA } from '@/shared/components/v2/patron'
 import { COLOR_TONO, FONDO_OBSERVADO, MONO, V, botonClaro, botonOscuro, cifraFicha, eyebrow, punto } from './estilo'
@@ -163,9 +163,17 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
                   borderBottom: i < filas.length - 1 ? `1px solid ${V.lineaFila}` : undefined,
                   background: f.estado === 'observado' ? FONDO_OBSERVADO : undefined,
                 } as const
-                return href
-                  ? <Link key={f.comprobante?.id ?? `r${i}`} href={href} prefetch={false} className={HOVER_FILA} style={estilo} data-testid="fila-comprobante" data-estado={f.estado}>{contenido}</Link>
-                  : <div key={`r${i}`} style={estilo} data-testid="fila-comprobante" data-estado={f.estado}>{contenido}</div>
+                if (href) {
+                  return <Link key={f.comprobante?.id ?? `r${i}`} href={href} prefetch={false} className={HOVER_FILA} style={estilo} data-testid="fila-comprobante" data-estado={f.estado}>{contenido}</Link>
+                }
+                // EL ADELANTO DE SUELDO (20260925T1100) se puede quitar de Liquidación desde acá, con motivo, mientras
+                // la entrega esté abierta. Es la puerta que deja anular después una entrega que tuvo adelantos.
+                return (
+                  <div key={`r${i}`} style={f.adelanto && abierta ? { ...estilo, gridTemplateRows: 'auto auto', paddingBottom: 6 } : estilo} data-testid="fila-comprobante" data-estado={f.estado}>
+                    {contenido}
+                    {f.adelanto && abierta && <div style={{ gridColumn: '2 / -1' }}><QuitarAdelanto rendicion={f.adelanto} /></div>}
+                  </div>
+                )
               })}
               {!filas.length && (
                 <div style={{ padding: '18px 0', fontSize: '12.5px', color: V.apagado }}>Todavía no mandó ningún comprobante.</div>

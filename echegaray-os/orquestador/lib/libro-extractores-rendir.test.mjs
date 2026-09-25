@@ -128,3 +128,36 @@ test('la línea está en el cuadro, con dueño declarado y la réplica en el map
   assert.deepEqual(verificarCobertura(), [])
   assert.deepEqual(problemasDeRol(libroDePrueba().libro), [])
 })
+
+// ═══ EL ADELANTO DE SUELDO PAGADO CON LA PLATA DE UNA ENTREGA (dueño, 25/09/2026) ═══
+//
+// La cuenta con números: a Nievas le entregan $100.000 (ER-0021). Con esa plata le da $20.000 de adelanto a
+// Pastrán y lo escribe en el canal Efectivo. La quincena de Pastrán son $500.000 en efectivo, y Jornales la
+// resta ENTERA al pagarse (adelanto + recibo). El cajón de verdad pierde $100.000 el día de la entrega y
+// $480.000 el día de pago: $580.000. Sin la vuelta del adelanto el libro restaba $600.000.
+test('el adelanto de sueldo vuelve del fondo: el billete sale UNA vez (entrega + quincena − adelanto)', () => {
+  const RAW_ADEL = [
+    ['_EFECTIVO_RAW — …'], ['nota'], ['Fecha', 'Entrega', 'Persona', 'Destino', 'Movimiento', 'Importe'],
+    [D19, 'ER-0021', 'NIEVAS VILLEGAS JUAN PABLO', 'Estructura', 'Entrega', -100000],
+    [D22, 'ER-0021', 'NIEVAS VILLEGAS JUAN PABLO', 'Sueldo de PASTRAN MARCELO IVAN', 'Adelanto de sueldo', 20000],
+  ]
+  const fondos = deEfectivoARendir(RAW_ADEL)
+  assert.deepEqual(fondos.map((m) => [m.signo, m.importe, m.rubro]), [
+    [SALE, 100000, RUBRO_FONDOS_A_RENDIR],
+    [ENTRA, 20000, RUBRO_FONDOS_A_RENDIR],
+  ])
+  assert.match(fondos[1].concepto, /Adelanto de sueldo pagado de ER-0021 · NIEVAS VILLEGAS JUAN PABLO → PASTRAN MARCELO IVAN/)
+  // La quincena, pagada entera en efectivo el 01/10 (así la trae Jornales: adelanto + recibo).
+  const quincena = movimiento({
+    fecha: OCT, signo: SALE, importe: 500000, concepto: 'Jornales 16–30/09', contraparte: 'Plantel',
+    rubro: 'Nómina · Jornales de obra', estado: 'REAL', instrumento: 'efectivo', origen: { pestana: 'Jornales por Quincena', fila: 30 },
+  })
+  const libro = [...fondos, quincena]
+  const tot = medidasDeVentana(libro, SEP, OCT + 1)
+  assert.equal(tot.resultado, -(100000 + 500000 - 20000), 'el cajón pierde 580.000, no 600.000')
+  // El día del adelanto el fondo baja por 20.000 (vuelven a la empresa como sueldo) …
+  const d22 = medidasDeVentana(libro, D22, D22 + 1)
+  assert.equal(d22.resultado, 20000)
+  // … y el sueldo de la quincena sale entero por Nómina el día de pago, como un adelanto dado desde la oficina.
+  assert.equal(fila(rubrosDeVentana(libro, OCT, OCT + 1, medidasDeVentana(libro, OCT, OCT + 1)), 'Nómina · Jornales de obra').egreso_real, 500000)
+})

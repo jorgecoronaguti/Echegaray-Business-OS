@@ -191,6 +191,7 @@ export const ROTULO_COMPROBANTE: Record<EstadoComprobante, { texto: string; tono
   // imputar algo que no está esperándola a ella.
   a_confirmar: { texto: 'Espera que lo confirme', tono: 'neutro' },
   en_compras: { texto: 'En Compras', tono: 'pos' },
+  en_liquidacion: { texto: 'En Liquidación', tono: 'pos' },
   observado: { texto: 'Observado', tono: 'warn' },
   respondido: { texto: 'Contestó · falta cargar', tono: 'neutro' },
   duplicado: { texto: 'Duplicado', tono: 'warn' },
@@ -258,7 +259,14 @@ export function actividadDe(args: {
     if (c.respondido_en && c.respuesta) ev.push({ en: c.respondido_en, texto: `Respondió: ${c.respuesta}` })
     if (c.descartado_en) ev.push({ en: c.descartado_en, texto: `Descartado${c.descartado_motivo ? `: ${c.descartado_motivo}` : ''}` })
   }
-  for (const r of args.rendiciones) ev.push({ en: r.imputada_en, texto: `En Compras · ${pesos(Number(r.monto))}` })
+  for (const r of args.rendiciones) {
+    ev.push({
+      en: r.imputada_en,
+      texto: r.adelanto_persona_id
+        ? `Adelanto de sueldo${r.adelanto_persona ? ` a ${r.adelanto_persona}` : ''} · ${pesos(Number(r.monto))} · en Liquidación`
+        : `En Compras · ${pesos(Number(r.monto))}`,
+    })
+  }
   for (const d of args.devoluciones) ev.push({ en: d.registrada_en, texto: `Devolución · ${pesos(Number(d.monto))}` })
   if (e.cerrada_en) ev.push({ en: e.cerrada_en, texto: 'Entrega cerrada' })
   if (e.anulada_en) ev.push({ en: e.anulada_en, texto: `Anulada${e.anulada_motivo ? `: ${e.anulada_motivo}` : ''}` })
@@ -333,6 +341,8 @@ export interface FilaDeFicha {
   estado: EstadoComprobante
   /** La fila de Compras que la rinde, si ya existe: la verdad del gasto es ésa. */
   fila: number | null
+  /** Id de la rendición si la fila es un ADELANTO DE SUELDO: la ficha ofrece quitarlo de Liquidación. */
+  adelanto?: string
 }
 
 /**
@@ -367,6 +377,15 @@ export function filasDeLaFicha(
   })
   for (const r of rendiciones) {
     if (atadas.has(r.id)) continue
+    // EL ADELANTO DE SUELDO (20260925T1100) no tiene ticket ni fila de Compras: se dice qué es y dónde está.
+    if (r.adelanto_persona_id) {
+      out.push({
+        comprobante: null, fecha: r.imputada_en, proveedor: `Adelanto de sueldo · ${r.adelanto_persona ?? 'empleado'}`,
+        rubro: r.adelanto_quincena ? `Liquidación · quincena del ${ddmm(r.adelanto_quincena)}` : 'Liquidación',
+        importe: Number(r.monto), estado: 'en_liquidacion', fila: null, adelanto: r.id,
+      })
+      continue
+    }
     const f = compras.get(r.compra_clave)
     out.push({
       comprobante: null, fecha: f?.fecha ?? r.imputada_en, proveedor: f?.proveedor ?? null, rubro: f?.concepto ?? null,

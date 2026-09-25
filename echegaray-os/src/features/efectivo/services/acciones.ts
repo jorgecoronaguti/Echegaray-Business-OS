@@ -120,6 +120,19 @@ export async function anularEntregaAction(entrada: z.input<typeof motivoSchema>)
 }
 
 /**
+ * QUITAR UN ADELANTO DE SUELDO RENDIDO (20260925T1100). Saca de la celda «Pagado efectivo» lo que el canal le sumó
+ * y devuelve el importe al saldo de la entrega. Lo decide la base: sólo quien liquida sueldos, sólo con la quincena
+ * abierta. Es la puerta que deja anular una entrega que tuvo adelantos.
+ */
+export async function quitarAdelantoRendidoAction(entrada: { id: string; motivo: string }): Promise<Resultado<string>> {
+  const p = z.object({ id: z.string().uuid('Falta el adelanto'), motivo: texto(400).min(1, 'Escribí el motivo') }).safeParse(entrada)
+  if (!p.success) return { ok: false, error: p.error.issues[0].message }
+  const r = await rpc<string>('quitar_adelanto_rendido', { p_rendicion: p.data.id, p_motivo: p.data.motivo })
+  if (r.ok) revalidatePath('/administracion/personas')
+  return r
+}
+
+/**
  * BORRAR UNA PRUEBA, ENTERA. Sólo si la entrega se declaró prueba al crearla: la base lo exige y acá no
  * se pregunta de nuevo, se deja que conteste ella (un permiso que se valida en dos lugares se
  * desincroniza en uno). Una entrega real no se borra nunca — se anula, y el rastro queda.

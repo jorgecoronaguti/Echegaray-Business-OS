@@ -404,10 +404,23 @@ export function formulaEntregasARendirPosteriores(arqueo, c = RENDIR) {
     + `*${ventanaDelConteo(col(c.fecha), arqueo, false)}*IF(ISNUMBER(${col(c.importe)});-${col(c.importe)};0))`
 }
 
-/** La devolución ENTRA al cajón: ventana de entrada (desde el día siguiente al conteo). */
+/**
+ * LO QUE VUELVE DEL FONDO A RENDIR: la devolución, y desde el 25/09/2026 el ADELANTO DE SUELDO pagado con la plata
+ * de una entrega (escrito en el canal Efectivo, migración 20260925T1100).
+ *
+ * El adelanto no entra billetes al cajón: sale del fondo que la persona tenía (y que la entrega ya había restado) y
+ * pasa a ser SUELDO. El sueldo en efectivo de la quincena CAJA lo resta COMPLETO al pagarse (Jornales: adelanto +
+ * recibo, por «Pagado el»), y ese completo incluye este adelanto. Si acá no volviera, el mismo billete saldría dos
+ * veces: con la entrega y con la quincena. Queda igual que un adelanto dado desde el cajón de la oficina, que CAJA
+ * también descuenta recién cuando la quincena se paga.
+ */
+export const MOVIMIENTOS_QUE_VUELVEN = Object.freeze(['Devolución', 'Adelanto de sueldo'])
+const vuelveDelFondo = (col) => `((${col}="${MOVIMIENTOS_QUE_VUELVEN[0]}")+(${col}="${MOVIMIENTOS_QUE_VUELVEN[1]}"))`
+
+/** La devolución ENTRA al cajón: ventana de entrada (desde el día siguiente al conteo). Ver `MOVIMIENTOS_QUE_VUELVEN`. */
 export function formulaDevolucionesARendirPosteriores(arqueo, c = RENDIR) {
   const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
-  return `SUMPRODUCT((${col(c.movimiento)}="Devolución")*ISNUMBER(${col(c.fecha)})`
+  return `SUMPRODUCT(${vuelveDelFondo(col(c.movimiento))}*ISNUMBER(${col(c.fecha)})`
     + `*${ventanaDelConteo(col(c.fecha), arqueo, true)}*IF(ISNUMBER(${col(c.importe)});${col(c.importe)};0))`
 }
 
@@ -957,7 +970,7 @@ function maxEntregasARendir(arqueo, c = RENDIR) {
 function maxDevolucionesARendir(arqueo, c = RENDIR) {
   const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
   const f = fechaNumerica(col(c.fecha))
-  return maxDe(`(${col(c.movimiento)}="Devolución")*ISNUMBER(${col(c.fecha)})*${ventanaDelConteo(f, arqueo, true)}`
+  return maxDe(`${vuelveDelFondo(col(c.movimiento))}*ISNUMBER(${col(c.fecha)})*${ventanaDelConteo(f, arqueo, true)}`
     + `*(N(${col(c.importe)})<>0)*(${f}<=TODAY())*${f}`)
 }
 

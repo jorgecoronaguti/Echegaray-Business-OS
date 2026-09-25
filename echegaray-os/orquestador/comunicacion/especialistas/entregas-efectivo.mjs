@@ -24,6 +24,7 @@ import {
   pareceEntregaSinVerbo, pesos, textoDePregunta,
 } from '../../lib/efectivo-entrega-texto.mjs'
 import { leerVale } from '../../lib/efectivo-vale-vision.mjs'
+import { pareceAdelanto } from '../../lib/adelanto-sueldo-texto.mjs'
 import { bajarAdjunto } from '../comprobantes/flujo.mjs'
 import { subirAStorage } from '../../lib/storage-supabase.mjs'
 
@@ -210,6 +211,10 @@ export const especialista = {
     if (!AREAS_QUE_ENTREGAN.includes(ctx.area)) return null
     // Con adjuntos manda la foto: eso es un comprobante o una rendición, no una entrega escrita.
     if ((ctx.fileIds?.length ?? 0) > 0) return null
+    // UN ADELANTO DE SUELDO NO ES UNA ENTREGA (dueño, 25/09/2026). «le di 8500 de adelanto a Pastrán» trae «le
+    // di» y un nombre del plantel: sin esto se registraba una entrega a rendir A NOMBRE DEL EMPLEADO. La palabra
+    // «adelanto» lo manda a `adelantos-sueldo`, que lo rinde de la entrega de quien escribe.
+    if (pareceAdelanto(texto)) return null
     // LA RESPUESTA A MI PREGUNTA. Si a esta persona, en este canal, le acabo de preguntar algo («¿cuánto?»,
     // «¿a qué obra?»), su próximo mensaje es la respuesta y no una entrega nueva: «galpón 8» solo no lo
     // reconoce nadie, y sin esto caía a la libreta. Se reclama con 0,9: le gana a la libreta y a la

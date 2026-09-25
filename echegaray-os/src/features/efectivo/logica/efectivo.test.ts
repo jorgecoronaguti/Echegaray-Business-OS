@@ -331,3 +331,23 @@ test('una entrega declarada prueba lo lleva escrito hasta la base', () => {
   const real = validarEntrega({ persona: 'p-sosa', destino: 'estructura', obra: '', monto: '1.000', paraQue: '' })
   assert.equal(real.ok && real.dato.esPrueba, false)
 })
+
+test('el adelanto de sueldo rendido (20260925T1100) es una fila «En Liquidación» con el empleado, no «En Compras»', () => {
+  const r: Rendicion = {
+    id: 'r-adel', entrega_id: 'e1', compra_clave: 'adelanto:ev-1', monto: 20000, imputada_en: '2026-09-25T15:00:00Z',
+    comprobante_id: null, adelanto_persona_id: 'p-pastran', adelanto_quincena: '2026-09-16', adelanto_expresion: '20000',
+    adelanto_persona: 'Marcelo Pastran',
+  }
+  const [f] = filasDeLaFicha([], [r], new Map())
+  assert.equal(f.estado, 'en_liquidacion')
+  assert.equal(f.proveedor, 'Adelanto de sueldo · Marcelo Pastran')
+  assert.equal(f.rubro, 'Liquidación · quincena del 16/09')
+  assert.equal(f.importe, 20000)
+  assert.equal(f.adelanto, 'r-adel')
+  assert.equal(ROTULO_COMPROBANTE[f.estado].texto, 'En Liquidación')
+  const ev = actividadDe({
+    entrega: { entregado: 100000, conformidad_en: null, persona: 'Nievas', cerrada_en: null, anulada_en: null, anulada_motivo: null } as unknown as Entrega,
+    creadaEn: null, entregadaPor: null, comprobantes: [], rendiciones: [r], devoluciones: [],
+  })
+  assert.match(ev[0].texto, /Adelanto de sueldo a Marcelo Pastran · \$ 20\.000 · en Liquidación/)
+})
