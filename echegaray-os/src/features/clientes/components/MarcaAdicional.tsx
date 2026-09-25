@@ -35,7 +35,7 @@ export function MarcaAdicional({ huerfano = false, enLinea = false }: { huerfano
       data-testid="marca-adicional"
       data-huerfano={huerfano ? '' : undefined}
       title={huerfano
-        ? `${AYUDA} Su obra mayor NO está en esta lista (suele estar en el otro grupo, terminados o en curso).`
+        ? `${AYUDA} Su obra mayor NO está en esta lista (suele estar en el otro grupo, terminados o en ejecución).`
         : AYUDA}
       style={enLinea
         ? { fontSize: '12px', color: V.tenue, flexShrink: 0, whiteSpace: 'nowrap' }

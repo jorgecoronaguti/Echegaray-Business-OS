@@ -473,11 +473,11 @@ export default async function ClientePage({ params, searchParams }: {
     { rotulo: 'Trabajos', valor: todas.length || null, falta: 'ninguno cargado' },
     ...(veEconomia
       ? [{
-          rotulo: 'Contratado en curso',
+          rotulo: 'Contratado en ejecución',
           // NADIE CARGÓ EL MONTO ≠ CONTRATADO $ 0. Con obras en curso sin monto, la cifra lo dice
           // en vez de publicar un cero que se leería como «trabajamos gratis».
           valor: contratadoEnCurso !== null ? money(contratadoEnCurso) : null,
-          falta: enCurso.length ? SIN_PRECIO_EN_OBRAS : 'sin trabajo en curso',
+          falta: enCurso.length ? SIN_PRECIO_EN_OBRAS : 'sin trabajo en ejecución',
         } as CifraDeFicha]
       : []),
   ]
@@ -881,7 +881,7 @@ export default async function ClientePage({ params, searchParams }: {
                   hrefDetalle={hrefDetalle}
                   vacio={cerradas.length === 0
                     ? 'Este cliente no tiene ningún trabajo. Se crea desde arriba, colgado de este cliente.'
-                    : 'Ningún trabajo en curso. Los terminados están abajo.'}
+                    : 'Ningún trabajo en ejecución. Los terminados están abajo.'}
                 />
 
                 {/* LAS CERRADAS SE VEN SIEMPRE (DISENO-FICHA-CLIENTE-v3 · §3.1). Estaban detrás de

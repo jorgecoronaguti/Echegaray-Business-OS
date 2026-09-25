@@ -174,7 +174,7 @@ export function AvanceDeCobro({ o, veEconomia }: { o: ObraEnCurso; veEconomia: b
   const p = progresoDeCobro(cobrado, base)
   const falta = Math.max(0, base - cobrado)
   const deduccion = o.imputacion === 'unica-obra'
-    ? 'Cobranzas anota el cobro contra el cliente y se atribuye a este trabajo por ser el único en curso. '
+    ? 'Cobranzas anota el cobro contra el cliente y se atribuye a este trabajo por ser el único en ejecución. '
     : ''
   return (
     <span className={`flex flex-col items-end justify-center ${SOLO_TABLET}`} data-testid="avance-obra"

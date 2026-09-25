@@ -68,7 +68,7 @@ test('sin monto cargado la cifra lo dice, y nunca escribe $ 0', () => {
   // la ausencia dejó de ser «sin monto cargado» y pasó a decir DÓNDE falta el dato. El literal se
   // afirma por la constante y no copiado: mientras vivió escrito dos veces —acá y en el servicio—
   // cambiarlo en un lado dejaba la otra copia sin corregir, que es como este test se puso rojo.
-  assert.match(codigoPagina(), /falta: enCurso\.length \? SIN_PRECIO_EN_OBRAS : 'sin trabajo en curso'/)
+  assert.match(codigoPagina(), /falta: enCurso\.length \? SIN_PRECIO_EN_OBRAS : 'sin trabajo en ejecución'/)
   assert.ok(SIN_PRECIO_EN_OBRAS.length > 0, 'el servicio dejó de exportar la frase de la ausencia')
   // Y NADIE LA VUELVE A ESCRIBIR A MANO: dos copias del mismo literal es cómo nace una que no
   // recibe la corrección de la otra.
@@ -772,7 +772,7 @@ test('el titular de la ficha no publica los totales de OC ni de OP', () => {
   // Y las dos que quedan son las que contestan «qué le vendimos»: ni conteos que ya viven en su
   // lugar (contactos, documentos) ni ventanas incompatibles (facturado/cobrado a 90 días).
   assert.match(src, /rotulo: 'Trabajos'/)
-  assert.match(src, /rotulo: 'Contratado en curso'/)
+  assert.match(src, /rotulo: 'Contratado en ejecución'/)
 })
 
 // ═══ LA SOLAPA ÓRDENES ES UN REGISTRO, NO UNA LISTA DE PDFs (dueño, 13/09/2026) ═══

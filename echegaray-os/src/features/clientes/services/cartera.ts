@@ -89,7 +89,7 @@ export function frasesDeObras(
     return obras ? `${obras} en total` : 'sin obras'
   }
   const partes: string[] = []
-  if (nEnCurso > 0) partes.push(`${nEnCurso} en curso`)
+  if (nEnCurso > 0) partes.push(`${nEnCurso} en ejecución`)
   if (nCerradas > 0) partes.push(`${nCerradas} ${nCerradas === 1 ? 'cerrada' : 'cerradas'}`)
   return partes.length ? partes.join(' · ') : 'sin obras'
 }

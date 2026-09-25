@@ -144,7 +144,7 @@ export function PanelCliente({
           // «CONTRATADO EN CURSO» Y NO «CONTRATADO» A SECAS: es el mismo número y el mismo rótulo
           // que la columna de la lista y que la cabecera de la ficha. El acumulado de todas sus
           // obras es otro número y no se dibuja acá para no tener dos «Contratado» en la pantalla.
-          <Dato k="Contratado en curso" falta={contratadoEnCurso == null} mono>
+          <Dato k="Contratado en ejecución" falta={contratadoEnCurso == null} mono>
             {contratadoEnCurso == null ? SIN_PRECIO_EN_OBRAS : pesos(contratadoEnCurso)}
           </Dato>
         )}

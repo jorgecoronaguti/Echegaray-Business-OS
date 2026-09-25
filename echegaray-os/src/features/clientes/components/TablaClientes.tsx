@@ -209,7 +209,7 @@ export function TablaClientes({
               {veEconomia ? (
                 <>
                   <CifraDeCliente valor={contratado.total} faltan={contratado.faltan} testid="contratado" queFalta="sin precio en OBRAS ni en un papel"
-                    titulo={c.enCurso.length ? 'Suma del contrato de sus trabajos en curso, neto.' : 'No tiene trabajos en curso: no hay contrato vigente que sumar.'} />
+                    titulo={c.enCurso.length ? 'Suma del contrato de sus trabajos en ejecución, neto.' : 'No tiene trabajos en ejecución: no hay contrato vigente que sumar.'} />
                   <CostoDelCliente costos={costos} sinObra={gastosSinObra} clienteId={c.cliente_id}
                     obraIds={idsDeTodasSusObras(obrasPorCliente, c)} veEconomia={veEconomia} />
                   {/* EL COBRO DEL CLIENTE ES UNA CIFRA, NO UNA BARRA: la barra mide un trabajo contra
@@ -261,7 +261,7 @@ export function TablaClientes({
                           colores»). Toda fila de acá es un trabajo EN CURSO —`armarCartera` cuelga sólo
                           las obras activas—: es la misma palabra del «4 en curso» del grupo, no un dato nuevo. */}
                       <span style={{ whiteSpace: 'nowrap' }}>
-                        <span style={{ color: K.curso }} data-testid="estado-trabajo">En curso</span>
+                        <span style={{ color: K.curso }} data-testid="estado-trabajo">En ejecución</span>
                         {fila.esAdicional && <span style={{ color: K.tenue }}> · <MarcaAdicional huerfano={fila.huerfano} enLinea /></span>}
                       </span>
                         {/* EN EL TELÉFONO LAS OC NO SE LISTAN (dueño, 23/09/2026: «infinitos números»): se

@@ -204,13 +204,13 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
             `${visibles.length} ${visibles.length === 1 ? 'cliente' : 'clientes'}`,
             obras === null
               ? 'no pude leer sus trabajos'
-              : `${obrasEnCurso} ${obrasEnCurso === 1 ? 'trabajo' : 'trabajos'} en curso`,
+              : `${obrasEnCurso} ${obrasEnCurso === 1 ? 'trabajo' : 'trabajos'} en ejecución`,
             // «EN CURSO» NO ES ADORNO: es la suma de la columna Contratado, que sólo mira los
             // trabajos en marcha. Sin la aclaración se lee como el contrato histórico del cliente.
             veEconomia
               ? (contratadoTotal === null
                   ? 'sin precios en OBRAS'
-                  : `${pesos(contratadoTotal)} contratado en curso${trabajosSinBase ? ` · suma incompleta: ${trabajosSinBase} sin precio` : ''}`)
+                  : `${pesos(contratadoTotal)} contratado en ejecución${trabajosSinBase ? ` · suma incompleta: ${trabajosSinBase} sin precio` : ''}`)
               : null,
           ].filter(Boolean).join(' · ')}
           buscador={{ accion: RUTA, q: sp.q, oculto: { archivados: sp.archivados, vista: sp.vista, c: sp.c } }}
@@ -219,7 +219,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
             : undefined}
           recortes={[
             { clave: 'todo', etiqueta: 'Todos', icono: 'todo', href: armarHref(sp, { vista: undefined, c: undefined }), activo: vista === 'todo', cuenta: base.length },
-            { clave: 'activos', etiqueta: 'Con trabajo en curso', icono: 'hh', href: armarHref(sp, { vista: 'activos', c: undefined }), activo: vista === 'activos', cuenta: conTrabajo },
+            { clave: 'activos', etiqueta: 'Con trabajo en ejecución', icono: 'hh', href: armarHref(sp, { vista: 'activos', c: undefined }), activo: vista === 'activos', cuenta: conTrabajo },
           ]}
         />
 
