@@ -269,6 +269,15 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
   const con = new Set(dependencias.flatMap((d) => [d.origen_id, d.destino_id]))
   const nDeps = actos.filter((f) => f.actividadId && con.has(f.actividadId)).length
   const selladas = actos.filter((f) => f.inicioBase || f.finBase).length
+  // M07 ABRE CON HOY A LA VISTA: el lienzo se corre de costado y arrancaba en la primera fecha de la
+  // obra (agosto), con la línea de hoy fuera de la pantalla. Hoy queda a un tercio del gráfico.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || hoyPct == null) return
+    const grafico = el.scrollWidth - 120
+    el.scrollLeft = Math.max(0, 120 + grafico * (hoyPct / 100) - 120 - (el.clientWidth - 120) / 3)
+  }, [hoyPct, escala])
   const caja = (activo: boolean): CSSProperties => ({
     font: 'inherit', height: '44px', padding: '0 12px', display: 'flex', alignItems: 'center', border: `1px solid ${activo ? C.grafito : C.borde}`,
     borderRadius: '6px', fontWeight: activo ? 500 : 400, color: activo ? C.tinta : C.tintaSuave, background: C.superficie, cursor: 'pointer',
@@ -291,7 +300,7 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
           : (
             // CADA SEMANA MIDE 40px Y EL GRÁFICO SE CORRE DE COSTADO (M07): repartir 14 semanas en 270px
             // dejaba las tareas de una semana como cuadraditos de 20px. El nombre queda fijo a la izquierda.
-            <div style={{ overflowX: 'auto', margin: '0 -16px', padding: '0 16px' }} data-testid="cronograma-telefono-scroll">
+            <div ref={scrollRef} style={{ overflowX: 'auto', margin: '0 -16px', padding: '0 16px' }} data-testid="cronograma-telefono-scroll">
             <div style={{ position: 'relative', minWidth: `${120 + ventana.columnas.length * (escala === 'semana' ? 40 : 56)}px` }}>
               <div style={{ display: 'grid', gridTemplateColumns: '112px 1fr', gap: '8px', height: '26px', alignItems: 'center', borderBottom: `1px solid ${C.borde}` }}>
                 <div style={{ position: 'sticky', left: 0, background: C.superficie, height: '100%', zIndex: 1 }} />
