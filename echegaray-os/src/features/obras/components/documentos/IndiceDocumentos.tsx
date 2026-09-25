@@ -195,11 +195,12 @@ export function IndiceDocumentos({ documentos, actividades, asignar, clasificar,
                   {resumen && <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: resumen.alerta ? C.warn : C.tintaSuave, whiteSpace: 'nowrap' }}>{resumen.texto}</span>}
                 </button>
                 {abierto && docs.map((d) => (
-                  <div key={d.drive_file_id} style={{ height: '48px', display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '20px', borderBottom: `1px solid ${C.bordeTarjeta}`, fontSize: '13px' }}
+                  <div key={d.drive_file_id} style={{ position: 'relative', height: '48px', display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '20px', borderBottom: `1px solid ${C.bordeTarjeta}`, fontSize: '13px' }}
                     data-testid="fila-documento-telefono">
                     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                      <a href={urlDeDrive(d.drive_file_id, d.tipo)} target="_blank" rel="noreferrer" style={{ fontSize: '13.5px', color: C.tinta, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {d.name ?? d.drive_file_id}
+                      {/* LA FILA ENTERA ES EL TOQUE (48): el enlace se estira con un ::after sobre la fila. */}
+                      <a href={urlDeDrive(d.drive_file_id, d.tipo)} target="_blank" rel="noreferrer" className="after:absolute after:inset-0 after:content-['']" style={{ fontSize: '13.5px', color: C.tinta, minWidth: 0 }}>
+                        <span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.name ?? d.drive_file_id}</span>
                       </a>
                       <div style={{ fontSize: '11px', color: C.tenue }}>{etiquetaDeTipo(d.tipo, d.mime_type, d.name)} · {diaMes(d.modified_time) ?? 'sin fecha'}</div>
                     </div>

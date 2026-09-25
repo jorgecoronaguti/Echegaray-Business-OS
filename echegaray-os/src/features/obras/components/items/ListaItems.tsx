@@ -16,7 +16,7 @@
 import { useState } from 'react'
 import { C, MONO } from '../canon/tokens'
 import { Ico, P } from '../canon/Ico'
-import { faltaDeContenedor, gruposTelefono, type FilaItem } from './filasDeItems'
+import { gruposTelefono, type FilaItem } from './filasDeItems'
 
 const pct = (n: number | null) => n == null ? null : `${n.toLocaleString('es-AR', { maximumFractionDigits: 0 })}%`
 
@@ -42,7 +42,7 @@ export function ListaItems({ filas, query, alBuscar, filtrosActivos, alAbrirFilt
         }}>
           <Ico d={P.buscar} s={14} />
           <input value={query} onChange={(e) => alBuscar(e.target.value)} placeholder="Buscar tarea" data-testid="buscar-tarea-telefono"
-            style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', font: 'inherit', color: C.tinta }} />
+            style={{ flex: 1, minWidth: 0, alignSelf: 'stretch', border: 'none', outline: 'none', background: 'transparent', font: 'inherit', fontSize: '16px', color: C.tinta }} />
         </label>
         <button type="button" onClick={alAbrirFiltros} aria-label="Filtros" data-testid="abrir-filtros-telefono" style={{
           width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -68,7 +68,7 @@ export function ListaItems({ filas, query, alBuscar, filtrosActivos, alAbrirFilt
           return (
             <div key={g.id} data-testid={`grupo-${g.id}`}>
               <button type="button" onClick={() => plegar(g.id)} style={{
-                font: 'inherit', border: 'none', width: '100%', height: '40px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px',
+                font: 'inherit', border: 'none', width: '100%', height: '44px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px',
                 borderBottom: abierto || gi < grupos.length - 1 ? `1px solid ${C.borde}` : 'none',
                 background: 'none', padding: 0, cursor: 'pointer', color: C.tinta,
               }}>
@@ -76,7 +76,7 @@ export function ListaItems({ filas, query, alBuscar, filtrosActivos, alAbrirFilt
                 <span style={{ fontWeight: 600 }}>{g.nombre}</span>
                 <span style={{ fontFamily: MONO, fontSize: '11px', color: C.tenue }}>{g.n}</span>
                 <span style={{ marginLeft: 'auto', fontSize: '12px', color: g.pct == null ? C.tenue : C.tintaSuave, fontStyle: g.pct == null ? 'italic' : 'normal' }}>
-                  {g.pct == null ? faltaDeContenedor(g.peso) : pct(g.pct)}
+                  {g.pct == null ? 'sin avance' : pct(g.pct)}
                 </span>
               </button>
               {abierto && g.filas.map((f) => (

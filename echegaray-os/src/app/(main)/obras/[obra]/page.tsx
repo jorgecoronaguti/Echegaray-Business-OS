@@ -363,7 +363,7 @@ export default async function ObraPage({
   // de obra deja de tenerla, igual que Archivar y Reactivar; la planificación sigue siendo suya.
   const editarLaObra = !veComercial ? null : (
     <details data-testid="editar-obra">
-      <summary style={{ cursor: 'pointer', fontSize: '12.5px', color: C.tenue }}>Editar la obra</summary>
+      <summary className="max-md:flex max-md:min-h-11 max-md:items-center" style={{ cursor: 'pointer', fontSize: '12.5px', color: C.tenue }}>Editar la obra</summary>
       <div style={{ marginTop: '10px' }}>
         <FormAccion accion={editarObra.bind(null, obraId)} testid="form-editar-obra" enviar="Guardar la obra" mensajeOk="Obra guardada.">
           <CamposObra obra={obra} ubicacion={ubicacion} veEconomia={veComercial} />
@@ -409,7 +409,7 @@ export default async function ObraPage({
           <>
             <PrimariaViva />
             {/* Serie B: armando la estructura no hay «Nueva actividad» (B01–B07); la C01 vacía sí la dibuja. */}
-            {!enEstructura && !modoConPrimariaPropia && puedeEditarPlan && nuevaActividad}
+            {!enEstructura && !modoConPrimariaPropia && puedeEditarPlan && !terminada && nuevaActividad}
           </>
         ) : vista === 'resumen' && terminada ? (
           // Z01: la obra terminada o archivada no ofrece cargar parte ni crear actividades; ofrece
@@ -441,7 +441,7 @@ export default async function ObraPage({
         ) : vista === 'documentos' ? (
           // 14: «Vincular documento» · «Vincular carpeta» en texto y «Abrir carpeta» amarilla.
           <AccionesDocumentos obraId={obraId} carpetaDriveId={obra.drive_carpeta_id} />
-        ) : puedeEditarPlan && !conPrimariaPropia ? nuevaActividad : null}
+        ) : puedeEditarPlan && !conPrimariaPropia && !terminada ? nuevaActividad : null}
         // 05 · 06 · 08: el Cronograma, el Parte y Personal tienen su primaria propia; el diseño no dibuja
         // «Nueva actividad» en su cabecera.
         lineaDeCifras={enEstructura ? cifrasDeCrear(modoEstructura, obraVacia) : cifrasDelCronograma}
@@ -463,7 +463,7 @@ export default async function ObraPage({
           supabase={supabase} obraId={obraId} act={act} filtro={filtro} sol={sol} dot={dot}
           cuadrillas={cuadrillas} puedeEditar={puedeEditarPlan} veEconomia={veComercial}
           nueva={nueva === '1'} abiertas={abiertas} nombreObra={obra.nombre} itemsPonderados={vistaRaw === 'items'}
-          modo={modoEstructura} obra={{ inicio: obra.fecha_inicio_plan, fin: obra.fecha_fin_plan }}
+          modo={modoEstructura} obra={{ inicio: obra.fecha_inicio_plan, fin: obra.fecha_fin_plan, archivada: terminada }}
         />
       )}
 

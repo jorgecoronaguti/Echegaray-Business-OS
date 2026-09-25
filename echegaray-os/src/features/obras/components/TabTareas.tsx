@@ -327,7 +327,7 @@ export function TabTareas({
           plazo={estructura.obra.inicio && estructura.obra.fin ? `${estructura.obra.inicio.slice(8, 10)}/${estructura.obra.inicio.slice(5, 7)} → ${estructura.obra.fin.slice(8, 10)}/${estructura.obra.fin.slice(5, 7)}` : null}
           presupuesto={estructura.presupuesto ? { rotulo: estructura.presupuesto.rotulo, nPartidas: estructura.presupuesto.partidas.length } : null} />
       )}
-      {vacia && puedeEditar && (
+      {vacia && puedeEditar && !estructura.obra.archivada && (
         <div className="flex md:hidden" style={{ position: 'fixed', left: 0, right: 0, bottom: '64px', padding: '12px 16px 18px', background: C.superficie, borderTop: `1px solid ${C.borde}`, zIndex: 20 }}>
           <Link href={`/obras/${obraId}?vista=tareas&sub=arbol&crear=mano`} prefetch={false} data-testid="primaria-nueva-actividad"
             style={{ ...ESTILO_PRIMARIA, width: '100%', height: '48px', justifyContent: 'center', fontSize: '14px', gap: '8px', color: C.grafito, textDecoration: 'none' }}>
@@ -368,7 +368,7 @@ export function TabTareas({
             {panel}
           </div>
         )}
-        {puedeEditar && !abierta && (
+        {puedeEditar && !abierta && !estructura.obra.archivada && (
           <div style={{ position: 'fixed', left: 0, right: 0, bottom: '64px', padding: '12px 16px 18px', background: C.superficie, borderTop: `1px solid ${C.borde}`, zIndex: 20 }}>
             <button type="button" onClick={() => { setAlta('actividad'); window.scrollTo({ top: 0 }) }} data-testid="primaria-nueva-actividad"
               style={{ ...ESTILO_PRIMARIA, width: '100%', height: '48px', justifyContent: 'center', fontSize: '14px', gap: '8px', color: C.grafito }}>

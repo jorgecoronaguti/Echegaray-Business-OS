@@ -7,6 +7,7 @@
 //
 // Módulo puro (sin `@/`): lo prueba `node --test` al lado.
 
+import { avancePorTareas } from '../../services/avanceObra.ts'
 import type { NodoObra } from '../../services/wbs.ts'
 import type { HistoriaPeso, ResumenDePartes } from '../../services/obrasService.ts'
 import { METODO_CORTO } from '../../types/index.ts'
@@ -152,6 +153,11 @@ export function filasDeItems(
   }
   codificar(null, '')
 
+  // Las tareas que cuentan para el avance de un contenedor: se baja por los `resumen` y se para en la
+  // primera actividad ejecutable (lo que cuelga de una tarea lo mide su tarea), como `obra_avance`.
+  const tareasDe = (id: string): NodoObra[] => (hijos.get(id) ?? [])
+    .flatMap((h) => h.tipo === 'resumen' ? tareasDe(h.id) : [h])
+
   // Estado y avance de hojas; los contenedores agregan hacia arriba.
   const filaDe = new Map<string, FilaItem>()
   const armar = (n: NodoObra): FilaItem => {
@@ -193,16 +199,12 @@ export function filasDeItems(
       // Historia, épica, rubro: el avance de obra es la suma de lo que cuelga; el % ítem, la
       // parte medida sobre el peso que cuelga.
       const sumaAvance = filasHijas.reduce((s, x) => s + (x.avanceObra ?? 0), 0)
-      const sumaPeso = filasHijas.reduce((s, x) => s + (niv === 'historia' ? (x.nivel === 'tarea' ? x.peso ?? 0 : 0) : x.peso ?? 0), 0)
       const hayMedido = filasHijas.some((x) => x.pctItem != null)
       avanceObra = hayMedido ? sumaAvance : null
-      if (niv === 'historia') {
-        const tareas = filasHijas.filter((x) => x.nivel === 'tarea')
-        const medidas = tareas.filter((x) => x.pctItem != null)
-        pctItem = medidas.length > 0 ? tareas.reduce((s, x) => s + (x.pctItem ?? 0), 0) / tareas.length : null
-      } else {
-        pctItem = hayMedido && sumaPeso > 0 ? sumaAvance / sumaPeso : null
-      }
+      // EL AVANCE DE UN CONTENEDOR ES POR TAREAS (dueño 25/09): la misma regla que la cartera y el
+      // Resumen (`avancePorTareas` = `obra_avance`), sobre las tareas que cuelgan. El peso por costo
+      // de MO no entra acá: vive en «Pond.» y en el avance de obra de cada fila.
+      pctItem = avancePorTareas(tareasDe(n.id))
       estado = pctItem == null ? 'sin_parte' : pctItem >= 100 ? 'completado' : 'en_progreso'
     }
 
@@ -311,12 +313,6 @@ export function agruparFilas(filas: readonly FilaItem[], modo: Agrupar): FilaIte
 
 /** Los grupos del teléfono (M05): cada rubro con sus hojas, el conteo y el % agregado. */
 export interface GrupoTelefono { id: string; nombre: string; n: number; pct: number | null; peso?: number | null; filas: FilaItem[] }
-
-/** El % de un contenedor sin cifra: «no pesa» cuando nada de lo que cuelga tiene costo de MO (diseño
- *  MB1 «sin costo · no pesa»); «sin avance» cuando pesa pero nada se midió. Nunca 0 %. */
-export function faltaDeContenedor(peso: number | null | undefined): string {
-  return peso == null ? 'sin costo · no pesa' : 'sin avance'
-}
 
 export function gruposTelefono(filas: readonly FilaItem[]): GrupoTelefono[] {
   const grupos: GrupoTelefono[] = []

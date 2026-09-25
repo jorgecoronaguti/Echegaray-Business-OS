@@ -12,6 +12,7 @@
 //   pie         (teléfono) `padding:12px 16px 18px`, línea arriba, primaria de 48px; apagada sobre line
 //   cabecera    (teléfono) `padding:12px 16px`, «‹» 16px, miga 11,5 faint, título 15/600
 
+import { TOQUE_44 } from '../../canon/toque'
 import type { CSSProperties, ReactNode } from 'react'
 import { C, MONO } from '../../canon/tokens'
 import { Ico, P } from '../../canon/Ico'
@@ -72,6 +73,7 @@ export function Casilla({ marcada, onClick, etiqueta, testid, tam = 14, apagada 
 }) {
   return (
     <button type="button" role="checkbox" aria-checked={marcada} aria-label={etiqueta} data-testid={testid} disabled={apagada}
+      className={TOQUE_44}
       onClick={(e) => { e.stopPropagation(); onClick() }}
       style={{
         width: `${tam}px`, height: `${tam}px`, border: `1.5px solid ${marcada ? C.grafito : C.bordeFuerte}`, borderRadius: '3px',
@@ -113,8 +115,10 @@ export function PiePrimaria({ rotulo, icono, onClick, apagada = false, nota, tes
 }) {
   return (
     <div className="flex md:hidden" data-testid={`${testid}-pie`} style={{
+      // z 31: ARRIBA de las hojas a pantalla completa (z 30). Con 20 la hoja tapaba «Crear la tarea»,
+      // «Guardar» y «Dividir» y en el teléfono no había cómo confirmar (MB2 · MC8 · MC9, 25/09).
       position: 'fixed', left: 0, right: 0, bottom: '64px', flexDirection: 'column', padding: '12px 16px 18px',
-      background: C.superficie, borderTop: `1px solid ${C.borde}`, zIndex: 20,
+      background: C.superficie, borderTop: `1px solid ${C.borde}`, zIndex: 31,
     }}>
       <button type="button" onClick={onClick} disabled={apagada || pendiente} data-testid={testid} aria-disabled={apagada}
         style={{

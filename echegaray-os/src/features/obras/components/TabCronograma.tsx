@@ -232,7 +232,7 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
   const nDeps = actos.filter((f) => f.actividadId && con.has(f.actividadId)).length
   const selladas = actos.filter((f) => f.inicioBase || f.finBase).length
   const caja = (activo: boolean): CSSProperties => ({
-    font: 'inherit', height: '32px', padding: '0 10px', display: 'flex', alignItems: 'center', border: `1px solid ${activo ? C.grafito : C.borde}`,
+    font: 'inherit', height: '44px', padding: '0 12px', display: 'flex', alignItems: 'center', border: `1px solid ${activo ? C.grafito : C.borde}`,
     borderRadius: '6px', fontWeight: activo ? 500 : 400, color: activo ? C.tinta : C.tintaSuave, background: C.superficie, cursor: 'pointer',
   })
   return (
@@ -256,7 +256,7 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
             <div style={{ overflowX: 'auto', margin: '0 -16px', padding: '0 16px' }} data-testid="cronograma-telefono-scroll">
             <div style={{ position: 'relative', minWidth: `${120 + ventana.columnas.length * (escala === 'semana' ? 40 : 56)}px` }}>
               <div style={{ display: 'grid', gridTemplateColumns: '112px 1fr', gap: '8px', height: '26px', alignItems: 'center', borderBottom: `1px solid ${C.borde}` }}>
-                <div style={{ position: 'sticky', left: 0, background: C.lienzo, height: '100%', zIndex: 1 }} />
+                <div style={{ position: 'sticky', left: 0, background: C.superficie, height: '100%', zIndex: 1 }} />
                 <div style={{ display: 'grid', gridTemplateColumns: `repeat(${ventana.columnas.length},1fr)`, fontFamily: MONO, fontSize: '10px', color: C.tenue }}>
                   {ventana.columnas.map((c) => <span key={c.iso}>{escala === 'semana' ? c.iso.slice(8, 10) : c.rotulo}</span>)}
                 </div>
@@ -270,7 +270,11 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
                     display: 'grid', gridTemplateColumns: '112px 1fr', gap: '8px', height: '44px', alignItems: 'center',
                     borderBottom: i === actos.length - 1 ? 'none' : `1px solid ${C.borde}`,
                   }}>
-                    <div style={{ fontSize: '12.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, background: C.lienzo, zIndex: 1, alignSelf: 'stretch', display: 'flex', alignItems: 'center' }}>{f.nombre}</div>
+                    <div style={{ fontSize: '12.5px', position: 'sticky', left: 0, background: C.superficie, zIndex: 1, alignSelf: 'stretch', display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                      {/* M07 «Relleno y compact.»: el nombre se corta con puntos suspensivos (en un contenedor flex el
+                          text-overflow no aplica al texto suelto; va en su propio bloque). */}
+                      <span style={{ display: 'block', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.nombre}</span>
+                    </div>
                     {t
                       ? (
                         <div style={{ position: 'relative', height: '100%' }}>
@@ -523,7 +527,7 @@ function EditorTelefono({ obraId, filas, isodows, feriados, hoy, fallas, guardar
   const ultima = [...actos].reverse().find((f) => f.fin)
   const habiles = primera?.inicio && ultima?.fin ? dias.filter((d) => d >= primera.inicio! && d <= ultima.fin!).length : null
   const campo: CSSProperties = {
-    width: '76px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${C.bordeFuerte}`,
+    width: '76px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${C.bordeFuerte}`,
     borderRadius: '6px', fontFamily: MONO, fontSize: '13px', background: C.superficie, color: C.tinta, padding: '0 4px', boxSizing: 'border-box',
   }
   return (

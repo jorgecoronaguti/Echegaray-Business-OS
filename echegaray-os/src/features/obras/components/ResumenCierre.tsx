@@ -33,7 +33,8 @@ import type { Actividad, ObraPanel, ParteEjecucion, PlanVsReal, Restriccion } fr
 import { C, MONO } from './canon/tokens'
 import { Ico, P } from './canon/Ico'
 import { BloqueAside, BloqueTelefono, CifraGrande, FilaKV, SinDato, TituloBloque, TONO_TEXTO } from './TarjetaResumen'
-import { bajadaAvance, cifraAvance, faltaAvance, type AvancePonderado } from '../services/avancePonderado'
+import type { AvancePonderado } from '../services/avancePonderado'
+import { cifraAvanceObra } from '../services/avanceObra'
 import type { ActividadHH } from '../services/personalService'
 import { antesDeArchivar, hhDeCierre, hhPorRubro, margenDeCierre, plazoFinal } from '../services/resumenObra'
 import { fechaCorta, fechaLarga, plataMillones } from './formato'
@@ -67,7 +68,7 @@ function BotonCierre({ accion, filo, alto, children, testid }: {
 }
 
 export function ResumenCierre({
-  obra, plan, abiertas, obraId, actividades, partes, actividadHH, avance, papelesSinClasificar,
+  obra, plan, abiertas, obraId, actividades, partes, actividadHH, papelesSinClasificar,
   archivar, reactivar, veComercial = true, editar, puedeArchivar = true,
 }: {
   obra: ObraPanel
@@ -77,7 +78,8 @@ export function ResumenCierre({
   actividades: Actividad[]
   partes: ParteEjecucion[]
   actividadHH: ActividadHH[]
-  avance: AvancePonderado | null
+  /** Ya no se dibuja: el avance del cierre es por tareas (`cifraAvanceObra`, dueño 25/09). Se acepta por compatibilidad. */
+  avance?: AvancePonderado | null
   papelesSinClasificar: number | null
   /** Atadas a la obra por la página. */
   archivar: () => Promise<ResultadoAccion>
@@ -110,10 +112,12 @@ export function ResumenCierre({
     : 'Sale de la cartera y de la ficha del cliente. No se borra nada: cronograma, HH y costos quedan enteros; la página sigue abriendo por su dirección y se reactiva cuando haga falta.'
   const desvio = (n: number | null) => n == null ? null : `${n > 0 ? '+' : ''}${numAR(n, 1)} %`
 
+  const avanceObra = cifraAvanceObra(obra)
   const cifras = (tam: 28 | 24) => (
     <>
-      <CifraGrande tam={tam} rotulo="Avance" valor={cifraAvance(avance)} falta={faltaAvance(avance)}
-        bajada={avance ? `${avance.n_items_medidos} de ${avance.n_items} medidos` : bajadaAvance(avance)} testid="cifra-avance" />
+      {/* Por tareas, el mismo número que la cartera (dueño 25/09). */}
+      <CifraGrande tam={tam} rotulo="Avance" valor={avanceObra.valor} falta={avanceObra.falta}
+        bajada={avanceObra.bajada.replace(' tareas medidas', ' medidas')} testid="cifra-avance" />
       <CifraGrande tam={tam} rotulo="Plazo final" valor={plazo.valor} falta={plazo.falta} bajada={plazo.bajada} tono={plazo.tono} testid="cifra-plazo-final" />
       <CifraGrande tam={tam} rotulo="Costo real" testid="cifra-costo-real"
         valor={veComercial && obra.costo_real != null ? plataMillones(obra.costo_real) : null}

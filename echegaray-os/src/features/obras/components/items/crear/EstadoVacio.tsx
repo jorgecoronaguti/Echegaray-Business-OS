@@ -11,6 +11,7 @@
 //   teléfono    `padding:16px`, gap 16; título 17/600 · bajada 12,5; tres filas de 72px con
 //               ícono 18, título 14/600, bajada 12 muted y chevron; pie 12,5 con dos datos
 
+import { TOQUE_44 } from '../../canon/toque'
 import Link from 'next/link'
 import { C } from '../../canon/tokens'
 import { Ico, P } from '../../canon/Ico'
@@ -52,8 +53,8 @@ export function EstadoVacio({ obraId, presupuesto, lineaBaseSellada, diasHabiles
   // vincular uno existente (el campo «Obra» del presupuesto) o crearlo. Quien no ve precio, lo sabe.
   const vincular = (tel: boolean) => puedeVincular ? (
     <span style={{ display: 'inline-flex', gap: '14px', fontSize: tel ? '12.5px' : '13px', fontWeight: 500 }} data-testid={tel ? 'vincular-presupuesto-telefono' : 'vincular-presupuesto'}>
-      <Link href="/presupuestos" prefetch={false} style={{ color: C.tinta, textDecoration: 'underline' }}>Vincular uno</Link>
-      <Link href="/presupuestos/nuevo" prefetch={false} style={{ color: C.tinta, textDecoration: 'underline' }}>Crear presupuesto</Link>
+      <Link href="/presupuestos" prefetch={false} className={TOQUE_44} style={{ color: C.tinta, textDecoration: 'underline' }}>Vincular uno</Link>
+      <Link href="/presupuestos/nuevo" prefetch={false} className={TOQUE_44} style={{ color: C.tinta, textDecoration: 'underline' }}>Crear presupuesto</Link>
     </span>
   ) : <span style={{ fontSize: '12.5px', color: C.tenue }}>lo vincula Administración</span>
   return (
@@ -101,15 +102,17 @@ export function EstadoVacio({ obraId, presupuesto, lineaBaseSellada, diasHabiles
         </div>
         {opciones.map((o) => (
           <Tarjeta key={o.id} href={o.apagada ? null : o.href} testid={`crear-telefono-${o.id}`} style={{
-            display: 'flex', alignItems: 'center', gap: '12px', minHeight: '72px', padding: '0 14px', textDecoration: 'none',
+            display: 'flex', alignItems: 'center', gap: '12px', minHeight: '72px', padding: '12px 14px', textDecoration: 'none',
             border: `1px solid ${o.destacada ? C.grafito : C.borde}`, borderRadius: '8px', color: o.apagada ? C.tenue : C.tinta,
           }}>
             <span style={{ color: C.tintaMedia, display: 'flex' }}><Ico d={o.icono} s={18} /></span>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
               <div style={{ fontSize: '14px', fontWeight: 600 }}>{o.titulo}</div>
               <div style={{ fontSize: '12px', color: C.tintaSuave }}>{o.bajada}</div>
+              {/* MC1: la tarjeta es de una línea; las dos puertas van DEBAJO, no al costado (a 390 aplastaban el título en cuatro renglones). */}
+              {o.apagada && <div style={{ marginTop: '6px' }}>{vincular(true)}</div>}
             </div>
-            {o.apagada ? vincular(true) : <span style={{ color: C.tenue, display: 'flex' }}><Ico d={P.derecha} s={14} /></span>}
+            {!o.apagada && <span style={{ color: C.tenue, display: 'flex' }}><Ico d={P.derecha} s={14} /></span>}
           </Tarjeta>
         ))}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px', color: C.tintaSuave, borderTop: `1px solid ${C.borde}`, paddingTop: '14px' }}>

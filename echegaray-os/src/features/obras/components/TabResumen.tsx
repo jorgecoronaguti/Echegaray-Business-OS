@@ -36,9 +36,8 @@ import { AtencionObra, type ItemAtencion } from './AtencionObra'
 import { proximasDeLaObra } from '../services/resumenDelPlan'
 import { lineasPlanVsReal } from '../services/planVsReal'
 import { hrefDeVista } from '../services/vistasObra'
-import {
-  bajadaAvance, cifraAvance, faltaAvance, type AvancePonderado, type DiasHabilesObra,
-} from '../services/avancePonderado'
+import type { AvancePonderado, DiasHabilesObra } from '../services/avancePonderado'
+import { cifraAvanceObra } from '../services/avanceObra'
 import {
   actividadesMedibles, asignadosDelResumen, frentesEnCurso, hhDelResumen, impedimentosQueFrenan, inicioRealDeRespaldo, loQueFaltaCargar, personasHoy, plazoDeObra,
   sinMetodoDeMedicion, ultimaActividad,
@@ -47,12 +46,6 @@ import type { PersonasDeHoy } from '../services/personalService'
 import type { Asignacion } from '../types'
 import type { BloqueOrdenes } from '../services/ordenesDeLaObra'
 import { fechaCorta, fechaLarga, plataMillones } from './formato'
-
-/** 03: «31 de 42 ítems medidos» bajo el avance, como el diseño; sin cifra, la bajada que dice por qué. */
-function bajadaResumen(a: AvancePonderado | null): string {
-  if (a && a.n_historias > 0 && a.avance_pct != null) return `${a.n_items_medidos} de ${a.n_items} ítems medidos`
-  return bajadaAvance(a)
-}
 
 /** LO QUE FRENA LA OBRA, para el teléfono: los vencidos con nombre; el resto, contado. */
 function itemsDeImpedimentos(abiertas: Restriccion[], obraId: string, hoy: string): ItemAtencion[] {
@@ -228,6 +221,7 @@ export function TabResumen({
   const inicioRespaldo = obra.fecha_inicio_real ? null : inicioRealDeRespaldo(partes, registrosHH)
   const plazo = plazoDeObra(obra, diasHabiles, inicioRespaldo)
   const asignados = asignadosDelResumen(asignaciones)
+  const avanceObra = cifraAvanceObra(obra)
 
   return (
     <>
@@ -240,7 +234,8 @@ export function TabResumen({
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', columnGap: '40px' }} data-testid="cifras-resumen">
             {/* 03.html dibuja Avance y Plazo; HH y Asignados se suman por pedido del dueño (23/09/2026)
                 con la misma fuente que la solapa Personal. El costo teórico no está en el diseño. */}
-            <CifraGrande rotulo="Avance" valor={cifraAvance(avance)} falta={faltaAvance(avance)} bajada={bajadaResumen(avance)} testid="cifra-avance" />
+            {/* EL AVANCE ES POR TAREAS, EL MISMO NÚMERO QUE LA CARTERA (dueño 25/09): `cifraAvanceObra`. */}
+            <CifraGrande rotulo="Avance" valor={avanceObra.valor} falta={avanceObra.falta} bajada={avanceObra.bajada} testid="cifra-avance" />
             <CifraGrande rotulo="Plazo" valor={plazo.valor} falta={plazo.falta} bajada={plazo.bajada} tono={plazo.tono} testid="cifra-plazo" />
             <CifraGrande rotulo={hh.rotulo} valor={hh.valor} falta={hh.falta} bajada={hh.bajada} testid="cifra-hh" />
             <CifraGrande rotulo={asignados.rotulo} valor={asignados.valor} falta={asignados.falta} bajada={asignados.bajada} testid="cifra-asignados" />
@@ -396,8 +391,8 @@ export function TabResumen({
       <div className="flex md:hidden" style={{ padding: '16px 16px 158px', flexDirection: 'column', gap: '16px' }}
         data-testid="resumen-obra-telefono">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }} data-testid="azulejos-resumen">
-          <CifraGrande tam={24} rotulo="Avance" valor={cifraAvance(avance)} falta={faltaAvance(avance)}
-            bajada={avance ? `${avance.n_items_medidos} de ${avance.n_items} medidos` : 'sin estructura'} />
+          <CifraGrande tam={24} rotulo="Avance" valor={avanceObra.valor} falta={avanceObra.falta}
+            bajada={avanceObra.bajada.replace(' tareas medidas', ' medidas')} />
           <CifraGrande tam={24} rotulo="Plazo" valor={plazo.valor} falta={plazo.falta} tono={plazo.tono}
             bajada={plazo.bajada.replace('fin proyectado', 'proy.')} />
           {/* M04: «Costo · $ X M · N comprobantes» = costo real de las compras, no el teórico. */}

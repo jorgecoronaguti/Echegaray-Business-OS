@@ -56,9 +56,9 @@ test('la C06 edita en días hábiles: 300 px | repeat(n), filas de 40, barras de
   assert.match(src, /Guardar fechas/)
 })
 
-test('la MC7 tiene dos fechas de 76×40 en mono por ítem y la primaria de 48 sobre la barra', () => {
+test('la MC7 tiene dos fechas de 76×44 en mono por ítem (40 en el diseño; 44 de toque en el teléfono, dueño 24/09) y la primaria de 48 sobre la barra', () => {
   const src = tab()
-  assert.match(src, /width: '76px', height: '40px'/)
+  assert.match(src, /width: '76px', height: '44px'/)
   assert.match(src, /height: '48px'/)
   assert.match(src, /Con fechas <b/)
 })

@@ -17,7 +17,7 @@
 // que se lee una. Pero tiene que poder corregirse sin abrir un formulario, así que el selector
 // existe siempre y aparece al apoyar el mouse o al tabular — el mismo patrón que «Quitar».
 
-import { InlineEdit, Nulo, type OpcionInline, type ResultadoInline } from '@/shared/components/ds'
+import { InlineEdit, type OpcionInline, type ResultadoInline } from '@/shared/components/ds'
 import { CATEGORIAS_CANONICAS, SIN_CLASIFICAR, categoriaDeclarada } from '../services/documentosCategoria'
 import { sugerirCategoria, textoSugerencia } from '../services/documentosSugerencia'
 import type { DocumentoObra } from '../types'
@@ -41,8 +41,9 @@ export function CeldaCategoriaDocumento({
 
   return (
     <span className="flex min-w-0 flex-col gap-1">
-      {!clasificado && (
-        sugerida ? (
+      {/* 14: la celda es el desplegable. Sin sugerencia no se escribe nada más («sin sugerencia —
+          clasificar a mano» partía cada fila en tres renglones); con sugerencia, un renglón para confirmarla. */}
+      {!clasificado && sugerida && (
           <button
             type="button"
             onClick={() => void guardar(sugerida)}
@@ -52,9 +53,6 @@ export function CeldaCategoriaDocumento({
           >
             {textoSugerencia(sugerida)} · <span className="font-medium text-ink">Confirmar</span>
           </button>
-        ) : (
-          <Nulo>sin sugerencia — clasificar a mano</Nulo>
-        )
       )}
       <span className={clasificado
         ? 'opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100'

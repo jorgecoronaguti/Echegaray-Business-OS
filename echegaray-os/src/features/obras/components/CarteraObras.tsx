@@ -29,7 +29,7 @@ import { esAngosto } from '../services/anchoPantalla'
 import { rotuloDeObra } from '@/shared/utils/obra'
 import { ETAPA_LABEL, type Etapa } from '../types'
 import {
-  bajadaCartera, coincideTexto, colorDeBarra, colorDeEstado, colorDePlazo, entraEnFiltro, esPrevio,
+  bajadaCartera, celdaAvanceCartera, coincideTexto, colorDeBarra, colorDeEstado, colorDePlazo, entraEnFiltro, esPrevio,
   estadoDeCartera, FILTROS_CARTERA, agruparPorCliente, SIN_CLIENTE, sublineaTelefono, textoDePlazo,
   type FiltroCartera,
 } from '../services/carteraCanon'
@@ -361,7 +361,7 @@ function Fila({ o, ir, nivel = 0 }: { o: FilaCartera; ir: () => void; nivel?: 0 
             <div style={{ width: '64px', height: '4px', borderRadius: '2px', background: C.borde, overflow: 'hidden' }}>
               <div style={{ width: `${Math.min(100, Math.max(0, o.avance_pct))}%`, height: '100%', background: colorDeBarra(o) }} />
             </div>
-            <span style={{ fontSize: '12.5px', fontVariantNumeric: 'tabular-nums' }}>{o.avance_pct}%</span>
+            <span style={{ fontSize: '12.5px', fontVariantNumeric: 'tabular-nums' }}>{celdaAvanceCartera(o).texto}</span>
           </div>
         )}
       <Plazo o={o} />
@@ -416,7 +416,7 @@ function FilaTelefono({ o, ir, ultima, nivel = 0 }: { o: FilaCartera; ir: () => 
               <div style={{ width: '56px', height: '4px', borderRadius: '2px', background: C.borde, overflow: 'hidden' }}>
                 <div style={{ width: `${Math.min(100, Math.max(0, o.avance_pct))}%`, height: '100%', background: colorDeBarra(o) }} />
               </div>
-              <span style={{ fontSize: '13px', fontVariantNumeric: 'tabular-nums' }}>{o.avance_pct}%</span>
+              <span style={{ fontSize: '13px', fontVariantNumeric: 'tabular-nums' }}>{celdaAvanceCartera(o).texto}</span>
             </>
           )}
         <Plazo o={o} telefono />

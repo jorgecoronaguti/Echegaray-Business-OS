@@ -177,8 +177,8 @@ export async function CabeceraDeObra({
   // EL CÓDIGO INTERNO LO LEE LA CABECERA, no cada pantalla: son cinco páginas de obra y una sola
   // banda. Si la lectura falla, la banda muestra el nombre solo.
   const codigo = (await codigosDeObra(await createClient(), [obraId])).get(obraId) ?? null
-  // EL RÓTULO ÚNICO «OB-0008 · NOMBRE» (dueño 14/09) se lee partido como en el diseño 03/M04: el código
-  // en la miga, el nombre en el título. El rótulo entero queda como nombre accesible del título.
+  // EL TÍTULO ES EL RÓTULO ÚNICO «OB-0008 · NOMBRE» (dueño 14/09 y 24/09; ratificado el 25/09: «respetá
+  // lo que ya tenemos hecho»), en la PC y en el teléfono. El código también queda en la miga.
   const rotulo = rotuloDeObra({ nombre: obra.nombre, codigo })
 
   const responsable = obra.jefe_obra ? (
@@ -274,9 +274,9 @@ export async function CabeceraDeObra({
             primaria, y sin este piso el título subía 4px al pasar de Impedimentos a Equipos. */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '20px', flexWrap: 'wrap', minHeight: '32px', marginTop: '4px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '11px', minWidth: 0, flexWrap: 'wrap' }}>
-            <h1 title={rotulo} style={{
+            <h1 style={{
               fontSize: '21px', fontWeight: 600, color: C.tinta, margin: 0, lineHeight: 1.3, letterSpacing: '-.015em',
-            }}>{obra.nombre}</h1>
+            }}>{rotulo}</h1>
             <PastillaEstado t={est.t} tono={est.tono} radio={12} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '28px', flexWrap: 'wrap', marginLeft: 'auto' }}>
@@ -340,7 +340,7 @@ export async function CabeceraDeObra({
           <div style={{
             fontSize: '17px', fontWeight: 600, letterSpacing: '-.01em', color: C.tinta, minWidth: 0,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{obra.nombre}</div>
+          }}>{rotulo}</div>
           {terminada
             ? <PastillaEstado t={est.t} tono={est.tono} radio={10} />
             : <span style={{ fontSize: '11px', color: COLOR_ESTADO[est.tono], whiteSpace: 'nowrap' }}

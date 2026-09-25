@@ -14,6 +14,7 @@
 //   teléfono    MB1: rubro «$ 6,01 M · 32 %», historia en dos líneas («3 tareas · 24/08 → 28/08») y a la
 //               derecha «$ 1.775.059 · 9,5 %» o «sin costo · no pesa» (warn); tarea con «uni · cant»
 
+import { TOQUE_44 } from '../../canon/toque'
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { C, MONO } from '../../canon/tokens'
 import { Ico, P } from '../../canon/Ico'
@@ -206,7 +207,7 @@ export function ArbolEstructura({
   }
 
   const chevron = (f: FilaArbol, abierto: boolean) => f.esContenedor || f.nSubtareas > 0
-    ? <button type="button" onClick={(e) => { e.stopPropagation(); plegar(f.id) }} aria-label={abierto ? 'Plegar' : 'Desplegar'} style={{ color: C.tenue, display: 'flex', border: 'none', background: 'none', padding: 0, cursor: 'pointer', flexShrink: 0 }}><Ico d={abierto ? P.abajo : P.derecha} s={12} /></button>
+    ? <button type="button" onClick={(e) => { e.stopPropagation(); plegar(f.id) }} aria-label={abierto ? 'Plegar' : 'Desplegar'} className={TOQUE_44} style={{ color: C.tenue, display: 'flex', border: 'none', background: 'none', padding: 0, cursor: 'pointer', flexShrink: 0 }}><Ico d={abierto ? P.abajo : P.derecha} s={12} /></button>
     : <span style={{ width: '12px', flexShrink: 0 }} />
 
   const chips = (f: FilaArbol, abierto: boolean) => (

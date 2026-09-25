@@ -22,6 +22,7 @@ import {
 import { PageShell } from '@/shared/components/ui'
 import { RefrescarEnVivo } from '@/shared/tiempo-real/ProveedorTiempoReal'
 import { TABLAS_DE } from '@/shared/tiempo-real/pantallas'
+import { nombreDePersona } from '@/shared/personas/nombre'
 
 // HOY · LA PORTADA DE ESCRITORIO DEL JEFE DE OBRA (dueño, 25/09/2026).
 //
@@ -258,7 +259,7 @@ export default async function HoyJefeEscritorioPage({ searchParams }: { searchPa
                 {grupos && grupos.sinRegistrar.length > 0 ? (
                   <ul className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
                     {grupos.sinRegistrar.slice(0, 6).map((e) => (
-                      <li key={e.id} className="truncate"><span className="text-warn">sin registrar</span> · {e.nombre_completo}</li>
+                      <li key={e.id} className="truncate"><span className="text-warn">sin registrar</span> · {nombreDePersona(e)}</li>
                     ))}
                     {grupos.sinRegistrar.length > 6 && <li className="text-muted">y {grupos.sinRegistrar.length - 6} más</li>}
                   </ul>

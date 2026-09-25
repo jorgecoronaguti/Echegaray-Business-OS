@@ -14,6 +14,7 @@
 //
 // El resultado que se informa es el EFECTO —cuántas quedaron escritas— y no cuántas se tildaron.
 
+import { TOQUE_44 } from '../../canon/toque'
 import { useEffect, useState, type ReactNode } from 'react'
 import { C } from '../../canon/tokens'
 import { Ico, P } from '../../canon/Ico'
@@ -70,7 +71,7 @@ export function BarraMasiva({ n, accion, setAccion, alSalir, resultado }: {
 
       <div className="flex md:hidden" style={{ justifyContent: 'space-between', alignItems: 'center', padding: '16px 16px 12px' }}>
         <div style={{ fontSize: '14px', fontWeight: 600, color: C.tinta }}>{n} {n === 1 ? 'seleccionada' : 'seleccionadas'}</div>
-        <button type="button" onClick={alSalir} data-testid="masiva-salir-telefono" style={{ font: 'inherit', fontSize: '12.5px', color: C.tintaSuave, display: 'inline-flex', gap: '5px', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer' }}>
+        <button type="button" onClick={alSalir} data-testid="masiva-salir-telefono" className={TOQUE_44} style={{ font: 'inherit', fontSize: '12.5px', color: C.tintaSuave, display: 'inline-flex', gap: '5px', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer' }}>
           <Ico d={P.cerrar} s={12} />Salir
         </button>
       </div>

@@ -59,7 +59,8 @@ export interface AccionesEstructura {
 export interface DatosEstructura {
   presupuesto: PresupuestoDeLaObra | null
   presupuestoError: string | null
-  obra: { nombre: string; inicio: string | null; fin: string | null; diasHabiles: number | null }
+  /** `archivada`: la obra cerrada no ofrece «Nueva actividad» (Z01: una obra archivada no crea trabajo). */
+  obra: { nombre: string; inicio: string | null; fin: string | null; diasHabiles: number | null; archivada?: boolean }
   cuadrillas: { id: string; nombre: string }[]
   personas: Persona[]
   subtareaEstados: Record<string, string | null>

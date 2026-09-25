@@ -47,7 +47,7 @@ export async function WorkspaceTareas({
   /** C01–C09: qué pantalla de armado se está mirando (`?crear=` · `&panel=` · `?sel=1` · `&nuevo=`). */
   modo: ModoEstructura
   /** El plazo de la obra: lo necesitan la planilla (C03), la conversión (C02) y la ficha nueva (C04). */
-  obra: { inicio: string | null; fin: string | null }
+  obra: { inicio: string | null; fin: string | null; archivada?: boolean }
   obraId: string
   act: string | undefined
   filtro: string | undefined
@@ -164,7 +164,7 @@ export async function WorkspaceTareas({
         ponds: pondsRes.data ?? {},
         presupuesto: presupuestoRes?.data ?? null,
         presupuestoError: presupuestoRes?.error ?? null,
-        obra: { nombre: nombreObra ?? obraId, inicio: obra.inicio, fin: obra.fin, diasHabiles: diasRes.data?.dias_habiles_plan ?? null },
+        obra: { nombre: nombreObra ?? obraId, inicio: obra.inicio, fin: obra.fin, diasHabiles: diasRes.data?.dias_habiles_plan ?? null, archivada: obra.archivada ?? false },
         lineaBaseSellada: lineaBase === true,
         subtareaEstados,
         cuadrillas,

@@ -23,6 +23,7 @@
 
 /** Lo mínimo de una obra que estas reglas necesitan. Un subconjunto a propósito: no se recompilan
  *  cuando `obra_panel` agregue una columna. */
+import { cifraAvanceObra, type ObraConAvance } from './avanceObra.ts'
 import { coincideObra } from '../../../shared/utils/obra.ts'
 import { jerarquiaDeObras, type FilaDeObra, type ObraConPadre } from '../../clientes/services/obrasAdicionales.ts'
 import { clienteDeObra } from '../../../shared/clientes/nombre.ts'
@@ -127,6 +128,11 @@ export function coincideTexto(nombre: string, cliente: string | null, query: str
   // EL C\u00d3DIGO INTERNO (`OB-0012`) TAMBI\u00c9N SE BUSCA, y con la regla \u00fanica de `shared/utils/obra`:
   // \u00abob12\u00bb y \u00ab12\u00bb encuentran la obra. Nombre y cliente se siguen buscando igual que antes.
   return coincideObra({ nombre, cliente, codigo }, query)
+}
+
+/** LA CELDA AVANCE DE LA CARTERA: el mismo texto que el Resumen (`cifraAvanceObra`), por construcción. */
+export function celdaAvanceCartera(o: ObraConAvance): { texto: string | null; pct: number | null } {
+  return { texto: cifraAvanceObra(o).valor, pct: o.avance_pct }
 }
 
 /** El color de la barra de avance del zip: verde 100 · rojo si atrasada · azul en curso · gris cero. */

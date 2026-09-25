@@ -125,7 +125,7 @@ export function Falta({ children, italica = false }: { children: ReactNode; ital
 }
 
 /**
- * LA PASTILLA DEL TELÉFONO (M12–M15 · M17): 36px, `padding 0 12px`, radio 6, borde grafito y 500
+ * LA PASTILLA DEL TELÉFONO (M12–M15 · M17): 44px (36 en el diseño; el dueño fijó 44 de toque en el teléfono), `padding 0 12px`, radio 6, borde grafito y 500
  * cuando está activa, `#E7E6E2` y tinta suave cuando no. El conteo va en mono 11 faint.
  */
 export function PastillaM({ activa, onClick, href, icono, n, testid, children }: {
@@ -138,7 +138,7 @@ export function PastillaM({ activa, onClick, href, icono, n, testid, children }:
   children: ReactNode
 }) {
   const estilo: CSSProperties = {
-    font: 'inherit', height: '36px', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap',
+    font: 'inherit', height: '44px', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap',
     border: `1px solid ${activa ? C.grafito : C.borde}`, borderRadius: '6px', fontSize: '12.5px',
     fontWeight: activa ? 500 : 400, color: activa ? C.tinta : C.tintaSuave, background: C.superficie,
     cursor: 'pointer', flexShrink: 0,

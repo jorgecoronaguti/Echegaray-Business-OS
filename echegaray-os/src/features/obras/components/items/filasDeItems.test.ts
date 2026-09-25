@@ -19,10 +19,10 @@ const ARBOL: NodoObra[] = [
   nodo({ id: 'R', nivel: 0, padre_id: null, nombre: 'Obra gruesa', es_contenedor: true, tipo: 'resumen', tiene_hijas: true }),
   nodo({ id: 'E', nivel: 1, padre_id: 'R', nombre: 'Preparación', es_contenedor: true, tipo: 'resumen', tiene_hijas: true }),
   nodo({ id: 'H1', nivel: 2, padre_id: 'E', nombre: 'Demolición', es_contenedor: true, tipo: 'resumen', tiene_hijas: true }),
-  nodo({ id: 'T1', nivel: 3, padre_id: 'H1', nombre: 'Demolición existente', unidad: 'un', cantidad_objetivo: 4, inicio_plan: '2026-09-08', fin_plan: '2026-09-12', tiene_hijas: true }),
+  nodo({ id: 'T1', nivel: 3, padre_id: 'H1', nombre: 'Demolición existente', unidad: 'un', cantidad_objetivo: 4, inicio_plan: '2026-09-08', fin_plan: '2026-09-12', tiene_hijas: true, avance_pct: 100 }),
   nodo({ id: 'S1', nivel: 4, padre_id: 'T1', nombre: 'sacar escuadras' }),
   nodo({ id: 'S2', nivel: 4, padre_id: 'T1', nombre: 'marcar con cal' }),
-  nodo({ id: 'T2', nivel: 3, padre_id: 'H1', nombre: 'Retiro de escombros', unidad: 'un', cantidad_objetivo: 14, inicio_plan: '2026-09-15', fin_plan: '2026-09-15', responsable: 'R. Quiroga', metodo_avance: null as unknown as 'manual' }),
+  nodo({ id: 'T2', nivel: 3, padre_id: 'H1', nombre: 'Retiro de escombros', unidad: 'un', cantidad_objetivo: 14, inicio_plan: '2026-09-15', fin_plan: '2026-09-15', avance_pct: 40, responsable: 'R. Quiroga', metodo_avance: null as unknown as 'manual' }),
   nodo({ id: 'H2', nivel: 2, padre_id: 'E', nombre: 'Movimiento de suelo', es_contenedor: true, tipo: 'resumen', tiene_hijas: true }),
   nodo({ id: 'T3', nivel: 3, padre_id: 'H2', nombre: 'Desmonte', dias_plan: 3, impedimentos_abiertos: 1 }),
 ]
@@ -78,7 +78,8 @@ test('cada historia pesa por su costo de MO y sus tareas se lo reparten parejo',
   assert.ok(Math.abs(por.get('H1')!.avanceObra! - 56) < 1e-9)
   assert.equal(por.get('H1')!.pctItem, 70)
   assert.ok(Math.abs(por.get('R')!.avanceObra! - 56) < 1e-9)
-  // Rubro y épica pesan lo que cuelga y su % sale de ahí: nunca «sin avance» con tareas medidas.
+  // Rubro y épica pesan lo que cuelga (Pond.), y su % es POR TAREAS, la regla de la cartera (dueño 25/09):
+  // T1 100 y T2 40 con fecha de plan → 70; T3 sin fecha de plan no cuenta.
   assert.ok(Math.abs(por.get('E')!.peso! - 0.8) < 1e-9)
   assert.ok(Math.abs(por.get('R')!.pctItem! - 70) < 1e-9)
   // Días, plan, uni·cant, subtareas plegadas

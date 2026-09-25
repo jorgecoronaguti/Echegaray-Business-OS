@@ -14,6 +14,7 @@
 // Es un módulo de CLIENTE porque el formulario necesita `useActionState` para dibujar la primaria del
 // diseño (y no la del `FormAccion` genérico), y porque el teléfono se decide por el ancho real.
 
+import { TOQUE_44 } from './canon/toque'
 import Link from 'next/link'
 import { startTransition, useActionState, useEffect, useRef, type FormEvent, type ReactNode } from 'react'
 import { Ico, P } from './canon/Ico'
@@ -66,7 +67,9 @@ export function BandaDePasos({ obraId, actual, hechos }: {
         const hecho = hechos.has(p.id)
         const alcanzable = Boolean(obraId) && !esActual
         const estilo = {
-          display: 'flex', alignItems: 'center', gap: telefono ? '5px' : '7px', padding: telefono ? '9px 8px' : '9px 12px',
+          // 44 de toque en el teléfono (medía 37): el relleno vertical crece, el texto no se mueve.
+          display: 'flex', alignItems: 'center', gap: telefono ? '5px' : '7px', padding: telefono ? '12px 8px' : '9px 12px',
+          ...(telefono ? { minHeight: '44px' } : {}),
           fontSize: '12.5px', whiteSpace: 'nowrap' as const, textDecoration: 'none',
           color: esActual ? C.tinta : hecho ? C.tintaMedia : C.tintaSuave,
           fontWeight: esActual ? (telefono ? 600 : 500) : 400,
@@ -187,7 +190,7 @@ export function GrillaCampos({ children }: { children: ReactNode }) {
 /** Un enlace subrayado del pie: «Saltar este paso», «Volver al principio». */
 export function EnlacePaso({ href, children, testid }: { href: string; children: ReactNode; testid?: string }) {
   return (
-    <Link href={href} prefetch={false} data-testid={testid}
+    <Link href={href} prefetch={false} data-testid={testid} className={TOQUE_44}
       style={{ fontSize: '12.5px', color: C.tintaSuave, textDecoration: 'underline', textUnderlineOffset: '2px' }}>
       {children}
     </Link>

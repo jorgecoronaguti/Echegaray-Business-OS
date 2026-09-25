@@ -136,12 +136,12 @@ export function SimuladorDotacion({
       cursor: inactivo ? 'default' : 'pointer', padding: 0, font: 'inherit',
     }
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: tam === 40 ? '6px' : '8px', opacity: x.sinBase ? .45 : 1 }} data-testid={`dotacion-${x.f.clave}`}>
-        <button type="button" style={caja} disabled={inactivo} onClick={() => mover(x.f, (x.dotacion ?? 0) - 1)} aria-label="Una persona menos"><Ico d={P.menos} s={tam === 40 ? 13 : 12} /></button>
-        <span style={{ width: '22px', textAlign: 'center', fontWeight: 500, fontSize: tam === 40 ? '15px' : undefined, color: x.noAlcanza ? C.neg : C.tinta, fontVariantNumeric: 'tabular-nums' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: tam >= 40 ? '6px' : '8px', opacity: x.sinBase ? .45 : 1 }} data-testid={`dotacion-${x.f.clave}`}>
+        <button type="button" style={caja} disabled={inactivo} onClick={() => mover(x.f, (x.dotacion ?? 0) - 1)} aria-label="Una persona menos"><Ico d={P.menos} s={tam >= 40 ? 13 : 12} /></button>
+        <span style={{ width: '22px', textAlign: 'center', fontWeight: 500, fontSize: tam >= 40 ? '15px' : undefined, color: x.noAlcanza ? C.neg : C.tinta, fontVariantNumeric: 'tabular-nums' }}>
           {x.noAlcanza ? '—' : x.dotacion ?? '—'}
         </span>
-        <button type="button" style={caja} disabled={inactivo} onClick={() => mover(x.f, (x.dotacion ?? 0) + 1)} aria-label="Una persona más"><Ico d={P.mas} s={tam === 40 ? 13 : 12} /></button>
+        <button type="button" style={caja} disabled={inactivo} onClick={() => mover(x.f, (x.dotacion ?? 0) + 1)} aria-label="Una persona más"><Ico d={P.mas} s={tam >= 40 ? 13 : 12} /></button>
       </div>
     )
   }
@@ -183,7 +183,7 @@ export function SimuladorDotacion({
             const activa = pregunta === q.k
             return (
               <button key={q.k} type="button" onClick={() => setPregunta(q.k)} aria-pressed={activa} data-testid={`pregunta-${q.k}`} style={{
-                font: 'inherit', height: '36px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', flexShrink: 0,
+                font: 'inherit', height: '44px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', flexShrink: 0,
                 border: `1px solid ${activa ? C.grafito : C.borde}`, borderRadius: '6px', fontSize: '12.5px', fontWeight: activa ? 500 : 400,
                 color: activa ? C.tinta : C.tintaSuave, background: C.superficie, cursor: 'pointer', fontFamily: 'inherit',
               }}>{q.corta}</button>
@@ -201,8 +201,9 @@ export function SimuladorDotacion({
                   <div style={{ fontSize: '14px', fontWeight: 500, color: C.tinta }}>{x.f.nombre}</div>
                   <div style={{ fontSize: '12px', color: C.tintaSuave }}>{sub.texto}{sub.sinBase && <span style={{ color: C.warn }}>sin HH del análisis</span>}</div>
                 </div>
-                {stepper(x, 40)}
-                <span style={{ fontFamily: MONO, fontSize: '12.5px', color: t.color, width: '44px', textAlign: 'right', fontStyle: t.italica ? 'italic' : undefined }}>{t.texto}</span>
+                {stepper(x, 44)}
+                {/* minWidth y no width: «terminado» en mono itálica mide 68 y con width 44 desbordaba la pantalla (402 > 390). */}
+                <span style={{ fontFamily: MONO, fontSize: '12.5px', color: t.color, minWidth: '44px', flexShrink: 0, whiteSpace: 'nowrap', textAlign: 'right', fontStyle: t.italica ? 'italic' : undefined }}>{t.texto}</span>
               </div>
             )
           })}
