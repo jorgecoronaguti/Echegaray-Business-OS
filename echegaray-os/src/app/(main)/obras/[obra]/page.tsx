@@ -411,6 +411,9 @@ export default async function ObraPage({
             {/* Serie B: armando la estructura no hay «Nueva actividad» (B01–B07); la C01 vacía sí la dibuja. */}
             {!enEstructura && !modoConPrimariaPropia && puedeEditarPlan && nuevaActividad}
           </>
+        ) : vista === 'resumen' && terminada ? (
+          // Z01: la obra terminada o archivada no ofrece cargar parte ni crear actividades.
+          null
         ) : vista === 'resumen' ? (
           <>
             {/* 03: «Cargar parte» blanco con borde y «Nueva actividad» amarilla, en ese orden. */}
@@ -429,7 +432,9 @@ export default async function ObraPage({
         ) : vista === 'documentos' ? (
           // 14: «Vincular documento» · «Vincular carpeta» en texto y «Abrir carpeta» amarilla.
           <AccionesDocumentos obraId={obraId} carpetaDriveId={obra.drive_carpeta_id} />
-        ) : puedeEditarPlan ? nuevaActividad : null}
+        ) : puedeEditarPlan && !conPrimariaPropia ? nuevaActividad : null}
+        // 05 · 06 · 08: el Cronograma, el Parte y Personal tienen su primaria propia; el diseño no dibuja
+        // «Nueva actividad» en su cabecera.
         lineaDeCifras={enEstructura ? cifrasDeCrear(modoEstructura, obraVacia) : cifrasDelCronograma}
         // EL ENLACE A LA PLATA, DISCRETO Y SÓLO PARA QUIEN LA VE. No es una solapa —el dueño la
         // sacó de acá— y no es un botón: es la puerta a la pantalla de Administración de esta obra.
