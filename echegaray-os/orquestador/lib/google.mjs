@@ -417,9 +417,25 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     return res.json()
   }
 
+  // ═══ UNA LECTURA QUE NO RESPONDE SE REINTENTA; UNA ESCRITURA, NO (25/09) ═══
+  //
+  // Con el Sheet recalculando (el dueño editando, el pipeline escribiendo), Google deja una lectura
+  // colgada más de 45 s y la siguiente contesta en 3 s: medido el 25/09 sobre `Cobranzas!A1:AD1`
+  // (45 s timeout) y `Cobranzas!A1:AD120` (3,3 s) en la misma corrida. El timeout se TIRA, no vuelve
+  // como respuesta, así que `withRetry` nunca lo veía: sync-cobranzas falló todas las horas desde las
+  // 00:10 por leer UNA fila de rótulos. Leer es idempotente y se reintenta; `apiSend` no, porque una
+  // escritura que no contestó puede haber aterrizado igual.
+  const REINTENTOS_LECTURA = Number(process.env.ORQ_GOOGLE_LECTURA_REINTENTOS ?? 2)
   async function apiGet(url, tokenOverride) {
     const token = tokenOverride || await accessToken()
-    const res = await withRetry(() => doFetch(url, { headers: { Authorization: `Bearer ${token}` } }))
+    let res
+    for (let intento = 0; ; intento++) {
+      try { res = await withRetry(() => doFetch(url, { headers: { Authorization: `Bearer ${token}` } })); break }
+      catch (e) {
+        if (!/google api timeout/.test(String(e?.message)) || intento >= REINTENTOS_LECTURA) throw e
+        await new Promise((r) => setTimeout(r, ESPERAS_5XX[Math.min(intento, ESPERAS_5XX.length - 1)]))
+      }
+    }
     if (!res.ok) {
       const body = String(await res.text()).slice(0, 200)
       const err = new Error(`google api ${res.status}: ${body}`)
