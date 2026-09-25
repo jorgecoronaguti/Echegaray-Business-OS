@@ -293,7 +293,7 @@ export function filasDeLaPosicion({ cal, refs }) {
   // LAS DOS CELDAS DEL SALDO A FAVOR APUNTAN A CELDAS QUE ESCRIBE UNA PERSONA (el mes ajeno del
   // cuadro de IVA), así que no pueden asumir que ahí hay un número. Ver `formulaSaldoAFavor`.
   F.push([rotuloTotal(ROTULO_SALDO_A_FAVOR), formulaSaldoAFavor(refs.saldoIva, refs.saldoIibb)])
-  F.push([rotuloTotal(rotuloImpuestosDelMes(refs.mesEnCursoLargo ?? '')), refs.proyeccion ? `=${refs.proyeccion}` : '=0'])
+  F.push([rotuloTotal(rotuloImpuestosDelMes(refs.mesEnCursoLargo ?? '')), refs.proyeccion ? `=${refs.proyeccion}` : '=0', refs.avisoSinEmitir ?? ''])
   F.push([])
   return F
 }

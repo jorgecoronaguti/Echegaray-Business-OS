@@ -139,17 +139,12 @@ export function ventasFacturadasDelMes(anio, m, medida = 'iva', { hoy, cob } = {
     throw new Error(`impuestos-base-libro: "${medida}" no es una medida de las ventas del mes. `
       + 'Sólo hay dos: `neto` («Monto neto», la base imponible) e `iva` («IVA», el débito fiscal).')
   }
-  const { desde, hasta } = ventanaDelMes(anio, m)
-  const enCurso = mesEnCursoDe(hoy)
-  const cerrado = anio < enCurso.anio || (anio === enCurso.anio && m < enCurso.mes)
-  const esElEnCurso = anio === enCurso.anio && m === enCurso.mes
-  const B = `(${VENTA.categoria}="B")`
-  const porFactura = `ISNUMBER(${VENTA.fecha})*(${VENTA.fecha}>=${desde})*(${VENTA.fecha}<${hasta})`
+  const { desde, hasta, enCurso, cerrado, esElEnCurso, B, porFactura } = piezasDelMes(anio, m, { hoy, VENTA })
   // UNA B SIN NÚMERO NO SE DA POR EMITIDA POR SU IMPORTE (24/09/2026). Se probó excluir la que coincidía
   // en neto e IVA con una venta de ARCA y era un error: la fila 93 (MESSINA, 50% de la OC 00002-00000279,
   // IVA $855.334,56) tiene el mismo importe que la FA 1-227, pero la 227 ya está atada POR NÚMERO a la
   // fila 45 —la otra mitad de la misma OC—. La 93 es el 50% sin facturar y va al mes de su cobro.
-  const vencidaSinEmitir = `(${VENTA.comprobante}="")*ISNUMBER(${VENTA.fecha})*(${VENTA.fecha}<${enCurso.inicio})`
+  const { vencidaSinEmitir } = piezasDelMes(anio, m, { hoy, VENTA })
   const terminos = cerrado
     ? [`${B}*(${VENTA.comprobante}<>"")*${porFactura}`]
     : [
@@ -160,6 +155,59 @@ export function ventasFacturadasDelMes(anio, m, medida = 'iva', { hoy, cob } = {
   const suma = terminos.map((t) => `SUMPRODUCT(${t}*N(${col}))`).join('+')
   return `LET(x;${suma};IF(x=0;"";x))`
 }
+
+/** Las piezas de la regla de un mes, escritas UNA vez: la usan el débito y el aviso de abajo. */
+function piezasDelMes(anio, m, { hoy, VENTA }) {
+  const { desde, hasta } = ventanaDelMes(anio, m)
+  const enCurso = mesEnCursoDe(hoy)
+  return {
+    desde, hasta, enCurso,
+    cerrado: anio < enCurso.anio || (anio === enCurso.anio && m < enCurso.mes),
+    esElEnCurso: anio === enCurso.anio && m === enCurso.mes,
+    B: `(${VENTA.categoria}="B")`,
+    porFactura: `ISNUMBER(${VENTA.fecha})*(${VENTA.fecha}>=${desde})*(${VENTA.fecha}<${hasta})`,
+    vencidaSinEmitir: `(${VENTA.comprobante}="")*ISNUMBER(${VENTA.fecha})*(${VENTA.fecha}<${enCurso.inicio})`,
+  }
+}
+
+// ═══ EL AVISO DE LA B SIN EMITIR EN EL MES EN CURSO (25/09/2026) ═══
+//
+// El dueño, 25/09: *«todo lo que iba a facturarse en sept se pasara a oct para determinar con
+// precisión impuestos»*. El 24/09 se había corrido sólo la OB-0022 y las filas 93, 96 y 98 de Messina
+// —B, sin número, sin factura en ARCA— siguieron sumando $3,45 M de IVA a septiembre sin que nada lo
+// dijera. El débito del mes en curso mezcla lo emitido con lo que se PIENSA emitir; este aviso cuenta
+// la segunda parte con la MISMA regla que `ventasFacturadasDelMes`, sólo que exigiendo comprobante
+// vacío. Es un aviso: no mueve ninguna fecha. Qué se hace con esas filas lo decide el dueño en Cobranzas.
+
+/**
+ * La fórmula (con `=`) del aviso: vacío si en el mes en curso no hay ventas B sin comprobante; si las
+ * hay, «▲ N sin factura · $X IVA sep-26». Va en la columna C de «⇒ Impuestos de <mes>». PURA.
+ */
+export function avisoVentasSinEmitirDelMes({ hoy, cob } = {}) {
+  const { anio, mes } = mesEnCursoDe(hoy)
+  const mascara = mascaraVentasSinEmitir({ hoy, cob })
+  const iva = ventaDe(cob).iva
+  const rotuloMes = `${MESES_AVISO[mes - 1]}-${String(anio).slice(2)}`
+  return `=LET(n;SUMPRODUCT(${mascara});v;SUMPRODUCT((${mascara})*N(${iva}));`
+    + `IF(n=0;"";"▲ "&n&" sin factura · $"&TEXT(v;"#,##0")&" IVA ${rotuloMes}"))`
+}
+
+/**
+ * La máscara fila a fila (1/0) de las B SIN comprobante que suman IVA al mes en curso. Los tres casos
+ * son los de `ventasFacturadasDelMes` para el mes en curso y son excluyentes (fecha de factura en el
+ * mes · vencida con cobro en el mes · vencida con cobro vencido): la suma vale 0 o 1 por fila. PURA.
+ */
+export function mascaraVentasSinEmitir({ hoy, cob } = {}) {
+  const VENTA = ventaDe(cob)
+  const { anio, mes } = mesEnCursoDe(hoy)
+  const { desde, hasta, enCurso, B, porFactura, vencidaSinEmitir } = piezasDelMes(anio, mes, { hoy, VENTA })
+  return [
+    `${B}*(${VENTA.comprobante}="")*${porFactura}`,
+    `${B}*${vencidaSinEmitir}*ISNUMBER(${VENTA.cobro})*(${VENTA.cobro}>=${desde})*(${VENTA.cobro}<${hasta})`,
+    `${B}*${vencidaSinEmitir}*(N(${VENTA.cobro})<${enCurso.inicio})`,
+  ].map((t) => `(${t})`).join('+')
+}
+const MESES_AVISO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 
 /** El período `YYYY-MM` de un serial de Sheets. */
 const periodoDeSerial = (s) => {

@@ -16,7 +16,7 @@
 //   node orquestador/scripts/impuestos-pestana.mjs [--dry]
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
-import { ventasFacturadasDelMes, creditoDeComprasDelMes, RUBROS_CREDITO_LIBRO, planDeVentas, materialesProyectadosDelMes, RUBRO_MATERIALES_PROYECTADOS } from '../lib/impuestos-base-libro.mjs'
+import { ventasFacturadasDelMes, avisoVentasSinEmitirDelMes, creditoDeComprasDelMes, RUBROS_CREDITO_LIBRO, planDeVentas, materialesProyectadosDelMes, RUBRO_MATERIALES_PROYECTADOS } from '../lib/impuestos-base-libro.mjs'
 import { conciliarCobranzasConArca, informarConciliacion } from '../lib/cobranzas-vs-arca.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { posicionIvaCompleta } from '../lib/posicion-iva.mjs'
@@ -187,6 +187,9 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy, cob
     // IVA + IIBB + impuesto al cheque del mes en curso, de la MISMA columna de las tablas de arriba.
     proyeccion: mesCur ? [iva.fAPagar, ibb.fAPagar, otros.fCheque].map((f) => `N($${cmes(mesCur)}$${f})`).join('+') : null,
     mesEnCursoLargo: mesCur ? MESES_LARGOS[mesCur - 1] : '',
+    // Al lado de «Impuestos de <mes>», en la columna C: cuántas B sin factura emitida suman IVA a ese
+    // mes (dueño 25/09: lo que no se facturó en septiembre pasa a octubre). Aviso, no cambia nada.
+    avisoSinEmitir: avisoVentasSinEmitirDelMes({ hoy, cob }),
   }
   const hero = filasDeLaPosicion({ cal, refs })
   G.fijar(base, alto, hero)
