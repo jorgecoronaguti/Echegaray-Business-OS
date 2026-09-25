@@ -140,7 +140,8 @@ export function talleSugerido(p: Pick<Prenda, 'nombre' | 'talles'>, t: TallesPer
 }
 
 // ── LO QUE TIENE UNA PERSONA Y CÓMO LE LLEGÓ ────────────────────────────────────────────────────
-export type TipoEvento = 'entrega' | 'ya_la_tenia' | 'devolucion' | 'baja' | 'recuento'
+/** `historica`: entrega de antes del sistema cargada desde la constancia firmada (no salió de ningún lugar). */
+export type TipoEvento = 'entrega' | 'historica' | 'ya_la_tenia' | 'devolucion' | 'baja' | 'recuento'
 
 export interface EventoPersona {
   fecha: string
@@ -151,6 +152,8 @@ export interface EventoPersona {
   /** De dónde salió (entrega) o a dónde volvió (devolución). */
   otroLugar: string | null
   nota: string | null
+  /** El papel en Drive que la respalda (la constancia firmada), si hay. */
+  respaldo: string | null
 }
 
 /**
@@ -165,15 +168,16 @@ export function historialDePersona(
   const out: EventoPersona[] = []
   for (const m of movimientos) {
     if (m.destino_id === ubicacionId) {
-      out.push({ fecha: m.fecha_hora, tipo: 'entrega', activoId: m.activo_id, cantidad: m.cantidad ?? 1, usuarioId: m.usuario_id, otroLugar: m.origen_id, nota: m.nota })
+      const tipo: TipoEvento = !m.origen_id && m.respaldo_drive_file_id ? 'historica' : 'entrega'
+      out.push({ fecha: m.fecha_hora, tipo, activoId: m.activo_id, cantidad: m.cantidad ?? 1, usuarioId: m.usuario_id, otroLugar: m.origen_id, nota: m.nota, respaldo: m.respaldo_drive_file_id ?? null })
     } else if (m.origen_id === ubicacionId) {
-      out.push({ fecha: m.fecha_hora, tipo: 'devolucion', activoId: m.activo_id, cantidad: m.cantidad ?? 1, usuarioId: m.usuario_id, otroLugar: m.destino_id, nota: m.nota })
+      out.push({ fecha: m.fecha_hora, tipo: 'devolucion', activoId: m.activo_id, cantidad: m.cantidad ?? 1, usuarioId: m.usuario_id, otroLugar: m.destino_id, nota: m.nota, respaldo: m.respaldo_drive_file_id ?? null })
     }
   }
   for (const a of ajustes) {
     if (a.ubicacion_id !== ubicacionId) continue
     const tipo: TipoEvento = a.motivo !== 'recuento' ? 'baja' : a.antes === 0 || /^ya la ten/i.test(a.detalle ?? '') ? 'ya_la_tenia' : 'recuento'
-    out.push({ fecha: a.creado_en, tipo, activoId: a.activo_id, cantidad: Math.abs(a.despues - a.antes), usuarioId: a.usuario_id, otroLugar: null, nota: a.detalle })
+    out.push({ fecha: a.creado_en, tipo, activoId: a.activo_id, cantidad: Math.abs(a.despues - a.antes), usuarioId: a.usuario_id, otroLugar: null, nota: a.detalle, respaldo: null })
   }
   return out.sort((x, y) => (x.fecha < y.fecha ? 1 : x.fecha > y.fecha ? -1 : 0))
 }
@@ -196,7 +200,7 @@ export function tenencias(
     if (e.ubicacion_id !== ubicacionId) continue
     const a = porId.get(e.activo_id)
     if (!a || a.estado === 'baja') continue
-    const ultima = historial.find((h) => h.activoId === a.id && (h.tipo === 'entrega' || h.tipo === 'ya_la_tenia')) ?? null
+    const ultima = historial.find((h) => h.activoId === a.id && (h.tipo === 'entrega' || h.tipo === 'historica' || h.tipo === 'ya_la_tenia')) ?? null
     out.push({ activo: a, cantidad: e.cantidad, ultima })
   }
   const orden = (a: Activo) => (a.clase === 'epp' ? 0 : 1)
@@ -204,5 +208,5 @@ export function tenencias(
 }
 
 export const ETIQUETA_EVENTO: Record<TipoEvento, string> = {
-  entrega: 'Entrega', ya_la_tenia: 'Ya la tenía', devolucion: 'Devolución', baja: 'Baja', recuento: 'Recuento',
+  entrega: 'Entrega', historica: 'Entrega (constancia)', ya_la_tenia: 'Ya la tenía', devolucion: 'Devolución', baja: 'Baja', recuento: 'Recuento',
 }

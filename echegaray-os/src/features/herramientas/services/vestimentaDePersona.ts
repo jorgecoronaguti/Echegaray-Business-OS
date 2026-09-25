@@ -26,10 +26,19 @@ export interface FilaTiene {
   quien: string | null
   /** «Ya la tenía» si se registró sin descontar del inventario. */
   yaLaTenia: boolean
+  /** Entrega de antes del sistema, cargada de la constancia firmada. */
+  historica: boolean
+  /** La constancia en Drive (enlace), si la última entrega la tiene. */
+  respaldo: string | null
+  /** Talle null en una prenda que se talla: el papel no lo decía. Se muestra «sin talle», no «único». */
+  sinTalle: boolean
 }
 
 export interface OrigenPlano { ubicacionId: string; rotulo: string; cantidad: number }
 export interface TallePlano { activoId: string; codigo: string; talle: string | null; disponible: number; origenes: OrigenPlano[] }
+
+/** El enlace a un archivo de Drive por su id. */
+const enlaceDrive = (id: string | null) => (id ? `https://drive.google.com/file/d/${id}/view` : null)
 export interface PrendaPlana { nombre: string; campo: CampoTalle | null; talles: TallePlano[] }
 
 export interface FilaHistorial {
@@ -40,6 +49,7 @@ export interface FilaHistorial {
   quien: string | null
   lugar: string | null
   nota: string | null
+  respaldo: string | null
 }
 
 export type VestimentaDePersona =
@@ -99,6 +109,10 @@ export async function leerVestimentaDePersona(supabase: SupabaseClient, personaI
     fecha: t.ultima?.fecha ?? null,
     quien: t.ultima ? autorDe(p, { usuario_id: t.ultima.usuarioId, usuario_texto: null }) : null,
     yaLaTenia: t.ultima?.tipo === 'ya_la_tenia',
+    historica: t.ultima?.tipo === 'historica',
+    respaldo: enlaceDrive(t.ultima?.respaldo ?? null),
+    sinTalle: !t.activo.talle && p.activos.some((x) => x.id !== t.activo.id && x.estado !== 'baja' && x.clase === t.activo.clase
+      && x.nombre.trim().toLowerCase() === t.activo.nombre.trim().toLowerCase() && !!x.talle),
   }))
   const historial = eventos.map((e): FilaHistorial => {
     const a = p.activoPorId.get(e.activoId)
@@ -107,6 +121,7 @@ export async function leerVestimentaDePersona(supabase: SupabaseClient, personaI
       quien: autorDe(p, { usuario_id: e.usuarioId, usuario_texto: null }),
       lugar: e.otroLugar ? rotuloUbicacion(p, e.otroLugar) : null,
       nota: e.nota,
+      respaldo: enlaceDrive(e.respaldo),
     }
   })
   const sinTabla = !!talles.error && /persona_talle|PGRST205|42P01/.test(`${talles.error.code} ${talles.error.message}`)

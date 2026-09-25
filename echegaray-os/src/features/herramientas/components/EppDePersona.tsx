@@ -177,12 +177,13 @@ function FilaTenencia({ f, personaId, ubicacionPersona, tallerId }: { f: FilaTie
           <div style={{ fontFamily: MONO, fontSize: '11.5px', color: V.tenue }}>{f.codigo}</div>
         </div>
         <div className="text-right sm:text-left" style={{ color: V.tintaSuave }}>
-          <span className="sm:hidden" style={{ color: V.tenue }}>talle </span>{f.talle ?? 'único'}
+          <span className="sm:hidden" style={{ color: V.tenue }}>talle </span>{f.talle ?? (f.sinTalle ? 'sin talle' : 'único')}
           <span className="sm:hidden" style={{ color: V.tenue }}> · × </span><span className="sm:hidden" style={{ fontWeight: 600 }}>{f.cantidad}</span>
         </div>
         <div className="hidden text-right sm:block" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{f.cantidad}</div>
         <div className="col-span-2 sm:col-span-1" style={{ color: V.apagado, fontSize: '12.5px' }}>
-          {f.fecha ? `${f.yaLaTenia ? 'ya la tenía · cargado' : 'entregado'} el ${diaMesAnio(f.fecha)}${f.quien ? ` · ${f.quien}` : ''}` : 'sin registro de entrega'}
+          {f.fecha ? `${f.yaLaTenia ? 'ya la tenía · cargado' : 'entregado'} el ${diaMesAnio(f.fecha)}${f.quien && !f.historica ? ` · ${f.quien}` : ''}` : 'sin registro de entrega'}
+          {f.respaldo && <> · <a href={f.respaldo} target="_blank" rel="noreferrer" style={{ color: V.apagado, textDecoration: 'underline', textUnderlineOffset: 3 }} data-testid="respaldo-constancia">constancia firmada</a></>}
         </div>
         <div className="col-span-2 flex gap-4 sm:col-span-1 sm:justify-end">
           <button type="button" onClick={() => { setAccion(accion === 'devolver' ? null : 'devolver'); setN(String(f.cantidad)); setError(null) }} style={enlace} data-testid="devolver">Devolver</button>
@@ -288,7 +289,7 @@ function FormEntrega({ clase, catalogo, personaId, talles, tallerId, onCerrar }:
                   data-testid="entrega-talle"
                   style={{ minWidth: 48, height: 36, padding: '0 10px', borderRadius: 6, border: `1px solid ${on ? V.tinta : V.linea}`, background: '#FFFFFF',
                     color: t.disponible ? V.tinta : V.tenue, fontWeight: on ? 600 : 400, display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
-                  {t.talle ?? 'único'}<span style={{ fontSize: '11px', color: V.tenue, fontWeight: 400 }}>{t.disponible}</span>
+                  {t.talle ?? 'sin talle'}<span style={{ fontSize: '11px', color: V.tenue, fontWeight: 400 }}>{t.disponible}</span>
                 </button>
               )
             })}
@@ -355,7 +356,10 @@ function Historial({ filas }: { filas: FilaHistorial[] }) {
           <span style={{ color: h.tipo === 'baja' ? V.warn : V.tintaSuave }}>{ETIQUETA_EVENTO[h.tipo]}</span>
           <span className="col-start-2 sm:col-start-auto" style={{ color: V.tinta }}>{h.nombre}</span>
           <span className="col-start-2 sm:col-start-auto" style={{ fontVariantNumeric: 'tabular-nums' }}>× {h.cantidad}</span>
-          <span className="col-start-2 sm:col-start-auto">{[h.quien, h.lugar && (h.tipo === 'devolucion' ? `a ${h.lugar}` : `de ${h.lugar}`)].filter(Boolean).join(' · ')}</span>
+          <span className="col-start-2 sm:col-start-auto">
+            {[h.tipo === 'historica' ? null : h.quien, h.lugar && (h.tipo === 'devolucion' ? `a ${h.lugar}` : `de ${h.lugar}`)].filter(Boolean).join(' · ')}
+            {h.respaldo && <a href={h.respaldo} target="_blank" rel="noreferrer" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>constancia</a>}
+          </span>
         </div>
       ))}
     </section>

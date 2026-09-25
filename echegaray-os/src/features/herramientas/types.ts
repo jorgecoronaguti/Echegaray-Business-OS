@@ -89,6 +89,8 @@ export interface Movimiento {
   cantidad?: number | null
   /** La factura de compra que respalda un ingreso (20260925T1300, `comprobantes_arca`). */
   comprobante_id?: string | null
+  /** El papel en Drive que respalda el movimiento (20260925T1400): la constancia SRT 299/11 firmada. */
+  respaldo_drive_file_id?: string | null
 }
 
 /**
@@ -129,7 +131,7 @@ export const COLUMNAS_ACTIVO =
 export const COLUMNAS_UBICACION = 'id, tipo, nombre, obra_id, activo_id, contacto, archivada, proveedor_id, persona_id'
 export const COLUMNAS_PROVEEDOR_LUGAR = 'id, nombre, cuit, rubro, rubro_deducido'
 export const COLUMNAS_MOVIMIENTO =
-  'id, activo_id, origen_id, destino_id, fecha_hora, usuario_id, usuario_texto, lote_id, nota, corrige_a, importado, cantidad, comprobante_id'
+  'id, activo_id, origen_id, destino_id, fecha_hora, usuario_id, usuario_texto, lote_id, nota, corrige_a, importado, cantidad, comprobante_id, respaldo_drive_file_id'
 export const COLUMNAS_EXISTENCIA = 'activo_id, ubicacion_id, cantidad'
 
 /** Un cambio de cantidad en un lugar que no es un movimiento: recuento o baja de parte de un lote. */

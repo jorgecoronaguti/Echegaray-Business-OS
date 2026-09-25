@@ -94,3 +94,13 @@ test('historial y tenencia: entrega, «ya la tenía», devolución y baja en la 
   assert.deepEqual(t.map((x) => [x.activo.id, x.cantidad, x.ultima?.tipo]), [['cas', 1, 'ya_la_tenia'], ['cm', 2, 'entrega']])
   assert.deepEqual(historialDePersona(null, movs, []), [])
 })
+
+test('la entrega de la constancia firmada es «historica»: no sale de ningún lugar y lleva su respaldo', () => {
+  const h = historialDePersona('u-p', [
+    mov({ id: 'h1', activo_id: 'cas', origen_id: null, destino_id: 'u-p', fecha_hora: '2025-05-28T15:00:00Z', cantidad: 1, respaldo_drive_file_id: '19046gvCV0DW-E8Vwy9LCKPkoOFiVjzyo' }),
+    mov({ id: 'h2', activo_id: 'cm', origen_id: null, destino_id: 'u-p', fecha_hora: '2025-05-28T15:00:00Z', cantidad: 1 }),
+  ], [])
+  assert.deepEqual(h.map((e) => [e.activoId, e.tipo, e.respaldo]), [['cas', 'historica', '19046gvCV0DW-E8Vwy9LCKPkoOFiVjzyo'], ['cm', 'entrega', null]])
+  const t = tenencias('u-p', activos, [{ activo_id: 'cas', ubicacion_id: 'u-p', cantidad: 1 }], h)
+  assert.equal(t[0].ultima?.tipo, 'historica')
+})
