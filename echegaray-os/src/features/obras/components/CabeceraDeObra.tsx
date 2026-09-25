@@ -322,7 +322,7 @@ export async function CabeceraDeObra({
         background: C.superficie, padding: '10px 16px 0', borderBottom: `1px solid ${C.borde}`, flexShrink: 0,
       }} data-testid="cabecera-obra-banda-telefono">
         {/* 44 de área con relleno invisible: la miga no se mueve (auditoría por nivel, 25/09/2026). */}
-        <Link href={volverA} prefetch={false} className="-my-[13px] py-[13px]" style={{
+        <Link href={volverA} prefetch={false} className="-my-[14px] py-[14px]" style={{
           fontSize: '11.5px', color: C.tenue, display: 'flex', alignItems: 'center', gap: '3px',
         }}>
           <Ico d={P.izquierda} s={11} />{volverLabel} <span style={{ color: C.bordeFuerte }}>/</span> {codigo ?? obra.nombre}

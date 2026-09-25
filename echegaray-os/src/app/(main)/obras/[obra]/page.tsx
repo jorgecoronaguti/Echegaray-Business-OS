@@ -450,7 +450,7 @@ export default async function ObraPage({
         // Al jefe de obra no se le dibuja, igual que no se le dibujan las rutas de `veEconomia`.
         alFinalDeLasSolapas={veComercial ? (
           <Link href={hrefEconomia(obraId)} prefetch={false} data-testid="enlace-economia"
-            className="ml-auto self-center whitespace-nowrap px-[11px] py-2 text-[12px] text-faint hover:text-ink">
+            className="ml-auto self-center whitespace-nowrap px-[11px] py-2 text-[12px] text-faint hover:text-ink max-md:-my-[5px] max-md:py-[13px]">
             Economía
           </Link>
         ) : null}

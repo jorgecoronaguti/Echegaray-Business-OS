@@ -146,7 +146,7 @@ export default async function DotacionObraPage(
           enlazarCliente={veEconomia(perfil.data?.rol ?? null)}
           alFinalDeLasSolapas={veEconomia(perfil.data?.rol ?? null) ? (
             <Link href={hrefEconomia(obraId)} prefetch={false} data-testid="enlace-economia"
-              className="ml-auto self-center whitespace-nowrap px-[11px] py-2 text-[12px] text-faint hover:text-ink">
+              className="ml-auto self-center whitespace-nowrap px-[11px] py-2 text-[12px] text-faint hover:text-ink max-md:-my-[5px] max-md:py-[13px]">
               Economía
             </Link>
           ) : null}

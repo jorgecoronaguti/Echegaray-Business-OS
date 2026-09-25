@@ -1092,6 +1092,8 @@ export default async function ClientePage({ params, searchParams }: {
                     )}
                 <a
                   href={url({ portal: '1' })} data-testid="gestionar-accesos"
+                  // 44 de área en el teléfono con relleno invisible (auditoría por nivel, 25/09/2026).
+                  className="max-md:!-mb-[13px] max-md:!mt-[-9px] max-md:py-[13px]"
                   style={{ display: 'inline-block', fontSize: '12.5px', fontWeight: 500, color: V.tinta, marginTop: 4 }}
                 >
                   Gestionar accesos →
