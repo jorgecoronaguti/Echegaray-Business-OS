@@ -141,3 +141,12 @@ test('sin «Desvinculados en el año», la lista de personas termina antes de «
   assert.deepEqual(u.falta, [])
   assert.equal(u.ultimaPersona, 26); assert.equal(u.filaOficina, 27); assert.equal(u.filaTotal, 28)
 })
+
+test('cuadro 6 · el seguro de vida UOCRA por trabajador ($Q$) sale del F931 y queda en gremiales (25/09)', () => {
+  const u = { filaParametros: 5, primeraPersona: 10, ultimaPersona: 26, filaEncabezado: 9, filaOficina: 27,
+    filaTotal: 28, filaTotalCargas: 54, filaDireccion: 74, filaPuente: 90, ultimaUsada: 96 }
+  const { filas } = cuadroPuente(u)
+  const f931 = filas.find((r) => r[0] === 'Cargas · F931')[3]
+  assert.match(f931, /^=LET\(t;N\(D\$54\)-\$Q\$5\*COUNTIF\(D\$10:D\$26;">0"\);s;\$H\$5\*COUNTIF/)
+  assert.doesNotMatch(f931, /,/, 'es-AR')
+})

@@ -142,7 +142,9 @@ const COLS_MES = ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O']
  * · Cargas: el TOTAL del cuadro 2 (devengado del mes) se parte en F931 y gremiales con las MISMAS
  *   alícuotas de la fila de parámetros: F931 = aportes + contribuciones SS y OS + ART (+ el seguro de
  *   vida, que es fijo por empleado); gremiales = UOCRA vida/FICS + fondo de cese (+ IERIC y FODECO
- *   sobre él). El total es el de Nómina al peso; la partición sólo decide en qué línea cae.
+ *   sobre él) + el seguro de vida UOCRA por trabajador (Q de parámetros; I es el % UOCRA sobre la
+ *   remuneración de la última DDJJ, sin el seguro — calibrado 25/09 contra agosto al peso). El total
+ *   es el de Nómina al peso; la partición sólo decide en qué línea cae.
  *
  * @param {ReturnType<typeof ubicarNomina>} u
  * @param {{anio?:number}} [o]
@@ -169,7 +171,9 @@ export function cuadroPuente(u, { anio = 2026, filasOficina = [] } = {}) {
     // VENCIDO. Agosto —pagado en parte, con el resto proyectado a mano— sigue abierto.
     oficina: (X, m) => `=IF(AND(N(INDEX(OFICINA_PAGADO;${m};1))>0;N(INDEX(OFICINA_PROYECTADO;${m};1))=0);0;MAX(0;N(${X}$${u.filaOficina})+(${jefes(X)})-N(INDEX(OFICINA_PAGADO;${m};1))))`,
     direccion: (X, m) => `=IF(AND(N(INDEX(DIRECCION_PAGADO;${m};1))>0;N(INDEX(DIRECCION_PROYECTADO;${m};1))=0);0;MAX(0;N(${X}$${u.filaDireccion})-N(INDEX(DIRECCION_PAGADO;${m};1))))`,
-    f931: (X) => `=LET(t;N(${X}$${u.filaTotalCargas});s;${$('H')}*COUNTIF(${personas(X)};">0");`
+    // EL SEGURO DE VIDA UOCRA (Q, por trabajador, 25/09/2026) está en el total de cargas pero es
+    // GREMIAL: sale del total antes de repartir, así cae entero en la línea de gremiales.
+    f931: (X) => `=LET(t;N(${X}$${u.filaTotalCargas})-${$('Q')}*COUNTIF(${personas(X)};">0");s;${$('H')}*COUNTIF(${personas(X)};">0");`
       + `rf;${$('D')}+${$('E')}+${$('F')}+${$('G')};`
       + `rg;${$('I')}+(CARGAS_PROPORCION_PRIMER_ANIO*${$('J')}+(1-CARGAS_PROPORCION_PRIMER_ANIO)*${$('K')})*(1+${$('L')}+${$('M')});`
       + 'IF(t<=0;0;MIN(t;(t-s)*rf/(rf+rg)+s)))',
