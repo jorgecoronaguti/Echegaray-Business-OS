@@ -17,6 +17,8 @@ export interface Contexto {
   obra: ObraDelJefe | null
   /** El primer error REAL de la lectura. Se muestra tal cual: un conteo que falló no es un cero. */
   error: string | null
+  /** Las obras ASIGNADAS hoy a su persona (`obra_asignacion` vigente), la más reciente primero. */
+  asignadas: string[]
 }
 
 /**
@@ -49,6 +51,7 @@ export async function contextoDeObra(pedida: string | null | undefined): Promise
     obras: lista,
     obra: lista.find((o) => o.id === id) ?? null,
     error: obras.error,
+    asignadas,
   }
 }
 

@@ -12,6 +12,7 @@ import { destinoPorRol } from '@/features/portal/types'
 import { trazar } from '@/lib/supabase/traza'
 import { pareceTelefonoSegun } from '@/shared/utils/dispositivo'
 import { rutaTelefonoDeHerramientas } from '@/features/herramientas/logica/rutaTelefono'
+import { INICIO_JEFE_ESCRITORIO, caraDeEscritorioDelJefe } from '@/shared/auth/caraDelJefe'
 import { TOPE_MS_MIDDLEWARE, esFallaDeBackend, fetchConTope } from '@/lib/supabase/fetch-con-tope'
 import { COOKIE_ROL, VIDA_ROL_SEGUNDOS, leerRol, sellarRol, secretoDelRol } from '@/lib/auth/rol-cache'
 import {
@@ -328,6 +329,21 @@ async function middlewareConBackend(request: NextRequest) {
       if (ficha) return NextResponse.redirect(new URL(ficha, request.url))
     }
 
+    // ── EL JEFE EN LA COMPUTADORA VE LA CARA DE COMPUTADORA (dueño, 25/09/2026).
+    //
+    // «El jefe en la PC entra a su pantalla de teléfono. Tiene que tener un diseño de computadora».
+    // Su inicio sigue siendo `/obra/hoy` en cualquier aparato (regla del 24/09); lo que el aparato
+    // elige es la CARA: si el navegador no se declara teléfono, cada pantalla de `/obra/*` (y lo que se
+    // mira y firma de su efectivo) va a su par de escritorio. Sólo GET: un Server Action no se desvía.
+    // Con la lente «ver como» puesta vale lo mismo: Dirección ve lo que ve el jefe en ese aparato.
+    const jefeEnPc = perfil?.rol === 'jefe_obra' && !pareceTelefonoSegun(request.headers)
+    if (jefeEnPc && request.method === 'GET') {
+      const cara = caraDeEscritorioDelJefe(
+        pathname, request.nextUrl.searchParams, obraDeCookieValida(request.cookies.get(COOKIE_OBRA)?.value),
+      )
+      if (cara) return NextResponse.redirect(new URL(cara, request.url))
+    }
+
     // ── EL NIVEL «OBRAS» NO ENTRA A LO DE ADMINISTRACIÓN (18/08/2026).
     //
     // Dos niveles y sólo dos: Administración (dirección + administración) ve todo; Obras (jefe de
@@ -345,7 +361,8 @@ async function middlewareConBackend(request: NextRequest) {
       // «listado gigante» de la queja del dueño: la cartera entera, con las archivadas si alguna vez las
       // había pedido. Ahora vuelve a su obra (`destinoDeRebote`).
       const url = request.nextUrl.clone()
-      url.pathname = destinoDeRebote(perfil?.rol)
+      // En la PC el jefe rebota directo a su portada de escritorio: sin el salto intermedio por J01.
+      url.pathname = jefeEnPc ? INICIO_JEFE_ESCRITORIO : destinoDeRebote(perfil?.rol)
       url.search = ''
       return NextResponse.redirect(url)
     }

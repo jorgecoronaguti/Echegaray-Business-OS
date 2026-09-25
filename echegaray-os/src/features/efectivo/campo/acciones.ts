@@ -37,6 +37,8 @@ function refrescar() {
   revalidatePath('/hoy')
   revalidatePath('/mi-informacion')
   revalidatePath('/obra', 'layout')
+  // La cara de computadora (25/09/2026): firmar desde el panel de «Mi efectivo» en la PC.
+  revalidatePath('/mi-cuenta/efectivo')
 }
 
 async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<Resultado<T>> {

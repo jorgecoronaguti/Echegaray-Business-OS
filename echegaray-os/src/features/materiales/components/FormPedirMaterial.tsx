@@ -37,6 +37,7 @@ const nuevoItem = (k: number): Item => ({ k, material: '', cantidad: '', unidad:
 export function FormPedirMaterial({
   obras,
   obraFija,
+  obraInicial,
   cara,
   id = 'form-pedir-material',
   sinBoton = false,
@@ -46,6 +47,8 @@ export function FormPedirMaterial({
   obras: ObraElegible[]
   /** La obra ya elegida (teléfono): no se pregunta. */
   obraFija?: ObraElegible | null
+  /** La obra que viene elegida en el selector (escritorio, `?obra=`): se puede cambiar. */
+  obraInicial?: string | null
   cara: 'telefono' | 'escritorio'
   id?: string
   /** `true` cuando la primaria la dibuja el contenedor (el pie del panel) con `form={id}`. */
@@ -82,7 +85,7 @@ export function FormPedirMaterial({
         <input type="hidden" name="obra_id" value={obraFija.id} />
       ) : (
         <Campo rotulo="Obra">
-          <select name="obra_id" required defaultValue="" className={CAMPO} data-testid="pedir-obra">
+          <select name="obra_id" required defaultValue={obraInicial && obras.some((o) => o.id === obraInicial) ? obraInicial : ""} className={CAMPO} data-testid="pedir-obra">
             <option value="">Elegí la obra</option>
             {obras.map((o) => (
               <option key={o.id} value={o.id}>{o.nombre}</option>

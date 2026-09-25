@@ -34,7 +34,7 @@ test('el jefe de obra NO ve Presupuestos: un presupuesto ES precio', () => {
   // La ruta sigue en `RUTAS_SOLO_ECONOMIA` y la base cierra `cotizaciones_select` con
   // `ve_economia()`. Que haya bajado de nivel no le abre la puerta a nadie.
   assert.equal(puedeVerRuta('jefe_obra', '/presupuestos'), false)
-  assert.deepEqual(claves('jefe_obra'), ['administracion', 'obras', 'herramientas'])
+  assert.deepEqual(claves('jefe_obra'), ['obras', 'herramientas'], 'el jefe en la PC: Obras · Herramientas (25/09/2026)')
   assert.deepEqual(claves('campo'), ['obras', 'herramientas'], 'permisos iguales: el empleado también ve Herramientas')
   assert.deepEqual(claves(null), ['obras'], 'sin perfil se cae al nivel MENOS privilegiado')
   assert.deepEqual(claves('cliente'), ['obras'], 'el cliente del portal no ve el inventario')
@@ -139,9 +139,10 @@ test('destinoDeLaHome NO recibe el aparato: el inicio no puede volver a depender
   assert.equal(destinoDeLaHome.length, 1)
 })
 
-test('la solapa «Obras» del jefe lleva a su obra: la cartera ya no es suya', () => {
+test('la solapa «Obras» del jefe lleva a su portada de escritorio: la cartera ya no es suya', () => {
   const obras = solapasDeNav('jefe_obra').find((s) => s.clave === 'obras')
-  assert.equal(obras?.href, '/obra/hoy')
+  // 25/09/2026: en la PC la solapa va directo a la cara de computadora (`/obras/hoy`), no a J01.
+  assert.equal(obras?.href, '/obras/hoy')
   assert.equal(puedeVerRuta('jefe_obra', obras!.href), true)
   assert.equal(solapasDeNav('direccion').find((s) => s.clave === 'obras')?.href, '/obras')
 })
@@ -169,4 +170,22 @@ test('«Fuentes» (/integraciones) cuelga de Administración, no de Obras (dueñ
   assert.equal(activa('/integraciones'), 'administracion')
   assert.equal(activa('/integraciones/pedidos-materiales'), 'administracion')
   assert.equal(activa('/integraciones-x'), null)
+})
+
+test('el jefe en la PC ve Obras · Herramientas: nunca Administración, Clientes, Compras ni Analíticas (dueño, 25/09/2026)', () => {
+  assert.deepEqual(solapasDeNav('jefe_obra').map((s) => s.label), ['Obras', 'Herramientas'])
+  // Los demás niveles no cambian.
+  assert.deepEqual(solapasDeNav('direccion').map((s) => s.label), ['Administración', 'Obras', 'Herramientas', 'Analíticas'])
+  assert.deepEqual(solapasDeNav('administracion').map((s) => s.label), ['Administración', 'Obras', 'Herramientas', 'Analíticas'])
+})
+
+test('el jefe que abre Personal desde su obra ve encendida Obras; Clientes no enciende nada', () => {
+  const jefe = solapasDeNav('jefe_obra')
+  assert.equal(solapaActiva('/administracion/personas', jefe), 'obras')
+  assert.equal(solapaActiva('/administracion/personas/asistencia', jefe), 'obras')
+  assert.equal(solapaActiva('/obras/hoy', jefe), 'obras')
+  assert.equal(solapaActiva('/herramientas/material', jefe), 'herramientas')
+  assert.equal(solapaActiva('/clientes', jefe), null)
+  // Para quien SÍ tiene Administración, Personal sigue siendo Administración.
+  assert.equal(solapaActiva('/administracion/personas', solapasDeNav('administracion')), 'administracion')
 })

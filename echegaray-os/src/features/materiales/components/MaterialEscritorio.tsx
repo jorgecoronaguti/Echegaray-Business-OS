@@ -27,7 +27,10 @@ export function MaterialEscritorio({
   total,
   filtro,
   obras,
+  abrirAlEntrar = false,
 }: {
+  /** `?pedir=1` (el «Pedir material» de la portada del jefe, 25/09/2026): el panel abre solo. */
+  abrirAlEntrar?: boolean
   /** Ya filtradas por la página. */
   pedidos: Pedido[]
   total: number
@@ -35,7 +38,7 @@ export function MaterialEscritorio({
   obras: ObraElegible[]
 }) {
   const router = useRouter()
-  const [abierto, setAbierto] = useState(false)
+  const [abierto, setAbierto] = useState(abrirAlEntrar)
   const [mensaje, setMensaje] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pendiente, startTransition] = useTransition()
@@ -153,7 +156,7 @@ export function MaterialEscritorio({
             </>
           }
         >
-          <FormPedirMaterial obras={obras} cara="escritorio" sinBoton alGuardar={alGuardar} />
+          <FormPedirMaterial obras={obras} obraInicial={filtro.obra} cara="escritorio" sinBoton alGuardar={alGuardar} />
         </Drawer>
       )}
     </div>

@@ -56,7 +56,7 @@ export default async function MaterialPage({ searchParams }: { searchParams: Pro
             {lectura.mensaje}
           </Aviso>
         )}
-        {lectura.estado === 'ok' && <MaterialEscritorio pedidos={pedidos} total={total} filtro={filtro} obras={obras} />}
+        {lectura.estado === 'ok' && <MaterialEscritorio pedidos={pedidos} total={total} filtro={filtro} obras={obras} abrirAlEntrar={uno(sp.pedir) === '1'} />}
       </div>
     </div>
   )

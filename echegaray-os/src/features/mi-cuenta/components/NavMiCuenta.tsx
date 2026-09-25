@@ -2,7 +2,7 @@
 
 // LAS SOLAPAS DE MI CUENTA — nivel 2, con la regla amarilla del sistema.
 //
-// SIETE SOLAPAS Y CADA UNA ES UNA RUTA. El estado vive en la URL (regla 10 de UX_PRINCIPLES): «mirá
+// OCHO SOLAPAS Y CADA UNA ES UNA RUTA. El estado vive en la URL (regla 10 de UX_PRINCIPLES): «mirá
 // mis horas de julio» se pasa como una dirección, y el botón «atrás» hace lo que se espera. Con el
 // estado en el navegador, las siete serían la misma dirección y no habría nada que compartir.
 //
@@ -22,6 +22,9 @@ const SOLAPAS = [
   { href: '/mi-cuenta/legajo', label: 'Mi legajo' },
   { href: '/mi-cuenta/horas', label: 'Mis horas' },
   { href: '/mi-cuenta/documentos', label: 'Mis documentos' },
+  // MI EFECTIVO EN LA COMPUTADORA (dueño, 25/09/2026): lo que me entregaron, lo que rendí y la firma de
+  // la conformidad. En el teléfono es `/mi-informacion/efectivo` (y D15 para el jefe).
+  { href: '/mi-cuenta/efectivo', label: 'Mi efectivo' },
   { href: '/mi-cuenta/seguridad', label: 'Seguridad' },
   { href: '/mi-cuenta/notificaciones', label: 'Notificaciones' },
   { href: '/mi-cuenta/sesiones', label: 'Sesiones' },

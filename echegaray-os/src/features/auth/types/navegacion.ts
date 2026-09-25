@@ -25,6 +25,7 @@
 
 import type { Rol } from './index'
 import { AREA_HREF, AREA_LABEL, INICIO_JEFE_TELEFONO, areasDe, puedeVerRuta } from './areas.ts'
+import { INICIO_JEFE_ESCRITORIO } from '../../../shared/auth/caraDelJefe.ts'
 export { INICIO_JEFE_TELEFONO }
 
 export interface SolapaNav {
@@ -57,10 +58,18 @@ const HERRAMIENTAS: SolapaNav = { clave: 'herramientas', label: 'Herramientas', 
  * nombre del área, que es información y no un botón que no lleva a ningún lado.
  */
 export function solapasDeNav(rol: Rol | null | undefined): SolapaNav[] {
-  // LA SOLAPA «OBRAS» DEL JEFE LLEVA A SU OBRA (24/09/2026): la cartera `/obras` ya no es suya
-  // (`RUTAS_CERRADAS_AL_JEFE_EXACTAS`), y una solapa que rebota enseña que la barra miente.
-  const hrefDe = (a: keyof typeof AREA_HREF) => (a === 'obras' && rol === 'jefe_obra' ? INICIO_JEFE_TELEFONO : AREA_HREF[a])
-  const areas = areasDe(rol).map((a) => ({ clave: a, label: AREA_LABEL[a], href: hrefDe(a) }))
+  // ═══ EL JEFE EN LA COMPUTADORA: OBRAS · HERRAMIENTAS (dueño, 25/09/2026) ═══
+  // «Tiene que tener un diseño de computadora». Su nivel 1 es su obra y las herramientas; nunca
+  // Clientes, Compras ni sueldos. «Administración» se le dibujaba para una sola sección (Personal), y
+  // lo que de ahí usa —el plantel, cargar la asistencia— cuelga ahora de su portada de obras. Las RUTAS
+  // de Personal le siguen abiertas (`puedeVerRuta`, decisión del 24/09): cambia la barra, no el permiso.
+  // «Obras» lleva a su portada de escritorio (`/obras/hoy`): la cartera `/obras` no es suya
+  // (`RUTAS_CERRADAS_AL_JEFE_EXACTAS`) y una solapa que rebota enseña que la barra miente. En el
+  // teléfono estas solapas no se dibujan: manda la barra de abajo (`barraTelefonoDe`).
+  if (rol === 'jefe_obra') {
+    return [{ clave: 'obras', label: AREA_LABEL.obras, href: INICIO_JEFE_ESCRITORIO }, HERRAMIENTAS]
+  }
+  const areas = areasDe(rol).map((a) => ({ clave: a, label: AREA_LABEL[a], href: AREA_HREF[a] }))
   const destinos = [ANALITICAS].filter((d) => puedeVerRuta(rol, d.href))
   const herramientas = rol && rol !== 'cliente' ? [HERRAMIENTAS] : []
   // HERRAMIENTAS ANTES QUE ANALÍTICAS (dueño, 23/09/2026: «cambiar de lugar analíticas con herramientas»).
@@ -123,6 +132,16 @@ export function destinoDeLaHome(rol: Rol | null | undefined): string {
 
 export function solapaActiva(pathname: string, solapas: SolapaNav[]): string | null {
   if (solapas.length === 1) return solapas[0].clave
+  const clave = solapaDeLaRuta(pathname)
+  // QUIEN NO TIENE «ADMINISTRACIÓN» EN LA BARRA (el jefe en la PC, 25/09/2026) y abre Personal —el
+  // plantel, cargar la asistencia— llegó desde su obra: se enciende Obras, no una solapa que no ve.
+  if (clave === 'administracion' && !solapas.some((s) => s.clave === 'administracion')) {
+    return solapas.some((s) => s.clave === 'obras') && /^\/administracion\/(personas|asistencia)(\/|$)/.test(pathname) ? 'obras' : null
+  }
+  return clave
+}
+
+function solapaDeLaRuta(pathname: string): string | null {
   if (/^\/analiticas(\/|$)/.test(pathname)) return 'analiticas'
   // `/h/<código>` es la puerta del QR: abre la ficha de Herramientas.
   if (/^\/(herramientas|h)(\/|$)/.test(pathname)) return 'herramientas'

@@ -73,7 +73,7 @@ export function AppHeader({
   verUsuarios: boolean
   /** Si este rol puede abrir Personal. El atajo a la carga de asistencia cuelga de eso. */
   cargaAsistencia: boolean
-  /** ¿Es jefe de obra? Su obra en el teléfono (`/obra/hoy`, J01) se ofrece desde el menú. */
+  /** ¿Es jefe de obra? El isotipo va a su obra y el menú le ofrece su efectivo. */
   miObraTelefono?: boolean
   /** Con la barra de abajo del teléfono (`BarraTelefono`), las solapas se dibujan sólo desde `md`. */
   solapasSoloEscritorio?: boolean
@@ -387,21 +387,21 @@ function MenuUsuario({
               de costado. Este menú es lo más parecido a una hamburguesa que el header tiene, y acá
               el atajo es UN toque. `md:hidden` porque en escritorio esos tres toques no son un
               problema y el menú es para configuración, no para trabajo diario. */}
-          {/* ═══ LA OBRA DEL JEFE EN EL TELÉFONO (dueño, 23/09/2026 · mapa de pantallas, duda 3) ═══
-              J01–J06 (`/obra/*`) no tenían ninguna puerta desde la app. Desde el teléfono `/` ya
-              lo lleva solo (`destinoDeLaHome`); este ítem es el enlace VISIBLE para llegar desde
-              cualquier pantalla, en cualquier ancho: en escritorio abre el marco del teléfono, que
-              es lo que el jefe va a ver en la obra. Sólo existe en el HTML del jefe de obra. */}
+          {/* ═══ MI EFECTIVO DEL JEFE (dueño, 25/09/2026) ═══
+              Hasta hoy este ítem era «Mi obra en el teléfono» y en la computadora abría la columna de
+              390 px: el «¿qué sería eso?» del dueño. Su obra ya es la solapa Obras en cualquier ancho.
+              Lo que sí le hace falta a mano es su efectivo: `/obra/efectivo` es D15 en el teléfono y el
+              middleware lo lleva a `/mi-cuenta/efectivo` en la PC (`caraDeEscritorioDelJefe`). */}
           {miObraTelefono && (
             <Link
               prefetch={false}
-              href={conObraRecordada('/obra/hoy', obraRecordada)}
+              href={conObraRecordada('/obra/efectivo', obraRecordada)}
               role="menuitem"
-              data-testid="ir-mi-obra"
+              data-testid="ir-mi-efectivo"
               onClick={() => setAbierto(false)}
               className="flex min-h-[44px] items-center px-3 py-1.5 text-[13px] font-medium text-ink hover:bg-surface-quiet"
             >
-              Mi obra en el teléfono
+              Mi efectivo
             </Link>
           )}
           {cargaAsistencia && (

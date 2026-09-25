@@ -29,7 +29,7 @@ export interface ItemBarraTelefono {
 // tocara. Ahora es la de J01 en todos lados. Trabajo, Herramientas y Material cuelgan de Hoy; la carga
 // de asistencia enciende Gente, que es donde el jefe la busca.
 const JEFE: ItemBarraTelefono[] = [
-  { clave: 'jefe-hoy', href: INICIO_JEFE_TELEFONO, label: 'Hoy', icono: 'casa', enciende: ['/obra/avance-masivo', '/obra/frente', '/obra/efectivo', '/campo'] },
+  { clave: 'jefe-hoy', href: INICIO_JEFE_TELEFONO, label: 'Hoy', icono: 'casa', enciende: ['/obra/avance-masivo', '/obra/frente', '/obra/efectivo', '/campo', '/obras/hoy'] },
   { clave: 'jefe-tareas', href: '/obra/tareas', label: 'Tareas', icono: 'tarea' },
   { clave: 'jefe-avance', href: '/obra/avance', label: 'Avance', icono: 'avance' },
   // Personal entero (Plantel, Horas, Cargar asistencia) enciende Gente desde el 24/09/2026: es donde el
