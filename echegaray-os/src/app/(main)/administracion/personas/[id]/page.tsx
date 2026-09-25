@@ -678,6 +678,7 @@ export default async function FichaPersonaPage({
               ubicacionPersona={vestimenta.ubicacionPersona}
               tallerId={vestimenta.tallerId}
               tiene={vestimenta.tiene}
+              cerradas={vestimenta.cerradas}
               catalogo={vestimenta.catalogo}
               historial={vestimenta.historial}
               talles={vestimenta.talles}

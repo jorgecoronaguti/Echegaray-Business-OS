@@ -104,3 +104,10 @@ test('la entrega de la constancia firmada es «historica»: no sale de ningún l
   const t = tenencias('u-p', activos, [{ activo_id: 'cas', ubicacion_id: 'u-p', cantidad: 1 }], h)
   assert.equal(t[0].ultima?.tipo, 'historica')
 })
+
+test('lo cerrado al egresar es «egreso» en el historial y ya no está en su poder', () => {
+  const aj: Ajuste = { id: 'e', activo_id: 'cm', ubicacion_id: 'u-p', antes: 2, despues: 0, motivo: 'egreso', detalle: 'egresó el 19/12/2025 · no devuelto', usuario_id: null, creado_en: '2025-12-19T15:00:00Z' }
+  const h = historialDePersona('u-p', [], [aj])
+  assert.deepEqual(h.map((e) => [e.tipo, e.cantidad]), [['egreso', 2]])
+  assert.deepEqual(tenencias('u-p', activos, [], h), [])
+})

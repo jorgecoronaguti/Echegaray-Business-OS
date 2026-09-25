@@ -141,7 +141,7 @@ export function talleSugerido(p: Pick<Prenda, 'nombre' | 'talles'>, t: TallesPer
 
 // ── LO QUE TIENE UNA PERSONA Y CÓMO LE LLEGÓ ────────────────────────────────────────────────────
 /** `historica`: entrega de antes del sistema cargada desde la constancia firmada (no salió de ningún lugar). */
-export type TipoEvento = 'entrega' | 'historica' | 'ya_la_tenia' | 'devolucion' | 'baja' | 'recuento'
+export type TipoEvento = 'entrega' | 'historica' | 'ya_la_tenia' | 'devolucion' | 'baja' | 'recuento' | 'egreso'
 
 export interface EventoPersona {
   fecha: string
@@ -176,7 +176,7 @@ export function historialDePersona(
   }
   for (const a of ajustes) {
     if (a.ubicacion_id !== ubicacionId) continue
-    const tipo: TipoEvento = a.motivo !== 'recuento' ? 'baja' : a.antes === 0 || /^ya la ten/i.test(a.detalle ?? '') ? 'ya_la_tenia' : 'recuento'
+    const tipo: TipoEvento = a.motivo === 'egreso' ? 'egreso' : a.motivo !== 'recuento' ? 'baja' : a.antes === 0 || /^ya la ten/i.test(a.detalle ?? '') ? 'ya_la_tenia' : 'recuento'
     out.push({ fecha: a.creado_en, tipo, activoId: a.activo_id, cantidad: Math.abs(a.despues - a.antes), usuarioId: a.usuario_id, otroLugar: null, nota: a.detalle, respaldo: null })
   }
   return out.sort((x, y) => (x.fecha < y.fecha ? 1 : x.fecha > y.fecha ? -1 : 0))
@@ -208,5 +208,5 @@ export function tenencias(
 }
 
 export const ETIQUETA_EVENTO: Record<TipoEvento, string> = {
-  entrega: 'Entrega', historica: 'Entrega (constancia)', ya_la_tenia: 'Ya la tenía', devolucion: 'Devolución', baja: 'Baja', recuento: 'Recuento',
+  entrega: 'Entrega', historica: 'Entrega (constancia)', ya_la_tenia: 'Ya la tenía', devolucion: 'Devolución', baja: 'Baja', recuento: 'Recuento', egreso: 'Egresó · no devuelto',
 }

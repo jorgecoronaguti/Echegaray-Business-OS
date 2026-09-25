@@ -34,6 +34,15 @@ export interface FilaTiene {
   sinTalle: boolean
 }
 
+/** Lo que tenía una persona que se fue: cerrado como «egresó · no devuelto» (20260925T1500). */
+export interface FilaCerrada {
+  nombre: string
+  clase: ClasePersonal
+  cantidad: number
+  fecha: string
+  detalle: string | null
+}
+
 export interface OrigenPlano { ubicacionId: string; rotulo: string; cantidad: number }
 export interface TallePlano { activoId: string; codigo: string; talle: string | null; disponible: number; origenes: OrigenPlano[] }
 
@@ -58,6 +67,7 @@ export type VestimentaDePersona =
       ubicacionPersona: string | null
       tallerId: string | null
       tiene: FilaTiene[]
+      cerradas: FilaCerrada[]
       catalogo: Record<ClasePersonal, PrendaPlana[]>
       historial: FilaHistorial[]
       talles: TallesPersona | null
@@ -114,6 +124,10 @@ export async function leerVestimentaDePersona(supabase: SupabaseClient, personaI
     sinTalle: !t.activo.talle && p.activos.some((x) => x.id !== t.activo.id && x.estado !== 'baja' && x.clase === t.activo.clase
       && x.nombre.trim().toLowerCase() === t.activo.nombre.trim().toLowerCase() && !!x.talle),
   }))
+  const cerradas = eventos.filter((e) => e.tipo === 'egreso').map((e): FilaCerrada => {
+    const a = p.activoPorId.get(e.activoId)
+    return { nombre: a ? rotuloConTalle(a) : 'ítem desconocido', clase: (a?.clase ?? 'epp') as ClasePersonal, cantidad: e.cantidad, fecha: e.fecha, detalle: e.nota }
+  })
   const historial = eventos.map((e): FilaHistorial => {
     const a = p.activoPorId.get(e.activoId)
     return {
@@ -131,6 +145,7 @@ export async function leerVestimentaDePersona(supabase: SupabaseClient, personaI
     ubicacionPersona,
     tallerId: p.ubicaciones.find((x) => x.tipo === 'taller' && !x.archivada)?.id ?? null,
     tiene,
+    cerradas,
     catalogo: { epp: catalogoDe(p, 'epp'), ropa: catalogoDe(p, 'ropa') },
     historial,
     talles: (talles.data as TallesPersona | null) ?? null,

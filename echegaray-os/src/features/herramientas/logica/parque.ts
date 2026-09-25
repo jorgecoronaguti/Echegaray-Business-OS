@@ -238,7 +238,7 @@ export const TONO_ESTADO: Record<EstadoActivo, TonoEstado> = {
   baja: 'apagado',
 }
 export const MOTIVO_BAJA: Record<string, string> = {
-  robada: 'robo', perdida: 'pérdida', descartada: 'descarte', vendida: 'venta',
+  robada: 'robo', perdida: 'pérdida', descartada: 'descarte', vendida: 'venta', egreso: 'egreso de la persona (no devuelto)',
 }
 
 export const vivo = (a: Pick<Activo, 'estado'>) => a.estado !== 'baja'

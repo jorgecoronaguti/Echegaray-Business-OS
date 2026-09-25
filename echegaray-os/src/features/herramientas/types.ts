@@ -141,7 +141,8 @@ export interface Ajuste {
   ubicacion_id: string
   antes: number
   despues: number
-  motivo: 'recuento' | MotivoBaja
+  /** 'egreso' (20260925T1500): la persona se fue sin devolver lo que tenía; se cierra, no vuelve al Taller. */
+  motivo: 'recuento' | MotivoBaja | 'egreso'
   detalle: string | null
   usuario_id: string | null
   creado_en: string

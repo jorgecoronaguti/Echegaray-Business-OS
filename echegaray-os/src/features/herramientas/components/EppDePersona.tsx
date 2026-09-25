@@ -23,7 +23,7 @@ import {
   ETIQUETA_CAMPO_TALLE, ETIQUETA_EVENTO, ETIQUETA_PERSONAL, normalizarTalle,
   type CampoTalle, type ClasePersonal, type TallesPersona,
 } from '../logica/vestimenta'
-import type { FilaHistorial, FilaTiene, PrendaPlana } from '../services/vestimentaDePersona'
+import type { FilaCerrada, FilaHistorial, FilaTiene, PrendaPlana } from '../services/vestimentaDePersona'
 import {
   bajaDePersonaAction, devolverDePersonaAction, entregarAPersonaAction, guardarTallesAction,
 } from '../services/acciones-vestimenta'
@@ -42,6 +42,8 @@ export interface PropsEpp {
   ubicacionPersona: string | null
   tallerId: string | null
   tiene: FilaTiene[]
+  /** Lo que tenía cuando se fue, cerrado como «egresó · no devuelto». */
+  cerradas: FilaCerrada[]
   catalogo: Record<ClasePersonal, PrendaPlana[]>
   historial: FilaHistorial[]
   talles: TallesPersona | null
@@ -117,6 +119,8 @@ function Seccion({ clase, filas, ...p }: PropsEpp & { clase: ClasePersonal; fila
   const [entregando, setEntregando] = useState(false)
   const catalogo = p.catalogo[clase]
   const unidades = filas.reduce((s, f) => s + f.cantidad, 0)
+  // QUIEN YA NO ESTÁ EN LA EMPRESA NO «TIENE» NADA (dueño 25/09): se muestra lo que se cerró al irse.
+  if (!p.enLaEmpresa) return <SeccionCerrada clase={clase} filas={p.cerradas.filter((f) => f.clase === clase)} />
   return (
     <section data-testid={`seccion-${clase}`} className="flex min-w-0 flex-col">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-2" style={{ paddingBottom: 8, borderBottom: `1px solid ${V.linea}` }}>
@@ -142,6 +146,26 @@ function Seccion({ clase, filas, ...p }: PropsEpp & { clase: ClasePersonal; fila
           {catalogo.length ? 'Sin entregas registradas.' : `No hay ${clase === 'epp' ? 'EPP' : 'ropa'} en el inventario.`}
         </div>
       )}
+    </section>
+  )
+}
+
+function SeccionCerrada({ clase, filas }: { clase: ClasePersonal; filas: FilaCerrada[] }) {
+  return (
+    <section data-testid={`seccion-${clase}`} className="flex min-w-0 flex-col">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-2" style={{ paddingBottom: 8, borderBottom: `1px solid ${V.linea}` }}>
+        <h2 style={{ fontSize: '14px', fontWeight: 600, color: V.tinta }}>{ETIQUETA_PERSONAL[clase]}</h2>
+        <span style={{ fontSize: '12.5px', color: V.tenue }}>ya no está en la empresa · no tiene nada en su poder</span>
+      </div>
+      {filas.map((f, i) => (
+        <div key={i} data-testid="fila-cerrada" className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1 sm:grid-cols-[minmax(0,1.6fr)_48px_minmax(0,1.4fr)]"
+          style={{ borderBottom: `1px solid ${V.linea}`, padding: '10px 0', fontSize: '13px', color: V.apagado }}>
+          <span style={{ color: V.tintaSuave }}>{f.nombre}</span>
+          <span className="text-right sm:text-left" style={{ fontVariantNumeric: 'tabular-nums' }}>× {f.cantidad}</span>
+          <span className="col-span-2 sm:col-span-1" style={{ fontSize: '12.5px' }}>{f.detalle ?? `egresó · no devuelto · ${diaMesAnio(f.fecha)}`}</span>
+        </div>
+      ))}
+      {!filas.length && <div style={{ fontSize: '13px', color: V.tenue, padding: '12px 0' }}>No tenía nada registrado al irse.</div>}
     </section>
   )
 }

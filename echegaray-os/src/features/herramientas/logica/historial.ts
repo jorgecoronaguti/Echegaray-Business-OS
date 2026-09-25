@@ -66,6 +66,8 @@ export function historial(p: Parque, activoId: string): Renglon[] {
     const donde = rotuloUbicacion(p, j.ubicacion_id)
     const texto = j.motivo === 'recuento'
       ? `Recuento en ${donde}: ${j.antes} → ${j.despues}`
+      : j.motivo === 'egreso'
+      ? `Egresó · no devuelto: ${j.antes - j.despues} u. que tenía ${donde}`
       : `Baja de ${j.antes - j.despues} u. en ${donde} por ${MOTIVO_BAJA[j.motivo] ?? j.motivo}`
     out.push({ fecha: j.creado_en, texto: `${texto}${quien ? ` · ${quien}` : ''}`, nota: j.detalle, tipo: j.motivo === 'recuento' ? 'movimiento' : 'baja' })
   }
