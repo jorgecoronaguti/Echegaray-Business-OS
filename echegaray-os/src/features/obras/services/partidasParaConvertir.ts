@@ -11,11 +11,11 @@ export interface PartidaParaConvertir {
   descripcion: string
   unidad: string | null
   cantidad: number | null
-  /** hs unitarias × cantidad. null = sin análisis. */
+  /** hs unitarias × cantidad × coeficiente de ajuste. null = sin análisis. */
   hh: number | null
   /** Las hs por unidad del análisis (C04 «del análisis · 2,5 HH/m³»). */
   hsUnitarias: number | null
-  /** costo unitario × cantidad. null = sin costo congelado. */
+  /** costo unitario × cantidad × coeficiente de ajuste. null = sin costo congelado. */
   costo: number | null
   sinAnalisis: boolean
   /** Ya tiene actividades en la obra: no se puede volver a convertir. */
@@ -33,7 +33,32 @@ export interface FilaCruda {
   cantidad: number | null
   hs_unitarias: number | null
   costo_unitario: number | null
+  /** «COEF. AJUSTE» de la partida (planilla de cotización, col. G). Ausente o null = 1. */
+  coef_ajuste?: number | null
   orden: number
+}
+
+/** El coeficiente de ajuste válido de una partida: sin dato (o no positivo) es 1, nunca 0. */
+export function coefDe(coef: number | null | undefined): number {
+  return coef != null && Number.isFinite(coef) && coef > 0 ? coef : 1
+}
+
+export interface ComponenteMO { tipo: string | null; cantidad: unknown; costo_unitario: unknown; desperdicio: unknown }
+
+/**
+ * COSTO DE MO DE LA PARTIDA = Σ (mano de obra + carga social) de la composición por unidad × cantidad ×
+ * coeficiente de ajuste. El coeficiente es el de la planilla de cotización: la MO y las cargas de la
+ * partida lo llevan igual que su subtotal. null = sin composición de MO o sin cantidad (nunca 0 inventado).
+ */
+export function costoMODeLaPartida(comp: readonly ComponenteMO[], cantidad: number | null, coef?: number | null): number | null {
+  if (cantidad == null) return null
+  let unit: number | null = null
+  for (const c of comp) {
+    if (c.tipo !== 'mano_obra' && c.tipo !== 'carga_social') continue
+    if (c.cantidad == null || c.costo_unitario == null) continue
+    unit = (unit ?? 0) + Number(c.cantidad) * Number(c.costo_unitario) * (1 + Number(c.desperdicio ?? 0))
+  }
+  return unit == null ? null : Math.round(unit * cantidad * coefDe(coef))
 }
 
 export function partidasParaConvertir(filas: readonly FilaCruda[], convertidas: ReadonlySet<string>): PartidaParaConvertir[] {
@@ -44,9 +69,9 @@ export function partidasParaConvertir(filas: readonly FilaCruda[], convertidas: 
     descripcion: f.descripcion,
     unidad: f.unidad,
     cantidad: f.cantidad,
-    hh: f.hs_unitarias != null && f.cantidad != null ? Math.round(f.hs_unitarias * f.cantidad) : null,
+    hh: f.hs_unitarias != null && f.cantidad != null ? Math.round(f.hs_unitarias * f.cantidad * coefDe(f.coef_ajuste)) : null,
     hsUnitarias: f.hs_unitarias,
-    costo: f.costo_unitario != null && f.cantidad != null ? f.costo_unitario * f.cantidad : null,
+    costo: f.costo_unitario != null && f.cantidad != null ? f.costo_unitario * f.cantidad * coefDe(f.coef_ajuste) : null,
     sinAnalisis: f.hs_unitarias == null,
     convertida: convertidas.has(f.id),
     sinCantidad: f.cantidad == null,

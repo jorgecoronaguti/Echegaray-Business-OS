@@ -72,7 +72,7 @@ export async function getPresupuestoDeLaObra(
 
   const [partidasRes, convertidasRes] = await Promise.all([
     supabase.from('cotizacion_partida')
-      .select('id, rubro, codigo, descripcion, unidad, cantidad, hs_unitarias, costo_unitario, orden')
+      .select('id, rubro, codigo, descripcion, unidad, cantidad, hs_unitarias, costo_unitario, coef_ajuste, orden')
       .eq('cotizacion_id', c.id).order('orden', { ascending: true }),
     supabase.from('obra_actividad').select('cotizacion_partida_id').eq('obra_id', obraId)
       .not('cotizacion_partida_id', 'is', null),
@@ -83,7 +83,7 @@ export async function getPresupuestoDeLaObra(
   const filas = ((partidasRes.data ?? []) as Record<string, unknown>[]).map((f) => ({
     id: String(f.id), rubro: f.rubro == null ? null : String(f.rubro), codigo: f.codigo == null ? null : String(f.codigo),
     descripcion: String(f.descripcion ?? ''), unidad: f.unidad == null ? null : String(f.unidad),
-    cantidad: num(f.cantidad), hs_unitarias: num(f.hs_unitarias), costo_unitario: num(f.costo_unitario), orden: Number(f.orden ?? 0),
+    cantidad: num(f.cantidad), hs_unitarias: num(f.hs_unitarias), costo_unitario: num(f.costo_unitario), coef_ajuste: num(f.coef_ajuste), orden: Number(f.orden ?? 0),
   }))
   return {
     data: {

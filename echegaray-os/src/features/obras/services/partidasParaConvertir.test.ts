@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  agruparPartidas, avisoSinAnalisis, elegibles, partidasParaConvertir, resumenDeConversion, rotuloConvertir,
+  agruparPartidas, avisoSinAnalisis, coefDe, costoMODeLaPartida, elegibles, partidasParaConvertir, resumenDeConversion, rotuloConvertir,
   type FilaCruda,
 } from './partidasParaConvertir.ts'
 
@@ -51,4 +51,30 @@ test('el resumen y los rótulos de la primaria', () => {
   assert.equal(rotuloConvertir(14, false), 'Convertir 14 partidas')
   assert.equal(rotuloConvertir(1, true), 'Convertir 1 partida en plan')
   assert.equal(rotuloConvertir(0, true), 'Elegí partidas')
+})
+
+// Quattropani, T1126.1 «ALQUILER BOBCAT con MARTILLO - HORA» (LISTADO DE TAREAS A EJECUTAR.xlsm, fila 36):
+// composición MO 4,5 + CS 4 por hora, 32 h, COEF. AJUSTE 1450 → J 208.800 + L 185.600 = 394.400.
+// Sin el coeficiente la conversión daba $ 272 (el bug del 25/09).
+const BOBCAT = [
+  { tipo: 'mano_obra', cantidad: 1, costo_unitario: 4.5, desperdicio: 0 },
+  { tipo: 'carga_social', cantidad: 1, costo_unitario: 4, desperdicio: null },
+  { tipo: 'material', cantidad: 1, costo_unitario: 29.77, desperdicio: 0 },
+]
+
+test('el costo de MO de la partida lleva el coeficiente de ajuste de la planilla', () => {
+  assert.equal(costoMODeLaPartida(BOBCAT, 32, 1450), 394400)
+  assert.equal(costoMODeLaPartida(BOBCAT, 32, null), 272, 'sin coeficiente cargado vale 1: lo existente no cambia')
+  assert.equal(costoMODeLaPartida(BOBCAT, 32, 1), 272)
+  assert.equal(costoMODeLaPartida(BOBCAT, null, 1450), null, 'sin cantidad no hay costo')
+  assert.equal(costoMODeLaPartida([{ tipo: 'material', cantidad: 1, costo_unitario: 10, desperdicio: 0 }], 5, 3), null, 'sin MO en la composición es null, no 0')
+  assert.equal(coefDe(0), 1)
+  assert.equal(coefDe(-2), 1)
+  assert.equal(coefDe(undefined), 1)
+})
+
+test('la vista previa de C02 multiplica costo y HH por el coeficiente', () => {
+  const [p] = partidasParaConvertir([{ id: 's', rubro: 'Instalaciones', codigo: 'T1059', descripcion: 'Instalación sanitaria', unidad: 'un', cantidad: 1, hs_unitarias: 76.5, costo_unitario: 1030594.31, coef_ajuste: 3, orden: 1 }], new Set())
+  assert.equal(p.hh, 230)
+  assert.equal(Math.round(p.costo!), 3091783)
 })

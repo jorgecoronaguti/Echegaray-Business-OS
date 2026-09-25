@@ -17,6 +17,7 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
 import type { Rol } from '@/features/auth/types'
 import { claveDeActividad, slug } from './claves'
+import { coefDe, costoMODeLaPartida, type ComponenteMO } from './partidasParaConvertir'
 import { sellarBaseline, type Resultado } from './actions'
 import { leerPlanilla } from './planillaPegada'
 import { correrDiasHabiles, METODOS_REPARTO, vistaPreviaFrentes } from './estructura'
@@ -80,17 +81,15 @@ export async function convertirPartidasDesdeLaObra(obraId: string, form: FormDat
   if (!cab.congelada_en) return { ok: false, error: 'Congelá el presupuesto antes de convertir: el plan y su costo de MO salen de lo que se ofertó.' }
 
   const [{ data: filas, error: eF }, { data: comp }, { data: yaEn }] = await Promise.all([
-    supabase.from('cotizacion_partida').select('id, rubro, codigo, descripcion, unidad, cantidad, hs_unitarias, analisis_id, cotizacion_id').in('id', parsed.data.partidas),
+    supabase.from('cotizacion_partida').select('id, rubro, codigo, descripcion, unidad, cantidad, hs_unitarias, analisis_id, cotizacion_id, coef_ajuste').in('id', parsed.data.partidas),
     supabase.from('cotizacion_partida_composicion').select('partida_id, tipo, cantidad, costo_unitario, desperdicio').in('partida_id', parsed.data.partidas),
     supabase.from('obra_actividad').select('id, nombre, nivel, cotizacion_partida_id').eq('obra_id', obraId).eq('archivada', false),
   ])
   if (eF) return { ok: false, error: eF.message }
   const porId = new Map((filas ?? []).map((f) => [String(f.id), f]))
-  const moPorPartida = new Map<string, number>()
-  for (const c of (comp ?? []) as { partida_id: string; tipo: string | null; cantidad: unknown; costo_unitario: unknown; desperdicio: unknown }[]) {
-    if (c.tipo !== 'mano_obra' && c.tipo !== 'carga_social') continue
-    if (c.cantidad == null || c.costo_unitario == null) continue
-    moPorPartida.set(c.partida_id, (moPorPartida.get(c.partida_id) ?? 0) + Number(c.cantidad) * Number(c.costo_unitario) * (1 + Number(c.desperdicio ?? 0)))
+  const compPorPartida = new Map<string, ComponenteMO[]>()
+  for (const c of (comp ?? []) as (ComponenteMO & { partida_id: string })[]) {
+    compPorPartida.set(c.partida_id, [...(compPorPartida.get(c.partida_id) ?? []), c])
   }
   const vivos = (yaEn ?? []) as { id: string; nombre: string; nivel: string | null; cotizacion_partida_id: string | null }[]
   const convertidas = new Set(vivos.map((v) => v.cotizacion_partida_id).filter(Boolean) as string[])
@@ -127,8 +126,10 @@ export async function convertirPartidasDesdeLaObra(obraId: string, form: FormDat
       rubroId = String(r.id)
       rubros.set(nombreRubro.toLowerCase(), rubroId)
     }
-    const hhPlan = p.hs_unitarias != null && cantidad != null ? Number(p.hs_unitarias) * cantidad : null
-    const mo = moPorPartida.has(id) && cantidad != null ? Math.round(moPorPartida.get(id)! * cantidad) : null
+    // El coeficiente de ajuste de la planilla multiplica la MO, las cargas y las horas de la partida.
+    const coef = coefDe(p.coef_ajuste == null ? null : Number(p.coef_ajuste))
+    const hhPlan = p.hs_unitarias != null && cantidad != null ? Number(p.hs_unitarias) * cantidad * coef : null
+    const mo = costoMODeLaPartida(compPorPartida.get(id) ?? [], cantidad, coef)
     const { data: h, error: eH } = await supabase.from('obra_actividad').insert({
       obra_id: obraId, clave: `conv:${id}:historia`, nombre, nivel: 'historia', tipo: 'resumen', seccion: nombreRubro,
       orden: orden++, actividad_padre_id: rubroId, unidad: p.unidad ?? null, cantidad_objetivo: cantidad, hh_plan: hhPlan,
