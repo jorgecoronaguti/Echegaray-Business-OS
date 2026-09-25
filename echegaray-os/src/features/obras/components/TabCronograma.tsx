@@ -60,9 +60,10 @@ interface Props {
 export function TabCronograma(props: Props) {
   const editar = useSearchParams().get('editar') === '1'
   const telefono = useAnchoVentana() < 768
-  const filas = useMemo(() => filasDelPlan(props.actividades), [props.actividades])
   const filasVista = useMemo(() => filasDelPlan(props.actividades, { soloTareas: true }), [props.actividades])
-  if (editar) return telefono ? <EditorTelefono {...props} filas={filas} /> : <Editor {...props} filas={filas} />
+  // C06/MC7 también en dos niveles (rubro y tareas): las épicas e historias caían al final como rubros
+  // sueltos «sin fechas» (auditoría 25/09). Lo que se edita son las fechas de las tareas.
+  if (editar) return telefono ? <EditorTelefono {...props} filas={filasVista} /> : <Editor {...props} filas={filasVista} />
   return telefono ? <VistaTelefono {...props} filas={filasVista} /> : <Vista {...props} filas={filasVista} />
 }
 
@@ -133,31 +134,39 @@ function Vista({ obraId, filas, dependencias, hoy, fallas, actividadAbierta }: P
   const hoyPct = ventana ? posPct(ventana, hoy) : null
   const router = useRouter()
   const [resaltada, setResaltada] = useState<number | null>(null)
-  const lienzoRef = useRef<HTMLDivElement>(null)
-  const anchoLienzo = ventana ? ventana.columnas.length * ANCHO_COLUMNA[escala] : 0
-  // LA PRIMERA VISTA: la obra que empezó hace menos de 8 semanas se ve desde su inicio (entra toda su
-  // historia); la más vieja abre con HOY a un tercio del ancho, como el 05 (y otra vez al cambiar la escala).
-  const inicioObra = filas.map((f) => f.inicio).filter((x): x is string => Boolean(x)).sort()[0] ?? null
+  // ═══ EL LIENZO DEL 05, PORTE LITERAL (dueño 25/09: «no estás mejorando nada») ═══
+  //   · columna de nombres de 270 px FUERA del desplazamiento: no se corre nunca, a ningún ancho;
+  //   · el gráfico es su propio carril horizontal, con la semana de 139 px del diseño (17 ago → 5 oct en
+  //     1.110 px), el mes de 150 y el trimestre de 180; el eje de fechas va aparte, fijo arriba al bajar,
+  //     y se corre junto con el gráfico;
+  //   · abre SIEMPRE con hoy a un tercio del ancho visible, a 1024, 1280 o 1440;
+  //   · filas de 36, barras de 6 (pista clara del plan, relleno grafito o rojo, cola rayada hasta el fin
+  //     proyectado, punteada del tiempo técnico), rubro con su línea de 2 px, hoy amarilla de 1 px;
+  //   · la leyenda queda fija al pie de la pantalla: con 95 tareas el pie del 05 quedaba abajo de todo.
+  const carrilRef = useRef<HTMLDivElement>(null)
+  const ejeRef = useRef<HTMLDivElement>(null)
+  const anchoGrafico = ventana ? ventana.columnas.length * ANCHO_COLUMNA[escala] : 0
   useEffect(() => {
-    const el = lienzoRef.current
+    const el = carrilRef.current
     if (!el || hoyPct == null) return
-    const visibles = ventana ? ((el.clientWidth - 270) / Math.max(1, el.scrollWidth - 270)) * ventana.dias : null
-    if (inicioObra && arrancaEnElInicio(inicioObra, hoy, visibles)) { el.scrollLeft = 0; return }
-    const x = 270 + (hoyPct / 100) * Math.max(anchoLienzo, el.scrollWidth - 270)
-    el.scrollLeft = Math.max(0, x - 270 - (el.clientWidth - 270) / 3)
-  }, [hoyPct, anchoLienzo, inicioObra, hoy, ventana])
-  const vis = useVentanaVisible(lienzoRef, 270, 0, anchoLienzo)
+    const ancho = Math.max(anchoGrafico, el.scrollWidth)
+    el.scrollLeft = Math.max(0, (hoyPct / 100) * ancho - el.clientWidth / 3)
+    if (ejeRef.current) ejeRef.current.scrollLeft = el.scrollLeft
+  }, [hoyPct, anchoGrafico])
+  const vis = useVentanaVisible(carrilRef, 0, 0, anchoGrafico)
   const irA = (t: { izqPct: number } | null) => {
-    const el = lienzoRef.current
+    const el = carrilRef.current
     if (!el || !t || !vis) return
-    el.scrollTo({ left: Math.max(0, (t.izqPct / 100) * vis.ancho - (el.clientWidth - 270) / 3), behavior: 'smooth' })
+    el.scrollTo({ left: Math.max(0, (t.izqPct / 100) * vis.ancho - el.clientWidth / 3), behavior: 'smooth' })
   }
+  const alCorrer = () => { if (ejeRef.current && carrilRef.current) ejeRef.current.scrollLeft = carrilRef.current.scrollLeft }
+  const alto = filas.length * ALTO_FILA
 
   return (
     <>
       {/* 05: Semana · Mes · Trimestre A LA DERECHA de la banda, como el diseño (no pegado a las solapas). */}
       <SubNavTrabajo obraId={obraId} sub="gantt" alFinal={
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '12.5px', color: C.tintaSuave }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '12.5px', color: C.tintaSuave, whiteSpace: 'nowrap' }}>
           {ESCALAS_VISTA.map((e) => (
             <button key={e} type="button" data-testid={`escala-${e}`} aria-pressed={escala === e} onClick={() => setEscala(e)} style={{
               border: 'none', background: 'none', padding: '0 0 2px', font: 'inherit', cursor: 'pointer',
@@ -171,134 +180,139 @@ function Vista({ obraId, filas, dependencias, hoy, fallas, actividadAbierta }: P
         </div>
       } />
       <Falla fallas={fallas} />
-      <div data-testid="cronograma-obra" style={{ padding: '26px 30px 32px', display: 'flex', flexDirection: 'column', gap: '22px' }}>
+      <div data-testid="cronograma-obra" style={{ padding: '26px 30px 0', display: 'flex', flexDirection: 'column' }}>
         {!ventana
-          ? <SinFechas obraId={obraId} n={filas.filter((f) => f.nivel !== 0).length} />
+          ? <div style={{ paddingBottom: '32px' }}><SinFechas obraId={obraId} n={filas.filter((f) => f.nivel !== 0).length} /></div>
           : (
-            // ═══ EL LIENZO DEL 05, CON LA ESCALA DEL DISEÑO Y LA LECTURA DE UN GANTT DE VERDAD (dueño 25/09:
-            // «este gantt no es fiel al diseño ni en ui ni en ux») ═══
-            //   · la columna mide lo del diseño (139 px la semana: 17 ago → 5 oct en 1.110 px) y la obra
-            //     larga se CORRE de costado en vez de aplastar noventa tareas en rayitas de 3 px;
-            //   · abre con HOY a la vista (la línea amarilla del 05 queda a un tercio del ancho);
-            //   · el eje de fechas y la columna de nombres quedan FIJOS al desplazarse: bajando por la
-            //     tarea 60 se sigue sabiendo qué fila es y qué semana;
-            //   · la fila se marca al pasar y abre la tarea al tocarla (el panel de la tarea en Tareas).
-            <div ref={lienzoRef} data-testid="cronograma-lienzo" style={{
-              overflow: 'auto', maxHeight: 'calc(100vh - 310px)', minHeight: '240px', position: 'relative',
-            }}>
-              <div style={{ display: 'grid', gridTemplateColumns: `270px minmax(${anchoLienzo}px,1fr)`, gridTemplateRows: `26px repeat(${filas.length}, ${ALTO_FILA}px)`, position: 'relative' }}>
-                <div style={{ gridColumn: 1, gridRow: 1, position: 'sticky', top: 0, left: 0, zIndex: 5, background: C.superficie }} />
-                <div style={{
-                  gridColumn: 2, gridRow: 1, position: 'sticky', top: 0, zIndex: 4, background: C.superficie,
-                  display: 'grid', gridTemplateColumns: `repeat(${ventana.columnas.length},1fr)`,
-                }}>
-                  {ventana.columnas.map((c) => (
-                    <div key={c.iso} style={{ fontSize: '11px', color: c.esHoy ? C.tinta : C.tenue, fontWeight: c.esHoy ? 500 : 400, whiteSpace: 'nowrap' }}>{c.rotulo}</div>
-                  ))}
+            <div data-testid="cronograma-lienzo">
+              {/* EL EJE: fijo arriba al bajar por la lista (debajo de la barra de la app, 44 px), corrido con el carril. */}
+              <div style={{ position: 'sticky', top: '44px', zIndex: 4, background: C.superficie, display: 'flex', height: '26px' }}>
+                <div style={{ width: '270px', flexShrink: 0 }} />
+                <div ref={ejeRef} style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                  <div style={{ width: `${anchoGrafico}px`, minWidth: '100%', display: 'grid', gridTemplateColumns: `repeat(${ventana.columnas.length},1fr)` }}>
+                    {ventana.columnas.map((c) => (
+                      <div key={c.iso} style={{ fontSize: '11px', color: c.esHoy ? C.tinta : C.tenue, fontWeight: c.esHoy ? 500 : 400, whiteSpace: 'nowrap' }}>{c.rotulo}</div>
+                    ))}
+                  </div>
                 </div>
+              </div>
 
-                {/* HOY, los conectores: una capa sobre la columna del gráfico, de la primera fila a la última. */}
-                <div style={{ gridColumn: 2, gridRow: `2 / ${filas.length + 2}`, position: 'relative', pointerEvents: 'none', zIndex: 2 }}>
-                  {hoyPct != null && (
-                    <div data-testid="linea-hoy" style={{ position: 'absolute', left: `${hoyPct}%`, top: 0, bottom: 0, width: '1px', background: C.marca }} />
-                  )}
-                  {conectores.conectores.map((k) => {
-                    const destino = k.clave.split('->')[1]
-                    const color = atrasadaDe.get(destino) ? C.neg : C.fantasma
-                    return (
-                      <span key={k.clave} data-testid="conector">
-                        {k.segmentos.map((sg, n) => (
-                          <div key={n} style={{
-                            position: 'absolute', left: `${sg.izqPct}%`, top: `${sg.topPx}px`,
-                            width: sg.altoPx === 0 ? `${sg.anchoPct}%` : '1px', height: sg.altoPx === 0 ? '1px' : `${sg.altoPx}px`, background: color,
-                          }} />
-                        ))}
-                        <div style={{
-                          position: 'absolute', left: `calc(${k.flecha.izqPct}% - 5px)`, top: `${k.flecha.topPx - 3}px`, width: 0, height: 0,
-                          borderTop: '3px solid transparent', borderBottom: '3px solid transparent', borderLeft: `5px solid ${color}`,
-                        }} />
-                      </span>
-                    )
+              <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                {/* LOS NOMBRES: 270 px, fuera del carril. */}
+                <div style={{ width: '270px', flexShrink: 0 }}>
+                  {filas.map((f, i) => {
+                    const tono = tonoDeFila(f, hoy)
+                    const marcada = f.nivel !== 0 && (resaltada === i || f.actividadId === actividadAbierta)
+                    const abrir = f.actividadId ? `/obras/${obraId}?vista=tareas&sub=arbol&act=${f.actividadId}` : null
+                    return f.nivel === 0
+                      ? (
+                        <div key={f.clave} style={{ height: `${ALTO_FILA}px`, display: 'flex', alignItems: 'center', fontSize: '10.5px', letterSpacing: '.08em', textTransform: 'uppercase', color: C.tenue, overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                          <span style={{ fontFamily: MONO, letterSpacing: 0, marginRight: '8px' }}>{numeroDeRubro(filas, f)}</span>{f.nombre}
+                        </div>
+                        )
+                      : (
+                        <div key={f.clave} data-testid={`fila-${f.actividadId}`} onMouseEnter={() => setResaltada(i)} onMouseLeave={() => setResaltada(null)} style={{
+                          height: `${ALTO_FILA}px`, display: 'flex', alignItems: 'center', paddingLeft: '14px', paddingRight: '12px', fontSize: '13px', minWidth: 0,
+                          background: marcada ? C.tenueFondo : C.superficie,
+                          color: tono === 'atrasada' ? C.neg : f.sinPlan ? C.tintaSuave : C.tinta,
+                          fontWeight: f.actividadId === actividadAbierta ? 600 : 400,
+                        }}>
+                          {abrir
+                            ? <Link prefetch={false} href={abrir} style={{ color: 'inherit', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{f.nombre}</Link>
+                            : <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.nombre}</span>}
+                        </div>
+                        )
                   })}
                 </div>
 
-                {filas.map((f, i) => {
-                  const t = tramos[i]
-                  const tono = tonoDeFila(f, hoy)
-                  const fila = i + 2
-                  const marcada = f.nivel !== 0 && (resaltada === i || f.actividadId === actividadAbierta)
-                  const fondo = marcada ? C.tenueFondo : C.superficie
-                  const abrir = f.actividadId ? `/obras/${obraId}?vista=tareas&sub=arbol&act=${f.actividadId}` : null
-                  const proyeccion = tono === 'atrasada' && f.finForecast && f.fin && f.finForecast > f.fin
-                    ? tramoVista(ventana, f.fin, f.finForecast) : null
-                  const detalle = [f.nombre, f.inicio && f.fin ? `${f.inicio.slice(8, 10)}/${f.inicio.slice(5, 7)} → ${f.fin.slice(8, 10)}/${f.fin.slice(5, 7)}` : 'sin fechas',
-                    proyeccion && f.finForecast ? `proyectado ${f.finForecast.slice(8, 10)}/${f.finForecast.slice(5, 7)}` : null].filter(Boolean).join(' · ')
-                  const hover = f.nivel === 0 ? {} : { onMouseEnter: () => setResaltada(i), onMouseLeave: () => setResaltada(null) }
-                  return (
-                    <Fragment key={f.clave}>
-                      {f.nivel === 0
-                        ? (
-                          <div style={{ gridColumn: 1, gridRow: fila, position: 'sticky', left: 0, zIndex: 3, background: C.superficie, display: 'flex', alignItems: 'center', fontSize: '10.5px', letterSpacing: '.08em', textTransform: 'uppercase', color: C.tenue, overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                            <span style={{ fontFamily: MONO, letterSpacing: 0, marginRight: '8px' }}>{numeroDeRubro(filas, f)}</span>{f.nombre}
+                {/* EL CARRIL: el gráfico, que se corre de costado. */}
+                <div ref={carrilRef} onScroll={alCorrer} data-testid="cronograma-carril" style={{ flex: 1, minWidth: 0, overflowX: 'auto', overflowY: 'hidden' }}>
+                  <div style={{ width: `${anchoGrafico}px`, minWidth: '100%', height: `${alto}px`, position: 'relative' }}>
+                    {hoyPct != null && (
+                      <div data-testid="linea-hoy" style={{ position: 'absolute', left: `${hoyPct}%`, top: 0, bottom: 0, width: '1px', background: C.marca, zIndex: 2, pointerEvents: 'none' }} />
+                    )}
+                    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 2 }}>
+                      {conectores.conectores.map((k) => {
+                        const destino = k.clave.split('->')[1]
+                        const color = atrasadaDe.get(destino) ? C.neg : C.lineaGantt
+                        return (
+                          <span key={k.clave} data-testid="conector">
+                            {k.segmentos.map((sg, n) => (
+                              <div key={n} style={{
+                                position: 'absolute', left: `${sg.izqPct}%`, top: `${sg.topPx}px`,
+                                width: sg.altoPx === 0 ? `${sg.anchoPct}%` : '1px', height: sg.altoPx === 0 ? '1px' : `${sg.altoPx}px`, background: color,
+                              }} />
+                            ))}
+                            <div style={{
+                              position: 'absolute', left: `calc(${k.flecha.izqPct}% - 5px)`, top: `${k.flecha.topPx - 3}px`, width: 0, height: 0,
+                              borderTop: '3px solid transparent', borderBottom: '3px solid transparent', borderLeft: `5px solid ${color}`,
+                            }} />
+                          </span>
+                        )
+                      })}
+                    </div>
+                    {filas.map((f, i) => {
+                      const t = tramos[i]
+                      const tono = tonoDeFila(f, hoy)
+                      const top = i * ALTO_FILA
+                      const marcada = f.nivel !== 0 && (resaltada === i || f.actividadId === actividadAbierta)
+                      const fondo = marcada ? C.tenueFondo : 'transparent'
+                      const abrir = f.actividadId ? `/obras/${obraId}?vista=tareas&sub=arbol&act=${f.actividadId}` : null
+                      const proyeccion = tono === 'atrasada' && f.finForecast && f.fin && f.finForecast > f.fin
+                        ? tramoVista(ventana, f.fin, f.finForecast) : null
+                      const detalle = [f.nombre, f.inicio && f.fin ? `${f.inicio.slice(8, 10)}/${f.inicio.slice(5, 7)} → ${f.fin.slice(8, 10)}/${f.fin.slice(5, 7)}` : 'sin fechas',
+                        proyeccion && f.finForecast ? `proyectado ${f.finForecast.slice(8, 10)}/${f.finForecast.slice(5, 7)}` : null].filter(Boolean).join(' · ')
+                      const extremo = proyeccion ? { izqPct: t?.izqPct ?? 0, anchoPct: proyeccion.izqPct + proyeccion.anchoPct - (t?.izqPct ?? 0) } : t
+                      const fuera = ladoFuera(extremo, vis)
+                      const fila: CSSProperties = { position: 'absolute', left: 0, right: 0, top: `${top}px`, height: `${ALTO_FILA}px` }
+                      if (f.nivel === 0) {
+                        return (
+                          <div key={f.clave} style={fila}>
+                            {t && <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '17px', width: `${t.anchoPct}%`, height: '2px', background: C.lineaGantt }} />}
+                            {fuera && <MarcaFuera lado={fuera} desde={f.inicio} hasta={f.fin} fijo={0} fondo={C.superficie} alTocar={() => irA(t)} />}
                           </div>
-                          )
-                        : (
-                          <div {...hover} data-testid={`fila-${f.actividadId}`} style={{
-                            gridColumn: 1, gridRow: fila, position: 'sticky', left: 0, zIndex: 3, background: fondo,
-                            display: 'flex', alignItems: 'center', paddingLeft: '14px', paddingRight: '12px', fontSize: '13px', minWidth: 0,
-                            color: tono === 'atrasada' ? C.neg : f.sinPlan ? C.tintaSuave : C.tinta,
-                            fontWeight: f.actividadId === actividadAbierta ? 600 : 400,
-                          }}>
-                            {abrir
-                              ? <Link prefetch={false} href={abrir} title={detalle} style={{ color: 'inherit', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{f.nombre}</Link>
-                              : <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.nombre}</span>}
+                        )
+                      }
+                      if (!t) {
+                        return (
+                          <div key={f.clave} style={{ ...fila, background: fondo, display: 'flex', alignItems: 'center', fontSize: '12px', color: C.tenue }}
+                            onMouseEnter={() => setResaltada(i)} onMouseLeave={() => setResaltada(null)}>
+                            <span style={{ position: 'sticky', left: 0, paddingLeft: '2px' }}>sin fechas</span>
                           </div>
-                          )}
-                      {f.nivel === 0
-                        ? (
-                          <div style={{ gridColumn: 2, gridRow: fila, position: 'relative' }}>
-                            {t && <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '17px', width: `${t.anchoPct}%`, height: '2px', background: C.fantasma }} />}
-                            {ladoFuera(t, vis) && <MarcaFuera lado={ladoFuera(t, vis)!} desde={f.inicio} hasta={f.fin} fijo={270} fondo={C.superficie} alTocar={() => irA(t)} />}
-                          </div>
-                          )
-                        : !t
-                          // «sin fechas» FIJO al borde izquierdo del gráfico: con el lienzo corrido a hoy quedaba fuera de la vista y la fila se leía vacía.
-                          ? <div {...hover} style={{ gridColumn: 2, gridRow: fila, background: fondo, display: 'flex', alignItems: 'center', fontSize: '12px', color: C.tenue }}>
-                            <span style={{ position: 'sticky', left: '270px', paddingLeft: '2px', background: fondo }}>sin fechas</span>
-                          </div>
-                          : (
-                            <div {...hover} data-testid={`barra-${f.actividadId}`} title={detalle}
-                              onClick={() => { if (abrir) router.push(abrir) }}
-                              style={{ gridColumn: 2, gridRow: fila, position: 'relative', background: fondo, cursor: abrir ? 'pointer' : 'default' }}>
-                              {tono === 'tecnico'
-                                ? <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '15px', width: `${t.anchoPct}%`, height: '6px', borderRadius: '3px', background: C.superficie, border: `1px dashed ${C.bordeFuerte}`, boxSizing: 'border-box' }} />
-                                : (
-                                  <>
-                                    <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '15px', width: `${t.anchoPct}%`, height: '6px', borderRadius: '3px', background: C.borde }} />
-                                    {fraccionLlena(f) > 0 && (
-                                      <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '15px', width: `${t.anchoPct * fraccionLlena(f)}%`, height: '6px', borderRadius: '3px', background: colorDeTono(tono) }} />
-                                    )}
-                                    {proyeccion && (
-                                      <div style={{
-                                        position: 'absolute', left: `${proyeccion.izqPct}%`, top: '15px', width: `${proyeccion.anchoPct}%`, height: '6px', borderRadius: '3px',
-                                        background: `repeating-linear-gradient(45deg, ${C.neg}, ${C.neg} 3px, ${C.negBorde} 3px, ${C.negBorde} 6px)`,
-                                      }} />
-                                    )}
-                                  </>
-                                  )}
-                              {ladoFuera(proyeccion ? { izqPct: t.izqPct, anchoPct: proyeccion.izqPct + proyeccion.anchoPct - t.izqPct } : t, vis) && (
-                                <MarcaFuera lado={ladoFuera(proyeccion ? { izqPct: t.izqPct, anchoPct: proyeccion.izqPct + proyeccion.anchoPct - t.izqPct } : t, vis)!}
-                                  desde={f.inicio} hasta={proyeccion ? f.finForecast : f.fin} fijo={270} fondo={fondo} alTocar={() => irA(t)} />
+                        )
+                      }
+                      return (
+                        <div key={f.clave} data-testid={`barra-${f.actividadId}`} title={detalle}
+                          onMouseEnter={() => setResaltada(i)} onMouseLeave={() => setResaltada(null)}
+                          onClick={() => { if (abrir) router.push(abrir) }}
+                          style={{ ...fila, background: fondo, cursor: abrir ? 'pointer' : 'default' }}>
+                          {tono === 'tecnico'
+                            ? <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '15px', width: `${t.anchoPct}%`, height: '6px', borderRadius: '3px', background: C.superficie, border: `1px dashed ${C.punteadoTecnico}`, boxSizing: 'border-box' }} />
+                            : (
+                              <>
+                                <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '15px', width: `${t.anchoPct}%`, height: '6px', borderRadius: '3px', background: C.borde }} />
+                                {fraccionLlena(f) > 0 && (
+                                  <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '15px', width: `${t.anchoPct * fraccionLlena(f)}%`, height: '6px', borderRadius: '3px', background: colorDeTono(tono) }} />
+                                )}
+                                {proyeccion && (
+                                  <div style={{
+                                    position: 'absolute', left: `${proyeccion.izqPct}%`, top: '15px', width: `${proyeccion.anchoPct}%`, height: '6px', borderRadius: '3px',
+                                    background: `repeating-linear-gradient(45deg, ${C.neg}, ${C.neg} 3px, ${C.rayaNeg} 3px, ${C.rayaNeg} 6px)`,
+                                  }} />
+                                )}
+                              </>
                               )}
-                            </div>
-                            )}
-                    </Fragment>
-                  )
-                })}
+                          {fuera && <MarcaFuera lado={fuera} desde={f.inicio} hasta={proyeccion ? f.finForecast : f.fin} fijo={0} fondo={marcada ? C.tenueFondo : C.superficie} alTocar={() => irA(t)} />}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
             )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '30px', fontSize: '12px', color: C.tenue }}>
+        {/* LA LEYENDA DEL 05, FIJA AL PIE: con una obra larga el pie quedaba abajo de todo y no se veía. */}
+        <div style={{ position: 'sticky', bottom: 0, zIndex: 4, background: C.superficie, display: 'flex', alignItems: 'center', gap: '30px', fontSize: '12px', color: C.tenue, padding: '14px 0 16px', flexWrap: 'wrap' }}>
           <span>Barra clara: plan · llena: ejecutado · roja: atrasada · punteada: tiempo técnico</span>
           <span style={{ marginLeft: 'auto' }} data-testid="cronograma-precedencia">{textoPrecedencia(filas, dependencias)}</span>
         </div>
@@ -330,11 +344,17 @@ function SinFechas({ obraId, n }: { obraId: string; n: number }) {
 function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { filas: FilaPlan[] }) {
   const [escala, setEscala] = useState<EscalaVista>('semana')
   const ventana = useMemo(() => ventanaVista(pares(filas), escala, hoy), [filas, escala, hoy])
-  const actos = filas.filter((f) => f.nivel !== 0)
+  // M07 LISTA LO QUE ESTÁ ANDANDO (auditoría 25/09): con las 95 tareas, la primera pantalla eran ocho
+  // terminadas en agosto, todas fuera de la ventana. Por defecto van las que no terminaron; las
+  // terminadas se piden con un toque («Ver las N terminadas»).
+  const [conTerminadas, setConTerminadas] = useState(false)
+  const todos = filas.filter((f) => f.nivel !== 0)
+  const terminadas = todos.filter((f) => (f.avancePct ?? 0) >= 100).length
+  const actos = conTerminadas ? todos : todos.filter((f) => (f.avancePct ?? 0) < 100)
   const hoyPct = ventana ? posPct(ventana, hoy) : null
   const con = new Set(dependencias.flatMap((d) => [d.origen_id, d.destino_id]))
-  const nDeps = actos.filter((f) => f.actividadId && con.has(f.actividadId)).length
-  const selladas = actos.filter((f) => f.inicioBase || f.finBase).length
+  const nDeps = todos.filter((f) => f.actividadId && con.has(f.actividadId)).length
+  const selladas = todos.filter((f) => f.inicioBase || f.finBase).length
   // M07, LA PRIMERA VISTA: la misma regla que el 05 — obra de menos de 8 semanas desde su inicio; si no,
   // HOY a un tercio del gráfico (M07 dibuja hoy al 36 %).
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -426,9 +446,15 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
             </div>
             </div>
             )}
+        {terminadas > 0 && (
+          <button type="button" data-testid="cronograma-ver-terminadas" onClick={() => setConTerminadas((x) => !x)} style={{
+            alignSelf: 'flex-start', minHeight: '44px', border: 'none', background: 'none', padding: 0, font: 'inherit', fontSize: '12.5px',
+            color: C.tintaSuave, textDecoration: 'underline', cursor: 'pointer',
+          }}>{conTerminadas ? 'Ocultar las terminadas' : `Ver las ${terminadas} terminadas`}</button>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: C.tintaSuave }}>
           <span>Línea base: <span style={{ color: C.tenue, fontStyle: 'italic' }}>{selladas > 0 ? 'copia del plan' : 'sin sellar'}</span></span>
-          <span>Dependencias: {nDeps} de {actos.length}</span>
+          <span>Dependencias: {nDeps} de {todos.length}</span>
         </div>
       </div>
     </>
@@ -496,6 +522,12 @@ function Editor({ obraId, filas, dependencias, isodows, feriados, hoy, fallas, g
   useEffect(() => () => { publicar?.(null) }, [publicar])
   const n = dias.length
   const hoyIdx = indiceDe(dias, hoy, 'inicio')
+  const carrilEditorRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = carrilEditorRef.current
+    if (!el || hoyIdx == null) return
+    el.scrollLeft = Math.max(0, 300 + hoyIdx * 52 - 300 - (el.clientWidth - 300) / 3)
+  }, [hoyIdx, n])
   const arrastre = useRef<{ id: string; extremo: 'inicio' | 'fin' | 'barra'; x0: number; ancho: number; base: FechasEditadas } | null>(null)
   const filaRef = useRef<HTMLDivElement | null>(null)
 
@@ -548,6 +580,10 @@ function Editor({ obraId, filas, dependencias, isodows, feriados, hoy, fallas, g
             <Resultado estado={ed.estado} />
           </div>
         )}
+        {/* C06: 52 px por día hábil (medido en el diseño; con 18 px las barras de un día no se podían tomar).
+            El editor se corre de costado y abre con hoy a un tercio. */}
+        <div ref={carrilEditorRef} data-testid="editor-carril" style={{ overflowX: 'auto' }}>
+        <div style={{ minWidth: `${300 + n * 52}px`, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', height: '30px', alignItems: 'center', borderBottom: `1px solid ${C.borde}` }}>
           <div style={{ ...EYEBROW, paddingLeft: '4px' }}>Ítem</div>
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(${n},1fr)`, fontFamily: MONO, fontSize: '10.5px', color: C.tenue }}>
@@ -618,6 +654,8 @@ function Editor({ obraId, filas, dependencias, isodows, feriados, hoy, fallas, g
           {hoyIdx != null && (
             <div data-testid="linea-hoy" style={{ position: 'absolute', top: 0, bottom: 0, left: `calc(300px + (100% - 300px)*${hoyIdx}/${n})`, width: '1px', background: C.marca, pointerEvents: 'none' }} />
           )}
+        </div>
+        </div>
         </div>
         <div style={{ display: 'flex', gap: '28px', fontSize: '12px', color: C.tintaSuave }}>
           <span>Los extremos se arrastran; la duración es en días hábiles de esta obra.</span>

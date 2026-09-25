@@ -72,6 +72,12 @@ export const C = {
   negFondo: '#FEF6F5',
   negBorde: '#F3DDDA',
 
+  /** EL GANTT DEL 05, medido en el .dc.html (25/09): la línea del rubro y los conectores, */
+  lineaGantt: '#C9C7C1',
+  /** la franja clara de la cola rayada (proyección más allá del plan), */
+  rayaNeg: '#EBC3BF',
+  /** y el punteado del tiempo técnico. */
+  punteadoTecnico: '#B0AEA8',
   /** El canal vacío de toda barra de progreso del zip. */
   barraCanal: '#EAE7E6',
   /** La pista de una barra de Gantt todavía sin arrancar. */

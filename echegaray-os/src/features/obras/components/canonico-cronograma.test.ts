@@ -9,20 +9,21 @@ import { join } from 'node:path'
 const fuente = (f: string) => readFileSync(join(import.meta.dirname, f), 'utf8')
 const tab = () => fuente('TabCronograma.tsx')
 
-test('la 05 es una grilla 270 px | lienzo con filas de 36 px, sobre padding 26/30/32; la semana mide 139 px y el eje y los nombres quedan fijos', () => {
+test('la 05: nombres de 270 px fuera del carril, filas de 36, la semana de 139 px, el eje fijo arriba y la leyenda fija al pie', () => {
   const src = tab()
-  assert.match(src, /gridTemplateColumns: `270px minmax\(\$\{anchoLienzo\}px,1fr\)`/)
+  assert.match(src, /width: '270px', flexShrink: 0/)
   assert.match(src, /semana: 139/)
-  assert.match(src, /position: 'sticky', top: 0, zIndex: 4/)
-  assert.match(src, /position: 'sticky', left: 0, zIndex: 3/)
+  assert.match(src, /position: 'sticky', top: '44px', zIndex: 4/)
+  assert.match(src, /position: 'sticky', bottom: 0, zIndex: 4/)
+  assert.match(src, /data-testid="cronograma-carril"/)
   assert.match(src, /const ALTO_FILA = 36/)
-  assert.match(src, /padding: '26px 30px 32px'/)
+  assert.match(src, /padding: '26px 30px 0'/) // los 32 de abajo los pone la leyenda fija (14 + 16)
 })
 
 test('las barras: clara plan (6 px, radio 3), llena ejecutado en grafito o neg, técnico punteado, rayada la proyección', () => {
   const src = tab()
   assert.match(src, /height: '6px', borderRadius: '3px', background: C\.borde/)
-  assert.match(src, /border: `1px dashed \$\{C\.bordeFuerte\}`/)
+  assert.match(src, /border: `1px dashed \$\{C\.punteadoTecnico\}`/)
   assert.match(src, /repeating-linear-gradient\(45deg, \$\{C\.neg\}/)
   assert.equal(/#[0-9A-Fa-f]{6}/.test(src), false, 'apareció un hex suelto en el JSX')
 })
@@ -44,7 +45,7 @@ test('la M07 lleva la lista 112 px | 1fr con barras de 14 px y el pie de línea 
   assert.match(src, /gridTemplateColumns: '112px 1fr', gap: '8px', height: '44px'/)
   assert.match(src, /top: '15px', height: '14px', borderRadius: '3px'/)
   assert.match(src, /Línea base: /)
-  assert.match(src, /Dependencias: \{nDeps\} de \{actos\.length\}/)
+  assert.match(src, /Dependencias: \{nDeps\} de \{todos\.length\}/)
 })
 
 test('la C06 edita en días hábiles: 300 px | repeat(n), filas de 40, barras de 16 con extremos, y sellar apagado con motivo', () => {
