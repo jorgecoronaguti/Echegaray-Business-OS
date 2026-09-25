@@ -198,7 +198,7 @@ export function bloqueProyeccion(G, {
   // La remuneración que se proyecta es la de Nómina: su neto del mes × el % en blanco, llevado a bruto
   // con los aportes. Si Nómina no publica sus rangos, vuelve la cuenta de antes (jornales × relación).
   const remDeJornales = (m) => `IFERROR((${jornalesDelMes(`DATE(${anio};${m};1)`)})*$${cm(desdeProy)}$${fRelacion};0)`
-  const remDeNomina = (m) => `IFERROR(INDEX(${NOMBRES_NOMINA_BASE.total};1;${m})*NOMINA_PCT_BLANCO/(1-${NOMBRES_NOMINA_BASE.aportes});${remDeJornales(m)})`
+  const remDeNomina = (m) => `IFERROR(INDEX(${NOMBRES_NOMINA_BASE.total};1;${m})*IFERROR(NOMINA_PCT_BLANCO_CARGAS;NOMINA_PCT_BLANCO)/(1-${NOMBRES_NOMINA_BASE.aportes});${remDeJornales(m)})`
   const fRemProyReal = G.mensual('Remuneración proyectada', (m) => (m < desdeProy
     ? `=N(${cm(m)}$${fRem})`
     : `=${remDeNomina(m)}${conSac && m === 12 ? `+N(${cm(m)}$${fSac})` : ''}`),

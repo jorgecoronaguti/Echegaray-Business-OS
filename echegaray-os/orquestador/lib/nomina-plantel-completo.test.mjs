@@ -81,7 +81,10 @@ check('lleva el bruto a neto', bm.includes('*(1-$D$5)'))
 // ANCLADA AL RÓTULO, NO A LA CELDA J36: la otra pestaña crece y la referencia por fila se corre sola.
 check('se ancla por rótulo', bm.includes('MATCH("Remuneración declarada"') && !bm.includes('J36'))
 // LOS MESES LOS CUENTA EL DATO: en septiembre son ocho, en octubre nueve, sin tocar nada.
-check('cuenta los meses con DDJJ', bm.includes('COUNT(') && bm.includes('OFFSET($D$29'))
+check('cuenta los meses con DDJJ', bm.includes('COUNT(') && bm.includes('MONTH(JORNALES_REAL_HASTA)<=COUNT('))
+// LA MISMA POBLACIÓN EN LOS DOS LADOS (25/09): el neto sale de lo pagado a TODOS (quincenas + oficina),
+// no del cuadro 1, que dejó afuera a los que se fueron y el F931 sí los declara.
+check('neto de toda la gente, no del cuadro 1', bm.includes('JORNALES_REAL_TOTAL') && bm.includes('OFICINA_PAGADO') && !bm.includes('OFFSET($D$'))
 check('separador es_AR', !bm.includes(','))
 
 check('los rótulos son los tres', [ROTULO_DESVINCULADOS, ROTULO_OFICINA, ROTULO_SAC].every((r) => typeof r === 'string' && r.length > 3))

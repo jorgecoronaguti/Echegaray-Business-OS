@@ -37,6 +37,15 @@
 // con su propia fila por mes: se referencia, no se copia.
 
 export const ROTULO_DESVINCULADOS = 'Desvinculados en el año'
+
+/**
+ * EL % EN BLANCO CON EL QUE SE PROYECTAN LAS CARGAS (25/09/2026, falla 5 de la auditoría).
+ *
+ * N5 «Proyectar cargas con» («lo medido en las DDJJ» / «el % en blanco de acá») no lo leía nadie: las
+ * cargas salían siempre del 50 % de B5. Ahora P5 (`NOMINA_PCT_BLANCO_CARGAS`) resuelve la elección y
+ * las fórmulas de cargas leen ese nombre. B5 sigue siendo el % del neto (filas «en blanco / en negro»).
+ */
+export const PCT_CARGAS = 'NOMINA_PCT_BLANCO_CARGAS'
 export const ROTULO_OFICINA = 'Oficina'
 export const ROTULO_SAC = 'SAC · aguinaldo (ley 23.041)'
 
@@ -174,7 +183,7 @@ export function bloqueDeOficina(grid = []) {
  */
 export function cargasDeUnGrupo(celdaNeto, { proporcion = 'CARGAS_PROPORCION_PRIMER_ANIO' } = {}) {
   const fcl = `(${proporcion}*$J$5+(1-${proporcion})*$K$5)`
-  const base = `N(${celdaNeto})*NOMINA_PCT_BLANCO`
+  const base = `N(${celdaNeto})*${PCT_CARGAS}`
   return `=IF(N(${celdaNeto})=0;"";${base}/(1-$D$5)*(1+$E$5+$F$5+$G$5+$I$5+${fcl}*(1+$L$5+$M$5))-${base})`
 }
 
@@ -200,7 +209,7 @@ export function formulaDelSac({ p0, p1 }, meses = [], { proporcion = 'CARGAS_PRO
   const hasta = colMes(meses[meses.length - 1])
   const mejor = `SUMPRODUCT(BYROW($${desde}$${p0}:$${hasta}$${p1};LAMBDA(r;MAX(r))))/2`
   const fcl = `(${proporcion}*$J$5+(1-${proporcion})*$K$5)`
-  return `=IFERROR(${mejor}*NOMINA_PCT_BLANCO/(1-$D$5)*(1+$E$5+$F$5+$G$5+$I$5+${fcl}*(1+$L$5+$M$5))-${mejor}*NOMINA_PCT_BLANCO;"")`
+  return `=IFERROR(${mejor}*${PCT_CARGAS}/(1-$D$5)*(1+$E$5+$F$5+$G$5+$I$5+${fcl}*(1+$L$5+$M$5))-${mejor}*${PCT_CARGAS};"")`
 }
 
 /** La suma de una columna del cuadro, desde la primera persona hasta la última fila propia. */
@@ -234,7 +243,15 @@ export function formulaBlancoMedido({ filaTotal, hoja = 'Cargas Sociales' } = {}
   const H = `'${hoja}'`
   const rot = `MATCH("Remuneración declarada";${H}!$A$1:$A$80;0)`
   const fila = `INDEX(${H}!$B$1:$M$80;${rot};0)`
-  const calculo = `SUM(${fila})*(1-$D$5)/SUM(OFFSET($D$${filaTotal};0;0;1;COUNT(${fila})))`
+  // LA MISMA POBLACIÓN EN LOS DOS LADOS (25/09/2026). El denominador era el TOTAL del cuadro 1, que
+  // desde el 24/09 ya no tiene a los desvinculados; el F931 sí los declara. Medía 63,9 % cuando la
+  // población completa da 47,1 %. Ahora el neto sale de lo pagado a TODA la gente en los mismos meses:
+  // quincenas reales por mes de cierre + oficina. `filaTotal` queda por compatibilidad de firma.
+  void filaTotal
+  const n = `COUNT(${fila})`
+  const neto = `(SUMPRODUCT(IFERROR((YEAR(JORNALES_REAL_HASTA)=2026)*(MONTH(JORNALES_REAL_HASTA)<=${n})*JORNALES_REAL_TOTAL;0))`
+    + `+SUMPRODUCT(IFERROR((ROW(OFICINA_PAGADO)-MIN(ROW(OFICINA_PAGADO))<${n})*OFICINA_PAGADO;0)))`
+  const calculo = `SUM(${fila})*(1-$D$5)/${neto}`
   // ═══ SE DIBUJA CON TEXT() Y NO CON UN FORMATO DE PORCENTAJE, Y HAY UN MOTIVO ═══
   //
   // La celda venía sin formato numérico propio y publicaba `0,3860502603`, que al lado de un 50 % no
