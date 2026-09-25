@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { bajadaAvance, cifraAvance, costoTeorico, diaHabil, rotuloHistoria, type AvancePonderado } from './avancePonderado.ts'
+import { bajadaAvance, cifraAvance, costoTeorico, diaHabil, faltaAvance, rotuloHistoria, type AvancePonderado } from './avancePonderado.ts'
 
 const base: AvancePonderado = {
   obra_id: 'x', metodo: 'costo_mo', avance_pct: 42.5, costo_mo_total: 7400000, costo_teorico: 3145000,
@@ -40,4 +40,12 @@ test('día hábil A de B, y las dos faltas con su palabra', () => {
 test('el rótulo de la historia: costo y peso en mono, o «sin costo de MO · no pesa» en warn', () => {
   assert.deepEqual(rotuloHistoria({ costo_mo: 1200000, peso: 0.162 }), { texto: '$ 1.200.000 · 16,2 %', tono: 'normal' })
   assert.deepEqual(rotuloHistoria({ costo_mo: null, peso: null }), { texto: 'sin costo de MO · no pesa', tono: 'warn' })
+})
+
+test('serie B · historias sin costo: el avance no es 0 %, es «sin peso»', () => {
+  const a: AvancePonderado = { obra_id: 'x', metodo: 'costo_mo', avance_pct: null, costo_mo_total: null, costo_teorico: null, n_historias: 4, n_historias_sin_costo: 4, pct_sin_peso: 100, n_items_medidos: 20, n_items: 35 }
+  assert.equal(cifraAvance(a), null)
+  assert.equal(faltaAvance(a), 'sin peso')
+  assert.equal(bajadaAvance(a), '4 de 4 historias sin costo de MO · no pesan')
+  assert.equal(faltaAvance(null), 'sin estructura')
 })

@@ -37,7 +37,7 @@ import { proximasDeLaObra } from '../services/resumenDelPlan'
 import { lineasPlanVsReal } from '../services/planVsReal'
 import { hrefDeVista } from '../services/vistasObra'
 import {
-  bajadaAvance, cifraAvance, type AvancePonderado, type DiasHabilesObra,
+  bajadaAvance, cifraAvance, faltaAvance, type AvancePonderado, type DiasHabilesObra,
 } from '../services/avancePonderado'
 import {
   asignadosDelResumen, frentesEnCurso, hhDelResumen, impedimentosQueFrenan, inicioRealDeRespaldo, loQueFaltaCargar, personasHoy, plazoDeObra,
@@ -232,7 +232,7 @@ export function TabResumen({
           <div style={{ display: 'flex', gap: '64px', flexWrap: 'wrap' }} data-testid="cifras-resumen">
             {/* 03.html dibuja Avance y Plazo; HH y Asignados se suman por pedido del dueño (23/09/2026)
                 con la misma fuente que la solapa Personal. El costo teórico no está en el diseño. */}
-            <CifraGrande rotulo="Avance" valor={cifraAvance(avance)} falta="sin estructura" bajada={bajadaAvance(avance)} testid="cifra-avance" />
+            <CifraGrande rotulo="Avance" valor={cifraAvance(avance)} falta={faltaAvance(avance)} bajada={bajadaAvance(avance)} testid="cifra-avance" />
             <CifraGrande rotulo="Plazo" valor={plazo.valor} falta={plazo.falta} bajada={plazo.bajada} tono={plazo.tono} testid="cifra-plazo" />
             <CifraGrande rotulo={hh.rotulo} valor={hh.valor} falta={hh.falta} bajada={hh.bajada} testid="cifra-hh" />
             <CifraGrande rotulo={asignados.rotulo} valor={asignados.valor} falta={asignados.falta} bajada={asignados.bajada} testid="cifra-asignados" />
@@ -388,7 +388,7 @@ export function TabResumen({
       <div className="flex md:hidden" style={{ padding: '16px 16px 158px', flexDirection: 'column', gap: '16px' }}
         data-testid="resumen-obra-telefono">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }} data-testid="azulejos-resumen">
-          <CifraGrande tam={24} rotulo="Avance" valor={cifraAvance(avance)} falta="sin estructura"
+          <CifraGrande tam={24} rotulo="Avance" valor={cifraAvance(avance)} falta={faltaAvance(avance)}
             bajada={avance ? `${avance.n_items_medidos} de ${avance.n_items} medidos` : 'sin estructura'} />
           <CifraGrande tam={24} rotulo="Plazo" valor={plazo.valor} falta={plazo.falta} tono={plazo.tono}
             bajada={plazo.bajada.replace('fin proyectado', 'proy.')} />

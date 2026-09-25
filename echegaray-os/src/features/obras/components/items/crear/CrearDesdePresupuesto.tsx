@@ -210,7 +210,8 @@ export function CrearDesdePresupuesto({ obraId, presupuesto, error, inicioObra, 
                     <span style={{ fontFamily: MONO, fontWeight: 400, letterSpacing: 0, textTransform: 'none', color: C.tenue }}>{g.elegidas}/{g.n}</span>
                   </div>
                   {g.partidas.map((p) => (
-                    <button key={p.id} type="button" onClick={() => !p.convertida && !p.sinCantidad && alternar(p.id)} data-testid={`partida-telefono-${p.id}`}
+                    <div key={p.id} role="button" tabIndex={0} onClick={() => !p.convertida && !p.sinCantidad && alternar(p.id)} data-testid={`partida-telefono-${p.id}`}
+                      onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !p.convertida && !p.sinCantidad) { e.preventDefault(); alternar(p.id) } }}
                       style={{ font: 'inherit', border: 'none', width: '100%', minHeight: '52px', display: 'flex', alignItems: 'center', gap: '12px', borderBottom: `1px solid ${C.bordeTarjeta}`, fontSize: '14px', background: 'none', padding: 0, textAlign: 'left', color: C.tinta, cursor: 'pointer' }}>
                       <Casilla marcada={elegidas.has(p.id)} onClick={() => alternar(p.id)} etiqueta={`Elegir ${p.descripcion}`} tam={16} apagada={p.convertida || p.sinCantidad} />
                       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -224,7 +225,7 @@ export function CrearDesdePresupuesto({ obraId, presupuesto, error, inicioObra, 
                       <span style={{ fontFamily: MONO, fontSize: '12px', color: C.tintaSuave, flexShrink: 0 }}>
                         {p.unidad && p.cantidad != null ? `${p.unidad} · ${num(p.cantidad)}` : <Falta>sin cómputo</Falta>}
                       </span>
-                    </button>
+                    </div>
                   ))}
                 </div>
               ))}

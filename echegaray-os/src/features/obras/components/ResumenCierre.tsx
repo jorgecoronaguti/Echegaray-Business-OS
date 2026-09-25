@@ -33,7 +33,7 @@ import type { Actividad, ObraPanel, ParteEjecucion, PlanVsReal, Restriccion } fr
 import { C, MONO } from './canon/tokens'
 import { Ico, P } from './canon/Ico'
 import { BloqueAside, BloqueTelefono, CifraGrande, FilaKV, SinDato, TituloBloque, TONO_TEXTO } from './TarjetaResumen'
-import { bajadaAvance, cifraAvance, type AvancePonderado } from '../services/avancePonderado'
+import { bajadaAvance, cifraAvance, faltaAvance, type AvancePonderado } from '../services/avancePonderado'
 import type { ActividadHH } from '../services/personalService'
 import { antesDeArchivar, hhDeCierre, hhPorRubro, margenDeCierre, plazoFinal } from '../services/resumenObra'
 import { fecha, fechaCorta, plataCorta } from './formato'
@@ -112,7 +112,7 @@ export function ResumenCierre({
 
   const cifras = (tam: 28 | 24) => (
     <>
-      <CifraGrande tam={tam} rotulo="Avance" valor={cifraAvance(avance)} falta="sin estructura"
+      <CifraGrande tam={tam} rotulo="Avance" valor={cifraAvance(avance)} falta={faltaAvance(avance)}
         bajada={avance ? `${avance.n_items_medidos} de ${avance.n_items} medidos` : bajadaAvance(avance)} testid="cifra-avance" />
       <CifraGrande tam={tam} rotulo="Plazo final" valor={plazo.valor} falta={plazo.falta} bajada={plazo.bajada} tono={plazo.tono} testid="cifra-plazo-final" />
       <CifraGrande tam={tam} rotulo="Costo real" testid="cifra-costo-real"

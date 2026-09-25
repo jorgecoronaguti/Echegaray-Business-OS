@@ -102,12 +102,13 @@ export const hrefSubcontratos = (obraId: string) => `/obras/${obraId}/subcontrat
  *  Lista, Tablero y Próximos se retiraron el 22/08/2026 (overhaul UX): eran representaciones del
  *  mismo dataset y sus URLs caen en el Cronograma vía `SUB_ALIAS`. */
 export const SUBS_TAREAS = [
-  // «Ítems» (diseño ERP Obras, 23/09/2026 · H1): el árbol Rubro › Sector › Ítem. El id sigue siendo `arbol`.
-  { id: 'arbol', label: 'Ítems' },
+  // «Tareas» (diseño «De cero al final», 24/09/2026: C01–C10, B01–B07 y 04 dicen «Tareas · Cronograma ·
+  // Planilla · Parte diario · Subcontratos»). Antes «Ítems» (H1, 23/09). El id sigue siendo `arbol`.
+  { id: 'arbol', label: 'Tareas' },
   { id: 'gantt', label: 'Cronograma' },
-  { id: 'parte', label: 'Parte diario' },
   // PLANILLA (diseño ERP Obras 04c, 23/09/2026): tarea × día hábil con la fracción de cada parte. Sólo escritorio.
   { id: 'planilla', label: 'Planilla' },
+  { id: 'parte', label: 'Parte diario' },
 ] as const
 export type SubTareas = (typeof SUBS_TAREAS)[number]['id']
 

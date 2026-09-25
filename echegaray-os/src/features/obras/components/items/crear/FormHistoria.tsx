@@ -117,7 +117,8 @@ export function FormHistoria({
         <div style={{ ...estiloControl(alto), display: 'flex', alignItems: 'center', gap: '6px', borderColor: C.grafito }}>
           <span style={{ color: C.tintaSuave, fontFamily: 'var(--font-plex-mono), monospace' }}>$</span>
           <input value={costo} onChange={(e) => setCosto(e.target.value)} inputMode="decimal" data-testid="historia-costo-mo" aria-label="Costo de mano de obra"
-            style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', font: 'inherit', fontFamily: 'var(--font-plex-mono), monospace', color: C.tinta }} />
+            className="focus:outline-none focus-visible:outline-none focus:ring-0"
+            style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', boxShadow: 'none', borderRadius: 0, background: 'transparent', font: 'inherit', fontFamily: 'var(--font-plex-mono), monospace', color: C.tinta }} />
           {peso != null && <span style={{ fontSize: '11.5px', color: C.tintaSuave, whiteSpace: 'nowrap' }}>→ {rotuloPeso(peso)} de la obra</span>}
         </div>
       </Campo>
