@@ -12,6 +12,9 @@ import { VIA } from '../conocimiento/metricas.mjs'
 import { cacheDeLecturas } from './cache-lecturas.mjs'
 import { enParalelo, CONCURRENCIA_POR_DEFECTO } from './paralelo.mjs'
 
+/** El modelo de la lectura de planos: `ORQ_PLANOS_MODELO` si está, si no el de COMPLEX. */
+export const modeloDePlanos = (env = process.env) => String(env.ORQ_PLANOS_MODELO ?? '').trim() || null
+
 /**
  * INTERPRETAR UNA LÁMINA. Una llamada de visión, o cero si ya estaba interpretada.
  *
@@ -19,6 +22,12 @@ import { enParalelo, CONCURRENCIA_POR_DEFECTO } from './paralelo.mjs'
  * razonamiento técnico más difícil de todo el OS, y el modelo chico —medido en la lectura de
  * comprobantes— confunde dígitos en documentos mucho más simples que éste. Ahorrar acá es cotizar
  * mal una obra entera para ahorrar centavos.
+ *
+ * `ORQ_PLANOS_MODELO` (25/09) es la escotilla para moverlo sin tocar código, igual que
+ * `ORQ_COMPROBANTES_MODELO`. Vacía = COMPLEX (opus). NO se cambió el default y NO se armó «Sonnet
+ * primero, Opus si duda»: en las 13 lecturas pagadas que hay en caché el propio Opus se califica
+ * «media» o «baja» en casi todos los elementos, así que un disparo por duda revisaría casi todo y
+ * costaría 1,6× lo de hoy. Pasar a Sonnet sin revisión ahorra hasta 40 % y no está medido.
  */
 export async function interpretarLamina(doc, bytes, { pedir = pedirTexto, refrescar = false, logger = null, cache = null } = {}) {
   const cch = cache ?? cacheDeLecturas({ logger })
@@ -35,6 +44,7 @@ export async function interpretarLamina(doc, bytes, { pedir = pedirTexto, refres
     sistema: 'Sos un ingeniero civil computando una obra. Devolvés SÓLO JSON válido, sin markdown.',
     mensajes: [{ role: 'user', content: [bloque, { type: 'text', text: PROMPT }] }],
     maxTokens: 16000,
+    modelo: modeloDePlanos(),
     agente: 'xsas-ingenieria',
     funcion: 'interpretar-plano',
     logger,
@@ -75,6 +85,7 @@ export async function interpretarRegion(recorte, { pedir = pedirTexto, refrescar
     sistema: 'Sos un ingeniero civil computando una obra. Devolvés SÓLO JSON válido, sin markdown.',
     mensajes: [{ role: 'user', content: [bloque, { type: 'text', text: `${PROMPT}\n\nESTA IMAGEN ES UNA SOLA VISTA de la lámina, recortada y ampliada: «${recorte.region?.titulo ?? ''}» (${recorte.region?.tipo ?? 'vista'}). Computá SÓLO lo que se ve acá. Si un dato está en otra vista, anotalo en "referencias_a_otras_laminas" y dejalo en null.` }] }],
     maxTokens: 12000,
+    modelo: modeloDePlanos(),
     agente: 'xsas-ingenieria',
     funcion: 'interpretar-region',
     logger,
