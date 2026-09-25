@@ -11,7 +11,7 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { armarParque, type DatosParque, type Parque } from '../logica/parque'
-import type { ObraIndice } from '../types'
+import type { Clase, ObraIndice } from '../types'
 import { PanelMover } from './PanelMover'
 import { PanelAlta } from './PanelAlta'
 import { DialogoBaja } from './DialogoBaja'
@@ -25,7 +25,7 @@ export interface Yo { id: string | null; nombre: string | null }
 type PanelAbierto =
   | { tipo: 'mover'; ids: string[]; destino?: string; origen?: string | null }
   /** `destino`: clave de `claveDestino` (u:<ubicación> · obra:<obra>) donde entra lo nuevo; sin él, el Taller. */
-  | { tipo: 'alta'; destino?: string }
+  | { tipo: 'alta'; destino?: string; clase?: Clase }
   | { tipo: 'baja'; id: string }
   | { tipo: 'reportar'; ids: string[] }
   | { tipo: 'editar'; id: string }
@@ -92,7 +92,7 @@ export function EspacioHerramientas({ datos, obras, yo, children }: {
           {children}
         </div>
         {abierto?.tipo === 'mover' && <PanelMover key={abierto.ids.join(',')} idsIniciales={abierto.ids} destinoInicial={abierto.destino} origenInicial={abierto.origen} onHecho={hecho} />}
-        {abierto?.tipo === 'alta' && <PanelAlta key={abierto.destino ?? ''} destinoInicial={abierto.destino} onHecho={hecho} />}
+        {abierto?.tipo === 'alta' && <PanelAlta key={`${abierto.destino ?? ''}|${abierto.clase ?? ''}`} destinoInicial={abierto.destino} claseInicial={abierto.clase} onHecho={hecho} />}
         {abierto?.tipo === 'reportar' && <PanelReportar ids={abierto.ids} onHecho={hecho} />}
         {abierto?.tipo === 'editar' && <PanelEditar id={abierto.id} onHecho={hecho} />}
         {abierto?.tipo === 'verificar' && <PanelVerificar key={abierto.id} id={abierto.id} onHecho={hecho} />}

@@ -169,7 +169,9 @@ export const ETIQUETA_TIPO: Record<TipoUbicacion, string> = {
   rodado: 'Rodados',
   servicio_tecnico: 'Servicios técnicos',
   tercero: 'Terceros',
+  persona: 'Personas',
 }
+/** Los lugares del parque. La persona no está: es a quién se le entregó EPP o ropa, no un lugar de trabajo. */
 export const ORDEN_TIPO: TipoUbicacion[] = ['taller', 'obra', 'rodado', 'servicio_tecnico', 'tercero']
 
 export function tipoDe(p: Parque, ubicacionId: string | null): TipoUbicacion | null {

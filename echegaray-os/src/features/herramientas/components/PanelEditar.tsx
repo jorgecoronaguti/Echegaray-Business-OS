@@ -7,6 +7,7 @@
 // El código se cambia eligiendo otras tres letras (`CampoCodigo`): el número lo pone la base, el viejo
 // queda como anterior (su QR sigue abriendo la ficha) y la etiqueta vuelve a la cola de impresión.
 
+import { CATEGORIA_PERSONAL, esPersonal } from '../logica/vestimenta'
 import { useState } from 'react'
 import { cambiarCodigoAction, cambiarFotoAction, editarActivoAction } from '../services/acciones'
 import { subirFotoDeActivo } from '../services/subida-foto'
@@ -24,6 +25,7 @@ export function PanelEditar({ id, onHecho }: { id: string; onHecho: (t: string) 
   const [v, setV] = useState(() => ({
     nombre: a?.nombre ?? '', categoria: a?.categoria ?? '', cantidad: String(a?.cantidad ?? 1), numero_serie: a?.numero_serie ?? '', patente: a?.patente ?? '',
     compra_fecha: a?.compra_fecha ?? '', compra_precio: a?.compra_precio != null ? String(a.compra_precio) : '',
+    talle: a?.talle ?? '',
   }))
   const [revisada, setRevisada] = useState(false)
   const [prefijo, setPrefijo] = useState(() => a?.codigo.slice(0, 3) ?? '')
@@ -31,7 +33,9 @@ export function PanelEditar({ id, onHecho }: { id: string; onHecho: (t: string) 
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
   if (!a) return null
-  const cats = parque.categorias ?? []
+  // EPP y ropa: la categoría la fija la clase (CHECK de la base) y el stock se carga contando, no acá.
+  const personal = esPersonal(a)
+  const cats = (parque.categorias ?? []).filter((c) => !Object.values(CATEGORIA_PERSONAL).includes(c))
 
   async function guardar() {
     if (!a) return
@@ -51,9 +55,10 @@ export function PanelEditar({ id, onHecho }: { id: string; onHecho: (t: string) 
     const r = await editarActivoAction({
       activo: a.id,
       datos: {
-        nombre: v.nombre, categoria: v.categoria,
+        nombre: v.nombre,
+        ...(personal ? { talle: v.talle } : { categoria: v.categoria }),
         // Repartido en varios lugares, la cantidad se corrige en cada lugar (ficha → «corregir»).
-        ...(enVarios ? {} : { cantidad: Math.max(1, Math.trunc(Number(v.cantidad) || 1)) }),
+        ...(enVarios || personal ? {} : { cantidad: Math.max(1, Math.trunc(Number(v.cantidad) || 1)) }),
         numero_serie: v.numero_serie, compra_fecha: v.compra_fecha,
         compra_precio: v.compra_precio.replace(',', '.'),
         ...(a.clase === 'rodado' ? { patente: v.patente } : {}),
@@ -99,6 +104,15 @@ export function PanelEditar({ id, onHecho }: { id: string; onHecho: (t: string) 
             Tiene etiqueta impresa: la nueva queda en la cola para imprimir. La vieja sigue abriendo esta ficha.
           </div>
         )}
+        {personal ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 120px', gap: 11 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <span style={eyebrow}>Categoría</span>
+              <div style={{ ...campo, display: 'flex', alignItems: 'center', color: V.tintaSuave }}>{a.categoria}</div>
+            </div>
+            {fila('talle', 'Talle', { maxLength: 12, placeholder: 'único' })}
+          </div>
+        ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 120px', gap: 11 }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <span style={eyebrow}>Categoría</span>
@@ -114,6 +128,7 @@ export function PanelEditar({ id, onHecho }: { id: string; onHecho: (t: string) 
             </div>
           ) : fila('cantidad', 'Cantidad', { type: 'number', min: 1, max: 100000, step: 1 })}
         </div>
+        )}
         {fila('numero_serie', 'Número de serie', { maxLength: 80 })}
         {a.clase === 'rodado' && fila('patente', 'Patente', { maxLength: 20 })}
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 11 }}>

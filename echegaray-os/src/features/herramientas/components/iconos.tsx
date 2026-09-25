@@ -38,6 +38,8 @@ export const IcoEscanear = (p: P) => (
   <Svg {...p}><path d="M4 8V5a1 1 0 011-1h3M16 4h3a1 1 0 011 1v3M20 16v3a1 1 0 01-1 1h-3M8 20H5a1 1 0 01-1-1v-3M8 12h8" /></Svg>
 )
 export const IcoEquipo = (p: P) => <Svg {...p}><path d="M4 18h16M6 18V9l6-4 6 4v9" /><path d="M10 18v-5h4v5" /></Svg>
+/** Una persona (a quien se le entregó EPP o ropa). */
+export const IcoPersona = (p: P) => <Svg {...p}><circle cx="12" cy="8" r="3.5" /><path d="M5 20v-1a5 5 0 015-5h4a5 5 0 015 5v1" /></Svg>
 export const IcoCheck = (p: P) => <Svg {...p}><path d="M4 12l5 5L20 6" /></Svg>
 
 /** El icono y su color por tipo de lugar. Taller = el taller Y el almacén: un solo lugar (dueño, 21/09). */
@@ -48,13 +50,14 @@ export function IconoLugar({ tipo, tam = 14 }: { tipo: TipoUbicacion | 'sin_ubic
     case 'rodado': return <IcoRodado tam={tam} color={V.tinta} />
     case 'servicio_tecnico': return <IcoServicio tam={tam} color={V.apagado} />
     case 'tercero': return <IcoTercero tam={tam} color={V.apagado} />
+    case 'persona': return <IcoPersona tam={tam} color={V.tintaSuave} />
     default: return <IcoAviso tam={tam} color={V.warn} />
   }
 }
 
 /** El color de la barra de «Dónde está el parque». `D01`. */
 export const COLOR_BARRA: Record<TipoUbicacion, string> = {
-  taller: V.warn, obra: V.pos, rodado: V.tinta, servicio_tecnico: V.apagado, tercero: '#C8C7C1',
+  taller: V.warn, obra: V.pos, rodado: V.tinta, servicio_tecnico: V.apagado, tercero: '#C8C7C1', persona: V.tintaSuave,
 }
 
 export { AZUL }

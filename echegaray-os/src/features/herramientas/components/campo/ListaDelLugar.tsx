@@ -29,8 +29,9 @@ export function ListaDelLugar({ items, en }: { items: ItemLugar[]; en: string })
   const [sel, setSel] = useState<string[]>([])
   const [f, setF] = useState<Filtro>('todo')
   const prob = items.filter((x) => x.problema).length
-  const equipos = items.filter((x) => x.clase !== 'herramienta').length
-  const lista = f === 'problema' ? items.filter((x) => x.problema) : f === 'equipos' ? items.filter((x) => x.clase !== 'herramienta') : items
+  const esMaquina = (x: ItemLugar) => x.clase === 'equipo' || x.clase === 'rodado'
+  const equipos = items.filter(esMaquina).length
+  const lista = f === 'problema' ? items.filter((x) => x.problema) : f === 'equipos' ? items.filter(esMaquina) : items
   const chips: { v: Filtro; t: string; warn?: boolean; n: number }[] = [
     { v: 'todo', t: 'Todo', n: items.length },
     ...(prob ? [{ v: 'problema' as const, t: 'Con problema', warn: true, n: prob }] : []),

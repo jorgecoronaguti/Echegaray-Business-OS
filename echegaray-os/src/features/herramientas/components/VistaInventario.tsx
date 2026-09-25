@@ -11,11 +11,12 @@ import { cantidadVisible, candidatos, categorias, cuentaPorEstado, filtrar, quer
 import { ETIQUETA_ESTADO_CORTA, MOTIVO_BAJA, TONO_ESTADO, quienLaMovio, rotuloLugares, rotuloUbicacion, textoVisto, vistoEn, rotuloRodado, type Parque } from '../logica/parque'
 import { ACCION } from '../logica/acciones-lugar'
 import { editarActivoAction } from '../services/acciones'
-import type { Activo } from '../types'
+import type { Activo, Clase } from '../types'
 import { useHerramientas } from './Espacio'
 import { Ficha } from './Ficha'
 import { COLOR_TONO, MONO, SUPERFICIE, V, eyebrow, vacio, botonSecundario } from './estilo'
 import { diaMes } from './formato'
+import { CATEGORIA_PERSONAL, esPersonal } from '../logica/vestimenta'
 
 const COLS = '28px minmax(0,1.5fr) 120px 150px minmax(0,1fr) 130px 70px'
 
@@ -47,11 +48,14 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
   const lista = useMemo(() => filtrar(parque, filtros), [parque, filtros])
   const cats = categorias(parque.activos)
   const abierto = activo ? parque.activos.find((x) => x.codigo === activo) ?? null : null
-  const lugares = parque.ubicaciones.filter((u) => !u.archivada && u.tipo !== 'obra' && u.tipo !== 'rodado')
+  // Las personas (EPP y ropa entregados) van juntas en «Entregado a personas»: cada una se ve en su legajo.
+  const lugares = parque.ubicaciones.filter((u) => !u.archivada && u.tipo !== 'obra' && u.tipo !== 'rodado' && u.tipo !== 'persona')
   const obrasConAlgo = parque.ubicaciones.filter((u) => u.tipo === 'obra' && (parque.existEn.get(u.id)?.length ?? 0) > 0)
   // Mirando un lugar concreto, los lotes salen de ahí al moverlos.
   const origenMirado = filtros.ubicacion && /^[0-9a-f-]{36}$/.test(filtros.ubicacion) ? filtros.ubicacion : null
   const rodados = parque.activos.filter((a) => a.clase === 'rodado' && a.estado !== 'baja')
+  const personalMirado = filtros.clase === 'epp' || filtros.clase === 'ropa'
+  const taller = parque.ubicaciones.find((u) => u.tipo === 'taller' && !u.archivada) ?? null
 
   const toggle = (id: string) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
   const vivosSel = sel.filter((id) => parque.activoPorId.get(id)?.estado !== 'baja')
@@ -78,12 +82,21 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
         <div data-testid="cabecera-inventario" style={{ position: 'sticky', top: 121, zIndex: 10, background: '#FFFFFF', display: 'flex', flexDirection: 'column', gap: 18, paddingTop: 22 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 20, fontSize: '13px', flexWrap: 'wrap' }}>
           <div style={{ marginLeft: 'auto' }}>
+            {/* EPP y ropa: el stock nace en 0 y se carga contando el Taller (dueño, 25/09: «permitiendo hacer
+                recuento de stock posterior»). La entrega a una persona se hace desde su legajo. */}
+            {personalMirado && taller ? (
+              <button type="button" onClick={() => abrir({ tipo: 'recuento', ubicacionId: taller.id })} data-testid="contar-taller"
+                style={{ height: 28, fontSize: '12.5px', padding: '0 12px', borderRadius: 6, background: V.marca, color: V.grafito, fontWeight: 600, marginRight: 8 }}>
+                Recuento del Taller
+              </button>
+            ) : (
             <button type="button" onClick={() => abrir({ tipo: 'mover', ids: sel.filter((id) => parque.activoPorId.get(id)?.estado !== 'baja'), origen: origenMirado })} data-testid="armar-envio"
               style={{ height: 28, fontSize: '12.5px', padding: '0 12px', borderRadius: 6, background: V.marca, color: V.grafito, fontWeight: 600, marginRight: 8 }}>
               Armar envío a obra
             </button>
-            <button type="button" onClick={() => abrir({ tipo: 'alta' })} style={{ ...botonSecundario, height: 28, fontSize: '12.5px', padding: '0 10px' }} data-testid="nuevo-activo">
-              {ACCION.alta}
+            )}
+            <button type="button" onClick={() => abrir({ tipo: 'alta', ...(personalMirado ? { clase: filtros.clase as Clase } : {}) })} style={{ ...botonSecundario, height: 28, fontSize: '12.5px', padding: '0 10px' }} data-testid="nuevo-activo">
+              {personalMirado ? 'Dar de alta una prenda' : ACCION.alta}
             </button>
           </div>
         </div>
@@ -117,6 +130,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
               <option value="tipo:servicio_tecnico">Servicio técnico</option>
               <option value="tipo:rodado">Arriba de un rodado</option>
               <option value="tipo:tercero">Terceros</option>
+              <option value="tipo:persona">Entregado a personas</option>
               {lugares.map((u) => <option key={u.id} value={u.id}>{rotuloUbicacion(parque, u.id)}</option>)}
               {obrasConAlgo.map((u) => <option key={u.id} value={u.id}>{rotuloUbicacion(parque, u.id)}</option>)}
               {rodados.map((r) => { const u = parque.ubicaciones.find((x) => x.activo_id === r.id); return u ? <option key={u.id} value={u.id}>{rotuloRodado(r)}</option> : null })}
@@ -151,7 +165,8 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
               <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                 <select autoFocus value={cambiandoCat} onChange={(e) => setCambiandoCat(e.target.value)} data-testid="categoria-masiva" style={{ height: 26, border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, padding: '0 8px', fontSize: '12.5px' }}>
                   <option value="">Elegí la categoría</option>
-                  {(parque.categorias ?? []).map((c) => <option key={c} value={c}>{c}</option>)}
+                  {/* EPP y Ropa de trabajo van atadas a su clase (CHECK de la base): no se ponen a mano. */}
+                  {(parque.categorias ?? []).filter((c) => !Object.values(CATEGORIA_PERSONAL).includes(c)).map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
                 <button type="button" onClick={cambiarCategoria} style={{ fontWeight: 500 }}>Aplicar</button>
                 <button type="button" onClick={() => setCambiandoCat(null)} style={{ color: V.apagado }}>cancelar</button>
@@ -209,7 +224,7 @@ export function VistaInventario({ filtros, activo }: { filtros: Filtros; activo:
  * recargar la página.
  */
 const TIPO_TOTAL: Record<string, string> = {
-  taller: 'Taller', obra: 'Obras', rodado: 'En rodados', servicio_tecnico: 'Servicio técnico', tercero: 'Terceros', sin: 'Sin ubicación',
+  taller: 'Taller', obra: 'Obras', rodado: 'En rodados', servicio_tecnico: 'Servicio técnico', tercero: 'Terceros', persona: 'Entregado a personas', sin_stock: 'Sin stock', sin: 'Sin ubicación',
 }
 
 /** Los totales de lo que se ve, arriba del listado: cambian con cada filtro y con cada letra del buscador. */
@@ -222,7 +237,7 @@ function TotalesInventario({ t, activo, onFiltrar }: { t: ReturnType<typeof tota
           Un segundo clic lo saca. */}
       {t.porTipo.flatMap((x): { clave: string; rotulo: string; activos: number; tipo: string; u: string }[] => (x.tipo === 'obra'
         ? t.porObra.map((o) => ({ clave: o.u, rotulo: o.rotulo, activos: o.activos, tipo: 'obra' as const, u: o.u }))
-        : [{ clave: x.tipo, rotulo: TIPO_TOTAL[x.tipo], activos: x.activos, tipo: x.tipo, u: x.tipo === 'sin' ? 'sin' : `tipo:${x.tipo}` }])).map((x) => {
+        : [{ clave: x.tipo, rotulo: TIPO_TOTAL[x.tipo], activos: x.activos, tipo: x.tipo, u: x.tipo === 'sin' || x.tipo === 'sin_stock' ? 'sin' : `tipo:${x.tipo}` }])).map((x) => {
         const u = x.u
         const on = activo === u
         return (
@@ -319,6 +334,9 @@ function Fila({ parque, a, filtroUbicacion, marcada, abierta, onMarcar, onAbrir 
   const quien = quienLaMovio(parque, a.id)
   const visto = vistoEn(parque, a.id)
   const tono = COLOR_TONO[TONO_ESTADO[a.estado]]
+  // EPP y ropa: el stock se ve siempre (también 0) y en 0 dice «sin stock», no «sin ubicación cargada».
+  const personal = esPersonal(a)
+  const sinStock = personal && !a.ubicacion_id && !baja
   return (
     <div role="row" data-testid="fila-activo" data-codigo={a.codigo} onClick={onAbrir} className="cursor-pointer hover:bg-surface-quiet"
       style={{ display: 'grid', gridTemplateColumns: COLS, gap: 16, minHeight: 52, alignItems: 'center', borderBottom: `1px solid ${V.linea}`, fontSize: '13.5px', background: abierta ? SUPERFICIE : undefined, opacity: baja ? 0.6 : 1, padding: '4px 0' }}>
@@ -326,7 +344,7 @@ function Fila({ parque, a, filtroUbicacion, marcada, abierta, onMarcar, onAbrir 
         <input type="checkbox" aria-label={`Seleccionar ${a.nombre}`} checked={marcada} onChange={onMarcar} style={{ width: 14, height: 14, accentColor: V.grafito }} />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <div style={{ fontWeight: 500 }}>{a.nombre}{a.patente && <span style={{ fontFamily: MONO, fontSize: '11px', color: V.tenue, fontWeight: 400 }}> {a.patente}</span>}{a.cantidad > 1 && <span data-testid="cantidad-lote" style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 4, background: V.hover, fontSize: '11.5px', color: V.tintaSuave, fontWeight: 500 }}>× {cant}{cant !== a.cantidad ? ` de ${a.cantidad}` : ''}</span>}</div>
+        <div style={{ fontWeight: 500 }}>{a.nombre}{a.patente && <span style={{ fontFamily: MONO, fontSize: '11px', color: V.tenue, fontWeight: 400 }}> {a.patente}</span>}{a.talle && <span data-testid="talle" style={{ marginLeft: 6, fontWeight: 400, color: V.tintaSuave }}>talle {a.talle}</span>}{(a.cantidad > 1 || personal) && <span data-testid="cantidad-lote" style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 4, background: V.hover, fontSize: '11.5px', color: V.tintaSuave, fontWeight: 500 }}>× {cant}{cant !== a.cantidad ? ` de ${a.cantidad}` : ''}</span>}</div>
         <div style={{ fontFamily: MONO, fontSize: '11.5px', color: V.tenue }}>
           {a.codigo}{a.alta_desde_obra ? ' · alta desde obra' : ''}
         </div>
@@ -336,8 +354,8 @@ function Fila({ parque, a, filtroUbicacion, marcada, abierta, onMarcar, onAbrir 
         {!baja && a.estado !== 'fuera_servicio' && <span style={{ width: 7, height: 7, borderRadius: '50%', background: tono, flexShrink: 0 }} />}
         {baja ? `Baja · ${MOTIVO_BAJA[a.baja_motivo ?? ''] ?? ''} ${a.baja_en ? diaMes(a.baja_en) : ''}` : ETIQUETA_ESTADO_CORTA[a.estado]}
       </div>
-      <div style={a.ubicacion_id ? { color: V.tintaSuave } : vacio}>
-        {baja && a.ubicacion_id ? `última: ${rotuloUbicacion(parque, a.ubicacion_id)}` : lugares}
+      <div style={a.ubicacion_id ? { color: V.tintaSuave } : sinStock ? { color: V.apagado } : vacio}>
+        {baja && a.ubicacion_id ? `última: ${rotuloUbicacion(parque, a.ubicacion_id)}` : sinStock ? 'sin stock' : lugares}
       </div>
       <div style={quien ? { color: V.apagado } : vacio}>{quien ?? 'sin registro'}</div>
       <div style={{ textAlign: 'right', ...(visto ? { color: V.apagado } : vacio) }}>{textoVisto(visto)}</div>

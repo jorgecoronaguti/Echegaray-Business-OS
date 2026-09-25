@@ -32,7 +32,7 @@ export type FiltroLugar = 'todo' | 'problema' | 'viejas'
 
 const COLS = '24px minmax(0,1.6fr) 130px 160px 110px 140px'
 const SINGULAR: Record<TipoUbicacion, string> = {
-  taller: 'Taller', obra: 'Obra', rodado: 'Rodado', servicio_tecnico: 'Servicio técnico', tercero: 'Tercero',
+  taller: 'Taller', obra: 'Obra', rodado: 'Rodado', servicio_tecnico: 'Servicio técnico', tercero: 'Tercero', persona: 'Persona',
 }
 
 export function DetalleLugar({ ubicacionId, filtro }: { ubicacionId: string; filtro: FiltroLugar }) {

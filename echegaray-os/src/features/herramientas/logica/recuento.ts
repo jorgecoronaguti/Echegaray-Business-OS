@@ -8,7 +8,8 @@
 // Una línea contada en 0 nunca se ajusta: dejar un lugar en 0 es una baja o un movimiento (regla de
 // `ajustar_existencia`, 22/09). Queda en el recuento como evidencia y la pantalla lo dice antes de cerrar.
 
-import { activosEn, cantidadEn, type Parque } from './parque.ts'
+import { activosEn, cantidadEn, vivo, type Parque } from './parque.ts'
+import { compararTalle, esPersonal, rotuloConTalle } from './vestimenta.ts'
 
 /** La migración que crea `activo_recuento`; la pantalla la nombra cuando falta. */
 export const MIGRACION_RECUENTO = '20260923T1700'
@@ -182,9 +183,20 @@ export interface ItemRecuento {
   esperado: number
 }
 
-/** Lo que hay que contar en un lugar: cada activo vivo con unidades ahí y cuántas se esperan. Rodados primero. */
+/**
+ * Lo que hay que contar en un lugar: cada activo vivo con unidades ahí y cuántas se esperan. Rodados primero.
+ *
+ * EN EL TALLER, ADEMÁS, TODO EL EPP Y LA ROPA (20260925T1100), aunque la base los tenga en 0: la base de
+ * ropa nace sin stock y el dueño la carga contando (25/09). Es la misma regla que `abrir_recuento`: si
+ * las dos listas no coinciden, la pantalla mostraría líneas que la base no tiene.
+ */
 export function itemsDeRecuento(p: Parque, ubicacionId: string): ItemRecuento[] {
-  return activosEn(p, ubicacionId)
-    .sort((a, b) => Number(b.clase === 'rodado') - Number(a.clase === 'rodado') || a.nombre.localeCompare(b.nombre, 'es'))
-    .map((a) => ({ id: a.id, codigo: a.codigo, nombre: a.nombre, clase: a.clase, patente: a.patente, esperado: cantidadEn(p, a.id, ubicacionId) }))
+  const aca = activosEn(p, ubicacionId)
+  const esTaller = p.ubicacionPorId.get(ubicacionId)?.tipo === 'taller'
+  const presentes = new Set(aca.map((a) => a.id))
+  const enCero = esTaller ? p.activos.filter((a) => vivo(a) && esPersonal(a) && !presentes.has(a.id)) : []
+  return [...aca, ...enCero]
+    .sort((a, b) => Number(b.clase === 'rodado') - Number(a.clase === 'rodado') || Number(esPersonal(a)) - Number(esPersonal(b))
+      || a.nombre.localeCompare(b.nombre, 'es') || compararTalle(a.talle, b.talle))
+    .map((a) => ({ id: a.id, codigo: a.codigo, nombre: rotuloConTalle(a), clase: a.clase, patente: a.patente, esperado: cantidadEn(p, a.id, ubicacionId) }))
 }

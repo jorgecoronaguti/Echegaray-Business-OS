@@ -7,6 +7,7 @@
 // herramientas con problema que siguen en obra y reparaciones externas sin novedad hace 30 días.
 
 import type { Activo, TipoUbicacion } from '../types.ts'
+import { esPersonal } from './vestimenta.ts'
 import { ORDEN_TIPO, activosEn, cantidadEn, conProblema, diasDesde, lugaresDe, rotuloUbicacion, tipoDe, vivo, type Parque } from './parque.ts'
 
 export interface FilaParque {
@@ -33,7 +34,8 @@ export function dondeEstaElParque(p: Parque): FilaParque[] {
     }
     return { tipo, activos, lugares: lugares.size }
   })
-  const sin = vivos.filter((a) => lugaresDe(p, a.id).length === 0).length
+  // EPP o ropa en 0 no está «sin ubicación»: no hay (se cuenta con el recuento del Taller).
+  const sin = vivos.filter((a) => lugaresDe(p, a.id).length === 0 && !esPersonal(a)).length
   return [...filas.filter((f) => f.activos > 0), ...(sin > 0 ? [{ tipo: 'sin_ubicacion' as const, activos: sin, lugares: 0 }] : [])]
 }
 
@@ -59,7 +61,8 @@ export interface GrupoRepetido {
 export function nombresRepetidos(activos: Activo[]): GrupoRepetido[] {
   const grupos = new Map<string, Activo[]>()
   for (const a of activos.filter(vivo)) {
-    const k = nombreComparable(a.nombre)
+    // «Camisa de trabajo» S y M no son la misma camisa cargada dos veces: el talle es parte del nombre.
+    const k = nombreComparable(a.nombre) + (a.talle ? `|${a.talle.toUpperCase()}` : '')
     if (!k) continue
     const l = grupos.get(k)
     if (l) l.push(a)
@@ -138,7 +141,7 @@ export function decisiones(p: Parque, hoy: Date = new Date()): Decision[] {
     })
   }
 
-  const sinUbic = vivos.filter((a) => !a.ubicacion_id)
+  const sinUbic = vivos.filter((a) => !a.ubicacion_id && !esPersonal(a))
   if (sinUbic.length) {
     out.push({
       clave: 'sin_ubicacion',
@@ -201,7 +204,8 @@ export function cifras(p: Parque, hoy: Date = new Date()): Cifras {
   const vivos = p.activos.filter(vivo)
   let sinVer90 = 0
   let nunca = 0
-  for (const a of vivos) {
+  // «Visto» es para lo que se usa en obra y se pierde; una camisa en el Taller no se «ve» con un movimiento.
+  for (const a of vivos.filter((x) => !esPersonal(x))) {
     const m = p.movsDe.get(a.id)?.[0]?.fecha_hora
     const i = p.incDe.get(a.id)?.[0]?.creado_en
     const v = m && i ? (m > i ? m : i) : (m ?? i ?? null)

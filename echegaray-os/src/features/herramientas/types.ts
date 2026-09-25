@@ -3,9 +3,11 @@
 // Cliente ≠ Obra ≠ Ubicación ≠ Estado. La obra sale del índice (`obra_canonica`), la ubicación es
 // dónde está el activo HOY y el estado es si sirve. Toda escritura va por las funciones de la base.
 
-export type Clase = 'herramienta' | 'equipo' | 'rodado'
+/** EPP y ropa de trabajo (20260925T1100): van por talle, pueden estar en 0 y se entregan a una persona. */
+export type Clase = 'herramienta' | 'equipo' | 'rodado' | 'epp' | 'ropa'
 export type EstadoActivo = 'operativo' | 'requiere_mantenimiento' | 'fuera_servicio' | 'reparacion_externa' | 'baja'
-export type TipoUbicacion = 'taller' | 'obra' | 'rodado' | 'servicio_tecnico' | 'tercero'
+/** 'persona' (20260925T1100): lo que se le entregó de EPP y ropa a alguien del legajo. */
+export type TipoUbicacion = 'taller' | 'obra' | 'rodado' | 'servicio_tecnico' | 'tercero' | 'persona'
 export type TipoIncidencia = 'fallando' | 'no_anda' | 'no_encontrada'
 export type MotivoBaja = 'robada' | 'perdida' | 'descartada' | 'vendida'
 
@@ -17,6 +19,8 @@ export interface Activo {
   /** 1 = una unidad; más = un lote («Balde de albañil · lote», 8). Migración 20260922T1000. */
   cantidad: number
   categoria: string | null
+  /** Talle del EPP o la ropa (20260925T1100). null = único, o no es EPP/ropa. */
+  talle?: string | null
   patente: string | null
   numero_serie: string | null
   foto_url: string | null
@@ -47,6 +51,8 @@ export interface Ubicacion {
   archivada: boolean
   /** El proveedor que ES este lugar (servicio técnico o tercero, 20260923T2400): el nombre sale de ahí. */
   proveedor_id?: string | null
+  /** La persona que ES este lugar (tipo persona, 20260925T1100). */
+  persona_id?: string | null
 }
 
 /** Lo que Herramientas necesita de un proveedor para nombrarlo como lugar y ofrecerlo como servicio técnico. */
@@ -108,8 +114,8 @@ export interface ObraIndice {
 }
 
 export const COLUMNAS_ACTIVO =
-  'id, codigo, clase, nombre, cantidad, categoria, patente, numero_serie, foto_url, compra_fecha, compra_precio, ubicacion_id, estado, estado_nota, estado_desde, estado_por, estado_asumido, baja_motivo, baja_detalle, baja_en, alta_desde_obra, etiqueta_impresa_en, legado_id, creado_en'
-export const COLUMNAS_UBICACION = 'id, tipo, nombre, obra_id, activo_id, contacto, archivada, proveedor_id'
+  'id, codigo, clase, nombre, cantidad, categoria, talle, patente, numero_serie, foto_url, compra_fecha, compra_precio, ubicacion_id, estado, estado_nota, estado_desde, estado_por, estado_asumido, baja_motivo, baja_detalle, baja_en, alta_desde_obra, etiqueta_impresa_en, legado_id, creado_en'
+export const COLUMNAS_UBICACION = 'id, tipo, nombre, obra_id, activo_id, contacto, archivada, proveedor_id, persona_id'
 export const COLUMNAS_PROVEEDOR_LUGAR = 'id, nombre, cuit, rubro, rubro_deducido'
 export const COLUMNAS_MOVIMIENTO =
   'id, activo_id, origen_id, destino_id, fecha_hora, usuario_id, usuario_texto, lote_id, nota, corrige_a, importado, cantidad'

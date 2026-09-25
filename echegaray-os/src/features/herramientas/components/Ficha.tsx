@@ -70,10 +70,10 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
     <div data-testid="ficha-activo" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-          <div style={{ fontSize: '17px', fontWeight: 600, letterSpacing: '-.01em', color: a.estado === 'baja' ? V.tenue : V.tinta }}>{a.nombre}</div>
+          <div style={{ fontSize: '17px', fontWeight: 600, letterSpacing: '-.01em', color: a.estado === 'baja' ? V.tenue : V.tinta }}>{a.nombre}{a.talle && <span style={{ fontWeight: 400, color: V.tintaSuave }}> · talle {a.talle}</span>}</div>
           <div style={{ fontSize: '12.5px', color: V.apagado }}>
             <span style={{ fontFamily: MONO }}>{a.codigo}</span>
-            {a.patente ? ` · ${a.patente}` : ''} · {a.categoria ?? <span style={vacio}>sin categoría</span>} · {a.ubicacion_id ? `en ${a.estado === 'baja' ? rotuloUbicacion(parque, a.ubicacion_id) : rotuloLugares(parque, a)}` : <span style={vacio}>sin ubicación cargada</span>}
+            {a.patente ? ` · ${a.patente}` : ''} · {a.categoria ?? <span style={vacio}>sin categoría</span>} · {a.ubicacion_id ? `en ${a.estado === 'baja' ? rotuloUbicacion(parque, a.ubicacion_id) : rotuloLugares(parque, a)}` : (a.clase === 'epp' || a.clase === 'ropa') ? 'sin stock' : <span style={vacio}>sin ubicación cargada</span>}
           </div>
         </div>
         {/* «Editar datos» y la × van en la misma fila, una al lado de la otra: con la × flotando

@@ -26,6 +26,7 @@ const uuid = z.string().uuid()
 function traducir(e: { code?: string; message: string }): string {
   if (faltaMigracion(e)) return `El módulo espera la migración ${MIGRACION}: todavía no se puede escribir.`
   if (e.code === '42501') return 'Hace falta entrar con tu usuario para registrar esto.'
+  if (e.code === '23505' && /vestimenta_talle/.test(e.message)) return 'Esa prenda ya existe en ese talle.'
   if (e.code === '23505') return 'Ese código (o esa patente) ya existe en el inventario.'
   if (e.code === '23514') return 'El código son tres letras y un número, por ejemplo AMO-007.'
   return e.message
@@ -230,15 +231,18 @@ export async function darDeBajaAction(entrada: z.input<typeof bajaSchema>): Prom
 }
 
 const altaSchema = z.object({
-  clase: z.enum(['herramienta', 'equipo', 'rodado']),
+  clase: z.enum(['herramienta', 'equipo', 'rodado', 'epp', 'ropa']),
   nombre: z.string().trim().min(2, 'El nombre es obligatorio').max(160),
+  /** Talle del EPP o la ropa (20260925T1100); la base lo ignora en las otras clases. */
+  talle: z.string().trim().max(12).optional(),
   categoria: z.string().trim().max(60).optional(),
   destino: destinoSchema.optional(),
   // Tres letras (el número lo pone la base), un código completo AMO-007 libre, o el de una etiqueta
   // escaneada. La base decide si sirve y, si no, dice qué espera (`_codigo_propuesto`).
   codigo: z.string().trim().max(40).optional(),
   patente: z.string().trim().max(20).optional(),
-  cantidad: z.coerce.number().int('La cantidad es un número entero').min(1, 'La cantidad es 1 o más').max(100000).default(1),
+  // EPP y ropa aceptan 0 (se cuentan después); para lo demás la base exige 1 o más.
+  cantidad: z.coerce.number().int('La cantidad es un número entero').min(0, 'La cantidad no puede ser negativa').max(100000).default(1),
   desdeObra: z.boolean(),
 })
 
@@ -251,6 +255,7 @@ export async function darDeAltaAction(form: FormData): Promise<Resultado<{ id: s
     destino: form.get('destino') || undefined,
     codigo: form.get('codigo') || undefined,
     patente: form.get('patente') || undefined,
+    talle: form.get('talle') || undefined,
     cantidad: form.get('cantidad') || undefined,
     desdeObra: form.get('desde_obra') === '1',
   })
@@ -268,6 +273,7 @@ export async function darDeAltaAction(form: FormData): Promise<Resultado<{ id: s
     p_clase: p.data.clase, p_nombre: p.data.nombre, p_ubicacion: ubicacion, p_categoria: p.data.categoria || null,
     p_codigo: codigo, p_patente: p.data.clase === 'rodado' ? p.data.patente || null : null,
     p_alta_desde_obra: p.data.desdeObra, p_foto_url: foto.dato, p_cantidad: p.data.cantidad,
+    ...(p.data.talle ? { p_talle: p.data.talle } : {}),
   })
   if (!r.ok) return r
   try {
@@ -287,6 +293,8 @@ const editarSchema = z.object({
     cantidad: z.number().int().min(1).max(100000).optional(),
     numero_serie: z.string().trim().max(80).optional(),
     patente: z.string().trim().max(20).optional(),
+    /** EPP y ropa: el talle ('' = único). */
+    talle: z.string().trim().max(12).optional(),
     compra_fecha: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/).optional(),
     compra_precio: z.string().regex(/^(\d+(\.\d{1,2})?)?$/).optional(),
     revisada: z.literal(true).optional(),

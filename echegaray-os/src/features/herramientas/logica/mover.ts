@@ -137,7 +137,8 @@ export type OpcionDestino =
  */
 export function destinos(p: Parque, obrasActivas: ObraIndice[]): OpcionDestino[] {
   const fijos = p.ubicaciones
-    .filter((u): u is Ubicacion & { tipo: 'taller' | 'rodado' | 'servicio_tecnico' | 'tercero' } => u.tipo !== 'obra' && !u.archivada)
+    // A una persona se le ENTREGA EPP o ropa desde su legajo: no es un destino para mover herramientas.
+    .filter((u): u is Ubicacion & { tipo: 'taller' | 'rodado' | 'servicio_tecnico' | 'tercero' } => u.tipo !== 'obra' && u.tipo !== 'persona' && !u.archivada)
     .filter((u) => u.tipo !== 'rodado' || (u.activo_id && p.activoPorId.get(u.activo_id)?.estado !== 'baja'))
     .map((u) => ({ tipo: 'ubicacion' as const, ubicacionId: u.id, rotulo: rotuloUbicacion(p, u.id), grupo: u.tipo }))
   // Orden del dueño (22/09): «q primero salgan las obras y dp los rodados». Después, Taller y el resto.

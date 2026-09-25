@@ -1,6 +1,6 @@
 'use client'
 
-// LA BARRA DE CLASES — Herramientas · Maquinarias · Rodados · Todo, SIEMPRE a la vista.
+// LA BARRA DE CLASES — Herramientas · Maquinarias · Rodados · EPP · Ropa de trabajo · Todo, SIEMPRE a la vista.
 //
 // ═══ POR QUÉ VIVE ACÁ Y NO ADENTRO DEL INVENTARIO (dueño, 22/09/2026) ═══
 //
@@ -28,6 +28,10 @@ const CLASES: { v: FiltroClase; t: string; ico?: React.ReactNode }[] = [
   { v: 'herramienta', t: 'Herramientas', ico: <IcoTaller tam={13} /> },
   { v: 'equipo', t: 'Maquinarias', ico: <IcoEquipo tam={13} /> },
   { v: 'rodado', t: 'Rodados', ico: <IcoRodado tam={13} /> },
+  // EPP y ropa de trabajo (dueño, 25/09/2026): salieron de «Todo» a su propia solapa. Van por talle y
+  // se entregan a una persona desde su legajo.
+  { v: 'epp', t: 'EPP' },
+  { v: 'ropa', t: 'Ropa de trabajo' },
   { v: 'todo', t: 'Todo' },
 ]
 

@@ -79,7 +79,8 @@ export function colaDeEtiquetas(activos: Activo[], pedidos: string[] = [], unida
     out.push({ activo: a, motivo: 'pedida', codigo: a.codigo })
   }
   const pendientes = activos
-    .filter((a) => a.estado !== 'baja' && !a.etiqueta_impresa_en && !vistos.has(a.id))
+    // El EPP y la ropa se entregan a una persona, no se rastrean por QR: a la cola sólo entran si se piden.
+    .filter((a) => a.estado !== 'baja' && !a.etiqueta_impresa_en && !vistos.has(a.id) && a.clase !== 'epp' && a.clase !== 'ropa')
     .sort((x, y) => Number(y.alta_desde_obra) - Number(x.alta_desde_obra) || x.codigo.localeCompare(y.codigo))
   for (const a of pendientes) out.push({ activo: a, motivo: a.alta_desde_obra ? 'alta_desde_obra' : 'nunca_impresa', codigo: a.codigo })
   return out

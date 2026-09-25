@@ -17,6 +17,7 @@ import { ACCION } from '../logica/acciones-lugar'
 import { darDeAltaAction } from '../services/acciones'
 import { subirFotoDeActivo } from '../services/subida-foto'
 import type { Clase } from '../types'
+import { CATEGORIA_PERSONAL, SERIES_TALLE, normalizarTalle, type ClasePersonal } from '../logica/vestimenta'
 import { useHerramientas } from './Espacio'
 import { CampoCodigo } from './CampoCodigo'
 import { Bloque, ErrorPanel, PanelLateral } from './PanelLateral'
@@ -24,16 +25,23 @@ import { botonPrimarioGrande, botonSecundarioGrande, campo, eyebrow, V } from '.
 
 const CLASES: { v: Clase; t: string }[] = [
   { v: 'herramienta', t: 'Herramienta' }, { v: 'equipo', t: 'Maquinaria' }, { v: 'rodado', t: 'Rodado' },
+  { v: 'epp', t: 'EPP' }, { v: 'ropa', t: 'Ropa de trabajo' },
 ]
 
-export function PanelAlta({ destinoInicial, onHecho }: { destinoInicial?: string; onHecho: (t: string) => void }) {
+const esPersonalClase = (c: Clase): c is ClasePersonal => c === 'epp' || c === 'ropa'
+
+export function PanelAlta({ destinoInicial, claseInicial, onHecho }: { destinoInicial?: string; claseInicial?: Clase; onHecho: (t: string) => void }) {
   const { parque, obras, cerrar, refrescar } = useHerramientas()
   const opciones = useMemo(() => destinos(parque, obras), [parque, obras])
   const taller = opciones.find((o) => o.grupo === 'taller')
   // La lista cerrada de la base (`activo_categoria`): no se tipea una categoría nueva.
   const cats = parque.categorias ?? []
   const [categoria, setCategoria] = useState('')
-  const [clase, setClase] = useState<Clase>('herramienta')
+  const [clase, setClase] = useState<Clase>(claseInicial ?? 'herramienta')
+  // EPP y ropa (20260925T1100): un ítem por talle. Se elige una serie y se sacan los que no van.
+  const personal = esPersonalClase(clase)
+  const [talles, setTalles] = useState<string[]>(claseInicial === 'ropa' ? SERIES_TALLE[0].talles : [])
+  const [talleSuelto, setTalleSuelto] = useState('')
   const [destino, setDestino] = useState(destinoInicial ?? (taller ? claveDestino(taller) : ''))
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
@@ -50,8 +58,8 @@ export function PanelAlta({ destinoInicial, onHecho }: { destinoInicial?: string
     fd.set('clase', clase)
     fd.set('destino', destino)
     fd.set('codigo', letras)
-    fd.set('categoria', clase === 'rodado' ? 'Rodados' : categoria)
-    if (clase !== 'rodado' && !categoria) return setError('Elegí la categoría')
+    fd.set('categoria', clase === 'rodado' ? 'Rodados' : personal ? CATEGORIA_PERSONAL[clase as ClasePersonal] : categoria)
+    if (clase !== 'rodado' && !personal && !categoria) return setError('Elegí la categoría')
     setEnviando(true)
     setError(null)
     // La foto va del navegador al bucket; a la acción llega sólo la ruta (`logica/foto.ts`).
@@ -62,10 +70,25 @@ export function PanelAlta({ destinoInicial, onHecho }: { destinoInicial?: string
       if (!s.ok) { setEnviando(false); return setError(s.error) }
       fd.set('foto', s.ruta)
     }
-    const r = await darDeAltaAction(fd)
+    // Un alta por talle; sin talles, una sola (talle único). Si un talle falla, los anteriores ya quedaron.
+    const tandas = personal && talles.length ? talles : [null]
+    const codigos: string[] = []
+    let r: Awaited<ReturnType<typeof darDeAltaAction>> | null = null
+    for (const t of tandas) {
+      if (t) fd.set('talle', t)
+      else fd.delete('talle')
+      r = await darDeAltaAction(fd)
+      if (!r.ok) break
+      codigos.push(t ? `${r.dato.codigo} (${t})` : r.dato.codigo)
+    }
     setEnviando(false)
-    if (!r.ok) return setError(r.error)
+    if (!r) return
+    if (!r.ok) return setError(codigos.length ? `Quedaron ${codigos.join(', ')}. ${r.error}` : r.error)
     const nombre = String(fd.get('nombre') ?? '')
+    if (codigos.length > 1 && !otra) {
+      onHecho(`${nombre}: ${codigos.length} talles dados de alta (${codigos.join(', ')}). El stock se carga con el recuento del Taller.`)
+      return
+    }
     if (otra) {
       // Se conservan clase, categoría y destino: la tanda típica es «cinco amoladoras al Taller».
       const n = form.current.elements.namedItem('nombre') as HTMLInputElement | null
@@ -75,11 +98,13 @@ export function PanelAlta({ destinoInicial, onHecho }: { destinoInicial?: string
       setPrefijo({ v: '', aMano: false })
       if (f) f.value = ''
       n?.focus()
-      setUltimo(`${r.dato.codigo} · ${nombre} quedó dado de alta.`)
+      setUltimo(`${codigos.join(', ')} · ${nombre} quedó dado de alta.`)
       refrescar()
       return
     }
-    onHecho(`${r.dato.codigo} · ${nombre} quedó dado de alta y está en la cola de etiquetas.`)
+    onHecho(personal
+      ? `${r.dato.codigo} · ${nombre} quedó dado de alta. El stock se carga con el recuento del Taller.`
+      : `${r.dato.codigo} · ${nombre} quedó dado de alta y está en la cola de etiquetas.`)
   }
 
   return (
@@ -123,8 +148,8 @@ export function PanelAlta({ destinoInicial, onHecho }: { destinoInicial?: string
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 11 }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <span style={eyebrow}>Categoría</span>
-              {clase === 'rodado' ? (
-                <div style={{ ...campo, display: 'flex', alignItems: 'center', color: V.tintaSuave }}>Rodados</div>
+              {clase === 'rodado' || personal ? (
+                <div style={{ ...campo, display: 'flex', alignItems: 'center', color: V.tintaSuave }}>{personal ? CATEGORIA_PERSONAL[clase as ClasePersonal] : 'Rodados'}</div>
               ) : (
                 <select value={categoria} onChange={(e) => setCategoria(e.target.value)} style={{ ...campo, borderColor: categoria ? V.lineaFuerte : V.grafito }} data-testid="alta-categoria">
                   <option value="">Elegí la categoría</option>
@@ -140,11 +165,39 @@ export function PanelAlta({ destinoInicial, onHecho }: { destinoInicial?: string
               </select>
             </label>
           </div>
+          {personal && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="alta-talles">
+              <span style={eyebrow}>Talles · uno por ítem</span>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {SERIES_TALLE.map((x) => (
+                  <button key={x.clave} type="button" onClick={() => setTalles(x.talles)} style={{ fontSize: '12.5px', color: V.apagado, textDecoration: 'underline', textUnderlineOffset: 3 }}>{x.rotulo}</button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                {talles.length === 0 && <span style={{ fontSize: '13px', color: V.tintaSuave }}>Talle único</span>}
+                {talles.map((t) => (
+                  <button key={t} type="button" onClick={() => setTalles(talles.filter((x) => x !== t))} title="Sacar este talle"
+                    style={{ height: 28, padding: '0 8px', borderRadius: 6, border: `1px solid ${V.lineaFuerte}`, fontSize: '12.5px', color: V.tinta, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    {t}<span aria-hidden style={{ color: V.tenue }}>×</span>
+                  </button>
+                ))}
+                <input value={talleSuelto} onChange={(e) => setTalleSuelto(e.target.value)} placeholder="otro" aria-label="Agregar un talle" maxLength={12}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return
+                    e.preventDefault()
+                    const t = normalizarTalle(talleSuelto)
+                    if (t && !talles.includes(t)) setTalles([...talles, t])
+                    setTalleSuelto('')
+                  }}
+                  style={{ height: 28, width: 64, padding: '0 8px', border: `1px solid ${V.linea}`, borderRadius: 6, fontSize: '12.5px' }} />
+              </div>
+            </div>
+          )}
           {clase !== 'rodado' && (
             <label style={{ display: 'flex', flexDirection: 'column', gap: 8, width: 140 }}>
               <span style={eyebrow}>Cantidad</span>
-              <input name="cantidad" type="number" min={1} max={100000} step={1} defaultValue={1} style={campo} data-testid="alta-cantidad" />
-              <span style={{ fontSize: '12px', color: V.tenue }}>Más de 1 = un lote.</span>
+              <input key={personal ? 'p' : 'h'} name="cantidad" type="number" min={personal ? 0 : 1} max={100000} step={1} defaultValue={personal ? 0 : 1} style={campo} data-testid="alta-cantidad" />
+              <span style={{ fontSize: '12px', color: V.tenue }}>{personal ? '0 = se cuenta después, en el recuento del Taller.' : 'Más de 1 = un lote.'}</span>
             </label>
           )}
           {clase === 'rodado' && (

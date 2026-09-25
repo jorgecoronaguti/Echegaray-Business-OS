@@ -5,6 +5,7 @@ import { nombresRepetidos } from './resumen.ts'
 import { lugaresDe, rotuloLugares, rotuloUbicacion, vivo, type Parque } from './parque.ts'
 import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
 import { FORMATO_CODIGO, normalizarCodigo } from './codigo.ts'
+import { compararTalle, esPersonal } from './vestimenta.ts'
 
 export type FiltroClase = Clase | 'todo'
 export type FiltroEstado = 'todos' | EstadoActivo
@@ -20,7 +21,7 @@ export interface Filtros {
   especial: FiltroEspecial
 }
 
-const CLASES: FiltroClase[] = ['herramienta', 'equipo', 'rodado', 'todo']
+const CLASES: FiltroClase[] = ['herramienta', 'equipo', 'rodado', 'epp', 'ropa', 'todo']
 const ESTADOS: FiltroEstado[] = ['todos', 'operativo', 'requiere_mantenimiento', 'fuera_servicio', 'reparacion_externa', 'baja']
 const ESPECIALES = ['asumido', 'alta_desde_obra', 'repetidos', 'sin_etiqueta'] as const
 
@@ -81,14 +82,17 @@ export function candidatos(p: Parque, f: Filtros): Activo[] {
   const codigo = f.q ? normalizarCodigo(f.q) : null
   const repetidos = f.especial === 'repetidos' ? new Set(nombresRepetidos(p.activos).flatMap((g) => g.activos.map((a) => a.id))) : null
   return p.activos.filter((a) => {
-    if (f.clase !== 'todo' && a.clase !== f.clase) return false
+    // «Todo» es el parque (herramientas, maquinarias y rodados): el EPP y la ropa salieron de ahí a su
+    // propia solapa (dueño, 25/09: «saques los epp de todo»). Buscando, sí aparecen: el buscador de la
+    // barra y el del teléfono buscan en todo lo que hay.
+    if (f.clase === 'todo' ? esPersonal(a) && !f.q : a.clase !== f.clase) return false
     if (!pasaUbicacion(p, a, f.ubicacion)) return false
     if (f.categoria && (f.categoria === 'sin' ? a.categoria : a.categoria !== f.categoria)) return false
     if (f.especial === 'asumido' && !(a.estado_asumido && vivo(a))) return false
     if (f.especial === 'alta_desde_obra' && !(a.alta_desde_obra && vivo(a))) return false
     if (f.especial === 'sin_etiqueta' && !(!a.etiqueta_impresa_en && vivo(a))) return false
     if (repetidos && !repetidos.has(a.id)) return false
-    if (f.q && a.codigo !== codigo && !contieneEnAlguno([a.nombre, a.codigo, a.categoria, a.patente, a.numero_serie, rotuloLugares(p, a)], f.q)) return false
+    if (f.q && a.codigo !== codigo && !contieneEnAlguno([a.nombre, a.codigo, a.categoria, a.talle, a.patente, a.numero_serie, rotuloLugares(p, a)], f.q)) return false
     return true
   })
 }
@@ -99,7 +103,7 @@ export function filtrar(p: Parque, f: Filtros): Activo[] {
     // «Todos» es el inventario vivo: una baja sólo aparece en su solapa. Mezclarla atenuada al final
     // hizo creer al dueño (22/09) que la baja «no funcionó» porque la seguía viendo en la lista.
     .filter((a) => (f.estado === 'todos' ? a.estado !== 'baja' : a.estado === f.estado))
-    .sort((x, y) => Number(x.estado === 'baja') - Number(y.estado === 'baja') || x.nombre.localeCompare(y.nombre, 'es') || x.codigo.localeCompare(y.codigo))
+    .sort((x, y) => Number(x.estado === 'baja') - Number(y.estado === 'baja') || x.nombre.localeCompare(y.nombre, 'es') || compararTalle(x.talle, y.talle) || x.codigo.localeCompare(y.codigo))
 }
 
 export function cuentaPorEstado(lista: Activo[]): Record<FiltroEstado, number> {
@@ -170,7 +174,8 @@ export interface Totales {
   activos: number
   /** Los lotes cuentan su `cantidad`: «Balde de albañil · lote» con cantidad 8 son 8. */
   unidades: number
-  porTipo: { tipo: 'taller' | 'obra' | 'rodado' | 'servicio_tecnico' | 'tercero' | 'sin'; activos: number }[]
+  /** `sin_stock`: EPP o ropa en 0 (no es «sin ubicación»: nadie lo perdió, no hay). */
+  porTipo: { tipo: 'taller' | 'obra' | 'rodado' | 'servicio_tecnico' | 'tercero' | 'persona' | 'sin' | 'sin_stock'; activos: number }[]
   /**
    * Cada obra por separado (dueño, 22/09: «me sirve el filtro por obra»): `u` es el valor del filtro
    * de ubicación, el mismo que el desplegable.
@@ -191,7 +196,8 @@ export function totales(p: Parque, lista: Activo[], ubicacion: string | null = n
     const lugares = lugaresDeActivo(p, a).filter((e) => !ubicacion || ubicacion === 'sin' || lugarPasa(p, e.ubicacion_id, ubicacion))
     if (!lugares.length) {
       unidades += a.cantidad ?? 1
-      c.set('sin', (c.get('sin') ?? 0) + 1)
+      const t = esPersonal(a) && !a.cantidad ? 'sin_stock' : 'sin'
+      c.set(t, (c.get(t) ?? 0) + 1)
       continue
     }
     const tipos = new Set<Totales['porTipo'][number]['tipo']>()
@@ -203,7 +209,7 @@ export function totales(p: Parque, lista: Activo[], ubicacion: string | null = n
     }
     for (const t of tipos) c.set(t, (c.get(t) ?? 0) + 1)
   }
-  const orden: Totales['porTipo'][number]['tipo'][] = ['taller', 'obra', 'rodado', 'servicio_tecnico', 'tercero', 'sin']
+  const orden: Totales['porTipo'][number]['tipo'][] = ['taller', 'obra', 'rodado', 'servicio_tecnico', 'tercero', 'persona', 'sin_stock', 'sin']
   const porObra = [...obras].map(([u, n]) => ({ u, rotulo: rotuloUbicacion(p, u), activos: n })).sort((a, b) => b.activos - a.activos || a.rotulo.localeCompare(b.rotulo, 'es'))
   return { activos: lista.length, unidades, porTipo: orden.filter((t) => c.has(t)).map((t) => ({ tipo: t, activos: c.get(t)! })), porObra }
 }
