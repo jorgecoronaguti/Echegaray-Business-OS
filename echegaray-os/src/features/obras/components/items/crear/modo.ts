@@ -17,5 +17,6 @@ export interface ModoEstructura {
 }
 
 export function esModoEstructura(m: ModoEstructura): boolean {
-  return m.crear != null || (m.panel != null && m.act != null) || m.sel
+  // B07: la ponderación de la obra entera no mira un ítem (`?panel=ponderacion` sin `act`).
+  return m.crear != null || m.panel === 'ponderacion' || (m.panel != null && m.act != null) || m.sel
 }

@@ -4,7 +4,8 @@
 //
 //   escritorio  la barra grafito de 44 (radio 8, `padding:0 12px`, 12,5 blanco): «6 seleccionadas» 600 y los
 //               siete botones de 30 con borde blanco al 25 % —Mover a… · Cuadrilla · Correr fechas · Método ·
-//               Ponderación · Responsable · Archivar— y «✕ Esc» al 70 % a la derecha
+//               Responsable · Archivar— y «✕ Esc» al 70 % a la derecha. Serie B: sin «Ponderación» (el peso
+//               lo deriva el costo de MO; nadie tipea un %)
 //               debajo del árbol, la caja de la acción (`margin-top:16px; padding:14px 16px`, borde line, radio
 //               8, 13px): el rótulo 600, los chips de 32, la aclaración muted y «Aplicar a N» a la derecha
 //   teléfono    «6 seleccionadas» 14/600 + «✕ Salir» 12,5 muted; el panel grafito fijo abajo (`padding:12px
@@ -22,13 +23,12 @@ import type { Persona } from '../../../types'
 import type { AccionFormulario } from '@/shared/components/ui/FormAccion'
 import { nombreDePersona } from '../../../../../shared/personas/nombre.ts'
 
-export type AccionMasiva = 'mover' | 'cuadrilla' | 'fechas' | 'metodo' | 'ponderacion' | 'responsable' | 'archivar'
+export type AccionMasiva = 'mover' | 'cuadrilla' | 'fechas' | 'metodo' | 'responsable' | 'archivar'
 const ACCIONES: { id: AccionMasiva; label: string; d: ReactNode }[] = [
   { id: 'mover', label: 'Mover a…', d: P.flecha },
   { id: 'cuadrilla', label: 'Cuadrilla', d: P.cuadrilla },
   { id: 'fechas', label: 'Correr fechas', d: P.fecha },
   { id: 'metodo', label: 'Método', d: P.paso },
-  { id: 'ponderacion', label: 'Ponderación', d: P.avance },
   { id: 'responsable', label: 'Responsable', d: P.persona },
   { id: 'archivar', label: 'Archivar', d: P.cerrar },
 ]
@@ -104,7 +104,6 @@ export function CajaMasiva({ ids, datos, aplicar, alAplicado, accion, setAccion 
     if (accion === 'cuadrilla') form.set('cuadrilla_id', valor)
     if (accion === 'fechas') form.set('dias', String(dias))
     if (accion === 'metodo') form.set('metodo', valor || 'cantidad')
-    if (accion === 'ponderacion') form.set('ponderacion', valor)
     if (accion === 'responsable') form.set('responsable_id', valor)
     const r = await aplicar(form)
     setPendiente(false)
@@ -114,7 +113,6 @@ export function CajaMasiva({ ids, datos, aplicar, alAplicado, accion, setAccion 
   const rotulo = ACCIONES.find((a) => a.id === accion)?.label ?? ''
   const aclaracion = accion === 'fechas' ? `${n} ${n === 1 ? 'tarea' : 'tareas'} · sólo días hábiles · la línea base no se toca`
     : accion === 'metodo' ? 'cantidad exige unidad y cantidad objetivo · los contenedores quedan afuera'
-      : accion === 'ponderacion' ? 'el mismo peso para cada una · vacío = sin cargar'
         : accion === 'mover' ? 'adentro del contenedor elegido, al final'
           : accion === 'archivar' ? 'salen del árbol y de los promedios; la historia queda' : null
 
@@ -132,7 +130,6 @@ export function CajaMasiva({ ids, datos, aplicar, alAplicado, accion, setAccion 
       case 'responsable': return sel(datos.personas.map((p) => ({ id: p.id, nombre: nombreDePersona(p) })), 'quitar el responsable', 'masiva-responsable')
       case 'fechas': return <div style={{ display: 'flex', gap: '6px' }}>{CORRIMIENTOS.map((c) => <Chip key={c.id} activo={dias === c.dias} onClick={() => setDias(c.dias)} alto={alto === 44 ? 36 : 32} testid={`correr-${c.id}`}>{c.label}</Chip>)}</div>
       case 'metodo': return <div style={{ display: 'flex', gap: '6px' }}>{(['cantidad', 'pasos', 'manual'] as const).map((m) => <Chip key={m} activo={(valor || 'cantidad') === m} onClick={() => setValor(m)} alto={alto === 44 ? 36 : 32} testid={`metodo-masivo-${m}`}>{m === 'cantidad' ? 'Cantidad' : m === 'pasos' ? 'Pasos' : 'Manual'}</Chip>)}</div>
-      case 'ponderacion': return <input value={valor} onChange={(e) => setValor(e.target.value)} inputMode="decimal" placeholder="%" aria-label="Ponderación" data-testid="masiva-ponderacion" style={{ ...estiloControl(alto, true), width: '90px', color: claro ? C.superficie : C.tinta, background: 'transparent', borderColor: claro ? C.sobreGrafitoBorde : C.bordeFuerte }} />
       default: return null
     }
   }

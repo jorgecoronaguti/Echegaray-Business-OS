@@ -30,9 +30,11 @@ import { editarCampoDeTarea } from '../services/actionsAvance'
 import { cambiarRelacion, dividirEnFrentes, quitarRelacion } from '../services/actionsEstructura'
 import { vincularActividadAEstandar } from '../services/actionsVinculacion'
 import { getDiasHabilesDeObra } from '../services/obrasService'
-import { getEstadosDeSubtareas, getPonderaciones, getPresupuestoDeLaObra, hayLineaBase } from '../services/estructuraService'
+import { getEstadosDeSubtareas, getMetodoPonderacion, getPonderaciones, getPresupuestoDeLaObra, hayLineaBase } from '../services/estructuraService'
+import { getActivosElegibles, getInsumosDeObra, getPlantillas, getRubrosDeOtrasObras } from '../services/insumosService'
+import { agregarInsumo, alternarSubtarea, crearItem, elegirMetodoPonderacion, guardarCostoMO, pedirInsumo, quitarInsumo } from '../services/actionsItem'
 import {
-  aplicarAccionMasiva, convertirPartidasDesdeLaObra, crearEstructuraDesdePlanilla, crearItem, guardarPonderacion, guardarSubtareas,
+  aplicarAccionMasiva, convertirPartidasDesdeLaObra, crearEstructuraDesdePlanilla, guardarPonderacion, guardarSubtareas,
 } from '../services/actionsCrear'
 import type { ModoEstructura } from './items/crear/Estructura'
 import { nombreDePersona } from '../../../shared/personas/nombre.ts'
@@ -90,10 +92,18 @@ export async function WorkspaceTareas({
   const arbol = arbolRes.data
   // C01/C02/C04: el presupuesto vinculado se lee sólo cuando se va a dibujar (la obra vacía, la conversión
   // o la ficha nueva); C08: los estados de las subtareas sólo con ese panel abierto.
-  const [presupuestoRes, subtareaEstados] = await Promise.all([
+  // Serie B: el método de la obra y los insumos por tarea (chips del árbol) van siempre con el árbol; el
+  // parque de Herramientas y las plantillas sólo cuando se puede agregar una tarea o un insumo.
+  const conFormularios = modo.crear === 'mano' || modo.panel === 'subtareas'
+  const [presupuestoRes, subtareaEstados, metodo, insumosRes, activosRes, plantillas, rubrosPropuestos] = await Promise.all([
     arbol.length === 0 || modo.crear === 'presupuesto' || modo.crear === 'mano'
       ? getPresupuestoDeLaObra(supabase, obraId) : Promise.resolve(null),
     modo.panel === 'subtareas' && modo.act ? getEstadosDeSubtareas(supabase, obraId, modo.act) : Promise.resolve({}),
+    getMetodoPonderacion(supabase, obraId),
+    getInsumosDeObra(supabase, obraId),
+    conFormularios ? getActivosElegibles(supabase) : Promise.resolve(null),
+    modo.crear === 'mano' ? getPlantillas(supabase) : Promise.resolve([]),
+    modo.crear === 'mano' && arbol.length === 0 ? getRubrosDeOtrasObras(supabase, obraId) : Promise.resolve([]),
   ])
 
   // La segunda tanda necesita los ids del árbol; junta el material del panel y los papeles.
@@ -157,6 +167,12 @@ export async function WorkspaceTareas({
         personas: personasRes.data ?? [],
         avancesPor: Object.fromEntries(Object.entries(panel.historial).map(([k, v]) => [k, v.length])),
         pasosPor: Object.fromEntries(Object.entries(panel.pasos).map(([k, v]) => [k, v.length])),
+        metodo,
+        insumosPor: insumosRes.data ?? {},
+        activos: activosRes?.data ?? [],
+        plantillas,
+        rubrosPropuestos,
+        historiasVista: historiasRes.data ?? [],
       }}
       accionesEstructura={{
         convertir: convertirPartidasDesdeLaObra.bind(null, obraId),
@@ -166,6 +182,12 @@ export async function WorkspaceTareas({
         dividir: dividirEnFrentes.bind(null, obraId),
         guardarSubtareas: guardarSubtareas.bind(null, obraId),
         aplicarMasiva: aplicarAccionMasiva.bind(null, obraId),
+        guardarCosto: guardarCostoMO.bind(null, obraId),
+        elegirMetodo: elegirMetodoPonderacion.bind(null, obraId),
+        agregarInsumo: agregarInsumo.bind(null, obraId),
+        quitarInsumo: quitarInsumo.bind(null, obraId),
+        pedirInsumo: pedirInsumo.bind(null, obraId),
+        alternarSubtarea: alternarSubtarea.bind(null, obraId),
       }}
       panelDeObra={panel}
       relaciones={relacionesRes.data ?? []}

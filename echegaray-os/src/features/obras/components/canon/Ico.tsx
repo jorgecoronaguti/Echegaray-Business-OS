@@ -136,6 +136,8 @@ export const P = {
   costo: <path d="M12 3v18M16 7H9.75a2.5 2.5 0 000 5h4.5a2.5 2.5 0 010 5H8" />,
   /** Por ciento: el toggle «Fracción %» de la planilla (04c). */
   porcentaje: <><path d="M19 5L5 19" /><circle cx="7" cy="7" r="2.5" /><circle cx="17" cy="17" r="2.5" /></>,
+  /** Insumo activo de Herramientas (serie B: «⚲ 3 insumos», «Mini excavadora · en la obra»). */
+  herramienta: <><circle cx="8" cy="16" r="3.2" /><path d="M10.3 13.7L19 5M16 8l2.5 2.5M14 10l1.8 1.8" /></>,
 } as const
 
 /** Los tres puntos de «más acciones» (01, 02, 03). Es `fill`, no `stroke`: va aparte del resto. */

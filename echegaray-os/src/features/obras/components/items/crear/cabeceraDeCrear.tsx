@@ -25,12 +25,19 @@ export function cifrasDeCrear(modo: ModoEstructura, vacia: boolean): CifraEnLine
   if (modo.crear === 'planilla') {
     return [viva('Filas pegadas', 'filas', 'ninguna'), viva('Ítems reconocidos', 'reconocidos', 'ninguno'), viva('Avisos', 'avisos', 'ninguno')]
   }
+  // B07: la obra entera. C05 (a mano, sobre un contenedor) conserva sus cifras.
+  if (modo.panel === 'ponderacion' && !modo.act) {
+    return [viva('Ítems', 'items_niveles', '0'), viva('Costo MO', 'costo_mo_entero', 'sin cargar', true), viva('Sin costo', 'sin_costo', 'ninguna historia')]
+  }
   if (modo.panel === 'ponderacion') {
     return [viva('Ponderación', 'ponderacion', 'cierra en 100 %'), viva('Costo teórico', 'costo_teorico', 'sin cargar'), viva('HH plan', 'hh_plan', 'sin cargar')]
   }
   if (modo.sel) return [viva('Ítems', 'items', 'ninguno'), viva('Seleccionadas', 'seleccionadas', 'ninguna')]
+  // B06: dentro de la tarea.
+  if (modo.panel === 'subtareas') return [viva('Ítems', 'items_tareas', '0'), viva('Costo MO', 'costo_mo', 'sin cargar', true), viva('Insumos', 'insumos', 'ninguno')]
+  // B01–B05: armar a mano.
   if (modo.crear === 'mano') {
-    return [viva('Ítems', 'items', 'ninguno'), viva('Ponderación', 'ponderacion', 'cierra en 100 %'), viva('Sin método', 'sin_metodo', '0'), viva('Sin fechas', 'sin_fechas', '0')]
+    return [viva('Ítems', 'items', '0'), viva('Historias', 'historias', 'ninguna', true), viva('Costo MO', 'costo_mo', 'sin cargar', true), viva('Ponderación', 'metodo', 'por costo de MO')]
   }
   if (modo.panel) return [viva('Ítems', 'items', 'ninguno')]
   if (vacia) {

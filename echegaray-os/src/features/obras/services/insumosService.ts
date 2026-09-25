@@ -23,10 +23,10 @@ export async function getInsumosDeObra(supabase: SupabaseClient, obraId: string)
   if (error) return { data: null, error: error.message }
   const filas = (data ?? []) as { id: string; actividad_id: string; tipo: string; recurso_nombre: string; cantidad_plan: unknown; unidad: string | null; activo_id: string | null; pedido_id: string | null }[]
   const idsActivo = [...new Set(filas.map((f) => f.activo_id).filter((x): x is string => !!x))]
-  const activos = new Map<string, { nombre: string; ubicacion_id: string | null }>()
+  const activos = new Map<string, { nombre: string; codigo: string | null; ubicacion_id: string | null }>()
   if (idsActivo.length) {
-    const { data: a } = await supabase.from('activo').select('id, nombre, ubicacion_id').in('id', idsActivo)
-    for (const x of (a ?? []) as { id: string; nombre: string; ubicacion_id: string | null }[]) activos.set(x.id, x)
+    const { data: a } = await supabase.from('activo').select('id, nombre, codigo, ubicacion_id').in('id', idsActivo)
+    for (const x of (a ?? []) as { id: string; nombre: string; codigo: string | null; ubicacion_id: string | null }[]) activos.set(x.id, x)
   }
   const lug = await lugares(supabase, [...new Set([...activos.values()].map((a) => a.ubicacion_id).filter((x): x is string => !!x))])
   const salida: Record<string, InsumoTarea[]> = {}
@@ -35,7 +35,7 @@ export async function getInsumosDeObra(supabase: SupabaseClient, obraId: string)
     ;(salida[f.actividad_id] ??= []).push({
       id: f.id, actividad_id: f.actividad_id, tipo: f.tipo === 'activo' ? 'activo' : 'material',
       nombre: a?.nombre ?? f.recurso_nombre, cantidad: num(f.cantidad_plan), unidad: f.unidad,
-      activo_id: f.activo_id, pedido_id: f.pedido_id,
+      activo_id: f.activo_id, activo_codigo: a?.codigo ?? null, pedido_id: f.pedido_id,
       lugar: a?.ubicacion_id ? lug.get(a.ubicacion_id) ?? null : null,
     })
   }

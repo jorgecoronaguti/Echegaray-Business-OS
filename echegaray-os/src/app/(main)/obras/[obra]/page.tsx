@@ -408,7 +408,8 @@ export default async function ObraPage({
         ) : enEstructura || obraVacia ? (
           <>
             <PrimariaViva />
-            {!modoConPrimariaPropia && puedeEditarPlan && nuevaActividad}
+            {/* Serie B: armando la estructura no hay «Nueva actividad» (B01–B07); la C01 vacía sí la dibuja. */}
+            {!enEstructura && !modoConPrimariaPropia && puedeEditarPlan && nuevaActividad}
           </>
         ) : vista === 'resumen' ? (
           <>

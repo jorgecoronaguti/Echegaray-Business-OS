@@ -1,6 +1,10 @@
 'use client'
 
-// C08 · MC9 — SUBTAREAS · DESCOMPONER UNA TAREA. Porte literal del aside de `C08.html` (420) y de `MC9.html`.
+// B06 (antes C08) · MC9 — DENTRO DE LA TAREA: SUBTAREAS E INSUMOS. Aside de 420 y `MC9.html`.
+//
+// B06 le suma a C08 la sección INSUMOS: cada activo con su ubicación real en Herramientas («en la obra»
+// verde, «en Taller · traer» warn con el enlace a la ficha del activo) y cada material con «Pedir»
+// (la misma puerta que la app de pedidos). Arriba a la derecha, «1 fuera de la obra» en warn.
 //
 //   escritorio  camino 11,5 faint · nombre 16/600 · «kg · 1.840 · 01/09 → 04/09 · Cuadrilla 1» 12,5 muted
 //               eyebrow «Método de avance» + tres chips de 32 (Cantidad · Pasos · Manual) + la nota 12 faint
@@ -17,6 +21,9 @@ import { CabeceraTelefono, Casilla, Chip, Eyebrow, ESTILO_PRIMARIA_32, ESTILO_SE
 import { rotuloPlan, rotuloUniCant, textoDePasos } from '../../../services/estructura'
 import type { NodoObra } from '../../../services/wbs'
 import type { AccionFormulario } from '@/shared/components/ui/FormAccion'
+import { SeccionInsumos, type AccionesInsumos } from './SeccionInsumos'
+import type { InsumoTarea } from '../../../services/insumosTarea'
+import type { ActivoElegible } from '../../../services/insumosService'
 
 type Metodo = 'cantidad' | 'pasos' | 'manual'
 const METODOS: { id: Metodo; label: string; icono: React.ReactNode }[] = [
@@ -25,9 +32,13 @@ const METODOS: { id: Metodo; label: string; icono: React.ReactNode }[] = [
   { id: 'manual', label: 'Manual', icono: <Ico d={P.editar} s={12} /> },
 ]
 
-export function PanelSubtareas({ nodo, camino, subtareas, estados, guardar, alCerrar, alGuardado, alDividir }: {
+export function PanelSubtareas({ obraId, nodo, camino, subtareas, estados, insumos, activos, accionesInsumos, guardar, alCerrar, alGuardado, alDividir }: {
+  obraId: string
   nodo: NodoObra
   camino: string
+  insumos: InsumoTarea[]
+  activos: ActivoElegible[]
+  accionesInsumos: AccionesInsumos
   subtareas: NodoObra[]
   /** id → estado («hecha» = tildada). */
   estados: Record<string, string | null>
@@ -119,6 +130,7 @@ export function PanelSubtareas({ nodo, camino, subtareas, estados, guardar, alCe
           <Eyebrow derecha={`${hechas.size} de ${total} hechas`}>Subtareas</Eyebrow>
           {lista(44, 14)}
         </div>
+        <SeccionInsumos obraId={obraId} tareaId={nodo.id} insumos={insumos} activos={activos} acciones={accionesInsumos} alCambio={alGuardado} alto={44} />
         <div style={{ display: 'flex', gap: '8px', marginTop: 'auto' }}>
           <button type="button" onClick={enviar} disabled={pendiente} data-testid="guardar-subtareas" style={ESTILO_PRIMARIA_32}><Ico d={P.ok} s={13} />{pendiente ? 'Guardando…' : 'Guardar'}</button>
           <button type="button" onClick={alDividir} data-testid="ir-a-frentes" style={ESTILO_SECUNDARIA_32}>Dividir en frentes</button>
@@ -141,6 +153,7 @@ export function PanelSubtareas({ nodo, camino, subtareas, estados, guardar, alCe
             <Eyebrow derecha={`${hechas.size} de ${total}`}>Subtareas</Eyebrow>
             {lista(52, 16)}
           </div>
+          <SeccionInsumos obraId={obraId} tareaId={nodo.id} insumos={insumos} activos={activos} acciones={accionesInsumos} alCambio={alGuardado} alto={52} />
           <div style={{ fontSize: '12px', color: C.tenue }}>No pesan en el promedio ni entran al cronograma.</div>
         </div>
       </div>

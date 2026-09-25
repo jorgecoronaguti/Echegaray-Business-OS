@@ -50,7 +50,9 @@ import { TablaItems } from './items/TablaItems'
 import { ListaItems } from './items/ListaItems'
 import { EstadoVacio } from './items/crear/EstadoVacio'
 import { Estructura, esModoEstructura, type AccionesEstructura, type DatosEstructura, type ModoEstructura } from './items/crear/Estructura'
-import { cifrasDelArbol, publicarCifras } from './items/crear/estadoCabecera'
+import { cifrasDelArbol, cifrasSerieB, publicarCifras } from './items/crear/estadoCabecera'
+import { itemsMO } from '../services/arbolEstructura'
+import { resumenMO } from '../services/pesoMO'
 import { millones, resumenDeEstructura, rotuloProblema, type Ponderaciones } from '../services/estructura'
 
 function dotacionInicial(n: NodoObra, pedida: string | null): number {
@@ -126,11 +128,21 @@ export function TabTareas({
   useEffect(() => {
     if (!enEstructura && !vacia) return
     const r = resumenDeEstructura(nodos, estructura.ponds)
-    publicarCifras(cifrasDelArbol({
-      nItems: r.nItems, sinMetodo: r.sinMetodo, sinFechas: r.sinFechas, hhPlan: r.hhPlan, problema: rotuloProblema(r.problemaPonderacion),
-      costoMo: millones(r.costoMo), costoTeorico: null, diasHabiles: estructura.obra.diasHabiles,
-    }))
-  }, [nodos, estructura.ponds, estructura.obra.diasHabiles, enEstructura, vacia])
+    const b = resumenMO(itemsMO(nodos, estructura.ponds))
+    const insumos = Object.values(estructura.insumosPor).flat()
+    const dm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+    publicarCifras({
+      ...cifrasDelArbol({
+        nItems: r.nItems, sinMetodo: r.sinMetodo, sinFechas: r.sinFechas, hhPlan: r.hhPlan, problema: rotuloProblema(r.problemaPonderacion),
+        costoMo: millones(b.costoTotal), costoTeorico: null, diasHabiles: estructura.obra.diasHabiles,
+      }),
+      ...(enEstructura ? cifrasSerieB({
+        ...b, niveles: new Set(itemsMO(nodos, estructura.ponds).map((i) => i.nivel)).size, sinFechas: r.sinFechas,
+        insumos: insumos.length, activos: insumos.filter((i) => i.tipo === 'activo').length, metodo: estructura.metodo,
+        plazo: estructura.obra.inicio && estructura.obra.fin ? `${dm(estructura.obra.inicio)} → ${dm(estructura.obra.fin)}${estructura.obra.diasHabiles != null ? ` · ${estructura.obra.diasHabiles} hábiles` : ''}` : null,
+      }) : {}),
+    })
+  }, [nodos, estructura.ponds, estructura.obra, estructura.insumosPor, estructura.metodo, enEstructura, vacia])
   const [query, setQuery] = useState('')
   const [verHasta, setVerHasta] = useState<VerHasta>('tarea')
   const [agrupar, setAgrupar] = useState<Agrupar>('rubro')
@@ -248,20 +260,16 @@ export function TabTareas({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <SubNavTrabajo obraId={obraId} sub="arbol"
-        derecha={enEstructura || vacia ? undefined :
+        derecha={modoEfectivo.crear === 'mano'
+          ? <span data-testid="pista-armar-a-mano">Armar a mano{nodos.length === 0 && <span style={{ color: C.tinta }}> · Enter agrega hermano · Tab baja un nivel · Shift+Tab sube</span>}</span>
+          : enEstructura || vacia ? undefined :
           <>
             <Opciones rotulo="Ver hasta" opciones={VER_HASTA} valor={verHasta} alElegir={elegirVerHasta} testid="ver-hasta" />
             <span aria-hidden style={{ width: '1px', height: '14px', background: C.borde, margin: '0 4px' }} />
             <Opciones rotulo="Agrupar por" opciones={AGRUPAR} valor={agrupar} alElegir={elegirAgrupar} testid="agrupar-por" />
           </>
         }
-        alFinal={vacia || (enEstructura && modoEfectivo.crear !== 'mano') ? undefined : enEstructura ? (
-          <>
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar" data-testid="buscar-tarea"
-              style={{ width: '200px', height: '28px', padding: '0 10px', border: `1px solid ${C.bordeFuerte}`, borderRadius: '6px', font: 'inherit', fontSize: '12px', background: C.superficie, color: C.tinta }} />
-            <span style={{ fontSize: '12px', color: C.tintaSuave, display: 'inline-flex', gap: '5px', alignItems: 'center' }}><Ico d={P.expandir} s={12} />Hasta tarea</span>
-          </>
-        ) :
+        alFinal={vacia || enEstructura ? undefined :
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar actividades" data-testid="buscar-tarea"
             style={{
               width: '190px', height: '29px', padding: '0 10px', border: `1px solid ${C.bordeFuerte}`, borderRadius: '6px',

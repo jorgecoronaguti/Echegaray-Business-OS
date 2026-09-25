@@ -15,6 +15,8 @@ export interface InsumoTarea {
   cantidad: number | null
   unidad: string | null
   activo_id: string | null
+  /** El código del activo: `/herramientas/inventario?activo=<código>` abre su ficha («traer»). */
+  activo_codigo: string | null
   pedido_id: string | null
   /** Sólo activos: dónde está hoy. null = el activo no tiene lugar cargado. */
   lugar: LugarActivo | null

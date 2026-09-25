@@ -60,6 +60,29 @@ export function usePrimaria(): PrimariaViva | null {
   return useSyncExternalStore(suscribir, () => estado.primaria, () => null)
 }
 
+/** Serie B (B01–B07): lo que la cabecera dice del árbol, del costo de MO y de los insumos. */
+export function cifrasSerieB(r: {
+  nItems: number; nRubros: number; nEpicas: number; nHistorias: number; nSinCosto: number; nTareas: number
+  costoTotal: number | null; niveles: number; sinFechas: number; insumos: number; activos: number
+  metodo: string; plazo: string | null
+}): Record<string, CifraPublicada> {
+  const plural = (n: number, a: string, b: string) => `${n} ${n === 1 ? a : b}`
+  const METODO: Record<string, string> = { costo_mo: 'por costo de MO', manual: 'a mano', parejo: 'parejo', dias_teoricos: 'por días teóricos', hh_plan: 'por HH plan' }
+  return {
+    items: r.nItems > 0 ? [String(r.nItems), r.nRubros ? plural(r.nRubros, 'rubro', 'rubros') : null, r.nEpicas ? plural(r.nEpicas, 'épica', 'épicas') : null].filter(Boolean).join(' · ') : '0',
+    items_tareas: r.nItems > 0 ? `${r.nItems} · ${plural(r.nTareas, 'tarea', 'tareas')}` : '0',
+    items_niveles: r.nItems > 0 ? `${r.nItems} · ${plural(r.niveles, 'nivel', 'niveles')}` : '0',
+    historias: r.nHistorias === 0 ? null : r.nSinCosto > 0 ? { texto: `${r.nHistorias} · ${r.nSinCosto} sin costo`, tono: 'warn' } : String(r.nHistorias),
+    costo_mo: r.costoTotal == null ? null : `$ ${(r.costoTotal / 1_000_000).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} M`,
+    costo_mo_entero: r.costoTotal == null ? null : `$ ${Math.round(r.costoTotal).toLocaleString('es-AR')}`,
+    sin_costo: r.nHistorias === 0 ? null : r.nSinCosto > 0 ? { texto: `${r.nSinCosto} de ${r.nHistorias}`, tono: 'warn' } : `0 de ${r.nHistorias}`,
+    metodo: METODO[r.metodo] ?? r.metodo,
+    sin_fechas: r.sinFechas > 0 ? { texto: String(r.sinFechas), tono: 'warn' } : '0',
+    insumos: r.insumos === 0 ? null : `${r.insumos}${r.activos ? ` · ${plural(r.activos, 'activo', 'activos')}` : ''}`,
+    plazo: r.plazo,
+  }
+}
+
 /** Las cifras que salen del árbol (C01 · C04 · C05 · C07–C09): las publica quien lo tiene en la mano. */
 export function cifrasDelArbol(r: {
   nItems: number; sinMetodo: number; sinFechas: number; hhPlan: number | null; problema: string | null

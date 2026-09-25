@@ -39,9 +39,6 @@ async function ordenSiguiente(supabase: Cliente, obraId: string): Promise<number
   return ((data?.orden as number) ?? 0) + 1
 }
 
-const fechaOpt = z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida'), z.literal('')]).optional()
-const numOpt = z.union([z.literal(''), z.coerce.number().min(0, 'No puede ser negativo')]).optional()
-const vacio = <T,>(v: T | '' | undefined): T | null => (v === '' || v === undefined ? null : v)
 
 // ── C02 · CONVERTIR PARTIDAS DESDE LA OBRA ───────────────────────────────────
 
@@ -201,90 +198,8 @@ function raizDe(filas: ReturnType<typeof leerPlanilla>['filas'], i: number): num
   return k
 }
 
-// ── C04 · CREAR UN ÍTEM A MANO ───────────────────────────────────────────────
-
-const itemSchema = z.object({
-  nombre: z.string().trim().min(2, 'El ítem necesita un nombre').max(200),
-  padre_id: z.union([z.string().uuid(), z.literal('')]).optional(),
-  unidad: z.string().trim().max(20).optional(),
-  cantidad: numOpt,
-  ponderacion: z.union([z.literal(''), z.coerce.number().min(0).max(100, 'La ponderación va de 0 a 100')]).optional(),
-  metodo: z.union([z.enum(['cantidad', 'pasos', 'manual']), z.literal('')]).optional(),
-  inicio_plan: fechaOpt,
-  fin_plan: fechaOpt,
-  partida_id: z.union([z.string().uuid(), z.literal('')]).optional(),
-  hh_plan: numOpt,
-  cuadrilla_id: z.union([z.string().uuid(), z.literal('')]).optional(),
-  responsable_id: z.union([z.string().uuid(), z.literal('')]).optional(),
-  comentario: z.string().trim().max(400).optional(),
-  es_hito: z.union([z.literal('on'), z.literal('')]).optional(),
-})
-
-/**
- * CREAR UN ÍTEM DEBAJO DE UN PADRE (o un rubro nuevo, sin padre). El TIPO lo decide el padre: debajo
- * de un rubro o una épica nace un contenedor; debajo de una historia, una tarea; debajo de una
- * tarea, una subtarea. Devuelve el id: «Crear y abrir» lo usa para abrir el panel.
- */
-export async function crearItem(obraId: string, form: FormData): Promise<Resultado> {
-  const parsed = itemSchema.safeParse(Object.fromEntries(form))
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
-  const d = parsed.data
-  if (d.inicio_plan && d.fin_plan && d.fin_plan < d.inicio_plan) return { ok: false, error: 'El fin no puede ser anterior al comienzo.' }
-
-  const supabase = await createClient()
-  if (!await esAdmin(supabase)) return { ok: false, error: SIN_PERMISO }
-
-  let padre: { id: string; tipo: string; nombre: string; seccion: string | null; nivel: number } | null = null
-  if (d.padre_id) {
-    const { data: w, error } = await supabase.from('obra_wbs').select('actividad_id, tipo, nombre, nivel')
-      .eq('obra_id', obraId).eq('actividad_id', d.padre_id).maybeSingle()
-    if (error) return { ok: false, error: error.message }
-    if (!w) return { ok: false, error: 'Ese padre no es de esta obra.' }
-    const { data: a } = await supabase.from('obra_actividad').select('seccion').eq('id', d.padre_id).maybeSingle()
-    padre = { id: String(w.actividad_id), tipo: String(w.tipo), nombre: String(w.nombre), seccion: (a?.seccion as string | null) ?? null, nivel: Number(w.nivel) }
-  }
-  const esContenedor = d.es_hito !== 'on' && (padre == null || (padre.tipo === 'resumen' && padre.nivel < 2))
-  const cantidad = vacio(d.cantidad)
-  const unidad = d.unidad || null
-  const metodo = esContenedor ? 'manual' : d.metodo || (unidad && cantidad != null ? 'cantidad' : 'manual')
-  if (metodo === 'cantidad' && (!unidad || cantidad == null)) {
-    return { ok: false, error: 'Para medir por cantidad hacen falta la unidad y la cantidad.' }
-  }
-  const seccion = padre == null ? null : padre.nivel === 0 ? padre.nombre : padre.seccion ?? padre.nombre
-
-  const { data, error } = await supabase.from('obra_actividad').insert({
-    obra_id: obraId,
-    clave: padre ? `${padre.id}/${slug(d.nombre)}` : claveDeActividad(null, d.nombre),
-    nombre: d.nombre,
-    tipo: d.es_hito === 'on' ? 'hito' : esContenedor ? 'resumen' : 'tarea',
-    rol_estructura: padre == null ? 'rubro' : null,
-    seccion,
-    orden: await ordenSiguiente(supabase, obraId),
-    actividad_padre_id: padre?.id ?? null,
-    unidad: esContenedor ? null : unidad,
-    cantidad_objetivo: esContenedor ? null : cantidad,
-    ponderacion: vacio(d.ponderacion),
-    metodo_avance: metodo,
-    inicio_plan: vacio(d.inicio_plan),
-    fin_plan: vacio(d.fin_plan),
-    dias_plan: d.es_hito === 'on' ? 0 : null,
-    hh_plan: esContenedor ? null : vacio(d.hh_plan),
-    cuadrilla_id: d.cuadrilla_id || null,
-    responsable_id: d.responsable_id || null,
-    comentario: d.comentario || null,
-    cotizacion_partida_id: d.partida_id || null,
-    estado: 'pendiente',
-    fuente: 'web',
-    creada_en_web: true,
-    editado_a_mano: true,
-  }).select('id').single()
-  if (error) {
-    if (error.code === '23505') return { ok: false, error: `Ya hay un ítem llamado «${d.nombre}» en ese lugar.` }
-    return { ok: false, error: error.message }
-  }
-  revalidatePath(`/obras/${obraId}`, 'layout')
-  return { ok: true, id: data.id as string, mensaje: `«${d.nombre}» creado.` }
-}
+// C04 · CREAR UN ÍTEM A MANO: vive en `actionsItem.ts` (serie B: el nivel lo decide el padre, la historia
+// trae su costo de MO y la tarea sus insumos y subtareas).
 
 // ── C05 · GUARDAR EL REPARTO ─────────────────────────────────────────────────
 
@@ -375,7 +290,7 @@ export async function guardarSubtareas(obraId: string, tareaId: string, form: Fo
   let creadas = 0
   for (const nombre of d.nuevas) {
     const { error } = await supabase.from('obra_actividad').insert({
-      obra_id: obraId, actividad_padre_id: tareaId, nombre, tipo: 'tarea', orden: tarea.orden, seccion: tarea.seccion,
+      obra_id: obraId, actividad_padre_id: tareaId, nombre, nivel: 'subtarea', tipo: 'tarea', orden: tarea.orden, seccion: tarea.seccion,
       clave: `${tareaId}/${nombre.toLowerCase().slice(0, 60)}`, fuente: 'web', creada_en_web: true, estado: 'pendiente',
       metodo_avance: 'manual', editado_a_mano: true,
     })
@@ -428,7 +343,6 @@ const masivaSchema = z.discriminatedUnion('accion', [
   z.object({ accion: z.literal('cuadrilla'), cuadrilla_id: z.union([z.string().uuid(), z.literal('')]) }),
   z.object({ accion: z.literal('fechas'), dias: z.coerce.number().int().min(-60).max(60) }),
   z.object({ accion: z.literal('metodo'), metodo: z.enum(['cantidad', 'pasos', 'manual']) }),
-  z.object({ accion: z.literal('ponderacion'), ponderacion: z.union([z.literal(''), z.coerce.number().min(0).max(100)]) }),
   z.object({ accion: z.literal('responsable'), responsable_id: z.union([z.string().uuid(), z.literal('')]) }),
   z.object({ accion: z.literal('archivar') }),
 ])
@@ -494,9 +408,6 @@ export async function aplicarAccionMasiva(obraId: string, form: FormData): Promi
         await escribir(f.id, { metodo_avance: d.metodo })
       }
       if (incompletas > 0) motivos.push(`${incompletas} ${d.metodo === 'cantidad' ? 'sin unidad y cantidad, o contenedores' : 'contenedores'}`)
-    } else if (d.accion === 'ponderacion') {
-      for (const f of propias) await escribir(f.id, { ponderacion: d.ponderacion === '' ? null : d.ponderacion })
-      await supabase.from('obra_canonica').update({ metodo_ponderacion: 'manual' }).eq('id', obraId)
     } else if (d.accion === 'responsable') {
       if (d.responsable_id) {
         const { data: p } = await supabase.from('personas').select('id').eq('id', d.responsable_id).maybeSingle()
@@ -511,7 +422,7 @@ export async function aplicarAccionMasiva(obraId: string, form: FormData): Promi
   }
   revalidatePath(`/obras/${obraId}`, 'layout')
   const rotulo: Record<typeof d.accion, string> = {
-    mover: 'movidas', cuadrilla: 'con cuadrilla', fechas: 'corridas', metodo: 'con método', ponderacion: 'ponderadas', responsable: 'con responsable', archivar: 'archivadas',
+    mover: 'movidas', cuadrilla: 'con cuadrilla', fechas: 'corridas', metodo: 'con método', responsable: 'con responsable', archivar: 'archivadas',
   }
   return { ok: true, mensaje: `${tocadas} ${rotulo[d.accion]}${motivos.length ? ` · ${ids.data.length - tocadas} afuera: ${motivos.join(' · ')}` : ''}.` }
 }
