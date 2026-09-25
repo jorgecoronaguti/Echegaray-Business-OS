@@ -45,7 +45,8 @@ test('las cinco columnas, en el orden del dueño, y ninguna de OC ni de OP', () 
 })
 
 test('las OC siguen debajo de cada obra, con su PDF', () => {
-  assert.match(tabla(), /<OrdenesDeLaObra ordenes=\{ocDeLaObra\} veEconomia=\{veEconomia\} \/>/)
+  // `sangria={0}` desde el 25/09/2026: la línea de las OC arranca bajo el nombre, sin ícono delante.
+  assert.match(tabla(), /<OrdenesDeLaObra ordenes=\{ocDeLaObra\} veEconomia=\{veEconomia\}( sangria=\{0\})? \/>/)
 })
 
 test('la barra es SÓLO del trabajo: la fila del cliente publica una cifra', () => {

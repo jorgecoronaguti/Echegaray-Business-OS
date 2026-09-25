@@ -20,14 +20,22 @@ import { ESPERA_MS } from '@/shared/components/ds'
 import { urlDeBusqueda } from '@/shared/utils/busqueda'
 import { IconoBuscar } from '@/shared/components/iconos'
 import { V } from './patron'
+import { CLASE_BUSCADOR_TELEFONO, estiloBuscador, estiloEntradaBuscador } from '../cartera/estiloCartera'
+import { IcoCartera } from '../cartera/IcoCartera'
 
-export function BuscadorFilo({ accion, q, placeholder, oculto, testid = 'buscar' }: {
+export function BuscadorFilo({ accion, q, placeholder, oculto, testid = 'buscar', caja = false }: {
   accion: string
   q?: string
   placeholder: string
   /** Lo que hay que preservar al buscar: la sub-vista abierta, el filtro puesto, el panel. */
   oculto?: Record<string, string | undefined>
   testid?: string
+  /**
+   * LA CAJA DE LA CARTERA (dueño, 25/09/2026: Clientes «que se vea como Obras vista tabla»): 230×32 con
+   * borde y radio 6 en escritorio, 44px a todo el ancho en el teléfono, y la cruz para vaciarlo. El
+   * comportamiento —espera, `replace`, lo oculto— es el mismo: sólo cambia la geometría.
+   */
+  caja?: boolean
 }) {
   const router = useRouter()
   const [texto, setTexto] = useState(q ?? '')
@@ -64,19 +72,21 @@ export function BuscadorFilo({ accion, q, placeholder, oculto, testid = 'buscar'
       data-testid={`${testid}-form`}
       // EN EL TELÉFONO ES EL CAMPO DE J02 (24/09/2026): caja de borde fuerte, radio 10, 44px de alto y
       // a todo el ancho. Un filo de 216px sin caja no se encuentra con el dedo. Desde `md`, nada cambia.
-      className={`max-md:!min-h-[44px] max-md:!w-full max-md:!gap-2 max-md:!rounded-[10px] max-md:!border max-md:!px-[11px] max-md:!py-0 max-md:bg-surface ${texto ? 'max-md:!border-accent' : 'max-md:!border-line-strong'}`}
-      style={{
+      className={caja ? CLASE_BUSCADOR_TELEFONO : `max-md:!min-h-[44px] max-md:!w-full max-md:!gap-2 max-md:!rounded-[10px] max-md:!border max-md:!px-[11px] max-md:!py-0 max-md:bg-surface ${texto ? 'max-md:!border-accent' : 'max-md:!border-line-strong'}`}
+      style={caja ? { ...estiloBuscador(false), maxWidth: '100%' } : {
         display: 'flex', alignItems: 'center', gap: 7, width: 216, maxWidth: '100%',
         // El filo dice si hay un filtro puesto. `22v2:388`.
         borderBottom: `1px solid ${texto ? V.grafito : V.linea}`, padding: '3px 2px',
       }}
     >
       {Object.entries(oculto ?? {}).map(([k, v]) => (v ? <input key={k} type="hidden" name={k} value={v} /> : null))}
-      <span style={{ display: 'flex', color: V.lupa, flexShrink: 0 }}>
-        <IconoBuscar className="h-[13px] w-[13px] max-md:h-4 max-md:w-4" />
-      </span>
+      {caja ? <IcoCartera d="buscar" s={13} className="max-md:!h-[14px] max-md:!w-[14px]" /> : (
+        <span style={{ display: 'flex', color: V.lupa, flexShrink: 0 }}>
+          <IconoBuscar className="h-[13px] w-[13px] max-md:h-4 max-md:w-4" />
+        </span>
+      )}
       <input
-        type="search"
+        type={caja ? 'text' : 'search'}
         name="q"
         value={texto}
         onChange={(e) => setTexto(e.target.value)}
@@ -85,11 +95,17 @@ export function BuscadorFilo({ accion, q, placeholder, oculto, testid = 'buscar'
         data-testid={testid}
         // 16px en el teléfono: con menos, iOS agranda la página al tocar el campo.
         className="max-md:!text-[16px]"
-        style={{
+        style={caja ? estiloEntradaBuscador(false) : {
           border: 'none', background: 'transparent', fontSize: '12px',
           color: V.tinta, width: '100%', padding: 0, outline: 'none',
         }}
       />
+      {caja && texto.length > 0 && (
+        <button type="button" onClick={() => setTexto('')} aria-label="Limpiar la búsqueda" data-testid={`${testid}-limpiar`}
+          style={{ display: 'flex', color: 'inherit', cursor: 'pointer', border: 'none', background: 'none', padding: 0 }}>
+          <IcoCartera d="cerrar" s={13} />
+        </button>
+      )}
     </form>
   )
 }

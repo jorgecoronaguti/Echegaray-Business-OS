@@ -18,11 +18,11 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Fragment, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useMemo, useState, type ReactNode } from 'react'
 import { CuerpoGantt, SelectorEscala } from './GanttObras'
 import type { EscalaCartera } from '../services/carteraGantt'
 import { Ico, P } from './canon/Ico'
-import { C, MONO } from './canon/tokens'
+import { C } from './canon/tokens'
 import { Hover } from './canon/Piezas'
 import { useAnchoVentana } from './useAnchoVentana'
 import { esAngosto } from '../services/anchoPantalla'
@@ -34,6 +34,11 @@ import {
   type FiltroCartera,
 } from '../services/carteraCanon'
 import { clienteDeObra } from '../../../shared/clientes/nombre.ts'
+import {
+  BARRA_PRIMARIA_TELEFONO, ENCABEZADO_FIJO, ENCABEZADO_FIJO_TELEFONO, ESTILO_BAJADA, ESTILO_CODO, ESTILO_CUENTA_GRUPO,
+  ESTILO_NOMBRE_FILA, ESTILO_ROTULOS, ESTILO_TITULO, SANGRIA_HIJA, estiloBuscador, estiloCabeceraGrupo, estiloChip,
+  estiloCuentaChip, estiloEntradaBuscador, estiloFiltros, estiloPrimaria,
+} from '@/shared/components/cartera/estiloCartera'
 
 /** Lo que la página le entrega ya leído. Un tipo propio y no `ObraPanel`: así se ve de un vistazo
  *  qué necesita esta pantalla, y qué se rompe el día que la vista cambie. */
@@ -78,14 +83,8 @@ const clienteDe = (o: FilaCartera) => clienteDeObra(o)
  * la lista se desplaza debajo. Los márgenes negativos absorben el padding del contenedor para que el
  * fondo cubra de borde a borde y no se vea la lista pasar por los costados.
  */
-export const ENCABEZADO_FIJO: CSSProperties = {
-  position: 'sticky', top: '44px', zIndex: 20, background: C.superficie, display: 'flex', flexDirection: 'column', gap: '20px',
-  margin: '-26px -30px 0', padding: '26px 30px 14px', borderBottom: `1px solid ${C.borde}`,
-}
-export const ENCABEZADO_FIJO_TELEFONO: CSSProperties = {
-  position: 'sticky', top: '44px', zIndex: 20, background: C.superficie, display: 'flex', flexDirection: 'column', gap: '18px',
-  margin: '-16px -16px 0', padding: '16px 16px 12px', borderBottom: `1px solid ${C.borde}`,
-}
+// Viven en `shared/components/cartera/estiloCartera.ts` desde el 25/09/2026: Clientes los usa igual.
+export { ENCABEZADO_FIJO, ENCABEZADO_FIJO_TELEFONO }
 
 export function useFiltroCartera(obras: FilaCartera[]) {
   const [q, setQ] = useState('')
@@ -158,9 +157,7 @@ export function ChipsCartera({ filtro, setFiltro, cuentas, sinImpedimentos, tele
 }) {
   const chips = FILTROS_CARTERA.filter((f) => !claves || claves.includes(f.k))
   return (
-    <div style={telefono
-      ? { display: 'flex', gap: '8px', overflowX: 'auto', marginRight: '-16px', paddingRight: '16px', scrollbarWidth: 'none' }
-      : { display: 'flex', alignItems: 'center', gap: '18px', fontSize: '12.5px' }}
+    <div style={estiloFiltros(telefono)}
       data-testid="filtros-obras">
       {chips.map((f) => {
         const activo = filtro === f.k
@@ -169,22 +166,10 @@ export function ChipsCartera({ filtro, setFiltro, cuentas, sinImpedimentos, tele
           <button key={f.k} type="button" onClick={() => setFiltro(f.k)} aria-pressed={activo}
             data-testid={`filtro-${f.k}`} data-activo={activo ? '1' : undefined}
             title={f.k === 'problema' && sinImpedimentos ? 'No se pudieron leer los impedimentos' : f.tip}
-            style={telefono ? {
-              font: 'inherit', height: '36px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px',
-              whiteSpace: 'nowrap', border: `1px solid ${activo ? C.grafito : C.borde}`, borderRadius: '6px',
-              fontSize: '12.5px', fontWeight: activo ? 500 : 400, color: activo ? C.tinta : C.tintaSuave,
-              background: C.superficie, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
-            } : {
-              display: 'inline-flex', alignItems: 'center', gap: '6px', border: 'none', padding: 0, paddingBottom: '2px',
-              background: 'none', font: 'inherit', fontFamily: 'inherit', fontSize: '12.5px', cursor: 'pointer',
-              color: activo ? C.tinta : C.tintaSuave, fontWeight: activo ? 500 : 400,
-              boxShadow: activo ? `inset 0 -1.5px 0 ${C.grafito}` : undefined,
-            }}>
+            style={estiloChip(activo, telefono)}>
             <Ico d={ICONO_CHIP[f.k]} s={12} />{f.t}
             {n != null && (
-              <span style={telefono
-                ? { fontFamily: MONO, fontSize: '11px', color: C.tenue }
-                : { color: C.tenue, fontWeight: 400 }}>{n}</span>
+              <span style={estiloCuentaChip(telefono)}>{n}</span>
             )}
           </button>
         )
@@ -196,18 +181,11 @@ export function ChipsCartera({ filtro, setFiltro, cuentas, sinImpedimentos, tele
 /** La primaria «Nueva obra»: 32px arriba a la derecha (01) · 48px al pie sobre la barra (M01). */
 export function PrimariaNuevaObra({ telefono }: { telefono: boolean }) {
   const boton = (
-    <Link href="/obras/nueva" prefetch={false} data-testid="alta-obra-nueva" style={{
-      height: telefono ? '48px' : '32px', padding: telefono ? 0 : '0 14px', borderRadius: '6px', background: C.marca,
-      color: C.grafito, fontSize: telefono ? '14px' : '13px', fontWeight: 600, display: 'flex', alignItems: 'center',
-      justifyContent: 'center', gap: telefono ? '8px' : '7px', textDecoration: 'none', whiteSpace: 'nowrap',
-    }}><Ico d={P.mas} s={telefono ? 15 : 13} />Nueva obra</Link>
+    <Link href="/obras/nueva" prefetch={false} data-testid="alta-obra-nueva" style={estiloPrimaria(telefono)}><Ico d={P.mas} s={telefono ? 15 : 13} />Nueva obra</Link>
   )
   if (!telefono) return boton
   return (
-    <div style={{
-      position: 'fixed', left: 0, right: 0, bottom: '64px', padding: '12px 16px 18px', background: C.superficie,
-      borderTop: `1px solid ${C.borde}`, zIndex: 19,
-    }}>{boton}</div>
+    <div style={BARRA_PRIMARIA_TELEFONO}>{boton}</div>
   )
 }
 
@@ -233,18 +211,11 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
   const esGantt = vista === 'gantt'
 
   const buscador = (
-    <div style={{
-      width: telefono ? undefined : '230px', flex: telefono ? 1 : undefined, height: telefono ? '44px' : '32px',
-      padding: telefono ? '0 12px' : '0 11px', border: `1px solid ${C.bordeFuerte}`, borderRadius: '6px',
-      background: C.superficie, display: 'flex', alignItems: 'center', gap: telefono ? '8px' : '7px', color: C.tenue,
-    }}>
+    <div style={estiloBuscador(telefono)}>
       <Ico d={P.buscar} s={telefono ? 14 : 13} />
       <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar obra o cliente"
         aria-label="Buscar obra o cliente" data-testid="buscar-obra"
-        style={{
-          border: 'none', background: 'transparent', outline: 'none', fontFamily: 'inherit', width: '100%', padding: 0,
-          fontSize: telefono ? '13.5px' : '13px', color: C.tinta,
-        }} />
+        style={estiloEntradaBuscador(telefono)} />
       {q.length > 0 && (
         <button type="button" onClick={limpiar} aria-label="Limpiar la búsqueda" data-testid="buscar-obra-limpiar"
           style={{ display: 'flex', color: C.tenue, cursor: 'pointer', border: 'none', background: 'none', padding: 0 }}>
@@ -307,8 +278,8 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
       <div style={ENCABEZADO_FIJO} data-testid="encabezado-cartera">
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '24px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-          <div style={{ fontSize: '19px', fontWeight: 600, letterSpacing: '-.01em', color: C.tinta }}>Obras</div>
-          <div style={{ fontSize: '13px', color: C.tintaSuave }} data-testid="bajada-cartera">{bajadaCartera(obras)}</div>
+          <div style={ESTILO_TITULO}>Obras</div>
+          <div style={ESTILO_BAJADA} data-testid="bajada-cartera">{bajadaCartera(obras)}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {buscador}
@@ -328,11 +299,7 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
 
       {esGantt ? <CuerpoGantt grupos={grupos} lista={lista} total={obras.length} hoyIso={hoyIso} telefono={false} escala={escala} /> : (<>
       <div style={{ overflowX: 'auto' }}><div style={{ display: 'flex', flexDirection: 'column', minWidth: `${MIN_TABLA}px` }}>
-        <div style={{
-          display: 'grid', gridTemplateColumns: GRID, gap: '22px', height: '40px', alignItems: 'center',
-          borderBottom: `1px solid ${C.borde}`, fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em',
-          color: C.tenue, textTransform: 'uppercase',
-        }}>
+        <div style={{ ...ESTILO_ROTULOS, gridTemplateColumns: GRID }}>
           <div>Obra</div><div>Etapa</div><div>Avance</div><div style={{ textAlign: 'right' }}>Plazo</div>
         </div>
         {grupos.map((g) => (
@@ -355,16 +322,11 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
 export function CabeceraCliente({ nombre, slug, n, telefono = false }: { nombre: string | null; slug: string | null; n: number; telefono?: boolean }) {
   const texto = nombre ?? SIN_CLIENTE
   return (
-    <div data-testid="cabecera-cliente" data-cliente={slug ?? ''} style={{
-      display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0,
-      minHeight: telefono ? '40px' : '36px', padding: telefono ? '10px 0 4px' : '0',
-      borderBottom: `1px solid ${C.borde}`, background: telefono ? undefined : C.tenueFondo,
-      fontSize: telefono ? '12px' : '11.5px', fontWeight: 600, letterSpacing: '.02em', color: nombre ? C.tinta : C.tenue,
-    }}>
+    <div data-testid="cabecera-cliente" data-cliente={slug ?? ''} style={estiloCabeceraGrupo(telefono, !!nombre)}>
       {slug && nombre
         ? <Link href={`/clientes/${slug}`} prefetch={false} style={{ color: C.tinta, textDecoration: 'none' }}>{texto}</Link>
         : <span data-nulo={nombre ? undefined : ''}>{texto}</span>}
-      <span style={{ fontFamily: MONO, fontSize: '11px', fontWeight: 400, color: C.tenue }}>{n}</span>
+      <span style={ESTILO_CUENTA_GRUPO}>{n}</span>
     </div>
   )
 }
@@ -401,10 +363,10 @@ function Fila({ o, ir, nivel = 0 }: { o: FilaCartera; ir: () => void; nivel?: 0 
 export function CeldaObra({ o, nivel = 0, href = `/obras/${o.obra_id}` }: { o: FilaCartera; nivel?: 0 | 1; href?: string }) {
   const e = estadoDeCartera(o)
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, paddingLeft: nivel ? '22px' : 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, paddingLeft: nivel ? `${SANGRIA_HIJA}px` : 0 }}>
       <Link href={href} prefetch={false} onClick={(ev) => ev.stopPropagation()} title={rotuloDeObra(o)}
-        style={{ fontWeight: 500, color: C.tinta, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {nivel ? <span style={{ color: C.tenue, marginRight: '6px' }}>└</span> : null}{rotuloDeObra(o)}
+        style={{ ...ESTILO_NOMBRE_FILA, textDecoration: 'none' }}>
+        {nivel ? <span style={ESTILO_CODO}>└</span> : null}{rotuloDeObra(o)}
       </Link>
       <div style={{ fontSize: '12px', color: colorDeEstado(o) }} data-testid="estado-obra">{e.t}{nivel ? <span style={{ color: C.tenue }}> · adicional</span> : null}</div>
     </div>

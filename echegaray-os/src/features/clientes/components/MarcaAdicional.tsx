@@ -25,7 +25,11 @@ const AYUDA = 'Este trabajo es un ADICIONAL de la obra de arriba: tiene su propi
   + 'su propio precio, y se factura aparte. La relación y su evidencia están en '
   + 'docs/engineering/OBRAS-ADICIONALES-2026-09-11.md.'
 
-export function MarcaAdicional({ huerfano = false }: { huerfano?: boolean }) {
+/**
+ * `enLinea`: la palabra dentro de la línea de abajo del nombre, como la escribe Obras «Ver: Tabla»
+ * («En ejecución · adicional»): 12px, minúscula, tenue. Sin él, el rótulo en versalitas de la ficha.
+ */
+export function MarcaAdicional({ huerfano = false, enLinea = false }: { huerfano?: boolean; enLinea?: boolean }) {
   return (
     <span
       data-testid="marca-adicional"
@@ -33,10 +37,12 @@ export function MarcaAdicional({ huerfano = false }: { huerfano?: boolean }) {
       title={huerfano
         ? `${AYUDA} Su obra mayor NO está en esta lista (suele estar en el otro grupo, terminados o en curso).`
         : AYUDA}
-      style={{
-        fontSize: '10.5px', letterSpacing: '0.06em', textTransform: 'uppercase',
-        color: V.tenue, flexShrink: 0, whiteSpace: 'nowrap',
-      }}
+      style={enLinea
+        ? { fontSize: '12px', color: V.tenue, flexShrink: 0, whiteSpace: 'nowrap' }
+        : {
+            fontSize: '10.5px', letterSpacing: '0.06em', textTransform: 'uppercase',
+            color: V.tenue, flexShrink: 0, whiteSpace: 'nowrap',
+          }}
     >
       {huerfano ? SIN_OBRA_MAYOR : ROTULO_ADICIONAL}
     </span>

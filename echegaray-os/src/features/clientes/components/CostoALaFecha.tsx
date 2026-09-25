@@ -27,17 +27,18 @@ export function ALaFecha() {
   )
 }
 
-/** «MATERIALES / a la fecha»: el nombre de la columna y, debajo, el corte que lo define. */
+/**
+ * «MATERIALES / a la fecha»: el nombre de la columna y, debajo, el corte que lo define. Hereda la letra
+ * del encabezado —la mono de 10,5px en versalitas de Obras «Ver: Tabla» (dueño, 25/09/2026)—; sólo la
+ * segunda línea va en minúscula y más chica, porque no es otro rótulo sino la aclaración del primero.
+ */
 export function RotuloACorte({ texto, titulo }: { texto: string; titulo: string }) {
   return (
-    <span className="grid justify-items-end" title={titulo} style={{ lineHeight: '12px', minWidth: 0 }}>
-      <span style={{
-        fontSize: '11px', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase',
-        color: V.tenue, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%',
-      }}>
+    <span className="grid justify-items-end" title={titulo} style={{ lineHeight: '13px', minWidth: 0 }}>
+      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
         {texto}
       </span>
-      <span style={{ fontSize: '10px', color: V.tenue, whiteSpace: 'nowrap' }}>a la fecha</span>
+      <span style={{ fontSize: '9.5px', letterSpacing: 0, textTransform: 'none', whiteSpace: 'nowrap' }}>a la fecha</span>
     </span>
   )
 }

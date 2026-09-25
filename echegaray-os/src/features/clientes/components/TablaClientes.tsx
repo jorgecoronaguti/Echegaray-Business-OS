@@ -32,15 +32,31 @@
 // una línea a lo ancho de la fila (`CostoDeLaObraAngosto` / `CostoDelClienteAngosto`), porque el
 // dueño mira el costo a la fecha desde el celular. Por debajo de 768px se suelta el avance. Lo decide
 // una media query y no `window.innerWidth`: esta tabla se dibuja en el servidor.
+//
+// ═══ SE VE COMO OBRAS «VER: TABLA» (dueño, 25/09/2026) ═══
+//
+// «Unificar diseño, sólo UI, de cómo se ve Obras a cómo se ve Admin Clientes.» Mismas columnas y
+// mismos números; cambia el lenguaje: rótulos de columna en mono de 10,5px en versalitas grises, el
+// cliente como ENCABEZADO DE GRUPO en la banda tenue de 36px —nombre en negrita y, al lado, el conteo
+// de sus trabajos—, cada trabajo en una fila de 64px con el nombre en 500 y debajo lo que le cuelga
+// (sus OC), el adicional con «└» y «adicional» en la línea de abajo, y filetes finos. Las medidas
+// salen de `shared/components/cartera/estiloCartera.ts`, el mismo archivo del que las lee Obras.
+//
+// LO QUE QUEDA DISTINTO A OBRAS, A PROPÓSITO: la banda del cliente lleva sus totales en las mismas
+// columnas —en Obras el grupo no tiene cifras propias—; los íconos de fila se fueron (Obras no los
+// dibuja: «no iconografía decorativa»); y la plata sigue en mono, como en el resto del CRM.
 
 import Link from 'next/link'
 import { millones, pesos } from '@/shared/components/canon/formato'
-import { IconoCliente, IconoObra } from '@/shared/components/iconos'
-import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, RotuloCol, V } from '@/shared/components/v2/patron'
+import { V } from '@/shared/components/v2/patron'
+import {
+  CLASE_CABECERA_GRUPO_TELEFONO, CLASE_FILA_TELEFONO, ESTILO_CODO, ESTILO_CUENTA_GRUPO, ESTILO_FILA,
+  ESTILO_NOMBRE_FILA, ESTILO_ROTULOS, ESTILO_SUBLINEA, HOVER_FILA_CARTERA, K, SANGRIA_HIJA, estiloCabeceraGrupo,
+} from '@/shared/components/cartera/estiloCartera'
 import type { ClienteEnCartera } from '@/features/administracion/services/homeCartera'
 import { frasesDeObras } from '@/features/clientes/services/cartera'
 import type { PapelesDelCliente } from '@/features/clientes/services/papelesCliente'
-import { SOLO_ANCHO, SOLO_TABLET, TONO } from './CeldasDeCartera'
+import { SOLO_ANCHO, SOLO_TABLET } from './CeldasDeCartera'
 import { AvanceDeCobro, ContratadoDelTrabajo, baseDelContrato, sumaDeObras } from './CeldasDeContrato'
 import { CostoDeLaObra, CostoDeLaObraAngosto, CostoDelCliente, CostoDelClienteAngosto } from './CeldasDeCosto'
 import { RotuloACorte } from './CostoALaFecha'
@@ -142,9 +158,11 @@ export function TablaClientes({
   const papelesDe = (clienteId: string): PapelesDelCliente => papeles.get(clienteId) ?? VACIO
   return (
     <div data-testid="clientes-tabla">
-      <div className={`grid gap-[14px] ${COLS}`} style={ENCABEZADO}>
-        <RotuloCol>Cliente</RotuloCol>
-        <RotuloCol derecha titulo={AYUDA_CONTRATADO}>{veEconomia ? 'Contratado' : ''}</RotuloCol>
+      {/* LOS RÓTULOS DE COLUMNA DE OBRAS: 40px, mono de 10,5px en versalitas grises. En el teléfono se
+          quedan —a diferencia de M01—: la cifra de la derecha es Contratado y sin rótulo no dice qué es. */}
+      <div className={`grid ${COLS}`} style={ESTILO_ROTULOS}>
+        <span>Cliente</span>
+        <span style={{ textAlign: 'right' }} title={AYUDA_CONTRATADO}>{veEconomia ? 'Contratado' : ''}</span>
         {/* «a la fecha» DEBAJO DEL NOMBRE, como en la ficha: el rótulo dice qué es el número. */}
         <span className={`grid ${SOLO_ANCHO}`}>
           {veEconomia ? <RotuloACorte texto="Materiales" titulo={AYUDA_MATERIALES} /> : null}
@@ -155,8 +173,8 @@ export function TablaClientes({
         <span className={`grid ${SOLO_ANCHO}`}>
           {veEconomia ? <RotuloACorte texto="Mano de obra" titulo={AYUDA_MANO_OBRA} /> : null}
         </span>
-        <span className={`grid ${SOLO_TABLET}`}>
-          <RotuloCol derecha titulo={AYUDA_AVANCE}>{veEconomia ? 'Avance de cobro' : ''}</RotuloCol>
+        <span className={`grid ${SOLO_TABLET}`} style={{ textAlign: 'right' }} title={AYUDA_AVANCE}>
+          {veEconomia ? 'Avance de cobro' : ''}
         </span>
       </div>
       {clientes.map((c) => {
@@ -164,31 +182,27 @@ export function TablaClientes({
         const contratado = sumaDeObras(c.enCurso, baseDelContrato)
         return (
           <div key={c.cliente_id}>
+            {/* EL CLIENTE ES EL ENCABEZADO DEL GRUPO, como en Obras: banda tenue, nombre en negrita y el
+                conteo al lado. Sigue siendo la puerta a su ficha y sigue cargando sus totales. */}
             <Link
               href={hrefDe(c.cliente_id)}
               prefetch={false}
               role="row"
               data-testid="fila-cliente"
               data-seleccionada={elegido ? '' : undefined}
-              className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} ${elegido ? '' : 'hover:bg-[#F2F1ED]'}`}
+              className={`grid items-center ${COLS} ${CLASE_CABECERA_GRUPO_TELEFONO} ${elegido ? '' : 'hover:!bg-surface-sunken'}`}
               style={{
-                minHeight: ALTO_V2.cliente,
-                borderBottom: `1px solid ${c.enCurso.length ? TONO.divisorObra : V.lineaFila}`,
-                background: elegido ? V.seleccion : undefined,
+                // La letra del grupo (600, .02em) va SÓLO en el nombre: las cifras de la banda son las
+                // de la columna y no se engordan por estar en el encabezado.
+                ...estiloCabeceraGrupo(false, true), display: 'grid', gap: '22px', rowGap: 0,
+                fontWeight: 400, letterSpacing: 'normal', background: elegido ? V.seleccion : K.tenueFondo,
               }}
             >
-              <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-                <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
-                  <IconoCliente className="h-[15px] w-[15px]" />
-                </span>
-                <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, gap: 1 }}>
-                  <span className="truncate" style={{ fontSize: '12.5px', fontWeight: 600, color: V.tinta, minWidth: 96 }}>
-                    {c.nombre}
-                  </span>
-                  {/* CUÁNTOS TRABAJOS TIENE, EN UNA FRASE debajo del nombre: dejó de ser columna. */}
-                  <span className="truncate" data-testid="obras-cliente" style={{ fontSize: '11px', color: V.apagado }}>
-                    {frasesDeObras(c)}
-                  </span>
+              <span style={{ display: 'flex', alignItems: 'baseline', gap: '10px', minWidth: 0 }}>
+                <span className="truncate" style={{ minWidth: 96, fontWeight: 600, letterSpacing: '.02em' }}>{c.nombre}</span>
+                {/* CUÁNTOS TRABAJOS TIENE, AL LADO DEL NOMBRE: el «Messina 4» de Obras, con las cerradas. */}
+                <span className="truncate" data-testid="obras-cliente" style={ESTILO_CUENTA_GRUPO}>
+                  {frasesDeObras(c)}
                 </span>
               </span>
               {veEconomia ? (
@@ -214,14 +228,14 @@ export function TablaClientes({
             </Link>
             {/* EL ADICIONAL VA DEBAJO DE SU OBRA MAYOR (dueño, 11/09/2026). La relación la decide
                 `obra_canonica.obra_padre_id`; el orden y los dos niveles, `jerarquiaDeObras`, que es
-                la MISMA función que usa la ficha del cliente. Mientras la migración 20260911T2000 no
-                esté aplicada, ninguna obra trae padre y esto dibuja la lista de siempre. */}
+                la MISMA función que usa la ficha del cliente. */}
             {jerarquiaDeObras(c.enCurso).map((fila) => {
               const o = fila.obra
               const ocDeLaObra = papelesDe(c.cliente_id).porObra.get(o.obra_id)?.oc ?? []
               // Lo suyo + sus adicionales. La celda dibuja SU número (la columna tiene que seguir
               // sumando el total del cliente) y declara el consolidado en la línea de abajo.
               const consolidado = consolidar(fila, baseDelContrato)
+              const sangria = fila.nivel ? SANGRIA_HIJA : 0
               return (
                 <Link
                   key={o.obra_id}
@@ -229,52 +243,45 @@ export function TablaClientes({
                   prefetch={false}
                   role="row"
                   data-testid="fila-obra"
-                  className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} hover:bg-surface-quiet`}
+                  className={`grid items-center ${COLS} ${CLASE_FILA_TELEFONO} ${HOVER_FILA_CARTERA}`}
                   data-ordenes={ocDeLaObra.length ? '' : undefined}
-                  style={{
-                    minHeight: ocDeLaObra.length ? ALTO_V2.hijaConOrdenes : ALTO_V2.hija,
-                    borderBottom: `1px solid ${TONO.divisorObra}`,
-                  }}
+                  style={{ ...ESTILO_FILA, rowGap: 0, paddingTop: 8, paddingBottom: 8 }}
                 >
-                  {/* DOS LÍNEAS: el nombre arriba, sus OC abajo, cada una abriendo su PDF. */}
-                  <span style={{
-                    display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2,
-                    // UN PASO DE 24px (grid de 8) SOBRE LA SANGRÍA DE LA OBRA. Es el único recurso
-                    // que dice «esto cuelga de lo de arriba» sin agregar un tercer nivel de
-                    // navegación ni una tarjeta por dato.
-                    minWidth: 0, overflow: 'hidden', paddingLeft: fila.nivel ? 38 : 14,
-                  }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-                      <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
-                        <IconoObra className="h-[13px] w-[13px]" />
+                  {/* LA CELDA DE OBRAS: el nombre en 500 y, debajo, lo que le cuelga —en Obras el estado,
+                      acá «adicional» y sus OC, cada una abriendo su PDF—. */}
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, paddingLeft: sangria }}>
+                    {/* EN EL TELÉFONO EL NOMBRE SE LEE ENTERO (dueño, 23/09/2026): se corta en dos
+                        líneas en vez de truncarse; en escritorio sigue en una línea con «…». */}
+                    <span className="max-md:line-clamp-2 max-md:!whitespace-normal" style={ESTILO_NOMBRE_FILA} title={o.nombre}>
+                      {fila.nivel ? <span style={ESTILO_CODO}>└</span> : null}{o.nombre}
+                    </span>
+                    {(fila.esAdicional || ocDeLaObra.length > 0) && (
+                      <span className="flex flex-wrap items-baseline gap-x-3 gap-y-[2px]" style={{ ...ESTILO_SUBLINEA, minWidth: 0 }}>
+                        {fila.esAdicional && <MarcaAdicional huerfano={fila.huerfano} enLinea />}
+                        {/* EN EL TELÉFONO LAS OC NO SE LISTAN (dueño, 23/09/2026: «infinitos números»): se
+                            leen en la ficha del cliente. `contents` no cambia la geometría de escritorio. */}
+                        <span className="contents max-md:hidden">
+                          <OrdenesDeLaObra ordenes={ocDeLaObra} veEconomia={veEconomia} sangria={0} />
+                        </span>
                       </span>
-                      {/* EN EL TELÉFONO EL NOMBRE SE LEE ENTERO (dueño, 23/09/2026): se corta en dos
-                          líneas en vez de truncarse; en escritorio sigue en una línea con «…». */}
-                      <span className="truncate max-md:line-clamp-2 max-md:whitespace-normal" style={{ fontSize: '12px', color: TONO.textoObra, minWidth: 96 }}>{o.nombre}</span>
-                      {fila.esAdicional && <span className="shrink-0"><MarcaAdicional huerfano={fila.huerfano} /></span>}
-                    </span>
-                    {/* EN EL TELÉFONO LAS OC NO SE LISTAN (dueño, 23/09/2026: «infinitos números»): se
-                        leen en la ficha del cliente. `contents` no cambia la geometría de escritorio. */}
-                    <span className="contents max-md:hidden">
-                      <OrdenesDeLaObra ordenes={ocDeLaObra} veEconomia={veEconomia} />
-                    </span>
+                    )}
                   </span>
                   <ContratadoDelTrabajo o={o} veEconomia={veEconomia} consolidado={consolidado} />
                   <CostoDeLaObra costos={costos} obraId={o.obra_id} veEconomia={veEconomia} />
                   <AvanceDeCobro o={o} veEconomia={veEconomia} />
-                  {/* La sangría alinea la línea con el NOMBRE de la obra: sangría + ícono + hueco. */}
+                  {/* La sangría alinea la línea con el NOMBRE de la obra. */}
                   <CostoDeLaObraAngosto costos={costos} obraId={o.obra_id} veEconomia={veEconomia}
-                    sangria={(fila.nivel ? 38 : 14) + 22} />
+                    sangria={sangria} />
                 </Link>
               )
             })}
             {c.enCurso.length === 0 && obrasNoLeidas && (
               <div
-                className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS}`}
-                style={{ height: ALTO_V2.hija - 4, borderBottom: `1px solid ${TONO.divisorObra}` }}
+                className={`grid items-center ${COLS}`}
+                style={{ ...ESTILO_FILA, minHeight: undefined, padding: '12px 0', fontSize: undefined }}
                 data-testid="obras-sin-leer"
               >
-                <span style={{ fontSize: '11.5px', color: V.warn, paddingLeft: 36 }}>
+                <span style={{ fontSize: '12px', color: K.warn }}>
                   no pude leer sus obras
                 </span>
               </div>
@@ -283,9 +290,9 @@ export function TablaClientes({
         )
       })}
       {clientes.length === 0 && (
-        <div style={{ padding: '24px 2px', fontSize: '12.5px', color: V.apagado }} data-testid="sin-resultados">
+        <div style={{ padding: '26px 0', fontSize: '12.5px', color: K.tintaSuave }} data-testid="sin-resultados">
           {vacio}{' '}
-          <Link href={limpiarHref} data-testid="clientes-ver-todo" style={{ color: V.tinta, fontWeight: 500, textDecoration: 'underline' }}>
+          <Link href={limpiarHref} data-testid="clientes-ver-todo" style={{ color: K.tinta, fontWeight: 500, textDecoration: 'underline' }}>
             Ver todos
           </Link>
         </div>

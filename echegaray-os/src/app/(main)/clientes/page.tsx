@@ -63,9 +63,9 @@ import { pesos } from '@/shared/components/canon/formato'
 import { Aviso } from '@/shared/components/ds'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
 import { FormAccion } from '@/shared/components/ui'
-import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
-import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
 import { NotaBloque, V } from '@/shared/components/v2/patron'
+import { CLASE_MARCO_TELEFONO, MARCO_CARTERA } from '@/shared/components/cartera/estiloCartera'
+import { CabeceraClientes } from '@/features/clientes/components/CabeceraClientes'
 import { contieneEnAlguno } from '@/shared/utils/busqueda'
 
 export const dynamic = 'force-dynamic'
@@ -178,67 +178,53 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
   const seleccionado = sp.c ? base.find((c) => c.cliente_id === sp.c) ?? null : null
   const hayPanel = seleccionado !== null
 
+  // LOS NÚMEROS DE LOS RECORTES CUENTAN TODA LA CARTERA, no lo buscado: como los chips de Obras, un
+  // recorte que dice «Con trabajo en curso 3» sigue diciendo 3 mientras se escribe en el buscador. Lo
+  // que queda a la vista lo dice la bajada («N clientes»).
+  const conTrabajo = cartera.filter((c) => c.enCurso.length > 0).length
+
   return (
     <Marco>
-      {/* EL INTERLINEADO DEL MOCKUP, DECLARADO UNA VEZ. El `.dc.html` no declara `line-height` —corre
-          con `normal`— y el preflight de Tailwind pone 1.5: cada bloque de texto salía 4-5px más
-          alto y eso corría la tabla 25px hacia abajo. Ver `patron.tsx · CAJA_CONTENIDO`. */}
-      <div style={{ lineHeight: 'normal' }}>
-        {/* ═══ LA BANDA DE SEÑALES SE FUE (handoff CRM / Administración v4) ═══
-
-            Decía en tres renglones —clientes sin CUIT, sin teléfono, obras sin contrato— lo que
-            cada fila ya marca en su propia celda y lo que el recorte «Datos faltantes» ya aísla de
-            un clic. La v4 revierte el criterio 1 del patrón v2 para las pantallas de área: lo que
-            falta se lee donde está, no en un resumen que empuja la lista fuera de la pantalla. */}
-
-        {/* EL ENLACE A `/administracion/portal` SE RETIRÓ (26/08/2026). Esa pantalla duplicaba la
-            solapa «Acceso al portal» de la ficha del cliente, que administra lo mismo sobre
-            `cliente_acceso`. Quién entra al portal se decide ADENTRO del cliente al que se le da
-            acceso, no en una lista aparte: «es un crm ahi tiene q estar todo». */}
-
-        <CabeceraSeccion
-          testid="vistas-clientes"
+      {/* ═══ SE VE COMO OBRAS «VER: TABLA» (dueño, 25/09/2026) ═══
+          «Unificar diseño, sólo UI, de cómo se ve Obras a cómo se ve Admin Clientes.» El cuerpo blanco,
+          la cabecera fija con título, bajada, buscador en caja, primaria y recortes subrayados con su
+          número, y la tabla agrupada por cliente: las medidas son las de `CarteraObras`, leídas del
+          mismo `shared/components/cartera/estiloCartera.ts`. Las consultas, los recortes y la URL no
+          cambiaron: `?vista=`, `?q=`, `?nuevo=1`, `?c=` y `?ordenes=` hacen lo mismo que antes. */}
+      <div style={MARCO_CARTERA} className={`${CLASE_MARCO_TELEFONO} ${puedeEditar ? 'max-md:!pb-24' : ''}`}>
+        {/* LA BANDA DE SEÑALES SE FUE (handoff CRM / Administración v4) y EL ENLACE A
+            `/administracion/portal` TAMBIÉN (26/08/2026): quién entra al portal se decide ADENTRO
+            del cliente, en la solapa «Acceso al portal» de su ficha. */}
+        <CabeceraClientes
           espacioPanel={hayPanel}
-          vistas={[{
-            clave: 'clientes',
-            titulo: 'Clientes',
-            // NINGUNA CIFRA SIN RÓTULO (10/09/2026). `cuenta` dibuja el número SOLO —«Clientes 5»—
-            // y con una única sub-vista no hay solapa que lo explique: el dueño lo leyó como un «5»
-            // suelto pegado a «$ 251.494.283 contratado». El conteo se dice con su sustantivo, en
-            // el resumen, junto a los otros dos.
-            cuenta: null,
-            activa: true,
-            href: armarHref({}),
-            // EL RESUMEN CUENTA LO QUE SE VE. Un total de la cartera entera al lado de tres filas
-            // filtradas es un número que no cuadra con nada de lo que hay en pantalla.
-            subtitulo: [
-              `${visibles.length} ${visibles.length === 1 ? 'cliente' : 'clientes'}`,
-              obras === null
-                ? 'no pude leer sus trabajos'
-                : `${obrasEnCurso} ${obrasEnCurso === 1 ? 'trabajo' : 'trabajos'} en curso`,
-              // «EN CURSO» NO ES ADORNO: es la suma de la columna Contratado, que sólo mira los
-              // trabajos en marcha. Sin la aclaración se lee como el contrato histórico del cliente.
-              veEconomia
-                ? (contratadoTotal === null
-                    ? 'sin precios en OBRAS'
-                    : `${pesos(contratadoTotal)} contratado en curso${trabajosSinBase ? ` · suma incompleta: ${trabajosSinBase} sin precio` : ''}`)
-                : null,
-            ].filter(Boolean).join(' · '),
-          }]}
-          buscador={{
-            accion: RUTA,
-            q: sp.q,
-            placeholder: 'Buscar cliente',
-            oculto: { archivados: sp.archivados, vista: sp.vista, c: sp.c },
-            testid: 'buscar-cliente',
-          }}
+          // NINGUNA CIFRA SIN RÓTULO (10/09/2026): el conteo se dice con su sustantivo, en la bajada.
+          // EL RESUMEN CUENTA LO QUE SE VE: un total de la cartera entera al lado de tres filas
+          // filtradas es un número que no cuadra con nada de lo que hay en pantalla.
+          bajada={[
+            `${visibles.length} ${visibles.length === 1 ? 'cliente' : 'clientes'}`,
+            obras === null
+              ? 'no pude leer sus trabajos'
+              : `${obrasEnCurso} ${obrasEnCurso === 1 ? 'trabajo' : 'trabajos'} en curso`,
+            // «EN CURSO» NO ES ADORNO: es la suma de la columna Contratado, que sólo mira los
+            // trabajos en marcha. Sin la aclaración se lee como el contrato histórico del cliente.
+            veEconomia
+              ? (contratadoTotal === null
+                  ? 'sin precios en OBRAS'
+                  : `${pesos(contratadoTotal)} contratado en curso${trabajosSinBase ? ` · suma incompleta: ${trabajosSinBase} sin precio` : ''}`)
+              : null,
+          ].filter(Boolean).join(' · ')}
+          buscador={{ accion: RUTA, q: sp.q, oculto: { archivados: sp.archivados, vista: sp.vista, c: sp.c } }}
           alta={puedeEditar
-            ? { href: armarHref(sp, { nuevo: abierta ? undefined : '1' }), etiqueta: abierta ? 'Cancelar' : 'Nuevo cliente', testid: 'abrir-alta-cliente' }
+            ? { href: armarHref(sp, { nuevo: abierta ? undefined : '1' }), etiqueta: abierta ? 'Cancelar' : 'Nuevo cliente' }
             : undefined}
+          recortes={[
+            { clave: 'todo', etiqueta: 'Todos', icono: 'todo', href: armarHref(sp, { vista: undefined, c: undefined }), activo: vista === 'todo', cuenta: base.length },
+            { clave: 'activos', etiqueta: 'Con trabajo en curso', icono: 'hh', href: armarHref(sp, { vista: 'activos', c: undefined }), activo: vista === 'activos', cuenta: conTrabajo },
+          ]}
         />
 
         {abierta && (
-          <div style={{ padding: '14px 20px 0' }} data-testid="alta-cliente">
+          <div data-testid="alta-cliente">
             <h2 style={{ fontSize: '13px', fontWeight: 600, color: V.tinta, margin: '0 0 10px' }}>Nuevo cliente</h2>
             {/* El identificador de la URL sale del nombre y lo calcula el servidor: pedirlo acá sería
                 pedir que alguien invente una clave primaria. Si ya existe, la acción avisa en vez de
@@ -249,21 +235,9 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
           </div>
         )}
 
-        <div style={{ padding: '10px 20px 24px' }}>
+        <div>
           <div className="flex flex-col lg:flex-row lg:items-stretch">
             <div className="min-w-0 flex-1">
-              <FiltrosSuaves
-                testid="filtro-cartera"
-                // EL CONTEO LLEVA SU SUSTANTIVO. «5/5» solo es una cifra sin rótulo —la regla del
-                // dueño que este módulo ya aplicó al «Clientes 5» de la cabecera—: dos números
-                // pegados a un total de plata no dicen de qué están hablando.
-                conteo={{ n: visibles.length, total: base.length, sustantivo: 'clientes' }}
-                opciones={[
-                  { clave: 'todo', etiqueta: 'Todos', href: armarHref(sp, { vista: undefined, c: undefined }), activo: vista === 'todo' },
-                  { clave: 'activos', etiqueta: 'Con trabajo en curso', href: armarHref(sp, { vista: 'activos', c: undefined }), activo: vista === 'activos' },
-                ]}
-              />
-
               <TablaClientes
                 clientes={visibles}
                 papeles={papeles.porCliente}
