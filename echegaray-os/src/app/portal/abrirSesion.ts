@@ -3,11 +3,12 @@ import { cookies, headers } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { armarCookie, NOMBRE_COOKIE } from './sesion'
 
-// ABRE LA SESIÓN DEL PORTAL: marca el ingreso en el acceso, lo anota en el libro y firma la cookie.
+// ABRE LA SESIÓN DEL PORTAL DESDE EL ENLACE PERSONAL (opcional): marca el ingreso, lo anota y firma la cookie.
 //
-// Vivía dentro de `login/acciones.ts`. Sale a un módulo `server-only` que NO es `'use server'`: en un
-// archivo de acciones, toda función exportada es invocable desde el navegador, y ésta abre una sesión
-// para el acceso que se le pase. La llama sólo la ruta del enlace personal, después de comprobarlo.
+// La entrada normal del cliente es `/portal/login` con su mail (decisión del dueño del 26/08, ratificada el
+// 25/09: «ese portal y su url es la que no tenía que cambiarse porque la usan»); esa vive en
+// `login/acciones.ts`. Esto lo usa sólo `/portal/ingresar?t=`, el enlace que Administración PUEDE copiar
+// desde la ficha como atajo. No es `'use server'`: no se puede invocar desde el navegador.
 //
 // El orden importa: las dos escrituras van ANTES de la cookie; `primer_ingreso_at` sólo si estaba vacío.
 

@@ -80,10 +80,6 @@ const saludo = (persona) => (persona ? `Hola ${esc(persona)}:` : 'Hola:')
  * El botón lleva a la PUERTA, `/portal/login`, y no a un enlace de acceso: un link que entra solo
  * sirve para cualquiera que reenvíe el mensaje, y los mails de un cliente se reenvían siempre.
  *
- * DESDE EL 25/09/2026 la puerta ya no abre con el mail a secas (cualquiera que supiera el correo de un
- * contacto entraba como ese cliente). Se entra con el ENLACE PERSONAL que Administración copia desde la
- * ficha del cliente y manda por separado; este mail avisa que ese enlace llega.
- *
  * ═══ LO QUE ESTA PLANTILLA DECÍA Y YA NO ERA CIERTO (27/08/2026) ═══
  *
  * Apuntaba a `${PORTAL}/ingresar` —**404 en producción**— y prometía «te mandamos un enlace de
@@ -97,8 +93,7 @@ export function habilitacionPortal({ para, persona_contacto, cliente_nombre, acc
     + `<p>Habilitamos el acceso al portal de clientes de Echegaray Construcciones para `
     + `<strong>${esc(cliente_nombre)}</strong>. Desde ahí vas a poder ver el avance de la obra, los `
     + `certificados y el esquema de pagos.</p>`
-    + `<p>Para entrar vas a recibir de nuestra parte un <strong>enlace personal</strong> para ${esc(para)}: guardalo, `
-    + `sirve para volver a entrar y no hay contraseña ni registro. `
+    + `<p>Para entrar alcanza con tu correo <strong>${esc(para)}</strong>: no hay contraseña ni registro. `
     + `Si querés que entre otra persona de tu equipo, decinos su mail y lo agregamos.</p>`
   return {
     asunto: 'Tu acceso al portal de Echegaray Construcciones',
