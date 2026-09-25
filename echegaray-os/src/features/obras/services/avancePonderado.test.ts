@@ -49,3 +49,9 @@ test('serie B · historias sin costo: el avance no es 0 %, es «sin peso»', () 
   assert.equal(bajadaAvance(a), '4 de 4 historias sin costo de MO · no pesan')
   assert.equal(faltaAvance(null), 'sin estructura')
 })
+
+test('serie B · pesa pero nada medido: «sin medir», con la bajada de siempre', () => {
+  const a: AvancePonderado = { obra_id: 'x', metodo: 'costo_mo', avance_pct: null, costo_mo_total: 7_535_985, costo_teorico: null, n_historias: 1, n_historias_sin_costo: 0, pct_sin_peso: 0, n_items_medidos: 0, n_items: 1 }
+  assert.equal(faltaAvance(a), 'sin medir')
+  assert.equal(bajadaAvance(a), 'ponderado por costo de MO · 0 de 1 ítems medidos')
+})

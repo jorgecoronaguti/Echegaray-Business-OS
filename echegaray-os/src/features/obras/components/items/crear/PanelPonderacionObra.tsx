@@ -37,12 +37,14 @@ const GRID = 'minmax(0,1fr) 110px 130px 80px 200px'
 const MAS = 3
 
 export function PanelPonderacionObra({
-  obraId, nombreObra, nodos, items, metodo, historiasVista, guardarCosto, elegirMetodo, alCerrar, alRepartirAMano, alGuardado,
+  obraId, nombreObra, nodos, items, fuentes = {}, metodo, historiasVista, guardarCosto, elegirMetodo, alCerrar, alRepartirAMano, alGuardado,
 }: {
   obraId: string
   nombreObra: string
   nodos: NodoObra[]
   items: ItemMO[]
+  /** De dónde sale el costo de cada historia (id → «archivo · N partidas»). */
+  fuentes?: Readonly<Record<string, string | null | undefined>>
   metodo: MetodoPonderacion
   /** Lo que publica `obra_historia_peso` (el peso de los métodos que no son por costo). */
   historiasVista: HistoriaPeso[]
@@ -135,6 +137,7 @@ export function PanelPonderacionObra({
       <div key={h.id} data-testid={`pond-historia-${h.id}`} className="md:grid flex flex-wrap" style={{ gridTemplateColumns: GRID, gap: '20px', minHeight: '45px', alignItems: 'center', borderBottom: `1px solid ${C.bordeTarjeta}`, paddingLeft: `${sangria}px`, columnGap: '20px', rowGap: '4px', padding: '6px 0 6px ' + sangria + 'px' }}>
         <div style={{ fontSize: '13.5px', color: C.tinta, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 100%' }}>
           {n?.nombre} <span style={{ fontSize: '12px', color: C.tenue }}>{ruta(h)}</span>
+          {h.costo_mo != null && fuentes[h.id] && <div style={{ fontSize: '11px', color: C.tenue, whiteSpace: 'normal' }} data-testid={`fuente-${h.id}`}>costo de {fuentes[h.id]}</div>}
         </div>
         <div style={{ fontFamily: MONO, fontSize: '12.5px', color: C.tintaSuave, textAlign: 'right' }}>{n ? rotuloUniCant(n.unidad, n.cantidad_objetivo) ?? '' : ''}</div>
         <div style={{ minWidth: '120px' }}>{celdaCosto(h)}</div>

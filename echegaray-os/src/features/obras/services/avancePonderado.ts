@@ -38,14 +38,16 @@ export const ROTULO_METODO: Record<string, string> = {
 export function bajadaAvance(a: AvancePonderado | null): string {
   if (!a || a.n_historias === 0) return 'sin estructura'
   // Serie B: hay historias pero ninguna pesa (ninguna tiene costo de MO): el avance no se puede ponderar.
-  if (a.avance_pct == null) return `${a.n_historias_sin_costo} de ${a.n_historias} ${a.n_historias === 1 ? 'historia' : 'historias'} sin costo de MO · no pesan`
+  if (a.avance_pct == null && a.n_historias_sin_costo === a.n_historias) return `${a.n_historias_sin_costo} de ${a.n_historias} ${a.n_historias === 1 ? 'historia' : 'historias'} sin costo de MO · no pesan`
   const metodo = ROTULO_METODO[a.metodo] ?? a.metodo
   return `${metodo} · ${a.n_items_medidos} de ${a.n_items} ítems medidos`
 }
 
 /** La palabra cuando no hay cifra: sin historias, «sin estructura»; con historias que no pesan, «sin peso». */
 export function faltaAvance(a: AvancePonderado | null): string {
-  return !a || a.n_historias === 0 ? 'sin estructura' : 'sin peso'
+  if (!a || a.n_historias === 0) return 'sin estructura'
+  // Pesa pero ninguna tarea tiene registro: «sin medir», no 0 % (20260925T1110).
+  return a.n_historias_sin_costo === a.n_historias ? 'sin peso' : 'sin medir'
 }
 
 /** La cifra grande del avance: «42,5 %» o null (se dibuja con `falta`). */

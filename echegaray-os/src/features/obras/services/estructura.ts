@@ -21,7 +21,11 @@ export const ROTULO_NIVEL: Record<NivelEstructura, string> = {
  * Lo que el árbol no trae y estas pantallas necesitan: el peso a mano, el costo de MO, el NIVEL
  * explícito (serie B, 20260925T0900; null = base sin migrar, se deduce por profundidad) y el estado.
  */
-export interface PesoItem { ponderacion: number | null; costo_mo: number | null; nivel?: NivelEstructura | null; estado?: string | null }
+export interface PesoItem {
+  ponderacion: number | null; costo_mo: number | null; nivel?: NivelEstructura | null; estado?: string | null
+  /** De dónde sale el costo de MO: «Cotización … · 14 partidas» · «a mano». null = sin fuente registrada. */
+  fuente?: string | null
+}
 export type Ponderaciones = Record<string, PesoItem>
 
 const num = (n: number, dec = 0) => n.toLocaleString('es-AR', { maximumFractionDigits: dec })

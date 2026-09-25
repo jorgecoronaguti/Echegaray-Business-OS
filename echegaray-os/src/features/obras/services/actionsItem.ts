@@ -237,7 +237,8 @@ export async function guardarCostoMO(obraId: string, historiaId: string, form: F
   const supabase = await createClient()
   if (!await esAdmin(supabase)) return { ok: false, error: SIN_PERMISO }
   const valor = parsed.data.costo_mo === '' ? null : parsed.data.costo_mo
-  const { data, error } = await supabase.from('obra_actividad').update({ costo_mo: valor, editado_a_mano: true })
+  // La procedencia viaja con el número: cargado a mano pisa la del presupuesto (que queda en el historial de la fila).
+  const { data, error } = await supabase.from('obra_actividad').update({ costo_mo: valor, costo_mo_fuente: valor == null ? null : { origen: 'a_mano', en: new Date().toISOString() }, editado_a_mano: true })
     .eq('obra_id', obraId).eq('id', historiaId).eq('nivel', 'historia').select('id')
   if (error) return { ok: false, error: error.message }
   if (!data?.length) return { ok: false, error: 'Esa historia no es de esta obra.' }
