@@ -270,13 +270,14 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
   const nDeps = actos.filter((f) => f.actividadId && con.has(f.actividadId)).length
   const selladas = actos.filter((f) => f.inicioBase || f.finBase).length
   // M07 ABRE CON HOY A LA VISTA: el lienzo se corre de costado y arrancaba en la primera fecha de la
-  // obra (agosto), con la línea de hoy fuera de la pantalla. Hoy queda a un tercio del gráfico.
+  // obra (agosto), con la línea de hoy fuera de la pantalla. Hoy queda a dos tercios del gráfico: en 270 px
+  // entran seis semanas y lo que importa es lo que viene de atrás (lo atrasado) hasta hoy.
   const scrollRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const el = scrollRef.current
     if (!el || hoyPct == null) return
     const grafico = el.scrollWidth - 120
-    el.scrollLeft = Math.max(0, 120 + grafico * (hoyPct / 100) - 120 - (el.clientWidth - 120) / 3)
+    el.scrollLeft = Math.max(0, 120 + grafico * (hoyPct / 100) - 120 - (el.clientWidth - 120) * 2 / 3)
   }, [hoyPct, escala])
   const caja = (activo: boolean): CSSProperties => ({
     font: 'inherit', height: '44px', padding: '0 12px', display: 'flex', alignItems: 'center', border: `1px solid ${activo ? C.grafito : C.borde}`,
