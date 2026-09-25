@@ -198,10 +198,11 @@ export function TablaClientes({
                 fontWeight: 400, letterSpacing: 'normal', background: elegido ? V.seleccion : K.tenueFondo,
               }}
             >
-              <span style={{ display: 'flex', alignItems: 'baseline', gap: '10px', minWidth: 0 }}>
-                <span className="truncate" style={{ minWidth: 96, fontWeight: 600, letterSpacing: '.02em' }}>{c.nombre}</span>
+              {/* EN EL TELÉFONO EL CONTEO BAJA A SU LÍNEA: al lado, en 200px, se comía el nombre del cliente. */}
+              <span className="max-md:!flex-col max-md:!items-start max-md:!gap-0" style={{ display: 'flex', alignItems: 'baseline', gap: '10px', minWidth: 0 }}>
+                <span className="truncate max-md:max-w-full" style={{ minWidth: 96, fontWeight: 600, letterSpacing: '.02em' }}>{c.nombre}</span>
                 {/* CUÁNTOS TRABAJOS TIENE, AL LADO DEL NOMBRE: el «Messina 4» de Obras, con las cerradas. */}
-                <span className="truncate" data-testid="obras-cliente" style={ESTILO_CUENTA_GRUPO}>
+                <span className="truncate max-md:max-w-full" data-testid="obras-cliente" style={ESTILO_CUENTA_GRUPO}>
                   {frasesDeObras(c)}
                 </span>
               </span>

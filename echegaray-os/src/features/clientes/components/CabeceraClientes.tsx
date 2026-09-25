@@ -52,7 +52,7 @@ export function CabeceraClientes({ bajada, buscador, alta, recortes, espacioPane
           <div style={ESTILO_TITULO} data-testid="vista-clientes">Clientes</div>
           <div style={ESTILO_BAJADA} className="max-md:hidden" data-testid="bajada-clientes">{bajada}</div>
         </div>
-        <div className="max-md:!flex-col max-md:!items-stretch"
+        <div className="max-md:!ml-0 max-md:!flex-col max-md:!items-stretch"
           style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto' }}>
           <BuscadorFilo caja accion={buscador.accion} q={buscador.q} placeholder="Buscar cliente"
             oculto={buscador.oculto} testid="buscar-cliente" />
