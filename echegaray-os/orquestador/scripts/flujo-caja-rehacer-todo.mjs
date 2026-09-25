@@ -38,7 +38,7 @@
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { esReporte, frenaElPipeline, pasosDelGrupo } from '../lib/flujo-caja-pasos.mjs'
+import { esReporte, frenaElPipeline, fuenteRojaDe, pasosDelGrupo } from '../lib/flujo-caja-pasos.mjs'
 import { guardiaDeGeneradores } from '../lib/guardia-generadores.mjs'
 import { FILA, ROTULO_HOY, colTotal, colsDelSiguiente } from '../lib/cash-flow-matriz.mjs'
 import { fileURLToPath } from 'node:url'
@@ -159,14 +159,20 @@ export function decisionDeFreno(pasos, indice, error) {
  *   `alFallar` devuelve el motivo del freno (texto) cuando la decisión fue frenar.
  * @returns {Promise<{corridos:string[], frenado:null|{script:string, motivo:string, faltan:number}}>}
  */
-export async function recorrerPasos(pasos, { correr, alFallar, bloqueado = () => false, alSaltear = () => {}, dry = false, log = console.log, quedaMs = () => Infinity, techoPasoMs = TECHO_PASO_MS }) {
+export async function recorrerPasos(pasos, { correr, alFallar, bloqueado = () => false, alSaltear = () => {}, alArrastrar = () => {}, dry = false, log = console.log, quedaMs = () => Infinity, techoPasoMs = TECHO_PASO_MS }) {
   const corridos = []
   let frenado = null
   let sinTiempo = []
+  // Los pasos que quedaron rojos en ESTA corrida: los que fallaron y los que cayeron por arrastre.
+  const rojos = new Set()
+  const arrastrados = []
   for (let n = 0; n < pasos.length; n++) {
     const [script, que, pestañas = [], args = []] = pasos[n]
     if (bloqueado(pestañas)) { alSaltear({ script, pestañas }); continue }
     if (dry) { log(`(dry) ${script.padEnd(26)} ${que}`); continue }
+    // ═══ SOBRE UNA FUENTE ROJA NO SE CALCULA (25/09/2026) ═══ Ver DEPENDEN_DE en lib/flujo-caja-pasos.
+    const fuente = fuenteRojaDe(script, rojos)
+    if (fuente) { rojos.add(script); arrastrados.push({ script, fuente }); alArrastrar({ script, que, fuente }); continue }
     // ═══ UN PASO QUE NO ALCANZA A TERMINAR NO EMPIEZA (25/09/2026) ═══
     // Si lo que queda del presupuesto no cubre el techo del paso, systemd lo mataría A MITAD DE
     // ESCRITURA —media pestaña nueva, media vieja, sin error en ningún log—. Un paso salteado se ve y
@@ -180,6 +186,7 @@ export async function recorrerPasos(pasos, { correr, alFallar, bloqueado = () =>
     try {
       await correr({ script, que, pestañas, args })
     } catch (error) {
+      rojos.add(script)
       const freno = decisionDeFreno(pasos, n, error)
       const motivo = await alFallar({ script, que, error, freno })
       if (freno.frena) {
@@ -188,7 +195,7 @@ export async function recorrerPasos(pasos, { correr, alFallar, bloqueado = () =>
       }
     }
   }
-  return { corridos, frenado, sinTiempo }
+  return { corridos, frenado, sinTiempo, arrastrados }
 }
 
 /**
@@ -276,6 +283,13 @@ export function informeRespetadas(acc = new Map()) {
 }
 
 export function motivoDeFalla(e = {}) {
+  // ═══ UN PASO MATADO POR EL TECHO NO TIENE CÓDIGO (25/09/2026) ═══
+  // `execFile` con `timeout` lo corta con SIGTERM: `code` es null, `killed` es true y stderr sólo trae
+  // los avisos que alcanzó a imprimir. Así salió cargas-sociales a las 13:07:40 —exactamente 300 s
+  // después de arrancar— informado como «salió con código ?»: la causa estaba en el reloj, no en un log.
+  if (e?.killed || (e?.signal && !Number.isInteger(e?.code))) {
+    return `cortado por el techo de ${Math.round(TECHO_PASO_MS / 1000)} s del paso (${e?.signal ?? 'SIGTERM'}): no terminó — lo que escribía pudo quedar a medias; mirar cuánto tardó cada llamada a Google`.slice(0, 220)
+  }
   const crudas = String(e?.stderr ?? '').split('\n').filter((l) => l.trim())
   const lineas = crudas.map((l) => l.trim())
   const causa = [...crudas].reverse().find((l) => !MARCA_ALERTA.test(l) && !ES_DETALLE(l))
@@ -537,8 +551,13 @@ async function main() {
   } catch (e) { console.log(`· pre-pasada de firma/reconciliación no disponible (${e.message}) — sigue el candado por paso\n`) }
 
   // EL RECORRIDO ES `recorrerPasos` (exportada y probada): ahí vive la decisión de detener la corrida.
-  const { frenado, sinTiempo } = await recorrerPasos(pasos, {
+  const { frenado, sinTiempo, arrastrados } = await recorrerPasos(pasos, {
     quedaMs,
+    alArrastrar: ({ script, que, fuente }) => {
+      const porQue = `no corrió: su fuente ${fuente} falló en esta corrida — no se rehace sobre un libro que no se pudo escribir`
+      fallaron.push({ script, que, error: porQue })
+      console.error(`✗ ${script.padEnd(26)} ${que}\n   ${porQue}`)
+    },
     bloqueado: (pestañas) => pasoTotalmenteBloqueado(pestañas, bloqueadas),
     alSaltear: ({ script, pestañas }) => {
       saltados.push({ script, pestañas })
@@ -635,7 +654,7 @@ async function main() {
     console.log(`\n⛔ FRENADO por ${frenado.script}: ${frenado.motivo}`)
     process.exitCode = 2
   }
-  await encadenar({ grupo, frenado, sinTiempo })
+  await encadenar({ grupo, frenado, sinTiempo, arrastrados })
   // Una verificación abandonada sigue con sus lecturas en vuelo (hasta 3 min cada una) y el proceso no
   // saldría hasta que Google conteste: systemd lo seguiría contando contra el techo. Ya no escribe nada.
   if (abandonada) process.exit(process.exitCode ?? 0)
@@ -648,9 +667,15 @@ async function main() {
  * techo. Si la de datos FRENÓ, las vistas no corren (leen la Compras que el freno declaró rota).
  * Sólo encadena si la unidad lo pide por entorno: una corrida a mano no dispara nada.
  */
-export function decidirEncadenado({ grupo, frenado, siguiente, sinTiempo = [] }) {
+export function decidirEncadenado({ grupo, frenado, siguiente, sinTiempo = [], arrastrados = [] }) {
   if (grupo !== 'datos' || !siguiente) return null
   if (frenado) return { lanzar: false, linea: `⏭ ${siguiente}: no la arranco — la corrida de datos frenó` }
+  // 25/09: con el libro en rojo, las vistas auditan y formatean un Cash Flow que no se rehízo. Que
+  // corran «en verde» sobre eso es el mismo verde falso que DEPENDEN_DE cierra en la corrida de datos.
+  if (arrastrados.length) {
+    const fuentes = [...new Set(arrastrados.map((a) => a.fuente))].join(', ')
+    return { lanzar: false, linea: `⏭ ${siguiente}: no la arranco — ${fuentes} falló y ${arrastrados.length} paso(s) que se calculan sobre él no corrieron` }
+  }
   // 25/09 10:41: la de datos se quedó sin tiempo antes del freno de derrames y arrancó igual las vistas.
   // Sin el freno corrido nadie dijo que Compras esté sana, y las vistas sólo suman recálculo a un Sheet
   // que ya no contesta: la corrida siguiente de datos las encadena cuando termine entera.
@@ -658,9 +683,9 @@ export function decidirEncadenado({ grupo, frenado, siguiente, sinTiempo = [] })
   return { lanzar: true, linea: `→ arranco ${siguiente} (Proveedores, formato y auditorías, en su propia corrida)` }
 }
 
-async function encadenar({ grupo, frenado, sinTiempo }) {
+async function encadenar({ grupo, frenado, sinTiempo, arrastrados }) {
   const siguiente = process.env.ORQ_PIPELINE_SIGUIENTE
-  const d = decidirEncadenado({ grupo, frenado, siguiente, sinTiempo })
+  const d = decidirEncadenado({ grupo, frenado, siguiente, sinTiempo, arrastrados })
   if (!d) return
   console.log(`\n${d.linea}`)
   if (!d.lanzar) return

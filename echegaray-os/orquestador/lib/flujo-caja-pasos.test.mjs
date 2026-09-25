@@ -489,3 +489,26 @@ test('grupos: un grupo desconocido es un error, no una corrida vacía que termin
   const { pasosDelGrupo } = await import('./flujo-caja-pasos.mjs')
   assert.throws(() => pasosDelGrupo('todo'), /grupo desconocido/)
 })
+
+// ═══ EL ARRASTRE DEL ROJO (25/09/2026) ═══ Un consumidor declarado que no existe, o que corre ANTES
+// que su fuente, haría del arrastre un control que no puede decir que no.
+test('DEPENDEN_DE: cada fuente y cada consumidor están en PASOS, y el consumidor va después', async () => {
+  const { DEPENDEN_DE } = await import('./flujo-caja-pasos.mjs')
+  const idx = (s) => PASOS.findIndex(([x]) => x === s)
+  for (const [fuente, consumidores] of DEPENDEN_DE) {
+    assert.ok(idx(fuente) >= 0, `${fuente} no está en PASOS`)
+    for (const c of consumidores) {
+      assert.ok(idx(c) >= 0, `${c} no está en PASOS`)
+      assert.ok(idx(c) > idx(fuente), `${c} corre antes que su fuente ${fuente}`)
+    }
+  }
+})
+
+test('fuenteRojaDe: sólo con la fuente roja, y sólo para sus consumidores', async () => {
+  const { fuenteRojaDe } = await import('./flujo-caja-pasos.mjs')
+  const rojo = new Set(['libro-movimientos-pestana.mjs'])
+  assert.equal(fuenteRojaDe('cash-flow-vistas.mjs', rojo), 'libro-movimientos-pestana.mjs')
+  assert.equal(fuenteRojaDe('sync-flujo-fondos.mjs', rojo), 'libro-movimientos-pestana.mjs')
+  assert.equal(fuenteRojaDe('sync-compras.mjs', rojo), null)
+  assert.equal(fuenteRojaDe('cash-flow-vistas.mjs', new Set()), null)
+})

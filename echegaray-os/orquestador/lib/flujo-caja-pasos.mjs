@@ -800,6 +800,42 @@ export const FRENOS = new Map([
  * @param {string} script
  * @param {number|string|null|undefined} codigo  el código de salida del proceso hijo (`e.code` de execFile)
  */
+/**
+ * ═══ EL ROJO DE UNA FUENTE SE PROPAGA A LO QUE SE CALCULA SOBRE ELLA (25/09/2026) ═══
+ *
+ * Cuatro corridas seguidas del 25/09 (10:41, 11:52, 12:44, 13:21) murieron escribiendo `_MOVIMIENTOS`
+ * con «google api timeout (180000ms)», y en las cuatro CAJA, `_CAJA_ANEXO` y los dos Cash Flow
+ * salieron con ✓: se «rehicieron» sobre el libro de la corrida anterior —o sobre uno que Google pudo
+ * haber aplicado a medias después de que el cliente abandonó la llamada—. Un ✓ sobre una fuente roja
+ * es el verde falso que este repo ya pagó el 03/09 («no noto el aumento de cobranzas»).
+ *
+ * Si la FUENTE falla (con cualquier código: el 3 además frena todo, ver FRENOS), sus consumidores
+ * directos NO corren y se informan como fallados por arrastre, con el nombre de la fuente. No se
+ * rehace una vista sobre un libro que esta corrida no pudo escribir, y `sync-flujo-fondos` no publica
+ * a la web un libro viejo con sello de fresco. Los consumidores de un consumidor caen igual: el
+ * arrastre es transitivo porque un paso arrastrado queda rojo.
+ *
+ * Qué lee `_MOVIMIENTOS` (medido con grep el 25/09): caja-anexo (lib/caja-anexo-series), CAJA (N:O
+ * del libro), los dos Cash Flow (SUMPRODUCT sobre el libro), la asimetría (lee el Cash Flow recién
+ * escrito), sync-flujo-fondos (libro → public.flujo_*) y la verificación de los gráficos de CAJA.
+ */
+export const DEPENDEN_DE = new Map([
+  ['libro-movimientos-pestana.mjs', new Set([
+    'caja-anexo-pestana.mjs', 'caja-pestana.mjs', 'cash-flow-vistas.mjs', 'asimetria-cash-flow.mjs',
+    'sync-flujo-fondos.mjs', 'caja-graficos-verificar.mjs',
+  ])],
+])
+
+/**
+ * NÚCLEO PURO: la fuente roja de la que cuelga `script`, o null si puede correr.
+ * @param {string} script
+ * @param {Set<string>} rojos los pasos que fallaron (o fueron arrastrados) en esta corrida
+ */
+export function fuenteRojaDe(script, rojos, dependen = DEPENDEN_DE) {
+  for (const [fuente, consumidores] of dependen) if (rojos.has(fuente) && consumidores.has(script)) return fuente
+  return null
+}
+
 export function frenaElPipeline(script, codigo) {
   const regla = FRENOS.get(script)
   if (regla === undefined) return false

@@ -203,11 +203,49 @@ test('LIBRO CON SALIDA 3 (caída contra la vigente): CAJA y los Cash Flow no cor
   assert.equal(r.frenado?.script, 'libro-movimientos-pestana.mjs')
 })
 
-test('LIBRO CON OTRO ERROR (salida 1): falla como siempre y lo de abajo corre con el _MOVIMIENTOS anterior', async () => {
+// 25/09/2026: cuatro corridas seguidas con el libro en timeout y CAJA + Cash Flow en ✓ sobre el libro
+// viejo. El rojo de la fuente se propaga: sus consumidores no corren y quedan rojos por arrastre.
+test('LIBRO CON OTRO ERROR (salida 1): no frena, pero CAJA y los Cash Flow NO corren sobre el libro viejo', async () => {
   const r = await recorrer({ 'libro-movimientos-pestana.mjs': 1 })
   assert.equal(r.frenado, null)
   assert.deepEqual(r.fallados, ['libro-movimientos-pestana.mjs'])
+  assert.deepEqual(r.corridos, ['rubro-caja-sheet.mjs', 'freno-derrames-compras.mjs', 'libro-movimientos-pestana.mjs'])
+  assert.deepEqual(r.arrastrados, [
+    { script: 'caja-pestana.mjs', fuente: 'libro-movimientos-pestana.mjs' },
+    { script: 'cash-flow-vistas.mjs', fuente: 'libro-movimientos-pestana.mjs' },
+  ])
+})
+
+test('ARRASTRE: con el libro sano, sus consumidores corren y no hay arrastrados', async () => {
+  const r = await recorrer({ 'rubro-caja-sheet.mjs': 1 })
   assert.deepEqual(r.corridos, PASOS_DE_PRUEBA.map((p) => p[0]))
+  assert.deepEqual(r.arrastrados, [])
+})
+
+test('ARRASTRE: un paso que no lee el libro corre aunque el libro falle', async () => {
+  const { recorrerPasos } = await import('./flujo-caja-rehacer-todo.mjs')
+  const pasos = [...PASOS_DE_PRUEBA, ['sync-compras.mjs', 'núcleo']]
+  const avisados = []
+  const r = await recorrerPasos(pasos, {
+    correr: async ({ script }) => { if (script === 'libro-movimientos-pestana.mjs') throw falla(1) },
+    alFallar: () => null, alArrastrar: (a) => avisados.push(a.script), log: () => {},
+  })
+  assert.ok(r.corridos.includes('sync-compras.mjs'))
+  assert.deepEqual(avisados, ['caja-pestana.mjs', 'cash-flow-vistas.mjs'])
+})
+
+test('decidirEncadenado: con el libro rojo las vistas no arrancan, y lo dice', async () => {
+  const { decidirEncadenado } = await import('./flujo-caja-rehacer-todo.mjs')
+  const d = decidirEncadenado({ grupo: 'datos', frenado: null, siguiente: 'x.service', arrastrados: [{ script: 'caja-pestana.mjs', fuente: 'libro-movimientos-pestana.mjs' }] })
+  assert.equal(d.lanzar, false)
+  assert.match(d.linea, /libro-movimientos-pestana\.mjs falló/)
+  assert.equal(decidirEncadenado({ grupo: 'datos', frenado: null, siguiente: 'x.service', arrastrados: [] }).lanzar, true)
+})
+
+test('motivoDeFalla: un paso matado por el techo lo dice (antes: «salió con código ?»)', async () => {
+  const m = motivoDeFalla({ killed: true, signal: 'SIGTERM', code: null, stderr: '  ⚠ un aviso' })
+  assert.match(m, /cortado por el techo de 300 s/)
+  assert.match(m, /SIGTERM/)
 })
 
 test('un paso común que falla no detiene la corrida, aunque salga con 3', async () => {
