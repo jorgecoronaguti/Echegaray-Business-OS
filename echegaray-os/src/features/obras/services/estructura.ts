@@ -17,8 +17,11 @@ export const ROTULO_NIVEL: Record<NivelEstructura, string> = {
   rubro: 'Rubro', epica: 'Épica', historia: 'Historia', tarea: 'Tarea', subtarea: 'Subtarea',
 }
 
-/** Lo que el árbol no trae y estas pantallas necesitan: el peso a mano y el costo de MO por ítem. */
-export interface PesoItem { ponderacion: number | null; costo_mo: number | null }
+/**
+ * Lo que el árbol no trae y estas pantallas necesitan: el peso a mano, el costo de MO, el NIVEL
+ * explícito (serie B, 20260925T0900; null = base sin migrar, se deduce por profundidad) y el estado.
+ */
+export interface PesoItem { ponderacion: number | null; costo_mo: number | null; nivel?: NivelEstructura | null; estado?: string | null }
 export type Ponderaciones = Record<string, PesoItem>
 
 const num = (n: number, dec = 0) => n.toLocaleString('es-AR', { maximumFractionDigits: dec })
@@ -29,23 +32,34 @@ export function millones(n: number | null): string | null {
   return `$ ${(n / 1_000_000).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} M`
 }
 
-/** El nivel de un nodo por su profundidad; lo que cuelga de una ejecutable es subtarea. */
-export function nivelDe(n: NodoObra, porId: ReadonlyMap<string, NodoObra>): NivelEstructura {
+/**
+ * El nivel de un nodo: el EXPLÍCITO de la base cuando está (serie B); si no, por su profundidad, y lo
+ * que cuelga de una ejecutable es subtarea.
+ */
+export function nivelDe(n: NodoObra, porId: ReadonlyMap<string, NodoObra>, ponds?: Ponderaciones): NivelEstructura {
+  const explicito = ponds?.[n.id]?.nivel
+  if (explicito) return explicito
   const padre = n.padre_id ? porId.get(n.padre_id) : undefined
   if (padre && !padre.es_contenedor) return 'subtarea'
-  if (n.nivel === 0) return 'rubro'
+  if (n.nivel === 0) return n.es_contenedor ? 'rubro' : 'tarea'
+  if (!n.es_contenedor) return 'tarea'
   if (n.nivel === 1) return 'epica'
   if (n.nivel === 2) return 'historia'
-  if (n.nivel === 3) return 'tarea'
-  return 'subtarea'
+  return 'tarea'
 }
 
-/** El nivel que tendría un ítem NUEVO colgado de `padre` (null = un rubro nuevo). */
-export function nivelDeHijaNueva(padre: NodoObra | null, porId: ReadonlyMap<string, NodoObra>): NivelEstructura {
+/**
+ * El nivel que tendría un ítem NUEVO colgado de `padre` (null = un rubro nuevo). Rubro › épica ›
+ * historia › tarea; de una tarea cuelga una subtarea (de una tarea dividida, un frente: otra tarea).
+ */
+export function nivelDeHijaNueva(padre: NodoObra | null, porId: ReadonlyMap<string, NodoObra>, ponds?: Ponderaciones): NivelEstructura {
   if (!padre) return 'rubro'
-  if (!padre.es_contenedor) return 'subtarea'
-  const n = nivelDe(padre, porId)
-  return n === 'rubro' ? 'epica' : n === 'epica' ? 'historia' : 'tarea'
+  const n = nivelDe(padre, porId, ponds)
+  if (n === 'rubro') return 'epica'
+  if (n === 'epica') return 'historia'
+  if (n === 'historia') return 'tarea'
+  if (n === 'tarea') return padre.es_contenedor ? 'tarea' : 'subtarea'
+  return 'subtarea'
 }
 
 export function porId(nodos: readonly NodoObra[]): Map<string, NodoObra> {
@@ -354,115 +368,4 @@ export function resumenDeEstructura(nodos: readonly NodoObra[], ponds: Ponderaci
 export function rotuloProblema(p: { nombre: string; suma: number | null } | null): string | null {
   if (!p) return null
   return p.suma == null ? `${p.nombre} sin hijas` : `${p.nombre} ${num(p.suma, 1)} %`
-}
-
-// ── EL ÁRBOL DE LAS PANTALLAS DE ARMADO (C04 · C07 · C08 · C09 · MC2) ──────────
-
-export interface FilaArbol {
-  id: string
-  padreId: string | null
-  nivel: NivelEstructura
-  /** 0 rubro · 1 épica · 2 historia · 3 tarea · 4 subtarea. */
-  profundidad: number
-  /** «1.2.1» por posición entre hermanas; las subtareas no llevan número. */
-  codigo: string
-  nombre: string
-  esContenedor: boolean
-  tieneHijas: boolean
-  nSubtareas: number
-  uniCant: string | null
-  /** El peso propio; en un contenedor cuyas hijas no cierran, la suma de las hijas en warn. */
-  pond: { texto: string; tono: 'normal' | 'warn' } | null
-  plan: string | null
-  dias: number | null
-  metodo: string | null
-  metodoFalta: boolean
-  unidad: string | null
-  cantidad: number | null
-  inicioPlan: string | null
-  finPlan: string | null
-  partidaCodigo: string | null
-}
-
-const METODO_ARBOL: Record<string, string> = { cantidad: 'cantidad', pasos: 'pasos', manual: 'manual', partes: 'partes' }
-
-/** Todas las filas del árbol en orden constructivo, con lo que dibujan las seis columnas de C04. */
-export function filasDelArbol(nodos: readonly NodoObra[], ponds: Ponderaciones): FilaArbol[] {
-  const mapa = porId(nodos)
-  const hijos = new Map<string | null, NodoObra[]>()
-  for (const n of nodos) {
-    const l = hijos.get(n.padre_id) ?? []
-    l.push(n)
-    hijos.set(n.padre_id, l)
-  }
-  const codigo = new Map<string, string>()
-  const codificar = (padre: string | null, prefijo: string) => {
-    ;(hijos.get(padre) ?? []).forEach((h, i) => {
-      const esSub = padre != null && !(mapa.get(padre)?.es_contenedor ?? true)
-      const c = esSub ? '' : prefijo ? `${prefijo}.${i + 1}` : String(i + 1)
-      codigo.set(h.id, c)
-      codificar(h.id, c)
-    })
-  }
-  codificar(null, '')
-
-  // Las fechas de un contenedor: de la primera a la última de lo que cuelga.
-  const rango = (n: NodoObra): { ini: string | null; fin: string | null } => {
-    if (!n.es_contenedor || n.inicio_plan || n.fin_plan) return { ini: n.inicio_plan, fin: n.fin_plan }
-    let ini: string | null = null
-    let fin: string | null = null
-    for (const h of hijos.get(n.id) ?? []) {
-      const r = rango(h)
-      if (r.ini && (!ini || r.ini < ini)) ini = r.ini
-      if (r.fin && (!fin || r.fin > fin)) fin = r.fin
-    }
-    return { ini, fin }
-  }
-
-  const PROF: Record<NivelEstructura, number> = { rubro: 0, epica: 1, historia: 2, tarea: 3, subtarea: 4 }
-  return nodos.map((n) => {
-    const nivel = nivelDe(n, mapa)
-    const hijas = hijos.get(n.id) ?? []
-    const propio = ponds[n.id]?.ponderacion ?? null
-    let pond: FilaArbol['pond'] = propio == null ? null : { texto: `${num(propio, 1)} %`, tono: 'normal' }
-    if (n.es_contenedor && hijas.length > 0) {
-      const suma = sumaPonderacion(Object.fromEntries(hijas.map((h) => [h.id, ponds[h.id]?.ponderacion ?? null])))
-      if (suma !== 100) pond = { texto: `${num(suma, 1)} %`, tono: 'warn' }
-    }
-    const r = rango(n)
-    const metodo = n.es_contenedor ? null : (n.metodo_avance ? METODO_ARBOL[n.metodo_avance] ?? n.metodo_avance : null)
-    return {
-      id: n.id,
-      padreId: n.padre_id,
-      nivel,
-      profundidad: PROF[nivel],
-      codigo: codigo.get(n.id) ?? '',
-      nombre: n.nombre,
-      esContenedor: n.es_contenedor,
-      tieneHijas: hijas.length > 0,
-      nSubtareas: n.es_contenedor ? 0 : hijas.length,
-      uniCant: n.es_contenedor ? null : rotuloUniCant(n.unidad, n.cantidad_objetivo),
-      pond,
-      plan: rotuloPlan(r.ini, r.fin),
-      dias: n.es_contenedor ? (r.ini && r.fin ? diasHabilesEntre(r.ini, r.fin) : null) : diasTeoricos(n),
-      metodo,
-      metodoFalta: !n.es_contenedor && !n.metodo_avance,
-      unidad: n.unidad,
-      cantidad: n.cantidad_objetivo,
-      inicioPlan: n.inicio_plan,
-      finPlan: n.fin_plan,
-      partidaCodigo: n.partida_codigo,
-    }
-  })
-}
-
-/** Las filas visibles con los contenedores plegados en `plegados`. */
-export function filasVisiblesDelArbol(filas: readonly FilaArbol[], plegados: ReadonlySet<string>): FilaArbol[] {
-  const ocultos = new Set<string>()
-  const salida: FilaArbol[] = []
-  for (const f of filas) {
-    if (f.padreId && (ocultos.has(f.padreId) || plegados.has(f.padreId))) { ocultos.add(f.id); continue }
-    salida.push(f)
-  }
-  return salida
 }

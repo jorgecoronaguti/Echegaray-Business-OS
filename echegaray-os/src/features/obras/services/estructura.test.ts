@@ -125,24 +125,3 @@ test('las cifras de la cabecera: ítems, sin método, sin fechas y el problema d
   assert.equal(millones(null), null)
   assert.equal(diasTeoricos({ dias_plan: null, inicio_plan: '2026-08-31', fin_plan: '2026-09-07' }), 6)
 })
-
-test('C04 · las filas del árbol: código por posición, seis columnas y la suma de las hijas en warn', async () => {
-  const { filasDelArbol, filasVisiblesDelArbol } = await import('./estructura.ts')
-  const filas = filasDelArbol(ARBOL, PONDS)
-  assert.deepEqual(filas.map((f) => [f.codigo, f.nivel]), [
-    ['1', 'rubro'], ['1.1', 'epica'], ['1.1.1', 'historia'], ['1.1.2', 'historia'], ['1.1.3', 'historia'], ['1.1.4', 'historia'],
-    ['1.1.1.1', 'tarea'], ['1.1.1.2', 'tarea'], ['', 'subtarea'], ['2', 'rubro'],
-  ])
-  assert.deepEqual(filas[1].pond, { texto: '65 %', tono: 'warn' })
-  assert.deepEqual(filas[2].pond, { texto: '0 %', tono: 'warn' })
-  assert.deepEqual(filas[3].pond, { texto: '20 %', tono: 'normal' })
-  assert.equal(filas[2].plan, '31/08 → 07/09')
-  assert.equal(filas[6].uniCant, 'm³ · 62')
-  assert.equal(filas[6].dias, 3)
-  assert.equal(filas[6].metodo, 'cantidad')
-  assert.equal(filas[1].plan, '31/08 → 07/09')
-  assert.equal(filas[9].plan, null)
-  const visibles = filasVisiblesDelArbol(filas, new Set(['H1']))
-  assert.ok(!visibles.some((f) => f.id === 'T1' || f.id === 'S1'))
-  assert.ok(visibles.some((f) => f.id === 'H2'))
-})

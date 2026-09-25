@@ -4,22 +4,36 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '../types'
-import type { Ponderaciones } from './estructura'
+import type { NivelEstructura, Ponderaciones } from './estructura'
+import type { MetodoPonderacion } from './pesoMO'
 import { versionQueVale } from './versionDelPresupuesto'
 import { partidasParaConvertir, type PartidaParaConvertir } from './partidasParaConvertir'
 
 const num = (v: unknown): number | null => (v == null || v === '' ? null : Number(v))
 
-/** El peso a mano y el costo de MO de cada ítem de la obra (columnas C04/C05 y H2). Una lectura. */
+/**
+ * El nivel explícito (serie B), el peso a mano, el costo de MO y el estado de cada ítem de la obra. Una
+ * lectura chica que pagan todas las vistas del árbol. `metodo` es el de la obra (B07).
+ */
 export async function getPonderaciones(supabase: SupabaseClient, obraId: string): Promise<ServiceResult<Ponderaciones>> {
   const { data, error } = await supabase.from('obra_actividad')
-    .select('id, ponderacion, costo_mo').eq('obra_id', obraId).eq('archivada', false)
+    .select('id, ponderacion, costo_mo, nivel, estado').eq('obra_id', obraId).eq('archivada', false)
   if (error) return { data: null, error: error.message }
   const salida: Ponderaciones = {}
-  for (const f of (data ?? []) as { id: string; ponderacion: unknown; costo_mo: unknown }[]) {
-    salida[f.id] = { ponderacion: num(f.ponderacion), costo_mo: num(f.costo_mo) }
+  for (const f of (data ?? []) as { id: string; ponderacion: unknown; costo_mo: unknown; nivel: string | null; estado: string | null }[]) {
+    salida[f.id] = { ponderacion: num(f.ponderacion), costo_mo: num(f.costo_mo), nivel: esNivel(f.nivel) ? f.nivel : null, estado: f.estado }
   }
   return { data: salida, error: null }
+}
+
+const NIVELES = ['rubro', 'epica', 'historia', 'tarea', 'subtarea'] as const
+const esNivel = (v: string | null): v is NivelEstructura => v != null && (NIVELES as readonly string[]).includes(v)
+
+/** El método de ponderación de la obra (B07). Sin lectura: el default del diseño, por costo de MO. */
+export async function getMetodoPonderacion(supabase: SupabaseClient, obraId: string): Promise<MetodoPonderacion> {
+  const { data } = await supabase.from('obra_canonica').select('metodo_ponderacion').eq('id', obraId).maybeSingle()
+  const m = (data?.metodo_ponderacion as string | null) ?? 'costo_mo'
+  return (['costo_mo', 'manual', 'parejo', 'dias_teoricos', 'hh_plan'] as const).includes(m as MetodoPonderacion) ? m as MetodoPonderacion : 'costo_mo'
 }
 
 export interface PresupuestoDeLaObra {
