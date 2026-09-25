@@ -12,6 +12,7 @@
 //              UNA fila al pie, con su importe en la columna de materiales y los detalles más grandes
 //              en el `title`. NUNCA repartido entre las obras: repartir sería inventar a qué obra fue.
 
+import Link from 'next/link'
 import { ALTO_V2, V } from '@/shared/components/v2/patron'
 import { plata } from '@/features/obras/components/formato'
 import { ROTULO_SIN_OBRA, importeSinObra, tituloSinObra, type GastoSinObra, tituloSubcontratosSinObra } from '../services/costosDeObra'
@@ -64,10 +65,19 @@ export function FilaGastosSinObra({ gasto, columnas, sangria, visible, hrefDetal
   return (
     <div
       data-testid="fila-sin-obra-cliente"
-      className={`grid items-center ${columnas}`}
+      className={`relative grid items-center ${columnas} max-md:min-h-11`}
       title={tituloSinObra(gasto) ?? undefined}
       style={{ minHeight: ALTO_V2.hija, paddingLeft: sangria, borderBottom: `1px solid ${V.lineaFila}` }}
     >
+      {/* EN EL TELÉFONO LA FILA ENTERA ES EL TOQUE (coordinación, 25/09/2026), como en las filas de trabajos:
+          las cifras eran botones de 18 px. Una capa sólo de teléfono lleva al destino de la cifra principal
+          (el detalle de materiales sin obra); en la PC cada cifra sigue abriendo el suyo. */}
+      {hrefDetalle && (
+        <Link
+          href={hrefDetalle('materiales')} prefetch={false} scroll={false} data-testid="fila-sin-obra-toque"
+          aria-label="Ver qué compone los gastos sin obra asignada" className="absolute inset-0 z-[1] md:hidden"
+        />
+      )}
       <span className="truncate" style={{ fontSize: '12.5px', color: V.apagado }}>{ROTULO_SIN_OBRA}</span>
       {/* INICIO (se suelta al angostar, igual que en la tabla) y HH: esta fila no tiene ninguna. */}
       <span className="max-[1199px]:hidden" />

@@ -94,7 +94,7 @@ export function BloqueInformacion({
           <Propiedad rotulo="Carpeta en Drive">
             {cliente.drive_carpeta_id
               ? <a href={`https://drive.google.com/drive/folders/${cliente.drive_carpeta_id}`}
-                   target="_blank" rel="noreferrer" className="text-ink underline underline-offset-2">Abrir ↗</a>
+                   target="_blank" rel="noreferrer" className="text-ink underline underline-offset-2 max-md:-my-[13px] max-md:inline-block max-md:py-[13px]">Abrir ↗</a>
               : <span className="text-faint">sin vincular</span>}
           </Propiedad>
           {/* ═══ ACÁ DECÍA «Identificador: quattropani» ═══

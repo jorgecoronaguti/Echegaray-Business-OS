@@ -174,7 +174,7 @@ export function BotonAccion<A extends unknown[] = []>({
         type="submit"
         disabled={pendiente}
         data-testid={testid}
-        className={`rounded-control border px-2.5 py-1 text-[12px] disabled:opacity-50 ${estilo}`}
+        className={`rounded-control border px-2.5 py-1 text-[12px] disabled:opacity-50 max-md:min-h-11 ${estilo}`}
       >
         {pendiente ? '…' : children}
       </button>

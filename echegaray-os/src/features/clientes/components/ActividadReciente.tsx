@@ -85,7 +85,7 @@ export function ActividadReciente({ linea, puedeEscribir, crearNota, urlTodo }: 
 
       {puedeEscribir && crearNota && (
         <details data-testid="alta-nota" style={{ paddingTop: 12 }}>
-          <summary className="flex h-control cursor-pointer select-none items-center rounded-control border border-dashed border-line-strong px-3 text-[12.5px] text-faint transition-colors hover:text-ink">
+          <summary className="flex h-control max-md:h-11 cursor-pointer select-none items-center rounded-control border border-dashed border-line-strong px-3 text-[12.5px] text-faint transition-colors hover:text-ink">
             Agregar nota…
           </summary>
           <div className="pt-3">

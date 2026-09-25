@@ -178,7 +178,7 @@ function FilaContacto({
               ? (
                   <a
                     href={`mailto:${c.email}`} title={c.email}
-                    className="break-all text-[12px] hover:underline"
+                    className="break-all text-[12px] hover:underline max-md:-my-[13px] max-md:inline-block max-md:py-[13px]"
                   >
                     {c.email}
                   </a>

@@ -95,6 +95,8 @@ export function ValorHoraDelLegajo({ rotulo, error, hrefRetribucion = null, test
         <Link
           href={hrefRetribucion}
           data-testid="vh-ver-retribucion"
+          // 44 de área en el teléfono con padding; los márgenes negativos devuelven el lugar (el texto no se mueve).
+          className="max-md:!-mb-[14px] max-md:!mt-[-4px] max-md:!py-[14px]"
           style={{ display: 'inline-block', marginTop: 10, fontSize: '11px', color: V.apagado, textDecoration: 'underline' }}
         >
           historial de $/h y pagos del año

@@ -48,7 +48,7 @@ export function AbrirAcciones({ href, abierto, etiqueta, testid }: {
       aria-label={etiqueta}
       aria-expanded={abierto}
       data-testid={testid}
-      className={`inline-flex rounded-control px-2 py-1 text-[15px] leading-none transition-colors hover:bg-surface-quiet hover:text-ink ${
+      className={`inline-flex rounded-control px-2 py-1 text-[15px] leading-none transition-colors hover:bg-surface-quiet hover:text-ink max-md:min-h-11 max-md:min-w-11 max-md:items-center max-md:justify-center ${
         abierto ? 'bg-surface-quiet text-ink' : 'text-faint'
       }`}
     >
