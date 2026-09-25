@@ -59,8 +59,8 @@ test('LA DEUDA = lo COMPROMETIDO y lo VENCIDO del mes — el presupuesto NO entr
   // semana" de la escalera — que es su casa y donde se lo puede leer con su detalle.
   const c = de('comprometida')
   assert.equal(c.valor, `=${terminoLibro({ signo: -1, estados: DEUDA, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
-  assert.ok(!c.valor.includes('"REAL"'), 'lo REAL ya salió de la cuenta: no es obligación')
-  assert.ok(!c.valor.includes('"PROYECTADO"'), 'el presupuesto no es deuda')
+  assert.ok(!c.valor.includes('"=REAL"'), 'lo REAL ya salió de la cuenta: no es obligación')
+  assert.ok(!c.valor.includes('"=PROYECTADO"'), 'el presupuesto no es deuda')
 })
 
 test('EL RÓTULO DE LA DEUDA NOMBRA EL CONCEPTO Y SU VENTANA REAL', () => {
@@ -398,7 +398,7 @@ test('LA DEUDA publica cuánto de ella NADIE PROBÓ — no se puede afirmar y co
   assert.match(c.contexto, /M sin probar/, 'y se dibuja: calcularla sin publicarla no le sirve a nadie')
   // MISMO `hasta` QUE EL TITULAR: con una ventana propia dejaría de ser una parte del número que
   // rotula, y las dos cifras podrían no cerrar.
-  assert.ok(!sinProbar.includes('>='), 'la duda es un `hasta`, no una ventana propia')
+  assert.ok(!sinProbar.includes('">="&('), 'la duda es un `hasta`, no una ventana propia')
   assert.ok(c.valor.includes(terminoLibro({ signo: -1, estados: DEUDA, hasta: FIN_DE_MES, medida: 'magnitud' })),
     'la duda se DECLARA, no se resta: o la plata ya salió y falta marcarla, o se debe')
 })
@@ -417,7 +417,7 @@ test('SIN nada sin probar, el lugar lo ocupa lo pagado — y el plan sigue estan
   // rama, ese día la tarjeta escondería $38,0M en vez de separarlos.
   assert.equal(c.contexto.split(plan).length - 1, 2, 'el plan se publica en LAS DOS ramas, no sólo en una')
   // El umbral es el mínimo que la frase sabe dibujar: por debajo diría "$0,0M sin probar".
-  assert.match(c.contexto, /^=IF\(SUMPRODUCT.*>=100000;/, 'la alarma se prende con un monto legible, no con centavos')
+  assert.match(c.contexto, /^=IF\(SUMIFS.*>=100000;/, 'la alarma se prende con un monto legible, no con centavos')
 })
 
 test('LA LIBRE declara la SEGUNDA mitad de su supuesto: sin ingresos, no se gasta el plan', () => {

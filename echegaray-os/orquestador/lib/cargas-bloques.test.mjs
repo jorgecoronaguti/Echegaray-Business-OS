@@ -206,7 +206,7 @@ test('EL BLOQUE PAGADO NO PUEDE REFERENCIAR COMPRAS — la mudanza al Libro del 
     for (const c of celdas) {
       assert.ok(!/Compras!/.test(c), `fila ${f}: volvió a leer Compras — ${c.slice(0, 90)}`)
       assert.ok(/_MOVIMIENTOS!/.test(c), `fila ${f}: no lee el Libro — ${c.slice(0, 90)}`)
-      assert.ok(/\$H\$2:\$H="REAL"/.test(c), `fila ${f}: "pagado" tiene que ser estado REAL`)
+      assert.ok(/\$H\$2:\$H;"=REAL"/.test(c), `fila ${f}: "pagado" tiene que ser estado REAL`)
     }
   }
 })
@@ -214,23 +214,23 @@ test('EL BLOQUE PAGADO NO PUEDE REFERENCIAR COMPRAS — la mudanza al Libro del 
 test('las cuatro filas de gremiales se reparten el rubro por CONTRAPARTE, con su control', () => {
   const { G, pag } = armar()
   const celda = (f) => String(G.filas[f - 1][1])
-  assert.match(celda(pag.filaPag.FCL), /\$J\$2:\$J="Fondo de Cese"/)
-  assert.match(celda(pag.filaPag.FCL), /\$J\$2:\$J="FCL"/,
+  assert.match(celda(pag.filaPag.FCL), /\$J\$2:\$J;"=Fondo de Cese"/)
+  assert.match(celda(pag.filaPag.FCL), /\$J\$2:\$J;"=FCL"/,
     'el mismo acreedor se llama distinto según quién probó el pago: los dos nombres hacen falta')
-  assert.match(celda(pag.filaPag.UOCRA), /\$J\$2:\$J="UOCRA"/)
+  assert.match(celda(pag.filaPag.UOCRA), /\$J\$2:\$J;"=UOCRA"/)
   // El control resta el rubro ENTERO contra la suma de las cuatro: un organismo cuyo nombre el
   // desglose no conoce aparece acá en vez de desaparecer. Medido el 11/09: $4.697.639 («SINDICATOS»).
   const ctrl = G.filas.find((f) => String(f[0]).includes('gremiales sin clasificar'))
   assert.ok(ctrl, 'sin el control, una contraparte desconocida se pierde en silencio')
-  assert.match(String(ctrl[1]), /^=SUMPRODUCT.*-\(/)
+  assert.match(String(ctrl[1]), /^=SUMIFS.*-\(/)
 })
 
 test('las «Cuotas sin pagar» miden lo que NO es REAL, no lo que la planilla no marcó', () => {
   const { G, planes } = armar()
   const celda = String(G.filas[planes.fSinPagar - 1][1])
   assert.ok(!/Compras!/.test(celda), `volvió a leer Compras: ${celda.slice(0, 90)}`)
-  assert.match(celda, /\$H\$2:\$H="COMPROMETIDO"/)
-  assert.ok(!/"REAL"/.test(celda), 'una cuota pagada no es una cuota sin pagar')
+  assert.match(celda, /\$H\$2:\$H;"=COMPROMETIDO"/)
+  assert.ok(!/"=REAL"/.test(celda), 'una cuota pagada no es una cuota sin pagar')
 })
 
 test('EL SELLO DE FRESCURA Y EL AVISO DE PLAN SIN CRONOGRAMA no corren ninguna fila', () => {

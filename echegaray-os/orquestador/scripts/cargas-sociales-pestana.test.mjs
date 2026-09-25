@@ -520,7 +520,8 @@ test('la cadena arranca en los jornales: la remuneración proyectada cuelga de s
 const esc = (t) => String(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /** «esta celda filtra la columna X del libro por este valor», con la columna resuelta por su nombre. */
-const reLibro = (col, valor) => new RegExp(`${esc(rangoLibroCS(col))}="${esc(valor)}"`)
+// Desde el 25/09/2026 el término es SUMIFS: la igualdad es el par `rango;"=valor"`, no `(rango="valor")`.
+const reLibro = (col, valor) => new RegExp(`${esc(rangoLibroCS(col))};"=${esc(valor)}"`)
 
 const CONCEPTOS_PAGADOS = ['F931', 'Deuda previsional en cuotas', 'FCL', 'UOCRA', 'IERIC', 'FODECO']
 
@@ -557,7 +558,7 @@ test('2 · PAGADO: lo que no salió del banco no salió de la caja', () => {
     if (!reLibro(LIBRO_CS.col.estado, 'REAL').test(v)) sinEstado.push(`${rotulo}: ${v}`)
     // Y NINGÚN estado que no sea REAL: un COMPROMETIDO o un VENCIDO acá vuelven a publicar previsión.
     for (const otro of ['COMPROMETIDO', 'PROYECTADO', 'VENCIDO', 'PAGADO']) {
-      assert.doesNotMatch(v, new RegExp(`="${otro}"`), `«${rotulo}» suma ${otro} en el cuadro de lo pagado`)
+      assert.doesNotMatch(v, new RegExp(`"=${otro}"`), `«${rotulo}» suma ${otro} en el cuadro de lo pagado`)
     }
   }
   assert.deepEqual(sinEstado, [],
@@ -582,9 +583,9 @@ test('2 · PAGADO: la cuota de un plan no entra por la fila del F931', () => {
   const plan = agostoPagado('Deuda previsional en cuotas')
   assert.notEqual(RUBRO_CARGAS_CS, RUBRO_PLANES_CS, 'si los dos rubros fueran el mismo, el cuadro contaría doble')
   assert.match(f931, reLibro(LIBRO_CS.col.rubro, RUBRO_CARGAS_CS), 'la fila del F931 no acota por su rubro')
-  assert.doesNotMatch(f931, new RegExp(`="${esc(RUBRO_PLANES_CS)}"`), 'la fila del F931 se come las cuotas de los planes')
+  assert.doesNotMatch(f931, new RegExp(`"=${esc(RUBRO_PLANES_CS)}"`), 'la fila del F931 se come las cuotas de los planes')
   assert.match(plan, reLibro(LIBRO_CS.col.rubro, RUBRO_PLANES_CS), 'la fila del plan no acota por su rubro')
-  assert.doesNotMatch(plan, new RegExp(`="${esc(RUBRO_CARGAS_CS)}"`), 'la fila del plan se come el F931 corriente')
+  assert.doesNotMatch(plan, new RegExp(`"=${esc(RUBRO_CARGAS_CS)}"`), 'la fila del plan se come el F931 corriente')
 })
 
 test('2 · PAGADO: los cuatro gremiales comparten rubro y se separan por contraparte', () => {

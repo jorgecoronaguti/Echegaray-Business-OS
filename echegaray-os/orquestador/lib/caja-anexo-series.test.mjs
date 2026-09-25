@@ -40,8 +40,8 @@ test('LA HISTORIA SE RECONSTRUYE CON LO REAL Y LA PROYECCIÓN CON LO QUE FALTA P
   // veces la misma plata y todo el gráfico quedaría corrido.
   assert.equal(saldoHistorico(-3), `=${DESDE_CAJA.total}-${terminoLibro({ desde: 'TODAY()-2', hasta: 'TODAY()+1', estados: ['REAL'] })}`)
   assert.equal(saldoProyectado(5), `=${DESDE_CAJA.total}+${terminoLibro({ desde: 'TODAY()', hasta: 'TODAY()+6', estados: NO_REAL })}`)
-  assert.ok(!saldoProyectado(5).includes('="REAL"'))
-  assert.ok(!saldoHistorico(-3).includes('="COMPROMETIDO"'))
+  assert.ok(!saldoProyectado(5).includes('"=REAL"'))
+  assert.ok(!saldoHistorico(-3).includes('"=COMPROMETIDO"'))
 })
 
 test('CADA PUNTO ES INDEPENDIENTE: no es un saldo corrido', () => {
@@ -104,9 +104,9 @@ test('DICIEMBRE CIERRA EN ENERO DEL AÑO SIGUIENTE, y ningún mes se pisa con el
   // dos meses compartieran el borde, un movimiento del 1° se contaría dos veces.
   assert.ok(egresosDelMes(12).includes('DATE(YEAR(TODAY());13;1)'), 'DATE normaliza el mes 13 al 1° de enero')
   for (let m = 1; m < MESES; m++) {
-    const cierre = `<DATE(YEAR(TODAY());${m + 1};1)`
+    const cierre = `"<"&(DATE(YEAR(TODAY());${m + 1};1))`
     assert.ok(ingresosDelMes(m).includes(cierre))
-    assert.ok(ingresosDelMes(m + 1).includes(`>=DATE(YEAR(TODAY());${m + 1};1)`), 'el mes siguiente arranca donde cierra el anterior')
+    assert.ok(ingresosDelMes(m + 1).includes(`">="&(DATE(YEAR(TODAY());${m + 1};1))`), 'el mes siguiente arranca donde cierra el anterior')
   }
 })
 
@@ -120,16 +120,19 @@ test('EL AÑO SALE DE TODAY(), NUNCA ESCRITO: el timer estuvo detenido semanas',
 test('LOS DOS SIGNOS VAN EN MAGNITUD: en neto las curvas no se cruzarían nunca', () => {
   // Es el defecto que anula el gráfico entero. El egreso vive en el libro con signo −1: en `neto` se
   // dibuja debajo del cero, el azul queda siempre arriba y el "punto de equilibrio" no existe.
-  assert.ok(!egresosDelMes(5).includes('*N(_MOVIMIENTOS!$B$2:$B)'), 'el egreso no se multiplica por su signo')
-  assert.ok(egresosDelMes(5).includes('(_MOVIMIENTOS!$B$2:$B=-1)'), 'pero sí se FILTRA por signo −1')
-  assert.ok(ingresosDelMes(5).includes('(_MOVIMIENTOS!$B$2:$B=1)'))
+  // En SUMIFS el signo neto de un egreso es un sumando NEGADO, `(-SUMIFS(…))`: en magnitud va sin negar.
+  assert.ok(egresosDelMes(5).startsWith('=SUMIFS('), 'el egreso no se multiplica por su signo')
+  assert.ok(!egresosDelMes(5).includes('(-SUMIFS('), 'el egreso no se multiplica por su signo')
+  assert.ok(egresosDelMes(5).includes('_MOVIMIENTOS!$B$2:$B;-1'), 'pero sí se FILTRA por signo −1')
+  assert.ok(ingresosDelMes(5).includes('_MOVIMIENTOS!$B$2:$B;1'))
+  assert.ok(!ingresosDelMes(5).includes('_MOVIMIENTOS!$B$2:$B;-1'))
 })
 
 test('EL AÑO ENTRA CON TODOS LOS ESTADOS: lo cobrado y lo esperado', () => {
   // Con sólo REAL, los meses que todavía no pasaron valdrían cero y el cruce se leería donde no está.
   for (const f of [ingresosDelMes(9), egresosDelMes(9)]) {
-    assert.ok(!f.includes('="REAL"'), 'ningún filtro de estado: entra todo el año')
-    assert.ok(!f.includes('="PROYECTADO"'))
+    assert.ok(!f.includes('"=REAL"'), 'ningún filtro de estado: entra todo el año')
+    assert.ok(!f.includes('"=PROYECTADO"'))
   }
 })
 
@@ -255,8 +258,8 @@ test('EL BALDE DE LO EJECUTADO SUMA SÓLO REAL, Y LOS CINCO RUBROS SÓLO LO QUE 
   assert.equal(necesidadDelDia(2, EJECUTADO), `=${terminoLibro({ ...ventana, estados: ['REAL'] })}`
     + `-${terminoLibro({ ...ventana, signo: 1, estados: ['REAL'], rubros: ['Efectivo a rendir (fondos en manos de la gente)'], instrumentos: ['a_rendir'] })}`)
   // Y ningún balde pendiente deja pasar un REAL, ni el de lo ejecutado un COMPROMETIDO.
-  for (const b of PENDIENTES) assert.ok(!necesidadDelDia(0, b.clave).includes('="REAL"'), b.clave)
-  assert.ok(!necesidadDelDia(0, EJECUTADO).includes('="COMPROMETIDO"'))
+  for (const b of PENDIENTES) assert.ok(!necesidadDelDia(0, b.clave).includes('"=REAL"'), b.clave)
+  assert.ok(!necesidadDelDia(0, EJECUTADO).includes('"=COMPROMETIDO"'))
 })
 
 test('EL RESTO SE RESUELVE DENTRO DE SU PROPIO GRUPO DE ESTADOS', () => {
@@ -284,7 +287,7 @@ test('LA CURVA DEL PISO NO RESTA LO QUE YA SALIÓ: eso es pedir dos veces la mis
   // vuelve a decir "no alcanza" un día que alcanza.
   assert.equal(saldoSinCobrar(4),
     `=${DESDE_CAJA.total}-${terminoLibro({ desde: 'TODAY()', hasta: 'TODAY()+5', signo: -1, estados: NO_REAL, medida: 'magnitud' })}`)
-  assert.ok(!saldoSinCobrar(4).includes('="REAL"'))
+  assert.ok(!saldoSinCobrar(4).includes('"=REAL"'))
 })
 
 test('LAS BARRAS QUE SE COMPARAN CONTRA EL SALDO SON EXACTAMENTE LAS QUE LO MUEVEN', () => {
@@ -292,7 +295,7 @@ test('LAS BARRAS QUE SE COMPARAN CONTRA EL SALDO SON EXACTAMENTE LAS QUE LO MUEV
   // es la suma de los baldes PENDIENTES de esos días — misma medida, mismo signo, mismos estados.
   // Si una barra usara un grupo de estados distinto del de la curva, el día que la línea cruza el
   // cero no sería el día que muestran las barras, y no habría forma de darse cuenta mirando.
-  const filtroDeEstados = (f) => [...f.matchAll(/\$H\$2:\$H="([A-Z]+)"/g)].map((m) => m[1]).sort()
+  const filtroDeEstados = (f) => [...f.matchAll(/\$H\$2:\$H;"=([A-Z]+)"/g)].map((m) => m[1]).sort()
   for (const b of PENDIENTES) {
     assert.deepEqual(new Set(filtroDeEstados(necesidadDelDia(0, b.clave))), new Set(NO_REAL), b.clave)
   }

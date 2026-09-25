@@ -44,9 +44,9 @@ test('la tarjeta de DEUDA no puede contener PROYECTADO: eso es presupuesto, no o
   // $37.977.572 de materiales estimados y "Estructura esperada" viajaban adentro de un número
   // rotulado "FALTA PAGAR". Un gasto planeado no es una deuda: si no entra plata, no se compra.
   const c = de('comprometida')
-  assert.ok(!c.valor.includes('"PROYECTADO"'),
+  assert.ok(!c.valor.includes('"=PROYECTADO"'),
     'el titular de la deuda suma PROYECTADO: gasto planeado publicado como plata que se debe')
-  assert.ok(c.valor.includes('"COMPROMETIDO"'), 'la deuda tiene que sumar lo COMPROMETIDO')
+  assert.ok(c.valor.includes('_MOVIMIENTOS!$H$2:$H;"=COMPROMETIDO"'), 'la deuda tiene que sumar lo COMPROMETIDO')
 })
 
 test('DEUDA y PLAN son DISJUNTOS y EXHAUSTIVOS: partir el número no puede perder ni duplicar plata', () => {
@@ -85,7 +85,7 @@ test('SI NO COBRÁS MÁS: apagar los ingresos apaga lo que depende de ellos', ()
   // forma — sigue siendo la resta de las dos tarjetas vecinas, verificable con los ojos.
   const l = de('libre')
   assert.equal(l.valor, '=N($A$3)-N($C$3)')
-  assert.ok(!l.valor.includes('"PROYECTADO"'), 'el escenario sin ingresos no puede ejecutar el plan')
+  assert.ok(!l.valor.includes('"=PROYECTADO"'), 'el escenario sin ingresos no puede ejecutar el plan')
   assert.match(l.contexto, /sin el plan/,
     'el supuesto tiene que estar escrito: sin ingresos no se gasta el plan')
 })

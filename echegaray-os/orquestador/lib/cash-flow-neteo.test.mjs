@@ -199,11 +199,14 @@ test('las fórmulas rendidas son es-AR y no derraman: dos SUMPRODUCT restados, s
   }
   // El subtotal de ingresos resta el término de las devoluciones, con los catorce rubros adentro.
   const ing = formulaMedida(M.ingresoReal, D, H)
-  assert.ok(ing.startsWith('=SUMPRODUCT(') && ing.includes(')-SUMPRODUCT('), ing)
-  for (const r of RUBROS_EGRESO) assert.ok(ing.includes(`="${r}"`), `${r} no está en el término que se resta`)
+  assert.ok(ing.startsWith('=SUMIFS(') && ing.includes(')-(SUMIFS('), ing)
+  for (const r of RUBROS_EGRESO) assert.ok(ing.includes(`_MOVIMIENTOS!$F$2:$F;"=${r}"`), `${r} no está en el término que se resta`)
   // Y la sub-línea de un rubro de egreso es UN término negado, sin filtro de signo: por ahí entra la
   // nota de crédito a restar. Con `$B$2:$B=-1` adentro, el neteo no ocurriría y nada daría error.
   const mat = formulaRubro(M.egresoReal, D, H, 'Materiales Civil')
-  assert.ok(mat.startsWith('=-SUMPRODUCT('), mat)
-  assert.ok(!mat.includes('$B$2:$B=-1'), `filtra el signo y entonces no netea: ${mat}`)
+  assert.ok(mat.startsWith('=-(SUMIFS('), mat)
+  // Sin filtro de signo, el neto se escribe SUMIFS(signo=1) − SUMIFS(signo=−1): la rama que ENTRA (la nota
+  // de crédito) tiene que estar. Filtrado a `signo: -1`, sólo quedaría la rama del −1 y no netearía.
+  const ramas = (sg) => mat.split(`_MOVIMIENTOS!$B$2:$B;${sg};`).length - 1
+  assert.ok(ramas(1) >= 1 && ramas(1) === ramas(-1), `filtra el signo y entonces no netea: ${mat}`)
 })

@@ -64,20 +64,28 @@ test('cada línea de cliente lleva el MISMO filtro que su subtotal, más la colu
     // del cliente: si quedara algo distinto, las dos filas estarían contando ventanas o estados
     // diferentes. `replaceAll` y no `replace`: desde el neteo de devoluciones (06/08) el subtotal
     // tiene dos términos, y quitar sólo el primero dejaba comparando una fórmula con la mitad de otra.
-    const sinCliente = f.replaceAll('*((_MOVIMIENTOS!$Q$2:$Q="LA ESTRELLA"))', '')
+    // Las dos formas del término: el criterio SUMIFS (`;col;"=valor"`) y el SUMPRODUCT de respaldo
+    // (`*((col="valor"))`), que sigue apareciendo donde las combinaciones pasan de MAX_SUMIFS.
+    const Q_SUMIFS = ';_MOVIMIENTOS!$Q$2:$Q;"=LA ESTRELLA"'
+    const Q_SUMPRODUCT = '*((_MOVIMIENTOS!$Q$2:$Q="LA ESTRELLA"))'
+    const sinCliente = f.replaceAll(Q_SUMIFS, '').replaceAll(Q_SUMPRODUCT, '')
     assert.equal(sinCliente, subtotal, `${m.clave}: el filtro del cliente no puede cambiar la medida`)
-    assert.ok(f.includes('_MOVIMIENTOS!$Q$2:$Q="LA ESTRELLA"'), `${m.clave}: ${f}`)
+    assert.ok(f.includes(Q_SUMIFS), `${m.clave}: ${f}`)
+    // Y en CADA término, no en uno solo: tantas condiciones de cliente como sumas sobre el libro.
+    const cuenta = (x) => f.split(x).length - 1
+    assert.equal(cuenta(Q_SUMIFS), cuenta('SUMIFS('), `${m.clave}: un SUMIFS sin el cliente cuenta a todos`)
+    assert.equal(cuenta(Q_SUMPRODUCT), cuenta('SUMPRODUCT('), `${m.clave}: un SUMPRODUCT sin el cliente cuenta a todos`)
   }
 })
 
 test('EL FILTRO ES POR LA COLUMNA CLIENTE, NUNCA POR CONTRAPARTE — la contraparte de un egreso es el proveedor', () => {
   const lineas = formulasDeCliente('semana', 'MESSINA', VENTANA)
-  const egreso = lineas.find((l) => l.formula.includes('$B$2:$B=-1'))
+  const egreso = lineas.find((l) => l.formula.includes('_MOVIMIENTOS!$B$2:$B;-1;'))
   assert.ok(egreso, 'tiene que haber una línea de egreso')
   // La J es Contraparte y la Q es Cliente. Si esto filtrara por J, la línea de egreso de MESSINA
   // sumaría cero para siempre: en un pago, la contraparte es el proveedor al que se le paga.
-  assert.ok(!/\$J\$2:\$J=/.test(egreso.formula), `filtra por contraparte: ${egreso.formula}`)
-  assert.ok(egreso.formula.includes('_MOVIMIENTOS!$Q$2:$Q="MESSINA"'), egreso.formula)
+  assert.ok(!/\$J\$2:\$J[;=]/.test(egreso.formula), `filtra por contraparte: ${egreso.formula}`)
+  assert.ok(egreso.formula.includes('_MOVIMIENTOS!$Q$2:$Q;"=MESSINA"'), egreso.formula)
 })
 
 test('el NETO del cliente es entra − sale sobre SUS PROPIAS celdas, igual que la fila Resultado', () => {
@@ -87,7 +95,7 @@ test('el NETO del cliente es entra − sale sobre SUS PROPIAS celdas, igual que 
   const c = (clave) => `$D$${b.medidas.find((m) => m.clave === clave).fila}`
   assert.equal(neto, `=N(${c('ingresoReal')})+N(${c('ingresoProyectado')})-N(${c('egresoReal')})-N(${c('egresoProyectado')})`)
   // No recalcula nada del libro: si mañana cambia la definición de "Egresos reales", cambia con ella.
-  assert.ok(!neto.includes('SUMPRODUCT'), 'el neto no puede tener su propia aritmética sobre el libro')
+  assert.ok(!/SUMPRODUCT|SUMIFS|_MOVIMIENTOS!/.test(neto), 'el neto no puede tener su propia aritmética sobre el libro')
 })
 
 test('EL RESIDUO SE DESPEJA DEL SUBTOTAL DEL TRONCO, y enumera a TODOS los clientes listados', () => {
@@ -101,7 +109,7 @@ test('EL RESIDUO SE DESPEJA DEL SUBTOTAL DEL TRONCO, y enumera a TODOS los clien
     // Subtotal del tronco MENOS cada cliente listado. Si faltara uno, su plata aparecería DOS veces
     // (en su fila y en el residuo); si sobrara, el residuo saldría de menos.
     assert.equal(f, `=N($B$${subtotal})-(${partes.join('+')})`, m.clave)
-    assert.ok(!f.includes('SUMPRODUCT'), 'el residuo NO se filtra por "cliente vacío": un cliente nuevo desaparecería')
+    assert.ok(!/SUMPRODUCT|SUMIFS|_MOVIMIENTOS!/.test(f), 'el residuo NO se filtra por "cliente vacío": un cliente nuevo desaparecería')
   }
 })
 
@@ -111,7 +119,7 @@ test('LOS SUBTOTALES DEL TRONCO NO CAMBIAN: la sección cuelga de ellos y no los
   for (const clave of MEDIDAS_POR_CLIENTE.map((m) => m.clave)) {
     const b = bloqueDeMedida('semana', clave)
     const sub = formulasDeMedida('semana', clave, VENTANA).find((l) => l.fila === b.subtotal).formula
-    assert.ok(sub.startsWith('=SUMPRODUCT('), sub)
+    assert.match(sub, /^=\(?SUMIFS\(_MOVIMIENTOS!/, sub)
     assert.ok(!/\$Q\$2:\$Q/.test(sub), 'el subtotal no puede llevar un filtro de cliente')
   }
 })

@@ -277,12 +277,15 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
   // Toda llamada a Google se acota en el tiempo (AbortController): una llamada colgada (red,
   // API que no responde) falla RÁPIDO y claro en vez de colgar la tarea entera del dueño.
   const FETCH_MS = Number(process.env.ORQ_GOOGLE_FETCH_TIMEOUT_MS || 45000)
-  const doFetch = async (url, opts = {}) => {
+  // `timeoutMs` por llamada (25/09/2026): la relectura que verifica una escritura espera el RECÁLCULO que
+  // esa escritura disparó, no una red colgada; quien la hace declara cuánto está dispuesto a esperar.
+  const doFetch = async (url, { timeoutMs, ...opts } = {}) => {
     if (opts.signal) return rawFetch(url, opts) // respeta un signal ya provisto (tests)
+    const ms = Number(timeoutMs) > 0 ? Number(timeoutMs) : FETCH_MS
     const ac = new AbortController()
-    const t = setTimeout(() => ac.abort(), FETCH_MS)
+    const t = setTimeout(() => ac.abort(), ms)
     try { return await rawFetch(url, { ...opts, signal: ac.signal }) }
-    catch (e) { if (e?.name === 'AbortError') { const err = new Error(`google api timeout (${FETCH_MS}ms) — la llamada no respondió`); err.status = 504; throw err } throw e }
+    catch (e) { if (e?.name === 'AbortError') { const err = new Error(`google api timeout (${ms}ms) — la llamada no respondió`); err.status = 504; throw err } throw e }
     finally { clearTimeout(t) }
   }
   const authScopes = scopes || READONLY_SCOPES
@@ -426,11 +429,11 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
   // 00:10 por leer UNA fila de rótulos. Leer es idempotente y se reintenta; `apiSend` no, porque una
   // escritura que no contestó puede haber aterrizado igual.
   const REINTENTOS_LECTURA = Number(process.env.ORQ_GOOGLE_LECTURA_REINTENTOS ?? 2)
-  async function apiGet(url, tokenOverride) {
+  async function apiGet(url, tokenOverride, { timeoutMs } = {}) {
     const token = tokenOverride || await accessToken()
     let res
     for (let intento = 0; ; intento++) {
-      try { res = await withRetry(() => doFetch(url, { headers: { Authorization: `Bearer ${token}` } })); break }
+      try { res = await withRetry(() => doFetch(url, { headers: { Authorization: `Bearer ${token}` }, timeoutMs })); break }
       catch (e) {
         if (!/google api timeout/.test(String(e?.message)) || intento >= REINTENTOS_LECTURA) throw e
         await new Promise((r) => setTimeout(r, ESPERAS_5XX[Math.min(intento, ESPERAS_5XX.length - 1)]))
@@ -912,10 +915,11 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      * se la relee como valor, al reescribirla queda un número pegado — justo lo que la regla de oro
      * prohíbe. Ver lib/preservar-anotaciones.mjs.
      */
-    async readSheetValues(fileId, range, { render } = {}) {
+    async readSheetValues(fileId, range, { render, timeoutMs } = {}) {
       const q = render ? `?valueRenderOption=${encodeURIComponent(render)}` : ''
       const j = await apiGet(
         `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}${q}`,
+        undefined, { timeoutMs },
       )
       return j.values || []
     },

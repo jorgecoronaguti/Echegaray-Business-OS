@@ -24,12 +24,18 @@ import { grillaMeses } from './cash-flow-meses.mjs'
  *  y una regex perezosa cortaba en el paréntesis equivocado — dejaba comparando basura contra basura. */
 function sinVentana(formula) {
   let s = String(formula)
-  for (const marca of ['*(_MOVIMIENTOS!$A$2:$A>=', '*(_MOVIMIENTOS!$A$2:$A<']) {
+  // Las dos formas del término: SUMIFS (`;fecha;">="&(expr)`) y el SUMPRODUCT de respaldo
+  // (`*(fecha>=expr)`). En las dos se corta desde la marca hasta el paréntesis que cierra el primero
+  // que se abre DESPUÉS de ella (o en ella), contando los de adentro.
+  for (const marca of [
+    ';_MOVIMIENTOS!$A$2:$A;">="&(', ';_MOVIMIENTOS!$A$2:$A;"<"&(',
+    '*(_MOVIMIENTOS!$A$2:$A>=', '*(_MOVIMIENTOS!$A$2:$A<',
+  ]) {
     for (;;) {
       const i = s.indexOf(marca)
       if (i < 0) break
       let prof = 0
-      let j = i + 1
+      let j = s.indexOf('(', i)
       for (; j < s.length; j++) {
         if (s[j] === '(') prof++
         else if (s[j] === ')') { prof--; if (prof === 0) break }

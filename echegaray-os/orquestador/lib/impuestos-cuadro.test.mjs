@@ -21,8 +21,8 @@ test('LA CUOTA DEL PRENDARIO SALE DEL LIBRO, NO DE COMPRAS — la mudanza del 11
   // alguien la devuelve a Compras, este test se pone rojo.
   const f = formulaCuotaPrendario(2026, 9)
   assert.ok(!/Compras!/.test(f), `la cuota no puede depender de Compras: ${f}`)
-  assert.match(f, /_MOVIMIENTOS!\$F\$2:\$F="Financiero"/)
-  assert.match(f, /_MOVIMIENTOS!\$J\$2:\$J="Banco Santander · préstamo prendario"/,
+  assert.match(f, /_MOVIMIENTOS!\$F\$2:\$F;"=Financiero"/)
+  assert.match(f, /_MOVIMIENTOS!\$J\$2:\$J;"=Banco Santander · préstamo prendario"/,
     'el rubro Financiero lleva además los cargos del banco: sin la contraparte, la cuota los incluye')
   assert.match(f, /DATE\(2026;9;1\)/)
   // Cada mes tiene SU ventana: dos meses distintos no pueden dar la misma fórmula.
@@ -43,7 +43,7 @@ test('LA LISTA DE CONTRAPARTES LLEVA EL NOMBRE DE COMPRAS, y NO el de los cargos
 test('la ventana del mes NO pierde la cuota del último día', () => {
   // `ventana()` devuelve el ÚLTIMO día del mes y `terminoLibro` excluye el `hasta`: sin el +1, una
   // cuota con fecha 30 o 31 quedaba afuera de su propio mes y de todos los demás.
-  assert.match(formulaCuotaPrendario(2026, 9), /<EOMONTH\(DATE\(2026;9;1\);0\)\+1/)
+  assert.match(formulaCuotaPrendario(2026, 9), /"<"&\(EOMONTH\(DATE\(2026;9;1\);0\)\+1\)/)
 })
 
 test('PROHIBIDO: la cuota del prendario NO puede salir del extracto — el SUMIF global está muerto', () => {
@@ -66,11 +66,11 @@ test('la deuda pendiente del prendario es SÓLO lo futuro — el defecto B', () 
   // faltan: $6.414.055. La versión anterior sumaba el rubro entero sin condición de fecha.
   const f = formulaPrendarioPendiente()
   assert.ok(!/Compras!/.test(f), `la deuda pendiente tampoco puede depender de Compras: ${f}`)
-  assert.match(f, /\(_MOVIMIENTOS!\$A\$2:\$A>=TODAY\(\)\)/, 'sin condición de fecha, "pendiente" es el total histórico')
+  assert.match(f, /_MOVIMIENTOS!\$A\$2:\$A;">="&\(TODAY\(\)\)/, 'sin condición de fecha, "pendiente" es el total histórico')
   // Y ADEMÁS NO REAL: una cuota con fecha pasada que el banco nunca debitó sigue debiéndose, y la
   // fecha sola no puede contestar eso. El libro sí.
-  assert.match(f, /\$H\$2:\$H="COMPROMETIDO"/)
-  assert.ok(!/\$H\$2:\$H="REAL"/.test(f), 'un pago hecho no es deuda pendiente')
+  assert.match(f, /\$H\$2:\$H;"=COMPROMETIDO"/)
+  assert.ok(!/\$H\$2:\$H;"=REAL"/.test(f), 'un pago hecho no es deuda pendiente')
 })
 
 test('EL CORTE DE "PENDIENTE" LO EVALÚA LA PLANILLA: ni un serial tipeado', () => {
@@ -83,7 +83,8 @@ test('EL CORTE DE "PENDIENTE" LO EVALÚA LA PLANILLA: ni un serial tipeado', () 
   // definiciones de la misma deuda es lo que el dueño mandó unificar. Ver `impuestos-cuadro.mjs`.
   const f = formulaPrendarioPendiente()
   assert.match(f, /TODAY\(\)/, 'el corte tiene que ser vivo')
-  assert.ok(!/>=?\d{5}/.test(f), `hay un serial tipeado: ${f}`)
+  // En SUMIFS el corte se concatena al criterio: `">="&(46240)` es el mismo serial tipeado.
+  assert.ok(!/>=?(?:"&\(?)?\d{5}/.test(f), `hay un serial tipeado: ${f}`)
   // Y el serial del día de hoy no puede aparecer por ninguna otra vía.
   assert.ok(!f.includes(String(serialDe(HOY))), 'el serial del día de la corrida no va en la fórmula')
 })

@@ -99,7 +99,7 @@ test('LA HISTORIA SE RECONSTRUYE Y SE DECLARA: antes del corte el saldo se despe
   const fin = en(filas, meta.fila.saldoFinal, meta.cab.col0 + 20)
   assert.equal(fin, `=IF(N($V$${meta.fila.saldoInicial})=0;"";N($V$${meta.fila.saldoInicial})+N($V$${meta.fila.resultado}))`)
   // Los FLUJOS de esa misma semana sí están: la historia del libro se muestra.
-  assert.ok(en(filas, meta.fila.ingresoReal, meta.cab.col0 + 20).startsWith('=SUMPRODUCT('))
+  assert.match(en(filas, meta.fila.ingresoReal, meta.cab.col0 + 20), /^=\(?SUMIFS\(_MOVIMIENTOS!/)
 })
 
 test('la cadena de saldos: cada semana encadena con el cierre de la anterior, y hay UN solo ancla', () => {
@@ -127,10 +127,10 @@ test('el ancla no cuenta dos veces lo que ya está adentro del saldo declarado, 
   const { filas, meta } = armar()
   const f = en(filas, meta.fila.saldoInicial, meta.cab.col0)
   assert.ok(f.includes('CAJA_FECHA_SALDO+1'), 'las dos ventanas se cortan en el día siguiente al corte')
-  assert.ok(f.includes('"REAL"'), 'sólo lo REAL puede ajustar el saldo de hoy: un proyectado vencido no es plata en la cuenta')
+  assert.ok(f.includes('_MOVIMIENTOS!$H$2:$H;"=REAL"'), 'sólo lo REAL puede ajustar el saldo de hoy: un proyectado vencido no es plata en la cuenta')
   // Lo vivido dentro de la semana se RESTA y lo posterior al corte se SUMA: es el contrato de
   // `expresionInicioCorrido`, el mismo que verifica el control A5 del anexo de CAJA.
-  assert.match(f, /N\(CAJA_TOTAL_DISPONIBLE\)-\(SUMPRODUCT\(.+\)\)\+\(SUMPRODUCT\(.+\)\)/)
+  assert.match(f, /N\(CAJA_TOTAL_DISPONIBLE\)-\(\(?SUMIFS\(.+\)\)\+\(\(?SUMIFS\(.+\)\)/)
 })
 
 test('la identidad de cada columna: resultado = entra − sale, saldo final = inicial + resultado', () => {
@@ -149,11 +149,11 @@ test('LA APERTURA POR RUBRO en la pestaña: cada subtotal trae sus rubros y su "
   const c = meta.cab.col0
   for (const b of meta.bloques) {
     const sub = en(filas, b.subtotal, c)
-    assert.ok(sub.startsWith('=SUMPRODUCT('), `${b.clave}: el subtotal tiene que salir del libro`)
+    assert.match(sub, /^=\(?SUMIFS\(_MOVIMIENTOS!/, `${b.clave}: el subtotal tiene que salir del libro`)
     assert.ok(!sub.includes('SUM($B$'), `${b.clave}: el subtotal NO puede ser la suma de sus sub-líneas`)
     for (const r of b.rubros) {
       const f = en(filas, r.fila, c)
-      assert.ok(f.includes(`="${r.rubro}"`), `${r.rubro} no filtra por su nombre exacto: ${f.slice(0, 80)}`)
+      assert.ok(f.includes(`_MOVIMIENTOS!$F$2:$F;"=${r.rubro}"`), `${r.rubro} no filtra por su nombre exacto: ${f.slice(0, 80)}`)
       assert.equal(en(filas, r.fila, 0), `    · ${r.rubro}`)
     }
     // "Otros" = subtotal − las sub-líneas listadas. Un rubro nuevo del Libro cae ahí y SE VE.

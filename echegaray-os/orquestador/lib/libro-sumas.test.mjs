@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { LIBRO, rangoLibro, terminoLibro, formulaLibro, cobranzaFacturada } from './libro-sumas.mjs'
+import { LIBRO, rangoLibro, terminoLibro, terminoSumproduct, formulaLibro, cobranzaFacturada } from './libro-sumas.mjs'
 import { rangoAbierto, ubicarColumna } from './columnas-por-encabezado.mjs'
 import { COBRANZAS_1409, COBRANZAS_CON_OBRA } from './encabezados-referencia.mjs'
 
@@ -47,12 +47,15 @@ test('rango abierto: sin tope de fila, para que el libro pueda crecer sin dejar 
 
 test('el término lleva SIEMPRE la guarda ISNUMBER(fecha): una celda vacía compara como serial 0', () => {
   const t = terminoLibro({ desde: '0', signo: -1 })
-  assert.ok(t.includes('ISNUMBER(_MOVIMIENTOS!$A$2:$A)'), t)
+  assert.ok(t.includes('_MOVIMIENTOS!$A$2:$A;">=1"'), t)
+  assert.ok(terminoSumproduct({ desde: '0', signo: -1 }).includes('ISNUMBER(_MOVIMIENTOS!$A$2:$A)'))
 })
 
 test('ventana + signo + estados: la forma que usan las tres vistas', () => {
   const t = terminoLibro({ desde: 'B$3', hasta: 'B$3+7', signo: 1, estados: ['PROYECTADO', 'VENCIDO'] })
-  assert.equal(t,
+  const C = '_MOVIMIENTOS!$C$2:$C;_MOVIMIENTOS!$A$2:$A;">=1";_MOVIMIENTOS!$A$2:$A;">="&(B$3);_MOVIMIENTOS!$A$2:$A;"<"&(B$3+7);_MOVIMIENTOS!$B$2:$B;1'
+  assert.equal(t, `(SUMIFS(${C};_MOVIMIENTOS!$H$2:$H;"=PROYECTADO")+SUMIFS(${C};_MOVIMIENTOS!$H$2:$H;"=VENCIDO"))`)
+  assert.equal(terminoSumproduct({ desde: 'B$3', hasta: 'B$3+7', signo: 1, estados: ['PROYECTADO', 'VENCIDO'] }),
     'SUMPRODUCT(ISNUMBER(_MOVIMIENTOS!$A$2:$A)'
     + '*(_MOVIMIENTOS!$A$2:$A>=B$3)'
     + '*(_MOVIMIENTOS!$A$2:$A<B$3+7)'
@@ -62,8 +65,11 @@ test('ventana + signo + estados: la forma que usan las tres vistas', () => {
 })
 
 test('medida: neto multiplica por el signo, magnitud no — y neto es el default', () => {
-  assert.ok(terminoLibro({}).endsWith('*N(_MOVIMIENTOS!$C$2:$C)*N(_MOVIMIENTOS!$B$2:$B))'))
-  assert.ok(terminoLibro({ medida: 'magnitud' }).endsWith('*N(_MOVIMIENTOS!$C$2:$C))'))
+  assert.equal(terminoLibro({}), '(SUMIFS(_MOVIMIENTOS!$C$2:$C;_MOVIMIENTOS!$A$2:$A;">=1";_MOVIMIENTOS!$B$2:$B;1)'
+    + '-SUMIFS(_MOVIMIENTOS!$C$2:$C;_MOVIMIENTOS!$A$2:$A;">=1";_MOVIMIENTOS!$B$2:$B;-1))')
+  assert.equal(terminoLibro({ medida: 'magnitud' }), 'SUMIFS(_MOVIMIENTOS!$C$2:$C;_MOVIMIENTOS!$A$2:$A;">=1")')
+  assert.ok(terminoSumproduct({}).endsWith('*N(_MOVIMIENTOS!$C$2:$C)*N(_MOVIMIENTOS!$B$2:$B))'))
+  assert.ok(terminoSumproduct({ medida: 'magnitud' }).endsWith('*N(_MOVIMIENTOS!$C$2:$C))'))
 })
 
 test('el filtro de CLIENTE es un grupo OR sobre la columna Q, en es-AR y sin comas', () => {
@@ -71,11 +77,11 @@ test('el filtro de CLIENTE es un grupo OR sobre la columna Q, en es-AR y sin com
   // (la J): en un egreso la contraparte es el PROVEEDOR, así que `contraparte="LA ESTRELLA"` devolvería
   // cero para siempre — sin error, mostrando que a ese cliente no se le pagó nada nunca.
   const uno = terminoLibro({ signo: -1, clientes: ['LA ESTRELLA'] })
-  assert.ok(uno.includes('(_MOVIMIENTOS!$Q$2:$Q="LA ESTRELLA")'), uno)
+  assert.ok(uno.includes('_MOVIMIENTOS!$Q$2:$Q;"=LA ESTRELLA"'), uno)
   assert.ok(!uno.includes('$J$2:$J'), 'filtrar por contraparte cuenta el proveedor, no el cliente')
   // Varios clientes son un OR sumado, igual que los rubros: se multiplica por el grupo entero.
   const dos = terminoLibro({ clientes: ['MESSINA', 'ARCOR'] })
-  assert.ok(dos.includes('((_MOVIMIENTOS!$Q$2:$Q="MESSINA")+(_MOVIMIENTOS!$Q$2:$Q="ARCOR"))'), dos)
+  assert.ok(dos.includes('_MOVIMIENTOS!$Q$2:$Q;"=MESSINA"') && dos.includes('_MOVIMIENTOS!$Q$2:$Q;"=ARCOR"'), dos)
   // Sin `clientes`, la condición no aparece: la lista vacía no puede filtrar todo a cero.
   assert.ok(!terminoLibro({ signo: 1 }).includes('$Q$2:$Q'))
   assert.ok(!terminoLibro({ signo: 1, clientes: [] }).includes('$Q$2:$Q'))
@@ -85,20 +91,20 @@ test('el filtro de CLIENTE es un grupo OR sobre la columna Q, en es-AR y sin com
 
 test('formulaLibro es el término con su =, sin nada más', () => {
   const f = formulaLibro({ signo: -1 })
-  assert.ok(f.startsWith('=SUMPRODUCT('))
+  assert.ok(f.startsWith('=(-SUMIFS('), f)
   assert.equal(f.slice(1), terminoLibro({ signo: -1 }))
 })
 
 test('LA CONTRAPARTE ACOTA LO QUE EL RUBRO NO PUEDE: la cuota del prendario no es todo Financiero', () => {
   // `Financiero` lleva la cuota del préstamo Y los cargos del banco. La pestaña publica la CUOTA.
   const t = terminoLibro({ rubros: ['Financiero'], contrapartes: ['Banco Santander · préstamo prendario'] })
-  assert.match(t, /\(_MOVIMIENTOS!\$J\$2:\$J="Banco Santander · préstamo prendario"\)/)
-  assert.match(t, /\(_MOVIMIENTOS!\$F\$2:\$F="Financiero"\)/)
+  assert.ok(t.includes('_MOVIMIENTOS!$J$2:$J;"=Banco Santander · préstamo prendario"'), t)
+  assert.ok(t.includes('_MOVIMIENTOS!$F$2:$F;"=Financiero"'), t)
 })
 
 test('varias contrapartes son un OR: el mismo acreedor se llama distinto según quién probó el pago', () => {
   const t = terminoLibro({ rubros: ['Nómina · Gremiales'], contrapartes: ['Fondo de Cese', 'FCL'] })
-  assert.match(t, /\(\(_MOVIMIENTOS!\$J\$2:\$J="Fondo de Cese"\)\+\(_MOVIMIENTOS!\$J\$2:\$J="FCL"\)\)/)
+  assert.ok(t.includes('_MOVIMIENTOS!$J$2:$J;"=Fondo de Cese"') && t.includes('_MOVIMIENTOS!$J$2:$J;"=FCL"'), t)
 })
 
 test('sin contrapartes la fórmula no cambia — el filtro es opcional y no deja rastro', () => {
@@ -113,4 +119,53 @@ test('la marca de factura de Cobranzas sale de la columna «Categoría» resuelt
   assert.equal(de(COBRANZAS_CON_OBRA), esperado('B'), '«Obra» entra en H: Categoría no se mueve')
   assert.equal(de(['ID', 'Obra', 'Categoría']), esperado('C'), 'si Categoría se corre, la marca la sigue')
   assert.throws(() => cobranzaFacturada(), /Categoría/)
+})
+
+// ═══ SUMIFS DA EL MISMO NÚMERO QUE EL SUMPRODUCT DE ANTES (25/09/2026) ═══
+// El cambio es de costo de recálculo, no de criterio: se evalúan las DOS formas sobre un libro con filas
+// de borde (fecha vacía con importe, colchón vacío, signo en los dos sentidos, importe vacío) y tienen que
+// coincidir al peso en cada filtro que escriben las vistas.
+test('SUMIFS ≡ SUMPRODUCT: el mismo número sobre un libro con filas de borde, filtro por filtro', async () => {
+  const { evaluarFormula, hojaDeGrilla } = await import('./evaluar-formula-sheet.mjs')
+  const { terminoSumproduct } = await import('./libro-sumas.mjs')
+  const d = (dia) => 46266 + dia // 2026-09-01 + dia
+  const filas = [
+    ['Fecha', 'Signo', 'Importe', 'Moneda', 'Concepto', 'Rubro', 'Actividad', 'Estado', 'Instrumento', 'Contraparte', 'CUIT', 'Comprobante', 'Obra', 'Origen', 'Fila', 'Clave', 'Cliente'],
+    [d(0), 1, 1000, 'ARS', '', 'Ventas', '', 'REAL', 'transferencia', 'MESSINA', '', '', 'OB-1', 'Cobranzas', 5, 'k1', 'MESSINA'],
+    [d(2), -1, 300, 'ARS', '', 'Materiales', '', 'PROYECTADO', 'cheque', 'Corralón', '', '', 'OB-1', 'Compras', 9, 'k2', ''],
+    [d(3), -1, 250.5, 'ARS', '', 'Nómina · Gremiales', '', 'VENCIDO', 'desconocido', 'FCL', '', '', '', 'Cargas Sociales', 3, 'k3', ''],
+    [d(9), 1, 4000, 'ARS', '', 'Ventas', '', 'PROYECTADO', 'transferencia', 'ARCOR', '', '', 'OB-2', 'Cobranzas', 7, 'k4', 'ARCOR'],
+    ['', -1, 999, 'ARS', '', 'Materiales', '', 'REAL', 'cheque', 'X', '', '', '', 'Compras', 2, 'k5', ''],
+    [d(12), -1, '', 'ARS', '', 'Materiales', '', 'COMPROMETIDO', 'cheque', 'Y', '', '', '', 'Compras', 4, 'k6', ''],
+    [d(15), -1, 70, 'ARS', '', 'Financiero', '', 'COMPROMETIDO', 'débito', 'Fondo de Cese', '', '', '', 'Banco', 1, 'k7', ''],
+    [d(20), 1, 55, 'ARS', '', 'Ventas', '', 'VENCIDO', 'efectivo', 'MESSINA', '', '', 'OB-1', 'Cobranzas', 8, 'k8', 'MESSINA'],
+    ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+  ]
+  const hojas = { [LIBRO.pestana]: hojaDeGrilla(filas) }
+  const filtros = [
+    {}, { medida: 'magnitud' }, { signo: 1 }, { signo: -1 }, { signo: -1, medida: 'magnitud' },
+    { desde: String(d(1)), hasta: String(d(13)) }, { desde: '0', signo: -1 },
+    { desde: String(d(0)), hasta: `${d(0)}+7`, signo: 1, estados: ['PROYECTADO', 'VENCIDO'] },
+    { estados: ['COMPROMETIDO', 'PROYECTADO', 'VENCIDO'], signo: -1, medida: 'magnitud' },
+    { rubros: ['Materiales', 'Nómina · Gremiales'], estados: ['PROYECTADO', 'VENCIDO', 'REAL'] },
+    { clientes: ['MESSINA', 'ARCOR'], signo: 1 }, { contrapartes: ['Fondo de Cese', 'FCL'] },
+    { obra: 'OB-1' }, { origenes: ['Compras'], instrumentos: ['cheque', 'efectivo'] },
+    { hasta: 'TODAY()+7', signo: -1, estados: ['COMPROMETIDO', 'VENCIDO'], medida: 'magnitud' },
+  ]
+  const hoy = new Date(Date.UTC(2026, 8, 3))
+  for (const f of filtros) {
+    const nuevo = terminoLibro(f)
+    assert.ok(nuevo.includes('SUMIFS('), `${JSON.stringify(f)} → ${nuevo}`)
+    const a = evaluarFormula(`=${nuevo}`, { hojas, hoy })
+    const b = evaluarFormula(`=${terminoSumproduct(f)}`, { hojas, hoy })
+    assert.ok(Math.abs(a - b) < 1e-9, `${JSON.stringify(f)}: SUMIFS ${a} ≠ SUMPRODUCT ${b}`)
+  }
+})
+
+test('SUMIFS: vuelve a SUMPRODUCT con una condición extra o con demasiadas combinaciones', () => {
+  assert.match(terminoLibro({ extra: ['(1=1)'] }), /^SUMPRODUCT\(/)
+  const muchos = terminoLibro({ estados: ['A', 'B', 'C'], rubros: ['1', '2', '3'], contrapartes: ['x', 'y'] })
+  assert.match(muchos, /^SUMPRODUCT\(/, '18 combinaciones × 2 signos no se escriben como 36 SUMIFS')
+  // Un comodín que venga en el dato se escapa: «*» en un nombre no puede volverse «cualquier cosa».
+  assert.ok(terminoLibro({ contrapartes: ['A*B?'] }).includes('"=A~*B~?"'))
 })

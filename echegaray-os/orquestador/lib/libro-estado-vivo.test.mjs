@@ -167,11 +167,14 @@ test('REGRESIÓN: el término de la tarjeta COMPROMETIDA no cambia de forma', ()
   const t = terminoLibro({ signo: -1, estados: ['COMPROMETIDO', 'PROYECTADO', 'VENCIDO'],
     hasta: 'EOMONTH(TODAY();0)+1', medida: 'magnitud' })
   assert.equal(t,
-    'SUMPRODUCT(ISNUMBER(_MOVIMIENTOS!$A$2:$A)'
-    + '*(_MOVIMIENTOS!$A$2:$A<EOMONTH(TODAY();0)+1)'
-    + '*(_MOVIMIENTOS!$B$2:$B=-1)'
-    + '*((_MOVIMIENTOS!$H$2:$H="COMPROMETIDO")+(_MOVIMIENTOS!$H$2:$H="PROYECTADO")+(_MOVIMIENTOS!$H$2:$H="VENCIDO"))'
-    + '*N(_MOVIMIENTOS!$C$2:$C))')
+    // SUMIFS desde el 25/09/2026: el criterio `"=COMPROMETIDO"` compara el RESULTADO de la celda igual
+    // que el `=` de antes — un grupo OR es una suma de SUMIFS disjuntos, uno por estado.
+    '(SUMIFS(_MOVIMIENTOS!$C$2:$C;_MOVIMIENTOS!$A$2:$A;">=1";_MOVIMIENTOS!$A$2:$A;"<"&(EOMONTH(TODAY();0)+1);'
+    + '_MOVIMIENTOS!$B$2:$B;-1;_MOVIMIENTOS!$H$2:$H;"=COMPROMETIDO")'
+    + '+SUMIFS(_MOVIMIENTOS!$C$2:$C;_MOVIMIENTOS!$A$2:$A;">=1";_MOVIMIENTOS!$A$2:$A;"<"&(EOMONTH(TODAY();0)+1);'
+    + '_MOVIMIENTOS!$B$2:$B;-1;_MOVIMIENTOS!$H$2:$H;"=PROYECTADO")'
+    + '+SUMIFS(_MOVIMIENTOS!$C$2:$C;_MOVIMIENTOS!$A$2:$A;">=1";_MOVIMIENTOS!$A$2:$A;"<"&(EOMONTH(TODAY();0)+1);'
+    + '_MOVIMIENTOS!$B$2:$B;-1;_MOVIMIENTOS!$H$2:$H;"=VENCIDO"))')
   assert.equal(LIBRO.col.estado, 'H')
 })
 

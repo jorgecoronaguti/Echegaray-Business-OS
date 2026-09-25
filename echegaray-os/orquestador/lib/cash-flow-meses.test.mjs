@@ -94,7 +94,7 @@ test('el mes que ancla descuenta lo que ya está adentro del saldo declarado', (
   assert.ok(!f.includes('CAJA_FECHA_SALDO+1'),
     'el techo en el corte volvió: los REAL posteriores se cuentan dos veces en la cadena')
   assert.ok(f.includes('CAJA_TOTAL_DISPONIBLE)-('), f)
-  assert.match(f, /"REAL"/, 'el ancla descuenta lo REAL del período en adelante')
+  assert.ok(f.includes('_MOVIMIENTOS!$H$2:$H;"=REAL"'), 'el ancla descuenta lo REAL del período en adelante')
 })
 
 test('LOS MESES ANTERIORES AL CORTE SE DESPEJAN HACIA ATRÁS, no quedan vacíos', () => {
@@ -177,10 +177,10 @@ test('LA APERTURA POR RUBRO también en el mensual: subtotal del libro, rubros e
   assert.equal(meta.bloques.length, 4)
   for (const b of meta.bloques) {
     const sub = en(filas, b.subtotal, c)
-    assert.ok(sub.startsWith('=SUMPRODUCT('), `${b.clave}: el subtotal sale del libro, no de sus sub-líneas`)
+    assert.match(sub, /^=\(?SUMIFS\(_MOVIMIENTOS!/, `${b.clave}: el subtotal sale del libro, no de sus sub-líneas`)
     assert.ok(!sub.includes('SUM($B$'), `${b.clave}: si el subtotal fuera la suma, un rubro nuevo del Libro desaparecería`)
     for (const r of b.rubros) {
-      assert.ok(en(filas, r.fila, c).includes(`="${r.rubro}"`), `${r.rubro}: el filtro es por igualdad exacta`)
+      assert.ok(en(filas, r.fila, c).includes(`_MOVIMIENTOS!$F$2:$F;"=${r.rubro}"`), `${r.rubro}: el filtro es por igualdad exacta`)
       assert.equal(en(filas, r.fila, 0), `    · ${r.rubro}`)
     }
     assert.equal(en(filas, b.otros, c), `=N($B$${b.subtotal})-SUM($B$${b.primeraSub}:$B$${b.otros - 1})`)

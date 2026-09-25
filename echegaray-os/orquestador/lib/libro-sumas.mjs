@@ -70,6 +70,72 @@ const grupoIgual = (col, valores) =>
  * @returns {string} un término SUMPRODUCT(...) en sintaxis es-AR (`;` no aplica: no lleva argumentos múltiples)
  */
 export function terminoLibro(f = {}) {
+  return terminoSumifs(f) ?? terminoSumproduct(f)
+}
+
+/**
+ * ═══ SUMIFS Y NO SUMPRODUCT: EL RECÁLCULO SE COMÍA LA CORRIDA (25/09/2026) ═══
+ *
+ * Medido en una copia del Sheet, sin ningún otro escritor: cambiar UNA celda de `_MOVIMIENTOS` hace que
+ * la llamada siguiente al archivo espere 81–112 s, y reescribir el libro entero, 197–209 s. Es el
+ * recálculo de todo lo que cuelga del libro —los dos Cash Flow, CAJA, `_CAJA_ANEXO`, Impuestos y
+ * Cargas—, que Google cobra en la llamada que sigue. Cada una de esas celdas era un SUMPRODUCT que arma
+ * ~1.400 filas × 17 columnas de matrices intermedias (ISNUMBER, comparaciones, N()) por celda. Desde el
+ * 24/09 el libro tiene fórmulas vivas hacia Nómina, Cargas e Impuestos, así que CUALQUIER escritura a
+ * esas pestañas dispara la cadena entera: el libro murió en timeout cuatro corridas seguidas el 25/09.
+ *
+ * SUMIFS filtra con el motor nativo de criterios, sin matrices intermedias. El número es EL MISMO: cada
+ * grupo OR es una suma de SUMIFS disjuntos (una fila tiene un solo estado, un solo rubro…), el signo
+ * neto es SUMIFS(signo=1) − SUMIFS(signo=−1), y la guarda ISNUMBER(fecha) la da el propio criterio
+ * numérico (un texto o un vacío no cumple «>=» contra un número). Lo prueba el test de equivalencia
+ * de libro-sumas.test.mjs evaluando las dos formas sobre un libro con filas de borde.
+ *
+ * Vuelve a SUMPRODUCT —devuelve null— lo que SUMIFS no puede decir igual: una condición `extra` (una
+ * expresión arbitraria, como la factura de Cobranzas) o una combinación de grupos que pasaría de
+ * `MAX_SUMIFS` sumandos, donde la fórmula dejaría de ser legible.
+ */
+export const MAX_SUMIFS = 16
+
+/** Criterio de igualdad EXACTA para un *IFS: sin comodines ni operadores que el valor traiga adentro. PURA. */
+const criterioIgual = (v) => `"=${String(v).replace(/[~*?]/g, (c) => `~${c}`)}"`
+
+function terminoSumifs(f = {}) {
+  if (f.extra?.length) return null
+  const fecha = R(LIBRO.col.fecha)
+  // La guarda ISNUMBER(fecha) va SIEMPRE, también con ventana: un serial de fecha es ≥ 1 y un texto o
+  // un vacío no cumple. Con `desde` en 0 (la ventana de los cheques viejos) un vacío podría contar.
+  const base = [`${fecha};">=1"`]
+  if (f.desde) base.push(`${fecha};">="&(${f.desde})`)
+  if (f.hasta) base.push(`${fecha};"<"&(${f.hasta})`)
+  const grupos = []
+  const grupo = (col, valores) => { if (valores?.length) grupos.push(valores.map((v) => `${R(col)};${criterioIgual(v)}`)) }
+  grupo(LIBRO.col.estado, f.estados)
+  grupo(LIBRO.col.rubro, f.rubros)
+  grupo(LIBRO.col.origen, f.origenes)
+  grupo(LIBRO.col.instrumento, f.instrumentos)
+  grupo(LIBRO.col.cliente, f.clientes)
+  grupo(LIBRO.col.contraparte, f.contrapartes)
+  if (f.obra) grupo(LIBRO.col.obra, [f.obra])
+  // Los signos: con `signo` pedido, una sola rama; sin él, neto = entra − sale y magnitud = todo.
+  const neto = f.medida !== 'magnitud'
+  const signos = (f.signo === 1 || f.signo === -1)
+    ? [{ coef: neto ? f.signo : 1, crit: [`${R(LIBRO.col.signo)};${f.signo}`] }]
+    : neto ? [{ coef: 1, crit: [`${R(LIBRO.col.signo)};1`] }, { coef: -1, crit: [`${R(LIBRO.col.signo)};-1`] }]
+      : [{ coef: 1, crit: [] }]
+  let combos = [[]]
+  for (const g of grupos) combos = combos.flatMap((c) => g.map((x) => [...c, x]))
+  if (combos.length * signos.length > MAX_SUMIFS) return null
+  const importe = R(LIBRO.col.importe)
+  const sumandos = []
+  for (const s of signos) for (const c of combos) {
+    sumandos.push({ coef: s.coef, f: `SUMIFS(${[importe, ...base, ...s.crit, ...c].join(';')})` })
+  }
+  if (sumandos.length === 1 && sumandos[0].coef === 1) return sumandos[0].f
+  return `(${sumandos.map((x, i) => `${x.coef < 0 ? '-' : (i ? '+' : '')}${x.f}`).join('')})`
+}
+
+/** La forma anterior, para lo que SUMIFS no puede decir igual (ver `terminoSumifs`). PURA. */
+export function terminoSumproduct(f = {}) {
   const cond = [`ISNUMBER(${R(LIBRO.col.fecha)})`]
   if (f.desde) cond.push(`(${R(LIBRO.col.fecha)}>=${f.desde})`)
   if (f.hasta) cond.push(`(${R(LIBRO.col.fecha)}<${f.hasta})`)

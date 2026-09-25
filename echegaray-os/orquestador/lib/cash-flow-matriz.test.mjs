@@ -194,12 +194,12 @@ test('"Otros" SE DESPEJA del subtotal: un rubro nuevo del Libro aparece ahí en 
   assert.equal(otros, `=N($B$${b.subtotal})-SUM($B$${b.primeraSub}:$B$${b.otros - 1})`)
   // Y el subtotal es el LIBRO, no la suma de abajo.
   const sub = lineas.find((l) => l.fila === b.subtotal).formula
-  assert.ok(sub.startsWith('=SUMPRODUCT('), sub)
+  assert.ok(sub.startsWith('=SUMIFS(_MOVIMIENTOS!'), sub)
   assert.ok(!sub.includes('SUM($B$'), 'el subtotal no puede salir de sus propias sub-líneas')
   // Cada rubro filtra por su nombre EXACTO, el que emite el libro.
   for (const r of b.rubros) {
     const f = lineas.find((l) => l.fila === r.fila).formula
-    assert.ok(f.includes(`="${r.rubro}"`), `${r.rubro}: ${f}`)
+    assert.ok(f.includes(`_MOVIMIENTOS!$F$2:$F;"=${r.rubro}"`), `${r.rubro}: ${f}`)
   }
 })
 

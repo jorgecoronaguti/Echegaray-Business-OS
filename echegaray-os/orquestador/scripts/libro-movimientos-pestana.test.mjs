@@ -34,3 +34,18 @@ test('EFECTIVO A RENDIR: consolidar espeja cada gasto «A rendir» en la línea 
   assert.equal(espejo[0].importe, 96400)
   assert.equal(consolidado.reduce((a, m) => a + m.signo * m.importe, 0), 0, 'el día del ticket la caja no se mueve')
 })
+
+// ═══ SÓLO SE REESCRIBE EL TRAMO QUE CAMBIÓ (25/09/2026) ═══ Cada escritura al libro cuesta el recálculo
+// de todo lo que cuelga de él; una fila idéntica no se reescribe. Ante la duda, distinta.
+test('tramoQueCambio: nada cambió → null; una fila → sólo ésa; el tipo cuenta; lo que sobra se limpia', async () => {
+  const { tramoQueCambio } = await import('./libro-movimientos-pestana.mjs')
+  const previo = [['Fecha', 'Signo'], [46266, 1], [46267, -1], [46268, -1]]
+  assert.equal(tramoQueCambio(previo, previo.map((r) => [...r])), null)
+  assert.equal(tramoQueCambio([['a', ''], [1]], [['a'], [1, null]]), null, 'vacío, null y ausente son lo mismo')
+  assert.deepEqual(tramoQueCambio(previo, [['Fecha', 'Signo'], [46266, 1], [46267, 1], [46268, -1]]), { desde: 2, hasta: 3 })
+  assert.deepEqual(tramoQueCambio(previo, [['Fecha', 'Signo'], [46266, '1'], [46267, -1], [46268, -1]]), { desde: 1, hasta: 2 },
+    'el texto «1» no es el número 1')
+  assert.deepEqual(tramoQueCambio(previo, [['Fecha', 'Signo'], [46266, 1], [46267, -1], ['', '']]), { desde: 3, hasta: 4 },
+    'la fila que sobra se vacía')
+  assert.deepEqual(tramoQueCambio([], [['Fecha']]), { desde: 0, hasta: 1 }, 'sin lectura previa se escribe todo')
+})

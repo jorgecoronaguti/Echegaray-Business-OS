@@ -218,7 +218,7 @@ test('LOS SEIS TRAMOS, Y SU NETO SALE DEL LIBRO — no de seis fuentes con seis 
     const f = g.lad0 + k
     assert.equal(celda(g, f, 5), rotulo, `el tramo ${k} perdió su rótulo`)
     assert.ok(celda(g, f, 7).includes(`${LIBRO.pestana}!`), `el neto del tramo "${rotulo}" no lee el libro`)
-    for (const e of NO_REAL) assert.ok(celda(g, f, 7).includes(`="${e}"`), `el tramo "${rotulo}" no ve los ${e}`)
+    for (const e of NO_REAL) assert.ok(celda(g, f, 7).includes(`$H$2:$H;"=${e}"`), `el tramo "${rotulo}" no ve los ${e}`)
   })
 })
 

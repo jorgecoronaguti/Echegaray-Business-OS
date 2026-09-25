@@ -895,13 +895,27 @@ async function escribirYVerificar(google, consolidado, colEstadoCompras = null, 
 
   // ESPEJO: la pestaña es 100% generada, así que acá sí se limpia el excedente — pero limpiando el
   // TRAMO SOBRANTE con celdas vacías, no con clearValues sobre el archivo.
-  const previo = await google.readSheetValues(ID, `${PESTAÑA}!A1:A`).catch(() => [])
+  // SE ESCRIBE SÓLO EL TRAMO QUE CAMBIÓ (25/09/2026): cada escritura al libro dispara el recálculo de
+  // todo lo que cuelga de él (medido en una copia: 81–112 s por UNA celda, ~200 s por el libro entero),
+  // y Google lo cobra en la llamada siguiente. Reescribir filas idénticas es recálculo sin dato nuevo.
+  // Se compara contra lo que la pestaña tiene escrito (FORMULA: la fórmula, no su resultado); si no se
+  // puede leer, se escribe todo, como antes.
+  const previo = await google.readSheetValues(ID, `${PESTAÑA}!A1:${letraCol(ENCABEZADO.length)}`, { render: 'FORMULA' }).catch(() => [])
   const altura = Math.max(previo.length, filas.length)
   const conColchon = [...filas, ...Array.from({ length: altura - filas.length }, () => ENCABEZADO.map(() => ''))]
-  await google.escribirValoresPorCeldas(ID, hoja.sheetId, conColchon)
+  const tramo = tramoQueCambio(previo, conColchon)
+  if (!tramo) console.log(`  · ${PESTAÑA}: ninguna fila cambió desde la corrida anterior — no la reescribo`)
+  else {
+    if (tramo.hasta - tramo.desde < conColchon.length) console.log(`  · ${PESTAÑA}: reescribo las filas ${tramo.desde + 1}–${tramo.hasta} de ${conColchon.length} (el resto no cambió)`)
+    await google.escribirValoresPorCeldas(ID, hoja.sheetId, conColchon.slice(tramo.desde, tramo.hasta), { fila0: tramo.desde })
+  }
 
   // ── LA EVIDENCIA: el total releído del archivo, contra el calculado en memoria ──────────────────
-  const releido = await google.readSheetValues(ID, `${PESTAÑA}!A2:C${filas.length}`, { render: 'UNFORMATTED_VALUE' })
+  // La relectura ESPERA el recálculo que la escritura disparó (Google no contesta hasta terminarlo). Se le
+  // da un techo propio y acotado —dentro de los 5 min del paso— y se dice cuánto esperó.
+  const t0Relectura = Date.now()
+  const releido = await google.readSheetValues(ID, `${PESTAÑA}!A2:C${filas.length}`, { render: 'UNFORMATTED_VALUE', timeoutMs: ESPERA_RELECTURA_MS })
+  console.log(`  · la relectura esperó ${((Date.now() - t0Relectura) / 1000).toFixed(1)} s al recálculo de Google (techo ${ESPERA_RELECTURA_MS / 1000} s)`)
   let totalArchivo = 0; let filasArchivo = 0
   for (const f of releido ?? []) {
     const signo = Number(f?.[1]); const imp = Number(f?.[2])
@@ -957,6 +971,33 @@ async function escribirYVerificar(google, consolidado, colEstadoCompras = null, 
 }
 
 const pesos = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('es-AR')
+
+/** Cuánto espera la relectura de verificación al recálculo: acotado, y adentro del techo de 300 s del paso. */
+const ESPERA_RELECTURA_MS = 240_000
+
+const letraCol = (n) => { let s = ''; for (let k = n; k > 0; k = Math.floor((k - 1) / 26)) s = String.fromCharCode(65 + ((k - 1) % 26)) + s; return s }
+
+/**
+ * NÚCLEO PURO: el tramo de filas [desde, hasta) donde lo que se va a escribir difiere de lo escrito, o
+ * null si no cambió nada. Una celda vacía, `''`, `null` y `undefined` son lo mismo; un número se compara
+ * por valor. Ante la duda, DISTINTA: un falso «igual» dejaría el libro viejo, un falso «distinto» sólo
+ * cuesta una escritura de más.
+ */
+export function tramoQueCambio(previo = [], nuevo = []) {
+  // Con el TIPO: el número 1 y el texto «1» no son la misma celda (un signo en texto no suma).
+  const norm = (c) => (c === null || c === undefined || c === '' ? '' : `${typeof c}:${c}`)
+  const igual = (a = [], b = []) => {
+    for (let i = 0; i < Math.max(a.length, b.length); i++) if (norm(a[i]) !== norm(b[i])) return false
+    return true
+  }
+  let desde = -1; let hasta = -1
+  for (let r = 0; r < Math.max(previo.length, nuevo.length); r++) {
+    if (igual(previo[r], nuevo[r])) continue
+    if (desde < 0) desde = r
+    hasta = r + 1
+  }
+  return desde < 0 ? null : { desde, hasta: Math.min(hasta, nuevo.length) }
+}
 
 // ═══ `main()` CORRE SÓLO COMO CLI, Y ESA GUARDA NO ES COSMÉTICA (11/09/2026) ═══
 //

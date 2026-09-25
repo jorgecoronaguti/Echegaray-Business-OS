@@ -108,7 +108,7 @@ test('LA PRIMERA ACCIÓN ES CUBRIR O COLOCAR, nunca las dos, y con la reserva de
 
 test('LAS ACCIONES DE COBRAR Y DE PAGAR SALEN DEL LIBRO, con monto y con fecha', () => {
   const [, cobrar, pagar] = AC()
-  assert.ok(cobrar.includes('_MOVIMIENTOS!') && cobrar.includes('="VENCIDO"'), 'la cobranza vencida sale del libro')
+  assert.ok(cobrar.includes('_MOVIMIENTOS!') && cobrar.includes('_MOVIMIENTOS!$H$2:$H;"=VENCIDO"'), 'la cobranza vencida sale del libro')
   assert.ok(cobrar.includes('Reclamar'))
   assert.ok(pagar.includes('_MOVIMIENTOS!') && pagar.includes('TODAY()+7'), 'lo que vence en la semana, también')
   assert.ok(pagar.includes('Preparar'))
