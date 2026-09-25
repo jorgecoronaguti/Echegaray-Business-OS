@@ -36,6 +36,7 @@
 // `registros_hh`), el presupuesto (vía `presupuestos`) y los archivos de Drive (vía `drive_index`).
 // Ninguno de los cuatro se edita desde este módulo.
 
+import { cifraAvanceObra } from '@/features/obras/services/avanceObra'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
@@ -463,6 +464,7 @@ export default async function ObraPage({
           supabase={supabase} obraId={obraId} act={act} filtro={filtro} sol={sol} dot={dot}
           cuadrillas={cuadrillas} puedeEditar={puedeEditarPlan} veEconomia={veComercial}
           nueva={nueva === '1'} abiertas={abiertas} nombreObra={obra.nombre} itemsPonderados={vistaRaw === 'items'}
+          avanceObra={cifraAvanceObra(obra)}
           modo={modoEstructura} obra={{ inicio: obra.fecha_inicio_plan, fin: obra.fecha_fin_plan, archivada: terminada }}
         />
       )}

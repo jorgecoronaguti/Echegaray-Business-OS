@@ -2,9 +2,10 @@
 
 // LA TABLA DE ÍTEMS — PORTE LITERAL DE «04b · Obra · Trabajo · Ítems» (1440).
 //
-//   columnas   `minmax(0,1fr) 104px 70px 94px 100px 66px 92px` · gap 16 (las del 04b; el costo de MO va
-//              al lado del nombre de la historia, no en una columna propia)
-//              Ítem · Uni · cant · Pond. · Plan · Días real/teór · % ítem · Avance obra
+//   columnas   `minmax(0,1fr) 104px 70px 94px 100px 168px` · gap 16 (las del 04b menos «Avance obra»: el
+//              dueño la retiró el 25/09 —era % ítem × peso por costo de MO, un avance que no es avance—
+//              y pidió que cada ítem muestre SU avance: «8 de 16 ml · 50%», o el %)
+//              Ítem · Uni · cant · Pond. · Plan · Días real/teór · Avance
 //   cabecera   32px, eyebrow mono 10,5/.06em faint, línea abajo
 //   rubro      38px, 11,5px/600 uppercase .06em, el número en mono faint a la izquierda; sin línea
 //   épica      32px, 12px muted, sangría 16
@@ -21,9 +22,9 @@
 // NULL nunca es 0: «sin cargar», «sin plan», «— / —», «sin registrar», «—».
 
 import { C, MONO } from '../canon/tokens'
-import { contarItems, type FilaItem } from './filasDeItems'
+import { contarItems, textoAvanceItem, type FilaItem } from './filasDeItems'
 
-export const COLS_ITEMS = 'minmax(0,1fr) 104px 70px 94px 100px 66px 92px'
+export const COLS_ITEMS = 'minmax(0,1fr) 104px 70px 94px 100px 168px'
 const SANGRIA: Record<FilaItem['nivel'], number> = { rubro: 0, epica: 16, historia: 32, tarea: 48, subtarea: 64 }
 
 const pct = (n: number | null, dec = 1) => n == null ? null : `${n.toLocaleString('es-AR', { maximumFractionDigits: dec })}%`
@@ -43,7 +44,6 @@ function FilaContenedor({ f, alAbrir, abierta }: { f: FilaItem; alAbrir: () => v
   const alto = rubro ? 38 : epica ? 32 : 30
   const color = rubro ? C.tinta : epica ? C.tintaSuave : C.tenue
   const sangria = f.profundidad === 0 ? 0 : f.profundidad === 1 ? 16 : SANGRIA[f.nivel]
-  const avance = pct(f.avanceObra, 2)
   return (
     <div role="row" data-testid={`item-${f.id}`} onClick={alAbrir} style={{
       display: 'grid', gridTemplateColumns: COLS_ITEMS, gap: '16px', height: `${alto}px`, alignItems: 'center',
@@ -69,11 +69,9 @@ function FilaContenedor({ f, alAbrir, abierta }: { f: FilaItem; alAbrir: () => v
         {f.nivel === 'historia' && f.peso != null ? pct(f.peso * 100) : ''}
       </div>
       {celdasVacias(2)}
-      <div style={{ textAlign: 'right', fontSize: '12px', letterSpacing: 0, textTransform: 'none', fontVariantNumeric: 'tabular-nums', color: f.pctItem != null && f.pctItem < 100 ? C.curso : color }}>
-        {!rubro && f.pctItem != null ? pct(f.pctItem, 0) : ''}
-      </div>
-      <div style={{ textAlign: 'right', letterSpacing: 0, textTransform: 'none', fontSize: '12.5px', color: rubro ? C.tinta : color, fontVariantNumeric: 'tabular-nums' }}>
-        {avance ?? ''}
+      {/* Rubro, épica e historia: el avance POR TAREAS de lo que cuelga, la misma regla que Tareas y la cartera. */}
+      <div style={{ textAlign: 'right', fontSize: rubro ? '12.5px' : '12px', letterSpacing: 0, textTransform: 'none', fontVariantNumeric: 'tabular-nums', color: f.pctItem == null ? C.tenue : f.pctItem < 100 ? C.curso : rubro ? C.tinta : color }}>
+        {f.pctItem == null ? 'sin avance' : pct(f.pctItem, 0)}
       </div>
     </div>
   )
@@ -109,11 +107,8 @@ function FilaHoja({ f, alAbrir, abierta }: { f: FilaItem; alAbrir: () => void; a
       <div style={{ fontSize: '12.5px', color: f.diasWarn ? C.warn : f.diasReales == null && f.diasTeoricos == null ? C.tenue : f.diasReales == null ? C.tenue : C.tinta }}>
         {f.diasReales ?? '—'} / {f.diasTeoricos ?? '—'}
       </div>
-      <div style={{ textAlign: 'right', fontSize: '12.5px', whiteSpace: 'nowrap', color: f.pctItem == null ? C.tenue : f.pctItem < 100 ? C.curso : C.tinta }}>
-        {f.pctItem == null ? 'sin registrar' : pct(f.pctItem, 1)}
-      </div>
-      <div style={{ textAlign: 'right', fontSize: '12.5px', color: f.avanceObra == null ? C.tenue : C.tinta }}>
-        {f.avanceObra == null ? '—' : pct(f.avanceObra, 2)}
+      <div style={{ textAlign: 'right', fontSize: '12.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: f.pctItem == null ? C.tenue : f.pctItem < 100 ? C.curso : C.tinta }}>
+        {textoAvanceItem(f) ?? 'sin registrar'}
       </div>
     </div>
   )
@@ -137,15 +132,15 @@ export function TablaItems({ filas, abierta, alAbrir, vacio }: {
         color: C.tenue, textTransform: 'uppercase',
       }} role="row">
         <div>Ítem</div><div>Uni · cant</div><div style={{ textAlign: 'right' }}>Pond.</div><div>Plan</div>
-        <div>Días real/teór</div><div style={{ textAlign: 'right' }}>% ítem</div><div style={{ textAlign: 'right' }}>Avance obra</div>
+        <div>Días real/teór</div><div style={{ textAlign: 'right' }}>Avance</div>
       </div>
       {filas.length === 0 && <div style={{ padding: '24px 0', fontSize: '12.5px', color: C.tintaSuave }} data-testid="wbs-vacio">{vacio}</div>}
       {filas.map((f) => f.esContenedor || f.nivel === 'historia' || f.nivel === 'epica' || f.nivel === 'rubro'
         ? <FilaContenedor key={f.id} f={f} abierta={abierta === f.id} alAbrir={() => alAbrir(f.id)} />
         : <FilaHoja key={f.id} f={f} abierta={abierta === f.id} alAbrir={() => alAbrir(f.id)} />)}
       <div style={{ paddingTop: '18px', fontSize: '12.5px', color: C.tintaSuave }} data-testid="pie-items">
-        Rubro › Épica › Historia › Tarea › Subtarea · {contarItems(filas)} ítems · cada historia pesa por su costo de MO;
-        sus tareas, parejas. El estado se deriva de los partes
+        Rubro › Épica › Historia › Tarea › Subtarea · {contarItems(filas)} ítems · el avance de cada ítem es el suyo; el de
+        rubro, épica e historia sale de sus tareas. La ponderación dice cuánto pesa, no cuánto avanzó
       </div>
     </div>
     </div>

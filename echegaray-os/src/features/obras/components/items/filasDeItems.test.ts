@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  agruparFilas, contarItems, diasHabilesEntre, estadoDerivado, filasDeItems, filtrarPorTexto, gruposTelefono, textoPlan,
+  agruparFilas, contarItems, diasHabilesEntre, estadoDerivado, filasDeItems, filtrarPorTexto, gruposTelefono, textoAvanceItem, textoPlan,
 } from './filasDeItems.ts'
 import type { NodoObra } from '../../services/wbs.ts'
 
@@ -128,4 +128,12 @@ test('los grupos del teléfono: un rubro con sus hojas, el conteo y el %', () =>
   assert.equal(g[0].nombre, 'Obra gruesa')
   assert.equal(g[0].n, 3)
   assert.deepEqual(g[0].filas.map((f) => f.id), ['T1', 'T2', 'T3'])
+})
+
+test('cada ítem dice SU avance: «8 de 16 ml · 50%» por cantidad, o el %; sin registro, null (dueño 25/09)', () => {
+  assert.equal(textoAvanceItem({ pctItem: 50, cantidad: { hecha: 8, objetivo: 16, unidad: 'ml' } }), '8 de 16 ml · 50%')
+  assert.equal(textoAvanceItem({ pctItem: 100, cantidad: null }), '100%')
+  assert.equal(textoAvanceItem({ pctItem: null, cantidad: null }), null)
+  const filas = filasDeItems(ARBOL, HISTORIAS, PARTES, 'tarea')
+  assert.deepEqual(filas.find((f) => f.id === 'T1')!.cantidad, { hecha: 0, objetivo: 4, unidad: 'un' })
 })

@@ -62,6 +62,19 @@ export interface FilaItem {
   /** Para el teléfono (M05): «Cantidad · 890/1.100 m³» · «sin método de medición». */
   medicion: { texto: string; tono: 'ink' | 'warn' }
   puedeMedir: boolean
+  /** La tarea medida por cantidad: lo hecho sobre el objetivo, con la unidad («8 de 16 ml»). */
+  cantidad?: { hecha: number; objetivo: number; unidad: string | null } | null
+}
+
+/** EL AVANCE PROPIO DE UN ÍTEM, en texto (dueño 25/09: «¿cómo veo si va avanzando?»): «8 de 16 ml · 50%»
+ *  si se mide por cantidad; si no, el %; sin registro, `null` (la pantalla escribe «sin registrar»). */
+export function textoAvanceItem(f: Pick<FilaItem, 'pctItem' | 'cantidad'>): string | null {
+  const p = f.pctItem == null ? null : `${f.pctItem.toLocaleString('es-AR', { maximumFractionDigits: 0 })}%`
+  if (f.cantidad) {
+    const n = (x: number) => x.toLocaleString('es-AR', { maximumFractionDigits: 2 })
+    return `${n(f.cantidad.hecha)} de ${n(f.cantidad.objetivo)}${f.cantidad.unidad ? ` ${f.cantidad.unidad}` : ''}${p ? ` · ${p}` : ''}`
+  }
+  return p
 }
 
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
@@ -241,6 +254,8 @@ export function filasDeItems(
         ? { texto: 'sin método de medición', tono: 'warn' }
         : { texto: `${METODO_CORTO[metodo]}${detalle}`, tono: metodo === 'manual' ? 'warn' : 'ink' },
       puedeMedir: Boolean(metodo),
+      cantidad: (niv === 'tarea' || niv === 'subtarea') && metodo === 'cantidad' && n.cantidad_objetivo != null
+        ? { hecha: n.cantidad_ejecutada ?? 0, objetivo: n.cantidad_objetivo, unidad: n.unidad } : null,
     }
     filaDe.set(n.id, fila)
     return fila

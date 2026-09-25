@@ -29,7 +29,7 @@ import { CTRL, FormAccion, type AccionFormulario } from '@/shared/components/ui'
 import { FormNuevaActividad } from './FormActividad'
 import { PanelTarea, type AccionesDelPanel } from './PanelTarea'
 import { SubNavTrabajo } from './SubNavTrabajo'
-import { C, ESTILO_PRIMARIA, ESTILO_SECUNDARIA } from './canon/tokens'
+import { C, ESTILO_PRIMARIA, ESTILO_SECUNDARIA, MONO } from './canon/tokens'
 import { Ico, P } from './canon/Ico'
 import { Chip } from './canon/Piezas'
 import { rollup, type NodoObra } from '../services/wbs'
@@ -85,7 +85,7 @@ export function TabTareas({
   panelDeObra, relaciones, docsPorActividad, actInicial, solInicial, dotInicial, malImputados,
   puedeEditar, personas, integrantesPorCuadrilla, nombrePorPersona,
   equiposPorActividad, notasPorActividad, autor, accionesBarra, accionesPanel, nuevaInicial = false,
-  nombreObra = null, modo, estructura, accionesEstructura, itemsPonderados = false, veEconomia = false,
+  nombreObra = null, modo, estructura, accionesEstructura, itemsPonderados = false, veEconomia = false, avanceObra = null,
 }: {
   obraId: string
   nodos: NodoObra[]
@@ -120,6 +120,8 @@ export function TabTareas({
   nombreObra?: string | null
   /** `?vista=items` (04b) en vez de la tabla de Tareas (04). */
   itemsPonderados?: boolean
+  /** Ítems (04b · M06): el avance de la obra por tareas, la misma cifra que la cartera y el Resumen. */
+  avanceObra?: { valor: string | null; bajada: string; falta: string } | null
   /** Dirección y Administración: pueden vincular o crear el presupuesto de la obra (C01). */
   veEconomia?: boolean
 }) {
@@ -276,13 +278,22 @@ export function TabTareas({
             ? <Opciones rotulo="Ver hasta" opciones={VER_HASTA} valor={verHasta} alElegir={elegirVerHasta} testid="ver-hasta" />
             : <Opciones rotulo="Agrupar por" opciones={AGRUPAR} valor={agrupar} alElegir={elegirAgrupar} testid="agrupar-por" />
         }
-        alFinal={vacia || enEstructura ? undefined :
+        alFinal={vacia || enEstructura ? undefined : <>
+          {(itemsPonderados && avanceObra ? (
+            <span data-testid="avance-items" style={{ display: 'inline-flex', alignItems: 'baseline', gap: '8px', marginRight: '14px' }}>
+              <span style={{ fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', textTransform: 'uppercase', color: C.tenue }}>Avance</span>
+              {avanceObra.valor
+                ? <b style={{ fontSize: '15px', fontWeight: 600, color: C.tinta, fontVariantNumeric: 'tabular-nums' }}>{avanceObra.valor}</b>
+                : <i style={{ fontSize: '12.5px', color: C.tenue }}>{avanceObra.falta}</i>}
+              {avanceObra.bajada && <span style={{ fontSize: '12px', color: C.tintaSuave }}>{avanceObra.bajada}</span>}
+            </span>
+          ) : null)}
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar actividades" data-testid="buscar-tarea"
             style={{
               width: '190px', height: '29px', padding: '0 10px', border: `1px solid ${C.bordeFuerte}`, borderRadius: '6px',
               font: 'inherit', fontSize: '12.5px', background: C.superficie, color: C.tinta,
             }} />
-        }
+        </>}
       />
 
       {alta === 'actividad' && (
@@ -350,6 +361,14 @@ export function TabTareas({
 
       {/* ═══ TELÉFONO (M05): lista por grupo; el panel tapa la lista ═══ */}
       <div className="md:hidden">
+        {/* M06: «Avance 47%» arriba de la lista, la misma cifra que la cartera. */}
+        {itemsPonderados && avanceObra && (
+          <div data-testid="avance-items-telefono" style={{ padding: '12px 16px 0', display: 'flex', alignItems: 'baseline', gap: '8px', fontSize: '12.5px', color: C.tintaSuave }}>
+            <span style={{ fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', textTransform: 'uppercase', color: C.tenue }}>Avance</span>
+            {avanceObra.valor ? <b style={{ fontSize: '17px', fontWeight: 600, color: C.tinta }}>{avanceObra.valor}</b> : <i style={{ color: C.tenue }}>{avanceObra.falta}</i>}
+            <span>{avanceObra.bajada.replace(' tareas medidas', ' medidas')}</span>
+          </div>
+        )}
         <ListaItems filas={filas} query={query} alBuscar={setQuery} filtrosActivos={filtrosActivos}
           alAbrirFiltros={() => setFiltrosAbiertos((x) => !x)} alAbrir={(id) => abrir(id)} vacio={vacio} />
         {filtrosAbiertos && (

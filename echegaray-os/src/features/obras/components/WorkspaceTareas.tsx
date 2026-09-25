@@ -41,7 +41,7 @@ import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 
 export async function WorkspaceTareas({
   supabase, obraId, act, filtro, sol, dot, cuadrillas, puedeEditar, veEconomia, nueva = false, abiertas = [],
-  nombreObra = null, modo, obra, itemsPonderados = false,
+  nombreObra = null, modo, obra, itemsPonderados = false, avanceObra = null,
 }: {
   supabase: SupabaseClient
   /** C01–C09: qué pantalla de armado se está mirando (`?crear=` · `&panel=` · `?sel=1` · `&nuevo=`). */
@@ -66,6 +66,8 @@ export async function WorkspaceTareas({
   nombreObra?: string | null
   /** `?vista=items` (04b): la tabla de Ítems ponderados en vez de la de Tareas (04). */
   itemsPonderados?: boolean
+  /** El avance de la obra por tareas (`cifraAvanceObra`), que Ítems muestra arriba. */
+  avanceObra?: { valor: string | null; bajada: string; falta: string } | null
 }) {
   const vista: VistaArbol = esVistaArbol(filtro) ? filtro : 'todo'
   // ERP OBRAS · H2: el peso de cada historia (`obra_historia_peso`) y lo que dicen los partes de
@@ -158,6 +160,7 @@ export async function WorkspaceTareas({
       nuevaInicial={nueva}
       nombreObra={nombreObra}
       itemsPonderados={itemsPonderados}
+      avanceObra={avanceObra}
       veEconomia={veEconomia}
       modo={modo}
       estructura={{
