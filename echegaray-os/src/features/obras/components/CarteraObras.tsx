@@ -133,6 +133,8 @@ export function ConmutadorVista({ vista, telefono, cambiar }: { vista: VistaCart
           display: 'inline-flex', alignItems: 'center', gap: telefono ? '5px' : '6px', fontSize: '12.5px',
           paddingBottom: '2px', textDecoration: 'none', color: activo ? C.tinta : C.tintaSuave,
           fontWeight: activo ? 500 : 400, boxShadow: activo ? `inset 0 -1.5px 0 ${C.tinta}` : undefined,
+          // 44 de toque en el teléfono (medía 21); el texto queda abajo, pegado a su subrayado.
+          ...(telefono ? { minHeight: '44px', alignItems: 'flex-end', paddingBottom: '6px' } : {}),
         }}><Ico d={d} s={12} />{t}</Link>
     )
   }

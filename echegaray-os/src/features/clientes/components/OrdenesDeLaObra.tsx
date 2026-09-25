@@ -42,7 +42,8 @@ import type { CSSProperties } from 'react'
 import { MAX_OC_EN_FILA, hrefDelPapel, rotuloDeOC, type Orden } from '../services/papelesCliente'
 import { V } from '@/shared/components/v2/patron'
 
-const CLASE_UNO = 'whitespace-nowrap text-left hover:underline max-[767px]:whitespace-normal'
+// En el teléfono cada orden es un renglón tocable de 44 (medían 33–35; auditoría por nivel 25/09/2026).
+const CLASE_UNO = 'whitespace-nowrap text-left hover:underline max-[767px]:whitespace-normal max-[767px]:min-h-11'
 /** Uno al lado del otro; APILADOS a 390px, donde no hay ancho para dos rótulos. */
 const CLASE_FILA
   = 'flex items-baseline gap-x-3 gap-y-[2px] flex-wrap max-[767px]:flex-col max-[767px]:items-start'

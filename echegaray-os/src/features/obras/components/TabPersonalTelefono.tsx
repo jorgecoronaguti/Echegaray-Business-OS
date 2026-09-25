@@ -127,7 +127,8 @@ export function TabPersonalTelefono({ filas, cerradas, azulejos, primaria, cerra
           const activa = pastilla === p.k
           return (
             <button key={p.k} type="button" onClick={() => setPastilla(p.k)} aria-pressed={activa} data-testid={`pastilla-${p.k}`} style={{
-              font: 'inherit', height: '36px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', flexShrink: 0,
+              // 44 de toque (auditoría por nivel, 25/09/2026: medían 36).
+              font: 'inherit', height: '44px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', flexShrink: 0,
               border: `1px solid ${activa ? C.grafito : C.borde}`, borderRadius: '6px', fontSize: '12.5px', fontWeight: activa ? 500 : 400,
               color: activa ? C.tinta : C.tintaSuave, background: C.superficie, cursor: 'pointer', fontFamily: 'inherit',
             }}>

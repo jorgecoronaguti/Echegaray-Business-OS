@@ -193,7 +193,8 @@ export function TituloDeFicha({ titulo, bajada, mono, tonoBajada, acciones, junt
         )}
       </div>
       {acciones && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', maxWidth: '100%' }}>{acciones}</div>
+        // 44 de toque en el teléfono («Editar legajo» 35, «Dar de baja» 28, «Ver portal» 35; auditoría 25/09/2026).
+        <div className="max-md:[&_a]:!min-h-11 max-md:[&_button]:!min-h-11" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', maxWidth: '100%' }}>{acciones}</div>
       )}
     </div>
   )

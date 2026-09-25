@@ -85,7 +85,9 @@ export const CLASE_BUSCADOR_TELEFONO = 'max-md:!w-full max-md:!h-11 max-md:!px-3
 export function estiloEntradaBuscador(telefono: boolean): CSSProperties {
   return {
     border: 'none', background: 'transparent', outline: 'none', fontFamily: 'inherit', width: '100%', padding: 0,
-    fontSize: telefono ? '13.5px' : '13px', color: K.tinta,
+    // En el teléfono el campo ocupa el alto entero de la caja de 44 (medía 20: tocar el borde no lo
+    // enfocaba) y la letra es 16, el mínimo con el que iOS no agranda la página (auditoría 25/09/2026).
+    fontSize: telefono ? '16px' : '13px', color: K.tinta, ...(telefono ? { alignSelf: 'stretch' } : {}),
   }
 }
 
@@ -114,7 +116,8 @@ export const CLASE_FILTROS_TELEFONO = 'max-md:!gap-2 max-md:!overflow-x-auto max
 
 export function estiloChip(activo: boolean, telefono: boolean): CSSProperties {
   return telefono ? {
-    font: 'inherit', height: '36px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px',
+    // 44 de toque (auditoría por nivel, 25/09/2026: medían 36). Sólo el teléfono.
+    font: 'inherit', height: '44px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px',
     whiteSpace: 'nowrap', border: `1px solid ${activo ? K.grafito : K.borde}`, borderRadius: '6px',
     fontSize: '12.5px', fontWeight: activo ? 500 : 400, color: activo ? K.tinta : K.tintaSuave,
     background: K.superficie, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
@@ -126,7 +129,7 @@ export function estiloChip(activo: boolean, telefono: boolean): CSSProperties {
   }
 }
 /** El subrayado se va y aparece la caja de 36px; el borde activo es grafito, el apagado `borde`. */
-export const CLASE_CHIP_TELEFONO = 'max-md:!h-9 max-md:!px-3 max-md:!pb-0 max-md:!rounded-md max-md:!shadow-none max-md:whitespace-nowrap max-md:shrink-0'
+export const CLASE_CHIP_TELEFONO = 'max-md:!h-11 max-md:!px-3 max-md:!pb-0 max-md:!rounded-md max-md:!shadow-none max-md:whitespace-nowrap max-md:shrink-0'
 export const CLASE_CHIP_TELEFONO_ACTIVO = 'max-md:!border max-md:!border-solid max-md:!border-accent'
 export const CLASE_CHIP_TELEFONO_APAGADO = 'max-md:!border max-md:!border-solid max-md:!border-line'
 export function estiloCuentaChip(telefono: boolean): CSSProperties {
