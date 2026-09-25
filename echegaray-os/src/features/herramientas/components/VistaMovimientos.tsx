@@ -61,7 +61,10 @@ export function VistaMovimientos({ parque, filtros, hoy = new Date() }: { parque
               <div style={m.desde.length ? { color: V.tintaSuave } : vacio}>
                 {m.desde.length ? m.desde.join(' · ') : m.alta ? 'sin origen · alta' : 'origen desconocido'}
               </div>
-              <div style={{ color: V.tintaSuave }}>{m.hacia}</div>
+              <div style={{ color: V.tintaSuave }}>
+                {m.hacia}
+                {m.reimputacion && <div style={{ fontSize: '11.5px', color: V.apagado }} data-testid="reimputacion">reimputación · mismo cliente, no se movió</div>}
+              </div>
               <div style={m.quien ? { color: V.tintaSuave } : vacio}>{m.quien ?? 'sin registro'}</div>
             </div>
           )

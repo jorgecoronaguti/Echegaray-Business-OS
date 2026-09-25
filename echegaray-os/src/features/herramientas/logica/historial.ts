@@ -3,6 +3,7 @@
 // Cada renglón dice qué pasó y quién. Un reporte dice «la ubicación no cambió» porque es la regla que
 // más se confunde: reportar un problema no mueve nada.
 
+import { esReimputacion } from './clientes-lugar.ts'
 import type { LecturaUso } from '../types.ts'
 import { autorDe, rotuloUbicacion, MOTIVO_BAJA, type Parque } from './parque.ts'
 import { ITEMS, numeroAr } from './verificacion.ts'
@@ -50,7 +51,9 @@ export function historial(p: Parque, activoId: string): Renglon[] {
     const quien = autorDe(p, m)
     const hacia = rotuloUbicacion(p, m.destino_id)
     const que = m.origen_id
-      ? `${rotuloUbicacion(p, m.origen_id)} → ${hacia}`
+      ? esReimputacion(p, m.origen_id, m.destino_id)
+        ? `Reimputado ${rotuloUbicacion(p, m.origen_id)} → ${hacia} (mismo cliente, no se movió)`
+        : `${rotuloUbicacion(p, m.origen_id)} → ${hacia}`
       : m.importado ? `origen desconocido → ${hacia}` : m.comprobante_id ? `Compra → ${hacia}` : m.respaldo_drive_file_id ? `Entrega histórica (constancia) → ${hacia}` : `Alta${a.alta_desde_obra ? ' desde obra' : ''} en ${hacia}`
     // Un lote dice cuántas unidades viajaron («3 u. · Taller → Entrepiso»); lo de a una, nada.
     const cuantas = (a.cantidad > 1 || (m.cantidad ?? 1) > 1) && m.cantidad ? `${m.cantidad} u. · ` : ''

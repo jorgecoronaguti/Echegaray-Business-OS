@@ -32,14 +32,18 @@ export function resolverLugar(p: Parque, obras: ObraIndice[], en: string | null 
   return null
 }
 
-/** Los lugares para elegir «dónde estás»: el Taller primero, después las obras activas del índice. */
-export function lugaresParaElegir(p: Parque, obras: ObraIndice[]): { clave: string; rotulo: string; cuenta: number }[] {
+/**
+ * Los lugares para elegir «dónde estás»: el Taller primero, después las obras activas del índice AGRUPADAS
+ * POR CLIENTE (25/09/2026: el cliente es el predio; la obra, la imputación). `cliente` es el encabezado del
+ * grupo; el Taller no tiene.
+ */
+export function lugaresParaElegir(p: Parque, obras: ObraIndice[]): { clave: string; rotulo: string; cuenta: number; cliente: string | null }[] {
   const taller = p.ubicaciones.filter((u) => u.tipo === 'taller' && !u.archivada)
-    .map((u) => ({ clave: `u:${u.id}`, rotulo: rotuloUbicacion(p, u.id), cuenta: activosEn(p, u.id).length }))
+    .map((u) => ({ clave: `u:${u.id}`, rotulo: rotuloUbicacion(p, u.id), cuenta: activosEn(p, u.id).length, cliente: null }))
   const deObras = obras.filter((o) => o.estado === 'activa').map((o) => {
     const u = p.ubicaciones.find((x) => x.tipo === 'obra' && x.obra_id === o.id)
-    return { clave: u ? `u:${u.id}` : `obra:${o.id}`, rotulo: rotuloDeObra(o), cuenta: u ? activosEn(p, u.id).length : 0 }
-  }).sort((a, b) => a.rotulo.localeCompare(b.rotulo, 'es'))
+    return { clave: u ? `u:${u.id}` : `obra:${o.id}`, rotulo: rotuloDeObra(o), cuenta: u ? activosEn(p, u.id).length : 0, cliente: o.cliente ?? 'Sin cliente cargado' }
+  }).sort((a, b) => Number(a.cliente === 'Sin cliente cargado') - Number(b.cliente === 'Sin cliente cargado') || a.cliente.localeCompare(b.cliente, 'es') || a.rotulo.localeCompare(b.rotulo, 'es'))
   return [...taller, ...deObras]
 }
 

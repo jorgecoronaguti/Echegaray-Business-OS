@@ -3,6 +3,7 @@
 // Un movimiento no se borra ni se edita: se corrige con otro (`corrige_a`). El alta es un movimiento sin
 // origen; lo importado sin origen conocido se dice así, no se inventa uno.
 
+import { esReimputacion } from './clientes-lugar.ts'
 import type { Movimiento } from '../types.ts'
 import { autorDe, diasDesde, rotuloUbicacion, type Parque } from './parque.ts'
 
@@ -23,6 +24,8 @@ export interface RenglonMov {
   nota: string | null
   alta: boolean
   sinOrigen: boolean
+  /** Entre obras del mismo cliente: el mismo predio, cambió la obra a la que se imputa (25/09). */
+  reimputacion: boolean
   corregidoPor: Movimiento | null
 }
 
@@ -65,6 +68,7 @@ export function libroDeMovimientos(p: Parque, f: FiltrosMov, hoy: Date = new Dat
       nota: primero.nota && primero.nota !== 'alta' ? primero.nota : null,
       alta: ms.every((m) => !m.origen_id && !m.importado),
       sinOrigen: ms.every((m) => !m.origen_id),
+      reimputacion: ms.every((m) => esReimputacion(p, m.origen_id, m.destino_id)),
       corregidoPor: ms.length === 1 ? (correcciones.get(primero.id) ?? null) : null,
     })
   }

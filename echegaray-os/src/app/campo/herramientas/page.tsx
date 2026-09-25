@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Fragment } from 'react'
 import { leerParque } from '@/features/herramientas/services/datos'
 import { MarcoTelefono, FilaTelefono, primarioTelefono } from '@/features/herramientas/components/campo/MarcoTelefono'
 import { SinBaseTelefono } from '@/features/herramientas/components/campo/SinBaseTelefono'
@@ -49,8 +50,16 @@ export default async function InicioHerramientasCampo({ searchParams }: { search
         </div>
         <div data-testid="elegir-lugar">
           {lugares.map((l, i) => (
-            <FilaTelefono key={l.clave} href={conLugar('/campo/herramientas', l.clave)} titulo={l.rotulo}
-              bajada={`${l.cuenta} ${l.cuenta === 1 ? 'activo' : 'activos'}`} ultima={i === lugares.length - 1} testid="lugar" />
+            <Fragment key={l.clave}>
+              {/* El cliente encabeza sus obras, como en Ubicaciones de escritorio y en la cartera (25/09). */}
+              {l.cliente && l.cliente !== lugares[i - 1]?.cliente && (
+                <div data-testid="cliente-telefono" style={{ fontSize: '12.5px', fontWeight: 600, color: V.tinta, padding: '14px 0 4px' }}>
+                  {l.cliente} <span style={{ fontWeight: 400, color: V.tenue }}>{lugares.filter((x) => x.cliente === l.cliente).reduce((s, x) => s + x.cuenta, 0)}</span>
+                </div>
+              )}
+              <FilaTelefono href={conLugar('/campo/herramientas', l.clave)} titulo={l.rotulo}
+                bajada={`${l.cuenta} ${l.cuenta === 1 ? 'activo' : 'activos'}`} ultima={i === lugares.length - 1 || (!!lugares[i + 1] && lugares[i + 1].cliente !== l.cliente)} testid="lugar" />
+            </Fragment>
           ))}
         </div>
         <FilaTelefono href="/campo/herramientas/buscar" icono={<IcoBuscar tam={18} color={AZUL} />} titulo="Buscar una herramienta" bajada="en todo el parque" ultima />

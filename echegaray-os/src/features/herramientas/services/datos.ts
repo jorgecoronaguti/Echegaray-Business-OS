@@ -46,6 +46,7 @@ async function leerObras(supabase: SupabaseClient): Promise<ObraIndice[]> {
     nombre: o.nombre,
     estado: o.estado,
     cliente: o.cliente_id ? (nombreCliente.get(o.cliente_id) ?? null) : null,
+    cliente_id: o.cliente_id,
   }))
 }
 

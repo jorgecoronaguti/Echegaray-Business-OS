@@ -124,6 +124,8 @@ export interface ObraIndice {
   nombre: string | null
   estado: string | null
   cliente: string | null
+  /** El cliente de la obra (`obra_canonica.cliente_id`): en Ubicaciones, el cliente es el lugar físico. */
+  cliente_id?: string | null
 }
 
 export const COLUMNAS_ACTIVO =
