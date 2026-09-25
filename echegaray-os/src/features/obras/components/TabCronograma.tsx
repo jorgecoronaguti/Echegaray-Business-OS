@@ -29,6 +29,7 @@ import {
   bajadaDuracion, cambiosDeFechas, conFechas, diasHabilesDelEditor, ESCALA_LABEL, ESCALAS_VISTA, filasDelPlan,
   fraccionLlena, indiceDe, mesesDeVentana, motivoSellarApagado, moverExtremo, pares, posPct, semanasDe,
   textoPrecedencia, tonoDeFila, tramoVista, ventanaVista, type EscalaVista, type FechasEditadas, type FilaPlan,
+  arrancaEnElInicio, ladoFuera,
 } from '../services/cronogramaPlan'
 import { conectoresDe } from '../services/conectoresGantt'
 import { useAnchoVentana } from './useAnchoVentana'
@@ -73,6 +74,52 @@ const Falla = ({ fallas }: { fallas: string[] }) => fallas.length > 0 && (
 
 const colorDeTono = (t: ReturnType<typeof tonoDeFila>) => (t === 'atrasada' ? C.neg : C.grafito)
 
+// ═══ LO QUE QUEDA FUERA DE LA VENTANA SE SEÑALA EN EL BORDE (dueño 25/09) ═══
+//
+// Con el lienzo corrido, una fila cuya barra cae entera antes o después de lo visible se leía VACÍA:
+// «parece roto». Cada una lleva una marca fija al borde visible, en tenue y mono, con sus fechas
+// («◂ 03/08 → 24/08» a la izquierda, «18/10 → 23/10 ▸» a la derecha); tocarla corre el lienzo hasta
+// la barra. La ventana visible se mide en px del gráfico (0 = el primer día de la ventana).
+
+/** «03/08». */
+const ddmm = (iso: string | null) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '')
+
+function MarcaFuera({ lado, desde, hasta, fijo, fondo, alTocar }: {
+  lado: 'izq' | 'der'; desde: string | null; hasta: string | null; fijo: number; fondo: string; alTocar: () => void
+}) {
+  const fechas = [ddmm(desde), ddmm(hasta)].filter(Boolean)
+  const texto = fechas.length === 2 && fechas[0] !== fechas[1] ? `${fechas[0]} → ${fechas[1]}` : fechas[0] ?? ''
+  return (
+    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: lado === 'izq' ? 'flex-start' : 'flex-end', pointerEvents: 'none', zIndex: 1 }}>
+      <button type="button" data-testid={`marca-fuera-${lado}`} onClick={(e) => { e.stopPropagation(); alTocar() }}
+        title={lado === 'izq' ? 'Ir a la barra, antes de lo visible' : 'Ir a la barra, después de lo visible'}
+        style={{
+          position: 'sticky', ...(lado === 'izq' ? { left: `${fijo}px` } : { right: 0 }), pointerEvents: 'auto',
+          font: 'inherit', fontFamily: MONO, fontSize: '11px', color: C.tenue, background: fondo, border: 'none',
+          padding: '0 6px', cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: '20px',
+        }}>{lado === 'izq' ? `◂ ${texto}` : `${texto} ▸`}</button>
+    </div>
+  )
+}
+
+/** La ventana visible del gráfico, en px del gráfico, medida al desplazarse y al cambiar el tamaño. */
+function useVentanaVisible(ref: React.RefObject<HTMLDivElement | null>, izquierda: number, relleno: number, dep: unknown) {
+  const [vis, setVis] = useState<{ desde: number; hasta: number; ancho: number } | null>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const medir = () => {
+      const ancho = el.scrollWidth - izquierda - 2 * relleno
+      setVis({ desde: el.scrollLeft - relleno, hasta: el.scrollLeft + el.clientWidth - izquierda - relleno, ancho })
+    }
+    medir()
+    el.addEventListener('scroll', medir, { passive: true })
+    window.addEventListener('resize', medir)
+    return () => { el.removeEventListener('scroll', medir); window.removeEventListener('resize', medir) }
+  }, [ref, izquierda, relleno, dep])
+  return vis
+}
+
 // ═══════════════════════════════ 05 · VISTA ═══════════════════════════════
 
 function Vista({ obraId, filas, dependencias, hoy, fallas, actividadAbierta }: Props & { filas: FilaPlan[] }) {
@@ -88,13 +135,22 @@ function Vista({ obraId, filas, dependencias, hoy, fallas, actividadAbierta }: P
   const [resaltada, setResaltada] = useState<number | null>(null)
   const lienzoRef = useRef<HTMLDivElement>(null)
   const anchoLienzo = ventana ? ventana.columnas.length * ANCHO_COLUMNA[escala] : 0
-  // ABRE CON HOY A LA VISTA: a un tercio del ancho visible, como el 05 (y otra vez al cambiar la escala).
+  // LA PRIMERA VISTA: la obra que empezó hace menos de 8 semanas se ve desde su inicio (entra toda su
+  // historia); la más vieja abre con HOY a un tercio del ancho, como el 05 (y otra vez al cambiar la escala).
+  const inicioObra = filas.map((f) => f.inicio).filter((x): x is string => Boolean(x)).sort()[0] ?? null
   useEffect(() => {
     const el = lienzoRef.current
     if (!el || hoyPct == null) return
+    if (inicioObra && arrancaEnElInicio(inicioObra, hoy)) { el.scrollLeft = 0; return }
     const x = 270 + (hoyPct / 100) * Math.max(anchoLienzo, el.scrollWidth - 270)
     el.scrollLeft = Math.max(0, x - 270 - (el.clientWidth - 270) / 3)
-  }, [hoyPct, anchoLienzo])
+  }, [hoyPct, anchoLienzo, inicioObra, hoy])
+  const vis = useVentanaVisible(lienzoRef, 270, 0, anchoLienzo)
+  const irA = (t: { izqPct: number } | null) => {
+    const el = lienzoRef.current
+    if (!el || !t || !vis) return
+    el.scrollTo({ left: Math.max(0, (t.izqPct / 100) * vis.ancho - (el.clientWidth - 270) / 3), behavior: 'smooth' })
+  }
 
   return (
     <>
@@ -201,6 +257,7 @@ function Vista({ obraId, filas, dependencias, hoy, fallas, actividadAbierta }: P
                         ? (
                           <div style={{ gridColumn: 2, gridRow: fila, position: 'relative' }}>
                             {t && <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '17px', width: `${t.anchoPct}%`, height: '2px', background: C.fantasma }} />}
+                            {ladoFuera(t, vis) && <MarcaFuera lado={ladoFuera(t, vis)!} desde={f.inicio} hasta={f.fin} fijo={270} fondo={C.superficie} alTocar={() => irA(t)} />}
                           </div>
                           )
                         : !t
@@ -228,6 +285,10 @@ function Vista({ obraId, filas, dependencias, hoy, fallas, actividadAbierta }: P
                                     )}
                                   </>
                                   )}
+                              {ladoFuera(proyeccion ? { izqPct: t.izqPct, anchoPct: proyeccion.izqPct + proyeccion.anchoPct - t.izqPct } : t, vis) && (
+                                <MarcaFuera lado={ladoFuera(proyeccion ? { izqPct: t.izqPct, anchoPct: proyeccion.izqPct + proyeccion.anchoPct - t.izqPct } : t, vis)!}
+                                  desde={f.inicio} hasta={proyeccion ? f.finForecast : f.fin} fijo={270} fondo={fondo} alTocar={() => irA(t)} />
+                              )}
                             </div>
                             )}
                     </Fragment>
@@ -273,16 +334,23 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
   const con = new Set(dependencias.flatMap((d) => [d.origen_id, d.destino_id]))
   const nDeps = actos.filter((f) => f.actividadId && con.has(f.actividadId)).length
   const selladas = actos.filter((f) => f.inicioBase || f.finBase).length
-  // M07 ABRE CON HOY A LA VISTA: el lienzo se corre de costado y arrancaba en la primera fecha de la
-  // obra (agosto), con la línea de hoy fuera de la pantalla. Hoy queda a dos tercios del gráfico: en 270 px
-  // entran seis semanas y lo que importa es lo que viene de atrás (lo atrasado) hasta hoy.
+  // M07, LA PRIMERA VISTA: la misma regla que el 05 — obra de menos de 8 semanas desde su inicio; si no,
+  // HOY a un tercio del gráfico (M07 dibuja hoy al 36 %).
   const scrollRef = useRef<HTMLDivElement>(null)
+  const inicioObra = actos.map((f) => f.inicio).filter((x): x is string => Boolean(x)).sort()[0] ?? null
   useEffect(() => {
     const el = scrollRef.current
     if (!el || hoyPct == null) return
-    const grafico = el.scrollWidth - 120
-    el.scrollLeft = Math.max(0, 120 + grafico * (hoyPct / 100) - 120 - (el.clientWidth - 120) * 2 / 3)
-  }, [hoyPct, escala])
+    if (inicioObra && arrancaEnElInicio(inicioObra, hoy)) { el.scrollLeft = 0; return }
+    const grafico = el.scrollWidth - 32 - 120
+    el.scrollLeft = Math.max(0, 16 + grafico * (hoyPct / 100) - (el.clientWidth - 136) / 3)
+  }, [hoyPct, escala, inicioObra, hoy])
+  const vis = useVentanaVisible(scrollRef, 120, 16, escala)
+  const irA = (t: { izqPct: number } | null) => {
+    const el = scrollRef.current
+    if (!el || !t || !vis) return
+    el.scrollTo({ left: Math.max(0, 16 + (t.izqPct / 100) * vis.ancho - (el.clientWidth - 136) / 3), behavior: 'smooth' })
+  }
   const caja = (activo: boolean): CSSProperties => ({
     font: 'inherit', height: '44px', padding: '0 12px', display: 'flex', alignItems: 'center', border: `1px solid ${activo ? C.grafito : C.borde}`,
     borderRadius: '6px', fontWeight: activo ? 500 : 400, color: activo ? C.tinta : C.tintaSuave, background: C.superficie, cursor: 'pointer',
@@ -343,6 +411,7 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
                           }}>
                             {tono !== 'tecnico' && <div style={{ width: `${fraccionLlena(f) * 100}%`, height: '100%', background: relleno }} />}
                           </div>
+                          {ladoFuera(t, vis) && <MarcaFuera lado={ladoFuera(t, vis)!} desde={f.inicio} hasta={f.fin} fijo={120} fondo={C.superficie} alTocar={() => irA(t)} />}
                         </div>
                         )
                       : <div style={{ fontSize: '11.5px', color: C.tenue, fontStyle: 'italic' }}><span style={{ position: 'sticky', left: '120px' }}>sin fechas</span></div>}

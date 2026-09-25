@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { desvioProyectado, filasDelPlan, pares, resumenDelCronograma } from './cronogramaPlan.ts'
+import { arrancaEnElInicio, ladoFuera, desvioProyectado, filasDelPlan, pares, resumenDelCronograma } from './cronogramaPlan.ts'
 import type { Actividad } from '../types/index.ts'
 
 // LO QUE ESTAS PRUEBAS SOSTIENEN — las tres mentiras que la pantalla 07 puede decir sin dar error:
@@ -220,4 +220,17 @@ test('la vista (05 · M07) lista sólo lo que se mide: el rubro y sus tareas, si
   ], { soloTareas: true })
   assert.deepEqual(filas.map((f) => f.nombre), ['Obra gruesa', 'Retiro'])
   assert.equal(filas[0].inicio, '2026-09-01')
+})
+
+test('una barra entera antes o después de lo visible se señala en ese borde; la que asoma, no', () => {
+  const vis = { desde: 500, hasta: 1500, ancho: 2000 }
+  assert.equal(ladoFuera({ izqPct: 0, anchoPct: 10 }, vis), 'izq') // 0–200 px
+  assert.equal(ladoFuera({ izqPct: 80, anchoPct: 10 }, vis), 'der') // 1600–1800 px
+  assert.equal(ladoFuera({ izqPct: 20, anchoPct: 10 }, vis), null) // 400–600 px: asoma
+  assert.equal(ladoFuera(null, vis), null)
+})
+
+test('la ventana arranca en el inicio de la obra si empezó hace menos de 8 semanas', () => {
+  assert.equal(arrancaEnElInicio('2026-08-03', '2026-09-25'), true) // 53 días
+  assert.equal(arrancaEnElInicio('2026-07-01', '2026-09-25'), false)
 })

@@ -474,3 +474,22 @@ export function mesesDeVentana(v: VentanaVista): string {
   }
   return vistos.join(' · ')
 }
+
+// ── LO QUE QUEDA FUERA DE LA VENTANA (05 · M07, dueño 25/09) ─────────────────────────────────────
+
+/** De qué lado de lo visible cae una barra, o `null` si se ve (aunque sea en parte). */
+export function ladoFuera(t: { izqPct: number; anchoPct: number } | null, vis: { desde: number; hasta: number; ancho: number } | null): 'izq' | 'der' | null {
+  if (!t || !vis || vis.ancho <= 0) return null
+  const a = (t.izqPct / 100) * vis.ancho
+  const b = a + (t.anchoPct / 100) * vis.ancho
+  if (b <= vis.desde + 2) return 'izq'
+  if (a >= vis.hasta - 2) return 'der'
+  return null
+}
+
+/** ¿Arranca la ventana en el inicio de la obra? Sí cuando la obra empezó hace menos de 8 semanas: entra
+ *  toda su historia (el 05 muestra desde el 17 ago). Si no, hoy a un tercio del ancho, como el diseño. */
+export function arrancaEnElInicio(desde: string, hoy: string): boolean {
+  return (Date.parse(`${hoy}T00:00:00Z`) - Date.parse(`${desde.slice(0, 10)}T00:00:00Z`)) / 86_400_000 < 56
+}
+
