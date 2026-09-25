@@ -12,7 +12,7 @@ import { destinoPorRol } from '@/features/portal/types'
 import { trazar } from '@/lib/supabase/traza'
 import { pareceTelefonoSegun } from '@/shared/utils/dispositivo'
 import { rutaTelefonoDeHerramientas } from '@/features/herramientas/logica/rutaTelefono'
-import { INICIO_JEFE_ESCRITORIO, caraDeEscritorioDelJefe } from '@/shared/auth/caraDelJefe'
+import { INICIO_JEFE_ESCRITORIO, caraDeEscritorioDelJefe, caraDeTelefonoDelJefe, obraQueSeMira } from '@/shared/auth/caraDelJefe'
 import { TOPE_MS_MIDDLEWARE, esFallaDeBackend, fetchConTope } from '@/lib/supabase/fetch-con-tope'
 import { COOKIE_ROL, VIDA_ROL_SEGUNDOS, leerRol, sellarRol, secretoDelRol } from '@/lib/auth/rol-cache'
 import {
@@ -337,11 +337,26 @@ async function middlewareConBackend(request: NextRequest) {
     // mira y firma de su efectivo) va a su par de escritorio. Sólo GET: un Server Action no se desvía.
     // Con la lente «ver como» puesta vale lo mismo: Dirección ve lo que ve el jefe en ese aparato.
     const jefeEnPc = perfil?.rol === 'jefe_obra' && !pareceTelefonoSegun(request.headers)
+    // Y al revés: la portada y «Mi efectivo» de la PC, abiertas desde el teléfono, son J01 y D15.
+    if (perfil?.rol === 'jefe_obra' && !jefeEnPc && request.method === 'GET') {
+      const tel = caraDeTelefonoDelJefe(pathname, request.nextUrl.searchParams)
+      if (tel) return NextResponse.redirect(new URL(tel, request.url))
+    }
     if (jefeEnPc && request.method === 'GET') {
       const cara = caraDeEscritorioDelJefe(
         pathname, request.nextUrl.searchParams, obraDeCookieValida(request.cookies.get(COOKIE_OBRA)?.value),
       )
-      if (cara) return NextResponse.redirect(new URL(cara, request.url))
+      if (cara) {
+        const ir = NextResponse.redirect(new URL(cara, request.url))
+        // La obra que traía el enlace del teléfono se recuerda igual que si la pantalla se hubiera abierto.
+        const obra = obraDeCookieValida(request.nextUrl.searchParams.get('obra'))
+        if (obra && request.cookies.get(COOKIE_OBRA)?.value !== obra) {
+          ir.cookies.set(COOKIE_OBRA, obra, {
+            httpOnly: false, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: VIDA_OBRA_SEGUNDOS,
+          })
+        }
+        return ir
+      }
     }
 
     // ── EL NIVEL «OBRAS» NO ENTRA A LO DE ADMINISTRACIÓN (18/08/2026).
@@ -412,8 +427,10 @@ async function middlewareConBackend(request: NextRequest) {
   // Sólo en `/obra/*`: es donde el jefe ELIGE; Dirección y Administración no llegan ahí sin la lente.
   // NO es httpOnly a propósito: es un id de obra, no una credencial, y las barras del navegador la leen
   // para que sus enlaces a `/obra/*` la lleven (ver `conObraRecordada`).
-  if (user && request.method === 'GET' && pathname.startsWith('/obra/')) {
-    const obra = obraDeCookieValida(request.nextUrl.searchParams.get('obra'))
+  // Desde el 25/09/2026 también en la cara de computadora: la portada `/obras/hoy?obra=` y la ficha
+  // `/obras/<obra>` (`obraQueSeMira`), que es donde el jefe elige en la PC.
+  if (user && request.method === 'GET') {
+    const obra = obraDeCookieValida(obraQueSeMira(pathname, request.nextUrl.searchParams))
     if (obra && request.cookies.get(COOKIE_OBRA)?.value !== obra) {
       response.cookies.set(COOKIE_OBRA, obra, {
         httpOnly: false, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: VIDA_OBRA_SEGUNDOS,

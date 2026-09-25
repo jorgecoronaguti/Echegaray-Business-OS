@@ -88,3 +88,38 @@ export function caraDeEscritorioDelJefe(
   }
   return portada(obra)
 }
+
+/**
+ * LA OBRA QUE SE ESTÁ MIRANDO, para recordarla (cookie `os_obra`). Hasta el 25/09 sólo la daban las
+ * pantallas del teléfono (`/obra/*?obra=`); en la PC el jefe elige la obra en su portada y entra a su
+ * ficha, y la barra del teléfono, el isotipo y «Mi efectivo» tienen que seguir sobre ESA obra.
+ *
+ *   `/obra/*?obra=X` · `/obras/hoy?obra=X` → X      `/obras/X` y `/obras/X/...` → X
+ *   `/obras`, `/obras/gantt`, `/obras/nueva` y todo lo demás → null
+ */
+export function obraQueSeMira(pathname: string, params: URLSearchParams): string | null {
+  if (pathname.startsWith('/obra/') || pathname === INICIO_JEFE_ESCRITORIO) return idValido(params.get('obra'))
+  const ficha = /^\/obras\/([^/]+)(\/|$)/.exec(pathname)?.[1]
+  if (!ficha || ficha === 'hoy' || ficha === 'gantt' || ficha === 'nueva') return null
+  try {
+    return idValido(decodeURIComponent(ficha))
+  } catch {
+    return null // un `%` suelto no es una obra
+  }
+}
+
+/**
+ * EL CAMINO INVERSO: las dos pantallas que sólo existen en la PC, abiertas desde el teléfono del jefe
+ * (un enlace compartido, el historial). En el teléfono su cara es J01 y D15; `null` para todo lo demás.
+ */
+export function caraDeTelefonoDelJefe(pathname: string, params: URLSearchParams): string | null {
+  const ruta = pathname.replace(/\/+$/, '') || '/'
+  const obra = idValido(params.get('obra'))
+  const conObra = (href: string) => (obra ? `${href}?obra=${encodeURIComponent(obra)}` : href)
+  if (ruta === INICIO_JEFE_ESCRITORIO) return conObra('/obra/hoy')
+  if (ruta === EFECTIVO_ESCRITORIO) {
+    const entrega = idValido(params.get('firmar'))
+    return entrega ? `/mi-informacion/efectivo/firmar?entrega=${encodeURIComponent(entrega)}` : '/obra/efectivo'
+  }
+  return null
+}

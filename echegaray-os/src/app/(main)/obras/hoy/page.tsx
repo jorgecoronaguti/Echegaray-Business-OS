@@ -253,7 +253,7 @@ export default async function HoyJefeEscritorioPage({ searchParams }: { searchPa
             <aside className="flex flex-col gap-6 lg:border-l lg:border-line lg:pl-8" data-testid="columna-jefe">
               <MiEfectivo lectura={efectivo} conVinculo={!!personaId} />
 
-              <div className="flex flex-col gap-2" data-testid="gente-hoy">
+              <div className="flex flex-col gap-1" data-testid="gente-hoy">
                 <div className="text-[10.5px] tracking-[0.04em] text-faint">GENTE HOY</div>
                 {grupos && grupos.sinRegistrar.length > 0 ? (
                   <ul className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
@@ -272,7 +272,7 @@ export default async function HoyJefeEscritorioPage({ searchParams }: { searchPa
                 <EnlaceColumna href="/administracion/personas">Plantel</EnlaceColumna>
               </div>
 
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-1">
                 <div className="text-[10.5px] tracking-[0.04em] text-faint">MATERIAL Y HERRAMIENTAS</div>
                 <EnlaceColumna href={hrefMaterialEscritorio({ obra: obra.id })}>Material pedido</EnlaceColumna>
                 <EnlaceColumna href={`/obras/${encodeURIComponent(obra.id)}?vista=operacion&sub=equipos`}>Herramientas en la obra</EnlaceColumna>
@@ -287,7 +287,7 @@ export default async function HoyJefeEscritorioPage({ searchParams }: { searchPa
 
 function EnlaceColumna({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <Link href={href} prefetch={false} className="inline-flex min-h-[32px] items-center text-[12.5px] text-ink underline-offset-2 hover:underline">
+    <Link href={href} prefetch={false} className="inline-flex min-h-[28px] items-center text-[12.5px] text-ink underline-offset-2 hover:underline">
       {children} <span aria-hidden className="ml-1 text-faint">→</span>
     </Link>
   )

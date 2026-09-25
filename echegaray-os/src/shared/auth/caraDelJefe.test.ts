@@ -59,3 +59,26 @@ test('la portada de escritorio no es la cartera: el jefe la puede abrir', async 
   assert.equal(puedeVerRuta('jefe_obra', EFECTIVO_ESCRITORIO), true)
   assert.equal(puedeVerRuta('jefe_obra', '/obras'), false, 'la cartera sigue cerrada al jefe (24/09)')
 })
+
+test('la obra que se mira sale de la URL del teléfono, de la portada o de la ficha', async () => {
+  const { obraQueSeMira } = await import('./caraDelJefe.ts')
+  const de = (r: string) => { const u = new URL(r, 'https://x'); return obraQueSeMira(u.pathname, u.searchParams) }
+  assert.equal(de('/obra/hoy?obra=q'), 'q')
+  assert.equal(de('/obras/hoy?obra=q'), 'q')
+  assert.equal(de('/obras/q'), 'q')
+  assert.equal(de('/obras/q/avance/abc'), 'q')
+  assert.equal(de('/obras/q?vista=tareas'), 'q')
+  for (const r of ['/obras', '/obras/hoy', '/obras/gantt', '/obras/nueva', '/obra/hoy', '/clientes/q', '/obras/..%2F..', '/obras/%E0%A4%A']) {
+    assert.equal(de(r), null, r)
+  }
+})
+
+test('en el teléfono, las dos pantallas de PC vuelven a J01 y D15; el resto no se toca', async () => {
+  const { caraDeTelefonoDelJefe } = await import('./caraDelJefe.ts')
+  const de = (r: string) => { const u = new URL(r, 'https://x'); return caraDeTelefonoDelJefe(u.pathname, u.searchParams) }
+  assert.equal(de('/obras/hoy'), '/obra/hoy')
+  assert.equal(de('/obras/hoy?obra=q'), '/obra/hoy?obra=q')
+  assert.equal(de('/mi-cuenta/efectivo'), '/obra/efectivo')
+  assert.equal(de('/mi-cuenta/efectivo?firmar=e1'), '/mi-informacion/efectivo/firmar?entrega=e1')
+  for (const r of ['/obras/q', '/obra/hoy', '/mi-cuenta', '/administracion/personas']) assert.equal(de(r), null, r)
+})
