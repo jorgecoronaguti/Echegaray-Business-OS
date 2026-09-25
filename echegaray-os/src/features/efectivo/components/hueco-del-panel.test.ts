@@ -57,7 +57,8 @@ test('la cabecera reserva EL ancho del panel que hay abierto, no un literal', ()
   // Y la pantalla pasa SUS constantes, las mismas que dibujan cada panel.
   assert.match(vista, /cabecera\(entregando \? undefined : accion, abiertas, entregando && ANCHO_PANEL\)/,
     'la lista dejó de reservar el ancho real del panel de entrega')
-  assert.match(vista, /devolviendo \? ANCHO_PANEL : observado \? ANCHO_PANEL_OBSERVADO : false/,
+  // Los paneles de editar (25/09/2026) miden lo mismo que el de devolución: reservan ANCHO_PANEL.
+  assert.match(vista, /devolviendo \|\| imputando \|\| edicionPanel \? ANCHO_PANEL : observado \? ANCHO_PANEL_OBSERVADO : false/,
     'la ficha reserva un hueco que no es el del panel que abre')
   assert.equal(/espacioPanel=\{(true|\d)/.test(vista), false, 'volvió un ancho a mano en la vista')
 })
@@ -69,6 +70,6 @@ test('con el panel abierto la cabecera no ofrece la acción que quedaba sobre la
   assert.match(vista, /opacity: entregando \? 0\.4 : 1/, 'la lista dejó de atenuarse con el panel abierto')
   assert.match(vista, /cabecera\(entregando \? undefined : accion/,
     'las acciones de la cabecera volvieron a estar vivas sobre la lista atenuada')
-  assert.match(vista, /cabecera\(\s*devolviendo \|\| observado \? undefined : volver/,
+  assert.match(vista, /conPanel = devolviendo \|\| !!observado \|\| imputando \|\| !!edicionPanel[\s\S]*cabecera\(\s*conPanel \? undefined : volver/,
     'en la ficha, «volver» sigue vivo con el panel abierto')
 })

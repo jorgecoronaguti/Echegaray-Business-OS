@@ -11,7 +11,10 @@ import {
 } from '../logica/entregas'
 import { urlEfectivo, urlFilaDeCompras } from '../logica/url'
 import type { ExtraDeFicha } from '../services/datos'
-import { AnularEntrega, BorrarPrueba, QuitarAdelanto, ReclamarRendicion, SubirPapel } from './Botones'
+import type { EdicionDeFicha } from '../services/edicionDatos'
+import { fraseDelCambio, type Nombres } from '../logica/edicion'
+import { QuitarAdelanto, ReclamarRendicion, SubirPapel } from './Botones'
+import { AvisosDeLaEntrega } from './Edicion'
 import { Firma } from './Firma'
 import { ALTO_V2, HOVER_FILA } from '@/shared/components/v2/patron'
 import { COLOR_TONO, FONDO_OBSERVADO, MONO, V, botonClaro, botonOscuro, cifraFicha, eyebrow, punto } from './estilo'
@@ -36,6 +39,8 @@ export function textoDelReclamo(r: { pedidoEn: string; enviadoEn: string | null 
 }
 
 const COLUMNAS = '72px minmax(0,1.4fr) minmax(0,1fr) 120px 140px'
+/** La columna del «Editar» de cada fila (25/09/2026): la acción al lado del objeto. */
+const ANCHO_EDITAR = 52
 /** El círculo con las iniciales de la ficha (`D03`): un tamaño de ícono, no un alto de fila. */
 const AVATAR = 44
 
@@ -43,7 +48,7 @@ function iniciales(nombre: string): string {
   return nombre.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('')
 }
 
-export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra, cliente, puedeImputar = false }: {
+export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra, cliente, puedeImputar = false, edicion, nombres }: {
   e: Entrega
   comprobantes: Comprobante[]
   rendiciones: Rendicion[]
@@ -52,6 +57,10 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
   cliente: string | null
   /** Dirección o Administración: ven «Imputar un comprobante ya cargado» (24/09/2026). */
   puedeImputar?: boolean
+  /** Avisos y bitácora (migración 20260925T1200). */
+  edicion: EdicionDeFicha
+  /** Para decir la bitácora con nombres: id → nombre de persona, de obra y código de entrega. */
+  nombres: { personas: Record<string, string>; obras: Record<string, string>; entregas: Record<string, string> }
 }) {
   const destino = destinoDe(e, cliente)
   const nombreDestino = e.estructura ? 'Estructura' : destino.linea
@@ -61,13 +70,16 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
   const abierta = e.estado === 'abierta'
   const esPrueba = e.es_prueba === true
   const primero = pendientes.at(-1) ?? null
-  // ANULAR ES «ESTA ENTREGA NO DEBIÓ EXISTIR», y eso no deja de ser cierto porque haya un vuelto
-  // registrado o un ticket sacado: la base (20260923T0100) borra la devolución y descarta los
-  // tickets en camino. Lo único que lo impide es un comprobante YA CARGADO EN COMPRAS —esa fila vive
-  // en el Sheet y se deshace descartando el comprobante—, y de eso avisa el botón antes de intentar.
-  // Desde la migración 20260923T1400 una entrega con filas rendidas TAMBIÉN se anula: la base encola la
-  // cancelación de cada fila de Compras y el worker la escribe. Antes había que vaciarlas a mano.
-  const anulable = abierta
+  // DESDE EL 25/09/2026 ANULAR, REABRIR, CERRAR Y BORRAR VIVEN EN «EDITAR» (dueño: «todo editable»): un
+  // solo lugar para cambiar la entrega, en cualquier estado, con su bitácora.
+  const n: Nombres = {
+    persona: (id) => nombres.personas[id] ?? null,
+    obra: (id) => nombres.obras[id] ?? null,
+    entrega: (id) => nombres.entregas[id] ?? null,
+  }
+  const cambios = edicion.cambios
+    .map((c) => ({ c, frase: fraseDelCambio(c, n) }))
+    .filter((x): x is { c: typeof x.c; frase: string } => x.frase != null)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }} data-testid="ficha-entrega" data-codigo={e.codigo}>
       {/* LO PRIMERO QUE SE LEE. Una prueba que se confunde con una entrega real ensucia el número de
@@ -107,8 +119,11 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
             </div>
           </div>
         </div>
-        {abierta && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
+          <Link href={urlEfectivo({ entrega: e.codigo, panel: 'editar' })} prefetch={false} scroll={false} style={botonClaro} data-testid="abrir-editar">
+            Editar
+          </Link>
+          {abierta && <>
             <ReclamarRendicion entrega={e.id} ultimo={textoDelReclamo(extra.reclamo)} />
             {/* EL TICKET QUE ENTRÓ COMO COMPRA COMÚN (24/09/2026): pagado con esta plata pero cargado en
                 «Efectivo» por #comprobantes-gastos. Se corrige desde acá, no a mano en el Sheet. */}
@@ -126,8 +141,8 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
                 <span style={{ fontFamily: MONO, fontSize: '11px', color: V.marca }}>{pendientes.length}</span>
               </Link>
             )}
-          </div>
-        )}
+          </>}
+        </div>
       </div>
 
       <div
@@ -149,9 +164,9 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
           <div style={{ fontSize: '13.5px', fontWeight: 600 }}>Comprobantes de esta entrega</div>
           <div className="overflow-x-auto">
-            <div style={{ minWidth: 560 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: COLUMNAS, gap: 16, height: 32, alignItems: 'center', borderBottom: `1px solid ${V.lineaFuerte}`, ...eyebrow }}>
-                <div>Fecha</div><div>Proveedor</div><div>Rubro</div><div style={{ textAlign: 'right' }}>Importe</div><div>Estado</div>
+            <div style={{ minWidth: 560 + ANCHO_EDITAR }}>
+              <div style={{ display: 'grid', gridTemplateColumns: `${COLUMNAS} ${ANCHO_EDITAR}px`, gap: 16, height: 32, alignItems: 'center', borderBottom: `1px solid ${V.lineaFuerte}`, ...eyebrow }}>
+                <div>Fecha</div><div>Proveedor</div><div>Rubro</div><div style={{ textAlign: 'right' }}>Importe</div><div>Estado</div><div />
               </div>
               {filas.map((f, i) => {
                 const r = ROTULO_COMPROBANTE[f.estado]
@@ -169,18 +184,32 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
                 )
                 const estilo = {
                   display: 'grid', gridTemplateColumns: COLUMNAS, gap: 16, minHeight: ALTO_V2.cara, alignItems: 'center', fontSize: '13.5px',
-                  borderBottom: i < filas.length - 1 ? `1px solid ${V.lineaFila}` : undefined,
-                  background: f.estado === 'observado' ? FONDO_OBSERVADO : undefined,
                 } as const
-                if (href) {
-                  return <Link key={f.comprobante?.id ?? `r${i}`} href={href} prefetch={false} className={HOVER_FILA} style={estilo} data-testid="fila-comprobante" data-estado={f.estado}>{contenido}</Link>
-                }
-                // EL ADELANTO DE SUELDO (20260925T1100) se puede quitar de Liquidación desde acá, con motivo, mientras
-                // la entrega esté abierta. Es la puerta que deja anular después una entrega que tuvo adelantos.
+                const item = f.comprobante?.id ?? f.rendicion?.id ?? null
                 return (
-                  <div key={`r${i}`} style={f.adelanto && abierta ? { ...estilo, gridTemplateRows: 'auto auto', paddingBottom: 6 } : estilo} data-testid="fila-comprobante" data-estado={f.estado}>
-                    {contenido}
-                    {f.adelanto && abierta && <div style={{ gridColumn: '2 / -1' }}><QuitarAdelanto rendicion={f.adelanto} /></div>}
+                  <div
+                    key={f.comprobante?.id ?? f.rendicion?.id ?? `r${i}`}
+                    style={{
+                      display: 'grid', gridTemplateColumns: `minmax(0,1fr) ${ANCHO_EDITAR}px`, gap: 16, alignItems: 'center',
+                      borderBottom: i < filas.length - 1 ? `1px solid ${V.lineaFila}` : undefined,
+                      background: f.estado === 'observado' ? FONDO_OBSERVADO : undefined,
+                    }}
+                  >
+                    {href
+                      ? <Link href={href} prefetch={false} className={HOVER_FILA} style={estilo} data-testid="fila-comprobante" data-estado={f.estado}>{contenido}</Link>
+                      // EL ADELANTO DE SUELDO (20260925T1100) se quita de Liquidación desde su fila, con motivo.
+                      : <div style={f.adelanto && abierta ? { ...estilo, gridTemplateRows: 'auto auto', paddingBottom: 6 } : estilo} data-testid="fila-comprobante" data-estado={f.estado}>
+                          {contenido}
+                          {f.adelanto && abierta && <div style={{ gridColumn: '2 / -1' }}><QuitarAdelanto rendicion={f.adelanto} /></div>}
+                        </div>}
+                    {item && (
+                      <Link
+                        href={urlEfectivo({ entrega: e.codigo, panel: 'editar-comprobante', item })} prefetch={false} scroll={false}
+                        style={{ fontSize: '12.5px', color: V.apagado, textDecoration: 'underline', textUnderlineOffset: 2 }} data-testid="editar-fila"
+                      >
+                        Editar
+                      </Link>
+                    )}
                   </div>
                 )
               })}
@@ -213,19 +242,21 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
             e={e} papelUrl={extra.papelUrl} trazo={extra.trazo} firmas={extra.firmas} fotos={comprobantes.filter((c) => c.storage_path).length}
             destino={nombreDestino} devoluciones={devoluciones}
           />
-          {/* UNA PRUEBA SE BORRA; UNA ENTREGA REAL SE ANULA. Las dos puertas no conviven por capricho:
-              lo que nunca tocó la caja ni Compras puede desaparecer, lo que sí tocó deja rastro. */}
-          {e.es_prueba && <BorrarPrueba entrega={e.id} codigo={e.codigo} volverHref={urlEfectivo({})} />}
-          {anulable && (
-            <AnularEntrega
-              entrega={e.id} volverHref={urlEfectivo({})}
-              // Lo que se va a deshacer, DICHO ANTES de apretar: nadie anula a ciegas una entrega
-              // que ya tiene plata devuelta.
-              devuelto={e.devuelto > 0}
-              tickets={pendientes.length}
-              filas={e.filas_rendidas}
-            />
+          <AvisosDeLaEntrega avisos={edicion.avisos} />
+          {cambios.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 18, borderTop: `1px solid ${V.linea}` }} data-testid="ficha-cambios">
+              <div style={{ fontSize: '13.5px', fontWeight: 600 }}>Cambios</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 9, fontSize: '12.5px' }}>
+                {cambios.slice(0, 30).map(({ c, frase }) => (
+                  <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '82px minmax(0,1fr)', gap: 14 }}>
+                    <div style={{ color: V.tenue, fontFamily: MONO, fontSize: '11.5px' }}>{ddmmHora(c.en)}</div>
+                    <div style={{ color: V.tintaSuave }}>{c.autorNombre ?? 'el sistema'} {frase}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
+          {edicion.error && <div style={{ fontSize: '12px', color: V.warn }}>No pude leer los avisos o los cambios: {edicion.error}</div>}
           {e.estado === 'anulada' && e.anulada_motivo && (
             <div style={{ fontSize: '12.5px', color: V.apagado }}>Anulada: {e.anulada_motivo}</div>
           )}
@@ -301,6 +332,12 @@ function Papeles({ e, papelUrl, trazo, firmas, fotos, destino, devoluciones }: {
               Devolución {pesos(d.monto)} del {ddmm(d.fecha)} · {ROTULO_FIRMAS[d.comprobante]}
             </span>
             <span style={fuente}>{d.recibe ?? 'sin quien la recibió'}</span>
+            <Link
+              href={urlEfectivo({ entrega: e.codigo, panel: 'editar-devolucion', item: d.id })} prefetch={false} scroll={false}
+              style={{ fontSize: '12.5px', color: V.apagado, textDecoration: 'underline', textUnderlineOffset: 2, flexShrink: 0 }} data-testid="editar-devolucion"
+            >
+              Editar
+            </Link>
           </div>
         ))}
         {devoluciones.map((d) => {

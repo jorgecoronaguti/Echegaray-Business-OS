@@ -343,6 +343,8 @@ export interface FilaDeFicha {
   fila: number | null
   /** Id de la rendición si la fila es un ADELANTO DE SUELDO: la ficha ofrece quitarlo de Liquidación. */
   adelanto?: string
+  /** El vínculo con la entrega, si ya lo hay: es lo que se edita o se borra desde la ficha (25/09/2026). */
+  rendicion: Rendicion | null
 }
 
 /**
@@ -370,9 +372,12 @@ export function filasDeLaFicha(
       fecha: f?.fecha ?? l?.fecha ?? c.enviado_en,
       proveedor: f?.proveedor ?? l?.proveedor ?? null,
       rubro: f?.concepto ?? null,
-      importe: f?.total ?? (r ? Number(r.monto) : totalLeido(c)),
+      // LO QUE RINDE, NO LO QUE DICE LA FACTURA: desde el 25/09 el importe rendido se corrige desde la
+      // ficha, y la fila tiene que mostrar el corregido (sin corrección son iguales: nace del Total).
+      importe: r ? Number(r.monto) : (f?.total ?? totalLeido(c)),
       estado: c.estado,
       fila: f?.fila ?? null,
+      rendicion: r ?? null,
     }
   })
   for (const r of rendiciones) {
@@ -382,14 +387,14 @@ export function filasDeLaFicha(
       out.push({
         comprobante: null, fecha: r.imputada_en, proveedor: `Adelanto de sueldo · ${r.adelanto_persona ?? 'empleado'}`,
         rubro: r.adelanto_quincena ? `Liquidación · quincena del ${ddmm(r.adelanto_quincena)}` : 'Liquidación',
-        importe: Number(r.monto), estado: 'en_liquidacion', fila: null, adelanto: r.id,
+        importe: Number(r.monto), estado: 'en_liquidacion', fila: null, adelanto: r.id, rendicion: null,
       })
       continue
     }
     const f = compras.get(r.compra_clave)
     out.push({
       comprobante: null, fecha: f?.fecha ?? r.imputada_en, proveedor: f?.proveedor ?? null, rubro: f?.concepto ?? null,
-      importe: f?.total ?? Number(r.monto), estado: 'en_compras', fila: f?.fila ?? null,
+      importe: Number(r.monto), estado: 'en_compras', fila: f?.fila ?? null, rendicion: r,
     })
   }
   return out.sort((a, b) => diaAR(b.fecha ?? '').localeCompare(diaAR(a.fecha ?? '')))
