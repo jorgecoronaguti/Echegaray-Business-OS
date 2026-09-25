@@ -145,7 +145,7 @@ const VACIAS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'en', 'y', 'a', '
   'trabajaron', 'trabajamos', 'trabajo', 'trabajando', 'haciendo', 'hicieron', 'hizo', 'fueron', 'fue', 'vino',
   'vinieron', 'estan', 'esta', 'estaban', 'como', 'siempre', 'otra', 'otro', 'vez', 'lado', 'hay', 'habia',
   'tuvimos', 'tuvieron', 'uso', 'ok', 'listo', 'nomas', 'despues', 'antes', 'tarde', 'manana', 'hola', 'buenas',
-  'gracias', 'chau', 'quedo', 'queda', 'pusimos', 'pusieron', 'si', 'no', 'vino', 'vinieron'])
+  'gracias', 'chau', 'quedo', 'queda', 'pusimos', 'pusieron', 'si', 'no', 'vino', 'vinieron', 'correccion', 'corrijo', 'corregir', 'perdon'])
 
 /** Unidades de material → el código que usa Herramientas › Material (`UNIDADES` de `pedidos.ts`). */
 const UNIDAD_MATERIAL = {
@@ -219,13 +219,14 @@ function palabrasDePersona(p) {
   return new Set(fuentes.flatMap((f) => normalizar(f).toLowerCase().split(' ')).filter((w) => w.length >= 3 && !VACIAS.has(w)))
 }
 
-/** Cómo se muestra la persona en la revisión: «Agüero C.» / «Cristian Agüero». */
+/**
+ * Cómo se muestra la persona: el nombre para mostrar y, si no hay, el legajo en oración — la misma
+ * regla que `nombreDePersona` de la app (src/shared/personas/nombre.ts), sin cortes propios.
+ */
 export function rotuloDePersona(p) {
-  if (p.nombre_para_mostrar) return p.nombre_para_mostrar
-  const partes = String(p.nombre_completo ?? '').trim().split(/\s+/)
-  const cap = (s) => s.charAt(0) + s.slice(1).toLowerCase()
-  if (partes.length >= 2) return `${cap(partes[0])} ${partes[1].charAt(0)}.`
-  return cap(partes[0] ?? 'sin nombre')
+  if (String(p.nombre_para_mostrar ?? '').trim()) return p.nombre_para_mostrar.trim()
+  const legajo = String(p.nombre_completo ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+  return legajo ? legajo.replace(/(^|[\s-])(\p{L})/gu, (_, a, b) => a + b.toUpperCase()) : 'sin nombre'
 }
 
 /** Palabras del oficio que nunca son un apellido parecido: «kilos» no es Quiroz. */

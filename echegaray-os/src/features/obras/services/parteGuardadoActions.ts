@@ -20,6 +20,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { nombreDePersona } from '@/shared/personas/nombre'
 import { guardarJornada } from '@/features/administracion/services/jornadaPorObraActions'
 import { quitarPresencia } from '@/features/administracion/services/presenciaDelDiaActions'
 import { borrarPedidos, pedirMaterialAction } from '@/features/materiales/services/acciones'
@@ -84,7 +85,7 @@ async function leer(supabase: Supa, obraId: string, fecha: string): Promise<R<Pa
   const nombres = new Map<string, string>()
   if (ids.length) {
     const { data } = await supabase.from('personas').select('id, nombre_completo, nombre_para_mostrar').in('id', ids)
-    for (const p of (data ?? []) as { id: string; nombre_completo: string; nombre_para_mostrar: string | null }[]) nombres.set(p.id, p.nombre_para_mostrar ?? p.nombre_completo)
+    for (const p of (data ?? []) as { id: string; nombre_completo: string; nombre_para_mostrar: string | null }[]) nombres.set(p.id, nombreDePersona(p))
   }
   const actividades = new Map(((acts.data ?? []) as { actividad_id: string; nombre: string; metodo_avance: string; unidad: string | null; avance_pct: number | null; cantidad_ejecutada: number | null; actividad_padre_id: string | null }[]).map((a) => [a.actividad_id, a]))
   const etiqueta = (id: string | null) => {

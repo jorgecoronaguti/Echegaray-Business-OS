@@ -608,7 +608,6 @@ function EditorMaterial({ m, p, pc = false }: { m: Revision['materiales'][number
   )
 }
 
-const nombreCorto = (f: FilaPersona) => f.nombre
 
 // ── LA REVISIÓN EN EL TELÉFONO (paso 3) ──────────────────────────────────────────────────────────
 
@@ -628,7 +627,7 @@ function RevisionTelefono(p: Pantalla & { fase: Rev }) {
       <button type="button" onClick={() => alternar(f.clave)} data-testid={`dictado-persona-${f.clave}`} aria-expanded={abierta === f.clave}
         data-duda={faltaConfirmar(f) ? '1' : undefined}
         style={{ width: '100%', display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '8px', alignItems: 'center', padding: '0 10px', minHeight: '44px', border: 'none', borderTop: `1px solid ${C.bordeFila}`, font: 'inherit', fontSize: '14px', textAlign: 'left', cursor: 'pointer', color: C.tinta, ...fondoFila(f) }}>
-        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombreCorto(f)}{f.persona_id == null ? ' ?' : ''}</span>
+        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.nombre}{f.persona_id == null ? ' ?' : ''}</span>
         <span style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}>{f.estado === 'presente' && f.horas != null ? `${String(f.horas).replace('.', ',')} h` : '—'}</span>
         <span style={{ fontSize: '12px', color: f.estado === 'presente' ? C.pos : C.neg }}>{f.estado === 'presente' ? (faltaConfirmar(f) ? 'Presente ?' : 'Presente') : faltaConfirmar(f) ? 'Faltó ?' : 'Faltó'}</span>
       </button>
@@ -966,7 +965,7 @@ export function ParteDelDia({ d, telefono }: { d: EstadoDictar; telefono: boolea
   const [borrando, setBorrando] = useState(false)
   const g = d.parte
   const alto = telefono ? '44px' : '36px'
-  const btn: CSSProperties = { ...BOTON, minHeight: alto, fontSize: telefono ? '14px' : '13px', fontWeight: 500, flex: 1, padding: '0 10px' }
+  const btn: CSSProperties = { ...BOTON, minHeight: alto, fontSize: telefono ? '14px' : '13px', fontWeight: 500, flex: '1 1 auto', padding: '0 10px', whiteSpace: 'nowrap' }
   if (!g || g.vacio) return d.aviso ? <Aviso tono={d.aviso.tono}>{d.aviso.texto}</Aviso> : null
   const presentes = g.personas.filter((x) => x.estado === 'presente').length
   const ausentes = g.personas.length - presentes
