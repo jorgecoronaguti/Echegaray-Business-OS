@@ -13,31 +13,68 @@
 // —y que una persona puede reenviar— antes que uno duplicado que ya está en la bandeja del cliente.
 import { esc } from './plantillas.mjs'
 
+// ═══ DESDE CUÁNDO ATIENDE (25/09/2026) ═══
+//
+// La cola existió desde el 25/08 sin un worker instalado: lo que se hubiera encolado en ese mes
+// quedó esperando sin que nadie lo mandara. Encender el worker NO puede ser la decisión de mandar
+// ese atraso — un aviso de vencimiento de hace semanas, o una invitación a alguien a quien después se
+// le habló por otro lado, es un mail equivocado que ya no se puede des-enviar. Es Nivel E y lo decide
+// el dueño.
+//
+// Por eso el worker sólo toca filas pedidas DESDE `ORQ_MAIL_DESDE` (la fecha en que se instaló).
+// Lo anterior queda `pendiente`, intacto, y el worker lo cuenta en cada corrida como RETENIDO. Si el
+// dueño decide mandarlo, se corre la fecha hacia atrás; si decide descartarlo, se marca `error` con
+// el motivo. Sin la variable el worker no arranca: falla cerrado, no «manda todo».
+export function desdeDelEntorno(env = process.env) {
+  const v = String(env.ORQ_MAIL_DESDE ?? '').trim()
+  const d = v ? new Date(v) : null
+  if (!d || Number.isNaN(d.getTime())) {
+    throw new Error('ORQ_MAIL_DESDE falta o no es una fecha: el worker no manda nada sin saber desde '
+      + 'cuándo le corresponde (ver cola-mails.mjs, «DESDE CUÁNDO ATIENDE»)')
+  }
+  return d
+}
+
+/** Cuántos esperan: los que le tocan a este worker y los retenidos (anteriores al corte). */
+export async function contarCola(port, { desde }) {
+  const r = await port.query(
+    `select count(*) filter (where pedido_at >= $1)::int as nuevos,
+            count(*) filter (where pedido_at <  $1)::int as retenidos
+       from public.mail_saliente where estado in ('pendiente', 'procesando')`,
+    [desde],
+  )
+  return { nuevos: r?.rows?.[0]?.nuevos ?? 0, retenidos: r?.rows?.[0]?.retenidos ?? 0 }
+}
+
 export const MAX_INTENTOS = 3
 export const LEASE_MIN = Number(process.env.ORQ_MAIL_LEASE_MIN || 10)
 /** El remitente es la casilla de Administración, no una dirección de sistema. */
 export const REMITENTE = process.env.ORQ_PORTAL_REMITENTE || 'administracion@ecsas.com.ar'
 
-export async function reciclarColgados(port, { minutos = LEASE_MIN } = {}) {
+export async function reciclarColgados(port, { minutos = LEASE_MIN, desde } = {}) {
+  if (!desde) throw new Error('reciclarColgados sin `desde`: no se tocan filas retenidas')
   const r = await port.query(
     `update public.mail_saliente
         set estado = case when intentos >= $2 then 'error' else 'pendiente' end,
             error = case when intentos >= $2 then 'el envío se cortó y no quedan reintentos' else error end
       where estado = 'procesando' and tomado_at < now() - make_interval(mins => $1::int)
+        and pedido_at >= $3
       returning id`,
-    [minutos, MAX_INTENTOS],
+    [minutos, MAX_INTENTOS, desde],
   )
   return r?.rows?.length ?? 0
 }
 
-export async function tomarMail(port) {
+export async function tomarMail(port, { desde } = {}) {
+  if (!desde) throw new Error('tomarMail sin `desde`: no se toma nada que pueda ser del atraso retenido')
   const r = await port.query(
     `update public.mail_saliente m
         set estado = 'procesando', tomado_at = now(), intentos = m.intentos + 1
       where m.id = (select id from public.mail_saliente
-                     where estado = 'pendiente' order by pedido_at limit 1
+                     where estado = 'pendiente' and pedido_at >= $1 order by pedido_at limit 1
                      for update skip locked)
       returning m.*`,
+    [desde],
   )
   return r?.rows?.[0] ?? null
 }
@@ -89,11 +126,11 @@ export async function enviarUno({ port, google, mail }) {
   return r?.id ? 'enviado' : 'enviado'
 }
 
-export async function procesarCola({ port, google, max = 25 } = {}) {
-  const reciclados = await reciclarColgados(port)
+export async function procesarCola({ port, google, desde, max = 25 } = {}) {
+  const reciclados = await reciclarColgados(port, { desde })
   const cuenta = { reciclados, enviado: 0, cancelado: 0, error: 0 }
   for (let i = 0; i < max; i += 1) {
-    const mail = await tomarMail(port)
+    const mail = await tomarMail(port, { desde })
     if (!mail) break
     try {
       cuenta[await enviarUno({ port, google, mail })] += 1

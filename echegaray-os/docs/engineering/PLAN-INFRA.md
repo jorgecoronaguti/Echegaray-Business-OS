@@ -111,6 +111,14 @@ caro de la máquina.**
   vacío. `systemctl is-active` devuelve `activating`, no `failed`: un chequeo por estado de unidad
   no lo agarra.
 - `echegaray-avance-sync`: `failed` desde el **24/08**.
+  **Resuelto 25/09/2026: dado de baja, no arreglado.** Corría `sync-avance-obra.mjs` (tracker de
+  Drive → tabla `avance_obra`), que se retiró A PROPÓSITO el 17/08 en `b2170501`: publicaba San Francisco
+  al 85 % mirando 24 de 119 actividades, contra 44 % de la web. El avance vive una sola vez en la vista
+  `obra_avance` (Drive → `sync-obra-cronograma.mjs`, a mano → `obra_actividad`); `avance_obra` quedó
+  renombrada `avance_obra_legado` (7 filas, conservadas). El timer seguía apuntando al script borrado:
+  81 corridas `MODULE_NOT_FOUND` hasta que se detuvo el 24/08. Arreglarlo sería resucitar la segunda
+  versión del mismo número. Timer y servicio `disable`, `reset-failed`; los unit files quedan con una
+  nota de baja. No se borró ningún dato.
 - `echegaray-balanz-browser`: `failed` desde el **04/08**.
 - `echegaray-espejos`: `not-found` pero con cgroup contabilizado — unidad borrada sin limpiar.
 

@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { enviarUno, procesarCola, sigueCorrespondiendo, filaDeMail } from './cola-mails.mjs'
+import {
+  enviarUno, procesarCola, sigueCorrespondiendo, filaDeMail, tomarMail, reciclarColgados, desdeDelEntorno, contarCola,
+} from './cola-mails.mjs'
 import { habilitacionPortal } from './plantillas.mjs'
 
 const MAIL = {
@@ -19,6 +21,7 @@ function doblePort({ acceso = [{ revocado_at: null }], cola = [] } = {}) {
     },
   }
 }
+const DESDE = new Date('2026-09-25T17:40:00Z')
 const dobleGmail = () => { const enviados = []; return { enviados, async gmailSend(a) { enviados.push(a); return { id: 'g1' } } } }
 
 test('el cuerpo va como HTML: sin eso el cliente ve las etiquetas crudas', async () => {
@@ -68,18 +71,18 @@ test('el estado se marca ANTES de enviar: un mail no se puede des-enviar', async
     },
   }
   const g = { enviados: [], async gmailSend(a) { orden.push('enviar'); this.enviados.push(a); return { id: 'x' } } }
-  await procesarCola({ port, google: g, max: 1 })
+  await procesarCola({ port, google: g, desde: DESDE, max: 1 })
   assert.deepEqual(orden.slice(0, 2), ['tomar', 'enviar'], 'se reserva la fila y recién ahí se manda')
 })
 
 test('una falla de Gmail con reintentos vuelve a pendiente; agotados, error terminal', async () => {
   const roto = { async gmailSend() { throw new Error('429 rate limit') } }
   const p1 = doblePort({ cola: [{ ...MAIL, intentos: 1 }] })
-  await procesarCola({ port: p1, google: roto, max: 1 })
+  await procesarCola({ port: p1, google: roto, desde: DESDE, max: 1 })
   assert.equal(p1.updates.at(-1).params[1], 'pendiente')
 
   const p2 = doblePort({ cola: [{ ...MAIL, intentos: 3 }] })
-  await procesarCola({ port: p2, google: roto, max: 1 })
+  await procesarCola({ port: p2, google: roto, desde: DESDE, max: 1 })
   assert.equal(p2.updates.at(-1).params[1], 'error')
 })
 
@@ -92,4 +95,41 @@ test('filaDeMail normaliza el destinatario: el CHECK de la tabla exige minúscul
   assert.equal(f.plantilla, 'habilitacion_portal')
   assert.equal(f.clave_unica, 'habilitacion:a1')
   assert.ok(f.cuerpo_html.includes('<img'))
+})
+
+// ── El corte: encender el worker no es decidir mandar el atraso (25/09/2026) ──
+
+test('sin ORQ_MAIL_DESDE (o con basura) el worker no arranca: falla cerrado, no «manda todo»', () => {
+  assert.throws(() => desdeDelEntorno({}), /ORQ_MAIL_DESDE/)
+  assert.throws(() => desdeDelEntorno({ ORQ_MAIL_DESDE: 'ayer' }), /ORQ_MAIL_DESDE/)
+  assert.equal(desdeDelEntorno({ ORQ_MAIL_DESDE: '2026-09-25T17:40:00Z' }).toISOString(), '2026-09-25T17:40:00.000Z')
+})
+
+test('tomar y reciclar filtran por pedido_at >= corte, con el corte como parámetro', async () => {
+  const vistos = []
+  const port = { async query(sql, params) { vistos.push({ sql, params }); return { rows: [] } } }
+  await tomarMail(port, { desde: DESDE })
+  await reciclarColgados(port, { desde: DESDE })
+  assert.match(vistos[0].sql, /estado = 'pendiente' and pedido_at >= \$1/)
+  assert.equal(vistos[0].params[0], DESDE)
+  assert.match(vistos[1].sql, /pedido_at >= \$3/)
+  assert.equal(vistos[1].params[2], DESDE)
+})
+
+test('sin corte no se toca la cola: ni reciclar ni tomar, y Gmail no se llama', async () => {
+  const vistos = []
+  const port = { async query(sql) { vistos.push(sql); return { rows: [MAIL] } } }
+  const g = dobleGmail()
+  await assert.rejects(procesarCola({ port, google: g }), /sin `desde`/)
+  await assert.rejects(tomarMail(port), /sin `desde`/)
+  assert.equal(vistos.length, 0)
+  assert.equal(g.enviados.length, 0)
+})
+
+test('contarCola separa lo que le toca al worker de lo retenido', async () => {
+  const port = { async query(sql, params) {
+    assert.match(sql, /pedido_at >= \$1/); assert.match(sql, /pedido_at <  \$1/); assert.equal(params[0], DESDE)
+    return { rows: [{ nuevos: 1, retenidos: 4 }] }
+  } }
+  assert.deepEqual(await contarCola(port, { desde: DESDE }), { nuevos: 1, retenidos: 4 })
 })

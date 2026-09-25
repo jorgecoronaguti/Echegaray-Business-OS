@@ -11,6 +11,12 @@ Type=oneshot
 WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
 Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=%h/.config/echegaray-orq/worker.env
+# EL CORTE (25/09/2026). El worker sólo toca lo pedido desde este instante: se instaló un mes después
+# que la cola, y encenderlo no es decidir mandar el atraso (Nivel E, lo decide el dueño). Al instalar,
+# la cola tenía 0 filas. Sin esta línea el worker no arranca. Ver cola-mails.mjs, «DESDE CUÁNDO ATIENDE».
+Environment=ORQ_MAIL_DESDE=2026-09-25T17:40:00Z
+# Manda COMO administracion@ por OAuth (orq.google_tokens), nunca como la cuenta de servicio. Si esa
+# cuenta no está conectada y hay mails nuevos, la corrida falla a la vista y los deja pendientes.
 ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/procesar-mails-portal.mjs
 TimeoutStartSec=120
 StandardOutput=journal
