@@ -34,6 +34,12 @@ import { fechaImposible, lotesDeHaberes, testigoDeQuincena, VEREDICTO, GRITAN } 
 
 /** La pestaña de la que salen los tres bloques. Es una sola: el bloque distingue, no la pestaña. */
 export const PESTANA_NOMINA = 'Jornales por Quincena'
+/**
+ * DÓNDE SE LEE EL REGISTRO (25/09/2026): la pestaña «Jornales por Quincena» se eliminó y su contenido vive
+ * en «Nómina» (secciones 7–10). `PESTANA_NOMINA` sigue siendo el ORIGEN que el libro estampa en cada
+ * renglón (las claves y los filtros de CAJA lo usan); ésta es la pestaña que se lee.
+ */
+export const PESTANA_REGISTRO_NOMINA = 'Nómina'
 export const RUBRO_JORNALES = 'Nómina · Jornales de obra'
 export const RUBRO_ADMINISTRACION = 'Nómina · Sueldos administración'
 

@@ -23,7 +23,8 @@ import { PESTANAS, SIN_PANTALLA, pestanasSinCobertura } from './formato-pestanas
  * que ninguna de las que existían ese día se haya quedado afuera de las dos listas.
  */
 const VIVAS_13_08 = [
-  'Compras', 'Jornales por Quincena', 'Cargas Sociales', 'Impuestos y Financieros', 'Recurrentes',
+  // «Jornales por Quincena» se eliminó el 25/09/2026 (su registro vive en «Nómina»): sale de la foto.
+  'Compras', 'Cargas Sociales', 'Impuestos y Financieros', 'Recurrentes',
   'Estructura', 'Materiales', 'Proveedores', 'Cobranzas', 'OBRAS', 'Tarjeta de Credito',
   'Cheques Recibidos', 'Cheques Emitidos', 'CAJA', 'Cash Flow Semanal', 'Cash Flow Mensual',
   '01_Valores Iniciales', '_UOCRA_RAW', '_J_OBREROS', '_J_OFICINA', 'Parámetros', '_ARCA_RAW',
@@ -73,11 +74,10 @@ test('el ancho declarado de cada pestaña nueva es el que su generador escribe',
 // propio encabezado. Estar en la lista con el ancho equivocado da el mismo verde que no estar.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-test('el ancho declarado de "Jornales por Quincena" es el que escribe su generador', async () => {
-  const { ANCHO } = await import('./jornales-pestana.mjs')
-  const p = PESTANAS.find((x) => x.titulo === 'Jornales por Quincena')
-  assert.equal(p.cols, ANCHO,
-    'el auditor de pantalla recorre PESTANAS: con cols menor que ANCHO no mira las últimas columnas')
+test('«Jornales por Quincena» ya no está en la lista: se eliminó y su registro vive en «Nómina» (25/09)', () => {
+  // Formatearla por título buscaría una pestaña que no existe; el registro lo formatea su generador,
+  // recortado a sus filas dentro de «Nómina».
+  assert.equal(PESTANAS.find((x) => x.titulo === 'Jornales por Quincena'), undefined)
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

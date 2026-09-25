@@ -357,7 +357,7 @@ test('el rubro de sueldos de administración YA NO se paga desde Compras', () =>
   // archivo iría a buscar la diferencia al lugar equivocado.
   const r = REGLAS.find((x) => x.rubro === 'Nómina · Sueldos administración')
   assert.equal(r.paga, 'Jornales por Quincena')
-  assert.equal(r.detalle, 'Jornales por Quincena')
+  assert.equal(r.detalle, 'Nómina') // el registro vive en «Nómina» desde el 25/09: ahí apunta el vínculo del Cash Flow
 })
 
 test('todas las fórmulas son es-AR y cierran sus paréntesis', () => {

@@ -894,7 +894,7 @@ export const CUADRO = [
           //
           // Ahora las dos mitades viven en "Jornales por Quincena" y esta línea las suma
           // (formulaAdministracion). Compras pasó a ser el MEMO de abajo: sigue cargado, ya no suma.
-          { nombre: 'Sueldos de administración', rubro: 'Nómina · Sueldos administración', detalle: 'Jornales por Quincena' },
+          { nombre: 'Sueldos de administración', rubro: 'Nómina · Sueldos administración', detalle: 'Nómina' },
           { nombre: 'Sueldo anual complementario', rubro: 'Nómina · SAC' },
           { nombre: 'Cargas sociales (F931)', rubro: 'Nómina · Cargas sociales' },
           { nombre: 'Aportes y contribuciones gremiales', rubro: 'Nómina · Gremiales' },

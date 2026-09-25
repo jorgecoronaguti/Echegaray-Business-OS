@@ -99,7 +99,7 @@ async function main() {
   // ── 2) COHERENCIA ──────────────────────────────────────────────────────────
   const leer = async (p, r) => { try { return await google.readSheetValues(ID, `'${p}'!${r}`) } catch { return null } }
   const [nomina, jornales, subcon] = await Promise.all([
-    leer('Nómina', 'A1:N200'), leer('Jornales por Quincena', 'A1:N120'),
+    leer('Nómina', 'A1:N200'), leer('Nómina', 'A1:N400'),
     leer('SUBCONTRATISTAS', 'A1:L90'),
   ])
 

@@ -133,7 +133,7 @@ export const celdasDesvinculados = ({ porMes = [] } = {}) => porMes.map((v) => (
  * ancla por el RÓTULO del mes dentro de ese cuadro y no por su número, por el mismo motivo que todo
  * lo demás en este archivo.
  */
-export function celdasOficina(meses = [], { hoja = 'Jornales por Quincena', bloque } = {}) {
+export function celdasOficina(meses = [], { hoja = 'Nómina', bloque } = {}) {
   const H = `'${hoja}'`
   // EL RANGO ES EL DEL BLOQUE DE OFICINA, NO «LA PRIMERA FILA QUE DIGA ENERO». En esa pestaña los
   // doce meses aparecen DOS veces —oficina en el cuadro 1.1 y los retiros de Dirección en el 1.2—,
@@ -158,7 +158,7 @@ export function celdasOficina(meses = [], { hoja = 'Jornales por Quincena', bloq
  */
 export function bloqueDeOficina(grid = []) {
   const A = (i) => String(grid[i]?.[0] ?? '').trim()
-  const i0 = grid.findIndex((_, i) => /^1\.1 · OFICINA/i.test(A(i)))
+  const i0 = grid.findIndex((_, i) => /^(1\.1|8) · OFICINA/i.test(A(i)))
   if (i0 < 0) return { error: 'no encontré el título «1.1 · OFICINA …» en Jornales por Quincena' }
   for (let i = i0 + 1; i < grid.length; i++) {
     if (/^⇒/.test(A(i))) return { desde: i0 + 2, hasta: i } // 1-based: del encabezado al renglón previo al total
@@ -289,7 +289,11 @@ export const NOTA_BLANCO_MEDIDO = 'neto en blanco ÷ neto total pagado, en los m
  * Es la regla del archivo aplicada a una celda: anclar al TEXTO, nunca a la posición. Una fila fija
  * da tres totales distintos según el día.
  */
-export function formulaRetiroDeDireccion(persona, { hoja = 'Jornales por Quincena' } = {}) {
+export function formulaRetiroDeDireccion(persona, { hoja = 'Nómina' } = {}) {
   const H = `'${hoja}'`
-  return `=IFERROR(INDEX(${H}!$B$1:$B$80;MATCH("${persona}";${H}!$A$1:$A$80;0));"")`
+  // En «Nómina» el nombre del socio aparece DOS veces: en este cuadro 4 y en la sección 9 (el registro
+  // mudado desde «Jornales por Quincena»). Se busca sólo debajo del cuadro 6 —fila 97 en adelante—,
+  // donde vive el registro: buscar desde la fila 1 encontraría esta misma celda (referencia circular).
+  const [f0, f1] = hoja === 'Nómina' ? [97, 600] : [1, 80]
+  return `=IFERROR(INDEX(${H}!$B$${f0}:$B$${f1};MATCH("${persona}";${H}!$A$${f0}:$A$${f1};0));"")`
 }

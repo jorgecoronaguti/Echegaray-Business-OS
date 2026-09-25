@@ -55,7 +55,7 @@ export const PASOS = [
   // quincenas, porque la fila que insertaba uno caía fuera del rango que sumaba el otro.
   // Este generador escribe la pestaña ENTERA y publica sus rangos con nombre para las demás.
   // ['nomina-pestana.mjs', …] — RETIRADO el 07/09/2026, ver PASOS_RETIRADOS al pie.
-  ['jornales-pestana.mjs', 'Jornales por Quincena — quincenas reales, proyección y control de convenio', ['Jornales por Quincena']],
+  ['jornales-pestana.mjs', 'Nómina §7–10 — el registro de quincenas, oficina, dirección y convenio (ex «Jornales por Quincena»)', ['Nómina']],
   // SEGUNDO: devolver la fórmula a las celdas calculadas que alguien pisó pegando un valor. Va
   // antes de todo cálculo porque una celda pisada no grita: muestra un número creíble que dejó de
   // actualizarse. El 21/07 había cuatro, y dos de ellas hacían que dos cobros de $16.200.000

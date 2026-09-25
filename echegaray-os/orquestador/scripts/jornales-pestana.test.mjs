@@ -40,6 +40,18 @@ const colA = g.filas.map((f) => String(f[0] ?? ''))
 const encabezado = g.filas.find((f) => f[0] === 'Desde' && f[1] === 'Hasta' && f.includes('Total'))
 const letraDe = (rotulo) => String.fromCharCode(65 + encabezado.indexOf(rotulo))
 
+
+/**
+ * La palabra del «Estado» de un mes de Oficina. Desde el 25/09 un mes sin cerrar lleva una fórmula que
+ * pasa a «pagado»/«parcial» cuando el giro bancario del mes lo paga, y si no, dice la palabra de siempre:
+ * `=IF(N(C47)>0;IF(N(H47)>=1;"parcial";"pagado");"proyección")`. Se compara esa palabra.
+ */
+const palabraDelEstado = (c) => {
+  const s = String(c ?? '')
+  const m = s.match(/^=IF\(N\(C\d+\)>0;IF\(N\(H\d+\)>=1;"parcial";"pagado"\);"(.*)"\)$/)
+  return m ? m[1].replace(/""/g, '"') : s
+}
+
 test('cada letra sale del encabezado real del registro, no de otro layout', () => {
   // Si alguien copia una fórmula de la pestaña viva —o de una versión anterior de este generador—
   // con la letra puesta a mano, apunta a otra columna y devuelve un número plausible y equivocado.
@@ -473,7 +485,7 @@ test('UN SOLO DRIVER: obra, OFICINA y DIRECCIÓN se proyectan con el factor de p
   // aumento (`proyección · Ac.Mayo 2026`, `proyección · ▲ firmado hasta 08/2026`). Se filtra por
   // prefijo — con la igualdad exacta este test se quedaba con CERO filas y pasaba sin mirar nada, que
   // es la peor forma de romperlo.
-  const ofiProy = gm.filas.slice(gm.o0 - 1, gm.oFin).filter((f) => String(f[3]).startsWith('proyección'))
+  const ofiProy = gm.filas.slice(gm.o0 - 1, gm.oFin).filter((f) => palabraDelEstado(f[3]).startsWith('proyección'))
   assert.ok(ofiProy.length >= 5, `esperaba meses de oficina proyectados y hay ${ofiProy.length}`)
   // EL FACTOR VIVE EN LA B DESDE EL 14/08 (la G pasó a ser «Adelanto»). El índice sale de acá y no
   // del encabezado a propósito: si mañana se mueve otra vez, este test tiene que ponerse rojo.
@@ -1153,8 +1165,11 @@ test('LA GRILLA CIERRA CON DOS SUBTOTALES, Y CADA UNO SUMA SU PROPIO TRAMO', () 
     const i2 = L.charCodeAt(0) - 65
     // Lo pagado se cierra contra la fila de ARRIBA (`INDEX(col;ROW()-1)`): una quincena insertada al
     // final del tramo entra sola al total. Es el techo de 14 quincenas, arreglado de raíz.
-    assert.equal(String(real[i2]), `=SUM(${L}$${gm.f0}:INDEX(${L}:${L};ROW()-1))`,
-      `el total de lo pagado dejó de crecer con el registro en «${rotulo}»`)
+    // Desde el 25/09 el rango es explícito hasta la última quincena real (la columna entera no viaja
+    // con la fila: al mudar el registro a «Nómina» daba #REF!). El generador lo reescribe en cada
+    // corrida, así que sigue creciendo con el registro.
+    assert.equal(String(real[i2]), `=SUM(${L}$${gm.f0}:${L}$${gm.fLast})`,
+      `el total de lo pagado dejó de cubrir el registro en «${rotulo}»`)
     // Y lo proyectado suma SÓLO sus filas: si tomara desde `f0` contaría lo ya pagado otra vez.
     assert.equal(String(proy[i2]), `=SUM(${L}${gm.p0}:${L}${fin})`,
       `el total proyectado no suma su tramo en «${rotulo}»`)
@@ -1203,7 +1218,7 @@ test('OFICINA · el ESTADO es una palabra, y de dónde sale el aumento lo dice e
   // en dos columnas propias («De dónde sale» y «Estado»), leído de la MISMA fuente. Acá se afirma que
   // sigue estando allá — si el cuadro 2.2 dejara de distinguirlo, la información se perdería de
   // verdad y este test se pone rojo.
-  const estado = (mes) => String(gm.filas[gm.o0 - 1 + mes - 1][3])
+  const estado = (mes) => palabraDelEstado(gm.filas[gm.o0 - 1 + mes - 1][3])
   for (const mes of [1, 3, 8, 9, 10, 11, 12]) {
     assert.equal(estado(mes), 'proyección', `${mes}: el estado dejó de ser una palabra`)
   }
@@ -1303,12 +1318,13 @@ test('UN MES DE OFICINA A MEDIO CARGAR NO PUEDE SER LA BASE DE LOS QUE SIGUEN', 
   // (`parcial · Ac.Mayo 2026`), así que la igualdad exacta pasó a prefijo. Lo que se mide sigue siendo
   // lo mismo: que agosto no se declare pagado con la planilla al 15.
   assert.equal(String(filaDe(7)[3]), 'pagado')
-  assert.ok(String(filaDe(8)[3]).startsWith('parcial'), 'agosto sigue declarándose pagado con la planilla al 15')
+  assert.ok(palabraDelEstado(filaDe(8)[3]).startsWith('parcial'), 'agosto sigue declarándose pagado con la planilla al 15')
   const rJulio = g2.o0 + 6
   // La base de TODOS los meses proyectados es julio —el último CERRADO—, no agosto. Y desde el 14/08
   // el factor va con su piso: hacia adelante un sueldo nominal no baja (ver lib/oficina-escalon.mjs).
   for (const mes of [9, 10, 11, 12]) {
-    assert.match(String(filaDe(mes)[7]), new RegExp(`^=\\$C\\$${rJulio}\\*MAX\\(1;B`), `${mes}: la base no es el último mes cerrado`)
+    // Desde el 25/09 resta siempre lo pagado (el giro del banco puede pagar un mes sin planilla).
+    assert.match(String(filaDe(mes)[7]), new RegExp(`^=MAX\\(0;\\$C\\$${rJulio}\\*MAX\\(1;B`), `${mes}: la base no es el último mes cerrado`)
   }
   // Y agosto proyecta sólo lo que le falta, sin perder lo que ya se pagó ni generar un negativo.
   assert.equal(String(filaDe(8)[7]), `=MAX(0;$C$${rJulio}*MAX(1;B${g2.o0 + 7})-N(C${g2.o0 + 7}))`)

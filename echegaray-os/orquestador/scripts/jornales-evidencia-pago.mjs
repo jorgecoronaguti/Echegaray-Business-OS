@@ -65,7 +65,7 @@ async function ubicarColumnaPagado(google) {
 async function huerfanas(google, ubi) {
   if (!ubi) return []
   const letra = String.fromCharCode(64 + ubi.col)
-  const filas = await google.readSheetValues(ID, `'Jornales por Quincena'!${letra}1:${letra}`,
+  const filas = await google.readSheetValues(ID, `'Nómina'!${letra}1:${letra}`,
     { render: 'UNFORMATTED_VALUE' })
   const out = []
   filas.forEach((f, i) => {

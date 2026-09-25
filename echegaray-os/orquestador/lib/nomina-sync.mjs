@@ -328,7 +328,7 @@ export function formatSync(r) {
  */
 export async function sincronizarNomina(google, {
   file_id, folder_ddjj, anio, tab_cargas = 'Cargas Sociales',
-  tab_quincenas = 'Jornales por Quincena', escribir = true, forzar = false,
+  tab_quincenas = 'Nómina', escribir = true, forzar = false,
 } = {}) {
   if (!google?.readSheetValues) return { error: 'no hay una cuenta de Google autorizada' }
   if (!file_id) return { error: 'falta file_id del Flujo de Caja' }
@@ -350,7 +350,7 @@ export async function sincronizarNomina(google, {
   const bloques = detectarQuincenas(grid ?? [])
   let ubic = { encontrado: false, filaInicio: 6, filas: 0, filaTotal: 6 }
   try {
-    const q = await google.readSheetValues(file_id, `${tab_quincenas}!A1:A200`)
+    const q = await google.readSheetValues(file_id, `'${tab_quincenas}'!A1:A400`)
     ubic = ubicarCuadro(q ?? [])
   } catch { /* pestaña nueva */ }
   // Si no aparece el encabezado "Desde", NO se escribe a ciegas: se avisa. Escribir en una posición

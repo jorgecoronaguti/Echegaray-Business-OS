@@ -19,7 +19,7 @@
  */
 export const TITULOS_DE_PANTALLA = Object.freeze([
   'Compras', 'Cobranzas', 'Cheques Emitidos', 'Cheques Recibidos', 'Tarjeta de Credito',
-  'Jornales por Quincena', 'Cargas Sociales', 'Impuestos y Financieros', 'Recurrentes',
+  'Cargas Sociales', 'Impuestos y Financieros', 'Recurrentes',
   'Estructura', 'Proveedores', 'Materiales', 'CAJA', 'Cash Flow Semanal', 'Cash Flow Mensual',
   // «Plantel» salió el 09/09/2026: el dueño la mandó borrar y no la escribe ningún generador. Una
   // pestaña que no existe en el archivo no puede estar en el contrato de pantalla — el auditor la

@@ -108,75 +108,9 @@ export function pedidosDeFormatoNomina(colA = [], sheetId) {
   }
 
   // ── 7 · Quincenas pagadas: el derrame de A crece; se formatea hasta el rótulo siguiente ──
-  const f7 = anclar('7', /^7 · QUINCENAS PAGADAS/)
-  const f8 = anclar('8', /^8 · QUINCENAS A PAGAR/, f7)
-  const f9 = anclar('9', /^9 · OFICINA Y JEFES/, f8)
-  const f10 = anclar('10', /^10 · CONVENIO UOCRA/, f9)
-  if (f7) {
-    const fin = (f8 || f7 + 32) - 2
-    titulo(f7); cabecera(f7 + 1, 'I')
-    cel(R(f7 + 2, fin, 'A', 'C'), { nf: FECHA, al: 'CENTER' })
-    cel(R(f7 + 2, fin, 'D', 'D'), { nf: ENTERO, al: 'CENTER' })
-    cel(R(f7 + 2, fin, 'E', 'H'), { nf: NUM, al: 'RIGHT' })
-    cel(R(f7 + 2, fin, 'I', 'I'), { nf: FECHA, al: 'CENTER' })
-  }
-  // ── 8 · Quincenas a pagar ──
-  if (f8) {
-    const fin = (f9 || f8 + 11) - 2
-    titulo(f8); cabecera(f8 + 1, 'D')
-    cel(R(f8 + 2, fin, 'A', 'C'), { nf: FECHA, al: 'CENTER' })
-    cel(R(f8 + 2, fin, 'D', 'D'), { nf: NUM, al: 'RIGHT' })
-  }
-  // ── 9 · Oficina y jefes · Dirección · por mes: doce filas ──
-  if (f9) {
-    titulo(f9); cabecera(f9 + 1, 'H')
-    texto(R(f9 + 2, f9 + 13, 'A', 'A'))
-    for (const c of ['B', 'D', 'F', 'H']) cel(R(f9 + 2, f9 + 13, c, c), { nf: NUM, al: 'RIGHT' })
-    for (const c of ['C', 'G']) cel(R(f9 + 2, f9 + 13, c, c), { nf: FECHA, al: 'CENTER' })
-  }
-  // ── 10 · Convenio UOCRA: plantel, escalón y control de piso (espejo de la sección de Jornales) ──
-  if (f10) {
-    titulo(f10); cabecera(f10 + 1, 'H')
-    const fPlantel = busca(/^⇒ Plantel vigente/, f10)
-    if (fPlantel) {
-      texto(R(f10 + 2, fPlantel, 'A', 'A'))
-      cel(R(f10 + 2, fPlantel - 1, 'B', 'B'), { nf: ENTERO, al: 'CENTER' })
-      for (const c of ['C', 'D', 'F', 'G']) cel(R(f10 + 2, fPlantel - 1, c, c), { nf: NUM, al: 'RIGHT' })
-      cel(R(f10 + 2, fPlantel - 1, 'E', 'E'), { nf: TEXTO, al: 'CENTER' })
-      texto(R(f10 + 2, fPlantel, 'H', 'H'))
-      cel(R(fPlantel, fPlantel, 'A', 'A'), { bold: true, al: 'LEFT' })
-      cel(R(fPlantel, fPlantel, 'B', 'B'), { bold: true, nf: ENTERO, al: 'CENTER' })
-      for (const c of ['C', 'D', 'F', 'G']) cel(R(fPlantel, fPlantel, c, c), { bold: true, nf: NUM, al: 'RIGHT' })
-      cel(R(fPlantel, fPlantel, 'H', 'H'), { bold: true, al: 'LEFT' })
-      linea(R(fPlantel, fPlantel, 'A', 'H'), 'top')
-    }
-    const fEsc = busca(/^\d+\.\d+ · ESCALÓN/, f10)
-    const fPiso = fEsc ? busca(/^\d+\.\d+ · CONTROL DE PISO/, fEsc) : 0
-    if (fEsc && fPiso) {
-      cel(R(fEsc, fEsc, 'A', 'H'), { bold: true })
-      cabecera(fEsc + 1, 'H')
-      const fin = fPiso - 2
-      cel(R(fEsc + 2, fin, 'A', 'A'), { nf: MES, al: 'LEFT' })
-      texto(R(fEsc + 2, fin, 'B', 'B'))
-      cel(R(fEsc + 2, fin, 'C', 'C'), { nf: NUM, al: 'RIGHT' })
-      cel(R(fEsc + 2, fin, 'D', 'D'), { nf: PCT1, al: 'RIGHT' })
-      cel(R(fEsc + 2, fin, 'E', 'E'), { nf: FACTOR, al: 'RIGHT' })
-      cel(R(fEsc + 2, fin, 'F', 'F'), { nf: NUM, al: 'RIGHT' })
-      texto(R(fEsc + 2, fin, 'G', 'H'))
-      cel(R(fPiso, fPiso, 'A', 'H'), { bold: true })
-      const fCat = busca(/^Categoría$/, fPiso)
-      const hasta = fCat || fPiso + 7
-      for (let f = fPiso + 1; f < hasta; f++) {
-        texto(R(f, f, 'A', 'A'))
-        cel(R(f, f, 'B', 'B'), { nf: /^Margen/.test(A[f - 1]) ? PCT1 : NUM, al: 'RIGHT' })
-      }
-      if (fCat) {
-        cabecera(fCat, 'B')
-        let fFin = fCat; while (fFin < A.length && A[fFin] !== '') fFin++
-        texto(R(fCat + 1, fFin, 'A', 'A')); cel(R(fCat + 1, fFin, 'B', 'B'), { nf: NUM, al: 'RIGHT' })
-      }
-    }
-  }
+  // LAS SECCIONES 7–10 YA NO SON UN ESPEJO (25/09/2026): el registro de jornales se mudó a «Nómina» y
+  // lo formatea quien lo escribe, `jornales-pestana.mjs` (recortado a sus filas). Formatearlo también
+  // acá sería pelear dos pieles sobre las mismas celdas.
   return { requests, anclas, faltan }
 }
 

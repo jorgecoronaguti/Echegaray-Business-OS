@@ -21,7 +21,7 @@ import { conciliarHaberes, formatConciliacion } from '../lib/haberes-conciliacio
 import { serialAIso } from '../lib/jornales-estructura.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
-const PESTAÑA = 'Jornales por Quincena'
+const PESTAÑA = 'Nómina' // el registro de jornales vive en «Nómina» desde el 25/09/2026
 const args = process.argv.slice(2)
 const opt = (n, d = null) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d }
 const DESDE = opt('--desde', '2026-01-01')

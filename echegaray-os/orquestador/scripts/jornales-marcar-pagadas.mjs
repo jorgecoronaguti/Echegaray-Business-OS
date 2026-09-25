@@ -36,6 +36,7 @@
 //
 //   node orquestador/scripts/jornales-marcar-pagadas.mjs             → dice qué haría, no escribe
 //   node orquestador/scripts/jornales-marcar-pagadas.mjs --aplicar   → escribe y verifica releyendo
+//   … --con-banco [--aplicar]  → corrige «Pagado el» con la fecha REAL del certificado de haberes (25/09)
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
@@ -43,9 +44,26 @@ import { QUINCENAS_CONFIRMADAS, MOTIVO_QUINCENAS } from '../lib/confirmaciones-d
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const APLICAR = process.argv.includes('--aplicar')
-const PESTANA = 'Jornales por Quincena'
+const PESTANA = 'Nómina' // el registro vive en «Nómina» desde el 25/09/2026
 /** El registro de obra. Las columnas son fijas; la FILA de cada quincena no, y por eso se busca. */
 export const COL = { hasta: 'B', sePaga: 'C', total: 'K', pagado: 'N' }
+// ═══ LAS COLUMNAS SE BUSCAN POR ENCABEZADO (25/09/2026) ═══
+//
+// `COL` quedó del layout de agosto: hoy «Total» es la J y «Pagado el» la M. Con las letras fijas este
+// script escribía en la columna de al lado. `columnasDelRegistro` las ubica por el encabezado del
+// calendario («Desde · Hasta · Se paga el · … · Total · … · Pagado el») y aborta si falta alguna.
+export function columnasDelRegistro(filas = []) {
+  const norm = (v) => String(v ?? '').trim().toLowerCase()
+  for (let i = 0; i < filas.length; i++) {
+    const f = (filas[i] ?? []).map(norm)
+    if (f[0] !== 'desde' || f[1] !== 'hasta') continue
+    const c = { fila: i, desde: 0, hasta: 1, sePaga: f.indexOf('se paga el'), banco: f.indexOf('banco'),
+      total: f.indexOf('total'), pagado: f.indexOf('pagado el') }
+    if ([c.sePaga, c.banco, c.total, c.pagado].some((x) => x < 0)) return null
+    return c
+  }
+  return null
+}
 const idxCol = (l) => String(l).toUpperCase().split('').reduce((n, c) => n * 26 + (c.charCodeAt(0) - 64), 0) - 1
 const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 const iso = (s) => (Number.isFinite(Number(s)) && Number(s) > 0
@@ -82,12 +100,99 @@ export function planDeMarcado(filas = [], fila0 = 1, confirmadas = QUINCENAS_CON
   return { aEscribir, yaTenian, noEncontradas }
 }
 
+/**
+ * NÚCLEO PURO: «Pagado el» corregido con la fecha REAL del banco (25/09/2026).
+ *
+ * La auditoría encontró 10 de 17 fechas falsas (la quincena 01–15/09 decía 01/07/2026) y el código
+ * las descartaba por imposibles. La evidencia está en el certificado de acreditaciones de haberes de
+ * Santander (`haberes_acreditados_banco`, por CUIL y con el período que paga cada acreditación): la
+ * fecha de pago de una quincena es la del ÚLTIMO crédito de haberes de su período (clase «quincena» o
+ * «adelanto_quincena»). Se acepta sólo si esos créditos suman la columna «Banco» de la fila al peso:
+ * si no cierran, no es evidencia y no se escribe.
+ *
+ * SIN EVIDENCIA NO SE ESCRIBE NADA, Y TAMPOCO SE VACÍA. Una quincena sin crédito bancario se pagó en
+ * efectivo o antes del certificado; vaciar su «Pagado el» la pasaría a «cerrada» y el libro la
+ * publicaría VENCIDA (antes del extracto no hay con qué probarla): deuda falsa, el defecto opuesto. Se
+ * reporta con su fecha actual para que el dueño decida.
+ *
+ * @param {Array<Array>} filas la pestaña desde A1 (UNFORMATTED_VALUE)
+ * @param {Array<{desde:number,hasta:number,fecha:number,importe:number}>} creditos seriales de Sheets
+ * @returns {{cambios:Array, iguales:Array, sinEvidencia:Array, noCierran:Array}|null}
+ */
+export function planConBanco(filas = [], creditos = []) {
+  const c = columnasDelRegistro(filas)
+  if (!c) return null
+  const out = { cambios: [], iguales: [], sinEvidencia: [], noCierran: [] }
+  for (let i = c.fila + 1; i < filas.length; i++) {
+    const f = filas[i] ?? []
+    const desde = Number(f[c.desde]); const hasta = Number(f[c.hasta])
+    if (!(desde > 0 && hasta > 0)) { if (String(f[0] ?? '').startsWith('⇒')) break; continue }
+    const fila = i + 1
+    const actual = f[c.pagado]
+    const banco = Number(f[c.banco]) || 0
+    const suyos = creditos.filter((x) => x.hasta >= desde && x.hasta <= hasta)
+    const base = { fila, desde, hasta, actual, banco }
+    if (!suyos.length) { out.sinEvidencia.push(base); continue }
+    // El ADELANTO por banco no es la columna «Banco» (va en «Adelanto»): se compara sólo la clase
+    // «quincena». La fecha sí es la del último crédito del período, adelantos incluidos.
+    const suma = Math.round(suyos.filter((x) => x.clase !== 'adelanto_quincena').reduce((a, x) => a + x.importe, 0) * 100) / 100
+    const fecha = Math.max(...suyos.map((x) => x.fecha))
+    // «Banco» VACÍA en la planilla y el banco pagó: la fecha es evidencia igual (se reporta el hueco).
+    const bancoVacio = !(banco > 0)
+    if (!bancoVacio && Math.abs(suma - banco) > 1) { out.noCierran.push({ ...base, suma, fecha }); continue }
+    if (Number(actual) === fecha) out.iguales.push({ ...base, fecha })
+    else out.cambios.push({ ...base, fecha, suma, bancoVacio, col: c.pagado })
+  }
+  return out
+}
+
+async function creditosDelBanco() {
+  const { query } = await import('../lib/db.mjs')
+  const r = await query(`select periodo_hasta::date::text as hasta, fecha::date::text as fecha, importe, clase
+      from public.haberes_acreditados_banco
+     where clase in ('quincena','adelanto_quincena') and periodo_hasta is not null`)
+  const serial = (isoD) => Math.round(Date.UTC(+isoD.slice(0, 4), +isoD.slice(5, 7) - 1, +isoD.slice(8, 10)) / 86400000) + 25569
+  return r.rows.map((x) => ({ hasta: serial(x.hasta), fecha: serial(x.fecha), importe: Number(x.importe), clase: x.clase }))
+}
+
+async function mainConBanco(google, hoja) {
+  const filas = await google.readSheetValues(ID, `'${PESTANA}'!A1:M${hoja.rows}`, { render: 'UNFORMATTED_VALUE' })
+  const plan = planConBanco(filas, await creditosDelBanco())
+  if (!plan) { console.error('✖ no encontré el encabezado del calendario (Desde · Hasta · … · Pagado el): NO escribo'); process.exit(1) }
+  const d = (v) => (Number(v) > 0 ? iso(v) : String(v ?? '') || '(vacía)')
+  for (const e of plan.cambios) console.log(`  ✎ fila ${e.fila} · ${iso(e.desde)}–${iso(e.hasta)} · decía ${d(e.actual)} → ${iso(e.fecha)} (banco ${plata(e.suma)}${e.bancoVacio ? ' · la columna Banco de la planilla está VACÍA' : ' = columna Banco'})`)
+  for (const e of plan.iguales) console.log(`  ✓ fila ${e.fila} · ${iso(e.hasta)} · ya dice ${iso(e.fecha)}, igual que el banco`)
+  for (const e of plan.noCierran) console.log(`  ▲ fila ${e.fila} · ${iso(e.hasta)} · el banco acreditó ${plata(e.suma)} y la columna Banco dice ${plata(e.banco)}: no es evidencia, no escribo`)
+  for (const e of plan.sinEvidencia) console.log(`  · fila ${e.fila} · ${iso(e.desde)}–${iso(e.hasta)} · SIN crédito bancario — queda como está (${d(e.actual)})`)
+  if (!plan.cambios.length) { console.log('\n✓ nada que corregir.'); return }
+  if (!APLICAR) { console.log('\n(sin --aplicar: no escribí nada)'); return }
+  const req = plan.cambios.map((e) => ({ updateCells: {
+    range: { sheetId: hoja.sheetId, startRowIndex: e.fila - 1, endRowIndex: e.fila, startColumnIndex: e.col, endColumnIndex: e.col + 1 },
+    rows: [{ values: [{ userEnteredValue: { numberValue: e.fecha } }] }],
+    fields: 'userEnteredValue',
+  } }))
+  // EXCEPCIÓN DECLARADA (25/09/2026): el dueño aprobó corregir estas fechas; el respaldo previo lo toma
+  // quien corre esto (volcado de M10:M26) y el alcance son SÓLO las celdas de `plan.cambios`.
+  const r = await google.spreadsheetBatchUpdate(ID, req, { yaGuardado: true })
+  if (r?.congelado) return console.log('🧊 el freno de mano está puesto: no escribí nada.')
+  if (r?.protegido) { console.error('🔒 la guarda descartó la escritura'); process.exit(1) }
+  const despues = await google.readSheetValues(ID, `'${PESTANA}'!A1:M${hoja.rows}`, { render: 'UNFORMATTED_VALUE' })
+  let mal = 0
+  for (const e of plan.cambios) {
+    const leido = Number(despues[e.fila - 1]?.[e.col])
+    if (leido === e.fecha) console.log(`  ✓ releído fila ${e.fila} · «Pagado el» = ${iso(leido)}`)
+    else { mal++; console.error(`  ✖ fila ${e.fila}: esperaba ${iso(e.fecha)} y el archivo dice ${leido}`) }
+  }
+  if (mal) process.exit(1)
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const meta = await google.getSheetMeta(ID)
   const hoja = meta.find((h) => h.title === PESTANA)
   if (!hoja) throw new Error(`no encontré la pestaña "${PESTANA}"`)
 
+  if (process.argv.includes('--con-banco')) return mainConBanco(google, hoja)
   const FILA0 = 1
   const filas = await google.readSheetValues(ID, `'${PESTANA}'!A${FILA0}:N${hoja.rows}`, { render: 'UNFORMATTED_VALUE' })
   const { aEscribir, yaTenian, noEncontradas } = planDeMarcado(filas, FILA0)

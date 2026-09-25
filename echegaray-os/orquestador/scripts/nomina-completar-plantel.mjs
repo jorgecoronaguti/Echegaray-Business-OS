@@ -85,7 +85,7 @@ async function main() {
   }
 
   // EL CUADRO DE OFICINA, en la pestaña de al lado: sin él la fila de oficina no se puede anclar.
-  const gridJor = await google.readSheetValues(ID, `'Jornales por Quincena'!A1:A200`)
+  const gridJor = await google.readSheetValues(ID, `'Nómina'!A1:A400`)
   const bloqueOfi = bloqueDeOficina(gridJor)
   if (bloqueOfi.error) { console.error(`${bloqueOfi.error} — NO escribo`); process.exit(1) }
   console.log(`oficina en «Jornales por Quincena», filas ${bloqueOfi.desde}-${bloqueOfi.hasta}`)

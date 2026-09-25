@@ -71,8 +71,8 @@ test('el destino de cada tipo de línea es el más específico y cierto', () => 
   assert.deepEqual(dest(buscar((l) => l.rubro === 'Servicios recurrentes')), { pestaña: 'Recurrentes', rango: 'A24' })
   // Impuestos → la pestaña de detalle de REGLAS (Impuestos y Financieros).
   assert.deepEqual(dest(buscar((l) => l.rubro === 'Impuestos')), { pestaña: 'Impuestos y Financieros', rango: 'A1' })
-  // Jornales de obra → su pestaña real (Jornales por Quincena), no Compras (Compras tiene estimados).
-  assert.deepEqual(dest(buscar((l) => l.rubro === 'Nómina · Jornales de obra')), { pestaña: 'Jornales por Quincena', rango: 'A1' })
+  // Jornales de obra → su pestaña real (Nómina, donde vive el registro desde el 25/09), no Compras (Compras tiene estimados).
+  assert.deepEqual(dest(buscar((l) => l.rubro === 'Nómina · Jornales de obra')), { pestaña: 'Nómina', rango: 'A1' })
   // Cargas sociales → la pestaña Cargas Sociales.
   assert.deepEqual(dest(buscar((l) => l.rubro === 'Nómina · Cargas sociales')), { pestaña: 'Cargas Sociales', rango: 'A1' })
   // Materiales → su número sale de Compras por rubro (SUMIF sobre la columna O), así que el vínculo
@@ -82,7 +82,7 @@ test('el destino de cada tipo de línea es el más específico y cierto', () => 
   // Sueldos de administración → desde el 01/08 su monto sale de la planilla de nómina (Oficina +
   // los retiros de Dirección), no de Compras: el vínculo tiene que llevar a donde está el número.
   assert.deepEqual(dest(buscar((l) => l.rubro === 'Nómina · Sueldos administración' && !l.desdeCompras)),
-    { pestaña: 'Jornales por Quincena', rango: 'A1' })
+    { pestaña: 'Nómina', rango: 'A1' })
   // ...y la línea de CONTROL del mismo rubro va a Compras, que es la otra fuente — la que controla.
   // Si las dos apuntaran al mismo lado, el vínculo mandaría a verificar un número contra sí mismo.
   assert.deepEqual(dest(buscar((l) => l.desdeCompras)), { pestaña: 'Compras', rango: 'O4:O' })
@@ -99,7 +99,7 @@ test('el destino usa la MISMA lógica de origen que la sección "DÓNDE ESTÁ" (
   // Materiales"), el TEXTO la muestra tal cual pero el VÍNCULO cae al origen cierto (Compras), porque
   // no se puede hiperlinkear a un tab que no existe.
   const sueldos = lineas.find((l) => l.rubro === 'Nómina · Sueldos administración' && !l.desdeCompras)
-  assert.equal(detalleDeRubro(sueldos.rubro), 'Jornales por Quincena')
+  assert.equal(detalleDeRubro(sueldos.rubro), 'Nómina') // el registro vive en «Nómina» desde el 25/09
   assert.equal(destinoDetalle(RG, sueldos, FILAS_TABLA).pestaña, detalleDeRubro(sueldos.rubro))
   const materiales = lineas.find((l) => l.rubro === 'Materiales Mantenimiento')
   assert.equal(detalleDeRubro(materiales.rubro), 'Proveedores y Materiales')

@@ -39,7 +39,7 @@ import {
 import { pagosGremialesDelBanco, explicarPago } from '../lib/cargas-pagos-banco.mjs'
 // Directo del módulo de nómina y no por el barril `libro-extractores.mjs`: ese archivo lo está tocando
 // otro trabajo en paralelo (18/09) y agregar una línea acá no le genera conflicto.
-import { pactadosDelBloque, PESTANA_NOMINA } from '../lib/libro-extractores-nomina.mjs'
+import { pactadosDelBloque, PESTANA_REGISTRO_NOMINA } from '../lib/libro-extractores-nomina.mjs'
 // ═══ LAS OBLIGACIONES QUE DEJARON DE TENER FILA EN COMPRAS (11/09/2026) ═══
 //
 // El dueño vacía de Compras todo lo que no sea Civil/Estructura/Mantenimiento. El F931 pagado, los
@@ -205,7 +205,7 @@ export async function extraerDeLasFuentes(google, corte) {
     const [fOfi, fDir, grilla] = await Promise.all([
       google.readSheetValues(ID, 'OFICINA_PROYECTADO', { render: 'FORMULA' }),
       google.readSheetValues(ID, 'DIRECCION_PROYECTADO', { render: 'FORMULA' }),
-      google.readSheetValues(ID, `'${PESTANA_NOMINA}'!A1:Z200`, { render: 'UNFORMATTED_VALUE' }),
+      google.readSheetValues(ID, `'${PESTANA_REGISTRO_NOMINA}'!A1:Z400`, { render: 'UNFORMATTED_VALUE' }),
     ])
     pactados = { oficina: pactadosDelBloque(fOfi, grilla), direccion: pactadosDelBloque(fDir, grilla) }
   } catch (e) {

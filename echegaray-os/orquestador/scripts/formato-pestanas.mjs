@@ -79,7 +79,7 @@ export const PESTANAS = [
   // «Horas». El número lo ata `formato-pestanas.test.mjs` contra el `ANCHO` que exporta el generador:
   // con `cols` por debajo, el auditor de pantalla deja de mirar las últimas columnas — dos semanas
   // sin ver la N fue exactamente ese defecto.
-  { titulo: 'Jornales por Quincena', congeladas: 2, hastaFila: 110, cols: 13, propio: true },
+  // «Jornales por Quincena» se eliminó el 25/09/2026: su registro vive en «Nómina» y lo formatea su generador.
   // ═══ LAS CUOTAS DE LOS PLANES DE PAGO SON UNA RÉPLICA, Y DESDE EL 05/09 NO PUEDEN DECIRLO ═══
   //
   // `lib/cargas-bloques.mjs` (bloquePlanes) escribe cada cuota con la leyenda «Réplica del plan

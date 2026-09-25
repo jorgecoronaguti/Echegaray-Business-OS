@@ -48,7 +48,7 @@ async function leer(google) {
     // más abajo. Con la reconstrucción (posición y calendario ARRIBA del detalle) el corte se llevaba
     // puestas también las dos filas del calendario fiscal, que ahora están cerca de la 50: la
     // conciliación habría leído `undefined` y declarado $0 de IVA sin un solo error.
-    v(`'_BANCO_RAW'!A1:H3000`), v(`'Impuestos y Financieros'!A1:O120`), v(`'Jornales por Quincena'!A1:P110`),
+    v(`'_BANCO_RAW'!A1:H3000`), v(`'Impuestos y Financieros'!A1:O120`), v(`'Nómina'!A1:P400`),
     v(`'CAJA'!A1:J40`),
   ])
   // Los rangos con nombre del bloque de jornales, resueltos a filas con sus campos con nombre.

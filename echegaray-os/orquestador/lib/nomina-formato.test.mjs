@@ -23,7 +23,7 @@ const formatoEn = (reqs, fila, col) => reqs.filter((q) => q.repeatCell && cubre(
 
 test('sólo apariencia: ningún pedido escribe un valor, una fórmula ni toca otra cosa que formato', () => {
   const { requests } = pedidosDeFormatoNomina(columnaA(), 7)
-  assert.ok(requests.length > 40)
+  assert.ok(requests.length > 20)
   for (const q of requests) {
     const [k] = Object.keys(q)
     assert.ok(['repeatCell', 'updateBorders', 'updateDimensionProperties'].includes(k), k)
@@ -44,16 +44,11 @@ test('cuadro 6: los meses se ven como «mmm yy» y los importes sin decimales, c
   assert.equal(formatoEn(requests, 96, 15).textFormat.bold, true) // P96: el total del renglón
 })
 
-test('secciones 7–10: fechas dd/mm/yyyy, plata con el patrón de la pestaña, escalón con % y factor', () => {
+test('secciones 7–10: ya no las formatea esta piel — las formatea su generador (registro mudado, 25/09)', () => {
+  // Desde el 25/09 las secciones 7–10 son el registro de jornales mudado desde «Jornales por Quincena»:
+  // las escribe y las formatea `jornales-pestana.mjs`. Dos pieles sobre las mismas celdas se pisan.
   const { requests } = pedidosDeFormatoNomina(columnaA(), 7)
-  assert.deepEqual(formatoEn(requests, 102, 0).numberFormat, FORMATOS_NOMINA.FECHA)
-  assert.deepEqual(formatoEn(requests, 131, 4).numberFormat, FORMATOS_NOMINA.NUM) // el colchón del derrame también
-  assert.deepEqual(formatoEn(requests, 147, 1).numberFormat, FORMATOS_NOMINA.NUM)
-  assert.deepEqual(formatoEn(requests, 147, 2).numberFormat, FORMATOS_NOMINA.FECHA)
-  assert.deepEqual(formatoEn(requests, 172, 3).numberFormat, FORMATOS_NOMINA.PCT1)
-  assert.deepEqual(formatoEn(requests, 172, 4).numberFormat, FORMATOS_NOMINA.FACTOR)
-  assert.deepEqual(formatoEn(requests, 181, 1).numberFormat, FORMATOS_NOMINA.PCT1) // «Margen sobre el piso»
-  assert.deepEqual(formatoEn(requests, 186, 1).numberFormat, FORMATOS_NOMINA.NUM)
+  assert.ok(!requests.some((q) => (q.repeatCell?.range ?? q.updateBorders?.range)?.startRowIndex >= 99))
 })
 
 test('parámetros: N5 se distingue como input; I5 es porcentaje; Q5 es plata; Dirección B es plata', () => {
@@ -75,9 +70,9 @@ test('los cuadros 1–5 del dueño no se tocan (salvo la columna B de Dirección
 })
 
 test('una sección que falta se saltea y se nombra: el formato nunca tira la corrida', () => {
-  const A = columnaA(); A[159] = ''
+  const A = columnaA(); A[89] = ''
   const { requests, faltan } = pedidosDeFormatoNomina(A, 7)
-  assert.deepEqual(faltan, ['10'])
-  assert.ok(!requests.some((q) => q.repeatCell && q.repeatCell.range.startRowIndex >= 159))
+  assert.deepEqual(faltan, ['6'])
+  assert.ok(!requests.some((q) => q.repeatCell && q.repeatCell.range.startRowIndex >= 89))
   assert.deepEqual(pedidosDeFormatoNomina([], 7).requests, [])
 })

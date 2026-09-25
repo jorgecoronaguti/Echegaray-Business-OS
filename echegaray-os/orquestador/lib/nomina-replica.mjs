@@ -139,7 +139,7 @@ export function formatReplica(r) {
 }
 
 const CASH_FLOW = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
-const TAB_JORNALES = 'Jornales por Quincena'
+const TAB_JORNALES = "'Nómina'"
 
 /** Lee las pestañas y replica. El Sheet manda; esto copia. */
 export async function replicarNomina(google, { file_id = CASH_FLOW, hoy = new Date() } = {}) {

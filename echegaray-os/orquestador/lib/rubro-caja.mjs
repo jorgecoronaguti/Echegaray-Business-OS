@@ -134,7 +134,7 @@ export const REGLAS = [
   {
     // Se paga desde Jornales por Quincena, que tiene el dato REAL de la planilla de jornales.
     // Compras acá tiene estimaciones tipeadas a mano ($144,8M) contra $114,4M reales.
-    rubro: 'Nómina · Jornales de obra', detalle: 'Jornales por Quincena', paga: 'Jornales por Quincena',
+    rubro: 'Nómina · Jornales de obra', detalle: 'Nómina', paga: 'Jornales por Quincena',
     js: (r) => norm(r.proveedor) === 'sueldos' && OBRAS.includes(norm(r.cliente)),
     sheet: `((LOWER($E$4:$E)="sueldos")*REGEXMATCH(LOWER($J$4:$J&"");"^(${OBRAS.join('|')})$")>0)`,
     sql: `(${ES('proveedor', 'sueldos')} and ${UNO_DE('cliente', OBRAS)})`,
@@ -146,7 +146,7 @@ export const REGLAS = [
     // contra un compromiso real de $9.800.000 — $26.000.000 que el cash flow no mostraba. La pestaña
     // de nómina tiene las dos mitades (planilla de Oficina + retiros de Dirección) y las proyecta.
     // Las filas siguen cargadas acá para registrar el PAGO; el monto del cuadro ya no sale de acá.
-    rubro: 'Nómina · Sueldos administración', detalle: 'Jornales por Quincena', paga: 'Jornales por Quincena',
+    rubro: 'Nómina · Sueldos administración', detalle: 'Nómina', paga: 'Jornales por Quincena',
     js: (r) => norm(r.proveedor) === 'sueldos',
     sheet: '(LOWER($E$4:$E)="sueldos")',
     sql: ES('proveedor', 'sueldos'),

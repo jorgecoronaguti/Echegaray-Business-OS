@@ -60,6 +60,12 @@ export function bloqueUnificado() {
 }
 
 async function main() {
+  // RETIRADO (25/09/2026): las secciones 7–10 dejaron de ser un espejo de «Jornales por Quincena». El
+  // registro se mudó a «Nómina» y lo escribe `jornales-pestana.mjs`; la pestaña vieja se eliminó.
+  // Correr esto reescribiría encima del registro vivo.
+  console.error('✗ retirado el 25/09/2026: el registro de jornales vive en «Nómina» (jornales-pestana.mjs).')
+  process.exitCode = 1
+  return
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const colA = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:A400`, { render: 'UNFORMATTED_VALUE' })
   const A = colA.map((r) => String(r?.[0] ?? '').trim())

@@ -351,7 +351,8 @@ test('las mediciones que viven en «Parámetros» citan la pestaña: sin eso dev
     const huerfanos = f.match(/(?<!!)\$[A-Z]{1,2}\$\d+:\$[A-Z]{1,2}\$\d+/g) ?? []
     assert.deepEqual(huerfanos, [],
       `${rango} cita rangos sin pestaña: en «Parámetros» apuntan a otra columna y devuelven 0`)
-    assert.match(f, /'Jornales por Quincena'!/, `${rango} dejó de citar la pestaña de la que mide`)
+    // Desde el 25/09 el registro vive en «Nómina» (la pestaña vieja se eliminó).
+    assert.match(f, /'Nómina'!/, `${rango} dejó de citar la pestaña de la que mide`)
   }
 })
 

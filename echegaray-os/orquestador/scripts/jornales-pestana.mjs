@@ -82,7 +82,7 @@ import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-edicion
 // SIN `sub` DESDE EL 09/09/2026, Y ES EL RESULTADO QUE SE BUSCABA. `sub()` antepone «   · » y esta
 // pestaña llegó a tener veinte celdas que empezaban así. El dueño las nombró una por una: no queda
 // ninguna, y no importarla es lo que hace que no puedan volver por descuido.
-import { seccion, total as rotuloTotal, auditarPatron, clasificarDefectos } from '../lib/patron-pestana.mjs'
+import { seccion as seccionBase, total as rotuloTotal, auditarPatron, clasificarDefectos } from '../lib/patron-pestana.mjs'
 // INK/MUTED/ACENTO: la MISMA paleta que usa la piel. Importarla —y no copiar tres tripletes RGB acá—
 // es lo que hace que la notación del escenario (pagado en tinta plena, proyectado apagado) sea el
 // mismo gris que el resto del libro y no un segundo gris parecido.
@@ -149,7 +149,32 @@ import { quincenaConAumento } from '../lib/proyeccion-convenio.mjs'
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 // EL NOMBRE DE LA PESTAÑA SE EXPORTA: Cargas Sociales la lee para saber con qué base quedó valuada la
 // masa que multiplica (ver `baseDeJornales`). Escrito dos veces, un rename la deja leyendo un vacío.
-export const PESTAÑA = 'Jornales por Quincena'
+// ═══ EL REGISTRO SE MUDÓ A «Nómina» (25/09/2026) ═══
+// Dueño: «Jornales es una pestaña que te dije que quitaras y unificaras todo en Nómina» — unificar es
+// ELIMINAR, no ocultar. El registro (calendario de quincenas, oficina, dirección y convenio) vive ahora
+// como secciones 7 a 10 de «Nómina», debajo del cuadro 6, y los 20 rangos con nombre apuntan ahí.
+// `PESTAÑA_VIEJA` queda sólo para nombrar el origen en el libro y en los avisos.
+export const PESTAÑA = 'Nómina'
+export const PESTAÑA_VIEJA = 'Jornales por Quincena'
+/** Dónde empieza el registro dentro de «Nómina»: su primera sección, con la numeración de antes o la nueva. */
+export const ANCLA_REGISTRO = /^(1|7) · CALENDARIO DE PAGO/i
+/**
+ * La clave del registro de rótulos del bloque. NO es «Nómina»: con el nombre de una pestaña de pantalla,
+ * la poda de prosa (`podar-prosa.mjs`) trataría al bloque como si fuera la pestaña entera — renumera sus
+ * secciones desde 1 y vacía fórmulas largas como si fueran párrafos (medido en copia el 25/09: «3 ·
+ * DIRECCIÓN» y las doce celdas de «Pagado» de Dirección perdidas).
+ */
+export const CLAVE_REGISTRO = 'Nómina · registro de jornales'
+/**
+ * Las guardas de pestaña ENTERA no aplican a un bloque dentro de «Nómina»: la firma de la pestaña la
+ * mueve el dueño cada vez que edita sus secciones 1–6, y con ella este bloque no se escribiría nunca.
+ * El candado sí se respeta. La columna del dueño («Pagado el») y sus fechas de pago a mano se
+ * preservan explícitamente más abajo, celda por celda.
+ */
+async function guardasDelRegistro() {
+  const pb = await import('../lib/pestana-bloqueada.mjs')
+  return { estaBloqueada: pb.estaBloqueada, firmaGuardia: async () => ({ editada: false }), sellarFirma: async () => {}, conHuella: null }
+}
 const ESPEJO = '_J_OBREROS'
 /** La otra mitad de la nómina: dos sueldos de oficina, con su propio layout y su propio atraso. */
 const ESPEJO_OFI = '_J_OFICINA'
@@ -165,6 +190,8 @@ const AÑO = 2026
 // quedarse corta: el auditor de pantalla recorre esa lista y con `cols: 13` no miraba la N durante dos
 // semanas. Un número declarado dos veces se separa sin dar error; atado por el test, no.
 export const ANCHO = 13
+/** Cómo se numeran las secciones del registro cuando vive dentro de «Nómina» (a continuación del 6). */
+export const NUMERACION_EN_NOMINA = Object.freeze({ 1: '7', '1.1': '8', '1.2': '9', 2: '10', '2.1': '10.1', '2.2': '10.2', '2.3': '10.3' })
 /**
  * EL ENCABEZADO DEL REGISTRO ES EL CONTRATO — Y LA LETRA DE CADA COLUMNA SALE DE ACÁ, NUNCA A MANO.
  *
@@ -397,6 +424,12 @@ export function esFechaAMano(v) {
  */
 export function grilla({
   bloques, pendientes, bloquesOfi, pagoPrevio = [], ultimoDiaOfi = null,
+  // ═══ EL REGISTRO VIVE EN «Nómina» (25/09/2026, dueño: «unificar = eliminar, no ocultar») ═══
+  // `fila0` = cuántas filas de «Nómina» hay ARRIBA del registro (sus secciones 1–6). La grilla nace con
+  // ese relleno —celdas '' = «no son mías»— y así cada número de fila que calcula es el de «Nómina».
+  // `enNomina` además saca el titular propio (título, fuente y «Próxima quincena»: Nómina tiene los
+  // suyos) y numera las secciones 7 a 10, a continuación de las de Nómina.
+  fila0 = 0, enNomina = false,
   // ── LO QUE EL MOTOR NECESITA. Todo se resuelve en `main()` leyendo las fuentes; acá sólo se arma
   // la grilla, que es lo que los tests pueden ejercitar sin red.
   escalones = [], bloqueBase = null, categorias = [], personasBase = 0,
@@ -426,7 +459,8 @@ export function grilla({
   bloqueBase ??= bloques[bloques.length - 1]
   if (!categorias.length) categorias = ['—']
   if (!meses.length) meses = [{ anio: AÑO, mes: (pendientes[0]?.desde ?? new Date(AÑO, 7, 1)).getMonth() + 1, periodo: `${AÑO}-01` }]
-  const filas = []
+  const filas = Array.from({ length: fila0 }, () => [])
+  const seccion = (n, t) => seccionBase(enNomina ? (NUMERACION_EN_NOMINA[String(n)] ?? n) : n, t)
   /**
    * La celda "Se paga el" de la fila `r`: mi fórmula, o vacío para que la fusión preserve la fecha que
    * escribió el dueño. Cadena vacía —no VACIO— porque VACIO significa "es mi celda y va vacía".
@@ -489,6 +523,8 @@ export function grilla({
   // y escala UOCRA · al 08/09»: tres tramos y una fecha que envejecía en la celda. Queda la fuente,
   // que es lo único que ninguna otra celda del cuadro puede contestar. Hasta qué día llega la carga
   // sale por el log de la corrida y por `registrarSincronizacion`.
+  let fProxima = null; let fBanco = null; let fEfectivo = null
+  if (!enNomina) {
   push(['Jornales por quincena'])
   push(['Fuente: planilla JORNALES y escala UOCRA'])
   // ═══ LAS FILAS 2 Y 3 SON DEL CONTRATO, NO MÍAS (09/09/2026) ═══
@@ -512,10 +548,11 @@ export function grilla({
   // contradecirlo.
   //
   // Se resuelven abajo, cuando se conocen las filas de la grilla.
-  const fProxima = push([rotuloTotal('Próxima quincena')])
-  const fBanco = push([rotuloTotal('Por banco')])
-  const fEfectivo = push([rotuloTotal('En efectivo')])
+  fProxima = push([rotuloTotal('Próxima quincena')])
+  fBanco = push([rotuloTotal('Por banco')])
+  fEfectivo = push([rotuloTotal('En efectivo')])
   blanco()
+  }
 
   // ══ 1 · EL CALENDARIO DE PAGO ══
   //
@@ -581,7 +618,9 @@ export function grilla({
   const fLast = f0 + bloques.length - 1
   // Se cierra contra la fila de ARRIBA, no contra un número de fila escrito a mano: así una fila
   // insertada nunca puede quedar afuera del total. Es el techo de 14 quincenas, arreglado de raíz.
-  const cierra = (c) => `=SUM(${c}$${f0}:INDEX(${c}:${c};ROW()-1))`
+  // Sin columna entera (`INDEX(G:G;…)`): una referencia a la columna no viaja con la fila y, al mudar
+  // el registro a «Nómina», dejaba #REF! (medido en copia el 25/09). Mismo total.
+  const cierra = (c) => `=SUM(${c}$${f0}:${c}$${Math.max(f0, fLast)})`
   const fTotalReal = push([
     rotuloTotal('Pagado en el año'), ...Array(5).fill(VACIO),
     ...['Banco', 'Adelanto', 'Recibo', 'Total'].map((x) => cierra(colDe(x))),
@@ -1244,6 +1283,7 @@ export function grilla({
   // bajo «Banco» y el efectivo bajo «Recibo». El ojo baja en vertical y encuentra la misma cifra en
   // la fila de su quincena — y si no coincide, se ve sin hacer una cuenta.
   const iCol = (rotulo) => colDe(rotulo).charCodeAt(0) - 65
+  if (fProxima) {
   const celdaFecha = `$${colDe('Se paga el')}$${fProxima}`
   const rgFecha = `$${colDe('Se paga el')}$${f0}:$${colDe('Se paga el')}$${pFin}`
   const porFecha = (rotulo) => `SUMIFS($${colDe(rotulo)}$${f0}:$${colDe(rotulo)}$${pFin};${rgFecha};${celdaFecha})`
@@ -1255,6 +1295,7 @@ export function grilla({
   // suman el total de arriba por construcción y no por disciplina.
   filas[fBanco - 1][iCol('Banco')] = `=IF(N(${celdaFecha})=0;"";${porFecha('Banco')})`
   filas[fEfectivo - 1][iCol('Recibo')] = `=IF(N(${celdaFecha})=0;"";${porFecha('Adelanto')}+${porFecha('Recibo')})`
+  }
   // ═══ LOS TRES CANALES DEJARON DE SER TRES FILAS (09/09/2026) ═══
   //
   // Vivían debajo del registro como «· De lo pagado — por banco / en adelantos / contra recibo», con
@@ -1358,10 +1399,21 @@ export function grilla({
     // expresión del plantel sola desde el 14/08 —el `MAX` contra la demanda hacía que la columna
     // cambiara de naturaleza fila por fila— y el argumento se conserva sólo para que el llamador no
     // tenga que saberlo. Lo que se publica es el plantel actual, con su tarifa y su aumento.
-    filas[r - 1][colDe('Total').charCodeAt(0) - 65] = formulaProyectadoQuincena(
+    const propia = formulaProyectadoQuincena(
       { convenio, celdaPago: `C${r}` },
       demanda?.porQuincena?.get(claveQuincena(q.desde)) ?? null,
     )
+    // ═══ EN «Nómina» LA QUINCENA A PAGAR ES LA DE NÓMINA (25/09/2026, auditoría falla 7) ═══
+    // Había dos números para la misma quincena: el de esta proyección ($7,19 M, con el piso de
+    // demanda de obras pegado en otra) y el de Nómina ($9,10 M, cuadro 6), que es el que lee el Cash
+    // Flow. Ahora el Total es la parte del mes de `NOMINA_CF_JORNALES` repartida entre las quincenas
+    // proyectadas de ese mes —la misma cuenta que hace el libro—; la proyección propia queda de
+    // respaldo si el cuadro 6 no está. Sin ciclo: el cuadro 6 resta sólo las quincenas REALES.
+    filas[r - 1][colDe('Total').charCodeAt(0) - 65] = enNomina
+      ? `=LET(propia;${String(propia).replace(/^=/, '')};h;B${r};`
+        + `IF(AND(ISNUMBER(h);YEAR(h)=${AÑO});IFERROR(INDEX(NOMINA_CF_JORNALES;1;MONTH(h))`
+        + `/COUNTIFS($B$${p0}:$B$${pFin};">="&DATE(${AÑO};MONTH(h);1);$B$${p0}:$B$${pFin};"<="&EOMONTH(h;0));propia);propia))`
+      : propia
     // EL PLANTEL CON EL QUE SE PROYECTÓ, citado del cuadro 2.1 —que vive más abajo y por eso no se
     // podía escribir arriba—. Se cita y no se estampa: el día que entre o salga alguien, las nueve
     // filas se mueven solas.
@@ -1630,6 +1682,17 @@ export function cabeceraDelRegistro(filas) {
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
+  // ── DÓNDE ESTÁ EL REGISTRO EN «Nómina»: por su rótulo, nunca por número de fila ──
+  const colANom = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:A800`).catch(() => null)
+  const iAncla = (colANom ?? []).findIndex((f) => ANCLA_REGISTRO.test(String(f?.[0] ?? '').trim()))
+  if (iAncla < 0) {
+    console.error(`✗ NO escribo: no encuentro la sección «7 · CALENDARIO DE PAGO» en «${PESTAÑA}». El registro de jornales vive ahí desde el 25/09.`)
+    process.exitCode = 1
+    return
+  }
+  const FILA0 = iAncla // filas de «Nómina» ARRIBA del registro: son del dueño y de otros generadores
+  const soloBloque = (filas) => (filas ?? []).map((f, i) => (i < FILA0 ? [] : f))
+  console.log(`registro de jornales en «${PESTAÑA}» desde la fila ${FILA0 + 1}`)
 
   // ── EL ESPEJO ES LA FUENTE. Si vino vacío no se escribe: un cuadro en cero es peor que uno viejo.
   const espejo = await google.readSheetValues(ID, `${ESPEJO}!A1:AC990`)
@@ -1713,7 +1776,7 @@ async function main() {
   // aplica LA MISMA regla que la fórmula (lib/jornales-piso-uocra.mjs).
   // POR RÓTULO, NO POR OFFSET: la fila de cada categoría se busca por su código en la columna A, que es
   // lo que el bloque escribe. Contar filas desde el título es lo que ya rompió tres enlaces acá.
-  const colAE = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:E400`).catch(() => [])
+  const colAE = soloBloque(await google.readSheetValues(ID, `'${PESTAÑA}'!A1:E800`).catch(() => []))
   // Y LA BÚSQUEDA NORMALIZA IGUAL QUE LA CLAVE QUE BUSCA. `cat` viene de `claveDeCategoria`; el rótulo
   // de la columna A lo escribió una corrida ANTERIOR, y las corridas viejas dejaban ahí la clave a
   // medio normalizar (`"OF  M"`). Con `.trim()` de este lado ese rótulo no matchea, `escrito` queda
@@ -1785,7 +1848,7 @@ async function main() {
   // fila no se reescribe. Leerla después sería tarde, y leerla sin FORMULA no distingue una fecha
   // tipeada de una que devuelve mi propia fórmula.
   const pagoPrevio = []
-  const colC = await google.readSheetValues(ID, `'${PESTAÑA}'!C1:C400`, { render: 'FORMULA' }).catch(() => [])
+  const colC = soloBloque(await google.readSheetValues(ID, `'${PESTAÑA}'!C1:C800`, { render: 'FORMULA' }).catch(() => []))
   colC.forEach((f, i) => { pagoPrevio[i] = f?.[0] })
 
   // El cuadro del escalón tiene que cubrir el mes base de obra, el último mes de oficina Y EL MES EN
@@ -1818,6 +1881,7 @@ async function main() {
     escalones, bloqueBase, categorias, personasBase, origenPlantel: piso.origen ?? 'cerrada',
     escalonVigente, meses, hoy, periodoBase, demanda,
     desvinculacion: null,
+    fila0: FILA0, enNomina: true,
   })
   console.log(`grilla: ${g.filas.length} filas × ${ANCHO} columnas · motor sobre ${meses.length} mes(es) (${meses[0]?.periodo} → ${meses[meses.length - 1]?.periodo})`)
   const aMano = g.filas.filter((f) => f[2] === '').length
@@ -1875,7 +1939,7 @@ async function main() {
   // A:M— la pestaña que está en Drive queda cortada justo antes de la columna donde el dueño tiene
   // sus fechas: no se leen, no se recuperan, y la escritura las tapa. Se leen tres columnas de más:
   // cuestan nada y son la diferencia entre recuperar su trabajo y perderlo por cuarta vez.
-  const previoAncho = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:P400`)
+  const previoAncho = soloBloque(await google.readSheetValues(ID, `'${PESTAÑA}'!A1:P800`))
   const previo = (previoAncho ?? []).map((f) => (f ?? []).slice(0, ANCHO))
 
   // ═══ LAS FECHAS DEL DUEÑO SE RECUPERAN POR QUINCENA, Y RECIÉN AHÍ SE LIMPIA LO VIEJO ═══
@@ -1940,10 +2004,10 @@ async function main() {
 
   // Una celda COMBINADA se traga la escritura en silencio: ni error ni valor.
   await google.spreadsheetBatchUpdate(ID, [
-    { unmergeCells: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: Math.max(g.filas.length + 20, hoja.rows ?? 0), startColumnIndex: 0, endColumnIndex: Math.max(ANCHO, hoja.cols ?? ANCHO) } } },
+    { unmergeCells: { range: { sheetId: hoja.sheetId, startRowIndex: FILA0, endRowIndex: Math.max(g.filas.length + 20, hoja.rows ?? 0), startColumnIndex: 0, endColumnIndex: ANCHO } } },
   ]).catch(() => {})
 
-  const { grid, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTAÑA, g.filas, previo)
+  const { grid, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, CLAVE_REGISTRO, g.filas, previo)
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
 
   // ═══ LA COLUMNA "Pagado el" ES DEL DUEÑO: SE COPIA DE LA PESTAÑA, NO SE GENERA (31/07) ═══
@@ -2016,7 +2080,9 @@ async function main() {
   // Sociales la última columna sí es de prosa; en esta pestaña es la del dueño, y esta llamada era la
   // segunda vía del mismo borrado que el push() de la mañana (d3c165b). Se retira: las fechas del
   // dueño ya viajan en la grilla por la copia de arriba, y la prosa de esta pestaña no existe.
-  const escritura = await escribirPreservando(google, ID, `'${PESTAÑA}'`, grid, { respetar: false /* la Regla 0 ya se aplicó arriba, a mano: este generador guarda el registro DESPUÉS de releer la pestaña, que es más fiel que hacerlo antes de escribir */, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  // SÓLO EL BLOQUE: desde la fila del registro, A..M. Las secciones 1–6 de «Nómina» y sus columnas N..Q
+  // no están en la grilla que se manda.
+  const escritura = await escribirPreservando(google, ID, `'${PESTAÑA}'`, grid.slice(FILA0), { fila0: FILA0 + 1, respetar: false /* la Regla 0 ya se aplicó arriba, a mano */, anchoHoja: ANCHO, pestana: PESTAÑA, guardas: await guardasDelRegistro() })
   // ═══ SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07) ═══
   //
   // El defecto que arruinó CAJA, buscado en todos los generadores y encontrado en seis. La guarda hace
@@ -2034,12 +2100,12 @@ async function main() {
   const { conservadas } = salteada ? { conservadas: [] } : escritura
   if (conservadas.length) console.log(`✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
-  if (!salteada) await formatear(google, hoja.sheetId, grid, g)
+  if (!salteada) await formatear(google, hoja.sheetId, grid, g, FILA0)
   if (!salteada) await publicarRangos(google, hoja.sheetId, g)
-  if (!salteada) await recortarGeometria(google, hoja, grid.length).catch((e) => console.warn(`  ⚠ no recorté la geometría: ${e.message}`))
+  // SIN RECORTE DE GEOMETRÍA: la pestaña es «Nómina» y sus columnas N..Q son del dueño.
 
   // ── VERIFICAR MIRANDO LA PESTAÑA ──
-  const v = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:${String.fromCharCode(64 + ANCHO)}${grid.length}`)
+  const v = soloBloque(await google.readSheetValues(ID, `'${PESTAÑA}'!A1:${String.fromCharCode(64 + ANCHO)}${grid.length}`))
   const errores = v.flat().filter((c) => /^#(REF|ERROR|N\/A|VALUE|VALOR|¿|¡|DIV|NAME|NUM|NULL)/i.test(String(c ?? '')))
   console.log(errores.length ? `⚠ ${errores.length} celda(s) en error: ${errores.slice(0, 3).join(' · ')}` : '✓ ninguna celda en error')
   // ═══ EL DEFECTO DE PATRÓN ES UN REPORTE, NO UN FALLO DE DATOS (14/08) ═══
@@ -2048,7 +2114,11 @@ async function main() {
   // mezclar "la pestaña está rota" con "la pestaña se lee mal", y el reporte pasa a NOMBRAR la fila
   // con lo que tiene adentro. Sin eso, `⚠ 1 defecto de patrón · fila-sin-concepto` obligaba a abrir el
   // archivo para saber de qué celda hablaba, y una celda que no se puede nombrar no se puede limpiar.
-  const { rotos, reporte } = clasificarDefectos(auditarPatron(v))
+  // El patrón se mide sobre el BLOQUE (sus filas no tienen el título y la fuente de una pestaña: los de
+  // «Nómina» están arriba) y los números de fila se devuelven a los de «Nómina».
+  const aNomina = (d) => ({ ...d, fila: d.fila > 0 ? d.fila + FILA0 : d.fila })
+  const auditado = clasificarDefectos(auditarPatron(v.slice(FILA0)).filter((d) => !['sin-titulo', 'sin-subtitulo', 'seccion-desordenada', 'anchos-mezclados'].includes(d.regla)))
+  const rotos = auditado.rotos.map(aNomina); const reporte = auditado.reporte.map(aNomina)
   if (rotos.length) console.log(`⚠ ${rotos.length} defecto(s) que ROMPEN el dato:`)
   for (const d of rotos.slice(0, 8)) console.log(`   fila ${d.fila} · ${d.regla} · ${d.detalle.slice(0, 110)}`)
   if (reporte.length) console.log(`📋 ${reporte.length} defecto(s) de patrón (REPORTE — los números están publicados, el cuadro se lee mal):`)
@@ -2071,7 +2141,7 @@ async function main() {
     console.log(`  ${String(f[0]).slice(0, 44).padEnd(46)}${cifras.map((c) => c.slice(0, 15).padStart(16)).join('')}`)
   }
 
-  await guardarRegistro(ID, PESTAÑA, grid, ediciones, v, candidatos).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
+  await guardarRegistro(ID, CLAVE_REGISTRO, grid, ediciones, v, candidatos).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
 
   // COBERTURA REAL DE JORNALES (24/07). La frescura de la fuente marcaba "cargada hasta el 08/07":
   // un valor manual viejo que hacía ver atrasada una planilla que SÍ tiene la 2da quincena de julio.
@@ -2455,8 +2525,50 @@ async function recortarGeometria(google, hoja, filasUsadas) {
   console.log(`geometría: ${hoja.cols}×${hoja.rows} → ${despues?.cols}×${despues?.rows} (la grilla usa ${ANCHO}×${filasUsadas})`)
 }
 
-async function formatear(google, sheetId, filas, g) {
-  await google.spreadsheetBatchUpdate(ID, requestsDeFormato(sheetId, filas, g))
+async function formatear(google, sheetId, filas, g, fila0 = 0) {
+  // `yaGuardado`: la guarda de formato compara contra la huella de formato de «Nómina», que dejaron la
+  // piel del dueño y `nomina-formato.mjs` (filas 1–96). El bloque —recortado arriba a sus filas— es de
+  // este generador: sin esto, cada quincena nueva corre el registro una fila y el formato no la sigue.
+  await google.spreadsheetBatchUpdate(ID, soloFilasDelBloque(requestsDeFormato(sheetId, filas, g), fila0), fila0 ? { yaGuardado: true } : {})
+}
+
+/**
+ * NÚCLEO PURO: los pedidos de formato recortados al bloque (filas >= `fila0`). Dentro de «Nómina» el
+ * registro no es dueño de la pestaña: fuera quedan los anchos de columna, las filas congeladas y todo
+ * lo que caiga arriba de su primera fila.
+ */
+export function soloFilasDelBloque(reqs = [], fila0 = 0) {
+  if (!fila0) return reqs
+  const out = []
+  const recortar = (r) => {
+    if (!r) return r
+    const a = r.startRowIndex ?? 0
+    const b = r.endRowIndex ?? Infinity
+    if (b <= fila0) return null
+    return { ...r, startRowIndex: Math.max(a, fila0) }
+  }
+  for (const q of reqs) {
+    if (q.updateSheetProperties || q.addBanding || q.updateBanding || q.deleteDimension || q.appendDimension || q.insertDimension) continue
+    if (q.updateDimensionProperties) {
+      const r = q.updateDimensionProperties.range
+      if (r.dimension !== 'ROWS') continue
+      const a = Math.max(r.startIndex ?? 0, fila0)
+      if ((r.endIndex ?? Infinity) <= a) continue
+      out.push({ updateDimensionProperties: { ...q.updateDimensionProperties, range: { ...r, startIndex: a } } })
+      continue
+    }
+    const k = Object.keys(q)[0]
+    const body = q[k]
+    if (body?.range) { const r = recortar(body.range); if (r) out.push({ [k]: { ...body, range: r } }); continue }
+    if (body?.rule?.ranges) {
+      const rs = body.rule.ranges.map(recortar).filter(Boolean)
+      if (rs.length) out.push({ [k]: { ...body, rule: { ...body.rule, ranges: rs } } })
+      continue
+    }
+    if (body?.cell || body?.rows) continue
+    out.push(q)
+  }
+  return out
 }
 
 /**
@@ -2650,8 +2762,10 @@ export function requestsDeFormato(sheetId, filas, g) {
   // formatean con el MISMO tipo que la columna de abajo, que es lo que las hace comparables de un
   // vistazo. Sin esta regla la fecha sale «$46.281» —el serial con signo de peso—.
   const cTit = (rotulo) => colDe(rotulo, REGISTRO_COLS).charCodeAt(0) - 65
-  fmt(g.fProxima - 1, g.fProxima, cTit('Se paga el'), cTit('Se paga el') + 1, { type: 'DATE', pattern: 'dd/mm/yyyy' })
-  fmt(g.fProxima - 1, g.fEfectivo, cTit('Banco'), cTit('Total') + 1, moneda)
+  if (g.fProxima) {
+    fmt(g.fProxima - 1, g.fProxima, cTit('Se paga el'), cTit('Se paga el') + 1, { type: 'DATE', pattern: 'dd/mm/yyyy' })
+    fmt(g.fProxima - 1, g.fEfectivo, cTit('Banco'), cTit('Total') + 1, moneda)
+  }
   const ENTERO = { type: 'NUMBER', pattern: '#,##0;-#,##0;"—"' }
   // EL "Ajuste escalón" DE LOS DOS BLOQUES MENSUALES, CON CUATRO DECIMALES Y EL MISMO PATRÓN. Iba con
   // "0.00" —heredado del ajuste por inflación del layout viejo— y un tramo de paritaria de +1,9% se
