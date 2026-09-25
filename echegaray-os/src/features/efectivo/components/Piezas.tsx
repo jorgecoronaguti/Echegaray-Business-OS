@@ -6,12 +6,13 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, type ReactNode } from 'react'
-import { V, eyebrow } from './estilo'
+import { TOQUE_TELEFONO, V, eyebrow } from './estilo'
 
 /** En un teléfono el panel ocupa la pantalla entera. `!` porque el ancho del diseño va inline. */
 // `[&>*]:shrink-0`: a pantalla entera el panel es una columna flex de alto fijo y, sin esto, sus hijos se
 // encogían en vez de scrollear — el buscador y «Elegí una compra» de «Imputar» medían 20 px (25/09).
-export const PANEL_CLASE = 'max-md:fixed max-md:inset-0 max-md:z-40 max-md:!w-full max-md:overflow-y-auto max-md:[&>*]:shrink-0'
+// Y todo lo que se toca adentro mide 44 en el teléfono (`TOQUE_TELEFONO`, en `estilo.ts`).
+export const PANEL_CLASE = `max-md:fixed max-md:inset-0 max-md:z-40 max-md:!w-full max-md:overflow-y-auto max-md:[&>*]:shrink-0 ${TOQUE_TELEFONO}`
 
 export function Cerrar({ titulo, bajada, href, antes }: { titulo: ReactNode; bajada?: ReactNode; href: string; antes?: ReactNode }) {
   const router = useRouter()

@@ -90,3 +90,11 @@ export const panel: CSSProperties = {
   width: ANCHO_PANEL, flexShrink: 0, background: '#FFFFFF', borderLeft: `1px solid ${V.lineaFuerte}`,
   padding: '26px 28px 30px', display: 'flex', flexDirection: 'column', gap: 22,
 }
+
+/**
+ * EN EL TELÉFONO TODO LO QUE SE TOCA MIDE 44 (auditoría por nivel, 25/09/2026): los campos y botones del
+ * diseño miden 34, que con el pulgar se falla. `min-height` le gana al `height` inline; en escritorio
+ * (`md` para arriba) no cambia nada. Vive acá y no en `Piezas` porque la ficha es componente de servidor
+ * y un valor importado de un módulo `'use client'` le llega como referencia, no como texto.
+ */
+export const TOQUE_TELEFONO = 'max-md:[&_button]:!min-h-11 max-md:[&_input]:!min-h-11 max-md:[&_select]:!min-h-11'

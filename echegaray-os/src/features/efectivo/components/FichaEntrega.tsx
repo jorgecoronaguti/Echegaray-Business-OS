@@ -17,7 +17,7 @@ import { QuitarAdelanto, ReclamarRendicion, SubirPapel } from './Botones'
 import { AvisosDeLaEntrega } from './Edicion'
 import { Firma } from './Firma'
 import { ALTO_V2, HOVER_FILA } from '@/shared/components/v2/patron'
-import { COLOR_TONO, FONDO_OBSERVADO, MONO, V, botonClaro, botonOscuro, cifraFicha, eyebrow, punto } from './estilo'
+import { COLOR_TONO, FONDO_OBSERVADO, MONO, TOQUE_TELEFONO, V, botonClaro, botonOscuro, cifraFicha, eyebrow, punto } from './estilo'
 
 /**
  * QUÉ PASÓ CON EL ÚLTIMO RECLAMO — dicho por su evidencia, no por la intención.
@@ -81,7 +81,7 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
     .map((c) => ({ c, frase: fraseDelCambio(c, n) }))
     .filter((x): x is { c: typeof x.c; frase: string } => x.frase != null)
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }} data-testid="ficha-entrega" data-codigo={e.codigo}>
+    <div className={TOQUE_TELEFONO} style={{ display: 'flex', flexDirection: 'column', gap: 22 }} data-testid="ficha-entrega" data-codigo={e.codigo}>
       {/* LO PRIMERO QUE SE LEE. Una prueba que se confunde con una entrega real ensucia el número de
           plata en la calle que alguien va a mirar para decidir. */}
       {esPrueba && (
