@@ -14,6 +14,7 @@
 // LOS DE LA TABLA: mismas filas, mismos filtros, mismo `forecast_fin`. Dos dibujos del mismo plazo
 // con dos reglas es la forma en que dos pantallas empiezan a contestar distinto sobre la misma obra.
 
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { CSSProperties } from 'react'
 import { C, MONO } from './canon/tokens'
@@ -206,7 +207,7 @@ export function CuerpoGantt({ grupos, lista, total, hoyIso, telefono, escala }: 
                 borderBottom: `1px solid ${C.borde}`, fontSize: '11.5px', fontWeight: 600, letterSpacing: '.02em', color: r.nombre ? C.tinta : C.tenue,
               }}>
                 {r.slug && r.nombre
-                  ? <a href={`/clientes/${r.slug}`} onClick={(ev) => ev.stopPropagation()} style={{ color: C.tinta, textDecoration: 'none' }}>{r.nombre}</a>
+                  ? <Link href={`/clientes/${r.slug}`} prefetch={false} onClick={(ev) => ev.stopPropagation()} style={{ color: C.tinta, textDecoration: 'none' }}>{r.nombre}</Link>
                   : <span>{r.nombre ?? SIN_CLIENTE}</span>}
                 <span style={{ fontFamily: MONO, fontSize: '11px', fontWeight: 400, color: C.tenue }}>{r.n}</span>
               </div>
@@ -224,8 +225,8 @@ export function CuerpoGantt({ grupos, lista, total, hoyIso, telefono, escala }: 
               hover={{ background: C.tenueFondo }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, padding: `0 14px 0 ${14 + (r.nivel ? 16 : 0)}px`, borderRight: `1px solid ${C.borde}`, lineHeight: 1.25 }}>
                 {r.nivel ? <span style={{ color: C.tenue }}>└</span> : null}
-                <a href={hrefDe(o.obra_id)} onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); router.push(hrefDe(o.obra_id)) }} title={`${rotuloDeObra(o)} · ${e.t}`}
-                  style={{ color: C.tinta, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{rotuloDeObra(o)}</a>
+                <Link href={hrefDe(o.obra_id)} prefetch={false} onClick={(ev) => ev.stopPropagation()} title={`${rotuloDeObra(o)} · ${e.t}`}
+                  style={{ color: C.tinta, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{rotuloDeObra(o)}</Link>
               </div>
               {b == null || b.fueraDeVentana
                 ? (
