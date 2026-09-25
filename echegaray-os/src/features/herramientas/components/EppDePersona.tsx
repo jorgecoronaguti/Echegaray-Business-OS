@@ -31,6 +31,8 @@ import { diaMesAnio } from './formato'
 
 const MONO = "'IBM Plex Mono', ui-monospace, monospace"
 const rotulo = { fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: V.tenue, textTransform: 'uppercase' as const }
+// Alto de CONTROL (campo/botón), no de fila de lista: ritmo de panel, no `ALTO_V2`. El canvas mide
+// filas de tabla, no botones ni inputs de un formulario suelto dentro de un panel sin alto fijo.
 const campo = { height: 36, padding: '0 10px', border: `1px solid ${V.lineaFuerte}`, borderRadius: 6, fontSize: '13px', color: V.tinta, background: '#FFFFFF' }
 const primario = { height: 36, padding: '0 14px', borderRadius: 6, background: V.marca, color: V.tinta, fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap' as const }
 const secundario = { height: 36, padding: '0 12px', borderRadius: 6, border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta, fontSize: '13px', whiteSpace: 'nowrap' as const }
@@ -312,6 +314,7 @@ function FormEntrega({ clase, catalogo, personaId, talles, tallerId, onCerrar }:
           <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Talle">
             {prenda.talles.map((t) => {
               const on = t.activoId === activoId
+              // Alto de CONTROL (chip de talle), no de fila: ritmo de panel, no `ALTO_V2`.
               return (
                 <button key={t.activoId} type="button" role="radio" aria-checked={on} onClick={() => { setElegido(t.activoId); setOrigen(null); setContado('') }}
                   data-testid="entrega-talle"
