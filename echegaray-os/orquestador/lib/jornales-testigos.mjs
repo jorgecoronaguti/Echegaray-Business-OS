@@ -201,11 +201,32 @@ export const ATRASO_MAXIMO = 31
  *
  * @returns {string|null} el motivo si es imposible, `null` si la fecha es creíble
  */
+/** Día de la semana de un serial de Sheets (0 = domingo … 6 = sábado). El serial 0 es un sábado. */
+const diaSemana = (serial) => (6 + Math.floor(serial)) % 7
+const esFinDeSemana = (serial) => [0, 6].includes(diaSemana(serial))
+
+/**
+ * NÚCLEO PURO: ¿un pago ANTES del cierre es el pago adelantado al último día hábil? (25/09/2026)
+ *
+ * El banco probó dos quincenas pagadas el viernes y cerradas el sábado (15/05 con cierre 16/05, 14/08
+ * con cierre 15/08) y esta aritmética las declaraba imposibles: el libro las corría a la fecha prevista
+ * (18/05 y 17/08) y la plata caía en la semana equivocada. Regla aprobada por el dueño: hasta DOS días
+ * antes del cierre vale si el cierre cae sábado o domingo, o si el día pagado es el último hábil antes
+ * del cierre. Todo lo demás antes del cierre sigue siendo imposible.
+ */
+export function pagoAnticipadoPorFinDeSemana(pagado, cierre) {
+  const d = cierre - pagado
+  if (!(d >= 1 && d <= 2) || esFinDeSemana(pagado)) return false
+  if (esFinDeSemana(cierre)) return true
+  for (let x = pagado + 1; x < cierre; x++) if (!esFinDeSemana(x)) return false
+  return true
+}
+
 export function fechaImposible({ pagado, hasta, pago } = {}) {
   const p = num(pagado)
   if (p === null) return null
   const cierre = num(hasta)
-  if (cierre !== null && p < cierre) {
+  if (cierre !== null && p < cierre && !pagoAnticipadoPorFinDeSemana(p, cierre)) {
     return `dice pagada el ${isoDeSerial(p)} y la quincena cierra el ${isoDeSerial(cierre)}: no se paga antes de trabajarse`
   }
   const prevista = num(pago) ?? cierre

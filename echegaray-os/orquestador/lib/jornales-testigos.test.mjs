@@ -6,7 +6,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  lotesDeHaberes, combinacionUnica, testigoDeQuincena, fechaImposible, VEREDICTO, GRITAN,
+  lotesDeHaberes, combinacionUnica, testigoDeQuincena, fechaImposible, pagoAnticipadoPorFinDeSemana, VEREDICTO, GRITAN,
 } from './jornales-testigos.mjs'
 import { NAT } from './banco-santander.mjs'
 
@@ -136,4 +136,19 @@ test('lotes: sólo los débitos de naturaleza Sueldos, y nunca uno ya reclamado 
   const usados = new Set([234])
   assert.equal(lotesDeHaberes(debitos, { usados }).get(46220).filas.length, 14,
     'un débito respalda a UN movimiento: si no, la misma plata paga dos veces')
+})
+
+test('un pago del VIERNES sobre una quincena que cierra el SÁBADO no es imposible: lo probó el banco (25/09/2026)', () => {
+  const S = (y, m, d) => Math.round(Date.UTC(y, m - 1, d) / 86400000) + 25569
+  // Nómina M110: 04–16/05 (sábado), pagada el viernes 15/05 — certificado Santander $489.600.
+  assert.equal(fechaImposible({ pagado: S(2026, 5, 15), hasta: S(2026, 5, 16), pago: S(2026, 5, 18) }), null)
+  // Nómina M116: 03–15/08 (sábado), pagada el viernes 14/08 — certificado Santander 14 × $260.000.
+  assert.equal(fechaImposible({ pagado: S(2026, 8, 14), hasta: S(2026, 8, 15), pago: S(2026, 8, 17) }), null)
+  // Último hábil antes de un cierre en día hábil: vale; el que no lo es, no.
+  assert.equal(pagoAnticipadoPorFinDeSemana(S(2026, 4, 14), S(2026, 4, 15)), true) // mar → mié
+  assert.equal(pagoAnticipadoPorFinDeSemana(S(2026, 4, 13), S(2026, 4, 15)), false) // lun → mié: hay un hábil en el medio
+  // Lo de siempre sigue siendo imposible: dos semanas antes del cierre, o un sábado.
+  assert.match(fechaImposible({ pagado: S(2026, 3, 2), hasta: S(2026, 3, 14), pago: S(2026, 3, 16) }), /no se paga antes de trabajarse/)
+  assert.match(fechaImposible({ pagado: S(2026, 3, 16), hasta: S(2026, 3, 31), pago: S(2026, 4, 1) }), /no se paga antes de trabajarse/)
+  assert.equal(pagoAnticipadoPorFinDeSemana(S(2026, 5, 16), S(2026, 5, 17)), false, 'un pago en sábado no es el último hábil')
 })
