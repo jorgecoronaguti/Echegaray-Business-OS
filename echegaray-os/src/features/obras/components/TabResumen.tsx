@@ -46,7 +46,7 @@ import {
 import type { PersonasDeHoy } from '../services/personalService'
 import type { Asignacion } from '../types'
 import type { BloqueOrdenes } from '../services/ordenesDeLaObra'
-import { fecha, fechaCorta, plataMillones } from './formato'
+import { fechaCorta, fechaLarga, plataMillones } from './formato'
 
 /** 03: «31 de 42 ítems medidos» bajo el avance, como el diseño; sin cifra, la bajada que dice por qué. */
 function bajadaResumen(a: AvancePonderado | null): string {
@@ -151,7 +151,7 @@ function OrdenesTelefono({ ordenes, veComercial }: { ordenes: BloqueOrdenes; veC
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
                 <div><span style={{ fontWeight: 500 }}>{o.rotulo}</span></div>
                 <div style={{ fontSize: '12px', color: C.tintaSuave }}>
-                  {o.fecha ? fecha(o.fecha) : <SinDato>sin fecha</SinDato>}{' · '}{o.enDrive ? 'PDF en Drive' : 'PDF en el OS'}
+                  {o.fecha ? fechaLarga(o.fecha) : <SinDato>sin fecha</SinDato>}{' · '}{o.enDrive ? 'PDF en Drive' : 'PDF en el OS'}
                 </div>
               </div>
               <div style={{ flexShrink: 0, textAlign: 'right', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end', fontVariantNumeric: 'tabular-nums' }}>
@@ -322,10 +322,10 @@ export function TabResumen({
               {veComercial && (
                 <FilaKV k="Contratado" v={obra.monto_contratado != null ? plataMillones(obra.monto_contratado) : <SinDato>sin cargar</SinDato>} />
               )}
-              <FilaKV k="Inicio real" v={obra.fecha_inicio_real ? fecha(obra.fecha_inicio_real) : inicioRespaldo ? `${fecha(inicioRespaldo.fecha)} · ${inicioRespaldo.origen}` : <SinDato>sin arrancar</SinDato>} />
-              <FilaKV k="Fin plan" v={obra.fecha_fin_plan ? fecha(obra.fecha_fin_plan) : <SinDato>sin plan</SinDato>} />
+              <FilaKV k="Inicio real" v={obra.fecha_inicio_real ? fechaLarga(obra.fecha_inicio_real) : inicioRespaldo ? `${fechaLarga(inicioRespaldo.fecha)} · ${inicioRespaldo.origen}` : <SinDato>sin arrancar</SinDato>} />
+              <FilaKV k="Fin plan" v={obra.fecha_fin_plan ? fechaLarga(obra.fecha_fin_plan) : <SinDato>sin plan</SinDato>} />
               <FilaKV k="Fin proyectado" tono={finProyectadoTarde ? 'warn' : 'ink'}
-                v={obra.forecast_fin ? fecha(obra.forecast_fin) : <SinDato>sin proyección</SinDato>} />
+                v={obra.forecast_fin ? fechaLarga(obra.forecast_fin) : <SinDato>sin proyección</SinDato>} />
               <FilaKV k="Origen de las fechas" tam={12.5}
                 v={obra.origen_fechas_plan ? <span style={{ color: C.tintaMedia }}>{obra.origen_fechas_plan}</span> : <SinDato>sin fechas</SinDato>} />
             </div>
@@ -345,7 +345,7 @@ export function TabResumen({
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px' }}>
                         <span style={{ fontWeight: 500 }}>{o.rotulo}</span>
                         <span style={{ fontFamily: MONO, fontSize: '12.5px', color: C.tintaSuave }}>
-                          {o.fecha ? fecha(o.fecha) : <SinDato>sin fecha</SinDato>}
+                          {o.fecha ? fechaLarga(o.fecha) : <SinDato>sin fecha</SinDato>}
                         </span>
                       </div>
                       <div style={{ fontSize: '12.5px', color: C.tintaSuave }}>
@@ -405,7 +405,11 @@ export function TabResumen({
             valor={veComercial && economia?.costo_real != null ? plataMillones(economia.costo_real) : null}
             falta={veComercial ? 'sin comprobantes' : 'no lo ve tu nivel'}
             bajada={veComercial && economia?.costo_real_n_comprobantes != null ? `${economia.costo_real_n_comprobantes} comprobantes` : ''} />
-          <CifraGrande tam={24} rotulo="Personas hoy" valor={personas.valor} falta={personas.falta} bajada={personas.bajada} />
+          {/* M04: «12 de 14» — el «de 14» en 13px tenue al lado de la cifra, no del mismo tamaño. */}
+          <CifraGrande tam={24} rotulo="Personas hoy" falta={personas.falta} bajada={personas.bajada}
+            valor={typeof personas.valor === 'string' && personas.valor.includes(' de ')
+              ? <>{personas.valor.split(' de ')[0]}<span style={{ fontSize: '13px', fontWeight: 400, color: C.tintaSuave, letterSpacing: 0 }}> de {personas.valor.split(' de ')[1]}</span></>
+              : personas.valor} />
           {/* HH sí; Asignados no: «Personas hoy · N de M» ya dice cuántos hay asignados. */}
           <CifraGrande tam={24} rotulo={hh.rotulo} valor={hh.valor} falta={hh.falta} bajada={hh.bajada} />
         </div>

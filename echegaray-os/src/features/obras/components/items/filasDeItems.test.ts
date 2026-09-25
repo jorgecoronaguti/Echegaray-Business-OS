@@ -78,6 +78,9 @@ test('cada historia pesa por su costo de MO y sus tareas se lo reparten parejo',
   assert.ok(Math.abs(por.get('H1')!.avanceObra! - 56) < 1e-9)
   assert.equal(por.get('H1')!.pctItem, 70)
   assert.ok(Math.abs(por.get('R')!.avanceObra! - 56) < 1e-9)
+  // Rubro y épica pesan lo que cuelga y su % sale de ahí: nunca «sin avance» con tareas medidas.
+  assert.ok(Math.abs(por.get('E')!.peso! - 0.8) < 1e-9)
+  assert.ok(Math.abs(por.get('R')!.pctItem! - 70) < 1e-9)
   // Días, plan, uni·cant, subtareas plegadas
   assert.equal(por.get('T1')!.plan, '08/09–12/09')
   assert.equal(por.get('T1')!.diasTeoricos, 4)

@@ -16,7 +16,7 @@
 import { useState } from 'react'
 import { C, MONO } from '../canon/tokens'
 import { Ico, P } from '../canon/Ico'
-import { gruposTelefono, type FilaItem } from './filasDeItems'
+import { faltaDeContenedor, gruposTelefono, type FilaItem } from './filasDeItems'
 
 const pct = (n: number | null) => n == null ? null : `${n.toLocaleString('es-AR', { maximumFractionDigits: 0 })}%`
 
@@ -76,7 +76,7 @@ export function ListaItems({ filas, query, alBuscar, filtrosActivos, alAbrirFilt
                 <span style={{ fontWeight: 600 }}>{g.nombre}</span>
                 <span style={{ fontFamily: MONO, fontSize: '11px', color: C.tenue }}>{g.n}</span>
                 <span style={{ marginLeft: 'auto', fontSize: '12px', color: g.pct == null ? C.tenue : C.tintaSuave, fontStyle: g.pct == null ? 'italic' : 'normal' }}>
-                  {g.pct == null ? 'sin avance' : pct(g.pct)}
+                  {g.pct == null ? faltaDeContenedor(g.peso) : pct(g.pct)}
                 </span>
               </button>
               {abierto && g.filas.map((f) => (

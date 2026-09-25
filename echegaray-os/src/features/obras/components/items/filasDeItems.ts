@@ -159,9 +159,15 @@ export function filasDeItems(
     const hijas = hijos.get(n.id) ?? []
     const propio = estadoDerivado(parteDe.get(n.id))
     const r = parteDe.get(n.id)
-    const peso = pesoDe(n)
     const hist = historiaDe.get(n.id)
     const filasHijas = hijas.map(armar)
+    // RUBRO Y ÉPICA PESAN LA SUMA DE LO QUE CUELGA (especificación §2: «peso_epica = Σ peso de sus
+    // historias; peso_rubro = Σ peso de sus épicas»). Sin esto el rubro no tenía peso, su avance daba
+    // «sin avance» con todas sus tareas al 100 % (Quattropani, 25/09), en la PC y en el teléfono.
+    const conPeso = filasHijas.filter((x) => x.peso != null)
+    const peso = niv === 'rubro' || niv === 'epica'
+      ? (conPeso.length > 0 ? conPeso.reduce((s, x) => s + (x.peso ?? 0), 0) : null)
+      : pesoDe(n)
     const subtareas = filasHijas.filter((f) => f.nivel === 'subtarea')
 
     let pctItem: number | null = propio.pct
@@ -304,14 +310,20 @@ export function agruparFilas(filas: readonly FilaItem[], modo: Agrupar): FilaIte
 }
 
 /** Los grupos del teléfono (M05): cada rubro con sus hojas, el conteo y el % agregado. */
-export interface GrupoTelefono { id: string; nombre: string; n: number; pct: number | null; filas: FilaItem[] }
+export interface GrupoTelefono { id: string; nombre: string; n: number; pct: number | null; peso?: number | null; filas: FilaItem[] }
+
+/** El % de un contenedor sin cifra: «no pesa» cuando nada de lo que cuelga tiene costo de MO (diseño
+ *  MB1 «sin costo · no pesa»); «sin avance» cuando pesa pero nada se midió. Nunca 0 %. */
+export function faltaDeContenedor(peso: number | null | undefined): string {
+  return peso == null ? 'sin costo · no pesa' : 'sin avance'
+}
 
 export function gruposTelefono(filas: readonly FilaItem[]): GrupoTelefono[] {
   const grupos: GrupoTelefono[] = []
   let actual: GrupoTelefono | null = null
   for (const f of filas) {
     if (f.profundidad === 0) {
-      actual = { id: f.id, nombre: f.nombre, n: 0, pct: f.pctItem, filas: [] }
+      actual = { id: f.id, nombre: f.nombre, n: 0, pct: f.pctItem, peso: f.peso, filas: [] }
       grupos.push(actual)
       continue
     }

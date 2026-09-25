@@ -180,7 +180,8 @@ export function ChipsCartera({ filtro, setFiltro, cuentas, sinImpedimentos, tele
   )
 }
 
-/** La primaria «Nueva obra»: 32px arriba a la derecha (01) · 48px al pie sobre la barra (M01). */
+/** La primaria «Nueva obra»: 32px arriba a la derecha (01). En el teléfono ya no se usa: ahí es un enlace
+ *  chico al pie de la lista (dueño 25/09). */
 export function PrimariaNuevaObra({ telefono }: { telefono: boolean }) {
   const boton = (
     <Link href="/obras/nueva" prefetch={false} data-testid="alta-obra-nueva" style={estiloPrimaria(telefono)}><Ico d={P.mas} s={telefono ? 15 : 13} />Nueva obra</Link>
@@ -246,7 +247,7 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
 
   if (telefono) {
     return (
-      <div style={{ background: C.superficie, padding: '16px', paddingBottom: esAdmin ? '96px' : '16px', display: 'flex', flexDirection: 'column', gap: '18px' }}
+      <div style={{ background: C.superficie, padding: '16px', display: 'flex', flexDirection: 'column', gap: '18px' }}
         data-testid="portafolio-tabla">
         <div style={ENCABEZADO_FIJO_TELEFONO} data-testid="encabezado-cartera">
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
@@ -268,7 +269,14 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
           </div>
         )}
         {sinDatoLinea}
-        {esAdmin && <PrimariaNuevaObra telefono />}
+        {/* EN EL TELÉFONO «NUEVA OBRA» ES UN ENLACE CHICO AL PIE DE LA LISTA, sólo para Administración
+            (dueño 25/09: «no se usa mucho y molesta porque es gigante»). La PC conserva la primaria. */}
+        {esAdmin && (
+          <Link href="/obras/nueva" prefetch={false} data-testid="alta-obra-nueva" style={{
+            alignSelf: 'flex-start', minHeight: '44px', display: 'inline-flex', alignItems: 'center', gap: '6px',
+            fontSize: '13px', color: C.tintaSuave, textDecoration: 'none',
+          }}><Ico d={P.mas} s={13} />Nueva obra</Link>
+        )}
       </div>
     )
   }

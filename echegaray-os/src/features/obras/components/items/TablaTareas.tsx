@@ -16,7 +16,7 @@
 
 import Link from 'next/link'
 import { C, MONO } from '../canon/tokens'
-import type { FilaItem } from './filasDeItems'
+import { faltaDeContenedor, type FilaItem } from './filasDeItems'
 
 export const COLS_TAREAS = 'minmax(0,1fr) 110px 150px 110px 64px 120px'
 
@@ -101,7 +101,7 @@ export function TablaTareas({ filas, hhPor, abierta, alAbrir, vacio, hrefItems }
                   <span style={{ fontSize: '11.5px', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: C.tinta, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.nombre}</span>
                 </div>
                 <div style={{ fontSize: '12px', color: C.tenue }}>resumen</div>
-                <div style={{ fontSize: '13px', color: f.pctItem == null ? C.tenue : C.tinta }}>{f.pctItem == null ? 'sin avance' : pct(f.pctItem)}</div>
+                <div style={{ fontSize: '13px', color: f.pctItem == null ? C.tenue : C.tinta }}>{f.pctItem == null ? faltaDeContenedor(f.peso) : pct(f.pctItem)}</div>
                 <div />
                 <div style={{ textAlign: 'right', fontSize: '13px', color: hh == null ? C.tenue : C.tinta }}>{hh == null ? 'sin HH' : hhTxt(hh)}</div>
                 <div />
