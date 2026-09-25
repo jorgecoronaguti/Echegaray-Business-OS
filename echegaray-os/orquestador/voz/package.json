@@ -1,0 +1,9 @@
+{
+  "name": "echegaray-os-voz",
+  "private": true,
+  "description": "Runtime de transcripción local de «Dictar parte» (sherpa-onnx, Apache-2.0). Vive aparte del package.json de la app para que el build de Next y Vercel no bajen 32 MB de binarios nativos que sólo usa la VM. Instalar con: npm ci --prefix orquestador/voz",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "sherpa-onnx-node": "1.13.8"
+  }
+}

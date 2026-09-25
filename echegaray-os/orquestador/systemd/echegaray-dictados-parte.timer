@@ -1,0 +1,14 @@
+[Unit]
+# CADA 15 s, como la cola de comprobantes: del otro lado hay un jefe mirando «Escuchando lo que dijiste».
+# Una vuelta sin audios pregunta a la base y sale en ~1 s, sin cargar el modelo. `OnUnitInactiveSec`
+# garantiza que nunca corren dos a la vez.
+Description=Echegaray OS - Dictar parte (cada 15 s)
+
+[Timer]
+OnBootSec=120s
+OnUnitInactiveSec=15s
+AccuracySec=1s
+Unit=echegaray-dictados-parte.service
+
+[Install]
+WantedBy=timers.target

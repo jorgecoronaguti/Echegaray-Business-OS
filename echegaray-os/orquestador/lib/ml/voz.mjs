@@ -119,3 +119,189 @@ export async function transcribirParte(audio, { motor = null } = {}) {
   const texto = String(r?.text ?? '').trim()
   return { ...interpretarParte(texto), texto, ms: Date.now() - t0, modelo: MODELO.id, revision: MODELO.revision }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// DICTAR PARTE (25/09/2026) — parakeet-tdt-0.6b-v3 int8 con sherpa-onnx, LOCAL en la VM.
+//
+// ═══ POR QUÉ ESTE MODELO Y NO WHISPER-BASE ═══
+//
+// Whisper local nunca pudo recibir un audio: `transformers.js` en Node exige Float32 y la VM no tiene
+// ffmpeg ni decodificador de Opus. Dictar parte resuelve eso DEL LADO DEL NAVEGADOR: graba PCM mono
+// de 16 kHz y lo arma como WAV, así que acá sólo hay que leer un WAV (`leerWav`, sin dependencias).
+// Parakeet con sherpa-onnx se midió hoy en esta VM sobre un parte sintético: RTF 0,14 (un minuto de
+// audio en ~8 s), ~1,1 GB de RAM mientras transcribe, WER 8,8 %. Es 3,6 veces el disco de
+// whisper-base (670 MB), y por eso se carga SÓLO cuando hay un audio en la cola y se suelta al
+// terminar la vuelta: no vive en memoria junto al chat.
+//
+// ═══ LICENCIA Y ATRIBUCIÓN (CC-BY-4.0) ═══
+//
+// «parakeet-tdt-0.6b-v3» es de NVIDIA, publicado bajo Creative Commons Attribution 4.0
+// (https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3). La exportación ONNX int8 que se usa es de
+// Fangjun Kuang (k2-fsa/sherpa-onnx), repo `csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8`,
+// revisión fijada abajo. CC-BY-4.0 permite uso comercial con atribución; la atribución es este
+// bloque y `MODELO_DICTADO.atribucion`. sherpa-onnx es Apache-2.0.
+//
+// ═══ LA REVISIÓN ESTÁ FIJADA, Y SE VERIFICA ═══
+//
+// Los pesos se instalan con `scripts/voz-instalar-modelo.mjs`, que baja esa revisión exacta (o copia
+// una carpeta local) y controla el sha256 de cada archivo contra `MODELO_DICTADO.archivos`. Un peso
+// que no coincide no se usa: `verificarModelo` lo dice antes de tomar un audio de la cola.
+
+import { createRequire } from 'node:module'
+import { existsSync, statSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+
+export const MODELO_DICTADO = Object.freeze({
+  id: 'csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8',
+  revision: '2bda32ec70b097a55adaa07d9a7173915b43cc78',
+  base: 'nvidia/parakeet-tdt-0.6b-v3',
+  licencia: 'CC-BY-4.0',
+  atribucion: 'parakeet-tdt-0.6b-v3 © NVIDIA, CC-BY-4.0 (https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3); exportación ONNX int8 de k2-fsa/sherpa-onnx (Apache-2.0)',
+  runtime: 'sherpa-onnx-node@1.13.8',
+  discoMb: 670,
+  ramMb: 1100,
+  hilos: 2,
+  archivos: Object.freeze({
+    'encoder.int8.onnx': 'acfc2b4456377e15d04f0243af540b7fe7c992f8d898d751cf134c3a55fd2247',
+    'decoder.int8.onnx': '179e50c43d1a9de79c8a24149a2f9bac6eb5981823f2a2ed88d655b24248db4e',
+    'joiner.int8.onnx': '3164c13fc2821009440d20fcb5fdc78bff28b4db2f8d0f0b329101719c0948b3',
+    'tokens.txt': 'd58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d',
+  }),
+})
+
+/** Dónde viven los pesos instalados. Una carpeta por revisión: cambiar de revisión no pisa la vieja. */
+export function carpetaDelModelo(env = process.env) {
+  if (env.ORQ_VOZ_MODELO_DIR) return env.ORQ_VOZ_MODELO_DIR
+  return join(homedir(), '.local/share/echegaray-os/modelos', MODELO_DICTADO.id.split('/')[1], MODELO_DICTADO.revision.slice(0, 12))
+}
+
+/** Dónde está `sherpa-onnx-node`: su propio `package.json` en `orquestador/voz/`, fuera del build de Next. */
+export function carpetaDelRuntime(env = process.env) {
+  return env.ORQ_VOZ_RUNTIME ?? new URL('../../voz/', import.meta.url).pathname
+}
+
+/** Qué falta para poder transcribir. Se pregunta ANTES de tomar un audio de la cola. */
+export function verificarModelo(env = process.env) {
+  const falta = []
+  const dir = carpetaDelModelo(env)
+  for (const f of Object.keys(MODELO_DICTADO.archivos)) {
+    if (!existsSync(join(dir, f))) falta.push(`el peso ${f} en ${dir} (instalar con voz-instalar-modelo.mjs)`)
+  }
+  if (!existsSync(join(carpetaDelRuntime(env), 'node_modules/sherpa-onnx-node/package.json'))) {
+    falta.push('sherpa-onnx-node (npm ci --prefix orquestador/voz)')
+  }
+  // Lo que instala el script deja una constancia de que verificó los hash; sin ella, no se usa.
+  if (!falta.length && !existsSync(join(dir, 'VERIFICADO'))) falta.push(`la constancia de sha256 en ${dir} (reinstalar)`)
+  return falta
+}
+
+/**
+ * EL WAV DEL NAVEGADOR → muestras Float32 en [-1, 1]. Sin dependencias: PCM de 16 bits, mono o
+ * estéreo (se mezcla), cualquier frecuencia (sherpa remuestrea). Lo que no es eso se rechaza con un
+ * motivo en castellano: un WAV raro no puede colgar la cola.
+ * @param {Buffer|Uint8Array} buf
+ */
+export function leerWav(buf) {
+  const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf)
+  if (b.length < 44 || b.toString('ascii', 0, 4) !== 'RIFF' || b.toString('ascii', 8, 12) !== 'WAVE') {
+    return { ok: false, error: 'el audio no es un WAV' }
+  }
+  let off = 12, fmt = null, data = null
+  while (off + 8 <= b.length) {
+    const id = b.toString('ascii', off, off + 4)
+    let tam = b.readUInt32LE(off + 4)
+    const ini = off + 8
+    // El navegador que corta la grabación puede dejar el tamaño del bloque de datos en 0 o de más.
+    if (id === 'data' && (tam === 0 || ini + tam > b.length)) tam = b.length - ini
+    if (id === 'fmt ') fmt = { formato: b.readUInt16LE(ini), canales: b.readUInt16LE(ini + 2), frecuencia: b.readUInt32LE(ini + 4), bits: b.readUInt16LE(ini + 14) }
+    if (id === 'data') { data = b.subarray(ini, ini + tam); break }
+    off = ini + tam + (tam % 2)
+  }
+  if (!fmt || !data) return { ok: false, error: 'el WAV no tiene formato o datos' }
+  if (fmt.formato !== 1 || fmt.bits !== 16) return { ok: false, error: `el WAV no es PCM de 16 bits (formato ${fmt.formato}, ${fmt.bits} bits)` }
+  if (fmt.canales < 1 || fmt.canales > 2) return { ok: false, error: `el WAV tiene ${fmt.canales} canales` }
+  const n = Math.floor(data.length / (2 * fmt.canales))
+  const muestras = new Float32Array(n)
+  for (let i = 0; i < n; i++) {
+    let s = 0
+    for (let c = 0; c < fmt.canales; c++) s += data.readInt16LE((i * fmt.canales + c) * 2)
+    muestras[i] = s / fmt.canales / 32768
+  }
+  return { ok: true, muestras, frecuencia: fmt.frecuencia, segundos: n / fmt.frecuencia }
+}
+
+/**
+ * CARGA PARAKEET. Perezosa y una por vuelta del worker: 670 MB no se pagan si la cola está vacía.
+ * `hilos` = 2 de los 4 núcleos: el chat y Postgres viven en la misma VM.
+ */
+export function cargarDictado({ env = process.env, hilos = MODELO_DICTADO.hilos } = {}) {
+  const req = createRequire(join(carpetaDelRuntime(env), 'package.json'))
+  const sherpa = req('sherpa-onnx-node')
+  const dir = carpetaDelModelo(env)
+  const t0 = Date.now()
+  const reconocedor = new sherpa.OfflineRecognizer({
+    featConfig: { sampleRate: 16000, featureDim: 80 },
+    modelConfig: {
+      transducer: { encoder: join(dir, 'encoder.int8.onnx'), decoder: join(dir, 'decoder.int8.onnx'), joiner: join(dir, 'joiner.int8.onnx') },
+      tokens: join(dir, 'tokens.txt'), numThreads: hilos, provider: 'cpu', modelType: 'nemo_transducer',
+    },
+  })
+  return { reconocedor, msCarga: Date.now() - t0, modelo: `${MODELO_DICTADO.id}@${MODELO_DICTADO.revision.slice(0, 12)}` }
+}
+
+/** El tramo más largo que se decodifica de una vez. Ver `tramosDeAudio`. */
+export const SEGUNDOS_POR_TRAMO = 25
+
+/**
+ * PARTIR EL AUDIO EN TRAMOS DE HASTA 25 s, CORTANDO EN UN SILENCIO.
+ *
+ * Medido el 25/09/2026: un WAV de 3 minutos decodificado de una sola vez pasó los 2,1 GB de RSS (la
+ * atención del codificador crece con el largo) y quedó frenado por el techo de memoria. En tramos de
+ * 25 s el pico queda en el del modelo cargado. El corte se busca en los últimos 5 s de cada tramo, en
+ * la ventana de 100 ms con menos energía: cortar en medio de una palabra la parte en dos y ninguna se
+ * reconoce. Puro: devuelve índices [desde, hasta) sobre las muestras.
+ */
+export function tramosDeAudio(muestras, frecuencia, { maximo = SEGUNDOS_POR_TRAMO, holgura = 5 } = {}) {
+  const n = muestras.length
+  const largo = Math.floor(maximo * frecuencia)
+  if (n <= largo) return [[0, n]]
+  const ventana = Math.max(1, Math.floor(frecuencia / 10))
+  const out = []
+  let desde = 0
+  while (n - desde > largo) {
+    const tope = desde + largo
+    let corte = tope, menor = Infinity
+    for (let v = tope - Math.floor(holgura * frecuencia); v + ventana <= tope; v += ventana) {
+      let e = 0
+      for (let i = v; i < v + ventana; i++) e += muestras[i] * muestras[i]
+      if (e < menor) { menor = e; corte = v + Math.floor(ventana / 2) }
+    }
+    out.push([desde, corte])
+    desde = corte
+  }
+  out.push([desde, n])
+  return out
+}
+
+/** WAV → texto. El audio no sale de la VM. Se decodifica por tramos (ver `tramosDeAudio`). */
+export function transcribirWav(motor, wav) {
+  const leido = leerWav(wav)
+  if (!leido.ok) return leido
+  const t0 = Date.now()
+  const textos = []
+  for (const [a, b] of tramosDeAudio(leido.muestras, leido.frecuencia)) {
+    const st = motor.reconocedor.createStream()
+    st.acceptWaveform({ samples: leido.muestras.subarray(a, b), sampleRate: leido.frecuencia })
+    motor.reconocedor.decode(st)
+    const t = String(motor.reconocedor.getResult(st)?.text ?? '').trim()
+    if (t) textos.push(t)
+  }
+  return { ok: true, texto: textos.join(' '), ms: Date.now() - t0, segundos: leido.segundos, modelo: motor.modelo }
+}
+
+/** Para el control de salud: ¿los pesos pesan lo que tienen que pesar? (el hash lo controla el instalador). */
+export function tamanoDelModelo(env = process.env) {
+  const dir = carpetaDelModelo(env)
+  return Object.keys(MODELO_DICTADO.archivos).reduce((s, f) => s + (existsSync(join(dir, f)) ? statSync(join(dir, f)).size : 0), 0)
+}

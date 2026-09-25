@@ -97,3 +97,6 @@ orquestador/datos/modelos/
 # Capturas de una verificación visual: evidencia de una corrida, no fuente.
 QA_OUT/
 tests/_qa-*.spec.ts
+
+# Runtime de «Dictar parte» (sherpa-onnx): se instala en la VM con npm ci --prefix orquestador/voz
+orquestador/voz/node_modules

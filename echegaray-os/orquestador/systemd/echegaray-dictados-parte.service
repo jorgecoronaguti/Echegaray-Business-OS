@@ -1,0 +1,30 @@
+[Unit]
+# «DICTAR PARTE» (ERP Obras › Parte diario). Toma los audios que el jefe grabó desde app.ecsas.com.ar,
+# los transcribe EN ESTA VM (parakeet-tdt-0.6b-v3 int8 con sherpa-onnx: el audio no sale de la empresa)
+# y deja la PROPUESTA de parte en `parte_dictado`. No guarda el parte: eso lo hace la persona.
+Description=Echegaray OS - Dictar parte: transcripción local de los audios del parte diario
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
+Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+# El modelo de lenguaje es OPCIONAL y está APAGADO: sólo con ORQ_VOZ_LLM=1 en este archivo (no existe por defecto).
+EnvironmentFile=-%h/.config/echegaray-orq/dictados.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/procesar-dictados-parte.mjs
+# UN AUDIO A LA VEZ y sin competirle al chat: 2 hilos de 4, prioridad baja, y un techo de memoria que
+# deja afuera a un modelo que se desboque antes de que empuje a Postgres al swap (medido: ~1,1 GB).
+Nice=10
+CPUWeight=50
+MemoryHigh=1800M
+MemoryMax=2500M
+# Cinco audios de 3 minutos son ~2 minutos de CPU más la carga del modelo (~4 s).
+TimeoutStartSec=300
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dictados-parte
+
+[Install]
+WantedBy=default.target

@@ -125,25 +125,22 @@ export const MODELOS = Object.freeze({
   },
   'voz.es': {
     capacidad: 'transcribe',
-    modelo: 'openai/whisper-large-v3 (HF Inference Providers) · onnx-community/whisper-base (local, sin decodificador)',
-    revision: 'router HF · 1846881b para el local',
-    ejecucion: 'hf-cloud',
-    proveedor: 'huggingface',
-    licencia: 'Apache-2.0 (openai/whisper-large-v3)',
-    // 11/09/2026: baja de PRODUCCION a CANDIDATO. El consumidor declarado no existe: ningun modulo fuera
-    // de lib/ml/ importa voz.mjs y el bot de Mattermost no rutea mensajes de audio. Cero trazas en 90
-    // dias. La regla del dueño (mandato 11/09) es que produccion exige un caller real verificable; una
-    // capacidad medida y sin quien la llame es un candidato, no un producto. Vuelve a produccion el dia
-    // que el bot reciba un audio, lo pase por aca y el parte propuesto quede en la base.
+    // 25/09/2026: «Dictar parte» (ERP Obras › Parte diario) es el consumidor. El navegador graba WAV PCM de
+    // 16 kHz, así que la VM ya no necesita decodificar Opus y la transcripción vuelve a ser LOCAL.
+    modelo: 'csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8 (base nvidia/parakeet-tdt-0.6b-v3) con sherpa-onnx-node 1.13.8',
+    revision: '2bda32ec70b097a55adaa07d9a7173915b43cc78',
+    ejecucion: 'local-cpu',
+    proveedor: 'local',
+    licencia: 'CC-BY-4.0 (NVIDIA parakeet-tdt-0.6b-v3; atribución en lib/ml/voz.mjs) · runtime Apache-2.0',
+    // Sigue CANDIDATO hasta que un audio REAL de un jefe pase por la cola y su parte quede guardado: la
+    // regla del 11/09 es que producción exige un caller real verificable, y lo medido es sintético.
     estado: ESTADO.CANDIDATO,
-    dataset: 'ecsas-whisper-eval · 6 audios de Common Voice en espanol con transcripcion humana',
-    consumidor: null,
-    consumidorPrevisto: 'bot @os: mensaje de voz → transcribe → interpretarParte() → propuesta de parte de obra (NO cableado al 11/09/2026)',
-    medido: { fecha: '2026-09-05', wer: 0.037, msPorAudio: 1454, costoUsd: 0, rssMb: 0 },
-    porQue: 'WER 3,7% en espanol con 1.454 ms por audio y costo cero dentro del plan PRO. El camino LOCAL esta implementado y probado —el modelo carga en 1,3 s y la interpretacion del parte acierta el ejemplo real completo— pero NO puede recibir un archivo: `transformers.js` en Node exige Float32 a 16 kHz y esta VM no tiene ffmpeg, ni numpy, ni ningun decodificador de MP3 u Opus. Un mensaje de voz de Mattermost llega en Opus. El endpoint de HF acepta el archivo tal cual, asi que un bloqueo de infraestructura se convirtio en una llamada de red.',
-    reingreso: 'para volver al local hace falta un decodificador en la VM (ffmpeg o uno wasm). El banco `voz-benchmark.mjs` lo mide sin cambiar una linea el dia que exista.',
-    limitacion: 'medido sobre habla limpia de Common Voice. NO dice como se porta con ruido de obra, acento sanjuanino ni vocabulario de construccion: eso se mide cuando haya audios reales.',
-    alternativas: ['onnx-community/whisper-small (547 MB, no entra comodo con Postgres)'],
+    dataset: '16 partes sintéticos (Piper es_AR) con nombres y tareas inventados, limpios y con ruido (SNR ~10 dB) · orquestador/lib/ml/voz-parte.fixtures.mjs',
+    consumidor: 'scripts/procesar-dictados-parte.mjs (echegaray-dictados-parte.timer) → parte_dictado.propuesta',
+    medido: { fecha: '2026-09-25', rtf: 0.138, msCarga: 3900, rssMb: 1411, costoUsd: 0, aciertoCamposLimpio: 0.881, aciertoCamposRuido: 0.663 },
+    porQue: 'Local, $0 por audio, el audio no sale de la VM. 3 minutos de audio en 25 s, pico 1,4 GB decodificando en tramos de 25 s (de una sola vez pasaba los 2,1 GB). El acierto por campo del parte sobre audio sintético es 88 % limpio y 66 % con ruido; lo que falla son apellidos inventados que el reconocedor no conoce, y eso cae en «confirmar» o en Novedades, nunca en un registro.',
+    limitacion: 'medido con voz sintética y apellidos inventados. NO dice cómo se porta con ruido de obra real, acento sanjuanino ni el plantel real: eso se mide con los primeros audios de los jefes (voz-parte-evaluar.mjs --audios).',
+    alternativas: ['onnx-community/whisper-base (local, sin decodificador de Opus en la VM)', 'openai/whisper-large-v3 por HF (red: el audio sale de la empresa)'],
   },
   'vision.epp': {
     capacidad: 'vision',
