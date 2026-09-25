@@ -346,7 +346,7 @@ function Fila({ parque, a, filtroUbicacion, marcada, abierta, onMarcar, onAbrir 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
         <div style={{ fontWeight: 500 }}>{a.nombre}{a.patente && <span style={{ fontFamily: MONO, fontSize: '11px', color: V.tenue, fontWeight: 400 }}> {a.patente}</span>}{a.talle && <span data-testid="talle" style={{ marginLeft: 6, fontWeight: 400, color: V.tintaSuave }}>talle {a.talle}</span>}{(a.cantidad > 1 || personal) && <span data-testid="cantidad-lote" style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 4, background: V.hover, fontSize: '11.5px', color: V.tintaSuave, fontWeight: 500 }}>× {cant}{cant !== a.cantidad ? ` de ${a.cantidad}` : ''}</span>}</div>
         <div style={{ fontFamily: MONO, fontSize: '11.5px', color: V.tenue }}>
-          {a.codigo}{a.alta_desde_obra ? ' · alta desde obra' : ''}
+          {a.codigo}{a.alta_desde_obra ? ' · alta desde obra' : ''}{a.marca ? <span style={{ fontFamily: 'inherit' }}> · {[a.marca, a.modelo].filter(Boolean).join(' · ')}</span> : ''}
         </div>
       </div>
       <div style={a.categoria ? { color: V.tintaSuave } : vacio}>{a.categoria ?? 'sin categoría'}</div>

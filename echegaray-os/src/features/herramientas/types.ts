@@ -21,11 +21,20 @@ export interface Activo {
   categoria: string | null
   /** Talle del EPP o la ropa (20260925T1100). null = único, o no es EPP/ropa. */
   talle?: string | null
+  /** El producto real (20260925T1300): marca, modelo y código del artículo en la lista del proveedor. */
+  marca?: string | null
+  modelo?: string | null
+  codigo_proveedor?: string | null
+  /** Precio neto unitario de una COTIZACIÓN (no es compra); `precio_referencia_de` dice de cuál. */
+  precio_referencia?: number | null
+  precio_referencia_de?: string | null
   patente: string | null
   numero_serie: string | null
   foto_url: string | null
   compra_fecha: string | null
   compra_precio: number | null
+  /** El proveedor del producto (la compra o, si sólo hay cotización, quien cotizó). */
+  compra_proveedor_id?: string | null
   ubicacion_id: string | null
   estado: EstadoActivo
   estado_nota: string | null
@@ -78,6 +87,8 @@ export interface Movimiento {
   importado: boolean
   /** Unidades movidas (20260922T1300). null = anterior, cuando un lote sólo se movía entero. */
   cantidad?: number | null
+  /** La factura de compra que respalda un ingreso (20260925T1300, `comprobantes_arca`). */
+  comprobante_id?: string | null
 }
 
 /**
@@ -114,11 +125,11 @@ export interface ObraIndice {
 }
 
 export const COLUMNAS_ACTIVO =
-  'id, codigo, clase, nombre, cantidad, categoria, talle, patente, numero_serie, foto_url, compra_fecha, compra_precio, ubicacion_id, estado, estado_nota, estado_desde, estado_por, estado_asumido, baja_motivo, baja_detalle, baja_en, alta_desde_obra, etiqueta_impresa_en, legado_id, creado_en'
+  'id, codigo, clase, nombre, cantidad, categoria, talle, marca, modelo, codigo_proveedor, precio_referencia, precio_referencia_de, patente, numero_serie, foto_url, compra_fecha, compra_precio, compra_proveedor_id, ubicacion_id, estado, estado_nota, estado_desde, estado_por, estado_asumido, baja_motivo, baja_detalle, baja_en, alta_desde_obra, etiqueta_impresa_en, legado_id, creado_en'
 export const COLUMNAS_UBICACION = 'id, tipo, nombre, obra_id, activo_id, contacto, archivada, proveedor_id, persona_id'
 export const COLUMNAS_PROVEEDOR_LUGAR = 'id, nombre, cuit, rubro, rubro_deducido'
 export const COLUMNAS_MOVIMIENTO =
-  'id, activo_id, origen_id, destino_id, fecha_hora, usuario_id, usuario_texto, lote_id, nota, corrige_a, importado, cantidad'
+  'id, activo_id, origen_id, destino_id, fecha_hora, usuario_id, usuario_texto, lote_id, nota, corrige_a, importado, cantidad, comprobante_id'
 export const COLUMNAS_EXISTENCIA = 'activo_id, ubicacion_id, cantidad'
 
 /** Un cambio de cantidad en un lugar que no es un movimiento: recuento o baja de parte de un lote. */

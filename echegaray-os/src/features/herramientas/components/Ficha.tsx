@@ -60,9 +60,14 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
     refrescar()
   }
 
+  const proveedor = a.compra_proveedor_id ? parque.proveedorPorId.get(a.compra_proveedor_id)?.nombre ?? null : null
   const compra = [
     a.compra_fecha ? `Comprada ${mesAnio(a.compra_fecha)}` : null,
-    a.compra_precio != null ? pesos(a.compra_precio) : null,
+    a.compra_precio != null ? `${pesos(a.compra_precio)} neto` : null,
+    // Una cotización no es una compra: se dice de dónde sale el precio (20260925T1300).
+    a.compra_precio == null && a.precio_referencia != null ? `ref. ${pesos(a.precio_referencia)} neto${a.precio_referencia_de ? ` (${a.precio_referencia_de})` : ''}` : null,
+    proveedor,
+    a.codigo_proveedor ? `art. ${a.codigo_proveedor}` : null,
     a.numero_serie ? `serie ${a.numero_serie}` : null,
   ].filter(Boolean)
 
@@ -71,6 +76,7 @@ export function Ficha({ id, onCerrar }: { id: string; onCerrar?: () => void }) {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
           <div style={{ fontSize: '17px', fontWeight: 600, letterSpacing: '-.01em', color: a.estado === 'baja' ? V.tenue : V.tinta }}>{a.nombre}{a.talle && <span style={{ fontWeight: 400, color: V.tintaSuave }}> · talle {a.talle}</span>}</div>
+          {(a.marca || a.modelo) && <div style={{ fontSize: '12.5px', color: V.tintaSuave }} data-testid="ficha-producto">{[a.marca, a.modelo].filter(Boolean).join(' · ')}</div>}
           <div style={{ fontSize: '12.5px', color: V.apagado }}>
             <span style={{ fontFamily: MONO }}>{a.codigo}</span>
             {a.patente ? ` · ${a.patente}` : ''} · {a.categoria ?? <span style={vacio}>sin categoría</span>} · {a.ubicacion_id ? `en ${a.estado === 'baja' ? rotuloUbicacion(parque, a.ubicacion_id) : rotuloLugares(parque, a)}` : (a.clase === 'epp' || a.clase === 'ropa') ? 'sin stock' : <span style={vacio}>sin ubicación cargada</span>}

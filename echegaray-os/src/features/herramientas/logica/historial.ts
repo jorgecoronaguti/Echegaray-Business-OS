@@ -51,7 +51,7 @@ export function historial(p: Parque, activoId: string): Renglon[] {
     const hacia = rotuloUbicacion(p, m.destino_id)
     const que = m.origen_id
       ? `${rotuloUbicacion(p, m.origen_id)} → ${hacia}`
-      : m.importado ? `origen desconocido → ${hacia}` : `Alta${a.alta_desde_obra ? ' desde obra' : ''} en ${hacia}`
+      : m.importado ? `origen desconocido → ${hacia}` : m.comprobante_id ? `Compra → ${hacia}` : `Alta${a.alta_desde_obra ? ' desde obra' : ''} en ${hacia}`
     // Un lote dice cuántas unidades viajaron («3 u. · Taller → Entrepiso»); lo de a una, nada.
     const cuantas = (a.cantidad > 1 || (m.cantidad ?? 1) > 1) && m.cantidad ? `${m.cantidad} u. · ` : ''
     out.push({
