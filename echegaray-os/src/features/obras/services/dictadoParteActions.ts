@@ -31,7 +31,7 @@ import { guardarJornada } from '@/features/administracion/services/jornadaPorObr
 import { pedirMaterialAction } from '@/features/materiales/services/acciones'
 import { guardarParteDiario } from './actionsEjecucion'
 import {
-  comentarioDeTarea, horasPorTarea, numeroParaElParte,
+  comentarioDeTarea, horasPorTarea, numeroParaElParte, textoDeMaterial,
   type Dictado, type Envio, type Propuesta, type ResultadoGuardado,
 } from './dictadoParte'
 
@@ -223,7 +223,7 @@ export async function guardarDictado(obraId: string, id: string, entrada: Envio,
     for (const m of envio.materiales) { f.append('material', m.material); f.append('cantidad', numeroParaElParte(m.cantidad).replace(',', '.')); f.append('unidad', m.unidad) }
     const r = await pedirMaterialAction({ error: null }, f)
     resultado.material = r.ok ? { ok: true, mensaje: r.mensaje ?? 'Pedido cargado.' } : { ok: false, mensaje: r.error ?? 'El pedido no entró.' }
-    resultado.pedido = envio.materiales.map((m) => `${numeroParaElParte(m.cantidad)} ${m.unidad === 'un' ? '' : `${m.unidad} de `}${m.material}`.replace(/\s+/g, ' ')).join(', ')
+    resultado.pedido = envio.materiales.map(textoDeMaterial).join(', ')
   }
 
   const puertas = [resultado.asistencia, resultado.parte, resultado.material].filter((x) => x != null)

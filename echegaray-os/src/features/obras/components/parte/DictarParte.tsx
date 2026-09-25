@@ -23,7 +23,7 @@ import { Ico, P } from '../canon/Ico'
 import { UNIDADES } from '@/features/materiales/logica/pedidos'
 import {
   armarEnvio, avisoDeConfirmar, faltaConfirmar, horasPorTarea, reloj, renglonesDeGente, resumenDeRevision,
-  revisionInicial, textoDeAvance, textoGuardado, tramosDelTexto,
+  revisionInicial, textoDeAvance, textoGuardado, tramosDelTexto, nombreCortoDeTarea, textoDeMaterial,
   type Dictado, type EstadoDictado, type FilaMaterial, type FilaPersona, type Opcion,
   type ResultadoGuardado, type Revision,
 } from '../../services/dictadoParte'
@@ -40,7 +40,7 @@ const BOTON: CSSProperties = {
 const PRIMARIO: CSSProperties = { ...BOTON, background: C.marca, borderColor: C.marca, color: C.grafito }
 const OSCURO: CSSProperties = { ...BOTON, background: C.grafito, borderColor: C.grafito, color: C.superficie }
 const CONTROL: CSSProperties = {
-  boxSizing: 'border-box', minHeight: '44px', padding: '0 10px', border: `1px solid ${C.bordeFuerte}`, borderRadius: '6px',
+  boxSizing: 'border-box', width: '100%', minWidth: 0, minHeight: '44px', padding: '0 10px', border: `1px solid ${C.bordeFuerte}`, borderRadius: '6px',
   font: 'inherit', fontSize: '14px', background: C.superficie, color: C.tinta,
 }
 const CONTROL_PC: CSSProperties = { ...CONTROL, minHeight: '32px', fontSize: '13px', padding: '0 8px' }
@@ -63,7 +63,7 @@ type Fase =
   | { f: 'guardado'; dictado: Dictado; resultado: ResultadoGuardado; rev: Revision; hora: string }
   | { f: 'error'; mensaje: string }
 
-const horaAR = (iso?: string | null) => new Date(iso ?? Date.now()).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/San_Juan' })
+const horaAR = (iso?: string | null) => new Date(iso ?? Date.now()).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'America/Argentina/San_Juan' })
 
 export function useDictado(obraId: string, dia: string) {
   const router = useRouter()
@@ -339,6 +339,7 @@ export function PantallaDictado(p: Pantalla) {
 }
 
 function Grabando({ d, telefono, segundos, niveles }: Pantalla & { segundos: number; niveles: number[] }) {
+  const arriba = useArriba<HTMLDivElement>(telefono)
   const barras = Array.from({ length: 12 }, (_, i) => niveles[niveles.length - 12 + i] ?? 0)
   const cuerpo = (
     <div style={{ display: 'grid', placeItems: 'center', gap: '14px', padding: '18px 0 6px', textAlign: 'center' }} data-testid="dictado-grabando">
@@ -371,12 +372,20 @@ function Grabando({ d, telefono, segundos, niveles }: Pantalla & { segundos: num
     )
   }
   return (
-    <div style={{ padding: '16px 16px 150px' }}>
+    <div ref={arriba} style={{ padding: '16px 16px 150px', scrollMarginTop: '56px' }}>
       <div style={{ fontSize: '16px', fontWeight: 700 }}>Dictando el parte</div>
       {cuerpo}
       <Pie>{botones}</Pie>
     </div>
   )
+}
+
+/** En el teléfono, cada pantalla del dictado arranca arriba: la cabecera de la obra se va de la vista
+ *  y queda lugar para el círculo, el reloj y la onda (o para «Revisá el parte») sobre el pie fijo. */
+function useArriba<T extends HTMLElement>(telefono: boolean) {
+  const ref = useRef<T | null>(null)
+  useEffect(() => { if (telefono) ref.current?.scrollIntoView({ block: 'start' }) }, [telefono])
+  return ref
 }
 
 /** El pie fijo del teléfono, sobre la barra de abajo (como «Registrar el parte» de la M08). */
@@ -390,8 +399,9 @@ function Pie({ children }: { children: ReactNode }) {
 }
 
 function Esperando({ d, telefono, segundos, titulo }: Pantalla & { segundos: number; titulo: string }) {
+  const arriba = useArriba<HTMLDivElement>(telefono)
   return (
-    <div style={{ padding: telefono ? '16px 16px 150px' : '22px 30px 30px', display: 'grid', justifyItems: telefono ? 'stretch' : 'center', gap: '14px' }} data-testid="dictado-esperando">
+    <div ref={arriba} style={{ scrollMarginTop: '56px', padding: telefono ? '16px 16px 150px' : '22px 30px 30px', display: 'grid', justifyItems: telefono ? 'stretch' : 'center', gap: '14px' }} data-testid="dictado-esperando">
       <div style={{ fontSize: '16px', fontWeight: 700 }}>{titulo}</div>
       <div style={{ display: 'grid', placeItems: 'center', gap: '10px', padding: '12px 0' }}>
         <div style={{ width: '72px', height: '72px', borderRadius: '50%', background: DICTADO.datoFondo, border: `1px solid ${DICTADO.datoBorde}`, display: 'grid', placeItems: 'center' }}><Mic s={28} /></div>
@@ -539,6 +549,7 @@ function RevisionTelefono(p: Pantalla & { fase: Rev }) {
   const presentes = rev.personas.filter((f) => f.incluida && f.estado === 'presente').length
   const alternar = (k: string) => setAbierta((a) => (a === k ? null : k))
   const avisos = dictado.propuesta?.avisos ?? []
+  const arriba = useArriba<HTMLDivElement>(true)
 
   const filaPersona = (f: Revision['personas'][number]) => (
     <div key={f.clave}>
@@ -554,7 +565,7 @@ function RevisionTelefono(p: Pantalla & { fase: Rev }) {
   )
 
   return (
-    <div style={{ padding: '16px 16px 170px', display: 'grid', gap: '12px', alignContent: 'start' }} data-testid="dictado-revision">
+    <div ref={arriba} style={{ padding: '16px 16px 170px', display: 'grid', gap: '12px', alignContent: 'start', scrollMarginTop: '56px' }} data-testid="dictado-revision">
       <div style={{ fontSize: '16px', fontWeight: 700 }}>Revisá el parte</div>
       <Aviso tono="info" testid="dictado-resumen">{resumenDeRevision(rev)}</Aviso>
       {avisos.map((a, i) => <Aviso key={i} tono="warn">{a.texto}</Aviso>)}
@@ -575,7 +586,7 @@ function RevisionTelefono(p: Pantalla & { fase: Rev }) {
                     <button type="button" data-testid={`dictado-grupo-${i}`} aria-expanded={abierto}
                       onClick={() => setVerGrupo((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n })}
                       style={{ width: '100%', display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '8px', alignItems: 'center', padding: '0 10px', minHeight: '44px', border: 'none', borderTop: `1px solid ${C.bordeFila}`, font: 'inherit', fontSize: '14px', textAlign: 'left', cursor: 'pointer', color: C.tinta, ...fondoFila({ incluida: r.incluida, dudoso: r.dudoso, confirmada: r.filas.every((f) => f.confirmada) }) }}>
-                      <span>{r.n} más{f0.tarea_nombre ? ` · ${f0.tarea_nombre.toLowerCase()}` : ''}</span>
+                      <span>{r.n} más{f0.tarea_nombre ? ` · ${nombreCortoDeTarea(f0.tarea_nombre)}` : ''}</span>
                       <span style={{ fontFamily: MONO }}>{String(r.horas).replace('.', ',')} h</span>
                       <span style={{ fontSize: '12px', color: C.pos }}>Presentes</span>
                     </button>
@@ -635,7 +646,7 @@ function CajaAvance({ a, p, abierta, alternar, pc = false }: { a: Revision['avan
   return (
     <div style={{ border: abierta ? `1px solid ${C.borde}` : 'none', borderRadius: '6px', overflow: 'hidden' }}>
       <button type="button" onClick={alternar} aria-expanded={abierta} data-testid={`dictado-avance-${a.clave}`} data-duda={faltaConfirmar(a) ? '1' : undefined} style={{ ...cajaDe(a), width: '100%', font: 'inherit', fontSize: pc ? '13px' : '14px', cursor: 'pointer', color: C.tinta, textAlign: 'left' }}>
-        <span style={{ minWidth: 0 }}>{a.tarea_nombre} · <b style={{ fontFamily: MONO }}>{t.dicho}</b>{t.hoy && <span style={{ color: C.tintaSuave, fontSize: '12px' }}> ({t.hoy})</span>}</span>
+        <span style={{ minWidth: 0 }}>{pc ? a.tarea_nombre : nombreCortoDeTarea(a.tarea_nombre)} · <b style={{ fontFamily: MONO }}>{t.dicho}</b>{t.hoy && <span style={{ color: C.tintaSuave, fontSize: '12px' }}> ({t.hoy})</span>}</span>
         {chipDe(a)}
       </button>
       {abierta && <EditorAvance a={a} p={p} pc={pc} />}
@@ -647,7 +658,7 @@ function CajaMaterial({ m, p, abierta, alternar, pc = false }: { m: Revision['ma
   return (
     <div style={{ border: abierta ? `1px solid ${C.borde}` : 'none', borderRadius: '6px', overflow: 'hidden' }}>
       <button type="button" onClick={alternar} aria-expanded={abierta} data-testid={`dictado-material-${m.clave}`} style={{ ...cajaDe(m), width: '100%', font: 'inherit', fontSize: pc ? '13px' : '14px', cursor: 'pointer', color: C.tinta, textAlign: 'left' }}>
-        <span><b style={{ fontFamily: MONO }}>{String(m.cantidad).replace('.', ',')}</b> {m.unidad === 'un' ? '' : `${m.unidad} de `}{m.material}</span>
+        <span>{(() => { const [n, ...resto] = textoDeMaterial(m).split(' '); return <><b style={{ fontFamily: MONO }}>{n}</b> {resto.join(' ')}</> })()}</span>
         {chipDe(m)}
       </button>
       {abierta && <EditorMaterial m={m} p={p} pc={pc} />}
@@ -818,6 +829,7 @@ function RevisionPC(p: Pantalla & { fase: Rev }) {
 function Guardado(p: Pantalla & { fase: Extract<Fase, { f: 'guardado' }> }) {
   const { resultado: r, rev, dictado, hora } = p.fase
   const [viendo, setViendo] = useState(false)
+  const arriba = useArriba<HTMLDivElement>(p.telefono)
   const puertas: [string, ResultadoGuardado['asistencia']][] = [['Asistencia', r.asistencia], ['Avance y novedades', r.parte], ['Material', r.material]]
   const hpt = r.horasPorTarea.length ? r.horasPorTarea : horasPorTarea(rev.personas.filter((f) => f.incluida))
   const avances = rev.avances.filter((a) => a.incluida)
@@ -828,12 +840,12 @@ function Guardado(p: Pantalla & { fase: Extract<Fase, { f: 'guardado' }> }) {
     </div>
   )
   return (
-    <div style={{ padding: p.telefono ? '16px 16px 96px' : '22px 30px 30px', display: 'grid', gap: '12px', maxWidth: p.telefono ? undefined : '640px' }} data-testid="dictado-guardado">
+    <div ref={arriba} style={{ scrollMarginTop: '56px', padding: p.telefono ? '16px 16px 96px' : '22px 30px 30px', display: 'grid', gap: '12px', maxWidth: p.telefono ? undefined : '640px' }} data-testid="dictado-guardado">
       <Aviso tono="pos" testid="dictado-guardado-aviso">{textoGuardado(r, hora)}</Aviso>
       {puertas.filter(([, x]) => x && !x.ok).map(([n, x]) => <Aviso key={n} tono="warn">{n} NO se guardó: {x?.mensaje}. Cargalo a mano.</Aviso>)}
       {r.asistencia && caja('Asistencia', <><b style={{ fontFamily: MONO }}>{r.presentes}</b> presentes · {r.ausentes} {r.ausentes === 1 ? 'ausente' : 'ausentes'}</>, r.asistencia.ok ? <Chip tipo="ok">cargado</Chip> : <Chip tipo="q">no entró</Chip>)}
-      {hpt.length > 0 && caja('Horas por tarea', hpt.map((h, i) => <span key={h.tarea}>{i > 0 ? ' · ' : ''}{h.tarea} <b style={{ fontFamily: MONO }}>{String(h.horas).replace('.', ',')} h</b></span>))}
-      {avances.length > 0 && caja('Avance', avances.map((a, i) => <span key={a.clave}>{i > 0 ? ' · ' : ''}{a.tarea_nombre} <b style={{ fontFamily: MONO }}>{textoDeAvance(a).dicho}</b></span>))}
+      {hpt.length > 0 && caja('Horas por tarea', hpt.map((h, i) => <span key={h.tarea}>{i > 0 ? ' · ' : ''}{nombreCortoDeTarea(h.tarea)} <b style={{ fontFamily: MONO }}>{String(h.horas).replace('.', ',')} h</b></span>))}
+      {avances.length > 0 && caja('Avance', avances.map((a, i) => <span key={a.clave}>{i > 0 ? ' · ' : ''}{nombreCortoDeTarea(a.tarea_nombre)} <b style={{ fontFamily: MONO }}>{textoDeAvance(a).dicho}</b></span>))}
       {r.pedido && caja('Material que falta', r.pedido)}
       <div style={{ display: 'grid', gap: '4px' }}>
         <div style={EYEBROW}>Audio</div>

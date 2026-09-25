@@ -293,3 +293,14 @@ export function textoDeAvance(a: Pick<FilaAvance, 'tipo' | 'valor' | 'unidad' | 
   const hoy = a.produccion == null ? null : `+${numeroParaElParte(a.produccion)} ${u}`.trim() + ' hoy'
   return { dicho, hoy }
 }
+
+/** «VA1 › Hormigonado» → «Hormigonado»: en las cajas del teléfono va el nombre corto; en los selectores, el entero. */
+export const nombreCortoDeTarea = (etiqueta: string | null | undefined): string => String(etiqueta ?? '').split(' › ').at(-1) ?? ''
+
+/** «20 bolsas de cemento», «1 bolsa de cal», «3 kg de clavos», «6 ladrillos». */
+export function textoDeMaterial(m: { cantidad: number; unidad: string; material: string }): string {
+  const n = numeroParaElParte(m.cantidad)
+  if (!m.unidad || m.unidad === 'un') return `${n} ${m.material}`
+  const plural = m.cantidad !== 1 && /[aeiou]$/i.test(m.unidad) ? `${m.unidad}s` : m.cantidad !== 1 && /(et|ón)$/i.test(m.unidad) ? `${m.unidad.replace(/ón$/, 'ones')}${/et$/.test(m.unidad) ? 's' : ''}` : m.unidad
+  return `${n} ${plural} de ${m.material}`
+}

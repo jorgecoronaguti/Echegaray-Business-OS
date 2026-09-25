@@ -105,7 +105,17 @@ test('el número viaja con coma: el lector del parte lee «20.5» como veinte mi
 })
 
 test('guardado: dice la hora y adónde fue el pedido; si una puerta rebotó, lo dice', () => {
-  const base = { asistencia: { ok: true, mensaje: '' }, parte: { ok: true, mensaje: '' }, material: { ok: true, mensaje: '' }, horasPorTarea: [], presentes: 6, ausentes: 1, pedido: '20 bolsa de cemento' }
-  assert.equal(textoGuardado(base, '18:12'), 'Parte guardado a las 18:12. El pedido de 20 bolsa de cemento pasó a Material.')
+  const base = { asistencia: { ok: true, mensaje: '' }, parte: { ok: true, mensaje: '' }, material: { ok: true, mensaje: '' }, horasPorTarea: [], presentes: 6, ausentes: 1, pedido: '20 bolsas de cemento' }
+  assert.equal(textoGuardado(base, '18:12'), 'Parte guardado a las 18:12. El pedido de 20 bolsas de cemento pasó a Material.')
   assert.match(textoGuardado({ ...base, asistencia: { ok: false, mensaje: 'quincena cerrada' } }, '18:12'), /1 parte que NO entró/)
+})
+
+test('el material se lee en plural y el nombre corto de la tarea sin el padre', async () => {
+  const { textoDeMaterial, nombreCortoDeTarea } = await import('./dictadoParte.ts')
+  assert.equal(textoDeMaterial({ cantidad: 20, unidad: 'bolsa', material: 'cemento' }), '20 bolsas de cemento')
+  assert.equal(textoDeMaterial({ cantidad: 1, unidad: 'bolsa', material: 'cal' }), '1 bolsa de cal')
+  assert.equal(textoDeMaterial({ cantidad: 3, unidad: 'kg', material: 'clavos' }), '3 kg de clavos')
+  assert.equal(textoDeMaterial({ cantidad: 6, unidad: 'un', material: 'ladrillos' }), '6 ladrillos')
+  assert.equal(textoDeMaterial({ cantidad: 2, unidad: 'camión', material: 'arena' }), '2 camiones de arena')
+  assert.equal(nombreCortoDeTarea('VA1 › Hormigonado'), 'Hormigonado')
 })
