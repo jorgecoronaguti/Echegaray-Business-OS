@@ -120,13 +120,13 @@ test('lo que falta cargar: cada renglón con su número y en ámbar sólo cuando
   })
   assert.deepEqual(filas.map((f) => [f.rotulo, f.valor, f.tono]), [
     ['Historias sin costo de MO', '2 · no pesan', 'warn'],
-    ['Actividades sin ninguna fecha', '7', 'warn'],
+    ['Tareas sin fecha', '7', 'warn'],
     ['Sin método de medición', '0', 'faint'],
     ['Dependencias cargadas', '4 de 42', 'faint'],
     ['Línea base', 'sin sellar · copia del plan', 'faint'],
   ])
   const sinAvance = loQueFaltaCargar({ historiasSinCosto: null, actividadesSinFecha: 0, sinMetodo: 1, dependencias: null, actividades: 3, selladas: 3 })
-  assert.equal(sinAvance[0].rotulo, 'Actividades sin ninguna fecha')
+  assert.equal(sinAvance[0].rotulo, 'Tareas sin fecha')
   assert.equal(sinAvance.find((f) => f.clave === 'dependencias')!.valor, 'sin leer')
   assert.equal(sinAvance.find((f) => f.clave === 'linea-base')!.valor, '3 selladas')
   assert.equal(sinMetodoDeMedicion([
@@ -216,4 +216,15 @@ test('Plazo: sin día hábil pero con primer parte, dice cuándo inició y no «
   const p = plazoDeObra({ forecast_fin: '2026-12-30', fecha_fin_plan: '2026-12-30' }, null, { fecha: '2026-08-20', origen: 'primer parte' })
   assert.match(p.bajada, /^inició 20\/08 \(primer parte\)/)
   assert.match(plazoDeObra({ forecast_fin: '2026-12-30', fecha_fin_plan: '2026-12-30' }, null).bajada, /^sin inicio real/)
+})
+
+test('«sin fecha» cuenta TAREAS sin ninguna fecha de plan: no rubros, historias ni frentes (21 y no 61)', async () => {
+  const { tareasSinFecha } = await import('./resumenObra.ts')
+  const a = (id: string, o: Record<string, unknown> = {}) => ({ id, nombre: id, tipo: 'tarea', archivada: false, actividad_padre_id: null, inicio_plan: null, fin_plan: null, ...o }) as never
+  const n = tareasSinFecha([
+    a('rubro', { tipo: 'resumen' }), a('historia', { tipo: 'resumen', actividad_padre_id: 'rubro' }),
+    a('t1', { actividad_padre_id: 'historia' }), a('t2', { actividad_padre_id: 'historia', inicio_plan: '2026-09-01' }),
+    a('frente', { actividad_padre_id: 't1' }), a('vieja', { archivada: true }),
+  ])
+  assert.equal(n, 1)
 })

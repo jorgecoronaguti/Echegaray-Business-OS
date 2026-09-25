@@ -35,11 +35,16 @@ const TOPE_MB = MAX_BYTES / (1024 * 1024)
 const ACEPTA = '.pdf,.jpg,.jpeg,.png,.webp,.heic,.gif,.xlsx,.xls,.xlsm,.csv,.doc,.docx,.odt,.ods,.txt'
 
 export function SubirDocumento({
-  tipo, entidadId, testid = 'subir-documento',
+  tipo, entidadId, testid = 'subir-documento', pieFijo = false,
 }: {
   tipo: TipoEntidad
   entidadId: string
   testid?: string
+  /**
+   * M17 (Obra · Documentos en el teléfono): la primaria «⤒ Subir documento» va FIJA al pie, 48px a lo
+   * ancho, encima de la barra de navegación; el formulario se abre como hoja sobre ella.
+   */
+  pieFijo?: boolean
 }) {
   const categorias = CATEGORIAS_POR_TIPO[tipo] as readonly Categoria[]
   const [abierto, setAbierto] = useState(false)
@@ -87,16 +92,7 @@ export function SubirDocumento({
     }
   }
 
-  return (
-    <div data-testid={testid} className="mb-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[12.5px] text-muted">Documentos cargados desde la plataforma</p>
-        <Boton onClick={() => setAbierto(!abierto)} variante="primaria" data-testid={`${testid}-abrir`}>
-          Subir documento
-        </Boton>
-      </div>
-
-      {abierto && (
+  const panel = (
         <div className="mt-2 rounded-card border border-line p-3" data-testid={`${testid}-panel`}>
           <div className="flex flex-wrap items-end gap-3">
             <label className="text-[12px] text-muted">
@@ -143,7 +139,39 @@ export function SubirDocumento({
           {error && <div className="mt-2"><Aviso tono="neg" testid={`${testid}-error`}>{error}</Aviso></div>}
           {mensaje && <div className="mt-2"><Aviso tono="info" testid={`${testid}-ok`}>{mensaje}</Aviso></div>}
         </div>
-      )}
+  )
+
+  if (pieFijo) {
+    return (
+      <div data-testid={testid}>
+        {abierto && (
+          <div style={{ position: 'fixed', left: 0, right: 0, bottom: '140px', maxHeight: '65vh', overflowY: 'auto', background: '#FFFFFF', borderTop: '1px solid #E7E6E2', boxShadow: '0 -6px 20px rgba(31,31,30,.08)', padding: '12px 16px', zIndex: 21 }}>
+            {panel}
+          </div>
+        )}
+        <div style={{ position: 'fixed', left: 0, right: 0, bottom: '64px', padding: '12px 16px 16px', background: '#FFFFFF', borderTop: '1px solid #E7E6E2', zIndex: 20 }}>
+          <button type="button" onClick={() => setAbierto(!abierto)} data-testid={`${testid}-abrir`} style={{
+            width: '100%', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', border: 0, borderRadius: '8px',
+            background: '#FDC900', color: '#30302F', font: 'inherit', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+          }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 16V4M7 9l5-5 5 5M4 20h16" /></svg>
+            {abierto ? 'Cerrar' : 'Subir documento'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div data-testid={testid} className="mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[12.5px] text-muted">Documentos cargados desde la plataforma</p>
+        <Boton onClick={() => setAbierto(!abierto)} variante="primaria" data-testid={`${testid}-abrir`}>
+          Subir documento
+        </Boton>
+      </div>
+
+      {abierto && panel}
     </div>
   )
 }

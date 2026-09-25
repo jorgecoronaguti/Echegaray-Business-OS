@@ -25,10 +25,13 @@ import { SeccionInsumos, type AccionesInsumos } from './SeccionInsumos'
 import type { InsumoTarea } from '../../../services/insumosTarea'
 import type { ActivoElegible } from '../../../services/insumosService'
 
-type Metodo = 'cantidad' | 'pasos' | 'manual'
+// `partes`: el avance se suma de los partes diarios. Es el método de 96 de las 143 tareas vivas (25/09):
+// si el panel no lo ofrece, una tarea en «partes» se leía «Manual» y guardar la pasaba a manual.
+type Metodo = 'cantidad' | 'pasos' | 'partes' | 'manual'
 const METODOS: { id: Metodo; label: string; icono: React.ReactNode }[] = [
   { id: 'cantidad', label: 'Cantidad', icono: <Ico d={P.cantidad} s={12} /> },
   { id: 'pasos', label: 'Pasos', icono: <Ico d={P.paso} s={12} /> },
+  { id: 'partes', label: 'Partes', icono: <Ico d={P.fecha} s={12} /> },
   { id: 'manual', label: 'Manual', icono: <Ico d={P.editar} s={12} /> },
 ]
 
@@ -47,7 +50,7 @@ export function PanelSubtareas({ obraId, nodo, camino, subtareas, estados, insum
   alGuardado: () => void
   alDividir: () => void
 }) {
-  const inicial: Metodo = nodo.metodo_avance === 'cantidad' || nodo.metodo_avance === 'pasos' ? nodo.metodo_avance : 'manual'
+  const inicial: Metodo = nodo.metodo_avance === 'cantidad' || nodo.metodo_avance === 'pasos' || nodo.metodo_avance === 'partes' ? nodo.metodo_avance : 'manual'
   const [metodo, setMetodo] = useState<Metodo>(inicial)
   const [hechas, setHechas] = useState<Set<string>>(() => new Set(subtareas.filter((s) => estados[s.id] === 'hecha').map((s) => s.id)))
   const [nuevas, setNuevas] = useState<string[]>([])
@@ -124,7 +127,7 @@ export function PanelSubtareas({ obraId, nodo, camino, subtareas, estados, insum
           <div style={{ display: 'flex', gap: '6px' }}>
             {METODOS.map((m) => <Chip key={m.id} activo={metodo === m.id} onClick={() => setMetodo(m.id)} icono={m.icono} testid={`metodo-${m.id}`}>{m.label}</Chip>)}
           </div>
-          <div style={{ fontSize: '12px', color: C.tenue }}>{metodo === 'pasos' ? textoDePasos(total, true) : metodo === 'cantidad' ? 'Cantidad: el avance sale de lo ejecutado sobre la cantidad objetivo.' : 'Manual: el avance lo declara una persona, con su criterio escrito.'}</div>
+          <div style={{ fontSize: '12px', color: C.tenue }}>{metodo === 'pasos' ? textoDePasos(total, true) : metodo === 'cantidad' ? 'Cantidad: el avance sale de lo ejecutado sobre la cantidad objetivo.' : metodo === 'partes' ? 'Partes: el avance se suma de lo que dicen los partes diarios.' : 'Manual: el avance lo declara una persona, con su criterio escrito.'}</div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <Eyebrow derecha={`${hechas.size} de ${total} hechas`}>Subtareas</Eyebrow>
@@ -147,7 +150,7 @@ export function PanelSubtareas({ obraId, nodo, camino, subtareas, estados, insum
             <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginRight: '-16px', scrollbarWidth: 'none' }}>
               {METODOS.map((m) => <Chip key={m.id} activo={metodo === m.id} onClick={() => setMetodo(m.id)} icono={m.id === 'cantidad' ? undefined : m.icono} alto={36} testid={`metodo-telefono-${m.id}`}>{m.label}</Chip>)}
             </div>
-            <div style={{ fontSize: '12px', color: C.tenue }}>{metodo === 'pasos' ? textoDePasos(total, false) : metodo === 'cantidad' ? 'El avance sale de lo ejecutado.' : 'El avance lo declara una persona.'}</div>
+            <div style={{ fontSize: '12px', color: C.tenue }}>{metodo === 'pasos' ? textoDePasos(total, false) : metodo === 'cantidad' ? 'El avance sale de lo ejecutado.' : metodo === 'partes' ? 'El avance se suma de los partes.' : 'El avance lo declara una persona.'}</div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <Eyebrow derecha={`${hechas.size} de ${total}`}>Subtareas</Eyebrow>

@@ -49,6 +49,7 @@ import {
 import { TablaTareas } from './items/TablaTareas'
 import { TablaItems } from './items/TablaItems'
 import { ListaItems } from './items/ListaItems'
+import { TablaItemsTelefono, type NivelTelefono } from './items/TablaItemsTelefono'
 import { EstadoVacio } from './items/crear/EstadoVacio'
 import { Estructura, esModoEstructura, type AccionesEstructura, type DatosEstructura, type ModoEstructura } from './items/crear/Estructura'
 import { cifrasDelArbol, cifrasSerieB, publicarCifras } from './items/crear/estadoCabecera'
@@ -185,6 +186,10 @@ export function TabTareas({
   const cuentas = useMemo(() => conteoDeVistas(nodos, agregados, hoy), [nodos, agregados, hoy])
   const niveles = useMemo(() => Object.fromEntries(Object.entries(estructura.ponds).map(([id, p]) => [id, p.nivel ?? null])), [estructura.ponds])
   const todas = useMemo(() => filasDeItems(nodos, historias, partesResumen, verHasta, niveles), [nodos, historias, partesResumen, verHasta, niveles])
+  // M06: la tabla numerada del teléfono ve hasta la subtarea; el nivel lo elige «⌄ todo». Con muchos
+  // ítems arranca en historia (una obra de 138 ítems enteros son 7.000 px).
+  const todasTel = useMemo(() => (itemsPonderados ? filasDeItems(nodos, historias, partesResumen, 'subtarea', niveles) : []), [itemsPonderados, nodos, historias, partesResumen, niveles])
+  const [nivelTel, setNivelTel] = useState<NivelTelefono>(() => (nodos.length > 30 ? 'historia' : 'todo'))
   const filas = useMemo(() => {
     let f = todas
     if (filtroLocal !== 'todo') {
@@ -288,11 +293,25 @@ export function TabTareas({
               {avanceObra.bajada && <span style={{ fontSize: '12px', color: C.tintaSuave }}>{avanceObra.bajada}</span>}
             </span>
           ) : null)}
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar actividades" data-testid="buscar-tarea"
+          {/* 04b: «MONTO PONDERADO $ 18,77 M» al lado del avance — lo que suma el costo de MO de las
+              historias que pesan (el denominador de la ponderación). Economía: sólo Administración. */}
+          {itemsPonderados && veEconomia && (() => {
+            const conCosto = historias.filter((h) => h.costo_mo != null && !h.sin_costo)
+            const total = conCosto.reduce((x, h) => x + (h.costo_mo ?? 0), 0)
+            return (
+              <span data-testid="monto-ponderado" style={{ display: 'inline-flex', alignItems: 'baseline', gap: '8px', marginRight: '14px' }}>
+                <span style={{ fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', textTransform: 'uppercase', color: C.tenue }}>Monto ponderado</span>
+                {conCosto.length > 0
+                  ? <b style={{ fontSize: '15px', fontWeight: 600, color: C.tinta, fontVariantNumeric: 'tabular-nums' }}>{millones(total)}</b>
+                  : <i style={{ fontSize: '12.5px', color: C.tenue }}>sin costo de MO</i>}
+              </span>
+            )
+          })()}
+          {!itemsPonderados && <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar actividades" data-testid="buscar-tarea"
             style={{
               width: '190px', height: '29px', padding: '0 10px', border: `1px solid ${C.bordeFuerte}`, borderRadius: '6px',
               font: 'inherit', fontSize: '12.5px', background: C.superficie, color: C.tinta,
-            }} />
+            }} />}
         </>}
       />
 
@@ -361,16 +380,17 @@ export function TabTareas({
 
       {/* ═══ TELÉFONO (M05): lista por grupo; el panel tapa la lista ═══ */}
       <div className="md:hidden">
-        {/* M06: «Avance 47%» arriba de la lista, la misma cifra que la cartera. */}
+        {/* M06: «Avance 47%» arriba de la tabla, la misma cifra que la cartera (por tareas). */}
         {itemsPonderados && avanceObra && (
-          <div data-testid="avance-items-telefono" style={{ padding: '12px 16px 0', display: 'flex', alignItems: 'baseline', gap: '8px', fontSize: '12.5px', color: C.tintaSuave }}>
-            <span style={{ fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', textTransform: 'uppercase', color: C.tenue }}>Avance</span>
-            {avanceObra.valor ? <b style={{ fontSize: '17px', fontWeight: 600, color: C.tinta }}>{avanceObra.valor}</b> : <i style={{ color: C.tenue }}>{avanceObra.falta}</i>}
-            <span>{avanceObra.bajada.replace(' tareas medidas', ' medidas')}</span>
+          <div data-testid="avance-items-telefono" style={{ padding: '12px 16px 0', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', color: C.tintaMedia }}>
+            <span style={{ color: C.tenue, display: 'flex' }}><Ico d={P.avance} s={12} /></span>
+            Avance {avanceObra.valor ? <b style={{ fontWeight: 600, color: C.tinta }}>{avanceObra.valor}</b> : <i style={{ color: C.tenue }}>{avanceObra.falta}</i>}
           </div>
         )}
-        <ListaItems filas={filas} query={query} alBuscar={setQuery} filtrosActivos={filtrosActivos}
-          alAbrirFiltros={() => setFiltrosAbiertos((x) => !x)} alAbrir={(id) => abrir(id)} vacio={vacio} />
+        {itemsPonderados
+          ? <TablaItemsTelefono filas={todasTel} nivel={nivelTel} alCambiarNivel={setNivelTel} alAbrir={(id) => abrir(id)} />
+          : <ListaItems filas={filas} query={query} alBuscar={setQuery} filtrosActivos={filtrosActivos}
+            alAbrirFiltros={() => setFiltrosAbiertos((x) => !x)} alAbrir={(id) => abrir(id)} vacio={vacio} />}
         {filtrosAbiertos && (
           <div style={{ position: 'fixed', left: 0, right: 0, bottom: '64px', background: C.superficie, borderTop: `1px solid ${C.borde}`, padding: '12px 16px', zIndex: 25 }}
             data-testid="filtros-telefono">
@@ -387,7 +407,7 @@ export function TabTareas({
             {panel}
           </div>
         )}
-        {puedeEditar && !abierta && !estructura.obra.archivada && (
+        {puedeEditar && !abierta && !estructura.obra.archivada && !itemsPonderados && (
           <div style={{ position: 'fixed', left: 0, right: 0, bottom: '64px', padding: '12px 16px 18px', background: C.superficie, borderTop: `1px solid ${C.borde}`, zIndex: 20 }}>
             <button type="button" onClick={() => { setAlta('actividad'); window.scrollTo({ top: 0 }) }} data-testid="primaria-nueva-actividad"
               style={{ ...ESTILO_PRIMARIA, width: '100%', height: '48px', justifyContent: 'center', fontSize: '14px', gap: '8px', color: C.grafito }}>

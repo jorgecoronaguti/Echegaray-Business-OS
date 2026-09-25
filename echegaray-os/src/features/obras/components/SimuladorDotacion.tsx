@@ -152,7 +152,12 @@ export function SimuladorDotacion({
   const limites: { k: string; t: string; texto: string | null; falta: string; sufijo?: string }[] = [
     { k: 'tope', t: 'Tope por frente', texto: manda?.tope != null ? `${manda.tope} personas` : null, falta: 'sin declarar' },
     { k: 'disponibles', t: 'Disponibles hoy', texto: disponibles != null ? String(disponibles) : null, falta: 'sin dato' },
-    { k: 'capacidad', t: `Capacidad de ${fin.manda ? (filas.find((x) => x.f.nombre === fin.manda)?.dotacion ?? '—') : '—'}`, texto: null, falta: 'sin categorías cargadas', sufijo: 'ponderada' },
+    // «Capacidad de 4 · ponderada» con la dotación del frente que manda; sin dotación, el rótulo no
+    // lleva un «—» colgando («Capacidad de —»): dice qué es.
+    ...(() => {
+      const d = fin.manda ? filas.find((x) => x.f.nombre === fin.manda)?.dotacion ?? null : null
+      return [{ k: 'capacidad', t: d != null ? `Capacidad de ${d}` : 'Capacidad ponderada', texto: null, falta: 'sin categorías cargadas', sufijo: d != null ? 'ponderada' : undefined }]
+    })(),
     { k: 'no-laborables', t: 'No laborables', texto: noLaborablesProximos(noLaborables, desde), falta: 'ninguno cargado' },
   ]
 
@@ -241,7 +246,7 @@ export function SimuladorDotacion({
               })}
             </div>
             <div style={{ width: '1px', height: '15px', background: C.borde }} />
-            <span style={{ fontSize: '12.5px', color: C.tintaSuave }}>desde el {ddmm(desde)} · jornada {jornada} h</span>
+            <span style={{ fontSize: '12.5px', color: C.tintaSuave }}>desde el {ddmm(desde)} · jornada {Number(jornada).toLocaleString('es-AR', { maximumFractionDigits: 1 })} h</span>
             {fechaInput}
           </div>
 

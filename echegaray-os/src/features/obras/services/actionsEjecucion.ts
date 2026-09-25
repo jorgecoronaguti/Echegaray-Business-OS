@@ -332,7 +332,7 @@ export async function medirEnLote(obraId: string, form: FormData): Promise<Resul
     if (error) return { ok: false, error: error.message }
   }
   revalidatePath(`/obras/${obraId}`)
-  return { ok: true, mensaje: `${cambios.length} actividad(es) medidas.` }
+  return { ok: true, mensaje: `${cambios.length} ${cambios.length === 1 ? 'actividad medida' : 'actividades medidas'}.` }
 }
 
 /**

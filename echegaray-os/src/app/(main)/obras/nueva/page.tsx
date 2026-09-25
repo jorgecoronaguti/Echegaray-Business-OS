@@ -37,7 +37,7 @@ import { asignarPersona } from '@/features/obras/services/actionsPersonal'
 import { crearBorradorObra, guardarPasoObra } from '@/features/obras/services/actionsAlta'
 import { esPasoQueGuarda, pasoSiguiente, pasosHechos, resolverPaso, subtituloAlta, urlPaso } from '@/features/obras/services/alta'
 import {
-  BandaDePasos, CabeceraAlta, CampoAlta, CuerpoYAside, EnlacePaso, FormPaso, GrillaCampos, InputAlta, MarcoAlta,
+  BandaDePasos, CabeceraAlta, CampoAlta, CuerpoYAside, EnlacePaso, FormPaso, GrillaCampos, InputAlta, FechaAlta, MarcoAlta,
   PrimariaEnlace, SelectAlta, TituloPaso,
 } from '@/features/obras/components/PasosAlta'
 import { ChecklistPreparacion } from '@/features/obras/components/ChecklistPreparacion'
@@ -178,8 +178,8 @@ export default async function NuevaObraPage({
                 )}
                 {paso === 'fechas' && (
                   <>
-                    <CampoAlta rotulo="Inicio previsto" mono><InputAlta type="date" name="fecha_inicio_plan" defaultValue={v(obra.fecha_inicio_plan)} /></CampoAlta>
-                    <CampoAlta rotulo="Fin previsto" mono><InputAlta type="date" name="fecha_fin_plan" defaultValue={v(obra.fecha_fin_plan)} /></CampoAlta>
+                    <CampoAlta rotulo="Inicio previsto" mono><FechaAlta name="fecha_inicio_plan" defaultValue={v(obra.fecha_inicio_plan)} /></CampoAlta>
+                    <CampoAlta rotulo="Fin previsto" mono><FechaAlta name="fecha_fin_plan" defaultValue={v(obra.fecha_fin_plan)} /></CampoAlta>
                   </>
                 )}
                 {/* `veEconomia` decide si el campo EXISTE: la clave ausente no es un vacío (ver `actionsAlta`). */}
@@ -237,8 +237,8 @@ export default async function NuevaObraPage({
                 <GrillaCampos>
                   <CampoAlta rotulo="Actividad"><InputAlta name="nombre" required minLength={2} maxLength={200} placeholder="" /></CampoAlta>
                   <CampoAlta rotulo="Sección"><InputAlta name="seccion" maxLength={120} placeholder="opcional" /></CampoAlta>
-                  <CampoAlta rotulo="Inicio previsto" mono><InputAlta type="date" name="inicio_plan" /></CampoAlta>
-                  <CampoAlta rotulo="Fin previsto" mono><InputAlta type="date" name="fin_plan" /></CampoAlta>
+                  <CampoAlta rotulo="Inicio previsto" mono><FechaAlta name="inicio_plan" /></CampoAlta>
+                  <CampoAlta rotulo="Fin previsto" mono><FechaAlta name="fin_plan" /></CampoAlta>
                   <CampoAlta rotulo="HH plan" mono><InputAlta type="number" name="hh_plan" min={0} step="0.5" /></CampoAlta>
                 </GrillaCampos>
               </FormPaso>

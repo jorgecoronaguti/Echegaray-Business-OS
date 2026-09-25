@@ -8,7 +8,11 @@ export default function ObrasEnVivoLayout({ children }: { children: React.ReactN
   return (
     <>
       <RefrescarEnVivo tablas={TABLAS_DE.fichaObra} />
-      {children}
+      {/* EL INTERLINEADO DEL DISEÑO ERP OBRAS: el `.dc.html` no fija `line-height` y el navegador usa el
+          «normal» de IBM Plex Sans (~1,25: 19px → 24, 12px → 15). La app hereda 1,5 del cuerpo y cada
+          pantalla de Obras bajaba 8–20 px. Sólo en /obras: `display: contents` no agrega caja al layout
+          y el interlineado se hereda igual. Los textos largos que fijan el suyo lo conservan. */}
+      <div style={{ display: 'contents', lineHeight: 1.25 }} data-alcance="obras">{children}</div>
     </>
   )
 }

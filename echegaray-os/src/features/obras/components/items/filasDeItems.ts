@@ -348,3 +348,10 @@ export function gruposTelefono(filas: readonly FilaItem[]): GrupoTelefono[] {
   }
   return grupos.filter((g) => g.n > 0)
 }
+
+/** El peso sobre la obra (0–1) → «38» · «8» · «0,8». */
+export function textoPeso(p: number | null): string | null {
+  if (p == null) return null
+  const v = p * 100
+  return v >= 10 || v === 0 ? String(Math.round(v)) : v.toLocaleString('es-AR', { maximumFractionDigits: 1 })
+}

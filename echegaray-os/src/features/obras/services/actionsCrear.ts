@@ -293,7 +293,8 @@ export async function guardarPonderacion(obraId: string, padreId: string, form: 
 // ── C08 · SUBTAREAS ──────────────────────────────────────────────────────────
 
 const subtareasSchema = z.object({
-  metodo: z.enum(['cantidad', 'pasos', 'manual']),
+  // `partes` es el método de 96 de las 143 tareas vivas (25/09): el panel lo ofrece y se guarda tal cual.
+  metodo: z.enum(['cantidad', 'pasos', 'partes', 'manual']),
   nuevas: z.array(z.string().trim().min(2).max(200)).max(50),
   hechas: z.array(z.string().uuid()).max(200),
 })
@@ -379,7 +380,7 @@ const masivaSchema = z.discriminatedUnion('accion', [
   z.object({ accion: z.literal('mover'), padre_id: z.union([z.string().uuid(), z.literal('')]) }),
   z.object({ accion: z.literal('cuadrilla'), cuadrilla_id: z.union([z.string().uuid(), z.literal('')]) }),
   z.object({ accion: z.literal('fechas'), dias: z.coerce.number().int().min(-60).max(60) }),
-  z.object({ accion: z.literal('metodo'), metodo: z.enum(['cantidad', 'pasos', 'manual']) }),
+  z.object({ accion: z.literal('metodo'), metodo: z.enum(['cantidad', 'pasos', 'partes', 'manual']) }),
   z.object({ accion: z.literal('responsable'), responsable_id: z.union([z.string().uuid(), z.literal('')]) }),
   z.object({ accion: z.literal('archivar') }),
 ])

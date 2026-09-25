@@ -14,7 +14,8 @@ export function CifraViva({ clave, falta }: { clave: string; falta: string }) {
   const v = useCifra(clave)
   if (v == null) return <span style={{ color: C.tenue, fontStyle: 'italic', fontFamily: 'inherit' }} data-nulo="">{falta}</span>
   if (typeof v === 'string') return <span data-testid={`cifra-${clave}`}>{v}</span>
-  return <span data-testid={`cifra-${clave}`} style={{ color: v.tono === 'warn' ? C.warn : C.pos }}>{v.texto}</span>
+  if (v.cola) return <span data-testid={`cifra-${clave}`}>{v.texto} · <span style={{ color: C.warn }}>{v.cola}</span></span>
+  return <span data-testid={`cifra-${clave}`} style={{ color: v.tono === 'warn' ? C.warn : v.tono === 'pos' ? C.pos : C.tinta }}>{v.texto}</span>
 }
 
 const ICONO = { mas: P.mas, flecha: P.flecha, ok: P.ok } as const

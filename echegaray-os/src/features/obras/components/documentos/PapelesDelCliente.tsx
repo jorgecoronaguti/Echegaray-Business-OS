@@ -32,8 +32,26 @@ export function PapelesDelCliente({ ordenes, veEconomia }: { ordenes: OrdenDetal
     )
   }
   const filas = ordenesDeLaObra(ordenes)
-  // Sin ninguna orden y con lectura buena, el bloque no se dibuja: sería ruido en cada obra sin OC.
-  if (filas.length === 0) return null
+  // Sin ninguna orden y con lectura buena, el bloque SE DIBUJA vacío (14 · M17): que no haya OC ni OP es
+  // un dato — el Resumen dice «Sin OC registrada» y esta pantalla tiene que decir lo mismo, no callar.
+  if (filas.length === 0) {
+    return (
+      <>
+        <div className="hidden md:flex" style={{ flexDirection: 'column', gap: '10px', padding: '0 10px' }} data-testid="papeles-del-cliente">
+          <TituloBloque titulo="Papeles del cliente" meta="bajados del mail · viven en el OS, no en Drive" />
+          <div data-testid="papeles-del-cliente-vacio" style={{ minHeight: '44px', display: 'flex', alignItems: 'center', fontSize: '12.5px', color: C.tenue, fontStyle: 'italic', borderBottom: `1px solid ${C.borde}` }}>
+            Ninguna orden de compra ni de pago de esta obra bajada del mail.
+          </div>
+        </div>
+        <div className="flex md:hidden" style={{ flexDirection: 'column', gap: '6px' }} data-testid="papeles-del-cliente-telefono">
+          <Eyebrow derecha="en el OS">Papeles del cliente</Eyebrow>
+          <div style={{ minHeight: '44px', display: 'flex', alignItems: 'center', fontSize: '13px', color: C.tenue, fontStyle: 'italic', borderBottom: `1px solid ${C.borde}` }}>
+            Ninguna OC ni OP bajada del mail.
+          </div>
+        </div>
+      </>
+    )
+  }
   const importe = (o: Orden) => (veEconomia ? (o.importe == null ? 'sin importe' : cifraM(o.importe)) : null)
 
   return (

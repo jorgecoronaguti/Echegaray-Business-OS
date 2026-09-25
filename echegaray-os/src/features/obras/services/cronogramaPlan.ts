@@ -393,9 +393,10 @@ export function bajadaDuracion(f: FilaPlan, dias: readonly string[]): string {
   const n = diasHabilesEntre(dias, f.inicio, f.fin)
   if (n == null) return 'sin fechas'
   const base = n === 1 ? '1 día' : `${n} días`
-  if (f.esTiempoTecnico) return `${base} técnicos`
-  const subs = f.nHijas > 0 ? ` · ${f.nHijas} subtareas` : ''
-  return subs ? `${base}${subs}` : `${base} hábiles`
+  // «1 día hábil», nunca «1 día hábiles» (MC7): el adjetivo concuerda con el número.
+  if (f.esTiempoTecnico) return n === 1 ? '1 día técnico' : `${base} técnicos`
+  const subs = f.nHijas > 0 ? ` · ${f.nHijas} ${f.nHijas === 1 ? 'subtarea' : 'subtareas'}` : ''
+  return subs ? `${base}${subs}` : n === 1 ? '1 día hábil' : `${base} hábiles`
 }
 
 export interface FechasEditadas { inicio: string | null; fin: string | null }

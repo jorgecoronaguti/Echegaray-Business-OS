@@ -410,7 +410,8 @@ export default async function ObraPage({
           <>
             <PrimariaViva />
             {/* Serie B: armando la estructura no hay «Nueva actividad» (B01–B07); la C01 vacía sí la dibuja. */}
-            {!enEstructura && !modoConPrimariaPropia && puedeEditarPlan && !terminada && nuevaActividad}
+            {/* C01 (vacía), C07 (dividir en frentes) y C09 (acciones masivas) la dibujan en la cabecera. */}
+            {(!enEstructura || modoEstructura.panel === 'frentes' || modoEstructura.sel) && !modoConPrimariaPropia && puedeEditarPlan && !terminada && nuevaActividad}
           </>
         ) : vista === 'resumen' && terminada ? (
           // Z01: la obra terminada o archivada no ofrece cargar parte ni crear actividades; ofrece
@@ -582,6 +583,7 @@ export default async function ObraPage({
           obraId={obraId}
           plan={planPersonal}
           asignaciones={asignaciones}
+          responsableObra={obra.jefe_obra ?? null}
           personas={personas}
           cuadrillas={cuadrillas}
           actividades={acts}

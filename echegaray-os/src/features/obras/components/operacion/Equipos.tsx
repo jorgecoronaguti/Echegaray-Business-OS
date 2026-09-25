@@ -26,10 +26,27 @@ import { Celda, DerechaM, Eyebrow, Falta, FilaM, GridCab, GridFila, TituloBloque
 
 const COLS_OBRA = 'minmax(0,1fr) 116px 108px 96px'
 const COLS_MOV = '88px minmax(0,1fr) 108px 108px'
+const MOV_A_LA_VISTA = 8
+const MOV_A_LA_VISTA_TELEFONO = 5
+
+function VerMas({ n, alTocar, testid }: { n: number; alTocar: () => void; testid: string }) {
+  return (
+    <button type="button" onClick={alTocar} data-testid={testid} style={{
+      font: 'inherit', fontSize: '12.5px', color: C.tintaSuave, background: 'none', border: 'none', padding: 0, minHeight: '44px',
+      display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', textAlign: 'left',
+    }}><Ico d={P.derecha} s={12} />Ver {n === 1 ? 'el anterior' : `los ${n} anteriores`}</button>
+  )
+}
 
 export function Equipos({ equipos, nombreObra }: { equipos: EquiposDeObra; nombreObra: string }) {
   const [sel, setSel] = useState<string | null>(null)
-  const entradas = equipos.movimientos.filter((m) => m.sentido === 'entro')
+  // 11 · M14: los movimientos se leen de los más nuevos; a la vista 8 (PC) y 5 (teléfono), el resto
+  // detrás de «Ver los N anteriores». Sin tope eran ~130 filas y 3.800 px.
+  const [todosPC, setTodosPC] = useState(false)
+  const [todosTel, setTodosTel] = useState(false)
+  const entradasTodas = equipos.movimientos.filter((m) => m.sentido === 'entro')
+  const entradas = todosPC ? entradasTodas : entradasTodas.slice(0, MOV_A_LA_VISTA)
+  const movsTel = todosTel ? equipos.movimientos : equipos.movimientos.slice(0, MOV_A_LA_VISTA_TELEFONO)
   const nada = equipos.sinUbicacion ? 'Esta obra todavía no tiene ubicación en Herramientas: nada puede figurar acá.'
     : equipos.enObra.length === 0 ? 'Ningún activo figura hoy en esta obra.' : null
 
@@ -67,7 +84,7 @@ export function Equipos({ equipos, nombreObra }: { equipos: EquiposDeObra; nombr
           <TituloBloque titulo="Cómo llegó" meta="movimientos hacia esta obra" />
           <div style={{ display: 'flex', flexDirection: 'column' }} data-testid="tabla-como-llego">
             <GridCab columnas={COLS_MOV} gap={18} alto={32} celdas={[{ t: 'Fecha' }, { t: 'Herramienta' }, { t: 'Desde' }, { t: 'Quién' }]} />
-            {entradas.length === 0 && <div style={{ padding: '18px 0', fontSize: '13px', color: C.tenue }}>Ningún movimiento hacia esta obra registrado.</div>}
+            {entradasTodas.length === 0 && <div style={{ padding: '18px 0', fontSize: '13px', color: C.tenue }}>Ningún movimiento hacia esta obra registrado.</div>}
             {entradas.map((m, i) => (
               <GridFila key={m.id} columnas={COLS_MOV} gap={18} alto={52} ultima={i === entradas.length - 1} sangria={0} testid={`movimiento-${m.id}`}>
                 <Celda tono="suave">{diaMes(m.fechaHora.slice(0, 10))}</Celda>
@@ -76,6 +93,7 @@ export function Equipos({ equipos, nombreObra }: { equipos: EquiposDeObra; nombr
                 <Celda tono="media">{m.quien ?? <Falta>sin registrar</Falta>}</Celda>
               </GridFila>
             ))}
+            {!todosPC && entradasTodas.length > MOV_A_LA_VISTA && <VerMas n={entradasTodas.length - MOV_A_LA_VISTA} alTocar={() => setTodosPC(true)} testid="como-llego-ver-mas" />}
           </div>
         </div>
       </div>
@@ -100,11 +118,12 @@ export function Equipos({ equipos, nombreObra }: { equipos: EquiposDeObra; nombr
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <Eyebrow derecha={equipos.movimientos.length}>Últimos movimientos</Eyebrow>
           {equipos.movimientos.length === 0 && <div style={{ padding: '14px 0', fontSize: '13px', color: C.tenue }}>Ningún movimiento registrado.</div>}
-          {equipos.movimientos.map((m, i) => (
+          {movsTel.map((m, i) => (
             <FilaM key={m.id} icono={<Ico d={P.equipo} s={15} />} titulo={tituloMovimiento(m)} sub={sublineaMovimiento(m)}
-              derecha={<DerechaM fecha={diaMes(m.fechaHora.slice(0, 10))} />} ultima={i === equipos.movimientos.length - 1}
+              derecha={<DerechaM fecha={diaMes(m.fechaHora.slice(0, 10))} />} ultima={i === movsTel.length - 1}
               testid={`movimiento-telefono-${m.id}`} />
           ))}
+          {!todosTel && equipos.movimientos.length > MOV_A_LA_VISTA_TELEFONO && <VerMas n={equipos.movimientos.length - MOV_A_LA_VISTA_TELEFONO} alTocar={() => setTodosTel(true)} testid="movimientos-ver-mas" />}
         </div>
       </div>
     </>

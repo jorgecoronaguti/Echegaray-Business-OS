@@ -141,7 +141,7 @@ export function CabeceraTelefono({ miga, titulo, alVolver }: { miga: ReactNode; 
         style={{ color: C.tintaSuave, display: 'flex', border: 'none', background: 'none', padding: 0, cursor: 'pointer' }}>
         <Ico d={P.izquierda} s={16} />
       </button>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0, flex: 1 }}>
         <div style={{ fontSize: '11.5px', color: C.tenue, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{miga}</div>
         <div style={{ fontSize: '15px', fontWeight: 600, color: C.tinta }}>{titulo}</div>
       </div>

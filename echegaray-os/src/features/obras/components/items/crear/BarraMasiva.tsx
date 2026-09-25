@@ -4,8 +4,8 @@
 //
 //   escritorio  la barra grafito de 44 (radio 8, `padding:0 12px`, 12,5 blanco): «6 seleccionadas» 600 y los
 //               siete botones de 30 con borde blanco al 25 % —Mover a… · Cuadrilla · Correr fechas · Método ·
-//               Responsable · Archivar— y «✕ Esc» al 70 % a la derecha. Serie B: sin «Ponderación» (el peso
-//               lo deriva el costo de MO; nadie tipea un %)
+//               Ponderación · Responsable · Archivar— y «✕ Esc» al 70 % a la derecha. «Ponderación» abre el
+//               reparto (B07 / C05); nadie tipea un % desde la barra
 //               debajo del árbol, la caja de la acción (`margin-top:16px; padding:14px 16px`, borde line, radio
 //               8, 13px): el rótulo 600, los chips de 32, la aclaración muted y «Aplicar a N» a la derecha
 //   teléfono    «6 seleccionadas» 14/600 + «✕ Salir» 12,5 muted; el panel grafito fijo abajo (`padding:12px
@@ -24,12 +24,16 @@ import type { Persona } from '../../../types'
 import type { AccionFormulario } from '@/shared/components/ui/FormAccion'
 import { nombreDePersona } from '../../../../../shared/personas/nombre.ts'
 
-export type AccionMasiva = 'mover' | 'cuadrilla' | 'fechas' | 'metodo' | 'responsable' | 'archivar'
+export type AccionMasiva = 'mover' | 'cuadrilla' | 'fechas' | 'metodo' | 'ponderacion' | 'responsable' | 'archivar'
 const ACCIONES: { id: AccionMasiva; label: string; d: ReactNode }[] = [
   { id: 'mover', label: 'Mover a…', d: P.flecha },
   { id: 'cuadrilla', label: 'Cuadrilla', d: P.cuadrilla },
   { id: 'fechas', label: 'Correr fechas', d: P.fecha },
   { id: 'metodo', label: 'Método', d: P.paso },
+  // C09 · MC10: «Ponderación» abre el reparto (B07 la obra entera; C05 a mano entre hermanas cuando la
+  // selección cuelga de un solo contenedor). No escribe un % desde la barra: el peso sigue saliendo del
+  // costo de MO salvo que alguien elija repartir a mano en esa pantalla.
+  { id: 'ponderacion', label: 'Ponderación', d: P.avance },
   { id: 'responsable', label: 'Responsable', d: P.persona },
   { id: 'archivar', label: 'Archivar', d: P.cerrar },
 ]
@@ -41,8 +45,9 @@ export interface DatosMasivos {
 }
 
 /** LA BARRA (escritorio) y la cabecera de la selección (teléfono). Sólo elige la acción. */
-export function BarraMasiva({ n, accion, setAccion, alSalir, resultado }: {
+export function BarraMasiva({ n, accion, setAccion, alSalir, resultado, alPonderacion }: {
   n: number
+  alPonderacion?: () => void
   accion: AccionMasiva | null
   setAccion: (a: AccionMasiva | null) => void
   alSalir: () => void
@@ -58,7 +63,7 @@ export function BarraMasiva({ n, accion, setAccion, alSalir, resultado }: {
       <div className="hidden md:flex" data-testid="barra-masiva" style={{ minHeight: '44px', alignItems: 'center', gap: '8px', padding: '0 12px', margin: '12px 20px 8px', background: C.grafito, color: C.superficie, borderRadius: '8px', fontSize: '12.5px', flexWrap: 'wrap' }}>
         <span style={{ fontWeight: 600, marginRight: '8px' }} data-testid="masiva-conteo">{n} {n === 1 ? 'seleccionada' : 'seleccionadas'}</span>
         {ACCIONES.map((a) => (
-          <button key={a.id} type="button" onClick={() => setAccion(accion === a.id ? null : a.id)} data-testid={`masiva-${a.id}`} aria-pressed={accion === a.id}
+          <button key={a.id} type="button" onClick={() => (a.id === 'ponderacion' ? alPonderacion?.() : setAccion(accion === a.id ? null : a.id))} data-testid={`masiva-${a.id}`} aria-pressed={accion === a.id}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '0 10px', height: '30px', borderRadius: '6px', border: `1px solid ${accion === a.id ? C.superficie : C.sobreGrafitoBorde}`, background: 'transparent', color: C.superficie, font: 'inherit', cursor: 'pointer' }}>
             <Ico d={a.d} s={12} />{a.label}
           </button>
@@ -81,8 +86,9 @@ export function BarraMasiva({ n, accion, setAccion, alSalir, resultado }: {
 }
 
 /** LA CAJA DE LA ACCIÓN (C09, debajo del árbol) Y EL PANEL GRAFITO DEL TELÉFONO (MC10). Es la que escribe. */
-export function CajaMasiva({ ids, datos, aplicar, alAplicado, accion, setAccion }: {
+export function CajaMasiva({ ids, datos, aplicar, alAplicado, accion, setAccion, alPonderacion }: {
   ids: string[]
+  alPonderacion?: () => void
   datos: DatosMasivos
   aplicar: AccionFormulario
   alAplicado: (r: { ok: boolean; texto: string }) => void
@@ -130,7 +136,7 @@ export function CajaMasiva({ ids, datos, aplicar, alAplicado, accion, setAccion 
       case 'cuadrilla': return sel(datos.cuadrillas, 'quitar la cuadrilla', 'masiva-cuadrilla')
       case 'responsable': return sel(datos.personas.map((p) => ({ id: p.id, nombre: nombreDePersona(p) })), 'quitar el responsable', 'masiva-responsable')
       case 'fechas': return <div style={{ display: 'flex', gap: '6px' }}>{CORRIMIENTOS.map((c) => <Chip key={c.id} activo={dias === c.dias} onClick={() => setDias(c.dias)} alto={alto === 44 ? 36 : 32} testid={`correr-${c.id}`}>{c.label}</Chip>)}</div>
-      case 'metodo': return <div style={{ display: 'flex', gap: '6px' }}>{(['cantidad', 'pasos', 'manual'] as const).map((m) => <Chip key={m} activo={(valor || 'cantidad') === m} onClick={() => setValor(m)} alto={alto === 44 ? 36 : 32} testid={`metodo-masivo-${m}`}>{m === 'cantidad' ? 'Cantidad' : m === 'pasos' ? 'Pasos' : 'Manual'}</Chip>)}</div>
+      case 'metodo': return <div style={{ display: 'flex', gap: '6px' }}>{(['cantidad', 'pasos', 'partes', 'manual'] as const).map((m) => <Chip key={m} activo={(valor || 'cantidad') === m} onClick={() => setValor(m)} alto={alto === 44 ? 36 : 32} testid={`metodo-masivo-${m}`}>{m === 'cantidad' ? 'Cantidad' : m === 'pasos' ? 'Pasos' : m === 'partes' ? 'Partes' : 'Manual'}</Chip>)}</div>
       default: return null
     }
   }
@@ -163,7 +169,7 @@ export function CajaMasiva({ ids, datos, aplicar, alAplicado, accion, setAccion 
         )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
           {ACCIONES.filter((a) => a.id !== 'responsable').map((a) => (
-            <button key={a.id} type="button" onClick={() => { setAccion(accion === a.id ? null : a.id); setValor('') }} data-testid={`masiva-telefono-${a.id}`} aria-pressed={accion === a.id}
+            <button key={a.id} type="button" onClick={() => { if (a.id === 'ponderacion') { alPonderacion?.(); return } setAccion(accion === a.id ? null : a.id); setValor('') }} data-testid={`masiva-telefono-${a.id}`} aria-pressed={accion === a.id}
               style={{ font: 'inherit', height: '44px', display: 'flex', alignItems: 'center', gap: '8px', padding: '0 12px', border: `1px solid ${accion === a.id ? C.superficie : C.sobreGrafitoBorde}`, borderRadius: '6px', fontSize: '13px', background: 'transparent', color: C.superficie, cursor: 'pointer' }}>
               <Ico d={a.d} s={13} />{a.label}
             </button>

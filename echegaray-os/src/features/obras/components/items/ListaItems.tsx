@@ -31,7 +31,13 @@ export function ListaItems({ filas, query, alBuscar, filtrosActivos, alAbrirFilt
   vacio: React.ReactNode
 }) {
   const grupos = gruposTelefono(filas)
-  const [plegados, setPlegados] = useState<ReadonlySet<string>>(new Set())
+  // M05: sólo el grupo EN CURSO arranca abierto (el primero con avance entre 0 y 100; si no hay, el
+  // primero sin terminar); los demás plegados con «›», su conteo y su %. Desplegar todo eran 6.300 px.
+  const [plegados, setPlegados] = useState<ReadonlySet<string>>(() => {
+    const enCurso = grupos.find((g) => g.pct != null && g.pct > 0 && g.pct < 100)
+      ?? grupos.find((g) => g.pct == null || g.pct < 100) ?? grupos[0]
+    return new Set(grupos.filter((g) => g.id !== enCurso?.id).map((g) => g.id))
+  })
   const plegar = (id: string) => setPlegados((p) => { const s = new Set(p); if (s.has(id)) s.delete(id); else s.add(id); return s })
 
   return (
@@ -65,7 +71,7 @@ export function ListaItems({ filas, query, alBuscar, filtrosActivos, alAbrirFilt
 
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {grupos.map((g, gi) => {
-          const abierto = !plegados.has(g.id)
+          const abierto = query.trim() !== '' || !plegados.has(g.id)
           return (
             <div key={g.id} data-testid={`grupo-${g.id}`}>
               <button type="button" onClick={() => plegar(g.id)} style={{

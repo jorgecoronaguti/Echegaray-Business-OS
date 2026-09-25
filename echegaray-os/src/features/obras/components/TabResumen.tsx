@@ -40,7 +40,7 @@ import type { AvancePonderado, DiasHabilesObra } from '../services/avancePondera
 import { cifraAvanceObra } from '../services/avanceObra'
 import {
   actividadesMedibles, asignadosDelResumen, frentesEnCurso, hhDelResumen, impedimentosQueFrenan, inicioRealDeRespaldo, loQueFaltaCargar, personasHoy, plazoDeObra,
-  sinMetodoDeMedicion, ultimaActividad,
+  sinMetodoDeMedicion, tareasSinFecha, ultimaActividad,
 } from '../services/resumenObra'
 import type { PersonasDeHoy } from '../services/personalService'
 import type { Asignacion } from '../types'
@@ -207,7 +207,7 @@ export function TabResumen({
   const frentes = frentesEnCurso(actividades, genteHoy)
   const falta = loQueFaltaCargar({
     historiasSinCosto: avance ? avance.n_historias_sin_costo : null,
-    actividadesSinFecha: obra.n_actividades_sin_fecha,
+    actividadesSinFecha: tareasSinFecha(actividades),
     sinMetodo: sinMetodoDeMedicion(actividades),
     dependencias: nDependencias,
     actividades: nMedibles,

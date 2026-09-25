@@ -20,19 +20,23 @@ import { C, MONO } from './canon/tokens'
 import { bajadaGantt } from '../services/carteraCanon'
 import {
   barrasDe, ESCALAS_CARTERA, FUERA_DE_VENTANA, LEYENDA_GANTT, LEYENDA_GANTT_TELEFONO, posicionEn,
-  SIN_FECHAS_ESCRITORIO, SIN_FECHAS_TELEFONO, ventanaGantt, type EscalaCartera, type TonoGantt,
+  nombreCortoGantt, SIN_FECHAS_ESCRITORIO, SIN_FECHAS_TELEFONO, ventanaGantt, type EscalaCartera, type TonoGantt,
 } from '../services/carteraGantt'
-import { CabeceraCliente, CeldaObra, NombreTelefono, type FilaCartera } from './CarteraObras'
+import { CabeceraCliente, type FilaCartera } from './CarteraObras'
+import { estadoDeCartera, SIN_CLIENTE } from '../services/carteraCanon'
+import { rotuloDeObra } from '@/shared/utils/obra'
 import { Hover } from './canon/Piezas'
 import type { GrupoDeCliente } from '../services/carteraCanon'
 
 // LAS MEDIDAS SON LAS DE LA TABLA (01): encabezado de 40px, fila de 64px, 22px entre columnas. El
 // Gantt no tiene alto propio: si la Tabla cambia, se cambia acá también.
-const ALTO_FILA = 64
+// 02 (25/09, fidelidad): tarjeta con borde `#E7E6E2` y radio 8; columna de nombres de 300px con
+// divisor vertical; encabezado de 36px en `#FAFAF8`; filas de 46 + 1 de línea, UNA línea de 13px.
+const ALTO_FILA = 46
 const ALTO_FILA_TELEFONO = 62
-const ALTO_CABECERA = 40
-const ANCHO_OBRA = 360
-const GAP = 22
+const ALTO_CABECERA = 36
+const ANCHO_OBRA = 300
+const GAP = 0
 const COLS = `${ANCHO_OBRA}px minmax(0,1fr)`
 /** Como `MIN_TABLA`: por debajo el lienzo scrollea por dentro y la página no se corre de costado. */
 const MIN_GANTT = 660
@@ -100,7 +104,7 @@ export function CuerpoGantt({ grupos, lista, total, hoyIso, telefono, escala }: 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }} data-testid="gantt-obras">
         <div style={{ fontSize: '12px', color: C.tintaSuave }} data-testid="bajada-gantt">{bajadaGantt(lista)}</div>
         <div style={{ position: 'relative' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '118px 1fr', gap: '10px', height: '28px', alignItems: 'center', borderBottom: `1px solid ${C.borde}` }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: '10px', height: '28px', alignItems: 'center', borderBottom: `1px solid ${C.borde}` }}>
             <div />
             <div style={{ display: 'grid', gridTemplateColumns: `repeat(${ventana.meses.length},1fr)`, fontFamily: MONO, fontSize: '10px', color: C.tenue, textTransform: 'uppercase' }}>
               {ventana.meses.map((m) => <span key={m.label}>{m.label}</span>)}
@@ -116,10 +120,15 @@ export function CuerpoGantt({ grupos, lista, total, hoyIso, telefono, escala }: 
               <div key={o.obra_id} data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id} data-nivel={r.nivel} onClick={() => router.push(hrefDe(o.obra_id))}
                 role="link" tabIndex={0} onKeyDown={(ev) => { if (ev.key === 'Enter') router.push(hrefDe(o.obra_id)) }}
                 style={{
-                  display: 'grid', gridTemplateColumns: '118px 1fr', gap: '10px', height: `${ALTO_FILA_TELEFONO}px`, alignItems: 'center',
-                  borderBottom: ultima ? undefined : `1px solid ${C.borde}`, fontSize: '14px', color: C.tinta, cursor: 'pointer',
+                  display: 'grid', gridTemplateColumns: '130px 1fr', gap: '10px', height: `${ALTO_FILA_TELEFONO}px`, alignItems: 'center',
+                  borderBottom: ultima ? undefined : `1px solid ${C.borde}`, fontSize: '13px', color: C.tinta, cursor: 'pointer',
                 }}>
-                <div style={{ display: 'flex', minWidth: 0, paddingLeft: r.nivel ? '16px' : 0 }}><NombreTelefono o={o} nivel={r.nivel} unaLinea /></div>
+                {/* M02: el nombre SE LEE (dueño 25/09: «OB-0020 · ME - …» no dice nada): sin código ni prefijo
+                    del cliente, en hasta dos renglones; el código completo queda en el título. */}
+                <div title={`${o.codigo ? `${o.codigo} · ` : ''}${o.nombre}`} data-testid="nombre-gantt-telefono" style={{
+                  minWidth: 0, paddingLeft: r.nivel ? '12px' : 0, lineHeight: 1.25, overflow: 'hidden',
+                  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', wordBreak: 'break-word',
+                }}>{nombreCortoGantt(o.nombre)}</div>
                 {b == null
                   ? <div style={{ fontSize: '11.5px', color: C.tenue, fontStyle: 'italic' }} data-testid="obra-sin-plan">{SIN_FECHAS_TELEFONO}</div>
                   : b.fueraDeVentana
@@ -142,9 +151,9 @@ export function CuerpoGantt({ grupos, lista, total, hoyIso, telefono, escala }: 
           })}
           {xHoy >= 0 && xHoy <= 100 && (
             <>
-              <div data-testid="linea-hoy-obras" style={{ position: 'absolute', left: `calc(128px + (100% - 128px)*${xHoy / 100})`, top: 0, bottom: 0, width: '1px', background: C.marca }} />
+              <div data-testid="linea-hoy-obras" style={{ position: 'absolute', left: `calc(140px + (100% - 140px)*${xHoy / 100})`, top: 0, bottom: 0, width: '1px', background: C.marca }} />
               <div style={{
-                position: 'absolute', left: `calc(128px + (100% - 128px)*${xHoy / 100} - 12px)`, top: '-2px', fontFamily: MONO,
+                position: 'absolute', left: `calc(140px + (100% - 140px)*${xHoy / 100} - 12px)`, top: '-2px', fontFamily: MONO,
                 fontSize: '9.5px', color: C.grafito, background: C.marca, padding: '1px 4px', borderRadius: '3px',
               }}>HOY</div>
             </>
@@ -161,52 +170,71 @@ export function CuerpoGantt({ grupos, lista, total, hoyIso, telefono, escala }: 
     )
   }
 
+  // 02: «Jul» en Plex Sans 11,5 #6B6B67 capitalizado; el mes actual 500 en tinta.
   const celdaMes = (actual: boolean, ultimo: boolean): CSSProperties => ({
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    color: actual ? C.tinta : C.tenue, fontWeight: actual ? 500 : 400,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11.5px',
+    color: actual ? C.tinta : C.tintaSuave, fontWeight: actual ? 500 : 400,
     borderRight: ultimo ? undefined : `1px solid ${C.borde}`,
   })
+  const mesCorto = (m: string) => m.charAt(0).toUpperCase() + m.slice(1).toLowerCase()
   const tramo = (t: { left: number; width: number }, fondo: string): CSSProperties => ({
     position: 'absolute', left: `${t.left}%`, top: `${(ALTO_FILA - 12) / 2}px`, width: `${t.width}%`, height: '12px', borderRadius: '3px', background: fondo,
   })
 
-  // SIN CAJA, SIN BANDA GRIS EN EL ENCABEZADO (dueño, 24/09/2026, dos capturas: «el Gantt tiene que
-  // respetar el diseño de la Tabla»). El encabezado es el de la Tabla (40px, OBRA en mono, línea abajo);
-  // el cliente, la misma `CabeceraCliente` de borde a borde; la obra, la misma `CeldaObra` en 64px. Cada
-  // renglón es UNA grilla con nombre y barras: el alto de los dos lados no puede despegarse.
+  // 02 · PORTE LITERAL (fidelidad 25/09): tarjeta con borde y radio 8, columna de 300 con divisor
+  // vertical, encabezado de 36 en `#FAFAF8`, filas de 46 en UNA línea de 13px. El agrupamiento por
+  // cliente sigue (dueño 23/09): el cliente es un renglón de la tarjeta, de borde a borde.
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} data-testid="gantt-obras">
-      <div style={{ overflowX: 'auto' }}><div style={{ position: 'relative', display: 'flex', flexDirection: 'column', minWidth: `${MIN_GANTT}px` }}>
+      <div style={{ overflowX: 'auto' }}><div style={{ position: 'relative', display: 'flex', flexDirection: 'column', minWidth: `${MIN_GANTT}px`, border: `1px solid ${C.borde}`, borderRadius: '8px', overflow: 'hidden' }} data-testid="tarjeta-gantt">
         <div style={{
-          display: 'grid', gridTemplateColumns: COLS, gap: `${GAP}px`, height: `${ALTO_CABECERA}px`, alignItems: 'center',
-          borderBottom: `1px solid ${C.borde}`, fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em',
-          color: C.tenue, textTransform: 'uppercase',
+          display: 'grid', gridTemplateColumns: COLS, height: `${ALTO_CABECERA}px`, alignItems: 'stretch',
+          borderBottom: `1px solid ${C.borde}`, background: C.tenueFondo,
         }} data-columna-fija>
-          <div>Obra</div>
+          <div style={{ display: 'flex', alignItems: 'center', padding: '0 14px', borderRight: `1px solid ${C.borde}`, fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase' }}>Obra</div>
           <div style={{ height: '100%', display: 'grid', gridTemplateColumns: `repeat(${ventana.meses.length},1fr)` }}>
-            {ventana.meses.map((m, i) => <div key={m.label} style={celdaMes(m.actual, i === ventana.meses.length - 1)}>{m.label}</div>)}
+            {ventana.meses.map((m, i) => <div key={m.label} style={celdaMes(m.actual, i === ventana.meses.length - 1)}>{mesCorto(m.label)}</div>)}
           </div>
         </div>
-        {renglones.map((r) => {
-          if (r.tipo === 'cliente') return <CabeceraCliente key={`c:${r.clave}`} nombre={r.nombre} slug={r.slug} n={r.n} />
+        {renglones.map((r, idx) => {
+          const ultimaFila = idx === renglones.length - 1
+          if (r.tipo === 'cliente') {
+            // El cliente, de borde a borde de la tarjeta (el mismo renglón gris de la Tabla, con 14 de aire).
+            return (
+              <div key={`c:${r.clave}`} data-testid="cabecera-cliente" data-cliente={r.slug ?? ''} style={{
+                display: 'flex', alignItems: 'center', gap: '10px', minHeight: '36px', padding: '0 14px', background: C.tenueFondo,
+                borderBottom: `1px solid ${C.borde}`, fontSize: '11.5px', fontWeight: 600, letterSpacing: '.02em', color: r.nombre ? C.tinta : C.tenue,
+              }}>
+                {r.slug && r.nombre
+                  ? <a href={`/clientes/${r.slug}`} onClick={(ev) => ev.stopPropagation()} style={{ color: C.tinta, textDecoration: 'none' }}>{r.nombre}</a>
+                  : <span>{r.nombre ?? SIN_CLIENTE}</span>}
+                <span style={{ fontFamily: MONO, fontSize: '11px', fontWeight: 400, color: C.tenue }}>{r.n}</span>
+              </div>
+            )
+          }
           const o = r.o
           const b = barrasDe(o, ventana)
+          const e = estadoDeCartera(o)
           return (
             <Hover key={o.obra_id} data-testid={`fila-obra-${o.obra_id}`} data-obra={o.obra_id} data-nivel={r.nivel} onClick={() => router.push(hrefDe(o.obra_id))}
               base={{
-                display: 'grid', gridTemplateColumns: COLS, gap: `${GAP}px`, height: `${ALTO_FILA}px`, alignItems: 'center',
-                borderBottom: `1px solid ${C.borde}`, fontSize: '13.5px', cursor: 'pointer', color: C.tinta,
+                display: 'grid', gridTemplateColumns: COLS, height: `${ALTO_FILA + (ultimaFila ? 0 : 1)}px`, alignItems: 'stretch',
+                borderBottom: ultimaFila ? undefined : `1px solid ${C.borde}`, fontSize: '13px', cursor: 'pointer', color: C.tinta,
               }}
               hover={{ background: C.tenueFondo }}>
-              <CeldaObra o={o} nivel={r.nivel} href={hrefDe(o.obra_id)} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, padding: `0 14px 0 ${14 + (r.nivel ? 16 : 0)}px`, borderRight: `1px solid ${C.borde}`, lineHeight: 1.25 }}>
+                {r.nivel ? <span style={{ color: C.tenue }}>└</span> : null}
+                <a href={hrefDe(o.obra_id)} onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); router.push(hrefDe(o.obra_id)) }} title={`${rotuloDeObra(o)} · ${e.t}`}
+                  style={{ color: C.tinta, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{rotuloDeObra(o)}</a>
+              </div>
               {b == null || b.fueraDeVentana
                 ? (
-                  <div style={{ fontSize: '12.5px', color: C.tenue }} data-testid={b == null ? 'obra-sin-plan' : undefined} data-nulo="">
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '0 12px', fontSize: '12.5px', color: C.tenue }} data-testid={b == null ? 'obra-sin-plan' : undefined} data-nulo="">
                     {b == null ? SIN_FECHAS_ESCRITORIO : FUERA_DE_VENTANA}
                   </div>
                 )
                 : (
-                  <div style={{ position: 'relative', alignSelf: 'stretch' }}>
+                  <div style={{ position: 'relative' }}>
                     <div style={tramo(b.plan, LLENO.plan)} data-testid="barra-plan" />
                     {b.ejecutado && b.ejecutado.width > 0 && <div style={tramo(b.ejecutado, LLENO[b.tono])} data-testid="barra-obra" data-tono={b.tono} />}
                     {b.proyeccion && b.proyeccion.width > 0 && <div style={tramo(b.proyeccion, rayado(LLENO[b.tono]))} data-testid="barra-proyeccion" />}
@@ -215,10 +243,10 @@ export function CuerpoGantt({ grupos, lista, total, hoyIso, telefono, escala }: 
             </Hover>
           )
         })}
-        {lista.length === 0 && <div style={{ padding: '26px 0', fontSize: '12.5px', color: C.tintaSuave }}>Nada coincide.</div>}
+        {lista.length === 0 && <div style={{ padding: '26px 14px', fontSize: '12.5px', color: C.tintaSuave }}>Nada coincide.</div>}
         {xHoy >= 0 && xHoy <= 100 && (
           <div data-testid="linea-hoy-obras" style={{
-            position: 'absolute', left: `calc(${ANCHO_OBRA + GAP}px + (100% - ${ANCHO_OBRA + GAP}px)*${xHoy / 100})`,
+            position: 'absolute', left: `calc(${ANCHO_OBRA}px + (100% - ${ANCHO_OBRA}px)*${xHoy / 100})`,
             top: `${ALTO_CABECERA}px`, bottom: 0, width: '1px', background: C.marca, pointerEvents: 'none',
           }} />
         )}

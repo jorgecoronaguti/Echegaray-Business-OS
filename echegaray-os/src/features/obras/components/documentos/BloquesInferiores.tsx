@@ -90,8 +90,17 @@ export function BloquesInferiores({ obraId, subidos, archivos, documentos, carpe
           const p = pieDriveTelefono(carpetaDriveId, archivos === null || archivos.error ? null : lista.length)
           return <span>Drive: <span style={{ color: C.tinta }}>{p.estado}</span>{p.resto && <> · {p.resto}</>}</span>
         })()}
-        {subir}
+        {carpetaDriveId && (
+          <a href={`https://drive.google.com/drive/folders/${carpetaDriveId}`} target="_blank" rel="noreferrer" data-testid="abrir-carpeta-telefono"
+            style={{ color: C.tinta, fontWeight: 500, whiteSpace: 'nowrap' }}>→ Abrir</a>
+        )}
       </div>
+      {/* M17: «⤒ Subir documento» fija al pie (48px), no un botón chico al final de la página. */}
+      {subidos && !subidos.pendienteDeMigracion && (
+        <div className="md:hidden" style={{ height: '84px' }}>
+          <SubirDocumento tipo="obra" entidadId={obraId} testid="obra-documentos-subir-telefono" pieFijo />
+        </div>
+      )}
     </>
   )
 }

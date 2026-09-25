@@ -274,7 +274,7 @@ function Imputar({ titulo, testid, icono, children }: { titulo: string; testid: 
 }
 
 export async function TabPersonal({
-  obraId, plan, asignaciones, personas, cuadrillas, actividades, actividadHH, registros,
+  obraId, plan, asignaciones: asignacionesLeidas, responsableObra = null, personas, cuadrillas, actividades, actividadHH, registros,
   asignar, cerrar, quitar, imputar, imputarMasivo, borrarHoras, causas = [],
   manoObra = null, veComercial = false,
 }: {
@@ -285,6 +285,8 @@ export async function TabPersonal({
   obraId: string
   plan: PlanDePersonal | null
   asignaciones: Asignacion[]
+  /** `obra_canonica.jefe_obra`: el responsable que la cabecera nombra. La tabla lo dice igual (08). */
+  responsableObra?: string | null
   personas: Persona[]
   cuadrillas: { id: string; nombre: string; integrantes: number }[]
   actividades: Actividad[]
@@ -299,6 +301,14 @@ export async function TabPersonal({
   borrarHoras: (registroId: string) => Promise<ResultadoAccion>
 }) {
   void plan
+  // 08: EL RESPONSABLE DE LA OBRA ES «Responsable» EN LA TABLA, no «Integrante». La cabecera lo nombra
+  // desde `jefe_obra`; si su asignación quedó como integrante, la pantalla no puede decir dos cosas de
+  // la misma persona. Se LEE así (no se escribe la asignación) y va primero, como en el diseño.
+  const normNombre = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+  const jefe = responsableObra ? normNombre(responsableObra) : null
+  const asignaciones = asignacionesLeidas
+    .map((a) => (jefe && a.persona_nombre && normNombre(a.persona_nombre) === jefe && a.rol !== 'responsable' ? { ...a, rol: 'responsable' as Asignacion['rol'] } : a))
+    .sort((x, y) => Number(y.rol === 'responsable') - Number(x.rol === 'responsable'))
   const hoy = new Date().toISOString().slice(0, 10)
   const lunes = lunesDeSemana(hoy)
   const vigentes = asignaciones.filter((a) => !a.hasta)

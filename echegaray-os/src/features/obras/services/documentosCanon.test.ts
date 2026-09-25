@@ -58,3 +58,18 @@ test('la carpeta de Drive: meta, vinculados por drive_file_id y el pie del telé
   assert.deepEqual(pieDriveTelefono('carpeta', 61), { estado: 'vinculada', resto: '61 archivos' })
   assert.deepEqual(pieDriveTelefono(null, 0), { estado: 'sin vincular', resto: null })
 })
+
+test('14: la ruta es relativa a la carpeta de la obra y corta, no la entera del Drive', async () => {
+  const { prefijoComun, rutaCorta } = await import('./documentosCanon.ts')
+  const base = 'administracion/PRESUPUESTOS - CLIENTES/FRANCO QUATTROPANI'
+  const pre = prefijoComun([`${base}/02 Planos/Estructura`, `${base}`, `${base}/01 Contrato`, null])
+  assert.equal(pre, base)
+  assert.equal(rutaCorta(`${base}/02 Planos/Estructura`, pre), '02 Planos/Estructura')
+  assert.equal(rutaCorta(base, pre), '')
+  assert.equal(sublineaArchivo('PDF', base, pre), 'PDF · raíz de la carpeta')
+  assert.equal(rutaCorta('a/b/c/d', ''), '…/c/d')
+  assert.equal(prefijoComun(['sólo/una']), '')
+  // La ruta del índice trae el archivo al final: la sublínea dice la carpeta.
+  assert.equal(rutaCorta(`${base}/COTIZACION INTERNA/Cotizacion Final.xlsm`, pre, 'Cotizacion Final.xlsm'), 'COTIZACION INTERNA')
+  assert.equal(sublineaArchivo('PDF', `${base}/02.AO.pdf`, pre, '02.AO.pdf'), 'PDF · raíz de la carpeta')
+})

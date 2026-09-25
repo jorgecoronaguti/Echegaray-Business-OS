@@ -90,7 +90,9 @@ test('alta de obra en pasos: la fila queda en la base, el borrador se recupera y
     await expect(page.getByTestId('pasos-alta')).toBeVisible()
     const alta = page.getByTestId('form-alta-obra')
     await alta.locator('input[name="nombre"]').fill(nombre)
-    await alta.locator('select[name="cliente_id"]').selectOption({ label: cliente.nombre })
+    // El combo del diseño (no un <select> nativo): se abre y se elige la opción por su texto.
+    await alta.getByTestId('combo-cliente_id').click()
+    await alta.getByRole('option', { name: cliente.nombre, exact: true }).click()
     await alta.locator('input[name="ubicacion"]').fill('Rawson, San Juan')
     await page.getByTestId('form-alta-obra-enviar').click()
 

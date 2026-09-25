@@ -40,7 +40,8 @@ export function PanelFrentes({ nodo, camino, pesoEnPadre, nAvances, nPasos, text
   const sePuede = razonesLargas.every((r) => r.ok)
   const n = previa.nombres.length
   const listo = sePuede && n >= 2
-  const rotulo = `Dividir en ${n} ${n === 1 ? 'frente' : 'frentes'}`
+  // Con el campo vacío no hay «Dividir en 0 frentes»: el botón dice qué hace y se enciende al escribir.
+  const rotulo = n > 0 ? `Dividir en ${n} ${n === 1 ? 'frente' : 'frentes'}` : 'Dividir en frentes'
   const uniCant = rotuloUniCant(nodo.unidad, nodo.cantidad_objetivo)
   const sub = [uniCant, rotuloPlan(nodo.inicio_plan, nodo.fin_plan), pesoEnPadre].filter(Boolean).join(' · ')
 

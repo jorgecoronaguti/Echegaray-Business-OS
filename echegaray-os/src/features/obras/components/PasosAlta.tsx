@@ -16,9 +16,10 @@
 
 import { TOQUE_44 } from './canon/toque'
 import Link from 'next/link'
-import { startTransition, useActionState, useEffect, useRef, type FormEvent, type ReactNode } from 'react'
+import { Children, isValidElement, startTransition, useActionState, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Ico, P } from './canon/Ico'
 import { C, MONO } from './canon/tokens'
+import { CampoFecha, Combo } from './canon/Controles'
 import { useAnchoVentana } from './useAnchoVentana'
 import { esAngosto } from '../services/anchoPantalla'
 import { PASOS, urlPaso, type PasoAlta } from '../services/alta'
@@ -148,9 +149,10 @@ export function TituloPaso({ paso }: { paso: PasoAlta }) {
 
 export function CampoAlta({ rotulo, children, mono = false }: { rotulo: string; children: ReactNode; mono?: boolean }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontFamily: mono ? MONO : undefined }}>
-      <div style={{ fontSize: '12px', color: C.tintaSuave, fontFamily: 'inherit' }}>{rotulo}</div>
-      {children}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      {/* 02b · M03: el rótulo va en Plex Sans 12/400 aunque el valor sea mono. */}
+      <div style={{ fontSize: '12px', color: C.tintaSuave }}>{rotulo}</div>
+      {mono ? <div style={{ fontFamily: MONO, display: 'flex', flexDirection: 'column' }}>{children}</div> : children}
     </div>
   )
 }
@@ -170,9 +172,25 @@ export function InputAlta(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} placeholder={props.placeholder ?? 'sin cargar'} style={{ ...estilo, ...props.style }} />
 }
 
-export function SelectAlta(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  const estilo = useEstiloControl()
-  return <select {...props} style={{ ...estilo, ...props.style }} />
+/** La fecha del alta (02b · M03): texto mono «06/10/2026», sin el calendario del navegador. */
+export function FechaAlta({ name, defaultValue }: { name: string; defaultValue?: string | null }) {
+  const telefono = useTelefono()
+  return <CampoFecha name={name} valorInicial={defaultValue ?? ''} alto={telefono ? 44 : 34} testid={`fecha-${name}`} placeholder="sin cargar" />
+}
+
+/**
+ * El combo del alta: el del diseño, no el `<select>` nativo. Recibe las `<option>` como hijos (así la
+ * página de servidor no cambia) y viaja por FormData con un input oculto. La opción `disabled` es la
+ * frase de «sin elegir».
+ */
+export function SelectAlta({ name, defaultValue, children }: { name: string; defaultValue?: string; required?: boolean; children: ReactNode }) {
+  const telefono = useTelefono()
+  const ops = Children.toArray(children).filter(isValidElement) as React.ReactElement<{ value?: string; disabled?: boolean; children?: ReactNode }>[]
+  const vacio = ops.find((o) => o.props.disabled)
+  const opciones = ops.filter((o) => !o.props.disabled).map((o) => ({ valor: String(o.props.value ?? ''), etiqueta: Children.toArray(o.props.children).join('') }))
+  const [valor, setValor] = useState(String(defaultValue ?? ''))
+  return <Combo name={name} valor={valor} alCambiar={setValor} opciones={opciones} alto={telefono ? 44 : 34}
+    vacio={vacio ? Children.toArray(vacio.props.children).join('') : 'elegir'} testid={`combo-${name}`} />
 }
 
 /** Dos campos por renglón en escritorio (02b «Inicio previsto · Fin previsto»); uno en el teléfono. */

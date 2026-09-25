@@ -21,13 +21,14 @@ import { useRouter } from 'next/navigation'
 import type { ResultadoAccion } from '@/shared/components/ui'
 import { C, MONO } from '../canon/tokens'
 import { Ico, P } from '../canon/Ico'
+import { Combo } from '../canon/Controles'
 import type { Actividad, DocumentoObra } from '../../types'
 import { etiquetaDeTipo, urlDeDrive } from '../../services/driveUrl'
 import {
   CATEGORIAS, CATEGORIAS_CANONICAS, SIN_CLASIFICAR, categoriaDeclarada, paraQueSirve, porCategoriaFiltrado,
 } from '../../services/documentosCategoria'
 import {
-  RELACION, actividadDelPapel, requiereAtencion, resumenGrupo, sublineaArchivo, ultimosCambios,
+  RELACION, actividadDelPapel, prefijoComun, requiereAtencion, resumenGrupo, sublineaArchivo, ultimosCambios,
 } from '../../services/documentosCanon'
 import { diaMes, diaMesAnio } from '../../services/operacionCanon'
 import { EYEBROW, Falta, FilaPastillas, PastillaM } from '../operacion/piezas'
@@ -58,6 +59,8 @@ export function IndiceDocumentos({ documentos, actividades, asignar, clasificar,
 }) {
   const [query, setQuery] = useState('')
   const [chip, setChip] = useState<string | null>(null)
+  // La carpeta de la obra (lo común a todas las rutas) no se repite en cada fila.
+  const prefijo = useMemo(() => prefijoComun(documentos.map((d) => d.path)), [documentos])
   // Teléfono: los grupos que la persona tocó. «Sin clasificar» arranca abierto y el resto cerrado; tocar invierte.
   const [abiertosTel, setAbiertosTel] = useState<Set<string>>(new Set())
   const alternarTel = (k: string) => setAbiertosTel((prev) => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n })
@@ -134,7 +137,7 @@ export function IndiceDocumentos({ documentos, actividades, asignar, clasificar,
                     )}
                   </div>
                   {docs.map((d, i) => (
-                    <FilaDocumento key={d.drive_file_id} d={d} ultima={i === docs.length - 1} actividades={actividades} nombreDe={nombreDe}
+                    <FilaDocumento key={d.drive_file_id} d={d} ultima={i === docs.length - 1} actividades={actividades} nombreDe={nombreDe} prefijo={prefijo}
                       asignar={asignar} clasificar={clasificar} desvincular={desvincular} />
                   ))}
                 </div>
@@ -233,8 +236,9 @@ function Aviso({ texto, n, onClick, testid }: { texto: string; n: number; onClic
 }
 
 /** La fila de 52: nombre y sublínea · relación · actividad · categoría · fecha. Escribe en el lugar. */
-function FilaDocumento({ d, ultima, actividades, nombreDe, asignar, clasificar, desvincular }: {
+function FilaDocumento({ d, ultima, actividades, nombreDe, prefijo, asignar, clasificar, desvincular }: {
   d: DocumentoObra
+  prefijo: string
   ultima: boolean
   actividades: Actividad[]
   nombreDe: (id: string) => string | null
@@ -254,10 +258,6 @@ function FilaDocumento({ d, ultima, actividades, nombreDe, asignar, clasificar, 
     if (!r.ok) { setError(r.error); return }
     setEditaAct(false); router.refresh()
   })
-  const SELECT: React.CSSProperties = {
-    font: 'inherit', height: '26px', padding: '0 8px', border: `1px solid ${C.bordeFuerte}`, borderRadius: '6px', fontSize: '12.5px', color: C.tintaSuave,
-    background: C.superficie, width: '100%',
-  }
   return (
     <div className="group" data-testid="fila-documento-obra" style={{
       display: 'grid', gridTemplateColumns: COLS, gap: '20px', minHeight: '52px', alignItems: 'center', fontSize: '13.5px',
@@ -269,18 +269,16 @@ function FilaDocumento({ d, ultima, actividades, nombreDe, asignar, clasificar, 
           {d.name ?? <>{d.drive_file_id.slice(0, 10)}… <span style={{ fontSize: '11px', color: C.tenue }}>sin nombre en el índice</span></>}
         </a>
         <div style={{ fontSize: '11px', color: C.tenue, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {sublineaArchivo(etiquetaDeTipo(d.tipo, d.mime_type, d.name), d.path)}
+          {sublineaArchivo(etiquetaDeTipo(d.tipo, d.mime_type, d.name), d.path, prefijo, d.name)}
         </div>
         {error && <div style={{ fontSize: '11px', color: C.neg }}>{error}</div>}
       </div>
       <div style={{ color: d.origen === 'confirmado' ? C.tintaMedia : C.tintaSuave }}>{RELACION[d.origen]}</div>
       <div style={{ minWidth: 0 }}>
         {asignar && editaAct ? (
-          <select autoFocus defaultValue={d.actividad_id ?? ''} aria-label="Actividad del documento" data-testid="documento-actividad" style={SELECT}
-            onBlur={() => setEditaAct(false)} onChange={(e) => correr(() => asignar(d.drive_file_id, e.target.value))}>
-            <option value="">sin asignar</option>
-            {actividades.filter((a) => a.tipo !== 'resumen' && !a.archivada).map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-          </select>
+          <Combo valor={d.actividad_id ?? ''} alto={26} abiertoInicial alCerrar={() => setEditaAct(false)} etiqueta="Actividad del documento" testid="documento-actividad"
+            alCambiar={(v) => correr(() => asignar(d.drive_file_id, v))}
+            opciones={[{ valor: '', etiqueta: 'sin asignar' }, ...actividades.filter((a) => a.tipo !== 'resumen' && !a.archivada).map((a) => ({ valor: a.id, etiqueta: a.nombre }))]} />
         ) : (
           <button type="button" disabled={!asignar} onClick={() => setEditaAct(true)} data-testid="documento-actividad-texto" style={{
             font: 'inherit', border: 'none', background: 'none', padding: 0, cursor: asignar ? 'pointer' : 'default', textAlign: 'left',

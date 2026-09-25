@@ -145,3 +145,8 @@ export const SIN_FECHAS_TELEFONO = 'sin fechas de plan'
 /** La obra cae entera fuera de la ventana elegida. No está en el diseño: es lo que pasa cuando la
  *  ventana es fija y la obra no. */
 export const FUERA_DE_VENTANA = 'fuera del período que se muestra'
+
+/** M02: el nombre sin el código ni el prefijo del cliente («ME - », «SF - »): el cliente ya es el grupo. */
+export function nombreCortoGantt(nombre: string): string {
+  return nombre.replace(/^\s*[A-ZÁÉÍÓÚÑ]{1,5}\s*-\s+/u, '').trim() || nombre
+}

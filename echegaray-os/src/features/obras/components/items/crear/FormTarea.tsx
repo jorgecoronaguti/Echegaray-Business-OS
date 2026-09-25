@@ -18,6 +18,7 @@
 
 import { useEffect, useMemo, useState, type KeyboardEvent, type MutableRefObject } from 'react'
 import { C, MONO } from '../../canon/tokens'
+import { CampoFecha, Combo } from '../../canon/Controles'
 import { Ico, P } from '../../canon/Ico'
 import { Aviso, CabeceraTelefono, Campo, Chip, ESTILO_PRIMARIA_32, ESTILO_SECUNDARIA_32, PiePrimaria, Resultado, estiloControl } from './Piezas'
 import { BuscadorInsumo, ChipInsumo, type InsumoElegido } from './Insumos'
@@ -36,13 +37,16 @@ const DESTINOS: { id: Destino; label: string }[] = [{ id: 'nota', label: 'Sólo 
 
 export function FormTarea({
   obraId, padre, nombre, alCambiarNombre, historia, plazo, cuadrillas, personas, activos, crear, alCreada, alCerrar, enviarRef, alPrevia,
+  insumosPropuestos = [],
 }: {
   obraId: string
   padre: { id: string; camino: string }
   nombre: string
   alCambiarNombre: (v: string) => void
   /** La historia de la que cuelga: su nombre, «un · 22», lo que pesa y cuántas tareas tiene ya. */
-  historia: { nombre: string; uniCant: string | null; costo: string | null; peso: string | null; nTareas: number } | null
+  historia: { nombre: string; uniCant: string | null; costo: string | null; peso: string | null; nTareas: number; inicio?: string | null; fin?: string | null } | null
+  /** B05 · MB2: los insumos de las tareas hermanas, propuestos de entrada (se quitan con ×). */
+  insumosPropuestos?: InsumoElegido[]
   plazo: { inicio: string | null; fin: string | null }
   cuadrillas: { id: string; nombre: string }[]
   personas: Persona[]
@@ -55,10 +59,17 @@ export function FormTarea({
 }) {
   const [unidad, setUnidad] = useState('')
   const [cantidad, setCantidad] = useState('')
-  const [inicio, setInicio] = useState('')
-  const [fin, setFin] = useState('')
-  const [metodo, setMetodo] = useState<'cantidad' | 'pasos' | 'manual' | ''>('')
-  const [insumos, setInsumos] = useState<InsumoElegido[]>([])
+  // B05: las fechas arrancan con las de la historia madre («01/09/2026 · 4 días hábiles»).
+  const [inicio, setInicio] = useState(historia?.inicio?.slice(0, 10) ?? '')
+  const [fin, setFin] = useState(historia?.fin?.slice(0, 10) ?? '')
+  const [metodo, setMetodo] = useState<'cantidad' | 'pasos' | 'partes' | 'manual' | ''>('')
+  const [insumos, setInsumos] = useState<InsumoElegido[]>(insumosPropuestos)
+  // La fila nueva se mudó de historia (Tab, clic en otra rama): fechas e insumos vuelven a los de la nueva madre.
+  const [padreVisto, setPadreVisto] = useState(padre.id)
+  if (padre.id !== padreVisto) {
+    setPadreVisto(padre.id)
+    setInicio(historia?.inicio?.slice(0, 10) ?? ''); setFin(historia?.fin?.slice(0, 10) ?? ''); setInsumos(insumosPropuestos)
+  }
   const [subtareas, setSubtareas] = useState<string[]>([])
   const [borradorSub, setBorradorSub] = useState('')
   const [cuadrillaId, setCuadrillaId] = useState('')
@@ -77,6 +88,7 @@ export function FormTarea({
   const metodoEfectivo = metodo || (unidad && cantidad ? 'cantidad' : subtareas.length ? 'pasos' : 'manual')
   const enPlazo = inicio && fin ? (!plazo.inicio || inicio >= plazo.inicio) && (!plazo.fin || fin <= plazo.fin) : null
   const n = (historia?.nTareas ?? 0) + 1
+  const anioBase = Number((inicio || plazo.inicio || new Date().toISOString()).slice(0, 4))
 
   useEffect(() => {
     alPrevia({
@@ -100,7 +112,7 @@ export function FormTarea({
   const teclaSub = (e: KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') { e.preventDefault(); agregarSub() } }
 
   const limpiar = () => {
-    setUnidad(''); setCantidad(''); setMetodo(''); setInsumos([]); setSubtareas([]); setBorradorSub(''); setComentario(''); setDestino('nota')
+    setUnidad(''); setCantidad(''); setMetodo(''); setInsumos(insumosPropuestos); setSubtareas([]); setBorradorSub(''); setComentario(''); setDestino('nota')
     setPedCant(''); setPedUni(''); setImpQuien(''); setImpCuando(''); setResultado(null)
   }
   const enviar = async (modo: ModoEnvio) => {
@@ -169,26 +181,24 @@ export function FormTarea({
       {destino === 'impedimento' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <Campo rotulo="Quién lo destraba" alto={alto}><input value={impQuien} onChange={(e) => setImpQuien(e.target.value)} maxLength={120} data-testid="impedimento-responsable" style={estiloControl(alto)} /></Campo>
-          <Campo rotulo="Compromete" alto={alto}><input type="date" value={impCuando} onChange={(e) => setImpCuando(e.target.value)} data-testid="impedimento-compromiso" style={estiloControl(alto, true)} /></Campo>
+          <Campo rotulo="Compromete" alto={alto}><CampoFecha valor={impCuando} alCambiar={setImpCuando} alto={alto} testid="impedimento-compromiso" etiqueta="Compromete" /></Campo>
         </div>
       )}
     </div>
   )
   const fechas = (alto: 32 | 44) => (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-      <Campo rotulo="Comienzo" alto={alto}><input type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} data-testid="tarea-inicio" style={estiloControl(alto, true)} /></Campo>
+      <Campo rotulo="Comienzo" alto={alto}><CampoFecha valor={inicio} alCambiar={setInicio} alto={alto} testid="tarea-inicio" etiqueta="Comienzo" anioBase={anioBase} /></Campo>
       <Campo rotulo="Fin" nota={diasHabiles != null ? `${diasHabiles} ${alto === 32 ? (diasHabiles === 1 ? 'día hábil' : 'días hábiles') : (diasHabiles === 1 ? 'día' : 'días')}` : undefined} alto={alto}>
-        <input type="date" value={fin} onChange={(e) => setFin(e.target.value)} data-testid="tarea-fin" style={estiloControl(alto, true)} />
+        <CampoFecha valor={fin} alCambiar={setFin} alto={alto} testid="tarea-fin" etiqueta="Fin" anioBase={anioBase} />
       </Campo>
     </div>
   )
   const uniCant = (alto: 32 | 44) => (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
       <Campo rotulo="Unidad" alto={alto}>
-        <select value={unidad} onChange={(e) => setUnidad(e.target.value)} data-testid="tarea-unidad" style={estiloControl(alto)}>
-          <option value="">sin unidad</option>
-          {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
-        </select>
+        <Combo valor={unidad} alCambiar={setUnidad} alto={alto} vacio="sin unidad" testid="tarea-unidad" etiqueta="Unidad"
+          opciones={[{ valor: '', etiqueta: 'sin unidad' }, ...UNIDADES.map((u) => ({ valor: u, etiqueta: u }))]} />
       </Campo>
       <Campo rotulo="Cantidad" alto={alto}><input value={cantidad} onChange={(e) => setCantidad(e.target.value)} inputMode="decimal" data-testid="tarea-cantidad" style={estiloControl(alto, true)} /></Campo>
     </div>
@@ -208,25 +218,19 @@ export function FormTarea({
         {uniCant(32)}
         {fechas(32)}
         <Campo rotulo="Método de avance" nota={unidad && cantidad && metodoEfectivo === 'cantidad' ? `${unidad} ejecutadas / ${cantidad}` : undefined}>
-          <select value={metodo} onChange={(e) => setMetodo(e.target.value as typeof metodo)} data-testid="tarea-metodo" style={estiloControl(32)}>
-            <option value="">{metodoEfectivo === 'cantidad' ? 'Cantidad' : metodoEfectivo === 'pasos' ? 'Pasos' : 'Manual'}</option>
-            <option value="cantidad">Cantidad</option><option value="pasos">Pasos</option><option value="manual">Manual</option>
-          </select>
+          <Combo valor={metodoEfectivo} alCambiar={(v) => setMetodo(v as typeof metodo)} testid="tarea-metodo" etiqueta="Método de avance"
+            opciones={[{ valor: 'cantidad', etiqueta: 'Cantidad' }, { valor: 'pasos', etiqueta: 'Pasos' }, { valor: 'partes', etiqueta: 'Partes' }, { valor: 'manual', etiqueta: 'Manual' }]} />
         </Campo>
         {insumosBloque(32)}
         {subtareasBloque}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <Campo rotulo="Cuadrilla">
-            <select value={cuadrillaId} onChange={(e) => setCuadrillaId(e.target.value)} data-testid="tarea-cuadrilla" style={estiloControl(32)}>
-              <option value="">sin asignar</option>
-              {cuadrillas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-            </select>
+            <Combo valor={cuadrillaId} alCambiar={setCuadrillaId} vacio="sin asignar" testid="tarea-cuadrilla" etiqueta="Cuadrilla"
+              opciones={[{ valor: '', etiqueta: 'sin asignar' }, ...cuadrillas.map((c) => ({ valor: c.id, etiqueta: c.nombre }))]} />
           </Campo>
           <Campo rotulo="Responsable">
-            <select value={responsableId} onChange={(e) => setResponsableId(e.target.value)} data-testid="tarea-responsable" style={estiloControl(32)}>
-              <option value="">sin asignar</option>
-              {personas.map((p) => <option key={p.id} value={p.id}>{nombreDePersona(p)}</option>)}
-            </select>
+            <Combo valor={responsableId} alCambiar={setResponsableId} vacio="sin asignar" testid="tarea-responsable" etiqueta="Responsable" alinearMenu="derecha"
+              opciones={[{ valor: '', etiqueta: 'sin asignar' }, ...personas.map((p) => ({ valor: p.id, etiqueta: nombreDePersona(p) }))]} />
           </Campo>
         </div>
         {comentarioBloque(32)}
@@ -244,10 +248,13 @@ export function FormTarea({
       </aside>
 
       <div className="flex md:hidden" data-testid="form-tarea-telefono" style={{ position: 'fixed', top: '44px', left: 0, right: 0, bottom: '64px', flexDirection: 'column', background: C.superficie, zIndex: 30, overflowY: 'auto' }}>
-        <CabeceraTelefono miga={`Tarea nueva · ${padre.camino}`} titulo={nombre || 'sin nombre todavía'} alVolver={alCerrar} />
+        {/* MB2: el nombre se escribe en la cabecera de la hoja (16/600), no en un campo «Nombre» aparte. */}
+        <CabeceraTelefono miga={`Tarea nueva · ${padre.camino.split(' › ').slice(-2).join(' › ')}`} alVolver={alCerrar}
+          titulo={<input value={nombre} onChange={(e) => alCambiarNombre(e.target.value)} placeholder="Nombre de la tarea" aria-label="Nombre de la tarea" data-testid="tarea-nombre-telefono"
+            className="focus:outline-none focus-visible:outline-none focus:ring-0"
+            style={{ border: 'none', outline: 'none', boxShadow: 'none', padding: 0, background: 'transparent', font: 'inherit', fontSize: '15px', fontWeight: 600, color: C.tinta, width: '100%' }} />} />
         <div style={{ padding: '16px 16px 120px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <Resultado r={resultado} />
-          <Campo rotulo="Nombre" alto={44}><input value={nombre} onChange={(e) => alCambiarNombre(e.target.value)} style={estiloControl(44)} placeholder="Tarea nueva" data-testid="tarea-nombre-telefono" /></Campo>
           {uniCant(44)}
           {fechas(44)}
           {insumosBloque(44)}

@@ -27,21 +27,21 @@ export function cifrasDeCrear(modo: ModoEstructura, vacia: boolean): CifraEnLine
   }
   // B07: la obra entera. C05 (a mano, sobre un contenedor) conserva sus cifras.
   if (modo.panel === 'ponderacion' && !modo.act) {
-    return [viva('Ítems', 'items_niveles', '0'), viva('Costo MO', 'costo_mo_entero', 'sin cargar', true), viva('Sin costo', 'sin_costo', 'ninguna historia')]
+    return [viva('Ítems', 'items_niveles', '0'), viva('Costo MO', 'costo_mo_entero', 'sin cargar'), viva('Sin costo', 'sin_costo', 'ninguna historia')]
   }
   if (modo.panel === 'ponderacion') {
     return [viva('Ponderación', 'ponderacion', 'cierra en 100 %'), viva('Costo teórico', 'costo_teorico', 'sin cargar'), viva('HH plan', 'hh_plan', 'sin cargar')]
   }
   if (modo.sel) return [viva('Ítems', 'items', 'ninguno'), viva('Seleccionadas', 'seleccionadas', 'ninguna')]
   // B06: dentro de la tarea.
-  if (modo.panel === 'subtareas') return [viva('Ítems', 'items_tareas', '0'), viva('Costo MO', 'costo_mo', 'sin cargar', true), viva('Insumos', 'insumos', 'ninguno')]
+  if (modo.panel === 'subtareas') return [viva('Ítems', 'items_tareas', '0'), viva('Costo MO', 'costo_mo', 'sin cargar'), viva('Insumos', 'insumos', 'ninguno')]
   // B01–B05: armar a mano.
   if (modo.crear === 'mano') {
-    return [viva('Ítems', 'items', '0'), viva('Historias', 'historias', 'ninguna', true), viva('Costo MO', 'costo_mo', 'sin cargar', true), viva('Ponderación', 'metodo', 'por costo de MO')]
+    return [viva('Ítems', 'items', '0'), viva('Historias', 'historias', 'ninguna'), viva('Costo MO', 'costo_mo', 'sin cargar'), viva('Ponderación', 'metodo', 'por costo de MO')]
   }
   if (modo.panel) return [viva('Ítems', 'items', 'ninguno')]
   if (vacia) {
-    return [viva('Actividades', 'items', 'ninguna', true), viva('Días hábiles', 'dias_habiles', 'sin plazo'), viva('Mano de obra', 'mano_de_obra', 'sin cargar'), viva('Costo teórico', 'costo_teorico', 'sin cargar', true)]
+    return [viva('Actividades', 'items', 'ninguna'), viva('Días hábiles', 'dias_habiles', 'sin plazo'), viva('Mano de obra', 'mano_de_obra', 'sin cargar'), viva('Costo teórico', 'costo_teorico', 'sin cargar')]
   }
   return []
 }

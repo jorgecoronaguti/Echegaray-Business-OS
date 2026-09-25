@@ -23,6 +23,9 @@ import { ROTULO_NIVEL, type NivelEstructura } from '../../../services/estructura
 import { filasVisiblesDelArbol, type Celda, type FilaArbol } from '../../../services/arbolEstructura'
 
 export const GRID_ARBOL = 'minmax(0,1fr) 110px 104px 76px 128px 52px 76px'
+/** Con el panel de 420 al lado (B03–B06 · C07 · C08) las cifras se aprietan para que el NOMBRE se lea:
+ *  a 1280 la grilla de arriba dejaba 178 px para código + chips + nombre y la tarea quedaba sin nombre. */
+const GRID_ARBOL_ASIDE = 'minmax(0,1fr) 84px 96px 60px 108px 36px 64px'
 const SANGRIA = [0, 18, 36, 54, 72, 90]
 const SANGRIA_TEL = [0, 12, 24, 36, 48, 60]
 
@@ -60,8 +63,10 @@ function Chip({ children }: { children: ReactNode }) {
 
 export function ArbolEstructura({
   filas, modo, foco = null, nuevo = null, nivelNuevo = 'tarea', previa = null, alCambiarNuevo, alTecla, alPedirNuevo,
-  sel, alAlternarSel, alAbrir, alAlternarSubtarea, query = '', angosto = false,
+  sel, alAlternarSel, alAbrir, alAlternarSubtarea, query = '', angosto = false, debajoDeLaRama = null, conAside = false,
 }: {
+  /** Hay un panel de 420 al lado: columnas de cifras más angostas. */
+  conAside?: boolean
   filas: FilaArbol[]
   modo: 'mano' | 'foco' | 'sel'
   foco?: string | null
@@ -78,6 +83,8 @@ export function ArbolEstructura({
   query?: string
   /** Con aside al lado la grilla ocupa todo; sin aside, el diseño la corta en 1120. */
   angosto?: boolean
+  /** C07: la «Vista previa» va pegada debajo de la rama de la fila en foco, no al pie del árbol. */
+  debajoDeLaRama?: ReactNode
 }) {
   const porId = useMemo(() => new Map(filas.map((f) => [f.id, f])), [filas])
   // B04: armando a mano, las historias arrancan plegadas (se ve «sin tareas» o «6 tareas»), salvo la
@@ -88,10 +95,19 @@ export function ArbolEstructura({
     while (p) { s.add(p.id); p = p.padreId ? porId.get(p.padreId) : undefined }
     return s
   }
+  const grid = conAside ? GRID_ARBOL_ASIDE : GRID_ARBOL
+  const gap = conAside ? '12px' : '16px'
   const [plegados, setPlegados] = useState<Set<string>>(() => {
-    if (modo !== 'mano') return new Set()
-    const abiertos = ancestros(nuevo?.padreId ?? foco)
-    return new Set(filas.filter((f) => f.nivel === 'historia' && !abiertos.has(f.id)).map((f) => f.id))
+    if (modo === 'mano') {
+      const abiertos = ancestros(nuevo?.padreId ?? foco)
+      return new Set(filas.filter((f) => f.nivel === 'historia' && !abiertos.has(f.id)).map((f) => f.id))
+    }
+    // B06 · C07 · C08 · C09: el árbol arranca PLEGADO a la rama activa (la de la fila en foco; sin
+    // foco, la de la primera tarea). Lo demás queda cerrado con su chevron y su «3 historias · 9
+    // tareas»: una obra de 138 ítems desplegada entera eran 6.500 px y la fila activa quedaba abajo.
+    const ancla = foco ?? filas.find((f) => f.nivel === 'tarea')?.id ?? null
+    const abiertos = ancestros(ancla)
+    return new Set(filas.filter((f) => (f.esContenedor || f.nSubtareas > 0) && !abiertos.has(f.id)).map((f) => f.id))
   })
   const [ramaVista, setRamaVista] = useState<string | null>(nuevo?.padreId ?? foco ?? null)
   const rama = nuevo?.padreId ?? foco ?? null
@@ -103,6 +119,22 @@ export function ArbolEstructura({
   }
   const plegar = (id: string) => setPlegados((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const q = query.trim().toLowerCase()
+  // MC10: en el teléfono la selección lista sólo tareas (sin contenedores con chevron): plegar ahí
+  // escondería las demás ramas sin forma de abrirlas, así que esa lista no se pliega.
+  const sinPlegar = useMemo(() => new Set<string>(), [])
+  const filtrar = (v: FilaArbol[]) => {
+    if (!q) return v
+    const dentro = new Set<string>()
+    for (const f of filas) {
+      if (!f.nombre.toLowerCase().includes(q)) continue
+      let x: FilaArbol | undefined = f
+      while (x) { dentro.add(x.id); x = x.padreId ? porId.get(x.padreId) : undefined }
+    }
+    return v.filter((f) => dentro.has(f.id))
+  }
+  const visiblesTelSel = useMemo(() => (modo === 'sel' ? filtrar(filasVisiblesDelArbol(filas, sinPlegar)) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [modo, filas, q, porId, sinPlegar])
   const visibles = useMemo(() => {
     const v = filasVisiblesDelArbol(filas, plegados)
     if (!q) return v
@@ -114,6 +146,16 @@ export function ArbolEstructura({
     }
     return v.filter((f) => dentro.has(f.id))
   }, [filas, plegados, q, porId])
+
+  // C07: la última fila visible de la rama del foco (lo que cuelga del padre del foco) recibe debajo
+  // la «Vista previa».
+  const finDeRama = useMemo(() => {
+    if (!debajoDeLaRama || !foco) return null
+    const raiz = porId.get(foco)?.padreId ?? foco
+    let ultima: string | null = null
+    for (const f of visibles) { let p: string | null = f.id; while (p) { if (p === raiz) { ultima = f.id; break } p = porId.get(p)?.padreId ?? null } }
+    return ultima
+  }, [debajoDeLaRama, foco, visibles, porId])
 
   // Después de la última descendiente visible de cada contenedor va su «+ Nueva … en X».
   const agregarDespues = useMemo(() => {
@@ -163,7 +205,7 @@ export function ArbolEstructura({
           style={{ border: 'none', borderBottom: `1.5px solid ${C.grafito}`, borderRadius: 0, boxShadow: 'none', paddingBottom: '1px', background: 'transparent', font: 'inherit', color: C.tinta, outline: 'none', minWidth: 0, width: escritorio ? '240px' : undefined, flex: escritorio ? undefined : 1, fontWeight: nivel === 'rubro' || nivel === 'epica' ? 600 : 400, textTransform: nivel === 'rubro' ? 'uppercase' : undefined, letterSpacing: nivel === 'rubro' ? '.06em' : undefined, fontSize: nivel === 'rubro' ? '12px' : undefined }} />
       )
       return escritorio ? (
-        <div key={`nuevo-${padreId ?? 'raiz'}`} data-testid="fila-nueva" style={{ display: 'grid', gridTemplateColumns: GRID_ARBOL, gap: '16px', minHeight: '46px', alignItems: 'center', borderBottom: `1px solid ${C.bordeTarjeta}`, background: C.marcaFila, fontSize: '13.5px' }}>
+        <div key={`nuevo-${padreId ?? 'raiz'}`} data-testid="fila-nueva" style={{ display: 'grid', gridTemplateColumns: grid, gap, minHeight: '46px', alignItems: 'center', borderBottom: `1px solid ${C.bordeTarjeta}`, background: C.marcaFila, fontSize: '13.5px' }}>
           <div style={{ paddingLeft: `${SANGRIA[prof]}px`, display: 'flex', alignItems: 'center', gap: '9px' }}>
             <span style={{ width: '12px', flexShrink: 0 }} />
             {nivel === 'subtarea'
@@ -224,8 +266,8 @@ export function ArbolEstructura({
     <>
       {/* ═══ ESCRITORIO ═══ */}
       <div className="hidden md:flex" data-testid="arbol-estructura" style={{ padding: '12px 20px 30px', flexDirection: 'column', minWidth: 0, overflowX: 'auto' }}>
-        <div style={{ minWidth: '860px', maxWidth: angosto ? undefined : '1120px', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: GRID_ARBOL, gap: '16px', height: '34px', alignItems: 'center', borderBottom: `1px solid ${C.borde}`, fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase' }}>
+        <div style={{ minWidth: conAside ? '700px' : '860px', maxWidth: angosto ? undefined : '1120px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: grid, gap, height: '34px', alignItems: 'center', borderBottom: `1px solid ${C.borde}`, fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase' }}>
             <div>Ítem</div><div style={{ textAlign: 'right' }}>Uni · cant</div><div style={{ textAlign: 'right' }}>Costo MO</div><div style={{ textAlign: 'right' }}>Peso</div>
             <div style={{ textAlign: 'right' }}>Plan</div><div style={{ textAlign: 'right' }}>Días</div><div style={{ textAlign: 'right' }}>Método</div>
           </div>
@@ -241,7 +283,7 @@ export function ArbolEstructura({
             return (
               <div key={f.id}>
                 <div role="row" data-testid={`arbol-${f.id}`} data-nivel={f.nivel} onClick={() => (modo === 'sel' ? alAlternarSel?.(f.id) : alAbrir?.(f))} style={{
-                  display: 'grid', gridTemplateColumns: GRID_ARBOL, gap: '16px', minHeight: rubro || epica ? '40px' : '46px', alignItems: 'center',
+                  display: 'grid', gridTemplateColumns: grid, gap, minHeight: rubro || epica ? '40px' : '46px', alignItems: 'center',
                   borderBottom: `1px solid ${rubro ? C.borde : C.bordeTarjeta}`, cursor: 'pointer',
                   fontSize: rubro ? '12px' : epica ? '13px' : '13.5px', fontWeight: rubro || epica ? 600 : 400, color: C.tinta,
                   letterSpacing: rubro ? '.06em' : undefined, textTransform: rubro ? 'uppercase' : undefined,
@@ -251,8 +293,10 @@ export function ArbolEstructura({
                     {modo === 'sel' && !sub && <Casilla marcada={elegida} onClick={() => alAlternarSel?.(f.id)} etiqueta={`Seleccionar ${f.nombre}`} testid={`sel-${f.id}`} />}
                     {sub ? <><span style={{ width: '12px', flexShrink: 0 }} /><Casilla marcada={f.hecha} onClick={() => alAlternarSubtarea?.(f.id, !f.hecha)} etiqueta={`${f.nombre} hecha`} testid={`subtarea-arbol-${f.id}`} apagada={!alAlternarSubtarea} /></> : chevron(f, abierto)}
                     {!sub && <span style={{ fontFamily: MONO, fontSize: '11px', color: C.tenue, letterSpacing: 0, textTransform: 'none', fontWeight: 400, minWidth: f.profundidad >= 3 ? '52px' : '34px', flexShrink: 0 }}>{f.codigo}</span>}
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{f.nombre}</span>
-                    {chips(f, abierto)}
+                    {/* El nombre se come el espacio y los chips ceden primero: sin esto, «5 insumos» dejaba
+                        a la tarea sin nombre. El nombre entero queda en el título. */}
+                    <span title={f.nombre} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: '64px', flex: '0 1 auto' }}>{f.nombre}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', minWidth: 0, overflow: 'hidden', flexShrink: 1000 }}>{chips(f, abierto)}</span>
                   </div>
                   {sub ? <><div /><div /><div /><div /><div /><div /></> : <>
                     <CeldaTexto c={texto(f.uniCant)} />
@@ -264,6 +308,7 @@ export function ArbolEstructura({
                   </>}
                 </div>
                 {(agregarDespues.get(f.id) ?? []).map((c) => filaNueva(c.id, true))}
+                {finDeRama === f.id && <div data-testid="debajo-de-la-rama" style={{ paddingBottom: '6px' }}>{debajoDeLaRama}</div>}
               </div>
             )
           })}
@@ -276,7 +321,7 @@ export function ArbolEstructura({
         {visibles.length === 0 && modo !== 'mano' && (
           <div style={{ padding: '12px 0', fontSize: '12.5px', color: C.tintaSuave }}>{q ? `Nada coincide con «${query}».` : 'Todavía no hay trabajo cargado'}</div>
         )}
-        {visibles.filter((f) => modo !== 'sel' || !f.esContenedor).map((f) => {
+        {(modo === 'sel' ? visiblesTelSel : visibles).filter((f) => modo !== 'sel' || !f.esContenedor).map((f) => {
           const rubro = f.nivel === 'rubro'
           const epica = f.nivel === 'epica'
           const historia = f.nivel === 'historia'

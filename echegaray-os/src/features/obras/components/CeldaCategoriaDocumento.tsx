@@ -17,17 +17,20 @@
 // que se lee una. Pero tiene que poder corregirse sin abrir un formulario, así que el selector
 // existe siempre y aparece al apoyar el mouse o al tabular — el mismo patrón que «Quitar».
 
-import { InlineEdit, type OpcionInline, type ResultadoInline } from '@/shared/components/ds'
+import { useState } from 'react'
+import type { ResultadoInline } from '@/shared/components/ds'
+import { Combo, type OpcionCombo } from './canon/Controles'
+import { C } from './canon/tokens'
 import { CATEGORIAS_CANONICAS, SIN_CLASIFICAR, categoriaDeclarada } from '../services/documentosCategoria'
-import { sugerirCategoria, textoSugerencia } from '../services/documentosSugerencia'
+import { sugerirCategoria } from '../services/documentosSugerencia'
 import type { DocumentoObra } from '../types'
 
-/** El vocabulario que ofrece la pantalla. El vacío primero: desclasificar tiene que ser posible. */
-const OPCIONES: OpcionInline[] = [
-  { valor: '', etiqueta: SIN_CLASIFICAR },
-  ...CATEGORIAS_CANONICAS.map((c) => ({ valor: c, etiqueta: c })),
-]
-
+/**
+ * 14 · M17: la celda es el combo del diseño (150×28, borde, «elegir»). La sugerencia NO se apila
+ * encima (partía la fila de 44 en 80): va DENTRO del combo — sin elegir dice «sugerido: X» en
+ * itálica tenue, y al abrirlo la sugerida es la primera opción con la nota «sugerido». Sigue sin
+ * escribirse sola: se guarda cuando alguien la elige.
+ */
 export function CeldaCategoriaDocumento({
   doc, clasificar,
 }: {
@@ -37,38 +40,33 @@ export function CeldaCategoriaDocumento({
   const actual = categoriaDeclarada(doc.rol)
   const clasificado = CATEGORIAS_CANONICAS.includes(actual as never)
   const sugerida = clasificado ? null : sugerirCategoria(doc.name, doc.mime_type)
-  const guardar = (v: string) => clasificar(doc.drive_file_id, v)
-
+  const [valor, setValor] = useState(clasificado ? actual : '')
+  const [error, setError] = useState<string | null>(null)
+  const guardar = async (v: string) => {
+    const antes = valor
+    setValor(v); setError(null)
+    const r = await clasificar(doc.drive_file_id, v)
+    if (!r.ok) { setValor(antes); setError(r.error ?? 'No se pudo guardar.') }
+  }
+  const opciones: OpcionCombo[] = [
+    ...(sugerida ? [{ valor: sugerida, etiqueta: sugerida, nota: 'sugerido' }] : []),
+    ...CATEGORIAS_CANONICAS.filter((c) => c !== sugerida).map((c) => ({ valor: c, etiqueta: c })),
+    { valor: '', etiqueta: SIN_CLASIFICAR },
+  ]
+  const combo = (
+    <Combo valor={valor} alCambiar={(v) => void guardar(v)} opciones={opciones} alto={28} ancho="150px" alinearMenu="derecha"
+      vacio={sugerida ? `sugerido: ${sugerida}` : 'elegir'} testid="categoria-documento" etiqueta={`Categoría de ${doc.name ?? doc.drive_file_id}`} />
+  )
   return (
-    <span className="flex min-w-0 flex-col gap-1">
-      {/* 14: la celda es el desplegable. Sin sugerencia no se escribe nada más («sin sugerencia —
-          clasificar a mano» partía cada fila en tres renglones); con sugerencia, un renglón para confirmarla. */}
-      {!clasificado && sugerida && (
-          <button
-            type="button"
-            onClick={() => void guardar(sugerida)}
-            data-testid="confirmar-categoria"
-            data-sugerida={sugerida}
-            className="self-start text-left text-[11.5px] text-muted hover:text-ink hover:underline"
-          >
-            {textoSugerencia(sugerida)} · <span className="font-medium text-ink">Confirmar</span>
-          </button>
-      )}
-      <span className={clasificado
-        ? 'opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100'
-        : ''}
-      >
-        <InlineEdit
-          valor={clasificado ? actual : null}
-          guardar={guardar}
-          tipo="seleccion"
-          opciones={OPCIONES}
-          falta="elegir categoría"
-          etiqueta={`Categoría de ${doc.name ?? doc.drive_file_id}`}
-          testid="categoria-documento"
-          ancho="w-[180px]"
-        />
-      </span>
+    <span className="flex min-w-0 items-center" data-sugerida={sugerida ?? undefined} title={error ?? undefined}>
+      {clasificado && valor ? (
+        // Ya clasificado: el grupo lo dice; la fila muestra el nombre y el combo aparece al apoyar el mouse.
+        <>
+          <span className="group-hover:hidden group-focus-within:hidden" style={{ fontSize: '12.5px', color: C.tintaSuave }}>{valor}</span>
+          <span className="hidden group-hover:block group-focus-within:block">{combo}</span>
+        </>
+      ) : combo}
+      {error && <span style={{ fontSize: '11px', color: C.neg, marginLeft: '6px' }}>!</span>}
     </span>
   )
 }

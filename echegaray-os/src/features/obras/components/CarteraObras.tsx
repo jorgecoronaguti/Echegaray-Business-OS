@@ -212,6 +212,16 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
   const [vista, setVista] = useState<VistaCartera>(vistaInicial)
   const [escala, setEscala] = useState<EscalaCartera>('trimestre')
   const esGantt = vista === 'gantt'
+  // M02: el Gantt del teléfono filtra por ETAPA («Todo · Con atraso · Desarrollo · Terminación»), no por
+  // estado. La etapa se suma al filtro de la cartera; las cuentas son de toda la cartera.
+  const [etapaGantt, setEtapaGantt] = useState<string | null>(null)
+  const etapasGantt = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const o of obras) { const e = etapaDe(o); if (e) m.set(e, (m.get(e) ?? 0) + 1) }
+    return [...m.entries()]
+  }, [obras])
+  const listaGanttTel = useMemo(() => (etapaGantt ? lista.filter((o) => etapaDe(o) === etapaGantt) : lista), [lista, etapaGantt])
+  const gruposGanttTel = useMemo(() => agruparPorCliente(listaGanttTel), [listaGanttTel])
 
   const buscador = (
     <div style={estiloBuscador(telefono)}>
@@ -254,10 +264,24 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
           <div style={{ fontSize: '19px', fontWeight: 600, color: C.tinta }}>Obras</div>
           <ConmutadorVista vista={vista} telefono cambiar={setVista} />
         </div>
-        <div style={{ display: 'flex' }}>{buscador}</div>
-        <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono />
+        {!esGantt && <div style={{ display: 'flex' }}>{buscador}</div>}
+        {esGantt ? (
+          <div style={estiloFiltros(true)} data-testid="filtros-obras">
+            <button type="button" onClick={() => { setFiltro('todo'); setEtapaGantt(null) }} aria-pressed={filtro === 'todo' && !etapaGantt} data-testid="filtro-todo" style={estiloChip(filtro === 'todo' && !etapaGantt, true)}>
+              <Ico d={ICONO_CHIP.todo} s={12} />Todo<span style={estiloCuentaChip(true)}>{cuentas.todo}</span>
+            </button>
+            <button type="button" onClick={() => { setFiltro(filtro === 'atraso' ? 'todo' : 'atraso'); setEtapaGantt(null) }} aria-pressed={filtro === 'atraso'} data-testid="filtro-atraso" style={estiloChip(filtro === 'atraso', true)}>
+              <Ico d={ICONO_CHIP.atraso} s={12} />Con atraso<span style={estiloCuentaChip(true)}>{cuentas.atraso}</span>
+            </button>
+            {etapasGantt.map(([e, n]) => (
+              <button key={e} type="button" onClick={() => { setFiltro('todo'); setEtapaGantt(etapaGantt === e ? null : e) }} aria-pressed={etapaGantt === e} data-testid={`filtro-etapa-${e}`} style={estiloChip(etapaGantt === e, true)}>
+                {e}<span style={estiloCuentaChip(true)}>{n}</span>
+              </button>
+            ))}
+          </div>
+        ) : <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono />}
         </div>
-        {esGantt ? <CuerpoGantt grupos={grupos} lista={lista} total={obras.length} hoyIso={hoyIso} telefono escala={escala} /> : (
+        {esGantt ? <CuerpoGantt grupos={gruposGanttTel} lista={listaGanttTel} total={obras.length} hoyIso={hoyIso} telefono escala={escala} /> : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {grupos.map((g) => (
               <Fragment key={g.clave}>
@@ -286,6 +310,18 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
       data-testid="portafolio-tabla">
       {/* EL ENCABEZADO QUEDA FIJO bajo la barra de la app (dueño, 23/09/2026): la tabla se desplaza debajo. */}
       <div style={ENCABEZADO_FIJO} data-testid="encabezado-cartera">
+      {esGantt ? (
+        // 02: la cabecera del Gantt es UNA línea — «Obras · Ver Tabla|Gantt · filtros» y «Mes · Trimestre
+        // · Año» a la derecha; sin bajada, sin buscador, sin «Nueva obra» (eso es de la Tabla). El
+        // cambio de vista sigue sin volver al servidor (dueño 23/09).
+        <div style={{ display: 'flex', alignItems: 'center', gap: '22px' }} data-testid="cabecera-gantt">
+          <div style={ESTILO_TITULO}>Obras</div>
+          <ConmutadorVista vista={vista} telefono={false} cambiar={setVista} />
+          <div style={{ width: '1px', height: '15px', background: C.borde }} />
+          <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono={false} claves={['todo', 'curso', 'atraso', 'problema']} />
+          <SelectorEscala escala={escala} setEscala={setEscala} />
+        </div>
+      ) : (<>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '24px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
           <div style={ESTILO_TITULO}>Obras</div>
@@ -303,8 +339,8 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
         <ConmutadorVista vista={vista} telefono={false} cambiar={setVista} />
         <div style={{ width: '1px', height: '15px', background: C.borde }} />
         <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono={false} />
-        {esGantt && <SelectorEscala escala={escala} setEscala={setEscala} />}
       </div>
+      </>)}
       </div>
 
       {esGantt ? <CuerpoGantt grupos={grupos} lista={lista} total={obras.length} hoyIso={hoyIso} telefono={false} escala={escala} /> : (<>

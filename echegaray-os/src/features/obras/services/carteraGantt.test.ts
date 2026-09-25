@@ -65,3 +65,11 @@ test('una obra fuera de la ventana se recorta a nada y lo dice', () => {
   assert.equal(c.plan.left, 0)
   assert.ok(c.plan.width > 0 && c.plan.width < 100)
 })
+
+test('M02: el nombre del Gantt del teléfono se lee — sin el prefijo del cliente, que ya es el grupo', async () => {
+  const { nombreCortoGantt } = await import('./carteraGantt.ts')
+  assert.equal(nombreCortoGantt('ME - PISOS 120 M² Y RAMPA'), 'PISOS 120 M² Y RAMPA')
+  assert.equal(nombreCortoGantt('SF - ENTREPISO Y ESCALERA'), 'ENTREPISO Y ESCALERA')
+  assert.equal(nombreCortoGantt('Galpones'), 'Galpones')
+  assert.equal(nombreCortoGantt('Nave Messinas - Etapa 2'), 'Nave Messinas - Etapa 2')
+})

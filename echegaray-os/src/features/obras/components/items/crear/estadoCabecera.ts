@@ -22,7 +22,7 @@ export interface PrimariaViva {
 }
 
 /** Una cifra publicada: texto, o texto con tono (C04 «Fundaciones 65 %» en ámbar). */
-export type CifraPublicada = string | { texto: string; tono: 'warn' | 'pos' } | null | undefined
+export type CifraPublicada = string | { texto: string; tono: 'warn' | 'pos' | 'ink'; cola?: string } | null | undefined
 
 interface Estado {
   cifras: Readonly<Record<string, CifraPublicada>>
@@ -72,7 +72,8 @@ export function cifrasSerieB(r: {
     items: r.nItems > 0 ? [String(r.nItems), r.nRubros ? plural(r.nRubros, 'rubro', 'rubros') : null, r.nEpicas ? plural(r.nEpicas, 'épica', 'épicas') : null].filter(Boolean).join(' · ') : '0',
     items_tareas: r.nItems > 0 ? `${r.nItems} · ${plural(r.nTareas, 'tarea', 'tareas')}` : '0',
     items_niveles: r.nItems > 0 ? `${r.nItems} · ${plural(r.niveles, 'nivel', 'niveles')}` : '0',
-    historias: r.nHistorias === 0 ? null : r.nSinCosto > 0 ? { texto: `${r.nHistorias} · ${r.nSinCosto} sin costo`, tono: 'warn' } : String(r.nHistorias),
+    // B04: «7 · 4 sin costo» — el total en tinta, sólo «4 sin costo» en ámbar.
+    historias: r.nHistorias === 0 ? null : r.nSinCosto > 0 ? { texto: String(r.nHistorias), tono: 'ink', cola: `${r.nSinCosto} sin costo` } : String(r.nHistorias),
     costo_mo: r.costoTotal == null ? null : `$ ${(r.costoTotal / 1_000_000).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} M`,
     costo_mo_entero: r.costoTotal == null ? null : `$ ${Math.round(r.costoTotal).toLocaleString('es-AR')}`,
     sin_costo: r.nHistorias === 0 ? null : r.nSinCosto > 0 ? { texto: `${r.nSinCosto} de ${r.nHistorias}`, tono: 'warn' } : `0 de ${r.nHistorias}`,
@@ -97,6 +98,7 @@ export function cifrasDelArbol(r: {
     mano_de_obra: r.costoMo,
     costo_teorico: r.costoTeorico,
     dias_habiles: r.diasHabiles == null ? null : String(r.diasHabiles),
-    seleccionadas: r.seleccionadas == null ? null : String(r.seleccionadas),
+    // Las publica `Estructura` al elegir (C09); acá sólo si vienen, para no pisarlas con «ninguna».
+    ...(r.seleccionadas == null ? {} : { seleccionadas: String(r.seleccionadas) }),
   }
 }

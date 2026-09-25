@@ -254,7 +254,7 @@ export function loQueFaltaCargar(i: {
     })
   }
   salida.push({
-    clave: 'sin-fecha', rotulo: 'Actividades sin ninguna fecha',
+    clave: 'sin-fecha', rotulo: 'Tareas sin fecha',
     valor: String(i.actividadesSinFecha), tono: i.actividadesSinFecha > 0 ? 'warn' : 'faint',
   })
   salida.push({
@@ -277,6 +277,16 @@ export function loQueFaltaCargar(i: {
 /** Cuántas actividades medibles hay (el «de N» de «Los frentes en curso»). */
 export function actividadesMedibles(actividades: readonly Actividad[]): number {
   return medibles(actividades).length
+}
+
+/**
+ * LAS TAREAS SIN FECHAS — UNA SOLA DEFINICIÓN POR OBRA (25/09: la misma obra decía 21 en Tareas, 23 en
+ * el editor y 61 acá). Cuenta lo que se MIDE (tareas; no contenedores, subtareas ni frentes, que los
+ * mide su tarea) que no tiene ninguna fecha de plan. `obra_panel.n_actividades_sin_fecha` contaba
+ * también rubros, épicas e historias, que no llevan fecha propia.
+ */
+export function tareasSinFecha(actividades: readonly Actividad[]): number {
+  return medibles(actividades).filter((a) => !a.inicio_plan && !a.fin_plan).length
 }
 
 export function sinMetodoDeMedicion(actividades: readonly Actividad[]): number {

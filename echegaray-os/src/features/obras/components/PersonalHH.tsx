@@ -41,6 +41,7 @@ const pct = (n: number | null) => (n == null ? '—' : `${Number(n).toLocaleStri
 
 /** Cuántas filas de horas se ven sin tocar nada. El resto, detrás de «Ver las N anteriores». */
 export const HORAS_A_LA_VISTA = 20
+export const HORAS_A_LA_VISTA_TELEFONO = 5
 
 const FILA_BASE: CSSProperties = { borderBottom: `1px solid ${C.bordeTarjeta}`, fontSize: '13.5px', color: C.tinta }
 const CABECERA: CSSProperties = {
@@ -162,9 +163,19 @@ export function TablaHoras({
       <div className={HORAS_CABECERA} style={CABECERA}>
         <div>Día</div><div>Persona</div><div>Actividad</div><div>Tipo</div><div style={{ textAlign: 'right' }}>Horas</div><div />
       </div>
-      {vista.map((r) => <FilaHoras key={r.id} r={r} borrarHoras={borrarHoras} />)}
+      {/* M10: en el teléfono se ven las 5 últimas (108 filas con «Quitar» eran 9.000 px); en la PC, 20. */}
+      {vista.map((r, i) => <div key={r.id} className={i >= HORAS_A_LA_VISTA_TELEFONO ? 'max-md:hidden' : undefined}><FilaHoras r={r} borrarHoras={borrarHoras} /></div>)}
+      {registros.length > HORAS_A_LA_VISTA_TELEFONO && (
+        <details className="group/resto md:hidden" data-testid="hh-anteriores-telefono">
+          <summary className="flex h-11 cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden" style={{ fontSize: '12.5px', color: C.tintaSuave }}>
+            <span className="transition-transform group-open/resto:rotate-90" style={{ display: 'flex' }}><Ico d={P.derecha} s={12} /></span>
+            Ver las {registros.length - HORAS_A_LA_VISTA_TELEFONO} anteriores
+          </summary>
+          {registros.slice(HORAS_A_LA_VISTA_TELEFONO).map((r) => <FilaHoras key={r.id} r={r} borrarHoras={borrarHoras} />)}
+        </details>
+      )}
       {resto.length > 0 && (
-        <details className="group/resto" data-testid="hh-anteriores">
+        <details className="group/resto hidden md:block" data-testid="hh-anteriores">
           <summary className="flex h-11 cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden" style={{ fontSize: '12.5px', color: C.tintaSuave }}>
             <span className="transition-transform group-open/resto:rotate-90" style={{ display: 'flex' }}><Ico d={P.derecha} s={12} /></span>
             Ver las {resto.length} anteriores

@@ -207,7 +207,7 @@ test('la bajada del MC7 y sólo lo cambiado viaja a la base', () => {
     act({ id: 'c', nombre: 'Montaje', seccion: 'S' }),
   ])
   assert.equal(bajadaDuracion(fila(filas, 'Demolición'), dias), '5 días hábiles')
-  assert.equal(bajadaDuracion(fila(filas, 'Curado'), dias), '1 día técnicos')
+  assert.equal(bajadaDuracion(fila(filas, 'Curado'), dias), '1 día técnico')
   assert.equal(bajadaDuracion(fila(filas, 'Montaje'), dias), 'sin fechas')
   const cambios = cambiosDeFechas(filas, { a: { inicio: '2026-08-24', fin: '2026-08-28' }, c: { inicio: '2026-09-01', fin: '2026-09-03' } })
   assert.deepEqual(cambios, [{ actividadId: 'c', inicio: '2026-09-01', fin: '2026-09-03' }])

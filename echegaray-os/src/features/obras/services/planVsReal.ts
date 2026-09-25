@@ -65,7 +65,9 @@ export function lineasPlanVsReal(p: PlanVsReal, veComercial = true, eco: Economi
     l.push({
       clave: 'atrasos',
       tono: 'alerta',
-      titulo: `${p.actividades_atrasadas} actividad(es) pasaron su fecha de fin sin llegar al 100%`,
+      titulo: p.actividades_atrasadas === 1
+        ? '1 actividad pasó su fecha de fin sin llegar al 100%'
+        : `${p.actividades_atrasadas} actividades pasaron su fecha de fin sin llegar al 100%`,
       origen: 'obra_actividad: fin_plan anterior a hoy y avance menor a 100',
       vista: 'gantt',
     })

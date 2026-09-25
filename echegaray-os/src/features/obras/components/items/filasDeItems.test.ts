@@ -137,3 +137,12 @@ test('cada ítem dice SU avance: «8 de 16 ml · 50%» por cantidad, o el %; sin
   const filas = filasDeItems(ARBOL, HISTORIAS, PARTES, 'tarea')
   assert.deepEqual(filas.find((f) => f.id === 'T1')!.cantidad, { hecha: 0, objetivo: 4, unidad: 'un' })
 })
+
+test('M06: el peso del ítem sobre la obra, en %, sin decimales salvo por debajo de 10', async () => {
+  const { textoPeso } = await import('./filasDeItems.ts')
+  assert.equal(textoPeso(1), '100')
+  assert.equal(textoPeso(0.3812), '38')
+  assert.equal(textoPeso(0.0812), '8,1')
+  assert.equal(textoPeso(0.008), '0,8')
+  assert.equal(textoPeso(null), null)
+})

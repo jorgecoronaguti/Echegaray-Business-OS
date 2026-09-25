@@ -54,7 +54,7 @@ const itemSchema = z.object({
   costo_mo: numOpt,
   partida_id: uuidOpt,
   plantilla_id: uuidOpt,
-  metodo: z.union([z.enum(['cantidad', 'pasos', 'manual']), z.literal('')]).optional(),
+  metodo: z.union([z.enum(['cantidad', 'pasos', 'partes', 'manual']), z.literal('')]).optional(),
   inicio_plan: fechaOpt,
   fin_plan: fechaOpt,
   cuadrilla_id: uuidOpt,

@@ -43,6 +43,9 @@ import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
 import { SimuladorDotacion } from '@/features/obras/components/SimuladorDotacion'
 import { TablaRubrosHH } from '@/features/obras/components/TablaRubrosHH'
 import { Callout } from '@/shared/components/ui'
+import Link from 'next/link'
+import { C, ESTILO_PRIMARIA } from '@/features/obras/components/canon/tokens'
+import { Ico, P } from '@/features/obras/components/canon/Ico'
 import { CalendarioObra } from '../../../../../../orquestador/lib/calendario-obra.mjs'
 
 export const dynamic = 'force-dynamic'
@@ -144,6 +147,14 @@ export default async function DotacionObraPage(
           titulo={21}
           enlazarCliente={veEconomia(perfil.data?.rol ?? null)}
           economiaHref={veEconomia(perfil.data?.rol ?? null) ? hrefEconomia(obraId) : null}
+          // 08b: «Cargar parte» amarilla con el lápiz en la cabecera (la dotación se proyecta desde lo
+          // que dicen los partes; el atajo lleva al parte de hoy).
+          acciones={
+            <Link href={`/obras/${obraId}?vista=tareas&sub=parte`} prefetch={false} data-testid="cabecera-cargar-parte"
+              style={{ ...ESTILO_PRIMARIA, height: '32px', padding: '0 14px', fontSize: '13px', color: C.grafito, textDecoration: 'none' }}>
+              <Ico d={P.editar} s={13} />Cargar parte
+            </Link>
+          }
         />
       </>
 
@@ -155,7 +166,7 @@ export default async function DotacionObraPage(
       </div>
 
       {hhPlan == null && (
-        <div className="px-5 pt-3.5">
+        <div className="px-5 pt-3.5 lg:px-[30px]">
           <Callout tono="warn">
             {/* UNA LÍNEA, NO UN PÁRRAFO (reglas visuales del dueño: «no párrafos explicativos permanentes»;
                 el diseño 08b/M11 no dibuja nada acá). El porqué lo dicen los «sin base» de cada fila. */}

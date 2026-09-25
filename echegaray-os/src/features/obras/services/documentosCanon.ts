@@ -13,10 +13,42 @@ export const RELACION: Record<DocumentoObra['origen'], string> = {
 }
 
 /** «PDF · 02 Planos/Estructura» · «Foto · raíz de la carpeta» · «Hoja de cálculo». */
-export function sublineaArchivo(tipoEtiqueta: string, path: string | null): string {
+export function sublineaArchivo(tipoEtiqueta: string, path: string | null, prefijo = '', nombre: string | null = null): string {
   if (path == null) return tipoEtiqueta
-  const p = path.trim()
+  const p = rutaCorta(path, prefijo, nombre)
   return p === '' ? `${tipoEtiqueta} · raíz de la carpeta` : `${tipoEtiqueta} · ${p}`
+}
+
+const tramos = (p: string) => p.trim().replace(/^\/+|\/+$/g, '').split('/').filter(Boolean)
+
+/**
+ * La carpeta que tienen en común todas las rutas de la obra: la carpeta de la obra en Drive
+ * («administracion/PRESUPUESTOS - CLIENTES/FRANCO QUATTROPANI»). Se descuenta de cada ruta.
+ */
+export function prefijoComun(paths: readonly (string | null)[]): string {
+  const listas = paths.filter((p): p is string => p != null && p.trim() !== '').map(tramos)
+  if (listas.length < 2) return ''
+  const base: string[] = []
+  for (let i = 0; i < listas[0].length; i++) {
+    const t = listas[0][i]
+    if (listas.every((l) => l[i] === t)) base.push(t); else break
+  }
+  return base.join('/')
+}
+
+/**
+ * 14: la ruta RELATIVA a la carpeta de la obra, corta («02 Planos/Estructura»), no la entera
+ * («administracion/PRESUPUESTOS - CLIENTES/FRANCO QUATTR…»). Más de dos niveles: «…/» + los dos últimos.
+ */
+export function rutaCorta(path: string, prefijo = '', nombre: string | null = null): string {
+  let t = tramos(path)
+  // El índice guarda la ruta CON el archivo al final («COTIZACION INTERNA/Cotizacion Final.xlsm»): la
+  // sublínea dice la carpeta, el nombre ya está arriba.
+  if (nombre && t.length > 0 && t[t.length - 1] === nombre.trim()) t = t.slice(0, -1)
+  const pre = tramos(prefijo)
+  if (pre.length && pre.every((x, i) => t[i] === x)) t = t.slice(pre.length)
+  if (t.length > 2) return `…/${t.slice(-2).join('/')}`
+  return t.join('/')
 }
 
 /**

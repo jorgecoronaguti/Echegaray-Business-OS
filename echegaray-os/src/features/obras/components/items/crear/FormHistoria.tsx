@@ -15,6 +15,8 @@
 
 import { useEffect, useMemo, useState, type MutableRefObject } from 'react'
 import { C } from '../../canon/tokens'
+import { conMiles } from '../../../services/entradaTexto'
+import { Combo } from '../../canon/Controles'
 import { Ico, P } from '../../canon/Ico'
 import { Aviso, CabeceraTelefono, Campo, ESTILO_PRIMARIA_32, ESTILO_SECUNDARIA_32, PiePrimaria, Resultado, estiloControl } from './Piezas'
 import type { PartidaParaConvertir } from '../../../services/partidasParaConvertir'
@@ -26,6 +28,7 @@ import type { AccionFormulario } from '@/shared/components/ui/FormAccion'
 import type { PreviaNuevo } from './ArbolEstructura'
 
 export type ModoEnvio = 'seguir' | 'bajar' | 'abrir'
+
 
 export function FormHistoria({
   padre, nombre, alCambiarNombre, costoOtras, hayOtraConCosto, partidas, presupuesto, plantillas, crear, alCreada, alCerrar, enviarRef, alPrevia,
@@ -104,10 +107,8 @@ export function FormHistoria({
     <>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         <Campo rotulo="Unidad" alto={alto}>
-          <select value={unidad} onChange={(e) => setUnidad(e.target.value)} data-testid="historia-unidad" style={{ ...estiloControl(alto), fontStyle: unidad ? 'normal' : 'italic', color: unidad ? C.tinta : C.tenue }}>
-            <option value="">sin unidad</option>
-            {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
-          </select>
+          <Combo valor={unidad} alCambiar={setUnidad} alto={alto} vacio="sin unidad" testid="historia-unidad" etiqueta="Unidad"
+            opciones={[{ valor: '', etiqueta: 'sin unidad' }, ...UNIDADES.map((u) => ({ valor: u, etiqueta: u }))]} />
         </Campo>
         <Campo rotulo="Cantidad" alto={alto}>
           <input value={cantidad} onChange={(e) => setCantidad(e.target.value)} inputMode="decimal" data-testid="historia-cantidad" style={estiloControl(alto, true)} />
@@ -116,7 +117,7 @@ export function FormHistoria({
       <Campo rotulo="Costo de mano de obra" nota="fuente de la ponderación" alto={alto}>
         <div style={{ ...estiloControl(alto), display: 'flex', alignItems: 'center', gap: '6px', borderColor: C.grafito }}>
           <span style={{ color: C.tintaSuave, fontFamily: 'var(--font-plex-mono), monospace' }}>$</span>
-          <input value={costo} onChange={(e) => setCosto(e.target.value)} inputMode="decimal" data-testid="historia-costo-mo" aria-label="Costo de mano de obra"
+          <input value={costo} onChange={(e) => setCosto(conMiles(e.target.value))} inputMode="decimal" data-testid="historia-costo-mo" aria-label="Costo de mano de obra"
             className="focus:outline-none focus-visible:outline-none focus:ring-0"
             style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', boxShadow: 'none', borderRadius: 0, background: 'transparent', font: 'inherit', fontFamily: 'var(--font-plex-mono), monospace', color: C.tinta }} />
           {peso != null && <span style={{ fontSize: '11.5px', color: C.tintaSuave, whiteSpace: 'nowrap' }}>→ {rotuloPeso(peso)} de la obra</span>}
@@ -124,10 +125,8 @@ export function FormHistoria({
       </Campo>
       <Campo rotulo="Partida del presupuesto" nota={presupuesto ?? (alto === 32 ? 'la obra no tiene presupuesto vinculado' : undefined)} alto={alto}>
         {partidas.length ? (
-          <select value={partidaId} onChange={(e) => setPartidaId(e.target.value)} data-testid="historia-partida" style={estiloControl(alto)}>
-            <option value="">sin partida · el costo se carga a mano</option>
-            {partidas.map((p) => <option key={p.id} value={p.id}>{[p.codigo, p.descripcion].filter(Boolean).join(' ')}</option>)}
-          </select>
+          <Combo valor={partidaId} alCambiar={setPartidaId} alto={alto} testid="historia-partida" etiqueta="Partida del presupuesto"
+            opciones={[{ valor: '', etiqueta: 'sin partida · el costo se carga a mano' }, ...partidas.map((p) => ({ valor: p.id, etiqueta: [p.codigo, p.descripcion].filter(Boolean).join(' ') }))]} />
         ) : (
           <div style={{ ...estiloControl(alto), border: `1px dashed ${C.bordeFuerte}`, display: 'flex', alignItems: 'center', fontStyle: 'italic', color: C.tenue, fontSize: '12.5px' }}>
             sin presupuesto vinculado · el costo se carga a mano
@@ -135,10 +134,8 @@ export function FormHistoria({
         )}
       </Campo>
       <Campo rotulo="Tareas desde una plantilla" nota="opcional" alto={alto}>
-        <select value={plantillaId} onChange={(e) => setPlantillaId(e.target.value)} data-testid="historia-plantilla" style={{ ...estiloControl(alto), fontStyle: plantillaId ? 'normal' : 'italic', color: plantillaId ? C.tinta : C.tenue }}>
-          <option value="">sin plantilla · las tareas se cargan a mano</option>
-          {plantillas.map((p) => <option key={p.id} value={p.id}>{p.nombre} · {p.pasos} {p.pasos === 1 ? 'tarea' : 'tareas'}</option>)}
-        </select>
+        <Combo valor={plantillaId} alCambiar={setPlantillaId} alto={alto} vacio="sin plantilla · las tareas se cargan a mano" testid="historia-plantilla" etiqueta="Tareas desde una plantilla"
+          opciones={[{ valor: '', etiqueta: 'sin plantilla · las tareas se cargan a mano' }, ...plantillas.map((p) => ({ valor: p.id, etiqueta: `${p.nombre} · ${p.pasos} ${p.pasos === 1 ? 'tarea' : 'tareas'}` }))]} />
       </Campo>
       <Campo rotulo="Comentario" alto={alto}>
         <input value={comentario} onChange={(e) => setComentario(e.target.value)} maxLength={400} data-testid="historia-comentario" style={estiloControl(alto)} />

@@ -10,7 +10,7 @@
 //
 // Estado del cliente con la URL sincronizada (`replaceState`); las ESCRITURAS van por server actions.
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { C } from '../../canon/tokens'
 import { ArbolEstructura, type PreviaNuevo, type Tecla } from './ArbolEstructura'
@@ -25,6 +25,7 @@ import { PanelFrentes, VistaPreviaFrentes } from './PanelFrentes'
 import { PanelSubtareas } from './PanelSubtareas'
 import { BarraMasiva, CajaMasiva, type AccionMasiva } from './BarraMasiva'
 import { Resultado } from './Piezas'
+import { publicarCifras } from './estadoCabecera'
 import { filasDePonderacion, hijasDe, nivelDe, nivelDeHijaNueva, porId, type Ponderaciones } from '../../../services/estructura'
 import { filasDelArbol, itemsMO } from '../../../services/arbolEstructura'
 import { pesosDeLaObra, rotuloPeso, rotuloPesos, type MetodoPonderacion } from '../../../services/pesoMO'
@@ -156,6 +157,8 @@ export function Estructura({ obraId, nodos, ponds, modo, datos, acciones, query 
   }
 
   const act = modo.act ? mapa.get(modo.act) ?? null : null
+  // C09: la cabecera dice cuántas hay elegidas — la misma cifra que la barra, no «ninguna».
+  useEffect(() => { if (modo.sel) publicarCifras({ seleccionadas: sel.size > 0 ? String(sel.size) : null }) }, [sel, modo.sel])
 
   if (modo.crear === 'presupuesto') {
     return <CrearDesdePresupuesto obraId={obraId} presupuesto={datos.presupuesto} error={datos.presupuestoError} inicioObra={datos.obra.inicio} convertir={acciones.convertir} />
@@ -187,6 +190,13 @@ export function Estructura({ obraId, nodos, ponds, modo, datos, acciones, query 
     if (n.has(id)) for (const t of desc) n.delete(t); else for (const t of desc) if (filas.find((f) => f.id === t)?.nivel !== 'subtarea') n.add(t)
     return n
   })
+  // «Ponderación» de la barra masiva: si todo lo elegido cuelga de un mismo contenedor, su reparto (C05);
+  // si no, la ponderación de la obra entera (B07).
+  const irAPonderacion = () => {
+    const padres = new Set([...sel].map((id) => mapa.get(id)?.padre_id ?? null))
+    const unico = padres.size === 1 ? [...padres][0] : null
+    ir(unico ? `&act=${unico}&panel=ponderacion` : '&panel=ponderacion')
+  }
   const contenedores = filas.filter((f) => f.esContenedor).map((f) => ({ id: f.id, nombre: `${'  '.repeat(f.profundidad)}${f.nombre}` }))
 
   // La historia de la que cuelga la tarea nueva: su nombre, lo que pesa y cuántas tareas tiene.
@@ -194,11 +204,37 @@ export function Estructura({ obraId, nodos, ponds, modo, datos, acciones, query 
     if (nivelNuevo !== 'tarea' || !padreNuevo) return null
     const f = filas.find((x) => x.id === padreNuevo.id)
     const p = pesos.get(padreNuevo.id)
+    // B05: la tarea nueva arranca con el plazo de su historia (el propio o el que cubren sus tareas).
+    const dentro = new Set([padreNuevo.id])
+    let inicio: string | null = padreNuevo.inicio_plan ?? null
+    let fin: string | null = padreNuevo.fin_plan ?? null
+    for (const n of nodos) {
+      if (!n.padre_id || !dentro.has(n.padre_id)) continue
+      dentro.add(n.id)
+      if (!padreNuevo.inicio_plan && n.inicio_plan && (!inicio || n.inicio_plan < inicio)) inicio = n.inicio_plan
+      if (!padreNuevo.fin_plan && n.fin_plan && (!fin || n.fin_plan > fin)) fin = n.fin_plan
+    }
     return {
+      inicio, fin,
       nombre: padreNuevo.nombre, uniCant: f?.uniCant ?? null,
       costo: p?.costo != null ? rotuloPesos(p.costo) : null, peso: p?.peso != null ? rotuloPeso(p.peso) : null,
       nTareas: hijasDe(nodos, padreNuevo.id).filter((h) => nivelDe(h, mapa, ponds) === 'tarea').length,
     }
+  })()
+  // B05 · MB2: los insumos que ya usan las tareas hermanas se proponen en la nueva (sin repetir).
+  const insumosPropuestos = (() => {
+    if (nivelNuevo !== 'tarea' || !padreNuevo) return []
+    const vistos = new Set<string>()
+    const salida: { tipo: 'activo' | 'material'; activo_id: string | null; nombre: string; lugar: InsumoTarea['lugar'] }[] = []
+    for (const h of hijasDe(nodos, padreNuevo.id)) {
+      for (const i of datos.insumosPor[h.id] ?? []) {
+        const k = i.activo_id ?? `m:${i.nombre.trim().toLowerCase()}`
+        if (vistos.has(k)) continue
+        vistos.add(k)
+        salida.push({ tipo: i.tipo, activo_id: i.activo_id, nombre: i.nombre, lugar: i.lugar })
+      }
+    }
+    return salida
   })()
   const costoOtras = items.filter((i) => i.nivel === 'historia').reduce((s, h) => s + (h.costo_mo ?? 0), 0)
   const enMano = modo.crear === 'mano' && nuevo != null
@@ -212,7 +248,7 @@ export function Estructura({ obraId, nodos, ponds, modo, datos, acciones, query 
   ) : enMano && nivelNuevo === 'tarea' && padreNuevo ? (
     <FormTarea obraId={obraId} padre={{ id: padreNuevo.id, camino: caminoDe(padreNuevo) }} nombre={nuevo.nombre} alCambiarNombre={(v) => setNuevo({ ...nuevo, nombre: v })}
       historia={historiaDeNuevo} plazo={{ inicio: datos.obra.inicio, fin: datos.obra.fin }} cuadrillas={datos.cuadrillas} personas={datos.personas}
-      activos={datos.activos} crear={acciones.crearItem} alCreada={creada} alCerrar={() => setNuevo(null)} enviarRef={enviarRef} alPrevia={alPrevia} />
+      activos={datos.activos} insumosPropuestos={insumosPropuestos} crear={acciones.crearItem} alCreada={creada} alCerrar={() => setNuevo(null)} enviarRef={enviarRef} alPrevia={alPrevia} />
   ) : act && modo.panel === 'frentes' ? (
     <PanelFrentes nodo={act} camino={frenteDeCamino(act.camino, act.nombre) ?? ''} pesoEnPadre={null}
       nAvances={datos.avancesPor[act.id] ?? 0} nPasos={datos.pasosPor[act.id] ?? 0} texto={textoFrentes} alCambiarTexto={setTextoFrentes}
@@ -236,7 +272,7 @@ export function Estructura({ obraId, nodos, ponds, modo, datos, acciones, query 
 
   return (
     <>
-      {modo.sel && <BarraMasiva n={sel.size} accion={accionMasiva} setAccion={setAccionMasiva} alSalir={cerrar} resultado={resultadoMasivo} />}
+      {modo.sel && <BarraMasiva n={sel.size} accion={accionMasiva} setAccion={setAccionMasiva} alSalir={cerrar} resultado={resultadoMasivo} alPonderacion={irAPonderacion} />}
       <div className="md:grid" style={{ gridTemplateColumns: aside ? 'minmax(0,1fr) 420px' : 'minmax(0,1fr)', alignItems: 'start' }}>
         <div className="max-md:px-4">
           {resultado && <div style={{ padding: '10px 20px 0' }}><Resultado r={resultado} /></div>}
@@ -244,14 +280,14 @@ export function Estructura({ obraId, nodos, ponds, modo, datos, acciones, query 
             nuevo={enMano ? nuevo : null} nivelNuevo={nivelNuevo} previa={previa}
             alCambiarNuevo={(v) => setNuevo((n) => (n ? { ...n, nombre: v } : { padreId: null, nombre: v }))}
             alTecla={alTecla} alPedirNuevo={(id) => fijarNuevo(id)}
-            sel={sel} alAlternarSel={alternarSel} alAbrir={alAbrir} angosto={Boolean(aside)}
+            sel={sel} alAlternarSel={alternarSel} alAbrir={alAbrir} angosto={Boolean(aside) || modo.sel} conAside={Boolean(aside)}
             alAlternarSubtarea={async (id, hecha) => { const r = await acciones.alternarSubtarea(id, hecha); if (r.ok) router.refresh(); else setResultado({ ok: false, texto: r.error }) }}
-            query={query} />
+            query={query}
+            debajoDeLaRama={act && modo.panel === 'frentes' ? <VistaPreviaFrentes nodo={act} codigo={filas.find((f) => f.id === act.id)?.codigo ?? ''} texto={textoFrentes} /> : null} />
           {enMano && sinRubros && <RubrosPropuestos rubros={datos.rubrosPropuestos} alElegir={(nombre) => fijarNuevo(null, nombre)} />}
-          {act && modo.panel === 'frentes' && <div className="hidden md:block" style={{ padding: '0 20px 30px' }}><VistaPreviaFrentes nodo={act} codigo={filas.find((f) => f.id === act.id)?.codigo ?? ''} texto={textoFrentes} /></div>}
           {modo.sel && (
             <CajaMasiva ids={[...sel]} datos={{ contenedores, cuadrillas: datos.cuadrillas, personas: datos.personas }} aplicar={acciones.aplicarMasiva}
-              alAplicado={(r) => { setResultadoMasivo(r); setSel(new Set()); router.refresh() }} accion={accionMasiva} setAccion={setAccionMasiva} />
+              alAplicado={(r) => { setResultadoMasivo(r); setSel(new Set()); router.refresh() }} accion={accionMasiva} setAccion={setAccionMasiva} alPonderacion={irAPonderacion} />
           )}
         </div>
         {aside}
