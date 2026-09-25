@@ -57,5 +57,37 @@ export async function getEntradas(
       ? { data: [], error: null }
       : { data: null, error: error.message }
   }
-  return { data: (data ?? []) as unknown as EntradaComprobante[], error: null }
+  const filas = (data ?? []) as unknown as EntradaComprobante[]
+  return { data: await conEnlace(supabase, filas), error: null }
+}
+
+// ═══ CADA FILA LLEVA A DONDE SE RESUELVE (dueño 25/09) ═══
+//
+// «Este tipo de cosas que me clavás arriba en las vistas, donde no tengo opción ni de hacer click ni
+// de editar ni de borrar, no me sirve». Una rendición (foto subida desde Efectivo) se resuelve en la
+// ficha de SU entrega, con el ticket abierto; una carga que entró, en su fila de Compras. Las rutas
+// son las de `features/efectivo/logica/url.ts` (misma pantalla, mismos parámetros).
+const RUTA_COMPRAS = '/administracion/compras'
+
+async function conEnlace(supabase: SupabaseClient, filas: EntradaComprobante[]): Promise<EntradaComprobante[]> {
+  if (!filas.length) return filas
+  const { data: tickets } = await supabase
+    .from('efectivo_comprobante').select('id, entrada_id, entrega_id').in('entrada_id', filas.map((f) => f.id))
+  const ts = (tickets ?? []) as { id: string; entrada_id: string; entrega_id: string }[]
+  const ids = [...new Set(ts.map((t) => t.entrega_id))]
+  const { data: entregas } = ids.length
+    ? await supabase.from('efectivo_entrega').select('id, codigo').in('id', ids)
+    : { data: [] }
+  const codigo = new Map(((entregas ?? []) as { id: string; codigo: string }[]).map((e) => [e.id, e.codigo]))
+  const ticket = new Map(ts.map((t) => [t.entrada_id, t]))
+  return filas.map((f) => {
+    const t = ticket.get(f.id)
+    const cod = t ? codigo.get(t.entrega_id) : undefined
+    if (t && cod) {
+      const p = new URLSearchParams({ vista: 'a-rendir', entrega: cod, comprobante: t.id })
+      return { ...f, enlace: `${RUTA_COMPRAS}?${p.toString()}` }
+    }
+    const fila = (f.resultado?.comprobantes ?? []).map((c) => c?.fila).find((x): x is number => typeof x === 'number')
+    return { ...f, enlace: fila ? `${RUTA_COMPRAS}?s=${fila}` : null }
+  })
 }

@@ -24,6 +24,8 @@ export interface EntradaComprobante {
   subido_at: string
   subido_por: string
   resultado: ResultadoEntrada | null
+  /** Adónde lleva tocar la fila: la ficha de la entrega (rendición) o la fila de Compras. `null` = sin destino. */
+  enlace?: string | null
 }
 
 /** Lo que el worker guardó del circuito. `comprobantes: null` = no se pudo leer el registro. */

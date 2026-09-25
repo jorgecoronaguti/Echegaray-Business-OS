@@ -20,7 +20,8 @@
 // polling eterno sobre una pantalla abierta todo el día es una consulta cada cinco segundos para
 // siempre.
 
-import { useEffect } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Estado } from '@/shared/components/ds'
 import { C } from '@/shared/components/canon'
@@ -30,6 +31,17 @@ import {
 
 /** Cada cuánto se vuelve a preguntar mientras el worker trabaja. El timer corre cada minuto. */
 const REFRESCO_MS = 5000
+const CLAVE_QUITADAS = 'compras.entradas-quitadas'
+
+const oyentes = new Set<() => void>()
+function suscribirQuitadas(cb: () => void) { oyentes.add(cb); return () => { oyentes.delete(cb) } }
+function avisarQuitadas() { oyentes.forEach((cb) => cb()) }
+function leerQuitadas(): string {
+  try { return localStorage.getItem(CLAVE_QUITADAS) ?? '[]' } catch { return '[]' }
+}
+function parsearQuitadas(texto: string): string[] {
+  try { const v: unknown = JSON.parse(texto); return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [] } catch { return [] }
+}
 
 export function EntradasSubidas({ entradas }: { entradas: EntradaComprobante[] }) {
   const router = useRouter()
@@ -41,7 +53,20 @@ export function EntradasSubidas({ entradas }: { entradas: EntradaComprobante[] }
     return () => clearInterval(t)
   }, [enCurso, router])
 
-  if (!entradas.length) return null
+  // QUITAR ES DE QUIEN MIRA (dueño 25/09: «no tengo opción ni de hacer click ni de editar ni de
+  // borrar»). La fila no es un dato: es el acuse de una carga, y la carga ya quedó en Compras o en su
+  // entrega. Quitarla la saca de esta pantalla, en este navegador; el comprobante no se toca.
+  // useSyncExternalStore y no un efecto: el servidor dibuja «ninguna quitada» y el navegador lee su
+  // almacenamiento sin un segundo render ni un desajuste de hidratación (#418).
+  const quitadasTexto = useSyncExternalStore(suscribirQuitadas, leerQuitadas, () => '[]')
+  const quitadas = parsearQuitadas(quitadasTexto)
+  const quitar = (id: string) => {
+    try { localStorage.setItem(CLAVE_QUITADAS, JSON.stringify([...quitadas, id].slice(-100))) } catch { /* sin almacenamiento */ }
+    avisarQuitadas()
+  }
+  const visibles = entradas.filter((e) => !quitadas.includes(e.id))
+
+  if (!visibles.length) return null
 
   return (
     <div
@@ -62,13 +87,13 @@ export function EntradasSubidas({ entradas }: { entradas: EntradaComprobante[] }
           </span>
         )}
       </div>
-      {entradas.map((e) => <FilaEntrada key={e.id} entrada={e} />)}
+      {visibles.map((e) => <FilaEntrada key={e.id} entrada={e} onQuitar={() => quitar(e.id)} />)}
     </div>
   )
 }
 
 /** Una línea: el archivo, en qué quedó, y dónde quedó si entró. */
-function FilaEntrada({ entrada }: { entrada: EntradaComprobante }) {
+function FilaEntrada({ entrada, onQuitar }: { entrada: EntradaComprobante; onQuitar: () => void }) {
   const r = ROTULO[entrada.estado]
   const cargados = entrada.resultado?.comprobantes ?? null
   return (
@@ -80,12 +105,27 @@ function FilaEntrada({ entrada }: { entrada: EntradaComprobante }) {
       data-testid="fila-entrada"
       data-estado={entrada.estado}
     >
-      <span className="min-w-0 flex-1 truncate text-[12px] max-md:basis-full max-md:text-[13px]" style={{ color: C.tinta }}>{entrada.nombre_archivo}</span>
+      {entrada.enlace ? (
+        <Link href={entrada.enlace} className="min-w-0 flex-1 truncate text-[12px] underline max-md:basis-full max-md:text-[13px]"
+          style={{ color: C.tinta }} data-testid="entrada-abrir" title="Abrir donde se resuelve">{entrada.nombre_archivo}</Link>
+      ) : (
+        <span className="min-w-0 flex-1 truncate text-[12px] max-md:basis-full max-md:text-[13px]" style={{ color: C.tinta }}>{entrada.nombre_archivo}</span>
+      )}
       <span className="min-w-0 flex-[2] truncate text-[11.5px]" style={{ color: C.apagado }} title={entrada.motivo ?? r.ayuda}>
         {entrada.motivo ?? r.ayuda}
       </span>
       <span className="shrink-0 text-[11px]" style={{ color: C.tenue }}>{dondeQuedo(entrada, cargados)}</span>
       <span className="shrink-0"><Estado tono={r.tono} clave={entrada.estado}>{r.texto}</Estado></span>
+      {entrada.enlace && (
+        <Link href={entrada.enlace} className="shrink-0 text-[11.5px] underline max-md:min-h-[44px] max-md:inline-flex max-md:items-center"
+          style={{ color: C.tinta }} data-testid="entrada-resolver">
+          {entrada.estado === 'cargado' || entrada.estado === 'ya_estaba' ? 'Ver' : 'Resolver'}
+        </Link>
+      )}
+      <button type="button" onClick={onQuitar} aria-label={`Quitar ${entrada.nombre_archivo} de esta lista`}
+        className="shrink-0 text-[14px] leading-none max-md:min-h-[44px] max-md:min-w-[44px]"
+        style={{ color: C.tenue, background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}
+        data-testid="entrada-quitar" title="Quitar de esta lista (el comprobante no se toca)">×</button>
     </div>
   )
 }
