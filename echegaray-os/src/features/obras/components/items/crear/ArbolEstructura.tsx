@@ -123,8 +123,12 @@ export function ArbolEstructura({
     for (const c of visibles) {
       if (plegados.has(c.id) || c.nivel === 'subtarea') continue
       if (!(c.esContenedor || c.nivel === 'tarea')) continue
-      // Una tarea sólo ofrece «Nueva subtarea» cuando ya tiene alguna o está elegida para una nueva.
-      if (c.nivel === 'tarea' && !c.esContenedor && c.nSubtareas === 0 && nuevo?.padreId !== c.id) continue
+      // Como en B02–B05: «+ Nueva historia en <épica>» siempre; en un rubro o una historia con hijas,
+      // sólo si ahí está la fila nueva (si no, cada rubro repetiría «+ Nueva épica»); una tarea sólo
+      // ofrece «Nueva subtarea» cuando ya tiene alguna o está elegida.
+      const activo = nuevo?.padreId === c.id
+      if (c.nivel === 'tarea' && !c.esContenedor && c.nSubtareas === 0 && !activo) continue
+      if ((c.nivel === 'rubro' || c.nivel === 'historia') && c.tieneHijas && !activo) continue
       const ancla = ultima.get(c.id) ?? c.id
       const l = salida.get(ancla) ?? []
       l.push(c)
