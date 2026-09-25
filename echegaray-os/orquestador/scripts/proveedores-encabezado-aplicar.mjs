@@ -78,7 +78,9 @@ function pedidosDeFormato(sheetId, anchoHoja, cols) {
     },
   }, `${FMT}.numberFormat,${FMT}.horizontalAlignment,${FMT}.verticalAlignment,${FMT}.textFormat,${FMT}.borders,${FMT}.backgroundColorStyle`))
 
-  p.push(celda(sheetId, F.titulo, 0, { userEnteredFormat: { textFormat: { bold: true, fontSize: 16, foregroundColor: TINTA } } }, `${FMT}.textFormat`))
+  // Arial 15 (25/09/2026): sin familia declarada el título heredaba Calibri, y a 16pt el formateador general
+  // (estándar 13 o 15) lo marcaba fuera de estándar en cada corrida: dos formateadores, gana el último.
+  p.push(celda(sheetId, F.titulo, 0, { userEnteredFormat: { textFormat: { fontFamily: 'Arial', bold: true, fontSize: 15, foregroundColor: TINTA } } }, `${FMT}.textFormat`))
   p.push(celda(sheetId, F.bajada, 0, { userEnteredFormat: { textFormat: { fontSize: 9, foregroundColor: TENUE } } }, `${FMT}.textFormat`))
 
   // Rótulos: negrita, chicos, con la única línea del cuadro debajo.

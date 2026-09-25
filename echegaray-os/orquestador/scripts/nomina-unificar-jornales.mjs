@@ -22,6 +22,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { ROTULO_PUENTE } from '../lib/nomina-puente.mjs'
+import { formatearNomina } from '../lib/nomina-formato.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Nómina'
@@ -80,6 +81,9 @@ async function main() {
   const aPagar = v.slice(35, 45).filter((r) => typeof r?.[0] === 'number').length
   console.log(`  quincenas pagadas: ${pagadas} · a pagar: ${aPagar} · errores: ${err.length ? err.join(' ') : 'ninguno'}`)
   if (err.length) { process.exitCode = 1; return }
+  // El formato lo pone quien escribe (25/09/2026): ver `lib/nomina-formato.mjs`.
+  const fmt = await formatearNomina(google, ID)
+  console.log(`  formato: ${fmt.requests.length} pedido(s)${fmt.faltan.length ? ` · sin sección ${fmt.faltan.join(', ')}` : ''}`)
   // «Jornales por Quincena» queda oculta: es la pestaña de datos detrás de Nómina.
   const hoja = (await google.getSheetMeta(ID)).find((h) => h.title === JORNALES)
   if (hoja) await google.spreadsheetBatchUpdate(ID, [{ updateSheetProperties: { properties: { sheetId: hoja.sheetId, hidden: true }, fields: 'hidden' } }])

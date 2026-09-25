@@ -16,6 +16,7 @@ import { query, closePool } from '../lib/db.mjs'
 import { bloquear, desbloquear, estaBloqueada } from '../lib/pestana-bloqueada.mjs'
 import { pedidos } from '../lib/rangos-nombrados.mjs'
 import { NOMBRES_PUENTE, NOMBRES_NOMINA_BASE, ROTULOS_FILAS_PUENTE, ubicarNomina, cuadroPuente, filasDeOficina } from '../lib/nomina-puente.mjs'
+import { formatearNomina } from '../lib/nomina-formato.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Nómina'
@@ -82,6 +83,10 @@ async function main() {
       { name: NOMBRES_NOMINA_BASE.personas, fila: u.primeraPersona, col: 4, cols: 12, filas: u.ultimaPersona - u.primeraPersona + 1 },
     ]
     await google.spreadsheetBatchUpdate(ID, pedidos(hoja.sheetId, destinos, lista))
+    // EL FORMATO LO PONE QUIEN ESCRIBE (25/09/2026): el cuadro 6 cayó sobre filas con formato TEXTO y
+    // el dueño vio seriales y decimales sueltos. Ningún paso del pipeline formatea «Nómina».
+    const fmt = await formatearNomina(google, ID)
+    console.log(`  formato: ${fmt.requests.length} pedido(s)${fmt.faltan.length ? ` · sin sección ${fmt.faltan.join(', ')}` : ''}`)
   } finally {
     if (candada) await bloquear({ query }, ID, PESTAÑA, { motivo: 'el dueño edita — re-candada tras escribir el cuadro 6 (puente al Cash Flow)', por: 'OS' })
   }

@@ -217,7 +217,9 @@ export function tandasDeGrupos(sheetId, { filas = 0, cols = 0 } = {}, niveles = 
 /** Título, subtítulo y el atajo de la esquina. */
 function formatoEncabezado({ celdas, req, rango, meta }) {
   celdas(FILA.titulo, 0, 1, 'userEnteredFormat(textFormat,horizontalAlignment)',
-    { textFormat: txt(INK, { bold: true, size: 16 }), horizontalAlignment: 'LEFT' })
+    // 15 y no 16 (25/09/2026): con 16 el formateador general (`formato-pestanas.mjs`, estándar 13 o 15)
+    // lo marcaba fuera de estándar en cada corrida de vistas y esta piel lo volvía a 16 en la de datos.
+    { textFormat: txt(INK, { bold: true, size: 15 }), horizontalAlignment: 'LEFT' })
   celdas(FILA.subtitulo, 0, 1, 'userEnteredFormat(textFormat,horizontalAlignment)',
     { textFormat: txt(MUTED, { size: 9 }), horizontalAlignment: 'LEFT' })
   celdas(FILA.subtitulo, meta.cab.colTotal, meta.cab.colTotal + 1, 'userEnteredFormat(textFormat,horizontalAlignment)',
