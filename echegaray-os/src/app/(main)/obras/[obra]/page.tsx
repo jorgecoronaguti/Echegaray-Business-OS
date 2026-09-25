@@ -454,7 +454,7 @@ export default async function ObraPage({
         <WorkspaceTareas
           supabase={supabase} obraId={obraId} act={act} filtro={filtro} sol={sol} dot={dot}
           cuadrillas={cuadrillas} puedeEditar={puedeEditarPlan} veEconomia={veComercial}
-          nueva={nueva === '1'} abiertas={abiertas} nombreObra={obra.nombre}
+          nueva={nueva === '1'} abiertas={abiertas} nombreObra={obra.nombre} itemsPonderados={vistaRaw === 'items'}
           modo={modoEstructura} obra={{ inicio: obra.fecha_inicio_plan, fin: obra.fecha_fin_plan }}
         />
       )}

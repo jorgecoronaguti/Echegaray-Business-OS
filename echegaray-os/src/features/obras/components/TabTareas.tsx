@@ -46,6 +46,7 @@ import { resolverSolapa, type Solapa } from '../services/solapasTarea'
 import {
   AGRUPAR, agruparFilas, filasDeItems, filtrarPorTexto, VER_HASTA, type Agrupar, type VerHasta,
 } from './items/filasDeItems'
+import { TablaTareas } from './items/TablaTareas'
 import { TablaItems } from './items/TablaItems'
 import { ListaItems } from './items/ListaItems'
 import { EstadoVacio } from './items/crear/EstadoVacio'
@@ -84,7 +85,7 @@ export function TabTareas({
   panelDeObra, relaciones, docsPorActividad, actInicial, solInicial, dotInicial, malImputados,
   puedeEditar, personas, integrantesPorCuadrilla, nombrePorPersona,
   equiposPorActividad, notasPorActividad, autor, accionesBarra, accionesPanel, nuevaInicial = false,
-  nombreObra = null, modo, estructura, accionesEstructura,
+  nombreObra = null, modo, estructura, accionesEstructura, itemsPonderados = false,
 }: {
   obraId: string
   nodos: NodoObra[]
@@ -117,6 +118,8 @@ export function TabTareas({
   /** `?nueva=1`: la primaria de la cabecera abre el alta al llegar. */
   nuevaInicial?: boolean
   nombreObra?: string | null
+  /** `?vista=items` (04b) en vez de la tabla de Tareas (04). */
+  itemsPonderados?: boolean
 }) {
   const [alta, setAlta] = useState<'' | 'actividad' | 'rubro'>(nuevaInicial && puedeEditar && nodos.length > 0 ? 'actividad' : '')
   // ═══ CREAR LA ESTRUCTURA (C01–C09) ═══
@@ -173,6 +176,8 @@ export function TabTareas({
 
   const hoy = useMemo(() => new Date().toISOString().slice(0, 10), [])
   const agregados = useMemo(() => rollup(nodos), [nodos])
+  // 04: las HH reales de cada fila — la tarea, o lo que suma el contenedor (`rollup`). null = sin HH.
+  const hhPor = useMemo(() => Object.fromEntries(nodos.map((n) => [n.id, n.es_contenedor ? agregados.get(n.id)?.hh_real ?? null : n.hh_real])), [nodos, agregados])
   const cuentas = useMemo(() => conteoDeVistas(nodos, agregados, hoy), [nodos, agregados, hoy])
   const niveles = useMemo(() => Object.fromEntries(Object.entries(estructura.ponds).map(([id, p]) => [id, p.nivel ?? null])), [estructura.ponds])
   const todas = useMemo(() => filasDeItems(nodos, historias, partesResumen, verHasta, niveles), [nodos, historias, partesResumen, verHasta, niveles])
@@ -260,15 +265,14 @@ export function TabTareas({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <SubNavTrabajo obraId={obraId} sub="arbol"
+      <SubNavTrabajo obraId={obraId} sub="arbol" rotuloArbol={itemsPonderados ? 'Ítems' : undefined}
         derecha={modoEfectivo.crear === 'mano'
           ? <span data-testid="pista-armar-a-mano">Armar a mano{nodos.length === 0 && <span style={{ color: C.tinta }}> · Enter agrega hermano · Tab baja un nivel · Shift+Tab sube</span>}</span>
           : enEstructura || vacia ? undefined :
-          <>
-            <Opciones rotulo="Ver hasta" opciones={VER_HASTA} valor={verHasta} alElegir={elegirVerHasta} testid="ver-hasta" />
-            <span aria-hidden style={{ width: '1px', height: '14px', background: C.borde, margin: '0 4px' }} />
-            <Opciones rotulo="Agrupar por" opciones={AGRUPAR} valor={agrupar} alElegir={elegirAgrupar} testid="agrupar-por" />
-          </>
+          // 04 (Tareas): «Agrupar por»; 04b (Ítems ponderados): «Ver hasta». Cada diseño dibuja el suyo.
+          itemsPonderados
+            ? <Opciones rotulo="Ver hasta" opciones={VER_HASTA} valor={verHasta} alElegir={elegirVerHasta} testid="ver-hasta" />
+            : <Opciones rotulo="Agrupar por" opciones={AGRUPAR} valor={agrupar} alElegir={elegirAgrupar} testid="agrupar-por" />
         }
         alFinal={vacia || enEstructura ? undefined :
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar actividades" data-testid="buscar-tarea"
@@ -332,7 +336,9 @@ export function TabTareas({
       {!enEstructura && !vacia && (<>
       {/* ═══ ESCRITORIO: tabla + panel de 400px ═══ */}
       <div className="hidden md:grid" style={{ gridTemplateColumns: abierta ? 'minmax(0,1fr) 400px' : 'minmax(0,1fr)', alignItems: 'start' }}>
-        <TablaItems filas={filas} abierta={sel} alAbrir={(id) => abrir(id)} vacio={vacio} />
+        {itemsPonderados
+          ? <TablaItems filas={filas} abierta={sel} alAbrir={(id) => abrir(id)} vacio={vacio} />
+          : <TablaTareas filas={filas} hhPor={hhPor} abierta={sel} alAbrir={(id) => abrir(id)} vacio={vacio} hrefItems={`/obras/${obraId}?vista=items`} />}
         {abierta && (
           <aside style={{ borderLeft: `1px solid ${C.borde}`, background: C.tenueFondo, minHeight: '100%', alignSelf: 'stretch' }} data-testid="panel-tarea-marco">
             {panel}

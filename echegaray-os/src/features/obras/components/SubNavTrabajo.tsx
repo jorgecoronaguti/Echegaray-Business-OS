@@ -20,8 +20,10 @@ import { C, MONO } from './canon/tokens'
 import { pantallasDeTrabajo, type PantallaDeTrabajo } from '../services/vistasObra'
 import { RotuloEstable } from './RotuloEstable'
 
-export function SubNavTrabajo({ obraId, sub, derecha, alFinal, contadores = {} }: {
+export function SubNavTrabajo({ obraId, sub, derecha, alFinal, contadores = {}, rotuloArbol }: {
   obraId: string
+  /** 04b: con `?vista=items` la primera sub-solapa se llama «Ítems» (así la dibuja el diseño). */
+  rotuloArbol?: string
   sub: PantallaDeTrabajo | null
   /** Lo que sigue al filete: «Ver hasta», «Agrupar por», el navegador de día del parte. */
   derecha?: ReactNode
@@ -30,7 +32,7 @@ export function SubNavTrabajo({ obraId, sub, derecha, alFinal, contadores = {} }
   /** Los contadores en faint al lado del rótulo, cuando la pantalla los trae. */
   contadores?: Partial<Record<string, number>>
 }) {
-  const items = pantallasDeTrabajo(obraId, sub)
+  const items = pantallasDeTrabajo(obraId, sub).map((i) => (i.id === 'arbol' && rotuloArbol ? { ...i, label: rotuloArbol } : i))
   return (
     <>
       <div className="hidden md:flex" data-testid="subnav-trabajo" style={{
