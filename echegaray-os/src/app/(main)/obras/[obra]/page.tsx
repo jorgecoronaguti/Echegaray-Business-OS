@@ -86,7 +86,7 @@ import { getIntegrantesPorCuadrilla } from '@/features/obras/services/personalSe
 import {
   asignarActividadAPedido, borrarParte, registrarEjecucion,
 } from '@/features/obras/services/actionsEjecucion'
-import { TabPersonal } from '@/features/obras/components/TabPersonal'
+import { AsignarPersona, TabPersonal } from '@/features/obras/components/TabPersonal'
 import { TabOperacion } from '@/features/obras/components/TabOperacion'
 import { AccionesDocumentos, NuevoImpedimento } from '@/features/obras/components/operacion/AccionesCabecera'
 import { getOperacionObra, subDeLaUrl, type SubOperacion } from '@/features/obras/services/operacionService'
@@ -426,6 +426,11 @@ export default async function ObraPage({
         ) : esEditorCronograma ? (
           // C06: «Sellar línea base» y «Guardar fechas» junto al nombre; no hay «Nueva actividad».
           <AccionesEditorCronograma />
+        ) : enPersonal ? (
+          // 08: «Asignar persona» amarilla en la cabecera (en el teléfono, el pie fijo de la solapa).
+          <div className="hidden md:block">
+            <AsignarPersona personas={personas} cuadrillas={cuadrillas} actividades={acts} asignar={asignarPersona.bind(null, obraId)} />
+          </div>
         ) : vista === 'operacion' ? (
           // 09: «Nuevo impedimento» amarilla sólo en Impedimentos; 10 · 11 · 12 no dibujan botón.
           subOp === 'impedimentos' ? <NuevoImpedimento obraId={obraId} /> : null

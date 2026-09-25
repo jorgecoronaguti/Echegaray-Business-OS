@@ -104,6 +104,21 @@ function Alta({ titulo, testid, children, primaria = false, telefono = false }: 
   )
 }
 
+/** 08 · LA PRIMARIA DE LA CABECERA: «Asignar persona» abre su panel debajo, alineado a la derecha. La
+ *  monta la página en las acciones de `CabeceraDeObra` (el diseño la dibuja ahí, no en el cuerpo). */
+export function AsignarPersona({ personas, cuadrillas, actividades, asignar }: {
+  personas: Persona[]
+  cuadrillas: { id: string; nombre: string; integrantes: number }[]
+  actividades: Actividad[]
+  asignar: AccionFormulario
+}) {
+  return (
+    <Alta titulo="Asignar persona" testid="alta-asignacion" primaria>
+      <FormAsignar personas={personas} cuadrillas={cuadrillas} actividades={actividades} asignar={asignar} />
+    </Alta>
+  )
+}
+
 /** ASIGNAR UNA PERSONA A ESTA OBRA — el formulario, UNA sola definición para el escritorio y el
  *  teléfono (el `<details>` cambia; el formulario no). */
 function FormAsignar({ personas, cuadrillas, actividades, asignar }: {
@@ -334,9 +349,7 @@ export async function TabPersonal({
     <div className="flex flex-col gap-6 pb-20 md:pb-0">
       {/* ═══ ESCRITORIO (08) ═══ */}
       <div className="hidden md:block" style={{ padding: '4px 10px 8px' }} data-testid="personal-escritorio">
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '14px' }}>
-          <Alta titulo="Asignar persona" testid="alta-asignacion" primaria>{formulario}</Alta>
-        </div>
+        {/* «Asignar persona» vive en la cabecera de la obra (08): `AsignarPersona`, montado por la página. */}
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: '52px', alignItems: 'start' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '30px', minWidth: 0 }}>
             <div style={{ display: 'flex', gap: '76px', flexWrap: 'wrap' }} data-testid="cifras-personal">
