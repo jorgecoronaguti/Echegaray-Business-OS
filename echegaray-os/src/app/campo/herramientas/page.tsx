@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { barraDeSesion } from '@/features/herramientas/services/barraDeSesion'
 import { Fragment } from 'react'
 import { leerParque } from '@/features/herramientas/services/datos'
 import { MarcoTelefono, FilaTelefono, primarioTelefono } from '@/features/herramientas/components/campo/MarcoTelefono'
@@ -35,7 +36,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function InicioHerramientasCampo({ searchParams }: { searchParams: Promise<{ en?: string }> }) {
   const { en } = await searchParams
-  const lectura = await leerParque()
+  const [lectura, barra] = await Promise.all([leerParque(), barraDeSesion()])
   if (lectura.estado !== 'ok') return <SinBaseTelefono lectura={lectura} />
   const p = lectura.parque
   const lugar = resolverLugar(p, lectura.obras, en)
@@ -43,11 +44,13 @@ export default async function InicioHerramientasCampo({ searchParams }: { search
   if (!lugar) {
     const lugares = lugaresParaElegir(p, lectura.obras)
     return (
-      <MarcoTelefono titulo="Herramientas" volver="/campo" pie={<Link href="/campo/herramientas/escanear" prefetch={false} style={primarioTelefono}><IcoEscanear tam={17} />Escanear</Link>}>
+      <MarcoTelefono titulo="Herramientas" volver="/campo" barra={barra}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           <h1 style={{ fontSize: '20px', fontWeight: 600, letterSpacing: '-.01em' }}>¿Dónde estás?</h1>
           <div style={{ fontSize: '13px', color: V.apagado }}>Elegí la obra o el Taller. Se puede escanear sin elegir.</div>
         </div>
+        {/* ESCANEAR ES LA ACCIÓN DE LA PANTALLA, no un pie fijo: abajo va la barra del nivel (24/09). */}
+        <Link href="/campo/herramientas/escanear" prefetch={false} className="min-h-[52px]" style={primarioTelefono} data-testid="escanear"><IcoEscanear tam={17} />Escanear</Link>
         <div data-testid="elegir-lugar">
           {lugares.map((l, i) => (
             <Fragment key={l.clave}>
@@ -78,7 +81,7 @@ export default async function InicioHerramientasCampo({ searchParams }: { search
       titulo={<span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>Herramientas</span>}
       volver="/campo"
       derecha={<Link href="/campo/herramientas" prefetch={false} style={{ textDecoration: 'underline' }}>Cambiar lugar</Link>}
-      pie={<Link href={conLugar('/campo/herramientas/escanear', lugar.clave)} prefetch={false} className="min-h-[52px]" style={primarioTelefono} data-testid="escanear"><IcoEscanear tam={17} />Escanear</Link>}
+      barra={barra}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         <h1 style={{ fontSize: '20px', fontWeight: 600, letterSpacing: '-.01em' }} data-testid="lugar-actual">{lugar.rotulo}</h1>
@@ -86,6 +89,7 @@ export default async function InicioHerramientasCampo({ searchParams }: { search
           {aca.length} {aca.length === 1 ? 'activo' : 'activos'} acá{prob ? ` · ${prob} con problema` : ''}
         </div>
       </div>
+      <Link href={conLugar('/campo/herramientas/escanear', lugar.clave)} prefetch={false} className="min-h-[52px]" style={primarioTelefono} data-testid="escanear"><IcoEscanear tam={17} />Escanear</Link>
       <div>
         <FilaTelefono href={conLugar('/campo/herramientas/buscar', lugar.clave)} icono={<IcoBuscar tam={18} color={AZUL} />} titulo={ACCION.buscar} bajada="por nombre o código" testid="ir-buscar" />
         <FilaTelefono href={conLugar('/campo/herramientas/lugar', lugar.clave)} icono={lugar.esObra ? <IcoObra tam={18} color={V.pos} /> : <IcoTaller tam={18} color={V.warn} />}

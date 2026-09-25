@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { barraDeSesion } from '@/features/herramientas/services/barraDeSesion'
 import Link from 'next/link'
 import { leerParque } from '@/features/herramientas/services/datos'
 import { FilaTelefono, MarcoTelefono } from '@/features/herramientas/components/campo/MarcoTelefono'
@@ -19,7 +20,7 @@ export const dynamic = 'force-dynamic'
 export default async function LugarCampo({ searchParams }: { searchParams: Promise<{ en?: string }> }) {
   const { en } = await searchParams
   if (!en) redirect('/campo/herramientas')
-  const lectura = await leerParque()
+  const [lectura, barra] = await Promise.all([leerParque(), barraDeSesion()])
   if (lectura.estado !== 'ok') return <SinBaseTelefono lectura={lectura} volver="/campo/herramientas" />
   const p = lectura.parque
   const lugar = resolverLugar(p, lectura.obras, en)
@@ -40,7 +41,7 @@ export default async function LugarCampo({ searchParams }: { searchParams: Promi
   const ultimoRec = recuentosDelLugar(p.recuentos, lugar.ubicacionId ?? '')[0] ?? null
   const abiertoRec = lugar.ubicacionId ? recuentoAbierto(p.recuentos, lugar.ubicacionId) : null
   return (
-    <MarcoTelefono titulo={lugar.rotulo} volver={conLugar('/campo/herramientas', lugar.clave)}>
+    <MarcoTelefono titulo={lugar.rotulo} volver={conLugar('/campo/herramientas', lugar.clave)} barra={barra}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <h1 style={{ fontSize: '18px', fontWeight: 600 }} data-testid="cuenta-lugar">{aca.length} {aca.length === 1 ? 'activo' : 'activos'}</h1>
         <Link href="/campo/herramientas" prefetch={false} style={{ fontSize: '13px', color: V.apagado }}>Cambiar ubicación</Link>

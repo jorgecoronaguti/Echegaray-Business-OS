@@ -5,10 +5,15 @@
 // acción primaria fija abajo, 52px, al alcance del pulgar (`M01:17`, `M03:22`).
 
 import Link from 'next/link'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
+import { BarraTelefono } from '@/shared/components/BarraTelefono'
+import type { ItemBarraTelefono } from '@/features/auth/types/barraTelefono'
 import { V } from '../estilo'
 
-export function MarcoTelefono({ titulo, volver, pie, oscuro, children, derecha }: {
+/** Alto de la barra del nivel (`BarraContextos`: 48 + 6 + 10 + filo). Lo fijo de abajo se apoya encima. */
+export const ALTO_BARRA_NIVEL = 66
+
+export function MarcoTelefono({ titulo, volver, pie, oscuro, children, derecha, barra }: {
   titulo: ReactNode
   /** `null` = pantalla de entrada: se dibuja el nombre del módulo en vez de la flecha. */
   volver: string | null
@@ -16,12 +21,22 @@ export function MarcoTelefono({ titulo, volver, pie, oscuro, children, derecha }
   oscuro?: boolean
   derecha?: ReactNode
   children: ReactNode
+  /**
+   * La barra de abajo del nivel (regla del 24/09: una sola barra por nivel en todo el teléfono). Va en las
+   * pantallas de NAVEGACIÓN (inicio, lugar, lista, búsqueda, ficha, movimientos); las de TAREA (mover,
+   * alta, verificar, revisión, recuento, reportar, cámara) no la llevan: su pie es la confirmación del
+   * paso y una barra de destinos al lado invitaría a salir a mitad de la carga.
+   */
+  barra?: ItemBarraTelefono[]
 }) {
   const fondo = oscuro ? '#1F1F1E' : '#FFFFFF'
   const tinta = oscuro ? '#FFFFFF' : V.tinta
   const filo = oscuro ? '#30302F' : V.linea
+  const conBarra = !!barra?.length
+  // Lo fijo de abajo (el pie, o la barra de «Mover» de una lista) se apoya ENCIMA de la barra del nivel.
+  const base = { '--barra-nivel': `${conBarra ? ALTO_BARRA_NIVEL : 0}px` } as CSSProperties
   return (
-    <div style={{ minHeight: '100dvh', background: fondo, color: tinta, display: 'flex', flexDirection: 'column' }}>
+    <div style={{ ...base, minHeight: '100dvh', background: fondo, color: tinta, display: 'flex', flexDirection: 'column', paddingBottom: conBarra ? ALTO_BARRA_NIVEL : 0 }}>
       <div style={{ width: '100%', maxWidth: 560, margin: '0 auto', flex: 1, display: 'flex', flexDirection: 'column' }}>
         <header style={{ height: 46, display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', borderBottom: `1px solid ${filo}`, flexShrink: 0, position: 'sticky', top: 0, background: fondo, zIndex: 5 }}>
           {volver != null ? (
@@ -32,11 +47,12 @@ export function MarcoTelefono({ titulo, volver, pie, oscuro, children, derecha }
         </header>
         <main style={{ flex: 1, minHeight: 0, padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 20 }}>{children}</main>
         {pie && (
-          <div style={{ padding: '12px 16px 18px', borderTop: `1px solid ${filo}`, flexShrink: 0, position: 'sticky', bottom: 0, background: fondo, display: 'flex', gap: 10 }}>
+          <div style={{ padding: '12px 16px 18px', borderTop: `1px solid ${filo}`, flexShrink: 0, position: 'sticky', bottom: 'var(--barra-nivel, 0px)', background: fondo, display: 'flex', gap: 10 }}>
             {pie}
           </div>
         )}
       </div>
+      {conBarra && <BarraTelefono items={barra!} />}
     </div>
   )
 }

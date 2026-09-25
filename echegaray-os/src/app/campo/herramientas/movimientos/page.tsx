@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { barraDeSesion } from '@/features/herramientas/services/barraDeSesion'
 import Link from 'next/link'
 import { leerParque } from '@/features/herramientas/services/datos'
 import { MarcoTelefono } from '@/features/herramientas/components/campo/MarcoTelefono'
@@ -20,7 +21,7 @@ const MAX = 80
 export default async function MovimientosCampo({ searchParams }: { searchParams: Promise<{ en?: string }> }) {
   const { en } = await searchParams
   if (!en) redirect('/campo/herramientas')
-  const lectura = await leerParque()
+  const [lectura, barra] = await Promise.all([leerParque(), barraDeSesion()])
   if (lectura.estado !== 'ok') return <SinBaseTelefono lectura={lectura} volver="/campo/herramientas" />
   const p = lectura.parque
   const lugar = resolverLugar(p, lectura.obras, en)
@@ -29,7 +30,7 @@ export default async function MovimientosCampo({ searchParams }: { searchParams:
   const todos = lugar.ubicacionId ? libroDeMovimientos(p, { dias: DIAS, ubicacion: lugar.ubicacionId, usuario: null }, hoy) : []
   const lista = todos.slice(0, MAX)
   return (
-    <MarcoTelefono titulo="Movimientos" volver={conLugar('/campo/herramientas', lugar.clave)}>
+    <MarcoTelefono titulo="Movimientos" volver={conLugar('/campo/herramientas', lugar.clave)} barra={barra}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         <h1 style={{ fontSize: '18px', fontWeight: 600 }} data-testid="cuenta-movimientos">{lugar.rotulo}</h1>
         <div style={{ fontSize: '13px', color: V.apagado }}>{todos.length} {todos.length === 1 ? 'movimiento' : 'movimientos'} en {DIAS} días · entradas y salidas</div>

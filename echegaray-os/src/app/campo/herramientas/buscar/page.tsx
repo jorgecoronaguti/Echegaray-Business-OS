@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { barraDeSesion } from '@/features/herramientas/services/barraDeSesion'
 import { leerParque } from '@/features/herramientas/services/datos'
 import { MarcoTelefono, primarioTelefono } from '@/features/herramientas/components/campo/MarcoTelefono'
 import { SinBaseTelefono } from '@/features/herramientas/components/campo/SinBaseTelefono'
@@ -17,7 +18,7 @@ const TOPE = 60
 
 export default async function BuscarCampo({ searchParams }: { searchParams: Promise<{ q?: string; f?: string; en?: string; para?: string }> }) {
   const sp = await searchParams
-  const lectura = await leerParque()
+  const [lectura, barra] = await Promise.all([leerParque(), barraDeSesion()])
   const volver = conLugar('/campo/herramientas', sp.en)
   if (lectura.estado !== 'ok') return <SinBaseTelefono lectura={lectura} volver={volver} />
   const p = lectura.parque
@@ -43,7 +44,7 @@ export default async function BuscarCampo({ searchParams }: { searchParams: Prom
     <MarcoTelefono
       titulo={reportar ? 'Reportar: ¿cuál?' : 'Buscar'}
       volver={volver}
-      pie={<Link href={conLugar('/campo/herramientas/escanear', sp.en)} prefetch={false} style={primarioTelefono}><IcoEscanear tam={17} />Escanear</Link>}
+      barra={barra}
     >
       <form action="/campo/herramientas/buscar" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <input
@@ -54,6 +55,8 @@ export default async function BuscarCampo({ searchParams }: { searchParams: Prom
         {reportar && <input type="hidden" name="para" value="reportar" />}
         {f !== 'todas' && <input type="hidden" name="f" value={f} />}
       </form>
+      {/* Escanear es la otra forma de encontrarla: acción de la pantalla, no pie fijo (barra del nivel abajo, 24/09). */}
+      <Link href={conLugar('/campo/herramientas/escanear', sp.en)} prefetch={false} className="min-h-[52px]" style={primarioTelefono} data-testid="escanear"><IcoEscanear tam={17} />Escanear</Link>
       <div style={{ display: 'flex', gap: 8 }}>
         {chips.map((c) => (
           <Link key={c.v} href={href(c.v === 'todas' ? {} : { f: c.v })} prefetch={false}

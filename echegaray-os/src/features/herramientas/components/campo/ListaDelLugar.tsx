@@ -23,26 +23,30 @@ export interface ItemLugar {
   lleva: number
 }
 
-type Filtro = 'todo' | 'problema' | 'equipos'
+/** Las mismas clases que la barra del Inventario de la PC (`BarraClases`). */
+const CLASES: { v: string; t: string }[] = [
+  { v: 'herramienta', t: 'Herramientas' }, { v: 'equipo', t: 'Maquinarias' }, { v: 'rodado', t: 'Rodados' },
+  { v: 'epp', t: 'EPP' }, { v: 'ropa', t: 'Ropa de trabajo' },
+]
+type Filtro = 'todo' | 'problema' | `clase:${string}`
 
 export function ListaDelLugar({ items, en }: { items: ItemLugar[]; en: string }) {
   const [sel, setSel] = useState<string[]>([])
   const [f, setF] = useState<Filtro>('todo')
   const prob = items.filter((x) => x.problema).length
-  const esMaquina = (x: ItemLugar) => x.clase === 'equipo' || x.clase === 'rodado'
-  const equipos = items.filter(esMaquina).length
-  const lista = f === 'problema' ? items.filter((x) => x.problema) : f === 'equipos' ? items.filter(esMaquina) : items
+  const lista = f === 'problema' ? items.filter((x) => x.problema) : f.startsWith('clase:') ? items.filter((x) => `clase:${x.clase}` === f) : items
+  // Sólo las clases que hay en este lugar: un chip en 0 es un filtro que no lleva a nada.
   const chips: { v: Filtro; t: string; warn?: boolean; n: number }[] = [
     { v: 'todo', t: 'Todo', n: items.length },
+    ...CLASES.map((c) => ({ v: `clase:${c.v}` as Filtro, t: c.t, n: items.filter((x) => x.clase === c.v).length })).filter((c) => c.n > 0),
     ...(prob ? [{ v: 'problema' as const, t: 'Con problema', warn: true, n: prob }] : []),
-    ...(equipos ? [{ v: 'equipos' as const, t: 'Maquinarias y rodados', n: equipos }] : []),
   ]
   const moverHref = `/campo/herramientas/mover?ids=${sel.join(',')}&en=${encodeURIComponent(en)}`
   return (
     <>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {chips.map((c) => (
-          <button key={c.v} type="button" onClick={() => setF(c.v)}
+          <button key={c.v} type="button" onClick={() => setF(c.v)} data-testid={`chip-${c.v.replace('clase:', '')}`}
             style={{ height: 36, padding: '0 12px', borderRadius: 6, fontSize: '13px', border: `1px solid ${c.v === f ? V.grafito : V.linea}`, fontWeight: c.v === f ? 600 : 400, color: c.warn ? V.warn : c.v === f ? V.tinta : V.apagado }}>
             {c.t} {c.n}
           </button>
@@ -64,7 +68,7 @@ export function ListaDelLugar({ items, en }: { items: ItemLugar[]; en: string })
           </label>
         ))}
       </div>
-      <div style={{ position: 'sticky', bottom: 0, marginTop: 'auto', margin: '0 -16px -18px', padding: '12px 16px 18px', borderTop: `1px solid ${V.linea}`, background: '#FFFFFF', display: 'flex', gap: 10 }}>
+      <div style={{ position: 'sticky', bottom: 'var(--barra-nivel, 0px)', marginTop: 'auto', margin: '0 -16px -18px', padding: '12px 16px 18px', borderTop: `1px solid ${V.linea}`, background: '#FFFFFF', display: 'flex', gap: 10 }}>
         {sel.length > 0 ? (
           <Link href={moverHref} prefetch={false} style={primarioTelefono} data-testid="mover-marcadas">{textoMoverDelLugar(sel.length, items.length)}</Link>
         ) : (

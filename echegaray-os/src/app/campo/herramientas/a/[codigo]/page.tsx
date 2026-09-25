@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { barraDeSesion } from '@/features/herramientas/services/barraDeSesion'
 import { leerParque } from '@/features/herramientas/services/datos'
 import { MarcoTelefono, primarioTelefono } from '@/features/herramientas/components/campo/MarcoTelefono'
 import { SinBaseTelefono } from '@/features/herramientas/components/campo/SinBaseTelefono'
@@ -33,7 +34,7 @@ export default async function UnaHerramienta({ params, searchParams }: {
   let crudo = codigo
   try { crudo = decodeURIComponent(codigo) } catch { /* tal cual */ }
   const c = normalizarCodigo(crudo) ?? crudo
-  const lectura = await leerParque()
+  const [lectura, barra] = await Promise.all([leerParque(), barraDeSesion()])
   const volver = conLugar('/campo/herramientas', en)
   if (lectura.estado !== 'ok') return <SinBaseTelefono lectura={lectura} volver={volver} />
   const p = lectura.parque
@@ -63,6 +64,7 @@ export default async function UnaHerramienta({ params, searchParams }: {
     <MarcoTelefono
       titulo={<span style={{ fontFamily: MONO }}>{a.codigo}</span>}
       volver={volver}
+      barra={barra}
       pie={baja ? undefined : <Link href={conLugar(`/campo/herramientas/mover?ids=${a.id}`, en)} prefetch={false} className="min-h-[52px]" style={primarioTelefono} data-testid="mover">Mover</Link>}
     >
       <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }} data-testid="una-herramienta">
