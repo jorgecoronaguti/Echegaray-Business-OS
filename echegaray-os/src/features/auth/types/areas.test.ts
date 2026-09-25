@@ -31,7 +31,9 @@ test('Dirección y Administración abren todo', () => {
 test('EL JEFE DE OBRA ENTRA A ADMINISTRACIÓN', () => {
   // Personas, legajos, cuadrillas, clientes, proveedores y pendientes: todo eso es administrar los
   // maestros, y es su trabajo. Antes rebotaba en la puerta y la pantalla ni se dibujaba.
-  for (const r of ['/administracion', '/administracion/personas', '/administracion/pendientes']) {
+  // `/administracion/pendientes` SALIÓ el 25/09/2026: es la cola de imputación de Compras (lista textos
+  // de compras con su proveedor). Ver `matriz-de-rutas.test.ts`.
+  for (const r of ['/administracion', '/administracion/personas']) {
     assert.equal(puedeVerRuta('jefe_obra', r), true, `un jefe de obra no pudo abrir ${r}`)
   }
   // CLIENTES Y COMPRAS NO (dueño, 24/09/2026: el jefe no entra a Clientes, Compras, Impuestos, Presupuestos ni Liquidación).

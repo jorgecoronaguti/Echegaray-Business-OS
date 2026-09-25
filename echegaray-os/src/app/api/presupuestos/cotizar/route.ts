@@ -19,6 +19,8 @@ import { createHash } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { veEconomia } from '@/shared/auth/areas'
+import type { Rol } from '@/shared/auth/identidad'
 
 export const runtime = 'nodejs'
 export const maxDuration = 15
@@ -47,6 +49,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle()
   if (!perfil?.rol) return NextResponse.json({ error: 'la cuenta no tiene perfil' }, { status: 403 })
+  // Presupuestos es de Administración (25/09/2026): encolar una lectura gasta IA y crea trabajo.
+  if (!veEconomia(perfil.rol as Rol)) return NextResponse.json({ error: 'Presupuestos es de Administración' }, { status: 403 })
 
   let crudo: unknown
   try {

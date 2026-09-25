@@ -169,6 +169,7 @@ function cerradaAlJefe(pathname: string): boolean {
  * Clientes, Compras o un enlace viejo. Ahora rebota a SU inicio, que es su obra.
  */
 export function destinoDeRebote(rol: Rol | null | undefined): string {
+  if (rol === 'campo') return '/hoy'
   return rol === 'jefe_obra' ? INICIO_JEFE_TELEFONO : AREA_HREF.obras
 }
 
@@ -204,10 +205,10 @@ export const ENTRADA_DE_ADMINISTRACION_SIN_CLIENTES = '/administracion/personas'
 /**
  * ═══ LAS RUTAS QUE EL NIVEL «OBRAS» NO PUEDE ABRIR ═══
  *
- * Es una lista NEGRA a propósito, y es la excepción a la regla del guard de sesión (que es blanca).
- * Motivo: acá el default correcto es PERMITIR —el jefe de obra tiene que poder trabajar— y lo que se
- * cierra es lo sensible, que es una lista corta y conocida. En el guard de sesión el default correcto
- * es NEGAR, porque lo que se protege es todo.
+ * HISTORIA: hasta el 25/09/2026 esto era una lista NEGRA (el default era PERMITIR) y falló abierta
+ * cada vez que nació una pantalla sin agregarse acá. Desde ese día la puerta es BLANCA por nivel
+ * (`RUTAS_DEL_JEFE`, `RUTAS_DEL_OPERARIO`, más abajo); esta lista queda para los menús y la pantalla
+ * de accesos de una persona.
  *
  * NO reemplaza al RLS: la base decide qué filas devuelve, y eso vale también para una llamada directa
  * a PostgREST que no pasa por ninguna ruta de Next. Esto es la puerta; el RLS es la cerradura.
@@ -271,25 +272,80 @@ export const RUTAS_SOLO_ECONOMIA = [
 ] as const
 
 /**
- * ═══ LA EXCEPCIÓN DEL 19/08/2026 SE RETIRÓ EL 24/09/2026 ═══ (el dueño cerró Clientes entero a quien
- * no es Administración; lo de abajo queda como historia de por qué existió).
+ * ═══ DENEGACIÓN POR DEFECTO (dueño, 25/09/2026) ═══
  *
- * ═══ LA EXCEPCIÓN, Y POR QUÉ ERA UNA SOLA (19/08/2026) ═══
+ * Textual: «es un desastre las URLs y los logins, cualquiera puede entrar a ver cualquier cosa en
+ * computadora o mobile». Medido ese día: la lista NEGRA de arriba dejaba al jefe de obra en `/os` (el
+ * briefing financiero, 430 importes), `/xsas` (el chat con todo el OS), `/administracion/pendientes`
+ * (la cola de imputación de Compras) y `/administracion/obras/<obra>` (la economía de la obra). Ninguna
+ * estaba en la lista porque nadie se acordó de agregarla: una lista negra falla ABIERTA cada vez que
+ * nace una pantalla.
  *
- * El dueño corrigió la política: *"Un usuario Obras debe poder consultar clientes, contactos… VER
- * INFORMACIÓN OPERATIVA ≠ ADMINISTRAR EL MAESTRO."*
+ * Desde ahora cada nivel tiene su lista BLANCA y todo lo que no está, rebota a su portada. Una pantalla
+ * nueva nace cerrada para el jefe y el operario hasta que alguien decide abrirla acá (y la prueba de
+ * `matriz-de-rutas.test.ts` lo exige). `RUTAS_SOLO_ECONOMIA` sigue existiendo porque la usan la
+ * pantalla de accesos de una persona y los menús, pero ya no decide la puerta.
  *
- * La distinción cae exactamente entre la CARTERA y la FICHA. `/clientes` es la pantalla donde se
- * administra el maestro —se da de alta, se archiva, se ve la cartera entera— y sigue siendo de
- * Administración. `/clientes/<cliente>` es la ficha de UN cliente: de quién es la obra, quién es el
- * contacto, qué documentos hay. Eso es información de ejecución y se abre, en modo lectura (los
- * formularios no se dibujan, y la RLS rechaza la escritura de todos modos).
+ * Administración (dirección + administración) abre todo. `cliente` nunca llega acá (va al portal) y un
+ * rol desconocido o sin perfil no abre nada.
  */
+
+/** Lo que abre cualquiera de adentro con sesión: su cuenta, su información y Herramientas (dueño
+ * 21/09: «Herramientas tiene permisos iguales»; Material es una sección de Herramientas). */
+export const RUTAS_DE_TODOS = [
+  '/mi-cuenta', '/mi-informacion',
+  '/herramientas', '/h', '/campo/herramientas', '/campo/material',
+  '/marca', '/recuperar', '/callback', '/contrasena-nueva',
+] as const
+
+/** Dentro de lo de todos, lo que sólo Dirección usa (abrir la sesión de otro para mirar). */
+export const RUTAS_SOLO_DIRECCION = ['/mi-cuenta/entrar-como'] as const
+
+/** Operario (`campo`): lo suyo — Hoy, su trabajo, sus horas, Mi información — y Herramientas. Las
+ * `/integraciones/*` son direcciones viejas de Herramientas y Material que quedan en avisos del bot. */
+export const RUTAS_DEL_OPERARIO = [
+  ...RUTAS_DE_TODOS,
+  '/hoy', '/mi-trabajo',
+  '/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos',
+] as const
+
+/** Jefe de obra: sus obras (ficha y portada), el trabajo de campo, su gente (Personal sin Liquidación),
+ * la base de tareas para planificar, Herramientas y su efectivo. NUNCA Clientes, Compras, Proveedores,
+ * Presupuestos, Impuestos, Analíticas, Usuarios, la economía de la obra, el tablero del OS ni XSAS. */
+export const RUTAS_DEL_JEFE = [
+  ...RUTAS_DE_TODOS,
+  '/obras', '/obra', '/campo',
+  '/administracion/personas', '/administracion/asistencia', '/administracion/base-maestra',
+] as const
+
+function dentroDe(pathname: string, rutas: readonly string[]): boolean {
+  return rutas.some((r) => pathname === r || pathname.startsWith(r + '/'))
+}
+
 export function puedeVerRuta(rol: Rol | null | undefined, ruta: string): boolean {
   if (veEconomia(rol)) return true
   // SE COMPARA EL PATH, SIN QUERY NI ANCLA (24/09/2026): la navegación pregunta con el href entero
   // («/administracion/proveedores?vista=deuda») y así una sección cerrada se le dibujaba al jefe.
   const pathname = ruta.split(/[?#]/)[0]
-  if (rol === 'jefe_obra' && cerradaAlJefe(pathname)) return false
-  return !RUTAS_SOLO_ECONOMIA.some((r) => pathname === r || pathname.startsWith(r + '/'))
+  if (dentroDe(pathname, RUTAS_SOLO_DIRECCION)) return false
+  if (rol === 'jefe_obra') {
+    if (cerradaAlJefe(pathname)) return false
+    // `/administracion` a secas es la entrada del área: el middleware la manda a Personal.
+    return pathname === AREA_HREF.administracion || dentroDe(pathname, RUTAS_DEL_JEFE)
+  }
+  if (rol === 'campo') return dentroDe(pathname, RUTAS_DEL_OPERARIO)
+  return false
+}
+
+/**
+ * LAS RUTAS DE `/api` TAMBIÉN TIENEN PUERTA (25/09/2026). El middleware las dejaba pasar sin mirar el
+ * rol (cada handler «comprueba lo suyo»), y `/api/xsas` y `/api/presupuestos/cotizar` comprobaban sólo
+ * que hubiera perfil: un operario podía usar el chat con todo el OS o encolar lecturas de planos.
+ * Las públicas (`/api/salud`, `/api/os`, `/api/oauth/*`) no llegan acá: las deja pasar `esRutaPublica`.
+ */
+export const API_DE_TODOS = ['/api/version'] as const
+
+export function puedeUsarApi(rol: Rol | null | undefined, pathname: string): boolean {
+  if (veEconomia(rol)) return true
+  return rol === 'jefe_obra' || rol === 'campo' ? dentroDe(pathname, API_DE_TODOS) : false
 }

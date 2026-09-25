@@ -2,7 +2,7 @@ import { createServerClient, type SetAllCookies } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { esRutaCampoPermitida, esRutaPublica, type Rol } from '@/features/auth/types'
 import {
-  destinoDeRebote, entradaDeArea, fichaDeGestionPara, puedeVerRuta, veEconomia,
+  destinoDeRebote, entradaDeArea, fichaDeGestionPara, puedeUsarApi, puedeVerRuta, veEconomia,
 } from '@/features/auth/types/areas'
 import { COOKIE_OBRA, VIDA_OBRA_SEGUNDOS, obraDeCookieValida } from '@/shared/utils/obraRecordada'
 import {
@@ -156,7 +156,10 @@ async function middlewareConBackend(request: NextRequest) {
   // con las que abre el OS —dónde trabajo, qué tengo que hacer, tengo algo pendiente—.
   // `/signup` salió de la condición el 27/08/2026 junto con la ruta: el alta libre se fue y la
   // gobernada vive en `/administracion/usuarios`, que SÍ pasa por el portero de abajo.
-  const esApiOAuth = pathname.startsWith('/api') || pathname.startsWith('/login')
+  // `/api` YA NO SE SALTEA EL ROL (25/09/2026). Las públicas (`/api/salud`, `/api/os`, `/api/oauth/*`)
+  // pasan por `esRutaPublica` sin sesión y tampoco llegan acá con sesión: las deja ir `apiPublica`.
+  const apiPublica = pathname.startsWith('/api/') && esRutaPublica(pathname)
+  const esApiOAuth = apiPublica || pathname.startsWith('/login')
   if (user && !esApiOAuth) {
     // ═══ EL ROL SE LEE UNA VEZ Y VIAJA FIRMADO (07/09/2026) ═══
     //
@@ -260,6 +263,14 @@ async function middlewareConBackend(request: NextRequest) {
 
     // El rol viene de la base o de la cookie que la base selló: la forma la garantiza `perfiles`.
     const perfil = mirando ? { rol: mirando as Rol } : rol ? { rol: rol as Rol } : null
+
+    // ═══ LA API POR ROL (25/09/2026) ═══ Un handler de `/api` no es una pantalla: no se redirige, se niega.
+    // `/api/xsas` y `/api/presupuestos/*` son de Administración; el jefe y el operario sólo usan
+    // `/api/version` (el aviso de versión nueva). El handler lo vuelve a comprobar (defensa en capas).
+    if (pathname.startsWith('/api/')) {
+      if (puedeUsarApi(perfil?.rol, pathname)) return response
+      return NextResponse.json({ error: 'Sin permiso para esta ruta.' }, { status: 403, headers: { 'cache-control': 'no-store' } })
+    }
 
     // ═══ EL PORTAL DEL CLIENTE SE DECIDE PRIMERO (25/08/2026) ═══
     //

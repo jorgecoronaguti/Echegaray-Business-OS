@@ -62,7 +62,7 @@ export const ROL_LABEL: Record<Rol, string> = {
 // definición—, así que sin la entrada pasa exactamente lo mismo un paso más tarde.
 // EL OPERARIO NO ENTRA A LA RAÍZ DE TRABAJO (`/campo`) NI A SUS CARGAS (dueño, 24/09/2026): ahí no puede
 // escribir nada; tiene Hoy y Herramientas. Quedan abiertas `/campo/herramientas` y `/campo/material` (pedir material).
-export const CAMPO_RUTAS_PERMITIDAS = ['/hoy', '/mi-trabajo', '/mi-informacion', '/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos', '/herramientas', '/h', '/campo/herramientas', '/campo/material', '/descargas', '/mi-cuenta', '/marca', '/recuperar', '/callback', '/contrasena-nueva']
+export const CAMPO_RUTAS_PERMITIDAS = ['/hoy', '/mi-trabajo', '/mi-informacion', '/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos', '/herramientas', '/h', '/campo/herramientas', '/campo/material', '/mi-cuenta', '/marca', '/recuperar', '/callback', '/contrasena-nueva']
 export function esRutaCampoPermitida(pathname: string): boolean {
   return CAMPO_RUTAS_PERMITIDAS.some((r) => pathname === r || pathname.startsWith(r + '/'))
 }

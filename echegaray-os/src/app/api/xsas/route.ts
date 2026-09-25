@@ -21,6 +21,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { olvidarPuerta, resolverPuerta } from '@/shared/xsas/puerta'
 import { contextoDelCliente } from '@/shared/xsas/contexto'
+import { veEconomia } from '@/shared/auth/areas'
+import type { Rol } from '@/shared/auth/identidad'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -90,6 +92,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const { data: perfil } = await supabase.from('perfiles').select('rol, nombre').eq('id', user.id).maybeSingle()
   if (!perfil?.rol) return NextResponse.json({ error: 'la cuenta no tiene perfil' }, { status: 403 })
+  // XSAS ES DE ADMINISTRACIÓN (25/09/2026): contesta sobre caja, cobranzas y costos de toda la empresa.
+  // El middleware ya lo niega; esto es la segunda capa por si alguien lo llama salteándolo.
+  if (!veEconomia(perfil.rol as Rol)) return NextResponse.json({ error: 'XSAS es de Administración' }, { status: 403 })
 
   let entrada: EntradaXsas
   try {
