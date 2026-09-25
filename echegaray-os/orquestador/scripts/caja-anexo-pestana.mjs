@@ -302,7 +302,7 @@ async function main() {
   const cotizacion = await cotizacionDelDia()
   console.log(cotizacion
     ? `dólar de referencia: ${cotizacion.tc} · ${cotizacion.origen}`
-    : '⚠ dólar de referencia: ni el BCRA ni la base contestaron — la celda queda con la cotización anterior y su fecha')
+    : `${ALERTA} dólar de referencia: ni el BCRA ni la base contestaron — la celda queda con la cotización anterior y su fecha`)
   const g = grillaAnexo({ refs, cartera, conceptosCiegos, cotizacion, cargado: rescatarAnexo(previo.filas ?? []) })
   console.log(`${PESTANA_ANEXO}: ${g.filas.length} filas · ${g.destinos.length} rangos con nombre`)
   if (DRY) return console.log('--dry: no escribí nada.')

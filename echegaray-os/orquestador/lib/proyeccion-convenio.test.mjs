@@ -416,13 +416,14 @@ test('EL SUPUESTO LLEGA A CARGAS SOCIALES, que no muestra la masa sino que la MU
   // compuesto hasta la última fila de esa pestaña. Declararlo sólo en Jornales lo deja fuera de donde
   // se lee — y una limitación declarada en otra pestaña no está declarada.
   const glosa = glosaDeCargas(BASE_CON_AUMENTO)
-  assert.match(glosa, /Jornales proyectados × la relación de arriba/, 'la glosa perdió lo que ya decía')
+  // Desde bd37d149 la remuneración proyectada sale de «Nómina» y los jornales son el respaldo.
+  assert.match(glosa, /si Nómina no está, jornales proyectados × la relación de arriba/, 'la glosa perdió lo que ya decía')
   assert.match(glosa, /50% de la brecha/, 'Cargas Sociales publica el número sin decir qué asume')
   // Se prohíbe la AFIRMACIÓN, no la palabra: la glosa dice «No es el 100% de la escala ni un piso»,
   // que es exactamente lo que hay que decir. Lo que no puede volver es «viene valuada al 100%…».
   assert.doesNotMatch(glosa, /valuada al 100%/,
     'la glosa volvió a anunciar el piso que el dueño rechazó')
-  assert.match(glosa, /Jornales por Quincena 1\.1/, 'sin la referencia nadie puede ir a verlo')
+  assert.match(glosa, /Nómina, sección 10 · CONVENIO UOCRA/, 'sin la referencia nadie puede ir a verlo (c6b92953 eliminó «Jornales por Quincena»)')
   assert.match(glosa, /NUNCA pasa ese piso/, 'sin esto el aumento se lee como una revaluación al convenio')
   assert.match(glosa, /dentro del mes en curso/, 'no dice que lo que sale de la caja este mes va sin aumento')
   // El texto vive UNA vez: si alguien lo re-escribe a mano en la otra pestaña, envejecen distinto.
@@ -439,7 +440,7 @@ test('LA GLOSA DE CARGAS DICE LA VERDAD EN LOS DOS ESTADOS: la decide lo que el 
   const alPactado = glosaDeCargas('pactado')
   assert.match(alPactado, /SIN el aumento/)
   assert.doesNotMatch(alPactado, /50% de la brecha/, 'declara un supuesto que la masa no tiene adentro')
-  assert.match(alPactado, /Jornales por Quincena 1\.1/, 'igual tiene que decir dónde mirarlo')
+  assert.match(alPactado, /Nómina, sección 10 · CONVENIO UOCRA/, 'igual tiene que decir dónde mirarlo')
   // Y SI NO SE PUDO LEER, LO DICE. Afirmar cualquiera de las dos sin evidencia es peor que las dos.
   const sinSenal = glosaDeCargas(null)
   assert.match(sinSenal, /No pude leer/)

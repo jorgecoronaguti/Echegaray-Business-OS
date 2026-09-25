@@ -80,8 +80,8 @@ import { ALERTA } from './glifos.mjs'
  */
 export const NOTA_SUPUESTO_AUMENTO = 'La parte PROYECTADA de esos jornales viene valuada con el '
   + 'aumento que decidió el dueño el 29/08: se cierra el 50% de la brecha entre lo que cada uno cobra '
-  + 'hoy y el piso de convenio de su categoría, y el resultado NUNCA pasa ese piso (ver Jornales por '
-  + 'Quincena 1.1). No es el 100% de la escala: después del aumento el plantel sigue por debajo de '
+  + 'hoy y el piso de convenio de su categoría, y el resultado NUNCA pasa ese piso (ver Nómina, '
+  + 'sección 10 · CONVENIO UOCRA). No es el 100% de la escala: después del aumento el plantel sigue por debajo de '
   + 'ella, que es lo que se decidió. Lo que se PAGA dentro del mes en curso queda a la tarifa de hoy, '
   + 'sin el aumento: eso es lo que va a salir de la caja.'
 
@@ -101,11 +101,11 @@ export function notaSupuesto(base) {
   if (base === BASE_PACTADO) {
     return 'La parte PROYECTADA de esos jornales está valuada a la tarifa de HOY, SIN el aumento: la '
       + 'réplica del convenio no dio escala, y sin el piso de cada categoría no hay brecha que cerrar '
-      + '(ver Jornales por Quincena 1.1). El aumento decidido costaría más que esto.'
+      + '(ver Nómina, sección 10 · CONVENIO UOCRA). El aumento decidido costaría más que esto.'
   }
-  return 'No pude leer de Jornales por Quincena 1.1 con qué base quedó valuada la parte PROYECTADA de '
+  return 'No pude leer de Nómina (sección 10 · CONVENIO UOCRA) con qué base quedó valuada la parte PROYECTADA de '
     + 'esos jornales —la tarifa de hoy sola, o con el aumento que cierra media brecha al piso—: corré '
-    + 'jornales-pestana.mjs y volvé a generar esta pestaña antes de usar este número para decidir.'
+    + 'jornales-pestana.mjs (escribe Nómina §7–10) y volvé a generar esta pestaña antes de usar este número para decidir.'
 }
 
 /**
