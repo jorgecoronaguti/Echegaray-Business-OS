@@ -149,7 +149,7 @@ function Administrar({
   return (
     <>
       <details className="rounded-card border border-line bg-surface" data-testid="editar-cliente" open={edicionAbierta}>
-        <summary className="cursor-pointer px-3.5 py-2 text-[12.5px] text-ink">Editar la ficha</summary>
+        <summary className="cursor-pointer px-3.5 py-2 text-[12.5px] text-ink max-md:flex max-md:min-h-11 max-md:items-center">Editar la ficha</summary>
         <div className="border-t border-line p-3.5">
           <FormAccion accion={editar} testid="form-editar-cliente" enviar="Guardar" mensajeOk="Ficha guardada.">
             <CamposCliente cliente={cliente} responsables={responsables} />
