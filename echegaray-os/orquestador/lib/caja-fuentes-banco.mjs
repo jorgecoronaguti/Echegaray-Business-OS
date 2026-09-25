@@ -15,5 +15,9 @@ export const DEP = { hoja: '_BANCO_RAW', fecha: 'A', concepto: 'B', importe: 'C'
 
 /** La réplica de Efectivo a rendir (22/09/2026, scripts/efectivo-raw-pestana.mjs): A=fecha,
  *  B=entrega (ER-nnnn), C=persona, E=movimiento («Entrega» | «Devolución»), F=importe con su signo
- *  para la caja (la entrega negativa). La lee CAJA por fórmula y el libro (libro-extractores-rendir). */
-export const RENDIR = { hoja: '_EFECTIVO_RAW', fecha: 'A', entrega: 'B', persona: 'C', movimiento: 'E', importe: 'F', desde: 4 }
+ *  para la caja (la entrega negativa), G=instante REAL de registro en la base (25/09/2026: a
+ *  diferencia de Compras/Cobranzas/Jornales — que no guardan hora en ninguna fuente, medido en
+ *  caja-ancla-por-instante.mjs —, `efectivo_movimiento_caja` sí trae `registrado_en` con hora. El
+ *  mismo día del conteo deja de ser un empate: se ordena de verdad contra el sello. La lee CAJA por
+ *  fórmula y el libro (libro-extractores-rendir). */
+export const RENDIR = { hoja: '_EFECTIVO_RAW', fecha: 'A', entrega: 'B', persona: 'C', movimiento: 'E', importe: 'F', instante: 'G', desde: 4 }

@@ -127,6 +127,9 @@ export const NUM = {
   // no se está corrigiendo, y cambiarlo "de paso" es cómo se rompe un formato en silencio.
   porcentaje: { type: 'PERCENT', pattern: '0.0%;(0.0%);"—"' },
   fecha: { type: 'DATE', pattern: 'dd/mm/yyyy' },
+  // CON HORA (25/09/2026): sólo para insumos que SÍ traen instante real (`registrado_en` de
+  // `efectivo_movimiento_caja`), a diferencia de `fecha` que es siempre un día pelado.
+  fechaHora: { type: 'DATE_TIME', pattern: 'dd/mm/yyyy hh:mm' },
   mes: { type: 'DATE', pattern: 'mmm-yy' },
   dias: { type: 'NUMBER', pattern: '0" d";-0" d";"—"' },
   texto: { type: 'TEXT' },
@@ -219,7 +222,7 @@ export function celda(unidad = 'texto', { fondo, bold = false, alineacion, color
     textFormat: base({ bold, ...(color ? { foregroundColor: color } : {}) }),
     // Los números a la derecha: una columna de importes existe para compararse consigo misma, y
     // centrada no se puede. Las fechas también, porque son ordinales.
-    horizontalAlignment: alineacion ?? (esNum || unidad === 'fecha' || unidad === 'mes' ? 'RIGHT' : 'LEFT'),
+    horizontalAlignment: alineacion ?? (esNum || unidad === 'fecha' || unidad === 'mes' || unidad === 'fechaHora' ? 'RIGHT' : 'LEFT'),
     // EL TEXTO DERRAMA, EL NÚMERO NO. Con CLIP, un rótulo de 53 caracteres en una columna de 230px
     // se cortaba aunque tuviera media pestaña vacía al lado — y así se cortaban los títulos de
     // bloque, las notas al costado y los "hay cheque al proveedor, sin imputar". Un número

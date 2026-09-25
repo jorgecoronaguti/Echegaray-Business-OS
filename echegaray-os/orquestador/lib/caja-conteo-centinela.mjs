@@ -60,7 +60,7 @@
 // Un conteo que no cruce el cero no dejaba ninguna huella, y ése es el agujero que se cierra.
 
 import { query } from './db.mjs'
-import { AsyncLocalStorage } from 'node:async_hooks'
+import { crearConexionPrestable } from './conexion-prestable.mjs'
 import { asegurarRelacion } from './tabla-asegurada.mjs'
 import { diaDe, fechaDeSerial, instanteDelSello } from './caja-ancla-por-instante.mjs'
 
@@ -242,13 +242,12 @@ export function diaDelConteo(fila = {}) {
 // el proceso murió entre el insert y la limpieza quedaron 500 filas `TEST_CENTINELA_*` en producción.
 // Con la conexión prestada, el test corre adentro de UNA transacción que termina en ROLLBACK: la racha
 // se relee igual (misma transacción) y no queda nada, muera el proceso donde muera.
-const conexion = new AsyncLocalStorage()
-const ejecutar = (sql, params) => {
-  const c = conexion.getStore()
-  return c ? c.query(sql, params) : query(sql, params)
-}
-/** Corre `fn` con TODAS las lecturas/escrituras de rachas por `cliente` (un pg.Client en transacción). */
-export function conConexion(cliente, fn) { return conexion.run(cliente, fn) }
+//
+// EL MECANISMO ESTÁ FACTORIZADO en `conexion-prestable.mjs` (25/09/2026): `huella-celda.mjs`,
+// `no-reponer.mjs` y `flujo-persistencia.mjs` lo necesitaban exactamente igual y no tenía sentido que
+// cada uno reescribiera su propio `AsyncLocalStorage`.
+const { ejecutar, conConexion } = crearConexionPrestable(query)
+export { conConexion }
 
 async function asegurarTabla() {
   return asegurarRelacion({

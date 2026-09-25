@@ -5,29 +5,39 @@
 // exactamente lo que el dueño pidió que no pasara. Los tests puros de `huella-celda.test.mjs` no
 // pueden ver esto porque el barrido vive en SQL.
 //
-// SE AUTOLIMPIA: usa un file_id sintético y borra todo lo que crea. Si no hay base, se salta (no
-// inventa un verde).
+// ═══ TODO ADENTRO DE UNA TRANSACCIÓN QUE TERMINA EN ROLLBACK (25/09/2026) ═══
+//
+// Este archivo escribía COMMITEADO en la base productiva (`declararEscrituraEnPrueba`) con un
+// `file_id` sintético y un `t.after` que lo borraba — el mismo patrón que dejó 500 filas
+// `TEST_CENTINELA_*` en `caja_conteo_observado` cuando el proceso murió antes de llegar a su límpieza.
+// «La marca sobrevive a la corrida siguiente» es una propiedad del SQL (el barrido no toca
+// `borrada_en`/`abandonada_en`), y se prueba igual adentro de una transacción: una «corrida siguiente»
+// adentro del mismo test es sólo la sentencia siguiente sobre el mismo cliente, que ve lo que la misma
+// transacción ya escribió. Muera el proceso donde muera, no queda una fila. Ver `conexion-prestable.mjs`
+// y `huella-celda-db.mjs` (la conexión la comparten `huella-celda.mjs` y `huella-footprint.mjs`).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { guardarHuellas, leerHuellas, claveCelda } from './huella-celda.mjs'
-import { query } from './db.mjs'
-import { declararEscrituraEnPrueba } from './guarda-base-de-prueba.mjs'
-
-// ESCRIBE COMMITEADO SOBRE LA BASE PRODUCTIVA A PROPÓSITO: la marca de borrado se prueba contra la
-// tabla real porque lo que se mide es que el barrido de la corrida SIGUIENTE no se la lleve. Con
-// rollback no hay corrida siguiente. Se declara — la guarda frena a cualquier otro que no lo haga.
-declararEscrituraEnPrueba('la marca de borrado se prueba contra la tabla real porque lo que se mide '
-  + 'es que sobreviva al barrido de la corrida siguiente; file_id sintético y borrado al final')
+import { guardarHuellas, leerHuellas, claveCelda, conConexion } from './huella-celda.mjs'
+import { getPool, query } from './db.mjs'
 
 const FILE = `TEST_HUELLA_${process.pid}`
 const TAB = 'Pestaña de prueba'
-
 const hayBase = await query('select 1').then(() => true).catch(() => false)
-const limpiar = () => query('delete from public.sheet_huella_celda where file_id = $1', [FILE]).catch(() => {})
 
-test('la marca de borrado sobrevive al barrido; una huella del layout viejo no', { skip: !hayBase && 'sin base' }, async (t) => {
-  t.after(limpiar)
-  await limpiar()
+/** El cuerpo corre con TODAS las lecturas/escrituras de `sheet_huella_celda` por una conexión en
+ *  transacción, y se deshace — el mismo helper que `caja-conteo-centinela-persistencia.test.mjs`. */
+async function enRollback(fn) {
+  const c = await getPool().connect()
+  try {
+    await c.query('begin')
+    return await conConexion(c, fn)
+  } finally {
+    await c.query('rollback').catch(() => {})
+    c.release()
+  }
+}
+
+test('la marca de borrado sobrevive al barrido; una huella del layout viejo no', { skip: !hayBase && 'sin base' }, () => enRollback(async () => {
   // Corrida 1: escribo dos celdas.
   await guardarHuellas(FILE, TAB, [['TOTAL', '$ 100,00']], { fila0: 1, col0: 0 })
   const h1 = await leerHuellas(FILE, TAB)
@@ -50,11 +60,9 @@ test('la marca de borrado sobrevive al barrido; una huella del layout viejo no',
     suprimidas: [{ fila: 1, col: 0, filaHoy: 1, colHoy: 0, forma: 'total', huella: 'abc' }],
   })
   assert.equal((await leerHuellas(FILE, TAB)).get(claveCelda(1, 0))?.borrada, true, 'sigue marcada dos corridas después')
-})
+}))
 
-test('el barrido se limita a la ventana escrita: dos bloques en la misma pestaña no se pisan', { skip: !hayBase && 'sin base' }, async (t) => {
-  t.after(limpiar)
-  await limpiar()
+test('el barrido se limita a la ventana escrita: dos bloques en la misma pestaña no se pisan', { skip: !hayBase && 'sin base' }, () => enRollback(async () => {
   // Bloque A (fila 1) y bloque B (fila 50): dos escrituras distintas sobre la misma pestaña, como
   // hacen CAJA (segunda pasada sobre orígenes) y Proveedores (dos cuadros).
   await guardarHuellas(FILE, TAB, [['bloque de arriba']], { fila0: 1, col0: 0 })
@@ -62,17 +70,15 @@ test('el barrido se limita a la ventana escrita: dos bloques en la misma pestañ
   const h = await leerHuellas(FILE, TAB)
   assert.equal(h.size, 2, 'el segundo bloque no barrió la huella del primero')
   assert.ok(h.has(claveCelda(1, 0)) && h.has(claveCelda(50, 0)))
-})
+}))
 
-test('leerHuellas acotado a la ventana no trae las huellas del otro bloque', { skip: !hayBase && 'sin base' }, async (t) => {
-  t.after(limpiar)
-  await limpiar()
+test('leerHuellas acotado a la ventana no trae las huellas del otro bloque', { skip: !hayBase && 'sin base' }, () => enRollback(async () => {
   await guardarHuellas(FILE, TAB, [['arriba']], { fila0: 1, col0: 0 })
   await guardarHuellas(FILE, TAB, [['abajo']], { fila0: 50, col0: 0 })
   const soloArriba = await leerHuellas(FILE, TAB, { fila0: 1, col0: 0, alto: 1, ancho: 1 })
   assert.equal(soloArriba.size, 1)
   assert.ok(soloArriba.has(claveCelda(1, 0)))
-})
+}))
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // EL FOOTPRINT DE LA CORRIDA ANTERIOR — la marca que el barrido se llevaba (14/08)
@@ -83,9 +89,7 @@ test('leerHuellas acotado a la ventana no trae las huellas del otro bloque', { s
 // con ella la única prueba de que esa celda fue del generador. Sin la marca de abandono, el test 2
 // de abajo (la corrida que NO pudo decidir) borra el registro y el residuo queda sin dueño.
 
-test('la marca de abandono sobrevive al barrido de la corrida que la creó', { skip: !hayBase && 'sin base' }, async (t) => {
-  t.after(limpiar)
-  await limpiar()
+test('la marca de abandono sobrevive al barrido de la corrida que la creó', { skip: !hayBase && 'sin base' }, () => enRollback(async () => {
   await guardarHuellas(FILE, TAB, [['TOTAL DEL CUADRO VIEJO']], { fila0: 1, col0: 0 })
   // Corrida 2: el cuadro se achicó y esta celda ya no la ocupo. Se escribe vacía y se marca abandonada.
   await guardarHuellas(FILE, TAB, [['']], {
@@ -97,11 +101,9 @@ test('la marca de abandono sobrevive al barrido de la corrida que la creó', { s
   assert.equal(h.get(claveCelda(1, 0))?.abandonada, true, 'el footprint queda registrado')
   assert.equal(h.get(claveCelda(1, 0))?.forma, 'total del cuadro viejo', 'con la forma que dejé escrita')
   assert.equal(h.get(claveCelda(1, 0))?.borrada, false, 'y no como un borrado del dueño')
-})
+}))
 
-test('el footprint sigue ahí después de una corrida que no pudo decidir', { skip: !hayBase && 'sin base' }, async (t) => {
-  t.after(limpiar)
-  await limpiar()
+test('el footprint sigue ahí después de una corrida que no pudo decidir', { skip: !hayBase && 'sin base' }, () => enRollback(async () => {
   await guardarHuellas(FILE, TAB, [['TOTAL DEL CUADRO VIEJO']], { fila0: 1, col0: 0 })
   await guardarHuellas(FILE, TAB, [['']], { fila0: 1, col0: 0, abandonadas: [{ fila: 1, col: 0, forma: 'total del cuadro viejo' }] })
   // Corrida 3: la alineación no alcanzó el umbral, `aplicarHuella` no devolvió ninguna desocupada y
@@ -109,11 +111,9 @@ test('el footprint sigue ahí después de una corrida que no pudo decidir', { sk
   // lo necesita para probar de quién es el residuo.
   await guardarHuellas(FILE, TAB, [['']], { fila0: 1, col0: 0 })
   assert.equal((await leerHuellas(FILE, TAB)).get(claveCelda(1, 0))?.abandonada, true, 'dos corridas después sigue registrado')
-})
+}))
 
-test('la celda que vuelve a ocuparse con contenido deja de estar abandonada', { skip: !hayBase && 'sin base' }, async (t) => {
-  t.after(limpiar)
-  await limpiar()
+test('la celda que vuelve a ocuparse con contenido deja de estar abandonada', { skip: !hayBase && 'sin base' }, () => enRollback(async () => {
   await guardarHuellas(FILE, TAB, [['TOTAL']], { fila0: 1, col0: 0 })
   await guardarHuellas(FILE, TAB, [['']], { fila0: 1, col0: 0, abandonadas: [{ fila: 1, col: 0, forma: 'total' }] })
   // El cuadro volvió a crecer y esta fila es otra vez del layout vivo: la marca se levanta sola, si no
@@ -122,15 +122,18 @@ test('la celda que vuelve a ocuparse con contenido deja de estar abandonada', { 
   const h = await leerHuellas(FILE, TAB)
   assert.equal(h.get(claveCelda(1, 0))?.abandonada, false)
   assert.equal(h.get(claveCelda(1, 0))?.borrada, false)
-})
+}))
 
-test('una celda que vuelve a tener contenido pierde la marca: el candado no es eterno', { skip: !hayBase && 'sin base' }, async (t) => {
-  t.after(limpiar)
-  await limpiar()
+test('una celda que vuelve a tener contenido pierde la marca: el candado no es eterno', { skip: !hayBase && 'sin base' }, () => enRollback(async () => {
   await guardarHuellas(FILE, TAB, [['TOTAL']], { fila0: 1, col0: 0 })
   await guardarHuellas(FILE, TAB, [['']], { fila0: 1, col0: 0, suprimidas: [{ fila: 1, col: 0, filaHoy: 1, colHoy: 0, forma: 'total', huella: 'abc' }] })
   assert.equal((await leerHuellas(FILE, TAB)).get(claveCelda(1, 0))?.borrada, true)
   // El dueño volvió a poner algo ahí y el generador la escribe de nuevo: la marca se levanta.
   await guardarHuellas(FILE, TAB, [['TOTAL']], { fila0: 1, col0: 0 })
   assert.equal((await leerHuellas(FILE, TAB)).get(claveCelda(1, 0))?.borrada, false)
+}))
+
+test('NO QUEDA NADA: después de las pruebas, cero filas de prueba en la tabla real', { skip: !hayBase && 'sin base' }, async () => {
+  const n = await query(`select count(*)::int n from public.sheet_huella_celda where file_id like 'TEST_HUELLA_%'`)
+  assert.equal(n.rows[0].n, 0, 'una fila TEST_HUELLA_* en producción es un test que escribió fuera de su transacción')
 })

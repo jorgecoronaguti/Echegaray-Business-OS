@@ -383,7 +383,51 @@ export function formulaComprasEfectivoPosteriores(arqueo, c) {
 }
 
 /**
- * NÚCLEO PURO: EFECTIVO A RENDIR (22/09/2026) — lo entregado y lo devuelto desde el conteo.
+ * NÚCLEO PURO: ¿este movimiento de `_EFECTIVO_RAW` entra a la ventana del sello? — CON HORA DE VERDAD.
+ *
+ * ═══ POR QUÉ ACÁ SÍ Y EN COMPRAS/COBRANZAS/JORNALES NO (25/09/2026) ═══
+ *
+ * `caja-ancla-por-instante.mjs` midió, sobre el archivo real, que ninguna fuente de movimientos de
+ * efectivo guarda la hora (1 valor con hora sobre 2.198) y por eso el empate del mismo día se resuelve
+ * ahí con el criterio conservador declarado (`CRITERIO_MISMO_DIA`). `_EFECTIVO_RAW` es la excepción:
+ * sale de Postgres, y la base SÍ estampa `registrado_en` en cada entrega y cada devolución (columna
+ * «Instante», escrita por `efectivo-raw-pestana.mjs`). Cuando ese instante existe, no hace falta
+ * adivinar: se compara contra el instante del sello (`$F$fSello`, que el centinela también estampa
+ * con hora — `caja-conteo-centinela.mjs`) y el orden real decide, para una entrada o para una salida.
+ *
+ * ═══ EL DEFECTO QUE ESTO CIERRA ═══
+ *
+ * El dueño entregó tres fondos el 24/09 (16:19, 18:09 y 18:37 hora Argentina) y CONTÓ la caja
+ * después, a las 19:12 — las tres entregas ya estaban adentro del conteo. `_EFECTIVO_RAW` sólo
+ * publicaba el DÍA de la entrega, así que la fórmula vieja (`ventanaDelConteo`, día contra día) las
+ * trataba como cualquier salida sin hora: "es del mismo día del conteo, se descuenta igual". El conteo
+ * de $36.720.000 se descontaba otra vez $1.500.000 que el propio conteo ya tenía adentro — el cajón
+ * publicado bajaba dos veces por la misma plata (CAJA!C7 en $35.220.000 en vez de $36.720.000).
+ *
+ * ═══ LA REGLA ═══
+ *
+ * Con instante conocido: entra sólo si `instante > ancla` — estrictamente POSTERIOR al sello, sea cual
+ * sea el día. La misma comparación sirve para una salida y para una entrada, porque con hora real ya
+ * no queda ninguna ambigüedad que resolver a favor de un lado: "después del sello" es un hecho, no una
+ * suposición. SIN instante (columna vacía: un dato viejo, o un fallo de lectura de `registrado_en`) se
+ * cae al criterio de siempre —conservador, por día, `ventanaDelConteo`— para no dejar de descontar lo
+ * que de verdad salió; esos casos quedan visibles en `formulaEntregasMismoDiaSinHora`, más abajo.
+ *
+ * @param {string} fecha rango de la fecha (día, sin hora)
+ * @param {string} instanteCol rango del instante real (con hora, o vacío si no se pudo leer)
+ * @param {string} arqueo referencia al ancla — el instante del sello
+ * @param {boolean} entra si el movimiento CARGA el cajón (una entrada) o lo DESCARGA (una salida)
+ * @returns {string} el factor booleano, listo para multiplicar dentro de un SUMPRODUCT
+ */
+function entraConInstanteOPorDia(fecha, instanteCol, arqueo, entra) {
+  const conHora = `(${instanteCol}>${arqueo})`
+  const sinHora = ventanaDelConteo(fecha, entra ? arqueo : anclaDeSalida(arqueo), entra)
+  return `(ISNUMBER(${instanteCol})*${conHora}+NOT(ISNUMBER(${instanteCol}))*(${sinHora}))`
+}
+
+/**
+ * NÚCLEO PURO: EFECTIVO A RENDIR (22/09/2026, con hora real desde el 25/09/2026) — lo entregado y lo
+ * devuelto desde el conteo.
  *
  * La entrega saca billetes del cajón y los pone en manos de una persona: descarga la caja física el
  * día que se entrega. La devolución los trae de vuelta. Lo que la persona gasta NO pasa por acá: es la
@@ -394,14 +438,36 @@ export function formulaComprasEfectivoPosteriores(arqueo, c) {
  * importe trae el signo de la caja (entrega negativa); cada fórmula devuelve el monto POSITIVO y el
  * renglón del anexo le pone el signo, como el resto del cajón.
  *
- * @param {string} arqueo referencia al ancla (la de salida para la entrega, la de entrada para la devolución)
+ * @param {string} arqueo referencia al ancla — el instante del sello (`$F$fSello`), SIN el día de
+ *   gracia de `anclaDeSalida`: ese ajuste era un parche para la falta de hora y esta fórmula ya no lo
+ *   necesita en la rama con instante; en la rama sin instante lo sigue aplicando por su cuenta.
  * @param {object} c columnas de la réplica
  * @returns {string} fórmula sin `=`
  */
 export function formulaEntregasARendirPosteriores(arqueo, c = RENDIR) {
   const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
+  const entra = entraConInstanteOPorDia(col(c.fecha), col(c.instante), arqueo, false)
   return `SUMPRODUCT((${col(c.movimiento)}="Entrega")*ISNUMBER(${col(c.fecha)})`
-    + `*${ventanaDelConteo(col(c.fecha), arqueo, false)}*IF(ISNUMBER(${col(c.importe)});-${col(c.importe)};0))`
+    + `*${entra}*IF(ISNUMBER(${col(c.importe)});-${col(c.importe)};0))`
+}
+
+/**
+ * NÚCLEO PURO: cuánto de `formulaEntregasARendirPosteriores` quedó resuelto por el criterio SIN HORA
+ * —el día del conteo, sin instante conocido en la columna «Instante»—. NO se resta de nuevo: ya está
+ * adentro de la fórmula de arriba. Existe sólo para que el anexo pueda MOSTRAR cuánto del número
+ * publicado salió del criterio conservador por día en vez de un instante real, en vez de que esa
+ * ambigüedad quede invisible dentro de un solo total (tarea 1, 25/09/2026: «si la hora se desconoce,
+ * mostrarlo como una línea aparte»).
+ *
+ * @param {string} arqueo referencia al ancla — el mismo `$F$fSello` que la fórmula de arriba
+ * @param {object} c columnas de la réplica
+ * @returns {string} fórmula sin `=`, con el signo de la caja (negativo: es una salida)
+ */
+export function formulaEntregasMismoDiaSinHora(arqueo, c = RENDIR) {
+  const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
+  return `SUMPRODUCT((${col(c.movimiento)}="Entrega")*ISNUMBER(${col(c.fecha)})`
+    + `*(INT(${col(c.fecha)})=INT(${arqueo}))*NOT(ISNUMBER(${col(c.instante)}))`
+    + `*IF(ISNUMBER(${col(c.importe)});${col(c.importe)};0))`
 }
 
 /**
@@ -417,11 +483,13 @@ export function formulaEntregasARendirPosteriores(arqueo, c = RENDIR) {
 export const MOVIMIENTOS_QUE_VUELVEN = Object.freeze(['Devolución', 'Adelanto de sueldo'])
 const vuelveDelFondo = (col) => `((${col}="${MOVIMIENTOS_QUE_VUELVEN[0]}")+(${col}="${MOVIMIENTOS_QUE_VUELVEN[1]}"))`
 
-/** La devolución ENTRA al cajón: ventana de entrada (desde el día siguiente al conteo). Ver `MOVIMIENTOS_QUE_VUELVEN`. */
+/** La devolución ENTRA al cajón: con instante real si se conoce (ver `entraConInstanteOPorDia`), si no
+ *  la ventana de entrada de siempre (desde el día siguiente al conteo). Ver `MOVIMIENTOS_QUE_VUELVEN`. */
 export function formulaDevolucionesARendirPosteriores(arqueo, c = RENDIR) {
   const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
+  const entra = entraConInstanteOPorDia(col(c.fecha), col(c.instante), arqueo, true)
   return `SUMPRODUCT(${vuelveDelFondo(col(c.movimiento))}*ISNUMBER(${col(c.fecha)})`
-    + `*${ventanaDelConteo(col(c.fecha), arqueo, true)}*IF(ISNUMBER(${col(c.importe)});${col(c.importe)};0))`
+    + `*${entra}*IF(ISNUMBER(${col(c.importe)});${col(c.importe)};0))`
 }
 
 /**

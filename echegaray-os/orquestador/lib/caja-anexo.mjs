@@ -26,7 +26,7 @@ import {
   formulaCobrosPosteriores, formulaChequesDebitadosPosteriores, formulaComprasPagadasPosteriores,
   formulaJornalesBancoPosteriores, formulaOficinaBancoPosteriores, formulaOficinaSinCanal,
   formulaCobrosEfectivoPosteriores, formulaComprasEfectivoPosteriores, formulaDepositosEfectivoPosteriores,
-  formulaEntregasARendirPosteriores, formulaDevolucionesARendirPosteriores,
+  formulaEntregasARendirPosteriores, formulaDevolucionesARendirPosteriores, formulaEntregasMismoDiaSinHora,
   formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores, formulaExtraccionesEfectivoPosteriores,
   formulaFechaUltimoEfectivo, mapasDe,
 } from './caja-posterior-al-corte.mjs'
@@ -169,14 +169,28 @@ export const HISTORICO_EFECTIVO_BASE = [
   { rotulo: '      · (−) depositado en el banco — desde el conteo', entra: false,
     fn: (A) => `=-(${formulaDepositosEfectivoPosteriores(A)})`,
     origen: 'Réplica del extracto: créditos con concepto "depósito de efectivo"' },
-  // EFECTIVO A RENDIR (22/09/2026). La entrega saca billetes del cajón y los pone en manos de una
-  // persona; lo que esa persona gasta entra a Compras como «A rendir» y NO vuelve a restar acá.
-  { rotulo: '      · (−) entregado a rendir — desde el conteo', entra: false,
+  // EFECTIVO A RENDIR (22/09/2026, con hora real desde el 25/09/2026). La entrega saca billetes del
+  // cajón y los pone en manos de una persona; lo que esa persona gasta entra a Compras como «A rendir»
+  // y NO vuelve a restar acá. `horaPropia`: a diferencia de los renglones de arriba, éstos reciben el
+  // ANCLA CRUDA (el instante del sello, sin el día de gracia de `anclaDeSalida`) porque la propia
+  // fórmula ya sabe resolver el mismo día con el instante real de `_EFECTIVO_RAW!G` — ver
+  // `entraConInstanteOPorDia` en caja-posterior-al-corte.mjs.
+  { rotulo: '      · (−) entregado a rendir — desde el conteo', entra: false, horaPropia: true,
     fn: (A) => `=-(${formulaEntregasARendirPosteriores(A)})`,
-    origen: 'Réplica _EFECTIVO_RAW: entregas de efectivo a rendir' },
-  { rotulo: '      · (+) devuelto de lo entregado — desde el conteo', entra: true,
+    // COLUMNA E DE ESTE RENGLÓN (25/09/2026): cuánto de lo de arriba se resolvió SIN instante real —
+    // el día del conteo, por el criterio conservador de siempre, y no contra el momento del sello. Ya
+    // está adentro de la fórmula de C: esto NO se resta de nuevo, es sólo la ventana para auditarlo.
+    // Va en E y no en una fila nueva a propósito: una fila más acá corre TODO lo que viene después
+    // (el bloque de conciliación bancaria más abajo referencia posiciones fijas), que es exactamente
+    // el defecto de la «capa fósil» que 900d4fdb ya cerró una vez.
+    diagnostico: (A) => {
+      const f = formulaEntregasMismoDiaSinHora(A)
+      return `=IF(${f}=0;"";"${ALERTA} sin hora: "&TEXT(${f};"$#,##0"))`
+    },
+    origen: 'Réplica _EFECTIVO_RAW: entregas de efectivo a rendir, por instante real contra el sello' },
+  { rotulo: '      · (+) devuelto de lo entregado — desde el conteo', entra: true, horaPropia: true,
     fn: (A) => `=${formulaDevolucionesARendirPosteriores(A)}`,
-    origen: 'Réplica _EFECTIVO_RAW: devoluciones de efectivo a rendir' },
+    origen: 'Réplica _EFECTIVO_RAW: devoluciones de efectivo a rendir, por instante real contra el sello' },
 ]
 
 /**
@@ -215,8 +229,13 @@ export function historicoEfectivo(ancla = '0', mapas = {}) {
   // FECHA del último movimiento: las dos tienen que mirar EXACTAMENTE la misma ventana.
   const desdeElDia = anclaDeSalida(ancla)
   // `mapas`: las columnas de Compras y Cobranzas de esta corrida (`mapasDe(refs)`). Los renglones que
-  // no las usan (jornales, oficina, extracto) las ignoran.
-  return HISTORICO_EFECTIVO_BASE.map((l) => ({ ...l, formula: l.fn(l.entra ? ancla : desdeElDia, mapas) }))
+  // no las usan (jornales, oficina, extracto) las ignoran. `horaPropia` (25/09/2026): efectivo a
+  // rendir sabe resolver el mismo día con su propio instante real, así que recibe el ancla CRUDA en
+  // vez del día de gracia — ver el comentario en `HISTORICO_EFECTIVO_BASE`.
+  return HISTORICO_EFECTIVO_BASE.map((l) => {
+    const A = l.horaPropia ? ancla : (l.entra ? ancla : desdeElDia)
+    return { ...l, formula: l.fn(A, mapas), diagnosticoFormula: l.diagnostico ? l.diagnostico(A) : '' }
+  })
 }
 
 /** Compatibilidad: los consumidores que sólo necesitan rótulo/entra/origen. */
@@ -447,7 +466,7 @@ function bloqueMovimientos(h) {
   // así que el desglose no puede decir otra cosa que el total. En D, lo que ESE renglón valía cuando
   // se selló el conteo: la resta contra su C dice quién se movió, que es lo que el 14/08 no se podía
   // ver con un solo número sellado para los seis.
-  for (const l of historicoEfectivo(`$F$${fSello}`, m)) push([l.rotulo, 'ARS', l.formula, 0, '', '', l.origen])  // D en 0: con ventana el sello por
+  for (const l of historicoEfectivo(`$F$${fSello}`, m)) push([l.rotulo, 'ARS', l.formula, 0, l.diagnosticoFormula || '', '', l.origen])  // D en 0: con ventana el sello por
     // renglón ya no resta nada. Dejarlo con la foto del histórico completo hacía que el TECHO diera
     // -$141.300.064 y el control gritara "imposible" sobre una caja perfectamente sana.
   // EL SELLO. D lleva el número sellado (lo escribe el generador, no una persona); F, la fecha del
@@ -507,6 +526,12 @@ function bloqueMovimientos(h) {
   // lado de la medianoche y publicaría un día que el conteo no tuvo.
   const fUltimoEfectivo = push([FECHA_ULTIMO_EFECTIVO.rotulo, '', '', '', '',
     formulaFechaUltimoEfectivo(ancla, { conteo: ANEXO.conteoArsDia, ...m }), FECHA_ULTIMO_EFECTIVO.origen])
+  // EL DIAGNÓSTICO «SIN HORA» (25/09/2026, tarea 1) VIVE EN LA COLUMNA E DEL PROPIO RENGLÓN
+  // «(−) entregado a rendir», no en una fila nueva acá abajo. Una fila de más en este bloque corre
+  // TODO lo que se genera después —el bloque de conciliación bancaria más abajo, con sus rótulos y
+  // notas fijas— y eso es exactamente la «capa fósil» que 900d4fdb cerró: se midió en vivo insertando
+  // una y la nota de "Comisiones y gastos bancarios" quedó pegada en la fila de al lado. Ver
+  // `HISTORICO_EFECTIVO_BASE.diagnostico` y `historicoEfectivo`.
   return {
     fNeto, fSinCanal, fSello, fEstado, fImposible, fCargaTardia, fFechaArs, fFechaUsd, fUltimoEfectivo,
     filasHistorico: [f0, fSello - 1],

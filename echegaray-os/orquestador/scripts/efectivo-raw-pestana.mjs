@@ -33,25 +33,43 @@ import * as E from '../lib/estilo-pestana.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { query } from '../lib/db.mjs'
+import { instanteDelSello } from '../lib/caja-ancla-por-instante.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 export const PESTAÑA = '_EFECTIVO_RAW'
 const DRY = process.argv.includes('--dry')
 
-/** Las columnas de la réplica. El orden es contrato: las fórmulas de CAJA lo referencian. */
+/** Las columnas de la réplica. El orden es contrato: las fórmulas de CAJA lo referencian.
+ *  «Instante» (G, 25/09/2026) es el HECHO adicional que esta fuente sí tiene y que Compras/Cobranzas/
+ *  Jornales no tienen: el momento REAL en que la entrega o la devolución quedó registrada en la base
+ *  (`registrado_en`, de `efectivo_movimiento_caja`). Con eso el empate del mismo día del conteo deja
+ *  de resolverse a ciegas (ver caja-ancla-por-instante.mjs) — se ordena contra el sello de verdad. */
 export const COLUMNAS = [
   ['Fecha', 'fecha'], ['Entrega', 'texto'], ['Persona', 'texto'], ['Destino', 'texto'],
-  ['Movimiento', 'texto'], ['Importe', 'monedaExacta'],
+  ['Movimiento', 'texto'], ['Importe', 'monedaExacta'], ['Instante', 'fechaHora'],
 ]
-export const COL = { fecha: 'A', entrega: 'B', persona: 'C', destino: 'D', movimiento: 'E', importe: 'F' }
+export const COL = { fecha: 'A', entrega: 'B', persona: 'C', destino: 'D', movimiento: 'E', importe: 'F', instante: 'G' }
 export const FILA0 = 4
 
 const iso = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d ?? '').slice(0, 10))
 
+/**
+ * El instante como serial de Sheets, o cadena vacía si no se puede afirmar.
+ *
+ * SIN DEFAULT A `now()`. Un movimiento sin `registrado_en` legible (dato viejo, columna nula) que se
+ * estampara con el instante de la CORRIDA se leería como "recién registrado" y ganaría la ventana del
+ * sello sin haber pasado por ella — el mismo error que `caja-conteo-centinela.mjs` ya evita para el
+ * propio sello. Vacío es la verdad: "no sé cuándo", y la fórmula de CAJA cae al criterio por día.
+ */
+export function instante(m) {
+  const d = m instanceof Date ? m : new Date(m)
+  return Number.isFinite(d?.getTime?.()) ? instanteDelSello(d) : ''
+}
+
 /** NÚCLEO PURO: una fila de la réplica. El importe va con su signo para la caja: la entrega sale. */
 export function fila(m) {
   return [iso(m.fecha), String(m.codigo ?? ''), String(m.persona ?? ''), String(m.destino ?? ''),
-    String(m.movimiento ?? ''), Number(m.importe) || 0]
+    String(m.movimiento ?? ''), Number(m.importe) || 0, instante(m.registrado_en)]
 }
 
 /** NÚCLEO PURO: la grilla completa — título con el corte, nota, encabezados y datos. */
@@ -64,7 +82,9 @@ export function grilla(movs, corte) {
       + 'NO se carga a mano: la reescribe el agente desde la base (efectivo_entrega / efectivo_devolucion). '
       + 'La entrega SALE de la caja y la devolución ENTRA. Lo rendido NO está acá: es la fila de Compras con '
       + 'Tipo pago «A rendir», y no vuelve a restar de la caja. «Adelanto de sueldo» es lo pagado a un empleado '
-      + 'con la plata de la entrega: vuelve del fondo porque la quincena lo resta entero al pagarse.'],
+      + 'con la plata de la entrega: vuelve del fondo porque la quincena lo resta entero al pagarse. «Instante» '
+      + 'es CUÁNDO se registró de verdad (registrado_en): con eso, un movimiento del mismo día del conteo ya no '
+      + 'se resuelve a ciegas — se compara contra el momento del sello. Vacío si no se pudo leer la hora.'],
     COLUMNAS.map(([n]) => n),
     ...datos,
   ]
@@ -78,7 +98,7 @@ async function main() {
   let rows = []
   try {
     rows = (await query(
-      `select fecha, codigo, persona, destino, movimiento, importe
+      `select fecha, codigo, persona, destino, movimiento, importe, registrado_en
          from public.efectivo_movimiento_caja order by fecha, registrado_en, codigo`)).rows
   } catch (e) {
     if (e?.code !== '42P01') throw e

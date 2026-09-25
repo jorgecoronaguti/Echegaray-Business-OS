@@ -52,7 +52,9 @@
 // contesta la fórmula. (La Regla 0 usa la otra lectura porque su pregunta es "¿qué dice la pestaña?".)
 
 import { createHash } from 'node:crypto'
-import { query } from './db.mjs'
+import { ejecutar, conConexion } from './huella-celda-db.mjs'
+
+export { conConexion }
 import { VACIO, letraCol, limpiarCentinela } from './preservar-anotaciones.mjs'
 import { MIA_PROBADA } from './no-borrar.mjs'
 import {
@@ -670,7 +672,7 @@ export function huellasDeEscritura(grid = [], { fila0 = 1, col0 = 0 } = {}) {
 let tablaVerificada = null
 async function asegurarTabla() {
   if (tablaVerificada) return tablaVerificada
-  tablaVerificada = query('select to_regclass(\'public.sheet_huella_celda\') as t').then((r) => {
+  tablaVerificada = ejecutar('select to_regclass(\'public.sheet_huella_celda\') as t').then((r) => {
     if (!r.rows[0]?.t) {
       throw new Error('falta public.sheet_huella_celda: aplicá la migración 20260903T1200_tus_ediciones_mandan_celda_por_celda.sql')
     }
@@ -700,7 +702,7 @@ export async function leerHuellas(fileId, pestana, ventana = null) {
   const args = ventana
     ? [ventana.fila0 - holgura, ventana.fila0 + ventana.alto - 1 + holgura, ventana.col0, ventana.col0 + ventana.ancho - 1]
     : []
-  const r = await query(
+  const r = await ejecutar(
     `select fila, col, forma, huella, valor, borrada_en, abandonada_en from public.sheet_huella_celda
       where file_id = $1 and pestana = $2${cond}`,
     [fileId, pestana, ...args],
@@ -716,7 +718,7 @@ async function upsertHuellas(fileId, pestana, filas, sello) {
   for (let i = 0; i < filas.length; i += 400) {
     const tanda = filas.slice(i, i + 400)
     const vals = tanda.map((_, k) => `($1,$2,$${k * 5 + 4},$${k * 5 + 5},$${k * 5 + 6},$${k * 5 + 7},$${k * 5 + 8},$3)`).join(',')
-    await query(
+    await ejecutar(
       `insert into public.sheet_huella_celda (file_id, pestana, fila, col, forma, huella, valor, escrito_en) values ${vals}
        on conflict (file_id, pestana, fila, col)
        do update set forma = excluded.forma, huella = excluded.huella, valor = excluded.valor,
@@ -751,7 +753,7 @@ export async function guardarHuellas(fileId, pestana, grid, { fila0 = 1, col0 = 
   for (const s of suprimidas) {
     const fila = s.filaHoy ?? s.fila
     const col = s.colHoy ?? s.col
-    await query(
+    await ejecutar(
       `insert into public.sheet_huella_celda (file_id, pestana, fila, col, forma, huella, borrada_en, escrito_en)
        values ($1,$2,$3,$4,$5,$6,now(),$7)
        on conflict (file_id, pestana, fila, col)
@@ -760,7 +762,7 @@ export async function guardarHuellas(fileId, pestana, grid, { fila0 = 1, col0 = 
     )
     // La pestaña se corrió: la huella vieja quedaría marcando una celda que ya no es ésa.
     if (fila !== s.fila || col !== s.col) {
-      await query('delete from public.sheet_huella_celda where file_id = $1 and pestana = $2 and fila = $3 and col = $4',
+      await ejecutar('delete from public.sheet_huella_celda where file_id = $1 and pestana = $2 and fila = $3 and col = $4',
         [fileId, pestana, s.fila, s.col])
     }
   }
@@ -789,7 +791,7 @@ export async function guardarHuellas(fileId, pestana, grid, { fila0 = 1, col0 = 
   // Conservar la huella no le quita nada al dueño: mientras la celda diga otra cosa sigue siendo suya;
   // si la vacía, queda `borrada_en` (hoy volvía a escribirse); si vuelve a decir lo mío, es mía.
   const guardadas = conservar.map((e) => [Number(e.filaMapa ?? e.fila), Number(e.col)]).filter(([f, c]) => Number.isInteger(f) && Number.isInteger(c))
-  await query(
+  await ejecutar(
     `delete from public.sheet_huella_celda
       where file_id = $1 and pestana = $2 and borrada_en is null and abandonada_en is null and escrito_en < $3
         and fila between $4 and $5 and col between $6 and $7

@@ -34,15 +34,25 @@ test('el cajón resta sólo «Efectivo»: la fila «A rendir» de Compras no lo 
   assert.doesNotMatch(f, /rendir/i)
 })
 
-test('la entrega SALE con ventana inclusiva; la devolución ENTRA desde el día siguiente', () => {
+test('con instante real, entra sólo si es POSTERIOR al sello — sin instante, cae al criterio por día (25/09/2026)', () => {
+  // `_EFECTIVO_RAW!G` es el instante real (`registrado_en`), a diferencia de las demás fuentes de
+  // efectivo: con eso, el mismo día del conteo deja de resolverse a ciegas. Ver
+  // `entraConInstanteOPorDia` en caja-posterior-al-corte.mjs y el defecto que cierra: tres entregas
+  // ANTES del sello (24/09) que la ventana por día volvía a descontar del conteo que ya las tenía
+  // adentro (CAJA!C7 en $35.220.000 en vez de $36.720.000).
   const e = formulaEntregasARendirPosteriores('$F$9')
   const d = formulaDevolucionesARendirPosteriores('$F$9')
   assert.match(e, /_EFECTIVO_RAW!\$E\$4:\$E="Entrega"/)
-  assert.match(e, />=INT\(\$F\$9\)/, 'sale del cajón: el mismo día del conteo entra (lado conservador)')
+  assert.match(e, /ISNUMBER\(_EFECTIVO_RAW!\$G\$4:\$G\)\*\(_EFECTIVO_RAW!\$G\$4:\$G>\$F\$9\)/,
+    'con instante conocido: entra sólo si el registro es posterior al sello')
+  assert.match(e, /NOT\(ISNUMBER\(_EFECTIVO_RAW!\$G\$4:\$G\)\)\*\(\(_EFECTIVO_RAW!\$A\$4:\$A>=INT\(IF\(INT\(\$F\$9\)=\$F\$9;\$F\$9-1;\$F\$9\)\)\)/,
+    'sin instante: cae al criterio por día de siempre — sale del cajón, el mismo día del conteo entra (lado conservador)')
   assert.match(e, /-_EFECTIVO_RAW!\$F\$4:\$F/, 'la réplica trae la entrega negativa: la fórmula devuelve el monto positivo')
   assert.match(d, /_EFECTIVO_RAW!\$E\$4:\$E="Devolución"/)
-  assert.match(d, />INT\(\$F\$9\)/, 'entra al cajón: desde el día siguiente al conteo')
-  assert.doesNotMatch(d, />=INT/)
+  assert.match(d, /ISNUMBER\(_EFECTIVO_RAW!\$G\$4:\$G\)\*\(_EFECTIVO_RAW!\$G\$4:\$G>\$F\$9\)/,
+    'la devolución usa el MISMO criterio con instante: posterior al sello, sin importar el día')
+  assert.match(d, /NOT\(ISNUMBER\(_EFECTIVO_RAW!\$G\$4:\$G\)\)\*\(\(_EFECTIVO_RAW!\$A\$4:\$A>INT\(\$F\$9\)\)/,
+    'sin instante: entra desde el día siguiente al conteo, como siempre')
   for (const x of [e, d]) assert.ok(!x.includes(','), 'es-AR: separador ;')
 })
 
@@ -59,8 +69,12 @@ test('la réplica y las fórmulas hablan de las mismas columnas', () => {
   assert.equal(COL.fecha, RENDIR.fecha)
   assert.equal(COL.movimiento, RENDIR.movimiento)
   assert.equal(COL.importe, RENDIR.importe)
+  // COL.instante (25/09/2026): el instante real de registro, que las fórmulas de CAJA leen para
+  // resolver el mismo día del conteo sin adivinar. Sin `registrado_en` en la entrada, `fila()` no
+  // inventa una hora: la columna sale '' (ver `instante()` en efectivo-raw-pestana.mjs).
+  assert.equal(COL.instante, RENDIR.instante)
   assert.deepEqual(fila({ fecha: new Date('2026-09-22T00:00:00Z'), codigo: 'ER-0001', persona: 'X', destino: 'Galpón 8', movimiento: 'Entrega', importe: '-800000.00' }),
-    ['2026-09-22', 'ER-0001', 'X', 'Galpón 8', 'Entrega', -800000])
+    ['2026-09-22', 'ER-0001', 'X', 'Galpón 8', 'Entrega', -800000, ''])
   const g = grilla([{ fecha: '2026-09-22', codigo: 'ER-0001', movimiento: 'Entrega', importe: -800000 },
     { fecha: '2026-09-23', codigo: 'ER-0001', movimiento: 'Devolución', importe: 300000 }], '2026-09-22 10:00')
   assert.equal(g.length, 3 + 2, 'título, nota, encabezados y una fila por movimiento')

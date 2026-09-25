@@ -66,12 +66,21 @@ test('el desglose del efectivo está entero: los seis históricos, cada uno en s
     [/\(−\) entregado a rendir — desde el conteo/i, true],
     [/\(\+\) devuelto de lo entregado — desde el conteo/i, false],
   ]
+  // «(−) entregado a rendir» es la única excepción de la E vacía (25/09/2026): ahí vive el diagnóstico
+  // de cuánto se resolvió SIN instante real (`HISTORICO_EFECTIVO_BASE.diagnostico`). Nunca es un valor
+  // en pesos —siempre texto, o vacío— así que no puede sumar dos veces el mismo efectivo.
+  const esElDeDiagnostico = (re) => re.source.includes('entregado a rendir')
   for (const [re, resta] of renglones) {
     const f = filaDe(g, re)
     assert.ok(f > 0, `falta el renglón del desglose: ${re}`)
     assert.match(celda(g, f, 2), /^=/, `${re}: el desglose tiene que ser fórmula`)
-    // El desglose se VE y no SUMA en pesos: la columna E va vacía o el mismo efectivo entraría dos veces.
-    assert.ok(vacia(celda(g, f, 4)), `${re}: el desglose NO puede aportar valor en pesos`)
+    if (esElDeDiagnostico(re)) {
+      assert.match(celda(g, f, 4), /^=IF\(/, `${re}: la columna E tiene que ser el diagnóstico "sin hora"`)
+      assert.doesNotMatch(celda(g, f, 4), /^\d|^-\d/, `${re}: la E no puede ser un número pelado`)
+    } else {
+      // El desglose se VE y no SUMA en pesos: la columna E va vacía o el mismo efectivo entraría dos veces.
+      assert.ok(vacia(celda(g, f, 4)), `${re}: el desglose NO puede aportar valor en pesos`)
+    }
     assert.ok(!celda(g, f, 2).includes('ARQUEO'), `${re}: el histórico no puede depender de la fecha del arqueo`)
     if (resta) assert.match(celda(g, f, 2), /^=-\(/, `${re}: una descarga tiene que ir restando`)
   }
@@ -164,7 +173,14 @@ test('EL SELLO POR RENGLÓN YA NO SE RE-EMITE: con ventana, restarlo rompía el 
   const [f0, f1] = g.filasHistorico
   for (let f = f0; f <= f1; f++) {
     assert.equal(g.filas[f - 1][3], 0, 'la foto del histórico completo ya no vuelve a su celda')
-    assert.ok(vacia(String(g.filas[f - 1][4] ?? '')), 'y la columna de pesos sigue vacía: el desglose no suma')
+    const rotulo = String(g.filas[f - 1][0] ?? '')
+    // «(−) entregado a rendir» es la única excepción (25/09/2026): su E lleva el diagnóstico "sin
+    // hora", nunca un valor en pesos. Ver el test del desglose, más arriba.
+    if (rotulo.includes('entregado a rendir')) {
+      assert.match(String(g.filas[f - 1][4] ?? ''), /^=IF\(/, 'la E de «entregado a rendir» tiene que ser el diagnóstico')
+    } else {
+      assert.ok(vacia(String(g.filas[f - 1][4] ?? '')), 'y la columna de pesos sigue vacía: el desglose no suma')
+    }
   }
 })
 

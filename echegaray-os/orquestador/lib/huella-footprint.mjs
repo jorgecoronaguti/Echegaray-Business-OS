@@ -31,7 +31,7 @@
 // registro. EL LADO PARA EQUIVOCARSE ES CONSERVAR: sin registro, sin forma sellada o ante la duda, la
 // celda se queda como está.
 
-import { query } from './db.mjs'
+import { ejecutar } from './huella-celda-db.mjs'
 import { claveCelda, formaComparable, formaDe } from './huella-forma.mjs'
 
 /**
@@ -89,7 +89,7 @@ export async function marcarAbandonadas(fileId, pestana, celdas = [], sello = ne
     if (!c || !String(c.forma ?? '').trim()) continue
     const fila = c.fila
     const col = c.col
-    await query(
+    await ejecutar(
       `insert into public.sheet_huella_celda (file_id, pestana, fila, col, forma, huella, abandonada_en, escrito_en)
        values ($1,$2,$3,$4,$5,$6,now(),$7)
        on conflict (file_id, pestana, fila, col)
@@ -101,7 +101,7 @@ export async function marcarAbandonadas(fileId, pestana, celdas = [], sello = ne
     // La pestaña se corrió de lugar: la marca vieja quedaría apuntando a una celda que ya no es ésa.
     // Es el mismo tratamiento que reciben las supresiones, y por la misma razón.
     if (c.filaMapa !== undefined && c.filaMapa !== fila) {
-      await query('delete from public.sheet_huella_celda where file_id = $1 and pestana = $2 and fila = $3 and col = $4',
+      await ejecutar('delete from public.sheet_huella_celda where file_id = $1 and pestana = $2 and fila = $3 and col = $4',
         [fileId, pestana, c.filaMapa, col])
     }
   }
