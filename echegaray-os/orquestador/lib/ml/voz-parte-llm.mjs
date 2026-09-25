@@ -11,7 +11,7 @@
 // nombres). Todo lo que devuelve se descarta si nombra un id que no está en esa lista, y lo que
 // queda entra como DUDOSO («lo propuso el modelo: confirmalo»): nunca como dato dictado.
 
-import { rotuloDePersona } from './voz-parte.mjs'
+import { etiqueta, rotuloDePersona } from './voz-parte.mjs'
 
 export const VARIABLE = 'ORQ_VOZ_LLM'
 export const encendido = (env = process.env) => String(env[VARIABLE] ?? '').trim() === '1'
@@ -39,7 +39,7 @@ export async function completarConModelo(p, contexto, { pedirTexto, env = proces
   const pedido = {
     texto: p.novedades.map((n) => n.texto).join(' '),
     personas: [...personas.values()].map((x) => ({ id: x.id, nombre: rotuloDePersona(x) })),
-    tareas: [...tareas.values()].map((x) => ({ id: x.id, nombre: x.nombre })),
+    tareas: [...tareas.values()].map((x) => ({ id: x.id, nombre: etiqueta(x) })),
     formato: { personas: [{ persona_id: 'id', estado: 'presente|ausente', horas: 8, tarea_id: 'id|null' }] },
   }
   let crudo
@@ -58,7 +58,7 @@ export async function completarConModelo(p, contexto, { pedirTexto, env = proces
     .map((x) => ({
       persona_id: x.persona_id, nombre: rotuloDePersona(personas.get(x.persona_id)), estado: x.estado,
       horas: x.estado === 'presente' && Number(x.horas) > 0 && Number(x.horas) <= 24 ? Number(x.horas) : null,
-      tarea_id: tareas.has(x.tarea_id) ? x.tarea_id : null, tarea_nombre: tareas.get(x.tarea_id)?.nombre ?? null,
+      tarea_id: tareas.has(x.tarea_id) ? x.tarea_id : null, tarea_nombre: etiqueta(tareas.get(x.tarea_id)),
       tarea_candidatos: [], confianza: 'baja', dudoso: true, motivo: 'lo propuso el modelo de lenguaje: confirmalo',
       tramo: null, origen: 'modelo',
     }))

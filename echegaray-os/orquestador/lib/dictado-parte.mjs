@@ -70,11 +70,13 @@ export async function contextoDeObra(port, obraId, fecha) {
       [obraId, fecha],
     ),
     port.query(
-      `select actividad_id as id, nombre, rubro, unidad, metodo_avance, avance_pct, cantidad_ejecutada,
-              cantidad_objetivo, (estado_operativo = 'bloqueada' or coalesce(impedimentos_abiertos, 0) > 0) as bloqueada
-         from public.obra_actividad_control
-        where obra_id = $1 and tipo is distinct from 'resumen' and not coalesce(archivada, false)
-        order by orden`,
+      `select c.actividad_id as id, c.nombre, c.rubro, c.unidad, c.metodo_avance, c.avance_pct, c.cantidad_ejecutada,
+              c.cantidad_objetivo, (c.estado_operativo = 'bloqueada' or coalesce(c.impedimentos_abiertos, 0) > 0) as bloqueada,
+              p.nombre as padre
+         from public.obra_actividad_control c
+         left join public.obra_actividad p on p.id = c.actividad_padre_id
+        where c.obra_id = $1 and c.tipo is distinct from 'resumen' and not coalesce(c.archivada, false)
+        order by c.orden`,
       [obraId],
     ),
   ])

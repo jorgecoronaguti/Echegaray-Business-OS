@@ -34,7 +34,7 @@ import type { Actividad, Asignacion, ParteEjecucion } from '../../types'
 import type { HoraDeJornada } from '../../services/ejecucionService'
 import {
   bajadaDelDia, bajadaHecho, celdaAcumulado, celdaComentario, chipsDeGente, cifraHoras, correr,
-  esperadosDeAsignaciones, estaBloqueada, fechaCortaDia, fechaLarga, renglonesDelParte, resumenGente,
+  esperadosDeAsignaciones, estaBloqueada, fechaCortaDia, fechaLarga, frentesDelParte, renglonesDelParte, resumenGente,
   textoHoras, unidadDelInput,
 } from '../../services/parteDiario.ts'
 import { useAnchoVentana } from '../useAnchoVentana'
@@ -42,6 +42,7 @@ import { C, MONO } from '../canon/tokens'
 import { Ico, P } from '../canon/Ico'
 import { SubNavTrabajo } from '../SubNavTrabajo'
 import { FotosDelParte } from './FotosDelParte'
+import { BotonDictar, DictadosDelDia, PantallaDictado, useDictado } from './DictarParte'
 
 const EYEBROW: CSSProperties = {
   fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase',
@@ -68,13 +69,18 @@ interface Props {
   fallas: string[]
   /** Quién mira: decide si el visor ofrece «Borrar». `null` = sin perfil legible; no se ofrece. */
   usuario: { id: string; esAdministracion: boolean } | null
+  /** Jefe o Administración: ve «Dictar parte». */
+  puedeDictar?: boolean
   guardar: (form: FormData) => Promise<ResultadoAccion>
 }
+
+/** «Dictar parte» en la computadora (lote 3 de la entrega del 25/09/2026). */
+const DICTAR_EN_PC = false
 
 /** Lo ya guardado ese día por actividad: la producción (sumada si hubo más de un parte) y el comentario. */
 type Cargado = Map<string, { produccion: number | null; comentario: string | null }>
 
-export function ParteDiarioCliente({ obraId, actividades, partes, asignaciones, hoy, registrosHH, fallas, usuario, guardar }: Props) {
+export function ParteDiarioCliente({ obraId, actividades, partes, asignaciones, hoy, registrosHH, fallas, usuario, puedeDictar = false, guardar }: Props) {
   const telefono = useAnchoVentana() < 768
   const [dia, setDia] = useState(hoy)
   const renglones = useMemo(() => renglonesDelParte(actividades), [actividades])
@@ -97,20 +103,45 @@ export function ParteDiarioCliente({ obraId, actividades, partes, asignaciones, 
     return porAct
   }, [partes, dia])
 
+  // DICTAR PARTE (maqueta aprobada 25/09/2026): mientras se dicta, se espera, se revisa o se acaba de
+  // guardar, esa pantalla reemplaza al formulario; en reposo, el formulario de siempre sigue igual.
+  const dictado = useDictado(obraId, dia)
+  const tareasObra = useMemo(() => {
+    // Con el padre adelante («VA1 › Hormigonado»): una obra real tiene diez «Hormigonado».
+    const porId = new Map(actividades.map((a) => [a.id, a.nombre]))
+    return frentesDelParte(actividades, false).map((a) => {
+      const padre = a.actividad_padre_id ? porId.get(a.actividad_padre_id) : null
+      return { id: a.id, nombre: padre ? `${padre} › ${a.nombre}` : a.nombre }
+    })
+  }, [actividades])
+  const dictando = dictado.fase.f !== 'reposo'
+  // Lote 2 (teléfono) sale primero; la cara de la computadora se prende en el lote 3.
+  const dictaAca = puedeDictar && (telefono || DICTAR_EN_PC)
+
   // El formulario se remonta por día (`key`): lo tipeado para el lunes no se arrastra al martes.
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }} data-testid="parte-diario">
-      <SubNavTrabajo obraId={obraId} sub="parte" derecha={<NavFecha dia={dia} hoy={hoy} cambiar={setDia} />} />
+      <SubNavTrabajo obraId={obraId} sub="parte" derecha={<NavFecha dia={dia} hoy={hoy} cambiar={setDia} />}
+        alFinal={!telefono && dictaAca ? <BotonDictar d={dictado} telefono={false} /> : undefined} />
       {fallas.length > 0 && (
         <div data-testid="parte-lectura-fallida" style={{ padding: '10px 30px 0', fontSize: '12.5px', color: C.neg }}>
           No se pudo leer parte del parte: {fallas.join(' · ')}
         </div>
       )}
-      <Formulario
-        key={dia} dia={dia} hoy={hoy} cambiarDia={setDia} telefono={telefono}
-        renglones={renglones} chips={chips} cargado={cargado} guardar={guardar}
-        fotos={<FotosDelParte obraId={obraId} dia={dia} frentes={renglones} usuario={usuario} telefono={telefono} />}
-      />
+      {dictando && dictaAca
+        ? (
+          <PantallaDictado d={dictado} telefono={telefono} plantel={chips.length} tareas={tareasObra}
+            novedadActividad={renglones[0]?.id ?? null} />
+          )
+        : (
+          <Formulario
+            key={dia} dia={dia} hoy={hoy} cambiarDia={setDia} telefono={telefono}
+            renglones={renglones} chips={chips} cargado={cargado} guardar={guardar}
+            dictar={dictaAca ? <BotonDictar d={dictado} telefono /> : null}
+            dictados={dictaAca ? <DictadosDelDia d={dictado} /> : null}
+            fotos={<FotosDelParte obraId={obraId} dia={dia} frentes={renglones} usuario={usuario} telefono={telefono} />}
+          />
+          )}
     </div>
   )
 }
@@ -138,7 +169,7 @@ function NavFecha({ dia, hoy, cambiar }: { dia: string; hoy: string; cambiar: (d
   )
 }
 
-function Formulario({ dia, hoy, cambiarDia, telefono, renglones, chips, cargado, guardar, fotos }: {
+function Formulario({ dia, hoy, cambiarDia, telefono, renglones, chips, cargado, guardar, fotos, dictar, dictados }: {
   dia: string
   hoy: string
   cambiarDia: (d: string) => void
@@ -149,6 +180,9 @@ function Formulario({ dia, hoy, cambiarDia, telefono, renglones, chips, cargado,
   guardar: (form: FormData) => Promise<ResultadoAccion>
   /** El bloque «Fotos y registro del día» / «Fotos», ya armado: se monta una vez por día como el resto. */
   fotos: ReactNode
+  /** «Dictar parte» (teléfono: el botón amarillo arriba del parte) y lo dictado ese día. `null` = no dicta. */
+  dictar: ReactNode
+  dictados: ReactNode
 }) {
   const [estado, ejecutar, pendiente] = useActionState<ResultadoAccion | null, FormData>(
     (_p, datos) => guardar(datos), null)
@@ -182,6 +216,9 @@ function Formulario({ dia, hoy, cambiarDia, telefono, renglones, chips, cargado,
     return (
       <form onSubmit={enviar} data-testid="form-ejecucion" style={{ padding: '16px 16px 96px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {camposOcultos}
+        {/* Paso 1 de «Dictar parte»: el botón nuevo arriba; todo lo demás sigue igual. */}
+        {dictar}
+        {dictados}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <button type="button" aria-label="Día anterior" data-testid="dia-anterior" style={cuadro} onClick={() => cambiarDia(correr(dia, -1))}>
             <Ico d={P.izquierda} s={14} />
@@ -391,6 +428,7 @@ function Formulario({ dia, hoy, cambiarDia, telefono, renglones, chips, cargado,
               borderRadius: '6px', font: 'inherit', fontSize: '13px', resize: 'none', background: C.superficie, color: C.tinta,
             }} />
         </div>
+        {dictados}
         {/* «Fotos y registro del día» debajo de Novedades (dueño, 23/09/2026). */}
         {fotos}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>

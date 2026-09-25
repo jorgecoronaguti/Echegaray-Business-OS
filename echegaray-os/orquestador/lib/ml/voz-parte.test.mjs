@@ -86,3 +86,14 @@ test('«el resto» sin nadie entendido antes se confirma: pueden ser nombres que
   assert.ok(p.personas.every((f) => f.dudoso))
   assert.equal(proponerParte('Todos en contrapiso.', CONTEXTO).personas.every((f) => !f.dudoso), true)
 })
+
+test('«el resto» con un «no vino» sin nombre se confirma: puede incluir al que faltó', () => {
+  const p = proponerParte('Argüello ocho horas en losa, el resto en contrapiso. Cosales no vino.', CONTEXTO)
+  const resto = p.personas.filter((f) => f.origen === 'grupo')
+  assert.ok(resto.length > 0 && resto.every((f) => f.dudoso))
+  assert.match(resto[0].motivo, /no vino/)
+})
+
+test('«haremos tres» (éramos, mal transcripto) igual cuenta', () => {
+  assert.equal(proponerParte('Hoy haremos tres. Argüello ocho horas en losa.', CONTEXTO).conteo?.dicho, 3)
+})

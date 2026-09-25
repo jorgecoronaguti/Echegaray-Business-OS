@@ -315,7 +315,7 @@ const raicesDe = (texto) => sinTilde(texto).split(/[^a-z0-9ñ]+/).filter((w) => 
 function indiceTareas(tareas) {
   return tareas.map((t) => ({
     t,
-    raices: new Set([...raicesDe(t.nombre), ...raicesDe(t.rubro ?? '')]),
+    raices: new Set([...raicesDe(t.nombre), ...raicesDe(t.rubro ?? ''), ...raicesDe(t.padre ?? '')]),
     // Cada palabra del nombre con su raíz y cómo suena: lo que el reconocedor partió o deformó
     // («un cofrado» por encofrado) se reconoce por el sonido.
     palabras: sinTilde(t.nombre).split(/[^a-z0-9ñ]+/).filter((w) => w.length >= 3 && !VACIAS.has(w))
@@ -366,6 +366,13 @@ function juntasDe(tk, desde, hasta, usado) {
   }
   return out
 }
+
+/**
+ * El nombre de una tarea como se muestra: con su rubro padre si lo tiene («VA1 › Hormigonado»). Una
+ * obra real tiene diez «Hormigonado» y «Encofrado» (uno por elemento): sin el padre, elegir entre
+ * candidatos sería elegir entre nombres iguales.
+ */
+export const etiqueta = (t) => (t ? (t.padre ? `${t.padre} › ${t.nombre}` : t.nombre) : null)
 
 const coincide = (tk, i, patron) => patron.every((w, k) => tk[i + k]?.n === w)
 const redondear = (n) => Math.round(n * 100) / 100
@@ -511,7 +518,7 @@ export function proponerParte(texto, contexto = {}) {
 
   // 3 · CONTEO: «hoy éramos seis».
   for (let i = 0; i < tk.length; i++) {
-    const esConteo = tk[i].tipo === 'pal' && (CONTEO.has(tk[i].n) || (tk[i].n.length >= 6 && [...CONTEO].some((w) => lev(fonetica(w), fonetica(tk[i].n), 1) <= 1)))
+    const esConteo = tk[i].tipo === 'pal' && (CONTEO.has(tk[i].n) || (tk[i].n.length >= 6 && /(mos|ron)$/.test(tk[i].n) && [...CONTEO].some((w) => lev(fonetica(w), fonetica(tk[i].n), 2) <= 2)))
     if (esConteo && tk[i + 1]?.tipo === 'num'
       && !['hora', 'horas', 'hs', 'h'].includes(tk[i + 2]?.n) && tk[i + 2]?.tipo !== 'pct') {
       conteo = { dicho: tk[i + 1].valor, tramo: tramo(i, i + 2) }
@@ -626,7 +633,7 @@ export function proponerParte(texto, contexto = {}) {
     if (m.candidatos.length > 1) {
       dudasPersona.push({
         persona_id: null, nombre: t.slice(tk[m.a].a, tk[m.b - 1].b), estado,
-        horas: fila?.horas ?? null, tarea_id: fila?.tarea?.tarea?.id ?? null, tarea_nombre: fila?.tarea?.tarea?.nombre ?? null,
+        horas: fila?.horas ?? null, tarea_id: fila?.tarea?.tarea?.id ?? null, tarea_nombre: etiqueta(fila?.tarea?.tarea),
         candidatos: m.candidatos.map((p) => ({ id: p.id, nombre: rotuloDePersona(p) })),
         dudoso: true, motivo: `hay ${m.candidatos.length} personas que se llaman así en la obra`, confianza: 'baja',
         tramo: [tk[m.a].a, tk[m.b - 1].b], origen: 'dictado',
@@ -641,8 +648,8 @@ export function proponerParte(texto, contexto = {}) {
     const parecido = (m.dist ?? 0) >= 1
     ponerPersona(p, {
       estado, horas: fila?.horas ?? null, horasDe: fila?.horas != null ? 'dicho' : null,
-      tarea_id: r?.tarea?.id ?? null, tarea_nombre: r?.tarea?.nombre ?? null,
-      tarea_candidatos: r?.dudosa ? r.candidatos.map((x) => ({ id: x.id, nombre: x.nombre })) : [],
+      tarea_id: r?.tarea?.id ?? null, tarea_nombre: etiqueta(r?.tarea),
+      tarea_candidatos: r?.dudosa ? r.candidatos.map((x) => ({ id: x.id, nombre: etiqueta(x) })) : [],
       confianza: parecido ? 'baja' : m.exacto ? confianza : 'media',
       dudoso: estado === 'ausente' || parecido || Boolean(r?.dudosa),
       motivo: parecido ? `se entendió «${dicho}»: ¿es ${rotuloDePersona(p)}?`
@@ -674,8 +681,8 @@ export function proponerParte(texto, contexto = {}) {
       personas.set(p.id, {
         persona_id: p.id, nombre: rotuloDePersona(p), estado: 'presente', horas,
         horasDe: g.horas != null ? 'oracion' : horasGenerales ? 'general' : null,
-        tarea_id: g.tarea?.tarea?.id ?? null, tarea_nombre: g.tarea?.tarea?.nombre ?? null,
-        tarea_candidatos: g.tarea?.dudosa ? g.tarea.candidatos.map((x) => ({ id: x.id, nombre: x.nombre })) : [],
+        tarea_id: g.tarea?.tarea?.id ?? null, tarea_nombre: etiqueta(g.tarea?.tarea),
+        tarea_candidatos: g.tarea?.dudosa ? g.tarea.candidatos.map((x) => ({ id: x.id, nombre: etiqueta(x) })) : [],
         confianza: 'media', dudoso: dudoso || Boolean(g.tarea?.dudosa),
         motivo: motivo ?? (g.tarea?.dudosa ? 'no queda claro en qué tarea' : null),
         tramo: g.tramo, origen: 'grupo', grupo: t.slice(g.tramo[0], g.tramo[1]).split(/\s+(?:en|haciendo|con)\s+/i)[0],
@@ -720,6 +727,20 @@ export function proponerParte(texto, contexto = {}) {
       const ini = libres[0], fin = libres.at(-1) + 1
       const textoNov = t.slice(tk[ini].a, tk[fin - 1].b).replace(/^[\s,y]+/i, '').trim()
       if (textoNov) novedades.push({ texto: capitalizar(textoNov), tramo: [tk[ini].a, tk[fin - 1].b] })
+    }
+  }
+
+  // «EL RESTO» DEPENDE DE A QUIÉN SE NOMBRÓ. Si un nombrado se entendió a medias, o quedó en Novedades
+  // un «no vino» sin saber de quién, el resto puede incluir a alguien que faltó: se confirma.
+  // Medido con audio sintético (25/09): «Cosales no vino» quedó sin nombre y Rosales entraba al resto
+  // como presente, en amarillo, sin que nada lo marcara.
+  const faltaSinNombre = novedades.some((n) => /\b(no vino|no vinieron|falt[oó]|faltaron|no estuvo)\b/i.test(sinTilde(n.texto)))
+  const nombradoDudoso = filasPersonas.some((f) => f.origen === 'dictado' && f.estado === 'presente' && /se entendió/.test(f.motivo ?? ''))
+  if (faltaSinNombre || nombradoDudoso) {
+    for (const f of filasPersonas) {
+      if (f.origen !== 'grupo' || f.dudoso) continue
+      f.dudoso = true
+      f.motivo = faltaSinNombre ? 'alguien «no vino» y no entendí quién: ¿vino?' : 'depende de un nombre que no se entendió bien'
     }
   }
 
@@ -778,9 +799,9 @@ export function proponerParte(texto, contexto = {}) {
     if ((tipo === 'acumulado_pct' || tipo === 'incremento_pct') && valor > 100) { dudoso = true; motivo = `${valor} % no es un avance posible`; produccion = null }
     if (tarea.bloqueada) { dudoso = true; motivo = 'la tarea está bloqueada' }
     return {
-      tarea_id: tarea.id, tarea_nombre: tarea.nombre, metodo, unidad: metodo === 'cantidad' ? (tarea.unidad ?? '') : '%',
+      tarea_id: tarea.id, tarea_nombre: etiqueta(tarea), metodo, unidad: metodo === 'cantidad' ? (tarea.unidad ?? '') : '%',
       tipo, valor, produccion, actual: metodo === 'cantidad' ? ejec : actual,
-      candidatos: r.dudosa ? r.candidatos.map((x) => ({ id: x.id, nombre: x.nombre })) : [],
+      candidatos: r.dudosa ? r.candidatos.map((x) => ({ id: x.id, nombre: etiqueta(x) })) : [],
       dudoso, motivo, tramo: tr, confianza: r.dudosa ? 'baja' : 'alta',
     }
   }

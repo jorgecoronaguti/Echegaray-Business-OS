@@ -153,3 +153,21 @@ export const ESTILO_SECUNDARIA: CSSProperties = {
   padding: '6px 11px', cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1.4, whiteSpace: 'nowrap',
 }
 
+
+/**
+ * «DICTAR PARTE» — los colores de la maqueta aprobada por el dueño el 25/09/2026 (`dictar-parte.html`):
+ * amarillo = lo tomado del audio (`--sel`, `.caja.dictado`, `.chip.d`), naranja = lo dudoso que hay que
+ * confirmar (`--warnS`, `.caja.duda`, `.chip.q`), azul = el aviso «Entendí N personas…» (`.aviso.info`).
+ */
+export const DICTADO = {
+  datoFondo: '#FEF9E6',
+  datoBorde: '#F2DE8A',
+  datoChip: '#FBEDB0',
+  datoChipTexto: '#6A5300',
+  dudaFondo: '#FEF3E2',
+  dudaBorde: '#F7C98B',
+  dudaChip: '#FDE3C2',
+  infoFondo: '#EFF4FF',
+  infoTexto: '#1849A9',
+  posFondo: '#E7F6EE',
+} as const

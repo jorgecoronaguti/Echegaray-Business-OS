@@ -48,6 +48,9 @@ export async function ParteDiario({
   const [asignaciones, perfil] = await Promise.all([getAsignaciones(supabase, obraId), getPerfilActual(supabase)])
   const fallas = asignaciones.error ? [asignaciones.error] : []
   const usuario = perfil.data ? { id: perfil.data.id, esAdministracion: esAdministracion(perfil.data.rol) } : null
+  // DICTAR PARTE: el jefe y Administración (la misma cerradura que `parte_dictado` en la base). El
+  // operario no llega a esta pantalla; si llegara, no ve el botón y la base le diría que no.
+  const puedeDictar = perfil.data != null && ['direccion', 'administracion', 'jefe_obra'].includes(String(perfil.data.rol))
   return (
     <ParteDiarioCliente
       obraId={obraId}
@@ -58,6 +61,7 @@ export async function ParteDiario({
       registrosHH={registrosHH}
       fallas={fallas}
       usuario={usuario}
+      puedeDictar={puedeDictar}
       guardar={guardarParteDiario.bind(null, obraId)}
     />
   )
