@@ -262,7 +262,8 @@ async function controlarEfectivo(google, g) {
 async function cotizacionDelDia() {
   const ahora = new Date()
   const hoy = ahora.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/San_Juan' })
-  const leidoEn = ahora.toLocaleString('es-AR', { timeZone: 'America/Argentina/San_Juan', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  // «25/09/2026 11:10», no «25/09/2026, 11:10 a. m.» (lo que devuelve es-AR por defecto: medido al escribirla).
+  const leidoEn = ahora.toLocaleString('es-AR', { timeZone: 'America/Argentina/San_Juan', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).replace(',', '')
   const bcra = await leerBcra({ hoy })
   let base = null
   if (!bcra) {
