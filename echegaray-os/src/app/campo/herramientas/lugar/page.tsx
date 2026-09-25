@@ -10,6 +10,7 @@ import { SinBaseTelefono } from '@/features/herramientas/components/campo/SinBas
 import { ListaDelLugar, type ItemLugar } from '@/features/herramientas/components/campo/ListaDelLugar'
 import { V } from '@/features/herramientas/components/estilo'
 import { diaMes } from '@/features/herramientas/components/formato'
+import { rotuloConTalle } from '@/features/herramientas/logica/vestimenta'
 import { conLugar, resolverLugar } from '@/features/herramientas/logica/lugar'
 import { ETIQUETA_ESTADO, activosEn, cantidadEn, conProblema, llegoEn, ubicacionDelRodado } from '@/features/herramientas/logica/parque'
 
@@ -32,7 +33,7 @@ export default async function LugarCampo({ searchParams }: { searchParams: Promi
     const aqui = cantidadEn(p, a.id, lugar.ubicacionId)
     const u = a.clase === 'rodado' ? ubicacionDelRodado(p, a.id) : null
     return {
-      id: a.id, codigo: a.codigo, nombre: a.cantidad > 1 ? `${a.nombre} × ${aqui}` : a.nombre, clase: a.clase, patente: a.patente,
+      id: a.id, codigo: a.codigo, nombre: a.cantidad > 1 ? `${rotuloConTalle(a)} × ${aqui}` : rotuloConTalle(a), clase: a.clase, patente: a.patente,
       problema: conProblema(a),
       detalle: conProblema(a) ? ETIQUETA_ESTADO[a.estado].toLowerCase() : llego ? `acá desde el ${diaMes(llego)}` : 'acá, sin fecha de llegada',
       lleva: u ? activosEn(p, u.id).length : 0,
