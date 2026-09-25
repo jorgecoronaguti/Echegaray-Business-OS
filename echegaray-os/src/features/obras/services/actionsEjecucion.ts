@@ -43,6 +43,7 @@ import { agregarNota } from './actionsNotas'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
 import type { Rol } from '@/features/auth/types'
+import { SIN_PERMISO_DE_PARTE, editaPartesDeLaObra } from '@/shared/auth/obraPropia'
 
 const parteSchema = z.object({
   actividad_id: z.string().uuid('Elegí la actividad'),
@@ -171,6 +172,8 @@ export async function registrarEjecucion(obraId: string, form: FormData): Promis
 /** Borrar un parte. Se corrige un error de carga; no se usa para "cerrar" una actividad. */
 export async function borrarParte(obraId: string, parteId: string): Promise<Resultado> {
   const supabase = await createClient()
+  // Borrar un renglón de parte: el jefe, sólo en SU obra (dueño 25/09/2026; la base también lo exige).
+  if (!(await editaPartesDeLaObra(supabase, obraId))) return { ok: false, error: SIN_PERMISO_DE_PARTE }
   // El `eq('obra_id')` no sobra: sin él, un id de otra obra borraría un parte ajeno.
   const { error } = await supabase
     .from('obra_ejecucion').delete().eq('id', parteId).eq('obra_id', obraId)

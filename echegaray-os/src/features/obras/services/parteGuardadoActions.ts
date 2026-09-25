@@ -28,6 +28,7 @@ import { borrarParte, guardarParteDiario } from './actionsEjecucion'
 import { borrarNota } from './actionsNotas'
 import { comentarioDeTarea, numeroParaElParte, type Propuesta, type Revision } from './dictadoParte'
 import { diferencias, resumenParaBitacora, type ParteGuardado, type PersonaGuardada } from './parteGuardado'
+import { SIN_PERMISO_DE_PARTE, editaPartesDeLaObra } from '@/shared/auth/obraPropia'
 
 export type R<T = undefined> = { ok: true; dato: T } | { ok: false; error: string }
 type Supa = Awaited<ReturnType<typeof createClient>>
@@ -158,6 +159,8 @@ export async function guardarEdicionDelParte(obraId: string, fecha: string, entr
   if (!r.success) return { ok: false, error: `Algo del parte vino mal: ${r.error.issues[0].message}` }
   const rev = r.data as unknown as Revision
   const supabase = await createClient()
+  // El jefe edita los partes de SU obra (dueño 25/09/2026); se pregunta antes de escribir nada.
+  if (!(await editaPartesDeLaObra(supabase, o.data))) return { ok: false, error: SIN_PERMISO_DE_PARTE }
   const leido = await leer(supabase, o.data, f.data)
   if (!leido.ok) return leido
   const g = leido.dato
@@ -288,6 +291,8 @@ export async function borrarParteDelDia(obraId: string, fecha: string): Promise<
   const o = Obra.safeParse(obraId); const f = Fecha.safeParse(fecha)
   if (!o.success || !f.success) return { ok: false, error: 'Obra o día inválidos.' }
   const supabase = await createClient()
+  // El jefe borra los partes de SU obra (dueño 25/09/2026); se pregunta antes de borrar nada.
+  if (!(await editaPartesDeLaObra(supabase, o.data))) return { ok: false, error: SIN_PERMISO_DE_PARTE }
   const leido = await leer(supabase, o.data, f.data)
   if (!leido.ok) return leido
   const g = leido.dato
