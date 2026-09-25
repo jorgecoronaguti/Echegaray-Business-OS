@@ -16,8 +16,10 @@ import { C } from '../../canon/tokens'
 import { Ico, P } from '../../canon/Ico'
 import { Falta } from './Piezas'
 
-export function EstadoVacio({ obraId, presupuesto, lineaBaseSellada, diasHabiles, plazo }: {
+export function EstadoVacio({ obraId, presupuesto, lineaBaseSellada, diasHabiles, plazo, puedeVincular = false }: {
   obraId: string
+  /** Dirección y Administración: el presupuesto es precio. Ven «Vincular uno» y «Crear presupuesto». */
+  puedeVincular?: boolean
   /** «PR-0042 · R03 · 19 partidas»; null = sin presupuesto vinculado. */
   presupuesto: { rotulo: string; nPartidas: number } | null
   lineaBaseSellada: boolean
@@ -38,14 +40,22 @@ export function EstadoVacio({ obraId, presupuesto, lineaBaseSellada, diasHabiles
     },
     {
       id: 'presupuesto', href: `${base}&crear=presupuesto`, icono: P.base,
-      rotulo: presupuesto ? `${presupuesto.rotulo} · ${presupuesto.nPartidas} partidas` : 'cuando exista el módulo Presupuestos',
+      rotulo: presupuesto ? `${presupuesto.rotulo} · ${presupuesto.nPartidas} partidas` : 'sin presupuesto vinculado',
       titulo: 'Desde el presupuesto',
       texto: 'Las partidas cotizadas pasan a historias con su unidad, cantidad y HH del análisis. La cantidad se conserva o no genera.',
-      bajada: presupuesto ? `${presupuesto.rotulo} · ${presupuesto.nPartidas} partidas` : 'cuando exista el módulo Presupuestos',
+      bajada: presupuesto ? `${presupuesto.rotulo} · ${presupuesto.nPartidas} partidas` : 'esta obra no tiene un presupuesto vinculado',
       accion: presupuesto ? 'Empezar' : 'Apagado', destacada: false, apagada: !presupuesto,
     },
   ]
   const circulo = <Ico d={P.pend} s={12} />
+  // EL MÓDULO EXISTE (revisión por nivel, 25/09): sin presupuesto vinculado se dice eso y se ofrece
+  // vincular uno existente (el campo «Obra» del presupuesto) o crearlo. Quien no ve precio, lo sabe.
+  const vincular = (tel: boolean) => puedeVincular ? (
+    <span style={{ display: 'inline-flex', gap: '14px', fontSize: tel ? '12.5px' : '13px', fontWeight: 500 }} data-testid={tel ? 'vincular-presupuesto-telefono' : 'vincular-presupuesto'}>
+      <Link href="/presupuestos" prefetch={false} style={{ color: C.tinta, textDecoration: 'underline' }}>Vincular uno</Link>
+      <Link href="/presupuestos/nuevo" prefetch={false} style={{ color: C.tinta, textDecoration: 'underline' }}>Crear presupuesto</Link>
+    </span>
+  ) : <span style={{ fontSize: '12.5px', color: C.tenue }}>lo vincula Administración</span>
   return (
     <>
       {/* ═══ ESCRITORIO (C01) ═══ */}
@@ -56,7 +66,7 @@ export function EstadoVacio({ obraId, presupuesto, lineaBaseSellada, diasHabiles
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 372px)', gap: '16px' }}>
           {opciones.map((o) => (
-            <Link key={o.id} href={o.apagada ? '#' : o.href} prefetch={false} data-testid={`crear-${o.id}`} aria-disabled={o.apagada} onClick={o.apagada ? (e) => e.preventDefault() : undefined} style={{
+            <Tarjeta key={o.id} href={o.apagada ? null : o.href} testid={`crear-${o.id}`} style={{
               display: 'flex', flexDirection: 'column', gap: '12px', padding: '22px 22px 20px', minHeight: '232px', textDecoration: 'none',
               border: `1px solid ${o.destacada ? C.grafito : C.borde}`, borderRadius: '10px', color: o.apagada ? C.tenue : C.tinta, cursor: o.apagada ? 'default' : 'pointer',
             }}>
@@ -66,10 +76,12 @@ export function EstadoVacio({ obraId, presupuesto, lineaBaseSellada, diasHabiles
               </div>
               <div style={{ fontSize: '15px', fontWeight: 600 }}>{o.titulo}</div>
               <div style={{ fontSize: '12.5px', color: o.apagada ? C.tenue : C.tintaSuave, lineHeight: 1.5, flex: 1 }}>{o.texto}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 500, color: o.apagada ? C.tenue : C.tinta }}>
-                {o.accion}<Ico d={P.flecha} s={13} />
-              </div>
-            </Link>
+              {o.apagada ? vincular(false) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 500, color: C.tinta }}>
+                  {o.accion}<Ico d={P.flecha} s={13} />
+                </div>
+              )}
+            </Tarjeta>
           ))}
         </div>
         <div style={{ display: 'flex', gap: '28px', fontSize: '12.5px', color: C.tintaSuave, borderTop: `1px solid ${C.borde}`, paddingTop: '18px', flexWrap: 'wrap' }}>
@@ -88,7 +100,7 @@ export function EstadoVacio({ obraId, presupuesto, lineaBaseSellada, diasHabiles
           <div style={{ fontSize: '12.5px', color: C.tintaSuave }}>Rubro › épica › historia › tarea › subtarea</div>
         </div>
         {opciones.map((o) => (
-          <Link key={o.id} href={o.apagada ? '#' : o.href} prefetch={false} data-testid={`crear-telefono-${o.id}`} aria-disabled={o.apagada} onClick={o.apagada ? (e) => e.preventDefault() : undefined} style={{
+          <Tarjeta key={o.id} href={o.apagada ? null : o.href} testid={`crear-telefono-${o.id}`} style={{
             display: 'flex', alignItems: 'center', gap: '12px', minHeight: '72px', padding: '0 14px', textDecoration: 'none',
             border: `1px solid ${o.destacada ? C.grafito : C.borde}`, borderRadius: '8px', color: o.apagada ? C.tenue : C.tinta,
           }}>
@@ -97,8 +109,8 @@ export function EstadoVacio({ obraId, presupuesto, lineaBaseSellada, diasHabiles
               <div style={{ fontSize: '14px', fontWeight: 600 }}>{o.titulo}</div>
               <div style={{ fontSize: '12px', color: C.tintaSuave }}>{o.bajada}</div>
             </div>
-            <span style={{ color: C.tenue, display: 'flex' }}><Ico d={P.derecha} s={14} /></span>
-          </Link>
+            {o.apagada ? vincular(true) : <span style={{ color: C.tenue, display: 'flex' }}><Ico d={P.derecha} s={14} /></span>}
+          </Tarjeta>
         ))}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px', color: C.tintaSuave, borderTop: `1px solid ${C.borde}`, paddingTop: '14px' }}>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>{circulo}Línea base {lineaBaseSellada ? 'sellada' : <Falta>sin sellar</Falta>}</div>
@@ -109,4 +121,10 @@ export function EstadoVacio({ obraId, presupuesto, lineaBaseSellada, diasHabiles
       </div>
     </>
   )
+}
+
+/** Una puerta: enlace si se puede entrar, bloque quieto si no (adentro puede llevar sus propios enlaces). */
+function Tarjeta({ href, testid, style, children }: { href: string | null; testid: string; style: React.CSSProperties; children: React.ReactNode }) {
+  if (!href) return <div data-testid={testid} aria-disabled style={style}>{children}</div>
+  return <Link href={href} prefetch={false} data-testid={testid} style={style}>{children}</Link>
 }

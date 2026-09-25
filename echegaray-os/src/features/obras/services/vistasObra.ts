@@ -118,7 +118,7 @@ export const esSubTareas = (v: string | undefined): v is SubTareas =>
 /** Cuál de las cuatro pantallas de Trabajo se está mirando. `'ninguna'` para las que cuelgan de
  *  Trabajo y no son ninguna de ellas — hoy, el cronograma calculado, que no es el `sub=gantt` del
  *  workspace y marcarlo activo afirmaría que son la misma vista. */
-export type PantallaDeTrabajo = SubTareas | 'subcontratos' | 'ninguna'
+export type PantallaDeTrabajo = SubTareas | 'items' | 'subcontratos' | 'ninguna'
 
 /**
  * LAS CUATRO DEL NIVEL 3, EN UN SOLO LUGAR. El canónico 07 las dibuja juntas —`Tareas ·
@@ -131,13 +131,18 @@ export type PantallaDeTrabajo = SubTareas | 'subcontratos' | 'ninguna'
  * séptima solapa — el tope de seis está declarado en `page.tsx` de la obra.
  */
 export function pantallasDeTrabajo(obraId: string, activa: PantallaDeTrabajo | null) {
+  const subs = SUBS_TAREAS.map((s) => ({
+    id: s.id as string,
+    label: s.label as string,
+    href: `/obras/${obraId}?vista=tareas&sub=${s.id}`,
+    activo: activa === s.id,
+  }))
+  // UN NOMBRE POR PANTALLA (revisión por nivel, 25/09): «Tareas» es la tabla 04 y «Ítems» los ponderados
+  // (04b, `?vista=items`); las dos son sub-solapas propias, una al lado de la otra, y el rótulo de la
+  // sub-solapa activa es siempre el de la pantalla que se ve.
+  subs.splice(1, 0, { id: 'items', label: 'Ítems', href: `/obras/${obraId}?vista=items`, activo: activa === 'items' })
   return [
-    ...SUBS_TAREAS.map((s) => ({
-      id: s.id as string,
-      label: s.label as string,
-      href: `/obras/${obraId}?vista=tareas&sub=${s.id}`,
-      activo: activa === s.id,
-    })),
+    ...subs,
     {
       id: 'subcontratos',
       label: 'Subcontratos',

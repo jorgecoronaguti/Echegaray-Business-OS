@@ -158,6 +158,7 @@ export async function WorkspaceTareas({
       nuevaInicial={nueva}
       nombreObra={nombreObra}
       itemsPonderados={itemsPonderados}
+      veEconomia={veEconomia}
       modo={modo}
       estructura={{
         ponds: pondsRes.data ?? {},

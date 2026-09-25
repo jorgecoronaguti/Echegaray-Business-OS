@@ -119,5 +119,5 @@ test('el árbol de Trabajo se rotula «Tareas» (serie B); el id `arbol` no camb
 test('`?vista=items` (diseño 04b) abre el árbol de Ítems; `sub=planilla` es una pantalla de Trabajo', () => {
   assert.deepEqual(resolverVistaObra('items', undefined), { vista: 'tareas', sub: 'arbol' })
   assert.deepEqual(resolverVistaObra('tareas', 'planilla'), { vista: 'tareas', sub: 'planilla' })
-  assert.deepEqual(pantallasDeTrabajo('x', 'planilla').map((p) => p.id), ['arbol', 'gantt', 'planilla', 'parte', 'subcontratos'])
+  assert.deepEqual(pantallasDeTrabajo('x', 'planilla').map((p) => p.id), ['arbol', 'items', 'gantt', 'planilla', 'parte', 'subcontratos'])
 })

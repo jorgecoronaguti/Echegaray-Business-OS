@@ -122,7 +122,7 @@ export function FormHistoria({
           {peso != null && <span style={{ fontSize: '11.5px', color: C.tintaSuave, whiteSpace: 'nowrap' }}>→ {rotuloPeso(peso)} de la obra</span>}
         </div>
       </Campo>
-      <Campo rotulo="Partida del presupuesto" nota={presupuesto ?? (alto === 32 ? 'cuando exista el módulo Presupuestos' : undefined)} alto={alto}>
+      <Campo rotulo="Partida del presupuesto" nota={presupuesto ?? (alto === 32 ? 'la obra no tiene presupuesto vinculado' : undefined)} alto={alto}>
         {partidas.length ? (
           <select value={partidaId} onChange={(e) => setPartidaId(e.target.value)} data-testid="historia-partida" style={estiloControl(alto)}>
             <option value="">sin partida · el costo se carga a mano</option>

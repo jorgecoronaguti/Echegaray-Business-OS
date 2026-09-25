@@ -43,6 +43,17 @@ export async function TabPlanilla({ obraId }: { obraId: string }) {
   return (
     <>
       <SubNavTrabajo obraId={obraId} sub="planilla" />
+      {/* Quien llega a la planilla desde un enlace en el teléfono: es una pantalla de escritorio (tarea
+          × día hábil no entra en 390) y se lo dice con la puerta a lo mismo en su formato. */}
+      <div className="flex md:hidden" data-testid="planilla-telefono" style={{ padding: '20px 16px', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#6B6B67' }}>
+        <div style={{ fontSize: '15px', fontWeight: 600, color: '#1F1F1E' }}>La planilla se mira en la computadora</div>
+        <div>Tarea × día hábil no entra en el teléfono. Lo mismo, tarea por tarea, está en Tareas y en el Parte diario.</div>
+        <div style={{ display: 'flex', gap: '16px' }}>
+          <a href={`/obras/${obraId}?vista=tareas&sub=arbol`} style={{ color: '#1F1F1E', textDecoration: 'underline' }}>Tareas</a>
+          <a href={`/obras/${obraId}?vista=tareas&sub=parte`} style={{ color: '#1F1F1E', textDecoration: 'underline' }}>Parte diario</a>
+        </div>
+      </div>
+      <div className="hidden md:block">
       <PlanillaGrilla
         obraId={obraId}
         hoy={hoy}
@@ -68,6 +79,7 @@ export async function TabPlanilla({ obraId }: { obraId: string }) {
         activos={(activos.data ?? []).map((a) => ({ id: a.id, nombre: a.nombre }))}
         fallas={fallas}
       />
+      </div>
     </>
   )
 }

@@ -240,7 +240,8 @@ export async function CabeceraDeObra({
             }}><RotuloEstable texto={v.label} peso={telefono ? 600 : 500} /></Link>
         )
       })}
-      {!telefono && alFinalDeLasSolapas}
+      {/* «Economía» también en el teléfono (paridad por nivel, 25/09): la misma puerta, al final de las solapas. */}
+      {alFinalDeLasSolapas}
     </nav>
   )
 

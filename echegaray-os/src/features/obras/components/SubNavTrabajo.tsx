@@ -20,10 +20,8 @@ import { C, MONO } from './canon/tokens'
 import { pantallasDeTrabajo, type PantallaDeTrabajo } from '../services/vistasObra'
 import { RotuloEstable } from './RotuloEstable'
 
-export function SubNavTrabajo({ obraId, sub, derecha, alFinal, contadores = {}, rotuloArbol }: {
+export function SubNavTrabajo({ obraId, sub, derecha, alFinal, contadores = {} }: {
   obraId: string
-  /** 04b: con `?vista=items` la primera sub-solapa se llama «Ítems» (así la dibuja el diseño). */
-  rotuloArbol?: string
   sub: PantallaDeTrabajo | null
   /** Lo que sigue al filete: «Ver hasta», «Agrupar por», el navegador de día del parte. */
   derecha?: ReactNode
@@ -32,7 +30,7 @@ export function SubNavTrabajo({ obraId, sub, derecha, alFinal, contadores = {}, 
   /** Los contadores en faint al lado del rótulo, cuando la pantalla los trae. */
   contadores?: Partial<Record<string, number>>
 }) {
-  const items = pantallasDeTrabajo(obraId, sub).map((i) => (i.id === 'arbol' && rotuloArbol ? { ...i, label: rotuloArbol } : i))
+  const items = pantallasDeTrabajo(obraId, sub)
   return (
     <>
       <div className="hidden md:flex" data-testid="subnav-trabajo" style={{
@@ -68,13 +66,14 @@ export function SubNavTrabajo({ obraId, sub, derecha, alFinal, contadores = {}, 
         {alFinal != null && <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>{alFinal}</div>}
       </div>
 
+      {/* LA PLANILLA ES DE ESCRITORIO (diseño 04c; M05 no la dibuja): el teléfono no la ofrece. */}
       {/* `flex md:hidden` por CLASE: un `display` inline le ganaría al `md:hidden` y la banda del
           teléfono se dibujaría también en escritorio (capturas 23/09: sub-solapas dos veces). */}
       <div className="flex md:hidden" data-testid="subnav-trabajo-telefono" style={{
         padding: '0 16px', background: C.tenueFondo, borderBottom: `1px solid ${C.borde}`,
         overflowX: 'auto', flexShrink: 0, scrollbarWidth: 'none',
       }}>
-        {items.map((i) => (
+        {items.filter((i) => i.id !== 'planilla').map((i) => (
           <Link key={i.id} href={i.href} prefetch={false} data-testid={`sub-telefono-${i.id}`}
             aria-current={i.activo ? 'page' : undefined}
             style={{

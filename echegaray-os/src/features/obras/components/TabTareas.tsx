@@ -85,7 +85,7 @@ export function TabTareas({
   panelDeObra, relaciones, docsPorActividad, actInicial, solInicial, dotInicial, malImputados,
   puedeEditar, personas, integrantesPorCuadrilla, nombrePorPersona,
   equiposPorActividad, notasPorActividad, autor, accionesBarra, accionesPanel, nuevaInicial = false,
-  nombreObra = null, modo, estructura, accionesEstructura, itemsPonderados = false,
+  nombreObra = null, modo, estructura, accionesEstructura, itemsPonderados = false, veEconomia = false,
 }: {
   obraId: string
   nodos: NodoObra[]
@@ -120,6 +120,8 @@ export function TabTareas({
   nombreObra?: string | null
   /** `?vista=items` (04b) en vez de la tabla de Tareas (04). */
   itemsPonderados?: boolean
+  /** Dirección y Administración: pueden vincular o crear el presupuesto de la obra (C01). */
+  veEconomia?: boolean
 }) {
   const [alta, setAlta] = useState<'' | 'actividad' | 'rubro'>(nuevaInicial && puedeEditar && nodos.length > 0 ? 'actividad' : '')
   // ═══ CREAR LA ESTRUCTURA (C01–C09) ═══
@@ -265,7 +267,7 @@ export function TabTareas({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <SubNavTrabajo obraId={obraId} sub="arbol" rotuloArbol={itemsPonderados ? 'Ítems' : undefined}
+      <SubNavTrabajo obraId={obraId} sub={itemsPonderados ? 'items' : 'arbol'}
         derecha={modoEfectivo.crear === 'mano'
           ? <span data-testid="pista-armar-a-mano">Armar a mano{nodos.length === 0 && <span style={{ color: C.tinta }}> · Enter agrega hermano · Tab baja un nivel · Shift+Tab sube</span>}</span>
           : enEstructura || vacia ? undefined :
@@ -321,7 +323,7 @@ export function TabTareas({
         <Estructura obraId={obraId} nodos={nodos} ponds={estructura.ponds} modo={modoEfectivo} datos={estructura} acciones={accionesEstructura} query={query} />
       )}
       {vacia && (
-        <EstadoVacio obraId={obraId} lineaBaseSellada={estructura.lineaBaseSellada} diasHabiles={estructura.obra.diasHabiles}
+        <EstadoVacio obraId={obraId} puedeVincular={veEconomia} lineaBaseSellada={estructura.lineaBaseSellada} diasHabiles={estructura.obra.diasHabiles}
           plazo={estructura.obra.inicio && estructura.obra.fin ? `${estructura.obra.inicio.slice(8, 10)}/${estructura.obra.inicio.slice(5, 7)} → ${estructura.obra.fin.slice(8, 10)}/${estructura.obra.fin.slice(5, 7)}` : null}
           presupuesto={estructura.presupuesto ? { rotulo: estructura.presupuesto.rotulo, nPartidas: estructura.presupuesto.partidas.length } : null} />
       )}
