@@ -210,6 +210,26 @@ export function presupuesto(presupuestoS, t0 = Date.now(), ahora = () => Date.no
   return () => fin - ahora()
 }
 
+/** Cuántas lecturas del pre-paso (snapshot y firmas) van a la vez. */
+export const LECTURAS_A_LA_VEZ = 8
+
+/**
+ * `fn` sobre cada elemento, con a lo sumo `n` en vuelo; el resultado respeta el orden de `items`.
+ * Un `fn` que lanza deja su lugar en `undefined` y no frena a los demás (el pre-paso nunca frena).
+ */
+export async function enParalelo(items, n, fn) {
+  const out = new Array(items.length)
+  let i = 0
+  const obrero = async () => {
+    while (i < items.length) {
+      const k = i++
+      try { out[k] = await fn(items[k], k) } catch { out[k] = undefined }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(n, items.length)) }, obrero))
+  return out
+}
+
 /** Lee `--grupo=datos|vistas` (o `--grupo datos`). PURA. */
 export function grupoDeArgs(argv = []) {
   const i = argv.findIndex((a) => a === '--grupo' || a.startsWith('--grupo='))
@@ -472,16 +492,27 @@ async function main() {
         console.log(`  ⚠ no pude listar las pestañas del archivo (${String(e.message).slice(0, 60)}): fotografío sólo las declaradas`)
       }
       let snaps = 0
-      for (const t of aFotografiar) { if (await tomarSnapshot({ google, fileId: ID, pestana: t, tool: 'flujo-caja-rehacer' }).catch(() => null)) snaps++ }
+      // DE A VARIAS A LA VEZ (25/09/2026). Una por una, 22 lecturas se llevaron 18 minutos a las 10:06:
+      // Google tiene ventanas en que TODA lectura del archivo espera 90–150 s (medido: Parámetros 94 s,
+      // Nómina 155 s, sin una sola edición en 40 min) y ventanas en que contesta en 0,7 s. En serie se
+      // pagan las ventanas una detrás de otra; en paralelo se pagan una vez.
+      const fotos = await enParalelo(aFotografiar, LECTURAS_A_LA_VEZ, (t) => tomarSnapshot({ google, fileId: ID, pestana: t, tool: 'flujo-caja-rehacer' }).catch(() => null))
+      snaps = fotos.filter(Boolean).length
       if (snaps) console.log(`🧷 snapshot previo de ${snaps} pestaña(s) — marcha atrás disponible en orq.sheet_snapshots\n`)
     }
 
     let candadas = 0
     let reconciliadas = 0
     const preguntas = []
-    for (const t of tabs) {
+    // Las firmas se LEEN en paralelo (una lectura por pestaña, mismo motivo que el snapshot); lo que
+    // sigue —reconciliar, que puede resellar y descandar— va en serie, pestaña por pestaña.
+    const firmas = await enParalelo(tabs, LECTURAS_A_LA_VEZ, (t) => {
       const ref = /[^A-Za-z0-9_]/.test(t) ? `'${t}'` : t
-      const { editada, noVerificable } = await firmaGuardia(google, ID, t, ref).catch(() => ({ editada: false, noVerificable: true }))
+      return firmaGuardia(google, ID, t, ref).catch(() => ({ editada: false, noVerificable: true }))
+    })
+    for (const [k, t] of tabs.entries()) {
+      const ref = /[^A-Za-z0-9_]/.test(t) ? `'${t}'` : t
+      const { editada, noVerificable } = firmas[k]
       if (noVerificable) { bloqueadas.add(t); candadas++; console.log(`  🔒 "${t}": no pude verificar si la editaste — la dejo bajo tu control (fail-closed).`); continue }
       if (!editada) continue
       // La firma detectó tu edición y auto-candó. Intento entenderla antes de resignarme a congelar.

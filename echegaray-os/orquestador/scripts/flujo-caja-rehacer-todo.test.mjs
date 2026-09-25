@@ -282,3 +282,23 @@ test('encadenado: sólo la corrida de DATOS arranca la de vistas, y no si frenó
   assert.equal(decidirEncadenado({ grupo: 'datos', frenado: null, siguiente: '' }), null, 'una corrida a mano no dispara nada')
   assert.equal(decidirEncadenado({ grupo: null, frenado: null, siguiente: u }), null, 'la corrida completa ya incluye las vistas')
 })
+
+// ═══ EL PRE-PASO EN PARALELO (25/09/2026) ═══
+// 22 lecturas en serie se llevaron 18 min a las 10:06: Google tiene ventanas en que toda lectura espera
+// 90–150 s. En paralelo la ventana se paga una vez. Lo que se afirma: a lo sumo `n` en vuelo, el orden
+// del resultado es el de la entrada y un elemento que falla no voltea a los demás.
+test('enParalelo: respeta el tope, el orden y aísla la falla', async () => {
+  const { enParalelo } = await import('./flujo-caja-rehacer-todo.mjs')
+  let enVuelo = 0
+  let maximo = 0
+  const r = await enParalelo([5, 1, 4, 2, 3, 0], 3, async (x) => {
+    enVuelo++; maximo = Math.max(maximo, enVuelo)
+    await new Promise((res) => setTimeout(res, x * 3))
+    enVuelo--
+    if (x === 2) throw new Error('lectura colgada')
+    return x * 10
+  })
+  assert.equal(maximo, 3)
+  assert.deepEqual(r, [50, 10, 40, undefined, 30, 0])
+  assert.deepEqual(await enParalelo([], 6, async () => 1), [])
+})
