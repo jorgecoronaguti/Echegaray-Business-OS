@@ -57,10 +57,10 @@ test('el aside lleva SÓLO novedades de 88 px y la primaria de 38 px; sin equipo
   assert.equal(/Equipos en la obra hoy|novedad_destino|DESTINOS_NOVEDAD/.test(src), false, 'volvió lo que la 06 no dibuja')
 })
 
-test('la M08 tiene la fecha grande con cuadros de 44, el input de 84×36, la gente de 56 con el cuadro de 64 y la primaria de 48 sobre la barra', () => {
+test('la M08 tiene la fecha grande con cuadros de 44, el input de 106×44 (44 de toque), la gente de 56 con el cuadro de 64 y la primaria de 48 sobre la barra', () => {
   const src = cliente()
   assert.match(src, /width: '44px', height: '44px'/)
-  assert.match(src, /height: '36px', width: '84px'/)
+  assert.match(src, /height: '44px', width: '106px'/) // 106 del diseño a 44 de alto (dueño: 44 de toque en el teléfono)
   assert.match(src, /minHeight: '56px'/)
   assert.match(src, /height: '36px', width: '64px'/)
   assert.match(src, /height: '48px'/)

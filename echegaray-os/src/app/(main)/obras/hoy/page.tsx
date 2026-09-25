@@ -5,9 +5,9 @@ import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/auth
 import { veEconomia } from '@/features/auth/types/areas'
 import { getPerfilPropio } from '@/features/mi-cuenta/services/miCuentaService'
 import { contextoDeObra, hoyEnObra, ZONA_OBRA } from '@/features/jefe/services/contexto'
-import { getActividades, getArbol, getHHDelDia, getImpedimentos, type ObraDelJefe } from '@/features/jefe/services/jefeService'
+import { getActividades, getHHDelDia, getImpedimentos, type ObraDelJefe } from '@/features/jefe/services/jefeService'
 import {
-  estadoDelFrente, frentesAbiertos, frentesDelDia, problemasDelDia, resumenDeFrentes, type FrenteDelDia,
+  problemasDelDia,
 } from '@/features/jefe/services/dia'
 import { agrupar, type Esperado, type FilaPresencia } from '@/features/administracion/services/presencia'
 import { getEsperados, getPresencia } from '@/features/administracion/services/presenciaService'
@@ -17,12 +17,15 @@ import { getMiEfectivo } from '@/features/efectivo/campo/datos'
 import { abiertas, destino, pesos, resumenMiEfectivo } from '@/features/efectivo/campo/logica'
 import { ETAPAS, ETAPA_LABEL, type Etapa } from '@/features/obras/types'
 import {
-  Aviso, BotonEnlace, Franja, Tabla, THead, Th, Tr, Td, TituloPanel, Vacio,
+  Aviso, BotonEnlace, Tabla, THead, Th, Tr, Td, TituloPanel, Vacio,
 } from '@/shared/components/ds'
 import { PageShell } from '@/shared/components/ui'
 import { RefrescarEnVivo } from '@/shared/tiempo-real/ProveedorTiempoReal'
 import { TABLAS_DE } from '@/shared/tiempo-real/pantallas'
 import { nombreDePersona } from '@/shared/personas/nombre'
+import { celdaAvanceCartera } from '@/features/obras/services/carteraCanon'
+import { tareasEnCurso, type TareaEnCurso } from '@/features/jefe/services/tareasEnCurso'
+import { CifraGrande } from '@/features/obras/components/TarjetaResumen'
 
 // HOY · LA PORTADA DE ESCRITORIO DEL JEFE DE OBRA (dueño, 25/09/2026).
 //
@@ -61,11 +64,10 @@ export default async function HoyJefeEscritorioPage({ searchParams }: { searchPa
   const propio = await getPerfilPropio(auth, user.id)
   const personaId = propio.data?.persona_id ?? null
 
-  const [presencia, esperados, actividades, arbol, impedimentos, hh, efectivo] = await Promise.all([
+  const [presencia, esperados, actividades, impedimentos, hh, efectivo] = await Promise.all([
     getPresencia(supabase, hoy),
     getEsperados(supabase),
     obra ? getActividades(supabase, obra.id) : null,
-    obra ? getArbol(supabase, obra.id) : null,
     obra ? getImpedimentos(supabase, obra.id) : null,
     obra ? getHHDelDia(supabase, obra.id, hoy) : null,
     personaId ? getMiEfectivo(auth, personaId) : null,
@@ -78,10 +80,14 @@ export default async function HoyJefeEscritorioPage({ searchParams }: { searchPa
   const asignadosDe = (id: string) => (esperados.data ?? []).filter((e) => e.obra_actual_id === id).length
 
   const grupos = obra ? genteDe(obra.id) : null
-  const frentes = obra
-    ? frentesAbiertos(frentesDelDia(arbol?.data ?? [], actividades?.data ?? [], hh?.data ?? [], hoy))
-    : []
-  const resumen = resumenDeFrentes(frentes)
+  // «FRENTES EN CURSO» SON TAREAS, NO RUBROS NI HISTORIAS (25/09): las que están andando hoy —en curso,
+  // con avance parcial, con horas hoy o con el plan abierto hoy—, con su propio estado y su propio avance.
+  const enCurso = obra ? tareasEnCurso(actividades?.data ?? [], hh?.data ?? [], hoy) : []
+  const resumen = {
+    abiertos: enCurso.length,
+    conParte: enCurso.filter((t) => t.parteHoy).length,
+    parados: enCurso.filter((t) => t.estado.tono === 'neg').length,
+  }
   const problemas = obra
     ? problemasDelDia({
         actividades: actividades?.data ?? [],
@@ -90,11 +96,11 @@ export default async function HoyJefeEscritorioPage({ searchParams }: { searchPa
         hoy,
       })
     : []
-  const primerError = error ?? presencia.error ?? esperados.error ?? actividades?.error ?? arbol?.error
+  const primerError = error ?? presencia.error ?? esperados.error ?? actividades?.error
     ?? impedimentos?.error ?? hh?.error ?? null
 
   return (
-    <PageShell eyebrow="Obras" title="Hoy" subtitle={fechaLarga(hoy)}>
+    <PageShell eyebrow="Obras" title="Hoy" subtitle={fechaLarga(hoy)} fondo="superficie">
       <RefrescarEnVivo tablas={TABLAS_DE.jefe} />
       <div className="flex flex-col gap-8" data-testid="hoy-jefe-escritorio">
         {primerError && <Aviso tono="neg" titulo="No se pudo leer todo" testid="hoy-error">{primerError}</Aviso>}
@@ -133,7 +139,8 @@ export default async function HoyJefeEscritorioPage({ searchParams }: { searchPa
                         </Link>
                       </Td>
                       <Td>{etiquetaEtapa(o)}</Td>
-                      <Td num>{o.avance_pct == null ? <span className="text-faint">sin medir</span> : `${o.avance_pct} %`}</Td>
+                      {/* El avance con la regla y el formato de la cartera: «47%», o «sin avance cargado». */}
+                      <Td num>{celdaAvanceCartera(o).texto ?? <span className="text-faint">sin avance cargado</span>}</Td>
                       <Td num>{asignados === 0 ? <span className="text-faint">sin plantel</span> : `${g.enObra.length} de ${asignados}`}</Td>
                       <Td num><span className={o.restricciones_abiertas > 0 ? 'text-neg' : ''}>{o.restricciones_abiertas}</span></Td>
                       <Td num>{o.fecha_fin_plan ? ddmm(o.fecha_fin_plan) : <span className="text-faint">—</span>}</Td>
@@ -168,34 +175,19 @@ export default async function HoyJefeEscritorioPage({ searchParams }: { searchPa
                 </div>
               </div>
 
-              <Franja
-                testid="cifras-del-dia"
-                metricas={[
-                  {
-                    etiqueta: 'En obra',
-                    valor: asignadosDe(obra.id) === 0 ? '—' : String(grupos?.enObra.length ?? 0),
-                    contexto: asignadosDe(obra.id) === 0 ? 'sin plantel' : `de ${asignadosDe(obra.id)}`,
-                  },
-                  {
-                    etiqueta: 'Partes',
-                    valor: resumen.abiertos === 0 ? '—' : `${resumen.conParte}/${resumen.abiertos}`,
-                    contexto: resumen.abiertos === 0 ? 'sin frentes' : 'frentes con parte hoy',
-                    tono: resumen.abiertos > 0 && resumen.conParte < resumen.abiertos ? 'warn' : undefined,
-                  },
-                  {
-                    etiqueta: 'Parados',
-                    valor: String(resumen.parados),
-                    contexto: resumen.parados === 1 ? 'frente detenido' : 'frentes detenidos',
-                    tono: resumen.parados > 0 ? 'neg' : undefined,
-                  },
-                  {
-                    etiqueta: 'Sin registrar',
-                    valor: String(grupos?.sinRegistrar.length ?? 0),
-                    contexto: 'con asignación y sin marca hoy',
-                    tono: (grupos?.sinRegistrar.length ?? 0) > 0 ? 'warn' : undefined,
-                  },
-                ]}
-              />
+              {/* UNA FILA DE CIFRAS, NO CUATRO TARJETAS (reglas visuales del dueño: «no tarjetas por cada dato»;
+                  la misma forma que las cifras del Resumen 03). */}
+              <div className="grid grid-cols-2 gap-x-10 gap-y-4 md:grid-cols-4" data-testid="cifras-del-dia">
+                <CifraGrande tam={24} rotulo="En obra"
+                  valor={asignadosDe(obra.id) === 0 ? null : <>{grupos?.enObra.length ?? 0}<span className="text-[13px] font-normal tracking-normal text-muted"> de {asignadosDe(obra.id)}</span></>}
+                  falta="sin plantel" />
+                <CifraGrande tam={24} rotulo="Partes" valor={resumen.abiertos === 0 ? null : `${resumen.conParte} de ${resumen.abiertos}`}
+                  falta="sin frentes en curso" bajada="frentes con parte hoy" tono={resumen.abiertos > 0 && resumen.conParte < resumen.abiertos ? 'warn' : 'ink'} />
+                <CifraGrande tam={24} rotulo="Parados" valor={String(resumen.parados)}
+                  bajada={resumen.parados === 1 ? 'frente detenido' : 'frentes detenidos'} tono={resumen.parados > 0 ? 'neg' : 'ink'} />
+                <CifraGrande tam={24} rotulo="Sin registrar" valor={String(grupos?.sinRegistrar.length ?? 0)}
+                  bajada="con asignación y sin marca hoy" tono={(grupos?.sinRegistrar.length ?? 0) > 0 ? 'warn' : 'ink'} />
+              </div>
 
               {problemas.length > 0 && (
                 <div className="flex flex-col gap-2">
@@ -230,20 +222,20 @@ export default async function HoyJefeEscritorioPage({ searchParams }: { searchPa
 
               <div className="flex flex-col gap-2">
                 <div className="flex items-baseline gap-3">
-                  <TituloPanel>Frentes de hoy</TituloPanel>
-                  <span className="font-mono text-[12px] text-faint">{frentes.length}</span>
+                  <TituloPanel>Frentes en curso</TituloPanel>
+                  <span className="font-mono text-[12px] text-faint">{enCurso.length}</span>
                 </div>
-                {frentes.length === 0 ? (
-                  <Vacio accion={<Link href={`/obras/${encodeURIComponent(obra.id)}?vista=tareas`} prefetch={false} className="text-ink underline">Planificar en Trabajo</Link>}>
-                    Ningún frente con trabajo abierto.
+                {enCurso.length === 0 ? (
+                  <Vacio accion={<Link href={`/obras/${encodeURIComponent(obra.id)}?vista=tareas`} prefetch={false} className="text-ink underline">Ver las tareas</Link>}>
+                    Ninguna tarea en curso hoy.
                   </Vacio>
                 ) : (
                   <Tabla testid="frentes-de-hoy" minWidth={640}>
                     <THead>
-                      <Th>Frente</Th><Th>Estado</Th><Th num>Con horas hoy</Th><Th num>HH hoy</Th><Th>Parte</Th><Th num>Avance</Th>
+                      <Th>Tarea</Th><Th>Estado</Th><Th num>Con horas hoy</Th><Th num>HH hoy</Th><Th>Parte</Th><Th num>Avance</Th>
                     </THead>
                     <tbody>
-                      {frentes.map((f) => <FilaFrente key={f.frente.id} f={f} obraId={obra.id} />)}
+                      {enCurso.map((t) => <FilaTarea key={t.id} t={t} obraId={obra.id} />)}
                     </tbody>
                   </Tabla>
                 )}
@@ -297,22 +289,25 @@ function EnlaceColumna({ href, children }: { href: string; children: React.React
 const TONO_FRENTE = { neg: 'bg-neg', warn: 'bg-warn', ink: 'bg-ink', faint: 'bg-line-strong' } as const
 const TEXTO_FRENTE = { neg: 'text-neg', warn: 'text-warn', ink: 'text-ink', faint: 'text-muted' } as const
 
-function FilaFrente({ f, obraId }: { f: FrenteDelDia; obraId: string }) {
-  const e = estadoDelFrente(f)
+/** Una tarea en curso: nombre (con la historia detrás, en tenue), estado en una palabra con su color
+ *  semántico —rojo parada, ámbar atrasada, nada más—, las horas de hoy, el parte y su propio avance. La
+ *  cuadrilla va como dato en tenue, no como alarma: «sin cuadrilla» en ámbar en cada fila no alertaba nada. */
+function FilaTarea({ t, obraId }: { t: TareaEnCurso; obraId: string }) {
   return (
     <Tr compacta data-testid="frente">
       <Td fuerte>
-        <Link href={`/obras/${encodeURIComponent(obraId)}?vista=tareas`} prefetch={false} className="block max-w-[320px] truncate hover:underline">{f.frente.nombre}</Link>
+        <Link href={`/obras/${encodeURIComponent(obraId)}?vista=tareas&sub=arbol&act=${encodeURIComponent(t.id)}`} prefetch={false} className="block max-w-[340px] truncate hover:underline">{t.nombre}</Link>
+        <span className="block text-[11.5px] font-normal text-faint">{t.cuadrilla ?? 'sin cuadrilla'}</span>
       </Td>
       <Td>
-        <span className={`inline-flex items-center gap-1.5 ${TEXTO_FRENTE[e.tono]}`}>
-          <span className={`inline-block h-[7px] w-[7px] rounded-full ${TONO_FRENTE[e.tono]}`} />{e.palabra}
+        <span className={`inline-flex items-center gap-1.5 ${TEXTO_FRENTE[t.estado.tono]}`}>
+          <span className={`inline-block h-[7px] w-[7px] rounded-full ${TONO_FRENTE[t.estado.tono]}`} />{t.estado.palabra}
         </span>
       </Td>
-      <Td num>{f.personasHoy}</Td>
-      <Td num>{f.hhHoy.toLocaleString('es-AR')}</Td>
-      <Td>{f.parteHoy ? <span className="text-pos">cargado</span> : <span className="text-warn">sin parte</span>}</Td>
-      <Td num>{f.pct == null ? <span className="text-faint">sin medir</span> : `${Math.round(f.pct)} %`}</Td>
+      <Td num>{t.personasHoy}</Td>
+      <Td num>{t.hhHoy.toLocaleString('es-AR', { maximumFractionDigits: 1 })}</Td>
+      <Td>{t.parteHoy ? <span className="text-pos">cargado</span> : <span className="text-faint">sin parte</span>}</Td>
+      <Td num>{t.pct == null ? <span className="text-faint">sin medir</span> : `${Math.round(t.pct)}%`}</Td>
     </Tr>
   )
 }

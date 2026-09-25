@@ -43,6 +43,7 @@ export function PageShell({
   children,
   maxWidth = LECTURA.completo,
   encabezado = true,
+  fondo = 'lienzo',
 }: {
   eyebrow?: ReactNode
   title: ReactNode
@@ -60,9 +61,11 @@ export function PageShell({
    * que elegir entre dos `h1` con el mismo nombre o perder el sello.
    */
   encabezado?: boolean
+  /** `superficie` = blanco, como las fichas del ERP Obras (portada del jefe, 25/09). Por defecto, el lienzo. */
+  fondo?: 'lienzo' | 'superficie'
 }) {
   return (
-    <div className="min-h-screen bg-canvas">
+    <div className={`min-h-screen ${fondo === 'superficie' ? 'bg-surface' : 'bg-canvas'}`}>
       {/* LA HORA DEL ÚLTIMO DATO BUENO se sella acá y en ningún otro lado. Si la página lanza, este
           marco no llega a dibujarse y el sello conserva la hora de la última vez que hubo datos —que
           es lo que el `error.tsx` muestra. Ver `shared/components/estado/SelloDatoBueno.tsx`. */}

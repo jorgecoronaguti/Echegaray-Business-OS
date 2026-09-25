@@ -123,8 +123,13 @@ export function ParteDiarioCliente({ obraId, actividades, partes, asignaciones, 
   // El formulario se remonta por día (`key`): lo tipeado para el lunes no se arrastra al martes.
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }} data-testid="parte-diario">
-      <SubNavTrabajo obraId={obraId} sub="parte" derecha={<NavFecha dia={dia} hoy={hoy} cambiar={setDia} />}
-        alFinal={!telefono && dictaAca ? <BotonDictar d={dictado} telefono={false} /> : undefined} />
+      {/* 06: el navegador de día va A LA DERECHA de la banda, como el diseño; «Dictar parte» (aprobado por el
+          dueño) queda a su lado, al final. */}
+      <SubNavTrabajo obraId={obraId} sub="parte"
+        alFinal={<>
+          <NavFecha dia={dia} hoy={hoy} cambiar={setDia} />
+          {!telefono && dictaAca && <span style={{ marginLeft: '12px', display: 'inline-flex' }}><BotonDictar d={dictado} telefono={false} /></span>}
+        </>} />
       {fallas.length > 0 && (
         <div data-testid="parte-lectura-fallida" style={{ padding: '10px 30px 0', fontSize: '12.5px', color: C.neg }}>
           No se pudo leer parte del parte: {fallas.join(' · ')}
@@ -260,16 +265,18 @@ function Formulario({ dia, hoy, cambiarDia, telefono, renglones, chips, cargado,
                   {bloq
                     ? <span style={{ fontSize: '12px', color: C.tenue, fontStyle: 'italic' }}>no se registra</span>
                     : (
-                      <div style={{
-                        height: '36px', width: '84px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+                      // M08: la caja de 106 del diseño, a 44 de alto (dueño: 44 de toque en el teléfono); toda la caja es
+                      // el campo —el input ocupa el alto entero— y la letra de 16 evita que iOS agrande la página.
+                      <label style={{
+                        height: '44px', width: '106px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
                         padding: '0 10px', border: `1px solid ${C.bordeFuerte}`, borderRadius: '6px', fontFamily: MONO, fontSize: '13px',
-                        boxSizing: 'border-box',
+                        boxSizing: 'border-box', cursor: 'text',
                       }}>
                         <input name={`produccion_${r.id}`} type="text" inputMode="decimal" data-testid={`parte-produccion-${r.id}`}
                           defaultValue={cargado.get(r.id)?.produccion ?? ''} aria-label={`Producción hoy en ${r.nombre}`}
-                          style={{ width: '100%', minWidth: 0, border: 'none', outline: 'none', background: 'transparent', font: 'inherit', textAlign: 'right', padding: 0 }} />
+                          style={{ width: '100%', minWidth: 0, alignSelf: 'stretch', border: 'none', outline: 'none', background: 'transparent', font: 'inherit', fontSize: '16px', textAlign: 'right', padding: 0 }} />
                         <span style={{ color: C.tenue, marginLeft: '4px', flexShrink: 0 }}>{unidadDelInput(r)}</span>
-                      </div>
+                      </label>
                       )}
                 </div>
               </div>
