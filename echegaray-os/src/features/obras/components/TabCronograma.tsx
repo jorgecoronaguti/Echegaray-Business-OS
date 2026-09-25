@@ -304,7 +304,9 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
             <div ref={scrollRef} style={{ overflowX: 'auto', margin: '0 -16px', padding: '0 16px' }} data-testid="cronograma-telefono-scroll">
             <div style={{ position: 'relative', minWidth: `${120 + ventana.columnas.length * (escala === 'semana' ? 40 : 56)}px` }}>
               <div style={{ display: 'grid', gridTemplateColumns: '112px 1fr', gap: '8px', height: '26px', alignItems: 'center', borderBottom: `1px solid ${C.borde}` }}>
-                <div style={{ position: 'sticky', left: 0, background: C.superficie, height: '100%', zIndex: 1 }} />
+                {/* El relleno de 16 del lienzo queda a la izquierda de lo fijo: la sombra blanca lo tapa para que lo
+                    que se corre de costado no asome detrás de los nombres. */}
+                <div style={{ position: 'sticky', left: 0, background: C.superficie, height: '100%', zIndex: 1, boxShadow: `-16px 0 0 ${C.superficie}` }} />
                 <div style={{ display: 'grid', gridTemplateColumns: `repeat(${ventana.columnas.length},1fr)`, fontFamily: MONO, fontSize: '10px', color: C.tenue }}>
                   {ventana.columnas.map((c) => <span key={c.iso}>{escala === 'semana' ? c.iso.slice(8, 10) : c.rotulo}</span>)}
                 </div>
@@ -318,7 +320,7 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
                     display: 'grid', gridTemplateColumns: '112px 1fr', gap: '8px', height: '44px', alignItems: 'center',
                     borderBottom: i === actos.length - 1 ? 'none' : `1px solid ${C.borde}`,
                   }}>
-                    <div style={{ fontSize: '12.5px', position: 'sticky', left: 0, background: C.superficie, zIndex: 1, alignSelf: 'stretch', display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                    <div style={{ fontSize: '12.5px', position: 'sticky', left: 0, background: C.superficie, zIndex: 1, alignSelf: 'stretch', display: 'flex', alignItems: 'center', minWidth: 0, boxShadow: `-16px 0 0 ${C.superficie}` }}>
                       {/* M07 «Relleno y compact.»: el nombre se corta con puntos suspensivos (en un contenedor flex el
                           text-overflow no aplica al texto suelto; va en su propio bloque). */}
                       <span style={{ display: 'block', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.nombre}</span>
