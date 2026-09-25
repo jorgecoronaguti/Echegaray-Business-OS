@@ -20,6 +20,8 @@ import { enlaceDeIngreso as enlaceDeIngresoPortal, hashDeToken, nuevoToken } fro
 // cliente reciba dos textos distintos según quién apretó el botón.
 import { habilitacionPortal } from '../../../../orquestador/comunicacion/portal/plantillas.mjs'
 import type { ResultadoAccion } from '@/shared/components/ui/FormAccion'
+import { textoEnCola } from './mailCola.ts'
+import { laCuentaQueEnviaAnda } from './mailColaService.ts'
 import type { EntradaAcceso, EntradaAltaAcceso } from './entradasCobranza'
 
 const habilitarSchema = z.object({
@@ -98,7 +100,10 @@ export async function habilitarAcceso(entrada: EntradaAltaAcceso): Promise<Resul
   }
 
   revalidatePath('/clientes')
-  return { ok: true, id: data.id }
+  // ENCOLAR NO ES ENVIAR (25/09/2026). La pantalla decía «recibe un mail» y ningún mail había salido.
+  if (!v.avisarPorMail) return { ok: true, id: data.id, mensaje: 'Habilitado, sin mail: el enlace se lo pasás vos.' }
+  const anda = await laCuentaQueEnviaAnda(supabase)
+  return { ok: true, id: data.id, mensaje: `Habilitado. El mail ${textoEnCola(anda)}.` }
 }
 
 const idSchema = z.object({ accesoId: z.string().uuid() })
@@ -157,7 +162,8 @@ export async function reenviarInvitacion(entrada: EntradaAcceso): Promise<Result
   if (!r.ok) return { ok: false, error: r.error }
 
   revalidatePath('/clientes')
-  return { ok: true }
+  const anda = await laCuentaQueEnviaAnda(supabase)
+  return { ok: true, mensaje: `El mail de acceso ${textoEnCola(anda)}.` }
 }
 
 type DatosInvitacion = {

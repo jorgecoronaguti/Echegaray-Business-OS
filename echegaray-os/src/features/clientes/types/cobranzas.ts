@@ -34,6 +34,8 @@
 // es una llamada que se hace o no se hace. Los que acá son `number` a secas lo son porque la vista
 // los envuelve en `coalesce(...,0)`: ahí el cero SÍ es una afirmación.
 
+import type { MailCola } from '../services/mailCola.ts'
+
 /**
  * Una fila de `public.cliente_cuenta_corriente`. Los nombres son los de la vista, uno a uno.
  *
@@ -201,6 +203,8 @@ export interface EsquemaCliente {
    *  «falta asignar $X» no se puede afirmar porque no se sabe contra qué. */
   contrato_total: number | null
   pagos: PagoEsquema[]
+  /** Los mails de la última publicación, leídos de `mail_saliente`. `null` = no se pudieron leer. */
+  aviso_mail?: MailCola[] | null
 }
 
 /** El estado de la cola, que vuelve a la pantalla 28/32 para que se vea qué pasó con el pedido. */
@@ -237,7 +241,10 @@ export interface AccesoPortal {
   /** Los nombres de esas obras, resueltos por join. `null` cuando `obras` es `null`. */
   obras_nombres: string[] | null
   habilitado_at: string | null
+  /** OJO: la escribe el ENCOLADO, no el envío. Lo que pasó con el mail está en `ultimo_mail`. */
   invitacion_enviada_at: string | null
+  /** El último mail de habilitación a este destinatario, de `mail_saliente`. `null` = ninguno o no se leyó. */
+  ultimo_mail?: MailCola | null
   primer_ingreso_at: string | null
   ultimo_ingreso_at: string | null
   /** «iPhone · Córdoba». Texto ya armado por la lectura. */

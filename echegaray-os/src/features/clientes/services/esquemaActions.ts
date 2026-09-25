@@ -10,6 +10,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esquemaPublicado } from '../../../../orquestador/comunicacion/portal/plantillas.mjs'
 import type { ResultadoAccion } from '@/shared/components/ui/FormAccion'
+import { textoEnCola } from './mailCola.ts'
+import { laCuentaQueEnviaAnda } from './mailColaService.ts'
 import type { PagoEsquema } from '../types'
 import { proximoVencimiento } from './esquemaService'
 import { nuevaReprogramacion } from './reglasEsquema'
@@ -129,7 +131,13 @@ export async function publicarEsquema(entrada: EntradaPublicacion): Promise<Resu
   revalidatePath('/portal')
   // El esquema QUEDÓ publicado aunque el mail no salga: son dos hechos y se informan por separado.
   if (!aviso.ok) return { ok: false, error: `El esquema quedó publicado, pero no pude encolar el aviso: ${aviso.error}` }
-  return { ok: true }
+  // ENCOLAR NO ES ENVIAR (25/09/2026): se dice cuántos mails quedaron en cola y cuándo salen.
+  if (aviso.encolados === 0) {
+    return { ok: true, mensaje: 'Publicado: el cliente ya lo ve en el portal. Sin aviso por mail: no tiene accesos habilitados.' }
+  }
+  const anda = await laCuentaQueEnviaAnda(supabase)
+  const cuantos = aviso.encolados === 1 ? 'El aviso por mail' : `Los ${aviso.encolados} avisos por mail`
+  return { ok: true, mensaje: `Publicado: el cliente ya lo ve en el portal. ${cuantos} ${textoEnCola(anda, aviso.encolados > 1)}.` }
 }
 
 type DatosPublicacion = {
@@ -139,7 +147,7 @@ type DatosPublicacion = {
 async function encolarAvisoPublicacion(
   supabase: Awaited<ReturnType<typeof createClient>>,
   d: DatosPublicacion,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; encolados: number } | { ok: false; error: string }> {
   const { data: cliente } = await supabase
     .from('clientes').select('nombre_comercial').eq('id', d.clienteId).maybeSingle()
 
@@ -153,7 +161,7 @@ async function encolarAvisoPublicacion(
   if (!accesos?.length) {
     // No es un fallo del publicado: el esquema está publicado y lo verá quien entre. Simplemente
     // todavía no hay a quién escribirle.
-    return { ok: true }
+    return { ok: true, encolados: 0 }
   }
 
   const proximo = proximoVencimiento(d.visibles)
@@ -183,7 +191,7 @@ async function encolarAvisoPublicacion(
       return { ok: false, error: error.message }
     }
   }
-  return { ok: true }
+  return { ok: true, encolados: accesos.length }
 }
 
 /**

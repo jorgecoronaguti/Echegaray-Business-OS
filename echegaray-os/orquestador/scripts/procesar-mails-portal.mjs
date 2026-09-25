@@ -20,7 +20,9 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { accessTokenFor } from '../lib/google-oauth.mjs'
-import { procesarCola, contarCola, desdeDelEntorno, REMITENTE } from '../comunicacion/portal/cola-mails.mjs'
+import {
+  procesarCola, contarCola, desdeDelEntorno, marcarSinCuenta, REMITENTE,
+} from '../comunicacion/portal/cola-mails.mjs'
 
 async function main() {
   const desde = desdeDelEntorno()
@@ -38,6 +40,8 @@ async function main() {
 
   const token = await accessTokenFor(REMITENTE)
   if (!token) {
+    // La ficha del cliente lo lee de la fila: «sale cuando esté conectada la cuenta que envía».
+    await marcarSinCuenta(port, { desde })
     console.error(`cola de mails: ${nuevos} esperan y NO se mandó ninguno — ${REMITENTE} no tiene su Google `
       + 'conectado (orq.google_tokens) o el token no refresca. Los mails siguen pendientes, sin gastar intentos.')
     process.exitCode = 1

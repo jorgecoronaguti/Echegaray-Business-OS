@@ -151,7 +151,7 @@ export function AccesosPortal({
         <TablaAccesos
           accesos={accesos} totalObras={obras.length} hoy={hoy} elegido={editando}
           onEditar={setEditando}
-          onReenviar={(id) => correr(() => reenviarInvitacion({ accesoId: id }), 'Invitación reenviada.')}
+          onReenviar={(id) => correr(() => reenviarInvitacion({ accesoId: id }), 'El mail de acceso quedó en cola: en la fila se ve si salió.')}
           onRevocar={(id) => correr(() => revocarAcceso({ accesoId: id }), 'Acceso revocado: ese mail ya no entra.')}
           onEnlace={(id) => { void copiarEnlace(id) }}
         />

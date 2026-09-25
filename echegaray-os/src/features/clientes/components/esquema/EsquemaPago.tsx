@@ -30,6 +30,7 @@ import { ListadoEsquema } from './ListadoEsquema'
 import { PanelPago } from './PanelPago'
 import { montoM } from '../../services/cobranzaFormato'
 import { totalEsquema } from '../../services/reglasEsquema'
+import { resumenAviso } from '../../services/mailCola'
 import type { CambioPago } from '../../services/entradasCobranza'
 import type { EsquemaCliente, PagoEsquema } from '../../types/cobranzas'
 
@@ -133,6 +134,8 @@ export function EsquemaPago({ esquema, hoy, clienteId, editarPago, publicarEsque
 
   const pago = pagos.find((x) => x.id === elegido) ?? null
   const total = totalEsquema(pagos)
+  // QUÉ PASÓ CON EL AVISO DE LA ÚLTIMA PUBLICACIÓN, de `mail_saliente` (25/09/2026): encolar no es enviar.
+  const avisoMail = resumenAviso(esquema?.aviso_mail ?? [])
   const sinFecha = pagos.filter((p) => !p.fecha)
 
   // SIN MARGEN NEGATIVO Y CON EL GUTTER DE LA FICHA (20px): el marco de la ficha del cliente no
@@ -193,6 +196,19 @@ export function EsquemaPago({ esquema, hoy, clienteId, editarPago, publicarEsque
             >
               <Ico d={error ? P.alerta : P.info} s={14} w={2} />
               {error ?? aviso}
+            </div>
+          )}
+          {avisoMail && (
+            <div
+              data-testid="esquema-mail"
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: '8px', paddingBottom: '11px',
+                fontSize: '11.5px', lineHeight: 1.45,
+                color: avisoMail.tono === 'pos' ? C.pos : avisoMail.tono === 'neg' ? C.neg : C.warn,
+              }}
+            >
+              <Ico d={P.mail} s={14} w={2} />
+              {avisoMail.texto}
             </div>
           )}
 

@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/obras/types'
 import type { AccesoPortal, ActividadPortal } from '../types'
 import { nombresDeObra } from './nombresDeObra.ts'
+import { ultimosMailsDeAcceso } from './mailColaService.ts'
 
 const COLUMNAS =
   'id, cliente_id, email, persona_contacto, puede_ver_obra, puede_ver_montos, puede_aprobar, obras,'
@@ -32,13 +33,16 @@ export async function getAccesos(
   const filas = (data ?? []) as unknown as Record<string, unknown>[]
   // `obras` es `null` = TODAS: no hay ids que resolver y `obras_nombres` queda `null` también.
   // Aplanar las dos cosas a `[]` haría que «entra a todas» y «no entra a ninguna» se vean igual.
-  const nombres = await nombresDeObra(
-    supabase, filas.flatMap((f) => ((f.obras as string[] | null) ?? [])),
-  )
+  // El mail de cada acceso sale de la cola, no de `invitacion_enviada_at` (que marca el encolado).
+  const [nombres, mails] = await Promise.all([
+    nombresDeObra(supabase, filas.flatMap((f) => ((f.obras as string[] | null) ?? []))),
+    ultimosMailsDeAcceso(supabase, clienteId),
+  ])
   return {
     data: filas.map((f) => ({
       ...f,
       obras_nombres: (f.obras as string[] | null)?.map((id) => nombres.get(id) ?? id) ?? null,
+      ultimo_mail: mails?.get(String(f.email)) ?? null,
     })) as unknown as AccesoPortal[],
     error: null,
   }

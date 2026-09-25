@@ -5,6 +5,7 @@ import type { ServiceResult } from '@/features/obras/types'
 import type { EsquemaCliente, PagoEsquema } from '../types'
 import { nombresDeObra } from './nombresDeObra.ts'
 import { getEconomiaDeCliente } from './economiaCliente.ts'
+import { mailsDeLaUltimaPublicacionDe } from './mailColaService.ts'
 
 const COLUMNAS =
   'id, cliente_id, obra_id, cobranza_fila, concepto, fecha, monto, moneda, factura_numero,'
@@ -80,11 +81,13 @@ export async function getEsquemaCliente(
   supabase: SupabaseClient,
   clienteId: string,
 ): Promise<ServiceResult<EsquemaCliente>> {
-  const [pagos, economia] = await Promise.all([
+  const [pagos, economia, avisoMail] = await Promise.all([
     getEsquema(supabase, clienteId),
     // `null` = no se pudo leer, o el rol no ve economía. No es «no tiene contrato»: por eso el
     // contrato viaja en null y la pantalla no afirma ninguna sobreasignación.
     getEconomiaDeCliente(supabase, clienteId),
+    // Qué pasó con el aviso de la última publicación: de `mail_saliente`, no del botón.
+    mailsDeLaUltimaPublicacionDe(supabase, clienteId),
   ])
   if (pagos.error !== null) return { data: null, error: pagos.error }
   return {
@@ -92,6 +95,7 @@ export async function getEsquemaCliente(
       cliente_id: clienteId,
       contrato_total: economia?.contratado_en_curso ?? null,
       pagos: pagos.data,
+      aviso_mail: avisoMail,
     },
     error: null,
   }

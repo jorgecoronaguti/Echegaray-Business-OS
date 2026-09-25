@@ -26,6 +26,7 @@ import { Ico, P } from '../canon/Iconos'
 import { TituloBloque, Vacio } from '../canon/Piezas'
 import { momentoCorto } from '../../services/cobranzaFormato'
 import { estaHabilitado, textoDeObras } from '../../services/reglasPortal'
+import { lecturaDelMail } from '../../services/mailCola'
 import type { AccesoPortal } from '../../types/cobranzas'
 
 // 230+150+120+140+150+28 + 5×28 = 958px de pistas, más los 16 de sangría de la fila = 974 útiles.
@@ -181,6 +182,22 @@ export function TablaAccesos({ accesos, totalObras, hoy, elegido, onEditar, onRe
                   fontSize: '11.5px', color: a.persona_contacto ? C.tenue : C.warn,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>{a.persona_contacto ?? 'sin contacto vinculado'}</span>
+                {/* QUÉ PASÓ CON SU MAIL, DE `mail_saliente` (25/09/2026). Encolar no es enviar: la
+                    pantalla afirmaba «reenviada» sin que ningún mail hubiera salido. */}
+                {a.ultimo_mail && (() => {
+                  const l = lecturaDelMail(a.ultimo_mail)
+                  return (
+                    // SE PARTE EN RENGLONES, NO SE CORTA: el motivo («falta conectar la cuenta que
+                    // envía», «el acceso se revocó…») es justamente lo que hay que leer.
+                    <span
+                      data-testid={`mail-acceso-${a.id}`}
+                      style={{
+                        fontSize: '11.5px', lineHeight: 1.35, overflowWrap: 'anywhere',
+                        color: l.tono === 'pos' ? C.pos : l.tono === 'neg' ? C.neg : C.warn,
+                      }}
+                    >{l.texto}</span>
+                  )
+                })()}
               </div>
 
               {/* «Ninguna» es alcance CERO: el mail entra y no ve nada. Bloquea, y va en ámbar. */}

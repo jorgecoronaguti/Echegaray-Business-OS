@@ -253,7 +253,8 @@ export function PanelAgregarMail({ accesos, contactos, obras, edicion, onCerrarE
         </Boton>
         <div style={{ fontSize: '11.5px', color: C.tintaSuave, marginTop: '10px', lineHeight: 1.5 }}>
           {avisar
-            ? 'Recibe un mail con el link al portal. Entra con ese mail, sin contraseña.'
+            // ENCOLAR NO ES ENVIAR (25/09/2026): el mail sale por la cola; si salió o no, lo dice su fila.
+            ? 'Se le encola un mail con el link al portal; en su fila se ve si salió. Entra con ese mail, sin contraseña.'
             : 'Queda habilitado pero no se entera: el link se lo tenés que pasar vos.'}
         </div>
         {resultado?.ok === false && (

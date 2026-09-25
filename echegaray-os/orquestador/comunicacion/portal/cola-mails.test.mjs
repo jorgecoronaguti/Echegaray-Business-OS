@@ -133,3 +133,18 @@ test('contarCola separa lo que le toca al worker de lo retenido', async () => {
   } }
   assert.deepEqual(await contarCola(port, { desde: DESDE }), { nuevos: 1, retenidos: 4 })
 })
+
+test('sin cuenta que envíe: se anota el motivo en la fila, sin tocar estado ni intentos, y sólo desde el corte', async () => {
+  const { marcarSinCuenta, SIN_CUENTA } = await import('./cola-mails.mjs')
+  const vistos = []
+  const port = { async query(sql, params) { vistos.push({ sql, params }); return { rows: [{ id: 'm-1' }] } } }
+  assert.equal(await marcarSinCuenta(port, { desde: DESDE, remitente: 'administracion@ecsas.com.ar' }), 1)
+  const { sql, params } = vistos[0]
+  assert.match(sql, /set error = \$2\s/)
+  const set = sql.slice(sql.indexOf(' set '), sql.indexOf('where'))
+  assert.doesNotMatch(set, /\b(estado|intentos)\s*=/, 'anotar no gasta intentos ni cambia el estado')
+  assert.match(sql, /estado = 'pendiente' and pedido_at >= \$1/)
+  assert.equal(params[0], DESDE)
+  assert.ok(params[1].startsWith(SIN_CUENTA))
+  await assert.rejects(marcarSinCuenta(port, {}), /sin `desde`/)
+})

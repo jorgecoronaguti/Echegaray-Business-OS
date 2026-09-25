@@ -51,6 +51,28 @@ export const LEASE_MIN = Number(process.env.ORQ_MAIL_LEASE_MIN || 10)
 /** El remitente es la casilla de Administración, no una dirección de sistema. */
 export const REMITENTE = process.env.ORQ_PORTAL_REMITENTE || 'administracion@ecsas.com.ar'
 
+/**
+ * SIN CUENTA QUE ENVÍE, SE DICE EN LA FILA (25/09/2026).
+ *
+ * La ficha del cliente lee `mail_saliente` para contarle a quien apretó «Invitar» qué pasó con su
+ * mail. Si la cuenta que envía no está conectada, el worker no toma ninguna fila (tomar y fallar gasta
+ * intentos), pero anota el motivo en `error` —sólo eso: ni estado ni intentos—. Al salir el mail,
+ * `enviarUno` lo limpia. `SIN_CUENTA` es el comienzo que la web reconoce (`mailCola.ts`, atado por prueba).
+ */
+export const SIN_CUENTA = 'no está conectada la cuenta que envía'
+
+export async function marcarSinCuenta(port, { desde, remitente = REMITENTE } = {}) {
+  if (!desde) throw new Error('marcarSinCuenta sin `desde`: no se tocan filas retenidas')
+  const motivo = `${SIN_CUENTA} (${remitente})`
+  const r = await port.query(
+    `update public.mail_saliente set error = $2
+      where estado = 'pendiente' and pedido_at >= $1 and error is distinct from $2
+      returning id`,
+    [desde, motivo],
+  )
+  return r?.rows?.length ?? 0
+}
+
 export async function reciclarColgados(port, { minutos = LEASE_MIN, desde } = {}) {
   if (!desde) throw new Error('reciclarColgados sin `desde`: no se tocan filas retenidas')
   const r = await port.query(
