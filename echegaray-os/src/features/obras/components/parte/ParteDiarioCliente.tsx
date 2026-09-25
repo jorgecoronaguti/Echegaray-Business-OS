@@ -42,7 +42,7 @@ import { C, MONO } from '../canon/tokens'
 import { Ico, P } from '../canon/Ico'
 import { SubNavTrabajo } from '../SubNavTrabajo'
 import { FotosDelParte } from './FotosDelParte'
-import { BotonDictar, DictadosDelDia, ParteDelDia, PantallaDictado, useDictado } from './DictarParte'
+import { BotonDictar, DictadosDelDia, ParteDelDia, PantallaDictado, resumenDelParte, useDictado } from './DictarParte'
 
 const EYEBROW: CSSProperties = {
   fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase',
@@ -144,8 +144,9 @@ export function ParteDiarioCliente({ obraId, actividades, partes, asignaciones, 
           <Formulario
             key={dia} dia={dia} hoy={hoy} cambiarDia={setDia} telefono={telefono}
             renglones={renglones} chips={chips} cargado={cargado} guardar={guardar}
-            dictar={dictaAca ? <BotonDictar d={dictado} telefono /> : null}
-            dictados={dictaAca ? <><ParteDelDia d={dictado} telefono={telefono} /><DictadosDelDia d={dictado} /></> : null}
+            dictar={dictaAca ? <BotonDictar d={dictado} telefono compacto={telefono} /> : null}
+            dictados={dictaAca ? <><ParteDelDia d={dictado} telefono={telefono} compacto={telefono} /><DictadosDelDia d={dictado} /></> : null}
+            resumenGuardado={resumenDelParte(dictado)}
             fotos={<FotosDelParte obraId={obraId} dia={dia} frentes={renglones} usuario={usuario} telefono={telefono} />}
           />
           )}
@@ -176,7 +177,7 @@ function NavFecha({ dia, hoy, cambiar }: { dia: string; hoy: string; cambiar: (d
   )
 }
 
-function Formulario({ dia, hoy, cambiarDia, telefono, renglones, chips, cargado, guardar, fotos, dictar, dictados }: {
+function Formulario({ dia, hoy, cambiarDia, telefono, renglones, chips, cargado, guardar, fotos, dictar, dictados, resumenGuardado = null }: {
   dia: string
   hoy: string
   cambiarDia: (d: string) => void
@@ -190,6 +191,9 @@ function Formulario({ dia, hoy, cambiarDia, telefono, renglones, chips, cargado,
   /** «Dictar parte» (teléfono: el botón amarillo arriba del parte) y lo dictado ese día. `null` = no dicta. */
   dictar: ReactNode
   dictados: ReactNode
+  /** «4 presentes»: el parte guardado de ese día (asistencia, avances, pedidos). `null` = no hay. Es la MISMA
+   *  verdad que muestra el bloque del parte: el navegador no puede decir «sin parte cargado» al lado. */
+  resumenGuardado?: string | null
 }) {
   const [estado, ejecutar, pendiente] = useActionState<ResultadoAccion | null, FormData>(
     (_p, datos) => guardar(datos), null)
@@ -223,22 +227,29 @@ function Formulario({ dia, hoy, cambiarDia, telefono, renglones, chips, cargado,
     return (
       <form onSubmit={enviar} data-testid="form-ejecucion" style={{ padding: '16px 16px 96px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {camposOcultos}
-        {/* Paso 1 de «Dictar parte»: el botón nuevo arriba; todo lo demás sigue igual. */}
-        {dictar}
-        {dictados}
+        {/* M08: EL NAVEGADOR DE DÍA PRIMERO, como el diseño; debajo, «Dictar parte» como acción secundaria y el
+            estado del parte guardado en una fila de botones chicos. La primaria es «Registrar el parte», al pie. */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <button type="button" aria-label="Día anterior" data-testid="dia-anterior" style={cuadro} onClick={() => cambiarDia(correr(dia, -1))}>
             <Ico d={P.izquierda} s={14} />
           </button>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <div data-testid="parte-fecha" style={{ fontSize: '15px', fontWeight: 600 }}>{fechaCortaDia(dia)}</div>
-            <div style={{ fontSize: '12px', color: C.tintaSuave }}>{bajadaDelDia(nConParte)}</div>
+            <div style={{ fontSize: '12px', color: resumenGuardado ? C.pos : C.tintaSuave }} data-testid="parte-bajada">
+              {resumenGuardado ? `parte guardado · ${resumenGuardado}` : bajadaDelDia(nConParte)}
+            </div>
           </div>
           <button type="button" aria-label="Día siguiente" data-testid="dia-siguiente" disabled={dia >= hoy}
             style={{ ...cuadro, color: dia >= hoy ? C.bordeFuerte : C.tintaSuave }} onClick={() => cambiarDia(correr(dia, 1))}>
             <Ico d={P.derecha} s={14} />
           </button>
         </div>
+        {(dictar || dictados) && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }} data-testid="parte-acciones-telefono">
+            {dictar && <div style={{ display: 'flex', justifyContent: 'center' }}>{dictar}</div>}
+            {dictados}
+          </div>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>

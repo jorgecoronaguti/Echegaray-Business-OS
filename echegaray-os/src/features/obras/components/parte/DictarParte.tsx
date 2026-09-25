@@ -239,8 +239,18 @@ export type EstadoDictar = ReturnType<typeof useDictado>
 // ═══════════════════════════════════════════ PIEZAS ══════════════════════════════════════════════
 
 /** El botón amarillo. En el teléfono va de ancho completo arriba del parte; en la PC, en la cabecera. */
-export function BotonDictar({ d, telefono }: { d: EstadoDictar; telefono: boolean }) {
+export function BotonDictar({ d, telefono, compacto = false }: { d: EstadoDictar; telefono: boolean; compacto?: boolean }) {
   const ocupado = d.fase.f !== 'reposo' && d.fase.f !== 'error'
+  // M08: en el teléfono «Dictar parte» es una acción SECUNDARIA compacta debajo del navegador de día; la
+  // primaria de la pantalla es «Registrar el parte», al pie (25/09).
+  if (compacto) {
+    return (
+      <button type="button" onClick={() => void d.empezar()} disabled={ocupado} data-testid="dictar-parte"
+        style={{ ...BOTON, minHeight: '44px', fontSize: '13.5px', fontWeight: 500, padding: '0 14px', opacity: ocupado ? 0.6 : 1 }}>
+        <Mic s={14} />Dictar parte
+      </button>
+    )
+  }
   return (
     <button type="button" onClick={() => void d.empezar()} disabled={ocupado} data-testid="dictar-parte"
       style={{ ...PRIMARIO, width: telefono ? '100%' : undefined, minHeight: telefono ? '48px' : '36px', fontSize: telefono ? '14px' : '13px', opacity: ocupado ? 0.6 : 1 }}>
@@ -960,12 +970,27 @@ function Editado(p: Pantalla & { fase: Extract<Fase, { f: 'editado' }> }) {
  * EL PARTE GUARDADO DEL DÍA, con «Editar», «Dictar corrección» y «Borrar parte» (dueño, 25/09/2026).
  * Borrar pide UNA confirmación que dice exactamente qué se va a sacar.
  */
-export function ParteDelDia({ d, telefono }: { d: EstadoDictar; telefono: boolean }) {
+/** «4 presentes · 2 avances»: lo que tiene el parte guardado del día. `null` = no hay parte ese día. */
+export function resumenDelParte(d: EstadoDictar): string | null {
+  const g = d.parte
+  if (!g || g.vacio) return null
+  const presentes = g.personas.filter((x) => x.estado === 'presente').length
+  const ausentes = g.personas.length - presentes
+  return [
+    presentes ? `${presentes} ${presentes === 1 ? 'presente' : 'presentes'}` : null,
+    ausentes ? `${ausentes} ${ausentes === 1 ? 'ausente' : 'ausentes'}` : null,
+    g.avances.length ? `${g.avances.length} ${g.avances.length === 1 ? 'avance' : 'avances'}` : null,
+    g.materiales.length ? `${g.materiales.length} ${g.materiales.length === 1 ? 'pedido' : 'pedidos'}` : null,
+    g.novedad ? 'novedad' : null,
+  ].filter(Boolean).join(' · ') || 'guardado'
+}
+
+export function ParteDelDia({ d, telefono, compacto = false }: { d: EstadoDictar; telefono: boolean; compacto?: boolean }) {
   const [confirmando, setConfirmando] = useState(false)
   const [borrando, setBorrando] = useState(false)
   const g = d.parte
   const alto = telefono ? '44px' : '36px'
-  const btn: CSSProperties = { ...BOTON, minHeight: alto, fontSize: telefono ? '14px' : '13px', fontWeight: 500, flex: '1 1 auto', padding: '0 10px', whiteSpace: 'nowrap' }
+  const btn: CSSProperties = { ...BOTON, minHeight: alto, fontSize: compacto ? '13px' : telefono ? '14px' : '13px', fontWeight: 500, flex: compacto ? '0 0 auto' : '1 1 auto', padding: '0 10px', whiteSpace: 'nowrap' }
   if (!g || g.vacio) return d.aviso ? <Aviso tono={d.aviso.tono}>{d.aviso.texto}</Aviso> : null
   const presentes = g.personas.filter((x) => x.estado === 'presente').length
   const ausentes = g.personas.length - presentes
@@ -978,10 +1003,10 @@ export function ParteDelDia({ d, telefono }: { d: EstadoDictar; telefono: boolea
   ].filter(Boolean).join(' · ')
   return (
     <div style={{ display: 'grid', gap: '6px' }} data-testid="parte-guardado">
-      <div style={EYEBROW}>Parte guardado</div>
-      <div style={{ ...CAJA, fontSize: telefono ? '14px' : '13px' }}><span>{partes}</span></div>
+      {!compacto && <div style={EYEBROW}>Parte guardado</div>}
+      {!compacto && <div style={{ ...CAJA, fontSize: telefono ? '14px' : '13px' }}><span>{partes}</span></div>}
       {d.aviso && <Aviso tono={d.aviso.tono}>{d.aviso.texto}</Aviso>}
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', ...(compacto ? { justifyContent: 'center' } : {}) }}>
         <button type="button" style={btn} onClick={d.editarAMano} data-testid="parte-editar"><Ico d={P.editar} s={14} />Editar</button>
         <button type="button" style={btn} onClick={() => void d.empezar(true)} data-testid="parte-dictar-correccion"><Mic s={14} />Dictar corrección</button>
         <button type="button" style={{ ...btn, color: C.neg }} onClick={() => setConfirmando(true)} data-testid="parte-borrar"><Ico d={P.previo} s={14} />Borrar</button>
