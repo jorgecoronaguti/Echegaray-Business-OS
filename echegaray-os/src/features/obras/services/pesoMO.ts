@@ -1,3 +1,4 @@
+import { plataMillones } from '../../../shared/utils/format.ts'
 // EL PESO DE CADA ÍTEM, DERIVADO DEL COSTO DE MANO DE OBRA (serie B del diseño ERP Obras, 24/09/2026).
 //
 // «El peso de una historia es su costo de MO sobre el total cargado. El avance de la obra = Σ (% de la
@@ -198,7 +199,7 @@ export function rotuloPesos(n: number): string {
 
 /** «$ 2,65 M» (cabecera). */
 export function rotuloMillones(n: number): string {
-  return `$ ${(n / 1_000_000).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} M`
+  return plataMillones(n)
 }
 
 /** Lo que dicen las columnas Costo MO y Peso de una fila del árbol (B02–B06). */

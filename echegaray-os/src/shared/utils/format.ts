@@ -96,15 +96,17 @@ export const plataCorta = (n: number | null | undefined) => {
 }
 
 /**
- * PLATA EN MILLONES, COMO LA ESCRIBE EL DISEÑO «ERP Obras» (dueño 25/09: «$ 231,00 M», no «$231M»).
- * Siempre en millones con dos decimales, `$ ` con espacio y ` M` separado: `$ 168,70 M`, `$ 0,11 M`.
- * El cero es `$ 0,00` (diseño 12 · «Mano de obra adentro»). `null` sigue siendo `—`: un contratado
- * sin cargar no es un contrato de cero pesos. Es la plata abreviada de Obras; `plataCorta` sigue
- * siendo la del resto del OS.
+ * LA PLATA DE ERP OBRAS, COMO LA ESCRIBE EL DISEÑO (dueño 25/09: «$ 231,00 M», no «$231M»).
+ * Desde $ 100.000, en millones con dos decimales, `$ ` con espacio y ` M` separado: `$ 168,70 M`,
+ * `$ 0,15 M`. Por debajo, pesos enteros: `$ 2.567` — en millones sería «$ 0,00 M», un cero fabricado
+ * (decisión 25/09). El cero es `$ 0,00` (diseño 12 · «Mano de obra adentro»). `null` sigue siendo `—`:
+ * un contratado sin cargar no es un contrato de cero pesos. Es la plata de TODA la app de Obras
+ * (cabecera, Resumen, cierre, Compras, estructura); `plataCorta` sigue siendo la del resto del OS.
  */
 export const plataMillones = (n: number | null | undefined): string => {
   if (n == null || !Number.isFinite(n)) return '—'
   if (n === 0) return '$ 0,00'
+  if (Math.abs(n) < 100_000) return `${n < 0 ? '−' : ''}$ ${Math.round(Math.abs(n)).toLocaleString('es-AR')}`
   const m = n / 1e6
   const txt = Math.abs(m).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   return `${m < 0 ? '−' : ''}$ ${txt} M`

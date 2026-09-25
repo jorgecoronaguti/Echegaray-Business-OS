@@ -103,6 +103,11 @@ test('`money` y `plata` NO son la misma función, y tampoco `pct`/`porcentaje` n
 test('plataMillones: la plata de Obras como el diseño, «$ 231,00 M»', () => {
   assert.equal(plataMillones(231_000_000), '$ 231,00 M')
   assert.equal(plataMillones(110_000), '$ 0,11 M')
+  // El borde (decisión 25/09): debajo de $ 100.000, pesos enteros; nunca «$ 0,00 M».
+  assert.equal(plataMillones(2_567), '$ 2.567')
+  assert.equal(plataMillones(99_999), '$ 99.999')
+  assert.equal(plataMillones(100_000), '$ 0,10 M')
+  assert.equal(plataMillones(150_000), '$ 0,15 M')
   assert.equal(plataMillones(0), '$ 0,00')
   assert.equal(plataMillones(null), '—')
   assert.equal(plataMillones(-6_600_000), '−$ 6,60 M')

@@ -157,10 +157,10 @@ export default async function DotacionObraPage(
       {hhPlan == null && (
         <div className="px-5 pt-3.5">
           <Callout tono="warn">
+            {/* UNA LÍNEA, NO UN PÁRRAFO (reglas visuales del dueño: «no párrafos explicativos permanentes»;
+                el diseño 08b/M11 no dibuja nada acá). El porqué lo dicen los «sin base» de cada fila. */}
             <strong>Ninguna actividad de esta obra tiene HH del análisis cargadas.</strong>{' '}
-            El motor de dotación divide HH por capacidad: sin HH no hay días, no hay fecha de fin y
-            no hay dotación necesaria. Por eso los campos dicen <em>sin dato</em> y no 0 — lo que
-            falta es la carga, no el trabajo. Se carga al convertir el presupuesto en plan de obra.
+            Se cargan al convertir el presupuesto en plan de obra.
           </Callout>
         </div>
       )}

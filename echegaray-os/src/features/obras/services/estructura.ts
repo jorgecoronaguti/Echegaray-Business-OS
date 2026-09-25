@@ -7,6 +7,7 @@
 //
 // Módulo puro (sin `@/`): lo prueba `node --test` al lado. NULL nunca es 0.
 
+import { plataMillones } from '../../../shared/utils/format.ts'
 import type { NodoObra } from './wbs.ts'
 import { diasHabilesEntre } from '../components/items/filasDeItems.ts'
 import { repartirCantidad } from './panelTarea.ts'
@@ -33,7 +34,7 @@ const num = (n: number, dec = 0) => n.toLocaleString('es-AR', { maximumFractionD
 /** «$ 19,29 M» (C01, C10). Sin cifra, `null`: quien dibuja escribe «sin cargar». */
 export function millones(n: number | null): string | null {
   if (n == null) return null
-  return `$ ${(n / 1_000_000).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} M`
+  return plataMillones(n)
 }
 
 /**

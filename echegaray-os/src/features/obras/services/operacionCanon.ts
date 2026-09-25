@@ -5,6 +5,7 @@
 // fila —estado, tono, orden, texto derivado— y el componente sólo lo dibuja. NULL nunca es 0: cada
 // ausencia vuelve como texto («sin cargar», «sin registrar», «sin compra»), nunca como cero ni guion.
 
+import { plataMillones } from '../../../shared/utils/format.ts'
 import { TIPO_RESTRICCION_LABEL, type Restriccion } from '../types/index.ts'
 
 /** Los tonos del canon (`PASTILLA`/`C` de `canon/tokens.ts`). `tinta` = sin color semántico. */
@@ -20,12 +21,8 @@ export const diaMesAnio = (iso: string | null | undefined): string | null =>
 
 /** «$ 168,70 M» — la cifra grande del 12/M15. Siempre en millones con dos decimales; `null` → '—'. */
 export function cifraM(n: number | null | undefined): string {
-  if (n == null) return '—'
-  if (n === 0) return '$ 0,00'
-  // Debajo de $ 100.000 la cifra en millones es «$ 0,01 M» para un clavo y una cuchara: no se lee.
-  // El diseño escribe en M desde $ 0,84 M; lo chico va en pesos enteros.
-  if (Math.abs(n) < 100_000) return `$ ${Math.round(n).toLocaleString('es-AR')}`
-  return `$ ${(n / 1e6).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} M`
+  // UNA SOLA REGLA PARA LA PLATA DE OBRAS (25/09): `plataMillones` — M desde $ 100.000, pesos enteros abajo.
+  return plataMillones(n)
 }
 
 // ═══ IMPEDIMENTOS (09 · M12) ═══
