@@ -41,6 +41,7 @@ import { Tarjeta, CabeceraTarjeta, BarraFina } from './TarjetaResumen'
 import { ListaPreparacion } from './PasosAlta'
 import { getPreparacion } from '../services/preparacionService'
 import { loQueFalta, preparacionDeObra, type LineaPreparacion } from '../services/preparacion'
+import { preparacionDelAlta } from '../services/preparacionAlta'
 
 function Fila({ l }: { l: LineaPreparacion }) {
   return (
@@ -139,7 +140,12 @@ export async function ChecklistPreparacion({
   // líneas son las MISMAS siete de `preparacionDeObra`: el diseño rotula sus filas por paso
   // (Cliente, Fechas, Equipo…) y el OS por lo que se controla (Cronograma, Línea base, Personal…);
   // se conserva la regla, que es una sola para el alta y el Resumen.
-  if (!plegado) return <ListaPreparacion lineas={lineas} pendientes={faltan.length} />
+  // Serie «De cero al final» (02b · M03): la lista del alta va rotulada por PASO y en su orden —Cliente ·
+  // Responsable · Fechas · Contrato · Drive · Equipo · Cronograma—; las reglas son las de arriba.
+  if (!plegado) {
+    const alta = preparacionDelAlta(insumos, lineas, insumos.cliente ?? null)
+    return <ListaPreparacion lineas={alta} pendientes={alta.filter((l) => !l.listo).length} />
+  }
 
   return (
     <details data-testid="preparacion" className="border-t border-line">

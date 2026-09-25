@@ -36,7 +36,7 @@ export async function getPreparacion(
   const [panel, actividades, asignaciones] = await Promise.all([
     supabase
       .from('obra_panel')
-      .select('jefe_obra, monto_contratado, fecha_inicio_plan, fecha_fin_plan, drive_carpeta_id')
+      .select('jefe_obra, monto_contratado, fecha_inicio_plan, fecha_fin_plan, drive_carpeta_id, cliente_nombre, cliente_texto')
       .eq('obra_id', obraId)
       .maybeSingle(),
     supabase
@@ -66,6 +66,7 @@ export async function getPreparacion(
       actividades: (actividades.data ?? []) as unknown as ActividadPreparacion[],
       personasAsignadas: asignaciones.count ?? 0,
       verContrato,
+      cliente: ((o.cliente_nombre as string) || (o.cliente_texto as string)) ?? null,
     },
     error: null,
   }

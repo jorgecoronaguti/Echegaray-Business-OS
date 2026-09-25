@@ -274,7 +274,7 @@ export function PrimariaEnlace({ href, children, testid }: { href: string; child
 
 /** Las filas del «Estado de preparación» del diseño: 40px (44 en el teléfono), tilde verde o «·»,
  *  título de 104px (92), el faltante concreto y el chevron sólo donde hay trabajo. */
-export function ListaPreparacion({ lineas, pendientes }: { lineas: LineaPreparacion[]; pendientes: number }) {
+export function ListaPreparacion({ lineas, pendientes }: { lineas: readonly (Pick<LineaPreparacion, 'titulo' | 'listo' | 'detalle' | 'href'> & { clave: string })[]; pendientes: number }) {
   const telefono = useTelefono()
   const resumen = pendientes === 0 ? 'Preparación completa' : `${pendientes} de ${lineas.length} pendientes`
   return (

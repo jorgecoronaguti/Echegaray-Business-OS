@@ -65,6 +65,8 @@ export interface InsumosPreparacion {
   actividades: ActividadPreparacion[]
   /** Filas de `obra_asignacion` para esta obra. */
   personasAsignadas: number
+  /** El cliente de la obra (02b «Cliente»). No decide ninguna línea del Resumen. */
+  cliente?: string | null
   /**
    * ═══ POR QUÉ LA LÍNEA «CONTRATO» DESAPARECE EN VEZ DE DECIR «PENDIENTE» ═══
    *
