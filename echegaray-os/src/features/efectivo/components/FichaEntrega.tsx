@@ -96,8 +96,8 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
           Compras, y se puede borrar entera.
         </div>
       )}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between" style={{ columnGap: 30 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
+      <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between" style={{ columnGap: 30 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0, flex: '1 1 320px' }}>
           <div style={{
             width: AVATAR, height: AVATAR, borderRadius: '50%', background: '#EFEEEA', color: V.tintaSuave, fontSize: '14px',
             fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
@@ -119,7 +119,9 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
+        {/* Los botones se van a la línea de abajo antes que aplastar el nombre (con un panel abierto la ficha
+            mide la mitad). */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '0 1 auto', flexWrap: 'wrap' }}>
           <Link href={urlEfectivo({ entrega: e.codigo, panel: 'editar' })} prefetch={false} scroll={false} style={botonClaro} data-testid="abrir-editar">
             Editar
           </Link>
@@ -242,7 +244,7 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
             e={e} papelUrl={extra.papelUrl} trazo={extra.trazo} firmas={extra.firmas} fotos={comprobantes.filter((c) => c.storage_path).length}
             destino={nombreDestino} devoluciones={devoluciones}
           />
-          <AvisosDeLaEntrega avisos={edicion.avisos} />
+          <AvisosDeLaEntrega avisos={edicion.avisos} persona={e.persona} />
           {cambios.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 18, borderTop: `1px solid ${V.linea}` }} data-testid="ficha-cambios">
               <div style={{ fontSize: '13.5px', fontWeight: 600 }}>Cambios</div>

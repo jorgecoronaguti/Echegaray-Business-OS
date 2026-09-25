@@ -66,7 +66,7 @@ export function Borrar({ rotulo, detalle, accion, alBorrar, testid }: {
   const [pendiente, empezar] = useTransition()
   if (!abierto) {
     return (
-      <button type="button" onClick={() => setAbierto(true)} style={{ ...botonPeligro, height: 34, padding: 0, textDecoration: 'underline', textUnderlineOffset: 2 }} data-testid={testid}>
+      <button type="button" onClick={() => setAbierto(true)} style={{ ...botonPeligro, height: 34, padding: 0, alignSelf: 'flex-start', textDecoration: 'underline', textUnderlineOffset: 2 }} data-testid={testid}>
         {rotulo}
       </button>
     )
@@ -405,19 +405,24 @@ export function PanelEditarComprobante({ e, comprobante, rendicion, fila, entreg
 
 // ═══ LOS AVISOS ═══════════════════════════════════════════════════════════════════════════════════
 
-export function AvisosDeLaEntrega({ avisos }: { avisos: AvisoDeFicha[] }) {
+/** El aviso como se lee en Mattermost: sin los ** del markdown, con la persona y sin emojis que la fuente no dibuja. */
+function textoLegible(texto: string, persona: string): string {
+  return texto.replaceAll('{persona}', persona).replace(/\*\*/g, '').replace(/\p{Extended_Pictographic}\uFE0F?\s?/gu, '')
+}
+
+export function AvisosDeLaEntrega({ avisos, persona }: { avisos: AvisoDeFicha[]; persona: string }) {
   if (!avisos.length) return null
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 18, borderTop: `1px solid ${V.linea}` }} data-testid="ficha-avisos">
       <div style={{ fontSize: '13.5px', fontWeight: 600 }}>Avisos</div>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {avisos.map((a) => <FilaAviso key={a.id} a={a} />)}
+        {avisos.map((a) => <FilaAviso key={a.id} a={a} persona={persona} />)}
       </div>
     </div>
   )
 }
 
-function FilaAviso({ a }: { a: AvisoDeFicha }) {
+function FilaAviso({ a, persona }: { a: AvisoDeFicha; persona: string }) {
   const router = useRouter()
   const [editando, setEditando] = useState(false)
   const [texto, setTexto] = useState(a.texto)
@@ -449,7 +454,7 @@ function FilaAviso({ a }: { a: AvisoDeFicha }) {
           </div>
         </>
       ) : (
-        <div className="line-clamp-2" style={{ color: V.apagado, whiteSpace: 'pre-line' }}>{a.texto}</div>
+        <div className="line-clamp-2" style={{ color: V.apagado, whiteSpace: 'pre-line' }}>{textoLegible(a.texto, persona)}</div>
       )}
       <Borrar
         rotulo={a.enviado_en ? 'Borrar del registro' : 'Quitar de la cola'} testid="aviso-borrar"
