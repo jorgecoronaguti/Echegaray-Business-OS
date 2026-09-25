@@ -89,9 +89,15 @@ test('Comprobantes-gastos volvió a ser sólo compras: el efectivo vive en su pr
     'una foto en Comprobantes-gastos no la reclama Rendiciones')
   const { readFileSync } = await import('node:fs')
   const canal = readFileSync(new URL('../comunicacion/especialistas/comprobantes.mjs', import.meta.url), 'utf8')
-  // Ni «A rendir», ni entregas, ni vales: ese canal no toca el efectivo.
-  assert.doesNotMatch(canal, /forzar: \{/)
+  // Ni entregas adivinadas ni vales: ese canal no adivina a quién va el efectivo.
   assert.doesNotMatch(canal, /entregasAbiertasDe|atenderVale/)
+  // «A rendir» forzado, UNA sola vez y sólo en el camino del NÚMERO ESCRITO (dueño 24/09/2026: «ER-0020» en
+  // el mensaje imputa a esa entrega). Sin número el mensaje al circuito es el de siempre — lo prueba la
+  // regresión con el post real de las 17:04 (`comprobantes/imputacion-a-entrega.test.mjs`).
+  const forzados = [...canal.matchAll(/forzar: \{/g)]
+  assert.equal(forzados.length, 1, 'el especialista fuerza «A rendir» en más de un lugar')
+  const cargarImputado = canal.indexOf('async function cargarImputado(')
+  assert.ok(cargarImputado > 0 && forzados[0].index > cargarImputado, '«A rendir» forzado fuera del camino del número escrito')
 })
 
 test('CAJA no cuenta dos veces el ticket rendido: «Ya salió» del día y lo pagado del mes', async () => {

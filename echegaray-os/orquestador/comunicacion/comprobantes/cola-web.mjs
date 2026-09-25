@@ -26,6 +26,7 @@ import * as repoReal from './repositorio.mjs'
 import { bajarDeStorage } from '../../lib/storage-supabase.mjs'
 import { ESTADO } from '../../lib/comprobantes/fajo.mjs'
 import {
+  PAUSA_MINUTOS, PREFIJO_PAUSA,
   ENTRADA, MAX_INTENTOS, aplicarReintento, cierreDelFajo, estadoDeEntrada, estadoDeExcepcion,
   repartirVeredicto,
 } from '../../lib/comprobantes/entrada-web.mjs'
@@ -102,14 +103,20 @@ export async function reciclarColgadas(port, { minutos = LEASE_MIN, maxIntentos 
  */
 export async function tomarLote(port) {
   const r = await port.query(
+    // Lo que quedó EN PAUSA (sin crédito de la API, proveedor caído) espera PAUSA_MINUTOS desde la última
+    // vez que se tomó: sin esto `drenarCola` retomaría el mismo lote veinte veces en la misma vuelta.
     `with siguiente as (
        select lote from public.comprobante_entrada
-        where estado = 'pendiente' order by subido_at asc limit 1 for update skip locked
+        where estado = 'pendiente'
+          and not (coalesce(motivo, '') like $1 || '%' and tomado_at > now() - make_interval(mins => $2::int))
+        order by subido_at asc limit 1 for update skip locked
      )
      update public.comprobante_entrada e
         set estado = 'procesando', intentos = e.intentos + 1, tomado_at = now(), motivo = null
       where e.lote = (select lote from siguiente) and e.estado = 'pendiente'
+        and not (coalesce(e.motivo, '') like $1 || '%' and e.tomado_at > now() - make_interval(mins => $2::int))
       returning e.id, e.lote, e.storage_path, e.nombre_archivo, e.media_type, e.subido_por, e.intentos, e.origen`,
+    [PREFIJO_PAUSA, PAUSA_MINUTOS],
   )
   return r?.rows ?? []
 }
@@ -177,10 +184,12 @@ async function guardarFila(port, veredicto, { fajoId = null, resultado = null } 
   await port.query(
     `update public.comprobante_entrada
         set estado = $2, motivo = $3, resultado = $4::jsonb, fajo_id = $5,
-            cerrado_at = case when $2 in ('cargado','ya_estaba','rechazado','error') then now() else null end
+            cerrado_at = case when $2 in ('cargado','ya_estaba','rechazado','error') then now() else null end,
+            -- En pausa el intento no cuenta: la falla es de la API, no del archivo (25/09/2026).
+            intentos = case when $6::boolean then greatest(intentos - 1, 0) else intentos end
       where id = $1`,
     [veredicto.id, veredicto.estado, veredicto.motivo ?? null,
-      resultado ? JSON.stringify(resultado) : null, fajoId],
+      resultado ? JSON.stringify(resultado) : null, fajoId, veredicto.pausa === true],
   )
 }
 

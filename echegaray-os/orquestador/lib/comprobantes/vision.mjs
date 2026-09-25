@@ -28,7 +28,7 @@ import { aNumero } from '../carga-comprobantes.mjs'
 import { identidadDelComprobante } from './aritmetica.mjs'
 import { ivaPlausible, fechaPlausible } from './plausibilidad.mjs'
 import { fechaDeLectura } from './lectura.mjs'
-import { avisarEstado, clasificarRespuesta, registrarUso } from '../ia/cliente.mjs'
+import { avisarEstado, clasificarError, clasificarRespuesta, registrarUso } from '../ia/cliente.mjs'
 import { leerSinModelo } from './sin-modelo.mjs'
 
 /** Modelo de lectura. Barato a propósito: leer un ticket es extracción, no razonamiento. */
@@ -436,6 +436,30 @@ async function motivoDeLaApi(res) {
   } catch { return String(texto ?? '').slice(0, 160) || null }
 }
 
+// ═══ LA LECTURA EN PAUSA NO ES UN COMPROBANTE RECHAZADO (25/09/2026) ═══
+//
+// Ese día la cuenta de la API se quedó sin crédito y dos fotos de la ER-0023 subidas desde la app quedaron
+// RECHAZADAS, como si el papel estuviera mal. Sin crédito, con la credencial rota, con el proveedor caído o
+// con el fusible de gasto cortando, el comprobante no tiene nada que ver: la lectura está EN PAUSA. Cada
+// falla de ese tipo sale con `pausa` (el motivo, en castellano) y los caminos de arriba la dejan en espera
+// —la cola web la reintenta sola; el chat dice que quedó en espera— en vez de declararla ilegible.
+// `client` (un pedido mal armado) NO es pausa: es un defecto nuestro y se ve como error.
+const PAUSA_POR_CLASE = Object.freeze({
+  credit: 'sin crédito de la API',
+  auth: 'la API rechazó la credencial',
+  permission: 'la API rechazó la credencial',
+  rate_limit: 'la API está saturada',
+  server: 'la API no responde',
+  network: 'no hay conexión con la API',
+})
+
+/** El motivo de la pausa para una clase de falla, o `null` si la falla no es una pausa. */
+export function motivoDePausa(kind) {
+  const k = String(kind ?? '')
+  if (k.startsWith('fusible')) return 'lectura en pausa: se alcanzó el tope de gasto de IA'
+  return PAUSA_POR_CLASE[k] ? `lectura en pausa: ${PAUSA_POR_CLASE[k]}` : null
+}
+
 /**
  * Una sola llamada al modelo. Devuelve el JSON crudo o `{error}`; nunca lanza.
  *
@@ -450,7 +474,8 @@ export async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens,
     const { admitir } = await import('../ia/fusible.mjs')
     admitir({ vision: true, doble: (fetchImpl ?? globalThis.fetch) !== globalThis.fetch })
   } catch (corte) {
-    return { error: String(corte?.message ?? 'fusible'), errorKind: corte?.clasificacion?.kind ?? 'fusible' }
+    const kind = corte?.clasificacion?.kind ?? 'fusible'
+    return { ok: false, error: String(corte?.message ?? 'fusible'), errorKind: kind, pausa: motivoDePausa(kind) }
   }
   const pedir = async (pelado) => fetchImpl('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -474,7 +499,7 @@ export async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens,
       if (c.kind === 'credit') {
         await avisarEstado(c)
         await registrarUso({ modelo, usd: null, agente: 'comprobantes', funcion: 'leer', proveedor: 'anthropic', capacidad: 'complex', tokensIn: null, tokensOut: null, ms: Date.now() - t0, ok: false, errorKind: c.kind })
-        return { ok: false, error: `la lectura del comprobante falló (400): ${motivo ?? 'sin saldo'}` }
+        return { ok: false, error: `la lectura del comprobante falló (400): ${motivo ?? 'sin saldo'}`, errorKind: c.kind, pausa: motivoDePausa(c.kind) }
       }
       res = await pedir(true)
     }
@@ -485,7 +510,7 @@ export async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens,
       // silencio y el fajo se quedaba esperando sin que nadie supiera por qué.
       await avisarEstado(c)
       await registrarUso({ modelo, usd: null, agente: 'comprobantes', funcion: 'leer', proveedor: 'anthropic', capacidad: 'complex', tokensIn: null, tokensOut: null, ms: Date.now() - t0, ok: false, errorKind: c.kind })
-      return { ok: false, error: `la lectura del comprobante falló (${res.status})${motivo ? `: ${motivo}` : ''}` }
+      return { ok: false, error: `la lectura del comprobante falló (${res.status})${motivo ? `: ${motivo}` : ''}`, errorKind: c.kind, pausa: motivoDePausa(c.kind) }
     }
     const j = await res.json()
     // LEER UN COMPROBANTE CON `claude-opus-5` NO ERA GRATIS Y NO FIGURABA EN NINGUNA TABLA.
@@ -510,7 +535,9 @@ export async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens,
       return { ok: false, error: j?.stop_reason === 'max_tokens' ? 'la lectura quedó cortada por el límite de tokens' : 'no pude interpretar el comprobante' }
     }
   } catch (e) {
-    return { ok: false, error: `no pude leer el comprobante: ${String(e?.message ?? e).slice(0, 120)}` }
+    // Sin respuesta (la red, un corte a mitad): no es el papel. Lo que no se sabe clasificar sigue siendo error.
+    const c = clasificarError(e)
+    return { ok: false, error: `no pude leer el comprobante: ${String(e?.message ?? e).slice(0, 120)}`, errorKind: c.kind, pausa: motivoDePausa(c.kind) }
   }
 }
 
@@ -567,7 +594,9 @@ export async function leerAdjunto(adjunto, ctx = {}) {
     return { ok: true, crudo: sinModelo.crudo, revision: { hubo: false, motivos: [], via: sinModelo.via } }
   }
 
-  if (!apiKey || typeof fetchImpl !== 'function') return { ok: false, error: 'no hay lectura de comprobantes disponible ahora' }
+  if (!apiKey || typeof fetchImpl !== 'function') {
+    return { ok: false, error: 'no hay lectura de comprobantes disponible ahora', errorKind: 'auth', pausa: 'lectura en pausa: no hay credencial de la API' }
+  }
 
   const imputacion = vocabulario ? bloqueImputacion(vocabulario) : null
   const opciones = { apiKey, fetchImpl, modelo, maxTokens, prompt: imputacion ? `${PROMPT_LECTURA}\n${imputacion}` : PROMPT_LECTURA }

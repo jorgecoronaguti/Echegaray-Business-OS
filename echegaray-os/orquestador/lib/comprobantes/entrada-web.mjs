@@ -34,6 +34,16 @@ export const ENTRADA = Object.freeze({
 /** Cuántas veces se vuelve a intentar un archivo que falló por algo técnico. */
 export const MAX_INTENTOS = 3
 
+// ═══ LECTURA EN PAUSA: SE REINTENTA SOLA, SIN GASTAR INTENTOS (25/09/2026) ═══
+//
+// Sin crédito de la API la cola marcaba RECHAZADAS fotos buenas de la ER-0023. Ahora el archivo vuelve a
+// `pendiente` con este motivo, el intento no cuenta (una caída de horas no lo agota) y `tomarLote` no lo
+// retoma hasta que pasen `PAUSA_MINUTOS` desde la última vez. El motivo es el contrato entre las dos
+// piezas: lo escribe `estadoDeEntrada` y lo mira el SQL de `tomarLote`.
+export const PREFIJO_PAUSA = 'lectura en pausa'
+export const PAUSA_MINUTOS = 10
+const motivoEnPausa = (m) => `${m && String(m).startsWith(PREFIJO_PAUSA) ? m : PREFIJO_PAUSA}, se reintenta sola`
+
 /** Estados en los que el archivo ya no espera nada del worker. */
 const TERMINALES = new Set([ENTRADA.CARGADO, ENTRADA.YA_ESTABA, ENTRADA.RECHAZADO])
 
@@ -112,6 +122,9 @@ export function estadoDeEntrada(salida = {}) {
     if (base.cargados === 0 && base.yaEstaban > 0) return { ...base, estado: ENTRADA.YA_ESTABA }
     return { ...base, estado: ENTRADA.EN_ESPERA, motivo: base.motivo ?? 'falta un dato para poder cargarlo' }
   }
+  if (e === 'en_pausa') {
+    return { ...base, estado: ENTRADA.PENDIENTE, pausa: true, motivo: motivoEnPausa(parte?.pausados?.[0]?.motivo) }
+  }
   if (e === 'ilegible' || e === 'demasiados' || e.startsWith('rechazado_')) {
     return { ...base, estado: ENTRADA.RECHAZADO }
   }
@@ -167,6 +180,8 @@ export function repartirVeredicto(filas = [], veredicto = {}, parte = {}) {
 
   const porNombre = new Map()
   for (const t of parte?.trabados ?? []) porNombre.set(t?.nombre, { estado: ENTRADA.EN_ESPERA, motivo: recorte(t?.motivo) })
+  // La lectura en pausa no es del papel: ese archivo vuelve a la cola aunque sus compañeros hayan entrado.
+  for (const p of parte?.pausados ?? []) porNombre.set(p?.nombre, { estado: ENTRADA.PENDIENTE, pausa: true, motivo: motivoEnPausa(p?.motivo) })
   // Lo ilegible pisa a lo trabado: un archivo que no se pudo mirar no está esperando a nadie.
   for (const i of parte?.ilegibles ?? []) porNombre.set(i?.nombre, { estado: ENTRADA.RECHAZADO, motivo: recorte(i?.motivo) })
 

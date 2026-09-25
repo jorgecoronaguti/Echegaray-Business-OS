@@ -40,6 +40,9 @@ export const PARTE_VACIA = Object.freeze({
   trabados: [],   // {nombre, motivo} — no se pudo cargar y NO se pregunta nada
   reintentando: 0, // leídos y guardados: Google no contestó al cargarlos y el worker lo reintenta solo
   avisos: [],     // texto suelto: lo que rompió y hay que decir sí o sí
+  // {nombre, motivo} — no se leyó porque la LECTURA está en pausa (sin crédito de la API, proveedor caído).
+  // No es el papel: queda en espera (25/09/2026).
+  pausados: [],
   // «Imputado a ER-0020 (@x) · a rendir» (24/09/2026): sólo cuando el mensaje escribió el número de una
   // entrega de efectivo. Sin número queda vacío y el mensaje sale idéntico al de siempre.
   imputaciones: [],
@@ -47,7 +50,7 @@ export const PARTE_VACIA = Object.freeze({
 
 /** Una parte nueva, con las listas propias (nunca las de `PARTE_VACIA`). */
 export function parteVacia() {
-  return { ...PARTE_VACIA, ilegibles: [], sinImputar: [], trabados: [], avisos: [], imputaciones: [] }
+  return { ...PARTE_VACIA, ilegibles: [], sinImputar: [], trabados: [], avisos: [], imputaciones: [], pausados: [] }
 }
 
 /**
@@ -75,6 +78,7 @@ export function sumarPartes(a, b) {
     // un número son dos hallazgos distintos y los dos salen.
     avisos: sinRepetir([...(x.avisos ?? []), ...(y.avisos ?? [])]),
     imputaciones: sinRepetir([...(x.imputaciones ?? []), ...(y.imputaciones ?? [])]),
+    pausados: [...(x.pausados ?? []), ...(y.pausados ?? [])],
   }
 }
 
@@ -109,6 +113,7 @@ export function parteDeRendicion(rendicion = {}, { seCargaron = false } = {}) {
     if (a.destino === 'cargado') p.yaEstaban += 1
     else if (a.destino === 'copia') p.copias += 1
     else if (a.destino === 'ilegible') p.ilegibles.push({ nombre: a.nombre, motivo: a.detalle })
+    else if (a.destino === 'en_pausa') p.pausados.push({ nombre: a.nombre, motivo: a.detalle })
     else if (a.destino === 'sin_rastro') p.avisos.push(`\`${a.nombre}\` entró y no aparece en ningún lado. Mandalo de nuevo.`)
     else if (a.destino === 'pendiente' || a.destino === 'duplicado') p.trabados.push({ nombre: a.nombre, motivo: a.detalle })
     else if (a.destino === 'listo' && !seCargaron) p.trabados.push({ nombre: a.nombre, motivo: 'quedó sin cargar' })
@@ -174,6 +179,9 @@ export function textoTanda(p = {}, { enVuelo = 0 } = {}) {
     // Google al ir a escribir, y eso se reintenta solo. Decir «terminé, no cargué ninguno» era pedirle
     // al dueño que mandara las ocho fotos de nuevo por un 504 que no era suyo.
     l.push(`⏳ **Leí ${a.reintentando === 1 ? 'el comprobante' : `los ${a.reintentando} comprobantes`}, pero Google Sheets no respondió al ir a cargarlos.** Lo reintento solo — no hace falta que los mandes de nuevo. Te aviso acá cuando queden cargados.`)
+  } else if (a.pausados.length > 0 && a.pausados.length + a.yaEstaban + a.copias >= a.recibidos) {
+    // NO ES «NO CARGUÉ NINGUNO» TAMPOCO (25/09/2026): no se leyeron porque la lectura está en pausa.
+    l.push(`⏸ **Quedaron en espera: ${a.pausados[0].motivo}.** No es un problema de los comprobantes y no cargué nada. Cuando vuelva la lectura, mandámelos de nuevo en este hilo.`)
   } else if (a.recibidos > 0) {
     l.push(`✔ **Terminé, pero no cargué ninguno** de los ${a.recibidos} que mandaste.`)
   } else {
@@ -195,6 +203,10 @@ export function textoTanda(p = {}, { enVuelo = 0 } = {}) {
   //    mandar el que falta, y volver a mandar los doce es peor que no avisar.
   if (a.ilegibles.length) {
     l.push(`⚠ ${a.ilegibles.length} no ${plural(a.ilegibles.length, 'lo pude leer', 'los pude leer')}: ${a.ilegibles.map((i) => `\`${i.nombre}\``).join(' · ')}. Mandámelos de nuevo.`)
+  }
+  // 3b) LO QUE QUEDÓ EN ESPERA porque la lectura está en pausa, cuando otros sí entraron.
+  if (a.pausados.length && (a.cargados > 0 || a.reintentando > 0 || a.pausados.length + a.yaEstaban + a.copias < a.recibidos)) {
+    l.push(`⏸ ${a.pausados.length} ${plural(a.pausados.length, 'quedó', 'quedaron')} en espera (${a.pausados[0].motivo}): ${a.pausados.map((i) => `\`${i.nombre}\``).join(' · ')}. No es el comprobante: mandámelos de nuevo cuando vuelva la lectura.`)
   }
   if (a.trabados.length) {
     l.push(`⚠ ${a.trabados.length} no ${plural(a.trabados.length, 'entró', 'entraron')}: ${a.trabados.map((t) => `\`${t.nombre}\` (${t.motivo})`).join(' · ')}.`)

@@ -59,6 +59,9 @@ export const TEXTO = Object.freeze({
     + 'Si son fotos: que se vean enteros el total y el número de comprobante, sin reflejos y sin cortar los bordes. '
     + 'Mandalos de nuevo y lo intento otra vez.',
   DEMASIADOS: `Mandá hasta ${MAX_ADJUNTOS} comprobantes por vez, así los puedo revisar de a uno.`,
+  // LA LECTURA EN PAUSA (25/09/2026): sin crédito de la API, credencial rota, proveedor caído o el tope de
+  // gasto. No es el papel: se dice que quedó en espera, nunca que falló el comprobante.
+  EN_PAUSA: (motivo) => `⏸ **No los leí todavía: ${motivo}.** No es un problema de los comprobantes: quedaron en espera y no cargué nada.`,
 })
 
 /**
@@ -370,7 +373,7 @@ export async function procesarPost(d, m = {}) {
     // Sin esto transcribía "HW DX 2018" y ahí terminaba — nadie sabe que eso es un vehículo si no le
     // dijiste que existe una obra "Vehiculos / Maquinas".
     const r = await leer(a, vocabulario)
-    if (!r?.ok) { problemas.push({ fileId: a.fileId, nombre: a.nombre, error: r?.error ?? 'no pude leerlo' }); continue }
+    if (!r?.ok) { problemas.push({ fileId: a.fileId, nombre: a.nombre, error: r?.error ?? 'no pude leerlo', pausa: r?.pausa ?? null }); continue }
     // El texto del post vale para TODOS sus adjuntos: mandar cinco fotos con un solo "ARCOR" arriba
     // es la forma en que se manda un fajo de una misma obra.
     // `ahora` es el momento en que llegó la foto, y es el reloj contra el que se juzga si la fecha
@@ -399,6 +402,16 @@ export async function procesarPost(d, m = {}) {
   }
   if (!items.length) {
     const rend = rendicionDeAdjuntos({ fileIds, items: [], problemas })
+    // TODO lo que falló, falló por la API y no por el papel: en pausa, no ilegible. La cola web lo
+    // reintenta sola (`estadoDeEntrada`); el chat dice que quedó en espera.
+    const pausa = problemas.length && problemas.every((p) => p.pausa) ? problemas[0].pausa : null
+    if (pausa) {
+      return {
+        texto: [TEXTO.EN_PAUSA(pausa), '', textoRendicion(rend)].join('\n'),
+        estado: 'en_pausa',
+        parte: parteDeRendicion(rend, { seCargaron: false }),
+      }
+    }
     return {
       texto: [TEXTO.NADA_LEGIBLE, '', textoRendicion(rend)].join('\n'),
       estado: 'ilegible',

@@ -167,6 +167,14 @@ export function cierreDeImputacion({ entrega, vinculadas = 0, parte = {}, enEspe
   if (enEspera || (Number(parte?.cargados) || 0) > 0 || (Number(parte?.reintentando) || 0) > 0) {
     return { linea: `Para ${cod} · a rendir: queda imputado en cuanto se termine de cargar${notaYa}`, descartar: false }
   }
+  // LECTURA EN PAUSA (25/09/2026): no se leyó por la API, no por el papel. Se suelta el ticket y se pide de
+  // nuevo con el número, sin culpar al comprobante.
+  if ((parte?.pausados?.length ?? 0) > 0) {
+    return {
+      linea: `No imputé nada a ${cod} todavía: ${parte.pausados[0].motivo}. No es el comprobante: mandalo de nuevo con el número cuando vuelva la lectura.`,
+      descartar: true,
+    }
+  }
   if (ya > 0) {
     return {
       linea: `No imputé nada a ${cod}: ya estaba en Compras. Se imputa desde la ficha de la entrega, con «Imputar un comprobante ya cargado».`,

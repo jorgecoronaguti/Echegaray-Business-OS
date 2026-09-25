@@ -45,6 +45,8 @@ export const DESTINO = Object.freeze({
   DUPLICADO: 'duplicado',
   PENDIENTE: 'pendiente',
   ILEGIBLE: 'ilegible',
+  // La lectura está en pausa (sin crédito de la API, proveedor caído): el papel no tiene nada que ver.
+  EN_PAUSA: 'en_pausa',
   SIN_RASTRO: 'sin_rastro',
 })
 
@@ -75,6 +77,7 @@ export function rendicionDeAdjuntos({ fileIds = [], items = [], problemas = [] }
     const hit = porFile.get(k)
     if (hit) return deItem(k, hit)
     const p = porProblema.get(k)
+    if (p?.pausa) return { fileId: k, nombre: p.nombre ?? k, destino: DESTINO.EN_PAUSA, detalle: p.pausa, sinLectura: true }
     if (p) {
       // NO SE PUDO LEER: no hay ítem, así que no hay con qué nombrarlo. `sinLectura` hace que el
       // renglón lo DIGA («no pude leer ni el importe») en vez de fingir una identificación.
@@ -163,6 +166,7 @@ export function textoRendicion(r, { seCargaron = false } = {}) {
   if (c[DESTINO.DUPLICADO]) partes.push(`${c[DESTINO.DUPLICADO]} posible${c[DESTINO.DUPLICADO] > 1 ? 's' : ''} duplicado${c[DESTINO.DUPLICADO] > 1 ? 's' : ''}`)
   if (c[DESTINO.COPIA]) partes.push(`${c[DESTINO.COPIA]} copia${c[DESTINO.COPIA] > 1 ? 's' : ''} del mismo comprobante`)
   if (c[DESTINO.ILEGIBLE]) partes.push(`${c[DESTINO.ILEGIBLE]} que no pude leer`)
+  if (c[DESTINO.EN_PAUSA]) partes.push(`${c[DESTINO.EN_PAUSA]} en espera (lectura en pausa)`)
   if (c[DESTINO.SIN_RASTRO]) partes.push(`**${c[DESTINO.SIN_RASTRO]} sin rastro**`)
 
   const l = [`_**${r.total} adjunto${r.total > 1 ? 's' : ''}:** ${partes.join(' · ')}._`]
@@ -176,6 +180,8 @@ export function textoRendicion(r, { seCargaron = false } = {}) {
   // archivo lo pone la cámara y él nunca lo vio; lo que reconoce es «$172.002 del 09/08». El archivo
   // queda igual, al final, para poder volver a la foto. Ver `identidad.mjs`.
   for (const a of aExplicar) {
+    // En pausa no se dice «no pude leer ni el importe»: nadie miró el papel todavía.
+    if (a.destino === DESTINO.EN_PAUSA) { l.push(`· \`${a.nombre}\` — en espera: ${a.detalle}`); continue }
     l.push(renglonDeAdjunto({ item: a.item, nombre: a.nombre, motivo: a.detalle, sinLectura: a.sinLectura === true }))
   }
   if (!r.cuadra) {

@@ -31,7 +31,8 @@ comment on column public.personas.iniciales_efectivo is
   'Las iniciales que la persona escribe a mano en cada ticket que paga con efectivo a rendir. El bot las lee '
   'en #comprobantes-gastos e imputa el ticket a su entrega abierta. 2 a 4 mayúsculas, únicas.';
 -- `personas` concede por COLUMNA: una columna nueva nace sin permiso (memoria «columna nueva nace sin permiso»).
-grant select (iniciales_efectivo) on public.personas to authenticated;
+-- SIN `select`: la lectura de `personas` es una lista BLANCA (`columnas-comerciales-cerradas.test.mjs`) y el
+-- legajo se lee por `persona_legajo`, que exige es_administracion(). La ficha escribe; no necesita leer acá.
 grant insert (iniciales_efectivo) on public.personas to authenticated;
 grant update (iniciales_efectivo) on public.personas to authenticated;
 
