@@ -19,6 +19,15 @@ export const MEDIOS_DE_PAGO = ['Efectivo', 'Transferencia', 'Débito', 'Tarjeta 
 export const MEDIOS_DEL_LIBRO = [...MEDIOS_DE_PAGO, 'A rendir'] as const
 export type MedioDePago = (typeof MEDIOS_DE_PAGO)[number]
 
+/**
+ * ¿Este cambio de la cola es la imputación de la fila a una entrega de efectivo (o su deshacer)? Lo escribe
+ * la base en `valor_nuevo` (`imputar <ER-nnnn>` / `desimputar`, migración 20260924T2300). No se deshace
+ * como un pago: se deshace desde la ficha de la entrega.
+ */
+export function esCambioDeImputacion(valorNuevo: string | null | undefined): boolean {
+  return /^(imputar\b|desimputar$)/.test(String(valorNuevo ?? '').trim())
+}
+
 /** En qué punto del viaje está lo que se marcó en la app. */
 export type EstadoEnSheet = 'sin_pedido' | 'pendiente' | 'procesando' | 'en_sheet' | 'rechazado'
 

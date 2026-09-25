@@ -43,13 +43,15 @@ function iniciales(nombre: string): string {
   return nombre.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('')
 }
 
-export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra, cliente }: {
+export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra, cliente, puedeImputar = false }: {
   e: Entrega
   comprobantes: Comprobante[]
   rendiciones: Rendicion[]
   devoluciones: Devolucion[]
   extra: ExtraDeFicha
   cliente: string | null
+  /** Dirección o Administración: ven «Imputar un comprobante ya cargado» (24/09/2026). */
+  puedeImputar?: boolean
 }) {
   const destino = destinoDe(e, cliente)
   const nombreDestino = e.estructura ? 'Estructura' : destino.linea
@@ -108,6 +110,13 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
         {abierta && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
             <ReclamarRendicion entrega={e.id} ultimo={textoDelReclamo(extra.reclamo)} />
+            {/* EL TICKET QUE ENTRÓ COMO COMPRA COMÚN (24/09/2026): pagado con esta plata pero cargado en
+                «Efectivo» por #comprobantes-gastos. Se corrige desde acá, no a mano en el Sheet. */}
+            {puedeImputar && (
+              <Link href={urlEfectivo({ entrega: e.codigo, panel: 'imputar' })} prefetch={false} scroll={false} style={botonClaro} data-testid="abrir-imputar">
+                Imputar un comprobante ya cargado
+              </Link>
+            )}
             <Link href={urlEfectivo({ entrega: e.codigo, panel: 'devolucion' })} prefetch={false} scroll={false} style={botonClaro} data-testid="abrir-devolucion">
               Registrar devolución
             </Link>

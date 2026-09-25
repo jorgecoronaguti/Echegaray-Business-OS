@@ -21,12 +21,13 @@ const DUENO = { perfil_id: 'uJorge', rol: 'direccion', persona_id: 'pJorge' }
 const EMI = { perfil_id: 'uEmi', rol: 'jefe_obra', persona_id: 'pEmi' }
 const OTRO = { perfil_id: 'uOtro', rol: 'jefe_obra', persona_id: 'pOtro' }
 
-function portFalso({ remitente = DUENO, entrega = ENTREGA, vinculadas = 1 } = {}) {
+function portFalso({ remitente = DUENO, entrega = ENTREGA, vinculadas = 1, personas = [] } = {}) {
   const q = []
   return {
     q,
     async query(sql, args) {
       q.push({ sql, args })
+      if (/iniciales_efectivo as iniciales/.test(sql)) return { rows: personas }
       if (/comunicacion\.identidades i\s+join auth\.users/.test(sql)) return { rows: remitente ? [remitente] : [] }
       if (/from public\.efectivo_entrega e/.test(sql)) return { rows: entrega ? [entrega] : [] }
       if (/count\(\*\)::int as n from public\.efectivo_rendicion/.test(sql)) return { rows: [{ n: vinculadas }] }
@@ -55,7 +56,10 @@ test('REGRESIÓN · el post real de las 17:04 (9 fotos, sin texto) se carga EXAC
   const tanda = tandaEspia()
   const r = await especialista.atender({ ...REAL_1704, port, procesar, tanda, intencion: { destino: 'cargar' } })
 
-  assert.equal(port.q.length, 0, 'sin número no se consulta la base: ni remitente, ni entrega, ni ticket')
+  // Sin número no se busca remitente, entrega ni ticket. La ÚNICA lectura es la de las personas con
+  // iniciales (24/09/2026), y sin ninguna el circuito recibe el mensaje de siempre, sin gancho.
+  assert.deepEqual(port.q.map((x) => /iniciales_efectivo as iniciales/.test(x.sql)), [true])
+  assert.ok(port.q.every((x) => /^\s*select/i.test(x.sql)), 'sólo lecturas')
   assert.equal(procesar.llamadas.length, 1)
   const { mensaje } = procesar.llamadas[0]
   assert.deepEqual(Object.keys(mensaje).sort(), ['actor', 'ahora', 'channelId', 'fileIds', 'postId', 'rootPostId', 'texto'])
@@ -79,10 +83,49 @@ test('REGRESIÓN · el texto de obra de siempre («GALPON 9», «OC 1234», un C
     const port = portFalso()
     const procesar = procesarEspia()
     await especialista.atender({ ...REAL_1704, texto, port, procesar, tanda: tandaEspia(), intencion: { destino: 'cargar' } })
-    assert.equal(port.q.length, 0, texto)
+    assert.ok(port.q.every((x) => /iniciales_efectivo as iniciales/.test(x.sql)), texto)
     assert.equal(procesar.llamadas[0].mensaje.texto, texto, 'la obra sale del texto, como siempre')
     assert.equal(procesar.llamadas[0].mensaje.forzar, undefined)
   }
+})
+
+test('REGRESIÓN · con personas con iniciales cargadas y papeles SIN iniciales, todo sale igual y no se escribe nada', async () => {
+  const PERSONAS = [{ persona_id: 'pEmi', iniciales: 'EM', nombre: 'Emiliano Maldonado', entregas: [{ id: 'e20', codigo: 'ER-0020' }] }]
+  const port = portFalso({ personas: PERSONAS })
+  const items = REAL_1704.fileIds.map((f, i) => ({ comprobante: { proveedor: `Proveedor ${i}`, formaPago: 'Efectivo', condicion: null, iniciales: null }, postId: REAL_1704.postId }))
+  const antes = structuredClone(items)
+  const procesar = async (dep, mensaje) => {
+    // Lo que hace el circuito real con cada ítem (flujo.mjs): llama al gancho si viene.
+    for (const it of items) if (!mensaje.forzar && typeof mensaje.porIniciales === 'function') mensaje.porIniciales(it)
+    return { texto: '✔ cargué 9', estado: 'cargado', fajoId: 'f1', parte: { ...parteVacia(), recibidos: 9, cargados: 9 } }
+  }
+  const r = await especialista.atender({ ...REAL_1704, port, procesar, tanda: tandaEspia(), intencion: { destino: 'cargar' } })
+  assert.deepEqual(items, antes, 'ningún ítem cambió')
+  assert.deepEqual(r, { texto: '✔ cargué 9', estado: 'cargado', fajoId: 'f1', parte: { ...parteVacia(), recibidos: 9, cargados: 9 }, privado: false })
+  assert.ok(port.q.every((x) => /^\s*select/i.test(x.sql)), 'no se escribió nada en la base')
+  assert.equal(port.q.length, 1, 'sin iniciales en el papel ni siquiera se relee el fajo')
+})
+
+test('con iniciales claras en el papel, el ítem sale «A rendir» y el hilo lo dice', async () => {
+  const PERSONAS = [{ persona_id: 'pEmi', iniciales: 'EM', nombre: 'Emiliano Maldonado', entregas: [{ id: 'e20', codigo: 'ER-0020' }] }]
+  const item = { clave: 'c:1|0001-00000001', comprobante: { proveedor: 'Combustibles Barcelo', formaPago: 'Efectivo', iniciales: { letras: 'EM', confianza: 0.92 } }, postId: REAL_1704.postId }
+  const port = portFalso({ personas: PERSONAS })
+  const q0 = port.query.bind(port)
+  port.query = async (sql, args) => {
+    if (/select items from comunicacion\.comprobante_fajos/.test(sql)) { port.q.push({ sql, args }); return { rows: [{ items: [item] }] } }
+    if (/insert into public\.efectivo_iniciales/.test(sql)) { port.q.push({ sql, args }); return { rows: [{ id: 'i1' }] } }
+    if (/select compra_clave from public\.efectivo_rendicion/.test(sql)) { port.q.push({ sql, args }); return { rows: [{ compra_clave: item.clave }] } }
+    return q0(sql, args)
+  }
+  const procesar = async (dep, mensaje) => {
+    mensaje.porIniciales(item)
+    return { texto: '✔ cargué 1', estado: 'cargado', fajoId: 'f1', parte: { ...parteVacia(), recibidos: 1, cargados: 1 } }
+  }
+  const r = await especialista.atender({ ...REAL_1704, fileIds: ['x'], port, procesar, tanda: tandaEspia(), intencion: { destino: 'cargar' } })
+  assert.equal(item.comprobante.formaPago, 'A rendir')
+  const ins = port.q.find((x) => /insert into public\.efectivo_iniciales/.test(x.sql))
+  assert.deepEqual(ins.args.slice(0, 7), [item.clave, 'f1', 'EM', 0.92, 'auto', 'pEmi', 'e20'])
+  assert.deepEqual(r.parte.imputaciones, ['Combustibles Barcelo: Imputado a Emiliano Maldonado (EM) · ER-0020 · a rendir'])
 })
 
 test('el mensaje de la tanda sin imputaciones es idéntico al de siempre', () => {

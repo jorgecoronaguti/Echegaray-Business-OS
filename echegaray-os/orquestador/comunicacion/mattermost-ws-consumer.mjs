@@ -222,6 +222,35 @@ export async function verificarCanalesDeIngesta({ mattermost, canales, botUserId
   return { ok: faltantes.length === 0, faltantes, resueltos: lista.length - faltantes.length }
 }
 
+/**
+ * LA RESPUESTA ESCRITA A «¿ES DE EMILIANO MALDONADO?» (24/09/2026).
+ *
+ * En el canal de comprobantes el texto suelto NO entra (ver `AREAS_QUE_ESCUCHAN_TEXTO`): la charla del
+ * equipo no es trabajo. La excepción es chica y exacta: una RESPUESTA EN UN HILO donde el bot dejó una
+ * pregunta de iniciales abierta (`efectivo_iniciales.estado = 'pregunta'`). Una consulta indexada, y sólo
+ * para respuestas con texto en hilos de un canal de ingesta. Sin base, false: no entra, como hasta hoy.
+ */
+export function crearHiloConPregunta({ port = null } = {}) {
+  return async function hiloConPregunta(rootId) {
+    if (!port?.query || !rootId) return false
+    try {
+      const r = await port.query(
+        `select 1 from public.efectivo_iniciales where estado = 'pregunta' and root_post_id = $1 limit 1`, [String(rootId)])
+      return Boolean(r?.rows?.length)
+    } catch { return false }
+  }
+}
+
+/** ¿Es la respuesta escrita a una pregunta de iniciales? Nunca el eco del bot ni un post de sistema. */
+export async function esRespuestaDePregunta(info, { botUserId = null, canales = new Set(), hiloConPregunta = async () => false } = {}) {
+  const post = info?.post
+  if (!post?.root_id || (botUserId && post.user_id === botUserId)) return false
+  if ((post.type && post.type !== '') || tieneAdjuntos(post) || !String(post.message ?? '').trim()) return false
+  const esCanal = (info.channelName && canales.has(String(info.channelName).toLowerCase()))
+    || (post.channel_id && canales.has(String(post.channel_id).toLowerCase()))
+  return esCanal ? await hiloConPregunta(post.root_id) : false
+}
+
 /** ¿Este post trae archivos adjuntos? */
 export function tieneAdjuntos(post) {
   return Array.isArray(post?.file_ids) ? post.file_ids.length > 0 : Boolean(post?.metadata?.files?.length)
@@ -322,6 +351,7 @@ export function crearConsumidorWS(opts) {
     // entra. Mismo mecanismo y misma caché de un minuto; base vacía porque esto no se configura por
     // entorno — sale del binding, que es donde el dueño ata un canal a un área.
     canalesDeTexto = crearCanalesDeIngesta({ port, base: new Set(), log, areas: AREAS_QUE_ESCUCHAN_TEXTO }),
+    hiloConPregunta = crearHiloConPregunta({ port }),
   } = opts
   if (!con?.recibir) throw new Error('consumidor-ws: falta con.recibir')
   if (!wsUrl) throw new Error('consumidor-ws: falta wsUrl')
@@ -339,7 +369,8 @@ export function crearConsumidorWS(opts) {
     // caché con TTL. Así atar un canal nuevo al área lo habilita sin reiniciar el servicio.
     const canalesAhora = await canalesDeIngesta()
     const textoAhora = await canalesDeTexto()
-    if (!esRelevante(info, { botUserId, botUsernames, canalesAdjuntos: canalesAhora, canalesDeTexto: textoAhora })) {
+    if (!esRelevante(info, { botUserId, botUsernames, canalesAdjuntos: canalesAhora, canalesDeTexto: textoAhora })
+      && !await esRespuestaDePregunta(info, { botUserId, canales: canalesAhora, hiloConPregunta })) {
       // POR QUÉ SE IGNORÓ, NO SÓLO QUE SE IGNORÓ. Una foto de factura que no llega a ningún lado y
       // deja un log que dice "ignorado por guarda" manda a buscar el problema a ciegas: pasó el
       // 03/08 y costó media hora descubrir que el canal viaja por SLUG y no por nombre visible.

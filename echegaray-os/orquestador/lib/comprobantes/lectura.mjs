@@ -39,6 +39,17 @@ import { aNumero, redondear2, normalizar } from '../carga-comprobantes.mjs'
 import { valido as cuitValido } from '../cuit.mjs'
 import { matchUnico } from './imputacion.mjs'
 
+/**
+ * Las iniciales manuscritas, limpias: sólo letras A–Z (sin puntos, espacios ni tildes), 2 a 4. `null` si no
+ * hay o no tienen esa forma. La confianza, entre 0 y 1; sin número, `null` (se trata como baja).
+ */
+export function inicialesLeidas(letras, confianza) {
+  const l = String(letras ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z]/g, '')
+  if (l.length < 2 || l.length > 4) return null
+  const c = Number(confianza)
+  return { letras: l, confianza: Number.isFinite(c) && confianza !== null && confianza !== '' ? Math.max(0, Math.min(1, c)) : null }
+}
+
 /** Formatos que un modelo de visión puede mirar TAL CUAL. La API no acepta ningún otro. */
 export const MEDIA_SOPORTADOS = Object.freeze([
   'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf',
@@ -398,6 +409,9 @@ export function normalizar_lectura(crudo = {}) {
       // mano; cuál de las dos es se resuelve contra el catálogo de obras, no adivinándolo mientras se
       // mira la foto. Viaja aparte para no ensuciar la transcripción literal, que es la evidencia.
       anotacionAlt: textoODefault(crudo.anotacion_alternativa),
+      // LAS INICIALES DE QUIEN PAGÓ CON EFECTIVO A RENDIR (24/09/2026). Viajan crudas con su confianza: a
+      // quién corresponden lo decide `comunicacion/comprobantes/iniciales.mjs` contra `personas`, no la visión.
+      iniciales: inicialesLeidas(crudo.iniciales_manuscritas, crudo.iniciales_confianza),
       // ═══ EL ARCHIVO TRAÍA MÁS DE UN COMPROBANTE (13/08) ═══
       //
       // Un adjunto produce UN ítem: dos tickets sobre la mesa en la misma foto, o un PDF con cinco

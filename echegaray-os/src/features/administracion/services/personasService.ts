@@ -36,7 +36,7 @@ const COLUMNAS_DIRECTORIO =
   'cuadrilla_id, cuadrilla, obra_actual_id, obra_actual, rol_en_obra, asignada_desde, en_la_empresa'
 
 const COLUMNAS_FICHA =
-  'id, nombre_completo, nombre_para_mostrar, dni, cuil, fecha_nacimiento, nacionalidad, telefono, email, domicilio, ' +
+  'id, nombre_completo, nombre_para_mostrar, iniciales_efectivo, dni, cuil, fecha_nacimiento, nacionalidad, telefono, email, domicilio, ' +
   'contacto_emergencia, contacto_emergencia_telefono, fecha_ingreso, fecha_egreso, ' +
   'convenio_colectivo, categoria, especialidad, puesto, modalidad_liquidacion, notas, ' +
   'legajo, en_la_empresa, drive_folder_id'

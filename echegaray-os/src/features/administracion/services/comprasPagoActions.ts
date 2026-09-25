@@ -22,7 +22,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 // Un archivo `'use server'` sólo puede exportar funciones asíncronas: la lista de medios vive en el
 // módulo puro de al lado, que además la prueba.
-import { MEDIOS_DE_PAGO } from './pagoDeCompra'
+import { MEDIOS_DE_PAGO, esCambioDeImputacion } from './pagoDeCompra'
 import {
   planDePago, planDeDeshacerCompleto,
 } from '../../../../orquestador/lib/pagos-de-compra.mjs'
@@ -178,13 +178,19 @@ export async function deshacerPagoDeCompra(p: z.input<typeof Deshacer>): Promise
 
   const cola = await supabase
     .from('compra_obra_cambio')
-    .select('id, estado, celdas')
+    .select('id, estado, celdas, valor_nuevo')
     .eq('fila', v.data.fila).eq('tipo', 'pago')
     .in('estado', ['pendiente', 'procesando', 'aplicado'])
     .order('creado_at', { ascending: false }).limit(1).maybeSingle()
   if (cola.error) return { ok: false, error: 'No pude leer el pago de esa fila.' }
-  const ultimo = cola.data as { id: string; estado: string; celdas: unknown[] } | null
+  const ultimo = cola.data as { id: string; estado: string; celdas: unknown[]; valor_nuevo: string | null } | null
   if (!ultimo) return { ok: false, error: 'Esa compra no tiene ningún pago registrado desde la app.' }
+  // UNA IMPUTACIÓN A UNA ENTREGA NO ES UN PAGO (24/09/2026). Su último cambio es el «A rendir» de
+  // `imputar_compra_a_entrega`: deshacerlo acá devolvería la fila a «Efectivo» y la dejaría atada a la
+  // entrega — la plata se restaría dos veces. Se deshace desde la ficha de la entrega, que suelta las dos.
+  if (esCambioDeImputacion(ultimo.valor_nuevo)) {
+    return { ok: false, error: 'El último cambio de esta fila es su imputación a una entrega de efectivo: se deshace desde la ficha de la entrega (Efectivo a rendir), no desde acá.' }
+  }
 
   if (ultimo.estado === 'pendiente') {
     const { data, error } = await supabase.rpc('compra_pago_cancelar', { p_fila: v.data.fila })

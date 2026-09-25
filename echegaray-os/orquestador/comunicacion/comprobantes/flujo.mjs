@@ -389,6 +389,12 @@ export async function procesarPost(d, m = {}) {
     // registro guardaba el primero para todos. En Rendiciones eso ataba el ticket de otra entrega a la del
     // primer ticket (`vincular_rendiciones_pendientes` empareja por post).
     item.postId = m.postId ?? null
+    // LAS INICIALES DE QUIEN PAGÓ (24/09/2026): sólo #comprobantes-gastos pasa `porIniciales`, y sólo
+    // cambia algo si el papel trae iniciales manuscritas. Nunca con un `forzar` (el canal Efectivo y el
+    // número «ER-0020» ya dicen a qué entrega va). Ver `comprobantes/iniciales.mjs`.
+    if (!m.forzar && typeof m.porIniciales === 'function') {
+      try { m.porIniciales(item) } catch (e) { log?.warn?.('comprobantes: no pude mirar las iniciales', { detalle: String(e?.message ?? e).slice(0, 160) }) }
+    }
     items.push(item)
   }
   if (!items.length) {

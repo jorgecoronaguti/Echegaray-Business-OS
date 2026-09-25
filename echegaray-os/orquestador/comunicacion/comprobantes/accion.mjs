@@ -28,6 +28,7 @@ import { dialogoCorreccion, leerEstado, aplicarCorreccion, CALLBACK_ID } from '.
 import { escribirFajo } from './escritura.mjs'
 import { aplicarEleccion, confirmarFajo, RESULTADO } from './aplicar.mjs'
 import * as repoReal from './repositorio.mjs'
+import { atenderBotonIniciales } from './iniciales-canal.mjs'
 
 const responder = (body) => ({ status: 200, body })
 
@@ -73,6 +74,9 @@ export function normalizar(payload = {}) {
     // para todas las opciones. Un botón sí trae su valor fijo en el contexto: se aceptan los dos.
     valor: payload.context?.selected_option ?? payload.context?.valor ?? null,
     submission: payload.submission ?? null,
+    // «¿Es de Emiliano Maldonado?» (24/09/2026): qué pregunta y a qué persona apunta el botón (null = No).
+    inicialesId: payload.context?.iniciales_id ?? null,
+    persona: payload.context?.persona ?? null,
     state: payload.state ?? null,
   }
 }
@@ -120,6 +124,13 @@ export function crearManejadorComprobantes({ port, mattermost, secreto = null, u
       }
       if (p.accion === 'imputar') return await imputar({ port, mattermost, url, escribir, repo, log }, p)
       if (p.accion === 'descartar') return await descartar({ port, mattermost, url, repo, log }, p)
+      if (p.accion === 'iniciales') {
+        // La respuesta REEMPLAZA la pregunta (sin botones): contestar dos veces no es posible.
+        const r = await atenderBotonIniciales({ port }, { userId: p.userId, id: p.inicialesId, personaId: p.persona })
+        return responder(r.ok
+          ? { update: { message: `✔ ${r.texto}`, props: { attachments: [] } }, ephemeral_text: r.texto }
+          : { ephemeral_text: r.texto })
+      }
       return malo('No entendí ese botón.')
     } catch (e) {
       log?.error?.('comprobantes: fallo atendiendo una acción', { detalle: String(e?.message ?? e).slice(0, 200) })

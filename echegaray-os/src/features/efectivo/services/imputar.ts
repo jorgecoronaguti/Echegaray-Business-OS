@@ -29,7 +29,7 @@ export async function leerParaImputar(rendiciones: readonly Rendicion[], hoy: st
   try {
     const supabase = await createClient()
     const desde = desdeDia(hoy)
-    const propias = rendiciones.filter((r) => r.origen === 'reimputada')
+    const propias = rendiciones.filter((r) => r.origen === 'reimputada' || r.origen === 'iniciales')
     const [filas, tomadas, cola] = await Promise.all([
       supabase.from('compra_sheet')
         .select('fila, clave, fecha, proveedor, concepto, comprobante, obra_texto, total, tipo_pago, anulada')

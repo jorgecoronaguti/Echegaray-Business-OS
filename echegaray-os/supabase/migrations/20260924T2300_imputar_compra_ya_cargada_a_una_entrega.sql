@@ -39,10 +39,11 @@ alter table public.efectivo_rendicion
   add column if not exists tipo_pago_anterior text;
 alter table public.efectivo_rendicion drop constraint if exists efectivo_rendicion_origen_chk;
 alter table public.efectivo_rendicion add constraint efectivo_rendicion_origen_chk
-  check (origen in ('ticket', 'reimputada'));
+  check (origen in ('ticket', 'reimputada', 'iniciales'));
 comment on column public.efectivo_rendicion.origen is
   'ticket = la fila la escribió un ticket de la entrega (canal Efectivo, #comprobantes-gastos con número, app). '
-  'reimputada = una compra ya cargada que Administración imputó a la entrega desde su ficha.';
+  'reimputada = una compra ya cargada que Administración imputó a la entrega desde su ficha. '
+  'iniciales = el bot la imputó por las iniciales escritas a mano en el ticket (20260924T2310).';
 comment on column public.efectivo_rendicion.cambio_id is
   'reimputada: el pedido a compra_obra_cambio que cambia su Tipo pago a «A rendir».';
 comment on column public.efectivo_rendicion.tipo_pago_anterior is
@@ -132,11 +133,13 @@ declare
 begin
   select * into r from public.efectivo_rendicion where id = p_rendicion for update;
   if r.id is null then raise exception 'esa imputación ya no existe' using errcode = 'P0001'; end if;
-  if r.origen <> 'reimputada' then
+  if r.origen not in ('reimputada', 'iniciales') then
     raise exception 'esa fila la escribió un ticket de la entrega: se deshace descartando el comprobante' using errcode = 'P0001';
   end if;
   v_antes := coalesce(nullif(btrim(r.tipo_pago_anterior), ''), 'Efectivo');
-  select * into c from public.compra_obra_cambio where id = r.cambio_id for update;
+  if r.cambio_id is not null then
+    select * into c from public.compra_obra_cambio where id = r.cambio_id for update;
+  end if;
   select * into s from public.compra_sheet where clave = r.compra_clave order by fila limit 1 for update;
   if c.estado = 'procesando' then
     raise exception 'el worker está escribiendo esa fila en el Sheet justo ahora: probá de nuevo en un minuto' using errcode = 'P0001';
@@ -160,18 +163,20 @@ begin
 end $$;
 revoke all on function public._efectivo_soltar_reimputada(uuid, uuid, text) from public, anon, authenticated;
 
--- ─── 6 · IMPUTAR: la puerta de la app ─────────────────────────────────────────────────────────────
-create or replace function public.imputar_compra_a_entrega(p_entrega uuid, p_fila integer, p_clave text)
+-- ─── 6 · IMPUTAR ──────────────────────────────────────────────────────────────────────────────────
+-- La pieza interna la usan la app (con `ve_economia()`) y el bot cuando alguien contesta «sí, es de EM»
+-- (20260924T2310). Todas las verificaciones viven acá: ninguna de las dos puertas las repite.
+create or replace function public._efectivo_imputar_fila(p_entrega uuid, p_fila integer, p_clave text, p_usr uuid, p_origen text)
 returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
-  v_usr uuid := public._efectivo_exigir_administracion();
   e public.efectivo_entrega;
   s public.compra_sheet;
   v_otra text;
   v_cambio uuid;
   v_rend uuid;
 begin
+  if p_origen not in ('reimputada', 'iniciales') then raise exception 'origen desconocido' using errcode = 'P0001'; end if;
   select * into e from public.efectivo_entrega where id = p_entrega for update;
   if e.id is null then raise exception 'la entrega no existe' using errcode = 'P0001'; end if;
   if e.anulada_en is not null then raise exception '% está anulada: no se le imputa nada', e.codigo using errcode = 'P0001'; end if;
@@ -202,14 +207,25 @@ begin
     raise exception 'la fila % ya está imputada a %', p_fila, v_otra using errcode = 'P0001';
   end if;
 
-  v_cambio := public._efectivo_encolar_tipo_pago(s, 'A rendir', 'imputar ' || e.codigo, v_usr);
+  v_cambio := public._efectivo_encolar_tipo_pago(s, 'A rendir', 'imputar ' || e.codigo, p_usr);
   insert into public.efectivo_rendicion (entrega_id, compra_clave, monto, imputada_por, origen, cambio_id, tipo_pago_anterior)
-  values (e.id, s.clave, round(s.total::numeric, 2), v_usr, 'reimputada', v_cambio, s.tipo_pago)
+  values (e.id, s.clave, round(s.total::numeric, 2), p_usr, p_origen, v_cambio, s.tipo_pago)
   returning id into v_rend;
   insert into public.efectivo_imputacion_registro
     (entrega_id, compra_clave, fila, monto, accion, tipo_pago_antes, tipo_pago_despues, cambio_id, hecho_por)
-  values (e.id, s.clave, s.fila, round(s.total::numeric, 2), 'imputar', s.tipo_pago, 'A rendir', v_cambio, v_usr);
+  values (e.id, s.clave, s.fila, round(s.total::numeric, 2), 'imputar', s.tipo_pago, 'A rendir', v_cambio, p_usr);
   return jsonb_build_object('rendicion', v_rend, 'cambio', v_cambio, 'codigo', e.codigo, 'fila', s.fila, 'monto', round(s.total::numeric, 2));
+end $$;
+revoke all on function public._efectivo_imputar_fila(uuid, integer, text, uuid, text) from public, anon, authenticated;
+
+-- La puerta de la app.
+create or replace function public.imputar_compra_a_entrega(p_entrega uuid, p_fila integer, p_clave text)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_usr uuid := public._efectivo_exigir_administracion();
+begin
+  return public._efectivo_imputar_fila(p_entrega, p_fila, p_clave, v_usr, 'reimputada');
 end $$;
 comment on function public.imputar_compra_a_entrega(uuid, integer, text) is
   'Administración imputa a una entrega de efectivo una compra ya cargada en Efectivo: encola Tipo pago «A rendir» '
@@ -242,7 +258,7 @@ declare
 begin
   select nombre into v_nombre from public.perfiles where id = p_usr;
   for r in select * from public.efectivo_rendicion where entrega_id = p_entrega loop
-    if r.origen = 'reimputada' then
+    if r.origen in ('reimputada', 'iniciales') then
       perform public._efectivo_soltar_reimputada(r.id, p_usr, 'la entrega se anuló: ' || trim(p_motivo));
       v_n := v_n + 1;
       continue;

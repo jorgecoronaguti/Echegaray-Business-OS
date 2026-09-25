@@ -133,12 +133,12 @@ export interface Rendicion {
   /** El nombre para mostrar del empleado, resuelto al leer. Decorativo. */
   adelanto_persona?: string | null
   /** `ticket` = la escribió un ticket; `reimputada` = compra ya cargada imputada a mano (migración 20260924T2300). */
-  origen?: 'ticket' | 'reimputada'
+  origen?: 'ticket' | 'reimputada' | 'iniciales'
   /** reimputada: el pedido a la cola de Compras que cambia su Tipo pago. */
   cambio_id?: string | null
 }
 
-export const COLUMNAS_RENDICION = 'id, entrega_id, compra_clave, monto, imputada_en, comprobante_id, adelanto_persona_id, adelanto_quincena, adelanto_expresion'
+export const COLUMNAS_RENDICION = 'id, entrega_id, compra_clave, monto, imputada_en, comprobante_id, adelanto_persona_id, adelanto_quincena, adelanto_expresion, origen, cambio_id'
 
 /** La fila de Compras que rinde (lo que se mira de `compra_sheet`). La verdad del gasto es ésa. */
 export interface FilaDeCompras {

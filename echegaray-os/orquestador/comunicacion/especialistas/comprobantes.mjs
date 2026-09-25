@@ -50,6 +50,7 @@ import { conLaTanda } from '../comprobantes/tanda.mjs'
 import * as repo from '../comprobantes/repositorio.mjs'
 import { parteVacia } from '../../lib/comprobantes/parte.mjs'
 import { cerrarTicket, imputacionPedida, registrarTicket, textoDeObra } from '../comprobantes/imputacion-a-entrega.mjs'
+import { atenderRespuestaIniciales, cerrarCarga, inicialesParaLaCarga, reclamoDeIniciales } from '../comprobantes/iniciales-canal.mjs'
 
 /** URL de callback de los botones. Distinta de la de asistencia: son dos dominios distintos. */
 export const URL_ACCION_BASE = process.env.COMPROBANTES_ACCION_URL
@@ -161,7 +162,10 @@ export const especialista = {
     // texto se resuelve contra las opciones que ese fajo ofreció. Un texto que no matchea nada
     // devuelve null y sigue su camino intacto — un especialista que se cree dueño de todo le roba
     // mensajes a los demás.
-    return await reclamoDeRespuesta(texto, ctx)
+    //
+    // «¿Es de Emiliano Maldonado?» (24/09/2026): la respuesta escrita en el hilo de la pregunta de
+    // iniciales. Mismo criterio: sólo si hay una pregunta ABIERTA en ESE hilo.
+    return await reclamoDeIniciales(texto, ctx) ?? await reclamoDeRespuesta(texto, ctx)
   },
 
   // `procesar` y `tanda` son inyectables para que los tests prueben QUÉ se le manda al circuito; en
@@ -187,6 +191,15 @@ export const especialista = {
       }, { fajo: ruta.fajo, respuesta: ruta.respuesta })
     }
 
+    if (ruta?.destino === 'iniciales' && ruta.preguntas?.length) {
+      // LA PUERTA OTRA VEZ, como en la respuesta al fajo: contestar termina imputando en Compras.
+      const permitido = await puedeCargarComprobantes({
+        port, actor: actor ?? {}, channelId: actor?.channel_id, plataforma: actor?.plataforma ?? 'mattermost', mattermost,
+      })
+      if (!permitido.ok) return { texto: permitido.texto, estado: `rechazado_${permitido.motivo}`, privado: false }
+      return await atenderRespuestaIniciales({ port, actor, texto, preguntas: ruta.preguntas, mattermost, log })
+    }
+
     if (!fileIds.length || ruta?.destino === 'ayuda') return ayuda()
 
     // EL EFECTIVO NO PASA POR ACÁ (22/09/2026, decisión final del dueño): las entregas, los vales y los
@@ -202,6 +215,10 @@ export const especialista = {
     // sin tocar la base y todo sigue exactamente como antes. Ver `comprobantes/imputacion-a-entrega.mjs`.
     const imputacion = await imputacionPedida({ port, texto, actor })
     if (imputacion && !imputacion.ok) return { texto: imputacion.texto, estado: `rechazado_${imputacion.motivo}`, privado: false }
+
+    // ═══ LAS INICIALES DE QUIEN PAGÓ (dueño, 24/09/2026) ═══ Se leen las personas con iniciales una vez
+    // por post; si el papel no trae iniciales, el ítem no se toca. Ver `comprobantes/iniciales.mjs`.
+    const iniciales = imputacion ? null : await inicialesParaLaCarga(port, log)
 
     // ═══ UN SOLO MENSAJE PARA TODA LA TANDA (13/08) ═══
     //
@@ -221,7 +238,7 @@ export const especialista = {
       recibidos: fileIds.length,
     }, () => (imputacion
       ? cargarImputado({ port, actor, google, fileIds, postId, mattermost, log, url, procesar, imputacion })
-      : cargar({ texto, port, actor, google, fileIds, postId, mattermost, log, url, procesar })))
+      : cargar({ texto, port, actor, google, fileIds, postId, mattermost, log, url, procesar, porIniciales: iniciales })))
   },
 
   skillDe(intencion) {
@@ -240,8 +257,8 @@ export const especialista = {
  * Lo único que este especialista sigue decidiendo es lo suyo: de dónde salen los archivos (un post
  * de Mattermost) y qué se publica después.
  */
-async function cargar({ texto, port, actor, google, fileIds, postId, mattermost, log, url, procesar = procesarComprobantes }) {
-  const r = await procesar({ port, google, log, url, mattermost }, {
+async function cargar({ texto, port, actor, google, fileIds, postId, mattermost, log, url, procesar = procesarComprobantes, porIniciales = null }) {
+  const mensaje = {
     fileIds,
     // Lo que la persona escribió al mandar la foto. Es de donde sale la obra cuando el papel no
     // la dice, que es el caso normal: una factura de proveedor no sabe a qué obra se imputa.
@@ -251,7 +268,11 @@ async function cargar({ texto, port, actor, google, fileIds, postId, mattermost,
     rootPostId: actor?.root_post_id ?? postId ?? null,
     postId: actor?.root_post_id ?? postId ?? null,
     ahora: new Date(),
-  })
+  }
+  // El gancho sólo viaja si hay personas con iniciales: sin él, el mensaje es el de siempre.
+  if (porIniciales) mensaje.porIniciales = porIniciales
+  const leido = await procesar({ port, google, log, url, mattermost }, mensaje)
+  const r = await cerrarCarga({ port, mattermost, log, url, r: leido, post: mensaje.postId, actor, porIniciales })
 
   // ATTACHMENTS NUNCA MÁS. `botonesFajo` los apagó en la fuente (ver `lib/comprobantes/fajo.mjs`),
   // así que `r.attachments` viene vacío por construcción; se descarta acá también para que, si

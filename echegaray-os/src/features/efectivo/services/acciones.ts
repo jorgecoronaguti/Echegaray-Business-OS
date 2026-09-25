@@ -8,7 +8,9 @@
 //
 // ═══ LA WEB NO ESCRIBE COMPRAS (dueño, 22/09/2026) ═══
 // El ticket rendido lo carga a Compras el worker de la VM, solo, con Tipo pago «A rendir» y la obra de la
-// entrega. Por eso no hay acá ninguna acción que «impute»: la pantalla revisa, observa o descarta.
+// entrega. La única acción que «imputa» (24/09/2026, «Imputar un comprobante ya cargado») tampoco escribe
+// el Sheet: la base encola el cambio de Tipo pago en la misma cola por la que la app registra los pagos
+// de Compras (`compra_obra_cambio`), y el worker de esa cola lo escribe y lo relee.
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
@@ -189,4 +191,25 @@ export async function conformidadEnPapelAction(entrada: z.input<typeof papelSche
     return { ok: false, error: 'El papel tiene que estar en tu carpeta.' }
   }
   return rpc<null>('firmar_conformidad_entrega', { p_entrega: p.data.entrega, p_trazo: null, p_papel_url: p.data.ruta })
+}
+
+const imputarSchema = z.object({ entrega: uuid, fila: z.number().int().min(4), clave: z.string().min(3).max(200) })
+
+/**
+ * «IMPUTAR UN COMPROBANTE YA CARGADO» (dueño, 24/09/2026): una compra cargada en Efectivo pasa a «A rendir»,
+ * queda atada a la entrega y el saldo baja. La base (`imputar_compra_a_entrega`, migración 20260924T2300)
+ * vuelve a verificar todo —la fila sigue siendo esa compra, dice «Efectivo», no está imputada a otra— y
+ * encola la celda. Lo que devuelve es «encolado»: el ✓ en el Sheet lo dice la cola.
+ */
+export async function imputarCompraAction(entrada: z.input<typeof imputarSchema>): Promise<Resultado<{ codigo: string; fila: number }>> {
+  const p = imputarSchema.safeParse(entrada)
+  if (!p.success) return { ok: false, error: 'Elegí la compra que querés imputar.' }
+  return rpc<{ codigo: string; fila: number }>('imputar_compra_a_entrega', { p_entrega: p.data.entrega, p_fila: p.data.fila, p_clave: p.data.clave })
+}
+
+/** Deshacer una imputación hecha a mano (o por las iniciales): vuelve el Tipo pago de antes por la misma cola. */
+export async function desimputarCompraAction(rendicion: string): Promise<Resultado<string>> {
+  const p = uuid.safeParse(rendicion)
+  if (!p.success) return { ok: false, error: 'Imputación inválida' }
+  return rpc<string>('desimputar_compra_de_entrega', { p_rendicion: p.data })
 }

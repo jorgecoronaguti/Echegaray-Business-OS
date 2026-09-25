@@ -61,6 +61,14 @@ export function CamposIdentidad({ persona }: { persona: Persona | null }) {
           data-testid="persona-nombre-para-mostrar"
         />
       </Campo>
+      {/* LAS INICIALES QUE ESCRIBE A MANO EN CADA TICKET QUE PAGA CON EFECTIVO A RENDIR (dueño 24/09). El bot
+          las lee en #comprobantes-gastos e imputa el ticket a su entrega abierta. Únicas; vacío = no rinde. */}
+      <Campo label="Iniciales para rendir efectivo" ayuda="Las que escribe a mano en cada ticket: «EM». 2 a 4 letras.">
+        <input
+          name="iniciales_efectivo" maxLength={4} className={CTRL} autoCapitalize="characters"
+          defaultValue={persona?.iniciales_efectivo ?? ''} data-testid="persona-iniciales-efectivo"
+        />
+      </Campo>
       <Texto name="dni" label="DNI" valor={persona?.dni ?? null} max={12} />
       <Texto name="cuil" label="CUIL" valor={persona?.cuil ?? null} max={15} />
       <Texto name="fecha_nacimiento" label="Nacimiento" tipo="date" valor={persona?.fecha_nacimiento ?? null} />

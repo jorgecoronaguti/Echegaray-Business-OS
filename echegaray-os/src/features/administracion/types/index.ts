@@ -58,6 +58,8 @@ export interface Persona {
   nombre_completo: string
   /** Cómo se la nombra en la app (curado; vacío = el legajo). Ver src/shared/personas/nombre.ts. */
   nombre_para_mostrar?: string | null
+  /** Las iniciales que escribe a mano en los tickets de efectivo a rendir (24/09/2026). */
+  iniciales_efectivo?: string | null
   /** El número de la nómina (pestaña PERSONAL de NUEVA ASISTENCIA). Es la clave con la que liquida
    *  JORNALES. Falta en quien ya no está: la nómina vigente no lo tiene. */
   legajo: string | null

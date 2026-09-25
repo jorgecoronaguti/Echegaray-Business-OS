@@ -27,6 +27,10 @@ const personaSchema = z.object({
   nombre_completo: z.string().trim().min(3, 'El nombre completo es obligatorio'),
   // Cómo se la nombra en la app (dueño 24/09). Vacío = se usa el legajo (src/shared/personas).
   nombre_para_mostrar: z.string().trim().max(80, 'El nombre para mostrar es muy largo').optional(),
+  // Las iniciales que escribe a mano en los tickets de efectivo a rendir (24/09/2026). Se guardan en
+  // mayúsculas y sin puntos; la base exige 2 a 4 letras y que no las tenga otra persona.
+  iniciales_efectivo: z.string().trim().transform((x) => x.toUpperCase().replace(/[^A-Z]/g, ''))
+    .refine((x) => x === '' || /^[A-Z]{2,4}$/.test(x), 'Las iniciales son 2 a 4 letras').optional(),
   dni: soloDigitos.refine((v) => v === '' || (v.length >= 7 && v.length <= 8), 'El DNI tiene 7 u 8 dígitos').optional(),
   cuil: soloDigitos.refine((v) => v === '' || v.length === 11, 'El CUIL tiene 11 dígitos').optional(),
   fecha_nacimiento: fechaISO,
@@ -60,6 +64,7 @@ function aFila(d: Partial<z.infer<typeof personaSchema>>) {
   return {
     nombre_completo: d.nombre_completo as string,
     nombre_para_mostrar: v(d.nombre_para_mostrar),
+    iniciales_efectivo: v(d.iniciales_efectivo),
     dni: v(d.dni), cuil: v(d.cuil), fecha_nacimiento: v(d.fecha_nacimiento),
     nacionalidad: v(d.nacionalidad), telefono: v(d.telefono), email: v(d.email),
     domicilio: v(d.domicilio), contacto_emergencia: v(d.contacto_emergencia),
@@ -96,7 +101,7 @@ export async function crearPersona(form: FormData): Promise<Resultado> {
  */
 const GRUPOS = {
   identidad: personaSchema.pick({
-    nombre_completo: true, nombre_para_mostrar: true, dni: true, cuil: true, fecha_nacimiento: true, nacionalidad: true,
+    nombre_completo: true, nombre_para_mostrar: true, iniciales_efectivo: true, dni: true, cuil: true, fecha_nacimiento: true, nacionalidad: true,
     telefono: true, email: true, domicilio: true,
     contacto_emergencia: true, contacto_emergencia_telefono: true,
   }),
@@ -150,6 +155,7 @@ export async function editarPersona(
     }
   }
   const { error } = await supabase.from('personas').update(soloDelGrupo).eq('id', personaId)
+  if (error?.code === '23505' && /iniciales/.test(error.message)) return { ok: false, error: 'Esas iniciales ya son de otra persona: agregale una letra.' }
   if (error) return { ok: false, error: error.message }
   revalidatePath('/administracion/personas')
   revalidatePath(`/administracion/personas/${personaId}`)

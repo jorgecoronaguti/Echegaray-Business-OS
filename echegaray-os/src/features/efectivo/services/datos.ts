@@ -11,7 +11,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
-import { esAdministracion } from '@/features/auth/types/areas'
+import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
 import { conteosDeCampanita, diaAR } from '../logica/entregas'
 import { faltaMigracion } from '../logica/formularios'
 import {
@@ -40,6 +40,8 @@ export interface DatosEfectivo {
   clienteDeObra: Record<string, string>
   /** La persona del plantel que es el usuario de la sesión (D06 «quién la recibe»). */
   miPersona: string | null
+  /** Dirección o Administración (`ve_economia()`): los únicos que imputan una compra ya cargada. */
+  veEconomia: boolean
   hoy: string
 }
 
@@ -127,6 +129,7 @@ export async function leerEfectivo(): Promise<LecturaEfectivo> {
         obras,
         clienteDeObra,
         miPersona: typeof mia.data === 'string' ? mia.data : null,
+        veEconomia: veEconomia(perfil.data?.rol ?? null),
         hoy: diaAR(new Date().toISOString()),
       },
     }

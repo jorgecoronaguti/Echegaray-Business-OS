@@ -18,11 +18,13 @@ import { destinoDe, esperando, filtroDeLista, resumir } from '../logica/entregas
 import { MIGRACION } from '../logica/formularios'
 import { urlEfectivo } from '../logica/url'
 import { leerEfectivo, leerExtraDeFicha, urlDeFoto, type DatosEfectivo } from '../services/datos'
+import { leerParaImputar } from '../services/imputar'
 import { BotonExportar } from './Botones'
 import { FichaEntrega } from './FichaEntrega'
 import { ListaEntregas, Tarjetas } from './ListaEntregas'
 import { PanelDevolucion } from './PanelDevolucion'
 import { PanelEntregar } from './PanelEntregar'
+import { PanelImputar } from './PanelImputar'
 import { PanelObservado } from './PanelObservado'
 import { RevisarComprobante } from './RevisarComprobante'
 import { ANCHO_PANEL, ANCHO_PANEL_OBSERVADO, V, botonOscuro } from './estilo'
@@ -144,7 +146,12 @@ async function vistaFicha({ d, entrega: e, sp, abiertas, cabecera }: {
   }
 
   const devolviendo = sp.panel === 'devolucion' && e.estado === 'abierta'
+  // «IMPUTAR UN COMPROBANTE YA CARGADO» (24/09/2026): sólo Dirección y Administración, y sólo con la
+  // entrega abierta (la base lo exige igual). La lista se lee sólo con el panel abierto.
+  const imputando = sp.panel === 'imputar' && e.estado === 'abierta' && d.veEconomia && !devolviendo
+  const paraImputar = imputando ? await leerParaImputar(rendiciones, d.hoy) : null
   const observado = elegido && elegido.estado === 'observado' ? elegido : null
+  const conPanel = devolviendo || !!observado || imputando
   const volver = (
     <Link href={urlEfectivo({})} prefetch={false} style={{ fontSize: '12.5px', color: V.apagado }} data-testid="volver-entregas">
       ← volver a las entregas
@@ -153,20 +160,21 @@ async function vistaFicha({ d, entrega: e, sp, abiertas, cabecera }: {
   return (
     <>
       {cabecera(
-        devolviendo || observado ? undefined : volver,
+        conPanel ? undefined : volver,
         abiertas,
-        devolviendo ? ANCHO_PANEL : observado ? ANCHO_PANEL_OBSERVADO : false,
+        devolviendo || imputando ? ANCHO_PANEL : observado ? ANCHO_PANEL_OBSERVADO : false,
       )}
       <div className="flex flex-col lg:flex-row lg:items-start">
-        <div className={`min-w-0 flex-1 max-md:!px-4 ${devolviendo || observado ? 'max-md:hidden' : ''}`} style={{ padding: '22px 20px 34px', opacity: devolviendo || observado ? 0.4 : 1 }}>
-          <FichaEntrega e={e} comprobantes={comprobantes} rendiciones={rendiciones} devoluciones={devoluciones} extra={extra} cliente={cliente} />
+        <div className={`min-w-0 flex-1 max-md:!px-4 ${conPanel ? 'max-md:hidden' : ''}`} style={{ padding: '22px 20px 34px', opacity: conPanel ? 0.4 : 1 }}>
+          <FichaEntrega e={e} comprobantes={comprobantes} rendiciones={rendiciones} devoluciones={devoluciones} extra={extra} cliente={cliente} puedeImputar={d.veEconomia} />
         </div>
+        {imputando && paraImputar && <PanelImputar e={e} destino={destino} lectura={paraImputar} />}
         {devolviendo && (
           <PanelDevolucion
             e={e} destino={destino} porImputar={cola.length} personas={d.personas} miPersona={d.miPersona}
           />
         )}
-        {observado && !devolviendo && <PanelObservado c={observado} e={e} destino={destino} />}
+        {observado && !devolviendo && !imputando && <PanelObservado c={observado} e={e} destino={destino} />}
       </div>
     </>
   )
