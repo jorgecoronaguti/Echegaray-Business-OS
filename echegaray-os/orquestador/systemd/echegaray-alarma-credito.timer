@@ -1,0 +1,13 @@
+[Unit]
+Description=Echegaray OS — Alarma de «sin crédito» en la API de Anthropic (cada 5 min)
+
+[Timer]
+# Cada 5 minutos: una consulta a orq.chat_cost, CERO llamadas a la API. El 25/09 la lectura de
+# comprobantes estuvo cortada 13 minutos sin que nadie avisara; 5 minutos es el techo del aviso.
+OnBootSec=2min
+OnUnitActiveSec=5min
+# SIN Persistent: una ronda perdida no se recupera, se hace la próxima.
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

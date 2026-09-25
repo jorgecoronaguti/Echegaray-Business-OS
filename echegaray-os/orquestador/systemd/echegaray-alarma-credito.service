@@ -1,0 +1,17 @@
+[Unit]
+# Mira orq.chat_cost por error_kind='credit' y avisa al dueño por DM una vez por episodio.
+# No llama a api.anthropic.com. Ver orquestador/lib/ia/alarma-credito.mjs.
+Description=Echegaray OS — Alarma de «sin crédito» en la API de Anthropic
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
+Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/home/jorge/.config/echegaray-orq/worker.env
+EnvironmentFile=-/home/jorge/.config/echegaray-orq/comunicacion.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/alarma-credito-api.mjs
+TimeoutStartSec=120
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=alarma-credito

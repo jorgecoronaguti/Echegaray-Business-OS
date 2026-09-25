@@ -65,6 +65,8 @@ cp "$SRC_DIR"/echegaray-arca-sync.service "$SRC_DIR"/echegaray-arca-sync.timer "
 # Vigía de comprobantes (14/08): compara el registro de cargas contra la pestaña Compras y anota los
 # descalces en backlog_autonomo. SÓLO LEE — no toca una celda, así que no depende del freno de mano.
 cp "$SRC_DIR"/echegaray-comprobantes-vigia.service "$SRC_DIR"/echegaray-comprobantes-vigia.timer "$UNIT_DIR/"
+# Alarma de «sin crédito» de la API de Anthropic (25/09): lee orq.chat_cost cada 5 min, cero llamadas a la API.
+cp "$SRC_DIR"/echegaray-alarma-credito.service "$SRC_DIR"/echegaray-alarma-credito.timer "$UNIT_DIR/"
 echo "units copiadas a $UNIT_DIR"
 
 systemctl --user daemon-reload
@@ -83,6 +85,7 @@ systemctl --user enable --now echegaray-arca-sync.timer        # comprobantes AR
 # Anthropic y no decide nada. Un timer copiado y no habilitado es el defecto más silencioso que hay —
 # es exactamente lo que le pasó al auditor que este vigía viene a disparar: existía y no corría nunca.
 systemctl --user enable --now echegaray-comprobantes-vigia.timer  # descalces registro↔Compras (07:30)
+systemctl --user enable --now echegaray-alarma-credito.timer       # «sin crédito» en la API → DM al dueño
 
 # El Tesorero se COPIA pero NO se habilita, a propósito. Antes de que corra solo hacen
 # falta tres cosas que no puede darse a sí mismo: la migración aplicada, la reserva
