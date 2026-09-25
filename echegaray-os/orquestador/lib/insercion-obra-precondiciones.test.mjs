@@ -65,27 +65,38 @@ test('no existe una bandera para saltearlas', () => {
 // Con la cotización del día, la inserción dio 52 y 112 diferencias de VALOR con 0 de fórmula: todas
 // colgaban de GOOGLEFINANCE. Clavado por el dueño, el archivo queda quieto.
 
-// C109 es la cotización de Google · C110 la del dueño · C111 la que se usa. `declarado = null` deja en
-// C110 la fórmula que trae el archivo, que repite a Google: la celda MUESTRA un número y no clava nada.
+// C111 es la cotización de Google · C112 la del dueño · C113 la que se usa. `declarado = null` deja en
+// C112 la fórmula vieja que traía el archivo: la celda MUESTRA un número y no clava nada.
 const bloqueDolar = (declarado) => ({
   formulas: [
     ['=IFERROR(GOOGLEFINANCE("CURRENCY:USDARS");"")'],
     [declarado == null ? '=IF(C109<>"";C109;C108)' : String(declarado)],
-    ['=IF(C110<>"";C110;C109)'],
+    ['=IF(C112<>"";C112;C111)'],
   ],
   valores: [[1505.95], [declarado == null ? 1505.95 : declarado], [declarado == null ? 1505.95 : declarado]],
 })
 
 test('EL DEFECTO: con el dólar colgando de GOOGLEFINANCE, NO se inserta', () => {
   assert.match(problemaDelTipoDeCambio(bloqueDolar(null)), /cuelga de GOOGLEFINANCE/)
-  assert.match(problemaDelTipoDeCambio(bloqueDolar(null)), /_CAJA_ANEXO!C110/)
+  assert.match(problemaDelTipoDeCambio(bloqueDolar(null)), /_CAJA_ANEXO!C112/)
   assert.match(problemaDelTipoDeCambio(bloqueDolar(0)), /cuelga de GOOGLEFINANCE/)
   assert.match(problemaDelTipoDeCambio(bloqueDolar('')), /cuelga de GOOGLEFINANCE/)
 })
 
 test('con el dólar declarado a mano por el dueño, se puede insertar', () => {
   assert.equal(problemaDelTipoDeCambio(bloqueDolar(1480)), null)
-  assert.equal(`C${DOLAR.primeraFila + DOLAR.declarado}`, 'C110', 'la celda del dueño es C110, no C109')
+  assert.equal(`C${DOLAR.primeraFila + DOLAR.declarado}`, 'C112', 'la celda del dueño es C112 (leído del archivo el 25/09)')
+  assert.equal(DOLAR.rango, "'_CAJA_ANEXO'!C111:C113", 'TIPO_CAMBIO_USD apunta a C113')
+})
+
+// ═══ OPCIÓN A DEL DUEÑO (25/09/2026): la corrida escribe la cotización del BCRA como NÚMERO ═══
+test('con la referencia escrita como número por la corrida, el archivo está quieto sin clavar nada', () => {
+  const escrito = { formulas: [['1519.5'], [''], ['=IF(C112<>"";C112;C111)']], valores: [[1519.5], [''], [1519.5]] }
+  assert.equal(problemaDelTipoDeCambio(escrito), null)
+  const conFormulaVieja = { ...escrito, formulas: [['1519.5'], ['=IF(C109<>"";C109;C108)'], ['=IF(C112<>"";C112;C111)']] }
+  assert.match(problemaDelTipoDeCambio(conFormulaVieja), /escribí a mano/, 'una fórmula en la celda del dueño todavía puede moverse')
+  const textoNoNumero = { formulas: [['hola'], [''], ['=IF(C112<>"";C112;C111)']], valores: [['hola'], [''], ['hola']] }
+  assert.match(problemaDelTipoDeCambio(textoNoNumero), /no está donde se esperaba/)
 })
 
 test('EL DEFECTO QUE COSTÓ UNA COPIA: una FÓRMULA en C110 muestra un número y no clava nada', () => {

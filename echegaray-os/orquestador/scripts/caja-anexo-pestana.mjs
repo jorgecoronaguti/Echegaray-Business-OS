@@ -38,6 +38,7 @@ import { instanteDelSello } from '../lib/caja-ancla-por-instante.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 import { DESDE_CAJA, CELDA_CAJA_MINIMA, ESPECIE_ANEXO } from '../lib/caja-anexo-nombres.mjs'
 import { TIPO_CAMBIO } from '../lib/caja-disponibilidades.mjs'
+import { cotizacionAEscribir, leerBcra } from '../lib/dolar-bcra.mjs'
 import { conceptosFueraDelCalendario, lineasDeCaja, marcaDeLinea } from '../lib/calendario-egresos.mjs'
 import { carteraDelArchivo, refsDelArchivo, SIN_FUENTE_EN_VENTANA } from '../lib/caja-refs.mjs'
 
@@ -57,6 +58,11 @@ const letra = (i) => String.fromCharCode(65 + i)
  * rescatar desde que existe: el rótulo del Sheet se recortaba y se comparaba contra una constante con
  * seis espacios de sangría, así que ninguna de las dos filas del sello coincidió nunca.
  */
+/** La forma EXACTA de la fórmula «en uso» que escribía el generador: `=IF(Cn<>"";Cn;Cm)`. PURA. */
+export function esResiduoDelDolar(v) {
+  return /^=IF\(C\d+<>"";C\d+;C\d+\)$/i.test(String(v ?? '').replace(/\s+/g, ''))
+}
+
 export function rescatarAnexo(filas = []) {
   const cargado = new Map()
   // Los seis renglones del histórico llevan en D lo que valían al sellarse. Se rescatan por RÓTULO
@@ -84,7 +90,13 @@ export function rescatarAnexo(filas = []) {
     }
     if (historico.has(a)) { cargado.set(a, { selloLinea: num(3) }); continue }
     if (a !== claveDeRotulo(TIPO_CAMBIO.declarado.nombre)) continue
-    cargado.set(a, { saldo: leer(2), fecha: leer(5), origen: leer(6) })
+    // EL RESIDUO DE UN LAYOUT VIEJO NO ES UNA CARGA DEL DUEÑO (25/09/2026). En C112 vivía
+    // `=IF(C109<>"";C109;C108)`: la fórmula «en uso» de cuando el bloque estaba dos filas más arriba, y
+    // que hoy apunta a un encabezado y a una celda vacía. Se rescataba como si la hubiera escrito él y
+    // se reescribía en cada corrida; el día que C108 tuviera un número, ése sería el dólar de la empresa.
+    const saldo = leer(2)
+    if (esResiduoDelDolar(saldo)) { cargado.set(a, { residuo: true, fecha: leer(5), origen: leer(6) }); continue }
+    cargado.set(a, { saldo, fecha: leer(5), origen: leer(6) })
   }
   return cargado
 }
@@ -246,6 +258,23 @@ async function controlarEfectivo(google, g) {
   else console.log(`  💵 efectivo en el cajón: $${Math.round(d.efectivo).toLocaleString('es-AR')} (el histórico se movió $${Math.round(d.movido).toLocaleString('es-AR')} desde el sello · techo $${Math.round(d.techo).toLocaleString('es-AR')})`)
 }
 
+/** El dólar de referencia de esta corrida: BCRA; si no contesta, la última de la base, declarada. */
+async function cotizacionDelDia() {
+  const ahora = new Date()
+  const hoy = ahora.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/San_Juan' })
+  const leidoEn = ahora.toLocaleString('es-AR', { timeZone: 'America/Argentina/San_Juan', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const bcra = await leerBcra({ hoy })
+  let base = null
+  if (!bcra) {
+    try {
+      const { query } = await import('../lib/db.mjs')
+      const { rows } = await query(`select tc, to_char(fecha, 'YYYY-MM-DD') as fecha from public.tipo_cambio where fecha <= current_date order by fecha desc limit 1`)
+      if (rows[0]) base = { tc: Number(rows[0].tc), fecha: rows[0].fecha }
+    } catch { /* sin base: no se escribe */ }
+  }
+  return cotizacionAEscribir({ bcra, base, leidoEn })
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const hojas = await google.getSheetMeta(ID)
@@ -269,7 +298,11 @@ async function main() {
   const previo = hoja
     ? await google.readSheetGrid(ID, `${PESTANA_ANEXO}!A1:G`).catch(() => ({ filas: [] }))
     : { filas: [] }
-  const g = grillaAnexo({ refs, cartera, conceptosCiegos, cargado: rescatarAnexo(previo.filas ?? []) })
+  const cotizacion = await cotizacionDelDia()
+  console.log(cotizacion
+    ? `dólar de referencia: ${cotizacion.tc} · ${cotizacion.origen}`
+    : '⚠ dólar de referencia: ni el BCRA ni la base contestaron — la celda queda con la cotización anterior y su fecha')
+  const g = grillaAnexo({ refs, cartera, conceptosCiegos, cotizacion, cargado: rescatarAnexo(previo.filas ?? []) })
   console.log(`${PESTANA_ANEXO}: ${g.filas.length} filas · ${g.destinos.length} rangos con nombre`)
   if (DRY) return console.log('--dry: no escribí nada.')
 

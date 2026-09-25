@@ -52,10 +52,12 @@ export const RANGO_TC = 'TIPO_CAMBIO_USD'
 
 /** Las tres filas del bloque de tipo de cambio. La de "uso" es la que se referencia. */
 export const TIPO_CAMBIO = {
+  // 25/09/2026 (opción A del dueño): ya NO es `=GOOGLEFINANCE(...)`. La cotización viva recalculaba
+  // el archivo entero cada minuto y el pipeline no terminaba; ahora es un NÚMERO que escribe cada
+  // corrida desde el BCRA (Com. A 3500), con su fecha al lado. Ver lib/dolar-bcra.mjs.
   referencia: {
     nombre: 'Dólar de referencia — cotización del día',
-    formula: '=IFERROR(GOOGLEFINANCE("CURRENCY:USDARS");"")',
-    origen: 'GOOGLEFINANCE, cotización de mercado. Se actualiza sola, no se carga a mano.',
+    origen: 'BCRA · Com. A 3500 (mayorista). La escribe cada corrida del OS; no se carga a mano.',
   },
   declarado: {
     nombre: 'Dólar declarado por la empresa (opcional)',

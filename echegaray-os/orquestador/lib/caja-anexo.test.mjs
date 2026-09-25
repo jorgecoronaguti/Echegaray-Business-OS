@@ -697,3 +697,47 @@ test('el control "Efectivo en el cajón HOY" fecha con LO MISMO que CAJA!D7 — 
   assert.equal(celda(g, f, 5),
     `=IF(ISNUMBER(${ANEXO.conteoArsDia});IF(ISNUMBER(${ANEXO.ultimoEfectivoDia});${ANEXO.ultimoEfectivoDia};${ANEXO.conteoArsDia});"")`)
 })
+
+// ═══ OPCIÓN A DEL DUEÑO (25/09/2026): el dólar de referencia es un NÚMERO con fecha, no GOOGLEFINANCE ═══
+// GOOGLEFINANCE se movía cada minuto y recalculaba el archivo entero: medido en una copia, dos celdas
+// tardaban 60–119 s en leerse con la fórmula viva y 0,6 s con el número clavado.
+const COTIZ = { tc: 1519.5, fechaSerial: 46289, origen: 'BCRA · Com. A 3500 (mayorista) del 24/09/2026 · leída por el OS el 25/09/2026 11:20', fuente: 'bcra' }
+const filaRef = (g) => filaDe(g, /^Dólar de referencia/)
+
+test('dólar de referencia: con cotización, C es el NÚMERO, F su fecha y G de dónde sale — sin GOOGLEFINANCE', () => {
+  const g = grillaAnexo({ refs: REFS, cartera: CARTERA, conceptosCiegos: [], cotizacion: COTIZ })
+  const f = g.filas[filaRef(g) - 1]
+  assert.equal(f[2], 1519.5)
+  assert.equal(f[5], 46289)
+  assert.match(String(f[6]), /BCRA · Com\. A 3500/)
+  for (const fila of g.filas) for (const c of fila) assert.doesNotMatch(String(c ?? ''), /GOOGLEFINANCE/i)
+})
+
+test('dólar de referencia: SIN cotización no se escribe nada (queda la anterior con su fecha), nunca un vacío', () => {
+  const g = grillaAnexo({ refs: REFS, cartera: CARTERA, conceptosCiegos: [] })
+  const f = g.filas[filaRef(g) - 1]
+  for (const col of [2, 5, 6]) assert.equal(f[col], undefined, `col ${col}: sin dato la celda se preserva`)
+})
+
+test('C112 y C113 siguen colgando de la referencia: «en uso» = declarado si hay, si no la referencia', () => {
+  const g = grillaAnexo({ refs: REFS, cartera: CARTERA, conceptosCiegos: [], cotizacion: COTIZ })
+  const ref = filaRef(g)
+  assert.equal(g.fDec, ref + 1)
+  assert.equal(g.filas[g.fTC - 1][2], `=IF(C${g.fDec}<>"";C${g.fDec};C${ref})`)
+})
+
+test('EL RESIDUO en la celda del dueño (=IF(C109<>"";C109;C108)) se VACÍA; un número suyo se respeta', async () => {
+  const { esResiduoDelDolar } = await import('../scripts/caja-anexo-pestana.mjs')
+  assert.equal(esResiduoDelDolar('=IF(C109<>"";C109;C108)'), true)
+  assert.equal(esResiduoDelDolar('=IF(C109<>""; C109; C108)'), true)
+  assert.equal(esResiduoDelDolar('=1450*1,02'), false, 'una fórmula propia del dueño no es residuo')
+  assert.equal(esResiduoDelDolar(1450), false)
+  const filas = [celdas('Dólar declarado por la empresa (opcional)')]
+  filas[0][2] = { valor: '', formula: '=IF(C109<>"";C109;C108)' }
+  const cargado = rescatarAnexo(filas)
+  const g = grillaAnexo({ refs: REFS, cartera: CARTERA, conceptosCiegos: [], cotizacion: COTIZ, cargado })
+  assert.ok(vacia(g.filas[g.fDec - 1][2]), 'el residuo se borra (VACIO), no se re-emite')
+  const suyo = grillaAnexo({ refs: REFS, cartera: CARTERA, conceptosCiegos: [], cotizacion: COTIZ,
+    cargado: new Map([['Dólar declarado por la empresa (opcional)', { saldo: 1450, fecha: 46233, origen: 'MEP' }]]) })
+  assert.equal(suyo.filas[suyo.fDec - 1][2], 1450)
+})

@@ -654,9 +654,19 @@ function bloqueTipoDeCambio(h) {
   const { push, previo, AJENA } = h
   push(['A9 · TIPO DE CAMBIO — SÓLO PARA VALUAR LA CUENTA EN DÓLARES'])
   push(['Concepto', '', 'Cotización', '', '', 'Fecha', 'Origen'])
-  const fRef = push([TIPO_CAMBIO.referencia.nombre, '', TIPO_CAMBIO.referencia.formula, '', '',
-    '=TODAY()', TIPO_CAMBIO.referencia.origen])
-  const suyo = (campo) => { const v = previo(TIPO_CAMBIO.declarado.nombre, campo); return v === '' || v == null ? AJENA : v }
+  // LA REFERENCIA ES UN NÚMERO CON FECHA, escrito por la corrida (25/09/2026, opción A). Sin cotización
+  // (BCRA y base caídos) no se escribe nada: la celda conserva la de la corrida anterior, con SU fecha
+  // y su origen — un número viejo que dice de cuándo es, nunca un número sin fecha.
+  const c = h.cotizacion
+  const fRef = c
+    ? push([TIPO_CAMBIO.referencia.nombre, '', c.tc, '', '', c.fechaSerial, c.origen])
+    : push([TIPO_CAMBIO.referencia.nombre, '', AJENA, '', '', AJENA, AJENA])
+  // LA CELDA DEL DUEÑO: lo que él cargó se respeta; el residuo de un layout viejo del propio generador
+  // (`=IF(C109<>"";C109;C108)`, que apuntaba a filas que hoy son encabezados) se VACÍA — ver rescatarAnexo.
+  const suyo = (campo) => {
+    if (campo === 'saldo' && previo(TIPO_CAMBIO.declarado.nombre, 'residuo')) return ''
+    const v = previo(TIPO_CAMBIO.declarado.nombre, campo); return v === '' || v == null ? AJENA : v
+  }
   const fDec = push([TIPO_CAMBIO.declarado.nombre, '', suyo('saldo'), AJENA, AJENA, suyo('fecha'),
     previo(TIPO_CAMBIO.declarado.nombre, 'origen') || TIPO_CAMBIO.declarado.origen])
   const fTC = push([TIPO_CAMBIO.uso.nombre, '', `=IF(C${fDec}<>"";C${fDec};C${fRef})`, '', '', '',
@@ -675,6 +685,7 @@ export function grillaAnexo(ctx = {}) {
     refs: ctx.refs ?? {},
     cartera: ctx.cartera ?? { origen: '—', enCartera: [], endosados: [] },
     conceptosCiegos: ctx.conceptosCiegos ?? [],
+    cotizacion: ctx.cotizacion ?? null,
     ch: ctx.refs?.cheques ?? 'Cheques Emitidos',
     // POR CLAVE NORMALIZADA: el rescate lee del Sheet y acá se pide con la constante del código. Los
     // dos lados tienen que normalizar igual, o un rótulo con sangría no se encuentra nunca — ver

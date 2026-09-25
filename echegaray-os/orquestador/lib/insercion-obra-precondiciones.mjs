@@ -158,13 +158,17 @@ export async function sondearPrecondiciones({ script, query, cwd = process.cwd()
 // LAS FILAS SE LEYERON DEL ARCHIVO, NO SE SUPUSIERON: suponerlas costó una copia de ensayo arruinada
 // —se escribió en C109 creyendo que era la celda del dueño y se pisó la cotización de Google—. C109 es
 // de Google; la del dueño, la que dice «Dólar declarado por la empresa (opcional)», es C110.
+// 25/09/2026: el bloque bajó dos filas (C109:C111 → C111:C113). Leído del archivo, no supuesto: el rango
+// con nombre TIPO_CAMBIO_USD apunta a C113. Y desde la opción A del dueño, C111 deja de ser GOOGLEFINANCE:
+// es un NÚMERO que escribe cada corrida desde el BCRA (lib/dolar-bcra.mjs) — con eso el archivo ya está
+// quieto sin que el dueño clave nada.
 export const DOLAR = Object.freeze({
   pestana: '_CAJA_ANEXO',
-  rango: "'_CAJA_ANEXO'!C109:C111",
-  primeraFila: 109,
-  referencia: 0,   // C109 · =IFERROR(GOOGLEFINANCE("CURRENCY:USDARS");"")
-  declarado: 1,    // C110 · «Dólar declarado por la empresa (opcional)» — lo que el dueño clava
-  enUso: 2,        // C111 · =IF(C110<>"";C110;C109)  ← TIPO_CAMBIO_USD
+  rango: "'_CAJA_ANEXO'!C111:C113",
+  primeraFila: 111,
+  referencia: 0,   // C111 · la cotización del BCRA escrita por la corrida (antes GOOGLEFINANCE)
+  declarado: 1,    // C112 · «Dólar declarado por la empresa (opcional)» — lo que el dueño clava
+  enUso: 2,        // C113 · =IF(C112<>"";C112;C111)  ← TIPO_CAMBIO_USD
 })
 
 /**
@@ -177,9 +181,14 @@ export const DOLAR = Object.freeze({
 export function problemaDelTipoDeCambio({ formulas = [], valores = [] } = {}) {
   const f = (i) => String(formulas[i]?.[0] ?? '')
   const celda = (i) => `${DOLAR.pestana}!C${DOLAR.primeraFila + i}`
-  if (!/GOOGLEFINANCE\s*\(/i.test(f(DOLAR.referencia)) || !/^=IF\(/i.test(f(DOLAR.enUso))) {
+  const referenciaEscrita = !f(DOLAR.referencia).startsWith('=') && typeof valores[DOLAR.referencia]?.[0] === 'number'
+  if ((!referenciaEscrita && !/GOOGLEFINANCE\s*\(/i.test(f(DOLAR.referencia))) || !/^=IF\(/i.test(f(DOLAR.enUso))) {
     return `el bloque del tipo de cambio no está donde se esperaba (${DOLAR.rango}): no puedo afirmar que el dólar esté quieto`
   }
+  // Un NÚMERO en la referencia (lo escribe la corrida desde el BCRA) no se mueve solo. Una fórmula en la
+  // celda del dueño sí podría: se exige que esté vacía o sea un número.
+  const dec = f(DOLAR.declarado)
+  if (referenciaEscrita && !dec.startsWith('=')) return null
   // Un NÚMERO escrito a mano. Mientras en esa celda viva una fórmula —hoy trae `=IF(C109<>"";C109;C108)`,
   // que la hace repetir la cotización de Google—, el valor en uso se sigue moviendo aunque la celda
   // muestre un número.

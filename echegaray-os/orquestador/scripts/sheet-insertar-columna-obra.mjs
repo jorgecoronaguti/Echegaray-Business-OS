@@ -186,7 +186,7 @@ async function encabezados(google, log, id) {
   }
   const dolar = problemaDelTipoDeCambio(bloque)
   if (dolar) { log(`✖ tipo de cambio — NO inserto:\n  ${dolar}`); return { fin: { ok: false, paso: 'tipo-de-cambio', detalle: [dolar] } } }
-  log(`1b ✓ tipo de cambio clavado por el dueño (${bloque.valores[DOLAR.declarado][0]}): el archivo no se mueve solo`)
+  log(`1b ✓ tipo de cambio quieto (${bloque.valores[DOLAR.enUso]?.[0]}): el archivo no se mueve solo`)
   return { meta, hojas }
 }
 
