@@ -7,16 +7,15 @@
 // entra y la bitácora de cambios: junto es una pared. Separado, cada pregunta tiene su solapa y el
 // Resumen contesta las tres que se hacen todos los días —quién es, qué categoría cobra, dónde está—.
 //
-// ═══ DOS SOLAPAS QUE NO SON COMO LAS OTRAS ═══
+// ═══ UNA SOLAPA QUE NO ES COMO LAS OTRAS ═══
 //
-// «Usuario y permisos» y «Auditoría» no describen a la PERSONA: describen su CUENTA y lo que se le
-// hizo a su ficha. Por eso cada una tiene su propio control de acceso, distinto del de la pantalla:
+// «Usuario y permisos» no describe a la PERSONA: describe su CUENTA. Por eso tiene su propio control de
+// acceso, distinto del de la pantalla. («Auditoría» se quitó el 25/09/2026 por pedido del dueño; en su
+// lugar está «EPP y Ropa de Trabajo».)
 //
 //   Usuario y permisos   `veLaCuentaDeOtro` = `ve_economia()`, el MISMO predicado que cierra
 //                        `/administracion/usuarios`. Sin esto, la ficha sería el camino largo hasta
 //                        la pantalla que la lista negra le cierra al jefe de obra.
-//   Auditoría            `es_administracion()`, que es lo que la RLS de `entidad_cambio` ya exige.
-//                        Por eso la retribución llega tapada desde la base: el jefe de obra entra.
 //
 // Y CADA SOLAPA PIDE SÓLO LO SUYO: el Resumen se abre muchas veces por día y no necesita el
 // historial de horas para decir quién es esta persona.
@@ -78,7 +77,6 @@ import { getDocumentosSubidos } from '@/features/documentos/services/documentosS
 import { getCertificadosDeLicencia } from '@/features/documentos/services/certificadosDeLicenciaService'
 import { ArchivosDeDrive } from '@/features/documentos/components/ArchivosDeDrive'
 import { DocumentosSubidos } from '@/features/documentos/components/DocumentosSubidos'
-import { BloqueAuditoria } from '@/features/administracion/components/BloqueAuditoria'
 import { BloqueUsuario } from '@/features/administracion/components/BloqueUsuario'
 import { CamposIdentidad, CamposLaboral } from '@/features/administracion/components/FormularioPersona'
 import { AltaDocumento } from '@/features/administracion/components/FichaPartes'
@@ -101,7 +99,8 @@ import { puedeAnotar, veAnotaciones } from '@/features/administracion/services/a
 import { getAnotaciones } from '@/features/administracion/services/anotacionesService'
 import { crearAnotacion } from '@/features/administracion/services/anotacionesActions'
 import { getCuentaDePersona } from '@/features/administracion/services/accesoService'
-import { getBitacora, TRAMO } from '@/features/administracion/services/auditoriaService'
+import { leerVestimentaDePersona, MIGRACION_VESTIMENTA } from '@/features/herramientas/services/vestimentaDePersona'
+import { EppDePersona } from '@/features/herramientas/components/EppDePersona'
 import { getHHDePersona, resumenDelPeriodo } from '@/features/administracion/services/hhPersonaService'
 import { esPeriodo, rotulo, ventanaDe, type Periodo } from '@/features/administracion/services/periodoHH'
 import { darDeBaja, editarPersona, reincorporar, type GrupoEdicion } from '@/features/administracion/services/personasActions'
@@ -115,16 +114,7 @@ import { nombreDePersona, nombreLegal } from '../../../../../shared/personas/nom
 
 export const dynamic = 'force-dynamic'
 
-type Busqueda = { v?: string; editar?: string; p?: string; n?: string }
-
-/** Cuántos cambios de la bitácora se piden. El «ver más» viaja en la URL, no en un estado de cliente. */
-function cuantosCambios(n: string | undefined): number {
-  const pedidos = Number(n)
-  // UN TOPE, Y NO POR PRUDENCIA: `?n=` viene del navegador. Sin techo, cualquiera con sesión pide
-  // la bitácora entera de una persona en una sola consulta y la pantalla tarda lo que tarde.
-  if (!Number.isInteger(pedidos) || pedidos <= 0) return TRAMO
-  return Math.min(pedidos, TRAMO * 20)
-}
+type Busqueda = { v?: string; editar?: string; p?: string }
 
 // EL PERÍODO LO ELIGE QUIEN MIRA. Antes era una ventana fija de 30 días, que no coincide con NINGUNA
 // liquidación: el dueño pidió *"día · semana · quincena · mes"*, y la quincena es la de la empresa
@@ -243,8 +233,9 @@ export default async function FichaPersonaPage({
   // el legajo sólo podía VINCULAR un archivo que ya estuviera en Drive: quien tenía la foto del DNI
   // en el teléfono no tenía por dónde meterla.
   const subidos = vista === 'documentos' ? await getDocumentosSubidos(supabase, 'persona', id) : null
-  const cuantos = cuantosCambios(sp.n)
-  const bitacora = vista === 'auditoria' ? await getBitacora(supabase, 'personas', id, cuantos) : null
+  // EPP Y ROPA (dueño, 25/09/2026): sólo en su solapa. Lee el parque de Herramientas entero —el mismo
+  // stock que ve el Inventario— y los talles de la persona.
+  const vestimenta = vista === 'epp' ? await leerVestimentaDePersona(supabase, id) : null
 
   const vigente = (asignaciones?.data ?? []).find((a) => !a.hasta) ?? null
   const papeles = documentos?.data ?? []
@@ -680,14 +671,25 @@ export default async function FichaPersonaPage({
             />
           )}
 
-          {vista === 'auditoria' && bitacora && (
-            <div data-testid="bloque-auditoria">
-              <BloqueAuditoria
-                bitacora={bitacora}
-                hrefMas={`${base}?${new URLSearchParams({ v: 'auditoria', n: String(cuantos + TRAMO) })}`}
-              />
-            </div>
+          {vista === 'epp' && vestimenta?.estado === 'ok' && (
+            <EppDePersona
+              personaId={id}
+              enLaEmpresa={persona.en_la_empresa}
+              ubicacionPersona={vestimenta.ubicacionPersona}
+              tallerId={vestimenta.tallerId}
+              tiene={vestimenta.tiene}
+              catalogo={vestimenta.catalogo}
+              historial={vestimenta.historial}
+              talles={vestimenta.talles}
+              tallesSinBase={vestimenta.tallesSinBase}
+            />
           )}
+          {vista === 'epp' && vestimenta?.estado === 'falta_migracion' && (
+            <Aviso tono="info" titulo="Falta la base del EPP y la ropa">
+              Esta solapa espera la migración {MIGRACION_VESTIMENTA}. No es que la persona no tenga nada entregado.
+            </Aviso>
+          )}
+          {vista === 'epp' && vestimenta?.estado === 'error' && <Aviso tono="neg">{vestimenta.mensaje}</Aviso>}
         </div>
 
         {/* EL COSTADO ESTÁ EN LAS SEIS CARAS a propósito: quién es esta persona es el contexto de

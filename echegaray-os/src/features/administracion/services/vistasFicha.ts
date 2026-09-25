@@ -33,8 +33,13 @@
 //   acceso —`liquidaSueldos`, el mismo que cierra la Liquidación— porque el jefe de obra abre el legajo
 //   y no ve sueldos.
 
+//   EPP Y ROPA DE TRABAJO (dueño, 25/09/2026) ocupa el lugar de «Auditoría», que se quitó para todos:
+//   «esa pestaña "auditoria" … la vas a quitar de todos y vas a poner en su lugar "EPP y Ropa de
+//   Trabajo"». Lo que tiene la persona de EPP y ropa, y la entrega desde el inventario de Herramientas.
+//   Un `?v=auditoria` viejo cae en el Resumen: no hay redirect que mantener.
+
 export const VISTAS_FICHA = [
-  'resumen', 'asignaciones', 'horas', 'retribucion', 'documentos', 'usuario', 'auditoria',
+  'resumen', 'asignaciones', 'horas', 'retribucion', 'documentos', 'usuario', 'epp',
 ] as const
 export type VistaFicha = (typeof VISTAS_FICHA)[number]
 
@@ -45,5 +50,5 @@ export const LABEL_FICHA: Record<VistaFicha, string> = {
   retribucion: 'Retribución',
   documentos: 'Documentos',
   usuario: 'Usuario y permisos',
-  auditoria: 'Auditoría',
+  epp: 'EPP y Ropa de Trabajo',
 }
