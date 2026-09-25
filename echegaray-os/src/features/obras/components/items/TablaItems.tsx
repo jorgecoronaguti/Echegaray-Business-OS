@@ -27,7 +27,8 @@ import { contarItems, textoAvanceItem, type FilaItem } from './filasDeItems'
 export const COLS_ITEMS = 'minmax(0,1fr) 104px 70px 94px 100px 168px'
 const SANGRIA: Record<FilaItem['nivel'], number> = { rubro: 0, epica: 16, historia: 32, tarea: 48, subtarea: 64 }
 
-const pct = (n: number | null, dec = 1) => n == null ? null : `${n.toLocaleString('es-AR', { maximumFractionDigits: dec })}%`
+// Truncado debajo de 100 (a los decimales pedidos): lo que no terminó no dice «100%».
+const pct = (n: number | null, dec = 1) => n == null ? null : `${(n < 100 ? Math.floor(n * 10 ** dec) / 10 ** dec : n).toLocaleString('es-AR', { maximumFractionDigits: dec })}%`
 const pesos = (n: number) => `$ ${Math.round(n).toLocaleString('es-AR')}`
 
 function Faint({ children }: { children: React.ReactNode }) {

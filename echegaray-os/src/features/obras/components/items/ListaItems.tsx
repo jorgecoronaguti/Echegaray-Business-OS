@@ -18,7 +18,8 @@ import { C, MONO } from '../canon/tokens'
 import { Ico, P } from '../canon/Ico'
 import { gruposTelefono, type FilaItem } from './filasDeItems'
 
-const pct = (n: number | null) => n == null ? null : `${n.toLocaleString('es-AR', { maximumFractionDigits: 0 })}%`
+// Truncado debajo de 100: lo que no terminó no dice «100%».
+const pct = (n: number | null) => n == null ? null : `${(n < 100 ? Math.floor(n) : Math.round(n)).toLocaleString('es-AR')}%`
 
 export function ListaItems({ filas, query, alBuscar, filtrosActivos, alAbrirFiltros, alAbrir, vacio }: {
   filas: FilaItem[]

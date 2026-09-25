@@ -69,7 +69,7 @@ export interface FilaItem {
 /** EL AVANCE PROPIO DE UN ÍTEM, en texto (dueño 25/09: «¿cómo veo si va avanzando?»): «8 de 16 ml · 50%»
  *  si se mide por cantidad; si no, el %; sin registro, `null` (la pantalla escribe «sin registrar»). */
 export function textoAvanceItem(f: Pick<FilaItem, 'pctItem' | 'cantidad'>): string | null {
-  const p = f.pctItem == null ? null : `${f.pctItem.toLocaleString('es-AR', { maximumFractionDigits: 0 })}%`
+  const p = f.pctItem == null ? null : `${(f.pctItem < 100 ? Math.floor(f.pctItem) : Math.round(f.pctItem)).toLocaleString('es-AR')}%`
   if (f.cantidad) {
     const n = (x: number) => x.toLocaleString('es-AR', { maximumFractionDigits: 2 })
     return `${n(f.cantidad.hecha)} de ${n(f.cantidad.objetivo)}${f.cantidad.unidad ? ` ${f.cantidad.unidad}` : ''}${p ? ` · ${p}` : ''}`

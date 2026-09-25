@@ -20,7 +20,8 @@ import type { FilaItem } from './filasDeItems'
 
 export const COLS_TAREAS = 'minmax(0,1fr) 110px 150px 110px 64px 120px'
 
-const pct = (n: number) => `${Math.round(n).toLocaleString('es-AR')}%`
+// Un avance que no terminó no se escribe «100%»: se trunca (B0 en 99,8 decía 100%, al lado de «va en 99,8 %»).
+const pct = (n: number) => `${(n < 100 ? Math.floor(n) : Math.round(n)).toLocaleString('es-AR')}%`
 const hhTxt = (n: number) => Math.round(n).toLocaleString('es-AR')
 
 const ESTADO: Record<FilaItem['estado'], { texto: string; color: string }> = {
