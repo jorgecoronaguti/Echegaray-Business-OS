@@ -264,23 +264,20 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
           <div style={{ fontSize: '19px', fontWeight: 600, color: C.tinta }}>Obras</div>
           <ConmutadorVista vista={vista} telefono cambiar={setVista} />
         </div>
-        {!esGantt && <div style={{ display: 'flex' }}>{buscador}</div>}
-        {esGantt ? (
-          <div style={estiloFiltros(true)} data-testid="filtros-obras">
-            <button type="button" onClick={() => { setFiltro('todo'); setEtapaGantt(null) }} aria-pressed={filtro === 'todo' && !etapaGantt} data-testid="filtro-todo" style={estiloChip(filtro === 'todo' && !etapaGantt, true)}>
-              <Ico d={ICONO_CHIP.todo} s={12} />Todo<span style={estiloCuentaChip(true)}>{cuentas.todo}</span>
-            </button>
-            <button type="button" onClick={() => { setFiltro(filtro === 'atraso' ? 'todo' : 'atraso'); setEtapaGantt(null) }} aria-pressed={filtro === 'atraso'} data-testid="filtro-atraso" style={estiloChip(filtro === 'atraso', true)}>
-              <Ico d={ICONO_CHIP.atraso} s={12} />Con atraso<span style={estiloCuentaChip(true)}>{cuentas.atraso}</span>
-            </button>
+        <div style={{ display: 'flex' }}>{buscador}</div>
+        <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono />
+        </div>
+        {/* M02: los filtros por ETAPA del diseño van en el cuerpo del Gantt, no en la cabecera (que es la
+            misma que la de la Tabla): se suman al filtro de la cartera. */}
+        {esGantt && etapasGantt.length > 0 && (
+          <div style={estiloFiltros(true)} data-testid="filtros-etapa-gantt">
             {etapasGantt.map(([e, n]) => (
-              <button key={e} type="button" onClick={() => { setFiltro('todo'); setEtapaGantt(etapaGantt === e ? null : e) }} aria-pressed={etapaGantt === e} data-testid={`filtro-etapa-${e}`} style={estiloChip(etapaGantt === e, true)}>
+              <button key={e} type="button" onClick={() => setEtapaGantt(etapaGantt === e ? null : e)} aria-pressed={etapaGantt === e} data-testid={`filtro-etapa-${e}`} style={estiloChip(etapaGantt === e, true)}>
                 {e}<span style={estiloCuentaChip(true)}>{n}</span>
               </button>
             ))}
           </div>
-        ) : <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono />}
-        </div>
+        )}
         {esGantt ? <CuerpoGantt grupos={gruposGanttTel} lista={listaGanttTel} total={obras.length} hoyIso={hoyIso} telefono escala={escala} /> : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {grupos.map((g) => (
@@ -310,18 +307,8 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
       data-testid="portafolio-tabla">
       {/* EL ENCABEZADO QUEDA FIJO bajo la barra de la app (dueño, 23/09/2026): la tabla se desplaza debajo. */}
       <div style={ENCABEZADO_FIJO} data-testid="encabezado-cartera">
-      {esGantt ? (
-        // 02: la cabecera del Gantt es UNA línea — «Obras · Ver Tabla|Gantt · filtros» y «Mes · Trimestre
-        // · Año» a la derecha; sin bajada, sin buscador, sin «Nueva obra» (eso es de la Tabla). El
-        // cambio de vista sigue sin volver al servidor (dueño 23/09).
-        <div style={{ display: 'flex', alignItems: 'center', gap: '22px' }} data-testid="cabecera-gantt">
-          <div style={ESTILO_TITULO}>Obras</div>
-          <ConmutadorVista vista={vista} telefono={false} cambiar={setVista} />
-          <div style={{ width: '1px', height: '15px', background: C.borde }} />
-          <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono={false} claves={['todo', 'curso', 'atraso', 'problema']} />
-          <SelectorEscala escala={escala} setEscala={setEscala} />
-        </div>
-      ) : (<>
+      {/* LA CABECERA ES LA MISMA EN TABLA Y GANTT (dueño 23–24/09: «el Gantt tiene que respetar el diseño
+          de la Tabla»; su decisión manda sobre el diseño 02, que la dibuja en una línea). */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '24px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
           <div style={ESTILO_TITULO}>Obras</div>
@@ -339,8 +326,8 @@ export function CarteraObras({ obras, archivadas, conArchivadas, esAdmin, sinDat
         <ConmutadorVista vista={vista} telefono={false} cambiar={setVista} />
         <div style={{ width: '1px', height: '15px', background: C.borde }} />
         <ChipsCartera filtro={filtro} setFiltro={setFiltro} cuentas={cuentas} sinImpedimentos={sinImpedimentos} telefono={false} />
+        {esGantt && <SelectorEscala escala={escala} setEscala={setEscala} />}
       </div>
-      </>)}
       </div>
 
       {esGantt ? <CuerpoGantt grupos={grupos} lista={lista} total={obras.length} hoyIso={hoyIso} telefono={false} escala={escala} /> : (<>
