@@ -59,7 +59,10 @@ export function PlanillaGrilla({
   const telefono = useAnchoVentana() < 768
   const [pagina, setPagina] = useState(0)
   const [modo, setModo] = useState<ModoCelda>('fraccion')
-  const [todas, setTodas] = useState(false)
+  // TODAS LAS TAREAS DE ENTRADA (25/09): con el tope de 40 la planilla de Quattropani cortaba en la 40 de 95 y
+  // las de más abajo —los plegados de 57 y 16 ml del techo— no aparecían aunque el árbol las mostrara;
+  // «ver el resto» abajo de todo no se ve. El recorte queda disponible pero no arranca puesto.
+  const [todas, setTodas] = useState(true)
 
   const setFeriados = useMemo(() => new Set(feriados), [feriados])
   const dias = useMemo(() => ventanaHabil(hoy, pagina, isodows, setFeriados), [hoy, pagina, isodows, setFeriados])
