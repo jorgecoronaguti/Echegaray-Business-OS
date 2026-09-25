@@ -33,7 +33,18 @@ export type Lectura =
 
 const TOPE = 10_000
 
+/**
+ * El índice de obras con su cliente, IGUAL PARA TODOS LOS NIVELES (20260925T1600, regla de oro del dueño):
+ * `obras_de_herramientas()` publica sólo lo que este módulo dibuja. Con la RLS de `obra_canonica` el
+ * operario veía una sola obra y las demás ubicaciones quedaban sin nombre ni cliente. Sin la función (la
+ * base todavía sin la migración) se lee como antes, con la RLS de cada uno.
+ */
 async function leerObras(supabase: SupabaseClient): Promise<ObraIndice[]> {
+  const rpc = await supabase.rpc('obras_de_herramientas')
+  if (!rpc.error && rpc.data) {
+    return (rpc.data as { id: string; codigo: string | null; nombre: string | null; estado: string | null; cliente_id: string | null; cliente: string | null }[])
+      .map((o) => ({ id: o.id, codigo: o.codigo, nombre: o.nombre, estado: o.estado, cliente: o.cliente, cliente_id: o.cliente_id }))
+  }
   const [obras, codigos, clientes] = await Promise.all([
     supabase.from('obra_canonica').select('id, nombre, estado, cliente_id').is('fusionada_en', null),
     codigosDeObra(supabase, null),
