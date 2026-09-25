@@ -283,10 +283,10 @@ las que ya existían como producto propio (`/hoy`·`/mi-*` del empleado, `/obra/
 |---|---|---|---|
 | ERP Obras (5 niveles, 04 Tareas, 04b Ítems, crear) | `/obras/[obra]?vista=tareas` / misma, barra Obras | misma ruta, su obra / misma, barra Hoy·Tareas·Avance·Gente | no entra (rebota a `/hoy`) |
 | EPP y Ropa en Herramientas + Recuento del Taller | `/herramientas/inventario?clase=epp\|ropa`, botón «Recuento del Taller» / `/campo/herramientas` → Taller → «Recuento del lugar» (EPP y ropa en 0 incluidos) | igual (permisos iguales en Herramientas, 21/09) | igual |
-| Legajo «EPP y Ropa de Trabajo» | `/administracion/personas/[id]?v=epp` / misma, barra Personal | misma, sin sueldos / misma | no tiene solapa: su legajo es `/mi-informacion/legajo` (sin EPP todavía) |
+| Legajo «EPP y Ropa de Trabajo» | `/administracion/personas/[id]?v=epp` / misma, barra Personal | misma, sin sueldos / misma | «Mi EPP y ropa» `/mi-informacion/epp`, sólo lectura, en las dos caras (desde e9c1e7b2) |
 | Efectivo: editar/borrar, «Cambios», «Imputar un comprobante ya cargado», quitar adelantos | `/administracion/compras?vista=a-rendir&entrega=…` / misma, paneles a pantalla entera | no entra (rebota a `/obra/hoy`); lo suyo en `/obra/efectivo` y `/mi-informacion/efectivo` | lo suyo en `/mi-informacion/efectivo` |
 | Clientes con diseño de Obras Tabla | `/clientes` / misma, desde «Más» | no entra | no entra |
-| Compras: obra de la fila y «Comprobantes que subiste» | `/administracion/compras` / misma, barra Compras | no entra | no entra |
+| Compras: obra de la fila y «Comprobantes que subiste» | `/administracion/compras` / misma, barra Compras | no entra; en la base 0 filas de Compras (20260925T2100) | no entra; 0 filas |
 
 - Herramientas en el teléfono es siempre `/campo/herramientas/*` (middleware; `?pc=1` fuerza escritorio).
 - Pantallas de escritorio a 390: la página nunca se corre de costado; lo ancho scrollea por dentro (`Tabla minWidth`,

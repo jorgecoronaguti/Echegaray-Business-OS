@@ -83,7 +83,7 @@ export default async function MiEppPage() {
         return (
           <Seccion key={clase} titulo={ETIQUETA_PERSONAL[clase].toUpperCase()} extra={filas.length ? `${unidades} ${unidades === 1 ? 'unidad' : 'unidades'}` : undefined}>
             {filas.length === 0 ? (
-              <Nada testid={`mi-epp-nada-${clase}`}>No tenés {clase === 'epp' ? 'EPP' : 'ropa de trabajo'} registrado a tu nombre.</Nada>
+              <Nada testid={`mi-epp-nada-${clase}`}>{clase === 'epp' ? 'No tenés EPP registrado a tu nombre.' : 'No tenés ropa de trabajo registrada a tu nombre.'}</Nada>
             ) : (
               <div data-testid={`mi-epp-${clase}`}>
                 {filas.map((f) => (
