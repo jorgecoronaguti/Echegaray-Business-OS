@@ -60,8 +60,9 @@ export function TabCronograma(props: Props) {
   const editar = useSearchParams().get('editar') === '1'
   const telefono = useAnchoVentana() < 768
   const filas = useMemo(() => filasDelPlan(props.actividades), [props.actividades])
+  const filasVista = useMemo(() => filasDelPlan(props.actividades, { soloTareas: true }), [props.actividades])
   if (editar) return telefono ? <EditorTelefono {...props} filas={filas} /> : <Editor {...props} filas={filas} />
-  return telefono ? <VistaTelefono {...props} filas={filas} /> : <Vista {...props} filas={filas} />
+  return telefono ? <VistaTelefono {...props} filas={filasVista} /> : <Vista {...props} filas={filasVista} />
 }
 
 const Falla = ({ fallas }: { fallas: string[] }) => fallas.length > 0 && (
@@ -126,7 +127,7 @@ function Vista({ obraId, filas, dependencias, hoy, fallas, actividadAbierta }: P
             //     tarea 60 se sigue sabiendo qué fila es y qué semana;
             //   · la fila se marca al pasar y abre la tarea al tocarla (el panel de la tarea en Tareas).
             <div ref={lienzoRef} data-testid="cronograma-lienzo" style={{
-              overflow: 'auto', maxHeight: 'calc(100vh - 260px)', minHeight: '240px', position: 'relative',
+              overflow: 'auto', maxHeight: 'calc(100vh - 310px)', minHeight: '240px', position: 'relative',
             }}>
               <div style={{ display: 'grid', gridTemplateColumns: `270px minmax(${anchoLienzo}px,1fr)`, gridTemplateRows: `26px repeat(${filas.length}, ${ALTO_FILA}px)`, position: 'relative' }}>
                 <div style={{ gridColumn: 1, gridRow: 1, position: 'sticky', top: 0, left: 0, zIndex: 5, background: C.superficie }} />
@@ -203,7 +204,10 @@ function Vista({ obraId, filas, dependencias, hoy, fallas, actividadAbierta }: P
                           </div>
                           )
                         : !t
-                          ? <div {...hover} style={{ gridColumn: 2, gridRow: fila, background: fondo, display: 'flex', alignItems: 'center', fontSize: '12px', color: C.tenue }}>sin fechas</div>
+                          // «sin fechas» FIJO al borde izquierdo del gráfico: con el lienzo corrido a hoy quedaba fuera de la vista y la fila se leía vacía.
+                          ? <div {...hover} style={{ gridColumn: 2, gridRow: fila, background: fondo, display: 'flex', alignItems: 'center', fontSize: '12px', color: C.tenue }}>
+                            <span style={{ position: 'sticky', left: '270px', paddingLeft: '2px', background: fondo }}>sin fechas</span>
+                          </div>
                           : (
                             <div {...hover} data-testid={`barra-${f.actividadId}`} title={detalle}
                               onClick={() => { if (abrir) router.push(abrir) }}
@@ -294,16 +298,20 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
               <button key={e} type="button" data-testid={`escala-${e}`} aria-pressed={escala === e} onClick={() => setEscala(e)} style={caja(escala === e)}>{ESCALA_LABEL[e]}</button>
             ))}
           </div>
-          <div style={{ fontSize: '12px', color: C.tintaSuave, fontFamily: MONO }}>{ventana ? mesesDeVentana(ventana) : 'sin fechas'}</div>
+          <div style={{ fontSize: '12px', color: C.tintaSuave, fontFamily: MONO, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Ico d={P.fecha} s={12} />{ventana ? mesesDeVentana(ventana) : 'sin fechas'}
+          </div>
         </div>
         {!ventana
           ? <SinFechas obraId={obraId} n={actos.length} />
           : (
             // CADA SEMANA MIDE 40px Y EL GRÁFICO SE CORRE DE COSTADO (M07): repartir 14 semanas en 270px
             // dejaba las tareas de una semana como cuadraditos de 20px. El nombre queda fijo a la izquierda.
-            <div ref={scrollRef} style={{ overflowX: 'auto', margin: '0 -16px', padding: '0 16px' }} data-testid="cronograma-telefono-scroll">
+            // M07: el pie («Línea base · Dependencias») queda a la vista: el lienzo tiene su alto y se desplaza
+            // en los dos sentidos, con los días y los nombres fijos.
+            <div ref={scrollRef} style={{ overflow: 'auto', margin: '0 -16px', padding: '0 16px', maxHeight: 'calc(100dvh - 470px)', minHeight: '220px' }} data-testid="cronograma-telefono-scroll">
             <div style={{ position: 'relative', minWidth: `${120 + ventana.columnas.length * (escala === 'semana' ? 40 : 56)}px` }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '112px 1fr', gap: '8px', height: '26px', alignItems: 'center', borderBottom: `1px solid ${C.borde}` }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '112px 1fr', gap: '8px', height: '26px', alignItems: 'center', borderBottom: `1px solid ${C.borde}`, position: 'sticky', top: 0, zIndex: 2, background: C.superficie }}>
                 {/* El relleno de 16 del lienzo queda a la izquierda de lo fijo: la sombra blanca lo tapa para que lo
                     que se corre de costado no asome detrás de los nombres. */}
                 <div style={{ position: 'sticky', left: 0, background: C.superficie, height: '100%', zIndex: 1, boxShadow: `-16px 0 0 ${C.superficie}` }} />
@@ -337,7 +345,7 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
                           </div>
                         </div>
                         )
-                      : <div style={{ fontSize: '11.5px', color: C.tenue, fontStyle: 'italic' }}>sin fechas</div>}
+                      : <div style={{ fontSize: '11.5px', color: C.tenue, fontStyle: 'italic' }}><span style={{ position: 'sticky', left: '120px' }}>sin fechas</span></div>}
                   </div>
                 )
               })}

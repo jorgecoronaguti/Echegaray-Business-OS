@@ -212,3 +212,12 @@ test('la bajada del MC7 y sólo lo cambiado viaja a la base', () => {
   const cambios = cambiosDeFechas(filas, { a: { inicio: '2026-08-24', fin: '2026-08-28' }, c: { inicio: '2026-09-01', fin: '2026-09-03' } })
   assert.deepEqual(cambios, [{ actividadId: 'c', inicio: '2026-09-01', fin: '2026-09-03' }])
 })
+
+test('la vista (05 · M07) lista sólo lo que se mide: el rubro y sus tareas, sin las historias contenedoras', () => {
+  const filas = filasDelPlan([
+    act({ id: 'h', nombre: 'Demolición', seccion: 'Obra gruesa', tipo: 'resumen' }),
+    act({ id: 't', nombre: 'Retiro', seccion: 'Obra gruesa', inicio_plan: '2026-09-01', fin_plan: '2026-09-04' }),
+  ], { soloTareas: true })
+  assert.deepEqual(filas.map((f) => f.nombre), ['Obra gruesa', 'Retiro'])
+  assert.equal(filas[0].inicio, '2026-09-01')
+})

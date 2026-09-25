@@ -137,10 +137,15 @@ function deRubro(clave: string, nombre: string, hijas: FilaPlan[]): FilaPlan {
  * Agrupa con `agruparActividades` —la MISMA regla que el árbol de Tareas y el Gantt global—: si acá
  * se agrupara distinto, la misma obra tendría rubros distintos según desde qué pantalla se la mire.
  */
-export function filasDelPlan(actividades: readonly Actividad[]): FilaPlan[] {
+export function filasDelPlan(actividades: readonly Actividad[], { soloTareas = false }: { soloTareas?: boolean } = {}): FilaPlan[] {
   const salida: FilaPlan[] = []
   for (const g of agruparActividades(actividades as Actividad[])) {
-    const hijas = g.hijas.map(deActividad)
+    // EL 05 Y EL M07 DIBUJAN DOS NIVELES: el rubro (con su línea envolvente) y las actividades que se
+    // miden. La épica y la historia son contenedores (`resumen`) sin fechas propias: como fila decían
+    // «sin fechas» con todas sus tareas fechadas debajo (dueño 25/09). El editor (C06) sí las lista.
+    const hijas = (soloTareas ? g.hijas.filter((a) => a.tipo !== 'resumen') : g.hijas).map(deActividad)
+    // Un grupo que sólo es un contenedor (una épica o historia sin tareas propias en él) no es un rubro del 05.
+    if (soloTareas && hijas.length === 0) continue
     salida.push(deRubro(g.clave, g.nombre, hijas))
     salida.push(...hijas)
   }
