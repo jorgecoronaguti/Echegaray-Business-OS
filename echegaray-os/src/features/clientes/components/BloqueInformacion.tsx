@@ -158,7 +158,7 @@ function Administrar({
       </details>
 
       <details className="rounded-card border border-line bg-surface" data-testid="carpeta-drive">
-        <summary className="cursor-pointer px-3.5 py-2 text-[12.5px] text-ink">
+        <summary className="cursor-pointer px-3.5 py-2 text-[12.5px] text-ink max-md:flex max-md:min-h-11 max-md:items-center">
           Vincular la carpeta de Drive
         </summary>
         <div className="border-t border-line p-3.5">

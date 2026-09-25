@@ -261,7 +261,7 @@ export function BloqueDocumentos({
 function Vincular({ accion }: { accion: AccionFormulario }) {
   return (
     <details className="w-full min-w-0 rounded-card border border-line bg-surface sm:w-auto" data-testid="alta-documento">
-      <summary className="cursor-pointer select-none px-3.5 py-2 text-[12.5px] text-ink">+ Vincular un archivo de Drive</summary>
+      <summary className="cursor-pointer select-none px-3.5 py-2 text-[12.5px] text-ink max-md:flex max-md:min-h-11 max-md:items-center">+ Vincular un archivo de Drive</summary>
       <div className="w-full border-t border-line p-3.5 sm:w-[440px]">
         <FormAccion accion={accion} testid="form-documento" enviar="Vincular" limpiarAlOk mensajeOk="Vinculado.">
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">

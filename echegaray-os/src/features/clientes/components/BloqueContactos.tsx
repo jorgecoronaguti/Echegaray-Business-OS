@@ -96,7 +96,7 @@ export function BloqueContactos({
           —y el bloque se queda vacío para siempre—. */}
       {puedeEditar && (
         <details className="rounded-card border border-line bg-surface" data-testid="alta-contacto">
-          <summary className="cursor-pointer select-none px-3.5 py-2 text-[12.5px] text-ink">+ Agregar contacto</summary>
+          <summary className="cursor-pointer select-none px-3.5 py-2 text-[12.5px] text-ink max-md:flex max-md:min-h-11 max-md:items-center">+ Agregar contacto</summary>
           <div className="border-t border-line p-3.5">
             <FormAccion accion={crear} testid="form-contacto" enviar="Agregar" limpiarAlOk mensajeOk="Contacto agregado.">
               <CamposContacto t={t} />
