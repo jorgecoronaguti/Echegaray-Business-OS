@@ -4,33 +4,43 @@
 // vigente sea la que se relee, que confirmar el mismo valor doce veces por día no cree doce filas, y
 // que el ancla sobreviva a la corrida siguiente. Eso vive en el SQL y sólo se prueba corriéndolo.
 //
-// SE AUTOLIMPIA: `file_id` sintético y borrado al final. Sin base, se salta — no se inventa un verde.
+// ═══ TODO ADENTRO DE UNA TRANSACCIÓN QUE TERMINA EN ROLLBACK (25/09/2026) ═══
+//
+// Este archivo escribía COMMITEADO en la base productiva (`declararEscrituraEnPrueba`) con un
+// `file_id` sintético y un `t.after` que lo borraba. El 25/09 había 500 filas `TEST_CENTINELA_1073779`
+// en `caja_conteo_observado`: un proceso que murió entre el insert de `observarMuchas` y la limpieza.
+// Un test que depende de llegar a su propio `after` para no dejar basura en producción no es
+// hermético: es optimista. «La racha sobrevive a la corrida siguiente» es una propiedad del SQL
+// (upsert por racha, relectura por `visto_desde`), y se prueba igual adentro de una transacción: la
+// relectura ve lo que la misma transacción escribió. Muera donde muera el proceso, no queda una fila.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { anclaDelConteo, observar, observarMuchas, ultimaObservacion } from './caja-conteo-centinela.mjs'
+import { anclaDelConteo, observar, observarMuchas, ultimaObservacion, conteosDeLaVentana, conConexion } from './caja-conteo-centinela.mjs'
 import { instanteDelSello } from './caja-ancla-por-instante.mjs'
-import { query } from './db.mjs'
-import { declararEscrituraEnPrueba } from './guarda-base-de-prueba.mjs'
-
-// ESTE ARCHIVO ESCRIBE COMMITEADO SOBRE LA BASE PRODUCTIVA, Y NO ES UN DESCUIDO: lo que prueba es
-// que la racha SOBREVIVE a la corrida siguiente. Dentro de una transacción con rollback no habría
-// corrida siguiente que mirar. Se declara para que quede en una lista enumerable en vez de ser un
-// hábito invisible — el resto de la suite no puede escribir sin decirlo.
-declararEscrituraEnPrueba('la racha del centinela se prueba contra la tabla real porque la '
-  + 'propiedad ES que sobreviva a la corrida siguiente; file_id sintético y borrado al final')
+import { getPool, query } from './db.mjs'
 
 const FILE = `TEST_CENTINELA_${process.pid}`
 const hayBase = await query('select 1').then(() => true).catch(() => false)
-const limpiar = () => query('delete from public.caja_conteo_observado where file_id = $1', [FILE]).catch(() => {})
 const T = (h, m = 0) => new Date(2026, 7, 15, h, m, 0)
 
-test('una racha por VALOR, no una fila por corrida — y el ancla se relee igual', { skip: !hayBase && 'sin base' }, async (t) => {
-  t.after(limpiar)
-  await limpiar()
+/** El cuerpo corre con TODAS las consultas del centinela por una conexión en transacción, y se deshace. */
+async function enRollback(fn) {
+  const c = await getPool().connect()
+  const q = (sql, params) => c.query(sql, params)
+  try {
+    await c.query('begin')
+    return await conConexion(c, () => fn(q))
+  } finally {
+    await c.query('rollback').catch(() => {})
+    c.release()
+  }
+}
+
+test('una racha por VALOR, no una fila por corrida — y el ancla se relee igual', { skip: !hayBase && 'sin base' }, () => enRollback(async (q) => {
   await observar(FILE, 'CAJA_ARQUEO_ARS', 4320000, { ahora: T(9) })
   await observar(FILE, 'CAJA_ARQUEO_ARS', 4320000, { ahora: T(11) })
   await observar(FILE, 'CAJA_ARQUEO_ARS', 4320000, { ahora: T(13) })
-  const filas = await query(
+  const filas = await q(
     'select count(*)::int n from public.caja_conteo_observado where file_id = $1', [FILE])
   assert.equal(filas.rows[0].n, 1, 'tres corridas con el mismo conteo son UNA racha')
 
@@ -38,11 +48,9 @@ test('una racha por VALOR, no una fila por corrida — y el ancla se relee igual
   assert.equal(viva.valor, 4320000)
   assert.equal(viva.corridas, 3)
   assert.equal(viva.vistoDesde.getTime(), T(9).getTime(), 'el ancla releída es la PRIMERA vista')
-})
+}))
 
-test('el cambio abre racha nueva y deja el intervalo real escrito', { skip: !hayBase && 'sin base' }, async (t) => {
-  t.after(limpiar)
-  await limpiar()
+test('el cambio abre racha nueva y deja el intervalo real escrito', { skip: !hayBase && 'sin base' }, () => enRollback(async (q) => {
   await observar(FILE, 'CAJA_ARQUEO_ARS', 4320000, { ahora: T(15, 1) })
   await observar(FILE, 'CAJA_ARQUEO_ARS', 4320000, { ahora: T(15, 9) })
   const r = await observar(FILE, 'CAJA_ARQUEO_ARS', 12000000, { ahora: T(17) })
@@ -54,13 +62,11 @@ test('el cambio abre racha nueva y deja el intervalo real escrito', { skip: !hay
   assert.equal(viva.valorPrevio, 4320000)
   assert.equal(viva.previoVistoEn.getTime(), T(15, 9).getTime(), 'el borde izquierdo quedó persistido')
   // La racha vieja NO se pisa: es la historia de los conteos.
-  const n = await query('select count(*)::int n from public.caja_conteo_observado where file_id = $1', [FILE])
+  const n = await q('select count(*)::int n from public.caja_conteo_observado where file_id = $1', [FILE])
   assert.equal(n.rows[0].n, 2)
-})
+}))
 
-test('ADOPTA el ancla que la pestaña ya tenía estampada, y sólo si es del mismo conteo', { skip: !hayBase && 'sin base' }, async (t) => {
-  t.after(limpiar)
-  await limpiar()
+test('ADOPTA el ancla que la pestaña ya tenía estampada, y sólo si es del mismo conteo', { skip: !hayBase && 'sin base' }, () => enRollback(async (q) => {
   // La pestaña viene con el sello del conteo vigente: se adopta ese instante, no el de ahora. Si esto
   // se rompiera, la puesta en marcha movería el ancla hacia adelante y se tragaría adentro del conteo
   // todo lo que se movió desde que se contó de verdad.
@@ -70,28 +76,24 @@ test('ADOPTA el ancla que la pestaña ya tenía estampada, y sólo si es del mis
   assert.equal(Math.round(r.fila.vistoDesde.getTime() / 1000), Math.round(T(10, 30).getTime() / 1000))
   assert.ok(Math.abs(r.serial - instanteDelSello(T(10, 30))) < 1e-6, 'el serial que va al Sheet es el adoptado')
 
-  await limpiar()
+  await q('delete from public.caja_conteo_observado where file_id = $1', [FILE])
   // Un sello que pertenece a OTRO conteo no es evidencia de éste: es un número parecido.
   const otro = await anclaDelConteo(FILE, 'CAJA_ARQUEO_ARS', 12000000, {
     ahora: T(17), sello: { serial: instanteDelSello(T(10, 30)), valorSellado: 4320000 },
   })
   assert.equal(otro.fila.vistoDesde.getTime(), T(17).getTime())
-})
+}))
 
-test('el conteo en dólares es OTRO concepto: uno no pisa al otro', { skip: !hayBase && 'sin base' }, async (t) => {
-  t.after(limpiar)
-  await limpiar()
+test('el conteo en dólares es OTRO concepto: uno no pisa al otro', { skip: !hayBase && 'sin base' }, () => enRollback(async (q) => {
   await observar(FILE, 'CAJA_ARQUEO_ARS', 12000000, { ahora: T(9) })
   await observar(FILE, 'CAJA_ARQUEO_USD', 3500, { ahora: T(9) })
   await observar(FILE, 'CAJA_ARQUEO_USD', 4000, { ahora: T(11) })
   assert.equal((await ultimaObservacion(FILE, 'CAJA_ARQUEO_ARS')).vistoDesde.getTime(), T(9).getTime(),
     'cambiar el conteo en dólares no mueve el ancla de los pesos')
   assert.equal((await ultimaObservacion(FILE, 'CAJA_ARQUEO_USD')).valor, 4000)
-})
+}))
 
-test('observarMuchas: 500 celdas en una lectura, y sólo las que cambiaron abren racha', { skip: !hayBase && 'sin base' }, async (t) => {
-  t.after(limpiar)
-  await limpiar()
+test('observarMuchas: 500 celdas en una lectura, y sólo las que cambiaron abren racha', { skip: !hayBase && 'sin base' }, () => enRollback(async (q) => {
   const lote = (n, extra = 0) => Array.from({ length: n }, (_, i) => ({ concepto: `Compras!T${i + 4}`, valor: 1000 + i + extra }))
   await observarMuchas(FILE, lote(500), { ahora: T(9), prefijo: 'Compras!T' })
   const r = await observarMuchas(FILE, [...lote(499), { concepto: 'Compras!T503', valor: 999999 }],
@@ -100,9 +102,9 @@ test('observarMuchas: 500 celdas en una lectura, y sólo las que cambiaron abren
   assert.equal(r.get('Compras!T503').accion, 'cambio')
   assert.equal(r.get('Compras!T503').fila.vistoDesde.getTime(), T(11).getTime(),
     'la celda que creció tiene por ancla la corrida que la vio crecer')
-  const n = await query('select count(*)::int n from public.caja_conteo_observado where file_id = $1', [FILE])
+  const n = await q('select count(*)::int n from public.caja_conteo_observado where file_id = $1', [FILE])
   assert.equal(n.rows[0].n, 501, '500 rachas vivas + la nueva de la celda que cambió')
-})
+}))
 
 test('la tabla tiene RLS y su policy: sin policy devolvería cero filas y parecería un cero real', { skip: !hayBase && 'sin base' }, async () => {
   const rls = await query(`select relrowsecurity from pg_class where oid = 'public.caja_conteo_observado'::regclass`)
@@ -110,4 +112,23 @@ test('la tabla tiene RLS y su policy: sin policy devolvería cero filas y parece
   const pol = await query(`select count(*)::int n from pg_policies
     where schemaname = 'public' and tablename = 'caja_conteo_observado'`)
   assert.ok(pol.rows[0].n >= 1, 'una tabla con RLS y sin policy no da error: devuelve cero filas')
+})
+
+test('conteosDeLaVentana: los dos últimos conteos con su valor y su día — la ventana de A7', { skip: !hayBase && 'sin base' }, () => enRollback(async (q) => {
+  await q('delete from public.caja_conteo_observado where file_id = $1', [FILE])
+  assert.equal(await conteosDeLaVentana(FILE), null, 'con un solo conteo (o ninguno) no hay ventana, y no se inventa')
+  await observar(FILE, 'CAJA_ARQUEO_ARS', 6380000, { ahora: new Date(2026, 8, 2, 19, 11) })
+  assert.equal(await conteosDeLaVentana(FILE), null)
+  await observar(FILE, 'CAJA_ARQUEO_ARS', 6380000, { ahora: new Date(2026, 8, 24, 17, 15) })
+  await observar(FILE, 'CAJA_ARQUEO_ARS', 36720000, { ahora: new Date(2026, 8, 24, 19, 12) })
+  const v = await conteosDeLaVentana(FILE)
+  assert.equal(v.anterior.valor, 6380000)
+  assert.equal(v.actual.valor, 36720000)
+  assert.equal(v.anterior.dia, 46267, '02/09/2026')
+  assert.equal(v.actual.dia, 46289, '24/09/2026')
+}))
+
+test('NO QUEDA NADA: después de las pruebas, cero filas de prueba en la tabla real', { skip: !hayBase && 'sin base' }, async () => {
+  const n = await query(`select count(*)::int n from public.caja_conteo_observado where file_id like 'TEST_CENTINELA_%'`)
+  assert.equal(n.rows[0].n, 0, 'una fila TEST_CENTINELA_* en producción es un test que escribió fuera de su transacción')
 })

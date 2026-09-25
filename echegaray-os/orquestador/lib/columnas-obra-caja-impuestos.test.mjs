@@ -17,7 +17,7 @@ import {
 } from './caja-posterior-al-corte.mjs'
 import { cobranzasEsperadasTramo } from './caja-calendario.mjs'
 import { formulaControlCartera } from './caja-disponibilidades.mjs'
-import { bloqueLiquidez, bloqueTrazabilidad, bloqueVencido } from './caja-anexo-controles.mjs'
+import { bloqueEfectivoDetalle, bloqueLiquidez, bloqueTrazabilidad, bloqueVencido } from './caja-anexo-controles.mjs'
 import { esIndistinguible, factorSinYaRevisados } from './cobranzas-duplicado.mjs'
 import { consultaPorCliente, formulaTotalEstado } from './cobranzas-cartera.mjs'
 import { columnasDelCobro, leerCobro } from './cobranzas-en-cashflow.mjs'
@@ -93,16 +93,16 @@ const celdasDe = (h) => h.rows.flat().map(String).join('\n')
 
 test('ANEXO · A4/A6/A7: el efectivo cobrado, el ritmo de egreso y el vencido leen su rótulo', () => {
   const hoy = hoja(COLUMNAS_HOY)
-  bloqueLiquidez(hoy); bloqueVencido(hoy); bloqueTrazabilidad(hoy, { yaRevisados: [] })
+  bloqueLiquidez(hoy); bloqueVencido(hoy); bloqueTrazabilidad(hoy, { yaRevisados: [] }); bloqueEfectivoDetalle(hoy)
   const t = celdasDe(hoy)
-  assert.ok(t.includes('(Cobranzas!$N$5:$N$400="Efectivo")*(Cobranzas!$O$5:$O$400="Cobrado")*(Cobranzas!$Q$5:$Q$400<=TODAY())'), 'hoy: el CONEF de siempre')
+  assert.ok(t.includes('(Cobranzas!$N$5:$N$400="Efectivo")*(Cobranzas!$O$5:$O$400="Cobrado")*(Cobranzas!$AA$5:$AA$400<>"USD")*ISNUMBER(Cobranzas!$Q$5:$Q$400)'), 'hoy: el CONEF de siempre, por ventana de conteo a conteo')
   assert.ok(t.includes("SUMIFS('Compras'!$O$4:$O;'Compras'!$AD$4:$AD;\">=\"&TODAY()-90"))
   assert.ok(t.includes("N('Compras'!$T$4:$T)"))
 
   const obra = hoja(COLUMNAS_CON_OBRA)
-  bloqueLiquidez(obra); bloqueVencido(obra); bloqueTrazabilidad(obra, { yaRevisados: [] })
+  bloqueLiquidez(obra); bloqueVencido(obra); bloqueTrazabilidad(obra, { yaRevisados: [] }); bloqueEfectivoDetalle(obra)
   const u = celdasDe(obra)
-  assert.ok(u.includes('(Cobranzas!$O$5:$O$400="Efectivo")*(Cobranzas!$P$5:$P$400="Cobrado")*(Cobranzas!$R$5:$R$400<=TODAY())'))
+  assert.ok(u.includes('(Cobranzas!$O$5:$O$400="Efectivo")*(Cobranzas!$P$5:$P$400="Cobrado")*(Cobranzas!$AB$5:$AB$400<>"USD")*ISNUMBER(Cobranzas!$R$5:$R$400)'))
   assert.ok(u.includes("SUMIFS('Compras'!$P$4:$P;'Compras'!$AE$4:$AE;\">=\"&TODAY()-90"))
   assert.ok(u.includes("N('Compras'!$U$4:$U)"))
   assert.ok(u.includes('(Cobranzas!$P$5:$P$400="Pendiente")'), 'el vencido filtra por «Estado», no por «Forma de Cobro»')

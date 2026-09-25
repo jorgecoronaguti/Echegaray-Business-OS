@@ -122,18 +122,20 @@ test('control de Cobranzas: un pendiente en dólares no se muestra como pesos en
 
 // ══ 3 · `_CAJA_ANEXO` — la identidad del cajón en PESOS y la cartera vencida ══════════════════════════
 
-function anexo(fn) {
+function anexo(fn, conteos = null) {
   const rows = []
-  const h = { rows, ch: 'Cheques Emitidos', refs: { columnas: COLUMNAS_HOY }, get n() { return rows.length }, push(r) { rows.push(r); return rows.length } }
+  const h = { rows, ch: 'Cheques Emitidos', refs: { columnas: COLUMNAS_HOY }, conteos, get n() { return rows.length }, push(r) { rows.push(r); return rows.length } }
   fn(h)
   return rows
 }
 
 test('A7: el efectivo cobrado del cajón en pesos NO incluye los dólares (van a la caja en dólares)', () => {
-  const rows = anexo((h) => bloqueTrazabilidad(h, { yaRevisados: [] }))
-  const cobrado = rows.find((r) => String(r[0]).startsWith('Cobrado en EFECTIVO'))
+  // A7 mide DE CONTEO A CONTEO desde el 25/09/2026: la ventana (01/01 → 24/09) abarca todas las filas.
+  const rows = anexo((h) => bloqueTrazabilidad(h, { yaRevisados: [] }), { anterior: { valor: 0, dia: 46023 }, actual: { valor: 0, dia: 46289 } })
+  const cobrado = rows.find((r) => String(r[0]).startsWith('(+) cobrado en EFECTIVO'))
   const dosVeces = rows.find((r) => String(r[0]).includes('DOS VECES'))
-  const hoja = cobranzas()
+  const ventana = Object.fromEntries(rows.map((r, i) => [`F${i + 1}`, r[5]]).filter(([, v]) => typeof v === 'number'))
+  const hoja = { ...cobranzas(), ...ventana }
   assert.equal(evaluar(cobrado[4], hoja), 10_000_000, 'sólo el efectivo en pesos (antes: + $25.900 de dólares como pesos)')
   assert.equal(evaluar(dosVeces[4], hoja), 0, 'el trío en dólares no le resta $5.250 al efectivo en pesos')
 })

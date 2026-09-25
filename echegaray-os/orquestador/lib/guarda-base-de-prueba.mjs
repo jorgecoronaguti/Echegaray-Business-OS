@@ -14,10 +14,12 @@
 // única forma de probar una propiedad de la BASE (una policy, un CHECK, un índice único, el
 // `at time zone` de una función). Prohibir la escritura los volvería tests que no prueban nada.
 //
-// Y hay tres archivos —`*-persistencia.test.mjs`— que escriben COMMITEADO y tienen razón: la
-// huella de celda y el centinela de conteo se prueban contra la tabla real porque su propiedad es
-// que SOBREVIVE. Ésos declaran, y su declaración los vuelve una lista enumerable en vez de un
-// hábito invisible.
+// Y hay archivos —`*-persistencia.test.mjs`— que escriben COMMITEADO: la huella de celda se prueba
+// contra la tabla real porque su propiedad es que SOBREVIVE. Ésos declaran, y su declaración los
+// vuelve una lista enumerable en vez de un hábito invisible. El del centinela de conteo DEJÓ de
+// declarar el 25/09/2026: un proceso muerto antes de su limpieza dejó 500 filas `TEST_CENTINELA_*`
+// en `caja_conteo_observado`, y hoy corre adentro de una transacción con ROLLBACK (`conConexion`).
+// Los que siguen declarando tienen el mismo riesgo y son los candidatos a migrar igual.
 //
 // ═══ LA REGLA, ENTONCES ═══
 //

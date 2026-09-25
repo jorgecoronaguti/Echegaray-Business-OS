@@ -53,7 +53,10 @@ const suma = (ns) => ns.map(abs).join('+')
 const NO_CIERRA = [
   [ANEXO.difEcheq, 'echeqs entregados'],
   [ANEXO.difConciliacion, 'CAJA vs Cash Flow'],
-  [ANEXO.efectivoSinExplicar, 'efectivo sin depositar'],
+  // EL RÓTULO SIGUE AL SIGNO (25/09/2026). Decía «efectivo sin depositar» sobre el ABS, y A7 da los
+  // dos sentidos: positivo = faltan billetes que el registro dice que entraron; negativo = salió más de
+  // lo que había. Con el mismo rótulo para los dos, la mitad de las veces se sale a buscar al revés.
+  [ANEXO.efectivoSinExplicar, { pos: 'efectivo sin depositar/sin explicar', neg: 'efectivo gastado sin origen registrado' }],
   // EL CAJÓN QUE DA NEGATIVO (14/08). Entra acá y no como quinta alerta —el tope de cuatro es del
   // dueño— porque es exactamente eso: plata que no cierra. Mientras no sea 0, el efectivo que se
   // publica es el conteo del dueño y no el calculado; el detalle está en `_CAJA_ANEXO`, bloque A1.
@@ -77,8 +80,14 @@ const FALTA = [
 const cual = (pares) => {
   const mx = `MAX(${pares.map(([n]) => abs(n)).join(';')})`
   const cascada = pares.reduceRight(
-    (acc, [nombre, etiqueta]) => `IF(${abs(nombre)}=@MX;"${etiqueta} "&${plata(abs(nombre))};${acc})`, '""')
+    (acc, [nombre, etiqueta]) => `IF(${abs(nombre)}=@MX;${rotulo(nombre, etiqueta)}&${plata(abs(nombre))};${acc})`, '""')
   return cascada.replaceAll('@MX', mx)
+}
+
+/** El rótulo de un control: fijo, o `{pos, neg}` cuando el signo dice hacia dónde buscar. */
+function rotulo(nombre, etiqueta) {
+  if (typeof etiqueta === 'string') return `"${etiqueta} "`
+  return `IF(N(${nombre})<0;"${etiqueta.neg} ";"${etiqueta.pos} ")`
 }
 
 /** La reserva operativa declarada por el dueño. Sin ella cargada vale cero, y el aviso lo dice. */

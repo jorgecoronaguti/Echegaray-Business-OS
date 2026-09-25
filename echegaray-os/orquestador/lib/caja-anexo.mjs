@@ -34,7 +34,7 @@ import { anclaDeSalida } from './caja-ancla-por-instante.mjs'
 import { filaHuecoDelExtracto, filaRetenidoPorElBanco } from './banco-detalle-declarado.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import {
-  bloqueLiquidez, bloqueConciliacion, bloqueVencido, bloqueTrazabilidad, bloqueCalendarioCiego,
+  bloqueLiquidez, bloqueConciliacion, bloqueVencido, bloqueTrazabilidad, bloqueCalendarioCiego, bloqueEfectivoDetalle,
 } from './caja-anexo-controles.mjs'
 import { bloqueSeries } from './caja-anexo-series.mjs'
 import { ALERTA } from './glifos.mjs'
@@ -686,6 +686,9 @@ export function grillaAnexo(ctx = {}) {
     cartera: ctx.cartera ?? { origen: '—', enCartera: [], endosados: [] },
     conceptosCiegos: ctx.conceptosCiegos ?? [],
     cotizacion: ctx.cotizacion ?? null,
+    // Los dos últimos conteos del centinela, para la ventana de A7. null = no contestó: A7 rescata los de
+    // la corrida anterior por rótulo (ver `rescatarAnexo`).
+    conteos: ctx.conteos ?? null,
     ch: ctx.refs?.cheques ?? 'Cheques Emitidos',
     // POR CLAVE NORMALIZADA: el rescate lee del Sheet y acá se pide con la constante del código. Los
     // dos lados tienen que normalizar igual, o un rótulo con sangría no se encuentra nunca — ver
@@ -710,6 +713,8 @@ export function grillaAnexo(ctx = {}) {
   // no en CAJA porque la portada no admite una matriz, y no en una pestaña nueva porque el anexo ya
   // existe para exactamente esto. Ver lib/caja-anexo-series.mjs.
   const ser = bloqueSeries(h)
+  // EL DETALLE DE LO PAGADO EN EFECTIVO DE A7, ÚLTIMO: crecer acá no corre nada de lo de arriba.
+  const efd = bloqueEfectivoDetalle(h)
 
   // LOS NOMBRES SE DECLARAN CON SU FILA REAL, NO CON UNA CONSTANTE. Es lo único que hace que el anexo
   // pueda crecer sin romper CAJA — y la especie de cada uno se verifica DESPUÉS de publicar.
@@ -743,5 +748,5 @@ export function grillaAnexo(ctx = {}) {
     .filter(Boolean)
   // `series` va con su propio nombre y no esparcido como los demás: sus ocho coordenadas se usan
   // juntas, y esparcirlas invitaría a que una colisione con la de otro bloque sin que nada avise.
-  return { filas: h.filas, destinos, totales, series: ser, fTC: tc.fTC, fDec: tc.fDec, ...mov, ...car, ...cre, ...liq, ...con, ...ven, ...tra, ...cal }
+  return { filas: h.filas, destinos, totales, series: ser, fTC: tc.fTC, fDec: tc.fDec, ...mov, ...car, ...cre, ...liq, ...con, ...ven, ...tra, ...cal, ...efd }
 }

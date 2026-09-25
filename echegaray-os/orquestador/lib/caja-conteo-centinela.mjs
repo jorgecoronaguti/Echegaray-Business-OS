@@ -60,6 +60,7 @@
 // Un conteo que no cruce el cero no dejaba ninguna huella, y ése es el agujero que se cierra.
 
 import { query } from './db.mjs'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { asegurarRelacion } from './tabla-asegurada.mjs'
 import { diaDe, fechaDeSerial, instanteDelSello } from './caja-ancla-por-instante.mjs'
 
@@ -233,6 +234,22 @@ export function diaDelConteo(fila = {}) {
 // forma `if not exists`: se ejecuta SIEMPRE y SIEMPRE dispara `NOTIFY pgrst, 'reload schema'`, así
 // que cada lectura del centinela le costaba a PostgREST una recarga de caché entera. Los números
 // medidos están en `tabla-asegurada.mjs`.
+// ═══ LA CONEXIÓN SE PUEDE PRESTAR (25/09/2026) ═══
+//
+// Las lecturas y escrituras de rachas van por `ejecutar`, que usa el pool salvo que alguien haya
+// prestado una conexión con `conConexion`. Existe por una sola razón: el test de persistencia escribía
+// COMMITEADO en la base productiva con un `file_id` sintético y un `t.after` que borraba. El día que
+// el proceso murió entre el insert y la limpieza quedaron 500 filas `TEST_CENTINELA_*` en producción.
+// Con la conexión prestada, el test corre adentro de UNA transacción que termina en ROLLBACK: la racha
+// se relee igual (misma transacción) y no queda nada, muera el proceso donde muera.
+const conexion = new AsyncLocalStorage()
+const ejecutar = (sql, params) => {
+  const c = conexion.getStore()
+  return c ? c.query(sql, params) : query(sql, params)
+}
+/** Corre `fn` con TODAS las lecturas/escrituras de rachas por `cliente` (un pg.Client en transacción). */
+export function conConexion(cliente, fn) { return conexion.run(cliente, fn) }
+
 async function asegurarTabla() {
   return asegurarRelacion({
     query,
@@ -282,10 +299,30 @@ const aFila = (r) => (r ? {
 /** La observación vigente de un concepto: la racha más nueva. */
 export async function ultimaObservacion(fileId, concepto) {
   await asegurarTabla()
-  const r = await query(
+  const r = await ejecutar(
     `select * from public.caja_conteo_observado
       where file_id = $1 and concepto = $2 order by visto_desde desc limit 1`, [fileId, concepto])
   return aFila(r.rows[0])
+}
+
+/**
+ * LOS DOS ÚLTIMOS CONTEOS — la ventana del control de trazabilidad (A7 del anexo), de conteo a conteo.
+ *
+ * Cada racha es un conteo distinto que el dueño tipeó. El día de cada uno es `diaDelConteo`, la misma
+ * fecha que CAJA publica, así que la ventana de A7 y la fecha de la portada no pueden discrepar.
+ * Devuelve null si no hay dos rachas: sin conteo de apertura no hay ventana, y no se inventa una.
+ *
+ * @returns {Promise<{anterior:{valor:number, dia:number}, actual:{valor:number, dia:number}}|null>}
+ */
+export async function conteosDeLaVentana(fileId, concepto = CONCEPTO.arqueoArs) {
+  await asegurarTabla()
+  const r = await ejecutar(
+    `select * from public.caja_conteo_observado
+      where file_id = $1 and concepto = $2 order by visto_desde desc limit 2`, [fileId, concepto])
+  if (r.rows.length < 2) return null
+  const [actual, anterior] = r.rows.map(aFila)
+  const uno = (f) => ({ valor: f.valor, dia: diaDelConteo(f) })
+  return { anterior: uno(anterior), actual: uno(actual) }
 }
 
 /**
@@ -295,7 +332,7 @@ export async function ultimaObservacion(fileId, concepto) {
  */
 export async function ultimasObservaciones(fileId, prefijo = '') {
   await asegurarTabla()
-  const r = await query(
+  const r = await ejecutar(
     `select distinct on (concepto) * from public.caja_conteo_observado
       where file_id = $1 and concepto like $2 order by concepto, visto_desde desc`, [fileId, `${prefijo}%`])
   return new Map(r.rows.map((x) => [x.concepto, aFila(x)]))
@@ -306,7 +343,7 @@ async function upsert(fileId, filas) {
   for (let i = 0; i < filas.length; i += 300) {
     const t = filas.slice(i, i + 300)
     const vals = t.map((_, k) => `($1,$${k * 7 + 2},$${k * 7 + 3},$${k * 7 + 4},$${k * 7 + 5},$${k * 7 + 6},$${k * 7 + 7},$${k * 7 + 8})`).join(',')
-    await query(
+    await ejecutar(
       `insert into public.caja_conteo_observado
          (file_id, concepto, valor, visto_desde, visto_hasta, corridas, valor_previo, previo_visto_en)
        values ${vals}

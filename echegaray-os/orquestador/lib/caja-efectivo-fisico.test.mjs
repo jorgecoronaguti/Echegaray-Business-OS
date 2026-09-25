@@ -402,3 +402,57 @@ test('LA FECHA TIPEADA NO PUEDE DISPARAR UN RESELLO — el dueño la borró y es
   // Cuesta un re-conteo idéntico no reconocido; compra que ninguna celda pueda apagar el mecanismo.
   assert.equal(necesitaSello({ valor: 5920000, fecha: 46241 }, { valor: 5920000, fecha: 46240 }), false)
 })
+
+// ═══ EL CONTROL DE LA CORRIDA HACE LA MISMA CUENTA QUE LA FÓRMULA (25/09/2026) ═══
+//
+// Los números son los de la pestaña viva del 25/09 (filas 15..23 de `_CAJA_ANEXO`, C y D leídos
+// UNFORMATTED): conteo $36.720.000, cajón $35.220.000 (−$1.500.000 de entregas a rendir). La fórmula
+// decía «✓ sellado»; el script gritaba «sobran $59.644.915» porque le restaba a C la foto de D.
+test('medirEfectivo: con los números del 25/09 NO hay alarma — el techo es conteo + C de lo que carga', async () => {
+  const { medirEfectivo, avisoEfectivoImposible, avisoTechoNoVerificable } = await import('./caja-efectivo-fisico.mjs')
+  const { HISTORICO_EFECTIVO } = await import('./caja-anexo.mjs')
+  const rot = HISTORICO_EFECTIVO.map((l) => l.rotulo.trim())
+  assert.deepEqual(rot.map((r) => r.slice(0, 5)), ['· (+)', '· (−)', '· (−)', '· (−)', '· (+)', '· (−)', '· (−)', '· (+)'],
+    'el orden de los renglones es el de la pestaña: si cambia, este caso deja de ser el real')
+  const bloque = [
+    [0, 61144915.4], // 15 cobrado en efectivo — D: la foto vieja
+    [0, -10427449.5], // 16 pagado en efectivo
+    [0, 0], [0, 0], [0, 0], [0, 0], // 17..20
+    [-1500000, -1500000], // 21 entregado a rendir
+    [0, 0], // 22 devuelto
+    [0, 49217465.9], // 23 SELLO: C en 0 con el sello vigente
+  ]
+  const d = medirEfectivo({ arqueo: 36720000, bloque }, HISTORICO_EFECTIVO)
+  assert.equal(d.efectivo, 35220000)
+  assert.equal(d.techo, 36720000, 'techo = conteo + (C15 + C19 + C22) = 36.720.000 + 0')
+  assert.equal(d.imposible, false)
+  assert.equal(avisoEfectivoImposible(d, { por: d.por }), null, 'ninguna alarma de imposible')
+  assert.equal(avisoTechoNoVerificable(d), null, 'y el techo se pudo medir')
+
+  // Y LA ARITMÉTICA VIEJA, PARA QUE QUEDE ESCRITO QUÉ ERA LO QUE FALLABA: restar D de C.
+  const entradasViejas = [0, 4, 7].reduce((s, i) => s + bloque[i][0] - bloque[i][1], 0)
+  assert.equal(Math.round(35220000 - (36720000 + entradasViejas)), 59644915, 'ésos eran los $59.644.915 inventados')
+})
+
+test('medirEfectivo: si una línea que carga no tiene D numérico, no hay techo — y el aviso lo dice', async () => {
+  const { medirEfectivo, avisoTechoNoVerificable } = await import('./caja-efectivo-fisico.mjs')
+  const { HISTORICO_EFECTIVO } = await import('./caja-anexo.mjs')
+  const bloque = HISTORICO_EFECTIVO.map(() => [0, 0]).concat([[0, 0]])
+  bloque[4] = [0, '']
+  const d = medirEfectivo({ arqueo: 1000, bloque }, HISTORICO_EFECTIVO)
+  assert.equal(d.techoVerificable, false)
+  assert.match(avisoTechoNoVerificable(d), /NO SE PUDO MEDIR/)
+})
+
+test('medirEfectivo: un cajón inflado por encima de conteo + entradas SÍ dispara, por arriba', async () => {
+  const { medirEfectivo, avisoEfectivoImposible } = await import('./caja-efectivo-fisico.mjs')
+  const { HISTORICO_EFECTIVO } = await import('./caja-anexo.mjs')
+  // Una salida que se volvió positiva (un registro que cambió hacia atrás): +5M que no entraron por ninguna línea que carga.
+  const bloque = HISTORICO_EFECTIVO.map(() => [0, 0]).concat([[0, 0]])
+  bloque[2] = [5000000, 0]
+  const d = medirEfectivo({ arqueo: 1000000, bloque }, HISTORICO_EFECTIVO)
+  assert.equal(d.imposible, true)
+  assert.equal(d.lado, 'techo')
+  assert.equal(d.faltante, 5000000)
+  assert.match(avisoEfectivoImposible(d, { por: d.por }), /sobran \$5\.000\.000/)
+})

@@ -28,10 +28,10 @@ import {
   CARGA_TARDIA, FECHA_DEL_CONTEO,
 } from '../lib/caja-anexo.mjs'
 import {
-  necesitaSello, dictamenEfectivo, avisoEfectivoImposible, avisoTechoNoVerificable,
-  selloPorRenglonSembrable,
+  necesitaSello, medirEfectivo, avisoEfectivoImposible, avisoTechoNoVerificable,
 } from '../lib/caja-efectivo-fisico.mjs'
-import { CONCEPTO, anclaDelConteo, esConteoLegible } from '../lib/caja-conteo-centinela.mjs'
+import { CONCEPTO, anclaDelConteo, esConteoLegible, conteosDeLaVentana } from '../lib/caja-conteo-centinela.mjs'
+import { A7_CONTEOS } from '../lib/caja-anexo-controles.mjs'
 import { medirCargaTardia } from '../lib/caja-carga-tardia-compras.mjs'
 import { avisoCargaTardia } from '../lib/caja-carga-tardia.mjs'
 import { instanteDelSello } from '../lib/caja-ancla-por-instante.mjs'
@@ -89,6 +89,11 @@ export function rescatarAnexo(filas = []) {
       cargado.set(a, { dia: num(5) }); continue
     }
     if (historico.has(a)) { cargado.set(a, { selloLinea: num(3) }); continue }
+    // LOS DOS CONTEOS DE A7: los escribe la corrida desde el centinela. Si la base no contesta, la
+    // ventana sigue siendo la de la corrida anterior (dos hechos del pasado), no una vacía.
+    if (a === claveDeRotulo(A7_CONTEOS.anterior) || a === claveDeRotulo(A7_CONTEOS.actual)) {
+      cargado.set(a, { valor: num(4), dia: num(5) }); continue
+    }
     if (a !== claveDeRotulo(TIPO_CAMBIO.declarado.nombre)) continue
     // EL RESIDUO DE UN LAYOUT VIEJO NO ES UNA CARGA DEL DUEÑO (25/09/2026). En C112 vivía
     // `=IF(C109<>"";C109;C108)`: la fórmula «en uso» de cuando el bloque estaba dos filas más arriba, y
@@ -161,8 +166,7 @@ async function sellarConteo(google, g) {
   const cuando = ancla.ventana
   if (!necesitaSello(arqueo, sellado)) {
     console.log('  🧷 sello vigente: el conteo no cambió')
-    await reanclar(google, g, enLaPestana, visto)
-    return sembrarSelloPorRenglon(google, g, sellado)
+    return reanclar(google, g, enLaPestana, visto)
   }
   const hist = await google.readSheetValues(ID, `${PESTANA_ANEXO}!C${f0}:C${f1}`, { render: 'UNFORMATTED_VALUE' })
   const filas = (f1 - f0 + 1)
@@ -179,41 +183,16 @@ async function sellarConteo(google, g) {
     // y si la celda se pierde `reanclar` la repone en la corrida siguiente.
     { range: `${PESTANA_ANEXO}!F${g.fSello}`, values: [[visto]] },
     { range: `${PESTANA_ANEXO}!D${g.fEstado}`, values: [[arqueo.valor]] },
-    // EL SELLO DE CADA RENGLÓN, DE LA MISMA LECTURA Y EN EL MISMO BATCH. El total de arriba es el que
-    // resta; éstos son el diagnóstico —C menos D dice QUÉ canal se movió— y por venir del mismo `hist`
-    // no pueden discrepar del total. Escritos en dos batches, una falla parcial dejaría un desglose
-    // que no suma su propio sello, que es peor que no tenerlo.
-    { range: `${PESTANA_ANEXO}!D${f0}:D${f1}`, values: hist.map((fila) => [fila[0]]) },
+    // ═══ EL SELLO POR RENGLÓN YA NO SE ESCRIBE (25/09/2026) ═══
+    //
+    // Acá se estampaba `hist` en D de cada renglón. Con ventana desde el conteo esa foto no resta
+    // nada (el generador emite 0 en D) y hacía dos daños: (1) el control de la corrida restaba D de C
+    // y gritaba «sobran $59.644.915» sobre una caja sana; (2) escrita FUERA del portón, la celda
+    // nunca tuvo huella: el `0` del generador quedaba «ajeno» y la foto vieja, inmortal. La columna D
+    // de estos renglones es del generador y la escribe sólo él.
   ])
   console.log(`  🧷 conteo SELLADO: $${Math.round(arqueo.valor).toLocaleString('es-AR')} · histórico al conteo $${Math.round(neto).toLocaleString('es-AR')}`)
   console.log(`  🕒 ${cuando.texto}`)
-}
-
-/**
- * EL SELLO DE CADA RENGLÓN, CUANDO EL TOTAL YA ESTABA SELLADO Y ELLOS NO.
- *
- * El sello por renglón nace con este cambio, así que las pestañas ya selladas tienen el total y no
- * tienen el desglose — y sin desglose el aviso no puede nombrar al canal culpable hasta el próximo
- * conteo, que puede tardar semanas.
- *
- * SÓLO SE SIEMBRA CUANDO SE PUEDE PROBAR QUE ES EXACTO: si el histórico de hoy suma EXACTAMENTE el
- * total sellado, entonces no se movió nada desde el sello y el valor de hoy de cada renglón ES su
- * valor al sellar. Si difiere aunque sea un centavo, algo se movió, no se sabe cuánto le tocó a cada
- * uno, y repartirlo sería fabricar el dato: se deja vacío y el aviso lo dirá sin culpable.
- */
-async function sembrarSelloPorRenglon(google, g) {
-  const [f0, f1] = g.filasHistorico
-  const total = Number(g.filas[g.fSello - 1]?.[3])
-  if (!Number.isFinite(total) || total === 0) return
-  const bloque = await google.readSheetValues(ID, `${PESTANA_ANEXO}!C${f0}:D${f1}`, { render: 'UNFORMATTED_VALUE' })
-  if ((bloque ?? []).length < f1 - f0 + 1) return
-  if (bloque.every((fila) => typeof fila?.[1] === 'number')) return
-  const hoy = bloque.map((fila) => (typeof fila?.[0] === 'number' ? fila[0] : NaN))
-  if (!selloPorRenglonSembrable(hoy, total)) {
-    return console.log('  🧷 sin sello por renglón: el histórico ya se movió desde el sello y repartirlo sería inventarlo')
-  }
-  await google.batchUpdateValues(ID, [{ range: `${PESTANA_ANEXO}!D${f0}:D${f1}`, values: hoy.map((v) => [v]) }])
-  console.log('  🧷 sello por renglón sembrado: el histórico suma exactamente el total sellado')
 }
 
 /**
@@ -233,29 +212,26 @@ async function controlarEfectivo(google, g) {
   const [f0] = g.filasHistorico
   const arq = await google.readSheetValues(ID, DESDE_CAJA.arqueoArs, { render: 'UNFORMATTED_VALUE' })
   const bloque = await google.readSheetValues(ID, `${PESTANA_ANEXO}!C${f0}:D${g.fSello}`, { render: 'UNFORMATTED_VALUE' })
-  const num = (x) => (typeof x === 'number' ? x : Number(x) || 0)
-  const neto = (bloque ?? []).reduce((s, fila) => s + num(fila?.[0]), 0)
-  // EL DELTA POR RENGLÓN: C (hoy) menos D (al sellar). Sin sello de renglón todavía cargado el delta
-  // es el renglón entero, así que sólo se nombra al culpable cuando su D es un número de verdad.
-  const por = HISTORICO_EFECTIVO.map((l, i) => {
-    const fila = bloque?.[i] ?? []
-    return typeof fila?.[1] === 'number'
-      ? { rotulo: l.rotulo, entra: l.entra, delta: num(fila[0]) - num(fila[1]) } : null
-  }).filter(Boolean)
-  // EL TECHO SALE DE LAS LÍNEAS QUE CARGAN EL CAJÓN, Y SÓLO SI ESTÁN TODAS. Con una sola sin sellar
-  // el techo se calcularía sobre una entrada de menos y declararía imposible una caja sana; peor aún,
-  // con la de cobros sin sellar el techo saldría enorme y no controlaría nada. Falta una → no hay
-  // techo, y el dictamen lo dice en vez de callarse.
-  const cargan = HISTORICO_EFECTIVO.filter((l) => l.entra).length
-  const entradas = por.filter((p) => p.entra)
-  const d = dictamenEfectivo({
-    arqueo: num(arq?.[0]?.[0]),
-    neto,
-    entradas: entradas.length === cargan ? entradas.reduce((s, p) => s + p.delta, 0) : undefined,
-  })
-  const aviso = avisoEfectivoImposible(d, { por, marca: ALERTA }) ?? avisoTechoNoVerificable(d, ALERTA)
+  // LA MISMA CUENTA QUE LA FÓRMULA DE LA PESTAÑA (`guardaDelCajon`): techo = conteo + C de las líneas
+  // que cargan. Ver `medirEfectivo`: restar D acá fue lo que inventó «sobran $59.644.915».
+  const d = medirEfectivo({ arqueo: arq?.[0]?.[0], bloque }, HISTORICO_EFECTIVO)
+  const aviso = avisoEfectivoImposible(d, { por: d.por, marca: ALERTA }) ?? avisoTechoNoVerificable(d, ALERTA)
   if (aviso) console.log(`  ${aviso}`)
-  else console.log(`  💵 efectivo en el cajón: $${Math.round(d.efectivo).toLocaleString('es-AR')} (el histórico se movió $${Math.round(d.movido).toLocaleString('es-AR')} desde el sello · techo $${Math.round(d.techo).toLocaleString('es-AR')})`)
+  else console.log(`  💵 efectivo en el cajón: $${Math.round(d.efectivo).toLocaleString('es-AR')} (se movió $${Math.round(d.movido).toLocaleString('es-AR')} desde el conteo · techo $${Math.round(d.techo).toLocaleString('es-AR')})`)
+}
+
+/**
+ * A7, LEÍDO DE LA PESTAÑA YA EVALUADA: ventana, resultado y hacia qué lado. Va por STDOUT con la marca
+ * de alerta cuando no cierra, que es lo que el runner sube al resumen de la corrida.
+ */
+async function informarTrazabilidad(google, g) {
+  const v = await google.readSheetValues(ID, `${PESTANA_ANEXO}!E${g.fSinExpl}:G${g.fSinExpl}`, { render: 'UNFORMATTED_VALUE' })
+  const w = g.fSinMedio ? await google.readSheetValues(ID, `${PESTANA_ANEXO}!E${g.fSinMedio}`, { render: 'UNFORMATTED_VALUE' }) : []
+  const res = Number(v?.[0]?.[0]); const texto = String(v?.[0]?.[2] ?? ''); const sinMedio = Number(w?.[0]?.[0]) || 0
+  const $ = (n) => `$${Math.round(n).toLocaleString('es-AR')}`
+  const aparte = sinMedio ? ` · aparte, sin medio declarado: ${$(sinMedio)}` : ''
+  if (!Number.isFinite(res) || Math.round(res) === 0) return console.log(`  🧾 A7 trazabilidad del efectivo: ${texto || 'sin dato'}${aparte}`)
+  console.log(`  ${ALERTA} A7 EFECTIVO ${res > 0 ? 'SIN DEPOSITAR / SIN EXPLICAR' : 'GASTADO SIN ORIGEN REGISTRADO'}: ${$(Math.abs(res))} · ${texto.replace(/^.*?(ventana [^·]+).*$/, '$1').trim()}${aparte}`)
 }
 
 /** El dólar de referencia de esta corrida: BCRA; si no contesta, la última de la base, declarada. */
@@ -303,7 +279,17 @@ async function main() {
   console.log(cotizacion
     ? `dólar de referencia: ${cotizacion.tc} · ${cotizacion.origen}`
     : `${ALERTA} dólar de referencia: ni el BCRA ni la base contestaron — la celda queda con la cotización anterior y su fecha`)
-  const g = grillaAnexo({ refs, cartera, conceptosCiegos, cotizacion, cargado: rescatarAnexo(previo.filas ?? []) })
+  // LA VENTANA DE A7, DE CONTEO A CONTEO: los dos últimos conteos que registró el centinela. Sin base
+  // se rescatan los de la corrida anterior (ver `rescatarAnexo`) y se dice.
+  const conteos = await conteosDeLaVentana(ID).catch((e) => {
+    console.log(`  ${ALERTA} A7 sin conteos del centinela (${e.message}): queda la ventana de la corrida anterior`)
+    return null
+  })
+  if (conteos) {
+    const d = (n) => new Date(Date.UTC(1899, 11, 30) + n * 864e5).toISOString().slice(0, 10)
+    console.log(`  🪟 A7: ventana ${d(conteos.anterior.dia)} ($${Math.round(conteos.anterior.valor).toLocaleString('es-AR')}) → ${d(conteos.actual.dia)} ($${Math.round(conteos.actual.valor).toLocaleString('es-AR')})`)
+  }
+  const g = grillaAnexo({ refs, cartera, conceptosCiegos, cotizacion, conteos, cargado: rescatarAnexo(previo.filas ?? []) })
   console.log(`${PESTANA_ANEXO}: ${g.filas.length} filas · ${g.destinos.length} rangos con nombre`)
   if (DRY) return console.log('--dry: no escribí nada.')
 
@@ -391,6 +377,7 @@ async function main() {
   // siquiera se puede leer para controlar, eso también se grita: un control mudo se lee como un
   // control en verde, y ése es el modo de falla que este bloque entero vino a cerrar.
   await controlarEfectivo(google, g).catch((e) => console.log(`  ${ALERTA} NO PUDE CONTROLAR EL EFECTIVO (${e.message}): nadie verificó que el cajón no dé negativo`))
+  await informarTrazabilidad(google, g).catch((e) => console.log(`  ${ALERTA} NO PUDE LEER A7 (${e.message}): la trazabilidad del efectivo no se informó`))
   // Y LO QUE NINGUNA FÓRMULA PUEDE VER: lo que se cargó tarde sobre filas viejas. Va a la PESTAÑA y no
   // sólo al log, porque este archivo ya tiene escrito que el log no lo abre nadie.
   await publicarCargaTardia(google, g).catch((e) => console.log(`  ${ALERTA} NO PUDE MEDIR LA CARGA TARDÍA (${e.message}): un pago cargado sobre una fila vieja saldría del cajón sin que nada lo nombre`))

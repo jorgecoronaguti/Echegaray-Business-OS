@@ -250,6 +250,45 @@ export function dictamenEfectivo({ arqueo = 0, neto = 0, entradas } = {}) {
 }
 
 /**
+ * NÚCLEO PURO: EL CONTROL DEL CAJÓN LEÍDO DE LA PESTAÑA, CON LA MISMA ARITMÉTICA QUE LA FÓRMULA.
+ *
+ * ═══ EL DEFECTO QUE ESTO CIERRA (25/09/2026) ═══
+ *
+ * El control de la corrida gritaba «EFECTIVO IMPOSIBLE… sobran $59.644.915» sobre una caja sana, y la
+ * pestaña decía «✓ sellado». Los dos miraban el mismo bloque con dos aritméticas distintas:
+ *
+ *   · la fórmula (`guardaDelCajon` en caja-anexo.mjs): techo = conteo + C de las líneas que CARGAN
+ *     (cobrado, extraído, devuelto). Con ventana, C YA es lo que entró desde el conteo.
+ *   · el script: techo = conteo + Σ (C − D) de esas mismas líneas, con D = la foto del histórico
+ *     completo que el sello por renglón estampó antes de que existiera la ventana.
+ *
+ * Con C15 = 0 y D15 = 61.144.915 (lo cobrado ANTES del conteo, que el conteo ya tiene adentro), el
+ * techo del script daba 36.720.000 − 61.144.915 = −24.424.915 y cualquier cajón positivo «sobraba».
+ * Un control que no hace la misma cuenta que lo que controla no controla nada: mide su propio error.
+ *
+ * Lo que queda de D es sólo la condición de MEDIBLE —la fórmula exige `ISNUMBER(D)` en cada línea que
+ * carga— y se respeta igual acá: si falta uno, no hay techo y el aviso lo dice.
+ *
+ * @param {{arqueo:number, bloque:Array<Array<any>>}} m el conteo y las filas C:D desde el primer
+ *   renglón del histórico hasta el SELLO inclusive, leídas UNFORMATTED (lo que la fórmula suma)
+ * @param {Array<{rotulo:string, entra:boolean}>} lineas los renglones del histórico, en orden
+ */
+export function medirEfectivo({ arqueo = 0, bloque = [] } = {}, lineas = []) {
+  const num = (x) => (typeof x === 'number' ? x : Number(x) || 0)
+  // EL CAJÓN: conteo + SUM(C f0:fSello) — la misma suma que `cajon` en `guardaDelCajon`.
+  const neto = (bloque ?? []).reduce((s, fila) => s + num(fila?.[0]), 0)
+  const por = lineas.map((l, i) => ({ rotulo: l.rotulo, entra: l.entra, delta: num(bloque?.[i]?.[0]), sellado: typeof bloque?.[i]?.[1] === 'number' }))
+  const cargan = por.filter((p) => p.entra)
+  const medible = cargan.length > 0 && cargan.every((p) => p.sellado)
+  const d = dictamenEfectivo({
+    arqueo: num(arqueo),
+    neto,
+    entradas: medible ? cargan.reduce((s, p) => s + p.delta, 0) : undefined,
+  })
+  return { ...d, por: por.map(({ rotulo, delta }) => ({ rotulo, delta })) }
+}
+
+/**
  * NÚCLEO PURO: ¿se puede repartir un sello total entre sus renglones sin inventar nada?
  *
  * Sólo cuando el histórico de hoy suma EXACTAMENTE el total sellado: ahí nada se movió desde el sello

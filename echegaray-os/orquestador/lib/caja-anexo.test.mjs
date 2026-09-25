@@ -501,49 +501,79 @@ test('los estados de Cobranzas NO se suman entre sí en el cuadro de vencidos', 
   }
 })
 
-test('la trazabilidad es la IDENTIDAD COMPLETA: cobrado = depositado + gastado + cajón vivo', () => {
-  // La ventana fosilizada (22/06–22/07, constantes de la captura) más los depósitos SIN ventana y
-  // NINGÚN término de gasto publicaron $12,2M "sin explicar" que eran plata gastada y registrada
-  // (dictamen 07/08). Ahora todo va a historia completa hasta HOY y la resta la cierra el cajón VIVO.
-  const g = construir()
-  const cob = celda(g, filaDe(g, /Cobrado en EFECTIVO — historia completa/), 4)
-  const dep = celda(g, filaDe(g, /Depositado en efectivo al banco — historia completa/), 4)
-  const gasto = celda(g, filaDe(g, /Pagado en efectivo — Compras/), 4)
-  const cajon = celda(g, filaDe(g, /Efectivo en el cajón HOY/), 4)
-  const sinExpl = celda(g, filaDe(g, /⇒ EFECTIVO SIN EXPLICAR/), 4)
-  // Sin fechas clavadas: la única cota temporal es HOY (un "Cobrado" con fecha futura no es billete).
-  assert.ok(![...cob.matchAll(/DATE\(\d+;\d+;\d+\)/g)].length, 'la ventana fosilizada volvió')
-  assert.match(cob, /"Cobrado"/)
-  assert.match(cob, /<=TODAY\(\)/)
-  assert.ok(dep.includes('_BANCO_RAW'), 'los depósitos salen del extracto, no de un número pegado')
-  // El gasto: Compras por MONTO PAGADO (los parciales también salieron) + jornales + oficina por caja.
-  assert.match(gasto, /'Compras'!\$P\$4:\$P="Efectivo"/)
-  assert.match(gasto, /N\('Compras'!\$T\$4:\$T\)/)
-  // Y SIN LA NÓMINA QUE COMPRAS TIENE TIPEADA (08/09): los dos términos siguientes ya traen jornales y
-  // oficina desde la planilla. Medido: $15.441.950 + $7.185.800 sumados dos veces → −$145,6M "sin explicar".
-  assert.match(gasto, /\('Compras'!\$AC\$4:\$AC<>"Nómina · Jornales de obra"\)/)
-  assert.match(gasto, /\('Compras'!\$AC\$4:\$AC<>"Nómina · Sueldos administración"\)/)
-  // Los factores van ANTES del monto, adentro del mismo SUMPRODUCT: afuera no filtrarían nada.
-  assert.match(gasto, /^=SUMPRODUCT\(\('Compras'!\$P\$4:\$P="Efectivo"\)\*\('Compras'!\$AC\$4:\$AC<>"[^"]+"\)\*\('Compras'!\$AC\$4:\$AC<>"[^"]+"\)\*N\('Compras'!\$T\$4:\$T\)\)\+/)
-  // El cajón VIVO (arqueo ± posteriores), el mismo número de CAJA!B7 — no el arqueo crudo.
-  assert.match(cajon, /N\(CAJA_ARQUEO_ARS\)\+N\(ANEXO_EFECTIVO_NETO\)/)
-  // Y la identidad usa los SEIS términos: cobrado − duplicado + extraído − depositado − gastado − cajón.
-  const ext = celda(g, filaDe(g, /Extraído del banco en efectivo/), 4)
-  assert.ok(ext.includes('_BANCO_RAW'), 'las extracciones salen del extracto')
-  assert.match(sinExpl, /^=E\d+-E\d+\+E\d+-E\d+-E\d+-E\d+$/)
+// ═══ A7 MIDE DE CONTEO A CONTEO (25/09/2026) ═══
+// La versión a historia completa cerraba seis meses de efectivo contra el cajón de un instante y
+// publicaba «−$111.721.507 sin explicar». Ahora: conteo anterior + entradas − salidas − conteo actual.
+const CONTEOS = { anterior: { valor: 6380000, dia: 46267 }, actual: { valor: 36720000, dia: 46289 } }
+const conVentana = () => grillaAnexo({ refs: REFS, cartera: CARTERA, conceptosCiegos: [], conteos: CONTEOS })
+
+test('A7: los dos conteos son HECHOS con valor y día, y todo movimiento mira la MISMA ventana', () => {
+  const g = conVentana()
+  const fPrev = filaDe(g, /^Conteo anterior/)
+  const fAct = filaDe(g, /^Conteo que cierra la ventana/)
+  assert.ok(fPrev > 0 && fAct > fPrev)
+  assert.equal(Number(celda(g, fPrev, 4)), 6380000); assert.equal(Number(celda(g, fPrev, 5)), 46267)
+  assert.equal(Number(celda(g, fAct, 4)), 36720000); assert.equal(Number(celda(g, fAct, 5)), 46289)
+  assert.ok(!g.filas.some((f) => /historia completa/.test(String(f?.[0] ?? ''))), 'no queda ningún renglón a historia completa')
+  for (const re of [/^\(\+\) cobrado en EFECTIVO/, /^\(\+\) extraído del banco/, /^\(−\) depositado/, /^\(−\) Compras pagadas/,
+    /^\(−\) jornales/, /^\(−\) sueldos de OFICINA/, /^\(−\) pagos sin compra/, /^\(−\) entregado a rendir/]) {
+    const f = filaDe(g, re)
+    assert.ok(f > 0, `${re} existe`)
+    const v = String(celda(g, f, 4))
+    assert.ok(v.includes(`$F$${fPrev}`) && v.includes(`$F$${fAct}`), `${re} mira las dos puntas de la ventana: ${v.slice(0, 80)}`)
+  }
 })
 
-test('la alerta de efectivo sin explicar cierra contra el CAJÓN VIVO, no el arqueo crudo', () => {
-  // Con la identidad a historia completa (dictamen 07/08), lo que cierra la resta es lo que HAY hoy
-  // en la caja física — arqueo ± movimientos posteriores, el mismo número de CAJA!B7 —, y ambos
-  // términos van POR NOMBRE para sobrevivir a cualquier compactación del anexo.
-  const g = construir()
-  const f = filaDe(g, /^Efectivo en el cajón HOY/)
-  assert.ok(f > 0)
-  assert.match(celda(g, f, 4), /N\(CAJA_ARQUEO_ARS\)\+N\(ANEXO_EFECTIVO_NETO\)/)
-  // Y LA FECHA VA GUARDADA CON ISNUMBER: `=CAJA_ARQUEO_ARS_FECHA` sobre una celda vacía devuelve 0, y el
-  // 0 con formato de fecha se dibuja "30/12/1899". Es el defecto `fecha_cero` del auditor de pantalla.
-  assert.match(celda(g, f, 5), /^=IF\(ISNUMBER\(/, 'una fecha vacía no puede dibujarse como 30/12/1899')
+test('A7 ocupa DIEZ renglones, como antes: agrandarlo correría el resto de la pestaña', () => {
+  const g = conVentana()
+  const f0 = filaDe(g, /^A7 · TRAZABILIDAD DEL EFECTIVO/)
+  const f1 = filaDe(g, /^⇒ EFECTIVO SIN EXPLICAR/)
+  assert.equal(f1 - f0 + 1, 10)
+  // Y el detalle de lo pagado va al final de la pestaña, después de las series de los gráficos.
+  const fDet = filaDe(g, /^A7 · detalle/)
+  const fSeries = filaDe(g, /^A10 · SERIES/)
+  assert.ok(fDet > fSeries, 'el detalle va último')
+})
+
+test('A7: el resultado es conteo anterior + entradas − salidas − conteo actual, y el rótulo sigue al signo', () => {
+  const g = conVentana()
+  const fPrev = filaDe(g, /^Conteo anterior/)
+  const fAct = filaDe(g, /^Conteo que cierra la ventana/)
+  const fDeb = filaDe(g, /^⇒ Debería haber en el cajón/)
+  assert.match(String(celda(g, fDeb, 4)), new RegExp(`\\$E\\$${fPrev}\\+E\\d+-E\\d+\\+E\\d+-E\\d+-E\\d+\\)$`))
+  const fPag = filaDe(g, /^\(−\) pagado en efectivo — Compras/)
+  const [d0, d1] = g.fDetalle
+  assert.equal(celda(g, fPag, 4), `=SUM(E${d0}:E${d1})`, 'lo pagado es la suma EXACTA del detalle')
+  assert.equal(d1 - d0 + 1, 5, 'compras, jornales, oficina, sin compra, a rendir')
+  const fRes = filaDe(g, /^⇒ EFECTIVO SIN EXPLICAR/)
+  assert.ok(String(celda(g, fRes, 4)).includes(`(E${fDeb}-$E$${fAct})`))
+  const g7 = String(celda(g, fRes, 6))
+  assert.match(g7, /sin depositar \/ sin explicar/)
+  assert.match(g7, /gastado sin origen registrado/)
+  assert.equal(g.destinos.find((d) => d.name === ANEXO.efectivoSinExplicar).fila, fRes)
+  for (let f = fPrev; f <= fRes; f++) assert.ok(!String(g.filas[f - 1].join('|')).includes('CAJA_ARQUEO_ARS'))
+})
+
+test('A7: pagos sin compra — cuenta sólo el medio «Efectivo»; el sin medio va aparte y no suma', () => {
+  const g = conVentana()
+  const fPnc = filaDe(g, /^\(−\) pagos sin compra/)
+  assert.match(String(celda(g, fPnc, 4)), /LEFT\(LOWER\(TRIM\(_PAGOS_NO_COMPRA_RAW!\$F\$4:\$F\)\);8\)="efectivo"/)
+  const fSin = filaDe(g, /SIN medio declarado/)
+  const [, d1] = g.fDetalle
+  assert.equal(fSin, d1 + 1, 'debajo del detalle y FUERA del rango que suma')
+  assert.match(String(celda(g, fSin, 4)), /"sin dato"/)
+})
+
+test('A7: sin conteos del centinela rescata los de la corrida anterior; sin ninguno, lo dice y no mide', () => {
+  const cargado = new Map([
+    ['Conteo anterior — lo que había en el cajón al abrir la ventana', { valor: 100, dia: 46200 }],
+    ['Conteo que cierra la ventana — lo que se contó', { valor: 200, dia: 46210 }],
+  ])
+  const g = grillaAnexo({ refs: REFS, cartera: CARTERA, conceptosCiegos: [], cargado })
+  assert.equal(Number(celda(g, filaDe(g, /^Conteo anterior/), 5)), 46200)
+  const vacio = construir()
+  const fRes = filaDe(vacio, /^⇒ EFECTIVO SIN EXPLICAR/)
+  assert.match(String(celda(vacio, fRes, 6)), /NO se midió/)
 })
 
 test('NINGUNA celda de fecha se escribe como una referencia cruda: el serial 0 es 30/12/1899', () => {
@@ -686,16 +716,6 @@ test('el nombre que CAJA cita para la fecha del saldo apunta a la COLUMNA F de e
   // declarada descarta el destino vacío y CAJA quedaría en #NAME?.
   assert.ok(!(d?.especie ?? ESPECIE_ANEXO[ANEXO.ultimoEfectivoDia]))
   assert.ok(PUEDE_ESTAR_VACIO[ANEXO.ultimoEfectivoDia]?.length > 40, 'con el motivo escrito, no en silencio')
-})
-
-test('el control "Efectivo en el cajón HOY" fecha con LO MISMO que CAJA!D7 — una plata, una fecha', () => {
-  const g = construir()
-  const f = filaDe(g, /^Efectivo en el cajón HOY/)
-  assert.ok(f > 0, 'el renglón existe')
-  // Muestra EXACTAMENTE el mismo número que la fila 7 de CAJA. Si cada uno armara su fecha, el archivo
-  // tendría dos fechas para la misma plata — el defecto de este cambio, en chico.
-  assert.equal(celda(g, f, 5),
-    `=IF(ISNUMBER(${ANEXO.conteoArsDia});IF(ISNUMBER(${ANEXO.ultimoEfectivoDia});${ANEXO.ultimoEfectivoDia};${ANEXO.conteoArsDia});"")`)
 })
 
 // ═══ OPCIÓN A DEL DUEÑO (25/09/2026): el dólar de referencia es un NÚMERO con fecha, no GOOGLEFINANCE ═══

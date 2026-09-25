@@ -615,3 +615,37 @@ test('LA DECLARACIÓN NO SE DESBORDA: fuera del bloque, un borrado del dueño si
   assert.equal(r.suprimidas[0].mio, 'Una nota mía que el dueño borró')
   assert.equal(enLaPestana(r.grid, hoy)[borrada][0], '')
 })
+
+// ═══ LA CELDA YA DICE LO QUE VOY A ESCRIBIR: NO ES UNA EDICIÓN (25/09/2026) ═══
+//
+// Google corrió `Compras!$O…$AD` a `$P…$AE` al insertar «Obra» en Compras. El esqueleto de
+// `editadaPorElDueno` enmascara números, no letras: la celda salía «editada por el dueño», no se
+// reescribía, su huella se barría en la misma corrida y quedaba ajena para siempre (D88 del anexo).
+const conValor = (grid, fila, valor) => {
+  const m = new Map(huellasDeEscritura(grid).map((h) => [claveCelda(h.fila, h.col), { forma: h.forma, huella: h.huella, borrada: false, valor: h.valor ?? null }]))
+  const k = claveCelda(fila, 0); m.set(k, { ...m.get(k), valor })
+  return m
+}
+
+test('(z) la celda mía que Google corrió de letra y hoy dice EXACTAMENTE lo que escribo: la escribo y la sello', () => {
+  const viejo = '=SUMIFS(Compras!$O$4:$O;Compras!$AD$4:$AD;">="&D1)'
+  const corrido = '=SUMIFS(Compras!$P$4:$P;Compras!$AE$4:$AE;">="&D1)'
+  const ayer = [...lastre(), [viejo]]
+  const huellas = conValor(ayer, ayer.length, viejo)
+  const hoy = [...ayer.slice(0, -1), [corrido]]
+  const { grid, editadas } = aplicarHuella([...lastre(), [corrido]], hoy, huellas)
+  assert.equal(editadas.length, 0, 'lo que ya es lo mío no es una edición del dueño')
+  assert.equal(grid.at(-1)[0], corrido)
+})
+
+test('(z2) la misma celda corrida, pero el generador quiere OTRA cosa: sigue siendo del dueño (no se pisa)', () => {
+  const viejo = '=SUMIFS(Compras!$O$4:$O;Compras!$AD$4:$AD;">="&D1)'
+  const corrido = '=SUMIFS(Compras!$P$4:$P;Compras!$AE$4:$AE;">="&D1)'
+  const ayer = [...lastre(), [viejo]]
+  const huellas = conValor(ayer, ayer.length, viejo)
+  const hoy = [...ayer.slice(0, -1), [corrido]]
+  const { grid, editadas } = aplicarHuella([...lastre(), ['=SUM(Compras!$P$4:$P)']], hoy, huellas)
+  assert.equal(editadas.length, 1)
+  assert.equal(editadas[0].filaMapa, ayer.length, 'la editada lleva la coordenada de su huella: el barrido la conserva')
+  assert.equal(enLaPestana(grid, hoy).at(-1)[0], corrido)
+})

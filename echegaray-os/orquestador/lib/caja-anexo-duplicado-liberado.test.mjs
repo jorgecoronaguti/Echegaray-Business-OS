@@ -36,16 +36,22 @@ function cobranzas({ conParDeControl = true } = {}) {
   return h
 }
 
+// A7 MIDE DE CONTEO A CONTEO desde el 25/09/2026: la ventana (01/06 → 10/09) abarca los dos pares.
+const VENTANA = { anterior: { valor: 0, dia: 46174 }, actual: { valor: 0, dia: 46275 } }
+
 function terminoDuplicado(opciones) {
   const rows = []
-  const h = { rows, refs: { columnas: COLUMNAS_HOY }, get n() { return rows.length }, push(r) { rows.push(r); return rows.length } }
+  const h = { rows, refs: { columnas: COLUMNAS_HOY }, conteos: VENTANA, get n() { return rows.length }, push(r) { rows.push(r); return rows.length } }
   bloqueTrazabilidad(h, opciones)
   const f = rows.find((r) => String(r[0]).includes('DOS VECES'))
   assert.ok(f, 'el bloque A7 tiene el término de cobros cargados dos veces')
-  return f[4]
+  // Las dos fechas de la ventana viven en la F del propio anexo: van como celdas de la hoja actual.
+  const celdas = {}
+  rows.forEach((r, i) => { if (typeof r[5] === 'number') celdas[`F${i + 1}`] = r[5] })
+  return { formula: f[4], celdas }
 }
 
-const evaluar = (formula, hoja) => evaluarFormula(formula, { hojas: { Cobranzas: hoja }, hoy: HOY })
+const evaluar = ({ formula, celdas }, hoja) => evaluarFormula(formula, { hoja: celdas, hojas: { Cobranzas: hoja }, hoy: HOY })
 
 test('el par que el dueño ya revisó NO le resta plata al efectivo explicado', () => {
   const vigentes = decisionesDe(CONTROLES.cobroDuplicado, { hoy: '2026-09-10' })

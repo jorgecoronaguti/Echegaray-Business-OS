@@ -56,7 +56,7 @@ import { query } from './db.mjs'
 import { VACIO, letraCol, limpiarCentinela } from './preservar-anotaciones.mjs'
 import { MIA_PROBADA } from './no-borrar.mjs'
 import {
-  claveCelda, editadaPorElDueno, esFormulaNula, formaComparable, formaDe, formulasPropiasPorColumna,
+  claveCelda, contenidoComparable, editadaPorElDueno, esFormulaNula, formaComparable, formaDe, formulasPropiasPorColumna,
   hayContenido, LARGO_FORMA, MARCAS_TIPOGRAFICAS, noReponerAusentes, normalizarFormula, quiereEscribir,
 } from './huella-forma.mjs'
 import { marcarAbandonadas, partirPorFootprint, veredictoDeFootprint } from './huella-footprint.mjs'
@@ -393,7 +393,7 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
         limpiadas.push({ fila: fila0 + i, col, mio: String(hoy).slice(0, 60), forma: mia.forma, huella: mia.huella, filaMapa: fila })
         return MIA_PROBADA
       }
-      editadas.push({ fila: fila0 + i, col, suyo: String(hoy).slice(0, 60), forma: mia.forma })
+      editadas.push({ fila: fila0 + i, col, filaMapa: fila, suyo: String(hoy).slice(0, 60), forma: mia.forma })
       return ''
     }
     if (!mia && ocupada) {
@@ -612,8 +612,16 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
     //
     // Los tres frenos contra el falso positivo —huella vieja sin valor, locale de la fórmula, número
     // contra texto— viven en `editadaPorElDueno`, que es pura y se prueba sola.
-    if (mia && ocupada && editadaPorElDueno(hoy, mia.valor)) {
-      editadas.push({ fila: fila0 + i, col, suyo: String(hoy).slice(0, 60), forma: mia.forma })
+    //
+    // ═══ Y SI LA CELDA YA DICE LO QUE VOY A ESCRIBIR, NO HAY EDICIÓN QUE RESPETAR (25/09/2026) ═══
+    //
+    // El sello puede diferir de la celda sin que nadie la haya tocado: Google corre las LETRAS de una
+    // fórmula cuando se inserta una columna en la pestaña que lee (la «Obra» de Compras, 14/09) y el
+    // esqueleto de `editadaPorElDueno` enmascara números, no letras. Si lo que hay hoy es EXACTAMENTE
+    // lo que el generador escribe hoy, escribirlo no cambia nada visible y vuelve a sellar la huella —
+    // en vez de declararla del dueño, perder la huella en el barrido y dejarla fosilizada para siempre.
+    if (mia && ocupada && contenidoComparable(hoy) !== contenidoComparable(c) && editadaPorElDueno(hoy, mia.valor)) {
+      editadas.push({ fila: fila0 + i, col, filaMapa: fila, suyo: String(hoy).slice(0, 60), forma: mia.forma })
       return ''
     }
     return c
@@ -733,7 +741,7 @@ async function upsertHuellas(fileId, pestana, filas, sello) {
  * con el centinela `VACIO` no sella huella nueva— y con él se perdía la única prueba de que el
  * residuo que quedara ahí era mío. Ver `huella-footprint.mjs`.
  */
-export async function guardarHuellas(fileId, pestana, grid, { fila0 = 1, col0 = 0, suprimidas = [], abandonadas = [] } = {}) {
+export async function guardarHuellas(fileId, pestana, grid, { fila0 = 1, col0 = 0, suprimidas = [], abandonadas = [], conservar = [] } = {}) {
   await asegurarTabla()
   const sello = new Date()
   const filas = huellasDeEscritura(grid, { fila0, col0 })
@@ -770,11 +778,24 @@ export async function guardarHuellas(fileId, pestana, grid, { fila0 = 1, col0 = 
   // huella no pudo usarlo, y el residuo volvería a quedar sin dueño demostrable. Se sale de esta marca
   // igual que de la de borrado: cuando la celda vuelve a llevar contenido mío.
   const ancho = Math.max(...grid.map((f) => (f || []).length), 1)
+  // ═══ EL BARRIDO NO SE LLEVA LA PRUEBA DE UNA CELDA «EDITADA» (25/09/2026) ═══
+  //
+  // Una celda que hoy se juzgó editada por el dueño no se reescribe, así que su huella quedaba con
+  // `escrito_en` viejo y este DELETE la borraba en la MISMA corrida. Desde la siguiente la celda no
+  // tenía huella → «ajena» → inmortal: si el veredicto había sido un falso positivo (el sello largo que
+  // no coincidía consigo mismo, las letras que corre Google), ya no había forma de corregirlo, y cuando
+  // el layout se movía la fórmula vieja quedaba publicada en una fila que no le correspondía. Medido en
+  // `_CAJA_ANEXO` el 25/09: D88, D100 y D104 con fórmulas de versiones viejas y CERO filas de huella.
+  // Conservar la huella no le quita nada al dueño: mientras la celda diga otra cosa sigue siendo suya;
+  // si la vacía, queda `borrada_en` (hoy volvía a escribirse); si vuelve a decir lo mío, es mía.
+  const guardadas = conservar.map((e) => [Number(e.filaMapa ?? e.fila), Number(e.col)]).filter(([f, c]) => Number.isInteger(f) && Number.isInteger(c))
   await query(
     `delete from public.sheet_huella_celda
       where file_id = $1 and pestana = $2 and borrada_en is null and abandonada_en is null and escrito_en < $3
-        and fila between $4 and $5 and col between $6 and $7`,
-    [fileId, pestana, sello, fila0, fila0 + grid.length - 1, col0, col0 + ancho - 1],
+        and fila between $4 and $5 and col between $6 and $7
+        and not exists (select 1 from unnest($8::int[], $9::int[]) as k(f, c) where k.f = fila and k.c = col)`,
+    [fileId, pestana, sello, fila0, fila0 + grid.length - 1, col0, col0 + ancho - 1,
+      guardadas.map(([f]) => f), guardadas.map(([, c]) => c)],
   )
   return { escritas: filas.length, borradas: suprimidas.length, abandonadas: abandonadas.length }
 }
@@ -811,7 +832,7 @@ export async function conHuellaDeCelda(fileId, pestana, generado, actual, opts =
     // (`residuos`, `reescritos`) se prueban por parecido de texto, no por una forma que yo sellé, y
     // convertir esa evidencia más débil en un registro permanente sería ensancharla en silencio.
     guardar: (escrito) => guardarHuellas(fileId, pestana, escrito, {
-      ...opts, suprimidas: r.suprimidas, abandonadas: [...r.limpiadas, ...r.desocupadas],
+      ...opts, suprimidas: r.suprimidas, abandonadas: [...r.limpiadas, ...r.desocupadas], conservar: r.editadas,
     }).catch((e) => console.warn(`  ⚠ no pude guardar la huella por celda: ${e.message}`)),
   }
 }

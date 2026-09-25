@@ -64,7 +64,15 @@ export const GRUPOS = [
   {
     naturaleza: 'Transferencias a proveedores',
     pestana: 'Compras',
-    formula: (d, h) => `SUMIFS(Compras!$O$4:$O;Compras!$AD$4:$AD;">="&${d};Compras!$AD$4:$AD;"<="&${h})`,
+    // LAS LETRAS SALEN DEL MAPA DE LA CORRIDA, NO DE ACÁ (25/09/2026). Decía `Compras!$O…$AD` —el
+    // layout de antes de la columna «Obra»— y desde el 14/09 sumaba la columna del IVA por la fecha
+    // del RUBRO: $0 donde van $191,8 M. Google había corrido la copia vieja a `$P…$AE` sola, y esa
+    // copia quedó fosilizada dos filas más arriba (D88) mientras el generador escribía la rota.
+    formula: (d, h, { cmp } = {}) => {
+      if (!cmp?.total || !cmp?.fecha) throw new Error('conciliación · Transferencias a proveedores: falta el mapa de Compras por encabezado — no uso una letra de respaldo')
+      const col = (x) => `Compras!$${x}$${cmp.desde ?? 4}:$${x}`
+      return `SUMIFS(${col(cmp.total)};${col(cmp.fecha)};">="&${d};${col(cmp.fecha)};"<="&${h})`
+    },
     nota: `${ALERTA} Compara contra TODAS las compras con fecha de caja en la ventana, no sólo las pagadas por transferencia: la pestaña no distingue el medio de pago. Sirve como orden de magnitud, no como cuadre exacto.`,
   },
   {

@@ -21,7 +21,7 @@ test('la ventana se lee de la réplica, no se escribe a mano', () => {
 test('las fórmulas van en es-AR', () => {
   for (const g of GRUPOS) {
     if (!g.formula) continue
-    const f = g.formula('D1', 'D2')
+    const f = g.formula('D1', 'D2', { cmp: { total: 'P', fecha: 'AE', desde: 4 } })
     assert.ok(!f.includes(','), `una coma rompe la fórmula en es-AR: ${g.naturaleza}`)
   }
 })
@@ -110,4 +110,11 @@ test('la nota del grupo Sueldos declara la limitación de la fecha de la oficina
   // día registrado en que salió la plata. Una limitación sin declarar anula el criterio que toca.
   const g = GRUPOS.find((x) => x.naturaleza === 'Sueldos')
   assert.match(g.nota, /Se paga el/)
+})
+
+test('Transferencias a proveedores lee Compras por ENCABEZADO: sin mapa aborta, con mapa usa sus letras', () => {
+  const g = GRUPOS.find((x) => x.naturaleza === 'Transferencias a proveedores')
+  assert.throws(() => g.formula('D1', 'D2'), /mapa de Compras/, 'una letra de respaldo es lo que sumó el IVA por la fecha del rubro')
+  const f = g.formula('D1', 'D2', { cmp: { total: 'P', fecha: 'AE', desde: 4 } })
+  assert.equal(f, 'SUMIFS(Compras!$P$4:$P;Compras!$AE$4:$AE;">="&D1;Compras!$AE$4:$AE;"<="&D2)')
 })
