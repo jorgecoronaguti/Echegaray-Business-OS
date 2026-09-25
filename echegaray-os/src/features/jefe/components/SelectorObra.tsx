@@ -66,7 +66,9 @@ export function SelectorObra({ obras, actual }: { obras: ObraDelJefe[]; actual: 
         data-testid="selector-obra"
         value={actual.id}
         onChange={(e) => router.push(conObra(pathname, e.target.value))}
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
+        // 44 DE TOQUE CON EL SELECT INVISIBLE MÁS ALTO que el renglón de 17 (auditoría por nivel, 25/09/2026):
+        // 16 arriba (sobre el nombre de la empresa) y 12 abajo (el relleno del topbar). No mueve nada.
+        style={{ position: 'absolute', top: -16, bottom: -12, left: 0, right: 0, width: '100%', opacity: 0, cursor: 'pointer' }}
       >
         {obras.map((o) => (
           <option key={o.id} value={o.id}>{rotuloDeObra(o)}</option>

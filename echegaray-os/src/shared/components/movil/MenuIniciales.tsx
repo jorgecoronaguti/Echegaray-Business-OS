@@ -29,13 +29,19 @@ export function MenuIniciales({ iniciales }: { iniciales: string }) {
         aria-label="Mi cuenta"
         aria-expanded={abierto}
         onClick={() => setAbierto((v) => !v)}
+        // EL BOTÓN MIDE 44 Y EL CÍRCULO SIGUE DE 34 (auditoría por nivel, 25/09/2026): el margen de -5 devuelve
+        // el lugar, así el topbar no crece. Lo que se ve es el mismo círculo grafito.
         style={{
-          width: 34, height: 34, borderRadius: 17, background: C.grafito, color: C.surface, border: 0,
-          fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer',
+          width: 44, height: 44, margin: -5, padding: 0, background: 'transparent', border: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
         }}
       >
-        {iniciales}
+        <span style={{
+          width: 34, height: 34, borderRadius: 17, background: C.grafito, color: C.surface,
+          fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {iniciales}
+        </span>
       </button>
       {abierto && (
         <div
