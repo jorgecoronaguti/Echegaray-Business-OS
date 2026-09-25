@@ -487,9 +487,12 @@ export function ladoFuera(t: { izqPct: number; anchoPct: number } | null, vis: {
   return null
 }
 
-/** ¿Arranca la ventana en el inicio de la obra? Sí cuando la obra empezó hace menos de 8 semanas: entra
- *  toda su historia (el 05 muestra desde el 17 ago). Si no, hoy a un tercio del ancho, como el diseño. */
-export function arrancaEnElInicio(desde: string, hoy: string): boolean {
-  return (Date.parse(`${hoy}T00:00:00Z`) - Date.parse(`${desde.slice(0, 10)}T00:00:00Z`)) / 86_400_000 < 56
+/** ¿Arranca la ventana en el inicio de la obra? Sí cuando la obra empezó hace menos de 8 semanas Y desde
+ *  el inicio hasta hoy entra en lo visible (el 05 muestra desde el 17 ago con hoy a la vista). Si no —la
+ *  obra es más vieja, o es el teléfono, donde entran seis semanas—, hoy a un tercio del ancho, como el
+ *  diseño, y lo anterior queda señalado en el borde. `diasVisibles` null = no se sabe todavía: sólo la edad. */
+export function arrancaEnElInicio(desde: string, hoy: string, diasVisibles: number | null = null): boolean {
+  const edad = (Date.parse(`${hoy}T00:00:00Z`) - Date.parse(`${desde.slice(0, 10)}T00:00:00Z`)) / 86_400_000
+  return edad < 56 && (diasVisibles == null || edad <= diasVisibles * 0.9)
 }
 

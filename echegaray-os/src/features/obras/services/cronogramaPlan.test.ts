@@ -233,4 +233,7 @@ test('una barra entera antes o después de lo visible se señala en ese borde; l
 test('la ventana arranca en el inicio de la obra si empezó hace menos de 8 semanas', () => {
   assert.equal(arrancaEnElInicio('2026-08-03', '2026-09-25'), true) // 53 días
   assert.equal(arrancaEnElInicio('2026-07-01', '2026-09-25'), false)
+  // En el teléfono entran seis semanas: 53 días no caben y abre con hoy a un tercio.
+  assert.equal(arrancaEnElInicio('2026-08-03', '2026-09-25', 80), true)
+  assert.equal(arrancaEnElInicio('2026-08-03', '2026-09-25', 42), false)
 })

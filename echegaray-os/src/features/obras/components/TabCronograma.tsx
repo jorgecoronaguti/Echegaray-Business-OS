@@ -96,7 +96,7 @@ function MarcaFuera({ lado, desde, hasta, fijo, fondo, alTocar }: {
         style={{
           position: 'sticky', ...(lado === 'izq' ? { left: `${fijo}px` } : { right: 0 }), pointerEvents: 'auto',
           font: 'inherit', fontFamily: MONO, fontSize: '11px', color: C.tenue, background: fondo, border: 'none',
-          padding: '0 6px', cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: '20px',
+          padding: '0 6px', cursor: 'pointer', whiteSpace: 'nowrap', height: '100%', display: 'flex', alignItems: 'center',
         }}>{lado === 'izq' ? `◂ ${texto}` : `${texto} ▸`}</button>
     </div>
   )
@@ -141,10 +141,11 @@ function Vista({ obraId, filas, dependencias, hoy, fallas, actividadAbierta }: P
   useEffect(() => {
     const el = lienzoRef.current
     if (!el || hoyPct == null) return
-    if (inicioObra && arrancaEnElInicio(inicioObra, hoy)) { el.scrollLeft = 0; return }
+    const visibles = ventana ? ((el.clientWidth - 270) / Math.max(1, el.scrollWidth - 270)) * ventana.dias : null
+    if (inicioObra && arrancaEnElInicio(inicioObra, hoy, visibles)) { el.scrollLeft = 0; return }
     const x = 270 + (hoyPct / 100) * Math.max(anchoLienzo, el.scrollWidth - 270)
     el.scrollLeft = Math.max(0, x - 270 - (el.clientWidth - 270) / 3)
-  }, [hoyPct, anchoLienzo, inicioObra, hoy])
+  }, [hoyPct, anchoLienzo, inicioObra, hoy, ventana])
   const vis = useVentanaVisible(lienzoRef, 270, 0, anchoLienzo)
   const irA = (t: { izqPct: number } | null) => {
     const el = lienzoRef.current
@@ -341,10 +342,11 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
   useEffect(() => {
     const el = scrollRef.current
     if (!el || hoyPct == null) return
-    if (inicioObra && arrancaEnElInicio(inicioObra, hoy)) { el.scrollLeft = 0; return }
     const grafico = el.scrollWidth - 32 - 120
+    const visibles = ventana ? ((el.clientWidth - 136) / Math.max(1, grafico)) * ventana.dias : null
+    if (inicioObra && arrancaEnElInicio(inicioObra, hoy, visibles)) { el.scrollLeft = 0; return }
     el.scrollLeft = Math.max(0, 16 + grafico * (hoyPct / 100) - (el.clientWidth - 136) / 3)
-  }, [hoyPct, escala, inicioObra, hoy])
+  }, [hoyPct, escala, inicioObra, hoy, ventana])
   const vis = useVentanaVisible(scrollRef, 120, 16, escala)
   const irA = (t: { izqPct: number } | null) => {
     const el = scrollRef.current
