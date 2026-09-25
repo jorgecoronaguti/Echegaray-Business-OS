@@ -157,6 +157,13 @@ export async function limpiar(sb: SupabaseClient, marca: string = MARCA) {
   await sb.from('certificados').delete().eq('obra_canonica_id', OBRA).ilike('numero', `%${marca}%`)
   await sb.from('obra_restriccion').delete().eq('obra_id', OBRA).ilike('descripcion', `%${marca}%`)
   await sb.from('obra_actividad').delete().eq('obra_id', OBRA).ilike('nombre', `%${marca}%`)
+  // UN 204 NO PRUEBA EL BORRADO (25/09/2026): «ZZ-E2E misma actividad» quedó viva en le-comedor desde el
+  // 07/09 y la vio el dueño en su obra. El delete pasaba sin error y no borraba nada. Ahora se lee lo
+  // que quedó y, si queda algo, el recorrido FALLA: un dato de prueba en la app viva no es un detalle.
+  const { data: quedan } = await sb.from('obra_actividad').select('id, nombre').eq('obra_id', OBRA).ilike('nombre', `%${marca}%`)
+  if ((quedan ?? []).length > 0) {
+    throw new Error(`la limpieza no borró ${quedan!.length} actividad(es) de prueba en ${OBRA}: ${quedan!.map((q) => q.nombre).join(' · ')}`)
+  }
   const { data: cli } = await sb.from('clientes').select('id').ilike('nombre_comercial', `%${marca}%`)
   for (const c of cli ?? []) {
     await sb.from('cliente_documento').delete().eq('cliente_id', c.id)
