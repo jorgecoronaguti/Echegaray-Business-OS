@@ -271,7 +271,7 @@ las que ya existían como producto propio (`/hoy`·`/mi-*` del empleado, `/obra/
 | Nivel | Inicio (PC y teléfono) | Barra de abajo (`< md`, `BarraTelefono` · `barraTelefonoDe(rol)`) | Header |
 |---|---|---|---|
 | Administración (dirección + administración) | `/obras` | Obras · Personal · Compras · Analíticas · Más (opción B del dueño, 24/09) | sin solapas bajo `md` |
-| Jefe de obra | `/obra/hoy` (también en PC desde el 24/09) | Hoy · Tareas · Avance · Gente, la misma en `(main)`, `(jefe)` y `(empleado)` | idem |
+| Jefe de obra | `/obra/hoy`; en la PC su cara es `/obras/hoy` (25/09, ver g) | Hoy · Tareas · Avance · Gente, la misma en `(main)`, `(jefe)` y `(empleado)` | PC: Obras · Herramientas |
 | Operario (`campo`) | `/hoy` | Hoy · Trabajo · Horas · Yo | no entra a `(main)` salvo `/mi-cuenta` |
 | Cliente | `/portal` | la del portal | — |
 
@@ -294,3 +294,25 @@ las que ya existían como producto propio (`/hoy`·`/mi-*` del empleado, `/obra/
   (`v2/BarraCorrible`, `CabeceraSeccion`); controles compartidos (`CTRL`) de 48 px y letra 16 bajo `md`.
 - Con aviso «se usa en computadora»: Horas por quincena forzada desde el teléfono (`quincena-en-computadora`). Nada más.
 - Sin versión cómoda (usable con scroll interno): Rodados y Maquinarias de escritorio con `?pc=1`, Gantt de obras.
+
+## g. El jefe en la computadora (dueño, 25/09/2026: «tiene que tener un diseño de computadora»)
+
+El inicio sigue siendo `/obra/hoy` en cualquier aparato (regla del 24/09). El aparato elige la CARA: si el navegador
+no se declara teléfono (`pareceTelefono`), el middleware lleva cada pantalla del teléfono del jefe a su par de
+escritorio (`shared/auth/caraDelJefe.ts`, puro y probado). En el teléfono no cambia nada; al revés, las dos pantallas
+de PC abiertas desde el teléfono vuelven a J01 y D15.
+
+| Teléfono (J) | PC |
+|---|---|
+| `/obra/hoy` (J01) | `/obras/hoy` — portada: sus obras activas (asignada marcada), el día de la elegida (En obra · Partes · Parados · Sin registrar, Resolver ahora, Frentes de hoy), acciones con la obra puesta y columna «lo suyo» (efectivo, gente, material). Con UNA obra, directo a su ficha |
+| `/obra/tareas`, `/obra/frente` | `/obras/<obra>?vista=tareas` |
+| `/obra/avance` / `?actividad=` | `/obras/<obra>` / `/obras/<obra>/avance/<actividad>` |
+| `/obra/avance-masivo` | `/obras/<obra>?vista=tareas&sub=parte` (Parte diario) |
+| `/obra/personas` | `/obras/<obra>?vista=personal`; Cargar asistencia = `/administracion/personas/asistencia?obra=` |
+| Pedir material | `/herramientas/material?obra=<obra>&pedir=1` (el panel abre con la obra elegida) |
+| Problema | `/obras/<obra>?vista=operacion&sub=impedimentos` |
+| `/obra/efectivo`, `/mi-informacion/efectivo[/rendiciones]`, `/firmar?entrega=` | `/mi-cuenta/efectivo[?firmar=]` («Mi efectivo»: cifras, entregas, lo que rendí, firma en panel lateral). Rendir la foto y devolver siguen en el teléfono |
+
+Nivel 1 del jefe en la PC: **Obras · Herramientas** (sin Administración). Las rutas de Personal le siguen abiertas
+(decisión 24/09) y, abiertas desde su obra, encienden Obras. La obra que mira se recuerda también desde la portada y
+la ficha (`obraQueSeMira`). El operario que abre `/mi-cuenta/efectivo` va a `/mi-informacion/efectivo`.

@@ -286,12 +286,12 @@ async function middlewareConBackend(request: NextRequest) {
 
     // ── EL OPERARIO NO SALE A LAS COPIAS DE ESCRITORIO DE LO SUYO (dueño, 24/09/2026).
     //
-    // `/mi-cuenta/horas`, `/legajo` y `/documentos` son la versión de escritorio de pantallas que el
+    // `/mi-cuenta/horas`, `/legajo`, `/documentos` y `/efectivo` (25/09) son la versión de escritorio de pantallas que el
     // operario ya tiene en su app (`/mi-informacion/*`, con su barra). Abiertas desde el teléfono lo
     // dejaban en un header de escritorio y sin barra. `/mi-cuenta` a secas (foto, contacto) y
     // `/seguridad` (contraseña) NO tienen copia en su app: se quedan, con su barra abajo.
     if (perfil?.rol === 'campo') {
-      const suya = /^\/mi-cuenta\/(horas|legajo|documentos)(\/.*)?$/.exec(pathname)
+      const suya = /^\/mi-cuenta\/(horas|legajo|documentos|efectivo)(\/.*)?$/.exec(pathname)
       if (suya) return NextResponse.redirect(new URL(`/mi-informacion/${suya[1]}${suya[2] ?? ''}`, request.url))
     }
 
