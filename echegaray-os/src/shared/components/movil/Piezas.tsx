@@ -189,8 +189,8 @@ export function FranjaFiltros({ children, testid }: { children: ReactNode; testi
  * que ESCRIBE, y usarlo también para «qué estoy mirando» deja dos amarillos con significados
  * distintos en la misma pantalla. Es la regla que dibujan J02, J04, J05, M03 y M08.
  *
- * El objetivo táctil es la pastilla entera (`minHeight:36px` del mockup dentro de un enlace que
- * llega a 44 por el `padding` de la franja).
+ * El objetivo táctil es la pastilla entera: 36 del mockup en pantallas anchas y 44 en el teléfono (el
+ * `padding` de la franja no es parte del enlace; medido el 25/09/2026).
  */
 export function Pastilla({
   href, texto, cuenta, activa, testid,
@@ -206,6 +206,9 @@ export function Pastilla({
       href={href}
       data-testid={testid}
       aria-current={activa ? 'true' : undefined}
+      // 44 EN EL TELÉFONO (auditoría por nivel, 25/09/2026): el relleno de la franja no es parte del enlace,
+      // así que la pastilla medía 36 de toque. En pantallas anchas queda la de 36 del mockup.
+      className="max-md:!min-h-11"
       style={{
         display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5,
         border: `1px solid ${activa ? C.grafito : C.linea}`,

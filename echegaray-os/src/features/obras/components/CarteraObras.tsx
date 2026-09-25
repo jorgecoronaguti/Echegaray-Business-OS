@@ -326,7 +326,8 @@ export function CabeceraCliente({ nombre, slug, n, telefono = false }: { nombre:
   return (
     <div data-testid="cabecera-cliente" data-cliente={slug ?? ''} style={estiloCabeceraGrupo(telefono, !!nombre)}>
       {slug && nombre
-        ? <Link href={`/clientes/${slug}`} prefetch={false} style={{ color: C.tinta, textDecoration: 'none' }}>{texto}</Link>
+        // 44 de toque en el teléfono con relleno invisible (inline: el padding vertical no mueve el renglón).
+        ? <Link href={`/clientes/${slug}`} prefetch={false} className="max-md:py-[13px]" style={{ color: C.tinta, textDecoration: 'none' }}>{texto}</Link>
         : <span data-nulo={nombre ? undefined : ''}>{texto}</span>}
       <span style={ESTILO_CUENTA_GRUPO}>{n}</span>
     </div>
