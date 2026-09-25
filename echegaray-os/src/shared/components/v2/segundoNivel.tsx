@@ -65,7 +65,8 @@ export function Migas({ volverA, ambito, padre, actual, testid = 'migas' }: {
     >
       <Link
         href={volverA} prefetch={false} data-testid="volver"
-        className="flex items-center gap-[9px] hover:text-[#1F1F1E]"
+        // 44 de toque en el teléfono con padding y margen negativo: el texto y la línea no se mueven.
+        className="flex items-center gap-[9px] hover:text-[#1F1F1E] max-md:-my-[13px] max-md:-ml-2 max-md:py-[13px] max-md:pl-2 max-md:pr-2"
         style={{ color: V.tenue }}
       >
         <Chevron className="h-[15px] w-[15px] shrink-0" />

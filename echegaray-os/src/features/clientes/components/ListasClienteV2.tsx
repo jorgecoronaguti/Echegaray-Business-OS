@@ -349,7 +349,11 @@ export function ObrasDelCliente({
           {/* EL NÚMERO DE HH LLEVA AL DESGLOSE de quién cargó horas cada día (`?hh=<obra>`): «que de
               ahí me lleve a un desglose de la obra entera con las personas por día que participaron
               de las HH» (dueño, 11/09/2026 18:38). */}
-          <span className="flex items-center justify-end" data-testid="hh-obra-cliente">
+          {/* EN EL TELÉFONO LA FILA ENTERA ES EL TOQUE (coordinación, 25/09/2026): las cifras son botones de 18 px
+              que se comían el dedo. Bajo `md` las celdas de HH, materiales, subcontratos y mano de obra no reciben
+              el toque y todo cae en el enlace de la fila (46 px de alto, a la obra en el ERP, como el nombre).
+              En la PC cada cifra sigue abriendo su detalle. */}
+          <span className="flex items-center justify-end max-md:pointer-events-none" data-testid="hh-obra-cliente">
             {/* VACÍO NO ES «—»: sin permiso o en una cara que no las transporta, la celda calla. Un
                 «—» diría que nadie cargó horas, y la obra puede tener 12.525. */}
             {horas === null ? null : (
@@ -373,7 +377,7 @@ export function ObrasDelCliente({
               economía no ve el precio de venta, y mucho menos el costo. */}
           {/* EL NÚMERO ABRE SU DETALLE (dueño, 15/09/2026) y, debajo, lo POR VENCER en texto secundario:
               cuotas con vencimiento posterior a hoy, que no entran a la fecha y tampoco se esconden. */}
-          <span className="grid justify-items-end" style={{ minWidth: 0 }}>
+          <span className="grid justify-items-end max-md:pointer-events-none" style={{ minWidth: 0 }}>
             <span
               data-testid="materiales-obra-cliente"
               title={tituloMateriales(costoDeLaObra) ?? AYUDA_MATERIALES}
@@ -390,7 +394,7 @@ export function ObrasDelCliente({
           </span>
 
           {/* SUBCONTRATOS (dueño, 14/09/2026): su columna, delegada en costosDeObra como las otras dos. */}
-          <span className="grid justify-items-end" style={{ minWidth: 0 }}>
+          <span className="grid justify-items-end max-md:pointer-events-none" style={{ minWidth: 0 }}>
             <span
               data-testid="subcontratos-obra-cliente"
               title={tituloSubcontratos(costoDeLaObra) ?? AYUDA_SUBCONTRATOS}
@@ -412,7 +416,7 @@ export function ObrasDelCliente({
           <span
             data-testid="mano-obra-obra-cliente"
             title={tituloManoObra(costoDeLaObra, hhDeLaObra?.inicioReal) ?? AYUDA_MANO_OBRA}
-            className={`truncate tabular-nums ${manoObra.texto.startsWith('$') ? 'font-mono' : ''}`}
+            className={`truncate tabular-nums max-md:pointer-events-none ${manoObra.texto.startsWith('$') ? 'font-mono' : ''}`}
             style={{
               fontSize: '12px', textAlign: 'right',
               color: manoObra.parcial ? V.warn : V.tintaSuave,

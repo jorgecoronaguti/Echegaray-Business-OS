@@ -27,7 +27,9 @@ function Editar({ href, testid }: { href: string; testid: string }) {
   return (
     <Link
       href={href} prefetch={false} data-testid={testid}
-      className="hover:text-[#1F1F1E]"
+      // 44 de toque en el teléfono agrandando el ÁREA, no la letra: el padding crece y el margen negativo lo
+      // devuelve, así el renglón no se mueve (auditoría por nivel, 25/09/2026). La PC no cambia.
+      className="hover:text-[#1F1F1E] max-md:-my-[14px] max-md:-mr-3 max-md:py-[14px] max-md:pl-4 max-md:pr-3"
       style={{ marginLeft: 'auto', fontSize: '11.5px', color: V.apagado }}
     >
       Editar

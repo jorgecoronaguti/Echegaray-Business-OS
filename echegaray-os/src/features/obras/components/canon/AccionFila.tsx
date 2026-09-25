@@ -35,7 +35,7 @@ export function AccionFila<A extends unknown[] = []>({
   const [armado, setArmado] = useState(false)
   if (confirmar && !armado) {
     return (
-      <button type="button" data-testid={testid ? `${testid}-pedir` : undefined} onClick={() => setArmado(true)} style={{
+      <button type="button" data-testid={testid ? `${testid}-pedir` : undefined} onClick={() => setArmado(true)} className="max-md:min-h-11" style={{
         font: 'inherit', fontSize: '12.5px', border: 'none', background: 'none', padding: '4px 0', cursor: 'pointer',
         color: discreto ? C.tenue : peligro ? C.neg : C.tintaMedia, whiteSpace: 'nowrap',
       }}>{children}</button>
@@ -47,6 +47,7 @@ export function AccionFila<A extends unknown[] = []>({
         type="submit"
         disabled={pendiente}
         data-testid={testid}
+        className="max-md:min-h-11"
         style={{
           // El atajo `font` va PRIMERO: detrás pisaría el tamaño y el peso.
           font: 'inherit', fontSize: alto === 44 ? '14px' : '12.5px', fontWeight: alto === 44 ? 500 : 400,

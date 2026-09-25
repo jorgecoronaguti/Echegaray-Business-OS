@@ -107,7 +107,7 @@ export function FormAccion({
           // color que no está en la paleta del handoff — y lo comparten los catorce formularios
           // del OS, así que era el botón más repetido del sistema y ninguno era de la marca.
           // Amarillo con texto grafito: #FDC900 da 1,6:1 sobre blanco y no admite texto claro.
-          className={`${tactil ? 'min-h-control-movil sm:min-h-control ' : ''}rounded-control bg-marca px-3.5 py-[7px] text-[12.5px] font-semibold text-[color:var(--os-on-marca)] transition-colors hover:brightness-[0.97] disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-faint disabled:hover:brightness-100`}
+          className={`${tactil ? 'min-h-control-movil sm:min-h-control ' : 'max-md:min-h-11 '}rounded-control bg-marca px-3.5 py-[7px] text-[12.5px] font-semibold text-[color:var(--os-on-marca)] transition-colors hover:brightness-[0.97] disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-faint disabled:hover:brightness-100`}
         >
           {pendiente ? 'Guardando…' : enviar}
         </button>

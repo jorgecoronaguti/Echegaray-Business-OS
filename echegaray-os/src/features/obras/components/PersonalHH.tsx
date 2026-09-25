@@ -183,7 +183,8 @@ function SelectTipoHora({ nombre = 'tipo_hora', compacto = false }: { nombre?: s
     <select
       name={nombre} defaultValue="normal" data-testid={compacto ? 'tipo-masiva' : 'tipo-hora'}
       className={compacto
-        ? 'shrink-0 rounded-control border border-line bg-white px-1.5 py-1 text-[11px] text-muted'
+        // 44 de toque y letra 16 en el teléfono (auditoría por nivel 25/09/2026: medía 26). La PC no cambia.
+        ? 'shrink-0 rounded-control border border-line bg-white px-1.5 py-1 text-[11px] text-muted max-md:min-h-11 max-md:text-[16px]'
         : CAMPO}
     >
       {TIPOS_HORA.map((t) => <option key={t} value={t}>{TIPO_HORA_LABEL[t]}</option>)}
@@ -273,10 +274,11 @@ export function FormIndividual({
             distinguía y ninguna pantalla las escribía. Plegado: el caso común es la hora normal. */}
         {causas.length > 0 && (
           <details className="col-span-2" data-testid="hh-improductiva">
-            <summary className="cursor-pointer text-[12px] text-muted">Hora improductiva (con causa)</summary>
+            <summary className="cursor-pointer text-[12px] text-muted max-md:flex max-md:min-h-11 max-md:items-center">Hora improductiva (con causa)</summary>
             <div className="mt-2 grid grid-cols-2 gap-2.5">
-              <label className="flex items-center gap-2 text-[12.5px] text-ink">
-                <input type="checkbox" name="improductiva" className="h-3.5 w-3.5" data-testid="marca-improductiva" />
+              {/* En el teléfono la casilla mide 24 y el renglón entero (la etiqueta) es el blanco de 44. */}
+              <label className="flex items-center gap-2 text-[12.5px] text-ink max-md:min-h-11">
+                <input type="checkbox" name="improductiva" className="h-3.5 w-3.5 max-md:h-6 max-md:w-6" data-testid="marca-improductiva" />
                 Improductiva
               </label>
               <Campo rotulo="Causa">
@@ -354,7 +356,7 @@ export function FormMasiva({
                     <input
                       type="number" name={`horas_${a.persona_id}`} min="0" max="24" step="0.5"
                       defaultValue="8" data-testid="horas-masiva"
-                      className="w-16 shrink-0 rounded-control border border-line px-2 py-1 text-right text-[12px] tabular-nums text-ink"
+                      className="w-16 shrink-0 rounded-control border border-line px-2 py-1 text-right text-[12px] tabular-nums text-ink max-md:min-h-11 max-md:text-[16px]"
                     />
                   </span>
                 </label>

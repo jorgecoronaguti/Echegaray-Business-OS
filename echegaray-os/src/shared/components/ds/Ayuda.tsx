@@ -32,7 +32,7 @@ export function Ayuda({
 }) {
   return (
     <details className="mt-2 min-w-0" data-testid={testid}>
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-[11.5px] text-faint hover:text-muted">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-[11.5px] text-faint hover:text-muted max-md:min-h-11">
         <span aria-hidden className="inline-flex h-[14px] w-[14px] items-center justify-center rounded-full border border-line text-[9px] leading-none">
           ?
         </span>
