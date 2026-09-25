@@ -32,7 +32,10 @@ export async function pdfDeCierre(titulo: string, subtitulo: string, secciones: 
   y -= 22
   texto('ECHEGARAY CONSTRUCCIONES · CIERRE DE OBRA', MARGEN, y, negrita, 9, SUAVE)
   y -= 24
-  texto(titulo, MARGEN, y, negrita, 18, TINTA, A4[0] - 2 * MARGEN)
+  // El título entra entero: se achica hasta 12 antes de cortarse.
+  let tam = 18
+  while (tam > 12 && negrita.widthOfTextAtSize(aWinAnsi(titulo), tam) > A4[0] - 2 * MARGEN) tam -= 1
+  texto(titulo, MARGEN, y, negrita, tam, TINTA, A4[0] - 2 * MARGEN)
   y -= 18
   texto(subtitulo, MARGEN, y, normal, 10, SUAVE, A4[0] - 2 * MARGEN)
   y -= 26

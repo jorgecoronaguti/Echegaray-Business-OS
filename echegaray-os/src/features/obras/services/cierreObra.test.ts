@@ -25,6 +25,7 @@ test('el cierre con todos los datos: costo total = materiales + MO, margen sobre
   assert.equal(fila(s, 'La obra', 'Plazo'), '+9 días contra el plan')
   assert.equal(fila(s, 'Horas hombre', 'Desvío'), '+4,9 %')
   assert.equal(fila(s, 'Lecciones', 'Lecciones'), SIN_DATO)
+  assert.equal(fila(s, 'La obra', 'Estado'), 'Cerrada · etapa Cierre')
 })
 
 test('nada inventado: sin mano de obra no hay costo total ni margen (no se resta sólo materiales)', () => {

@@ -38,6 +38,9 @@ const num = (n: number | null | undefined, dec = 0) => (n == null ? SIN_DATO : n
 const fecha = (iso: string | null) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : SIN_DATO)
 const pctConSigno = (n: number) => `${n > 0 ? '+' : ''}${n.toLocaleString('es-AR', { maximumFractionDigits: 1 })} %`
 
+const ESTADO: Record<string, string> = { activa: 'En ejecución', en_ejecucion: 'En ejecución', cerrada: 'Cerrada', archivada: 'Archivada', terminada: 'Terminada', previo: 'Previo' }
+const ETAPA: Record<string, string> = { previo: 'Previo', inicio: 'Inicio', desarrollo: 'Desarrollo', terminacion: 'Terminación', cierre: 'Cierre' }
+
 function diasEntre(a: string, b: string): number {
   return Math.round((Date.parse(`${a.slice(0, 10)}T00:00:00Z`) - Date.parse(`${b.slice(0, 10)}T00:00:00Z`)) / 86_400_000)
 }
@@ -52,7 +55,7 @@ export function seccionesDeCierre(d: DatosCierre): SeccionCierre[] {
     filas: [
       ['Obra', [o.codigo, o.nombre].filter(Boolean).join(' · ')],
       ['Cliente', o.cliente ?? SIN_DATO],
-      ['Estado', [o.estado, o.etapa].filter(Boolean).join(' · ') || SIN_DATO],
+      ['Estado', [o.estado ? ESTADO[o.estado] ?? o.estado : null, o.etapa ? `etapa ${ETAPA[o.etapa] ?? o.etapa}` : null].filter(Boolean).join(' · ') || SIN_DATO],
       ['Inicio previsto', fecha(o.inicioPlan)],
       ['Fin previsto', fecha(o.finPlan)],
       ['Inicio real', fecha(o.inicioReal)],
