@@ -16,6 +16,24 @@ no para mostrar.
 - El dato sale de la **fuente única** en Postgres, no de una consulta propia. La web ya mostró obras
   legacy pausadas mientras el chat mostraba las activas: dos verdades para el mismo concepto.
 
+## REGLA DE ORO DEL DUEÑO (25/09/2026): toda implementación se revisa POR NIVEL DE USUARIO
+
+Textual: «cada vez que haya implementaciones en todo app.ecsas.com.ar tenés que revisar por nivel de
+usuario». Nada que toque una pantalla, un permiso o un dato visible se publica ni se anuncia sin la
+matriz **funcionalidad × nivel × dispositivo**:
+
+| Nivel | Rol en la base | Entra en el teléfono por | Barra de abajo |
+|---|---|---|---|
+| Administración | `direccion`, `administracion` | `/obras` | Obras · Personal · Compras · Analíticas · Más |
+| Jefe de obra | `jefe_obra` | `/obra/hoy` | Hoy · Tareas · Avance · Gente |
+| Operario | `campo` | `/hoy` | Hoy · Trabajo · Horas · Yo |
+
+Por cada celda, en PC (1440) y teléfono (390), contra producción con sesión real por magic link y
+sólo lectura: qué ve y si debería verlo; qué puede hacer y qué NO (probado en RLS y en el servidor,
+no sólo escondido en la UI); la barra de su nivel; sin scroll horizontal ni controles de menos de
+44 px; sin «Campo» ni «Datos» en pantalla. Jefe y operario no ven Clientes ni sueldos ajenos. La
+matriz va en el informe del trabajo; sin ella el trabajo no está terminado.
+
 ## Verificación
 
 Una pantalla no se da por buena por compilar. Se mira: el agente `qa-visual` la recorre con un
