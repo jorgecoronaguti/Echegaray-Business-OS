@@ -75,7 +75,7 @@ interface Props {
 }
 
 /** «Dictar parte» en la computadora (lote 3 de la entrega del 25/09/2026). */
-const DICTAR_EN_PC = false
+const DICTAR_EN_PC = true
 
 /** Lo ya guardado ese día por actividad: la producción (sumada si hubo más de un parte) y el comentario. */
 type Cargado = Map<string, { produccion: number | null; comentario: string | null }>

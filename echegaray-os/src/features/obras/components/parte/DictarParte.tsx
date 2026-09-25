@@ -558,7 +558,7 @@ function RevisionTelefono(p: Pantalla & { fase: Rev }) {
         style={{ width: '100%', display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '8px', alignItems: 'center', padding: '0 10px', minHeight: '44px', border: 'none', borderTop: `1px solid ${C.bordeFila}`, font: 'inherit', fontSize: '14px', textAlign: 'left', cursor: 'pointer', color: C.tinta, ...fondoFila(f) }}>
         <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombreCorto(f)}{f.persona_id == null ? ' ?' : ''}</span>
         <span style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}>{f.estado === 'presente' && f.horas != null ? `${String(f.horas).replace('.', ',')} h` : '—'}</span>
-        <span style={{ fontSize: '12px', color: f.estado === 'presente' ? C.pos : C.neg }}>{f.estado === 'presente' ? 'Presente' : faltaConfirmar(f) ? 'Faltó ?' : 'Faltó'}</span>
+        <span style={{ fontSize: '12px', color: f.estado === 'presente' ? C.pos : C.neg }}>{f.estado === 'presente' ? (faltaConfirmar(f) ? 'Presente ?' : 'Presente') : faltaConfirmar(f) ? 'Faltó ?' : 'Faltó'}</span>
       </button>
       {abierta === f.clave && <EditorPersona f={f} p={p} />}
     </div>
