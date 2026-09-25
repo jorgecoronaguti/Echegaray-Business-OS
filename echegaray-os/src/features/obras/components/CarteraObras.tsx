@@ -410,7 +410,9 @@ function FilaTelefono({ o, ir, ultima, nivel = 0 }: { o: FilaCartera; ir: () => 
       <NombreTelefono o={o} nivel={nivel} />
       <div style={{ flexShrink: 0, textAlign: 'right', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
         {previo || o.avance_pct == null
-          ? <span style={{ fontSize: '12px', color: C.tenue, fontStyle: 'italic' }} data-nulo="">no se puede medir</span>
+          // M01 dice «no se puede medir» para la obra en Previo (sin actividades); una obra en ejecución sin
+          // avance dice lo mismo que la PC, «sin avance cargado»: el mismo hecho, la misma palabra en los dos anchos.
+          ? <span style={{ fontSize: '12px', color: C.tenue, fontStyle: 'italic' }} data-nulo="">{previo ? 'no se puede medir' : 'sin avance cargado'}</span>
           : (
             <>
               <div style={{ width: '56px', height: '4px', borderRadius: '2px', background: C.borde, overflow: 'hidden' }}>
