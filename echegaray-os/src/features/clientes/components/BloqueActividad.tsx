@@ -103,7 +103,7 @@ export function BloqueActividad({
         total={eventos.length}
         vacio="Todavía no hay nada con fecha para mostrar de este cliente."
         verTodo={
-          <Link href={urlTodo} data-testid="ver-toda-actividad" className="text-muted hover:text-ink hover:underline">
+          <Link href={urlTodo} data-testid="ver-toda-actividad" className="text-muted hover:text-ink hover:underline max-md:-my-[13px] max-md:inline-block max-md:py-[13px]">
             Ver todo ({eventos.length}) →
           </Link>
         }

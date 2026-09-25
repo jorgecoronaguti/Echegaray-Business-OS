@@ -233,7 +233,7 @@ export function QuincenaDeAsistencia({
             : 'Sin asignación vigente a una obra'}
         </span>
         <Link href={hrefHoras} prefetch={false}
-          className="text-[12px] font-medium text-ink hover:underline" data-testid="ir-a-horas">
+          className="text-[12px] font-medium text-ink hover:underline max-md:-my-[13px] max-md:inline-block max-md:py-[13px]" data-testid="ir-a-horas">
           Ver la cronología completa →
         </Link>
       </div>

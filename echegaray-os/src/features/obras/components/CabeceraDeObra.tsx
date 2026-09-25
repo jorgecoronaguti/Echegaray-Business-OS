@@ -156,7 +156,7 @@ export async function CabeceraDeObra({
   // EL CLIENTE ES UN LINK cuando existe en el eje canónico. Cuando la obra sólo tiene el nombre
   // escrito a mano, se muestra el texto y se dice que falta vincularlo: la ficha no se inventa.
   const cliente = enlazarCliente && obra.cliente_slug && obra.cliente_nombre ? (
-    <Link href={`/clientes/${obra.cliente_slug}`} prefetch={false} style={{ color: C.tintaMedia }}>
+    <Link href={`/clientes/${obra.cliente_slug}`} prefetch={false} className="max-md:-my-[13px] max-md:py-[13px]" style={{ color: C.tintaMedia }}>
       {obra.cliente_nombre}
     </Link>
   ) : clienteDeObra(obra)
@@ -321,7 +321,8 @@ export async function CabeceraDeObra({
       <div className="md:hidden" style={{
         background: C.superficie, padding: '10px 16px 0', borderBottom: `1px solid ${C.borde}`, flexShrink: 0,
       }} data-testid="cabecera-obra-banda-telefono">
-        <Link href={volverA} prefetch={false} style={{
+        {/* 44 de área con relleno invisible: la miga no se mueve (auditoría por nivel, 25/09/2026). */}
+        <Link href={volverA} prefetch={false} className="-my-[13px] py-[13px]" style={{
           fontSize: '11.5px', color: C.tenue, display: 'flex', alignItems: 'center', gap: '3px',
         }}>
           <Ico d={P.izquierda} s={11} />{volverLabel} <span style={{ color: C.bordeFuerte }}>/</span> {codigo ?? obra.nombre}

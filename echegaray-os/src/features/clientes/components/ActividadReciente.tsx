@@ -63,7 +63,12 @@ export function ActividadReciente({ linea, puedeEscribir, crearNota, urlTodo }: 
                       CADA destino —y la ficha es `force-dynamic`, así que no se reusa al hacer
                       clic—. Lo atrapa `prefetch-en-listas.test.ts`. */}
                   {e.href
-                    ? <Link href={e.href} prefetch={false} className="hover:underline">{e.titulo}</Link>
+                    ? (
+                      // EN EL TELÉFONO CADA HECHO ES UN RENGLÓN DE 44 (auditoría por nivel, 25/09/2026). Con 8 px entre
+                      // renglones un relleno invisible se pisaría con el vecino: el alto es la línea (leading 44),
+                      // así el blanco es real y la elipsis sigue funcionando.
+                      <Link href={e.href} prefetch={false} className="hover:underline max-md:block max-md:truncate max-md:leading-[44px]">{e.titulo}</Link>
+                    )
                     : e.titulo}
                 </span>
               </li>
@@ -72,7 +77,8 @@ export function ActividadReciente({ linea, puedeEscribir, crearNota, urlTodo }: 
           )}
 
       <p style={{ fontSize: '12px', paddingTop: 10 }}>
-        <Link href={urlTodo} data-testid="ver-toda-actividad" style={{ color: V.tinta, fontWeight: 500 }}>
+        {/* 44 de área en el teléfono con relleno invisible (auditoría por nivel, 25/09/2026). */}
+        <Link href={urlTodo} data-testid="ver-toda-actividad" className="max-md:-my-[13px] max-md:inline-block max-md:py-[13px]" style={{ color: V.tinta, fontWeight: 500 }}>
           Ver toda la actividad →
         </Link>
       </p>

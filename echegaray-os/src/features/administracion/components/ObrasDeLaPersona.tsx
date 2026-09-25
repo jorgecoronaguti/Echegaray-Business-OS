@@ -150,7 +150,7 @@ export function ObrasDeLaPersona({ obras, programados = [], hrefAsignaciones }: 
           es su propia solapa, y se llega desde acá. */}
       <div className="border-t border-line-hairline px-3.5 py-2.5">
         <Link href={hrefAsignaciones} prefetch={false}
-          className="text-[12px] font-medium text-ink hover:underline" data-testid="ir-a-asignaciones">
+          className="text-[12px] font-medium text-ink hover:underline max-md:-my-[13px] max-md:inline-block max-md:py-[13px]" data-testid="ir-a-asignaciones">
           Ver el historial de asignaciones →
         </Link>
       </div>
