@@ -46,7 +46,7 @@ import { pactadosDelBloque, PESTANA_NOMINA } from '../lib/libro-extractores-nomi
 // gremiales pagados, las cuotas de planes de ARCA y la cuota del prendario entraban SÓLO por esas
 // filas: el REAL pasa a salir del extracto y el FUTURO de su fuente propia. Ver el módulo.
 import {
-  deBancoObligaciones, dePrendarioFuturo, PESTANA_PRENDARIO,
+  deBancoObligaciones, dePrendarioFuturo, PESTANA_PRENDARIO, arcaSinConciliar,
 } from '../lib/libro-extractores-banco-obligaciones.mjs'
 import { deSac } from '../lib/libro-extractores-sac.mjs'
 // Efectivo a rendir (22/09/2026): la entrega y la devolución desde la réplica, y el espejo de lo rendido.
@@ -709,6 +709,14 @@ export function consolidar(porFuente, { debitosBanco, corteBanco, usadosBanco, l
   // marcó la pestaña, la plata figuraba debiéndose aunque el banco la hubiera pagado once días antes
   // — el F931 de julio ($7.074.772) con el pago de ARCA del 11/08 ya debitado. Ver lib/libro-cruce-banco.mjs.
   todos = aplicarCruce(todos, cruceBanco(todos, debitosBanco, corteBanco, usadosBanco, log))
+  // ═══ Y LO DE ARCA QUE NADIE RECLAMÓ ENTRA, NO SE PIERDE (25/09/2026) ═══
+  //
+  // Va DESPUÉS del cruce a propósito: el cruce ya le dio a cada obligación de «Impuestos y
+  // Financieros» su débito. Lo que queda es plata que salió y que ningún renglón explica ($5,17 M el
+  // 25/09). Ver `arcaSinConciliar`.
+  const arca = arcaSinConciliar({ debitos: debitosBanco ?? [], usados: usadosBanco ?? new Set(), libro: todos })
+  for (const a of arca.avisos) log(`  ⚠ ${a}`)
+  todos = [...todos, ...arca.movimientos]
   const { libro: dedup, colapsos } = deduplicar(todos)
   // EL ESPEJO DE LO RENDIDO VA ÚLTIMO: sobre el libro que de verdad se va a escribir, después del
   // cruce (que puede promover un pendiente a REAL) y de la deduplicación (que puede descartar una fila).

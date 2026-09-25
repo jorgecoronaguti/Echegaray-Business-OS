@@ -505,3 +505,97 @@ export function dePrendarioFuturo({ debitos = [], plan = null, compras = [] } = 
   }
   return { movimientos, avisos }
 }
+
+// ═══ UN DÉBITO DE ARCA NUNCA QUEDA INVISIBLE (25/09/2026) ═══
+//
+// La regla de arriba —«lo que quedó sin aparear se nombra y NO se emite»— protegía del doble conteo
+// del IVA, pero dejaba plata real fuera del libro: la auditoría del 25/09 encontró $5,17 M debitados
+// por ARCA que no estaban en ningún renglón (f247 20/07 $4.859.763,28 · f490 28/08 $69.722,68 · f636
+// 16/09 $242.519,60). El saldo del banco los tenía; el Cash Flow no.
+//
+// El doble conteo que la regla temía se evita por ORDEN, no por silencio: esto corre DESPUÉS del
+// cruce del libro contra el extracto (`consolidar`), que ya le asignó a cada obligación de «Impuestos
+// y Financieros» su débito y lo marcó en `usados`. Lo que llega acá es un débito de ARCA que ninguna
+// obligación del libro reclamó y que ningún extractor emitió: si no entra ahora, no entra nunca.
+//
+// Entra con su MEJOR clasificación: la que el análisis identificó con evidencia (tabla de abajo,
+// siempre marcada «inferido»), o «AFIP sin imputar» en Impuestos. Nunca invisible.
+//
+// «ARCA» ES AFIP: desde septiembre el banco escribe «Debito automatico - Arca -30716304643» y la
+// regla de naturalezas (`banco-santander.mjs`) sólo reconoce «afip», así que f636 quedó como
+// «Débitos automáticos (seguros)». Acá se reconoce por el concepto; la naturaleza de `_BANCO_RAW`
+// no se toca (alimenta CAJA, que no es de este arreglo).
+
+/** CUIT de la empresa: los débitos automáticos de ARCA lo llevan en el concepto. */
+const CUIT_EMPRESA = '30716304643'
+export const RUBRO_AFIP_SIN_IMPUTAR = 'Impuestos'
+
+/** ¿Es un pago a ARCA/AFIP? Por naturaleza o, si el banco lo rotuló como otra cosa, por el concepto. */
+export const esDebitoArca = (d) => txt(d?.naturaleza) === NAT.afip
+  || /\b(afip|arca)\b|imp\.afip/i.test(txt(d?.concepto)) && (new RegExp(CUIT_EMPRESA).test(txt(d?.concepto)) || /imp\.afip/i.test(txt(d?.concepto)))
+
+/**
+ * LOS DÉBITOS DE ARCA QUE SE IDENTIFICARON (25/09/2026), con su evidencia. Clave: fecha ISO + importe.
+ * Todo lo de acá es INFERENCIA (el detalle del VEP no lo lee ninguna fuente del OS): el concepto lo
+ * dice, y la confianza va en `evidencia`.
+ */
+export const DEBITOS_ARCA_IDENTIFICADOS = Object.freeze({
+  '2026-07-20|4859763.28': Object.freeze({
+    rubro: RUBRO_CARGAS,
+    concepto: 'F931 · nómina de 2026-06 · parte no financiada (inferido)',
+    evidencia: 'Mismo canal que los tres F931 que cierran al centavo con su DDJJ (VEP «Imp.afip 3071630464311793242»: '
+      + '08/06 = F931 05/26, 11/08 = 07/26, 07/09 = 08/26). Junio es el único mes sin pago de F931 y está financiado '
+      + 'por el Plan W303094 (cuotas desde el 18/08). F931 06/26 = $11.950.853,86; aportes SS+OS + contrib. OS + '
+      + 'seguro de vida = $4.792.149,37 y el débito excede en $67.613,91 (1,4 %, compatible con intereses por pagar '
+      + '11 días tarde). Confianza media-alta: sin el VEP no se prueba la composición.',
+  }),
+  '2026-09-16|242519.6': Object.freeze({
+    rubro: RUBRO_PLANES,
+    concepto: 'Cuota plan de facilidades ARCA · 2026-09 (inferido)',
+    evidencia: 'Débito automático de ARCA con el CUIT de la empresa el día 16, el mismo canal y día que las cuotas '
+      + 'de los planes (f75/f76, f217/f218, f409/f410). Ese mes dejó de debitarse la cuota de $473.767,08; puede ser '
+      + 'la última cuota de ese plan o una de otro. Importe nunca observado antes: NO se proyecta ninguna cuota futura.',
+  }),
+})
+
+const claveArca = (d) => `${isoDeSerial(d.fecha)}|${Math.round(d.importe * 100) / 100}`
+
+/**
+ * NÚCLEO PURO: los débitos de ARCA que nadie reclamó, como movimientos REAL.
+ *
+ * @param {{debitos:Array, usados:Set<number>, libro:Array}} e `libro` = el libro ya cruzado: un débito
+ *   que ya es el origen de un renglón (`origen.pestana` `_BANCO_RAW`) no vuelve a entrar
+ * @returns {{movimientos:Array, avisos:string[]}}
+ */
+export function arcaSinConciliar({ debitos = [], usados = new Set(), libro = [] } = {}) {
+  const yaEnElLibro = new Set(libro
+    .filter((m) => String(m?.origen?.pestana ?? '').startsWith('_BANCO_RAW'))
+    .map((m) => Number(m.origen.fila)))
+  // UN RENGLÓN DEL LIBRO QUE YA ES ESE PAGO, AUNQUE VENGA DE OTRA PUERTA. Compras puede llevar la
+  // cuota o el F931 (`emitirSiLibre` no emite y NO marca `usados`): mismo importe al peso, dentro de
+  // la ventana de siempre, en un rubro de los que ARCA cobra. Ante la duda no se emite —es el sesgo
+  // conservador del módulo—, y se avisa.
+  const rubrosArca = new Set([RUBRO_CARGAS, RUBRO_GREMIALES, RUBRO_PLANES, RUBRO_AFIP_SIN_IMPUTAR, RUBRO_FINANCIERO])
+  const explicado = (d) => libro.find((m) => rubrosArca.has(m?.rubro) && m?.signo === SALE
+    && Math.abs(Number(m.importe) - d.importe) <= TOLERANCIA_APAREO
+    && Math.abs(Number(m.fecha) - d.fecha) <= VENTANA_COMPRAS)
+  const movimientos = []
+  const avisos = []
+  for (const d of debitos) {
+    if (!esDebitoArca(d) || usados.has(d.fila) || yaEnElLibro.has(d.fila)) continue
+    const ya = explicado(d)
+    if (ya) {
+      avisos.push(`libro-extractores-banco-obligaciones: ARCA ${pesos(d.importe)} el ${isoDeSerial(d.fecha)} `
+        + `(f${d.fila}) ya lo explica «${ya.concepto}» (${ya.origen?.pestana ?? '?'}) — no lo emito.`)
+      continue
+    }
+    const id = DEBITOS_ARCA_IDENTIFICADOS[claveArca(d)]
+    const concepto = id?.concepto ?? `AFIP sin imputar · débito del ${isoDeSerial(d.fecha)}`
+    movimientos.push(movDeDebito(d, { rubro: id?.rubro ?? RUBRO_AFIP_SIN_IMPUTAR, concepto, contraparte: 'ARCA' }))
+    usados.add(d.fila)
+    avisos.push(`libro-extractores-banco-obligaciones: ARCA ${pesos(d.importe)} el ${isoDeSerial(d.fecha)} `
+      + `(_BANCO_RAW f${d.fila}) no lo explicaba ninguna obligación: entra REAL como «${concepto}»`
+      + (id ? '' : ' — falta el detalle del VEP para imputarlo'))
+  }
+  return { movimientos, avisos }
+}
