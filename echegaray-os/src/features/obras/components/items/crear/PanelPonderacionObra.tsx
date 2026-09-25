@@ -144,7 +144,9 @@ export function PanelPonderacionObra({
     )
   }
 
-  const titulo = metodo === 'costo_mo'
+  const titulo = historias.length === 0
+    ? <>Todavía no hay historias: el peso de la obra sale del costo de mano de obra de cada una.</>
+    : metodo === 'costo_mo'
     ? <>Las historias pesan por su costo de mano de obra: {rotuloPesos(total)} en {conCosto.length} de {historias.length}.</>
     : <>Las historias pesan {METODOS.find((m) => m.id === metodo)?.label.toLowerCase()}. {sinCosto.length ? `${sinCosto.length} sin costo de MO.` : ''}</>
   const visiblesSin = verTodas ? sinCosto : sinCosto.slice(0, MAS)

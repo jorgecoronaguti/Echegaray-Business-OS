@@ -130,6 +130,9 @@ export function ArbolEstructura({
       l.push(c)
       salida.set(ancla, l)
     }
+    // Con el mismo ancla, primero la del contenedor más hondo: la fila nueva de una épica vacía va
+    // pegada a la épica, y después el «+ Nueva épica en <rubro>».
+    for (const l of salida.values()) l.sort((a, b) => b.profundidad - a.profundidad)
     return salida
   }, [visibles, modo, plegados, porId, nuevo])
 
@@ -151,7 +154,8 @@ export function ArbolEstructura({
       const input = (
         <input autoFocus value={nuevo?.nombre ?? ''} onChange={(e) => alCambiarNuevo?.(e.target.value)} onKeyDown={teclas}
           data-testid={escritorio ? 'campo-nuevo-nombre' : 'campo-nuevo-nombre-telefono'} placeholder={rotulo} aria-label={rotulo}
-          style={{ border: 'none', borderBottom: `1.5px solid ${C.grafito}`, paddingBottom: '1px', background: 'transparent', font: 'inherit', color: C.tinta, outline: 'none', minWidth: 0, width: escritorio ? '240px' : undefined, flex: escritorio ? undefined : 1, fontWeight: nivel === 'rubro' || nivel === 'epica' ? 600 : 400, textTransform: nivel === 'rubro' ? 'uppercase' : undefined, letterSpacing: nivel === 'rubro' ? '.06em' : undefined, fontSize: nivel === 'rubro' ? '12px' : undefined }} />
+          className="focus:outline-none focus-visible:outline-none focus:ring-0"
+          style={{ border: 'none', borderBottom: `1.5px solid ${C.grafito}`, borderRadius: 0, boxShadow: 'none', paddingBottom: '1px', background: 'transparent', font: 'inherit', color: C.tinta, outline: 'none', minWidth: 0, width: escritorio ? '240px' : undefined, flex: escritorio ? undefined : 1, fontWeight: nivel === 'rubro' || nivel === 'epica' ? 600 : 400, textTransform: nivel === 'rubro' ? 'uppercase' : undefined, letterSpacing: nivel === 'rubro' ? '.06em' : undefined, fontSize: nivel === 'rubro' ? '12px' : undefined }} />
       )
       return escritorio ? (
         <div key={`nuevo-${padreId ?? 'raiz'}`} data-testid="fila-nueva" style={{ display: 'grid', gridTemplateColumns: GRID_ARBOL, gap: '16px', minHeight: '46px', alignItems: 'center', borderBottom: `1px solid ${C.bordeTarjeta}`, background: C.marcaFila, fontSize: '13.5px' }}>
@@ -164,6 +168,13 @@ export function ArbolEstructura({
           </div>
           <CeldaTexto c={texto(previa?.uniCant)} /><CeldaTexto c={previa?.costo ?? null} /><CeldaTexto c={previa?.peso ?? null} />
           <CeldaTexto c={texto(previa?.plan)} /><CeldaTexto c={texto(previa?.dias == null ? null : String(previa.dias))} /><CeldaTexto c={texto(previa?.metodo)} />
+          {padreId == null && (
+            // B01: debajo de la fila del rubro que se escribe, la pista de lo que hacen las teclas.
+            <div style={{ gridColumn: '1 / -1', height: '40px', display: 'flex', alignItems: 'center', gap: '9px', paddingLeft: '21px', fontSize: '13px', color: C.tintaSuave, background: C.superficie, margin: '0 0 -1px' }}>
+              <span style={{ color: C.tenue, display: 'flex' }}><Ico d={P.mas} s={12} /></span>Nuevo rubro
+              <span style={{ fontFamily: MONO, fontSize: '11px', color: C.tenue, marginLeft: '8px' }}>Enter</span><span style={{ color: C.tenue, fontSize: '12px' }}>{PISTA.rubro}</span>
+            </div>
+          )}
         </div>
       ) : (
         <div key={`nuevo-tel-${padreId ?? 'raiz'}`} data-testid="fila-nueva-telefono" style={{ minHeight: '52px', display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: `${SANGRIA_TEL[prof]}px`, borderBottom: `1px solid ${C.bordeTarjeta}`, background: C.marcaFila, fontSize: '13.5px' }}>
