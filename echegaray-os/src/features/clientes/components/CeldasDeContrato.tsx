@@ -30,7 +30,8 @@ import { progresoDeCobro } from '../services/progresoCobro'
 import type { Consolidado } from '../services/obrasAdicionales'
 
 export { baseDelContrato, fraseDeFuente, sumaDeObras } from '../services/contratoDeObra'
-import { SOLO_TABLET, TONO } from './CeldasDeCartera'
+import { SOLO_TABLET } from './CeldasDeCartera'
+import { K } from '@/shared/components/cartera/estiloCartera'
 
 /** «U$S 63.000» — el contrato en su moneda. Sin centavos: un contrato redondo no lleva decimales. */
 export const dolares = (v: number) => `U$S ${Math.round(v).toLocaleString('es-AR')}`
@@ -145,6 +146,13 @@ export function ContratadoDelTrabajo({ o, veEconomia, tam = '11.5px', consolidad
  * Debajo, en palabras y en millones, lo cobrado y lo que falta: «hasta sale cómo está cobrado y lo
  * que falta» (dueño). Quattropani con esto: $ 90,0 M de $ 139,4 M → 65 %, no 94.
  */
+/** El color de la barra de cobro con la regla de la barra de avance de Obras: 0 gris, 100 verde, el resto azul. */
+function colorDeLaBarra(pct: number): string {
+  if (pct >= 100) return K.pos
+  if (pct <= 0) return K.bordeFuerte
+  return K.curso
+}
+
 export function AvanceDeCobro({ o, veEconomia }: { o: ObraEnCurso; veEconomia: boolean }) {
   if (!veEconomia) return <span className={SOLO_TABLET} />
   const base = baseDelContrato(o)
@@ -159,7 +167,7 @@ export function AvanceDeCobro({ o, veEconomia }: { o: ObraEnCurso; veEconomia: b
     return (
       <span className={`flex items-center justify-end ${SOLO_TABLET}`} data-testid="avance-obra" data-avance="sin-porcentaje"
         title={sinDato ? porQue : 'Sin precio no hay contra qué medir el cobro. No es 0 %.'}
-        style={{ fontSize: '11.5px', color: V.lupa }}>—</span>
+        style={{ fontSize: '11.5px', color: K.tenue }}>—</span>
     )
   }
   const cobrado = cobradoNeto
@@ -176,8 +184,10 @@ export function AvanceDeCobro({ o, veEconomia }: { o: ObraEnCurso; veEconomia: b
         + fraseDeFuente(o)}
       style={{ gap: 3, textAlign: 'right' }}>
       <span className="flex items-center justify-end" style={{ gap: 6 }}>
-        <span style={{ display: 'flex', height: 4, width: 64, borderRadius: 2, background: TONO.pista, flexShrink: 0 }}>
-          <span style={{ width: `${p?.pct ?? 0}%`, background: V.grafito, borderRadius: 2 }} />
+        {/* LA BARRA DE OBRAS (`carteraCanon.colorDeBarra`, dueño 25/09/2026: «respetá los colores»):
+            canal `borde`, azul mientras avanza, verde cuando se cobró todo el contrato y gris en cero. */}
+        <span style={{ display: 'flex', height: 4, width: 64, borderRadius: 2, background: K.borde, flexShrink: 0, overflow: 'hidden' }}>
+          <span style={{ width: `${p?.pct ?? 0}%`, background: colorDeLaBarra(p?.pct ?? 0), borderRadius: 2 }} />
         </span>
         <span className="font-mono tabular-nums" style={{ fontSize: '11.5px', color: V.tinta, minWidth: 34 }}>
           {p ? `${p.pct} %` : '—'}

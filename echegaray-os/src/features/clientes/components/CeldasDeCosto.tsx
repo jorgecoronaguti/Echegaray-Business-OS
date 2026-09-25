@@ -24,6 +24,7 @@ import {
   type CostoDeObra, type GastoSinObra,
 } from '../services/costosDeObra'
 import { SOLO_ANCHO, SOLO_ANGOSTO } from './CeldasDeCartera'
+import { K } from '@/shared/components/cartera/estiloCartera'
 
 const CELDA = 'flex items-center justify-end tabular-nums truncate'
 
@@ -105,7 +106,7 @@ function Celda({ texto, parcial, titulo, testid, estado, estimado = false }: {
   return (
     <span className={`${CELDA} ${texto.startsWith('$') ? 'font-mono' : ''} ${SOLO_ANCHO}`}
       data-testid={testid} data-estado={estado} title={titulo ?? undefined}
-      style={{ fontSize: '11.5px', color: parcial ? V.warn : V.tintaSuave, textAlign: 'right' }}>
+      style={{ fontSize: '11.5px', color: parcial ? K.warn : K.tintaSuave, textAlign: 'right' }}>
       {texto}
       {estimado && <span data-testid={`${testid}-estimado`} style={{ marginLeft: 4, fontSize: '10.5px', color: V.tenue }}>est.</span>}
     </span>
@@ -130,7 +131,7 @@ function Celdas({ f, sufijo }: { f: CostoDeFila; sufijo: 'obra' | 'cliente' }) {
 function LineaAngosta({ f, sufijo, sangria }: { f: CostoDeFila; sufijo: 'obra' | 'cliente'; sangria: number }) {
   const cifra = (texto: string, parcial: boolean, titulo: string | null) => (
     <span className={texto.startsWith('$') ? 'font-mono tabular-nums' : ''} title={titulo ?? undefined}
-      style={{ color: texto === '' ? V.lupa : parcial ? V.warn : V.tintaSuave }}>
+      style={{ color: texto === '' ? K.tenue : parcial ? K.warn : K.tintaSuave }}>
       {texto === '' ? 'no pude leer' : texto}
     </span>
   )

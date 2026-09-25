@@ -112,7 +112,7 @@ function CifraDeCliente({ valor, faltan, testid, clase = '', titulo, queFalta }:
     <span className={`flex items-center justify-end font-mono tabular-nums ${clase}`} data-testid={testid}
       data-estado={!completa ? 'incompleta' : valor === 0 ? 'no-incluye' : 'suma'}
       title={completa || !faltan ? titulo : `${titulo} No se publica la suma: ${faltan} trabajo(s) ${queFalta}.`}
-      style={{ fontSize: '12px', color: completa ? V.tinta : V.lupa, textAlign: 'right' }}>
+      style={{ fontSize: '12px', color: completa ? K.tinta : K.tenue, textAlign: 'right' }}>
       {!completa ? '—' : valor === 0 ? <span style={{ color: V.apagado, fontFamily: 'inherit' }}>no incluye</span> : pesos(valor)}
     </span>
   )
@@ -256,16 +256,20 @@ export function TablaClientes({
                     <span className="max-md:line-clamp-2 max-md:!whitespace-normal" style={ESTILO_NOMBRE_FILA} title={o.nombre}>
                       {fila.nivel ? <span style={ESTILO_CODO}>└</span> : null}{o.nombre}
                     </span>
-                    {(fila.esAdicional || ocDeLaObra.length > 0) && (
-                      <span className="flex flex-wrap items-baseline gap-x-3 gap-y-[2px]" style={{ ...ESTILO_SUBLINEA, minWidth: 0 }}>
-                        {fila.esAdicional && <MarcaAdicional huerfano={fila.huerfano} enLinea />}
+                    <span className="flex flex-wrap items-baseline gap-x-3 gap-y-[2px]" style={{ ...ESTILO_SUBLINEA, minWidth: 0 }}>
+                      {/* EL ESTADO EN AZUL, COMO OBRAS (dueño, 25/09/2026: «podrías haber respetado los
+                          colores»). Toda fila de acá es un trabajo EN CURSO —`armarCartera` cuelga sólo
+                          las obras activas—: es la misma palabra del «4 en curso» del grupo, no un dato nuevo. */}
+                      <span style={{ whiteSpace: 'nowrap' }}>
+                        <span style={{ color: K.curso }} data-testid="estado-trabajo">En curso</span>
+                        {fila.esAdicional && <span style={{ color: K.tenue }}> · <MarcaAdicional huerfano={fila.huerfano} enLinea /></span>}
+                      </span>
                         {/* EN EL TELÉFONO LAS OC NO SE LISTAN (dueño, 23/09/2026: «infinitos números»): se
                             leen en la ficha del cliente. `contents` no cambia la geometría de escritorio. */}
-                        <span className="contents max-md:hidden">
-                          <OrdenesDeLaObra ordenes={ocDeLaObra} veEconomia={veEconomia} sangria={0} />
-                        </span>
+                      <span className="contents max-md:hidden">
+                        <OrdenesDeLaObra ordenes={ocDeLaObra} veEconomia={veEconomia} sangria={0} />
                       </span>
-                    )}
+                    </span>
                   </span>
                   <ContratadoDelTrabajo o={o} veEconomia={veEconomia} consolidado={consolidado} />
                   <CostoDeLaObra costos={costos} obraId={o.obra_id} veEconomia={veEconomia} />

@@ -36,6 +36,7 @@ export const K = {
   grafito: '#30302F',
   marca: '#FDC900',
   curso: '#175CD3',
+  pos: '#067647',
   warn: '#B54708',
 } as const
 
