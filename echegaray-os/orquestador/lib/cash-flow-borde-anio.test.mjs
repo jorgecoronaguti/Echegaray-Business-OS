@@ -88,12 +88,13 @@ test('EL TOTAL 2026 NO SUMA EL 01/01/2027: la última semana del ejercicio corta
   const ultima = meta.cab.col0 + meta.cab.nTotal - 1
   const f = String(filas[meta.fila.egresoProyectado - 1][ultima])
   const cab = celda(ultima, FILA.cabecera)
-  // La celda mezcla las dos formas del término: SUMIFS (`"<"&(expr)`) y el SUMPRODUCT de respaldo de
-  // las devoluciones (`<expr`), que pasan de MAX_SUMIFS combinaciones. El corte vale para las dos.
+  // La celda puede mezclar las dos formas del término: SUMIFS (`"<"&(expr)`) y el SUMPRODUCT de respaldo
+  // (`<expr`) cuando un filtro pasa de MAX_SUMIFS combinaciones. El corte vale para las dos.
+  const conRespaldo = f.includes('SUMPRODUCT(')
   assert.ok(f.includes(`"<"&(MIN(${cab}+7;DATE(2027;1;1)))`), f)
-  assert.ok(f.includes(`<MIN(${cab}+7;DATE(2027;1;1))`), f)
+  assert.ok(!conRespaldo || f.includes(`<MIN(${cab}+7;DATE(2027;1;1))`), f)
   assert.ok(!f.includes(`"<"&(${cab}+7)`) && !f.includes(`<${cab}+7`), 'sin el MIN, el 01/01/2027 vuelve a caer adentro del año')
-  assert.ok(f.includes(`">="&(${cab})`) && f.includes(`>=${cab}`), f)
+  assert.ok(f.includes(`">="&(${cab})`) && (!conRespaldo || f.includes(`>=${cab}`)), f)
   // Y el TOTAL suma hasta esa columna, ni una más.
   const t = String(filas[meta.fila.egresoProyectado - 1][colTotal('semana', ANIO)])
   assert.equal(t, `=SUM($B$${meta.fila.egresoProyectado}:$${letra(ultima)}$${meta.fila.egresoProyectado})`)
@@ -109,8 +110,9 @@ test('EL 01/01/2027 SE VE DESPUÉS DEL TOTAL: la zona 2027 arranca el 01/01, rot
   assert.equal(filas[FILA.cabecera - 1][primera + 1], serialDeFecha(new Date(Date.UTC(2027, 0, 4))))
   const f = String(filas[meta.fila.egresoProyectado - 1][primera])
   const cab = celda(primera, FILA.cabecera)
-  assert.ok(f.includes(`">="&(${cab})`) && f.includes(`>=${cab})`), f)
-  assert.ok(f.includes(`"<"&(MIN(${cab}+7;DATE(2027;1;4)))`) && f.includes(`<MIN(${cab}+7;DATE(2027;1;4))`),
+  const conRespaldo = f.includes('SUMPRODUCT(')
+  assert.ok(f.includes(`">="&(${cab})`) && (!conRespaldo || f.includes(`>=${cab})`)), f)
+  assert.ok(f.includes(`"<"&(MIN(${cab}+7;DATE(2027;1;4)))`) && (!conRespaldo || f.includes(`<MIN(${cab}+7;DATE(2027;1;4))`)),
     `sin el MIN se pisaría con la semana del 04/01: ${f.slice(0, 200)}`)
   // Ningún encabezado se repite: cada columna es un tramo distinto del calendario.
   const cabs = meta.cab.cols.map((c) => filas[FILA.cabecera - 1][c])

@@ -94,7 +94,7 @@ export function terminoLibro(f = {}) {
  * expresión arbitraria, como la factura de Cobranzas) o una combinación de grupos que pasaría de
  * `MAX_SUMIFS` sumandos, donde la fórmula dejaría de ser legible.
  */
-export const MAX_SUMIFS = 16
+export const MAX_SUMIFS = 32
 
 /** Criterio de igualdad EXACTA para un *IFS: sin comodines ni operadores que el valor traiga adentro. PURA. */
 const criterioIgual = (v) => `"=${String(v).replace(/[~*?]/g, (c) => `~${c}`)}"`
