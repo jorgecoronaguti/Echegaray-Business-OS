@@ -29,13 +29,25 @@ const COLUMNAS = 'id, nombre_archivo, media_type, bytes, estado, motivo, subido_
  * la lista vacía con el motivo. Una pantalla que revienta entera porque falta una tabla nueva es
  * peor que una pantalla sin la sección nueva.
  */
+// ═══ LA LISTA NO SE ACUMULA (dueño 25/09) ═══
+//
+// «Se empiezan a acumular esos comprobantes arriba, no quiero eso, rompe todo y no se quitan».
+// La pregunta que contesta la lista es «¿entró lo que acabo de subir?»: una carga que ya terminó
+// hace más de unos minutos ya tiene su respuesta en la tabla de abajo (o en Efectivo, si fue una
+// rendición). Se muestra lo que sigue en curso y lo que terminó o se subió hace menos de
+// RECIENTE_MIN. «En espera» (una rendición que espera la confirmación de quien rinde) se resuelve en
+// Efectivo: acá sólo aparece mientras es reciente.
+export const RECIENTE_MIN = 10
+
 export async function getEntradas(
   supabase: SupabaseClient,
-  { limite = TOPE_ENTRADAS }: { limite?: number } = {},
+  { limite = TOPE_ENTRADAS, ahora = new Date() }: { limite?: number; ahora?: Date } = {},
 ): Promise<ServiceResult<EntradaComprobante[]>> {
+  const desde = new Date(ahora.getTime() - RECIENTE_MIN * 60_000).toISOString()
   const { data, error } = await supabase
     .from('comprobante_entrada')
     .select(COLUMNAS)
+    .or(`and(cerrado_at.is.null,estado.neq.en_espera),subido_at.gte.${desde},cerrado_at.gte.${desde}`)
     .order('subido_at', { ascending: false })
     .limit(limite)
 
