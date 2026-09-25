@@ -93,7 +93,9 @@ const FUENTE = {
   OFICINA_PAGADO: { alguna: /^=SUM\('_J_OFICINA'!Z\d+:Z\d+\)/ },
   OFICINA_BANCO: { alguna: /^=SUM\('_J_OFICINA'!W\d+:W\d+\)/ },
   // base × factor de escalón. Es lo que alimenta la línea de administración de los dos Cash Flow.
-  OFICINA_PROYECTADO: { alguna: /^=\$C\$\d+\*/ },
+  // Desde el 25/09 resta SIEMPRE lo pagado (`MAX(0;base×factor−N(pagado))`): el giro bancario del mes
+  // puede dar por pagado un mes que la planilla no tiene. La fuente sigue siendo la misma base.
+  OFICINA_PROYECTADO: { alguna: /^=(MAX\(0;)?\$C\$\d+\*/ },
 
   // ── DIRECCIÓN · los retiros de los socios, desde Compras (K el nombre, O el importe, AD la fecha).
   DIRECCION_PAGO: { todas: /'Compras'!\$AD\$\d+:\$AD/ },

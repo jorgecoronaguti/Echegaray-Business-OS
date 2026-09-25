@@ -123,7 +123,8 @@ import {
   HORAS_SEMANA_CON_SABADO, HORAS_SEMANA_DECLARADA,
   PARAMETROS_JORNADA, expresionHorasDeJornada,
 } from '../lib/jornada-uocra.mjs'
-import { estadoOficinaDelMes, formulaProyectadoOficina, origenDelEscalon, periodoDe } from '../lib/oficina-escalon.mjs'
+import { estadoOficinaDelMes, expresionFactorOficina, formulaProyectadoOficina, origenDelEscalon, periodoDe } from '../lib/oficina-escalon.mjs'
+import { formulaPagadoOficinaConGiro, formulaPagadoDireccionConGiro } from '../lib/nomina-giro-banco.mjs'
 import {
   VERIFICADA_EL, VIGENCIA_HASTA, contrastarEscala, tramoDe, convenioDe, claveDeCategoria, ESCALA_VERIFICADA,
 } from '../lib/uocra-paritaria.mjs'
@@ -762,6 +763,7 @@ export function grilla({
   // pregunta: por dónde salió el sueldo.
   push(['Mes', 'Ajuste escalón', 'Pagado', 'Estado', 'Se paga el', 'Banco', 'Adelanto', 'Proyectado'])
   const o0 = filas.length + 1
+  const baseOfi = []
   MESES.forEach((nombre, i) => {
     const bs = bloquesOfi.filter((b) => b.mes === i + 1)
     // LO QUE LA PLANILLA NO TIENE (24/09/2026): el resto de un mes pagado que JORNALES no cargó entra
@@ -775,6 +777,9 @@ export function grilla({
       ? `=${bs.map((b) => `SUM('${ESPEJO_OFI}'!Z${b.inicio}:Z${b.fin})`).join('+')}+${nc}`
       // Sin bloque en la planilla sigue vacío mientras no haya pago cargado: vacío es «proyección».
       : `=IF(${nc}=0;"";${nc})`
+    // Lo que las fuentes saben, como expresión numérica: la fórmula de abajo le suma el GIRO del mes
+    // (lib/nomina-giro-banco.mjs) cuando se conoce lo pactado.
+    baseOfi[i] = bs.length ? pagado.slice(1) : nc
     // Los meses sin cargar se proyectan sobre el último mes cargado, ajustado por inflación. Son dos
     // sueldos fijos: no hay horas ni jornal que modelar, y estimarlo por hora sería inventar una
     // precisión que no existe. La base y el ajuste se ven los dos en pantalla.
@@ -974,7 +979,14 @@ export function grilla({
     // conserva `''`: nació como celda de carga del dueño y ahí sigue.
     // «parcial» desde el 18/09: un mes con pagado Y resto (ver formulaEstadoMes). Antes con un peso
     // pagado decía «pagado» y la proyección se apagaba: $7.200.000 de agosto invisibles.
-    push([MESES[i], VACIO, formulaPagadoMes(i + 1, AÑO),
+    // EL GIRO DEL MES TAMBIÉN PAGA DIRECCIÓN (25/09/2026): mismo criterio que Oficina, con los
+    // beneficiarios de retiros que el dueño identificó (lib/nomina-giro-banco.mjs). La compuerta es la
+    // de «Proyectado»: antes de «Desde» no hay retiro que pagar.
+    push([MESES[i], VACIO, formulaPagadoDireccionConGiro({
+      pagado: formulaPagadoMes(i + 1, AÑO),
+      pactado: `$B$${fTotalMensual}*IFERROR(IF(ISNUMBER(B${r});B${r};1);1)`,
+      celdaPago: `E${r}`, celdaDesde: `$E$${fTotalMensual}`, anio: AÑO, mes: i + 1,
+    }),
       formulaEstadoMes(`C${r}`, `H${r}`),
       formulaSePagaElDireccion(i + 1, AÑO), '', VACIO,
       formulaProyectadoMes(`E${r}`, `C${r}`, `$B$${fTotalMensual}`, `$E$${fTotalMensual}`, `B${r}`)])
@@ -1277,9 +1289,22 @@ export function grilla({
     // la planilla nunca cargó se deflacta, y ahí un factor menor que 1 es lo correcto.
     // La fila lo dice en su «Estado» (`▲ al piso`): un recorte silencioso taparía el defecto que lo
     // hizo falta. La aritmética y el porqué, en lib/oficina-escalon.mjs.
+    // ═══ EL GIRO BANCARIO DEL MES DA EL MES POR PAGADO (25/09/2026) ═══
+    //
+    // El «Pagado» de un mes sin cerrar sólo leía la planilla (cortada el 07/08) y lo cargado a mano en
+    // `_PAGOS_NO_COMPRA_RAW`: agosto figuró deuda vencida hasta la carga manual, y septiembre iba a
+    // publicar $3,6 M VENCIDO el 01/10 pagado o no. Ahora, si el haber de los jefes aparece en el banco
+    // en la ventana del mes, el mes vale lo pactado (criterio y umbral en lib/nomina-giro-banco.mjs).
+    // Y «Proyectado» resta SIEMPRE lo pagado —antes sólo en los meses con bloque en la planilla—:
+    // con el giro, un mes sin bloque también puede estar pagado, y Nómina suma las dos celdas.
+    const ajustada = `$C$${rBaseOfi}*${expresionFactorOficina(`B${r}`, iBaseOfi !== null && i > iBaseOfi)}`
+    filas[r - 1][2] = formulaPagadoOficinaConGiro({ base: baseOfi[i], conBloque: conBloque(i), ajustada, anio: AÑO, mes: i + 1 })
+    // El «Estado» lo sigue: un mes que el giro dio por pagado no puede seguir diciendo «proyección».
+    const estadoFijo = String(filas[r - 1][3] ?? '').replace(/"/g, '""')
+    filas[r - 1][3] = `=IF(N(C${r})>0;IF(N(H${r})>=1;"parcial";"pagado");"${estadoFijo}")`
     filas[r - 1][7] = formulaProyectadoOficina({
       celdaBase: `$C$${rBaseOfi}`, celdaFactor: `B${r}`, celdaPagado: `C${r}`,
-      conBloque: conBloque(i), conPiso: iBaseOfi !== null && i > iBaseOfi,
+      conBloque: true, conPiso: iBaseOfi !== null && i > iBaseOfi,
     })
   })
   // ═══ DIRECCIÓN: EL ANCLA ES EL MES DEL IMPORTE, NO EL MES DEL CALENDARIO (14/08) ═══

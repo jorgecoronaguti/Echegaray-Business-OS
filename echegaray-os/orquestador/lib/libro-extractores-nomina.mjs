@@ -26,6 +26,7 @@ import { isoDeSerial } from './libro-extractores-fechas.mjs'
 import { estadoDeEgreso } from './caja-canales.mjs'
 import { respaldoEnLote } from './libro-respaldo-banco.mjs'
 import { NOMBRES_PUENTE, formulaDelPuente, fechaViva } from './nomina-puente.mjs'
+import { giroDelMes } from './nomina-giro-banco.mjs'
 // El criterio de "¿esta quincena se pagó?", cruzado contra el extracto. Vive afuera porque lo usan
 // DOS: este extractor (para decidir el estado) y scripts/jornales-evidencia-pago.mjs (para mostrarle
 // la evidencia al dueño). Escrito dos veces, el libro y la tabla podrían decir cosas distintas.
@@ -337,8 +338,28 @@ function deBloqueMensual({ pago, pagado, proyectado, pactado }, corte, { bloque,
       rubro: RUBRO_ADMINISTRACION,
       origen: { pestana: PESTANA_NOMINA, fila: filaDe(bloque, i) },
     }
+    // ═══ RED DE SEGURIDAD: EL GIRO DEL MES QUE LA PESTAÑA TODAVÍA NO VIO (25/09/2026) ═══
+    //
+    // La celda «Pagado» ya reconoce el giro bancario del mes (lib/nomina-giro-banco.mjs). Si llega
+    // vacía —o con menos que lo pactado— y el extracto SÍ tiene el giro (la pestaña no se regeneró, o
+    // la fórmula se rompió), el mes no se publica como deuda: vale lo pactado, con la MISMA regla, y se
+    // avisa. Es una inferencia declarada: el banco prueba la parte bancaria, el efectivo no se ve.
+    const g = i < 12 && extracto?.debitos?.length
+      ? giroDelMes(extracto.debitos, { bloque, anio: ANIO_NOMINA, mes: i + 1 }) : null
+    const corteExtracto = extracto?.corte ?? corte
+    const giroVale = Boolean(g?.hay && !(Number.isFinite(corteExtracto) && g.fecha > corteExtracto))
+    const marcaGiro = giroVale ? ` · pagado por el giro bancario del ${isoDeSerial(g.fecha)} (inferido)` : ''
+    const avisoGiro = (antes, vale) => aviso(`libro-extractores-nomina(${bloque}): el renglón ${i + 1} dice PAGADO `
+      + `${antes || 0} y el extracto tiene el giro del mes (${g.n} débito(s), último ${isoDeSerial(g.fecha)}): `
+      + `lo doy por pagado en ${vale} (inferencia: el efectivo no se ve).`)
     if (!real) {
       if (!proy) continue
+      if (giroVale) {
+        avisoGiro(0, proy)
+        out.push(...partirContraElExtracto({ ...comun, fecha, importe: proy, concepto: `${comun.concepto}${marcaGiro}` },
+          { corte, extracto, bloque, i, aviso }))
+        continue
+      }
       out.push(conPuente(movimiento({ ...comun, importe: proy, fecha, estado: estadoContraCorte('PROYECTADO', fecha, corte) })))
       continue
     }
@@ -358,11 +379,14 @@ function deBloqueMensual({ pago, pagado, proyectado, pactado }, corte, { bloque,
     // La regla es la misma que `caja-canales.mjs` ya aplica a Compras y sale de ahí para que no
     // puedan discrepar: sin instrumento declarado —que es el caso de la nómina, la planilla no dice
     // cómo se pagó— un pago con fecha posterior al corte es un COMPROMISO, no un hecho.
-    const base = { ...comun, fecha, importe: real,
-      concepto: sinPactado ? `${comun.concepto} · ${MARCA_SIN_PACTADO}` : comun.concepto }
+    const porGiro = giroVale && pact > 0 && real < pact - 1
+    if (porGiro) avisoGiro(real, pact)
+    const pagadoMes = porGiro ? pact : real
+    const base = { ...comun, fecha, importe: pagadoMes,
+      concepto: sinPactado ? `${comun.concepto} · ${MARCA_SIN_PACTADO}` : `${comun.concepto}${porGiro ? marcaGiro : ''}` }
     out.push(...partirContraElExtracto(base, { corte, extracto, bloque, i, aviso }))
     if (!(pact > 0)) continue
-    const resto = Math.round((pact - real) * 100) / 100
+    const resto = Math.round((pact - pagadoMes) * 100) / 100
     if (resto < 1) {
       if (resto <= -1) {
         aviso(`libro-extractores-nomina(${bloque}): el renglón ${i + 1} tiene PAGADO ${real}, más que lo `
