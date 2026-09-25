@@ -151,7 +151,11 @@ begin
       update efectivo_iniciales set vinculado_en = now() where id = i.id;
       m := m + 1;
     exception when others then
-      update efectivo_iniciales set estado = 'error', motivo = sqlerrm where id = i.id;
+      -- Un pago de la app esperando al Sheet en esa fila es pasajero: se reintenta en la próxima vuelta
+      -- (el sync de Compras llama a esta función cada 10 minutos). Lo demás no se arregla solo.
+      if sqlerrm not like '%ya tiene un pago esperando%' then
+        update efectivo_iniciales set estado = 'error', motivo = sqlerrm where id = i.id;
+      end if;
     end;
   end loop;
   return n + m;

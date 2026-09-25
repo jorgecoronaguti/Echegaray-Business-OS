@@ -42,10 +42,22 @@ import { matchUnico } from './imputacion.mjs'
 /**
  * Las iniciales manuscritas, limpias: sólo letras A–Z (sin puntos, espacios ni tildes), 2 a 4. `null` si no
  * hay o no tienen esa forma. La confianza, entre 0 y 1; sin número, `null` (se trata como baja).
+ *
+ * ═══ TIENEN QUE ESTAR EN LO QUE EL MISMO MODELO TRANSCRIBIÓ A MANO (25/09/2026) ═══
+ *
+ * Con una foto real del post de las 17:04 del 24/09 (Combustibles Barcelo, «Toyotita · EEA885 · pagado.»)
+ * la visión devolvió `iniciales_manuscritas: "CF"` con 0,4: el «C.F.» IMPRESO de Consumidor Final. Esas
+ * letras no estaban en su propia transcripción de lo manuscrito. Si se pasa `anotacion` (la transcripción),
+ * las letras tienen que aparecer ahí como palabra suelta —«EM», «J.P.», «J P»—, no adentro de otra
+ * («EM» no vale por «Emiliano»). Sin transcripción, no hay iniciales: el ticket sigue como hoy.
  */
-export function inicialesLeidas(letras, confianza) {
+export function inicialesLeidas(letras, confianza, anotacion) {
   const l = String(letras ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z]/g, '')
   if (l.length < 2 || l.length > 4) return null
+  if (anotacion !== undefined) {
+    const a = String(anotacion ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+    if (!new RegExp(`(^|[^A-Z])${l.split('').join('[\\s.]*')}\\.?($|[^A-Z])`).test(a)) return null
+  }
   const c = Number(confianza)
   return { letras: l, confianza: Number.isFinite(c) && confianza !== null && confianza !== '' ? Math.max(0, Math.min(1, c)) : null }
 }
@@ -411,7 +423,7 @@ export function normalizar_lectura(crudo = {}) {
       anotacionAlt: textoODefault(crudo.anotacion_alternativa),
       // LAS INICIALES DE QUIEN PAGÓ CON EFECTIVO A RENDIR (24/09/2026). Viajan crudas con su confianza: a
       // quién corresponden lo decide `comunicacion/comprobantes/iniciales.mjs` contra `personas`, no la visión.
-      iniciales: inicialesLeidas(crudo.iniciales_manuscritas, crudo.iniciales_confianza),
+      iniciales: inicialesLeidas(crudo.iniciales_manuscritas, crudo.iniciales_confianza, crudo.anotacion_manuscrita ?? null),
       // ═══ EL ARCHIVO TRAÍA MÁS DE UN COMPROBANTE (13/08) ═══
       //
       // Un adjunto produce UN ítem: dos tickets sobre la mesa en la misma foto, o un PDF con cinco

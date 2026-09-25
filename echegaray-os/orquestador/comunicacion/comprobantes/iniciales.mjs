@@ -86,7 +86,7 @@ export const crearPorIniciales = (personas) => (item) => marcarItem(item, decidi
 
 const quien = (c) => `${c.nombre} (${c.iniciales})`
 
-/** NÚCLEO PURO: el renglón del mensaje de la tanda para un ticket con iniciales. */
+/** NÚCLEO PURO: el renglón del mensaje de la tanda para un ticket con iniciales (`null` = no se dice nada). */
 export function lineaDeIniciales({ decision, proveedor, vinculado = false, yaEstaba = false }) {
   const de = proveedor ? `${proveedor}: ` : ''
   const d = decision
@@ -100,7 +100,10 @@ export function lineaDeIniciales({ decision, proveedor, vinculado = false, yaEst
       : `${de}para ${quien(p)} · ${p.codigo} · a rendir — queda imputado en cuanto se termine de cargar`
   }
   if (d.estado === 'sin_entrega') return `${de}${d.letras} no tiene entrega abierta: cargado como compra común`
-  if (d.estado === 'sin_coincidencia') return `${de}leí «${d.letras}» a mano y no son las iniciales de nadie: cargado como compra común`
+  // LETRAS QUE NO SON DE NADIE: callado (25/09/2026). Puede ser una sigla que la visión tomó por iniciales,
+  // y «sin iniciales, exactamente como hoy»: el ticket se carga común y el mensaje no cambia. Lo leído
+  // queda igual en `efectivo_iniciales` para auditarlo.
+  if (d.estado === 'sin_coincidencia') return null
   return `${de}leí «${d.letras}» a mano y no estoy seguro de quién es: cargado como compra común hasta que me contestes abajo`
 }
 
@@ -217,7 +220,8 @@ export async function cerrarIniciales(port, { fajoId, post, channelId, rootPostI
   for (const it of marcados) {
     const decision = it.efectivo
     const proveedor = it.comprobante?.proveedor ?? null
-    lineas.push(lineaDeIniciales({ decision, proveedor, vinculado: vinculadas.has(it.clave), yaEstaba: !!it.yaCargado }))
+    const linea = lineaDeIniciales({ decision, proveedor, vinculado: vinculadas.has(it.clave), yaEstaba: !!it.yaCargado })
+    if (linea) lineas.push(linea)
     const id = filas.get(it.clave)
     if (id && decision.estado === 'pregunta') preguntas.push({ id, decision, proveedor, fecha: it.comprobante?.fecha ?? null })
   }

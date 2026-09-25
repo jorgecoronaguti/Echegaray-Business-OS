@@ -24,6 +24,17 @@ test('la lectura limpia las iniciales: «J.P.», «em», con o sin confianza; un
   assert.equal(inicialesLeidas('ABCDE', 1), null)
 })
 
+test('las iniciales tienen que estar en la transcripción manuscrita del mismo modelo (foto real 17:04 #3: «CF» impreso)', () => {
+  // Lecturas REALES del 25/09 sobre fotos del canal (prompt nuevo, Haiku):
+  assert.deepEqual(inicialesLeidas('EM', 0.85, 'Taller · EM · pagado'), { letras: 'EM', confianza: 0.85 })
+  assert.equal(inicialesLeidas('CF', 0.4, 'Toyotita · EEA885 · pagado.'), null, 'el C.F. impreso no es de nadie')
+  assert.deepEqual(inicialesLeidas('JP', 0.9, 'retira J.P. · SF'), { letras: 'JP', confianza: 0.9 })
+  assert.deepEqual(inicialesLeidas('JP', 0.9, 'J P'), { letras: 'JP', confianza: 0.9 })
+  assert.equal(inicialesLeidas('EM', 0.9, 'retira Emiliano'), null, 'adentro de una palabra no cuenta')
+  assert.equal(inicialesLeidas('SF', 0.9, null), null, 'sin transcripción, no hay iniciales')
+  assert.equal(inicialesLeidas('JP', 0.9, 'JPN'), null)
+})
+
 test('iniciales claras de alguien con entrega → se imputa solo, a la entrega MÁS VIEJA abierta', () => {
   const d = decidirPorIniciales({ letras: 'EM', confianza: 0.93 }, PERSONAS)
   assert.equal(d.estado, 'auto')
@@ -68,6 +79,9 @@ test('los renglones del hilo dicen lo que pasó', () => {
   assert.match(lineaDeIniciales({ decision: decidirPorIniciales({ letras: 'JC', confianza: 0.9 }, PERSONAS) }),
     /^JC no tiene entrega abierta: cargado como compra común$/)
   assert.match(lineaDeIniciales({ decision: auto, yaEstaba: true }), /ya estaba en Compras/)
+  // Letras que no son de nadie (una sigla leída como iniciales): el mensaje sale como hoy.
+  assert.equal(lineaDeIniciales({ decision: decidirPorIniciales({ letras: 'SF', confianza: 0.9 }, PERSONAS), proveedor: 'Hormiserv' }), null)
+  assert.equal(lineaDeIniciales({ decision: decidirPorIniciales({ letras: 'SF', confianza: 0.9 }, PERSONAS), yaEstaba: true }), null)
   const p = decidirPorIniciales({ letras: 'EN', confianza: 0.9 }, PERSONAS)
   assert.match(textoPregunta({ decision: p, proveedor: 'Hormiserv' }), /¿Es de \*\*Emiliano Maldonado \(EM\)\*\*\?/)
   assert.doesNotMatch(textoPregunta({ decision: p, proveedor: 'Hormiserv' }), /\$/)

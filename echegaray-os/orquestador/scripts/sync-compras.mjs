@@ -391,6 +391,14 @@ async function main() {
     [`Pestaña Compras espejada entera: ${compras.length} filas (${anuladas} anuladas), ${enCostos} con obra en costos_obra.`],
   ).catch(() => {})
 
+  // EL ESPEJO RECIÉN TIENE LA FILA (25/09/2026): un «sí, es de EM» contestado en #comprobantes-gastos se
+  // imputa por la cola de Compras y necesita la fila en `compra_sheet`; si la contestaron antes de que el
+  // espejo la trajera, quedó esperando. Se reintenta acá, que es cuando el espejo cambia. Falla hacia afuera:
+  // sin la migración 20260924T2310 o con la base ocupada, el sync sale igual y la próxima vuelta lo hace.
+  const vinculadas = await query('select public.vincular_rendiciones_pendientes() as n')
+    .then((r) => Number(r?.rows?.[0]?.n ?? 0)).catch(() => null)
+  if (vinculadas) console.log(`efectivo a rendir: ${vinculadas} comprobante(s) atados a su entrega`)
+
   console.log(`espejo: ${compras.length} filas de Compras → compra_sheet (${conClave} con clave, ${anuladas} anuladas)`)
   console.log(`costos_obra: ${enCostos} con obra asignada`)
   if (plan) {

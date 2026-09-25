@@ -106,11 +106,15 @@ test('EL CABLEADO: el cliente de Google llega hasta la escritura, salto por salt
   const { fileURLToPath } = await import('node:url')
   const lee = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
 
-  assert.match(
-    lee('../especialistas/comprobantes.mjs'),
-    /procesarComprobantes\(\{[^}]*\bgoogle\b[^}]*\}/,
-    'el especialista dejó de pasarle `google` al circuito: el auditor no se dispara más',
-  )
+  // Desde el 24/09 el circuito es inyectable (`procesar = procesarComprobantes`, para que los tests vean
+  // qué se le manda): se afirma el default y que CADA llamada al circuito lleva `google`.
+  const especialista = lee('../especialistas/comprobantes.mjs')
+  assert.match(especialista, /procesar = procesarComprobantes\b/, 'el circuito por defecto del especialista dejó de ser el real')
+  const llamadas = especialista.match(/\bprocesar(?:Comprobantes)?\(\{[^}]*\}/g) ?? []
+  assert.ok(llamadas.length >= 1, 'el especialista ya no llama al circuito')
+  for (const l of llamadas) {
+    assert.match(l, /\bgoogle\b/, `el especialista dejó de pasarle \`google\` al circuito: el auditor no se dispara más (${l})`)
+  }
   assert.match(
     lee('./circuito.mjs'),
     /escribirFajo\(\{[^}]*\bgoogle\b[^}]*\},\s*f\)/,

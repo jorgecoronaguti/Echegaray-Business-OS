@@ -66,7 +66,10 @@ export async function leerParaImputar(rendiciones: readonly Rendicion[], hoy: st
       const c = porClave.get(r.compra_clave)
       return {
         rendicion: r.id, clave: r.compra_clave, fila: c?.fila ?? null, fecha: c?.fecha ?? null, proveedor: c?.proveedor ?? null,
-        total: c?.total != null ? Number(c.total) : Number(r.monto), enSheet: enSheetDe(r.cambio_id ? estadoDe.get(r.cambio_id) : null),
+        total: c?.total != null ? Number(c.total) : Number(r.monto),
+        // Por iniciales SIN pedido en cola: el bot la escribió «A rendir» al cargarla, y el vínculo nace
+        // recién cuando la carga terminó (`vincular_rendiciones_pendientes`). Ya está en el Sheet.
+        enSheet: r.cambio_id ? enSheetDe(estadoDe.get(r.cambio_id)) : r.origen === 'iniciales' ? 'en_sheet' : 'sin_dato',
       }
     })
     return { estado: 'ok', candidatas, sinNumero, reimputadas, desde }

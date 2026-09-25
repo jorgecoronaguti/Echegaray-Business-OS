@@ -56,3 +56,12 @@ test('lo que la base llama «aplicado», la pantalla lo llama «en Sheet»', () 
   assert.equal(estadoEnSheet({ estado: 'error' }), 'rechazado')
   assert.equal(estadoEnSheet(null), 'sin_pedido')
 })
+
+// «DESHACER PAGO» NO REVIERTE UNA IMPUTACIÓN (24/09/2026). La base escribe `imputar ER-nnnn` / `desimputar` en
+// `valor_nuevo`; un pago de la app escribe `total` / `parcial` / `deshacer`. Sólo los primeros se frenan.
+test('deshacer pago reconoce el cambio de una imputación a una entrega de efectivo', async () => {
+  const { esCambioDeImputacion } = await import('./pagoDeCompra.ts')
+  assert.equal(esCambioDeImputacion('imputar ER-0020'), true)
+  assert.equal(esCambioDeImputacion('desimputar'), true)
+  for (const v of ['total', 'parcial', 'deshacer', null, undefined, '', 'imputarX']) assert.equal(esCambioDeImputacion(v), false, String(v))
+})

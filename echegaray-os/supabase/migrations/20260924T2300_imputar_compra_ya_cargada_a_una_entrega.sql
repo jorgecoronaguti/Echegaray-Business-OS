@@ -144,6 +144,9 @@ begin
   if c.estado = 'procesando' then
     raise exception 'el worker está escribiendo esa fila en el Sheet justo ahora: probá de nuevo en un minuto' using errcode = 'P0001';
   end if;
+  -- EL VÍNCULO SE SUELTA PRIMERO: mientras exista, la guarda de la sección 9 no deja cancelar su pedido
+  -- (es lo que impide que «Deshacer pago» de Compras revierta una imputación).
+  delete from public.efectivo_rendicion where id = r.id;
   if c.estado = 'pendiente' then
     update public.compra_obra_cambio
        set estado = 'rechazado', motivo = 'cancelado desde la app antes de que el worker lo escribiera: ' || p_motivo
@@ -158,7 +161,6 @@ begin
   insert into public.efectivo_imputacion_registro
     (entrega_id, compra_clave, fila, monto, accion, tipo_pago_antes, tipo_pago_despues, cambio_id, hecho_por)
   values (r.entrega_id, r.compra_clave, coalesce(s.fila, 0), r.monto, 'desimputar', 'A rendir', v_antes, v_cambio, p_usr);
-  delete from public.efectivo_rendicion where id = r.id;
   return v_antes;
 end $$;
 revoke all on function public._efectivo_soltar_reimputada(uuid, uuid, text) from public, anon, authenticated;
@@ -285,5 +287,39 @@ begin
   return v_n;
 end $$;
 revoke all on function public._efectivo_cancelar_filas_rendidas(uuid, text, uuid) from public, anon, authenticated;
+
+-- ─── 9 · «DESHACER PAGO» DE COMPRAS NO REVIERTE UNA IMPUTACIÓN (dueño, 24/09/2026) ─────────────────
+-- La app ya lo rechaza (`deshacerPagoDeCompra`), pero un control que vive sólo en la pantalla se saltea
+-- llamando a la RPC. Acá, en la base, para las dos puertas de «Deshacer pago»:
+--   · el pedido todavía en cola → `compra_pago_cancelar` lo pasaría a rechazado: no, si una imputación viva
+--     lo usa (`efectivo_rendicion.cambio_id`);
+--   · el pedido ya escrito → `compra_pago_registrar(accion 'deshacer')` encolaría el inverso: no, si la fila
+--     está imputada a mano o por iniciales.
+-- Sólo frena a una SESIÓN de la app (`auth.uid()`): el worker de la cola y el bot escriben por la conexión
+-- directa, sin sesión, y tienen que poder rechazar o cerrar un pedido. Deshacer la imputación sigue siendo
+-- `desimputar_compra_de_entrega`, que suelta el vínculo antes de tocar la cola.
+create or replace function public._compra_pago_no_revierte_imputacion() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.tipo is distinct from 'pago' or (select auth.uid()) is null then return new; end if;
+  if tg_op = 'UPDATE' then
+    if old.estado = 'pendiente' and new.estado = 'rechazado'
+       and exists (select 1 from public.efectivo_rendicion where cambio_id = old.id) then
+      raise exception 'ese cambio es la imputación de la fila % a una entrega de efectivo: se deshace desde la ficha de la entrega, no desde Compras', old.fila
+        using errcode = 'P0001';
+    end if;
+  elsif new.valor_nuevo = 'deshacer'
+        and exists (select 1 from public.efectivo_rendicion
+                     where compra_clave = new.clave and origen in ('reimputada', 'iniciales')) then
+    raise exception 'la fila % está imputada a una entrega de efectivo: se deshace desde la ficha de la entrega, no desde Compras', new.fila
+      using errcode = 'P0001';
+  end if;
+  return new;
+end $$;
+revoke all on function public._compra_pago_no_revierte_imputacion() from public, anon, authenticated;
+drop trigger if exists compra_pago_no_revierte_imputacion on public.compra_obra_cambio;
+create trigger compra_pago_no_revierte_imputacion
+  before insert or update of estado on public.compra_obra_cambio
+  for each row execute function public._compra_pago_no_revierte_imputacion();
 
 notify pgrst, 'reload schema';
