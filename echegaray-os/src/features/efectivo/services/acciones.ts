@@ -197,7 +197,7 @@ const imputarSchema = z.object({ entrega: uuid, fila: z.number().int().min(4), c
 
 /**
  * «IMPUTAR UN COMPROBANTE YA CARGADO» (dueño, 24/09/2026): una compra cargada en Efectivo pasa a «A rendir»,
- * queda atada a la entrega y el saldo baja. La base (`imputar_compra_a_entrega`, migración 20260924T2300)
+ * queda atada a la entrega y el saldo baja. La base (`imputar_compra_a_entrega`, migración 20260925T1000)
  * vuelve a verificar todo —la fila sigue siendo esa compra, dice «Efectivo», no está imputada a otra— y
  * encola la celda. Lo que devuelve es «encolado»: el ✓ en el Sheet lo dice la cola.
  */

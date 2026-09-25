@@ -21,7 +21,7 @@ export type MedioDePago = (typeof MEDIOS_DE_PAGO)[number]
 
 /**
  * ¿Este cambio de la cola es la imputación de la fila a una entrega de efectivo (o su deshacer)? Lo escribe
- * la base en `valor_nuevo` (`imputar <ER-nnnn>` / `desimputar`, migración 20260924T2300). No se deshace
+ * la base en `valor_nuevo` (`imputar <ER-nnnn>` / `desimputar`, migración 20260925T1000). No se deshace
  * como un pago: se deshace desde la ficha de la entrega.
  */
 export function esCambioDeImputacion(valorNuevo: string | null | undefined): boolean {

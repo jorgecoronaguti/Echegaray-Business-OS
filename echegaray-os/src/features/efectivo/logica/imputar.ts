@@ -3,7 +3,7 @@
 // El caso: un ticket pagado con plata de una entrega entró por #comprobantes-gastos sin número y quedó en
 // Compras con Tipo pago «Efectivo». CAJA lo resta otra vez (la plata ya salió con la entrega) y el saldo de
 // la persona no baja. Desde la ficha de la entrega se elige esa fila y la base (`imputar_compra_a_entrega`,
-// migración 20260924T2300) la pasa a «A rendir» por la cola de Compras y la ata a la entrega.
+// migración 20260925T1000) la pasa a «A rendir» por la cola de Compras y la ata a la entrega.
 //
 // Lo que se lista lo decide la regla del dueño: compras cargadas en EFECTIVO en los últimos 30 días que no
 // están imputadas a ninguna entrega. La base vuelve a verificar todo al imputar; esto sólo arma la lista.

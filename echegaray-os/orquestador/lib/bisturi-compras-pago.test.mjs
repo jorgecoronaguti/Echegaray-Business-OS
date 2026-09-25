@@ -142,7 +142,7 @@ test('una cola sin celdas no escribe nada', () => {
 })
 
 // ═══ IMPUTAR A UNA ENTREGA DE EFECTIVO (24/09/2026) ═══ La base (`_efectivo_encolar_tipo_pago`, migración
-// 20260924T2300) encola UNA celda con esta forma exacta. El worker la tiene que escribir en «Tipo pago» sin
+// 20260925T1000) encola UNA celda con esta forma exacta. El worker la tiene que escribir en «Tipo pago» sin
 // tocar ninguna otra, y NO pisarla si alguien cambió esa celda en el Sheet mientras tanto.
 const aRendir = { rotulo: 'Tipo pago', especie: 'texto', valor: 'A rendir', anterior: 'Efectivo', escribir: 'A rendir' }
 

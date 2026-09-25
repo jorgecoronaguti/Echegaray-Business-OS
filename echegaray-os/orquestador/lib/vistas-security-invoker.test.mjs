@@ -126,7 +126,7 @@ const DESESCALADA_DECLARADA = {
     // DNI y CUIL, que sí lo son— y los dos son de Administración por el portero de la vista.
     'legajo', 'en_la_empresa',
     'nombre_para_mostrar',
-    // Las iniciales que escribe a mano en los tickets de efectivo a rendir (20260924T2310). No sensibles.
+    // Las iniciales que escribe a mano en los tickets de efectivo a rendir (20260925T1010). No sensibles.
     'iniciales_efectivo',
   ],
 }

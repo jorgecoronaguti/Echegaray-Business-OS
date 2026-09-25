@@ -15,7 +15,7 @@
 --     fila ya está en el espejo). Cada paso va aislado: un comprobante que no se puede imputar queda con
 --     su motivo y no frena a los demás ni a los tickets del canal Efectivo.
 --
--- Depende de 20260924T2300 (`_efectivo_imputar_fila`, `efectivo_rendicion.origen`).
+-- Depende de 20260925T1000 (`_efectivo_imputar_fila`, `efectivo_rendicion.origen`).
 -- SIN `begin/commit` PROPIOS: los pone `orquestador/scripts/aplicar-migracion.mjs`.
 
 set local lock_timeout = '5s';

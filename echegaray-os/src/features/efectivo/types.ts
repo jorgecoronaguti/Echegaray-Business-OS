@@ -132,7 +132,7 @@ export interface Rendicion {
   adelanto_expresion?: string | null
   /** El nombre para mostrar del empleado, resuelto al leer. Decorativo. */
   adelanto_persona?: string | null
-  /** `ticket` = la escribió un ticket; `reimputada` = compra ya cargada imputada a mano (migración 20260924T2300). */
+  /** `ticket` = la escribió un ticket; `reimputada` = compra ya cargada imputada a mano (migración 20260925T1000). */
   origen?: 'ticket' | 'reimputada' | 'iniciales'
   /** reimputada: el pedido a la cola de Compras que cambia su Tipo pago. */
   cambio_id?: string | null

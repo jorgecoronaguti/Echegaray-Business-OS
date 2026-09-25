@@ -43,7 +43,7 @@ alter table public.efectivo_rendicion add constraint efectivo_rendicion_origen_c
 comment on column public.efectivo_rendicion.origen is
   'ticket = la fila la escribió un ticket de la entrega (canal Efectivo, #comprobantes-gastos con número, app). '
   'reimputada = una compra ya cargada que Administración imputó a la entrega desde su ficha. '
-  'iniciales = el bot la imputó por las iniciales escritas a mano en el ticket (20260924T2310).';
+  'iniciales = el bot la imputó por las iniciales escritas a mano en el ticket (20260925T1010).';
 comment on column public.efectivo_rendicion.cambio_id is
   'reimputada: el pedido a compra_obra_cambio que cambia su Tipo pago a «A rendir».';
 comment on column public.efectivo_rendicion.tipo_pago_anterior is
@@ -167,7 +167,7 @@ revoke all on function public._efectivo_soltar_reimputada(uuid, uuid, text) from
 
 -- ─── 6 · IMPUTAR ──────────────────────────────────────────────────────────────────────────────────
 -- La pieza interna la usan la app (con `ve_economia()`) y el bot cuando alguien contesta «sí, es de EM»
--- (20260924T2310). Todas las verificaciones viven acá: ninguna de las dos puertas las repite.
+-- (20260925T1010). Todas las verificaciones viven acá: ninguna de las dos puertas las repite.
 create or replace function public._efectivo_imputar_fila(p_entrega uuid, p_fila integer, p_clave text, p_usr uuid, p_origen text)
 returns jsonb
 language plpgsql security definer set search_path = public as $$
