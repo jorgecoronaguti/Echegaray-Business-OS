@@ -8,7 +8,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  avanceDeHistorias, avanceDeLaObra, avancePorPasos, celdasDePeso, pesosDeLaObra, resumenMO, rotuloPeso,
+  avanceDeHistorias, avanceDeLaObra, textoDeFuenteCosto, avancePorPasos, celdasDePeso, pesosDeLaObra, resumenMO, rotuloPeso,
   type ItemMO,
 } from './pesoMO.ts'
 import { repartirCantidad, conservaLaCantidad } from './panelTarea.ts'
@@ -154,4 +154,13 @@ test('criterio 6: dividir en frentes conserva la suma exacta (también con decim
 test('cabecera B: ítems, rubros, épicas, historias sin costo y costo total', () => {
   const r = resumenMO(b04())
   assert.deepEqual(r, { nItems: 11, nRubros: 1, nEpicas: 4, nHistorias: 6, nSinCosto: 3, nTareas: 0, costoTotal: 2_651_254 })
+})
+
+test('la fuente del costo dice si es leído, calculado o a mano', () => {
+  assert.equal(textoDeFuenteCosto(null), null)
+  assert.equal(textoDeFuenteCosto({ origen: 'a_mano' }), 'cargado a mano')
+  assert.equal(textoDeFuenteCosto({ origen: 'cotizacion_drive', archivo: 'Cotizacion.xlsm', partidas: [{}] }), 'costo de Cotizacion.xlsm · 1 partida')
+  const calc = textoDeFuenteCosto({ origen: 'calculado', archivo: 'Cotizacion piso 120m2.xlsm', partidas: [{}], venta: { archivo: 'Rampa 19:2.pdf' } })
+  assert.equal(calc, 'calculado: Análisis × PDF vendido · Rampa 19:2.pdf')
+  assert.ok(!/costo de/.test(calc!), 'un cálculo no se presenta como dato leído')
 })

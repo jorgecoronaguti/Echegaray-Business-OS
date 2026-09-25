@@ -233,3 +233,19 @@ export function resumenMO(items: readonly ItemMO[]): {
     costoTotal: costo,
   }
 }
+
+/** De dónde sale el costo de MO de una historia (columna `costo_mo_fuente`). */
+export interface FuenteCostoMO { origen?: string; archivo?: string; hoja?: string; partidas?: unknown[]; en?: string; venta?: { archivo?: string } }
+
+/**
+ * El rótulo que acompaña al costo en la ponderación. Lo leído de una cotización dice «costo de <archivo>
+ * · N partidas»; lo calculado cruzando documentos lo DICE («calculado: Análisis × PDF vendido»), para que
+ * nadie lo tome por un dato leído; lo tipeado dice «cargado a mano».
+ */
+export function textoDeFuenteCosto(f: FuenteCostoMO | null | undefined): string | null {
+  if (!f) return null
+  if (f.origen === 'a_mano') return 'cargado a mano'
+  if (f.origen === 'calculado') return ['calculado: Análisis × PDF vendido', f.venta?.archivo ?? null].filter(Boolean).join(' · ')
+  const n = Array.isArray(f.partidas) ? f.partidas.length : null
+  return `costo de ${[f.archivo ?? 'presupuesto', n != null ? `${n} ${n === 1 ? 'partida' : 'partidas'}` : null].filter(Boolean).join(' · ')}`
+}

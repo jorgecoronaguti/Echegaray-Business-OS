@@ -5,7 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '../types'
 import type { NivelEstructura, Ponderaciones } from './estructura'
-import type { MetodoPonderacion } from './pesoMO'
+import { textoDeFuenteCosto, type FuenteCostoMO, type MetodoPonderacion } from './pesoMO'
 import { versionQueVale } from './versionDelPresupuesto'
 import { partidasParaConvertir, type PartidaParaConvertir } from './partidasParaConvertir'
 
@@ -24,20 +24,10 @@ export async function getPonderaciones(supabase: SupabaseClient, obraId: string)
   if (error?.code === '42703') ({ data, error } = await leer('id, ponderacion, costo_mo, estado'))
   if (error) return { data: null, error: error.message }
   const salida: Ponderaciones = {}
-  for (const f of (data ?? []) as unknown as { id: string; ponderacion: unknown; costo_mo: unknown; nivel?: string | null; estado: string | null; costo_mo_fuente?: FuenteCosto | null }[]) {
-    salida[f.id] = { ponderacion: num(f.ponderacion), costo_mo: num(f.costo_mo), nivel: esNivel(f.nivel ?? null) ? f.nivel as NivelEstructura : null, estado: f.estado, fuente: textoDeFuente(f.costo_mo_fuente ?? null) }
+  for (const f of (data ?? []) as unknown as { id: string; ponderacion: unknown; costo_mo: unknown; nivel?: string | null; estado: string | null; costo_mo_fuente?: FuenteCostoMO | null }[]) {
+    salida[f.id] = { ponderacion: num(f.ponderacion), costo_mo: num(f.costo_mo), nivel: esNivel(f.nivel ?? null) ? f.nivel as NivelEstructura : null, estado: f.estado, fuente: textoDeFuenteCosto(f.costo_mo_fuente ?? null) }
   }
   return { data: salida, error: null }
-}
-
-interface FuenteCosto { origen?: string; archivo?: string; hoja?: string; partidas?: unknown[]; en?: string }
-
-/** «Cotización interna PLANILLA PARA COTIZAR.xlsm · 14 partidas» · «cargado a mano». */
-function textoDeFuente(f: FuenteCosto | null): string | null {
-  if (!f) return null
-  if (f.origen === 'a_mano') return 'cargado a mano'
-  const n = Array.isArray(f.partidas) ? f.partidas.length : null
-  return [f.archivo ?? 'presupuesto', n != null ? `${n} ${n === 1 ? 'partida' : 'partidas'}` : null].filter(Boolean).join(' · ')
 }
 
 const NIVELES = ['rubro', 'epica', 'historia', 'tarea', 'subtarea'] as const
