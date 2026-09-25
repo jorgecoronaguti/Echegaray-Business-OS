@@ -11,12 +11,11 @@
 // y, tras la migración de dominio, también `https://app.ecsas.com.ar` (Vercel sirve
 // ambos), pase lo que pase con el túnel saliente.
 import { NextRequest, NextResponse } from 'next/server'
+import { endpointInteractivo } from '@/lib/os/endpointInteractivo'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -24,17 +23,8 @@ const CORS = {
   'access-control-allow-methods': 'POST, GET, OPTIONS',
 }
 
-/** URL actual del OS, leída del registro público (os_runtime). */
-async function currentEndpoint(): Promise<string | null> {
-  if (!SUPABASE_URL || !SUPABASE_ANON) return null
-  const r = await fetch(
-    `${SUPABASE_URL}/rest/v1/os_runtime?key=eq.interactive_endpoint&select=value`,
-    { headers: { apikey: SUPABASE_ANON, authorization: `Bearer ${SUPABASE_ANON}` }, cache: 'no-store' },
-  )
-  if (!r.ok) return null
-  const rows = (await r.json()) as Array<{ value: string }>
-  return rows[0]?.value ?? null
-}
+/** URL actual del OS (os_runtime, leída con la clave de servicio: ver lib/os/endpointInteractivo). */
+const currentEndpoint = endpointInteractivo
 
 async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
   const endpoint = await currentEndpoint()

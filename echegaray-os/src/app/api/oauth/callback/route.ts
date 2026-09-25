@@ -4,22 +4,13 @@
 // simple de resultado. El endpoint del OS se lee del registro público os_runtime (igual
 // que el proxy). Runtime nodejs; sin auth (el code de Google es de un solo uso).
 import { NextRequest, NextResponse } from 'next/server'
+import { endpointInteractivo } from '@/lib/os/endpointInteractivo'
 
 export const runtime = 'nodejs'
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-async function currentEndpoint(): Promise<string | null> {
-  if (!SUPABASE_URL || !SUPABASE_ANON) return null
-  const r = await fetch(
-    `${SUPABASE_URL}/rest/v1/os_runtime?key=eq.interactive_endpoint&select=value`,
-    { headers: { apikey: SUPABASE_ANON, authorization: `Bearer ${SUPABASE_ANON}` }, cache: 'no-store' },
-  )
-  if (!r.ok) return null
-  const rows = (await r.json()) as Array<{ value: string }>
-  return rows[0]?.value ?? null
-}
+/** URL actual del OS (os_runtime, leída con la clave de servicio: ver lib/os/endpointInteractivo). */
+const currentEndpoint = endpointInteractivo
 
 function page(title: string, body: string, ok: boolean): NextResponse {
   const color = ok ? '#0a7d32' : '#b00020'
