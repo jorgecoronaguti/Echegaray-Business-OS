@@ -137,7 +137,8 @@ async function middlewareConBackend(request: NextRequest) {
   // es un cliente: cualquier ruta de gestión —el login del OS incluido— lo devuelve a su portal. Un
   // empleado que comparte el aparato sale primero del portal (`/portal/salir` borra la cookie).
   // Los archivos estáticos (`/marca/isotipo.png`) y la API siguen su camino.
-  if (!user && request.cookies.has('portal_sesion') && !pathname.startsWith('/portal')
+  // `portal_sesion` vive en path=/portal y no llega acá: lo que llega es la marca `portal_cliente` (path=/).
+  if (!user && (request.cookies.has('portal_sesion') || request.cookies.has('portal_cliente')) && !pathname.startsWith('/portal')
     && !pathname.startsWith('/api/') && !/\.[a-z0-9]+$/i.test(pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = '/portal'

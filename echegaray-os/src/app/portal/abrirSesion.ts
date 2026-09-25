@@ -1,7 +1,7 @@
 import 'server-only'
 import { cookies, headers } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { armarCookie, NOMBRE_COOKIE } from './sesion'
+import { armarCookie, MARCA_CLIENTE, NOMBRE_COOKIE, OPCIONES_MARCA } from './sesion'
 
 // ABRE LA SESIÓN DEL PORTAL DESDE EL ENLACE PERSONAL (opcional): marca el ingreso, lo anota y firma la cookie.
 //
@@ -34,6 +34,7 @@ export async function abrirSesionDelPortal(acceso: { accesoId: string; clienteId
   })
 
   const { valor, maxAge } = armarCookie({ mail, clienteId: acceso.clienteId })
+  ;(await cookies()).set(MARCA_CLIENTE, '1', { ...OPCIONES_MARCA, secure: process.env.NODE_ENV === 'production', maxAge })
   ;(await cookies()).set(NOMBRE_COOKIE, valor, {
     httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/portal', maxAge,
   })

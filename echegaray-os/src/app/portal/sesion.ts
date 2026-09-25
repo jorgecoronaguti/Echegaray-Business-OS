@@ -85,6 +85,16 @@ export function leerCookie(valor: string | undefined, ahora = Date.now()): Sesio
 
 export const NOMBRE_COOKIE = COOKIE
 
+/**
+ * LA MARCA DEL CLIENTE, en todo el sitio (25/09/2026). La sesión vive en `path=/portal`, así que el
+ * navegador NO la manda fuera del portal y el middleware no podía cumplir la regla del 24/09 («el
+ * cliente no sale del portal, ni al login del OS»): un cliente que tocaba «atrás» o escribía `/obras`
+ * caía en el login del OS. Esta cookie no dice quién es ni da acceso a nada —vale «1»— y va en
+ * `path=/` sólo para que el middleware sepa que el aparato es de un cliente y lo devuelva a `/portal`.
+ */
+export const MARCA_CLIENTE = 'portal_cliente'
+export const OPCIONES_MARCA = { httpOnly: true, sameSite: 'lax' as const, path: '/' }
+
 /** La sesión de esta petición, o null. */
 export async function sesionDelPortal(): Promise<SesionPortal | null> {
   try {

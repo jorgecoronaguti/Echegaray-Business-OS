@@ -3,7 +3,7 @@
 import { headers, cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { armarCookie, NOMBRE_COOKIE } from '../sesion'
+import { armarCookie, MARCA_CLIENTE, NOMBRE_COOKIE, OPCIONES_MARCA } from '../sesion'
 import { accesosDelMail } from '../datos'
 import type { AccesoDelPortal } from '../permisos'
 import { normalizarMail, pareceMail } from './acceso'
@@ -87,6 +87,7 @@ async function abrirSesion(acceso: AccesoDelPortal, mail: string): Promise<void>
   })
 
   const { valor, maxAge } = armarCookie({ mail, clienteId: acceso.clienteId })
+  ;(await cookies()).set(MARCA_CLIENTE, '1', { ...OPCIONES_MARCA, secure: process.env.NODE_ENV === 'production', maxAge })
   ;(await cookies()).set(NOMBRE_COOKIE, valor, {
     httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/portal', maxAge,
   })
@@ -115,6 +116,7 @@ export async function entrar(_previo: EstadoLogin, form: FormData): Promise<Esta
 
 export async function salir() {
   ;(await cookies()).delete({ name: NOMBRE_COOKIE, path: '/portal' })
+  ;(await cookies()).delete({ name: MARCA_CLIENTE, path: '/' })
   // A LA DESPEDIDA DEL PORTAL, no a la puerta. Volver directo al formulario de ingreso hace que
   // «cerrar sesión» parezca que falló —la pantalla se ve casi igual— y no confirma que la sesión se
   // cerró de verdad. La despedida lo dice y ofrece volver a entrar.
