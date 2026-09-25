@@ -80,7 +80,7 @@ import {
 import { registrarCobroDeCertificado } from '@/features/clientes/services/cuentaCorrienteActions'
 import { editarPagoDelEsquema, publicarEsquema } from '@/features/clientes/services/esquemaActions'
 import {
-  habilitarAcceso, reenviarInvitacion, revocarAcceso,
+  enlaceDeIngreso, habilitarAcceso, reenviarInvitacion, revocarAcceso,
 } from '@/features/clientes/services/accesosActions'
 import { resumenAccesos } from '@/features/clientes/services/reglasPortal'
 import { cambiosSinPublicar } from '@/features/clientes/services/reglasEsquema'
@@ -796,6 +796,7 @@ export default async function ClientePage({ params, searchParams }: {
             habilitarAcceso={habilitarAcceso}
             revocarAcceso={revocarAcceso}
             reenviarInvitacion={reenviarInvitacion}
+            enlaceDeIngreso={enlaceDeIngreso}
           />
         </div>
       )}

@@ -111,7 +111,7 @@ function AccionDeLinea({ children, onClick, testid, destructiva }: {
   )
 }
 
-export function TablaAccesos({ accesos, totalObras, hoy, elegido, onEditar, onReenviar, onRevocar }: {
+export function TablaAccesos({ accesos, totalObras, hoy, elegido, onEditar, onReenviar, onRevocar, onEnlace }: {
   accesos: AccesoPortal[]
   totalObras: number
   hoy: string
@@ -119,6 +119,8 @@ export function TablaAccesos({ accesos, totalObras, hoy, elegido, onEditar, onRe
   onEditar: (id: string) => void
   onReenviar: (id: string) => void
   onRevocar: (id: string) => void
+  /** Genera y copia el enlace personal de ingreso al portal (25/09/2026: el mail solo ya no entra). */
+  onEnlace: (id: string) => void
 }) {
   // Uno abierto a la vez. Es estado de pantalla y no de dirección: esta cara ya es de cliente, así
   // que no hace falta el parámetro de URL que usan las tablas de servidor de la ficha.
@@ -248,6 +250,11 @@ export function TablaAccesos({ accesos, totalObras, hoy, elegido, onEditar, onRe
                 {vivo && (
                   <AccionDeLinea onClick={() => onEditar(a.id)} testid={`editar-acceso-${a.id}`}>
                     Editar
+                  </AccionDeLinea>
+                )}
+                {vivo && (
+                  <AccionDeLinea onClick={() => onEnlace(a.id)} testid={`enlace-${a.id}`}>
+                    Copiar enlace de ingreso
                   </AccionDeLinea>
                 )}
                 {nuevo && vivo && (

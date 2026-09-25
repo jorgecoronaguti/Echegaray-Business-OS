@@ -249,7 +249,7 @@ export async function deshacerResolucion(aliasId: string): Promise<Resultado> {
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPerfilActual } from '@/features/auth/services/authService'
-import { esAdministracion } from '@/features/auth/types/areas'
+import { veEconomia } from '@/shared/auth/areas'
 import { escriturasDeCorreccion, DECISION } from '../../../../orquestador/lib/ml/correccion.mjs'
 import { normalizar } from '../../../../orquestador/lib/ml/normalizar.mjs'
 
@@ -266,7 +266,9 @@ export async function corregirIdentidad(form: FormData): Promise<Resultado> {
 
   const supabase = await createClient()
   const perfil = await getPerfilActual(supabase)
-  if (!esAdministracion(perfil.data?.rol ?? null)) return { ok: false, error: 'Esta acción es de Administración.' }
+  // `veEconomia`, no «es administración» (25/09/2026): esta acción escribe con la clave de servicio y
+  // `es_administracion` deja pasar al jefe de obra, que no entra a Proveedores.
+  if (!veEconomia(perfil.data?.rol ?? null)) return { ok: false, error: 'Esta acción es de Administración.' }
   // El autor sale de la sesión, NUNCA del formulario: una corrección sin autor verificable no se
   // puede auditar, y una firmada por quien no la hizo es peor que ninguna.
   const por = perfil.data?.id ?? null

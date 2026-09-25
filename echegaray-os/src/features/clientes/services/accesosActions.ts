@@ -9,6 +9,11 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { rolDeLaSesion } from '@/shared/auth/rolDeLaSesion'
+import { veEconomia } from '@/shared/auth/areas'
+import { siteUrl } from '@/lib/site-url'
+import { enlaceDeIngreso as enlaceDeIngresoPortal, hashDeToken, nuevoToken } from '@/shared/portal/enlace'
 // La plantilla del mail viene del NÚCLEO, con la misma ruta relativa que usan los demás puertos web
 // de este repo (ver features/obras/services/operacionService.ts). No se reescribe acá: el mismo mail
 // lo puede mandar el timer de avisos, y dos plantillas para un mensaje es cómo se llega a que el
@@ -201,4 +206,45 @@ async function encolarInvitacion(
   await supabase.from('cliente_acceso')
     .update({ invitacion_enviada_at: new Date().toISOString() }).eq('id', d.accesoId)
   return { ok: true }
+}
+
+/**
+ * EL ENLACE PERSONAL DE INGRESO AL PORTAL (25/09/2026).
+ *
+ * Desde ese día el portal no abre con el mail a secas: cada acceso entra con su enlace. Esta acción lo
+ * genera para UN acceso y devuelve el enlace en claro UNA vez, para copiarlo y mandárselo a esa
+ * persona. En la base queda sólo el SHA-256; generar otro invalida el anterior.
+ *
+ * Es de Administración (`ve_economia`), y se comprueba ACÁ antes de tocar la clave de servicio: el hash
+ * se escribe con ella porque la tabla tiene grants de escritura por columna y esta no es de las que
+ * edita el formulario. El acceso se lee con la sesión (la RLS de `cliente_acceso` ya exige Administración).
+ */
+export async function enlaceDeIngreso(entrada: EntradaAcceso): Promise<ResultadoAccion & { enlace?: string }> {
+  const parsed = idSchema.safeParse(entrada)
+  if (!parsed.success) return { ok: false, error: 'Acceso inválido' }
+
+  const supabase = await createClient()
+  const quien = await rolDeLaSesion(supabase)
+  if (!quien || !veEconomia(quien.rol)) return { ok: false, error: 'El enlace del portal lo genera Administración.' }
+  const por = quien.id
+
+  const { data: acceso, error } = await supabase
+    .from('cliente_acceso').select('id, revocado_at').eq('id', parsed.data.accesoId).maybeSingle()
+  if (error) return { ok: false, error: error.message }
+  if (!acceso) return { ok: false, error: 'No encontré ese acceso' }
+  if (acceso.revocado_at) return { ok: false, error: 'Ese acceso está revocado: no tiene enlace.' }
+
+  const token = nuevoToken()
+  const { error: eGuardar } = await createAdminClient()
+    .from('cliente_acceso')
+    .update({ enlace_hash: hashDeToken(token), enlace_creado_at: new Date().toISOString(), enlace_creado_por: por })
+    .eq('id', acceso.id)
+  if (eGuardar) return { ok: false, error: eGuardar.message }
+
+  revalidatePath('/clientes')
+  return {
+    ok: true,
+    enlace: enlaceDeIngresoPortal(siteUrl(), token),
+    mensaje: 'Enlace nuevo copiado. Mandáselo a esa persona: el anterior dejó de servir.',
+  }
 }

@@ -147,9 +147,18 @@ export async function completarIngresoPortal(): Promise<ResultadoAccion> {
 
   // El perfil primero: si el vínculo se escribiera antes y esto fallara, quedaría un acceso atado a
   // un usuario sin rol — que el middleware trata como «ni cliente ni empleado» y deja afuera de todo.
-  const { error: errPerfil } = await admin
-    .from('perfiles')
-    .upsert({ id: user.id, rol: 'cliente', nombre: nombreDe(user.email) }, { onConflict: 'id' })
+  // UN PERFIL QUE YA EXISTE NO SE PISA (auditoría 25/09/2026). Antes era un `upsert` con rol `cliente`:
+  // si alguien cargaba como acceso de un cliente el mail de una cuenta de adentro, la próxima vez que
+  // esa persona pasara por `/callback` (recuperar la contraseña, por ejemplo) quedaba degradada a
+  // cliente. Una cuenta del OS no se convierte en cliente por esta puerta: se niega y se cierra la sesión.
+  const { data: existente } = await admin.from('perfiles').select('rol').eq('id', user.id).maybeSingle()
+  if (existente && existente.rol !== 'cliente') {
+    await supabase.auth.signOut()
+    return { ok: false, error: 'Ese correo es de una cuenta del sistema de gestión: entrá por el ingreso de Echegaray.' }
+  }
+  const { error: errPerfil } = existente
+    ? { error: null }
+    : await admin.from('perfiles').insert({ id: user.id, rol: 'cliente', nombre: nombreDe(user.email) })
   if (errPerfil) return { ok: false, error: 'No pude preparar tu perfil' }
 
   const { error: errVinculo } = await admin

@@ -26,7 +26,7 @@ import type { AccesoPortal, ActividadPortal } from '../../types/cobranzas'
 
 export function AccesosPortal({
   accesos, actividad, contactos, obras, hoy, clienteId,
-  habilitarAcceso, revocarAcceso, reenviarInvitacion,
+  habilitarAcceso, revocarAcceso, reenviarInvitacion, enlaceDeIngreso,
 }: {
   accesos: AccesoPortal[]
   actividad: ActividadPortal[]
@@ -37,6 +37,7 @@ export function AccesosPortal({
   habilitarAcceso: (entrada: EntradaAltaAcceso) => Promise<ResultadoAccion>
   revocarAcceso: (entrada: EntradaAcceso) => Promise<ResultadoAccion>
   reenviarInvitacion: (entrada: EntradaAcceso) => Promise<ResultadoAccion>
+  enlaceDeIngreso: (entrada: EntradaAcceso) => Promise<ResultadoAccion & { enlace?: string }>
 }) {
   const [editando, setEditando] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -68,6 +69,20 @@ export function AccesosPortal({
     const r = await accion()
     if (r.ok) setAviso(r.mensaje ?? exito)
     else setError(r.error)
+  }
+
+  // EL ENLACE PERSONAL (25/09/2026): se genera, se copia y se muestra entero — en el teléfono el
+  // portapapeles puede no estar disponible y el enlace tiene que poder seleccionarse a mano.
+  async function copiarEnlace(accesoId: string) {
+    setAviso(null)
+    setError(null)
+    const r = await enlaceDeIngreso({ accesoId })
+    if (!r.ok) { setError(r.error); return }
+    let copiado = false
+    try {
+      if (r.enlace) { await navigator.clipboard.writeText(r.enlace); copiado = true }
+    } catch { /* sin permiso de portapapeles: queda el texto para copiar a mano */ }
+    setAviso(`${copiado ? 'Copiado' : 'Copialo'}: ${r.enlace ?? ''} — mandáselo sólo a esa persona; el anterior dejó de servir.`)
   }
 
   const enEdicion = accesos.find((a) => a.id === editando) ?? null
@@ -138,6 +153,7 @@ export function AccesosPortal({
           onEditar={setEditando}
           onReenviar={(id) => correr(() => reenviarInvitacion({ accesoId: id }), 'Invitación reenviada.')}
           onRevocar={(id) => correr(() => revocarAcceso({ accesoId: id }), 'Acceso revocado: ese mail ya no entra.')}
+          onEnlace={(id) => { void copiarEnlace(id) }}
         />
 
         <ActividadDelPortal actividad={actividad} hoy={hoy} />

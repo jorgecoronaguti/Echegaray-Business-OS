@@ -25,6 +25,7 @@
 
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { rolDeLaSesion } from '@/shared/auth/rolDeLaSesion'
 import { buscarGlobal, type Hallazgo } from './entradaService'
 
 /** Lo que devuelve la lupa. `error` no se pinta como «no hay nada»: son cosas opuestas. */
@@ -43,6 +44,10 @@ export async function buscarEnTodo(q: string): Promise<ResultadoBusqueda> {
 
   try {
     const supabase = await createClient()
+    // EL OPERARIO NO BUSCA EN TODO (25/09/2026): la lupa lista clientes, personas y proveedores con su
+    // CUIT, y el operario sólo ve lo suyo. La base ya le cierra clientes; esto cierra el resto.
+    const rol = (await rolDeLaSesion(supabase))?.rol ?? null
+    if (rol !== 'direccion' && rol !== 'administracion' && rol !== 'jefe_obra') return { ok: true, hallazgos: [] }
     return { ok: true, hallazgos: await buscarGlobal(supabase, parsed.data.q) }
   } catch (e) {
     // SE DICE QUE NO SE PUDO BUSCAR. Devolver la lista vacía acá haría que una caída de la base se
