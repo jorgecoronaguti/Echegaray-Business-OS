@@ -373,7 +373,9 @@ export function SolapasDeFicha({ solapas, linea = true, grafito = false, derecha
           <Link
             key={s.clave} href={s.href} prefetch={false} data-testid={`solapa-${s.clave}`}
             aria-current={s.activa ? 'page' : undefined}
-            className="hover:text-[#1F1F1E]"
+            // 44 de toque en el teléfono (auditoría por nivel, 25/09/2026): medían 36. El texto baja al filo
+            // de abajo, donde está el subrayado; en escritorio no cambia nada.
+            className="hover:text-[#1F1F1E] max-md:!min-h-11 max-md:!items-end"
             style={{
               display: 'flex', alignItems: 'baseline', gap: 6,
               fontSize: linea ? '13px' : '15px',

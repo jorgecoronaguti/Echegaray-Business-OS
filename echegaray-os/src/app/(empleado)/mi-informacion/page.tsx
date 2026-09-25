@@ -208,6 +208,14 @@ export default async function MiInformacionPage() {
               detalle="Identidad, situación laboral y asignaciones"
               testid="ir-legajo"
             />
+            {/* LO SUYO DE EPP Y ROPA, EN LECTURA (25/09/2026): lo que tiene, talle, fecha y constancia. */}
+            <Acceso
+              href="/mi-informacion/epp"
+              icono="seguridad"
+              titulo="Mi EPP y ropa"
+              detalle="Lo que tenés entregado, tus talles y las constancias"
+              testid="ir-epp"
+            />
             <Acceso
               href="/mi-cuenta"
               icono="candado"

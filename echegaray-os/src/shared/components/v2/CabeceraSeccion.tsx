@@ -113,7 +113,7 @@ export function CabeceraSeccion({ vistas, buscador, alta, accion, filtros, espac
             href={v.href}
             data-testid={`vista-${v.clave}`}
             aria-current={v.activa ? 'page' : undefined}
-            className="max-md:shrink-0 max-md:!pb-2.5 max-md:!pt-1"
+            className="max-md:shrink-0 max-md:!pb-2.5 max-md:!pt-2.5"
             style={{
               display: 'flex', alignItems: 'baseline', gap: 7, paddingBottom: 6,
               // El subrayado dice CUÁL de las sub-vistas está abierta. Con una sola no hay cuál:

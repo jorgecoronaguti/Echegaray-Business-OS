@@ -109,7 +109,7 @@ export function Novedades() {
         aria-label="Novedades"
         aria-expanded={abierto}
         onClick={() => setAbierto((v) => !v)}
-        className={`relative flex h-[28px] w-[28px] items-center justify-center rounded-md transition-colors ${
+        className={`relative flex h-[28px] w-[28px] max-md:h-11 max-md:w-11 items-center justify-center rounded-md transition-colors ${
           abierto ? 'bg-[#F2F1ED] text-ink' : 'text-muted hover:bg-[#F2F1ED] hover:text-ink'
         }`}
       >

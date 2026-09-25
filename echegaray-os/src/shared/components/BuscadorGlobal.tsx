@@ -96,7 +96,7 @@ export function BuscadorGlobal() {
         aria-expanded={abierto}
         onClick={() => setAbierto((v) => !v)}
         // 28×28 · radio 6 · #6B6B67 · hover #F2F1ED — medido de `00 · Home Navegación.dc.html`.
-        className={`flex h-[28px] w-[28px] items-center justify-center rounded-md transition-colors ${
+        className={`flex h-[28px] w-[28px] max-md:h-11 max-md:w-11 items-center justify-center rounded-md transition-colors ${
           abierto ? 'bg-[#F2F1ED] text-ink' : 'text-muted hover:bg-[#F2F1ED] hover:text-ink'
         }`}
       >

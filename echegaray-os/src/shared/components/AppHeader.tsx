@@ -123,7 +123,7 @@ export function AppHeader({
         <Link
           prefetch={false}
           href={inicio}
-          className="mr-3 flex shrink-0 items-center gap-2"
+          className="mr-3 flex shrink-0 items-center gap-2 max-md:min-h-11 max-md:min-w-11"
           data-testid="marca"
           aria-label="Echegaray Construcciones — inicio"
         >
@@ -312,9 +312,12 @@ function MenuUsuario({
         // 27px / radio 14 / #30302F / 10,5px / 600 — medido de los estilos inline del zip
         // (`03 · Obra Tareas.dc.html`). El grafito va en hexadecimal por la misma razón que en
         // `ds/Estado.tsx`: es un valor MEDIDO del mockup, no una decisión que se re-tome acá.
-        className="flex h-[27px] w-[27px] items-center justify-center rounded-full bg-accent text-[10.5px] font-semibold text-white transition-opacity hover:opacity-85"
+        // En el teléfono el BOTÓN mide 44 (toque) y el círculo sigue de 27 (auditoría por nivel, 25/09/2026).
+        className="flex items-center justify-center transition-opacity hover:opacity-85 max-md:h-11 max-md:w-11"
       >
-        {iniciales(nombre, email)}
+        <span className="flex h-[27px] w-[27px] items-center justify-center rounded-full bg-accent text-[10.5px] font-semibold text-white">
+          {iniciales(nombre, email)}
+        </span>
       </button>
       {abierto && (
         <div
