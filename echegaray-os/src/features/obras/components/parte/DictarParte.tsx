@@ -28,6 +28,8 @@ import {
   type ResultadoGuardado, type Revision,
 } from '../../services/dictadoParte'
 import { audioDelDictado, descartarDictado, dictadosDelDia, guardarDictado, leerDictado } from '../../services/dictadoParteActions'
+import { borrarParteDelDia, guardarEdicionDelParte, leerParteGuardado, type AcuseEdicion } from '../../services/parteGuardadoActions'
+import { aplicarCorreccion, queSeBorra, revisionDeGuardado, validarEdicion, type ParteGuardado } from '../../services/parteGuardado'
 import { subirDictado } from '../../services/subidaDictado'
 import { empezarGrabacion, type Grabacion } from './grabadora'
 
@@ -54,36 +56,54 @@ const Stop = () => (<svg width={16} height={16} viewBox="0 0 24 24" aria-hidden>
 
 // ═══════════════════════════════════════════ EL ESTADO ═══════════════════════════════════════════
 
+/** `nuevo` = un parte dictado; `edicion` = el guardado, a mano; `correccion` = lo dictado aplicado sobre el guardado. */
+export type Modo = 'nuevo' | 'edicion' | 'correccion'
+
 type Fase =
   | { f: 'reposo' }
   | { f: 'grabando'; segundos: number; niveles: number[] }
   | { f: 'subiendo'; segundos: number }
   | { f: 'esperando'; id: string; estado: EstadoDictado; segundos: number; desde: number }
-  | { f: 'revision'; dictado: Dictado; rev: Revision; error: string | null; guardando: boolean }
+  | { f: 'revision'; modo: Modo; dictado: Dictado | null; rev: Revision; error: string | null; guardando: boolean }
   | { f: 'guardado'; dictado: Dictado; resultado: ResultadoGuardado; rev: Revision; hora: string }
+  | { f: 'editado'; acuse: AcuseEdicion; hora: string; modo: Modo }
   | { f: 'error'; mensaje: string }
 
 const horaAR = (iso?: string | null) => new Date(iso ?? Date.now()).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'America/Argentina/San_Juan' })
 
-export function useDictado(obraId: string, dia: string) {
+/** `recarga` cambia cuando el parte del día cambió por otra puerta (el formulario tipeado): se vuelve a leer lo guardado. */
+export function useDictado(obraId: string, dia: string, recarga = '') {
   const router = useRouter()
   const [fase, setFase] = useState<Fase>({ f: 'reposo' })
   const [delDia, setDelDia] = useState<Dictado[]>([])
+  const [parte, setParte] = useState<ParteGuardado | null>(null)
+  const [aviso, setAviso] = useState<{ tono: 'pos' | 'warn' | 'neg'; texto: string } | null>(null)
   const grabacion = useRef<Grabacion | null>(null)
+  const esCorreccion = useRef(false)
 
   const releer = useCallback(async () => {
-    const r = await dictadosDelDia(obraId, dia)
+    const [r, g] = await Promise.all([dictadosDelDia(obraId, dia), leerParteGuardado(obraId, dia)])
     if (r.ok) setDelDia(r.dato)
+    setParte(g.ok ? g.dato : null)
     return r.ok ? r.dato : []
   }, [obraId, dia])
 
-  // Al cambiar de día: lo dictado ese día, y si quedó uno transcribiéndose, se lo sigue esperando.
+  /** La revisión de una corrección: lo dictado aplicado sobre el parte guardado, leído de nuevo. */
+  const abrirCorreccion = useCallback(async (d: Dictado) => {
+    const g = await leerParteGuardado(obraId, dia)
+    if (!g.ok || !d.propuesta) { setFase({ f: 'error', mensaje: g.ok ? 'La corrección vino vacía.' : g.error }); return }
+    setFase({ f: 'revision', modo: 'correccion', dictado: d, rev: aplicarCorreccion(revisionDeGuardado(g.dato), d.propuesta), error: null, guardando: false })
+  }, [obraId, dia])
+
+  // Al cambiar de día: lo dictado y el parte guardado de ese día, y si quedó un audio transcribiéndose, se lo sigue esperando.
   useEffect(() => {
     let vivo = true
-    void dictadosDelDia(obraId, dia).then((r) => {
+    void Promise.all([dictadosDelDia(obraId, dia), leerParteGuardado(obraId, dia)]).then(([r, g]) => {
       if (!vivo) return
       const ds = r.ok ? r.dato : []
       setDelDia(ds)
+      setParte(g.ok ? g.dato : null)
+      setAviso(null)
       const enCurso = ds.find((d) => d.estado === 'pendiente' || d.estado === 'transcribiendo')
       setFase(enCurso
         ? { f: 'esperando', id: enCurso.id, estado: enCurso.estado, segundos: Number(enCurso.duracion_s), desde: Date.parse(enCurso.creado_en) }
@@ -91,6 +111,13 @@ export function useDictado(obraId: string, dia: string) {
     })
     return () => { vivo = false; grabacion.current?.cancelar(); grabacion.current = null }
   }, [obraId, dia])
+
+  // Lo guardado cambió por el formulario de siempre (u otra pestaña): se relee sin tocar la pantalla del dictado.
+  useEffect(() => {
+    let vivo = true
+    void leerParteGuardado(obraId, dia).then((g) => { if (vivo) setParte(g.ok ? g.dato : null) })
+    return () => { vivo = false }
+  }, [obraId, dia, recarga])
 
   // Mientras la VM transcribe, se pregunta cada 2 s.
   const esperandoId = fase.f === 'esperando' ? fase.id : null
@@ -102,13 +129,16 @@ export function useDictado(obraId: string, dia: string) {
       if (!vivo) return
       if (!r.ok) { setFase({ f: 'error', mensaje: r.error }); return }
       const d = r.dato
-      if (d.estado === 'listo' && d.propuesta) setFase({ f: 'revision', dictado: d, rev: revisionInicial(d.propuesta), error: null, guardando: false })
-      else if (d.estado === 'error') setFase({ f: 'error', mensaje: `No se pudo transcribir: ${d.motivo ?? 'error de la transcripción'}. Podés dictar de nuevo o cargarlo a mano.` })
-      else if (d.estado === 'descartado' || d.estado === 'guardado') setFase({ f: 'reposo' })
+      if (d.estado === 'listo' && d.propuesta) {
+        clearInterval(t)
+        if (d.es_correccion) void abrirCorreccion(d)
+        else setFase({ f: 'revision', modo: 'nuevo', dictado: d, rev: revisionInicial(d.propuesta), error: null, guardando: false })
+      } else if (d.estado === 'error') setFase({ f: 'error', mensaje: `No se pudo transcribir: ${d.motivo ?? 'error de la transcripción'}. Podés dictar de nuevo o cargarlo a mano.` })
+      else if (d.estado === 'descartado' || d.estado === 'guardado' || d.estado === 'anulado') setFase({ f: 'reposo' })
       else setFase((f) => (f.f === 'esperando' ? { ...f, estado: d.estado } : f))
     }, 2000)
     return () => { vivo = false; clearInterval(t) }
-  }, [esperandoId])
+  }, [esperandoId, abrirCorreccion])
 
   const terminar = useCallback(async () => {
     const g = grabacion.current
@@ -117,12 +147,15 @@ export function useDictado(obraId: string, dia: string) {
     const { wav, segundos } = await g.terminar()
     if (segundos < 1) { setFase({ f: 'error', mensaje: 'La grabación quedó vacía: tocá «Dictar parte» y hablá unos segundos.' }); return }
     setFase({ f: 'subiendo', segundos })
-    const r = await subirDictado(obraId, dia, wav, segundos)
+    const r = await subirDictado(obraId, dia, wav, segundos, esCorreccion.current)
     if (!r.ok) { setFase({ f: 'error', mensaje: r.error }); return }
     setFase({ f: 'esperando', id: r.id, estado: 'pendiente', segundos, desde: Date.now() })
   }, [obraId, dia])
 
-  const empezar = useCallback(async () => {
+  /** `correccion` = «Dictar corrección»: lo dictado se aplica sobre el parte que ya está. */
+  const empezar = useCallback(async (correccion = false) => {
+    esCorreccion.current = correccion
+    setAviso(null)
     setFase({ f: 'grabando', segundos: 0, niveles: [] })
     const g = await empezarGrabacion({
       alNivel: (n, segundos) => setFase((f) => (f.f === 'grabando' ? { f: 'grabando', segundos, niveles: [...f.niveles.slice(-23), n] } : f)),
@@ -135,10 +168,10 @@ export function useDictado(obraId: string, dia: string) {
   const cancelar = useCallback(() => { grabacion.current?.cancelar(); grabacion.current = null; setFase({ f: 'reposo' }) }, [])
 
   const descartar = useCallback(async (yDictar = false) => {
-    const id = fase.f === 'revision' ? fase.dictado.id : fase.f === 'esperando' ? fase.id : null
+    const id = fase.f === 'revision' ? fase.dictado?.id ?? null : fase.f === 'esperando' ? fase.id : null
     if (id) await descartarDictado(id)
     void releer()
-    if (yDictar) void empezar()
+    if (yDictar) void empezar(esCorreccion.current)
     else setFase({ f: 'reposo' })
   }, [fase, releer, empezar])
 
@@ -148,6 +181,18 @@ export function useDictado(obraId: string, dia: string) {
 
   const guardar = useCallback(async (novedadActividad: string | null) => {
     if (fase.f !== 'revision') return
+    if (fase.modo !== 'nuevo') {
+      const falta = validarEdicion(fase.rev)
+      if (falta) { setFase({ ...fase, error: falta }); return }
+      setFase({ ...fase, guardando: true, error: null })
+      const r = await guardarEdicionDelParte(obraId, dia, fase.rev, fase.modo === 'correccion' ? fase.dictado?.id ?? null : null)
+      if (!r.ok) { setFase({ ...fase, guardando: false, error: r.error }); return }
+      setFase({ f: 'editado', acuse: r.dato, hora: horaAR(), modo: fase.modo })
+      void releer()
+      router.refresh()
+      return
+    }
+    if (!fase.dictado) return
     const armado = armarEnvio(fase.rev, dia)
     if (!armado.ok) { setFase({ ...fase, error: armado.error }); return }
     setFase({ ...fase, guardando: true, error: null })
@@ -159,10 +204,34 @@ export function useDictado(obraId: string, dia: string) {
   }, [fase, dia, obraId, releer, router])
 
   const retomar = useCallback((d: Dictado) => {
-    if (d.estado === 'listo' && d.propuesta) setFase({ f: 'revision', dictado: d, rev: revisionInicial(d.propuesta), error: null, guardando: false })
-  }, [])
+    if (d.estado !== 'listo' || !d.propuesta) return
+    if (d.es_correccion) void abrirCorreccion(d)
+    else setFase({ f: 'revision', modo: 'nuevo', dictado: d, rev: revisionInicial(d.propuesta), error: null, guardando: false })
+  }, [abrirCorreccion])
 
-  return { fase, delDia, empezar, terminar, cancelar, descartar, editar, guardar, retomar, volver: () => setFase({ f: 'reposo' }) }
+  /** «Editar»: el parte guardado en la misma revisión, a mano. */
+  const editarAMano = useCallback(() => {
+    if (!parte || parte.vacio) return
+    setAviso(null)
+    setFase({ f: 'revision', modo: 'edicion', dictado: null, rev: revisionDeGuardado(parte), error: null, guardando: false })
+  }, [parte])
+
+  /** «Borrar parte», ya confirmado en la pantalla. */
+  const borrar = useCallback(async () => {
+    const r = await borrarParteDelDia(obraId, dia)
+    if (!r.ok) { setAviso({ tono: 'neg', texto: r.error }); return false }
+    setAviso(r.dato.noHecho.length
+      ? { tono: 'warn', texto: `Parte borrado a las ${horaAR()}. No se pudo: ${r.dato.noHecho.join(' · ')}` }
+      : { tono: 'pos', texto: `Parte borrado a las ${horaAR()}: ${r.dato.hecho.join(' · ')}.` })
+    void releer()
+    router.refresh()
+    return true
+  }, [obraId, dia, releer, router])
+
+  return {
+    fase, delDia, parte, aviso, empezar, terminar, cancelar, descartar, editar, guardar, retomar, editarAMano, borrar,
+    volver: () => setFase({ f: 'reposo' }),
+  }
 }
 
 export type EstadoDictar = ReturnType<typeof useDictado>
@@ -198,15 +267,16 @@ function Chip({ tipo, children, onClick }: { tipo: 'd' | 'q' | 'ok' | 'x'; child
 }
 
 /** Un chip por fila: dictado (amarillo), confirmar (naranja, toca para confirmar), confirmado, quitado. */
-function chipDe(f: { incluida: boolean; dudoso: boolean; confirmada: boolean; persona_id?: string | null }, confirmar?: () => void) {
+function chipDe(f: { incluida: boolean; dudoso: boolean; confirmada: boolean; persona_id?: string | null; origen?: string }, confirmar?: () => void) {
   if (!f.incluida) return <Chip tipo="x">quitado</Chip>
+  if (f.origen === 'guardado') return <Chip tipo="x">guardado</Chip>
   if (faltaConfirmar(f)) return <Chip tipo="q" onClick={'persona_id' in f && f.persona_id == null ? undefined : confirmar}>confirmar</Chip>
   if (f.dudoso && f.confirmada) return <Chip tipo="ok">confirmado</Chip>
   return <Chip tipo="d">dictado</Chip>
 }
 
-const fondoFila = (f: { incluida: boolean; dudoso: boolean; confirmada: boolean; persona_id?: string | null }): CSSProperties => (
-  !f.incluida ? { opacity: 0.5 } : faltaConfirmar(f) ? { background: DICTADO.dudaFondo } : { background: DICTADO.datoFondo }
+const fondoFila = (f: { incluida: boolean; dudoso: boolean; confirmada: boolean; persona_id?: string | null; origen?: string }): CSSProperties => (
+  !f.incluida ? { opacity: 0.5 } : f.origen === 'guardado' ? { background: C.superficie } : faltaConfirmar(f) ? { background: DICTADO.dudaFondo } : { background: DICTADO.datoFondo }
 )
 
 function Aviso({ tono, children, testid }: { tono: 'info' | 'warn' | 'pos' | 'neg'; children: ReactNode; testid?: string }) {
@@ -335,6 +405,7 @@ export function PantallaDictado(p: Pantalla) {
     )
   }
   if (fase.f === 'guardado') return <Guardado {...p} fase={fase} />
+  if (fase.f === 'editado') return <Editado {...p} fase={fase} />
   return p.telefono ? <RevisionTelefono {...p} fase={fase} /> : <RevisionPC {...p} fase={fase} />
 }
 
@@ -548,8 +619,9 @@ function RevisionTelefono(p: Pantalla & { fase: Rev }) {
   const renglones = useMemo(() => renglonesDeGente(rev.personas), [rev.personas])
   const presentes = rev.personas.filter((f) => f.incluida && f.estado === 'presente').length
   const alternar = (k: string) => setAbierta((a) => (a === k ? null : k))
-  const avisos = dictado.propuesta?.avisos ?? []
+  const avisos = dictado?.propuesta?.avisos ?? []
   const arriba = useArriba<HTMLDivElement>(true)
+  const modo = p.fase.modo
 
   const filaPersona = (f: Revision['personas'][number]) => (
     <div key={f.clave}>
@@ -566,8 +638,8 @@ function RevisionTelefono(p: Pantalla & { fase: Rev }) {
 
   return (
     <div ref={arriba} style={{ padding: '16px 16px 170px', display: 'grid', gap: '12px', alignContent: 'start', scrollMarginTop: '56px' }} data-testid="dictado-revision">
-      <div style={{ fontSize: '16px', fontWeight: 700 }}>Revisá el parte</div>
-      <Aviso tono="info" testid="dictado-resumen">{resumenDeRevision(rev)}</Aviso>
+      <div style={{ fontSize: '16px', fontWeight: 700 }}>{TITULO[modo]}</div>
+      {modo !== 'edicion' && <Aviso tono="info" testid="dictado-resumen">{resumenDeRevision(rev)}</Aviso>}
       {avisos.map((a, i) => <Aviso key={i} tono="warn">{a.texto}</Aviso>)}
 
       <div style={{ display: 'grid', gap: '4px' }}>
@@ -613,32 +685,38 @@ function RevisionTelefono(p: Pantalla & { fase: Rev }) {
 
       <Novedades p={p} rev={rev} />
 
-      <details style={{ fontSize: '13px' }}>
-        <summary style={{ ...EYEBROW, cursor: 'pointer', minHeight: '44px', display: 'flex', alignItems: 'center' }}>Lo que dijo · {reloj(Number(dictado.duracion_s))}</summary>
-        <div style={{ display: 'grid', gap: '10px', paddingTop: '6px' }}>
-          <Transcripcion dictado={dictado} />
-          <Leyenda />
-          <Escuchar id={dictado.id} />
-        </div>
-      </details>
+      {dictado && (
+        <details style={{ fontSize: '13px' }}>
+          <summary style={{ ...EYEBROW, cursor: 'pointer', minHeight: '44px', display: 'flex', alignItems: 'center' }}>Lo que dijo · {reloj(Number(dictado.duracion_s))}</summary>
+          <div style={{ display: 'grid', gap: '10px', paddingTop: '6px' }}>
+            <Transcripcion dictado={dictado} />
+            <Leyenda />
+            <Escuchar id={dictado.id} />
+          </div>
+        </details>
+      )}
 
       {error && <Aviso tono="neg" testid="dictado-guardar-error">{error}</Aviso>}
       <Pie>
         <button type="button" style={{ ...PRIMARIO, minHeight: '48px' }} disabled={guardando} onClick={() => void p.d.guardar(p.novedadActividad)} data-testid="dictado-guardar">
-          {guardando ? 'Guardando…' : 'Guardar parte'}
+          {guardando ? 'Guardando…' : modo === 'nuevo' ? 'Guardar parte' : 'Guardar cambios'}
         </button>
-        <button type="button" style={{ ...BOTON, minHeight: '48px' }} disabled={guardando} onClick={() => void p.d.descartar(true)} data-testid="dictado-de-nuevo"><Mic />Dictar de nuevo</button>
+        {modo === 'edicion'
+          ? <button type="button" style={{ ...BOTON, minHeight: '48px' }} disabled={guardando} onClick={() => void p.d.descartar()} data-testid="dictado-descartar">Cancelar</button>
+          : <button type="button" style={{ ...BOTON, minHeight: '48px' }} disabled={guardando} onClick={() => void p.d.descartar(true)} data-testid="dictado-de-nuevo"><Mic />{modo === 'correccion' ? 'Dictar otra corrección' : 'Dictar de nuevo'}</button>}
       </Pie>
     </div>
   )
 }
 
+const TITULO: Record<Modo, string> = { nuevo: 'Revisá el parte', edicion: 'Editá el parte guardado', correccion: 'Revisá la corrección' }
+
 const CAJA: CSSProperties = {
   border: `1px solid ${C.borde}`, borderRadius: '6px', padding: '9px 10px', minHeight: '44px', display: 'flex',
   alignItems: 'center', justifyContent: 'space-between', gap: '8px', background: C.superficie, boxSizing: 'border-box', fontSize: '14px',
 }
-const cajaDe = (f: { incluida: boolean; dudoso: boolean; confirmada: boolean }): CSSProperties => ({
-  ...CAJA, ...(!f.incluida ? { opacity: 0.5 } : faltaConfirmar(f) ? { background: DICTADO.dudaFondo, borderColor: DICTADO.dudaBorde } : { background: DICTADO.datoFondo, borderColor: DICTADO.datoBorde }),
+const cajaDe = (f: { incluida: boolean; dudoso: boolean; confirmada: boolean; origen?: string }): CSSProperties => ({
+  ...CAJA, ...(!f.incluida ? { opacity: 0.5 } : f.origen === 'guardado' ? {} : faltaConfirmar(f) ? { background: DICTADO.dudaFondo, borderColor: DICTADO.dudaBorde } : { background: DICTADO.datoFondo, borderColor: DICTADO.datoBorde }),
 })
 
 function CajaAvance({ a, p, abierta, alternar, pc = false }: { a: Revision['avances'][number]; p: Pantalla; abierta: boolean; alternar: () => void; pc?: boolean }) {
@@ -701,7 +779,8 @@ function RevisionPC(p: Pantalla & { fase: Rev }) {
   const [verGrupo, setVerGrupo] = useState<Set<string>>(new Set())
   const renglones = useMemo(() => renglonesDeGente(rev.personas), [rev.personas])
   const aviso = avisoDeConfirmar(rev)
-  const avisos = dictado.propuesta?.avisos ?? []
+  const avisos = dictado?.propuesta?.avisos ?? []
+  const modo = p.fase.modo
   const th: CSSProperties = { ...EYEBROW, textAlign: 'left', padding: '8px', borderBottom: `1px solid ${C.borde}` }
   const td: CSSProperties = { padding: '6px 8px', borderBottom: `1px solid ${C.bordeFila}`, verticalAlign: 'middle' }
 
@@ -756,9 +835,10 @@ function RevisionPC(p: Pantalla & { fase: Rev }) {
 
   return (
     <div data-testid="dictado-revision" style={{ display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.6fr) minmax(0,1fr)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: dictado ? 'minmax(0,1.6fr) minmax(0,1fr)' : 'minmax(0,1fr)' }}>
         <div style={{ padding: '16px 18px 16px 30px', display: 'grid', gap: '14px', alignContent: 'start', borderRight: `1px solid ${C.borde}` }}>
-          {aviso ? <Aviso tono="warn" testid="dictado-aviso-confirmar">{aviso}</Aviso> : <Aviso tono="info" testid="dictado-resumen">{resumenDeRevision(rev)}</Aviso>}
+          {modo !== 'nuevo' && <div style={{ fontSize: '14px', fontWeight: 600 }}>{TITULO[modo]}</div>}
+          {aviso ? <Aviso tono="warn" testid="dictado-aviso-confirmar">{aviso}</Aviso> : modo !== 'edicion' && <Aviso tono="info" testid="dictado-resumen">{resumenDeRevision(rev)}</Aviso>}
           {avisos.map((a, i) => <Aviso key={i} tono="warn">{a.texto}</Aviso>)}
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '560px' }}>
@@ -806,18 +886,20 @@ function RevisionPC(p: Pantalla & { fase: Rev }) {
             <Novedades p={p} rev={rev} pc />
           </div>
         </div>
-        <div style={{ padding: '16px 30px 16px 18px', display: 'grid', gap: '12px', alignContent: 'start', background: C.tenueFondo }}>
-          <div style={EYEBROW}>Lo que dijo · {reloj(Number(dictado.duracion_s))}</div>
-          <Transcripcion dictado={dictado} />
-          <Leyenda />
-          <Escuchar id={dictado.id} />
-        </div>
+        {dictado && (
+          <div style={{ padding: '16px 30px 16px 18px', display: 'grid', gap: '12px', alignContent: 'start', background: C.tenueFondo }}>
+            <div style={EYEBROW}>Lo que dijo · {reloj(Number(dictado.duracion_s))}</div>
+            <Transcripcion dictado={dictado} />
+            <Leyenda />
+            <Escuchar id={dictado.id} />
+          </div>
+        )}
       </div>
       {error && <div style={{ padding: '0 30px 8px' }}><Aviso tono="neg" testid="dictado-guardar-error">{error}</Aviso></div>}
       <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap', padding: '12px 30px', borderTop: `1px solid ${C.borde}` }}>
-        <button type="button" style={{ ...BOTON, minHeight: '38px', fontSize: '13.5px' }} disabled={guardando} onClick={() => void p.d.descartar()} data-testid="dictado-descartar">Descartar lo dictado</button>
+        <button type="button" style={{ ...BOTON, minHeight: '38px', fontSize: '13.5px' }} disabled={guardando} onClick={() => void p.d.descartar()} data-testid="dictado-descartar">{modo === 'nuevo' ? 'Descartar lo dictado' : modo === 'correccion' ? 'Descartar la corrección' : 'Cancelar'}</button>
         <button type="button" style={{ ...PRIMARIO, minHeight: '38px', fontSize: '13.5px' }} disabled={guardando} onClick={() => void p.d.guardar(p.novedadActividad)} data-testid="dictado-guardar">
-          {guardando ? 'Guardando…' : 'Guardar parte'}
+          {guardando ? 'Guardando…' : modo === 'nuevo' ? 'Guardar parte' : 'Guardar cambios'}
         </button>
       </div>
     </div>
@@ -859,3 +941,70 @@ function Guardado(p: Pantalla & { fase: Extract<Fase, { f: 'guardado' }> }) {
   )
 }
 
+// ── EDITADO / BORRADO ────────────────────────────────────────────────────────────────────────────
+
+function Editado(p: Pantalla & { fase: Extract<Fase, { f: 'editado' }> }) {
+  const { acuse, hora, modo } = p.fase
+  const arriba = useArriba<HTMLDivElement>(p.telefono)
+  return (
+    <div ref={arriba} style={{ scrollMarginTop: '56px', padding: p.telefono ? '16px 16px 96px' : '22px 30px 30px', display: 'grid', gap: '12px', maxWidth: p.telefono ? undefined : '640px' }} data-testid="dictado-editado">
+      <Aviso tono="pos" testid="dictado-editado-aviso">
+        {modo === 'correccion' ? 'Corrección guardada' : 'Cambios guardados'} a las {hora}{acuse.hecho.length ? `: ${acuse.hecho.join(' · ')}` : ''}. Quedó en el historial.
+      </Aviso>
+      {acuse.noHecho.map((x, i) => <Aviso key={i} tono="warn">{x}</Aviso>)}
+      <button type="button" style={{ ...BOTON, justifySelf: p.telefono ? 'stretch' : 'start' }} onClick={p.d.volver} data-testid="dictado-volver">Volver al parte</button>
+    </div>
+  )
+}
+
+/**
+ * EL PARTE GUARDADO DEL DÍA, con «Editar», «Dictar corrección» y «Borrar parte» (dueño, 25/09/2026).
+ * Borrar pide UNA confirmación que dice exactamente qué se va a sacar.
+ */
+export function ParteDelDia({ d, telefono }: { d: EstadoDictar; telefono: boolean }) {
+  const [confirmando, setConfirmando] = useState(false)
+  const [borrando, setBorrando] = useState(false)
+  const g = d.parte
+  const alto = telefono ? '44px' : '36px'
+  const btn: CSSProperties = { ...BOTON, minHeight: alto, fontSize: telefono ? '14px' : '13px', fontWeight: 500, flex: 1, padding: '0 10px' }
+  if (!g || g.vacio) return d.aviso ? <Aviso tono={d.aviso.tono}>{d.aviso.texto}</Aviso> : null
+  const presentes = g.personas.filter((x) => x.estado === 'presente').length
+  const ausentes = g.personas.length - presentes
+  const partes = [
+    presentes ? `${presentes} ${presentes === 1 ? 'presente' : 'presentes'}` : null,
+    ausentes ? `${ausentes} ${ausentes === 1 ? 'ausente' : 'ausentes'}` : null,
+    g.avances.length ? `${g.avances.length} ${g.avances.length === 1 ? 'avance' : 'avances'}` : null,
+    g.materiales.length ? `${g.materiales.length} ${g.materiales.length === 1 ? 'pedido' : 'pedidos'}` : null,
+    g.novedad ? 'novedad' : null,
+  ].filter(Boolean).join(' · ')
+  return (
+    <div style={{ display: 'grid', gap: '6px' }} data-testid="parte-guardado">
+      <div style={EYEBROW}>Parte guardado</div>
+      <div style={{ ...CAJA, fontSize: telefono ? '14px' : '13px' }}><span>{partes}</span></div>
+      {d.aviso && <Aviso tono={d.aviso.tono}>{d.aviso.texto}</Aviso>}
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <button type="button" style={btn} onClick={d.editarAMano} data-testid="parte-editar"><Ico d={P.editar} s={14} />Editar</button>
+        <button type="button" style={btn} onClick={() => void d.empezar(true)} data-testid="parte-dictar-correccion"><Mic s={14} />Dictar corrección</button>
+        <button type="button" style={{ ...btn, color: C.neg }} onClick={() => setConfirmando(true)} data-testid="parte-borrar"><Ico d={P.previo} s={14} />Borrar</button>
+      </div>
+      {confirmando && (
+        <div role="dialog" aria-modal="true" aria-label="Borrar el parte" data-testid="parte-borrar-confirmar"
+          style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(31,31,30,.45)', display: 'flex', alignItems: telefono ? 'flex-end' : 'center', justifyContent: 'center' }}
+          onClick={() => !borrando && setConfirmando(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: C.superficie, width: '100%', maxWidth: '480px', borderRadius: telefono ? '12px 12px 0 0' : '10px', padding: '16px 16px 20px', display: 'grid', gap: '12px' }}>
+            <div style={{ fontSize: '15px', fontWeight: 700 }}>¿Borrar el parte de este día?</div>
+            <p style={{ margin: 0, fontSize: '13.5px', color: C.tintaMedia }}>Se va a sacar: {queSeBorra(g)} Queda en el historial.</p>
+            <div style={{ display: 'grid', gap: '8px', gridTemplateColumns: telefono ? '1fr' : '1fr 1fr' }}>
+              <button type="button" disabled={borrando} data-testid="parte-borrar-si"
+                style={{ ...BOTON, minHeight: '44px', background: C.neg, borderColor: C.neg, color: C.superficie }}
+                onClick={async () => { setBorrando(true); await d.borrar(); setBorrando(false); setConfirmando(false) }}>
+                {borrando ? 'Borrando…' : 'Borrar el parte'}
+              </button>
+              <button type="button" disabled={borrando} style={{ ...BOTON, minHeight: '44px' }} onClick={() => setConfirmando(false)}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

@@ -145,7 +145,7 @@ const VACIAS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'en', 'y', 'a', '
   'trabajaron', 'trabajamos', 'trabajo', 'trabajando', 'haciendo', 'hicieron', 'hizo', 'fueron', 'fue', 'vino',
   'vinieron', 'estan', 'esta', 'estaban', 'como', 'siempre', 'otra', 'otro', 'vez', 'lado', 'hay', 'habia',
   'tuvimos', 'tuvieron', 'uso', 'ok', 'listo', 'nomas', 'despues', 'antes', 'tarde', 'manana', 'hola', 'buenas',
-  'gracias', 'chau', 'quedo', 'queda', 'pusimos', 'pusieron'])
+  'gracias', 'chau', 'quedo', 'queda', 'pusimos', 'pusieron', 'si', 'no', 'vino', 'vinieron'])
 
 /** Unidades de material → el código que usa Herramientas › Material (`UNIDADES` de `pedidos.ts`). */
 const UNIDAD_MATERIAL = {
@@ -570,6 +570,9 @@ export function proponerParte(texto, contexto = {}) {
     const clausulas = []
     { let a = oa; for (let i = oa; i <= ob; i++) if (i === ob || tk[i].tipo === 'coma') { if (i > a) clausulas.push([a, i]); a = i + 1 } }
     let horasOracion = null
+    // Las personas de la cláusula anterior de la misma oración (para «…, ocho horas en encofrado»).
+    let anteriores = []
+    const idxLibres = (a, b) => { const out = []; for (let i = a; i < b; i++) if (!usado[i] && tk[i].tipo === 'pal' && !VACIAS.has(tk[i].n) && !NO_NOMBRE.has(tk[i].n) && !['si', 'sí', 'vino', 'vinieron'].includes(tk[i].n)) out.push(i); return out }
     for (const [ca, cb] of clausulas) {
       const ms = menciones(tk, ca, cb, ip, usado)
       // horas
@@ -595,6 +598,23 @@ export function proponerParte(texto, contexto = {}) {
         if (tk[i].n === 'todos' && !['los', 'las'].includes(tk[i + 1]?.n)) { grupo = { n: null, todos: true, a: i, b: i + 1 }; break }
       }
       if (!ms.length && !grupo) {
+        // «Quiroga sí vino, ocho horas en encofrado»: la cláusula sin sujeto que sigue a una con gente
+        // es de esa gente (sus horas y su tarea), no de toda la jornada.
+        if (anteriores.length && (horas != null || idxLibres(ca, cb).length)) {
+          const pal = idxLibres(ca, cb).filter((i) => !(i >= hIni && i < hFin))
+          const rt2 = resolverTarea(pal.map((i) => tk[i].n), it, juntasDe(tk, ca, cb, usado))
+          for (const pid of anteriores) {
+            const fila = personas.get(pid)
+            if (!fila || fila.estado !== 'presente') continue
+            if (horas != null && fila.horas == null) { fila.horas = horas; fila.horasDe = 'dicho' }
+            if (rt2 && !fila.tarea_id) {
+              fila.tarea_id = rt2.tarea.id; fila.tarea_nombre = etiqueta(rt2.tarea)
+              if (rt2.dudosa) { fila.dudoso = true; fila.motivo = 'no queda claro en qué tarea'; fila.tarea_candidatos = rt2.candidatos.map((x) => ({ id: x.id, nombre: etiqueta(x) })) }
+            }
+            fila.tramo = [fila.tramo?.[0] ?? tk[ca].a, tk[cb - 1].b]
+          }
+          if (horas != null || rt2) { marcar(ca, cb); continue }
+        }
         // Horas sin sujeto («estuvimos ocho horas»): valen para toda la jornada dictada.
         if (horas != null && hIni >= 0) { horasGenerales = { horas, tramo: tramo(hIni, hFin) }; marcar(hIni, hFin) }
         continue
@@ -615,6 +635,7 @@ export function proponerParte(texto, contexto = {}) {
       const tramoCl = tramo(ca, cb)
       const fila = { horas, tarea: rt, tramo: tramoCl }
       for (const m of ms) agregarMencion(m, 'presente', fila, tareaNoEncontrada, tramoCl, horas != null ? 'alta' : 'media')
+      anteriores = ms.filter((m) => m.candidatos.length === 1).map((m) => m.candidatos[0].id)
       if (grupo) grupos.push({ ...grupo, horas, tarea: rt, tramo: tramoCl, tareaNoEncontrada })
       marcar(ca, cb)
       if (tareaNoEncontrada) {

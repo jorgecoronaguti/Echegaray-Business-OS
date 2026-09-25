@@ -30,6 +30,7 @@ import { createClient } from '@/lib/supabase/server'
 import { guardarJornada } from '@/features/administracion/services/jornadaPorObraActions'
 import { pedirMaterialAction } from '@/features/materiales/services/acciones'
 import { guardarParteDiario } from './actionsEjecucion'
+import { notaDelPedido } from './parteGuardadoActions'
 import {
   comentarioDeTarea, horasPorTarea, numeroParaElParte, textoDeMaterial,
   type Dictado, type Envio, type Propuesta, type ResultadoGuardado,
@@ -41,7 +42,7 @@ const BUCKET = 'partes-dictados'
 const Id = z.string().uuid()
 const Fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const Obra = z.string().regex(/^[A-Za-z0-9_-]{1,80}$/)
-const COLUMNAS = 'id, obra_id, fecha, estado, motivo, duracion_s, transcripcion, propuesta, creado_en, cerrado_en, resultado'
+const COLUMNAS = 'id, obra_id, fecha, estado, motivo, duracion_s, transcripcion, propuesta, creado_en, cerrado_en, resultado, es_correccion'
 
 const Alta = z.object({
   obraId: Obra,
@@ -49,6 +50,8 @@ const Alta = z.object({
   audioPath: z.string().min(10).max(300),
   bytes: z.number().int().positive().max(12582912),
   duracionS: z.number().positive().max(200),
+  /** «Dictar corrección»: se aplica como cambio sobre el parte que ya existe. */
+  esCorreccion: z.boolean().optional(),
 })
 
 function traducir(msg: string): string {
@@ -60,7 +63,7 @@ function traducir(msg: string): string {
 export async function crearDictado(entrada: z.infer<typeof Alta>): Promise<R<string>> {
   const p = Alta.safeParse(entrada)
   if (!p.success) return { ok: false, error: 'Faltan datos del audio o son inválidos.' }
-  const { obraId, fecha, audioPath, bytes, duracionS } = p.data
+  const { obraId, fecha, audioPath, bytes, duracionS, esCorreccion } = p.data
   if (!audioPath.startsWith(`obra/${obraId}/${fecha}/`) || !audioPath.endsWith('.wav')) {
     return { ok: false, error: 'Ese audio no corresponde a esta obra y este día.' }
   }
@@ -69,7 +72,7 @@ export async function crearDictado(entrada: z.infer<typeof Alta>): Promise<R<str
   if (!u?.user) return { ok: false, error: 'Tenés que iniciar sesión.' }
   const { data, error } = await supabase.from('parte_dictado').insert({
     obra_id: obraId, fecha, dictado_por: u.user.id, audio_path: audioPath, audio_bytes: bytes,
-    duracion_s: Math.round(duracionS * 10) / 10,
+    duracion_s: Math.round(duracionS * 10) / 10, es_correccion: esCorreccion === true,
   }).select('id').single()
   if (error) return { ok: false, error: traducir(error.message) }
   return { ok: true, dato: String(data.id) }
@@ -95,7 +98,7 @@ export async function dictadosDelDia(obraId: string, fecha: string): Promise<R<D
   if (!o.success || !f.success) return { ok: false, error: 'Obra o día inválidos.' }
   const supabase = await createClient()
   const { data, error } = await supabase.from('parte_dictado').select(COLUMNAS)
-    .eq('obra_id', o.data).eq('fecha', f.data).neq('estado', 'descartado')
+    .eq('obra_id', o.data).eq('fecha', f.data).not('estado', 'in', '(descartado,anulado)')
     .order('creado_en', { ascending: false }).limit(20)
   if (error) return { ok: false, error: traducir(error.message) }
   return { ok: true, dato: (data ?? []) as unknown as Dictado[] }
@@ -183,6 +186,8 @@ export async function guardarDictado(obraId: string, id: string, entrada: Envio,
     asistencia: null, parte: null, material: null,
     horasPorTarea: horasPorTarea(envio.personas.map((p) => ({ ...p, tarea_nombre: p.tarea_id ? tareas.get(p.tarea_id) ?? null : null }))),
     presentes: envio.personas.filter((p) => p.estado === 'presente').length,
+    tareas: Object.fromEntries(envio.personas.filter((p) => p.estado === 'presente' && p.tarea_id).map((p) => [p.persona_id, p.tarea_id as string])),
+    nota_id: null,
     ausentes: envio.personas.filter((p) => p.estado === 'ausente').length,
     pedido: null,
   }
@@ -212,6 +217,13 @@ export async function guardarDictado(obraId: string, id: string, entrada: Envio,
     }
     const r = await guardarParteDiario(o.data, f)
     resultado.parte = r.ok ? { ok: true, mensaje: r.mensaje ?? 'Parte guardado.' } : { ok: false, mensaje: r.error }
+    // La nota que dejó el parte, para poder editarla o borrarla con el parte (no tiene fecha propia).
+    if (r.ok && envio.novedad.trim()) {
+      const { data: u } = await supabase.auth.getUser()
+      const { data: n } = await supabase.from('obra_actividad_nota').select('id').eq('obra_id', o.data).eq('texto', envio.novedad.trim())
+        .eq('creado_por', u?.user?.id ?? '').order('creado_en', { ascending: false }).limit(1).maybeSingle()
+      resultado.nota_id = (n as { id?: string } | null)?.id ?? null
+    }
   }
 
   // 3 · MATERIAL QUE FALTA — la puerta de Herramientas › Material.
@@ -219,7 +231,8 @@ export async function guardarDictado(obraId: string, id: string, entrada: Envio,
     const f = new FormData()
     f.set('obra_id', o.data)
     f.set('urgencia', envio.urgencia)
-    f.set('nota', `Dictado en el parte del ${envio.fecha.split('-').reverse().join('/')}`)
+    // La nota es la llave con la que el parte vuelve a encontrar su pedido para editarlo o cancelarlo.
+    f.set('nota', await notaDelPedido(envio.fecha))
     for (const m of envio.materiales) { f.append('material', m.material); f.append('cantidad', numeroParaElParte(m.cantidad).replace(',', '.')); f.append('unidad', m.unidad) }
     const r = await pedirMaterialAction({ error: null }, f)
     resultado.material = r.ok ? { ok: true, mensaje: r.mensaje ?? 'Pedido cargado.' } : { ok: false, mensaje: r.error ?? 'El pedido no entró.' }

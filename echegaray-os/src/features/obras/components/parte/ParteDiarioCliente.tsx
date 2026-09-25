@@ -42,7 +42,7 @@ import { C, MONO } from '../canon/tokens'
 import { Ico, P } from '../canon/Ico'
 import { SubNavTrabajo } from '../SubNavTrabajo'
 import { FotosDelParte } from './FotosDelParte'
-import { BotonDictar, DictadosDelDia, PantallaDictado, useDictado } from './DictarParte'
+import { BotonDictar, DictadosDelDia, ParteDelDia, PantallaDictado, useDictado } from './DictarParte'
 
 const EYEBROW: CSSProperties = {
   fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase',
@@ -105,7 +105,9 @@ export function ParteDiarioCliente({ obraId, actividades, partes, asignaciones, 
 
   // DICTAR PARTE (maqueta aprobada 25/09/2026): mientras se dicta, se espera, se revisa o se acaba de
   // guardar, esa pantalla reemplaza al formulario; en reposo, el formulario de siempre sigue igual.
-  const dictado = useDictado(obraId, dia)
+  const recarga = useMemo(() => partes.filter((p) => p.fecha === dia).map((p) => `${p.id}:${p.cantidad ?? p.avance_pct}`).join('|')
+    + `#${(registrosHH ?? []).length}`, [partes, registrosHH, dia])
+  const dictado = useDictado(obraId, dia, recarga)
   const tareasObra = useMemo(() => {
     // Con el padre adelante («VA1 › Hormigonado»): una obra real tiene diez «Hormigonado».
     const porId = new Map(actividades.map((a) => [a.id, a.nombre]))
@@ -138,7 +140,7 @@ export function ParteDiarioCliente({ obraId, actividades, partes, asignaciones, 
             key={dia} dia={dia} hoy={hoy} cambiarDia={setDia} telefono={telefono}
             renglones={renglones} chips={chips} cargado={cargado} guardar={guardar}
             dictar={dictaAca ? <BotonDictar d={dictado} telefono /> : null}
-            dictados={dictaAca ? <DictadosDelDia d={dictado} /> : null}
+            dictados={dictaAca ? <><ParteDelDia d={dictado} telefono={telefono} /><DictadosDelDia d={dictado} /></> : null}
             fotos={<FotosDelParte obraId={obraId} dia={dia} frentes={renglones} usuario={usuario} telefono={telefono} />}
           />
           )}

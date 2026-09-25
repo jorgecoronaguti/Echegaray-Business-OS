@@ -8,7 +8,7 @@
 //   · Lo dudoso se confirma — `armarEnvio` rechaza si queda algo naranja sin confirmar ni quitar.
 //   · Lo que no entendió queda en Novedades como texto — la novedad arranca con eso, editable.
 
-export type EstadoDictado = 'pendiente' | 'transcribiendo' | 'listo' | 'error' | 'guardado' | 'descartado'
+export type EstadoDictado = 'pendiente' | 'transcribiendo' | 'listo' | 'error' | 'guardado' | 'descartado' | 'anulado'
 export type Tramo = [number, number] | null
 export interface Opcion { id: string; nombre: string }
 
@@ -27,7 +27,8 @@ export interface FilaPersona {
   dudoso: boolean
   motivo: string | null
   tramo: Tramo
-  origen: 'dictado' | 'grupo' | 'modelo'
+  /** `guardado` = lo que ya estaba en el parte (editar / corregir por voz): no salió de este audio. */
+  origen: 'dictado' | 'grupo' | 'modelo' | 'guardado'
   grupo?: string
 }
 
@@ -45,6 +46,9 @@ export interface FilaAvance {
   dudoso: boolean
   motivo: string | null
   tramo: Tramo
+  /** El renglón de `obra_ejecucion` que ya existe (editar): se actualiza o se borra, no se duplica. */
+  ejecucion_id?: string
+  origen?: 'guardado'
 }
 
 export interface FilaMaterial {
@@ -55,6 +59,10 @@ export interface FilaMaterial {
   dudoso: boolean
   motivo: string | null
   tramo: Tramo
+  /** El ítem de `pedidos_materiales` que ya existe (editar) y si alguien ya lo procesó. */
+  id_pedido?: string
+  procesado?: boolean
+  origen?: 'guardado'
 }
 
 export interface Marca { desde: number; hasta: number; tipo: 'dato' | 'duda' }
@@ -84,6 +92,7 @@ export interface Dictado {
   creado_en: string
   cerrado_en: string | null
   resultado: ResultadoGuardado | null
+  es_correccion?: boolean
 }
 
 // ── LA REVISIÓN ─────────────────────────────────────────────────────────────────────────────────
@@ -262,6 +271,9 @@ export interface ResultadoGuardado {
   presentes: number
   ausentes: number
   pedido: string | null
+  /** Quién quedó en qué tarea (la jornada no la guarda) y la nota del parte: lo lee «Editar». */
+  tareas?: Record<string, string>
+  nota_id?: string | null
 }
 
 /** «Parte guardado a las 18:12. El pedido de 20 bolsas de cemento pasó a Material.» */

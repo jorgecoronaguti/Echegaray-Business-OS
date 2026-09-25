@@ -97,3 +97,12 @@ test('«el resto» con un «no vino» sin nombre se confirma: puede incluir al q
 test('«haremos tres» (éramos, mal transcripto) igual cuenta', () => {
   assert.equal(proponerParte('Hoy haremos tres. Argüello ocho horas en losa.', CONTEXTO).conteo?.dicho, 3)
 })
+
+test('«Quiroz sí vino, ocho horas en encofrado»: la cláusula sin sujeto es de quien se nombró antes', () => {
+  const p = proponerParte('Quiroz sí vino, ocho horas en encofrado de losa.', CONTEXTO)
+  const q = p.personas.find((f) => f.persona_id === 'p-quiroz')
+  assert.equal(q.estado, 'presente')
+  assert.equal(q.horas, 8)
+  assert.equal(q.tarea_id, 't-encofrado')
+  assert.equal(p.novedades.length, 0)
+})
