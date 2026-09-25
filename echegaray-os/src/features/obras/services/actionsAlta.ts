@@ -51,7 +51,7 @@ export async function crearBorradorObra(form: FormData): Promise<Resultado> {
 
   // `cliente_texto` conserva lo que decía el cliente AL CREAR: es procedencia, no la fuente. El que
   // manda es `cliente_id`, y por eso se copia y no se usa para nada más.
-  const { data: cli } = await supabase.from('clientes').select('nombre_comercial').eq('id', d.cliente_id).maybeSingle()
+  const { data: cli } = await supabase.from('cliente_rotulo').select('nombre_comercial').eq('id', d.cliente_id).maybeSingle()
   const { error } = await supabase.from('obra_canonica').insert({
     id,
     nombre: d.nombre,
