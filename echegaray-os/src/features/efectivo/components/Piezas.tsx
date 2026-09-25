@@ -9,7 +9,9 @@ import { useEffect, type ReactNode } from 'react'
 import { V, eyebrow } from './estilo'
 
 /** En un teléfono el panel ocupa la pantalla entera. `!` porque el ancho del diseño va inline. */
-export const PANEL_CLASE = 'max-md:fixed max-md:inset-0 max-md:z-40 max-md:!w-full max-md:overflow-y-auto'
+// `[&>*]:shrink-0`: a pantalla entera el panel es una columna flex de alto fijo y, sin esto, sus hijos se
+// encogían en vez de scrollear — el buscador y «Elegí una compra» de «Imputar» medían 20 px (25/09).
+export const PANEL_CLASE = 'max-md:fixed max-md:inset-0 max-md:z-40 max-md:!w-full max-md:overflow-y-auto max-md:[&>*]:shrink-0'
 
 export function Cerrar({ titulo, bajada, href, antes }: { titulo: ReactNode; bajada?: ReactNode; href: string; antes?: ReactNode }) {
   const router = useRouter()
@@ -25,7 +27,7 @@ export function Cerrar({ titulo, bajada, href, antes }: { titulo: ReactNode; baj
         <div style={{ fontSize: '17px', fontWeight: 600 }}>{titulo}</div>
         {bajada && <div style={{ fontSize: '12.5px', color: V.apagado }}>{bajada}</div>}
       </div>
-      <Link href={href} scroll={false} prefetch={false} aria-label="Cerrar" data-testid="cerrar-panel" style={{ fontSize: '20px', color: V.apagado, lineHeight: 1, padding: 4 }}>
+      <Link href={href} scroll={false} prefetch={false} aria-label="Cerrar" data-testid="cerrar-panel" className="max-md:-mr-3 max-md:-mt-3 max-md:inline-flex max-md:h-12 max-md:w-12 max-md:items-center max-md:justify-center" style={{ fontSize: '20px', color: V.apagado, lineHeight: 1, padding: 4 }}>
         ×
       </Link>
     </div>

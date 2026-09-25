@@ -10,7 +10,7 @@ import { RefrescarEnVivo } from '@/shared/tiempo-real/ProveedorTiempoReal'
 import { TABLAS_DE } from '@/shared/tiempo-real/pantallas'
 import { getMiEfectivo } from '@/features/efectivo/campo/datos'
 import {
-  abiertas, conVuelta, diaMes, pesos, resumenMiEfectivo, sufijoDeVuelta, tarjetaDeHoy,
+  abiertas, conVuelta, destino, diaMes, pesos, resumenMiEfectivo, sufijoDeVuelta, tarjetaDeHoy,
 } from '@/features/efectivo/campo/logica'
 import type { EntregaSaldo } from '@/features/efectivo/campo/tipos'
 import {
@@ -55,6 +55,7 @@ export default async function EfectivoJefePage({ searchParams }: { searchParams:
   const hoy = tarjetaDeHoy(deLaObra, tickets)
   const suyos = tickets.filter((t) => deLaObra.some((e) => e.id === t.entrega_id))
   const vivas = abiertas(deLaObra)
+  const enOtras = resumenMiEfectivo(otras, tickets)
 
   return (
     <>
@@ -73,7 +74,14 @@ export default async function EfectivoJefePage({ searchParams }: { searchParams:
         {lectura?.estado === 'ok' && (
           <>
             {hoy?.tipo === 'recibir' && <TarjetaRecibir t={hoy} sufijo={sufijo} />}
-            {deLaObra.length === 0 ? <SinEfectivo /> : <Cifras r={r} entregas={deLaObra} />}
+            {/* «NO TENÉS EFECTIVO» SÓLO SI ES VERDAD (auditoría por nivel, 25/09/2026). Hoy suma TODAS sus
+                entregas y trae acá; con la plata en otra obra o en Estructura esta pantalla decía que no tenía
+                nada mientras Hoy mostraba «Tengo que rendir $ 50.000». Ahora dice dónde está. */}
+            {deLaObra.length > 0
+              ? <Cifras r={r} entregas={deLaObra} />
+              : enOtras.entregas.length > 0
+                ? <EnOtrasObras monto={enOtras.tengoQueRendir} destinos={enOtras.entregas.map(destino)} />
+                : <SinEfectivo />}
 
             {suyos.length > 0 && (
               <>
@@ -131,6 +139,19 @@ function Cifras({ r, entregas }: { r: ReturnType<typeof resumenMiEfectivo>; entr
           {detalle && <div style={{ fontSize: 12.5, color: C.muted }}>{detalle}</div>}
         </div>
       ))}
+    </Caja>
+  )
+}
+
+/** La plata del jefe está en otra obra o en Estructura: se dice cuánto y dónde, y el acceso de abajo lleva ahí. */
+function EnOtrasObras({ monto, destinos }: { monto: number; destinos: string[] }) {
+  const lugares = [...new Set(destinos)]
+  return (
+    <Caja gap={9} relleno="16px 18px" testid="efectivo-en-otras">
+      <div style={{ fontSize: 14.5, fontWeight: 600, color: C.ink }}>En esta obra no tenés efectivo</div>
+      <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5 }}>
+        Tenés <span style={{ ...mono, color: C.ink }}>{pesos(monto)}</span> para rendir en {lugares.join(' · ')}.
+      </div>
     </Caja>
   )
 }

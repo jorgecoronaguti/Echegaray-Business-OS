@@ -50,9 +50,13 @@ export interface PropsEpp {
   tallesSinBase: boolean
 }
 
+const TOQUE_TELEFONO = 'max-md:[&_button]:!min-h-11 max-md:[&_input]:!min-h-11 max-md:[&_select]:!min-h-11 max-md:[&_a]:inline-flex max-md:[&_a]:min-h-11 max-md:[&_a]:items-center'
+
 export function EppDePersona(p: PropsEpp) {
   return (
-    <div className="flex min-w-0 flex-col gap-8" data-testid="bloque-epp-ropa">
+    // EN EL TELÉFONO TODO LO QUE SE TOCA MIDE 44 (auditoría por nivel, 25/09/2026): «Devolver», «Dar de
+    // baja», «Cargar talles», «ver stock» y «constancia» medían 16–30 px. En escritorio no cambia nada.
+    <div className={`flex min-w-0 flex-col gap-8 ${TOQUE_TELEFONO}`} data-testid="bloque-epp-ropa">
       <Talles personaId={p.personaId} talles={p.talles} sinBase={p.tallesSinBase} />
       {(['epp', 'ropa'] as const).map((c) => (
         <Seccion key={c} clase={c} {...p} filas={p.tiene.filter((t) => t.clase === c)} />

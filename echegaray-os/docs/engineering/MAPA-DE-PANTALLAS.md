@@ -268,12 +268,25 @@ quedaron sin consumidor tras el redirect: código muerto, no borrado.
 **Principio**: una sola pantalla por concepto, con clases responsive; no hay pantallas «mobile» duplicadas salvo
 las que ya existían como producto propio (`/hoy`·`/mi-*` del empleado, `/obra/*` del jefe, `/campo/*`).
 
-| Nivel | Inicio en el teléfono | Barra de abajo (`< md`, `BarraTelefono` · `barraTelefonoDe(rol)`) | Header |
+| Nivel | Inicio (PC y teléfono) | Barra de abajo (`< md`, `BarraTelefono` · `barraTelefonoDe(rol)`) | Header |
 |---|---|---|---|
-| Dirección / Administración | `/campo` | Campo · Admin. · Obras · Herram. · Datos | sin solapas (están en la barra); lupa, campana y avatar quedan |
-| Jefe de obra | `/obra/hoy` | Mi obra · Campo · Admin. · Obras · Herram. (en `(main)` y en `/campo`) | idem |
-| Empleado | `/hoy` | la suya (Hoy · Trabajo · Horas · Yo) | no entra a `(main)` salvo `/mi-cuenta` |
+| Administración (dirección + administración) | `/obras` | Obras · Personal · Compras · Analíticas · Más (opción B del dueño, 24/09) | sin solapas bajo `md` |
+| Jefe de obra | `/obra/hoy` (también en PC desde el 24/09) | Hoy · Tareas · Avance · Gente, la misma en `(main)`, `(jefe)` y `(empleado)` | idem |
+| Operario (`campo`) | `/hoy` | Hoy · Trabajo · Horas · Yo | no entra a `(main)` salvo `/mi-cuenta` |
 | Cliente | `/portal` | la del portal | — |
+
+(Actualizado 25/09/2026: la tabla del 23/09 decía «Campo · Admin. · Obras · Herram. · Datos», reemplazada el 24/09.)
+
+### Lugar de lo publicado el 25/09/2026, por nivel y cara (auditoría por nivel)
+
+| Funcionalidad | Administración PC / teléfono | Jefe PC / teléfono | Operario |
+|---|---|---|---|
+| ERP Obras (5 niveles, 04 Tareas, 04b Ítems, crear) | `/obras/[obra]?vista=tareas` / misma, barra Obras | misma ruta, su obra / misma, barra Hoy·Tareas·Avance·Gente | no entra (rebota a `/hoy`) |
+| EPP y Ropa en Herramientas + Recuento del Taller | `/herramientas/inventario?clase=epp\|ropa`, botón «Recuento del Taller» / `/campo/herramientas` → Taller → «Recuento del lugar» (EPP y ropa en 0 incluidos) | igual (permisos iguales en Herramientas, 21/09) | igual |
+| Legajo «EPP y Ropa de Trabajo» | `/administracion/personas/[id]?v=epp` / misma, barra Personal | misma, sin sueldos / misma | no tiene solapa: su legajo es `/mi-informacion/legajo` (sin EPP todavía) |
+| Efectivo: editar/borrar, «Cambios», «Imputar un comprobante ya cargado», quitar adelantos | `/administracion/compras?vista=a-rendir&entrega=…` / misma, paneles a pantalla entera | no entra (rebota a `/obra/hoy`); lo suyo en `/obra/efectivo` y `/mi-informacion/efectivo` | lo suyo en `/mi-informacion/efectivo` |
+| Clientes con diseño de Obras Tabla | `/clientes` / misma, desde «Más» | no entra | no entra |
+| Compras: obra de la fila y «Comprobantes que subiste» | `/administracion/compras` / misma, barra Compras | no entra | no entra |
 
 - Herramientas en el teléfono es siempre `/campo/herramientas/*` (middleware; `?pc=1` fuerza escritorio).
 - Pantallas de escritorio a 390: la página nunca se corre de costado; lo ancho scrollea por dentro (`Tabla minWidth`,

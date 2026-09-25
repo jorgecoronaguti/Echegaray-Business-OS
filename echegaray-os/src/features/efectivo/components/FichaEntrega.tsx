@@ -97,7 +97,9 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
         </div>
       )}
       <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between" style={{ columnGap: 30 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0, flex: '1 1 320px' }}>
+        {/* `flex: 1 1 320px` SÓLO EN FILA (lg). En el teléfono el contenedor es columna y la base de 320
+            se volvía ALTO: el nombre quedaba centrado en un hueco de 320 px (auditoría por nivel 25/09). */}
+        <div className="lg:flex-[1_1_320px]" style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
           <div style={{
             width: AVATAR, height: AVATAR, borderRadius: '50%', background: '#EFEEEA', color: V.tintaSuave, fontSize: '14px',
             fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
@@ -121,7 +123,8 @@ export function FichaEntrega({ e, comprobantes, rendiciones, devoluciones, extra
         </div>
         {/* Los botones se van a la línea de abajo antes que aplastar el nombre (con un panel abierto la ficha
             mide la mitad). */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '0 1 auto', flexWrap: 'wrap' }}>
+        {/* En el teléfono cada botón mide 48, como el resto de los controles (`min-h-control-movil`). */}
+        <div className="max-md:[&_a]:!min-h-control-movil max-md:[&_button]:!min-h-control-movil" style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '0 1 auto', flexWrap: 'wrap' }}>
           <Link href={urlEfectivo({ entrega: e.codigo, panel: 'editar' })} prefetch={false} scroll={false} style={botonClaro} data-testid="abrir-editar">
             Editar
           </Link>

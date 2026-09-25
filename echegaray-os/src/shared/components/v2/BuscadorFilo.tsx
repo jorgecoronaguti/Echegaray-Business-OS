@@ -93,8 +93,9 @@ export function BuscadorFilo({ accion, q, placeholder, oculto, testid = 'buscar'
         placeholder={placeholder}
         aria-label={placeholder}
         data-testid={testid}
-        // 16px en el teléfono: con menos, iOS agranda la página al tocar el campo.
-        className="max-md:!text-[16px]"
+        // 16px en el teléfono: con menos, iOS agranda la página al tocar el campo. Y el alto entero de la caja:
+        // la caja mide 44 pero el campo medía 24, y tocar el borde no lo enfocaba (auditoría por nivel, 25/09).
+        className="max-md:!text-[16px] max-md:self-stretch"
         style={caja ? estiloEntradaBuscador(false) : {
           border: 'none', background: 'transparent', fontSize: '12px',
           color: V.tinta, width: '100%', padding: 0, outline: 'none',
