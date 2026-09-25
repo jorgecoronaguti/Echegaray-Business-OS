@@ -12,21 +12,30 @@
 // ambos), pase lo que pase con el túnel saliente.
 import { NextRequest, NextResponse } from 'next/server'
 import { endpointInteractivo } from '@/lib/os/endpointInteractivo'
+import { decidirProxy, origenPermitido } from '@/lib/os/reglasDelProxy'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
 
-const CORS = {
-  'access-control-allow-origin': '*',
-  'access-control-allow-headers': 'authorization, content-type',
-  'access-control-allow-methods': 'POST, GET, OPTIONS',
+// CORS sólo para el origen de la app (auditoría 25/09/2026; antes `*`). Ver lib/os/reglasDelProxy.ts.
+function cors(req: NextRequest): Record<string, string> {
+  const origen = origenPermitido(req.headers.get('origin'))
+  return origen
+    ? { 'access-control-allow-origin': origen, vary: 'origin', 'access-control-allow-headers': 'authorization, content-type', 'access-control-allow-methods': 'POST, GET, OPTIONS' }
+    : { vary: 'origin' }
 }
 
 /** URL actual del OS (os_runtime, leída con la clave de servicio: ver lib/os/endpointInteractivo). */
 const currentEndpoint = endpointInteractivo
 
 async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
+  const CORS = cors(req)
+  // El proxy decide ANTES de salir a la red: abiertas, protegidas con credencial, y el resto 404.
+  const decision = decidirProxy(path, req.headers.get('authorization'))
+  if (!decision.pasa) return NextResponse.json({ error: decision.error }, { status: decision.status, headers: CORS })
+  // El túnel se lee de `os_runtime` en CADA pedido (también /health): la URL cambia cada vez que el
+  // túnel se reinicia. Se lee con la clave de servicio, del lado del servidor.
   const endpoint = await currentEndpoint()
   if (!endpoint) {
     return NextResponse.json({ error: 'el OS no está publicado ahora mismo (túnel abajo)' }, { status: 503, headers: CORS })
@@ -62,8 +71,8 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
   }
 }
 
-export async function OPTIONS(): Promise<NextResponse> {
-  return new NextResponse(null, { status: 204, headers: CORS })
+export async function OPTIONS(req: NextRequest): Promise<NextResponse> {
+  return new NextResponse(null, { status: 204, headers: cors(req) })
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }): Promise<NextResponse> {
