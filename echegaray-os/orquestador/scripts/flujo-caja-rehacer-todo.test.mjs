@@ -281,6 +281,8 @@ test('encadenado: sólo la corrida de DATOS arranca la de vistas, y no si frenó
   assert.equal(decidirEncadenado({ grupo: 'vistas', frenado: null, siguiente: u }), null, 'las vistas no encadenan nada')
   assert.equal(decidirEncadenado({ grupo: 'datos', frenado: null, siguiente: '' }), null, 'una corrida a mano no dispara nada')
   assert.equal(decidirEncadenado({ grupo: null, frenado: null, siguiente: u }), null, 'la corrida completa ya incluye las vistas')
+  assert.equal(decidirEncadenado({ grupo: 'datos', frenado: null, siguiente: u, sinTiempo: ['freno-derrames-compras.mjs'] }).lanzar, false,
+    'una corrida de datos que no terminó no arranca las vistas (el freno de derrames puede no haber corrido)')
 })
 
 // ═══ EL PRE-PASO EN PARALELO (25/09/2026) ═══

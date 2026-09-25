@@ -635,7 +635,7 @@ async function main() {
     console.log(`\n⛔ FRENADO por ${frenado.script}: ${frenado.motivo}`)
     process.exitCode = 2
   }
-  await encadenar({ grupo, frenado })
+  await encadenar({ grupo, frenado, sinTiempo })
   // Una verificación abandonada sigue con sus lecturas en vuelo (hasta 3 min cada una) y el proceso no
   // saldría hasta que Google conteste: systemd lo seguiría contando contra el techo. Ya no escribe nada.
   if (abandonada) process.exit(process.exitCode ?? 0)
@@ -648,15 +648,19 @@ async function main() {
  * techo. Si la de datos FRENÓ, las vistas no corren (leen la Compras que el freno declaró rota).
  * Sólo encadena si la unidad lo pide por entorno: una corrida a mano no dispara nada.
  */
-export function decidirEncadenado({ grupo, frenado, siguiente }) {
+export function decidirEncadenado({ grupo, frenado, siguiente, sinTiempo = [] }) {
   if (grupo !== 'datos' || !siguiente) return null
   if (frenado) return { lanzar: false, linea: `⏭ ${siguiente}: no la arranco — la corrida de datos frenó` }
+  // 25/09 10:41: la de datos se quedó sin tiempo antes del freno de derrames y arrancó igual las vistas.
+  // Sin el freno corrido nadie dijo que Compras esté sana, y las vistas sólo suman recálculo a un Sheet
+  // que ya no contesta: la corrida siguiente de datos las encadena cuando termine entera.
+  if (sinTiempo.length) return { lanzar: false, linea: `⏭ ${siguiente}: no la arranco — la corrida de datos no terminó (${sinTiempo.length} paso(s) sin tiempo)` }
   return { lanzar: true, linea: `→ arranco ${siguiente} (Proveedores, formato y auditorías, en su propia corrida)` }
 }
 
-async function encadenar({ grupo, frenado }) {
+async function encadenar({ grupo, frenado, sinTiempo }) {
   const siguiente = process.env.ORQ_PIPELINE_SIGUIENTE
-  const d = decidirEncadenado({ grupo, frenado, siguiente })
+  const d = decidirEncadenado({ grupo, frenado, siguiente, sinTiempo })
   if (!d) return
   console.log(`\n${d.linea}`)
   if (!d.lanzar) return
