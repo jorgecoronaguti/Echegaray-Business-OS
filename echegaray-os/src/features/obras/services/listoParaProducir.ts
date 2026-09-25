@@ -8,6 +8,8 @@
 
 import type { NodoObra } from './wbs.ts'
 import { millones, problemaDePonderacion, resumenDeEstructura, type Ponderaciones } from './estructura.ts'
+import { itemsMO } from './arbolEstructura.ts'
+import { resumenMO } from './pesoMO.ts'
 
 export interface InsumosProducir {
   obraId: string
@@ -23,6 +25,8 @@ export interface InsumosProducir {
   /** El avance ponderado de la obra; null = nada medido. */
   avancePct: number | null
   costoTeorico: number | null
+  /** Cómo pesa la obra (B07). Por costo de MO el chequeo es «historias sin costo», no «suma 100 %». */
+  metodo?: string
 }
 
 export interface LineaProducir {
@@ -62,6 +66,7 @@ export function listoParaProducir(i: InsumosProducir): Preparacion {
   const aMano = conHH.length - delAnalisis
   const conPartida = hojas.filter((x) => x.cotizacion_partida_id != null).length
   const sinPartida = hojas.length - conPartida
+  const mo = resumenMO(itemsMO(i.nodos, i.ponds))
   const primerProblema = problemas[0] ? i.nodos.find((x) => x.nombre === problemas[0].nombre) ?? null : null
 
   const lineas: LineaProducir[] = [
@@ -96,7 +101,17 @@ export function listoParaProducir(i: InsumosProducir): Preparacion {
       listo: r.nItems > 0,
       accion: r.nItems > 0 ? null : { label: 'Crear', href: arbol },
     },
-    {
+    (i.metodo ?? 'costo_mo') === 'costo_mo' ? {
+      // Serie B: con ponderación por costo, lo que falta es COSTO, no un reparto que sume 100.
+      clave: 'ponderacion', titulo: 'Costo de MO', tituloCorto: 'Costo de MO',
+      detalle: mo.nHistorias === 0 ? 'sin historias: el peso sale del costo de cada historia'
+        : mo.nSinCosto > 0 ? `${plural(mo.nSinCosto, 'historia sin costo de MO: no pesa', 'historias sin costo de MO: no pesan')} · ${n(mo.nHistorias - mo.nSinCosto)} de ${n(mo.nHistorias)} con costo`
+          : `las ${n(mo.nHistorias)} historias con costo · ${millones(mo.costoTotal) ?? ''}`,
+      detalleCorto: mo.nHistorias === 0 ? 'sin historias' : mo.nSinCosto > 0 ? `${n(mo.nSinCosto)} sin costo de MO` : 'todas con costo',
+      listo: mo.nHistorias > 0 && mo.nSinCosto === 0,
+      accion: mo.nHistorias > 0 && mo.nSinCosto > 0 ? { label: 'Cargar', href: `${arbol}&panel=ponderacion` }
+        : mo.nHistorias === 0 ? { label: 'Crear', href: `${arbol}&crear=mano` } : null,
+    } : {
       clave: 'ponderacion', titulo: 'Ponderación', tituloCorto: 'Ponderación',
       detalle: r.nItems === 0 ? 'sin estructura que ponderar'
         : problemas.length === 0 ? 'cada nivel suma 100 %'

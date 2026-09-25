@@ -94,7 +94,9 @@ export function estadoDerivado(r: ResumenDePartes | undefined): { estado: Estado
   return { estado: pct >= 100 ? 'completado' : 'en_progreso', pct }
 }
 
-function nivelDe(n: NodoObra, padre: NodoObra | undefined, esHistoria: boolean): NivelItem {
+function nivelDe(n: NodoObra, padre: NodoObra | undefined, esHistoria: boolean, explicito: NivelItem | null | undefined): NivelItem {
+  // Serie B (20260925T0900): el nivel explícito de la base manda; sin él, por profundidad como antes.
+  if (explicito) return explicito
   if (padre && !padre.es_contenedor) return 'subtarea'
   if (esHistoria) return 'historia'
   if (n.es_contenedor) return n.nivel === 0 ? 'rubro' : n.nivel === 1 ? 'epica' : 'historia'
@@ -110,6 +112,7 @@ const PROFUNDIDAD: Record<NivelItem, number> = { rubro: 0, epica: 1, historia: 2
 export function filasDeItems(
   nodos: readonly NodoObra[], historias: readonly HistoriaPeso[], partes: readonly ResumenDePartes[],
   verHasta: VerHasta = 'tarea',
+  niveles: Readonly<Record<string, NivelItem | null | undefined>> = {},
 ): FilaItem[] {
   const porId = new Map(nodos.map((n) => [n.id, n]))
   const historiaDe = new Map(historias.map((h) => [h.actividad_id, h]))
@@ -121,33 +124,21 @@ export function filasDeItems(
     hijos.set(n.padre_id, lista)
   }
   const nivel = new Map<string, NivelItem>()
-  for (const n of nodos) nivel.set(n.id, nivelDe(n, n.padre_id ? porId.get(n.padre_id) : undefined, historiaDe.has(n.id)))
+  for (const n of nodos) nivel.set(n.id, nivelDe(n, n.padre_id ? porId.get(n.padre_id) : undefined, historiaDe.has(n.id), niveles[n.id]))
 
-  // El peso de cada tarea: el de su historia repartido parejo entre las tareas que cuelgan de ella.
-  const historiaAncestro = (n: NodoObra): NodoObra | null => {
-    let p = n.padre_id ? porId.get(n.padre_id) : undefined
-    while (p) {
-      if (nivel.get(p.id) === 'historia') return p
-      p = p.padre_id ? porId.get(p.padre_id) : undefined
-    }
-    return null
-  }
-  const tareasDeHistoria = new Map<string, number>()
-  for (const n of nodos) {
-    if (nivel.get(n.id) !== 'tarea') continue
-    const h = historiaAncestro(n)
-    if (h) tareasDeHistoria.set(h.id, (tareasDeHistoria.get(h.id) ?? 0) + 1)
-  }
+  // El peso de cada tarea: el de su padre (la historia, o la tarea que se dividió en frentes) repartido
+  // parejo entre las tareas hermanas. Es el espejo de `obra_historia_peso` (20260925T0900).
+  const tareasHijas = (id: string) => (hijos.get(id) ?? []).filter((h) => nivel.get(h.id) === 'tarea').length
   const pesoDe = (n: NodoObra): number | null => {
     const niv = nivel.get(n.id)
     if (niv === 'historia') return historiaDe.get(n.id)?.peso ?? null
-    if (niv === 'tarea') {
-      const h = historiaAncestro(n)
-      const ph = h ? historiaDe.get(h.id)?.peso ?? null : null
-      const nT = h ? tareasDeHistoria.get(h.id) ?? 0 : 0
-      return ph != null && nT > 0 ? ph / nT : null
-    }
-    return null
+    if (niv !== 'tarea' || !n.padre_id) return null
+    const padre = porId.get(n.padre_id)
+    if (!padre) return null
+    const np = nivel.get(padre.id)
+    const base = np === 'historia' ? historiaDe.get(padre.id)?.peso ?? null : np === 'tarea' ? pesoDe(padre) : null
+    const nT = tareasHijas(padre.id)
+    return base != null && nT > 0 ? base / nT : null
   }
 
   // Codificación 1 · 1.1 · 1.1.1 por posición entre hermanos.
@@ -176,7 +167,14 @@ export function filasDeItems(
     let pctItem: number | null = propio.pct
     let estado: EstadoItem = propio.estado
     let avanceObra: number | null = null
-    if (niv === 'tarea' || niv === 'subtarea') {
+    const frentes = filasHijas.filter((f) => f.nivel === 'tarea')
+    if (niv === 'tarea' && frentes.length > 0) {
+      // Tarea dividida en frentes: su % es el promedio de sus frentes (sin registrar suma 0).
+      const medidas = frentes.filter((x) => x.pctItem != null)
+      pctItem = medidas.length > 0 ? frentes.reduce((s, x) => s + (x.pctItem ?? 0), 0) / frentes.length : null
+      estado = pctItem == null ? 'sin_parte' : pctItem >= 100 ? 'completado' : 'en_progreso'
+      avanceObra = frentes.some((x) => x.avanceObra != null) ? frentes.reduce((s, x) => s + (x.avanceObra ?? 0), 0) : null
+    } else if (niv === 'tarea' || niv === 'subtarea') {
       if (pctItem == null && subtareas.length > 0) {
         const con = subtareas.filter((s) => s.pctItem != null)
         if (con.length > 0) {

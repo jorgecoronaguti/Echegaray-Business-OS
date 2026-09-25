@@ -48,13 +48,17 @@ const convertirSchema = z.object({
 })
 
 /**
- * CONVERTIR LAS PARTIDAS ELEGIDAS EN HISTORIAS DE ESTA OBRA. Es la MISMA conversión de Postgres
- * (`convertir_partida_a_plan`) que usa la pantalla del presupuesto; acá se entra desde la obra.
+ * CONVERTIR LAS PARTIDAS ELEGIDAS EN HISTORIAS DE ESTA OBRA (C02, serie B).
  *
- * LA FECHA: la conversión exige un inicio por frente («sin fecha se crearían actividades que parecen
- * planificadas y no lo están»). El diseño C02 deja «Fechas: sin cargar» — se usa el inicio previsto
- * de la OBRA, y sin él no se convierte y se dice. Los frentes opcionales reparten la cantidad en
- * partes iguales; si no cierra, la base no genera nada.
+ *   Rubro del presupuesto → Rubro (se reusa el que ya existe con ese nombre) · Partida → Historia.
+ *   Las épicas se arman después, a mano. Unidad y cantidad se conservan; HH plan = HH unitarias del
+ *   análisis × cantidad (sin análisis: sin HH plan, marcada). Cada historia guarda su partida y su
+ *   análisis. Fechas: sin cargar. Ponderación: por costo de MO.
+ *   COSTO DE MO: la suma de mano de obra y cargas sociales de la composición CONGELADA de la partida
+ *   × la cantidad. Sin composición congelada, NULL («sin costo de MO · no pesa»): nunca un número
+ *   inventado.
+ *   FRENTES (opcional): cada historia recibe una tarea por frente con la cantidad repartida en partes
+ *   iguales, medida por cantidad; si la suma no cierra en diezmilésimos, esa partida no se convierte.
  */
 export async function convertirPartidasDesdeLaObra(obraId: string, form: FormData): Promise<Resultado> {
   const parsed = convertirSchema.safeParse({
@@ -66,12 +70,6 @@ export async function convertirPartidasDesdeLaObra(obraId: string, form: FormDat
   const supabase = await createClient()
   if (!await esAdmin(supabase)) return { ok: false, error: SIN_PERMISO }
 
-  const { data: obra, error: eO } = await supabase.from('obra_panel')
-    .select('fecha_inicio_plan').eq('obra_id', obraId).maybeSingle()
-  if (eO) return { ok: false, error: eO.message }
-  const inicio = (obra?.fecha_inicio_plan as string | null) ?? null
-  if (!inicio) return { ok: false, error: 'La obra no tiene inicio previsto: la conversión necesita una fecha para no crear actividades que parezcan planificadas. Cargalo en la ficha.' }
-
   // La misma regla que la pantalla C02: la versión adjudicada, no la última editada.
   const { data: versiones, error: eC } = await supabase.from('cotizaciones')
     .select('id, estado, congelada_en, vigente, version').eq('obra_canonica_id', obraId)
@@ -79,49 +77,87 @@ export async function convertirPartidasDesdeLaObra(obraId: string, form: FormDat
   const cab = versionQueVale((versiones ?? []) as { id: string; estado: string | null; congelada_en: string | null; vigente: boolean | null; version: number }[])
   if (!cab) return { ok: false, error: 'Esta obra no tiene presupuesto vinculado.' }
   if (cab.estado !== 'adjudicada') return { ok: false, error: 'El presupuesto todavía no está adjudicado.' }
-  if (!cab.congelada_en) return { ok: false, error: 'Congelá el presupuesto antes de convertir: el plan sale del costo que se ofertó.' }
+  if (!cab.congelada_en) return { ok: false, error: 'Congelá el presupuesto antes de convertir: el plan y su costo de MO salen de lo que se ofertó.' }
 
-  const { data: filas, error: eF } = await supabase.from('cotizacion_partida')
-    .select('id, descripcion, cantidad, cotizacion_id').in('id', parsed.data.partidas)
+  const [{ data: filas, error: eF }, { data: comp }, { data: yaEn }] = await Promise.all([
+    supabase.from('cotizacion_partida').select('id, rubro, codigo, descripcion, unidad, cantidad, hs_unitarias, analisis_id, cotizacion_id').in('id', parsed.data.partidas),
+    supabase.from('cotizacion_partida_composicion').select('partida_id, tipo, cantidad, costo_unitario, desperdicio').in('partida_id', parsed.data.partidas),
+    supabase.from('obra_actividad').select('id, nombre, nivel, cotizacion_partida_id').eq('obra_id', obraId).eq('archivada', false),
+  ])
   if (eF) return { ok: false, error: eF.message }
   const porId = new Map((filas ?? []).map((f) => [String(f.id), f]))
+  const moPorPartida = new Map<string, number>()
+  for (const c of (comp ?? []) as { partida_id: string; tipo: string | null; cantidad: unknown; costo_unitario: unknown; desperdicio: unknown }[]) {
+    if (c.tipo !== 'mano_obra' && c.tipo !== 'carga_social') continue
+    if (c.cantidad == null || c.costo_unitario == null) continue
+    moPorPartida.set(c.partida_id, (moPorPartida.get(c.partida_id) ?? 0) + Number(c.cantidad) * Number(c.costo_unitario) * (1 + Number(c.desperdicio ?? 0)))
+  }
+  const vivos = (yaEn ?? []) as { id: string; nombre: string; nivel: string | null; cotizacion_partida_id: string | null }[]
+  const convertidas = new Set(vivos.map((v) => v.cotizacion_partida_id).filter(Boolean) as string[])
+  const rubros = new Map(vivos.filter((v) => v.nivel === 'rubro').map((v) => [v.nombre.trim().toLowerCase(), v.id]))
   const nombresFrentes = vistaPreviaFrentes('', null, parsed.data.frentes ?? '').nombres
+  let orden = await ordenSiguiente(supabase, obraId)
 
   let hechas = 0
-  let actividades = 0
+  let sinCosto = 0
+  let sinHH = 0
   let hh: number | null = null
   const fallas: string[] = []
   for (const id of parsed.data.partidas) {
     const p = porId.get(id)
     const nombre = p ? String(p.descripcion ?? 'partida') : id
     if (!p || String(p.cotizacion_id) !== String(cab.id)) { fallas.push(`«${nombre}»: no es de este presupuesto`); continue }
-    if (p.cantidad == null) { fallas.push(`«${nombre}»: sin cómputo, no hay cantidad contra la cual cerrar el reparto`); continue }
-    const cantidad = Number(p.cantidad)
-    let frentes: { nombre: string; cantidad: number; inicio: string; dotacion: null; tope: null }[]
+    if (convertidas.has(id)) { fallas.push(`«${nombre}»: ya está en el plan`); continue }
+    const cantidad = p.cantidad == null ? null : Number(p.cantidad)
+    let partes: number[] | null = null
     if (nombresFrentes.length >= 2) {
-      const partes = vistaPreviaFrentes(nombre, cantidad, parsed.data.frentes ?? '').filas
-      if (!conservaLaCantidad(partes.map((f) => f.cantidad ?? 0), cantidad)) {
-        fallas.push(`«${nombre}»: el reparto en frentes no conserva la cantidad`); continue
-      }
-      frentes = nombresFrentes.map((f, k) => ({ nombre: f, cantidad: partes[k].cantidad ?? 0, inicio, dotacion: null, tope: null }))
-    } else {
-      frentes = [{ nombre, cantidad, inicio, dotacion: null, tope: null }]
+      if (cantidad == null) { fallas.push(`«${nombre}»: sin cómputo, no hay cantidad que repartir en frentes`); continue }
+      partes = vistaPreviaFrentes(nombre, cantidad, parsed.data.frentes ?? '').filas.map((f) => f.cantidad ?? 0)
+      if (!conservaLaCantidad(partes, cantidad)) { fallas.push(`«${nombre}»: el reparto en frentes no conserva la cantidad`); continue }
     }
-    const { data, error } = await supabase.rpc('convertir_partida_a_plan', {
-      p_partida_id: id, p_obra_id: obraId, p_frentes: frentes, p_plantilla_id: null, p_metodo: 'cantidad',
-    })
-    if (error) { fallas.push(`«${nombre}»: ${error.message}`); continue }
-    const r = (data ?? {}) as { actividades?: number; hh_total?: number | null }
+    // El rubro del presupuesto: el que ya existe con ese nombre, o uno nuevo.
+    const nombreRubro = String(p.rubro ?? 'Sin rubro').trim() || 'Sin rubro'
+    let rubroId = rubros.get(nombreRubro.toLowerCase()) ?? null
+    if (!rubroId) {
+      const { data: r, error } = await supabase.from('obra_actividad').insert({
+        obra_id: obraId, clave: `conv:rubro:${slug(nombreRubro)}`, nombre: nombreRubro, nivel: 'rubro', tipo: 'resumen', rol_estructura: 'rubro',
+        orden: orden++, metodo_avance: 'manual', estado: 'pendiente', fuente: 'conversion_presupuesto', creada_en_web: true,
+      }).select('id').single()
+      if (error) { fallas.push(`rubro «${nombreRubro}»: ${error.message}`); continue }
+      rubroId = String(r.id)
+      rubros.set(nombreRubro.toLowerCase(), rubroId)
+    }
+    const hhPlan = p.hs_unitarias != null && cantidad != null ? Number(p.hs_unitarias) * cantidad : null
+    const mo = moPorPartida.has(id) && cantidad != null ? Math.round(moPorPartida.get(id)! * cantidad) : null
+    const { data: h, error: eH } = await supabase.from('obra_actividad').insert({
+      obra_id: obraId, clave: `conv:${id}:historia`, nombre, nivel: 'historia', tipo: 'resumen', seccion: nombreRubro,
+      orden: orden++, actividad_padre_id: rubroId, unidad: p.unidad ?? null, cantidad_objetivo: cantidad, hh_plan: hhPlan,
+      costo_mo: mo, analisis_id: p.analisis_id ?? null, cotizacion_partida_id: id, partida_codigo: p.codigo ?? null,
+      partida_cantidad: cantidad, metodo_avance: 'manual', estado: 'pendiente', fuente: 'conversion_presupuesto', creada_en_web: true,
+    }).select('id').single()
+    if (eH) { fallas.push(`«${nombre}»: ${eH.message}`); continue }
+    if (partes && nombresFrentes.length >= 2) {
+      const tareas = nombresFrentes.map((f, k) => ({
+        obra_id: obraId, clave: `conv:${id}:${slug(f)}`, nombre: `${nombre} · ${f}`, nivel: 'tarea', tipo: 'tarea', seccion: nombreRubro,
+        orden: orden++, actividad_padre_id: String(h.id), unidad: p.unidad ?? null, cantidad_objetivo: partes![k],
+        hh_plan: hhPlan == null ? null : Math.round((hhPlan * partes![k] / (cantidad as number)) * 100) / 100,
+        metodo_avance: p.unidad ? 'cantidad' : 'manual', analisis_id: p.analisis_id ?? null, cotizacion_partida_id: id, partida_codigo: p.codigo ?? null,
+        estado: 'pendiente', fuente: 'conversion_presupuesto', creada_en_web: true,
+      }))
+      const { error: eT } = await supabase.from('obra_actividad').insert(tareas)
+      if (eT) fallas.push(`«${nombre}»: la historia se creó pero los frentes no: ${eT.message}`)
+    }
     hechas++
-    actividades += r.actividades ?? 0
-    if (r.hh_total != null) hh = (hh ?? 0) + Number(r.hh_total)
+    if (mo == null) sinCosto++
+    if (hhPlan == null) sinHH++; else hh = (hh ?? 0) + hhPlan
   }
   if (hechas > 0) {
-    // La ponderación por costo es la del diseño («por costo · 100 % por rubro»).
     await supabase.from('obra_canonica').update({ metodo_ponderacion: 'costo_mo' }).eq('id', obraId)
     revalidatePath(`/obras/${obraId}`, 'layout')
   }
-  const resumen = `${hechas} ${hechas === 1 ? 'partida convertida' : 'partidas convertidas'} · ${actividades} ${actividades === 1 ? 'historia' : 'historias'}${hh == null ? ' · sin HH: ninguna tiene análisis' : ` · ${Math.round(hh).toLocaleString('es-AR')} HH`}`
+  const resumen = `${hechas} ${hechas === 1 ? 'partida convertida en historia' : 'partidas convertidas en historias'}`
+    + `${hh == null ? ' · sin HH: ninguna tiene análisis' : ` · ${Math.round(hh).toLocaleString('es-AR')} HH${sinHH ? ` (${sinHH} sin análisis)` : ''}`}`
+    + `${sinCosto ? ` · ${sinCosto} sin costo de MO (el presupuesto no trae su composición): no pesan hasta cargarlo` : ''}`
   if (fallas.length > 0) return { ok: false, error: `${resumen}. Quedaron sin convertir ${fallas.length}: ${fallas.join(' · ')}` }
   return { ok: true, mensaje: resumen }
 }

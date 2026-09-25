@@ -78,10 +78,30 @@ export function ArbolEstructura({
   /** Con aside al lado la grilla ocupa todo; sin aside, el diseño la corta en 1120. */
   angosto?: boolean
 }) {
-  const [plegados, setPlegados] = useState<Set<string>>(new Set())
+  const porId = useMemo(() => new Map(filas.map((f) => [f.id, f])), [filas])
+  // B04: armando a mano, las historias arrancan plegadas (se ve «sin tareas» o «6 tareas»), salvo la
+  // rama donde se está trabajando: la de la fila nueva o la del panel abierto.
+  const ancestros = (id: string | null | undefined): Set<string> => {
+    const s = new Set<string>()
+    let p = id ? porId.get(id) : undefined
+    while (p) { s.add(p.id); p = p.padreId ? porId.get(p.padreId) : undefined }
+    return s
+  }
+  const [plegados, setPlegados] = useState<Set<string>>(() => {
+    if (modo !== 'mano') return new Set()
+    const abiertos = ancestros(nuevo?.padreId ?? foco)
+    return new Set(filas.filter((f) => f.nivel === 'historia' && !abiertos.has(f.id)).map((f) => f.id))
+  })
+  const [ramaVista, setRamaVista] = useState<string | null>(nuevo?.padreId ?? foco ?? null)
+  const rama = nuevo?.padreId ?? foco ?? null
+  if (rama !== ramaVista) {
+    // La fila nueva se mudó (Tab, clic en otra rama): su rama se despliega.
+    setRamaVista(rama)
+    const abrir = ancestros(rama)
+    if ([...abrir].some((id) => plegados.has(id))) setPlegados((s) => new Set([...s].filter((id) => !abrir.has(id))))
+  }
   const plegar = (id: string) => setPlegados((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const q = query.trim().toLowerCase()
-  const porId = useMemo(() => new Map(filas.map((f) => [f.id, f])), [filas])
   const visibles = useMemo(() => {
     const v = filasVisiblesDelArbol(filas, plegados)
     if (!q) return v

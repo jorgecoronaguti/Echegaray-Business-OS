@@ -174,7 +174,8 @@ export function TabTareas({
   const hoy = useMemo(() => new Date().toISOString().slice(0, 10), [])
   const agregados = useMemo(() => rollup(nodos), [nodos])
   const cuentas = useMemo(() => conteoDeVistas(nodos, agregados, hoy), [nodos, agregados, hoy])
-  const todas = useMemo(() => filasDeItems(nodos, historias, partesResumen, verHasta), [nodos, historias, partesResumen, verHasta])
+  const niveles = useMemo(() => Object.fromEntries(Object.entries(estructura.ponds).map(([id, p]) => [id, p.nivel ?? null])), [estructura.ponds])
+  const todas = useMemo(() => filasDeItems(nodos, historias, partesResumen, verHasta, niveles), [nodos, historias, partesResumen, verHasta, niveles])
   const filas = useMemo(() => {
     let f = todas
     if (filtroLocal !== 'todo') {

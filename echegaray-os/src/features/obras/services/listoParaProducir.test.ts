@@ -25,7 +25,7 @@ const base = (o: Partial<InsumosProducir> = {}): InsumosProducir => ({
   obraId: 'qp', clienteNombre: 'Quattropani', nOrdenes: 0, jefeObra: 'J. Paredes',
   inicioPlan: '2026-08-24', finPlan: '2026-09-22', diasHabilesPlan: 21,
   nodos: ARBOL, ponds: { E: { ponderacion: 100, costo_mo: null }, H: { ponderacion: 65, costo_mo: 6_000_000 }, T1: { ponderacion: 50, costo_mo: null }, T2: { ponderacion: 50, costo_mo: null } },
-  avancePct: null, costoTeorico: null, ...o,
+  avancePct: null, costoTeorico: null, metodo: 'manual', ...o,
 })
 
 test('nueve líneas, cada una con su faltante concreto y su puerta', () => {
@@ -70,4 +70,18 @@ test('con todo cerrado, sellar se enciende', () => {
   const p = listoParaProducir(base({ nodos, ponds: { E: { ponderacion: 100, costo_mo: null }, H: { ponderacion: 100, costo_mo: null }, T1: { ponderacion: 50, costo_mo: null }, T2: { ponderacion: 50, costo_mo: null } } }))
   assert.equal(p.pendientes, 0)
   assert.match(p.nota, /^Todo listo/)
+})
+
+test('serie B · por costo de MO la línea es «historias sin costo», no «suma 100 %»', () => {
+  const p = listoParaProducir(base({ metodo: 'costo_mo', ponds: {
+    E: { ponderacion: null, costo_mo: null, nivel: 'epica' }, H: { ponderacion: null, costo_mo: 6_000_000, nivel: 'historia' },
+    T1: { ponderacion: null, costo_mo: null, nivel: 'tarea' }, T2: { ponderacion: null, costo_mo: null, nivel: 'tarea' },
+  } }))
+  const l = p.lineas.find((x) => x.clave === 'ponderacion')!
+  assert.equal(l.titulo, 'Costo de MO')
+  assert.equal(l.listo, true)
+  const sin = listoParaProducir(base({ metodo: 'costo_mo', ponds: { H: { ponderacion: null, costo_mo: null, nivel: 'historia' } } })).lineas.find((x) => x.clave === 'ponderacion')!
+  assert.equal(sin.listo, false)
+  assert.equal(sin.detalleCorto, '1 sin costo de MO')
+  assert.equal(sin.accion?.href, '/obras/qp?vista=tareas&sub=arbol&panel=ponderacion')
 })

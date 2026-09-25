@@ -164,7 +164,7 @@ export function Estructura({ obraId, nodos, ponds, modo, datos, acciones, query 
   }
   if (modo.panel === 'ponderacion' && !act) {
     return (
-      <PanelPonderacionObra nombreObra={datos.obra.nombre} nodos={nodos} items={items} metodo={datos.metodo} historiasVista={datos.historiasVista}
+      <PanelPonderacionObra obraId={obraId} nombreObra={datos.obra.nombre} nodos={nodos} items={items} metodo={datos.metodo} historiasVista={datos.historiasVista}
         guardarCosto={acciones.guardarCosto} elegirMetodo={acciones.elegirMetodo} alCerrar={cerrar}
         alRepartirAMano={(id) => ir(`&act=${id}&panel=ponderacion`)} alGuardado={() => router.refresh()} />
     )

@@ -41,7 +41,7 @@ export function CrearDesdePresupuesto({ obraId, presupuesto, error, inicioObra, 
   obraId: string
   presupuesto: PresupuestoDeLaObra | null
   error: string | null
-  /** El inicio previsto de la obra: la conversión lo necesita. null = sin cargar. */
+  /** El inicio previsto de la obra (serie B: ya no se usa para fechar; se conserva la firma). */
   inicioObra: string | null
   convertir: AccionFormulario
 }) {
@@ -58,11 +58,11 @@ export function CrearDesdePresupuesto({ obraId, presupuesto, error, inicioObra, 
   const grupos = useMemo(() => agruparPartidas(partidas, elegidas, filtro, query), [partidas, elegidas, filtro, query])
   const resumen = useMemo(() => resumenDeConversion(partidas, elegidas), [partidas, elegidas])
   const aviso = avisoSinAnalisis(resumen)
-  const puede = Boolean(presupuesto) && resumen.elegidas > 0 && inicioObra != null && presupuesto?.estado === 'adjudicada' && presupuesto?.congelada
+  const puede = Boolean(presupuesto) && resumen.elegidas > 0 && presupuesto?.estado === 'adjudicada' && presupuesto?.congelada
   const motivo = !presupuesto ? 'sin presupuesto vinculado'
     : presupuesto.estado !== 'adjudicada' ? 'el presupuesto no está adjudicado'
       : !presupuesto.congelada ? 'el presupuesto no está congelado'
-        : inicioObra == null ? 'la obra no tiene inicio previsto' : resumen.elegidas === 0 ? 'no hay partidas elegidas' : null
+        : resumen.elegidas === 0 ? 'no hay partidas elegidas' : null
 
   const alternar = (id: string) => setElegidas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const plegar = (r: string) => setPlegados((s) => { const n = new Set(s); if (n.has(r)) n.delete(r); else n.add(r); return n })
@@ -166,7 +166,8 @@ export function CrearDesdePresupuesto({ obraId, presupuesto, error, inicioObra, 
                 ['HH plan', resumen.sinAnalisis > 0 ? `del análisis · ${resumen.sinAnalisis} sin análisis` : 'del análisis'],
                 ['Método de avance', 'cantidad'],
                 ['Ponderación', 'por costo · 100 % por rubro'],
-                ['Fechas', inicioObra ? `desde ${inicioObra.slice(8, 10)}/${inicioObra.slice(5, 7)} · inicio de la obra` : <Falta key="f">sin cargar</Falta>],
+                // Serie B: la conversión no inventa fechas; se fijan después en el cronograma.
+                ['Fechas', <Falta key="f">sin cargar</Falta>],
               ] as const).map(([k, v]) => (
                 <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span style={{ color: C.tintaSuave }}>{k}</span><span>{v}</span></div>
               ))}

@@ -16,12 +16,15 @@ const num = (v: unknown): number | null => (v == null || v === '' ? null : Numbe
  * lectura chica que pagan todas las vistas del árbol. `metodo` es el de la obra (B07).
  */
 export async function getPonderaciones(supabase: SupabaseClient, obraId: string): Promise<ServiceResult<Ponderaciones>> {
-  const { data, error } = await supabase.from('obra_actividad')
-    .select('id, ponderacion, costo_mo, nivel, estado').eq('obra_id', obraId).eq('archivada', false)
+  const leer = (columnas: string) => supabase.from('obra_actividad').select(columnas).eq('obra_id', obraId).eq('archivada', false)
+  let { data, error } = await leer('id, ponderacion, costo_mo, nivel, estado')
+  // Base sin la migración 20260925T0900 (columna `nivel`): se lee lo demás y el nivel sale de la
+  // profundidad, como antes. El código no depende del orden en que se publiquen base y código.
+  if (error?.code === '42703') ({ data, error } = await leer('id, ponderacion, costo_mo, estado'))
   if (error) return { data: null, error: error.message }
   const salida: Ponderaciones = {}
-  for (const f of (data ?? []) as { id: string; ponderacion: unknown; costo_mo: unknown; nivel: string | null; estado: string | null }[]) {
-    salida[f.id] = { ponderacion: num(f.ponderacion), costo_mo: num(f.costo_mo), nivel: esNivel(f.nivel) ? f.nivel : null, estado: f.estado }
+  for (const f of (data ?? []) as unknown as { id: string; ponderacion: unknown; costo_mo: unknown; nivel?: string | null; estado: string | null }[]) {
+    salida[f.id] = { ponderacion: num(f.ponderacion), costo_mo: num(f.costo_mo), nivel: esNivel(f.nivel ?? null) ? f.nivel as NivelEstructura : null, estado: f.estado }
   }
   return { data: salida, error: null }
 }

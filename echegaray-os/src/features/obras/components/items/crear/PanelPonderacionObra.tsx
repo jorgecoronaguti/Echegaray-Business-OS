@@ -14,7 +14,9 @@
 // Cargar, editar o borrar un costo recalcula TODO el árbol en el acto (pesoMO sobre lo que hay en
 // pantalla) y se guarda en la base; la vista `obra_historia_peso` publica el mismo número.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { publicarPrimaria, retirar } from './estadoCabecera'
 import { C, MONO } from '../../canon/tokens'
 import { Ico, P } from '../../canon/Ico'
 import { Barra6, Chip, EYEBROW, Resultado } from './Piezas'
@@ -35,8 +37,9 @@ const GRID = 'minmax(0,1fr) 110px 130px 80px 200px'
 const MAS = 3
 
 export function PanelPonderacionObra({
-  nombreObra, nodos, items, metodo, historiasVista, guardarCosto, elegirMetodo, alCerrar, alRepartirAMano, alGuardado,
+  obraId, nombreObra, nodos, items, metodo, historiasVista, guardarCosto, elegirMetodo, alCerrar, alRepartirAMano, alGuardado,
 }: {
+  obraId: string
   nombreObra: string
   nodos: NodoObra[]
   items: ItemMO[]
@@ -50,6 +53,13 @@ export function PanelPonderacionObra({
   alRepartirAMano: (contenedorId: string) => void
   alGuardado: () => void
 }) {
+  const router = useRouter()
+  // B07: la primaria de la cabecera es «Sellar la línea base»; lleva al checklist de preparación (C10),
+  // que es donde se sella con sus nueve comprobaciones a la vista.
+  useEffect(() => {
+    publicarPrimaria({ rotulo: 'Sellar la línea base', icono: 'ok', apagada: false, motivo: null, testid: 'b07-sellar', alPulsar: () => router.push(`/obras/${obraId}?vista=resumen`) })
+    return () => retirar()
+  }, [router, obraId])
   const [costos, setCostos] = useState<Record<string, number | null>>({})
   const [editando, setEditando] = useState<string | null>(null)
   const [borrador, setBorrador] = useState('')
@@ -163,7 +173,8 @@ export function PanelPonderacionObra({
             {rubros.map((r) => <button key={r.id} type="button" onClick={() => alRepartirAMano(r.id)} style={{ border: 'none', background: 'none', padding: 0, font: 'inherit', color: C.tinta, textDecoration: 'underline', cursor: 'pointer' }}>Repartir en {nombreDe(r.id)}</button>)}
           </div>
         )}
-        <div>
+        {/* En escritorio la grilla; en el teléfono cada historia es una fila que se parte (flex-wrap). */}
+        <div style={{ overflowX: 'auto' }}>
           <div className="hidden md:grid" style={{ gridTemplateColumns: GRID, gap: '20px', height: '34px', alignItems: 'center', borderBottom: `1px solid ${C.borde}`, ...EYEBROW }}>
             <div>Historia</div><div style={{ textAlign: 'right' }}>Uni · cant</div><div style={{ textAlign: 'right' }}>Costo MO</div><div style={{ textAlign: 'right' }}>Peso</div><div />
           </div>
