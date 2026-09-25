@@ -23,7 +23,7 @@ import type { PersonasDeHoy } from '../services/personalService'
 import { BarraFina } from './TarjetaResumen'
 import { C, MONO } from './canon/tokens'
 import { Ico, P } from './canon/Ico'
-import { fecha, plataCorta } from './formato'
+import { fecha, plataMillones } from './formato'
 
 const TONO_VALOR = { ink: C.tinta, neg: C.neg, warn: C.warn, pos: C.pos } as const
 
@@ -173,9 +173,9 @@ function mCosto(obra: ObraPanel, plan: PlanVsReal | null, veComercial: boolean):
   return {
     k: 'Costo real',
     icono: <Ico d={P.dinero} s={14} />,
-    v: sinImputar ? null : plataCorta(obra.costo_real),
+    v: sinImputar ? null : plataMillones(obra.costo_real),
     falta: 'sin imputar',
-    contra: presupuesto == null ? undefined : `de ${plataCorta(presupuesto)}`,
+    contra: presupuesto == null ? undefined : `de ${plataMillones(presupuesto)}`,
     pista: fraccion(obra.costo_real, presupuesto),
     tono: veComercial && plan?.desvio_costo_pct != null && plan.desvio_costo_pct > 5 ? 'neg' : 'ink',
     sub: sinImputar

@@ -36,7 +36,7 @@ import type { ReactNode } from 'react'
 import { C, MONO } from './canon/tokens'
 import { Ico, P } from './canon/Ico'
 import { fechaCorta } from './formato'
-import { ETAPA_LABEL, type Etapa, type ObraPanel } from '../types'
+import type { ObraPanel } from '../types'
 import { VISTAS_OBRA, type VistaObra } from '../services/vistasObra'
 import { createClient } from '@/lib/supabase/server'
 import { codigosDeObra } from '@/shared/services/codigosDeObra'
@@ -117,8 +117,8 @@ function PastillaEstado({ t, tono, radio }: { t: string; tono: 'pos' | 'curso' |
 }
 
 export async function CabeceraDeObra({
-  obraId, obra, vistaActiva, pantalla, kpis = [], acciones, alFinalDeLasSolapas, enlazarCliente = false,
-  volverA = '/obras', volverLabel = 'Obras', titulo = 17, accionTelefono, lineaDeCifras = [], cifrasTelefono = [],
+  obraId, obra, vistaActiva, pantalla, kpis = [], acciones, alFinalDeLasSolapas, economiaHref = null, enlazarCliente = false,
+  volverA = '/obras', volverLabel = 'Obras', accionTelefono, lineaDeCifras = [], cifrasTelefono = [],
 }: {
   obraId: string
   obra: ObraDeCabecera
@@ -140,12 +140,15 @@ export async function CabeceraDeObra({
   cifrasTelefono?: CifraEnLinea[]
   /** Lo que se puede hacer desde acá, en el escritorio. Lo pone cada página. */
   acciones?: ReactNode
-  /** Lo que va a la derecha de las solapas, sin ser una (hoy, «Economía»). */
+  /** Lo que va a la derecha de las solapas, sin ser una. */
   alFinalDeLasSolapas?: ReactNode
+  /** «Economía»: la ÚLTIMA solapa del mismo renglón y con el mismo estilo, SÓLO para Administración
+   *  (dueño 25/09). `null` = no se dibuja (jefe de obra, operario). */
+  economiaHref?: string | null
   /** Clientes es sólo de Administración (dueño, 24/09/2026): el nombre del cliente enlaza a su ficha
    *  sólo para quien la puede abrir. Falla cerrado. */
   enlazarCliente?: boolean
-  /** 21px en el Resumen (03, Z01); 17px en el resto (04, 04b, C01). */
+  /** Obsoleto: el título mide 21 en todas las solapas (dueño 23/09 y 25/09). Se acepta y se ignora. */
   titulo?: 17 | 21
   /** La primaria del teléfono va al pie de la pantalla, no acá: la cabecera no la dibuja. Este
    *  nodo existe para las hijas que quieran algo chico a la derecha del título en 390. */
@@ -174,47 +177,52 @@ export async function CabeceraDeObra({
   // EL CÓDIGO INTERNO LO LEE LA CABECERA, no cada pantalla: son cinco páginas de obra y una sola
   // banda. Si la lectura falla, la banda muestra el nombre solo.
   const codigo = (await codigosDeObra(await createClient(), [obraId])).get(obraId) ?? null
+  // EL RÓTULO ÚNICO «OB-0008 · NOMBRE» (dueño 14/09) se lee partido como en el diseño 03/M04: el código
+  // en la miga, el nombre en el título. El rótulo entero queda como nombre accesible del título.
   const rotulo = rotuloDeObra({ nombre: obra.nombre, codigo })
 
-  const identidad = (tamIcono: number, gap: number) => (
+  const responsable = obra.jefe_obra ? (
+    <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+      <Ico d={P.persona} s={12} />{obra.jefe_obra}
+    </span>
+  ) : (
+    <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: C.tenue, fontStyle: 'italic' }} data-nulo="">
+      <Ico d={P.persona} s={12} />sin responsable
+    </span>
+  )
+  const clienteNodo = cliente != null && (
+    <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+      <Ico d={P.cliente} s={12} />{cliente}
+      {!obra.cliente_slug && obra.cliente_texto && (
+        <span style={{ color: C.tenue }}>· sin ficha de cliente vinculada</span>
+      )}
+    </span>
+  )
+
+  // 03 · ESCRITORIO: una línea chica arriba del título — «Obras / OB-0011 · ARCOR · R. Quiroga». La
+  // etapa y las fechas viven en «La obra» del Resumen; la cabecera no las repite (dueño 25/09).
+  const identidadEscritorio = (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: `${gap}px`, fontSize: '12px', color: C.tintaMedia,
-      flexWrap: 'wrap',
+      display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12px', color: C.tintaSuave, flexWrap: 'wrap',
     }} data-testid="cabecera-obra-meta">
-      {cliente != null && (
-        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <Ico d={P.cliente} s={tamIcono} />{cliente}
-          {!obra.cliente_slug && obra.cliente_texto && (
-            <span style={{ color: C.tenue }}>· sin ficha de cliente vinculada</span>
-          )}
-        </span>
-      )}
-      {cliente != null && <Punto />}
-      <span>Etapa: {obra.etapa
-        ? (ETAPA_LABEL[obra.etapa as Etapa] ?? obra.etapa)
-        : <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">sin declarar</span>}</span>
-      <Punto />
-      <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-        <Ico d={P.fecha} s={tamIcono} />
-        {plazo
-          ? <span style={{ fontFamily: MONO }}>{plazo}{termino}</span>
-          : <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">{faltaPlazo}{termino}</span>}
-      </span>
-      {obra.jefe_obra ? (
-        <>
-          <Punto />
-          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <Ico d={P.persona} s={tamIcono} />{obra.jefe_obra}
-          </span>
-        </>
-      ) : (
-        <>
-          <Punto />
-          <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: C.tenue, fontStyle: 'italic' }} data-nulo="">
-            <Ico d={P.persona} s={tamIcono} />sin responsable
-          </span>
-        </>
-      )}
+      <Link href={volverA} prefetch={false} style={{ color: C.tintaSuave, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+        <Ico d={P.obra} s={12} />{volverLabel} <span style={{ color: C.bordeFuerte }}>/</span> {codigo ?? obra.nombre}
+      </Link>
+      {cliente != null && <><Punto />{clienteNodo}</>}
+      <Punto />{responsable}
+    </div>
+  )
+
+  // M04 · TELÉFONO: «ARCOR · 14/04 → 05/09 · R. Quiroga».
+  const identidadTelefono = (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: C.tintaMedia, flexWrap: 'wrap',
+    }} data-testid="cabecera-obra-meta-telefono">
+      {cliente != null && <>{clienteNodo}<Punto /></>}
+      {plazo
+        ? <span style={{ fontFamily: MONO }}>{plazo}{termino}</span>
+        : <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">{faltaPlazo}{termino}</span>}
+      <Punto />{responsable}
     </div>
   )
 
@@ -223,7 +231,7 @@ export async function CabeceraDeObra({
       display: 'flex', alignItems: 'stretch',
       ...(telefono
         ? { marginTop: '6px', overflowX: 'auto', marginRight: '-16px', scrollbarWidth: 'none' }
-        : { marginTop: '8px', borderBottom: `1px solid ${C.borde}` }),
+        : { borderBottom: `1px solid ${C.borde}` }),
     }} data-testid={telefono ? 'tabs-obra-telefono' : 'tabs-obra'}>
       {VISTAS_OBRA.map((v) => {
         const activo = vistaActiva === v.id
@@ -240,81 +248,82 @@ export async function CabeceraDeObra({
             }}><RotuloEstable texto={v.label} peso={telefono ? 600 : 500} /></Link>
         )
       })}
-      {/* «Economía» también en el teléfono (paridad por nivel, 25/09): la misma puerta, al final de las solapas. */}
+      {/* «ECONOMÍA», LA ÚLTIMA SOLAPA DEL RENGLÓN, con el mismo estilo que las demás y sólo para
+          Administración (dueño 25/09). No es una vista de la ficha: abre la pantalla de Administración. */}
+      {economiaHref && (
+        <Link href={economiaHref} prefetch={false} data-testid={telefono ? 'tab-telefono-economia' : 'enlace-economia'}
+          style={{
+            fontSize: '12.5px', padding: telefono ? '8px 8px' : '10px 12px', whiteSpace: 'nowrap', color: C.tintaSuave, fontWeight: 400,
+            ...(telefono ? { minHeight: '44px', display: 'inline-flex', alignItems: 'center' } : {}),
+          }}>Economía</Link>
+      )}
       {alFinalDeLasSolapas}
     </nav>
   )
 
   return (
     <>
-      {/* ═══ ESCRITORIO (04 · 03 · Z01) ═══ */}
+      {/* ═══ ESCRITORIO — 03 para TODAS las solapas (dueño 25/09: cabecera idéntica) ═══
+          línea chica «Obras / código · cliente · responsable» · título 21/600 con el NOMBRE y su estado ·
+          a la derecha, las cifras de la pantalla (B02: «Ítems 16 · 4 rubros») y sus acciones. */}
       <div className="hidden md:block" style={{
-        background: C.superficie, padding: `${titulo === 21 ? 22 : 18}px 30px 0`, flexShrink: 0,
+        background: C.superficie, padding: '22px 30px 0', flexShrink: 0,
       }} data-testid="cabecera-obra-banda">
+        {identidadEscritorio}
         {/* LA FILA DEL TÍTULO MIDE LO MISMO CON O SIN BOTÓN (32px): Equipos, Compras y Pedidos no dibujan
             primaria, y sin este piso el título subía 4px al pasar de Impedimentos a Equipos. */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '20px', flexWrap: 'wrap', minHeight: '32px' }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '11px', minWidth: 0, flexWrap: 'wrap' }}>
-            <Link href={volverA} prefetch={false} style={{
-              fontSize: '12.5px', color: C.tintaSuave, display: 'inline-flex', alignItems: 'center', gap: '4px',
-            }}>
-              <Ico d={P.obra} s={12} />{volverLabel} /
-            </Link>
-            <h1 style={{
-              fontSize: `${titulo}px`, fontWeight: 600, color: C.tinta, margin: 0, lineHeight: 1.25,
-              letterSpacing: titulo === 21 ? '-.015em' : '-.01em',
-            }}>{rotulo}</h1>
-            <span style={{ alignSelf: 'center' }}><PastillaEstado t={est.t} tono={est.tono} radio={12} /></span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '20px', flexWrap: 'wrap', minHeight: '32px', marginTop: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '11px', minWidth: 0, flexWrap: 'wrap' }}>
+            <h1 title={rotulo} style={{
+              fontSize: '21px', fontWeight: 600, color: C.tinta, margin: 0, lineHeight: 1.3, letterSpacing: '-.015em',
+            }}>{obra.nombre}</h1>
+            <PastillaEstado t={est.t} tono={est.tono} radio={12} />
           </div>
-          {/* A LA DERECHA: las cifras de la pantalla (04b) o sus acciones (03/04). Las cifras
-              ganan el lugar cuando la pantalla las trae; las acciones se corren debajo. */}
-          {kpis.length > 0 ? (
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '34px', flexWrap: 'wrap' }} data-testid="kpis-obra">
-              {kpis.map((k) => (
-                <div key={k.rotulo} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <div style={{
-                    fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue,
-                    textTransform: 'uppercase',
-                  }}>{k.rotulo}</div>
-                  {k.valor == null || k.valor === ''
-                    ? <div style={{ fontSize: '13px', color: C.tenue, fontStyle: 'italic' }} data-nulo="">{k.falta ?? 'sin dato'}</div>
-                    : <div style={{
-                      fontSize: '19px', fontWeight: 600, letterSpacing: '-.01em',
-                      color: COLOR_CIFRA[k.tono ?? 'ink'], fontVariantNumeric: 'tabular-nums',
-                    }}>{k.valor}</div>}
-                </div>
-              ))}
-            </div>
-          ) : acciones != null && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>{acciones}</div>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '28px', flexWrap: 'wrap', marginLeft: 'auto' }}>
+            {lineaDeCifras.length > 0 && (
+              <div style={{ display: 'flex', gap: '22px', fontSize: '12px', alignItems: 'baseline', flexWrap: 'wrap', color: C.tintaSuave }}
+                data-testid="linea-de-cifras">
+                {lineaDeCifras.map((k) => (
+                  <span key={k.rotulo} style={{ display: 'inline-flex', gap: '5px', alignItems: 'baseline' }}>
+                    <span>{k.rotulo}</span>
+                    {k.valor == null || k.valor === ''
+                      ? <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">{k.falta ?? 'sin dato'}</span>
+                      : k.italica
+                        ? <span style={{ color: C.tenue, fontStyle: 'italic' }}>{k.valor}</span>
+                        : <span style={{ fontFamily: MONO, fontWeight: 500, color: k.tono && k.tono !== 'ink' ? COLOR_CIFRA[k.tono] : C.tinta }}>{k.valor}</span>}
+                  </span>
+                ))}
+              </div>
+            )}
+            {kpis.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '34px', flexWrap: 'wrap' }} data-testid="kpis-obra">
+                {kpis.map((k) => (
+                  <div key={k.rotulo} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    <div style={{
+                      fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue,
+                      textTransform: 'uppercase',
+                    }}>{k.rotulo}</div>
+                    {k.valor == null || k.valor === ''
+                      ? <div style={{ fontSize: '13px', color: C.tenue, fontStyle: 'italic' }} data-nulo="">{k.falta ?? 'sin dato'}</div>
+                      : <div style={{
+                        fontSize: '19px', fontWeight: 600, letterSpacing: '-.01em',
+                        color: COLOR_CIFRA[k.tono ?? 'ink'], fontVariantNumeric: 'tabular-nums',
+                      }}>{k.valor}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {acciones != null && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>{acciones}</div>
+            )}
+          </div>
         </div>
-
-        <div style={{ marginTop: '3px' }}>{identidad(13, 16)}</div>
 
         {pantalla != null && (
           <div style={{ fontSize: '12px', fontWeight: 500, color: C.tinta, marginTop: '3px' }}>{pantalla}</div>
         )}
-        {lineaDeCifras.length > 0 && (
-          <div style={{ display: 'flex', gap: '16px', fontSize: '12px', marginTop: '3px', alignItems: 'baseline', flexWrap: 'wrap' }}
-            data-testid="linea-de-cifras">
-            {lineaDeCifras.map((k) => (
-              <span key={k.rotulo} style={{ display: 'inline-flex', gap: '6px', alignItems: 'baseline' }}>
-                <span style={{ color: C.tenue }}>{k.rotulo}:</span>
-                {k.valor == null || k.valor === ''
-                  ? <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">{k.falta ?? 'sin dato'}</span>
-                  : k.italica
-                    ? <span style={{ color: C.tenue, fontStyle: 'italic' }}>{k.valor}</span>
-                    : <span style={{ fontFamily: MONO, color: k.tono && k.tono !== 'ink' ? COLOR_CIFRA[k.tono] : C.tintaMedia }}>{k.valor}</span>}
-              </span>
-            ))}
-          </div>
-        )}
-        {kpis.length > 0 && acciones != null && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>{acciones}</div>
-        )}
 
-        {solapas(false)}
+        <div style={{ marginTop: '12px' }}>{solapas(false)}</div>
       </div>
 
       {/* ═══ TELÉFONO (M04 · M05 · M06 · MZ1) ═══ */}
@@ -338,7 +347,7 @@ export async function CabeceraDeObra({
               data-testid="cabecera-obra-telefono">{est.t}</span>}
           {accionTelefono != null && <span style={{ marginLeft: 'auto' }}>{accionTelefono}</span>}
         </div>
-        <div style={{ marginTop: '4px' }}>{identidad(12, 6)}</div>
+        <div style={{ marginTop: '4px' }}>{identidadTelefono}</div>
         {(kpis.length > 0 || cifrasTelefono.length > 0 || pantalla != null) && (
           <div style={{
             marginTop: '5px', fontSize: '12px', color: C.tintaMedia, display: 'flex', gap: '12px', flexWrap: 'wrap',

@@ -91,7 +91,7 @@ test('08 · las cuatro cifras del diseño, y el costo NO se calcula', () => {
   }
   // El costo sale de la definición única (costo_de_obras_a_la_fecha), nunca «no se calcula» fijo.
   assert.doesNotMatch(src, /falta="no se calcula"/)
-  assert.match(src, /manoObra\.importe != null \? plataCorta\(manoObra\.importe\)/)
+  assert.match(src, /manoObra\.importe != null \? plataMillones\(manoObra\.importe\)/)
   // Las seis columnas de «Quién está asignado», literales.
   assert.match(src, /<div>Persona<\/div><div>Categoría<\/div><div>Cuadrilla<\/div><div>Rol<\/div><div style=\{\{ textAlign: 'right' \}\}>HH sem\.<\/div><div>Desde<\/div>/)
   assert.match(src, /Horas por semana/)

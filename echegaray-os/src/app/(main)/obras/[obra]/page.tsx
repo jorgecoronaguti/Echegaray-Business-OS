@@ -388,7 +388,7 @@ export default async function ObraPage({
     // contenido, sin el margen de una página de lectura. El marco (fondo y padding de pantalla) es
     // el mismo: 16px en el teléfono, 40px en escritorio.
     <Envoltorio>
-    <div className="min-h-screen bg-canvas">
+    <div className="min-h-screen bg-surface">
       {/* LA BANDA VA DE BORDE A BORDE (mockups 02/03/05/06): su aire de 20px es interno.
           La primaria de la obra es «Cargar parte» —la del mockup 02— y al lado el «···» con las
           cinco operaciones de todos los días. Dos amarillos en la misma línea harían leer dos
@@ -445,15 +445,9 @@ export default async function ObraPage({
         // 05 · 06 · 08: el Cronograma, el Parte y Personal tienen su primaria propia; el diseño no dibuja
         // «Nueva actividad» en su cabecera.
         lineaDeCifras={enEstructura ? cifrasDeCrear(modoEstructura, obraVacia) : cifrasDelCronograma}
-        // EL ENLACE A LA PLATA, DISCRETO Y SÓLO PARA QUIEN LA VE. No es una solapa —el dueño la
-        // sacó de acá— y no es un botón: es la puerta a la pantalla de Administración de esta obra.
-        // Al jefe de obra no se le dibuja, igual que no se le dibujan las rutas de `veEconomia`.
-        alFinalDeLasSolapas={veComercial ? (
-          <Link href={hrefEconomia(obraId)} prefetch={false} data-testid="enlace-economia"
-            className="ml-auto self-center whitespace-nowrap px-[11px] py-2 text-[12px] text-faint hover:text-ink max-md:-my-[5px] max-md:py-[13px]">
-            Economía
-          </Link>
-        ) : null}
+        // «ECONOMÍA», LA ÚLTIMA SOLAPA, SÓLO PARA ADMINISTRACIÓN (dueño 25/09): mismo renglón y estilo
+        // que las demás. Al jefe de obra no se le dibuja, igual que no se le dibujan las rutas de `veEconomia`.
+        economiaHref={veComercial ? hrefEconomia(obraId) : null}
       />
       {/* NIVEL 3 DE TRABAJO — la banda `#FAFAF8` del zip, de borde a borde. En el árbol la dibuja
           `TabTareas` y en el parte diario `ParteDiario`, porque ahí comparten renglón con lo suyo:

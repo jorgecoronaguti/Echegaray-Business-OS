@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { cantidad, desvio, hh, horas, money, moneyK, pct, plata, plataCorta, porcentaje } from './format.ts'
+import { cantidad, desvio, hh, horas, money, moneyK, pct, plata, plataCorta, plataMillones, porcentaje } from './format.ts'
 import { diaMesAnioISO, diaMesISO, diaMesAnioLocal, diaMesLocal } from './fecha.ts'
 import * as obras from '../../features/obras/components/formato.ts'
 import * as integraciones from '../../features/integraciones/components/formato.ts'
@@ -100,9 +100,18 @@ test('`money` y `plata` NO son la misma función, y tampoco `pct`/`porcentaje` n
 
 // LOS RE-EXPORTS SON LA MISMA FUNCIÓN, NO UNA COPIA. Si alguien «arregla» el archivo viejo
 // volviendo a escribir el cuerpo ahí, esto se pone rojo y el duplicado no vuelve en silencio.
+test('plataMillones: la plata de Obras como el diseño, «$ 231,00 M»', () => {
+  assert.equal(plataMillones(231_000_000), '$ 231,00 M')
+  assert.equal(plataMillones(110_000), '$ 0,11 M')
+  assert.equal(plataMillones(0), '$ 0,00')
+  assert.equal(plataMillones(null), '—')
+  assert.equal(plataMillones(-6_600_000), '−$ 6,60 M')
+})
+
 test('los archivos viejos re-exportan la función canónica, no otra', () => {
   assert.equal(obras.plata, plata)
   assert.equal(obras.plataCorta, plataCorta)
+  assert.equal(obras.plataMillones, plataMillones)
   assert.equal(obras.porcentaje, porcentaje)
   assert.equal(obras.horas, horas)
   assert.equal(obras.hh, hh)

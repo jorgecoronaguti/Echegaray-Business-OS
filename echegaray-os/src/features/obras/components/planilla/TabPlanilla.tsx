@@ -50,8 +50,8 @@ export async function TabPlanilla({ obraId }: { obraId: string }) {
         <div style={{ fontSize: '15px', fontWeight: 600, color: '#1F1F1E' }}>La planilla se mira en la computadora</div>
         <div>Tarea × día hábil no entra en el teléfono. Lo mismo, tarea por tarea, está en Tareas y en el Parte diario.</div>
         <div style={{ display: 'flex', gap: '16px' }}>
-          <Link href={`/obras/${obraId}?vista=tareas&sub=arbol`} style={{ color: '#1F1F1E', textDecoration: 'underline' }}>Tareas</Link>
-          <Link href={`/obras/${obraId}?vista=tareas&sub=parte`} style={{ color: '#1F1F1E', textDecoration: 'underline' }}>Parte diario</Link>
+          <Link href={`/obras/${obraId}?vista=tareas&sub=arbol`} prefetch={false} style={{ color: '#1F1F1E', textDecoration: 'underline' }}>Tareas</Link>
+          <Link href={`/obras/${obraId}?vista=tareas&sub=parte`} prefetch={false} style={{ color: '#1F1F1E', textDecoration: 'underline' }}>Parte diario</Link>
         </div>
       </div>
       <div className="hidden md:block">

@@ -12,5 +12,5 @@
 
 // La ruta va RELATIVA y con extensión: el alias `@/` lo resuelve el bundler, no `node --test`, y
 // desde acá cuelga código que los tests importan.
-export { cantidad, desvio, hh, horas, plata, plataCorta, porcentaje } from '../../../shared/utils/format.ts'
+export { cantidad, desvio, hh, horas, plata, plataCorta, plataMillones, porcentaje } from '../../../shared/utils/format.ts'
 export { diaMesAnioISO as fecha, diaMesISO as fechaCorta } from '../../../shared/utils/fecha.ts'

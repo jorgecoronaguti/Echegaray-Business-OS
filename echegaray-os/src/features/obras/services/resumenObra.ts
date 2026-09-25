@@ -180,14 +180,23 @@ export interface FrenteEnCurso {
   gente: number | null
 }
 
-const esViva = (a: Actividad) => a.tipo !== 'resumen' && !a.archivada && !a.actividad_padre_id
+/**
+ * LAS ACTIVIDADES QUE SE MIDEN: ni contenedores (`resumen`) ni archivadas, y colgadas de la raíz o de
+ * un contenedor. En la jerarquía de cinco niveles TODA tarea tiene padre (su historia, que es
+ * `resumen`): filtrar «sin padre» dejaba el Resumen de Quattropani en «0 de 0 actividades» con tres
+ * tareas en curso (25/09). Lo que cuelga de una TAREA (subtarea, frente) sigue afuera: lo mide su tarea.
+ */
+function medibles(actividades: readonly Actividad[]): Actividad[] {
+  const contenedores = new Set(actividades.filter((a) => a.tipo === 'resumen').map((a) => a.id))
+  return actividades.filter((a) => a.tipo !== 'resumen' && !a.archivada
+    && (!a.actividad_padre_id || contenedores.has(a.actividad_padre_id)))
+}
 
 /** Las actividades en curso o bloqueadas: las que tienen un frente abierto hoy. */
 export function frentesEnCurso(
   actividades: readonly Actividad[], genteHoy: Readonly<Record<string, number>>,
 ): FrenteEnCurso[] {
-  return actividades
-    .filter(esViva)
+  return medibles(actividades)
     .filter((a) => a.estado_operativo === 'en_curso' || a.estado_operativo === 'bloqueada'
       || (a.avance_pct != null && a.avance_pct > 0 && a.avance_pct < 100))
     .map((a) => {
@@ -265,8 +274,13 @@ export function loQueFaltaCargar(i: {
 }
 
 /** Cuántas actividades vivas no tienen método de medición. */
+/** Cuántas actividades medibles hay (el «de N» de «Los frentes en curso»). */
+export function actividadesMedibles(actividades: readonly Actividad[]): number {
+  return medibles(actividades).length
+}
+
 export function sinMetodoDeMedicion(actividades: readonly Actividad[]): number {
-  return actividades.filter(esViva).filter((a) => !a.metodo_avance).length
+  return medibles(actividades).filter((a) => !a.metodo_avance).length
 }
 
 // ── ÚLTIMA ACTIVIDAD ────────────────────────────────────────────────────────

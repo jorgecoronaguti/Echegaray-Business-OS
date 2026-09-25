@@ -40,13 +40,19 @@ import {
   bajadaAvance, cifraAvance, faltaAvance, type AvancePonderado, type DiasHabilesObra,
 } from '../services/avancePonderado'
 import {
-  asignadosDelResumen, frentesEnCurso, hhDelResumen, impedimentosQueFrenan, inicioRealDeRespaldo, loQueFaltaCargar, personasHoy, plazoDeObra,
+  actividadesMedibles, asignadosDelResumen, frentesEnCurso, hhDelResumen, impedimentosQueFrenan, inicioRealDeRespaldo, loQueFaltaCargar, personasHoy, plazoDeObra,
   sinMetodoDeMedicion, ultimaActividad,
 } from '../services/resumenObra'
 import type { PersonasDeHoy } from '../services/personalService'
 import type { Asignacion } from '../types'
 import type { BloqueOrdenes } from '../services/ordenesDeLaObra'
-import { fecha, fechaCorta, plataCorta } from './formato'
+import { fecha, fechaCorta, plataMillones } from './formato'
+
+/** 03: «31 de 42 ítems medidos» bajo el avance, como el diseño; sin cifra, la bajada que dice por qué. */
+function bajadaResumen(a: AvancePonderado | null): string {
+  if (a && a.n_historias > 0 && a.avance_pct != null) return `${a.n_items_medidos} de ${a.n_items} ítems medidos`
+  return bajadaAvance(a)
+}
 
 /** LO QUE FRENA LA OBRA, para el teléfono: los vencidos con nombre; el resto, contado. */
 function itemsDeImpedimentos(abiertas: Restriccion[], obraId: string, hoy: string): ItemAtencion[] {
@@ -151,7 +157,7 @@ function OrdenesTelefono({ ordenes, veComercial }: { ordenes: BloqueOrdenes; veC
               <div style={{ flexShrink: 0, textAlign: 'right', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end', fontVariantNumeric: 'tabular-nums' }}>
                 {veComercial
                   ? (o.importe != null
-                    ? <>{plataCorta(o.importe)}<span style={{ fontSize: '11px', color: C.tenue }}>c/IVA</span></>
+                    ? <>{plataMillones(o.importe)}<span style={{ fontSize: '11px', color: C.tenue }}>c/IVA</span></>
                     : <SinDato>importe sin leer</SinDato>)
                   : <SinDato>importe reservado</SinDato>}
               </div>
@@ -199,7 +205,7 @@ export function TabResumen({
   /** `registros_hh` de la obra (la misma lectura que Personal) · `null` = no se pudo leer. */
   registrosHH?: Parameters<typeof hhDelResumen>[0] | null
 }) {
-  const vivas = actividades.filter((a) => a.tipo !== 'resumen' && !a.archivada && !a.actividad_padre_id)
+  const nMedibles = actividadesMedibles(actividades)
   const actividadDe = new Map([
     ...archivadas.map((a) => [a.id, { nombre: `${a.nombre} (archivada)`, unidad: a.unidad }] as const),
     ...actividades.map((a) => [a.id, { nombre: a.nombre, unidad: a.unidad }] as const),
@@ -211,7 +217,7 @@ export function TabResumen({
     actividadesSinFecha: obra.n_actividades_sin_fecha,
     sinMetodo: sinMetodoDeMedicion(actividades),
     dependencias: nDependencias,
-    actividades: vivas.length,
+    actividades: nMedibles,
     selladas: plan?.actividades_con_baseline ?? null,
   })
   const eventos = ultimaActividad(partes, actividadDe)
@@ -229,10 +235,12 @@ export function TabResumen({
       <div className="hidden md:grid" style={{ padding: '30px', gridTemplateColumns: 'minmax(0,1fr) 340px', gap: '52px', alignItems: 'start' }}
         data-testid="resumen-obra">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '34px', minWidth: 0 }}>
-          <div style={{ display: 'flex', gap: '64px', flexWrap: 'wrap' }} data-testid="cifras-resumen">
+          {/* UNA SOLA FILA DE CUATRO (dueño 25/09): Avance · Plazo del diseño y HH · Asignados pedidos por él,
+              mismo estilo; la bajada larga se parte en su columna, la fila no se parte nunca. */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', columnGap: '40px' }} data-testid="cifras-resumen">
             {/* 03.html dibuja Avance y Plazo; HH y Asignados se suman por pedido del dueño (23/09/2026)
                 con la misma fuente que la solapa Personal. El costo teórico no está en el diseño. */}
-            <CifraGrande rotulo="Avance" valor={cifraAvance(avance)} falta={faltaAvance(avance)} bajada={bajadaAvance(avance)} testid="cifra-avance" />
+            <CifraGrande rotulo="Avance" valor={cifraAvance(avance)} falta={faltaAvance(avance)} bajada={bajadaResumen(avance)} testid="cifra-avance" />
             <CifraGrande rotulo="Plazo" valor={plazo.valor} falta={plazo.falta} bajada={plazo.bajada} tono={plazo.tono} testid="cifra-plazo" />
             <CifraGrande rotulo={hh.rotulo} valor={hh.valor} falta={hh.falta} bajada={hh.bajada} testid="cifra-hh" />
             <CifraGrande rotulo={asignados.rotulo} valor={asignados.valor} falta={asignados.falta} bajada={asignados.bajada} testid="cifra-asignados" />
@@ -266,7 +274,7 @@ export function TabResumen({
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }} data-testid="frentes-en-curso">
             {/* 03: «4 de 42 actividades» SIEMPRE al lado del título — con la obra vacía dice «0 de 0». */}
-            <TituloBloque meta={`${frentes.length} de ${vivas.length} actividades`}>Los frentes en curso</TituloBloque>
+            <TituloBloque meta={`${frentes.length} de ${nMedibles} actividades`}>Los frentes en curso</TituloBloque>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{
                 display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 130px 110px 92px 88px', gap: '20px', height: '32px',
@@ -312,7 +320,7 @@ export function TabResumen({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
               <FilaKV k="Etapa" v={obra.etapa ? ETAPA_LABEL[obra.etapa] ?? obra.etapa : <SinDato>sin declarar</SinDato>} />
               {veComercial && (
-                <FilaKV k="Contratado" v={obra.monto_contratado != null ? plataCorta(obra.monto_contratado) : <SinDato>sin cargar</SinDato>} />
+                <FilaKV k="Contratado" v={obra.monto_contratado != null ? plataMillones(obra.monto_contratado) : <SinDato>sin cargar</SinDato>} />
               )}
               <FilaKV k="Inicio real" v={obra.fecha_inicio_real ? fecha(obra.fecha_inicio_real) : inicioRespaldo ? `${fecha(inicioRespaldo.fecha)} · ${inicioRespaldo.origen}` : <SinDato>sin arrancar</SinDato>} />
               <FilaKV k="Fin plan" v={obra.fecha_fin_plan ? fecha(obra.fecha_fin_plan) : <SinDato>sin plan</SinDato>} />
@@ -342,7 +350,7 @@ export function TabResumen({
                       </div>
                       <div style={{ fontSize: '12.5px', color: C.tintaSuave }}>
                         {veComercial
-                          ? (o.importe != null ? `${plataCorta(o.importe)} con IVA` : 'importe sin leer')
+                          ? (o.importe != null ? `${plataMillones(o.importe)} con IVA` : 'importe sin leer')
                           : 'importe reservado'}
                         {' · '}{o.enDrive ? 'PDF en Drive' : 'PDF en el OS'}
                       </div>
@@ -394,7 +402,7 @@ export function TabResumen({
             bajada={plazo.bajada.replace('fin proyectado', 'proy.')} />
           {/* M04: «Costo · $ X M · N comprobantes» = costo real de las compras, no el teórico. */}
           <CifraGrande tam={24} rotulo="Costo"
-            valor={veComercial && economia?.costo_real != null ? plataCorta(economia.costo_real) : null}
+            valor={veComercial && economia?.costo_real != null ? plataMillones(economia.costo_real) : null}
             falta={veComercial ? 'sin comprobantes' : 'no lo ve tu nivel'}
             bajada={veComercial && economia?.costo_real_n_comprobantes != null ? `${economia.costo_real_n_comprobantes} comprobantes` : ''} />
           <CifraGrande tam={24} rotulo="Personas hoy" valor={personas.valor} falta={personas.falta} bajada={personas.bajada} />

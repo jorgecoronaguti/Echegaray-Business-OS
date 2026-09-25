@@ -49,7 +49,7 @@ import type { PlanDePersonal } from '../services/obrasService'
 import { etiquetaCategoria } from '@/features/administracion/types'
 import { FormIndividual, FormMasiva, TablaHoras, TablaProductividad } from './PersonalHH'
 import { horasPorAsignado } from '../services/productividadHH'
-import { plataCorta } from './formato'
+import { plataMillones } from './formato'
 import type { ManoObraPropia } from '../types/economia'
 import { C, MONO } from './canon/tokens'
 import { Ico, P } from './canon/Ico'
@@ -359,11 +359,11 @@ export async function TabPersonal({
               {/* El costo sale de la definición única (recibos + negro de las horas valorizadas); las
                   horas sin tarifa no suman y se dicen. Antes decía «no se calcula» siempre. */}
               <Cifra rotulo="Costo de esas horas"
-                valor={veComercial && manoObra?.puedeVer && manoObra.importe != null ? plataCorta(manoObra.importe) : null}
+                valor={veComercial && manoObra?.puedeVer && manoObra.importe != null ? plataMillones(manoObra.importe) : null}
                 falta={!veComercial || manoObra?.puedeVer === false ? 'no lo ve tu nivel' : manoObra == null ? 'no se pudo leer' : 'sin horas valorizadas'}
                 bajada={!veComercial || !manoObra?.puedeVer ? '' : [
                   manoObra.horasValorizadas != null ? `${manoObra.horasValorizadas.toLocaleString('es-AR')} h valorizadas` : null,
-                  manoObra.estimado ? `${plataCorta(manoObra.estimado)} estimado` : null,
+                  manoObra.estimado ? `${plataMillones(manoObra.estimado)} estimado` : null,
                   manoObra.horasSinDato > 0 ? `${manoObra.horasSinDato} h sin tarifa` : null,
                 ].filter(Boolean).join(' · ') || 'todo con recibo'} />
             </div>

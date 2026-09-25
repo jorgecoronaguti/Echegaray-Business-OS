@@ -36,7 +36,7 @@ import { BloqueAside, BloqueTelefono, CifraGrande, FilaKV, SinDato, TituloBloque
 import { bajadaAvance, cifraAvance, faltaAvance, type AvancePonderado } from '../services/avancePonderado'
 import type { ActividadHH } from '../services/personalService'
 import { antesDeArchivar, hhDeCierre, hhPorRubro, margenDeCierre, plazoFinal } from '../services/resumenObra'
-import { fecha, fechaCorta, plataCorta } from './formato'
+import { fecha, fechaCorta, plataMillones } from './formato'
 
 const numAR = (n: number, dec = 0) => n.toLocaleString('es-AR', { maximumFractionDigits: dec })
 
@@ -103,7 +103,7 @@ export function ResumenCierre({
   })
   const margen = margenDeCierre(veComercial ? plan : null)
   const sellada = actividades.map((a) => a.sellada_en).filter((s): s is string => !!s).sort().at(-1) ?? null
-  const certificados = !veComercial ? null : plan?.certificado == null ? null : plataCorta(plan.certificado)
+  const certificados = !veComercial ? null : plan?.certificado == null ? null : plataMillones(plan.certificado)
   const cobrados = plan?.cobrado != null && plan.certificado != null && plan.cobrado >= plan.certificado
   const textoArchivar = yaArchivada
     ? 'Ya está fuera de la cartera y de la ficha del cliente. No se borró nada: cronograma, HH y costos quedan enteros; la página sigue abriendo por su dirección. Reactivar la devuelve a la cartera.'
@@ -116,12 +116,12 @@ export function ResumenCierre({
         bajada={avance ? `${avance.n_items_medidos} de ${avance.n_items} medidos` : bajadaAvance(avance)} testid="cifra-avance" />
       <CifraGrande tam={tam} rotulo="Plazo final" valor={plazo.valor} falta={plazo.falta} bajada={plazo.bajada} tono={plazo.tono} testid="cifra-plazo-final" />
       <CifraGrande tam={tam} rotulo="Costo real" testid="cifra-costo-real"
-        valor={veComercial && obra.costo_real != null ? plataCorta(obra.costo_real) : null}
+        valor={veComercial && obra.costo_real != null ? plataMillones(obra.costo_real) : null}
         falta={veComercial ? 'sin costo cargado' : 'reservado'}
         bajada={obra.n_comprobantes != null ? `${obra.n_comprobantes} comprobantes${tam === 28 ? ' · detalle completo' : ''}` : 'sin comprobantes'} />
       <CifraGrande tam={tam} rotulo="Certificados" valor={certificados} falta={veComercial ? 'sin certificar' : 'reservado'} testid="cifra-certificados"
         tono={cobrados ? 'pos' : 'ink'}
-        bajada={plan?.cobrado != null ? `${plataCorta(plan.cobrado)} cobrados` : 'sin cobros'} />
+        bajada={plan?.cobrado != null ? `${plataMillones(plan.cobrado)} cobrados` : 'sin cobros'} />
     </>
   )
 
@@ -194,8 +194,8 @@ export function ResumenCierre({
         <aside style={{ display: 'flex', flexDirection: 'column', gap: '30px', paddingLeft: '34px', borderLeft: `1px solid ${C.borde}` }} data-testid="aside-cierre">
           <BloqueAside titulo="La obra" testid="ficha-obra">
             <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
-              {veComercial && <FilaKV k="Contratado" v={obra.monto_contratado != null ? <span style={{ fontFamily: MONO }}>{plataCorta(obra.monto_contratado)}</span> : <SinDato>sin cargar</SinDato>} />}
-              {veComercial && <FilaKV k="Costo real" v={obra.costo_real != null ? <span style={{ fontFamily: MONO }}>{plataCorta(obra.costo_real)}</span> : <SinDato>sin costo cargado</SinDato>} />}
+              {veComercial && <FilaKV k="Contratado" v={obra.monto_contratado != null ? <span style={{ fontFamily: MONO }}>{plataMillones(obra.monto_contratado)}</span> : <SinDato>sin cargar</SinDato>} />}
+              {veComercial && <FilaKV k="Costo real" v={obra.costo_real != null ? <span style={{ fontFamily: MONO }}>{plataMillones(obra.costo_real)}</span> : <SinDato>sin costo cargado</SinDato>} />}
               {veComercial && <FilaKV k="Margen" tono={margen.tono} v={margen.tono === 'faint' ? <SinDato>{margen.texto}</SinDato> : margen.texto} />}
               <FilaKV k="Inicio real" v={obra.fecha_inicio_real ? <span style={{ fontFamily: MONO }}>{fecha(obra.fecha_inicio_real)}</span> : <SinDato>sin registrar</SinDato>} />
               <FilaKV k="Fin real" v={obra.fecha_fin_real ? <span style={{ fontFamily: MONO }}>{fecha(obra.fecha_fin_real)}</span> : <SinDato>sin registrar</SinDato>} />

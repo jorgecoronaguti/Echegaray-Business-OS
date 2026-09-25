@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   hhDelResumen, asignadosDelResumen, inicioRealDeRespaldo,
-  antesDeArchivar, frentesEnCurso, hhDeCierre, hhPorRubro, impedimentosQueFrenan, loQueFaltaCargar,
+  actividadesMedibles, antesDeArchivar, frentesEnCurso, hhDeCierre, hhPorRubro, impedimentosQueFrenan, loQueFaltaCargar,
   margenDeCierre, personasHoy, plazoDeObra, plazoFinal, sinMetodoDeMedicion, ultimaActividad,
 } from './resumenObra.ts'
 import type { Actividad, ParteEjecucion, Restriccion } from '../types/index.ts'
@@ -100,6 +100,18 @@ test('los frentes en curso: en curso o bloqueadas, con la medición y la gente d
   assert.deepEqual(filas[2].medicion, { texto: 'Manual', tono: 'warn' })
   assert.equal(filas[2].avance.detalle, 'lo declaró una persona')
   assert.equal(filas[2].hhReal, null)
+})
+
+test('los frentes en curso con la jerarquía de cinco niveles: la tarea bajo su historia cuenta, la subtarea no', () => {
+  const acts = [
+    actividad({ id: 'rubro', tipo: 'resumen' }),
+    actividad({ id: 'hist', tipo: 'resumen', actividad_padre_id: 'rubro' }),
+    actividad({ id: 'b0', actividad_padre_id: 'hist', avance_pct: 43, estado_operativo: 'en_curso' }),
+    actividad({ id: 'b1', actividad_padre_id: 'hist', avance_pct: 100, estado_operativo: 'hecha' }),
+    actividad({ id: 'sub', actividad_padre_id: 'b0', avance_pct: 50, estado_operativo: 'en_curso' }),
+  ]
+  assert.deepEqual(frentesEnCurso(acts, {}).map((f) => f.id), ['b0'])
+  assert.equal(actividadesMedibles(acts), 2)
 })
 
 test('lo que falta cargar: cada renglón con su número y en ámbar sólo cuando hay algo que cargar', () => {

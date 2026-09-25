@@ -95,6 +95,21 @@ export const plataCorta = (n: number | null | undefined) => {
   return s + Math.round(a).toLocaleString('es-AR')
 }
 
+/**
+ * PLATA EN MILLONES, COMO LA ESCRIBE EL DISEÑO «ERP Obras» (dueño 25/09: «$ 231,00 M», no «$231M»).
+ * Siempre en millones con dos decimales, `$ ` con espacio y ` M` separado: `$ 168,70 M`, `$ 0,11 M`.
+ * El cero es `$ 0,00` (diseño 12 · «Mano de obra adentro»). `null` sigue siendo `—`: un contratado
+ * sin cargar no es un contrato de cero pesos. Es la plata abreviada de Obras; `plataCorta` sigue
+ * siendo la del resto del OS.
+ */
+export const plataMillones = (n: number | null | undefined): string => {
+  if (n == null || !Number.isFinite(n)) return '—'
+  if (n === 0) return '$ 0,00'
+  const m = n / 1e6
+  const txt = Math.abs(m).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return `${m < 0 ? '−' : ''}$ ${txt} M`
+}
+
 /** Un porcentaje YA en escala 0–100, con el espacio del es-AR: `35 %`. `null` no es `0 %`:
  *  devuelve `null` y la pantalla escribe qué falta. */
 export const porcentaje = (n: number | null | undefined) =>

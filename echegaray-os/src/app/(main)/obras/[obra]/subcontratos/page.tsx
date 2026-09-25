@@ -92,12 +92,7 @@ export default async function SubcontratosObraPage({
           // pantalla ni cifras propias.
           titulo={21}
           enlazarCliente={economia}
-          alFinalDeLasSolapas={economia ? (
-            <Link href={hrefEconomia(obraId)} prefetch={false} data-testid="enlace-economia"
-              className="ml-auto self-center whitespace-nowrap px-[11px] py-2 text-[12px] text-faint hover:text-ink max-md:-my-[5px] max-md:py-[13px]">
-              Economía
-            </Link>
-          ) : null}
+          economiaHref={economia ? hrefEconomia(obraId) : null}
           // LA PRIMARIA DEL 07 VA EN LA CABECERA, a la derecha del título: «Nuevo paquete» de 32px.
           // Abre el alta (una sola definición: `FormNuevoPaquete`) por `?nuevo=1`.
           acciones={
