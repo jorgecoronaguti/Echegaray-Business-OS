@@ -8,7 +8,7 @@
 //
 // · `/administracion/personas?vista=…` ya son 646 líneas con tres ramas; una cuarta la volvía
 //   inmantenible, y el `?obra=` de esa página significa cosas distintas en cada solapa.
-// · `/administracion/asistencia` es la COLA de correcciones del plantel —otra pregunta, otra pantalla—.
+// · `/administracion/personas/correcciones` (antes `/administracion/asistencia`) es la COLA de correcciones del plantel —otra pregunta, otra pantalla—.
 // · Acá cuelga de Personal, igual que «En obra ahora» y «Cuadrillas»: hereda el layout de Personal, que
 //   refresca en vivo con `asistencia_dia`, `registros_hh` y `obra_asignacion`, y el jefe de obra entra
 //   porque `esAdministracion` lo incluye. La RLS decide qué obras y qué filas ve.

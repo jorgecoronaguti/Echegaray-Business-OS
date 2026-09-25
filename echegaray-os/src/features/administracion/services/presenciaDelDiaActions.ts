@@ -169,7 +169,7 @@ export async function guardarPresencia(entrada: unknown): Promise<ResultadoPrese
   revalidatePath('/campo/asistencia')
   revalidatePath('/administracion/personas')
   revalidatePath('/administracion/personas/en-obra')
-  if (horas.escribio) revalidatePath('/administracion/asistencia')
+  if (horas.escribio) revalidatePath('/administracion/personas/correcciones')
 
   const resumen = resumenPresencia(tardanzas.marcas, marcas.length)
   const mensaje = [acusePresencia(resumen), acuseTardanzas(tardanzas.marcas), avisoTardanza, horas.mensaje]
@@ -458,7 +458,7 @@ export async function marcarTardanza(entrada: unknown): Promise<ResultadoTardanz
   }
 
   revalidatePath('/administracion/personas')
-  revalidatePath('/administracion/asistencia')
+  revalidatePath('/administracion/personas/correcciones')
   revalidatePath('/campo/asistencia')
   const rotulo = rotuloTardanza(fila)
   return {

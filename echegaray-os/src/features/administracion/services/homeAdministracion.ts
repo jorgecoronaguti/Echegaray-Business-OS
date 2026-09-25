@@ -363,7 +363,7 @@ const SENALES: {
     singular: 'corrección de asistencia sin resolver', plural: 'correcciones de asistencia sin resolver',
     bloquea: 'Las HH del legajo quedan mal',
     donde: 'Horas', accion: 'Revisar',
-    href: '/administracion/asistencia', tono: 'warn', icono: 'tiempo',
+    href: '/administracion/personas/correcciones', tono: 'warn', icono: 'tiempo',
   },
   // EFECTIVO A RENDIR (D14). Sin «rendición vencida»: no hay plazo, decisión del dueño del 22/09/2026.
   {

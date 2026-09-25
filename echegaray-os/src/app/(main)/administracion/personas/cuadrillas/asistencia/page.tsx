@@ -103,7 +103,7 @@ export default async function AsistenciaSemanaPage({ searchParams }: { searchPar
           Un día sin marcas de alguien del plantel dice «sin registro», no «ausente»: el que no tiene
           teléfono y el que faltó se ven igual desde acá. La falta la declara quien carga las horas, y
           la salida que falta se resuelve en la{' '}
-          <Link className="underline hover:text-ink" href="/administracion/asistencia">bandeja de correcciones</Link>.
+          <Link className="underline hover:text-ink" href="/administracion/personas/correcciones">bandeja de correcciones</Link>.
         </p>
       </div>
     </div>

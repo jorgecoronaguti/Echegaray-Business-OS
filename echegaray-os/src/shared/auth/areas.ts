@@ -264,6 +264,12 @@ export const RUTAS_SOLO_ECONOMIA = [
   // (Operación › Compras), que lee otra ruta.
   '/administracion/compras',
   '/administracion/proveedores',
+  // 25/09/2026 (auditoría de fugas): la cola de imputación de Compras, el tablero del OS y XSAS (la economía de la
+  // obra, `/administracion/obras/<obra>`, no tiene pantalla en la raíz: la cierra la lista blanca). Con la puerta ya blanca no deciden el acceso, pero así los menús y la pantalla de accesos de una
+  // persona los nombran como cerrados.
+  '/administracion/pendientes',
+  '/os',
+  '/xsas',
   // `/administracion/cronograma` y `/administracion/portal` estuvieron acá menos de un día
   // (26/08/2026): eran dos pantallas del portal que duplicaban lo que la ficha del cliente ya
   // administraba en sus solapas 31 y 32. Se retiraron con sus rutas. Quién entra al portal y qué ve
@@ -315,7 +321,7 @@ export const RUTAS_DEL_OPERARIO = [
 export const RUTAS_DEL_JEFE = [
   ...RUTAS_DE_TODOS,
   '/obras', '/obra', '/campo',
-  '/administracion/personas', '/administracion/asistencia', '/administracion/base-maestra',
+  '/administracion/personas', '/administracion/base-maestra',
 ] as const
 
 function dentroDe(pathname: string, rutas: readonly string[]): boolean {

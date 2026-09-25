@@ -59,7 +59,7 @@ test('LO QUE EL JEFE NECESITA PARA TRABAJAR sigue abierto (PC y teléfono)', () 
     '/obra/hoy', '/obra/tareas', '/obra/avance', '/obra/personas', '/obra/efectivo', '/obra/frente',
     '/campo/asistencia', '/campo/parte', '/campo/impedimento', '/campo/material', '/campo/material/pedir',
     '/campo/herramientas', '/herramientas', '/herramientas/inventario', '/h/SOL-007',
-    '/administracion', '/administracion/personas', '/administracion/personas/518df458', '/administracion/asistencia',
+    '/administracion', '/administracion/personas', '/administracion/personas/518df458', '/administracion/personas/correcciones',
     '/administracion/personas/cuadrillas', '/administracion/base-maestra/tareas',
     '/mi-informacion', '/mi-informacion/efectivo', '/mi-cuenta', '/mi-cuenta/efectivo', '/mi-cuenta/seguridad']) {
     assert.equal(puedeVerRuta('jefe_obra', r), true, `el jefe no pudo abrir ${r}`)

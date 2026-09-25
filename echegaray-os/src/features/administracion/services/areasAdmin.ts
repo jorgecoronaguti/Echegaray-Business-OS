@@ -33,7 +33,7 @@
 //
 // NINGUNA RUTA SE BORRÓ. `/administracion` (la entrada del área, a la que sigue llevando la solapa
 // de nivel 1), `/administracion/base-maestra`, `/administracion/pendientes`,
-// `/administracion/asistencia`, `/administracion/usuarios` y `/documentos` siguen existiendo y
+// `/administracion/personas/correcciones` (antes `/administracion/asistencia`), `/administracion/usuarios` y `/documentos` siguen existiendo y
 // respondiendo igual: retirar un enlace es reversible en una línea, borrar una ruta no.
 //
 // LAS DOS COLAS QUE ERAN DE «TRABAJO» AHORA CUELGAN DE SU SECCIÓN, que es el criterio de la v4:
@@ -89,7 +89,7 @@ export const DESTINOS: readonly Destino[] = [
   // Absorbe Asistencia: corregir una marca es trabajo sobre una persona, no un área hermana.
   {
     clave: 'personas', titulo: 'Personal', href: '/administracion/personas', grupo: 'quien',
-    absorbe: ['/administracion/asistencia'],
+    absorbe: ['/administracion/personas/correcciones'],
   },
   // El libro de compras, y desde el 16/09/2026 TODO el módulo de proveedores adentro. NO entra en
   // `RUTAS_SOLO_ECONOMIA`: una compra es COSTO, no PRECIO, y el jefe de obra ve el costo de su obra

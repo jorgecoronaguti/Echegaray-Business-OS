@@ -142,7 +142,7 @@ export async function pedirCorreccionAsistencia(form: FormData): Promise<Resulta
   })
   if (error) return { ok: false, error: traducirCorreccion(error.message) }
 
-  revalidatePath('/mi-informacion/asistencia'); revalidatePath('/administracion/asistencia')
+  revalidatePath('/mi-informacion/asistencia'); revalidatePath('/administracion/personas/correcciones')
   return {
     ok: true,
     mensaje: 'Pedido enviado. Lo aprueba Administración: hasta entonces el día sigue sin salida.',

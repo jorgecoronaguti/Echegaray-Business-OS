@@ -44,7 +44,7 @@ function traducir(mensaje: string): string {
 }
 
 function refrescar(): void {
-  revalidatePath('/administracion/asistencia')
+  revalidatePath('/administracion/personas/correcciones')
   // La pantalla del empleado tiene que dejar de decir «pendiente» y empezar a mostrar la salida.
   revalidatePath('/mi-informacion/asistencia')
   revalidatePath('/hoy')

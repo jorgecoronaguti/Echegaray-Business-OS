@@ -85,7 +85,7 @@ test('lo que perdió su solapa enciende la sección que lo reclama', () => {
   // decir dónde está parado el que la mira.
   assert.equal(areaActiva('/administracion/pendientes'), 'compras')
   assert.equal(areaActiva('/administracion/pendientes?f=algo'), 'compras')
-  assert.equal(areaActiva('/administracion/asistencia'), 'personas')
+  assert.equal(areaActiva('/administracion/personas/correcciones'), 'personas')
 })
 
 test('TODO Proveedores enciende Compras: la lista, sus dos colas y cada ficha', () => {

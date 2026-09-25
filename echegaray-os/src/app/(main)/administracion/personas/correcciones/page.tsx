@@ -37,7 +37,7 @@ import { titularDeLaBandeja } from '@/features/administracion/services/bandejaCo
 
 export const dynamic = 'force-dynamic'
 
-const RUTA = '/administracion/asistencia'
+const RUTA = '/administracion/personas/correcciones'
 
 type Busqueda = { ver?: string; c?: string }
 

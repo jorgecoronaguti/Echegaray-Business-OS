@@ -48,7 +48,7 @@ test('cuál se enciende: el href más largo gana y las rutas de Administración 
   const b = barraTelefonoDe('direccion')
   assert.equal(itemActivoDeBarra('/obras/x/dotacion', b), 'obras')
   assert.equal(itemActivoDeBarra('/administracion/personas/asistencia', b), 'personal')
-  assert.equal(itemActivoDeBarra('/administracion/asistencia', b), 'personal')
+  assert.equal(itemActivoDeBarra('/administracion/personas/correcciones', b), 'personal')
   assert.equal(itemActivoDeBarra('/administracion/compras', b), 'compras')
   assert.equal(itemActivoDeBarra('/administracion/proveedores/x', b), 'compras')
   assert.equal(itemActivoDeBarra('/analiticas', b), 'analiticas')

@@ -316,3 +316,77 @@ de PC abiertas desde el teléfono vuelven a J01 y D15.
 Nivel 1 del jefe en la PC: **Obras · Herramientas** (sin Administración). Las rutas de Personal le siguen abiertas
 (decisión 24/09) y, abiertas desde su obra, encienden Obras. La obra que mira se recuerda también desde la portada y
 la ficha (`obraQueSeMira`). El operario que abre `/mi-cuenta/efectivo` va a `/mi-informacion/efectivo`.
+
+## h. Árbol de URLs y puerta por rol (dueño, 25/09/2026: «las URLs son un desastre… cualquiera puede entrar a ver cualquier cosa»)
+
+### Tres reglas
+
+1. **Una URL por concepto.** Lo que tenía dos o tres direcciones quedó con una; las otras mandan a ésa con un
+   **308 permanente** (`shared/auth/rutasViejas.ts`, con prueba). También las pantallas retiradas desde julio:
+   ningún marcador, mail, aviso del bot ni QR impreso termina en 404.
+2. **La cara la elige el aparato, con un prefijo fijo.** Donde el teléfono y la PC tienen diseños distintos, la
+   cara del teléfono vive bajo `/obra` (jefe) y `/campo` (trabajo en obra, Herramientas y Material del teléfono),
+   la de la PC bajo `/obras` y `/herramientas`; los datos personales del teléfono bajo `/mi-informacion` y la
+   cuenta y «Mi efectivo» de la PC bajo `/mi-cuenta`. El middleware lleva a cada aparato a su cara con un **307**
+   (no permanente: en el mismo navegador puede entrar otra persona u otro rol).
+3. **La puerta niega por defecto** (`shared/auth/areas.ts · puedeVerRuta`, prueba `matriz-de-rutas.test.ts`).
+   Administración abre todo; el jefe y el operario sólo su lista; cualquier ruta nueva nace cerrada para ellos.
+   `/api` también: el jefe y el operario sólo `/api/version`. El cliente no sale de `/portal`. La cerradura de
+   verdad es la base (RLS `solo_administracion`, 20260926T0001–0003): la puerta evita la pantalla vacía.
+
+### El árbol
+
+| Cara | Portada | Qué abre |
+|---|---|---|
+| **Administración** (dirección, administración) · PC y teléfono | `/obras` | Todo: `/obras` (cartera, `/obras/gantt`, `/obras/nueva`, ficha `/obras/<obra>` con `?vista=`), `/clientes/<cliente>`, `/presupuestos/<id>`, `/administracion/{personas,compras,proveedores,impuestos,usuarios,base-maestra,pendientes,obras/<obra>}`, `/analiticas`, `/herramientas/*`, `/mas`, `/os`, `/xsas`, `/calendario-financiero`, `/reportes`, `/aprobaciones`, `/documentos`, `/descargas`, `/mi-cuenta/*` |
+| **Jefe de obra** · PC | `/obras/hoy` | `/obras/hoy`, `/obras/<obra>` (sin Economía), `/administracion/personas/*` (Personal sin Liquidación: legajos, cuadrillas, carga de asistencia `personas/asistencia`, correcciones `personas/correcciones`), `/administracion/base-maestra/*`, `/herramientas/*`, `/mi-cuenta/*` («Mi efectivo» en `/mi-cuenta/efectivo`) |
+| **Jefe de obra** · teléfono | `/obra/hoy` | `/obra/{hoy,tareas,avance,avance-masivo,personas,frente,efectivo}?obra=`, `/campo/{asistencia,parte,impedimento,material,herramientas}`, `/mi-informacion/*` |
+| **Operario** · teléfono (y PC, misma cara) | `/hoy` | `/hoy`, `/mi-trabajo/*`, `/mi-informacion/*` (horas, recibos, legajo, documentos, EPP, efectivo), `/herramientas/*` · `/campo/herramientas/*` · `/campo/material/*`, `/mi-cuenta` (seguridad, sesiones, notificaciones) |
+| **Cliente** · portal | `/portal` | `/portal`, `/portal/{documentos,facturas,pagos,terminadas}`, `/portal/documentos/<id>` y `/portal/recibo/<id>` sólo si son SUYOS. Entra por `/portal/ingresar?t=<enlace personal>`; `/portal/login` explica cómo pedir el enlace |
+
+**NUNCA para el jefe**: Clientes, Compras, Proveedores, Presupuestos, Impuestos, Analíticas, Usuarios, la economía de
+la obra (`/administracion/obras/<obra>`), `/administracion/pendientes`, `/os`, `/xsas`, `/calendario-financiero`,
+`/reportes`, `/aprobaciones`, `/documentos`, `/descargas`, `/mas`. **Nunca para el operario**: todo lo anterior, más
+`/obras`, `/obra`, `/campo` (salvo Herramientas y Material), `/administracion/*` y `/mi-cuenta/entrar-como`.
+
+### Caras por aparato (307, por rol)
+
+| Concepto | Teléfono | PC |
+|---|---|---|
+| Portada del jefe | `/obra/hoy?obra=` | `/obras/hoy?obra=` |
+| Tareas / frente / parte / gente de una obra (jefe) | `/obra/tareas`, `/obra/frente`, `/obra/avance-masivo`, `/obra/personas` | `/obras/<obra>?vista=tareas`, `…&sub=parte`, `?vista=personal` |
+| Mi efectivo (jefe) | `/obra/efectivo`, `/mi-informacion/efectivo[/firmar?entrega=]` | `/mi-cuenta/efectivo[?firmar=]` |
+| Mis horas, legajo, documentos (operario) | `/mi-informacion/*` | igual (el operario que abre `/mi-cuenta/{horas,legajo,documentos,efectivo}` va a `/mi-informacion/*`) |
+| Herramientas | `/campo/herramientas/*` | `/herramientas/*` (`?pc=1` fuerza la de PC) |
+| Dirección / Administración en `/obra/*` | — | la ficha `/obras/<obra>` |
+
+### Redirecciones permanentes (308) — `shared/auth/rutasViejas.ts`
+
+| URL vieja | Va a |
+|---|---|
+| `/h` (sin código) | `/herramientas` — `/h/<código>` sigue: está impreso en las etiquetas |
+| `/integraciones/herramientas` · `/integraciones/movimientos` · `/integraciones/pedidos-materiales` | `/herramientas` · `/herramientas/movimientos` · `/herramientas/material` |
+| `/administracion/asistencia[/…]` | `/administracion/personas/correcciones` (la bandeja de correcciones vive dentro de Personal) |
+| `/obras/<obra>/cronograma` | `/obras/<obra>?vista=tareas&sub=gantt` |
+| `/mi-trabajo/tareas` | `/mi-trabajo` |
+| `/mi-informacion/recibos/pago/<id>[/completo\|firmar\|papel]` | `/mi-informacion/recibos` |
+| `/flujo-caja`, `/caja`, `/capital-trabajo`, `/obligaciones`, `/calendario-caja`, `/ingenieria-financiera` | `/calendario-financiero` |
+| `/scorecard`, `/scorecard-finanzas`, `/dashboard`, `/inteligencia`, `/sintesis-semanal`, `/direccion`, `/motor-decisiones`, `/backlog-autonomo`, `/rutinas`, `/orquestador`, `/organizacion`, `/operador-digital`, `/fundacion`, `/acciones`, `/preguntas-negocio` | `/os` |
+| `/chat`, `/comunicacion` | `/xsas` |
+| `/comercial` · `/compras` · `/operarios` · `/signup` | `/clientes` · `/administracion/compras` · `/administracion/usuarios` · `/login` |
+| `/control-obras[/costos]`, `/operacion`, `/obras/{certificaciones,documentos,operacion}` · `/control-obras/<obra>` · `/obras/cronograma` | `/obras` · `/obras/<obra>` · `/obras/gantt` |
+| `/personas`, `/obras/personal`, `/administracion/personas/recibos[/imprimir]` | `/administracion/personas` |
+| `/equipos` · `/fuentes` · `/extension`, `/descargar` | `/herramientas` · `/integraciones` · `/descargas` |
+| `/administracion/cronograma`, `/administracion/portal` | `/clientes` |
+| `/portal-anterior[/…]` · `/portal/transferir` | `/portal` · `/portal/pagos` |
+
+La query se conserva (filtros, `?obra=`). El destino pasa por la puerta del rol: una URL vieja nunca abre algo que la
+nueva no abriría. Los enlaces que arma el bot (`/mi-informacion/efectivo/firmar?entrega=`, `/h/<código>`, `/portal`)
+siguen siendo URLs vigentes.
+
+### Lo que queda como dos URLs a propósito, y lo que haría falta para unirlas
+
+`/obra/*` ↔ `/obras/*` (jefe) y `/mi-informacion/*` ↔ `/mi-cuenta/*` son **dos diseños** (teléfono y PC) aprobados
+por separado. Unirlas en una sola URL visible exige que el middleware REESCRIBA (no redirija) a la cara del aparato
+y que las barras del teléfono dejen de decidir la solapa activa por el path; es un cambio de las pantallas del jefe
+que hoy está tocando la fidelidad de Obras. Queda propuesto, no hecho.

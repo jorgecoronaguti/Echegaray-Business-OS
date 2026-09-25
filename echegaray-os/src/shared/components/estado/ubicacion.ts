@@ -44,7 +44,7 @@ const MAPA: readonly Entrada[] = [
   { prefijo: '/administracion/personas/cuadrillas', que: 'las cuadrillas', cartera: PERSONAS },
   { prefijo: '/administracion/personas/en-obra', que: 'quién está hoy en obra', cartera: PERSONAS },
   { prefijo: '/administracion/personas/asistencia', que: 'la carga de asistencia', cartera: PERSONAS },
-  { prefijo: '/administracion/asistencia', que: 'las correcciones de asistencia', cartera: PERSONAS },
+  { prefijo: '/administracion/personas/correcciones', que: 'las correcciones de asistencia', cartera: PERSONAS },
   { prefijo: '/administracion/personas/', que: 'el legajo de la persona', cartera: PERSONAS },
   { prefijo: '/administracion/personas', que: 'Personal', cartera: ADMIN },
   { prefijo: '/administracion/proveedores', que: 'los proveedores', cartera: ADMIN },

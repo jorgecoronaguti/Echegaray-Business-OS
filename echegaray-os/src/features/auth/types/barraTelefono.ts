@@ -54,7 +54,7 @@ const OPERARIO: ItemBarraTelefono[] = [
 // LA SECCIÓN SE LLAMA «ANALÍTICAS» PARA TODOS (dueño, 24/09/2026: «siempre es analíticas para todos los usuarios, no te habilité a hacer el cambio de ponerle datos»).
 const GESTION: ItemBarraTelefono[] = [
   { clave: 'obras', href: '/obras', label: 'Obras', icono: 'plano' },
-  { clave: 'personal', href: '/administracion/personas', label: 'Personal', icono: 'gente', enciende: ['/administracion/asistencia'] },
+  { clave: 'personal', href: '/administracion/personas', label: 'Personal', icono: 'gente', enciende: ['/administracion/personas/correcciones'] },
   { clave: 'compras', href: '/administracion/compras', label: 'Compras', icono: 'pedido', enciende: ['/administracion/proveedores'] },
   { clave: 'analiticas', href: '/analiticas', label: 'Analíticas', icono: 'avance' },
   {
