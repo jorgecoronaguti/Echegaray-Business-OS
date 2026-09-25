@@ -412,8 +412,12 @@ export default async function ObraPage({
             {!enEstructura && !modoConPrimariaPropia && puedeEditarPlan && nuevaActividad}
           </>
         ) : vista === 'resumen' && terminada ? (
-          // Z01: la obra terminada o archivada no ofrece cargar parte ni crear actividades.
-          null
+          // Z01: la obra terminada o archivada no ofrece cargar parte ni crear actividades; ofrece
+          // «Exportar el cierre», el PDF que arma `/obras/<obra>/cierre` en el servidor.
+          <a href={`/obras/${obraId}/cierre`} download data-testid="cabecera-exportar-cierre"
+            style={{ ...ESTILO_SECUNDARIA, height: '32px', padding: '0 14px', fontSize: '13px', border: `1px solid ${C.bordeFuerte}`, textDecoration: 'none' }}>
+            <Ico d={P.doc} s={13} />Exportar el cierre
+          </a>
         ) : vista === 'resumen' ? (
           <>
             {/* 03: «Cargar parte» blanco con borde y «Nueva actividad» amarilla, en ese orden. */}
