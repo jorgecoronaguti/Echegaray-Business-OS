@@ -104,6 +104,12 @@ export function leerJornales({ real = [], proyeccion = [] } = {}) {
   return out
 }
 
+/** NÚCLEO PURO: el título de la pestaña donde vive un rango con nombre (por su sheetId), o null. */
+export function tituloDelAncla(hojas = [], rango) {
+  if (rango?.sheetId == null && rango?.startRowIndex == null) return null
+  return hojas.find((h) => h.sheetId === (rango.sheetId ?? 0))?.title ?? null
+}
+
 /** Los dos rangos con nombre que anclan los bloques. Sin ellos esta sincronización NO escribe. */
 export const ANCLAS = { real: 'JORNALES_REAL_HASTA', proyeccion: 'JORNALES_PROY_HASTA' }
 
@@ -112,12 +118,15 @@ async function main() {
   const hojas = await google.getSheetMeta(ID)
   const tabCheques = hallarPestana(hojas, 'Cheques Emitidos').title
   const tabTarjeta = hallarPestana(hojas, 'Tarjeta').title
-  const tabJornales = hallarPestana(hojas, 'Jornales').title
-
   // ── LOS BLOQUES, UBICADOS POR SU RANGO CON NOMBRE ──
   // Si el ancla no está, se corta acá. Escribir con la geometría equivocada fue el defecto: dejó la
   // base con cero quincenas reales durante once días sin dar un error.
   const nombrados = new Map((await google.getNamedRanges(ID)).map((r) => [r.name, r.range]))
+  // LA PESTAÑA ES LA DEL ANCLA, NO UN NOMBRE TIPEADO (25/09/2026): c6b92953 eliminó «Jornales por
+  // Quincena» y mudó el registro a «Nómina» §7–10 con los mismos rangos con nombre; buscar una pestaña
+  // que empiece con «Jornales» tiró el paso en la corrida de las 14:50. El rango con nombre ya dice
+  // dónde vive el bloque.
+  const tabJornales = tituloDelAncla(hojas, nombrados.get(ANCLAS.real)) ?? hallarPestana(hojas, 'Jornales').title
   const bloque = (clave) => {
     const r = nombrados.get(ANCLAS[clave])
     if (!r || r.startRowIndex == null) {
@@ -127,8 +136,8 @@ async function main() {
   }
   const bReal = bloque('real'), bProy = bloque('proyeccion')
   const [filasReal, filasProy] = await Promise.all([
-    google.readSheetValues(ID, `${tabJornales}!A${bReal.desde}:M${bReal.hasta}`),
-    google.readSheetValues(ID, `${tabJornales}!A${bProy.desde}:M${bProy.hasta}`),
+    google.readSheetValues(ID, `'${tabJornales}'!A${bReal.desde}:M${bReal.hasta}`),
+    google.readSheetValues(ID, `'${tabJornales}'!A${bProy.desde}:M${bProy.hasta}`),
   ])
   console.log(`bloques por rango con nombre: real filas ${bReal.desde}–${bReal.hasta} · proyección ${bProy.desde}–${bProy.hasta}`)
 
