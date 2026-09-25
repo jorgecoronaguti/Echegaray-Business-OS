@@ -65,7 +65,7 @@ export function FilaGastosSinObra({ gasto, columnas, sangria, visible, hrefDetal
   return (
     <div
       data-testid="fila-sin-obra-cliente"
-      className={`relative grid items-center ${columnas} max-md:min-h-11`}
+      className={`relative grid items-center ${columnas} max-md:!min-h-11`}
       title={tituloSinObra(gasto) ?? undefined}
       style={{ minHeight: ALTO_V2.hija, paddingLeft: sangria, borderBottom: `1px solid ${V.lineaFila}` }}
     >
