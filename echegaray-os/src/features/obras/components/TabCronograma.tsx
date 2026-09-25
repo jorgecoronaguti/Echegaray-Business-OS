@@ -21,8 +21,8 @@
 // la versión anterior — no están dibujadas.
 
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as PE } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as PE } from 'react'
 import type { ResultadoAccion } from '@/shared/components/ui'
 import type { Actividad } from '../types'
 import {
@@ -38,6 +38,8 @@ import { SubNavTrabajo } from './SubNavTrabajo'
 import { AccionesEditorCronograma, useEditorCronograma, type EstadoEditorCronograma } from './EditorCronogramaContexto'
 
 const ALTO_FILA = 36
+/** El ancho de una columna del 05: la semana mide 139 px (17 ago → 5 oct en 1.110 px del diseño). */
+const ANCHO_COLUMNA: Record<EscalaVista, number> = { semana: 139, mes: 150, trimestre: 180 }
 const ALTO_FILA_EDITOR = 40
 const EYEBROW: CSSProperties = { fontFamily: MONO, fontSize: '10.5px', letterSpacing: '.06em', color: C.tenue, textTransform: 'uppercase' }
 
@@ -81,10 +83,22 @@ function Vista({ obraId, filas, dependencias, hoy, fallas, actividadAbierta }: P
   ), [filas, tramos, dependencias])
   const atrasadaDe = useMemo(() => new Map(filas.filter((f) => f.actividadId).map((f) => [f.actividadId as string, tonoDeFila(f, hoy) === 'atrasada'])), [filas, hoy])
   const hoyPct = ventana ? posPct(ventana, hoy) : null
+  const router = useRouter()
+  const [resaltada, setResaltada] = useState<number | null>(null)
+  const lienzoRef = useRef<HTMLDivElement>(null)
+  const anchoLienzo = ventana ? ventana.columnas.length * ANCHO_COLUMNA[escala] : 0
+  // ABRE CON HOY A LA VISTA: a un tercio del ancho visible, como el 05 (y otra vez al cambiar la escala).
+  useEffect(() => {
+    const el = lienzoRef.current
+    if (!el || hoyPct == null) return
+    const x = 270 + (hoyPct / 100) * Math.max(anchoLienzo, el.scrollWidth - 270)
+    el.scrollLeft = Math.max(0, x - 270 - (el.clientWidth - 270) / 3)
+  }, [hoyPct, anchoLienzo])
 
   return (
     <>
-      <SubNavTrabajo obraId={obraId} sub="gantt" derecha={
+      {/* 05: Semana · Mes · Trimestre A LA DERECHA de la banda, como el diseño (no pegado a las solapas). */}
+      <SubNavTrabajo obraId={obraId} sub="gantt" alFinal={
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '12.5px', color: C.tintaSuave }}>
           {ESCALAS_VISTA.map((e) => (
             <button key={e} type="button" data-testid={`escala-${e}`} aria-pressed={escala === e} onClick={() => setEscala(e)} style={{
@@ -103,94 +117,118 @@ function Vista({ obraId, filas, dependencias, hoy, fallas, actividadAbierta }: P
         {!ventana
           ? <SinFechas obraId={obraId} n={filas.filter((f) => f.nivel !== 0).length} />
           : (
-            <div style={{ display: 'grid', gridTemplateColumns: '270px minmax(0,1fr)' }}>
-              <div>
-                <div style={{ height: '26px' }} />
-                {filas.map((f) => {
-                  const tono = tonoDeFila(f, hoy)
-                  return f.nivel === 0
-                    ? (
-                      <div key={f.clave} style={{ height: `${ALTO_FILA}px`, display: 'flex', alignItems: 'center', fontSize: '10.5px', letterSpacing: '.08em', textTransform: 'uppercase', color: C.tenue, overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                        <span style={{ fontFamily: MONO, letterSpacing: 0, marginRight: '8px' }}>{numeroDeRubro(filas, f)}</span>{f.nombre}
-                      </div>
-                      )
-                    : (
-                      <div key={f.clave} data-testid={`fila-${f.actividadId}`} style={{
-                        height: `${ALTO_FILA}px`, display: 'flex', alignItems: 'center', paddingLeft: '14px', fontSize: '13px',
-                        color: tono === 'atrasada' ? C.neg : f.sinPlan ? C.tintaSuave : C.tinta,
-                        fontWeight: f.actividadId === actividadAbierta ? 600 : 400,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}>{f.nombre}</div>
-                      )
-                })}
-              </div>
-              <div style={{ position: 'relative' }}>
-                <div style={{ height: '26px', display: 'grid', gridTemplateColumns: `repeat(${ventana.columnas.length},1fr)` }}>
+            // ═══ EL LIENZO DEL 05, CON LA ESCALA DEL DISEÑO Y LA LECTURA DE UN GANTT DE VERDAD (dueño 25/09:
+            // «este gantt no es fiel al diseño ni en ui ni en ux») ═══
+            //   · la columna mide lo del diseño (139 px la semana: 17 ago → 5 oct en 1.110 px) y la obra
+            //     larga se CORRE de costado en vez de aplastar noventa tareas en rayitas de 3 px;
+            //   · abre con HOY a la vista (la línea amarilla del 05 queda a un tercio del ancho);
+            //   · el eje de fechas y la columna de nombres quedan FIJOS al desplazarse: bajando por la
+            //     tarea 60 se sigue sabiendo qué fila es y qué semana;
+            //   · la fila se marca al pasar y abre la tarea al tocarla (el panel de la tarea en Tareas).
+            <div ref={lienzoRef} data-testid="cronograma-lienzo" style={{
+              overflow: 'auto', maxHeight: 'calc(100vh - 260px)', minHeight: '240px', position: 'relative',
+            }}>
+              <div style={{ display: 'grid', gridTemplateColumns: `270px minmax(${anchoLienzo}px,1fr)`, gridTemplateRows: `26px repeat(${filas.length}, ${ALTO_FILA}px)`, position: 'relative' }}>
+                <div style={{ gridColumn: 1, gridRow: 1, position: 'sticky', top: 0, left: 0, zIndex: 5, background: C.superficie }} />
+                <div style={{
+                  gridColumn: 2, gridRow: 1, position: 'sticky', top: 0, zIndex: 4, background: C.superficie,
+                  display: 'grid', gridTemplateColumns: `repeat(${ventana.columnas.length},1fr)`,
+                }}>
                   {ventana.columnas.map((c) => (
                     <div key={c.iso} style={{ fontSize: '11px', color: c.esHoy ? C.tinta : C.tenue, fontWeight: c.esHoy ? 500 : 400, whiteSpace: 'nowrap' }}>{c.rotulo}</div>
                   ))}
                 </div>
-                {hoyPct != null && (
-                  <div data-testid="linea-hoy" style={{ position: 'absolute', left: `${hoyPct}%`, top: '20px', bottom: '10px', width: '1px', background: C.marca }} />
-                )}
-                <div style={{ position: 'relative' }}>
-                  <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 2 }}>
-                    {conectores.conectores.map((k) => {
-                      const destino = k.clave.split('->')[1]
-                      const color = atrasadaDe.get(destino) ? C.neg : C.fantasma
-                      return (
-                        <span key={k.clave} data-testid="conector">
-                          {k.segmentos.map((s, i) => (
-                            <div key={i} style={{
-                              position: 'absolute', left: `${s.izqPct}%`, top: `${s.topPx}px`,
-                              width: s.altoPx === 0 ? `${s.anchoPct}%` : '1px', height: s.altoPx === 0 ? '1px' : `${s.altoPx}px`, background: color,
-                            }} />
-                          ))}
-                          <div style={{
-                            position: 'absolute', left: `calc(${k.flecha.izqPct}% - 5px)`, top: `${k.flecha.topPx - 3}px`, width: 0, height: 0,
-                            borderTop: '3px solid transparent', borderBottom: '3px solid transparent', borderLeft: `5px solid ${color}`,
-                          }} />
-                        </span>
-                      )
-                    })}
-                  </div>
-                  {filas.map((f, i) => {
-                    const t = tramos[i]
-                    const tono = tonoDeFila(f, hoy)
-                    if (f.nivel === 0) {
-                      return (
-                        <div key={f.clave} style={{ height: `${ALTO_FILA}px`, position: 'relative' }}>
-                          {t && <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '17px', width: `${t.anchoPct}%`, height: '2px', background: C.fantasma }} />}
-                        </div>
-                      )
-                    }
-                    if (!t) {
-                      return <div key={f.clave} style={{ height: `${ALTO_FILA}px`, display: 'flex', alignItems: 'center', fontSize: '12px', color: C.tenue }}>sin fechas</div>
-                    }
-                    const proyeccion = tono === 'atrasada' && f.finForecast && f.fin && f.finForecast > f.fin && ventana
-                      ? tramoVista(ventana, f.fin, f.finForecast) : null
+
+                {/* HOY, los conectores: una capa sobre la columna del gráfico, de la primera fila a la última. */}
+                <div style={{ gridColumn: 2, gridRow: `2 / ${filas.length + 2}`, position: 'relative', pointerEvents: 'none', zIndex: 2 }}>
+                  {hoyPct != null && (
+                    <div data-testid="linea-hoy" style={{ position: 'absolute', left: `${hoyPct}%`, top: 0, bottom: 0, width: '1px', background: C.marca }} />
+                  )}
+                  {conectores.conectores.map((k) => {
+                    const destino = k.clave.split('->')[1]
+                    const color = atrasadaDe.get(destino) ? C.neg : C.fantasma
                     return (
-                      <div key={f.clave} data-testid={`barra-${f.actividadId}`} style={{ height: `${ALTO_FILA}px`, position: 'relative' }}>
-                        {tono === 'tecnico'
-                          ? <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '15px', width: `${t.anchoPct}%`, height: '6px', borderRadius: '3px', background: C.superficie, border: `1px dashed ${C.bordeFuerte}`, boxSizing: 'border-box' }} />
-                          : (
-                            <>
-                              <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '15px', width: `${t.anchoPct}%`, height: '6px', borderRadius: '3px', background: C.borde }} />
-                              {fraccionLlena(f) > 0 && (
-                                <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '15px', width: `${t.anchoPct * fraccionLlena(f)}%`, height: '6px', borderRadius: '3px', background: colorDeTono(tono) }} />
-                              )}
-                              {proyeccion && (
-                                <div style={{
-                                  position: 'absolute', left: `${proyeccion.izqPct}%`, top: '15px', width: `${proyeccion.anchoPct}%`, height: '6px', borderRadius: '3px',
-                                  background: `repeating-linear-gradient(45deg, ${C.neg}, ${C.neg} 3px, ${C.negBorde} 3px, ${C.negBorde} 6px)`,
-                                }} />
-                              )}
-                            </>
-                            )}
-                      </div>
+                      <span key={k.clave} data-testid="conector">
+                        {k.segmentos.map((sg, n) => (
+                          <div key={n} style={{
+                            position: 'absolute', left: `${sg.izqPct}%`, top: `${sg.topPx}px`,
+                            width: sg.altoPx === 0 ? `${sg.anchoPct}%` : '1px', height: sg.altoPx === 0 ? '1px' : `${sg.altoPx}px`, background: color,
+                          }} />
+                        ))}
+                        <div style={{
+                          position: 'absolute', left: `calc(${k.flecha.izqPct}% - 5px)`, top: `${k.flecha.topPx - 3}px`, width: 0, height: 0,
+                          borderTop: '3px solid transparent', borderBottom: '3px solid transparent', borderLeft: `5px solid ${color}`,
+                        }} />
+                      </span>
                     )
                   })}
                 </div>
+
+                {filas.map((f, i) => {
+                  const t = tramos[i]
+                  const tono = tonoDeFila(f, hoy)
+                  const fila = i + 2
+                  const marcada = f.nivel !== 0 && (resaltada === i || f.actividadId === actividadAbierta)
+                  const fondo = marcada ? C.tenueFondo : C.superficie
+                  const abrir = f.actividadId ? `/obras/${obraId}?vista=tareas&sub=arbol&act=${f.actividadId}` : null
+                  const proyeccion = tono === 'atrasada' && f.finForecast && f.fin && f.finForecast > f.fin
+                    ? tramoVista(ventana, f.fin, f.finForecast) : null
+                  const detalle = [f.nombre, f.inicio && f.fin ? `${f.inicio.slice(8, 10)}/${f.inicio.slice(5, 7)} → ${f.fin.slice(8, 10)}/${f.fin.slice(5, 7)}` : 'sin fechas',
+                    proyeccion && f.finForecast ? `proyectado ${f.finForecast.slice(8, 10)}/${f.finForecast.slice(5, 7)}` : null].filter(Boolean).join(' · ')
+                  const hover = f.nivel === 0 ? {} : { onMouseEnter: () => setResaltada(i), onMouseLeave: () => setResaltada(null) }
+                  return (
+                    <Fragment key={f.clave}>
+                      {f.nivel === 0
+                        ? (
+                          <div style={{ gridColumn: 1, gridRow: fila, position: 'sticky', left: 0, zIndex: 3, background: C.superficie, display: 'flex', alignItems: 'center', fontSize: '10.5px', letterSpacing: '.08em', textTransform: 'uppercase', color: C.tenue, overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontFamily: MONO, letterSpacing: 0, marginRight: '8px' }}>{numeroDeRubro(filas, f)}</span>{f.nombre}
+                          </div>
+                          )
+                        : (
+                          <div {...hover} data-testid={`fila-${f.actividadId}`} style={{
+                            gridColumn: 1, gridRow: fila, position: 'sticky', left: 0, zIndex: 3, background: fondo,
+                            display: 'flex', alignItems: 'center', paddingLeft: '14px', paddingRight: '12px', fontSize: '13px', minWidth: 0,
+                            color: tono === 'atrasada' ? C.neg : f.sinPlan ? C.tintaSuave : C.tinta,
+                            fontWeight: f.actividadId === actividadAbierta ? 600 : 400,
+                          }}>
+                            {abrir
+                              ? <Link prefetch={false} href={abrir} title={detalle} style={{ color: 'inherit', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{f.nombre}</Link>
+                              : <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.nombre}</span>}
+                          </div>
+                          )}
+                      {f.nivel === 0
+                        ? (
+                          <div style={{ gridColumn: 2, gridRow: fila, position: 'relative' }}>
+                            {t && <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '17px', width: `${t.anchoPct}%`, height: '2px', background: C.fantasma }} />}
+                          </div>
+                          )
+                        : !t
+                          ? <div {...hover} style={{ gridColumn: 2, gridRow: fila, background: fondo, display: 'flex', alignItems: 'center', fontSize: '12px', color: C.tenue }}>sin fechas</div>
+                          : (
+                            <div {...hover} data-testid={`barra-${f.actividadId}`} title={detalle}
+                              onClick={() => { if (abrir) router.push(abrir) }}
+                              style={{ gridColumn: 2, gridRow: fila, position: 'relative', background: fondo, cursor: abrir ? 'pointer' : 'default' }}>
+                              {tono === 'tecnico'
+                                ? <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '15px', width: `${t.anchoPct}%`, height: '6px', borderRadius: '3px', background: C.superficie, border: `1px dashed ${C.bordeFuerte}`, boxSizing: 'border-box' }} />
+                                : (
+                                  <>
+                                    <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '15px', width: `${t.anchoPct}%`, height: '6px', borderRadius: '3px', background: C.borde }} />
+                                    {fraccionLlena(f) > 0 && (
+                                      <div style={{ position: 'absolute', left: `${t.izqPct}%`, top: '15px', width: `${t.anchoPct * fraccionLlena(f)}%`, height: '6px', borderRadius: '3px', background: colorDeTono(tono) }} />
+                                    )}
+                                    {proyeccion && (
+                                      <div style={{
+                                        position: 'absolute', left: `${proyeccion.izqPct}%`, top: '15px', width: `${proyeccion.anchoPct}%`, height: '6px', borderRadius: '3px',
+                                        background: `repeating-linear-gradient(45deg, ${C.neg}, ${C.neg} 3px, ${C.negBorde} 3px, ${C.negBorde} 6px)`,
+                                      }} />
+                                    )}
+                                  </>
+                                  )}
+                            </div>
+                            )}
+                    </Fragment>
+                  )
+                })}
               </div>
             </div>
             )}

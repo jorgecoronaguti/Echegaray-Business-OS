@@ -9,9 +9,12 @@ import { join } from 'node:path'
 const fuente = (f: string) => readFileSync(join(import.meta.dirname, f), 'utf8')
 const tab = () => fuente('TabCronograma.tsx')
 
-test('la 05 es una grilla 270 px | 1fr con filas de 36 px, sobre padding 26/30/32', () => {
+test('la 05 es una grilla 270 px | lienzo con filas de 36 px, sobre padding 26/30/32; la semana mide 139 px y el eje y los nombres quedan fijos', () => {
   const src = tab()
-  assert.match(src, /gridTemplateColumns: '270px minmax\(0,1fr\)'/)
+  assert.match(src, /gridTemplateColumns: `270px minmax\(\$\{anchoLienzo\}px,1fr\)`/)
+  assert.match(src, /semana: 139/)
+  assert.match(src, /position: 'sticky', top: 0, zIndex: 4/)
+  assert.match(src, /position: 'sticky', left: 0, zIndex: 3/)
   assert.match(src, /const ALTO_FILA = 36/)
   assert.match(src, /padding: '26px 30px 32px'/)
 })
