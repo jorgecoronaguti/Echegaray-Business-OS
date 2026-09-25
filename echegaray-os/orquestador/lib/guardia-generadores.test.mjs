@@ -171,7 +171,7 @@ test('el pipeline LLAMA a la guardia, y antes de tocar el archivo', () => {
   // o escribe el archivo. Una guardia que llega tarde ya dejó que se tocara la pestaña.
   // El bucle salió de main() el 17/09/2026 (`recorrerPasos`, para poder probar el corte): la marca es
   // ahora su llamada, que es donde empiezan a correr los generadores.
-  for (const marca of ['pestana-bloqueada.mjs', 'sheet-snapshot.mjs', 'firma-tab.mjs', 'await recorrerPasos(PASOS']) {
+  for (const marca of ['pestana-bloqueada.mjs', 'sheet-snapshot.mjs', 'firma-tab.mjs', 'await recorrerPasos(pasos']) {
     const i = cuerpo.indexOf(marca)
     assert.ok(i > 0 && iGuardia < i, `la guardia corre DESPUÉS de "${marca}": el archivo ya se tocó`)
   }

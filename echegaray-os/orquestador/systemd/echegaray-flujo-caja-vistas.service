@@ -1,0 +1,22 @@
+[Unit]
+Description=Echegaray OS — Flujo de Caja, segunda corrida: Proveedores, formato y auditorías (0 API)
+Documentation=file:///home/jorge/echegaray-os/produccion/echegaray-os/orquestador/lib/flujo-caja-pasos.mjs
+After=network-online.target
+
+# SIN TIMER, A PROPÓSITO (25/09/2026). La arranca echegaray-flujo-caja.service al terminar la corrida de
+# datos (ORQ_PIPELINE_SIGUIENTE), así nunca escriben las dos a la vez sobre el mismo archivo. Si la de
+# datos FRENÓ (derrames de Compras rotos, libro que cae de golpe), ésta no se arranca: las secciones de
+# Proveedores leen esas mismas ARRAYFORMULA. No pone al día el checkout: la de datos lo acaba de hacer.
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
+EnvironmentFile=/home/jorge/.config/echegaray-orq/worker.env
+# Los mismos que la corrida de datos (sus drop-ins timeout.conf y lecturas.conf): la escritura grande
+# de Google tarda más de 45 s, y un reintento de lectura de 3 min no entra en un pipeline con techo.
+Environment=ORQ_GOOGLE_FETCH_TIMEOUT_MS=180000
+Environment=ORQ_GOOGLE_LECTURA_REINTENTOS=0
+# 2400 − 60 de margen para el cierre. Medido: 8–12 min con el Sheet cargado; 5 con el Sheet tranquilo.
+Environment=ORQ_PIPELINE_PRESUPUESTO_S=2340
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/flujo-caja-rehacer-todo.mjs --grupo=vistas
+TimeoutStartSec=2400

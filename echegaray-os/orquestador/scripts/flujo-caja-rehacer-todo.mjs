@@ -38,7 +38,7 @@
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { PASOS, esReporte, frenaElPipeline } from '../lib/flujo-caja-pasos.mjs'
+import { esReporte, frenaElPipeline, pasosDelGrupo } from '../lib/flujo-caja-pasos.mjs'
 import { guardiaDeGeneradores } from '../lib/guardia-generadores.mjs'
 import { FILA, ROTULO_HOY, colTotal, colsDelSiguiente } from '../lib/cash-flow-matriz.mjs'
 import { fileURLToPath } from 'node:url'
@@ -49,6 +49,8 @@ import { ANCHOS } from '../lib/cash-flow-piel-matriz.mjs'
 const ejecutar = promisify(execFile)
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
 const DRY = process.argv.includes('--dry')
+/** El reloj arranca con el proceso: todo lo de antes del primer paso gasta el mismo techo de systemd. */
+const T0 = Date.now()
 
 // La lista de pasos vive en la lib: el auditor de reglas de oro necesita leerla sin ejecutar
 // el agente entero (ver flujo-caja-pasos.mjs).
@@ -157,13 +159,23 @@ export function decisionDeFreno(pasos, indice, error) {
  *   `alFallar` devuelve el motivo del freno (texto) cuando la decisión fue frenar.
  * @returns {Promise<{corridos:string[], frenado:null|{script:string, motivo:string, faltan:number}}>}
  */
-export async function recorrerPasos(pasos, { correr, alFallar, bloqueado = () => false, alSaltear = () => {}, dry = false, log = console.log }) {
+export async function recorrerPasos(pasos, { correr, alFallar, bloqueado = () => false, alSaltear = () => {}, dry = false, log = console.log, quedaMs = () => Infinity, techoPasoMs = TECHO_PASO_MS }) {
   const corridos = []
   let frenado = null
+  let sinTiempo = []
   for (let n = 0; n < pasos.length; n++) {
     const [script, que, pestañas = [], args = []] = pasos[n]
     if (bloqueado(pestañas)) { alSaltear({ script, pestañas }); continue }
     if (dry) { log(`(dry) ${script.padEnd(26)} ${que}`); continue }
+    // ═══ UN PASO QUE NO ALCANZA A TERMINAR NO EMPIEZA (25/09/2026) ═══
+    // Si lo que queda del presupuesto no cubre el techo del paso, systemd lo mataría A MITAD DE
+    // ESCRITURA —media pestaña nueva, media vieja, sin error en ningún log—. Un paso salteado se ve y
+    // se rehace en la corrida siguiente; una escritura cortada no se ve. El tiempo sólo baja: si éste
+    // no entra, no entra ninguno de los de abajo, y se dicen todos por su nombre.
+    if (quedaMs() < techoPasoMs) {
+      sinTiempo = pasos.slice(n).filter(([, , p = []]) => !bloqueado(p)).map(([s]) => s)
+      break
+    }
     corridos.push(script)
     try {
       await correr({ script, que, pestañas, args })
@@ -176,7 +188,33 @@ export async function recorrerPasos(pasos, { correr, alFallar, bloqueado = () =>
       }
     }
   }
-  return { corridos, frenado }
+  return { corridos, frenado, sinTiempo }
+}
+
+/**
+ * El techo de UN paso: `execFile` lo corta a los 5 minutos. Es también lo mínimo que tiene que quedar
+ * del presupuesto para que un paso empiece (ver `recorrerPasos`).
+ */
+export const TECHO_PASO_MS = 5 * 60 * 1000
+
+/**
+ * NÚCLEO PURO: cuánto le queda a la corrida. `presupuestoS` sale de ORQ_PIPELINE_PRESUPUESTO_S; 0 o
+ * vacío = sin límite (una corrida a mano no tiene techo de systemd). Se mide desde que ARRANCÓ el
+ * proceso, no desde el primer paso: la guardia, la firma y el snapshot también gastan el mismo techo
+ * (el 25/09 a las 08:50 el snapshot solo se llevó 5 minutos).
+ */
+export function presupuesto(presupuestoS, t0 = Date.now(), ahora = () => Date.now()) {
+  const s = Number(presupuestoS)
+  if (!Number.isFinite(s) || s <= 0) return () => Infinity
+  const fin = t0 + s * 1000
+  return () => fin - ahora()
+}
+
+/** Lee `--grupo=datos|vistas` (o `--grupo datos`). PURA. */
+export function grupoDeArgs(argv = []) {
+  const i = argv.findIndex((a) => a === '--grupo' || a.startsWith('--grupo='))
+  if (i < 0) return null
+  return argv[i].includes('=') ? argv[i].slice('--grupo='.length) : (argv[i + 1] ?? '')
 }
 
 /**
@@ -340,7 +378,13 @@ async function verificarPresentacion(bloqueadas = new Set()) {
 }
 
 async function main() {
-  const t0 = Date.now()
+  const t0 = T0
+  // ── QUÉ CORRIDA ES ÉSTA (25/09/2026): `--grupo=datos` o `--grupo=vistas`; sin grupo, la lista entera ──
+  const grupo = grupoDeArgs(process.argv.slice(2))
+  const pasos = pasosDelGrupo(grupo)
+  const quedaMs = presupuesto(process.env.ORQ_PIPELINE_PRESUPUESTO_S, T0)
+  const sinTope = !Number.isFinite(quedaMs())
+  console.log(`corrida ${grupo ?? 'completa'}: ${pasos.length} paso(s)${sinTope ? '' : ` · presupuesto ${Math.round(quedaMs() / 1000)} s`}`)
   const ok = []
   const respetadas = new Map()
   const fallaron = []
@@ -398,7 +442,7 @@ async function main() {
     const { firmaGuardia } = await import('../lib/firma-tab.mjs')
     const { reconciliar } = await import('../lib/reconciliacion-firma.mjs')
     const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-    const tabs = [...new Set(PASOS.flatMap(([, , t = []]) => t))].filter((t) => t && !t.startsWith('_') && !bloqueadas.has(t))
+    const tabs = [...new Set(pasos.flatMap(([, , t = []]) => t))].filter((t) => t && !t.startsWith('_') && !bloqueadas.has(t))
 
     // ── RED DE SEGURIDAD (26/07): snapshot ANTES de tocar una sola celda ──
     // El dueño perdió su versión y no había marcha atrás del lado del OS (sólo el historial de Google).
@@ -462,7 +506,8 @@ async function main() {
   } catch (e) { console.log(`· pre-pasada de firma/reconciliación no disponible (${e.message}) — sigue el candado por paso\n`) }
 
   // EL RECORRIDO ES `recorrerPasos` (exportada y probada): ahí vive la decisión de detener la corrida.
-  const { frenado } = await recorrerPasos(PASOS, {
+  const { frenado, sinTiempo } = await recorrerPasos(pasos, {
+    quedaMs,
     bloqueado: (pestañas) => pasoTotalmenteBloqueado(pestañas, bloqueadas),
     alSaltear: ({ script, pestañas }) => {
       saltados.push({ script, pestañas })
@@ -478,7 +523,7 @@ async function main() {
       const { stdout } = await ejecutar(process.execPath, [path.join(AQUI, script), ...args], {
         env: process.env,
         maxBuffer: 8 * 1024 * 1024,
-        timeout: 5 * 60 * 1000,
+        timeout: TECHO_PASO_MS,
       })
       // Se mira la salida, no sólo el código de salida: varios scripts avisan de celdas en error o de
       // un control que no cierra SIN fallar. LAS DOS MARCAS (`▲` vigente y la publicada).
@@ -503,11 +548,27 @@ async function main() {
   })
 
   if (DRY) return
-  if (!frenado) await verificarPresentacion(bloqueadas)
+  // LA VERIFICACIÓN DE LOS CASH FLOW, SÓLO DONDE SE ESCRIBIERON, Y CON RELOJ (25/09/2026). Son cinco
+  // lecturas: con el Sheet recalculando, cada una puede colgarse 3 minutos y el cierre entero se iba
+  // de los 40. No escribe nada, así que abandonarla es seguro: queda dicho «no verificado».
+  let abandonada = false
+  if (!frenado && grupo !== 'vistas') {
+    const margen = Math.min(quedaMs() - 60_000, 150_000)
+    if (margen < 30_000) console.log('   ⏭ presentación de los Cash Flow: sin tiempo para verificarla en esta corrida — no verificada')
+    else {
+      let reloj
+      const corte = new Promise((res) => { reloj = setTimeout(() => res('corte'), margen) })
+      const r = await Promise.race([verificarPresentacion(bloqueadas).then(() => 'ok', (e) => `error: ${String(e?.message ?? e).slice(0, 80)}`), corte])
+      clearTimeout(reloj)
+      abandonada = r === 'corte'
+      if (r === 'corte') console.log(`   ⏭ presentación de los Cash Flow: Google no contestó en ${Math.round(margen / 1000)} s — no verificada`)
+      else if (r !== 'ok') console.log(`   ⚠ presentación de los Cash Flow: no verificada (${r})`)
+    }
+  }
 
   for (const linea of informeRespetadas(respetadas)) console.log(linea)
 
-  console.log(`\n${ok.length}/${PASOS.length} pestañas rehechas en ${((Date.now() - t0) / 1000).toFixed(1)}s`)
+  console.log(`\n${ok.length}/${pasos.length} pestañas rehechas en ${((Date.now() - t0) / 1000).toFixed(1)}s`)
   if (saltados.length) console.log(`🔒 ${saltados.length} paso(s) salteado(s) por tu candado: ${saltados.map((s) => s.pestañas.join('/')).join(', ')}`)
   const conAlerta = ok.filter((r) => r.alerta)
   if (conAlerta.length) {
@@ -518,7 +579,7 @@ async function main() {
   // de leer el Cash Flow entero y reconstruir sus derivadas". Si no falló ningún paso, esa lectura
   // fue exitosa: se marca la fuente para que la alerta de frescura no siga diciendo que está atrasada
   // cuando la reconstruyo todos los días. Sólo si 0 fallos: una corrida a medias no es una ingesta.
-  if (fallaron.length === 0) {
+  if (fallaron.length === 0 && !sinTiempo.length && grupo !== 'vistas') {
     const { registrarSincronizacion } = await import('../lib/registrar-sincronizacion.mjs')
     const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
     const r = await registrarSincronizacion({}, { driveFileId: ID })
@@ -533,10 +594,43 @@ async function main() {
     for (const r of fallaron) console.log(`  · ${r.script}: ${r.error}`)
     process.exitCode = 1
   }
+  if (sinTiempo.length) {
+    // No es verde: la corrida no rehízo todo. Pero tampoco es una escritura cortada: estos pasos no
+    // empezaron, y la corrida siguiente los rehace sobre lo que dejó ésta.
+    console.log(`\n⏭ ${sinTiempo.length} paso(s) SIN CORRER por falta de tiempo (no empiezo lo que no alcanza a terminar): ${sinTiempo.join(', ')}`)
+    process.exitCode = process.exitCode || 1
+  }
   if (frenado) {
     console.log(`\n⛔ FRENADO por ${frenado.script}: ${frenado.motivo}`)
     process.exitCode = 2
   }
+  await encadenar({ grupo, frenado })
+  // Una verificación abandonada sigue con sus lecturas en vuelo (hasta 3 min cada una) y el proceso no
+  // saldría hasta que Google conteste: systemd lo seguiría contando contra el techo. Ya no escribe nada.
+  if (abandonada) process.exit(process.exitCode ?? 0)
+}
+
+/**
+ * ═══ LA CORRIDA DE VISTAS LA ARRANCA LA DE DATOS, AL TERMINAR (25/09/2026) ═══
+ * En fila y nunca en paralelo: dos escritores sobre el mismo archivo se pisan el recálculo y se
+ * alargan los dos. `--no-block`: la de datos termina ya y la unidad siguiente corre con su propio
+ * techo. Si la de datos FRENÓ, las vistas no corren (leen la Compras que el freno declaró rota).
+ * Sólo encadena si la unidad lo pide por entorno: una corrida a mano no dispara nada.
+ */
+export function decidirEncadenado({ grupo, frenado, siguiente }) {
+  if (grupo !== 'datos' || !siguiente) return null
+  if (frenado) return { lanzar: false, linea: `⏭ ${siguiente}: no la arranco — la corrida de datos frenó` }
+  return { lanzar: true, linea: `→ arranco ${siguiente} (Proveedores, formato y auditorías, en su propia corrida)` }
+}
+
+async function encadenar({ grupo, frenado }) {
+  const siguiente = process.env.ORQ_PIPELINE_SIGUIENTE
+  const d = decidirEncadenado({ grupo, frenado, siguiente })
+  if (!d) return
+  console.log(`\n${d.linea}`)
+  if (!d.lanzar) return
+  try { await ejecutar('systemctl', ['--user', 'start', '--no-block', siguiente], { timeout: 20_000 }) }
+  catch (e) { console.log(`   ⚠ no pude arrancar ${siguiente}: ${String(e?.message ?? e).slice(0, 120)}`) }
 }
 
 // ═══ IMPORTAR ESTE ARCHIVO NO PUEDE ARRANCAR EL PIPELINE (14/08/2026) ═══

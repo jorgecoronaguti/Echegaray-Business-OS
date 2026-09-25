@@ -455,3 +455,37 @@ test('la cabecera declara los dos frenos y su alcance', () => {
   assert.match(cabecera, /freno-derrames-compras\.mjs[\s\S]*detiene TODO lo que sigue/)
   assert.match(cabecera, /libro-movimientos-pestana\.mjs[\s\S]*SÓLO cuando sale con CODIGO_FRENO \(3\)/)
 })
+
+// ═══ DATOS Y VISTAS (25/09/2026) — la corrida partida en dos, en fila ═══
+test('grupos: datos y vistas son una PARTICIÓN de PASOS, en el mismo orden', async () => {
+  const { pasosDelGrupo, PASOS_VISTAS } = await import('./flujo-caja-pasos.mjs')
+  const scripts = PASOS.map(([s]) => s)
+  for (const v of PASOS_VISTAS) assert.ok(scripts.includes(v), `${v} está en PASOS_VISTAS pero no es un paso de PASOS`)
+  const datos = pasosDelGrupo('datos').map(([s]) => s)
+  const vistas = pasosDelGrupo('vistas').map(([s]) => s)
+  assert.equal(datos.length + vistas.length, scripts.length, 'un paso quedó en los dos grupos o en ninguno')
+  assert.deepEqual(datos, scripts.filter((s) => !PASOS_VISTAS.has(s)), 'la corrida de datos cambió el orden')
+  assert.deepEqual(vistas, scripts.filter((s) => PASOS_VISTAS.has(s)), 'la corrida de vistas cambió el orden')
+  assert.equal(pasosDelGrupo(undefined), PASOS, 'sin grupo corre la lista entera')
+})
+
+test('grupos: los FRENOS, el libro, CAJA, los Cash Flow y la sincronización con la base van en DATOS', async () => {
+  const { pasosDelGrupo, FRENOS } = await import('./flujo-caja-pasos.mjs')
+  const datos = new Set(pasosDelGrupo('datos').map(([s]) => s))
+  for (const f of FRENOS.keys()) assert.ok(datos.has(f), `el freno ${f} no puede ir a la corrida de vistas`)
+  for (const s of ['libro-movimientos-pestana.mjs', 'caja-pestana.mjs', 'cash-flow-vistas.mjs', 'asimetria-cash-flow.mjs',
+    'sync-flujo-fondos.mjs', 'proveedores-cuenta-corriente.mjs', 'caja-graficos-verificar.mjs']) {
+    assert.ok(datos.has(s), `${s} escribe o publica algo que otro paso de datos lee: va en DATOS`)
+  }
+})
+
+test('grupos: todo paso de vistas sale DESPUÉS del freno de derrames en la lista (depende de Compras sana)', async () => {
+  const { PASOS_VISTAS } = await import('./flujo-caja-pasos.mjs')
+  const i = PASOS.findIndex(([s]) => s === 'freno-derrames-compras.mjs')
+  for (const v of PASOS_VISTAS) assert.ok(PASOS.findIndex(([s]) => s === v) > i, `${v} está antes del freno de derrames`)
+})
+
+test('grupos: un grupo desconocido es un error, no una corrida vacía que termina en verde', async () => {
+  const { pasosDelGrupo } = await import('./flujo-caja-pasos.mjs')
+  assert.throws(() => pasosDelGrupo('todo'), /grupo desconocido/)
+})

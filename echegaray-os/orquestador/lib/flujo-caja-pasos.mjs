@@ -737,6 +737,50 @@ export const REPORTES = new Set([
 /** NÚCLEO PURO: ¿este paso es de presentación/auditoría (su ≠0 es un reporte, no un fallo de datos)? */
 export function esReporte(script) { return REPORTES.has(script) }
 
+// ═══ DOS CORRIDAS, EN FILA: LOS DATOS Y DESPUÉS LAS VISTAS (25/09/2026) ═══
+//
+// Desde el 24/09 a las 21:19 ninguna corrida terminó: el servicio tiene 40 min de techo y la lista
+// entera tardaba 23–28 min con el Sheet tranquilo y 38–40+ con el dueño editando. Medido el 25/09:
+// la misma lectura de `Compras!A3:AZ3` tardó 80 s y, un minuto después, 0,5 s; `columnas-calculadas`
+// (dos lecturas, no escribe) tardó 1,6 s la noche anterior y 199 s a las 09:03. El Sheet recalcula
+// cada edición en cadena (_MOVIMIENTOS con fórmulas vivas sobre Compras → 9.785 SUMPRODUCT de los
+// dos Cash Flow) y Google no contesta una lectura hasta terminar. Con cuatro pasos colgados 5 min
+// cada uno, systemd mataba la corrida antes de llegar al libro: el Cash Flow no se rehacía nunca.
+//
+// Lo que se separa NO alimenta a ningún paso de datos: las secciones de la pestaña Proveedores (sólo
+// las lee el dueño; ni el libro, ni CAJA ni los Cash Flow la leen) y la presentación y auditoría
+// (formato, reparar pantalla, censos, auditores). Quedan en la corrida de DATOS todos los que
+// escriben lo que otro paso lee, los dos FRENOS, `asimetria-cash-flow` (sync-flujo-fondos publica sus
+// hallazgos) y `caja-graficos-verificar` (la portada no se da por buena sin sus gráficos).
+//
+// La corrida de VISTAS la ENCADENA la de datos al terminar (nunca en paralelo: se pisarían la misma
+// pestaña y el recálculo), y no corre si la de datos FRENÓ — Proveedores lee las ARRAYFORMULA de
+// Compras que el freno de derrames acaba de declarar rotas.
+export const PASOS_VISTAS = new Set([
+  'proveedores-titulos-sembrar.mjs', 'proveedores-dos-cuadros.mjs', 'proveedores-que-sale-cada-dia.mjs',
+  'proveedores-seccion2-pivot.mjs', 'proveedores-respaldo-fiscal.mjs', 'proveedores-notas-visibles.mjs',
+  'proveedores-encabezado-aplicar.mjs',
+  'formato-pestanas.mjs', 'reparar-pantalla.mjs', 'censo-numeros-pegados.mjs', 'auditar-duenos-pestanas.mjs',
+  'auditar-coherencia-pestanas.mjs', 'auditar-rangos-fosilizados.mjs', 'auditar-saldo-banco.mjs',
+  'auditar-doble-conteo-compras.mjs', 'reparar-textos.mjs', 'formato-condicional.mjs', 'auditar-pantalla.mjs',
+  'auditar-diseno-unificado.mjs', 'auditar-cobertura-cash-flow.mjs',
+])
+
+/** Los grupos que acepta `flujo-caja-rehacer-todo.mjs --grupo=…`. Sin grupo, corre la lista entera. */
+export const GRUPOS = Object.freeze(['datos', 'vistas'])
+
+/**
+ * NÚCLEO PURO: los pasos de un grupo, en el MISMO orden de `PASOS` (el orden es la dependencia).
+ * Sin grupo devuelve la lista entera; un grupo desconocido es un error, no una lista vacía — una
+ * corrida que «termina bien» sin haber corrido nada es el peor verde posible.
+ */
+export function pasosDelGrupo(grupo, pasos = PASOS, vistas = PASOS_VISTAS) {
+  if (!grupo) return pasos
+  if (grupo === 'vistas') return pasos.filter(([s]) => vistas.has(s))
+  if (grupo === 'datos') return pasos.filter(([s]) => !vistas.has(s))
+  throw new Error(`grupo desconocido «${grupo}»: los grupos son ${GRUPOS.join(' y ')}`)
+}
+
 /** El código con el que un paso dice «frené a propósito», distinto de «me rompí» (1). */
 export const CODIGO_FRENO = 3
 

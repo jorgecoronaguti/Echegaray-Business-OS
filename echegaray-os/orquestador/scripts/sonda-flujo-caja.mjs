@@ -31,7 +31,10 @@ const ARCHIVO = process.argv.find((a) => a.startsWith('--archivo='))?.slice('--a
   || process.env.ORQ_CASHFLOW_ID || CASHFLOW_ID
 const ES_EL_REAL = ARCHIVO === CASHFLOW_ID
 const UNIDAD_SYNC = 'echegaray-compras-sync.service'
-const UNIDAD_PIPELINE = 'echegaray-flujo-caja.service'
+// LAS DOS CORRIDAS DEL PIPELINE (25/09/2026): la de datos y, encadenada detrás, la de vistas — que
+// reescribe las secciones de Proveedores. Leer «Qué hacer» mientras una sección se corre de fila
+// confundiría una nota desplazada con una nota borrada por el dueño: se espera a las dos.
+const UNIDADES_PIPELINE = ['echegaray-flujo-caja.service', 'echegaray-flujo-caja-vistas.service']
 /** El espejo de CAJA (18/09/2026): `scripts/sync-caja-espejo.mjs`, sólo lee el Sheet. */
 const UNIDAD_CAJA = 'echegaray-caja-espejo.service'
 const ESTADO = rutaDelEstado(ARCHIVO)
@@ -59,9 +62,14 @@ async function sincronizarCaja() {
   await correr('systemctl', ['--user', 'start', '--no-block', UNIDAD_CAJA], { timeout: 20_000 })
 }
 
+async function pipelineCorriendo() {
+  for (const u of UNIDADES_PIPELINE) if (await unidadCorriendo(u)) return true
+  return false
+}
+
 function notasDesde(google) {
   return async (anteriorJson) => {
-    if (await unidadCorriendo(UNIDAD_PIPELINE)) {
+    if (await pipelineCorriendo()) {
       return { omitida: true, linea: 'notas: el pipeline arrancó en el medio — no leo «Qué hacer» y la versión queda sin atender' }
     }
     const r = await rescatarNotas({ google, fileId: ARCHIVO, query, anterior: anteriorDeJson(anteriorJson), escribir: !SECO })
@@ -86,7 +94,7 @@ async function main() {
     leerEstado: () => leerEstado(ESTADO),
     guardarEstado: (e) => (SECO ? undefined : guardarEstado(ESTADO, e)),
     syncCorriendo: () => unidadCorriendo(UNIDAD_SYNC),
-    pipelineCorriendo: () => unidadCorriendo(UNIDAD_PIPELINE),
+    pipelineCorriendo,
     sincronizarCompras,
     sincronizarCaja,
     sincronizarNotas: notasDesde(google),

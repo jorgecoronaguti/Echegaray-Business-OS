@@ -32,11 +32,13 @@ const correr = promisify(execFile)
 const ARCHIVO = process.argv.find((a) => a.startsWith('--archivo='))?.slice('--archivo='.length)
   || process.env.ORQ_CASHFLOW_ID || CASHFLOW_ID
 
-/** ¿Está escribiendo el pipeline? Sin systemd de usuario, no. */
+/** ¿Está escribiendo el pipeline? Sin systemd de usuario, no. Desde el 25/09/2026 son dos corridas en
+ *  fila —datos y, detrás, vistas (Proveedores, formato)— y cualquiera de las dos cuenta. */
 async function pipelineCorriendo() {
   try {
-    const { stdout } = await correr('systemctl', ['--user', 'show', '-p', 'ActiveState', '--value', 'echegaray-flujo-caja.service'])
-    return ['activating', 'active', 'reloading', 'deactivating'].includes(stdout.trim())
+    const { stdout } = await correr('systemctl', ['--user', 'show', '-p', 'ActiveState', '--value',
+      'echegaray-flujo-caja.service', 'echegaray-flujo-caja-vistas.service'])
+    return stdout.split('\n').some((l) => ['activating', 'active', 'reloading', 'deactivating'].includes(l.trim()))
   } catch { return false }
 }
 

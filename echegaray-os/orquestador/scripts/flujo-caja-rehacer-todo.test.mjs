@@ -221,3 +221,64 @@ test('decisionDeFreno: toma la salida del proceso hijo y cuenta los pasos que qu
   assert.deepEqual(decisionDeFreno(PASOS_DE_PRUEBA, 2, falla(3)), { frena: true, codigo: 3, faltan: 2 })
   assert.deepEqual(decisionDeFreno(PASOS_DE_PRUEBA, 2, new Error('sin code')), { frena: false, codigo: null, faltan: 2 })
 })
+
+// ═══ EL PRESUPUESTO DE TIEMPO (25/09/2026) ═══
+// Desde el 24/09 21:19 systemd mataba la corrida a los 40 min, a mitad de un paso. Lo que se afirma:
+// un paso que no alcanza a terminar NO EMPIEZA, y los que quedan se dicen por su nombre.
+test('PRESUPUESTO: con tiempo de sobra corren todos y no queda ninguno sin tiempo', async () => {
+  const { recorrerPasos } = await import('./flujo-caja-rehacer-todo.mjs')
+  const r = await recorrerPasos(PASOS_DE_PRUEBA, { correr: async () => {}, alFallar: () => null, log: () => {}, quedaMs: () => 3_600_000 })
+  assert.equal(r.corridos.length, PASOS_DE_PRUEBA.length)
+  assert.deepEqual(r.sinTiempo, [])
+})
+
+test('PRESUPUESTO: cuando lo que queda no cubre el techo del paso, ése y los de abajo NO empiezan', async () => {
+  const { recorrerPasos, TECHO_PASO_MS } = await import('./flujo-caja-rehacer-todo.mjs')
+  let queda = TECHO_PASO_MS + 120_000
+  const r = await recorrerPasos(PASOS_DE_PRUEBA, {
+    correr: async () => { queda -= 60_000 }, // cada paso gasta un minuto
+    alFallar: () => null, log: () => {}, quedaMs: () => queda,
+  })
+  assert.deepEqual(r.corridos, ['rubro-caja-sheet.mjs', 'freno-derrames-compras.mjs', 'libro-movimientos-pestana.mjs'])
+  assert.deepEqual(r.sinTiempo, ['caja-pestana.mjs', 'cash-flow-vistas.mjs'])
+  assert.equal(r.frenado, null)
+})
+
+test('PRESUPUESTO: un paso candado no figura como «sin tiempo» (no iba a correr igual)', async () => {
+  const { recorrerPasos } = await import('./flujo-caja-rehacer-todo.mjs')
+  const r = await recorrerPasos(PASOS_DE_PRUEBA, {
+    correr: async () => {}, alFallar: () => null, log: () => {}, quedaMs: () => 0,
+    bloqueado: (p) => p.includes('CAJA'),
+  })
+  assert.deepEqual(r.corridos, [])
+  assert.ok(!r.sinTiempo.includes('caja-pestana.mjs'))
+  assert.equal(r.sinTiempo.length, PASOS_DE_PRUEBA.length - 1)
+})
+
+test('presupuesto(): 0 o vacío = sin límite; con segundos, cuenta desde el arranque del proceso', async () => {
+  const { presupuesto } = await import('./flujo-caja-rehacer-todo.mjs')
+  assert.equal(presupuesto(undefined)(), Infinity)
+  assert.equal(presupuesto('0')(), Infinity)
+  let ahora = 1_000_000
+  const q = presupuesto('2160', 1_000_000, () => ahora)
+  assert.equal(q(), 2_160_000)
+  ahora += 600_000
+  assert.equal(q(), 1_560_000)
+})
+
+test('grupoDeArgs: --grupo=datos, --grupo vistas y sin grupo', async () => {
+  const { grupoDeArgs } = await import('./flujo-caja-rehacer-todo.mjs')
+  assert.equal(grupoDeArgs(['--grupo=datos']), 'datos')
+  assert.equal(grupoDeArgs(['--dry', '--grupo', 'vistas']), 'vistas')
+  assert.equal(grupoDeArgs(['--dry']), null)
+})
+
+test('encadenado: sólo la corrida de DATOS arranca la de vistas, y no si frenó', async () => {
+  const { decidirEncadenado } = await import('./flujo-caja-rehacer-todo.mjs')
+  const u = 'echegaray-flujo-caja-vistas.service'
+  assert.equal(decidirEncadenado({ grupo: 'datos', frenado: null, siguiente: u }).lanzar, true)
+  assert.equal(decidirEncadenado({ grupo: 'datos', frenado: { script: 'freno-derrames-compras.mjs' }, siguiente: u }).lanzar, false)
+  assert.equal(decidirEncadenado({ grupo: 'vistas', frenado: null, siguiente: u }), null, 'las vistas no encadenan nada')
+  assert.equal(decidirEncadenado({ grupo: 'datos', frenado: null, siguiente: '' }), null, 'una corrida a mano no dispara nada')
+  assert.equal(decidirEncadenado({ grupo: null, frenado: null, siguiente: u }), null, 'la corrida completa ya incluye las vistas')
+})

@@ -90,13 +90,22 @@ test('lectura de notas salteada (el pipeline arrancó en el medio): la versión 
 const SCRIPT = readFileSync(new URL('../scripts/sonda-flujo-caja.mjs', import.meta.url), 'utf8')
 
 test('X6 · en el script, una lectura salteada por el pipeline devuelve omitida (no atiende la versión)', () => {
-  assert.match(SCRIPT, /if \(await unidadCorriendo\(UNIDAD_PIPELINE\)\) \{\s*return \{ omitida: true,/)
-  assert.doesNotMatch(SCRIPT, /UNIDAD_PIPELINE\)\) \{\s*return \{ notas:/)
+  assert.match(SCRIPT, /if \(await pipelineCorriendo\(\)\) \{\s*return \{ omitida: true,/)
+  assert.doesNotMatch(SCRIPT, /pipelineCorriendo\(\)\) \{\s*return \{ notas:/)
 })
 
 test('X7 · el script le pasa pipelineCorriendo a vueltaDeSonda', () => {
   const vuelta = SCRIPT.slice(SCRIPT.indexOf('await vueltaDeSonda({'))
-  assert.match(vuelta.slice(0, vuelta.indexOf('})')), /pipelineCorriendo: \(\) => unidadCorriendo\(UNIDAD_PIPELINE\)/)
+  assert.match(vuelta.slice(0, vuelta.indexOf('})')), /\bpipelineCorriendo,/)
+})
+
+// 25/09/2026: el pipeline son dos corridas en fila; la de vistas reescribe las secciones de Proveedores,
+// donde vive «Qué hacer». Esperar sólo a la de datos dejaría leer una nota corrida de fila como borrada.
+test('X8 · «el pipeline corre» mira las DOS unidades: datos y vistas', () => {
+  const lista = /const UNIDADES_PIPELINE = \[([^\]]*)\]/.exec(SCRIPT)?.[1] ?? ''
+  assert.match(lista, /'echegaray-flujo-caja\.service'/)
+  assert.match(lista, /'echegaray-flujo-caja-vistas\.service'/)
+  assert.match(SCRIPT, /async function pipelineCorriendo\(\) \{\s*for \(const u of UNIDADES_PIPELINE\) if \(await unidadCorriendo\(u\)\) return true/)
 })
 
 test('versión nueva: después de Compras dispara el espejo de CAJA', async () => {

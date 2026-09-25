@@ -7,7 +7,28 @@ After=network-online.target
 Type=oneshot
 WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
 EnvironmentFile=/home/jorge/.config/echegaray-orq/worker.env
-ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/flujo-caja-rehacer-todo.mjs
+# EL CHECKOUT SE PONE AL DÍA ANTES DE ESCRITURA. Medido el 06/09/2026: este checkout quedó días
+# atrás, corrió el generador VIEJO y pisó 115 fórmulas ya aplicadas a «Plantel» — sin error, sin log
+# rojo, y el dueño abrió el Sheet y no había cambiado nada. Pushear a GitHub actualiza la web (Vercel
+# lee de ahí) pero NO esto.
+# El guión de adelante es deliberado: si no hay red o el fetch falla, se corre igual con el código que
+# haya. Es peor no actualizar el Flujo de Caja que actualizarlo con código de ayer. El script no
+# mergea si el árbol está sucio ni si producción divergió: ahí avisa y se queda quieto.
+ExecStartPre=-/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/produccion-al-dia.mjs
+# ═══ LA CORRIDA DE DATOS (25/09/2026) ═══
+# Desde el 24/09 21:19 ninguna corrida entera entraba en los 40 min: con el dueño editando, el Sheet
+# recalcula en cadena y una lectura de Compras tarda 80 s donde un minuto después tarda 0,5. Se partió
+# en dos (lib/flujo-caja-pasos.mjs, PASOS_VISTAS): acá corren los pasos que escriben lo que otro lee
+# —réplicas, Compras, pestañas, el libro, CAJA, los Cash Flow, flujo_*— y al terminar arranca
+# echegaray-flujo-caja-vistas.service (Proveedores, formato y auditorías), en fila, nunca en paralelo.
+#
+# EL PRESUPUESTO NO ES EL TECHO. 2160 s = 2400 − 60 (el ExecStartPre y el arranque) − 180 (la
+# verificación de los Cash Flow, la frescura y el encadenado). Un paso que no alcanza a terminar dentro
+# del presupuesto NO EMPIEZA: sale nombrado como «sin tiempo» y la unidad queda en rojo, pero ninguna
+# pestaña queda escrita a medias.
+Environment=ORQ_PIPELINE_PRESUPUESTO_S=2160
+Environment=ORQ_PIPELINE_SIGUIENTE=echegaray-flujo-caja-vistas.service
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/flujo-caja-rehacer-todo.mjs --grupo=datos
 # CUÁNTO TARDA DE VERDAD (medido el 13/08/2026, corrida completa contra el Sheet real): 906 s —
 # 15 minutos, no 24 segundos. El comentario anterior decía "10 minutos es holgado (una corrida real
 # tarda 24 segundos)" y era de cuando el agente rehacía 8 pestañas; hoy rehace 46 y además corre la
