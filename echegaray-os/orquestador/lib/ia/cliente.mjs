@@ -149,7 +149,8 @@ export async function registrarUso(fila) {
                                   correlation_id, usd_estimado)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [
-        fila.modelo, usd, fila.agente ?? null, fila.funcion ?? null,
+        // `motivo` explícito (p. ej. por qué una lectura fue a revisión); si no viene, lo de siempre.
+        fila.modelo, usd, fila.agente ?? null, fila.motivo ?? fila.funcion ?? null,
         fila.agente ?? null, fila.funcion ?? null, fila.proveedor, fila.capacidad,
         fila.tokensIn, fila.tokensOut, fila.ms, fila.ok, fila.errorKind ?? null, fila.fallbackDe ?? null,
         correlacion === 'proceso' ? null : correlacion, usdEsEstimado,

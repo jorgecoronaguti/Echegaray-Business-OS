@@ -152,7 +152,11 @@ test('esVision detecta imagen/documento; usdEstimado estima por familia y jamás
   assert.equal(esVision([{ role: 'user', content: [{ type: 'image', source: {} }] }]), true)
   assert.equal(esVision([{ role: 'user', content: [{ type: 'document', source: {} }] }]), true)
   assert.equal(esVision([{ role: 'user', content: 'texto plano' }]), false)
-  assert.equal(usdEstimado('claude-opus-5', { in: 1_000_000, out: 0 }), 15)
+  assert.equal(usdEstimado('claude-opus-5', { in: 1_000_000, out: 0 }), 5)
+  // 26/09: el libro anotaba opus-5 al triple ($15/$75). Lectura real de comprobantes: $0,099, no $0,297.
+  assert.equal(Math.round(usdEstimado('claude-opus-5', { in: 13_332, out: 1_292 }) * 1e4) / 1e4, 0.0990)
+  assert.equal(usdEstimado('claude-sonnet-5', { in: 1_000_000, out: 1_000_000 }), 12)
+  assert.equal(usdEstimado('claude-opus-9-sin-tabla', { in: 1_000_000, out: 0 }), 5)
   assert.equal(usdEstimado('claude-haiku-4-5', { in: 0, out: 1_000_000 }), 5)
   assert.equal(usdEstimado('modelo-desconocido', { in: 1000, out: 1000 }), null)
   assert.equal(usdEstimado('claude-opus-5', {}), null)

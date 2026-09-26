@@ -309,7 +309,7 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR, { ahora } =
   // la diferencia entre el chat y la línea de comandos es a quién se le puede preguntar, no si el
   // número está bien. Del lado del cargador el neto no viaja (`aFajoJson` lo omite a propósito), así
   // que allá esto simplemente no es verificable y no opina — que es lo correcto, no una excepción.
-  const ar = identidadDelComprobante({ neto: c.neto, iva: c.iva, otros: c.otrosTributos, total: c.total })
+  const ar = identidadDelComprobante({ neto: c.neto, iva: c.iva, otros: c.otrosTributos, noGravado: c.noGravado, total: c.total })
   if (ar.verificable && !ar.cierra) {
     falta(MOTIVO.ARITMETICA,
       `los importes no cierran: suman ${pesos(ar.suma)} y el total dice ${pesos(ar.total)}`,

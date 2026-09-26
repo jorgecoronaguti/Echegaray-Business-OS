@@ -42,14 +42,19 @@ export const TOLERANCIA = 0.5
  * que no tiene con qué opinar; y tratar "no sé" como "está bien" es cómo pasó el que sí se podía
  * verificar.
  *
- * @param {{neto?:number|null, iva?:number|null, otros?:number|null, total?:number|null}} c
+ * EL NO GRAVADO Y EL EXENTO TAMBIÉN SON PARTE DEL TOTAL (26/09/2026). Una factura con un concepto
+ * sin IVA (DESPEGAR: la tasa aeroportuaria; las pólizas de seguro) cierra neto + IVA + no gravado +
+ * otros = total. Sin ese término daba «no cierra» sobre un papel correcto: frenaba la carga y, antes,
+ * mandaba la lectura al modelo grande a buscar un error que no existía.
+ *
+ * @param {{neto?:number|null, iva?:number|null, otros?:number|null, noGravado?:number|null, total?:number|null}} c
  * @returns {{verificable:boolean, suma:number|null, total:number|null, diferencia:number|null, cierra:boolean|null}}
  */
-export function identidadDelComprobante({ neto, iva, otros, total } = {}) {
+export function identidadDelComprobante({ neto, iva, otros, noGravado, total } = {}) {
   const n = numero(neto)
   const t = numero(total)
   if (n == null || t == null) return { verificable: false, suma: null, total: t, diferencia: null, cierra: null }
-  const suma = red2(n + (numero(iva) ?? 0) + (numero(otros) ?? 0))
+  const suma = red2(n + (numero(iva) ?? 0) + (numero(otros) ?? 0) + (numero(noGravado) ?? 0))
   const diferencia = red2(suma - t)
   return { verificable: true, suma, total: t, diferencia, cierra: Math.abs(diferencia) <= TOLERANCIA }
 }

@@ -29,6 +29,7 @@ import { identidadDelComprobante } from './aritmetica.mjs'
 import { ivaPlausible, fechaPlausible } from './plausibilidad.mjs'
 import { fechaDeLectura } from './lectura.mjs'
 import { avisarEstado, clasificarError, clasificarRespuesta, registrarUso } from '../ia/cliente.mjs'
+import { precioDeModelo } from '../ia/precios.mjs'
 import { leerSinModelo } from './sin-modelo.mjs'
 
 /** Modelo de lectura. Barato a propósito: leer un ticket es extracción, no razonamiento. */
@@ -170,6 +171,8 @@ export const PROMPT_LECTURA = [
   '· El IVA va DISCRIMINADO por alícuota: iva_21 y iva_105 por separado. Si la factura no discrimina',
   '  IVA (una factura B o C, un ticket), poné 0 en las dos.',
   '· Percepciones (IIBB, SUSS), impuestos internos y otros tributos van juntos en otros_tributos.',
+  '· Lo NO GRAVADO y lo EXENTO (conceptos sin IVA: una tasa, un seguro) van en no_gravado_exento, sumados.',
+  '  Entonces: neto gravado + IVA + no gravado/exento + otros tributos = total.',
   '· El CAE es el "Cód. Autorización Electrónico": 14 dígitos, abajo, cerca del código de barras o',
   '  del QR. Copialo entero si está; si no lo ves entero, poné null.',
   '· El CONCEPTO SALE DE LOS RENGLONES DEL COMPROBANTE — los artículos facturados, en el medio del',
@@ -211,7 +214,7 @@ export const PROMPT_LECTURA = [
   '"numero":"<0000-00000000 o null>",',
   '"cae":"<14 dígitos o null>","fecha":"<DD/MM/AAAA o null>",',
   '"neto_gravado":"<importe o null>","iva_21":"<importe o null>","iva_105":"<importe o null>",',
-  '"otros_tributos":"<importe o null>","total":"<importe o null>",',
+  '"otros_tributos":"<importe o null>","no_gravado_exento":"<importe o null>","total":"<importe o null>",',
   '"condicion_venta":"<Contado|Cuenta Corriente|null — la IMPRESA>",',
   '"condicion_manuscrita":"<Contado|Cuenta Corriente|null — la ESCRITA A MANO>",',
   '"forma_pago":"<lo que diga, o null>",',
@@ -318,7 +321,7 @@ export function bloqueImputacion(v = {}) {
   return l.join('\n')
 }
 
-export function necesitaRevision(crudo = {}, { ahora } = {}) {
+export function necesitaRevision(crudo = {}, { ahora, esImagen = true } = {}) {
   const motivos = []
   if (crudo?.legible === false) motivos.push('la lectura se declaró ilegible')
   if (vacio(crudo?.total)) motivos.push('no leyó el total')
@@ -352,10 +355,16 @@ export function necesitaRevision(crudo = {}, { ahora } = {}) {
     neto: aNumero(crudo?.neto_gravado),
     iva: (aNumero(crudo?.iva_21) ?? 0) + (aNumero(crudo?.iva_105) ?? 0),
     otros: aNumero(crudo?.otros_tributos),
+    noGravado: aNumero(crudo?.no_gravado_exento),
     total: aNumero(crudo?.total),
   })
   if (ar.verificable && !ar.cierra) motivos.push('neto + IVA no cierra con el total')
-  if (vacio(crudo?.anotacion_manuscrita)) motivos.push('no encontró ninguna anotación manuscrita')
+  // ═══ LA MANO SE BUSCA EN UNA FOTO, NO EN UN PDF (26/09/2026) ═══
+  // El disparador existe porque la obra se escribe a mano sobre el papel (03/08). Un PDF —el que sube
+  // la web, el que llega por mail— lo emitió el sistema del proveedor: no tiene tinta. Sin este corte,
+  // todo PDF que no resolvía `pdf-afip` pagaba una segunda lectura con el modelo grande para buscar
+  // algo que no existe. En una FOTO sigue igual: ahí la ausencia sí puede ser una lectura floja.
+  if (esImagen && vacio(crudo?.anotacion_manuscrita)) motivos.push('no encontró ninguna anotación manuscrita')
   return motivos
 }
 
@@ -408,14 +417,35 @@ export function fusionar(primera = {}, revision = {}) {
  */
 const ACEPTAN_TEMPERATURE = /(haiku|claude-3|sonnet-4-5|sonnet-4-6|opus-4-5|opus-4-6)/i
 
+// ═══ EL PROMPT FIJO VA EN CACHÉ (26/09/2026) ═══
+// Cada lectura mandaba ~9k tokens de instrucciones + desplegables, idénticos, DESPUÉS de la foto: como
+// la foto cambia, nada se podía reutilizar. Medido en 30 días: 156 de 196 lecturas llegaron a menos
+// de 5 minutos de la anterior (los fajos vienen juntos). Las instrucciones pasan al `system` con
+// `cache_control`: la primera del fajo paga 1,25×, las siguientes 0,1×. El texto es el MISMO; cambia
+// sólo dónde va. La foto queda sola en el mensaje, con la orden de contestar.
+export const ORDEN_DE_LECTURA = 'Leé este comprobante siguiendo las instrucciones y respondé SÓLO el JSON pedido.'
+
 /** El cuerpo de la request. `pelado` deja sólo lo obligatorio: es el reintento tras un 400. */
-export function cuerpoDeLectura({ modelo, maxTokens, bloque, prompt, pelado = false } = {}) {
+// ═══ EL EFFORT ESTABA EN EL .env Y NADIE LO LEÍA (26/09/2026) ═══
+// `ORQ_COMPROBANTES_EFFORT=low` figuraba en anthropic.env desde el 25/09 y ningún código lo usaba: la
+// lectura pensaba al nivel por defecto. Medido con la misma foto en Sonnet 5: 1.350–2.500 tokens de
+// pensamiento por lectura, más que todo el resto de la salida junta — el renglón más caro de la
+// lectura con caché. Es OPCIONAL como `temperature`: lista cerrada de modelos que lo aceptan (Haiku
+// 4.5 lo rechaza con 400) y el reintento pelado lo saca.
+const ACEPTAN_EFFORT = /(opus-4-[5-9]|opus-5|sonnet-5|fable)/i
+const EFFORT = ['low', 'medium', 'high', 'xhigh', 'max'].includes(process.env.ORQ_COMPROBANTES_EFFORT) ? process.env.ORQ_COMPROBANTES_EFFORT : null
+
+export function cuerpoDeLectura({ modelo, maxTokens, bloque, prompt, pelado = false, effort = EFFORT } = {}) {
+  const system = [{ type: 'text', text: prompt }]
+  if (!pelado) system[0].cache_control = { type: 'ephemeral' }
   const cuerpo = {
     model: modelo,
     max_tokens: maxTokens,
-    messages: [{ role: 'user', content: [bloque, { type: 'text', text: prompt }] }],
+    system,
+    messages: [{ role: 'user', content: [bloque, { type: 'text', text: ORDEN_DE_LECTURA }] }],
   }
   if (!pelado && ACEPTAN_TEMPERATURE.test(String(modelo ?? ''))) cuerpo.temperature = 0
+  if (!pelado && effort && ACEPTAN_EFFORT.test(String(modelo ?? ''))) cuerpo.output_config = { effort }
   return cuerpo
 }
 
@@ -467,7 +497,7 @@ export function motivoDePausa(kind) {
  * (`lib/efectivo-vale-vision.mjs`): mismo fusible, mismo registro de uso y mismo manejo de error que la
  * lectura de comprobantes. Un segundo camino a la API sería un segundo lugar donde olvidarse del fusible.
  */
-export async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens, prompt = PROMPT_LECTURA }) {
+export async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens, prompt = PROMPT_LECTURA, motivo = null, effort }) {
   // El fusible admite ANTES de gastar: leer un comprobante es una llamada de VISIÓN y consume
   // presupuesto como cualquier otra. Un corte se devuelve como error declarado, no lanza.
   try {
@@ -480,7 +510,7 @@ export async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens,
   const pedir = async (pelado) => fetchImpl('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify(cuerpoDeLectura({ modelo, maxTokens, bloque, prompt, pelado })),
+    body: JSON.stringify(cuerpoDeLectura({ modelo, maxTokens, bloque, prompt, pelado, ...(effort ? { effort } : {}) })),
   })
   const t0 = Date.now()
   try {
@@ -514,11 +544,24 @@ export async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens,
     }
     const j = await res.json()
     // LEER UN COMPROBANTE CON `claude-opus-5` NO ERA GRATIS Y NO FIGURABA EN NINGUNA TABLA.
+    // Con caché, `input_tokens` es sólo lo NO cacheado: la entrada real y su precio se arman acá, con
+    // la tabla única (escritura 1,25×, lectura 0,1×). Sin precio conocido, usd = null y estima el fusible.
+    const u = j?.usage ?? {}
+    const escrito = u.cache_creation_input_tokens ?? 0
+    const leido = u.cache_read_input_tokens ?? 0
+    const p = precioDeModelo(j?.model ?? modelo)
+    const tokensIn = u.input_tokens == null ? null : u.input_tokens + escrito + leido
+    const usd = p && u.input_tokens != null
+      ? Math.round(((u.input_tokens + escrito * 1.25 + leido * 0.1) * p.in + (u.output_tokens ?? 0) * p.out)) / 1e6
+      : null
     await registrarUso({
-      modelo: j?.model ?? modelo, usd: null, agente: 'comprobantes', funcion: 'leer',
+      modelo: j?.model ?? modelo, usd, agente: 'comprobantes', funcion: 'leer',
       proveedor: 'anthropic', capacidad: 'complex',
-      tokensIn: j?.usage?.input_tokens ?? null, tokensOut: j?.usage?.output_tokens ?? null,
+      tokensIn, tokensOut: u.output_tokens ?? null,
       ms: Date.now() - t0, ok: true,
+      // POR QUÉ SE PAGÓ LA SEGUNDA LECTURA (26/09): sin esto la tasa de escalamiento al modelo grande
+      // no se podía medir, y es el costo que más se mueve.
+      ...(motivo ? { motivo } : {}),
     })
     const texto = (j?.content ?? []).filter((b) => b?.type === 'text').map((b) => b.text).join('\n')
     const m = String(texto ?? '').match(/\{[\s\S]*\}/)
@@ -603,12 +646,13 @@ export async function leerAdjunto(adjunto, ctx = {}) {
   const primera = await unaLectura(bloque, opciones)
   if (!primera.ok) return primera
 
-  const motivos = necesitaRevision(primera.crudo, ahora ? { ahora } : {})
+  const motivos = necesitaRevision(primera.crudo, { ...(ahora ? { ahora } : {}), esImagen: bloque.type === 'image' })
   if (!motivos.length || !modeloRevision || modeloRevision === modelo) {
     return { ok: true, crudo: primera.crudo, revision: { hubo: false, motivos } }
   }
 
-  const segunda = await unaLectura(bloque, { ...opciones, modelo: modeloRevision })
+  // La revisión ES el caso dudoso: ahí el modelo grande piensa a fondo, no con el effort bajo de la primera.
+  const segunda = await unaLectura(bloque, { ...opciones, modelo: modeloRevision, effort: 'high', motivo: `revision: ${motivos.join('; ')}`.slice(0, 300) })
   if (!segunda.ok) {
     return { ok: true, crudo: primera.crudo, revision: { hubo: false, motivos, error: segunda.error } }
   }

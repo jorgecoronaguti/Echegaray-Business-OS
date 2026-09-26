@@ -29,6 +29,7 @@
 // de invariante caza cualquier llamador nuevo que no lo importe.
 
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { precioDeModelo } from './precios.mjs'
 
 const num = (v, def) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : def }
 
@@ -177,21 +178,16 @@ export function esVision(mensajes = []) {
   return false
 }
 
-// USD estimado cuando el registro exacto no existe (p. ej. un modelo que la tabla de precios aún
-// no conoce). Es una ESTIMACIÓN por familia, marcada como tal — nunca un NULL silencioso.
-const PRECIOS_FAMILIA = [
-  [/opus/i, [15, 75]],
-  [/sonnet/i, [3, 15]],
-  [/haiku/i, [1, 5]],
-]
+// USD estimado cuando el registro exacto no existe (vision.mjs, por ejemplo, registra usd = null).
+// El precio sale de la tabla única (precios.mjs); si el ID no está, de su familia.
 
-/** USD estimado por familia de modelo ($/Mtok in/out). `null` si no hay familia ni tokens. PURA. */
+/** USD estimado por modelo ($/Mtok in/out). `null` si no hay precio ni tokens. PURA. */
 export function usdEstimado(modeloId, tokens = {}) {
   const tin = Number(tokens?.in ?? tokens?.tokensIn)
   const tout = Number(tokens?.out ?? tokens?.tokensOut)
   if (!Number.isFinite(tin) && !Number.isFinite(tout)) return null
-  const fam = PRECIOS_FAMILIA.find(([re]) => re.test(String(modeloId ?? '')))
-  if (!fam) return null
-  const [pin, pout] = fam[1]
+  const precio = precioDeModelo(modeloId)
+  if (!precio) return null
+  const { in: pin, out: pout } = precio
   return ((Number.isFinite(tin) ? tin : 0) * pin + (Number.isFinite(tout) ? tout : 0) * pout) / 1e6
 }

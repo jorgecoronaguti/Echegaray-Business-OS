@@ -19,6 +19,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createBreaker, createSemaphore, BreakerOpenError } from '../lib/breaker.mjs'
 import { marcarSinCredito, marcarCerebroOk } from '../lib/estado-cerebro.mjs'
+import { precioExacto } from '../lib/ia/precios.mjs'
 
 /** Falta la credencial. Tipado para fallar claro y NO reintentar en vano. */
 export class MissingSecretError extends Error {
@@ -30,21 +31,9 @@ export class MissingSecretError extends Error {
   }
 }
 
-// Precios de referencia (USD por 1M de tokens) para ESTIMAR costo — la API no
-// devuelve dólares. Tabla acotada; si el modelo no está, cost.usd = null (honesto,
-// nunca inventa precisión). Editar acá si cambian precios/modelos.
-const PRICES = {
-  'claude-opus-4-8': { in: 5, out: 25 },
-  'claude-opus-4-7': { in: 5, out: 25 },
-  'claude-opus-4-6': { in: 5, out: 25 },
-  'claude-opus-4-5': { in: 5, out: 25 },
-  'claude-opus-5': { in: 5, out: 25 },
-  'claude-sonnet-5': { in: 3, out: 15 },
-  'claude-haiku-5': { in: 1, out: 5 },
-  'claude-sonnet-4-6': { in: 3, out: 15 },
-  'claude-sonnet-4-5': { in: 3, out: 15 },
-  'claude-haiku-4-5': { in: 1, out: 5 },
-}
+// Precios de referencia (USD por 1M de tokens) para ESTIMAR costo — la API no devuelve dólares.
+// La tabla vive en lib/ia/precios.mjs (una sola, la misma del fusible); si el modelo no está,
+// cost.usd = null (honesto, nunca inventa precisión).
 
 /** Traduce alias de tier ('sonnet'|'opus'|'haiku') a ID de modelo de la API.
  *  Un valor que ya sea un ID ('claude-...') pasa tal cual. */
@@ -60,7 +49,7 @@ export function resolveModelId(alias, cfg) {
 /**
  * EL ID QUE LA API DEVUELVE TRAE LA FECHA; LA TABLA NO (26/08/2026).
  *
- * `claude-haiku-4-5-20251001` no está en `PRICES` —ahí vive `claude-haiku-4-5`— así que el costo
+ * `claude-haiku-4-5-20251001` no está en la tabla de precios —ahí vive `claude-haiku-4-5`— así que el costo
  * daba `null` para TODO lo que pasa por la puerta nueva, que registra el `model` tal como lo
  * devuelve la respuesta. Medido: una búsqueda en internet de 10.791 tokens de entrada quedó con
  * `usd = null`. No era un modelo sin precio: era el mismo modelo con el sufijo de versión.
@@ -69,8 +58,7 @@ export function resolveModelId(alias, cfg) {
  * inventar un precio sería peor que no tenerlo.
  */
 export function precioDe(modelId) {
-  const id = String(modelId ?? '')
-  return PRICES[id] ?? PRICES[id.replace(/-\d{8}$/, '')] ?? null
+  return precioExacto(modelId)
 }
 
 /** Costo estimado en USD a partir del usage. Devuelve null si no hay precio. */

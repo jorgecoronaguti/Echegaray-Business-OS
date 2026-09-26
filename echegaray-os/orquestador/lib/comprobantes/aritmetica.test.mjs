@@ -130,3 +130,8 @@ test('el control mira PARA ARRIBA: un total chiquito no es sospechoso por chiqui
 test('la escala se mide en VALOR ABSOLUTO: una nota de crédito grande también dice el tamaño', () => {
   assert.equal(escalaDeTotales([-686070, 100000]).max, 686070)
 })
+
+test('26/09: el no gravado/exento suma en la identidad', () => {
+  assert.equal(identidadDelComprobante({ neto: 100000, iva: 21000, total: 136000 }).cierra, false)
+  assert.equal(identidadDelComprobante({ neto: 100000, iva: 21000, noGravado: 15000, total: 136000 }).cierra, true)
+})

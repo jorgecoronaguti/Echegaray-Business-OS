@@ -112,6 +112,7 @@ export async function comprobanteSinModelo(consultar, desdeQr) {
     neto: arca?.neto ?? null,
     iva: arca?.iva ?? null,
     otrosTributos: arca?.otrosTributos ?? null,
+    noGravado: arca ? ((arca.netoNoGravado ?? 0) + (arca.exento ?? 0)) || null : null,
     // EL TOTAL DEL QR MANDA sobre el de ARCA: el QR lo firmó el emisor al emitir; ARCA lo transcribe.
     total: desdeQr.total ?? arca?.total ?? null,
     cae: desdeQr.cae ?? arca?.cae ?? null,

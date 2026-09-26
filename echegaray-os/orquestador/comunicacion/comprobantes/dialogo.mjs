@@ -52,7 +52,7 @@ export function camposFaltantes(item = {}) {
   // ganen un lugar entre los cinco del formulario: no se sabe cuál está mal leído. Sin esto, el
   // control bloqueaba el comprobante y el formulario ofrecía la obra y el proveedor — todo menos el
   // número que había que arreglar.
-  const ar = identidadDelComprobante({ neto: c.neto, iva: c.iva, otros: c.otrosTributos, total: c.total })
+  const ar = identidadDelComprobante({ neto: c.neto, iva: c.iva, otros: c.otrosTributos, noGravado: c.noGravado, total: c.total })
   if (ar.verificable && !ar.cierra) f.unshift('total', 'neto', 'iva')
   // Un dato que se leyó pero no puede ser cierto tiene que ganarse un lugar entre los cinco campos
   // del formulario: es exactamente el que hay que arreglar. Sin esto, el control bloqueaba el

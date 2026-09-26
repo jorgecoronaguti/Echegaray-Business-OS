@@ -365,6 +365,7 @@ export function normalizar_lectura(crudo = {}) {
   const total = con(crudo.total)
   const neto = con(crudo.neto_gravado)
   const otros = con(crudo.otros_tributos) ?? 0
+  const noGravado = con(crudo.no_gravado_exento) ?? 0
 
   const proveedor = String(crudo.emisor ?? '').trim() || null
   const cuit = soloDigitos(crudo.cuit)
@@ -409,6 +410,8 @@ export function normalizar_lectura(crudo = {}) {
       iva: iva === 0 ? null : iva,
       total,
       otrosTributos: otros === 0 ? null : otros,
+      // Sin IVA y dentro del total: entra en la identidad aritmética (aritmetica.mjs), no en el IVA.
+      noGravado: noGravado === 0 ? null : noGravado,
       condicion: textoODefault(crudo.condicion_venta),
       // LO QUE LA VISIÓN AISLÓ COMO CONDICIÓN ESCRITA A MANO, aparte de la impresa. Viaja crudo:
       // quien lo convierte en «Cuenta Corriente» o «Contado» es `condicionDeAnotacion`, y quien

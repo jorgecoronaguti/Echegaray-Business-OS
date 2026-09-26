@@ -6,7 +6,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { leerAdjunto, necesitaRevision, fusionar, bloqueImputacion, PROMPT_LECTURA, MODELO_LECTURA, MODELO_REVISION } from './vision.mjs'
+import { leerAdjunto, necesitaRevision, fusionar, bloqueImputacion, cuerpoDeLectura, PROMPT_LECTURA, MODELO_LECTURA, MODELO_REVISION } from './vision.mjs'
 
 const ADJUNTO = { data: 'AAAA', mediaType: 'image/jpeg', nombre: 'f.jpg' }
 
@@ -140,4 +140,49 @@ test('el prompt avisa que hay DOS CUIT y pide el CAE', () => {
 
 test('el prompt PERMITE dudar: exigir un valor es cómo se fabricó un importe inventado', () => {
   assert.match(PROMPT_LECTURA, /DUDAR ESTÁ PERMITIDO; INVENTAR NO/)
+})
+
+// ── Optimización 26/09: no pagar el modelo grande por lo que el papel no puede tener ─────────
+
+test('un PDF sin anotación manuscrita NO va a revisión; una foto sí', async () => {
+  const sinMano = { ...BIEN, anotacion_manuscrita: null }
+  assert.deepEqual(necesitaRevision(sinMano, { esImagen: false }), [])
+  assert.match(necesitaRevision(sinMano).join(), /manuscrita/, 'por defecto se trata como foto')
+  const pdf = { data: Buffer.from('%PDF-1.4 escaneado sin texto').toString('base64'), mediaType: 'application/pdf', nombre: 'x.pdf' }
+  const { fetchImpl, llamados } = apiFalsa({ [MODELO_LECTURA]: sinMano, [MODELO_REVISION]: sinMano })
+  const r = await leerAdjunto(pdf, { apiKey: 'k', fetchImpl })
+  assert.equal(r.ok, true)
+  assert.deepEqual(llamados, [MODELO_LECTURA], 'el PDF se lee una sola vez')
+  const foto = apiFalsa({ [MODELO_LECTURA]: sinMano, [MODELO_REVISION]: sinMano })
+  await leerAdjunto(ADJUNTO, { apiKey: 'k', fetchImpl: foto.fetchImpl })
+  assert.deepEqual(foto.llamados, [MODELO_LECTURA, MODELO_REVISION], 'la foto sí busca la mano dos veces')
+})
+
+test('lo no gravado/exento entra en la identidad: DESPEGAR no escala ni frena', () => {
+  // neto 100.000 + IVA 21.000 + tasa exenta 15.000 = 136.000
+  const despegar = { ...BIEN, neto_gravado: '100.000,00', iva_21: '21.000,00', otros_tributos: '0', total: '136.000,00' }
+  assert.match(necesitaRevision(despegar).join(), /no cierra/, 'sin el campo, no cierra')
+  assert.deepEqual(necesitaRevision({ ...despegar, no_gravado_exento: '15.000,00' }), [])
+  assert.match(PROMPT_LECTURA, /no_gravado_exento/)
+})
+
+test('26/09: las instrucciones van al system con caché; la foto sola en el mensaje; pelado sin caché', () => {
+  const b = cuerpoDeLectura({ modelo: 'claude-sonnet-5', maxTokens: 6000, bloque: { type: 'image' }, prompt: PROMPT_LECTURA })
+  assert.equal(b.system[0].text, PROMPT_LECTURA)
+  assert.deepEqual(b.system[0].cache_control, { type: 'ephemeral' })
+  assert.equal(b.messages[0].content[0].type, 'image')
+  assert.doesNotMatch(b.messages[0].content[1].text, /anotacion_manuscrita/, 'el prompt no se duplica en el mensaje')
+  assert.equal(b.temperature, undefined)
+  const pelado = cuerpoDeLectura({ modelo: 'claude-sonnet-5', maxTokens: 6000, bloque: { type: 'image' }, prompt: PROMPT_LECTURA, pelado: true })
+  assert.equal(pelado.system[0].cache_control, undefined)
+  assert.equal(pelado.system[0].text, PROMPT_LECTURA, 'pelado conserva las instrucciones')
+})
+
+test('26/09: effort sólo a los modelos que lo aceptan, y el pelado lo saca', () => {
+  const arg = { maxTokens: 6000, bloque: { type: 'image' }, prompt: 'x', effort: 'low' }
+  assert.deepEqual(cuerpoDeLectura({ ...arg, modelo: 'claude-sonnet-5' }).output_config, { effort: 'low' })
+  assert.deepEqual(cuerpoDeLectura({ ...arg, modelo: 'claude-opus-5' }).output_config, { effort: 'low' })
+  assert.equal(cuerpoDeLectura({ ...arg, modelo: 'claude-haiku-4-5' }).output_config, undefined)
+  assert.equal(cuerpoDeLectura({ ...arg, modelo: 'claude-sonnet-5', pelado: true }).output_config, undefined)
+  assert.equal(cuerpoDeLectura({ ...arg, modelo: 'claude-sonnet-5', effort: null }).output_config, undefined)
 })
