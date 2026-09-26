@@ -100,6 +100,17 @@
             "statusMessage": "recursos"
           }
         ]
+      },
+      {
+        "matcher": "SendMessage|Read|Bash|Grep|Glob|WebFetch|WebSearch|Skill|Edit|Write|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "statusMessage": "tope de contexto",
+            "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/tope-contexto-agente.mjs"
+          }
+        ]
       }
     ],
     "SessionEnd": [
@@ -112,9 +123,7 @@
             "statusMessage": "limpiando huérfanos"
           }
         ]
-      }
-    ],
-    "SessionEnd": [
+      },
       {
         "hooks": [
           {
