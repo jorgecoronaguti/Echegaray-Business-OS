@@ -11,12 +11,13 @@ test('el árbol limpio se dice explícitamente, no se omite', () => {
   assert.match(txt, /el árbol está limpio/)
 })
 
-test('lista los archivos sucios pero no todos: 12 y corta', () => {
+test('lista los archivos sucios pero no todos: 4 y corta, para que el traspaso tenga lugar', () => {
   const sucios = Array.from({ length: 40 }, (_, i) => `archivo-${i}.mjs`)
   const txt = armarInicio({ rama: 'x', sucios, commits: '', traspaso: '' })
   assert.match(txt, /sin commitear \(40\)/)
   assert.match(txt, /…/)
   assert.ok(!txt.includes('archivo-39.mjs'), 'no debe volcar los 40')
+  assert.ok(txt.includes('archivo-3.mjs') && !txt.includes('archivo-4.mjs'), 'muestra cuatro')
 })
 
 test('sin traspaso lo dice, no rellena con un resumen inventado', () => {
