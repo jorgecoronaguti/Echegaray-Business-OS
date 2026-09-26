@@ -127,6 +127,10 @@ export async function subirAStorage(o = {}, dep = {}) {
     if (r?.status === 409) return { ok: true, yaEstaba: true, bytes: buf.length }
     if (!r?.ok) {
       const detalle = String(await r.text().catch(() => '')).slice(0, 160)
+      // Storage también contesta «ya existe» como HTTP 400 con el 409 en el cuerpo
+      // ({"statusCode":"409","error":"Duplicate"}). Medido el 26/09/2026 con el PDF de DESPEGAR: el
+      // objeto estaba en el bucket y el respaldo lo daba por fallido, así que nunca anotaba su fila.
+      if (/"statusCode"\s*:\s*"?409|"error"\s*:\s*"Duplicate"|KeyAlreadyExists/.test(detalle)) return { ok: true, yaEstaba: true, bytes: buf.length }
       return { ok: false, error: `Storage contestó ${r?.status ?? '?'} al guardar: ${detalle}` }
     }
     return { ok: true, yaEstaba: false, bytes: buf.length }

@@ -7,7 +7,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { accesoAStorage, bajarDeStorage, nombreDeLaClaveDeServicio, urlDeObjeto } from './storage-supabase.mjs'
+import { accesoAStorage, bajarDeStorage, nombreDeLaClaveDeServicio, urlDeObjeto, subirAStorage } from './storage-supabase.mjs'
 
 const OK_ENV = { SUPABASE_URL: 'https://xyz.supabase.co/', SUPABASE_SERVICE_ROLE_KEY: 'sb_secret_x' }
 
@@ -82,4 +82,14 @@ test('la petición lleva la clave en los dos encabezados que Storage exige', asy
   })
   assert.equal(visto.headers.authorization, 'Bearer sb_secret_x')
   assert.equal(visto.headers.apikey, 'sb_secret_x')
+})
+
+test('26/09: «ya existe» llega como HTTP 400 con el 409 en el cuerpo y es «yaEstaba», no un fallo', async () => {
+  const cuerpo = (t) => async () => ({ ok: false, status: 400, text: async () => t })
+  const dup = await subirAStorage({ bucket: 'comprobantes', path: 'h/p/f.pdf', data: Buffer.from('x') },
+    { env: OK_ENV, fetchImpl: cuerpo('{"statusCode":"409","error":"Duplicate","message":"The resource already exists","code":"KeyAlreadyExists"}') })
+  assert.deepEqual(dup, { ok: true, yaEstaba: true, bytes: 1 })
+  const otro = await subirAStorage({ bucket: 'comprobantes', path: 'h/p/f.pdf', data: Buffer.from('x') },
+    { env: OK_ENV, fetchImpl: cuerpo('{"statusCode":"400","error":"InvalidKey"}') })
+  assert.equal(otro.ok, false)
 })
