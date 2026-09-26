@@ -126,3 +126,10 @@ test('el veredicto por método lleva la PLATA de cada uno y pone los huecos prim
   assert.equal(Math.round(v[0].monto), -(1839200 + 469565))
   assert.ok(v.slice(1).every((x) => x.cubierto))
 })
+
+test('«Fuera de caja» es su propio instrumento, no un medio que pega al banco', async () => {
+  const { instrumentoDePago: ins, FUERA_DE_CAJA, INSTRUMENTOS_BANCO: banco } = await import('./caja-canales.mjs')
+  assert.equal(ins('Fuera de caja'), FUERA_DE_CAJA)
+  assert.equal(banco.includes(FUERA_DE_CAJA), false)
+  assert.equal(ins('Débito'), 'debito')
+})

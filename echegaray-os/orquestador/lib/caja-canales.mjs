@@ -64,8 +64,14 @@ import { TIPOS_BANCO } from './caja-posterior-al-corte.mjs'
  *
  * @returns {'echeq'|'cheque'|'transferencia'|'a_rendir'|'efectivo'|'tarjeta'|'debito'|'desconocido'}
  */
+export const FUERA_DE_CAJA = 'fuera_de_caja'
+
 export function instrumentoDePago(tipoPago) {
   const t = String(tipoPago ?? '').trim().toLowerCase()
+  // «Fuera de caja» (dueño 26/09): la factura está pagada, pero ese pago ya está contado en caja por
+  // otro lado —el débito en el extracto, el efectivo del conteo— o no se puede rastrear. Cuenta para
+  // costo, P&L e IVA; en el libro de caja no emite nada. Va primero: no es ningún otro medio.
+  if (/fuera de caja/.test(t)) return FUERA_DE_CAJA
   if (/rendir/.test(t)) return 'a_rendir'
   if (/echeq/.test(t)) return 'echeq'
   if (/cheque/.test(t)) return 'cheque'

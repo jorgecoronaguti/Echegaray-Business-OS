@@ -57,6 +57,7 @@ import { movimiento, SALE } from './libro-movimientos.mjs'
 import { isoDeSerial, serialDe } from './libro-extractores-fechas.mjs'
 import { NAT } from './banco-santander.mjs'
 import { columnasDeCompras, estaPagada, estaAnulada } from './libro-extractores-compras.mjs'
+import { instrumentoDePago, FUERA_DE_CAJA } from './caja-canales.mjs'
 import { aparearImporte, TOLERANCIA_APAREO } from './cargas-pagos-banco.mjs'
 import { RUBRO_CARGAS, RUBRO_GREMIALES, RUBRO_PLANES, mesDeSerial, serie } from './libro-extractores-cargas.mjs'
 
@@ -120,6 +121,9 @@ export function obligacionesDeCompras(filas = [], rubros = []) {
     const rubro = txt(f[c.rubro])
     if (!quiero.has(rubro)) continue
     if (estaAnulada(f[c.estado])) continue
+    // Una fila «Fuera de caja» no emite nada en el libro: si además explicara un débito, esa salida
+    // real del banco quedaría sin entrar por ninguna puerta.
+    if (instrumentoDePago(txt(f[c.tipoPago])) === FUERA_DE_CAJA) continue
     const fecha = num(f[c.fechaCaja])
     const total = num(f[c.importe])
     if (fecha === null || !total) continue

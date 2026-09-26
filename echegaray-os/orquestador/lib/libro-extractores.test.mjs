@@ -606,3 +606,14 @@ test('COMPRAS: una fila "Cancelado" con Total NO es un movimiento — el dueño 
   assert.ok(!ms.some((m) => m.concepto === 'ARCA'), 'ELIMINADO tampoco, con o sin Total')
   assert.ok(ms.some((m) => m.concepto === 'Prov SRL'), 'las demás filas siguen saliendo')
 })
+
+// ═══ «FUERA DE CAJA» (dueño 26/09) ═══
+// 18 facturas pedidas por el estudio se cargaron pagadas sin que su pago esté en el libro: «todo pago,
+// no toques caja». Cuentan para costo, P&L e IVA; en el libro no emiten nada.
+test('COMPRAS: una fila pagada «Fuera de caja» no emite movimiento; la pagada común sí', () => {
+  const ms = deCompras(compras([
+    ['Alumetal', '30-56736337-2', '0038-00025432', 567418.36, 'Pagado', 'Fuera de caja', 'Materiales Civil', 46000, ''],
+  ]), 46000)
+  assert.equal(ms.find((m) => m.concepto === 'Alumetal'), undefined, 'emitirla sería una salida sin rastro en el banco')
+  assert.ok(ms.find((m) => m.concepto === 'Mariana SA'), 'el control tiene que poder decir que sí')
+})

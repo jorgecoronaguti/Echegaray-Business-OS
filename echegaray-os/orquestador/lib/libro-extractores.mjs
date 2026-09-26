@@ -53,7 +53,7 @@
 
 import { movimiento, ENTRA, SALE, estadoContraCorte } from './libro-movimientos.mjs'
 import { clienteCanonico } from './libro-clientes.mjs'
-import { instrumentoDePago, estadoDeEgreso } from './caja-canales.mjs'
+import { instrumentoDePago, estadoDeEgreso, FUERA_DE_CAJA } from './caja-canales.mjs'
 import { rubroDeCaja, SIN_CLASIFICAR } from './rubro-caja.mjs'
 import { columnasObligatorias } from './compras-columnas.mjs'
 // EL LADO "COMPRAS" COMO FUENTE vive aparte desde el 06/08: sus rótulos los leen DOS consumidores
@@ -154,6 +154,9 @@ export function deCompras(filas = [], corte = null, { aviso = (m) => console.war
     // Una fila ANULADA ("ELIMINADO" / "Cancelado") no es un gasto, tenga o no Total: el dueño la sacó.
     if (estaAnulada(f[c.estado])) continue
     const tipo = txt(f[c.tipoPago]).toLowerCase()
+    // PAGADA «FUERA DE CAJA» (26/09): su plata ya está en el libro por otra puerta, o no hay rastro de
+    // ella. Emitirla sería contar dos veces la misma salida, o inventar una.
+    if (instrumentoDePago(tipo) === FUERA_DE_CAJA) continue
     const rubro = txt(f[c.rubro])
     // UNA CUOTA DE PLAN DE ARCA CARGADA EN FIN DE SEMANA SE DEBITA EL DÍA HÁBIL DEL CALENDARIO DEL
     // ORGANISMO. Se corrige acá, al leer, y nunca en Compras: la carga del dueño no se toca.

@@ -420,3 +420,11 @@ test('explicadoPorCompras: fuera de la ventana de 31 días tampoco explica', () 
   const lejos = [{ fila: 9, rubro: RUBRO_FINANCIERO, fecha: S('2026-06-01'), total: 1281778.17, pagada: true }]
   assert.equal(explicadoPorCompras(d, RUBRO_FINANCIERO, lejos), null)
 })
+
+test('obligacionesDeCompras: una fila «Fuera de caja» no explica un débito — si no, el débito no entra por ninguna puerta', () => {
+  const fuera = fila({ prov: 'Movistar', total: 100, estado: 'Pagado', rubro: RUBRO_FINANCIERO, fecha: S('2026-07-13') })
+  fuera[I['Tipo pago']] = 'Fuera de caja'
+  const comun = fila({ prov: 'X', total: 200, estado: 'Pagado', rubro: RUBRO_FINANCIERO, fecha: S('2026-07-13') })
+  const o = obligacionesDeCompras([[], [], ENC, fuera, comun], [RUBRO_FINANCIERO])
+  assert.deepEqual(o.map((x) => x.total), [200])
+})

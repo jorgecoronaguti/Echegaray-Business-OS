@@ -88,7 +88,7 @@ export function tipoComprobante(letra) {
  * cargador de línea de comandos, que no lee listas. Que existan las dos no es duplicar la verdad: es
  * que la celda no se ensucia ni cuando la verdad no se pudo consultar.
  */
-export const TIPOS_PAGO = Object.freeze(['Efectivo', 'Transferencia', 'Débito', 'Tarjeta Crédito', 'Echeq', 'Cheque', 'A rendir'])
+export const TIPOS_PAGO = Object.freeze(['Efectivo', 'Transferencia', 'Débito', 'Tarjeta Crédito', 'Echeq', 'Cheque', 'A rendir', 'Fuera de caja'])
 
 /**
  * Lo leído → un valor EXACTO del desplegable P, o null.
