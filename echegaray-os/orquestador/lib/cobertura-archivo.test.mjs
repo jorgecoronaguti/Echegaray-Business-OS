@@ -281,3 +281,16 @@ test('el prendario (datos/prestamo-prendario.json) está declarado sin censo —
   assert.deepEqual(origenesSinDeclarar([mov({ origen: PESTANA_PRENDARIO })]), [])
   assert.ok(SIN_CENSO_DE_FILA.find((s) => s.pestana === PESTANA_PRENDARIO)?.porque.length > 40, 'declarado sin motivo no es declarado')
 })
+
+test('26/09 · una compra pagada «Fuera de caja» es exclusión DECLARADA, no hueco', () => {
+  const filas = hojaCompras([
+    [567_418.36, serialDe(2026, 7, 1), 'Materiales', 'Alumetal', '', '', 'Pagado', 'Fuera de caja'],
+    [100_000, serialDe(2026, 7, 1), 'Materiales', 'Alumetal', '', '', 'Pagado', 'Transferencia'],
+  ])
+  const r = coberturaDeFuente({
+    pestana: 'Compras', renglones: censoDeCompras(filas, COLS_COMPRAS),
+    cubiertas: new Set(), exclusiones: EXCLUSIONES_COMPRAS,
+  })
+  assert.equal(r.declarado, 567_418.36)
+  assert.equal(r.hueco, 100_000, 'una transferencia que no llegó al libro sigue siendo hueco')
+})

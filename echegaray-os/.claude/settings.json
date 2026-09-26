@@ -102,7 +102,7 @@
         ]
       },
       {
-        "matcher": "SendMessage|Read|Bash|Grep|Glob|WebFetch|WebSearch|Skill|Edit|Write|Agent",
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",

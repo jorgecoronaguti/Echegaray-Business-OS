@@ -48,8 +48,9 @@ export const FACTOR_CACHE = { escritura: 1.25, lectura: 0.1 }
  * a precio lleno (10× lo real): el chat se veía más caro y el tope por tarea (`maxCostUsd`) cortaba
  * pedidos que no habían llegado a gastarlo. `null` sin precio o sin usage. PURA.
  */
-export function costoDeUsage(modeloId, usage) {
-  const p = precioExacto(modeloId)
+export function costoDeUsage(modeloId, usage, { porFamilia = false } = {}) {
+  // `porFamilia`: para quien prefiere estimar a no contar (la lectura de comprobantes); el engine no.
+  const p = porFamilia ? precioDeModelo(modeloId) : precioExacto(modeloId)
   if (!p || !usage) return null
   const entrada = (usage.input_tokens || 0)
     + (usage.cache_creation_input_tokens || 0) * FACTOR_CACHE.escritura

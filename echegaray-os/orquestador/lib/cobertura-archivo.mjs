@@ -45,6 +45,7 @@
 // NÚCLEO PURO: no toca la red, no lee el Sheet, no sabe de Google.
 import { finDeLaVista } from './cash-flow-matriz.mjs'
 import { PESTANA_PRENDARIO } from './libro-extractores-banco-obligaciones.mjs'
+import { instrumentoDePago, FUERA_DE_CAJA } from './caja-canales.mjs'
 
 /** Serial de Sheets (base 30/12/1899) de una fecha UTC. */
 export const serialDe = (anio, mes, dia) =>
@@ -271,6 +272,12 @@ export const EXCLUSIONES_COMPRAS = Object.freeze([
     cuando: (r) => /^Nómina · (Cargas sociales|Gremiales)$/.test(r.rubro) && !r.pagada,
     porque: 'La cadena proyecta el F931 y los gremiales mes por mes desde los jornales, y el Libro excluye '
       + 'las filas PROYECTADAS de esos rubros en Compras. Las PAGADAS sí entran por Compras.',
+  },
+  {
+    motivo: 'pagada fuera de la caja de la empresa (Tipo pago «Fuera de caja»)',
+    cuando: (r) => instrumentoDePago(r.tipoPago) === FUERA_DE_CAJA,
+    porque: 'El dueño la pagó por fuera (26/09: «todo pago, no toques caja»): cuenta para costo, P&L e IVA, '
+      + 'pero no salió de ninguna cuenta de la empresa. `deCompras` no la emite a propósito.',
   },
 ])
 

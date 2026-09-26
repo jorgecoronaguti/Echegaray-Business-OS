@@ -548,7 +548,7 @@ export async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens,
     // la tabla única (escritura 1,25×, lectura 0,1×). Sin precio conocido, usd = null y estima el fusible.
     const u = j?.usage ?? {}
     const tokensIn = u.input_tokens == null ? null : u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0)
-    const usd = u.input_tokens == null ? null : costoDeUsage(j?.model ?? modelo, u)
+    const usd = u.input_tokens == null ? null : costoDeUsage(j?.model ?? modelo, u, { porFamilia: true })
     await registrarUso({
       modelo: j?.model ?? modelo, usd, agente: 'comprobantes', funcion: 'leer',
       proveedor: 'anthropic', capacidad: 'complex',

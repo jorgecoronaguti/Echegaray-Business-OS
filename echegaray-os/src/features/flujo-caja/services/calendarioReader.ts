@@ -157,7 +157,8 @@ export function movimientosDeCompras(filas: Fila[]): Movimiento[] {
     estado: COMPRAS.estado, tipoPago: COMPRAS.tipoPago, vence: 'Fecha prevista de pago (día)', total: COMPRAS.total,
     proveedor: COMPRAS.proveedor, unidad: COMPRAS.unidad, concepto: COMPRAS.concepto, detalle: COMPRAS.detalle,
   })
-  const MEDIOS_APARTE = new Set(['cheque', 'echeq', 'tarjeta crédito'])
+  // «Fuera de caja» (26/09): la paga el dueño por fuera; nunca sale de una cuenta de la empresa.
+  const MEDIOS_APARTE = new Set(['cheque', 'echeq', 'tarjeta crédito', 'fuera de caja'])
   const out: Movimiento[] = []
   for (const r of cmp.datos as Fila[]) {
     const estado = texto(r, cmp.idx.estado)

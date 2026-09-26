@@ -31,3 +31,10 @@ test('el caché se cobra a su precio: leer 0,1×, escribir 1,25×', async () => 
   assert.equal(costoDeUsage('claude-sonnet-5', { cache_creation_input_tokens: 1_000_000 }), 2.5)
   assert.equal(estimateCostUsd('claude-sonnet-5', u), 0.015168)
 })
+
+test('lectura de comprobantes con un modelo que la tabla no conoce: estima por familia, no queda null', async () => {
+  const { costoDeUsage } = await import('./precios.mjs')
+  const u = { input_tokens: 1_000_000 }
+  assert.equal(costoDeUsage('claude-sonnet-9', u), null, 'el engine no inventa')
+  assert.equal(costoDeUsage('claude-sonnet-9', u, { porFamilia: true }), 3)
+})
