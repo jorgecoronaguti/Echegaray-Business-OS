@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Bash(node orquestador/scripts/pestana-candado.mjs desbloquear:*)",
+      "Bash(*pestana-candado.mjs desbloquear*)",
+      "Bash(ORQ_PROV_FORCE=*)",
+      "Bash(*ORQ_PROV_FORCE=*)",
+      "Read(./echegaray-os/node_modules/**)",
+      "Read(./echegaray-os/.next/**)",
+      "Read(./.claude/worktrees/**)",
+      "Read(./echegaray-os/package-lock.json)"
+    ]
+  },
+  "skillOverrides": {
+    "add-login": "off",
+    "ai": "off",
+    "image-generation": "off"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CLAUDE_PROJECT_DIR=\"$CLAUDE_PROJECT_DIR/echegaray-os\" node \"$CLAUDE_PROJECT_DIR/echegaray-os/.claude/hooks/estado-sesion.mjs\"",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CLAUDE_PROJECT_DIR=\"$CLAUDE_PROJECT_DIR/echegaray-os\" node \"$CLAUDE_PROJECT_DIR/echegaray-os/.claude/hooks/clasificar-tarea.mjs\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CLAUDE_PROJECT_DIR=\"$CLAUDE_PROJECT_DIR/echegaray-os\" \"$CLAUDE_PROJECT_DIR/echegaray-os/.claude/hooks/validar-edicion.sh\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CLAUDE_PROJECT_DIR=\"$CLAUDE_PROJECT_DIR/echegaray-os\" node \"$CLAUDE_PROJECT_DIR/echegaray-os/.claude/hooks/estado-sesion.mjs\" --fin",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
