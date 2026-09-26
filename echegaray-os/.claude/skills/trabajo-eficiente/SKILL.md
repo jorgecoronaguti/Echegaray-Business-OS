@@ -16,12 +16,25 @@ leer archivos 41 %, búsquedas 16 %, logs 10 %, editar código 0,6 %.
 
 | Paso | Quién | Comando |
 |---|---|---|
-| 1. Contexto mínimo | e5 local + léxico, $0 | `node orquestador/scripts/contexto-minimo.mjs "<tarea>"` → punteros a memorias, skills, docs |
+| 1. Contexto mínimo | e5 local + léxico, $0 | `node orquestador/scripts/contexto-minimo.mjs "<tarea>"` → punteros a memorias, skills, docs, scripts y agentes; `--tipo script` responde «¿ya hay un script del OS que lo haga?» |
 | 2. Localizar código | `rg` / Grep, git | nunca leer el archivo entero: el tramo (`dev-router/contexto.mjs`) |
 | 3. Trabajo mecánico | script determinístico | si se repite, se vuelve script o test |
 | 4. Salida larga | HF (Qwen3-Coder-480B) | `<cmd> 2>&1 \| node orquestador/scripts/hf-digerir.mjs <tests\|typecheck\|lint\|build\|git\|codigo> "<pregunta>"` |
 | 5. Edición D0–D1 | dev-router → HF | una tarea en `orquestador/dev-router/tareas/` (ejemplo: `spec-liquidacion-al-dia.mjs`) + `correr-tarea-real.mjs`; el verificador manda y si da rojo vuelve a Claude. Todavía no hay CLI general |
 | 6. Razonar y decidir | Claude | lo que tiene efecto económico, contractual, fiscal, laboral o de seguridad |
+
+## Lo que corre solo (26/09/2026)
+
+- **Cada mensaje del dueño**: el hook `~/.echegaray-os/bin/hook-contexto.mjs` agrega hasta 6 punteros
+  léxicos del índice (memorias, scripts, skills) en ~0,1 s. Al abrir sesión rehace el índice en segundo plano.
+- **Cada subagente**: el portero `~/.echegaray-os/bin/hook-agente.mjs` le agrega al encargo el bloque
+  `[primero-el-os]` (contexto-minimo, hf-digerir, lectura por tramos, informe ≤300 palabras). Sin `model`
+  corre en Sonnet (`CLAUDE_CODE_SUBAGENT_MODEL`); Opus sólo con `[opus-justificado]`. No hay tope de cantidad.
+- **Compactación**: `autoCompactWindow: 300000` en los settings del usuario — principal y subagentes
+  compactan antes de releer 400–900 k por vuelta.
+- **Medir**: `node orquestador/scripts/medir-tokens.mjs [<sesión>] [--desde <ISO>]` — entrada por modelo,
+  contexto medio y máximo, y los agentes más caros. Línea de base 26/09 (d50fb332): 3.371 M de entrada,
+  95 % Opus, 75 % en subagentes, contexto medio 400 k en la principal.
 
 ## Límites que no se negocian
 

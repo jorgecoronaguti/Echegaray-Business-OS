@@ -14,7 +14,10 @@
 // fijo en este OS ya demostró ser ruido (memoria «coseno 0,90»).
 //
 //   node orquestador/scripts/contexto-minimo.mjs "verificar la corrida de flujo de caja y Tello" [--k 8]
+//   node orquestador/scripts/contexto-minimo.mjs "¿hay algo que audite el cash flow?" --tipo script
 //   node orquestador/scripts/contexto-minimo.mjs --indexar
+//
+// Tipos: memoria · skill · doc · regla · script (cabecera de orquestador/scripts y scripts/) · agente.
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -49,6 +52,23 @@ function listar(dir, filtro, prof = 3) {
   return out
 }
 
+/**
+ * La cabecera de un script: el bloque de comentarios del principio, sin el shebang ni las rayas.
+ * Es lo que el autor escribió para contestar «qué hace esto y cuándo se usa» — el mismo texto que
+ * un agente leería abriendo el archivo, sin abrirlo (26/09: 515 scripts que nadie encontraba).
+ */
+export function cabeceraDeScript(src, max = MAX_TEXTO) {
+  const lineas = []
+  for (const l of String(src).split('\n')) {
+    if (l.startsWith('#!')) continue
+    const m = l.match(/^\s*(?:\/\/|\*|\/\*\*?)\s?(.*)$/)
+    if (!m) { if (l.trim() === '' && lineas.length === 0) continue; break }
+    const t = m[1].replace(/[═─]+/g, ' ').trim()
+    if (t && t !== '/' && t !== '*/') lineas.push(t)
+  }
+  return lineas.join('\n').slice(0, max)
+}
+
 /** Las piezas que se indexan: una por archivo, con el texto que la representa. */
 export function fuentes() {
   const items = []
@@ -64,6 +84,15 @@ export function fuentes() {
     const md = readFileSync(p, 'utf8')
     const titulos = (md.match(/^#{1,3} .+$/gm) || []).slice(0, 12).join(' · ')
     items.push({ tipo: p.includes('/rules/') ? 'regla' : 'doc', ruta: relative(RAIZ, p), titulo: (md.match(/^# (.+)$/m) || [])[1] || relative(RAIZ, p), texto: `${titulos}\n${md.slice(0, 300)}`.slice(0, MAX_TEXTO) })
+  }
+  const esScript = (f) => /\.(mjs|js|sh)$/.test(f) && !/\.test\.|\.spec\./.test(f)
+  for (const p of [...listar(join(RAIZ, 'orquestador/scripts'), esScript, 0), ...listar(join(RAIZ, 'scripts'), esScript, 1)]) {
+    const cab = cabeceraDeScript(readFileSync(p, 'utf8'))
+    if (cab) items.push({ tipo: 'script', ruta: relative(RAIZ, p), titulo: relative(RAIZ, p).split('/').pop(), texto: cab })
+  }
+  for (const p of listar(join(RAIZ, '.claude/agents'), (f) => f.endsWith('.md') && !f.endsWith('README.md'), 0)) {
+    const { meta } = frontmatter(readFileSync(p, 'utf8'))
+    items.push({ tipo: 'agente', ruta: relative(RAIZ, p), titulo: meta.name || p, texto: (meta.description || '').slice(0, MAX_TEXTO) })
   }
   return items.map((i) => ({ ...i, hash: createHash('sha1').update(i.texto).digest('hex').slice(0, 12) }))
 }
@@ -97,7 +126,7 @@ export function raices(t) {
  * fusión 23 % / 34 %. Por eso es fusión — y por eso esto SUGIERE contexto, no reemplaza el
  * índice de MEMORY.md: con un tercio de acierto no se le puede sacar la memoria a nadie.
  */
-export function rankear(indice, vConsulta, { consulta = '', k = 8, cupo = { memoria: 5, skill: 2, doc: 2, regla: 1 } } = {}) {
+export function rankear(indice, vConsulta, { consulta = '', k = 8, cupo = { memoria: 5, skill: 2, doc: 2, regla: 1, script: 3, agente: 1 } } = {}) {
   const dot = (a, b) => a.reduce((s, x, i) => s + x * b[i], 0)
   const q = raices(consulta)
   const porE5 = indice.items.map((i) => ({ i, s: dot(i.v, vConsulta) })).sort((a, b) => b.s - a.s)
@@ -120,13 +149,16 @@ export function rankear(indice, vConsulta, { consulta = '', k = 8, cupo = { memo
 async function main() {
   const args = process.argv.slice(2)
   const k = Number(args[args.indexOf('--k') + 1]) || 8
+  const tipo = args.includes('--tipo') ? args[args.indexOf('--tipo') + 1] : null
   const { embeber } = await import('../lib/ml/embeddings.mjs')
   const r = await indexar({ embeber })
   if (args.includes('--indexar')) { console.log(`índice: ${r.total} piezas, ${r.nuevos} re-embebidas → ${INDICE}`); return }
-  const consulta = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--k').join(' ')
-  if (!consulta) { console.error('Uso: contexto-minimo.mjs "<tarea>" [--k 8] | --indexar'); process.exit(2) }
+  const consulta = args.filter((a, i) => !a.startsWith('--') && !['--k', '--tipo'].includes(args[i - 1])).join(' ')
+  if (!consulta) { console.error('Uso: contexto-minimo.mjs "<tarea>" [--k 8] [--tipo script|memoria|skill|doc|regla|agente] | --indexar'); process.exit(2) }
   const indice = JSON.parse(readFileSync(INDICE, 'utf8'))
-  for (const i of rankear(indice, await embeber(consulta, 'consulta'), { consulta, k })) {
+  if (tipo) indice.items = indice.items.filter((i) => i.tipo === tipo)
+  const cupo = tipo ? { [tipo]: k } : undefined
+  for (const i of rankear(indice, await embeber(consulta, 'consulta'), { consulta, k, ...(cupo && { cupo }) })) {
     console.log(`${i.score.toFixed(2)} ${i.tipo.padEnd(7)} ${i.ruta.replace(homedir(), '~')} — ${i.resumen}`)
   }
 }

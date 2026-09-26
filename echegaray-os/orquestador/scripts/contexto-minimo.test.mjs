@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { frontmatter, raices, rankear } from './contexto-minimo.mjs'
+import { frontmatter, raices, rankear, cabeceraDeScript } from './contexto-minimo.mjs'
 
 test('frontmatter lee name y description de una línea, con o sin comillas', () => {
   const { meta, cuerpo } = frontmatter('---\nname: caja\ndescription: "la caja operativa"\n---\ncuerpo')
@@ -25,4 +25,11 @@ test('una coincidencia léxica sube una pieza que e5 dejaba abajo', () => {
     { tipo: 'memoria', ruta: 'm/tello.md', titulo: 'pedro-tello', resumen: 'pisos industriales', v: [0.9, 0.1] }]
   const top = rankear({ items }, [1, 0], { consulta: 'lo de Tello', k: 1, cupo: { memoria: 1 } })
   assert.equal(top[0].titulo, 'pedro-tello')
+})
+
+test('la cabecera de un script es su bloque de comentarios inicial, sin shebang ni rayas, y corta en el código', () => {
+  const src = '#!/usr/bin/env node\n// AUDITOR DE CAJA — sólo lectura.\n//\n// ═══ POR QUÉ ═══\n// cuenta la plata\nimport x from "y"\n// esto ya no'
+  assert.equal(cabeceraDeScript(src), 'AUDITOR DE CAJA — sólo lectura.\nPOR QUÉ\ncuenta la plata')
+  assert.equal(cabeceraDeScript('/**\n * Bloque JSDoc\n */\nexport const a = 1'), 'Bloque JSDoc')
+  assert.equal(cabeceraDeScript('import x from "y"'), '')
 })
