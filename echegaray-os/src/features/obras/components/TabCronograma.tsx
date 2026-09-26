@@ -29,7 +29,7 @@ import {
   bajadaDuracion, cambiosDeFechas, conFechas, diasHabilesDelEditor, ESCALA_LABEL, ESCALAS_VISTA, filasDelPlan,
   fraccionLlena, indiceDe, mesesDeVentana, motivoSellarApagado, moverExtremo, pares, posPct, semanasDe,
   textoPrecedencia, tonoDeFila, tramoVista, ventanaVista, type EscalaVista, type FechasEditadas, type FilaPlan,
-  arrancaEnElInicio, ladoFuera,
+  ladoFuera,
 } from '../services/cronogramaPlan'
 import { conectoresDe } from '../services/conectoresGantt'
 import { useAnchoVentana } from './useAnchoVentana'
@@ -355,18 +355,17 @@ function VistaTelefono({ obraId, filas, dependencias, hoy, fallas }: Props & { f
   const con = new Set(dependencias.flatMap((d) => [d.origen_id, d.destino_id]))
   const nDeps = todos.filter((f) => f.actividadId && con.has(f.actividadId)).length
   const selladas = todos.filter((f) => f.inicioBase || f.finBase).length
-  // M07, LA PRIMERA VISTA: la misma regla que el 05 — obra de menos de 8 semanas desde su inicio; si no,
-  // HOY a un tercio del gráfico (M07 dibuja hoy al 36 %).
+  // M07 ABRE SIEMPRE CON HOY A DOS TERCIOS DEL GRÁFICO (dueño 25/09, commit 12fc23cc: «a un tercio, las
+  // seis semanas visibles eran casi todas futuras y las tareas en curso quedaban fuera»). Como el 05
+  // (056e0be3), se retira la regla de arrancar en el inicio de la obra: para Quattropani (53 días desde
+  // el 03/08) dejaba hoy fuera de los 390 px del teléfono.
   const scrollRef = useRef<HTMLDivElement>(null)
-  const inicioObra = actos.map((f) => f.inicio).filter((x): x is string => Boolean(x)).sort()[0] ?? null
   useEffect(() => {
     const el = scrollRef.current
     if (!el || hoyPct == null) return
     const grafico = el.scrollWidth - 32 - 120
-    const visibles = ventana ? ((el.clientWidth - 136) / Math.max(1, grafico)) * ventana.dias : null
-    if (inicioObra && arrancaEnElInicio(inicioObra, hoy, visibles)) { el.scrollLeft = 0; return }
-    el.scrollLeft = Math.max(0, 16 + grafico * (hoyPct / 100) - (el.clientWidth - 136) / 3)
-  }, [hoyPct, escala, inicioObra, hoy, ventana])
+    el.scrollLeft = Math.max(0, 16 + grafico * (hoyPct / 100) - (el.clientWidth - 136) * 2 / 3)
+  }, [hoyPct, escala])
   const vis = useVentanaVisible(scrollRef, 120, 16, escala)
   const irA = (t: { izqPct: number } | null) => {
     const el = scrollRef.current
