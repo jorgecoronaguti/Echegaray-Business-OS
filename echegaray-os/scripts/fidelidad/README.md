@@ -42,3 +42,6 @@ criterio de cómo se fijó).
   herramienta.
 - Playwright ya instalado en `node_modules` (se reutiliza el navegador del repo, no instala nada
   nuevo).
+
+## Límite conocido (26/09/2026)
+El puntaje absoluto NO es «fidelidad pura»: el diseño usa datos de muestra (Pisos ARCOR, R. Quiroga) y producción datos reales (Quattropani), así que los textos de datos no se emparejan y cuentan como «faltan». La barra de la app pesa poco (tope 6 puntos). Por eso el medidor se usa como **compuerta de no-regresión** (umbral = puntaje del 26/09 − 2): frena si una pantalla empeora, no certifica que sea fiel. La fidelidad absoluta se juzga comparando lado a lado.
