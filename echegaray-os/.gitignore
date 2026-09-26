@@ -100,3 +100,6 @@ tests/_qa-*.spec.ts
 
 # Runtime de «Dictar parte» (sherpa-onnx): se instala en la VM con npm ci --prefix orquestador/voz
 orquestador/voz/node_modules
+
+# Salida de una corrida del medidor de fidelidad: evidencia de una medición, no fuente.
+scripts/fidelidad/out/

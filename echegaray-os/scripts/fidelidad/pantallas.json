@@ -1,0 +1,86 @@
+{
+  "_doc": "Config del medidor de fidelidad diseño→producción. `umbral` es el piso de puntaje (0–100): si la corrida da menos, exit 1 para esa pantalla. Se fija en (puntaje de producción medido el 26/09/2026) − 2, así el gate no rompe hoy y frena cualquier retroceso futuro. `disenoLabel` es el atributo data-screen-label del archivo .dc.html en docs/diseno/erp-obras/. `rol` es sólo documentación de a qué nivel de usuario corresponde la ruta.",
+  "disenoArchivo": "De cero al final - completo.dc.html",
+  "pantallas": [
+    {
+      "code": "05",
+      "disenoLabel": "05",
+      "ruta": "/obras/quattropani?vista=tareas&sub=gantt",
+      "ancho": 1440,
+      "rol": "administracion",
+      "umbral": 74
+    },
+    {
+      "code": "M07",
+      "disenoLabel": "M07",
+      "ruta": "/obras/quattropani?vista=tareas&sub=gantt",
+      "ancho": 390,
+      "rol": "telefono",
+      "umbral": 62
+    },
+    {
+      "code": "06",
+      "disenoLabel": "06",
+      "ruta": "/obras/quattropani?vista=tareas&sub=parte",
+      "ancho": 1440,
+      "rol": "administracion",
+      "umbral": 69
+    },
+    {
+      "code": "M08",
+      "disenoLabel": "M08",
+      "ruta": "/obras/quattropani?vista=tareas&sub=parte",
+      "ancho": 390,
+      "rol": "telefono",
+      "umbral": 62
+    },
+    {
+      "code": "04",
+      "disenoLabel": "04",
+      "ruta": "/obras/quattropani?vista=tareas&sub=arbol",
+      "ancho": 1440,
+      "rol": "administracion",
+      "umbral": 64
+    },
+    {
+      "code": "M05",
+      "disenoLabel": "M05",
+      "ruta": "/obras/quattropani?vista=tareas&sub=arbol",
+      "ancho": 390,
+      "rol": "telefono",
+      "umbral": 60
+    },
+    {
+      "code": "M06",
+      "disenoLabel": "M06",
+      "ruta": "/obras/quattropani?vista=items",
+      "ancho": 390,
+      "rol": "telefono",
+      "umbral": 60
+    },
+    {
+      "code": "B06",
+      "disenoLabel": "B06",
+      "ruta": "/obras/quattropani?vista=tareas&sub=arbol&act=e40b292a-65c6-4750-bf35-2e279d3d9315&panel=subtareas",
+      "ancho": 1440,
+      "rol": "administracion",
+      "umbral": 64
+    },
+    {
+      "code": "02",
+      "disenoLabel": "02",
+      "ruta": "/obras/gantt",
+      "ancho": 1440,
+      "rol": "administracion",
+      "umbral": 79
+    },
+    {
+      "code": "M02",
+      "disenoLabel": "M02",
+      "ruta": "/obras/gantt",
+      "ancho": 390,
+      "rol": "telefono",
+      "umbral": 68
+    }
+  ]
+}
