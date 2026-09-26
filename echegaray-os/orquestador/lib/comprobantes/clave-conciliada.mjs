@@ -80,7 +80,29 @@ export function mismoComprobante(a, b, { proveedorA = null, proveedorB = null } 
   // sin espacios: la sigla con puntos y la sigla pegada son la misma razón social.
   const ca = compacto(pa)
   const cb = compacto(pb)
-  return ca === cb || ca.startsWith(cb) || cb.startsWith(ca)
+  if (ca === cb || ca.startsWith(cb) || cb.startsWith(ca)) return true
+  // «TODO GOMA SOCIEDAD DE RESPONSABILIDAD LIMITADA» Y «Todo Goma SRL» (26/09/2026, fila 951): el
+  // lector copia la razón social como la imprime el papel y el dueño escribe la sigla. Sin la forma
+  // jurídica el nombre tiene que quedar IGUAL —no prefijo— y con cuerpo: «sa» a secas no prueba nada.
+  const fa = compacto(sinFormaJuridica(pa))
+  const fb = compacto(sinFormaJuridica(pb))
+  return fa.length >= 4 && fa === fb
+}
+
+// De la más larga a la más corta: «s a s» tiene que salir entera antes de que «s a» deje una «s» suelta.
+const FORMAS_JURIDICAS = [
+  'sociedad de responsabilidad limitada', 'sociedad anonima unipersonal', 'sociedad anonima',
+  'sociedad por acciones simplificada', 'sociedad de hecho', 'sociedad colectiva',
+  's r l', 's a u', 's a s', 's a', 's h', 'srl', 'sau', 'sas', 'sa', 'sh',
+]
+
+/** El nombre normalizado sin la forma jurídica del final: «todo goma s r l» → «todo goma». */
+export function sinFormaJuridica(nombre) {
+  let n = ` ${normalizar(nombre)} `
+  for (const f of FORMAS_JURIDICAS) {
+    if (n.endsWith(` ${f} `)) { n = n.slice(0, -(f.length + 1)); break }
+  }
+  return n.trim()
 }
 
 /** El nombre normalizado sin espacios: «b d h s r l» → «bdhsrl». */

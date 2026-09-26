@@ -91,6 +91,7 @@ export function archivosDelFajo({ fajo = {}, items = [], filas = [] } = {}) {
  * @returns {Promise<{ok:true, path:string, yaEstaba:boolean}|{ok:false, motivo:string}>}
  */
 export async function respaldarArchivo(dep, a, vinculo = {}) {
+  if (esEntradaWeb(a.file_id) && typeof dep?.query === 'function') return anotarEntradaWeb(dep.query, a, vinculo)
   const { bajar, query } = dep
   const subir = dep.subir ?? subirAStorage
   const bajado = await bajar(a.file_id)
@@ -103,12 +104,47 @@ export async function respaldarArchivo(dep, a, vinculo = {}) {
   const path = rutaDe(a.post_id, a.file_id, nombre)
   const subido = await subir({ bucket: BUCKET, path, data: buf, mediaType })
   if (!subido?.ok) return { ok: false, motivo: subido?.error ?? 'no pude guardar el archivo' }
-  const conClave = Boolean(a.clave)
+  await anotar(query, { ...a, path, nombre, mediaType, bytes: buf.length, origen: 'mattermost' }, vinculo)
+  return { ok: true, path, yaEstaba: Boolean(subido.yaEstaba) }
+}
+
+// ═══ LO QUE ENTRÓ POR LA APP YA ESTÁ EN EL BUCKET (26/09/2026) ═══
+//
+// Dueño, 26/09: «no estás subiendo algunos de los documentos o multimedias a app.ecsas.com.ar
+// Compras». Medido ese día: desde el 24/09 las cargas hechas en la app (Rodrigo, Juan Pablo Nievas)
+// pasan por el mismo circuito que el bot —`cola-web.mjs`, `plataforma = 'web'`— y el fileId de cada
+// ítem es el id de `public.comprobante_entrada`, no uno de Mattermost. El respaldo intentaba bajarlo
+// de Mattermost: el worker de la pantalla corre sin token y decía «sin Mattermost: no puedo bajar
+// los archivos… los reintento solo», y la repesca —que sí tiene Mattermost— pedía un id que
+// Mattermost no conoce y fallaba para siempre. Filas 1009 y 1010 quedaron en Compras sin su papel.
+//
+// El archivo nunca faltó: la pantalla lo sube al MISMO bucket `comprobantes` antes de encolarlo.
+// Respaldar es anotar esa ruta en `compra_adjunto`; bajar y volver a subir sería duplicar el objeto.
+
+/** El fileId de un ítem cargado por la app es el uuid de `comprobante_entrada`; los de Mattermost no tienen guiones. */
+export const esEntradaWeb = (fileId) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(fileId ?? ''))
+
+async function anotarEntradaWeb(query, a, vinculo = {}) {
+  const r = await query(
+    'select storage_path, nombre_archivo, media_type, bytes from public.comprobante_entrada where id = $1',
+    [a.file_id])
+  const e = r?.rows?.[0]
+  if (!e?.storage_path) return { ok: false, motivo: 'el archivo no está en la cola de la app' }
+  await anotar(query, {
+    ...a, path: e.storage_path, nombre: a.nombre ?? e.nombre_archivo ?? a.file_id,
+    mediaType: tipoDe(e.media_type, e.nombre_archivo ?? a.nombre), bytes: Number(e.bytes) || 1, origen: 'web',
+  }, vinculo)
+  return { ok: true, path: e.storage_path, yaEstaba: true }
+}
+
+/** La fila de `compra_adjunto`. Un solo INSERT para los dos orígenes: el vínculo se repone, nunca se pisa. */
+async function anotar(query, x, vinculo = {}) {
+  const conClave = Boolean(x.clave)
   await query(
     `insert into public.compra_adjunto
        (compra_clave, fila_compras, storage_path, nombre, media_type, bytes, origen,
         origen_post_id, origen_file_id, subido_at, vinculado_por, confianza, vinculado_at)
-     values ($1,$2,$3,$4,$5,$6,'mattermost',$7,$8,now(),$9,$10,$11)
+     values ($1,$2,$3,$4,$5,$6,$12,$7,$8,now(),$9,$10,$11)
      on conflict (origen_file_id) where origen_file_id is not null do update set
        -- EL VÍNCULO SE REPONE, NUNCA SE PISA. «do nothing» dejaba el archivo colgado para siempre
        -- cuando la fila ya existía sin clave: el backfill lo sube como «sin_vincular» apenas aparece
@@ -125,13 +161,13 @@ export async function respaldarArchivo(dep, a, vinculo = {}) {
                              then excluded.confianza else public.compra_adjunto.confianza end,
        vinculado_at   = case when public.compra_adjunto.compra_clave is null and excluded.compra_clave is not null
                              then excluded.vinculado_at else public.compra_adjunto.vinculado_at end`,
-    [a.clave ?? null, a.fila ?? null, path, nombre, mediaType, buf.length,
-      a.post_id ?? null, a.file_id,
+    [x.clave ?? null, x.fila ?? null, x.path, x.nombre, x.mediaType, x.bytes,
+      x.post_id ?? null, x.file_id,
       vinculo.vinculado_por ?? (conClave ? 'registro' : 'sin_vincular'),
       vinculo.confianza ?? (conClave ? 1 : null),
-      conClave ? new Date().toISOString() : null],
+      conClave ? new Date().toISOString() : null,
+      x.origen],
   )
-  return { ok: true, path, yaEstaba: Boolean(subido.yaEstaba) }
 }
 
 /**
@@ -143,10 +179,13 @@ export async function respaldarFajoCargado(dep, { fajo, items = [], filas = [] }
   const vacio = { guardados: 0, yaEstaban: 0, fallidos: [] }
   const archivos = archivosDelFajo({ fajo, items, filas })
   if (!archivos.length) return vacio
-  if (typeof dep?.bajar !== 'function') return { ...vacio, omitido: 'sin Mattermost: no puedo bajar los archivos' }
   if (typeof dep?.query !== 'function') return { ...vacio, omitido: 'sin Postgres: no puedo anotar los archivos' }
+  // Los de la app no necesitan Mattermost: ya están en el bucket (ver `anotarEntradaWeb`).
+  const sinBajar = typeof dep?.bajar !== 'function'
   const r = { ...vacio }
+  if (sinBajar && archivos.some((a) => !esEntradaWeb(a.file_id))) r.omitido = 'sin Mattermost: no puedo bajar los archivos'
   for (const a of archivos) {
+    if (sinBajar && !esEntradaWeb(a.file_id)) continue
     try {
       const x = await respaldarArchivo(dep, a)
       if (x.ok) { r.guardados++; if (x.yaEstaba) r.yaEstaban++ } else r.fallidos.push({ nombre: a.nombre ?? a.file_id, motivo: x.motivo })
@@ -220,7 +259,8 @@ export async function respaldosPendientes(dep, { limite = 200, dias = 60 } = {})
  */
 export async function reintentarRespaldos(dep, { limite = 20, dias = 60 } = {}) {
   const r = { pendientes: 0, guardados: 0, fallidos: [] }
-  if (typeof dep?.bajar !== 'function' || typeof dep?.query !== 'function') return { ...r, omitido: 'sin Mattermost o sin Postgres' }
+  if (typeof dep?.query !== 'function') return { ...r, omitido: 'sin Postgres' }
+  const sinBajar = typeof dep?.bajar !== 'function'
   let pend
   try {
     pend = await respaldosPendientes(dep, { dias })
@@ -228,9 +268,13 @@ export async function reintentarRespaldos(dep, { limite = 20, dias = 60 } = {}) 
     return { ...r, omitido: `no pude mirar los pendientes: ${String(e?.message ?? e).slice(0, 120)}` }
   }
   r.pendientes = pend.length
-  for (const a of pend.slice(0, limite)) {
+  if (sinBajar && pend.some((a) => !esEntradaWeb(a.file_id))) r.omitido = 'sin Mattermost'
+  for (const a of pend.filter((x) => !sinBajar || esEntradaWeb(x.file_id)).slice(0, limite)) {
     try {
-      const x = await respaldarArchivo(dep, a, { vinculado_por: 'repesca' })
+      // «registro», no «repesca»: el vínculo sale del registro del fajo, y el CHECK de
+      // `compra_adjunto.vinculado_por` no admite otro valor — con «repesca» cada reintento fallaba
+      // en el INSERT aunque el archivo se hubiera bajado y subido bien.
+      const x = await respaldarArchivo(dep, a)
       if (x.ok) r.guardados++
       else r.fallidos.push({ nombre: a.nombre ?? a.file_id, motivo: x.motivo })
     } catch (e) {

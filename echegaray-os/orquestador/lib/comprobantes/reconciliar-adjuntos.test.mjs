@@ -117,3 +117,19 @@ test('el proveedor del fajo se busca por clave y NO por posición', () => {
   assert.equal(prov.get('A'), undefined)
   assert.equal(prov.get('B'), 'Robles Pintureria')
 })
+
+test('26/09 fila 946: el fajo no guardó el nombre y el del maestro por CUIT confirma la fila', () => {
+  const filas = [{ fila: 946, clave: 'p:turiaci sandra|0001-00000321', proveedor: 'Turiaci Sandra' }]
+  const a = adj({ compra_clave: 'c:27276929491|0001-00000321', fila_compras: 946 })
+  assert.equal(planDeReconciliacion([a], filas).reasignar.length, 0, 'sin ningún nombre no empata')
+  const p = planDeReconciliacion([{ ...a, nombres_maestro: ['TURIACI SANDRA'] }], filas)
+  assert.equal(p.reasignar.length, 1)
+  assert.equal(p.reasignar[0].clave, 'p:turiaci sandra|0001-00000321')
+})
+
+test('si el nombre del fajo no empata, se prueba el del maestro; y uno que no es no pega nada', () => {
+  const filas = [{ fila: 951, clave: 'p:todo goma srl|0003-00024261', proveedor: 'Todo Goma SRL' }]
+  const a = adj({ compra_clave: 'c:30643024450|0003-00024261', proveedor_leido: 'GOMERIA EL TITULAR' })
+  assert.equal(planDeReconciliacion([{ ...a, nombres_maestro: ['Todo Goma SRL'] }], filas).reasignar.length, 1)
+  assert.equal(planDeReconciliacion([{ ...a, nombres_maestro: ['Otra Firma SA'] }], filas).reasignar.length, 0)
+})

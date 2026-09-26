@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import {
   archivosDelFajo, respaldarArchivo, respaldarFajoCargado, avisoDeRespaldo, admisible, rutaDe, tipoDe,
   pendientesDeFajos, respaldosPendientes, reintentarRespaldos, crearRepescaDeRespaldos, REPESCA_INTERVALO_MS_DEFAULT,
+  esEntradaWeb,
 } from './respaldo-adjunto.mjs'
 
 const fajo = { id: 'f1', post_ids: ['post1'] }
@@ -167,4 +168,51 @@ test('la repesca tiene su propio intervalo y nunca voltea el worker', async () =
   assert.equal(await repescar(), null, 'dentro del intervalo no vuelve a barrer')
   t += REPESCA_INTERVALO_MS_DEFAULT + 1
   assert.ok(await repescar())
+})
+
+// ═══ 26/09/2026: LO QUE SE CARGA DESDE LA APP (filas 1009 y 1010 sin papel) ═══
+
+const WEB = 'fc5fb089-fb4a-4edd-b23c-eb08092ddcb9'
+const entrada = { storage_path: 'u1/rendicion/a88f.jpg', nombre_archivo: 'image.jpg', media_type: 'image/jpeg', bytes: 4675202 }
+const baseWeb = (inserts) => async (sql, params) => {
+  if (/from public\.comprobante_entrada/.test(sql)) return { rows: params[0] === WEB ? [entrada] : [] }
+  if (/comprobante_fajos/.test(sql)) return { rows: [{ id: 'fw', post_ids: [], items: [{ clave: 'c:23369111574|0004-00003862', origen: { fileId: WEB, nombre: 'image.jpg' } }], filas: [{ clave: 'c:23369111574|0004-00003862', fila: 1010 }] }] }
+  if (/compra_adjunto where origen_file_id/.test(sql)) return { rows: [] }
+  if (/insert into public\.compra_adjunto/.test(sql)) inserts.push({ sql, params })
+  return { rows: [] }
+}
+
+test('esEntradaWeb: el uuid de la cola de la app sí, el id de Mattermost no', () => {
+  assert.equal(esEntradaWeb(WEB), true)
+  assert.equal(esEntradaWeb('oq76okogntyu3f3f5p9ebuki6h'), false)
+  assert.equal(esEntradaWeb(null), false)
+})
+
+test('un archivo cargado desde la app se anota con SU ruta del bucket, origen «web», sin bajar ni subir nada', async () => {
+  const inserts = []
+  let bajo = 0, subio = 0
+  const dep = { query: baseWeb(inserts), bajar: async () => { bajo++; return { ok: false } }, subir: async () => { subio++; return { ok: true } } }
+  const r = await respaldarArchivo(dep, { file_id: WEB, nombre: 'image.jpg', post_id: 'lote1', clave: 'c:23369111574|0004-00003862', fila: 1010 })
+  assert.equal(r.ok, true)
+  assert.equal(bajo, 0); assert.equal(subio, 0)
+  const p = inserts[0].params
+  assert.equal(p[0], 'c:23369111574|0004-00003862'); assert.equal(p[1], 1010)
+  assert.equal(p[2], 'u1/rendicion/a88f.jpg'); assert.equal(p[5], 4675202); assert.equal(p[7], WEB)
+  assert.equal(p[8], 'registro'); assert.equal(p[11], 'web')
+})
+
+test('el worker de la app no tiene Mattermost y aun así guarda el papel: ya no dice «los reintento solo»', async () => {
+  const inserts = []
+  const fajoWeb = { id: 'fw', post_ids: [] }
+  const r = await respaldarFajoCargado({ query: baseWeb(inserts) }, { fajo: fajoWeb, items: [{ clave: 'c:x|1', origen: { fileId: WEB } }], filas: [{ clave: 'c:x|1', fila: 1010 }] })
+  assert.equal(r.guardados, 1); assert.equal(r.omitido, undefined)
+  assert.equal(avisoDeRespaldo(r), null)
+})
+
+test('la repesca rescata los de la app sin Mattermost y nunca anota «repesca» (el CHECK de la base no lo admite)', async () => {
+  const inserts = []
+  const r = await reintentarRespaldos({ query: baseWeb(inserts) })
+  assert.equal(r.pendientes, 1); assert.equal(r.guardados, 1); assert.equal(r.omitido, undefined)
+  const permitidos = ['registro', 'match_numero', 'match_manual', 'sin_vincular']
+  for (const i of inserts) assert.ok(permitidos.includes(i.params[8]), `vinculado_por=${i.params[8]}`)
 })

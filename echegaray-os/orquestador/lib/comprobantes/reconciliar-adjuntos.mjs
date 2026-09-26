@@ -37,13 +37,18 @@ import { filaConciliada, partesDeClave } from './clave-conciliada.mjs'
  * dejó lo que entendió. Sin ese dato, 2 de los 3 colgados del 10/09 se quedaban colgados teniendo
  * el nombre escrito a dos tablas de distancia.
  */
-const proveedorLeido = (a) => {
+const nombresLeidos = (a) => {
   // SÓLO cuando la clave del adjunto identifica por CUIT. Si la clave ya es `p:<proveedor>|…`, el
   // nombre bueno es el de la clave: el fajo puede traer el titular del CUIT («D' AMICO BARTOL
   // GISELA AGOSTINA») en vez del nombre comercial («MASS CONSULTORA»), y pisarlo rompía un empate
   // que funcionaba.
-  if (partesDeClave(a?.compra_clave)?.por !== 'cuit') return null
-  return a?.proveedor_leido ?? a?.lectura?.proveedor ?? a?.lectura?.emisor?.nombre ?? null
+  if (partesDeClave(a?.compra_clave)?.por !== 'cuit') return [null]
+  // El del MAESTRO por CUIT va último (26/09/2026): el fajo de la fila 946 (Turiaci) no guardó ningún
+  // nombre, y sin nombre un `c:` nunca empata. El CUIT es la identidad fuerte; el nombre que el
+  // maestro tiene para ese CUIT sólo se usa para confirmar contra la fila, con el número igual.
+  const l = [a?.proveedor_leido ?? a?.lectura?.proveedor ?? a?.lectura?.emisor?.nombre ?? null, ...(a?.nombres_maestro ?? [])]
+    .filter(Boolean)
+  return l.length ? [...new Set(l)] : [null]
 }
 
 /**
@@ -99,7 +104,11 @@ export function planDeReconciliacion(adjuntos = [], filas = []) {
     }
     // Dos filas con la MISMA clave son un comprobante cargado dos veces: no se elige ninguna.
     if (exactas.length > 1) { plan.colgados.push({ ...a, motivo: `la clave está en ${exactas.length} filas` }); continue }
-    const f = filaConciliada(a.compra_clave, conClave, { proveedor: proveedorLeido(a) })
+    let f = null
+    for (const proveedor of nombresLeidos(a)) {
+      f = filaConciliada(a.compra_clave, conClave, { proveedor })
+      if (f) break
+    }
     if (!f) { plan.colgados.push({ ...a, motivo: 'ninguna fila es ese comprobante' }); continue }
     // LO QUE DIJO UNA PERSONA SE CONSERVA, PERO SU VÍNCULO SE SIGUE. La decisión humana es «este
     // papel es de esta compra»; la clave es sólo el nombre que esa compra tiene hoy. Dejarla vieja

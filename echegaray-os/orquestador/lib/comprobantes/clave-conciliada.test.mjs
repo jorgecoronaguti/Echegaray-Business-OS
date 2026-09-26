@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { partesDeClave, mismoComprobante, filaConciliada, numeroNormalizado } from './clave-conciliada.mjs'
+import { partesDeClave, mismoComprobante, filaConciliada, numeroNormalizado, sinFormaJuridica } from './clave-conciliada.mjs'
 
 test('partesDeClave: los tres formatos reales de la base', () => {
   assert.deepEqual(partesDeClave('c:33538492219|0021-00078128'),
@@ -65,4 +65,20 @@ test('UNA SIGLA CON PUNTOS Y LA MISMA SIGLA PEGADA SON EL MISMO PROVEEDOR (fila 
   // OTRO PROVEEDOR CON EL MISMO NÚMERO SIGUE SIN EMPATAR.
   assert.equal(mismoComprobante('c:30718327845|0001-00000246', 'p:dhb srl|0001-00000246',
     { proveedorA: 'B.D.H. S. R. L.', proveedorB: 'DHB SRL' }), false)
+})
+
+test('26/09 fila 951: la razón social escrita completa y la sigla son el mismo proveedor', () => {
+  assert.equal(sinFormaJuridica('TODO GOMA SOCIEDAD DE RESPONSABILIDAD LIMITADA'), 'todo goma')
+  assert.equal(sinFormaJuridica('Todo Goma SRL'), 'todo goma')
+  assert.equal(sinFormaJuridica('DESPEGAR.COM.AR S.A.'), 'despegar com ar')
+  assert.equal(sinFormaJuridica('Tres S.A.S.'), 'tres')
+  assert.equal(mismoComprobante('c:30643024450|0003-00024261', 'p:todo goma srl|0003-00024261',
+    { proveedorA: 'TODO GOMA SOCIEDAD DE RESPONSABILIDAD LIMITADA' }), true)
+})
+
+test('sin la forma jurídica el nombre tiene que quedar igual y con cuerpo: no alcanza con la sigla', () => {
+  assert.equal(mismoComprobante('c:1|0003-1', 'p:goma sa|0003-1', { proveedorA: 'TODO GOMA SRL' }), false)
+  assert.equal(mismoComprobante('c:1|0003-1', 'p:sa|0003-1', { proveedorA: 'S.R.L.' }), false)
+  // el número manda siempre, aunque el nombre empate
+  assert.equal(mismoComprobante('c:1|0003-2', 'p:todo goma srl|0003-1', { proveedorA: 'TODO GOMA S.A.' }), false)
 })

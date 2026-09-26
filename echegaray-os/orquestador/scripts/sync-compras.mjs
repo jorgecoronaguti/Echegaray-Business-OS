@@ -286,8 +286,23 @@ async function reconciliarAdjuntos(db, compras) {
     'select id, origen_file_id, compra_clave, fila_compras, vinculado_por, lectura from public.compra_adjunto')
   const { rows: fajos } = await db.query('select items, filas from comunicacion.comprobante_fajos')
   const proveedores = proveedorPorArchivo(fajos)
+  // El nombre que corresponde a cada CUIT, de las dos fuentes que no son el bot: el maestro de
+  // proveedores y ARCA (26/09/2026: Turiaci, fila 946, no está en el maestro; ARCA sí la tiene).
+  const { rows: nombresPorCuit } = await db.query(
+    `select regexp_replace(cuit, '\\D', '', 'g') cuit, nombre from (
+       select cuit, nombre from public.proveedores where cuit is not null
+       union select cuit, razon_social from public.proveedores where cuit is not null and razon_social is not null
+       union select emisor_cuit, emisor_nombre from public.comprobantes_arca where emisor_cuit is not null and emisor_nombre is not null
+     ) x`)
+  const porCuit = new Map()
+  for (const m of nombresPorCuit) porCuit.set(m.cuit, [...(porCuit.get(m.cuit) ?? []), m.nombre])
+  const cuitDe = (clave) => (/^c:(\d+)\|/.exec(String(clave ?? '')) ?? [])[1] ?? null
   const plan = planDeReconciliacion(
-    adjuntos.map((a) => ({ ...a, proveedor_leido: proveedores.get(String(a.origen_file_id)) ?? null })),
+    adjuntos.map((a) => ({
+      ...a,
+      proveedor_leido: proveedores.get(String(a.origen_file_id)) ?? null,
+      nombres_maestro: porCuit.get(cuitDe(a.compra_clave)) ?? [],
+    })),
     compras)
   for (const r of plan.refrescar) {
     await db.query('update public.compra_adjunto set fila_compras=$2 where id=$1', [r.id, r.fila])
