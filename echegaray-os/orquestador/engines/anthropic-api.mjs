@@ -19,7 +19,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createBreaker, createSemaphore, BreakerOpenError } from '../lib/breaker.mjs'
 import { marcarSinCredito, marcarCerebroOk } from '../lib/estado-cerebro.mjs'
-import { precioExacto } from '../lib/ia/precios.mjs'
+import { precioExacto, costoDeUsage } from '../lib/ia/precios.mjs'
 
 /** Falta la credencial. Tipado para fallar claro y NO reintentar en vano. */
 export class MissingSecretError extends Error {
@@ -61,14 +61,9 @@ export function precioDe(modelId) {
   return precioExacto(modelId)
 }
 
-/** Costo estimado en USD a partir del usage. Devuelve null si no hay precio. */
+/** Costo estimado en USD a partir del usage, con el caché a su precio (precios.mjs). null sin precio. */
 export function estimateCostUsd(modelId, usage) {
-  const p = precioDe(modelId)
-  if (!p || !usage) return null
-  const input = (usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0)
-  const output = usage.output_tokens || 0
-  const usd = (input / 1e6) * p.in + (output / 1e6) * p.out
-  return Math.round(usd * 1e6) / 1e6
+  return costoDeUsage(modelId, usage)
 }
 
 // Techo de vueltas del loop agéntico de tool-use (anti bucle infinito). El handler

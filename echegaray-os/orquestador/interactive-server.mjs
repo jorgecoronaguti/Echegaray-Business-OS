@@ -254,11 +254,15 @@ function attachmentBlock(att) {
 // en qué se le va el crédito sin entrar a la consola. Aproximado; el total real vive en
 // console.anthropic.com. Se resetea al reiniciar el servicio.
 const COST = { since: Date.now(), total: 0, n: 0, byModel: {} }
-function trackCost(usd, model, rol, motivo) {
+function trackCost(usd, model, rol, motivo, tokens = null) {
   const u = Number(usd) || 0
   COST.total += u; COST.n++; COST.byModel[model] = (COST.byModel[model] || 0) + u
   // Persistir para que el TOPE diario sea honesto entre reinicios (no solo en memoria).
-  if (u > 0) query(`insert into orq.chat_cost (model, usd, rol, motivo) values ($1, $2, $3, $4)`, [model, u, rol || null, motivo || null]).catch(() => {})
+  // Con los tokens (26/09): sin ellos una escritura de $0,76 no se podía descomponer en entrada,
+  // caché y salida, y no había cómo saber qué palanca mover.
+  const tin = tokens ? (tokens.input_tokens || 0) + (tokens.cache_creation_input_tokens || 0) + (tokens.cache_read_input_tokens || 0) : null
+  const tout = tokens ? tokens.output_tokens ?? null : null
+  if (u > 0) query(`insert into orq.chat_cost (model, usd, rol, motivo, agente, funcion, tokens_in, tokens_out) values ($1, $2, $3, $4, 'chat', $4, $5, $6)`, [model, u, rol || null, motivo || null, tin, tout]).catch(() => {})
 }
 // Cerebro que compone: cuántas preguntas respondió la caché con 0 API (y el ahorro estimado).
 const CACHE_STATS = { hits: 0, misses: 0 }
@@ -1233,7 +1237,7 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
       label: `${capability || 'general'}${hasAtt ? '+adj' : ''}${writeIntent ? '+escr' : ''}:${String(directive || '').replace(/\s+/g, ' ').slice(0, 70)}`,
       tools: Object.values(registry).map((t) => t.schema), toolExecutor, agentSlug: 'interactive' },
     CTX)
-  trackCost(eng.cost?.usd ?? 0, model, rol, motivoModelo)
+  trackCost(eng.cost?.usd ?? 0, model, rol, motivoModelo, eng.tokens)
   // PRP-018 F3: si el pedido no lo cubrió ningún dominio y el modelo admitió no poder,
   // registrar el gap (propone capacidad solo ante recurrencia). Fire-and-forget: nunca
   // demora ni rompe la respuesta al dueño.

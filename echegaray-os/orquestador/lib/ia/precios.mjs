@@ -39,3 +39,21 @@ export function precioExacto(modeloId) {
 export function precioDeModelo(modeloId) {
   return precioExacto(modeloId) ?? FAMILIA.find(([re]) => re.test(String(modeloId ?? '')))?.[1] ?? null
 }
+
+// El caché no se cobra como entrada común: escribirlo cuesta 1,25× (TTL 5 min) y leerlo 0,1×.
+export const FACTOR_CACHE = { escritura: 1.25, lectura: 0.1 }
+
+/**
+ * USD de un `usage` de la API, con el caché a su precio. Antes el engine sumaba lo leído del caché
+ * a precio lleno (10× lo real): el chat se veía más caro y el tope por tarea (`maxCostUsd`) cortaba
+ * pedidos que no habían llegado a gastarlo. `null` sin precio o sin usage. PURA.
+ */
+export function costoDeUsage(modeloId, usage) {
+  const p = precioExacto(modeloId)
+  if (!p || !usage) return null
+  const entrada = (usage.input_tokens || 0)
+    + (usage.cache_creation_input_tokens || 0) * FACTOR_CACHE.escritura
+    + (usage.cache_read_input_tokens || 0) * FACTOR_CACHE.lectura
+  const usd = (entrada * p.in + (usage.output_tokens || 0) * p.out) / 1e6
+  return Math.round(usd * 1e6) / 1e6
+}

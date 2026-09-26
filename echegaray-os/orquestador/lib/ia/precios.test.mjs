@@ -21,3 +21,13 @@ test('precios vigentes 26/09 y sufijo de fecha', () => {
   assert.deepEqual(precioDeModelo('claude-opus-9'), { in: 5, out: 25 })
   assert.equal(precioDeModelo('gpt-x'), null)
 })
+
+test('el caché se cobra a su precio: leer 0,1×, escribir 1,25×', async () => {
+  const { costoDeUsage } = await import('./precios.mjs')
+  // la lectura viva de Sonnet 5 del 26/09 (segunda del fajo)
+  const u = { input_tokens: 4783, cache_read_input_tokens: 5659, output_tokens: 447 }
+  assert.equal(costoDeUsage('claude-sonnet-5', u), 0.015168)
+  assert.equal(costoDeUsage('claude-sonnet-5', { cache_read_input_tokens: 1_000_000 }), 0.2)
+  assert.equal(costoDeUsage('claude-sonnet-5', { cache_creation_input_tokens: 1_000_000 }), 2.5)
+  assert.equal(estimateCostUsd('claude-sonnet-5', u), 0.015168)
+})

@@ -29,7 +29,7 @@ import { identidadDelComprobante } from './aritmetica.mjs'
 import { ivaPlausible, fechaPlausible } from './plausibilidad.mjs'
 import { fechaDeLectura } from './lectura.mjs'
 import { avisarEstado, clasificarError, clasificarRespuesta, registrarUso } from '../ia/cliente.mjs'
-import { precioDeModelo } from '../ia/precios.mjs'
+import { costoDeUsage } from '../ia/precios.mjs'
 import { leerSinModelo } from './sin-modelo.mjs'
 
 /** Modelo de lectura. Barato a propósito: leer un ticket es extracción, no razonamiento. */
@@ -547,13 +547,8 @@ export async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens,
     // Con caché, `input_tokens` es sólo lo NO cacheado: la entrada real y su precio se arman acá, con
     // la tabla única (escritura 1,25×, lectura 0,1×). Sin precio conocido, usd = null y estima el fusible.
     const u = j?.usage ?? {}
-    const escrito = u.cache_creation_input_tokens ?? 0
-    const leido = u.cache_read_input_tokens ?? 0
-    const p = precioDeModelo(j?.model ?? modelo)
-    const tokensIn = u.input_tokens == null ? null : u.input_tokens + escrito + leido
-    const usd = p && u.input_tokens != null
-      ? Math.round(((u.input_tokens + escrito * 1.25 + leido * 0.1) * p.in + (u.output_tokens ?? 0) * p.out)) / 1e6
-      : null
+    const tokensIn = u.input_tokens == null ? null : u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0)
+    const usd = u.input_tokens == null ? null : costoDeUsage(j?.model ?? modelo, u)
     await registrarUso({
       modelo: j?.model ?? modelo, usd, agente: 'comprobantes', funcion: 'leer',
       proveedor: 'anthropic', capacidad: 'complex',
