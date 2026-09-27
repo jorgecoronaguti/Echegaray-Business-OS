@@ -231,7 +231,6 @@ async function main() {
   }
 
   // ── Qué corresponde correr, según lo que se tocó ──
-  const hayOrq = codigo.some((f) => f.startsWith(join(BASE, 'orquestador') + sep))
   const hayTs = codigo.some((f) => /\.tsx?$/.test(f))
   const fallas = []
   const sinRecursos = []
@@ -253,7 +252,7 @@ async function main() {
   for (const f of mjs) {
     try { execFileSync(process.execPath, ['--check', f], { stdio: ['ignore', 'pipe', 'pipe'], timeout: 20000 }) } catch (e) { fallas.push(`✗ node --check ${f}\n${`${e.stderr ?? ''}`.trim().split('\n').slice(0, 8).join('\n')}`) }
   }
-  const tests = testsDelCambio(hayOrq ? mjs : [])
+  const tests = testsDelCambio(mjs)
   if (tests.length) validar(`node --test (${tests.length} archivo(s) del cambio)`, process.execPath, ['--test', ...tests])
   if (hayTs) validar('npm run typecheck', 'npm', ['run', 'typecheck'])
   // eslint SÓLO sobre lo cambiado: sobre el proyecto entero son varios segundos que no aportan nada
