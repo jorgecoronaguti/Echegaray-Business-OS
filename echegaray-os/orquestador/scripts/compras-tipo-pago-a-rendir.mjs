@@ -20,6 +20,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { COMPRAS, PESTANAS, columnasDe, rangoEncabezado } from '../lib/columnas-por-encabezado.mjs'
+import { TIPOS_PAGO } from '../lib/carga-comprobantes.mjs'
 
 const REAL = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const ID = process.env.ORQ_CASHFLOW_ID || REAL
@@ -53,6 +54,9 @@ export function reglaConARendir(regla, valor = VALOR) {
 }
 
 async function main() {
+  // El valor tiene que ser uno de los canónicos: la relectura de abajo compara contra VALOR, y un typo
+  // (`--valor=Fuera de caja` sin comillas → «Fuera») se «verificaría» contra sí mismo.
+  if (!TIPOS_PAGO.includes(VALOR)) { console.error(`✗ «${VALOR}» no es un Tipo pago canónico (${TIPOS_PAGO.join(' · ')})`); process.exit(2) }
   if (ID === REAL && APLICAR && !process.argv.includes('--real')) {
     console.error('✗ es el Sheet REAL: hace falta --real además de --aplicar'); process.exit(2)
   }
