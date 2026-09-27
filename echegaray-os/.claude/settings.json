@@ -26,6 +26,11 @@
             "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/estado-sesion.mjs",
             "timeout": 20,
             "statusMessage": "estado de la sesión anterior"
+          },
+          {
+            "type": "command",
+            "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/validar-cierre.mjs --linea-base",
+            "timeout": 20
           }
         ]
       }
@@ -62,7 +67,7 @@
             "type": "command",
             "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/validar-cierre.mjs",
             "timeout": 900,
-            "statusMessage": "validando el cambio antes de cerrar"
+            "statusMessage": "validando lo que cambió en la sesión"
           }
         ]
       }

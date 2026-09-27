@@ -25,6 +25,11 @@
             "type": "command",
             "command": "CLAUDE_PROJECT_DIR=\"$CLAUDE_PROJECT_DIR/echegaray-os\" node \"$CLAUDE_PROJECT_DIR/echegaray-os/.claude/hooks/estado-sesion.mjs\"",
             "timeout": 20
+          },
+          {
+            "type": "command",
+            "command": "CLAUDE_PROJECT_DIR=\"$CLAUDE_PROJECT_DIR/echegaray-os\" node \"$CLAUDE_PROJECT_DIR/echegaray-os/.claude/hooks/validar-cierre.mjs\" --linea-base",
+            "timeout": 20
           }
         ]
       }
@@ -72,6 +77,18 @@
             "timeout": 10,
             "statusMessage": "tope de contexto",
             "command": "CLAUDE_PROJECT_DIR=\"$CLAUDE_PROJECT_DIR/echegaray-os\" node \"$CLAUDE_PROJECT_DIR/echegaray-os/.claude/hooks/tope-contexto-agente.mjs\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CLAUDE_PROJECT_DIR=\"$CLAUDE_PROJECT_DIR/echegaray-os\" node \"$CLAUDE_PROJECT_DIR/echegaray-os/.claude/hooks/validar-cierre.mjs\"",
+            "timeout": 900,
+            "statusMessage": "validando lo que cambió en la sesión"
           }
         ]
       }

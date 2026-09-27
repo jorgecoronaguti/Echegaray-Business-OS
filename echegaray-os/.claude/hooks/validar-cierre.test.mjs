@@ -43,3 +43,25 @@ test('un fallo de verdad NO se disfraza de ambiente', () => {
   assert.equal(esRojoDelAmbiente(null), false)
   assert.equal(esRojoDelAmbiente(undefined), false)
 })
+
+// ═══ SÓLO LO QUE CAMBIÓ EN LA SESIÓN (26/09) ═══
+test('lo sucio de antes de la sesión no se valida; lo tocado o nuevo sí', async () => {
+  const { deLaSesion } = await import('./validar-cierre.mjs')
+  const fichas = { '/a.mjs': '1:10', '/b.mjs': '2:20', '/c.mjs': '3:30' }
+  const lineaBase = { '/a.mjs': '1:10', '/b.mjs': '1:20' }
+  const r = deLaSesion(Object.keys(fichas), lineaBase, (f) => fichas[f])
+  assert.deepEqual(r, ['/b.mjs', '/c.mjs'], 'a no cambió; b se editó; c es nuevo')
+})
+
+test('sin línea base se valida todo lo sucio (worktree de un agente)', async () => {
+  const { deLaSesion } = await import('./validar-cierre.mjs')
+  assert.deepEqual(deLaSesion(['/a.mjs'], null, () => 'x'), ['/a.mjs'])
+})
+
+// ═══ EL CIERRE PRUEBA EL CAMBIO, NO LA SUITE (26/09) ═══
+test('tests del cambio: el hermano .test.mjs si existe, el propio test, sin duplicar', async () => {
+  const { testsDelCambio } = await import('./validar-cierre.mjs')
+  const hay = new Set(['/o/a.test.mjs', '/o/b.test.mjs'])
+  const r = testsDelCambio(['/o/a.mjs', '/o/a.test.mjs', '/o/b.test.mjs', '/o/sin-test.mjs'], (f) => hay.has(f))
+  assert.deepEqual(r, ['/o/a.test.mjs', '/o/b.test.mjs'])
+})

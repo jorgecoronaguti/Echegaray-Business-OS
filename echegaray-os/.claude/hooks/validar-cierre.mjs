@@ -108,6 +108,34 @@ export function huella(archivos, base) {
 }
 
 /**
+ * SÓLO LO QUE CAMBIÓ EN ESTA SESIÓN (26/09/2026). `cambiados()` devuelve todo lo sucio del árbol, y
+ * el daily arrastra decenas de archivos sin commitear de sesiones anteriores: el 26/09 el cierre
+ * corrió suite + typecheck + eslint sobre 88 archivos ajenos, pasó los 4 minutos y hubo que apagarlo.
+ *
+ * Al arrancar la sesión (`--linea-base`, desde SessionStart) se ficha cada archivo sucio con su
+ * mtime y tamaño. Al cerrar cuentan sólo los que no estaban o cuya ficha cambió. Sin línea base
+ * (un agente en su worktree, o una sesión que arrancó antes de esto) se valida todo lo sucio, como
+ * antes: en un worktree nuevo todo lo sucio ES el trabajo del agente.
+ */
+export const ficha = (f) => { try { const s = statSync(f); return `${s.mtimeMs}:${s.size}` } catch { return '0' } }
+export function deLaSesion(archivos, lineaBase, fichar = ficha) {
+  if (!lineaBase) return archivos
+  return archivos.filter((f) => lineaBase[f] !== fichar(f))
+}
+const rutaLineaBase = (base, sesion) => join(base, '.claude', '.cache', 'sesiones', `${String(sesion).replace(/[^\w-]/g, '')}.json`)
+
+/** Tests que prueban lo tocado: el propio `.test.mjs`, o el hermano `x.test.mjs` de `x.mjs` si existe. */
+export function testsDelCambio(archivos, existe = existsSync) {
+  const out = new Set()
+  for (const f of archivos) {
+    if (/\.test\.m?js$/.test(f)) { if (existe(f)) out.add(f); continue }
+    const t = f.replace(/\.(m?js)$/, '.test.$1')
+    if (t !== f && existe(t)) out.add(t)
+  }
+  return [...out].sort()
+}
+
+/**
  * ¿EL ROJO ES DEL CÓDIGO O DEL AMBIENTE? Un deadlock de Postgres (40P01) entre dos corridas de tests
  * que atacan la misma base NO es un veredicto sobre el código: el mismo archivo pasa solo. Cachearlo
  * como si lo fuera es lo que convierte un choque de dos minutos en seis avisos de un fallo inexistente.
@@ -160,6 +188,18 @@ async function main() {
   try { evento = JSON.parse(entrada || '{}') } catch { /* sin JSON se sigue igual: el control importa más que el metadato */ }
 
   const BASE = baseDeTrabajo(evento.cwd)
+
+  // SessionStart: fichar lo sucio que ya estaba. Sólo la primera vez por sesión — un `resume` o un
+  // `compact` que la reescribiera borraría lo que la sesión ya había tocado.
+  if (process.argv.includes('--linea-base')) {
+    if (!evento.session_id) process.exit(0)
+    const ruta = rutaLineaBase(BASE, evento.session_id)
+    if (existsSync(ruta)) process.exit(0)
+    const { archivos: sucios } = cambiados(BASE)
+    try { mkdirSync(dirname(ruta), { recursive: true }); writeFileSync(ruta, JSON.stringify(Object.fromEntries(sucios.map((f) => [f, ficha(f)])))) } catch { /* sin línea base se valida todo, como antes */ }
+    process.exit(0)
+  }
+
   // La caché cuelga de la base: dos agentes en worktrees distintos no se pisan la huella.
   const CACHE = join(BASE, '.claude', '.cache')
   const HUELLA = join(CACHE, 'ultima-validacion.json')
@@ -173,7 +213,9 @@ async function main() {
   //
   // EL SEPARADOR NO SOBRA: sin él, `startsWith('/…/echegaray-os')` también matchea un directorio
   // hermano llamado `echegaray-os-viejo`, y el hook validaría archivos de otro proyecto.
-  const propios = archivos.filter((f) => f === BASE || f.startsWith(BASE + sep))
+  let lineaBase = null
+  if (evento.session_id) { try { lineaBase = JSON.parse(readFileSync(rutaLineaBase(BASE, evento.session_id), 'utf8')) } catch { /* sin línea base */ } }
+  const propios = deLaSesion(archivos, lineaBase).filter((f) => f === BASE || f.startsWith(BASE + sep))
   const codigo = propios.filter((f) => /\.(mjs|js|cjs|ts|tsx)$/.test(f))
   const sql = propios.filter((f) => /\.sql$/.test(f))
   if (!codigo.length && !sql.length) pasar()
@@ -203,7 +245,16 @@ async function main() {
     if (r.sinRecursos) sinRecursos.push(nombre)
     else fallas.push(`✗ ${nombre}\n${r.salida}`)
   }
-  if (hayOrq) validar('npm run orq:test', 'npm', ['run', 'orq:test'])
+  // LA SUITE ENTERA NO VA ACÁ (26/09/2026). Con un solo archivo de `orquestador/` tocado,
+  // `npm run orq:test` esperaba turno en el portero y corría la suite completa: >5 minutos por cierre,
+  // y el hook terminó apagado. El cierre prueba EL CAMBIO: sintaxis de cada .mjs tocado y los tests
+  // hermanos (`x.mjs` → `x.test.mjs`). La suite completa la corre quien audita antes de mergear.
+  const mjs = codigo.filter((f) => /\.(mjs|cjs|js)$/.test(f))
+  for (const f of mjs) {
+    try { execFileSync(process.execPath, ['--check', f], { stdio: ['ignore', 'pipe', 'pipe'], timeout: 20000 }) } catch (e) { fallas.push(`✗ node --check ${f}\n${`${e.stderr ?? ''}`.trim().split('\n').slice(0, 8).join('\n')}`) }
+  }
+  const tests = testsDelCambio(hayOrq ? mjs : [])
+  if (tests.length) validar(`node --test (${tests.length} archivo(s) del cambio)`, process.execPath, ['--test', ...tests])
   if (hayTs) validar('npm run typecheck', 'npm', ['run', 'typecheck'])
   // eslint SÓLO sobre lo cambiado: sobre el proyecto entero son varios segundos que no aportan nada
   // nuevo sobre archivos que nadie tocó. `--max-warnings` no se fuerza: este repo tiene 38 warnings
