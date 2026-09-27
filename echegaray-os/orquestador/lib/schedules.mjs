@@ -60,7 +60,7 @@ export async function listSchedules({ enabledOnly = false } = {}) {
 /** Recurrencias vencidas y habilitadas (para que el disparador las encole). */
 export async function dueSchedules(now = new Date()) {
   const { rows } = await query(
-    `select id, title, directive, cadence, next_run_at from orq.schedules
+    `select id, title, directive, cadence, next_run_at, herramienta, entrada from orq.schedules
       where enabled and next_run_at <= $1 order by next_run_at asc limit 50`,
     [now.toISOString()],
   )

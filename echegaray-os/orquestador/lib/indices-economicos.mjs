@@ -1,4 +1,4 @@
-// ÍNDICES ECONÓMICOS — busca en internet la inflación proyectada y los aumentos de convenio, los
+// ÍNDICES ECONÓMICOS — lee del BCRA (REM, planilla oficial) la inflación proyectada y los aumentos de convenio, los
 // guarda con su fuente y los deja listos para que TODA proyección del OS los use.
 //
 // REGLA DEL DUEÑO (20/07): "en las proyecciones siempre considerar inflación, aumentos, etc.
@@ -8,10 +8,11 @@
 // la inflación de mayo no está desactualizada de a poco — está mal desde el primer mes. Por eso esto
 // corre solo y, cuando el dato tiene más de 35 días, lo dice en vez de seguir usándolo callado.
 //
-// LO QUE NO HACE: no inventa un índice. Si la búsqueda no devuelve números reconocibles, deja lo que
+// LO QUE NO HACE: no inventa un índice. Si la lectura no devuelve números reconocibles, deja lo que
 // había y avisa. Preferimos una proyección declaradamente vieja a una inventada.
 
 import { query } from './db.mjs'
+import { leerRemBcra } from './rem-bcra.mjs'
 
 /**
  * NÚCLEO PURO: extrae variaciones mensuales de un texto de resultados de búsqueda.
@@ -51,49 +52,52 @@ export function formatIndices(r) {
     L.push(`  ${indice.toUpperCase()}:`)
     for (const f of filas) L.push(`    ${f.periodo}  ${pct(f.variacion).padStart(6)}   acumulado ×${Number(f.factor_acumulado).toFixed(3)}`)
   }
-  if (r.nuevos) L.push('', `  ✚ ${r.nuevos} valor(es) nuevo(s) guardado(s) desde la web.`)
+  if (r.cambios?.length) L.push('', `  ✚ REM ${r.edicion}: cambió ${r.cambios.map((c) => `${c.periodo} ${c.antes == null ? '—' : pct(c.antes)}→${pct(c.ahora)}`).join(', ')}.`)
+  else if (r.nuevos) L.push('', `  = REM ${r.edicion ?? ''} leído: sin cambios respecto de lo guardado.`)
   if (r.vencido) L.push('', `  ⚠ El último dato tiene ${r.dias_viejo} días. Conviene refrescarlo antes de decidir con una proyección.`)
-  if (r.sin_parsear) L.push('', '  ⚠ La búsqueda no devolvió números reconocibles: quedó lo que ya estaba, no inventé nada.')
+  if (r.sin_parsear) L.push('', `  ⚠ No pude leer el REM del BCRA${r.error_lectura ? ` (${r.error_lectura})` : ''}: quedó lo que ya estaba, no inventé nada.`)
   return L.join('\n')
 }
 
 /**
- * Busca en la web y actualiza los índices. `buscar` es la función de búsqueda inyectada
- * (webSearch), así se puede testear sin internet.
+ * Lee el REM del BCRA de su planilla oficial y actualiza los índices. `leer` es inyectable
+ * (leerRemBcra por defecto) para testear sin internet. Sin modelo y sin búsqueda paga: ver
+ * `rem-bcra.mjs`.
  */
-export async function actualizarIndices(buscar, { anio = new Date().getFullYear(), forzar = false } = {}) {
-  // ¿Hace falta buscar? Un índice de hace 3 días no cambia por volver a preguntar, y cada búsqueda
-  // cuesta. Se refresca si tiene más de 7 días.
+export async function actualizarIndices({ leer = leerRemBcra, forzar = false } = {}) {
+  // ¿Hace falta leer? El REM sale una vez por mes; se refresca si el dato tiene más de 7 días.
   const { rows: ult } = await query(
     "select max(leido_en) ultimo, count(*)::int n from public.indice_economico where indice='ipc'",
   )
   const dias = ult[0]?.ultimo ? Math.floor((Date.now() - new Date(ult[0].ultimo)) / 86400000) : 999
-  let nuevos = 0, sinParsear = false
+  let nuevos = 0, sinParsear = false, cambios = [], edicion = null, errorLectura = null
 
   if (forzar || dias > 7) {
-    // Dos búsquedas: una sola devuelve dos o tres meses sueltos y quedan huecos justo en los meses
-    // que más importa proyectar. La segunda pide explícitamente el mes por mes.
-    const textos = []
-    for (const q of [
-      `REM BCRA inflación mensual proyectada Argentina IPC expectativas ${anio}`,
-      `inflación mensual esperada Argentina mes por mes agosto septiembre octubre noviembre diciembre ${anio} porcentaje`,
-    ]) {
-      const r = await buscar(q)
-      textos.push(r?.text ?? r?.resultado ?? '')
+    let rem = null
+    try { rem = await leer() } catch (e) { errorLectura = String(e?.message ?? e).slice(0, 200) }
+    if (!rem?.variaciones?.length) sinParsear = true
+    edicion = rem?.edicion ?? null
+    const previas = new Map()
+    if (rem?.variaciones?.length) {
+      const { rows } = await query(
+        "select periodo, variacion from public.indice_economico where indice='ipc' and tipo='proyeccion' and periodo = any($1)",
+        [rem.variaciones.map((v) => v.periodo)],
+      )
+      for (const r of rows) previas.set(r.periodo, Number(r.variacion))
     }
-    const vars = parsearVariaciones(textos.join('\n'), anio)
-    if (!vars.length) sinParsear = true
-    for (const v of vars) {
+    for (const v of rem?.variaciones ?? []) {
       // Sólo se pisan las PROYECCIONES. Un mes ya publicado como dato firme no se toca con una
       // expectativa: sería reemplazar un hecho por un pronóstico.
       const { rowCount } = await query(
         `insert into public.indice_economico (indice, periodo, variacion, tipo, fuente, url, leido_en)
          values ('ipc', $1, $2, 'proyeccion', $3, $4, now())
          on conflict (indice, periodo, tipo) do update set
-           variacion = excluded.variacion, fuente = excluded.fuente, leido_en = now()`,
-        [v.periodo, v.variacion, 'REM BCRA (relevamiento de expectativas de mercado), vía búsqueda web', 'https://www.bcra.gob.ar/publicaciones/relevamiento-de-expectativas-de-mercado.asp'],
+           variacion = excluded.variacion, fuente = excluded.fuente, url = excluded.url, leido_en = now()`,
+        [v.periodo, v.variacion, `REM BCRA ${rem.edicion} (mediana, planilla oficial)`, rem.url],
       )
       nuevos += rowCount ?? 0
+      const antes = previas.get(v.periodo)
+      if (antes === undefined || Math.abs(antes - v.variacion) > 1e-9) cambios.push({ periodo: v.periodo, antes: antes ?? null, ahora: v.variacion })
     }
   }
 
@@ -121,6 +125,9 @@ export async function actualizarIndices(buscar, { anio = new Date().getFullYear(
   return {
     por_indice,
     nuevos,
+    cambios,
+    edicion,
+    error_lectura: errorLectura,
     sin_parsear: sinParsear,
     // dias===999 es "nunca se buscó", no "vencido hace 999 días": avisar de un vencimiento en la
     // primera corrida es una alarma falsa.

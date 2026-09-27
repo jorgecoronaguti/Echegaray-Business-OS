@@ -1,30 +1,54 @@
-// Handler de una recurrencia disparada (PRP-015 Fase 4). Corre la directiva
-// programada por el dueño ("revisá cobranzas") a través del MISMO motor interactivo
-// (localhost /ask), y guarda el resultado como última corrida de la recurrencia.
-// Si la directiva propone una escritura, queda como operación pendiente (Fase 1) —
-// el dueño la ve en "Pendientes". Así "programar" reusa todo el canal, sin duplicar.
+// Handler de una recurrencia disparada (PRP-015 Fase 4).
+//
+// ═══ SIN MODELO (26/09/2026) ═══
+//
+// Antes mandaba la directiva en lenguaje natural al motor interactivo (localhost /ask, Claude
+// Sonnet) para que ELIGIERA la herramienta. Medido: ~US$14,5 por mes para correr herramientas que ya
+// eran determinísticas, y el 21/09 `sincronizar_nomina` falló y el modelo igual contestó «HECHO —
+// cargado en la planilla» después de gastar US$1,71 leyendo JORNALES. El dueño: «tenemos muchas
+// herramientas propias de inteligencia para que todo se siga basando en Claude — hay que cambiar eso».
+//
+// Ahora cada recurrencia NOMBRA su herramienta (`orq.schedules.herramienta`) y acá se corre directo.
+// Sólo herramientas de LECTURA: una escritura programada no pasa por la aprobación del dueño, así
+// que no se habilita por esta puerta. Sin herramienta, la recurrencia no corre y lo deja escrito.
 import { setScheduleResult } from '../lib/schedules.mjs'
+import { makeGoogleClient, READONLY_SCOPES } from '../lib/google.mjs'
+import { briefingCajaTools } from '../lib/tools/briefing-caja-tool.mjs'
+import { aliasPendientesTools } from '../lib/tools/alias-pendientes-tool.mjs'
+import { indicesTools } from '../lib/tools/indices-tool.mjs'
 
-export async function scheduledDirectiveHandler(task, ctx) {
-  const { schedule_id, directive, title } = task.inputs || {}
-  if (!directive) throw new Error('scheduled_directive: falta directive en inputs')
+/** Las herramientas que la agenda puede correr, por su nombre de tool. */
+export function herramientasDeAgenda(google) {
+  const mapa = new Map()
+  for (const def of Object.values({ ...briefingCajaTools(google), ...aliasPendientesTools(google), ...indicesTools() })) {
+    if (def.capability === 'drive.read') mapa.set(def.schema.name, def)
+  }
+  return mapa
+}
 
-  const port = Number(process.env.ORQ_INTERACTIVE_PORT ?? 8790)
-  const token = process.env.ORQ_INTERACTIVE_TOKEN ?? ''
+/** PURO: el texto que queda como última corrida. */
+export function textoDeResultado(r) {
+  if (r == null) return '(sin respuesta)'
+  if (r.error) return `error: ${r.error}`
+  return String(r.texto ?? r.resumen ?? JSON.stringify(r)).slice(0, 2000)
+}
+
+export async function scheduledDirectiveHandler(task, ctx, deps = {}) {
+  const { schedule_id, title, herramienta, entrada } = task.inputs || {}
   let answer
-  try {
-    const r = await fetch(`http://localhost:${port}/ask`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ directive }),
-    })
-    const data = await r.json()
-    answer = r.ok ? (data.answer || '(sin respuesta)') : `error: ${data.error || r.status}`
-  } catch (e) {
-    answer = `no se pudo correr la directiva: ${e?.message ?? e}`
+  if (!herramienta) {
+    answer = 'no corrió: la recurrencia no nombra una herramienta propia (la agenda ya no usa modelo)'
+  } else {
+    const google = deps.google !== undefined ? deps.google : makeGoogleClient({ config: ctx.config, scopes: READONLY_SCOPES })
+    const def = (deps.herramientas ?? herramientasDeAgenda(google)).get(herramienta)
+    if (!def) answer = `no corrió: «${herramienta}» no es una herramienta de lectura habilitada para la agenda`
+    else {
+      try { answer = textoDeResultado(await def.run(entrada ?? {})) }
+      catch (e) { answer = `error: ${String(e?.message ?? e).slice(0, 300)}` }
+    }
   }
 
-  if (schedule_id) await setScheduleResult(schedule_id, answer)
-  ctx.logger.info('scheduled_directive: corrida completada', { schedule_id, title })
-  return { result: { schedule_id, title, answer: String(answer).slice(0, 600) } }
+  if (schedule_id) await (deps.guardar ?? setScheduleResult)(schedule_id, answer)
+  ctx.logger.info('scheduled_directive: corrida completada', { schedule_id, title, herramienta: herramienta ?? null })
+  return { result: { schedule_id, title, herramienta: herramienta ?? null, answer: String(answer).slice(0, 600) } }
 }

@@ -15,7 +15,7 @@ async function main() {
       type: 'scheduled_directive',
       title: `Agenda: ${s.title}`,
       dedupe_key: `sched:${s.id}:${slot}`, // idempotente por horario programado
-      inputs: { schedule_id: s.id, directive: s.directive, title: s.title },
+      inputs: { schedule_id: s.id, directive: s.directive, title: s.title, herramienta: s.herramienta ?? null, entrada: s.entrada ?? {} },
     })
     await rescheduleAfterFire(s.id, s.cadence)
   }
