@@ -13,6 +13,10 @@
 //
 //   ORQ_CASHFLOW_ID=<copia> node orquestador/scripts/compras-tipo-pago-a-rendir.mjs [--aplicar]
 //   node orquestador/scripts/compras-tipo-pago-a-rendir.mjs --aplicar --real      ← el Sheet real
+//
+// `--valor=<texto>` agrega otro valor con las mismas reglas. 26/09/2026: «Fuera de caja» — compra
+// pagada que no pasó por la caja de la empresa (dueño: «todo pago, no toques caja»); ver FUERA_DE_CAJA
+// en lib/caja-canales.mjs, que es quien le da el significado.
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { COMPRAS, PESTANAS, columnasDe, rangoEncabezado } from '../lib/columnas-por-encabezado.mjs'
@@ -20,7 +24,7 @@ import { COMPRAS, PESTANAS, columnasDe, rangoEncabezado } from '../lib/columnas-
 const REAL = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const ID = process.env.ORQ_CASHFLOW_ID || REAL
 const APLICAR = process.argv.includes('--aplicar')
-export const VALOR = 'A rendir'
+export const VALOR = process.argv.find((a) => a.startsWith('--valor='))?.slice('--valor='.length).trim() || 'A rendir'
 
 /**
  * NÚCLEO PURO: los tramos contiguos de filas (0-based, fin exclusivo) que tienen la regla, y la regla.
@@ -41,11 +45,11 @@ export function tramosConRegla(filas = [], fila0 = 0) {
   return { tramos, regla }
 }
 
-/** NÚCLEO PURO: la regla nueva — la misma, con «A rendir» al final. null si ya lo tenía. */
-export function reglaConARendir(regla) {
+/** NÚCLEO PURO: la regla nueva — la misma, con el valor («A rendir» por defecto) al final. null si ya lo tenía. */
+export function reglaConARendir(regla, valor = VALOR) {
   const valores = (regla?.condition?.values ?? []).map((v) => v.userEnteredValue)
-  if (!valores.length || valores.includes(VALOR)) return null
-  return { ...regla, condition: { ...regla.condition, values: [...valores, VALOR].map((v) => ({ userEnteredValue: v })) } }
+  if (!valores.length || valores.includes(valor)) return null
+  return { ...regla, condition: { ...regla.condition, values: [...valores, valor].map((v) => ({ userEnteredValue: v })) } }
 }
 
 async function main() {
