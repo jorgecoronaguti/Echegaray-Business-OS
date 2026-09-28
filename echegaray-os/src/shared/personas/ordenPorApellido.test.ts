@@ -28,3 +28,18 @@ test('la clave ignora tildes y mayúsculas; sin legajo cae en el nombre para mos
   assert.equal(claveDeOrden({ nombre_completo: null, nombre_para_mostrar: 'Pedro Gómez' }), 'pedro gomez')
   assert.equal(claveDeOrden(null), '')
 })
+
+// LA Ñ ES OTRA LETRA, NO UNA N CON TILDE. `sinTildes` descomponía en NFD y borraba todo el rango
+// combinante, así que «Ñañez» quedaba «nanez» y se metía entre «Nava» y «Nuñez». En español va
+// después de la N entera: Nava, Nuñez, Nuzzo, Ñañez.
+test('la Ñ ordena después de la N: Nava, Nuñez, Nuzzo, Ñañez', () => {
+  const legajos = ['ÑAÑEZ PEDRO', 'NUZZO ANA', 'NUÑEZ JUAN', 'NAVA LUIS'].map((nombre_completo) => ({ nombre_completo }))
+  const orden = [...legajos].sort(compararPorApellido).map((p) => p.nombre_completo)
+  assert.deepEqual(orden, ['NAVA LUIS', 'NUÑEZ JUAN', 'NUZZO ANA', 'ÑAÑEZ PEDRO'])
+  assert.equal(claveDeOrden({ nombre_completo: 'ÑAÑEZ PEDRO' }), 'ñañez pedro')
+})
+
+test('las demás tildes se siguen ignorando, también la de una vocal con virgulilla', () => {
+  assert.equal(claveDeOrden({ nombre_completo: 'GÓMEZ ÁLVAREZ JOSÉ' }), 'gomez alvarez jose')
+  assert.equal(claveDeOrden('João Müller'), 'joao muller')
+})

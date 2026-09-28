@@ -18,7 +18,7 @@ import { COLUMNAS_PAPEL, type Papel } from '../logica/papeles'
 import { COLUMNAS_RECUENTO, COLUMNAS_RECUENTO_LINEA, type Recuento, type RecuentoLinea } from '../logica/recuento'
 import { COLUMNAS_REVISION, COLUMNAS_REVISION_VIGENTE, type Revision, type RevisionVigente } from '../logica/revision'
 import { COLUMNAS_UNIDAD, type Unidad } from '../logica/unidades'
-import { nombresDeUsuariosPlano } from '../../../shared/personas/nombresDeUsuarios.ts'
+import { nombresDeUsuariosPlano, ordenDeUsuariosPlano } from '../../../shared/personas/nombresDeUsuarios.ts'
 import { nombreDePersona } from '../../../shared/personas/nombre.ts'
 import {
   COLUMNAS_ACTIVO, COLUMNAS_AJUSTE, COLUMNAS_EXISTENCIA, COLUMNAS_INCIDENCIA, COLUMNAS_LECTURA, COLUMNAS_MOVIMIENTO, COLUMNAS_PROVEEDOR_LUGAR, COLUMNAS_UBICACION,
@@ -91,13 +91,14 @@ function numerosDeRevision<T extends Revision>(r: T): T {
 export async function leerParque(): Promise<Lectura> {
   try {
     const supabase = await createClient()
-    const [activos, ubicaciones, movimientos, incidencias, obras, nombresUsuarios, usuario, categorias, lecturas, existencias, ajustes, papeles, unidades, revisiones, vigentes, recuentos, recuentoLineas, proveedores] = await Promise.all([
+    const [activos, ubicaciones, movimientos, incidencias, obras, nombresUsuarios, ordenUsuarios, usuario, categorias, lecturas, existencias, ajustes, papeles, unidades, revisiones, vigentes, recuentos, recuentoLineas, proveedores] = await Promise.all([
       supabase.from('activo').select(COLUMNAS_ACTIVO).order('codigo').limit(TOPE),
       supabase.from('ubicacion').select(COLUMNAS_UBICACION).limit(TOPE),
       supabase.from('activo_movimiento').select(COLUMNAS_MOVIMIENTO).order('fecha_hora', { ascending: false }).limit(TOPE),
       supabase.from('activo_incidencia').select(COLUMNAS_INCIDENCIA).order('creado_en', { ascending: false }).limit(TOPE),
       leerObras(supabase),
       nombresDeUsuariosPlano(supabase),
+      ordenDeUsuariosPlano(supabase),
       getUsuarioActual(supabase),
       supabase.from('activo_categoria').select('nombre').order('orden'),
       supabase.from('activo_lectura_uso').select(COLUMNAS_LECTURA).order('fecha_hora', { ascending: false }).limit(TOPE),
@@ -144,6 +145,7 @@ export async function leerParque(): Promise<Lectura> {
         incidencias: (incidencias.data ?? []) as unknown as Incidencia[],
         obras,
         nombres,
+        ordenUsuarios,
         proveedores: proveedores.error ? [] : ((proveedores.data ?? []) as unknown as ProveedorLugar[]),
         categorias: ((categorias.data ?? []) as { nombre: string }[]).map((c) => c.nombre),
         lecturas: lecs,

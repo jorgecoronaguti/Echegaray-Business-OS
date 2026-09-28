@@ -5,7 +5,8 @@ import { secretoDelRol } from '@/lib/auth/rol-cache'
 import { COOKIE_ENTRAR_COMO, NIVELES_ENTRABLES, leerEntrarComo, type EntradaPrestada } from '@/lib/auth/entrar-como'
 import { ROL_LABEL, type Rol } from '@/features/auth/types'
 import { estadoDeCuenta } from '@/features/usuarios/services/usuariosService'
-import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
+import { nombresDeUsuarios, ordenDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
+import { claveDeOrden } from '../../../shared/personas/nombre.ts'
 
 // «ENTRAR COMO», DEL LADO DEL SERVIDOR QUE DIBUJA.
 //
@@ -48,11 +49,14 @@ export interface GrupoEntrable {
 export async function cuentasEntrables(admin: SupabaseClient, actorId: string): Promise<GrupoEntrable[]> {
   const { data: auth, error } = await admin.auth.admin.listUsers({ perPage: 1000 })
   if (error) throw new Error(error.message)
-  const [{ data: perfiles }, nombres] = await Promise.all([
+  const [{ data: perfiles }, nombres, porApellido] = await Promise.all([
     admin.from('perfiles').select('id, rol'),
     // El nombre de su persona, resuelto por el vínculo (src/shared/personas).
     nombresDeUsuarios(admin),
+    // Y la clave para ORDENAR: el legajo, apellido primero — no el nombre que se muestra.
+    ordenDeUsuarios(admin),
   ])
+  const clave = (c: CuentaEntrable) => porApellido.get(c.id) || claveDeOrden(c.nombre ?? c.email ?? '')
   const perfilDe = new Map((perfiles ?? []).map((p) => [p.id as string, p as { rol: Rol }]))
 
   const grupos = new Map<Rol | null, CuentaEntrable[]>()
@@ -78,6 +82,6 @@ export async function cuentasEntrables(admin: SupabaseClient, actorId: string): 
     .map((r) => ({
       rol: r,
       etiqueta: r ? ROL_LABEL[r] : 'Sin nivel asignado',
-      cuentas: (grupos.get(r) ?? []).sort((a, b) => (a.nombre ?? a.email ?? '').localeCompare(b.nombre ?? b.email ?? '', 'es')),
+      cuentas: (grupos.get(r) ?? []).sort((a, b) => clave(a).localeCompare(clave(b), 'es')),
     }))
 }

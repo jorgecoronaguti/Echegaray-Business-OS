@@ -6,6 +6,7 @@
 import { esReimputacion } from './clientes-lugar.ts'
 import type { Movimiento } from '../types.ts'
 import { autorDe, diasDesde, rotuloUbicacion, type Parque } from './parque.ts'
+import { claveDeOrden } from '../../../shared/personas/nombre.ts'
 
 export interface FiltrosMov {
   /** Días hacia atrás; null = todo. */
@@ -32,6 +33,26 @@ export interface RenglonMov {
 /** La clave de persona de un movimiento, para filtrar y contar: el usuario logueado o el texto del listado. */
 export function claveUsuario(m: Pick<Movimiento, 'usuario_id' | 'usuario_texto'>): string | null {
   return m.usuario_id ? `u:${m.usuario_id}` : m.usuario_texto?.trim() ? `t:${m.usuario_texto.trim()}` : null
+}
+
+/**
+ * Las personas del filtro del libro: quien movió algo, UNA vez cada una, por apellido.
+ *
+ * Se muestra `autorDe` («Emiliano Maldonado») pero se ordena por el legajo (`ordenUsuarios`, apellido
+ * primero). Un movimiento sin usuario sólo trae el texto del listado viejo: se ordena por ese texto.
+ */
+export function personasDelLibro(p: Parque): { v: string; t: string }[] {
+  const pm = new Map<string, { t: string; orden: string }>()
+  for (const m of p.movimientos) {
+    const k = claveUsuario(m)
+    const t = autorDe(p, m)
+    if (!k || !t) continue
+    const orden = (m.usuario_id && p.ordenUsuarios?.[m.usuario_id]) || claveDeOrden(t)
+    pm.set(k, { t, orden })
+  }
+  return [...pm]
+    .sort(([, a], [, b]) => a.orden.localeCompare(b.orden, 'es'))
+    .map(([v, { t }]) => ({ v, t }))
 }
 
 export function libroDeMovimientos(p: Parque, f: FiltrosMov, hoy: Date = new Date()): RenglonMov[] {

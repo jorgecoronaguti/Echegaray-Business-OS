@@ -3,8 +3,8 @@ import { leerParque } from '@/features/herramientas/services/datos'
 import { Marco } from '@/features/herramientas/components/Marco'
 import { VistaMovimientos } from '@/features/herramientas/components/VistaMovimientos'
 import { FiltrosMovimientos, type Opcion } from '@/features/herramientas/components/FiltrosMovimientos'
-import { claveUsuario } from '@/features/herramientas/logica/movimientos'
-import { autorDe, rotuloUbicacion } from '@/features/herramientas/logica/parque'
+import { personasDelLibro } from '@/features/herramientas/logica/movimientos'
+import { rotuloUbicacion } from '@/features/herramientas/logica/parque'
 
 // D06 · MOVIMIENTOS — el libro, con filtros de ventana, lugar y persona (en la URL).
 export const dynamic = 'force-dynamic'
@@ -24,9 +24,8 @@ export default async function MovimientosPage({ searchParams }: { searchParams: 
     const p = lectura.parque
     const usadas = new Set(p.movimientos.flatMap((m) => [m.origen_id, m.destino_id]).filter((x): x is string => !!x))
     lugares = [...usadas].map((id) => ({ v: id, t: rotuloUbicacion(p, id) })).sort((a, b) => a.t.localeCompare(b.t, 'es'))
-    const pm = new Map<string, string>()
-    for (const m of p.movimientos) { const k = claveUsuario(m); const n = autorDe(p, m); if (k && n) pm.set(k, n) }
-    personas = [...pm].map(([v, t]) => ({ v, t })).sort((a, b) => a.t.localeCompare(b.t, 'es'))
+    // Por apellido (el legajo), no por el nombre que se muestra: ver `personasDelLibro`.
+    personas = personasDelLibro(p)
   }
 
   return (

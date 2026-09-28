@@ -18,7 +18,8 @@ import {
 } from './clientesFilas.ts'
 import { avisoDeNotasPendiente, faltaLaTablaDeNotas } from './notaPendiente'
 import { construirLineaDeTiempo } from './timeline'
-import { nombresDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
+import { nombresDeUsuarios, ordenDeUsuarios } from '../../../shared/personas/nombresDeUsuarios.ts'
+import { claveDeOrden } from '../../../shared/personas/nombre.ts'
 
 /**
  * La cartera COMPLETA: activos y archivados, en una sola lectura.
@@ -140,14 +141,18 @@ export async function getContactos(supabase: SupabaseClient, clienteId: string):
  * es el que se está corrigiendo.
  */
 export async function getResponsables(supabase: SupabaseClient): Promise<ServiceResult<Responsable[]>> {
-  const [{ data, error }, nombres] = await Promise.all([
+  const [{ data, error }, nombres, orden] = await Promise.all([
     supabase.from('perfiles').select('id, rol').eq('es_prueba', false),
     nombresDeUsuarios(supabase),
+    ordenDeUsuarios(supabase),
   ])
   if (error) return { data: null, error: error.message }
-  // El nombre de su persona, resuelto por el vínculo (src/shared/personas), no el de la cuenta.
+  // El nombre de su persona, resuelto por el vínculo (src/shared/personas), no el de la cuenta. Se
+  // MUESTRA ése, pero se ORDENA por el legajo (apellido primero): el nombre para mostrar empieza por
+  // el nombre de pila.
   const responsables = ((data ?? []) as Omit<Responsable, 'nombre'>[]).map((r) => ({ ...r, nombre: nombres.get(r.id) ?? '' }) as Responsable)
-  return { data: responsables.sort((a, b) => (a.nombre ?? '').localeCompare(b.nombre ?? '', 'es')), error: null }
+  const clave = (r: Responsable) => orden.get(r.id) || claveDeOrden(r.nombre)
+  return { data: responsables.sort((a, b) => clave(a).localeCompare(clave(b), 'es')), error: null }
 }
 
 export async function getDocumentosCliente(

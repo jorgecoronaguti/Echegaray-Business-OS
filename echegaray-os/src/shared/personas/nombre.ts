@@ -55,10 +55,13 @@ export function nombreLegal(nombreCompleto: string | null | undefined): string |
   return l ? oracion(l) : null
 }
 
-/** Quita tildes y baja a minúscula, para comparar sin que un acento cambie el orden binario
- *  (`localeCompare(..., 'es')` ya hace lo suyo, pero primero hay que igualar el texto: la Ñ de
- *  «Núñez» no es una letra con tilde, así que NO se toca). */
-const sinTildes = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+/** Quita tildes, para que un acento no cambie el orden binario — MENOS LA DE LA Ñ.
+ *
+ *  La Ñ no es una N con tilde: es otra letra, y en español va después de la N («Nuñez», «Nuzzo»,
+ *  «Ñañez»). Pero en NFD se descompone en N + U+0303, y quitar todo el rango combinante la volvía N:
+ *  «Ñañez» quedaba entre «Nava» y «Nuñez». `localeCompare(..., 'es')` ya la ordena bien si le llega
+ *  entera, así que se conserva la tilde que sigue a una n y se recompone (NFC). */
+const sinTildes = (s: string) => s.normalize('NFD').replace(/(?<![nN])\u0303|[\u0300-\u0302\u0304-\u036f]/g, '').normalize('NFC')
 
 /**
  * LA CLAVE DE ORDEN DE UNA PERSONA — SIEMPRE EL LEGAJO, NUNCA EL NOMBRE PARA MOSTRAR.
@@ -90,7 +93,28 @@ export function compararPorApellido(a: Entrada, b: Entrada): number {
 }
 
 /** Una fila de `nombres_de_usuarios()`: el nombre ya viene resuelto por el vínculo. */
-export interface FilaNombreDeUsuario { id: string; nombre: string | null }
+export interface FilaNombreDeUsuario { id: string; nombre: string | null; persona_id?: string | null }
+
+/**
+ * id de usuario → CLAVE DE ORDEN (el legajo, apellido primero), para las listas de usuarios.
+ *
+ * `nombres_de_usuarios()` devuelve el nombre PARA MOSTRAR («Emiliano Maldonado»): ordenar por él es
+ * ordenar por nombre de pila (el bug del 28/09). La función devuelve también `persona_id`, y con él
+ * se busca el `nombre_completo` del legajo en `legajos`. Sin persona, o sin legajo visible para la
+ * sesión, el único dato que hay es el nombre de la cuenta: se ordena por ése.
+ */
+export function clavesDeOrdenDeUsuarios(
+  filas: readonly FilaNombreDeUsuario[] | null | undefined,
+  legajos: ReadonlyMap<string, string | null>,
+): Map<string, string> {
+  const m = new Map<string, string>()
+  for (const f of filas ?? []) {
+    if (!f.id) continue
+    const legajo = f.persona_id ? legajos.get(f.persona_id) : null
+    m.set(f.id, claveDeOrden(legajo ? { nombre_completo: legajo } : f.nombre))
+  }
+  return m
+}
 
 /** El nombre para mostrar de un usuario: el de su persona si la tiene, o el de su cuenta. Sin
  *  ninguno, la parte local del correo; sin correo, «alguien». */

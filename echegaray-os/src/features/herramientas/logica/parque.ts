@@ -20,6 +20,9 @@ export interface DatosParque {
   incidencias: Incidencia[]
   /** usuario_id → nombre del perfil. */
   nombres: Record<string, string>
+  /** usuario_id → clave de ORDEN (el legajo, apellido primero; `ordenDeUsuarios`). `nombres` es para
+   *  mostrar y empieza por el nombre de pila: ordenar por él fue el bug del 28/09. */
+  ordenUsuarios?: Record<string, string>
   /** Los proveedores (20260923T2400): un servicio técnico es uno de ellos y el lugar toma su nombre. */
   proveedores?: ProveedorLugar[]
   /** Las categorías posibles, en su orden (`activo_categoria`). La lista es cerrada: no se tipea otra. */
