@@ -34,6 +34,11 @@ export interface RenglonDePresentismo {
   valor: number | null
   /** Estado primero, después base y %, y lo que hay que hacer. */
   nota: string
+  /**
+   * La nota SIN base ni %: la que va debajo de un 0425 que ya está en el recibo. En jornada completa el 0425 es el
+   * 20 % del básico entero y la base del OS es el 50 %: dos importes distintos en el mismo renglón (auditor 28/09).
+   */
+  notaSinBase: string
   estado: PresentismoDeLinea['estado']
 }
 
@@ -57,8 +62,9 @@ function aRevisar(p: PresentismoDeLinea): string[] {
  */
 export function renglonDePresentismo(p: PresentismoDeLinea | null): RenglonDePresentismo | null {
   if (p == null) return null
+  const base = baseYPorcentaje(p)
   const r = (rotulo: string, valor: number | null, partes: string[]): RenglonDePresentismo =>
-    ({ rotulo, valor, nota: partes.join(' · '), estado: p.estado })
+    ({ rotulo, valor, nota: partes.join(' · '), notaSinBase: partes.filter((x) => x !== base).join(' · '), estado: p.estado })
   if (p.estado === 'no_aplica') return r('Presentismo', null, ['No aplica · mensual', 'el presentismo es del convenio de obreros'])
   if (p.estado === 'no_rige') return r('Presentismo', null, ['No rige en esta quincena'])
   if (p.estado === 'sin_categoria') return r('Presentismo', null, ['Sin categoría', 'no hay básico en el legajo con qué calcularlo'])
@@ -67,7 +73,7 @@ export function renglonDePresentismo(p: PresentismoDeLinea | null): RenglonDePre
     return r('Presentismo', null, ['Sin horas', 'sin horas cargadas en la quincena: todavía no hay presentismo que calcular', ...causas, ...aRevisar(p)])
   }
   if (p.estado === 'perdido') {
-    return r('− Presentismo', p.importe, ['Perdido', baseYPorcentaje(p), motivosDePerdida(p), ...aRevisar(p)])
+    return r('− Presentismo', p.importe, ['Perdido', base, motivosDePerdida(p), ...aRevisar(p)])
   }
-  return r('Presentismo', p.importe, ['Cumple', baseYPorcentaje(p), 'sin faltas injustificadas, tardanzas ni retiros'])
+  return r('Presentismo', p.importe, ['Cumple', base, 'sin faltas injustificadas, tardanzas ni retiros'])
 }

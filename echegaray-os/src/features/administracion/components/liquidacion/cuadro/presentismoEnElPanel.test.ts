@@ -67,3 +67,12 @@ test('el presentismo va entre los conceptos del blanco, no en el bloque Negro', 
   const recibo = readFileSync(new URL('./ReciboPorConceptos.tsx', import.meta.url), 'utf8')
   assert.match(recibo, /<Bloque titulo="Haberes"[^>]*presentismo=\{presentismo\}/)
 })
+
+// Debajo de un 0425 que ya está en el recibo (jornada completa: 20 % del básico ENTERO) no puede ir la base del OS
+// (50 %): serían dos importes distintos para el mismo concepto en el mismo renglón (auditor, 28/09).
+test('la nota que va bajo un 0425 del recibo no lleva la base ni el % del OS', () => {
+  const r = renglonDePresentismo(presentismoDeLinea(E, 100))!
+  assert.match(r.nota, /50 % en blanco/)
+  assert.doesNotMatch(r.notaSinBase, /%|\$/)
+  assert.match(r.notaSinBase, /^Cumple/)
+})

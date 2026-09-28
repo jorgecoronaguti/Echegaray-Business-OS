@@ -33,7 +33,15 @@ export function ReciboPorConceptos({ s, presentismo = null }: { s: SueldoBlancoN
   const est = s.reciboEstimado ?? null
   const real = s.conceptosReales ?? null
   const totales = totalesDelReal(real) ?? s.totalesReales ?? null
-  if (!est && !totales) return null
+  // SIN BLANCO QUE MOSTRAR, EL PRESENTISMO IGUAL SE DICE (auditor 28/09): «sin categoría» es justamente cuando no hay estimado.
+  if (!est && !totales) {
+    if (!presentismo) return null
+    return (
+      <section data-testid="panel-recibo-conceptos" style={{ fontSize: '12px', fontVariantNumeric: 'tabular-nums' }}>
+        <FilaDePresentismo r={presentismo} parcial={false} cols={SOLO_ESTIMADO} conReal={false} detalleReal={false} />
+      </section>
+    )
+  }
   const filas = compararConReal(est, real)
   const conReal = totales != null
   const cols = conReal ? CON_REAL : SOLO_ESTIMADO
@@ -49,7 +57,7 @@ export function ReciboPorConceptos({ s, presentismo = null }: { s: SueldoBlancoN
           <span>Concepto</span><Derecha>Estimado</Derecha><Derecha>Real</Derecha><Derecha>Dif.</Derecha>
         </Grilla>
       )}
-      <Bloque titulo="Haberes" filas={de('remunerativo', 'no_remunerativo')} presentismo={presentismo} {...p} />
+      <Bloque titulo="Haberes" filas={de('remunerativo', 'no_remunerativo')} presentismo={presentismo} parcial={est?.jornada === 'parcial'} {...p} />
       <Total rotulo="Subtotal remunerativo" {...p} est={est?.remunerativo} real={totales?.haberes} />
       <Bloque titulo="Descuentos" filas={de('descuento')} {...p} />
       <Total rotulo="Total descuentos" {...p} est={est?.descuentos} real={totales?.descuentos} />
@@ -78,8 +86,8 @@ const Derecha = ({ children, title, color }: { children: ReactNode; title?: stri
 
 interface PropsDeTabla { cols: string; conReal: boolean; detalleReal: boolean }
 
-function Bloque({ titulo, filas, presentismo = null, ...p }: PropsDeTabla & {
-  titulo: string; filas: FilaComparada[]; presentismo?: RenglonDePresentismo | null
+function Bloque({ titulo, filas, presentismo = null, parcial = false, ...p }: PropsDeTabla & {
+  titulo: string; filas: FilaComparada[]; presentismo?: RenglonDePresentismo | null; parcial?: boolean
 }) {
   if (filas.length === 0) return null
   const con0425 = filas.some((f) => f.codigo === '0425')
@@ -87,20 +95,25 @@ function Bloque({ titulo, filas, presentismo = null, ...p }: PropsDeTabla & {
   return (
     <>
       <div style={{ fontSize: '10.5px', color: V.apagado, paddingTop: 8 }}>{titulo}</div>
-      {trasBasico === -1 && presentismo && <FilaDePresentismo r={presentismo} {...p} />}
+      {trasBasico === -1 && presentismo && <FilaDePresentismo r={presentismo} parcial={parcial} {...p} />}
       {filas.map((f, i) => (
         <div key={`${f.seccion}-${f.codigo}`}>
-          <Fila f={f} nota={f.codigo === '0425' && presentismo ? presentismo.nota : undefined} {...p} />
-          {i === trasBasico && presentismo && <FilaDePresentismo r={presentismo} {...p} />}
+          <Fila f={f} nota={f.codigo === '0425' && presentismo ? presentismo.notaSinBase : undefined} {...p} />
+          {i === trasBasico && presentismo && <FilaDePresentismo r={presentismo} parcial={parcial} {...p} />}
         </div>
       ))}
     </>
   )
 }
 
-/** El presentismo del OS cuando el blanco no lleva 0425: mismo renglón que un concepto, importe apagado. */
-function FilaDePresentismo({ r, cols, conReal }: PropsDeTabla & { r: RenglonDePresentismo }) {
+/**
+ * El presentismo del OS cuando el blanco no lleva 0425: mismo renglón que un concepto, importe apagado. «Va con el
+ * negro» sólo en media jornada, donde es cierto (el perdido lo descuenta `descontarDelNegro`); en otro caso sólo
+ * «fuera del subtotal».
+ */
+function FilaDePresentismo({ r, cols, conReal, parcial }: PropsDeTabla & { r: RenglonDePresentismo; parcial: boolean }) {
   const fuera = r.valor != null
+  const donde = parcial ? 'fuera del subtotal: va con el negro' : 'fuera del subtotal'
   return (
     <Grilla cols={cols} testid="recibo-concepto-presentismo">
       <div style={{ minWidth: 0 }} data-estado={r.estado}>
@@ -108,7 +121,7 @@ function FilaDePresentismo({ r, cols, conReal }: PropsDeTabla & { r: RenglonDePr
           <span style={{ fontFamily: MONO, fontSize: '10px', color: V.tenue, marginRight: 6 }}>0425</span>
           {r.rotulo.replace(/^− /, '')}
         </div>
-        <div style={{ fontSize: '10.5px', color: V.apagado }}>{fuera ? `${r.nota} · fuera del subtotal: va con el negro` : r.nota}</div>
+        <div style={{ fontSize: '10.5px', color: V.apagado }}>{fuera ? `${r.nota} · ${donde}` : r.nota}</div>
       </div>
       <Derecha color={V.apagado}>{r.valor == null ? '—' : `${r.rotulo.startsWith('−') ? '− ' : ''}${pesos(r.valor)}`}</Derecha>
       {conReal && <Derecha color={V.tenue}>—</Derecha>}
